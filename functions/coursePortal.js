@@ -30,6 +30,18 @@ const LINE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const LINE_SETUP_TTL_MS = 20 * 60 * 1000;
 const PORTAL_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const TEACHER_PAYROLL_MIN_MONTH = '2026-07';
+const TUITION_PAYMENT_BANK = Object.freeze({
+  bankName: '台新國際商業銀行',
+  bankCode: '812',
+  branchName: '敦南分行',
+  branchCode: '0023',
+  accountName: '黃銘廷',
+  accountNumber: '28881010149129'
+});
+const TUITION_PAYMENT_REQUESTS = 'coursePortalTuitionPaymentRequests';
+const TUITION_PERIODS = 'coursePortalTuitionPeriods';
+const TUITION_TRANSACTIONS = 'coursePortalTuitionPaymentTransactions';
+const TUITION_RECEIPT_MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED_ORIGINS = [
   'https://danny700808.github.io',
   'https://www.mingtinghuang.com',
@@ -506,6 +518,70 @@ async function mergeStudentProfileOverrides(rows) {
   });
 }
 
+function transactionAmount(row) {
+  return Math.max(0, Number(row && (row.amount || row.paidAmount || row.receivedAmount) || 0));
+}
+
+function tuitionBasePaidAmount(row) {
+  return Math.max(0, Number(
+    row && (
+      row.paidAmount ||
+      row.receivedAmount ||
+      row.paid ||
+      row.received
+    ) || 0
+  ));
+}
+
+function mergePortalTuitionRows(rows, portalDocs, transactionDocs) {
+  const merged = new Map((rows || []).map((row) => [sourceId(row), Object.assign({}, row)]).filter(([id]) => id));
+  (portalDocs || []).forEach((doc) => {
+    const source = jsonValue(typeof doc.data === 'function' ? doc.data() : doc) || {};
+    if (source.active === false) return;
+    const id = sourceId(source) || clean(doc.id);
+    if (!id) return;
+    merged.set(id, Object.assign({ __id: id }, merged.get(id) || {}, source, { id }));
+  });
+  const overlays = new Map();
+  (transactionDocs || []).forEach((doc) => {
+    const source = jsonValue(typeof doc.data === 'function' ? doc.data() : doc) || {};
+    if (source.active === false || clean(source.status) !== 'confirmed') return;
+    const periodId = clean(source.periodId);
+    if (!periodId) return;
+    if (!overlays.has(periodId)) overlays.set(periodId, []);
+    overlays.get(periodId).push(Object.assign({ id: clean(source.id || doc.id) }, source));
+  });
+  overlays.forEach((transactions, periodId) => {
+    const period = merged.get(periodId);
+    if (!period) return;
+    const existing = Array.isArray(period.transactions) ? period.transactions.slice() : [];
+    const existingIds = new Set(existing.map((row) => clean(row && row.id)).filter(Boolean));
+    const additions = transactions.filter((row) => !existingIds.has(clean(row.id)));
+    const paidAmount = tuitionBasePaidAmount(period) + additions.reduce((sum, row) => sum + transactionAmount(row), 0);
+    merged.set(periodId, Object.assign({}, period, {
+      paidAmount,
+      receivedAmount: paidAmount,
+      transactions: existing.concat(additions)
+    }));
+  });
+  return [...merged.values()];
+}
+
+async function portalTuitionDocuments(studentId = '') {
+  const periodCollection = db.collection(TUITION_PERIODS);
+  const transactionCollection = db.collection(TUITION_TRANSACTIONS);
+  const normalizedStudentId = clean(studentId);
+  const [periods, transactions] = await Promise.all([
+    normalizedStudentId
+      ? periodCollection.where('studentId', '==', normalizedStudentId).get()
+      : periodCollection.get(),
+    normalizedStudentId
+      ? transactionCollection.where('studentId', '==', normalizedStudentId).get()
+      : transactionCollection.get()
+  ]);
+  return { periods: periods.docs, transactions: transactions.docs };
+}
+
 function firstArray(row, keys) {
   for (const key of keys) {
     if (Array.isArray(row && row[key])) return row[key].map(clean).filter(Boolean);
@@ -515,10 +591,15 @@ function firstArray(row, keys) {
 
 async function mirrorRows(type) {
   const snapshot = await db.collection(MIRROR[type]).where('sourceActive', '==', true).get();
-  const rows = snapshot.docs
+  let rows = snapshot.docs
     .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}))
     .filter(Boolean);
-  return type === 'students' ? mergeStudentProfileOverrides(rows) : rows;
+  if (type === 'students') return mergeStudentProfileOverrides(rows);
+  if (type === 'tuitionPeriods') {
+    const portal = await portalTuitionDocuments();
+    rows = mergePortalTuitionRows(rows, portal.periods, portal.transactions);
+  }
+  return rows;
 }
 
 async function mirrorRowsByDateRange(type, startDate, endDate, options = {}) {
@@ -569,20 +650,27 @@ async function mirrorRowsByDateRange(type, startDate, endDate, options = {}) {
 
 async function mirrorRowsByField(type, field, value) {
   const collection = db.collection(MIRROR[type]);
+  let rows;
   try {
     const snapshot = await collection
       .where('sourceActive', '==', true)
       .where(`source.${field}`, '==', clean(value))
       .get();
-    return snapshot.docs
+    rows = snapshot.docs
       .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}));
   } catch (error) {
     console.warn('[course portal field query fallback]', type, field, clean(error && error.message));
     const snapshot = await collection.where('sourceActive', '==', true).get();
-    return snapshot.docs
+    rows = snapshot.docs
       .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}))
       .filter((row) => clean(row[field]) === clean(value));
   }
+  if (type === 'tuitionPeriods') {
+    const portal = await portalTuitionDocuments(field === 'studentId' ? value : '');
+    rows = mergePortalTuitionRows(rows, portal.periods, portal.transactions)
+      .filter((row) => clean(row[field]) === clean(value));
+  }
+  return rows;
 }
 
 async function scheduleChangeDocsByDateRange(startDate, endDate) {
@@ -3228,6 +3316,343 @@ async function teacherSlotOptions(data) {
   };
 }
 
+function tuitionExpectedAmount(row) {
+  return Math.max(0, Number(row && (
+    row.expectedAmount ||
+    row.tuitionAmount ||
+    row.courseAmount ||
+    row.feeAmount ||
+    row.amount
+  ) || 0));
+}
+
+function tuitionLessonCount(row) {
+  return Math.max(1, Number(row && (row.lessonCount || row.totalLessons) || 4));
+}
+
+function tuitionUsedCount(row) {
+  return Math.max(0, Number(row && (row.usedCount || row.attendedCount) || 0));
+}
+
+function tuitionPeriodNumber(row) {
+  return Math.max(0, Number(row && (row.periodNo || row.period) || 0));
+}
+
+function tuitionCourseKey(row) {
+  const subjectId = clean(row && row.subjectId);
+  const subjectName = clean(row && (row.subjectName || row.courseName || row.subject));
+  if (subjectId) return subjectId;
+  if (subjectName) return `subject-name:${subjectName}`;
+  return `period:${sourceId(row)}`;
+}
+
+function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, studentIds }) {
+  const allowed = new Set((studentIds || []).map(clean).filter(Boolean));
+  const studentMap = indexById(students || []);
+  const subjectMap = indexById(subjects || []);
+  const teacherMap = indexById(teachers || []);
+  const groups = new Map();
+  (periods || []).forEach((period) => {
+    const studentId = clean(period.studentId);
+    if (!studentId || (allowed.size && !allowed.has(studentId))) return;
+    const key = `${studentId}|${tuitionCourseKey(period)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(period);
+  });
+  const candidates = [];
+  groups.forEach((rows) => {
+    const ordered = rows.slice().sort((left, right) =>
+      tuitionPeriodNumber(left) - tuitionPeriodNumber(right) ||
+      sourceId(left).localeCompare(sourceId(right))
+    );
+    const completed = ordered.filter((row) =>
+      tuitionUsedCount(row) >= 4 &&
+      tuitionPeriodNumber(row) > 0
+    ).pop();
+    if (!completed) return;
+    const currentPeriodNo = tuitionPeriodNumber(completed);
+    const existingNext = ordered.find((row) => tuitionPeriodNumber(row) > currentPeriodNo);
+    if (existingNext && tuitionOutstandingAmount(existingNext) <= 0) return;
+    const source = existingNext || completed;
+    const amount = existingNext ? tuitionOutstandingAmount(existingNext) : tuitionExpectedAmount(completed);
+    if (amount <= 0) return;
+    const studentId = clean(completed.studentId);
+    const subjectId = clean(source.subjectId || completed.subjectId);
+    const teacherId = clean(source.teacherId || completed.teacherId);
+    const nextPeriodNo = existingNext ? tuitionPeriodNumber(existingNext) : currentPeriodNo + 1;
+    const targetPeriodId = existingNext ? sourceId(existingNext) : '';
+    const sourcePeriodId = sourceId(completed);
+    const id = hash([
+      'tuition-payment-request',
+      studentId,
+      tuitionCourseKey(completed),
+      sourcePeriodId,
+      nextPeriodNo,
+      targetPeriodId
+    ].join('|'));
+    candidates.push({
+      id,
+      active: true,
+      status: 'payment_due',
+      studentId,
+      studentName: clean(studentMap[studentId] && studentMap[studentId].name),
+      subjectId,
+      subjectName: clean(
+        subjectMap[subjectId] && subjectMap[subjectId].name ||
+        source.subjectName || completed.subjectName || source.subject || completed.subject
+      ),
+      teacherId,
+      teacherName: clean(teacherMap[teacherId] && teacherMap[teacherId].name),
+      sourcePeriodId,
+      targetPeriodId,
+      currentPeriodNo,
+      nextPeriodNo,
+      triggerLessonCount: 4,
+      lessonCount: tuitionLessonCount(source),
+      expectedAmount: amount,
+      planId: clean(source.planId || completed.planId),
+      planSnapshot: jsonValue(source.planSnapshot || completed.planSnapshot || {}),
+      createdAtText: nowText(),
+      trigger: 'completed-period'
+    });
+  });
+  return candidates;
+}
+
+async function ensureTuitionPaymentRequests(options) {
+  const candidates = buildTuitionPaymentCandidates(options || {});
+  for (let offset = 0; offset < candidates.length; offset += 25) {
+    await Promise.all(candidates.slice(offset, offset + 25).map(async (candidate) => {
+      const ref = db.collection(TUITION_PAYMENT_REQUESTS).doc(candidate.id);
+      const snapshot = await ref.get();
+      if (snapshot.exists) return;
+      await ref.set(Object.assign({}, candidate, {
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }));
+    }));
+  }
+  return candidates.map((row) => row.id);
+}
+
+async function tuitionPaymentRequestsForStudents(studentIds) {
+  const snapshots = await Promise.all((studentIds || []).map((studentId) =>
+    db.collection(TUITION_PAYMENT_REQUESTS).where('studentId', '==', clean(studentId)).get()
+  ));
+  return snapshots.flatMap((snapshot) => snapshot.docs.map((doc) => Object.assign({
+    id: doc.id
+  }, jsonValue(doc.data()) || {})));
+}
+
+function publicTuitionPaymentRequest(row) {
+  return {
+    id: clean(row.id),
+    studentId: clean(row.studentId),
+    studentName: clean(row.studentName),
+    subjectId: clean(row.subjectId),
+    subjectName: clean(row.subjectName),
+    teacherName: clean(row.teacherName),
+    currentPeriodNo: Number(row.currentPeriodNo || 0),
+    nextPeriodNo: Number(row.nextPeriodNo || 0),
+    lessonCount: Number(row.lessonCount || 4),
+    expectedAmount: Number(row.expectedAmount || 0),
+    paymentMethod: clean(row.paymentMethod),
+    status: clean(row.status || 'payment_due'),
+    transferDate: dateKey(row.transferDate),
+    transferLast5: clean(row.transferLast5).slice(-5),
+    submittedAtText: clean(row.submittedAtText),
+    confirmedAtText: clean(row.confirmedAtText),
+    reviewNote: clean(row.reviewNote)
+  };
+}
+
+function parseTuitionReceipt(dataUrl) {
+  const value = clean(dataUrl);
+  const match = value.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!match) throw new HttpsError('invalid-argument', '匯款截圖格式不正確，請重新選擇圖片。');
+  const buffer = Buffer.from(match[2].replace(/\s+/g, ''), 'base64');
+  if (!buffer.length || buffer.length > TUITION_RECEIPT_MAX_BYTES) {
+    throw new HttpsError('invalid-argument', '匯款截圖需小於 4 MB，請重新拍攝或縮小圖片。');
+  }
+  return { contentType: match[1].toLowerCase(), buffer };
+}
+
+async function queueCoursePortalNotice(id, payload) {
+  const ref = db.collection('notificationQueue').doc(clean(id) || randomToken(16));
+  try {
+    await ref.create(Object.assign({
+      queueId: ref.id,
+      channel: 'line',
+      status: '待發送',
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtText: nowText(),
+      source: 'course-portal-tuition'
+    }, payload || {}));
+  } catch (error) {
+    const code = clean(error && error.code).toLowerCase();
+    if (code !== '6' && !/already[-_ ]?exists/.test(code)) throw error;
+  }
+  return ref.id;
+}
+
+async function queueStudentTuitionNotice(requestRow, title, body, eventCode) {
+  const snapshot = await db.collection('coursePortalStudentBindings')
+    .where('studentId', '==', clean(requestRow.studentId))
+    .get();
+  const targets = snapshot.docs.filter((doc) => {
+    const row = doc.data() || {};
+    return clean(row.status) === 'active' &&
+      clean(row.lineUserId) &&
+      row.reminderPayment !== false;
+  });
+  await Promise.all(targets.map((doc) => {
+    const row = doc.data() || {};
+    return queueCoursePortalNotice(
+      `course-tuition-${clean(requestRow.id)}-${clean(eventCode)}-${doc.id}`,
+      {
+        eventCode: clean(eventCode),
+        targetLineUserId: clean(row.lineUserId),
+        targetName: clean(requestRow.studentName) || '學生／家長',
+        title,
+        body,
+        text: body,
+        message: body,
+        studentId: clean(requestRow.studentId),
+        tuitionPaymentRequestId: clean(requestRow.id)
+      }
+    );
+  }));
+}
+
+async function studentSubmitTuitionPayment(data) {
+  const session = await requireSession(data, ['student']);
+  const requestId = clean(data.requestId);
+  const paymentMethod = clean(data.paymentMethod);
+  if (!requestId || !['bank_transfer', 'onsite'].includes(paymentMethod)) {
+    throw new HttpsError('invalid-argument', '請選擇正確的繳費方式。');
+  }
+  const sessionBindings = await activeStudentBindingsForSession(session);
+  const allowed = new Set(sessionBindings.map((row) => clean(row.studentId)).filter(Boolean));
+  const ref = db.collection(TUITION_PAYMENT_REQUESTS).doc(requestId);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) throw new HttpsError('not-found', '找不到這筆下一期學費。');
+  const requestRow = Object.assign({ id: snapshot.id }, snapshot.data() || {});
+  if (!allowed.has(clean(requestRow.studentId))) {
+    throw new HttpsError('permission-denied', '沒有這筆學費的操作權限。');
+  }
+  if (!['payment_due', 'needs_resubmission'].includes(clean(requestRow.status))) {
+    throw new HttpsError('failed-precondition', '這筆學費已經送出或完成，不能重複送出。');
+  }
+
+  const revision = Math.max(0, Number(requestRow.submissionRevision || 0)) + 1;
+  const oldReceiptStoragePath = clean(requestRow.receiptStoragePath);
+  let uploadedReceiptStoragePath = '';
+  const update = {
+    paymentMethod,
+    status: paymentMethod === 'bank_transfer' ? 'pending_review' : 'onsite_pending',
+    submittedAt: FieldValue.serverTimestamp(),
+    submittedAtText: nowText(),
+    submissionRevision: revision,
+    reviewNote: '',
+    updatedAt: FieldValue.serverTimestamp()
+  };
+  if (paymentMethod === 'bank_transfer') {
+    const transferDate = dateKey(data.transferDate);
+    const transferLast5 = clean(data.transferLast5).replace(/\D/g, '').slice(-5);
+    if (!transferDate) throw new HttpsError('invalid-argument', '請填寫匯款日期。');
+    if (transferLast5.length !== 5) throw new HttpsError('invalid-argument', '請填寫匯款帳號末五碼。');
+    const receipt = parseTuitionReceipt(data.receiptDataUrl);
+    const storagePath = [
+      'course-portal/tuition-payments',
+      clean(requestRow.studentId),
+      requestId,
+      `receipt-${revision}-${randomToken(6)}`
+    ].join('/');
+    uploadedReceiptStoragePath = storagePath;
+    await admin.storage().bucket().file(storagePath).save(receipt.buffer, {
+      resumable: false,
+      metadata: {
+        contentType: receipt.contentType,
+        cacheControl: 'private, no-store, max-age=0',
+        metadata: {
+          studentId: clean(requestRow.studentId),
+          tuitionPaymentRequestId: requestId
+        }
+      }
+    });
+    Object.assign(update, {
+      transferDate,
+      transferLast5,
+      receiptStoragePath: storagePath,
+      receiptContentType: receipt.contentType,
+      receiptBytes: receipt.buffer.length
+    });
+  } else {
+    Object.assign(update, {
+      transferDate: '',
+      transferLast5: '',
+      receiptStoragePath: FieldValue.delete(),
+      receiptContentType: FieldValue.delete(),
+      receiptBytes: FieldValue.delete()
+    });
+  }
+  try {
+    await db.runTransaction(async (tx) => {
+      const current = await tx.get(ref);
+      const currentStatus = clean(current.exists && current.data().status);
+      if (!current.exists || !['payment_due', 'needs_resubmission'].includes(currentStatus)) {
+        throw new HttpsError('failed-precondition', '這筆學費剛剛已經送出或完成，請重新整理。');
+      }
+      tx.set(ref, update, { merge: true });
+    });
+  } catch (error) {
+    if (uploadedReceiptStoragePath) {
+      await admin.storage().bucket().file(uploadedReceiptStoragePath).delete({ ignoreNotFound: true }).catch(() => null);
+    }
+    throw error;
+  }
+  if (oldReceiptStoragePath && oldReceiptStoragePath !== uploadedReceiptStoragePath) {
+    await admin.storage().bucket().file(oldReceiptStoragePath).delete({ ignoreNotFound: true }).catch(() => null);
+  }
+  const methodText = paymentMethod === 'bank_transfer' ? '轉帳繳費' : '現場繳費';
+  const adminBody = [
+    '學生下一期學費已送出，請進入後台確認。',
+    '',
+    `學生：${clean(requestRow.studentName) || clean(requestRow.studentId)}`,
+    `課程：${clean(requestRow.subjectName) || '未提供'}`,
+    `期別：第 ${Number(requestRow.nextPeriodNo || 0)} 期`,
+    `金額：NT$${Number(requestRow.expectedAmount || 0).toLocaleString('zh-TW')}`,
+    `方式：${methodText}`,
+    paymentMethod === 'bank_transfer' ? `匯款末五碼：${clean(update.transferLast5)}` : '',
+    '',
+    `${PORTAL_BASE}/course-portal-admin.html`
+  ].filter((line) => line !== '').join('\n');
+  await queueCoursePortalNotice(
+    `course-tuition-manager-${requestId}-${revision}`,
+    {
+      eventCode: 'tuition_payment_submitted',
+      target: 'admin',
+      targetRole: 'admin',
+      targetEmployeeId: 'PRIMARY_MANAGER_LINE',
+      targetName: '柚子樂器主管',
+      title: '學生學費待確認',
+      body: adminBody,
+      text: adminBody,
+      message: adminBody,
+      studentId: clean(requestRow.studentId),
+      tuitionPaymentRequestId: requestId
+    }
+  );
+  return {
+    ok: true,
+    requestId,
+    status: update.status,
+    message: paymentMethod === 'bank_transfer'
+      ? '匯款資料已送出，待主管確認入帳。'
+      : '已登記現場繳費，實際收款後由主管確認。'
+  };
+}
+
 async function studentPortalData(data) {
   const session = await requireSession(data, ['student']);
   const sessionBindings = await activeStudentBindingsForSession(session);
@@ -3256,6 +3681,14 @@ async function studentPortalData(data) {
     name: clean(row.name),
     phoneLast4: normalizePhone(sourcePhone(row)).slice(-4)
   }));
+  await ensureTuitionPaymentRequests({
+    periods,
+    students,
+    subjects,
+    teachers,
+    studentIds
+  });
+  const paymentRequests = await tuitionPaymentRequestsForStudents(studentIds);
   return {
     ok: true,
     students: selectedStudents,
@@ -3282,6 +3715,16 @@ async function studentPortalData(data) {
       status: clean(row.status),
       transactions: jsonValue(row.transactions || [])
     })),
+    tuitionPayment: {
+      bank: TUITION_PAYMENT_BANK,
+      requests: paymentRequests
+        .filter((row) =>
+          allowed.has(clean(row.studentId)) &&
+          row.active !== false &&
+          clean(row.status) !== 'cancelled'
+        )
+        .map(publicTuitionPaymentRequest)
+    },
     attendance: attendance.filter((row) => allowed.has(clean(row.studentId))).map((row) => ({
       id: sourceId(row),
       studentId: clean(row.studentId),
@@ -4743,8 +5186,186 @@ async function adminRoomBookings() {
   return { ok: true, bookings, updatedAt: new Date().toISOString() };
 }
 
+function adminTuitionPaymentRow(doc) {
+  const source = doc.data ? doc.data() || {} : doc || {};
+  return {
+    id: clean(source.id || doc.id),
+    studentId: clean(source.studentId),
+    studentName: clean(source.studentName),
+    subjectName: clean(source.subjectName),
+    teacherName: clean(source.teacherName),
+    nextPeriodNo: Number(source.nextPeriodNo || 0),
+    lessonCount: Number(source.lessonCount || 4),
+    expectedAmount: Number(source.expectedAmount || 0),
+    paymentMethod: clean(source.paymentMethod),
+    status: clean(source.status),
+    transferDate: dateKey(source.transferDate),
+    transferLast5: clean(source.transferLast5).slice(-5),
+    submittedAtText: clean(source.submittedAtText),
+    reviewNote: clean(source.reviewNote),
+    hasReceipt: Boolean(clean(source.receiptStoragePath)),
+    submissionRevision: Number(source.submissionRevision || 0)
+  };
+}
+
+async function adminTuitionPaymentScreenshot(data) {
+  const id = clean(data.id);
+  if (!id) throw new HttpsError('invalid-argument', '缺少學費付款資料。');
+  const snapshot = await db.collection(TUITION_PAYMENT_REQUESTS).doc(id).get();
+  if (!snapshot.exists) throw new HttpsError('not-found', '找不到這筆學費付款資料。');
+  const row = snapshot.data() || {};
+  const storagePath = clean(row.receiptStoragePath);
+  if (!storagePath) throw new HttpsError('not-found', '這筆資料沒有匯款截圖。');
+  const [buffer] = await admin.storage().bucket().file(storagePath).download();
+  if (!buffer.length || buffer.length > TUITION_RECEIPT_MAX_BYTES) {
+    throw new HttpsError('failed-precondition', '匯款截圖大小異常，請請學生重新上傳。');
+  }
+  const contentType = clean(row.receiptContentType) || 'image/jpeg';
+  return {
+    ok: true,
+    id,
+    contentType,
+    dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`
+  };
+}
+
+async function adminTuitionPaymentAction(data) {
+  const id = clean(data.id);
+  const action = clean(data.action);
+  if (!id || !['confirm', 'reject'].includes(action)) {
+    throw new HttpsError('invalid-argument', '學費付款簽核資料不完整。');
+  }
+  const requestRef = db.collection(TUITION_PAYMENT_REQUESTS).doc(id);
+  const preview = await requestRef.get();
+  if (!preview.exists) throw new HttpsError('not-found', '找不到這筆學費付款資料。');
+  const previewRow = Object.assign({ id: preview.id }, preview.data() || {});
+  if (!['pending_review', 'onsite_pending'].includes(clean(previewRow.status))) {
+    throw new HttpsError('failed-precondition', '這筆學費目前不是等待主管確認的狀態。');
+  }
+  if (action === 'reject') {
+    const reviewNote = clean(data.reviewNote) || '匯款資料無法確認，請重新上傳清楚的付款資料。';
+    await requestRef.set({
+      status: 'needs_resubmission',
+      reviewNote,
+      rejectedAt: FieldValue.serverTimestamp(),
+      rejectedAtText: nowText(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    const body = [
+      `${clean(previewRow.studentName) || '同學'}您好，您送出的第 ${Number(previewRow.nextPeriodNo || 0)} 期學費資料需要重新確認。`,
+      `原因：${reviewNote}`,
+      `請重新進入學生入口上傳：${PORTAL_BASE}/student-course-portal.html?studentId=${encodeURIComponent(clean(previewRow.studentId))}`
+    ].join('\n');
+    await queueStudentTuitionNotice(previewRow, '學費資料請重新上傳', body, `rejected-${Number(previewRow.submissionRevision || 0)}`);
+    return { ok: true, id, status: 'needs_resubmission', message: '已退回學生重新上傳。' };
+  }
+
+  const confirmedAmount = Math.max(0, Number(data.confirmedAmount || previewRow.expectedAmount || 0));
+  if (!confirmedAmount) throw new HttpsError('invalid-argument', '請輸入實際收到的學費金額。');
+  const paymentMethod = clean(previewRow.paymentMethod);
+  if (!['bank_transfer', 'onsite'].includes(paymentMethod)) {
+    throw new HttpsError('failed-precondition', '這筆資料沒有正確的付款方式。');
+  }
+  const targetPeriodId = clean(previewRow.targetPeriodId);
+  const formalPeriodId = targetPeriodId || `portal-period-${id}`;
+  const periodRef = db.collection(TUITION_PERIODS).doc(formalPeriodId);
+  const transactionRef = db.collection(TUITION_TRANSACTIONS).doc(`portal-payment-${id}`);
+  const paymentDate = paymentMethod === 'bank_transfer'
+    ? (dateKey(previewRow.transferDate) || currentTaipeiDay())
+    : currentTaipeiDay();
+  await db.runTransaction(async (tx) => {
+    const [requestSnapshot, periodSnapshot, transactionSnapshot] = await Promise.all([
+      tx.get(requestRef),
+      tx.get(periodRef),
+      tx.get(transactionRef)
+    ]);
+    const requestRow = requestSnapshot.exists ? requestSnapshot.data() || {} : null;
+    if (!requestRow || !['pending_review', 'onsite_pending'].includes(clean(requestRow.status))) {
+      throw new HttpsError('failed-precondition', '這筆學費已被其他人處理，請重新整理。');
+    }
+    if (!targetPeriodId && !periodSnapshot.exists) {
+      tx.set(periodRef, {
+        id: formalPeriodId,
+        active: true,
+        source: 'course-portal',
+        studentId: clean(requestRow.studentId),
+        subjectId: clean(requestRow.subjectId),
+        teacherId: clean(requestRow.teacherId),
+        planId: clean(requestRow.planId),
+        planSnapshot: jsonValue(requestRow.planSnapshot || {}),
+        periodNo: Number(requestRow.nextPeriodNo || 0),
+        lessonCount: Number(requestRow.lessonCount || 4),
+        usedCount: 0,
+        expectedAmount: Number(requestRow.expectedAmount || confirmedAmount),
+        paidAmount: 0,
+        status: 'active',
+        paymentRequestId: id,
+        createdAt: FieldValue.serverTimestamp(),
+        createdAtText: nowText(),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    }
+    if (!transactionSnapshot.exists) {
+      tx.set(transactionRef, {
+        id: transactionRef.id,
+        active: true,
+        status: 'confirmed',
+        source: 'course-portal',
+        type: 'payment',
+        studentId: clean(requestRow.studentId),
+        periodId: formalPeriodId,
+        paymentRequestId: id,
+        date: paymentDate,
+        amount: confirmedAmount,
+        method: paymentMethod === 'bank_transfer' ? '轉帳' : '現場繳費',
+        transferLast5: clean(requestRow.transferLast5).slice(-5),
+        confirmedAt: FieldValue.serverTimestamp(),
+        confirmedAtText: nowText(),
+        createdAt: FieldValue.serverTimestamp()
+      });
+    }
+    tx.set(requestRef, {
+      status: 'confirmed',
+      confirmedAmount,
+      formalPeriodId,
+      paymentDate,
+      confirmedAt: FieldValue.serverTimestamp(),
+      confirmedAtText: nowText(),
+      reviewNote: '',
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+  const methodText = paymentMethod === 'bank_transfer' ? '轉帳' : '現場繳費';
+  const confirmedRow = Object.assign({}, previewRow, {
+    id,
+    confirmedAmount,
+    formalPeriodId,
+    status: 'confirmed'
+  });
+  const body = [
+    `${clean(previewRow.studentName) || '同學'}您好，柚子樂器已確認收到您的第 ${Number(previewRow.nextPeriodNo || 0)} 期學費。`,
+    `課程：${clean(previewRow.subjectName) || '課程'}`,
+    `金額：NT$${confirmedAmount.toLocaleString('zh-TW')}`,
+    `付款方式：${methodText}`,
+    '您的下一期課程已完成登記，謝謝您。'
+  ].join('\n');
+  await queueStudentTuitionNotice(
+    confirmedRow,
+    '下一期學費已確認',
+    body,
+    `confirmed-${Number(previewRow.submissionRevision || 0)}`
+  );
+  return {
+    ok: true,
+    id,
+    status: 'confirmed',
+    formalPeriodId,
+    message: '已確認收款並建立正式下一期學費紀錄。'
+  };
+}
+
 async function adminData() {
-  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions, suspensionSnapshot] = await Promise.all([
+  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions, suspensionSnapshot, tuitionPaymentSnapshot] = await Promise.all([
     db.collection('coursePortalTeacherBindings').get(),
     db.collection('coursePortalStudentBindings').get(),
     db.collection('coursePortalRenterBindings').get(),
@@ -4752,7 +5373,8 @@ async function adminData() {
     mirrorRows('students'),
     db.collection('coursePortalRenters').get(),
     db.collection('coursePortalSessions').get(),
-    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get()
+    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get(),
+    db.collection(TUITION_PAYMENT_REQUESTS).where('status', 'in', ['pending_review', 'onsite_pending']).get()
   ]);
   const teacherMap = indexById(teacherRows);
   const studentMap = indexById(studentRows);
@@ -4840,10 +5462,15 @@ async function adminData() {
       paymentStatus: clean(row.paymentStatus || 'pending')
     };
   }).filter((row) => row.paymentStatus !== 'settled' && row.currentUnpaidAmount > 0);
+  const tuitionPayments = tuitionPaymentSnapshot.docs
+    .filter((doc) => ['pending_review', 'onsite_pending'].includes(clean((doc.data() || {}).status)))
+    .sort((left, right) => asMillis((right.data() || {}).submittedAt) - asMillis((left.data() || {}).submittedAt))
+    .map(adminTuitionPaymentRow);
   return {
     ok: true,
     bindings: [...map(teachers), ...map(students), ...map(renters)],
-    unpaidSuspensions
+    unpaidSuspensions,
+    tuitionPayments
   };
 }
 
@@ -4984,12 +5611,27 @@ async function adminSuspensionAction(data) {
 
 async function dailyStudentReminders(pushLineMessage) {
   if (typeof pushLineMessage !== 'function') return;
-  const [bindings, periods, students] = await Promise.all([
+  const [bindings, periods, students, subjects, teachers] = await Promise.all([
     db.collection('coursePortalStudentBindings').where('status', '==', 'active').get(),
     mirrorRows('tuitionPeriods'),
-    mirrorRows('students')
+    mirrorRows('students'),
+    mirrorRows('subjects'),
+    mirrorRows('teachers')
   ]);
   const studentMap = indexById(students);
+  await ensureTuitionPaymentRequests({
+    periods,
+    students,
+    subjects,
+    teachers,
+    studentIds: students.map(sourceId)
+  });
+  const paymentSnapshot = await db.collection(TUITION_PAYMENT_REQUESTS)
+    .where('status', '==', 'payment_due')
+    .get();
+  const paymentRequests = paymentSnapshot.docs.map((doc) => Object.assign({
+    id: doc.id
+  }, doc.data() || {})).filter((row) => row.active !== false);
   const day = new Intl.DateTimeFormat('en-CA', {
     timeZone: TAIPEI, year: 'numeric', month: '2-digit', day: '2-digit'
   }).format(new Date());
@@ -4999,27 +5641,68 @@ async function dailyStudentReminders(pushLineMessage) {
     const studentId = clean(binding.studentId);
     const studentPeriods = periods.filter((row) => clean(row.studentId) === studentId && !['closed', 'completed'].includes(clean(row.status).toLowerCase()));
     const lastLesson = studentPeriods.find((row) => Number(row.lessonCount || 4) - Number(row.usedCount || 0) === 1);
-    const unpaid = studentPeriods.find((row) => Number(row.expectedAmount || row.amount || 0) > Number(row.paidAmount || row.receivedAmount || 0));
-    const messages = [];
-    if (binding.reminderLastLesson !== false && lastLesson) messages.push('目前課程剩最後一堂，請留意續課安排。');
-    if (binding.reminderPayment !== false && unpaid) messages.push('目前有尚未繳清的學費，金額請以現場確認為準。');
-    if (!messages.length) continue;
-    const logRef = db.collection('coursePortalReminderLogs').doc(hash(`${day}|${studentId}|${binding.lineUserId}|${messages.join('|')}`));
-    if ((await logRef.get()).exists) continue;
     const name = clean(studentMap[studentId] && studentMap[studentId].name) || '學生';
-    await pushLineMessage(binding.lineUserId, `${name}課務提醒\n${messages.join('\n')}`);
-    await logRef.set({ day, studentId, lineUserId: binding.lineUserId, messages, sentAt: FieldValue.serverTimestamp() });
+    if (binding.reminderLastLesson !== false && lastLesson) {
+      const message = '目前課程剩最後一堂，請留意續課安排。';
+      const logRef = db.collection('coursePortalReminderLogs').doc(
+        hash(`${day}|${studentId}|${binding.lineUserId}|${message}`)
+      );
+      if (!(await logRef.get()).exists) {
+        await pushLineMessage(binding.lineUserId, `${name}課務提醒\n${message}`);
+        await logRef.set({
+          day,
+          studentId,
+          lineUserId: binding.lineUserId,
+          messages: [message],
+          sentAt: FieldValue.serverTimestamp()
+        });
+      }
+    }
+    if (binding.reminderPayment === false) continue;
+    const dueRequests = paymentRequests.filter((row) =>
+      clean(row.studentId) === studentId &&
+      clean(row.status) === 'payment_due'
+    );
+    for (const requestRow of dueRequests) {
+      const logRef = db.collection('coursePortalReminderLogs').doc(
+        hash(`tuition-due|${clean(requestRow.id)}|${clean(binding.lineUserId)}`)
+      );
+      if ((await logRef.get()).exists) continue;
+      const amount = Number(requestRow.expectedAmount || 0).toLocaleString('zh-TW');
+      const body = [
+        `您好，${name}的第 ${Number(requestRow.currentPeriodNo || 0)} 期課程已完成第 ${Number(requestRow.triggerLessonCount || 4)} 堂。`,
+        '',
+        `下一期：第 ${Number(requestRow.nextPeriodNo || 0)} 期`,
+        `課程：${clean(requestRow.subjectName) || '課程'}`,
+        `學費：NT$${amount}`,
+        '',
+        '可選擇轉帳繳費或現場繳費，請點擊下方連結查看繳費資料。',
+        '款項需經柚子樂器確認後，才會正式顯示為繳費完成。',
+        `${PORTAL_BASE}/student-course-portal.html?studentId=${encodeURIComponent(studentId)}`
+      ].join('\n');
+      await pushLineMessage(binding.lineUserId, body);
+      await logRef.set({
+        day,
+        studentId,
+        lineUserId: binding.lineUserId,
+        tuitionPaymentRequestId: clean(requestRow.id),
+        messages: [body],
+        sentAt: FieldValue.serverTimestamp()
+      });
+    }
   }
 }
 
 async function appendCoursePortalData(payload) {
   if (!payload || typeof payload !== 'object') return payload;
-  const [changes, bookings, roomSettings, studentProfiles, suspensions] = await Promise.all([
+  const [changes, bookings, roomSettings, studentProfiles, suspensions, portalPeriods, portalTransactions] = await Promise.all([
     db.collection('coursePortalScheduleChanges').where('active', '==', true).get(),
     db.collection('coursePortalRoomBookings').where('active', '==', true).get(),
     db.collection('coursePortalRoomSettings').get(),
     db.collection('coursePortalStudentProfiles').get(),
-    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get()
+    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get(),
+    db.collection(TUITION_PERIODS).get(),
+    db.collection(TUITION_TRANSACTIONS).get()
   ]);
   const roomSettingsMap = new Map(roomSettings.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
   const studentProfileMap = new Map(studentProfiles.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
@@ -5032,6 +5715,13 @@ async function appendCoursePortalData(payload) {
       if (normalizePhone(profile.phone)) merged.phone = normalizePhone(profile.phone);
       return merged;
     });
+  }
+  if (Array.isArray(payload.tuitionPeriods)) {
+    payload.tuitionPeriods = mergePortalTuitionRows(
+      payload.tuitionPeriods,
+      portalPeriods.docs,
+      portalTransactions.docs
+    );
   }
   if (Array.isArray(payload.rooms)) {
     payload.rooms = payload.rooms.map((room) => {
@@ -5230,6 +5920,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalStudentSubmitTuitionPayment = callable(studentSubmitTuitionPayment, {
+    timeoutSeconds: 180,
+    memory: '1GiB'
+  });
   exportsObject.coursePortalRentalDayBoard = callable(rentalDayBoard, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalWeekBoard = callable(rentalWeekBoard, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalAvailability = callable(rentalAvailability, { timeoutSeconds: 180, memory: '1GiB' });
@@ -5269,8 +5963,16 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     assertAdminPin(request);
     return adminSuspensionAction(data);
   }, { secrets: [ADMIN_PIN] });
+  exportsObject.coursePortalAdminTuitionPaymentAction = callable(async (data, request) => {
+    assertAdminPin(request);
+    return adminTuitionPaymentAction(data);
+  }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalAdminTuitionPaymentScreenshot = callable(async (data, request) => {
+    assertAdminPin(request);
+    return adminTuitionPaymentScreenshot(data);
+  }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentReminderDaily = onSchedule({
-    schedule: '0 10 * * *',
+    schedule: '0 * * * *',
     timeZone: TAIPEI,
     region: REGION,
     timeoutSeconds: 180,

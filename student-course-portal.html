@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>學生與家長入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-student-phone-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-tuition-payment-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 </head>
 <body class="clean-portal-ui">
@@ -70,6 +70,13 @@
         <article class="summary"><span>近期課程</span><strong id="upcomingCount">0</strong></article>
         <article class="summary"><span>簽到紀錄</span><strong id="attendanceCount">0</strong></article>
       </div>
+      <section class="card tuition-payment-card hidden" id="tuitionPaymentSection">
+        <div class="section-title">
+          <div><h2>下一期學費</h2><p class="muted">可選擇轉帳或現場繳費；主管確認收款後才會正式列入下一期。</p></div>
+          <span class="badge warn" id="tuitionPaymentBadge">待處理</span>
+        </div>
+        <div class="list" id="tuitionPaymentList"></div>
+      </section>
       <nav class="tabs">
         <button class="btn active" type="button" data-tab="courses">課程與學費</button>
         <button class="btn" type="button" data-tab="upcoming">近期課表</button>
@@ -99,12 +106,59 @@
         </form>
       </section>
     </section>
+
+    <section class="modal hidden" id="tuitionPaymentModal" role="dialog" aria-modal="true" aria-labelledby="tuitionPaymentModalTitle">
+      <div class="card modal-panel tuition-payment-modal-panel">
+        <div class="section-title">
+          <div><h2 id="tuitionPaymentModalTitle">下一期學費繳費</h2><p class="muted" id="tuitionPaymentModalSubtitle"></p></div>
+          <button class="btn soft" type="button" data-close-tuition-payment>關閉</button>
+        </div>
+        <div class="tuition-payment-summary" id="tuitionPaymentSummary"></div>
+        <form class="stack" id="tuitionPaymentForm">
+          <div class="payment-method-grid">
+            <label class="payment-method-choice">
+              <input type="radio" name="paymentMethod" value="bank_transfer" checked>
+              <span><strong>轉帳繳費</strong><small>匯款後上傳付款截圖</small></span>
+            </label>
+            <label class="payment-method-choice">
+              <input type="radio" name="paymentMethod" value="onsite">
+              <span><strong>現場繳費</strong><small>到柚子樂器門市付款</small></span>
+            </label>
+          </div>
+          <section class="stack" id="bankTransferPanel">
+            <div class="tuition-bank-card">
+              <div class="pay-title">匯款資訊</div>
+              <div class="bank-line"><span>銀行</span><strong id="tuitionBankName">—</strong></div>
+              <div class="bank-line"><span>銀行代碼</span><strong id="tuitionBankCode">—</strong></div>
+              <div class="bank-line"><span>分行</span><strong id="tuitionBankBranch">—</strong></div>
+              <div class="bank-line"><span>戶名</span><strong id="tuitionBankAccountName">—</strong></div>
+              <div class="bank-line account-line"><span>帳號</span><strong id="tuitionBankAccount">—</strong></div>
+              <button class="btn soft" id="copyTuitionAccount" type="button">複製帳號</button>
+            </div>
+            <div class="grid two">
+              <div class="field"><label>匯款日期</label><input type="date" name="transferDate"></div>
+              <div class="field"><label>匯款帳號末五碼</label><input type="text" name="transferLast5" inputmode="numeric" maxlength="5" placeholder="請輸入 5 碼"></div>
+            </div>
+            <div class="field">
+              <label>上傳匯款截圖</label>
+              <input type="file" id="tuitionReceiptFile" accept="image/*">
+              <small class="muted">只供主管核對款項，不會公開顯示。</small>
+            </div>
+            <img class="tuition-receipt-preview hidden" id="tuitionReceiptPreview" alt="匯款截圖預覽">
+          </section>
+          <section class="notice hidden" id="onsitePaymentPanel">
+            已登記選擇現場繳費後，請至柚子樂器門市完成付款。實際收到款項並經主管確認後，才會顯示為繳費完成。
+          </section>
+          <button class="btn primary" type="submit" id="submitTuitionPayment">送出付款確認</button>
+        </form>
+      </div>
+    </section>
   </main>
 
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-student-phone-v1"></script>
+  <script src="course-portal-common.js?v=20260730-tuition-payment-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -112,6 +166,8 @@
     let data = null;
     let studentId = '';
     let showAllPeriods = false;
+    let activeTuitionPaymentId = '';
+    let tuitionReceiptDataUrl = '';
     const bindView = document.getElementById('bindView');
     const appView = document.getElementById('appView');
 
@@ -129,6 +185,132 @@
       return `<span class="badge danger">未繳 ${P.money(expected - paid)}</span>`;
     }
 
+    function tuitionPaymentStatus(row) {
+      if (row.status === 'pending_review') return '<span class="badge warn">等待主管確認轉帳</span>';
+      if (row.status === 'onsite_pending') return '<span class="badge warn">等待現場繳費</span>';
+      if (row.status === 'needs_resubmission') return '<span class="badge danger">請重新送出</span>';
+      return '<span class="badge danger">下一期尚未繳費</span>';
+    }
+
+    function renderTuitionPayments() {
+      const activeStatuses = new Set(['payment_due', 'pending_review', 'onsite_pending', 'needs_resubmission']);
+      const requests = (((data || {}).tuitionPayment || {}).requests || [])
+        .filter((row) => row.studentId === studentId && activeStatuses.has(row.status))
+        .sort((left, right) => Number(left.nextPeriodNo || 0) - Number(right.nextPeriodNo || 0));
+      const section = document.getElementById('tuitionPaymentSection');
+      section.classList.toggle('hidden', !requests.length);
+      document.getElementById('tuitionPaymentBadge').textContent = `${requests.length} 筆`;
+      document.getElementById('tuitionPaymentList').innerHTML = requests.map((row) => {
+        const canSubmit = ['payment_due', 'needs_resubmission'].includes(row.status);
+        const methodText = row.paymentMethod === 'bank_transfer'
+          ? '轉帳繳費'
+          : (row.paymentMethod === 'onsite' ? '現場繳費' : '尚未選擇');
+        return `
+          <article class="list-row tuition-payment-row">
+            <strong>第 ${Number(row.nextPeriodNo || 0)} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong>
+            <span>${P.escapeHtml(row.studentName || '')}</span>
+            <span>${Number(row.lessonCount || 4)} 堂</span>
+            <strong>${P.money(row.expectedAmount)}</strong>
+            <span class="tuition-payment-actions">
+              ${tuitionPaymentStatus(row)}
+              ${row.status === 'needs_resubmission' && row.reviewNote ? `<small class="danger-text">${P.escapeHtml(row.reviewNote)}</small>` : ''}
+              ${!canSubmit ? `<small class="muted">${P.escapeHtml(methodText)}</small>` : ''}
+              ${canSubmit ? `<button class="btn primary" type="button" data-pay-tuition="${P.escapeHtml(row.id)}">${row.status === 'needs_resubmission' ? '重新送出' : '前往繳費'}</button>` : ''}
+            </span>
+          </article>`;
+      }).join('');
+    }
+
+    function taipeiToday() {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Taipei',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
+    }
+
+    function selectedTuitionPayment() {
+      return ((((data || {}).tuitionPayment || {}).requests || [])
+        .find((row) => row.id === activeTuitionPaymentId)) || {};
+    }
+
+    function toggleTuitionPaymentMethod() {
+      const method = document.querySelector('[name="paymentMethod"]:checked').value;
+      document.getElementById('bankTransferPanel').classList.toggle('hidden', method !== 'bank_transfer');
+      document.getElementById('onsitePaymentPanel').classList.toggle('hidden', method !== 'onsite');
+      document.getElementById('submitTuitionPayment').textContent = method === 'bank_transfer'
+        ? '送出付款確認'
+        : '登記現場繳費';
+    }
+
+    function openTuitionPayment(id) {
+      activeTuitionPaymentId = id;
+      tuitionReceiptDataUrl = '';
+      const row = selectedTuitionPayment();
+      if (!row.id) return;
+      const bank = ((data || {}).tuitionPayment || {}).bank || {};
+      document.getElementById('tuitionPaymentModalSubtitle').textContent =
+        `${row.studentName || ''}｜${row.subjectName || '課程'}`;
+      document.getElementById('tuitionPaymentSummary').innerHTML = `
+        <span>下一期</span><strong>第 ${Number(row.nextPeriodNo || 0)} 期</strong>
+        <span>堂數</span><strong>${Number(row.lessonCount || 4)} 堂</strong>
+        <span>應繳金額</span><strong>${P.money(row.expectedAmount)}</strong>`;
+      document.getElementById('tuitionBankName').textContent = bank.bankName || '台新國際商業銀行';
+      document.getElementById('tuitionBankCode').textContent = bank.bankCode || '812';
+      document.getElementById('tuitionBankBranch').textContent =
+        [bank.branchName, bank.branchCode].filter(Boolean).join('（') + (bank.branchCode ? '）' : '');
+      document.getElementById('tuitionBankAccountName').textContent = bank.accountName || '黃銘廷';
+      document.getElementById('tuitionBankAccount').textContent = bank.accountNumber || '28881010149129';
+      const form = document.getElementById('tuitionPaymentForm');
+      form.reset();
+      form.elements.paymentMethod.value = row.paymentMethod === 'onsite' ? 'onsite' : 'bank_transfer';
+      form.elements.transferDate.value = row.transferDate || taipeiToday();
+      form.elements.transferLast5.value = row.transferLast5 || '';
+      document.getElementById('tuitionReceiptPreview').src = '';
+      document.getElementById('tuitionReceiptPreview').classList.add('hidden');
+      toggleTuitionPaymentMethod();
+      document.getElementById('tuitionPaymentModal').classList.remove('hidden');
+    }
+
+    function closeTuitionPayment() {
+      document.getElementById('tuitionPaymentModal').classList.add('hidden');
+      activeTuitionPaymentId = '';
+      tuitionReceiptDataUrl = '';
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('無法讀取圖片，請重新選擇。'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function compressTuitionReceipt(file) {
+      if (!file || !String(file.type || '').startsWith('image/')) {
+        throw new Error('請選擇匯款截圖圖片。');
+      }
+      if (file.size > 15 * 1024 * 1024) throw new Error('圖片太大，請重新拍攝或縮小後上傳。');
+      const source = await readFileAsDataUrl(file);
+      const image = await new Promise((resolve, reject) => {
+        const node = new Image();
+        node.onload = () => resolve(node);
+        node.onerror = () => reject(new Error('這張圖片無法處理，請改用照片或截圖。'));
+        node.src = source;
+      });
+      const scale = Math.min(1, 1600 / Math.max(image.naturalWidth || 1, image.naturalHeight || 1));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round((image.naturalWidth || 1) * scale));
+      canvas.height = Math.max(1, Math.round((image.naturalHeight || 1) * scale));
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+      let result = canvas.toDataURL('image/jpeg', .82);
+      if (result.length > 5_200_000) result = canvas.toDataURL('image/jpeg', .62);
+      if (result.length > 5_400_000) throw new Error('圖片仍然太大，請裁切後重新上傳。');
+      return result;
+    }
+
     function render() {
       const student = data.students.find((row) => row.id === studentId) || data.students[0] || {};
       studentId = student.id || '';
@@ -140,6 +322,7 @@
       document.getElementById('periodCount').textContent = periods.length;
       document.getElementById('upcomingCount').textContent = upcoming.length;
       document.getElementById('attendanceCount').textContent = attendance.length;
+      renderTuitionPayments();
       const visiblePeriods = showAllPeriods ? periods : periods.slice(0, 3);
       const historyButton = document.getElementById('togglePeriodHistory');
       historyButton.classList.toggle('hidden', periods.length <= 3);
@@ -197,6 +380,66 @@
       showAllPeriods = !showAllPeriods;
       render();
     });
+    document.getElementById('tuitionPaymentList').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-pay-tuition]');
+      if (button) openTuitionPayment(button.dataset.payTuition);
+    });
+    document.querySelectorAll('[name="paymentMethod"]').forEach((input) => {
+      input.addEventListener('change', toggleTuitionPaymentMethod);
+    });
+    document.querySelectorAll('[data-close-tuition-payment]').forEach((button) => {
+      button.addEventListener('click', closeTuitionPayment);
+    });
+    document.getElementById('copyTuitionAccount').addEventListener('click', async () => {
+      const account = document.getElementById('tuitionBankAccount').textContent.replace(/\D/g, '');
+      try {
+        await navigator.clipboard.writeText(account);
+        P.toast(`已複製帳號：${account}`);
+      } catch (_) {
+        P.toast(`請手動複製帳號：${account}`, 'error');
+      }
+    });
+    document.getElementById('tuitionReceiptFile').addEventListener('change', async (event) => {
+      const input = event.currentTarget;
+      const preview = document.getElementById('tuitionReceiptPreview');
+      try {
+        tuitionReceiptDataUrl = await compressTuitionReceipt(input.files && input.files[0]);
+        preview.src = tuitionReceiptDataUrl;
+        preview.classList.remove('hidden');
+      } catch (error) {
+        tuitionReceiptDataUrl = '';
+        input.value = '';
+        preview.src = '';
+        preview.classList.add('hidden');
+        P.toast(error.message, 'error');
+      }
+    });
+    document.getElementById('tuitionPaymentForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const method = form.elements.paymentMethod.value;
+      if (method === 'bank_transfer' && !tuitionReceiptDataUrl) {
+        P.toast('請先上傳匯款截圖。', 'error');
+        return;
+      }
+      const button = event.submitter;
+      P.loading(button, true, '送出中…');
+      try {
+        const result = await P.call('coursePortalStudentSubmitTuitionPayment', {
+          sessionToken: token,
+          requestId: activeTuitionPaymentId,
+          paymentMethod: method,
+          transferDate: form.elements.transferDate.value,
+          transferLast5: form.elements.transferLast5.value,
+          receiptDataUrl: method === 'bank_transfer' ? tuitionReceiptDataUrl : ''
+        });
+        P.toast(result.message || '付款資料已送出。');
+        const requestedStudentId = studentId;
+        closeTuitionPayment();
+        await load(requestedStudentId);
+      } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
     document.getElementById('addStudentBinding').addEventListener('click', () => {
       showBound(false);
       const regularName = document.querySelector('[data-regular-auth-form] input[name="name"]');
@@ -228,8 +471,8 @@
       try {
         token = await P.exchangeAccess('student');
         if (token) {
-          await load();
           const params = new URLSearchParams(location.search);
+          await load(params.get('studentId') || '');
           if (params.get('return') === 'room-booking.html') {
             location.href = 'room-booking.html?from=student';
           }

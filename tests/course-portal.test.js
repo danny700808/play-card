@@ -149,6 +149,16 @@ assert(teacherSource.includes('coursePortalTeacherStopStudent'), '老師停課�
 assert(teacherSource.includes('confirmed: true'), '老師停課未傳送二次確認結果');
 assert(adminPortal.includes('停課學費未繳清'), '管理者頁缺少停課學費未繳清專區');
 assert(adminPortal.includes('coursePortalAdminSuspensionAction'), '管理者欠費簽核未連接後端');
+assert(studentPortal.includes('id="tuitionPaymentSection"'), '學生入口缺少下一期學費區塊');
+assert(studentPortal.includes('id="tuitionPaymentModal"'), '學生入口缺少繳費方式視窗');
+assert(studentPortal.includes('name="paymentMethod" value="bank_transfer"'), '學生入口缺少轉帳繳費選項');
+assert(studentPortal.includes('name="paymentMethod" value="onsite"'), '學生入口缺少現場繳費選項');
+assert(studentPortal.includes('id="tuitionReceiptFile"'), '學生入口缺少匯款截圖上傳');
+assert(studentPortal.includes('28881010149129'), '學生入口缺少既有台新銀行帳號 fallback');
+assert(studentPortal.includes('coursePortalStudentSubmitTuitionPayment'), '學生繳費資料未連接後端');
+assert(adminPortal.includes('學費繳費待確認'), '管理者頁缺少學費繳費待確認專區');
+assert(adminPortal.includes('coursePortalAdminTuitionPaymentScreenshot'), '管理者無法安全讀取匯款截圖');
+assert(adminPortal.includes('coursePortalAdminTuitionPaymentAction'), '管理者學費確認未連接後端');
 
 const rentalSource = fs.readFileSync(path.join(root, 'room-booking-v2.js'), 'utf8');
 const rentalHtml = fs.readFileSync(path.join(root, 'room-booking.html'), 'utf8');
@@ -411,7 +421,9 @@ function loadBackendForScheduleTests(state) {
       'module.exports.__testRentalAmount = rentalAmount;\n' +
       'module.exports.__testEffectiveRentalFee = effectiveRentalFee;\n' +
       'module.exports.__testSafeRentalDisplayName = safeRentalDisplayName;\n' +
-      'module.exports.__testRentalSessionDisplayName = rentalSessionDisplayName;\n',
+      'module.exports.__testRentalSessionDisplayName = rentalSessionDisplayName;\n' +
+      'module.exports.__testMergePortalTuitionRows = mergePortalTuitionRows;\n' +
+      'module.exports.__testBuildTuitionPaymentCandidates = buildTuitionPaymentCandidates;\n',
       backendPath
     );
     return fixtureModule.exports;
@@ -570,10 +582,90 @@ async function runBackendScheduleRegressionTests() {
       authAccountId: 'account-student'
     })
   ]);
+  const mergedTuitionRows = duplicatePermanentBackend.__testMergePortalTuitionRows(
+    [{
+      id: 'period-existing',
+      studentId: 'student-1',
+      expectedAmount: 3200,
+      paidAmount: 0,
+      transactions: []
+    }],
+    [{
+      id: 'period-portal',
+      studentId: 'student-1',
+      expectedAmount: 3200,
+      paidAmount: 0,
+      active: true
+    }],
+    [{
+      id: 'payment-portal',
+      studentId: 'student-1',
+      periodId: 'period-portal',
+      status: 'confirmed',
+      amount: 3200,
+      active: true
+    }]
+  );
+  const nextTuitionCandidates = duplicatePermanentBackend.__testBuildTuitionPaymentCandidates({
+    students: [{ id: 'student-1', name: '林小明' }],
+    subjects: [{ id: 'subject-piano', name: '鋼琴' }],
+    teachers: [{ id: 'teacher-1', name: '王老師' }],
+    studentIds: ['student-1'],
+    periods: [{
+      id: 'period-3',
+      studentId: 'student-1',
+      subjectId: 'subject-piano',
+      teacherId: 'teacher-1',
+      periodNo: 3,
+      lessonCount: 4,
+      usedCount: 4,
+      expectedAmount: 3200,
+      paidAmount: 3200
+    }]
+  });
+  const paidNextTuitionCandidates = duplicatePermanentBackend.__testBuildTuitionPaymentCandidates({
+    students: [{ id: 'student-1', name: '林小明' }],
+    subjects: [{ id: 'subject-piano', name: '鋼琴' }],
+    teachers: [{ id: 'teacher-1', name: '王老師' }],
+    studentIds: ['student-1'],
+    periods: [
+      {
+        id: 'period-3',
+        studentId: 'student-1',
+        subjectId: 'subject-piano',
+        teacherId: 'teacher-1',
+        periodNo: 3,
+        lessonCount: 4,
+        usedCount: 4,
+        expectedAmount: 3200,
+        paidAmount: 3200
+      },
+      {
+        id: 'period-4',
+        studentId: 'student-1',
+        subjectId: 'subject-piano',
+        teacherId: 'teacher-1',
+        periodNo: 4,
+        lessonCount: 4,
+        usedCount: 0,
+        expectedAmount: 3200,
+        paidAmount: 3200
+      }
+    ]
+  });
   check(() => {
     assert.strictEqual(renterDisplayName, '林租客', '一般或 LINE 租用登入未保留已註冊姓名');
     assert.strictEqual(teacherDisplayName, '王老師', '老師租用頁未優先使用目前 teacherId 的綁定姓名');
     assert.strictEqual(studentDisplayName, '學生', '學生租用頁缺少 mirror 姓名 fallback');
+    const portalPeriod = mergedTuitionRows.find((row) => row.id === 'period-portal');
+    assert(portalPeriod, '主管確認後沒有建立新的入口學費期別');
+    assert.strictEqual(portalPeriod.paidAmount, 3200, '入口付款沒有合併到正確期別');
+    assert.strictEqual(portalPeriod.transactions.length, 1, '入口付款沒有形成正式付款紀錄');
+    assert.strictEqual(nextTuitionCandidates.length, 1, '完成第 4 堂後沒有產生下一期繳費資料');
+    assert.strictEqual(nextTuitionCandidates[0].nextPeriodNo, 4, '下一期沒有自動承接正確期別');
+    assert.strictEqual(nextTuitionCandidates[0].studentName, '林小明', '下一期繳費資料缺少學生姓名');
+    assert.strictEqual(nextTuitionCandidates[0].expectedAmount, 3200, '下一期沒有沿用本期學費金額');
+    assert.strictEqual(paidNextTuitionCandidates.length, 0, '下一期已繳費仍重複產生繳費提醒');
     const general = duplicatePermanentBackend.__testRecordingRentalSelection({
       useType: 'recording',
       recordingUsage: 'general_room'
@@ -1034,6 +1126,7 @@ assert(
   'coursePortalTeacherData',
   'coursePortalTeacherSlotOptions',
   'coursePortalStudentData',
+  'coursePortalStudentSubmitTuitionPayment',
   'coursePortalRentalAvailability',
   'coursePortalCreateRoomBooking',
   'coursePortalRentalMyBookings',
@@ -1047,14 +1140,20 @@ assert(
   'coursePortalUpdateStudentReminder',
   'coursePortalAdminBindingAction',
   'coursePortalAdminSuspensionAction',
+  'coursePortalAdminTuitionPaymentAction',
+  'coursePortalAdminTuitionPaymentScreenshot',
   'coursePortalStudentReminderDaily'
 ].forEach((name) => assert(backend.includes(name), `缺少後端函式 ${name}`));
 assert(deployWorkflow.includes('functions:coursePortalTeacherSlotOptions'), '部署清單漏掉老師目標時段查詢');
 [
   'functions:coursePortalStudentPhoneAccess',
+  'functions:coursePortalStudentSubmitTuitionPayment',
   'functions:coursePortalTeacherUpdateStudent',
   'functions:coursePortalTeacherStopStudent',
-  'functions:coursePortalAdminSuspensionAction'
+  'functions:coursePortalAdminSuspensionAction',
+  'functions:coursePortalAdminTuitionPaymentAction',
+  'functions:coursePortalAdminTuitionPaymentScreenshot',
+  'functions:coursePortalStudentReminderDaily'
 ].forEach((name) => assert(deployWorkflow.includes(name), `Firebase 部署清單漏掉 ${name}`));
 assert(backend.includes("where('ownerKey', '==', sessionOwnerKey(session))"), '租用紀錄未限制為目前登入帳號');
 assert(backend.includes('只能取消自己預約的教室'), '取消租用缺少本人權限檢查');
@@ -1070,6 +1169,14 @@ assert(backend.includes("authMethod: 'student-name-phone'"), '學生／家長姓
 assert(backend.includes("const TEACHER_PAYROLL_MIN_MONTH = '2026-07'"), '老師薪資後端未限制民國 115 年 7 月起');
 assert(backend.includes("db.collection('coursePortalStudentProfiles')"), '老師修改學生資料沒有保存同步覆寫資料');
 assert(backend.includes("db.collection('coursePortalStudentSuspensions')"), '老師停課沒有建立管理者追蹤資料');
+assert(backend.includes('tuitionUsedCount(row) >= 4'), '學生完成第 4 堂後沒有建立下一期繳費流程');
+assert(backend.includes("status: 'payment_due'"), '下一期學費沒有先建立待繳狀態');
+assert(backend.includes("? 'pending_review' : 'onsite_pending'"), '匯款與現場繳費沒有進入各自的待確認狀態');
+assert(backend.includes("status: 'confirmed'"), '主管確認後沒有建立正式付款狀態');
+assert(backend.includes("admin.storage().bucket().file(storagePath).save"), '匯款截圖沒有由後端存進私人儲存空間');
+assert(backend.includes("cacheControl: 'private, no-store, max-age=0'"), '匯款截圖沒有設定私人禁止快取');
+assert(backend.includes('mergePortalTuitionRows'), '主管確認後的期別與付款沒有合併回學費資料');
+assert(backend.includes("schedule: '0 * * * *'"), '第 4 堂學費 LINE 提醒不是每小時檢查');
 assert(backend.includes('taipeiDateTimeMillis(row.date, row.endTime) > Date.now()'), '租用進行中無法取消');
 assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少開始前一小時提醒');
 assert(backend.includes("action === 'delete'"), '後台綁定管理缺少刪除登入資料');
@@ -1233,6 +1340,9 @@ assert(rules.includes('match /coursePortalEmailOtps/{document=**} { allow read, 
 assert(rules.includes('match /coursePortalLineLoginCodes/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalLineOAuthStates/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalLineSetupTokens/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalTuitionPaymentRequests/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalTuitionPeriods/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalTuitionPaymentTransactions/{document=**} { allow read, write: if false; }'));
 
 runBackendScheduleRegressionTests()
   .then(() => {

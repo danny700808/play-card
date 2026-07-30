@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>課務入口帳號管理｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-student-management-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-tuition-payment-v1">
 </head>
 <body>
   <main class="portal-shell">
@@ -30,6 +30,13 @@
     </section>
     <section class="card">
       <div class="section-title">
+        <div><h2>學費繳費待確認</h2><p class="muted">學生送出轉帳截圖或選擇現場繳費後，主管確認收款才會正式建立下一期。</p></div>
+        <span class="badge warn" id="tuitionPaymentAdminBadge">0 筆</span>
+      </div>
+      <div class="list" id="tuitionPaymentAdminList"><p class="muted">請先輸入管理密碼。</p></div>
+    </section>
+    <section class="card">
+      <div class="section-title">
         <div><h2>停課學費未繳清</h2><p class="muted">老師辦理停課後，有未結清學費的學生會集中在這裡。</p></div>
         <span class="badge danger" id="suspensionBadge">0 筆</span>
       </div>
@@ -44,16 +51,27 @@
       </nav>
       <div class="list" id="bindingList"><p class="muted">請先輸入管理密碼。</p></div>
     </section>
+
+    <section class="modal hidden" id="tuitionReceiptModal" role="dialog" aria-modal="true" aria-labelledby="tuitionReceiptTitle">
+      <div class="card modal-panel tuition-payment-modal-panel">
+        <div class="section-title">
+          <div><h2 id="tuitionReceiptTitle">匯款截圖</h2><p class="muted" id="tuitionReceiptSubtitle"></p></div>
+          <button class="btn soft" type="button" id="closeTuitionReceipt">關閉</button>
+        </div>
+        <img class="tuition-receipt-preview" id="adminTuitionReceipt" alt="學生匯款截圖">
+      </div>
+    </section>
   </main>
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-student-management-v1"></script>
+  <script src="course-portal-common.js?v=20260730-tuition-payment-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
     let rows = [];
     let unpaidSuspensions = [];
+    let tuitionPayments = [];
     let filter = 'all';
 
     function label(row) {
@@ -97,6 +115,25 @@
         </article>`).join('') : '<p class="muted">目前沒有停課後尚未繳清的學費。</p>';
     }
 
+    function renderTuitionPayments() {
+      document.getElementById('tuitionPaymentAdminBadge').textContent = `${tuitionPayments.length} 筆`;
+      document.getElementById('tuitionPaymentAdminList').innerHTML = tuitionPayments.length ? tuitionPayments.map((row) => {
+        const transfer = row.paymentMethod === 'bank_transfer';
+        return `
+          <article class="list-row tuition-payment-row">
+            <strong>${P.escapeHtml(row.studentName || row.studentId || '學生')} · 第 ${Number(row.nextPeriodNo || 0)} 期</strong>
+            <span>${P.escapeHtml(row.subjectName || '課程')}｜${Number(row.lessonCount || 4)} 堂</span>
+            <span>${transfer ? `轉帳｜${P.escapeHtml(row.transferDate || '')}｜末五碼 ${P.escapeHtml(row.transferLast5 || '未提供')}` : '等待現場繳費'}</span>
+            <label class="field"><span class="muted">實收金額</span><input type="number" min="1" value="${Number(row.expectedAmount || 0)}" data-tuition-amount="${P.escapeHtml(row.id)}"></label>
+            <span class="binding-actions">
+              ${transfer && row.hasReceipt ? `<button class="btn soft" type="button" data-tuition-receipt="${P.escapeHtml(row.id)}">查看截圖</button>` : ''}
+              <button class="btn primary" type="button" data-tuition-action="confirm" data-tuition-id="${P.escapeHtml(row.id)}">確認已收款</button>
+              <button class="btn danger" type="button" data-tuition-action="reject" data-tuition-id="${P.escapeHtml(row.id)}">退回</button>
+            </span>
+          </article>`;
+      }).join('') : '<p class="muted">目前沒有等待主管確認的學費。</p>';
+    }
+
     async function load() {
       const button = document.getElementById('loadBtn');
       P.loading(button, true, '讀取中…');
@@ -104,8 +141,10 @@
         const result = await P.call('coursePortalAdminData', { adminPin: document.getElementById('adminPin').value });
         rows = result.bindings || [];
         unpaidSuspensions = result.unpaidSuspensions || [];
+        tuitionPayments = result.tuitionPayments || [];
         render();
         renderSuspensions();
+        renderTuitionPayments();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     }
@@ -149,6 +188,59 @@
         await load();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
+    });
+    document.getElementById('tuitionPaymentAdminList').addEventListener('click', async (event) => {
+      const receiptButton = event.target.closest('[data-tuition-receipt]');
+      if (receiptButton) {
+        P.loading(receiptButton, true, '讀取中…');
+        try {
+          const row = tuitionPayments.find((item) => item.id === receiptButton.dataset.tuitionReceipt) || {};
+          const result = await P.call('coursePortalAdminTuitionPaymentScreenshot', {
+            adminPin: document.getElementById('adminPin').value,
+            id: receiptButton.dataset.tuitionReceipt
+          });
+          document.getElementById('tuitionReceiptSubtitle').textContent =
+            `${row.studentName || '學生'}｜第 ${Number(row.nextPeriodNo || 0)} 期｜${row.transferDate || ''}`;
+          document.getElementById('adminTuitionReceipt').src = result.dataUrl;
+          document.getElementById('tuitionReceiptModal').classList.remove('hidden');
+        } catch (error) { P.toast(error.message, 'error'); }
+        finally { P.loading(receiptButton, false); }
+        return;
+      }
+      const button = event.target.closest('[data-tuition-action]');
+      if (!button) return;
+      const id = button.dataset.tuitionId;
+      const row = tuitionPayments.find((item) => item.id === id) || {};
+      const action = button.dataset.tuitionAction;
+      let reviewNote = '';
+      let confirmedAmount = Number((document.querySelector(`[data-tuition-amount="${CSS.escape(id)}"]`) || {}).value || row.expectedAmount || 0);
+      if (action === 'confirm') {
+        if (!confirmedAmount) {
+          P.toast('請輸入實際收到的金額。', 'error');
+          return;
+        }
+        if (!confirm(`確定已收到 ${row.studentName || '學生'}第 ${Number(row.nextPeriodNo || 0)} 期學費 ${P.money(confirmedAmount)}？確認後會正式建立下一期。`)) return;
+      } else {
+        reviewNote = prompt('請輸入退回原因，學生會收到 LINE 通知：', '匯款資料無法確認，請重新上傳清楚的付款資料。');
+        if (reviewNote === null) return;
+      }
+      P.loading(button, true, action === 'confirm' ? '確認中…' : '退回中…');
+      try {
+        const result = await P.call('coursePortalAdminTuitionPaymentAction', {
+          adminPin: document.getElementById('adminPin').value,
+          id,
+          action,
+          confirmedAmount,
+          reviewNote
+        });
+        P.toast(result.message || '學費狀態已更新。');
+        await load();
+      } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
+    document.getElementById('closeTuitionReceipt').addEventListener('click', () => {
+      document.getElementById('tuitionReceiptModal').classList.add('hidden');
+      document.getElementById('adminTuitionReceipt').src = '';
     });
   })();
   </script>

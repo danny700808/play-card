@@ -157,6 +157,9 @@ service cloud.firestore {
     match /coursePortalRoomBookings/{document=**} { allow read, write: if false; }
     match /coursePortalRoomSettings/{document=**} { allow read, write: if false; }
     match /coursePortalReminderLogs/{document=**} { allow read, write: if false; }
+    match /coursePortalTuitionPaymentRequests/{document=**} { allow read, write: if false; }
+    match /coursePortalTuitionPeriods/{document=**} { allow read, write: if false; }
+    match /coursePortalTuitionPaymentTransactions/{document=**} { allow read, write: if false; }
 
     // 其他未知集合先不開放，避免整個資料庫完全裸開。
     match /{document=**} {
