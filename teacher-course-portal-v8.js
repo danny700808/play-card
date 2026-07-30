@@ -703,7 +703,13 @@
       );
       return;
     }
-    const movable = !isPastSlot(row.date, row.startTime) && clean(row.status || 'scheduled') === 'scheduled';
+    const status = clean(row.status || 'scheduled').toLowerCase();
+    const movable = !isPastSlot(row.date, row.startTime) && status === 'scheduled';
+    const attended = ['attended', 'checked_in', 'present'].includes(status);
+    const canNormalAttendance = row.date === todayKey() && isPastSlot(row.date, row.startTime) && status === 'scheduled';
+    const canLateAttendance = row.date < todayKey() && ['scheduled', 'absent'].includes(status);
+    const cancellationPending = clean(row.attendanceCancellationStatus) === 'pending';
+    const canLessonState = status === 'scheduled';
     showQuick(
       (row.studentNames || []).join('、') || '這堂課',
       `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`,
@@ -712,9 +718,12 @@
       ${movable && row.recurring === true ? '<button type="button" data-quick-action="permanent_move">之後固定改到新時段</button>' : ''}
       <button type="button" data-quick-action="extra_lesson">增加一堂課</button>
       <button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>
-      <button type="button" data-quick-state="leave">學生請假</button>
-      <button class="danger" type="button" data-quick-state="absent">標示曠課</button>
-      <button type="button" data-quick-late>補簽到</button>
+      ${canLessonState ? '<button type="button" data-quick-state="leave">學生請假</button>' : ''}
+      ${canLessonState ? '<button class="danger" type="button" data-quick-state="absent">標示曠課</button>' : ''}
+      ${canNormalAttendance ? '<button class="primary" type="button" data-quick-attendance>✓ 當日簽到</button>' : ''}
+      ${canLateAttendance ? '<button type="button" data-quick-late>補簽到（行政費 NT$50）</button>' : ''}
+      ${attended && !cancellationPending ? '<button class="danger" type="button" data-quick-cancel-attendance>申請取消簽到（行政費 NT$50）</button>' : ''}
+      ${cancellationPending ? '<div class="notice">取消簽到已送出，正在等待主管確認；目前紀錄仍維持已簽到。</div>' : ''}
       ${row.portalChangeId && ['extra_lesson', 'teacher_gift'].includes(clean(row.portalAction))
         ? '<button class="danger" type="button" data-quick-state="cancel_change">取消此次新增</button>'
         : ''}
@@ -813,6 +822,61 @@
       closeQuick();
       clearCache();
       toast(result.message || '補簽到已完成。');
+      await load(true);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      loading(button, false);
+    }
+  }
+
+  async function updateAttendance(row, button) {
+    if (!row || !confirm('確定完成這堂課的當日簽到？完成後不能自行修改，如有誤必須申請主管取消。')) return;
+    loading(button, true, '簽到中…');
+    try {
+      const result = await invoke('coursePortalTeacherAttendance', {
+        sessionToken: token,
+        sourceEventId: row.sourceId || row.id,
+        sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
+        sourceDate: row.date,
+        portalChangeId: row.portalChangeId
+      });
+      closeQuick();
+      clearCache();
+      toast(result.message || '簽到已完成。');
+      await load(true);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      loading(button, false);
+    }
+  }
+
+  async function requestAttendanceCancellation(row, button) {
+    if (!row) return;
+    const reason = prompt(
+      '請輸入取消簽到原因。送出後必須由主管核准，核准時會扣除行政處理費 NT$50：',
+      '老師誤簽到'
+    );
+    if (reason === null) return;
+    if (!clean(reason)) {
+      toast('請填寫取消簽到原因。', 'error');
+      return;
+    }
+    if (!confirm('確定送出取消簽到申請？主管核准前，這堂課仍維持已簽到。')) return;
+    loading(button, true, '送出中…');
+    try {
+      const result = await invoke('coursePortalTeacherAttendanceCancellationRequest', {
+        sessionToken: token,
+        sourceEventId: row.sourceId || row.id,
+        sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
+        sourceDate: row.date,
+        portalChangeId: row.portalChangeId,
+        reason
+      });
+      closeQuick();
+      clearCache();
+      toast(result.message || '取消簽到申請已送出。');
       await load(true);
     } catch (error) {
       toast(error.message, 'error');
@@ -1236,7 +1300,9 @@
     const context = quickContext;
     const actionButton = event.target.closest('[data-quick-action]');
     const stateButton = event.target.closest('[data-quick-state]');
+    const attendanceButton = event.target.closest('[data-quick-attendance]');
     const lateButton = event.target.closest('[data-quick-late]');
+    const cancelAttendanceButton = event.target.closest('[data-quick-cancel-attendance]');
     const targetBrowse = event.target.closest('[data-target-browse]');
     const targetRoom = event.target.closest('[data-target-room]');
     const targetCandidate = event.target.closest('[data-target-candidate]');
@@ -1269,6 +1335,14 @@
     }
     if (lateButton && context.type === 'lesson') {
       await updateLateAttendance(context.row, lateButton);
+      return;
+    }
+    if (attendanceButton && context.type === 'lesson') {
+      await updateAttendance(context.row, attendanceButton);
+      return;
+    }
+    if (cancelAttendanceButton && context.type === 'lesson') {
+      await requestAttendanceCancellation(context.row, cancelAttendanceButton);
       return;
     }
     if (targetBrowse && context.result) {

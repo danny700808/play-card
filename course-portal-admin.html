@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>課務入口帳號管理｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-tuition-payment-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260731-security-attendance-v1">
 </head>
 <body>
   <main class="portal-shell">
@@ -37,12 +37,22 @@
     </section>
     <section class="card">
       <div class="section-title">
+        <div><h2>取消簽到待確認</h2><p class="muted">主管核准後才會取消原簽到，並在老師薪資扣除行政處理費 NT$50。</p></div>
+        <span class="badge warn" id="attendanceCancellationBadge">0 筆</span>
+      </div>
+      <div class="list" id="attendanceCancellationList"><p class="muted">請先輸入管理密碼。</p></div>
+    </section>
+    <section class="card">
+      <div class="section-title">
         <div><h2>停課學費未繳清</h2><p class="muted">老師辦理停課後，有未結清學費的學生會集中在這裡。</p></div>
         <span class="badge danger" id="suspensionBadge">0 筆</span>
       </div>
       <div class="list" id="suspensionList"><p class="muted">請先輸入管理密碼。</p></div>
     </section>
     <section class="card binding-admin-card">
+      <div class="toolbar">
+        <div class="field"><label>搜尋登入帳號</label><input id="bindingSearch" type="search" autocomplete="off" placeholder="學生、老師、LINE 名稱、關係或編號"></div>
+      </div>
       <nav class="tabs">
         <button class="btn active" type="button" data-filter="all">全部</button>
         <button class="btn" type="button" data-filter="teacher">老師</button>
@@ -65,14 +75,16 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-tuition-payment-v1"></script>
+  <script src="course-portal-common.js?v=20260731-security-attendance-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
     let rows = [];
     let unpaidSuspensions = [];
     let tuitionPayments = [];
+    let attendanceCancellations = [];
     let filter = 'all';
+    let search = '';
 
     function label(row) {
       if (row.type === 'teacher') return `老師 ${row.targetName || row.teacherId || ''}`;
@@ -89,18 +101,55 @@
     }
 
     function render() {
-      const visible = rows.filter((row) => filter === 'all' || row.type === filter);
+      const query = search.trim().toLowerCase();
+      const visible = rows.filter((row) => {
+        if (filter !== 'all' && row.type !== filter) return false;
+        if (!query) return true;
+        return [
+          label(row),
+          row.targetName,
+          row.lineDisplayName,
+          row.lineUserIdMasked,
+          row.email,
+          row.relationship,
+          row.teacherId,
+          row.studentId,
+          row.renterId,
+          row.status
+        ].join(' ').toLowerCase().includes(query);
+      });
       document.getElementById('bindingList').innerHTML = visible.length ? visible.map((row) => `
         <article class="list-row">
           <strong>${P.escapeHtml(label(row))}</strong>
-          <span class="binding-meta"><b>${P.escapeHtml(loginMethod(row))}</b><small>${row.lineDisplayName ? P.escapeHtml(row.lineDisplayName) : '未使用 LINE'}${row.lineDisplayName ? `・${row.lineFriendFlag === true ? '可接收提醒' : '尚未開啟 LINE 提醒'}` : ''}</small></span>
+          <span class="binding-meta"><b>${P.escapeHtml(loginMethod(row))}</b><small>${row.lineDisplayName ? P.escapeHtml(row.lineDisplayName) : '未使用 LINE'}${row.relationship ? `・${P.escapeHtml(row.relationship)}` : ''}${row.lineDisplayName ? `・${row.lineFriendFlag === true ? '可接收提醒' : '尚未開啟 LINE 提醒'}` : ''}</small></span>
+          <span class="binding-meta"><b>${P.escapeHtml(row.lineUserIdMasked || '無 LINE 識別碼')}</b><small>最後登入：${P.escapeHtml(row.lastLoginAtText || '尚無紀錄')}</small></span>
           <span class="binding-meta"><b>${P.escapeHtml(row.email || (row.type === 'student' ? '學生／家長免填 Email' : '尚未設定 Email'))}</b><small>${row.emailVerified ? 'Email 已驗證' : (row.type === 'student' && !row.email ? '姓名＋電話登入' : 'Email 尚未驗證')}</small></span>
-          <span class="binding-meta"><span class="badge ${row.status === 'active' ? '' : 'danger'}">${row.status === 'active' ? '使用中' : '已停用'}</span><small>${Number(row.activeSessionCount || 0)} 台裝置登入中</small></span>
+          <span class="binding-meta"><span class="badge ${row.status === 'active' ? '' : (row.status === 'pending' ? 'warn' : 'danger')}">${row.status === 'active' ? '使用中' : (row.status === 'pending' ? '等待主管確認' : (row.status === 'rejected' ? '已拒絕' : '已停用'))}</span><small>${Number(row.activeSessionCount || 0)} 台裝置登入中</small></span>
           <span class="binding-actions">
-            <button class="btn ${row.status === 'active' ? 'danger' : 'soft'}" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="${row.status === 'active' ? 'revoke' : 'restore'}">${row.status === 'active' ? '停用' : '恢復'}</button>
+            ${row.status === 'pending' ? `<button class="btn primary" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="approve">核准綁定</button><button class="btn danger" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="reject">拒絕</button>` : ''}
+            ${row.status !== 'pending' ? `<button class="btn ${row.status === 'active' ? 'danger' : 'soft'}" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="${row.status === 'active' ? 'revoke' : 'restore'}">${row.status === 'active' ? '停用' : '恢復'}</button>` : ''}
+            ${Number(row.activeSessionCount || 0) ? `<button class="btn soft" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="force_logout">登出所有裝置</button>` : ''}
             <button class="btn danger" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="delete">刪除登入資料</button>
           </span>
         </article>`).join('') : '<p class="muted">目前沒有登入帳號。</p>';
+    }
+
+    function renderAttendanceCancellations() {
+      document.getElementById('attendanceCancellationBadge').textContent = `${attendanceCancellations.length} 筆`;
+      document.getElementById('attendanceCancellationList').innerHTML = attendanceCancellations.length
+        ? attendanceCancellations.map((row) => `
+          <article class="list-row">
+            <strong>${P.escapeHtml(row.teacherName || row.teacherId || '老師')}申請取消簽到</strong>
+            <span>${P.escapeHtml((row.studentNames || []).join('、') || '學生未提供')}｜${P.escapeHtml(row.subjectName || '課程')}</span>
+            <span>${P.escapeHtml(row.date || '')} ${P.escapeHtml(row.startTime || '')}～${P.escapeHtml(row.endTime || '')}</span>
+            <span>原因：${P.escapeHtml(row.reason || '未填寫')}</span>
+            <strong class="danger-text">核准後扣款 ${P.money(row.administrationFee || 50)}</strong>
+            <span class="binding-actions">
+              <button class="btn primary" type="button" data-attendance-action="approve" data-attendance-id="${P.escapeHtml(row.id)}">核准取消</button>
+              <button class="btn danger" type="button" data-attendance-action="reject" data-attendance-id="${P.escapeHtml(row.id)}">拒絕</button>
+            </span>
+          </article>`).join('')
+        : '<p class="muted">目前沒有等待主管確認的取消簽到申請。</p>';
     }
 
     function renderSuspensions() {
@@ -142,14 +191,20 @@
         rows = result.bindings || [];
         unpaidSuspensions = result.unpaidSuspensions || [];
         tuitionPayments = result.tuitionPayments || [];
+        attendanceCancellations = result.attendanceCancellations || [];
         render();
         renderSuspensions();
         renderTuitionPayments();
+        renderAttendanceCancellations();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     }
 
     document.getElementById('loadBtn').addEventListener('click', load);
+    document.getElementById('bindingSearch').addEventListener('input', (event) => {
+      search = event.target.value || '';
+      render();
+    });
     document.querySelectorAll('[data-filter]').forEach((button) => button.addEventListener('click', () => {
       filter = button.dataset.filter;
       document.querySelectorAll('[data-filter]').forEach((node) => node.classList.toggle('active', node === button));
@@ -159,6 +214,9 @@
       const button = event.target.closest('[data-id]');
       if (!button) return;
       if (button.dataset.action === 'revoke' && !confirm('確定停用這個入口帳號？所有裝置會立即登出，之後仍可恢復。')) return;
+      if (button.dataset.action === 'approve' && !confirm('確定核准這筆綁定？核准後本人重新登入即可查看對應資料。')) return;
+      if (button.dataset.action === 'reject' && !confirm('確定拒絕這筆綁定申請？申請人將無法查看任何資料。')) return;
+      if (button.dataset.action === 'force_logout' && !confirm('確定登出這個帳號的所有裝置？帳號本身仍保持啟用。')) return;
       if (button.dataset.action === 'delete' && !confirm('確定永久刪除這筆登入資料？LINE／一般登入、驗證碼與裝置登入都會清除，之後必須重新註冊；課程、租用與帳務歷史會保留。')) return;
       P.loading(button, true, '處理中…');
       try {
@@ -169,6 +227,31 @@
           action: button.dataset.action
         });
         P.toast(button.dataset.action === 'delete' ? '登入資料已刪除，可重新註冊。' : '帳號狀態已更新。');
+        await load();
+      } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
+    });
+    document.getElementById('attendanceCancellationList').addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-attendance-action]');
+      if (!button) return;
+      const action = button.dataset.attendanceAction;
+      const row = attendanceCancellations.find((item) => item.id === button.dataset.attendanceId) || {};
+      let reviewNote = '';
+      if (action === 'approve') {
+        if (!confirm(`確定取消 ${row.teacherName || '老師'}在 ${row.date || ''} 的簽到？原簽到、堂數與課堂薪資會取消，並扣除行政處理費 NT$50。`)) return;
+      } else {
+        reviewNote = prompt('可輸入拒絕原因，老師會收到通知：', '原簽到紀錄確認無誤，因此不取消。');
+        if (reviewNote === null) return;
+      }
+      P.loading(button, true, '處理中…');
+      try {
+        const result = await P.call('coursePortalAdminAttendanceCancellationAction', {
+          adminPin: document.getElementById('adminPin').value,
+          id: button.dataset.attendanceId,
+          action,
+          reviewNote
+        });
+        P.toast(result.message || '取消簽到申請已處理。');
         await load();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }

@@ -42,6 +42,10 @@ const TUITION_PAYMENT_REQUESTS = 'coursePortalTuitionPaymentRequests';
 const TUITION_PERIODS = 'coursePortalTuitionPeriods';
 const TUITION_TRANSACTIONS = 'coursePortalTuitionPaymentTransactions';
 const TUITION_RECEIPT_MAX_BYTES = 4 * 1024 * 1024;
+const ATTENDANCE_RECORDS = 'coursePortalAttendanceRecords';
+const ATTENDANCE_CANCELLATIONS = 'coursePortalAttendanceCancellationRequests';
+const ATTENDANCE_PAYROLL = 'coursePortalTeacherAttendancePayroll';
+const ATTENDANCE_ADMIN_FEE = 50;
 const ALLOWED_ORIGINS = [
   'https://danny700808.github.io',
   'https://www.mingtinghuang.com',
@@ -602,6 +606,18 @@ async function mirrorRows(type) {
   return rows;
 }
 
+async function mirrorRowsIncludingInactive(type) {
+  const snapshot = await db.collection(MIRROR[type]).get();
+  let rows = snapshot.docs
+    .map((doc) => Object.assign({
+      __id: doc.id,
+      __mirrorActive: (doc.data() || {}).sourceActive !== false
+    }, jsonValue((doc.data() || {}).source) || {}))
+    .filter(Boolean);
+  if (type === 'students') rows = await mergeStudentProfileOverrides(rows);
+  return rows;
+}
+
 async function mirrorRowsByDateRange(type, startDate, endDate, options = {}) {
   const includeInactive = options.includeInactive === true;
   const dates = [];
@@ -846,6 +862,18 @@ function bindingCollection(type) {
   return 'coursePortalRenterBindings';
 }
 
+function bindingNeedsManagerApproval(type) {
+  return type === 'teacher' || type === 'student';
+}
+
+function bindingStatusLabel(status) {
+  const value = clean(status);
+  if (value === 'pending') return '等待主管確認';
+  if (value === 'rejected') return '主管已拒絕';
+  if (value === 'revoked') return '已停用';
+  return '使用中';
+}
+
 function identityTargetField(type) {
   if (type === 'teacher') return 'teacherId';
   if (type === 'student') return 'studentId';
@@ -858,6 +886,10 @@ function identityTargetId(identity) {
 
 function regularAccountId(type, email) {
   return hash(`regular-account|${clean(type)}|${normalizeEmail(email)}`);
+}
+
+function lineAccountId(type, lineUserId) {
+  return hash(`line-account|${clean(type)}|${clean(lineUserId)}`);
 }
 
 function bindingAuthAccountId(type, binding) {
@@ -1060,7 +1092,23 @@ async function activeStudentBindingsForSession(session) {
 
 async function activeStudentIdsForSession(session) {
   const bindings = await activeStudentBindingsForSession(session);
-  return [...new Set(bindings.map((row) => clean(row.studentId)).filter(Boolean))];
+  const studentIds = [...new Set(bindings.map((row) => clean(row.studentId)).filter(Boolean))];
+  if (!studentIds.length) return [];
+  const today = currentTaipeiDay();
+  const [students, fixedCourses, temporaryCourses, events, suspensions] = await Promise.all([
+    mirrorRowsIncludingInactive('students'),
+    mirrorRows('fixedCourses'),
+    mirrorRows('temporaryCourses'),
+    mirrorRowsByDateRange('events', today, addDays(today, 120)),
+    reconcileStudentSuspensionsForNewSchedules(studentIds)
+  ]);
+  const active = activeLearningStudentIds(
+    students,
+    [...fixedCourses, ...temporaryCourses],
+    events,
+    suspensions
+  );
+  return studentIds.filter((studentId) => active.has(studentId));
 }
 
 function sessionOwnerKey(session) {
@@ -1069,6 +1117,46 @@ function sessionOwnerKey(session) {
   if (authAccountId) return `account:${authAccountId}`;
   if (lineUserId) return `line:${lineUserId}`;
   return '';
+}
+
+async function authorizedBindingsForSession(session) {
+  const role = clean(session && session.role);
+  if (!['teacher', 'student', 'renter'].includes(role)) return [];
+  if (role === 'student') return activeStudentBindingsForSession(session);
+  const collection = db.collection(bindingCollection(role));
+  const queries = [];
+  if (clean(session.lineUserId)) {
+    queries.push(collection.where('lineUserId', '==', clean(session.lineUserId)).get());
+  }
+  if (clean(session.authAccountId)) {
+    queries.push(collection.where('authAccountId', '==', clean(session.authAccountId)).get());
+  }
+  const targetField = role === 'teacher' ? 'teacherId' : 'renterId';
+  const targetId = clean(session[targetField]);
+  if (!queries.length && targetId) {
+    queries.push(collection.where(targetField, '==', targetId).get());
+  }
+  const snapshots = await Promise.all(queries);
+  return [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [
+    doc.id,
+    Object.assign({ __id: doc.id, __ref: doc.ref }, doc.data() || {})
+  ])).values()].filter((row) =>
+    clean(row.status) === 'active' &&
+    (!targetId || clean(row[targetField]) === targetId)
+  );
+}
+
+async function touchAuthorizedBindings(session) {
+  const bindings = await authorizedBindingsForSession(session);
+  if (!bindings.length) return false;
+  const batch = db.batch();
+  bindings.forEach((row) => batch.set(row.__ref, {
+    lastLoginAt: FieldValue.serverTimestamp(),
+    lastLoginAtText: nowText(),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true }));
+  await batch.commit();
+  return true;
 }
 
 async function issueSession({ type, lineUserId, authAccountId, targetId, renterId, authMethod, ttlMs }) {
@@ -1100,7 +1188,13 @@ async function issueSession({ type, lineUserId, authAccountId, targetId, renterI
       clean(targetId)
     ].filter(Boolean))];
   }
-  await db.collection('coursePortalSessions').doc(hash(session)).set(sessionPayload);
+  const sessionRef = db.collection('coursePortalSessions').doc(hash(session));
+  await sessionRef.set(sessionPayload);
+  if (!(await touchAuthorizedBindings(sessionPayload))) {
+    await sessionRef.delete().catch(() => {});
+    throw new HttpsError('permission-denied', '這個登入權限已停用或尚未核准，請聯絡柚子樂器。');
+  }
+  await queueSessionSecurityNotice(hash(session), sessionPayload);
   return { sessionToken: session, expiresAt };
 }
 
@@ -1120,9 +1214,11 @@ async function completeRegularAccount(source) {
   const bindingRef = collection.doc(bindingId);
   const existing = await bindingRef.get();
   const previous = existing.exists ? existing.data() || {} : {};
-  if (clean(previous.status) === 'revoked') {
+  if (['revoked', 'rejected'].includes(clean(previous.status))) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
+  const approved = type === 'renter' || clean(previous.status) === 'active';
+  const nextStatus = approved ? 'active' : 'pending';
 
   const payload = {
     type,
@@ -1134,7 +1230,9 @@ async function completeRegularAccount(source) {
     emailNormalized: normalizeEmail(source.email),
     emailVerified: true,
     emailVerifiedAt: FieldValue.serverTimestamp(),
-    status: 'active',
+    status: nextStatus,
+    approvalStatus: approved ? 'approved' : 'pending',
+    approvalRequestedAt: approved ? (previous.approvalRequestedAt || null) : FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     registeredAt: previous.registeredAt || FieldValue.serverTimestamp()
   };
@@ -1163,6 +1261,20 @@ async function completeRegularAccount(source) {
   }
   batch.set(bindingRef, payload, { merge: true });
   await batch.commit();
+  if (!approved) {
+    await queueBindingApprovalNotices(Object.assign({}, previous, payload, {
+      id: bindingId,
+      targetId,
+      renterId
+    }));
+    return {
+      ok: true,
+      purpose: 'account',
+      role: type,
+      pendingApproval: true,
+      message: '資料已送出，主管確認後即可登入；請稍後重新開啟入口。'
+    };
+  }
 
   const issued = await issueSession({
     type,
@@ -1197,9 +1309,10 @@ async function studentPhoneAccess(data) {
   const bindingRef = db.collection('coursePortalStudentBindings').doc(bindingId);
   const existing = await bindingRef.get();
   const previous = existing.exists ? existing.data() || {} : {};
-  if (clean(previous.status) === 'revoked') {
+  if (['revoked', 'rejected'].includes(clean(previous.status))) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
+  const approved = clean(previous.status) === 'active';
   await bindingRef.set({
     type: 'student',
     studentId: clean(identity.targetId),
@@ -1208,12 +1321,32 @@ async function studentPhoneAccess(data) {
     authAccountId,
     authProvider: clean(previous.lineUserId) ? 'line-login+name-phone' : 'name-phone',
     relationship: clean(data.relationship) || clean(previous.relationship) || '本人／家長',
-    status: 'active',
+    status: approved ? 'active' : 'pending',
+    approvalStatus: approved ? 'approved' : 'pending',
+    approvalRequestedAt: approved ? (previous.approvalRequestedAt || null) : FieldValue.serverTimestamp(),
     reminderLastLesson: previous.reminderLastLesson !== false,
     reminderPayment: previous.reminderPayment !== false,
     registeredAt: previous.registeredAt || FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
+  if (!approved) {
+    await queueBindingApprovalNotices(Object.assign({}, previous, {
+      id: bindingId,
+      type: 'student',
+      studentId: clean(identity.targetId),
+      name: clean(identity.name),
+      relationship: clean(data.relationship) || clean(previous.relationship) || '本人／家長',
+      authAccountId,
+      authProvider: clean(previous.lineUserId) ? 'line-login+name-phone' : 'name-phone',
+      status: 'pending'
+    }));
+    return {
+      ok: true,
+      role: 'student',
+      pendingApproval: true,
+      message: '資料已送出，主管確認後即可登入；請稍後重新開啟入口。'
+    };
+  }
   const issued = await issueSession({
     type: 'student',
     lineUserId: clean(previous.lineUserId || regularIdentity.lineUserId),
@@ -1354,6 +1487,7 @@ async function startLineLogin(data) {
   const expiresAt = Timestamp.fromMillis(Date.now() + LINE_OAUTH_STATE_TTL_MS);
   await db.collection('coursePortalLineOAuthStates').doc(hash(state)).set({
     type,
+    linkAnother: type === 'student' && data.linkAnother === true,
     stateHint: state.slice(-6),
     status: 'pending',
     createdAt: FieldValue.serverTimestamp(),
@@ -1455,13 +1589,17 @@ async function refreshLineBindingProfile(bindings, profile) {
   if (!bindings.length) return;
   const batch = db.batch();
   bindings.forEach((binding) => {
-    batch.set(binding.__ref, {
+    const update = {
       lineDisplayName: profile.lineDisplayName,
       linePictureUrl: profile.linePictureUrl,
       lineFriendFlag: profile.lineFriendFlag,
       lineProfileCheckedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
+    };
+    if (clean(binding.type) === 'student') {
+      update.authAccountId = lineAccountId('student', profile.lineUserId);
+    }
+    batch.set(binding.__ref, update, { merge: true });
   });
   await batch.commit();
 }
@@ -1525,7 +1663,17 @@ async function lineLoginCallback(req, res) {
     const profile = await lineLoginProfile(token.access_token);
     const allBindings = await bindingsForLine(type, profile.lineUserId);
     const bindings = allBindings.filter((row) => clean(row.status) === 'active');
-    if (!bindings.length && allBindings.some((row) => clean(row.status) === 'revoked')) {
+    if (!bindings.length && allBindings.some((row) => clean(row.status) === 'pending')) {
+      await refreshLineBindingProfile(allBindings, profile);
+      await stateRef.set({
+        status: 'pending_approval',
+        lineUserId: profile.lineUserId,
+        completedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      redirectLineLoginError(res, type, '綁定申請正在等待主管確認，核准後請重新使用 LINE 登入。');
+      return;
+    }
+    if (!bindings.length && allBindings.some((row) => ['revoked', 'rejected'].includes(clean(row.status)))) {
       await stateRef.set({
         status: 'blocked',
         lineUserId: profile.lineUserId,
@@ -1536,12 +1684,14 @@ async function lineLoginCallback(req, res) {
     }
     await refreshLineBindingProfile(bindings, profile);
 
-    if (bindings.length) {
+    if (bindings.length && stateRow.linkAnother !== true) {
       const binding = bindings[0];
       const accessToken = await issueAccessToken({
         type,
         lineUserId: profile.lineUserId,
-        authAccountId: sharedBindingAuthAccountId(type, bindings),
+        authAccountId: type === 'student'
+          ? lineAccountId(type, profile.lineUserId)
+          : sharedBindingAuthAccountId(type, bindings),
         targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
         renterId: type === 'renter' ? clean(binding.renterId) : '',
         authMethod: 'line-oauth',
@@ -1610,12 +1760,14 @@ async function completeLineRegistration(data) {
   }
 
   const identity = await prepareBindingIdentity(Object.assign({}, data, { type }));
-  // LINE 與 Email 是兩種登入方法，不是兩個人。帳號鍵只能由伺服器依
-  // 已核對的角色、內部對象與 Email 產生，不能採信前端傳入的值。
+  // 帳號鍵只能由伺服器產生，不能採信前端。學生／家長以各自 LINE
+  // 建立獨立帳號鍵，避免爸爸修改提醒時連動到媽媽。
   const regularIdentity = await resolveRegularIdentity(identity);
-  const authAccountId = regularIdentity.authAccountId;
   await consumeRateLimit(`line-oauth-setup-${type}`, identity.phone);
   const lineUserId = clean(setup.lineUserId);
+  const authAccountId = type === 'student'
+    ? lineAccountId(type, lineUserId)
+    : regularIdentity.authAccountId;
   const targetId = clean(identity.targetId);
   const renterId = clean(identity.renterId);
   const conflictField = type === 'teacher' ? 'teacherId' : (type === 'renter' ? 'renterId' : '');
@@ -1624,7 +1776,7 @@ async function completeLineRegistration(data) {
       .where(conflictField, '==', type === 'teacher' ? targetId : renterId)
       .get();
     const conflictRows = conflicts.docs.map((doc) => doc.data() || {});
-    if (conflictRows.some((row) => clean(row.status) === 'revoked')) {
+    if (conflictRows.some((row) => ['revoked', 'rejected'].includes(clean(row.status)))) {
       throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
     }
     const claimed = conflictRows.some((row) =>
@@ -1642,9 +1794,11 @@ async function completeLineRegistration(data) {
     : hash(lineUserId);
   const bindingRef = db.collection(bindingCollection(type)).doc(bindingId);
   const previousBinding = await bindingRef.get();
-  if (previousBinding.exists && clean(previousBinding.data().status) === 'revoked') {
+  const previous = previousBinding.exists ? previousBinding.data() || {} : {};
+  if (['revoked', 'rejected'].includes(clean(previous.status))) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
+  const approved = type === 'renter' || clean(previous.status) === 'active';
   const payload = {
     type,
     lineUserId,
@@ -1656,9 +1810,11 @@ async function completeLineRegistration(data) {
     authProvider: 'line-login',
     name: clean(identity.name),
     phoneHash: hash(normalizePhone(identity.phone)),
-    status: 'active',
+    status: approved ? 'active' : 'pending',
+    approvalStatus: approved ? 'approved' : 'pending',
+    approvalRequestedAt: approved ? (previous.approvalRequestedAt || null) : FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
-    boundAt: FieldValue.serverTimestamp(),
+    boundAt: previous.boundAt || FieldValue.serverTimestamp(),
     reminderLastLesson: true,
     reminderPayment: true
   };
@@ -1703,6 +1859,20 @@ async function completeLineRegistration(data) {
       usedAt: FieldValue.serverTimestamp()
     }, { merge: true });
   });
+  if (!approved) {
+    await queueBindingApprovalNotices(Object.assign({}, previous, payload, {
+      id: bindingId,
+      targetId,
+      renterId
+    }));
+    return {
+      ok: true,
+      role: type,
+      pendingApproval: true,
+      reminderReady: setup.lineFriendFlag === true,
+      message: '綁定申請已送出，主管確認後即可登入；核准後請重新使用 LINE 登入。'
+    };
+  }
 
   const issued = await issueSession({
     type,
@@ -1766,7 +1936,9 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     const access = await issueAccessToken({
       type,
       lineUserId,
-      authAccountId: sharedBindingAuthAccountId(type, active),
+      authAccountId: type === 'student'
+        ? lineAccountId(type, lineUserId)
+        : sharedBindingAuthAccountId(type, active),
       targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
       renterId: type === 'renter' ? clean(binding.renterId) : '',
       authMethod: 'line-login'
@@ -1800,16 +1972,21 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     ? hash(`${row.targetId}|${lineUserId}`)
     : hash(lineUserId);
   const bindRef = db.collection(bindingCollection(type)).doc(bindId);
+  const requiresApproval = bindingNeedsManagerApproval(type);
   const payload = {
     type,
     lineUserId,
-    authAccountId: regularAccountId(type, row.email),
+    authAccountId: type === 'student'
+      ? lineAccountId(type, lineUserId)
+      : regularAccountId(type, row.email),
     lineDisplayName: clean(profile.displayName),
     email: normalizeEmail(row.email),
     emailNormalized: normalizeEmail(row.email),
     emailVerified: row.emailVerified === true,
     emailVerifiedAt: row.emailVerified === true ? FieldValue.serverTimestamp() : null,
-    status: 'active',
+    status: requiresApproval ? 'pending' : 'active',
+    approvalStatus: requiresApproval ? 'pending' : 'approved',
+    approvalRequestedAt: requiresApproval ? FieldValue.serverTimestamp() : null,
     updatedAt: FieldValue.serverTimestamp(),
     boundAt: FieldValue.serverTimestamp(),
     reminderLastLesson: true,
@@ -1823,6 +2000,15 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
   if (type === 'renter') payload.renterId = clean(row.renterId);
   await bindRef.set(payload, { merge: true });
   await codeRef.set({ status: 'used', usedAt: FieldValue.serverTimestamp(), lineUserId }, { merge: true });
+  if (requiresApproval) {
+    await queueBindingApprovalNotices(Object.assign({}, payload, {
+      id: bindId,
+      targetId: clean(row.targetId),
+      renterId: clean(row.renterId)
+    }));
+    await reply(replyToken, '綁定申請已送出，主管確認後即可登入；核准後請回到入口重新使用 LINE 登入。');
+    return true;
+  }
 
   const access = await issueAccessToken({
     type,
@@ -1887,6 +2073,15 @@ async function requireSession(data, allowedRoles) {
   }
   if (allowedRoles && !allowedRoles.includes(session.role)) {
     throw new HttpsError('permission-denied', '這個帳號沒有此頁面權限。');
+  }
+  const authorizedBindings = await authorizedBindingsForSession(session);
+  if (!authorizedBindings.length) {
+    await ref.set({
+      status: 'revoked',
+      revokedAt: FieldValue.serverTimestamp(),
+      revokedReason: 'binding-not-active'
+    }, { merge: true });
+    throw new HttpsError('permission-denied', '這個登入權限已停用或解除，請重新登入或聯絡柚子樂器。');
   }
   const update = { lastUsedAt: FieldValue.serverTimestamp() };
   if (session.sliding !== false) {
@@ -2464,6 +2659,11 @@ function publicEvent(row, maps, ownTeacherId, recurringLineages = new Set()) {
     portalChangeId: resource.portalChangeId,
     requestedRoomId: resource.requestedRoomId,
     pendingReason: resource.pendingReason,
+    tuitionPeriodId: isOwn ? clean(row.tuitionPeriodId || row.periodId || row.studentPayment) : '',
+    tuitionAmount: isOwn ? Number(row.tuitionAmount || row.courseAmount || row.feeAmount || row.expectedAmount || 0) : 0,
+    teacherAmount: isOwn ? Number(row.teacherAmount || row.teacherPay || row.payAmount || row.specialTeacherPay || 0) : 0,
+    teacherRate: isOwn ? clean(row.teacherRate || row.shareRate || row.allotRate || row.percentage) : '',
+    specialLesson: isOwn && (row.specialLesson === true || clean(row.portalAction) === 'teacher_gift'),
     own: isOwn,
     busy: !isOwn
   };
@@ -2484,6 +2684,86 @@ async function activeStudentSuspensions() {
   return snapshot.docs.map((doc) => Object.assign({
     id: doc.id
   }, jsonValue(doc.data()) || {}));
+}
+
+async function reconcileStudentSuspensionsForNewSchedules(studentIds) {
+  const wanted = new Set((studentIds || []).map(clean).filter(Boolean));
+  if (!wanted.size) return activeStudentSuspensions();
+  const [suspensions, fixedCourses, temporaryCourses, changeSnapshot] = await Promise.all([
+    activeStudentSuspensions(),
+    mirrorRows('fixedCourses'),
+    mirrorRows('temporaryCourses'),
+    db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
+  ]);
+  const changes = changeSnapshot.docs.map((doc) => Object.assign({
+    __id: doc.id,
+    __createdAtMillis: asMillis((doc.data() || {}).createdAt)
+  }, jsonValue(doc.data()) || {}));
+  const reactivated = [];
+  suspensions.filter((row) => wanted.has(clean(row.studentId))).forEach((suspension) => {
+    const studentId = clean(suspension.studentId);
+    const teacherId = clean(suspension.teacherId);
+    const atStop = new Set((suspension.courseIdsAtStop || []).map(clean).filter(Boolean));
+    const stoppedAt = asMillis(suspension.requestedAt);
+    const hasNewMirrorCourse = [...fixedCourses, ...temporaryCourses].some((course) => {
+      if (eventTeacherId(course) !== teacherId || !eventStudentIds(course).includes(studentId)) return false;
+      const courseIds = courseSourceIds(course).concat(sourceId(course)).map(clean).filter(Boolean);
+      if (atStop.size) return courseIds.some((id) => !atStop.has(id));
+      const courseUpdatedAt = asMillis(
+        course.createdAt || course.updatedAt || course.createdDate || course.updatedDate
+      );
+      return Boolean(stoppedAt && courseUpdatedAt > stoppedAt);
+    });
+    const hasNewPortalCourse = changes.some((change) =>
+      ['extra_lesson', 'teacher_gift'].includes(clean(change.action)) &&
+      eventTeacherId(change.event || change) === teacherId &&
+      eventStudentIds(change.event || change).includes(studentId) &&
+      (!stoppedAt || Number(change.__createdAtMillis || 0) > stoppedAt)
+    );
+    if (hasNewMirrorCourse || hasNewPortalCourse) reactivated.push(suspension);
+  });
+  if (reactivated.length) {
+    const batch = db.batch();
+    reactivated.forEach((row) => batch.set(
+      db.collection('coursePortalStudentSuspensions').doc(clean(row.id || row.suspensionId)),
+      {
+        status: 'reactivated',
+        reactivatedAt: FieldValue.serverTimestamp(),
+        reactivatedAtText: nowText(),
+        reactivatedReason: 'new-schedule-detected',
+        updatedAt: FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    ));
+    batch.set(scheduleVersionRef(), {
+      version: FieldValue.increment(1),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: 'student-auto-reactivation'
+    }, { merge: true });
+    await batch.commit();
+  }
+  const reactivatedIds = new Set(reactivated.map((row) => clean(row.id || row.suspensionId)));
+  return suspensions.filter((row) => !reactivatedIds.has(clean(row.id || row.suspensionId)));
+}
+
+function activeLearningStudentIds(studentRows, courseRows, eventRows, suspensions) {
+  const activeStudents = new Set((studentRows || [])
+    .filter((row) => row.__mirrorActive !== false && sourceActive(row))
+    .map(sourceId)
+    .filter(Boolean));
+  const available = new Set();
+  [...(courseRows || []), ...(eventRows || [])].forEach((course) => {
+    const teacherId = eventTeacherId(course);
+    eventStudentIds(course).forEach((studentId) => {
+      if (!activeStudents.has(studentId)) return;
+      const blocked = (suspensions || []).some((suspension) =>
+        clean(suspension.studentId) === studentId &&
+        clean(suspension.teacherId) === teacherId
+      );
+      if (!blocked) available.add(studentId);
+    });
+  });
+  return available;
 }
 
 function suspensionAppliesToEvent(suspension, row) {
@@ -2867,15 +3147,31 @@ async function teacherPortalData(data) {
   if (data.includePayroll === true && month < TEACHER_PAYROLL_MIN_MONTH) {
     throw new HttpsError('failed-precondition', '老師薪資查詢僅開放民國 115 年 7 月起的資料。');
   }
-  const [bundle, roomSettingsSnapshot] = await Promise.all([
+  const [bundle, roomSettingsSnapshot, attendanceCancellationSnapshot] = await Promise.all([
     scheduleBundle(start, end, session.teacherId),
-    db.collection('coursePortalRoomSettings').get()
+    db.collection('coursePortalRoomSettings').get(),
+    db.collection(ATTENDANCE_CANCELLATIONS).where('teacherId', '==', session.teacherId).get()
   ]);
   const roomSettingsMap = {};
   roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
   const teacher = bundle.maps.teachers[session.teacherId];
   if (!teacher) throw new HttpsError('not-found', '找不到這個老師帳號的資料。');
-  const ownEvents = bundle.events.filter((row) => row.teacherId === session.teacherId);
+  const cancellationRows = attendanceCancellationSnapshot.docs.map((doc) =>
+    Object.assign({ id: doc.id }, jsonValue(doc.data()) || {})
+  );
+  const ownEvents = bundle.events.filter((row) => row.teacherId === session.teacherId).map((row) => {
+    const request = cancellationRows.find((item) =>
+      dateKey(item.date) === row.date &&
+      (
+        clean(item.eventId) === clean(row.sourceId || row.id) ||
+        clean(item.courseId) === clean(row.fixedCourseId || row.sourceId || row.id)
+      )
+    );
+    return Object.assign({}, row, {
+      attendanceCancellationStatus: clean(request && request.status),
+      attendanceCancellationId: clean(request && request.id)
+    });
+  });
   const stoppedStudentIds = new Set((bundle.suspensions || [])
     .filter((row) => clean(row.teacherId) === session.teacherId)
     .map((row) => clean(row.studentId))
@@ -2898,14 +3194,18 @@ async function teacherPortalData(data) {
     };
   }).filter((row) => row.name);
   const includePayroll = data.includePayroll === true;
-  const [payroll, adjustments, portalAdjustmentsSnap] = includePayroll
+  const [payroll, adjustments, portalAdjustmentsSnap, portalPayrollSnap] = includePayroll
     ? await Promise.all([
       mirrorRowsByField('teacherPayroll', 'teacherId', session.teacherId),
       mirrorRowsByField('teacherAdjustments', 'teacherId', session.teacherId),
-      db.collection('coursePortalTeacherAdjustments').where('teacherId','==',session.teacherId).get()
+      db.collection('coursePortalTeacherAdjustments').where('teacherId','==',session.teacherId).get(),
+      db.collection(ATTENDANCE_PAYROLL).where('teacherId', '==', session.teacherId).get()
     ])
-    : [[], [], { docs: [] }];
+    : [[], [], { docs: [] }, { docs: [] }];
   const portalAdjustments=portalAdjustmentsSnap.docs.map(doc=>Object.assign({__id:doc.id},jsonValue(doc.data())||{}));
+  const portalPayroll = portalPayrollSnap.docs
+    .map((doc) => Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {}))
+    .filter((row) => row.active !== false && clean(row.status) === 'attended');
   const result = {
     ok: true,
     teacher: {
@@ -2925,11 +3225,40 @@ async function teacherPortalData(data) {
         .concat(firstArray(room, ['allowedSubjectIds', 'subjectIds']))
     })),
     subjects: bundle.subjects.map((subject) => ({ id: sourceId(subject), name: clean(subject.name) })),
-    events: bundle.events,
+    events: bundle.events.map((row) =>
+      row.teacherId === session.teacherId
+        ? (ownEvents.find((item) => item.id === row.id) || row)
+        : row
+    ),
     roster
   };
   if (includePayroll) {
-    result.payroll = payroll.filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
+    const approvedCancellations = cancellationRows.filter((row) => clean(row.status) === 'approved');
+    const retainedPayroll = payroll.filter((row) => !approvedCancellations.some((request) => {
+      if (eventDate(row) !== dateKey(request.date)) return false;
+      const payrollEventId = clean(row.eventId || row.sourceEventId);
+      const requestEventId = clean(request.eventId);
+      if (payrollEventId && requestEventId && payrollEventId === requestEventId) return true;
+      const payrollCourseId = clean(row.courseId || row.fixedCourseId || row.sourceCourseId);
+      if (payrollCourseId && payrollCourseId === clean(request.courseId)) return true;
+      const payrollStudents = new Set(eventStudentIds(row).concat(clean(row.studentId)).filter(Boolean));
+      return (request.studentIds || []).some((studentId) => payrollStudents.has(clean(studentId)));
+    }));
+    const payrollByIdentity = new Map();
+    portalPayroll.forEach((row) => payrollByIdentity.set([
+      clean(row.eventId),
+      eventDate(row),
+      clean(row.teacherId),
+      clean(row.studentId || (row.studentIds || []).join(','))
+    ].join('|'), row));
+    retainedPayroll.forEach((row) => payrollByIdentity.set([
+      clean(row.eventId || row.sourceEventId || sourceId(row)),
+      eventDate(row),
+      clean(row.teacherId),
+      clean(row.studentId || (row.studentIds || []).join(','))
+    ].join('|'), row));
+    result.payroll = [...payrollByIdentity.values()]
+      .filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
     result.adjustments = adjustments.concat(portalAdjustments).filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
   }
   return result;
@@ -3023,10 +3352,12 @@ async function teacherStopStudent(data) {
   if (!(await teacherOwnsStudent(session.teacherId, studentId))) {
     throw new HttpsError('permission-denied', '只能辦理由您授課的學生停課。');
   }
-  const [students, teachers, periods] = await Promise.all([
+  const [students, teachers, periods, fixedCourses, temporaryCourses] = await Promise.all([
     mirrorRows('students'),
     mirrorRows('teachers'),
-    mirrorRowsByField('tuitionPeriods', 'studentId', studentId)
+    mirrorRowsByField('tuitionPeriods', 'studentId', studentId),
+    mirrorRows('fixedCourses'),
+    mirrorRows('temporaryCourses')
   ]);
   const student = students.find((row) => sourceId(row) === studentId) || {};
   const teacher = teachers.find((row) => sourceId(row) === session.teacherId) || {};
@@ -3035,6 +3366,16 @@ async function teacherStopStudent(data) {
     !eventTeacherId(row) || eventTeacherId(row) === session.teacherId
   );
   const unpaidAmount = relatedPeriods.reduce((sum, row) => sum + tuitionOutstandingAmount(row), 0);
+  const courseIdsAtStop = [...new Set(
+    [...fixedCourses, ...temporaryCourses]
+      .filter((row) =>
+        eventTeacherId(row) === session.teacherId &&
+        eventStudentIds(row).includes(studentId)
+      )
+      .flatMap((row) => courseSourceIds(row).concat(sourceId(row)))
+      .map(clean)
+      .filter(Boolean)
+  )];
   const suspensionId = hash(`teacher-stop|${session.teacherId}|${studentId}`);
   const suspensionRef = db.collection('coursePortalStudentSuspensions').doc(suspensionId);
   const existing = await suspensionRef.get();
@@ -3055,6 +3396,7 @@ async function teacherStopStudent(data) {
     teacherId: session.teacherId,
     teacherName: clean(teacher.name),
     effectiveDate: currentTaipeiDay(),
+    courseIdsAtStop,
     unpaidAmountAtStop: unpaidAmount,
     requestedBy: 'teacher',
     requestedAt: FieldValue.serverTimestamp(),
@@ -3486,13 +3828,130 @@ async function queueCoursePortalNotice(id, payload) {
       status: '待發送',
       createdAt: FieldValue.serverTimestamp(),
       createdAtText: nowText(),
-      source: 'course-portal-tuition'
+      source: 'course-portal'
     }, payload || {}));
   } catch (error) {
     const code = clean(error && error.code).toLowerCase();
     if (code !== '6' && !/already[-_ ]?exists/.test(code)) throw error;
   }
   return ref.id;
+}
+
+async function queueBindingApprovalNotices(binding) {
+  const type = clean(binding && binding.type);
+  const bindingId = clean(binding && binding.id);
+  if (!bindingId || !bindingNeedsManagerApproval(type)) return;
+  const targetName = clean(binding.name) || (type === 'teacher' ? '老師' : '學生');
+  const relationship = type === 'student'
+    ? (clean(binding.relationship) || '家長／監護人')
+    : '老師本人';
+  const lineName = clean(binding.lineDisplayName) || '未提供';
+  const body = [
+    '有新的課務入口綁定申請等待確認。',
+    '',
+    `身分：${type === 'teacher' ? '老師' : '學生／家長'}`,
+    `姓名：${targetName}`,
+    type === 'student' ? `關係：${relationship}` : '',
+    `LINE 顯示名稱：${lineName}`,
+    '',
+    '核准前不會開放課表、學費、簽到或薪資資料。',
+    `${PORTAL_BASE}/course-portal-admin.html`
+  ].filter(Boolean).join('\n');
+  await queueCoursePortalNotice(`course-binding-manager-${type}-${bindingId}`, {
+    eventCode: 'course_portal_binding_pending',
+    target: 'admin',
+    targetRole: 'admin',
+    targetEmployeeId: 'PRIMARY_MANAGER_LINE',
+    targetName: '柚子樂器主管',
+    title: '登入綁定待確認',
+    body,
+    text: body,
+    message: body,
+    bindingId,
+    bindingType: type
+  });
+  if (type !== 'student' || !clean(binding.studentId)) return;
+  const existing = await db.collection('coursePortalStudentBindings')
+    .where('studentId', '==', clean(binding.studentId))
+    .get();
+  const guardianBody = [
+    `有人申請新增 ${targetName} 的家長 LINE。`,
+    `申請關係：${relationship}`,
+    `LINE 顯示名稱：${lineName}`,
+    '目前仍在等待主管確認，尚未開放任何學生資料。',
+    '若不是您的家人操作，請立即聯絡柚子樂器。'
+  ].join('\n');
+  await Promise.all(existing.docs.filter((doc) => {
+    const row = doc.data() || {};
+    return doc.id !== bindingId &&
+      clean(row.status) === 'active' &&
+      clean(row.lineUserId);
+  }).map((doc) => queueCoursePortalNotice(
+    `course-binding-guardian-${bindingId}-${doc.id}`,
+    {
+      eventCode: 'course_portal_family_binding_requested',
+      targetLineUserId: clean(doc.data().lineUserId),
+      targetName,
+      title: '新的家長綁定申請',
+      body: guardianBody,
+      text: guardianBody,
+      message: guardianBody,
+      studentId: clean(binding.studentId),
+      bindingId
+    }
+  )));
+}
+
+async function queueBindingDecisionNotice(binding, approved) {
+  const lineUserId = clean(binding && binding.lineUserId);
+  if (!lineUserId) return;
+  const type = clean(binding.type);
+  const targetName = clean(binding.name) || (type === 'teacher' ? '老師' : '學生／家長');
+  const body = approved
+    ? `${targetName}的${type === 'teacher' ? '老師' : '學生／家長'}入口綁定已由主管核准，現在可以重新使用 LINE 登入。`
+    : `${targetName}的入口綁定申請未通過。若您認為有誤，請聯絡柚子樂器確認身分。`;
+  await queueCoursePortalNotice(
+    `course-binding-decision-${clean(binding.id)}-${approved ? 'approved' : 'rejected'}`,
+    {
+      eventCode: approved ? 'course_portal_binding_approved' : 'course_portal_binding_rejected',
+      targetLineUserId: lineUserId,
+      targetName,
+      title: approved ? '登入綁定已核准' : '登入綁定未通過',
+      body,
+      text: body,
+      message: body,
+      bindingId: clean(binding.id),
+      bindingType: type
+    }
+  );
+}
+
+async function queueSessionSecurityNotice(sessionId, session) {
+  const role = clean(session && session.role);
+  if (!['teacher', 'student'].includes(role)) return;
+  const bindings = await authorizedBindingsForSession(session);
+  const targets = [...new Map(bindings.filter((row) => clean(row.lineUserId)).map((row) => [
+    clean(row.lineUserId),
+    row
+  ])).values()];
+  const body = [
+    `${role === 'teacher' ? '老師' : '學生／家長'}入口剛剛在新的瀏覽器建立登入。`,
+    `時間：${nowText()}`,
+    '若是您本人操作可忽略；若不是，請立即聯絡柚子樂器，主管可以強制登出所有裝置。'
+  ].join('\n');
+  await Promise.all(targets.map((binding) => queueCoursePortalNotice(
+    `course-session-security-${clean(sessionId)}-${hash(clean(binding.lineUserId)).slice(0, 12)}`,
+    {
+      eventCode: 'course_portal_new_session',
+      targetLineUserId: clean(binding.lineUserId),
+      targetName: clean(binding.name || binding.lineDisplayName) || '使用者',
+      title: '新的入口登入',
+      body,
+      text: body,
+      message: body,
+      bindingType: role
+    }
+  )));
 }
 
 async function queueStudentTuitionNotice(requestRow, title, body, eventCode) {
@@ -3653,6 +4112,80 @@ async function studentSubmitTuitionPayment(data) {
   };
 }
 
+async function portalAttendanceForStudents(studentIds) {
+  const snapshots = await Promise.all((studentIds || []).map((studentId) =>
+    db.collection(ATTENDANCE_RECORDS).where('studentId', '==', clean(studentId)).get()
+  ));
+  return snapshots.flatMap((snapshot) => snapshot.docs.map((doc) =>
+    Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
+  ));
+}
+
+function attendanceRowsMatch(left, right) {
+  if (clean(left.studentId) !== clean(right.studentId)) return false;
+  if (eventDate(left) !== eventDate(right)) return false;
+  if (eventTeacherId(left) && eventTeacherId(right) && eventTeacherId(left) !== eventTeacherId(right)) return false;
+  const leftEvent = clean(left.eventId || left.sourceEventId);
+  const rightEvent = clean(right.eventId || right.sourceEventId);
+  if (!leftEvent || !rightEvent || leftEvent === rightEvent) return true;
+  const leftCourse = clean(left.courseId || left.fixedCourseId || left.sourceCourseId);
+  const rightCourse = clean(right.courseId || right.fixedCourseId || right.sourceCourseId);
+  return Boolean(leftCourse && rightCourse && leftCourse === rightCourse);
+}
+
+function mergePortalAttendanceRows(mirrorAttendance, portalAttendance) {
+  const cancellations = (portalAttendance || []).filter((row) =>
+    clean(row.status) === 'cancelled' || row.active === false
+  );
+  const retainedMirror = (mirrorAttendance || []).filter((row) =>
+    !cancellations.some((cancelled) => attendanceRowsMatch(row, cancelled))
+  );
+  const activePortal = (portalAttendance || []).filter((row) =>
+    row.active !== false && normalizeScheduleStatus(row.status) === 'attended'
+  );
+  const merged = retainedMirror.slice();
+  activePortal.forEach((row) => {
+    if (!merged.some((existing) => attendanceRowsMatch(existing, row))) merged.push(row);
+  });
+  return merged;
+}
+
+function applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttendance) {
+  const rows = (periods || []).map((row) => Object.assign({}, row));
+  const activePortal = (portalAttendance || []).filter((row) =>
+    row.active !== false &&
+    normalizeScheduleStatus(row.status) === 'attended' &&
+    row.deducted !== false &&
+    clean(row.periodId) &&
+    !(mirrorAttendance || []).some((existing) => attendanceRowsMatch(existing, row))
+  );
+  const additions = activePortal.reduce((map, row) => {
+    const periodId = clean(row.periodId);
+    map[periodId] = Number(map[periodId] || 0) + 1;
+    return map;
+  }, {});
+  const removals = (portalAttendance || []).filter((row) =>
+    clean(row.status) === 'cancelled' || row.active === false
+  ).reduce((map, row) => {
+    const matched = (mirrorAttendance || []).find((existing) => attendanceRowsMatch(existing, row));
+    const periodId = clean(row.periodId || matched && (matched.periodId || matched.studentPayment));
+    if (periodId) map[periodId] = Number(map[periodId] || 0) + 1;
+    return map;
+  }, {});
+  return rows.map((row) => {
+    const extra = Number(additions[sourceId(row)] || 0);
+    const removed = Number(removals[sourceId(row)] || 0);
+    if (!extra && !removed) return row;
+    const usedCount = Math.max(0, Number(row.usedCount || row.attendedCount || 0) + extra - removed);
+    return Object.assign({}, row, {
+      usedCount,
+      attendedCount: usedCount,
+      portalAttendanceCount: extra,
+      portalAttendanceCancelledCount: removed
+    });
+  });
+}
+
 async function studentPortalData(data) {
   const session = await requireSession(data, ['student']);
   const sessionBindings = await activeStudentBindingsForSession(session);
@@ -3661,34 +4194,59 @@ async function studentPortalData(data) {
   if (requested && !currentIds.includes(requested)) throw new HttpsError('permission-denied', '沒有這位學生的查看權限。');
   const studentIds = requested ? [requested] : currentIds;
   const today = currentTaipeiDay();
-  const [students, periodsByStudent, attendanceByStudent, events, teachers, subjects] = await Promise.all([
-    mirrorRows('students'),
-    Promise.all(studentIds.map((id) => mirrorRowsByField('tuitionPeriods', 'studentId', id))),
-    Promise.all(studentIds.map((id) => mirrorRowsByField('attendance', 'studentId', id))),
+  const [students, events, teachers, subjects, fixedCourses, temporaryCourses, suspensions] = await Promise.all([
+    mirrorRowsIncludingInactive('students'),
     mirrorRowsByDateRange('events', today, addDays(today, 120)),
     mirrorRows('teachers'),
-    mirrorRows('subjects')
+    mirrorRows('subjects'),
+    mirrorRows('fixedCourses'),
+    mirrorRows('temporaryCourses'),
+    reconcileStudentSuspensionsForNewSchedules(studentIds)
+  ]);
+  const currentSuspensions = await reconcileStudentSuspensionsForNewSchedules(students.map(sourceId));
+  const learningIds = activeLearningStudentIds(
+    students,
+    [...fixedCourses, ...temporaryCourses],
+    events,
+    currentSuspensions
+  );
+  const activeStudentIds = studentIds.filter((id) => learningIds.has(id));
+  const [periodsByStudent, attendanceByStudent, portalAttendance] = await Promise.all([
+    Promise.all(activeStudentIds.map((id) => mirrorRowsByField('tuitionPeriods', 'studentId', id))),
+    Promise.all(activeStudentIds.map((id) => mirrorRowsByField('attendance', 'studentId', id))),
+    portalAttendanceForStudents(activeStudentIds)
   ]);
   const uniqueRows = (groups) => [...new Map(
     groups.flat().map((row) => [sourceId(row), row])
   ).values()];
-  const periods = uniqueRows(periodsByStudent);
-  const attendance = uniqueRows(attendanceByStudent);
+  const mirrorPeriods = uniqueRows(periodsByStudent);
+  const mirrorAttendance = uniqueRows(attendanceByStudent);
+  const periods = applyPortalAttendanceToPeriods(mirrorPeriods, mirrorAttendance, portalAttendance);
+  const attendance = mergePortalAttendanceRows(mirrorAttendance, portalAttendance);
   const maps = { teachers: indexById(teachers), subjects: indexById(subjects) };
-  const allowed = new Set(studentIds);
-  const selectedStudents = students.filter((row) => allowed.has(sourceId(row))).map((row) => ({
-    id: sourceId(row),
-    name: clean(row.name),
-    phoneLast4: normalizePhone(sourcePhone(row)).slice(-4)
-  }));
+  const allowed = new Set(activeStudentIds);
+  const studentMap = indexById(students);
+  const selectedStudents = studentIds.map((id) => {
+    const row = studentMap[id] || {};
+    const binding = sessionBindings.find((item) => clean(item.studentId) === id) || {};
+    return {
+      id,
+      name: clean(row.name || binding.name) || '學生',
+      phoneLast4: normalizePhone(sourcePhone(row)).slice(-4),
+      accessStatus: allowed.has(id) ? 'active' : 'rental_only',
+      accessMessage: allowed.has(id)
+      ? ''
+      : '目前沒有進行中的課程；學生課表、堂數、學費與簽到資料已關閉，仍可使用教室租用。'
+    };
+  });
   await ensureTuitionPaymentRequests({
     periods,
     students,
     subjects,
     teachers,
-    studentIds
+    studentIds: activeStudentIds
   });
-  const paymentRequests = await tuitionPaymentRequestsForStudents(studentIds);
+  const paymentRequests = await tuitionPaymentRequestsForStudents(activeStudentIds);
   return {
     ok: true,
     students: selectedStudents,
@@ -3925,6 +4483,9 @@ async function rentalDayBoard(data) {
 async function rentalWeekBoard(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
   const displayNamePromise = rentalSessionDisplayName(session);
+  const studentDiscountEligiblePromise = session.role === 'student'
+    ? activeStudentIdsForSession(session).then((ids) => ids.length > 0)
+    : Promise.resolve(false);
   const requestedStartDate = dateKey(data.startDate || data.date);
   if (!requestedStartDate) throw new HttpsError('invalid-argument', '請選擇週起始日期。');
   const startDate = requestedStartDate < currentTaipeiDay() ? currentTaipeiDay() : requestedStartDate;
@@ -3992,6 +4553,7 @@ async function rentalWeekBoard(data) {
     startDate,
     endDate,
     role: session.role,
+    studentDiscountEligible: await studentDiscountEligiblePromise,
     displayName: await displayNamePromise,
     durationMinutes: duration,
     selectedUseType,
@@ -4905,28 +5467,337 @@ async function teacherAction(data) {
   };
 }
 
-async function teacherLateAttendance(data){
-  const session=await requireSession(data,['teacher']);
-  const sourceDate=dateKey(data.sourceDate);
-  const sourceEventId=clean(data.sourceEventId);
-  const sourceCourseId=clean(data.sourceCourseId);
-  if(!sourceDate||(!sourceEventId&&!sourceCourseId))throw new HttpsError('invalid-argument','缺少要補簽到的課程。');
-  const today=new Intl.DateTimeFormat('en-CA',{timeZone:TAIPEI,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  if(sourceDate>=today)throw new HttpsError('failed-precondition','當日課程請於晚上 12 點前完成正常簽到；隔日後才能使用補簽到。');
-  const bundle=await scheduleBundle(sourceDate,sourceDate,session.teacherId);
-  const event=bundle.events.find(row=>row.teacherId===session.teacherId&&row.date===sourceDate&&(row.id===sourceEventId||row.sourceId===sourceEventId||row.fixedCourseId===sourceCourseId));
-  if(!event)throw new HttpsError('not-found','找不到這堂課。');
-  if(isRoomRentalEvent(event))throw new HttpsError('failed-precondition','教室租用不是學生課程，不能補簽到。');
-  if(!['scheduled','absent'].includes(normalizeScheduleStatus(event.status)))throw new HttpsError('failed-precondition','請假、已簽到或已取消的課程不能補簽到。');
-  const key=hash(['late-attendance',session.teacherId,sourceDate,sourceEventId||sourceCourseId].join('|'));
-  const requestRef=db.collection('coursePortalLateAttendance').doc(key);
-  const adjustmentRef=db.collection('coursePortalTeacherAdjustments').doc(key);
-  await db.runTransaction(async tx=>{
-    if((await tx.get(requestRef)).exists)throw new HttpsError('already-exists','這堂課已經補簽到。');
-    tx.set(requestRef,{id:key,teacherId:session.teacherId,date:sourceDate,eventId:sourceEventId,courseId:sourceCourseId,studentIds:event.studentIds||[],status:'approved',administrationFee:50,createdAt:FieldValue.serverTimestamp(),createdAtText:nowText()});
-    tx.set(adjustmentRef,{id:key,teacherId:session.teacherId,month:sourceDate.slice(0,7),date:sourceDate,type:'late_attendance_fee',amount:-50,note:'補簽到行政處理費 NT$50',source:'teacher-portal',createdAt:FieldValue.serverTimestamp(),createdAtText:nowText()});
+function attendanceLineage(event, data = {}) {
+  return clean(
+    event && (event.fixedCourseId || event.sourceId || event.id) ||
+    data.sourceCourseId ||
+    data.sourceEventId
+  );
+}
+
+function attendanceOperationId(teacherId, sourceDate, event, data = {}) {
+  return hash([
+    'teacher-attendance',
+    clean(teacherId),
+    dateKey(sourceDate),
+    attendanceLineage(event, data)
+  ].join('|'));
+}
+
+async function teacherAttendanceEvent(session, data) {
+  const sourceDate = dateKey(data.sourceDate);
+  const sourceEventId = clean(data.sourceEventId);
+  const sourceCourseId = clean(data.sourceCourseId);
+  if (!sourceDate || (!sourceEventId && !sourceCourseId)) {
+    throw new HttpsError('invalid-argument', '缺少要處理的課程。');
+  }
+  const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
+  const event = bundle.events.find((row) =>
+    row.teacherId === session.teacherId &&
+    row.date === sourceDate &&
+    (
+      row.id === sourceEventId ||
+      row.sourceId === sourceEventId ||
+      row.fixedCourseId === sourceCourseId ||
+      row.portalChangeId === clean(data.portalChangeId)
+    )
+  );
+  if (!event) throw new HttpsError('not-found', '找不到這堂課。');
+  if (isRoomRentalEvent(event)) {
+    throw new HttpsError('failed-precondition', '教室租用不是學生課程，不能處理學生簽到。');
+  }
+  if (!(event.studentIds || []).length) {
+    throw new HttpsError('failed-precondition', '這堂課沒有學生，不能簽到。');
+  }
+  return { sourceDate, sourceEventId, sourceCourseId, event };
+}
+
+async function attendancePeriodsForEvent(event) {
+  const groups = await Promise.all((event.studentIds || []).map((studentId) =>
+    mirrorRowsByField('tuitionPeriods', 'studentId', studentId)
+  ));
+  const result = {};
+  groups.forEach((periods, index) => {
+    const studentId = clean(event.studentIds[index]);
+    const candidates = periods.filter((row) =>
+      (!event.subjectId || clean(row.subjectId) === clean(event.subjectId)) &&
+      (!event.teacherId || !eventTeacherId(row) || eventTeacherId(row) === clean(event.teacherId))
+    ).sort((left, right) =>
+      Number(right.periodNo || right.period || 0) - Number(left.periodNo || left.period || 0)
+    );
+    const active = candidates.find((row) =>
+      Number(row.usedCount || row.attendedCount || 0) < Number(row.lessonCount || row.totalLessons || 4)
+    ) || candidates[0] || {};
+    result[studentId] = sourceId(active);
   });
-  return {ok:true,message:'補簽到已完成，並已建立行政處理費 NT$50 扣款。'};
+  return result;
+}
+
+function attendanceChangePayload(event, sourceDate, sourceEventId, sourceCourseId, teacherId, status, note) {
+  const lineage = attendanceLineage(event, { sourceEventId, sourceCourseId });
+  const id = `lesson-status-${hash([teacherId, lineage, sourceDate].join('|'))}`;
+  return {
+    id,
+    action: 'lesson_status',
+    active: true,
+    sourceEventId: clean(event.sourceId || sourceEventId || event.id),
+    sourceCourseId: clean(event.fixedCourseId || sourceCourseId || lineage),
+    sourceDate,
+    event: {
+      id: randomToken(12),
+      date: sourceDate,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      roomId: event.roomId,
+      teacherId,
+      studentId: (event.studentIds || [])[0] || '',
+      studentIds: event.studentIds || [],
+      subjectId: event.subjectId,
+      fixedCourseId: clean(event.fixedCourseId || sourceCourseId || lineage),
+      tuitionPeriodId: clean(event.tuitionPeriodId),
+      type: event.type || 'lesson',
+      status,
+      paymentStatus: status === 'attended' ? 'attended' : 'attendance_cancelled',
+      teacherPayable: status === 'attended',
+      note: clean(note)
+    },
+    createdByTeacherId: teacherId,
+    createdAt: FieldValue.serverTimestamp(),
+    createdAtText: nowText(),
+    updatedAt: FieldValue.serverTimestamp()
+  };
+}
+
+async function applyTeacherAttendance(data, late) {
+  const session = await requireSession(data, ['teacher']);
+  const resolved = await teacherAttendanceEvent(session, data);
+  const { sourceDate, sourceEventId, sourceCourseId, event } = resolved;
+  const today = currentTaipeiDay();
+  if (late && sourceDate >= today) {
+    throw new HttpsError('failed-precondition', '當日課程請在晚上 12 點前使用正常簽到；隔日後才會顯示補簽到。');
+  }
+  if (!late && sourceDate !== today) {
+    throw new HttpsError('failed-precondition', sourceDate < today
+      ? '這堂課已超過當日晚上 12 點，請改用補簽到。'
+      : '尚未到上課日期，不能提前簽到。');
+  }
+  if (!late && taipeiDateTimeMillis(sourceDate, event.startTime) > Date.now()) {
+    throw new HttpsError('failed-precondition', '課程尚未開始，不能提前簽到。');
+  }
+  const normalized = normalizeScheduleStatus(event.status);
+  const allowedStatuses = late ? ['scheduled', 'absent'] : ['scheduled'];
+  if (!allowedStatuses.includes(normalized)) {
+    throw new HttpsError('failed-precondition', '請假、已簽到或已取消的課程不能再次簽到。');
+  }
+  const operationId = attendanceOperationId(session.teacherId, sourceDate, event, data);
+  const statusRef = db.collection('coursePortalScheduleChanges')
+    .doc(`lesson-status-${hash([session.teacherId, attendanceLineage(event, data), sourceDate].join('|'))}`);
+  const lateRef = db.collection('coursePortalLateAttendance').doc(operationId);
+  const adjustmentRef = db.collection('coursePortalTeacherAdjustments').doc(`attendance-fee-${operationId}`);
+  const payrollRef = db.collection(ATTENDANCE_PAYROLL).doc(operationId);
+  const versionRef = scheduleVersionRef();
+  const periodIds = await attendancePeriodsForEvent(event);
+  const attendanceRows = (event.studentIds || []).map((studentId) => ({
+    id: hash([operationId, studentId].join('|')),
+    studentId: clean(studentId)
+  }));
+  const attendanceRefs = attendanceRows.map((row) => db.collection(ATTENDANCE_RECORDS).doc(row.id));
+  const changePayload = attendanceChangePayload(
+    event,
+    sourceDate,
+    sourceEventId,
+    sourceCourseId,
+    session.teacherId,
+    'attended',
+    late ? '老師逾期補簽到' : '老師當日簽到'
+  );
+  await db.runTransaction(async (tx) => {
+    const snapshots = await Promise.all([
+      tx.get(versionRef),
+      tx.get(statusRef),
+      tx.get(lateRef),
+      tx.get(payrollRef),
+      ...attendanceRefs.map((ref) => tx.get(ref))
+    ]);
+    const versionSnapshot = snapshots[0];
+    assertScheduleWritable(versionSnapshot);
+    const existingAttendance = snapshots.slice(4).some((snapshot) =>
+      snapshot.exists && clean(snapshot.data().status) === 'attended'
+    );
+    if (existingAttendance) throw new HttpsError('already-exists', '這堂課已經完成簽到。');
+    const existingStatus = snapshots[1].exists ? snapshots[1].data() || {} : {};
+    if (normalizeScheduleStatus(existingStatus.event && existingStatus.event.status) === 'attended') {
+      throw new HttpsError('already-exists', '這堂課已經完成簽到。');
+    }
+    attendanceRows.forEach((row, index) => tx.set(attendanceRefs[index], {
+      id: row.id,
+      operationId,
+      active: true,
+      status: 'attended',
+      source: late ? 'teacher-late-attendance' : 'teacher-attendance',
+      teacherId: session.teacherId,
+      studentId: row.studentId,
+      studentIds: event.studentIds || [],
+      subjectId: clean(event.subjectId),
+      periodId: clean(periodIds[row.studentId] || event.tuitionPeriodId),
+      eventId: clean(event.sourceId || sourceEventId || event.id),
+      courseId: clean(event.fixedCourseId || sourceCourseId),
+      date: sourceDate,
+      deducted: event.specialLesson !== true,
+      late: late === true,
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtText: nowText(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true }));
+    tx.set(statusRef, changePayload, { merge: true });
+    tx.set(payrollRef, {
+      id: operationId,
+      active: true,
+      status: 'attended',
+      source: late ? 'teacher-late-attendance' : 'teacher-attendance',
+      teacherId: session.teacherId,
+      studentIds: event.studentIds || [],
+      studentName: clean((event.studentNames || []).join('、')),
+      subjectId: clean(event.subjectId),
+      subjectName: clean(event.subjectName),
+      date: sourceDate,
+      month: sourceDate.slice(0, 7),
+      eventId: clean(event.sourceId || sourceEventId || event.id),
+      tuitionAmount: Number(event.tuitionAmount || 0),
+      rate: clean(event.teacherRate),
+      teacherAmount: Number(event.teacherAmount || 0),
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtText: nowText()
+    }, { merge: true });
+    if (late) {
+      if (snapshots[2].exists && clean(snapshots[2].data().status) === 'approved') {
+        throw new HttpsError('already-exists', '這堂課已經補簽到。');
+      }
+      tx.set(lateRef, {
+        id: operationId,
+        teacherId: session.teacherId,
+        date: sourceDate,
+        eventId: sourceEventId,
+        courseId: sourceCourseId,
+        studentIds: event.studentIds || [],
+        status: 'approved',
+        administrationFee: ATTENDANCE_ADMIN_FEE,
+        createdAt: FieldValue.serverTimestamp(),
+        createdAtText: nowText()
+      }, { merge: true });
+      tx.set(adjustmentRef, {
+        id: adjustmentRef.id,
+        teacherId: session.teacherId,
+        month: sourceDate.slice(0, 7),
+        date: sourceDate,
+        type: 'late_attendance_fee',
+        amount: -ATTENDANCE_ADMIN_FEE,
+        note: `補簽到行政處理費 NT$${ATTENDANCE_ADMIN_FEE}`,
+        source: 'teacher-portal',
+        createdAt: FieldValue.serverTimestamp(),
+        createdAtText: nowText()
+      }, { merge: true });
+    }
+    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+    tx.set(versionRef, {
+      version: currentVersion + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: session.teacherId
+    }, { merge: true });
+  });
+  return {
+    ok: true,
+    operationId,
+    message: late
+      ? `補簽到已完成，並已在本月薪資扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`
+      : '簽到已完成；今天晚上 12 點後如需取消，必須送主管審核。'
+  };
+}
+
+async function teacherAttendance(data) {
+  return applyTeacherAttendance(data, false);
+}
+
+async function teacherLateAttendance(data) {
+  return applyTeacherAttendance(data, true);
+}
+
+async function teacherAttendanceCancellationRequest(data) {
+  const session = await requireSession(data, ['teacher']);
+  const reason = clean(data.reason);
+  if (!reason) throw new HttpsError('invalid-argument', '請填寫取消簽到原因。');
+  const { sourceDate, sourceEventId, sourceCourseId, event } = await teacherAttendanceEvent(session, data);
+  if (normalizeScheduleStatus(event.status) !== 'attended') {
+    throw new HttpsError('failed-precondition', '只有已簽到的課程可以申請取消簽到。');
+  }
+  const operationId = attendanceOperationId(session.teacherId, sourceDate, event, data);
+  const requestId = hash(['attendance-cancellation', operationId].join('|'));
+  const requestRef = db.collection(ATTENDANCE_CANCELLATIONS).doc(requestId);
+  const attendanceSnapshot = await db.collection(ATTENDANCE_RECORDS)
+    .where('operationId', '==', operationId)
+    .get();
+  const existing = await requestRef.get();
+  if (existing.exists && ['pending', 'approved'].includes(clean(existing.data().status))) {
+    throw new HttpsError('already-exists', clean(existing.data().status) === 'pending'
+      ? '取消簽到申請已送出，正在等待主管確認。'
+      : '這堂課的取消簽到已經完成。');
+  }
+  const payload = {
+    id: requestId,
+    operationId,
+    status: 'pending',
+    teacherId: session.teacherId,
+    teacherName: clean(event.teacherName),
+    studentIds: event.studentIds || [],
+    studentNames: event.studentNames || [],
+    subjectId: clean(event.subjectId),
+    subjectName: clean(event.subjectName),
+    date: sourceDate,
+    startTime: clean(event.startTime),
+    endTime: clean(event.endTime),
+    roomId: clean(event.roomId),
+    type: clean(event.type || 'lesson'),
+    eventId: clean(event.sourceId || sourceEventId || event.id),
+    courseId: clean(event.fixedCourseId || sourceCourseId),
+    portalChangeId: clean(event.portalChangeId),
+    attendanceRecordIds: attendanceSnapshot.docs.map((doc) => doc.id),
+    reason,
+    administrationFee: ATTENDANCE_ADMIN_FEE,
+    requestedAt: FieldValue.serverTimestamp(),
+    requestedAtText: nowText(),
+    updatedAt: FieldValue.serverTimestamp()
+  };
+  await requestRef.set(payload, { merge: true });
+  const body = [
+    '老師提出取消簽到申請，請主管確認。',
+    '',
+    `老師：${clean(event.teacherName) || session.teacherId}`,
+    `學生：${clean((event.studentNames || []).join('、')) || '未提供'}`,
+    `課程：${clean(event.subjectName) || '未提供'}`,
+    `時間：${sourceDate} ${clean(event.startTime)}～${clean(event.endTime)}`,
+    `原因：${reason}`,
+    `核准後將扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`,
+    '',
+    `${PORTAL_BASE}/course-portal-admin.html`
+  ].join('\n');
+  await queueCoursePortalNotice(`attendance-cancel-manager-${requestId}`, {
+    eventCode: 'attendance_cancellation_pending',
+    target: 'admin',
+    targetRole: 'admin',
+    targetEmployeeId: 'PRIMARY_MANAGER_LINE',
+    targetName: '柚子樂器主管',
+    title: '取消簽到待確認',
+    body,
+    text: body,
+    message: body,
+    attendanceCancellationId: requestId
+  });
+  return {
+    ok: true,
+    requestId,
+    status: 'pending',
+    message: `取消簽到申請已送出；主管核准後才會生效，並扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`
+  };
 }
 
 async function teacherBonusRequest(data){
@@ -5364,8 +6235,195 @@ async function adminTuitionPaymentAction(data) {
   };
 }
 
+async function queueTeacherAttendanceDecision(requestRow, approved, reviewNote) {
+  const snapshot = await db.collection('coursePortalTeacherBindings')
+    .where('teacherId', '==', clean(requestRow.teacherId))
+    .get();
+  const body = approved
+    ? [
+      `您在 ${clean(requestRow.date)} 的取消簽到申請已核准。`,
+      `學生：${clean((requestRow.studentNames || []).join('、')) || '未提供'}`,
+      `行政處理費：NT$${ATTENDANCE_ADMIN_FEE}，已列入薪資扣款。`
+    ].join('\n')
+    : [
+      `您在 ${clean(requestRow.date)} 的取消簽到申請未通過，原簽到紀錄維持不變。`,
+      reviewNote ? `主管說明：${clean(reviewNote)}` : ''
+    ].filter(Boolean).join('\n');
+  await Promise.all(snapshot.docs.filter((doc) => {
+    const row = doc.data() || {};
+    return clean(row.status) === 'active' && clean(row.lineUserId);
+  }).map((doc) => queueCoursePortalNotice(
+    `attendance-cancel-teacher-${clean(requestRow.id)}-${approved ? 'approved' : 'rejected'}-${doc.id}`,
+    {
+      eventCode: approved ? 'attendance_cancellation_approved' : 'attendance_cancellation_rejected',
+      targetLineUserId: clean(doc.data().lineUserId),
+      targetName: clean(requestRow.teacherName) || '老師',
+      title: approved ? '取消簽到已核准' : '取消簽到未通過',
+      body,
+      text: body,
+      message: body,
+      attendanceCancellationId: clean(requestRow.id)
+    }
+  )));
+}
+
+async function adminAttendanceCancellationAction(data) {
+  const id = clean(data.id);
+  const action = clean(data.action);
+  const reviewNote = clean(data.reviewNote);
+  if (!id || !['approve', 'reject'].includes(action)) {
+    throw new HttpsError('invalid-argument', '取消簽到審核資料不完整。');
+  }
+  const requestRef = db.collection(ATTENDANCE_CANCELLATIONS).doc(id);
+  const preview = await requestRef.get();
+  if (!preview.exists) throw new HttpsError('not-found', '找不到這筆取消簽到申請。');
+  const requestRow = Object.assign({ id }, preview.data() || {});
+  if (clean(requestRow.status) !== 'pending') {
+    throw new HttpsError('failed-precondition', '這筆申請已經處理完成。');
+  }
+  if (action === 'reject') {
+    await requestRef.set({
+      status: 'rejected',
+      reviewNote,
+      reviewedAt: FieldValue.serverTimestamp(),
+      reviewedAtText: nowText(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    await queueTeacherAttendanceDecision(requestRow, false, reviewNote);
+    return { ok: true, id, status: 'rejected', message: '已拒絕取消簽到，原紀錄維持不變。' };
+  }
+
+  const lineage = clean(requestRow.courseId || requestRow.eventId);
+  const statusRef = db.collection('coursePortalScheduleChanges')
+    .doc(`lesson-status-${hash([requestRow.teacherId, lineage, requestRow.date].join('|'))}`);
+  const payrollRef = db.collection(ATTENDANCE_PAYROLL).doc(clean(requestRow.operationId));
+  const adjustmentRef = db.collection('coursePortalTeacherAdjustments').doc(`attendance-cancel-fee-${id}`);
+  const versionRef = scheduleVersionRef();
+  const attendanceRecordIds = [...new Set(
+    (requestRow.attendanceRecordIds || [])
+      .concat((requestRow.studentIds || []).map((studentId) =>
+        hash([clean(requestRow.operationId), clean(studentId)].join('|'))
+      ))
+      .map(clean)
+      .filter(Boolean)
+  )];
+  const attendanceRefs = attendanceRecordIds.map((recordId) =>
+    db.collection(ATTENDANCE_RECORDS).doc(recordId)
+  );
+  await db.runTransaction(async (tx) => {
+    const snapshots = await Promise.all([
+      tx.get(requestRef),
+      tx.get(versionRef),
+      tx.get(statusRef),
+      tx.get(payrollRef),
+      tx.get(adjustmentRef),
+      ...attendanceRefs.map((ref) => tx.get(ref))
+    ]);
+    const current = snapshots[0].exists ? snapshots[0].data() || {} : null;
+    if (!current || clean(current.status) !== 'pending') {
+      throw new HttpsError('failed-precondition', '這筆申請已經處理完成。');
+    }
+    const versionSnapshot = snapshots[1];
+    assertScheduleWritable(versionSnapshot);
+    attendanceRefs.forEach((ref, index) => {
+      const studentId = clean((requestRow.studentIds || []).find((candidate) =>
+        hash([clean(requestRow.operationId), clean(candidate)].join('|')) === ref.id
+      ) || (requestRow.studentIds || [])[index]);
+      tx.set(ref, {
+        id: ref.id,
+        operationId: clean(requestRow.operationId),
+        active: false,
+        status: 'cancelled',
+        source: 'attendance-cancellation-approved',
+        teacherId: clean(requestRow.teacherId),
+        studentId,
+        studentIds: requestRow.studentIds || [],
+        subjectId: clean(requestRow.subjectId),
+        eventId: clean(requestRow.eventId),
+        courseId: clean(requestRow.courseId),
+        date: clean(requestRow.date),
+        cancellationRequestId: id,
+        cancelledAt: FieldValue.serverTimestamp(),
+        cancelledAtText: nowText(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+    tx.set(statusRef, {
+      id: statusRef.id,
+      action: 'lesson_status',
+      active: true,
+      sourceEventId: clean(requestRow.eventId),
+      sourceCourseId: lineage,
+      sourceDate: clean(requestRow.date),
+      event: {
+        id: randomToken(12),
+        date: clean(requestRow.date),
+        startTime: clean(requestRow.startTime),
+        endTime: clean(requestRow.endTime),
+        roomId: clean(requestRow.roomId),
+        teacherId: clean(requestRow.teacherId),
+        studentId: clean((requestRow.studentIds || [])[0]),
+        studentIds: requestRow.studentIds || [],
+        subjectId: clean(requestRow.subjectId),
+        fixedCourseId: lineage,
+        type: clean(requestRow.type || 'lesson'),
+        status: 'scheduled',
+        paymentStatus: 'attendance_cancelled',
+        teacherPayable: false,
+        note: `主管核准取消簽到：${clean(requestRow.reason)}`
+      },
+      createdByTeacherId: clean(requestRow.teacherId),
+      approvedByManager: true,
+      attendanceCancellationId: id,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtText: nowText()
+    }, { merge: true });
+    tx.set(payrollRef, {
+      active: false,
+      status: 'cancelled',
+      cancellationRequestId: id,
+      cancelledAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    tx.set(adjustmentRef, {
+      id: adjustmentRef.id,
+      teacherId: clean(requestRow.teacherId),
+      month: clean(requestRow.date).slice(0, 7),
+      date: clean(requestRow.date),
+      type: 'attendance_cancellation_fee',
+      amount: -ATTENDANCE_ADMIN_FEE,
+      note: `取消簽到行政處理費 NT$${ATTENDANCE_ADMIN_FEE}`,
+      source: 'attendance-cancellation-approved',
+      requestId: id,
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtText: nowText()
+    }, { merge: true });
+    tx.set(requestRef, {
+      status: 'approved',
+      reviewNote,
+      administrationFee: ATTENDANCE_ADMIN_FEE,
+      reviewedAt: FieldValue.serverTimestamp(),
+      reviewedAtText: nowText(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+    tx.set(versionRef, {
+      version: currentVersion + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: 'attendance-cancellation-approved'
+    }, { merge: true });
+  });
+  await queueTeacherAttendanceDecision(requestRow, true, reviewNote);
+  return {
+    ok: true,
+    id,
+    status: 'approved',
+    message: `取消簽到已核准，並已在老師薪資扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`
+  };
+}
+
 async function adminData() {
-  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions, suspensionSnapshot, tuitionPaymentSnapshot] = await Promise.all([
+  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions, suspensionSnapshot, tuitionPaymentSnapshot, attendanceCancellationSnapshot] = await Promise.all([
     db.collection('coursePortalTeacherBindings').get(),
     db.collection('coursePortalStudentBindings').get(),
     db.collection('coursePortalRenterBindings').get(),
@@ -5374,7 +6432,8 @@ async function adminData() {
     db.collection('coursePortalRenters').get(),
     db.collection('coursePortalSessions').get(),
     db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get(),
-    db.collection(TUITION_PAYMENT_REQUESTS).where('status', 'in', ['pending_review', 'onsite_pending']).get()
+    db.collection(TUITION_PAYMENT_REQUESTS).where('status', 'in', ['pending_review', 'onsite_pending']).get(),
+    db.collection(ATTENDANCE_CANCELLATIONS).where('status', '==', 'pending').get()
   ]);
   const teacherMap = indexById(teacherRows);
   const studentMap = indexById(studentRows);
@@ -5413,6 +6472,9 @@ async function adminData() {
       status: clean(row.status),
       targetName,
       lineDisplayName: clean(row.lineDisplayName),
+      lineUserIdMasked: clean(row.lineUserId)
+        ? `${clean(row.lineUserId).slice(0, 6)}…${clean(row.lineUserId).slice(-4)}`
+        : '',
       lineFriendFlag: row.lineFriendFlag == null ? null : row.lineFriendFlag === true,
       authProvider: clean(row.authProvider),
       email: normalizeEmail(row.email),
@@ -5423,6 +6485,10 @@ async function adminData() {
       studentId: clean(row.studentId),
       renterId: clean(row.renterId),
       boundAt: jsonValue(row.boundAt),
+      approvalRequestedAt: jsonValue(row.approvalRequestedAt),
+      approvedAt: jsonValue(row.approvedAt),
+      lastLoginAt: jsonValue(row.lastLoginAt),
+      lastLoginAtText: clean(row.lastLoginAtText),
       activeSessionCount: activeSessionIds.size,
       reminderLastLesson: row.reminderLastLesson !== false,
       reminderPayment: row.reminderPayment !== false
@@ -5466,11 +6532,24 @@ async function adminData() {
     .filter((doc) => ['pending_review', 'onsite_pending'].includes(clean((doc.data() || {}).status)))
     .sort((left, right) => asMillis((right.data() || {}).submittedAt) - asMillis((left.data() || {}).submittedAt))
     .map(adminTuitionPaymentRow);
+  const attendanceCancellations = attendanceCancellationSnapshot.docs
+    .map((doc) => Object.assign({ id: doc.id }, jsonValue(doc.data()) || {}))
+    .sort((left, right) => asMillis(right.requestedAt) - asMillis(left.requestedAt))
+    .map((row) => Object.assign({}, row, {
+      teacherName: clean(row.teacherName) ||
+        clean(teacherMap[clean(row.teacherId)] && teacherMap[clean(row.teacherId)].name),
+      studentNames: Array.isArray(row.studentNames) && row.studentNames.length
+        ? row.studentNames
+        : (row.studentIds || []).map((studentId) =>
+          clean(studentMap[clean(studentId)] && studentMap[clean(studentId)].name)
+        ).filter(Boolean)
+    }));
   return {
     ok: true,
     bindings: [...map(teachers), ...map(students), ...map(renters)],
     unpaidSuspensions,
-    tuitionPayments
+    tuitionPayments,
+    attendanceCancellations
   };
 }
 
@@ -5491,15 +6570,68 @@ async function adminBindingAction(data) {
   const id = clean(data.id);
   if (!['teacher', 'student', 'renter'].includes(type) || !id) throw new HttpsError('invalid-argument', '登入資料不完整。');
   const action = clean(data.action);
-  if (!['revoke', 'restore', 'delete'].includes(action)) {
+  if (!['approve', 'reject', 'revoke', 'restore', 'force_logout', 'delete'].includes(action)) {
     throw new HttpsError('invalid-argument', '不支援的帳號操作。');
   }
   const bindingRef = db.collection(bindingCollection(type)).doc(id);
   const bindingSnapshot = await bindingRef.get();
   if (!bindingSnapshot.exists) throw new HttpsError('not-found', '找不到這筆登入資料。');
-  const row = bindingSnapshot.data() || {};
+  const row = Object.assign({ id, type }, bindingSnapshot.data() || {});
   const lineUserId = clean(row.lineUserId);
   const authAccountId = clean(row.authAccountId);
+  const sessionSnapshots = await Promise.all([
+    lineUserId
+      ? db.collection('coursePortalSessions').where('lineUserId', '==', lineUserId).get()
+      : Promise.resolve({ docs: [] }),
+    authAccountId
+      ? db.collection('coursePortalSessions').where('authAccountId', '==', authAccountId).get()
+      : Promise.resolve({ docs: [] })
+  ]);
+  const sessionOperations = sessionSnapshots.flatMap((snapshot) => snapshot.docs).map((doc) => ({
+    action: 'set',
+    ref: doc.ref,
+    data: {
+      status: 'revoked',
+      revokedAt: FieldValue.serverTimestamp(),
+      revokedReason: `admin-${action}`
+    }
+  }));
+
+  if (action === 'approve' || action === 'restore') {
+    await bindingRef.set({
+      status: 'active',
+      approvalStatus: 'approved',
+      approvedAt: FieldValue.serverTimestamp(),
+      approvedAtText: nowText(),
+      rejectedAt: null,
+      revokedAt: null,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    if (action === 'approve') await queueBindingDecisionNotice(row, true);
+    return { ok: true, status: 'active', message: action === 'approve' ? '綁定已核准。' : '帳號已恢復。' };
+  }
+
+  if (action === 'reject' || action === 'revoke') {
+    const status = action === 'reject' ? 'rejected' : 'revoked';
+    await bindingRef.set({
+      status,
+      approvalStatus: action === 'reject' ? 'rejected' : clean(row.approvalStatus),
+      rejectedAt: action === 'reject' ? FieldValue.serverTimestamp() : null,
+      rejectedAtText: action === 'reject' ? nowText() : '',
+      revokedAt: action === 'revoke' ? FieldValue.serverTimestamp() : null,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    // 學生／家長的同一個 LINE 可能仍綁定其他孩子；資料權限每次都會重新
+    // 依有效綁定判斷，因此單筆停用不強制登出其他孩子。
+    if (type !== 'student') await commitOperations(sessionOperations);
+    if (action === 'reject') await queueBindingDecisionNotice(row, false);
+    return { ok: true, status, message: action === 'reject' ? '綁定申請已拒絕。' : '帳號已停用。' };
+  }
+
+  if (action === 'force_logout') {
+    await commitOperations(sessionOperations);
+    return { ok: true, status: clean(row.status), message: '所有已登入裝置已登出。' };
+  }
 
   if (action === 'delete') {
     const collections = [
@@ -5511,10 +6643,21 @@ async function adminBindingAction(data) {
       'coursePortalLineOAuthStates',
       'coursePortalLineSetupTokens'
     ];
-    const lineSnapshots = lineUserId
+    const siblingSnapshots = await Promise.all(
+      ['teacher', 'student', 'renter'].map((role) => db.collection(bindingCollection(role)).get())
+    );
+    const siblings = siblingSnapshots.flatMap((snapshot) => snapshot.docs).filter((doc) =>
+      !(doc.ref.path === bindingRef.path) &&
+      (
+        (lineUserId && clean(doc.data().lineUserId) === lineUserId) ||
+        (authAccountId && clean(doc.data().authAccountId) === authAccountId)
+      )
+    );
+    const identityStillUsed = siblings.length > 0;
+    const lineSnapshots = lineUserId && !identityStillUsed
       ? await Promise.all(collections.map((name) => db.collection(name).where('lineUserId', '==', lineUserId).get()))
       : [];
-    const accountSnapshots = authAccountId
+    const accountSnapshots = authAccountId && !identityStillUsed
       ? await Promise.all([
         db.collection('coursePortalSessions').where('authAccountId', '==', authAccountId).get(),
         db.collection('coursePortalEmailOtps').where('authAccountId', '==', authAccountId).get()
@@ -5525,7 +6668,7 @@ async function adminBindingAction(data) {
       operations.push({ action: 'delete', ref: doc.ref });
     }));
     const email = normalizeEmail(row.email);
-    if (email) {
+    if (email && !identityStillUsed) {
       const emailSnapshots = await Promise.all([
         db.collection('coursePortalEmailOtps').where('emailNormalized', '==', email).get(),
         db.collection('coursePortalBindCodes').where('emailNormalized', '==', email).get()
@@ -5561,32 +6704,11 @@ async function adminBindingAction(data) {
       ok: true,
       status: 'deleted',
       deletedAuthRecords: new Set(operations.map((operation) => operation.ref.path)).size,
-      retainedBusinessHistory: true
+      retainedBusinessHistory: true,
+      retainedOtherBindings: identityStillUsed
     };
   }
-
-  const status = action === 'restore' ? 'active' : 'revoked';
-  await bindingRef.set({
-    status,
-    revokedAt: status === 'revoked' ? FieldValue.serverTimestamp() : null,
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true });
-  if (status === 'revoked') {
-    const sessionSnapshots = await Promise.all([
-      lineUserId
-        ? db.collection('coursePortalSessions').where('lineUserId', '==', lineUserId).get()
-        : Promise.resolve({ docs: [] }),
-      authAccountId
-        ? db.collection('coursePortalSessions').where('authAccountId', '==', authAccountId).get()
-        : Promise.resolve({ docs: [] })
-    ]);
-    await commitOperations(sessionSnapshots.flatMap((snapshot) => snapshot.docs).map((doc) => ({
-      action: 'set',
-      ref: doc.ref,
-      data: { status: 'revoked', revokedAt: FieldValue.serverTimestamp() }
-    })));
-  }
-  return { ok: true, status };
+  throw new HttpsError('invalid-argument', '不支援的帳號操作。');
 }
 
 async function adminSuspensionAction(data) {
@@ -5611,20 +6733,30 @@ async function adminSuspensionAction(data) {
 
 async function dailyStudentReminders(pushLineMessage) {
   if (typeof pushLineMessage !== 'function') return;
-  const [bindings, periods, students, subjects, teachers] = await Promise.all([
+  const today = currentTaipeiDay();
+  const [bindings, periods, students, subjects, teachers, fixedCourses, temporaryCourses, events] = await Promise.all([
     db.collection('coursePortalStudentBindings').where('status', '==', 'active').get(),
     mirrorRows('tuitionPeriods'),
     mirrorRows('students'),
     mirrorRows('subjects'),
-    mirrorRows('teachers')
+    mirrorRows('teachers'),
+    mirrorRows('fixedCourses'),
+    mirrorRows('temporaryCourses'),
+    mirrorRowsByDateRange('events', today, addDays(today, 120))
   ]);
+  const learningIds = activeLearningStudentIds(
+    students,
+    [...fixedCourses, ...temporaryCourses],
+    events,
+    suspensions
+  );
   const studentMap = indexById(students);
   await ensureTuitionPaymentRequests({
     periods,
     students,
     subjects,
     teachers,
-    studentIds: students.map(sourceId)
+    studentIds: students.map(sourceId).filter((studentId) => learningIds.has(studentId))
   });
   const paymentSnapshot = await db.collection(TUITION_PAYMENT_REQUESTS)
     .where('status', '==', 'payment_due')
@@ -5639,6 +6771,7 @@ async function dailyStudentReminders(pushLineMessage) {
     const binding = doc.data() || {};
     if (!clean(binding.lineUserId)) continue;
     const studentId = clean(binding.studentId);
+    if (!learningIds.has(studentId)) continue;
     const studentPeriods = periods.filter((row) => clean(row.studentId) === studentId && !['closed', 'completed'].includes(clean(row.status).toLowerCase()));
     const lastLesson = studentPeriods.find((row) => Number(row.lessonCount || 4) - Number(row.usedCount || 0) === 1);
     const name = clean(studentMap[studentId] && studentMap[studentId].name) || '學生';
@@ -5932,7 +7065,9 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalCancelRoomBooking = callable(cancelRoomBooking);
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLessonState = callable(teacherLessonState, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherAttendance = callable(teacherAttendance, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLateAttendance = callable(teacherLateAttendance, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherAttendanceCancellationRequest = callable(teacherAttendanceCancellationRequest, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherUpdateStudent = callable(teacherUpdateStudent, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherStopStudent = callable(teacherStopStudent, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherBonusRequest = callable(teacherBonusRequest, { timeoutSeconds: 180, memory: '1GiB' });
@@ -5958,6 +7093,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalAdminBindingAction = callable(async (data, request) => {
     assertAdminPin(request);
     return adminBindingAction(data);
+  }, { secrets: [ADMIN_PIN] });
+  exportsObject.coursePortalAdminAttendanceCancellationAction = callable(async (data, request) => {
+    assertAdminPin(request);
+    return adminAttendanceCancellationAction(data);
   }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSuspensionAction = callable(async (data, request) => {
     assertAdminPin(request);

@@ -147,8 +147,20 @@ assert(teacherPortal.includes('min="2026-07"'), '老師薪資月份未限制為�
 assert(teacherSource.includes('coursePortalTeacherUpdateStudent'), '老師修改學生資料未連接後端');
 assert(teacherSource.includes('coursePortalTeacherStopStudent'), '老師停課未連接後端');
 assert(teacherSource.includes('confirmed: true'), '老師停課未傳送二次確認結果');
+assert(teacherSource.includes('coursePortalTeacherAttendance'), '老師端缺少當日簽到');
+assert(teacherSource.includes('coursePortalTeacherLateAttendance'), '老師端缺少逾期補簽到');
+assert(teacherSource.includes('coursePortalTeacherAttendanceCancellationRequest'), '老師端缺少取消簽到送主管審核');
+assert(teacherSource.includes('row.date === todayKey()'), '老師正常簽到未限制當天');
+assert(teacherSource.includes('補簽到（行政費 NT$50）'), '老師補簽到未清楚顯示行政費');
 assert(adminPortal.includes('停課學費未繳清'), '管理者頁缺少停課學費未繳清專區');
 assert(adminPortal.includes('coursePortalAdminSuspensionAction'), '管理者欠費簽核未連接後端');
+assert(adminPortal.includes('取消簽到待確認'), '管理者頁缺少取消簽到審核窗口');
+assert(adminPortal.includes('coursePortalAdminAttendanceCancellationAction'), '管理者取消簽到審核未連接後端');
+assert(adminPortal.includes('id="bindingSearch"'), '登入帳號管理缺少搜尋');
+assert(adminPortal.includes('data-action="approve"'), '管理者缺少登入綁定核准');
+assert(adminPortal.includes('data-action="force_logout"'), '管理者缺少強制登出裝置');
+assert(studentPortal.includes('name="relationship"'), '學生／家長綁定缺少關係選擇');
+assert(studentPortal.includes('id="inactiveStudentView"'), '停課學生缺少只保留租用功能的畫面');
 assert(studentPortal.includes('id="tuitionPaymentSection"'), '學生入口缺少下一期學費區塊');
 assert(studentPortal.includes('id="tuitionPaymentModal"'), '學生入口缺少繳費方式視窗');
 assert(studentPortal.includes('name="paymentMethod" value="bank_transfer"'), '學生入口缺少轉帳繳費選項');
@@ -183,7 +195,7 @@ assert(!rentalSource.includes('個時段</em>'), '租用日期仍顯示多餘的
 assert(rentalSource.includes('slot.past'), '一般租用畫面未屏蔽當天已過時間');
 assert(rentalSource.includes('day.past'), '一般租用畫面未屏蔽過去日期');
 assert(rentalSource.includes('roomRequestId += 1'), '切換租用條件時沒有讓舊教室查詢失效');
-assert(rentalSource.includes("role !== 'student'"), '非學生仍會看到學生半價選項');
+assert(rentalSource.includes("role === 'student' && studentDiscountEligible"), '停課學生或非學生仍會看到學生半價選項');
 assert(rentalSource.includes('Promise.all([loadRentalData(), loadBookings()])'), '租用首屏仍以串行方式載入');
 assert(rentalHtml.includes('id="rentalHeaderTitle"'), '租用頁標題缺少登入姓名顯示位置');
 assert(rentalSource.includes('renderWelcomeName(boardData.displayName)'), '租用頁沒有顯示後端確認的登入姓名');
@@ -1135,10 +1147,14 @@ assert(
   'coursePortalAdminRoomBookings',
   'coursePortalTeacherAction',
   'coursePortalTeacherLessonState',
+  'coursePortalTeacherAttendance',
+  'coursePortalTeacherLateAttendance',
+  'coursePortalTeacherAttendanceCancellationRequest',
   'coursePortalTeacherUpdateStudent',
   'coursePortalTeacherStopStudent',
   'coursePortalUpdateStudentReminder',
   'coursePortalAdminBindingAction',
+  'coursePortalAdminAttendanceCancellationAction',
   'coursePortalAdminSuspensionAction',
   'coursePortalAdminTuitionPaymentAction',
   'coursePortalAdminTuitionPaymentScreenshot',
@@ -1148,9 +1164,13 @@ assert(deployWorkflow.includes('functions:coursePortalTeacherSlotOptions'), '部
 [
   'functions:coursePortalStudentPhoneAccess',
   'functions:coursePortalStudentSubmitTuitionPayment',
+  'functions:coursePortalTeacherAttendance',
+  'functions:coursePortalTeacherLateAttendance',
+  'functions:coursePortalTeacherAttendanceCancellationRequest',
   'functions:coursePortalTeacherUpdateStudent',
   'functions:coursePortalTeacherStopStudent',
   'functions:coursePortalAdminSuspensionAction',
+  'functions:coursePortalAdminAttendanceCancellationAction',
   'functions:coursePortalAdminTuitionPaymentAction',
   'functions:coursePortalAdminTuitionPaymentScreenshot',
   'functions:coursePortalStudentReminderDaily'
@@ -1164,6 +1184,7 @@ assert(backend.includes('authAccountId'), '一般登入缺少獨立帳號識別'
 assert(backend.includes('const regularIdentity = await resolveRegularIdentity(identity)'), 'LINE 首次登入沒有合併同一人的 Email 帳號鍵');
 assert(backend.includes('authAccountId: source.authAccountId'), 'LINE 一次性登入碼交換時遺失帳號鍵');
 assert(backend.includes('sharedBindingAuthAccountId(type, bindings)'), 'LINE 多筆綁定未使用穩定帳號鍵');
+assert(backend.includes("lineAccountId(type, lineUserId)"), '不同家長的 LINE 帳號鍵沒有獨立，提醒設定可能互相連動');
 assert(backend.includes("authMethod: 'email-otp'"), '一般登入未建立 Email 驗證工作階段');
 assert(backend.includes("authMethod: 'student-name-phone'"), '學生／家長姓名電話註冊未建立正式工作階段');
 assert(backend.includes("const TEACHER_PAYROLL_MIN_MONTH = '2026-07'"), '老師薪資後端未限制民國 115 年 7 月起');
@@ -1180,6 +1201,17 @@ assert(backend.includes("schedule: '0 * * * *'"), '第 4 堂學費 LINE 提醒�
 assert(backend.includes('taipeiDateTimeMillis(row.date, row.endTime) > Date.now()'), '租用進行中無法取消');
 assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少開始前一小時提醒');
 assert(backend.includes("action === 'delete'"), '後台綁定管理缺少刪除登入資料');
+assert(backend.includes("approvalStatus: approved ? 'approved' : 'pending'"), '老師／學生新綁定未進入主管核准流程');
+assert(backend.includes('authorizedBindingsForSession(session)'), '敏感入口沒有在每次請求重新確認有效綁定');
+assert(backend.includes('reconcileStudentSuspensionsForNewSchedules'), '停課學生新增排課後不會自動恢復');
+assert(backend.includes("accessStatus: allowed.has(id) ? 'active' : 'rental_only'"), '停課學生沒有切換成僅租用權限');
+assert(backend.includes('studentDiscountEligible: await studentDiscountEligiblePromise'), '停課學生仍可能取得在籍學生租用折扣');
+assert(commonSource.includes("linkAnother: role === 'student' && authView.dataset.addStudent === 'true'"), '家長無法從已登入狀態啟動另一位學生的 LINE 綁定');
+assert(backend.includes('bindings.length && stateRow.linkAnother !== true'), 'LINE 已有學生綁定時仍會略過新增另一位學生的流程');
+assert(backend.includes('if (!learningIds.has(studentId)) continue;'), '停課學生仍可能收到上課或學費 LINE 提醒');
+assert(backend.includes("type: 'late_attendance_fee'"), '補簽到沒有建立 NT$50 薪資扣款');
+assert(backend.includes("type: 'attendance_cancellation_fee'"), '取消簽到核准後沒有建立 NT$50 薪資扣款');
+assert(backend.includes("status: 'pending'") && backend.includes('ATTENDANCE_CANCELLATIONS'), '取消簽到沒有等待主管核准');
 assert(backend.includes("const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET')"), 'LINE Channel secret 未使用後端密鑰');
 assert(backend.includes("bot_prompt: 'aggressive'"), 'LINE 登入未顯示加入官方帳號流程');
 assert(backend.includes('https://api.line.me/friendship/v1/status'), 'LINE 登入未確認好友狀態');
@@ -1343,6 +1375,9 @@ assert(rules.includes('match /coursePortalLineSetupTokens/{document=**} { allow 
 assert(rules.includes('match /coursePortalTuitionPaymentRequests/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalTuitionPeriods/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalTuitionPaymentTransactions/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalAttendanceRecords/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalAttendanceCancellationRequests/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalTeacherAttendancePayroll/{document=**} { allow read, write: if false; }'));
 
 runBackendScheduleRegressionTests()
   .then(() => {

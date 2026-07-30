@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>學生與家長入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-tuition-payment-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260731-security-attendance-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 </head>
 <body class="clean-portal-ui">
@@ -38,17 +38,19 @@
           <form class="stack auth-regular-form" data-regular-auth-form>
             <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" placeholder="請輸入學生姓名" required></div>
             <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" placeholder="學生資料中的電話" required></div>
+            <div class="field"><label>與學生的關係</label><select name="relationship"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></div>
             <button class="btn auth-regular-submit" type="submit">使用一般方式繼續</button>
           </form>
-          <small class="auth-security-note">只要學生姓名與登記電話相符即可，不需要填寫 Email。</small>
+          <small class="auth-security-note">不需要填寫 Email；第一次申請需經主管確認，核准前不會顯示學生資料。</small>
         </article>
       </div>
       <section class="auth-line-setup hidden" data-line-setup-panel>
-        <div class="section-title"><div><h3>完成 LINE 第一次登入</h3><p class="muted">LINE 身分已確認，只需要填這一次。</p></div></div>
+        <div class="section-title"><div><h3>完成 LINE 第一次申請</h3><p class="muted">LINE 身分已確認；資料送出後需由主管核准。</p></div></div>
         <form class="stack" data-line-setup-form>
           <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" required></div>
           <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
-          <button class="btn primary" type="submit">確認並進入學生入口</button>
+          <div class="field"><label>與學生的關係</label><select name="relationship"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></div>
+          <button class="btn primary" type="submit">送出綁定申請</button>
         </form>
       </section>
       <div class="auth-otp-panel hidden" data-otp-panel></div>
@@ -64,20 +66,24 @@
         <div class="field"><label>查看學生</label><select id="studentSelect"></select></div>
         <button class="btn soft" id="addStudentBinding" type="button">＋ 增加另一位學生</button>
       </div>
-      <div class="summary-grid">
+      <section class="card hidden" id="inactiveStudentView">
+        <div class="section-title"><div><h2>目前沒有進行中的課程</h2><p class="muted" id="inactiveStudentMessage"></p></div></div>
+        <a class="btn primary" href="room-booking.html?from=student">前往教室租用</a>
+      </section>
+      <div class="summary-grid student-sensitive">
         <article class="summary"><span>學生</span><strong id="studentName">—</strong></article>
         <article class="summary"><span>課程期數</span><strong id="periodCount">0</strong></article>
         <article class="summary"><span>近期課程</span><strong id="upcomingCount">0</strong></article>
         <article class="summary"><span>簽到紀錄</span><strong id="attendanceCount">0</strong></article>
       </div>
-      <section class="card tuition-payment-card hidden" id="tuitionPaymentSection">
+      <section class="card tuition-payment-card hidden student-sensitive" id="tuitionPaymentSection">
         <div class="section-title">
           <div><h2>下一期學費</h2><p class="muted">可選擇轉帳或現場繳費；主管確認收款後才會正式列入下一期。</p></div>
           <span class="badge warn" id="tuitionPaymentBadge">待處理</span>
         </div>
         <div class="list" id="tuitionPaymentList"></div>
       </section>
-      <nav class="tabs">
+      <nav class="tabs student-sensitive">
         <button class="btn active" type="button" data-tab="courses">課程與學費</button>
         <button class="btn" type="button" data-tab="upcoming">近期課表</button>
         <button class="btn" type="button" data-tab="attendance">簽到紀錄</button>
@@ -85,19 +91,19 @@
         <a class="btn soft" href="room-booking.html?from=student">租用教室</a>
       </nav>
 
-      <section class="card tab-panel" data-panel="courses">
+      <section class="card tab-panel student-sensitive" data-panel="courses">
         <div class="section-title"><div><h2>課程與學費</h2><p class="muted">先顯示最近三期；未繳清會明確標示。</p></div><button class="btn soft hidden" id="togglePeriodHistory" type="button">歷史期數</button></div>
         <div class="list" id="periodList"></div>
       </section>
-      <section class="card tab-panel hidden" data-panel="upcoming">
+      <section class="card tab-panel hidden student-sensitive" data-panel="upcoming">
         <div class="section-title"><h2>近期課表</h2></div>
         <div class="list" id="upcomingList"></div>
       </section>
-      <section class="card tab-panel hidden" data-panel="attendance">
+      <section class="card tab-panel hidden student-sensitive" data-panel="attendance">
         <div class="section-title"><h2>實際簽到與請假</h2></div>
         <div class="list" id="attendanceList"></div>
       </section>
-      <section class="card tab-panel hidden" data-panel="reminders">
+      <section class="card tab-panel hidden student-sensitive" data-panel="reminders">
         <div class="section-title"><div><h2>LINE 提醒</h2><p class="muted">每位家長可各自決定是否接收，不會影響其他家長。</p></div></div>
         <form class="stack" id="reminderForm">
           <label class="switch-row"><span><strong>最後一堂提醒</strong><small class="muted">本期剩最後一堂時提醒</small></span><input type="checkbox" name="reminderLastLesson"></label>
@@ -158,7 +164,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-tuition-payment-v1"></script>
+  <script src="course-portal-common.js?v=20260731-security-attendance-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -314,6 +320,17 @@
     function render() {
       const student = data.students.find((row) => row.id === studentId) || data.students[0] || {};
       studentId = student.id || '';
+      const learningActive = student.accessStatus === 'active';
+      document.getElementById('inactiveStudentView').classList.toggle('hidden', learningActive);
+      document.getElementById('inactiveStudentMessage').textContent = student.accessMessage ||
+        '學生功能暫時關閉；完成新排課後會自動恢復，不需要重新綁定 LINE。';
+      document.querySelectorAll('.student-sensitive').forEach((node) => {
+        node.style.display = learningActive ? '' : 'none';
+      });
+      if (!learningActive) {
+        document.getElementById('studentName').textContent = student.name || '—';
+        return;
+      }
       const periods = data.periods.filter((row) => row.studentId === studentId)
         .sort((a, b) => Number(b.periodNo || 0) - Number(a.periodNo || 0));
       const attendance = data.attendance.filter((row) => row.studentId === studentId);
@@ -441,6 +458,7 @@
       finally { P.loading(button, false); }
     });
     document.getElementById('addStudentBinding').addEventListener('click', () => {
+      document.getElementById('bindView').dataset.addStudent = 'true';
       showBound(false);
       const regularName = document.querySelector('[data-regular-auth-form] input[name="name"]');
       if (regularName) regularName.focus();

@@ -5,6 +5,7 @@
   if (!P) throw new Error('CoursePortal 尚未載入。');
 
   let role = '';
+  let studentDiscountEligible = false;
   let token = '';
   let selectedUse = '';
   let durationMinutes = 60;
@@ -263,6 +264,7 @@
       }, preferencePayload()));
       if (requestId !== boardRequestId) return;
       role = boardData.role || role;
+      studentDiscountEligible = boardData.studentDiscountEligible === true;
       renderWelcomeName(boardData.displayName);
       weekStart = boardData.startDate || weekStart;
       selectedUse = boardData.selectedUseType || selectedUse;
@@ -342,9 +344,13 @@
 
   function renderRateChoice() {
     const recording = selectedUse === 'recording';
-    const student = role === 'student';
+    const student = role === 'student' && studentDiscountEligible;
+    if (!student) {
+      const generalRate = document.querySelector('input[name="rentalRate"][value="general"]');
+      if (generalRate) generalRate.checked = true;
+    }
     document.getElementById('rentalRateSection').classList.toggle('hidden', recording && !student);
-    document.getElementById('studentRateLabel').classList.toggle('hidden', role !== 'student');
+    document.getElementById('studentRateLabel').classList.toggle('hidden', !student);
     document.getElementById('rentalRateHeading').textContent =
       recording ? '學生折扣（選填）' : '租用價格';
     document.getElementById('generalRateText').textContent =

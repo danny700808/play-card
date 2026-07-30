@@ -306,6 +306,12 @@
             code: event.currentTarget.elements.code.value
           });
           clearInterval(countdownTimer);
+          if (verified.pendingApproval) {
+            pendingChallenge = '';
+            otpPanel.classList.add('hidden');
+            toast(verified.message || '申請已送出，請等待主管確認。');
+            return;
+          }
           if (verified.role !== role || !verified.sessionToken) throw new Error('登入資料不完整，請重新操作。');
           setSession(role, verified.sessionToken);
           toast('驗證成功，正在開啟。');
@@ -324,6 +330,10 @@
         const fields = Object.fromEntries(new FormData(form).entries());
         if (role === 'student' && !clean(fields.email)) {
           const result = await call('coursePortalStudentPhoneAccess', fields);
+          if (result.pendingApproval) {
+            toast(result.message || '申請已送出，請等待主管確認。');
+            return;
+          }
           if (result.role !== role || !result.sessionToken) {
             throw new Error('學生登入資料不完整，請重新操作。');
           }
@@ -349,7 +359,10 @@
     if (lineButton) lineButton.addEventListener('click', async () => {
       loading(lineButton, true, '正在前往 LINE…');
       try {
-        const result = await call('coursePortalStartLineLogin', { type: role });
+        const result = await call('coursePortalStartLineLogin', {
+          type: role,
+          linkAnother: role === 'student' && authView.dataset.addStudent === 'true'
+        });
         if (!result.authorizationUrl) throw new Error('LINE 登入網址建立失敗，請稍後再試。');
         global.location.assign(result.authorizationUrl);
       } catch (error) {
@@ -373,10 +386,19 @@
           type: role,
           setupToken: lineSetupToken
         }, fields));
+        if (result.pendingApproval) {
+          removeAuthQuery('lineSetup');
+          authView.dataset.addStudent = 'false';
+          toast(result.message || '綁定申請已送出，請等待主管確認。');
+          if (choiceList) choiceList.classList.remove('hidden');
+          if (lineSetupPanel) lineSetupPanel.classList.add('hidden');
+          return;
+        }
         if (result.role !== role || !result.sessionToken) {
           throw new Error('LINE 登入資料不完整，請重新操作。');
         }
         setSession(role, result.sessionToken);
+        authView.dataset.addStudent = 'false';
         removeAuthQuery('lineSetup');
         toast(result.reminderReady === false
           ? '登入完成；請將柚子樂器官方帳號加入好友，才能收到提醒。'

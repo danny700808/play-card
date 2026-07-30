@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260731-security-attendance-v1">
   <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-student-tools-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
 </head>
@@ -42,16 +42,16 @@
             <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="用來接收四碼驗證碼" required></div>
             <button class="btn auth-regular-submit" type="submit">使用一般方式繼續</button>
           </form>
-          <small class="auth-security-note">第一次會自動建立帳號；Email 四碼確認後直接進入。</small>
+          <small class="auth-security-note">Email 四碼確認後會送主管核准；核准前不會開放課表或薪資。</small>
         </article>
       </div>
       <section class="auth-line-setup hidden" data-line-setup-panel>
-        <div class="section-title"><div><h3>完成 LINE 第一次登入</h3><p class="muted">LINE 身分已確認，只需要填這一次。</p></div></div>
+        <div class="section-title"><div><h3>完成 LINE 第一次申請</h3><p class="muted">LINE 身分已確認；資料送出後需由主管核准。</p></div></div>
         <form class="stack" data-line-setup-form>
           <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" required></div>
           <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
           <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
-          <button class="btn primary" type="submit">確認並進入老師課務</button>
+          <button class="btn primary" type="submit">送出老師綁定申請</button>
         </form>
       </section>
       <div class="auth-otp-panel hidden" data-otp-panel></div>
@@ -159,8 +159,8 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
+  <script src="course-portal-common.js?v=20260731-security-attendance-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260730-student-tools-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260731-security-attendance-v1"></script>
 </body>
 </html>
