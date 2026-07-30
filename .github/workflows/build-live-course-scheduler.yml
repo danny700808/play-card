@@ -91,7 +91,8 @@ jobs:
 
           if (!runtime.includes('window.__YOUZI_COURSE_INLINE_DOCUMENT__')) throw new Error('Scoped full runtime is missing');
           if (!runtime.includes('window.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__')) throw new Error('Workspace-first runtime startup is missing');
-          if (!runtime.includes("if(!window.__YOUZI_COURSE_INLINE_MODE__)restoreFormalDatabase();")) throw new Error('Duplicate startup restore is still enabled');
+          if (!runtime.includes('refreshPortalRentals();')) throw new Error('Portal rentals are not refreshed during startup');
+          if (runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)')) throw new Error('Duplicate startup restore is still enabled');
           if (!runtime.includes("if($('sideModeBadge'))$('sideModeBadge').textContent")) throw new Error('Removed sidebar status is still a required element');
           if (!runtime.includes("var node=$(id);if(node)node.addEventListener")) throw new Error('Removed sidebar action is still a required element');
           if (!runtime.includes('function studentPageIndex()')) throw new Error('Indexed student renderer is missing');
