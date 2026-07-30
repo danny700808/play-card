@@ -644,7 +644,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     setText('opsPageSubtitle',PAGE_META.overview[1]);
     setText('opsLastReadText','快取資料：'+dateTimeText(cache.loadedAt||cache.savedAt));
     queryAll('#opsNav a[data-view]').forEach(function(a){ a.classList.toggle('active',a.dataset.view==='overview'); });
-    html('opsContent','<div class="ops-callout"><b>已顯示上次整理結果。</b><br>為避免每次進首頁重讀 5,701 筆商品，系統會直接使用快取；需要最新數字時再按「重新讀取」。</div>'+cache.html);
+    html('opsContent',cache.html);
     bindViewSpecific();
   }
   function openFastStateDb(){
@@ -1475,16 +1475,17 @@ function renderOverviewV7(){
   const heroHtml='<section class="ops-card ops-v8-overview-hero"><div class="ops-v8-hero-primary"><span>全通路預估淨利</span><strong class="'+(allBalance<0?'negative':'')+'">'+money(allBalance)+'</strong></div><div class="ops-v8-hero-secondary ops-v8-hero-secondary-simple">'+summaryBox('現金流狀態',escapeHtml(cashStatus),openReceivables.length?'warning':'success')+'<small class="ops-v8-cash-note">'+escapeHtml(cashSub)+'</small></div></section>';
   function mobileProfitBox(label,value,nav){
     const tag=nav?'button':'div',navAttr=nav?' type="button" data-nav="'+attr(nav)+'"':'';
-    return '<'+tag+' class="ops-mobile-profit-box"'+navAttr+'><span>'+escapeHtml(label)+'</span><strong class="'+(value<0?'negative':'')+'">'+money(value)+'</strong></'+tag+'>';
+    const valueClass=(value<0?' negative':'')+(Math.abs(Number(value)||0)>=100000?' is-wide':'');
+    return '<'+tag+' class="ops-mobile-profit-box"'+navAttr+'><span>'+escapeHtml(label)+'</span><strong class="'+valueClass.trim()+'">'+money(value)+'</strong></'+tag+'>';
   }
-  const mobileProfitHtml='<section class="ops-card ops-mobile-profit-card"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'毛利</h2><p>全部通路與營運項目加總</p></div></div><div class="ops-mobile-profit-grid">'
+  const mobileProfitHtml='<section class="ops-card ops-mobile-profit-card"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'毛利</h2></div></div><div class="ops-mobile-profit-grid">'
     +mobileProfitBox('全部毛利',allBalance,'')
     +mobileProfitBox('門市毛利',storeBalance,'sales')
     +mobileProfitBox('平台毛利',networkProfit,'sync')
     +mobileProfitBox('課程毛利',educationRetainedWithRental,'course-calendar')
     +mobileProfitBox('租用毛利',rentalRevenue,'rentals')
     +'</div></section>';
-  const mobileQuickNavHtml='<section class="ops-card ops-mobile-direct-card"><div class="ops-card-head"><div><h2>常用功能</h2><p>直接開啟，不需要再展開選單</p></div></div><div class="ops-mobile-direct-nav">'
+  const mobileQuickNavHtml='<section class="ops-card ops-mobile-direct-card"><div class="ops-card-head"><div><h2>常用功能</h2></div></div><div class="ops-mobile-direct-nav">'
     +'<button type="button" class="ops-button primary" data-nav="course-calendar">課程日／週表</button>'
     +'<button type="button" class="ops-button primary" data-nav="products">商品搜尋</button>'
     +'<button type="button" class="ops-button primary" data-nav="sales">現場收銀</button>'

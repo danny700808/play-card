@@ -357,7 +357,7 @@ body.yz-login-page .auth-note{background:#e8f5ef;color:#315e4c;border:1px solid 
   .yz-login-brand{margin:0 -16px 18px;padding:20px 16px}
   .yz-login-mark{width:43px;height:43px;border-radius:12px;font-size:21px}
   body.yz-login-page .login-header .title{font-size:24px}
-  body.yz-login-page .auth-sub-actions{grid-template-columns:1fr!important}
+  body.yz-login-page .auth-sub-actions{grid-template-columns:repeat(3,minmax(0,1fr))!important}
 }
 
 

@@ -901,7 +901,24 @@ function shouldShowTeacherContractCard(res){
 }
 
 function fillHeader(){const user=requireLogin(); if(!user) return; const manager=isManager(user); const homeTitleEl=qs('#homeTitle'); if(homeTitleEl){ homeTitleEl.textContent=isPartTimeUser(user)?'工讀首頁':'員工首頁'; } if(document.title==='員工首頁' || document.title==='工讀首頁'){ document.title=isPartTimeUser(user)?'工讀首頁':'員工首頁'; } qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=isPartTimeUser(user)?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=manager?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=manager?'none':'');}
-function redirectAfterLogin(user){saveUser(user); if(isExternalTeacher(user)){ location.href='teacher-home.html'; return; } if(hasSettingsZoneAccess(user)){setPortalMode('settings'); location.href='portal.html'; return;} setPortalMode('staff'); location.href='dashboard.html';}
+function loginDestination(user){
+  if(isExternalTeacher(user)) return 'teacher-home.html';
+  if(hasSettingsZoneAccess(user)){setPortalMode('settings');return 'portal.html';}
+  setPortalMode('staff');
+  return 'dashboard.html';
+}
+function redirectAfterLogin(user){
+  saveUser(user);
+  const target=loginDestination(user);
+  try{
+    if(window.top&&window.top!==window){
+      window.top.location.replace(target);
+      return target;
+    }
+  }catch(e){}
+  window.location.replace(target);
+  return target;
+}
 function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}
 function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value=s.password||'';if(r)r.checked=!!s.remember;}

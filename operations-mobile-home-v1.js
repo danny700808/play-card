@@ -167,10 +167,10 @@
     var events = scheduleEvents(date);
 
     if (!rooms.length) {
-      return '<section class="ops-card ops-approved-schedule-card"><div class="ops-card-head"><div><h2>今日課表</h2><p>教室為直欄、時間為橫列；點課程可操作</p></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div><div class="ops-approved-schedule-empty">課表資料正在載入；也可以按「完整課表」查看。</div></section>';
+      return '<section class="ops-card ops-approved-schedule-card"><div class="ops-card-head"><div><h2>今日課表</h2></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div><div class="ops-approved-schedule-empty">課表資料正在載入；也可以按「完整課表」查看。</div></section>';
     }
 
-    var html = '<section class="ops-card ops-approved-schedule-card"><div class="ops-card-head"><div><h2>今日課表</h2><p>教室為直欄、時間為橫列；點課程可操作</p></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div>';
+    var html = '<section class="ops-card ops-approved-schedule-card"><div class="ops-card-head"><div><h2>今日課表</h2></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div>';
     html += '<div class="ops-approved-schedule-wrap"><div class="ops-approved-schedule-grid" style="--room-count:' + rooms.length + ';--slot-count:' + slotCount + '">';
     html += '<div class="ops-approved-schedule-corner" style="grid-column:1;grid-row:1">時間</div>';
     rooms.forEach(function (room, index) {
@@ -236,14 +236,9 @@
   }
 
   function productsHtml() {
-    return '<section class="ops-card ops-approved-products-card"><div class="ops-card-head"><div><h2>快速找商品</h2><p>圖片、售價與庫存一起確認</p></div><button type="button" class="ops-approved-link-button" data-nav="products">全部商品</button></div>'
+    return '<section class="ops-card ops-approved-products-card"><div class="ops-card-head"><div><h2>快速找商品</h2></div><button type="button" class="ops-approved-link-button" data-nav="products">全部商品</button></div>'
       + '<div class="ops-approved-product-search"><input id="opsApprovedProductSearch" type="search" autocomplete="off" placeholder="搜尋商品名稱、編號或條碼" value="' + attr(productQuery) + '"></div>'
       + '<div id="opsApprovedProductResults">' + productListHtml() + '</div></section>';
-  }
-
-  function modeLabel() {
-    if (snapshot && snapshot.dataMode === 'sandbox') return '測試模式';
-    return '正式資料';
   }
 
   function enhanceMobileHome() {
@@ -262,7 +257,7 @@
     content.querySelectorAll('.ops-approved-mobile-head,.ops-approved-schedule-card,.ops-approved-products-card').forEach(function (node) {
       node.remove();
     });
-    content.insertAdjacentHTML('afterbegin', '<header class="ops-approved-mobile-head"><span class="mark">營</span><span class="copy"><h1>營運總覽</h1><p>今天的營運狀況</p></span><span class="mode">' + esc(modeLabel()) + '</span></header>');
+    content.insertAdjacentHTML('afterbegin', '<header class="ops-approved-mobile-head"><span class="mark">營</span><span class="copy"><h1>營運總覽</h1></span></header>');
 
     var profit = content.querySelector('.ops-mobile-profit-card');
     if (profit) {

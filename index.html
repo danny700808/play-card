@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>柚子樂器系統｜登入</title>
-  <link rel="stylesheet" href="style.css?v=20260714-unified-theme-v1">
+  <link rel="stylesheet" href="style.css?v=20260730-login-compact-v2">
   <style>
-    .auth-sub-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
+    .auth-sub-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px;margin-top:6px}
     .auth-panel{margin-top:6px}
     .auth-panel.hidden{display:none}
     .auth-note{margin-top:8px;padding:10px 12px;border-radius:14px;background:#f3f7f4;color:#355f4a;font-size:14px;line-height:1.7}
     .auth-back-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    .auth-sub-actions .btn,.auth-sub-actions .btn-link{width:100%;margin-top:0;display:flex;align-items:center;justify-content:center;text-decoration:none}
+    body.yz-login-page .auth-sub-actions .btn,body.yz-login-page .auth-sub-actions .btn-link{width:100%;min-height:38px!important;margin-top:0;padding:6px 3px!important;display:flex;align-items:center;justify-content:center;text-decoration:none;background:#fff!important;color:#17252f!important;border:1px solid #dbe4e9!important;border-radius:10px!important;font-size:12px!important;white-space:nowrap}
     .external-entry-zone{margin-top:16px;padding-top:14px;border-top:1px solid #dbe5dd;text-align:center}
     .external-entry-title{font-size:13px;font-weight:900;color:#6b7a6f;letter-spacing:.08em;margin-bottom:8px}
     .teacher-apply-entry{width:100%;display:flex;align-items:center;justify-content:center;text-decoration:none}
@@ -119,7 +119,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260523stage5primary"></script>
 
-  <script src="app.js?v=20260714-unified-entry-v1"></script>
+  <script src="app.js?v=20260730-login-redirect-v2"></script>
   <script>
     const msg = qs('#msg');
     const panels = {
@@ -211,6 +211,10 @@
 
     qs('#loginBtn').onclick = async () => {
       const btn = qs('#loginBtn');
+      if (btn.dataset.resumeTarget) {
+        window.location.replace(btn.dataset.resumeTarget);
+        return;
+      }
       const progress = startActionButtonProgress(btn, { label:'登入中', startPct:20, maxPct:80, steps:[20,40,60,80], interval:180 });
       setMsg(msg, '');
       try {
@@ -222,8 +226,16 @@
         if (r.ok) {
           saveLoginPref(qs('#email').value.trim(), qs('#password').value.trim(), qs('#rememberLogin').checked);
           setMsg(msg, '登入成功，正在進入系統...');
-          progress.done('登入成功', 400, true);
-          setTimeout(() => redirectAfterLogin(r.user), 450);
+          progress.done('登入成功', 0, true);
+          saveUser(r.user);
+          const target = loginDestination(r.user);
+          btn.dataset.resumeTarget = target;
+          redirectAfterLogin(r.user);
+          setTimeout(() => {
+            if (document.visibilityState === 'hidden') return;
+            progress.reset('進入系統');
+            setMsg(msg, '登入已完成，請按「進入系統」。');
+          }, 1400);
         } else {
           progress.fail('登入失敗');
         }

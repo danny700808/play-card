@@ -284,7 +284,7 @@
   }
   .ops-card-head{gap:6px!important;margin-bottom:7px!important}
   .ops-card-head h2,.ops-card-head h3{font-size:13px!important}
-  .ops-card-head p{font-size:8px!important}
+  .ops-card-head p{display:none!important}
   .ops-card-actions{gap:4px!important}
   .ops-section-title{margin:10px 0 5px!important;font-size:9px!important}
   .ops-button{
@@ -422,6 +422,8 @@
     padding-bottom:1px!important;
   }
   .ops-mobile-profit-box{
+    appearance:none!important;
+    width:100%!important;
     min-width:0!important;
     min-height:52px!important;
     padding:6px 3px!important;
@@ -429,6 +431,10 @@
     border-radius:8px!important;
     background:#f8fbfa!important;
     color:#19342d!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    justify-content:center!important;
     text-align:left!important;
   }
   button.ops-mobile-profit-box{cursor:pointer!important}
@@ -442,11 +448,13 @@
   .ops-mobile-profit-box strong{
     display:block!important;
     margin-top:5px!important;
-    font-size:clamp(9px,2.55vw,12px)!important;
+    font-size:clamp(9px,2.45vw,11px)!important;
     line-height:1.2!important;
+    letter-spacing:-.04em!important;
     font-variant-numeric:tabular-nums!important;
     white-space:nowrap!important;
   }
+  .ops-mobile-profit-box strong.is-wide{font-size:clamp(8px,2.2vw,10px)!important;letter-spacing:-.07em!important}
   .ops-mobile-profit-box strong.negative{color:#b74545!important}
   .ops-mobile-direct-nav{
     display:grid!important;

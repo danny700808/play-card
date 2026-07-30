@@ -245,8 +245,8 @@ function patchOperations() {
   function mobileSearchPadHtml(targetId){`);
 
   const overviewRangeAction = /    if\(action==='overview-range'\)\{[\s\S]*?    \}\n    if\(action==='overview-day-shift'\)/;
-  if (!overviewRangeAction.test(source)) throw new Error('Unable to locate overview range action.');
-  source = source.replace(overviewRangeAction, `    if(action==='overview-range'){
+  if (overviewRangeAction.test(source)) {
+    source = source.replace(overviewRangeAction, `    if(action==='overview-range'){
       const nextRange=el.dataset.range||'today',now=new Date();
       state.overviewRange=nextRange;
       if(nextRange==='today')state.overviewDate=todayDateKey();
@@ -255,6 +255,9 @@ function patchOperations() {
     }
     if(action==='overview-current-month'){const now=new Date();state.overviewMonth=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');state.overviewRange='month';return render();}
     if(action==='overview-day-shift')`);
+  } else if (!source.includes("if(action==='overview-current-month')")) {
+    throw new Error('Unable to locate overview range action.');
+  }
 
   source = source.replace("    global.addEventListener('message',handleCourseWorkspaceMessage);\n", '');
   if (source.includes('<iframe id="opsCourseFrame"')) throw new Error('Legacy course iframe remains in operations-phase1.js');

@@ -33,14 +33,17 @@ test('mobile home contains live schedule and product search integrations', () =>
   assert.match(source, /今日課表/);
   assert.match(source, /快速找商品/);
   assert.match(source, /operationsState\(\)/);
-  assert.match(source, /正式資料/);
+  assert.doesNotMatch(source, /今天的營運狀況/);
+  assert.doesNotMatch(source, /正式資料/);
+  assert.doesNotMatch(source, /圖片、售價與庫存一起確認/);
 });
 
 test('course management stays in the operations shell and POS price is editable per sale', () => {
   const source = read('operations-phase1.js');
   assert.match(source, /const COURSE_WORKSPACE_VIEWS/);
-  assert.match(source, /course-scheduler\.html\?embed=1&amp;view=/);
-  assert.match(source, /youzi-course-view-change/);
+  assert.match(source, /ops-course-inline-placeholder/);
+  assert.match(source, /global\.YouziOperationsCourseInline\.mount\(content,courseView\)/);
+  assert.match(source, /global\.YouziOperationsCourseInline\.show\(view\)/);
   assert.match(source, /if\(isCourseWorkspaceView\(view\)\)return false/);
   assert.doesNotMatch(source, /location\.href='course-scheduler\.html'/);
   assert.doesNotMatch(source, /global\.location\.replace\('course-scheduler\.html'\)/);
@@ -48,4 +51,20 @@ test('course management stays in the operations shell and POS price is editable 
   assert.match(source, /class="ops-cart-price-editor"[^>]+data-cart-price=/);
   assert.doesNotMatch(source, /data-cart-price="[^"]+"[^>]*readonly/);
   assert.match(source, /只修改本次交易，不會改變商品主檔售價/);
+});
+
+test('mobile profit cards align consistently and keep six-digit values on one line', () => {
+  const source = read('operations-phase1.js');
+  const approvedCss = read('operations-mobile-home-v1.css');
+  const compactCss = read('mobile-layout.css');
+  assert.match(source, /Math\.abs\(Number\(value\)\|\|0\)>=100000\?' is-wide'/);
+  assert.doesNotMatch(source, /全部通路與營運項目加總/);
+  assert.doesNotMatch(source, /直接開啟，不需要再展開選單/);
+  assert.doesNotMatch(source, /已顯示上次整理結果/);
+  for (const css of [approvedCss, compactCss]) {
+    assert.match(css, /\.ops-mobile-profit-box[\s\S]*display:\s*flex/);
+    assert.match(css, /\.ops-mobile-profit-box[\s\S]*justify-content:\s*center/);
+    assert.match(css, /\.ops-mobile-profit-box strong[\s\S]*white-space:\s*nowrap/);
+    assert.match(css, /\.ops-mobile-profit-box strong\.is-wide/);
+  }
 });

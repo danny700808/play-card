@@ -108,16 +108,15 @@
         <h3>鋼琴類型</h3>
         <label class="rental-preference-toggle">
           <input type="checkbox" data-preference="exclude-digital" ${excludeDigitalPiano ? 'checked' : ''}>
-          <span><strong>排除電鋼琴</strong><small>不勾選時，電鋼琴、平台鋼琴與直立鋼琴都會列出。</small></span>
+          <span><strong>排除電鋼琴</strong></span>
         </label>
       `;
     } else if (selectedUse === 'guzheng') {
       content = `
         <h3>古箏位置</h3>
-        <p>預設只列出古箏已放置的展演空間。</p>
         <label class="rental-preference-toggle">
           <input type="checkbox" data-preference="allow-guzheng-move" ${allowGuzhengMove ? 'checked' : ''}>
-          <span><strong>我可以自行搬古箏</strong><small>勾選後會再加入 KAWAI 教室；使用後需搬回展演空間。</small></span>
+          <span><strong>我可以自行搬古箏（使用後搬回展演空間）</strong></span>
         </label>
       `;
     } else if (selectedUse === 'drums') {
@@ -128,7 +127,6 @@
           <label><input type="radio" name="drumType" value="acoustic_drums" ${drumType === 'acoustic_drums' ? 'checked' : ''}> 傳統鼓</label>
           <label><input type="radio" name="drumType" value="electronic_drums" ${drumType === 'electronic_drums' ? 'checked' : ''}> 電子鼓</label>
         </div>
-        <small>不指定時會列出所有可練鼓的教室；指定後會排除沒有該鼓種的教室。</small>
       `;
     }
     node.innerHTML = content;
