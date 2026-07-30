@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-teacher-flow-v3">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-teacher-mobile-v4">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
 </head>
 <body class="teacher-course-app clean-portal-ui">
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">師</span><div><h1>老師課務</h1><p>課表・學生・薪資・租用</p></div></div>
+      <div class="head-title"><span class="brand-mark">師</span><div><h1 id="teacherWelcomeTitle">老師課務</h1><p>課表・學生・薪資・租用</p></div></div>
       <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
     </header>
 
@@ -73,9 +73,8 @@
 
       <section class="card tab-panel" data-panel="schedule">
         <div class="section-title"><h2>課表</h2></div>
-        <div class="toolbar teacher-week-toolbar">
+        <div class="toolbar teacher-week-toolbar" aria-label="週次切換">
           <button class="btn" id="prevWeek" type="button">上一週</button>
-          <input id="weekPicker" type="date" aria-label="選擇要查看的星期">
           <button class="btn" id="nextWeek" type="button">下一週</button>
         </div>
         <div class="teacher-flow-banner hidden" id="teacherFlowBanner" aria-live="polite">
@@ -86,11 +85,14 @@
         <div class="teacher-legend" id="teacherLegend" aria-label="課表顏色說明">
           <span><i class="fixed"></i>固定課</span><span><i class="single"></i>調課</span><span><i class="extra"></i>加課</span><span><i class="gift"></i>贈課</span><span><i class="rental"></i>租用</span><span><i class="trial"></i>體驗</span><span><i class="leave"></i>請假</span><span><i class="absent"></i>曠課</span><span><i class="attended"></i>已簽到</span><span><i class="cancelled"></i>取消／調走</span><span><i class="pending"></i>待補排</span><span><i class="conflict"></i>衝突</span><span><i class="group"></i>雙／團</span>
         </div>
-        <div class="week-scroll"><div class="week-grid" id="weekGrid"></div></div>
+        <div class="week-scroll" data-two-day-viewport><div class="week-grid" id="weekGrid"></div></div>
       </section>
 
       <section class="card tab-panel hidden" data-panel="students">
         <div class="section-title"><h2>我的學生</h2><span class="badge" id="rosterBadge">0 位</span></div>
+        <div class="teacher-roster-search">
+          <input id="rosterSearch" type="search" inputmode="search" autocomplete="off" aria-label="搜尋學生或老師姓名" placeholder="搜尋學生或老師姓名">
+        </div>
         <div class="list" id="rosterList"></div>
       </section>
 
@@ -136,6 +138,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260730-teacher-flow-v3"></script>
+  <script src="teacher-course-portal-v8.js?v=20260730-teacher-mobile-v4"></script>
 </body>
 </html>
