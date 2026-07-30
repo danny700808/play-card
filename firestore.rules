@@ -144,6 +144,8 @@ service cloud.firestore {
     match /coursePortalBindCodes/{document=**} { allow read, write: if false; }
     match /coursePortalEmailOtps/{document=**} { allow read, write: if false; }
     match /coursePortalLineLoginCodes/{document=**} { allow read, write: if false; }
+    match /coursePortalLineOAuthStates/{document=**} { allow read, write: if false; }
+    match /coursePortalLineSetupTokens/{document=**} { allow read, write: if false; }
     match /coursePortalRateLimits/{document=**} { allow read, write: if false; }
     match /coursePortalAccessTokens/{document=**} { allow read, write: if false; }
     match /coursePortalSessions/{document=**} { allow read, write: if false; }
