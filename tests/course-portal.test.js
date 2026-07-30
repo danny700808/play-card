@@ -42,6 +42,9 @@ new vm.Script(commonSource, { filename: 'course-portal-common.js' });
 assert(commonSource.includes('coursePortalSendEmailOtp'), '入口缺少 Email 驗證碼寄送流程');
 assert(commonSource.includes('coursePortalVerifyEmailOtp'), '入口缺少 Email 驗證碼確認流程');
 assert(commonSource.includes('coursePortalStartLineLogin'), '入口缺少 LINE 快速登入');
+assert(commonSource.includes('result.authorizationUrl'), 'LINE 登入仍未直接導向 OAuth');
+assert(commonSource.includes('coursePortalCompleteLineRegistration'), '入口缺少 LINE 首次登入綁定');
+assert(!commonSource.includes('請用已綁定的 LINE 傳送這段快速登入文字'), 'LINE 登入仍停留在複製文字舊流程');
 
 for (const file of pages) {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
@@ -62,6 +65,10 @@ for (const file of pages) {
   assert(html.includes('data-auth-view'), `${file} 缺少統一登入畫面`);
   assert(html.includes('id="sessionLoading"'), `${file} 缺少登入狀態確認畫面`);
   assert(html.includes('data-first-use-form'), `${file} 缺少首次使用驗證`);
+  if (file !== 'course-portal-admin.html') {
+    assert(html.includes('使用 LINE 登入／註冊'), `${file} 缺少直接 LINE 登入`);
+    assert(!html.includes('data-line-login-result'), `${file} 仍保留 LINE 複製文字結果框`);
+  }
 });
 ['teacher-course-portal.html', 'student-course-portal.html'].forEach((file) => {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
@@ -117,6 +124,8 @@ const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'u
   'coursePortalSendEmailOtp',
   'coursePortalVerifyEmailOtp',
   'coursePortalStartLineLogin',
+  'coursePortalCompleteLineRegistration',
+  'coursePortalLineLoginCallback',
   'coursePortalRenterContactLogin',
   'coursePortalExchangeAccess',
   'coursePortalTeacherData',
@@ -139,6 +148,11 @@ assert(backend.includes('taipeiDateTimeMillis(row.date, row.endTime) > Date.now(
 assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少開始前一小時提醒');
 assert(backend.includes("action === 'delete'"), '後台綁定管理缺少刪除登入資料');
 assert(backend.includes("authMethod: 'renter-name-phone'"), '租用入口缺少姓名＋電話臨時登入');
+assert(backend.includes("const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET')"), 'LINE Channel secret 未使用後端密鑰');
+assert(backend.includes("bot_prompt: 'aggressive'"), 'LINE 登入未顯示加入官方帳號流程');
+assert(backend.includes('https://api.line.me/friendship/v1/status'), 'LINE 登入未確認好友狀態');
+assert(backend.includes("authMethod: 'line-oauth'"), 'LINE OAuth 登入未建立正式工作階段');
+assert(backend.includes('LINE_OAUTH_STATE_TTL_MS'), 'LINE OAuth 缺少短效 state 驗證');
 assert(commonSource.includes('global.sessionStorage'), '租用借用裝置登入沒有使用瀏覽階段儲存');
 assert(backend.includes("id: 'guzheng'"), '租用用途缺少古箏');
 assert(backend.includes("id: 'recording'"), '租用用途缺少錄音室');
@@ -162,5 +176,7 @@ assert(rules.includes('match /coursePortalSessions/{document=**} { allow read, w
 assert(rules.includes('match /coursePortalStudentBindings/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalEmailOtps/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalLineLoginCodes/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalLineOAuthStates/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalLineSetupTokens/{document=**} { allow read, write: if false; }'));
 
 console.log('course portal tests passed');
