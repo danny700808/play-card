@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-auth-v1">
-  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-line-oauth-v2">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-line-oauth-v2">
+  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-line-oauth-v2">
 </head>
 <body class="teacher-course-app clean-portal-ui">
   <main class="portal-shell">
@@ -19,8 +19,8 @@
     <section class="card bind-box hidden" id="bindView" data-auth-view>
       <div class="section-title"><h2>登入老師課務</h2></div>
       <div class="auth-login-stack">
-        <button class="btn primary auth-line-button" type="button" data-line-login>LINE 快速登入</button>
-        <div class="bind-result hidden" data-line-login-result></div>
+        <button class="btn primary auth-line-button" type="button" data-line-login>使用 LINE 登入／註冊</button>
+        <p class="auth-line-hint">第一次完成綁定後，同一手機會直接進入，並可接收課程提醒。</p>
         <div class="auth-divider"><span>或使用 Email</span></div>
         <form class="stack" data-email-login-form>
           <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
@@ -143,9 +143,9 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-auth-v1"></script>
-  <script src="teacher-course-session-v8.js?v=20260730-auth-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260730-auth-v1"></script>
+  <script src="course-portal-common.js?v=20260730-line-oauth-v2"></script>
+  <script src="teacher-course-session-v8.js?v=20260730-line-oauth-v2"></script>
+  <script src="teacher-course-portal-v8.js?v=20260730-line-oauth-v2"></script>
   <script src="teacher-room-rules-v1.js?v=20260730-teacher-equipment-v2"></script>
 </body>
 </html>
