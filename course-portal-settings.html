@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>租用與教室設定｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-rental-settings-v2">
-  <link rel="stylesheet" href="course-portal-settings-v2.css?v=20260730-rental-settings-v2">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-rental-settings-v3">
+  <link rel="stylesheet" href="course-portal-settings-v2.css?v=20260730-rental-settings-v3">
 </head>
 <body class="portal-settings-v2 clean-portal-ui">
   <main class="portal-shell">
@@ -27,6 +27,7 @@
     <section class="card settings-section">
       <div class="section-title"><h2>租用用途</h2><button class="btn" id="addUse" type="button">新增用途</button></div>
       <div id="useRows"><p class="muted">請先讀取設定。</p></div>
+      <div class="notice">用途若填寫「每小時固定費用」，會優先於教室原價；未填則使用該教室的一般租金。</div>
     </section>
 
     <div class="settings-save-bar"><button class="btn primary" id="saveSettings" type="button">儲存全部設定</button></div>
@@ -39,7 +40,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-rental-settings-v2"></script>
-  <script src="course-portal-settings-v2.js?v=20260730-rental-settings-v2"></script>
+  <script src="course-portal-common.js?v=20260730-rental-settings-v3"></script>
+  <script src="course-portal-settings-v2.js?v=20260730-rental-settings-v3"></script>
 </body>
 </html>

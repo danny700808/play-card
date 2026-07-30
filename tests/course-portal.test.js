@@ -43,7 +43,9 @@ new vm.Script(commonSource, { filename: 'course-portal-common.js' });
 for (const file of pages) {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
   assert(html.trimStart().toLowerCase().startsWith('<!doctype html>'), `${file} 不是 HTML 文件`);
-  assert(html.includes('course-portal-common.js'), `${file} 未載入共用入口程式`);
+  const hasPortalRuntime = html.includes('course-portal-common.js') ||
+    (file === 'teacher-course-portal.html' && html.includes('teacher-course-session-v8.js'));
+  assert(hasPortalRuntime, `${file} 未載入入口程式`);
   const inlineScripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
     .map((match) => match[1])
     .filter((code) => code.trim());
@@ -56,6 +58,19 @@ const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.htm
 assert(teacherPortal.includes('value="single_move"'), '老師入口缺少單次調課');
 assert(teacherPortal.includes('value="permanent_move"'), '老師入口缺少永久調課');
 assert(!portalLanding.includes('老師調課入口'), '老師調課不可誤拆成第四個入口');
+
+const rentalSource = fs.readFileSync(path.join(root, 'room-booking-v2.js'), 'utf8');
+const rentalSettingsSource = fs.readFileSync(path.join(root, 'course-portal-settings-v2.js'), 'utf8');
+const teacherRoomRulesSource = fs.readFileSync(path.join(root, 'teacher-room-rules-v1.js'), 'utf8');
+new vm.Script(rentalSource, { filename: 'room-booking-v2.js' });
+new vm.Script(rentalSettingsSource, { filename: 'course-portal-settings-v2.js' });
+new vm.Script(teacherRoomRulesSource, { filename: 'teacher-room-rules-v1.js' });
+assert(rentalSource.includes('rental-room-equipment'), '租用教室卡片缺少鋼琴類型標示');
+assert(rentalSource.includes('excludeDigitalPiano'), '鋼琴租用缺少排除電鋼琴選項');
+assert(rentalSource.includes('allowGuzhengMove'), '古箏租用缺少自行搬運選項');
+assert(rentalSource.includes('drumType'), '練鼓租用缺少鼓種篩選');
+assert(rentalSettingsSource.includes('data-use-rate'), '租用用途設定缺少每小時固定費用');
+assert(teacherRoomRulesSource.includes('需自行從展演空間搬古箏'), '老師調課缺少 KAWAI 古箏搬運提醒');
 
 const schedulerHtml = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8');
 const schedulerSource = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8');
@@ -96,6 +111,16 @@ const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'u
 ].forEach((name) => assert(backend.includes(name), `缺少後端函式 ${name}`));
 assert(backend.includes("where('lineUserId', '==', session.lineUserId)"), '租用紀錄未限制為目前 LINE 使用者');
 assert(backend.includes('只能取消自己預約的教室'), '取消租用缺少本人權限檢查');
+assert(backend.includes("id: 'guzheng'"), '租用用途缺少古箏');
+assert(backend.includes("id: 'recording'"), '租用用途缺少錄音室');
+assert(backend.includes('hourlyRate: 300'), '錄音用途未設定每小時 NT$300');
+assert(backend.includes("if (/錄音室|錄音/.test(clean(room && room.name))) return 100;"), '錄音室其他用途未固定為每小時 NT$100');
+assert(backend.includes('data.excludeDigitalPiano'), '後端缺少排除電鋼琴規則');
+assert(backend.includes('data.allowGuzhengMove'), '後端缺少 KAWAI 古箏搬運接受規則');
+assert(backend.includes('data.drumType'), '後端缺少鼓種篩選規則');
+assert(backend.includes("return '電鋼琴'"), '團練室／展演空間缺少電鋼琴分類');
+assert(backend.includes("return '平台鋼琴'"), 'YAMAHA 平台教室／5號鋼琴缺少平台鋼琴分類');
+assert(backend.includes("return '直立鋼琴'"), 'KAWAI 教室／YAMAHA 直立鋼琴缺少直立鋼琴分類');
 
 const portalCss = fs.readFileSync(path.join(root, 'course-portal.css'), 'utf8');
 assert(portalCss.includes('@media (max-width: 760px)'), '外部入口缺少手機版樣式');

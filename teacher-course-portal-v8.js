@@ -38,6 +38,19 @@
     return String(value == null ? '' : value).trim();
   }
 
+  function inferredEquipmentLabel(name) {
+    name = clean(name);
+    if (/展演|團練/.test(name)) return '電鋼琴';
+    if (/yamaha.*平台|平台.*yamaha|5號鋼琴|五號鋼琴/i.test(name)) return '平台鋼琴';
+    if (/kawai|卡哇伊|yamaha.*直立|直立.*yamaha/i.test(name)) return '直立鋼琴';
+    return '';
+  }
+
+  function roomOptionLabel(room) {
+    const equipment = clean(room && room.equipmentLabel) || inferredEquipmentLabel(room && room.name);
+    return equipment ? `${clean(room.name)}（${equipment}）` : clean(room && room.name);
+  }
+
   function escapeHtml(value) {
     return clean(value)
       .replace(/&/g, '&amp;')
@@ -443,7 +456,7 @@
   function fillAction(options) {
     document.getElementById('actionStudent').innerHTML = data.roster.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.name)}</option>`).join('');
     document.getElementById('actionSubject').innerHTML = data.subjects.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.name)}</option>`).join('');
-    document.getElementById('actionRoom').innerHTML = data.rooms.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.name)}</option>`).join('');
+    document.getElementById('actionRoom').innerHTML = data.rooms.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(roomOptionLabel(row))}</option>`).join('');
     const sourceRows = uniqueEvents((data.events || []).filter((row) => row.own)).sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
     document.getElementById('actionSourceLesson').innerHTML = '<option value="">請選擇要移動的課程</option>' + sourceRows.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(`${row.date} ${row.startTime} ${(row.studentNames || []).join('、')}`)}</option>`).join('');
     const form = document.getElementById('actionForm');
@@ -494,7 +507,7 @@
         subjectId: row.subjectId
       });
       const slots = (result.slots || []).filter((slot) => slot.rooms && slot.rooms.length).slice(0, 30);
-      node.innerHTML = slots.map((slot) => `<button class="availability-option" type="button" data-available-date="${escapeHtml(slot.date)}" data-available-start="${escapeHtml(slot.startTime)}" data-available-end="${escapeHtml(slot.endTime)}" data-available-room="${escapeHtml(slot.rooms[0].id)}"><strong>${escapeHtml(dayLabel(slot.date))}　${escapeHtml(slot.startTime)}～${escapeHtml(slot.endTime)}</strong><span>${escapeHtml(slot.rooms.map((room) => room.name).join('、'))}</span></button>`).join('') || '<div class="notice">未來兩週沒有完整可用時段。</div>';
+      node.innerHTML = slots.map((slot) => `<button class="availability-option" type="button" data-available-date="${escapeHtml(slot.date)}" data-available-start="${escapeHtml(slot.startTime)}" data-available-end="${escapeHtml(slot.endTime)}" data-available-room="${escapeHtml(slot.rooms[0].id)}"><strong>${escapeHtml(dayLabel(slot.date))}　${escapeHtml(slot.startTime)}～${escapeHtml(slot.endTime)}</strong><span>${escapeHtml(slot.rooms.map(roomOptionLabel).join('、'))}</span></button>`).join('') || '<div class="notice">未來兩週沒有完整可用時段。</div>';
     } catch (error) {
       node.innerHTML = '<div class="notice">目前無法讀取空位。</div>';
       toast(error.message, 'error');

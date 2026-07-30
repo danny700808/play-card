@@ -37,10 +37,13 @@ const MIRROR = Object.freeze({
   roomRentals: 'opsEducationMirrorRoomRentals',
   events: 'opsEducationMirrorEvents'
 });
+const RENTAL_USES_VERSION = 4;
 const RENTAL_USE_OPTIONS = Object.freeze([
   { id: 'piano', name: '彈鋼琴', icon: '🎹', roomIds: [] },
   { id: 'drums', name: '練鼓', icon: '🥁', roomIds: [] },
   { id: 'band', name: '團練', icon: '🎸', roomIds: [] },
+  { id: 'guzheng', name: '古箏', icon: '🪕', roomIds: [] },
+  { id: 'recording', name: '錄音室', icon: '🎙️', roomIds: [], hourlyRate: 300 },
   { id: 'other', name: '其他用途', icon: '🎵', roomIds: [] }
 ]);
 const DEFAULT_BUSINESS_HOURS = Object.freeze({
@@ -84,14 +87,48 @@ function effectiveRoomFee(room, setting = {}) {
   return defaultRoomFee(room);
 }
 
+function effectiveRentalFee(room, setting = {}, useOption = {}) {
+  if (useOption.hourlyRate !== undefined && useOption.hourlyRate !== null && useOption.hourlyRate !== '') {
+    return Math.max(0, Number(useOption.hourlyRate) || 0);
+  }
+  if (/錄音室|錄音/.test(clean(room && room.name))) return 100;
+  return effectiveRoomFee(room, setting);
+}
+
 function defaultRentalUseOptions(rooms) {
   const normal = (rooms || []).filter((room) => roomKind(room) === 'normal');
   const ids = (pattern) => normal.filter((room) => pattern.test(clean(room.name))).map(sourceId);
   return [
-    { id: 'piano', name: '彈鋼琴', icon: '🎹', roomIds: ids(/鋼琴|平台|琴房|piano|yamaha|kawai/i), active: true },
-    { id: 'drums', name: '練鼓', icon: '🥁', roomIds: ids(/鼓|展演|團練/), active: true },
-    { id: 'band', name: '團練', icon: '🎸', roomIds: ids(/展演|團練/), active: true },
-    { id: 'other', name: '其他用途', icon: '🎵', roomIds: normal.map(sourceId), active: true }
+    {
+      id: 'piano',
+      name: '彈鋼琴',
+      icon: '🎹',
+      description: '可選擇是否排除電鋼琴',
+      roomIds: ids(/鋼琴|平台|琴房|piano|yamaha|kawai|卡哇伊|展演|團練/i),
+      hourlyRate: null,
+      active: true
+    },
+    { id: 'drums', name: '練鼓', icon: '🥁', description: '可指定傳統鼓或電子鼓，也可不指定', roomIds: ids(/鼓|展演|團練/), hourlyRate: null, active: true },
+    { id: 'band', name: '團練', icon: '🎸', description: '', roomIds: ids(/展演|團練/), hourlyRate: null, active: true },
+    {
+      id: 'guzheng',
+      name: '古箏',
+      icon: '🪕',
+      description: '預設展演空間；可自行搬運時才加入 KAWAI 教室',
+      roomIds: ids(/展演|kawai|卡哇伊/i),
+      hourlyRate: null,
+      active: true
+    },
+    {
+      id: 'recording',
+      name: '錄音室',
+      icon: '🎙️',
+      description: '錄音用途每小時 NT$300；其他用途每小時 NT$100',
+      roomIds: ids(/錄音室|錄音/),
+      hourlyRate: 300,
+      active: true
+    },
+    { id: 'other', name: '其他用途', icon: '🎵', description: '', roomIds: normal.map(sourceId), hourlyRate: null, active: true }
   ];
 }
 
@@ -99,12 +136,34 @@ async function rentalUseOptions(rooms = []) {
   const snap = await db.collection('coursePortalSettings').doc('rentalUses').get();
   const defaults = defaultRentalUseOptions(rooms);
   const saved = snap.exists ? snap.data() || {} : {};
-  const rows = saved.version === 3 && Array.isArray(saved.items) ? saved.items : defaults;
+  const savedRows = Array.isArray(saved.items) ? saved.items : [];
+  let rows = defaults;
+  if (saved.version === RENTAL_USES_VERSION) {
+    rows = savedRows;
+  } else if (saved.version === 3) {
+    const defaultIds = new Set(defaults.map((row) => row.id));
+    rows = defaults.map((fallback) => {
+      const previous = savedRows.find((row) => clean(row.id) === fallback.id);
+      if (!previous) return fallback;
+      return Object.assign({}, fallback, {
+        name: clean(previous.name) || fallback.name,
+        icon: clean(previous.icon) || fallback.icon,
+        description: clean(fallback.description || previous.description),
+        roomIds: [...new Set([...(fallback.roomIds || []), ...(Array.isArray(previous.roomIds) ? previous.roomIds : [])])],
+        hourlyRate: fallback.hourlyRate == null ? previous.hourlyRate : fallback.hourlyRate,
+        active: previous.active !== false
+      });
+    }).concat(savedRows.filter((row) => !defaultIds.has(clean(row.id))));
+  }
   return rows.map((row, index) => ({
     id: clean(row.id) || ('use-' + (index + 1)),
     name: clean(row.name) || ('用途 ' + (index + 1)),
     icon: clean(row.icon) || (defaults[index] && defaults[index].icon) || '🎵',
+    description: clean(row.description),
     roomIds: Array.isArray(row.roomIds) && row.roomIds.length ? row.roomIds.map(clean).filter(Boolean) : ((defaults.find((item) => item.id === clean(row.id)) || {}).roomIds || []),
+    hourlyRate: row.hourlyRate === undefined || row.hourlyRate === null || row.hourlyRate === ''
+      ? null
+      : Math.max(0, Number(row.hourlyRate) || 0),
     active: row.active !== false
   })).filter((row) => row.active);
 }
@@ -593,15 +652,24 @@ function eventBlocksResource(event) {
 
 function roomSupportsSubject(room, subjectId, bundle, setting = {}) {
   if (!subjectId) return true;
+  const subject = clean(bundle.maps.subjects[subjectId] && bundle.maps.subjects[subjectId].name).toLowerCase();
+  const roomName = clean(room.name).toLowerCase();
+  if (/爵士鼓|電子鼓|傳統鼓|鼓組/.test(subject)) return /鼓|展演|團練/.test(roomName);
+  if (/古箏/.test(subject)) return /展演|kawai|卡哇伊/.test(roomName);
+  if (/鋼琴|電子琴|keyboard|piano/.test(subject)) return /鋼琴|平台|yamaha|kawai|卡哇伊|琴房|展演|團練/.test(roomName);
   const configured = firstArray(setting, ['allowedSubjectIds']);
   const sourceConfigured = firstArray(room, ['allowedSubjectIds', 'subjectIds']);
   const allowed = configured.length ? configured : sourceConfigured;
   if (allowed.length) return allowed.includes(subjectId);
-  const subject = clean(bundle.maps.subjects[subjectId] && bundle.maps.subjects[subjectId].name).toLowerCase();
-  const roomName = clean(room.name).toLowerCase();
-  if (/爵士鼓|電子鼓|傳統鼓|鼓組/.test(subject)) return /鼓|展演|團練/.test(roomName);
-  if (/鋼琴|電子琴|keyboard|piano/.test(subject)) return /鋼琴|平台|yamaha|kawai|琴房/.test(roomName);
   return true;
+}
+
+function roomEquipmentLabel(room) {
+  const name = clean(room && room.name);
+  if (/展演|團練/.test(name)) return '電鋼琴';
+  if (/yamaha.*平台|平台.*yamaha|5號鋼琴|五號鋼琴/i.test(name)) return '平台鋼琴';
+  if (/kawai|卡哇伊|yamaha.*直立|直立.*yamaha/i.test(name)) return '直立鋼琴';
+  return '';
 }
 
 function rentalRoomProfile(room, setting = {}) {
@@ -613,14 +681,18 @@ function rentalRoomProfile(room, setting = {}) {
   if (!useTypes.length) {
     useTypes = ['guitar', 'teaching', 'other'];
     if (/鼓|展演|團練/.test(name)) useTypes.push('drums', 'band');
-    if (/鋼琴|平台|yamaha|kawai|琴房/.test(name)) useTypes.push('piano');
+    if (/鋼琴|平台|yamaha|kawai|卡哇伊|琴房|展演|團練/.test(name)) useTypes.push('piano');
     if (/展演|團練|表演/.test(name)) useTypes.push('band');
+    if (/展演|kawai|卡哇伊/.test(name)) useTypes.push('guzheng');
+    if (/錄音室|錄音/.test(name)) useTypes.push('recording');
   }
-  if (!equipment.length) {
-    if (/電子鼓/.test(name)) equipment.push('electronic_drums');
-    if (/傳統鼓|爵士鼓|團練/.test(name)) equipment.push('acoustic_drums');
-    if (/鋼琴|平台|yamaha|kawai|琴房/.test(name)) equipment.push('piano');
-  }
+  if (/電子鼓/.test(name)) equipment.push('electronic_drums');
+  if (/傳統鼓|爵士鼓|團練/.test(name)) equipment.push('acoustic_drums');
+  if (/鋼琴|平台|yamaha|kawai|琴房/.test(name)) equipment.push('piano');
+  if (/展演|團練/.test(name)) equipment.push('digital_piano', 'piano');
+  if (/yamaha.*平台|平台.*yamaha|5號鋼琴|五號鋼琴/.test(name)) equipment.push('grand_piano', 'piano');
+  if (/kawai|卡哇伊|yamaha.*直立|直立.*yamaha/.test(name)) equipment.push('upright_piano', 'piano');
+  if (/展演/.test(name)) equipment.push('guzheng');
   const inferredCapacity = /展演|團練|表演/.test(name) ? 8 : 3;
   return {
     useTypes: [...new Set(useTypes)],
@@ -628,6 +700,28 @@ function rentalRoomProfile(room, setting = {}) {
     capacity: Math.max(1, Number(setting.capacity || room.capacity || inferredCapacity)),
     publicName: clean(setting.publicName || room.publicName || room.name)
   };
+}
+
+function flagTrue(value) {
+  return value === true || clean(value).toLowerCase() === 'true';
+}
+
+function rentalPreferenceAllowsRoom(room, setting, data) {
+  const useType = clean(data && data.useType);
+  const name = clean(room && room.name);
+  if (useType === 'piano' && flagTrue(data.excludeDigitalPiano) && roomEquipmentLabel(room) === '電鋼琴') {
+    return false;
+  }
+  if (useType === 'guzheng' && /kawai|卡哇伊/i.test(name) && !flagTrue(data.allowGuzhengMove)) {
+    return false;
+  }
+  if (useType === 'drums') {
+    const drumType = clean(data.drumType);
+    if (['acoustic_drums', 'electronic_drums'].includes(drumType)) {
+      return rentalRoomProfile(room, setting).equipment.includes(drumType);
+    }
+  }
+  return true;
 }
 
 function rentalRoomMatch(room, setting, data) {
@@ -811,6 +905,7 @@ async function teacherPortalData(data) {
     rooms: bundle.rooms.map((room) => ({
       id: sourceId(room),
       name: clean(room.name),
+      equipmentLabel: roomEquipmentLabel(room),
       rentalFee: Number(room.rentalFee || room.price || 0),
       allowedSubjectIds: firstArray(room, ['allowedSubjectIds', 'subjectIds'])
     })),
@@ -845,7 +940,7 @@ async function teacherAvailability(data) {
   const compatibleRooms = bundle.rooms.filter(sourceActive).filter((room) =>
     roomKind(room, roomSettingsMap[sourceId(room)] || {}) === 'normal' &&
     roomTeacherSchedulable(room, roomSettingsMap[sourceId(room)] || {}) &&
-    roomSupportsSubject(room, subjectId, bundle)
+    roomSupportsSubject(room, subjectId, bundle, roomSettingsMap[sourceId(room)] || {})
   );
   const slots = [];
   for (let offset = 0; offset < days; offset += 1) {
@@ -866,7 +961,11 @@ async function teacherAvailability(data) {
       if (blockers.some((event) => event.teacherId === session.teacherId)) continue;
       const rooms = compatibleRooms.filter((room) =>
         !blockers.some((event) => event.roomId === sourceId(room))
-      ).map((room) => ({ id: sourceId(room), name: clean(room.name) }));
+      ).map((room) => ({
+        id: sourceId(room),
+        name: clean(room.name),
+        equipmentLabel: roomEquipmentLabel(room)
+      }));
       if (rooms.length) slots.push({ date, startTime: slotStart, endTime: slotEnd, rooms });
     }
   }
@@ -965,6 +1064,8 @@ async function rentalAvailability(data) {
   const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
   const roomSettings = await db.collection('coursePortalRoomSettings').get();
   const useOptions = await rentalUseOptions(bundle.rooms);
+  const selectedUse = useOptions.find((row) => row.id === clean(data.useType));
+  if (!selectedUse) throw new HttpsError('invalid-argument', '請選擇租用用途。');
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const studentRate = data.studentDiscountRequested === true || clean(data.studentDiscountRequested).toLowerCase() === 'true';
@@ -978,17 +1079,26 @@ async function rentalAvailability(data) {
     const profile = rentalRoomProfile(room, setting);
     const rentable = roomRentable(room, setting);
     const categoryAllowed = rentalUseAllowsRoom(useOptions, data.useType, id);
-    const baseFee = effectiveRoomFee(room, setting);
-    const available = !blocked && rentable && categoryAllowed;
+    const preferenceAllowed = rentalPreferenceAllowsRoom(room, setting, data);
+    const baseFee = effectiveRentalFee(room, setting, selectedUse);
+    const available = !blocked && rentable && categoryAllowed && preferenceAllowed;
+    const equipmentLabel = roomEquipmentLabel(room);
     return {
       id,
       name: profile.publicName,
       kind: roomKind(room, setting),
       available,
-      reason: blocked ? '時段已被使用' : (!rentable ? '不開放租用' : (!categoryAllowed ? '不屬於這個用途' : '')),
+      reason: blocked
+        ? '時段已被使用'
+        : (!rentable
+          ? '不開放租用'
+          : (!categoryAllowed
+            ? '不屬於這個用途'
+            : (!preferenceAllowed ? '已依設備條件排除' : ''))),
       matchLevel: 'best',
       capacity: profile.capacity,
       equipment: profile.equipment,
+      equipmentLabel,
       unitFee: baseFee,
       price: Math.round(baseFee * duration / 60 * (studentRate ? policy.studentDiscountRate : 1)),
       priceType: studentRate ? '柚子學生半價' : '一般價格'
@@ -1028,7 +1138,11 @@ async function rentalDayBoard(data) {
       const availableRooms = bundle.rooms.filter(sourceActive).filter((room) => {
         const id = sourceId(room);
         const setting = settingsMap[id] || {};
-        if (!roomRentable(room, setting) || !rentalUseAllowsRoom(useOptions, data.useType, id)) return false;
+        if (
+          !roomRentable(room, setting) ||
+          !rentalUseAllowsRoom(useOptions, data.useType, id) ||
+          !rentalPreferenceAllowsRoom(room, setting, data)
+        ) return false;
         return !bundle.events.some((event) =>
           eventBlocksResource(event) && event.roomId === id && event.date === date &&
           overlaps(startTime, endTime, event.startTime, event.endTime)
@@ -1065,7 +1179,11 @@ async function rentalWeekBoard(data) {
         const rooms = bundle.rooms.filter(sourceActive).filter((room) => {
           const id = sourceId(room);
           const setting = settingsMap[id] || {};
-          if (!roomRentable(room, setting) || !rentalUseAllowsRoom(useOptions, data.useType, id)) return false;
+          if (
+            !roomRentable(room, setting) ||
+            !rentalUseAllowsRoom(useOptions, data.useType, id) ||
+            !rentalPreferenceAllowsRoom(room, setting, data)
+          ) return false;
           return !bundle.events.some((event) =>
             eventBlocksResource(event) && event.roomId === id && event.date === date &&
             overlaps(startTime, endTime, event.startTime, event.endTime)
@@ -1100,6 +1218,10 @@ async function createRoomBooking(data) {
     roomName: room.name,
     purpose: clean(data.purpose),
     useType: clean(data.useType),
+    useName: clean((availability.useOptions.find((row) => row.id === clean(data.useType)) || {}).name),
+    excludeDigitalPiano: flagTrue(data.excludeDigitalPiano),
+    allowGuzhengMove: flagTrue(data.allowGuzhengMove),
+    drumType: clean(data.drumType),
     role: session.role,
     teacherId: clean(session.teacherId),
     renterId: clean(session.renterId),
@@ -1107,6 +1229,8 @@ async function createRoomBooking(data) {
     studentDiscountRequested: data.studentDiscountRequested === true || clean(data.studentDiscountRequested).toLowerCase() === 'true',
     lineUserId: session.lineUserId,
     amount: room.price,
+    unitFee: room.unitFee,
+    equipmentLabel: clean(room.equipmentLabel),
     priceType: room.priceType,
     paymentStatus: 'onsite_unpaid',
     status: 'confirmed',
@@ -1155,6 +1279,7 @@ async function rentalMyBookings(data) {
       roomName: clean(row.roomName),
       purpose: clean(row.purpose),
       useType: clean(row.useType),
+      useName: clean(row.useName),
       amount: Number(row.amount || 0),
       paymentStatus: clean(row.paymentStatus),
       status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),
@@ -1331,6 +1456,7 @@ async function teacherAction(data) {
   const endTime = clean(data.endTime).slice(0, 5);
   const roomId = clean(data.roomId);
   const studentId = clean(data.studentId);
+  const subjectId = clean(data.subjectId);
   if (!date || !startTime || !endTime || !roomId || !studentId) {
     throw new HttpsError('invalid-argument', '請完整選擇學生、日期、時間與教室。');
   }
@@ -1347,6 +1473,9 @@ async function teacherAction(data) {
   const selectedRoom = bundle.rooms.find((room) => sourceId(room) === roomId);
   if (!selectedRoom || !roomTeacherSchedulable(selectedRoom, roomSettingsMap[roomId] || {})) {
     throw new HttpsError('failed-precondition', '這個教室不開放老師排課。');
+  }
+  if (!roomSupportsSubject(selectedRoom, subjectId, bundle, roomSettingsMap[roomId] || {})) {
+    throw new HttpsError('failed-precondition', '這個教室不適合所選樂器，請改選其他教室。');
   }
   const [allFixed, allTemporary] = await Promise.all([mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')]);
   const ownStudent = [...allFixed, ...allTemporary].some((row) =>
@@ -1380,7 +1509,7 @@ async function teacherAction(data) {
     teacherId: session.teacherId,
     studentId,
     studentIds: [studentId],
-    subjectId: clean(data.subjectId),
+    subjectId,
     type: action === 'teacher_gift' ? 'teacher_gift' : 'temporary',
     status: 'scheduled',
     paymentStatus: action === 'teacher_gift' ? 'teacher_gift_no_charge' : clean(data.paymentStatus || 'not_applicable'),
@@ -1396,7 +1525,7 @@ async function teacherAction(data) {
     const compatibleRooms = future.rooms.filter(sourceActive).filter((room) =>
       roomKind(room, roomSettingsMap[sourceId(room)] || {}) === 'normal' &&
       roomTeacherSchedulable(room, roomSettingsMap[sourceId(room)] || {}) &&
-      roomSupportsSubject(room, event.subjectId, future)
+      roomSupportsSubject(room, event.subjectId, future, roomSettingsMap[sourceId(room)] || {})
     );
     for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, 7)) {
       const blockers = future.events.filter((row) => {
@@ -1564,7 +1693,11 @@ async function adminSaveRentalSettings(data) {
     id: clean(row.id) || ('use-' + (index + 1)),
     name: clean(row.name),
     icon: clean(row.icon) || '🎵',
+    description: clean(row.description),
     roomIds: (Array.isArray(row.roomIds) ? row.roomIds : []).map(clean).filter((id) => allowed.has(id)),
+    hourlyRate: row.hourlyRate === undefined || row.hourlyRate === null || row.hourlyRate === ''
+      ? null
+      : Math.max(0, Number(row.hourlyRate) || 0),
     active: row.active !== false
   })).filter((row) => row.name);
   const policyInput = data.policy || {};
@@ -1580,7 +1713,7 @@ async function adminSaveRentalSettings(data) {
   });
   const batch = db.batch();
   batch.set(db.collection('coursePortalSettings').doc('rentalUses'), {
-    version: 3,
+    version: RENTAL_USES_VERSION,
     items,
     updatedAt: FieldValue.serverTimestamp(),
     updatedAtText: nowText()

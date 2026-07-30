@@ -48,9 +48,19 @@ jobs:
           grep -q "coursePortalAdminRentalSettingsData" functions/coursePortal.js
           grep -q "roomKind" functions/coursePortal.js
           grep -q "5號鋼琴" functions/coursePortal.js
+          grep -q "id: 'guzheng'" functions/coursePortal.js
+          grep -q "id: 'recording'" functions/coursePortal.js
+          grep -q "hourlyRate: 300" functions/coursePortal.js
+          grep -q "excludeDigitalPiano" functions/coursePortal.js
+          grep -q "allowGuzhengMove" functions/coursePortal.js
+          grep -q "drumType" functions/coursePortal.js
       - name: Verify clean portal flow
         run: |
-          grep -q "rental-use-card" room-booking.html
+          grep -q "rental-use-card" room-booking-v2.js
+          grep -q "rentalPreference" room-booking.html
+          grep -q "排除電鋼琴" room-booking-v2.js
+          grep -q "我可以自行搬古箏" room-booking-v2.js
+          grep -q "是否指定鼓種" room-booking-v2.js
           grep -q "durationGrid" room-booking.html
           grep -q "柚子學生半價" room-booking.html
           grep -q "room-booking-v2.js" room-booking.html
