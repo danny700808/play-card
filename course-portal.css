@@ -163,11 +163,13 @@ a { color: inherit; }
 .portal-session-spinner{width:28px;height:28px;flex:0 0 auto;border:3px solid #cce6db;border-right-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}
 .auth-login-stack{display:grid;gap:12px}
 .auth-line-button{width:100%;min-height:50px}
+.auth-line-hint{margin:-5px 0 0;color:var(--muted);font-size:13px;text-align:center}
 .auth-divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;font-weight:700}
 .auth-divider::before,.auth-divider::after{content:"";height:1px;flex:1;background:var(--line)}
 .auth-help-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .auth-help-row > :only-child{grid-column:1/-1}
 .auth-first-use{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.auth-line-setup-notice{margin:0 0 13px;padding:12px 14px;border:1px solid #b8ddcd;border-radius:13px;background:var(--green-soft);color:#245b48;font-size:14px;line-height:1.65}
 .auth-otp-panel{margin-top:4px;padding:13px;border:1px solid #cce6db;border-radius:13px;background:var(--green-soft)}
 .auth-otp-meta{color:var(--muted);font-size:13px}
 .auth-otp-form input[name="code"]{font-size:24px;font-weight:900;letter-spacing:.4em;text-align:center}
@@ -255,9 +257,10 @@ a { color: inherit; }
   .portal-session-spinner{width:22px;height:22px}
   .auth-login-stack{gap:7px}
   .auth-line-button{min-height:38px}
-  .auth-divider,.auth-otp-meta{font-size:9px}
+  .auth-line-hint,.auth-divider,.auth-otp-meta{font-size:9px}
   .auth-help-row{gap:5px}
   .auth-first-use{margin-top:9px;padding-top:9px}
+  .auth-line-setup-notice{margin-bottom:8px;padding:8px;font-size:10px}
   .auth-otp-panel{padding:8px;border-radius:9px}
   .auth-otp-form input[name="code"]{font-size:18px}
   .binding-admin-card .binding-actions{justify-content:flex-start}
