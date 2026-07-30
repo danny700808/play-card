@@ -68,17 +68,17 @@ function defaultRoomFee(room) {
 }
 
 function roomRentable(room, setting = {}) {
-  if (typeof setting.rentable === 'boolean') return setting.rentable;
+  if (setting.roomRulesVersion === 1 && typeof setting.rentable === 'boolean') return setting.rentable;
   return roomKind(room, setting) === 'normal';
 }
 
 function roomTeacherSchedulable(room, setting = {}) {
-  if (typeof setting.teacherSchedulable === 'boolean') return setting.teacherSchedulable;
+  if (setting.roomRulesVersion === 1 && typeof setting.teacherSchedulable === 'boolean') return setting.teacherSchedulable;
   return true;
 }
 
 function effectiveRoomFee(room, setting = {}) {
-  if (setting.rentalFee !== undefined && setting.rentalFee !== null && setting.rentalFee !== '') {
+  if (setting.roomRulesVersion === 1 && setting.rentalFee !== undefined && setting.rentalFee !== null && setting.rentalFee !== '') {
     return Math.max(0, Number(setting.rentalFee) || 0);
   }
   return defaultRoomFee(room);
@@ -98,7 +98,8 @@ function defaultRentalUseOptions(rooms) {
 async function rentalUseOptions(rooms = []) {
   const snap = await db.collection('coursePortalSettings').doc('rentalUses').get();
   const defaults = defaultRentalUseOptions(rooms);
-  const rows = snap.exists && Array.isArray(snap.data().items) ? snap.data().items : defaults;
+  const saved = snap.exists ? snap.data() || {} : {};
+  const rows = saved.version === 3 && Array.isArray(saved.items) ? saved.items : defaults;
   return rows.map((row, index) => ({
     id: clean(row.id) || ('use-' + (index + 1)),
     name: clean(row.name) || ('用途 ' + (index + 1)),
@@ -115,7 +116,8 @@ function rentalUseAllowsRoom(options, useType, roomId) {
 
 async function rentalPolicySettings() {
   const snap = await db.collection('coursePortalSettings').doc('rentalPolicy').get();
-  const raw = snap.exists ? snap.data() || {} : {};
+  const saved = snap.exists ? snap.data() || {} : {};
+  const raw = saved.version === 3 ? saved : {};
   const businessHours = {};
   Object.keys(DEFAULT_BUSINESS_HOURS).forEach((day) => {
     const fallback = DEFAULT_BUSINESS_HOURS[day];
@@ -1578,11 +1580,13 @@ async function adminSaveRentalSettings(data) {
   });
   const batch = db.batch();
   batch.set(db.collection('coursePortalSettings').doc('rentalUses'), {
+    version: 3,
     items,
     updatedAt: FieldValue.serverTimestamp(),
     updatedAtText: nowText()
   }, { merge: true });
   batch.set(db.collection('coursePortalSettings').doc('rentalPolicy'), {
+    version: 3,
     businessHours,
     studentDiscountRate: 0.5,
     maxDurationMinutes: 300,
@@ -1594,6 +1598,7 @@ async function adminSaveRentalSettings(data) {
     const id = clean(row.id);
     if (!allowed.has(id)) return;
     batch.set(db.collection('coursePortalRoomSettings').doc(id), {
+      roomRulesVersion: 1,
       kind: ['normal', 'video', 'holding'].includes(clean(row.kind)) ? clean(row.kind) : 'normal',
       rentalFee: Math.max(0, Number(row.rentalFee || 0)),
       rentable: row.rentable === true,
