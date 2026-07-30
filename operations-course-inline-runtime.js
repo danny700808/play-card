@@ -788,10 +788,67 @@
   function submitEntity(event){event.preventDefault();var type=entityContext.type,id=entityContext.id,row={},old={},nextSort=function(collection){return collection.reduce(function(max,item){return Math.max(max,numberOf(item.sort));},0)+10;};if(type==='student'){row={id:id||uid('student'),name:$('entityName').value.trim(),phone:$('entityPhone').value.trim(),line:$('entityLine').value==='null'?null:$('entityLine').value==='true',active:$('entityActive').value==='true',note:$('entityNote').value.trim()};upsert(state.students,row);}if(type==='teacher'){old=teacherById(id);row={id:id||uid('teacher'),name:$('entityName').value.trim(),phone:$('entityPhone').value.trim(),reward:numberOf(old.reward),deduction:numberOf(old.deduction),active:$('entityActive').value==='true',note:$('entityNote').value.trim(),subjectIds:$$('input[name="teacherSubject"]',$('entityModalBody')).filter(function(box){return box.checked;}).map(function(box){return box.value;})};upsert(state.teachers,row);}if(type==='room'){old=roomById(id);row={id:id||uid('room'),name:$('entityName').value.trim(),sort:numberOf(old.sort)||nextSort(state.rooms),rentalFee:numberOf($('entityRentalFee').value),active:$('entityActive').value==='true',note:$('entityNote').value.trim(),allowedSubjectIds:Array.isArray(old.allowedSubjectIds)?old.allowedSubjectIds:[],policies:old.policies||{}};upsert(state.rooms,row);}if(type==='subject'){row={id:id||uid('subject'),name:$('entityName').value.trim(),sort:numberOf($('entitySort').value),active:$('entityActive').value==='true'};upsert(state.subjects,row);}if(type==='leave'){row={id:id||uid('leave'),name:$('entityName').value.trim(),sort:numberOf($('entitySort').value),active:$('entityActive').value==='true'};upsert(state.leaveReasons,row);}if(type==='fee'){old=feeById(id);row={id:id||uid('fee'),subjectId:$('entitySubject').value,sort:numberOf(old.sort)||nextSort(state.feePlans),name:$('entityName').value.trim(),amount:numberOf($('entityAmount').value),lessonCount:numberOf($('entityLessons').value),splitType:$('entitySplitType').value,splitValue:numberOf($('entitySplitValue').value),leaveNoDeduct:$('entityLeave').value==='true',expiryDays:numberOf($('entityExpiry').value),active:$('entityActive').value==='true',listed:true};upsert(state.feePlans,row);}if(!row.name){toast('請填寫名稱','名稱不能空白。','error');return;}save('設定已儲存');closeModal('entityModal');refreshFormOptions();if(type==='student'&&returnToScheduleAfterStudent){var draft=scheduleDraftAfterStudent;returnToScheduleAfterStudent=false;scheduleDraftAfterStudent=null;openSchedule({draft:draft,newStudentId:row.id});toast('學生已新增','已返回排課並自動選擇 '+row.name+'。');return;}if(currentView==='settings')renderSettings();if(currentView==='teachers')renderTeachers();if(currentView==='students')renderStudents();}
   function upsert(collection,row){var index=collection.findIndex(function(item){return item.id===row.id;});if(index>=0)collection[index]=Object.assign({},collection[index],row);else collection.push(row);}
 
-  function openPolicy(roomId){policyRoomId=roomId;var room=roomById(roomId),weekdays=[['mon','星期一'],['tue','星期二'],['wed','星期三'],['thu','星期四'],['fri','星期五'],['sat','星期六'],['sun','星期日']],allowed=Array.isArray(room.allowedSubjectIds)?room.allowedSubjectIds:[],useOptions=[['guitar','彈吉他／自備樂器'],['piano','彈鋼琴'],['drums','打鼓'],['band','樂團／多人排練'],['teaching','教學／會議'],['other','其他用途']],equipmentOptions=[['piano','鋼琴'],['acoustic_drums','傳統鼓'],['electronic_drums','電子鼓']],roomUses=Array.isArray(room.rentalUseTypes)?room.rentalUseTypes:[],roomEquipment=Array.isArray(room.rentalEquipment)?room.rentalEquipment:[],name=clean(room.name);if(!roomUses.length)roomUses=useOptions.map(function(row){return row[0];});if(!roomEquipment.length){if(/鋼琴|平台|YAMAHA|KAWAI|琴房/i.test(name))roomEquipment.push('piano');if(/傳統鼓|爵士鼓|團練/.test(name))roomEquipment.push('acoustic_drums');if(/電子鼓/.test(name))roomEquipment.push('electronic_drums');}$('policyWeekday').innerHTML=weekdays.map(function(row){return '<option value="'+row[0]+'">'+row[1]+'</option>';}).join('');$('policyModalTitle').textContent=room.name+'・教室設定';$('policyRoomName').value=room.name||'';$('policyRentalFee').value=numberOf(room.rentalFee);$('policyRoomCapacity').value=Math.max(1,numberOf(room.capacity)||(/展演|團練|表演/.test(name)?8:3));$('policyRoomActive').value=String(room.active!==false);$('policyRoomNote').value=room.note||'';$('policyRentalUseChoices').innerHTML=useOptions.map(function(option){return '<label class="check-label"><input type="checkbox" data-policy-rental-use="'+option[0]+'" '+(roomUses.indexOf(option[0])>=0?'checked':'')+'>'+option[1]+'</label>';}).join('');$('policyRentalEquipmentChoices').innerHTML=equipmentOptions.map(function(option){return '<label class="check-label"><input type="checkbox" data-policy-rental-equipment="'+option[0]+'" '+(roomEquipment.indexOf(option[0])>=0?'checked':'')+'>'+option[1]+'</label>';}).join('');$('policySubjectChoices').innerHTML=activeSubjects().map(function(subject){var checked=!allowed.length||allowed.indexOf(subject.id)>=0;return '<label class="check-label"><input type="checkbox" data-policy-room-subject="'+subject.id+'" '+(checked?'checked':'')+'>'+esc(subject.name)+'</label>';}).join('');renderPolicy();openModal('policyModal');}
+  function roomPianoType(room){
+    var explicit=clean(room&&room.pianoType).toLowerCase(),equipment=Array.isArray(room&&room.rentalEquipment)?room.rentalEquipment:[],name=clean(room&&room.name);
+    if(['digital_piano','grand_piano','upright_piano','none'].indexOf(explicit)>=0)return explicit;
+    if(equipment.indexOf('digital_piano')>=0)return 'digital_piano';
+    if(equipment.indexOf('grand_piano')>=0)return 'grand_piano';
+    if(equipment.indexOf('upright_piano')>=0)return 'upright_piano';
+    if(/展演|團練/.test(name))return 'digital_piano';
+    if(/YAMAHA.*平台|平台.*YAMAHA|5號鋼琴|五號鋼琴/i.test(name))return 'grand_piano';
+    if(/KAWAI|卡哇伊|YAMAHA.*直立|直立.*YAMAHA/i.test(name))return 'upright_piano';
+    return 'none';
+  }
+  function openPolicy(roomId){
+    policyRoomId=roomId;
+    var room=roomById(roomId),weekdays=[['mon','星期一'],['tue','星期二'],['wed','星期三'],['thu','星期四'],['fri','星期五'],['sat','星期六'],['sun','星期日']],allowed=Array.isArray(room.allowedSubjectIds)?room.allowedSubjectIds:[],useOptions=[['guitar','彈吉他／自備樂器'],['piano','彈鋼琴'],['drums','打鼓'],['band','樂團／多人排練'],['teaching','教學／會議'],['other','其他用途']],pianoOptions=[['none','無鋼琴'],['digital_piano','電鋼琴'],['grand_piano','平台鋼琴'],['upright_piano','直立鋼琴']],equipmentOptions=[['acoustic_drums','傳統鼓'],['electronic_drums','電子鼓']],roomUses=Array.isArray(room.rentalUseTypes)?room.rentalUseTypes:[],roomEquipment=Array.isArray(room.rentalEquipment)?room.rentalEquipment:[],pianoType=roomPianoType(room),name=clean(room.name);
+    if(!roomUses.length)roomUses=useOptions.map(function(row){return row[0];});
+    if(!roomEquipment.length){if(/傳統鼓|爵士鼓|團練/.test(name))roomEquipment.push('acoustic_drums');if(/電子鼓/.test(name))roomEquipment.push('electronic_drums');}
+    $('policyWeekday').innerHTML=weekdays.map(function(row){return '<option value="'+row[0]+'">'+row[1]+'</option>';}).join('');
+    $('policyModalTitle').textContent=room.name+'・教室設定';
+    $('policyRoomName').value=room.name||'';
+    $('policyRentalFee').value=numberOf(room.rentalFee);
+    $('policyRoomCapacity').value=Math.max(1,numberOf(room.capacity)||(/展演|團練|表演/.test(name)?8:3));
+    $('policyRoomActive').value=String(room.active!==false);
+    $('policyRoomNote').value=room.note||'';
+    $('policyRentalUseChoices').innerHTML=useOptions.map(function(option){return '<label class="check-label"><input type="checkbox" data-policy-rental-use="'+option[0]+'" '+(roomUses.indexOf(option[0])>=0?'checked':'')+'>'+option[1]+'</label>';}).join('');
+    $('policyRentalEquipmentChoices').innerHTML=pianoOptions.map(function(option){return '<label class="check-label"><input type="radio" name="policyPianoType" value="'+option[0]+'" '+(pianoType===option[0]?'checked':'')+'>'+option[1]+'</label>';}).join('')+equipmentOptions.map(function(option){return '<label class="check-label"><input type="checkbox" data-policy-rental-equipment="'+option[0]+'" '+(roomEquipment.indexOf(option[0])>=0?'checked':'')+'>'+option[1]+'</label>';}).join('');
+    $('policySubjectChoices').innerHTML=activeSubjects().map(function(subject){var checked=!allowed.length||allowed.indexOf(subject.id)>=0;return '<label class="check-label"><input type="checkbox" data-policy-room-subject="'+subject.id+'" '+(checked?'checked':'')+'>'+esc(subject.name)+'</label>';}).join('');
+    renderPolicy();openModal('policyModal');
+  }
   function renderPolicy(){var room=roomById(policyRoomId),day=$('policyWeekday').value||'mon',dayPolicies=(room.policies||{})[day]||{},html='';for(var min=state.settings.startHour*60;min<state.settings.endHour*60;min+=30){var time=minToTime(min),explicit=Object.prototype.hasOwnProperty.call(dayPolicies,time),policy=dayPolicies[time]||{},allowSchedule=explicit?!policy.blockSchedule:true,allowRental=explicit?!policy.blockRental:true;html+='<div class="policy-row simple '+(min%60===0?'hour':'')+'"><strong>'+time+'</strong><label class="check-label"><input type="checkbox" data-policy-schedule="'+time+'" '+(allowSchedule?'checked':'')+'>可排課</label><label class="check-label"><input type="checkbox" data-policy-rental="'+time+'" '+(allowRental?'checked':'')+'>可租用</label><span>'+(allowSchedule&&allowRental?'全部開放':allowSchedule?'只可排課':allowRental?'只可租用':'不開放')+'</span></div>';}$('policyModalBody').innerHTML=html;}
   function applyPolicyBulk(mode){var body=$('policyModalBody');$$('[data-policy-schedule]',body).forEach(function(box){var rental=qs('[data-policy-rental="'+box.dataset.policySchedule+'"]',body);box.checked=mode!=='close';rental.checked=mode==='open';});}
-  function savePolicy(){if(!writable('儲存教室設定'))return;var room=roomById(policyRoomId),day=$('policyWeekday').value,body=$('policyModalBody'),selected=$$('[data-policy-room-subject]',$('policySubjectChoices')).filter(function(box){return box.checked;}).map(function(box){return box.dataset.policyRoomSubject;}),allCount=activeSubjects().length;room.name=$('policyRoomName').value.trim()||room.name;room.rentalFee=numberOf($('policyRentalFee').value);room.capacity=Math.max(1,numberOf($('policyRoomCapacity').value)||1);room.rentalUseTypes=$$('[data-policy-rental-use]',$('policyRentalUseChoices')).filter(function(box){return box.checked;}).map(function(box){return box.dataset.policyRentalUse;});room.rentalEquipment=$$('[data-policy-rental-equipment]',$('policyRentalEquipmentChoices')).filter(function(box){return box.checked;}).map(function(box){return box.dataset.policyRentalEquipment;});room.active=$('policyRoomActive').value==='true';room.note=$('policyRoomNote').value.trim();room.allowedSubjectIds=selected.length===allCount?[]:selected.length?selected:['__none__'];if(!room.policies[day])room.policies[day]={};$$('[data-policy-schedule]',body).forEach(function(box){var time=box.dataset.policySchedule,rental=qs('[data-policy-rental="'+time+'"]',body);room.policies[day][time]={blockSchedule:!box.checked,blockRental:!rental.checked,subjectIds:[]};});save('教室設定已儲存');closeModal('policyModal');refreshFormOptions();renderSettings();renderCalendar();toast('教室設定已儲存','排課與租用會依用途、設備、科目與開放時段篩選教室。');}
+  async function savePolicy(){
+    if(!writable('儲存教室設定'))return;
+    var room=roomById(policyRoomId),day=$('policyWeekday').value,body=$('policyModalBody'),selected=$$('[data-policy-room-subject]',$('policySubjectChoices')).filter(function(box){return box.checked;}).map(function(box){return box.dataset.policyRoomSubject;}),allCount=activeSubjects().length,pianoChoice=qs('input[name="policyPianoType"]:checked',$('policyRentalEquipmentChoices')),pianoType=pianoChoice?pianoChoice.value:'none';
+    room.name=$('policyRoomName').value.trim()||room.name;
+    room.rentalFee=numberOf($('policyRentalFee').value);
+    room.capacity=Math.max(1,numberOf($('policyRoomCapacity').value)||1);
+    room.rentalUseTypes=$$('[data-policy-rental-use]',$('policyRentalUseChoices')).filter(function(box){return box.checked;}).map(function(box){return box.dataset.policyRentalUse;});
+    room.pianoType=pianoType;
+    room.rentalEquipment=$$('[data-policy-rental-equipment]',$('policyRentalEquipmentChoices')).filter(function(box){return box.checked;}).map(function(box){return box.dataset.policyRentalEquipment;});
+    if(pianoType!=='none')room.rentalEquipment.push('piano',pianoType);
+    room.rentalEquipment=Array.from(new Set(room.rentalEquipment));
+    room.active=$('policyRoomActive').value==='true';
+    room.note=$('policyRoomNote').value.trim();
+    room.allowedSubjectIds=selected.length===allCount?[]:selected.length?selected:['__none__'];
+    if(!room.policies)room.policies={};
+    if(!room.policies[day])room.policies[day]={};
+    $$('[data-policy-schedule]',body).forEach(function(box){var time=box.dataset.policySchedule,rental=qs('[data-policy-rental="'+time+'"]',body);room.policies[day][time]={blockSchedule:!box.checked,blockRental:!rental.checked,subjectIds:[]};});
+    save('教室設定已儲存');
+    closeModal('policyModal');refreshFormOptions();renderSettings();renderCalendar();
+    var pin=storedMigrationPin()||migrationPin();
+    if(!pin){toast('教室設定已儲存','本機設定已保存；下次輸入同步密碼後會再套用到租用入口。');return;}
+    try{
+      if(!window.YouziCoursePreviewData||typeof window.YouziCoursePreviewData.saveRoomSettings!=='function')throw new Error('教室設備同步元件尚未載入。');
+      await window.YouziCoursePreviewData.saveRoomSettings({manualSyncPin:pin,roomId:room.id,pianoType:room.pianoType,equipment:room.rentalEquipment});
+      toast('教室設定已儲存','鋼琴種類已同步到租用入口；排課與租用會依設備及時段篩選教室。');
+    }catch(error){
+      var message=clean(error&&error.message||'教室設備同步失敗');
+      if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
+      toast('本機設定已保存，租用入口尚未同步',message.slice(0,220),'error');
+    }
+  }
 
   function storedMigrationPin(){
     var value='';try{value=clean(sessionStorage.getItem(PIN_KEY));}catch(_){}
@@ -816,7 +873,7 @@
     var previousRooms={};(previous.rooms||[]).forEach(function(row){previousRooms[row.id]=row;});
     target.rooms=(target.rooms||[]).map(function(room){
       var prior=previousRooms[room.id];if(!prior)return room;
-      ['publicName','note','rentalFee','sort','active','allowedSubjectIds','policies','rentalUseTypes','rentalEquipment','capacity'].forEach(function(key){
+      ['publicName','note','rentalFee','sort','active','allowedSubjectIds','policies','rentalUseTypes','rentalEquipment','pianoType','capacity'].forEach(function(key){
         if(Object.prototype.hasOwnProperty.call(prior,key))room[key]=prior[key]&&typeof prior[key]==='object'?clone(prior[key]):prior[key];
       });
       return room;
