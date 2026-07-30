@@ -1565,12 +1565,46 @@ function roomSupportsSubject(room, subjectId, bundle, setting = {}) {
   return true;
 }
 
-function roomEquipmentLabel(room) {
-  const name = clean(room && room.name);
-  if (/展演|團練/.test(name)) return '電鋼琴';
-  if (/yamaha.*平台|平台.*yamaha|5號鋼琴|五號鋼琴/i.test(name)) return '平台鋼琴';
-  if (/kawai|卡哇伊|yamaha.*直立|直立.*yamaha/i.test(name)) return '直立鋼琴';
+function normalizePianoType(value) {
+  const type = clean(value).toLowerCase();
+  if (['none', 'no_piano'].includes(type)) return 'none';
+  if (['digital_piano', 'digital', 'electric_piano', '電鋼琴'].includes(type)) return 'digital_piano';
+  if (['grand_piano', 'grand', '平台鋼琴'].includes(type)) return 'grand_piano';
+  if (['upright_piano', 'upright', '直立鋼琴'].includes(type)) return 'upright_piano';
   return '';
+}
+
+function inferredPianoType(room) {
+  const name = clean(room && room.name);
+  if (/展演|團練/.test(name)) return 'digital_piano';
+  if (/yamaha.*平台|平台.*yamaha|5號鋼琴|五號鋼琴/i.test(name)) return 'grand_piano';
+  if (/kawai|卡哇伊|yamaha.*直立|直立.*yamaha/i.test(name)) return 'upright_piano';
+  return '';
+}
+
+function configuredPianoType(room, setting = {}) {
+  const explicit = normalizePianoType(setting.pianoType || setting.pianoEquipmentType);
+  if (explicit === 'none') return '';
+  if (explicit) return explicit;
+  const equipment = [
+    ...firstArray(setting, ['equipment', 'rentalEquipment']),
+    ...firstArray(room, ['equipment', 'rentalEquipment'])
+  ];
+  const configured = equipment.map(normalizePianoType).find((type) =>
+    ['digital_piano', 'grand_piano', 'upright_piano'].includes(type)
+  );
+  return configured || inferredPianoType(room);
+}
+
+function pianoTypeLabel(type) {
+  if (type === 'digital_piano') return '電鋼琴';
+  if (type === 'grand_piano') return '平台鋼琴';
+  if (type === 'upright_piano') return '直立鋼琴';
+  return '';
+}
+
+function roomEquipmentLabel(room, setting = {}) {
+  return pianoTypeLabel(configuredPianoType(room, setting));
 }
 
 function rentalRoomProfile(room, setting = {}) {
@@ -1594,6 +1628,8 @@ function rentalRoomProfile(room, setting = {}) {
   if (/yamaha.*平台|平台.*yamaha|5號鋼琴|五號鋼琴/.test(name)) equipment.push('grand_piano', 'piano');
   if (/kawai|卡哇伊|yamaha.*直立|直立.*yamaha/.test(name)) equipment.push('upright_piano', 'piano');
   if (/展演/.test(name)) equipment.push('guzheng');
+  const pianoType = configuredPianoType(room, setting);
+  if (pianoType) equipment.push(pianoType, 'piano');
   const inferredCapacity = /展演|團練|表演/.test(name) ? 8 : 3;
   return {
     useTypes: [...new Set(useTypes)],
@@ -1610,8 +1646,14 @@ function flagTrue(value) {
 function rentalPreferenceAllowsRoom(room, setting, data) {
   const useType = clean(data && data.useType);
   const name = clean(room && room.name);
-  if (useType === 'piano' && flagTrue(data.excludeDigitalPiano) && roomEquipmentLabel(room) === '電鋼琴') {
-    return false;
+  if (useType === 'piano') {
+    if (normalizePianoType(setting && (setting.pianoType || setting.pianoEquipmentType)) === 'none') return false;
+    const roomPianoType = configuredPianoType(room, setting);
+    const preference = clean(data && data.pianoType).toLowerCase() ||
+      (flagTrue(data && data.excludeDigitalPiano) ? 'exclude_digital' : 'any');
+    if (preference === 'exclude_digital' && roomPianoType === 'digital_piano') return false;
+    if (preference === 'grand_piano' && roomPianoType !== 'grand_piano') return false;
+    if (preference === 'upright_piano' && roomPianoType !== 'upright_piano') return false;
   }
   if (useType === 'guzheng' && /kawai|卡哇伊/i.test(name) && !flagTrue(data.allowGuzhengMove)) {
     return false;
@@ -2003,7 +2045,7 @@ async function rentalAvailability(data) {
     const preferenceAllowed = rentalPreferenceAllowsRoom(room, setting, data);
     const baseFee = effectiveRentalFee(room, setting, selectedUse);
     const available = !blocked && rentable && categoryAllowed && preferenceAllowed;
-    const equipmentLabel = roomEquipmentLabel(room);
+    const equipmentLabel = roomEquipmentLabel(room, setting);
     return {
       id,
       name: profile.publicName,
@@ -2142,6 +2184,8 @@ async function createRoomBooking(data) {
     purpose: clean(data.purpose),
     useType: clean(data.useType),
     useName: clean((availability.useOptions.find((row) => row.id === clean(data.useType)) || {}).name),
+    pianoType: clean(data.pianoType).toLowerCase() ||
+      (flagTrue(data.excludeDigitalPiano) ? 'exclude_digital' : 'any'),
     excludeDigitalPiano: flagTrue(data.excludeDigitalPiano),
     allowGuzhengMove: flagTrue(data.allowGuzhengMove),
     drumType: clean(data.drumType),
@@ -2659,6 +2703,7 @@ async function adminRentalSettingsData() {
         id,
         name: clean(room.name),
         kind: roomKind(room, setting),
+        pianoType: configuredPianoType(room, setting),
         rentalFee: effectiveRoomFee(room, setting),
         rentable: roomRentable(room, setting),
         teacherSchedulable: roomTeacherSchedulable(room, setting)
@@ -2714,6 +2759,7 @@ async function adminSaveRentalSettings(data) {
     batch.set(db.collection('coursePortalRoomSettings').doc(id), {
       roomRulesVersion: 1,
       kind: ['normal', 'video', 'holding'].includes(clean(row.kind)) ? clean(row.kind) : 'normal',
+      pianoType: normalizePianoType(row.pianoType) || 'none',
       rentalFee: Math.max(0, Number(row.rentalFee || 0)),
       rentable: row.rentable === true,
       teacherSchedulable: row.teacherSchedulable !== false,
@@ -2723,6 +2769,43 @@ async function adminSaveRentalSettings(data) {
   });
   await batch.commit();
   return adminRentalSettingsData();
+}
+
+async function adminSaveRoomEquipment(data) {
+  const roomId = clean(data.roomId);
+  if (!roomId) throw new HttpsError('invalid-argument', '缺少教室資料。');
+  const rooms = await mirrorRows('rooms');
+  const room = rooms.find((row) => sourceId(row) === roomId);
+  if (!room) throw new HttpsError('not-found', '找不到這間教室。');
+  const allowedEquipment = new Set([
+    'piano',
+    'digital_piano',
+    'grand_piano',
+    'upright_piano',
+    'acoustic_drums',
+    'electronic_drums',
+    'guzheng'
+  ]);
+  const pianoType = normalizePianoType(data.pianoType) || 'none';
+  const equipment = [...new Set(
+    (Array.isArray(data.equipment) ? data.equipment : [])
+      .map(clean)
+      .filter((value) => allowedEquipment.has(value))
+      .filter((value) => !['piano', 'digital_piano', 'grand_piano', 'upright_piano'].includes(value))
+      .concat(pianoType === 'none' ? [] : ['piano', pianoType])
+  )];
+  await db.collection('coursePortalRoomSettings').doc(roomId).set({
+    pianoType,
+    rentalEquipment: equipment,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText()
+  }, { merge: true });
+  return {
+    ok: true,
+    roomId,
+    pianoType: pianoType === 'none' ? '' : pianoType,
+    equipment
+  };
 }
 
 function assertAdminPin(request) {
@@ -3062,6 +3145,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     return adminRentalSettingsData();
   }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveRentalSettings = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRentalSettings(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminSaveRoomEquipment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRoomEquipment(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminBonusRequests = callable(async (data,request)=>{assertAdminPin(request);return adminBonusRequests();},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminApproveBonus = callable(async (data,request)=>{assertAdminPin(request);return adminApproveBonus(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalUpdateStudentReminder = callable(updateStudentReminder);
