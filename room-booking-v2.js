@@ -26,7 +26,7 @@
   const initialParams = new URLSearchParams(location.search);
   const initialDate = clean(initialParams.get('date'));
   const initialDuration = Number(initialParams.get('duration'));
-  if (/^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(initialDate) && initialDate >= todayKey()) {
     selectedDate = initialDate;
     weekStart = initialDate;
   }
@@ -188,14 +188,16 @@
     document.getElementById('dateStrip').innerHTML = days.map((day) => {
       const date = new Date(`${day.date}T12:00:00`);
       const weekday = '日一二三四五六'[date.getDay()];
+      const unavailable = day.closed || day.past;
       return `
-        <button class="btn date-chip ${day.date === selectedDate ? 'active' : ''}" type="button" data-date="${day.date}" ${day.closed ? 'disabled' : ''}>
+        <button class="btn date-chip ${day.date === selectedDate ? 'active' : ''} ${day.past ? 'is-past' : ''}" type="button" data-date="${day.date}" ${unavailable ? 'disabled' : ''}>
           <strong>週${weekday}</strong>
           <small>${date.getMonth() + 1}/${date.getDate()}</small>
-          ${day.closed ? '<em>公休</em>' : ''}
+          ${day.closed ? '<em>公休</em>' : (day.past ? '<em>已過</em>' : '')}
         </button>
       `;
     }).join('');
+    document.getElementById('prevRentalWeek').disabled = weekStart <= todayKey();
   }
 
   function renderSlots() {
@@ -209,10 +211,11 @@
       node.innerHTML = '<div class="notice">公休</div>';
       return;
     }
-    const rows = (day.slots || []).filter((slot) => slot.availableCount > 0);
+    const rows = (day.slots || []).filter((slot) => slot.past || slot.availableCount > 0);
     node.innerHTML = rows.map((slot) => `
-      <button class="rental-slot ${slot.startTime === selectedStart ? 'selected' : ''}" type="button" data-slot="${slot.startTime}">
+      <button class="rental-slot ${slot.startTime === selectedStart ? 'selected' : ''} ${slot.past ? 'is-past' : ''}" type="button" data-slot="${slot.startTime}" ${slot.past ? 'disabled' : ''}>
         <strong>${P.escapeHtml(slot.startTime)}～${P.escapeHtml(slot.endTime)}</strong>
+        ${slot.past ? '<small>已過時間</small>' : ''}
       </button>
     `).join('') || '<div class="rental-empty">這一天沒有符合的連續時段。</div>';
   }
@@ -231,12 +234,12 @@
         useType: selectedUse,
         durationMinutes
       }, preferencePayload()));
-      if (!(boardData.days || []).some((day) => day.date === selectedDate && !day.closed)) {
-        selectedDate = ((boardData.days || []).find((day) => !day.closed) || {}).date || weekStart;
+      if (!(boardData.days || []).some((day) => day.date === selectedDate && !day.closed && !day.past)) {
+        selectedDate = ((boardData.days || []).find((day) => !day.closed && !day.past) || {}).date || todayKey();
       }
       const selectedDay = (boardData.days || []).find((day) => day.date === selectedDate);
       if (requestedStart && selectedDay && (selectedDay.slots || []).some((slot) =>
-        slot.startTime === requestedStart && slot.availableCount > 0
+        slot.startTime === requestedStart && !slot.past && slot.availableCount > 0
       )) {
         selectedStart = requestedStart;
       }
@@ -460,7 +463,8 @@
   });
 
   document.getElementById('prevRentalWeek').addEventListener('click', () => {
-    weekStart = P.addDays(weekStart, -7);
+    const previous = P.addDays(weekStart, -7);
+    weekStart = previous < todayKey() ? todayKey() : previous;
     selectedDate = weekStart;
     loadBoard();
   });
