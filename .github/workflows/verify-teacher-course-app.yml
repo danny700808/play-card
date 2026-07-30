@@ -45,11 +45,12 @@ jobs:
 
           const requiredTabs = ['課表','學生','薪資','租用','其他'];
           for (const label of requiredTabs) {
-            if (!html.includes(`<b>${label}</b>`)) throw new Error(`Teacher tab is missing: ${label}`);
+            if (!new RegExp(`(?:button|a)[^>]*>${label}<(?:/button|/a)>`).test(html)) throw new Error(`Teacher tab is missing: ${label}`);
           }
           if ((html.match(/teacher-bottom-tabs/g) || []).length !== 1) throw new Error('Teacher bottom navigation must exist exactly once');
           if (html.includes('teacherQuickHome') || html.includes('data-teacher-quick')) throw new Error('Duplicate top teacher shortcuts remain');
           if (!html.includes('id="teacherMoreBackdrop"')) throw new Error('Other bottom sheet is missing');
+          if (!html.includes('id="teacherQuickBackdrop"') || !html.includes('id="weekPicker"')) throw new Error('Teacher quick actions or week picker is missing');
           for (const path of ['profile.html','contract.html','announcements.html','task.html','teacher-goods.html','forms-hub.html']) {
             if (!html.includes(`href="${path}"`)) throw new Error(`Other action is missing: ${path}`);
           }
@@ -58,7 +59,7 @@ jobs:
           if (!runtime.includes('tokenFingerprint') || !runtime.includes('youzi.teacherCourseApp.v8.')) throw new Error('Teacher cache is not session-scoped');
           if (!runtime.includes("coursePortalTeacherData") || !runtime.includes('coursePortalTeacherAction') || !runtime.includes('coursePortalTeacherLessonState')) throw new Error('Teacher course actions are incomplete');
           if (!session.includes('sessionLoading') || !session.includes('MutationObserver')) throw new Error('Saved-session loading gate is missing');
-          if (!css.includes('grid-template-columns:repeat(5') || !css.includes('.teacher-more-sheet')) throw new Error('Five tabs or Other sheet styles are missing');
+          if (!css.includes('grid-template-columns:repeat(5') || !css.includes('.teacher-more-sheet') || !css.includes('scroll-snap-type:x mandatory')) throw new Error('Five tabs, Other sheet, or day snapping styles are missing');
           if (!css.includes('.week-cell.head{position:sticky') || !css.includes('.week-cell.time{position:sticky')) throw new Error('Sticky date or time axes are missing');
           if (!redirect.includes("location.replace('teacher-course-portal.html?'")) throw new Error('External teacher login does not enter the teacher course app');
           if (internalWorkflow.includes('refine-course-portals.cjs') || internalWorkflow.includes('teacher-course-portal.html')) throw new Error('Internal course builder still controls the teacher app');
