@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
-  <title>課務入口與 LINE 綁定管理｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-line-oauth-v2">
+  <title>課務入口帳號管理｜柚子樂器</title>
+  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
 </head>
 <body>
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">管</span><div><h1>入口與 LINE 綁定管理</h1><p>老師、學生／家長與一般租用者</p></div></div>
+      <div class="head-title"><span class="brand-mark">管</span><div><h1>登入帳號管理</h1><p>老師、學生／家長與一般租用者</p></div></div>
       <a class="btn" href="course-scheduler.html">返回排課系統</a>
     </header>
     <section class="card">
@@ -24,9 +24,9 @@
     <section class="card">
       <div class="toolbar">
         <div class="field"><label>管理密碼</label><input id="adminPin" type="password" autocomplete="current-password"></div>
-        <button class="btn primary" id="loadBtn" type="button">讀取綁定資料</button>
+        <button class="btn primary" id="loadBtn" type="button">讀取帳號資料</button>
       </div>
-      <div class="notice">「停用」可日後恢復；「刪除登入資料」會清除 LINE／Email 綁定、驗證碼與裝置登入，讓本人重新開始。老師、學生、課程、租用與帳務歷史不會刪除。</div>
+      <div class="notice">「停用」可日後恢復；「刪除登入資料」會清除 LINE／一般登入、驗證碼與裝置登入，讓本人重新註冊。老師、學生、課程、租用與帳務歷史不會刪除。</div>
     </section>
     <section class="card binding-admin-card">
       <nav class="tabs">
@@ -41,7 +41,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-line-oauth-v2"></script>
+  <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -54,19 +54,27 @@
       return `租用者 ${row.targetName || row.renterId || ''}`;
     }
 
+    function loginMethod(row) {
+      const hasLine = Boolean(row.lineDisplayName || /line/.test(row.authProvider || ''));
+      const hasEmail = Boolean(row.emailVerified || /email/.test(row.authProvider || ''));
+      if (hasLine && hasEmail) return 'LINE＋一般登入';
+      if (hasLine) return 'LINE 登入';
+      return '一般登入';
+    }
+
     function render() {
       const visible = rows.filter((row) => filter === 'all' || row.type === filter);
       document.getElementById('bindingList').innerHTML = visible.length ? visible.map((row) => `
         <article class="list-row">
           <strong>${P.escapeHtml(label(row))}</strong>
-          <span class="binding-meta"><b>${P.escapeHtml(row.lineDisplayName || 'LINE 名稱未取得')}</b><small>${P.escapeHtml(row.relationship || row.type)}・${row.lineFriendFlag === true ? '可接收 LINE 提醒' : (row.lineFriendFlag === false ? '尚未加入官方帳號' : '好友狀態尚未確認')}</small></span>
-          <span class="binding-meta"><b>${P.escapeHtml(row.email || '尚未設定 Email')}</b><small>${row.emailVerified ? 'Email 已驗證' : '舊帳號／Email 尚未驗證'}</small></span>
+          <span class="binding-meta"><b>${P.escapeHtml(loginMethod(row))}</b><small>${row.lineDisplayName ? P.escapeHtml(row.lineDisplayName) : '未使用 LINE'}${row.lineDisplayName ? `・${row.lineFriendFlag === true ? '可接收提醒' : '尚未開啟 LINE 提醒'}` : ''}</small></span>
+          <span class="binding-meta"><b>${P.escapeHtml(row.email || '尚未設定 Email')}</b><small>${row.emailVerified ? 'Email 已驗證' : 'Email 尚未驗證'}</small></span>
           <span class="binding-meta"><span class="badge ${row.status === 'active' ? '' : 'danger'}">${row.status === 'active' ? '使用中' : '已停用'}</span><small>${Number(row.activeSessionCount || 0)} 台裝置登入中</small></span>
           <span class="binding-actions">
             <button class="btn ${row.status === 'active' ? 'danger' : 'soft'}" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="${row.status === 'active' ? 'revoke' : 'restore'}">${row.status === 'active' ? '停用' : '恢復'}</button>
             <button class="btn danger" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="delete">刪除登入資料</button>
           </span>
-        </article>`).join('') : '<p class="muted">目前沒有綁定資料。</p>';
+        </article>`).join('') : '<p class="muted">目前沒有登入帳號。</p>';
     }
 
     async function load() {
@@ -90,7 +98,7 @@
       const button = event.target.closest('[data-id]');
       if (!button) return;
       if (button.dataset.action === 'revoke' && !confirm('確定停用這個入口帳號？所有裝置會立即登出，之後仍可恢復。')) return;
-      if (button.dataset.action === 'delete' && !confirm('確定永久刪除這筆登入資料？LINE／Email 綁定、驗證碼與裝置登入都會清除，之後必須重新驗證；課程、租用與帳務歷史會保留。')) return;
+      if (button.dataset.action === 'delete' && !confirm('確定永久刪除這筆登入資料？LINE／一般登入、驗證碼與裝置登入都會清除，之後必須重新註冊；課程、租用與帳務歷史會保留。')) return;
       P.loading(button, true, '處理中…');
       try {
         await P.call('coursePortalAdminBindingAction', {
@@ -99,7 +107,7 @@
           type: button.dataset.type,
           action: button.dataset.action
         });
-        P.toast(button.dataset.action === 'delete' ? '登入資料已刪除，可重新進行首次驗證。' : '綁定狀態已更新。');
+        P.toast(button.dataset.action === 'delete' ? '登入資料已刪除，可重新註冊。' : '帳號狀態已更新。');
         await load();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
