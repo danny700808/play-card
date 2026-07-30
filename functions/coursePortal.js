@@ -5,7 +5,12 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
-const { normalizePhone, phoneMatches } = require('./coursePortalUtils');
+const {
+  normalizePhone,
+  phoneMatches,
+  normalizeScheduleStatus,
+  courseSourceIds
+} = require('./coursePortalUtils');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -1552,8 +1557,12 @@ function overlaps(aStart, aEnd, bStart, bEnd) {
 }
 
 function eventBlocksResource(event) {
-  const status = clean(event && event.status).toLowerCase();
-  return !['leave', '請假', 'cancelled', 'canceled', 'cancel', '註銷', '作廢'].includes(status);
+  const status = normalizeScheduleStatus(event && event.status);
+  return !['leave', 'absent', 'cancelled'].includes(status);
+}
+
+function publicRentalSlotIsPast(date, startTime) {
+  return taipeiDateTimeMillis(date, startTime) <= Date.now();
 }
 
 function roomSupportsSubject(room, subjectId, bundle, setting = {}) {
@@ -1693,7 +1702,7 @@ function publicEvent(row, maps, ownTeacherId) {
   return {
     id: sourceId(row),
     sourceId: sourceId(row),
-    fixedCourseId: clean(row.fixedCourseId || row.courseId || row.scheduleId),
+    fixedCourseId: clean(row.fixedCourseId || row.sourceCourseId || row.courseId || row.scheduleId),
     date: eventDate(row),
     startTime: eventStart(row),
     endTime: eventEnd(row),
@@ -1742,7 +1751,10 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
   };
   const exact = [...events, ...temporary, ...rentals]
     .filter((row) => eventDate(row) >= startDate && eventDate(row) <= endDate);
-  const exactKeys = new Set(exact.map((row) => `${sourceId(row)}|${eventDate(row)}`));
+  const exactKeys = new Set();
+  exact.forEach((row) => {
+    courseSourceIds(row).forEach((id) => exactKeys.add(`${id}|${eventDate(row)}`));
+  });
   const expanded = [];
   fixed.forEach((row) => {
     const start = eventDate(row);
@@ -1752,9 +1764,14 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     for (let key = start; key <= endDate && key <= finalDate; key = addDays(key, interval * 7)) {
       if (key < startDate) continue;
       const statusByDate = row.statusByDate || row.exceptions || {};
-      const status = clean(statusByDate[key] && (statusByDate[key].status || statusByDate[key]));
-      if (['cancelled', 'leave', '註銷', '請假'].includes(status.toLowerCase())) continue;
-      const clone = Object.assign({}, row, { date: key, __id: `${sourceId(row)}@${key}`, fixedCourseId: sourceId(row) });
+      const status = normalizeScheduleStatus(statusByDate[key]);
+      if (['cancelled', 'leave', 'absent'].includes(status)) continue;
+      const clone = Object.assign({}, row, {
+        date: key,
+        status: status === 'scheduled' ? clean(row.status || 'scheduled') : status,
+        __id: `${sourceId(row)}@${key}`,
+        fixedCourseId: sourceId(row)
+      });
       if (!exactKeys.has(`${sourceId(row)}|${key}`)) expanded.push(clone);
     }
   });
@@ -2024,6 +2041,9 @@ async function rentalAvailability(data) {
   const endMinutes = startMinutes + duration;
   const endTime = String(Math.floor(endMinutes / 60)).padStart(2, '0') + ':' + String(endMinutes % 60).padStart(2, '0');
   if (!date || !startTime) throw new HttpsError('invalid-argument', '請選擇日期與時間。');
+  if (publicRentalSlotIsPast(date, startTime)) {
+    throw new HttpsError('failed-precondition', '一般租用只能預約尚未開始的時段。');
+  }
   const window = businessWindow(policy, date);
   if (window.closed) throw new HttpsError('failed-precondition', '這一天公休，不能預約。');
   if (startMinutes < window.startMinutes || endMinutes > window.endMinutes) {
@@ -2098,12 +2118,14 @@ async function rentalDayBoard(data) {
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const slots = [];
+  const dayPast = date < currentTaipeiDay();
   if (!window.closed) {
     for (let minute = window.startMinutes; minute + duration <= window.endMinutes; minute += 30) {
       const startTime = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
       const endMinute = minute + duration;
       const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
-      const availableRooms = bundle.rooms.filter(sourceActive).filter((room) => {
+      const past = publicRentalSlotIsPast(date, startTime);
+      const availableRooms = past ? [] : bundle.rooms.filter(sourceActive).filter((room) => {
         const id = sourceId(room);
         const setting = settingsMap[id] || {};
         if (
@@ -2116,10 +2138,10 @@ async function rentalDayBoard(data) {
           overlaps(startTime, endTime, event.startTime, event.endTime)
         );
       }).map((room) => ({ id: sourceId(room), name: rentalRoomProfile(room, settingsMap[sourceId(room)] || {}).publicName }));
-      slots.push({ startTime, endTime, availableCount: availableRooms.length, rooms: availableRooms.slice(0, 8) });
+      slots.push({ startTime, endTime, past, availableCount: availableRooms.length, rooms: availableRooms.slice(0, 8) });
     }
   }
-  return { ok: true, date, closed: window.closed, role: session.role, useOptions, slots };
+  return { ok: true, date, closed: window.closed, past: dayPast, role: session.role, useOptions, slots };
 }
 
 async function rentalWeekBoard(data) {
@@ -2138,13 +2160,15 @@ async function rentalWeekBoard(data) {
   for (let offset = 0; offset < 7; offset += 1) {
     const date = addDays(startDate, offset);
     const window = businessWindow(policy, date);
+    const dayPast = date < currentTaipeiDay();
     const slots = [];
     if (!window.closed) {
       for (let minute = window.startMinutes; minute + duration <= window.endMinutes; minute += 30) {
         const startTime = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
         const endMinute = minute + duration;
         const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
-        const rooms = bundle.rooms.filter(sourceActive).filter((room) => {
+        const past = publicRentalSlotIsPast(date, startTime);
+        const rooms = past ? [] : bundle.rooms.filter(sourceActive).filter((room) => {
           const id = sourceId(room);
           const setting = settingsMap[id] || {};
           if (
@@ -2157,10 +2181,16 @@ async function rentalWeekBoard(data) {
             overlaps(startTime, endTime, event.startTime, event.endTime)
           );
         }).map((room) => ({ id: sourceId(room), name: rentalRoomProfile(room, settingsMap[sourceId(room)] || {}).publicName }));
-        slots.push({ startTime, endTime, availableCount: rooms.length, rooms: rooms.slice(0, 8) });
+        slots.push({ startTime, endTime, past, availableCount: rooms.length, rooms: rooms.slice(0, 8) });
       }
     }
-    days.push({ date, closed: window.closed, availableSlotCount: slots.filter((slot) => slot.availableCount > 0).length, slots });
+    days.push({
+      date,
+      closed: window.closed,
+      past: dayPast,
+      availableSlotCount: slots.filter((slot) => !slot.past && slot.availableCount > 0).length,
+      slots
+    });
   }
   return { ok: true, startDate, endDate, role: session.role, durationMinutes: duration, useOptions, businessHours: policy.businessHours, days };
 }
@@ -2168,7 +2198,7 @@ async function rentalWeekBoard(data) {
 async function createRoomBooking(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
   const availability = await rentalAvailability(data);
-  if (taipeiDateTimeMillis(availability.date, availability.startTime) <= Date.now()) {
+  if (publicRentalSlotIsPast(availability.date, availability.startTime)) {
     throw new HttpsError('failed-precondition', '只能預約尚未開始的時段。');
   }
   const room = availability.rooms.find((item) => item.id === clean(data.roomId));
