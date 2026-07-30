@@ -59,6 +59,14 @@
           <option value="video" ${room.kind === 'video' ? 'selected' : ''}>視訊教室</option>
           <option value="holding" ${room.kind === 'holding' ? 'selected' : ''}>不定時教室</option>
         </select>
+        <label>鋼琴設備
+          <select data-room-piano="${index}">
+            <option value="" ${!room.pianoType ? 'selected' : ''}>無鋼琴</option>
+            <option value="digital_piano" ${room.pianoType === 'digital_piano' ? 'selected' : ''}>電鋼琴</option>
+            <option value="grand_piano" ${room.pianoType === 'grand_piano' ? 'selected' : ''}>平台鋼琴</option>
+            <option value="upright_piano" ${room.pianoType === 'upright_piano' ? 'selected' : ''}>直立鋼琴</option>
+          </select>
+        </label>
         <label>每小時 <input type="number" min="0" step="50" data-room-fee="${index}" value="${Number(room.rentalFee || 0)}" style="width:72px"></label>
         <label><input type="checkbox" data-room-rentable="${index}" ${room.rentable ? 'checked' : ''}> 可租用</label>
         <label><input type="checkbox" data-room-teacher="${index}" ${room.teacherSchedulable !== false ? 'checked' : ''}> 可排課</label>
@@ -108,6 +116,7 @@
 
     rooms.forEach((room, index) => {
       room.kind = document.querySelector(`[data-room-kind="${index}"]`).value;
+      room.pianoType = document.querySelector(`[data-room-piano="${index}"]`).value;
       room.rentalFee = Number(document.querySelector(`[data-room-fee="${index}"]`).value || 0);
       room.rentable = document.querySelector(`[data-room-rentable="${index}"]`).checked;
       room.teacherSchedulable = document.querySelector(`[data-room-teacher="${index}"]`).checked;
