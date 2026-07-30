@@ -1,0 +1,61 @@
+name: Verify Rental Portal V2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'room-booking.html'
+      - 'room-booking-v2.js'
+      - 'room-booking-v2.css'
+      - 'course-portal-settings.html'
+      - 'course-portal-settings-v2.js'
+      - 'course-portal-settings-v2.css'
+      - 'teacher-room-rules-v1.js'
+      - 'portal-clean-ui-v1.css'
+      - 'teacher-course-portal.html'
+      - 'teacher-course-portal-v8.js'
+      - 'student-course-portal.html'
+      - 'functions/coursePortal.js'
+      - '.github/workflows/verify-rental-portal-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-rental-portal-v2-main
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript
+        run: |
+          node --check room-booking-v2.js
+          node --check course-portal-settings-v2.js
+          node --check teacher-room-rules-v1.js
+          node --check teacher-course-portal-v8.js
+          node --check functions/coursePortal.js
+      - name: Verify rental rules
+        run: |
+          grep -q "DEFAULT_BUSINESS_HOURS" functions/coursePortal.js
+          grep -q "'1': { closed: true" functions/coursePortal.js
+          grep -q "'2': { closed: false, start: '12:30', end: '21:00'" functions/coursePortal.js
+          grep -q "coursePortalRoomLocks" functions/coursePortal.js
+          grep -q "studentDiscountRequested" functions/coursePortal.js
+          grep -q "coursePortalAdminRentalSettingsData" functions/coursePortal.js
+          grep -q "roomKind" functions/coursePortal.js
+          grep -q "5號鋼琴" functions/coursePortal.js
+      - name: Verify clean portal flow
+        run: |
+          grep -q "rental-use-card" room-booking.html
+          grep -q "durationGrid" room-booking.html
+          grep -q "柚子學生半價" room-booking.html
+          grep -q "room-booking-v2.js" room-booking.html
+          grep -q "teacher-room-rules-v1.js" teacher-course-portal.html
+          grep -q "portal-clean-ui-v1.css" student-course-portal.html
+          grep -q "不定時教室只供暫時放置" teacher-room-rules-v1.js
+          grep -q "視訊教室不是實體教室" teacher-room-rules-v1.js
+          echo "Rental portal v2 verified"
