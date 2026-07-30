@@ -19,6 +19,8 @@
   let allowGuzhengMove = false;
   let drumType = '';
   let pendingStart = '';
+  let boardRequestId = 0;
+  let roomRequestId = 0;
 
   const bindView = document.getElementById('publicBindView');
   const bookingView = document.getElementById('bookingView');
@@ -88,9 +90,8 @@
     return null;
   }
 
-  async function loadUses() {
-    const result = await P.call('coursePortalRentalUseSettings', {});
-    const items = result.items || [];
+  function renderUses(items) {
+    items = Array.isArray(items) ? items : [];
     if (!items.some((row) => row.id === selectedUse) && items[0]) selectedUse = items[0].id;
     document.getElementById('rentalUseGrid').innerHTML = items.map((row) => `
       <button class="rental-use-card ${row.id === selectedUse ? 'active' : ''}" type="button" data-use="${P.escapeHtml(row.id)}">
@@ -115,11 +116,15 @@
     P.toast(message, 'error');
   }
 
+  function isAuthError(error) {
+    return /登入|綁定|權限|到期|session|unauthenticated/i.test(clean(error && error.message));
+  }
+
   async function loadRentalData() {
     try {
-      await loadUses();
       await loadBoard();
     } catch (error) {
+      if (isAuthError(error)) throw error;
       showRentalLoadFailure(error);
     }
   }
@@ -211,7 +216,7 @@
       node.innerHTML = '<div class="notice">公休</div>';
       return;
     }
-    const rows = (day.slots || []).filter((slot) => slot.past || slot.availableCount > 0);
+    const rows = (day.slots || []).filter((slot) => !slot.past && slot.availableCount > 0);
     node.innerHTML = rows.map((slot) => `
       <button class="rental-slot ${slot.startTime === selectedStart ? 'selected' : ''} ${slot.past ? 'is-past' : ''}" type="button" data-slot="${slot.startTime}" ${slot.past ? 'disabled' : ''}>
         <strong>${P.escapeHtml(slot.startTime)}～${P.escapeHtml(slot.endTime)}</strong>
@@ -221,12 +226,14 @@
   }
 
   async function loadBoard() {
+    const requestId = ++boardRequestId;
+    roomRequestId += 1;
     const requestedStart = pendingStart;
     pendingStart = '';
     selectedStart = '';
     selectedRoom = null;
     document.getElementById('roomStep').classList.add('hidden');
-    document.getElementById('rentalBoard').innerHTML = '<div class="rental-empty">讀取中…</div>';
+    document.getElementById('rentalBoard').innerHTML = '<div class="rental-empty">正在檢查可用時段…</div>';
     try {
       boardData = await P.call('coursePortalRentalWeekBoard', Object.assign({
         sessionToken: token,
@@ -234,6 +241,11 @@
         useType: selectedUse,
         durationMinutes
       }, preferencePayload()));
+      if (requestId !== boardRequestId) return;
+      role = boardData.role || role;
+      weekStart = boardData.startDate || weekStart;
+      selectedUse = boardData.selectedUseType || selectedUse;
+      renderUses(boardData.useOptions || []);
       if (!(boardData.days || []).some((day) => day.date === selectedDate && !day.closed && !day.past)) {
         selectedDate = ((boardData.days || []).find((day) => !day.closed && !day.past) || {}).date || todayKey();
       }
@@ -245,8 +257,13 @@
       }
       renderDates();
       renderSlots();
+      const studentRateLabel = document.querySelector('input[name="rentalRate"][value="student"]');
+      if (studentRateLabel && studentRateLabel.closest('label')) {
+        studentRateLabel.closest('label').classList.toggle('hidden', role !== 'student');
+      }
       if (selectedStart) await loadRooms();
     } catch (error) {
+      if (isAuthError(error)) throw error;
       document.getElementById('rentalBoard').innerHTML = '<div class="rental-empty">讀取失敗。</div>';
       P.toast(error.message, 'error');
     }
@@ -279,8 +296,9 @@
 
   async function loadRooms() {
     if (!selectedStart) return;
+    const requestId = ++roomRequestId;
     document.getElementById('roomStep').classList.remove('hidden');
-    document.getElementById('roomGrid').innerHTML = '<div class="rental-empty">讀取中…</div>';
+    document.getElementById('roomGrid').innerHTML = '<div class="rental-empty">正在確認教室…</div>';
     try {
       roomData = await P.call('coursePortalRentalAvailability', Object.assign({
         sessionToken: token,
@@ -290,6 +308,7 @@
         useType: selectedUse,
         studentDiscountRequested: false
       }, preferencePayload()));
+      if (requestId !== roomRequestId) return;
       renderRooms();
       document.getElementById('roomStep').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
@@ -305,7 +324,9 @@
 
   function estimatePrice() {
     if (!selectedRoom) return 0;
-    const rate = rateIsStudent() ? 0.5 : 1;
+    const rate = rateIsStudent()
+      ? Number(roomData && roomData.studentDiscountRate || 0.5)
+      : 1;
     return Math.round(Number(selectedRoom.unitFee || 0) * durationMinutes / 60 * rate);
   }
 
@@ -352,7 +373,8 @@
       const result = await P.call('coursePortalRentalMyBookings', { sessionToken: token });
       myBookings = result.bookings || [];
       renderBookings();
-    } catch (_) {
+    } catch (error) {
+      if (isAuthError(error)) throw error;
       document.getElementById('myBookingList').innerHTML = '<div class="rental-empty">讀取失敗。</div>';
     }
   }
@@ -362,8 +384,11 @@
     token = nextToken;
     showBooking(true);
     renderDurations();
-    await loadBookings();
-    await loadRentalData();
+    const studentRateLabel = document.querySelector('input[name="rentalRate"][value="student"]');
+    if (studentRateLabel && studentRateLabel.closest('label')) {
+      studentRateLabel.closest('label').classList.toggle('hidden', role !== 'student');
+    }
+    await Promise.all([loadRentalData(), loadBookings()]);
   }
 
   P.installAuth({ role: 'renter', authViewId: 'publicBindView' });
