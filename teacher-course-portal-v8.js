@@ -20,6 +20,8 @@
   let activeTab = 'schedule';
   let data = emptyData();
   let quickContext = null;
+  let planner = null;
+  let availabilityRequestId = 0;
 
   function emptyData() {
     return {
@@ -50,6 +52,12 @@
   function roomOptionLabel(room) {
     const equipment = clean(room && room.equipmentLabel) || inferredEquipmentLabel(room && room.name);
     return equipment ? `${clean(room.name)}（${equipment}）` : clean(room && room.name);
+  }
+
+  function roomChoiceNote(room, fallback) {
+    return room && room.requiresGuzhengMove
+      ? '可使用，但需自行從展演空間搬運古箏'
+      : (fallback || '這間教室目前可使用');
   }
 
   function escapeHtml(value) {
@@ -105,6 +113,30 @@
   function timeText(value) {
     value = ((Number(value) % 1440) + 1440) % 1440;
     return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+  }
+
+  function isPastSlot(date, startTime) {
+    const value = Date.parse(`${clean(date)}T${clean(startTime).slice(0, 5)}:00+08:00`);
+    return !Number.isFinite(value) || value <= Date.now();
+  }
+
+  function operationId() {
+    const bytes = new Uint32Array(2);
+    if (global.crypto && global.crypto.getRandomValues) global.crypto.getRandomValues(bytes);
+    else {
+      bytes[0] = Math.floor(Math.random() * 0xffffffff);
+      bytes[1] = Math.floor(Math.random() * 0xffffffff);
+    }
+    return `${Date.now().toString(36)}-${bytes[0].toString(36)}${bytes[1].toString(36)}`;
+  }
+
+  function eventKey(event) {
+    return `${clean(event && event.date)}|${clean(event && event.startTime).slice(0, 5)}`;
+  }
+
+  function allowedSubjects() {
+    const ids = new Set((data.teacher && data.teacher.subjectIds || []).map(clean).filter(Boolean));
+    return ids.size ? data.subjects.filter((row) => ids.has(clean(row.id))) : data.subjects.slice();
   }
 
   function tokenFingerprint(value) {
@@ -222,13 +254,43 @@
     const studentNames = event.studentNames || [];
     const names = studentNames.join('、') || '未指定學生';
     const groupLabel = studentNames.length > 2 ? '團體課' : (studentNames.length === 2 ? '雙人課' : '');
-    const stateLabel = event.status === 'leave' ? '請假' : (event.status === 'absent' ? '曠課' : '');
-    const details = [event.subjectName, event.roomName, stateLabel].filter(Boolean).join('・');
+    const status = clean(event.status).toLowerCase();
+    const stateLabel = status === 'leave'
+      ? '請假'
+      : (status === 'absent'
+        ? '曠課'
+        : (['attended', 'checked_in', 'present'].includes(status)
+          ? '已簽到'
+          : (status === 'cancelled'
+            ? '已取消'
+            : (status === 'pending_conflict' ? '待補排' : ''))));
+    const details = [
+      event.subjectName,
+      event.roomName,
+      stateLabel,
+      status === 'pending_conflict' ? event.pendingReason : ''
+    ].filter(Boolean).join('・');
+    const portalAction = clean(event.portalAction);
+    const eventType = clean(event.type).toLowerCase();
+    const visualType = (
+      ['rental', 'room_rental'].includes(eventType) || ['rental', 'room_booking'].includes(portalAction)
+        ? 'rental'
+        : (event.specialLesson || portalAction === 'teacher_gift' || eventType === 'teacher_gift'
+        ? 'gift'
+        : (portalAction === 'extra_lesson' || eventType === 'temporary' || eventType === 'extra'
+          ? 'extra'
+          : (portalAction === 'single_move' || portalAction === 'permanent_move' || eventType === 'single'
+            ? 'single'
+            : (eventType === 'trial' || eventType === 'trial_lesson' ? 'trial' : 'fixed'))))
+    );
     const classes = [
       'lesson',
-      event.type === 'teacher_gift' ? 'gift' : '',
-      event.status === 'leave' ? 'leave' : '',
-      event.status === 'absent' ? 'absent' : '',
+      visualType,
+      status === 'leave' ? 'leave' : '',
+      status === 'absent' ? 'absent' : '',
+      ['attended', 'checked_in', 'present'].includes(status) ? 'attended' : '',
+      status === 'cancelled' ? 'cancelled' : '',
+      status === 'pending_conflict' ? 'pending-conflict' : '',
       groupLabel ? 'group-lesson' : '',
       conflict ? 'conflict-lesson' : ''
     ].filter(Boolean).join(' ');
@@ -259,6 +321,10 @@
     const startHour = Number(data.hours.start || 10);
     const endHour = Number(data.hours.end || 21);
     const scheduleStart = startHour * 60;
+    const plannerSlots = new Map((planner && planner.slots || []).map((slot) => [
+      `${slot.date}|${slot.startTime}`,
+      slot
+    ]));
     let html = '<div class="week-cell head week-corner" style="grid-column:1;grid-row:1"></div>';
 
     days.forEach((day, dayIndex) => {
@@ -269,12 +335,21 @@
       const slotStart = timeText(minute);
       const slotEnd = timeText(minute + 30);
       const gridRow = slotIndex + 2;
-      html += `<div class="week-cell time" style="grid-column:1;grid-row:${gridRow}">${slotStart}</div>`;
+      html += `<div class="week-cell time" style="grid-column:1;grid-row:${gridRow}">${minute % 60 === 0 ? slotStart : ''}</div>`;
       days.forEach((day, dayIndex) => {
         const rows = uniqueEvents(events.filter((event) => event.date === day && event.startTime < slotEnd && slotStart < event.endTime));
+        const available = plannerSlots.get(`${day}|${slotStart}`);
+        const past = isPastSlot(day, slotStart);
         html += `<div class="week-cell" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
-        if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 1) html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}">空堂</button>`;
-        else if (!rows.length) html += '<span class="closed-slot">公休</span>';
+        if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 1 && !past) {
+          if (available) {
+            html += `<button class="empty-slot available-target" type="button" data-flow-target="${day}|${slotStart}">可調入</button>`;
+          } else {
+            html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}" aria-label="${escapeHtml(`${day} ${slotStart} 查詢空教室`)}"></button>`;
+          }
+        } else if (!rows.length && new Date(`${day}T12:00:00`).getDay() === 1) {
+          html += '<span class="closed-slot">公休</span>';
+        }
         html += '</div>';
       });
     }
@@ -297,7 +372,6 @@
 
     grid.innerHTML = html;
     grid.dataset.week = weekStart;
-    document.getElementById('weekRange').textContent = `${days[0]} ～ ${days[6]}`;
     document.getElementById('weekPicker').value = weekStart;
     requestAnimationFrame(() => {
       if (priorWeek === weekStart) {
@@ -357,20 +431,26 @@
   }
 
   async function fetchData(force) {
+    const request = {
+      sessionToken: token,
+      weekStart,
+      month: payrollMonth,
+      includePayroll: activeTab === 'payroll'
+    };
     const cached = !force ? readCache(weekStart, payrollMonth) : null;
     if (cached) {
       mergeData(cached);
       renderAll();
-      invoke('coursePortalTeacherData', { sessionToken: token, weekStart, month: payrollMonth }).then((fresh) => {
+      invoke('coursePortalTeacherData', request).then((fresh) => {
         mergeData(fresh);
-        writeCache(weekStart, payrollMonth, fresh);
+        writeCache(weekStart, payrollMonth, data);
         renderAll();
       }).catch(() => {});
       return;
     }
-    const result = await invoke('coursePortalTeacherData', { sessionToken: token, weekStart, month: payrollMonth });
+    const result = await invoke('coursePortalTeacherData', request);
     mergeData(result);
-    writeCache(weekStart, payrollMonth, result);
+    writeCache(weekStart, payrollMonth, data);
     renderAll();
   }
 
@@ -410,11 +490,44 @@
   }
 
   function closeQuick() {
+    if (quickContext && quickContext.type === 'target-search') availabilityRequestId += 1;
     const node = document.getElementById('teacherQuickBackdrop');
     node.classList.add('hidden');
     node.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('teacher-more-open');
     quickContext = null;
+  }
+
+  function showQuick(title, subtitle, html, context) {
+    quickContext = context || null;
+    document.getElementById('teacherQuickTitle').textContent = clean(title) || '選擇操作';
+    document.getElementById('teacherQuickSubtitle').textContent = clean(subtitle);
+    document.getElementById('teacherQuickActions').innerHTML = html;
+    const node = document.getElementById('teacherQuickBackdrop');
+    node.classList.remove('hidden');
+    node.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('teacher-more-open');
+  }
+
+  function setFlowBanner(title, detail) {
+    const banner = document.getElementById('teacherFlowBanner');
+    banner.classList.remove('hidden');
+    document.getElementById('teacherFlowTitle').textContent = clean(title);
+    document.getElementById('teacherFlowDetail').textContent = clean(detail);
+  }
+
+  function setProgress(active, title, detail) {
+    if (active) setFlowBanner(title || '正在確認課表', detail || '最後檢查老師、學生、教室與租用衝突…');
+    document.getElementById('teacherOperationProgress').classList.toggle('hidden', !active);
+  }
+
+  function cancelPlanner(closeSheet) {
+    availabilityRequestId += 1;
+    planner = null;
+    setProgress(false);
+    document.getElementById('teacherFlowBanner').classList.add('hidden');
+    if (closeSheet) closeQuick();
+    renderWeek();
   }
 
   function lessonActionDefaults(row, action) {
@@ -434,40 +547,97 @@
     };
   }
 
+  function lessonSummary(row) {
+    return `${dayLabel(row.date)} ${row.startTime}～${row.endTime}・${(row.studentNames || []).join('、') || '未指定學生'}・${row.subjectName || '未指定科目'}`;
+  }
+
+  function choiceSummary(title, details, note) {
+    return `<div class="teacher-choice-summary"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(details)}</span>${note ? `<small>${escapeHtml(note)}</small>` : ''}</div>`;
+  }
+
   function openQuickForLesson(row) {
-    quickContext = { type: 'lesson', row };
-    document.getElementById('teacherQuickTitle').textContent = (row.studentNames || []).join('、') || '這堂課';
-    document.getElementById('teacherQuickSubtitle').textContent = `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`;
-    document.getElementById('teacherQuickActions').innerHTML = `
-      <button class="primary" type="button" data-quick-action="single_move">單次調課</button>
-      <button type="button" data-quick-action="permanent_move">永久調課</button>
+    const eventType = clean(row && row.type).toLowerCase();
+    const portalAction = clean(row && row.portalAction).toLowerCase();
+    const isRental = ['rental', 'room_rental'].includes(eventType) ||
+      ['rental', 'room_booking'].includes(portalAction);
+    if (isRental) {
+      showQuick(
+        '教室租用',
+        `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`,
+        `${choiceSummary(
+          row.roomName || '已租用教室',
+          '這是租用紀錄，不會列入學生課程。',
+          '若要更換時間或教室，請先到租用入口取消，再重新預約。'
+        )}<a href="room-booking.html?from=teacher">前往教室租用入口</a>`,
+        { type: 'rental', row }
+      );
+      return;
+    }
+    const movable = !isPastSlot(row.date, row.startTime) && clean(row.status || 'scheduled') === 'scheduled';
+    showQuick(
+      (row.studentNames || []).join('、') || '這堂課',
+      `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`,
+      `
+      ${movable ? '<button class="primary" type="button" data-quick-action="single_move">只調這一次</button>' : ''}
+      ${movable && row.recurring === true ? '<button type="button" data-quick-action="permanent_move">之後固定改到新時段</button>' : ''}
       <button type="button" data-quick-action="extra_lesson">增加一堂課</button>
       <button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>
       <button type="button" data-quick-state="leave">學生請假</button>
       <button class="danger" type="button" data-quick-state="absent">標示曠課</button>
       <button type="button" data-quick-late>補簽到</button>
-      ${row.portalChangeId ? '<button class="danger" type="button" data-quick-state="cancel_change">取消此次安排</button>' : ''}
-    `;
-    const node = document.getElementById('teacherQuickBackdrop');
-    node.classList.remove('hidden');
-    node.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('teacher-more-open');
+      ${row.portalChangeId && ['extra_lesson', 'teacher_gift'].includes(clean(row.portalAction))
+        ? '<button class="danger" type="button" data-quick-state="cancel_change">取消此次新增</button>'
+        : ''}
+    `,
+      { type: 'lesson', row }
+    );
   }
 
-  function openQuickForEmpty(date, startTime) {
+  async function openQuickForEmpty(date, startTime) {
     const endTime = timeText(timeMinutes(startTime) + 60);
-    quickContext = { type: 'empty', date, startTime, endTime };
-    document.getElementById('teacherQuickTitle').textContent = '安排這個時段';
-    document.getElementById('teacherQuickSubtitle').textContent = `${dayLabel(date)} ${startTime}～${endTime}`;
-    document.getElementById('teacherQuickActions').innerHTML = `
-      <button class="primary" type="button" data-quick-action="extra_lesson">安排學生／增加課程</button>
-      <button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>
-      <a href="room-booking.html?from=teacher&amp;use=other&amp;date=${encodeURIComponent(date)}&amp;start=${encodeURIComponent(startTime)}&amp;duration=60">租用教室</a>
-    `;
-    const node = document.getElementById('teacherQuickBackdrop');
-    node.classList.remove('hidden');
-    node.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('teacher-more-open');
+    if (isPastSlot(date, startTime)) {
+      toast('不能安排到已經過去的時間。', 'error');
+      return;
+    }
+    const requestId = ++availabilityRequestId;
+    showQuick(
+      '正在確認這個時段',
+      `${dayLabel(date)} ${startTime}～${endTime}`,
+      choiceSummary('搜尋可用教室', '正在排除既有課程、租用、老師與學生衝突…', '這裡不會把老師沒有課直接當成教室有空。'),
+      { type: 'target-search', date, startTime, endTime, requestId }
+    );
+    try {
+      const result = await invoke('coursePortalTeacherSlotOptions', {
+        sessionToken: token,
+        date,
+        startTime
+      });
+      if (requestId !== availabilityRequestId) return;
+      const context = { type: 'target-home', date, startTime, endTime, result };
+      const candidateCount = (result.candidateLessons || []).length;
+      showQuick(
+        '安排這個時段',
+        `${dayLabel(date)} ${startTime} 開始`,
+        `${choiceSummary(
+          '即時空位已確認',
+          candidateCount ? `有 ${candidateCount} 堂未來課程符合這個開始時間。` : '目前沒有可直接調入的既有課程。',
+          '選擇後，儲存前仍會再檢查一次。'
+        )}
+        ${candidateCount ? '<button class="primary" type="button" data-target-browse>把現有課調到這裡</button>' : ''}
+        <button type="button" data-target-add="extra_lesson">在這裡增加一堂課</button>
+        <button type="button" data-target-add="teacher_gift">在這裡免費贈送一堂</button>
+        <a href="room-booking.html?from=teacher&amp;use=other&amp;date=${encodeURIComponent(date)}&amp;start=${encodeURIComponent(startTime)}&amp;duration=60">租用這個時段的教室</a>`,
+        context
+      );
+    } catch (error) {
+      if (requestId !== availabilityRequestId) return;
+      showQuick(
+        '目前無法查詢',
+        `${dayLabel(date)} ${startTime}～${endTime}`,
+        `${choiceSummary('沒有完成空位確認', error.message || '請稍後再試。', '沒有確認成功前不會建立課程。')}<button type="button" data-retry-target>重新查詢</button>`,
+        { type: 'target-error', date, startTime, endTime }
+      );
+    }
   }
 
   async function updateLessonState(row, state, button, note) {
@@ -489,7 +659,7 @@
         note: clean(note)
       });
       closeQuick();
-      document.getElementById('actionModal').classList.add('hidden');
+      cancelPlanner(false);
       clearCache();
       toast(result.message || '課程狀態已更新。');
       await load(true);
@@ -511,7 +681,6 @@
         sourceDate: row.date
       });
       closeQuick();
-      document.getElementById('actionModal').classList.add('hidden');
       clearCache();
       toast(result.message || '補簽到已完成。');
       await load(true);
@@ -550,79 +719,325 @@
     return result.sessionToken;
   }
 
-  function sourceRow() {
-    const form = document.getElementById('actionForm');
-    const id = form.elements.sourceEventId.value || document.getElementById('actionSourceLesson').value;
-    return (data.events || []).find((row) => row.id === id || row.sourceId === id) || null;
+  function studentNamesByIds(ids) {
+    const names = new Map(data.roster.map((row) => [clean(row.id), clean(row.name)]));
+    return (ids || []).map((id) => names.get(clean(id))).filter(Boolean);
   }
 
-  function syncActionMode() {
-    const form = document.getElementById('actionForm');
-    const action = form.elements.action.value;
-    const moving = action === 'single_move' || action === 'permanent_move';
-    document.getElementById('sourceLessonField').classList.toggle('hidden', !moving || Boolean(form.elements.sourceEventId.value));
-    document.getElementById('quickAvailability').classList.toggle('hidden', !moving || !sourceRow());
-    document.getElementById('giftNotice').classList.toggle('hidden', action !== 'teacher_gift');
+  function subjectNameById(id) {
+    const row = data.subjects.find((subject) => clean(subject.id) === clean(id));
+    return clean(row && row.name) || '未指定科目';
   }
 
-  function fillAction(options) {
-    document.getElementById('actionStudent').innerHTML = data.roster.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.name)}</option>`).join('');
-    document.getElementById('actionSubject').innerHTML = data.subjects.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.name)}</option>`).join('');
-    document.getElementById('actionRoom').innerHTML = data.rooms.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(roomOptionLabel(row))}</option>`).join('');
-    const sourceRows = uniqueEvents((data.events || []).filter((row) => row.own)).sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
-    document.getElementById('actionSourceLesson').innerHTML = '<option value="">請選擇要移動的課程</option>' + sourceRows.map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(`${row.date} ${row.startTime} ${(row.studentNames || []).join('、')}`)}</option>`).join('');
-    const form = document.getElementById('actionForm');
-    form.reset();
-    Object.entries(options || {}).forEach(([key, value]) => { if (form.elements[key]) form.elements[key].value = value; });
-    form.dataset.vacancyDate = options && options.vacancyDate || '';
-    form.dataset.vacancyStart = options && options.vacancyStart || '';
-    form.dataset.portalAction = options && options.portalAction || '';
-    form.dataset.portalChangeId = options && options.portalChangeId || '';
-    document.getElementById('lessonStateActions').classList.toggle('hidden', !form.elements.sourceEventId.value);
-    document.getElementById('cancelPortalLesson').classList.toggle('hidden', !form.dataset.portalChangeId);
-    syncActionMode();
-    document.getElementById('actionModal').classList.remove('hidden');
-    if (form.elements.sourceEventId.value) loadAvailability();
+  function roomNameById(id, rooms) {
+    const row = (rooms || data.rooms).find((room) => clean(room.id) === clean(id));
+    return row ? roomOptionLabel(row) : '未指定教室';
   }
 
-  function applySource(row) {
-    if (!row) return;
-    const form = document.getElementById('actionForm');
-    form.elements.sourceEventId.value = row.sourceId || row.id;
-    form.elements.sourceCourseId.value = row.fixedCourseId || row.sourceId || row.id;
-    form.elements.sourceDate.value = row.date;
-    form.dataset.portalAction = row.portalAction || '';
-    form.dataset.portalChangeId = row.portalChangeId || '';
-    form.elements.studentId.value = (row.studentIds || [])[0] || '';
-    form.elements.subjectId.value = row.subjectId || '';
-    document.getElementById('lessonStateActions').classList.remove('hidden');
-    document.getElementById('cancelPortalLesson').classList.toggle('hidden', !form.dataset.portalChangeId);
-  }
-
-  async function loadAvailability() {
-    const row = sourceRow();
-    const form = document.getElementById('actionForm');
-    if (!row || !['single_move','permanent_move'].includes(form.elements.action.value)) return;
-    const node = document.getElementById('availabilitySuggestions');
-    node.innerHTML = '<p class="muted">正在找未來兩週可用的位置…</p>';
-    document.getElementById('quickAvailability').classList.remove('hidden');
+  async function startSourceMove(row, action) {
+    if (!row || isPastSlot(row.date, row.startTime)) {
+      toast('已開始或已結束的課程不能再調課。', 'error');
+      return;
+    }
+    const requestId = ++availabilityRequestId;
+    planner = {
+      mode: 'move',
+      action,
+      source: row,
+      slots: [],
+      operationId: operationId(),
+      requestId
+    };
+    closeQuick();
+    activateTab('schedule');
+    setFlowBanner(
+      action === 'permanent_move' ? '選擇新的固定時段' : '選擇這一次的新時段',
+      `${lessonSummary(row)}；正在找未來可用位置。`
+    );
+    setProgress(true, '正在搜尋可用位置', '排除老師、每位學生、教室、設備、政策與既有租用…');
+    renderWeek();
     try {
-      const result = await invoke('coursePortalTeacherAvailability', {
+      const result = await invoke('coursePortalTeacherAvailability', Object.assign({
         sessionToken: token,
-        startDate: weekStart,
-        days: 14,
-        sourceEventId: row.sourceId || row.id,
-        sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
-        sourceDate: row.date,
+        startDate: weekStart < todayKey() ? todayKey() : weekStart,
+        days: 14
+      }, lessonActionDefaults(row, action), {
         sourceStartTime: row.startTime,
-        sourceEndTime: row.endTime,
-        subjectId: row.subjectId
-      });
-      const slots = (result.slots || []).filter((slot) => slot.rooms && slot.rooms.length).slice(0, 30);
-      node.innerHTML = slots.map((slot) => `<button class="availability-option" type="button" data-available-date="${escapeHtml(slot.date)}" data-available-start="${escapeHtml(slot.startTime)}" data-available-end="${escapeHtml(slot.endTime)}" data-available-room="${escapeHtml(slot.rooms[0].id)}"><strong>${escapeHtml(dayLabel(slot.date))}　${escapeHtml(slot.startTime)}～${escapeHtml(slot.endTime)}</strong><span>${escapeHtml(slot.rooms.map(roomOptionLabel).join('、'))}</span></button>`).join('') || '<div class="notice">未來兩週沒有完整可用時段。</div>';
+        sourceEndTime: row.endTime
+      }));
+      if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
+      planner.slots = (result.slots || []).filter((slot) =>
+        !isPastSlot(slot.date, slot.startTime) && Array.isArray(slot.rooms) && slot.rooms.length
+      );
+      setProgress(false);
+      setFlowBanner(
+        action === 'permanent_move' ? '選擇新的固定時段' : '選擇這一次的新時段',
+        planner.slots.length
+          ? '課表上標示「可調入」的位置都已排除目前衝突；點一個位置後再選教室。'
+          : '未來兩週沒有完整可用的位置。'
+      );
+      renderWeek();
+      if (!planner.slots.length) {
+        showQuick(
+          '目前沒有可用位置',
+          lessonSummary(row),
+          `${choiceSummary('未來兩週沒有完整空位', '已檢查老師、學生、設備、教室與租用。', '可以取消後改從其他星期重新查看。')}<button type="button" data-cancel-flow>返回課表</button>`,
+          { type: 'no-slots' }
+        );
+      }
     } catch (error) {
-      node.innerHTML = '<div class="notice">目前無法讀取空位。</div>';
+      if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
+      setProgress(false);
       toast(error.message, 'error');
+      cancelPlanner(false);
+    }
+  }
+
+  function beginAddFlow(action, options) {
+    const context = Object.assign({
+      type: 'add-setup',
+      action,
+      studentIds: [],
+      subjectId: '',
+      target: null,
+      operationId: operationId()
+    }, options || {});
+    context.studentIds = [...new Set((context.studentIds || []).map(clean).filter(Boolean))];
+    if (!context.studentIds.length) {
+      const rows = data.roster.map((student) => `<button type="button" data-add-student="${escapeHtml(student.id)}"><b>${escapeHtml(student.name)}</b><span>選擇這位學生</span></button>`).join('');
+      showQuick(
+        action === 'teacher_gift' ? '選擇贈課學生' : '選擇學生',
+        context.target ? `${dayLabel(context.target.date)} ${context.target.startTime} 開始` : '先選學生，再找可用位置',
+        `<div class="teacher-choice-list">${rows || '<div class="teacher-choice-summary"><strong>目前沒有學生</strong></div>'}</div>`,
+        context
+      );
+      return;
+    }
+    if (!context.subjectId) {
+      const rows = allowedSubjects().map((subject) => `<button type="button" data-add-subject="${escapeHtml(subject.id)}"><b>${escapeHtml(subject.name)}</b><span>搜尋適合這項樂器的教室</span></button>`).join('');
+      showQuick(
+        '選擇上課樂器',
+        studentNamesByIds(context.studentIds).join('、'),
+        `<div class="teacher-choice-list">${rows || '<div class="teacher-choice-summary"><strong>老師沒有可選的授課科目</strong></div>'}</div>`,
+        context
+      );
+      return;
+    }
+    searchAddAvailability(context);
+  }
+
+  async function searchAddAvailability(context) {
+    const requestId = ++availabilityRequestId;
+    const target = context.target;
+    planner = {
+      mode: 'add',
+      action: context.action,
+      studentIds: context.studentIds,
+      subjectId: context.subjectId,
+      slots: [],
+      operationId: context.operationId,
+      requestId
+    };
+    closeQuick();
+    activateTab('schedule');
+    setProgress(
+      true,
+      context.action === 'teacher_gift' ? '正在搜尋贈課位置' : '正在搜尋加課位置',
+      '排除老師、學生、教室、設備、政策與既有租用…'
+    );
+    try {
+      const payload = {
+        sessionToken: token,
+        startDate: target ? target.date : (weekStart < todayKey() ? todayKey() : weekStart),
+        days: target ? 7 : 14,
+        exactTarget: Boolean(target),
+        date: target && target.date,
+        startTime: target && target.startTime,
+        durationMinutes: 60,
+        studentIds: context.studentIds,
+        subjectId: context.subjectId
+      };
+      const result = await invoke('coursePortalTeacherAvailability', payload);
+      if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
+      planner.slots = (result.slots || []).filter((slot) =>
+        !isPastSlot(slot.date, slot.startTime) && Array.isArray(slot.rooms) && slot.rooms.length
+      );
+      setProgress(false);
+      if (target) {
+        const slot = planner.slots.find((row) => row.date === target.date && row.startTime === target.startTime);
+        if (!slot) {
+          cancelPlanner(false);
+          showQuick(
+            '這個時段沒有適合教室',
+            `${dayLabel(target.date)} ${target.startTime} 開始`,
+            `${choiceSummary('無法安排這堂課', '老師、學生、教室、設備或租用其中至少一項有衝突。', '可以返回課表改選其他時間。')}<button type="button" data-cancel-flow>返回課表</button>`,
+            { type: 'no-add-target' }
+          );
+          return;
+        }
+        showPlannerRoomChoices(slot);
+        return;
+      }
+      setFlowBanner(
+        context.action === 'teacher_gift' ? '選擇免費贈課時間' : '選擇增加課程時間',
+        planner.slots.length
+          ? `${studentNamesByIds(context.studentIds).join('、')}・${subjectNameById(context.subjectId)}；點「可調入」後選教室。`
+          : '未來兩週沒有完整可用的位置。'
+      );
+      renderWeek();
+      if (!planner.slots.length) {
+        showQuick(
+          '目前沒有可用位置',
+          `${studentNamesByIds(context.studentIds).join('、')}・${subjectNameById(context.subjectId)}`,
+          `${choiceSummary('未來兩週沒有完整空位', '已檢查老師、學生、設備、教室與租用。')}<button type="button" data-cancel-flow>返回課表</button>`,
+          { type: 'no-add-slots' }
+        );
+      }
+    } catch (error) {
+      if (requestId !== availabilityRequestId) return;
+      setProgress(false);
+      cancelPlanner(false);
+      toast(error.message, 'error');
+    }
+  }
+
+  function showPlannerRoomChoices(slot) {
+    if (!planner) return;
+    const rows = (slot.rooms || []).map((room) => `<button type="button" data-planner-room="${escapeHtml(room.id)}"><b>${escapeHtml(roomOptionLabel(room))}</b><span>${escapeHtml(roomChoiceNote(room))}</span></button>`).join('');
+    showQuick(
+      '選擇教室',
+      `${dayLabel(slot.date)} ${slot.startTime}～${slot.endTime}`,
+      `${choiceSummary(
+        planner.mode === 'move' ? '調到這個位置' : (planner.action === 'teacher_gift' ? '免費贈課' : '增加一堂課'),
+        planner.mode === 'move' ? lessonSummary(planner.source) : `${studentNamesByIds(planner.studentIds).join('、')}・${subjectNameById(planner.subjectId)}`,
+        '以下教室已通過目前空位與樂器條件檢查。'
+      )}<div class="teacher-choice-list">${rows}</div>`,
+      { type: 'planner-rooms', slot }
+    );
+  }
+
+  function renderTargetRoomChoices(context) {
+    const result = context.result || {};
+    const rows = (result.rooms || []).map((room) => {
+      const count = (result.candidateLessons || []).filter((lesson) =>
+        (lesson.rooms || []).some((candidateRoom) => clean(candidateRoom.id) === clean(room.id))
+      ).length;
+      return `<button type="button" data-target-room="${escapeHtml(room.id)}"><b>${escapeHtml(roomOptionLabel(room))}</b><span>${count} 堂課符合這個教室與時段</span></button>`;
+    }).join('');
+    showQuick(
+      '先選教室',
+      `${dayLabel(context.date)} ${context.startTime} 開始`,
+      `${choiceSummary('把哪一堂課調過來？', '先選這個時間要使用的教室，再選學生課程。')}<div class="teacher-choice-list">${rows || '<div class="teacher-choice-summary"><strong>沒有可用教室</strong></div>'}</div>`,
+      Object.assign({}, context, { type: 'target-rooms' })
+    );
+  }
+
+  function renderTargetCandidates(context, roomId) {
+    const candidates = (context.result.candidateLessons || []).filter((lesson) =>
+      (lesson.rooms || []).some((room) => clean(room.id) === clean(roomId))
+    );
+    const rows = candidates.map((lesson, index) => `<button type="button" data-target-candidate="${index}"><b>${escapeHtml((lesson.studentNames || []).join('、') || '未指定學生')}・${escapeHtml(lesson.subjectName || '未指定科目')}</b><span>原課程：${escapeHtml(dayLabel(lesson.date))} ${escapeHtml(lesson.startTime)}～${escapeHtml(lesson.endTime)}</span></button>`).join('');
+    showQuick(
+      '選擇要調過來的課',
+      `${dayLabel(context.date)} ${context.startTime}・${roomNameById(roomId, context.result.rooms)}`,
+      `<div class="teacher-choice-list">${rows || '<div class="teacher-choice-summary"><strong>沒有符合的課程</strong></div>'}</div>`,
+      Object.assign({}, context, { type: 'target-candidates', roomId, candidates })
+    );
+  }
+
+  function renderTargetMoveActions(context, candidate) {
+    const recurring = candidate.recurring === true;
+    showQuick(
+      '選擇調課方式',
+      `${dayLabel(context.date)} ${context.startTime}・${roomNameById(context.roomId, context.result.rooms)}`,
+      `${choiceSummary(
+        (candidate.studentNames || []).join('、') || '這堂課',
+        `原課程：${dayLabel(candidate.date)} ${candidate.startTime}～${candidate.endTime}`,
+        `新位置將使用 ${roomNameById(context.roomId, context.result.rooms)}。`
+      )}
+      <button class="primary" type="button" data-target-move-action="single_move">只調這一次</button>
+      ${recurring ? '<button type="button" data-target-move-action="permanent_move">之後固定改到這裡</button>' : ''}`,
+      Object.assign({}, context, { type: 'target-action', candidate })
+    );
+  }
+
+  function actionPayloadForRoom(roomId, slot) {
+    if (!planner) return null;
+    const base = {
+      sessionToken: token,
+      action: planner.action,
+      date: slot.date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      roomId,
+      operationId: planner.operationId
+    };
+    return planner.mode === 'move'
+      ? Object.assign({}, lessonActionDefaults(planner.source, planner.action), base)
+      : Object.assign(base, {
+        studentIds: planner.studentIds,
+        subjectId: planner.subjectId
+      });
+  }
+
+  function showActionConfirmation(payload, summary) {
+    const moveConfirmation = summary.requiresGuzhengMove
+      ? '<label class="teacher-move-confirm"><input type="checkbox" data-guzheng-move-confirm><span><b>我願意自行搬運古箏</b><small>古箏原則上放在展演空間；使用 KAWAI 教室時需自行搬入與歸位。</small></span></label>'
+      : '';
+    showQuick(
+      '最後確認',
+      '送出前會再檢查一次所有衝突',
+      `${choiceSummary(summary.title, summary.details, summary.note || '若有人剛剛占用同一資源，系統會停止並請您重新選擇。')}${moveConfirmation}<button class="primary" type="button" data-save-action>確認並儲存</button><button type="button" data-cancel-flow>取消</button>`,
+      { type: 'confirm-action', payload, requiresGuzhengMove: Boolean(summary.requiresGuzhengMove) }
+    );
+  }
+
+  async function submitTeacherAction(payload, button) {
+    loading(button, true, '正在做最後檢查…');
+    setProgress(true, '正在儲存課程', '再次檢查老師、每位學生、教室、設備、政策與租用衝突…');
+    try {
+      const result = await invoke('coursePortalTeacherAction', payload);
+      if (result.requiresConfirmation) {
+        setProgress(false);
+        payload.operationId = result.operationId || payload.operationId;
+        const conflicts = (result.conflicts || []).slice(0, 30);
+        const rows = conflicts.map((row) => {
+          const alternatives = row.alternativeRooms || [];
+          const options = alternatives.map((room) => `<option value="${escapeHtml(room.id)}" data-guzheng-move="${room.requiresGuzhengMove ? 'true' : 'false'}">${escapeHtml(roomOptionLabel(room))}${room.requiresGuzhengMove ? '（需自行搬古箏）' : ''}</option>`).join('');
+          return `<div class="teacher-choice-summary"><strong>${escapeHtml(dayLabel(row.date))}</strong><span>${escapeHtml(row.reason || '時段衝突')}</span>${alternatives.length ? `<label><small>這一天可改用：</small><select data-conflict-override="${escapeHtml(row.date)}"><option value="">暫時不指定，之後補排</option>${options}</select></label>` : '<small>老師或學生已有課，換教室也無法解決；這一天會待補排。</small>'}</div>`;
+        }).join('');
+        const hasMoveAlternative = conflicts.some((row) =>
+          (row.alternativeRooms || []).some((room) => room.requiresGuzhengMove)
+        );
+        const moveConfirmation = hasMoveAlternative
+          ? '<label class="teacher-move-confirm"><input type="checkbox" data-permanent-guzheng-move-confirm><span><b>若選 KAWAI，我願意自行搬運古箏</b><small>只有實際選到 KAWAI 的日期才會套用。</small></span></label>'
+          : '';
+        showQuick(
+          '固定課後續日期有衝突',
+          result.message || '請確認如何處理',
+          `<div class="teacher-choice-list">${rows}</div>${moveConfirmation}<button class="primary" type="button" data-confirm-permanent>套用已選教室，其餘日期待補排</button><button type="button" data-cancel-flow>返回課表</button>`,
+          { type: 'permanent-conflicts', payload }
+        );
+        return;
+      }
+      clearCache();
+      toast(result.message || '課程已儲存。');
+      cancelPlanner(true);
+      await load(true);
+    } catch (error) {
+      setProgress(false);
+      toast(error.message, 'error');
+      if (/剛剛有更新|重新確認|已被使用|已有課程|已被租用/.test(error.message || '')) {
+        cancelPlanner(false);
+        showQuick(
+          '空位剛剛有變動',
+          '沒有建立任何重複課程',
+          `${choiceSummary('已安全停止這次操作', error.message, '請回到課表重新選擇，系統會讀取最新狀態。')}<button type="button" data-cancel-flow>重新查看課表</button>`,
+          { type: 'stale-action' }
+        );
+      }
+    } finally {
+      loading(button, false);
     }
   }
 
@@ -631,7 +1046,6 @@
   document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
   document.getElementById('prevWeek').addEventListener('click', () => { weekStart = addDays(weekStart, -7); load(true); });
   document.getElementById('nextWeek').addEventListener('click', () => { weekStart = addDays(weekStart, 7); load(true); });
-  document.getElementById('thisWeek').addEventListener('click', () => { weekStart = monday(); load(true); });
   document.getElementById('weekPicker').addEventListener('change', (event) => {
     if (!event.target.value) return;
     weekStart = monday(event.target.value);
@@ -645,6 +1059,7 @@
   document.getElementById('teacherQuickBackdrop').addEventListener('click', (event) => {
     if (event.target.id === 'teacherQuickBackdrop') closeQuick();
   });
+  document.getElementById('cancelTeacherFlow').addEventListener('click', () => cancelPlanner(true));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       closeMore();
@@ -653,11 +1068,19 @@
   });
 
   document.getElementById('weekGrid').addEventListener('click', (event) => {
+    const target = event.target.closest('[data-flow-target]');
     const empty = event.target.closest('[data-empty]');
     const lesson = event.target.closest('[data-event]');
+    if (target && planner) {
+      const parts = target.dataset.flowTarget.split('|');
+      const slot = (planner.slots || []).find((row) => row.date === parts[0] && row.startTime === parts[1]);
+      if (slot) showPlannerRoomChoices(slot);
+      return;
+    }
     if (empty) {
       const parts = empty.dataset.empty.split('|');
       openQuickForEmpty(parts[0], parts[1]);
+      return;
     }
     if (lesson) {
       const row = (data.events || []).find((item) => item.id === lesson.dataset.event);
@@ -666,85 +1089,164 @@
   });
 
   document.getElementById('teacherQuickActions').addEventListener('click', async (event) => {
+    const context = quickContext;
     const actionButton = event.target.closest('[data-quick-action]');
     const stateButton = event.target.closest('[data-quick-state]');
     const lateButton = event.target.closest('[data-quick-late]');
-    if (!quickContext) return;
+    const targetBrowse = event.target.closest('[data-target-browse]');
+    const targetRoom = event.target.closest('[data-target-room]');
+    const targetCandidate = event.target.closest('[data-target-candidate]');
+    const targetMoveAction = event.target.closest('[data-target-move-action]');
+    const targetAdd = event.target.closest('[data-target-add]');
+    const retryTarget = event.target.closest('[data-retry-target]');
+    const addStudent = event.target.closest('[data-add-student]');
+    const addSubject = event.target.closest('[data-add-subject]');
+    const plannerRoom = event.target.closest('[data-planner-room]');
+    const saveAction = event.target.closest('[data-save-action]');
+    const confirmPermanent = event.target.closest('[data-confirm-permanent]');
+    const cancelFlow = event.target.closest('[data-cancel-flow]');
+    if (!context) return;
     if (actionButton) {
       const action = actionButton.dataset.quickAction;
-      const options = quickContext.type === 'lesson'
-        ? lessonActionDefaults(quickContext.row, action)
-        : {
-          action,
-          date: quickContext.date,
-          startTime: quickContext.startTime,
-          endTime: quickContext.endTime
-        };
-      closeQuick();
-      fillAction(options);
+      if (context.type !== 'lesson') return;
+      if (action === 'single_move' || action === 'permanent_move') {
+        await startSourceMove(context.row, action);
+      } else {
+        beginAddFlow(action, {
+          studentIds: context.row.studentIds || [],
+          subjectId: context.row.subjectId || ''
+        });
+      }
       return;
     }
-    if (stateButton && quickContext.type === 'lesson') {
-      await updateLessonState(quickContext.row, stateButton.dataset.quickState, stateButton, '');
+    if (stateButton && context.type === 'lesson') {
+      await updateLessonState(context.row, stateButton.dataset.quickState, stateButton, '');
       return;
     }
-    if (lateButton && quickContext.type === 'lesson') {
-      await updateLateAttendance(quickContext.row, lateButton);
+    if (lateButton && context.type === 'lesson') {
+      await updateLateAttendance(context.row, lateButton);
+      return;
+    }
+    if (targetBrowse && context.result) {
+      renderTargetRoomChoices(context);
+      return;
+    }
+    if (targetRoom && context.result) {
+      renderTargetCandidates(context, targetRoom.dataset.targetRoom);
+      return;
+    }
+    if (targetCandidate && Array.isArray(context.candidates)) {
+      const candidate = context.candidates[Number(targetCandidate.dataset.targetCandidate)];
+      if (candidate) renderTargetMoveActions(context, candidate);
+      return;
+    }
+    if (targetMoveAction && context.candidate) {
+      const action = targetMoveAction.dataset.targetMoveAction;
+      const targetRoomChoice = (context.candidate.rooms || []).find((room) => clean(room.id) === clean(context.roomId));
+      const payload = Object.assign({}, lessonActionDefaults(context.candidate, action), {
+        sessionToken: token,
+        action,
+        date: context.date,
+        startTime: context.startTime,
+        endTime: context.candidate.targetEndTime,
+        roomId: context.roomId,
+        operationId: operationId()
+      });
+      showActionConfirmation(payload, {
+        title: action === 'permanent_move' ? '之後固定調課' : '只調這一次',
+        details: `${(context.candidate.studentNames || []).join('、')}・${dayLabel(context.date)} ${context.startTime}～${context.candidate.targetEndTime}・${roomNameById(context.roomId, context.result.rooms)}`,
+        requiresGuzhengMove: Boolean(targetRoomChoice && targetRoomChoice.requiresGuzhengMove)
+      });
+      return;
+    }
+    if (targetAdd) {
+      beginAddFlow(targetAdd.dataset.targetAdd, {
+        target: {
+          date: context.date,
+          startTime: context.startTime,
+          endTime: context.endTime
+        }
+      });
+      return;
+    }
+    if (retryTarget) {
+      await openQuickForEmpty(context.date, context.startTime);
+      return;
+    }
+    if (addStudent && context.type === 'add-setup') {
+      beginAddFlow(context.action, Object.assign({}, context, {
+        studentIds: [addStudent.dataset.addStudent]
+      }));
+      return;
+    }
+    if (addSubject && context.type === 'add-setup') {
+      beginAddFlow(context.action, Object.assign({}, context, {
+        subjectId: addSubject.dataset.addSubject
+      }));
+      return;
+    }
+    if (plannerRoom && context.slot && planner) {
+      const roomId = plannerRoom.dataset.plannerRoom;
+      const roomChoice = (context.slot.rooms || []).find((room) => clean(room.id) === clean(roomId));
+      const payload = actionPayloadForRoom(roomId, context.slot);
+      if (!payload) return;
+      showActionConfirmation(payload, {
+        title: planner.mode === 'move'
+          ? (planner.action === 'permanent_move' ? '之後固定調課' : '只調這一次')
+          : (planner.action === 'teacher_gift' ? '免費贈送一堂' : '增加一堂課'),
+        details: `${planner.mode === 'move' ? (planner.source.studentNames || []).join('、') : studentNamesByIds(planner.studentIds).join('、')}・${dayLabel(context.slot.date)} ${context.slot.startTime}～${context.slot.endTime}・${roomNameById(roomId, context.slot.rooms)}`,
+        requiresGuzhengMove: Boolean(roomChoice && roomChoice.requiresGuzhengMove)
+      });
+      return;
+    }
+    if (saveAction && context.payload) {
+      if (context.requiresGuzhengMove) {
+        const accepted = document.querySelector('[data-guzheng-move-confirm]');
+        if (!accepted || !accepted.checked) {
+          toast('請先確認願意自行搬運古箏。', 'error');
+          return;
+        }
+        context.payload.allowGuzhengMove = true;
+      }
+      await submitTeacherAction(context.payload, saveAction);
+      return;
+    }
+    if (confirmPermanent && context.payload) {
+      const roomOverrides = {};
+      document.querySelectorAll('[data-conflict-override]').forEach((select) => {
+        if (select.value) roomOverrides[select.dataset.conflictOverride] = select.value;
+      });
+      const selectedMoveRoom = [...document.querySelectorAll('[data-conflict-override]')].some((select) => {
+        const option = select.options[select.selectedIndex];
+        return select.value && option && option.dataset.guzhengMove === 'true';
+      });
+      if (selectedMoveRoom) {
+        const accepted = document.querySelector('[data-permanent-guzheng-move-confirm]');
+        if (!accepted || !accepted.checked) {
+          toast('有日期選到 KAWAI 教室，請先確認願意自行搬運古箏。', 'error');
+          return;
+        }
+        context.payload.allowGuzhengMove = true;
+      }
+      await submitTeacherAction(Object.assign({}, context.payload, {
+        roomOverrides,
+        confirmPermanentConflicts: true
+      }), confirmPermanent);
+      return;
+    }
+    if (cancelFlow) {
+      cancelPlanner(true);
     }
   });
 
   document.getElementById('rosterList').addEventListener('click', (event) => {
     const button = event.target.closest('[data-student-action]');
-    if (button) fillAction({ action: 'extra_lesson', studentId: button.dataset.studentAction, date: weekStart, startTime: '10:00', endTime: '11:00' });
+    if (button) beginAddFlow('extra_lesson', { studentIds: [button.dataset.studentAction] });
     const bonus=event.target.closest('[data-bonus-student]');
     if(bonus){const form=document.getElementById('bonusRequestForm');form.elements.studentId.value=bonus.dataset.bonusStudent;form.elements.studentName.value=bonus.dataset.bonusName;document.getElementById('bonusStudentName').value=bonus.dataset.bonusName;document.getElementById('bonusRequestModal').classList.remove('hidden');}
   });
   document.getElementById('closeBonusRequest').addEventListener('click',()=>document.getElementById('bonusRequestModal').classList.add('hidden'));
   document.getElementById('bonusRequestForm').addEventListener('submit',async(event)=>{event.preventDefault();const button=event.submitter;loading(button,true,'送出中…');try{const form=event.currentTarget;let photoData='';const file=document.getElementById('bonusPhoto').files[0];if(file){photoData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=reject;reader.readAsDataURL(file);});}const result=await invoke('coursePortalTeacherBonusRequest',{sessionToken:token,studentId:form.elements.studentId.value,studentName:form.elements.studentName.value,description:form.elements.description.value,photoData});document.getElementById('bonusRequestModal').classList.add('hidden');form.reset();toast(result.message||'申請已送出。');}catch(error){toast(error.message,'error');}finally{loading(button,false);}});
-
-  document.getElementById('actionType').addEventListener('change', () => { syncActionMode(); loadAvailability(); });
-  document.getElementById('actionSourceLesson').addEventListener('change', (event) => { applySource((data.events || []).find((item) => item.id === event.target.value)); syncActionMode(); loadAvailability(); });
-  document.getElementById('reloadAvailability').addEventListener('click', loadAvailability);
-  document.getElementById('availabilitySuggestions').addEventListener('click', (event) => {
-    const button = event.target.closest('[data-available-date]');
-    if (!button) return;
-    const form = document.getElementById('actionForm');
-    form.elements.date.value = button.dataset.availableDate;
-    form.elements.startTime.value = button.dataset.availableStart;
-    form.elements.endTime.value = button.dataset.availableEnd;
-    form.elements.roomId.value = button.dataset.availableRoom;
-    document.querySelectorAll('.availability-option').forEach((node) => node.classList.toggle('selected', node === button));
-  });
-
-  document.getElementById('closeModal').addEventListener('click', () => document.getElementById('actionModal').classList.add('hidden'));
-  document.getElementById('actionForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const button = event.submitter;
-    loading(button, true, '檢查教室並儲存…');
-    try {
-      const result = await invoke('coursePortalTeacherAction', Object.assign({ sessionToken: token }, Object.fromEntries(new FormData(event.currentTarget).entries())));
-      document.getElementById('actionModal').classList.add('hidden');
-      clearCache();
-      toast(result.message || '課程已儲存。');
-      await load(true);
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      loading(button, false);
-    }
-  });
-
-  document.getElementById('lessonStateActions').addEventListener('click', async (event) => {
-    const lateButton=event.target.closest('[data-late-attendance]');
-    if(lateButton){
-      await updateLateAttendance(sourceRow(), lateButton);
-      return;
-    }
-    const button = event.target.closest('[data-lesson-state]');
-    if (!button) return;
-    const form = document.getElementById('actionForm');
-    await updateLessonState(sourceRow(), button.dataset.lessonState, button, form.elements.note.value);
-  });
 
   logoutBtn.addEventListener('click', () => { setSession(''); location.reload(); });
   document.getElementById('payrollMonth').value = payrollMonth;
