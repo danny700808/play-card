@@ -1,0 +1,13 @@
+(function(){
+  'use strict';
+  function clean(v){return String(v==null?'':v).trim();}
+  function roomKind(text){text=clean(text);if(/不定時/.test(text))return 'holding';if(/視訊/.test(text))return 'video';return 'normal';}
+  function warningText(kind){if(kind==='video')return '視訊教室不是實體教室，老師需自行安排實際上課地點。';if(kind==='holding')return '不定時教室只供暫時放置，之後仍需重新安排正式教室。';return '';}
+  function ensureWarning(){const select=document.getElementById('actionRoom');if(!select)return null;let node=document.getElementById('teacherRoomWarning');if(!node){node=document.createElement('div');node.id='teacherRoomWarning';node.className='teacher-room-warning';select.closest('.field').appendChild(node);}return node;}
+  function updateWarning(){const select=document.getElementById('actionRoom');const node=ensureWarning();if(!select||!node)return;const text=select.options[select.selectedIndex]&&select.options[select.selectedIndex].textContent||'';const kind=roomKind(text);node.className='teacher-room-warning'+(kind==='normal'?'':' show '+kind);node.textContent=warningText(kind);select.dataset.specialKind=kind;select.dataset.specialConfirmed='';}
+  function allowedWindow(date,start,end){const d=new Date(date+'T12:00:00');const day=d.getDay();const s=minutes(start),e=minutes(end);if(day===1)return false;const open=(day===0||day===6)?600:750;return s>=open&&e<=1260;}
+  function minutes(value){const parts=clean(value).split(':').map(Number);return (parts[0]||0)*60+(parts[1]||0);}
+  function applyHours(){document.querySelectorAll('#weekGrid [data-empty]').forEach(button=>{const parts=button.dataset.empty.split('|');if(parts.length<3)return;if(!allowedWindow(parts[0],parts[1],parts[2])){const span=document.createElement('span');span.className='closed-by-hours';span.textContent=new Date(parts[0]+'T12:00:00').getDay()===1?'公休':'未營業';button.replaceWith(span);}});}
+  function start(){const select=document.getElementById('actionRoom');const form=document.getElementById('actionForm');const grid=document.getElementById('weekGrid');if(select){select.addEventListener('change',updateWarning);new MutationObserver(updateWarning).observe(select,{childList:true,subtree:true});updateWarning();}if(form){form.addEventListener('submit',function(event){const kind=select&&select.dataset.specialKind||'normal';if(kind==='normal'||select.dataset.specialConfirmed===kind)return;const message=warningText(kind)+'\n\n確定要使用這個教室嗎？';if(!confirm(message)){event.preventDefault();event.stopImmediatePropagation();return;}select.dataset.specialConfirmed=kind;},true);}if(grid){new MutationObserver(applyHours).observe(grid,{childList:true,subtree:true});applyHours();}}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+})();
