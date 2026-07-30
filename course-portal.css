@@ -161,16 +161,27 @@ a { color: inherit; }
 .portal-session-card{max-width:540px;margin:7vh auto 0;display:flex;align-items:center;gap:14px}
 .portal-session-card p{margin:3px 0 0;color:var(--muted)}
 .portal-session-spinner{width:28px;height:28px;flex:0 0 auto;border:3px solid #cce6db;border-right-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}
-.auth-login-stack{display:grid;gap:12px}
-.auth-line-button{width:100%;min-height:50px}
-.auth-line-hint{margin:-5px 0 0;color:var(--muted);font-size:13px;text-align:center}
+.auth-title{margin-bottom:14px}
+.auth-choice-list{display:grid;gap:12px}
+.auth-choice{display:grid;gap:12px;padding:16px;border:1px solid var(--line);border-radius:15px;background:#fff}
+.auth-choice-line{border-color:#94d3b9;background:linear-gradient(180deg,#f2fbf6,#fff)}
+.auth-choice-regular{background:#fbfcfb}
+.auth-choice-heading{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:11px}
+.auth-choice-heading h3{margin:0;font-size:17px}
+.auth-choice-heading p{margin:3px 0 0;color:var(--muted);font-size:13px;line-height:1.55}
+.auth-choice>small,.auth-security-note{color:var(--muted);font-size:12px;line-height:1.55}
+.auth-choice-icon{display:grid;place-items:center;width:45px;height:45px;border-radius:13px;background:#06c755;color:#fff;font-size:11px;font-weight:900}
+.auth-choice-icon-plain{background:#eef3f0;color:var(--green)}
+.auth-recommended{align-self:start;padding:4px 8px;border-radius:999px;background:#dff5e9;color:#176548;font-size:11px;font-weight:900}
+.auth-line-button,.auth-regular-submit{width:100%;min-height:48px;font-size:15px}
+.auth-regular-form{margin-top:2px}
+.auth-line-setup{padding:16px;border:1px solid #b8ddcd;border-radius:15px;background:var(--green-soft)}
 .auth-divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;font-weight:700}
 .auth-divider::before,.auth-divider::after{content:"";height:1px;flex:1;background:var(--line)}
-.auth-help-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.auth-help-row > :only-child{grid-column:1/-1}
-.auth-first-use{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
-.auth-line-setup-notice{margin:0 0 13px;padding:12px 14px;border:1px solid #b8ddcd;border-radius:13px;background:var(--green-soft);color:#245b48;font-size:14px;line-height:1.65}
-.auth-otp-panel{margin-top:4px;padding:13px;border:1px solid #cce6db;border-radius:13px;background:var(--green-soft)}
+.auth-otp-panel{margin-top:14px;padding:15px;border:1px solid #cce6db;border-radius:15px;background:var(--green-soft)}
+.auth-otp-heading{display:grid;gap:3px}
+.auth-otp-heading strong{font-size:16px}
+.auth-otp-heading span{color:var(--muted);font-size:13px;line-height:1.55}
 .auth-otp-meta{color:var(--muted);font-size:13px}
 .auth-otp-form input[name="code"]{font-size:24px;font-weight:900;letter-spacing:.4em;text-align:center}
 .binding-admin-card .binding-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
@@ -255,14 +266,26 @@ a { color: inherit; }
   .binding-admin-card{margin-top:7px!important}
   .portal-session-card{margin-top:3vh;gap:8px}
   .portal-session-spinner{width:22px;height:22px}
-  .auth-login-stack{gap:7px}
-  .auth-line-button{min-height:38px}
-  .auth-line-hint,.auth-divider,.auth-otp-meta{font-size:9px}
-  .auth-help-row{gap:5px}
-  .auth-first-use{margin-top:9px;padding-top:9px}
-  .auth-line-setup-notice{margin-bottom:8px;padding:8px;font-size:10px}
-  .auth-otp-panel{padding:8px;border-radius:9px}
-  .auth-otp-form input[name="code"]{font-size:18px}
+  .auth-title{margin-bottom:10px}
+  .auth-title h2{font-size:17px}
+  .auth-title p{font-size:11px}
+  .auth-choice-list{gap:9px}
+  .auth-choice{gap:10px;padding:12px;border-radius:12px}
+  .auth-choice-heading{gap:9px}
+  .auth-choice-heading h3{font-size:15px}
+  .auth-choice-heading p{font-size:11px}
+  .auth-choice>small,.auth-security-note{font-size:10px}
+  .auth-choice-icon{width:39px;height:39px;border-radius:11px;font-size:9px}
+  .auth-recommended{padding:3px 7px;font-size:9px}
+  .auth-line-button,.auth-regular-submit{min-height:40px;font-size:12px}
+  .auth-regular-form .field label,.auth-line-setup .field label{font-size:11px}
+  .auth-regular-form .field input,.auth-regular-form .field select,.auth-line-setup .field input,.auth-line-setup .field select{min-height:40px;font-size:13px}
+  .auth-divider,.auth-otp-meta{font-size:10px}
+  .auth-line-setup{padding:12px;border-radius:12px}
+  .auth-otp-panel{margin-top:10px;padding:12px;border-radius:12px}
+  .auth-otp-heading strong{font-size:15px}
+  .auth-otp-heading span{font-size:11px}
+  .auth-otp-form input[name="code"]{font-size:20px;min-height:44px}
   .binding-admin-card .binding-actions{justify-content:flex-start}
 }
 
