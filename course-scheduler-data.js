@@ -184,11 +184,44 @@
     return events;
   }
 
+  function normalizeRentalEvent(row,index,rangeStart,rangeEnd){
+    row=row||{};
+    var date=dateKey(row.date),start=clean(row.start||row.startTime).slice(0,5),end=clean(row.end||row.endTime).slice(0,5);
+    var duration=numberOf(row.duration||row.durationMinutes);
+    if(!duration&&start&&end)duration=timeToMin(end)-timeToMin(start);
+    if(duration<=0)duration=60;
+    if(
+      row.active===false||cancelledCourseStatus(row.status)||!date||!start||!clean(row.roomId)||
+      (rangeStart&&date<rangeStart)||(rangeEnd&&date>rangeEnd)
+    )return null;
+    return {
+      id:safeId('rental',row.id,index)+'@'+date,
+      portalBookingId:clean(row.id),
+      seriesId:'',
+      date:date,
+      roomId:clean(row.roomId),
+      start:start,
+      duration:Math.max(30,duration),
+      type:'rental',
+      frequency:'once',
+      studentIds:[],
+      teacherId:'',
+      subjectId:'',
+      tuitionPeriodId:'',
+      clientName:clean(row.clientName||row.renterName||row.ownerName||row.useName)||'教室租用',
+      rentalFee:numberOf(row.amount||row.rentalFee),
+      status:clean(row.status)||'scheduled',
+      note:clean(row.note||row.purpose),
+      readOnly:true,
+      source:clean(row.source)||'injiaoyun-migration'
+    };
+  }
+
   function normalizeEvents(payload,periods,rangeStart,rangeEnd){
     var resolvePeriod=periodResolver(periods),events=[];
     array(payload.fixedCourses).forEach(function(row){events=events.concat(fixedCourseEvents(row,rangeStart,rangeEnd,resolvePeriod));});
     array(payload.temporaryCourses).filter(function(row){return row.active!==false;}).forEach(function(row){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push(courseEvent(row,date,clean(row.statusByDate&&row.statusByDate[date])||'scheduled',resolvePeriod));});
-    array(payload.roomRentals).forEach(function(row,index){var date=dateKey(row.date);if(date&&clean(row.start)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push({id:safeId('rental',row.id,index)+'@'+date,seriesId:'',date:date,roomId:clean(row.roomId),start:clean(row.start),duration:Math.max(30,numberOf(row.duration)||60),type:'rental',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:clean(row.clientName)||'教室租用',rentalFee:numberOf(row.amount||row.rentalFee),status:clean(row.status)||'scheduled',note:clean(row.note),readOnly:true});});
+    array(payload.roomRentals).forEach(function(row,index){var event=normalizeRentalEvent(row,index,rangeStart,rangeEnd);if(event)events.push(event);});
     var auditedEvents=array(payload.events).map(function(row,index){return Object.assign({id:safeId('event',row.id,index),seriesId:'',date:'',roomId:'',start:'',duration:60,type:'fixed',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:'',rentalFee:0,note:'',status:'scheduled',readOnly:true},row,{date:dateKey(row.date),start:clean(row.start),studentIds:unique(row.studentIds),tuitionPeriodId:clean(row.tuitionPeriodId)});});
     var coveredDates=unique(array(payload.dataQuality&&payload.dataQuality.auditCoveredDates).map(dateKey).filter(Boolean));
     if(!coveredDates.length&&auditedEvents.length)coveredDates=unique(auditedEvents.map(function(row){return row.date;}));
@@ -266,5 +299,21 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,buildState:buildState};
+  async function loadPortalRentals(options){
+    options=options||{};
+    var pin=clean(options.manualSyncPin);
+    if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
+    var payload=await call('coursePortalAdminRoomBookings',{adminPin:pin});
+    if(!payload.ok)throw new Error('租用課表讀取未完成。');
+    var rows=array(payload.bookings);
+    return {
+      events:rows.map(function(row,index){return normalizeRentalEvent(row,index,'','');}).filter(Boolean),
+      bookingIds:rows.map(function(row,index){
+        var date=dateKey(row.date);return date?(safeId('rental',row.id,index)+'@'+date):'';
+      }).filter(Boolean),
+      updatedAt:clean(payload.updatedAt)
+    };
+  }
+
+  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,loadPortalRentals:loadPortalRentals,buildState:buildState};
 })(window);
