@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#24735c">
   <title>教室租用｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260730-auth-two-path-v1">
-  <link rel="stylesheet" href="room-booking-v2.css?v=20260730-leave-past-v1">
+  <link rel="stylesheet" href="room-booking-v2.css?v=20260730-recording-rate-v1">
 </head>
 <body class="rental-booking-v2 clean-portal-ui">
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">租</span><div><h1>教室租用</h1></div></div>
+      <div class="head-title"><span class="brand-mark">租</span><div><h1 id="rentalHeaderTitle">教室租用</h1></div></div>
       <button class="btn danger hidden" id="logoutBtn" type="button">登出</button>
     </header>
 
@@ -104,9 +104,19 @@
         <div><span>時間</span><strong id="confirmTime"></strong></div>
         <div><span>教室</span><strong id="confirmRoom"></strong></div>
       </div>
-      <div class="rental-rate-choice">
-        <label><input type="radio" name="rentalRate" value="general" checked>一般租用</label>
-        <label><input type="radio" name="rentalRate" value="student">柚子學生半價</label>
+      <div class="rental-recording-choice hidden" id="recordingUsageChoice">
+        <strong>錄音室使用方式（必選）</strong>
+        <div class="rental-recording-options">
+          <label><input type="radio" name="recordingUsage" value="general_room">一般教室使用 <b>NT$100/小時</b></label>
+          <label><input type="radio" name="recordingUsage" value="studio_recording">錄音室錄音使用 <b>NT$300/小時</b></label>
+        </div>
+      </div>
+      <div class="rental-rate-section" id="rentalRateSection">
+        <strong id="rentalRateHeading">租用價格</strong>
+        <div class="rental-rate-choice">
+          <label id="generalRateLabel"><input type="radio" name="rentalRate" value="general" checked><span id="generalRateText">一般租用</span></label>
+          <label id="studentRateLabel"><input type="radio" name="rentalRate" value="student">柚子學生半價</label>
+        </div>
       </div>
       <div class="field" style="margin-top:10px"><label>備註（選填）</label><input id="bookingNote"></div>
       <div class="rental-final-price" id="confirmPrice"></div>
@@ -118,6 +128,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260730-auth-two-path-v1"></script>
-  <script src="room-booking-v2.js?v=20260730-leave-past-v1"></script>
+  <script src="room-booking-v2.js?v=20260730-recording-rate-v1"></script>
 </body>
 </html>
