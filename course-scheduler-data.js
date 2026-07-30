@@ -99,7 +99,7 @@
     var rows=[],seen=new Set();
     function add(room,index){
       room=room||{};var id=safeId('room',room.id,index);if(seen.has(id))return;seen.add(id);
-      rows.push({id:id,name:clean(room.name)||('教室 '+(index+1)),publicName:clean(room.publicName),note:clean(room.note),rentalFee:numberOf(room.rentalFee),sort:numberOf(room.sort)||rows.length+1,active:room.active!==false,policies:room.policies&&typeof room.policies==='object'?room.policies:{}});
+      rows.push({id:id,name:clean(room.name)||('教室 '+(index+1)),publicName:clean(room.publicName),note:clean(room.note),rentalFee:numberOf(room.rentalFee),sort:numberOf(room.sort)||rows.length+1,active:room.active!==false,policies:room.policies&&typeof room.policies==='object'?room.policies:{},capacity:numberOf(room.capacity),rentalUseTypes:unique(room.rentalUseTypes||room.useTypes),rentalEquipment:unique(room.rentalEquipment||room.equipment),pianoType:clean(room.pianoType)});
     }
     array(payload.rooms).forEach(add);
     array(payload.fixedCourses).concat(array(payload.temporaryCourses),array(payload.roomRentals)).forEach(function(row,index){if(clean(row.roomId)&&!seen.has(clean(row.roomId)))add({id:row.roomId,name:row.roomName},1000+index);});
@@ -251,5 +251,20 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={load:load,sync:sync,buildState:buildState};
+  async function saveRoomSettings(options){
+    options=options||{};
+    var pin=clean(options.manualSyncPin),roomId=clean(options.roomId);
+    if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
+    if(!roomId)throw new Error('缺少教室資料。');
+    var result=await call('coursePortalAdminSaveRoomEquipment',{
+      adminPin:pin,
+      roomId:roomId,
+      pianoType:clean(options.pianoType)||'none',
+      equipment:unique(options.equipment)
+    });
+    if(!result.ok)throw new Error('教室設備同步未完成。');
+    return result;
+  }
+
+  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,buildState:buildState};
 })(window);
