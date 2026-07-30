@@ -1,6 +1,6 @@
 'use strict';
 
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -15,9 +15,14 @@ const Timestamp = admin.firestore.Timestamp;
 const REGION = 'us-central1';
 const TAIPEI = 'Asia/Taipei';
 const ADMIN_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
+const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET');
+const LINE_LOGIN_CHANNEL_ID = '2010902226';
+const LINE_LOGIN_CALLBACK_URL = 'https://us-central1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback';
 const PORTAL_BASE = 'https://danny700808.github.io/play-card';
 const EMAIL_OTP_TTL_MS = 180 * 1000;
 const EMAIL_OTP_MAX_ATTEMPTS = 5;
+const LINE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const LINE_SETUP_TTL_MS = 20 * 60 * 1000;
 const PORTAL_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const ALLOWED_ORIGINS = [
   'https://danny700808.github.io',
@@ -521,7 +526,7 @@ async function findEmailLoginAccount(type, email) {
     .get();
   const rows = snapshot.docs
     .map((doc) => Object.assign({ __id: doc.id }, doc.data() || {}))
-    .filter((row) => clean(row.status) === 'active' && clean(row.lineUserId));
+    .filter((row) => clean(row.status) === 'active' && clean(row.lineUserId) && row.emailVerified === true);
   const lineIds = [...new Set(rows.map((row) => clean(row.lineUserId)).filter(Boolean))];
   if (lineIds.length !== 1) return null;
   const row = rows.find((item) => clean(item.lineUserId) === lineIds[0]) || {};
@@ -717,25 +722,50 @@ async function verifyEmailOtp(data) {
   return Object.assign({}, bind, { purpose: 'bind', emailVerified: true });
 }
 
+function portalPageForRole(type) {
+  if (type === 'teacher') return 'teacher-course-portal.html';
+  if (type === 'student') return 'student-course-portal.html';
+  return 'room-booking.html';
+}
+
+function portalUrlForRole(type, params = {}) {
+  const url = new URL(`${PORTAL_BASE}/${portalPageForRole(type)}`);
+  Object.keys(params).forEach((key) => {
+    const value = clean(params[key]);
+    if (value) url.searchParams.set(key, value);
+  });
+  return url.toString();
+}
+
+function lineAuthorizationUrl(state) {
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: LINE_LOGIN_CHANNEL_ID,
+    redirect_uri: LINE_LOGIN_CALLBACK_URL,
+    state,
+    scope: 'openid profile',
+    bot_prompt: 'aggressive'
+  });
+  return `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
+}
+
 async function startLineLogin(data) {
   const type = clean(data.type).toLowerCase();
   if (!['teacher', 'student', 'renter'].includes(type)) {
     throw new HttpsError('invalid-argument', '不支援的入口類型。');
   }
-  const raw = `CP-L${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-  const expiresAt = Timestamp.fromMillis(Date.now() + 20 * 60 * 1000);
-  await db.collection('coursePortalLineLoginCodes').doc(hash(raw)).set({
+  const state = randomToken(32);
+  const expiresAt = Timestamp.fromMillis(Date.now() + LINE_OAUTH_STATE_TTL_MS);
+  await db.collection('coursePortalLineOAuthStates').doc(hash(state)).set({
     type,
+    stateHint: state.slice(-6),
     status: 'pending',
     createdAt: FieldValue.serverTimestamp(),
     expiresAt
   });
-  const labels = { teacher: '老師', student: '學生', renter: '租用' };
-  const loginText = `柚子${labels[type]}快速登入 ${raw}`;
   return {
     ok: true,
-    loginText,
-    lineUrl: `https://line.me/R/msg/text/?${encodeURIComponent(loginText)}`,
+    authorizationUrl: lineAuthorizationUrl(state),
     expiresAt: expiresAt.toDate().toISOString()
   };
 }
@@ -783,7 +813,7 @@ async function renterContactLogin(data) {
   };
 }
 
-async function issueAccessToken({ type, lineUserId, targetId, renterId, authMethod }) {
+async function issueAccessToken({ type, lineUserId, targetId, renterId, authMethod, lineFriendFlag }) {
   const raw = randomToken(32);
   const expiresAt = Timestamp.fromMillis(Date.now() + 10 * 60 * 1000);
   await db.collection('coursePortalAccessTokens').doc(hash(raw)).set({
@@ -792,11 +822,327 @@ async function issueAccessToken({ type, lineUserId, targetId, renterId, authMeth
     targetId: clean(targetId),
     renterId: clean(renterId),
     authMethod: clean(authMethod) || 'line',
+    lineFriendFlag: lineFriendFlag !== false,
     status: 'active',
     createdAt: FieldValue.serverTimestamp(),
     expiresAt
   });
   return raw;
+}
+
+function lineQueryValue(req, key) {
+  const value = req && req.query && req.query[key];
+  return clean(Array.isArray(value) ? value[0] : value);
+}
+
+async function exchangeLineAuthorizationCode(code) {
+  const secret = clean(LINE_LOGIN_CHANNEL_SECRET.value());
+  if (!secret) throw new Error('LINE Login Channel secret 尚未設定。');
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: LINE_LOGIN_CALLBACK_URL,
+    client_id: LINE_LOGIN_CHANNEL_ID,
+    client_secret: secret
+  });
+  const response = await fetch('https://api.line.me/oauth2/v2.1/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString()
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !clean(payload.access_token)) {
+    console.error('[course portal LINE token exchange failed]', response.status, payload.error || payload.error_description || '');
+    throw new Error('LINE 登入授權已失效，請重新登入。');
+  }
+  return payload;
+}
+
+async function lineLoginProfile(accessToken) {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const [profileResponse, friendResponse] = await Promise.all([
+    fetch('https://api.line.me/v2/profile', { headers }),
+    fetch('https://api.line.me/friendship/v1/status', { headers }).catch(() => null)
+  ]);
+  const profile = await profileResponse.json().catch(() => ({}));
+  if (!profileResponse.ok || !clean(profile.userId)) {
+    throw new Error('無法取得 LINE 登入身分，請重新登入。');
+  }
+  let friendFlag = false;
+  if (friendResponse && friendResponse.ok) {
+    const friendship = await friendResponse.json().catch(() => ({}));
+    friendFlag = friendship.friendFlag === true;
+  }
+  return {
+    lineUserId: clean(profile.userId),
+    lineDisplayName: clean(profile.displayName),
+    linePictureUrl: clean(profile.pictureUrl),
+    lineFriendFlag: friendFlag
+  };
+}
+
+async function bindingsForLine(type, lineUserId) {
+  const snapshot = await db.collection(bindingCollection(type))
+    .where('lineUserId', '==', lineUserId)
+    .get();
+  return snapshot.docs
+    .map((doc) => Object.assign({ __id: doc.id, __ref: doc.ref }, doc.data() || {}));
+}
+
+async function refreshLineBindingProfile(bindings, profile) {
+  if (!bindings.length) return;
+  const batch = db.batch();
+  bindings.forEach((binding) => {
+    batch.set(binding.__ref, {
+      lineDisplayName: profile.lineDisplayName,
+      linePictureUrl: profile.linePictureUrl,
+      lineFriendFlag: profile.lineFriendFlag,
+      lineProfileCheckedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+  await batch.commit();
+}
+
+function redirectLineLoginError(res, type, message) {
+  const safeType = ['teacher', 'student', 'renter'].includes(type) ? type : '';
+  const target = safeType
+    ? portalUrlForRole(safeType, { lineError: message || 'LINE 登入未完成，請重新操作。' })
+    : `${PORTAL_BASE}/course-portal.html?lineError=${encodeURIComponent(message || 'LINE 登入未完成，請重新操作。')}`;
+  res.redirect(302, target);
+}
+
+async function lineLoginCallback(req, res) {
+  res.set('Cache-Control', 'no-store');
+  if (req.method !== 'GET') {
+    res.status(405).send('Method Not Allowed');
+    return;
+  }
+
+  const state = lineQueryValue(req, 'state');
+  const code = lineQueryValue(req, 'code');
+  const lineError = lineQueryValue(req, 'error');
+  const stateRef = state
+    ? db.collection('coursePortalLineOAuthStates').doc(hash(state))
+    : null;
+  let type = '';
+
+  try {
+    if (!stateRef) throw new Error('LINE 登入狀態不完整，請重新操作。');
+    let stateRow = null;
+    await db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(stateRef);
+      const row = snapshot.exists ? snapshot.data() || {} : null;
+      type = clean(row && row.type);
+      if (
+        !row ||
+        clean(row.status) !== 'pending' ||
+        asMillis(row.expiresAt) < Date.now() ||
+        !['teacher', 'student', 'renter'].includes(type)
+      ) {
+        throw new Error('LINE 登入連結已失效，請回到入口重新登入。');
+      }
+      stateRow = row;
+      tx.set(stateRef, {
+        status: 'processing',
+        processingAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+    if (!stateRow) throw new Error('LINE 登入狀態不完整，請重新操作。');
+    if (lineError || !code) {
+      await stateRef.set({
+        status: 'cancelled',
+        error: lineError || 'missing_code',
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      redirectLineLoginError(res, type, '您已取消 LINE 登入。');
+      return;
+    }
+
+    const token = await exchangeLineAuthorizationCode(code);
+    const profile = await lineLoginProfile(token.access_token);
+    const allBindings = await bindingsForLine(type, profile.lineUserId);
+    const bindings = allBindings.filter((row) => clean(row.status) === 'active');
+    if (!bindings.length && allBindings.some((row) => clean(row.status) === 'revoked')) {
+      await stateRef.set({
+        status: 'blocked',
+        lineUserId: profile.lineUserId,
+        completedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      redirectLineLoginError(res, type, '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+      return;
+    }
+    await refreshLineBindingProfile(bindings, profile);
+
+    if (bindings.length) {
+      const binding = bindings[0];
+      const accessToken = await issueAccessToken({
+        type,
+        lineUserId: profile.lineUserId,
+        targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
+        renterId: type === 'renter' ? clean(binding.renterId) : '',
+        authMethod: 'line-oauth',
+        lineFriendFlag: profile.lineFriendFlag
+      });
+      await stateRef.set({
+        status: 'used',
+        lineUserId: profile.lineUserId,
+        lineFriendFlag: profile.lineFriendFlag,
+        completedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      res.redirect(302, portalUrlForRole(type, { access: accessToken }));
+      return;
+    }
+
+    const setupToken = randomToken(36);
+    const setupExpiresAt = Timestamp.fromMillis(Date.now() + LINE_SETUP_TTL_MS);
+    await db.collection('coursePortalLineSetupTokens').doc(hash(setupToken)).set({
+      type,
+      lineUserId: profile.lineUserId,
+      lineDisplayName: profile.lineDisplayName,
+      linePictureUrl: profile.linePictureUrl,
+      lineFriendFlag: profile.lineFriendFlag,
+      status: 'pending',
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAt: setupExpiresAt
+    });
+    await stateRef.set({
+      status: 'used',
+      lineUserId: profile.lineUserId,
+      lineFriendFlag: profile.lineFriendFlag,
+      setupRequired: true,
+      completedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    res.redirect(302, portalUrlForRole(type, { lineSetup: setupToken }));
+  } catch (error) {
+    console.error('[course portal LINE callback failed]', error);
+    if (stateRef) {
+      await stateRef.set({
+        status: 'error',
+        error: clean(error && error.message).slice(0, 300),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true }).catch(() => {});
+    }
+    redirectLineLoginError(res, type, clean(error && error.message) || 'LINE 登入未完成，請重新操作。');
+  }
+}
+
+async function completeLineRegistration(data) {
+  const setupToken = clean(data.setupToken);
+  const requestedType = clean(data.type).toLowerCase();
+  if (!setupToken) throw new HttpsError('invalid-argument', 'LINE 登入資料已遺失，請重新登入。');
+  const setupRef = db.collection('coursePortalLineSetupTokens').doc(hash(setupToken));
+  const setupSnapshot = await setupRef.get();
+  const setup = setupSnapshot.exists ? setupSnapshot.data() || {} : null;
+  const type = clean(setup && setup.type);
+  if (
+    !setup ||
+    clean(setup.status) !== 'pending' ||
+    asMillis(setup.expiresAt) < Date.now() ||
+    !['teacher', 'student', 'renter'].includes(type) ||
+    type !== requestedType ||
+    !clean(setup.lineUserId)
+  ) {
+    throw new HttpsError('permission-denied', 'LINE 登入資料已失效，請重新登入。');
+  }
+
+  const identity = await prepareBindingIdentity(Object.assign({}, data, { type }));
+  await consumeRateLimit(`line-oauth-setup-${type}`, identity.phone);
+  const lineUserId = clean(setup.lineUserId);
+  const targetId = clean(identity.targetId);
+  const renterId = clean(identity.renterId);
+  const conflictField = type === 'teacher' ? 'teacherId' : (type === 'renter' ? 'renterId' : '');
+  if (conflictField) {
+    const conflicts = await db.collection(bindingCollection(type))
+      .where(conflictField, '==', type === 'teacher' ? targetId : renterId)
+      .get();
+    const conflictRows = conflicts.docs.map((doc) => doc.data() || {});
+    if (conflictRows.some((row) => clean(row.status) === 'revoked')) {
+      throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+    }
+    const claimed = conflictRows.some((row) =>
+      clean(row.status) === 'active' && clean(row.lineUserId) !== lineUserId
+    );
+    if (claimed) {
+      throw new HttpsError('already-exists', '這筆資料已綁定其他 LINE，請由管理者刪除舊綁定後再試。');
+    }
+  }
+
+  const bindingId = type === 'student'
+    ? hash(`${targetId}|${lineUserId}`)
+    : hash(lineUserId);
+  const bindingRef = db.collection(bindingCollection(type)).doc(bindingId);
+  const previousBinding = await bindingRef.get();
+  if (previousBinding.exists && clean(previousBinding.data().status) === 'revoked') {
+    throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+  }
+  const payload = {
+    type,
+    lineUserId,
+    lineDisplayName: clean(setup.lineDisplayName),
+    linePictureUrl: clean(setup.linePictureUrl),
+    lineFriendFlag: setup.lineFriendFlag === true,
+    lineVerified: true,
+    authProvider: 'line-login',
+    email: normalizeEmail(identity.email),
+    emailNormalized: normalizeEmail(identity.email),
+    emailVerified: false,
+    status: 'active',
+    updatedAt: FieldValue.serverTimestamp(),
+    boundAt: FieldValue.serverTimestamp(),
+    reminderLastLesson: true,
+    reminderPayment: true
+  };
+  if (type === 'teacher') payload.teacherId = targetId;
+  if (type === 'student') {
+    payload.studentId = targetId;
+    payload.relationship = clean(identity.relationship) || '本人';
+  }
+  if (type === 'renter') payload.renterId = renterId;
+
+  await db.runTransaction(async (tx) => {
+    const currentSetup = await tx.get(setupRef);
+    const current = currentSetup.exists ? currentSetup.data() || {} : null;
+    if (!current || clean(current.status) !== 'pending' || asMillis(current.expiresAt) < Date.now()) {
+      throw new HttpsError('permission-denied', 'LINE 登入資料已使用或失效，請重新登入。');
+    }
+    if (type === 'renter') {
+      tx.set(db.collection('coursePortalRenters').doc(renterId), {
+        renterId,
+        name: clean(identity.name),
+        phone: normalizePhone(identity.phone),
+        email: normalizeEmail(identity.email),
+        emailNormalized: normalizeEmail(identity.email),
+        emailVerified: false,
+        source: 'line-login-registration',
+        active: true,
+        updatedAt: FieldValue.serverTimestamp(),
+        createdAtText: nowText()
+      }, { merge: true });
+    }
+    tx.set(bindingRef, payload, { merge: true });
+    tx.set(setupRef, {
+      status: 'used',
+      targetId,
+      renterId,
+      usedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+
+  const issued = await issueSession({
+    type,
+    lineUserId,
+    targetId,
+    renterId,
+    authMethod: 'line-oauth-registration'
+  });
+  return {
+    ok: true,
+    role: type,
+    sessionToken: issued.sessionToken,
+    expiresAt: issued.expiresAt.toDate().toISOString(),
+    reminderReady: setup.lineFriendFlag === true
+  };
 }
 
 async function activeStudentIdsForLine(lineUserId) {
@@ -945,7 +1291,8 @@ async function exchangeAccessToken(data) {
     ok: true,
     sessionToken: issued.sessionToken,
     role: source.type,
-    expiresAt: issued.expiresAt.toDate().toISOString()
+    expiresAt: issued.expiresAt.toDate().toISOString(),
+    reminderReady: source.lineFriendFlag !== false
   };
 }
 
@@ -2205,6 +2552,8 @@ async function adminData() {
       status: clean(row.status),
       targetName,
       lineDisplayName: clean(row.lineDisplayName),
+      lineFriendFlag: row.lineFriendFlag == null ? null : row.lineFriendFlag === true,
+      authProvider: clean(row.authProvider),
       email: normalizeEmail(row.email),
       emailVerified: row.emailVerified === true,
       emailVerifiedAt: jsonValue(row.emailVerifiedAt),
@@ -2250,7 +2599,9 @@ async function adminBindingAction(data) {
       'coursePortalAccessTokens',
       'coursePortalEmailOtps',
       'coursePortalBindCodes',
-      'coursePortalLineLoginCodes'
+      'coursePortalLineLoginCodes',
+      'coursePortalLineOAuthStates',
+      'coursePortalLineSetupTokens'
     ];
     const snapshots = lineUserId
       ? await Promise.all(collections.map((name) => db.collection(name).where('lineUserId', '==', lineUserId).get()))
@@ -2441,6 +2792,13 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   }));
   exportsObject.coursePortalVerifyEmailOtp = callable(verifyEmailOtp);
   exportsObject.coursePortalStartLineLogin = callable(startLineLogin);
+  exportsObject.coursePortalCompleteLineRegistration = callable(completeLineRegistration);
+  exportsObject.coursePortalLineLoginCallback = onRequest({
+    region: REGION,
+    timeoutSeconds: 60,
+    memory: '256MiB',
+    secrets: [LINE_LOGIN_CHANNEL_SECRET]
+  }, lineLoginCallback);
   exportsObject.coursePortalRenterContactLogin = callable(renterContactLogin);
   exportsObject.coursePortalExchangeAccess = callable(exchangeAccessToken);
   exportsObject.coursePortalTeacherData = callable(teacherPortalData, { timeoutSeconds: 180, memory: '1GiB' });
