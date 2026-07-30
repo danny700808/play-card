@@ -38,20 +38,120 @@ const MIRROR = Object.freeze({
   events: 'opsEducationMirrorEvents'
 });
 const RENTAL_USE_OPTIONS = Object.freeze([
-  { id: 'piano', name: '彈鋼琴', roomIds: [] },
-  { id: 'drums', name: '打爵士鼓', roomIds: [] },
-  { id: 'band', name: '團練', roomIds: [] },
-  { id: 'other', name: '其他用途', roomIds: [] }
+  { id: 'piano', name: '彈鋼琴', icon: '🎹', roomIds: [] },
+  { id: 'drums', name: '練鼓', icon: '🥁', roomIds: [] },
+  { id: 'band', name: '團練', icon: '🎸', roomIds: [] },
+  { id: 'other', name: '其他用途', icon: '🎵', roomIds: [] }
 ]);
+const DEFAULT_BUSINESS_HOURS = Object.freeze({
+  '0': { closed: false, start: '10:00', end: '21:00' },
+  '1': { closed: true, start: '', end: '' },
+  '2': { closed: false, start: '12:30', end: '21:00' },
+  '3': { closed: false, start: '12:30', end: '21:00' },
+  '4': { closed: false, start: '12:30', end: '21:00' },
+  '5': { closed: false, start: '12:30', end: '21:00' },
+  '6': { closed: false, start: '10:00', end: '21:00' }
+});
 
-async function rentalUseOptions(){
-  const snap=await db.collection('coursePortalSettings').doc('rentalUses').get();
-  const rows=snap.exists&&Array.isArray(snap.data().items)?snap.data().items:RENTAL_USE_OPTIONS;
-  return rows.map((row,index)=>({id:clean(row.id)||('use-'+(index+1)),name:clean(row.name)||('用途 '+(index+1)),roomIds:Array.isArray(row.roomIds)?row.roomIds.map(clean).filter(Boolean):[],active:row.active!==false})).filter(row=>row.active);
+function roomKind(room, setting = {}) {
+  const explicit = clean(setting.kind || setting.roomKind).toLowerCase();
+  if (['normal', 'video', 'holding'].includes(explicit)) return explicit;
+  const name = clean(room && room.name);
+  if (/不定時/.test(name)) return 'holding';
+  if (/視訊/.test(name)) return 'video';
+  return 'normal';
 }
-function rentalUseAllowsRoom(options,useType,roomId){
-  const selected=(options||[]).find(row=>row.id===clean(useType));
-  return !selected||!selected.roomIds.length||selected.roomIds.includes(clean(roomId));
+
+function defaultRoomFee(room) {
+  const name = clean(room && room.name);
+  return /團練室|展演空間|平台鋼琴|5號鋼琴|五號鋼琴/.test(name) ? 200 : 100;
+}
+
+function roomRentable(room, setting = {}) {
+  if (typeof setting.rentable === 'boolean') return setting.rentable;
+  return roomKind(room, setting) === 'normal';
+}
+
+function roomTeacherSchedulable(room, setting = {}) {
+  if (typeof setting.teacherSchedulable === 'boolean') return setting.teacherSchedulable;
+  return true;
+}
+
+function effectiveRoomFee(room, setting = {}) {
+  if (setting.rentalFee !== undefined && setting.rentalFee !== null && setting.rentalFee !== '') {
+    return Math.max(0, Number(setting.rentalFee) || 0);
+  }
+  return defaultRoomFee(room);
+}
+
+function defaultRentalUseOptions(rooms) {
+  const normal = (rooms || []).filter((room) => roomKind(room) === 'normal');
+  const ids = (pattern) => normal.filter((room) => pattern.test(clean(room.name))).map(sourceId);
+  return [
+    { id: 'piano', name: '彈鋼琴', icon: '🎹', roomIds: ids(/鋼琴|平台|琴房|piano|yamaha|kawai/i), active: true },
+    { id: 'drums', name: '練鼓', icon: '🥁', roomIds: ids(/鼓|展演|團練/), active: true },
+    { id: 'band', name: '團練', icon: '🎸', roomIds: ids(/展演|團練/), active: true },
+    { id: 'other', name: '其他用途', icon: '🎵', roomIds: normal.map(sourceId), active: true }
+  ];
+}
+
+async function rentalUseOptions(rooms = []) {
+  const snap = await db.collection('coursePortalSettings').doc('rentalUses').get();
+  const defaults = defaultRentalUseOptions(rooms);
+  const rows = snap.exists && Array.isArray(snap.data().items) ? snap.data().items : defaults;
+  return rows.map((row, index) => ({
+    id: clean(row.id) || ('use-' + (index + 1)),
+    name: clean(row.name) || ('用途 ' + (index + 1)),
+    icon: clean(row.icon) || (defaults[index] && defaults[index].icon) || '🎵',
+    roomIds: Array.isArray(row.roomIds) ? row.roomIds.map(clean).filter(Boolean) : [],
+    active: row.active !== false
+  })).filter((row) => row.active);
+}
+
+function rentalUseAllowsRoom(options, useType, roomId) {
+  const selected = (options || []).find((row) => row.id === clean(useType));
+  return Boolean(selected && selected.roomIds.includes(clean(roomId)));
+}
+
+async function rentalPolicySettings() {
+  const snap = await db.collection('coursePortalSettings').doc('rentalPolicy').get();
+  const raw = snap.exists ? snap.data() || {} : {};
+  const businessHours = {};
+  Object.keys(DEFAULT_BUSINESS_HOURS).forEach((day) => {
+    const fallback = DEFAULT_BUSINESS_HOURS[day];
+    const row = raw.businessHours && raw.businessHours[day] || {};
+    businessHours[day] = {
+      closed: row.closed === true || (row.closed == null && fallback.closed),
+      start: clean(row.start) || fallback.start,
+      end: clean(row.end) || fallback.end
+    };
+  });
+  return {
+    businessHours,
+    studentDiscountRate: Number(raw.studentDiscountRate == null ? 0.5 : raw.studentDiscountRate) || 0.5,
+    maxDurationMinutes: Math.min(300, Math.max(30, Number(raw.maxDurationMinutes || 300))),
+    onsitePayment: true
+  };
+}
+
+function businessWindow(policy, date) {
+  const row = policy.businessHours[String(weekday(date))] || {};
+  return {
+    closed: row.closed === true,
+    start: clean(row.start),
+    end: clean(row.end),
+    startMinutes: timeMinutes(row.start),
+    endMinutes: timeMinutes(row.end)
+  };
+}
+
+function bookingLockRows(date, roomId, startTime, endTime) {
+  const rows = [];
+  for (let minute = timeMinutes(startTime); minute < timeMinutes(endTime); minute += 30) {
+    const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+    rows.push({ id: hash(['room-lock', date, roomId, slot].join('|')), slot });
+  }
+  return rows;
 }
 
 function clean(value) {
@@ -705,7 +805,7 @@ async function teacherPortalData(data) {
       subjectIds: firstArray(teacher, ['subjectIds', 'subjects'])
     },
     week: { start, end },
-    hours: { start: 10, end: 21, closedWeekday: 2 },
+    hours: { start: 10, end: 21, closedWeekday: 1 },
     rooms: bundle.rooms.map((room) => ({
       id: sourceId(room),
       name: clean(room.name),
@@ -733,15 +833,24 @@ async function teacherAvailability(data) {
   const sourceEventId = clean(data.sourceEventId);
   const sourceCourseId = clean(data.sourceCourseId);
   const sourceDate = dateKey(data.sourceDate);
-  const bundle = await scheduleBundle(startDate, endDate, session.teacherId);
+  const [bundle, policy, roomSettingsSnapshot] = await Promise.all([
+    scheduleBundle(startDate, endDate, session.teacherId),
+    rentalPolicySettings(),
+    db.collection('coursePortalRoomSettings').get()
+  ]);
+  const roomSettingsMap = {};
+  roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
   const compatibleRooms = bundle.rooms.filter(sourceActive).filter((room) =>
+    roomKind(room, roomSettingsMap[sourceId(room)] || {}) === 'normal' &&
+    roomTeacherSchedulable(room, roomSettingsMap[sourceId(room)] || {}) &&
     roomSupportsSubject(room, subjectId, bundle)
   );
   const slots = [];
   for (let offset = 0; offset < days; offset += 1) {
     const date = addDays(startDate, offset);
-    if (weekday(date) === 2) continue;
-    for (let minute = 600; minute + duration <= 1260; minute += 30) {
+    const window = businessWindow(policy, date);
+    if (window.closed) continue;
+    for (let minute = window.startMinutes; minute + duration <= window.endMinutes; minute += 30) {
       const slotStart = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
       const slotEndMinute = minute + duration;
       const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
@@ -840,18 +949,23 @@ async function rentalAvailability(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
   const date = dateKey(data.date);
   const startTime = clean(data.startTime).slice(0, 5);
-  const duration = Math.min(240, Math.max(30, Number(data.durationMinutes || 60)));
+  const policy = await rentalPolicySettings();
+  const duration = Math.min(policy.maxDurationMinutes, Math.max(30, Number(data.durationMinutes || 60)));
   const startMinutes = timeMinutes(startTime);
   const endMinutes = startMinutes + duration;
-  const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
+  const endTime = String(Math.floor(endMinutes / 60)).padStart(2, '0') + ':' + String(endMinutes % 60).padStart(2, '0');
   if (!date || !startTime) throw new HttpsError('invalid-argument', '請選擇日期與時間。');
-  if (weekday(date) === 2) throw new HttpsError('failed-precondition', '星期二為公休日，不能預約。');
-  if (startMinutes < 600 || endMinutes > 1260) throw new HttpsError('failed-precondition', '可預約時間為 10:00～21:00。');
+  const window = businessWindow(policy, date);
+  if (window.closed) throw new HttpsError('failed-precondition', '這一天公休，不能預約。');
+  if (startMinutes < window.startMinutes || endMinutes > window.endMinutes) {
+    throw new HttpsError('failed-precondition', '所選時間不在營業時間內。');
+  }
   const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
-  const subjectId = clean(data.subjectId);
-  const [roomSettings,useOptions] = await Promise.all([db.collection('coursePortalRoomSettings').get(),rentalUseOptions()]);
+  const roomSettings = await db.collection('coursePortalRoomSettings').get();
+  const useOptions = await rentalUseOptions(bundle.rooms);
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
+  const studentRate = data.studentDiscountRequested === true || clean(data.studentDiscountRequested).toLowerCase() === 'true';
   const rooms = bundle.rooms.filter(sourceActive).map((room) => {
     const id = sourceId(room);
     const setting = settingsMap[id] || {};
@@ -859,21 +973,23 @@ async function rentalAvailability(data) {
       eventBlocksResource(event) && event.roomId === id && event.date === date &&
       overlaps(startTime, endTime, event.startTime, event.endTime)
     );
-    const rentalMatch = rentalRoomMatch(room, setting, data);
-    const compatible = subjectId ? roomSupportsSubject(room, subjectId, bundle, setting) : rentalMatch.compatible;
-    const baseFee = Number(setting.rentalFee != null ? setting.rentalFee : (room.rentalFee || room.price || 0));
-    const studentRate = session.role === 'student';
+    const profile = rentalRoomProfile(room, setting);
+    const rentable = roomRentable(room, setting);
+    const categoryAllowed = rentalUseAllowsRoom(useOptions, data.useType, id);
+    const baseFee = effectiveRoomFee(room, setting);
+    const available = !blocked && rentable && categoryAllowed;
     return {
       id,
-      name: rentalMatch.profile.publicName,
-      available: !blocked && compatible && rentalUseAllowsRoom(useOptions,data.useType,id) && setting.rentable !== false,
-      reason: blocked ? '時段已被使用' : (!compatible ? rentalMatch.reason : ''),
-      matchLevel: rentalMatch.level,
-      capacity: rentalMatch.profile.capacity,
-      equipment: rentalMatch.profile.equipment,
+      name: profile.publicName,
+      kind: roomKind(room, setting),
+      available,
+      reason: blocked ? '時段已被使用' : (!rentable ? '不開放租用' : (!categoryAllowed ? '不屬於這個用途' : '')),
+      matchLevel: 'best',
+      capacity: profile.capacity,
+      equipment: profile.equipment,
       unitFee: baseFee,
-      price: Math.round(baseFee * duration / 60 * (studentRate ? 0.5 : 1)),
-      priceType: studentRate ? '本校學生半價' : '一般價格'
+      price: Math.round(baseFee * duration / 60 * (studentRate ? policy.studentDiscountRate : 1)),
+      priceType: studentRate ? '柚子學生半價' : '一般價格'
     };
   });
   return {
@@ -882,9 +998,10 @@ async function rentalAvailability(data) {
     startTime,
     endTime,
     durationMinutes: duration,
-    subjects: bundle.subjects.map((row) => ({ id: sourceId(row), name: clean(row.name) })),
+    businessHours: policy.businessHours,
     useOptions,
-    rooms: rooms.sort((a, b) => (a.matchLevel === 'best' ? 0 : 1) - (b.matchLevel === 'best' ? 0 : 1) || a.name.localeCompare(b.name, 'zh-Hant'))
+    studentDiscountRate: policy.studentDiscountRate,
+    rooms: rooms.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
   };
 }
 
@@ -892,44 +1009,33 @@ async function rentalDayBoard(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
   const date = dateKey(data.date);
   if (!date) throw new HttpsError('invalid-argument', '請選擇日期。');
+  const policy = await rentalPolicySettings();
+  const duration = Math.min(policy.maxDurationMinutes, Math.max(30, Number(data.durationMinutes || 60)));
+  const window = businessWindow(policy, date);
   const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
-  const subjectId = clean(data.subjectId);
-  const [roomSettings,useOptions] = await Promise.all([db.collection('coursePortalRoomSettings').get(),rentalUseOptions()]);
+  const roomSettings = await db.collection('coursePortalRoomSettings').get();
+  const useOptions = await rentalUseOptions(bundle.rooms);
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
-  const closed = weekday(date) === 2;
   const slots = [];
-  for (let minute = 600; minute < 1260; minute += 30) {
-    const startTime = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
-    const next = minute + 30;
-    const endTime = `${String(Math.floor(next / 60)).padStart(2, '0')}:${String(next % 60).padStart(2, '0')}`;
-    const availableRooms = closed ? [] : bundle.rooms.filter(sourceActive).filter((room) => {
-      const id = sourceId(room);
-      const setting = settingsMap[id] || {};
-      const rentalMatch = rentalRoomMatch(room, setting, data);
-      if (setting.rentable === false || !rentalUseAllowsRoom(useOptions,data.useType,id) || (subjectId ? !roomSupportsSubject(room, subjectId, bundle, setting) : !rentalMatch.compatible)) return false;
-      return !bundle.events.some((event) =>
-        eventBlocksResource(event) && event.roomId === id && event.date === date &&
-        overlaps(startTime, endTime, event.startTime, event.endTime)
-      );
-    }).map((room) => { const match = rentalRoomMatch(room, settingsMap[sourceId(room)] || {}, data); return { id: sourceId(room), name: match.profile.publicName, matchLevel: match.level }; });
-    slots.push({
-      startTime,
-      endTime,
-      availableCount: availableRooms.length,
-      rooms: availableRooms.slice(0, 6)
-    });
+  if (!window.closed) {
+    for (let minute = window.startMinutes; minute + duration <= window.endMinutes; minute += 30) {
+      const startTime = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+      const endMinute = minute + duration;
+      const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
+      const availableRooms = bundle.rooms.filter(sourceActive).filter((room) => {
+        const id = sourceId(room);
+        const setting = settingsMap[id] || {};
+        if (!roomRentable(room, setting) || !rentalUseAllowsRoom(useOptions, data.useType, id)) return false;
+        return !bundle.events.some((event) =>
+          eventBlocksResource(event) && event.roomId === id && event.date === date &&
+          overlaps(startTime, endTime, event.startTime, event.endTime)
+        );
+      }).map((room) => ({ id: sourceId(room), name: rentalRoomProfile(room, settingsMap[sourceId(room)] || {}).publicName }));
+      slots.push({ startTime, endTime, availableCount: availableRooms.length, rooms: availableRooms.slice(0, 8) });
+    }
   }
-  return {
-    ok: true,
-    date,
-    closed,
-    role: session.role,
-    priceType: session.role === 'student' ? '本校學生價' : '一般價格',
-    subjects: bundle.subjects.map((row) => ({ id: sourceId(row), name: clean(row.name) })),
-    useOptions,
-    slots
-  };
+  return { ok: true, date, closed: window.closed, role: session.role, useOptions, slots };
 }
 
 async function rentalWeekBoard(data) {
@@ -937,30 +1043,38 @@ async function rentalWeekBoard(data) {
   const startDate = dateKey(data.startDate || data.date);
   if (!startDate) throw new HttpsError('invalid-argument', '請選擇週起始日期。');
   const endDate = addDays(startDate, 6);
+  const policy = await rentalPolicySettings();
+  const duration = Math.min(policy.maxDurationMinutes, Math.max(30, Number(data.durationMinutes || 60)));
   const bundle = await scheduleBundle(startDate, endDate, session.role === 'teacher' ? session.teacherId : '');
-  const [roomSettings,useOptions] = await Promise.all([db.collection('coursePortalRoomSettings').get(),rentalUseOptions()]);
+  const roomSettings = await db.collection('coursePortalRoomSettings').get();
+  const useOptions = await rentalUseOptions(bundle.rooms);
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const days = [];
   for (let offset = 0; offset < 7; offset += 1) {
     const date = addDays(startDate, offset);
-    const closed = weekday(date) === 2;
+    const window = businessWindow(policy, date);
     const slots = [];
-    for (let minute = 600; minute < 1260; minute += 30) {
-      const startTime = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
-      const endTime = `${String(Math.floor((minute + 30) / 60)).padStart(2, '0')}:${String((minute + 30) % 60).padStart(2, '0')}`;
-      const rooms = closed ? [] : bundle.rooms.filter(sourceActive).map((room) => {
-        const id = sourceId(room);
-        const setting = settingsMap[id] || {};
-        const match = rentalRoomMatch(room, setting, data);
-        const blocked = bundle.events.some((event) => eventBlocksResource(event) && event.roomId === id && event.date === date && overlaps(startTime, endTime, event.startTime, event.endTime));
-        return { id, name: match.profile.publicName, matchLevel: match.level, available: setting.rentable !== false && match.compatible && !blocked };
-      }).filter((room) => room.available);
-      slots.push({ startTime, endTime, availableCount: rooms.length, rooms: rooms.slice(0, 8) });
+    if (!window.closed) {
+      for (let minute = window.startMinutes; minute + duration <= window.endMinutes; minute += 30) {
+        const startTime = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+        const endMinute = minute + duration;
+        const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
+        const rooms = bundle.rooms.filter(sourceActive).filter((room) => {
+          const id = sourceId(room);
+          const setting = settingsMap[id] || {};
+          if (!roomRentable(room, setting) || !rentalUseAllowsRoom(useOptions, data.useType, id)) return false;
+          return !bundle.events.some((event) =>
+            eventBlocksResource(event) && event.roomId === id && event.date === date &&
+            overlaps(startTime, endTime, event.startTime, event.endTime)
+          );
+        }).map((room) => ({ id: sourceId(room), name: rentalRoomProfile(room, settingsMap[sourceId(room)] || {}).publicName }));
+        slots.push({ startTime, endTime, availableCount: rooms.length, rooms: rooms.slice(0, 8) });
+      }
     }
-    days.push({ date, closed, availableSlotCount: slots.filter((slot) => slot.availableCount > 0).length, slots });
+    days.push({ date, closed: window.closed, availableSlotCount: slots.filter((slot) => slot.availableCount > 0).length, slots });
   }
-  return { ok: true, startDate, endDate, role: session.role, useOptions, days };
+  return { ok: true, startDate, endDate, role: session.role, durationMinutes: duration, useOptions, businessHours: policy.businessHours, days };
 }
 
 async function createRoomBooking(data) {
@@ -973,6 +1087,7 @@ async function createRoomBooking(data) {
   if (!room || !room.available) throw new HttpsError('failed-precondition', room && room.reason || '這間教室目前不能預約。');
   const id = db.collection('coursePortalRoomBookings').doc().id;
   const studentIds = session.role === 'student' ? await activeStudentIdsForLine(session.lineUserId) : [];
+  const locks = bookingLockRows(availability.date, room.id, availability.startTime, availability.endTime);
   const booking = {
     id,
     type: 'room_rental',
@@ -981,29 +1096,43 @@ async function createRoomBooking(data) {
     endTime: availability.endTime,
     roomId: room.id,
     roomName: room.name,
-    subjectId: clean(data.subjectId),
     purpose: clean(data.purpose),
     useType: clean(data.useType),
-    equipment: clean(data.equipment),
-    partySize: Math.max(1, Number(data.partySize || 1)),
     role: session.role,
     teacherId: clean(session.teacherId),
     renterId: clean(session.renterId),
     studentIds,
+    studentDiscountRequested: data.studentDiscountRequested === true || clean(data.studentDiscountRequested).toLowerCase() === 'true',
     lineUserId: session.lineUserId,
     amount: room.price,
+    priceType: room.priceType,
     paymentStatus: 'onsite_unpaid',
     status: 'confirmed',
     active: true,
+    lockIds: locks.map((row) => row.id),
     createdAt: FieldValue.serverTimestamp(),
     createdAtText: nowText()
   };
-  await db.collection('coursePortalRoomBookings').doc(id).set(booking);
-  await db.collection('coursePortalScheduleChanges').doc(`rental-${id}`).set({
-    action: 'room_booking',
-    active: true,
-    event: booking,
-    createdAt: FieldValue.serverTimestamp()
+  const bookingRef = db.collection('coursePortalRoomBookings').doc(id);
+  const changeRef = db.collection('coursePortalScheduleChanges').doc('rental-' + id);
+  await db.runTransaction(async (tx) => {
+    const lockRefs = locks.map((row) => db.collection('coursePortalRoomLocks').doc(row.id));
+    for (const ref of lockRefs) {
+      const snap = await tx.get(ref);
+      if (snap.exists && snap.data().active !== false) {
+        throw new HttpsError('already-exists', '這個時段剛剛已被其他人預約，請重新選擇。');
+      }
+    }
+    tx.set(bookingRef, booking);
+    tx.set(changeRef, { action: 'room_booking', active: true, event: booking, createdAt: FieldValue.serverTimestamp() });
+    lockRefs.forEach((ref, index) => tx.set(ref, {
+      active: true,
+      bookingId: id,
+      date: availability.date,
+      roomId: room.id,
+      slot: locks[index].slot,
+      createdAt: FieldValue.serverTimestamp()
+    }));
   });
   return { ok: true, booking: jsonValue(booking) };
 }
@@ -1077,6 +1206,9 @@ async function cancelRoomBooking(data) {
       cancelledAt: FieldValue.serverTimestamp(),
       cancelledBy: session.role
     }, { merge: true });
+    (Array.isArray(booking.lockIds) ? booking.lockIds : []).forEach((lockId) => {
+      tx.delete(db.collection('coursePortalRoomLocks').doc(clean(lockId)));
+    });
   });
   return { ok: true, bookingId, status: 'cancelled' };
 }
@@ -1200,8 +1332,20 @@ async function teacherAction(data) {
   if (!date || !startTime || !endTime || !roomId || !studentId) {
     throw new HttpsError('invalid-argument', '請完整選擇學生、日期、時間與教室。');
   }
-  if (weekday(date) === 2) throw new HttpsError('failed-precondition', '星期二為公休日。');
+  const policy = await rentalPolicySettings();
+  const window = businessWindow(policy, date);
+  if (window.closed) throw new HttpsError('failed-precondition', '星期一為公休日。');
+  if (timeMinutes(startTime) < window.startMinutes || timeMinutes(endTime) > window.endMinutes) {
+    throw new HttpsError('failed-precondition', '所選時間不在營業時間內。');
+  }
   const bundle = await scheduleBundle(date, date, session.teacherId);
+  const roomSettingsSnapshot = await db.collection('coursePortalRoomSettings').get();
+  const roomSettingsMap = {};
+  roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
+  const selectedRoom = bundle.rooms.find((room) => sourceId(room) === roomId);
+  if (!selectedRoom || !roomTeacherSchedulable(selectedRoom, roomSettingsMap[roomId] || {})) {
+    throw new HttpsError('failed-precondition', '這個教室不開放老師排課。');
+  }
   const [allFixed, allTemporary] = await Promise.all([mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')]);
   const ownStudent = [...allFixed, ...allTemporary].some((row) =>
     eventTeacherId(row) === session.teacherId && eventStudentIds(row).includes(studentId)
@@ -1248,6 +1392,8 @@ async function teacherAction(data) {
     const horizonEnd = addDays(date, 364);
     const future = await scheduleBundle(date, horizonEnd, session.teacherId);
     const compatibleRooms = future.rooms.filter(sourceActive).filter((room) =>
+      roomKind(room, roomSettingsMap[sourceId(room)] || {}) === 'normal' &&
+      roomTeacherSchedulable(room, roomSettingsMap[sourceId(room)] || {}) &&
       roomSupportsSubject(room, event.subjectId, future)
     );
     for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, 7)) {
@@ -1375,21 +1521,89 @@ async function adminApproveBonus(data){
   return {ok:true,message:'獎金已核定並寫入老師薪資。'};
 }
 
-async function publicRentalSettings(){return {ok:true,items:await rentalUseOptions()};}
-async function adminSaveRentalSettings(data){const rooms=await mirrorRows('rooms');const allowed=new Set(rooms.map(sourceId));const items=(Array.isArray(data.items)?data.items:[]).map((row,index)=>({id:clean(row.id)||('use-'+(index+1)),name:clean(row.name),roomIds:(Array.isArray(row.roomIds)?row.roomIds:[]).map(clean).filter(id=>allowed.has(id)),active:row.active!==false})).filter(row=>row.name);await db.collection('coursePortalSettings').doc('rentalUses').set({items,updatedAt:FieldValue.serverTimestamp(),updatedAtText:nowText()},{merge:true});return {ok:true,items};}
+async function publicRentalSettings() {
+  const rooms = await mirrorRows('rooms');
+  const [items, policy] = await Promise.all([rentalUseOptions(rooms), rentalPolicySettings()]);
+  return { ok: true, items, policy };
+}
 
-async function updateStudentReminder(data) {
-  const session = await requireSession(data, ['student']);
-  const studentId = clean(data.studentId);
-  const allowed = await activeStudentIdsForLine(session.lineUserId);
-  if (!allowed.includes(studentId)) throw new HttpsError('permission-denied', '沒有這位學生的權限。');
-  const ref = db.collection('coursePortalStudentBindings').doc(hash(`${studentId}|${session.lineUserId}`));
-  await ref.set({
-    reminderLastLesson: data.reminderLastLesson !== false,
-    reminderPayment: data.reminderPayment !== false,
-    updatedAt: FieldValue.serverTimestamp()
+async function adminRentalSettingsData() {
+  const rooms = await mirrorRows('rooms');
+  const [items, policy, roomSettings] = await Promise.all([
+    rentalUseOptions(rooms),
+    rentalPolicySettings(),
+    db.collection('coursePortalRoomSettings').get()
+  ]);
+  const settingsMap = {};
+  roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
+  return {
+    ok: true,
+    items,
+    policy,
+    rooms: rooms.map((room) => {
+      const id = sourceId(room);
+      const setting = settingsMap[id] || {};
+      return {
+        id,
+        name: clean(room.name),
+        kind: roomKind(room, setting),
+        rentalFee: effectiveRoomFee(room, setting),
+        rentable: roomRentable(room, setting),
+        teacherSchedulable: roomTeacherSchedulable(room, setting)
+      };
+    })
+  };
+}
+
+async function adminSaveRentalSettings(data) {
+  const rooms = await mirrorRows('rooms');
+  const allowed = new Set(rooms.map(sourceId));
+  const items = (Array.isArray(data.items) ? data.items : []).map((row, index) => ({
+    id: clean(row.id) || ('use-' + (index + 1)),
+    name: clean(row.name),
+    icon: clean(row.icon) || '🎵',
+    roomIds: (Array.isArray(row.roomIds) ? row.roomIds : []).map(clean).filter((id) => allowed.has(id)),
+    active: row.active !== false
+  })).filter((row) => row.name);
+  const policyInput = data.policy || {};
+  const businessHours = {};
+  Object.keys(DEFAULT_BUSINESS_HOURS).forEach((day) => {
+    const fallback = DEFAULT_BUSINESS_HOURS[day];
+    const row = policyInput.businessHours && policyInput.businessHours[day] || fallback;
+    businessHours[day] = {
+      closed: row.closed === true,
+      start: clean(row.start) || fallback.start,
+      end: clean(row.end) || fallback.end
+    };
+  });
+  const batch = db.batch();
+  batch.set(db.collection('coursePortalSettings').doc('rentalUses'), {
+    items,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText()
   }, { merge: true });
-  return { ok: true };
+  batch.set(db.collection('coursePortalSettings').doc('rentalPolicy'), {
+    businessHours,
+    studentDiscountRate: 0.5,
+    maxDurationMinutes: 300,
+    onsitePayment: true,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText()
+  }, { merge: true });
+  (Array.isArray(data.rooms) ? data.rooms : []).forEach((row) => {
+    const id = clean(row.id);
+    if (!allowed.has(id)) return;
+    batch.set(db.collection('coursePortalRoomSettings').doc(id), {
+      kind: ['normal', 'video', 'holding'].includes(clean(row.kind)) ? clean(row.kind) : 'normal',
+      rentalFee: Math.max(0, Number(row.rentalFee || 0)),
+      rentable: row.rentable === true,
+      teacherSchedulable: row.teacherSchedulable !== false,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtText: nowText()
+    }, { merge: true });
+  });
+  await batch.commit();
+  return adminRentalSettingsData();
 }
 
 function assertAdminPin(request) {
@@ -1592,6 +1806,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherLateAttendance = callable(teacherLateAttendance, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherBonusRequest = callable(teacherBonusRequest, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalUseSettings = callable(publicRentalSettings);
+  exportsObject.coursePortalAdminRentalSettingsData = callable(async (data, request) => {
+    assertAdminPin(request);
+    return adminRentalSettingsData();
+  }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveRentalSettings = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRentalSettings(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminBonusRequests = callable(async (data,request)=>{assertAdminPin(request);return adminBonusRequests();},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminApproveBonus = callable(async (data,request)=>{assertAdminPin(request);return adminApproveBonus(data);},{secrets:[ADMIN_PIN]});
