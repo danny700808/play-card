@@ -1,0 +1,10 @@
+'use strict';
+const fs=require('fs');
+const path='functions/coursePortal.js';
+let source=fs.readFileSync(path,'utf8');
+const old="    roomIds: Array.isArray(row.roomIds) ? row.roomIds.map(clean).filter(Boolean) : [],";
+const next="    roomIds: Array.isArray(row.roomIds) && row.roomIds.length ? row.roomIds.map(clean).filter(Boolean) : ((defaults.find((item) => item.id === clean(row.id)) || {}).roomIds || []),";
+if(!source.includes(old))throw new Error('Rental roomIds line not found');
+source=source.replace(old,next);
+fs.writeFileSync(path,source);
+console.log('Rental default room assignments fixed.');
