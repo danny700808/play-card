@@ -190,6 +190,7 @@
   function showBound(active) {
     bindView.classList.toggle('hidden', active);
     appView.classList.toggle('hidden', !active);
+    document.getElementById('sessionLoading').classList.add('hidden');
     logoutBtn.classList.toggle('hidden', !active);
   }
 
@@ -400,6 +401,7 @@
     const form = document.getElementById('bindForm');
     form.elements.name.value = form.elements.name.value || employee.name || employee.displayName || '';
     form.elements.phone.value = form.elements.phone.value || employee.phone || employee.mobile || employee.tel || '';
+    form.elements.email.value = form.elements.email.value || employee.email || employee.loginEmail || '';
     document.getElementById('employeeLoginBridge').classList.add('employee-recognized');
   }
 
@@ -514,10 +516,7 @@
     }
   }
 
-  document.getElementById('bindForm').addEventListener('submit', (event) => {
-    event.preventDefault();
-    startBinding(event.currentTarget, event.submitter);
-  });
+  if (global.CoursePortal) global.CoursePortal.installAuth({ role: 'teacher', authViewId: 'bindView' });
 
   document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
   document.getElementById('prevWeek').addEventListener('click', () => { weekStart = addDays(weekStart, -7); load(true); });
@@ -646,6 +645,10 @@
       if (token) await load(false);
       else showBound(false);
     } catch (error) {
+      setSession('');
+      const params = new URLSearchParams(location.search);
+      params.delete('access');
+      history.replaceState({}, '', `${location.pathname}${params.toString() ? `?${params}` : ''}`);
       toast(error.message, 'error');
       showBound(false);
     }

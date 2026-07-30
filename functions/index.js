@@ -21,7 +21,10 @@ registerPlatformOrderSync(exports);
 registerInjiaoyunManualSync(exports);
 registerInjiaoyunEducationPreview(exports);
 registerInjiaoyunEducationMirror(exports);
-registerCoursePortal(exports, { pushLineMessage });
+registerCoursePortal(exports, {
+  pushLineMessage,
+  sendEmail: sendEmailViaGmail
+});
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';

@@ -55,6 +55,7 @@
   function showBooking(active) {
     bindView.classList.toggle('hidden', active);
     bookingView.classList.toggle('hidden', !active);
+    document.getElementById('sessionLoading').classList.add('hidden');
     document.getElementById('logoutBtn').classList.toggle('hidden', !active);
   }
 
@@ -308,24 +309,16 @@
   async function openBooking(nextRole, nextToken) {
     role = nextRole;
     token = nextToken;
+    const initialBookings = await P.call('coursePortalRentalMyBookings', { sessionToken: token });
+    myBookings = initialBookings.bookings || [];
     showBooking(true);
     renderDurations();
+    renderBookings();
     await loadUses();
-    await Promise.all([loadBoard(), loadBookings()]);
+    await loadBoard();
   }
 
-  document.getElementById('publicBindForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const button = event.submitter;
-    P.loading(button, true, '處理中…');
-    try {
-      await P.startBinding('renter', event.currentTarget);
-    } catch (error) {
-      P.toast(error.message, 'error');
-    } finally {
-      P.loading(button, false);
-    }
-  });
+  P.installAuth({ role: 'renter', authViewId: 'publicBindView' });
 
   document.getElementById('rentalUseGrid').addEventListener('click', (event) => {
     const button = event.target.closest('[data-use]');
@@ -462,7 +455,12 @@
       }
       const saved = currentSession();
       if (saved) {
-        await openBooking(saved.role, saved.token);
+        try {
+          await openBooking(saved.role, saved.token);
+        } catch (error) {
+          P.setSession(saved.role, '');
+          throw error;
+        }
         return;
       }
       showBooking(false);

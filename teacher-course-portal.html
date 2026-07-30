@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260729-teacher-app-v8b">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-teacher-equipment-v2">
-  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-clean-notes-v2">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-v1">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-auth-v1">
+  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-v1">
 </head>
 <body class="teacher-course-app clean-portal-ui">
   <main class="portal-shell">
@@ -16,15 +16,33 @@
       <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
     </header>
 
-    <section class="card bind-box" id="bindView">
-      <div class="section-title"><div><h2>第一次使用請完成 LINE 綁定</h2><p class="muted">確認身分後，同一台裝置以後登入會直接開啟課表。</p></div></div>
-      <form class="stack" id="bindForm">
-        <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" required></div>
-        <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
-        <button class="btn primary" type="submit">LINE 綁定</button>
-      </form>
-      <div class="employee-login-bridge" id="employeeLoginBridge"><span>已有外聘老師帳號？</span><a class="btn soft" href="index.html">使用 Email／密碼登入</a><small>登入後會直接回到老師課務；第一次仍需完成一次 LINE 身分確認。</small></div>
-      <div class="bind-result hidden" data-bind-result></div>
+    <section class="card bind-box hidden" id="bindView" data-auth-view>
+      <div class="section-title"><h2>登入老師課務</h2></div>
+      <div class="auth-login-stack">
+        <button class="btn primary auth-line-button" type="button" data-line-login>LINE 快速登入</button>
+        <div class="bind-result hidden" data-line-login-result></div>
+        <div class="auth-divider"><span>或使用 Email</span></div>
+        <form class="stack" data-email-login-form>
+          <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
+          <button class="btn" type="submit">寄送四碼驗證碼</button>
+        </form>
+        <div class="auth-help-row">
+          <button class="btn soft" type="button" data-show-first-use aria-expanded="false">第一次使用／建立帳號</button>
+          <a class="btn" href="index.html">原老師帳號登入</a>
+        </div>
+        <div class="auth-otp-panel hidden" data-otp-panel></div>
+      </div>
+      <section class="auth-first-use hidden" data-first-use-panel>
+        <div class="section-title"><h3>第一次使用</h3></div>
+        <form class="stack" id="bindForm" data-first-use-form>
+          <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" required></div>
+          <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
+          <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
+          <button class="btn primary" type="submit">寄送四碼驗證碼</button>
+        </form>
+        <div class="employee-login-bridge" id="employeeLoginBridge"><span>外聘老師也可使用原帳號登入。</span></div>
+        <div class="bind-result hidden" data-bind-result></div>
+      </section>
     </section>
 
     <section class="card teacher-session-loading hidden" id="sessionLoading" aria-live="polite">
@@ -32,7 +50,7 @@
       <div><strong>正在開啟老師課務</strong><p>正在載入這台裝置保存的課表，不需要再次輸入姓名與電話。</p></div>
     </section>
 
-    <section class="hidden" id="appView">
+    <section class="hidden" id="appView" data-app-view>
       <div class="summary-grid teacher-summary-grid">
         <article class="summary"><span>老師</span><strong id="teacherName">—</strong></article>
         <article class="summary"><span>本週課堂</span><strong id="lessonCount">0</strong></article>
@@ -125,8 +143,9 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="teacher-course-session-v8.js?v=20260729-teacher-app-v8b"></script>
-  <script src="teacher-course-portal-v8.js?v=20260730-teacher-equipment-v2"></script>
+  <script src="course-portal-common.js?v=20260730-auth-v1"></script>
+  <script src="teacher-course-session-v8.js?v=20260730-auth-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260730-auth-v1"></script>
   <script src="teacher-room-rules-v1.js?v=20260730-teacher-equipment-v2"></script>
 </body>
 </html>

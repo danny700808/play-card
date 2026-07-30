@@ -55,12 +55,25 @@
   }
 
   function getSession(role) {
-    return clean(global.localStorage.getItem(sessionKey(role)));
+    return clean(global.sessionStorage.getItem(sessionKey(role))) ||
+      clean(global.localStorage.getItem(sessionKey(role)));
   }
 
-  function setSession(role, token) {
-    if (token) global.localStorage.setItem(sessionKey(role), clean(token));
-    else global.localStorage.removeItem(sessionKey(role));
+  function setSession(role, token, options) {
+    const key = sessionKey(role);
+    const value = clean(token);
+    if (!value) {
+      global.localStorage.removeItem(key);
+      global.sessionStorage.removeItem(key);
+      return;
+    }
+    if (options && options.temporary === true) {
+      global.localStorage.removeItem(key);
+      global.sessionStorage.setItem(key, value);
+      return;
+    }
+    global.sessionStorage.removeItem(key);
+    global.localStorage.setItem(key, value);
   }
 
   function cacheKey(name, data) {
@@ -175,23 +188,32 @@
       button.textContent = '已複製';
       setTimeout(() => { button.textContent = original; }, 1800);
     }
-    toast('綁定文字已複製，請貼到柚子樂器官方 LINE。');
+    toast('LINE 文字已複製，請貼到柚子樂器官方 LINE。');
   }
 
   function finishSessionResolution() {
     document.body.classList.remove('portal-session-resolving');
+    const loadingView = document.getElementById('sessionLoading');
+    if (loadingView) loadingView.classList.add('hidden');
     const overlay = document.getElementById('portalSessionResolving');
     if (overlay) overlay.remove();
   }
 
   function beginSessionResolution() {
-    const bindView = document.getElementById('bindView');
-    const appView = document.getElementById('appView');
+    const bindView = document.querySelector('[data-auth-view]') ||
+      document.getElementById('bindView') ||
+      document.getElementById('publicBindView');
+    const appView = document.querySelector('[data-app-view]') ||
+      document.getElementById('appView') ||
+      document.getElementById('bookingView');
     if (!bindView || !appView) return;
     bindView.classList.add('hidden');
+    appView.classList.add('hidden');
     document.body.classList.add('portal-session-resolving');
+    const loadingView = document.getElementById('sessionLoading');
+    if (loadingView) loadingView.classList.remove('hidden');
     let overlay = document.getElementById('portalSessionResolving');
-    if (!overlay) {
+    if (!loadingView && !overlay) {
       overlay = document.createElement('section');
       overlay.id = 'portalSessionResolving';
       overlay.className = 'card portal-session-card';
@@ -225,6 +247,10 @@
       global.history.replaceState({}, '', `${global.location.pathname}${suffix ? `?${suffix}` : ''}`);
       return result.sessionToken;
     } catch (error) {
+      setSession(role, '');
+      params.delete('access');
+      const suffix = params.toString();
+      global.history.replaceState({}, '', `${global.location.pathname}${suffix ? `?${suffix}` : ''}`);
       finishSessionResolution();
       throw error;
     }
@@ -249,6 +275,162 @@
       if (copyButton) copyButton.addEventListener('click', () => copyText(result.bindText, copyButton));
     }
     return result;
+  }
+
+  function renderLineAction(box, result, heading) {
+    if (!box) return;
+    const text = clean(result.loginText || result.bindText);
+    box.classList.remove('hidden');
+    box.innerHTML = [
+      `<strong>${escapeHtml(heading || '請到官方 LINE 完成確認：')}</strong>`,
+      `<code>${escapeHtml(text)}</code>`,
+      '<div class="grid two">',
+      '<button class="btn soft" type="button" data-copy-auth-text>複製文字</button>',
+      `<a class="btn primary" href="${escapeHtml(result.lineUrl)}">開啟官方 LINE</a>`,
+      '</div>',
+      '<small>把整段文字送出後，請開啟官方 LINE 回覆的登入連結。</small>'
+    ].join('');
+    const copyButton = box.querySelector('[data-copy-auth-text]');
+    if (copyButton) copyButton.addEventListener('click', () => copyText(text, copyButton));
+  }
+
+  function installAuth(options) {
+    options = options || {};
+    const role = clean(options.role);
+    const authView = document.querySelector('[data-auth-view]') ||
+      document.getElementById(options.authViewId || 'bindView');
+    if (!authView || !['teacher', 'student', 'renter'].includes(role)) return;
+    if (authView.dataset.authInstalled === 'true') return;
+    authView.dataset.authInstalled = 'true';
+
+    const loginForm = authView.querySelector('[data-email-login-form]');
+    const firstUsePanel = authView.querySelector('[data-first-use-panel]');
+    const firstUseForm = authView.querySelector('[data-first-use-form]');
+    const renterContactForm = authView.querySelector('[data-renter-contact-form]');
+    const otpPanel = authView.querySelector('[data-otp-panel]');
+    const lineResult = authView.querySelector('[data-line-login-result]');
+    const bindResult = authView.querySelector('[data-bind-result]');
+    let countdownTimer = 0;
+    let pendingChallenge = '';
+    let pendingPurpose = '';
+
+    function showFirstUse(active) {
+      if (firstUsePanel) firstUsePanel.classList.toggle('hidden', !active);
+      const button = authView.querySelector('[data-show-first-use]');
+      if (button) button.setAttribute('aria-expanded', active ? 'true' : 'false');
+    }
+
+    function renderOtp(result, purpose) {
+      if (!otpPanel) return;
+      pendingChallenge = clean(result.challengeToken);
+      pendingPurpose = purpose;
+      let seconds = Number(result.expiresInSeconds || 180);
+      otpPanel.classList.remove('hidden');
+      otpPanel.innerHTML = [
+        '<form class="stack auth-otp-form">',
+        `<div class="field"><label>輸入寄到 ${escapeHtml(result.maskedEmail || '您的 Email')} 的四碼驗證碼</label>`,
+        '<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required></div>',
+        '<div class="auth-otp-meta">有效時間：<strong data-otp-countdown>180 秒</strong></div>',
+        '<button class="btn primary" type="submit">確認驗證碼</button>',
+        '</form>'
+      ].join('');
+      const countdown = otpPanel.querySelector('[data-otp-countdown]');
+      clearInterval(countdownTimer);
+      const tick = () => {
+        if (countdown) countdown.textContent = seconds > 0 ? `${seconds} 秒` : '已失效，請重新寄送';
+        const submit = otpPanel.querySelector('button[type="submit"]');
+        if (submit) submit.disabled = seconds <= 0;
+        seconds -= 1;
+        if (seconds < 0) clearInterval(countdownTimer);
+      };
+      tick();
+      countdownTimer = setInterval(tick, 1000);
+      otpPanel.querySelector('input[name="code"]').focus();
+      otpPanel.querySelector('form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = event.submitter;
+        loading(button, true, '驗證中…');
+        try {
+          const verified = await call('coursePortalVerifyEmailOtp', {
+            challengeToken: pendingChallenge,
+            code: event.currentTarget.elements.code.value
+          });
+          clearInterval(countdownTimer);
+          if (pendingPurpose === 'login') {
+            if (verified.role !== role || !verified.sessionToken) throw new Error('登入資料不完整，請重新操作。');
+            setSession(role, verified.sessionToken);
+            toast('驗證成功，正在開啟。');
+            global.location.reload();
+            return;
+          }
+          otpPanel.classList.add('hidden');
+          renderLineAction(bindResult, verified, 'Email 已驗證，最後到官方 LINE 完成一次綁定：');
+        } catch (error) {
+          toast(error.message, 'error');
+        } finally {
+          loading(button, false);
+        }
+      });
+    }
+
+    async function requestOtp(form, purpose, button) {
+      loading(button, true, '寄送中…');
+      try {
+        const fields = Object.fromEntries(new FormData(form).entries());
+        const result = await call('coursePortalSendEmailOtp', Object.assign({ type: role, purpose }, fields));
+        renderOtp(result, purpose);
+        toast(result.message || '四碼驗證碼已寄出。');
+      } catch (error) {
+        toast(error.message, 'error');
+      } finally {
+        loading(button, false);
+      }
+    }
+
+    const lineButton = authView.querySelector('[data-line-login]');
+    if (lineButton) lineButton.addEventListener('click', async () => {
+      loading(lineButton, true, '產生中…');
+      try {
+        const result = await call('coursePortalStartLineLogin', { type: role });
+        renderLineAction(lineResult, result, '請用已綁定的 LINE 傳送這段快速登入文字：');
+      } catch (error) {
+        toast(error.message, 'error');
+      } finally {
+        loading(lineButton, false);
+      }
+    });
+    if (loginForm) loginForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      requestOtp(event.currentTarget, 'login', event.submitter);
+    });
+    if (firstUseForm) firstUseForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      requestOtp(event.currentTarget, 'bind', event.submitter);
+    });
+    if (renterContactForm && role === 'renter') {
+      renterContactForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = event.submitter;
+        loading(button, true, '登入中…');
+        try {
+          const fields = Object.fromEntries(new FormData(event.currentTarget).entries());
+          const result = await call('coursePortalRenterContactLogin', fields);
+          if (!result.sessionToken) throw new Error('登入資料不完整，請重新操作。');
+          setSession('renter', result.sessionToken, { temporary: true });
+          toast('登入成功，正在開啟租用頁。');
+          global.location.reload();
+        } catch (error) {
+          toast(error.message, 'error');
+        } finally {
+          loading(button, false);
+        }
+      });
+    }
+    const firstUseButton = authView.querySelector('[data-show-first-use]');
+    if (firstUseButton) firstUseButton.addEventListener('click', () => {
+      showFirstUse(firstUsePanel ? firstUsePanel.classList.contains('hidden') : false);
+    });
+    showFirstUse(false);
   }
 
   function installPortalRuntimeStyle() {
@@ -343,6 +525,7 @@
     monday,
     money,
     setSession,
+    installAuth,
     startBinding,
     toast
   };

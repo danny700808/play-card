@@ -39,6 +39,9 @@ assert.strictEqual(
 const commonSource = fs.readFileSync(path.join(root, 'course-portal-common.js'), 'utf8');
 assert(commonSource.trimStart().startsWith('(function'), 'course-portal-common.js 不是可執行的 JavaScript');
 new vm.Script(commonSource, { filename: 'course-portal-common.js' });
+assert(commonSource.includes('coursePortalSendEmailOtp'), '入口缺少 Email 驗證碼寄送流程');
+assert(commonSource.includes('coursePortalVerifyEmailOtp'), '入口缺少 Email 驗證碼確認流程');
+assert(commonSource.includes('coursePortalStartLineLogin'), '入口缺少 LINE 快速登入');
 
 for (const file of pages) {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
@@ -53,6 +56,21 @@ for (const file of pages) {
     new vm.Script(code, { filename: `${file}:inline-${index + 1}` });
   });
 }
+
+['teacher-course-portal.html', 'student-course-portal.html', 'room-booking.html'].forEach((file) => {
+  const html = fs.readFileSync(path.join(root, file), 'utf8');
+  assert(html.includes('data-auth-view'), `${file} 缺少統一登入畫面`);
+  assert(html.includes('id="sessionLoading"'), `${file} 缺少登入狀態確認畫面`);
+  assert(html.includes('data-first-use-form'), `${file} 缺少首次使用驗證`);
+});
+['teacher-course-portal.html', 'student-course-portal.html'].forEach((file) => {
+  const html = fs.readFileSync(path.join(root, file), 'utf8');
+  assert(html.includes('data-email-login-form'), `${file} 缺少 Email 快速登入`);
+});
+assert(
+  fs.readFileSync(path.join(root, 'room-booking.html'), 'utf8').includes('data-renter-contact-form'),
+  '租用入口缺少姓名＋電話臨時登入'
+);
 
 const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.html'), 'utf8');
 assert(teacherPortal.includes('value="single_move"'), '老師入口缺少單次調課');
@@ -96,6 +114,10 @@ assert(!schedulerHtml.includes('半透明＝請假／停課'), '課表圖例仍�
 const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
 [
   'coursePortalStartBinding',
+  'coursePortalSendEmailOtp',
+  'coursePortalVerifyEmailOtp',
+  'coursePortalStartLineLogin',
+  'coursePortalRenterContactLogin',
   'coursePortalExchangeAccess',
   'coursePortalTeacherData',
   'coursePortalStudentData',
@@ -111,6 +133,13 @@ const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'u
 ].forEach((name) => assert(backend.includes(name), `缺少後端函式 ${name}`));
 assert(backend.includes("where('lineUserId', '==', session.lineUserId)"), '租用紀錄未限制為目前 LINE 使用者');
 assert(backend.includes('只能取消自己預約的教室'), '取消租用缺少本人權限檢查');
+assert(backend.includes('const EMAIL_OTP_TTL_MS = 180 * 1000'), 'Email 四碼驗證碼不是 180 秒');
+assert(backend.includes('EMAIL_OTP_MAX_ATTEMPTS = 5'), 'Email 驗證碼缺少五次輸入限制');
+assert(backend.includes('taipeiDateTimeMillis(row.date, row.endTime) > Date.now()'), '租用進行中無法取消');
+assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少開始前一小時提醒');
+assert(backend.includes("action === 'delete'"), '後台綁定管理缺少刪除登入資料');
+assert(backend.includes("authMethod: 'renter-name-phone'"), '租用入口缺少姓名＋電話臨時登入');
+assert(commonSource.includes('global.sessionStorage'), '租用借用裝置登入沒有使用瀏覽階段儲存');
 assert(backend.includes("id: 'guzheng'"), '租用用途缺少古箏');
 assert(backend.includes("id: 'recording'"), '租用用途缺少錄音室');
 assert(backend.includes('hourlyRate: 300'), '錄音用途未設定每小時 NT$300');
@@ -131,5 +160,7 @@ assert(internalMobileCss.includes('body.yz-internal-theme'), '內部手機樣式
 const rules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8');
 assert(rules.includes('match /coursePortalSessions/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalStudentBindings/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalEmailOtps/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /coursePortalLineLoginCodes/{document=**} { allow read, write: if false; }'));
 
 console.log('course portal tests passed');

@@ -158,6 +158,22 @@ a { color: inherit; }
 .rental-history-row > :last-child { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
 .teacher-lesson-state-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding-top: 8px; border-top: 1px solid var(--line); }
 .quick-availability{padding:12px;border:1px solid var(--line);border-radius:13px;background:#f8fbf9}.quick-availability .section-title{margin-bottom:9px}.availability-suggestions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:310px;overflow:auto}.availability-option{min-width:0;padding:9px 10px;border:1px solid #bfd6cc;border-radius:10px;background:#fff;text-align:left;color:var(--ink)}.availability-option:hover,.availability-option.selected{border-color:var(--green);background:var(--green-soft);box-shadow:inset 0 0 0 2px rgba(36,115,92,.12)}.availability-option strong,.availability-option span{display:block}.availability-option span{margin-top:2px;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.portal-session-card{max-width:540px;margin:7vh auto 0;display:flex;align-items:center;gap:14px}
+.portal-session-card p{margin:3px 0 0;color:var(--muted)}
+.portal-session-spinner{width:28px;height:28px;flex:0 0 auto;border:3px solid #cce6db;border-right-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}
+.auth-login-stack{display:grid;gap:12px}
+.auth-line-button{width:100%;min-height:50px}
+.auth-divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;font-weight:700}
+.auth-divider::before,.auth-divider::after{content:"";height:1px;flex:1;background:var(--line)}
+.auth-help-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.auth-help-row > :only-child{grid-column:1/-1}
+.auth-first-use{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.auth-otp-panel{margin-top:4px;padding:13px;border:1px solid #cce6db;border-radius:13px;background:var(--green-soft)}
+.auth-otp-meta{color:var(--muted);font-size:13px}
+.auth-otp-form input[name="code"]{font-size:24px;font-weight:900;letter-spacing:.4em;text-align:center}
+.binding-admin-card .binding-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.binding-admin-card .binding-meta{display:grid;gap:2px;min-width:0}
+.binding-admin-card .binding-meta small{color:var(--muted);overflow-wrap:anywhere}
 @media (max-width: 760px) {
   .portal-shell { padding: 13px; }
   .portal-head { align-items: flex-start; }
@@ -235,6 +251,16 @@ a { color: inherit; }
   .rental-history-row>:last-child{justify-content:flex-start}
   .teacher-lesson-state-actions{gap:4px;padding-top:5px}
   .binding-admin-card{margin-top:7px!important}
+  .portal-session-card{margin-top:3vh;gap:8px}
+  .portal-session-spinner{width:22px;height:22px}
+  .auth-login-stack{gap:7px}
+  .auth-line-button{min-height:38px}
+  .auth-divider,.auth-otp-meta{font-size:9px}
+  .auth-help-row{gap:5px}
+  .auth-first-use{margin-top:9px;padding-top:9px}
+  .auth-otp-panel{padding:8px;border-radius:9px}
+  .auth-otp-form input[name="code"]{font-size:18px}
+  .binding-admin-card .binding-actions{justify-content:flex-start}
 }
 
 @media (max-width:390px) {

@@ -142,6 +142,9 @@ service cloud.firestore {
     // 手機課務入口的綁定碼、LINE 身分、工作階段、調課與租用資料
     // 一律只能經過 Cloud Functions 驗證後存取，前端不可直接讀寫。
     match /coursePortalBindCodes/{document=**} { allow read, write: if false; }
+    match /coursePortalEmailOtps/{document=**} { allow read, write: if false; }
+    match /coursePortalLineLoginCodes/{document=**} { allow read, write: if false; }
+    match /coursePortalRateLimits/{document=**} { allow read, write: if false; }
     match /coursePortalAccessTokens/{document=**} { allow read, write: if false; }
     match /coursePortalSessions/{document=**} { allow read, write: if false; }
     match /coursePortalTeacherBindings/{document=**} { allow read, write: if false; }

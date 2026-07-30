@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>教室租用｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-rental-instruments-v3">
-  <link rel="stylesheet" href="room-booking-v2.css?v=20260730-clean-notes-v4">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-v1">
+  <link rel="stylesheet" href="room-booking-v2.css?v=20260730-auth-v1">
 </head>
 <body class="rental-booking-v2 clean-portal-ui">
   <main class="portal-shell">
@@ -15,17 +15,41 @@
       <button class="btn danger hidden" id="logoutBtn" type="button">登出</button>
     </header>
 
-    <section class="card bind-box rental-login-card" id="publicBindView">
-      <div class="section-title"><h2>第一次使用</h2></div>
-      <form class="stack" id="publicBindForm">
-        <div class="field"><label>姓名</label><input name="name" autocomplete="name" required></div>
-        <div class="field"><label>電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
-        <button class="btn primary" type="submit">LINE 綁定</button>
-      </form>
-      <div class="bind-result hidden" data-bind-result></div>
+    <section class="card bind-box rental-login-card hidden" id="publicBindView" data-auth-view>
+      <div class="section-title"><h2>登入教室租用</h2></div>
+      <div class="auth-login-stack">
+        <button class="btn primary auth-line-button" type="button" data-line-login>LINE 快速登入</button>
+        <div class="bind-result hidden" data-line-login-result></div>
+        <div class="auth-divider"><span>換手機或借用手機</span></div>
+        <form class="stack" data-renter-contact-form>
+          <div class="field"><label>姓名</label><input name="name" autocomplete="name" required></div>
+          <div class="field"><label>電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
+          <button class="btn" type="submit">姓名＋電話快速進入</button>
+        </form>
+        <div class="auth-otp-meta">借用裝置不會長期記住登入；關閉瀏覽器後需重新輸入。</div>
+        <div class="auth-help-row">
+          <button class="btn soft" type="button" data-show-first-use aria-expanded="false">第一次使用／建立帳號</button>
+        </div>
+        <div class="auth-otp-panel hidden" data-otp-panel></div>
+      </div>
+      <section class="auth-first-use hidden" data-first-use-panel>
+        <div class="section-title"><h3>第一次使用</h3></div>
+        <form class="stack" id="publicBindForm" data-first-use-form>
+          <div class="field"><label>姓名</label><input name="name" autocomplete="name" required></div>
+          <div class="field"><label>電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
+          <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
+          <button class="btn primary" type="submit">寄送四碼驗證碼</button>
+        </form>
+        <div class="bind-result hidden" data-bind-result></div>
+      </section>
     </section>
 
-    <section class="hidden" id="bookingView">
+    <section class="card portal-session-card" id="sessionLoading" aria-live="polite">
+      <span class="portal-session-spinner" aria-hidden="true"></span>
+      <div><strong>正在確認登入</strong><p>確認這台裝置的登入狀態。</p></div>
+    </section>
+
+    <section class="hidden" id="bookingView" data-app-view>
       <section class="card rental-step">
         <h2 class="rental-step-title"><b>1</b>用途</h2>
         <div class="rental-use-grid" id="rentalUseGrid"><div class="rental-empty">讀取中…</div></div>
@@ -81,7 +105,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-rental-instruments-v3"></script>
-  <script src="room-booking-v2.js?v=20260730-clean-notes-v4"></script>
+  <script src="course-portal-common.js?v=20260730-auth-v1"></script>
+  <script src="room-booking-v2.js?v=20260730-auth-v1"></script>
 </body>
 </html>

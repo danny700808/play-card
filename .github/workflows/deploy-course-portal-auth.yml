@@ -1,0 +1,110 @@
+name: Deploy Course Portal Authentication
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "course-portal-common.js"
+      - "course-portal-admin.html"
+      - "course-portal.css"
+      - "room-booking.html"
+      - "room-booking-v2.js"
+      - "student-course-portal.html"
+      - "teacher-course-portal.html"
+      - "teacher-course-session-v8.js"
+      - "teacher-course-portal-v8.js"
+      - "functions/coursePortal.js"
+      - "functions/index.js"
+      - "firestore.rules"
+      - ".github/workflows/deploy-course-portal-auth.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-course-portal-auth-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Test portal code
+        run: |
+          set -euo pipefail
+          node --check functions/coursePortal.js
+          node --check functions/index.js
+          node --check course-portal-common.js
+          node --check room-booking-v2.js
+          node --check teacher-course-portal-v8.js
+          node tests/course-portal.test.js
+
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Prepare Firebase credentials and runtime settings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_MESSAGING_ACCESS_TOKEN: ${{ secrets.LINE_MESSAGING_ACCESS_TOKEN }}
+          LINE_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}" || { echo "FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is empty" >&2; exit 1; }
+          test -n "${GMAIL_USER:-}" || { echo "GMAIL_USER is empty" >&2; exit 1; }
+          test -n "${GMAIL_APP_PASSWORD:-}" || { echo "GMAIL_APP_PASSWORD is empty" >&2; exit 1; }
+          RUNTIME_LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-${LINE_MESSAGING_ACCESS_TOKEN:-${LINE_ACCESS_TOKEN:-}}}"
+          test -n "$RUNTIME_LINE_TOKEN" || { echo "LINE access token is empty" >&2; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$SERVICE_ACCOUNT_PATH"
+          export RUNTIME_LINE_TOKEN
+          node <<'NODE'
+          const fs = require('fs');
+          const rows = {
+            LINE_CHANNEL_ACCESS_TOKEN: process.env.RUNTIME_LINE_TOKEN || '',
+            GMAIL_USER: process.env.GMAIL_USER || '',
+            GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
+            EMAIL_FROM: process.env.EMAIL_FROM || '',
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/'
+          };
+          const content = Object.entries(rows)
+            .map(([key, value]) => `${key}=${JSON.stringify(String(value))}`)
+            .join('\n') + '\n';
+          fs.writeFileSync('functions/.env', content, { mode: 0o600 });
+          NODE
+
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+
+      - name: Deploy portal rules and Functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          firebase deploy --project youzi-c1b74 --non-interactive --force \
+            --only "firestore:rules,functions:lineWebhook,functions:coursePortalStartBinding,functions:coursePortalSendEmailOtp,functions:coursePortalVerifyEmailOtp,functions:coursePortalStartLineLogin,functions:coursePortalRenterContactLogin,functions:coursePortalExchangeAccess,functions:coursePortalTeacherData,functions:coursePortalStudentData,functions:coursePortalRentalDayBoard,functions:coursePortalRentalWeekBoard,functions:coursePortalRentalAvailability,functions:coursePortalCreateRoomBooking,functions:coursePortalRentalMyBookings,functions:coursePortalCancelRoomBooking,functions:coursePortalAdminData,functions:coursePortalAdminBindingAction"
+
+      - name: Remove temporary credentials
+        if: always()
+        run: |
+          rm -f "${{ runner.temp }}/youzi-firebase-service-account.json"
+          rm -f functions/.env

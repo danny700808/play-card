@@ -5,10 +5,14 @@ on:
     branches:
       - main
     paths:
-      - "functions/**"
+      - "functions/courseIndex.js"
+      - "functions/injiaoyunEducationAutoRead.js"
+      - "functions/injiaoyunEducationMirror.js"
+      - "functions/coursePortalUtils.js"
+      - "functions/package.json"
+      - "functions/package-lock.json"
       - "firebase.json"
       - ".firebaserc"
-      - ".github/workflows/firebase-functions-deploy.yml"
       - ".github/scripts/course-mirror-public.cjs"
       - ".github/scripts/course-mirror-report.cjs"
       - "tests/course-auto-cloud-load.test.js"

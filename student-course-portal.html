@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>學生與家長入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260730-clean-portal-v1">
-  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-clean-notes-v2">
+  <link rel="stylesheet" href="course-portal.css?v=20260730-auth-v1">
+  <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-v1">
 </head>
 <body class="clean-portal-ui">
   <main class="portal-shell">
@@ -15,18 +15,40 @@
       <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
     </header>
 
-    <section class="card bind-box" id="bindView">
-      <div class="section-title"><div><h2>LINE 綁定</h2><p class="muted">請輸入學生登記資料。</p></div></div>
-      <form class="stack" id="bindForm">
-        <div class="field"><label>學生姓名</label><input name="name" required></div>
-        <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" required></div>
-        <div class="field"><label>您的身分</label><select name="relationship"><option>本人</option><option>父親</option><option>母親</option><option>家長</option><option>其他照顧者</option></select></div>
-        <button class="btn primary" type="submit">LINE 綁定</button>
-      </form>
-      <div class="bind-result hidden" data-bind-result></div>
+    <section class="card bind-box hidden" id="bindView" data-auth-view>
+      <div class="section-title"><h2>登入學生入口</h2></div>
+      <div class="auth-login-stack">
+        <button class="btn primary auth-line-button" type="button" data-line-login>LINE 快速登入</button>
+        <div class="bind-result hidden" data-line-login-result></div>
+        <div class="auth-divider"><span>或使用 Email</span></div>
+        <form class="stack" data-email-login-form>
+          <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
+          <button class="btn" type="submit">寄送四碼驗證碼</button>
+        </form>
+        <div class="auth-help-row">
+          <button class="btn soft" type="button" data-show-first-use aria-expanded="false">第一次使用／建立帳號</button>
+        </div>
+        <div class="auth-otp-panel hidden" data-otp-panel></div>
+      </div>
+      <section class="auth-first-use hidden" data-first-use-panel>
+        <div class="section-title"><h3>第一次使用</h3></div>
+        <form class="stack" id="bindForm" data-first-use-form>
+          <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" required></div>
+          <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
+          <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
+          <div class="field"><label>您的身分</label><select name="relationship"><option>本人</option><option>父親</option><option>母親</option><option>家長</option><option>其他照顧者</option></select></div>
+          <button class="btn primary" type="submit">寄送四碼驗證碼</button>
+        </form>
+        <div class="bind-result hidden" data-bind-result></div>
+      </section>
     </section>
 
-    <section class="hidden" id="appView">
+    <section class="card portal-session-card" id="sessionLoading" aria-live="polite">
+      <span class="portal-session-spinner" aria-hidden="true"></span>
+      <div><strong>正在確認登入</strong><p>確認這台裝置的登入狀態。</p></div>
+    </section>
+
+    <section class="hidden" id="appView" data-app-view>
       <div class="toolbar">
         <div class="field"><label>查看學生</label><select id="studentSelect"></select></div>
         <button class="btn soft" id="addStudentBinding" type="button">＋ 增加另一位學生</button>
@@ -71,7 +93,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260730-clean-portal-v1"></script>
+  <script src="course-portal-common.js?v=20260730-auth-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -85,6 +107,7 @@
     function showBound(active) {
       bindView.classList.toggle('hidden', active);
       appView.classList.toggle('hidden', !active);
+      document.getElementById('sessionLoading').classList.add('hidden');
       document.getElementById('logoutBtn').classList.toggle('hidden', !active);
     }
 
@@ -153,13 +176,7 @@
       }
     }
 
-    document.getElementById('bindForm').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const button = event.submitter;
-      P.loading(button, true, '產生中…');
-      try { await P.startBinding('student', event.currentTarget); } catch (error) { P.toast(error.message, 'error'); }
-      finally { P.loading(button, false); }
-    });
+    P.installAuth({ role: 'student', authViewId: 'bindView' });
     document.getElementById('studentSelect').addEventListener('change', (event) => {
       studentId = event.target.value;
       showAllPeriods = false;
@@ -172,6 +189,8 @@
     document.getElementById('addStudentBinding').addEventListener('click', () => {
       showBound(false);
       document.querySelector('[data-bind-result]').classList.add('hidden');
+      const firstUseButton = document.querySelector('[data-show-first-use]');
+      if (firstUseButton && firstUseButton.getAttribute('aria-expanded') !== 'true') firstUseButton.click();
     });
     document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
       document.querySelectorAll('[data-tab]').forEach((node) => node.classList.toggle('active', node === button));

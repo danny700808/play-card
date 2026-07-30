@@ -16,6 +16,9 @@ const REGION = 'us-central1';
 const TAIPEI = 'Asia/Taipei';
 const ADMIN_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const PORTAL_BASE = 'https://danny700808.github.io/play-card';
+const EMAIL_OTP_TTL_MS = 180 * 1000;
+const EMAIL_OTP_MAX_ATTEMPTS = 5;
+const PORTAL_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const ALLOWED_ORIGINS = [
   'https://danny700808.github.io',
   'https://www.mingtinghuang.com',
@@ -223,6 +226,22 @@ function normalizeName(value) {
   return clean(value).replace(/\s+/g, '').toLowerCase();
 }
 
+function normalizeEmail(value) {
+  return clean(value).toLowerCase();
+}
+
+function validEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+}
+
+function maskedEmail(value) {
+  const email = normalizeEmail(value);
+  const [name, domain] = email.split('@');
+  if (!name || !domain) return '';
+  const visible = name.length <= 2 ? name.slice(0, 1) : name.slice(0, 2);
+  return `${visible}${'*'.repeat(Math.max(2, Math.min(6, name.length - visible.length)))}@${domain}`;
+}
+
 function dateKey(value) {
   const match = clean(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return '';
@@ -258,6 +277,10 @@ function randomToken(bytes = 24) {
 
 function randomBindCode() {
   return `CP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+}
+
+function randomEmailOtp() {
+  return String(crypto.randomInt(0, 10000)).padStart(4, '0');
 }
 
 function safeEqual(left, right) {
@@ -326,6 +349,13 @@ function sourcePhone(row) {
   ));
 }
 
+function sourceEmail(row) {
+  return normalizeEmail(row && (
+    row.email || row.mail || row.contactEmail || row.parentEmail ||
+    row.guardianEmail || row.loginEmail
+  ));
+}
+
 function sourceActive(row) {
   const value = row && (row.active != null ? row.active : row.status);
   if (value == null || value === '') return true;
@@ -357,14 +387,20 @@ function assertInput(value, label) {
   if (!clean(value)) throw new HttpsError('invalid-argument', `請填寫${label}。`);
 }
 
-async function consumeRateLimit(kind, phone) {
-  const day = new Intl.DateTimeFormat('en-CA', {
+function currentTaipeiDay() {
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone: TAIPEI,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
   }).format(new Date());
-  const ref = db.collection('coursePortalRateLimits').doc(hash(`${kind}|${normalizePhone(phone)}|${day}`));
+}
+
+async function consumeRateLimit(kind, identity) {
+  const day = currentTaipeiDay();
+  const rawIdentity = clean(identity);
+  const normalizedIdentity = rawIdentity.includes('@') ? normalizeEmail(rawIdentity) : normalizePhone(rawIdentity);
+  const ref = db.collection('coursePortalRateLimits').doc(hash(`${kind}|${normalizedIdentity}|${day}`));
   await db.runTransaction(async (tx) => {
     const snapshot = await tx.get(ref);
     const count = Number(snapshot.exists && snapshot.data().count || 0);
@@ -391,7 +427,7 @@ async function findPerson(type, name, phone) {
   return matches[0];
 }
 
-async function createBindCode({ type, targetId, name, phone, relationship, renterId }) {
+async function createBindCode({ type, targetId, name, phone, email, relationship, renterId }) {
   const code = randomBindCode();
   const expiresAt = Timestamp.fromMillis(Date.now() + 20 * 60 * 1000);
   await db.collection('coursePortalBindCodes').doc(hash(code)).set({
@@ -401,6 +437,9 @@ async function createBindCode({ type, targetId, name, phone, relationship, rente
     renterId: clean(renterId),
     name: clean(name),
     phoneHash: hash(normalizePhone(phone)),
+    email: normalizeEmail(email),
+    emailNormalized: normalizeEmail(email),
+    emailVerified: Boolean(normalizeEmail(email)),
     relationship: clean(relationship),
     status: 'pending',
     createdAt: FieldValue.serverTimestamp(),
@@ -422,42 +461,51 @@ async function createBindCode({ type, targetId, name, phone, relationship, rente
 }
 
 async function startBinding(data) {
+  throw new HttpsError(
+    'failed-precondition',
+    '為了保護帳號，請先完成 Email 四碼驗證，再進行第一次 LINE 綁定。'
+  );
+}
+
+async function prepareBindingIdentity(data) {
   const type = clean(data.type).toLowerCase();
   const name = clean(data.name);
   const phone = normalizePhone(data.phone);
+  const email = normalizeEmail(data.email);
   assertInput(name, '姓名');
   assertInput(phone, '電話');
+  assertInput(email, 'Email');
+  if (!validEmail(email)) throw new HttpsError('invalid-argument', 'Email 格式不正確。');
   if (!['teacher', 'student', 'renter'].includes(type)) {
     throw new HttpsError('invalid-argument', '不支援的入口類型。');
   }
-  await consumeRateLimit(type, phone);
 
   if (type === 'teacher') {
     const teacher = await findPerson('teachers', name, phone);
-    return createBindCode({ type, targetId: sourceId(teacher), name, phone });
+    const registeredEmail = sourceEmail(teacher);
+    if (registeredEmail && registeredEmail !== email) {
+      throw new HttpsError('permission-denied', 'Email 與老師登記資料不符，請確認後再試。');
+    }
+    return { type, targetId: sourceId(teacher), name, phone, email, relationship: '', renterId: '' };
   }
   if (type === 'student') {
     const student = await findPerson('students', name, phone);
-    return createBindCode({
+    const registeredEmail = sourceEmail(student);
+    if (registeredEmail && registeredEmail !== email) {
+      throw new HttpsError('permission-denied', 'Email 與學生登記資料不符，請確認後再試。');
+    }
+    return {
       type,
       targetId: sourceId(student),
       name,
       phone,
+      email,
       relationship: clean(data.relationship) || '本人'
-    });
+    };
   }
 
   const renterId = hash(`${normalizeName(name)}|${phone}`).slice(0, 32);
-  await db.collection('coursePortalRenters').doc(renterId).set({
-    renterId,
-    name,
-    phone,
-    source: 'public-registration',
-    active: true,
-    updatedAt: FieldValue.serverTimestamp(),
-    createdAtText: nowText()
-  }, { merge: true });
-  return createBindCode({ type, renterId, name, phone });
+  return { type, targetId: '', renterId, name, phone, email, relationship: '' };
 }
 
 function bindingCollection(type) {
@@ -466,7 +514,276 @@ function bindingCollection(type) {
   return 'coursePortalRenterBindings';
 }
 
-async function issueAccessToken({ type, lineUserId, targetId, renterId }) {
+async function findEmailLoginAccount(type, email) {
+  if (!['teacher', 'student', 'renter'].includes(type)) return null;
+  const snapshot = await db.collection(bindingCollection(type))
+    .where('emailNormalized', '==', normalizeEmail(email))
+    .get();
+  const rows = snapshot.docs
+    .map((doc) => Object.assign({ __id: doc.id }, doc.data() || {}))
+    .filter((row) => clean(row.status) === 'active' && clean(row.lineUserId));
+  const lineIds = [...new Set(rows.map((row) => clean(row.lineUserId)).filter(Boolean))];
+  if (lineIds.length !== 1) return null;
+  const row = rows.find((item) => clean(item.lineUserId) === lineIds[0]) || {};
+  return {
+    type,
+    lineUserId: lineIds[0],
+    targetId: type === 'teacher' ? clean(row.teacherId) : (type === 'student' ? clean(row.studentId) : ''),
+    renterId: type === 'renter' ? clean(row.renterId) : ''
+  };
+}
+
+async function sendEmailOtp(data, helpers = {}) {
+  const purpose = clean(data.purpose).toLowerCase() === 'login' ? 'login' : 'bind';
+  const type = clean(data.type).toLowerCase();
+  if (!['teacher', 'student', 'renter'].includes(type)) {
+    throw new HttpsError('invalid-argument', '不支援的入口類型。');
+  }
+
+  const email = normalizeEmail(data.email);
+  assertInput(email, 'Email');
+  if (!validEmail(email)) throw new HttpsError('invalid-argument', 'Email 格式不正確。');
+  await consumeRateLimit(`email-otp-${purpose}-${type}`, email);
+
+  const identity = purpose === 'bind'
+    ? await prepareBindingIdentity(data)
+    : await findEmailLoginAccount(type, email);
+  const challenge = randomToken(32);
+  const code = randomEmailOtp();
+  const expiresAt = Timestamp.fromMillis(Date.now() + EMAIL_OTP_TTL_MS);
+  const payload = {
+    purpose,
+    type,
+    email,
+    emailNormalized: email,
+    codeHash: hash(`${challenge}|${code}`),
+    attempts: 0,
+    maxAttempts: EMAIL_OTP_MAX_ATTEMPTS,
+    status: 'pending',
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt
+  };
+  if (identity) {
+    payload.lineUserId = clean(identity.lineUserId);
+    payload.targetId = clean(identity.targetId);
+    payload.renterId = clean(identity.renterId);
+    payload.name = clean(identity.name);
+    payload.phone = normalizePhone(identity.phone);
+    payload.relationship = clean(identity.relationship);
+  } else {
+    payload.decoy = true;
+  }
+  const ref = db.collection('coursePortalEmailOtps').doc(hash(challenge));
+  await ref.set(payload);
+
+  if (identity && typeof helpers.sendEmail !== 'function') {
+    await ref.delete().catch(() => {});
+    throw new HttpsError('internal', '驗證信服務尚未啟用，請使用 LINE 快速登入或聯絡管理者。');
+  }
+  if (identity) {
+    try {
+      await helpers.sendEmail({
+        channel: 'email',
+        targetEmail: email,
+        title: `柚子樂器${purpose === 'login' ? '登入' : '首次綁定'}驗證碼`,
+        body: [
+          `您的四碼驗證碼是：${code}`,
+          '',
+          '驗證碼 180 秒內有效，最多可輸入 5 次。',
+          '若不是您本人操作，請忽略這封信，也不要把驗證碼告訴任何人。'
+        ].join('\n')
+      });
+    } catch (error) {
+      await ref.delete().catch(() => {});
+      console.error('[course portal email otp failed]', error);
+      throw new HttpsError('internal', '驗證信暫時無法寄出，請稍後再試或使用 LINE 快速登入。');
+    }
+  }
+
+  return {
+    ok: true,
+    challengeToken: challenge,
+    expiresInSeconds: Math.floor(EMAIL_OTP_TTL_MS / 1000),
+    maskedEmail: maskedEmail(email),
+    message: '若資料相符，四碼驗證碼會寄到這個 Email。'
+  };
+}
+
+async function issueSession({ type, lineUserId, targetId, renterId, authMethod, ttlMs }) {
+  const session = randomToken(36);
+  const sessionTtlMs = Math.max(30 * 60 * 1000, Number(ttlMs || PORTAL_SESSION_TTL_MS));
+  const expiresAt = Timestamp.fromMillis(Date.now() + sessionTtlMs);
+  const sessionPayload = {
+    role: type,
+    lineUserId: clean(lineUserId),
+    teacherId: type === 'teacher' ? clean(targetId) : '',
+    renterId: type === 'renter' ? clean(renterId) : '',
+    authMethod: clean(authMethod) || 'line',
+    sliding: sessionTtlMs >= PORTAL_SESSION_TTL_MS,
+    sessionTtlMs,
+    status: 'active',
+    createdAt: FieldValue.serverTimestamp(),
+    lastUsedAt: FieldValue.serverTimestamp(),
+    expiresAt
+  };
+  if (type === 'student') {
+    sessionPayload.studentIds = await activeStudentIdsForLine(lineUserId);
+  }
+  await db.collection('coursePortalSessions').doc(hash(session)).set(sessionPayload);
+  return { sessionToken: session, expiresAt };
+}
+
+async function verifyEmailOtp(data) {
+  const challenge = clean(data.challengeToken);
+  const code = clean(data.code).replace(/\D/g, '');
+  if (!challenge || !/^\d{4}$/.test(code)) {
+    throw new HttpsError('invalid-argument', '請輸入四碼驗證碼。');
+  }
+  const ref = db.collection('coursePortalEmailOtps').doc(hash(challenge));
+  let source = null;
+  let verificationError = null;
+  await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    const row = snapshot.exists ? snapshot.data() || {} : null;
+    if (!row || row.status !== 'pending' || asMillis(row.expiresAt) < Date.now()) {
+      throw new HttpsError('deadline-exceeded', '驗證碼已失效，請重新寄送。');
+    }
+    const attempts = Number(row.attempts || 0);
+    if (attempts >= EMAIL_OTP_MAX_ATTEMPTS) {
+      throw new HttpsError('resource-exhausted', '驗證碼輸入次數已達上限，請重新寄送。');
+    }
+    if (!safeEqual(row.codeHash, hash(`${challenge}|${code}`))) {
+      tx.set(ref, {
+        attempts: attempts + 1,
+        status: attempts + 1 >= EMAIL_OTP_MAX_ATTEMPTS ? 'locked' : 'pending',
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      verificationError = new HttpsError('permission-denied', '驗證碼不正確。');
+      return;
+    }
+    source = row;
+    tx.set(ref, {
+      attempts: attempts + 1,
+      status: 'used',
+      usedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+  if (verificationError) throw verificationError;
+
+  if (!source || source.decoy) {
+    throw new HttpsError('permission-denied', '驗證碼不正確或帳號資料不相符。');
+  }
+  if (source.purpose === 'login') {
+    const result = await issueSession({
+      type: source.type,
+      lineUserId: source.lineUserId,
+      targetId: source.targetId,
+      renterId: source.renterId,
+      authMethod: 'email-otp'
+    });
+    return {
+      ok: true,
+      purpose: 'login',
+      role: source.type,
+      sessionToken: result.sessionToken,
+      expiresAt: result.expiresAt.toDate().toISOString()
+    };
+  }
+
+  if (source.type === 'renter') {
+    await db.collection('coursePortalRenters').doc(clean(source.renterId)).set({
+      renterId: clean(source.renterId),
+      name: clean(source.name),
+      phone: normalizePhone(source.phone),
+      email: normalizeEmail(source.email),
+      emailNormalized: normalizeEmail(source.email),
+      emailVerified: true,
+      emailVerifiedAt: FieldValue.serverTimestamp(),
+      source: 'public-registration',
+      active: true,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAtText: nowText()
+    }, { merge: true });
+  }
+  const bind = await createBindCode({
+    type: source.type,
+    targetId: source.targetId,
+    renterId: source.renterId,
+    name: source.name,
+    phone: source.phone,
+    email: source.email,
+    relationship: source.relationship
+  });
+  return Object.assign({}, bind, { purpose: 'bind', emailVerified: true });
+}
+
+async function startLineLogin(data) {
+  const type = clean(data.type).toLowerCase();
+  if (!['teacher', 'student', 'renter'].includes(type)) {
+    throw new HttpsError('invalid-argument', '不支援的入口類型。');
+  }
+  const raw = `CP-L${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+  const expiresAt = Timestamp.fromMillis(Date.now() + 20 * 60 * 1000);
+  await db.collection('coursePortalLineLoginCodes').doc(hash(raw)).set({
+    type,
+    status: 'pending',
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt
+  });
+  const labels = { teacher: '老師', student: '學生', renter: '租用' };
+  const loginText = `柚子${labels[type]}快速登入 ${raw}`;
+  return {
+    ok: true,
+    loginText,
+    lineUrl: `https://line.me/R/msg/text/?${encodeURIComponent(loginText)}`,
+    expiresAt: expiresAt.toDate().toISOString()
+  };
+}
+
+async function renterContactLogin(data) {
+  const name = clean(data.name);
+  const phone = normalizePhone(data.phone);
+  assertInput(name, '姓名');
+  assertInput(phone, '電話');
+  await consumeRateLimit('renter-contact-login', phone);
+
+  const renterId = hash(`${normalizeName(name)}|${phone}`).slice(0, 32);
+  const [renterSnapshot, bindingSnapshot] = await Promise.all([
+    db.collection('coursePortalRenters').doc(renterId).get(),
+    db.collection('coursePortalRenterBindings').where('renterId', '==', renterId).get()
+  ]);
+  const renter = renterSnapshot.exists ? renterSnapshot.data() || {} : null;
+  const bindings = bindingSnapshot.docs
+    .map((doc) => doc.data() || {})
+    .filter((row) => clean(row.status) === 'active' && clean(row.lineUserId));
+  const lineUserIds = [...new Set(bindings.map((row) => clean(row.lineUserId)).filter(Boolean))];
+  if (
+    !renter ||
+    renter.active === false ||
+    normalizeName(renter.name) !== normalizeName(name) ||
+    !phoneMatches(renter.phone, phone) ||
+    lineUserIds.length !== 1
+  ) {
+    throw new HttpsError('permission-denied', '姓名或電話不正確，或這筆租用帳號尚未完成第一次綁定。');
+  }
+
+  const issued = await issueSession({
+    type: 'renter',
+    lineUserId: lineUserIds[0],
+    renterId,
+    authMethod: 'renter-name-phone',
+    ttlMs: 8 * 60 * 60 * 1000
+  });
+  return {
+    ok: true,
+    role: 'renter',
+    sessionToken: issued.sessionToken,
+    temporary: true,
+    expiresAt: issued.expiresAt.toDate().toISOString()
+  };
+}
+
+async function issueAccessToken({ type, lineUserId, targetId, renterId, authMethod }) {
   const raw = randomToken(32);
   const expiresAt = Timestamp.fromMillis(Date.now() + 10 * 60 * 1000);
   await db.collection('coursePortalAccessTokens').doc(hash(raw)).set({
@@ -474,6 +791,7 @@ async function issueAccessToken({ type, lineUserId, targetId, renterId }) {
     lineUserId,
     targetId: clean(targetId),
     renterId: clean(renterId),
+    authMethod: clean(authMethod) || 'line',
     status: 'active',
     createdAt: FieldValue.serverTimestamp(),
     expiresAt
@@ -491,17 +809,57 @@ async function activeStudentIdsForLine(lineUserId) {
 
 async function handleCoursePortalLineEvent(event, helpers = {}) {
   const text = clean(event && event.message && event.message.text);
-  const match = text.match(/^柚子(老師入口|學生綁定|租用綁定)\s+(CP-[A-Z0-9]+)$/i);
-  if (!match) return false;
+  const bindMatch = text.match(/^柚子(老師入口|學生綁定|租用綁定)\s+(CP-[A-Z0-9]+)$/i);
+  const loginMatch = text.match(/^柚子(老師|學生|租用)快速登入\s+(CP-L[A-Z0-9]+)$/i);
+  if (!bindMatch && !loginMatch) return false;
 
-  const typeMap = { 老師入口: 'teacher', 學生綁定: 'student', 租用綁定: 'renter' };
-  const type = typeMap[match[1]];
-  const code = match[2].toUpperCase();
   const lineUserId = clean(event && event.source && event.source.userId);
   const replyToken = clean(event && event.replyToken);
   const reply = helpers.replyLineMessage;
   if (!lineUserId || typeof reply !== 'function') return true;
 
+  if (loginMatch) {
+    const typeMap = { 老師: 'teacher', 學生: 'student', 租用: 'renter' };
+    const type = typeMap[loginMatch[1]];
+    const code = loginMatch[2].toUpperCase();
+    const codeRef = db.collection('coursePortalLineLoginCodes').doc(hash(code));
+    const [codeSnapshot, bindings] = await Promise.all([
+      codeRef.get(),
+      db.collection(bindingCollection(type)).where('lineUserId', '==', lineUserId).get()
+    ]);
+    const row = codeSnapshot.exists ? codeSnapshot.data() || {} : null;
+    const active = bindings.docs
+      .map((doc) => doc.data() || {})
+      .filter((item) => clean(item.status) === 'active');
+    if (!row || row.status !== 'pending' || row.type !== type || asMillis(row.expiresAt) < Date.now() || !active.length) {
+      await reply(replyToken, '快速登入碼無效、已逾時，或這個 LINE 尚未綁定。請回到入口頁重新取得。');
+      return true;
+    }
+    const binding = active[0] || {};
+    await codeRef.set({
+      status: 'used',
+      usedAt: FieldValue.serverTimestamp(),
+      lineUserId
+    }, { merge: true });
+    const access = await issueAccessToken({
+      type,
+      lineUserId,
+      targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
+      renterId: type === 'renter' ? clean(binding.renterId) : '',
+      authMethod: 'line-login'
+    });
+    const page = type === 'teacher'
+      ? 'teacher-course-portal.html'
+      : (type === 'student' ? 'student-course-portal.html' : 'room-booking.html');
+    const label = type === 'teacher' ? '老師入口' : (type === 'student' ? '學生入口' : '教室租用入口');
+    const url = `${PORTAL_BASE}/${page}?access=${encodeURIComponent(access)}`;
+    await reply(replyToken, `身分確認完成。\n請開啟「${label}」：\n${url}\n\n這不是重新綁定；登入後這台瀏覽器會記住您的帳號。`);
+    return true;
+  }
+
+  const typeMap = { 老師入口: 'teacher', 學生綁定: 'student', 租用綁定: 'renter' };
+  const type = typeMap[bindMatch[1]];
+  const code = bindMatch[2].toUpperCase();
   const codeRef = db.collection('coursePortalBindCodes').doc(hash(code));
   const codeSnapshot = await codeRef.get();
   const row = codeSnapshot.exists ? codeSnapshot.data() || {} : null;
@@ -523,6 +881,10 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     type,
     lineUserId,
     lineDisplayName: clean(profile.displayName),
+    email: normalizeEmail(row.email),
+    emailNormalized: normalizeEmail(row.email),
+    emailVerified: row.emailVerified === true,
+    emailVerifiedAt: row.emailVerified === true ? FieldValue.serverTimestamp() : null,
     status: 'active',
     updatedAt: FieldValue.serverTimestamp(),
     boundAt: FieldValue.serverTimestamp(),
@@ -542,7 +904,8 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     type,
     lineUserId,
     targetId: clean(row.targetId),
-    renterId: clean(row.renterId)
+    renterId: clean(row.renterId),
+    authMethod: 'line-binding'
   });
   const page = type === 'teacher'
     ? 'teacher-course-portal.html'
@@ -564,22 +927,13 @@ async function exchangeAccessToken(data) {
     throw new HttpsError('permission-denied', '登入連結已逾時，請重新取得綁定連結。');
   }
 
-  const session = randomToken(36);
-  const expiresAt = Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  const sessionPayload = {
-    role: source.type,
+  const issued = await issueSession({
+    type: source.type,
     lineUserId: source.lineUserId,
-    teacherId: source.type === 'teacher' ? clean(source.targetId) : '',
-    renterId: source.type === 'renter' ? clean(source.renterId) : '',
-    status: 'active',
-    createdAt: FieldValue.serverTimestamp(),
-    lastUsedAt: FieldValue.serverTimestamp(),
-    expiresAt
-  };
-  if (source.type === 'student') {
-    sessionPayload.studentIds = await activeStudentIdsForLine(source.lineUserId);
-  }
-  await db.collection('coursePortalSessions').doc(hash(session)).set(sessionPayload);
+    targetId: source.targetId,
+    renterId: source.renterId,
+    authMethod: source.authMethod || 'line'
+  });
   // LINE 內建瀏覽器可能會重複載入網址。必須先成功建立裝置登入，
   // 再記錄交換狀態；短效連結在到期前可安全重新交換，不會卡死使用者。
   await ref.set({
@@ -589,25 +943,29 @@ async function exchangeAccessToken(data) {
   }, { merge: true });
   return {
     ok: true,
-    sessionToken: session,
+    sessionToken: issued.sessionToken,
     role: source.type,
-    expiresAt: expiresAt.toDate().toISOString()
+    expiresAt: issued.expiresAt.toDate().toISOString()
   };
 }
 
 async function requireSession(data, allowedRoles) {
   const raw = clean(data && data.sessionToken);
-  if (!raw) throw new HttpsError('unauthenticated', '請先完成 LINE 綁定。');
+  if (!raw) throw new HttpsError('unauthenticated', '請先登入。');
   const ref = db.collection('coursePortalSessions').doc(hash(raw));
   const snapshot = await ref.get();
   const session = snapshot.exists ? snapshot.data() || {} : null;
   if (!session || session.status !== 'active' || asMillis(session.expiresAt) < Date.now()) {
-    throw new HttpsError('unauthenticated', '登入狀態已到期，請重新綁定。');
+    throw new HttpsError('unauthenticated', '登入狀態已到期，請重新登入；不需要重新綁定。');
   }
   if (allowedRoles && !allowedRoles.includes(session.role)) {
     throw new HttpsError('permission-denied', '這個帳號沒有此頁面權限。');
   }
-  await ref.set({ lastUsedAt: FieldValue.serverTimestamp() }, { merge: true });
+  const update = { lastUsedAt: FieldValue.serverTimestamp() };
+  if (session.sliding !== false) {
+    update.expiresAt = Timestamp.fromMillis(Date.now() + PORTAL_SESSION_TTL_MS);
+  }
+  await ref.set(update, { merge: true });
   return session;
 }
 
@@ -1046,6 +1404,32 @@ async function studentPortalData(data) {
   };
 }
 
+async function updateStudentReminder(data) {
+  const session = await requireSession(data, ['student']);
+  const studentId = clean(data.studentId);
+  if (!studentId) throw new HttpsError('invalid-argument', '請選擇學生。');
+  const allowed = await activeStudentIdsForLine(session.lineUserId);
+  if (!allowed.includes(studentId)) {
+    throw new HttpsError('permission-denied', '沒有這位學生的提醒設定權限。');
+  }
+  const snapshot = await db.collection('coursePortalStudentBindings')
+    .where('lineUserId', '==', session.lineUserId)
+    .get();
+  const targets = snapshot.docs.filter((doc) => {
+    const row = doc.data() || {};
+    return clean(row.studentId) === studentId && clean(row.status) === 'active';
+  });
+  if (!targets.length) throw new HttpsError('not-found', '找不到這位學生的有效綁定。');
+  const batch = db.batch();
+  targets.forEach((doc) => batch.set(doc.ref, {
+    reminderLastLesson: data.reminderLastLesson !== false,
+    reminderPayment: data.reminderPayment !== false,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true }));
+  await batch.commit();
+  return { ok: true, studentId };
+}
+
 async function rentalAvailability(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
   const date = dateKey(data.date);
@@ -1260,6 +1644,33 @@ async function createRoomBooking(data) {
       createdAt: FieldValue.serverTimestamp()
     }));
   });
+  const reminderAt = Math.max(Date.now(), taipeiDateTimeMillis(booking.date, booking.startTime) - 60 * 60 * 1000);
+  await db.collection('notificationQueue').doc(`course-portal-booking-${id}-reminder`).set({
+    queueId: `course-portal-booking-${id}-reminder`,
+    channel: 'line',
+    targetLineUserId: session.lineUserId,
+    title: '教室租用提醒',
+    body: [
+      `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
+      `用途：${booking.useName || '教室租用'}`,
+      `時間：${booking.startTime}～${booking.endTime}`,
+      `如不使用，可在結束前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
+    ].join('\n'),
+    message: [
+      `教室租用提醒`,
+      `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
+      `時間：${booking.startTime}～${booking.endTime}`,
+      `如不使用，可在結束前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
+    ].join('\n'),
+    bookingId: id,
+    source: 'course-portal-room-booking',
+    status: '待發送',
+    scheduledAt: Timestamp.fromMillis(reminderAt),
+    createdAt: FieldValue.serverTimestamp(),
+    createdAtText: nowText()
+  }, { merge: true }).catch((error) => {
+    console.error('[course portal rental reminder queue failed]', id, error);
+  });
   return { ok: true, booking: jsonValue(booking) };
 }
 
@@ -1284,7 +1695,7 @@ async function rentalMyBookings(data) {
       paymentStatus: clean(row.paymentStatus),
       status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),
       active: row.active !== false,
-      canCancel: row.active !== false && taipeiDateTimeMillis(row.date, row.startTime) > Date.now(),
+      canCancel: row.active !== false && taipeiDateTimeMillis(row.date, row.endTime) > Date.now(),
       createdAtText: clean(row.createdAtText),
       cancelledAtText: clean(row.cancelledAtText)
     };
@@ -1317,8 +1728,8 @@ async function cancelRoomBooking(data) {
     if (booking.active === false || clean(booking.status) === 'cancelled') {
       throw new HttpsError('failed-precondition', '這筆租用已經取消。');
     }
-    if (taipeiDateTimeMillis(booking.date, booking.startTime) <= Date.now()) {
-      throw new HttpsError('failed-precondition', '課程開始後不能自行取消，請聯絡櫃台。');
+    if (taipeiDateTimeMillis(booking.date, booking.endTime) <= Date.now()) {
+      throw new HttpsError('failed-precondition', '租用時間已結束，無法再取消。');
     }
     tx.set(bookingRef, {
       active: false,
@@ -1337,6 +1748,12 @@ async function cancelRoomBooking(data) {
       tx.delete(db.collection('coursePortalRoomLocks').doc(clean(lockId)));
     });
   });
+  await db.collection('notificationQueue').doc(`course-portal-booking-${bookingId}-reminder`).set({
+    status: '已取消',
+    active: false,
+    cancelledAt: FieldValue.serverTimestamp(),
+    cancelledAtText: nowText()
+  }, { merge: true });
   return { ok: true, bookingId, status: 'cancelled' };
 }
 
@@ -1448,6 +1865,9 @@ async function teacherLessonState(data) {
 async function teacherAction(data) {
   const session = await requireSession(data, ['teacher']);
   const action = clean(data.action);
+  if (!['revoke', 'restore', 'delete'].includes(action)) {
+    throw new HttpsError('invalid-argument', '不支援的綁定操作。');
+  }
   if (!['single_move', 'permanent_move', 'extra_lesson', 'teacher_gift'].includes(action)) {
     throw new HttpsError('invalid-argument', '不支援的課務操作。');
   }
@@ -1752,18 +2172,26 @@ function assertAdminPin(request) {
 }
 
 async function adminData() {
-  const [teachers, students, renters, teacherRows, studentRows, renterRows] = await Promise.all([
+  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions] = await Promise.all([
     db.collection('coursePortalTeacherBindings').get(),
     db.collection('coursePortalStudentBindings').get(),
     db.collection('coursePortalRenterBindings').get(),
     mirrorRows('teachers'),
     mirrorRows('students'),
-    db.collection('coursePortalRenters').get()
+    db.collection('coursePortalRenters').get(),
+    db.collection('coursePortalSessions').get()
   ]);
   const teacherMap = indexById(teacherRows);
   const studentMap = indexById(studentRows);
   const renterMap = {};
   renterRows.docs.forEach((doc) => { renterMap[doc.id] = doc.data() || {}; });
+  const activeSessionsByLine = {};
+  sessions.docs.forEach((doc) => {
+    const row = doc.data() || {};
+    const lineUserId = clean(row.lineUserId);
+    if (!lineUserId || clean(row.status) !== 'active' || asMillis(row.expiresAt) < Date.now()) return;
+    activeSessionsByLine[lineUserId] = Number(activeSessionsByLine[lineUserId] || 0) + 1;
+  });
   const map = (snapshot) => snapshot.docs.map((doc) => {
     const row = doc.data() || {};
     const targetName = row.type === 'teacher'
@@ -1777,11 +2205,15 @@ async function adminData() {
       status: clean(row.status),
       targetName,
       lineDisplayName: clean(row.lineDisplayName),
+      email: normalizeEmail(row.email),
+      emailVerified: row.emailVerified === true,
+      emailVerifiedAt: jsonValue(row.emailVerifiedAt),
       relationship: clean(row.relationship),
       teacherId: clean(row.teacherId),
       studentId: clean(row.studentId),
       renterId: clean(row.renterId),
       boundAt: jsonValue(row.boundAt),
+      activeSessionCount: Number(activeSessionsByLine[clean(row.lineUserId)] || 0),
       reminderLastLesson: row.reminderLastLesson !== false,
       reminderPayment: row.reminderPayment !== false
     };
@@ -1789,23 +2221,98 @@ async function adminData() {
   return { ok: true, bindings: [...map(teachers), ...map(students), ...map(renters)] };
 }
 
+async function commitOperations(operations) {
+  const unique = [...new Map(operations.map((operation) => [operation.ref.path, operation])).values()];
+  for (let offset = 0; offset < unique.length; offset += 400) {
+    const batch = db.batch();
+    unique.slice(offset, offset + 400).forEach((operation) => {
+      if (operation.action === 'delete') batch.delete(operation.ref);
+      else batch.set(operation.ref, operation.data || {}, { merge: true });
+    });
+    await batch.commit();
+  }
+}
+
 async function adminBindingAction(data) {
   const type = clean(data.type);
   const id = clean(data.id);
   if (!['teacher', 'student', 'renter'].includes(type) || !id) throw new HttpsError('invalid-argument', '綁定資料不完整。');
-  const status = clean(data.action) === 'restore' ? 'active' : 'revoked';
-  await db.collection(bindingCollection(type)).doc(id).set({
+  const action = clean(data.action);
+  const bindingRef = db.collection(bindingCollection(type)).doc(id);
+  const bindingSnapshot = await bindingRef.get();
+  if (!bindingSnapshot.exists) throw new HttpsError('not-found', '找不到這筆綁定資料。');
+  const row = bindingSnapshot.data() || {};
+  const lineUserId = clean(row.lineUserId);
+
+  if (action === 'delete') {
+    const collections = [
+      'coursePortalSessions',
+      'coursePortalAccessTokens',
+      'coursePortalEmailOtps',
+      'coursePortalBindCodes',
+      'coursePortalLineLoginCodes'
+    ];
+    const snapshots = lineUserId
+      ? await Promise.all(collections.map((name) => db.collection(name).where('lineUserId', '==', lineUserId).get()))
+      : [];
+    const operations = [{ action: 'delete', ref: bindingRef }];
+    snapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
+      operations.push({ action: 'delete', ref: doc.ref });
+    }));
+    const email = normalizeEmail(row.email);
+    if (email) {
+      const emailSnapshots = await Promise.all([
+        db.collection('coursePortalEmailOtps').where('emailNormalized', '==', email).get(),
+        db.collection('coursePortalBindCodes').where('emailNormalized', '==', email).get()
+      ]);
+      emailSnapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
+        const source = doc.data() || {};
+        if (!clean(source.type) || clean(source.type) === type) {
+          operations.push({ action: 'delete', ref: doc.ref });
+        }
+      }));
+      ['bind', 'login'].forEach((purpose) => {
+        const kind = `email-otp-${purpose}-${type}`;
+        operations.push({
+          action: 'delete',
+          ref: db.collection('coursePortalRateLimits').doc(hash(`${kind}|${email}|${currentTaipeiDay()}`))
+        });
+      });
+    }
+    if (type === 'renter' && clean(row.renterId)) {
+      const renterSnapshot = await db.collection('coursePortalRenters').doc(clean(row.renterId)).get();
+      const renterPhone = normalizePhone(renterSnapshot.exists && renterSnapshot.data().phone);
+      if (renterPhone) {
+        operations.push({
+          action: 'delete',
+          ref: db.collection('coursePortalRateLimits').doc(
+            hash(`renter-contact-login|${renterPhone}|${currentTaipeiDay()}`)
+          )
+        });
+      }
+    }
+    await commitOperations(operations);
+    return {
+      ok: true,
+      status: 'deleted',
+      deletedAuthRecords: new Set(operations.map((operation) => operation.ref.path)).size,
+      retainedBusinessHistory: true
+    };
+  }
+
+  const status = action === 'restore' ? 'active' : 'revoked';
+  await bindingRef.set({
     status,
     revokedAt: status === 'revoked' ? FieldValue.serverTimestamp() : null,
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
   if (status === 'revoked') {
-    const snapshot = await db.collection(bindingCollection(type)).doc(id).get();
-    const row = snapshot.data() || {};
-    const sessions = await db.collection('coursePortalSessions').where('lineUserId', '==', clean(row.lineUserId)).get();
-    const batch = db.batch();
-    sessions.docs.forEach((doc) => batch.set(doc.ref, { status: 'revoked' }, { merge: true }));
-    await batch.commit();
+    const sessions = await db.collection('coursePortalSessions').where('lineUserId', '==', lineUserId).get();
+    await commitOperations(sessions.docs.map((doc) => ({
+      action: 'set',
+      ref: doc.ref,
+      data: { status: 'revoked', revokedAt: FieldValue.serverTimestamp() }
+    })));
   }
   return { ok: true, status };
 }
@@ -1929,6 +2436,12 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   }, options), async (request) => handler(request && request.data || {}, request));
 
   exportsObject.coursePortalStartBinding = callable(startBinding);
+  exportsObject.coursePortalSendEmailOtp = callable((data) => sendEmailOtp(data, {
+    sendEmail: helpers.sendEmail
+  }));
+  exportsObject.coursePortalVerifyEmailOtp = callable(verifyEmailOtp);
+  exportsObject.coursePortalStartLineLogin = callable(startLineLogin);
+  exportsObject.coursePortalRenterContactLogin = callable(renterContactLogin);
   exportsObject.coursePortalExchangeAccess = callable(exchangeAccessToken);
   exportsObject.coursePortalTeacherData = callable(teacherPortalData, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
