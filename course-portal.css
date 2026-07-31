@@ -76,6 +76,17 @@ a { color: inherit; }
   display: grid; grid-template-columns: minmax(120px, 1.1fr) repeat(3, minmax(90px, 1fr)) auto;
   gap: 12px; align-items: center; padding: 13px; border: 1px solid var(--line); border-radius: 13px;
 }
+.period-card,.contact-book-post { padding: 13px; border: 1px solid var(--line); border-radius: 13px; background:#fff; }
+.period-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
+.period-card-head strong,.period-card-head small { display:block; }
+.period-card-head > div:last-child { text-align:right; }
+.lesson-slot-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(105px,1fr)); gap:7px; }
+.lesson-slot { min-height:72px; padding:9px; border:1px dashed #cbd8d2; border-radius:10px; background:#fafcfb; color:var(--muted); display:grid; gap:3px; }
+.lesson-slot.used { border-style:solid; border-color:#b7dace; background:var(--green-soft); color:var(--ink); }
+.lesson-slot strong { font-size:12px; }.lesson-slot span,.lesson-slot small { font-size:11px; }
+.contact-book-post { display:grid; gap:6px; }.contact-book-post p { margin:0; white-space:normal; }
+.contact-book-images { display:flex; flex-wrap:wrap; gap:7px; }.contact-image-button { border:1px solid #cce6db; background:var(--green-soft); color:var(--green); border-radius:8px; padding:6px 9px; cursor:pointer; }
+.contact-book-image { display:block; max-width:100%; max-height:420px; border-radius:10px; border:1px solid var(--line); }
 .badge { display: inline-flex; width: max-content; padding: 3px 9px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 13px; font-weight: 800; }
 .badge.warn { background: #fff0e4; color: var(--orange); }
 .badge.danger { background: #fbeaea; color: var(--red); }
@@ -258,6 +269,7 @@ a { color: inherit; }
   .list-row{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:5px;padding:7px;border-radius:9px;font-size:9px}
   .list-row>:first-child{grid-column:1/-1;font-size:10px}
   .badge{padding:2px 5px;font-size:7px}
+  .period-card,.contact-book-post{padding:8px;border-radius:9px}.period-card-head{gap:6px;margin-bottom:6px}.period-card-head strong{font-size:10px}.period-card-head small{font-size:8px}.lesson-slot-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.lesson-slot{min-height:56px;padding:6px;border-radius:8px}.lesson-slot strong{font-size:9px}.lesson-slot span,.lesson-slot small{font-size:8px}
   .toolbar{gap:5px;margin-bottom:7px}
   .toolbar .field{min-width:110px}
   .notice{padding:7px;border-radius:8px;font-size:8px}

@@ -171,9 +171,24 @@ assert(studentPortal.includes('name="paymentMethod" value="onsite"'), '學生入
 assert(studentPortal.includes('id="tuitionReceiptFile"'), '學生入口缺少匯款截圖上傳');
 assert(studentPortal.includes('28881010149129'), '學生入口缺少既有台新銀行帳號 fallback');
 assert(studentPortal.includes('coursePortalStudentSubmitTuitionPayment'), '學生繳費資料未連接後端');
+assert(studentPortal.includes('data-tab="contact"'), '學生入口缺少課堂聯絡簿入口');
+assert(studentPortal.includes('課程與學費') && studentPortal.includes('租用教室') && studentPortal.includes('LINE 提醒'), '學生底部入口不完整');
+assert(studentPortal.includes('新系統僅顯示最新兩期資料') && studentPortal.includes('紙本上課證'), '學生入口未清楚說明只顯示最新兩期');
+assert(studentPortal.includes('lesson-slot-grid') && studentPortal.includes('未使用'), '學生期別卡缺少堂次小格與未使用標示');
+assert(studentPortal.includes('coursePortalStudentContactBookImage'), '學生入口無法安全查看聯絡簿照片');
+assert(teacherSource.includes('data-quick-contact-book'), '老師課表缺少課堂聯絡簿操作');
+assert(teacherSource.includes('coursePortalTeacherSubmitContactBookPost'), '老師聯絡簿未連接後端');
 assert(adminPortal.includes('學費繳費待確認'), '管理者頁缺少學費繳費待確認專區');
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentScreenshot'), '管理者無法安全讀取匯款截圖');
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentAction'), '管理者學費確認未連接後端');
+
+const contactPortalFunctions = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
+const contactRules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8');
+const contactDeployment = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8');
+assert(contactPortalFunctions.includes("const CONTACT_BOOK_POSTS = 'coursePortalLessonContactPosts'"), '課堂聯絡簿缺少私密資料集合');
+assert(contactPortalFunctions.includes('coursePortalTeacherSubmitContactBookPost') && contactPortalFunctions.includes('coursePortalStudentContactBookImage'), '課堂聯絡簿 Callable Functions 不完整');
+assert(contactRules.includes('coursePortalLessonContactPosts') && contactRules.includes('allow read, write: if false'), '課堂聯絡簿資料不可由前端直接讀寫');
+assert(contactDeployment.includes('functions:coursePortalTeacherSubmitContactBookPost') && contactDeployment.includes('functions:coursePortalStudentContactBookImage'), '部署流程缺少課堂聯絡簿 Functions');
 
 const rentalSource = fs.readFileSync(path.join(root, 'room-booking-v2.js'), 'utf8');
 const rentalHtml = fs.readFileSync(path.join(root, 'room-booking.html'), 'utf8');

@@ -74,8 +74,6 @@
       <div class="summary-grid student-sensitive">
         <article class="summary"><span>學生</span><strong id="studentName">—</strong></article>
         <article class="summary"><span>課程期數</span><strong id="periodCount">0</strong></article>
-        <article class="summary"><span>近期課程</span><strong id="upcomingCount">0</strong></article>
-        <article class="summary"><span>簽到紀錄</span><strong id="attendanceCount">0</strong></article>
       </div>
       <section class="card tuition-payment-card hidden student-sensitive" id="tuitionPaymentSection">
         <div class="section-title">
@@ -84,25 +82,20 @@
         </div>
         <div class="list" id="tuitionPaymentList"></div>
       </section>
-      <nav class="tabs student-sensitive">
+      <nav class="tabs student-sensitive student-bottom-tabs">
         <button class="btn active" type="button" data-tab="courses">課程與學費</button>
-        <button class="btn" type="button" data-tab="upcoming">近期課表</button>
-        <button class="btn" type="button" data-tab="attendance">簽到紀錄</button>
-        <button class="btn" type="button" data-tab="reminders">LINE 提醒</button>
+        <button class="btn" type="button" data-tab="contact">課堂聯絡簿</button>
         <a class="btn soft" href="room-booking.html?from=student">租用教室</a>
+        <button class="btn" type="button" data-tab="reminders">LINE 提醒</button>
       </nav>
 
       <section class="card tab-panel student-sensitive" data-panel="courses">
-        <div class="section-title"><div><h2>課程與學費</h2><p class="muted">先顯示最近三期；未繳清會明確標示。</p></div><button class="btn soft hidden" id="togglePeriodHistory" type="button">歷史期數</button></div>
+        <div class="section-title"><div><h2>課程與學費</h2><p class="muted">新系統僅顯示最新兩期資料；更早資料請查閱紙本上課證。</p></div></div>
         <div class="list" id="periodList"></div>
       </section>
-      <section class="card tab-panel hidden student-sensitive" data-panel="upcoming">
-        <div class="section-title"><h2>近期課表</h2></div>
-        <div class="list" id="upcomingList"></div>
-      </section>
-      <section class="card tab-panel hidden student-sensitive" data-panel="attendance">
-        <div class="section-title"><h2>實際簽到與請假</h2></div>
-        <div class="list" id="attendanceList"></div>
+      <section class="card tab-panel hidden student-sensitive" data-panel="contact">
+        <div class="section-title"><div><h2>課堂聯絡簿</h2><p class="muted">老師上課後留下的內容與照片，僅供已綁定家長查看。</p></div></div>
+        <div class="list" id="contactBookList"></div>
       </section>
       <section class="card tab-panel hidden student-sensitive" data-panel="reminders">
         <div class="section-title"><div><h2>LINE 提醒</h2><p class="muted">每位家長可各自決定是否接收，不會影響其他家長。</p></div></div>
@@ -172,7 +165,6 @@
     let token = '';
     let data = null;
     let studentId = '';
-    let showAllPeriods = false;
     let activeTuitionPaymentId = '';
     let tuitionReceiptDataUrl = '';
     const bindView = document.getElementById('bindView');
@@ -216,6 +208,27 @@
           <span class="badge">${P.escapeHtml(attendanceStatusLabel(row.status))}</span>
           <span></span>
         </article>`;
+    }
+
+    function lessonSlots(period, attendance) {
+      const rows = attendance.filter((row) => row.periodId && row.periodId === period.id)
+        .sort((left, right) => `${left.date}|${left.startTime}`.localeCompare(`${right.date}|${right.startTime}`));
+      const count = Math.max(Number(period.lessonCount || 0), rows.length);
+      return Array.from({ length: count }, (_, index) => {
+        const row = rows[index];
+        return row ? `<div class="lesson-slot used"><strong>第 ${index + 1} 堂</strong><span>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime || '')}</span><small>${P.escapeHtml(attendanceStatusLabel(row.status))}</small></div>`
+          : `<div class="lesson-slot"><strong>第 ${index + 1} 堂</strong><span>未使用</span></div>`;
+      }).join('');
+    }
+
+    function renderContactBook() {
+      const posts = (data.contactBook || []).filter((row) => row.studentId === studentId);
+      document.getElementById('contactBookList').innerHTML = posts.length ? posts.map((row) => `
+        <article class="contact-book-post"><strong>${P.escapeHtml(row.date || '課堂聯絡簿')} ${P.escapeHtml(row.subjectName || '')}</strong>
+          <small>${P.escapeHtml(row.teacherName)}老師 ${P.escapeHtml(row.createdAtText || '')}</small>
+          ${row.text ? `<p>${P.escapeHtml(row.text).replace(/\n/g, '<br>')}</p>` : ''}
+          <div class="contact-book-images">${(row.images || []).map((image) => `<button type="button" class="contact-image-button" data-contact-image-post="${P.escapeHtml(row.id)}" data-contact-image-index="${P.escapeHtml(image.id)}">查看 ${P.escapeHtml(image.name)}</button>`).join('')}</div>
+        </article>`).join('') : '<p class="muted">目前還沒有課堂聯絡簿內容。</p>';
     }
 
     function tuitionPaymentStatus(row) {
@@ -366,33 +379,13 @@
       }
       const periods = data.periods.filter((row) => row.studentId === studentId)
         .sort((a, b) => Number(b.periodNo || 0) - Number(a.periodNo || 0));
-      const upcoming = data.upcoming.filter((row) => row.studentIds.includes(studentId));
       document.getElementById('studentName').textContent = student.name || '—';
       document.getElementById('periodCount').textContent = periods.length;
-      document.getElementById('upcomingCount').textContent = upcoming.length;
-      document.getElementById('attendanceCount').textContent = attendance.length;
       renderTuitionPayments();
-      const visiblePeriods = showAllPeriods ? periods : periods.slice(0, 3);
-      const historyButton = document.getElementById('togglePeriodHistory');
-      historyButton.classList.toggle('hidden', periods.length <= 3);
-      historyButton.textContent = showAllPeriods ? '只看最近三期' : `歷史期數（${periods.length}）`;
-      document.getElementById('periodList').innerHTML = visiblePeriods.length ? visiblePeriods.map((row) => `
-        <article class="list-row">
-          <strong>第 ${row.periodNo || '—'} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong>
-          <span>${P.escapeHtml(row.teacherName || '老師未指定')}</span>
-          <span>${row.usedCount} / ${row.lessonCount} 堂</span>
-          <span>${paymentState(row)}</span>
-          <span>${P.money(row.paidAmount)} / ${P.money(row.expectedAmount)}</span>
-        </article>`).join('') : '<p class="muted">目前沒有學費期別資料。</p>';
-      document.getElementById('upcomingList').innerHTML = upcoming.length ? upcoming.map((row) => `
-        <article class="list-row">
-          <strong>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong>
-          <span>${P.escapeHtml(row.subjectName)}</span><span>${P.escapeHtml(row.teacherName)}</span>
-          <span class="badge">${P.escapeHtml(row.status || '已排課')}</span><span></span>
-        </article>`).join('') : '<p class="muted">目前沒有近期課程。</p>';
-      document.getElementById('attendanceList').innerHTML = attendance.length
-        ? attendance.slice().reverse().map(attendanceHistoryRow).join('')
-        : '<p class="muted">目前沒有簽到紀錄。</p>';
+      document.getElementById('periodList').innerHTML = periods.length ? periods.map((row) => `
+        <article class="period-card"><div class="period-card-head"><div><strong>第 ${row.periodNo || '—'} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong><small>${P.escapeHtml(row.teacherName || '老師未指定')}｜${row.usedCount} / ${row.lessonCount} 堂</small></div><div>${paymentState(row)}<small>${P.money(row.paidAmount)} / ${P.money(row.expectedAmount)}</small></div></div>
+          <div class="lesson-slot-grid">${lessonSlots(row, attendance)}</div></article>`).join('') : '<p class="muted">目前沒有學費期別資料。</p>';
+      renderContactBook();
       const binding = data.bindings.find((row) => row.studentId === studentId) || {};
       document.querySelector('[name="reminderLastLesson"]').checked = binding.reminderLastLesson !== false;
       document.querySelector('[name="reminderPayment"]').checked = binding.reminderPayment !== false;
@@ -419,12 +412,17 @@
     P.installAuth({ role: 'student', authViewId: 'bindView' });
     document.getElementById('studentSelect').addEventListener('change', (event) => {
       studentId = event.target.value;
-      showAllPeriods = false;
       render();
     });
-    document.getElementById('togglePeriodHistory').addEventListener('click', () => {
-      showAllPeriods = !showAllPeriods;
-      render();
+    document.getElementById('contactBookList').addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-contact-image-post]');
+      if (!button) return;
+      P.loading(button, true, '讀取中…');
+      try {
+        const image = await P.call('coursePortalStudentContactBookImage', { sessionToken: token, postId: button.dataset.contactImagePost, imageIndex: Number(button.dataset.contactImageIndex) });
+        const node = new Image(); node.src = image.dataUrl; node.alt = '課堂聯絡簿照片'; node.className = 'contact-book-image'; button.replaceWith(node);
+      } catch (error) { P.toast(error.message, 'error'); }
+      finally { P.loading(button, false); }
     });
     document.getElementById('tuitionPaymentList').addEventListener('click', (event) => {
       const button = event.target.closest('[data-pay-tuition]');

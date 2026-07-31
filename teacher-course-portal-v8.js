@@ -722,6 +722,7 @@
       ${canLessonState ? '<button class="danger" type="button" data-quick-state="absent">標示曠課</button>' : ''}
       ${canNormalAttendance ? '<button class="primary" type="button" data-quick-attendance>✓ 當日簽到</button>' : ''}
       ${canLateAttendance ? '<button type="button" data-quick-late>補簽到（行政費 NT$50）</button>' : ''}
+      <button type="button" data-quick-contact-book>寫課堂聯絡簿</button>
       ${attended && !cancellationPending ? '<button class="danger" type="button" data-quick-cancel-attendance>申請取消簽到（行政費 NT$50）</button>' : ''}
       ${cancellationPending ? '<div class="notice">取消簽到已送出，正在等待主管確認；目前紀錄仍維持已簽到。</div>' : ''}
       ${row.portalChangeId && ['extra_lesson', 'teacher_gift'].includes(clean(row.portalAction))
@@ -730,6 +731,53 @@
     `,
       { type: 'lesson', row }
     );
+  }
+
+  function openContactBook(row) {
+    const students = (row.studentIds || []).map((id, index) => ({ id: clean(id), name: clean((row.studentNames || [])[index]) || '學生' }));
+    const audience = students.length > 1
+      ? `<div class="field"><label>發送對象</label><select id="contactBookStudent"><option value="">本堂全部學生家長</option>${students.map((student) => `<option value="${escapeHtml(student.id)}">只給 ${escapeHtml(student.name)} 的家長</option>`).join('')}</select></div>`
+      : '<p class="muted">此內容只會給這位學生已綁定的家長查看。</p>';
+    showQuick('課堂聯絡簿', `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`, `
+      <div class="stack contact-book-composer">
+        ${audience}
+        <div class="field"><label>內容</label><textarea id="contactBookText" rows="5" placeholder="例如：今天練習內容、回家練習提醒…"></textarea></div>
+        <div class="field"><label>照片／圖片（可多選）</label><input id="contactBookImages" type="file" accept="image/jpeg,image/png,image/webp" multiple><small class="muted">最多 ${8} 張，每張 3 MB；只會讓對應家長在聯絡簿中查看。</small></div>
+        <button class="primary" type="button" data-submit-contact-book>送出給家長</button>
+      </div>`, { type: 'contact-book', row });
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('照片讀取失敗，請重新選擇。'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function submitContactBook(row, button) {
+    const input = document.getElementById('contactBookImages');
+    const files = [...((input && input.files) || [])];
+    if (files.length > 8) throw new Error('一次最多可附 8 張照片。');
+    const images = await Promise.all(files.map(async (file) => {
+      if (!/^image\/(jpeg|png|webp)$/i.test(clean(file.type)) || file.size > 3 * 1024 * 1024) {
+        throw new Error('請使用 JPEG、PNG 或 WEBP，且每張照片需小於 3 MB。');
+      }
+      return { name: clean(file.name), dataUrl: await readFileAsDataUrl(file) };
+    }));
+    const selected = document.getElementById('contactBookStudent');
+    loading(button, true, '送出中…');
+    try {
+      const result = await invoke('coursePortalTeacherSubmitContactBookPost', {
+        sessionToken: token, sourceDate: row.date, sourceEventId: row.sourceId || row.id,
+        sourceCourseId: row.fixedCourseId || row.courseId, portalChangeId: row.portalChangeId || '',
+        studentId: selected ? selected.value : clean((row.studentIds || [])[0]),
+        text: clean(document.getElementById('contactBookText').value), images
+      });
+      toast(result.message || '課堂聯絡簿已送出。');
+      closeQuick();
+    } finally { loading(button, false); }
   }
 
   async function openQuickForEmpty(date, startTime) {
@@ -1303,6 +1351,8 @@
     const attendanceButton = event.target.closest('[data-quick-attendance]');
     const lateButton = event.target.closest('[data-quick-late]');
     const cancelAttendanceButton = event.target.closest('[data-quick-cancel-attendance]');
+    const contactBookButton = event.target.closest('[data-quick-contact-book]');
+    const submitContactBookButton = event.target.closest('[data-submit-contact-book]');
     const targetBrowse = event.target.closest('[data-target-browse]');
     const targetRoom = event.target.closest('[data-target-room]');
     const targetCandidate = event.target.closest('[data-target-candidate]');
@@ -1316,6 +1366,15 @@
     const confirmPermanent = event.target.closest('[data-confirm-permanent]');
     const cancelFlow = event.target.closest('[data-cancel-flow]');
     if (!context) return;
+    if (contactBookButton && context.type === 'lesson') {
+      openContactBook(context.row);
+      return;
+    }
+    if (submitContactBookButton && context.type === 'contact-book') {
+      try { await submitContactBook(context.row, submitContactBookButton); }
+      catch (error) { toast(error.message || '課堂聯絡簿送出失敗。', 'error'); }
+      return;
+    }
     if (actionButton) {
       const action = actionButton.dataset.quickAction;
       if (context.type !== 'lesson') return;

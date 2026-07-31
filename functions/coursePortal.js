@@ -46,6 +46,9 @@ const ATTENDANCE_RECORDS = 'coursePortalAttendanceRecords';
 const ATTENDANCE_CANCELLATIONS = 'coursePortalAttendanceCancellationRequests';
 const ATTENDANCE_PAYROLL = 'coursePortalTeacherAttendancePayroll';
 const ATTENDANCE_ADMIN_FEE = 50;
+const CONTACT_BOOK_POSTS = 'coursePortalLessonContactPosts';
+const CONTACT_BOOK_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
+const CONTACT_BOOK_IMAGE_MAX_COUNT = 8;
 const ALLOWED_ORIGINS = [
   'https://danny700808.github.io',
   'https://www.mingtinghuang.com',
@@ -4312,6 +4315,33 @@ async function studentPortalData(data) {
     studentIds: activeStudentIds
   });
   const paymentRequests = await tuitionPaymentRequestsForStudents(activeStudentIds);
+  const contactSnapshots = await Promise.all(studentIds.map((id) =>
+    db.collection(CONTACT_BOOK_POSTS).where('studentId', '==', id).where('active', '==', true).get()
+  ));
+  const publicContactPosts = contactSnapshots.flatMap((snapshot) => snapshot.docs.map((doc) => {
+    const row = doc.data() || {};
+    return {
+      id: doc.id,
+      studentId: clean(row.studentId),
+      teacherName: clean(row.teacherName) || '老師',
+      subjectName: clean(row.subjectName) || '課程',
+      date: dateKey(row.date),
+      startTime: clean(row.startTime),
+      text: clean(row.text),
+      createdAtText: clean(row.createdAtText),
+      images: (row.images || []).map((image, index) => ({ id: String(index), name: clean(image.name) || `照片 ${index + 1}` }))
+    };
+  })).sort((left, right) => `${right.date}|${right.createdAtText}`.localeCompare(`${left.date}|${left.createdAtText}`));
+  const publicPeriods = [];
+  const periodCounts = new Map();
+  periods.filter((row) => allowed.has(clean(row.studentId))).sort((left, right) =>
+    Number(right.periodNo || right.period || 0) - Number(left.periodNo || left.period || 0)
+  ).forEach((row) => {
+    const id = clean(row.studentId);
+    const count = periodCounts.get(id) || 0;
+    if (count < 2) publicPeriods.push(row);
+    periodCounts.set(id, count + 1);
+  });
   return {
     ok: true,
     students: selectedStudents,
@@ -4323,7 +4353,8 @@ async function studentPortalData(data) {
         reminderPayment: row.reminderPayment !== false
       };
     }),
-    periods: periods.filter((row) => allowed.has(clean(row.studentId))).map((row) => ({
+    // 新系統只公開每位學生最新兩期；更早帳務請以紙本上課證為準。
+    periods: publicPeriods.map((row) => ({
       id: sourceId(row),
       studentId: clean(row.studentId),
       periodNo: Number(row.periodNo || row.period || 0),
@@ -4364,6 +4395,7 @@ async function studentPortalData(data) {
         return {
           id: sourceId(row),
           studentId: clean(row.studentId),
+          periodId: clean(row.periodId),
           date: eventDate(row),
           startTime: eventStart(row) || eventStart(course),
           endTime: eventEnd(row) || eventEnd(course),
@@ -4374,6 +4406,7 @@ async function studentPortalData(data) {
             clean(maps.teachers[teacherId] && maps.teachers[teacherId].name)
         };
       }),
+    contactBook: publicContactPosts,
     upcoming: events.filter((row) =>
       eventDate(row) >= today &&
       eventStudentIds(row).some((id) => allowed.has(id))
@@ -7137,6 +7170,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalStudentContactBookImage = callable(studentContactBookImage, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentSubmitTuitionPayment = callable(studentSubmitTuitionPayment, {
     timeoutSeconds: 180,
     memory: '1GiB'
@@ -7152,6 +7186,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherAttendance = callable(teacherAttendance, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLateAttendance = callable(teacherLateAttendance, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherAttendanceCancellationRequest = callable(teacherAttendanceCancellationRequest, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherSubmitContactBookPost = callable(teacherSubmitContactBookPost, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherUpdateStudent = callable(teacherUpdateStudent, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherStopStudent = callable(teacherStopStudent, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherBonusRequest = callable(teacherBonusRequest, { timeoutSeconds: 180, memory: '1GiB' });
@@ -7210,3 +7245,71 @@ module.exports = {
   phoneMatches,
   registerCoursePortal
 };
+function parseContactBookImages(values) {
+  const images = Array.isArray(values) ? values : [];
+  if (images.length > CONTACT_BOOK_IMAGE_MAX_COUNT) {
+    throw new HttpsError('invalid-argument', `一次最多可附 ${CONTACT_BOOK_IMAGE_MAX_COUNT} 張照片。`);
+  }
+  return images.map((value, index) => {
+    const parsed = parseTuitionReceipt(value && value.dataUrl);
+    if (parsed.buffer.length > CONTACT_BOOK_IMAGE_MAX_BYTES) {
+      throw new HttpsError('invalid-argument', `第 ${index + 1} 張照片需小於 3 MB。`);
+    }
+    return { name: clean(value && value.name).slice(0, 100), contentType: parsed.contentType, buffer: parsed.buffer };
+  });
+}
+
+async function teacherSubmitContactBookPost(data) {
+  const session = await requireSession(data, ['teacher']);
+  const text = clean(data.text);
+  const resolved = await teacherAttendanceEvent(session, data);
+  const event = resolved.event;
+  const availableIds = (event.studentIds || []).map(clean).filter(Boolean);
+  const requested = clean(data.studentId);
+  const studentIds = requested ? [requested] : availableIds;
+  if (!studentIds.length || studentIds.some((id) => !availableIds.includes(id))) {
+    throw new HttpsError('permission-denied', '這位學生不在本堂課中。');
+  }
+  const images = parseContactBookImages(data.images);
+  if (!text && !images.length) throw new HttpsError('invalid-argument', '請輸入聯絡簿內容或附上照片。');
+  const postId = randomToken(12);
+  const imageRows = await Promise.all(images.map(async (image, index) => {
+    const path = `course-portal/contact-book/${postId}/${index}-${randomToken(5)}`;
+    await admin.storage().bucket().file(path).save(image.buffer, {
+      resumable: false,
+      metadata: { contentType: image.contentType, cacheControl: 'private, no-store, max-age=0' }
+    });
+    return { name: image.name || `照片 ${index + 1}`, storagePath: path, contentType: image.contentType, bytes: image.buffer.length };
+  }));
+  const rows = await Promise.all(studentIds.map(async (studentId) => {
+    const ref = db.collection(CONTACT_BOOK_POSTS).doc(`${postId}-${studentId}`);
+    await ref.set({
+      id: ref.id, postId, active: true, studentId, teacherId: session.teacherId,
+      teacherName: clean(event.teacherName), subjectName: clean(event.subjectName), subjectId: clean(event.subjectId),
+      date: resolved.sourceDate, startTime: clean(event.startTime), eventId: clean(event.sourceId || resolved.sourceEventId || event.id),
+      courseId: clean(event.fixedCourseId || resolved.sourceCourseId), text, images: imageRows,
+      createdAt: FieldValue.serverTimestamp(), createdAtText: nowText(), updatedAt: FieldValue.serverTimestamp()
+    });
+    return ref.id;
+  }));
+  await Promise.all(studentIds.map((studentId) => queueCoursePortalNotice(
+    `course-contact-book-${postId}-${studentId}`,
+    { eventCode: 'contact_book_posted', target: 'student', targetRole: 'student', studentId,
+      title: '課堂聯絡簿有新內容', body: '老師已新增課堂聯絡簿，請登入學生入口查看。', text: '老師已新增課堂聯絡簿，請登入學生入口查看。' }
+  )));
+  return { ok: true, ids: rows, message: '課堂聯絡簿已送出給家長。' };
+}
+
+async function studentContactBookImage(data) {
+  const session = await requireSession(data, ['student']);
+  const id = clean(data.postId);
+  const imageIndex = Number(data.imageIndex);
+  const allowed = new Set((await activeStudentBindingsForSession(session)).map((row) => clean(row.studentId)));
+  const snapshot = await db.collection(CONTACT_BOOK_POSTS).doc(id).get();
+  if (!snapshot.exists || !allowed.has(clean(snapshot.data().studentId))) throw new HttpsError('permission-denied', '沒有這張照片的查看權限。');
+  const image = (snapshot.data().images || [])[imageIndex];
+  if (!image || !clean(image.storagePath)) throw new HttpsError('not-found', '找不到這張照片。');
+  const [buffer] = await admin.storage().bucket().file(clean(image.storagePath)).download();
+  if (!buffer.length || buffer.length > CONTACT_BOOK_IMAGE_MAX_BYTES) throw new HttpsError('failed-precondition', '照片資料異常。');
+  return { ok: true, contentType: clean(image.contentType) || 'image/jpeg', dataUrl: `data:${clean(image.contentType) || 'image/jpeg'};base64,${buffer.toString('base64')}` };
+}
