@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>學生與家長入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260731-student-payment-v4">
+  <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 </head>
 <body class="clean-portal-ui">
@@ -62,7 +62,7 @@
 
     <section class="hidden" id="appView" data-app-view>
       <div class="toolbar" id="studentSwitcher">
-        <div class="field"><label>查看學生</label><select id="studentSelect"></select></div>
+        <div class="field" id="studentSelectField"><label>查看學生</label><select id="studentSelect"></select></div>
         <button class="btn soft" id="addStudentBinding" type="button">＋ 增加另一位學生</button>
       </div>
       <section class="card hidden" id="inactiveStudentView">
@@ -84,6 +84,7 @@
 
       <section class="card tab-panel student-sensitive" data-panel="courses">
         <div class="section-title"><div><h2>課程與學費</h2><p class="muted">新系統僅顯示最新兩期資料；更早資料請查閱紙本上課證。</p></div></div>
+        <div class="upcoming-course-list" id="upcomingCourseList"></div>
         <div class="list" id="periodList"></div>
       </section>
       <section class="card tab-panel hidden student-sensitive" data-panel="contact">
@@ -129,8 +130,8 @@
               <button class="btn soft" id="copyTuitionAccount" type="button">複製帳號</button>
             </div>
             <div class="grid two">
-              <div class="field"><label>匯款日期</label><input type="date" name="transferDate"></div>
-              <div class="field"><label>匯款帳號末五碼</label><input type="text" name="transferLast5" inputmode="numeric" maxlength="5" placeholder="請輸入 5 碼"></div>
+              <div class="field"><label>匯款日期</label><input type="date" name="transferDate" required></div>
+              <div class="field"><label>匯款帳號末五碼</label><input type="text" name="transferLast5" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="請輸入 5 碼" required></div>
             </div>
             <div class="field">
               <label>上傳匯款截圖</label>
@@ -151,7 +152,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260731-security-attendance-v1"></script>
+  <script src="course-portal-common.js?v=20260731-final-rules-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -205,12 +206,16 @@
 
     function lessonSlots(period, attendance, showPaymentDue) {
       const rows = attendance.filter((row) => row.periodId && row.periodId === period.id)
-        .sort((left, right) => `${left.date}|${left.startTime}`.localeCompare(`${right.date}|${right.startTime}`));
+        .sort((left, right) =>
+          Number(left.late === true) - Number(right.late === true) ||
+          `${left.date}|${left.startTime}`.localeCompare(`${right.date}|${right.startTime}`)
+        );
       const count = Math.max(Number(period.lessonCount || 0), rows.length);
       return Array.from({ length: count }, (_, index) => {
         const row = rows[index];
         const finalUnpaid = showPaymentDue && index === count - 1;
-        return row ? `<div class="lesson-slot used${finalUnpaid ? ' payment-due' : ''}"><strong>第 ${index + 1} 堂</strong><span>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime || '')}</span><small>${finalUnpaid ? '已上課・未繳費' : P.escapeHtml(attendanceStatusLabel(row.status))}</small></div>`
+        const statusText = row && row.late === true ? '老師補簽到' : attendanceStatusLabel(row && row.status);
+        return row ? `<div class="lesson-slot used${finalUnpaid ? ' payment-due' : ''}"><strong>第 ${index + 1} 堂</strong><span>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime || '')}</span><small>${finalUnpaid ? `已上課・未繳費${row.late ? '・老師補簽到' : ''}` : P.escapeHtml(statusText)}</small></div>`
           : `<div class="lesson-slot"><strong>第 ${index + 1} 堂</strong><span>未使用</span></div>`;
       }).join('');
     }
@@ -247,7 +252,8 @@
 
     function paymentBlock(period, request) {
       const paid = Number(period.paidAmount || 0) >= Number(period.expectedAmount || 0) && Number(period.expectedAmount || 0) > 0;
-      const amount = Number((request && request.expectedAmount) || period.expectedAmount || 0).toLocaleString('zh-TW');
+      const amountValue = Number((request && request.remainingAmount) || (request && request.expectedAmount) || period.expectedAmount || 0);
+      const amount = amountValue.toLocaleString('zh-TW');
       if (paid) return `<div class="period-payment paid">
         <div class="period-payment-amount"><span>本期學費</span><strong>${amount}</strong></div>
         <div class="period-payment-state"><span class="badge">已繳費</span>${paymentDate(period) ? `<small>繳費日期：${P.escapeHtml(paymentDate(period))}</small>` : ''}</div>
@@ -258,7 +264,7 @@
       </div>`;
       const canSubmit = ['payment_due', 'needs_resubmission'].includes(request.status);
       return `<div class="period-payment unpaid">
-        <div class="period-payment-amount"><span>本期學費</span><strong>${amount}</strong></div>
+        <div class="period-payment-amount"><span>${Number(request.confirmedAmount || 0) > 0 ? '尚未繳清' : '本期學費'}</span><strong>${amount}</strong>${request.reviewNote ? `<small>${P.escapeHtml(request.reviewNote)}</small>` : ''}</div>
         <div class="period-payment-state">${tuitionPaymentStatus(request)}${canSubmit ? `<button class="btn primary" type="button" data-pay-tuition="${P.escapeHtml(request.id)}">${request.status === 'needs_resubmission' ? '重新繳費' : '前往繳費'}</button>` : ''}</div>
       </div>`;
     }
@@ -330,6 +336,7 @@
       form.reset();
       form.elements.paymentMethod.value = row.paymentMethod === 'onsite' ? 'onsite' : 'bank_transfer';
       form.elements.transferDate.value = row.transferDate || taipeiToday();
+      form.elements.transferDate.max = taipeiToday();
       form.elements.transferLast5.value = row.transferLast5 || '';
       document.getElementById('tuitionReceiptPreview').src = '';
       document.getElementById('tuitionReceiptPreview').classList.add('hidden');
@@ -396,11 +403,14 @@
         return;
       }
       const periods = data.periods.filter((row) => row.studentId === studentId)
-        .sort((a, b) => Number(a.periodNo || 0) - Number(b.periodNo || 0));
+        .sort((a, b) => Number(a.systemPeriodNo || 0) - Number(b.systemPeriodNo || 0));
       document.getElementById('studentName').textContent = student.name || '—';
       document.getElementById('periodCount').textContent = periods.length;
+      const upcoming = (data.upcoming || []).filter((row) =>
+        (row.studentIds || []).includes(studentId)
+      );
       const teacherContacts = [...new Map(
-        periods.filter((row) => row.teacherName)
+        periods.concat(upcoming).filter((row) => row.teacherName)
           .map((row) => [row.teacherId || row.teacherName, row])
       ).values()];
       const teacherContactHtml = teacherContacts.map((row) =>
@@ -411,12 +421,22 @@
         ${teacherContactHtml ? `<span>老師聯絡</span><strong>${teacherContactHtml}</strong>` : ''}
       </div>`;
       const requests = activeTuitionPayments();
-      document.getElementById('periodList').innerHTML = periods.length ? periods.map((row, index) => {
-        const request = requests.find((item) => Number(item.nextPeriodNo || 0) === Number(row.periodNo || 0)) ||
-          requests.find((item) => item.subjectId && item.subjectId === row.subjectId);
-        return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${index + 1} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong><small>已上 ${row.usedCount} / ${row.lessonCount} 堂</small></div>${paymentBlock(row, request)}</div>
+      document.getElementById('upcomingCourseList').innerHTML = upcoming.length
+        ? `<div class="upcoming-course-title">接下來的課程</div>${upcoming.slice(0, 4).map((row) => `<div class="upcoming-course-row"><strong>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong><span>${P.escapeHtml(row.subjectName || '課程')}｜${P.escapeHtml(row.teacherName || '老師')}</span></div>`).join('')}`
+        : '';
+      const matchedRequestIds = new Set();
+      const periodCards = periods.map((row) => {
+        const request = requests.find((item) => item.targetPeriodId && item.targetPeriodId === row.id);
+        if (request) matchedRequestIds.add(request.id);
+        const restored = Number(row.restoredCreditCount || 0);
+        return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${Number(row.systemPeriodNo || 1)} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong><small>已上 ${row.usedCount} / ${row.lessonCount} 堂</small>${restored ? `<span class="period-restored-note">主管核准取消簽到，已補回堂數 ${restored} 堂</span>` : ''}</div>${paymentBlock(row, request)}</div>
           <div class="lesson-slot-grid">${lessonSlots(row, attendance, Number(row.paidAmount || 0) < Number(row.expectedAmount || 0) || Boolean(request))}</div></article>`;
-      }).join('') : '<p class="muted">目前沒有學費期別資料。</p>';
+      });
+      const unmatchedCards = requests.filter((row) => !matchedRequestIds.has(row.id)).map((request) =>
+        `<article class="period-card payment-only-period"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${newSystemPeriodNumber(request)} 期 · ${P.escapeHtml(request.subjectName || '課程')}</strong><small>下一期學費</small></div>${paymentBlock({ expectedAmount: request.expectedAmount, paidAmount: request.confirmedAmount }, request)}</div></article>`
+      );
+      document.getElementById('periodList').innerHTML = periodCards.concat(unmatchedCards).join('') ||
+        '<p class="muted">目前沒有學費期別資料。</p>';
       renderContactBook();
       const binding = data.bindings.find((row) => row.studentId === studentId) || {};
       document.querySelector('[name="reminderLastLesson"]').checked = binding.reminderLastLesson !== false;
@@ -430,7 +450,7 @@
         studentId = requested || studentId || data.students[0].id;
         document.getElementById('studentSelect').innerHTML = data.students.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
         document.getElementById('studentSelect').value = studentId;
-        document.getElementById('studentSwitcher').classList.toggle('hidden', data.students.length <= 1);
+        document.getElementById('studentSelectField').classList.toggle('hidden', data.students.length <= 1);
         render();
         showBound(true);
       } catch (error) {
