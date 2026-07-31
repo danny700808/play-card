@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>歷史平台訂單日期顯示修正</title>
+  <style>
+    :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;color:#173247;background:#f4f7f5}*{box-sizing:border-box}body{margin:0;padding:24px}.card{max-width:820px;margin:auto;background:#fff;border:1px solid #dbe6df;border-radius:18px;padding:24px;box-shadow:0 8px 28px rgba(23,50,71,.08)}h1{margin-top:0}.notice{padding:13px;border:1px solid #e1cf83;background:#fff8d9;border-radius:12px}.ok{background:#e9f8ef;border-color:#9ed8b3}.bad{background:#fff0f0;border-color:#e8aaaa}button{border:0;border-radius:12px;padding:13px 20px;font-weight:700;background:#236b4c;color:#fff;margin:14px 8px 14px 0;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}pre{white-space:pre-wrap;background:#13281f;color:#dff5e7;padding:14px;border-radius:12px;max-height:380px;overflow:auto}
+  </style>
+</head>
+<body><div class="card">
+  <h1>歷史平台訂單日期顯示修正</h1>
+  <p>只修正批次 <code>HIST-20260701-20260710-NOSTOCK-V1</code> 的日期來源標記。不新增訂單、不修改商品、不建立庫存異動。</p>
+  <div class="notice" id="status">請先檢查。</div>
+  <button id="preview">檢查補登批次</button><button id="repair" disabled>修正日期顯示（庫存不變）</button>
+  <pre id="log">尚未檢查。</pre>
+</div>
+<script src="config.js?v=20260508frontendperf1"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script>
+(function(){
+  'use strict';
+  const BATCH_ID='HIST-20260701-20260710-NOSTOCK-V1';
+  const EXPECTED={total:32,platforms:{EasyStore:{lines:11,orders:10,gross:19200},MOMO:{lines:17,orders:9,gross:6182},Coupang:{lines:4,orders:4,gross:1450}}};
+  const SOURCE={EasyStore:'easystore-created-at',MOMO:'momo-api-order-date',Coupang:'coupang-ordered-at'};
+  const $=id=>document.getElementById(id),text=v=>String(v==null?'':v).trim();let db=null,docs=[];
+  function status(message,kind){$('status').textContent=message;$('status').className='notice '+(kind||'');}
+  function log(message,reset){if(reset)$('log').textContent=message;else $('log').textContent+='\n'+message;}
+  function init(){const cfg=window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG;if(!cfg||!cfg.projectId)throw new Error('找不到 Firebase 設定');if(!firebase.apps.length)firebase.initializeApp(cfg);db=firebase.firestore();}
+  function summarize(rows){const by={};rows.forEach(row=>{const d=row.data(),p=text(d.platform)||'unknown';if(!by[p])by[p]={lines:0,orders:new Set(),gross:0,sources:{},inventoryEffects:{}};const x=by[p];x.lines++;x.orders.add(text(d.externalOrderNo));x.gross+=Number(d.grossAmount||0);x.sources[text(d.orderDateSource)]=(x.sources[text(d.orderDateSource)]||0)+1;x.inventoryEffects[text(d.inventoryEffect)]=(x.inventoryEffects[text(d.inventoryEffect)]||0)+1;});return Object.fromEntries(Object.entries(by).map(([p,x])=>[p,{lines:x.lines,orders:x.orders.size,gross:x.gross,sources:x.sources,inventoryEffects:x.inventoryEffects}]));}
+  function matchesExpected(by){return Object.entries(EXPECTED.platforms).every(([p,e])=>by[p]&&by[p].lines===e.lines&&by[p].orders===e.orders&&Math.abs(by[p].gross-e.gross)<.01);}
+  $('preview').onclick=async function(){this.disabled=true;$('repair').disabled=true;log('查詢補登批次…',true);try{init();const snap=await db.collection('opsPlatformOrders').where('historicalImportBatch','==',BATCH_ID).get();docs=snap.docs;const inv=await db.collection('opsInventoryTransactions').where('referenceId','==',BATCH_ID).get();const by=summarize(docs);log(JSON.stringify({orderLines:docs.length,platforms:by,inventoryTransactionsForBatch:inv.size},null,2));if(docs.length!==EXPECTED.total||!matchesExpected(by))throw new Error('批次筆數或平台金額不一致，停止修正。');if(inv.size!==0)throw new Error('發現庫存異動紀錄，停止修正。');const unsafe=docs.filter(d=>{const x=d.data();return x.inventoryEffect!=='none'||x.inventorySkipped!==true||x.historicalImport!==true;});if(unsafe.length)throw new Error('有 '+unsafe.length+' 列不是「歷史補登、不動庫存」，停止修正。');status('檢查通過：EasyStore 11 列、MOMO 17 列、Coupang 4 列；庫存異動 0 筆。','ok');$('repair').disabled=false;}catch(error){status(error.message,'bad');log('停止：'+error.message);}finally{this.disabled=false;}};
+  $('repair').onclick=async function(){this.disabled=true;$('preview').disabled=true;status('正在修正日期顯示標記…','');try{const invBefore=await db.collection('opsInventoryTransactions').where('referenceId','==',BATCH_ID).get();if(invBefore.size!==0)throw new Error('執行前發現庫存異動，已停止。');const batch=db.batch(),now=firebase.firestore.FieldValue.serverTimestamp();docs.forEach(doc=>{const d=doc.data(),source=SOURCE[text(d.platform)];if(!source)throw new Error('未知平台：'+text(d.platform));batch.update(doc.ref,{orderDateSource:source,hasOriginalOrderDate:true,orderTimeEstimated:false,dateDisplayRepairedAt:now,dateDisplayRepairVersion:'2026.07.31-v1'});});batch.set(db.collection('opsAuditLogs').doc(),{action:'歷史平台訂單日期顯示修正',entityType:'platformOrderImport',entityId:BATCH_ID,summary:'只修正 32 列日期來源；庫存異動 0 筆',createdAt:now,createdBy:'historical-date-display-repair',version:'2026.07.31-v1'});await batch.commit();const after=await db.collection('opsPlatformOrders').where('historicalImportBatch','==',BATCH_ID).get(),afterDocs=after.docs,by=summarize(afterDocs),wrong=afterDocs.filter(doc=>SOURCE[text(doc.data().platform)]!==text(doc.data().orderDateSource));const invAfter=await db.collection('opsInventoryTransactions').where('referenceId','==',BATCH_ID).get();if(afterDocs.length!==32||wrong.length||invAfter.size!==0)throw new Error('修正後核對失敗。');log('修正後：'+JSON.stringify({orderLines:afterDocs.length,platforms:by,wrongDateSources:wrong.length,inventoryTransactionsForBatch:invAfter.size},null,2));status('完成：EasyStore、MOMO、Coupang 日期顯示已修正；庫存異動仍為 0 筆。','ok');}catch(error){status(error.message,'bad');log('錯誤：'+error.message);this.disabled=false;}finally{$('preview').disabled=false;}};
+})();
+</script></body></html>
