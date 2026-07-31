@@ -22,6 +22,20 @@
   let pendingStart = '';
   let boardRequestId = 0;
   let roomRequestId = 0;
+
+  function maximumAdvanceDate() {
+    const today = new Date(`${todayKey()}T12:00:00`);
+    const day = today.getDate();
+    today.setDate(1);
+    today.setMonth(today.getMonth() + 2);
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    today.setDate(Math.min(day, lastDay));
+    return [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, '0'),
+      String(today.getDate()).padStart(2, '0')
+    ].join('-');
+  }
   const recordingUsageRates = Object.freeze({
     general_room: 100,
     studio_recording: 300
@@ -214,16 +228,17 @@
     document.getElementById('dateStrip').innerHTML = days.map((day) => {
       const date = new Date(`${day.date}T12:00:00`);
       const weekday = '日一二三四五六'[date.getDay()];
-      const unavailable = day.closed || day.past;
+      const unavailable = day.closed || day.past || Number(day.availableSlotCount || 0) === 0;
       return `
         <button class="btn date-chip ${day.date === selectedDate ? 'active' : ''} ${day.past ? 'is-past' : ''}" type="button" data-date="${day.date}" ${unavailable ? 'disabled' : ''}>
           <strong>週${weekday}</strong>
           <small>${date.getMonth() + 1}/${date.getDate()}</small>
-          ${day.closed ? '<em>公休</em>' : (day.past ? '<em>已過</em>' : '')}
+          ${day.closed ? '<em>公休</em>' : (day.past ? '<em>已過</em>' : (Number(day.availableSlotCount || 0) === 0 ? '<em>已滿</em>' : ''))}
         </button>
       `;
     }).join('');
     document.getElementById('prevRentalWeek').disabled = weekStart <= todayKey();
+    document.getElementById('nextRentalWeek').disabled = P.addDays(weekStart, 7) > maximumAdvanceDate();
   }
 
   function renderSlots() {
@@ -269,8 +284,12 @@
       weekStart = boardData.startDate || weekStart;
       selectedUse = boardData.selectedUseType || selectedUse;
       renderUses(boardData.useOptions || []);
-      if (!(boardData.days || []).some((day) => day.date === selectedDate && !day.closed && !day.past)) {
-        selectedDate = ((boardData.days || []).find((day) => !day.closed && !day.past) || {}).date || todayKey();
+      if (!(boardData.days || []).some((day) =>
+        day.date === selectedDate && !day.closed && !day.past && Number(day.availableSlotCount || 0) > 0
+      )) {
+        selectedDate = ((boardData.days || []).find((day) =>
+          !day.closed && !day.past && Number(day.availableSlotCount || 0) > 0
+        ) || {}).date || todayKey();
       }
       const selectedDay = (boardData.days || []).find((day) => day.date === selectedDate);
       if (requestedStart && selectedDay && (selectedDay.slots || []).some((slot) =>
@@ -297,6 +316,7 @@
       <button class="rental-room-card" type="button" data-room="${P.escapeHtml(room.id)}">
         <b>${P.escapeHtml(room.name)}</b>
         ${equipment ? `<span class="rental-room-equipment">${P.escapeHtml(equipment)}</span>` : ''}
+        ${Number(room.capacity || 0) > 0 ? `<span class="rental-room-capacity">建議人數：${Number(room.capacity)} 人以內</span>` : ''}
         <strong class="rental-room-price">${selectedUse === 'recording' ? 'NT$100–300／小時' : P.money(room.price)}</strong>
       </button>
     `;
@@ -415,7 +435,13 @@
         <strong>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong>
         <span>${P.escapeHtml(row.roomName || '教室')}${row.useName ? `・${P.escapeHtml(row.useName)}` : ''}${row.recordingUsageName ? `（${P.escapeHtml(row.recordingUsageName)}）` : ''}</span>
         <strong>${P.money(row.amount)}</strong>
-        <span>${row.canCancel ? `<button class="btn danger" type="button" data-cancel="${P.escapeHtml(row.id)}">取消</button>` : '已完成'}</span>
+        <span>${row.canCancel
+          ? `<button class="btn danger" type="button" data-cancel="${P.escapeHtml(row.id)}">取消</button>`
+          : (row.status === 'cancelled' || row.active === false
+            ? '已取消'
+            : (new Date(`${row.date}T${row.endTime}:00+08:00`).getTime() <= Date.now()
+              ? '已結束'
+              : '進行中'))}</span>
       </article>
     `).join('') : '<div class="rental-empty">目前沒有預約。</div>';
   }
@@ -554,7 +580,12 @@
     loadBoard();
   });
   document.getElementById('nextRentalWeek').addEventListener('click', () => {
-    weekStart = P.addDays(weekStart, 7);
+    const next = P.addDays(weekStart, 7);
+    if (next > maximumAdvanceDate()) {
+      P.toast(`租用日期最多只能選擇到 ${maximumAdvanceDate()}。`, 'error');
+      return;
+    }
+    weekStart = next;
     selectedDate = weekStart;
     loadBoard();
   });
