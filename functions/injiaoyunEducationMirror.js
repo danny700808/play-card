@@ -29,7 +29,10 @@ const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const Timestamp = admin.firestore.Timestamp;
 const FUNCTION_REGION = 'us-central1';
-const VERSION = '2026.07.30-v12-full-convergence-fence';
+const VERSION = '2026.08.01-v15-safe-payroll-convergence';
+const TEACHER_PAYROLL_REPAIR_VERSION = '2026-07-current-month-v1';
+const TEACHER_PAYROLL_REPAIR_START_DATE = '2026-07-01';
+const TEACHER_PAYROLL_REPAIR_END_DATE = '2026-07-31';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const OPERATIONS_SYNC_REF = db.collection('opsSettings').doc('injiaoyunCloudSync');
@@ -82,6 +85,80 @@ function normalizedSyncScope(value) {
   return clean(value).toLowerCase() === 'recent' ? 'recent' : 'full';
 }
 
+function operationsSyncAdvanced(before, after) {
+  return Boolean(
+    clean(after && after.status).toLowerCase() === 'success' &&
+    timestampMillis(after && after.lastSucceededAt) > timestampMillis(before && before.lastSucceededAt)
+  );
+}
+
+function unifiedSyncIsActive(settings, nowMillis = Date.now()) {
+  if (clean(settings && settings.unifiedSyncStatus).toLowerCase() !== 'running') return false;
+  const explicitUntil = timestampMillis(settings && settings.unifiedSyncLockUntil);
+  if (explicitUntil > 0) return explicitUntil > Number(nowMillis || 0);
+  const startedAt = timestampMillis(settings && settings.unifiedSyncStartedAt);
+  // 舊狀態若沒有時間，不能永久擋住事件；有開始時間者最多保護一個 LOCK_MS。
+  return startedAt > 0 && startedAt + LOCK_MS > Number(nowMillis || 0);
+}
+
+function operationsSyncRange(settings) {
+  const endDate = dateKey(settings && settings.lastEndDateKey);
+  if (!endDate) return null;
+  const requestedStartDate = dateKey(settings && settings.lastStartDateKey);
+  return {
+    startDate: requestedStartDate && requestedStartDate <= endDate ? requestedStartDate : endDate,
+    endDate
+  };
+}
+
+function intersectDateRanges(left, right) {
+  const leftStart = dateKey(left && left.startDate);
+  const leftEnd = dateKey(left && left.endDate);
+  const rightStart = dateKey(right && right.startDate);
+  const rightEnd = dateKey(right && right.endDate);
+  if (!leftStart || !leftEnd || !rightStart || !rightEnd) return null;
+  const startDate = leftStart > rightStart ? leftStart : rightStart;
+  const endDate = leftEnd < rightEnd ? leftEnd : rightEnd;
+  return startDate <= endDate ? { startDate, endDate } : null;
+}
+
+function combinedPayrollSyncRange(requestedRange, repair) {
+  const requestedStartDate = dateKey(requestedRange && requestedRange.startDate);
+  const requestedEndDate = dateKey(requestedRange && requestedRange.endDate);
+  const repairStartDate = dateKey(repair && repair.startDate);
+  const repairEndDate = dateKey(repair && repair.endDate);
+  const startDate = requestedStartDate && repairStartDate
+    ? (requestedStartDate < repairStartDate ? requestedStartDate : repairStartDate)
+    : requestedStartDate || repairStartDate;
+  const endDate = requestedEndDate && repairEndDate
+    ? (requestedEndDate > repairEndDate ? requestedEndDate : repairEndDate)
+    : requestedEndDate || repairEndDate;
+  return startDate && endDate && startDate <= endDate ? { startDate, endDate } : null;
+}
+
+function teacherPayrollRepairPlan(operationsSettings, mirrorSettings) {
+  const operationsRange = operationsSyncRange(operationsSettings);
+  if (!operationsRange || operationsRange.endDate < TEACHER_PAYROLL_REPAIR_START_DATE) return null;
+  const availableEndDate = operationsRange.endDate < TEACHER_PAYROLL_REPAIR_END_DATE
+    ? operationsRange.endDate
+    : TEACHER_PAYROLL_REPAIR_END_DATE;
+  const sameVersion = clean(mirrorSettings && mirrorSettings.teacherPayrollRepairVersion) ===
+    TEACHER_PAYROLL_REPAIR_VERSION;
+  const repairedThroughDate = sameVersion
+    ? dateKey(mirrorSettings && mirrorSettings.teacherPayrollRepairThroughDate)
+    : '';
+  if (repairedThroughDate && repairedThroughDate >= availableEndDate) return null;
+  const nextDate = repairedThroughDate && repairedThroughDate >= TEACHER_PAYROLL_REPAIR_START_DATE
+    ? shiftDate(repairedThroughDate, 1)
+    : TEACHER_PAYROLL_REPAIR_START_DATE;
+  if (!nextDate || nextDate > availableEndDate) return null;
+  return {
+    version: TEACHER_PAYROLL_REPAIR_VERSION,
+    startDate: nextDate,
+    endDate: availableEndDate
+  };
+}
+
 function fullConvergenceIsRequired(settings, schedule) {
   return Boolean(
     settings && settings.fullConvergenceRequired === true ||
@@ -103,7 +180,13 @@ function syncReservationDirective(current, schedule, sourceVersion, syncScope, n
   if (
     clean(current && current.status).toLowerCase() === 'running' &&
     lockUntil > Number(nowMillis || 0)
-  ) return 'running';
+  ) {
+    if (
+      clean(current && current.pendingSourceVersion) === clean(sourceVersion) &&
+      normalizedSyncScope(current && current.syncScope) === scope
+    ) return 'running-current';
+    return 'running';
+  }
   if (scope === 'recent' && fullRequired) return 'full-required';
   return 'accept';
 }
@@ -271,6 +354,27 @@ function shiftDate(key, days) {
   }).format(date);
 }
 
+function dateKeysBetween(startDate, endDate, maximumDays = 62) {
+  const start = dateKey(startDate);
+  const end = dateKey(endDate);
+  if (!start || !end || start > end) return [];
+  const dates = [];
+  let cursor = start;
+  while (cursor && cursor <= end && dates.length < maximumDays) {
+    dates.push(cursor);
+    cursor = shiftDate(cursor, 1);
+  }
+  if (dates[dates.length - 1] !== end) {
+    throw new Error(`日期範圍超過安全上限 ${maximumDays} 天。`);
+  }
+  return dates;
+}
+
+function operationsSourceVersion(settings) {
+  const range = operationsSyncRange(settings);
+  return `${range && range.startDate || ''}:${range && range.endDate || ''}:${timestampMillis(settings && settings.lastSucceededAt)}`;
+}
+
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -281,6 +385,41 @@ function timestampMillis(value) {
   if (Number.isFinite(Number(value.seconds))) return Number(value.seconds) * 1000;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function validPayrollSplitSnapshot(snapshot) {
+  const row = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  const type = clean(row.splitType).toLowerCase();
+  const value = Number(row.splitValue);
+  if (!Number.isFinite(value) || value <= 0) return false;
+  if (type === 'fixed') return true;
+  return type === 'ratio' && value <= 1;
+}
+
+function mergeTuitionPlanSnapshot(currentSnapshot, historicalSnapshot) {
+  const current = jsonValue(currentSnapshot) || {};
+  const historical = jsonValue(historicalSnapshot) || {};
+  const historicalValid = validPayrollSplitSnapshot(historical);
+  const currentValid = validPayrollSplitSnapshot(current);
+  const currentEmbedded = currentValid && /^payment-(?:embedded|teacher-allot)/.test(clean(current.splitSource));
+  const merged = Object.assign({}, current, historical);
+  const chosen = currentEmbedded
+    ? current
+    : historicalValid ? historical : currentValid ? current : null;
+  if (chosen) {
+    merged.splitType = clean(chosen.splitType);
+    merged.splitValue = Number(chosen.splitValue);
+    merged.splitSource = clean(chosen.splitSource) || (chosen === historical ? 'historical-snapshot' : 'current-generic-plan');
+    if (clean(chosen.teacherAllotId)) merged.teacherAllotId = clean(chosen.teacherAllotId);
+    else delete merged.teacherAllotId;
+  } else {
+    // 空值或 0 不是有效歷史憑據；保留本次「尚未解析」狀態，讓後續來源補齊時仍可更新。
+    merged.splitType = clean(current.splitType) || 'none';
+    merged.splitValue = Number.isFinite(Number(current.splitValue)) ? Number(current.splitValue) : 0;
+    merged.splitSource = clean(current.splitSource) || 'unresolved';
+    delete merged.teacherAllotId;
+  }
+  return merged;
 }
 
 function projectId() {
@@ -628,8 +767,23 @@ async function syncType(type, collectionName, rows, runId, syncContext) {
   rows.forEach((raw, index) => {
     const id = sourceId(raw, index);
     const source = jsonValue(raw);
-    const hash = sourceHash(source);
     const prior = existing.get(id);
+    if (
+      type === 'tuitionPeriods' &&
+      prior &&
+      prior.data &&
+      prior.data.source &&
+      prior.data.source.planSnapshot &&
+      Object.keys(prior.data.source.planSnapshot).length
+    ) {
+      // 付款當時的拆帳方案是薪資憑據。後續方案被改名或改比例時，只補新欄位，
+      // 有效歷史值優先於當前通用方案；但舊版留下的空值／0 不能永久鎖死。
+      source.planSnapshot = mergeTuitionPlanSnapshot(
+        source.planSnapshot,
+        prior.data.source.planSnapshot
+      );
+    }
+    const hash = sourceHash(source);
     seen.add(id);
     if (prior && prior.data.sourceHash === hash && Number(prior.data.missingCount || 0) === 0 && prior.data.sourceActive !== false) {
       unchanged += 1;
@@ -757,9 +911,12 @@ function snapshotSources(snapshot, activeOnly = true) {
 }
 
 async function snapshotForDates(collectionName, coveredDates) {
-  const dates = [...new Set((coveredDates || []).map(dateKey).filter(Boolean))].slice(0, 30);
+  const dates = [...new Set((coveredDates || []).map(dateKey).filter(Boolean))];
   if (!dates.length) {
     throw new Error(`近期同步缺少 ${collectionName} 的日期範圍。`);
+  }
+  if (dates.length > 30) {
+    throw new Error(`${collectionName} 日期查詢超過 Firestore in 上限；呼叫端必須分批，禁止截短後停用資料。`);
   }
   try {
     return await db.collection(collectionName).where('source.date', 'in', dates).get();
@@ -768,6 +925,74 @@ async function snapshotForDates(collectionName, coveredDates) {
     console.warn('[snapshotForDates fallback]', collectionName, clean(error && error.message));
     return db.collection(collectionName).get();
   }
+}
+
+async function readEducationDailyForDates(coveredDates) {
+  const dates = [...new Set((coveredDates || []).map(dateKey).filter(Boolean))];
+  const chunks = [];
+  for (let index = 0; index < dates.length; index += 30) chunks.push(dates.slice(index, index + 30));
+  const rows = (await Promise.all(chunks.map((chunk) => readEducationDaily(chunk)))).flat();
+  const uniqueRows = new Map();
+  rows.forEach((row) => {
+    const id = clean(row && row._id) || dateKey(row && row.dateKey);
+    if (id) uniqueRows.set(id, row);
+  });
+  return [...uniqueRows.values()];
+}
+
+function mergeEducationDailyRows(...rowSets) {
+  const rows = new Map();
+  rowSets.flat().forEach((row) => {
+    const id = clean(row && row._id) || dateKey(row && row.dateKey);
+    if (id) rows.set(id, row);
+  });
+  return [...rows.values()];
+}
+
+function educationDailyCoverage(dailyRows, coveredDates) {
+  const expectedDates = [...new Set((coveredDates || []).map(dateKey).filter(Boolean))].sort();
+  const rowsByDate = new Map();
+  (Array.isArray(dailyRows) ? dailyRows : []).forEach((row) => {
+    const day = dateKey(row && (row.dateKey || row._id));
+    if (!day) return;
+    if (!rowsByDate.has(day)) rowsByDate.set(day, []);
+    rowsByDate.get(day).push(row);
+  });
+  const missingDates = expectedDates.filter((day) => !rowsByDate.has(day));
+  const duplicateDates = expectedDates.filter((day) => (rowsByDate.get(day) || []).length !== 1 && rowsByDate.has(day));
+  const incompleteDates = expectedDates.filter((day) => {
+    const rows = rowsByDate.get(day) || [];
+    return rows.length === 1 && !Array.isArray(rows[0] && rows[0].sessions);
+  });
+  return {
+    complete: missingDates.length === 0 && duplicateDates.length === 0 && incompleteDates.length === 0,
+    expectedDates,
+    missingDates,
+    duplicateDates,
+    incompleteDates
+  };
+}
+
+function assertEducationDailyCoverage(dailyRows, coveredDates, label = '老師薪資同步') {
+  const coverage = educationDailyCoverage(dailyRows, coveredDates);
+  if (coverage.complete) return coverage;
+  const issues = [];
+  if (coverage.missingDates.length) issues.push(`缺少日期 ${coverage.missingDates.join('、')}`);
+  if (coverage.duplicateDates.length) issues.push(`日期重複 ${coverage.duplicateDates.join('、')}`);
+  if (coverage.incompleteDates.length) issues.push(`sessions 未完整 ${coverage.incompleteDates.join('、')}`);
+  throw new Error(`${clean(label)}的 opsEducationDaily 不完整：${issues.join('；')}。本次不會停用舊薪資，也不會標記完成。`);
+}
+
+async function snapshotForDateChunks(collectionName, coveredDates) {
+  const dates = [...new Set((coveredDates || []).map(dateKey).filter(Boolean))];
+  const chunks = [];
+  for (let index = 0; index < dates.length; index += 30) chunks.push(dates.slice(index, index + 30));
+  const snapshots = await Promise.all(chunks.map((chunk) => snapshotForDates(collectionName, chunk)));
+  const documents = new Map();
+  snapshots.forEach((snapshot) => (snapshot && snapshot.docs || []).forEach((doc) => {
+    documents.set(clean(doc && doc.ref && doc.ref.path) || clean(doc && doc.id), doc);
+  }));
+  return { docs: [...documents.values()] };
 }
 
 async function syncRowsFromSnapshot(type, collectionName, rows, runId, snapshot, options = {}, syncContext) {
@@ -790,8 +1015,26 @@ async function syncRowsFromSnapshot(type, collectionName, rows, runId, snapshot,
     const sourceDate = dateKey(source && source.date);
     if (covered.size && !covered.has(sourceDate)) return;
     const id = sourceId(source, index);
-    const hash = sourceHash(source);
     const prior = existing.get(id);
+    if (
+      type === 'tuitionPeriods' &&
+      prior &&
+      prior.data &&
+      prior.data.source &&
+      prior.data.source.planSnapshot
+    ) {
+      source.planSnapshot = mergeTuitionPlanSnapshot(
+        source.planSnapshot,
+        prior.data.source.planSnapshot
+      );
+    }
+    if (type === 'teacherPayroll' && prior && prior.data && prior.data.source) {
+      const priorSource = jsonValue(prior.data.source) || {};
+      ['courseId', 'subjectId', 'periodId', 'sourcePaymentId'].forEach((field) => {
+        if (!clean(source[field]) && clean(priorSource[field])) source[field] = clean(priorSource[field]);
+      });
+    }
+    const hash = sourceHash(source);
     seen.add(id);
     if (prior && prior.data.sourceHash === hash && prior.data.sourceActive !== false) {
       unchanged += 1;
@@ -840,6 +1083,31 @@ async function syncRowsFromSnapshot(type, collectionName, rows, runId, snapshot,
   return { sourceCount: rows.length, created, updated, unchanged, missing, deactivated, writes: operations.length, commits };
 }
 
+async function syncTeacherPayrollFromDaily(
+  dailyRows,
+  coveredDates,
+  runId,
+  snapshot,
+  syncContext,
+  attendanceRows = []
+) {
+  const dates = [...new Set((coveredDates || []).map(dateKey).filter(Boolean))].sort();
+  assertEducationDailyCoverage(dailyRows, dates);
+  const covered = new Set(dates);
+  const rows = buildTeacherPayroll(Array.isArray(dailyRows) ? dailyRows : [], attendanceRows)
+    .filter((row) => covered.has(dateKey(row && row.date)));
+  const result = await syncRowsFromSnapshot(
+    'teacherPayroll',
+    MIRROR_TYPES.teacherPayroll,
+    rows,
+    runId,
+    snapshot,
+    { coveredDates: dates, deactivateMissing: true },
+    syncContext
+  );
+  return { rows, result };
+}
+
 function refreshTuitionUsage(periods, attendance, initialUsedByPeriod) {
   const usedByPeriod = initialUsedByPeriod instanceof Map
     ? new Map([...initialUsedByPeriod.entries()].map(([id, count]) => [clean(id), Math.max(0, Number(count) || 0)]))
@@ -867,20 +1135,34 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
   if (!selectedStartDate || !selectedEndDate || selectedStartDate > selectedEndDate) {
     throw new Error('近期同步日期範圍不正確。');
   }
-  const [migrationRunId, auditInfo, operationsSnapshot] = await Promise.all([
+  const [migrationRunId, auditInfo, operationsSnapshot, mirrorSettingsSnapshot] = await Promise.all([
     latestMigrationRunId(),
     preferredAuditRunId
       ? Promise.resolve({ runId: clean(preferredAuditRunId) })
       : latestAuditRunInfo(),
-    OPERATIONS_SYNC_REF.get()
+    OPERATIONS_SYNC_REF.get(),
+    SETTINGS_REF.get()
   ]);
   if (!migrationRunId) throw new Error('找不到已完成的音教雲歷史資料。');
   if (!auditInfo.runId) throw new Error('找不到最新的音教雲日表核對資料。');
   const operationsSettings = operationsSnapshot.exists ? operationsSnapshot.data() || {} : {};
-  const operationsVersion = `${clean(operationsSettings.lastEndDateKey)}:${timestampMillis(operationsSettings.lastSucceededAt)}`;
-  const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${operationsVersion}|${VERSION}|${EDUCATION_PREVIEW_VERSION}`;
+  const mirrorSettings = mirrorSettingsSnapshot.exists ? mirrorSettingsSnapshot.data() || {} : {};
+  const payrollRepair = teacherPayrollRepairPlan(operationsSettings, mirrorSettings);
+  const operationsVersion = operationsSourceVersion(operationsSettings);
+  const payrollRepairVersion = payrollRepair
+    ? `|payroll-repair:${payrollRepair.version}:${payrollRepair.startDate}:${payrollRepair.endDate}`
+    : '';
+  if (payrollRepair) {
+    const repairDates = dateKeysBetween(payrollRepair.startDate, payrollRepair.endDate);
+    const repairDailyRows = await readEducationDailyForDates(repairDates);
+    assertEducationDailyCoverage(repairDailyRows, repairDates, '7 月老師薪資修復');
+  }
+  const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${operationsVersion}|recent:${selectedStartDate}:${selectedEndDate}|${VERSION}|${EDUCATION_PREVIEW_VERSION}${payrollRepairVersion}`;
   const reservation = await reserveSync(sourceVersion, trigger, 'recent');
   if (!reservation.accepted) {
+    if (reservation.reason === 'full-required') {
+      return syncLatestMirror(`${clean(trigger) || 'operations-teacher-payroll'}:full-convergence-required`);
+    }
     if (reservation.reason === 'full-required') {
       return syncLatestMirror(`${clean(trigger) || 'recent-sync'}:full-convergence-required`);
     }
@@ -907,6 +1189,16 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
     if (!audit.runId) throw new Error('音教雲近期日表核對資料讀取失敗。');
     const coveredDates = audit.coveredDates.filter((date) => date >= selectedStartDate && date <= selectedEndDate);
     if (!coveredDates.length) throw new Error('近期核對結果沒有涵蓋所選日期。');
+    const payrollRepairDates = payrollRepair
+      ? dateKeysBetween(payrollRepair.startDate, payrollRepair.endDate)
+      : [];
+    const payrollDates = [...new Set(coveredDates.concat(payrollRepairDates))].sort();
+    const dailyRowsPromise = payrollRepairDates.length
+      ? Promise.all([
+        readEducationDaily(coveredDates),
+        readEducationDailyForDates(payrollRepairDates)
+      ]).then((rowSets) => mergeEducationDailyRows(...rowSets))
+      : readEducationDaily(coveredDates);
     const [
       dailyRows,
       periodSnapshot,
@@ -916,18 +1208,23 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       rentalSnapshot,
       eventSnapshot
     ] = await Promise.all([
-      readEducationDaily(coveredDates),
+      dailyRowsPromise,
       db.collection(MIRROR_TYPES.tuitionPeriods).get(),
-      snapshotForDates(MIRROR_TYPES.attendance, coveredDates),
+      snapshotForDateChunks(MIRROR_TYPES.attendance, coveredDates),
       db.collection(MIRROR_TYPES.rooms).get(),
-      snapshotForDates(MIRROR_TYPES.teacherPayroll, coveredDates),
-      snapshotForDates(MIRROR_TYPES.roomRentals, coveredDates),
-      snapshotForDates(MIRROR_TYPES.events, coveredDates)
+      snapshotForDateChunks(MIRROR_TYPES.teacherPayroll, payrollDates),
+      snapshotForDateChunks(MIRROR_TYPES.roomRentals, coveredDates),
+      snapshotForDateChunks(MIRROR_TYPES.events, coveredDates)
     ]);
     const covered = new Set(coveredDates);
+    const payrollCovered = new Set(payrollDates);
     const scopedDaily = dailyRows.filter((row) => {
       const day = dateKey(row && (row.dateKey || row._id));
       return day && covered.has(day);
+    });
+    const payrollDaily = dailyRows.filter((row) => {
+      const day = dateKey(row && (row.dateKey || row._id));
+      return day && payrollCovered.has(day);
     });
     const periods = snapshotSources(periodSnapshot);
     const currentAttendance = snapshotSources(attendanceSnapshot);
@@ -950,15 +1247,42 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       Array.isArray(audit.attendance) ? audit.attendance : [],
       periods,
       coveredDates,
-      { initialUsedByPeriod }
+      { initialUsedByPeriod, auditRunId: audit.runId }
     );
     refreshTuitionUsage(periods, reconciledAttendance, initialUsedByPeriod);
     const recentAttendance = reconciledAttendance.filter((row) => covered.has(dateKey(row.date)));
-    const recentPayroll = buildTeacherPayroll(scopedDaily).filter((row) => covered.has(dateKey(row.date)));
-    const recentRentals = [];
-    const rentalResult = mergeEducationDailyRentals(recentRentals, scopedDaily, { rows: rooms });
     const recentEvents = (Array.isArray(audit.events) ? audit.events : [])
       .filter((row) => covered.has(dateKey(row.date)));
+    // 先帶入範圍內既有鏡像，讓每日收入可用穩定 sourceId 精確更新原行程；
+    // 每日資料沒有完整起訖時間時只保留已驗證過的行程，絕不另造一筆假時段。
+    const recentRentalSourceIds = new Set();
+    scopedDaily.forEach((day) => (Array.isArray(day && day.roomRentals) ? day.roomRentals : [])
+      .forEach((row) => {
+        const id = clean(row && (row.sourceId || row.id || row._migrationSourceId)).replace(/^rental:/i, '');
+        if (id) recentRentalSourceIds.add(id);
+      }));
+    const recentRentals = snapshotSources(rentalSnapshot)
+      .filter((row) => (
+        covered.has(dateKey(row && row.date)) &&
+        row.timeResolved === true &&
+        clean(row.durationSource) &&
+        recentRentalSourceIds.has(clean(row && (row.sourceId || row.id)).replace(/^rental:/i, ''))
+      ));
+    const rentalResult = mergeEducationDailyRentals(
+      recentRentals,
+      scopedDaily,
+      { rows: rooms },
+      { scheduleRows: recentEvents }
+    );
+    const payrollSync = await syncTeacherPayrollFromDaily(
+      payrollDaily,
+      payrollDates,
+      payrollRepair ? `operations-payroll:${timestampMillis(operationsSettings.lastSucceededAt)}` : audit.runId,
+      payrollSnapshot,
+      syncContext,
+      reconciledAttendance
+    );
+    const recentPayroll = payrollSync.rows;
 
     const results = {
       tuitionPeriods: await syncRowsFromSnapshot(
@@ -979,15 +1303,7 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
         { coveredDates, deactivateMissing: true },
         syncContext
       ),
-      teacherPayroll: await syncRowsFromSnapshot(
-        'teacherPayroll',
-        MIRROR_TYPES.teacherPayroll,
-        recentPayroll,
-        audit.runId,
-        payrollSnapshot,
-        { coveredDates, deactivateMissing: true },
-        syncContext
-      ),
+      teacherPayroll: payrollSync.result,
       roomRentals: await syncRowsFromSnapshot(
         'roomRentals',
         MIRROR_TYPES.roomRentals,
@@ -1026,6 +1342,10 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       auditAttendanceCount: recentAttendance.length,
       auditCountsByDate: audit.countsByDate || {},
       auditScheduleVersion: EDUCATION_PREVIEW_VERSION,
+      teacherPayrollSyncStart: payrollDates[0] || '',
+      teacherPayrollSyncEnd: payrollDates[payrollDates.length - 1] || '',
+      teacherPayrollSyncCount: recentPayroll.length,
+      teacherPayrollRepairApplied: Boolean(payrollRepair),
       recentReceiptCount: receiptResult.total,
       recentReceiptLinkedCount: receiptResult.linked,
       recentReceiptUpdatedCount: receiptResult.updated,
@@ -1033,7 +1353,15 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       recentReceiptCreatedPeriodCount: receiptResult.createdPeriods,
       recentRentalCount: rentalResult.total,
       recentRentalLinkedCount: rentalResult.linked,
-      recentRentalUnmatchedCount: rentalResult.unmatched
+      recentRentalMirroredCount: rentalResult.mirrored,
+      recentRentalUnmatchedCount: rentalResult.unmatched,
+      recentRentalIncompleteScheduleCount: rentalResult.incomplete,
+      recentRentalDuplicateSourceCount: rentalResult.duplicates,
+      recentRentalCreatedCount: rentalResult.created,
+      recentRentalUpdatedCount: rentalResult.updated,
+      recentRentalScheduleLinkedCount: rentalResult.scheduleLinked,
+      recentRentalPreservedScheduleCount: rentalResult.preservedSchedule,
+      recentRentalIssueCounts: rentalResult.issueCounts
     });
     const typeResults = Object.assign({}, reservation.current && reservation.current.typeResults || {}, results);
     const sourceCounts = Object.assign({}, previousCounts, {
@@ -1048,28 +1376,38 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
         Number(previousCounts.attendance || 0) - currentAttendance.length + recentAttendance.length
       );
     }
+    const finalSettings = {
+      status: 'success',
+      sourceRunId: migrationRunId,
+      auditRunId: audit.runId,
+      sourceVersion,
+      pendingRunId: '',
+      pendingSourceVersion: '',
+      completedAt: FieldValue.serverTimestamp(),
+      lockUntil: Timestamp.fromMillis(0),
+      summary,
+      typeResults,
+      sourceCounts,
+      dataQuality,
+      auditCoveredDates,
+      version: VERSION
+    };
+    if (payrollRepair) {
+      Object.assign(finalSettings, {
+        teacherPayrollRepairVersion: payrollRepair.version,
+        teacherPayrollRepairStartDate: payrollRepair.startDate,
+        teacherPayrollRepairThroughDate: payrollRepair.endDate,
+        teacherPayrollRepairSourceSucceededAt: operationsSettings.lastSucceededAt || null,
+        teacherPayrollRepairCompletedAt: FieldValue.serverTimestamp()
+      });
+    }
     const finalization = await markCoursePortalScheduleUpdated(
       trigger,
       'success',
       reservation.syncOwner,
       sourceVersion,
       'recent',
-      {
-        status: 'success',
-        sourceRunId: migrationRunId,
-        auditRunId: audit.runId,
-        sourceVersion,
-        pendingRunId: '',
-        pendingSourceVersion: '',
-        completedAt: FieldValue.serverTimestamp(),
-        lockUntil: Timestamp.fromMillis(0),
-        summary,
-        typeResults,
-        sourceCounts,
-        dataQuality,
-        auditCoveredDates,
-        version: VERSION
-      }
+      finalSettings
     );
     if (!finalization.finalized) {
       return {
@@ -1151,6 +1489,202 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
   }
 }
 
+async function syncOperationsTeacherPayrollRange(
+  operationsSettings,
+  trigger = 'operations-success-trigger-teacher-payroll',
+  options = {}
+) {
+  const repair = options.repair || null;
+  const requestedRange = options.range || operationsSyncRange(operationsSettings);
+  // 同一次 operations 同步可順便完成 7 月回填，但驗證範圍必須真正涵蓋整個 repair，
+  // 不能只讀 operations 的較短區間卻把 repairThroughDate 標到月底。
+  const combinedRange = combinedPayrollSyncRange(requestedRange, repair);
+  const startDate = dateKey(combinedRange && combinedRange.startDate);
+  const endDate = dateKey(combinedRange && combinedRange.endDate);
+  if (!startDate || !endDate) {
+    return { ok: true, status: 'current', synced: false, repaired: false };
+  }
+  // 完整性檢查在取得寫入鎖之前完成；缺日或超過安全範圍時完全不碰既有鏡像狀態。
+  const coveredDates = dateKeysBetween(startDate, endDate);
+  const dailyRows = await readEducationDailyForDates(coveredDates);
+  assertEducationDailyCoverage(
+    dailyRows,
+    coveredDates,
+    repair ? '7 月老師薪資修復' : 'operations 老師薪資同步'
+  );
+  const sourceVersion = [
+    'operations-teacher-payroll',
+    operationsSourceVersion(operationsSettings),
+    startDate,
+    endDate,
+    repair ? `${repair.version}:${repair.startDate}:${repair.endDate}` : 'no-repair-marker',
+    VERSION,
+    EDUCATION_PREVIEW_VERSION
+  ].join('|');
+  const reservation = await reserveSync(sourceVersion, trigger, 'recent');
+  if (!reservation.accepted) {
+    if (reservation.reason === 'current' || reservation.reason === 'current-repaired') {
+      const converged = await runQueuedMirrorConvergence(
+        trigger,
+        reservation.finalizedOwner,
+        sourceVersion
+      );
+      if (converged) return converged;
+    }
+    return {
+      ok: true,
+      status: reservation.reason,
+      synced: false,
+      repaired: false,
+      summary: reservation.current && reservation.current.summary || {}
+    };
+  }
+  const syncContext = { syncOwner: reservation.syncOwner, sourceVersion, syncScope: 'recent' };
+  try {
+    const [payrollSnapshot, attendanceSnapshot] = await Promise.all([
+      snapshotForDateChunks(MIRROR_TYPES.teacherPayroll, coveredDates),
+      snapshotForDateChunks(MIRROR_TYPES.attendance, coveredDates)
+    ]);
+    const payrollSync = await syncTeacherPayrollFromDaily(
+      dailyRows,
+      coveredDates,
+      `operations-payroll:${timestampMillis(operationsSettings && operationsSettings.lastSucceededAt)}`,
+      payrollSnapshot,
+      syncContext,
+      snapshotSources(attendanceSnapshot)
+    );
+    const typeResults = Object.assign(
+      {},
+      reservation.current && reservation.current.typeResults || {},
+      { teacherPayroll: payrollSync.result }
+    );
+    const sourceCounts = Object.assign(
+      {},
+      reservation.current && reservation.current.sourceCounts || {},
+      {
+        teacherPayrollOperations: payrollSync.rows.length,
+        ...(repair ? { teacherPayrollRepair: payrollSync.rows.length } : {})
+      }
+    );
+    const dataQuality = Object.assign(
+      {},
+      reservation.current && reservation.current.dataQuality || {},
+      {
+        teacherPayrollSyncStart: startDate,
+        teacherPayrollSyncEnd: endDate,
+        teacherPayrollSyncCount: payrollSync.rows.length,
+        teacherPayrollRepairApplied: Boolean(repair),
+        teacherPayrollDailyCoverageComplete: true
+      }
+    );
+    const completionUpdates = {
+      status: 'success',
+      sourceVersion,
+      pendingSourceVersion: '',
+      completedAt: FieldValue.serverTimestamp(),
+      lockUntil: Timestamp.fromMillis(0),
+      summary: reservation.current && reservation.current.summary || {},
+      typeResults,
+      sourceCounts,
+      dataQuality,
+      version: VERSION
+    };
+    if (repair) Object.assign(completionUpdates, {
+      teacherPayrollRepairVersion: repair.version,
+      teacherPayrollRepairStartDate: repair.startDate,
+      teacherPayrollRepairThroughDate: repair.endDate,
+      teacherPayrollRepairSourceSucceededAt: operationsSettings.lastSucceededAt || null,
+      teacherPayrollRepairCompletedAt: FieldValue.serverTimestamp()
+    });
+    const finalization = await markCoursePortalScheduleUpdated(
+      trigger,
+      'success',
+      reservation.syncOwner,
+      sourceVersion,
+      'recent',
+      completionUpdates
+    );
+    if (!finalization.finalized) {
+      return { ok: true, status: 'superseded', repaired: false, typeResults: { teacherPayroll: payrollSync.result } };
+    }
+    await db.collection('opsEducationSyncRuns').doc(documentId('syncRun', sourceVersion)).set({
+      sourceVersion,
+      syncOwner: reservation.syncOwner,
+      syncScope: 'recent',
+      status: 'success',
+      trigger: clean(trigger) || 'operations-success-trigger-teacher-payroll',
+      refreshStartDate: startDate,
+      refreshEndDate: endDate,
+      repairType: repair ? 'teacherPayroll' : '',
+      typeResults: { teacherPayroll: payrollSync.result },
+      completedAt: FieldValue.serverTimestamp(),
+      version: VERSION
+    }, { merge: true }).catch((syncError) => {
+      console.error('[teacher payroll repair run log failed after success]', syncError);
+    });
+    const converged = await runQueuedMirrorConvergence(
+      trigger,
+      reservation.syncOwner,
+      sourceVersion
+    ).catch((syncError) => {
+      console.error('[course portal queued convergence failed after payroll repair]', syncError);
+      return null;
+    });
+    if (converged) return converged;
+    return {
+      ok: true,
+      status: 'success',
+      synced: true,
+      repaired: Boolean(repair),
+      repairStartDate: repair ? repair.startDate : '',
+      repairEndDate: repair ? repair.endDate : '',
+      syncStartDate: startDate,
+      syncEndDate: endDate,
+      typeResults: { teacherPayroll: payrollSync.result }
+    };
+  } catch (error) {
+    const message = clean(error && error.message || error).slice(0, 1000);
+    const finalization = await markCoursePortalScheduleUpdated(
+      `${trigger}:error`,
+      'error',
+      reservation.syncOwner,
+      sourceVersion,
+      'recent',
+      {
+        status: 'error',
+        pendingSourceVersion: '',
+        failedAt: FieldValue.serverTimestamp(),
+        lockUntil: Timestamp.fromMillis(0),
+        lastError: message,
+        version: VERSION
+      }
+    ).catch((syncError) => {
+      console.error('[teacher payroll repair unlock failed]', syncError);
+      return null;
+    });
+    if (finalization && finalization.finalized) {
+      const recovered = await runQueuedMirrorConvergence(
+        `${trigger}:error-recovery`,
+        reservation.syncOwner,
+        sourceVersion
+      ).catch((syncError) => {
+        console.error('[course portal queued convergence failed]', syncError);
+        return null;
+      });
+      if (recovered) return recovered;
+    }
+    throw error;
+  }
+}
+
+async function syncTeacherPayrollRepair(operationsSettings, trigger = 'operations-payroll-repair') {
+  const mirrorSnapshot = await SETTINGS_REF.get();
+  const mirrorSettings = mirrorSnapshot.exists ? mirrorSnapshot.data() || {} : {};
+  const repair = teacherPayrollRepairPlan(operationsSettings, mirrorSettings);
+  if (!repair) return { ok: true, status: 'current', synced: false, repaired: false };
+  return syncOperationsTeacherPayrollRange(operationsSettings, trigger, { range: repair, repair });
+}
+
 async function reserveSync(sourceVersion, trigger, syncScope = 'full') {
   const now = Timestamp.now();
   const scope = normalizedSyncScope(syncScope);
@@ -1224,6 +1758,9 @@ async function reserveSync(sourceVersion, trigger, syncScope = 'full') {
         return { accepted: false, reason: 'current-repaired', current, finalizedOwner };
       }
       return { accepted: false, reason: 'current', current, finalizedOwner };
+    }
+    if (directive === 'running-current') {
+      return { accepted: false, reason: 'running', duplicate: true, current };
     }
     if (directive === 'running') {
       transaction.set(SETTINGS_REF, {
@@ -1341,6 +1878,8 @@ function reconcileAuditedAttendance(previewAttendance, auditAttendance, periods,
       date,
       periodId: clean(period.id),
       sourcePaymentId: clean(row.sourcePaymentId) || clean(period.sourcePaymentId),
+      source: clean(row.source) || 'injiaoyun-audit',
+      sourceAuditRunId: clean(row.sourceAuditRunId) || clean(options.auditRunId),
       deducted,
       reconciliationStatus: linked
         ? explicitPeriod ? 'linked-explicit-payment' : 'linked-student-subject-period'
@@ -1371,6 +1910,34 @@ function reconcileAuditedAttendance(previewAttendance, auditAttendance, periods,
   return merged;
 }
 
+function attendanceIdentity(row) {
+  const sourceId = clean(row && (row.id || row.sourceId));
+  if (sourceId) return `id|${sourceId}`;
+  return [
+    'course',
+    clean(row && (row.sourceCourseId || row.courseId)),
+    dateKey(row && row.date),
+    clean(row && row.studentId),
+    clean(row && row.sourcePaymentId)
+  ].join('|');
+}
+
+function mergePreservedAuditAttendance(previewAttendance, mirrorAttendance, latestCoveredDates) {
+  const covered = new Set((latestCoveredDates || []).map(dateKey).filter(Boolean));
+  const merged = new Map();
+  (Array.isArray(previewAttendance) ? previewAttendance : []).forEach((row) => {
+    merged.set(attendanceIdentity(row), jsonValue(row));
+  });
+  (Array.isArray(mirrorAttendance) ? mirrorAttendance : []).forEach((row) => {
+    const date = dateKey(row && row.date);
+    // 舊版尚未在 audit 簽到寫 source 標記，因此範圍外的既有簽到全部保留；
+    // 真正需要刪除／更正的日期必須由涵蓋該日的新 audit 覆蓋，不能靠「最新 audit 沒看到」推論。
+    if (!date || covered.has(date)) return;
+    merged.set(attendanceIdentity(row), jsonValue(row));
+  });
+  return [...merged.values()];
+}
+
 async function syncLatestMirror(trigger = 'automatic') {
   const [migrationRunId, auditInfo, operationsSnapshot] = await Promise.all([
     latestMigrationRunId(),
@@ -1382,7 +1949,7 @@ async function syncLatestMirror(trigger = 'automatic') {
   // 納入同步規則版本；即使來源 run 未改變，部署新判定規則後也會重新套用一次。
   // 同步版本同時綁定日表判定程式；日表邏輯更新後，即使來源 run 相同也必須重建鏡像。
   const operationsSettings = operationsSnapshot.exists ? operationsSnapshot.data() || {} : {};
-  const operationsVersion = `${clean(operationsSettings.lastEndDateKey)}:${timestampMillis(operationsSettings.lastSucceededAt)}`;
+  const operationsVersion = operationsSourceVersion(operationsSettings);
   const sourceVersion = `${migrationRunId}|${auditInfo.runId}|${operationsVersion}|${VERSION}|${EDUCATION_PREVIEW_VERSION}`;
   const reservation = await reserveSync(sourceVersion, trigger, 'full');
   if (!reservation.accepted) {
@@ -1406,17 +1973,35 @@ async function syncLatestMirror(trigger = 'automatic') {
 
   try {
     // 只有來源版本真的改變時才讀取完整 audit 子集合，避免每次開頁都重抓全部歷史資料。
-    const [preview, audit] = await Promise.all([
+    const [preview, audit, priorAttendanceSnapshot, priorPeriodSnapshot] = await Promise.all([
       buildPreview(migrationRunId),
-      latestAuditSchedule(auditInfo.runId)
+      latestAuditSchedule(auditInfo.runId),
+      db.collection(MIRROR_TYPES.attendance).get(),
+      db.collection(MIRROR_TYPES.tuitionPeriods).get()
     ]);
     if (!audit.runId) throw new Error('音教雲舊日表核對資料讀取失敗。');
-    const reconciledAttendance = reconcileAuditedAttendance(
+    const previewPeriods = Array.isArray(preview.tuitionPeriods) ? preview.tuitionPeriods : [];
+    const priorPeriodsById = new Map(snapshotSources(priorPeriodSnapshot).map((row) => [clean(row.id), row]));
+    previewPeriods.forEach((period) => {
+      const prior = priorPeriodsById.get(clean(period.id));
+      if (prior && prior.planSnapshot) {
+        period.planSnapshot = mergeTuitionPlanSnapshot(period.planSnapshot, prior.planSnapshot);
+      }
+    });
+    const attendanceBase = mergePreservedAuditAttendance(
       Array.isArray(preview.attendance) ? preview.attendance : [],
-      Array.isArray(audit.attendance) ? audit.attendance : [],
-      Array.isArray(preview.tuitionPeriods) ? preview.tuitionPeriods : [],
+      snapshotSources(priorAttendanceSnapshot),
       audit.coveredDates
     );
+    const reconciledAttendance = reconcileAuditedAttendance(
+      attendanceBase,
+      Array.isArray(audit.attendance) ? audit.attendance : [],
+      previewPeriods,
+      audit.coveredDates,
+      { auditRunId: audit.runId }
+    );
+    // full reconcile 也必須以最終合併後的完整簽到重算堂數；不能沿用 preview 在 audit 覆蓋前的 usedCount。
+    refreshTuitionUsage(previewPeriods, reconciledAttendance);
     const results = {};
     for (const [type, collectionName] of Object.entries(MIRROR_TYPES)) {
       if (type === 'events') {
@@ -1605,6 +2190,7 @@ function registerInjiaoyunEducationMirror(exportsObject) {
         unifiedSyncStartDate: refreshRange.startDate,
         unifiedSyncEndDate: refreshRange.endDate,
         unifiedSyncStartedAt: FieldValue.serverTimestamp(),
+        unifiedSyncLockUntil: Timestamp.fromMillis(Date.now() + LOCK_MS),
         unifiedSyncLastError: '',
         version: VERSION
       }, { merge: true });
@@ -1628,6 +2214,9 @@ function registerInjiaoyunEducationMirror(exportsObject) {
         unifiedSyncStartDate: refreshRange.startDate,
         unifiedSyncEndDate: refreshRange.endDate,
         unifiedSyncCompletedAt: FieldValue.serverTimestamp(),
+        unifiedSyncLockUntil: Timestamp.fromMillis(0),
+        unifiedSyncDeferredOperations: false,
+        unifiedSyncDeferredAudit: false,
         unifiedSyncLastError: '',
         version: VERSION
       }, { merge: true });
@@ -1647,6 +2236,7 @@ function registerInjiaoyunEducationMirror(exportsObject) {
         unifiedSyncStatus: 'error',
         unifiedSyncEndDate: refreshDate || '',
         unifiedSyncFailedAt: FieldValue.serverTimestamp(),
+        unifiedSyncLockUntil: Timestamp.fromMillis(0),
         unifiedSyncLastError: clean(error && error.message).slice(0, 1000),
         version: VERSION
       }, { merge: true }).catch(() => {});
@@ -1668,6 +2258,82 @@ function registerInjiaoyunEducationMirror(exportsObject) {
     } catch (error) {
       console.error('[loadInjiaoyunEducationMirror]', error);
       throw new HttpsError('internal', `新版課務讀取失敗：${clean(error && error.message).slice(0, 300)}`);
+    }
+  });
+
+  // 營運 Cloud Run 每次成功寫回新 lastSucceededAt 後，老師薪資獨立同步完整 operations 範圍；
+  // 課表、簽到與租用仍只套用最新 audit 已核對涵蓋的交集。
+  exportsObject.applyInjiaoyunEducationMirrorOnOperationsSuccess = onDocumentWritten({
+    document: 'opsSettings/injiaoyunCloudSync',
+    region: FUNCTION_REGION,
+    timeoutSeconds: 540,
+    memory: '2GiB'
+  }, async (event) => {
+    const before = event.data && event.data.before && event.data.before.exists
+      ? event.data.before.data() || {}
+      : {};
+    const after = event.data && event.data.after && event.data.after.exists
+      ? event.data.after.data() || {}
+      : {};
+    if (!operationsSyncAdvanced(before, after)) return;
+    try {
+      const [auditInfo, mirrorSnapshot, currentOperationsSnapshot] = await Promise.all([
+        latestAuditRunInfo(),
+        SETTINGS_REF.get(),
+        OPERATIONS_SYNC_REF.get()
+      ]);
+      const mirrorSettings = mirrorSnapshot.exists ? mirrorSnapshot.data() || {} : {};
+      const currentOperations = currentOperationsSnapshot.exists
+        ? currentOperationsSnapshot.data() || {}
+        : {};
+      const operationsSettings = (
+        clean(currentOperations.status).toLowerCase() === 'success' &&
+        timestampMillis(currentOperations.lastSucceededAt) >= timestampMillis(after.lastSucceededAt)
+      ) ? currentOperations : after;
+      // 手動一鍵同步會在兩個來源都完成後自行套用；仍寫入可恢復佇列標記，
+      // 且 running 只在 TTL 內有效，舊狀態不會永久吃掉後續事件。
+      if (unifiedSyncIsActive(mirrorSettings)) {
+        await SETTINGS_REF.set({
+          unifiedSyncDeferredOperations: true,
+          unifiedSyncDeferredOperationsStartDate: clean(operationsSyncRange(operationsSettings) && operationsSyncRange(operationsSettings).startDate),
+          unifiedSyncDeferredOperationsEndDate: clean(operationsSyncRange(operationsSettings) && operationsSyncRange(operationsSettings).endDate),
+          unifiedSyncDeferredOperationsAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        return;
+      }
+      if (clean(mirrorSettings.unifiedSyncStatus).toLowerCase() === 'running') {
+        await SETTINGS_REF.set({
+          unifiedSyncStatus: 'stale-recovered',
+          unifiedSyncLockUntil: Timestamp.fromMillis(0),
+          unifiedSyncRecoveredAt: FieldValue.serverTimestamp(),
+          unifiedSyncRecoveredBy: 'operations-success-trigger'
+        }, { merge: true });
+      }
+      const operationsRange = operationsSyncRange(operationsSettings);
+      if (!operationsRange) return;
+      const payrollResult = await syncOperationsTeacherPayrollRange(
+        operationsSettings,
+        'operations-success-trigger-teacher-payroll',
+        { repair: teacherPayrollRepairPlan(operationsSettings, mirrorSettings) }
+      );
+      if (clean(payrollResult && payrollResult.status) === 'running') return;
+      const refreshRange = intersectDateRanges(operationsSyncRange(operationsSettings), auditInfo);
+      if (!refreshRange) {
+        console.warn('[applyInjiaoyunEducationMirrorOnOperationsSuccess] latest audit does not cover operations range', {
+          operationsRange: operationsSyncRange(operationsSettings),
+          auditRange: { startDate: auditInfo.startDate, endDate: auditInfo.endDate }
+        });
+        // 老師薪資已在上方完整同步；未核對日期只是不建立／停用課表。
+        return;
+      }
+      await syncRecentMirror(
+        refreshRange.startDate,
+        refreshRange.endDate,
+        auditInfo.runId,
+        'operations-success-trigger-recent-delta'
+      );
+    } catch (error) {
+      console.error('[applyInjiaoyunEducationMirrorOnOperationsSuccess]', error);
     }
   });
 
@@ -1703,8 +2369,23 @@ function registerInjiaoyunEducationMirror(exportsObject) {
     try {
       const settingsSnapshot = await SETTINGS_REF.get();
       const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
-      // 手動一鍵同步會在核對完成後自行做近期差異套用；觸發器不可再搶先啟動第二批。
-      if (clean(settings.unifiedSyncStatus).toLowerCase() === 'running') return;
+      // 手動一鍵同步會自行套用同一批；保留 audit 佇列資訊並使用 TTL，避免 stale running 永久略過。
+      if (unifiedSyncIsActive(settings)) {
+        await SETTINGS_REF.set({
+          unifiedSyncDeferredAudit: true,
+          unifiedSyncDeferredAuditRunId: clean(after.runId || event.params.runId),
+          unifiedSyncDeferredAuditAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        return;
+      }
+      if (clean(settings.unifiedSyncStatus).toLowerCase() === 'running') {
+        await SETTINGS_REF.set({
+          unifiedSyncStatus: 'stale-recovered',
+          unifiedSyncLockUntil: Timestamp.fromMillis(0),
+          unifiedSyncRecoveredAt: FieldValue.serverTimestamp(),
+          unifiedSyncRecoveredBy: 'audit-success-trigger'
+        }, { merge: true });
+      }
       const startDate = dateKey(after.startDate);
       const endDate = dateKey(after.endDate);
       if (startDate && endDate) {
@@ -1726,8 +2407,17 @@ module.exports = {
   auditIsRecent,
   auditRefreshRange,
   convergenceOwnerForState,
+  combinedPayrollSyncRange,
   dateKey,
+  dateKeysBetween,
+  educationDailyCoverage,
   fullConvergenceIsRequired,
+  intersectDateRanges,
+  mergePreservedAuditAttendance,
+  mergeTuitionPlanSnapshot,
+  operationsSourceVersion,
+  operationsSyncAdvanced,
+  operationsSyncRange,
   readMirrorPayload,
   reconcileAuditedAttendance,
   refreshTuitionUsage,
@@ -1736,6 +2426,10 @@ module.exports = {
   sourceHash,
   syncReservationDirective,
   syncOwnerMatches,
+  syncOperationsTeacherPayrollRange,
+  teacherPayrollRepairPlan,
   syncRecentMirror,
-  syncLatestMirror
+  syncTeacherPayrollRepair,
+  syncLatestMirror,
+  unifiedSyncIsActive
 };

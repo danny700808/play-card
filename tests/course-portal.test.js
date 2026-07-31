@@ -294,7 +294,7 @@ assert(!schedulerHtml.includes('半透明＝請假／停課'), '課表圖例仍�
 assert(schedulerHtml.includes('老師贈課'), '桌面課表圖例缺少老師贈課');
 assert(schedulerHtml.includes('雙人／團體'), '桌面課表圖例缺少雙人／團體課');
 assert(schedulerHtml.includes('取消／調走'), '桌面課表圖例缺少取消／調走');
-assert(schedulerHtml.includes('曠課不扣學生堂數但仍列入老師薪資'), '桌面說明與曠課薪資規則不一致');
+assert(schedulerHtml.includes('只有實際完成簽到才扣學生堂數並列入老師薪資'), '桌面說明與實際完成才計薪規則不一致');
 assert(schedulerSource.includes("return status==='leave'||status==='cancelled'"), '桌面課表仍錯把曠課視為釋出教室');
 assert(schedulerDataSource.includes('course.start||course.startTime'), '桌面課表無法讀取入口建立的 startTime');
 assert(schedulerDataSource.includes("typeof status==='object'?status.status:status"), '桌面課表無法讀取物件格式的請假／取消狀態');
@@ -490,7 +490,16 @@ function loadBackendForScheduleTests(state) {
       'module.exports.__testRentalSessionDisplayName = rentalSessionDisplayName;\n' +
       'module.exports.__testAssertTeacherMoveDuration = assertTeacherMoveDuration;\n' +
       'module.exports.__testMergePortalTuitionRows = mergePortalTuitionRows;\n' +
-      'module.exports.__testBuildTuitionPaymentCandidates = buildTuitionPaymentCandidates;\n',
+      'module.exports.__testBuildTuitionPaymentCandidates = buildTuitionPaymentCandidates;\n' +
+      'module.exports.__testNormalizeTeacherShareRatio = normalizeTeacherShareRatio;\n' +
+      'module.exports.__testAttendancePeriodCandidate = attendancePeriodCandidate;\n' +
+      'module.exports.__testAttendancePeriodPayroll = attendancePeriodPayroll;\n' +
+      'module.exports.__testAttendancePayrollCalculation = attendancePayrollCalculation;\n' +
+      'module.exports.__testApplyPortalAttendanceToPeriods = applyPortalAttendanceToPeriods;\n' +
+      'module.exports.__testMergeTeacherPayrollRows = mergeTeacherPayrollRows;\n' +
+      'module.exports.__testTeacherPayrollMatchesCancellation = teacherPayrollMatchesCancellation;\n' +
+      'module.exports.__testAttendanceLessonLockId = attendanceLessonLockId;\n' +
+      'module.exports.__testTeacherEventMatchesRequest = teacherEventMatchesRequest;\n',
       backendPath
     );
     return fixtureModule.exports;
@@ -628,10 +637,497 @@ async function runBackendScheduleRegressionTests() {
       coursePortalScheduleChanges: [
         { id: 'permanent-old', data: oldPermanent },
         { id: 'permanent-new', data: newPermanent }
+      ],
+      coursePortalTeacherAttendancePayroll: [
+        { id: 'portal-admin-payroll', data: {
+          id: 'portal-admin-payroll',
+          active: true,
+          status: 'attended',
+          date: '2026-07-31',
+          occurredAt: '2026-07-31T10:00:00+08:00',
+          teacherId: 'teacher-1',
+          studentId: 'student-1',
+          studentIds: ['student-1'],
+          courseId: 'fixed-1',
+          teacherAmount: 420,
+          payrollCalculation: { version: 'attendance-period-payroll-v1' }
+        } }
+      ],
+      coursePortalTeacherAdjustments: [
+        { id: 'portal-admin-adjustment', data: {
+          id: 'portal-admin-adjustment',
+          active: true,
+          teacherId: 'teacher-1',
+          month: '2026-07',
+          date: '2026-07-31',
+          type: 'teacher_bonus',
+          amount: 100
+        } }
       ]
     }))
   };
   const duplicatePermanentBackend = loadBackendForScheduleTests(duplicatePermanentState);
+  check(() => {
+    assert.strictEqual(
+      duplicatePermanentBackend.__testNormalizeTeacherShareRatio(0.6),
+      0.6,
+      '0.6 應正規化為 60%'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testNormalizeTeacherShareRatio(60),
+      0.6,
+      '60 應正規化為 60%'
+    );
+    assert.throws(
+      () => duplicatePermanentBackend.__testNormalizeTeacherShareRatio(101),
+      /不可超過 100/,
+      '超過 100% 的老師分成必須拒絕，不能寫入異常薪資'
+    );
+
+    const ratioPeriod = {
+      id: 'period-ratio',
+      studentId: 'student-1',
+      subjectId: 'subject-piano',
+      teacherId: 'teacher-1',
+      periodNo: 3,
+      startDate: '2026-07-01',
+      lessonCount: 4,
+      usedCount: 2,
+      expectedAmount: 2800,
+      discount: 0,
+      planSnapshot: {
+        id: 'plan-ratio',
+        name: '鋼琴四堂 60%',
+        splitType: 'ratio',
+        splitValue: 0.6
+      }
+    };
+    const percentagePeriod = Object.assign({}, ratioPeriod, {
+      id: 'period-percentage',
+      planSnapshot: Object.assign({}, ratioPeriod.planSnapshot, { splitValue: 60 })
+    });
+    const ratioPay = duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', ratioPeriod);
+    const percentagePay = duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', percentagePeriod);
+    assert.strictEqual(ratioPay.outputs.lessonPrice, 700);
+    assert.strictEqual(ratioPay.outputs.teacherAmount, 420);
+    assert.strictEqual(percentagePay.outputs.teacherAmount, 420, '0.6 與 60 不可算出不同老師薪資');
+    assert.strictEqual(percentagePay.outputs.splitValue, 0.6, '薪資快照必須保存正規化後的比例');
+
+    const fixedPay = duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', Object.assign({}, ratioPeriod, {
+      id: 'period-fixed',
+      planSnapshot: {
+        id: 'plan-fixed',
+        name: '每堂固定 600',
+        splitType: 'fixed',
+        splitValue: 600
+      }
+    }));
+    assert.strictEqual(fixedPay.outputs.teacherAmount, 600, '固定拆帳應直接計入每堂 NT$600');
+
+    const event = {
+      id: 'event-attended',
+      fixedCourseId: 'fixed-1',
+      date: '2026-07-31',
+      teacherId: 'teacher-1',
+      subjectId: 'subject-piano',
+      studentIds: ['student-1']
+    };
+    const selected = duplicatePermanentBackend.__testAttendancePeriodCandidate(
+      [Object.assign({}, ratioPeriod, { id: 'period-old', periodNo: 2, usedCount: 4 }), ratioPeriod],
+      event,
+      'student-1',
+      event.date
+    );
+    assert.strictEqual(selected.id, 'period-ratio', '簽到必須配到同學生、同課程且仍有堂數的期別');
+    const multiPaymentCandidate = duplicatePermanentBackend.__testAttendancePeriodCandidate([
+      Object.assign({}, ratioPeriod, {
+        id: 'period-multi-old', sourcePaymentId: 'payment-multi-old', periodNo: 2, startDate: '2026-05-01'
+      }),
+      Object.assign({}, ratioPeriod, {
+        id: 'period-multi-new', sourcePaymentId: 'payment-multi-new', periodNo: 4, startDate: '2026-07-01'
+      })
+    ], Object.assign({}, event, {
+      studentPaymentIds: ['payment-multi-old', 'payment-multi-new']
+    }), 'student-1', event.date);
+    assert.strictEqual(
+      multiPaymentCandidate.id,
+      'period-multi-new',
+      '固定課帶多個歷史付款編號時，不能依陣列順序誤選舊期別'
+    );
+    const perStudentPeriodCandidate = duplicatePermanentBackend.__testAttendancePeriodCandidate([
+      Object.assign({}, ratioPeriod, {
+        id: 'period-student-exact', sourcePaymentId: 'payment-student-exact', periodNo: 2
+      }),
+      Object.assign({}, ratioPeriod, {
+        id: 'period-general-new', sourcePaymentId: 'payment-general-new', periodNo: 4
+      })
+    ], Object.assign({}, event, {
+      tuitionPeriodIds: { 'student-1': 'period-student-exact' },
+      studentPaymentIds: ['payment-general-new']
+    }), 'student-1', event.date);
+    assert.strictEqual(
+      perStudentPeriodCandidate.id,
+      'period-student-exact',
+      '逐生保存的精準期別 ID 必須優先於固定課的多期付款清單'
+    );
+    const attendedPayroll = duplicatePermanentBackend.__testAttendancePayrollCalculation(
+      event,
+      [{ studentId: 'student-1', period: ratioPeriod }],
+      event.date
+    );
+    assert.strictEqual(attendedPayroll.tuitionAmount, 700);
+    assert.strictEqual(attendedPayroll.teacherAmount, 420);
+    assert.strictEqual(attendedPayroll.schoolShare, 280);
+    assert.strictEqual(attendedPayroll.rate, '60%');
+    assert.strictEqual(attendedPayroll.planSnapshot.name, '鋼琴四堂 60%');
+    assert.strictEqual(attendedPayroll.payrollCalculation.inputs.eventId, 'event-attended');
+    assert.strictEqual(attendedPayroll.payrollCalculation.students[0].periodId, 'period-ratio');
+    assert.strictEqual(attendedPayroll.payrollCalculation.outputs.teacherAmount, 420);
+
+    const freeGiftPayroll = duplicatePermanentBackend.__testAttendancePayrollCalculation({
+      id: 'gift-free',
+      date: '2026-07-31',
+      teacherId: 'teacher-1',
+      studentIds: ['student-1'],
+      portalAction: 'teacher_gift',
+      specialLesson: true,
+      teacherPayable: false
+    }, [], '2026-07-31');
+    assert.strictEqual(freeGiftPayroll.teacherAmount, 0, '老師明確免費贈課應可完成簽到但不計薪');
+    assert.strictEqual(freeGiftPayroll.payrollExcluded, true, '免費贈課必須留下明確排除薪資的稽核旗標');
+    assert.throws(() => duplicatePermanentBackend.__testAttendancePayrollCalculation({
+      id: 'special-missing-pay',
+      date: '2026-07-31',
+      teacherId: 'teacher-1',
+      studentIds: ['student-1'],
+      specialLesson: true,
+      teacherPayable: true
+    }, [], '2026-07-31'), /尚未設定老師薪資/, '一般特殊課未填薪資時不可悄悄寫成 0');
+    const paidSpecialPayroll = duplicatePermanentBackend.__testAttendancePayrollCalculation({
+      id: 'special-paid',
+      date: '2026-07-31',
+      teacherId: 'teacher-1',
+      studentIds: ['student-1'],
+      specialLesson: true,
+      teacherPayable: true,
+      specialTeacherPay: 500
+    }, [], '2026-07-31');
+    assert.strictEqual(paidSpecialPayroll.teacherAmount, 500, '一般特殊課明確設定 NT$500 時應正常計薪');
+
+    const grossDiscountPay = duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', Object.assign({}, ratioPeriod, {
+      id: 'period-gross-discount',
+      discount: 0.5,
+      discountType: 'ratio',
+      payByDiscount: false,
+      teacherPayBasis: 'gross'
+    }));
+    const netDiscountPay = duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', Object.assign({}, ratioPeriod, {
+      id: 'period-net-discount',
+      discount: 0.5,
+      discountType: 'ratio',
+      payByDiscount: true,
+      teacherPayBasis: 'net'
+    }));
+    assert.strictEqual(grossDiscountPay.outputs.teacherAmount, 420, '不按折扣計薪時仍須用原價 700 × 60%');
+    assert.strictEqual(netDiscountPay.outputs.teacherAmount, 210, '按五折計薪時須用 350 × 60%');
+    assert.strictEqual(grossDiscountPay.outputs.collectedAmount, 350, '老師按原價計薪時，本堂實收仍只能是折扣後 NT$350');
+    assert.strictEqual(grossDiscountPay.outputs.lessonPrice, 350, '對外課堂金額不可誤顯示折扣前原價');
+    assert.strictEqual(grossDiscountPay.outputs.teacherPayLessonPrice, 700, '老師原價計薪基準需另存，不能冒充實收');
+    assert.strictEqual(grossDiscountPay.outputs.schoolShare, -70, '實收低於老師薪資時必須顯示負分潤，不能造出正數假利潤');
+    const grossDiscountCalculation = duplicatePermanentBackend.__testAttendancePayrollCalculation(
+      event,
+      [{ studentId: 'student-1', period: Object.assign({}, ratioPeriod, {
+        id: 'period-gross-discount-calculation',
+        discount: 0.5,
+        discountType: 'ratio',
+        payByDiscount: false,
+        teacherPayBasis: 'gross'
+      }) }],
+      event.date
+    );
+    assert.strictEqual(grossDiscountCalculation.collectedAmount, 350);
+    assert.strictEqual(grossDiscountCalculation.teacherAmount, 420);
+    assert.strictEqual(grossDiscountCalculation.schoolShare, -70);
+    assert.strictEqual(grossDiscountCalculation.payrollCalculation.outputs.collectedAmount, 350);
+    const mixedGroupCalculation = duplicatePermanentBackend.__testAttendancePayrollCalculation(
+      Object.assign({}, event, { studentIds: ['student-1', 'student-2'] }),
+      [
+        { studentId: 'student-1', period: Object.assign({}, ratioPeriod, {
+          id: 'period-group-gross',
+          discount: 0.5,
+          discountType: 'ratio',
+          payByDiscount: false,
+          teacherPayBasis: 'gross'
+        }) },
+        { studentId: 'student-2', period: Object.assign({}, ratioPeriod, {
+          id: 'period-group-fixed',
+          studentId: 'student-2',
+          planSnapshot: { id: 'plan-fixed-group', splitType: 'fixed', splitValue: 600 }
+        }) }
+      ],
+      event.date
+    );
+    assert.strictEqual(mixedGroupCalculation.collectedAmount, 1050, '團體課實收須加總每位學生的折扣後金額');
+    assert.strictEqual(mixedGroupCalculation.teacherAmount, 1020, '團體課老師薪資須加總各方案的計薪基準');
+    assert.strictEqual(mixedGroupCalculation.schoolShare, 30, 'mixed/group 分潤須以總實收減總老師薪資');
+    assert.strictEqual(mixedGroupCalculation.splitType, 'mixed');
+    assert.throws(() => duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', Object.assign({}, ratioPeriod, {
+      id: 'period-ambiguous-discount',
+      discount: 0.5
+    })), /沒有保存老師按原價或折扣後金額計薪/, '舊折扣缺少薪資基準時應停止而不是猜測');
+
+    const explicitPaymentPeriod = duplicatePermanentBackend.__testAttendancePeriodCandidate([
+      Object.assign({}, ratioPeriod, { id: 'period-payment-old', sourcePaymentId: 'payment-old', periodNo: 2 }),
+      Object.assign({}, ratioPeriod, { id: 'period-payment-new', sourcePaymentId: 'payment-new', periodNo: 4 })
+    ], Object.assign({}, event, { studentPaymentIds: ['payment-old'] }), 'student-1', event.date);
+    assert.strictEqual(explicitPaymentPeriod.id, 'period-payment-old', '固定課已保存付款編號時必須優先使用明確期別');
+
+    const periodOne = Object.assign({}, ratioPeriod, { id: 'period-one', periodNo: 1, usedCount: 2 });
+    const periodTwo = Object.assign({}, ratioPeriod, { id: 'period-two', periodNo: 2, usedCount: 1 });
+    const cancelledPortalAttendance = [{
+      id: 'portal-attendance-1',
+      studentId: 'student-1',
+      teacherId: 'teacher-1',
+      subjectId: 'subject-piano',
+      eventId: 'event-1',
+      courseId: 'fixed-1',
+      periodId: 'period-one',
+      date: '2026-07-31',
+      status: 'cancelled',
+      active: false,
+      source: 'attendance-cancellation-approved'
+    }];
+    const noMirrorRestore = duplicatePermanentBackend.__testApplyPortalAttendanceToPeriods(
+      [periodOne, periodTwo], [], cancelledPortalAttendance
+    );
+    assert.deepStrictEqual(noMirrorRestore.map((row) => row.usedCount), [2, 1], '鏡像尚未含 portal 簽到時不可多還一堂');
+    const matchedMirrorAttendance = [{
+      id: 'mirror-attendance-1',
+      studentId: 'student-1',
+      teacherId: 'teacher-1',
+      eventId: 'different-source-event',
+      sourceCourseId: 'fixed-1',
+      periodId: 'period-one',
+      date: '2026-07-31',
+      status: 'attended'
+    }];
+    const restoredOriginalPeriod = duplicatePermanentBackend.__testApplyPortalAttendanceToPeriods(
+      [periodOne, periodTwo], matchedMirrorAttendance, cancelledPortalAttendance
+    );
+    assert.deepStrictEqual(restoredOriginalPeriod.map((row) => row.usedCount), [1, 1], '取消簽到只能還回原第 1 期，不可移到最新期');
+    const sameDayCancellation = cancelledPortalAttendance.map((row) => Object.assign({}, row, {
+      source: 'teacher-same-day-attendance-cancellation'
+    }));
+    const restoredSameDayCancellation = duplicatePermanentBackend.__testApplyPortalAttendanceToPeriods(
+      [periodOne, periodTwo], matchedMirrorAttendance, sameDayCancellation
+    );
+    assert.deepStrictEqual(restoredSameDayCancellation.map((row) => row.usedCount), [1, 1], '同日直接取消若鏡像已含簽到，也必須還回原期別');
+    const unrelatedSameDayAttendance = matchedMirrorAttendance.map((row) => Object.assign({}, row, {
+      sourceCourseId: 'different-fixed-course'
+    }));
+    const unrelatedNotRestored = duplicatePermanentBackend.__testApplyPortalAttendanceToPeriods(
+      [periodOne, periodTwo], unrelatedSameDayAttendance, cancelledPortalAttendance
+    );
+    assert.deepStrictEqual(unrelatedNotRestored.map((row) => row.usedCount), [2, 1], '同學生同日另一堂課不可被誤認成取消目標');
+
+    const canonicalPortalRow = (overrides) => Object.assign({
+      id: 'portal-pay-1',
+      eventId: 'portal-event-1',
+      date: '2026-07-31',
+      occurredAt: '2026-07-31T10:00:00+08:00',
+      teacherId: 'teacher-1',
+      studentId: 'student-1',
+      studentIds: ['student-1'],
+      teacherAmount: 420,
+      status: 'attended',
+      active: true,
+      payrollCalculation: { version: 'attendance-period-payroll-v1' }
+    }, overrides || {});
+    const mirrorRow = (overrides) => Object.assign({
+      id: 'mirror-pay-1',
+      date: '2026-07-31',
+      occurredAt: '2026-07-31T02:00:00.000Z',
+      teacherId: 'teacher-1',
+      studentId: 'student-1',
+      teacherAmount: 420
+    }, overrides || {});
+    const utcMerged = duplicatePermanentBackend.__testMergeTeacherPayrollRows(
+      [mirrorRow()], [canonicalPortalRow()]
+    );
+    assert.strictEqual(utcMerged.length, 1, 'UTC 與台北同一分鐘的同一堂薪資不可重複');
+    assert.strictEqual(utcMerged[0].id, 'portal-pay-1', '有完整計算快照的 portal 薪資應成為正式來源');
+    const twoLessons = duplicatePermanentBackend.__testMergeTeacherPayrollRows([
+      mirrorRow({ id: 'mirror-10', occurredAt: '2026-07-31T02:00:00.000Z' }),
+      mirrorRow({ id: 'mirror-11', occurredAt: '2026-07-31T03:00:00.000Z' })
+    ], [
+      canonicalPortalRow({ id: 'portal-10', occurredAt: '2026-07-31T10:00:00+08:00' }),
+      canonicalPortalRow({ id: 'portal-11', eventId: 'portal-event-2', occurredAt: '2026-07-31T11:00:00+08:00' })
+    ]);
+    assert.strictEqual(twoLessons.length, 2, '同學生同日兩堂課必須保留兩筆，不可用 Set 吃掉一堂');
+    const groupPortal = canonicalPortalRow({
+      id: 'portal-group',
+      studentId: 'student-1',
+      studentIds: ['student-1', 'student-2'],
+      teacherAmount: 840
+    });
+    const groupMerged = duplicatePermanentBackend.__testMergeTeacherPayrollRows([
+      mirrorRow({ id: 'mirror-s1', studentId: 'student-1' }),
+      mirrorRow({ id: 'mirror-s2', studentId: 'student-2' })
+    ], [groupPortal]);
+    assert.deepStrictEqual(groupMerged.map((row) => row.id), ['portal-group'], '群體課 portal 合計列應取代鏡像逐生列');
+    const partialGroup = duplicatePermanentBackend.__testMergeTeacherPayrollRows([
+      mirrorRow({ id: 'mirror-partial-s1', studentId: 'student-1' })
+    ], [groupPortal]);
+    assert.deepStrictEqual(partialGroup.map((row) => row.id), ['portal-group'], '群體課只有部分鏡像時仍保留完整 portal，已覆蓋的鏡像列需移除');
+    const multisetRows = duplicatePermanentBackend.__testMergeTeacherPayrollRows([
+      mirrorRow({ id: 'mirror-extra-1' }),
+      mirrorRow({ id: 'mirror-extra-2' }),
+      mirrorRow({ id: 'mirror-extra-3' })
+    ], [canonicalPortalRow()]);
+    assert.strictEqual(multisetRows.length, 3, '一筆 portal 只能消除一筆鏡像，額外重複列需保留供稽核');
+    assert.strictEqual(multisetRows.filter((row) => String(row.id).startsWith('mirror-extra')).length, 2);
+    const legacyZeroPortalIgnored = duplicatePermanentBackend.__testMergeTeacherPayrollRows(
+      [mirrorRow()],
+      [Object.assign({}, canonicalPortalRow(), { payrollCalculation: {}, teacherAmount: 0 })]
+    );
+    assert.deepStrictEqual(legacyZeroPortalIgnored.map((row) => row.id), ['mirror-pay-1'], '舊的 portal NT$0 暫存列不可蓋掉正確鏡像');
+    const legacyPositivePortal = Object.assign({}, canonicalPortalRow(), {
+      id: 'legacy-portal-positive',
+      payrollCalculation: {},
+      teacherAmount: 420
+    });
+    const legacyPositiveWithoutMirror = duplicatePermanentBackend.__testMergeTeacherPayrollRows(
+      [],
+      [legacyPositivePortal]
+    );
+    assert.deepStrictEqual(
+      legacyPositiveWithoutMirror.map((row) => row.id),
+      ['legacy-portal-positive'],
+      '已部署但尚無新版計算快照的有效 portal 正薪資不可從畫面消失'
+    );
+    const legacyPositiveWithMirror = duplicatePermanentBackend.__testMergeTeacherPayrollRows(
+      [mirrorRow()],
+      [legacyPositivePortal]
+    );
+    assert.deepStrictEqual(
+      legacyPositiveWithMirror.map((row) => row.id),
+      ['legacy-portal-positive'],
+      '舊版 portal 正薪資與可強識別的鏡像列必須只保留一筆'
+    );
+    const freeGiftAuditRow = Object.assign({}, canonicalPortalRow(), {
+      id: 'portal-free-gift-audit',
+      teacherAmount: 0,
+      teacherPayable: false,
+      payrollExcluded: true,
+      payrollExclusionReason: 'teacher_gift_no_pay'
+    });
+    assert.deepStrictEqual(
+      duplicatePermanentBackend.__testMergeTeacherPayrollRows([], [freeGiftAuditRow])
+        .map((row) => row.id),
+      ['portal-free-gift-audit'],
+      '新版免費贈課雖為 NT$0，仍須保留計算快照與不計薪稽核列'
+    );
+
+    const cancellationRequest = {
+      operationId: 'portal-operation-1',
+      eventId: 'source-event-1',
+      courseId: 'fixed-1',
+      teacherId: 'teacher-1',
+      studentIds: ['student-1'],
+      date: '2026-07-31',
+      startTime: '10:00'
+    };
+    const cancellationPayroll = mirrorRow({
+      operationId: 'mirror-operation-1',
+      eventId: 'different-mirror-event',
+      courseId: 'fixed-1',
+      occurredAt: '2026-07-31T10:00:00+08:00'
+    });
+    assert.strictEqual(
+      duplicatePermanentBackend.__testTeacherPayrollMatchesCancellation(cancellationPayroll, cancellationRequest),
+      true,
+      '取消薪資須能用同老師、學生、日期、時間與課程強識別同一堂'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testTeacherPayrollMatchesCancellation(
+        Object.assign({}, cancellationPayroll, { teacherId: 'teacher-2' }),
+        cancellationRequest
+      ),
+      false,
+      '取消簽到不可刪除同課程但不同老師的薪資'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testTeacherPayrollMatchesCancellation(
+        Object.assign({}, cancellationPayroll, { studentId: 'student-2' }),
+        cancellationRequest
+      ),
+      false,
+      '取消簽到不可刪除同課程但不同學生的薪資'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testTeacherPayrollMatchesCancellation(
+        Object.assign({}, cancellationPayroll, { occurredAt: '2026-07-31T11:00:00+08:00' }),
+        cancellationRequest
+      ),
+      false,
+      '同一固定課同一天的第二堂課不可被第一堂的取消申請刪除'
+    );
+    const cancellationMerged = duplicatePermanentBackend.__testMergeTeacherPayrollRows([
+      cancellationPayroll,
+      Object.assign({}, cancellationPayroll, {
+        id: 'mirror-second-lesson',
+        operationId: 'mirror-operation-2',
+        occurredAt: '2026-07-31T11:00:00+08:00'
+      })
+    ], [], [Object.assign({ status: 'approved' }, cancellationRequest)]);
+    assert.deepStrictEqual(
+      cancellationMerged.map((row) => row.id),
+      ['mirror-second-lesson'],
+      '核准取消只能移除被核對的第一堂薪資，同日同課程第二堂必須保留'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testAttendanceLessonLockId('2026-07-31', {
+        fixedCourseId: 'fixed-1', teacherId: 'teacher-1'
+      }),
+      duplicatePermanentBackend.__testAttendanceLessonLockId('2026-07-31', {
+        fixedCourseId: 'fixed-1', teacherId: 'teacher-2'
+      }),
+      '簽到取消 tombstone 必須跨老師共用，改派老師不可繞過鎖'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testTeacherEventMatchesRequest({
+        id: 'same-day-first',
+        date: '2026-07-31',
+        teacherId: 'teacher-1',
+        fixedCourseId: 'fixed-1'
+      }, 'teacher-1', '2026-07-31', '', '', ''),
+      false,
+      '空 sourceEventId／sourceCourseId／portalChangeId 不可誤選同日第一堂'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testTeacherEventMatchesRequest({
+        id: 'same-day-first',
+        sourceId: 'same-day-first',
+        date: '2026-07-31',
+        teacherId: 'teacher-1',
+        fixedCourseId: 'fixed-1'
+      }, 'teacher-1', '2026-07-31', 'same-day-second', 'fixed-1', ''),
+      false,
+      '指定事件編號不符時不可退回只看 courseId，否則會誤選同日第一堂'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testTeacherEventMatchesRequest({
+        id: 'same-day-second',
+        sourceId: 'same-day-second',
+        date: '2026-07-31',
+        teacherId: 'teacher-1',
+        fixedCourseId: 'fixed-1',
+        portalChangeId: 'portal-change-2'
+      }, 'teacher-1', '2026-07-31', 'same-day-second', 'fixed-1', 'portal-change-2'),
+      true,
+      '事件、課程與 portal 變更編號都一致時才可選中指定課堂'
+    );
+  });
   check(() => {
     assert.strictEqual(
       duplicatePermanentBackend.__testAssertTeacherMoveDuration(
@@ -1066,7 +1562,17 @@ async function runBackendScheduleRegressionTests() {
     })],
     temporaryCourses: [],
     roomRentals: [],
-    events: []
+    events: [],
+    teacherPayroll: [{
+      id: 'mirror-admin-payroll',
+      date: '2026-07-31',
+      occurredAt: '2026-07-31T10:00:00+08:00',
+      teacherId: 'teacher-1',
+      studentId: 'student-1',
+      courseId: 'fixed-1',
+      teacherAmount: 420
+    }],
+    teacherAdjustments: []
   };
   const appended = await duplicatePermanentBackend.appendCoursePortalData(appendPayload);
   const appendedPermanent = appended.fixedCourses.filter((row) => row.portalAction === 'permanent_move');
@@ -1077,6 +1583,16 @@ async function runBackendScheduleRegressionTests() {
       normalizeScheduleStatus(appendedPermanent[0].statusByDate['2026-07-23']),
       'absent',
       '永久系列沒有承接原 fixedCourse 的 statusByDate／exceptions'
+    );
+    assert.deepStrictEqual(
+      appended.teacherPayroll.map((row) => row.id),
+      ['portal-admin-payroll'],
+      '管理端必須合併 portal 正式薪資並移除可強識別的鏡像重複列'
+    );
+    assert.deepStrictEqual(
+      appended.teacherAdjustments.map((row) => row.id),
+      ['portal-admin-adjustment'],
+      '管理端必須顯示 portal 老師獎勵／扣款'
     );
   });
 
@@ -1308,6 +1824,26 @@ assert(backend.includes('if (!learningIds.has(studentId)) continue;'), '停課�
 assert(backend.includes("type: 'late_attendance_fee'"), '補簽到沒有建立 NT$50 薪資扣款');
 assert(backend.includes("type: 'attendance_cancellation_fee'"), '取消簽到核准後沒有建立 NT$50 薪資扣款');
 assert(backend.includes("status: 'pending'") && backend.includes('ATTENDANCE_CANCELLATIONS'), '取消簽到沒有等待主管核准');
+assert(backend.includes("db.collection(ATTENDANCE_PAYROLL).get()"), '管理端鏡像沒有讀取新系統老師薪資');
+assert(backend.includes('payload.teacherPayroll = mergeTeacherPayrollRows'), '管理端沒有把新舊老師薪資安全去重合併');
+assert(backend.includes('payload.attendance = mergePortalAttendanceRows'), '管理端沒有合併新系統正式簽到');
+assert(backend.includes("db.collection('coursePortalAttendanceLessonLocks')"), '正式簽到缺少不含老師編號的課堂唯一鎖');
+assert(backend.includes("if (clean(existingLessonLock.status) === 'cancelled')"), '已取消簽到的 tombstone 沒有阻擋改派老師重簽');
+assert(
+  (backend.match(/active: true,\n\s+status: 'cancelled',\n\s+operationId/g) || []).length >= 2,
+  '同日取消與主管核准取消都必須保留 active cancellation tombstone'
+);
+const cancellationAdminSource = backend.slice(
+  backend.indexOf('async function adminAttendanceCancellationAction('),
+  backend.indexOf('async function adminData()')
+);
+const cancellationRejectSource = cancellationAdminSource.slice(
+  cancellationAdminSource.indexOf("if (action === 'reject')"),
+  cancellationAdminSource.indexOf('const lineage =')
+);
+assert(cancellationRejectSource.includes('db.runTransaction'), '取消簽到 reject 未使用交易，可能覆寫已 approve 狀態');
+assert(cancellationRejectSource.includes('tx.get(requestRef)') && cancellationRejectSource.includes("clean(current.status) !== 'pending'"), '取消簽到 reject 沒有在交易內重新確認 pending');
+assert(backend.includes("paymentStatus: state === 'absent' ? 'student_absent_no_pay'"), '曠課仍被錯誤標記為老師可計薪');
 assert(backend.includes("const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET')"), 'LINE Channel secret 未使用後端密鑰');
 assert(backend.includes("bot_prompt: 'aggressive'"), 'LINE 登入未顯示加入官方帳號流程');
 assert(backend.includes('https://api.line.me/friendship/v1/status'), 'LINE 登入未確認好友狀態');
