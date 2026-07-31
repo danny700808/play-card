@@ -53,6 +53,10 @@ jobs:
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+
       - name: Test portal code
         run: |
           set -euo pipefail
@@ -64,10 +68,6 @@ jobs:
           node tests/course-portal.test.js
           node tests/room-booking-v2.test.js
           node tests/teacher-course-portal-mobile.test.js
-
-      - name: Install Functions dependencies
-        working-directory: functions
-        run: npm ci
 
       - name: Prepare Firebase credentials and runtime settings
         env:
