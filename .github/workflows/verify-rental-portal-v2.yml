@@ -64,7 +64,7 @@ jobs:
           grep -q "durationGrid" room-booking.html
           grep -q "柚子學生半價" room-booking.html
           grep -q "room-booking-v2.js" room-booking.html
-          grep -q "teacher-room-rules-v1.js" teacher-course-portal.html
+          ! grep -q "teacher-room-rules-v1.js" teacher-course-portal.html
           grep -q "portal-clean-ui-v1.css" student-course-portal.html
           grep -q "不定時教室只供暫時放置" teacher-room-rules-v1.js
           grep -q "視訊教室不是實體教室" teacher-room-rules-v1.js
