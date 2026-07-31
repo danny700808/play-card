@@ -188,7 +188,7 @@ a { color: inherit; }
 .auth-line-button,.auth-regular-submit{width:100%;min-height:48px;font-size:15px}
 .auth-regular-form{margin-top:2px}
 .auth-line-setup{padding:16px;border:1px solid #b8ddcd;border-radius:15px;background:var(--green-soft)}
-.auth-divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;font-weight:700}
+.auth-divider{display:flex;align-items:center;gap:12px;color:var(--ink);font-size:20px;font-weight:900;justify-content:center}
 .auth-divider::before,.auth-divider::after{content:"";height:1px;flex:1;background:var(--line)}
 .auth-otp-panel{margin-top:14px;padding:15px;border:1px solid #cce6db;border-radius:15px;background:var(--green-soft)}
 .auth-otp-heading{display:grid;gap:3px}

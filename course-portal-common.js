@@ -325,29 +325,15 @@
     }
 
     async function requestRegularOtp(form, button) {
-      loading(button, true, role === 'student' ? '確認中…' : '寄送中…');
+      loading(button, true, '確認中…');
       try {
         const fields = Object.fromEntries(new FormData(form).entries());
-        if (role === 'student' && !clean(fields.email)) {
-          const result = await call('coursePortalStudentPhoneAccess', fields);
-          if (result.pendingApproval) {
-            toast(result.message || '申請已送出，請等待主管確認。');
-            return;
-          }
-          if (result.role !== role || !result.sessionToken) {
-            throw new Error('學生登入資料不完整，請重新操作。');
-          }
-          setSession(role, result.sessionToken);
-          toast('資料確認完成，正在開啟學生入口。');
-          global.location.reload();
-          return;
-        }
-        const result = await call('coursePortalSendEmailOtp', Object.assign({
-          type: role,
-          purpose: 'account'
-        }, fields));
-        renderOtp(result);
-        toast(result.message || '四碼驗證碼已寄出。');
+        const result = await call('coursePortalDirectRegularAccess', Object.assign({ type: role }, fields));
+        if (result.pendingApproval) { toast(result.message || '資料已送出，請等待主管確認。'); return; }
+        if (result.role !== role || !result.sessionToken) throw new Error('登入資料不完整，請重新操作。');
+        setSession(role, result.sessionToken);
+        toast('資料確認完成，正在開啟。');
+        global.location.reload();
       } catch (error) {
         toast(error.message, 'error');
       } finally {

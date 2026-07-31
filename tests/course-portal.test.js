@@ -58,13 +58,12 @@ assert.strictEqual(
 const commonSource = fs.readFileSync(path.join(root, 'course-portal-common.js'), 'utf8');
 assert(commonSource.trimStart().startsWith('(function'), 'course-portal-common.js 不是可執行的 JavaScript');
 new vm.Script(commonSource, { filename: 'course-portal-common.js' });
-assert(commonSource.includes('coursePortalSendEmailOtp'), '入口缺少 Email 驗證碼寄送流程');
-assert(commonSource.includes('coursePortalVerifyEmailOtp'), '入口缺少 Email 驗證碼確認流程');
+assert(commonSource.includes('coursePortalDirectRegularAccess'), '入口缺少一般方式直接登入流程');
 assert(commonSource.includes('coursePortalStartLineLogin'), '入口缺少 LINE 快速登入');
 assert(commonSource.includes('result.authorizationUrl'), 'LINE 登入仍未直接導向 OAuth');
 assert(commonSource.includes('coursePortalCompleteLineRegistration'), '入口缺少 LINE 首次登入');
-assert(commonSource.includes('coursePortalStudentPhoneAccess'), '學生／家長入口沒有姓名＋電話註冊流程');
-assert(commonSource.includes("purpose: 'account'"), '一般註冊／登入未使用統一帳號流程');
+assert(commonSource.includes('coursePortalDirectRegularAccess'), '學生／家長入口沒有一般註冊流程');
+assert(!commonSource.includes("purpose: 'account'"), '一般註冊／登入仍要求 Email 四碼驗證流程');
 assert(!commonSource.includes('請用已綁定的 LINE 傳送這段快速登入文字'), 'LINE 登入仍停留在複製文字舊流程');
 assert(!commonSource.includes('複製綁定文字'), '入口程式仍保留複製綁定文字');
 assert(!commonSource.includes('renderLineAction'), '入口程式仍保留舊 LINE 文字綁定畫面');
@@ -92,7 +91,7 @@ for (const file of pages) {
   assert(html.includes('data-regular-auth-form'), `${file} 缺少一般註冊／登入`);
   assert(html.includes('data-line-setup-form'), `${file} 缺少 LINE 首次資料表單`);
   assert(html.includes('一般註冊／登入'), `${file} 一般方式標示不清楚`);
-  assert(html.includes('使用 LINE 繼續'), `${file} 缺少清楚的 LINE 按鈕`);
+  assert(html.includes('使用 LINE 註冊／登入'), `${file} 缺少清楚的 LINE 按鈕`);
   assert(!html.includes('data-email-login-form'), `${file} 仍保留分離的 Email 登入`);
   assert(!html.includes('data-renter-contact-form'), `${file} 仍保留姓名電話臨時登入`);
   assert(!html.includes('data-show-first-use'), `${file} 仍保留額外的第一次使用入口`);
@@ -138,7 +137,7 @@ const studentLineSetupForm = studentPortal.slice(
   studentPortal.indexOf('data-line-setup-form'),
   studentPortal.indexOf('</form>', studentPortal.indexOf('data-line-setup-form'))
 );
-assert(!studentRegularForm.includes('name="email"'), '學生／家長一般註冊仍強制填 Email');
+assert(studentRegularForm.includes('name="email"'), '學生／家長一般註冊缺少 Email 欄位');
 assert(!studentLineSetupForm.includes('name="email"'), '學生／家長 LINE 首次註冊仍強制填 Email');
 assert(studentRegularForm.includes('name="name"') && studentRegularForm.includes('name="phone"'), '學生／家長註冊不是只保留姓名與電話');
 assert(teacherPortal.includes('id="studentEditModal"'), '老師端缺少學生姓名電話修改視窗');

@@ -1511,6 +1511,51 @@ async function renterContactLogin(data) {
   );
 }
 
+// 一般方式不再寄送 Email 四碼：以姓名、電話與 Email 對照既有資料後直接建立此裝置工作階段。
+// 老師與學生仍保留首次綁定的主管審核，避免未授權者僅憑個資取得課表或薪資。
+async function directRegularAccess(data) {
+  const type = clean(data.type).toLowerCase();
+  if (type === 'student') return studentPhoneAccess(data);
+  const identity = await prepareBindingIdentity(data);
+  await consumeRateLimit(`direct-regular-${type}`, identity.phone);
+  const regular = await resolveRegularIdentity(identity);
+  const bindingRef = db.collection(bindingCollection(type)).doc(
+    clean(regular.bindingId) || hash(`direct-regular|${type}|${identityTargetId(identity)}|${regular.authAccountId}`)
+  );
+  const existing = await bindingRef.get();
+  const previous = existing.exists ? existing.data() || {} : {};
+  if (['revoked', 'rejected'].includes(clean(previous.status))) {
+    throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+  }
+  if (type === 'teacher' && clean(previous.status) !== 'active') {
+    await bindingRef.set({
+      type, teacherId: clean(identity.targetId), name: clean(identity.name), phoneHash: hash(identity.phone),
+      email: normalizeEmail(identity.email), emailNormalized: normalizeEmail(identity.email), authAccountId: regular.authAccountId,
+      authProvider: 'direct-regular', status: 'pending', approvalStatus: 'pending',
+      approvalRequestedAt: FieldValue.serverTimestamp(), registeredAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    await queueBindingApprovalNotices({ id: bindingRef.id, type, teacherId: clean(identity.targetId), name: clean(identity.name), status: 'pending' });
+    return { ok: true, role: type, pendingApproval: true, message: '資料已送出，主管確認後即可登入。' };
+  }
+  if (type === 'renter') {
+    const renterId = clean(identity.renterId);
+    await db.collection('coursePortalRenters').doc(renterId).set({
+      renterId, name: clean(identity.name), phone: identity.phone, email: normalizeEmail(identity.email), emailNormalized: normalizeEmail(identity.email),
+      source: 'direct-regular', active: true, updatedAt: FieldValue.serverTimestamp(), createdAtText: nowText()
+    }, { merge: true });
+    await bindingRef.set({
+      type, renterId, name: clean(identity.name), phoneHash: hash(identity.phone), email: normalizeEmail(identity.email), emailNormalized: normalizeEmail(identity.email),
+      authAccountId: regular.authAccountId, authProvider: 'direct-regular', status: 'active', approvalStatus: 'approved',
+      registeredAt: previous.registeredAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
+  const issued = await issueSession({
+    type, lineUserId: clean(previous.lineUserId || regular.lineUserId), authAccountId: regular.authAccountId,
+    targetId: clean(identity.targetId), renterId: clean(identity.renterId), authMethod: 'direct-regular'
+  });
+  return { ok: true, role: type, sessionToken: issued.sessionToken, expiresAt: issued.expiresAt.toDate().toISOString() };
+}
+
 async function issueAccessToken({ type, lineUserId, authAccountId, targetId, renterId, authMethod, lineFriendFlag }) {
   const raw = randomToken(32);
   const expiresAt = Timestamp.fromMillis(Date.now() + 10 * 60 * 1000);
@@ -7152,6 +7197,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
 
   exportsObject.coursePortalStartBinding = callable(startBinding);
   exportsObject.coursePortalStudentPhoneAccess = callable(studentPhoneAccess);
+  exportsObject.coursePortalDirectRegularAccess = callable(directRegularAccess);
   exportsObject.coursePortalSendEmailOtp = callable((data) => sendEmailOtp(data, {
     sendEmail: helpers.sendEmail
   }));

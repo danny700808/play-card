@@ -17,31 +17,30 @@
 
     <section class="card bind-box rental-login-card hidden" id="publicBindView" data-auth-view>
       <div class="section-title auth-title">
-        <div><h2>教室租用登入</h2><p class="muted">選擇一種方式即可，第一次使用也從這裡開始。</p></div>
+        <div><h2>教室租用登入</h2><p class="muted">請選擇一種登入方式。</p></div>
       </div>
       <div class="auth-choice-list" data-auth-choice-list>
         <article class="auth-choice auth-choice-line">
           <div class="auth-choice-heading">
             <span class="auth-choice-icon">LINE</span>
-            <div><h3>LINE 快速登入</h3><p>最快、最方便，也能接收租用前一小時提醒。</p></div>
+            <div><h3>LINE 註冊／登入</h3><p>最快、最方便，也能接收租用前一小時提醒。</p></div>
             <span class="auth-recommended">推薦</span>
           </div>
-          <button class="btn primary auth-line-button" type="button" data-line-login>使用 LINE 繼續</button>
-          <small>第一次會請您填一次基本資料；以後按 LINE 就能進入。</small>
+          <button class="btn primary auth-line-button" type="button" data-line-login>使用 LINE 註冊／登入</button>
         </article>
         <div class="auth-divider"><span>或</span></div>
         <article class="auth-choice auth-choice-regular">
           <div class="auth-choice-heading">
             <span class="auth-choice-icon auth-choice-icon-plain">一般</span>
-            <div><h3>一般註冊／登入</h3><p>不使用 LINE，也可以預約教室。</p></div>
+            <div><h3>一般註冊／登入</h3><p>填寫登記資料後即可預約教室。</p></div>
           </div>
           <form class="stack auth-regular-form" data-regular-auth-form>
             <div class="field"><label>姓名</label><input name="name" autocomplete="name" placeholder="請輸入姓名" required></div>
             <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" placeholder="例如 0912345678" required></div>
-            <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="用來接收四碼驗證碼" required></div>
-            <button class="btn auth-regular-submit" type="submit">使用一般方式繼續</button>
+            <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email" required></div>
+            <button class="btn auth-regular-submit" type="submit">使用一般方式註冊／登入</button>
           </form>
-          <small class="auth-security-note">第一次會自動建立帳號；Email 四碼確認後直接進入。</small>
+          <small class="auth-security-note">第一次使用會依填寫資料建立入口。</small>
         </article>
       </div>
       <section class="auth-line-setup hidden" data-line-setup-panel>
