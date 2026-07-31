@@ -9,10 +9,12 @@
     "deploy": "firebase deploy --only functions"
   },
   "dependencies": {
+    "@expo-google-fonts/noto-sans-tc": "^0.4.3",
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^5.1.1",
     "google-auth-library": "^9.15.1",
-    "nodemailer": "^6.9.16"
+    "nodemailer": "^6.9.16",
+    "sharp": "^0.34.5"
   },
   "private": true
 }

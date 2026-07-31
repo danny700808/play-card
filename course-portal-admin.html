@@ -37,6 +37,13 @@
     </section>
     <section class="card">
       <div class="section-title">
+        <div><h2>學費收據紀錄</h2><p class="muted">每次確認實際收款後自動建立；可查看或依 15 × 10 公分補印。</p></div>
+        <span class="badge" id="tuitionReceiptAdminBadge">0 筆</span>
+      </div>
+      <div class="list" id="tuitionReceiptAdminList"><p class="muted">請先輸入管理密碼。</p></div>
+    </section>
+    <section class="card">
+      <div class="section-title">
         <div><h2>取消簽到待確認</h2><p class="muted">主管核准後才會取消原簽到，並在老師薪資扣除行政處理費 NT$50。</p></div>
         <span class="badge warn" id="attendanceCancellationBadge">0 筆</span>
       </div>
@@ -71,6 +78,18 @@
         <img class="tuition-receipt-preview" id="adminTuitionReceipt" alt="學生匯款截圖">
       </div>
     </section>
+    <section class="modal hidden" id="issuedTuitionReceiptModal" role="dialog" aria-modal="true" aria-labelledby="issuedTuitionReceiptTitle">
+      <div class="card modal-panel tuition-payment-modal-panel">
+        <div class="section-title">
+          <div><h2 id="issuedTuitionReceiptTitle">學費收據</h2><p class="muted" id="issuedTuitionReceiptSubtitle"></p></div>
+          <span class="binding-actions">
+            <button class="btn primary" type="button" id="printIssuedTuitionReceipt">列印收據</button>
+            <button class="btn soft" type="button" id="closeIssuedTuitionReceipt">關閉</button>
+          </span>
+        </div>
+        <img class="tuition-receipt-preview" id="issuedTuitionReceiptImage" alt="學費收據">
+      </div>
+    </section>
   </main>
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -82,6 +101,7 @@
     let rows = [];
     let unpaidSuspensions = [];
     let tuitionPayments = [];
+    let tuitionReceipts = [];
     let attendanceCancellations = [];
     let filter = 'all';
     let search = '';
@@ -183,6 +203,20 @@
       }).join('') : '<p class="muted">目前沒有等待主管確認的學費。</p>';
     }
 
+    function renderTuitionReceipts() {
+      document.getElementById('tuitionReceiptAdminBadge').textContent = `${tuitionReceipts.length} 筆`;
+      document.getElementById('tuitionReceiptAdminList').innerHTML = tuitionReceipts.length ? tuitionReceipts.map((row) => `
+        <article class="list-row tuition-payment-row">
+          <strong>${P.escapeHtml(row.studentName || row.studentId || '學生')}</strong>
+          <span>${P.escapeHtml(row.paymentDate || '')}｜${P.escapeHtml(row.method || '未註明')}</span>
+          <strong>${P.money(row.amount || 0)}</strong>
+          <span>${row.lineDeliveryStatus === 'queued' ? `LINE 已排入傳送（${Number(row.lineRecipientCount || 0)} 位）` : '未綁定 LINE・收據保留於管理端'}</span>
+          <span class="binding-actions">
+            ${row.imageUrl ? `<button class="btn primary" type="button" data-issued-receipt="${P.escapeHtml(row.id)}">查看收據</button>` : '<span class="badge warn">收據圖片處理中</span>'}
+          </span>
+        </article>`).join('') : '<p class="muted">目前沒有已建立的學費收據。</p>';
+    }
+
     async function load() {
       const button = document.getElementById('loadBtn');
       P.loading(button, true, '讀取中…');
@@ -191,10 +225,12 @@
         rows = result.bindings || [];
         unpaidSuspensions = result.unpaidSuspensions || [];
         tuitionPayments = result.tuitionPayments || [];
+        tuitionReceipts = result.tuitionReceipts || [];
         attendanceCancellations = result.attendanceCancellations || [];
         render();
         renderSuspensions();
         renderTuitionPayments();
+        renderTuitionReceipts();
         renderAttendanceCancellations();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
@@ -324,6 +360,35 @@
     document.getElementById('closeTuitionReceipt').addEventListener('click', () => {
       document.getElementById('tuitionReceiptModal').classList.add('hidden');
       document.getElementById('adminTuitionReceipt').src = '';
+    });
+    document.getElementById('tuitionReceiptAdminList').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-issued-receipt]');
+      if (!button) return;
+      const row = tuitionReceipts.find((item) => item.id === button.dataset.issuedReceipt) || {};
+      if (!row.imageUrl) {
+        P.toast('這張收據圖片尚未完成，請稍後重新讀取。', 'error');
+        return;
+      }
+      document.getElementById('issuedTuitionReceiptSubtitle').textContent =
+        `${row.studentName || '學生'}｜${row.paymentDate || ''}｜${P.money(row.amount || 0)}`;
+      document.getElementById('issuedTuitionReceiptImage').src = row.imageUrl;
+      document.getElementById('issuedTuitionReceiptModal').classList.remove('hidden');
+    });
+    document.getElementById('closeIssuedTuitionReceipt').addEventListener('click', () => {
+      document.getElementById('issuedTuitionReceiptModal').classList.add('hidden');
+      document.getElementById('issuedTuitionReceiptImage').src = '';
+    });
+    document.getElementById('printIssuedTuitionReceipt').addEventListener('click', () => {
+      const imageUrl = document.getElementById('issuedTuitionReceiptImage').src;
+      if (!imageUrl) return;
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        P.toast('瀏覽器阻擋列印視窗，請允許彈出式視窗後再試。', 'error');
+        return;
+      }
+      printWindow.opener = null;
+      printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>學費收據</title><style>@page{size:15cm 10cm;margin:0}html,body{margin:0;width:15cm;height:10cm}img{display:block;width:15cm;height:10cm;object-fit:fill}</style></head><body><img src="${P.escapeHtml(imageUrl)}" onload="window.print();window.close()"></body></html>`);
+      printWindow.document.close();
     });
   })();
   </script>

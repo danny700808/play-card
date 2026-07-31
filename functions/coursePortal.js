@@ -5,6 +5,8 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const path = require('path');
+const sharp = require('sharp');
 const {
   normalizePhone,
   phoneMatches,
@@ -42,7 +44,12 @@ const TUITION_PAYMENT_REQUESTS = 'coursePortalTuitionPaymentRequests';
 const TUITION_PERIODS = 'coursePortalTuitionPeriods';
 const TUITION_TRANSACTIONS = 'coursePortalTuitionPaymentTransactions';
 const TUITION_SYSTEM_PERIODS = 'coursePortalTuitionSystemPeriods';
+const TUITION_RECEIPTS = 'coursePortalTuitionReceipts';
 const TUITION_RECEIPT_MAX_BYTES = 4 * 1024 * 1024;
+const TUITION_RECEIPT_TEMPLATE = path.join(__dirname, 'assets', 'tuition-receipt-blank.png');
+const TUITION_RECEIPT_FONT = require.resolve(
+  '@expo-google-fonts/noto-sans-tc/700Bold/NotoSansTC_700Bold.ttf'
+);
 const ATTENDANCE_RECORDS = 'coursePortalAttendanceRecords';
 const ATTENDANCE_CANCELLATIONS = 'coursePortalAttendanceCancellationRequests';
 const ATTENDANCE_PAYROLL = 'coursePortalTeacherAttendancePayroll';
@@ -4331,7 +4338,7 @@ async function queueSessionSecurityNotice(sessionId, session) {
   )));
 }
 
-async function queueStudentTuitionNotice(requestRow, title, body, eventCode) {
+async function queueStudentTuitionNotice(requestRow, title, body, eventCode, options = {}) {
   const snapshot = await db.collection('coursePortalStudentBindings')
     .where('studentId', '==', clean(requestRow.studentId))
     .get();
@@ -4339,7 +4346,7 @@ async function queueStudentTuitionNotice(requestRow, title, body, eventCode) {
     const row = doc.data() || {};
     return clean(row.status) === 'active' &&
       clean(row.lineUserId) &&
-      row.reminderPayment !== false;
+      (options.forceBoundDelivery === true || row.reminderPayment !== false);
   });
   await Promise.all(targets.map((doc) => {
     const row = doc.data() || {};
@@ -4354,10 +4361,14 @@ async function queueStudentTuitionNotice(requestRow, title, body, eventCode) {
         text: body,
         message: body,
         studentId: clean(requestRow.studentId),
-        tuitionPaymentRequestId: clean(requestRow.id)
+        tuitionPaymentRequestId: clean(requestRow.id),
+        tuitionReceiptId: clean(options.receiptId),
+        lineImageUrl: clean(options.imageUrl),
+        linePreviewImageUrl: clean(options.imageUrl)
       }
     );
   }));
+  return targets.length;
 }
 
 async function studentSubmitTuitionPayment(data) {
@@ -6801,6 +6812,83 @@ async function adminTuitionPaymentScreenshot(data) {
   };
 }
 
+function escapeReceiptText(value) {
+  return clean(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+async function receiptTextLayer(value, fontSize) {
+  return sharp({
+    text: {
+      text: `<span foreground="#343a30">${escapeReceiptText(value)}</span>`,
+      font: `Noto Sans TC ${fontSize}`,
+      fontfile: TUITION_RECEIPT_FONT,
+      dpi: 96,
+      rgba: true
+    }
+  }).png().toBuffer({ resolveWithObject: true });
+}
+
+async function renderTuitionReceiptPng(receipt) {
+  const parts = (dateKey(receipt.paymentDate) || currentTaipeiDay()).split('-');
+  const amount = Math.max(0, Number(receipt.amount || 0)).toLocaleString('zh-TW');
+  const specs = [
+    { value: parts[0] || '', fontSize: 26, centerX: 263, top: 259 },
+    { value: parts[1] || '', fontSize: 26, centerX: 434, top: 259 },
+    { value: parts[2] || '', fontSize: 26, centerX: 607, top: 259 },
+    { value: receipt.studentName || '學生', fontSize: 29, centerX: 457, top: 366 },
+    { value: amount, fontSize: 31, centerX: 433, top: 474 }
+  ];
+  const layers = await Promise.all(specs.map((spec) => receiptTextLayer(spec.value, spec.fontSize)));
+  return sharp(TUITION_RECEIPT_TEMPLATE)
+    .composite(layers.map((layer, index) => ({
+      input: layer.data,
+      left: Math.max(0, Math.round(specs[index].centerX - layer.info.width / 2)),
+      top: specs[index].top
+    })))
+    .png({ compressionLevel: 9, quality: 100 })
+    .toBuffer();
+}
+
+async function saveTuitionReceiptImage(receiptId, buffer) {
+  const storagePath = `course-portal/tuition-receipts/${clean(receiptId)}.png`;
+  const downloadToken = crypto.randomUUID();
+  const bucket = admin.storage().bucket();
+  await bucket.file(storagePath).save(buffer, {
+    resumable: false,
+    metadata: {
+      contentType: 'image/png',
+      cacheControl: 'private, max-age=0, no-transform',
+      metadata: {
+        firebaseStorageDownloadTokens: downloadToken,
+        tuitionReceiptId: clean(receiptId)
+      }
+    }
+  });
+  const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(downloadToken)}`;
+  return { storagePath, downloadToken, imageUrl };
+}
+
+function adminTuitionReceiptRow(doc) {
+  const source = doc.data ? doc.data() || {} : doc || {};
+  return {
+    id: clean(source.id || doc.id),
+    receiptNo: clean(source.receiptNo),
+    studentId: clean(source.studentId),
+    studentName: clean(source.studentName),
+    paymentDate: dateKey(source.paymentDate),
+    amount: Number(source.amount || 0),
+    method: clean(source.method),
+    imageUrl: clean(source.imageUrl),
+    renderStatus: clean(source.renderStatus),
+    lineDeliveryStatus: clean(source.lineDeliveryStatus),
+    lineRecipientCount: Number(source.lineRecipientCount || 0),
+    createdAtText: clean(source.createdAtText)
+  };
+}
+
 async function adminTuitionPaymentAction(data) {
   const id = clean(data.id);
   const action = clean(data.action);
@@ -6851,6 +6939,9 @@ async function adminTuitionPaymentAction(data) {
   const paymentDate = paymentMethod === 'bank_transfer'
     ? (dateKey(previewRow.transferDate) || currentTaipeiDay())
     : currentTaipeiDay();
+  const receiptId = `tuition-receipt-${transactionRef.id}`;
+  const receiptRef = db.collection(TUITION_RECEIPTS).doc(receiptId);
+  const receiptNo = `RCT-${paymentDate.replace(/-/g, '')}-${hash(transactionRef.id).slice(0, 6).toUpperCase()}`;
   await db.runTransaction(async (tx) => {
     const [requestSnapshot, periodSnapshot, transactionSnapshot] = await Promise.all([
       tx.get(requestRef),
@@ -6900,6 +6991,8 @@ async function adminTuitionPaymentAction(data) {
         studentId: clean(requestRow.studentId),
         periodId: formalPeriodId,
         paymentRequestId: id,
+        receiptId,
+        receiptNo,
         date: paymentDate,
         amount: confirmedAmount,
         method: paymentMethod === 'bank_transfer' ? '轉帳' : '現場繳費',
@@ -6909,6 +7002,30 @@ async function adminTuitionPaymentAction(data) {
         createdAt: FieldValue.serverTimestamp()
       });
     }
+    tx.set(receiptRef, {
+      id: receiptId,
+      receiptNo,
+      active: true,
+      source: 'course-portal',
+      status: 'issued',
+      renderStatus: 'pending',
+      studentId: clean(requestRow.studentId),
+      studentName: clean(requestRow.studentName) || clean(previewRow.studentName) || '學生',
+      subjectId: clean(requestRow.subjectId),
+      subjectName: clean(requestRow.subjectName),
+      periodId: formalPeriodId,
+      paymentRequestId: id,
+      transactionId: transactionRef.id,
+      paymentDate,
+      amount: confirmedAmount,
+      method: paymentMethod === 'bank_transfer' ? '轉帳' : '現場繳費',
+      printWidthCm: 15,
+      printHeightCm: 10,
+      lineDeliveryStatus: 'pending',
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtText: nowText(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
     tx.set(requestRef, {
       status: remainingAmount > 0 ? 'payment_due' : 'confirmed',
       confirmedAmount: cumulativeConfirmed,
@@ -6930,26 +7047,84 @@ async function adminTuitionPaymentAction(data) {
     status: remainingBefore - confirmedAmount > 0 ? 'payment_due' : 'confirmed'
   });
   const remainingAmount = Math.max(0, remainingBefore - confirmedAmount);
+  let receiptImageUrl = '';
+  let receiptRenderError = '';
+  try {
+    const receiptBuffer = await renderTuitionReceiptPng({
+      paymentDate,
+      studentName: clean(previewRow.studentName) || '學生',
+      amount: confirmedAmount
+    });
+    const savedReceipt = await saveTuitionReceiptImage(receiptId, receiptBuffer);
+    receiptImageUrl = savedReceipt.imageUrl;
+    await Promise.all([
+      receiptRef.set({
+        renderStatus: 'ready',
+        imageUrl: receiptImageUrl,
+        imageStoragePath: savedReceipt.storagePath,
+        imageContentType: 'image/png',
+        imageBytes: receiptBuffer.length,
+        renderedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true }),
+      transactionRef.set({
+        receiptId,
+        receiptNo,
+        receiptImageUrl,
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true }),
+      requestRef.set({
+        latestReceiptId: receiptId,
+        latestReceiptNo: receiptNo,
+        latestReceiptImageUrl: receiptImageUrl,
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true })
+    ]);
+  } catch (error) {
+    receiptRenderError = clean(error && error.message) || '收據圖片產生失敗';
+    console.error('[tuition receipt render failed]', receiptId, error);
+    await receiptRef.set({
+      renderStatus: 'failed',
+      renderError: receiptRenderError.slice(0, 500),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
   const body = [
-    `${clean(previewRow.studentName) || '同學'}您好，柚子樂器已確認收到您的${newSystemTuitionPeriodLabel(previewRow, 'next')}學費。`,
-    `課程：${clean(previewRow.subjectName) || '課程'}`,
-    `本次入帳：NT$${confirmedAmount.toLocaleString('zh-TW')}`,
+    `${clean(previewRow.studentName) || '同學'}您好，已收到學費 NT$${confirmedAmount.toLocaleString('zh-TW')}。`,
+    `課程：${clean(previewRow.subjectName) || '課程'}・${newSystemTuitionPeriodLabel(previewRow, 'next')}`,
+    `付款方式：${paymentMethod === 'bank_transfer' ? '轉帳' : '現場繳費'}`,
     remainingAmount > 0 ? `尚未繳清：NT$${remainingAmount.toLocaleString('zh-TW')}` : '本期學費已繳清。',
-    `付款方式：${methodText}`,
-    remainingAmount > 0 ? '您可以回到學生入口繼續繳納剩餘金額。' : '您的下一期課程已完成登記，謝謝您。'
+    receiptImageUrl ? '收據如附圖，請留存。' : '收據已建立，如需補印請聯絡柚子樂器。',
+    '謝謝您。'
   ].join('\n');
-  await queueStudentTuitionNotice(
+  const lineRecipientCount = await queueStudentTuitionNotice(
     confirmedRow,
     remainingAmount > 0 ? '學費已部分入帳' : '下一期學費已確認',
     body,
-    `confirmed-${Number(previewRow.submissionRevision || 0)}`
+    `confirmed-${Number(previewRow.submissionRevision || 0)}`,
+    {
+      forceBoundDelivery: true,
+      receiptId,
+      imageUrl: receiptImageUrl
+    }
   );
+  await receiptRef.set({
+    lineDeliveryStatus: lineRecipientCount > 0 ? 'queued' : 'not_bound',
+    lineRecipientCount,
+    lineQueuedAt: lineRecipientCount > 0 ? FieldValue.serverTimestamp() : null,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
   return {
     ok: true,
     id,
     status: remainingAmount > 0 ? 'payment_due' : 'confirmed',
     formalPeriodId,
     remainingAmount,
+    receiptId,
+    receiptNo,
+    receiptImageUrl,
+    receiptRenderError,
+    lineRecipientCount,
     message: remainingAmount > 0
       ? `已確認本次收款，尚餘 NT$${remainingAmount.toLocaleString('zh-TW')}。`
       : '已確認收款並建立正式下一期學費紀錄。'
@@ -7144,7 +7319,7 @@ async function adminAttendanceCancellationAction(data) {
 }
 
 async function adminData() {
-  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions, suspensionSnapshot, tuitionPaymentSnapshot, attendanceCancellationSnapshot] = await Promise.all([
+  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions, suspensionSnapshot, tuitionPaymentSnapshot, tuitionReceiptSnapshot, attendanceCancellationSnapshot] = await Promise.all([
     db.collection('coursePortalTeacherBindings').get(),
     db.collection('coursePortalStudentBindings').get(),
     db.collection('coursePortalRenterBindings').get(),
@@ -7154,6 +7329,7 @@ async function adminData() {
     db.collection('coursePortalSessions').get(),
     db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get(),
     db.collection(TUITION_PAYMENT_REQUESTS).where('status', 'in', ['pending_review', 'onsite_pending']).get(),
+    db.collection(TUITION_RECEIPTS).get(),
     db.collection(ATTENDANCE_CANCELLATIONS).where('status', '==', 'pending').get()
   ]);
   const teacherMap = indexById(teacherRows);
@@ -7253,6 +7429,15 @@ async function adminData() {
     .filter((doc) => ['pending_review', 'onsite_pending'].includes(clean((doc.data() || {}).status)))
     .sort((left, right) => asMillis((right.data() || {}).submittedAt) - asMillis((left.data() || {}).submittedAt))
     .map(adminTuitionPaymentRow);
+  const tuitionReceipts = tuitionReceiptSnapshot.docs
+    .filter((doc) => (doc.data() || {}).active !== false)
+    .sort((left, right) => {
+      const leftRow = left.data() || {};
+      const rightRow = right.data() || {};
+      return dateKey(rightRow.paymentDate).localeCompare(dateKey(leftRow.paymentDate)) ||
+        asMillis(rightRow.createdAt) - asMillis(leftRow.createdAt);
+    })
+    .map(adminTuitionReceiptRow);
   const attendanceCancellations = attendanceCancellationSnapshot.docs
     .map((doc) => Object.assign({ id: doc.id }, jsonValue(doc.data()) || {}))
     .sort((left, right) => asMillis(right.requestedAt) - asMillis(left.requestedAt))
@@ -7270,6 +7455,7 @@ async function adminData() {
     bindings: [...map(teachers), ...map(students), ...map(renters)],
     unpaidSuspensions,
     tuitionPayments,
+    tuitionReceipts,
     attendanceCancellations
   };
 }
