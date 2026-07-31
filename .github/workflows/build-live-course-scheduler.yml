@@ -98,6 +98,7 @@ jobs:
           if (!runtime.includes('function studentPageIndex()')) throw new Error('Indexed student renderer is missing');
           if (!runtime.includes('periodsByStudent=new Map()')) throw new Error('Student tuition-period index is missing');
           if (!runtime.includes('nextByStudent=new Map()')) throw new Error('Shared next-event index is missing');
+          if (!runtime.includes('data-tuition-receipt-url') || !runtime.includes('function openTuitionReceipt')) throw new Error('Student tuition receipt viewing is missing');
           if (runtime.includes('for(var offset=0;offset<=180;offset++){var found=')) throw new Error('Per-student 180-day scan is still enabled');
           if (!runtime.includes("if(data.view==='calendar'){state.currentDate=todayKey()")) throw new Error('Course calendar does not reset to today');
 
