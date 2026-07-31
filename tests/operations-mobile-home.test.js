@@ -53,6 +53,17 @@ test('course management stays in the operations shell and POS price is editable 
   assert.match(source, /只修改本次交易，不會改變商品主檔售價/);
 });
 
+test('POS electric piano rental income rolls into rental operations without helper clutter', () => {
+  const source = read('operations-phase1.js');
+  assert.match(source, /data-mode="pianoRental"[^>]*>電鋼琴租用收入/);
+  assert.match(source, /const rentalRevenue=contractRentalRevenue\+pianoRentalRevenue/);
+  assert.match(source, /metricRow\('電鋼琴租用收入',money\(pianoRentalRevenue\)\)/);
+  assert.doesNotMatch(source, /輸入商品編號或名稱，再點選/);
+  assert.doesNotMatch(source, /也可以使用左側數字鍵盤快速輸入 SKU/);
+  assert.doesNotMatch(source, /商品、價格與收款集中在同一區/);
+  assert.doesNotMatch(source, /加入本次銷售/);
+});
+
 test('mobile profit cards align consistently and keep six-digit values on one line', () => {
   const source = read('operations-phase1.js');
   const approvedCss = read('operations-mobile-home-v1.css');

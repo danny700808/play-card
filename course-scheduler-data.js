@@ -365,5 +365,23 @@
     };
   }
 
-  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,loadPortalRentals:loadPortalRentals,buildState:buildState};
+  async function ensureTuitionReceipt(options){
+    options=options||{};
+    var pin=clean(options.manualSyncPin),periodId=clean(options.periodId);
+    if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
+    if(!periodId)throw new Error('缺少學費期別資料。');
+    var result=await call('coursePortalAdminEnsureTuitionReceipt',{
+      adminPin:pin,
+      periodId:periodId,
+      transactionId:clean(options.transactionId),
+      transactionIndex:Number(options.transactionIndex),
+      paymentDate:dateKey(options.paymentDate),
+      amount:Number(options.amount||0),
+      method:clean(options.method)
+    },{timeout:180000});
+    if(!result.ok||!clean(result.receiptImageUrl))throw new Error('收據尚未建立完成。');
+    return result;
+  }
+
+  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,loadPortalRentals:loadPortalRentals,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);
