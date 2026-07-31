@@ -369,6 +369,66 @@
     return groups;
   }
 
+  function lessonDurationMinutes(row, fallback) {
+    const duration = timeMinutes(row && row.endTime) - timeMinutes(row && row.startTime);
+    return duration >= 30 && duration <= 300 && duration % 30 === 0
+      ? duration
+      : (Number(fallback) || 60);
+  }
+
+  function plannerDurationMinutes() {
+    const duration = Number(planner && planner.durationMinutes);
+    return duration >= 30 && duration <= 300 && duration % 30 === 0
+      ? duration
+      : lessonDurationMinutes(planner && planner.source, 60);
+  }
+
+  function plannerSourceMatches(event) {
+    const source = planner && planner.mode === 'move' && planner.source;
+    if (!source || clean(event && event.date) !== clean(source.date)) return false;
+    const sourceIds = [source.id, source.sourceId, source.fixedCourseId, source.seriesId].map(clean).filter(Boolean);
+    const eventIds = [event.id, event.sourceId, event.fixedCourseId, event.seriesId].map(clean).filter(Boolean);
+    return sourceIds.some((id) => eventIds.includes(id));
+  }
+
+  function eventBlocksPlannerGap(event) {
+    const status = clean(event && event.status).toLowerCase();
+    return !['leave', 'cancelled', 'pending_conflict'].includes(status);
+  }
+
+  function continuousTeacherGapMinutes(events, date, startTime, scheduleEndMinute) {
+    const startMinute = timeMinutes(startTime);
+    let nextBlockMinute = scheduleEndMinute;
+    (events || []).forEach((event) => {
+      if (
+        clean(event.date) !== clean(date) ||
+        !eventBlocksPlannerGap(event) ||
+        plannerSourceMatches(event) ||
+        timeMinutes(event.endTime) <= startMinute
+      ) return;
+      const eventStartMinute = timeMinutes(event.startTime);
+      nextBlockMinute = Math.min(nextBlockMinute, eventStartMinute <= startMinute ? startMinute : eventStartMinute);
+    });
+    return Math.max(0, Math.floor((nextBlockMinute - startMinute) / 30) * 30);
+  }
+
+  function preferredAddDuration(context) {
+    const explicit = Number(context && context.durationMinutes);
+    if (explicit >= 30 && explicit <= 300 && explicit % 30 === 0) return explicit;
+    if (context && context.target) {
+      const targetDuration = lessonDurationMinutes(context.target, 0);
+      if (targetDuration) return targetDuration;
+    }
+    const studentIds = new Set((context && context.studentIds || []).map(clean).filter(Boolean));
+    const subjectId = clean(context && context.subjectId);
+    const related = (data.events || []).filter((event) =>
+      event.own &&
+      (!subjectId || clean(event.subjectId) === subjectId) &&
+      (event.studentIds || []).some((studentId) => studentIds.has(clean(studentId)))
+    );
+    return related.length ? lessonDurationMinutes(related[0], 60) : 60;
+  }
+
   function renderWeek() {
     const grid = document.getElementById('weekGrid');
     const scroll = grid.parentElement;
@@ -379,6 +439,8 @@
     const startHour = Number(data.hours.start || 10);
     const endHour = Number(data.hours.end || 21);
     const scheduleStart = startHour * 60;
+    const scheduleEnd = endHour * 60;
+    const requiredMinutes = planner ? plannerDurationMinutes() : 0;
     const plannerSlots = new Map((planner && planner.slots || []).map((slot) => [
       `${slot.date}|${slot.startTime}`,
       slot
@@ -402,7 +464,16 @@
         html += `<div class="week-cell" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
         if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 1 && !past) {
           if (available) {
-            html += `<button class="empty-slot available-target" type="button" data-flow-target="${day}|${slotStart}">可調入</button>`;
+            html += `<button class="empty-slot available-target" type="button" data-flow-target="${day}|${slotStart}" aria-label="${escapeHtml(`${day} ${slotStart} 可排入連續 ${requiredMinutes} 分鐘`)}"><span>可調入</span><small>${requiredMinutes} 分鐘</small></button>`;
+          } else if (planner) {
+            const gapMinutes = continuousTeacherGapMinutes(events, day, slotStart, scheduleEnd);
+            const shortGap = gapMinutes >= 30 && gapMinutes < requiredMinutes;
+            const label = shortGap ? '時段不足' : '不可排入';
+            const detail = shortGap ? `僅 ${gapMinutes} 分鐘` : '已有衝突';
+            const message = shortGap
+              ? `這裡只有 ${gapMinutes} 分鐘空檔，這堂課需要連續 ${requiredMinutes} 分鐘，不能排入。`
+              : `這個位置無法連續保留 ${requiredMinutes} 分鐘，請選擇綠色的「可調入」時段。`;
+            html += `<button class="empty-slot unavailable-target" type="button" data-unavailable-target="${day}|${slotStart}" data-unavailable-message="${escapeHtml(message)}" aria-disabled="true"><span>${label}</span><small>${detail}</small></button>`;
           } else {
             html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}" aria-label="${escapeHtml(`${day} ${slotStart} 查詢空教室`)}"></button>`;
           }
@@ -782,6 +853,14 @@
 
   async function openQuickForEmpty(date, startTime) {
     const endTime = timeText(timeMinutes(startTime) + 60);
+    const defaultAddDuration = 60;
+    const teacherGapMinutes = continuousTeacherGapMinutes(
+      uniqueEvents((data.events || []).filter((event) => event.own)),
+      date,
+      startTime,
+      Number(data.hours.end || 21) * 60
+    );
+    const defaultAddFits = teacherGapMinutes >= defaultAddDuration;
     if (isPastSlot(date, startTime)) {
       toast('不能安排到已經過去的時間。', 'error');
       return;
@@ -802,17 +881,20 @@
       if (requestId !== availabilityRequestId) return;
       const context = { type: 'target-home', date, startTime, endTime, result };
       const candidateCount = (result.candidateLessons || []).length;
+      const shortGap = teacherGapMinutes >= 30 && !defaultAddFits;
       showQuick(
         '安排這個時段',
         `${dayLabel(date)} ${startTime} 開始`,
         `${choiceSummary(
-          '即時空位已確認',
-          candidateCount ? `有 ${candidateCount} 堂未來課程符合這個開始時間。` : '目前沒有可直接調入的既有課程。',
-          '選擇後，儲存前仍會再檢查一次。'
+          shortGap ? `只有 ${teacherGapMinutes} 分鐘空檔` : '即時空位已確認',
+          shortGap
+            ? `直接新增的課程需要 ${defaultAddDuration} 分鐘，這裡不能加課。`
+            : (candidateCount ? `有 ${candidateCount} 堂未來課程符合這個開始時間。` : '目前沒有可直接調入的既有課程。'),
+          shortGap ? '若有符合這段長度的既有課程，仍可從下方選擇調課。' : '選擇後，儲存前仍會再檢查一次。'
         )}
         ${candidateCount ? '<button class="primary" type="button" data-target-browse>把現有課調到這裡</button>' : ''}
-        <button type="button" data-target-add="extra_lesson">在這裡增加一堂課</button>
-        <button type="button" data-target-add="teacher_gift">在這裡免費贈送一堂</button>
+        ${defaultAddFits ? '<button type="button" data-target-add="extra_lesson">在這裡增加一堂課</button>' : ''}
+        ${defaultAddFits ? '<button type="button" data-target-add="teacher_gift">在這裡免費贈送一堂</button>' : ''}
         <a href="room-booking.html?from=teacher&amp;use=other&amp;date=${encodeURIComponent(date)}&amp;start=${encodeURIComponent(startTime)}&amp;duration=60">租用這個時段的教室</a>`,
         context
       );
@@ -987,6 +1069,7 @@
       action,
       source: row,
       slots: [],
+      durationMinutes: lessonDurationMinutes(row, 60),
       operationId: operationId(),
       requestId
     };
@@ -994,7 +1077,7 @@
     activateTab('schedule');
     setFlowBanner(
       action === 'permanent_move' ? '選擇新的固定時段' : '選擇這一次的新時段',
-      `${lessonSummary(row)}；正在找未來可用位置。`
+      `${lessonSummary(row)}；本堂需要連續 ${planner.durationMinutes} 分鐘，正在找完整空位。`
     );
     setProgress(true, '正在搜尋可用位置', '排除老師、每位學生、教室、設備、政策與既有租用…');
     renderWeek();
@@ -1008,6 +1091,7 @@
         sourceEndTime: row.endTime
       }));
       if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
+      planner.durationMinutes = Number(result.durationMinutes) || planner.durationMinutes;
       planner.slots = (result.slots || []).filter((slot) =>
         !isPastSlot(slot.date, slot.startTime) && Array.isArray(slot.rooms) && slot.rooms.length
       );
@@ -1015,7 +1099,7 @@
       setFlowBanner(
         action === 'permanent_move' ? '選擇新的固定時段' : '選擇這一次的新時段',
         planner.slots.length
-          ? '課表上標示「可調入」的位置都已排除目前衝突；點一個位置後再選教室。'
+          ? `本堂需要連續 ${planner.durationMinutes} 分鐘；只有綠色「可調入・${planner.durationMinutes} 分鐘」能選，時段不足會標紅。`
           : '未來兩週沒有完整可用的位置。'
       );
       renderWeek();
@@ -1071,12 +1155,15 @@
   async function searchAddAvailability(context) {
     const requestId = ++availabilityRequestId;
     const target = context.target;
+    const durationMinutes = preferredAddDuration(context);
+    context.durationMinutes = durationMinutes;
     planner = {
       mode: 'add',
       action: context.action,
       studentIds: context.studentIds,
       subjectId: context.subjectId,
       slots: [],
+      durationMinutes,
       operationId: context.operationId,
       requestId
     };
@@ -1095,12 +1182,13 @@
         exactTarget: Boolean(target),
         date: target && target.date,
         startTime: target && target.startTime,
-        durationMinutes: 60,
+        durationMinutes,
         studentIds: context.studentIds,
         subjectId: context.subjectId
       };
       const result = await invoke('coursePortalTeacherAvailability', payload);
       if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
+      planner.durationMinutes = Number(result.durationMinutes) || durationMinutes;
       planner.slots = (result.slots || []).filter((slot) =>
         !isPastSlot(slot.date, slot.startTime) && Array.isArray(slot.rooms) && slot.rooms.length
       );
@@ -1123,7 +1211,7 @@
       setFlowBanner(
         context.action === 'teacher_gift' ? '選擇免費贈課時間' : '選擇增加課程時間',
         planner.slots.length
-          ? `${studentNamesByIds(context.studentIds).join('、')}・${subjectNameById(context.subjectId)}；點「可調入」後選教室。`
+          ? `${studentNamesByIds(context.studentIds).join('、')}・${subjectNameById(context.subjectId)}需要連續 ${planner.durationMinutes} 分鐘；只有綠色「可調入」能選。`
           : '未來兩週沒有完整可用的位置。'
       );
       renderWeek();
@@ -1212,6 +1300,7 @@
       startTime: slot.startTime,
       endTime: slot.endTime,
       roomId,
+      durationMinutes: planner.durationMinutes,
       operationId: planner.operationId
     };
     return planner.mode === 'move'
@@ -1325,8 +1414,13 @@
 
   document.getElementById('weekGrid').addEventListener('click', (event) => {
     const target = event.target.closest('[data-flow-target]');
+    const unavailableTarget = event.target.closest('[data-unavailable-target]');
     const empty = event.target.closest('[data-empty]');
     const lesson = event.target.closest('[data-event]');
+    if (unavailableTarget && planner) {
+      toast(unavailableTarget.dataset.unavailableMessage || `這個位置無法連續保留 ${plannerDurationMinutes()} 分鐘。`, 'error');
+      return;
+    }
     if (target && planner) {
       const parts = target.dataset.flowTarget.split('|');
       const slot = (planner.slots || []).find((row) => row.date === parts[0] && row.startTime === parts[1]);
@@ -1383,7 +1477,8 @@
       } else {
         beginAddFlow(action, {
           studentIds: context.row.studentIds || [],
-          subjectId: context.row.subjectId || ''
+          subjectId: context.row.subjectId || '',
+          durationMinutes: lessonDurationMinutes(context.row, 60)
         });
       }
       return;
@@ -1427,6 +1522,7 @@
         startTime: context.startTime,
         endTime: context.candidate.targetEndTime,
         roomId: context.roomId,
+        durationMinutes: context.candidate.durationMinutes,
         operationId: operationId()
       });
       showActionConfirmation(payload, {

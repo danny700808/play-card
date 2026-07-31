@@ -2349,6 +2349,20 @@ function assertPortalInterval(startTime, endTime) {
   return duration;
 }
 
+function assertTeacherMoveDuration(targetDuration, source) {
+  const sourceDuration = assertPortalInterval(
+    clean(source && source.startTime).slice(0, 5),
+    clean(source && source.endTime).slice(0, 5)
+  );
+  if (Number(targetDuration) !== sourceDuration) {
+    throw new HttpsError(
+      'failed-precondition',
+      `原課程是 ${sourceDuration} 分鐘，必須選擇可連續使用 ${sourceDuration} 分鐘的時段，不能只排 ${Number(targetDuration) || 0} 分鐘。`
+    );
+  }
+  return sourceDuration;
+}
+
 function safeFrequencyWeeks(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 1) return 1;
@@ -5259,7 +5273,7 @@ async function teacherAction(data) {
   if (!date || !roomId) {
     throw new HttpsError('invalid-argument', '請完整選擇日期、時間與教室。');
   }
-  assertPortalInterval(startTime, endTime);
+  const targetDuration = assertPortalInterval(startTime, endTime);
   if (publicRentalSlotIsPast(date, startTime)) {
     throw new HttpsError('failed-precondition', '不能新增或調課到已經過去的時間。');
   }
@@ -5335,6 +5349,18 @@ async function teacherAction(data) {
     }
     if (action === 'permanent_move' && clean(source.portalAction) === 'single_move') {
       throw new HttpsError('failed-precondition', '這堂已是單次調課結果；請從尚未調整的固定課堂次開始設定之後固定調課。');
+    }
+    assertTeacherMoveDuration(targetDuration, source);
+  } else if (data.durationMinutes != null) {
+    const declaredDuration = Number(data.durationMinutes);
+    if (
+      !Number.isFinite(declaredDuration) ||
+      declaredDuration < 30 ||
+      declaredDuration > 300 ||
+      declaredDuration % 30 !== 0 ||
+      declaredDuration !== targetDuration
+    ) {
+      throw new HttpsError('failed-precondition', '加課時段與課程長度不一致，請重新選擇完整空位。');
     }
   }
 
@@ -5428,6 +5454,7 @@ async function teacherAction(data) {
     date,
     startTime,
     endTime,
+    durationMinutes: targetDuration,
     roomId,
     teacherId: session.teacherId,
     studentId: studentIds[0],

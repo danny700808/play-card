@@ -36,6 +36,10 @@ assert(css.includes('repeat(7,var(--teacher-day-width'), '手機課表未使用�
 assert(css.includes('.teacher-course-app .week-cell.time{position:sticky;left:0'), '時間欄未固定在左側');
 assert(source.includes('minute += 30'), '課表不再使用 30 分鐘網格');
 assert(css.includes('grid-auto-rows:30px'), '手機版 30 分鐘網格高度遺失');
+assert(source.includes('continuousTeacherGapMinutes'), '手機課表未計算可連續使用的完整空檔');
+assert(source.includes('data-unavailable-target'), '手機課表未阻擋只有半小時但課程需要一小時的位置');
+assert(source.includes('可調入</span><small>${requiredMinutes} 分鐘'), '可調入位置未直接標示本堂所需分鐘數');
+assert(css.includes('.empty-slot.unavailable-target'), '時段不足位置缺少紅色提示樣式');
 
 assert(html.includes('id="rosterSearch"'), '學生頁缺少搜尋欄');
 assert(html.includes('placeholder="搜尋學生或老師姓名"'), '學生搜尋提示不清楚');

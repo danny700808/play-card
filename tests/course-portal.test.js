@@ -112,6 +112,11 @@ assert(teacherSource.includes('data-quick-action="permanent_move"'), '老師入�
 assert(teacherSource.includes('coursePortalTeacherSlotOptions'), '老師入口缺少先選空位再選課程的即時查詢');
 assert(teacherSource.includes('data-target-browse'), '老師入口缺少從空白時段調入課程');
 assert(teacherSource.includes('data-planner-room'), '老師入口缺少在課表原地選教室');
+assert(teacherSource.includes('data-unavailable-target'), '老師課表未標示不夠完整課程長度的半小時空檔');
+assert(teacherSource.includes('時段不足') && teacherSource.includes('需要連續'), '老師課表未清楚說明完整課程長度');
+assert(teacherSource.includes('durationMinutes: planner.durationMinutes'), '老師加課未把完整課程長度送到後端再驗證');
+assert(teacherSource.includes('defaultAddFits') && teacherSource.includes('直接新增的課程需要'), '老師直接點半小時空檔時仍可誤按一小時加課');
+assert(teacherCss.includes('.empty-slot.unavailable-target'), '老師課表缺少時段不足的醒目樣式');
 assert(teacherSource.includes('data-confirm-permanent'), '永久調課缺少衝突日期確認');
 assert(teacherSource.includes('includePayroll: activeTab === \'payroll\''), '薪資資料沒有延後到薪資頁查詢');
 assert(!teacherSource.includes("getElementById('actionModal')"), '老師入口仍會跳回舊電腦版大表單');
@@ -465,6 +470,7 @@ function loadBackendForScheduleTests(state) {
       'module.exports.__testEffectiveRentalFee = effectiveRentalFee;\n' +
       'module.exports.__testSafeRentalDisplayName = safeRentalDisplayName;\n' +
       'module.exports.__testRentalSessionDisplayName = rentalSessionDisplayName;\n' +
+      'module.exports.__testAssertTeacherMoveDuration = assertTeacherMoveDuration;\n' +
       'module.exports.__testMergePortalTuitionRows = mergePortalTuitionRows;\n' +
       'module.exports.__testBuildTuitionPaymentCandidates = buildTuitionPaymentCandidates;\n',
       backendPath
@@ -608,6 +614,24 @@ async function runBackendScheduleRegressionTests() {
     }))
   };
   const duplicatePermanentBackend = loadBackendForScheduleTests(duplicatePermanentState);
+  check(() => {
+    assert.strictEqual(
+      duplicatePermanentBackend.__testAssertTeacherMoveDuration(
+        60,
+        { startTime: '15:00', endTime: '16:00' }
+      ),
+      60,
+      '一小時原課程應可排入完整一小時的新時段'
+    );
+    assert.throws(
+      () => duplicatePermanentBackend.__testAssertTeacherMoveDuration(
+        30,
+        { startTime: '15:00', endTime: '16:00' }
+      ),
+      /原課程是 60 分鐘/,
+      '一小時原課程仍可被縮成半小時並卡住相鄰課程'
+    );
+  });
   const [renterDisplayName, teacherDisplayName, studentDisplayName] = await Promise.all([
     duplicatePermanentBackend.__testRentalSessionDisplayName({
       role: 'renter',
