@@ -190,6 +190,114 @@ jobs:
           console.log('Course mirror health check passed', { scheduleCount, directoryCount, counts, runId: data.runId || '' });
           NODE
 
+      - name: Repair and verify July 2026 teacher payroll
+        id: payroll_repair
+        if: steps.deploy_reader.outcome == 'success' && steps.health_check.outcome == 'success'
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
+        run: |
+          set -o pipefail
+          node - <<'NODE' 2>&1 | tee /tmp/course-mirror-payroll-repair.log
+          const admin = require('./functions/node_modules/firebase-admin');
+          if (!admin.apps.length) admin.initializeApp({ projectId: 'youzi-c1b74' });
+          const {
+            syncOperationsTeacherPayrollRange,
+            teacherPayrollRepairPlan
+          } = require('./functions/injiaoyunEducationMirror');
+
+          const db = admin.firestore();
+          const dates = Array.from({ length: 31 }, (_, index) =>
+            `2026-07-${String(index + 1).padStart(2, '0')}`
+          );
+
+          async function activeSourcesForDates(collectionName) {
+            const rows = new Map();
+            for (let index = 0; index < dates.length; index += 30) {
+              const chunk = dates.slice(index, index + 30);
+              let snapshot;
+              try {
+                snapshot = await db.collection(collectionName).where('source.date', 'in', chunk).get();
+              } catch (error) {
+                console.warn(`[${collectionName} date query fallback]`, error.message);
+                snapshot = await db.collection(collectionName).get();
+              }
+              snapshot.docs.forEach((doc) => {
+                const envelope = doc.data() || {};
+                const source = envelope.source || {};
+                if (envelope.sourceActive === false || !dates.includes(String(source.date || '').slice(0, 10))) return;
+                const id = String(source.id || source.sourceId || doc.id);
+                rows.set(id, source);
+              });
+            }
+            return [...rows.values()];
+          }
+
+          (async () => {
+            const [operationsSnapshot, mirrorSnapshot] = await Promise.all([
+              db.collection('opsSettings').doc('injiaoyunCloudSync').get(),
+              db.collection('opsSettings').doc('injiaoyunEducationMirror').get()
+            ]);
+            if (!operationsSnapshot.exists) throw new Error('Missing opsSettings/injiaoyunCloudSync.');
+            const operations = operationsSnapshot.data() || {};
+            const mirror = mirrorSnapshot.exists ? mirrorSnapshot.data() || {} : {};
+            const repair = teacherPayrollRepairPlan(operations, mirror);
+            if (repair) {
+              const result = await syncOperationsTeacherPayrollRange(
+                operations,
+                'github-deploy-july-2026-teacher-payroll-repair',
+                { range: repair, repair }
+              );
+              console.log('July teacher payroll repair result', result);
+              if (!['success', 'current', 'current-repaired'].includes(String(result && result.status))) {
+                throw new Error(`July teacher payroll repair did not finish: ${String(result && result.status)}`);
+              }
+            } else {
+              console.log('July teacher payroll repair marker is already complete; verifying current mirror.');
+            }
+
+            const [payroll, adjustments] = await Promise.all([
+              activeSourcesForDates('opsEducationMirrorTeacherPayroll'),
+              activeSourcesForDates('opsEducationMirrorTeacherAdjustments')
+            ]);
+            const basePay = payroll.reduce((sum, row) => sum + Number(row.teacherAmount || 0), 0);
+            const rewards = adjustments
+              .filter((row) => String(row.type || '').toLowerCase() === 'reward')
+              .reduce((sum, row) => sum + Math.abs(Number(row.amount || 0)), 0);
+            const deductions = adjustments
+              .filter((row) => String(row.type || '').toLowerCase() === 'deduction')
+              .reduce((sum, row) => sum + Math.abs(Number(row.amount || 0)), 0);
+            const actualPay = basePay + rewards - deductions;
+            const verified = {
+              payrollRows: payroll.length,
+              basePay,
+              rewardRows: adjustments.filter((row) => String(row.type || '').toLowerCase() === 'reward').length,
+              rewards,
+              deductionRows: adjustments.filter((row) => String(row.type || '').toLowerCase() === 'deduction').length,
+              deductions,
+              actualPay
+            };
+            console.log('July 2026 teacher payroll verified', verified);
+            const expected = {
+              payrollRows: 463,
+              basePay: 199705,
+              rewardRows: 11,
+              rewards: 1496,
+              deductionRows: 0,
+              deductions: 0,
+              actualPay: 201201
+            };
+            for (const [key, value] of Object.entries(expected)) {
+              if (verified[key] !== value) {
+                throw new Error(`July payroll verification failed: ${key}=${verified[key]}, expected ${value}.`);
+              }
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
       - name: Upload course mirror diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -199,6 +307,7 @@ jobs:
             /tmp/firebase-course-mirror-deploy.log
             /tmp/course-mirror-public-access.log
             /tmp/course-mirror-response.json
+            /tmp/course-mirror-payroll-repair.log
           if-no-files-found: warn
           retention-days: 7
 
@@ -211,18 +320,21 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DEPLOY_OUTCOME: ${{ steps.deploy_reader.outcome }}
           ACCESS_OUTCOME: ${{ steps.public_access.outcome }}
-          HEALTH_OUTCOME: ${{ steps.health_check.outcome }}
+          HEALTH_OUTCOME: ${{ steps.health_check.outcome == 'success' && steps.payroll_repair.outcome == 'success' && 'success' || 'failure' }}
+          PAYROLL_REPAIR_OUTCOME: ${{ steps.payroll_repair.outcome }}
         run: node .github/scripts/course-mirror-report.cjs
 
-      - name: Fail workflow when deployment, access, or health check failed
-        if: steps.deploy_reader.outcome != 'success' || steps.public_access.outcome != 'success' || steps.health_check.outcome != 'success'
+      - name: Fail workflow when deployment, access, health check, or payroll repair failed
+        if: steps.deploy_reader.outcome != 'success' || steps.public_access.outcome != 'success' || steps.health_check.outcome != 'success' || steps.payroll_repair.outcome != 'success'
         run: |
           echo "Deployment outcome: ${{ steps.deploy_reader.outcome }}"
           echo "Public access outcome: ${{ steps.public_access.outcome }}"
           echo "Health outcome: ${{ steps.health_check.outcome }}"
+          echo "Payroll repair outcome: ${{ steps.payroll_repair.outcome }}"
           test -f /tmp/firebase-course-mirror-deploy.log && tail -n 100 /tmp/firebase-course-mirror-deploy.log || true
           test -f /tmp/course-mirror-public-access.log && tail -n 100 /tmp/course-mirror-public-access.log || true
           test -f /tmp/course-mirror-response.json && cat /tmp/course-mirror-response.json || true
+          test -f /tmp/course-mirror-payroll-repair.log && tail -n 100 /tmp/course-mirror-payroll-repair.log || true
           exit 1
 
       - name: Remove service account file
