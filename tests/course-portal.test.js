@@ -159,7 +159,8 @@ assert(teacherSource.includes('coursePortalTeacherAttendance'), '老師端缺少
 assert(teacherSource.includes('coursePortalTeacherLateAttendance'), '老師端缺少逾期補簽到');
 assert(teacherSource.includes('coursePortalTeacherAttendanceCancellationRequest'), '老師端缺少取消簽到送主管審核');
 assert(teacherSource.includes('row.date === todayKey()'), '老師正常簽到未限制當天');
-assert(teacherSource.includes('補簽到（行政費 NT$50）'), '老師補簽到未清楚顯示行政費');
+assert(teacherSource.includes("giftLesson ? '補簽到（贈送課程不收行政費）' : '補簽到'"), '補簽按鈕不應在老師點擊前顯示行政費');
+assert(teacherSource.includes('補簽到會收取行政處理費 NT$50'), '老師點擊補簽後未清楚顯示行政費');
 assert(adminPortal.includes('停課學費未繳清'), '管理者頁缺少停課學費未繳清專區');
 assert(adminPortal.includes('coursePortalAdminSuspensionAction'), '管理者欠費簽核未連接後端');
 assert(adminPortal.includes('取消簽到待確認'), '管理者頁缺少取消簽到審核窗口');
@@ -188,6 +189,9 @@ assert(studentPortal.includes('student-bottom-tabs') && studentPortal.includes('
 assert(studentPortal.includes('coursePortalStudentContactBookImage'), '學生入口無法安全查看聯絡簿照片');
 assert(studentPortal.includes('newSystemPeriodNumber(row)'), '學生繳費視窗沒有換算新系統期數');
 assert(!studentPortal.includes('第 ${Number(row.nextPeriodNo || 0)} 期'), '學生繳費視窗仍直接顯示舊系統原始期數');
+assert(studentPortal.includes('row.systemPeriodNo'), '學生期別卡未使用持久的新系統期數');
+assert(studentPortal.includes('item.targetPeriodId === row.id'), '學費申請沒有唯一綁定目標期別');
+assert(studentPortal.includes('id="upcomingCourseList"'), '學生入口沒有顯示接下來的課程');
 assert(studentPortal.includes('period-payment-amount') && studentPortal.includes('period-payment-state'), '學生學費資訊沒有整理成卡片內的獨立圖框');
 assert(!studentPortal.includes('未指定老師') && !studentPortal.includes('尚未指定'), '學生老師聯絡區仍顯示多餘的未登記提示');
 assert(teacherSource.includes('data-quick-contact-book'), '老師課表缺少課堂聯絡簿操作');
@@ -1257,7 +1261,17 @@ assert(backend.includes("admin.storage().bucket().file(storagePath).save"), '匯
 assert(backend.includes("cacheControl: 'private, no-store, max-age=0'"), '匯款截圖沒有設定私人禁止快取');
 assert(backend.includes('mergePortalTuitionRows'), '主管確認後的期別與付款沒有合併回學費資料');
 assert(backend.includes("schedule: '0 * * * *'"), '第 4 堂學費 LINE 提醒不是每小時檢查');
-assert(backend.includes('taipeiDateTimeMillis(row.date, row.endTime) > Date.now()'), '租用進行中無法取消');
+assert(backend.includes("schedule: '0 9 * * *'"), '老師每日課程 LINE 提醒不是台北時間上午 9 點');
+assert(backend.includes('此課程昨日未完成簽到，因此尚未記錄堂數'), '老師昨日未完成紀錄缺少確認後文字');
+const teacherDailyReminderSource = backend.slice(
+  backend.indexOf('async function dailyTeacherCourseReminders('),
+  backend.indexOf('async function dailyStudentReminders(')
+);
+assert(!teacherDailyReminderSource.includes('ATTENDANCE_ADMIN_FEE'), '昨日未完成 LINE 提醒不應提前顯示補簽行政費');
+assert(backend.includes('taipeiDateTimeMillis(row.date, row.startTime) > Date.now()'), '租用開始後仍可自行取消');
+assert(backend.includes('const PORTAL_MAX_ADVANCE_MONTHS = 2'), '老師新增／調課與租用未限制兩個月內');
+assert(backend.includes("const TUITION_SYSTEM_PERIODS = 'coursePortalTuitionSystemPeriods'"), '新系統期數沒有持久保存');
+assert(backend.includes("source: 'attendance-cancellation-approved'"), '隔日取消簽到核准後沒有保留堂數補回稽核');
 assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少開始前一小時提醒');
 assert(backend.includes("action === 'delete'"), '後台綁定管理缺少刪除登入資料');
 assert(backend.includes("approvalStatus: approved ? 'approved' : 'pending'"), '一般登入的新綁定未進入主管核准流程');
