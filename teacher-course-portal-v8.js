@@ -413,20 +413,7 @@
   }
 
   function preferredAddDuration(context) {
-    const explicit = Number(context && context.durationMinutes);
-    if (explicit >= 30 && explicit <= 300 && explicit % 30 === 0) return explicit;
-    if (context && context.target) {
-      const targetDuration = lessonDurationMinutes(context.target, 0);
-      if (targetDuration) return targetDuration;
-    }
-    const studentIds = new Set((context && context.studentIds || []).map(clean).filter(Boolean));
-    const subjectId = clean(context && context.subjectId);
-    const related = (data.events || []).filter((event) =>
-      event.own &&
-      (!subjectId || clean(event.subjectId) === subjectId) &&
-      (event.studentIds || []).some((studentId) => studentIds.has(clean(studentId)))
-    );
-    return related.length ? lessonDurationMinutes(related[0], 60) : 60;
+    return 60;
   }
 
   function renderWeek() {
@@ -775,28 +762,40 @@
       return;
     }
     const status = clean(row.status || 'scheduled').toLowerCase();
+    const today = todayKey();
+    const pastDate = row.date < today;
+    const sameDay = row.date === today;
+    const started = sameDay && isPastSlot(row.date, row.startTime);
+    const futureOrToday = row.date >= today;
+    const singleStudent = (row.studentIds || []).length <= 1;
     const movable = !isPastSlot(row.date, row.startTime) && status === 'scheduled';
     const attended = ['attended', 'checked_in', 'present'].includes(status);
-    const canNormalAttendance = row.date === todayKey() && isPastSlot(row.date, row.startTime) && status === 'scheduled';
-    const canLateAttendance = row.date < todayKey() && ['scheduled', 'absent'].includes(status);
+    const canNormalAttendance = started && status === 'scheduled';
+    const canLateAttendance = pastDate && ['scheduled', 'absent'].includes(status);
     const cancellationPending = clean(row.attendanceCancellationStatus) === 'pending';
-    const canLessonState = status === 'scheduled';
+    const canLeave = futureOrToday && singleStudent && status === 'scheduled';
+    const canAbsent = started && singleStudent && status === 'scheduled';
+    const canAddFromLesson = !pastDate;
+    const giftLesson = row.specialLesson === true ||
+      clean(row.portalAction) === 'teacher_gift' ||
+      clean(row.type) === 'teacher_gift';
+    const canContactBook = attended || started;
     showQuick(
       (row.studentNames || []).join('、') || '這堂課',
       `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`,
       `
       ${movable ? '<button class="primary" type="button" data-quick-action="single_move">只調這一次</button>' : ''}
       ${movable && row.recurring === true ? '<button type="button" data-quick-action="permanent_move">之後固定改到新時段</button>' : ''}
-      <button type="button" data-quick-action="extra_lesson">增加一堂課</button>
-      <button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>
-      ${canLessonState ? '<button type="button" data-quick-state="leave">學生請假</button>' : ''}
-      ${canLessonState ? '<button class="danger" type="button" data-quick-state="absent">標示曠課</button>' : ''}
+      ${canAddFromLesson ? '<button type="button" data-quick-action="extra_lesson">增加一堂課</button>' : ''}
+      ${canAddFromLesson ? '<button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>' : ''}
+      ${canLeave ? '<button type="button" data-quick-state="leave">學生請假</button>' : ''}
+      ${canAbsent ? '<button class="danger" type="button" data-quick-state="absent">標示曠課</button>' : ''}
       ${canNormalAttendance ? '<button class="primary" type="button" data-quick-attendance>✓ 當日簽到</button>' : ''}
-      ${canLateAttendance ? '<button type="button" data-quick-late>補簽到（行政費 NT$50）</button>' : ''}
-      <button type="button" data-quick-contact-book>寫課堂聯絡簿</button>
-      ${attended && !cancellationPending ? '<button class="danger" type="button" data-quick-cancel-attendance>申請取消簽到（行政費 NT$50）</button>' : ''}
+      ${canLateAttendance ? `<button type="button" data-quick-late>${giftLesson ? '補簽到（贈送課程不收行政費）' : '補簽到'}</button>` : ''}
+      ${canContactBook ? '<button type="button" data-quick-contact-book>寫課堂聯絡簿</button>' : ''}
+      ${attended && !cancellationPending ? `<button class="danger" type="button" data-quick-cancel-attendance>${sameDay ? '取消簽到' : '申請取消簽到'}</button>` : ''}
       ${cancellationPending ? '<div class="notice">取消簽到已送出，正在等待主管確認；目前紀錄仍維持已簽到。</div>' : ''}
-      ${row.portalChangeId && ['extra_lesson', 'teacher_gift'].includes(clean(row.portalAction))
+      ${!pastDate && row.portalChangeId && ['extra_lesson', 'teacher_gift'].includes(clean(row.portalAction))
         ? '<button class="danger" type="button" data-quick-state="cancel_change">取消此次新增</button>'
         : ''}
     `,
@@ -895,7 +894,7 @@
         ${candidateCount ? '<button class="primary" type="button" data-target-browse>把現有課調到這裡</button>' : ''}
         ${defaultAddFits ? '<button type="button" data-target-add="extra_lesson">在這裡增加一堂課</button>' : ''}
         ${defaultAddFits ? '<button type="button" data-target-add="teacher_gift">在這裡免費贈送一堂</button>' : ''}
-        <a href="room-booking.html?from=teacher&amp;use=other&amp;date=${encodeURIComponent(date)}&amp;start=${encodeURIComponent(startTime)}&amp;duration=60">租用這個時段的教室</a>`,
+        <a href="room-booking.html?from=teacher&amp;use=other&amp;date=${encodeURIComponent(date)}&amp;start=${encodeURIComponent(startTime)}&amp;duration=${teacherGapMinutes >= 60 ? 60 : 30}">租用這個時段的教室</a>`,
         context
       );
     } catch (error) {
@@ -940,7 +939,14 @@
   }
 
   async function updateLateAttendance(row, button) {
-    if (!row || !confirm('補簽到會收取行政處理費 NT$50，並直接列入本月薪資扣款。確定要補簽到嗎？')) return;
+    if (!row) return;
+    const giftLesson = row.specialLesson === true ||
+      clean(row.portalAction) === 'teacher_gift' ||
+      clean(row.type) === 'teacher_gift';
+    const confirmation = giftLesson
+      ? '確定補簽這堂贈送課程？本次不收行政處理費。'
+      : '補簽到會收取行政處理費 NT$50，並直接列入本月薪資扣款。確定要補簽到嗎？';
+    if (!confirm(confirmation)) return;
     loading(button, true, '補簽中…');
     try {
       const result = await invoke('coursePortalTeacherLateAttendance', {
@@ -961,7 +967,7 @@
   }
 
   async function updateAttendance(row, button) {
-    if (!row || !confirm('確定完成這堂課的當日簽到？完成後不能自行修改，如有誤必須申請主管取消。')) return;
+    if (!row || !confirm('確定完成這堂課的當日簽到？若當天發現誤簽，可以直接取消；隔天後則需主管核准。')) return;
     loading(button, true, '簽到中…');
     try {
       const result = await invoke('coursePortalTeacherAttendance', {
@@ -984,6 +990,30 @@
 
   async function requestAttendanceCancellation(row, button) {
     if (!row) return;
+    const sameDay = row.date === todayKey();
+    if (sameDay) {
+      if (!confirm('確定取消這堂課的當日簽到？取消後不計堂數，家長端會恢復為未使用。')) return;
+      loading(button, true, '取消中…');
+      try {
+        const result = await invoke('coursePortalTeacherAttendanceCancellationRequest', {
+          sessionToken: token,
+          sourceEventId: row.sourceId || row.id,
+          sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
+          sourceDate: row.date,
+          portalChangeId: row.portalChangeId,
+          reason: '老師當日誤簽到'
+        });
+        closeQuick();
+        clearCache();
+        toast(result.message || '當日簽到已取消。');
+        await load(true);
+      } catch (error) {
+        toast(error.message, 'error');
+      } finally {
+        loading(button, false);
+      }
+      return;
+    }
     const reason = prompt(
       '請輸入取消簽到原因。送出後必須由主管核准，核准時會扣除行政處理費 NT$50：',
       '老師誤簽到'
@@ -1276,7 +1306,7 @@
   }
 
   function renderTargetMoveActions(context, candidate) {
-    const recurring = candidate.recurring === true;
+    const recurring = candidate.permanentMoveAllowed === true;
     showQuick(
       '選擇調課方式',
       `${dayLabel(context.date)} ${context.startTime}・${roomNameById(context.roomId, context.result.rooms)}`,
@@ -1477,8 +1507,7 @@
       } else {
         beginAddFlow(action, {
           studentIds: context.row.studentIds || [],
-          subjectId: context.row.subjectId || '',
-          durationMinutes: lessonDurationMinutes(context.row, 60)
+          subjectId: context.row.subjectId || ''
         });
       }
       return;
