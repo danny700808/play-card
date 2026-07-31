@@ -581,7 +581,7 @@ function tuitionBasePaidAmount(row) {
   ));
 }
 
-function mergePortalTuitionRows(rows, portalDocs, transactionDocs) {
+function mergePortalTuitionRows(rows, portalDocs, transactionDocs, receiptDocs = []) {
   const merged = new Map((rows || []).map((row) => [sourceId(row), Object.assign({}, row)]).filter(([id]) => id));
   (portalDocs || []).forEach((doc) => {
     const source = jsonValue(typeof doc.data === 'function' ? doc.data() : doc) || {};
@@ -612,22 +612,62 @@ function mergePortalTuitionRows(rows, portalDocs, transactionDocs) {
       transactions: existing.concat(additions)
     }));
   });
+  const receiptsByPeriod = new Map();
+  (receiptDocs || []).forEach((doc) => {
+    const source = jsonValue(typeof doc.data === 'function' ? doc.data() : doc) || {};
+    if (source.active === false || clean(source.status) !== 'issued' || !clean(source.imageUrl)) return;
+    const periodId = clean(source.periodId);
+    if (!periodId) return;
+    if (!receiptsByPeriod.has(periodId)) receiptsByPeriod.set(periodId, []);
+    receiptsByPeriod.get(periodId).push(Object.assign({ id: clean(source.id || doc.id) }, source));
+  });
+  receiptsByPeriod.forEach((receipts, periodId) => {
+    const period = merged.get(periodId);
+    if (!period) return;
+    const transactions = (Array.isArray(period.transactions) ? period.transactions : []).map((row, index) => {
+      if (clean(row && row.type) === 'refund') return row;
+      const transactionId = clean(row && row.id);
+      const date = dateKey(row && (row.date || row.created));
+      const amount = transactionAmount(row);
+      const method = clean(row && (row.method || row.payType || row.paymentMethod));
+      const receipt = receipts.find((item) =>
+        (transactionId && clean(item.transactionId) === transactionId) ||
+        (
+          Number(item.transactionIndex) === index &&
+          dateKey(item.paymentDate) === date &&
+          Number(item.amount || 0) === amount &&
+          (clean(item.method) === method || !method || clean(item.method) === '既有繳費')
+        )
+      );
+      if (!receipt) return row;
+      return Object.assign({}, row, {
+        receiptId: clean(receipt.id),
+        receiptNo: clean(receipt.receiptNo),
+        receiptImageUrl: clean(receipt.imageUrl)
+      });
+    });
+    merged.set(periodId, Object.assign({}, period, { transactions }));
+  });
   return [...merged.values()];
 }
 
 async function portalTuitionDocuments(studentId = '') {
   const periodCollection = db.collection(TUITION_PERIODS);
   const transactionCollection = db.collection(TUITION_TRANSACTIONS);
+  const receiptCollection = db.collection(TUITION_RECEIPTS);
   const normalizedStudentId = clean(studentId);
-  const [periods, transactions] = await Promise.all([
+  const [periods, transactions, receipts] = await Promise.all([
     normalizedStudentId
       ? periodCollection.where('studentId', '==', normalizedStudentId).get()
       : periodCollection.get(),
     normalizedStudentId
       ? transactionCollection.where('studentId', '==', normalizedStudentId).get()
-      : transactionCollection.get()
+      : transactionCollection.get(),
+    normalizedStudentId
+      ? receiptCollection.where('studentId', '==', normalizedStudentId).get()
+      : receiptCollection.get()
   ]);
-  return { periods: periods.docs, transactions: transactions.docs };
+  return { periods: periods.docs, transactions: transactions.docs, receipts: receipts.docs };
 }
 
 function firstArray(row, keys) {
@@ -645,7 +685,7 @@ async function mirrorRows(type) {
   if (type === 'students') return mergeStudentProfileOverrides(rows);
   if (type === 'tuitionPeriods') {
     const portal = await portalTuitionDocuments();
-    rows = mergePortalTuitionRows(rows, portal.periods, portal.transactions);
+    rows = mergePortalTuitionRows(rows, portal.periods, portal.transactions, portal.receipts);
   }
   return rows;
 }
@@ -727,7 +767,7 @@ async function mirrorRowsByField(type, field, value) {
   }
   if (type === 'tuitionPeriods') {
     const portal = await portalTuitionDocuments(field === 'studentId' ? value : '');
-    rows = mergePortalTuitionRows(rows, portal.periods, portal.transactions)
+    rows = mergePortalTuitionRows(rows, portal.periods, portal.transactions, portal.receipts)
       .filter((row) => clean(row[field]) === clean(value));
   }
   return rows;
@@ -6889,6 +6929,112 @@ function adminTuitionReceiptRow(doc) {
   };
 }
 
+async function adminEnsureTuitionReceipt(data) {
+  const periodId = clean(data.periodId);
+  if (!periodId) throw new HttpsError('invalid-argument', '缺少學費期別資料。');
+  const periods = await mirrorRows('tuitionPeriods');
+  const period = periods.find((row) => sourceId(row) === periodId);
+  if (!period) throw new HttpsError('not-found', '找不到這筆學費期別。');
+  const transactions = Array.isArray(period.transactions) ? period.transactions : [];
+  const requestedId = clean(data.transactionId);
+  const requestedIndex = Number.isInteger(Number(data.transactionIndex)) ? Number(data.transactionIndex) : -1;
+  let transactionIndex = transactions.findIndex((row) => requestedId && clean(row && row.id) === requestedId);
+  if (transactionIndex < 0 && requestedIndex >= 0 && requestedIndex < transactions.length) transactionIndex = requestedIndex;
+  if (transactionIndex < 0) {
+    const requestedDate = dateKey(data.paymentDate);
+    const requestedAmount = Math.max(0, Number(data.amount || 0));
+    const requestedMethod = clean(data.method);
+    transactionIndex = transactions.findIndex((row) =>
+      clean(row && row.type) !== 'refund' &&
+      dateKey(row && (row.date || row.created)) === requestedDate &&
+      transactionAmount(row) === requestedAmount &&
+      clean(row && (row.method || row.payType || row.paymentMethod)) === requestedMethod
+    );
+  }
+  const transaction = transactions[transactionIndex];
+  if (!transaction || clean(transaction.type) === 'refund') {
+    throw new HttpsError('not-found', '找不到可開立收據的收費紀錄。');
+  }
+  const amount = transactionAmount(transaction);
+  if (!amount) throw new HttpsError('failed-precondition', '這筆收費金額為 0，無法開立收據。');
+  const studentId = clean(period.studentId);
+  const students = await mirrorRows('students');
+  const student = students.find((row) => sourceId(row) === studentId) || {};
+  const paymentDate = dateKey(transaction.date || transaction.created || period.startDate) || currentTaipeiDay();
+  const method = clean(transaction.method || transaction.payType || transaction.paymentMethod) || '既有繳費';
+  const actualTransactionId = clean(transaction.id);
+  const identity = `${periodId}|${actualTransactionId}|${transactionIndex}|${paymentDate}|${amount}|${method}`;
+  const receiptId = `tuition-receipt-history-${hash(identity).slice(0, 24)}`;
+  const receiptNo = `RCT-${paymentDate.replace(/-/g, '')}-${hash(identity).slice(0, 6).toUpperCase()}`;
+  const receiptRef = db.collection(TUITION_RECEIPTS).doc(receiptId);
+  const existing = await receiptRef.get();
+  const existingRow = existing.exists ? existing.data() || {} : {};
+  if (clean(existingRow.imageUrl)) {
+    return {
+      ok: true,
+      receiptId,
+      receiptNo: clean(existingRow.receiptNo) || receiptNo,
+      receiptImageUrl: clean(existingRow.imageUrl),
+      created: false
+    };
+  }
+  await receiptRef.set({
+    id: receiptId,
+    receiptNo,
+    active: true,
+    source: 'historical-admin-backfill',
+    status: 'issued',
+    renderStatus: 'pending',
+    studentId,
+    studentName: clean(student.name) || clean(period.studentName) || '學生',
+    subjectId: clean(period.subjectId),
+    periodId,
+    transactionId: actualTransactionId,
+    transactionIndex,
+    paymentDate,
+    amount,
+    method,
+    printWidthCm: 15,
+    printHeightCm: 10,
+    lineDeliveryStatus: 'historical_not_sent',
+    createdAt: existing.exists ? (existingRow.createdAt || FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
+    createdAtText: clean(existingRow.createdAtText) || nowText(),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  try {
+    const receiptBuffer = await renderTuitionReceiptPng({
+      paymentDate,
+      studentName: clean(student.name) || clean(period.studentName) || '學生',
+      amount
+    });
+    const savedReceipt = await saveTuitionReceiptImage(receiptId, receiptBuffer);
+    await receiptRef.set({
+      renderStatus: 'ready',
+      imageUrl: savedReceipt.imageUrl,
+      imageStoragePath: savedReceipt.storagePath,
+      imageContentType: 'image/png',
+      imageBytes: receiptBuffer.length,
+      renderedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    return {
+      ok: true,
+      receiptId,
+      receiptNo,
+      receiptImageUrl: savedReceipt.imageUrl,
+      created: true
+    };
+  } catch (error) {
+    const message = clean(error && error.message) || '收據圖片產生失敗';
+    await receiptRef.set({
+      renderStatus: 'failed',
+      renderError: message.slice(0, 500),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    throw new HttpsError('internal', `收據建立失敗：${message}`);
+  }
+}
+
 async function adminTuitionPaymentAction(data) {
   const id = clean(data.id);
   const action = clean(data.action);
@@ -7822,14 +7968,15 @@ async function dailyStudentReminders(pushLineMessage) {
 
 async function appendCoursePortalData(payload) {
   if (!payload || typeof payload !== 'object') return payload;
-  const [changes, bookings, roomSettings, studentProfiles, suspensions, portalPeriods, portalTransactions] = await Promise.all([
+  const [changes, bookings, roomSettings, studentProfiles, suspensions, portalPeriods, portalTransactions, portalReceipts] = await Promise.all([
     db.collection('coursePortalScheduleChanges').where('active', '==', true).get(),
     db.collection('coursePortalRoomBookings').where('active', '==', true).get(),
     db.collection('coursePortalRoomSettings').get(),
     db.collection('coursePortalStudentProfiles').get(),
     db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get(),
     db.collection(TUITION_PERIODS).get(),
-    db.collection(TUITION_TRANSACTIONS).get()
+    db.collection(TUITION_TRANSACTIONS).get(),
+    db.collection(TUITION_RECEIPTS).get()
   ]);
   const roomSettingsMap = new Map(roomSettings.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
   const studentProfileMap = new Map(studentProfiles.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
@@ -7847,7 +7994,8 @@ async function appendCoursePortalData(payload) {
     payload.tuitionPeriods = mergePortalTuitionRows(
       payload.tuitionPeriods,
       portalPeriods.docs,
-      portalTransactions.docs
+      portalTransactions.docs,
+      portalReceipts.docs
     );
   }
   if (Array.isArray(payload.rooms)) {
@@ -8102,6 +8250,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalAdminTuitionPaymentAction = callable(async (data, request) => {
     assertAdminPin(request);
     return adminTuitionPaymentAction(data);
+  }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalAdminEnsureTuitionReceipt = callable(async (data, request) => {
+    assertAdminPin(request);
+    return adminEnsureTuitionReceipt(data);
   }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalAdminTuitionPaymentScreenshot = callable(async (data, request) => {
     assertAdminPin(request);

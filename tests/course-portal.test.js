@@ -210,12 +210,16 @@ assert.strictEqual(tuitionReceiptTemplate.readUInt32BE(16), 1500, '學費收據�
 assert.strictEqual(tuitionReceiptTemplate.readUInt32BE(20), 1000, '學費收據圖片高度不是 1000 像素');
 assert(contactPortalFunctions.includes("const TUITION_RECEIPTS = 'coursePortalTuitionReceipts'"), '後端缺少學費收據資料集合');
 assert(contactPortalFunctions.includes('renderTuitionReceiptPng') && contactPortalFunctions.includes('saveTuitionReceiptImage'), '後端沒有產生與保存學費收據圖片');
+assert(contactPortalFunctions.includes('adminEnsureTuitionReceipt') && contactPortalFunctions.includes('historical-admin-backfill'), '管理者無法替舊繳費紀錄補建收據');
+assert(contactPortalFunctions.includes('historical_not_sent'), '舊收據補建流程不可誤傳歷史 LINE 通知');
 assert(contactPortalFunctions.includes('forceBoundDelivery: true') && contactPortalFunctions.includes('lineImageUrl'), '已綁定 LINE 的家長沒有自動收到收據圖片');
 assert(contactPortalFunctions.includes("@expo-google-fonts/noto-sans-tc/700Bold/NotoSansTC_700Bold.ttf"), '後端缺少可在雲端部署的繁體中文字型');
 assert(!studentPortal.includes('data-issued-receipt'), '學生個人頁不應顯示管理者補印收據功能');
+assert(!studentPortal.includes('查看／補印收據'), '學生個人頁不應顯示查看／補印收據按鈕');
 assert(!contactPortalFunctions.includes('老師資料尚未登記 Email'), '老師 LINE 註冊仍被既有 Email 欄位阻擋');
 const contactRules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8');
 const contactDeployment = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8');
+assert(contactDeployment.includes('functions:coursePortalAdminEnsureTuitionReceipt'), '舊繳費收據補建 Function 未加入部署清單');
 assert(contactPortalFunctions.includes("const CONTACT_BOOK_POSTS = 'coursePortalLessonContactPosts'"), '課堂聯絡簿缺少私密資料集合');
 assert(contactPortalFunctions.includes('coursePortalTeacherSubmitContactBookPost') && contactPortalFunctions.includes('coursePortalStudentContactBookImage'), '課堂聯絡簿 Callable Functions 不完整');
 assert(contactPortalFunctions.includes('linkedAttendance') && contactPortalFunctions.includes('teacherPhone'), '學生入口無法從課程與簽到資料補出老師聯絡資訊');
