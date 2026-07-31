@@ -324,7 +324,7 @@ jobs:
           PAYROLL_REPAIR_OUTCOME: ${{ steps.payroll_repair.outcome }}
         run: node .github/scripts/course-mirror-report.cjs
 
-      - name: Fail workflow when deployment, access, health check, or payroll repair failed
+      - name: Fail workflow when deployment, access, or health check failed (including payroll repair)
         if: steps.deploy_reader.outcome != 'success' || steps.public_access.outcome != 'success' || steps.health_check.outcome != 'success' || steps.payroll_repair.outcome != 'success'
         run: |
           echo "Deployment outcome: ${{ steps.deploy_reader.outcome }}"
