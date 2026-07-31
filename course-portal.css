@@ -91,6 +91,8 @@ a { color: inherit; }
 .lesson-slot.used { border-style:solid; border-color:#b7dace; background:var(--green-soft); color:var(--ink); }
 .lesson-slot.payment-due{border-color:#e1adba;background:#fff0f3;color:#9c3148}.lesson-slot.payment-due small{font-weight:900}
 .lesson-slot strong { font-size:12px; }.lesson-slot span,.lesson-slot small { font-size:11px; }
+.period-restored-note{display:inline-flex;margin-top:5px;padding:4px 7px;border-radius:999px;background:#eef7f3;color:var(--green);font-size:11px;font-weight:800}
+.upcoming-course-list{display:grid;gap:6px;margin-bottom:12px}.upcoming-course-title{font-size:13px;font-weight:900;color:var(--green)}.upcoming-course-row{display:grid;gap:2px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#f8fbf9}.upcoming-course-row strong{font-size:12px}.upcoming-course-row span{font-size:11px;color:var(--muted)}
 .contact-book-post { display:grid; gap:6px; }.contact-book-post p { margin:0; white-space:normal; }
 .contact-book-images { display:flex; flex-wrap:wrap; gap:7px; }.contact-image-button { border:1px solid #cce6db; background:var(--green-soft); color:var(--green); border-radius:8px; padding:6px 9px; cursor:pointer; }
 .contact-book-image { display:block; max-width:100%; max-height:420px; border-radius:10px; border:1px solid var(--line); }
@@ -278,6 +280,7 @@ a { color: inherit; }
   .list-row>:first-child{grid-column:1/-1;font-size:10px}
   .badge{padding:2px 5px;font-size:7px}
   .period-card,.contact-book-post{padding:8px;border-radius:9px}.period-card-head{gap:7px;margin-bottom:7px}.period-card-title>strong{font-size:12px}.period-card-title>small{font-size:9px}.lesson-slot-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.lesson-slot{min-height:56px;padding:6px;border-radius:8px}.lesson-slot strong{font-size:9px}.lesson-slot span,.lesson-slot small{font-size:8px}
+  .period-restored-note{font-size:8px}.upcoming-course-list{margin-bottom:8px}.upcoming-course-title{font-size:10px}.upcoming-course-row{padding:6px 7px}.upcoming-course-row strong{font-size:9px}.upcoming-course-row span{font-size:8px}
   .student-teacher-contact{margin-bottom:7px}.student-contact-row{gap:3px 7px}.student-contact-row span{font-size:8px}.student-contact-row strong{font-size:10px}.period-payment{grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:8px 9px;border-radius:9px}.period-payment-amount span{font-size:9px}.period-payment-amount strong{font-size:16px}.period-payment-state{gap:4px}.period-payment-state small{font-size:8px}.period-payment-state .badge{font-size:9px}.period-payment-state .btn{min-width:76px;min-height:29px;padding:5px 8px;font-size:9px}
   .toolbar{gap:5px;margin-bottom:7px}
   .toolbar .field{min-width:110px}
