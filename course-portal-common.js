@@ -62,6 +62,8 @@
   function setSession(role, token, options) {
     const key = sessionKey(role);
     const value = clean(token);
+    const previous = getSession(role);
+    if (previous !== value) clearDataCache();
     if (!value) {
       global.localStorage.removeItem(key);
       global.sessionStorage.removeItem(key);
@@ -84,7 +86,7 @@
   }
 
   function isCacheableCall(name) {
-    return /^coursePortal(Teacher|Student|Renter|Room).*Data$/.test(name);
+    return /^coursePortal(Teacher|Renter|Room).*Data$/.test(name);
   }
 
   function clearDataCache() {
@@ -135,7 +137,7 @@
     }
     const result = await invoke(name, data);
     if (cacheable) writeDataCache(name, data, result);
-    else if (/Action|State|Booking|Binding|Exchange|StartBinding|Registration|PhoneAccess|UpdateStudent|StopStudent|Suspension/.test(name)) clearDataCache();
+    else if (/Action|State|Booking|Binding|Exchange|StartBinding|Registration|PhoneAccess|UpdateStudent|StopStudent|Suspension|Submit|Payment|Reminder|Attendance/.test(name)) clearDataCache();
     return result;
   }
 
