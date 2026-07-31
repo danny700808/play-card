@@ -136,7 +136,7 @@
   }
 
   function normalizeTransactions(rows,periodId){
-    return array(rows).map(function(row,index){return {id:safeId('transaction',row.id,index),type:clean(row.type)==='refund'?'refund':'payment',date:dateKey(row.date||row.created),amount:Math.abs(numberOf(row.amount||row.money)),method:clean(row.method||row.payType||row.paymentMethod)||'未註明',note:clean(row.note||row.remark),periodId:periodId};});
+    return array(rows).map(function(row,index){return {id:safeId('transaction',row.id,index),type:clean(row.type)==='refund'?'refund':'payment',date:dateKey(row.date||row.created),amount:Math.abs(numberOf(row.amount||row.money)),method:clean(row.method||row.payType||row.paymentMethod)||'未註明',note:clean(row.note||row.remark),periodId:periodId,receiptId:clean(row.receiptId),receiptNo:clean(row.receiptNo),receiptImageUrl:clean(row.receiptImageUrl)};});
   }
 
   function normalizePeriods(payload,feePlans){
