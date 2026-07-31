@@ -7214,6 +7214,78 @@ async function adminApproveBonus(data){
   return {ok:true,message:'獎金已核定並寫入老師薪資。'};
 }
 
+function normalizeAdminTeacherAdjustment(data, teacher) {
+  const teacherId = clean(data && data.teacherId);
+  const requestId = clean(data && data.requestId);
+  const date = dateKey(data && data.date);
+  const type = clean(data && data.type).toLowerCase();
+  const amountValue = Number(data && data.amount);
+  const note = clean(data && data.note);
+  if (!teacherId || !teacher || sourceId(teacher) !== teacherId) {
+    throw new HttpsError('not-found', '找不到指定的老師。');
+  }
+  if (!/^[A-Za-z0-9_-]{12,120}$/.test(requestId)) {
+    throw new HttpsError('invalid-argument', '本次操作識別碼格式不正確，請重新開啟視窗後再試。');
+  }
+  if (!date) throw new HttpsError('invalid-argument', '請選擇正確的獎勵／扣薪日期。');
+  if (!['reward', 'deduction'].includes(type)) {
+    throw new HttpsError('invalid-argument', '異動類型只能選擇獎勵或扣薪。');
+  }
+  if (!Number.isFinite(amountValue) || amountValue <= 0 || amountValue > 1000000 || !Number.isInteger(amountValue)) {
+    throw new HttpsError('invalid-argument', '金額必須是 1～1,000,000 元的整數。');
+  }
+  if (note.length < 2 || note.length > 200) {
+    throw new HttpsError('invalid-argument', '請填寫 2～200 字的獎勵／扣薪原因。');
+  }
+  return {
+    id: `manual-${hash(requestId).slice(0, 32)}`,
+    requestId,
+    teacherId,
+    teacherName: clean(teacher.name || teacher.teacherName),
+    month: date.slice(0, 7),
+    date,
+    type,
+    amount: amountValue,
+    note,
+    source: 'admin-manual',
+    active: true
+  };
+}
+
+async function adminSaveTeacherAdjustment(data) {
+  const teacherId = clean(data && data.teacherId);
+  const teachers = await mirrorRowsIncludingInactive('teachers');
+  const teacher = teachers.find((row) => sourceId(row) === teacherId);
+  const adjustment = normalizeAdminTeacherAdjustment(data, teacher);
+  const ref = db.collection('coursePortalTeacherAdjustments').doc(adjustment.id);
+  let duplicate = false;
+  const createdAtText = nowText();
+  await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    if (snapshot.exists) {
+      const existing = snapshot.data() || {};
+      const sameRequest = ['requestId', 'teacherId', 'date', 'type', 'note'].every((key) =>
+        clean(existing[key]) === clean(adjustment[key])
+      ) && Number(existing.amount || 0) === adjustment.amount;
+      if (!sameRequest) throw new HttpsError('already-exists', '這個操作識別碼已被其他薪資異動使用。');
+      duplicate = true;
+      return;
+    }
+    tx.set(ref, Object.assign({}, adjustment, {
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtText,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: 'course-scheduler-admin'
+    }));
+  });
+  return {
+    ok: true,
+    duplicate,
+    adjustment: Object.assign({}, adjustment, { createdAtText }),
+    message: duplicate ? '這筆薪資異動先前已儲存，未重複新增。' : '老師薪資異動已儲存。'
+  };
+}
+
 async function publicRentalSettings() {
   const rooms = await mirrorRows('rooms');
   const [items, policy] = await Promise.all([rentalUseOptions(rooms), rentalPolicySettings()]);
@@ -8942,6 +9014,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalAdminSaveRentalSettings = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRentalSettings(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveRoomEquipment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRoomEquipment(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminSaveTeacherAdjustment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTeacherAdjustment(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminRoomBookings = callable(async (data,request)=>{assertAdminPin(request);return adminRoomBookings();},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminBonusRequests = callable(async (data,request)=>{assertAdminPin(request);return adminBonusRequests();},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminApproveBonus = callable(async (data,request)=>{assertAdminPin(request);return adminApproveBonus(data);},{secrets:[ADMIN_PIN]});

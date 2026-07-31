@@ -287,6 +287,12 @@ assert(schedulerSource.includes('slotCoverageClass(events,room.id,min)'), '有�
 assert(schedulerSource.includes('collapseFinalSlotLayers'), '同一教室時段未套用最後成立資料');
 assert(schedulerSource.includes('修改租用金額／資料'), '租用明細缺少金額修改入口');
 assert(schedulerSource.includes("Object.prototype.hasOwnProperty.call(source,'rentalFee')"), '租用金額為 0 時會被錯誤清空');
+assert(schedulerHtml.includes('id="teacherAdjustmentModal"'), '管理者缺少老師獎勵／扣薪登錄視窗');
+assert(schedulerHtml.includes('可選擇過去日期補登歷史資料'), '老師獎勵／扣薪不可補登過去資料');
+assert(schedulerSource.includes('data-teacher-adjustment'), '老師清單缺少獎勵／扣薪入口');
+assert(schedulerSource.includes('function submitTeacherAdjustment'), '老師獎勵／扣薪表單沒有儲存流程');
+assert(schedulerSource.includes('選擇上方月份即可查看過去資料'), '老師薪資明細沒有歷史獎勵／扣薪說明');
+assert(schedulerDataSource.includes("call('coursePortalAdminSaveTeacherAdjustment'"), '老師薪資異動沒有連接後端');
 assert(schedulerCss.includes('.slot.event-from-prev{border-top-color:transparent}'), '跨半小時課程仍會顯示內部上格線');
 assert(schedulerCss.includes('.slot.event-to-next{border-bottom-color:transparent}'), '跨半小時課程仍會顯示內部下格線');
 assert(!schedulerCss.includes('.event.leave,.event.absent,.event.cancelled{opacity:.38'), '請假／曠課卡片不可再以透明浮水印顯示');
@@ -499,7 +505,8 @@ function loadBackendForScheduleTests(state) {
       'module.exports.__testMergeTeacherPayrollRows = mergeTeacherPayrollRows;\n' +
       'module.exports.__testTeacherPayrollMatchesCancellation = teacherPayrollMatchesCancellation;\n' +
       'module.exports.__testAttendanceLessonLockId = attendanceLessonLockId;\n' +
-      'module.exports.__testTeacherEventMatchesRequest = teacherEventMatchesRequest;\n',
+      'module.exports.__testTeacherEventMatchesRequest = teacherEventMatchesRequest;\n' +
+      'module.exports.__testNormalizeAdminTeacherAdjustment = normalizeAdminTeacherAdjustment;\n',
       backendPath
     );
     return fixtureModule.exports;
@@ -667,6 +674,41 @@ async function runBackendScheduleRegressionTests() {
     }))
   };
   const duplicatePermanentBackend = loadBackendForScheduleTests(duplicatePermanentState);
+  check(() => {
+    const teacher = { id: 'teacher-1', name: '王老師' };
+    const reward = duplicatePermanentBackend.__testNormalizeAdminTeacherAdjustment({
+      requestId: 'teacher_adjustment_reward_20260710',
+      teacherId: 'teacher-1',
+      date: '2026-07-10',
+      type: 'reward',
+      amount: 500,
+      note: '協助成果發表'
+    }, teacher);
+    assert.strictEqual(reward.month, '2026-07', '補登獎勵沒有歸入所選歷史月份');
+    assert.strictEqual(reward.amount, 500, '補登獎勵金額錯誤');
+    assert.strictEqual(reward.type, 'reward', '補登獎勵類型錯誤');
+    const deduction = duplicatePermanentBackend.__testNormalizeAdminTeacherAdjustment({
+      requestId: 'teacher_adjustment_deduction_20260715',
+      teacherId: 'teacher-1',
+      date: '2026-07-15',
+      type: 'deduction',
+      amount: 50,
+      note: '遲交教學紀錄'
+    }, teacher);
+    assert.strictEqual(deduction.type, 'deduction', '扣薪沒有保存為負向薪資異動類型');
+    assert.throws(
+      () => duplicatePermanentBackend.__testNormalizeAdminTeacherAdjustment({
+        requestId: 'teacher_adjustment_invalid_amount',
+        teacherId: 'teacher-1',
+        date: '2026-07-15',
+        type: 'deduction',
+        amount: -50,
+        note: '錯誤金額'
+      }, teacher),
+      /金額必須是/,
+      '負數扣薪金額不應被後端接受'
+    );
+  });
   check(() => {
     assert.strictEqual(
       duplicatePermanentBackend.__testNormalizeTeacherShareRatio(0.6),
@@ -1718,6 +1760,10 @@ assert(
   deployWorkflow.includes('functions:coursePortalAdminSaveRoomEquipment'),
   'Firebase 部署清單漏掉教室設備同步功能'
 );
+assert(
+  deployWorkflow.includes('functions:coursePortalAdminSaveTeacherAdjustment'),
+  'Firebase 部署清單漏掉老師獎勵／扣薪功能'
+);
 [
   'coursePortalStudentPhoneAccess',
   'coursePortalSendEmailOtp',
@@ -1735,6 +1781,7 @@ assert(
   'coursePortalRentalMyBookings',
   'coursePortalCancelRoomBooking',
   'coursePortalAdminSaveRoomEquipment',
+  'coursePortalAdminSaveTeacherAdjustment',
   'coursePortalAdminRoomBookings',
   'coursePortalTeacherAction',
   'coursePortalTeacherLessonState',
@@ -1760,6 +1807,7 @@ assert(deployWorkflow.includes('functions:coursePortalTeacherSlotOptions'), '部
   'functions:coursePortalTeacherAttendanceCancellationRequest',
   'functions:coursePortalTeacherUpdateStudent',
   'functions:coursePortalTeacherStopStudent',
+  'functions:coursePortalAdminSaveTeacherAdjustment',
   'functions:coursePortalAdminSuspensionAction',
   'functions:coursePortalAdminAttendanceCancellationAction',
   'functions:coursePortalAdminTuitionPaymentAction',

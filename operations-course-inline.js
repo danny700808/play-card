@@ -3,7 +3,7 @@
 
   if (global.YouziOperationsCourseInline) return;
 
-  var VERSION = '20260730-mobile-rental-teacher-v1';
+  var VERSION = '20260801-teacher-adjustments-v1';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=' + VERSION;
   var RUNTIME_URL = 'operations-course-inline-runtime.js?v=' + VERSION;
   var STYLE_URL = 'course-scheduler.css?v=' + VERSION;
