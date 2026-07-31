@@ -68,6 +68,7 @@
           </select>
         </label>
         <label>每小時 <input type="number" min="0" step="50" data-room-fee="${index}" value="${Number(room.rentalFee || 0)}" style="width:72px"></label>
+        <label>建議人數 <input type="number" min="1" step="1" data-room-capacity="${index}" value="${Math.max(1, Number(room.capacity || 1))}" style="width:64px"></label>
         <label><input type="checkbox" data-room-rentable="${index}" ${room.rentable ? 'checked' : ''}> 可租用</label>
         <label><input type="checkbox" data-room-teacher="${index}" ${room.teacherSchedulable !== false ? 'checked' : ''}> 可排課</label>
       </div>
@@ -118,6 +119,7 @@
       room.kind = document.querySelector(`[data-room-kind="${index}"]`).value;
       room.pianoType = document.querySelector(`[data-room-piano="${index}"]`).value;
       room.rentalFee = Number(document.querySelector(`[data-room-fee="${index}"]`).value || 0);
+      room.capacity = Math.max(1, Number(document.querySelector(`[data-room-capacity="${index}"]`).value || 1));
       room.rentable = document.querySelector(`[data-room-rentable="${index}"]`).checked;
       room.teacherSchedulable = document.querySelector(`[data-room-teacher="${index}"]`).checked;
     });
