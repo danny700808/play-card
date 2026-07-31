@@ -41,11 +41,13 @@ const TUITION_PAYMENT_BANK = Object.freeze({
 const TUITION_PAYMENT_REQUESTS = 'coursePortalTuitionPaymentRequests';
 const TUITION_PERIODS = 'coursePortalTuitionPeriods';
 const TUITION_TRANSACTIONS = 'coursePortalTuitionPaymentTransactions';
+const TUITION_SYSTEM_PERIODS = 'coursePortalTuitionSystemPeriods';
 const TUITION_RECEIPT_MAX_BYTES = 4 * 1024 * 1024;
 const ATTENDANCE_RECORDS = 'coursePortalAttendanceRecords';
 const ATTENDANCE_CANCELLATIONS = 'coursePortalAttendanceCancellationRequests';
 const ATTENDANCE_PAYROLL = 'coursePortalTeacherAttendancePayroll';
 const ATTENDANCE_ADMIN_FEE = 50;
+const PORTAL_MAX_ADVANCE_MONTHS = 2;
 const CONTACT_BOOK_POSTS = 'coursePortalLessonContactPosts';
 const CONTACT_BOOK_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const CONTACT_BOOK_IMAGE_MAX_COUNT = 8;
@@ -446,6 +448,38 @@ function addDays(key, amount) {
     month: '2-digit',
     day: '2-digit'
   }).format(value);
+}
+
+function addMonths(key, amount) {
+  const value = dateKey(key);
+  if (!value) return '';
+  const [year, month, day] = value.split('-').map(Number);
+  const targetMonth = month - 1 + Number(amount || 0);
+  const targetYear = year + Math.floor(targetMonth / 12);
+  const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
+  return [
+    targetYear,
+    String(normalizedMonth + 1).padStart(2, '0'),
+    String(Math.min(day, lastDay)).padStart(2, '0')
+  ].join('-');
+}
+
+function portalMaximumAdvanceDate() {
+  return addMonths(currentTaipeiDay(), PORTAL_MAX_ADVANCE_MONTHS);
+}
+
+function assertPortalAdvanceDate(date, label = '日期') {
+  const value = dateKey(date);
+  const maximum = portalMaximumAdvanceDate();
+  if (!value) throw new HttpsError('invalid-argument', `${label}格式錯誤。`);
+  if (value > maximum) {
+    throw new HttpsError(
+      'failed-precondition',
+      `${label}最多只能選擇到 ${maximum}（操作日起兩個月內）。`
+    );
+  }
+  return value;
 }
 
 function weekday(key) {
@@ -1518,8 +1552,10 @@ async function directRegularAccess(data) {
   if (type === 'teacher' && clean(previous.status) !== 'active') {
     const teacherBinding = {
       type, teacherId: clean(identity.targetId), name: clean(identity.name), phoneHash: hash(identity.phone), authAccountId,
-      authProvider: 'direct-regular', status: 'pending', approvalStatus: 'pending',
-      approvalRequestedAt: FieldValue.serverTimestamp(), registeredAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
+      authProvider: 'direct-regular', status: 'active', approvalStatus: 'approved',
+      approvalSource: 'name-phone-test-access',
+      approvedAt: FieldValue.serverTimestamp(), approvedAtText: nowText(),
+      registeredAt: previous.registeredAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
     };
     if (validEmail(identity.email)) {
       teacherBinding.email = normalizeEmail(identity.email);
@@ -1527,8 +1563,6 @@ async function directRegularAccess(data) {
       teacherBinding.emailVerified = false;
     }
     await bindingRef.set(teacherBinding, { merge: true });
-    await queueBindingApprovalNotices({ id: bindingRef.id, type, teacherId: clean(identity.targetId), name: clean(identity.name), status: 'pending' });
-    return { ok: true, role: type, pendingApproval: true, message: '資料已送出，主管確認後即可登入。' };
   }
   if (type === 'teacher') {
     const activeTeacherBinding = {
@@ -3511,6 +3545,7 @@ async function teacherAvailability(data) {
   const session = await requireSession(data, ['teacher']);
   const requestedStartDate = dateKey(data.startDate || data.date);
   if (!requestedStartDate) throw new HttpsError('invalid-argument', '開始日期格式錯誤。');
+  assertPortalAdvanceDate(requestedStartDate, '課程日期');
   const startDate = requestedStartDate < currentTaipeiDay() ? currentTaipeiDay() : requestedStartDate;
   const exactTarget = data.exactTarget === true;
   const exactDate = exactTarget ? dateKey(data.date || data.startDate) : '';
@@ -3518,8 +3553,11 @@ async function teacherAvailability(data) {
   if (exactTarget && (!exactDate || !validPortalTime(exactStartTime, true) || publicRentalSlotIsPast(exactDate, exactStartTime))) {
     throw new HttpsError('invalid-argument', '請選擇尚未開始的 30 分鐘時段。');
   }
+  if (exactTarget) assertPortalAdvanceDate(exactDate, '課程日期');
   const days = exactTarget ? 1 : Math.min(28, Math.max(7, Number(data.days || 14)));
-  const endDate = exactTarget ? exactDate : addDays(startDate, days - 1);
+  const endDate = exactTarget
+    ? exactDate
+    : [addDays(startDate, days - 1), portalMaximumAdvanceDate()].sort()[0];
   const sourceEventId = clean(data.sourceEventId);
   const sourceCourseId = clean(data.sourceCourseId);
   const sourceDate = dateKey(data.sourceDate);
@@ -3566,11 +3604,15 @@ async function teacherAvailability(data) {
   }
   const sourceStartTime = source ? source.startTime : clean(data.sourceStartTime || data.startTime).slice(0, 5);
   const sourceEndTime = source ? source.endTime : clean(data.sourceEndTime || data.endTime).slice(0, 5);
+  const requestedDuration = Number(data.durationMinutes || 60);
   const duration = source
     ? assertPortalInterval(sourceStartTime, sourceEndTime)
-    : Math.min(300, Math.max(30, Number(data.durationMinutes || 60)));
+    : requestedDuration;
   if (!Number.isFinite(duration) || duration % 30 !== 0) {
     throw new HttpsError('invalid-argument', '課程長度必須以 30 分鐘為單位。');
+  }
+  if (duration < 30 || duration > 300) {
+    throw new HttpsError('invalid-argument', '課程長度必須介於 30 分鐘至 5 小時。');
   }
   const subjectId = source ? source.subjectId : clean(data.subjectId);
   const targetStudentIds = source
@@ -3587,9 +3629,53 @@ async function teacherAvailability(data) {
     roomSupportsSubject(room, subjectId, bundle, roomSettingsMap[sourceId(room)] || {})
   );
   const slots = [];
-  const dates = exactTarget
+  let permanentMinimumDate = '';
+  let permanentMaximumDate = '';
+  if (source && clean(data.action) === 'permanent_move') {
+    const sourceSeries = bundle.fixedCourses.find((row) =>
+      sourceId(row) === clean(source.fixedCourseId || source.seriesId || sourceCourseId)
+    ) || null;
+    if (!source.recurring || !sourceSeries || !sourceActive(sourceSeries)) {
+      throw new HttpsError('failed-precondition', '這堂不是仍有效的固定課，不能永久調課。');
+    }
+    if (clean(source.portalAction) === 'single_move') {
+      throw new HttpsError('failed-precondition', '這堂已是單次調課結果，只能再做單次調課。');
+    }
+    const lineage = clean(source.fixedCourseId || source.seriesId || sourceCourseId);
+    const activeChanges = await db.collection('coursePortalScheduleChanges').where('active', '==', true).get();
+    const futureException = activeChanges.docs.some((doc) => {
+      const row = doc.data() || {};
+      if (
+        clean(row.action) === 'permanent_move' &&
+        permanentLineage(row) === lineage &&
+        permanentCutover(row) === sourceDate
+      ) return false;
+      if (doc.id === clean(source.portalChangeId) && permanentCutover(row) < sourceDate) return false;
+      return permanentLineage(row) === lineage &&
+        permanentCutover(row) >= sourceDate &&
+        ['single_move', 'lesson_status', 'cancel', 'permanent_move'].includes(clean(row.action));
+    });
+    if (futureException) {
+      throw new HttpsError(
+        'failed-precondition',
+        '這門固定課之後已有調課、請假或其他變更，目前不能永久調課。'
+      );
+    }
+    permanentMinimumDate = sourceDate;
+    permanentMaximumDate = addDays(
+      sourceDate,
+      safeFrequencyWeeks(sourceSeries.frequencyWeeks || sourceSeries.intervalWeeks) * 7 - 1
+    );
+  }
+  const dates = (exactTarget
     ? [exactDate]
-    : Array.from({ length: days }, (_, offset) => addDays(startDate, offset));
+    : Array.from(
+      { length: Math.max(0, Math.round((Date.parse(`${endDate}T12:00:00+08:00`) - Date.parse(`${startDate}T12:00:00+08:00`)) / 86400000) + 1) },
+      (_, offset) => addDays(startDate, offset)
+    )).filter((date) =>
+    (!permanentMinimumDate || date >= permanentMinimumDate) &&
+    (!permanentMaximumDate || date <= permanentMaximumDate)
+  );
   for (const date of dates) {
     const window = businessWindow(policy, date);
     if (window.closed) continue;
@@ -3662,12 +3748,14 @@ async function teacherSlotOptions(data) {
   if (publicRentalSlotIsPast(targetDate, targetStartTime)) {
     throw new HttpsError('failed-precondition', '不能把課程調到已經過去的時間。');
   }
+  assertPortalAdvanceDate(targetDate, '調課日期');
   const today = currentTaipeiDay();
-  const candidateEnd = addDays(today, 28);
-  const [candidateBundle, policy, roomSettingsSnapshot] = await Promise.all([
+  const candidateEnd = portalMaximumAdvanceDate();
+  const [candidateBundle, policy, roomSettingsSnapshot, activeChangeSnapshot] = await Promise.all([
     scheduleBundle(today, candidateEnd, session.teacherId),
     rentalPolicySettings(),
-    db.collection('coursePortalRoomSettings').get()
+    db.collection('coursePortalRoomSettings').get(),
+    db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
   ]);
   const targetBundle = targetDate >= today && targetDate <= candidateEnd
     ? candidateBundle
@@ -3729,9 +3817,30 @@ async function teacherSlotOptions(data) {
     }));
     if (!rooms.length) return null;
     const publicSource = publicEvent(source, candidateBundle.maps, session.teacherId);
+    const lineage = clean(source.fixedCourseId || source.seriesId || source.sourceId || source.id);
+    const frequencyWeeks = safeFrequencyWeeks(source.frequencyWeeks || source.intervalWeeks);
+    const permanentMaximumDate = addDays(source.date, frequencyWeeks * 7 - 1);
+    const futureException = activeChangeSnapshot.docs.some((doc) => {
+      const row = doc.data() || {};
+      if (
+        clean(row.action) === 'permanent_move' &&
+        permanentLineage(row) === lineage &&
+        permanentCutover(row) === source.date
+      ) return false;
+      if (doc.id === clean(source.portalChangeId) && permanentCutover(row) < source.date) return false;
+      return permanentLineage(row) === lineage &&
+        permanentCutover(row) >= source.date &&
+        ['single_move', 'lesson_status', 'cancel', 'permanent_move'].includes(clean(row.action));
+    });
+    const permanentMoveAllowed = source.recurring === true &&
+      clean(source.portalAction) !== 'single_move' &&
+      targetDate >= source.date &&
+      targetDate <= permanentMaximumDate &&
+      !futureException;
     return Object.assign(publicSource, {
       durationMinutes: duration,
       targetEndTime,
+      permanentMoveAllowed,
       rooms
     });
   }).filter(Boolean).slice(0, 120);
@@ -3776,6 +3885,80 @@ function tuitionCourseKey(row) {
   return `period:${sourceId(row)}`;
 }
 
+async function assignNewSystemPeriodNumbers(periods) {
+  const rows = (periods || []).map((row) => Object.assign({}, row));
+  if (!rows.length) return rows;
+  const snapshot = await db.collection(TUITION_SYSTEM_PERIODS).get();
+  const existing = new Map(snapshot.docs.map((doc) => {
+    const row = doc.data() || {};
+    return [clean(row.periodId || doc.id), Object.assign({ id: doc.id }, row)];
+  }));
+  const groups = new Map();
+  rows.forEach((row) => {
+    const periodId = sourceId(row);
+    const studentId = clean(row.studentId);
+    if (!periodId || !studentId) return;
+    const key = `${studentId}|${tuitionCourseKey(row)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  });
+  const writes = [];
+  groups.forEach((groupRows, groupKey) => {
+    const ordered = groupRows.slice().sort((left, right) =>
+      tuitionPeriodNumber(left) - tuitionPeriodNumber(right) ||
+      sourceId(left).localeCompare(sourceId(right))
+    );
+    const assigned = [...existing.values()].filter((row) =>
+      clean(row.groupKey) === groupKey ||
+      (
+        clean(row.studentId) === clean(ordered[0] && ordered[0].studentId) &&
+        clean(row.courseKey) === tuitionCourseKey(ordered[0] || {})
+      )
+    );
+    const maxSystemNo = assigned.reduce((max, row) =>
+      Math.max(max, Number(row.systemPeriodNo || 0)), 0);
+    const maxLegacyPeriodNo = assigned.reduce((max, row) =>
+      Math.max(max, Number(row.legacyPeriodNo || 0)), 0);
+    const candidates = assigned.length
+      ? ordered.filter((row) =>
+        !existing.has(sourceId(row)) &&
+        tuitionPeriodNumber(row) >= maxLegacyPeriodNo
+      )
+      : ordered.slice(-2);
+    let nextSystemNo = maxSystemNo;
+    candidates.forEach((row) => {
+      const periodId = sourceId(row);
+      if (existing.has(periodId)) return;
+      nextSystemNo += 1;
+      const assignment = {
+        id: hash(`new-system-period|${periodId}`),
+        periodId,
+        studentId: clean(row.studentId),
+        courseKey: tuitionCourseKey(row),
+        groupKey,
+        legacyPeriodNo: tuitionPeriodNumber(row),
+        systemPeriodNo: nextSystemNo,
+        createdAtText: nowText()
+      };
+      existing.set(periodId, assignment);
+      writes.push(assignment);
+    });
+  });
+  for (let offset = 0; offset < writes.length; offset += 400) {
+    const batch = db.batch();
+    writes.slice(offset, offset + 400).forEach((row) => {
+      batch.set(db.collection(TUITION_SYSTEM_PERIODS).doc(row.id), Object.assign({}, row, {
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }), { merge: true });
+    });
+    await batch.commit();
+  }
+  return rows.map((row) => Object.assign({}, row, {
+    systemPeriodNo: Number(existing.get(sourceId(row)) && existing.get(sourceId(row)).systemPeriodNo || 0)
+  }));
+}
+
 function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, studentIds }) {
   const allowed = new Set((studentIds || []).map(clean).filter(Boolean));
   const studentMap = indexById(students || []);
@@ -3810,16 +3993,9 @@ function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, 
     const subjectId = clean(source.subjectId || completed.subjectId);
     const teacherId = clean(source.teacherId || completed.teacherId);
     const nextPeriodNo = existingNext ? tuitionPeriodNumber(existingNext) : currentPeriodNo + 1;
-    const visiblePeriods = ordered.slice(-2);
-    const currentSystemIndex = visiblePeriods.findIndex((row) =>
-      tuitionPeriodNumber(row) === currentPeriodNo
-    );
-    const nextSystemIndex = visiblePeriods.findIndex((row) =>
-      tuitionPeriodNumber(row) === nextPeriodNo
-    );
-    const currentSystemPeriodNo = currentSystemIndex >= 0 ? currentSystemIndex + 1 : 1;
-    const nextSystemPeriodNo = nextSystemIndex >= 0
-      ? nextSystemIndex + 1
+    const currentSystemPeriodNo = Math.max(1, Number(completed.systemPeriodNo || 1));
+    const nextSystemPeriodNo = existingNext
+      ? Math.max(currentSystemPeriodNo + 1, Number(existingNext.systemPeriodNo || 0))
       : currentSystemPeriodNo + 1;
     const targetPeriodId = existingNext ? sourceId(existingNext) : '';
     const sourcePeriodId = sourceId(completed);
@@ -3828,8 +4004,7 @@ function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, 
       studentId,
       tuitionCourseKey(completed),
       sourcePeriodId,
-      nextPeriodNo,
-      targetPeriodId
+      nextPeriodNo
     ].join('|'));
     candidates.push({
       id,
@@ -3864,22 +4039,38 @@ function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, 
 
 async function ensureTuitionPaymentRequests(options) {
   const candidates = buildTuitionPaymentCandidates(options || {});
+  const existingRows = await tuitionPaymentRequestsForStudents(options && options.studentIds || []);
+  candidates.forEach((candidate) => {
+    const prior = existingRows.find((row) =>
+      clean(row.studentId) === clean(candidate.studentId) &&
+      clean(row.sourcePeriodId) === clean(candidate.sourcePeriodId) &&
+      Number(row.nextPeriodNo || 0) === Number(candidate.nextPeriodNo || 0) &&
+      clean(row.status) !== 'cancelled'
+    );
+    if (prior) candidate.id = clean(prior.id);
+  });
   for (let offset = 0; offset < candidates.length; offset += 25) {
     await Promise.all(candidates.slice(offset, offset + 25).map(async (candidate) => {
       const ref = db.collection(TUITION_PAYMENT_REQUESTS).doc(candidate.id);
       const snapshot = await ref.get();
       if (snapshot.exists) {
         const previous = snapshot.data() || {};
-        if (
-          Number(previous.currentSystemPeriodNo || 0) !== candidate.currentSystemPeriodNo ||
-          Number(previous.nextSystemPeriodNo || 0) !== candidate.nextSystemPeriodNo
-        ) {
-          await ref.set({
-            currentSystemPeriodNo: candidate.currentSystemPeriodNo,
-            nextSystemPeriodNo: candidate.nextSystemPeriodNo,
-            updatedAt: FieldValue.serverTimestamp()
-          }, { merge: true });
-        }
+        const preserve = {};
+        [
+          'paymentMethod', 'transferDate', 'transferLast5', 'receiptStoragePath',
+          'receiptContentType', 'receiptBytes', 'submittedAt', 'submittedAtText',
+          'submissionRevision', 'reviewNote', 'confirmedAmount', 'remainingAmount',
+          'confirmedAt', 'confirmedAtText', 'formalPeriodId', 'paymentDate',
+          'expectedAmount'
+        ].forEach((key) => {
+          if (Object.prototype.hasOwnProperty.call(previous, key)) preserve[key] = previous[key];
+        });
+        await ref.set(Object.assign({}, candidate, preserve, {
+          active: previous.active !== false,
+          status: clean(previous.status) || candidate.status,
+          createdAtText: clean(previous.createdAtText) || candidate.createdAtText,
+          updatedAt: FieldValue.serverTimestamp()
+        }), { merge: true });
         return;
       }
       await ref.set(Object.assign({}, candidate, {
@@ -3888,6 +4079,24 @@ async function ensureTuitionPaymentRequests(options) {
       }));
     }));
   }
+  const candidateIds = new Set(candidates.map((row) => row.id));
+  const periodMap = new Map((options && options.periods || []).map((row) => [sourceId(row), row]));
+  await Promise.all(existingRows.filter((row) => {
+    if (candidateIds.has(clean(row.id)) || row.active === false) return false;
+    if (!['payment_due', 'needs_resubmission'].includes(clean(row.status))) return false;
+    const target = periodMap.get(clean(row.targetPeriodId)) ||
+      [...periodMap.values()].find((period) =>
+        clean(period.studentId) === clean(row.studentId) &&
+        tuitionPeriodNumber(period) === Number(row.nextPeriodNo || 0) &&
+        (!clean(row.subjectId) || clean(period.subjectId) === clean(row.subjectId))
+      );
+    return Boolean(target && tuitionOutstandingAmount(target) <= 0);
+  }).map((row) => db.collection(TUITION_PAYMENT_REQUESTS).doc(clean(row.id)).set({
+    active: false,
+    status: 'externally_settled',
+    settledAtText: nowText(),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true })));
   return candidates.map((row) => row.id);
 }
 
@@ -3912,8 +4121,16 @@ function publicTuitionPaymentRequest(row) {
     nextPeriodNo: Number(row.nextPeriodNo || 0),
     currentSystemPeriodNo: Number(row.currentSystemPeriodNo || 0),
     nextSystemPeriodNo: Number(row.nextSystemPeriodNo || 0),
+    sourcePeriodId: clean(row.sourcePeriodId),
+    targetPeriodId: clean(row.targetPeriodId),
     lessonCount: Number(row.lessonCount || 4),
     expectedAmount: Number(row.expectedAmount || 0),
+    confirmedAmount: Number(row.confirmedAmount || 0),
+    remainingAmount: Math.max(0, Number(
+      row.remainingAmount != null
+        ? row.remainingAmount
+        : Number(row.expectedAmount || 0) - Number(row.confirmedAmount || 0)
+    )),
     paymentMethod: clean(row.paymentMethod),
     status: clean(row.status || 'payment_due'),
     transferDate: dateKey(row.transferDate),
@@ -4179,6 +4396,9 @@ async function studentSubmitTuitionPayment(data) {
     const transferDate = dateKey(data.transferDate);
     const transferLast5 = clean(data.transferLast5).replace(/\D/g, '').slice(-5);
     if (!transferDate) throw new HttpsError('invalid-argument', '請填寫匯款日期。');
+    if (transferDate > currentTaipeiDay()) {
+      throw new HttpsError('invalid-argument', '匯款日期不能晚於今天，請確認後重新送出。');
+    }
     if (transferLast5.length !== 5) throw new HttpsError('invalid-argument', '請填寫匯款帳號末五碼。');
     const receipt = parseTuitionReceipt(data.receiptDataUrl);
     const storagePath = [
@@ -4324,24 +4544,45 @@ function applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttenda
     map[periodId] = Number(map[periodId] || 0) + 1;
     return map;
   }, {});
-  const removals = (portalAttendance || []).filter((row) =>
-    clean(row.status) === 'cancelled' || row.active === false
-  ).reduce((map, row) => {
+  const approvedCancellations = (portalAttendance || []).filter((row) =>
+    (clean(row.status) === 'cancelled' || row.active === false) &&
+    clean(row.source) === 'attendance-cancellation-approved'
+  );
+  const restorations = approvedCancellations.reduce((map, row) => {
     const matched = (mirrorAttendance || []).find((existing) => attendanceRowsMatch(existing, row));
-    const periodId = clean(row.periodId || matched && (matched.periodId || matched.studentPayment));
-    if (periodId) map[periodId] = Number(map[periodId] || 0) + 1;
+    const originalPeriodId = clean(row.periodId || matched && (matched.periodId || matched.studentPayment));
+    const originalPeriod = rows.find((period) => sourceId(period) === originalPeriodId) || {};
+    const studentId = clean(row.studentId || matched && matched.studentId || originalPeriod.studentId);
+    const subjectId = clean(row.subjectId || matched && eventSubjectId(matched) || originalPeriod.subjectId);
+    const eligible = rows.filter((period) =>
+      clean(period.studentId) === studentId &&
+      (!subjectId || clean(period.subjectId) === subjectId)
+    ).sort((left, right) =>
+      tuitionPeriodNumber(right) - tuitionPeriodNumber(left) ||
+      sourceId(right).localeCompare(sourceId(left))
+    );
+    const targetPeriodId = sourceId(eligible[0]) || originalPeriodId;
+    if (targetPeriodId) map[targetPeriodId] = Number(map[targetPeriodId] || 0) + 1;
     return map;
   }, {});
   return rows.map((row) => {
     const extra = Number(additions[sourceId(row)] || 0);
-    const removed = Number(removals[sourceId(row)] || 0);
-    if (!extra && !removed) return row;
-    const usedCount = Math.max(0, Number(row.usedCount || row.attendedCount || 0) + extra - removed);
+    const restored = Number(restorations[sourceId(row)] || 0);
+    if (!extra && !restored) return row;
+    const beforeRestore = Math.max(0, Number(row.usedCount || row.attendedCount || 0) + extra);
+    const usedReduction = Math.min(beforeRestore, restored);
+    const extraLessonCredit = Math.max(0, restored - usedReduction);
+    const usedCount = beforeRestore - usedReduction;
+    const lessonCount = Math.max(1, Number(row.lessonCount || row.totalLessons || 4)) + extraLessonCredit;
     return Object.assign({}, row, {
       usedCount,
       attendedCount: usedCount,
+      lessonCount,
+      totalLessons: lessonCount,
       portalAttendanceCount: extra,
-      portalAttendanceCancelledCount: removed
+      portalAttendanceCancelledCount: restored,
+      portalRestoredCreditCount: restored,
+      portalExtraLessonCreditCount: extraLessonCredit
     });
   });
 }
@@ -4352,7 +4593,7 @@ async function studentPortalData(data) {
   const currentIds = [...new Set(sessionBindings.map((row) => clean(row.studentId)).filter(Boolean))];
   const requested = clean(data.studentId);
   if (requested && !currentIds.includes(requested)) throw new HttpsError('permission-denied', '沒有這位學生的查看權限。');
-  const studentIds = requested ? [requested] : currentIds;
+  const studentIds = currentIds;
   const today = currentTaipeiDay();
   const [students, events, teachers, subjects, fixedCourses, temporaryCourses, suspensions] = await Promise.all([
     mirrorRowsIncludingInactive('students'),
@@ -4387,11 +4628,12 @@ async function studentPortalData(data) {
   const activePortalAttendance = portalAttendance.filter((row) =>
     activeStudentIds.includes(clean(row.studentId))
   );
-  const periods = applyPortalAttendanceToPeriods(
+  const adjustedPeriods = applyPortalAttendanceToPeriods(
     mirrorPeriods,
     activeMirrorAttendance,
     activePortalAttendance
   );
+  const periods = await assignNewSystemPeriodNumbers(adjustedPeriods);
   const attendance = mergePortalAttendanceRows(mirrorAttendance, portalAttendance);
   const maps = { teachers: indexById(teachers), subjects: indexById(subjects) };
   const allowed = new Set(activeStudentIds);
@@ -4462,7 +4704,14 @@ async function studentPortalData(data) {
     }),
     // 新系統只公開每位學生最新兩期；更早帳務請以紙本上課證為準。
     periods: publicPeriods.map((row) => {
-      const course = courseById.get(clean(row.sourceCourseId || row.courseId || row.fixedCourseId)) || {};
+      const course = courseById.get(clean(row.sourceCourseId || row.courseId || row.fixedCourseId)) ||
+        [...fixedCourses, ...temporaryCourses].filter((candidate) =>
+          eventStudentIds(candidate).includes(clean(row.studentId)) &&
+          (!clean(row.subjectId) || eventSubjectId(candidate) === clean(row.subjectId))
+        ).sort((left, right) =>
+          eventDate(right).localeCompare(eventDate(left)) ||
+          eventStart(right).localeCompare(eventStart(left))
+        )[0] || {};
       const linkedAttendance = attendance.find((item) => clean(item.periodId) === sourceId(row)) || {};
       const teacherId = clean(row.teacherId || row.instructorId || eventTeacherId(row) || eventTeacherId(course) || eventTeacherId(linkedAttendance));
       const namedTeacher = clean(row.teacherName || row.instructorName || course.teacherName || linkedAttendance.teacherName);
@@ -4473,6 +4722,7 @@ async function studentPortalData(data) {
         id: sourceId(row),
         studentId: clean(row.studentId),
         periodNo: Number(row.periodNo || row.period || 0),
+        systemPeriodNo: Number(row.systemPeriodNo || 0),
         subjectId: clean(row.subjectId),
         subjectName: clean(maps.subjects[clean(row.subjectId)] && maps.subjects[clean(row.subjectId)].name),
         teacherId: teacherId || sourceId(teacher),
@@ -4480,6 +4730,8 @@ async function studentPortalData(data) {
         teacherPhone: normalizePhone(sourcePhone(teacher)),
         lessonCount: Number(row.lessonCount || row.totalLessons || 4),
         usedCount: Number(row.usedCount || row.attendedCount || 0),
+        restoredCreditCount: Number(row.portalRestoredCreditCount || 0),
+        extraLessonCreditCount: Number(row.portalExtraLessonCreditCount || 0),
         expectedAmount: Number(row.expectedAmount || row.amount || 0),
         paidAmount: Number(row.paidAmount || row.receivedAmount || 0),
         status: clean(row.status),
@@ -4517,16 +4769,34 @@ async function studentPortalData(data) {
           startTime: eventStart(row) || eventStart(course),
           endTime: eventEnd(row) || eventEnd(course),
           status: clean(row.status || row.type),
+          source: clean(row.source),
+          late: row.late === true,
+          lateFeeCharged: row.lateFeeCharged === true,
+          originalLessonDate: dateKey(row.originalLessonDate),
+          attendanceRecordedAtText: clean(row.attendanceRecordedAtText || row.createdAtText),
           subjectName: clean(row.subjectName) ||
             clean(maps.subjects[subjectId] && maps.subjects[subjectId].name),
           teacherName: clean(row.teacherName) ||
             clean(maps.teachers[teacherId] && maps.teachers[teacherId].name)
         };
       }),
+    attendanceCancellations: activePortalAttendance.filter((row) =>
+      clean(row.source) === 'attendance-cancellation-approved' &&
+      (clean(row.status) === 'cancelled' || row.active === false)
+    ).map((row) => ({
+      id: clean(row.__id || row.id),
+      studentId: clean(row.studentId),
+      date: eventDate(row),
+      subjectId: clean(row.subjectId),
+      teacherId: clean(row.teacherId),
+      cancelledAtText: clean(row.cancelledAtText),
+      note: '主管核准取消簽到，堂數已補回目前期別'
+    })),
     contactBook: publicContactPosts,
     upcoming: events.filter((row) =>
       eventDate(row) >= today &&
-      eventStudentIds(row).some((id) => allowed.has(id))
+      eventStudentIds(row).some((id) => allowed.has(id)) &&
+      !['cancelled', 'leave', 'absent'].includes(normalizeScheduleStatus(row.status))
     ).slice(0, 30).map((row) => ({
       id: sourceId(row),
       date: eventDate(row),
@@ -4535,6 +4805,8 @@ async function studentPortalData(data) {
       studentIds: eventStudentIds(row),
       subjectName: clean(maps.subjects[eventSubjectId(row)] && maps.subjects[eventSubjectId(row)].name),
       teacherName: clean(maps.teachers[eventTeacherId(row)] && maps.teachers[eventTeacherId(row)].name),
+      teacherId: eventTeacherId(row),
+      teacherPhone: normalizePhone(sourcePhone(maps.teachers[eventTeacherId(row)] || {})),
       status: clean(row.status)
     }))
   };
@@ -4570,11 +4842,18 @@ async function rentalAvailability(data) {
   if (!Number.isFinite(requestedDuration) || requestedDuration < 30 || requestedDuration % 30 !== 0) {
     throw new HttpsError('invalid-argument', '租用時間必須以 30 分鐘為單位。');
   }
-  const duration = Math.min(policy.maxDurationMinutes, requestedDuration);
+  if (requestedDuration > policy.maxDurationMinutes) {
+    throw new HttpsError(
+      'invalid-argument',
+      `單次租用最長為 ${Math.round(policy.maxDurationMinutes / 60 * 10) / 10} 小時，請重新選擇租用時間。`
+    );
+  }
+  const duration = requestedDuration;
   const startMinutes = timeMinutes(startTime);
   const endMinutes = startMinutes + duration;
   const endTime = String(Math.floor(endMinutes / 60)).padStart(2, '0') + ':' + String(endMinutes % 60).padStart(2, '0');
   if (!date || !validPortalTime(startTime, true)) throw new HttpsError('invalid-argument', '請選擇 30 分鐘整點的日期與時間。');
+  assertPortalAdvanceDate(date, '租用日期');
   if (publicRentalSlotIsPast(date, startTime)) {
     throw new HttpsError('failed-precondition', '一般租用只能預約尚未開始的時段。');
   }
@@ -4664,12 +4943,16 @@ async function rentalDayBoard(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
   const date = dateKey(data.date);
   if (!date) throw new HttpsError('invalid-argument', '請選擇日期。');
+  assertPortalAdvanceDate(date, '租用日期');
   const policy = await rentalPolicySettings();
   const requestedDuration = Number(data.durationMinutes == null ? 60 : data.durationMinutes);
   if (!Number.isFinite(requestedDuration) || requestedDuration < 30 || requestedDuration % 30 !== 0) {
     throw new HttpsError('invalid-argument', '租用時間必須以 30 分鐘為單位。');
   }
-  const duration = Math.min(policy.maxDurationMinutes, requestedDuration);
+  if (requestedDuration > policy.maxDurationMinutes) {
+    throw new HttpsError('invalid-argument', '單次租用最長為 5 小時，請重新選擇租用時間。');
+  }
+  const duration = requestedDuration;
   const window = businessWindow(policy, date);
   const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
   const roomSettings = await db.collection('coursePortalRoomSettings').get();
@@ -4722,14 +5005,18 @@ async function rentalWeekBoard(data) {
     : Promise.resolve(false);
   const requestedStartDate = dateKey(data.startDate || data.date);
   if (!requestedStartDate) throw new HttpsError('invalid-argument', '請選擇週起始日期。');
+  assertPortalAdvanceDate(requestedStartDate, '租用日期');
   const startDate = requestedStartDate < currentTaipeiDay() ? currentTaipeiDay() : requestedStartDate;
-  const endDate = addDays(startDate, 6);
+  const endDate = [addDays(startDate, 6), portalMaximumAdvanceDate()].sort()[0];
   const policy = await rentalPolicySettings();
   const requestedDuration = Number(data.durationMinutes == null ? 60 : data.durationMinutes);
   if (!Number.isFinite(requestedDuration) || requestedDuration < 30 || requestedDuration % 30 !== 0) {
     throw new HttpsError('invalid-argument', '租用時間必須以 30 分鐘為單位。');
   }
-  const duration = Math.min(policy.maxDurationMinutes, requestedDuration);
+  if (requestedDuration > policy.maxDurationMinutes) {
+    throw new HttpsError('invalid-argument', '單次租用最長為 5 小時，請重新選擇租用時間。');
+  }
+  const duration = requestedDuration;
   const bundle = await scheduleBundle(startDate, endDate, session.role === 'teacher' ? session.teacherId : '');
   const roomSettings = await db.collection('coursePortalRoomSettings').get();
   const useOptions = await rentalUseOptions(bundle.rooms);
@@ -4740,7 +5027,14 @@ async function rentalWeekBoard(data) {
   const settingsMap = {};
   roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
   const days = [];
-  for (let offset = 0; offset < 7; offset += 1) {
+  const dayCount = Math.max(
+    1,
+    Math.round(
+      (Date.parse(`${endDate}T12:00:00+08:00`) - Date.parse(`${startDate}T12:00:00+08:00`)) /
+      86400000
+    ) + 1
+  );
+  for (let offset = 0; offset < dayCount; offset += 1) {
     const date = addDays(startDate, offset);
     const window = businessWindow(policy, date);
     const dayPast = date < currentTaipeiDay();
@@ -4847,6 +5141,7 @@ async function createRoomBooking(data) {
     lineUserId: clean(session.lineUserId),
     authAccountId: clean(session.authAccountId),
     amount: room.price,
+    recommendedPeople: Number(room.capacity || 0),
     unitFee: room.unitFee,
     equipmentLabel: clean(room.equipmentLabel),
     priceType: room.priceType,
@@ -4893,7 +5188,10 @@ async function createRoomBooking(data) {
       const inactive = !prior || prior.active === false || clean(prior.status) === 'cancelled';
       if (expired || inactive) staleLocks.push(lockSnapshot.ref);
       else {
-        throw new HttpsError('already-exists', '這個時段剛剛已被其他人預約，請重新選擇。');
+        throw new HttpsError(
+          'already-exists',
+          '這個時段剛剛已被其他人預約，空位資料已經更新，請重新選擇時段或教室。'
+        );
       }
     });
     staleLocks.forEach((ref) => tx.delete(ref));
@@ -4927,13 +5225,13 @@ async function createRoomBooking(data) {
         `用途：${booking.useName || '教室租用'}`,
         booking.recordingUsageName ? `錄音室使用方式：${booking.recordingUsageName}` : '',
         `時間：${booking.startTime}～${booking.endTime}`,
-        `如不使用，可在結束前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
+        `如不使用，請在租用開始前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
       ].filter(Boolean).join('\n'),
       message: [
         `教室租用提醒`,
         `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
         `時間：${booking.startTime}～${booking.endTime}`,
-        `如不使用，可在結束前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
+        `如不使用，請在租用開始前進入租用頁取消：${PORTAL_BASE}/room-booking.html`
       ].join('\n'),
       bookingId: id,
       source: 'course-portal-room-booking',
@@ -4983,7 +5281,7 @@ async function rentalMyBookings(data) {
       paymentStatus: clean(row.paymentStatus),
       status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),
       active: row.active !== false,
-      canCancel: row.active !== false && taipeiDateTimeMillis(row.date, row.endTime) > Date.now(),
+      canCancel: row.active !== false && taipeiDateTimeMillis(row.date, row.startTime) > Date.now(),
       createdAtText: clean(row.createdAtText),
       cancelledAtText: clean(row.cancelledAtText)
     };
@@ -5022,8 +5320,8 @@ async function cancelRoomBooking(data) {
     if (booking.active === false || clean(booking.status) === 'cancelled') {
       throw new HttpsError('failed-precondition', '這筆租用已經取消。');
     }
-    if (taipeiDateTimeMillis(booking.date, booking.endTime) <= Date.now()) {
-      throw new HttpsError('failed-precondition', '租用時間已結束，無法再取消。');
+    if (taipeiDateTimeMillis(booking.date, booking.startTime) <= Date.now()) {
+      throw new HttpsError('failed-precondition', '租用時間已經開始，無法再自行取消。');
     }
     tx.set(bookingRef, {
       active: false,
@@ -5161,6 +5459,16 @@ async function teacherLessonState(data) {
   if (source.studentIds.length > 1) {
     throw new HttpsError('failed-precondition', '團體課需逐位記錄學生狀態，不能用整堂請假／曠課，以免誤釋出仍在上課的教室。');
   }
+  const today = currentTaipeiDay();
+  if (sourceDate < today) {
+    throw new HttpsError('failed-precondition', '這堂課已經超過當天，只能查看或使用補簽到。');
+  }
+  if (state === 'absent' && (
+    sourceDate !== today ||
+    taipeiDateTimeMillis(sourceDate, source.startTime) > Date.now()
+  )) {
+    throw new HttpsError('failed-precondition', '課程開始時間到達後才能標示曠課。');
+  }
   if (state === 'absent' && normalizeScheduleStatus(source.status) === 'leave') {
     throw new HttpsError(
       'failed-precondition',
@@ -5277,6 +5585,7 @@ async function teacherAction(data) {
   if (publicRentalSlotIsPast(date, startTime)) {
     throw new HttpsError('failed-precondition', '不能新增或調課到已經過去的時間。');
   }
+  assertPortalAdvanceDate(date, '課程日期');
   const expectedVersion = await readScheduleVersion();
   const operationId = clean(data.operationId) || randomToken(18);
   const id = `teacher-${hash(`${session.teacherId}|${operationId}`)}`;
@@ -5837,6 +6146,11 @@ async function applyTeacherAttendance(data, late) {
     throw new HttpsError('failed-precondition', '請假、已簽到或已取消的課程不能再次簽到。');
   }
   const operationId = attendanceOperationId(session.teacherId, sourceDate, event, data);
+  const expectedVersion = await readScheduleVersion();
+  const giftLesson = event.specialLesson === true ||
+    clean(event.portalAction) === 'teacher_gift' ||
+    clean(event.type) === 'teacher_gift';
+  const chargeLateFee = late && !giftLesson;
   const statusRef = db.collection('coursePortalScheduleChanges')
     .doc(`lesson-status-${hash([session.teacherId, attendanceLineage(event, data), sourceDate].join('|'))}`);
   const lateRef = db.collection('coursePortalLateAttendance').doc(operationId);
@@ -5856,7 +6170,7 @@ async function applyTeacherAttendance(data, late) {
     sourceCourseId,
     session.teacherId,
     'attended',
-    late ? '老師逾期補簽到' : '老師當日簽到'
+    late ? '老師補簽到' : '老師當日簽到'
   );
   await db.runTransaction(async (tx) => {
     const snapshots = await Promise.all([
@@ -5868,6 +6182,13 @@ async function applyTeacherAttendance(data, late) {
     ]);
     const versionSnapshot = snapshots[0];
     assertScheduleWritable(versionSnapshot);
+    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+    if (currentVersion !== expectedVersion) {
+      throw new HttpsError(
+        'aborted',
+        '這堂課剛剛已在其他裝置更新。為避免覆蓋資料，請重新整理後再操作。'
+      );
+    }
     const existingAttendance = snapshots.slice(4).some((snapshot) =>
       snapshot.exists && clean(snapshot.data().status) === 'attended'
     );
@@ -5890,8 +6211,11 @@ async function applyTeacherAttendance(data, late) {
       eventId: clean(event.sourceId || sourceEventId || event.id),
       courseId: clean(event.fixedCourseId || sourceCourseId),
       date: sourceDate,
-      deducted: event.specialLesson !== true,
+      deducted: !giftLesson,
       late: late === true,
+      lateFeeCharged: chargeLateFee,
+      originalLessonDate: sourceDate,
+      attendanceRecordedAtText: nowText(),
       createdAt: FieldValue.serverTimestamp(),
       createdAtText: nowText(),
       updatedAt: FieldValue.serverTimestamp()
@@ -5928,24 +6252,26 @@ async function applyTeacherAttendance(data, late) {
         courseId: sourceCourseId,
         studentIds: event.studentIds || [],
         status: 'approved',
-        administrationFee: ATTENDANCE_ADMIN_FEE,
+        administrationFee: chargeLateFee ? ATTENDANCE_ADMIN_FEE : 0,
+        giftLesson,
         createdAt: FieldValue.serverTimestamp(),
         createdAtText: nowText()
       }, { merge: true });
-      tx.set(adjustmentRef, {
-        id: adjustmentRef.id,
-        teacherId: session.teacherId,
-        month: sourceDate.slice(0, 7),
-        date: sourceDate,
-        type: 'late_attendance_fee',
-        amount: -ATTENDANCE_ADMIN_FEE,
-        note: `補簽到行政處理費 NT$${ATTENDANCE_ADMIN_FEE}`,
-        source: 'teacher-portal',
-        createdAt: FieldValue.serverTimestamp(),
-        createdAtText: nowText()
-      }, { merge: true });
+      if (chargeLateFee) {
+        tx.set(adjustmentRef, {
+          id: adjustmentRef.id,
+          teacherId: session.teacherId,
+          month: currentTaipeiDay().slice(0, 7),
+          date: currentTaipeiDay(),
+          type: 'late_attendance_fee',
+          amount: -ATTENDANCE_ADMIN_FEE,
+          note: `補簽到行政處理費 NT$${ATTENDANCE_ADMIN_FEE}`,
+          source: 'teacher-portal',
+          createdAt: FieldValue.serverTimestamp(),
+          createdAtText: nowText()
+        }, { merge: true });
+      }
     }
-    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
     tx.set(versionRef, {
       version: currentVersion + 1,
       updatedAt: FieldValue.serverTimestamp(),
@@ -5956,7 +6282,9 @@ async function applyTeacherAttendance(data, late) {
     ok: true,
     operationId,
     message: late
-      ? `補簽到已完成，並已在本月薪資扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`
+      ? (chargeLateFee
+        ? `補簽到已完成，並已在本月薪資扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`
+        : '贈送課程補簽到已完成，本次不收行政處理費。')
       : '簽到已完成；今天晚上 12 點後如需取消，必須送主管審核。'
   };
 }
@@ -5969,14 +6297,131 @@ async function teacherLateAttendance(data) {
   return applyTeacherAttendance(data, true);
 }
 
+async function cancelTeacherAttendanceSameDay(session, resolved, reason) {
+  const { sourceDate, sourceEventId, sourceCourseId, event } = resolved;
+  if (sourceDate !== currentTaipeiDay()) {
+    throw new HttpsError('failed-precondition', '只有當天簽到可以直接取消。');
+  }
+  const operationId = attendanceOperationId(session.teacherId, sourceDate, event, {
+    sourceEventId,
+    sourceCourseId
+  });
+  const requestId = hash(['attendance-cancellation', operationId].join('|'));
+  const requestRef = db.collection(ATTENDANCE_CANCELLATIONS).doc(requestId);
+  const attendanceSnapshot = await db.collection(ATTENDANCE_RECORDS)
+    .where('operationId', '==', operationId)
+    .get();
+  const attendanceRefs = attendanceSnapshot.docs.map((doc) => doc.ref);
+  const lineage = attendanceLineage(event, { sourceEventId, sourceCourseId });
+  const statusRef = db.collection('coursePortalScheduleChanges')
+    .doc(`lesson-status-${hash([session.teacherId, lineage, sourceDate].join('|'))}`);
+  const payrollRef = db.collection(ATTENDANCE_PAYROLL).doc(operationId);
+  const versionRef = scheduleVersionRef();
+  const expectedVersion = await readScheduleVersion();
+  await db.runTransaction(async (tx) => {
+    const snapshots = await Promise.all([
+      tx.get(versionRef),
+      tx.get(requestRef),
+      tx.get(statusRef),
+      tx.get(payrollRef),
+      ...attendanceRefs.map((ref) => tx.get(ref))
+    ]);
+    const versionSnapshot = snapshots[0];
+    assertScheduleWritable(versionSnapshot);
+    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+    if (currentVersion !== expectedVersion) {
+      throw new HttpsError(
+        'aborted',
+        '這堂課剛剛已在其他裝置更新。為避免覆蓋資料，請重新整理後再操作。'
+      );
+    }
+    const existingRequest = snapshots[1].exists ? snapshots[1].data() || {} : {};
+    if (clean(existingRequest.status) === 'approved') return;
+    const currentStatus = snapshots[2].exists ? snapshots[2].data() || {} : {};
+    if (normalizeScheduleStatus(currentStatus.event && currentStatus.event.status) !== 'attended') {
+      throw new HttpsError('failed-precondition', '這堂課目前不是已簽到狀態，請重新整理。');
+    }
+    attendanceRefs.forEach((ref, index) => {
+      const prior = snapshots[4 + index].exists ? snapshots[4 + index].data() || {} : {};
+      tx.set(ref, {
+        active: false,
+        status: 'cancelled',
+        source: 'teacher-same-day-attendance-cancellation',
+        cancellationRequestId: requestId,
+        periodId: clean(prior.periodId),
+        cancelledAt: FieldValue.serverTimestamp(),
+        cancelledAtText: nowText(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+    tx.set(statusRef, attendanceChangePayload(
+      event,
+      sourceDate,
+      sourceEventId,
+      sourceCourseId,
+      session.teacherId,
+      'scheduled',
+      '老師當日取消誤簽到'
+    ), { merge: true });
+    tx.set(payrollRef, {
+      active: false,
+      status: 'cancelled',
+      cancellationRequestId: requestId,
+      cancelledAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    tx.set(requestRef, {
+      id: requestId,
+      operationId,
+      status: 'approved',
+      approvalMode: 'same_day_teacher',
+      teacherId: session.teacherId,
+      teacherName: clean(event.teacherName),
+      studentIds: event.studentIds || [],
+      studentNames: event.studentNames || [],
+      subjectId: clean(event.subjectId),
+      subjectName: clean(event.subjectName),
+      date: sourceDate,
+      startTime: clean(event.startTime),
+      endTime: clean(event.endTime),
+      eventId: clean(event.sourceId || sourceEventId || event.id),
+      courseId: clean(event.fixedCourseId || sourceCourseId),
+      attendanceRecordIds: attendanceRefs.map((ref) => ref.id),
+      reason: clean(reason) || '老師當日誤簽到',
+      administrationFee: 0,
+      requestedAt: FieldValue.serverTimestamp(),
+      requestedAtText: nowText(),
+      reviewedAt: FieldValue.serverTimestamp(),
+      reviewedAtText: nowText(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    tx.set(versionRef, {
+      version: currentVersion + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: session.teacherId
+    }, { merge: true });
+  });
+  return {
+    ok: true,
+    requestId,
+    status: 'approved',
+    sameDay: true,
+    message: '當日簽到已取消，本次不收行政處理費。'
+  };
+}
+
 async function teacherAttendanceCancellationRequest(data) {
   const session = await requireSession(data, ['teacher']);
   const reason = clean(data.reason);
-  if (!reason) throw new HttpsError('invalid-argument', '請填寫取消簽到原因。');
-  const { sourceDate, sourceEventId, sourceCourseId, event } = await teacherAttendanceEvent(session, data);
+  const resolved = await teacherAttendanceEvent(session, data);
+  const { sourceDate, sourceEventId, sourceCourseId, event } = resolved;
   if (normalizeScheduleStatus(event.status) !== 'attended') {
     throw new HttpsError('failed-precondition', '只有已簽到的課程可以申請取消簽到。');
   }
+  if (sourceDate === currentTaipeiDay()) {
+    return cancelTeacherAttendanceSameDay(session, resolved, reason);
+  }
+  if (!reason) throw new HttpsError('invalid-argument', '請填寫取消簽到原因。');
   const operationId = attendanceOperationId(session.teacherId, sourceDate, event, data);
   const requestId = hash(['attendance-cancellation', operationId].join('|'));
   const requestRef = db.collection(ATTENDANCE_CANCELLATIONS).doc(requestId);
@@ -6100,7 +6545,8 @@ async function adminRentalSettingsData() {
         pianoType: configuredPianoType(room, setting),
         rentalFee: effectiveRoomFee(room, setting),
         rentable: roomRentable(room, setting),
-        teacherSchedulable: roomTeacherSchedulable(room, setting)
+        teacherSchedulable: roomTeacherSchedulable(room, setting),
+        capacity: rentalRoomProfile(room, setting).capacity
       };
     })
   };
@@ -6171,6 +6617,7 @@ async function adminSaveRentalSettings(data) {
       rentalFee: Math.max(0, Number(row.rentalFee || 0)),
       rentable: row.rentable === true,
       teacherSchedulable: row.teacherSchedulable !== false,
+      capacity: Math.max(1, Number(row.capacity || 1)),
       rentalUseTypes: items.filter((item) =>
         item.active !== false && item.roomIds.includes(id)
       ).map((item) => item.id),
@@ -6313,8 +6760,15 @@ function adminTuitionPaymentRow(doc) {
     subjectName: clean(source.subjectName),
     teacherName: clean(source.teacherName),
     nextPeriodNo: Number(source.nextPeriodNo || 0),
+    nextSystemPeriodNo: Number(source.nextSystemPeriodNo || 0),
     lessonCount: Number(source.lessonCount || 4),
     expectedAmount: Number(source.expectedAmount || 0),
+    confirmedAmount: Number(source.confirmedAmount || 0),
+    remainingAmount: Math.max(0, Number(
+      source.remainingAmount != null
+        ? source.remainingAmount
+        : Number(source.expectedAmount || 0) - Number(source.confirmedAmount || 0)
+    )),
     paymentMethod: clean(source.paymentMethod),
     status: clean(source.status),
     transferDate: dateKey(source.transferDate),
@@ -6378,8 +6832,13 @@ async function adminTuitionPaymentAction(data) {
     return { ok: true, id, status: 'needs_resubmission', message: '已退回學生重新上傳。' };
   }
 
-  const confirmedAmount = Math.max(0, Number(data.confirmedAmount || previewRow.expectedAmount || 0));
+  const priorConfirmed = Math.max(0, Number(previewRow.confirmedAmount || 0));
+  const remainingBefore = Math.max(0, Number(previewRow.expectedAmount || 0) - priorConfirmed);
+  const confirmedAmount = Math.max(0, Number(data.confirmedAmount || remainingBefore || 0));
   if (!confirmedAmount) throw new HttpsError('invalid-argument', '請輸入實際收到的學費金額。');
+  if (confirmedAmount > remainingBefore) {
+    throw new HttpsError('invalid-argument', `本次金額不可超過尚未繳清的 NT$${remainingBefore.toLocaleString('zh-TW')}。`);
+  }
   const paymentMethod = clean(previewRow.paymentMethod);
   if (!['bank_transfer', 'onsite'].includes(paymentMethod)) {
     throw new HttpsError('failed-precondition', '這筆資料沒有正確的付款方式。');
@@ -6387,7 +6846,8 @@ async function adminTuitionPaymentAction(data) {
   const targetPeriodId = clean(previewRow.targetPeriodId);
   const formalPeriodId = targetPeriodId || `portal-period-${id}`;
   const periodRef = db.collection(TUITION_PERIODS).doc(formalPeriodId);
-  const transactionRef = db.collection(TUITION_TRANSACTIONS).doc(`portal-payment-${id}`);
+  const transactionRevision = Math.max(1, Number(previewRow.submissionRevision || 1));
+  const transactionRef = db.collection(TUITION_TRANSACTIONS).doc(`portal-payment-${id}-${transactionRevision}`);
   const paymentDate = paymentMethod === 'bank_transfer'
     ? (dateKey(previewRow.transferDate) || currentTaipeiDay())
     : currentTaipeiDay();
@@ -6401,6 +6861,13 @@ async function adminTuitionPaymentAction(data) {
     if (!requestRow || !['pending_review', 'onsite_pending'].includes(clean(requestRow.status))) {
       throw new HttpsError('failed-precondition', '這筆學費已被其他人處理，請重新整理。');
     }
+    const currentConfirmed = Math.max(0, Number(requestRow.confirmedAmount || 0));
+    const currentRemaining = Math.max(0, Number(requestRow.expectedAmount || 0) - currentConfirmed);
+    if (confirmedAmount > currentRemaining) {
+      throw new HttpsError('failed-precondition', '這筆學費剛剛已由其他裝置更新，請重新整理後再確認。');
+    }
+    const cumulativeConfirmed = currentConfirmed + confirmedAmount;
+    const remainingAmount = Math.max(0, Number(requestRow.expectedAmount || 0) - cumulativeConfirmed);
     if (!targetPeriodId && !periodSnapshot.exists) {
       tx.set(periodRef, {
         id: formalPeriodId,
@@ -6443,8 +6910,9 @@ async function adminTuitionPaymentAction(data) {
       });
     }
     tx.set(requestRef, {
-      status: 'confirmed',
-      confirmedAmount,
+      status: remainingAmount > 0 ? 'payment_due' : 'confirmed',
+      confirmedAmount: cumulativeConfirmed,
+      remainingAmount,
       formalPeriodId,
       paymentDate,
       confirmedAt: FieldValue.serverTimestamp(),
@@ -6456,29 +6924,35 @@ async function adminTuitionPaymentAction(data) {
   const methodText = paymentMethod === 'bank_transfer' ? '轉帳' : '現場繳費';
   const confirmedRow = Object.assign({}, previewRow, {
     id,
-    confirmedAmount,
+    confirmedAmount: priorConfirmed + confirmedAmount,
+    remainingAmount: Math.max(0, remainingBefore - confirmedAmount),
     formalPeriodId,
-    status: 'confirmed'
+    status: remainingBefore - confirmedAmount > 0 ? 'payment_due' : 'confirmed'
   });
+  const remainingAmount = Math.max(0, remainingBefore - confirmedAmount);
   const body = [
     `${clean(previewRow.studentName) || '同學'}您好，柚子樂器已確認收到您的${newSystemTuitionPeriodLabel(previewRow, 'next')}學費。`,
     `課程：${clean(previewRow.subjectName) || '課程'}`,
-    `金額：NT$${confirmedAmount.toLocaleString('zh-TW')}`,
+    `本次入帳：NT$${confirmedAmount.toLocaleString('zh-TW')}`,
+    remainingAmount > 0 ? `尚未繳清：NT$${remainingAmount.toLocaleString('zh-TW')}` : '本期學費已繳清。',
     `付款方式：${methodText}`,
-    '您的下一期課程已完成登記，謝謝您。'
+    remainingAmount > 0 ? '您可以回到學生入口繼續繳納剩餘金額。' : '您的下一期課程已完成登記，謝謝您。'
   ].join('\n');
   await queueStudentTuitionNotice(
     confirmedRow,
-    '下一期學費已確認',
+    remainingAmount > 0 ? '學費已部分入帳' : '下一期學費已確認',
     body,
     `confirmed-${Number(previewRow.submissionRevision || 0)}`
   );
   return {
     ok: true,
     id,
-    status: 'confirmed',
+    status: remainingAmount > 0 ? 'payment_due' : 'confirmed',
     formalPeriodId,
-    message: '已確認收款並建立正式下一期學費紀錄。'
+    remainingAmount,
+    message: remainingAmount > 0
+      ? `已確認本次收款，尚餘 NT$${remainingAmount.toLocaleString('zh-TW')}。`
+      : '已確認收款並建立正式下一期學費紀錄。'
   };
 }
 
@@ -6635,8 +7109,8 @@ async function adminAttendanceCancellationAction(data) {
     tx.set(adjustmentRef, {
       id: adjustmentRef.id,
       teacherId: clean(requestRow.teacherId),
-      month: clean(requestRow.date).slice(0, 7),
-      date: clean(requestRow.date),
+      month: currentTaipeiDay().slice(0, 7),
+      date: currentTaipeiDay(),
       type: 'attendance_cancellation_fee',
       amount: -ATTENDANCE_ADMIN_FEE,
       note: `取消簽到行政處理費 NT$${ATTENDANCE_ADMIN_FEE}`,
@@ -6978,6 +7452,91 @@ async function adminSuspensionAction(data) {
   return { ok: true, id, message: '已確認學費繳清。' };
 }
 
+function teacherReminderDate(value) {
+  const date = dateKey(value);
+  if (!date) return '';
+  const [, month, day] = date.split('-').map(Number);
+  return `${month}月${day}日`;
+}
+
+function teacherReminderLessonType(row) {
+  const action = clean(row.portalAction);
+  if (action === 'teacher_gift') return '贈送課程';
+  if (action === 'teacher_add') return '增加課程';
+  if (['single_move', 'permanent_move', 'permanent_room_exception'].includes(action)) return '調課課程';
+  return '固定課程';
+}
+
+function teacherReminderLessonLine(row, maps) {
+  const studentNames = eventStudentIds(row)
+    .map((studentId) => clean(maps.students[studentId] && maps.students[studentId].name))
+    .filter(Boolean)
+    .join('、') || '學生';
+  const subjectName = clean(maps.subjects[eventSubjectId(row)] && maps.subjects[eventSubjectId(row)].name) ||
+    clean(row.subjectName) || '課程';
+  return `${teacherReminderDate(eventDate(row))} ${eventStart(row)}～${eventEnd(row)}　${studentNames}｜${subjectName}｜${teacherReminderLessonType(row)}`;
+}
+
+async function dailyTeacherCourseReminders(pushLineMessage) {
+  if (typeof pushLineMessage !== 'function') return;
+  const today = currentTaipeiDay();
+  const yesterday = addDays(today, -1);
+  const [bindings, bundle] = await Promise.all([
+    db.collection('coursePortalTeacherBindings').where('status', '==', 'active').get(),
+    scheduleBundle(yesterday, today, '')
+  ]);
+  const targets = [...new Map(bindings.docs.map((doc) => {
+    const row = doc.data() || {};
+    const key = `${clean(row.teacherId)}|${clean(row.lineUserId)}`;
+    return [key, Object.assign({ id: doc.id }, row)];
+  }).filter(([key, row]) =>
+    key !== '|' && clean(row.teacherId) && clean(row.lineUserId)
+  )).values()];
+  for (const binding of targets) {
+    const teacherId = clean(binding.teacherId);
+    const rows = bundle.resourceEvents.filter((row) =>
+      eventTeacherId(row) === teacherId &&
+      !['cancelled', 'pending_conflict'].includes(normalizeScheduleStatus(row.status))
+    );
+    const todayRows = rows.filter((row) => eventDate(row) === today)
+      .sort((left, right) => eventStart(left).localeCompare(eventStart(right)));
+    const unfinished = rows.filter((row) =>
+      eventDate(row) === yesterday &&
+      normalizeScheduleStatus(row.status) === 'scheduled'
+    ).sort((left, right) => eventStart(left).localeCompare(eventStart(right)));
+    const parts = [
+      '【今日課程】',
+      todayRows.length
+        ? todayRows.map((row) => teacherReminderLessonLine(row, bundle.maps)).join('\n')
+        : '今日無課程'
+    ];
+    if (unfinished.length) {
+      parts.push(
+        '',
+        '【昨日未完成紀錄】',
+        unfinished.map((row) => teacherReminderLessonLine(row, bundle.maps)).join('\n'),
+        unfinished.length === 1
+          ? '此課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請老師進入課表完成補簽到。'
+          : '以上課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請老師進入課表完成補簽到。'
+      );
+    }
+    const body = parts.join('\n');
+    const logRef = db.collection('coursePortalReminderLogs').doc(
+      hash(`teacher-daily|${today}|${teacherId}|${clean(binding.lineUserId)}`)
+    );
+    if ((await logRef.get()).exists) continue;
+    await pushLineMessage(clean(binding.lineUserId), body);
+    await logRef.set({
+      day: today,
+      teacherId,
+      lineUserId: clean(binding.lineUserId),
+      type: 'teacher_daily_courses',
+      messages: [body],
+      sentAt: FieldValue.serverTimestamp()
+    });
+  }
+}
+
 async function dailyStudentReminders(pushLineMessage) {
   if (typeof pushLineMessage !== 'function') return;
   const today = currentTaipeiDay();
@@ -6999,8 +7558,9 @@ async function dailyStudentReminders(pushLineMessage) {
     suspensionSnapshot.docs.map((doc) => doc.data() || {})
   );
   const studentMap = indexById(students);
+  const numberedPeriods = await assignNewSystemPeriodNumbers(periods);
   await ensureTuitionPaymentRequests({
-    periods,
+    periods: numberedPeriods,
     students,
     subjects,
     teachers,
@@ -7020,7 +7580,7 @@ async function dailyStudentReminders(pushLineMessage) {
     if (!clean(binding.lineUserId)) continue;
     const studentId = clean(binding.studentId);
     if (!learningIds.has(studentId)) continue;
-    const studentPeriods = periods.filter((row) => clean(row.studentId) === studentId && !['closed', 'completed'].includes(clean(row.status).toLowerCase()));
+    const studentPeriods = numberedPeriods.filter((row) => clean(row.studentId) === studentId && !['closed', 'completed'].includes(clean(row.status).toLowerCase()));
     const lastLesson = studentPeriods.find((row) => Number(row.lessonCount || 4) - Number(row.usedCount || 0) === 1);
     const name = clean(studentMap[studentId] && studentMap[studentId].name) || '學生';
     if (binding.reminderLastLesson !== false && lastLesson) {
@@ -7368,6 +7928,13 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     timeoutSeconds: 180,
     memory: '512MiB'
   }, async () => dailyStudentReminders(helpers.pushLineMessage));
+  exportsObject.coursePortalTeacherDailyReminder = onSchedule({
+    schedule: '0 9 * * *',
+    timeZone: TAIPEI,
+    region: REGION,
+    timeoutSeconds: 180,
+    memory: '512MiB'
+  }, async () => dailyTeacherCourseReminders(helpers.pushLineMessage));
 }
 
 module.exports = {
@@ -7436,7 +8003,7 @@ async function studentContactBookImage(data) {
   const session = await requireSession(data, ['student']);
   const id = clean(data.postId);
   const imageIndex = Number(data.imageIndex);
-  const allowed = new Set((await activeStudentBindingsForSession(session)).map((row) => clean(row.studentId)));
+  const allowed = new Set(await activeStudentIdsForSession(session));
   const snapshot = await db.collection(CONTACT_BOOK_POSTS).doc(id).get();
   if (!snapshot.exists || !allowed.has(clean(snapshot.data().studentId))) throw new HttpsError('permission-denied', '沒有這張照片的查看權限。');
   const image = (snapshot.data().images || [])[imageIndex];
