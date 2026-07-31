@@ -174,6 +174,8 @@ assert(studentPortal.includes('data-tab="contact"'), '學生入口缺少課堂�
 assert(studentPortal.includes('課程與學費') && studentPortal.includes('租用教室') && studentPortal.includes('LINE 提醒'), '學生底部入口不完整');
 assert(studentPortal.includes('新系統僅顯示最新兩期資料') && studentPortal.includes('紙本上課證'), '學生入口未清楚說明只顯示最新兩期');
 assert(studentPortal.includes('lesson-slot-grid') && studentPortal.includes('未使用'), '學生期別卡缺少堂次小格與未使用標示');
+assert(studentPortal.includes('studentSwitcher') && studentPortal.includes('data.students.length <= 1'), '只有一位學生時仍顯示不必要的學生切換');
+assert(studentPortal.includes('student-bottom-tabs') && studentPortal.includes('payment-due'), '學生入口缺少固定底部導航或末堂未繳提醒');
 assert(studentPortal.includes('coursePortalStudentContactBookImage'), '學生入口無法安全查看聯絡簿照片');
 assert(teacherSource.includes('data-quick-contact-book'), '老師課表缺少課堂聯絡簿操作');
 assert(teacherSource.includes('coursePortalTeacherSubmitContactBookPost'), '老師聯絡簿未連接後端');
@@ -187,6 +189,7 @@ const contactRules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8')
 const contactDeployment = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8');
 assert(contactPortalFunctions.includes("const CONTACT_BOOK_POSTS = 'coursePortalLessonContactPosts'"), '課堂聯絡簿缺少私密資料集合');
 assert(contactPortalFunctions.includes('coursePortalTeacherSubmitContactBookPost') && contactPortalFunctions.includes('coursePortalStudentContactBookImage'), '課堂聯絡簿 Callable Functions 不完整');
+assert(contactPortalFunctions.includes('linkedAttendance') && contactPortalFunctions.includes('teacherPhone'), '學生入口無法從課程與簽到資料補出老師聯絡資訊');
 assert(contactRules.includes('coursePortalLessonContactPosts') && contactRules.includes('allow read, write: if false'), '課堂聯絡簿資料不可由前端直接讀寫');
 assert(contactDeployment.includes('functions:coursePortalTeacherSubmitContactBookPost') && contactDeployment.includes('functions:coursePortalStudentContactBookImage'), '部署流程缺少課堂聯絡簿 Functions');
 

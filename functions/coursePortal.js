@@ -4396,22 +4396,31 @@ async function studentPortalData(data) {
       };
     }),
     // 新系統只公開每位學生最新兩期；更早帳務請以紙本上課證為準。
-    periods: publicPeriods.map((row) => ({
-      id: sourceId(row),
-      studentId: clean(row.studentId),
-      periodNo: Number(row.periodNo || row.period || 0),
-      subjectId: clean(row.subjectId),
-      subjectName: clean(maps.subjects[clean(row.subjectId)] && maps.subjects[clean(row.subjectId)].name),
-      teacherId: clean(row.teacherId),
-      teacherName: clean(maps.teachers[clean(row.teacherId)] && maps.teachers[clean(row.teacherId)].name),
-      teacherPhone: normalizePhone(sourcePhone(maps.teachers[clean(row.teacherId)] || {})),
-      lessonCount: Number(row.lessonCount || row.totalLessons || 4),
-      usedCount: Number(row.usedCount || row.attendedCount || 0),
-      expectedAmount: Number(row.expectedAmount || row.amount || 0),
-      paidAmount: Number(row.paidAmount || row.receivedAmount || 0),
-      status: clean(row.status),
-      transactions: jsonValue(row.transactions || [])
-    })),
+    periods: publicPeriods.map((row) => {
+      const course = courseById.get(clean(row.sourceCourseId || row.courseId || row.fixedCourseId)) || {};
+      const linkedAttendance = attendance.find((item) => clean(item.periodId) === sourceId(row)) || {};
+      const teacherId = clean(row.teacherId || row.instructorId || eventTeacherId(row) || eventTeacherId(course) || eventTeacherId(linkedAttendance));
+      const namedTeacher = clean(row.teacherName || row.instructorName || course.teacherName || linkedAttendance.teacherName);
+      const teacher = maps.teachers[teacherId] || teachers.find((item) =>
+        namedTeacher && normalizeName(item.name || item.teacherName) === normalizeName(namedTeacher)
+      ) || {};
+      return {
+        id: sourceId(row),
+        studentId: clean(row.studentId),
+        periodNo: Number(row.periodNo || row.period || 0),
+        subjectId: clean(row.subjectId),
+        subjectName: clean(maps.subjects[clean(row.subjectId)] && maps.subjects[clean(row.subjectId)].name),
+        teacherId: teacherId || sourceId(teacher),
+        teacherName: clean(teacher.name || teacher.teacherName || namedTeacher),
+        teacherPhone: normalizePhone(sourcePhone(teacher)),
+        lessonCount: Number(row.lessonCount || row.totalLessons || 4),
+        usedCount: Number(row.usedCount || row.attendedCount || 0),
+        expectedAmount: Number(row.expectedAmount || row.amount || 0),
+        paidAmount: Number(row.paidAmount || row.receivedAmount || 0),
+        status: clean(row.status),
+        transactions: jsonValue(row.transactions || [])
+      };
+    }),
     tuitionPayment: {
       bank: TUITION_PAYMENT_BANK,
       requests: paymentRequests

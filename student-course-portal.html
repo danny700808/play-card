@@ -62,7 +62,7 @@
     </section>
 
     <section class="hidden" id="appView" data-app-view>
-      <div class="toolbar">
+      <div class="toolbar" id="studentSwitcher">
         <div class="field"><label>查看學生</label><select id="studentSelect"></select></div>
         <button class="btn soft" id="addStudentBinding" type="button">＋ 增加另一位學生</button>
       </div>
@@ -204,13 +204,14 @@
         </article>`;
     }
 
-    function lessonSlots(period, attendance) {
+    function lessonSlots(period, attendance, showPaymentDue) {
       const rows = attendance.filter((row) => row.periodId && row.periodId === period.id)
         .sort((left, right) => `${left.date}|${left.startTime}`.localeCompare(`${right.date}|${right.startTime}`));
       const count = Math.max(Number(period.lessonCount || 0), rows.length);
       return Array.from({ length: count }, (_, index) => {
         const row = rows[index];
-        return row ? `<div class="lesson-slot used"><strong>第 ${index + 1} 堂</strong><span>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime || '')}</span><small>${P.escapeHtml(attendanceStatusLabel(row.status))}</small></div>`
+        const finalUnpaid = showPaymentDue && index === count - 1;
+        return row ? `<div class="lesson-slot used${finalUnpaid ? ' payment-due' : ''}"><strong>第 ${index + 1} 堂</strong><span>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime || '')}</span><small>${finalUnpaid ? '已上課・未繳費' : P.escapeHtml(attendanceStatusLabel(row.status))}</small></div>`
           : `<div class="lesson-slot"><strong>第 ${index + 1} 堂</strong><span>未使用</span></div>`;
       }).join('');
     }
@@ -226,10 +227,10 @@
     }
 
     function tuitionPaymentStatus(row) {
-      if (row.status === 'pending_review') return '<span class="badge warn">等待主管確認轉帳</span>';
+      if (row.status === 'pending_review') return '<span class="badge warn">等待確認</span>';
       if (row.status === 'onsite_pending') return '<span class="badge warn">等待現場繳費</span>';
       if (row.status === 'needs_resubmission') return '<span class="badge danger">請重新送出</span>';
-      return '<span class="badge danger">下一期尚未繳費</span>';
+      return '<span class="badge danger">尚未繳費</span>';
     }
 
     function activeTuitionPayments() {
@@ -374,7 +375,7 @@
         const request = requests.find((item) => Number(item.nextPeriodNo || 0) === Number(row.periodNo || 0)) ||
           requests.find((item) => item.subjectId && item.subjectId === row.subjectId);
         return `<article class="period-card"><div class="period-card-head"><div><strong>新系統第 ${index + 1} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong><small>已上 ${row.usedCount} / ${row.lessonCount} 堂</small></div>${paymentBlock(row, request)}</div>
-          <div class="lesson-slot-grid">${lessonSlots(row, attendance)}</div></article>`;
+          <div class="lesson-slot-grid">${lessonSlots(row, attendance, Number(row.paidAmount || 0) < Number(row.expectedAmount || 0) || Boolean(request))}</div></article>`;
       }).join('') : '<p class="muted">目前沒有學費期別資料。</p>';
       renderContactBook();
       const binding = data.bindings.find((row) => row.studentId === studentId) || {};
@@ -389,6 +390,7 @@
         studentId = requested || studentId || data.students[0].id;
         document.getElementById('studentSelect').innerHTML = data.students.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
         document.getElementById('studentSelect').value = studentId;
+        document.getElementById('studentSwitcher').classList.toggle('hidden', data.students.length <= 1);
         render();
         showBound(true);
       } catch (error) {
