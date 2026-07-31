@@ -38,7 +38,7 @@ const portalCommon = read('course-portal-common.js');
     );
   });
   assert(
-    html.includes('operations-course-inline.js?v=20260730-mobile-rental-teacher-v1'),
+    html.includes('operations-course-inline.js?v=20260801-teacher-adjustments-v1'),
     '營運入口未載入統一 inline 課務控制器'
   );
   assert(!html.includes('operations-course-authoritative-v1.js'), '營運入口仍載入舊課務轉址層');
@@ -89,6 +89,7 @@ assert(scheduler.includes('setAttendance'), '完整課表缺少簽到、請假�
   'tuitionModal',
   'transactionModal',
   'teacherPayrollModal',
+  'teacherAdjustmentModal',
   'policyModal'
 ].forEach((id) => assert(template.includes(`id="${id}"`), `inline 課務缺少完整功能：${id}`));
 ['rooms', 'subjects', 'fees'].forEach((tab) => {

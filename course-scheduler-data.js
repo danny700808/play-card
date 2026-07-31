@@ -349,6 +349,24 @@
     return result;
   }
 
+  async function saveTeacherAdjustment(options){
+    options=options||{};
+    var pin=clean(options.manualSyncPin),teacherId=clean(options.teacherId),date=dateKey(options.date),type=clean(options.type),note=clean(options.note),requestId=clean(options.requestId);
+    if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
+    if(!teacherId||!date||['reward','deduction'].indexOf(type)<0||Number(options.amount)<=0||!note||!requestId)throw new Error('老師薪資異動資料不完整。');
+    var result=await call('coursePortalAdminSaveTeacherAdjustment',{
+      adminPin:pin,
+      requestId:requestId,
+      teacherId:teacherId,
+      date:date,
+      type:type,
+      amount:Number(options.amount),
+      note:note
+    });
+    if(!result.ok||!result.adjustment)throw new Error('老師薪資異動尚未儲存完成。');
+    return result;
+  }
+
   async function loadPortalRentals(options){
     options=options||{};
     var pin=clean(options.manualSyncPin);
@@ -383,5 +401,5 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,loadPortalRentals:loadPortalRentals,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
+  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);

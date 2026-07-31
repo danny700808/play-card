@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260730-mobile-rental-teacher-v1';
+const VERSION = '20260801-teacher-adjustments-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
