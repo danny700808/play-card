@@ -80,6 +80,8 @@ a { color: inherit; }
 .period-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
 .period-card-head strong,.period-card-head small { display:block; }
 .period-card-head > div:last-child { text-align:right; }
+.student-teacher-contact { margin-bottom:10px; }.student-contact-row{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;align-items:center}.student-contact-row span{color:var(--muted);font-size:12px}.student-contact-row strong{font-size:15px}
+.period-payment{display:grid;gap:3px;justify-items:end;min-width:116px}.period-payment strong{font-size:16px}.period-payment span{font-weight:800}.period-payment small{font-size:11px}.period-payment.unpaid{color:var(--red)}.period-payment.paid{color:var(--green)}.period-payment .badge{justify-self:end}
 .lesson-slot-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(105px,1fr)); gap:7px; }
 .lesson-slot { min-height:72px; padding:9px; border:1px dashed #cbd8d2; border-radius:10px; background:#fafcfb; color:var(--muted); display:grid; gap:3px; }
 .lesson-slot.used { border-style:solid; border-color:#b7dace; background:var(--green-soft); color:var(--ink); }
@@ -270,6 +272,7 @@ a { color: inherit; }
   .list-row>:first-child{grid-column:1/-1;font-size:10px}
   .badge{padding:2px 5px;font-size:7px}
   .period-card,.contact-book-post{padding:8px;border-radius:9px}.period-card-head{gap:6px;margin-bottom:6px}.period-card-head strong{font-size:10px}.period-card-head small{font-size:8px}.lesson-slot-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.lesson-slot{min-height:56px;padding:6px;border-radius:8px}.lesson-slot strong{font-size:9px}.lesson-slot span,.lesson-slot small{font-size:8px}
+  .student-teacher-contact{margin-bottom:7px}.student-contact-row{gap:3px 7px}.student-contact-row span{font-size:8px}.student-contact-row strong{font-size:10px}.period-payment{min-width:88px;gap:2px}.period-payment strong{font-size:11px}.period-payment small{font-size:8px}.period-payment .btn{min-height:28px;padding:4px 6px}
   .toolbar{gap:5px;margin-bottom:7px}
   .toolbar .field{min-width:110px}
   .notice{padding:7px;border-radius:8px;font-size:8px}

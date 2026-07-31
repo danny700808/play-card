@@ -812,9 +812,6 @@ async function prepareBindingIdentity(data) {
   }
   assertInput(name, '姓名');
   assertInput(phone, '電話');
-  if (type !== 'student') {
-    assertInput(email, 'Email');
-  }
   if (email && !validEmail(email)) {
     throw new HttpsError('invalid-argument', 'Email 格式不正確。');
   }
@@ -4407,6 +4404,7 @@ async function studentPortalData(data) {
       subjectName: clean(maps.subjects[clean(row.subjectId)] && maps.subjects[clean(row.subjectId)].name),
       teacherId: clean(row.teacherId),
       teacherName: clean(maps.teachers[clean(row.teacherId)] && maps.teachers[clean(row.teacherId)].name),
+      teacherPhone: normalizePhone(sourcePhone(maps.teachers[clean(row.teacherId)] || {})),
       lessonCount: Number(row.lessonCount || row.totalLessons || 4),
       usedCount: Number(row.usedCount || row.attendedCount || 0),
       expectedAmount: Number(row.expectedAmount || row.amount || 0),

@@ -163,7 +163,7 @@ assert(studentPortal.includes('id="inactiveStudentView"'), '停課學生缺少�
 assert(studentPortal.includes('id="inactiveHistoryList"'), '停課學生無法查看自己的過去課表');
 assert(studentPortal.includes('完成綁定並進入'), '學生 LINE 綁定仍顯示等待主管核准');
 assert(teacherPortal.includes('完成綁定並進入老師課務'), '老師 LINE 綁定仍顯示等待主管核准');
-assert(studentPortal.includes('id="tuitionPaymentSection"'), '學生入口缺少下一期學費區塊');
+assert(studentPortal.includes('paymentBlock(row, request)') && studentPortal.includes('period-payment'), '學生入口沒有把繳費整合到期別卡');
 assert(studentPortal.includes('id="tuitionPaymentModal"'), '學生入口缺少繳費方式視窗');
 assert(studentPortal.includes('name="paymentMethod" value="bank_transfer"'), '學生入口缺少轉帳繳費選項');
 assert(studentPortal.includes('name="paymentMethod" value="onsite"'), '學生入口缺少現場繳費選項');
@@ -177,6 +177,7 @@ assert(studentPortal.includes('lesson-slot-grid') && studentPortal.includes('未
 assert(studentPortal.includes('coursePortalStudentContactBookImage'), '學生入口無法安全查看聯絡簿照片');
 assert(teacherSource.includes('data-quick-contact-book'), '老師課表缺少課堂聯絡簿操作');
 assert(teacherSource.includes('coursePortalTeacherSubmitContactBookPost'), '老師聯絡簿未連接後端');
+assert(!teacherPortal.slice(teacherPortal.indexOf('data-line-setup-form'), teacherPortal.indexOf('</form>', teacherPortal.indexOf('data-line-setup-form'))).includes('name="email"'), '老師 LINE 首次註冊仍要求 Email');
 assert(adminPortal.includes('學費繳費待確認'), '管理者頁缺少學費繳費待確認專區');
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentScreenshot'), '管理者無法安全讀取匯款截圖');
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentAction'), '管理者學費確認未連接後端');
