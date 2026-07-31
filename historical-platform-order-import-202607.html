@@ -43,12 +43,12 @@
 (function(){
   'use strict';
   const PERIOD_START='2026-07-01', PERIOD_END_EXCLUSIVE='2026-07-11';
-  const EXPECTED={orders:40,rows:52,sales:56114,net:48819.18,cost:27563,profit:21256.18};
+  const EXPECTED={orders:23,rows:32,sales:26832,net:23343.84,cost:13048,profit:10295.84};
   const KNOWN_DUPLICATES=new Set(['EasyStore|3829','EasyStore|3830','Coupang|126101522569322']);
   const BATCH_ID='HIST-20260701-20260710-NOSTOCK-V1';
   const FILE_NAME='profit_report_本月_20260701_20260731_20260731_153335.xlsx';
   const $=id=>document.getElementById(id), money=n=>'NT$ '+Number(n||0).toLocaleString('zh-TW',{minimumFractionDigits:Number(n)%1?2:0,maximumFractionDigits:2});
-  let parsedRows=[],previewRows=[],db=null;
+  let parsedRows=[],previewRows=[],excludedKeys=[],db=null;
   const log=(message)=>{$('log').textContent+='\n'+message;$('log').scrollTop=$('log').scrollHeight;};
   const setStatus=(message,kind)=>{$('status').textContent=message;$('status').className='notice '+(kind||'');};
   const text=v=>String(v==null?'':v).trim(), number=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
@@ -95,11 +95,11 @@
     this.disabled=true;$('commit').disabled=true;$('log').textContent='開始檢查重複訂單…';
     try{
       await initDb();const existing=await existingOrderKeys(parsedRows);KNOWN_DUPLICATES.forEach(k=>existing.add(k));
-      previewRows=parsedRows.filter(row=>!existing.has(orderKey(row)));const s=summarize(previewRows),dupes=Array.from(new Set(parsedRows.map(orderKey).filter(k=>existing.has(k)))).sort();
+      previewRows=parsedRows.filter(row=>!existing.has(orderKey(row)));const s=summarize(previewRows),dupes=Array.from(new Set(parsedRows.map(orderKey).filter(k=>existing.has(k)))).sort();excludedKeys=dupes;
       showSummary(s);$('duplicateText').textContent='排除已存在訂單：'+dupes.join('、');log('排除 '+dupes.length+' 筆既有訂單：'+dupes.join('、'));log('待補：'+s.orders+' 筆訂單、'+s.rows+' 列商品。');log('銷售 '+money(s.sales)+'｜入帳 '+money(s.net)+'｜成本 '+money(s.cost)+'｜毛利 '+money(s.profit));
       const matches=Object.keys(EXPECTED).every(k=>Math.abs(s[k]-EXPECTED[k])<0.011);
-      if(!matches)throw new Error('核對結果與預期不一致，已停止匯入。預期 40 筆／52 列／銷售 56,114 元。');
-      setStatus('核對通過：40 筆訂單、52 列商品，可正式補登；庫存不會改變。','ok');$('commit').disabled=false;
+      if(!matches)throw new Error('核對結果與預期不一致，已停止匯入。預期 23 筆／32 列／銷售 26,832 元。');
+      setStatus('核對通過：23 筆訂單、32 列商品，可正式補登；庫存不會改變。','ok');$('commit').disabled=false;
     }catch(error){setStatus(error.message,'bad');log('停止：'+error.message);}finally{$('preview').disabled=false;}
   });
   $('commit').addEventListener('click',async function(){
@@ -121,12 +121,12 @@
         });
       }
       const s=summarize(previewRows);
-      batch.set(db.collection('opsPlatformSyncRuns').doc(BATCH_ID),{runId:BATCH_ID,trigger:'historical-excel-import',status:'completed',historicalImport:true,inventoryEffect:'none',sourceFile:FILE_NAME,periodStart:PERIOD_START,periodEnd:'2026-07-10',excludedOrders:Array.from(KNOWN_DUPLICATES),summary:{orders:s.orders,lines:s.rows,grossAmount:s.sales,estimatedNetAmount:s.net,costTotal:s.cost,estimatedProfit:s.profit,applyInventory:false},startedAt:now,finishedAt:now,version:'2026.07.31-historical-no-stock-v1'},{merge:true});
-      batch.set(db.collection('opsAuditLogs').doc(),{action:'歷史平台訂單補登',entityType:'platformOrderImport',entityId:BATCH_ID,summary:'2026/07/01～07/10｜40 筆訂單｜52 列｜不扣庫存',details:{grossAmount:s.sales,estimatedNetAmount:s.net,costTotal:s.cost,estimatedProfit:s.profit,excludedOrders:Array.from(KNOWN_DUPLICATES)},createdAt:now,createdBy:'one-time-historical-import',version:'2026.07.31-historical-no-stock-v1'});
+      batch.set(db.collection('opsPlatformSyncRuns').doc(BATCH_ID),{runId:BATCH_ID,trigger:'historical-excel-import',status:'completed',historicalImport:true,inventoryEffect:'none',sourceFile:FILE_NAME,periodStart:PERIOD_START,periodEnd:'2026-07-10',excludedOrders:excludedKeys,summary:{orders:s.orders,lines:s.rows,grossAmount:s.sales,estimatedNetAmount:s.net,costTotal:s.cost,estimatedProfit:s.profit,applyInventory:false},startedAt:now,finishedAt:now,version:'2026.07.31-historical-no-stock-v1'},{merge:true});
+      batch.set(db.collection('opsAuditLogs').doc(),{action:'歷史平台訂單補登',entityType:'platformOrderImport',entityId:BATCH_ID,summary:'2026/07/01～07/10｜23 筆訂單｜32 列｜不扣庫存',details:{grossAmount:s.sales,estimatedNetAmount:s.net,costTotal:s.cost,estimatedProfit:s.profit,excludedOrders:excludedKeys},createdAt:now,createdBy:'one-time-historical-import',version:'2026.07.31-historical-no-stock-v1'});
       await batch.commit();
       const verify=await db.collection('opsPlatformOrders').where('historicalImportBatch','==',BATCH_ID).get(),verifyRows=[];verify.forEach(d=>verifyRows.push(d.data()));const verified={orders:new Set(verifyRows.map(d=>text(d.platform)+'|'+text(d.externalOrderNo))).size,rows:verifyRows.length,sales:round2(verifyRows.reduce((s,d)=>s+number(d.grossAmount),0)),net:round2(verifyRows.reduce((s,d)=>s+number(d.estimatedNetAmount),0)),cost:round2(verifyRows.reduce((s,d)=>s+number(d.costTotal),0)),profit:round2(verifyRows.reduce((s,d)=>s+number(d.estimatedProfit),0))};
       if(!Object.keys(EXPECTED).every(k=>Math.abs(verified[k]-EXPECTED[k])<0.011))throw new Error('寫入後核對不一致：'+JSON.stringify(verified));
-      showSummary(verified);setStatus('補登完成：40 筆訂單、52 列商品；營收與毛利已寫入，庫存未變動。','ok');log('完成並核對通過。批次：'+BATCH_ID);log('庫存交易新增：0 筆。');
+      showSummary(verified);setStatus('補登完成：23 筆訂單、32 列商品；營收與毛利已寫入，庫存未變動。','ok');log('完成並核對通過。批次：'+BATCH_ID);log('庫存交易新增：0 筆。');
     }catch(error){setStatus('補登失敗：'+error.message,'bad');log('錯誤：'+error.message);$('commit').disabled=false;}finally{$('preview').disabled=false;}
   });
 })();
