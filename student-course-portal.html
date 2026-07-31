@@ -45,12 +45,12 @@
         </article>
       </div>
       <section class="auth-line-setup hidden" data-line-setup-panel>
-        <div class="section-title"><div><h3>完成 LINE 第一次申請</h3><p class="muted">LINE 身分已確認；資料送出後需由主管核准。</p></div></div>
+        <div class="section-title"><div><h3>完成 LINE 第一次綁定</h3><p class="muted">LINE 身分已確認；姓名與登記電話相符後會直接進入。</p></div></div>
         <form class="stack" data-line-setup-form>
           <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" required></div>
           <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
           <div class="field"><label>與學生的關係</label><select name="relationship"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></div>
-          <button class="btn primary" type="submit">送出綁定申請</button>
+          <button class="btn primary" type="submit">完成綁定並進入</button>
         </form>
       </section>
       <div class="auth-otp-panel hidden" data-otp-panel></div>
@@ -67,7 +67,8 @@
         <button class="btn soft" id="addStudentBinding" type="button">＋ 增加另一位學生</button>
       </div>
       <section class="card hidden" id="inactiveStudentView">
-        <div class="section-title"><div><h2>目前沒有進行中的課程</h2><p class="muted" id="inactiveStudentMessage"></p></div></div>
+        <div class="section-title"><div><h2 id="inactiveStudentTitle">過去課表仍可查看</h2><p class="muted" id="inactiveStudentMessage"></p></div></div>
+        <div class="list" id="inactiveHistoryList"></div>
         <a class="btn primary" href="room-booking.html?from=student">前往教室租用</a>
       </section>
       <div class="summary-grid student-sensitive">
@@ -189,6 +190,32 @@
       const expected = Number(period.expectedAmount || 0);
       if (expected <= 0 || paid >= expected) return '<span class="badge">已繳清</span>';
       return `<span class="badge danger">未繳 ${P.money(expected - paid)}</span>`;
+    }
+
+    function attendanceStatusLabel(status) {
+      const labels = {
+        attended: '已上課',
+        checked_in: '已上課',
+        present: '已上課',
+        leave: '請假',
+        absent: '曠課',
+        cancelled: '已取消'
+      };
+      return labels[String(status || '').toLowerCase()] || status || '上課紀錄';
+    }
+
+    function attendanceHistoryRow(row) {
+      const time = row.startTime
+        ? ` ${P.escapeHtml(row.startTime)}${row.endTime ? `～${P.escapeHtml(row.endTime)}` : ''}`
+        : '';
+      return `
+        <article class="list-row">
+          <strong>${P.escapeHtml(row.date || '日期未提供')}${time}</strong>
+          <span>${P.escapeHtml(row.subjectName || '課程')}</span>
+          <span>${P.escapeHtml(row.teacherName || '老師未指定')}</span>
+          <span class="badge">${P.escapeHtml(attendanceStatusLabel(row.status))}</span>
+          <span></span>
+        </article>`;
     }
 
     function tuitionPaymentStatus(row) {
@@ -321,9 +348,15 @@
       const student = data.students.find((row) => row.id === studentId) || data.students[0] || {};
       studentId = student.id || '';
       const learningActive = student.accessStatus === 'active';
+      const attendance = data.attendance.filter((row) => row.studentId === studentId);
       document.getElementById('inactiveStudentView').classList.toggle('hidden', learningActive);
+      document.getElementById('inactiveStudentTitle').textContent =
+        `${student.name || '學生'}的過去課表`;
       document.getElementById('inactiveStudentMessage').textContent = student.accessMessage ||
-        '學生功能暫時關閉；完成新排課後會自動恢復，不需要重新綁定 LINE。';
+        '過去課表會繼續保留；完成新排課後會自動恢復完整學生功能，不需要重新綁定 LINE。';
+      document.getElementById('inactiveHistoryList').innerHTML = attendance.length
+        ? attendance.slice().reverse().map(attendanceHistoryRow).join('')
+        : '<p class="muted">目前沒有可顯示的過去上課紀錄。</p>';
       document.querySelectorAll('.student-sensitive').forEach((node) => {
         node.style.display = learningActive ? '' : 'none';
       });
@@ -333,7 +366,6 @@
       }
       const periods = data.periods.filter((row) => row.studentId === studentId)
         .sort((a, b) => Number(b.periodNo || 0) - Number(a.periodNo || 0));
-      const attendance = data.attendance.filter((row) => row.studentId === studentId);
       const upcoming = data.upcoming.filter((row) => row.studentIds.includes(studentId));
       document.getElementById('studentName').textContent = student.name || '—';
       document.getElementById('periodCount').textContent = periods.length;
@@ -358,12 +390,9 @@
           <span>${P.escapeHtml(row.subjectName)}</span><span>${P.escapeHtml(row.teacherName)}</span>
           <span class="badge">${P.escapeHtml(row.status || '已排課')}</span><span></span>
         </article>`).join('') : '<p class="muted">目前沒有近期課程。</p>';
-      document.getElementById('attendanceList').innerHTML = attendance.length ? attendance.slice().reverse().map((row) => `
-        <article class="list-row">
-          <strong>${P.escapeHtml(row.date || '日期未提供')}</strong>
-          <span>${P.escapeHtml(row.teacherName)}</span><span></span>
-          <span class="badge">${P.escapeHtml(row.status || '簽到')}</span><span></span>
-        </article>`).join('') : '<p class="muted">目前沒有簽到紀錄。</p>';
+      document.getElementById('attendanceList').innerHTML = attendance.length
+        ? attendance.slice().reverse().map(attendanceHistoryRow).join('')
+        : '<p class="muted">目前沒有簽到紀錄。</p>';
       const binding = data.bindings.find((row) => row.studentId === studentId) || {};
       document.querySelector('[name="reminderLastLesson"]').checked = binding.reminderLastLesson !== false;
       document.querySelector('[name="reminderPayment"]').checked = binding.reminderPayment !== false;

@@ -160,7 +160,10 @@ assert(adminPortal.includes('id="bindingSearch"'), '登入帳號管理缺少搜�
 assert(adminPortal.includes('data-action="approve"'), '管理者缺少登入綁定核准');
 assert(adminPortal.includes('data-action="force_logout"'), '管理者缺少強制登出裝置');
 assert(studentPortal.includes('name="relationship"'), '學生／家長綁定缺少關係選擇');
-assert(studentPortal.includes('id="inactiveStudentView"'), '停課學生缺少只保留租用功能的畫面');
+assert(studentPortal.includes('id="inactiveStudentView"'), '停課學生缺少受限功能畫面');
+assert(studentPortal.includes('id="inactiveHistoryList"'), '停課學生無法查看自己的過去課表');
+assert(studentPortal.includes('完成綁定並進入'), '學生 LINE 綁定仍顯示等待主管核准');
+assert(teacherPortal.includes('完成綁定並進入老師課務'), '老師 LINE 綁定仍顯示等待主管核准');
 assert(studentPortal.includes('id="tuitionPaymentSection"'), '學生入口缺少下一期學費區塊');
 assert(studentPortal.includes('id="tuitionPaymentModal"'), '學生入口缺少繳費方式視窗');
 assert(studentPortal.includes('name="paymentMethod" value="bank_transfer"'), '學生入口缺少轉帳繳費選項');
@@ -1201,10 +1204,19 @@ assert(backend.includes("schedule: '0 * * * *'"), '第 4 堂學費 LINE 提醒�
 assert(backend.includes('taipeiDateTimeMillis(row.date, row.endTime) > Date.now()'), '租用進行中無法取消');
 assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少開始前一小時提醒');
 assert(backend.includes("action === 'delete'"), '後台綁定管理缺少刪除登入資料');
-assert(backend.includes("approvalStatus: approved ? 'approved' : 'pending'"), '老師／學生新綁定未進入主管核准流程');
+assert(backend.includes("approvalStatus: approved ? 'approved' : 'pending'"), '一般登入的新綁定未進入主管核准流程');
+const lineRegistrationSource = backend.slice(
+  backend.indexOf('async function completeLineRegistration('),
+  backend.indexOf('async function activeStudentIdsForLine(')
+);
+assert(lineRegistrationSource.includes("status: 'active'"), 'LINE 綁定仍需要主管逐筆核准');
+assert(!lineRegistrationSource.includes('pendingApproval: true'), 'LINE 綁定完成後仍回傳等待主管核准');
+assert(backend.includes("approvalSource: 'line-self-service'"), 'LINE 自助綁定沒有標記直接啟用來源');
+assert(!backend.includes("status: 'pending_approval'"), '既有 LINE 待核准綁定沒有在再次登入時自動啟用');
 assert(backend.includes('authorizedBindingsForSession(session)'), '敏感入口沒有在每次請求重新確認有效綁定');
 assert(backend.includes('reconcileStudentSuspensionsForNewSchedules'), '停課學生新增排課後不會自動恢復');
-assert(backend.includes("accessStatus: allowed.has(id) ? 'active' : 'rental_only'"), '停課學生沒有切換成僅租用權限');
+assert(backend.includes("accessStatus: allowed.has(id) ? 'active' : 'history_and_rental'"), '停課學生沒有保留過去課表與租用權限');
+assert(backend.includes("Promise.all(studentIds.map((id) => mirrorRowsByField('attendance'"), '停課學生沒有讀取自己的歷史上課紀錄');
 assert(backend.includes('studentDiscountEligible: await studentDiscountEligiblePromise'), '停課學生仍可能取得在籍學生租用折扣');
 assert(commonSource.includes("linkAnother: role === 'student' && authView.dataset.addStudent === 'true'"), '家長無法從已登入狀態啟動另一位學生的 LINE 綁定');
 assert(backend.includes('bindings.length && stateRow.linkAnother !== true'), 'LINE 已有學生綁定時仍會略過新增另一位學生的流程');

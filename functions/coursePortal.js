@@ -1661,18 +1661,34 @@ async function lineLoginCallback(req, res) {
 
     const token = await exchangeLineAuthorizationCode(code);
     const profile = await lineLoginProfile(token.access_token);
-    const allBindings = await bindingsForLine(type, profile.lineUserId);
-    const bindings = allBindings.filter((row) => clean(row.status) === 'active');
-    if (!bindings.length && allBindings.some((row) => clean(row.status) === 'pending')) {
-      await refreshLineBindingProfile(allBindings, profile);
-      await stateRef.set({
-        status: 'pending_approval',
-        lineUserId: profile.lineUserId,
-        completedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-      redirectLineLoginError(res, type, '綁定申請正在等待主管確認，核准後請重新使用 LINE 登入。');
-      return;
+    let allBindings = await bindingsForLine(type, profile.lineUserId);
+    await refreshLineBindingProfile(allBindings, profile);
+    const pendingBindings = allBindings.filter((row) => clean(row.status) === 'pending');
+    if (pendingBindings.length) {
+      const batch = db.batch();
+      pendingBindings.forEach((binding) => batch.set(binding.__ref, {
+        status: 'active',
+        approvalStatus: 'approved',
+        approvedAt: FieldValue.serverTimestamp(),
+        approvedAtText: nowText(),
+        approvalSource: 'line-self-service',
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true }));
+      await batch.commit();
+      await Promise.all(pendingBindings.map((binding) =>
+        queueDirectLineBindingNotice(Object.assign({}, binding, {
+          id: binding.__id,
+          status: 'active',
+          lineDisplayName: profile.lineDisplayName
+        }))
+      ));
+      allBindings = allBindings.map((binding) =>
+        clean(binding.status) === 'pending'
+          ? Object.assign({}, binding, { status: 'active', approvalStatus: 'approved' })
+          : binding
+      );
     }
+    const bindings = allBindings.filter((row) => clean(row.status) === 'active');
     if (!bindings.length && allBindings.some((row) => ['revoked', 'rejected'].includes(clean(row.status)))) {
       await stateRef.set({
         status: 'blocked',
@@ -1682,8 +1698,6 @@ async function lineLoginCallback(req, res) {
       redirectLineLoginError(res, type, '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
       return;
     }
-    await refreshLineBindingProfile(bindings, profile);
-
     if (bindings.length && stateRow.linkAnother !== true) {
       const binding = bindings[0];
       const accessToken = await issueAccessToken({
@@ -1798,7 +1812,8 @@ async function completeLineRegistration(data) {
   if (['revoked', 'rejected'].includes(clean(previous.status))) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
-  const approved = type === 'renter' || clean(previous.status) === 'active';
+  // LINE 已完成平台身分驗證，並且姓名、電話仍需與校務資料吻合，
+  // 因此綁定後直接啟用，不再增加主管逐筆核准。
   const payload = {
     type,
     lineUserId,
@@ -1810,9 +1825,12 @@ async function completeLineRegistration(data) {
     authProvider: 'line-login',
     name: clean(identity.name),
     phoneHash: hash(normalizePhone(identity.phone)),
-    status: approved ? 'active' : 'pending',
-    approvalStatus: approved ? 'approved' : 'pending',
-    approvalRequestedAt: approved ? (previous.approvalRequestedAt || null) : FieldValue.serverTimestamp(),
+    status: 'active',
+    approvalStatus: 'approved',
+    approvalRequestedAt: previous.approvalRequestedAt || null,
+    approvedAt: FieldValue.serverTimestamp(),
+    approvedAtText: nowText(),
+    approvalSource: 'line-self-service',
     updatedAt: FieldValue.serverTimestamp(),
     boundAt: previous.boundAt || FieldValue.serverTimestamp(),
     reminderLastLesson: true,
@@ -1859,20 +1877,11 @@ async function completeLineRegistration(data) {
       usedAt: FieldValue.serverTimestamp()
     }, { merge: true });
   });
-  if (!approved) {
-    await queueBindingApprovalNotices(Object.assign({}, previous, payload, {
-      id: bindingId,
-      targetId,
-      renterId
-    }));
-    return {
-      ok: true,
-      role: type,
-      pendingApproval: true,
-      reminderReady: setup.lineFriendFlag === true,
-      message: '綁定申請已送出，主管確認後即可登入；核准後請重新使用 LINE 登入。'
-    };
-  }
+  await queueDirectLineBindingNotice(Object.assign({}, previous, payload, {
+    id: bindingId,
+    targetId,
+    renterId
+  }));
 
   const issued = await issueSession({
     type,
@@ -1972,7 +1981,12 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     ? hash(`${row.targetId}|${lineUserId}`)
     : hash(lineUserId);
   const bindRef = db.collection(bindingCollection(type)).doc(bindId);
-  const requiresApproval = bindingNeedsManagerApproval(type);
+  const previousBind = await bindRef.get();
+  const previousBinding = previousBind.exists ? previousBind.data() || {} : {};
+  if (['revoked', 'rejected'].includes(clean(previousBinding.status))) {
+    await reply(replyToken, '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+    return true;
+  }
   const payload = {
     type,
     lineUserId,
@@ -1984,9 +1998,12 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     emailNormalized: normalizeEmail(row.email),
     emailVerified: row.emailVerified === true,
     emailVerifiedAt: row.emailVerified === true ? FieldValue.serverTimestamp() : null,
-    status: requiresApproval ? 'pending' : 'active',
-    approvalStatus: requiresApproval ? 'pending' : 'approved',
-    approvalRequestedAt: requiresApproval ? FieldValue.serverTimestamp() : null,
+    status: 'active',
+    approvalStatus: 'approved',
+    approvalRequestedAt: previousBinding.approvalRequestedAt || null,
+    approvedAt: FieldValue.serverTimestamp(),
+    approvedAtText: nowText(),
+    approvalSource: 'line-self-service',
     updatedAt: FieldValue.serverTimestamp(),
     boundAt: FieldValue.serverTimestamp(),
     reminderLastLesson: true,
@@ -2000,15 +2017,11 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
   if (type === 'renter') payload.renterId = clean(row.renterId);
   await bindRef.set(payload, { merge: true });
   await codeRef.set({ status: 'used', usedAt: FieldValue.serverTimestamp(), lineUserId }, { merge: true });
-  if (requiresApproval) {
-    await queueBindingApprovalNotices(Object.assign({}, payload, {
-      id: bindId,
-      targetId: clean(row.targetId),
-      renterId: clean(row.renterId)
-    }));
-    await reply(replyToken, '綁定申請已送出，主管確認後即可登入；核准後請回到入口重新使用 LINE 登入。');
-    return true;
-  }
+  await queueDirectLineBindingNotice(Object.assign({}, previousBinding, payload, {
+    id: bindId,
+    targetId: clean(row.targetId),
+    renterId: clean(row.renterId)
+  }));
 
   const access = await issueAccessToken({
     type,
@@ -3902,6 +3915,43 @@ async function queueBindingApprovalNotices(binding) {
   )));
 }
 
+async function queueDirectLineBindingNotice(binding) {
+  if (clean(binding && binding.type) !== 'student' || !clean(binding.studentId)) return;
+  const bindingId = clean(binding.id);
+  const studentName = clean(binding.name) || '學生';
+  const relationship = clean(binding.relationship) || '家長／監護人';
+  const lineName = clean(binding.lineDisplayName) || '未提供';
+  const existing = await db.collection('coursePortalStudentBindings')
+    .where('studentId', '==', clean(binding.studentId))
+    .get();
+  const body = [
+    `${studentName}剛剛新增了一個家長 LINE 綁定。`,
+    `關係：${relationship}`,
+    `LINE 顯示名稱：${lineName}`,
+    '綁定者已使用學生姓名與登記電話完成確認。',
+    '若不是您的家人操作，請立即聯絡柚子樂器；主管可以停用綁定並強制登出。'
+  ].join('\n');
+  await Promise.all(existing.docs.filter((doc) => {
+    const row = doc.data() || {};
+    return doc.id !== bindingId &&
+      clean(row.status) === 'active' &&
+      clean(row.lineUserId);
+  }).map((doc) => queueCoursePortalNotice(
+    `course-binding-guardian-active-${bindingId}-${doc.id}`,
+    {
+      eventCode: 'course_portal_family_binding_added',
+      targetLineUserId: clean(doc.data().lineUserId),
+      targetName: studentName,
+      title: '新的家長 LINE 綁定',
+      body,
+      text: body,
+      message: body,
+      studentId: clean(binding.studentId),
+      bindingId
+    }
+  )));
+}
+
 async function queueBindingDecisionNotice(binding, approved) {
   const lineUserId = clean(binding && binding.lineUserId);
   if (!lineUserId) return;
@@ -4213,15 +4263,25 @@ async function studentPortalData(data) {
   const activeStudentIds = studentIds.filter((id) => learningIds.has(id));
   const [periodsByStudent, attendanceByStudent, portalAttendance] = await Promise.all([
     Promise.all(activeStudentIds.map((id) => mirrorRowsByField('tuitionPeriods', 'studentId', id))),
-    Promise.all(activeStudentIds.map((id) => mirrorRowsByField('attendance', 'studentId', id))),
-    portalAttendanceForStudents(activeStudentIds)
+    Promise.all(studentIds.map((id) => mirrorRowsByField('attendance', 'studentId', id))),
+    portalAttendanceForStudents(studentIds)
   ]);
   const uniqueRows = (groups) => [...new Map(
     groups.flat().map((row) => [sourceId(row), row])
   ).values()];
   const mirrorPeriods = uniqueRows(periodsByStudent);
   const mirrorAttendance = uniqueRows(attendanceByStudent);
-  const periods = applyPortalAttendanceToPeriods(mirrorPeriods, mirrorAttendance, portalAttendance);
+  const activeMirrorAttendance = mirrorAttendance.filter((row) =>
+    activeStudentIds.includes(clean(row.studentId))
+  );
+  const activePortalAttendance = portalAttendance.filter((row) =>
+    activeStudentIds.includes(clean(row.studentId))
+  );
+  const periods = applyPortalAttendanceToPeriods(
+    mirrorPeriods,
+    activeMirrorAttendance,
+    activePortalAttendance
+  );
   const attendance = mergePortalAttendanceRows(mirrorAttendance, portalAttendance);
   const maps = { teachers: indexById(teachers), subjects: indexById(subjects) };
   const allowed = new Set(activeStudentIds);
@@ -4233,11 +4293,16 @@ async function studentPortalData(data) {
       id,
       name: clean(row.name || binding.name) || '學生',
       phoneLast4: normalizePhone(sourcePhone(row)).slice(-4),
-      accessStatus: allowed.has(id) ? 'active' : 'rental_only',
+      accessStatus: allowed.has(id) ? 'active' : 'history_and_rental',
       accessMessage: allowed.has(id)
       ? ''
-      : '目前沒有進行中的課程；學生課表、堂數、學費與簽到資料已關閉，仍可使用教室租用。'
+      : '目前沒有進行中的課程；仍可查看過去課表與上課紀錄，也可以使用教室租用。未來課程、堂數、學費與在籍優惠暫時關閉。'
     };
+  });
+  const courseById = new Map();
+  [...fixedCourses, ...temporaryCourses].forEach((course) => {
+    [...courseSourceIds(course), sourceId(course)].map(clean).filter(Boolean)
+      .forEach((id) => courseById.set(id, course));
   });
   await ensureTuitionPaymentRequests({
     periods,
@@ -4283,13 +4348,32 @@ async function studentPortalData(data) {
         )
         .map(publicTuitionPaymentRequest)
     },
-    attendance: attendance.filter((row) => allowed.has(clean(row.studentId))).map((row) => ({
-      id: sourceId(row),
-      studentId: clean(row.studentId),
-      date: eventDate(row),
-      status: clean(row.status || row.type),
-      teacherName: clean(maps.teachers[eventTeacherId(row)] && maps.teachers[eventTeacherId(row)].name)
-    })),
+    attendance: attendance
+      .filter((row) =>
+        studentIds.includes(clean(row.studentId)) &&
+        eventDate(row) &&
+        eventDate(row) <= today
+      )
+      .sort((left, right) => eventDate(left).localeCompare(eventDate(right)))
+      .map((row) => {
+        const course = courseById.get(clean(
+          row.sourceCourseId || row.courseId || row.fixedCourseId
+        )) || {};
+        const teacherId = eventTeacherId(row) || eventTeacherId(course);
+        const subjectId = eventSubjectId(row) || eventSubjectId(course);
+        return {
+          id: sourceId(row),
+          studentId: clean(row.studentId),
+          date: eventDate(row),
+          startTime: eventStart(row) || eventStart(course),
+          endTime: eventEnd(row) || eventEnd(course),
+          status: clean(row.status || row.type),
+          subjectName: clean(row.subjectName) ||
+            clean(maps.subjects[subjectId] && maps.subjects[subjectId].name),
+          teacherName: clean(row.teacherName) ||
+            clean(maps.teachers[teacherId] && maps.teachers[teacherId].name)
+        };
+      }),
     upcoming: events.filter((row) =>
       eventDate(row) >= today &&
       eventStudentIds(row).some((id) => allowed.has(id))
