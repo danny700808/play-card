@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>課務入口帳號管理｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260731-security-attendance-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
 </head>
 <body>
   <main class="portal-shell">
@@ -75,7 +75,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260731-security-attendance-v1"></script>
+  <script src="course-portal-common.js?v=20260731-final-rules-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -173,7 +173,7 @@
             <strong>${P.escapeHtml(row.studentName || row.studentId || '學生')} · 第 ${Number(row.nextPeriodNo || 0)} 期</strong>
             <span>${P.escapeHtml(row.subjectName || '課程')}｜${Number(row.lessonCount || 4)} 堂</span>
             <span>${transfer ? `轉帳｜${P.escapeHtml(row.transferDate || '')}｜末五碼 ${P.escapeHtml(row.transferLast5 || '未提供')}` : '等待現場繳費'}</span>
-            <label class="field"><span class="muted">實收金額</span><input type="number" min="1" value="${Number(row.expectedAmount || 0)}" data-tuition-amount="${P.escapeHtml(row.id)}"></label>
+            <label class="field"><span class="muted">本次實收金額</span><input type="number" min="1" max="${Number(row.remainingAmount || row.expectedAmount || 0)}" value="${Number(row.remainingAmount || row.expectedAmount || 0)}" data-tuition-amount="${P.escapeHtml(row.id)}"></label>
             <span class="binding-actions">
               ${transfer && row.hasReceipt ? `<button class="btn soft" type="button" data-tuition-receipt="${P.escapeHtml(row.id)}">查看截圖</button>` : ''}
               <button class="btn primary" type="button" data-tuition-action="confirm" data-tuition-id="${P.escapeHtml(row.id)}">確認已收款</button>
@@ -302,7 +302,7 @@
           P.toast('請輸入實際收到的金額。', 'error');
           return;
         }
-        if (!confirm(`確定已收到 ${row.studentName || '學生'}第 ${Number(row.nextPeriodNo || 0)} 期學費 ${P.money(confirmedAmount)}？確認後會正式建立下一期。`)) return;
+        if (!confirm(`確定已收到 ${row.studentName || '學生'}新系統第 ${Number(row.nextSystemPeriodNo || 1)} 期學費 ${P.money(confirmedAmount)}？`)) return;
       } else {
         reviewNote = prompt('請輸入退回原因，學生會收到 LINE 通知：', '匯款資料無法確認，請重新上傳清楚的付款資料。');
         if (reviewNote === null) return;
