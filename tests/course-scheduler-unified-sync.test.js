@@ -164,7 +164,7 @@ assert(
     '成功 finalize 後的 queued child 失敗仍可能進入 error finalize'
   );
 });
-assert(mirror.includes('snapshotForDates(MIRROR_TYPES.attendance, coveredDates)'), '近期同步仍讀取全部歷史簽到');
+assert(mirror.includes('snapshotForDateChunks(MIRROR_TYPES.attendance, coveredDates)'), '近期同步沒有依日期分批讀取簽到，31 天可能被截短');
 assert(mirror.includes('readEducationDaily(coveredDates)'), '近期同步仍讀取全部每日營運資料');
 assert(mirror.includes('resolveAuditForRange(before, refreshRange.startDate, refreshRange.endDate)'), '相同日期範圍仍會重複啟動核對工作');
 assert(mirror.includes('auditIsRecent(previousAudit)'), '同步未檢查可沿用的近期核對結果');

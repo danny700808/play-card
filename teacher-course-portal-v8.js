@@ -591,15 +591,21 @@
       collected: Number(valueOf(row, ['tuitionAmount','courseAmount','feeAmount','receivedAmount','expectedAmount'], 0)),
       rate: valueOf(row, ['rate','shareRate','allotRate','percentage'], '依方案'),
       amount: Number(valueOf(row, ['teacherAmount','amount','payAmount'], 0))
-    })).concat(adjustments.map((row) => ({
-      kind: 'adjustment',
-      date: valueOf(row, ['date','month'], payrollMonth),
-      name: valueOf(row, ['note','reason'], '獎勵／扣款'),
-      subject: valueOf(row, ['type'], '調整'),
-      collected: 0,
-      rate: '—',
-      amount: Number(valueOf(row, ['amount'], 0))
-    }))).sort((a, b) => `${a.date}|${a.name}`.localeCompare(`${b.date}|${b.name}`, 'zh-Hant'));
+    })).concat(adjustments.map((row) => {
+      const type = clean(valueOf(row, ['type'], 'adjustment')).toLowerCase();
+      const rawAmount = Number(valueOf(row, ['amount'], 0));
+      const deduction = ['deduction', 'penalty', 'late_attendance_fee', 'attendance_cancellation_fee']
+        .includes(type);
+      return {
+        kind: 'adjustment',
+        date: valueOf(row, ['date','month'], payrollMonth),
+        name: valueOf(row, ['note','reason'], '獎勵／扣款'),
+        subject: type === 'reward' ? '獎勵' : (deduction ? '扣款' : valueOf(row, ['type'], '調整')),
+        collected: 0,
+        rate: '—',
+        amount: deduction ? -Math.abs(rawAmount) : rawAmount
+      };
+    })).sort((a, b) => `${a.date}|${a.name}`.localeCompare(`${b.date}|${b.name}`, 'zh-Hant'));
     const groups = new Map();
     items.forEach((item) => {
       const key = item.date || '日期未提供';
@@ -911,7 +917,7 @@
   async function updateLessonState(row, state, button, note) {
     const messages = {
       leave: '確定標示學生請假？這個教室時段會釋出。',
-      absent: '確定標示曠課？本堂仍會列入老師薪資。',
+      absent: '確定標示曠課？本堂未完成簽到，不會列入老師薪資。',
       cancel_change: '確定取消這次由老師新增、贈送或調整的安排？'
     };
     if (!row || !confirm(messages[state])) return;

@@ -7,7 +7,7 @@ if (!admin.apps.length) admin.initializeApp();
 
 const db = admin.firestore();
 const REGION = 'us-central1';
-const VERSION = '2026.07.29-auto-read-v3-public-invoker';
+const VERSION = '2026.08.01-auto-read-v4-portal-payroll-merge';
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',

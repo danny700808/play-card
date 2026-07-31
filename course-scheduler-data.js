@@ -217,10 +217,10 @@
     row=row||{};
     var date=dateKey(row.date),start=clean(row.start||row.startTime).slice(0,5),end=clean(row.end||row.endTime).slice(0,5);
     var duration=numberOf(row.duration||row.durationMinutes);
-    if(!duration&&start&&end)duration=timeToMin(end)-timeToMin(start);
-    if(duration<=0)duration=60;
+    if(!duration&&start&&end){duration=timeToMin(end)-timeToMin(start);if(duration<0)duration+=24*60;}
     if(
-      row.active===false||cancelledCourseStatus(row.status)||!date||!start||!clean(row.roomId)||
+      row.active===false||row.timeResolved===false||cancelledCourseStatus(row.status)||
+      !date||!start||duration<=0||!clean(row.roomId)||
       (rangeStart&&date<rangeStart)||(rangeEnd&&date>rangeEnd)
     )return null;
     return {
