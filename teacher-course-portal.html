@@ -12,19 +12,19 @@
 <body class="teacher-course-app clean-portal-ui">
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">師</span><div><h1 id="teacherWelcomeTitle">老師課務</h1><p>課表・學生・薪資・租用</p></div></div>
+      <div class="head-title"><span class="brand-mark">師</span><div><h1 id="teacherWelcomeTitle">老師課務</h1></div></div>
       <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
     </header>
 
     <section class="card bind-box hidden" id="bindView" data-auth-view>
       <div class="section-title auth-title">
-        <div><h2>老師課務登入</h2><p class="muted">請選擇一種登入方式。</p></div>
+        <div><h2>老師課務登入</h2></div>
       </div>
       <div class="auth-choice-list" data-auth-choice-list>
         <article class="auth-choice auth-choice-line">
           <div class="auth-choice-heading">
             <span class="auth-choice-icon">LINE</span>
-            <div><h3>LINE 註冊／登入</h3><p>最快、最方便，也能接收課程提醒。</p></div>
+            <div><h3>LINE 註冊／登入</h3></div>
             <span class="auth-recommended">推薦</span>
           </div>
           <button class="btn primary auth-line-button" type="button" data-line-login>使用 LINE 註冊／登入</button>
@@ -33,19 +33,18 @@
         <article class="auth-choice auth-choice-regular">
           <div class="auth-choice-heading">
             <span class="auth-choice-icon auth-choice-icon-plain">一般</span>
-            <div><h3>一般註冊／登入</h3><p>填寫登記資料後即可進入。</p></div>
+            <div><h3>一般註冊／登入</h3></div>
           </div>
           <form class="stack auth-regular-form" data-regular-auth-form>
             <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" placeholder="請輸入姓名" required></div>
             <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" placeholder="例如 0912345678" required></div>
-            <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email" required></div>
+            <div class="field"><label>Email（選填）</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email"></div>
             <button class="btn auth-regular-submit" type="submit">使用一般方式註冊／登入</button>
           </form>
-          <small class="auth-security-note">第一次使用會依登記資料建立入口；資料不符時請聯絡柚子樂器。</small>
         </article>
       </div>
       <section class="auth-line-setup hidden" data-line-setup-panel>
-        <div class="section-title"><div><h3>完成 LINE 第一次綁定</h3><p class="muted">LINE 身分已確認；填寫姓名與電話後會直接進入。</p></div></div>
+        <div class="section-title"><div><h3>完成 LINE 第一次綁定</h3></div></div>
         <form class="stack" data-line-setup-form>
           <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" required></div>
           <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>

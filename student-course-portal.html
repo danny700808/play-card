@@ -5,25 +5,25 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>學生與家長入口｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260731-security-attendance-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260731-student-payment-v4">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 </head>
 <body class="clean-portal-ui">
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">生</span><div><h1>學生入口</h1><p>課程・學費・簽到</p></div></div>
+      <div class="head-title"><span class="brand-mark">生</span><div><h1>學生入口</h1></div></div>
       <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
     </header>
 
     <section class="card bind-box hidden" id="bindView" data-auth-view>
       <div class="section-title auth-title">
-        <div><h2>學生／家長登入</h2><p class="muted">請選擇一種登入方式。</p></div>
+        <div><h2>學生／家長登入</h2></div>
       </div>
       <div class="auth-choice-list" data-auth-choice-list>
         <article class="auth-choice auth-choice-line">
           <div class="auth-choice-heading">
             <span class="auth-choice-icon">LINE</span>
-            <div><h3>LINE 註冊／登入</h3><p>最快、最方便，也能接收課程與繳費提醒。</p></div>
+            <div><h3>LINE 註冊／登入</h3></div>
             <span class="auth-recommended">推薦</span>
           </div>
           <button class="btn primary auth-line-button" type="button" data-line-login>使用 LINE 註冊／登入</button>
@@ -32,20 +32,19 @@
         <article class="auth-choice auth-choice-regular">
           <div class="auth-choice-heading">
             <span class="auth-choice-icon auth-choice-icon-plain">一般</span>
-            <div><h3>一般註冊／登入</h3><p>填寫登記資料後即可進入。</p></div>
+            <div><h3>一般註冊／登入</h3></div>
           </div>
           <form class="stack auth-regular-form" data-regular-auth-form>
             <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" placeholder="請輸入學生姓名" required></div>
             <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" placeholder="學生資料中的電話" required></div>
-            <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email" required></div>
+            <div class="field"><label>Email（選填）</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email"></div>
             <div class="field"><label>與學生的關係</label><select name="relationship"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></div>
             <button class="btn auth-regular-submit" type="submit">使用一般方式繼續</button>
           </form>
-          <small class="auth-security-note">第一次使用會依登記資料建立入口；資料不符時請聯絡柚子樂器。</small>
         </article>
       </div>
       <section class="auth-line-setup hidden" data-line-setup-panel>
-        <div class="section-title"><div><h3>完成 LINE 第一次綁定</h3><p class="muted">LINE 身分已確認；姓名與登記電話相符後會直接進入。</p></div></div>
+        <div class="section-title"><div><h3>完成 LINE 第一次綁定</h3></div></div>
         <form class="stack" data-line-setup-form>
           <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" required></div>
           <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
@@ -198,7 +197,7 @@
         <article class="list-row">
           <strong>${P.escapeHtml(row.date || '日期未提供')}${time}</strong>
           <span>${P.escapeHtml(row.subjectName || '課程')}</span>
-          <span>${P.escapeHtml(row.teacherName || '老師未指定')}</span>
+          <span>${P.escapeHtml(row.teacherName || '')}</span>
           <span class="badge">${P.escapeHtml(attendanceStatusLabel(row.status))}</span>
           <span></span>
         </article>`;
@@ -248,10 +247,20 @@
 
     function paymentBlock(period, request) {
       const paid = Number(period.paidAmount || 0) >= Number(period.expectedAmount || 0) && Number(period.expectedAmount || 0) > 0;
-      if (paid) return `<div class="period-payment paid"><strong>學費 ${Number(period.expectedAmount || 0).toLocaleString('zh-TW')}</strong><span>已繳費</span>${paymentDate(period) ? `<small>繳費日期：${P.escapeHtml(paymentDate(period))}</small>` : ''}</div>`;
-      if (!request) return `<div class="period-payment unpaid"><strong>學費 ${Number(period.expectedAmount || 0).toLocaleString('zh-TW')}</strong><span>尚未繳費</span></div>`;
+      const amount = Number((request && request.expectedAmount) || period.expectedAmount || 0).toLocaleString('zh-TW');
+      if (paid) return `<div class="period-payment paid">
+        <div class="period-payment-amount"><span>本期學費</span><strong>${amount}</strong></div>
+        <div class="period-payment-state"><span class="badge">已繳費</span>${paymentDate(period) ? `<small>繳費日期：${P.escapeHtml(paymentDate(period))}</small>` : ''}</div>
+      </div>`;
+      if (!request) return `<div class="period-payment unpaid">
+        <div class="period-payment-amount"><span>本期學費</span><strong>${amount}</strong></div>
+        <div class="period-payment-state"><span class="badge danger">尚未繳費</span></div>
+      </div>`;
       const canSubmit = ['payment_due', 'needs_resubmission'].includes(request.status);
-      return `<div class="period-payment unpaid"><strong>學費 ${Number(request.expectedAmount || period.expectedAmount || 0).toLocaleString('zh-TW')}</strong>${tuitionPaymentStatus(request)}${canSubmit ? `<button class="btn primary" type="button" data-pay-tuition="${P.escapeHtml(request.id)}">${request.status === 'needs_resubmission' ? '重新繳費' : '前往繳費'}</button>` : ''}</div>`;
+      return `<div class="period-payment unpaid">
+        <div class="period-payment-amount"><span>本期學費</span><strong>${amount}</strong></div>
+        <div class="period-payment-state">${tuitionPaymentStatus(request)}${canSubmit ? `<button class="btn primary" type="button" data-pay-tuition="${P.escapeHtml(request.id)}">${request.status === 'needs_resubmission' ? '重新繳費' : '前往繳費'}</button>` : ''}</div>
+      </div>`;
     }
 
     function taipeiToday() {
@@ -266,6 +275,28 @@
     function selectedTuitionPayment() {
       return ((((data || {}).tuitionPayment || {}).requests || [])
         .find((row) => row.id === activeTuitionPaymentId)) || {};
+    }
+
+    function newSystemPeriodNumber(request) {
+      const savedNumber = Number(request.nextSystemPeriodNo || 0);
+      if (savedNumber > 0) return savedNumber;
+      const periods = (((data || {}).periods || []))
+        .filter((row) => row.studentId === request.studentId)
+        .sort((left, right) => Number(left.periodNo || 0) - Number(right.periodNo || 0));
+      let index = periods.findIndex((row) =>
+        Number(row.periodNo || 0) === Number(request.nextPeriodNo || 0) &&
+        (!request.subjectId || row.subjectId === request.subjectId)
+      );
+      if (index < 0) {
+        index = periods.findIndex((row) =>
+          Number(row.periodNo || 0) === Number(request.nextPeriodNo || 0)
+        );
+      }
+      if (index >= 0) return index + 1;
+      const currentIndex = periods.findIndex((row) =>
+        Number(row.periodNo || 0) === Number(request.currentPeriodNo || 0)
+      );
+      return currentIndex >= 0 ? currentIndex + 2 : 1;
     }
 
     function toggleTuitionPaymentMethod() {
@@ -286,9 +317,9 @@
       document.getElementById('tuitionPaymentModalSubtitle').textContent =
         `${row.studentName || ''}｜${row.subjectName || '課程'}`;
       document.getElementById('tuitionPaymentSummary').innerHTML = `
-        <span>下一期</span><strong>第 ${Number(row.nextPeriodNo || 0)} 期</strong>
+        <span>期別</span><strong>新系統第 ${newSystemPeriodNumber(row)} 期</strong>
         <span>堂數</span><strong>${Number(row.lessonCount || 4)} 堂</strong>
-        <span>應繳金額</span><strong>${P.money(row.expectedAmount)}</strong>`;
+        <span>應繳金額</span><strong>${Number(row.expectedAmount || 0).toLocaleString('zh-TW')} 元</strong>`;
       document.getElementById('tuitionBankName').textContent = bank.bankName || '台新國際商業銀行';
       document.getElementById('tuitionBankCode').textContent = bank.bankCode || '812';
       document.getElementById('tuitionBankBranch').textContent =
@@ -368,13 +399,22 @@
         .sort((a, b) => Number(a.periodNo || 0) - Number(b.periodNo || 0));
       document.getElementById('studentName').textContent = student.name || '—';
       document.getElementById('periodCount').textContent = periods.length;
-      const teacherContacts = [...new Map(periods.map((row) => [row.teacherId || row.teacherName, row])).values()];
-      document.getElementById('studentTeacherContact').innerHTML = `<div class="student-contact-row"><span>學生</span><strong>${P.escapeHtml(student.name || '—')}</strong><span>老師聯絡資訊</span><strong>${teacherContacts.length ? teacherContacts.map((row) => `${P.escapeHtml(row.teacherName || '未指定老師')} ${row.teacherPhone ? `｜${P.escapeHtml(row.teacherPhone)}` : ''}`).join('<br>') : '尚未指定'}</strong></div>`;
+      const teacherContacts = [...new Map(
+        periods.filter((row) => row.teacherName)
+          .map((row) => [row.teacherId || row.teacherName, row])
+      ).values()];
+      const teacherContactHtml = teacherContacts.map((row) =>
+        `${P.escapeHtml(row.teacherName)}${row.teacherPhone ? `｜${P.escapeHtml(row.teacherPhone)}` : ''}`
+      ).join('<br>');
+      document.getElementById('studentTeacherContact').innerHTML = `<div class="student-contact-row">
+        <span>學生</span><strong>${P.escapeHtml(student.name || '—')}</strong>
+        ${teacherContactHtml ? `<span>老師聯絡</span><strong>${teacherContactHtml}</strong>` : ''}
+      </div>`;
       const requests = activeTuitionPayments();
       document.getElementById('periodList').innerHTML = periods.length ? periods.map((row, index) => {
         const request = requests.find((item) => Number(item.nextPeriodNo || 0) === Number(row.periodNo || 0)) ||
           requests.find((item) => item.subjectId && item.subjectId === row.subjectId);
-        return `<article class="period-card"><div class="period-card-head"><div><strong>新系統第 ${index + 1} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong><small>已上 ${row.usedCount} / ${row.lessonCount} 堂</small></div>${paymentBlock(row, request)}</div>
+        return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${index + 1} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong><small>已上 ${row.usedCount} / ${row.lessonCount} 堂</small></div>${paymentBlock(row, request)}</div>
           <div class="lesson-slot-grid">${lessonSlots(row, attendance, Number(row.paidAmount || 0) < Number(row.expectedAmount || 0) || Boolean(request))}</div></article>`;
       }).join('') : '<p class="muted">目前沒有學費期別資料。</p>';
       renderContactBook();

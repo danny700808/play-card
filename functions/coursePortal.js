@@ -840,10 +840,6 @@ async function prepareBindingIdentity(data) {
     if (renter.active === false) {
       throw new HttpsError('permission-denied', '這個租用帳號目前已停用，請聯絡柚子樂器。');
     }
-    const registeredEmail = sourceEmail(renter);
-    if (registeredEmail && registeredEmail !== email) {
-      throw new HttpsError('permission-denied', 'Email 與既有租用帳號不符，請使用原 Email 登入或請管理者協助。');
-    }
     existingEmailVerified = renter.emailVerified === true;
   }
   return { type, targetId: '', renterId, name, phone, email, relationship: '', existingEmailVerified };
@@ -885,20 +881,13 @@ function lineAccountId(type, lineUserId) {
   return hash(`line-account|${clean(type)}|${clean(lineUserId)}`);
 }
 
-function bindingAuthAccountId(type, binding) {
-  const explicit = clean(binding && binding.authAccountId);
-  if (explicit) return explicit;
-  const email = normalizeEmail(binding && (binding.emailNormalized || binding.email));
-  return validEmail(email) ? regularAccountId(type, email) : '';
-}
-
-function sharedBindingAuthAccountId(type, bindings) {
-  const accountIds = [...new Set(
-    (bindings || []).map((binding) => bindingAuthAccountId(type, binding)).filter(Boolean)
-  )];
-  // 同一位家長可能綁多位學生且各有不同 Email。這種情況維持以 LINE
-  // 使用者作為租用擁有者，避免任取第一筆而讓每次登入落到不同帳號。
-  return accountIds.length === 1 ? accountIds[0] : '';
+function directRegularAccountId(identity) {
+  return hash([
+    'direct-regular-account',
+    clean(identity && identity.type),
+    identityTargetId(identity || {}),
+    normalizePhone(identity && identity.phone)
+  ].join('|'));
 }
 
 async function resolveRegularIdentity(identity) {
@@ -1501,46 +1490,85 @@ async function renterContactLogin(data) {
   );
 }
 
-// 一般方式不再寄送 Email 四碼：以姓名、電話與 Email 對照既有資料後直接建立此裝置工作階段。
+// 一般方式不再寄送 Email 四碼：以姓名與電話對照既有資料；Email 僅保存為選填聯絡資料。
 // 老師與學生仍保留首次綁定的主管審核，避免未授權者僅憑個資取得課表或薪資。
 async function directRegularAccess(data) {
   const type = clean(data.type).toLowerCase();
   if (type === 'student') return studentPhoneAccess(data);
   const identity = await prepareBindingIdentity(data);
   await consumeRateLimit(`direct-regular-${type}`, identity.phone);
-  const regular = await resolveRegularIdentity(identity);
-  const bindingRef = db.collection(bindingCollection(type)).doc(
-    clean(regular.bindingId) || hash(`direct-regular|${type}|${identityTargetId(identity)}|${regular.authAccountId}`)
-  );
+  const authAccountId = directRegularAccountId(identity);
+  const collection = db.collection(bindingCollection(type));
+  const targetField = identityTargetField(type);
+  const targetId = identityTargetId(identity);
+  const legacySnapshot = await collection.where(targetField, '==', targetId).get();
+  const reusableBinding = legacySnapshot.docs.find((doc) => {
+    const row = doc.data() || {};
+    return clean(row.authProvider).startsWith('direct-regular') &&
+      clean(row.phoneHash) === hash(identity.phone);
+  });
+  const bindingRef = reusableBinding
+    ? reusableBinding.ref
+    : collection.doc(hash(`direct-regular|${type}|${targetId}|${authAccountId}`));
   const existing = await bindingRef.get();
   const previous = existing.exists ? existing.data() || {} : {};
   if (['revoked', 'rejected'].includes(clean(previous.status))) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
   if (type === 'teacher' && clean(previous.status) !== 'active') {
-    await bindingRef.set({
-      type, teacherId: clean(identity.targetId), name: clean(identity.name), phoneHash: hash(identity.phone),
-      email: normalizeEmail(identity.email), emailNormalized: normalizeEmail(identity.email), authAccountId: regular.authAccountId,
+    const teacherBinding = {
+      type, teacherId: clean(identity.targetId), name: clean(identity.name), phoneHash: hash(identity.phone), authAccountId,
       authProvider: 'direct-regular', status: 'pending', approvalStatus: 'pending',
       approvalRequestedAt: FieldValue.serverTimestamp(), registeredAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
+    };
+    if (validEmail(identity.email)) {
+      teacherBinding.email = normalizeEmail(identity.email);
+      teacherBinding.emailNormalized = normalizeEmail(identity.email);
+      teacherBinding.emailVerified = false;
+    }
+    await bindingRef.set(teacherBinding, { merge: true });
     await queueBindingApprovalNotices({ id: bindingRef.id, type, teacherId: clean(identity.targetId), name: clean(identity.name), status: 'pending' });
     return { ok: true, role: type, pendingApproval: true, message: '資料已送出，主管確認後即可登入。' };
   }
+  if (type === 'teacher') {
+    const activeTeacherBinding = {
+      authAccountId,
+      authProvider: 'direct-regular',
+      name: clean(identity.name),
+      phoneHash: hash(identity.phone),
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    if (validEmail(identity.email)) {
+      activeTeacherBinding.email = normalizeEmail(identity.email);
+      activeTeacherBinding.emailNormalized = normalizeEmail(identity.email);
+      activeTeacherBinding.emailVerified = false;
+    }
+    await bindingRef.set(activeTeacherBinding, { merge: true });
+  }
   if (type === 'renter') {
     const renterId = clean(identity.renterId);
-    await db.collection('coursePortalRenters').doc(renterId).set({
-      renterId, name: clean(identity.name), phone: identity.phone, email: normalizeEmail(identity.email), emailNormalized: normalizeEmail(identity.email),
+    const renterProfile = {
+      renterId, name: clean(identity.name), phone: identity.phone,
       source: 'direct-regular', active: true, updatedAt: FieldValue.serverTimestamp(), createdAtText: nowText()
-    }, { merge: true });
-    await bindingRef.set({
-      type, renterId, name: clean(identity.name), phoneHash: hash(identity.phone), email: normalizeEmail(identity.email), emailNormalized: normalizeEmail(identity.email),
-      authAccountId: regular.authAccountId, authProvider: 'direct-regular', status: 'active', approvalStatus: 'approved',
+    };
+    const renterBinding = {
+      type, renterId, name: clean(identity.name), phoneHash: hash(identity.phone),
+      authAccountId, authProvider: 'direct-regular', status: 'active', approvalStatus: 'approved',
       registeredAt: previous.registeredAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
+    };
+    if (validEmail(identity.email)) {
+      renterProfile.email = normalizeEmail(identity.email);
+      renterProfile.emailNormalized = normalizeEmail(identity.email);
+      renterProfile.emailVerified = false;
+      renterBinding.email = normalizeEmail(identity.email);
+      renterBinding.emailNormalized = normalizeEmail(identity.email);
+      renterBinding.emailVerified = false;
+    }
+    await db.collection('coursePortalRenters').doc(renterId).set(renterProfile, { merge: true });
+    await bindingRef.set(renterBinding, { merge: true });
   }
   const issued = await issueSession({
-    type, lineUserId: clean(previous.lineUserId || regular.lineUserId), authAccountId: regular.authAccountId,
+    type, lineUserId: '', authAccountId,
     targetId: clean(identity.targetId), renterId: clean(identity.renterId), authMethod: 'direct-regular'
   });
   return { ok: true, role: type, sessionToken: issued.sessionToken, expiresAt: issued.expiresAt.toDate().toISOString() };
@@ -1634,8 +1662,9 @@ async function refreshLineBindingProfile(bindings, profile) {
       lineProfileCheckedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
     };
-    if (clean(binding.type) === 'student') {
-      update.authAccountId = lineAccountId('student', profile.lineUserId);
+    const type = clean(binding.type);
+    if (['teacher', 'student', 'renter'].includes(type)) {
+      update.authAccountId = lineAccountId(type, profile.lineUserId);
     }
     batch.set(binding.__ref, update, { merge: true });
   });
@@ -1741,9 +1770,7 @@ async function lineLoginCallback(req, res) {
       const accessToken = await issueAccessToken({
         type,
         lineUserId: profile.lineUserId,
-        authAccountId: type === 'student'
-          ? lineAccountId(type, profile.lineUserId)
-          : sharedBindingAuthAccountId(type, bindings),
+        authAccountId: lineAccountId(type, profile.lineUserId),
         targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
         renterId: type === 'renter' ? clean(binding.renterId) : '',
         authMethod: 'line-oauth',
@@ -1812,14 +1839,11 @@ async function completeLineRegistration(data) {
   }
 
   const identity = await prepareBindingIdentity(Object.assign({}, data, { type }));
-  // 帳號鍵只能由伺服器產生，不能採信前端。學生／家長以各自 LINE
-  // 建立獨立帳號鍵，避免爸爸修改提醒時連動到媽媽。
-  const regularIdentity = await resolveRegularIdentity(identity);
+  // LINE 帳號鍵只由 LINE 使用者身分產生；Email 僅作為可選聯絡資料，
+  // 不參與老師、學生／家長或租用者的 LINE 登入認證。
   await consumeRateLimit(`line-oauth-setup-${type}`, identity.phone);
   const lineUserId = clean(setup.lineUserId);
-  const authAccountId = type === 'student'
-    ? lineAccountId(type, lineUserId)
-    : regularIdentity.authAccountId;
+  const authAccountId = lineAccountId(type, lineUserId);
   const targetId = clean(identity.targetId);
   const renterId = clean(identity.renterId);
   const conflictField = type === 'teacher' ? 'teacherId' : (type === 'renter' ? 'renterId' : '');
@@ -1893,19 +1917,22 @@ async function completeLineRegistration(data) {
       throw new HttpsError('permission-denied', 'LINE 登入資料已使用或失效，請重新登入。');
     }
     if (type === 'renter') {
-      tx.set(db.collection('coursePortalRenters').doc(renterId), {
+      const renterProfile = {
         renterId,
         name: clean(identity.name),
         phone: normalizePhone(identity.phone),
-        email: normalizeEmail(identity.email),
-        emailNormalized: normalizeEmail(identity.email),
         // 後來加用 LINE 不得把原本已通過四碼驗證的 Email 降級。
         emailVerified: identity.existingEmailVerified === true,
         source: 'line-login-registration',
         active: true,
         updatedAt: FieldValue.serverTimestamp(),
         createdAtText: nowText()
-      }, { merge: true });
+      };
+      if (validEmail(identity.email)) {
+        renterProfile.email = normalizeEmail(identity.email);
+        renterProfile.emailNormalized = normalizeEmail(identity.email);
+      }
+      tx.set(db.collection('coursePortalRenters').doc(renterId), renterProfile, { merge: true });
     }
     tx.set(bindingRef, payload, { merge: true });
     tx.set(setupRef, {
@@ -1983,9 +2010,7 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     const access = await issueAccessToken({
       type,
       lineUserId,
-      authAccountId: type === 'student'
-        ? lineAccountId(type, lineUserId)
-        : sharedBindingAuthAccountId(type, active),
+      authAccountId: lineAccountId(type, lineUserId),
       targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
       renterId: type === 'renter' ? clean(binding.renterId) : '',
       authMethod: 'line-login'
@@ -2028,9 +2053,7 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
   const payload = {
     type,
     lineUserId,
-    authAccountId: type === 'student'
-      ? lineAccountId(type, lineUserId)
-      : regularAccountId(type, row.email),
+    authAccountId: lineAccountId(type, lineUserId),
     lineDisplayName: clean(profile.displayName),
     email: normalizeEmail(row.email),
     emailNormalized: normalizeEmail(row.email),
@@ -3773,6 +3796,17 @@ function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, 
     const subjectId = clean(source.subjectId || completed.subjectId);
     const teacherId = clean(source.teacherId || completed.teacherId);
     const nextPeriodNo = existingNext ? tuitionPeriodNumber(existingNext) : currentPeriodNo + 1;
+    const visiblePeriods = ordered.slice(-2);
+    const currentSystemIndex = visiblePeriods.findIndex((row) =>
+      tuitionPeriodNumber(row) === currentPeriodNo
+    );
+    const nextSystemIndex = visiblePeriods.findIndex((row) =>
+      tuitionPeriodNumber(row) === nextPeriodNo
+    );
+    const currentSystemPeriodNo = currentSystemIndex >= 0 ? currentSystemIndex + 1 : 1;
+    const nextSystemPeriodNo = nextSystemIndex >= 0
+      ? nextSystemIndex + 1
+      : currentSystemPeriodNo + 1;
     const targetPeriodId = existingNext ? sourceId(existingNext) : '';
     const sourcePeriodId = sourceId(completed);
     const id = hash([
@@ -3800,6 +3834,8 @@ function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, 
       targetPeriodId,
       currentPeriodNo,
       nextPeriodNo,
+      currentSystemPeriodNo,
+      nextSystemPeriodNo,
       triggerLessonCount: 4,
       lessonCount: tuitionLessonCount(source),
       expectedAmount: amount,
@@ -3818,7 +3854,20 @@ async function ensureTuitionPaymentRequests(options) {
     await Promise.all(candidates.slice(offset, offset + 25).map(async (candidate) => {
       const ref = db.collection(TUITION_PAYMENT_REQUESTS).doc(candidate.id);
       const snapshot = await ref.get();
-      if (snapshot.exists) return;
+      if (snapshot.exists) {
+        const previous = snapshot.data() || {};
+        if (
+          Number(previous.currentSystemPeriodNo || 0) !== candidate.currentSystemPeriodNo ||
+          Number(previous.nextSystemPeriodNo || 0) !== candidate.nextSystemPeriodNo
+        ) {
+          await ref.set({
+            currentSystemPeriodNo: candidate.currentSystemPeriodNo,
+            nextSystemPeriodNo: candidate.nextSystemPeriodNo,
+            updatedAt: FieldValue.serverTimestamp()
+          }, { merge: true });
+        }
+        return;
+      }
       await ref.set(Object.assign({}, candidate, {
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp()
@@ -3847,6 +3896,8 @@ function publicTuitionPaymentRequest(row) {
     teacherName: clean(row.teacherName),
     currentPeriodNo: Number(row.currentPeriodNo || 0),
     nextPeriodNo: Number(row.nextPeriodNo || 0),
+    currentSystemPeriodNo: Number(row.currentSystemPeriodNo || 0),
+    nextSystemPeriodNo: Number(row.nextSystemPeriodNo || 0),
     lessonCount: Number(row.lessonCount || 4),
     expectedAmount: Number(row.expectedAmount || 0),
     paymentMethod: clean(row.paymentMethod),
@@ -3857,6 +3908,13 @@ function publicTuitionPaymentRequest(row) {
     confirmedAtText: clean(row.confirmedAtText),
     reviewNote: clean(row.reviewNote)
   };
+}
+
+function newSystemTuitionPeriodLabel(row, which) {
+  const field = which === 'current' ? 'currentSystemPeriodNo' : 'nextSystemPeriodNo';
+  const value = Math.max(0, Number(row && row[field] || 0));
+  if (value) return `新系統第 ${value} 期`;
+  return which === 'current' ? '新系統本期' : '新系統下一期';
 }
 
 function parseTuitionReceipt(dataUrl) {
@@ -4167,7 +4225,7 @@ async function studentSubmitTuitionPayment(data) {
     '',
     `學生：${clean(requestRow.studentName) || clean(requestRow.studentId)}`,
     `課程：${clean(requestRow.subjectName) || '未提供'}`,
-    `期別：第 ${Number(requestRow.nextPeriodNo || 0)} 期`,
+    `期別：${newSystemTuitionPeriodLabel(requestRow, 'next')}`,
     `金額：NT$${Number(requestRow.expectedAmount || 0).toLocaleString('zh-TW')}`,
     `方式：${methodText}`,
     paymentMethod === 'bank_transfer' ? `匯款末五碼：${clean(update.transferLast5)}` : '',
@@ -6285,7 +6343,7 @@ async function adminTuitionPaymentAction(data) {
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
     const body = [
-      `${clean(previewRow.studentName) || '同學'}您好，您送出的第 ${Number(previewRow.nextPeriodNo || 0)} 期學費資料需要重新確認。`,
+      `${clean(previewRow.studentName) || '同學'}您好，您送出的${newSystemTuitionPeriodLabel(previewRow, 'next')}學費資料需要重新確認。`,
       `原因：${reviewNote}`,
       `請重新進入學生入口上傳：${PORTAL_BASE}/student-course-portal.html?studentId=${encodeURIComponent(clean(previewRow.studentId))}`
     ].join('\n');
@@ -6376,7 +6434,7 @@ async function adminTuitionPaymentAction(data) {
     status: 'confirmed'
   });
   const body = [
-    `${clean(previewRow.studentName) || '同學'}您好，柚子樂器已確認收到您的第 ${Number(previewRow.nextPeriodNo || 0)} 期學費。`,
+    `${clean(previewRow.studentName) || '同學'}您好，柚子樂器已確認收到您的${newSystemTuitionPeriodLabel(previewRow, 'next')}學費。`,
     `課程：${clean(previewRow.subjectName) || '課程'}`,
     `金額：NT$${confirmedAmount.toLocaleString('zh-TW')}`,
     `付款方式：${methodText}`,
@@ -6896,7 +6954,7 @@ async function adminSuspensionAction(data) {
 async function dailyStudentReminders(pushLineMessage) {
   if (typeof pushLineMessage !== 'function') return;
   const today = currentTaipeiDay();
-  const [bindings, periods, students, subjects, teachers, fixedCourses, temporaryCourses, events] = await Promise.all([
+  const [bindings, periods, students, subjects, teachers, fixedCourses, temporaryCourses, events, suspensionSnapshot] = await Promise.all([
     db.collection('coursePortalStudentBindings').where('status', '==', 'active').get(),
     mirrorRows('tuitionPeriods'),
     mirrorRows('students'),
@@ -6904,13 +6962,14 @@ async function dailyStudentReminders(pushLineMessage) {
     mirrorRows('teachers'),
     mirrorRows('fixedCourses'),
     mirrorRows('temporaryCourses'),
-    mirrorRowsByDateRange('events', today, addDays(today, 120))
+    mirrorRowsByDateRange('events', today, addDays(today, 120)),
+    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get()
   ]);
   const learningIds = activeLearningStudentIds(
     students,
     [...fixedCourses, ...temporaryCourses],
     events,
-    suspensions
+    suspensionSnapshot.docs.map((doc) => doc.data() || {})
   );
   const studentMap = indexById(students);
   await ensureTuitionPaymentRequests({
@@ -6965,9 +7024,9 @@ async function dailyStudentReminders(pushLineMessage) {
       if ((await logRef.get()).exists) continue;
       const amount = Number(requestRow.expectedAmount || 0).toLocaleString('zh-TW');
       const body = [
-        `您好，${name}的第 ${Number(requestRow.currentPeriodNo || 0)} 期課程已完成第 ${Number(requestRow.triggerLessonCount || 4)} 堂。`,
+        `您好，${name}的${newSystemTuitionPeriodLabel(requestRow, 'current')}課程已完成第 ${Number(requestRow.triggerLessonCount || 4)} 堂。`,
         '',
-        `下一期：第 ${Number(requestRow.nextPeriodNo || 0)} 期`,
+        `下一期：${newSystemTuitionPeriodLabel(requestRow, 'next')}`,
         `課程：${clean(requestRow.subjectName) || '課程'}`,
         `學費：NT$${amount}`,
         '',

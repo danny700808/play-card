@@ -54,6 +54,9 @@ assert.strictEqual(
   3,
   '入口首頁必須維持三個獨立入口'
 );
+assert(!portalLanding.includes('請選擇您的入口'), '入口首頁仍顯示多餘的小字說明');
+assert(!portalLanding.includes('所有入口都可使用 LINE 安全登入'), '入口首頁仍顯示多餘的 LINE 說明');
+assert(portalLanding.includes('id="portalEntryNotice"') && portalLanding.includes('notice hidden'), 'LINE 錯誤訊息區沒有預設隱藏');
 
 const commonSource = fs.readFileSync(path.join(root, 'course-portal-common.js'), 'utf8');
 assert(commonSource.trimStart().startsWith('(function'), 'course-portal-common.js 不是可執行的 JavaScript');
@@ -140,6 +143,7 @@ const studentLineSetupForm = studentPortal.slice(
 assert(studentRegularForm.includes('name="email"'), '學生／家長一般註冊缺少 Email 欄位');
 assert(!studentLineSetupForm.includes('name="email"'), '學生／家長 LINE 首次註冊仍強制填 Email');
 assert(studentRegularForm.includes('name="name"') && studentRegularForm.includes('name="phone"'), '學生／家長註冊不是只保留姓名與電話');
+assert(!/name="email"[^>]*required/.test(studentRegularForm), '學生／家長一般註冊仍把 Email 設為必填');
 assert(teacherPortal.includes('id="studentEditModal"'), '老師端缺少學生姓名電話修改視窗');
 assert(teacherPortal.includes('id="studentStopModal"') && teacherPortal.includes('再次確認停課'), '老師端停課缺少二次確認');
 assert(teacherPortal.includes('min="2026-07"'), '老師薪資月份未限制為民國 115 年 7 月起');
@@ -177,9 +181,14 @@ assert(studentPortal.includes('lesson-slot-grid') && studentPortal.includes('未
 assert(studentPortal.includes('studentSwitcher') && studentPortal.includes('data.students.length <= 1'), '只有一位學生時仍顯示不必要的學生切換');
 assert(studentPortal.includes('student-bottom-tabs') && studentPortal.includes('payment-due'), '學生入口缺少固定底部導航或末堂未繳提醒');
 assert(studentPortal.includes('coursePortalStudentContactBookImage'), '學生入口無法安全查看聯絡簿照片');
+assert(studentPortal.includes('newSystemPeriodNumber(row)'), '學生繳費視窗沒有換算新系統期數');
+assert(!studentPortal.includes('第 ${Number(row.nextPeriodNo || 0)} 期'), '學生繳費視窗仍直接顯示舊系統原始期數');
+assert(studentPortal.includes('period-payment-amount') && studentPortal.includes('period-payment-state'), '學生學費資訊沒有整理成卡片內的獨立圖框');
+assert(!studentPortal.includes('未指定老師') && !studentPortal.includes('尚未指定'), '學生老師聯絡區仍顯示多餘的未登記提示');
 assert(teacherSource.includes('data-quick-contact-book'), '老師課表缺少課堂聯絡簿操作');
 assert(teacherSource.includes('coursePortalTeacherSubmitContactBookPost'), '老師聯絡簿未連接後端');
 assert(!teacherPortal.slice(teacherPortal.indexOf('data-line-setup-form'), teacherPortal.indexOf('</form>', teacherPortal.indexOf('data-line-setup-form'))).includes('name="email"'), '老師 LINE 首次註冊仍要求 Email');
+assert(!/name="email"[^>]*required/.test(teacherPortal.slice(teacherPortal.indexOf('data-regular-auth-form'), teacherPortal.indexOf('</form>', teacherPortal.indexOf('data-regular-auth-form')))), '老師一般註冊仍把 Email 設為必填');
 assert(adminPortal.includes('學費繳費待確認'), '管理者頁缺少學費繳費待確認專區');
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentScreenshot'), '管理者無法安全讀取匯款截圖');
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentAction'), '管理者學費確認未連接後端');
@@ -697,6 +706,8 @@ async function runBackendScheduleRegressionTests() {
     assert.strictEqual(portalPeriod.transactions.length, 1, '入口付款沒有形成正式付款紀錄');
     assert.strictEqual(nextTuitionCandidates.length, 1, '完成第 4 堂後沒有產生下一期繳費資料');
     assert.strictEqual(nextTuitionCandidates[0].nextPeriodNo, 4, '下一期沒有自動承接正確期別');
+    assert.strictEqual(nextTuitionCandidates[0].currentSystemPeriodNo, 1, '目前期別沒有重編為新系統期數');
+    assert.strictEqual(nextTuitionCandidates[0].nextSystemPeriodNo, 2, '下一期仍沿用舊系統原始期數');
     assert.strictEqual(nextTuitionCandidates[0].studentName, '林小明', '下一期繳費資料缺少學生姓名');
     assert.strictEqual(nextTuitionCandidates[0].expectedAmount, 3200, '下一期沒有沿用本期學費金額');
     assert.strictEqual(paidNextTuitionCandidates.length, 0, '下一期已繳費仍重複產生繳費提醒');
@@ -1203,9 +1214,11 @@ assert(backend.includes('const EMAIL_OTP_TTL_MS = 180 * 1000'), 'Email 四碼驗
 assert(backend.includes('EMAIL_OTP_MAX_ATTEMPTS = 5'), 'Email 驗證碼缺少五次輸入限制');
 assert(backend.includes("source.purpose === 'account'"), '一般註冊／登入驗證後未直接建立工作階段');
 assert(backend.includes('authAccountId'), '一般登入缺少獨立帳號識別');
-assert(backend.includes('const regularIdentity = await resolveRegularIdentity(identity)'), 'LINE 首次登入沒有合併同一人的 Email 帳號鍵');
+assert(backend.includes('const authAccountId = lineAccountId(type, lineUserId)'), 'LINE 首次登入仍未以 LINE 身分建立帳號鍵');
 assert(backend.includes('authAccountId: source.authAccountId'), 'LINE 一次性登入碼交換時遺失帳號鍵');
-assert(backend.includes('sharedBindingAuthAccountId(type, bindings)'), 'LINE 多筆綁定未使用穩定帳號鍵');
+assert(!backend.includes('sharedBindingAuthAccountId'), 'LINE 登入仍會從 Email 綁定推算帳號鍵');
+assert(backend.includes('function directRegularAccountId(identity)'), '一般姓名電話登入仍缺少獨立帳號鍵');
+assert(backend.includes('authAccountId: lineAccountId(type, profile.lineUserId)'), '既有老師或租用者 LINE 登入仍使用 Email 帳號鍵');
 assert(backend.includes("lineAccountId(type, lineUserId)"), '不同家長的 LINE 帳號鍵沒有獨立，提醒設定可能互相連動');
 assert(backend.includes("authMethod: 'email-otp'"), '一般登入未建立 Email 驗證工作階段');
 assert(backend.includes("authMethod: 'student-name-phone'"), '學生／家長姓名電話註冊未建立正式工作階段');

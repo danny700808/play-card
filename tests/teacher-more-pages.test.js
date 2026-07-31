@@ -116,9 +116,11 @@ test('outer login presents LINE first and legacy Email password second', () => {
       .map((match) => match[1]);
     assert.deepStrictEqual(methods, ['line', 'email-password']);
     assert.match(source, /data-primary-login-method="line" href="course-portal\.html"/);
-    assert.match(source, /老師、學生／家長與教室租用/);
-    assert.match(source, /管理者後台不使用此登入/);
+    assert.doesNotMatch(source, /老師、學生／家長與教室租用/);
+    assert.doesNotMatch(source, /管理者後台不使用此登入/);
+    assert.doesNotMatch(source, /LINE 最快；既有管理者與員工帳號/);
     assert.match(source, /data-primary-login-method="email-password"/);
+    assert.match(source, /管理者／員工登入/);
     assert.match(source, /api\('login'/);
     assert.match(source, /const requestedTarget = requestedLoginTarget\(\)/);
     assert.match(source, /const target = requestedTarget \|\| loginDestination\(r\.user\)/);
