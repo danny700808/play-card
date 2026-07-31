@@ -818,13 +818,6 @@ async function prepareBindingIdentity(data) {
 
   if (type === 'teacher') {
     const teacher = await findPerson('teachers', name, phone);
-    const registeredEmail = sourceEmail(teacher);
-    if (!registeredEmail) {
-      throw new HttpsError('failed-precondition', '老師資料尚未登記 Email，請先由管理者補上後再註冊。');
-    }
-    if (registeredEmail !== email) {
-      throw new HttpsError('permission-denied', 'Email 與老師登記資料不符，請確認後再試。');
-    }
     return { type, targetId: sourceId(teacher), name, phone, email, relationship: '', renterId: '' };
   }
   if (type === 'student') {

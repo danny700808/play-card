@@ -185,6 +185,7 @@ assert(adminPortal.includes('coursePortalAdminTuitionPaymentScreenshot'), '管�
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentAction'), '管理者學費確認未連接後端');
 
 const contactPortalFunctions = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
+assert(!contactPortalFunctions.includes('老師資料尚未登記 Email'), '老師 LINE 註冊仍被既有 Email 欄位阻擋');
 const contactRules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8');
 const contactDeployment = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8');
 assert(contactPortalFunctions.includes("const CONTACT_BOOK_POSTS = 'coursePortalLessonContactPosts'"), '課堂聯絡簿缺少私密資料集合');
