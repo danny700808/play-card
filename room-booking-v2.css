@@ -67,6 +67,13 @@ body.rental-booking-v2 {
   font-size: 22px;
 }
 
+.rental-use-card > .rental-use-image {
+  display: block;
+  width: 58px;
+  height: 34px;
+  object-fit: contain;
+}
+
 .rental-use-card small {
   display: none;
 }

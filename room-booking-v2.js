@@ -124,11 +124,15 @@
     items = Array.isArray(items) ? items : [];
     if (!items.some((row) => row.id === selectedUse) && items[0]) selectedUse = items[0].id;
     document.getElementById('rentalUseGrid').innerHTML = items.map((row) => {
-      const priceRange = clean(row.priceRangeText) ||
-        (row.id === 'recording' ? 'NT$100–300／小時' : '');
+      const text = `${clean(row.id)} ${clean(row.name)}`.toLowerCase();
+      const isGuzheng = /guzheng|古箏/.test(text);
+      const priceRange = row.id === 'recording' ? '' : clean(row.priceRangeText);
+      const icon = isGuzheng
+        ? '<img class="rental-use-image" src="rental-guzheng.png?v=20260801-guzheng-v1" alt="">'
+        : `<span>${P.escapeHtml(row.icon || iconFor(row))}</span>`;
       return `
       <button class="rental-use-card ${row.id === selectedUse ? 'active' : ''}" type="button" data-use="${P.escapeHtml(row.id)}">
-        <span>${P.escapeHtml(row.icon || iconFor(row))}</span>
+        ${icon}
         <b>${P.escapeHtml(row.name)}</b>
         ${priceRange ? `<small class="rental-use-price">${P.escapeHtml(priceRange)}</small>` : ''}
         ${row.description ? `<small>${P.escapeHtml(row.description)}</small>` : ''}

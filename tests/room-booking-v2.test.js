@@ -17,7 +17,11 @@ assert(html.includes('id="rentalHeaderTitle"'), '租用頁缺少歡迎姓名標�
 assert(html.includes('一般教室使用 <b>NT$100/小時</b>'), '確認單缺少一般教室使用選項');
 assert(html.includes('錄音室錄音使用 <b>NT$300/小時</b>'), '確認單缺少錄音使用選項');
 assert(!/name="recordingUsage"[^>]*checked/.test(html), '錄音室使用方式不可預先代選');
-assert(client.includes('NT$100–300／小時'), '用途卡或教室卡缺少錄音室價格範圍');
+assert(client.includes('NT$100–300／小時'), '教室選擇卡缺少錄音室價格範圍');
+assert(client.includes("row.id === 'recording' ? '' : clean(row.priceRangeText)"), '最前面的錄音室用途卡仍顯示價格');
+assert(client.includes('rental-guzheng.png?v=20260801-guzheng-v1'), '古箏用途卡沒有使用真正的古箏圖片');
+assert(css.includes('.rental-use-card > .rental-use-image'), '古箏圖片缺少手機用途卡尺寸');
+assert(fs.existsSync(path.join(root, 'rental-guzheng.png')), '古箏圖片檔案不存在');
 assert(client.includes('recordingUsage,'), '確認的錄音室使用方式未送到後端');
 assert(client.includes("selectedUse === 'recording' && !recordingUsage"), '未選錄音室使用方式仍可送出');
 assert(client.includes("classList.toggle('hidden', recording && !student)"), '錄音室非學生仍顯示重複價格組');
