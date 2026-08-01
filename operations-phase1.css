@@ -1353,6 +1353,23 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-expense-page-grid>section{min-width:0}
 .ops-expense-page-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 .ops-expense-record-table{min-width:780px}
+.ops-expense-master-card{margin-bottom:14px}
+.ops-expense-master-card>.ops-card-head{align-items:flex-end}
+.ops-expense-master-table{min-width:820px}
+.ops-expense-master-table th:nth-child(1){width:28%}
+.ops-expense-master-table th:nth-child(2){width:15%}
+.ops-expense-master-table th:nth-child(3){width:23%}
+.ops-expense-master-table th:nth-child(4){width:24%}
+.ops-expense-master-row{transition:background .15s ease}
+.ops-expense-master-row:hover{background:#f5faf7}
+.ops-expense-item-main b{display:block;font-size:14px}
+.ops-expense-item-main small,.ops-expense-cell-note{display:block;margin-top:4px;color:var(--ops-muted);font-size:10px;line-height:1.4}
+.ops-expense-carry-badge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#e7f5ed;color:#24704f;font-size:11px;font-weight:900}
+.ops-expense-carry-badge.manual{background:#eef2f7;color:#536774}
+.ops-expense-no-double-count{margin-top:12px}
+.ops-expense-large-input{font-size:22px!important;font-weight:900;font-variant-numeric:tabular-nums}
+.ops-expense-edit-rule{display:grid;grid-template-columns:100px minmax(0,1fr);gap:10px;margin:14px 0;padding:13px 14px;border:1px solid var(--ops-line);border-radius:12px;background:#f8fafb;font-size:12px;line-height:1.6}
+.ops-expense-edit-rule span{color:var(--ops-muted)}
 .ops-expense-daily-table{min-width:680px}
 .ops-expense-daily-table td:first-child{width:150px}
 .ops-expense-closed-row{background:#f5f7f8;color:var(--ops-muted)}
@@ -1370,6 +1387,9 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-expense-month-toolbar .ops-button{width:100%}
   .ops-expense-page-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .ops-expense-page-grid{grid-template-columns:1fr}
+  .ops-expense-master-card>.ops-card-head{align-items:stretch;flex-direction:column}
+  .ops-expense-master-card>.ops-card-head .ops-button{width:100%}
+  .ops-expense-edit-rule{grid-template-columns:1fr;gap:3px}
 }
 @media(max-width:1180px){.ops-series-grid-tabs{grid-template-columns:repeat(8,minmax(0,1fr))!important}}
 @media(max-width:720px){

@@ -91,7 +91,15 @@
     const base=Math.floor(total/dates.length),remainder=total-(base*dates.length);
     return dates.map(function(dateKey,index){return {dateKey:dateKey,amount:base+(index===0?remainder:0)};});
   }
-  function defaultRules(){return DEFAULT_RECURRING_RULES.map(function(row){return Object.assign({},row);});}
+  function defaultRules(){return DEFAULT_RECURRING_RULES.map(function(row){return Object.assign({monthlyOverrides:[]},row);});}
+  function normalizeMonthlyOverrides(value){
+    const byMonth=new Map();
+    (Array.isArray(value)?value:[]).forEach(function(row){
+      const month=clean(row&&row.month);
+      if(validMonth(month))byMonth.set(month,{month:month,amount:integerAmount(row&&row.amount)});
+    });
+    return Array.from(byMonth.values()).sort(function(a,b){return a.month.localeCompare(b.month);});
+  }
   function normalizeRule(row,fallback){
     const source=row&&typeof row==='object'?row:{},base=fallback||{};
     return {
@@ -100,7 +108,9 @@
       amount:integerAmount(source.amount==null?base.amount:source.amount),
       startMonth:validMonth(source.startMonth)?clean(source.startMonth):(validMonth(base.startMonth)?clean(base.startMonth):DEFAULT_START_MONTH),
       endMonth:validMonth(source.endMonth)?clean(source.endMonth):'',
-      active:source.active==null?base.active!==false:source.active!==false
+      active:source.active==null?base.active!==false:source.active!==false,
+      note:clean(source.note==null?base.note:source.note),
+      monthlyOverrides:normalizeMonthlyOverrides(source.monthlyOverrides==null?base.monthlyOverrides:source.monthlyOverrides)
     };
   }
   function normalizeSettings(raw){
@@ -116,19 +126,36 @@
       recurringRules:rules
     };
   }
+  function effectiveRuleForMonth(ruleValue,month){
+    const rule=normalizeRule(ruleValue),selected=clean(month);
+    if(!validMonth(selected)||!rule.active||compareMonth(selected,rule.startMonth)<0||(rule.endMonth&&compareMonth(selected,rule.endMonth)>0)){
+      return Object.assign({},rule,{amount:0,sourceMonth:'',changedThisMonth:false,available:false});
+    }
+    let amount=rule.amount,sourceMonth=rule.startMonth;
+    rule.monthlyOverrides.forEach(function(row){
+      if(compareMonth(row.month,selected)<=0){amount=row.amount;sourceMonth=row.month;}
+    });
+    return Object.assign({},rule,{amount:amount,sourceMonth:sourceMonth,changedThisMonth:sourceMonth===selected,available:true});
+  }
+  function recurringRulesForMonth(settings,month,includeZero){
+    const normalized=normalizeSettings(settings);
+    return normalized.recurringRules.map(function(rule){return effectiveRuleForMonth(rule,month);}).filter(function(rule){return rule.available&&(includeZero!==false||rule.amount>0);});
+  }
   function rowInRange(row,startKey,endKey){return (!startKey||row.dateKey>=startKey)&&(!endKey||row.dateKey<=endKey);}
   function recurringLedgerRows(settings,startValue,endValue){
     const normalized=normalizeSettings(settings),startKey=dateKeyFromValue(startValue),endKey=dateKeyFromValue(endValue);
     if(!startKey||!endKey||startKey>endKey)return [];
     const selectedStart=startKey.slice(0,7),selectedEnd=endKey.slice(0,7),rows=[];
     normalized.recurringRules.forEach(function(rule){
-      if(!rule.active||!rule.amount)return;
+      if(!rule.active)return;
       const first=compareMonth(rule.startMonth,selectedStart)>0?rule.startMonth:selectedStart;
       const last=rule.endMonth&&compareMonth(rule.endMonth,selectedEnd)<0?rule.endMonth:selectedEnd;
       if(compareMonth(first,last)>0)return;
       monthKeysBetween(first,last).forEach(function(month){
-        allocateMonthlyAmount(rule.amount,month,normalized.closedWeekdays).forEach(function(day){
-          const row={dateKey:day.dateKey,amount:day.amount,category:rule.category,sourceType:'recurring',sourceId:rule.id,expenseMonth:month,allocationMode:'monthly',paymentDateKey:'',note:'每月固定支出；星期一不分攤'};
+        const effective=effectiveRuleForMonth(rule,month);
+        if(!effective.available||!effective.amount)return;
+        allocateMonthlyAmount(effective.amount,month,normalized.closedWeekdays).forEach(function(day){
+          const row={dateKey:day.dateKey,amount:day.amount,category:effective.category,sourceType:'recurring',sourceId:effective.id,expenseMonth:month,allocationMode:'monthly',paymentDateKey:'',note:['每月延續支出','自 '+effective.sourceMonth+' 起沿用','星期一不分攤',effective.note].filter(Boolean).join('；')};
           if(rowInRange(row,startKey,endKey))rows.push(row);
         });
       });
@@ -192,7 +219,10 @@
     monthKeysBetween:monthKeysBetween,
     operatingDateKeys:operatingDateKeys,
     allocateMonthlyAmount:allocateMonthlyAmount,
+    normalizeMonthlyOverrides:normalizeMonthlyOverrides,
     normalizeSettings:normalizeSettings,
+    effectiveRuleForMonth:effectiveRuleForMonth,
+    recurringRulesForMonth:recurringRulesForMonth,
     normalizeExpenseMode:normalizeExpenseMode,
     recurringLedgerRows:recurringLedgerRows,
     manualExpenseLedgerRows:manualExpenseLedgerRows,
