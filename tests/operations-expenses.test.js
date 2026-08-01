@@ -59,9 +59,43 @@ const electricRows=expenses.buildLedger({
   start:'2026-07-01',
   end:'2026-08-31'
 }).filter(row=>row.sourceId==='electric-1');
-assert.equal(total(electricRows.filter(row=>row.expenseMonth==='2026-07')),3001,'奇數帳單餘額應放在前一個費用月份');
-assert.equal(total(electricRows.filter(row=>row.expenseMonth==='2026-08')),3000);
+const expectedElectricPortions=expenses.allocatePeriodByMonth(6001,'2026-07','2026-08');
+assert.equal(total(electricRows.filter(row=>row.expenseMonth==='2026-07')),expectedElectricPortions[0].amount,'兩月帳單應依整個涵蓋期間的營業日回分到第一個月份');
+assert.equal(total(electricRows.filter(row=>row.expenseMonth==='2026-08')),expectedElectricPortions[1].amount,'兩月帳單應依整個涵蓋期間的營業日回分到第二個月份');
 assert.ok(electricRows.every(row=>new Date(row.dateKey+'T12:00:00').getDay()!==1));
+
+const annualPortions=expenses.allocatePeriodByMonth(12001,'2026-07','2027-06');
+assert.equal(annualPortions.length,12,'年度費用必須分成連續 12 個月份');
+assert.equal(total(annualPortions),12001,'年度總額分成 12 個月後必須一元不差');
+const annualDaily=expenses.allocatePeriodAmount(12001,'2026-07','2027-06',[1]);
+assert.equal(total(annualDaily),12001,'年度總額直接分攤到每日後必須一元不差');
+assert.ok(annualDaily.every(row=>new Date(row.dateKey+'T12:00:00').getDay()!==1),'年度每日分攤必須排除星期一');
+assert.ok(annualDaily.slice(1).every(row=>row.amount===annualDaily[1].amount),'除不盡的年度餘數只能放在涵蓋期間第一個營業日');
+const annualPeriodId='annual:2026-07:2027-06';
+const annualSettings=expenses.normalizeSettings({recurringRules:[{
+  id:'insurance',category:'公共意外／設備保險',amount:0,startMonth:'2026-07',allocationMode:'actual',active:true,
+  monthlyOverrides:annualPortions.map(row=>({month:row.month,amount:row.amount,mode:'annual',periodId:annualPeriodId,periodStartMonth:'2026-07',periodEndMonth:'2027-06',periodTotal:12001,periodNote:'年度公共意外保險'}))
+}]});
+const annualRule=annualSettings.recurringRules.find(row=>row.id==='insurance');
+const annualEffective=expenses.effectiveRuleForMonth(annualRule,'2026-08');
+assert.equal(annualEffective.allocationMode,'annual');
+assert.equal(annualEffective.periodTotal,12001,'每個月份都必須保留原始年度總額，才能清楚回查');
+assert.equal(annualEffective.periodStartMonth,'2026-07');
+assert.equal(annualEffective.periodEndMonth,'2027-06');
+const annualRows=expenses.buildLedger({settings:annualSettings,expenses:[],start:'2026-07-01',end:'2027-06-30'}).filter(row=>row.sourceId==='insurance');
+assert.equal(total(annualRows),12001,'年度費用分攤到整個涵蓋年度後必須一元不差');
+assert.ok(annualRows.every(row=>new Date(row.dateKey+'T12:00:00').getDay()!==1),'年度費用也不得分攤到星期一');
+assert.equal(total(expenses.buildLedger({settings:annualSettings,expenses:[],start:'2027-07-01',end:'2027-07-31'}).filter(row=>row.sourceId==='insurance')),0,'年度費用不得延續到涵蓋期間以外');
+
+const manualAnnualRows=expenses.buildLedger({
+  settings,
+  expenses:[{id:'insurance-manual-1',category:'公共意外／設備保險',amount:12001,allocationMode:'annual',periodStartMonth:'2026-07',periodEndMonth:'2027-06',occurredAt:'2026-07-10'}],
+  start:'2026-07-01',
+  end:'2027-06-30'
+}).filter(row=>row.sourceId==='insurance-manual-1');
+assert.equal(total(manualAnnualRows),12001,'既有年度支出紀錄也必須分攤到連續 12 個月份');
+assert.ok(manualAnnualRows.every(row=>new Date(row.dateKey+'T12:00:00').getDay()!==1));
+assert.ok(expenses.EXPENSE_CATEGORIES.some(row=>row.id==='insurance'&&row.defaultMode==='annual'),'公共意外／設備保險預設應使用年度分攤');
 
 const actualMonday=expenses.buildLedger({
   settings,
@@ -74,14 +108,16 @@ assert.equal(total(actualMonday),800,'實際發生的一次性支出仍應保留
 const operationsSource=fs.readFileSync(path.join(__dirname,'..','operations-phase1.js'),'utf8');
 const operationsHubSource=fs.readFileSync(path.join(__dirname,'..','operations-hub.html'),'utf8');
 const formalPortalSource=fs.readFileSync(path.join(__dirname,'..','portal.html'),'utf8');
-assert.match(operationsSource,/扣款方式：星期一不計算/,'支出頁最上方必須清楚說明星期一規則');
-assert.match(operationsSource,/主表內的月支出只分攤到非星期一的營業日/,'支出頁必須說明星期一不分攤');
+assert.match(operationsSource,/分攤規則：先選費用週期，再依涵蓋月份分到每天/,'支出頁最上方必須清楚說明費用週期與涵蓋期間');
+assert.match(operationsSource,/年度費用分攤到連續 12 個月/,'支出頁必須說明年度費用的計算方式');
+assert.match(operationsSource,/整個涵蓋期間的非星期一日期平均分配/,'跨月費用必須依整段期間的每日成本分攤');
+assert.match(operationsSource,/期間分攤一律排除星期一/,'支出頁必須說明星期一不分攤');
 assert.match(operationsSource,/const body=operatingExpenseRuleNoticeHtml\(\)\+'<div class="ops-expense-detail-head">/,'扣款規則說明必須位於支出明細頁最上方');
 assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側選單必須有獨立營運支出入口');
 assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
 assert.match(formalPortalSource,/href="#expenses" data-view="expenses"/,'正式入口的左側選單也必須有營運支出');
-assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v5/,'正式入口必須先載入支出分攤程式');
-assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-payroll-expenses-v30/,'正式入口必須使用薪資支出整合新版主程式快取號');
+assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v6/,'正式入口必須先載入支出期間分攤新版程式');
+assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-expense-periods-v31/,'正式入口必須使用費用週期新版主程式快取號');
 assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
 assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
 assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
@@ -93,6 +129,10 @@ assert.match(operationsSource,/engine\.EXPENSE_CATEGORIES\.forEach/,'主表必�
 assert.match(operationsSource,/data-action="expense-custom-new"/,'主表底部必須能增加尚未存在的自訂項目');
 assert.doesNotMatch(operationsSource,/data-action="operating-expense-settings">固定費用設定/,'支出頁不得再顯示獨立固定費用設定入口');
 assert.match(operationsSource,/一次性支出依實際發生日保留/,'星期一仍必須保留一次性實際支出');
+assert.match(operationsSource,/每年一次：年度總額分攤 12 個月/,'修改支出時必須能選擇年度費用');
+assert.match(operationsSource,/例如 6 月收到 4、5 月電費/,'兩月帳單介面必須用實際例子說明回分方式');
+assert.match(operationsSource,/年度費用結束月份（自動 12 個月）/,'年度費用必須自動帶出連續 12 個月的結束月份');
+assert.match(operationsSource,/plan\.systemManaged\|\|periodManaged\?'disabled readonly'/,'兩月與年度費用的本月分攤額不得在主表被誤當總額直接修改');
 assert.match(operationsSource,/\{id:'store',label:'尚品樂器行',shortLabel:'營業部門'\}/,'既有支出帳必須明確歸屬尚品樂器行／營業部門');
 assert.match(operationsSource,/\{id:'academy',label:'凱立音樂補習班',shortLabel:'補習部門'\}/,'第二本支出帳必須明確歸屬凱立音樂補習班／補習部門');
 assert.match(operationsSource,/data-action="expense-department"/,'支出頁必須可以直接切換兩個部門');
@@ -136,7 +176,7 @@ const payrollWindow={document:startupDocument,YouziOperatingExpenses:expenses};
 payrollWindow.window=payrollWindow;
 const instrumentedOperationsSource=operationsSource.replace(
   'global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};',
-  'global.__testAutomaticPayrollLedger=automaticPayrollLedger;global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};'
+  'global.__testAutomaticPayrollLedger=automaticPayrollLedger;global.__testPeriodExpenseSettings=periodExpenseSettings;global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};'
 );
 vm.runInNewContext(instrumentedOperationsSource,{window:payrollWindow,document:startupDocument,console,Date,Map,Set,Promise,JSON,Math,Number,String,Array,Object,RegExp,Error,Intl,URL,Blob,FormData,setTimeout,clearTimeout});
 const payrollState=payrollWindow.OperationsCenterV1.state;
@@ -165,5 +205,17 @@ assert.equal(payrollCategoryTotal('勞退公司提繳'),2500,'勞退不得因勞
 assert.equal(payrollCategoryTotal('職災保險'),200);
 assert.ok(payrollRows.filter(row=>row.allocationMode==='monthly').every(row=>new Date(row.dateKey+'T12:00:00').getDay()!==1),'每月薪資與投保公司負擔不得分攤到星期一');
 assert.equal(payrollRows.find(row=>row.sourceId==='payroll-parttime-PT-ROW-1').dateKey,'2026-07-07','工讀薪資必須保留真正出勤日');
+
+const savedAnnualSettings=payrollWindow.__testPeriodExpenseSettings('insurance','公共意外／設備保險',12001,'2026-07','2027-06','年度保險','annual',expenses.normalizeSettings({}),'');
+const savedAnnualRule=savedAnnualSettings.recurringRules.find(row=>row.id==='insurance');
+const savedAnnualOverrides=savedAnnualRule.monthlyOverrides.filter(row=>row.periodId==='annual:2026-07:2027-06');
+assert.equal(savedAnnualOverrides.length,12,'介面儲存年度費用時必須建立完整 12 個月份');
+assert.equal(total(savedAnnualOverrides),12001,'介面儲存後的 12 個月份合計必須等於原始年度總額');
+assert.ok(savedAnnualOverrides.every(row=>row.periodTotal===12001&&row.periodStartMonth==='2026-07'&&row.periodEndMonth==='2027-06'),'每個月份都必須保留年度總額與涵蓋期間供回查');
+
+const savedElectricSettings=payrollWindow.__testPeriodExpenseSettings('electricity','電費',6001,'2026-07','2026-08','兩月帳單','bimonthly',expenses.normalizeSettings({}),'');
+const savedElectricRule=savedElectricSettings.recurringRules.find(row=>row.id==='electricity');
+const savedElectricOverrides=savedElectricRule.monthlyOverrides.filter(row=>row.periodId==='bimonthly:2026-07:2026-08');
+assert.deepEqual(savedElectricOverrides.map(row=>row.amount),expenses.allocatePeriodByMonth(6001,'2026-07','2026-08').map(row=>row.amount),'兩月帳單必須依整個涵蓋期間的非星期一日期分攤');
 
 console.log('operations expense allocation tests passed');
