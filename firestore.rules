@@ -38,6 +38,7 @@ service cloud.firestore {
 
         // 薪資 / 投保 / 工讀
         'employeeSalaryConfigs',
+        'employeeSalaryConfigHistory',
         'salarySetup',
         'salarySettings',
         'salaryConfigs',

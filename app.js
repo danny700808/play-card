@@ -33,13 +33,14 @@ function userHomeLabel(user=getUser()){if(isExternalTeacher(user)) return '返�
 function portalSwitchLabel(user=getUser()){return hasSettingsZoneAccess(user) ? '切換入口' : '系統入口'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
 function getApiUrl(){return API_URL}
-function logout(){localStorage.removeItem('employeeUser'); localStorage.removeItem('employeeUserId'); clearPortalMode(); location.href='index.html'}
+function logout(){const user=getUser();if(user&&user.portalSessionBridge===true&&window.YZTeacherMoreAuth&&typeof window.YZTeacherMoreAuth.clearPortalBridge==='function')window.YZTeacherMoreAuth.clearPortalBridge();localStorage.removeItem('employeeUser'); localStorage.removeItem('employeeUserId'); clearPortalMode(); location.href='index.html'}
 function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='announcements.html') return 'announcement'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='forms-hub.html'||path==='gift-point-card.html'||path==='employment-certificate.html'||path==='teaching-certificate.html') return 'forms'; if(path==='settings.html') return 'settings'; return '';}
 function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; return user;}
 async function api(action, payload={}){
   const firebaseOnlyActions = {
     getSalarySetupOptions:true,
     saveEmployeeSalaryConfig:true,
+    getEmployeeSalaryConfigHistory:true,
     getMySalaryInfo:true,
     getMyProfileFull:true,
     getMyDataFull:true,

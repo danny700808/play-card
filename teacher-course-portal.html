@@ -32,14 +32,14 @@
         <div class="auth-divider"><span>或</span></div>
         <article class="auth-choice auth-choice-regular">
           <div class="auth-choice-heading">
-            <span class="auth-choice-icon auth-choice-icon-plain">一般</span>
-            <div><h3>一般註冊／登入</h3></div>
+            <span class="auth-choice-icon auth-choice-icon-plain">Email</span>
+            <div><h3>Email 驗證登入</h3></div>
           </div>
           <form class="stack auth-regular-form" data-regular-auth-form>
             <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" placeholder="請輸入姓名" required></div>
             <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" placeholder="例如 0912345678" required></div>
-            <div class="field"><label>Email（選填）</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email"></div>
-            <button class="btn auth-regular-submit" type="submit">使用一般方式註冊／登入</button>
+            <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email" required></div>
+            <button class="btn auth-regular-submit" type="submit">寄送四碼驗證碼</button>
           </form>
         </article>
       </div>
@@ -60,6 +60,10 @@
     </section>
 
     <section class="hidden" id="appView" data-app-view>
+      <aside class="teacher-profile-alert hidden" id="teacherProfileAlert" role="status" aria-live="polite">
+        <div><b id="teacherProfileAlertTitle">請完成老師資料</b><span id="teacherProfileAlertText"></span></div>
+        <a href="profile.html">前往填寫</a>
+      </aside>
       <nav class="tabs teacher-bottom-tabs" aria-label="老師課務功能">
         <button class="btn active" type="button" data-tab="schedule">課表</button>
         <button class="btn" type="button" data-tab="students">學生</button>
@@ -106,7 +110,7 @@
       <div class="teacher-more-handle" aria-hidden="true"></div>
       <div class="section-title"><div><h2 id="teacherMoreTitle">其他功能</h2><p class="muted">較少使用的老師功能集中在這裡。</p></div><button class="btn" id="closeTeacherMore" type="button">關閉</button></div>
       <div class="teacher-more-grid">
-        <a href="profile.html"><span>人</span><b>我的資料</b><small>基本資料與通知設定</small></a>
+        <a href="profile.html" id="teacherProfileLink"><span>人</span><b>我的資料</b><small id="teacherProfileLinkHint">基本資料與通知設定</small></a>
         <a href="contract.html"><span>約</span><b>合約</b><small>查看與簽署合約</small></a>
         <a href="announcements.html"><span>告</span><b>公告</b><small>最新公告與通知</small></a>
         <a href="task.html"><span>辦</span><b>協助事項</b><small>待處理與回報</small></a>
@@ -156,8 +160,8 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260731-final-rules-v1"></script>
+  <script src="course-portal-common.js?v=20260801-teacher-email-auth-v2"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260731-final-rules-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260801-teacher-utilities-v2"></script>
 </body>
 </html>

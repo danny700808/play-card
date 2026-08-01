@@ -80,8 +80,8 @@ assert.match(operationsSource,/const body=operatingExpenseRuleNoticeHtml\(\)\+'<
 assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側選單必須有獨立營運支出入口');
 assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
 assert.match(formalPortalSource,/href="#expenses" data-view="expenses"/,'正式入口的左側選單也必須有營運支出');
-assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v4/,'正式入口必須先載入支出分攤程式');
-assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-expense-departments-v29/,'正式入口必須使用雙部門新版主程式快取號');
+assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v5/,'正式入口必須先載入支出分攤程式');
+assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-payroll-expenses-v30/,'正式入口必須使用薪資支出整合新版主程式快取號');
 assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
 assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
 assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
@@ -94,7 +94,7 @@ assert.match(operationsSource,/data-action="expense-custom-new"/,'主表底部�
 assert.doesNotMatch(operationsSource,/data-action="operating-expense-settings">固定費用設定/,'支出頁不得再顯示獨立固定費用設定入口');
 assert.match(operationsSource,/一次性支出依實際發生日保留/,'星期一仍必須保留一次性實際支出');
 assert.match(operationsSource,/\{id:'store',label:'尚品樂器行',shortLabel:'營業部門'\}/,'既有支出帳必須明確歸屬尚品樂器行／營業部門');
-assert.match(operationsSource,/\{id:'academy',label:'凱莉音樂補習班',shortLabel:'補習部門'\}/,'第二本支出帳必須明確歸屬凱莉音樂補習班／補習部門');
+assert.match(operationsSource,/\{id:'academy',label:'凱立音樂補習班',shortLabel:'補習部門'\}/,'第二本支出帳必須明確歸屬凱立音樂補習班／補習部門');
 assert.match(operationsSource,/data-action="expense-department"/,'支出頁必須可以直接切換兩個部門');
 assert.match(operationsSource,/departments\.store\|\|source/,'既有單一帳冊資料必須完整保留為營業部門資料');
 assert.match(operationsSource,/departments\.academy\?operatingExpenseEngine\(\)\.normalizeSettings\(departments\.academy\):zeroOperatingExpenseSettings\(\)/,'補習部門首次建立時必須全部從 0 開始');
@@ -105,6 +105,12 @@ assert.match(operationsSource,/settings=operatingExpenseSettingsForDepartment\(o
 assert.match(operationsSource,/clean\(row\.department\|\|row\.departmentKey\)\|\|'store'/,'沒有部門欄位的舊支出紀錄必須自動視為營業部門');
 assert.match(operationsSource,/department=existing\?clean\(existing\.department\|\|existing\.departmentKey\)\|\|'store':operatingExpenseDepartmentKey\(\)/,'新支出紀錄必須保存部門且舊紀錄不得被搬錯帳');
 assert.match(operationsSource,/<th>部門<\/th>/,'合併支出明細必須顯示每筆所屬部門');
+assert.match(operationsSource,/function automaticPayrollLedger/,'營運支出必須能從新系統薪資資料自動建立人事成本');
+assert.match(operationsSource,/employeeSalaryConfigHistory/,'人事成本必須依薪資設定歷史選用當月版本');
+assert.match(operationsSource,/sourceType:'payroll'/,'薪資與公司投保負擔必須標示為系統自動來源');
+assert.match(operationsSource,/if\(input\.disabled\)return/,'系統核算的人事成本不得被支出主表手動覆寫');
+assert.ok(expenses.EXPENSE_CATEGORIES.some(row=>row.id==='payroll'&&row.label==='薪資'),'薪資在支出主表應合併為單一類別');
+assert.ok(!expenses.EXPENSE_CATEGORIES.some(row=>row.id==='parttime-payroll'||row.id==='staff-payroll'),'支出主表不得再拆成兩個薪資類別');
 
 const expensePageSource=operationsSource.slice(operationsSource.indexOf('function renderOperatingExpensesPage'),operationsSource.indexOf('function openOperatingExpenseDetail'));
 assert.doesNotMatch(expensePageSource,/data-action="expense-new"/,'月份工具列與主表表頭不得再放增加按鈕');
@@ -125,5 +131,39 @@ const startupWindow={document:startupDocument};
 startupWindow.window=startupWindow;
 vm.runInNewContext(operationsSource,{window:startupWindow,document:startupDocument,console,Date,Map,Set,Promise,JSON,Math,Number,String,Array,Object,RegExp,Error,Intl,URL,Blob,FormData,setTimeout,clearTimeout});
 assert.ok(startupWindow.OperationsCenterV1,'支出模組即使暫時沒載入，營運中心也不得白畫面');
+
+const payrollWindow={document:startupDocument,YouziOperatingExpenses:expenses};
+payrollWindow.window=payrollWindow;
+const instrumentedOperationsSource=operationsSource.replace(
+  'global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};',
+  'global.__testAutomaticPayrollLedger=automaticPayrollLedger;global.OperationsCenterV1={init:init,reload:function(){return loadAll(false);},state:state};'
+);
+vm.runInNewContext(instrumentedOperationsSource,{window:payrollWindow,document:startupDocument,console,Date,Map,Set,Promise,JSON,Math,Number,String,Array,Object,RegExp,Error,Intl,URL,Blob,FormData,setTimeout,clearTimeout});
+const payrollState=payrollWindow.OperationsCenterV1.state;
+payrollState.employees=[
+  {__id:'STAFF-1',employeeId:'STAFF-1',name:'專職甲',identityType:'staff',accountStatus:'active'},
+  {__id:'PART-1',employeeId:'PART-1',name:'工讀乙',identityType:'parttime',accountStatus:'active'}
+];
+payrollState.employeeSalaryConfigs=[
+  {employeeId:'STAFF-1',identityType:'staff',costDepartment:'academy',effectiveDate:'2026-08-01',baseSalary:40000},
+  {employeeId:'PART-1',identityType:'parttime',costDepartment:'store',effectiveDate:'2026-07-01',hourlyRate:200,laborStatus:'在保',laborEmployerPay:500,healthStatus:'在保',healthEmployerPay:600,laborRetirementEmployerAmount:700,occupationalInsuranceEmployerPay:80}
+];
+payrollState.employeeSalaryConfigHistory=[
+  {employeeId:'STAFF-1',identityType:'staff',costDepartment:'academy',effectiveDate:'2026-07-01',baseSalary:30000,jobAllowances:[{name:'職務加給',amount:1000}],laborStatus:'在保',laborEmployerPay:2200,healthStatus:'在保',healthEmployerPay:1500,laborRetirementEmployerAmount:1800,occupationalInsuranceEmployerPay:120}
+];
+payrollState.parttimeRecords=[
+  {recordId:'PT-ROW-1',employeeId:'PART-1',date:'2026-07-07',totalHours:4,hourlyRate:200,grossPay:800,status:'正常'}
+];
+const payrollRows=payrollWindow.__testAutomaticPayrollLedger('2026-07-01','2026-07-31');
+const payrollCategoryTotal=(category,department)=>total(payrollRows.filter(row=>row.category===category&&(!department||row.department===department)));
+assert.equal(payrollCategoryTotal('薪資'),31800,'七月薪資應使用七月歷史設定 31,000 元並加上工讀實際薪資 800 元');
+assert.equal(payrollCategoryTotal('薪資','academy'),31000,'專職薪資應歸屬薪資設定選定的補習部門');
+assert.equal(payrollCategoryTotal('薪資','store'),800,'工讀薪資應依實際出勤資料歸屬營業部門');
+assert.equal(payrollCategoryTotal('勞保公司負擔'),2700);
+assert.equal(payrollCategoryTotal('健保公司負擔'),2100);
+assert.equal(payrollCategoryTotal('勞退公司提繳'),2500,'勞退不得因勞保狀態而停止計算');
+assert.equal(payrollCategoryTotal('職災保險'),200);
+assert.ok(payrollRows.filter(row=>row.allocationMode==='monthly').every(row=>new Date(row.dateKey+'T12:00:00').getDay()!==1),'每月薪資與投保公司負擔不得分攤到星期一');
+assert.equal(payrollRows.find(row=>row.sourceId==='payroll-parttime-PT-ROW-1').dateKey,'2026-07-07','工讀薪資必須保留真正出勤日');
 
 console.log('operations expense allocation tests passed');

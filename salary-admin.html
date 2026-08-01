@@ -95,6 +95,13 @@
           <section class="settings-section">
             <h2 class="settings-section-title">薪資</h2>
             <div class="form-grid">
+              <div class="field">
+                <label for="costDepartment">營運支出歸屬</label>
+                <select id="costDepartment">
+                  <option value="store">尚品樂器行／營業部門</option>
+                  <option value="academy">凱立音樂補習班／補習部門</option>
+                </select>
+              </div>
               <div class="field" id="fieldBaseSalary">
                 <label for="baseSalary">本薪</label>
                 <input id="baseSalary" type="number" min="0" step="1">
@@ -160,6 +167,10 @@
               <div class="field" id="fieldLaborGovernmentPay">
                 <label for="laborGovernmentPay">政府負擔</label>
                 <input id="laborGovernmentPay" type="text" readonly>
+              </div>
+              <div class="field" id="fieldOccupationalInsuranceEmployerPay">
+                <label for="occupationalInsuranceEmployerPay">職災保險公司負擔</label>
+                <input id="occupationalInsuranceEmployerPay" type="number" min="0" step="1" placeholder="依實際帳單輸入">
               </div>
             </div>
           </section>
@@ -234,6 +245,10 @@
                 <label for="laborRetirementEmployerRate">公司提繳率</label>
                 <input id="laborRetirementEmployerRate" type="text" readonly value="6%">
               </div>
+              <div class="field" id="fieldRetirementSalary">
+                <label for="laborRetirementSalary">勞退月提繳工資</label>
+                <input id="laborRetirementSalary" type="number" min="0" step="1">
+              </div>
               <div class="field" id="fieldEmployerRetirementAmount">
                 <label for="laborRetirementEmployerAmount">公司提繳金額（不扣薪）</label>
                 <input id="laborRetirementEmployerAmount" type="text" readonly>
@@ -259,6 +274,11 @@
             </div>
           </section>
 
+          <section class="settings-section">
+            <h2 class="settings-section-title">過去薪資與投保設定</h2>
+            <div id="salaryHistoryList" class="line-list"><div class="muted">選擇員工後顯示歷史資料。</div></div>
+          </section>
+
           <div class="save-row">
             <button class="btn" type="button" id="saveBottomBtn">儲存變更</button>
           </div>
@@ -270,8 +290,8 @@
   <script src="config.js?v=20260430insure3"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=salary-labor-selfpay-20260626v2"></script>
-  <script src="app.js?v=admin-final-20260530b"></script>
+  <script src="firebase-client.js?v=20260801-salary-history-v3"></script>
+  <script src="app.js?v=20260801-teacher-session-v2"></script>
   <script src="onboarding-workflow.js?v=20260624insurance1"></script>
   <script>
     let setup = null;
@@ -450,9 +470,7 @@
       return false;
     }
     function currentRetirementBaseSalary(){
-      if(!insuranceIsActive(qs('#laborStatus').value)) return 0;
-      const labor = getLaborMeta();
-      return labor ? numberValue(labor.salary) : 0;
+      return numberValue(qs('#laborRetirementSalary').value);
     }
     function currentEmployerRetirementAmount(){
       const base = currentRetirementBaseSalary();
@@ -610,6 +628,7 @@
       qs('#employeeNameText').textContent = emp.name || '-';
       qs('#employeeEmailText').textContent = emp.email || '未填寫 Email';
       applyIdentityVisibility(emp);
+      qs('#costDepartment').value = cfg.costDepartment === 'academy' || cfg.expenseDepartment === 'academy' ? 'academy' : 'store';
       qs('#baseSalary').value = cfg.baseSalary || '';
       qs('#hourlyRate').value = cfg.hourlyRate || '';
       qs('#isParttimePartial').value = inferredPartialValue(emp, cfg);
@@ -624,6 +643,8 @@
       qs('#healthSelfPay').value = cfg.healthSelfPay !== undefined && cfg.healthSelfPay !== null ? cfg.healthSelfPay : (cfg.healthInsuranceSelfPay || '');
       qs('#laborRetirementSelfEnabled').value = cfg.selfRetirementEnabled || '否';
       qs('#laborRetirementSelfRate').value = cfg.selfRetirementRate || '';
+      qs('#laborRetirementSalary').value = numberValue(cfg.laborRetirementSalary || cfg.retirementContributionWage) || numberValue(cfg.averageSalary || cfg.baseSalary) || '';
+      qs('#occupationalInsuranceEmployerPay').value = numberValue(cfg.occupationalInsuranceEmployerPay || cfg.occupationalEmployerPay) || '';
       qs('#salaryEffectiveDate').value = cfg.effectiveDate || cfg.salaryEffectiveDate || '';
       qs('#salaryNote').value = cfg.note || '';
       renderLineItems('#jobAllowanceList', cfg.jobAllowances || []);
@@ -631,7 +652,22 @@
       updateRetirementInputs();
       updateInsuranceVisibility(false);
       updateEmployerRetirementFields();
+      loadSalaryHistory(emp.id);
       renderEmployeeList();
+    }
+    async function loadSalaryHistory(employeeId){
+      const box = qs('#salaryHistoryList');
+      if(!box) return;
+      box.innerHTML = '<div class="muted">讀取中…</div>';
+      try{
+        const res = await api('getEmployeeSalaryConfigHistory', {employeeId:employeeId, userId:requireLogin().id});
+        const rows = Array.isArray(res && res.rows) ? res.rows : [];
+        box.innerHTML = rows.length ? rows.map(function(row){
+          const department = row.costDepartment === 'academy' ? '補習部門' : '營業部門';
+          const salary = row.identityType === 'parttime' ? ('時薪 '+moneyText(row.hourlyRate)) : ('本薪 '+moneyText(row.baseSalary));
+          return '<div class="line-item"><div><b>'+escapeHtml(row.effectiveDate || '未填生效日')+'｜'+escapeHtml(department)+'</b><div class="muted">'+escapeHtml(salary)+'｜勞保 '+escapeHtml(moneyText(row.laborInsuredSalary)||'未保')+'｜健保 '+escapeHtml(moneyText(row.healthInsuredSalary)||'未保')+'｜勞退 '+escapeHtml(moneyText(row.laborRetirementSalary)||'未填')+'</div></div></div>';
+        }).join('') : '<div class="muted">目前沒有過去設定；本次儲存後會開始保留每次版本。</div>';
+      }catch(err){ box.innerHTML = '<div class="muted">歷史資料讀取失敗：'+escapeHtml(err.message||String(err))+'</div>'; }
     }
     function buildPayload(emp){
       const labor = getLaborMeta();
@@ -641,6 +677,7 @@
       return {
         userId:requireLogin().id,
         employeeId:emp.id,
+        costDepartment:qs('#costDepartment').value === 'academy' ? 'academy' : 'store',
         baseSalary:isParttime ? 0 : qs('#baseSalary').value,
         hourlyRate:isParttime ? qs('#hourlyRate').value : 0,
         isPartialHours:isParttime ? qs('#isParttimePartial').value : '否',
@@ -656,6 +693,7 @@
         laborTotalPremium:insuranceIsActive(qs('#laborStatus').value) ? numberValue(qs('#laborTotalPremium').value) : 0,
         laborEmployerPay:insuranceIsActive(qs('#laborStatus').value) ? numberValue(qs('#laborEmployerPay').value) : 0,
         laborGovernmentPay:insuranceIsActive(qs('#laborStatus').value) ? numberValue(qs('#laborGovernmentPay').value) : 0,
+        occupationalInsuranceEmployerPay:numberValue(qs('#occupationalInsuranceEmployerPay').value),
         healthDependents:insuranceIsActive(qs('#healthStatus').value) ? numberValue(qs('#healthDependents').value) : 0,
         healthSelfPay:insuranceIsActive(qs('#healthStatus').value) ? qs('#healthSelfPay').value : '',
         healthEmployeeSelfPay:insuranceIsActive(qs('#healthStatus').value) ? qs('#healthSelfPay').value : '',
@@ -666,8 +704,8 @@
         laborRetirementEmployerRate:6,
         retirementEmployerAmount:currentEmployerRetirementAmount(),
         laborRetirementEmployerAmount:currentEmployerRetirementAmount(),
-        retirementEmployerText:insuranceIsActive(qs('#laborStatus').value) ? ('6%｜' + moneyText(currentEmployerRetirementAmount())) : '',
-        laborRetirementEmployerText:insuranceIsActive(qs('#laborStatus').value) ? ('6%｜' + moneyText(currentEmployerRetirementAmount())) : '',
+        retirementEmployerText:currentRetirementBaseSalary() > 0 ? ('6%｜' + moneyText(currentEmployerRetirementAmount())) : '',
+        laborRetirementEmployerText:currentRetirementBaseSalary() > 0 ? ('6%｜' + moneyText(currentEmployerRetirementAmount())) : '',
         laborRetirementSalary:currentRetirementBaseSalary(),
         selfRetirementEnabled:qs('#laborRetirementSelfEnabled').value,
         selfRetirementRate:qs('#laborRetirementSelfRate').value,
@@ -687,6 +725,7 @@
       if(emp.identityType === 'parttime' && !(numberValue(payload.averageSalary) > 0)) add('averageSalary');
       if(!payload.laborStatus) add('laborStatus');
       if(!payload.healthStatus) add('healthStatus');
+      if(!(numberValue(payload.laborRetirementSalary) > 0)) add('laborRetirementSalary');
       if(insuranceIsActive(payload.laborStatus) && !payload.laborPlan) add('laborPlan');
       if(insuranceIsActive(payload.laborStatus) && payload.laborSelfPay === '') add('laborSelfPay');
       if(insuranceIsActive(payload.healthStatus) && !payload.healthPlan) add('healthPlan');
@@ -703,6 +742,7 @@
     function refreshLocalConfig(emp, payload){
       setup.employeeConfigMap[emp.id] = Object.assign({}, currentConfig(), {
         baseSalary:numberValue(payload.baseSalary),
+        costDepartment:payload.costDepartment === 'academy' ? 'academy' : 'store',
         hourlyRate:numberValue(payload.hourlyRate),
         isPartialHours:payload.isPartialHours || '否',
         averageSalary:numberValue(payload.averageSalary),
@@ -717,6 +757,7 @@
         laborTotalPremium:numberValue(payload.laborTotalPremium),
         laborEmployerPay:numberValue(payload.laborEmployerPay),
         laborGovernmentPay:numberValue(payload.laborGovernmentPay),
+        occupationalInsuranceEmployerPay:numberValue(payload.occupationalInsuranceEmployerPay),
         healthDependents:numberValue(payload.healthDependents),
         healthSelfPay:payload.healthSelfPay === '' ? '' : numberValue(payload.healthSelfPay),
         healthEmployeeSelfPay:payload.healthEmployeeSelfPay === '' ? '' : numberValue(payload.healthEmployeeSelfPay),
@@ -757,6 +798,7 @@
         if(!res || res.ok === false) throw new Error((res && res.message) || '儲存失敗');
         refreshLocalConfig(emp, payload);
         setMsg(qs('#pageMsg'), '已儲存' + (emp.name || '此員工') + '的薪資與投保設定。');
+        await loadSalaryHistory(emp.id);
       }catch(err){
         setMsg(qs('#pageMsg'), err && err.message ? err.message : String(err), true);
       }finally{
@@ -823,8 +865,9 @@
       qs('#laborPlan').addEventListener('change', updateEmployerRetirementFields);
       qs('#healthPlan').addEventListener('change', updateEmployerRetirementFields);
       qs('#healthDependents').addEventListener('change', updateEmployerRetirementFields);
-      qs('#baseSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); updateEmployerRetirementFields(); });
-      qs('#averageSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); updateEmployerRetirementFields(); });
+      qs('#baseSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); if(!numberValue(qs('#laborRetirementSalary').value))qs('#laborRetirementSalary').value=numberValue(qs('#baseSalary').value)||''; updateEmployerRetirementFields(); });
+      qs('#averageSalary').addEventListener('change', function(){ autoSelectLaborPlanFromWage(true); if(!numberValue(qs('#laborRetirementSalary').value))qs('#laborRetirementSalary').value=numberValue(qs('#averageSalary').value)||''; updateEmployerRetirementFields(); });
+      qs('#laborRetirementSalary').addEventListener('change', updateEmployerRetirementFields);
       qs('#laborRetirementSelfEnabled').addEventListener('change', updateRetirementInputs);
       qs('#laborRetirementSelfRate').addEventListener('change', updateEmployerRetirementFields);
       qsa('#formWrap input, #formWrap select, #formWrap textarea').forEach(function(el){
@@ -835,7 +878,7 @@
       loadSetup();
     }
   </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
+  <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>

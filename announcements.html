@@ -54,7 +54,7 @@
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="teacher-more-pages.css?v=20260730-teacher-more-v1">
-  <script src="teacher-more-auth-bridge.js?v=20260730-teacher-more-v1"></script>
+  <script src="teacher-more-auth-bridge.js?v=20260801-teacher-session-v2"></script>
 </head>
 <body class="teacher-utility-page utility-announcements" onload="initPage()">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -91,7 +91,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260523stage5primary"></script>
 
-  <script src="app.js?v=20260430_announcement_unified"></script>
+  <script src="app.js?v=20260801-teacher-session-v2"></script>
   <script>
     let currentUser=null;
     function escapeHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
@@ -108,7 +108,7 @@
     async function loadAnnouncementHistory(){const box=qs('#historyList'); box.innerHTML='<div class="empty">讀取中...</div>'; try{const payload=typeof buildHistoryQueryPayload_==='function'?buildHistoryQueryPayload_({userId:currentUser.id},'#historyStart','#historyEnd'):{userId:currentUser.id,historyMode:'是'}; const r=await api('getAnnouncements',payload); if(!r.ok)throw new Error(r.message||'讀取失敗'); const rows=(r.rows||[]).filter(x=>x.isRead || (x.myReply&&x.myReply.replyText)); box.innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">這個日期區間沒有歷史公告。</div>'}catch(e){box.innerHTML='<div class="empty">無法讀取歷史公告。</div>'}}
     function initPage(){if(window.YZTeacherMoreAuth&&window.YZTeacherMoreAuth.blockIfPortalOnly({title:'公告'}))return;fillHeader();currentUser=requireLogin();if(!currentUser)return;if(typeof enforceHistoryDateRange_==='function')enforceHistoryDateRange_('#historyStart','#historyEnd');loadAnnouncements();if(typeof activateHistoryColoring_==='function')activateHistoryColoring_('#historyList');}
   </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
+  <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>

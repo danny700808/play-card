@@ -1571,11 +1571,17 @@ async function renterContactLogin(data) {
   );
 }
 
-// 一般方式不再寄送 Email 四碼：以姓名與電話對照既有資料；Email 僅保存為選填聯絡資料。
-// 老師與學生仍保留首次綁定的主管審核，避免未授權者僅憑個資取得課表或薪資。
+// 學生與租用者的一般方式沿用姓名、電話對照；老師必須改走 Email 四碼驗證。
+// 首次綁定仍保留主管審核，避免未授權者僅憑個資取得課表或薪資。
 async function directRegularAccess(data) {
   const type = clean(data.type).toLowerCase();
   if (type === 'student') return studentPhoneAccess(data);
+  if (type === 'teacher') {
+    throw new HttpsError(
+      'failed-precondition',
+      '老師姓名與電話直接登入已停用；請使用 LINE，或以 Email 四碼驗證登入。'
+    );
+  }
   const identity = await prepareBindingIdentity(data);
   await consumeRateLimit(`direct-regular-${type}`, identity.phone);
   const authAccountId = directRegularAccountId(identity);
@@ -1595,36 +1601,6 @@ async function directRegularAccess(data) {
   const previous = existing.exists ? existing.data() || {} : {};
   if (['revoked', 'rejected'].includes(clean(previous.status))) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
-  }
-  if (type === 'teacher' && clean(previous.status) !== 'active') {
-    const teacherBinding = {
-      type, teacherId: clean(identity.targetId), name: clean(identity.name), phoneHash: hash(identity.phone), authAccountId,
-      authProvider: 'direct-regular', status: 'active', approvalStatus: 'approved',
-      approvalSource: 'name-phone-test-access',
-      approvedAt: FieldValue.serverTimestamp(), approvedAtText: nowText(),
-      registeredAt: previous.registeredAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
-    };
-    if (validEmail(identity.email)) {
-      teacherBinding.email = normalizeEmail(identity.email);
-      teacherBinding.emailNormalized = normalizeEmail(identity.email);
-      teacherBinding.emailVerified = false;
-    }
-    await bindingRef.set(teacherBinding, { merge: true });
-  }
-  if (type === 'teacher') {
-    const activeTeacherBinding = {
-      authAccountId,
-      authProvider: 'direct-regular',
-      name: clean(identity.name),
-      phoneHash: hash(identity.phone),
-      updatedAt: FieldValue.serverTimestamp()
-    };
-    if (validEmail(identity.email)) {
-      activeTeacherBinding.email = normalizeEmail(identity.email);
-      activeTeacherBinding.emailNormalized = normalizeEmail(identity.email);
-      activeTeacherBinding.emailVerified = false;
-    }
-    await bindingRef.set(activeTeacherBinding, { merge: true });
   }
   if (type === 'renter') {
     const renterId = clean(identity.renterId);
@@ -2244,6 +2220,203 @@ async function requireSession(data, allowedRoles) {
   }
   await ref.set(update, { merge: true });
   return session;
+}
+
+function normalizedPersonName(value) {
+  return clean(value).normalize('NFKC').replace(/\s+/g, '').replace(/老師$/u, '').toLowerCase();
+}
+
+function employeePhone(row) {
+  return normalizePhone(row && (
+    row.mobilePhone || row.mobile || row.phone || row.tel || row.telephone || row.contactPhone
+  ));
+}
+
+function employeeEmail(row) {
+  return normalizeEmail(row && (row.email || row.Email || row.loginEmail || row.contactEmail));
+}
+
+function linkedEmployeeId(row) {
+  return clean(row && (
+    row.employeeId || row.externalTeacherEmployeeId || row.linkedEmployeeId ||
+    row.employeeDocId || row.userId
+  ));
+}
+
+function isExternalTeacherEmployee(row) {
+  const identity = clean(row && (row.identityType || row.employeeType || row.identityLabel || row.role)).toLowerCase();
+  return row && (
+    row.isExternalTeacher === true ||
+    identity === 'external' ||
+    identity === 'externalteacher' ||
+    /外聘/.test(clean(row.identityLabel || row.roleLabel))
+  );
+}
+
+function externalTeacherProfileMissingFields(row) {
+  const source = row || {};
+  const teaching = Array.isArray(source.teachingAbilities)
+    ? source.teachingAbilities.filter((item) => clean(item && (item.item || item.name || item.subject)))
+    : clean(source.teachingItems || source.teachingItemsText);
+  return [
+    ['name', '姓名', clean(source.name || source.displayName || source.employeeName)],
+    ['mobilePhone', '行動電話', employeePhone(source)],
+    ['email', 'Email', employeeEmail(source)],
+    ['birthDate', '出生年月日', clean(source.birthDate)],
+    ['idNumber', '身分證字號', clean(source.idNumber)],
+    ['address', '聯絡地址', clean(source.address || source.mailingAddress || source.householdAddress)],
+    ['emergencyContact', '緊急聯絡人', clean(source.emergencyContact)],
+    ['emergencyPhone', '緊急聯絡人電話', normalizePhone(source.emergencyPhone)],
+    ['teachingAbilities', '授課項目', teaching],
+    ['identityDocumentUrl', '身分證明文件', clean(source.identityDocumentUrl) || (Array.isArray(source.identityUrls) && source.identityUrls.length)]
+  ].filter((item) => !item[2]).map((item) => ({ key: item[0], label: item[1] }));
+}
+
+async function resolveTeacherUtilityEmployee(session) {
+  const teacherId = clean(session && session.teacherId);
+  const bindings = await authorizedBindingsForSession(session);
+  if (!bindings.length) throw new HttpsError('permission-denied', '老師登入綁定已停用，請重新登入。');
+
+  const [teacherRows, employeeSnapshot, profileSnapshot, contractSnapshot] = await Promise.all([
+    mirrorRows('teachers'),
+    db.collection('employees').limit(2000).get(),
+    db.collection('externalTeacherProfiles').limit(2000).get(),
+    db.collection('externalTeacherContracts').limit(2000).get()
+  ]);
+  const teacher = teacherRows.find((row) => sourceId(row) === teacherId) || {};
+  const externalRows = profileSnapshot.docs.concat(contractSnapshot.docs).map((doc) =>
+    Object.assign({ __id: doc.id, __ref: doc.ref }, jsonValue(doc.data() || {}))
+  );
+  const relatedExternalRows = externalRows.filter((row) =>
+    clean(row.__id) === teacherId ||
+    clean(row.teacherId || row.externalTeacherId || row.coursePortalTeacherId) === teacherId
+  );
+
+  const explicitIds = new Set([teacherId]);
+  bindings.forEach((row) => {
+    const value = linkedEmployeeId(row);
+    if (value) explicitIds.add(value);
+  });
+  relatedExternalRows.forEach((row) => {
+    const value = linkedEmployeeId(row);
+    if (value) explicitIds.add(value);
+  });
+
+  const names = new Set();
+  const emails = new Set();
+  const phones = new Set();
+  function collectIdentity(row) {
+    const name = normalizedPersonName(row && (row.name || row.teacherName || row.displayName || row.employeeName));
+    const email = employeeEmail(row);
+    const phone = employeePhone(row);
+    if (name) names.add(name);
+    if (email) emails.add(email);
+    if (phone) phones.add(phone);
+  }
+  collectIdentity(teacher);
+  bindings.forEach(collectIdentity);
+  relatedExternalRows.forEach(collectIdentity);
+
+  const employees = employeeSnapshot.docs.map((doc) => Object.assign({ __id: doc.id, __ref: doc.ref }, jsonValue(doc.data() || {})));
+  const direct = employees.filter((row) => isExternalTeacherEmployee(row) && (
+    explicitIds.has(clean(row.__id)) ||
+    explicitIds.has(clean(row.employeeId || row.id || row.userId)) ||
+    clean(row.coursePortalTeacherId || row.legacyTeacherId) === teacherId ||
+    (Array.isArray(row.coursePortalTeacherIds) && row.coursePortalTeacherIds.map(clean).includes(teacherId))
+  ));
+  let employee = null;
+  if (direct.length === 1) employee = direct[0];
+  else if (direct.length > 1) {
+    throw new HttpsError('failed-precondition', '老師資料連到多個員工編號，請先由管理者整理重複資料。');
+  }
+
+  if (!employee) {
+    const scored = employees.filter(isExternalTeacherEmployee).map((row) => {
+      let score = 0;
+      const email = employeeEmail(row);
+      const phone = employeePhone(row);
+      const name = normalizedPersonName(row.name || row.displayName || row.employeeName);
+      if (email && emails.has(email)) score += 6;
+      if (phone && phones.has(phone)) score += 5;
+      if (name && names.has(name)) score += 2;
+      return { row, score };
+    }).filter((item) => item.score >= 6).sort((a, b) => b.score - a.score);
+    if (scored.length && (scored.length === 1 || scored[0].score > scored[1].score)) employee = scored[0].row;
+    else if (scored.length) {
+      throw new HttpsError('failed-precondition', '有多筆相似的外聘老師資料，為避免合併錯人，請先由管理者指定員工編號。');
+    }
+  }
+  if (!employee) {
+    throw new HttpsError('failed-precondition', '找不到可安全連結的外聘老師員工資料，請先由管理者完成一次員工編號連結。');
+  }
+
+  const employeeId = clean(employee.employeeId || employee.id || employee.__id);
+  const profile = externalRows.find((row) => linkedEmployeeId(row) === employeeId) ||
+    relatedExternalRows[0] || {};
+  const merged = Object.assign({}, employee, profile, {
+    name: clean(profile.name || profile.teacherName || employee.name || employee.displayName),
+    email: employeeEmail(profile) || employeeEmail(employee),
+    mobilePhone: employeePhone(profile) || employeePhone(employee)
+  });
+  const missingProfileFields = externalTeacherProfileMissingFields(merged);
+  const employeePatch = {
+    employeeId,
+    id: clean(employee.id) || employeeId,
+    userId: clean(employee.userId) || employeeId,
+    coursePortalTeacherId: teacherId,
+    coursePortalTeacherIds: FieldValue.arrayUnion(teacherId),
+    updatedAt: FieldValue.serverTimestamp()
+  };
+  if (!clean(employee.legacyTeacherId)) employeePatch.legacyTeacherId = teacherId;
+  await employee.__ref.set(employeePatch, { merge: true });
+  const bindingBatch = db.batch();
+  bindings.forEach((row) => bindingBatch.set(row.__ref, {
+    employeeId,
+    externalTeacherEmployeeId: employeeId,
+    legacyTeacherId: teacherId,
+    linkedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true }));
+  relatedExternalRows.forEach((row) => bindingBatch.set(row.__ref, {
+    employeeId,
+    externalTeacherEmployeeId: employeeId,
+    employeeRef: `employees/${employeeId}`,
+    coursePortalTeacherId: teacherId,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true }));
+  await bindingBatch.commit();
+
+  return {
+    employeeId,
+    user: {
+      id: employeeId,
+      employeeId,
+      name: clean(merged.name) || clean(teacher.name) || '外聘老師',
+      displayName: clean(merged.name) || clean(teacher.name) || '外聘老師',
+      email: employeeEmail(merged),
+      phone: employeePhone(merged),
+      mobilePhone: employeePhone(merged),
+      identityType: 'external',
+      identityLabel: '外聘老師',
+      employeeType: 'external',
+      role: 'externalTeacher',
+      isExternalTeacher: true,
+      lineUserId: clean(merged.lineUserId || session.lineUserId),
+      lineNotifyEnabled: Boolean(clean(merged.lineUserId || session.lineUserId)),
+      accountStatus: clean(merged.accountStatus || 'active'),
+      employmentStatus: clean(merged.employmentStatus || 'active'),
+      legacyTeacherId: teacherId,
+      portalSessionBridge: true
+    },
+    profileComplete: missingProfileFields.length === 0,
+    missingProfileFields
+  };
+}
+
+async function teacherUtilitySession(data) {
+  const session = await requireSession(data, ['teacher']);
+  const resolved = await resolveTeacherUtilityEmployee(session);
+  return Object.assign({ ok: true, validatedAt: Date.now() }, resolved);
 }
 
 function safeRentalDisplayName(value) {
@@ -8980,6 +9153,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalRenterContactLogin = callable(renterContactLogin);
   exportsObject.coursePortalExchangeAccess = callable(exchangeAccessToken);
   exportsObject.coursePortalTeacherData = callable(teacherPortalData, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherUtilitySession = callable(teacherUtilitySession, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });

@@ -8,7 +8,7 @@
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260624unified-top-nav">
   <link rel="stylesheet" href="teacher-more-pages.css?v=20260730-teacher-more-v1">
-  <script src="teacher-more-auth-bridge.js?v=20260730-teacher-more-v1"></script>
+  <script src="teacher-more-auth-bridge.js?v=20260801-teacher-session-v2"></script>
 </head>
 <body class="teacher-utility-page utility-goods" onload="initPage()">
   
@@ -39,7 +39,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
 <script src="firebase-client.js?v=20260606teacherwebsite_httpfix"></script>
-<script src="app.js?v=20260606teacherwebsite_httpfix"></script>
+<script src="app.js?v=20260801-teacher-session-v2"></script>
 <script>
 let state={tab:'ask', askImage:null, goods:[], websiteGoods:[], records:[]};
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
@@ -263,7 +263,7 @@ async function submitReask(idx){
   }catch(err){finishActionButtonError(btn,'送出失敗');setMsg(qs('#msg'),err.message||'送出失敗',true);}
 }
 </script>
-  <script src="global-nav.js?v=20260624unified-top-nav"></script>
+  <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>

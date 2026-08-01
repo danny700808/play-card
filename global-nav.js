@@ -48,6 +48,8 @@
   }
   function doLogout(){
     try{
+      var user=readUser();
+      if(user&&user.portalSessionBridge===true&&window.YZTeacherMoreAuth&&typeof window.YZTeacherMoreAuth.clearPortalBridge==='function') window.YZTeacherMoreAuth.clearPortalBridge();
       localStorage.removeItem('employeeUser');
       localStorage.removeItem('employeeUserId');
       localStorage.removeItem('employeePortalMode');

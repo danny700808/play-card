@@ -3536,6 +3536,7 @@
       id: clean(pick(raw, ['employeeId','id','userId','員工ID'], raw.__id)),
       name: clean(pick(raw, ['name','displayName','姓名'], '')),
       identityType:type,
+      costDepartment: clean(raw.costDepartment || raw.expenseDepartment) === 'academy' ? 'academy' : 'store',
       identityLabel: identityLabel(type),
       isPartTime:type === 'parttime',
       email: lower(pick(raw, ['email','Email'], '')),
@@ -3601,12 +3602,14 @@
     const healthPlan = findPlan(DEFAULT_HEALTH_PLANS, healthPlanCode);
     const laborSelfPay = pick(raw, ['laborSelfPayText','laborInsuranceSelfPay','laborSelfPay','勞保自付額'], '');
     const healthSelfPay = pick(raw, ['healthSelfPayText','healthInsuranceSelfPay','healthSelfPay','健保自付額'], '');
-    const retirementBase = num((laborPlan && laborPlan.salary) || averageSalary || baseSalary || 0);
-    const employerRetirementAmount = laborActive && retirementBase ? Math.round(retirementBase * 0.06) : 0;
+    const retirementBase = num(pick(raw, ['laborRetirementSalary','retirementSalary','laborPensionSalary','勞退月提繳工資'], '') || (laborPlan && laborPlan.salary) || averageSalary || baseSalary || 0);
+    const savedEmployerRetirement = num(pick(raw, ['laborRetirementEmployerAmount','retirementEmployerAmount','雇主提繳金額'], ''));
+    const employerRetirementAmount = savedEmployerRetirement || (retirementBase ? Math.round(retirementBase * 0.06) : 0);
     const selfRetirementEnabled = pick(raw, ['selfRetirementEnabled','laborRetirementSelfEnabled','勞退自提'], '');
     const selfRetirementRate = pick(raw, ['selfRetirementRate','laborRetirementSelfRate','勞退自提比率'], '');
     const selfEnabled = truthy(selfRetirementEnabled);
-    const selfAmount = laborActive && selfEnabled && num(selfRetirementRate) && retirementBase ? Math.round(retirementBase * num(selfRetirementRate) / 100) : 0;
+    const savedSelfAmount = num(pick(raw, ['selfRetirementAmount','laborRetirementSelfAmount','勞退自提金額'], ''));
+    const selfAmount = savedSelfAmount || (selfEnabled && num(selfRetirementRate) && retirementBase ? Math.round(retirementBase * num(selfRetirementRate) / 100) : 0);
     const jobAllowance = pick(raw, ['jobAllowanceText','jobAllowance','職務加給'], '') || lineItemsText(raw.jobAllowances || raw.jobAllowanceItems || []);
     const allowance = pick(raw, ['allowanceText','allowance','津貼'], '') || lineItemsText(raw.allowances || raw.allowanceItems || []);
     return {
@@ -3629,8 +3632,8 @@
       laborLevelText: laborActive ? planText(laborPlan, laborPlanCode, 'labor') : '',
       laborSalaryText: laborActive ? planSalaryText(laborPlan, laborPlanCode) : '',
       laborSelfPayText: laborActive && meaningful(laborSelfPay) ? (money(laborSelfPay) || clean(laborSelfPay)) : '',
-      retirementEmployerText: laborActive ? ('6%' + (employerRetirementAmount ? '｜' + money(employerRetirementAmount) : '')) : '',
-      selfRetirementText: laborActive && selfEnabled ? ((percent(selfRetirementRate) || '已開啟') + (selfAmount ? '｜' + money(selfAmount) : '')) : '',
+      retirementEmployerText: retirementBase ? ('6%' + (employerRetirementAmount ? '｜' + money(employerRetirementAmount) : '')) : '',
+      selfRetirementText: selfEnabled ? ((percent(selfRetirementRate) || '已開啟') + (selfAmount ? '｜' + money(selfAmount) : '')) : '',
       healthStatus: healthStatus,
       healthPlanText: healthActive ? planText(healthPlan, healthPlanCode, 'health') : '',
       healthLevelText: healthActive ? planText(healthPlan, healthPlanCode, 'health') : '',
@@ -3675,6 +3678,7 @@
       name: clean(employee && (employee.name || employee.displayName || employee['姓名'])),
       email: lower(payload.email || employee && (employee.email || employee.Email)),
       identityType:type,
+      costDepartment: clean(payload.costDepartment || payload.expenseDepartment) === 'academy' ? 'academy' : 'store',
       baseSalary: isParttime ? 0 : num(payload.baseSalary),
       hourlyRate: isParttime ? num(payload.hourlyRate) : 0,
       isPartialHours: isParttime ? (clean(payload.isPartialHours) || '否') : '否',
@@ -3693,6 +3697,7 @@
       laborTotalPremium: laborActive ? num(payload.laborTotalPremium) : 0,
       laborEmployerPay: laborActive ? num(payload.laborEmployerPay) : 0,
       laborGovernmentPay: laborActive ? num(payload.laborGovernmentPay) : 0,
+      occupationalInsuranceEmployerPay:num(payload.occupationalInsuranceEmployerPay || payload.occupationalEmployerPay),
       healthInsuredSalary: healthInsuredSalary,
       healthSalary: healthInsuredSalary,
       healthInsuranceSalary: healthInsuredSalary,
@@ -3750,10 +3755,32 @@
     const employee = await findEmployee({employeeId:employeeId, userId:employeeId, email:payload.email}).catch(function(){ return null; });
     const docId = clean(employee && employee.__id) || employeeId;
     const data = configFromPayload(payload, employee || {employeeId:employeeId});
-    await d.collection('employees').doc(docId).set(data, {merge:true});
-    await d.collection('employeeSalaryConfigs').doc(employeeId).set(data, {merge:true});
-    await d.collection('salarySetup').doc('default').set({employeeConfigMap:{[employeeId]:data}, updatedAt:serverTs(), source:'firebase-mydata-map2'}, {merge:true});
+    const effectiveDate = fmtDate(data.effectiveDate) || localDateKey(new Date());
+    const historyId = [safeId(employeeId), effectiveDate.replace(/-/g,''), Date.now().toString(36)].join('_');
+    await Promise.all([
+      d.collection('employees').doc(docId).set(data, {merge:true}),
+      d.collection('employeeSalaryConfigs').doc(employeeId).set(data, {merge:true}),
+      d.collection('employeeSalaryConfigHistory').doc(historyId).set(Object.assign({}, data, {
+        historyId:historyId,
+        employeeId:employeeId,
+        effectiveDate:effectiveDate,
+        savedAt:serverTs(),
+        savedBy:clean(payload.userId),
+        source:'firebase-salary-history-v1'
+      })),
+      d.collection('salarySetup').doc('default').set({employeeConfigMap:{[employeeId]:data}, updatedAt:serverTs(), source:'firebase-mydata-map2'}, {merge:true})
+    ]);
     return {ok:true, message:'薪資設定已儲存。', employeeId:employeeId, employeeConfig:data};
+  }
+  async function getEmployeeSalaryConfigHistory(payload){
+    const employeeId = clean(payload && (payload.employeeId || payload.id));
+    if(!employeeId) return {ok:false, message:'缺少員工ID'};
+    const rows = (await allDocs('employeeSalaryConfigHistory')).filter(function(row){
+      return clean(row.employeeId || row.id || row.userId) === employeeId;
+    }).sort(function(a,b){
+      return clean(b.effectiveDate).localeCompare(clean(a.effectiveDate)) || clean(b.historyId || b.__id).localeCompare(clean(a.historyId || a.__id));
+    });
+    return {ok:true, rows:rows.slice(0,120)};
   }
   async function getSalarySetupOptions(){
     const employeesRaw = await allDocs('employees');
@@ -3782,6 +3809,7 @@
     if(a === 'getMySalaryInfo') return await getMySalaryInfo(payload || {});
     if(a === 'getSalarySetupOptions') return await getSalarySetupOptions(payload || {});
     if(a === 'saveEmployeeSalaryConfig') return await saveEmployeeSalaryConfig(payload || {});
+    if(a === 'getEmployeeSalaryConfigHistory') return await getEmployeeSalaryConfigHistory(payload || {});
     if(a === 'getMyProfile'){
       const res = await getMyProfileFull(payload || {});
       return res.ok === false ? res : {ok:true, source:res.source, profile:res.profile || {}};

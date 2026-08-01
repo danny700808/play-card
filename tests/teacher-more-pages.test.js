@@ -36,33 +36,68 @@ test('teacher other pages share the compact utility theme and explicit auth boun
     const source = read(file);
     assert.match(source, /class="[^"]*teacher-utility-page/);
     assert.match(source, /teacher-more-pages\.css\?v=20260730-teacher-more-v1/);
-    assert.match(source, /teacher-more-auth-bridge\.js\?v=20260730-teacher-more-v1/);
+    assert.match(source, /teacher-more-auth-bridge\.js\?v=20260801-teacher-session-v2/);
     assert.match(source, /data-teacher-utility-root/);
     assert.match(source, /blockIfPortalOnly/);
   }
 
   const bridge = read('teacher-more-auth-bridge.js');
   assert.match(bridge, /youzi\.coursePortal\.teacher\.session\.v1/);
-  assert.match(bridge, /使用既有 Email／密碼/);
-  assert.match(bridge, /不會自動建立、合併或偽造舊員工登入/);
-  assert.doesNotMatch(bridge, /setItem\s*\(\s*['"]employeeUser['"]/);
+  assert.match(bridge, /coursePortalTeacherUtilitySession/);
+  assert.match(bridge, /saveAuthorizedUser/);
+  assert.match(bridge, /portalSessionBridge:\s*true/);
+  assert.doesNotMatch(bridge, /使用既有 Email／密碼|需要原員工帳號/);
   new vm.Script(bridge, { filename: 'teacher-more-auth-bridge.js' });
 });
 
-test('LINE-only teacher sessions are blocked without manufacturing legacy authorization', () => {
+test('teacher portal session is revalidated before the six utility pages receive an employee identity', async () => {
   const bridge = read('teacher-more-auth-bridge.js');
   const storage = {
     'youzi.coursePortal.teacher.session.v1': 'teacher-session-token'
   };
-  const rootNode = { innerHTML: '' };
+  const rootNode = { innerHTML: '', querySelector() { return null; } };
   const bodyClasses = new Set();
+  let reloads = 0;
   const window = {
     localStorage: {
       getItem(key) {
         return Object.hasOwn(storage, key) ? storage[key] : null;
+      },
+      setItem(key, value) {
+        storage[key] = String(value);
+      },
+      removeItem(key) {
+        delete storage[key];
       }
     },
-    location: { pathname: '/task.html' }
+    location: { pathname: '/task.html', reload() { reloads += 1; } },
+    APP_CONFIG: { FIREBASE_CONFIG: { projectId: 'test-project' } }
+  };
+  const callableNames = [];
+  window.firebase = {
+    apps: [{}],
+    functions() {},
+    initializeApp() {},
+    app() {
+      return {
+        functions() {
+          return {
+            httpsCallable(name) {
+              callableNames.push(name);
+              return async (payload) => ({
+                data: {
+                  ok: true,
+                  profileComplete: false,
+                  missingProfileFields: ['緊急聯絡人'],
+                  user: { employeeId: 'EMP-007', id: 'EMP-007', name: '測試老師', identityType: 'external' },
+                  payload
+                }
+              });
+            }
+          };
+        }
+      };
+    }
   };
   const document = {
     body: {
@@ -74,21 +109,26 @@ test('LINE-only teacher sessions are blocked without manufacturing legacy author
     },
     querySelector(selector) {
       return selector === '[data-teacher-utility-root]' ? rootNode : null;
-    }
+    },
+    head: { appendChild() {} },
+    createElement() { return {}; }
   };
-  const context = vm.createContext({ window, document, encodeURIComponent });
+  const context = vm.createContext({ window, document, encodeURIComponent, Date, Math, JSON, String, Object, Set, Promise });
   new vm.Script(bridge, { filename: 'teacher-more-auth-bridge.js' }).runInContext(context);
 
   assert.equal(window.YZTeacherMoreAuth.blockIfPortalOnly({ title: '協助事項' }), true);
-  assert.match(rootNode.innerHTML, /需要原員工帳號/);
-  assert.match(rootNode.innerHTML, /index\.html\?next=task\.html/);
+  assert.match(rootNode.innerHTML, /正在確認協助事項/);
   assert.equal(bodyClasses.has('teacher-portal-session-only'), true);
-  assert.equal(storage.employeeUser, undefined);
+  assert.equal(storage.employeeUser, undefined, '後端確認完成前不得建立員工身分');
 
-  storage.employeeUser = JSON.stringify({ id: 'legacy-user' });
-  rootNode.innerHTML = '';
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepStrictEqual(callableNames, ['coursePortalTeacherUtilitySession']);
+  const bridgedUser = JSON.parse(storage.employeeUser);
+  assert.equal(bridgedUser.employeeId, 'EMP-007');
+  assert.equal(bridgedUser.portalSessionBridge, true);
+  assert.equal(reloads, 1);
   assert.equal(window.YZTeacherMoreAuth.blockIfPortalOnly({ title: '協助事項' }), false);
-  assert.equal(rootNode.innerHTML, '');
 });
 
 test('teacher utility pages keep inline scripts valid and static local assets present', () => {

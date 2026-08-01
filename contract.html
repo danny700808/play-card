@@ -12,7 +12,7 @@
   </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="teacher-more-pages.css?v=20260730-teacher-more-v1">
-  <script src="teacher-more-auth-bridge.js?v=20260730-teacher-more-v1"></script>
+  <script src="teacher-more-auth-bridge.js?v=20260801-teacher-session-v2"></script>
 </head>
 <body class="teacher-utility-page utility-contract" onload="initContractPage()">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -56,7 +56,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=contract-firebase-only-20260531"></script>
-  <script src="app.js?v=contract-firebase-only-20260531"></script>
+  <script src="app.js?v=20260801-teacher-session-v2"></script>
   <script>
     let currentUser=null, currentAssignment=null, contractData=null, signCanvas=null, ctx=null, drawing=false, signed=false;
     function qs(s){return document.querySelector(s)} function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
@@ -102,7 +102,7 @@
     async function loadStatus(){const r=await api('getTeacherContractStatus',{userId:currentUser.id,email:currentUser.email});if(!r.ok)throw new Error(r.message||'讀取失敗');allRows=r.history||[];renderLists(r);if(r.pendingAssignments&&r.pendingAssignments[0])selectAssignment(r.pendingAssignments[0].assignmentId);else if(r.signedRecords&&r.signedRecords[0])viewSigned(r.signedRecords[0].assignmentId);else{qs('#formCard').style.display='none';qs('#contractBody').innerHTML='<div class="helper">目前沒有可簽署合約。</div>'}}
     async function initContractPage(){if(window.YZTeacherMoreAuth&&window.YZTeacherMoreAuth.blockIfPortalOnly({title:'外聘老師合約'}))return;fillHeader();currentUser=requireLogin();if(!currentUser)return;if(typeof isExternalTeacher==='function'&&!isExternalTeacher(currentUser)){location.href='dashboard.html';return}fillUser();signCanvas=qs('#signCanvas');fitCanvas();window.addEventListener('resize',fitCanvas);signCanvas.addEventListener('pointerdown',start);signCanvas.addEventListener('pointermove',move);signCanvas.addEventListener('pointerup',end);signCanvas.addEventListener('pointercancel',end);signCanvas.addEventListener('pointerleave',end);['teacherName','teacherEmail','teacherIdNumber','teacherCourse','teacherAddress','signDate'].forEach(id=>qs('#'+id).addEventListener('input',renderPreview));try{await loadStatus()}catch(e){qs('#contractBody').innerHTML='<div class="helper">'+esc(e.message||'讀取失敗')+'</div>'}}
   </script>
-  <script src="global-nav.js?v=20260603unified1"></script>
+  <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>
 </html>

@@ -330,7 +330,14 @@
       loading(button, true, '確認中…');
       try {
         const fields = Object.fromEntries(new FormData(form).entries());
-        const result = await call('coursePortalDirectRegularAccess', Object.assign({ type: role }, fields));
+        const result = role === 'teacher'
+          ? await call('coursePortalSendEmailOtp', Object.assign({ type: role, purpose: 'account' }, fields))
+          : await call('coursePortalDirectRegularAccess', Object.assign({ type: role }, fields));
+        if (role === 'teacher') {
+          if (!result.challengeToken) throw new Error('驗證碼寄送失敗，請稍後再試。');
+          renderOtp(result);
+          return;
+        }
         if (result.pendingApproval) { toast(result.message || '資料已送出，請等待主管確認。'); return; }
         if (result.role !== role || !result.sessionToken) throw new Error('登入資料不完整，請重新操作。');
         setSession(role, result.sessionToken);

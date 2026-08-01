@@ -7,6 +7,7 @@
   const functions = global.firebase.app().functions('us-central1');
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
+  const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v2';
   const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.';
   const CACHE_TTL = 90 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
@@ -25,6 +26,7 @@
   let planner = null;
   let availabilityRequestId = 0;
   let weekSnapTimer = 0;
+  let teacherUtilityStatusLoaded = false;
 
   function emptyData() {
     return {
@@ -181,7 +183,18 @@
     const prior = clean(localStorage.getItem(SESSION_KEY));
     const next = clean(value);
     if (next) localStorage.setItem(SESSION_KEY, next);
-    else localStorage.removeItem(SESSION_KEY);
+    else {
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(TEACHER_MORE_AUTH_CACHE_KEY);
+      try {
+        const user = JSON.parse(localStorage.getItem('employeeUser') || 'null');
+        if (user && user.portalSessionBridge === true) {
+          localStorage.removeItem('employeeUser');
+          localStorage.removeItem('employeeUserId');
+        }
+      } catch (_) {}
+      teacherUtilityStatusLoaded = false;
+    }
     if (prior !== next) clearCache();
   }
 
@@ -257,6 +270,64 @@
     document.getElementById('teacherWelcomeTitle').textContent = name
       ? `老師課務｜歡迎 ${name}老師`
       : '老師課務';
+  }
+
+  function saveTeacherUtilityAuthorization(result) {
+    const user = Object.assign({}, result && result.user || {}, {
+      portalSessionBridge: true,
+      portalSessionValidatedAt: Date.now()
+    });
+    const employeeId = clean(user.employeeId || user.id);
+    if (!employeeId) return;
+    localStorage.setItem('employeeUser', JSON.stringify(user));
+    localStorage.setItem('employeeUserId', employeeId);
+    localStorage.setItem(TEACHER_MORE_AUTH_CACHE_KEY, JSON.stringify({
+      employeeId,
+      tokenFingerprint: tokenFingerprint(token),
+      validatedAt: Date.now(),
+      profileComplete: result.profileComplete === true,
+      missingProfileFields: Array.isArray(result.missingProfileFields) ? result.missingProfileFields : []
+    }));
+  }
+
+  function renderTeacherUtilityStatus(result, error) {
+    const alert = document.getElementById('teacherProfileAlert');
+    const title = document.getElementById('teacherProfileAlertTitle');
+    const text = document.getElementById('teacherProfileAlertText');
+    const hint = document.getElementById('teacherProfileLinkHint');
+    if (!alert || !title || !text) return;
+    if (error) {
+      alert.classList.remove('hidden');
+      alert.classList.add('error');
+      title.textContent = '其他功能尚未連結';
+      text.textContent = error.message || '請聯絡管理者確認老師員工編號。';
+      if (hint) hint.textContent = '需要管理者確認員工編號';
+      return;
+    }
+    const missing = Array.isArray(result && result.missingProfileFields) ? result.missingProfileFields : [];
+    if (!missing.length) {
+      alert.classList.add('hidden');
+      alert.classList.remove('error');
+      if (hint) hint.textContent = '基本資料與通知設定';
+      return;
+    }
+    alert.classList.remove('hidden', 'error');
+    title.textContent = '請完成老師資料';
+    text.textContent = `尚缺：${missing.map((item) => clean(item.label)).filter(Boolean).join('、')}`;
+    if (hint) hint.textContent = `尚缺 ${missing.length} 項資料，請完成填寫`;
+  }
+
+  async function refreshTeacherUtilityStatus(force) {
+    if (!token || (teacherUtilityStatusLoaded && !force)) return;
+    teacherUtilityStatusLoaded = true;
+    try {
+      const result = await invoke('coursePortalTeacherUtilitySession', { sessionToken: token });
+      saveTeacherUtilityAuthorization(result);
+      renderTeacherUtilityStatus(result, null);
+    } catch (error) {
+      teacherUtilityStatusLoaded = false;
+      renderTeacherUtilityStatus(null, error);
+    }
   }
 
   function updateWeekViewport() {
@@ -650,6 +721,7 @@
   async function load(force) {
     try {
       await fetchData(Boolean(force));
+      refreshTeacherUtilityStatus(false);
     } catch (error) {
       if (/登入|綁定|權限|到期/.test(error.message || '')) {
         setSession('');
@@ -670,6 +742,7 @@
   }
 
   function openMore() {
+    refreshTeacherUtilityStatus(false);
     const node = document.getElementById('teacherMoreBackdrop');
     node.classList.remove('hidden');
     node.setAttribute('aria-hidden', 'false');

@@ -66,7 +66,7 @@ assert(commonSource.includes('coursePortalStartLineLogin'), '入口缺少 LINE �
 assert(commonSource.includes('result.authorizationUrl'), 'LINE 登入仍未直接導向 OAuth');
 assert(commonSource.includes('coursePortalCompleteLineRegistration'), '入口缺少 LINE 首次登入');
 assert(commonSource.includes('coursePortalDirectRegularAccess'), '學生／家長入口沒有一般註冊流程');
-assert(!commonSource.includes("purpose: 'account'"), '一般註冊／登入仍要求 Email 四碼驗證流程');
+assert(commonSource.includes("purpose: 'account'"), '老師一般登入沒有改用 Email 四碼驗證流程');
 assert(!commonSource.includes('請用已綁定的 LINE 傳送這段快速登入文字'), 'LINE 登入仍停留在複製文字舊流程');
 assert(!commonSource.includes('複製綁定文字'), '入口程式仍保留複製綁定文字');
 assert(!commonSource.includes('renderLineAction'), '入口程式仍保留舊 LINE 文字綁定畫面');
@@ -93,7 +93,7 @@ for (const file of pages) {
   assert(html.includes('data-line-login'), `${file} 缺少 LINE 優先登入`);
   assert(html.includes('data-regular-auth-form'), `${file} 缺少一般註冊／登入`);
   assert(html.includes('data-line-setup-form'), `${file} 缺少 LINE 首次資料表單`);
-  assert(html.includes('一般註冊／登入'), `${file} 一般方式標示不清楚`);
+  assert(html.includes(file==='teacher-course-portal.html'?'Email 驗證登入':'一般註冊／登入'), `${file} 一般方式標示不清楚`);
   assert(html.includes('使用 LINE 註冊／登入'), `${file} 缺少清楚的 LINE 按鈕`);
   assert(!html.includes('data-email-login-form'), `${file} 仍保留分離的 Email 登入`);
   assert(!html.includes('data-renter-contact-form'), `${file} 仍保留姓名電話臨時登入`);
@@ -197,7 +197,7 @@ assert(!studentPortal.includes('未指定老師') && !studentPortal.includes('�
 assert(teacherSource.includes('data-quick-contact-book'), '老師課表缺少課堂聯絡簿操作');
 assert(teacherSource.includes('coursePortalTeacherSubmitContactBookPost'), '老師聯絡簿未連接後端');
 assert(!teacherPortal.slice(teacherPortal.indexOf('data-line-setup-form'), teacherPortal.indexOf('</form>', teacherPortal.indexOf('data-line-setup-form'))).includes('name="email"'), '老師 LINE 首次註冊仍要求 Email');
-assert(!/name="email"[^>]*required/.test(teacherPortal.slice(teacherPortal.indexOf('data-regular-auth-form'), teacherPortal.indexOf('</form>', teacherPortal.indexOf('data-regular-auth-form')))), '老師一般註冊仍把 Email 設為必填');
+assert(/name="email"[^>]*required/.test(teacherPortal.slice(teacherPortal.indexOf('data-regular-auth-form'), teacherPortal.indexOf('</form>', teacherPortal.indexOf('data-regular-auth-form')))), '老師 Email 四碼登入沒有把 Email 設為必填');
 assert(adminPortal.includes('學費繳費待確認'), '管理者頁缺少學費繳費待確認專區');
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentScreenshot'), '管理者無法安全讀取匯款截圖');
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentAction'), '管理者學費確認未連接後端');
@@ -1788,6 +1788,7 @@ assert(
   'coursePortalTeacherAttendance',
   'coursePortalTeacherLateAttendance',
   'coursePortalTeacherAttendanceCancellationRequest',
+  'coursePortalTeacherUtilitySession',
   'coursePortalTeacherUpdateStudent',
   'coursePortalTeacherStopStudent',
   'coursePortalUpdateStudentReminder',
@@ -1805,6 +1806,7 @@ assert(deployWorkflow.includes('functions:coursePortalTeacherSlotOptions'), '部
   'functions:coursePortalTeacherAttendance',
   'functions:coursePortalTeacherLateAttendance',
   'functions:coursePortalTeacherAttendanceCancellationRequest',
+  'functions:coursePortalTeacherUtilitySession',
   'functions:coursePortalTeacherUpdateStudent',
   'functions:coursePortalTeacherStopStudent',
   'functions:coursePortalAdminSaveTeacherAdjustment',
@@ -1824,6 +1826,8 @@ assert(backend.includes('const authAccountId = lineAccountId(type, lineUserId)')
 assert(backend.includes('authAccountId: source.authAccountId'), 'LINE 一次性登入碼交換時遺失帳號鍵');
 assert(!backend.includes('sharedBindingAuthAccountId'), 'LINE 登入仍會從 Email 綁定推算帳號鍵');
 assert(backend.includes('function directRegularAccountId(identity)'), '一般姓名電話登入仍缺少獨立帳號鍵');
+assert(backend.includes('老師姓名與電話直接登入已停用'), '老師仍可繞過 Email 四碼直接登入');
+assert(backend.includes('async function teacherUtilitySession(data)'), '老師其他六頁缺少安全的工作階段轉接');
 assert(backend.includes('authAccountId: lineAccountId(type, profile.lineUserId)'), '既有老師或租用者 LINE 登入仍使用 Email 帳號鍵');
 assert(backend.includes("lineAccountId(type, lineUserId)"), '不同家長的 LINE 帳號鍵沒有獨立，提醒設定可能互相連動');
 assert(backend.includes("authMethod: 'email-otp'"), '一般登入未建立 Email 驗證工作階段');

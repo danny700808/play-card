@@ -15,8 +15,8 @@
     },
     kaili: {
       key:'kaili',
-      name:'台中市私立凱立音樂短期補習班',
-      label:'台中市私立凱立音樂短期補習班',
+      name:'臺中市私立凱立音樂短期補習班',
+      label:'臺中市私立凱立音樂短期補習班',
       identifierLabel:'證號',
       identifier:'中市教終字第1110094357 號',
       address:'台中市豐原區圓環東路347號1至2樓',
@@ -25,7 +25,7 @@
       stamp:'blue_stamp_transparent.png',
       stampLabel:'補習班章',
       personalStamp:'red_stamp_transparent.png',
-      tip:'補習班老師／教學身分請選擇台中市私立凱立音樂短期補習班。'
+      tip:'補習班老師／教學身分請選擇臺中市私立凱立音樂短期補習班。'
     }
   };
   const BRAND = { name:'柚子樂器', english:'YOU ZI MUSIC', logo:'yuzu-logo-document-black.png' };
