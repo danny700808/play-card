@@ -81,7 +81,7 @@ assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側
 assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
 assert.match(formalPortalSource,/href="#expenses" data-view="expenses"/,'正式入口的左側選單也必須有營運支出');
 assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v4/,'正式入口必須先載入支出分攤程式');
-assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-expense-table-v28/,'正式入口必須使用新版主程式快取號');
+assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-expense-departments-v29/,'正式入口必須使用雙部門新版主程式快取號');
 assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
 assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
 assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
@@ -93,6 +93,18 @@ assert.match(operationsSource,/engine\.EXPENSE_CATEGORIES\.forEach/,'主表必�
 assert.match(operationsSource,/data-action="expense-custom-new"/,'主表底部必須能增加尚未存在的自訂項目');
 assert.doesNotMatch(operationsSource,/data-action="operating-expense-settings">固定費用設定/,'支出頁不得再顯示獨立固定費用設定入口');
 assert.match(operationsSource,/一次性支出依實際發生日保留/,'星期一仍必須保留一次性實際支出');
+assert.match(operationsSource,/\{id:'store',label:'尚品樂器行',shortLabel:'營業部門'\}/,'既有支出帳必須明確歸屬尚品樂器行／營業部門');
+assert.match(operationsSource,/\{id:'academy',label:'凱莉音樂補習班',shortLabel:'補習部門'\}/,'第二本支出帳必須明確歸屬凱莉音樂補習班／補習部門');
+assert.match(operationsSource,/data-action="expense-department"/,'支出頁必須可以直接切換兩個部門');
+assert.match(operationsSource,/departments\.store\|\|source/,'既有單一帳冊資料必須完整保留為營業部門資料');
+assert.match(operationsSource,/departments\.academy\?operatingExpenseEngine\(\)\.normalizeSettings\(departments\.academy\):zeroOperatingExpenseSettings\(\)/,'補習部門首次建立時必須全部從 0 開始');
+assert.match(operationsSource,/schemaVersion:2,departments:\{store:store,academy:academy\}/,'雙部門帳冊必須使用可辨識的第二版資料結構');
+assert.match(operationsSource,/operatingExpenseLedgerForDepartmentBounds\('store',bounds\)\.concat\(operatingExpenseLedgerForDepartmentBounds\('academy',bounds\)\)/,'營運總覽必須合併兩個部門的支出後再扣除');
+assert.match(operationsSource,/operatingExpenseSettingsForDepartment\(operatingExpenseDepartmentKey\(\)\),changed=0/,'主表批次儲存必須只寫入目前選擇的部門');
+assert.match(operationsSource,/settings=operatingExpenseSettingsForDepartment\(operatingExpenseDepartmentKey\(\)\)/,'自訂支出項目必須只新增到目前選擇的部門');
+assert.match(operationsSource,/clean\(row\.department\|\|row\.departmentKey\)\|\|'store'/,'沒有部門欄位的舊支出紀錄必須自動視為營業部門');
+assert.match(operationsSource,/department=existing\?clean\(existing\.department\|\|existing\.departmentKey\)\|\|'store':operatingExpenseDepartmentKey\(\)/,'新支出紀錄必須保存部門且舊紀錄不得被搬錯帳');
+assert.match(operationsSource,/<th>部門<\/th>/,'合併支出明細必須顯示每筆所屬部門');
 
 const expensePageSource=operationsSource.slice(operationsSource.indexOf('function renderOperatingExpensesPage'),operationsSource.indexOf('function openOperatingExpenseDetail'));
 assert.doesNotMatch(expensePageSource,/data-action="expense-new"/,'月份工具列與主表表頭不得再放增加按鈕');

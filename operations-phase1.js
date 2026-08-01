@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.01-expense-table-v28';
+  const VERSION = '2026.08.01-expense-departments-v29';
   // 後端最長執行 30 分鐘；瀏覽器多留 1 分鐘接收後端的最終成功／失敗回應。
   const EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS = 31 * 60 * 1000;
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v10_operating_expenses';
@@ -95,7 +95,21 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     });
     return operatingExpenseLoadPromise;
   }
-  function defaultOperatingExpenseSettings(){return operatingExpenseEngine().normalizeSettings({});}
+  const OPERATING_EXPENSE_DEPARTMENTS=[
+    {id:'store',label:'尚品樂器行',shortLabel:'營業部門'},
+    {id:'academy',label:'凱莉音樂補習班',shortLabel:'補習部門'}
+  ];
+  function zeroOperatingExpenseSettings(){
+    return operatingExpenseEngine().normalizeSettings({recurringRules:[
+      {id:'rent',category:'房屋租金',amount:0,startMonth:'2026-07',allocationMode:'monthly',active:true},
+      {id:'yamaha-authorization',category:'Yamaha 授權費',amount:0,startMonth:'2026-07',allocationMode:'monthly',active:true}
+    ]});
+  }
+  function normalizeOperatingExpenseSettings(raw){
+    const source=raw&&typeof raw==='object'?raw:{},departments=source.departments&&typeof source.departments==='object'?source.departments:{},store=operatingExpenseEngine().normalizeSettings(departments.store||source),academy=departments.academy?operatingExpenseEngine().normalizeSettings(departments.academy):zeroOperatingExpenseSettings();
+    return Object.assign({},store,{schemaVersion:2,departments:{store:store,academy:academy}});
+  }
+  function defaultOperatingExpenseSettings(){return normalizeOperatingExpenseSettings({});}
 
 
   const state = {
@@ -143,6 +157,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     platformSyncPanel:'',
     platformFeeSettings:JSON.parse(JSON.stringify(DEFAULT_PLATFORM_FEE_SETTINGS)),
     operatingExpenseSettings:defaultOperatingExpenseSettings(),
+    operatingExpenseDepartment:'store',
     platformLocalAgent:{},
     diagnostics:[],
     productVisible:PRODUCT_PAGE_SIZE,
@@ -722,6 +737,8 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       db.close();
       if(!payload||!payload.savedAt||Date.now()-Number(payload.savedAt)>FAST_STATE_TTL_MS||!payload.data)return false;
       Object.keys(payload.data).forEach(function(key){state[key]=payload.data[key];});
+      state.operatingExpenseSettings=normalizeOperatingExpenseSettings(state.operatingExpenseSettings);
+      state.operatingExpenseDepartment=state.operatingExpenseDepartment==='academy'?'academy':'store';
       state.loadedAt=payload.loadedAt?new Date(payload.loadedAt):null;
       state.fullLoadedAt=payload.fullLoadedAt?new Date(payload.fullLoadedAt):null;
       state.diagnostics=[];
@@ -779,7 +796,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     const started=Date.now();
     try{
       const doc=await state.db.collection(COLLECTIONS.settings).doc('operatingExpenses').get();
-      state.operatingExpenseSettings=operatingExpenseEngine().normalizeSettings(doc.exists?(doc.data()||{}):{});
+      state.operatingExpenseSettings=normalizeOperatingExpenseSettings(doc.exists?(doc.data()||{}):{});
       state.diagnostics.push({collection:COLLECTIONS.settings+'/operatingExpenses',ok:true,count:doc.exists?1:0,ms:Date.now()-started});
     }catch(error){
       state.operatingExpenseSettings=defaultOperatingExpenseSettings();
@@ -1384,11 +1401,18 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     else{label='自訂區間';if(state.overviewFrom)start=new Date(state.overviewFrom+'T00:00:00');if(state.overviewTo)end=new Date(state.overviewTo+'T23:59:59');}
     return {start:start,end:end,label:label};
   }
-  function operatingExpenseLedgerForBounds(bounds){
+  function operatingExpenseDepartmentKey(){return state.operatingExpenseDepartment==='academy'?'academy':'store';}
+  function operatingExpenseDepartmentMeta(key){return OPERATING_EXPENSE_DEPARTMENTS.find(function(row){return row.id===key;})||OPERATING_EXPENSE_DEPARTMENTS[0];}
+  function operatingExpenseSettingsForDepartment(key){return normalizeOperatingExpenseSettings(state.operatingExpenseSettings).departments[key==='academy'?'academy':'store'];}
+  function operatingExpenseRecordsForDepartment(key){return state.expenses.filter(function(row){return (clean(row.department||row.departmentKey)||'store')===(key==='academy'?'academy':'store');});}
+  function tagOperatingExpenseRows(rows,key){const meta=operatingExpenseDepartmentMeta(key);return (rows||[]).map(function(row){return Object.assign({},row,{department:key,departmentLabel:meta.label,departmentShortLabel:meta.shortLabel});});}
+  function operatingExpenseLedgerForDepartmentBounds(key,bounds){
     if(!bounds||!bounds.start||!bounds.end)return [];
-    const now=endOfDay(new Date()),end=bounds.end>now?now:bounds.end;
-    if(bounds.start>end)return [];
-    return operatingExpenseEngine().buildLedger({settings:state.operatingExpenseSettings,expenses:state.expenses,start:bounds.start,end:end});
+    const now=endOfDay(new Date()),end=bounds.end>now?now:bounds.end;if(bounds.start>end)return [];
+    return tagOperatingExpenseRows(operatingExpenseEngine().buildLedger({settings:operatingExpenseSettingsForDepartment(key),expenses:operatingExpenseRecordsForDepartment(key),start:bounds.start,end:end}),key);
+  }
+  function operatingExpenseLedgerForBounds(bounds){
+    return operatingExpenseLedgerForDepartmentBounds('store',bounds).concat(operatingExpenseLedgerForDepartmentBounds('academy',bounds));
   }
   function renderOverview(){
     const bounds=overviewBounds();
@@ -3018,8 +3042,12 @@ function ensureSalesClock(){
     if(mode==='bimonthly')return [clean(expense.periodStartMonth),clean(expense.periodEndMonth)].filter(Boolean).join(' ～ ')||'未指定';
     return dateText(expense.occurredAt);
   }
+  function operatingExpenseDepartmentTabsHtml(){
+    const selected=operatingExpenseDepartmentKey();
+    return '<section class="ops-card ops-expense-department-card"><div class="ops-expense-department-tabs" role="tablist" aria-label="支出部門">'+OPERATING_EXPENSE_DEPARTMENTS.map(function(row){return '<button type="button" role="tab" aria-selected="'+(selected===row.id?'true':'false')+'" class="'+(selected===row.id?'active':'')+'" data-action="expense-department" data-department="'+attr(row.id)+'"><b>'+escapeHtml(row.label)+'</b><span>'+escapeHtml(row.shortLabel)+'</span></button>';}).join('')+'</div><p>兩個部門各自記帳、各自累積；營運總覽會把兩邊支出合併後，再計算預估淨利。</p></section>';
+  }
   function renderOperatingExpensesPage(){
-    const month=operatingExpenseMonthKey(),bounds=operatingExpenseMonthBounds(month),engine=operatingExpenseEngine(),rows=engine.buildLedger({settings:state.operatingExpenseSettings,expenses:state.expenses,start:bounds.start,end:bounds.end}),total=sum(rows,function(row){return row.amount;}),fixedTotal=sum(rows.filter(function(row){return row.sourceType==='recurring';}),function(row){return row.amount;}),manualTotal=total-fixedTotal,masterRows=operatingExpenseMasterRows(month,rows);
+    const department=operatingExpenseDepartmentKey(),departmentMeta=operatingExpenseDepartmentMeta(department),departmentSettings=operatingExpenseSettingsForDepartment(department),month=operatingExpenseMonthKey(),bounds=operatingExpenseMonthBounds(month),engine=operatingExpenseEngine(),rows=tagOperatingExpenseRows(engine.buildLedger({settings:departmentSettings,expenses:operatingExpenseRecordsForDepartment(department),start:bounds.start,end:bounds.end}),department),total=sum(rows,function(row){return row.amount;}),fixedTotal=sum(rows.filter(function(row){return row.sourceType==='recurring';}),function(row){return row.amount;}),manualTotal=total-fixedTotal,masterRows=operatingExpenseMasterRows(month,rows,departmentSettings);
     const parts=month.split('-').map(Number),days=new Date(parts[0],parts[1],0).getDate(),byDay=new Map();let operatingDays=0;
     rows.forEach(function(row){if(!byDay.has(row.dateKey))byDay.set(row.dateKey,[]);byDay.get(row.dateKey).push(row);});
     const daily=[];
@@ -3035,14 +3063,14 @@ function ensureSalesClock(){
       return '<tr class="ops-expense-master-row"><td><div class="ops-expense-item-main"><b>'+escapeHtml(plan.category)+'</b><small>'+escapeHtml(itemNote)+'</small></div></td><td class="num"><input class="ops-input ops-expense-amount-input" type="number" min="0" step="1" inputmode="numeric" aria-label="'+attr(plan.category)+'本月扣除" value="'+attr(plan.amount)+'" data-expense-plan-amount data-id="'+attr(plan.id)+'" data-category="'+attr(plan.category)+'" data-mode="'+attr(plan.mode)+'" data-manual-amount="'+attr(plan.manualAmount)+'" data-original="'+attr(plan.amount)+'" data-note="'+attr(plan.note)+'"></td><td><span class="ops-expense-carry-badge '+(plan.mode==='monthly'?'':'manual')+'">'+escapeHtml(expenseAllocationLabel(plan.mode))+'</span><small class="ops-expense-cell-note">排除星期一後分攤</small></td><td><b>'+escapeHtml(status)+'</b>'+(legacyNote?'<small class="ops-expense-cell-note">'+escapeHtml(legacyNote)+'</small>':'')+'</td><td><button class="ops-button soft small" type="button" data-action="expense-plan-edit" data-id="'+attr(plan.id)+'" data-category="'+attr(plan.category)+'" data-manual-amount="'+attr(plan.manualAmount)+'">修改</button></td></tr>';
     }).join('');
     const masterTable='<form id="operatingExpenseMonthForm" data-month="'+attr(month)+'"><div class="ops-table-wrap"><table class="ops-table ops-expense-master-table"><thead><tr><th>支出項目</th><th class="num">本月扣除</th><th>分配方式</th><th>本月狀態</th><th>操作</th></tr></thead><tbody>'+tableRows+'</tbody></table></div><div class="ops-expense-table-footer"><small>可以一次修改多個金額，再按一次儲存。</small><div><button class="ops-button ghost" type="button" data-action="expense-custom-new">＋ 增加其他支出項目</button><button class="ops-button primary" type="submit">儲存本月金額</button></div></div></form>';
-    return operatingExpenseRuleNoticeHtml()
+    return operatingExpenseDepartmentTabsHtml()+operatingExpenseRuleNoticeHtml()
       +'<section class="ops-card ops-expense-month-card"><div class="ops-expense-month-toolbar"><button class="ops-button ghost" type="button" data-action="expense-month-shift" data-step="-1">上一月</button><label><span>查詢月份</span><input class="ops-input" id="operatingExpenseMonth" type="month" min="2026-07" value="'+attr(month)+'"></label><button class="ops-button ghost" type="button" data-action="expense-month-shift" data-step="1">下一月</button><button class="ops-button soft" type="button" data-action="expense-current-month">本月</button></div></section>'
-      +'<div class="ops-kpi-grid ops-expense-page-kpis">'+kpi(bounds.label+'支出',money(total),'本月所有營運支出','支')+kpi('主表設定',money(fixedTotal),masterRows.filter(function(row){return row.amount>0;}).length+' 個本月有金額項目','表')+kpi('既有紀錄',money(manualTotal),'過去已登錄的資料仍保留','舊')+kpi('分攤營業日',formatNumber(operatingDays)+' 天','所有主表支出不含星期一','日')+'</div>'
-      +'<section class="ops-card ops-expense-master-card"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'支出主表</h2><p>所有支出類別都列在這裡；沒有費用顯示 0，有變動時直接改數字再儲存。</p></div></div>'+masterTable+'<div class="ops-callout ops-expense-no-double-count">商品進貨成本、平台費、發票稅與老師課堂拆帳已在各營運毛利中計算，這裡不會重複扣除。</div></section>'
-      +'<section class="ops-card"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'每日扣除明細</h2><p>按月攤提在星期一為 0 元；一次性實際支出仍保留真正發生日。除不盡餘數放在當月第一個營業日。</p></div></div><div class="ops-table-wrap"><table class="ops-table ops-expense-daily-table"><thead><tr><th>日期</th><th>當日支出項目</th><th class="num">當日扣除</th></tr></thead><tbody>'+daily.join('')+'</tbody></table></div></section>';
+      +'<div class="ops-kpi-grid ops-expense-page-kpis">'+kpi(departmentMeta.shortLabel+'本月支出',money(total),departmentMeta.label+'本月合計','支')+kpi('主表設定',money(fixedTotal),masterRows.filter(function(row){return row.amount>0;}).length+' 個本月有金額項目','表')+kpi('既有紀錄',money(manualTotal),'過去已登錄的資料仍保留','舊')+kpi('分攤營業日',formatNumber(operatingDays)+' 天','所有主表支出不含星期一','日')+'</div>'
+      +'<section class="ops-card ops-expense-master-card"><div class="ops-card-head"><div><h2>'+escapeHtml(departmentMeta.label)+'｜'+escapeHtml(bounds.label)+'支出主表</h2><p>目前只編輯'+escapeHtml(departmentMeta.shortLabel)+'；另一個部門不會受到影響。沒有費用的項目顯示 0。</p></div></div>'+masterTable+'<div class="ops-callout ops-expense-no-double-count">商品進貨成本、平台費、發票稅與老師課堂拆帳已在各營運毛利中計算，這裡不會重複扣除。</div></section>'
+      +'<section class="ops-card"><div class="ops-card-head"><div><h2>'+escapeHtml(departmentMeta.label)+'｜'+escapeHtml(bounds.label)+'每日扣除明細</h2><p>按月攤提在星期一為 0 元；一次性實際支出仍保留真正發生日。除不盡餘數放在當月第一個營業日。</p></div></div><div class="ops-table-wrap"><table class="ops-table ops-expense-daily-table"><thead><tr><th>日期</th><th>當日支出項目</th><th class="num">當日扣除</th></tr></thead><tbody>'+daily.join('')+'</tbody></table></div></section>';
   }
-  function operatingExpenseMasterRows(month,ledgerRows){
-    const engine=operatingExpenseEngine(),settings=engine.normalizeSettings(state.operatingExpenseSettings),rules=settings.recurringRules||[],manualByCategory=new Map(),seenRules=new Set(),seenCategories=new Set(),result=[];
+  function operatingExpenseMasterRows(month,ledgerRows,settingsValue){
+    const engine=operatingExpenseEngine(),settings=engine.normalizeSettings(settingsValue||operatingExpenseSettingsForDepartment(operatingExpenseDepartmentKey())),rules=settings.recurringRules||[],manualByCategory=new Map(),seenRules=new Set(),seenCategories=new Set(),result=[];
     (ledgerRows||[]).filter(function(row){return row.sourceType==='manual';}).forEach(function(row){manualByCategory.set(row.category,Number(manualByCategory.get(row.category)||0)+Number(row.amount||0));});
     function add(category,id,defaultMode,rule,custom){
       const effective=rule&&rule.id?engine.effectiveRuleForMonth(rule,month):null,planAmount=effective&&effective.available?Number(effective.amount||0):0,manualAmount=Number(manualByCategory.get(category)||0),mode=engine.normalizeExpenseMode(effective&&effective.allocationMode||rule&&rule.allocationMode||defaultMode||'actual');
@@ -3055,24 +3083,25 @@ function ensureSalesClock(){
     return result;
   }
   function openOperatingExpenseDetail(){
-    const bounds=overviewBounds(),rows=operatingExpenseLedgerForBounds(bounds),total=sum(rows,function(row){return row.amount;}),summary=operatingExpenseEngine().summarizeByCategory(rows);
-    const summaryHtml=summary.length?'<div class="ops-expense-summary-grid">'+summary.map(function(row){return '<div><span>'+escapeHtml(row.category)+'</span><b>'+money(row.amount)+'</b></div>';}).join('')+'</div>':emptyHtml('這段期間尚無營運支出','固定支出從 2026 年 7 月開始計算。');
-    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table ops-expense-ledger-table"><thead><tr><th>費用日期</th><th>支出類別</th><th>來源</th><th>分攤方式</th><th>付款日</th><th>備註</th><th class="num">金額</th></tr></thead><tbody>'+rows.slice().sort(function(a,b){return b.dateKey.localeCompare(a.dateKey)||a.category.localeCompare(b.category);}).slice(0,1500).map(function(row){return '<tr><td>'+escapeHtml(row.dateKey)+'（'+escapeHtml(weekdayText(row.dateKey))+'）</td><td><b>'+escapeHtml(row.category)+'</b></td><td>'+escapeHtml(expenseSourceLabel(row))+'</td><td>'+escapeHtml(expenseAllocationLabel(row.allocationMode))+'</td><td>'+escapeHtml(row.paymentDateKey||'—')+'</td><td>'+escapeHtml(row.note||'')+'</td><td class="num"><b>'+money(row.amount)+'</b></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('這段期間沒有支出明細','可新增水電、電話、薪資、勞健保或其他支出。');
-    const body=operatingExpenseRuleNoticeHtml()+'<div class="ops-expense-detail-head"><div><span>'+escapeHtml(bounds.label)+'營運支出</span><strong>'+money(total)+'</strong></div><div class="ops-card-actions"><button type="button" class="ops-button primary" data-action="operating-expense-page">管理每月支出</button></div></div>'+summaryHtml+'<div class="ops-section-title">每日支出明細</div>'+table+'<div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉</button></div>';
-    openDrawer('營運支出','四大營運毛利扣除這裡的支出後，才是上方顯示的預估淨利。',body);
+    const bounds=overviewBounds(),rows=operatingExpenseLedgerForBounds(bounds),total=sum(rows,function(row){return row.amount;}),departmentTotals=OPERATING_EXPENSE_DEPARTMENTS.map(function(meta){return {meta:meta,amount:sum(rows.filter(function(row){return row.department===meta.id;}),function(row){return row.amount;})};});
+    const summaryHtml='<div class="ops-expense-summary-grid">'+departmentTotals.map(function(row){return '<div><span>'+escapeHtml(row.meta.label)+'／'+escapeHtml(row.meta.shortLabel)+'</span><b>'+money(row.amount)+'</b></div>';}).join('')+'</div>';
+    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table ops-expense-ledger-table"><thead><tr><th>費用日期</th><th>部門</th><th>支出類別</th><th>來源</th><th>分攤方式</th><th>備註</th><th class="num">金額</th></tr></thead><tbody>'+rows.slice().sort(function(a,b){return b.dateKey.localeCompare(a.dateKey)||a.department.localeCompare(b.department)||a.category.localeCompare(b.category);}).slice(0,1500).map(function(row){return '<tr><td>'+escapeHtml(row.dateKey)+'（'+escapeHtml(weekdayText(row.dateKey))+'）</td><td><b>'+escapeHtml(row.departmentShortLabel)+'</b><small class="ops-expense-cell-note">'+escapeHtml(row.departmentLabel)+'</small></td><td><b>'+escapeHtml(row.category)+'</b></td><td>'+escapeHtml(expenseSourceLabel(row))+'</td><td>'+escapeHtml(expenseAllocationLabel(row.allocationMode))+'</td><td>'+escapeHtml(row.note||'')+'</td><td class="num"><b>'+money(row.amount)+'</b></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('這段期間沒有支出明細','兩個部門目前都沒有支出。');
+    const body=operatingExpenseRuleNoticeHtml()+'<div class="ops-expense-detail-head"><div><span>'+escapeHtml(bounds.label)+'兩部門營運支出</span><strong>'+money(total)+'</strong></div><div class="ops-card-actions"><button type="button" class="ops-button primary" data-action="operating-expense-page">管理每月支出</button></div></div>'+summaryHtml+'<div class="ops-section-title">兩部門每日支出明細</div>'+table+'<div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉</button></div>';
+    openDrawer('營運支出','尚品樂器行與凱莉音樂補習班各自記帳；兩邊合計後才從四大營運毛利中扣除。',body);
   }
-  function recurringRuleById(id){return (state.operatingExpenseSettings.recurringRules||[]).find(function(row){return row.id===id;})||{};}
-  function recurringRuleForExpense(id,category){const byId=recurringRuleById(id);return byId.id?byId:(state.operatingExpenseSettings.recurringRules||[]).find(function(row){return row.category===category;})||{};}
+  function recurringRuleById(id){return (operatingExpenseSettingsForDepartment(operatingExpenseDepartmentKey()).recurringRules||[]).find(function(row){return row.id===id;})||{};}
+  function recurringRuleForExpense(id,category){const rules=operatingExpenseSettingsForDepartment(operatingExpenseDepartmentKey()).recurringRules||[],byId=rules.find(function(row){return row.id===id;});return byId||rules.find(function(row){return row.category===category;})||{};}
   function openOperatingExpenseSettings(){
     closeDrawer();location.hash='expenses';
   }
   async function persistOperatingExpenseSettings(payload,auditDetail){
-    await state.db.collection(COLLECTIONS.settings).doc('operatingExpenses').set(Object.assign({},payload,{updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION}),{merge:true});
-    state.operatingExpenseSettings=payload;
-    await writeAudit('更新每月營運支出','settings','operatingExpenses',auditDetail);
+    const department=operatingExpenseDepartmentKey(),meta=operatingExpenseDepartmentMeta(department),envelope=normalizeOperatingExpenseSettings(state.operatingExpenseSettings),departments={store:envelope.departments.store,academy:envelope.departments.academy};departments[department]=operatingExpenseEngine().normalizeSettings(payload);const next=Object.assign({},departments.store,{schemaVersion:2,departments:departments});
+    await state.db.collection(COLLECTIONS.settings).doc('operatingExpenses').set(Object.assign({},next,{updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION}),{merge:true});
+    state.operatingExpenseSettings=next;
+    await writeAudit('更新每月營運支出','settings','operatingExpenses',meta.label+'｜'+auditDetail);
   }
   function recurringSettingsWithAmount(ruleId,category,amount,month,note,allocationMode,settingsValue){
-    const engine=operatingExpenseEngine(),settings=engine.normalizeSettings(settingsValue||state.operatingExpenseSettings),mode=engine.normalizeExpenseMode(allocationMode||'monthly'),rules=settings.recurringRules.map(function(row){return Object.assign({},row,{monthlyOverrides:(row.monthlyOverrides||[]).map(function(item){return Object.assign({},item);})});}),index=rules.findIndex(function(row){return row.id===ruleId||(category&&row.category===category);});
+    const engine=operatingExpenseEngine(),settings=engine.normalizeSettings(settingsValue||operatingExpenseSettingsForDepartment(operatingExpenseDepartmentKey())),mode=engine.normalizeExpenseMode(allocationMode||'monthly'),rules=settings.recurringRules.map(function(row){return Object.assign({},row,{monthlyOverrides:(row.monthlyOverrides||[]).map(function(item){return Object.assign({},item);})});}),index=rules.findIndex(function(row){return row.id===ruleId||(category&&row.category===category);});
     if(index<0){
       rules.push({id:ruleId||uid('RULE'),category:category||'其他支出',amount:Math.floor(amount),startMonth:month,endMonth:'',active:true,note:clean(note),allocationMode:mode,monthlyOverrides:[]});
     }else{
@@ -3111,7 +3140,7 @@ function ensureSalesClock(){
     return recurringSettingsWithAmount(savedRule&&savedRule.id||id,category,second,endMonth,note,'bimonthly',firstSettings);
   }
   async function saveOperatingExpenseMonth(form){
-    const month=clean(form.dataset.month),inputs=queryAll('[data-expense-plan-amount]',form);let settings=operatingExpenseEngine().normalizeSettings(state.operatingExpenseSettings),changed=0,details=[];
+    const month=clean(form.dataset.month),inputs=queryAll('[data-expense-plan-amount]',form);let settings=operatingExpenseSettingsForDepartment(operatingExpenseDepartmentKey()),changed=0,details=[];
     inputs.forEach(function(input){const target=numberOrNull(input.value),original=Number(input.dataset.original||0),manualAmount=Math.max(0,Number(input.dataset.manualAmount||0)),category=clean(input.dataset.category),id=clean(input.dataset.id),mode=operatingExpenseEngine().normalizeExpenseMode(input.dataset.mode);if(target==null||target<0||target!==Math.floor(target))throw new Error(category+' 的金額必須是 0 以上的整數');if(target===original)return;if(target<manualAmount)throw new Error(category+' 另含既有紀錄 '+money(manualAmount)+'，本月總額不可低於這個金額');const planAmount=target-manualAmount;settings=recurringSettingsWithAmount(id,category,planAmount,month,input.dataset.note,mode,settings);changed+=1;details.push(category+' '+money(target));});
     if(!changed){const submit=query('[type="submit"]',form);if(submit)submit.disabled=false;toast('本月金額沒有變動','不需要儲存。','info');return;}
     await persistOperatingExpenseSettings(settings,month+'｜'+details.join('、'));toast('本月支出已儲存',changed+' 個項目已更新','success');renderKeepingViewport();
@@ -3124,7 +3153,7 @@ function ensureSalesClock(){
     openDrawer('增加其他支出項目','只用來增加目前主表沒有的自訂項目。',body);updateOperatingExpensePlanFields();
   }
   async function saveCustomOperatingExpensePlan(form){
-    const data=new FormData(form),month=clean(form.dataset.month),category=clean(data.get('category')),amount=numberOrNull(data.get('amount')),mode=operatingExpenseEngine().normalizeExpenseMode(data.get('allocationMode')),settings=operatingExpenseEngine().normalizeSettings(state.operatingExpenseSettings);
+    const data=new FormData(form),month=clean(form.dataset.month),category=clean(data.get('category')),amount=numberOrNull(data.get('amount')),mode=operatingExpenseEngine().normalizeExpenseMode(data.get('allocationMode')),settings=operatingExpenseSettingsForDepartment(operatingExpenseDepartmentKey());
     if(!category)throw new Error('請輸入支出項目名稱');if(amount==null||amount<0||amount!==Math.floor(amount))throw new Error('金額必須是 0 以上的整數');const duplicate=operatingExpenseEngine().EXPENSE_CATEGORIES.some(function(row){return lower(row.label)===lower(category);})||(settings.recurringRules||[]).some(function(row){return lower(row.category)===lower(category);});if(duplicate)throw new Error('這個項目已在主表中，請直接修改原項目的金額');
     const id='custom-'+uid('EXP'),payload=mode==='bimonthly'?twoMonthExpenseSettings(id,category,amount,clean(data.get('periodStartMonth')),clean(data.get('periodEndMonth')),data.get('note'),settings):recurringSettingsWithAmount(id,category,amount,month,data.get('note'),mode,settings);
     await persistOperatingExpenseSettings(payload,month+'｜新增 '+category+'｜'+money(amount));closeDrawer();toast('支出項目已加入',category,'success');renderKeepingViewport();
@@ -3168,11 +3197,11 @@ function ensureSalesClock(){
       if(operatingExpenseEngine().nextMonth(periodStartMonth,1)!==periodEndMonth)throw new Error('電費等兩月帳單必須選擇連續的兩個月份');
     }
     if(mode==='monthly'&&!existing){
-      const matching=(state.operatingExpenseSettings.recurringRules||[]).find(function(rule){return rule.category===category;}),payload=recurringSettingsWithAmount(matching&&matching.id,category,amount,expenseMonth,data.get('note'));
+      const matching=(operatingExpenseSettingsForDepartment(operatingExpenseDepartmentKey()).recurringRules||[]).find(function(rule){return rule.category===category;}),payload=recurringSettingsWithAmount(matching&&matching.id,category,amount,expenseMonth,data.get('note'));
       await persistOperatingExpenseSettings(payload,expenseMonth+'｜'+category+'｜'+money(amount)+' 起沿用');
       closeDrawer();toast('每月支出已加入',category+' 從 '+expenseMonth.replace('-','/')+' 起自動沿用','success');renderKeepingViewport();return;
     }
-    const no=existing?existing.expenseNo:uid('EXP'),payload={expenseNo:no,occurredAt:occurredAt,category:category,amount:Math.floor(amount),paymentMethod:clean(data.get('paymentMethod')),allocationMode:mode,expenseMonth:mode==='monthly'?expenseMonth:'',periodStartMonth:mode==='bimonthly'?periodStartMonth:'',periodEndMonth:mode==='bimonthly'?periodEndMonth:'',note:clean(data.get('note')),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+    const no=existing?existing.expenseNo:uid('EXP'),department=existing?clean(existing.department||existing.departmentKey)||'store':operatingExpenseDepartmentKey(),payload={expenseNo:no,department:department,occurredAt:occurredAt,category:category,amount:Math.floor(amount),paymentMethod:clean(data.get('paymentMethod')),allocationMode:mode,expenseMonth:mode==='monthly'?expenseMonth:'',periodStartMonth:mode==='bimonthly'?periodStartMonth:'',periodEndMonth:mode==='bimonthly'?periodEndMonth:'',note:clean(data.get('note')),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
     let ref;if(existing){ref=state.db.collection(COLLECTIONS.expenses).doc(existing.id);await ref.set(payload,{merge:true});}else{payload.createdAt=serverTimestamp();payload.createdBy=userLabel();ref=await state.db.collection(COLLECTIONS.expenses).add(payload);}
     await writeAudit(existing?'修改營運支出':'新增營運支出','expense',ref.id,no+'｜'+category+'｜'+money(amount)+'｜'+expenseAllocationLabel(mode));
     closeDrawer();toast(existing?'支出已修改':'支出已儲存',no,'success');await loadAll(true);if(state.view==='expenses')renderKeepingViewport();else openOperatingExpenseDetail();
@@ -3675,6 +3704,10 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='rental-edit') return openRentalEdit(el.dataset.id);
     if(action==='case-new') return openCase();
     if(action==='case-edit') return openCase(el.dataset.id);
+    if(action==='expense-department'){
+      state.operatingExpenseDepartment=el.dataset.department==='academy'?'academy':'store';
+      return renderKeepingViewport();
+    }
     if(action==='expense-month-shift'){
       const next=operatingExpenseEngine().nextMonth(operatingExpenseMonthKey(),Number(el.dataset.step||0));
       state.operatingExpenseMonth=next<'2026-07'?'2026-07':next;

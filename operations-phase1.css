@@ -1335,6 +1335,15 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-expense-rule-notice{margin-bottom:16px;padding:14px 16px;border:1px solid #c9e8da;border-left:5px solid var(--ops-green);border-radius:14px;background:var(--ops-green-soft);color:#244a3a}
 .ops-expense-rule-notice b{display:block;margin-bottom:5px;font-size:14px}
 .ops-expense-rule-notice p{margin:0;font-size:12px;line-height:1.65}
+.ops-expense-department-card{margin-bottom:14px;padding:14px}
+.ops-expense-department-card>p{margin:10px 2px 0;color:var(--ops-muted);font-size:12px;line-height:1.55}
+.ops-expense-department-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ops-expense-department-tabs button{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;padding:12px 15px;border:1px solid var(--ops-line);border-radius:13px;background:#fff;color:var(--ops-text);text-align:left;cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+.ops-expense-department-tabs button:hover{border-color:#9bcbb6;background:#f8fcfa}
+.ops-expense-department-tabs button.active{border-color:var(--ops-green);background:var(--ops-green-soft);box-shadow:0 0 0 2px rgba(55,137,98,.08)}
+.ops-expense-department-tabs b{font-size:15px}
+.ops-expense-department-tabs span{display:inline-flex;align-items:center;justify-content:center;min-width:68px;padding:4px 8px;border-radius:999px;background:#eef2f5;color:var(--ops-muted);font-size:11px;font-weight:900}
+.ops-expense-department-tabs button.active span{background:#fff;color:#26714f}
 .ops-expense-detail-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:14px}
 .ops-expense-detail-head>div:first-child span{display:block;color:var(--ops-muted);font-size:12px;font-weight:800}
 .ops-expense-detail-head>div:first-child strong{display:block;margin-top:4px;color:var(--ops-navy-2);font-size:30px;font-variant-numeric:tabular-nums}
@@ -1384,6 +1393,8 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-expense-monday-actual small{display:block;margin-top:3px;color:var(--ops-muted);font-size:10px;font-weight:700}
 
 @media(max-width:780px){
+  .ops-expense-department-tabs{grid-template-columns:1fr}
+  .ops-expense-department-tabs button{min-height:58px}
   .ops-expense-detail-head{align-items:stretch;flex-direction:column}
   .ops-expense-detail-head .ops-card-actions{justify-content:flex-start}
   .ops-expense-summary-grid{grid-template-columns:1fr}
