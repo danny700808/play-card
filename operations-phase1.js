@@ -1425,17 +1425,24 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function tagOperatingExpenseRows(rows,key){const meta=operatingExpenseDepartmentMeta(key);return (rows||[]).map(function(row){return Object.assign({},row,{category:normalizedOperatingExpenseCategory(row.category),department:key,departmentLabel:meta.label,departmentShortLabel:meta.shortLabel});});}
   function payrollEmployeeId(row){return clean(row&&(row.employeeId||row.userId||row.id||row.__id));}
   function payrollEmployeeName(row){return clean(row&&(row.name||row.displayName||row.employeeName||row['姓名']))||payrollEmployeeId(row)||'未命名員工';}
-  function payrollEmployeeType(row){const value=lower(row&&(row.identityType||row.employeeType||row.type||row['身分類型']));if(value==='external'||value.includes('外聘'))return'external';if(value==='parttime'||value.includes('工讀')||row&&row.isPartTime===true)return'parttime';return'staff';}
+  function payrollEmployeeType(row){const value=lower(row&&(row.identityType||row.employeeType||row.type||row['身分類型']));if(value==='external'||value.includes('外聘'))return'external';if(value==='parttime'||value.includes('工讀')||row&&row.isPartTime===true)return'parttime';if(value==='staff'||value.includes('專職')||value.includes('正職'))return'staff';return'';}
   function payrollDepartment(row,employee){return clean(row&&(row.costDepartment||row.expenseDepartment)||employee&&(employee.costDepartment||employee.expenseDepartment))==='academy'?'academy':'store';}
   function payrollDateKey(value){const engine=operatingExpenseEngine(),key=engine.dateKeyFromValue?engine.dateKeyFromValue(value):dateText(value);return /^\d{4}-\d{2}-\d{2}$/.test(clean(key))?clean(key):'';}
   function payrollEffectiveDate(row){return payrollDateKey(row&&(row.effectiveDate||row.salaryEffectiveDate||row['生效日期']))||'2026-07-01';}
   function payrollLineItemsTotal(value){return (Array.isArray(value)?value:[]).reduce(function(total,item){const raw=typeof item==='number'?item:(item&&typeof item==='object'?(item.amount||item.value||item.money||item.total||item['金額']):0),number=Number(String(raw==null?'':raw).replace(/,/g,''));return total+(Number.isFinite(number)?number:0);},0);}
   function payrollAmount(value){const number=Number(String(value==null?'':value).replace(/,/g,''));return Number.isFinite(number)?Math.max(0,Math.round(number)):0;}
   function payrollStatusActive(value){return value===true||['在保','已投保','投保','加保','有效','是','active','true','1','enabled'].includes(clean(value).toLowerCase());}
+  function payrollFirstAmount(row,keys){for(let i=0;i<keys.length;i+=1){const value=row&&row[keys[i]],amount=payrollAmount(value);if(amount>0)return amount;}return 0;}
+  function payrollPlanSalary(row,directKeys,planKeys){const direct=payrollFirstAmount(row,directKeys);if(direct)return direct;for(let i=0;i<planKeys.length;i+=1){const text=clean(row&&row[planKeys[i]]).replace(/,/g,''),matches=text.match(/\d+(?:\.\d+)?/g);if(matches&&matches.length){const amount=payrollAmount(matches[matches.length-1]);if(amount)return amount;}}return 0;}
+  function payrollLaborInsuredSalary(row){return payrollPlanSalary(row,['laborInsuredSalary','laborSalary','laborInsuranceSalary','勞保投保薪資'],['laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','勞保級距']);}
+  function payrollHealthInsuredSalary(row){return payrollPlanSalary(row,['healthInsuredSalary','healthSalary','healthInsuranceSalary','健保投保薪資'],['healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','健保級距']);}
+  function payrollLaborEmployerPay(row){const saved=payrollFirstAmount(row,['laborEmployerPay','laborInsuranceEmployerPay','勞保公司負擔']);if(saved)return saved;if(!payrollStatusActive(row&&(row.laborStatus||row.laborInsuranceStatus)))return 0;const salary=payrollLaborInsuredSalary(row);return salary?payrollAmount(salary*0.115*0.70)+payrollAmount(salary*0.01*0.70):0;}
+  function payrollHealthEmployerPay(row){const saved=payrollFirstAmount(row,['healthEmployerPay','healthInsuranceEmployerPay','健保公司負擔']);if(saved)return saved;if(!payrollStatusActive(row&&(row.healthStatus||row.healthInsuranceStatus)))return 0;const salary=payrollHealthInsuredSalary(row);return salary?payrollAmount(salary*0.0517*0.60*1.56):0;}
+  function payrollRetirementBase(row,type){const saved=payrollFirstAmount(row,['laborRetirementSalary','retirementSalary','laborPensionSalary','monthlyRetirementWage','勞退月提繳工資']);if(saved)return saved;if(type==='parttime')return payrollFirstAmount(row,['averageSalary','parttimeAverageSalary','目前申報月平均薪資總額'])||payrollLaborInsuredSalary(row);return payrollFirstAmount(row,['baseSalary','staffBaseSalary','monthlySalary','salary','本薪'])||payrollLaborInsuredSalary(row);}
+  function payrollRetirementEmployerPay(row,type){const saved=payrollFirstAmount(row,['laborRetirementEmployerAmount','retirementEmployerAmount','雇主提繳金額']);if(saved)return saved;const base=payrollRetirementBase(row,type),rate=payrollFirstAmount(row,['laborRetirementEmployerRate','retirementEmployerRate'])||6;return base?payrollAmount(base*rate/100):0;}
   function payrollEmployeeRows(){
     const byId=new Map();
     (state.employees||[]).forEach(function(row){const id=payrollEmployeeId(row);if(id)byId.set(id,row);});
-    (state.employeeSalaryConfigs||[]).concat(state.employeeSalaryConfigHistory||[]).forEach(function(row){const id=payrollEmployeeId(row);if(id&&!byId.has(id))byId.set(id,row);});
     return Array.from(byId.entries()).map(function(entry){return {id:entry[0],employee:entry[1]};});
   }
   function salaryConfigRowsForEmployee(id,employee){
@@ -1466,30 +1473,31 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     const startMonth=startKey.slice(0,7)<'2026-07'?'2026-07':startKey.slice(0,7),endMonth=endKey.slice(0,7),months=engine.monthKeysBetween?engine.monthKeysBetween(startMonth,endMonth):[startMonth];
     employeeRows.forEach(function(entry){
       const id=entry.id,employee=entry.employee,type=payrollEmployeeType(employee),name=payrollEmployeeName(employee);
-      if(type==='external')return;
+      if(!['staff','parttime'].includes(type))return;
       months.forEach(function(month){
         if(!employeeWorksInMonth(employee,month))return;
         const monthEnd=month+'-'+String(new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate()).padStart(2,'0'),config=effectiveSalaryConfig(id,employee,monthEnd);
         if(!config)return;
-        const department=payrollDepartment(config,employee),configType=payrollEmployeeType(Object.assign({},employee,config));
+        const department=payrollDepartment(config,employee),configType=type;
         if(configType==='staff'){
           const base=payrollAmount(config.baseSalary||config.staffBaseSalary||config.monthlySalary||config.salary),allowance=payrollLineItemsTotal(config.jobAllowances||config.jobAllowanceItems)+payrollLineItemsTotal(config.allowances||config.allowanceItems),salary=payrollAmount(base+allowance);
           if(salary)allocatePayrollMonthly(rows,salary,month,'薪資','payroll-staff-'+id+'-'+month,name+'｜本薪與固定加給',department);
         }
+        const laborSalary=payrollLaborInsuredSalary(config),healthSalary=payrollHealthInsuredSalary(config),retirementBase=payrollRetirementBase(config,configType);
         const costs=[
-          {category:'勞保公司負擔',amount:payrollStatusActive(config.laborStatus||config.laborInsuranceStatus)?config.laborEmployerPay:0},
-          {category:'健保公司負擔',amount:payrollStatusActive(config.healthStatus||config.healthInsuranceStatus)?config.healthEmployerPay:0},
-          {category:'勞退公司提繳',amount:config.laborRetirementEmployerAmount||config.retirementEmployerAmount},
-          {category:'職災保險',amount:config.occupationalInsuranceEmployerPay||config.occupationalEmployerPay}
+          {category:'勞保公司負擔',amount:payrollLaborEmployerPay(config),note:laborSalary?name+'｜投保薪資 '+money(laborSalary):name+'｜薪資投保設定'},
+          {category:'健保公司負擔',amount:payrollHealthEmployerPay(config),note:healthSalary?name+'｜投保薪資 '+money(healthSalary):name+'｜薪資投保設定'},
+          {category:'勞退公司提繳',amount:payrollRetirementEmployerPay(config,configType),note:retirementBase?name+'｜月提繳工資 '+money(retirementBase)+' × 6%':name+'｜薪資投保設定'},
+          {category:'職災保險',amount:config.occupationalInsuranceEmployerPay||config.occupationalEmployerPay,note:name+'｜薪資投保設定'}
         ];
-        costs.forEach(function(cost){const amount=payrollAmount(cost.amount);if(amount)allocatePayrollMonthly(rows,amount,month,cost.category,'payroll-cost-'+id+'-'+hashText(cost.category)+'-'+month,name+'｜薪資投保設定',department);});
+        costs.forEach(function(cost){const amount=payrollAmount(cost.amount);if(amount)allocatePayrollMonthly(rows,amount,month,cost.category,'payroll-cost-'+id+'-'+hashText(cost.category)+'-'+month,cost.note,department);});
       });
     });
     (state.parttimeRecords||[]).forEach(function(record){
       const dateKey=payrollDateKey(record.workDate||record.date||record['日期']),status=lower(record.status||record['狀態']),payable=lower(record.payable||record['是否計薪']);
       if(!dateKey||dateKey<startKey||dateKey>endKey||dateKey<'2026-07-01'||['rejected','deleted','cancelled','voided','pending','作廢','駁回','取消','待審核','待主管審核'].includes(status)||record.payable===false||['false','no','否','不計薪','不支薪'].includes(payable))return;
-      const id=payrollEmployeeId(record),employee=employeesById.get(id)||record,config=effectiveSalaryConfig(id,employee,dateKey)||{},rate=payrollAmount(record.hourlyRate||record['時薪']||config.hourlyRate),hours=Number(record.totalHours||record.hours||record['總時數']||record['時數']||0)+(record.halfHour===true&&!record.totalHours?0.5:0),gross=payrollAmount(record.grossPay||record['當筆毛額']||(Number.isFinite(hours)?hours*rate:0));
-      if(!id||payrollEmployeeType(Object.assign({},employee,config))!=='parttime'||!gross)return;
+      const id=payrollEmployeeId(record),employee=employeesById.get(id),config=employee?(effectiveSalaryConfig(id,employee,dateKey)||{}):{},rate=payrollAmount(record.hourlyRate||record['時薪']||config.hourlyRate),hours=Number(record.totalHours||record.hours||record['總時數']||record['時數']||0)+(record.halfHour===true&&!record.totalHours?0.5:0),gross=payrollAmount(record.grossPay||record['當筆毛額']||(Number.isFinite(hours)?hours*rate:0));
+      if(!id||!employee||payrollEmployeeType(employee)!=='parttime'||!gross)return;
       rows.push({dateKey:dateKey,amount:gross,category:'薪資',sourceType:'payroll',sourceId:'payroll-parttime-'+clean(record.recordId||record.__id||id+'-'+dateKey),expenseMonth:dateKey.slice(0,7),allocationMode:'actual',paymentDateKey:dateKey,note:payrollEmployeeName(employee)+'｜工讀實際時數',department:payrollDepartment(config,employee)});
     });
     return rows.filter(function(row){return row.dateKey>=startKey&&row.dateKey<=endKey;}).sort(function(a,b){return a.dateKey.localeCompare(b.dateKey)||a.category.localeCompare(b.category)||a.sourceId.localeCompare(b.sourceId);});

@@ -117,7 +117,7 @@ assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側
 assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
 assert.match(formalPortalSource,/href="#expenses" data-view="expenses"/,'正式入口的左側選單也必須有營運支出');
 assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v6/,'正式入口必須先載入支出期間分攤新版程式');
-assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-expense-periods-v31/,'正式入口必須使用費用週期新版主程式快取號');
+assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-payroll-insurance-v32/,'正式入口必須使用薪資投保自動帶入新版主程式快取號');
 assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
 assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
 assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
@@ -205,6 +205,22 @@ assert.equal(payrollCategoryTotal('勞退公司提繳'),2500,'勞退不得因勞
 assert.equal(payrollCategoryTotal('職災保險'),200);
 assert.ok(payrollRows.filter(row=>row.allocationMode==='monthly').every(row=>new Date(row.dateKey+'T12:00:00').getDay()!==1),'每月薪資與投保公司負擔不得分攤到星期一');
 assert.equal(payrollRows.find(row=>row.sourceId==='payroll-parttime-PT-ROW-1').dateKey,'2026-07-07','工讀薪資必須保留真正出勤日');
+
+payrollState.employees=[
+  {__id:'PART-LEGACY',employeeId:'PART-LEGACY',name:'舊資料工讀生',identityType:'parttime',accountStatus:'active'}
+];
+payrollState.employeeSalaryConfigs=[
+  {employeeId:'PART-LEGACY',identityType:'parttime',costDepartment:'store',effectiveDate:'2026-07-01',hourlyRate:196,averageSalary:6000,laborStatus:'在保',laborPlan:'LAB_PART_11100',healthStatus:'未保'}
+];
+payrollState.employeeSalaryConfigHistory=[];
+payrollState.parttimeRecords=[];
+const legacyPayrollRows=payrollWindow.__testAutomaticPayrollLedger('2026-07-01','2026-07-31');
+const legacyPayrollTotal=category=>total(legacyPayrollRows.filter(row=>row.category===category));
+assert.equal(legacyPayrollTotal('勞保公司負擔'),972,'舊工讀資料只存 11,100 元級距代碼時，仍應依 115 年勞保公式算出公司負擔 972 元');
+assert.equal(legacyPayrollTotal('勞退公司提繳'),360,'工讀生申報月平均薪資 6,000 元時，勞退公司提繳應為 6% 共 360 元');
+assert.equal(legacyPayrollTotal('健保公司負擔'),0,'健保未保不得產生公司負擔');
+payrollState.employeeSalaryConfigs.push({employeeId:'ORPHAN-STAFF',identityType:'staff',effectiveDate:'2026-07-01',baseSalary:36200});
+assert.equal(total(payrollWindow.__testAutomaticPayrollLedger('2026-07-01','2026-07-31').filter(row=>row.category==='薪資')),0,'沒有員工主檔的殘留薪資設定不得再計入營運支出');
 
 const savedAnnualSettings=payrollWindow.__testPeriodExpenseSettings('insurance','公共意外／設備保險',12001,'2026-07','2027-06','年度保險','annual',expenses.normalizeSettings({}),'');
 const savedAnnualRule=savedAnnualSettings.recurringRules.find(row=>row.id==='insurance');
