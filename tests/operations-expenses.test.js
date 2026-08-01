@@ -3,6 +3,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
+const vm=require('node:vm');
 const expenses=require('../operations-expenses.js');
 
 function total(rows){return rows.reduce((sum,row)=>sum+row.amount,0);}
@@ -48,5 +49,11 @@ const operationsSource=fs.readFileSync(path.join(__dirname,'..','operations-phas
 assert.match(operationsSource,/支出扣款／分攤方式/,'支出頁必須顯示扣款規則標題');
 assert.match(operationsSource,/按月支出只分攤到非星期一的營業日/,'支出頁必須說明星期一不分攤');
 assert.match(operationsSource,/const body=operatingExpenseRuleNoticeHtml\(\)\+'<div class="ops-expense-detail-head">/,'扣款規則說明必須位於支出明細頁最上方');
+
+const startupDocument={readyState:'loading',addEventListener:function(){}};
+const startupWindow={document:startupDocument};
+startupWindow.window=startupWindow;
+vm.runInNewContext(operationsSource,{window:startupWindow,document:startupDocument,console,Date,Map,Set,Promise,JSON,Math,Number,String,Array,Object,RegExp,Error,Intl,URL,Blob,FormData,setTimeout,clearTimeout});
+assert.ok(startupWindow.OperationsCenterV1,'支出模組即使暫時沒載入，營運中心也不得白畫面');
 
 console.log('operations expense allocation tests passed');

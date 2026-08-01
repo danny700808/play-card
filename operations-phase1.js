@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.01-operating-expenses-v24';
+  const VERSION = '2026.08.01-operating-expenses-recovery-v25';
   // 後端最長執行 30 分鐘；瀏覽器多留 1 分鐘接收後端的最終成功／失敗回應。
   const EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS = 31 * 60 * 1000;
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v10_operating_expenses';
@@ -55,9 +55,39 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   Coupang:{enabled:true,platformRate:13,invoiceRate:0}
 };
 
-  function operatingExpenseEngine(){
-    if(!global.YouziOperatingExpenses)throw new Error('營運支出分攤規則尚未載入');
-    return global.YouziOperatingExpenses;
+  const OPERATING_EXPENSE_FALLBACK_CATEGORIES=[
+    {id:'rent',label:'房屋租金',defaultMode:'monthly'},{id:'yamaha-authorization',label:'Yamaha 授權費',defaultMode:'monthly'},
+    {id:'electricity',label:'電費',defaultMode:'bimonthly'},{id:'water',label:'水費',defaultMode:'monthly'},{id:'phone-internet',label:'電話／網路費',defaultMode:'monthly'},
+    {id:'parttime-payroll',label:'工讀生薪資',defaultMode:'actual'},{id:'staff-payroll',label:'專職員工薪資',defaultMode:'monthly'},
+    {id:'labor-insurance',label:'勞保公司負擔',defaultMode:'monthly'},{id:'health-insurance',label:'健保公司負擔',defaultMode:'monthly'},{id:'labor-pension',label:'勞退公司提繳',defaultMode:'monthly'},
+    {id:'occupational-insurance',label:'職災保險',defaultMode:'monthly'},{id:'accounting',label:'會計／記帳費',defaultMode:'monthly'},{id:'marketing',label:'廣告／行銷費',defaultMode:'actual'},
+    {id:'software',label:'軟體／雲端訂閱',defaultMode:'monthly'},{id:'bank-fee',label:'銀行／刷卡手續費',defaultMode:'actual'},{id:'cleaning',label:'清潔／垃圾處理費',defaultMode:'actual'},
+    {id:'supplies',label:'文具／印刷／教學耗材',defaultMode:'actual'},{id:'maintenance',label:'維修保養費',defaultMode:'actual'},{id:'transport',label:'運費／油資／停車費',defaultMode:'actual'},
+    {id:'insurance',label:'公共意外／設備保險',defaultMode:'monthly'},{id:'tax',label:'稅費',defaultMode:'actual'},{id:'other',label:'其他支出',defaultMode:'actual'}
+  ];
+  function fallbackExpenseSettings(raw){
+    const source=raw&&typeof raw==='object'?raw:{},rules=Array.isArray(source.recurringRules)?source.recurringRules:[];
+    function rule(id,category,amount){const found=rules.find(function(row){return row&&row.id===id;})||{};return {id:id,category:category,amount:Math.max(0,Math.floor(Number(found.amount==null?amount:found.amount)||0)),startMonth:/^\d{4}-\d{2}$/.test(found.startMonth||'')?found.startMonth:'2026-07',endMonth:/^\d{4}-\d{2}$/.test(found.endMonth||'')?found.endMonth:'',active:found.active!==false};}
+    return {startMonth:'2026-07',closedWeekdays:[1],recurringRules:[rule('rent','房屋租金',42500),rule('yamaha-authorization','Yamaha 授權費',6500)]};
+  }
+  const OPERATING_EXPENSE_FALLBACK_ENGINE={
+    EXPENSE_CATEGORIES:OPERATING_EXPENSE_FALLBACK_CATEGORIES,
+    normalizeSettings:fallbackExpenseSettings,
+    normalizeExpenseMode:function(value){return ['actual','monthly','bimonthly'].includes(String(value||''))?String(value):'actual';},
+    buildLedger:function(){return [];},
+    summarizeByCategory:function(){return [];},
+    nextMonth:function(value,step){if(!/^\d{4}-\d{2}$/.test(String(value||'')))return '';const part=String(value).split('-').map(Number),date=new Date(part[0],part[1]-1+(Number(step)||1),1);return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');}
+  };
+  function operatingExpenseEngine(){return global.YouziOperatingExpenses||OPERATING_EXPENSE_FALLBACK_ENGINE;}
+  let operatingExpenseLoadPromise=null;
+  function ensureOperatingExpenseEngineLoaded(){
+    if(global.YouziOperatingExpenses)return Promise.resolve(true);
+    if(operatingExpenseLoadPromise)return operatingExpenseLoadPromise;
+    operatingExpenseLoadPromise=new Promise(function(resolve){
+      let settled=false;function finish(ok){if(settled)return;settled=true;resolve(!!ok);}
+      const script=document.createElement('script');script.src='operations-expenses.js?v=20260801-operating-expenses-v2-retry';script.async=false;script.onload=function(){finish(!!global.YouziOperatingExpenses);};script.onerror=function(){finish(false);};document.head.appendChild(script);setTimeout(function(){finish(!!global.YouziOperatingExpenses);},8000);
+    });
+    return operatingExpenseLoadPromise;
   }
   function defaultOperatingExpenseSettings(){return operatingExpenseEngine().normalizeSettings({});}
 
@@ -3794,8 +3824,10 @@ function rerenderKeepingFocus(id,value){
     const user=typeof global.requireLogin==='function'?global.requireLogin():null; if(!user)return;
     if(typeof global.hasSettingsZoneAccess==='function'&&!global.hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
     if(typeof global.setPortalMode==='function')global.setPortalMode('settings');
+    const expenseEngineReady=await ensureOperatingExpenseEngineLoaded();
     state.user=user; setText('opsUserChip',userLabel());
     try{state.db=initDb();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('Firebase初始化失敗',errorMessage(error)));return;}
+    if(!expenseEngineReady)showAlert('營運支出程式暂時未載入，其他功能仍可正常使用；重新整理後系統會再自動嘗試。','warning');
     const restoredFastState=await restoreFastStateCache();
     watchInjiaoyunCloudSync();
     bindEvents();
