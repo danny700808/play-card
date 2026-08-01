@@ -29,7 +29,7 @@
   const READ_LIMIT = 10000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.01-operating-expenses-recovery-v25';
+  const VERSION = '2026.08.01-operating-expense-page-v26';
   // 後端最長執行 30 分鐘；瀏覽器多留 1 分鐘接收後端的最終成功／失敗回應。
   const EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS = 31 * 60 * 1000;
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v10_operating_expenses';
@@ -223,6 +223,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     overviewFrom:'',
     overviewTo:'',
     overviewMonth:(function(){const now=new Date();return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');})(),
+    operatingExpenseMonth:(function(){const now=new Date(),value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');return value<'2026-07'?'2026-07':value;})(),
     injiaoyunRequestId:'',
     importRows:[],
     importFileName:'',
@@ -245,6 +246,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     sales:['現場銷售',''],
     customers:['客戶會員','會員、老師與一般客戶共用同一份客戶資料。'],
     receivables:['應收帳款','應收帳款會連回客戶與原始銷售。'],
+    expenses:['營運支出','按月登錄水電、薪資、勞健保與其他費用，並查看每日攤提。'],
     purchases:['庫存作業',''],
     'purchase-entry':['進貨入庫工作台',''],
     stocktake:['庫存盤點工作台',''],
@@ -1247,7 +1249,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     }
     if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.detach==='function')global.YouziOperationsCourseInline.detach();
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
-    const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
+    const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,expenses:renderOperatingExpensesPage,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
     content.innerHTML=(renderers[state.view]||renderOverview)();
     enhanceMobileNumberInputs(content);
     bindViewSpecific();
@@ -2989,6 +2991,46 @@ function ensureSalesClock(){
   }
   function expenseAllocationLabel(mode){return mode==='monthly'?'指定月份分攤':mode==='bimonthly'?'兩個月份各半分攤':'實際發生日';}
   function expenseSourceLabel(row){return row.sourceType==='recurring'?'每月固定設定':'手動支出';}
+  function operatingExpenseMonthKey(){
+    const current=todayDateKey().slice(0,7),value=clean(state.operatingExpenseMonth);
+    state.operatingExpenseMonth=/^\d{4}-(0[1-9]|1[0-2])$/.test(value)&&value>='2026-07'?value:(current<'2026-07'?'2026-07':current);
+    return state.operatingExpenseMonth;
+  }
+  function operatingExpenseMonthBounds(month){
+    const parts=month.split('-').map(Number),start=new Date(parts[0],parts[1]-1,1),end=endOfDay(new Date(parts[0],parts[1],0));
+    return {start:start,end:end,label:parts[0]+' 年 '+parts[1]+' 月'};
+  }
+  function expenseBelongsToMonth(expense,month){
+    const mode=operatingExpenseEngine().normalizeExpenseMode(expense.allocationMode);
+    if(mode==='monthly')return clean(expense.expenseMonth)===month;
+    if(mode==='bimonthly')return clean(expense.periodStartMonth)===month||clean(expense.periodEndMonth)===month;
+    return dateText(expense.occurredAt).slice(0,7)===month;
+  }
+  function expenseBelongingLabel(expense){
+    const mode=operatingExpenseEngine().normalizeExpenseMode(expense.allocationMode);
+    if(mode==='monthly')return clean(expense.expenseMonth)||'未指定';
+    if(mode==='bimonthly')return [clean(expense.periodStartMonth),clean(expense.periodEndMonth)].filter(Boolean).join(' ～ ')||'未指定';
+    return dateText(expense.occurredAt);
+  }
+  function renderOperatingExpensesPage(){
+    const month=operatingExpenseMonthKey(),bounds=operatingExpenseMonthBounds(month),engine=operatingExpenseEngine(),rows=engine.buildLedger({settings:state.operatingExpenseSettings,expenses:state.expenses,start:bounds.start,end:bounds.end}),total=sum(rows,function(row){return row.amount;}),fixedTotal=sum(rows.filter(function(row){return row.sourceType==='recurring';}),function(row){return row.amount;}),manualTotal=total-fixedTotal,summary=engine.summarizeByCategory(rows),manualRecords=state.expenses.filter(function(row){return expenseBelongsToMonth(row,month);}).sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);});
+    const parts=month.split('-').map(Number),days=new Date(parts[0],parts[1],0).getDate(),byDay=new Map();let operatingDays=0;
+    rows.forEach(function(row){if(!byDay.has(row.dateKey))byDay.set(row.dateKey,[]);byDay.get(row.dateKey).push(row);});
+    const daily=[];
+    for(let day=1;day<=days;day+=1){
+      const key=month+'-'+String(day).padStart(2,'0'),weekday=new Date(parts[0],parts[1]-1,day).getDay(),closed=weekday===1,dayRows=byDay.get(key)||[],amount=sum(dayRows,function(row){return row.amount;});if(!closed)operatingDays+=1;
+      const positiveRows=dayRows.filter(function(row){return row.amount>0;}),expenseDetail=positiveRows.map(function(row){return escapeHtml(row.category)+' '+money(row.amount);}).join('<br>');
+      const detail=closed?'<span class="ops-tag gray">星期一休假，按月費用不分攤</span>'+(expenseDetail?'<div class="ops-expense-monday-actual">'+expenseDetail+'<small>一次性支出依實際發生日保留</small></div>':''):(expenseDetail||'—');
+      daily.push('<tr class="'+(closed?'ops-expense-closed-row':'')+'"><td><b>'+escapeHtml(key)+'</b><br><small>星期'+escapeHtml(weekdayText(key))+'</small></td><td>'+detail+'</td><td class="num"><b>'+money(amount)+'</b></td></tr>');
+    }
+    const categoryHtml=summary.length?'<div class="ops-expense-summary-grid">'+summary.map(function(row){return '<div><span>'+escapeHtml(row.category)+'</span><b>'+money(row.amount)+'</b></div>';}).join('')+'</div>':emptyHtml('這個月還沒有支出','可以新增水費、電費、薪資、勞健保或其他費用。');
+    const recordTable=manualRecords.length?'<div class="ops-table-wrap"><table class="ops-table ops-expense-record-table"><thead><tr><th>付款日</th><th>支出項目</th><th>費用歸屬</th><th>計算方式</th><th>備註</th><th class="num">帳單金額</th></tr></thead><tbody>'+manualRecords.map(function(row){return '<tr><td>'+escapeHtml(dateText(row.occurredAt))+'</td><td><b>'+escapeHtml(row.category)+'</b></td><td>'+escapeHtml(expenseBelongingLabel(row))+'</td><td>'+escapeHtml(expenseAllocationLabel(row.allocationMode))+'</td><td>'+escapeHtml(row.note||'—')+'</td><td class="num"><b>'+money(row.amount)+'</b></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('當月尚無另外登錄的帳單','房租與 Yamaha 授權費由固定設定自動計算。');
+    return operatingExpenseRuleNoticeHtml()
+      +'<section class="ops-card ops-expense-month-card"><div class="ops-expense-month-toolbar"><button class="ops-button ghost" type="button" data-action="expense-month-shift" data-step="-1">上一月</button><label><span>查詢月份</span><input class="ops-input" id="operatingExpenseMonth" type="month" min="2026-07" value="'+attr(month)+'"></label><button class="ops-button ghost" type="button" data-action="expense-month-shift" data-step="1">下一月</button><button class="ops-button soft" type="button" data-action="expense-current-month">本月</button><span class="ops-toolbar-spacer"></span><button class="ops-button ghost" type="button" data-action="operating-expense-settings">固定費用設定</button><button class="ops-button primary" type="button" data-action="expense-new">新增當月支出</button></div></section>'
+      +'<div class="ops-kpi-grid ops-expense-page-kpis">'+kpi(bounds.label+'支出',money(total),'固定與額外費用合計','支')+kpi('每月固定',money(fixedTotal),'房租與 Yamaha 等固定設定','固')+kpi('另外登錄',money(manualTotal),manualRecords.length+' 筆帳單／支出','加')+kpi('分攤營業日',formatNumber(operatingDays)+' 天','按月攤提不含星期一','日')+'</div>'
+      +'<div class="ops-grid-2 ops-expense-page-grid"><section class="ops-card"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'支出項目</h2><p>右側金額是套用攤提規則後的當月合計。</p></div></div>'+categoryHtml+'</section><section class="ops-card"><div class="ops-card-head"><div><h2>當月已登錄帳單</h2><p>水電、薪資、勞健保與其他每月不同的金額會列在這裡。</p></div></div>'+recordTable+'</section></div>'
+      +'<section class="ops-card"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'每日扣除明細</h2><p>按月攤提在星期一為 0 元；一次性實際支出仍保留真正發生日。除不盡餘數放在當月第一個營業日。</p></div></div><div class="ops-table-wrap"><table class="ops-table ops-expense-daily-table"><thead><tr><th>日期</th><th>當日支出項目</th><th class="num">當日扣除</th></tr></thead><tbody>'+daily.join('')+'</tbody></table></div></section>';
+  }
   function openOperatingExpenseDetail(){
     const bounds=overviewBounds(),rows=operatingExpenseLedgerForBounds(bounds),total=sum(rows,function(row){return row.amount;}),summary=operatingExpenseEngine().summarizeByCategory(rows);
     const summaryHtml=summary.length?'<div class="ops-expense-summary-grid">'+summary.map(function(row){return '<div><span>'+escapeHtml(row.category)+'</span><b>'+money(row.amount)+'</b></div>';}).join('')+'</div>':emptyHtml('這段期間尚無營運支出','固定支出從 2026 年 7 月開始計算。');
@@ -3019,10 +3061,11 @@ function ensureSalesClock(){
   }
   function openOperatingExpenseSettings(){
     const rent=recurringRuleById('rent'),yamaha=recurringRuleById('yamaha-authorization');
+    const returnAction=state.view==='expenses'?'drawer-close':'operating-expense-detail',returnLabel=state.view==='expenses'?'取消':'返回支出明細';
     const form='<form id="operatingExpenseSettingsForm">'+operatingExpenseRuleNoticeHtml()+'<div class="ops-section-title">每月固定支出</div><div class="ops-table-wrap"><table class="ops-table ops-expense-settings-table"><thead><tr><th>啟用</th><th>支出項目</th><th class="num">每月金額</th><th>開始月份</th></tr></thead><tbody>'
       +'<tr><td><input type="checkbox" name="rentActive" '+(rent.active!==false?'checked':'')+'></td><td><b>房屋租金</b></td><td><input class="ops-input" type="number" name="rentAmount" min="0" step="1" value="'+attr(rent.amount==null?42500:rent.amount)+'" required></td><td><input class="ops-input" type="month" name="rentStartMonth" min="2026-07" value="'+attr(rent.startMonth||'2026-07')+'" required></td></tr>'
       +'<tr><td><input type="checkbox" name="yamahaActive" '+(yamaha.active!==false?'checked':'')+'></td><td><b>Yamaha 授權費</b></td><td><input class="ops-input" type="number" name="yamahaAmount" min="0" step="1" value="'+attr(yamaha.amount==null?6500:yamaha.amount)+'" required></td><td><input class="ops-input" type="month" name="yamahaStartMonth" min="2026-07" value="'+attr(yamaha.startMonth||'2026-07')+'" required></td></tr>'
-      +'</tbody></table></div><div class="ops-section-title">其他支出項目</div>'+expenseCycleTableHtml()+'<div class="ops-callout">商品進貨成本、平台費、發票稅與老師課堂拆帳已在各營運毛利中計算，不會在這裡再扣一次。</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="operating-expense-detail">返回支出明細</button><button class="ops-button primary" type="submit">儲存支出設定</button></div></form>';
+      +'</tbody></table></div><div class="ops-section-title">其他支出項目</div>'+expenseCycleTableHtml()+'<div class="ops-callout">商品進貨成本、平台費、發票稅與老師課堂拆帳已在各營運毛利中計算，不會在這裡再扣一次。</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="'+returnAction+'">'+returnLabel+'</button><button class="ops-button primary" type="submit">儲存支出設定</button></div></form>';
     openDrawer('營運支出設定','房租與 Yamaha 授權費從 2026 年 7 月開始；金額可在這裡調整。',form);
   }
   async function saveOperatingExpenseSettings(form){
@@ -3038,16 +3081,19 @@ function ensureSalesClock(){
     state.operatingExpenseSettings=payload;
     await writeAudit('更新營運支出設定','settings','operatingExpenses','房租 '+money(rentAmount)+'｜Yamaha '+money(yamahaAmount)+'｜星期一不分攤');
     toast('支出設定已儲存','固定支出會依新的規則重新計算。','success');
-    renderKeepingViewport();
-    openOperatingExpenseDetail();
+    if(state.view==='expenses'){closeDrawer();renderKeepingViewport();}
+    else{renderKeepingViewport();openOperatingExpenseDetail();}
   }
   function expenseCategoryOptions(){
     return '<option value="">請選擇支出類別</option>'+operatingExpenseEngine().EXPENSE_CATEGORIES.filter(function(row){return !['rent','yamaha-authorization'].includes(row.id);}).map(function(row){return '<option value="'+attr(row.label)+'" data-default-mode="'+attr(row.defaultMode)+'">'+escapeHtml(row.label)+'</option>';}).join('');
   }
-  function expenseMonthDefault(){const current=dateText(new Date()).slice(0,7);return current<'2026-07'?'2026-07':current;}
+  function expenseMonthDefault(){
+    if(state.view==='expenses')return operatingExpenseMonthKey();
+    const current=dateText(new Date()).slice(0,7);return current<'2026-07'?'2026-07':current;
+  }
   function openExpense(){
-    const currentMonth=expenseMonthDefault();
-    const body='<form id="expenseForm">'+operatingExpenseRuleNoticeHtml()+'<div class="ops-form-grid"><div class="ops-field"><label class="ops-required">付款／實際發生日</label><input class="ops-input" type="datetime-local" name="occurredAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label class="ops-required">支出類別</label><select class="ops-select" name="category" id="expenseCategory" required>'+expenseCategoryOptions()+'</select></div><div class="ops-field"><label class="ops-required">總金額</label><input class="ops-input" type="number" min="1" step="1" name="amount" required></div><div class="ops-field"><label>付款方式</label><select class="ops-select" name="paymentMethod"><option>現金</option><option>信用卡</option><option>轉帳</option><option>其他</option></select></div><div class="ops-field full"><label class="ops-required">支出計算方式</label><select class="ops-select" name="allocationMode" id="expenseAllocationMode"><option value="actual">依實際發生日計算</option><option value="monthly">指定月份，排除星期一後分攤</option><option value="bimonthly">兩個月份各分一半，再排除星期一分攤</option></select></div><div class="ops-field full hidden" id="expenseMonthField"><label class="ops-required">費用歸屬月份</label><input class="ops-input" type="month" min="2026-07" name="expenseMonth" value="'+attr(currentMonth)+'"></div><div class="ops-field hidden" id="expensePeriodStartField"><label class="ops-required">第一個費用月份</label><input class="ops-input" type="month" min="2026-07" name="periodStartMonth"></div><div class="ops-field hidden" id="expensePeriodEndField"><label class="ops-required">第二個費用月份</label><input class="ops-input" type="month" min="2026-07" name="periodEndMonth"></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note"></textarea></div></div><div class="ops-callout">房屋租金與 Yamaha 授權費已由固定設定自動計算，不需要在這裡重複新增。</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="operating-expense-detail">取消</button><button class="ops-button primary" type="submit">儲存支出</button></div></form>';
+    const currentMonth=expenseMonthDefault(),nextMonth=operatingExpenseEngine().nextMonth(currentMonth,1),cancelAction=state.view==='expenses'?'drawer-close':'operating-expense-detail';
+    const body='<form id="expenseForm">'+operatingExpenseRuleNoticeHtml()+'<div class="ops-form-grid"><div class="ops-field"><label class="ops-required">付款／實際發生日</label><input class="ops-input" type="datetime-local" name="occurredAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label class="ops-required">支出類別</label><select class="ops-select" name="category" id="expenseCategory" required>'+expenseCategoryOptions()+'</select></div><div class="ops-field"><label class="ops-required">總金額</label><input class="ops-input" type="number" min="1" step="1" name="amount" required></div><div class="ops-field"><label>付款方式</label><select class="ops-select" name="paymentMethod"><option>現金</option><option>信用卡</option><option>轉帳</option><option>其他</option></select></div><div class="ops-field full"><label class="ops-required">支出計算方式</label><select class="ops-select" name="allocationMode" id="expenseAllocationMode"><option value="actual">依實際發生日計算</option><option value="monthly">指定月份，排除星期一後分攤</option><option value="bimonthly">兩個月份各分一半，再排除星期一分攤</option></select></div><div class="ops-field full hidden" id="expenseMonthField"><label class="ops-required">費用歸屬月份</label><input class="ops-input" type="month" min="2026-07" name="expenseMonth" value="'+attr(currentMonth)+'"></div><div class="ops-field hidden" id="expensePeriodStartField"><label class="ops-required">第一個費用月份</label><input class="ops-input" type="month" min="2026-07" name="periodStartMonth" value="'+attr(currentMonth)+'"></div><div class="ops-field hidden" id="expensePeriodEndField"><label class="ops-required">第二個費用月份</label><input class="ops-input" type="month" min="2026-07" name="periodEndMonth" value="'+attr(nextMonth)+'"></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note"></textarea></div></div><div class="ops-callout">房屋租金與 Yamaha 授權費已由固定設定自動計算，不需要在這裡重複新增。</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="'+cancelAction+'">取消</button><button class="ops-button primary" type="submit">儲存支出</button></div></form>';
     openDrawer('新增營運支出','水電、電話、員工薪資、勞健保或其他非商品進貨支出。',body);
     const category=byId('expenseCategory'),selected=category&&category.options[category.selectedIndex],mode=selected&&selected.dataset.defaultMode||'actual',modeSelect=byId('expenseAllocationMode');if(modeSelect)modeSelect.value=mode;updateExpenseAllocationFields();
   }
@@ -3072,7 +3118,7 @@ function ensureSalesClock(){
     const no=uid('EXP'),payload={expenseNo:no,occurredAt:occurredAt,category:category,amount:Math.floor(amount),paymentMethod:clean(data.get('paymentMethod')),allocationMode:mode,expenseMonth:mode==='monthly'?expenseMonth:'',periodStartMonth:mode==='bimonthly'?periodStartMonth:'',periodEndMonth:mode==='bimonthly'?periodEndMonth:'',note:clean(data.get('note')),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION};
     const ref=await state.db.collection(COLLECTIONS.expenses).add(payload);
     await writeAudit('新增營運支出','expense',ref.id,no+'｜'+category+'｜'+money(amount)+'｜'+expenseAllocationLabel(mode));
-    closeDrawer();toast('支出已儲存',no,'success');await loadAll(true);openOperatingExpenseDetail();
+    closeDrawer();toast('支出已儲存',no,'success');await loadAll(true);if(state.view==='expenses')renderKeepingViewport();else openOperatingExpenseDetail();
   }
 
   async function createSyncPreview(){
@@ -3572,6 +3618,16 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='rental-edit') return openRentalEdit(el.dataset.id);
     if(action==='case-new') return openCase();
     if(action==='case-edit') return openCase(el.dataset.id);
+    if(action==='expense-month-shift'){
+      const next=operatingExpenseEngine().nextMonth(operatingExpenseMonthKey(),Number(el.dataset.step||0));
+      state.operatingExpenseMonth=next<'2026-07'?'2026-07':next;
+      return renderKeepingViewport();
+    }
+    if(action==='expense-current-month'){
+      const current=todayDateKey().slice(0,7);
+      state.operatingExpenseMonth=current<'2026-07'?'2026-07':current;
+      return renderKeepingViewport();
+    }
     if(action==='operating-expense-detail') return openOperatingExpenseDetail();
     if(action==='operating-expense-settings') return openOperatingExpenseSettings();
     if(action==='expense-new') return openExpense();
@@ -3777,6 +3833,10 @@ function rerenderKeepingFocus(id,value){
         updateExpenseAllocationFields();
       }
       else if(event.target.id==='expenseAllocationMode')updateExpenseAllocationFields();
+      else if(event.target.id==='operatingExpenseMonth'&&/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)){
+        state.operatingExpenseMonth=event.target.value<'2026-07'?'2026-07':event.target.value;
+        renderKeepingViewport();
+      }
       else if(event.target.id==='financeRange'){state.financeRange=event.target.value;render();}
       else if(event.target.id==='saleInvoiceFrom'){state.saleInvoiceFrom=event.target.value;renderKeepingViewport();}
       else if(event.target.id==='saleInvoiceTo'){state.saleInvoiceTo=event.target.value;renderKeepingViewport();}

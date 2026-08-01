@@ -1344,11 +1344,32 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-expense-settings-table{min-width:680px}
 .ops-expense-settings-table input[type="checkbox"]{width:20px;height:20px;accent-color:var(--ops-green)}
 .ops-expense-cycle-table{min-width:650px}
+.ops-expense-month-card{margin-bottom:14px}
+.ops-expense-month-toolbar{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.ops-expense-month-toolbar label{display:flex;flex-direction:column;gap:5px;min-width:170px}
+.ops-expense-month-toolbar label span{font-size:11px;font-weight:900;color:var(--ops-muted)}
+.ops-toolbar-spacer{flex:1 1 20px}
+.ops-expense-page-grid{align-items:start;margin-bottom:14px}
+.ops-expense-page-grid>section{min-width:0}
+.ops-expense-page-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.ops-expense-record-table{min-width:780px}
+.ops-expense-daily-table{min-width:680px}
+.ops-expense-daily-table td:first-child{width:150px}
+.ops-expense-closed-row{background:#f5f7f8;color:var(--ops-muted)}
+.ops-expense-closed-row td{border-color:#e7ebee}
+.ops-expense-monday-actual{margin-top:7px;color:var(--ops-text);font-weight:750;line-height:1.55}
+.ops-expense-monday-actual small{display:block;margin-top:3px;color:var(--ops-muted);font-size:10px;font-weight:700}
 
 @media(max-width:780px){
   .ops-expense-detail-head{align-items:stretch;flex-direction:column}
   .ops-expense-detail-head .ops-card-actions{justify-content:flex-start}
   .ops-expense-summary-grid{grid-template-columns:1fr}
+  .ops-expense-month-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ops-expense-month-toolbar label{grid-column:1/-1;min-width:0}
+  .ops-expense-month-toolbar .ops-toolbar-spacer{display:none}
+  .ops-expense-month-toolbar .ops-button{width:100%}
+  .ops-expense-page-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ops-expense-page-grid{grid-template-columns:1fr}
 }
 @media(max-width:1180px){.ops-series-grid-tabs{grid-template-columns:repeat(8,minmax(0,1fr))!important}}
 @media(max-width:720px){

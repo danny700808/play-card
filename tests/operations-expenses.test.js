@@ -46,9 +46,17 @@ const actualMonday=expenses.buildLedger({
 assert.equal(total(actualMonday),800,'實際發生的一次性支出仍應保留星期一日期');
 
 const operationsSource=fs.readFileSync(path.join(__dirname,'..','operations-phase1.js'),'utf8');
+const operationsHubSource=fs.readFileSync(path.join(__dirname,'..','operations-hub.html'),'utf8');
 assert.match(operationsSource,/支出扣款／分攤方式/,'支出頁必須顯示扣款規則標題');
 assert.match(operationsSource,/按月支出只分攤到非星期一的營業日/,'支出頁必須說明星期一不分攤');
 assert.match(operationsSource,/const body=operatingExpenseRuleNoticeHtml\(\)\+'<div class="ops-expense-detail-head">/,'扣款規則說明必須位於支出明細頁最上方');
+assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側選單必須有獨立營運支出入口');
+assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
+assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
+assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
+assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
+assert.match(operationsSource,/當月已登錄帳單/,'營運支出頁必須顯示當月份輸入紀錄');
+assert.match(operationsSource,/一次性支出依實際發生日保留/,'星期一仍必須保留一次性實際支出');
 
 const startupDocument={readyState:'loading',addEventListener:function(){}};
 const startupWindow={document:startupDocument};
