@@ -61,12 +61,12 @@ assert(portalLanding.includes('id="portalEntryNotice"') && portalLanding.include
 const commonSource = fs.readFileSync(path.join(root, 'course-portal-common.js'), 'utf8');
 assert(commonSource.trimStart().startsWith('(function'), 'course-portal-common.js 不是可執行的 JavaScript');
 new vm.Script(commonSource, { filename: 'course-portal-common.js' });
-assert(commonSource.includes('coursePortalDirectRegularAccess'), '入口缺少一般方式直接登入流程');
+assert(!commonSource.includes('coursePortalDirectRegularAccess'), '入口仍可繞過 Email 四碼直接登入');
 assert(commonSource.includes('coursePortalStartLineLogin'), '入口缺少 LINE 快速登入');
 assert(commonSource.includes('result.authorizationUrl'), 'LINE 登入仍未直接導向 OAuth');
-assert(commonSource.includes('coursePortalCompleteLineRegistration'), '入口缺少 LINE 首次登入');
-assert(commonSource.includes('coursePortalDirectRegularAccess'), '學生／家長入口沒有一般註冊流程');
-assert(commonSource.includes("purpose: 'account'"), '老師一般登入沒有改用 Email 四碼驗證流程');
+assert(!commonSource.includes('coursePortalCompleteLineRegistration'), 'LINE 首次註冊仍可跳過 Email 四碼');
+assert(commonSource.includes("purpose: 'account'"), '一般註冊／登入沒有統一使用 Email 四碼驗證');
+assert(commonSource.includes("purpose: 'line-registration'"), 'LINE 首次註冊沒有接上 Email 四碼驗證');
 assert(!commonSource.includes('請用已綁定的 LINE 傳送這段快速登入文字'), 'LINE 登入仍停留在複製文字舊流程');
 assert(!commonSource.includes('複製綁定文字'), '入口程式仍保留複製綁定文字');
 assert(!commonSource.includes('renderLineAction'), '入口程式仍保留舊 LINE 文字綁定畫面');
@@ -87,6 +87,14 @@ for (const file of pages) {
 
 ['teacher-course-portal.html', 'student-course-portal.html', 'room-booking.html'].forEach((file) => {
   const html = fs.readFileSync(path.join(root, file), 'utf8');
+  const regularForm = html.slice(
+    html.indexOf('data-regular-auth-form'),
+    html.indexOf('</form>', html.indexOf('data-regular-auth-form'))
+  );
+  const lineSetupForm = html.slice(
+    html.indexOf('data-line-setup-form'),
+    html.indexOf('</form>', html.indexOf('data-line-setup-form'))
+  );
   assert(html.includes('data-auth-view'), `${file} 缺少統一登入畫面`);
   assert(html.includes('id="sessionLoading"'), `${file} 缺少登入狀態確認畫面`);
   assert(html.includes('data-auth-choice-list'), `${file} 缺少兩種登入方式`);
@@ -99,6 +107,10 @@ for (const file of pages) {
   assert(!html.includes('data-renter-contact-form'), `${file} 仍保留姓名電話臨時登入`);
   assert(!html.includes('data-show-first-use'), `${file} 仍保留額外的第一次使用入口`);
   assert(!html.includes('data-bind-result'), `${file} 仍保留舊綁定結果框`);
+  assert(/name="email"[^>]*required/.test(regularForm), `${file} 一般註冊未強制填寫 Email`);
+  assert(/name="email"[^>]*required/.test(lineSetupForm), `${file} LINE 首次註冊未強制填寫 Email`);
+  assert(regularForm.includes('寄送四碼驗證碼'), `${file} 一般註冊未清楚顯示四碼驗證`);
+  assert(lineSetupForm.includes('寄送四碼驗證碼'), `${file} LINE 首次註冊未清楚顯示四碼驗證`);
 });
 
 const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.html'), 'utf8');
@@ -146,9 +158,9 @@ const studentLineSetupForm = studentPortal.slice(
   studentPortal.indexOf('</form>', studentPortal.indexOf('data-line-setup-form'))
 );
 assert(studentRegularForm.includes('name="email"'), '學生／家長一般註冊缺少 Email 欄位');
-assert(!studentLineSetupForm.includes('name="email"'), '學生／家長 LINE 首次註冊仍強制填 Email');
-assert(studentRegularForm.includes('name="name"') && studentRegularForm.includes('name="phone"'), '學生／家長註冊不是只保留姓名與電話');
-assert(!/name="email"[^>]*required/.test(studentRegularForm), '學生／家長一般註冊仍把 Email 設為必填');
+assert(studentLineSetupForm.includes('name="email"'), '學生／家長 LINE 首次註冊缺少 Email 欄位');
+assert(studentRegularForm.includes('name="name"') && studentRegularForm.includes('name="phone"'), '學生／家長註冊缺少姓名或電話');
+assert(/name="email"[^>]*required/.test(studentRegularForm), '學生／家長一般註冊沒有把 Email 設為必填');
 assert(teacherPortal.includes('id="studentEditModal"'), '老師端缺少學生姓名電話修改視窗');
 assert(teacherPortal.includes('id="studentStopModal"') && teacherPortal.includes('再次確認停課'), '老師端停課缺少二次確認');
 assert(teacherPortal.includes('min="2026-07"'), '老師薪資月份未限制為民國 115 年 7 月起');
@@ -171,8 +183,8 @@ assert(adminPortal.includes('data-action="force_logout"'), '管理者缺少強�
 assert(studentPortal.includes('name="relationship"'), '學生／家長綁定缺少關係選擇');
 assert(studentPortal.includes('id="inactiveStudentView"'), '停課學生缺少受限功能畫面');
 assert(studentPortal.includes('id="inactiveHistoryList"'), '停課學生無法查看自己的過去課表');
-assert(studentPortal.includes('完成綁定並進入'), '學生 LINE 綁定仍顯示等待主管核准');
-assert(teacherPortal.includes('完成綁定並進入老師課務'), '老師 LINE 綁定仍顯示等待主管核准');
+assert(studentLineSetupForm.includes('寄送四碼驗證碼'), '學生 LINE 首次註冊未要求 Email 四碼');
+assert(teacherPortal.includes('寄送四碼驗證碼'), '老師 LINE 首次註冊未要求 Email 四碼');
 assert(studentPortal.includes('paymentBlock(row, request)') && studentPortal.includes('period-payment'), '學生入口沒有把繳費整合到期別卡');
 assert(studentPortal.includes('id="tuitionPaymentModal"'), '學生入口缺少繳費方式視窗');
 assert(studentPortal.includes('name="paymentMethod" value="bank_transfer"'), '學生入口缺少轉帳繳費選項');
@@ -196,7 +208,7 @@ assert(studentPortal.includes('period-payment-amount') && studentPortal.includes
 assert(!studentPortal.includes('未指定老師') && !studentPortal.includes('尚未指定'), '學生老師聯絡區仍顯示多餘的未登記提示');
 assert(teacherSource.includes('data-quick-contact-book'), '老師課表缺少課堂聯絡簿操作');
 assert(teacherSource.includes('coursePortalTeacherSubmitContactBookPost'), '老師聯絡簿未連接後端');
-assert(!teacherPortal.slice(teacherPortal.indexOf('data-line-setup-form'), teacherPortal.indexOf('</form>', teacherPortal.indexOf('data-line-setup-form'))).includes('name="email"'), '老師 LINE 首次註冊仍要求 Email');
+assert(/name="email"[^>]*required/.test(teacherPortal.slice(teacherPortal.indexOf('data-line-setup-form'), teacherPortal.indexOf('</form>', teacherPortal.indexOf('data-line-setup-form')))), '老師 LINE 首次註冊沒有把 Email 設為必填');
 assert(/name="email"[^>]*required/.test(teacherPortal.slice(teacherPortal.indexOf('data-regular-auth-form'), teacherPortal.indexOf('</form>', teacherPortal.indexOf('data-regular-auth-form')))), '老師 Email 四碼登入沒有把 Email 設為必填');
 assert(adminPortal.includes('學費繳費待確認'), '管理者頁缺少學費繳費待確認專區');
 assert(adminPortal.includes('coursePortalAdminTuitionPaymentScreenshot'), '管理者無法安全讀取匯款截圖');
@@ -1821,17 +1833,19 @@ assert(backend.includes('只能取消自己預約的教室'), '取消租用缺�
 assert(backend.includes('const EMAIL_OTP_TTL_MS = 180 * 1000'), 'Email 四碼驗證碼不是 180 秒');
 assert(backend.includes('EMAIL_OTP_MAX_ATTEMPTS = 5'), 'Email 驗證碼缺少五次輸入限制');
 assert(backend.includes("source.purpose === 'account'"), '一般註冊／登入驗證後未直接建立工作階段');
+assert(backend.includes("source.purpose === 'line-registration'"), 'LINE 首次註冊驗證後未建立工作階段');
+assert(backend.includes('completeVerifiedLineRegistration(source)'), 'LINE 首次註冊沒有鎖定在四碼驗證成功後執行');
 assert(backend.includes('authAccountId'), '一般登入缺少獨立帳號識別');
 assert(backend.includes('const authAccountId = lineAccountId(type, lineUserId)'), 'LINE 首次登入仍未以 LINE 身分建立帳號鍵');
 assert(backend.includes('authAccountId: source.authAccountId'), 'LINE 一次性登入碼交換時遺失帳號鍵');
 assert(!backend.includes('sharedBindingAuthAccountId'), 'LINE 登入仍會從 Email 綁定推算帳號鍵');
-assert(backend.includes('function directRegularAccountId(identity)'), '一般姓名電話登入仍缺少獨立帳號鍵');
-assert(backend.includes('老師姓名與電話直接登入已停用'), '老師仍可繞過 Email 四碼直接登入');
+assert(backend.includes('所有新註冊都必須填寫 Email 並完成四碼驗證'), '學生／家長或租用者仍可繞過 Email 四碼直接登入');
+assert(backend.includes('第一次使用 LINE 註冊時，必須先填寫 Email 並完成四碼驗證'), '舊 LINE 完成端點仍可繞過 Email 四碼');
 assert(backend.includes('async function teacherUtilitySession(data)'), '老師其他六頁缺少安全的工作階段轉接');
 assert(backend.includes('authAccountId: lineAccountId(type, profile.lineUserId)'), '既有老師或租用者 LINE 登入仍使用 Email 帳號鍵');
 assert(backend.includes("lineAccountId(type, lineUserId)"), '不同家長的 LINE 帳號鍵沒有獨立，提醒設定可能互相連動');
 assert(backend.includes("authMethod: 'email-otp'"), '一般登入未建立 Email 驗證工作階段');
-assert(backend.includes("authMethod: 'student-name-phone'"), '學生／家長姓名電話註冊未建立正式工作階段');
+assert(backend.includes("authMethod: 'line-oauth+email-otp-registration'"), 'LINE 首次註冊工作階段未記錄 Email 四碼驗證');
 assert(backend.includes("const TEACHER_PAYROLL_MIN_MONTH = '2026-07'"), '老師薪資後端未限制民國 115 年 7 月起');
 assert(backend.includes("db.collection('coursePortalStudentProfiles')"), '老師修改學生資料沒有保存同步覆寫資料');
 assert(backend.includes("db.collection('coursePortalStudentSuspensions')"), '老師停課沒有建立管理者追蹤資料');
@@ -1858,10 +1872,10 @@ assert(backend.includes('course-portal-booking-${id}-reminder'), '租用缺少�
 assert(backend.includes("action === 'delete'"), '後台綁定管理缺少刪除登入資料');
 assert(backend.includes("approvalStatus: approved ? 'approved' : 'pending'"), '一般登入的新綁定未進入主管核准流程');
 const lineRegistrationSource = backend.slice(
-  backend.indexOf('async function completeLineRegistration('),
+  backend.indexOf('async function completeVerifiedLineRegistration('),
   backend.indexOf('async function activeStudentIdsForLine(')
 );
-assert(lineRegistrationSource.includes("status: 'active'"), 'LINE 綁定仍需要主管逐筆核准');
+assert(lineRegistrationSource.includes("status: 'active'"), 'LINE 四碼驗證完成後仍需要主管逐筆核准');
 assert(!lineRegistrationSource.includes('pendingApproval: true'), 'LINE 綁定完成後仍回傳等待主管核准');
 assert(backend.includes("approvalSource: 'line-self-service'"), 'LINE 自助綁定沒有標記直接啟用來源');
 assert(!backend.includes("status: 'pending_approval'"), '既有 LINE 待核准綁定沒有在再次登入時自動啟用');

@@ -37,9 +37,9 @@
           <form class="stack auth-regular-form" data-regular-auth-form>
             <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" placeholder="請輸入學生姓名" required></div>
             <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" placeholder="學生資料中的電話" required></div>
-            <div class="field"><label>Email（選填）</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email"></div>
+            <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email" required></div>
             <div class="field"><label>與學生的關係</label><select name="relationship"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></div>
-            <button class="btn auth-regular-submit" type="submit">使用一般方式繼續</button>
+            <button class="btn auth-regular-submit" type="submit">寄送四碼驗證碼</button>
           </form>
         </article>
       </div>
@@ -48,8 +48,9 @@
         <form class="stack" data-line-setup-form>
           <div class="field"><label>學生姓名</label><input name="name" autocomplete="name" required></div>
           <div class="field"><label>登記電話</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
+          <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email" required></div>
           <div class="field"><label>與學生的關係</label><select name="relationship"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></div>
-          <button class="btn primary" type="submit">完成綁定並進入</button>
+          <button class="btn primary" type="submit">寄送四碼驗證碼</button>
         </form>
       </section>
       <div class="auth-otp-panel hidden" data-otp-panel></div>
@@ -152,7 +153,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260731-final-rules-v1"></script>
+  <script src="course-portal-common.js?v=20260801-all-email-otp-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;

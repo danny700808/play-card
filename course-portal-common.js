@@ -256,6 +256,7 @@
     const lineError = clean(authParams.get('lineError'));
     let countdownTimer = 0;
     let pendingChallenge = '';
+    let pendingOtpFlow = 'regular';
 
     function removeAuthQuery(name) {
       const params = new URLSearchParams(global.location.search);
@@ -264,10 +265,12 @@
       global.history.replaceState({}, '', `${global.location.pathname}${suffix ? `?${suffix}` : ''}`);
     }
 
-    function renderOtp(result) {
+    function renderOtp(result, flow) {
       if (!otpPanel) return;
+      pendingOtpFlow = flow === 'line-registration' ? 'line-registration' : 'regular';
       pendingChallenge = clean(result.challengeToken);
       let seconds = Number(result.expiresInSeconds || 180);
+      if (pendingOtpFlow === 'line-registration' && lineSetupPanel) lineSetupPanel.classList.add('hidden');
       otpPanel.classList.remove('hidden');
       otpPanel.innerHTML = [
         '<form class="stack auth-otp-form">',
@@ -294,7 +297,14 @@
       if (backButton) backButton.addEventListener('click', () => {
         clearInterval(countdownTimer);
         otpPanel.classList.add('hidden');
-        if (regularForm) regularForm.querySelector('input[name="email"]').focus();
+        if (pendingOtpFlow === 'line-registration') {
+          if (lineSetupPanel) lineSetupPanel.classList.remove('hidden');
+          const emailInput = lineSetupForm && lineSetupForm.querySelector('input[name="email"]');
+          if (emailInput) emailInput.focus();
+          return;
+        }
+        const emailInput = regularForm && regularForm.querySelector('input[name="email"]');
+        if (emailInput) emailInput.focus();
       });
       otpPanel.querySelector('input[name="code"]').focus();
       otpPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -311,11 +321,16 @@
           if (verified.pendingApproval) {
             pendingChallenge = '';
             otpPanel.classList.add('hidden');
+            if (pendingOtpFlow === 'line-registration') removeAuthQuery('lineSetup');
             toast(verified.message || '申請已送出，請等待主管確認。');
             return;
           }
           if (verified.role !== role || !verified.sessionToken) throw new Error('登入資料不完整，請重新操作。');
           setSession(role, verified.sessionToken);
+          if (pendingOtpFlow === 'line-registration') {
+            authView.dataset.addStudent = 'false';
+            removeAuthQuery('lineSetup');
+          }
           toast('驗證成功，正在開啟。');
           global.location.reload();
         } catch (error) {
@@ -330,19 +345,12 @@
       loading(button, true, '確認中…');
       try {
         const fields = Object.fromEntries(new FormData(form).entries());
-        const result = role === 'teacher'
-          ? await call('coursePortalSendEmailOtp', Object.assign({ type: role, purpose: 'account' }, fields))
-          : await call('coursePortalDirectRegularAccess', Object.assign({ type: role }, fields));
-        if (role === 'teacher') {
-          if (!result.challengeToken) throw new Error('驗證碼寄送失敗，請稍後再試。');
-          renderOtp(result);
-          return;
-        }
-        if (result.pendingApproval) { toast(result.message || '資料已送出，請等待主管確認。'); return; }
-        if (result.role !== role || !result.sessionToken) throw new Error('登入資料不完整，請重新操作。');
-        setSession(role, result.sessionToken);
-        toast('資料確認完成，正在開啟。');
-        global.location.reload();
+        const result = await call('coursePortalSendEmailOtp', Object.assign({
+          type: role,
+          purpose: 'account'
+        }, fields));
+        if (!result.challengeToken) throw new Error('驗證碼寄送失敗，請稍後再試。');
+        renderOtp(result, 'regular');
       } catch (error) {
         toast(error.message, 'error');
       } finally {
@@ -377,28 +385,13 @@
       loading(button, true, '正在完成…');
       try {
         const fields = Object.fromEntries(new FormData(event.currentTarget).entries());
-        const result = await call('coursePortalCompleteLineRegistration', Object.assign({
+        const result = await call('coursePortalSendEmailOtp', Object.assign({
           type: role,
+          purpose: 'line-registration',
           setupToken: lineSetupToken
         }, fields));
-        if (result.pendingApproval) {
-          removeAuthQuery('lineSetup');
-          authView.dataset.addStudent = 'false';
-          toast(result.message || '綁定申請已送出，請等待主管確認。');
-          if (choiceList) choiceList.classList.remove('hidden');
-          if (lineSetupPanel) lineSetupPanel.classList.add('hidden');
-          return;
-        }
-        if (result.role !== role || !result.sessionToken) {
-          throw new Error('LINE 登入資料不完整，請重新操作。');
-        }
-        setSession(role, result.sessionToken);
-        authView.dataset.addStudent = 'false';
-        removeAuthQuery('lineSetup');
-        toast(result.reminderReady === false
-          ? '登入完成；請將柚子樂器官方帳號加入好友，才能收到提醒。'
-          : 'LINE 登入完成，正在開啟。', result.reminderReady === false ? 'error' : '');
-        global.location.reload();
+        if (!result.challengeToken) throw new Error('驗證碼寄送失敗，請稍後再試。');
+        renderOtp(result, 'line-registration');
       } catch (error) {
         toast(error.message, 'error');
       } finally {

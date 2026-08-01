@@ -48,7 +48,8 @@
         <form class="stack" data-line-setup-form>
           <div class="field"><label>老師姓名</label><input name="name" autocomplete="name" required></div>
           <div class="field"><label>手機號碼</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>
-          <button class="btn primary" type="submit">完成綁定並進入老師課務</button>
+          <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="請輸入 Email" required></div>
+          <button class="btn primary" type="submit">寄送四碼驗證碼</button>
         </form>
       </section>
       <div class="auth-otp-panel hidden" data-otp-panel></div>
@@ -160,7 +161,7 @@
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260801-teacher-email-auth-v2"></script>
+  <script src="course-portal-common.js?v=20260801-all-email-otp-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-course-portal-v8.js?v=20260801-teacher-utilities-v2"></script>
 </body>

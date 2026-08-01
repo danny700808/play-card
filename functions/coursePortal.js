@@ -547,10 +547,6 @@ function sourceActive(row) {
   ].includes(clean(value).toLowerCase());
 }
 
-function studentPhoneAccountId(phone) {
-  return hash(`student-phone-account|${normalizePhone(phone)}`);
-}
-
 async function mergeStudentProfileOverrides(rows) {
   const snapshot = await db.collection('coursePortalStudentProfiles').get();
   const overrides = new Map(snapshot.docs.map((doc) => [doc.id, doc.data() || {}]));
@@ -962,24 +958,11 @@ function lineAccountId(type, lineUserId) {
   return hash(`line-account|${clean(type)}|${clean(lineUserId)}`);
 }
 
-function directRegularAccountId(identity) {
-  return hash([
-    'direct-regular-account',
-    clean(identity && identity.type),
-    identityTargetId(identity || {}),
-    normalizePhone(identity && identity.phone)
-  ].join('|'));
-}
-
 async function resolveRegularIdentity(identity) {
   const type = clean(identity.type);
   const targetField = identityTargetField(type);
   const targetId = identityTargetId(identity);
-  const phoneOnlyStudent = type === 'student' && !validEmail(identity.email);
-  const fallbackAuthAccountId = phoneOnlyStudent
-    ? studentPhoneAccountId(identity.phone)
-    : regularAccountId(type, identity.email);
-  const phoneHash = hash(normalizePhone(identity.phone));
+  const fallbackAuthAccountId = regularAccountId(type, identity.email);
   const snapshot = await db.collection(bindingCollection(type))
     .where(targetField, '==', targetId)
     .get();
@@ -992,8 +975,7 @@ async function resolveRegularIdentity(identity) {
     (
       validEmail(identity.email) &&
       normalizeEmail(row.emailNormalized || row.email) === normalizeEmail(identity.email)
-    ) ||
-    (phoneOnlyStudent && clean(row.phoneHash) === phoneHash)
+    )
   );
   if (sameAccount.some((row) => clean(row.status) === 'revoked')) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
@@ -1032,11 +1014,38 @@ async function findEmailLoginAccount(type, email) {
   };
 }
 
+async function prepareLineRegistrationIdentity(data, type) {
+  const setupToken = clean(data.setupToken);
+  if (!setupToken) {
+    throw new HttpsError('invalid-argument', 'LINE 登入資料已遺失，請重新登入。');
+  }
+  const lineSetupId = hash(setupToken);
+  const setupSnapshot = await db.collection('coursePortalLineSetupTokens').doc(lineSetupId).get();
+  const setup = setupSnapshot.exists ? setupSnapshot.data() || {} : null;
+  if (
+    !setup ||
+    clean(setup.status) !== 'pending' ||
+    asMillis(setup.expiresAt) < Date.now() ||
+    clean(setup.type) !== type ||
+    !clean(setup.lineUserId)
+  ) {
+    throw new HttpsError('permission-denied', 'LINE 登入資料已失效，請重新登入。');
+  }
+  const identity = await prepareBindingIdentity(Object.assign({}, data, { type }));
+  if (!validEmail(identity.email)) {
+    throw new HttpsError('invalid-argument', '請填寫 Email 並完成四碼驗證。');
+  }
+  return Object.assign(identity, {
+    lineSetupId,
+    lineUserId: clean(setup.lineUserId)
+  });
+}
+
 async function sendEmailOtp(data, helpers = {}) {
   const requestedPurpose = clean(data.purpose).toLowerCase();
-  const purpose = requestedPurpose === 'account'
-    ? 'account'
-    : (requestedPurpose === 'login' ? 'login' : 'bind');
+  const purpose = ['account', 'login', 'line-registration'].includes(requestedPurpose)
+    ? requestedPurpose
+    : 'bind';
   const type = clean(data.type).toLowerCase();
   if (!['teacher', 'student', 'renter'].includes(type)) {
     throw new HttpsError('invalid-argument', '不支援的入口類型。');
@@ -1048,7 +1057,9 @@ async function sendEmailOtp(data, helpers = {}) {
   await consumeRateLimit(`email-otp-${purpose}-${type}`, email);
 
   let identity = null;
-  if (purpose === 'account' || purpose === 'bind') {
+  if (purpose === 'line-registration') {
+    identity = await prepareLineRegistrationIdentity(data, type);
+  } else if (purpose === 'account' || purpose === 'bind') {
     identity = await prepareBindingIdentity(data);
     if (purpose === 'account') {
       identity = Object.assign(identity, await resolveRegularIdentity(identity));
@@ -1080,6 +1091,7 @@ async function sendEmailOtp(data, helpers = {}) {
     payload.name = clean(identity.name);
     payload.phone = normalizePhone(identity.phone);
     payload.relationship = clean(identity.relationship);
+    payload.lineSetupId = clean(identity.lineSetupId);
   } else {
     payload.decoy = true;
   }
@@ -1095,7 +1107,7 @@ async function sendEmailOtp(data, helpers = {}) {
       await helpers.sendEmail({
         channel: 'email',
         targetEmail: email,
-        title: `柚子樂器${purpose === 'bind' ? '首次驗證' : '登入'}驗證碼`,
+        title: `柚子樂器${['bind', 'line-registration'].includes(purpose) ? '首次驗證' : '登入'}驗證碼`,
         body: [
           `您的四碼驗證碼是：${code}`,
           '',
@@ -1357,73 +1369,11 @@ async function completeRegularAccount(source) {
 }
 
 async function studentPhoneAccess(data) {
-  const identity = await prepareBindingIdentity(Object.assign({}, data, {
-    type: 'student',
-    email: ''
-  }));
-  await consumeRateLimit('student-name-phone-access', identity.phone);
-  const regularIdentity = await resolveRegularIdentity(identity);
-  const authAccountId = regularIdentity.authAccountId || studentPhoneAccountId(identity.phone);
-  const bindingId = clean(regularIdentity.bindingId) || hash([
-    'student-name-phone',
-    authAccountId,
-    identity.targetId
-  ].join('|'));
-  const bindingRef = db.collection('coursePortalStudentBindings').doc(bindingId);
-  const existing = await bindingRef.get();
-  const previous = existing.exists ? existing.data() || {} : {};
-  if (['revoked', 'rejected'].includes(clean(previous.status))) {
-    throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
-  }
-  const approved = clean(previous.status) === 'active';
-  await bindingRef.set({
-    type: 'student',
-    studentId: clean(identity.targetId),
-    name: clean(identity.name),
-    phoneHash: hash(normalizePhone(identity.phone)),
-    authAccountId,
-    authProvider: clean(previous.lineUserId) ? 'line-login+name-phone' : 'name-phone',
-    relationship: clean(data.relationship) || clean(previous.relationship) || '本人／家長',
-    status: approved ? 'active' : 'pending',
-    approvalStatus: approved ? 'approved' : 'pending',
-    approvalRequestedAt: approved ? (previous.approvalRequestedAt || null) : FieldValue.serverTimestamp(),
-    reminderLastLesson: previous.reminderLastLesson !== false,
-    reminderPayment: previous.reminderPayment !== false,
-    registeredAt: previous.registeredAt || FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true });
-  if (!approved) {
-    await queueBindingApprovalNotices(Object.assign({}, previous, {
-      id: bindingId,
-      type: 'student',
-      studentId: clean(identity.targetId),
-      name: clean(identity.name),
-      relationship: clean(data.relationship) || clean(previous.relationship) || '本人／家長',
-      authAccountId,
-      authProvider: clean(previous.lineUserId) ? 'line-login+name-phone' : 'name-phone',
-      status: 'pending'
-    }));
-    return {
-      ok: true,
-      role: 'student',
-      pendingApproval: true,
-      message: '資料已送出，主管確認後即可登入；請稍後重新開啟入口。'
-    };
-  }
-  const issued = await issueSession({
-    type: 'student',
-    lineUserId: clean(previous.lineUserId || regularIdentity.lineUserId),
-    authAccountId,
-    targetId: clean(identity.targetId),
-    renterId: '',
-    authMethod: 'student-name-phone'
-  });
-  return {
-    ok: true,
-    role: 'student',
-    sessionToken: issued.sessionToken,
-    expiresAt: issued.expiresAt.toDate().toISOString()
-  };
+  void data;
+  throw new HttpsError(
+    'failed-precondition',
+    '學生／家長姓名與電話直接登入已停用；所有新註冊都必須填寫 Email 並完成四碼驗證。'
+  );
 }
 
 async function verifyEmailOtp(data) {
@@ -1465,6 +1415,9 @@ async function verifyEmailOtp(data) {
 
   if (!source || source.decoy) {
     throw new HttpsError('permission-denied', '驗證碼不正確或帳號資料不相符。');
+  }
+  if (source.purpose === 'line-registration') {
+    return completeVerifiedLineRegistration(source);
   }
   if (source.purpose === 'account') {
     return completeRegularAccount(source);
@@ -1571,64 +1524,14 @@ async function renterContactLogin(data) {
   );
 }
 
-// 學生與租用者的一般方式沿用姓名、電話對照；老師必須改走 Email 四碼驗證。
-// 首次綁定仍保留主管審核，避免未授權者僅憑個資取得課表或薪資。
+// 舊的姓名／電話直接入口只保留相容函式名稱，實際已全面停用。
+// 所有角色的新註冊都必須先完成 Email 四碼驗證。
 async function directRegularAccess(data) {
-  const type = clean(data.type).toLowerCase();
-  if (type === 'student') return studentPhoneAccess(data);
-  if (type === 'teacher') {
-    throw new HttpsError(
-      'failed-precondition',
-      '老師姓名與電話直接登入已停用；請使用 LINE，或以 Email 四碼驗證登入。'
-    );
-  }
-  const identity = await prepareBindingIdentity(data);
-  await consumeRateLimit(`direct-regular-${type}`, identity.phone);
-  const authAccountId = directRegularAccountId(identity);
-  const collection = db.collection(bindingCollection(type));
-  const targetField = identityTargetField(type);
-  const targetId = identityTargetId(identity);
-  const legacySnapshot = await collection.where(targetField, '==', targetId).get();
-  const reusableBinding = legacySnapshot.docs.find((doc) => {
-    const row = doc.data() || {};
-    return clean(row.authProvider).startsWith('direct-regular') &&
-      clean(row.phoneHash) === hash(identity.phone);
-  });
-  const bindingRef = reusableBinding
-    ? reusableBinding.ref
-    : collection.doc(hash(`direct-regular|${type}|${targetId}|${authAccountId}`));
-  const existing = await bindingRef.get();
-  const previous = existing.exists ? existing.data() || {} : {};
-  if (['revoked', 'rejected'].includes(clean(previous.status))) {
-    throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
-  }
-  if (type === 'renter') {
-    const renterId = clean(identity.renterId);
-    const renterProfile = {
-      renterId, name: clean(identity.name), phone: identity.phone,
-      source: 'direct-regular', active: true, updatedAt: FieldValue.serverTimestamp(), createdAtText: nowText()
-    };
-    const renterBinding = {
-      type, renterId, name: clean(identity.name), phoneHash: hash(identity.phone),
-      authAccountId, authProvider: 'direct-regular', status: 'active', approvalStatus: 'approved',
-      registeredAt: previous.registeredAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
-    };
-    if (validEmail(identity.email)) {
-      renterProfile.email = normalizeEmail(identity.email);
-      renterProfile.emailNormalized = normalizeEmail(identity.email);
-      renterProfile.emailVerified = false;
-      renterBinding.email = normalizeEmail(identity.email);
-      renterBinding.emailNormalized = normalizeEmail(identity.email);
-      renterBinding.emailVerified = false;
-    }
-    await db.collection('coursePortalRenters').doc(renterId).set(renterProfile, { merge: true });
-    await bindingRef.set(renterBinding, { merge: true });
-  }
-  const issued = await issueSession({
-    type, lineUserId: '', authAccountId,
-    targetId: clean(identity.targetId), renterId: clean(identity.renterId), authMethod: 'direct-regular'
-  });
-  return { ok: true, role: type, sessionToken: issued.sessionToken, expiresAt: issued.expiresAt.toDate().toISOString() };
+  void data;
+  throw new HttpsError(
+    'failed-precondition',
+    '一般直接登入已停用；所有新註冊都必須填寫 Email 並完成四碼驗證。'
+  );
 }
 
 async function issueAccessToken({ type, lineUserId, authAccountId, targetId, renterId, authMethod, lineFriendFlag }) {
@@ -1876,11 +1779,13 @@ async function lineLoginCallback(req, res) {
   }
 }
 
-async function completeLineRegistration(data) {
-  const setupToken = clean(data.setupToken);
+async function completeVerifiedLineRegistration(data) {
+  const lineSetupId = clean(data.lineSetupId);
   const requestedType = clean(data.type).toLowerCase();
-  if (!setupToken) throw new HttpsError('invalid-argument', 'LINE 登入資料已遺失，請重新登入。');
-  const setupRef = db.collection('coursePortalLineSetupTokens').doc(hash(setupToken));
+  if (!lineSetupId || !validEmail(data.email)) {
+    throw new HttpsError('failed-precondition', '請先完成 Email 四碼驗證，再建立 LINE 帳號。');
+  }
+  const setupRef = db.collection('coursePortalLineSetupTokens').doc(lineSetupId);
   const setupSnapshot = await setupRef.get();
   const setup = setupSnapshot.exists ? setupSnapshot.data() || {} : null;
   const type = clean(setup && setup.type);
@@ -1896,8 +1801,11 @@ async function completeLineRegistration(data) {
   }
 
   const identity = await prepareBindingIdentity(Object.assign({}, data, { type }));
-  // LINE 帳號鍵只由 LINE 使用者身分產生；Email 僅作為可選聯絡資料，
-  // 不參與老師、學生／家長或租用者的 LINE 登入認證。
+  if (normalizeEmail(identity.email) !== normalizeEmail(data.email)) {
+    throw new HttpsError('permission-denied', 'Email 驗證資料不一致，請重新取得四碼驗證碼。');
+  }
+  // LINE 帳號鍵仍由 LINE 使用者身分產生；Email 四碼負責確認首次註冊者
+  // 能實際使用所填信箱，兩項都完成後才建立帳號。
   await consumeRateLimit(`line-oauth-setup-${type}`, identity.phone);
   const lineUserId = clean(setup.lineUserId);
   const authAccountId = lineAccountId(type, lineUserId);
@@ -1941,7 +1849,7 @@ async function completeLineRegistration(data) {
     lineFriendFlag: setup.lineFriendFlag === true,
     lineVerified: true,
     authAccountId,
-    authProvider: 'line-login',
+    authProvider: 'line-login+email-otp',
     name: clean(identity.name),
     phoneHash: hash(normalizePhone(identity.phone)),
     status: 'active',
@@ -1955,11 +1863,10 @@ async function completeLineRegistration(data) {
     reminderLastLesson: true,
     reminderPayment: true
   };
-  if (validEmail(identity.email)) {
-    payload.email = normalizeEmail(identity.email);
-    payload.emailNormalized = normalizeEmail(identity.email);
-    payload.emailVerified = false;
-  }
+  payload.email = normalizeEmail(identity.email);
+  payload.emailNormalized = normalizeEmail(identity.email);
+  payload.emailVerified = true;
+  payload.emailVerifiedAt = FieldValue.serverTimestamp();
   if (type === 'teacher') payload.teacherId = targetId;
   if (type === 'student') {
     payload.studentId = targetId;
@@ -1978,17 +1885,15 @@ async function completeLineRegistration(data) {
         renterId,
         name: clean(identity.name),
         phone: normalizePhone(identity.phone),
-        // 後來加用 LINE 不得把原本已通過四碼驗證的 Email 降級。
-        emailVerified: identity.existingEmailVerified === true,
+        email: normalizeEmail(identity.email),
+        emailNormalized: normalizeEmail(identity.email),
+        emailVerified: true,
+        emailVerifiedAt: FieldValue.serverTimestamp(),
         source: 'line-login-registration',
         active: true,
         updatedAt: FieldValue.serverTimestamp(),
         createdAtText: nowText()
       };
-      if (validEmail(identity.email)) {
-        renterProfile.email = normalizeEmail(identity.email);
-        renterProfile.emailNormalized = normalizeEmail(identity.email);
-      }
       tx.set(db.collection('coursePortalRenters').doc(renterId), renterProfile, { merge: true });
     }
     tx.set(bindingRef, payload, { merge: true });
@@ -2011,7 +1916,7 @@ async function completeLineRegistration(data) {
     authAccountId,
     targetId,
     renterId,
-    authMethod: 'line-oauth-registration'
+    authMethod: 'line-oauth+email-otp-registration'
   });
   return {
     ok: true,
@@ -2020,6 +1925,14 @@ async function completeLineRegistration(data) {
     expiresAt: issued.expiresAt.toDate().toISOString(),
     reminderReady: setup.lineFriendFlag === true
   };
+}
+
+async function completeLineRegistration(data) {
+  void data;
+  throw new HttpsError(
+    'failed-precondition',
+    '第一次使用 LINE 註冊時，必須先填寫 Email 並完成四碼驗證。'
+  );
 }
 
 async function activeStudentIdsForLine(lineUserId) {

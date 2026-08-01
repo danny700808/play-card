@@ -143,7 +143,7 @@
           <strong>${P.escapeHtml(label(row))}</strong>
           <span class="binding-meta"><b>${P.escapeHtml(loginMethod(row))}</b><small>${row.lineDisplayName ? P.escapeHtml(row.lineDisplayName) : '未使用 LINE'}${row.relationship ? `・${P.escapeHtml(row.relationship)}` : ''}${row.lineDisplayName ? `・${row.lineFriendFlag === true ? '可接收提醒' : '尚未開啟 LINE 提醒'}` : ''}</small></span>
           <span class="binding-meta"><b>${P.escapeHtml(row.lineUserIdMasked || '無 LINE 識別碼')}</b><small>最後登入：${P.escapeHtml(row.lastLoginAtText || '尚無紀錄')}</small></span>
-          <span class="binding-meta"><b>${P.escapeHtml(row.email || (row.type === 'student' ? '學生／家長免填 Email' : '尚未設定 Email'))}</b><small>${row.emailVerified ? 'Email 已驗證' : (row.type === 'student' && !row.email ? '姓名＋電話登入' : 'Email 尚未驗證')}</small></span>
+          <span class="binding-meta"><b>${P.escapeHtml(row.email || '舊帳號未設定 Email')}</b><small>${row.emailVerified ? 'Email 已驗證' : (row.email ? 'Email 尚未驗證' : '舊帳號資料')}</small></span>
           <span class="binding-meta"><span class="badge ${row.status === 'active' ? '' : (row.status === 'pending' ? 'warn' : 'danger')}">${row.status === 'active' ? '使用中' : (row.status === 'pending' ? '等待主管確認' : (row.status === 'rejected' ? '已拒絕' : '已停用'))}</span><small>${Number(row.activeSessionCount || 0)} 台裝置登入中</small></span>
           <span class="binding-actions">
             ${row.status === 'pending' ? `<button class="btn primary" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="approve">核准綁定</button><button class="btn danger" type="button" data-id="${P.escapeHtml(row.id)}" data-type="${P.escapeHtml(row.type)}" data-action="reject">拒絕</button>` : ''}
