@@ -9,8 +9,8 @@
   const DEFAULT_START_MONTH='2026-07';
   const DEFAULT_CLOSED_WEEKDAYS=[1]; // 星期一
   const DEFAULT_RECURRING_RULES=[
-    {id:'rent',category:'房屋租金',amount:42500,startMonth:DEFAULT_START_MONTH,active:true},
-    {id:'yamaha-authorization',category:'Yamaha 授權費',amount:6500,startMonth:DEFAULT_START_MONTH,active:true}
+    {id:'rent',category:'房屋租金',amount:42500,startMonth:DEFAULT_START_MONTH,allocationMode:'monthly',active:true},
+    {id:'yamaha-authorization',category:'Yamaha 授權費',amount:6500,startMonth:DEFAULT_START_MONTH,allocationMode:'monthly',active:true}
   ];
   const EXPENSE_CATEGORIES=[
     {id:'rent',label:'房屋租金',defaultMode:'monthly'},
@@ -92,16 +92,17 @@
     return dates.map(function(dateKey,index){return {dateKey:dateKey,amount:base+(index===0?remainder:0)};});
   }
   function defaultRules(){return DEFAULT_RECURRING_RULES.map(function(row){return Object.assign({monthlyOverrides:[]},row);});}
-  function normalizeMonthlyOverrides(value){
+  function normalizeMonthlyOverrides(value,fallbackMode){
     const byMonth=new Map();
     (Array.isArray(value)?value:[]).forEach(function(row){
       const month=clean(row&&row.month);
-      if(validMonth(month))byMonth.set(month,{month:month,amount:integerAmount(row&&row.amount)});
+      if(validMonth(month))byMonth.set(month,{month:month,amount:integerAmount(row&&row.amount),mode:normalizeExpenseMode(row&&(row.mode||row.allocationMode)||fallbackMode||'monthly')});
     });
     return Array.from(byMonth.values()).sort(function(a,b){return a.month.localeCompare(b.month);});
   }
   function normalizeRule(row,fallback){
     const source=row&&typeof row==='object'?row:{},base=fallback||{};
+    const allocationMode=normalizeExpenseMode(source.allocationMode==null?(base.allocationMode||'monthly'):source.allocationMode);
     return {
       id:clean(source.id)||clean(base.id),
       category:clean(source.category)||clean(base.category)||'其他支出',
@@ -110,7 +111,8 @@
       endMonth:validMonth(source.endMonth)?clean(source.endMonth):'',
       active:source.active==null?base.active!==false:source.active!==false,
       note:clean(source.note==null?base.note:source.note),
-      monthlyOverrides:normalizeMonthlyOverrides(source.monthlyOverrides==null?base.monthlyOverrides:source.monthlyOverrides)
+      allocationMode:allocationMode,
+      monthlyOverrides:normalizeMonthlyOverrides(source.monthlyOverrides==null?base.monthlyOverrides:source.monthlyOverrides,allocationMode)
     };
   }
   function normalizeSettings(raw){
@@ -131,11 +133,13 @@
     if(!validMonth(selected)||!rule.active||compareMonth(selected,rule.startMonth)<0||(rule.endMonth&&compareMonth(selected,rule.endMonth)>0)){
       return Object.assign({},rule,{amount:0,sourceMonth:'',changedThisMonth:false,available:false});
     }
-    let amount=rule.amount,sourceMonth=rule.startMonth;
+    let amount=rule.allocationMode==='monthly'||selected===rule.startMonth?rule.amount:0,allocationMode=rule.allocationMode,sourceMonth=rule.startMonth,changedThisMonth=selected===rule.startMonth;
     rule.monthlyOverrides.forEach(function(row){
-      if(compareMonth(row.month,selected)<=0){amount=row.amount;sourceMonth=row.month;}
+      const comparison=compareMonth(row.month,selected);
+      if(comparison===0){amount=row.amount;allocationMode=row.mode;sourceMonth=row.month;changedThisMonth=true;}
+      else if(comparison<0&&row.mode==='monthly'){amount=row.amount;allocationMode=row.mode;sourceMonth=row.month;changedThisMonth=false;}
     });
-    return Object.assign({},rule,{amount:amount,sourceMonth:sourceMonth,changedThisMonth:sourceMonth===selected,available:true});
+    return Object.assign({},rule,{amount:amount,allocationMode:allocationMode,sourceMonth:sourceMonth,changedThisMonth:changedThisMonth,available:true});
   }
   function recurringRulesForMonth(settings,month,includeZero){
     const normalized=normalizeSettings(settings);
@@ -155,7 +159,8 @@
         const effective=effectiveRuleForMonth(rule,month);
         if(!effective.available||!effective.amount)return;
         allocateMonthlyAmount(effective.amount,month,normalized.closedWeekdays).forEach(function(day){
-          const row={dateKey:day.dateKey,amount:day.amount,category:effective.category,sourceType:'recurring',sourceId:effective.id,expenseMonth:month,allocationMode:'monthly',paymentDateKey:'',note:['每月延續支出','自 '+effective.sourceMonth+' 起沿用','星期一不分攤',effective.note].filter(Boolean).join('；')};
+          const modeLabel=effective.allocationMode==='monthly'?'每月延續支出':effective.allocationMode==='bimonthly'?'兩月帳單分攤':'本月支出';
+          const row={dateKey:day.dateKey,amount:day.amount,category:effective.category,sourceType:'recurring',sourceId:effective.id,expenseMonth:month,allocationMode:effective.allocationMode,paymentDateKey:'',note:[modeLabel,effective.allocationMode==='monthly'?'自 '+effective.sourceMonth+' 起沿用':'只歸屬 '+month,'星期一不分攤',effective.note].filter(Boolean).join('；')};
           if(rowInRange(row,startKey,endKey))rows.push(row);
         });
       });

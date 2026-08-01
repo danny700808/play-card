@@ -37,6 +37,22 @@ assert.equal(expenses.effectiveRuleForMonth(carriedSettings.recurringRules[0],'2
 assert.equal(expenses.effectiveRuleForMonth(carriedSettings.recurringRules[0],'2026-10').amount,44000,'下一次變動只從指定月份起生效');
 assert.equal(total(expenses.buildLedger({settings:carriedSettings,expenses:[],start:'2026-09-01',end:'2026-09-30'})),49500,'九月應沿用八月房租並加上 Yamaha');
 
+const monthOnlySettings=expenses.normalizeSettings({recurringRules:[
+  {id:'parttime-payroll',category:'工讀生薪資',amount:3000,startMonth:'2026-07',allocationMode:'actual',active:true,monthlyOverrides:[{month:'2026-08',amount:4200,mode:'actual'}]}
+]});
+const monthOnlyRule=monthOnlySettings.recurringRules.find(row=>row.id==='parttime-payroll');
+assert.equal(expenses.effectiveRuleForMonth(monthOnlyRule,'2026-07').amount,3000,'只扣本月項目應計入建立月份');
+assert.equal(expenses.effectiveRuleForMonth(monthOnlyRule,'2026-08').amount,4200,'只扣本月項目可以設定另一個月份');
+assert.equal(expenses.effectiveRuleForMonth(monthOnlyRule,'2026-09').amount,0,'只扣本月項目不得自動延續');
+
+const splitSettings=expenses.normalizeSettings({recurringRules:[
+  {id:'electricity',category:'電費',amount:3001,startMonth:'2026-07',allocationMode:'bimonthly',active:true,monthlyOverrides:[{month:'2026-08',amount:3000,mode:'bimonthly'}]}
+]});
+const splitRule=splitSettings.recurringRules.find(row=>row.id==='electricity');
+assert.equal(expenses.effectiveRuleForMonth(splitRule,'2026-07').amount,3001);
+assert.equal(expenses.effectiveRuleForMonth(splitRule,'2026-08').amount,3000);
+assert.equal(expenses.effectiveRuleForMonth(splitRule,'2026-09').amount,0,'兩月帳單分完後不得延續到第三個月');
+
 const electricRows=expenses.buildLedger({
   settings,
   expenses:[{id:'electric-1',category:'電費',amount:6001,allocationMode:'bimonthly',periodStartMonth:'2026-07',periodEndMonth:'2026-08',occurredAt:'2026-09-05'}],
@@ -58,22 +74,39 @@ assert.equal(total(actualMonday),800,'實際發生的一次性支出仍應保留
 const operationsSource=fs.readFileSync(path.join(__dirname,'..','operations-phase1.js'),'utf8');
 const operationsHubSource=fs.readFileSync(path.join(__dirname,'..','operations-hub.html'),'utf8');
 const formalPortalSource=fs.readFileSync(path.join(__dirname,'..','portal.html'),'utf8');
-assert.match(operationsSource,/每月沒變動就不用重複登錄/,'支出頁必須清楚說明月份沿用方式');
-assert.match(operationsSource,/按月支出只分攤到非星期一的營業日/,'支出頁必須說明星期一不分攤');
+assert.match(operationsSource,/扣款方式：星期一不計算/,'支出頁最上方必須清楚說明星期一規則');
+assert.match(operationsSource,/主表內的月支出只分攤到非星期一的營業日/,'支出頁必須說明星期一不分攤');
 assert.match(operationsSource,/const body=operatingExpenseRuleNoticeHtml\(\)\+'<div class="ops-expense-detail-head">/,'扣款規則說明必須位於支出明細頁最上方');
 assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側選單必須有獨立營運支出入口');
 assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
 assert.match(formalPortalSource,/href="#expenses" data-view="expenses"/,'正式入口的左側選單也必須有營運支出');
-assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v3/,'正式入口必須先載入支出分攤程式');
-assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-expense-master-v27/,'正式入口必須使用新版主程式快取號');
+assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v4/,'正式入口必須先載入支出分攤程式');
+assert.match(formalPortalSource,/operations-phase1\.js\?v=20260801-expense-table-v28/,'正式入口必須使用新版主程式快取號');
 assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
 assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
 assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
 assert.match(operationsSource,/支出主表/,'營運支出頁必須用單一月份主表管理');
 assert.match(operationsSource,/data-action="expense-plan-edit"/,'每月延續項目必須可從主表直接修改');
-assert.match(operationsSource,/data-action="expense-record-edit"/,'帳單與單次支出必須可從主表直接修改');
+assert.match(operationsSource,/id="operatingExpenseMonthForm"/,'主表必須能一次儲存多個本月金額');
+assert.match(operationsSource,/data-expense-plan-amount/,'主表金額必須可以直接輸入');
+assert.match(operationsSource,/engine\.EXPENSE_CATEGORIES\.forEach/,'主表必須列出所有預設支出類別，未設定者顯示 0');
+assert.match(operationsSource,/data-action="expense-custom-new"/,'主表底部必須能增加尚未存在的自訂項目');
 assert.doesNotMatch(operationsSource,/data-action="operating-expense-settings">固定費用設定/,'支出頁不得再顯示獨立固定費用設定入口');
 assert.match(operationsSource,/一次性支出依實際發生日保留/,'星期一仍必須保留一次性實際支出');
+
+const expensePageSource=operationsSource.slice(operationsSource.indexOf('function renderOperatingExpensesPage'),operationsSource.indexOf('function openOperatingExpenseDetail'));
+assert.doesNotMatch(expensePageSource,/data-action="expense-new"/,'月份工具列與主表表頭不得再放增加按鈕');
+const planEditorSource=operationsSource.slice(operationsSource.indexOf('function openOperatingExpensePlan'),operationsSource.indexOf('function expenseCategoryOptions'));
+assert.doesNotMatch(planEditorSource,/name="paymentMethod"|name="occurredAt"/,'新版支出修改與新增表單不得要求付款方式或發生日');
+
+assert.match(operationsSource,/data-nav="sales">前往銷售/,'門市營運必須導向現場銷售');
+assert.match(operationsSource,/data-nav="sync">前往訂單/,'網路營運必須導向平台訂單');
+assert.match(operationsSource,/data-nav="rentals">前往租賃/,'租賃營運必須導向租賃頁');
+assert.match(operationsSource,/data-nav="course-calendar">前往課務/,'補習班營運必須導向主要課程日表');
+assert.doesNotMatch(operationsSource,/summaryBox\('固定支出規則','星期一不分攤'/,'總覽不得再顯示固定支出規則方塊');
+assert.ok(operationsSource.indexOf('<b>門市應收帳款</b>')<operationsSource.indexOf('<b>平台同步異常</b>'),'需要注意區的門市應收帳款必須排第一');
+assert.ok(formalPortalSource.indexOf('href="#expenses" data-view="expenses"')>formalPortalSource.indexOf('href="#rentals" data-view="rentals"'),'營運支出必須放在左側選單最下面');
+assert.doesNotMatch(formalPortalSource,/<b>營運支出<\/b><small>/,'營運支出選單不得再顯示小字');
 
 const startupDocument={readyState:'loading',addEventListener:function(){}};
 const startupWindow={document:startupDocument};

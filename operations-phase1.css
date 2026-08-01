@@ -965,7 +965,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-v8-hero-primary>strong{display:block;margin:8px 0 6px;font-size:36px;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.035em}
 .ops-v8-hero-primary>strong.negative{color:#ffd0cc}
 .ops-v8-hero-primary>small{color:#bfd0d9}
-.ops-v8-hero-secondary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-content:center}
+.ops-v8-hero-secondary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-content:center}
 .ops-v8-summary-box{min-width:0;padding:13px;border:1px solid var(--ops-line);border-radius:13px;background:#f7fafb}
 .ops-v8-summary-box span{display:block;color:var(--ops-muted);font-size:11px;font-weight:700}
 .ops-v8-summary-box b{display:block;margin-top:5px;font-size:19px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
@@ -985,6 +985,8 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-v8-channel-head,.ops-v8-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:13px}
 .ops-v8-channel-head h2,.ops-v8-section-head h2{margin:0;font-size:18px}
 .ops-v8-channel-head p,.ops-v8-section-head p{margin:3px 0 0;color:var(--ops-muted);font-size:11px;line-height:1.45}
+.ops-v8-channel-link{background:#fff!important;color:#111!important;border:1px solid var(--ops-line)!important;box-shadow:none!important}
+.ops-v8-channel-link:hover{background:#f7f9fa!important;border-color:#9eabb3!important}
 .ops-v8-channel-summary{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
 .ops-v8-metric-list{display:grid}
 .ops-v8-metric-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:39px;padding:8px 0;border:0;border-bottom:1px solid #edf2f4;background:transparent;color:inherit;text-align:left}
@@ -1362,11 +1364,15 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-expense-master-table th:nth-child(4){width:24%}
 .ops-expense-master-row{transition:background .15s ease}
 .ops-expense-master-row:hover{background:#f5faf7}
+.ops-expense-amount-input{width:132px!important;max-width:100%;margin-left:auto;text-align:right;font-size:15px!important;font-weight:900;font-variant-numeric:tabular-nums}
 .ops-expense-item-main b{display:block;font-size:14px}
 .ops-expense-item-main small,.ops-expense-cell-note{display:block;margin-top:4px;color:var(--ops-muted);font-size:10px;line-height:1.4}
 .ops-expense-carry-badge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#e7f5ed;color:#24704f;font-size:11px;font-weight:900}
 .ops-expense-carry-badge.manual{background:#eef2f7;color:#536774}
 .ops-expense-no-double-count{margin-top:12px}
+.ops-expense-table-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-top:14px;border-top:1px solid var(--ops-line)}
+.ops-expense-table-footer>small{color:var(--ops-muted);font-weight:750}
+.ops-expense-table-footer>div{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .ops-expense-large-input{font-size:22px!important;font-weight:900;font-variant-numeric:tabular-nums}
 .ops-expense-edit-rule{display:grid;grid-template-columns:100px minmax(0,1fr);gap:10px;margin:14px 0;padding:13px 14px;border:1px solid var(--ops-line);border-radius:12px;background:#f8fafb;font-size:12px;line-height:1.6}
 .ops-expense-edit-rule span{color:var(--ops-muted)}
@@ -1389,6 +1395,9 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-expense-page-grid{grid-template-columns:1fr}
   .ops-expense-master-card>.ops-card-head{align-items:stretch;flex-direction:column}
   .ops-expense-master-card>.ops-card-head .ops-button{width:100%}
+  .ops-expense-table-footer{align-items:stretch;flex-direction:column}
+  .ops-expense-table-footer>div{display:grid;grid-template-columns:1fr}
+  .ops-expense-table-footer .ops-button{width:100%}
   .ops-expense-edit-rule{grid-template-columns:1fr;gap:3px}
 }
 @media(max-width:1180px){.ops-series-grid-tabs{grid-template-columns:repeat(8,minmax(0,1fr))!important}}
