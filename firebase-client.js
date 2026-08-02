@@ -478,9 +478,15 @@
     const password=String(payload.password||'');
     if(!account || !password) return {ok:false,message:'請輸入帳號與密碼。'};
     const result=await secureCall('employeeSecureLogin',{email:account,password});
-    if(result&&result.ok&&result.token){
+    if(result&&result.ok){
       if(!global.firebase || typeof global.firebase.auth!=='function') throw new Error('安全登入元件尚未載入，請重新整理後再試。');
-      await global.firebase.auth().signInWithCustomToken(result.token);
+      if(result.token){
+        await global.firebase.auth().signInWithCustomToken(result.token);
+      }else if(result.authMode==='email-password'){
+        await global.firebase.auth().signInWithEmailAndPassword(result.authEmail||account,password);
+      }else{
+        throw new Error('登入驗證方式不完整，請重新整理後再試。');
+      }
       localStorage.setItem('employeeSecureAuthVersion','1');
       delete result.token;
     }

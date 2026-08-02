@@ -174,6 +174,48 @@ function authUid(account) {
   return `employee-${sha256(`${account.collection}|${account.id}`).slice(0, 40)}`;
 }
 
+async function ensureFirebaseAuthUser(account, email, password, user, manager) {
+  const auth = admin.auth();
+  let authUser;
+  try {
+    authUser = await auth.getUserByEmail(email);
+    const update = { password: String(password) };
+    if (clean(user && user.name)) update.displayName = clean(user.name);
+    authUser = await auth.updateUser(authUser.uid, update);
+  } catch (error) {
+    if (!error || error.code !== 'auth/user-not-found') throw error;
+    const create = {
+      uid: authUid(account),
+      email,
+      password: String(password),
+      emailVerified: false
+    };
+    if (clean(user && user.name)) create.displayName = clean(user.name);
+    authUser = await auth.createUser(create);
+  }
+  const claims = Object.assign({}, authUser.customClaims || {}, {
+    employee: true,
+    manager,
+    role: manager ? 'admin' : user.role,
+    employeeId: user.employeeId,
+    identityType: user.identityType,
+    sourceCollection: account.collection
+  });
+  await auth.setCustomUserClaims(authUser.uid, claims);
+  return authUser.uid;
+}
+
+async function updateFirebaseAuthPassword(email, password) {
+  try {
+    const auth = admin.auth();
+    const authUser = await auth.getUserByEmail(email);
+    await auth.updateUser(authUser.uid, { password: String(password) });
+  } catch (error) {
+    if (error && error.code === 'auth/user-not-found') return;
+    throw error;
+  }
+}
+
 function validateNewPassword(value) {
   const password = String(value || '');
   return password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password);
@@ -250,15 +292,15 @@ function registerEmployeeAuth(exportsObject, helpers = {}) {
     const user = normalizeUser(account);
     const manager = isManager(account.data, account.collection);
     await account.ref.set({ lastLoginAt: admin.firestore.FieldValue.serverTimestamp(), lastLoginSource: 'employeeSecureLogin' }, { merge: true });
-    const token = await admin.auth().createCustomToken(authUid(account), {
-      employee: true,
-      manager,
-      role: manager ? 'admin' : user.role,
-      employeeId: user.employeeId,
-      identityType: user.identityType,
-      sourceCollection: account.collection
-    });
-    return { ok: true, message: manager ? '管理者登入成功' : '登入成功', user, token, passwordMigrated: result.migrate };
+    await ensureFirebaseAuthUser(account, email, password, user, manager);
+    return {
+      ok: true,
+      message: manager ? '管理者登入成功' : '登入成功',
+      user,
+      authMode: 'email-password',
+      authEmail: email,
+      passwordMigrated: result.migrate
+    };
   });
 
   exportsObject.employeeChangePassword = onCall({ region: REGION, timeoutSeconds: 30, memory: '256MiB' }, async (request) => {
@@ -275,6 +317,7 @@ function registerEmployeeAuth(exportsObject, helpers = {}) {
       passwordResetRequestId: admin.firestore.FieldValue.delete(),
       passwordResetCompletedAt: admin.firestore.FieldValue.serverTimestamp()
     }), { merge: true });
+    await updateFirebaseAuthPassword(email, newPassword);
     return { ok: true, message: '密碼已更新，請使用新密碼登入。' };
   });
 
