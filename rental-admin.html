@@ -114,7 +114,7 @@
     <div class="layout"><section class="card2"><h2 style="margin-top:0">租賃申請管理 / 契約列表</h2><div class="rental-search-box"><div class="rental-search-row"><input id="rentalSearchInput" class="rental-search-input" type="search" autocomplete="off" inputmode="search" placeholder="搜尋案件" aria-label="搜尋租賃案件" oninput="rentalSearchChanged(this)"><button id="rentalSearchClear" class="rental-search-clear" type="button" onclick="clearRentalSearch()" disabled>清除</button></div></div><div class="tabs"><button class="tab" data-filter="all">全部案件</button><button class="tab" data-filter="new">待確認申請</button><button class="tab" data-filter="sign">待客人補資料</button><button class="tab" data-filter="payment">待付款確認</button><button class="tab" data-filter="active">租用中</button><button class="tab" data-filter="renewal">續約待處理</button><button class="tab" data-filter="return">退租待處理</button><button class="tab" data-filter="returned">已退租</button><button class="tab" data-filter="cancelled">已取消／封存</button></div><div id="list" class="list" style="margin-top:12px">請先選擇上方分類，或直接使用搜尋。</div></section><main><section class="card2" id="detailBox"><h2 style="margin-top:0">請先選擇案件</h2></section><section class="card2 print-area"><div id="contractPreview"></div></section></main></div>
   </div>
   <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260802-security-phase1"></script><script src="app.js?v=20260802-security-phase1"></script><script src="rental-common.js?v=20260706-equipment-twocol-aligned"></script><script src="global-nav.js?v=20260603unified1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260802-security-phase1"></script><script src="app.js?v=20260802-security-phase1"></script><script src="rental-common.js?v=20260802-rental-days-sync1"></script><script src="global-nav.js?v=20260603unified1"></script>
   <script>
     const R=window.YZRental; let applications=[],contracts=[],selected=null,filter='',searchKeyword='',lineRuntime={loaded:false};
     function setupContractPreviewScaler(){
@@ -665,6 +665,14 @@
       opts=opts||{};
       try{
         const rawPayload=collect();
+        const actualRentDays=R.inclusiveDays(rawPayload.startDate,rawPayload.endDate);
+        if(rawPayload.startDate && rawPayload.endDate && !actualRentDays){
+          R.toast('租賃到期日不可早於起租日。', false);
+          return null;
+        }
+        if(R.clean(rawPayload.rentalType)!=='other' && actualRentDays){
+          rawPayload.rentDays=actualRentDays;
+        }
         rawPayload.makeSignLink=!!makeLink;
         if(makeLink && !rawPayload.startDate){ R.toast('請先填預估交付日期，才能產生資料填寫連結。', false); return null; }
         const payload=sanitizeRentalContractForFirestore(rawPayload,{deleteInline:false});
@@ -822,7 +830,9 @@ ${url}
     window.markDelivered=async function(){
       const id=R.val('contractId');
       if(!id) return R.toast('請先儲存合約。', false);
+      const chosenEndDate=R.clean(R.val('endDate'));
       syncRentalDatesFromDelivery('deliveryDate');
+      if(chosenEndDate) R.setVal('endDate', chosenEndDate);
       const payload=collect();
       if(!validateInternalRentalCountFor('確認租用成立')) return;
       const missing=[];
@@ -832,6 +842,7 @@ ${url}
       if(!hasSignatureAsset(payload)) missing.push('甲方簽名');
       if(!payload.customerIdNumber) missing.push('甲方身分證字號 / 統編');
       if(!hasIdImageAsset(payload)) missing.push('甲方身分證證明圖片');
+      if(payload.startDate && payload.endDate && !R.inclusiveDays(payload.startDate,payload.endDate)) missing.push('租賃到期日不可早於起租日');
       if(missing.length){
         alert('確認租用成立前，請先完成以下資料：\n\n' + missing.map((x,i)=>(i+1)+'. '+x).join('\n'));
         return;
@@ -848,7 +859,8 @@ ${url}
           payload.rentDays='';
           payload.rentalPeriodText='依雙方確認之租用期間為準';
         }else{
-          payload.endDate=R.calcEndDate(payload.startDate,payload.periods,payload.rentalType,Number(payload.periods||1)*90);
+          payload.endDate=R.clean(payload.endDate)||R.calcEndDate(payload.startDate,payload.periods,payload.rentalType,Number(payload.periods||1)*90);
+          payload.rentDays=R.inclusiveDays(payload.startDate,payload.endDate)||Number(payload.periods||1)*90;
         }
         payload.deliveryDateTime=payload.deliveryDate;
         payload.deliveryTime='';

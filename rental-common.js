@@ -67,6 +67,15 @@
   }
   function defaultTitle(type){ if(type==='digitalPiano') return '電鋼琴設備租賃契約書'; if(type==='electronicDrum') return '電子鼓器材設備租賃契約書'; return '設備租賃契約書'; }
   function calcEndDate(startDate, periods, type, days){ if(clean(type)==='other') return ''; return addDays(startDate, Math.max(1, Number(days || (Math.max(1, Number(periods||1))*90)))-1); }
+  function inclusiveDays(startDate, endDate){
+    const startMatch=clean(startDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const endMatch=clean(endDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!startMatch || !endMatch) return 0;
+    const startUtc=Date.UTC(Number(startMatch[1]),Number(startMatch[2])-1,Number(startMatch[3]));
+    const endUtc=Date.UTC(Number(endMatch[1]),Number(endMatch[2])-1,Number(endMatch[3]));
+    if(!Number.isFinite(startUtc) || !Number.isFinite(endUtc) || endUtc<startUtc) return 0;
+    return Math.floor((endUtc-startUtc)/86400000)+1;
+  }
   function signUrl(contract){
     const id=clean(contract.contractId||contract.__id); const token=clean(contract.signToken||contract.token);
     const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
@@ -176,24 +185,24 @@
       const periodEntries=Array.isArray(contract.periodEntries)?contract.periodEntries:[];
       const renewalEntries=Array.isArray(contract.renewalEntries)?contract.renewalEntries:[];
       if(isOtherRental){
-        const dateDays = (start && end) ? String(Math.max(1, Math.round((new Date(end+'T00:00:00')-new Date(start+'T00:00:00'))/86400000)+1))+' 天' : '';
+        const dateDays = inclusiveDays(start,end);
         const explicitDaysText = explicitRentDays ? explicitRentDays+' 天' : '';
-        rows.push({ method:clean(contract.rentalMethod||'其他設備租用'), start:start, end:end, days:explicitDaysText || dateDays, note:(start||end)?'依雙方確認期間':'依雙方確認之租用期間為準' });
+        rows.push({ method:clean(contract.rentalMethod||'其他設備租用'), start:start, end:end, days:dateDays ? dateDays+' 天' : explicitDaysText, note:(start||end)?'依雙方確認期間':'依雙方確認之租用期間為準' });
       }else if(start){
-        const totalDays=Number(contract.rentDays || contract.totalDays || (periods*periodDays));
+        const totalDays=inclusiveDays(start,end) || Number(contract.rentDays || contract.totalDays || (periods*periodDays));
         rows.push({ method:clean(contract.rentalMethod||'實體租用'), start:start, end:end, days:(totalDays ? totalDays+' 天' : ''), note:periods>1 ? `初次租用 ${periods} 期（${totalDays} 天）` : '初次租用' });
       }
       if(periodEntries.length){
         periodEntries.forEach(p=>{
           const ps=clean(p.startDate); const pe=clean(p.endDate);
           if(ps===start && pe===end) return;
-          const pd=clean(p.days || p.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
+          const pd=clean(p.days || p.rentDays || (inclusiveDays(ps,pe) ? inclusiveDays(ps,pe)+' 天' : ''));
           rows.push({method:clean(p.method||p.rentalMethod||'線上續租'), start:ps, end:pe, days:pd, note:clean(p.note||p.remark)});
         });
       }
       renewalEntries.forEach((p,i)=>{
         const ps=clean(p.startDate); const pe=clean(p.endDate);
-        const pd=clean(p.days || p.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
+        const pd=clean(p.days || p.rentDays || (inclusiveDays(ps,pe) ? inclusiveDays(ps,pe)+' 天' : ''));
         const fee=p.rentFee?`續約租金 ${fmtMoney(p.rentFee)}`:'';
         const memo=clean(p.note||p.remark);
         rows.push({method:clean(p.method||`第 ${p.renewalNo||i+1} 次續約`), start:ps, end:pe, days:pd, note:[fee,memo].filter(Boolean).join('；')});
@@ -201,7 +210,7 @@
       const pending=contract.pendingRenewal||{};
       if(pending && pending.startDate && pending.endDate){
         const ps=clean(pending.startDate); const pe=clean(pending.endDate);
-        const pd=clean(pending.days || pending.rentDays || (ps && pe ? String(Math.max(1, Math.round((new Date(pe+'T00:00:00')-new Date(ps+'T00:00:00'))/86400000)+1))+' 天' : ''));
+        const pd=clean(pending.days || pending.rentDays || (inclusiveDays(ps,pe) ? inclusiveDays(ps,pe)+' 天' : ''));
         const fee=pending.rentFee?`續約金額 ${fmtMoney(pending.rentFee)}`:'';
         const memo=clean(pending.adminNote||pending.note||pending.remark);
         rows.push({method:`續約申請待確認${pending.periods?`（${clean(pending.periods)} 期）`:''}`, start:ps, end:pe, days:pd, note:[fee,'待店家確認',memo].filter(Boolean).join('；')});
@@ -249,6 +258,6 @@
         <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 2 頁 / 共 2 頁</div>
       </div>`;
   }
-  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,signUrl,myContractUrl,officialContractUrl,renderContractHtml,deliveryLabelPair,functionUrl,notificationPreference,notificationPreferenceLabel,wantsLine,wantsEmail,emailVerified});
+  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,inclusiveDays,signUrl,myContractUrl,officialContractUrl,renderContractHtml,deliveryLabelPair,functionUrl,notificationPreference,notificationPreferenceLabel,wantsLine,wantsEmail,emailVerified});
   global.YZRental = Rental;
 })(window);
