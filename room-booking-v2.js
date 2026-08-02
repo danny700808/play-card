@@ -6,6 +6,8 @@
 
   let role = '';
   let studentDiscountEligible = false;
+  let studentOptions = [];
+  let selectedStudentId = '';
   let token = '';
   let selectedUse = '';
   let durationMinutes = 60;
@@ -284,6 +286,10 @@
       if (requestId !== boardRequestId) return;
       role = boardData.role || role;
       studentDiscountEligible = boardData.studentDiscountEligible === true;
+      studentOptions = Array.isArray(boardData.studentOptions) ? boardData.studentOptions : [];
+      if (!studentOptions.some((row) => clean(row.id) === selectedStudentId)) {
+        selectedStudentId = studentOptions.length === 1 ? clean(studentOptions[0].id) : '';
+      }
       renderWelcomeName(boardData.displayName);
       weekStart = boardData.startDate || weekStart;
       selectedUse = boardData.selectedUseType || selectedUse;
@@ -386,6 +392,25 @@
     return selectedUse === 'recording' && selected ? clean(selected.value) : '';
   }
 
+  function selectedStudent() {
+    return studentOptions.find((row) => clean(row.id) === selectedStudentId) || null;
+  }
+
+  function renderBookingStudentChoice() {
+    const field = document.getElementById('bookingStudentField');
+    const select = document.getElementById('bookingStudent');
+    const studentRole = role === 'student' && studentOptions.length > 0;
+    field.classList.toggle('hidden', !studentRole);
+    if (!studentRole) {
+      select.innerHTML = '';
+      return;
+    }
+    select.innerHTML = `${studentOptions.length > 1 ? '<option value="">請選擇學生</option>' : ''}${studentOptions.map((row) => `
+      <option value="${P.escapeHtml(row.id)}" ${clean(row.id) === selectedStudentId ? 'selected' : ''}>${P.escapeHtml(row.name || '學生')}</option>
+    `).join('')}`;
+    select.disabled = studentOptions.length === 1;
+  }
+
   function estimatePrice() {
     if (!selectedRoom) return 0;
     const recordingUsage = selectedRecordingUsage();
@@ -402,6 +427,11 @@
   function updateConfirm() {
     if (!selectedRoom) return;
     const use = (boardData && boardData.useOptions || []).find((row) => row.id === selectedUse) || {};
+    const student = selectedStudent();
+    document.getElementById('confirmRenter').textContent =
+      clean(student && student.name) ||
+      (role === 'student' && studentOptions.length > 1 ? '請選擇學生' : clean(boardData && boardData.displayName)) ||
+      '租用人';
     document.getElementById('confirmUse').textContent = use.name || selectedUse;
     document.getElementById('confirmDate').textContent = selectedDate;
     document.getElementById('confirmTime').textContent = `${selectedStart}～${roomData && roomData.endTime || ''}`;
@@ -421,6 +451,7 @@
       node.checked = false;
     });
     document.getElementById('recordingUsageChoice').classList.toggle('hidden', selectedUse !== 'recording');
+    renderBookingStudentChoice();
     renderRateChoice();
     document.getElementById('bookingNote').value = '';
     updateConfirm();
@@ -437,7 +468,7 @@
     node.innerHTML = myBookings.length ? myBookings.map((row) => `
       <article class="list-row rental-history-row">
         <strong>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong>
-        <span>${P.escapeHtml(row.roomName || '教室')}${row.useName ? `・${P.escapeHtml(row.useName)}` : ''}${row.recordingUsageName ? `（${P.escapeHtml(row.recordingUsageName)}）` : ''}</span>
+        <span>${row.clientName ? `${P.escapeHtml(row.clientName)}・` : ''}${P.escapeHtml(row.roomName || '教室')}${row.useName ? `・${P.escapeHtml(row.useName)}` : ''}${row.recordingUsageName ? `（${P.escapeHtml(row.recordingUsageName)}）` : ''}</span>
         <strong>${P.money(row.amount)}</strong>
         <span>${row.canCancel
           ? `<button class="btn danger" type="button" data-cancel="${P.escapeHtml(row.id)}">取消</button>`
@@ -539,6 +570,10 @@
   document.querySelectorAll('input[name="recordingUsage"]').forEach((node) => {
     node.addEventListener('change', updateConfirm);
   });
+  document.getElementById('bookingStudent').addEventListener('change', (event) => {
+    selectedStudentId = clean(event.target.value);
+    updateConfirm();
+  });
   document.getElementById('closeRentalConfirm').addEventListener('click', closeConfirm);
   confirmBackdrop.addEventListener('click', (event) => {
     if (event.target === confirmBackdrop) closeConfirm();
@@ -553,6 +588,11 @@
       if (firstChoice) firstChoice.focus();
       return;
     }
+    if (role === 'student' && studentOptions.length > 1 && !selectedStudentId) {
+      P.toast('請先選擇本次使用教室的學生。', 'error');
+      document.getElementById('bookingStudent').focus();
+      return;
+    }
     const button = event.currentTarget;
     P.loading(button, true, '預約中…');
     try {
@@ -564,6 +604,7 @@
         durationMinutes,
         useType: selectedUse,
         recordingUsage,
+        studentId: selectedStudentId,
         studentDiscountRequested: rateIsStudent(),
         purpose: clean(document.getElementById('bookingNote').value)
       }, preferencePayload()));

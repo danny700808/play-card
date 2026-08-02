@@ -301,6 +301,7 @@ assert(schedulerSource.includes('refreshPortalRentals'), '正式課表未自動�
 assert(schedulerSource.includes('slotCoverageClass(events,room.id,min)'), '有課區間未隱藏內部半小時格線');
 assert(schedulerSource.includes('collapseFinalSlotLayers'), '同一教室時段未套用最後成立資料');
 assert(schedulerSource.includes('修改租用金額／資料'), '租用明細缺少金額修改入口');
+assert(schedulerSource.includes('data-portal-rental-cancel'), '管理者租用明細缺少強制取消入口');
 assert(schedulerSource.includes("Object.prototype.hasOwnProperty.call(source,'rentalFee')"), '租用金額為 0 時會被錯誤清空');
 assert(schedulerUiHtml.includes('id="teacherAdjustmentModal"'), '管理者缺少老師獎勵／扣薪登錄視窗');
 assert(schedulerUiHtml.includes('可選擇過去日期補登歷史資料'), '老師獎勵／扣薪不可補登過去資料');
@@ -308,6 +309,7 @@ assert(schedulerSource.includes('data-teacher-adjustment'), '老師清單缺少�
 assert(schedulerSource.includes('function submitTeacherAdjustment'), '老師獎勵／扣薪表單沒有儲存流程');
 assert(schedulerSource.includes('選擇上方月份即可查看過去資料'), '老師薪資明細沒有歷史獎勵／扣薪說明');
 assert(schedulerDataSource.includes("call('coursePortalAdminSaveTeacherAdjustment'"), '老師薪資異動沒有連接後端');
+assert(schedulerDataSource.includes("call('coursePortalAdminCancelRoomBooking'"), '管理者強制取消租用沒有連接後端');
 assert(schedulerCss.includes('.slot.event-from-prev{border-top-color:transparent}'), '跨半小時課程仍會顯示內部上格線');
 assert(schedulerCss.includes('.slot.event-to-next{border-bottom-color:transparent}'), '跨半小時課程仍會顯示內部下格線');
 assert(!schedulerCss.includes('.event.leave,.event.absent,.event.cancelled{opacity:.38'), '請假／曠課卡片不可再以透明浮水印顯示');
@@ -381,13 +383,20 @@ const normalizedGuzhengState = schedulerSandbox.window.YouziCoursePreviewData.bu
     endTime: '19:00',
     roomId: 'room-kawai',
     useType: 'guzheng',
-    useName: '古箏'
+    useName: '古箏',
+    clientName: '林同學',
+    clientPhone: '0912345678',
+    role: 'student',
+    paymentStatus: 'onsite_unpaid'
   }]
 }, '2026-07-30');
 const normalizedGuzhengCourse = normalizedGuzhengState.events.find((row) => row.sourceCourseId === 'guzheng-course');
 const normalizedGuzhengRental = normalizedGuzhengState.events.find((row) => row.portalBookingId === 'guzheng-rental');
 assert(normalizedGuzhengCourse.resourceIds.includes('equipment:guzheng'), '古箏課程未標記共用古箏資源');
 assert.strictEqual(normalizedGuzhengRental.useType, 'guzheng', '桌面租用資料遺失古箏用途');
+assert.strictEqual(normalizedGuzhengRental.clientName, '林同學', '桌面租用資料遺失租用人姓名');
+assert.strictEqual(normalizedGuzhengRental.clientPhone, '0912345678', '桌面租用資料遺失聯絡電話');
+assert.strictEqual(normalizedGuzhengRental.rentalPaymentStatus, 'onsite_unpaid', '桌面租用資料遺失付款狀態');
 assert(normalizedGuzhengRental.resourceIds.includes('equipment:guzheng'), '古箏租用未標記共用古箏資源');
 assert(schedulerSource.includes('eventSharedResourceIds(other)'), '桌面課表未檢查不同教室的古箏共用資源衝突');
 
@@ -1928,7 +1937,9 @@ assert(backend.includes('hourlyRate: 300'), '錄音用途未設定每小時 NT$3
 assert(backend.includes("if (/錄音室|錄音/.test(clean(room && room.name))) return 100;"), '錄音室其他用途未固定為每小時 NT$100');
 assert(backend.includes('recordingRentalSelection(data, true)'), '建立錄音室預約前未強制驗證使用方式');
 assert(backend.includes('recordingUsage: clean(recordingSelection && recordingSelection.id)'), '成立預約未保存錄音室使用方式');
-assert(backend.includes('displayName: await displayNamePromise'), '租用週表未回傳已驗證的登入姓名');
+assert(backend.includes('displayName: identity.displayName'), '租用週表未回傳已驗證的登入姓名');
+assert(backend.includes('clientName: identity.clientName'), '租用成立時沒有保存已驗證姓名');
+assert(backend.includes('async function adminCancelRoomBooking'), '後端缺少管理者強制取消租用流程');
 assert(backend.includes("const teachers = await mirrorRows('teachers')"), '老師租用頁歡迎姓名缺少 mirror fallback');
 assert(backend.includes("const students = await mirrorRows('students')"), '學生租用頁歡迎姓名缺少 mirror fallback');
 assert(schedulerSource.includes("['guzheng','古箏']"), '教室設定缺少古箏用途');

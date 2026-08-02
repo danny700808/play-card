@@ -241,10 +241,20 @@
       useName:clean(row.useName),
       resourceIds:sharedResourceIdsFor(row),
       tuitionPeriodId:'',
-      clientName:clean(row.clientName||row.renterName||row.ownerName||row.useName)||'教室租用',
+      clientName:clean(row.clientName||row.renterName||row.ownerName)||'租用人未提供',
+      clientPhone:clean(row.clientPhone||row.renterPhone||row.phone),
+      rentalRole:clean(row.role||row.rentalRole),
+      rentalStudentId:clean(row.rentalStudentId),
       rentalFee:numberOf(row.amount||row.rentalFee),
+      rentalPaymentStatus:clean(row.paymentStatus||row.rentalPaymentStatus),
+      priceType:clean(row.priceType),
       status:clean(row.status)||'scheduled',
       note:clean(row.note||row.purpose),
+      active:row.active!==false,
+      canAdminCancel:row.active!==false&&!cancelledCourseStatus(row.status),
+      createdAtText:clean(row.createdAtText),
+      cancelledAtText:clean(row.cancelledAtText),
+      cancellationReason:clean(row.cancellationReason),
       readOnly:true,
       source:clean(row.source)||'injiaoyun-migration'
     };
@@ -383,6 +393,20 @@
     };
   }
 
+  async function cancelPortalRental(options){
+    options=options||{};
+    var pin=clean(options.manualSyncPin),bookingId=clean(options.bookingId);
+    if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
+    if(!bookingId)throw new Error('缺少租用紀錄。');
+    var result=await call('coursePortalAdminCancelRoomBooking',{
+      adminPin:pin,
+      bookingId:bookingId,
+      reason:clean(options.reason)
+    });
+    if(!result.ok)throw new Error('租用取消尚未完成。');
+    return result;
+  }
+
   async function ensureTuitionReceipt(options){
     options=options||{};
     var pin=clean(options.manualSyncPin),periodId=clean(options.periodId);
@@ -401,5 +425,5 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
+  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);

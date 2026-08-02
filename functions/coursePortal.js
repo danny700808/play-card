@@ -2416,6 +2416,83 @@ async function rentalSessionDisplayName(session) {
   }
 }
 
+async function rentalStudentOptions(session) {
+  if (clean(session && session.role) !== 'student') return [];
+  const bindings = await activeStudentBindingsForSession(session);
+  const studentIds = [...new Set([
+    ...(Array.isArray(session && session.studentIds) ? session.studentIds : []),
+    ...bindings.map((row) => row.studentId)
+  ].map(clean).filter(Boolean))];
+  if (!studentIds.length) return [];
+  const students = await mirrorRows('students');
+  const studentMap = indexById(students);
+  return studentIds.map((studentId) => {
+    const binding = bindings.find((row) => clean(row.studentId) === studentId) || {};
+    const student = studentMap[studentId] || {};
+    return {
+      id: studentId,
+      name: safeRentalDisplayName(
+        binding.name || binding.displayName || student.name || student.displayName || student.studentName
+      ) || '學生',
+      phone: normalizePhone(sourcePhone(student) || binding.phone)
+    };
+  }).sort((left, right) => clean(left.name).localeCompare(clean(right.name), 'zh-Hant'));
+}
+
+async function rentalSessionIdentity(session, requestedStudentId) {
+  const role = clean(session && session.role);
+  const displayNamePromise = rentalSessionDisplayName(session);
+  const studentOptions = await rentalStudentOptions(session);
+  const requestedId = clean(requestedStudentId);
+  if (role === 'student' && requestedId && !studentOptions.some((row) => row.id === requestedId)) {
+    throw new HttpsError('permission-denied', '沒有這位學生的教室租用權限。');
+  }
+  if (role === 'student' && studentOptions.length > 1 && !requestedId) {
+    return {
+      role,
+      displayName: await displayNamePromise,
+      clientName: '',
+      clientPhone: '',
+      studentId: '',
+      studentOptions,
+      requiresStudentSelection: true
+    };
+  }
+  if (role === 'student') {
+    const selected = studentOptions.find((row) => row.id === requestedId) || studentOptions[0] || {};
+    return {
+      role,
+      displayName: await displayNamePromise,
+      clientName: safeRentalDisplayName(selected.name) || await displayNamePromise,
+      clientPhone: normalizePhone(selected.phone),
+      studentId: clean(selected.id),
+      studentOptions,
+      requiresStudentSelection: false
+    };
+  }
+
+  let clientPhone = '';
+  if (role === 'renter' && clean(session && session.renterId)) {
+    const renterSnapshot = await db.collection('coursePortalRenters').doc(clean(session.renterId)).get();
+    const renter = renterSnapshot.exists ? renterSnapshot.data() || {} : {};
+    clientPhone = normalizePhone(sourcePhone(renter));
+  } else if (role === 'teacher' && clean(session && session.teacherId)) {
+    const teachers = await mirrorRows('teachers');
+    const teacher = teachers.find((row) => sourceId(row) === clean(session.teacherId)) || {};
+    clientPhone = normalizePhone(sourcePhone(teacher));
+  }
+  const displayName = await displayNamePromise;
+  return {
+    role,
+    displayName,
+    clientName: displayName,
+    clientPhone,
+    studentId: '',
+    studentOptions: [],
+    requiresStudentSelection: false
+  };
+}
+
 function eventDate(row) {
   return dateKey(row.date || row.courseDate || row.startDate || row.lessonDate);
 }
@@ -5680,7 +5757,7 @@ async function rentalDayBoard(data) {
 
 async function rentalWeekBoard(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const displayNamePromise = rentalSessionDisplayName(session);
+  const identityPromise = rentalSessionIdentity(session);
   const studentDiscountEligiblePromise = session.role === 'student'
     ? activeStudentIdsForSession(session).then((ids) => ids.length > 0)
     : Promise.resolve(false);
@@ -5757,13 +5834,16 @@ async function rentalWeekBoard(data) {
       slots
     });
   }
+  const identity = await identityPromise;
   return {
     ok: true,
     startDate,
     endDate,
     role: session.role,
     studentDiscountEligible: await studentDiscountEligiblePromise,
-    displayName: await displayNamePromise,
+    displayName: identity.displayName,
+    studentOptions: identity.studentOptions,
+    requiresStudentSelection: identity.requiresStudentSelection,
     durationMinutes: duration,
     selectedUseType,
     useOptions,
@@ -5774,6 +5854,7 @@ async function rentalWeekBoard(data) {
 
 async function createRoomBooking(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
+  const identityPromise = rentalSessionIdentity(session, data.studentId);
   const recordingSelection = recordingRentalSelection(data, true);
   const expectedVersion = await readScheduleVersion();
   const availability = await rentalAvailability(data);
@@ -5783,6 +5864,13 @@ async function createRoomBooking(data) {
   const room = availability.rooms.find((item) => item.id === clean(data.roomId));
   if (!room || !room.available) throw new HttpsError('failed-precondition', room && room.reason || '這間教室目前不能預約。');
   const id = db.collection('coursePortalRoomBookings').doc().id;
+  const identity = await identityPromise;
+  if (!identity.clientName) {
+    throw new HttpsError(
+      'invalid-argument',
+      session.role === 'student' ? '請選擇本次使用教室的學生。' : '登入資料缺少租用人姓名，請重新登入。'
+    );
+  }
   // 學生身分只用來判斷折扣；租用本身不等於任何一位綁定學生正在上課。
   // 否則家長綁了多位子女時，一筆租用會錯誤阻擋所有子女的課程。
   const studentIds = [];
@@ -5817,6 +5905,9 @@ async function createRoomBooking(data) {
     teacherId: clean(session.teacherId),
     renterId: clean(session.renterId),
     studentIds,
+    rentalStudentId: identity.studentId,
+    clientName: identity.clientName,
+    clientPhone: identity.clientPhone,
     studentDiscountRequested: room.priceType === '柚子學生半價',
     ownerKey,
     lineUserId: clean(session.lineUserId),
@@ -5954,6 +6045,9 @@ async function rentalMyBookings(data) {
       roomId: clean(row.roomId),
       roomName: clean(row.roomName),
       purpose: clean(row.purpose),
+      clientName: safeRentalDisplayName(row.clientName),
+      clientPhone: normalizePhone(row.clientPhone),
+      rentalStudentId: clean(row.rentalStudentId),
       useType: clean(row.useType),
       useName: clean(row.useName),
       recordingUsage: clean(row.recordingUsage),
@@ -7580,10 +7674,75 @@ function assertAdminPin(request) {
   if (!expected || !safeEqual(value, expected)) throw new HttpsError('permission-denied', '管理密碼錯誤。');
 }
 
+async function adminRentalIdentityResolver() {
+  const [teachers, students, renters, teacherBindings, studentBindings, renterBindings] = await Promise.all([
+    mirrorRows('teachers'),
+    mirrorRows('students'),
+    db.collection('coursePortalRenters').get(),
+    db.collection('coursePortalTeacherBindings').get(),
+    db.collection('coursePortalStudentBindings').get(),
+    db.collection('coursePortalRenterBindings').get()
+  ]);
+  const teacherMap = indexById(teachers);
+  const studentMap = indexById(students);
+  const renterMap = {};
+  renters.docs.forEach((doc) => { renterMap[doc.id] = doc.data() || {}; });
+  const identities = new Map();
+  const add = (key, identity) => {
+    if (!key || identities.has(key) || (!identity.name && !identity.phone)) return;
+    identities.set(key, identity);
+  };
+  const addBinding = (role, doc) => {
+    const row = doc.data() || {};
+    if (clean(row.status) !== 'active') return;
+    const targetId = role === 'teacher'
+      ? clean(row.teacherId)
+      : (role === 'student' ? clean(row.studentId) : clean(row.renterId));
+    const profile = role === 'teacher'
+      ? teacherMap[targetId] || {}
+      : (role === 'student' ? studentMap[targetId] || {} : renterMap[targetId] || {});
+    const identity = {
+      name: safeRentalDisplayName(row.name || row.displayName || profile.name || profile.displayName || row.lineDisplayName),
+      phone: normalizePhone(sourcePhone(profile) || row.phone),
+      studentId: role === 'student' ? targetId : ''
+    };
+    add(`${role}:target:${targetId}`, identity);
+    add(`${role}:account:${clean(row.authAccountId)}`, identity);
+    add(`${role}:line:${clean(row.lineUserId)}`, identity);
+  };
+  teacherBindings.docs.forEach((doc) => addBinding('teacher', doc));
+  studentBindings.docs.forEach((doc) => addBinding('student', doc));
+  renterBindings.docs.forEach((doc) => addBinding('renter', doc));
+
+  return (row) => {
+    const role = clean(row.role);
+    const targetId = role === 'teacher'
+      ? clean(row.teacherId)
+      : (role === 'student' ? clean(row.rentalStudentId) : clean(row.renterId));
+    const ownerKey = clean(row.ownerKey);
+    const keys = [
+      targetId ? `${role}:target:${targetId}` : '',
+      ownerKey ? `${role}:${ownerKey}` : '',
+      clean(row.authAccountId) ? `${role}:account:${clean(row.authAccountId)}` : '',
+      clean(row.lineUserId) ? `${role}:line:${clean(row.lineUserId)}` : ''
+    ].filter(Boolean);
+    const fallback = keys.map((key) => identities.get(key)).find(Boolean) || {};
+    return {
+      name: safeRentalDisplayName(row.clientName || row.renterName || fallback.name),
+      phone: normalizePhone(row.clientPhone || fallback.phone),
+      studentId: clean(row.rentalStudentId || fallback.studentId)
+    };
+  };
+}
+
 async function adminRoomBookings() {
-  const snapshot = await db.collection('coursePortalRoomBookings').get();
+  const [snapshot, resolveIdentity] = await Promise.all([
+    db.collection('coursePortalRoomBookings').get(),
+    adminRentalIdentityResolver()
+  ]);
   const bookings = snapshot.docs.map((doc) => {
     const row = jsonValue(doc.data()) || {};
+    const identity = resolveIdentity(row);
     return {
       id: doc.id,
       date: dateKey(row.date),
@@ -7598,13 +7757,104 @@ async function adminRoomBookings() {
       recordingUsage: clean(row.recordingUsage),
       recordingUsageName: clean(row.recordingUsageName),
       purpose: clean(row.purpose),
+      clientName: identity.name,
+      clientPhone: identity.phone,
+      role: clean(row.role),
+      rentalStudentId: identity.studentId,
       amount: Number(row.amount || row.rentalFee || 0),
+      paymentStatus: clean(row.paymentStatus),
+      priceType: clean(row.priceType),
       status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),
       active: row.active !== false,
+      createdAtText: clean(row.createdAtText),
+      cancelledAtText: clean(row.cancelledAtText),
+      cancellationReason: clean(row.cancellationReason),
       source: 'course-portal'
     };
   }).filter((row) => row.date && row.startTime && row.roomId);
   return { ok: true, bookings, updatedAt: new Date().toISOString() };
+}
+
+async function adminCancelRoomBooking(data) {
+  const bookingId = clean(data.bookingId);
+  const reason = clean(data.reason).slice(0, 200);
+  if (!bookingId) throw new HttpsError('invalid-argument', '缺少租用紀錄。');
+  const bookingRef = db.collection('coursePortalRoomBookings').doc(bookingId);
+  const changeRef = db.collection('coursePortalScheduleChanges').doc(`rental-${bookingId}`);
+  const versionRef = scheduleVersionRef();
+  const lockSnapshot = await db.collection('coursePortalRoomLocks').where('bookingId', '==', bookingId).get();
+  let cancelledBooking = null;
+  await db.runTransaction(async (tx) => {
+    const [bookingSnapshot, versionSnapshot] = await Promise.all([
+      tx.get(bookingRef),
+      tx.get(versionRef)
+    ]);
+    assertScheduleWritable(versionSnapshot);
+    if (!bookingSnapshot.exists) throw new HttpsError('not-found', '找不到這筆租用紀錄。');
+    const booking = bookingSnapshot.data() || {};
+    if (booking.active === false || clean(booking.status) === 'cancelled') {
+      throw new HttpsError('failed-precondition', '這筆租用已經取消。');
+    }
+    cancelledBooking = booking;
+    const cancellation = {
+      active: false,
+      status: 'cancelled',
+      cancelledAt: FieldValue.serverTimestamp(),
+      cancelledAtText: nowText(),
+      cancelledBy: 'admin',
+      cancellationReason: reason || '管理者強制取消',
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    tx.set(bookingRef, cancellation, { merge: true });
+    tx.set(changeRef, cancellation, { merge: true });
+    const lockRefs = new Map();
+    (Array.isArray(booking.lockIds) ? booking.lockIds : []).map(clean).filter(Boolean).forEach((lockId) => {
+      const ref = db.collection('coursePortalRoomLocks').doc(lockId);
+      lockRefs.set(ref.path, ref);
+    });
+    lockSnapshot.docs.forEach((doc) => lockRefs.set(doc.ref.path, doc.ref));
+    lockRefs.forEach((ref) => tx.delete(ref));
+    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
+    tx.set(versionRef, {
+      version: currentVersion + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: 'admin-room-booking-cancel'
+    }, { merge: true });
+  });
+
+  await db.collection('notificationQueue').doc(`course-portal-booking-${bookingId}-reminder`).set({
+    status: '已取消',
+    active: false,
+    cancelledAt: FieldValue.serverTimestamp(),
+    cancelledAtText: nowText()
+  }, { merge: true }).catch((error) => {
+    console.error('[course portal admin rental reminder cancellation failed]', bookingId, error);
+  });
+  if (clean(cancelledBooking && cancelledBooking.lineUserId)) {
+    const cancellationText = [
+      '教室租用已由管理者取消。',
+      `教室：${clean(cancelledBooking.roomName) || '教室'}`,
+      `時間：${dateKey(cancelledBooking.date)} ${eventStart(cancelledBooking)}～${eventEnd(cancelledBooking)}`,
+      reason ? `原因：${reason}` : ''
+    ].filter(Boolean).join('\n');
+    await db.collection('notificationQueue').doc(`course-portal-booking-${bookingId}-admin-cancel`).set({
+      queueId: `course-portal-booking-${bookingId}-admin-cancel`,
+      channel: 'line',
+      targetLineUserId: clean(cancelledBooking.lineUserId),
+      title: '教室租用取消通知',
+      body: cancellationText,
+      message: cancellationText,
+      bookingId,
+      source: 'course-portal-admin-cancellation',
+      status: '待發送',
+      scheduledAt: Timestamp.fromMillis(Date.now()),
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtText: nowText()
+    }, { merge: true }).catch((error) => {
+      console.error('[course portal admin rental cancellation notice failed]', bookingId, error);
+    });
+  }
+  return { ok: true, bookingId, status: 'cancelled', message: '租用已強制取消，教室時段已釋放。' };
 }
 
 function adminTuitionPaymentRow(doc) {
@@ -9103,6 +9353,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalAdminSaveRoomEquipment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRoomEquipment(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveTeacherAdjustment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTeacherAdjustment(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminRoomBookings = callable(async (data,request)=>{assertAdminPin(request);return adminRoomBookings();},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminCancelRoomBooking = callable(async (data,request)=>{assertAdminPin(request);return adminCancelRoomBooking(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminBonusRequests = callable(async (data,request)=>{assertAdminPin(request);return adminBonusRequests();},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminApproveBonus = callable(async (data,request)=>{assertAdminPin(request);return adminApproveBonus(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalUpdateStudentReminder = callable(updateStudentReminder);

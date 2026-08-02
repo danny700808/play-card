@@ -14,6 +14,8 @@ const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'u
 new vm.Script(client, { filename: 'room-booking-v2.js' });
 
 assert(html.includes('id="rentalHeaderTitle"'), '租用頁缺少歡迎姓名標題');
+assert(html.includes('id="confirmRenter"'), '確認預約缺少租用人姓名');
+assert(html.includes('id="bookingStudent"'), '學生帳號缺少本次租用學生選擇');
 assert(html.includes('一般教室使用 <b>NT$100/小時</b>'), '確認單缺少一般教室使用選項');
 assert(html.includes('錄音室錄音使用 <b>NT$300/小時</b>'), '確認單缺少錄音使用選項');
 assert(!/name="recordingUsage"[^>]*checked/.test(html), '錄音室使用方式不可預先代選');
@@ -23,6 +25,7 @@ assert(client.includes('rental-guzheng.png?v=20260801-guzheng-v1'), '古箏用�
 assert(css.includes('.rental-use-card > .rental-use-image'), '古箏圖片缺少手機用途卡尺寸');
 assert(fs.existsSync(path.join(root, 'rental-guzheng.png')), '古箏圖片檔案不存在');
 assert(client.includes('recordingUsage,'), '確認的錄音室使用方式未送到後端');
+assert(client.includes('studentId: selectedStudentId'), '學生租用沒有送出實際使用學生');
 assert(client.includes("selectedUse === 'recording' && !recordingUsage"), '未選錄音室使用方式仍可送出');
 assert(client.includes("classList.toggle('hidden', recording && !student)"), '錄音室非學生仍顯示重複價格組');
 assert(client.includes("recording ? '學生折扣（選填）' : '租用價格'"), '學生半價未與錄音室使用方式分開');
@@ -30,7 +33,11 @@ assert(client.includes('renderWelcomeName(boardData.displayName)'), '租用標�
 assert(client.includes("normalize('NFKC')"), '歡迎姓名未先正規化全形電話或 Email');
 assert(css.includes('.rental-use-card small.rental-use-price'), '錄音室價格範圍會被用途卡樣式隱藏');
 assert(backend.includes('recordingRentalSelection(data, true)'), '後端建立預約前未強制驗證錄音室使用方式');
-assert(backend.includes('displayName: await displayNamePromise'), '租用週表未回傳登入姓名');
+assert(backend.includes('displayName: identity.displayName'), '租用週表未回傳登入姓名');
+assert(backend.includes('clientName: identity.clientName'), '建立租用時沒有保存租用人姓名');
+assert(backend.includes('clientPhone: identity.clientPhone'), '建立租用時沒有保存租用人電話');
+assert(backend.includes('rentalStudentId: identity.studentId'), '學生租用沒有保存實際學生');
+assert(backend.includes('coursePortalAdminCancelRoomBooking'), '管理者缺少強制取消租用後端');
 assert(backend.includes("const teachers = await mirrorRows('teachers')"), '老師姓名缺少 mirror fallback');
 assert(backend.includes("const students = await mirrorRows('students')"), '學生姓名缺少 mirror fallback');
 

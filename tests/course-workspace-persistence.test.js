@@ -38,7 +38,7 @@ const portalCommon = read('course-portal-common.js');
     );
   });
   assert(
-    html.includes('operations-course-inline.js?v=20260801-teacher-adjustments-v1'),
+    html.includes('operations-course-inline.js?v=20260802-rental-identity-cancel-v1'),
     '營運入口未載入統一 inline 課務控制器'
   );
   assert(!html.includes('operations-course-authoritative-v1.js'), '營運入口仍載入舊課務轉址層');

@@ -125,7 +125,7 @@ assert(workflow.includes('Fail workflow when deployment, access, or health check
   assert(!html.includes('operations-course-authoritative-v1.js'), '營運入口仍載入舊課務轉址層');
   assert(!html.includes('operations-mobile-course-fix-v1.js'), '營運入口仍載入舊手機補丁');
   assert(!html.includes('operations-mobile-course-dense-v1.css'), '營運入口仍載入舊手機樣式');
-  assert(html.includes('operations-course-inline.js?v=20260801-teacher-adjustments-v1'), '營運入口未載入統一 inline 課務');
+  assert(html.includes('operations-course-inline.js?v=20260802-rental-identity-cancel-v1'), '營運入口未載入統一 inline 課務');
 });
 
 assert(operations.includes('YouziOperationsCourseInline.mount(content,courseView)'), '營運中心沒有掛載 inline 課務');

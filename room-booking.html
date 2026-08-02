@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#24735c">
   <title>教室租用｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
-  <link rel="stylesheet" href="room-booking-v2.css?v=20260801-guzheng-card-v1">
+  <link rel="stylesheet" href="room-booking-v2.css?v=20260802-rental-identity-v1">
 </head>
 <body class="rental-booking-v2 clean-portal-ui">
   <main class="portal-shell">
@@ -97,10 +97,15 @@
     <section class="rental-confirm-sheet" role="dialog" aria-modal="true">
       <div class="section-title"><h2>確認預約</h2><button class="btn" id="closeRentalConfirm" type="button">關閉</button></div>
       <div class="rental-confirm-summary">
+        <div><span>租用人</span><strong id="confirmRenter"></strong></div>
         <div><span>用途</span><strong id="confirmUse"></strong></div>
         <div><span>日期</span><strong id="confirmDate"></strong></div>
         <div><span>時間</span><strong id="confirmTime"></strong></div>
         <div><span>教室</span><strong id="confirmRoom"></strong></div>
+      </div>
+      <div class="field hidden" id="bookingStudentField" style="margin-top:10px">
+        <label for="bookingStudent">本次使用教室的學生</label>
+        <select id="bookingStudent"></select>
       </div>
       <div class="rental-recording-choice hidden" id="recordingUsageChoice">
         <strong>錄音室使用方式（必選）</strong>
@@ -126,6 +131,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260802-timeout-phase1"></script>
-  <script src="room-booking-v2.js?v=20260801-guzheng-card-v1"></script>
+  <script src="room-booking-v2.js?v=20260802-rental-identity-v1"></script>
 </body>
 </html>
