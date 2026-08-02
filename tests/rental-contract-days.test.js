@@ -32,6 +32,54 @@ assert.strictEqual(rental.inclusiveDays('2026-08-03', '2026-08-03'), 1,
 assert.strictEqual(rental.inclusiveDays('2026-09-10', '2026-08-03'), 0,
   '到期日早於起租日應視為無效');
 
+const initialDateLink = rental.syncLinkedRentalDates({
+  changedId: 'deliveryDate',
+  type: 'digitalPiano',
+  periods: 1,
+  deliveryDate: '2026-08-03',
+  startDate: '',
+  endDate: '',
+  startDateManuallyEdited: false,
+  endDateManuallyEdited: false,
+});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(initialDateLink)), {
+  deliveryDate: '2026-08-03',
+  startDate: '2026-08-03',
+  endDate: '2026-10-31',
+}, '第一次選擇安裝日仍應自動帶入起租日及一期 90 天到期日');
+
+const manualDateLink = rental.syncLinkedRentalDates({
+  changedId: 'deliveryDate',
+  type: 'digitalPiano',
+  periods: 1,
+  deliveryDate: '2026-08-08',
+  startDate: '2026-08-03',
+  endDate: '2026-09-10',
+  startDateManuallyEdited: true,
+  endDateManuallyEdited: true,
+});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(manualDateLink)), {
+  deliveryDate: '2026-08-08',
+  startDate: '2026-08-03',
+  endDate: '2026-09-10',
+}, '手動修改起訖日後，再選安裝日不得覆蓋已選日期');
+
+const manualEndOnly = rental.syncLinkedRentalDates({
+  changedId: 'deliveryDate',
+  type: 'digitalPiano',
+  periods: 1,
+  deliveryDate: '2026-08-05',
+  startDate: '2026-08-03',
+  endDate: '2026-09-10',
+  startDateManuallyEdited: false,
+  endDateManuallyEdited: true,
+});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(manualEndOnly)), {
+  deliveryDate: '2026-08-05',
+  startDate: '2026-08-05',
+  endDate: '2026-09-10',
+}, '只手動修改到期日時，安裝日可更新起租日但不得把到期日改回 90 天');
+
 const customPeriodHtml = rental.renderContractHtml({
   rentalType: 'digitalPiano',
   equipmentName: 'KAWAI ES-120G',

@@ -114,9 +114,22 @@
     <div class="layout"><section class="card2"><h2 style="margin-top:0">租賃申請管理 / 契約列表</h2><div class="rental-search-box"><div class="rental-search-row"><input id="rentalSearchInput" class="rental-search-input" type="search" autocomplete="off" inputmode="search" placeholder="搜尋案件" aria-label="搜尋租賃案件" oninput="rentalSearchChanged(this)"><button id="rentalSearchClear" class="rental-search-clear" type="button" onclick="clearRentalSearch()" disabled>清除</button></div></div><div class="tabs"><button class="tab" data-filter="all">全部案件</button><button class="tab" data-filter="new">待確認申請</button><button class="tab" data-filter="sign">待客人補資料</button><button class="tab" data-filter="payment">待付款確認</button><button class="tab" data-filter="active">租用中</button><button class="tab" data-filter="renewal">續約待處理</button><button class="tab" data-filter="return">退租待處理</button><button class="tab" data-filter="returned">已退租</button><button class="tab" data-filter="cancelled">已取消／封存</button></div><div id="list" class="list" style="margin-top:12px">請先選擇上方分類，或直接使用搜尋。</div></section><main><section class="card2" id="detailBox"><h2 style="margin-top:0">請先選擇案件</h2></section><section class="card2 print-area"><div id="contractPreview"></div></section></main></div>
   </div>
   <script src="config.js?v=rental-flow-20260611"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260802-security-phase1"></script><script src="app.js?v=20260802-security-phase1"></script><script src="rental-common.js?v=20260802-rental-days-sync1"></script><script src="global-nav.js?v=20260603unified1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260802-security-phase1"></script><script src="app.js?v=20260802-security-phase1"></script><script src="rental-common.js?v=20260802-rental-days-sync2"></script><script src="global-nav.js?v=20260603unified1"></script>
   <script>
-    const R=window.YZRental; let applications=[],contracts=[],selected=null,filter='',searchKeyword='',lineRuntime={loaded:false};
+    const R=window.YZRental; let applications=[],contracts=[],selected=null,filter='',searchKeyword='',lineRuntime={loaded:false},rentalDateManual={start:false,end:false};
+    function initializeRentalDateManualState(c){
+      c=c||{};
+      const type=R.clean(c.rentalType)||'digitalPiano';
+      const periods=Math.max(1,Number(c.periods||1));
+      const start=R.clean(c.startDate);
+      const delivery=R.clean(c.deliveryDate||c.deliveryDateTime);
+      const end=R.clean(c.endDate);
+      const standardEnd=type==='other'?'':R.calcEndDate(start,periods,type,periods*90);
+      rentalDateManual={
+        start:!!start && (!delivery || start!==delivery),
+        end:!!end && (!!standardEnd ? end!==standardEnd : type==='other')
+      };
+    }
     function setupContractPreviewScaler(){
       const box=R.qs('contractPreview');
       if(!box || box.__rentalPreviewScalerReady) return;
@@ -298,8 +311,8 @@
       };
     }
     function startAdminDraft(){ const c={source:'admin',stage:'draft',rentalType:'digitalPiano',contractTitle:R.defaultTitle('digitalPiano'),customerName:'',customerPhone:'',customerEmail:'',notificationPreference:'both',emailVerified:false,emailLinkStatus:'',customerAddress:'',periods:1,periodDays:90,rentalMethod:'實體租用',startDate:'',endDate:'',rentFee:'',shippingFee:0,depositFee:'',equipmentItems:R.parseEquipmentItems({rentalType:'digitalPiano'}),status:'草稿'}; renderContract(c); R.toast('已開啟店家代填租賃單。',true); }
-    function renderApplication(app){ const c=applicationToContract(app); R.qs('detailBox').innerHTML=editorHtml(c, 'application'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
-    function renderContract(c){ R.qs('detailBox').innerHTML=editorHtml(c, c.__id||c.contractId?'contract':'adminDraft'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
+    function renderApplication(app){ const c=applicationToContract(app); initializeRentalDateManualState(c); R.qs('detailBox').innerHTML=editorHtml(c, 'application'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
+    function renderContract(c){ initializeRentalDateManualState(c); R.qs('detailBox').innerHTML=editorHtml(c, c.__id||c.contractId?'contract':'adminDraft'); R.qs('contractPreview').innerHTML=R.renderContractHtml(c); bindEditorPreview(); }
     function equipmentRows(items){ items=Array.isArray(items)&&items.length?items:[{name:'',note:''}]; return items.map((x,i)=>`<div class="equipment-row" data-eq-row><div class="field"><label>設備名稱</label><input class="eq-name" value="${R.esc(x.name||x.equipmentName||'')}" placeholder="例如：電鋼琴主機"></div><button class="btn danger" type="button" onclick="removeEquipmentRow(this)">刪除</button></div>`).join(''); }
 
     function countValueOrNull(v){ const raw=R.clean(v); if(raw==='') return null; const n=Number(raw); return Number.isFinite(n) && n>=0 ? Math.floor(n) : null; }
@@ -451,7 +464,22 @@
     window.addEquipmentRow=function(){ const box=R.qs('equipmentRows'); box.insertAdjacentHTML('beforeend', equipmentRows([{name:'',note:''}])); bindEditorPreview(); };
     window.removeEquipmentRow=function(btn){ btn.closest('[data-eq-row]')?.remove(); R.qs('contractPreview').innerHTML=R.renderContractHtml(collect()); };
     function collect(){ const type=R.val('rentalType'); const items=readEquipmentItems(); const deliveryDate=R.val('deliveryDate'); const startDate=R.val('startDate')||deliveryDate; const periods=type==='other'?'':(R.val('periods')||1); const shippingMethodType=R.val('shippingMethod')||'到府安裝'; const shippingMethodOtherText=R.clean(R.val('shippingMethodOtherText')); const shippingMethodFinal=shippingMethodType==='其他' ? (shippingMethodOtherText || '其他') : R.normalizeDeliveryMethod(shippingMethodType); const signed=selected||{}; const sig=signed.customerSignatureDataUrl||signed.signatureDataUrl||signed.customerSignatureUrl||signed.signatureUrl||signed.signDataUrl||''; const idImg=signed.customerIdImageWatermarkedDataUrl||signed.idImageWatermarkedDataUrl||signed.customerIdImageDataUrl||signed.idImageDataUrl||signed.idCardImageDataUrl||signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||''; const rentalItem=R.clean(R.val('rentalItem')||R.rentalTypeLabel(type)); const equipmentBrand=R.clean(R.val('equipmentBrand')); const equipmentModel=R.clean(R.val('equipmentModel')); const primaryEquipment=[equipmentBrand,equipmentModel].filter(Boolean).join(' ') || items[0]?.name || rentalItem; const payload={ sourceKind:R.val('sourceKind'), applicationId:R.val('applicationId'), contractId:R.val('contractId'), source:R.val('sourceKind')==='adminDraft'?'admin':'application', stage:'formal-draft', rentalType:type, status:R.val('status')||'草稿', contractTitle:R.defaultTitle(type), rentalItem:rentalItem, equipmentCategory:rentalItem, equipmentBrand:equipmentBrand, brand:equipmentBrand, equipmentModel:equipmentModel, modelName:equipmentModel, customerName:R.val('customerName'), customerPhone:R.val('customerPhone'), customerEmail:R.val('customerEmail'), customerLineUserId:R.val('customerLineUserId'), notificationPreference:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), preferredContactMethod:notifyPref({notificationPreference:R.val('notificationPreference'),customerEmail:R.val('customerEmail')}), emailVerified:R.val('emailVerified')==='true'||(selected&&selected.emailVerified===true), emailLinkStatus:R.val('emailLinkStatus')||(selected&&selected.emailLinkStatus)||'', emailVerifyToken:R.val('emailVerifyToken')||(selected&&selected.emailVerifyToken)||'', customerIdNumber:R.val('customerIdNumber'), customerAddress:R.val('customerAddress'), buildingName:R.val('buildingName'), floorNote:shippingMethodFinal==='到府安裝'?adminNormalizeFloorNote(R.val('floorNote')):'', floorExtraFee:shippingMethodFinal==='到府安裝'?adminFloorExtraFee(R.val('floorNote')):0, floorExtraFeeText:shippingMethodFinal==='到府安裝'?adminFloorFeeText(R.val('floorNote')):'', customerSignatureDataUrl:sig, signatureDataUrl:sig, customerSignatureUrl:signed.customerSignatureUrl||signed.signatureUrl||'', signatureUrl:signed.signatureUrl||signed.customerSignatureUrl||'', customerIdImageWatermarkedDataUrl:idImg, idImageWatermarkedDataUrl:idImg, customerIdImageDataUrl:idImg, idImageDataUrl:idImg, customerIdImageUrl:signed.customerIdImageUrl||signed.idImageUrl||signed.idCardImageUrl||'', idImageUrl:signed.idImageUrl||signed.customerIdImageUrl||signed.idCardImageUrl||'', equipmentName:primaryEquipment, serialNo:items[0]?.note||'', equipmentItems:items, includedItems:items.map(x=>`${x.name}${x.note?' / '+x.note:''}`).join('\n'), periods:periods, periodDays:type==='other'?'':90, rentalPeriodText:type==='other'?'依雙方確認之租用期間為準':'', rentDays:type==='other'?'':Number(periods||1)*90, rentalMethod:type==='other'?'其他設備租用':'實體租用', startDate:startDate, endDate:R.val('endDate')||(type==='other'?'':R.calcEndDate(startDate,periods,type,Number(periods||1)*90)), rentFee:R.val('rentFee'), shippingFee:R.val('shippingFee'), depositFee:R.val('depositFee'), shippingMethod:shippingMethodFinal, deliveryMethod:shippingMethodFinal, shippingMethodType:shippingMethodType, deliveryMethodType:shippingMethodType, shippingMethodOtherText:shippingMethodType==='其他'?shippingMethodOtherText:'', deliveryMethodOtherText:shippingMethodType==='其他'?shippingMethodOtherText:'', deliveryDate:deliveryDate||startDate, deliveryTime:'', deliveryDateTime:deliveryDate||startDate, ...readInternalRentalCountPayload(signed,periods), adminNote:R.val('adminNote'), customerSubmittedFormalAt:signed.customerSubmittedFormalAt||'' }; return isFinalConfirmStage(Object.assign({}, signed, payload)) ? officializeContract(payload) : payload; }
-    function syncRentalDatesFromDelivery(changedId){ const type=R.val('rentalType'); const periods=R.val('periods')||1; if(changedId==='deliveryDate' && R.val('deliveryDate')) R.setVal('startDate', R.val('deliveryDate')); if(type==='other'){ if((changedId==='startDate'||changedId==='deliveryDate') && (R.val('startDate')||R.val('deliveryDate'))){ const st=R.val('startDate')||R.val('deliveryDate'); R.setVal('startDate', st); R.setVal('deliveryDate', R.val('deliveryDate')||st); } return; } if((changedId==='startDate'||changedId==='deliveryDate'||changedId==='periods') && (R.val('startDate')||R.val('deliveryDate'))){ const st=R.val('startDate')||R.val('deliveryDate'); R.setVal('startDate', st); R.setVal('deliveryDate', R.val('deliveryDate')||st); R.setVal('endDate', R.calcEndDate(st,periods,type,Number(periods||1)*90)); } }
+    function syncRentalDatesFromDelivery(changedId){
+      const dates=R.syncLinkedRentalDates({
+        changedId,
+        type:R.val('rentalType'),
+        periods:R.val('periods')||1,
+        periodDays:90,
+        deliveryDate:R.val('deliveryDate'),
+        startDate:R.val('startDate'),
+        endDate:R.val('endDate'),
+        startDateManuallyEdited:rentalDateManual.start,
+        endDateManuallyEdited:rentalDateManual.end
+      });
+      R.setVal('deliveryDate',dates.deliveryDate);
+      R.setVal('startDate',dates.startDate);
+      R.setVal('endDate',dates.endDate);
+    }
 
     function applyDeliveryMethodUi(){
       const shippingValue=R.val('shippingMethod');
@@ -499,6 +527,8 @@
     function bindEditorPreview(){
       document.querySelectorAll('#detailBox input,#detailBox textarea,#detailBox select').forEach(el=>{
         const update=()=>{
+          if(el.id==='startDate') rentalDateManual.start=true;
+          if(el.id==='endDate') rentalDateManual.end=true;
           applyRentalTypeUi();
           applyDeliveryMethodUi();
           syncRentalDatesFromDelivery(el.id);

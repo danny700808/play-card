@@ -76,6 +76,27 @@
     if(!Number.isFinite(startUtc) || !Number.isFinite(endUtc) || endUtc<startUtc) return 0;
     return Math.floor((endUtc-startUtc)/86400000)+1;
   }
+  function syncLinkedRentalDates(input){
+    input=input||{};
+    const type=clean(input.type);
+    const periods=Math.max(1,Number(input.periods||1));
+    const periodDays=Math.max(1,Number(input.periodDays||90));
+    const changedId=clean(input.changedId);
+    let deliveryDate=clean(input.deliveryDate);
+    let startDate=clean(input.startDate);
+    let endDate=clean(input.endDate);
+    const keepManualStart=!!input.startDateManuallyEdited && !!startDate;
+    const keepManualEnd=!!input.endDateManuallyEdited && !!endDate;
+    if(changedId==='deliveryDate' && deliveryDate && !keepManualStart) startDate=deliveryDate;
+    if((changedId==='startDate'||changedId==='deliveryDate') && (startDate||deliveryDate)){
+      startDate=startDate||deliveryDate;
+      deliveryDate=deliveryDate||startDate;
+    }
+    if(type!=='other' && ['startDate','deliveryDate','periods'].includes(changedId) && startDate && !keepManualEnd){
+      endDate=calcEndDate(startDate,periods,type,periods*periodDays);
+    }
+    return {deliveryDate,startDate,endDate};
+  }
   function signUrl(contract){
     const id=clean(contract.contractId||contract.__id); const token=clean(contract.signToken||contract.token);
     const base=location.origin+location.pathname.replace(/[^\/]*$/,'');
@@ -258,6 +279,6 @@
         <div class="contract-date">中華民國 ${esc(dateText)}</div><div class="rental-page-no">第 2 頁 / 共 2 頁</div>
       </div>`;
   }
-  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,inclusiveDays,signUrl,myContractUrl,officialContractUrl,renderContractHtml,deliveryLabelPair,functionUrl,notificationPreference,notificationPreferenceLabel,wantsLine,wantsEmail,emailVerified});
+  Object.assign(Rental,{clean,num,ymd,rocDate,addDays,fmtMoney,normalizeDeliveryMethod,esc,qs,val,checked,setVal,show,hide,toast,user,isManager,requireManager,db,call,all,get,set,nowText,contractStatus,applicationStatus,rentalTypeLabel,defaultIncludedItems,parseEquipmentItems,defaultTitle,calcEndDate,inclusiveDays,syncLinkedRentalDates,signUrl,myContractUrl,officialContractUrl,renderContractHtml,deliveryLabelPair,functionUrl,notificationPreference,notificationPreferenceLabel,wantsLine,wantsEmail,emailVerified});
   global.YZRental = Rental;
 })(window);
