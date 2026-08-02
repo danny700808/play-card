@@ -34,7 +34,8 @@
     <div class="preview-shell"><div style="font-size:18px;font-weight:900;color:#17324d">A4 預覽</div><div class="muted-tip">主管代開會以已核准狀態預覽，儲存後可在歷史紀錄查詢。</div><div id="previewArea" class="cert-scale-wrap"></div></div></div>
   </div>
 </div>
-<script src="config.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=cert-identity-20260602"></script><script src="app.js?v=cert-identity-20260602"></script><script src="certificate-common.js?v=cert-identity-20260602"></script>
+<script src="config.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="firebase-client.js?v=20260802-security-phase1"></script><script src="app.js?v=20260802-security-phase1"></script><script src="certificate-common.js?v=cert-identity-20260602"></script>
 <script>
 const CERT_TYPE='teaching'; let currentTemplate=null, people=[], adminUser=null, currentIdentityType='external';
 function clean(v){return String(v==null?'':v).trim();} function msg(t,ok=true){const el=document.getElementById('msg'); el.textContent=t||''; el.style.color=ok?'#1f7a5a':'#b42318';}

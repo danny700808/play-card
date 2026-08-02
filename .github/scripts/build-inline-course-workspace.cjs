@@ -18,7 +18,14 @@ function replaceRequired(source, pattern, replacement, label) {
 function buildTemplate() {
   const html = fs.readFileSync(schedulerHtmlPath, 'utf8');
   const main = html.match(/<main class="main-content">([\s\S]*?)<\/main>/);
-  if (!main) throw new Error('Unable to locate the full course main content.');
+  if (!main) {
+    const existingTemplate = fs.readFileSync('operations-course-inline-template.html', 'utf8');
+    const requiredIds = ['dataModePanel', 'syncInjiaoyunBtn', 'calendarPage', 'studentsPage', 'teachersPage', 'settingsPage'];
+    for (const id of requiredIds) {
+      if (!existingTemplate.includes(`id="${id}"`)) throw new Error(`Existing inline course template is incomplete: ${id}`);
+    }
+    return;
+  }
   const extrasStart = html.indexOf('  <div class="modal-backdrop"');
   const scriptsStart = html.indexOf('  <script src="config.js');
   if (extrasStart < 0 || scriptsStart < 0 || extrasStart >= scriptsStart) {
@@ -333,12 +340,39 @@ function writeLegacyRedirect() {
   fs.writeFileSync('course-center.html', redirect);
 }
 
+function writeSchedulerRedirect() {
+  const redirect = `<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <meta http-equiv="refresh" content="0;url=portal.html#course-calendar">
+  <title>正在開啟課務管理｜柚子樂器</title>
+  <script>
+    (function(){
+      var params=new URLSearchParams(location.search);
+      var requested=String(params.get('view')||location.hash||'course-calendar').replace(/^#/,'').split('?')[0];
+      var map={calendar:'course-calendar',students:'course-students',teachers:'course-teachers',settings:'course-settings','course-calendar':'course-calendar','course-students':'course-students','course-teachers':'course-teachers','course-settings':'course-settings'};
+      location.replace('portal.html#'+(map[requested]||'course-calendar'));
+    })();
+  </script>
+</head>
+<body>
+  <p>正在開啟現行課務管理… <a href="portal.html#course-calendar">立即前往</a></p>
+</body>
+</html>
+`;
+  fs.writeFileSync(schedulerHtmlPath, redirect);
+}
+
 buildTemplate();
 buildRuntime();
 patchController();
 patchOperations();
 portalPaths.forEach(patchPortal);
 writeLegacyRedirect();
+writeSchedulerRedirect();
 
 for (const obsolete of [
   'course-scheduler-full-bootstrap.js',

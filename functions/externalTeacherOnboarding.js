@@ -160,7 +160,7 @@ function isAdminToken(request) {
   const token = request && request.auth && request.auth.token;
   if (!token) return false;
   const role = lower(token.role || token.userRole || token.permissionRole || '');
-  return token.admin === true || token.owner === true || ['admin', 'owner', 'manager'].includes(role);
+  return token.admin === true || token.owner === true || token.manager === true || ['admin', 'owner', 'manager'].includes(role);
 }
 
 function isManagerData(data, docId) {
@@ -183,11 +183,7 @@ function isManagerData(data, docId) {
 }
 
 async function isAdminRequest(request, data = {}) {
-  if (isAdminToken(request)) return true;
-  const userId = clean(data.userId || data.adminId || data.employeeId || (request.auth && request.auth.uid));
-  if (!userId) return false;
-  const snap = await db().collection('employees').doc(userId).get();
-  return snap.exists && isManagerData(snap.data() || {}, snap.id);
+  return isAdminToken(request);
 }
 
 async function getSystemSettingValue(keys) {
@@ -1669,6 +1665,7 @@ async function markRenewalOverdueIfNeeded({ contractId, profileId, employeeId, t
 function registerExternalTeacherOnboarding(exportsObj) {
   exportsObj.externalTeacherCreateBindCode = onCall({ region: REGION }, async (request) => {
     const data = request.data || {};
+    if (!(await isAdminRequest(request, data))) throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
     const name = clean(data.name || '');
     const mobile = clean(data.mobile || data.phone || '');
     const email = lower(data.email || '');

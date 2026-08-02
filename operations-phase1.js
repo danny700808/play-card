@@ -31,6 +31,7 @@
     parttimeRecords:'parttimeRecords'
   };
   const READ_LIMIT = 10000;
+  const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
   const VERSION = '2026.08.01-expense-periods-v31';
@@ -765,17 +766,39 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     return false;
   }
 
+  function withReadTimeout(promise,label){
+    return new Promise(function(resolve,reject){
+      let settled=false;
+      const timer=setTimeout(function(){
+        if(settled)return;
+        settled=true;
+        reject(new Error((label||'資料')+'讀取超過 45 秒，已保留原有資料。'));
+      },FIRESTORE_READ_TIMEOUT_MS);
+      Promise.resolve(promise).then(function(value){
+        if(settled)return;
+        settled=true;
+        clearTimeout(timer);
+        resolve(value);
+      },function(error){
+        if(settled)return;
+        settled=true;
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+  }
+
   async function getCollection(name,limit,orderField,orderDirection){
     const started=Date.now();
     try{
       let request=state.db.collection(name);
       if(orderField)request=request.orderBy(orderField,orderDirection||'desc');
-      const snap=await request.limit(limit||READ_LIMIT).get();
+      const snap=await withReadTimeout(request.limit(limit||READ_LIMIT).get(),name);
       state.diagnostics.push({collection:name,ok:true,count:snap.size,ms:Date.now()-started});
       return snap.docs.map(function(doc){ return Object.assign({__id:doc.id},doc.data()||{}); });
     }catch(error){
       state.diagnostics.push({collection:name,ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});
-      return [];
+      throw new Error(name+' 讀取失敗：'+errorMessage(error));
     }
   }
   async function loadOnlineProducts(){
@@ -943,7 +966,7 @@ async function loadPlatformLocalAgent(){
     if(!silent) html('opsContent',loadingHtml('正在讀取商品資料…'));
     state.diagnostics=[];
     try{
-      await loadOnlineProducts();
+      await withReadTimeout(loadOnlineProducts(),'商品同步設定');
       const rows=await getCollection(COLLECTIONS.products,10000);
       state.internalProducts=rows.map(function(row){ return normalizeInternal(row,row.__id); });
       mergeCatalog();
@@ -953,7 +976,11 @@ async function loadPlatformLocalAgent(){
       render();
     }catch(error){
       showAlert('商品資料讀取失敗：'+errorMessage(error),'error');
-      html('opsContent',emptyHtml('無法載入商品資料','請確認網路、Firebase設定與Firestore規則後重新讀取。','<button class="ops-button primary" data-action="refresh">重新讀取</button>'));
+      if(state.loadedAt && state.internalProducts.length){
+        render();
+      }else{
+        html('opsContent',emptyHtml('無法載入商品資料','請確認網路、Firebase設定與Firestore規則後重新讀取。','<button class="ops-button primary" data-action="refresh">重新讀取</button>'));
+      }
     }finally{ state.loading=false; }
   }
 
@@ -963,7 +990,7 @@ async function loadPlatformLocalAgent(){
     if(!silent) html('opsContent',loadingHtml('正在整理商品、庫存、銷售、租賃與案件資料…'));
     state.diagnostics=[];
     try{
-      await Promise.all([loadOnlineProducts(),loadMembershipSettings(),loadOperatingExpenseSettings(),loadInjiaoyunCloudSync(),loadPlatformFeeSettings(),loadPlatformLocalAgent(),loadSupplierDirectory(),loadInventoryCountSettings(),loadPlatformInventoryQueueErrors()]);
+      await withReadTimeout(Promise.all([loadOnlineProducts(),loadMembershipSettings(),loadOperatingExpenseSettings(),loadInjiaoyunCloudSync(),loadPlatformFeeSettings(),loadPlatformLocalAgent(),loadSupplierDirectory(),loadInventoryCountSettings(),loadPlatformInventoryQueueErrors()]),'營運設定');
       const results=await Promise.all([
         getCollection(COLLECTIONS.products,10000),
         getCollection('rentalContracts',1000),
@@ -1021,7 +1048,11 @@ async function loadPlatformLocalAgent(){
       render();
     }catch(error){
       showAlert('資料讀取失敗：'+errorMessage(error),'error');
-      html('opsContent',emptyHtml('無法載入營運資料','請確認網路、Firebase設定與Firestore規則後重新讀取。','<button class="ops-button primary" data-action="refresh">重新讀取</button>'));
+      if(state.fullLoadedAt){
+        render();
+      }else{
+        html('opsContent',emptyHtml('無法載入營運資料','請確認網路、Firebase設定與Firestore規則後重新讀取。','<button class="ops-button primary" data-action="refresh">重新讀取</button>'));
+      }
     }finally{ state.loading=false; }
   }
 

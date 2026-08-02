@@ -11,6 +11,7 @@ const { registerInjiaoyunManualSync } = require('./injiaoyunManualSync');
 const { registerInjiaoyunEducationPreview } = require('./injiaoyunEducationPreview');
 const { registerInjiaoyunEducationMirror } = require('./injiaoyunEducationMirror');
 const { registerCoursePortal, handleCoursePortalLineEvent } = require('./coursePortal');
+const { registerEmployeeAuth } = require('./employeeAuth');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -25,6 +26,7 @@ registerCoursePortal(exports, {
   pushLineMessage,
   sendEmail: sendEmailViaGmail
 });
+registerEmployeeAuth(exports, { sendEmail: sendEmailViaGmail });
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
@@ -2240,6 +2242,11 @@ exports.lineWebhook = onRequest(
 
 
 exports.sendGmailTestEmail = onCall({ region: 'us-central1' }, async (request) => {
+  const authToken = request && request.auth && request.auth.token;
+  const authRole = normalizeText(authToken && authToken.role).toLowerCase();
+  if (!(authToken && authToken.employee === true && (authToken.manager === true || ['admin', 'manager'].includes(authRole)))) {
+    throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
+  }
   const data = (request && request.data) || {};
   const to = clean((data && (data.to || data.email)) || '');
   if (!to) {

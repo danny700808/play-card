@@ -7,6 +7,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8');
+const inlineTemplate = fs.readFileSync(path.join(root, 'operations-course-inline-template.html'), 'utf8');
 const client = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8');
 const dataClient = fs.readFileSync(path.join(root, 'course-scheduler-data.js'), 'utf8');
 const mirror = fs.readFileSync(path.join(root, 'functions/injiaoyunEducationMirror.js'), 'utf8');
@@ -20,13 +21,15 @@ new vm.Script(preview, { filename: 'functions/injiaoyunEducationPreview.js' });
 new vm.Script(manual, { filename: 'functions/injiaoyunManualSync.js' });
 
 assert.strictEqual(
-  (html.match(/id="syncInjiaoyunBtn"/g) || []).length,
+  (inlineTemplate.match(/id="syncInjiaoyunBtn"/g) || []).length,
   1,
   '課程日表只能保留一個同步入口'
 );
-assert(html.includes('更新音教雲最新資料'), '同步按鈕未清楚標示更新最新資料');
+assert(html.includes('portal.html#course-calendar'), '舊課程日表網址未導向現行課務管理');
+assert(!html.includes('id="syncInjiaoyunBtn"'), '舊課程日表仍保留第二個同步入口');
+assert(inlineTemplate.includes('更新音教雲最新資料'), '同步按鈕未清楚標示更新最新資料');
 ['sandboxLogBtn', 'undoSandboxBtn', 'resetSandboxBtn', 'loadMigratedDataBtn']
-  .forEach((id) => assert(!html.includes(id), `不應保留舊按鈕 ${id}`));
+  .forEach((id) => assert(!inlineTemplate.includes(id), `不應保留舊按鈕 ${id}`));
 
 assert(client.includes("var WORKSPACE_DB_KEY='workspace'"), '工作資料未保存至 IndexedDB');
 assert(client.includes('requestPersistentStorage'), '未向瀏覽器要求保留課務資料庫');

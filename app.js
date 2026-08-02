@@ -33,11 +33,14 @@ function userHomeLabel(user=getUser()){if(isExternalTeacher(user)) return '返�
 function portalSwitchLabel(user=getUser()){return hasSettingsZoneAccess(user) ? '切換入口' : '系統入口'}
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null}}
 function getApiUrl(){return API_URL}
-function logout(){const user=getUser();if(user&&user.portalSessionBridge===true&&window.YZTeacherMoreAuth&&typeof window.YZTeacherMoreAuth.clearPortalBridge==='function')window.YZTeacherMoreAuth.clearPortalBridge();localStorage.removeItem('employeeUser'); localStorage.removeItem('employeeUserId'); clearPortalMode(); location.href='index.html'}
+function logout(){const user=getUser();if(user&&user.portalSessionBridge===true&&window.YZTeacherMoreAuth&&typeof window.YZTeacherMoreAuth.clearPortalBridge==='function')window.YZTeacherMoreAuth.clearPortalBridge();localStorage.removeItem('employeeUser');localStorage.removeItem('employeeUserId');localStorage.removeItem('employeeSecureAuthVersion');clearPortalMode();try{if(window.firebase&&typeof window.firebase.auth==='function'){window.firebase.auth().signOut().catch(()=>{}).finally(()=>{location.href='index.html'});return;}}catch(e){}location.href='index.html'}
 function currentFeatureKey(){const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase(); if(path==='dashboard.html') return 'dashboard'; if(path==='clock.html') return 'clock'; if(path==='parttime.html') return 'parttime'; if(path==='leave.html') return 'leave'; if(path==='announcements.html') return 'announcement'; if(path==='task.html') return 'task'; if(path==='routine.html') return 'routine'; if(path==='training.html') return 'training'; if(path==='contract.html') return 'contract'; if(path==='contract-admin.html') return 'contractAdmin'; if(path==='forms-hub.html'||path==='gift-point-card.html'||path==='employment-certificate.html'||path==='teaching-certificate.html') return 'forms'; if(path==='settings.html') return 'settings'; return '';}
-function requireLogin(){const user=getUser(); if(!user){location.href='index.html'; return null;} const feature=currentFeatureKey(); if(feature==='contract' && !isExternalTeacher(user)){location.href='dashboard.html'; return null;} if(feature==='contractAdmin' && !isManager(user)){location.href='dashboard.html'; return null;} if(feature && feature!=='contract' && feature!=='contractAdmin' && feature!=='settings' && !guardFeatureAccess(feature,user)) return null; return user;}
+function requireLogin(){const user=getUser();if(!user){location.href='index.html';return null;}if(!isExternalTeacher(user)&&user.portalSessionBridge!==true&&localStorage.getItem('employeeSecureAuthVersion')!=='1'){localStorage.removeItem('employeeUser');localStorage.removeItem('employeeUserId');location.href='index.html';return null;}const path=String((location&&location.pathname)||'').split('/').pop().toLowerCase();if(user.passwordResetRequired===true&&path!=='change-password.html'){location.href='change-password.html';return null;}const feature=currentFeatureKey();if(feature==='contract'&&!isExternalTeacher(user)){location.href='dashboard.html';return null;}if(feature==='contractAdmin'&&!isManager(user)){location.href='dashboard.html';return null;}if(feature&&feature!=='contract'&&feature!=='contractAdmin'&&feature!=='settings'&&!guardFeatureAccess(feature,user))return null;return user;}
 async function api(action, payload={}){
   const firebaseOnlyActions = {
+    login:true,
+    forgotPassword:true,
+    changePassword:true,
     getSalarySetupOptions:true,
     saveEmployeeSalaryConfig:true,
     getEmployeeSalaryConfigHistory:true,
@@ -903,6 +906,7 @@ function shouldShowTeacherContractCard(res){
 
 function fillHeader(){const user=requireLogin(); if(!user) return; const manager=isManager(user); const homeTitleEl=qs('#homeTitle'); if(homeTitleEl){ homeTitleEl.textContent=isPartTimeUser(user)?'工讀首頁':'員工首頁'; } if(document.title==='員工首頁' || document.title==='工讀首頁'){ document.title=isPartTimeUser(user)?'工讀首頁':'員工首頁'; } qsa('[data-user-name]').forEach(el=>el.textContent=user.name||'員工'); qsa('[data-if-parttime]').forEach(el=>el.style.display=isPartTimeUser(user)?'':'none'); qsa('[data-if-admin]').forEach(el=>el.style.display=manager?'':'none'); qsa('[data-if-staff-view]').forEach(el=>el.style.display=manager?'none':'');}
 function loginDestination(user){
+  if(user&&user.passwordResetRequired===true) return 'change-password.html';
   if(isExternalTeacher(user)) return 'teacher-home.html';
   if(hasSettingsZoneAccess(user)){setPortalMode('settings');return 'portal.html';}
   setPortalMode('staff');
@@ -920,9 +924,9 @@ function redirectAfterLogin(user){
   window.location.replace(target);
   return target;
 }
-function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',password:password||'',remember:true}));}
+function saveLoginPref(email,password,remember=true){if(!remember){localStorage.removeItem('employeeSavedLogin');return;}localStorage.setItem('employeeSavedLogin',JSON.stringify({email:email||'',remember:true}));}
 function getSavedLogin(){try{return JSON.parse(localStorage.getItem('employeeSavedLogin')||'null')}catch(e){return null}}
-function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value=s.password||'';if(r)r.checked=!!s.remember;}
+function applySavedLogin(emailSel='#email',passwordSel='#password',rememberSel='#rememberLogin'){const s=getSavedLogin();if(!s)return;const e=qs(emailSel),p=qs(passwordSel),r=qs(rememberSel);if(e)e.value=s.email||'';if(p)p.value='';if(r)r.checked=!!s.remember;if(Object.prototype.hasOwnProperty.call(s,'password'))saveLoginPref(s.email,'',!!s.remember);}
 function getDriveFileId(url){
   const s=String(url||'').trim();
   const m=s.match(/(?:file\/d\/|[?&]id=|\/d\/)([-_a-zA-Z0-9]{20,})/);

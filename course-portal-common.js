@@ -7,6 +7,7 @@
   const functions = global.firebase.app().functions('us-central1');
   const CACHE_PREFIX = 'youzi.coursePortal.dataCache.v2.';
   const CACHE_TTL = 90 * 1000;
+  const CALL_TIMEOUT_MS = 90 * 1000;
 
   function clean(value) {
     return String(value == null ? '' : value).trim();
@@ -113,9 +114,13 @@
 
   async function invoke(name, data) {
     try {
-      const result = await functions.httpsCallable(name)(data || {});
+      const result = await functions.httpsCallable(name, { timeout: CALL_TIMEOUT_MS })(data || {});
       return result && result.data || {};
     } catch (error) {
+      const code = clean(error && error.code).toLowerCase();
+      if (code.includes('deadline-exceeded')) {
+        throw new Error('資料讀取超過 90 秒，已停止等待。請稍後重試，不會覆蓋目前資料。');
+      }
       const message = clean(
         error && error.details ||
         error && error.message ||

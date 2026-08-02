@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260801-payroll-insurance-v32/);
+  assert.match(portal, /operations-phase1\.js\?v=20260802-stability-phase1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
 });
 

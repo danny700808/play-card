@@ -158,12 +158,43 @@ jobs:
         id: health_check
         if: steps.deploy_reader.outcome == 'success' && steps.public_access.outcome == 'success'
         continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: |
           set -o pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const admin = require('./functions/node_modules/firebase-admin');
+          const serviceAccount = require('./service-account.json');
+          const configSource = fs.readFileSync('config.js', 'utf8');
+          const apiKey = (configSource.match(/apiKey:\s*'([^']+)'/) || [])[1];
+          if (!apiKey) throw new Error('Firebase Web API key is missing from config.js');
+          if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.cert(serviceAccount), projectId: 'youzi-c1b74' });
+          (async () => {
+            const customToken = await admin.auth().createCustomToken('deployment-health-check', {
+              employee: true,
+              manager: true,
+              role: 'admin',
+              employeeId: 'deployment-health-check'
+            });
+            const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${encodeURIComponent(apiKey)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: customToken, returnSecureToken: true })
+            });
+            const body = await response.json();
+            if (!response.ok || !body.idToken) throw new Error(`Unable to create health-check ID token: ${response.status} ${JSON.stringify(body)}`);
+            fs.writeFileSync('/tmp/course-mirror-id-token.txt', body.idToken, { mode: 0o600 });
+          })().catch((error) => {
+            console.error(error && error.stack || error);
+            process.exit(1);
+          });
+          NODE
           response=/tmp/course-mirror-response.json
           http_code="$(curl --silent --show-error --retry 10 --retry-delay 8 --retry-all-errors --max-time 300 \
             -H 'Content-Type: application/json' \
             -H 'Origin: https://danny700808.github.io' \
+            -H "Authorization: Bearer $(cat /tmp/course-mirror-id-token.txt)" \
             --data '{"data":{"source":"operations-hub"}}' \
             --output "$response" \
             --write-out '%{http_code}' \

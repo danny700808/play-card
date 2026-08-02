@@ -15,7 +15,7 @@
   <script src="config.js?v=external-teacher-independent-1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="firebase-client.js?v=external-teacher-independent-1"></script>
+  <script src="firebase-client.js?v=20260802-security-phase1"></script>
   <script>
     const params=new URLSearchParams(location.search); const teacherId=params.get('teacherId')||params.get('userId')||localStorage.getItem('employeeUserId')||''; const token=params.get('token')||'';
     function ensureFirebaseApp(){ if(firebase.apps&&firebase.apps.length)return firebase.apps[0]; return firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG); }

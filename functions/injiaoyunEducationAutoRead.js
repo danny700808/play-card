@@ -47,11 +47,10 @@ function requestOrigin(request) {
 }
 
 function assertAllowedRead(request) {
-  const source = clean(request && request.data && request.data.source).toLowerCase();
-  const origin = requestOrigin(request);
-  const validSource = ['course-scheduler', 'operations-hub', 'portal'].includes(source);
-  if (validSource && (ALLOWED_ORIGINS.has(origin) || LOCAL_ORIGIN.test(origin))) return;
-  throw new HttpsError('permission-denied', '只允許從柚子樂器課務系統讀取已同步資料。');
+  const token = request && request.auth && request.auth.token;
+  const role = clean(token && token.role).toLowerCase();
+  if (token && token.employee === true && (token.manager === true || ['admin', 'manager'].includes(role))) return;
+  throw new HttpsError('permission-denied', '請先使用管理者帳號登入，再讀取課務資料。');
 }
 
 function jsonValue(value) {

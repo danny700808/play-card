@@ -5285,12 +5285,12 @@ async function studentPortalData(data) {
     mirrorRows('temporaryCourses'),
     reconcileStudentSuspensionsForNewSchedules(studentIds)
   ]);
-  const currentSuspensions = await reconcileStudentSuspensionsForNewSchedules(students.map(sourceId));
+  const currentStudentRows = students.filter((row) => studentIds.includes(sourceId(row)));
   const learningIds = activeLearningStudentIds(
-    students,
+    currentStudentRows,
     [...fixedCourses, ...temporaryCourses],
     events,
-    currentSuspensions
+    suspensions
   );
   const activeStudentIds = studentIds.filter((id) => learningIds.has(id));
   const [periodsByStudent, attendanceByStudent, portalAttendance] = await Promise.all([

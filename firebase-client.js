@@ -435,6 +435,20 @@
   function ts(){ return global.firebase.firestore.FieldValue.serverTimestamp(); }
   function db(){ try{return fb.init && fb.init()}catch(e){console.warn('[Firebase stage5 init]',e); return null;} }
   function currentUser(){ try{return JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(e){return null} }
+  function functions(){
+    if(!global.firebase || typeof global.firebase.functions!=='function') throw new Error('安全登入元件尚未載入，請重新整理後再試。');
+    const app=global.firebase.apps&&global.firebase.apps.length?global.firebase.app():global.firebase.initializeApp(global.APP_CONFIG.FIREBASE_CONFIG);
+    return app.functions('us-central1');
+  }
+  async function secureCall(name,payload){
+    try{
+      const result=await functions().httpsCallable(name,{timeout:60000})(payload||{});
+      return result&&result.data?result.data:{ok:false,message:'伺服器沒有回傳資料。'};
+    }catch(error){
+      const message=clean(error&&error.details || error&&error.message || '安全服務連線失敗，請稍後再試。').replace(/^FirebaseError:\s*/i,'');
+      throw new Error(message);
+    }
+  }
   async function rowsWhere(col, field, value){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const snap=await d.collection(col).where(field,'==',value).get(); const out=[]; snap.forEach(x=>out.push(Object.assign({__id:x.id},x.data()||{}))); return out; }
   async function docSet(col, id, data, merge=true){ const d=db(); if(!d) throw new Error('Firebase 尚未啟用'); const key=clean(id)||('WEB_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)); await d.collection(col).doc(key).set(Object.assign({},data,{updatedAt:ts()}),{merge}); return key; }
   async function docUpdate(col, id, data){ return await docSet(col,id,data,true); }
@@ -463,21 +477,17 @@
     const account=lower(payload.email || payload.account);
     const password=String(payload.password||'');
     if(!account || !password) return {ok:false,message:'請輸入帳號與密碼。'};
-    let rows = await rowsWhere('admins','email',account);
-    if(!rows.length) rows = await rowsWhere('admins','loginAccount',account);
-    let kind='admin';
-    if(!rows.length){ rows = await rowsWhere('employees','email',account); kind='employee'; }
-    if(!rows.length) return {ok:false,message:'查無此帳號，請先註冊。'};
-    const o=rows[0]; o.__collection = kind==='admin'?'admins':'employees';
-    const status=lower(o.accountStatus || o.status || o['帳號狀態'] || 'active');
-    if(status==='pending') return {ok:false,message:'此帳號尚未通過主管審核。'};
-    if(status && ['active','enabled','啟用','是'].indexOf(status)<0) return {ok:false,message:'此帳號目前無法登入。'};
-    const stored=String(o.password || o.loginPassword || o['密碼'] || o['登入密碼'] || '');
-    if(stored !== password) return {ok:false,message:'密碼錯誤，請重新輸入。'};
-    const user=normalizeUserDoc(o);
-    await docUpdate(kind==='admin'?'admins':'employees', clean(o.__id || user.id), {lastLoginAt:ts()});
-    return {ok:true,message:kind==='admin'?'管理者登入成功':'登入成功',user};
+    const result=await secureCall('employeeSecureLogin',{email:account,password});
+    if(result&&result.ok&&result.token){
+      if(!global.firebase || typeof global.firebase.auth!=='function') throw new Error('安全登入元件尚未載入，請重新整理後再試。');
+      await global.firebase.auth().signInWithCustomToken(result.token);
+      localStorage.setItem('employeeSecureAuthVersion','1');
+      delete result.token;
+    }
+    return result;
   }
+  async function firebaseForgotPassword(payload){ return await secureCall('employeeForgotPassword',{email:lower(payload&&payload.email)}); }
+  async function firebaseChangePassword(payload){ return await secureCall('employeeChangePassword',{email:lower(payload&&payload.email),oldPassword:String(payload&&payload.oldPassword||''),newPassword:String(payload&&payload.newPassword||''),confirmPassword:String(payload&&payload.confirmPassword||'')}); }
   async function firebaseRegister(payload){
     const email=lower(payload.email); const name=clean(payload.name);
     if(!email || !name) return {ok:false,message:'註冊資料不完整。'};
@@ -580,6 +590,8 @@
   async function primaryWrite(action,payload){
     const a=clean(action);
     if(a==='login') return await firebaseLogin(payload||{});
+    if(a==='forgotPassword') return await firebaseForgotPassword(payload||{});
+    if(a==='changePassword') return await firebaseChangePassword(payload||{});
     if(a==='register') return await firebaseRegister(payload||{});
     if(a==='clock') return await firebaseClock(payload||{});
     if(a==='leaveRequest'||a==='modifyLeaveRequest'||a==='deleteLeaveRequest'||a==='reviewLeaveRequest') return await firebaseLeave(a,payload||{});

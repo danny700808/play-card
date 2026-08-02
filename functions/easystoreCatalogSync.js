@@ -192,23 +192,8 @@ function buildCatalog(products) {
 }
 
 function isAllowedCaller(request) {
-  if (request.auth && request.auth.uid) return true;
-  const rawOrigin = clean(
-    request.rawRequest &&
-    (request.rawRequest.headers.origin || request.rawRequest.headers.referer)
-  );
-  if (!rawOrigin) return false;
-  try {
-    const url = new URL(rawOrigin);
-    const host = url.hostname.toLowerCase();
-    return host === 'danny700808.github.io' ||
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host.endsWith('.web.app') ||
-      host.endsWith('.firebaseapp.com');
-  } catch (_) {
-    return false;
-  }
+  const token = request && request.auth && request.auth.token;
+  return !!(token && token.employee === true && (token.manager === true || ['admin', 'manager'].includes(clean(token.role).toLowerCase())));
 }
 
 async function apiRequest(url, token, attempt = 0) {

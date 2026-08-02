@@ -54,9 +54,10 @@
   </div>
   <script src="config.js?v=contract-firebase-init-20260601"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=contract-firebase-only-20260531"></script>
-  <script src="app.js?v=20260801-teacher-session-v2"></script>
+  <script src="firebase-client.js?v=20260802-security-phase1"></script>
+  <script src="app.js?v=20260802-security-phase1"></script>
   <script>
     let currentUser=null, currentAssignment=null, contractData=null, signCanvas=null, ctx=null, drawing=false, signed=false;
     function qs(s){return document.querySelector(s)} function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
