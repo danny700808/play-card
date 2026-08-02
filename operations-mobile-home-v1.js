@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var VERSION = 'approved-mobile-home-v1';
+  var VERSION = 'approved-mobile-home-week-v2';
   var FORMAL_DB_NAME = 'youzi-course-scheduler';
   var FORMAL_DB_STORE = 'formalSnapshots';
   var FORMAL_DB_KEY = 'latest';
@@ -10,6 +10,9 @@
   var productQuery = '';
   var observer = null;
   var scheduled = false;
+  var scheduleWeekOffset = 0;
+  var scheduleAnchorDate = '';
+  var weekSnapTimer = null;
 
   function clean(value) {
     return String(value == null ? '' : value).trim();
@@ -67,6 +70,29 @@
     return dateKey(state.overviewDate) || todayKey();
   }
 
+  function shiftDate(value, amount) {
+    var date = new Date(dateKey(value) + 'T12:00:00');
+    date.setDate(date.getDate() + numberOf(amount));
+    return dateKey(date);
+  }
+
+  function weekStartKey(value) {
+    var date = new Date(dateKey(value) + 'T12:00:00');
+    var day = date.getDay();
+    date.setDate(date.getDate() + (day === 0 ? -6 : 1 - day));
+    return dateKey(date);
+  }
+
+  function dateParts(value) {
+    var date = new Date(dateKey(value) + 'T12:00:00');
+    return {
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+      day: date.getDate(),
+      weekday: '日一二三四五六'[date.getDay()] || ''
+    };
+  }
+
   function byId(rows, id) {
     return (rows || []).find(function (row) { return clean(row && row.id) === clean(id); }) || {};
   }
@@ -120,10 +146,13 @@
 
   function scheduleEvents(targetDate) {
     if (!snapshot) return [];
-    var explicit = (snapshot.events || []).filter(function (event) {
-      return dateKey(event.date) === targetDate && !['cancelled', 'canceled', 'voided', 'leave'].includes(clean(event.status).toLowerCase());
+    var sameDay = (snapshot.events || []).filter(function (event) {
+      return dateKey(event.date || event.startDate) === targetDate;
     });
-    var explicitSeries = new Set(explicit.map(function (event) { return clean(event.seriesId); }).filter(Boolean));
+    var explicit = sameDay.filter(function (event) {
+      return !['cancelled', 'canceled', 'voided', 'leave'].includes(clean(event.status).toLowerCase());
+    });
+    var explicitSeries = new Set(sameDay.map(function (event) { return clean(event.seriesId); }).filter(Boolean));
     var recurring = (snapshot.recurringRules || []).filter(function (rule) {
       return ruleOccursOn(rule, targetDate) && !explicitSeries.has(clean(rule.id));
     }).map(function (rule) {
@@ -135,16 +164,31 @@
       });
     });
     return explicit.concat(recurring).sort(function (left, right) {
-      return timeToMinutes(left.start) - timeToMinutes(right.start);
+      return eventStartMinutes(left) - eventStartMinutes(right);
     });
   }
 
+  function eventStartMinutes(event) {
+    return timeToMinutes(event.start || event.startTime || event.time);
+  }
+
+  function eventDurationMinutes(event) {
+    var duration = numberOf(event.duration || event.durationMinutes);
+    if (duration > 0) return duration;
+    var start = eventStartMinutes(event);
+    var end = timeToMinutes(event.end || event.endTime);
+    return end > start ? end - start : 60;
+  }
+
   function eventLabel(event) {
-    var studentNames = (event.studentIds || []).map(function (id) {
+    var studentIds = Array.isArray(event.studentIds) ? event.studentIds.slice() : [];
+    if (event.studentId) studentIds.push(event.studentId);
+    var studentNames = studentIds.map(function (id) {
       return clean(byId(snapshot && snapshot.students, id).name);
     }).filter(Boolean);
-    if (event.type === 'rental') return clean(event.clientName) || '教室租用';
-    return studentNames.join('、') || clean(event.clientName) || '未命名課程';
+    var renter = clean(event.clientName || event.renterName || event.customerName || event.bookedByName || event.contactName);
+    if (clean(event.type).toLowerCase() === 'rental') return renter || '教室租用';
+    return studentNames.join('、') || renter || clean(event.studentName) || '未命名課程';
   }
 
   function eventClass(event) {
@@ -155,49 +199,144 @@
     return 'fixed';
   }
 
+  function layoutDayEvents(events, startMinute, endMinute) {
+    var rows = events.map(function (event) {
+      var rawStart = eventStartMinutes(event);
+      var rawEnd = rawStart + eventDurationMinutes(event);
+      return {event: event, start: Math.max(startMinute, rawStart), end: Math.min(endMinute, rawEnd), lane: 0, laneCount: 1};
+    }).filter(function (row) {
+      return row.start < endMinute && row.end > startMinute;
+    }).sort(function (left, right) {
+      return left.start - right.start || left.end - right.end;
+    });
+    var components = [];
+    var component = [];
+    var componentEnd = -1;
+    rows.forEach(function (row) {
+      if (component.length && row.start >= componentEnd) {
+        components.push(component);
+        component = [];
+        componentEnd = -1;
+      }
+      component.push(row);
+      componentEnd = Math.max(componentEnd, row.end);
+    });
+    if (component.length) components.push(component);
+    components.forEach(function (items) {
+      var laneEnds = [];
+      items.forEach(function (item) {
+        var lane = laneEnds.findIndex(function (end) { return end <= item.start; });
+        if (lane < 0) lane = laneEnds.length;
+        item.lane = lane;
+        laneEnds[lane] = item.end;
+      });
+      items.forEach(function (item) { item.laneCount = Math.max(1, laneEnds.length); });
+    });
+    return rows;
+  }
+
+  function weekRangeLabel(start) {
+    var first = dateParts(start);
+    var last = dateParts(shiftDate(start, 6));
+    return first.year + '/' + first.month + '/' + first.day + '－' + last.month + '/' + last.day;
+  }
+
   function scheduleHtml() {
-    var date = selectedDate();
-    var rooms = snapshot && Array.isArray(snapshot.rooms)
-      ? snapshot.rooms.filter(function (room) { return room.active !== false; })
-      : [];
+    var anchor = selectedDate();
+    if (scheduleAnchorDate !== anchor) {
+      scheduleAnchorDate = anchor;
+      scheduleWeekOffset = 0;
+    }
+    var startDate = shiftDate(weekStartKey(anchor), scheduleWeekOffset * 7);
+    var days = Array.from({length: 7}, function (_, index) { return shiftDate(startDate, index); });
     var settings = snapshot && snapshot.settings ? snapshot.settings : {};
     var startHour = Math.max(0, Math.min(23, numberOf(settings.startHour) || 10));
     var endHour = Math.max(startHour + 1, Math.min(24, numberOf(settings.endHour) || 22));
     var slotCount = (endHour - startHour) * 2;
-    var events = scheduleEvents(date);
+    var startMinute = startHour * 60;
+    var endMinute = endHour * 60;
+    var initialDay = scheduleWeekOffset === 0 ? Math.max(0, days.indexOf(anchor)) : 0;
 
-    if (!rooms.length) {
-      return '<section class="ops-card ops-approved-schedule-card"><div class="ops-card-head"><div><h2>今日課表</h2></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div><div class="ops-approved-schedule-empty">課表資料正在載入；也可以按「完整課表」查看。</div></section>';
+    if (!snapshot) {
+      return '<section class="ops-card ops-approved-schedule-card"><div class="ops-card-head"><div><h2>全體週課表</h2></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div><div class="ops-approved-schedule-empty">課表資料正在載入；也可以按「完整課表」查看。</div></section>';
     }
 
-    var html = '<section class="ops-card ops-approved-schedule-card"><div class="ops-card-head"><div><h2>今日課表</h2></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div>';
-    html += '<div class="ops-approved-schedule-wrap"><div class="ops-approved-schedule-grid" style="--room-count:' + rooms.length + ';--slot-count:' + slotCount + '">';
-    html += '<div class="ops-approved-schedule-corner" style="grid-column:1;grid-row:1">時間</div>';
-    rooms.forEach(function (room, index) {
-      html += '<div class="ops-approved-schedule-room" style="grid-column:' + (index + 2) + ';grid-row:1">' + esc(room.name || ('教室 ' + (index + 1))) + '</div>';
+    var html = '<section class="ops-card ops-approved-schedule-card"><div class="ops-card-head"><div><h2>全體週課表</h2></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div>';
+    html += '<div class="ops-approved-week-nav"><button type="button" data-approved-week-step="-1">← 上週</button><button type="button" class="current" data-approved-week-step="0">' + esc(weekRangeLabel(startDate)) + '</button><button type="button" data-approved-week-step="1">下週 →</button></div>';
+    html += '<div class="ops-approved-week-scroll" data-approved-two-day-viewport data-initial-day="' + initialDay + '"><div class="ops-approved-week-grid" style="--slot-count:' + slotCount + '">';
+    html += '<div class="ops-approved-week-corner" style="grid-column:1;grid-row:1">時間</div>';
+    days.forEach(function (day, index) {
+      var parts = dateParts(day);
+      var classes = 'ops-approved-week-head' + (index % 2 === 0 ? ' group-start' : '') + (day === anchor ? ' selected' : '') + (parts.weekday === '一' ? ' closed' : '');
+      html += '<div class="' + classes + '" data-day-index="' + index + '" style="grid-column:' + (index + 2) + ';grid-row:1"><b>' + parts.month + '/' + parts.day + '（' + parts.weekday + '）</b>' + (parts.weekday === '一' ? '<small>公休</small>' : '') + '</div>';
     });
     for (var slot = 0; slot < slotCount; slot += 1) {
       var row = slot + 2;
-      var minute = startHour * 60 + slot * 30;
+      var minute = startMinute + slot * 30;
       var half = slot % 2 ? ' half' : '';
-      html += '<div class="ops-approved-schedule-time' + half + '" style="grid-column:1;grid-row:' + row + '">' + (slot % 2 ? '' : minutesToTime(minute)) + '</div>';
-      rooms.forEach(function (_, roomIndex) {
-        html += '<div class="ops-approved-schedule-cell' + half + '" style="grid-column:' + (roomIndex + 2) + ';grid-row:' + row + '"></div>';
+      html += '<div class="ops-approved-week-time' + half + '" style="grid-column:1;grid-row:' + row + '">' + (slot % 2 ? '' : minutesToTime(minute)) + '</div>';
+      days.forEach(function (day, dayIndex) {
+        var closed = dateParts(day).weekday === '一' ? ' closed' : '';
+        html += '<div class="ops-approved-week-cell' + half + closed + '" style="grid-column:' + (dayIndex + 2) + ';grid-row:' + row + '"></div>';
       });
     }
-    events.forEach(function (event) {
-      var roomIndex = rooms.findIndex(function (room) { return clean(room.id) === clean(event.roomId); });
-      var eventStart = timeToMinutes(event.start);
-      if (roomIndex < 0 || eventStart < startHour * 60 || eventStart >= endHour * 60) return;
-      var startSlot = Math.floor((eventStart - startHour * 60) / 30);
-      var span = Math.max(1, Math.ceil((numberOf(event.duration) || 60) / 30));
-      var teacher = clean(byId(snapshot.teachers, event.teacherId).name);
-      var subject = clean(byId(snapshot.subjects, event.subjectId).name);
-      html += '<button type="button" class="ops-approved-schedule-event ' + eventClass(event) + '" data-nav="course-calendar" style="grid-column:' + (roomIndex + 2) + ';grid-row:' + (startSlot + 2) + ' / span ' + Math.min(span, slotCount - startSlot) + '" title="' + attr(eventLabel(event)) + '">';
-      html += '<b>' + esc(eventLabel(event)) + '</b><span>' + esc([subject, teacher].filter(Boolean).join(' · ') || (event.type === 'rental' ? '租用' : '課程')) + '</span></button>';
+    days.forEach(function (day, dayIndex) {
+      html += '<div class="ops-approved-week-events" style="grid-column:' + (dayIndex + 2) + ';grid-row:2 / span ' + slotCount + '">';
+      layoutDayEvents(scheduleEvents(day), startMinute, endMinute).forEach(function (layout) {
+        var event = layout.event;
+        var top = ((layout.start - startMinute) / (endMinute - startMinute)) * 100;
+        var height = ((layout.end - layout.start) / (endMinute - startMinute)) * 100;
+        var width = 100 / layout.laneCount;
+        var left = width * layout.lane;
+        var teacher = clean(event.teacherName || byId(snapshot.teachers, event.teacherId).name);
+        var subject = clean(event.subjectName || byId(snapshot.subjects, event.subjectId).name);
+        var detail = [subject, teacher].filter(Boolean).join(' · ') || (clean(event.type).toLowerCase() === 'rental' ? '租用' : '課程');
+        html += '<button type="button" class="ops-approved-week-event ' + eventClass(event) + '" data-nav="course-calendar" style="top:' + top.toFixed(4) + '%;height:' + Math.max(height, 2.2).toFixed(4) + '%;left:' + left.toFixed(4) + '%;width:' + width.toFixed(4) + '%" title="' + attr(eventLabel(event) + '｜' + detail) + '">';
+        html += '<b>' + esc(eventLabel(event)) + '</b><span>' + esc(detail) + '</span></button>';
+      });
+      html += '</div>';
     });
-    html += '</div></div></section>';
+    html += '</div></div><p class="ops-approved-week-hint">左右滑動，每次查看兩天；左側時間固定。</p></section>';
     return html;
+  }
+
+  function weekSnapTargets(scroll) {
+    var grid = scroll && scroll.querySelector('.ops-approved-week-grid');
+    if (!grid) return [0];
+    var dayWidth = numberOf(global.getComputedStyle(grid).getPropertyValue('--overview-day-width')) || 140;
+    var max = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+    return [0, dayWidth * 2, dayWidth * 4, max].map(function (value) {
+      return Math.max(0, Math.min(max, value));
+    }).filter(function (value, index, values) {
+      return index === 0 || Math.abs(value - values[index - 1]) > 1;
+    });
+  }
+
+  function snapApprovedWeekViewport(scroll, behavior) {
+    if (!scroll) return;
+    var targets = weekSnapTargets(scroll);
+    var target = targets.reduce(function (best, value) {
+      return Math.abs(value - scroll.scrollLeft) < Math.abs(best - scroll.scrollLeft) ? value : best;
+    }, targets[0] || 0);
+    if (Math.abs(target - scroll.scrollLeft) < 1) return;
+    scroll.scrollTo({left: target, behavior: behavior || 'smooth'});
+  }
+
+  function updateApprovedWeekViewport(resetPosition) {
+    var scroll = document.querySelector('[data-approved-two-day-viewport]');
+    if (!scroll) return;
+    var grid = scroll.querySelector('.ops-approved-week-grid');
+    if (!grid) return;
+    var timeWidth = 48;
+    var dayWidth = Math.max(112, (scroll.clientWidth - timeWidth) / 2);
+    grid.style.setProperty('--overview-time-column', timeWidth + 'px');
+    grid.style.setProperty('--overview-day-width', dayWidth + 'px');
+    if (resetPosition || !scroll.dataset.positioned) {
+      scroll.dataset.positioned = '1';
+      var initialDay = Math.max(0, Math.min(6, numberOf(scroll.dataset.initialDay)));
+      var target = Math.floor(initialDay / 2) * 2 * dayWidth;
+      scroll.scrollLeft = Math.min(target, Math.max(0, scroll.scrollWidth - scroll.clientWidth));
+    }
   }
 
   function productImage(product) {
@@ -268,18 +407,38 @@
     }
 
     var quick = content.querySelector('.ops-mobile-direct-card');
-    var details = document.getElementById('opsMobileOverviewDetails');
-    if (details) {
-      details.insertAdjacentHTML('beforebegin', scheduleHtml() + productsHtml());
-    } else if (quick) {
+    if (quick) {
       quick.insertAdjacentHTML('afterend', scheduleHtml() + productsHtml());
     } else {
       content.insertAdjacentHTML('beforeend', scheduleHtml() + productsHtml());
     }
     bindInjectedEvents();
+    global.requestAnimationFrame(function () { updateApprovedWeekViewport(true); });
   }
 
   function bindInjectedEvents() {
+    document.querySelectorAll('[data-approved-week-step]').forEach(function (button) {
+      if (button.dataset.bound) return;
+      button.dataset.bound = '1';
+      button.addEventListener('click', function () {
+        var step = numberOf(button.dataset.approvedWeekStep);
+        scheduleWeekOffset = step === 0 ? 0 : scheduleWeekOffset + step;
+        var card = button.closest('.ops-approved-schedule-card');
+        if (card) card.outerHTML = scheduleHtml();
+        bindInjectedEvents();
+        global.requestAnimationFrame(function () { updateApprovedWeekViewport(true); });
+      });
+    });
+    var weekScroll = document.querySelector('[data-approved-two-day-viewport]');
+    if (weekScroll && !weekScroll.dataset.bound) {
+      weekScroll.dataset.bound = '1';
+      weekScroll.addEventListener('scroll', function () {
+        global.clearTimeout(weekSnapTimer);
+        weekSnapTimer = global.setTimeout(function () { snapApprovedWeekViewport(weekScroll); }, 140);
+      }, {passive: true});
+      weekScroll.addEventListener('scrollend', function () { snapApprovedWeekViewport(weekScroll); });
+    }
+    updateApprovedWeekViewport(false);
     var search = document.getElementById('opsApprovedProductSearch');
     if (search && !search.dataset.bound) {
       search.dataset.bound = '1';

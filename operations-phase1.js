@@ -1341,11 +1341,12 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function overviewDateLabel(dateKey){ return dateKey.replace(/-/g,'/')+'（'+weekdayText(dateKey)+'）'; }
   function overviewDayNavigatorHtml(){
     const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today,todayParts=today.split('-');
-    return '<div class="ops-overview-day-nav">'
+    const mobile=isCompactMobile();
+    return '<div class="ops-overview-day-nav'+(mobile?' ops-mobile-overview-day-nav':'')+'">'
       +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button>'
       +'<button type="button" class="ops-button ops-overview-today '+(state.overviewRange==='today'&&current===today?'primary':'ghost')+'" data-action="overview-range" data-range="today"><b>今天</b><small>'+Number(todayParts[1])+'/'+Number(todayParts[2])+'</small></button>'
       +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button>'
-      +'<label class="ops-overview-day-label"><span>查詢日期</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label>'
+      +(mobile?'':'<label class="ops-overview-day-label"><span>查詢日期</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label>')
       +'</div>';
   }
   function overviewMonthSelectHtml(){
@@ -1362,7 +1363,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
         +overviewDayNavigatorHtml()
         +'<div class="ops-mobile-overview-periods">'
         +overviewMonthSelectHtml()
-        +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">自訂日期</summary><div class="ops-overview-dropdown-panel"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">查詢</button></div></details>'
+        +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">搜尋日期</summary><div class="ops-overview-dropdown-panel"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">查詢</button></div></details>'
         +'</div></div>';
     }
     return '<div class="ops-v8-overview-range">'
@@ -1693,22 +1694,25 @@ function renderOverviewV7(){
 
   const rangeHtml=rangeControls;
   const heroHtml='<section class="ops-card ops-v8-overview-hero"><div class="ops-v8-hero-primary"><span>'+escapeHtml(bounds.label)+'預估淨利</span><strong class="'+(netProfit<0?'negative':'')+'">'+money(netProfit)+'</strong><small>四大營運毛利－營運支出</small></div><div class="ops-v8-hero-secondary">'+summaryBox('四大營運毛利',money(allGrossProfit),allGrossProfit<0?'warning':'success')+summaryAction('營運支出',money(operatingExpenseTotal),operatingExpenseTotal?'warning':'','operating-expense-detail')+'</div></section>';
-  function mobileProfitBox(label,value,nav){
+  function mobileProfitBox(label,value,nav,kind){
     const tag=nav?'button':'div',navAttr=nav?' type="button" data-nav="'+attr(nav)+'"':'';
     const valueClass=(value<0?' negative':'')+(Math.abs(Number(value)||0)>=100000?' is-wide':'');
-    return '<'+tag+' class="ops-mobile-profit-box"'+navAttr+'><span>'+escapeHtml(label)+'</span><strong class="'+valueClass.trim()+'">'+money(value)+'</strong></'+tag+'>';
+    return '<'+tag+' class="ops-mobile-profit-box '+attr(kind||'')+'"'+navAttr+'><span>'+escapeHtml(label)+'</span><strong class="'+valueClass.trim()+'">'+money(value)+'</strong></'+tag+'>';
   }
   function mobileExpenseBox(label,value){
-    return '<button type="button" class="ops-mobile-profit-box" data-action="operating-expense-detail"><span>'+escapeHtml(label)+'</span><strong>'+money(value)+'</strong></button>';
+    return '<button type="button" class="ops-mobile-profit-box is-expense" data-action="operating-expense-detail"><span>'+escapeHtml(label)+'</span><strong>'+money(value)+'</strong></button>';
   }
   const mobileProfitHtml='<section class="ops-card ops-mobile-profit-card"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'毛利與淨利</h2></div></div><div class="ops-mobile-profit-grid">'
-    +mobileProfitBox('預估淨利',netProfit,'')
-    +mobileProfitBox('全部毛利',allGrossProfit,'')
+    +'<div class="ops-mobile-profit-section-label">主要結果與扣除</div><div class="ops-mobile-profit-summary">'
+    +mobileProfitBox('預估淨利',netProfit,'','is-net')
+    +mobileProfitBox('全部毛利',allGrossProfit,'','is-gross')
     +mobileExpenseBox('營運支出',operatingExpenseTotal)
-    +mobileProfitBox('門市毛利',storeBalance,'sales')
-    +mobileProfitBox('平台毛利',networkProfit,'sync')
-    +mobileProfitBox('課程毛利',educationRetainedWithRental,'course-calendar')
-    +mobileProfitBox('租用毛利',rentalRevenue,'rentals')
+    +'</div><div class="ops-mobile-profit-section-label">各營運毛利</div><div class="ops-mobile-profit-channels">'
+    +mobileProfitBox('門市毛利',storeBalance,'sales','is-store')
+    +mobileProfitBox('平台毛利',networkProfit,'sync','is-platform')
+    +mobileProfitBox('課程毛利',educationRetainedWithRental,'course-calendar','is-course')
+    +mobileProfitBox('租用毛利',rentalRevenue,'rentals','is-rental')
+    +'</div>'
     +'</div></section>';
   const mobileQuickNavHtml='<section class="ops-card ops-mobile-direct-card"><div class="ops-card-head"><div><h2>常用功能</h2></div></div><div class="ops-mobile-direct-nav">'
     +'<button type="button" class="ops-button primary" data-nav="course-calendar">課程日／週表</button>'
@@ -1734,7 +1738,7 @@ function renderOverviewV7(){
   if(lowStock.length)alerts.push('<button type="button" class="ops-v8-attention-row" data-action="overview-low-stock"><span class="ops-v8-attention-icon warning">庫</span><span><b>低於安全庫存</b><small>'+formatNumber(lowStock.length)+' 項商品需要確認補貨</small></span><em>處理</em></button>');
   const attentionHtml=alerts.length?alerts.join(''):'<div class="ops-v8-attention-empty"><b>目前沒有需要立即處理的項目</b><span>主要營運與同步狀態正常。</span></div>';
   const bottomHtml='<div class="ops-v8-overview-bottom ops-v8-overview-bottom-single"><section class="ops-card"><div class="ops-v8-section-head"><div><h2>需要注意</h2><p>同步異常、訂單異常、應收帳款與低庫存會集中顯示</p></div>'+(attentionKinds?'<span class="ops-tag yellow">'+formatNumber(attentionKinds)+' 類</span>':'<span class="ops-tag green">正常</span>')+'</div><div class="ops-v8-attention-list">'+attentionHtml+'</div></section></div>';
-  if(isCompactMobile())return rangeHtml+mobileProfitHtml+mobileQuickNavHtml+'<div class="ops-v8-channel-grid" id="opsMobileOverviewDetails">'+storeHtml+networkHtml+rentalHtml+educationHtml+'</div>'+bottomHtml;
+  if(isCompactMobile())return rangeHtml+mobileProfitHtml+mobileQuickNavHtml+'<template id="opsMobileOverviewReportTemplate"><div class="ops-v8-channel-grid">'+storeHtml+networkHtml+rentalHtml+educationHtml+'</div></template>'+bottomHtml;
   return rangeHtml+heroHtml+'<div class="ops-v8-channel-grid">'+storeHtml+networkHtml+rentalHtml+educationHtml+'</div>'+bottomHtml;
 }
 
@@ -3786,8 +3790,8 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
       state.overviewRange='custom';return render();
     }
     if(action==='mobile-overview-details'){
-      const target=byId('opsMobileOverviewDetails');
-      if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+      const template=byId('opsMobileOverviewReportTemplate');
+      if(template)openDrawer('營運完整報表',overviewBounds().label+'｜四大營運明細',template.innerHTML+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">關閉</button></div>');
       return;
     }
     if(action==='mobile-key') return applyMobileKeyInput(el.dataset.target,el.dataset.key);

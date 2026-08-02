@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260802-stability-phase1/);
+  assert.match(portal, /operations-phase1\.js\?v=20260802-mobile-overview-week-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
 });
 
@@ -33,12 +33,39 @@ test('formal operations route uses the approved mobile home enhancement', () => 
 test('mobile home contains live schedule and product search integrations', () => {
   const source = read('operations-mobile-home-v1.js');
   assert.match(source, /FORMAL_DB_NAME = 'youzi-course-scheduler'/);
-  assert.match(source, /今日課表/);
+  assert.match(source, /全體週課表/);
+  assert.match(source, /data-approved-two-day-viewport/);
+  assert.match(source, /\(scroll\.clientWidth - timeWidth\) \/ 2/);
+  assert.match(source, /dayWidth \* 2/);
+  assert.match(source, /dayWidth \* 4/);
+  assert.match(source, /eventLabel\(event\)/);
   assert.match(source, /快速找商品/);
   assert.match(source, /operationsState\(\)/);
   assert.doesNotMatch(source, /今天的營運狀況/);
   assert.doesNotMatch(source, /正式資料/);
   assert.doesNotMatch(source, /圖片、售價與庫存一起確認/);
+});
+
+test('mobile overview is compact while desktop keeps the full report', () => {
+  const source = read('operations-phase1.js');
+  assert.match(source, /mobile\?'':'<label class="ops-overview-day-label">/);
+  assert.match(source, /ops-mobile-overview-periods/);
+  assert.match(source, /搜尋日期/);
+  assert.match(source, /opsMobileOverviewReportTemplate/);
+  assert.doesNotMatch(source, /id="opsMobileOverviewDetails"/);
+  assert.match(source, /if\(isCompactMobile\(\)\)return rangeHtml\+mobileProfitHtml\+mobileQuickNavHtml\+'<template/);
+  assert.match(source, /return rangeHtml\+heroHtml\+'<div class="ops-v8-channel-grid">'/);
+});
+
+test('mobile profit and expense groups use distinct semantic styling', () => {
+  const source = read('operations-phase1.js');
+  const css = read('operations-mobile-home-v1.css');
+  assert.match(source, /ops-mobile-profit-summary/);
+  assert.match(source, /ops-mobile-profit-channels/);
+  for (const kind of ['net', 'gross', 'expense', 'store', 'platform', 'course', 'rental']) {
+    assert.match(source, new RegExp(`is-${kind}`));
+    assert.match(css, new RegExp(`\\.ops-mobile-profit-box\\.is-${kind}`));
+  }
 });
 
 test('course management stays in the operations shell and POS price is editable per sale', () => {

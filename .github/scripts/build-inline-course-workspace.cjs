@@ -218,11 +218,12 @@ function patchOperations() {
   if (!overviewControls.test(source)) throw new Error('Unable to locate overview date controls.');
   source = source.replace(overviewControls, `  function overviewDayNavigatorHtml(){
     const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today,todayParts=today.split('-');
-    return '<div class="ops-overview-day-nav">'
+    const mobile=isCompactMobile();
+    return '<div class="ops-overview-day-nav'+(mobile?' ops-mobile-overview-day-nav':'')+'">'
       +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">← 前一天</button>'
       +'<button type="button" class="ops-button ops-overview-today '+(state.overviewRange==='today'&&current===today?'primary':'ghost')+'" data-action="overview-range" data-range="today"><b>今天</b><small>'+Number(todayParts[1])+'/'+Number(todayParts[2])+'</small></button>'
       +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>後一天 →</button>'
-      +'<label class="ops-overview-day-label"><span>查詢日期</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label>'
+      +(mobile?'':'<label class="ops-overview-day-label"><span>查詢日期</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label>')
       +'</div>';
   }
   function overviewMonthSelectHtml(){
@@ -239,7 +240,7 @@ function patchOperations() {
         +overviewDayNavigatorHtml()
         +'<div class="ops-mobile-overview-periods">'
         +overviewMonthSelectHtml()
-        +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">自訂日期</summary><div class="ops-overview-dropdown-panel"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">查詢</button></div></details>'
+        +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">搜尋日期</summary><div class="ops-overview-dropdown-panel"><label>開始日期<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>結束日期<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">查詢</button></div></details>'
         +'</div></div>';
     }
     return '<div class="ops-v8-overview-range">'

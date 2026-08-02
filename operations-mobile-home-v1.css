@@ -149,17 +149,41 @@
   }
 
   body.ops-approved-mobile-home .ops-mobile-profit-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 5px;
+    display: block;
     padding: 0 10px 11px;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-section-label {
+    margin: 8px 1px 5px;
+    color: #667c75;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .04em;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-section-label:first-child {
+    margin-top: 0;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-summary,
+  body.ops-approved-mobile-home .ops-mobile-profit-channels {
+    display: grid;
+    gap: 5px;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-summary {
+    grid-template-columns: 1.2fr 1fr 1fr;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-channels {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   body.ops-approved-mobile-home .ops-mobile-profit-box {
     appearance: none;
     width: 100%;
     min-width: 0;
-    min-height: 68px;
+    min-height: 62px;
     padding: 8px 5px;
     border: 1px solid #cfe0da;
     border-radius: 11px;
@@ -195,6 +219,53 @@
     letter-spacing: -.07em;
   }
 
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-net {
+    border-color: #75b99d;
+    background: #e4f4ed;
+    color: #155f49;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-gross {
+    border-color: #a5c5e7;
+    background: #edf4ff;
+    color: #244f7c;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-expense {
+    border-color: #e7afa7;
+    background: #fff0ed;
+    color: #91453b;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-store {
+    border-color: #e7cd85;
+    background: #fff7df;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-platform {
+    border-color: #a7c8e7;
+    background: #eef6ff;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-course {
+    border-color: #acce9f;
+    background: #eff7ec;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-rental {
+    border-color: #dfb0c1;
+    background: #fff0f5;
+  }
+
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-net span,
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-net strong,
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-gross span,
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-gross strong,
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-expense span,
+  body.ops-approved-mobile-home .ops-mobile-profit-box.is-expense strong {
+    color: inherit;
+  }
+
   body.ops-approved-mobile-home .ops-mobile-direct-nav {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -212,42 +283,74 @@
     white-space: normal;
   }
 
-  .ops-approved-schedule-wrap {
+  .ops-approved-week-nav {
+    display: grid;
+    grid-template-columns: .8fr 1.4fr .8fr;
+    gap: 5px;
+    padding: 0 9px 8px;
+  }
+
+  .ops-approved-week-nav button {
+    min-width: 0;
+    min-height: 34px;
+    padding: 5px 4px;
+    border: 1px solid #c9ddd6;
+    border-radius: 9px;
+    background: #fff;
+    color: #285047;
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  .ops-approved-week-nav button.current {
+    background: #edf6f2;
+    color: #166a50;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ops-approved-week-scroll {
     overflow: auto;
-    padding: 0 9px 10px;
+    margin: 0 9px;
+    border: 1px solid #cdded8;
+    border-radius: 10px;
+    background: #fff;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: var(--overview-time-column, 48px);
+    overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
   }
 
-  .ops-approved-schedule-grid {
+  .ops-approved-week-grid {
     --slot-height: 31px;
+    --overview-time-column: 48px;
+    --overview-day-width: 140px;
     display: grid;
-    min-width: max-content;
     position: relative;
-    grid-template-columns: 54px repeat(var(--room-count), 122px);
-    grid-template-rows: 38px repeat(var(--slot-count), var(--slot-height));
-    border: 1px solid #cdded8;
-    border-radius: 9px;
-    overflow: hidden;
+    width: max-content;
+    min-width: 100%;
+    grid-template-columns: var(--overview-time-column) repeat(7, var(--overview-day-width));
+    grid-template-rows: 42px repeat(var(--slot-count), var(--slot-height));
     background: #fff;
   }
 
-  .ops-approved-schedule-corner,
-  .ops-approved-schedule-room,
-  .ops-approved-schedule-time,
-  .ops-approved-schedule-cell {
+  .ops-approved-week-corner,
+  .ops-approved-week-head,
+  .ops-approved-week-time,
+  .ops-approved-week-cell {
     border-right: 1px solid #d5e3de;
     border-bottom: 1px solid #d5e3de;
     background: #fff;
   }
 
-  .ops-approved-schedule-corner,
-  .ops-approved-schedule-room {
+  .ops-approved-week-corner,
+  .ops-approved-week-head {
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: 8;
     display: grid;
-    place-items: center;
-    padding: 4px;
+    place-content: center;
+    gap: 1px;
+    padding: 3px;
     background: #edf6f2;
     color: #244b40;
     font-size: 10px;
@@ -255,60 +358,89 @@
     text-align: center;
   }
 
-  .ops-approved-schedule-corner {
-    left: 0;
-    z-index: 7;
+  .ops-approved-week-head.group-start {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
 
-  .ops-approved-schedule-time {
+  .ops-approved-week-head.selected {
+    background: #dcefe7;
+    color: #126449;
+  }
+
+  .ops-approved-week-head small {
+    color: #a65c55;
+    font-size: 8px;
+  }
+
+  .ops-approved-week-corner {
+    left: 0;
+    z-index: 12;
+  }
+
+  .ops-approved-week-time {
     position: sticky;
     left: 0;
-    z-index: 4;
-    padding: 5px 4px;
+    z-index: 7;
+    padding: 5px 3px;
     background: #f8fbfa;
     color: #71847e;
     font-size: 9px;
     text-align: center;
+    font-variant-numeric: tabular-nums;
   }
 
-  .ops-approved-schedule-cell.half,
-  .ops-approved-schedule-time.half {
+  .ops-approved-week-cell.closed {
+    background: #faf7f5;
+  }
+
+  .ops-approved-week-cell.half,
+  .ops-approved-week-time.half {
     border-bottom-style: dashed;
   }
 
-  .ops-approved-schedule-event {
+  .ops-approved-week-events {
+    position: relative;
     z-index: 3;
     min-width: 0;
-    margin: 2px;
-    padding: 6px 5px;
+    pointer-events: none;
+  }
+
+  .ops-approved-week-event {
+    position: absolute;
+    z-index: 4;
+    min-width: 0;
+    max-width: 100%;
+    margin: 1px;
+    padding: 4px 3px;
     overflow: hidden;
-    border: 0;
-    border-radius: 7px;
+    border: 1px solid rgba(255,255,255,.75);
+    border-radius: 6px;
     background: #177b5d;
     color: #fff;
     text-align: left;
-    font-size: 9px;
-    line-height: 1.25;
+    font-size: 8px;
+    line-height: 1.15;
+    pointer-events: auto;
   }
 
-  .ops-approved-schedule-event b,
-  .ops-approved-schedule-event span {
+  .ops-approved-week-event b,
+  .ops-approved-week-event span {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .ops-approved-schedule-event.reschedule {
-    background: #5d9b88;
-  }
+  .ops-approved-week-event.reschedule { background: #5d9b88; }
+  .ops-approved-week-event.rental { background: #c87d83; }
+  .ops-approved-week-event.trial { background: #c9953e; }
 
-  .ops-approved-schedule-event.rental {
-    background: #c87d83;
-  }
-
-  .ops-approved-schedule-event.trial {
-    background: #c9953e;
+  .ops-approved-week-hint {
+    margin: 7px 10px 10px;
+    color: #71847e;
+    font-size: 9px;
+    text-align: center;
   }
 
   .ops-approved-schedule-empty {

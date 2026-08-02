@@ -362,7 +362,7 @@
   .ops-mobile-overview-day-nav .ops-overview-today small{font-size:7px!important;line-height:1.1!important}
   .ops-mobile-overview-periods{
     display:grid!important;
-    grid-template-columns:1fr 1fr!important;
+    grid-template-columns:.72fr 1.48fr .9fr!important;
     gap:4px!important;
     margin-top:4px!important;
   }
@@ -377,8 +377,7 @@
     border-radius:8px!important;
   }
   .ops-mobile-overview-periods .ops-overview-month-select span{
-    display:block!important;
-    font-size:9px!important;
+    display:none!important;
   }
   .ops-mobile-overview-periods .ops-overview-month-select .ops-select{
     width:100%!important;
@@ -415,12 +414,24 @@
   .ops-mobile-profit-card,
   .ops-mobile-direct-card{margin-bottom:7px!important}
   .ops-mobile-profit-grid{
-    display:grid!important;
-    grid-template-columns:repeat(5,minmax(64px,1fr))!important;
-    gap:4px!important;
-    overflow-x:auto!important;
+    display:block!important;
+    overflow:visible!important;
     padding-bottom:1px!important;
   }
+  .ops-mobile-profit-section-label{
+    margin:7px 0 4px!important;
+    color:#617870!important;
+    font-size:8px!important;
+    font-weight:800!important;
+  }
+  .ops-mobile-profit-section-label:first-child{margin-top:0!important}
+  .ops-mobile-profit-summary,
+  .ops-mobile-profit-channels{
+    display:grid!important;
+    gap:4px!important;
+  }
+  .ops-mobile-profit-summary{grid-template-columns:1.2fr 1fr 1fr!important}
+  .ops-mobile-profit-channels{grid-template-columns:repeat(4,minmax(0,1fr))!important}
   .ops-mobile-profit-box{
     appearance:none!important;
     width:100%!important;
@@ -437,6 +448,19 @@
     justify-content:center!important;
     text-align:left!important;
   }
+  .ops-mobile-profit-box.is-net{background:#e4f4ed!important;border-color:#7ab99f!important;color:#155f49!important}
+  .ops-mobile-profit-box.is-gross{background:#edf4ff!important;border-color:#a9c6e8!important;color:#244f7c!important}
+  .ops-mobile-profit-box.is-expense{background:#fff0ed!important;border-color:#e8b0a7!important;color:#93463c!important}
+  .ops-mobile-profit-box.is-store{background:#fff7df!important;border-color:#e8ce86!important}
+  .ops-mobile-profit-box.is-platform{background:#eef6ff!important;border-color:#a8c9e7!important}
+  .ops-mobile-profit-box.is-course{background:#eff7ec!important;border-color:#acd0a2!important}
+  .ops-mobile-profit-box.is-rental{background:#fff0f5!important;border-color:#e1b3c4!important}
+  .ops-mobile-profit-box.is-net span,
+  .ops-mobile-profit-box.is-net strong,
+  .ops-mobile-profit-box.is-gross span,
+  .ops-mobile-profit-box.is-gross strong,
+  .ops-mobile-profit-box.is-expense span,
+  .ops-mobile-profit-box.is-expense strong{color:inherit!important}
   button.ops-mobile-profit-box{cursor:pointer!important}
   .ops-mobile-profit-box span{
     display:block!important;
