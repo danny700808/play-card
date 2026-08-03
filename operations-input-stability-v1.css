@@ -1,5 +1,7 @@
 /* 2026-08-03：手機搜尋鍵盤縮小、輸入框與長清單穩定化 */
 @media (max-width:780px){
+  html{scroll-behavior:auto!important}
+  .ops-topbar{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
   .ops-mobile-search-pad{
     display:grid!important;
     grid-template-columns:repeat(5,minmax(0,1fr))!important;
