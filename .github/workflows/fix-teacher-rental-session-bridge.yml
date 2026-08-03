@@ -1,0 +1,106 @@
+name: Fix Teacher Rental Session Bridge
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/fix-teacher-rental-session-bridge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-teacher-rental-session-bridge
+  cancel-in-progress: false
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Allow teacher and student sessions on rental page
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          config = Path('config.js')
+          source = config.read_text(encoding='utf-8')
+
+          source = source.replace(
+              "BUILD: '2026-08-03-course-login-stability-v4'",
+              "BUILD: '2026-08-03-rental-session-bridge-v1'",
+              1
+          )
+
+          old = """  const currentRole = validRole(COURSE_ROLE_PAGES[pageName()]);
+  if (currentRole) {
+"""
+          new = """  function rentalBridgeRole(){
+    if (pageName() !== 'room-booking.html') return '';
+    const search = new URLSearchParams(global.location.search || '');
+    const requested = validRole(search.get('from'));
+    if ((requested === 'teacher' || requested === 'student') && courseSession(requested)) {
+      return requested;
+    }
+    if (courseSession('renter')) return 'renter';
+    if (courseSession('student')) return 'student';
+    if (courseSession('teacher')) return 'teacher';
+    return '';
+  }
+
+  const currentPage = pageName();
+  const bridgedRentalRole = rentalBridgeRole();
+  const currentRole = validRole(
+    currentPage === 'room-booking.html' && bridgedRentalRole
+      ? bridgedRentalRole
+      : COURSE_ROLE_PAGES[currentPage]
+  );
+  if (currentRole) {
+"""
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f'config.js currentRole marker expected once, found {count}')
+          source = source.replace(old, new, 1)
+          config.write_text(source, encoding='utf-8')
+
+          room = Path('room-booking.html')
+          html = room.read_text(encoding='utf-8')
+          html = html.replace(
+              '<script src="config.js"></script>',
+              '<script src="config.js?v=20260803-rental-session-bridge-v1"></script>',
+              1
+          )
+          room.write_text(html, encoding='utf-8')
+          PY
+
+      - name: Verify syntax and focused behavior
+        run: |
+          set -euo pipefail
+          node --check config.js
+          node --check room-booking-v2.js
+          grep -Fq "requested === 'teacher'" config.js
+          grep -Fq "requested === 'student'" config.js
+          grep -Fq "room-booking.html?from=teacher" teacher-course-portal.html
+          grep -Fq "params.get('from') === 'teacher'" room-booking-v2.js
+          grep -Fq "config.js?v=20260803-rental-session-bridge-v1" room-booking.html
+          git diff --check
+
+      - name: Commit verified fix
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config.js room-booking.html
+          git commit -m "Allow teacher and student sessions to enter room rental"
+          git push origin HEAD:main
