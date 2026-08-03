@@ -1,0 +1,22 @@
+name: Trigger Course Login Stability V3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/trigger-course-login-stability-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run verified login patch workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run one-time-course-login-stability-v3.yml --repo "${{ github.repository }}" --ref main
