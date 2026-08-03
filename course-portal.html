@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>柚子樂器服務登入</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260803-unified-entry-v2">
+  <link rel="stylesheet" href="course-portal.css?v=20260803-login-stability-v3">
   <style>
     .entry-shell{max-width:620px}
     .entry-card{padding:18px}
-    .entry-intro{text-align:center;margin:0 0 14px;color:var(--muted);line-height:1.6}
+    .entry-intro{text-align:center;margin:0 0 14px;color:var(--muted);line-height:1.65}
     .entry-methods,.entry-roles{display:grid;gap:10px}
     .entry-method{width:100%;display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:16px;background:#fff;padding:13px;text-align:left;color:inherit;cursor:pointer}
     .entry-method.primary{border-color:#8fc8af;background:#edf9f3}
@@ -19,7 +19,7 @@
     .entry-method strong{font-size:17px}
     .entry-method small{margin-top:2px;color:var(--muted);font-size:12px}
     .entry-role{width:100%;display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:12px;border:1px solid var(--line);border-radius:16px;background:#fff;padding:13px;text-align:left;color:inherit;cursor:pointer;text-decoration:none}
-    .entry-role:hover{border-color:#82b9a4;background:#f8fcfa}
+    .entry-role:hover,.entry-role.last-used{border-color:#82b9a4;background:#f8fcfa}
     .entry-role-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:#e8f5ef;color:var(--green);font-size:19px;font-weight:950}
     .entry-role-copy strong,.entry-role-copy small{display:block}
     .entry-role-copy strong{font-size:17px}
@@ -28,9 +28,9 @@
     .entry-role-action.saved{background:#e8f5ef;color:var(--green)}
     .entry-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
     .entry-toolbar button,.entry-toolbar a{border:0;background:transparent;color:var(--green);font-weight:850;text-decoration:none;cursor:pointer;padding:4px}
-    .entry-notice{margin-bottom:12px}
+    .entry-notice{margin-bottom:12px;white-space:pre-line}
     .entry-form-title{margin:0 0 4px;font-size:19px}
-    .entry-form-copy{margin:0 0 13px;color:var(--muted);font-size:12px;line-height:1.55}
+    .entry-form-copy{margin:0 0 13px;color:var(--muted);font-size:12px;line-height:1.65}
     .entry-form-actions{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:2px}
     .entry-otp-heading{margin-bottom:12px}
     .entry-otp-heading strong,.entry-otp-heading span{display:block}
@@ -38,7 +38,12 @@
     .entry-otp-heading span{margin-top:3px;color:var(--muted);font-size:12px}
     .entry-otp-code{font-size:26px!important;letter-spacing:.35em;text-align:center;font-variant-numeric:tabular-nums}
     .entry-otp-meta{margin:8px 0 12px;color:var(--muted);font-size:12px;text-align:center}
-    .entry-loading{opacity:.62;pointer-events:none}
+    .entry-device-note{margin:12px 2px 0;padding:10px 12px;border-radius:12px;background:#f2f7f4;color:#4d685d;font-size:11px;line-height:1.6;text-align:center}
+    .entry-loading-view{display:flex;align-items:center;gap:12px;padding:16px;border:1px solid var(--line);border-radius:15px;background:#f8fbf9}
+    .entry-loading-view span{width:26px;height:26px;flex:0 0 auto;border:3px solid #cce6db;border-right-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}
+    .entry-loading-view strong,.entry-loading-view small{display:block}
+    .entry-loading-view small{margin-top:3px;color:var(--muted)}
+    .entry-loading{opacity:.7;pointer-events:none}
     @media(max-width:520px){
       .entry-card{padding:14px}
       .entry-role{grid-template-columns:44px minmax(0,1fr) auto;padding:11px;gap:9px}
@@ -59,11 +64,11 @@
       <p class="notice hidden entry-notice" id="entryNotice"></p>
 
       <div id="methodView">
-        <p class="entry-intro">請選擇登入方式。下一步只會再詢問一次您的身分。</p>
+        <p class="entry-intro">請選擇登入方式。</p>
         <div class="entry-methods">
           <button class="entry-method primary" type="button" data-method="line">
             <span class="entry-method-icon">LINE</span>
-            <span><strong>使用 LINE 登入</strong><small>推薦；登入後會保留這台裝置的狀態</small></span>
+            <span><strong>使用 LINE 登入</strong><small>推薦；綁定完成後會直接進入</small></span>
           </button>
           <button class="entry-method email" type="button" data-method="email">
             <span class="entry-method-icon">@</span>
@@ -79,6 +84,17 @@
         </div>
         <p class="entry-intro" id="roleIntro">請選擇您的身分。</p>
         <div class="entry-roles" id="roleList"></div>
+        <p class="entry-device-note" id="roleHelp">換手機不用取得任何登入碼；直接使用同一個 LINE 帳號登入即可。</p>
+      </div>
+
+      <div class="hidden" id="setupView">
+        <div class="entry-toolbar">
+          <button type="button" id="restartLineSetup">重新使用 LINE 登入</button>
+          <a href="index.html">返回首頁</a>
+        </div>
+        <h2 class="entry-form-title" id="setupFormTitle">第一次使用</h2>
+        <p class="entry-form-copy" id="setupFormCopy">LINE 授權已完成。只需這一次核對資料，完成後就會直接進入。</p>
+        <form class="stack" id="setupForm"></form>
       </div>
 
       <div class="hidden" id="emailView">
@@ -93,7 +109,7 @@
 
       <div class="hidden" id="otpView">
         <div class="entry-toolbar">
-          <button type="button" id="backToEmail">返回修改資料</button>
+          <button type="button" id="backToIdentity">返回修改資料</button>
           <a href="index.html">返回首頁</a>
         </div>
         <div class="entry-otp-heading"><strong>請查看您的 Email</strong><span id="otpDestination"></span></div>
@@ -103,93 +119,145 @@
           <button class="btn primary" type="submit">確認並登入</button>
         </form>
       </div>
+
+      <div class="hidden" id="loadingView">
+        <div class="entry-loading-view"><span aria-hidden="true"></span><div><strong id="loadingTitle">正在開啟 LINE</strong><small id="loadingText">完成後會自動返回，不需要關閉再重開。</small></div></div>
+      </div>
     </section>
   </main>
 
-  <script src="config.js?v=20260803-unified-entry-v2"></script>
+  <script src="config.js?v=20260803-login-stability-v3"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260803-unified-entry-v2"></script>
+  <script src="course-portal-common.js?v=20260803-login-stability-v3"></script>
   <script>
     (function () {
       'use strict';
 
+      const P = window.CoursePortal;
+      const E = window.YouziCoursePortalEntry || {};
       const methodView = document.getElementById('methodView');
       const roleView = document.getElementById('roleView');
+      const setupView = document.getElementById('setupView');
       const emailView = document.getElementById('emailView');
       const otpView = document.getElementById('otpView');
+      const loadingView = document.getElementById('loadingView');
+      const allViews = [methodView, roleView, setupView, emailView, otpView, loadingView];
       const roleList = document.getElementById('roleList');
       const roleIntro = document.getElementById('roleIntro');
       const notice = document.getElementById('entryNotice');
+      const setupForm = document.getElementById('setupForm');
       const emailForm = document.getElementById('emailForm');
       const otpForm = document.getElementById('otpForm');
+      const params = new URLSearchParams(location.search);
       const roles = [
-        { id: 'teacher', icon: '師', title: '老師', detail: '查看課表、學生、薪資與教室租用', page: 'teacher-course-portal.html' },
-        { id: 'student', icon: '生', title: '學生／家長', detail: '查看課程、繳費、請假與教室租用', page: 'student-course-portal.html' },
-        { id: 'renter', icon: '租', title: '教室租用', detail: '預約教室並查看自己的租用紀錄', page: 'room-booking.html' }
+        { id:'teacher', icon:'師', title:'老師', detail:'查看課表、學生、薪資與教室租用', page:'teacher-course-portal.html' },
+        { id:'student', icon:'生', title:'學生／家長', detail:'查看課程、繳費、請假與教室租用', page:'student-course-portal.html' },
+        { id:'renter', icon:'租', title:'教室租用', detail:'預約教室並查看自己的租用紀錄', page:'room-booking.html' }
       ];
       let method = '';
       let selectedRole = null;
       let starting = false;
       let pendingChallenge = '';
+      let pendingFlow = 'regular';
+      let lineSetupToken = String(params.get('lineSetup') || '').trim();
       let otpSeconds = 0;
       let otpTimer = 0;
 
-      function cleanLegacyRoutingState() {
-        const schemaKey = 'youzi.coursePortal.entry.schema';
+      function validRole(value) {
+        const id = String(value || '').trim().toLowerCase();
+        return roles.some(function (role) { return role.id === id; }) ? id : '';
+      }
+      function roleById(id) { return roles.find(function (role) { return role.id === id; }) || null; }
+      function roleSession(role) {
         try {
-          if (localStorage.getItem(schemaKey) !== '3') {
-            [
-              'youzi.coursePortal.lastRole',
-              'youzi.coursePortal.pendingRole',
-              'youzi.coursePortal.autoRedirect',
-              'coursePortalEntryRole',
-              'coursePortalAutoRedirect'
-            ].forEach(function (key) { localStorage.removeItem(key); });
-            Object.keys(localStorage).forEach(function (key) {
-              if (key.indexOf('youzi.coursePortal.dataCache.') === 0 || key.indexOf('youzi.teacherCourseApp.v8.') === 0) {
-                localStorage.removeItem(key);
-              }
-            });
-            localStorage.setItem(schemaKey, '3');
-          }
-          sessionStorage.removeItem('youzi.coursePortal.entryIntent.v1');
+          if (typeof E.getSession === 'function') return String(E.getSession(role) || '').trim();
+          return String(P.getSession(role) || '').trim();
+        } catch (_) { return ''; }
+      }
+      function rememberRole(role) {
+        try {
+          if (typeof E.rememberRole === 'function') E.rememberRole(role);
+          else localStorage.setItem('youzi.coursePortal.lastRole.v2', role);
         } catch (_) {}
       }
-
+      function lastRole() {
+        try {
+          return validRole(typeof E.getLastRole === 'function' ? E.getLastRole() : localStorage.getItem('youzi.coursePortal.lastRole.v2'));
+        } catch (_) { return ''; }
+      }
+      function normalizeLineUrl(url) {
+        if (typeof E.normalizeLineAuthorizationUrl === 'function') return E.normalizeLineAuthorizationUrl(url);
+        if (typeof window.normalizeYouziLineAuthorizationUrl === 'function') return window.normalizeYouziLineAuthorizationUrl(url);
+        try {
+          const parsed = new URL(url);
+          parsed.searchParams.set('bot_prompt', 'normal');
+          return parsed.toString();
+        } catch (_) { return url; }
+      }
       function showOnly(view) {
-        [methodView, roleView, emailView, otpView].forEach(function (node) {
-          node.classList.toggle('hidden', node !== view);
+        allViews.forEach(function (node) { node.classList.toggle('hidden', node !== view); });
+      }
+      function showNotice(message, isError) {
+        const text = String(message || '').trim();
+        notice.textContent = text;
+        notice.classList.toggle('hidden', !text);
+        notice.classList.toggle('error', Boolean(text && isError));
+      }
+      function clearNotice() { showNotice('', false); }
+      function setUrl(values) {
+        const next = new URLSearchParams();
+        Object.keys(values || {}).forEach(function (key) {
+          const value = String(values[key] == null ? '' : values[key]).trim();
+          if (value) next.set(key, value);
         });
+        history.replaceState({}, '', location.pathname + (next.toString() ? '?' + next.toString() : ''));
       }
-
-      function showNotice(message) {
-        notice.textContent = message || '';
-        notice.classList.toggle('hidden', !message);
+      function saveIntent(role) {
+        const row = JSON.stringify({ method:'line', role:role.id, startedAt:Date.now() });
+        try { sessionStorage.setItem('youzi.coursePortal.entryIntent.v2', row); } catch (_) {}
+        try { localStorage.setItem('youzi.coursePortal.entryIntent.v2', row); } catch (_) {}
       }
-
-      function savedSession(role) {
-        try { return Boolean(CoursePortal.getSession(role)); } catch (_) { return false; }
+      function clearIntent() {
+        try { sessionStorage.removeItem('youzi.coursePortal.entryIntent.v2'); } catch (_) {}
+        try { localStorage.removeItem('youzi.coursePortal.entryIntent.v2'); } catch (_) {}
       }
+      function clearRoleSession(role) {
+        const key = 'youzi.coursePortal.' + role + '.session.v1';
+        try { sessionStorage.removeItem(key); } catch (_) {}
+        try { localStorage.removeItem(key); } catch (_) {}
+      }
+      function savedRoles() { return roles.filter(function (role) { return Boolean(roleSession(role.id)); }); }
 
-      function setUrlMethod(value) {
-        const params = new URLSearchParams(location.search);
-        if (value) params.set('method', value);
-        else params.delete('method');
-        params.delete('choose');
-        params.delete('lineError');
-        history.replaceState({}, '', location.pathname + (params.toString() ? '?' + params.toString() : ''));
+      function identityFields(role, submitLabel, cancelAttribute) {
+        const labels = role.id === 'teacher'
+          ? { name:'老師姓名', phone:'手機號碼' }
+          : (role.id === 'student' ? { name:'學生姓名', phone:'登記電話' } : { name:'姓名', phone:'手機號碼' });
+        const relationship = role.id === 'student'
+          ? '<div class="field"><label>與學生的關係</label><select name="relationship"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></div>'
+          : '';
+        const cancel = cancelAttribute
+          ? '<button class="btn soft" type="button" ' + cancelAttribute + '>取消</button>'
+          : '';
+        return [
+          '<div class="field"><label>', labels.name, '</label><input name="name" autocomplete="name" required></div>',
+          '<div class="field"><label>', labels.phone, '</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>',
+          '<div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>',
+          relationship,
+          '<div class="entry-form-actions"><button class="btn primary" type="submit">', submitLabel, '</button>', cancel, '</div>'
+        ].join('');
       }
 
       function renderRoles() {
-        roleIntro.textContent = method === 'line'
-          ? '請選擇身分；已登入的身分可以直接進入，不會重新登入。'
-          : '請選擇身分，下一步直接填寫 Email 驗證資料。';
+        const last = lastRole();
+        roleIntro.textContent = method === 'email'
+          ? '請選擇身分，接著使用 Email 四碼驗證。'
+          : '請選擇身分。已完成綁定的人會直接進入。';
         roleList.innerHTML = roles.map(function (role) {
-          const saved = savedSession(role.id);
-          const action = saved ? '直接進入' : (method === 'line' ? 'LINE 登入' : 'Email 驗證');
+          const saved = Boolean(roleSession(role.id));
+          const action = saved ? '直接進入' : (method === 'email' ? 'Email 驗證' : 'LINE 登入');
           return [
-            '<button class="entry-role" type="button" data-role="', role.id, '">',
+            '<button class="entry-role ', role.id === last ? 'last-used' : '', '" type="button" data-role="', role.id, '">',
             '<span class="entry-role-icon">', role.icon, '</span>',
             '<span class="entry-role-copy"><strong>', role.title, '</strong><small>', role.detail, '</small></span>',
             '<span class="entry-role-action ', saved ? 'saved' : '', '">', action, '</span>',
@@ -201,74 +269,78 @@
       function chooseMethod(value) {
         method = value === 'email' ? 'email' : 'line';
         selectedRole = null;
-        setUrlMethod(method);
+        clearNotice();
+        setUrl({ method:method });
         renderRoles();
         showOnly(roleView);
       }
 
-      function emailFields(role) {
-        const labels = role.id === 'teacher'
-          ? { name: '老師姓名', phone: '手機號碼' }
-          : (role.id === 'student' ? { name: '學生姓名', phone: '登記電話' } : { name: '姓名', phone: '手機號碼' });
-        const relationship = role.id === 'student'
-          ? '<div class="field"><label>與學生的關係</label><select name="relationship"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></div>'
-          : '';
-        return [
-          '<div class="field"><label>', labels.name, '</label><input name="name" autocomplete="name" required></div>',
-          '<div class="field"><label>', labels.phone, '</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>',
-          '<div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>',
-          relationship,
-          '<div class="entry-form-actions"><button class="btn primary" type="submit">寄送四碼驗證碼</button><button class="btn soft" type="button" data-email-cancel>取消</button></div>'
-        ].join('');
-      }
-
-      function openEmailForm(role) {
+      function openRegularEmail(role) {
         selectedRole = role;
+        pendingFlow = 'regular';
         document.getElementById('emailFormTitle').textContent = role.title + '｜Email 驗證登入';
-        document.getElementById('emailFormCopy').textContent = '只需填寫一次資料；驗證成功後會直接進入' + role.title + '服務。';
-        emailForm.innerHTML = emailFields(role);
+        document.getElementById('emailFormCopy').textContent = '填寫一次資料並輸入四碼驗證碼，完成後會直接進入。';
+        emailForm.innerHTML = identityFields(role, '寄送四碼驗證碼', 'data-email-cancel');
         showOnly(emailView);
         const first = emailForm.querySelector('input');
         if (first) setTimeout(function () { first.focus(); }, 50);
       }
 
+      function openLineSetup(role, token) {
+        selectedRole = role;
+        method = 'line';
+        pendingFlow = 'line-registration';
+        lineSetupToken = token;
+        document.getElementById('setupFormTitle').textContent = role.title + '｜第一次使用';
+        document.getElementById('setupFormCopy').textContent = 'LINE 授權已完成。為了確認資料屬於您本人，這一次需核對姓名、電話與 Email；完成後日後直接登入。';
+        setupForm.innerHTML = identityFields(role, '寄送四碼驗證碼', '');
+        showOnly(setupView);
+        const first = setupForm.querySelector('input');
+        if (first) setTimeout(function () { first.focus(); }, 80);
+      }
+
+      function showLoading(title, text) {
+        document.getElementById('loadingTitle').textContent = title || '正在處理';
+        document.getElementById('loadingText').textContent = text || '完成後會自動開啟。';
+        showOnly(loadingView);
+      }
+
       async function startLineLogin(role, button) {
-        if (starting) return;
+        if (!role || starting) return;
+        if (roleSession(role.id)) {
+          rememberRole(role.id);
+          location.replace(role.page);
+          return;
+        }
         starting = true;
-        document.body.classList.add('entry-loading');
-        CoursePortal.loading(button, true, '正在前往 LINE…');
+        clearNotice();
+        saveIntent(role);
+        showLoading('正在開啟 LINE', '授權完成後會自動返回，不需要關閉再重開。');
+        if (button) P.loading(button, true, '正在前往 LINE…');
         try {
-          try {
-            sessionStorage.setItem('youzi.coursePortal.entryIntent.v2', JSON.stringify({
-              method: 'line',
-              role: role.id,
-              startedAt: Date.now()
-            }));
-          } catch (_) {}
-          const result = await CoursePortal.call('coursePortalStartLineLogin', {
-            type: role.id,
-            linkAnother: false
-          });
+          const result = await P.call('coursePortalStartLineLogin', { type:role.id, linkAnother:false });
           if (!result.authorizationUrl) throw new Error('LINE 登入網址建立失敗，請稍後再試。');
-          location.replace(result.authorizationUrl);
+          location.replace(normalizeLineUrl(result.authorizationUrl));
         } catch (error) {
           starting = false;
-          document.body.classList.remove('entry-loading');
-          CoursePortal.loading(button, false);
-          CoursePortal.toast(error && error.message ? error.message : 'LINE 登入失敗，請稍後再試。', 'error');
+          if (button) P.loading(button, false);
+          renderRoles();
+          showOnly(roleView);
+          showNotice(error && error.message ? error.message : 'LINE 登入失敗，請稍後再試。', true);
         }
       }
 
       async function openRole(roleId, button) {
-        const role = roles.find(function (item) { return item.id === roleId; });
+        const role = roleById(roleId);
         if (!role) return;
         selectedRole = role;
-        if (savedSession(role.id)) {
+        if (roleSession(role.id)) {
+          rememberRole(role.id);
           location.replace(role.page);
           return;
         }
         if (method === 'email') {
-          openEmailForm(role);
+          openRegularEmail(role);
           return;
         }
         await startLineLogin(role, button);
@@ -289,19 +361,21 @@
         otpTimer = setInterval(tick, 1000);
       }
 
-      emailForm.addEventListener('submit', async function (event) {
-        event.preventDefault();
+      async function requestOtp(form, flow, button) {
         if (!selectedRole || starting) return;
-        const button = event.submitter;
         starting = true;
-        CoursePortal.loading(button, true, '寄送中…');
+        P.loading(button, true, '寄送中…');
+        clearNotice();
         try {
-          const fields = Object.fromEntries(new FormData(emailForm).entries());
-          const result = await CoursePortal.call('coursePortalSendEmailOtp', Object.assign({
-            type: selectedRole.id,
-            purpose: 'account'
-          }, fields));
+          const fields = Object.fromEntries(new FormData(form).entries());
+          const payload = Object.assign({
+            type:selectedRole.id,
+            purpose:flow === 'line-registration' ? 'line-registration' : 'account'
+          }, fields);
+          if (flow === 'line-registration') payload.setupToken = lineSetupToken;
+          const result = await P.call('coursePortalSendEmailOtp', payload);
           if (!result.challengeToken) throw new Error('驗證碼寄送失敗，請稍後再試。');
+          pendingFlow = flow;
           pendingChallenge = result.challengeToken;
           document.getElementById('otpDestination').textContent = '四碼已寄到 ' + (result.maskedEmail || '您的 Email') + '。';
           otpForm.reset();
@@ -309,11 +383,20 @@
           startOtpCountdown(result.expiresInSeconds);
           setTimeout(function () { otpForm.elements.code.focus(); }, 50);
         } catch (error) {
-          CoursePortal.toast(error && error.message ? error.message : '驗證碼寄送失敗。', 'error');
+          showNotice(error && error.message ? error.message : '驗證碼寄送失敗。', true);
         } finally {
           starting = false;
-          CoursePortal.loading(button, false);
+          P.loading(button, false);
         }
+      }
+
+      setupForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        requestOtp(event.currentTarget, 'line-registration', event.submitter);
+      });
+      emailForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        requestOtp(event.currentTarget, 'regular', event.submitter);
       });
 
       otpForm.addEventListener('submit', async function (event) {
@@ -321,38 +404,37 @@
         if (!selectedRole || !pendingChallenge || starting) return;
         const button = event.submitter;
         starting = true;
-        CoursePortal.loading(button, true, '驗證中…');
+        P.loading(button, true, '驗證中…');
+        clearNotice();
         try {
-          const result = await CoursePortal.call('coursePortalVerifyEmailOtp', {
-            challengeToken: pendingChallenge,
-            code: otpForm.elements.code.value
+          const result = await P.call('coursePortalVerifyEmailOtp', {
+            challengeToken:pendingChallenge,
+            code:otpForm.elements.code.value
           });
           if (result.pendingApproval) {
             clearInterval(otpTimer);
             pendingChallenge = '';
-            showNotice(result.message || '資料已送出，請等待主管確認。');
+            lineSetupToken = '';
+            showNotice(result.message || '資料已送出，請等待主管確認。', false);
             renderRoles();
             showOnly(roleView);
             return;
           }
           if (result.role !== selectedRole.id || !result.sessionToken) throw new Error('登入資料不完整，請重新操作。');
           clearInterval(otpTimer);
-          CoursePortal.setSession(selectedRole.id, result.sessionToken);
-          CoursePortal.toast('驗證成功，正在開啟。');
+          P.setSession(selectedRole.id, result.sessionToken);
+          rememberRole(selectedRole.id);
+          clearIntent();
+          setUrl({});
+          showLoading('登入完成', '正在開啟' + selectedRole.title + '服務。');
           location.replace(selectedRole.page);
         } catch (error) {
-          CoursePortal.toast(error && error.message ? error.message : '驗證失敗。', 'error');
+          showNotice(error && error.message ? error.message : '驗證失敗。', true);
         } finally {
           starting = false;
-          CoursePortal.loading(button, false);
+          P.loading(button, false);
         }
       });
-
-      cleanLegacyRoutingState();
-
-      const params = new URLSearchParams(location.search);
-      const lineError = String(params.get('lineError') || '').trim();
-      if (lineError) showNotice(lineError);
 
       document.addEventListener('click', function (event) {
         const methodButton = event.target.closest('[data-method]');
@@ -374,30 +456,89 @@
       document.getElementById('backToMethods').addEventListener('click', function () {
         method = '';
         selectedRole = null;
-        setUrlMethod('');
+        clearNotice();
+        setUrl({});
         showOnly(methodView);
       });
-
       document.getElementById('backToRoles').addEventListener('click', function () {
         renderRoles();
         showOnly(roleView);
       });
-
-      document.getElementById('backToEmail').addEventListener('click', function () {
+      document.getElementById('backToIdentity').addEventListener('click', function () {
         clearInterval(otpTimer);
         pendingChallenge = '';
-        showOnly(emailView);
-        const emailInput = emailForm.querySelector('input[name="email"]');
-        if (emailInput) emailInput.focus();
+        showOnly(pendingFlow === 'line-registration' ? setupView : emailView);
+      });
+      document.getElementById('restartLineSetup').addEventListener('click', function () {
+        const role = selectedRole;
+        lineSetupToken = '';
+        pendingChallenge = '';
+        clearIntent();
+        setUrl({ method:'line', role:role ? role.id : '' });
+        renderRoles();
+        showOnly(roleView);
       });
 
-      const requestedMethod = String(params.get('method') || '').toLowerCase();
-      if (requestedMethod === 'line' || requestedMethod === 'email') {
-        chooseMethod(requestedMethod);
-      } else {
-        setUrlMethod('');
-        showOnly(methodView);
+      /* 移除只供舊版自動跳轉使用的標記，但保留正式登入工作階段。 */
+      try {
+        ['youzi.coursePortal.pendingRole','youzi.coursePortal.autoRedirect','coursePortalEntryRole','coursePortalAutoRedirect'].forEach(function (key) {
+          localStorage.removeItem(key);
+          sessionStorage.removeItem(key);
+        });
+      } catch (_) {}
+
+      const requestedRole = validRole(params.get('role'));
+      const requestedMethod = String(params.get('method') || '').trim().toLowerCase();
+      const reason = String(params.get('reason') || '').trim();
+      const lineError = String(params.get('lineError') || '').trim();
+
+      if (reason === 'session-expired' || reason === 'login-required') {
+        if (requestedRole) clearRoleSession(requestedRole);
+        showNotice(
+          reason === 'session-expired'
+            ? '這台裝置原本保存的登入已失效，系統已自動清除。請重新使用 LINE 登入；不需要換手機碼。'
+            : '請先使用 LINE 或 Email 登入。',
+          reason === 'session-expired'
+        );
       }
+      if (lineError) showNotice(lineError + '\n請直接在這一頁重新登入，不需要關閉網頁。', true);
+
+      if (lineSetupToken) {
+        const role = roleById(requestedRole);
+        if (role) {
+          openLineSetup(role, lineSetupToken);
+        } else {
+          showNotice('LINE 已完成，但身分資料不完整。請重新選擇身分登入。', true);
+          method = 'line';
+          renderRoles();
+          showOnly(roleView);
+        }
+        return;
+      }
+
+      if (requestedMethod === 'line' || requestedMethod === 'email') {
+        method = requestedMethod;
+        const shouldAuto = params.get('auto') === '1' && requestedMethod === 'line' && !lineError && !reason;
+        if (shouldAuto) {
+          const saved = savedRoles();
+          const preferred = roleById(lastRole()) || (saved.length === 1 ? saved[0] : null);
+          if (preferred) {
+            if (roleSession(preferred.id)) {
+              rememberRole(preferred.id);
+              location.replace(preferred.page);
+            } else {
+              startLineLogin(preferred, null);
+            }
+            return;
+          }
+        }
+        renderRoles();
+        showOnly(roleView);
+        return;
+      }
+
+      setUrl({});
+      showOnly(methodView);
     })();
   </script>
 </body>
