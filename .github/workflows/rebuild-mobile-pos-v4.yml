@@ -1,13 +1,10 @@
 name: Rebuild Mobile POS V4
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/rebuild-mobile-pos-v4.yml"
   issue_comment:
     types: [created]
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
