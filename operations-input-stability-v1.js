@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
-  if (global.__YOUZI_INPUT_STABILITY_V1__) return;
-  global.__YOUZI_INPUT_STABILITY_V1__ = true;
+  if (global.__YOUZI_INPUT_STABILITY_V2__) return;
+  global.__YOUZI_INPUT_STABILITY_V2__ = true;
 
   const SEARCH_IDS = new Set([
     'productSearch',
@@ -9,7 +9,6 @@
     'purchaseEntrySearch',
     'stocktakeSearch',
     'inventorySearch',
-    'posSearch',
     'posMemberSearch',
     'saleInvoiceSearch',
     'overviewSearch',
@@ -55,9 +54,7 @@
     if (!draft || !input || Date.now() - draft.savedAt > 5000) return;
     prepare(input);
 
-    if (input.value !== draft.value) {
-      input.value = draft.value;
-    }
+    if (input.value !== draft.value) input.value = draft.value;
     if (!draft.focused || document.visibilityState !== 'visible') return;
     try {
       input.focus({ preventScroll: true });
@@ -80,9 +77,7 @@
       remember(event.target);
       return;
     }
-    if (event.target && event.target !== document.body && event.target !== document.documentElement) {
-      activeId = '';
-    }
+    if (event.target && event.target !== document.body && event.target !== document.documentElement) activeId = '';
   }, true);
 
   document.addEventListener('beforeinput', function (event) {
@@ -94,13 +89,11 @@
   }, true);
 
   document.addEventListener('input', function (event) {
-    if (!isTracked(event.target)) return;
-    remember(event.target);
+    if (isTracked(event.target)) remember(event.target);
   }, true);
 
   document.addEventListener('keyup', function (event) {
-    if (!isTracked(event.target)) return;
-    remember(event.target);
+    if (isTracked(event.target)) remember(event.target);
   }, true);
 
   const root = document.getElementById('opsContent') || document.body;
