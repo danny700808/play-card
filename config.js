@@ -18,7 +18,7 @@
       measurementId: 'G-WLYK892EDW'
     },
     FIREBASE_ENABLED: true,
-    BUILD: '2026-08-03-course-login-stability-v4'
+    BUILD: '2026-08-03-rental-session-bridge-v1'
   };
 
   const params = new URLSearchParams(global.location.search || '');
@@ -51,6 +51,7 @@
    * 3. 換手機不使用舊式登入碼；同一個 LINE 帳號重新授權即可。
    * 4. bot_prompt 改為 normal，好友選項留在同一個 LINE 同意畫面，不再額外跳一頁。
    * 5. 中央入口會直接交換 LINE 回傳的 access，再開啟正確的身分頁。
+   * 6. 老師或學生由自己的入口前往教室租用時，沿用原本工作階段。
    */
   const COURSE_ROLE_PAGES = Object.freeze({
     'teacher-course-portal.html': 'teacher',
@@ -151,7 +152,26 @@
   global.normalizeYouziLineAuthorizationUrl = normalizeLineAuthorizationUrl;
   clearExpiredEntryIntents();
 
-  const currentRole = validRole(COURSE_ROLE_PAGES[pageName()]);
+  function rentalBridgeRole(){
+    if (pageName() !== 'room-booking.html') return '';
+    const search = new URLSearchParams(global.location.search || '');
+    const requested = validRole(search.get('from'));
+    if ((requested === 'teacher' || requested === 'student') && courseSession(requested)) {
+      return requested;
+    }
+    if (courseSession('renter')) return 'renter';
+    if (courseSession('student')) return 'student';
+    if (courseSession('teacher')) return 'teacher';
+    return '';
+  }
+
+  const currentPage = pageName();
+  const bridgedRentalRole = rentalBridgeRole();
+  const currentRole = validRole(
+    currentPage === 'room-booking.html' && bridgedRentalRole
+      ? bridgedRentalRole
+      : COURSE_ROLE_PAGES[currentPage]
+  );
   if (currentRole) {
     const roleParams = new URLSearchParams(global.location.search || '');
     const lineSetup = clean(roleParams.get('lineSetup'));
