@@ -6,7 +6,8 @@
     "node": "20"
   },
   "scripts": {
-    "deploy": "firebase deploy --only functions"
+    "deploy": "firebase deploy --only functions",
+    "check:course-login-v3": "node --check courseLoginAuthV3.js && node --check courseLoginIndexV3.js"
   },
   "dependencies": {
     "@expo-google-fonts/noto-sans-tc": "^0.4.3",
