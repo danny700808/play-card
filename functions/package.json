@@ -1,7 +1,7 @@
 {
   "name": "youzi-line-functions",
   "description": "LINE webhook functions for Youzi employee system",
-  "main": "courseIndex.js",
+  "main": "courseLoginIndexV3.js",
   "engines": {
     "node": "20"
   },
