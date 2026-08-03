@@ -317,6 +317,7 @@
     scroll-snap-type: x mandatory;
     scroll-padding-left: var(--overview-time-column, 48px);
     overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -358,9 +359,9 @@
     text-align: center;
   }
 
-  .ops-approved-week-head.group-start {
+  .ops-approved-week-head.snap-start {
     scroll-snap-align: start;
-    scroll-snap-stop: always;
+    scroll-snap-stop: normal;
   }
 
   .ops-approved-week-head.selected {

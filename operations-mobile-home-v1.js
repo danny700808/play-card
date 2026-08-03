@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var VERSION = 'approved-mobile-home-week-v2';
+  var VERSION = 'approved-mobile-home-day-v3';
   var FORMAL_DB_NAME = 'youzi-course-scheduler';
   var FORMAL_DB_STORE = 'formalSnapshots';
   var FORMAL_DB_KEY = 'latest';
@@ -12,7 +12,6 @@
   var scheduled = false;
   var scheduleWeekOffset = 0;
   var scheduleAnchorDate = '';
-  var weekSnapTimer = null;
 
   function clean(value) {
     return String(value == null ? '' : value).trim();
@@ -263,11 +262,11 @@
 
     var html = '<section class="ops-card ops-approved-schedule-card"><div class="ops-card-head"><div><h2>全體週課表</h2></div><button type="button" class="ops-approved-link-button" data-nav="course-calendar">完整課表</button></div>';
     html += '<div class="ops-approved-week-nav"><button type="button" data-approved-week-step="-1">← 上週</button><button type="button" class="current" data-approved-week-step="0">' + esc(weekRangeLabel(startDate)) + '</button><button type="button" data-approved-week-step="1">下週 →</button></div>';
-    html += '<div class="ops-approved-week-scroll" data-approved-two-day-viewport data-initial-day="' + initialDay + '"><div class="ops-approved-week-grid" style="--slot-count:' + slotCount + '">';
+    html += '<div class="ops-approved-week-scroll" data-approved-one-day-viewport data-initial-day="' + initialDay + '"><div class="ops-approved-week-grid" style="--slot-count:' + slotCount + '">';
     html += '<div class="ops-approved-week-corner" style="grid-column:1;grid-row:1">時間</div>';
     days.forEach(function (day, index) {
       var parts = dateParts(day);
-      var classes = 'ops-approved-week-head' + (index % 2 === 0 ? ' group-start' : '') + (day === anchor ? ' selected' : '') + (parts.weekday === '一' ? ' closed' : '');
+      var classes = 'ops-approved-week-head snap-start' + (day === anchor ? ' selected' : '') + (parts.weekday === '一' ? ' closed' : '');
       html += '<div class="' + classes + '" data-day-index="' + index + '" style="grid-column:' + (index + 2) + ';grid-row:1"><b>' + parts.month + '/' + parts.day + '（' + parts.weekday + '）</b>' + (parts.weekday === '一' ? '<small>公休</small>' : '') + '</div>';
     });
     for (var slot = 0; slot < slotCount; slot += 1) {
@@ -296,45 +295,28 @@
       });
       html += '</div>';
     });
-    html += '</div></div><p class="ops-approved-week-hint">左右滑動，每次查看兩天；左側時間固定。</p></section>';
+    html += '</div></div><p class="ops-approved-week-hint">左右滑動，每次查看一天；左側時間固定。</p></section>';
     return html;
   }
 
-  function weekSnapTargets(scroll) {
-    var grid = scroll && scroll.querySelector('.ops-approved-week-grid');
-    if (!grid) return [0];
-    var dayWidth = numberOf(global.getComputedStyle(grid).getPropertyValue('--overview-day-width')) || 140;
-    var max = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-    return [0, dayWidth * 2, dayWidth * 4, max].map(function (value) {
-      return Math.max(0, Math.min(max, value));
-    }).filter(function (value, index, values) {
-      return index === 0 || Math.abs(value - values[index - 1]) > 1;
-    });
-  }
-
-  function snapApprovedWeekViewport(scroll, behavior) {
-    if (!scroll) return;
-    var targets = weekSnapTargets(scroll);
-    var target = targets.reduce(function (best, value) {
-      return Math.abs(value - scroll.scrollLeft) < Math.abs(best - scroll.scrollLeft) ? value : best;
-    }, targets[0] || 0);
-    if (Math.abs(target - scroll.scrollLeft) < 1) return;
-    scroll.scrollTo({left: target, behavior: behavior || 'smooth'});
-  }
-
   function updateApprovedWeekViewport(resetPosition) {
-    var scroll = document.querySelector('[data-approved-two-day-viewport]');
+    var scroll = document.querySelector('[data-approved-one-day-viewport]');
     if (!scroll) return;
     var grid = scroll.querySelector('.ops-approved-week-grid');
     if (!grid) return;
     var timeWidth = 48;
-    var dayWidth = Math.max(112, (scroll.clientWidth - timeWidth) / 2);
+    var previousDayWidth = numberOf(scroll.dataset.dayWidth);
+    var currentDay = previousDayWidth > 0
+      ? Math.max(0, Math.min(6, Math.round(scroll.scrollLeft / previousDayWidth)))
+      : Math.max(0, Math.min(6, numberOf(scroll.dataset.initialDay)));
+    var dayWidth = Math.max(180, scroll.clientWidth - timeWidth);
     grid.style.setProperty('--overview-time-column', timeWidth + 'px');
     grid.style.setProperty('--overview-day-width', dayWidth + 'px');
-    if (resetPosition || !scroll.dataset.positioned) {
+    scroll.dataset.dayWidth = String(dayWidth);
+    if (resetPosition || !scroll.dataset.positioned || Math.abs(previousDayWidth - dayWidth) > 0.5) {
       scroll.dataset.positioned = '1';
-      var initialDay = Math.max(0, Math.min(6, numberOf(scroll.dataset.initialDay)));
-      var target = Math.floor(initialDay / 2) * 2 * dayWidth;
+      var initialDay = resetPosition ? Math.max(0, Math.min(6, numberOf(scroll.dataset.initialDay))) : currentDay;
+      var target = initialDay * dayWidth;
       scroll.scrollLeft = Math.min(target, Math.max(0, scroll.scrollWidth - scroll.clientWidth));
     }
   }
@@ -429,15 +411,6 @@
         global.requestAnimationFrame(function () { updateApprovedWeekViewport(true); });
       });
     });
-    var weekScroll = document.querySelector('[data-approved-two-day-viewport]');
-    if (weekScroll && !weekScroll.dataset.bound) {
-      weekScroll.dataset.bound = '1';
-      weekScroll.addEventListener('scroll', function () {
-        global.clearTimeout(weekSnapTimer);
-        weekSnapTimer = global.setTimeout(function () { snapApprovedWeekViewport(weekScroll); }, 140);
-      }, {passive: true});
-      weekScroll.addEventListener('scrollend', function () { snapApprovedWeekViewport(weekScroll); });
-    }
     updateApprovedWeekViewport(false);
     var search = document.getElementById('opsApprovedProductSearch');
     if (search && !search.dataset.bound) {

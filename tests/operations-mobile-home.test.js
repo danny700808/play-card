@@ -19,6 +19,8 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
   assert.match(portal, /operations-phase1\.js\?v=20260802-mobile-overview-week-v1/);
+  assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
+  assert.match(portal, /operations-mobile-home-v1\.css\?v=20260803-mobile-overview-day-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
 });
 
@@ -34,10 +36,11 @@ test('mobile home contains live schedule and product search integrations', () =>
   const source = read('operations-mobile-home-v1.js');
   assert.match(source, /FORMAL_DB_NAME = 'youzi-course-scheduler'/);
   assert.match(source, /全體週課表/);
-  assert.match(source, /data-approved-two-day-viewport/);
-  assert.match(source, /\(scroll\.clientWidth - timeWidth\) \/ 2/);
-  assert.match(source, /dayWidth \* 2/);
-  assert.match(source, /dayWidth \* 4/);
+  assert.match(source, /data-approved-one-day-viewport/);
+  assert.match(source, /scroll\.clientWidth - timeWidth/);
+  assert.match(source, /每次查看一天/);
+  assert.doesNotMatch(source, /data-approved-two-day-viewport/);
+  assert.doesNotMatch(source, /weekSnapTimer|weekSnapTargets|snapApprovedWeekViewport|scrollend|scroll\.scrollTo/);
   assert.match(source, /eventLabel\(event\)/);
   assert.match(source, /快速找商品/);
   assert.match(source, /operationsState\(\)/);
