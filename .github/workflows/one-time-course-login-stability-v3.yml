@@ -1,0 +1,443 @@
+name: One-time Course Login Stability V3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/one-time-course-login-stability-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-course-login-stability-v3
+  cancel-in-progress: false
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply focused login-flow patches
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}\n--- OLD ---\n{old[:500]}')
+              file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Force all role pages to load the new central-login recovery layer immediately.
+          for page in ['teacher-course-portal.html', 'student-course-portal.html', 'room-booking.html']:
+              file = Path(page)
+              text = file.read_text(encoding='utf-8')
+              old = '<script src="config.js"></script>'
+              new = '<script src="config.js?v=20260803-login-stability-v3"></script>'
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f'{page}: config.js script tag not found')
+              file.write_text(text, encoding='utf-8')
+
+          # Once the access query has been consumed, a stale session must return to the central entry.
+          replace_once(
+              'config.js',
+              """        const addingAnotherStudent = authView && authView.dataset.addStudent === 'true';
+        if (authView && !hidden(authView) && !addingAnotherStudent && !access) {
+""",
+              """        const addingAnotherStudent = authView && authView.dataset.addStudent === 'true';
+        const liveAccess = clean(new URLSearchParams(global.location.search || '').get('access'));
+        if (authView && !hidden(authView) && !addingAnotherStudent && !liveAccess) {
+"""
+          )
+
+          backend = Path('functions/coursePortal.js')
+          source = backend.read_text(encoding='utf-8')
+
+          # LINE's normal prompt keeps the optional friend-add control on the consent page,
+          # instead of opening an additional friend-add screen.
+          if "bot_prompt: 'aggressive'" in source:
+              source = source.replace("bot_prompt: 'aggressive'", "bot_prompt: 'normal'", 1)
+          elif "bot_prompt: 'normal'" not in source:
+              raise SystemExit('functions/coursePortal.js: LINE bot_prompt not found')
+
+          old = """function portalUrlForRole(type, params = {}) {
+  const url = new URL(`${PORTAL_BASE}/${portalPageForRole(type)}`);
+  Object.keys(params).forEach((key) => {
+    const value = clean(params[key]);
+    if (value) url.searchParams.set(key, value);
+  });
+  return url.toString();
+}
+
+function lineAuthorizationUrl(state) {
+"""
+          new = """function portalUrlForRole(type, params = {}) {
+  const url = new URL(`${PORTAL_BASE}/${portalPageForRole(type)}`);
+  Object.keys(params).forEach((key) => {
+    const value = clean(params[key]);
+    if (value) url.searchParams.set(key, value);
+  });
+  return url.toString();
+}
+
+function portalEntryUrl(params = {}) {
+  const url = new URL(`${PORTAL_BASE}/course-portal.html`);
+  Object.keys(params).forEach((key) => {
+    const value = clean(params[key]);
+    if (value) url.searchParams.set(key, value);
+  });
+  return url.toString();
+}
+
+function lineAuthorizationUrl(state) {
+"""
+          if old not in source:
+              raise SystemExit('functions/coursePortal.js: portalUrlForRole marker not found')
+          source = source.replace(old, new, 1)
+
+          old = """function redirectLineLoginError(res, type, message) {
+  const safeType = ['teacher', 'student', 'renter'].includes(type) ? type : '';
+  const target = safeType
+    ? portalUrlForRole(safeType, { lineError: message || 'LINE 登入未完成，請重新操作。' })
+    : `${PORTAL_BASE}/course-portal.html?lineError=${encodeURIComponent(message || 'LINE 登入未完成，請重新操作。')}`;
+  res.redirect(302, target);
+}
+
+async function lineLoginCallback(req, res) {
+"""
+          new = """function redirectLineLoginError(res, type, message) {
+  const safeType = ['teacher', 'student', 'renter'].includes(type) ? type : '';
+  res.redirect(302, portalEntryUrl({
+    method: 'line',
+    role: safeType,
+    lineError: message || 'LINE 登入未完成，請重新操作。'
+  }));
+}
+
+async function waitForLineLoginRedirect(stateRef, timeoutMs = 20000) {
+  const deadline = Date.now() + Math.max(1000, Number(timeoutMs) || 20000);
+  while (Date.now() < deadline) {
+    const snapshot = await stateRef.get();
+    const row = snapshot.exists ? snapshot.data() || {} : null;
+    if (!row) return '';
+    const redirectUrl = clean(row.redirectUrl);
+    if (redirectUrl) return redirectUrl;
+    const status = clean(row.status);
+    if (['error', 'cancelled', 'blocked'].includes(status)) {
+      throw new Error(clean(row.error) || 'LINE 登入未完成，請重新操作。');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return '';
+}
+
+async function lineLoginCallback(req, res) {
+"""
+          if old not in source:
+              raise SystemExit('functions/coursePortal.js: redirectLineLoginError block not found')
+          source = source.replace(old, new, 1)
+
+          old = """  let type = '';
+
+  try {
+    if (!stateRef) throw new Error('LINE 登入狀態不完整，請重新操作。');
+    let stateRow = null;
+    await db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(stateRef);
+      const row = snapshot.exists ? snapshot.data() || {} : null;
+      type = clean(row && row.type);
+      if (
+        !row ||
+        clean(row.status) !== 'pending' ||
+        asMillis(row.expiresAt) < Date.now() ||
+        !['teacher', 'student', 'renter'].includes(type)
+      ) {
+        throw new Error('LINE 登入連結已失效，請回到入口重新登入。');
+      }
+      stateRow = row;
+      tx.set(stateRef, {
+        status: 'processing',
+        processingAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+    if (!stateRow) throw new Error('LINE 登入狀態不完整，請重新操作。');
+"""
+          new = """  let type = '';
+  let ownsProcessing = false;
+
+  try {
+    if (!stateRef) throw new Error('LINE 登入狀態不完整，請重新操作。');
+    let stateRow = null;
+    let replayUrl = '';
+    let waitForProcessing = false;
+    await db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(stateRef);
+      const row = snapshot.exists ? snapshot.data() || {} : null;
+      type = clean(row && row.type);
+      if (
+        !row ||
+        asMillis(row.expiresAt) < Date.now() ||
+        !['teacher', 'student', 'renter'].includes(type)
+      ) {
+        throw new Error('LINE 登入連結已失效，請回到入口重新登入。');
+      }
+      const status = clean(row.status);
+      if (status === 'used' && clean(row.redirectUrl)) {
+        stateRow = row;
+        replayUrl = clean(row.redirectUrl);
+        return;
+      }
+      if (status === 'processing') {
+        stateRow = row;
+        waitForProcessing = true;
+        return;
+      }
+      if (status !== 'pending') {
+        throw new Error(clean(row.error) || 'LINE 登入連結已失效，請回到入口重新登入。');
+      }
+      stateRow = row;
+      ownsProcessing = true;
+      tx.set(stateRef, {
+        status: 'processing',
+        processingAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+    if (replayUrl) {
+      res.redirect(302, replayUrl);
+      return;
+    }
+    if (waitForProcessing) {
+      const completedUrl = await waitForLineLoginRedirect(stateRef);
+      if (completedUrl) {
+        res.redirect(302, completedUrl);
+        return;
+      }
+      throw new Error('LINE 登入仍在處理中，請回到入口再試一次。');
+    }
+    if (!stateRow) throw new Error('LINE 登入狀態不完整，請重新操作。');
+"""
+          if old not in source:
+              raise SystemExit('functions/coursePortal.js: callback state transaction block not found')
+          source = source.replace(old, new, 1)
+
+          old = """      await stateRef.set({
+        status: 'used',
+        lineUserId: profile.lineUserId,
+        lineFriendFlag: profile.lineFriendFlag,
+        completedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      res.redirect(302, portalUrlForRole(type, { access: accessToken }));
+      return;
+"""
+          new = """      const redirectUrl = portalEntryUrl({
+        method: 'line',
+        role: type,
+        access: accessToken
+      });
+      await stateRef.set({
+        status: 'used',
+        lineUserId: profile.lineUserId,
+        lineFriendFlag: profile.lineFriendFlag,
+        redirectUrl,
+        completedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      res.redirect(302, redirectUrl);
+      return;
+"""
+          if old not in source:
+              raise SystemExit('functions/coursePortal.js: existing binding redirect block not found')
+          source = source.replace(old, new, 1)
+
+          old = """    await stateRef.set({
+      status: 'used',
+      lineUserId: profile.lineUserId,
+      lineFriendFlag: profile.lineFriendFlag,
+      setupRequired: true,
+      completedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    res.redirect(302, portalUrlForRole(type, { lineSetup: setupToken }));
+"""
+          new = """    const redirectUrl = portalEntryUrl({
+      method: 'line',
+      role: type,
+      lineSetup: setupToken
+    });
+    await stateRef.set({
+      status: 'used',
+      lineUserId: profile.lineUserId,
+      lineFriendFlag: profile.lineFriendFlag,
+      setupRequired: true,
+      redirectUrl,
+      completedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    res.redirect(302, redirectUrl);
+"""
+          if old not in source:
+              raise SystemExit('functions/coursePortal.js: setup redirect block not found')
+          source = source.replace(old, new, 1)
+
+          old = """    if (stateRef) {
+      await stateRef.set({
+        status: 'error',
+        error: clean(error && error.message).slice(0, 300),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true }).catch(() => {});
+    }
+"""
+          new = """    if (stateRef) {
+      try {
+        const latestSnapshot = await stateRef.get();
+        const latestStatus = clean(latestSnapshot.exists && latestSnapshot.data().status);
+        if (ownsProcessing || !['used', 'blocked', 'cancelled', 'processing'].includes(latestStatus)) {
+          await stateRef.set({
+            status: 'error',
+            error: clean(error && error.message).slice(0, 300),
+            updatedAt: FieldValue.serverTimestamp()
+          }, { merge: true });
+        }
+      } catch (_) {}
+    }
+"""
+          if old not in source:
+              raise SystemExit('functions/coursePortal.js: callback catch state block not found')
+          source = source.replace(old, new, 1)
+
+          backend.write_text(source, encoding='utf-8')
+
+          # Exchange the short-lived callback token on the central page, then open the role page
+          # with an already-valid browser session. This removes the extra role-page login hop.
+          portal = Path('course-portal.html')
+          html = portal.read_text(encoding='utf-8')
+          old = """      let lineSetupToken = String(params.get('lineSetup') || '').trim();
+      let otpSeconds = 0;
+"""
+          new = """      let lineSetupToken = String(params.get('lineSetup') || '').trim();
+      let accessToken = String(params.get('access') || '').trim();
+      let otpSeconds = 0;
+"""
+          if old not in html:
+              raise SystemExit('course-portal.html: access token declaration marker not found')
+          html = html.replace(old, new, 1)
+
+          old = """      async function startLineLogin(role, button) {
+"""
+          new = """      async function exchangeAccessAndOpen(role, rawAccess) {
+        if (!role || !rawAccess || starting) return;
+        starting = true;
+        clearNotice();
+        showLoading('LINE 登入完成', '正在建立這台裝置的登入狀態，完成後會直接進入。');
+        try {
+          const result = await P.call('coursePortalExchangeAccess', { accessToken:rawAccess });
+          if (result.role !== role.id || !result.sessionToken) throw new Error('LINE 登入資料不完整，請重新操作。');
+          P.setSession(role.id, result.sessionToken);
+          rememberRole(role.id);
+          clearIntent();
+          accessToken = '';
+          setUrl({});
+          location.replace(role.page);
+        } catch (error) {
+          accessToken = '';
+          clearRoleSession(role.id);
+          method = 'line';
+          renderRoles();
+          showOnly(roleView);
+          showNotice((error && error.message ? error.message : 'LINE 登入未完成。') + '\n請直接在這一頁重新登入，不需要關閉網頁。', true);
+        } finally {
+          starting = false;
+        }
+      }
+
+      async function startLineLogin(role, button) {
+"""
+          if old not in html:
+              raise SystemExit('course-portal.html: startLineLogin marker not found')
+          html = html.replace(old, new, 1)
+
+          old = """      if (lineSetupToken) {
+"""
+          new = """      if (accessToken) {
+        const role = roleById(requestedRole);
+        if (role) {
+          exchangeAccessAndOpen(role, accessToken);
+        } else {
+          accessToken = '';
+          showNotice('LINE 已完成，但身分資料不完整。請重新選擇身分登入。', true);
+          method = 'line';
+          renderRoles();
+          showOnly(roleView);
+        }
+        return;
+      }
+
+      if (lineSetupToken) {
+"""
+          if old not in html:
+              raise SystemExit('course-portal.html: lineSetup initialization marker not found')
+          html = html.replace(old, new, 1)
+          portal.write_text(html, encoding='utf-8')
+
+          # Replace assertions for the superseded three-card landing page with the unified entry.
+          tests = Path('tests/course-portal.test.js')
+          test = tests.read_text(encoding='utf-8')
+          start = test.index("const portalLanding = fs.readFileSync(path.join(root, 'course-portal.html'), 'utf8');")
+          end = test.index("const commonSource = fs.readFileSync(path.join(root, 'course-portal-common.js'), 'utf8');")
+          replacement = """const portalLanding = fs.readFileSync(path.join(root, 'course-portal.html'), 'utf8');
+['teacher-course-portal.html', 'student-course-portal.html', 'room-booking.html'].forEach((route) => {
+  assert(portalLanding.includes(`page:'${route}'`), `統一登入頁缺少 ${route} 路由`);
+});
+assert(portalLanding.includes('id=\"methodView\"'), '統一登入頁缺少登入方式');
+assert(portalLanding.includes('id=\"roleView\"'), '統一登入頁缺少身分選擇');
+assert(portalLanding.includes('id=\"setupView\"'), '統一登入頁缺少 LINE 第一次使用流程');
+assert(portalLanding.includes('id=\"otpView\"'), '統一登入頁缺少 Email 四碼驗證');
+assert(portalLanding.includes('coursePortalExchangeAccess'), '統一登入頁沒有在中央交換 LINE 工作階段');
+assert(portalLanding.includes('lineSetupToken') && portalLanding.includes('accessToken'), '統一登入頁沒有接住 LINE 回呼結果');
+const portalInlineScripts = [...portalLanding.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)]
+  .map((match) => match[1])
+  .filter((code) => code.trim());
+portalInlineScripts.forEach((code, index) => {
+  new vm.Script(code, { filename: `course-portal.html:inline-${index + 1}` });
+});
+
+"""
+          test = test[:start] + replacement + test[end:]
+          test = test.replace("bot_prompt: 'aggressive'", "bot_prompt: 'normal'")
+          tests.write_text(test, encoding='utf-8')
+          PY
+
+      - name: Validate syntax and focused portal tests
+        run: |
+          set -euo pipefail
+          node --check config.js
+          node --check functions/coursePortal.js
+          node --check course-portal-common.js
+          node --check teacher-course-portal-v8.js
+          node --check room-booking-v2.js
+          node tests/course-portal.test.js
+          node tests/room-booking-v2.test.js
+          node tests/teacher-course-portal-mobile.test.js
+          git diff --check
+
+      - name: Commit verified patch
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config.js course-portal.html teacher-course-portal.html student-course-portal.html room-booking.html functions/coursePortal.js tests/course-portal.test.js
+          git commit -m "Stabilize LINE callback and centralize portal session exchange"
+          git push origin HEAD:main
