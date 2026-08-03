@@ -1,5 +1,6 @@
 name: Deploy Course Login V3
 
+# This focused workflow is intentionally independent from the legacy portal UI assertions.
 on:
   push:
     branches:
