@@ -1,0 +1,22 @@
+name: Run Course Login Stability V3 After Merge
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/run-course-login-stability-v3-after-merge.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-verified-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch verified patch workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run one-time-course-login-stability-v3.yml --repo "${{ github.repository }}" --ref main
