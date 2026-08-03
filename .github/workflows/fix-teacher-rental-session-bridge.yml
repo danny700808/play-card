@@ -1,11 +1,8 @@
 name: Fix Teacher Rental Session Bridge
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/fix-teacher-rental-session-bridge.yml"
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -32,7 +29,6 @@ jobs:
 
           config = Path('config.js')
           source = config.read_text(encoding='utf-8')
-
           source = source.replace(
               "BUILD: '2026-08-03-course-login-stability-v4'",
               "BUILD: '2026-08-03-rental-session-bridge-v1'",
@@ -64,10 +60,10 @@ jobs:
   );
   if (currentRole) {
 """
-          count = source.count(old)
-          if count != 1:
-              raise SystemExit(f'config.js currentRole marker expected once, found {count}')
-          source = source.replace(old, new, 1)
+          if old in source:
+              source = source.replace(old, new, 1)
+          elif "function rentalBridgeRole(){" not in source:
+              raise SystemExit('config.js rental bridge marker not found')
           config.write_text(source, encoding='utf-8')
 
           room = Path('room-booking.html')
@@ -92,15 +88,12 @@ jobs:
           grep -Fq "config.js?v=20260803-rental-session-bridge-v1" room-booking.html
           git diff --check
 
-      - name: Commit verified fix
+      - name: Commit verified fix and remove one-time workflow
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            echo "No changes required."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-teacher-rental-session-bridge.yml
           git add config.js room-booking.html
           git commit -m "Allow teacher and student sessions to enter room rental"
           git push origin HEAD:main
