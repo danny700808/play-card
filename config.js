@@ -18,7 +18,7 @@
       measurementId: 'G-WLYK892EDW'
     },
     FIREBASE_ENABLED: true,
-    BUILD: '2026-08-03-course-login-stability-v3'
+    BUILD: '2026-08-03-course-login-stability-v4'
   };
 
   const params = new URLSearchParams(global.location.search || '');
@@ -50,6 +50,7 @@
    * 2. LINE 第一次綁定、錯誤與失效狀態統一回到 course-portal.html。
    * 3. 換手機不使用舊式登入碼；同一個 LINE 帳號重新授權即可。
    * 4. bot_prompt 改為 normal，好友選項留在同一個 LINE 同意畫面，不再額外跳一頁。
+   * 5. 中央入口會直接交換 LINE 回傳的 access，再開啟正確的身分頁。
    */
   const COURSE_ROLE_PAGES = Object.freeze({
     'teacher-course-portal.html': 'teacher',
@@ -186,7 +187,8 @@
           return;
         }
         const addingAnotherStudent = authView && authView.dataset.addStudent === 'true';
-        if (authView && !hidden(authView) && !addingAnotherStudent && !access) {
+        const liveAccess = clean(new URLSearchParams(global.location.search || '').get('access'));
+        if (authView && !hidden(authView) && !addingAnotherStudent && !liveAccess) {
           redirecting = true;
           safeReplace(courseEntryUrl({ method:'line', role:currentRole, reason:'session-expired' }));
         }
@@ -210,8 +212,8 @@
       if (hookAttempts < 120) global.setTimeout(installCoursePortalHooks, 50);
       return;
     }
-    if (portal.__youziLoginStabilityV3) return;
-    portal.__youziLoginStabilityV3 = true;
+    if (portal.__youziLoginStabilityV4) return;
+    portal.__youziLoginStabilityV4 = true;
 
     if (typeof portal.call === 'function') {
       const originalCall = portal.call.bind(portal);
@@ -230,6 +232,50 @@
         if (clean(token)) rememberCourseRole(role);
         return result;
       };
+    }
+
+    /*
+     * 已綁定的 LINE 帳號可能由後端回到中央入口並帶入一次性 access。
+     * 入口在此直接交換工作階段並前往身分頁，不讓使用者再按第二次。
+     */
+    if (pageName() === 'course-portal.html' && !global.__YOUZI_CENTRAL_ACCESS_EXCHANGE_V4__) {
+      const centralParams = new URLSearchParams(global.location.search || '');
+      const accessToken = clean(centralParams.get('access'));
+      const accessRole = validRole(centralParams.get('role'));
+      if (accessToken && accessRole && typeof portal.call === 'function' && typeof portal.setSession === 'function') {
+        global.__YOUZI_CENTRAL_ACCESS_EXCHANGE_V4__ = true;
+        const loadingView = document.getElementById('loadingView');
+        const loadingTitle = document.getElementById('loadingTitle');
+        const loadingText = document.getElementById('loadingText');
+        if (loadingTitle) loadingTitle.textContent = 'LINE 登入完成';
+        if (loadingText) loadingText.textContent = '正在建立這台裝置的登入狀態，完成後會直接進入。';
+        if (loadingView) {
+          ['methodView','roleView','setupView','emailView','otpView'].forEach(function(id){
+            const node = document.getElementById(id);
+            if (node) node.classList.add('hidden');
+          });
+          loadingView.classList.remove('hidden');
+        }
+        portal.call('coursePortalExchangeAccess', { accessToken:accessToken }).then(function(result){
+          if (!result || validRole(result.role) !== accessRole || !clean(result.sessionToken)) {
+            throw new Error('LINE 登入資料不完整，請重新操作。');
+          }
+          portal.setSession(accessRole, result.sessionToken);
+          rememberCourseRole(accessRole);
+          ENTRY_INTENT_KEYS.forEach(function(key){
+            try { global.sessionStorage.removeItem(key); } catch (_) {}
+            try { global.localStorage.removeItem(key); } catch (_) {}
+          });
+          safeReplace(COURSE_ROLE_PAGES_BY_ROLE[accessRole]);
+        }).catch(function(error){
+          const message = clean(error && error.message) || 'LINE 登入未完成，請重新操作。';
+          try {
+            global.sessionStorage.removeItem(sessionKey(accessRole));
+            global.localStorage.removeItem(sessionKey(accessRole));
+          } catch (_) {}
+          safeReplace(courseEntryUrl({ method:'line', role:accessRole, lineError:message }));
+        });
+      }
     }
   }
   global.setTimeout(installCoursePortalHooks, 0);
