@@ -10,9 +10,15 @@
   let recentButton = null;
   let recentAt = 0;
   let enhanceFrame = 0;
+  let resultFrame = 0;
+  let composing = false;
 
   function isMobile() {
     return Boolean(global.matchMedia && global.matchMedia(MOBILE_QUERY).matches);
+  }
+
+  function operationsState() {
+    return global.OperationsCenterV1 && global.OperationsCenterV1.state || null;
   }
 
   function posInput() {
@@ -27,6 +33,129 @@
     input.setAttribute('autocapitalize', 'off');
     input.removeAttribute('pattern');
     input.spellcheck = false;
+  }
+
+  function normalize(value) {
+    return String(value == null ? '' : value).normalize('NFKC').toLowerCase().trim();
+  }
+
+  function productMatches(product, rawTerm) {
+    const term = normalize(rawTerm);
+    if (!term) return false;
+    const sku = String(product && product.sku || '');
+    const values = [
+      product && product.originalName,
+      product && product.onlineName,
+      product && product.name,
+      sku,
+      product && product.barcode,
+      product && product.brand,
+      product && product.category,
+      product && product.variantName
+    ].filter(Boolean);
+    const haystack = normalize(values.join(' '));
+    const compactHaystack = haystack.replace(/[\s\-_/]/g, '');
+    return term.split(/\s+/).filter(Boolean).every(function (token) {
+      return haystack.includes(token) || compactHaystack.includes(token.replace(/[\s\-_/]/g, ''));
+    });
+  }
+
+  function money(value) {
+    const amount = Math.max(0, Number(value || 0));
+    return 'NT$ ' + Math.round(amount).toLocaleString('zh-TW');
+  }
+
+  function resultNode() {
+    return document.querySelector('.ops-v8-sales-search-grid .ops-pos-products');
+  }
+
+  function emptyResult(title, detail) {
+    const box = document.createElement('div');
+    box.className = 'ops-v8-sales-search-empty';
+    const strong = document.createElement('b');
+    strong.textContent = title;
+    box.append(strong);
+    if (detail) {
+      const small = document.createElement('small');
+      small.textContent = detail;
+      box.append(small);
+    }
+    return box;
+  }
+
+  function buildProductResult(product, usageMode) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ops-pos-item ops-v8-pos-item';
+    button.dataset.action = 'cart-add';
+    button.dataset.id = String(product.docId || '');
+
+    if (product.imageUrl) {
+      const image = document.createElement('img');
+      image.loading = 'lazy';
+      image.src = product.imageUrl;
+      image.alt = '';
+      image.addEventListener('error', function () { image.style.display = 'none'; }, { once: true });
+      button.append(image);
+    } else {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'ops-pos-no-image';
+      placeholder.textContent = '無圖';
+      button.append(placeholder);
+    }
+
+    const copy = document.createElement('div');
+    const name = document.createElement('b');
+    name.textContent = String(product.originalName || product.name || product.onlineName || '未命名商品');
+    const meta = document.createElement('small');
+    meta.textContent = '編號 ' + String(product.sku || '未設定') + '・庫存 ' + Number(product.currentStock || 0).toLocaleString('zh-TW');
+    copy.append(name, meta);
+    button.append(copy);
+
+    const value = document.createElement('strong');
+    value.textContent = usageMode ? '加入' : money(product.storePrice);
+    button.append(value);
+    return button;
+  }
+
+  function updateSearchResults(value) {
+    if (!isMobile()) return;
+    const state = operationsState();
+    const node = resultNode();
+    if (!state || !node) return;
+
+    const term = String(value == null ? '' : value);
+    state.posSearch = term;
+    node.replaceChildren();
+
+    if (!normalize(term)) {
+      node.append(emptyResult('輸入商品編號或名稱', '支援中文、英文、SKU 與條碼'));
+      return;
+    }
+
+    const usageMode = state.salesMode === 'usage';
+    const products = (Array.isArray(state.catalog) ? state.catalog : []).filter(function (product) {
+      return product && product.initialized && product.status !== 'inactive' && productMatches(product, term);
+    }).slice(0, 30);
+
+    if (!products.length) {
+      node.append(emptyResult('找不到商品', '請調整商品編號、中文或英文名稱'));
+      return;
+    }
+    products.forEach(function (product) { node.append(buildProductResult(product, usageMode)); });
+  }
+
+  function scheduleResults(value, immediate) {
+    if (resultFrame) {
+      global.cancelAnimationFrame(resultFrame);
+      resultFrame = 0;
+    }
+    const run = function () {
+      resultFrame = 0;
+      updateSearchResults(value);
+    };
+    if (immediate) run();
+    else resultFrame = global.requestAnimationFrame(run);
   }
 
   function findKey(target) {
@@ -47,10 +176,7 @@
     if (key === 'clear') return { value: '', caret: 0 };
     if (key === 'back') {
       if (selection.end > selection.start) {
-        return {
-          value: value.slice(0, selection.start) + value.slice(selection.end),
-          caret: selection.start
-        };
+        return { value: value.slice(0, selection.start) + value.slice(selection.end), caret: selection.start };
       }
       if (selection.start <= 0) return { value, caret: 0 };
       return {
@@ -65,20 +191,6 @@
     };
   }
 
-  function emitInput(input, key) {
-    let event;
-    try {
-      event = new InputEvent('input', {
-        bubbles: true,
-        inputType: key === 'back' ? 'deleteContentBackward' : 'insertText',
-        data: /^[0-9]$/.test(key) ? key : null
-      });
-    } catch (_) {
-      event = new Event('input', { bubbles: true });
-    }
-    input.dispatchEvent(event);
-  }
-
   function applyKey(button) {
     const input = posInput();
     if (!input || !button || !isMobile()) return;
@@ -90,7 +202,7 @@
     if (document.activeElement === input) {
       try { input.setSelectionRange(next.caret, next.caret); } catch (_) {}
     }
-    emitInput(input, key);
+    scheduleResults(next.value, true);
   }
 
   function cloneText(source, fallback) {
@@ -112,14 +224,12 @@
 
     const previous = section.querySelector('.ops-mobile-sales-history');
     if (previous) previous.remove();
-
     const list = document.createElement('div');
     list.className = 'ops-mobile-sales-history';
 
     rows.forEach(function (row) {
       const cells = Array.from(row.children);
       if (cells.length < 8) return;
-
       const card = document.createElement('article');
       card.className = 'ops-mobile-history-card';
 
@@ -180,8 +290,8 @@
       }
       card.append(items);
 
-      const money = document.createElement('div');
-      money.className = 'ops-mobile-history-money';
+      const values = document.createElement('div');
+      values.className = 'ops-mobile-history-money';
       ['金額', '成本', '毛利'].forEach(function (label, index) {
         const cell = cells[5 + index];
         if (!cell) return;
@@ -191,9 +301,9 @@
         const value = document.createElement('b');
         value.textContent = cloneText(cell, '—');
         box.append(heading, value);
-        money.append(box);
+        values.append(box);
       });
-      card.append(money);
+      card.append(values);
 
       const actionSource = cells[8] && cells[8].querySelector('button, a');
       if (actionSource) {
@@ -201,7 +311,6 @@
         action.classList.add('wide');
         card.append(action);
       }
-
       list.append(card);
     });
 
@@ -211,7 +320,12 @@
   function enhance() {
     enhanceFrame = 0;
     if (!isMobile()) return;
-    prepareSearchInput(posInput());
+    const input = posInput();
+    prepareSearchInput(input);
+    if (input && document.activeElement !== input) {
+      const state = operationsState();
+      if (state && String(input.value || '') !== String(state.posSearch || '')) input.value = String(state.posSearch || '');
+    }
     buildHistoryCards();
   }
 
@@ -219,6 +333,35 @@
     if (enhanceFrame) return;
     enhanceFrame = global.requestAnimationFrame(enhance);
   }
+
+  global.addEventListener('compositionstart', function (event) {
+    if (!isMobile() || !event.target || event.target.id !== 'posSearch') return;
+    composing = true;
+    event.stopImmediatePropagation();
+  }, true);
+
+  global.addEventListener('compositionend', function (event) {
+    if (!isMobile() || !event.target || event.target.id !== 'posSearch') return;
+    event.stopImmediatePropagation();
+    composing = false;
+    scheduleResults(event.target.value, false);
+  }, true);
+
+  global.addEventListener('input', function (event) {
+    if (!isMobile() || !event.target || event.target.id !== 'posSearch') return;
+    event.stopImmediatePropagation();
+    if (!composing && !event.isComposing) scheduleResults(event.target.value, false);
+    else {
+      const state = operationsState();
+      if (state) state.posSearch = event.target.value;
+    }
+  }, true);
+
+  global.addEventListener('keydown', function (event) {
+    if (!isMobile() || !event.target || event.target.id !== 'posSearch' || event.key !== 'Enter') return;
+    event.stopImmediatePropagation();
+    scheduleResults(event.target.value, true);
+  }, true);
 
   document.addEventListener('focusin', function (event) {
     if (event.target && event.target.id === 'posSearch') prepareSearchInput(event.target);
