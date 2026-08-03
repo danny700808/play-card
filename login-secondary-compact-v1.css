@@ -1,0 +1,170 @@
+/* 2026-08-03：只簡化登入首頁展開後的第二層，不改第一層 LINE 入口 */
+body.yz-login-page .login-alt-panel{
+  margin-top:8px!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+body.yz-login-page .login-alt-panel.hidden{display:none!important}
+
+body.yz-login-page .service-email-link{
+  position:relative;
+  min-height:56px;
+  padding:9px 42px 9px 10px!important;
+  gap:10px!important;
+  border:1px solid #d7e4dd!important;
+  border-radius:13px!important;
+  background:#f7fbf9!important;
+  box-shadow:none!important;
+}
+body.yz-login-page .service-email-link>span{
+  width:36px!important;
+  height:36px!important;
+  border-radius:10px!important;
+  font-size:14px!important;
+}
+body.yz-login-page .service-email-link strong{
+  font-size:15px!important;
+  line-height:1.35!important;
+}
+body.yz-login-page .service-email-link small{display:none!important}
+body.yz-login-page .service-email-link::after{
+  content:"›";
+  position:absolute;
+  right:14px;
+  top:50%;
+  transform:translateY(-52%);
+  color:#24735c;
+  font-size:27px;
+  font-weight:500;
+  line-height:1;
+}
+
+body.yz-login-page .login-alt-panel .auth-method-divider{display:none!important}
+body.yz-login-page .login-alt-panel .auth-panel{
+  margin-top:8px!important;
+  padding:11px 12px 12px!important;
+  border:1px solid #dbe5df!important;
+  border-radius:14px!important;
+  background:#fff!important;
+  box-shadow:none!important;
+}
+body.yz-login-page .login-alt-panel .internal-login-title{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:0 0 8px!important;
+  font-size:15px!important;
+  line-height:1.35!important;
+}
+body.yz-login-page .login-alt-panel .internal-login-title::before{
+  content:"內";
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:28px;
+  flex:0 0 auto;
+  border-radius:9px;
+  background:#edf4f0;
+  color:#315246;
+  font-size:11px;
+  font-weight:900;
+}
+body.yz-login-page .login-alt-panel .field{margin-bottom:8px!important}
+body.yz-login-page .login-alt-panel .field label{
+  margin-bottom:4px!important;
+  color:#536760!important;
+  font-size:11px!important;
+  line-height:1.3!important;
+}
+body.yz-login-page .login-alt-panel .field input{
+  min-height:42px!important;
+  padding:9px 11px!important;
+  border-radius:10px!important;
+  font-size:15px!important;
+}
+body.yz-login-page .login-alt-panel .password-wrap input{padding-right:42px!important}
+body.yz-login-page .login-alt-panel .eye{
+  right:8px!important;
+  font-size:16px!important;
+}
+body.yz-login-page .login-alt-panel .remember-row{margin:1px 0 7px!important}
+body.yz-login-page .login-alt-panel .remember-label{
+  gap:6px!important;
+  font-size:12px!important;
+  font-weight:700!important;
+}
+body.yz-login-page .login-alt-panel .remember-label input{
+  width:17px!important;
+  height:17px!important;
+}
+body.yz-login-page .login-alt-panel .login-actions-stack{
+  gap:5px!important;
+  margin-top:0!important;
+}
+body.yz-login-page .login-alt-panel .login-main-btn{
+  min-height:43px!important;
+  padding:9px 12px!important;
+  border-radius:10px!important;
+  font-size:15px!important;
+}
+body.yz-login-page .login-alt-panel .auth-sub-actions{
+  display:flex!important;
+  grid-template-columns:none!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:0!important;
+  margin-top:1px!important;
+  flex-wrap:wrap!important;
+}
+body.yz-login-page .login-alt-panel .auth-sub-actions .btn,
+body.yz-login-page .login-alt-panel .auth-sub-actions .btn-link{
+  width:auto!important;
+  min-height:auto!important;
+  margin:0!important;
+  padding:5px 10px!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  color:#24735c!important;
+  box-shadow:none!important;
+  font-size:12px!important;
+  line-height:1.35!important;
+}
+body.yz-login-page .login-alt-panel .auth-sub-actions>*+*{
+  border-left:1px solid #dbe5df!important;
+}
+body.yz-login-page .login-alt-panel .auth-note{
+  margin-top:3px!important;
+  padding:8px 9px!important;
+  border-radius:10px!important;
+  font-size:11px!important;
+  line-height:1.55!important;
+}
+body.yz-login-page .login-alt-panel .password-rule{
+  margin-top:4px!important;
+  font-size:10px!important;
+  line-height:1.5!important;
+}
+body.yz-login-page .login-alt-panel .auth-back-row{
+  justify-content:center!important;
+  margin-top:1px!important;
+}
+body.yz-login-page .login-alt-panel .auth-back-row .btn{
+  width:auto!important;
+  min-height:auto!important;
+  padding:6px 12px!important;
+  border:0!important;
+  background:transparent!important;
+  color:#24735c!important;
+  font-size:12px!important;
+}
+
+@media(max-width:520px){
+  body.yz-login-page .login-alt-panel .auth-panel{padding:10px!important}
+  body.yz-login-page .service-email-link{min-height:54px!important}
+  body.yz-login-page .login-alt-panel .auth-sub-actions .btn,
+  body.yz-login-page .login-alt-panel .auth-sub-actions .btn-link{padding:5px 8px!important;font-size:11px!important}
+}
