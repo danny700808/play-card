@@ -1,0 +1,132 @@
+name: Deploy Course Login V3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "functions/courseLoginAuthV3.js"
+      - "functions/courseLoginIndexV3.js"
+      - "functions/package.json"
+      - ".github/workflows/deploy-course-login-v3.yml"
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-course-login-v3
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check deployment marker
+        id: marker
+        run: |
+          if [ -f functions/course-login-v3-deployed.txt ]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        if: steps.marker.outputs.needed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Functions dependencies
+        if: steps.marker.outputs.needed == 'true'
+        working-directory: functions
+        run: npm ci
+
+      - name: Verify the v3 entry and overridden exports
+        if: steps.marker.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          node --check functions/courseLoginAuthV3.js
+          node --check functions/courseLoginIndexV3.js
+          (cd functions && node - <<'NODE'
+          const deployed = require('.');
+          for (const name of ['coursePortalStartLineLogin', 'coursePortalLineLoginCallback']) {
+            if (!deployed[name]) throw new Error(`Missing Firebase Function export: ${name}`);
+          }
+          console.log('course login v3 exports verified');
+          NODE
+          )
+
+      - name: Prepare Firebase credentials
+        if: steps.marker.outputs.needed == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_MESSAGING_ACCESS_TOKEN: ${{ secrets.LINE_MESSAGING_ACCESS_TOKEN }}
+          LINE_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}" || { echo "FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is empty" >&2; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$SERVICE_ACCOUNT_PATH"
+          RUNTIME_LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-${LINE_MESSAGING_ACCESS_TOKEN:-${LINE_ACCESS_TOKEN:-}}}"
+          export RUNTIME_LINE_TOKEN
+          node <<'NODE'
+          const fs = require('fs');
+          const rows = {
+            LINE_CHANNEL_ACCESS_TOKEN: process.env.RUNTIME_LINE_TOKEN || '',
+            GMAIL_USER: process.env.GMAIL_USER || '',
+            GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
+            EMAIL_FROM: process.env.EMAIL_FROM || '',
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/'
+          };
+          fs.writeFileSync(
+            'functions/.env',
+            Object.entries(rows).map(([key, value]) => `${key}=${JSON.stringify(String(value))}`).join('\n') + '\n',
+            { mode: 0o600 }
+          );
+          NODE
+
+      - name: Install pinned Firebase CLI
+        if: steps.marker.outputs.needed == 'true'
+        run: npm install --global firebase-tools@15.24.0
+
+      - name: Deploy stable LINE Login endpoints
+        if: steps.marker.outputs.needed == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          firebase deploy --project youzi-c1b74 --non-interactive --force \
+            --only "functions:coursePortalStartLineLogin,functions:coursePortalLineLoginCallback"
+
+      - name: Record successful deployment
+        if: steps.marker.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          printf 'deployed_at=%s\ncommit=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_SHA" > functions/course-login-v3-deployed.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add functions/course-login-v3-deployed.txt
+          git commit -m "Record course login v3 deployment"
+          git push origin HEAD:main
+
+      - name: Remove temporary credentials
+        if: always()
+        run: |
+          rm -f "${{ runner.temp }}/youzi-firebase-service-account.json"
+          rm -f functions/.env
