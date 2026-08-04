@@ -1,4 +1,4 @@
-# explicit-command-and-schedule-trigger
+# explicit-command-schedule-and-diagnostics
 name: Run Course Calendar Cleanup V2
 
 on:
@@ -31,6 +31,16 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Record workflow start
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          printf 'started_at=%s\nevent=%s\ncommit=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${{ github.event_name }}" "$GITHUB_SHA" > course-calendar-cleanup-started.txt
+          git add course-calendar-cleanup-started.txt
+          git commit -m "Record course calendar cleanup workflow start"
+          git push origin HEAD:main
+
       - name: Extract existing cleanup steps
         run: |
           python - <<'PY'
@@ -56,11 +66,33 @@ jobs:
           PY
           chmod +x /tmp/apply-course-cleanup.sh /tmp/verify-course-cleanup.sh
 
-      - name: Apply cleanup
-        run: /tmp/apply-course-cleanup.sh
+      - name: Apply cleanup with diagnostics
+        run: |
+          set +e
+          /tmp/apply-course-cleanup.sh > /tmp/course-cleanup-apply.log 2>&1
+          code=$?
+          cat /tmp/course-cleanup-apply.log
+          if [ "$code" -ne 0 ]; then
+            cp /tmp/course-cleanup-apply.log course-calendar-cleanup-error.txt
+            git add course-calendar-cleanup-error.txt
+            git commit -m "Record course calendar cleanup apply error"
+            git push origin HEAD:main
+            exit "$code"
+          fi
 
-      - name: Verify frontend and backend changes
-        run: /tmp/verify-course-cleanup.sh
+      - name: Verify frontend and backend changes with diagnostics
+        run: |
+          set +e
+          /tmp/verify-course-cleanup.sh > /tmp/course-cleanup-verify.log 2>&1
+          code=$?
+          cat /tmp/course-cleanup-verify.log
+          if [ "$code" -ne 0 ]; then
+            cp /tmp/course-cleanup-verify.log course-calendar-cleanup-error.txt
+            git add course-calendar-cleanup-error.txt
+            git commit -m "Record course calendar cleanup verification error"
+            git push origin HEAD:main
+            exit "$code"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -139,6 +171,7 @@ jobs:
       - name: Commit finalized cleanup
         run: |
           set -euo pipefail
+          rm -f course-calendar-cleanup-started.txt course-calendar-cleanup-error.txt
           rm -f .github/workflows/course-calendar-cleanup-v2.yml
           rm -f .github/workflows/run-course-calendar-cleanup-v2.yml
           git config user.name "github-actions[bot]"
