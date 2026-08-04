@@ -1,5 +1,4 @@
-# trigger-via-existing-workflow-pr
-# trigger-existing-workflow
+# explicit-command-trigger
 name: Run Course Calendar Cleanup V2
 
 on:
@@ -8,6 +7,8 @@ on:
       - main
     paths:
       - ".github/workflows/run-course-calendar-cleanup-v2.yml"
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -18,12 +19,14 @@ concurrency:
 
 jobs:
   run-cleanup:
+    if: github.event_name != 'issue_comment' || contains(github.event.comment.body, '/run-course-calendar-cleanup-v2')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Extract existing cleanup steps
@@ -134,6 +137,7 @@ jobs:
       - name: Commit finalized cleanup
         run: |
           set -euo pipefail
+          rm -f .github/workflows/course-calendar-cleanup-v2.yml
           rm -f .github/workflows/run-course-calendar-cleanup-v2.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
