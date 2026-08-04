@@ -1,0 +1,5 @@
+/tmp/apply-course-cleanup.sh: line 34: warning: here-document at line 1 delimited by end-of-file (wanted `PY')
+  File "<stdin>", line 33
+    issue_modal = '''<div class="modal-backdrop" id="calendarIssuesModal" role="dialog" aria-modal="true" aria-labelledby="calendarIssuesTitle">
+                  ^
+SyntaxError: unterminated triple-quoted string literal (detected at line 33)
