@@ -1,0 +1,154 @@
+name: Run Rental Paper Print V2 Fix
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: run-fix-rental-paper-print-v2
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    if: contains(github.event.comment.body, '/run-fix-rental-paper-print-v2')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch paper-only print output
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('rental-paper-sign-v1.js')
+          text = path.read_text(encoding='utf-8')
+
+          marker = "  async function downloadDraftPdf(panel) {"
+          if text.count(marker) != 1:
+              raise SystemExit(f'download marker expected once, found {text.count(marker)}')
+
+          helper = r'''  function paperPrintHtml(contract) {
+    const source = Object.assign({}, contract || {}, {
+      signingMethod: 'paper',
+      signatureMethod: 'paper',
+      paperPrintMode: true
+    });
+    return R.renderContractHtml(source, { paperSigningView: true })
+      .replace(/<span class="sig-empty">尚未簽名<\/span>/g, '<span class="sig-empty"></span>')
+      .replace(/身分證字號 \/ 統編：客人正式填寫後顯示/g, '身分證字號 / 統編：____________________________')
+      .replace(/<div class="id-placeholder">客人正式填寫連結上傳身分證證明後，此處會顯示加浮水印後的圖片。<\/div>/g, '<div class="id-placeholder"><b>甲方身分證影本黏貼處</b></div>');
+  }
+
+  async function generatePaperPrintPdf(contract) {
+    if (!global.html2pdf) throw new Error('PDF 產生工具尚未載入，請重新整理後再試。');
+    const wrap = document.createElement('div');
+    wrap.style.position = 'fixed';
+    wrap.style.left = '-99999px';
+    wrap.style.top = '0';
+    wrap.style.width = '210mm';
+    wrap.innerHTML = paperPrintHtml(contract);
+    document.body.append(wrap);
+    try {
+      return await global.html2pdf().set({
+        margin: 0,
+        filename: (contract.contractNo || contract.contractId || 'rental-contract') + '-paper-sign.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] }
+      }).from(wrap).outputPdf('blob');
+    } finally {
+      wrap.remove();
+    }
+  }
+
+  function printPaperContract(contract) {
+    const html = paperPrintHtml(contract);
+    const base = location.href.replace(/[^\\/]*$/, '');
+    const win = global.open('', '_blank');
+    if (!win) throw new Error('瀏覽器阻擋列印視窗，請允許彈出視窗後重試。');
+    win.document.open();
+    win.document.write('<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><base href="' + R.esc(base) + '"><title>紙本租賃契約列印</title><style>html,body{margin:0!important;padding:0!important;background:#fff!important}body{width:210mm}@page{size:A4;margin:0}.rental-contract-sheet{border:0!important;box-shadow:none!important;margin:0!important;width:210mm!important;height:297mm!important;min-height:297mm!important;page-break-after:always!important;break-after:page!important}.rental-contract-sheet:last-child{page-break-after:auto!important;break-after:auto!important}.sig-empty{display:inline-block;min-width:52mm;min-height:12mm}.id-placeholder{font-size:14px!important;font-weight:900!important;color:#334155!important}</style></head><body>' + html + '<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},250)}<\\/script></body></html>');
+    win.document.close();
+  }
+
+'''
+          text = text.replace(marker, helper + marker, 1)
+
+          old_pdf = '''    let blob = null;
+    if (typeof global.generatePdfBlob === 'function') blob = await global.generatePdfBlob(contract);
+    else {
+      const wrap = document.createElement('div');
+      wrap.style.position = 'fixed';
+      wrap.style.left = '-99999px';
+      wrap.style.width = '210mm';
+      wrap.innerHTML = R.renderContractHtml(contract);
+      document.body.append(wrap);
+      try {
+        blob = await global.html2pdf().set({ margin: 0, filename: (contract.contractNo || saved.id) + '.pdf', html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff' }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } }).from(wrap).outputPdf('blob');
+      } finally { wrap.remove(); }
+    }'''
+          if text.count(old_pdf) != 1:
+              raise SystemExit(f'PDF generation block expected once, found {text.count(old_pdf)}')
+          text = text.replace(old_pdf, "    const blob = await generatePaperPrintPdf(contract);", 1)
+
+          old_print = '''        await setSigningMethod('paper', panel);
+        if (typeof global.printRentalContract !== 'function') throw new Error('列印功能尚未載入。');
+        global.printRentalContract();'''
+          new_print = '''        await setSigningMethod('paper', panel);
+        const contract = typeof global.collect === 'function' ? global.collect() : await readContract(currentContractId());
+        if (!contract) throw new Error('找不到合約資料。');
+        printPaperContract(contract);'''
+          if text.count(old_print) != 1:
+              raise SystemExit(f'paper print handler expected once, found {text.count(old_print)}')
+          text = text.replace(old_print, new_print, 1)
+          path.write_text(text, encoding='utf-8')
+
+          admin_path = Path('rental-admin.html')
+          admin = admin_path.read_text(encoding='utf-8')
+          old_src = 'rental-paper-sign-v1.js?v=20260803-paper-sign-v1'
+          new_src = 'rental-paper-sign-v1.js?v=20260804-paper-print-v2'
+          if admin.count(old_src) != 1:
+              raise SystemExit(f'paper script cache marker expected once, found {admin.count(old_src)}')
+          admin = admin.replace(old_src, new_src, 1)
+          admin_path.write_text(admin, encoding='utf-8')
+
+          for name in [
+              '.github/workflows/fix-rental-paper-print-v2.yml',
+              '.github/workflows/run-fix-rental-paper-print-v2.yml',
+          ]:
+              helper_path = Path(name)
+              if helper_path.exists():
+                  helper_path.unlink()
+          PY
+
+      - name: Verify paper-only output
+        run: |
+          set -euo pipefail
+          node --check rental-paper-sign-v1.js
+          grep -Fq 'function paperPrintHtml' rental-paper-sign-v1.js
+          grep -Fq '甲方身分證影本黏貼處' rental-paper-sign-v1.js
+          grep -Fq '<span class="sig-empty"></span>' rental-paper-sign-v1.js
+          grep -Fq 'function printPaperContract' rental-paper-sign-v1.js
+          grep -Fq 'rental-paper-sign-v1.js?v=20260804-paper-print-v2' rental-admin.html
+          grep -Fq '客人正式填寫連結上傳身分證證明後' rental-common.js
+          ! test -e .github/workflows/fix-rental-paper-print-v2.yml
+          ! test -e .github/workflows/run-fix-rental-paper-print-v2.yml
+          git diff --check
+
+      - name: Commit paper print correction
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Leave paper contract signature and ID paste areas blank"
+          git push origin HEAD:main
