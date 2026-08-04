@@ -168,7 +168,13 @@
 
     const confirmButton = panel.querySelector('[data-paper-confirm]');
     if (confirmButton) {
-      confirmButton.textContent = state.confirmed ? '紙本簽署已確認・可繼續收款成立' : '確認紙本已完成・下一步收款';
+      if (state.confirmed) {
+        confirmButton.style.display = 'none';
+        confirmButton.disabled = true;
+      } else {
+        confirmButton.style.display = '';
+        confirmButton.textContent = '確認紙本已完成・下一步收款';
+      }
     }
 
     let activationBox = panel.querySelector('[data-paper-activation-box]');
@@ -182,7 +188,7 @@
       }
       activationBox.innerHTML = active
         ? '<b>這份紙本合約已轉為正式租賃</b><span>客人後續仍依原本選擇的 LINE 或 Email 接收通知，並可查看已簽紙本 PDF。</span>'
-        : '<b>紙本文件已完成，最後確認收款與起租資料</b><span>請先確認交付日期、租期與實收款項；按下後會沿用原本通知方式寄送正式租賃連結。</span><button class="btn paper-activate-btn" type="button" data-paper-activate-rental>確認已收款並成立租賃</button>';
+        : '<b>紙本簽署已完成</b><span>請先確認交付日期、租期與實收款項。按下下方按鈕後，才會正式轉入「租賃中」，並依客人原本選擇的 LINE 或 Email 寄送正式契約連結。</span><button class="btn paper-activate-btn" type="button" data-paper-activate-rental>確認已收款並成立租賃</button>';
     } else if (activationBox) {
       activationBox.remove();
     }
@@ -279,9 +285,9 @@
     }
     const wrapped = async function () {
       const id = currentContractId();
-      const before = id ? await R.get('rentalContracts', id).catch(function () { return null; }) : null;
+      const paperAtStart = paperModeActive() && global.__YZ_CURRENT_PAPER_SIGN_CONFIRMED__ === true;
       const result = await original.apply(this, arguments);
-      if (id && before && clean(before.signingMethod || before.signatureMethod) === 'paper' && before.paperSignedConfirmedAt) {
+      if (id && paperAtStart) {
         const after = await R.get('rentalContracts', id).catch(function () { return null; });
         if (after && isActiveStatus(after.status)) {
           await R.db().collection('rentalContracts').doc(id).set({
@@ -531,7 +537,18 @@
         R.toast('確認租用成立功能尚未載入，請重新整理後再試。', false);
         return;
       }
-      global.markDelivered();
+      const originalText = activate.textContent;
+      activate.disabled = true;
+      activate.setAttribute('aria-busy', 'true');
+      activate.textContent = '正在開啟成立確認…';
+      Promise.resolve(global.markDelivered()).catch(function (error) {
+        R.toast(error && error.message ? error.message : String(error), false);
+      }).finally(function () {
+        if (!document.contains(activate)) return;
+        activate.disabled = false;
+        activate.removeAttribute('aria-busy');
+        activate.textContent = originalText;
+      });
       return;
     }
 
