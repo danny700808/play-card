@@ -1,0 +1,76 @@
+/* 紙本簽署流程：只加在租賃管理端，不改動既有線上簽署頁。 */
+.rental-paper-sign-panel{
+  margin-top:12px;
+  padding:14px;
+  border:1px solid #b9d9cc;
+  border-radius:16px;
+  background:#f7fcfa;
+}
+.rental-paper-sign-panel h3{margin:0 0 5px;font-size:18px;color:#18314a}
+.rental-paper-sign-panel .paper-help{margin:0 0 12px;color:#64748b;font-size:12px;line-height:1.7}
+.paper-method-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.paper-method-btn{
+  min-height:72px;
+  padding:11px 12px;
+  border:1px solid #cbd5e1;
+  border-radius:13px;
+  background:#fff;
+  color:#18314a;
+  text-align:left;
+  cursor:pointer;
+}
+.paper-method-btn b,.paper-method-btn span{display:block}
+.paper-method-btn b{font-size:15px}
+.paper-method-btn span{margin-top:4px;color:#64748b;font-size:11px;line-height:1.5}
+.paper-method-btn.active{border-color:#1f7a5a;background:#e8fff4;box-shadow:0 0 0 2px rgba(31,122,90,.08)}
+.paper-method-btn.active b{color:#146c43}
+.paper-flow-box{margin-top:12px;padding:12px;border:1px solid #dbe5ef;border-radius:14px;background:#fff}
+.paper-flow-box.hidden{display:none!important}
+.paper-flow-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:12px}
+.paper-flow-step{padding:8px;border-radius:10px;background:#f1f5f9;color:#475569;font-size:11px;line-height:1.5;text-align:center;font-weight:850}
+.paper-flow-step.done{background:#e8fff4;color:#146c43}
+.paper-flow-actions{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 12px}
+.paper-flow-actions .btn{min-width:150px}
+.paper-upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.paper-upload-card{padding:10px;border:1px solid #dbe5ef;border-radius:13px;background:#f8fafc;min-width:0}
+.paper-upload-card h4{margin:0 0 7px;font-size:14px;color:#18314a}
+.paper-upload-card input[type=file]{display:block;width:100%;font-size:12px}
+.paper-upload-preview{display:grid;place-items:center;min-height:150px;margin-top:8px;border:1px dashed #b8c6d1;border-radius:11px;background:#fff;overflow:hidden;color:#94a3b8;font-size:12px;text-align:center}
+.paper-upload-preview img{display:block;max-width:100%;max-height:280px;transform-origin:center;transition:transform .15s ease}
+.paper-upload-tools{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.paper-upload-tools button{border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#334155;padding:6px 8px;font-size:11px;font-weight:850;cursor:pointer}
+.paper-pdf-upload{margin-top:10px;padding:10px;border:1px dashed #93b9aa;border-radius:12px;background:#f0fff7}
+.paper-pdf-upload label{display:block;font-weight:900;color:#146c43;margin-bottom:5px}
+.paper-pdf-upload small{display:block;color:#557066;line-height:1.55;margin-top:4px}
+.paper-upload-submit{width:100%;margin-top:11px;min-height:46px}
+.paper-progress{display:none;margin-top:10px}
+.paper-progress.show{display:block}
+.paper-progress-track{height:12px;border-radius:999px;background:#e2e8f0;overflow:hidden}
+.paper-progress-fill{width:0;height:100%;background:#1f7a5a;transition:width .2s ease}
+.paper-progress-text{margin-top:5px;color:#475569;font-size:12px;font-weight:850}
+.paper-document-box{margin-top:11px;padding:11px;border:1px solid #b9d9cc;border-radius:12px;background:#effcf6}
+.paper-document-box.hidden{display:none!important}
+.paper-document-box strong{display:block;color:#146c43;margin-bottom:5px}
+.paper-document-links{display:flex;gap:7px;flex-wrap:wrap}
+.paper-document-links a{display:inline-flex;align-items:center;min-height:34px;padding:6px 10px;border-radius:9px;background:#fff;border:1px solid #b9d9cc;color:#146c43;font-size:12px;font-weight:900;text-decoration:none}
+.paper-confirm-btn{width:100%;margin-top:10px;min-height:46px;background:#18314a!important}
+.paper-status-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:10px}
+.paper-status-chip{display:inline-flex;padding:4px 8px;border-radius:999px;background:#e2e8f0;color:#475569;font-size:11px;font-weight:900}
+.paper-status-chip.paper{background:#fff4d8;color:#875a00}
+.paper-status-chip.confirmed{background:#e8fff4;color:#146c43}
+.paper-online-note{padding:10px 11px;border-radius:11px;background:#f8fafc;color:#475569;font-size:12px;line-height:1.7}
+.paper-file-name{display:block;margin-top:5px;color:#475569;font-size:11px;word-break:break-all}
+
+.rental-paper-contract-view{display:grid;gap:12px}
+.rental-paper-contract-view .paper-contract-page{padding:8px;border:1px solid #dbe5ef;border-radius:12px;background:#fff}
+.rental-paper-contract-view img{display:block;width:100%;height:auto;border-radius:8px}
+.rental-paper-contract-open{display:flex!important;width:100%;min-height:48px;margin-top:8px}
+
+@media(max-width:760px){
+  .paper-method-grid,.paper-upload-grid,.paper-flow-steps{grid-template-columns:1fr}
+  .paper-flow-actions{display:grid;grid-template-columns:1fr}
+  .paper-flow-actions .btn{width:100%;min-width:0}
+  .paper-upload-preview{min-height:120px}
+  .paper-document-links{display:grid;grid-template-columns:1fr}
+  .paper-document-links a{justify-content:center;width:100%;box-sizing:border-box}
+}
