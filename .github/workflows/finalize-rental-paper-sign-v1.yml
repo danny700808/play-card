@@ -1,0 +1,90 @@
+name: Finalize Rental Paper Signing V1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/finalize-rental-paper-sign-v1.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-rental-paper-sign-v1
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Synchronize current paper-sign state and remove rollout helpers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          admin_path = Path('rental-admin.html')
+          admin = admin_path.read_text(encoding='utf-8')
+          old_admin = "const paperSigned=!!(selected && R.clean(selected.signingMethod||selected.signatureMethod)==='paper' && selected.paperSignedConfirmedAt && (selected.paperSignedPdfUrl || (Array.isArray(selected.paperSignedPageUrls)&&selected.paperSignedPageUrls.length)));"
+          new_admin = "const paperSigned=!!(globalThis.__YZ_CURRENT_PAPER_SIGN_CONFIRMED__ || (selected && R.clean(selected.signingMethod||selected.signatureMethod)==='paper' && selected.paperSignedConfirmedAt && (selected.paperSignedPdfUrl || (Array.isArray(selected.paperSignedPageUrls)&&selected.paperSignedPageUrls.length))));"
+          if admin.count(old_admin) != 1:
+              raise SystemExit(f'rental-admin paperSigned marker expected once, found {admin.count(old_admin)}')
+          admin = admin.replace(old_admin, new_admin, 1)
+          admin_path.write_text(admin, encoding='utf-8')
+
+          js_path = Path('rental-paper-sign-v1.js')
+          js = js_path.read_text(encoding='utf-8')
+          old_refresh = "    const row = currentId ? (await readContract(currentId) || {}) : {};\n    if (!panel || !document.contains(panel)) return;"
+          new_refresh = "    const row = currentId ? (await readContract(currentId) || {}) : {};\n    global.__YZ_CURRENT_PAPER_SIGN_CONFIRMED__ = paperConfirmed(row);\n    if (!panel || !document.contains(panel)) return;"
+          if js.count(old_refresh) != 1:
+              raise SystemExit(f'paper refresh marker expected once, found {js.count(old_refresh)}')
+          js = js.replace(old_refresh, new_refresh, 1)
+
+          old_confirm = "    setStatusField(PAPER_CONFIRMED);\n    setProgress(panel, 100, '紙本簽署已確認，案件已進入待付款確認。');"
+          new_confirm = "    global.__YZ_CURRENT_PAPER_SIGN_CONFIRMED__ = true;\n    setStatusField(PAPER_CONFIRMED);\n    setProgress(panel, 100, '紙本簽署已確認，案件已進入待付款確認。');"
+          if js.count(old_confirm) != 1:
+              raise SystemExit(f'paper confirm marker expected once, found {js.count(old_confirm)}')
+          js = js.replace(old_confirm, new_confirm, 1)
+          js_path.write_text(js, encoding='utf-8')
+
+          for name in [
+              '.github/workflows/add-rental-paper-sign-v1.yml',
+              'scripts/add_rental_paper_sign_v1.py',
+              '.github/workflows/finalize-rental-paper-sign-v1.yml',
+          ]:
+              path = Path(name)
+              if path.exists():
+                  path.unlink()
+          PY
+
+      - name: Verify final paper and online signing paths
+        run: |
+          set -euo pipefail
+          node --check rental-paper-sign-v1.js
+          node --check rental-paper-contract-view-v1.js
+          grep -Fq '__YZ_CURRENT_PAPER_SIGN_CONFIRMED__' rental-paper-sign-v1.js
+          grep -Fq '__YZ_CURRENT_PAPER_SIGN_CONFIRMED__' rental-admin.html
+          grep -Fq 'window.sendToCustomerForFill=async function' rental-admin.html
+          grep -Fq "status:'待付款確認'" rental-sign.html
+          grep -Fq 'capture="environment"' rental-sign.html
+          grep -Fq 'rental-paper-sign-v1.js?v=20260803-paper-sign-v1' rental-admin.html
+          grep -Fq 'rental-paper-contract-view-v1.js?v=20260803-paper-sign-v1' rental-contract.html
+          ! test -e .github/workflows/add-rental-paper-sign-v1.yml
+          ! test -e scripts/add_rental_paper_sign_v1.py
+          ! test -e .github/workflows/finalize-rental-paper-sign-v1.yml
+          git diff --check
+
+      - name: Commit finalized rental paper signing flow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Finalize rental paper signing state synchronization"
+          git push origin HEAD:main
