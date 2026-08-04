@@ -91,3 +91,24 @@
   window.yzActionFeedback={begin:start,done:function(btn,text){window.finishActionButtonSuccess(btn,text);},fail:function(btn,text){window.finishActionButtonError(btn,text);}};
   ensureStyle();
 })();
+
+/* 打卡頁規則：班段進行中只能正常／特殊打卡，補打卡於班段結束後才開放。 */
+(function(global){
+  'use strict';
+  var page=String((global.location&&global.location.pathname)||'').split('/').pop().toLowerCase();
+  if(page!=='clock.html'||global.__YZ_CLOCK_ACTIVE_SHIFT_GUARD_INLINE_V1__) return;
+  global.__YZ_CLOCK_ACTIVE_SHIFT_GUARD_INLINE_V1__=true;
+  var GRACE=5;
+  function text(v){return String(v==null?'':v).trim();}
+  function dateText(d){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
+  function minutes(v){var m=text(v).slice(0,5).match(/^(\d{1,2}):(\d{2})$/);if(!m)return null;var h=Number(m[1]),mi=Number(m[2]);return h>=0&&h<=23&&mi>=0&&mi<=59?h*60+mi:null;}
+  function first(){for(var i=0;i<arguments.length;i+=1){var v=text(arguments[i]);if(v)return v;}return '';}
+  function active(issue){issue=issue||{};var s=issue.schedule||issue.scheduleSnapshot||{};var d=first(issue.date,issue.scheduleDate,issue.correctDate,s.date,s.scheduleDate);var end=minutes(first(issue.endTime,issue.scheduleEndTime,s.endTime,s.scheduleEndTime));if(!d||end==null||d!==dateText(new Date()))return false;var now=new Date();return now.getHours()*60+now.getMinutes()<end+GRACE;}
+  function pending(issue){var st=text(issue&&(issue.statusLabel||issue.status));return !!(issue&&(issue.pendingCorrection||issue.pendingLeave||issue.pendingSpecialClock||st.indexOf('待主管審核')>=0||st.indexOf('待審核')>=0));}
+  function filterRows(result){if(!result||!Array.isArray(result.rows))return result;var rows=result.rows.map(function(issue){if(!issue||pending(issue)||!active(issue))return issue;var old=Array.isArray(issue.missingActions)?issue.missingActions:[];var next=old.filter(function(action){var a=text(action);return a.indexOf('上班')<0&&a.indexOf('下班')<0;});if(next.length===old.length)return issue;if(!next.length&&!issue.canEarlyLeaveRetro)return null;return Object.assign({},issue,{missingActions:next,activeShiftClockRequired:true,supplementBlockedReason:'班段仍在進行中，請使用正常打卡；補打卡只在班段結束後開放。'});}).filter(Boolean);return Object.assign({},result,{rows:rows});}
+  function block(payload){payload=payload||{};if(text(payload.requestKind)!=='missingClock')return false;var action=text(payload.correctAction);if(action.indexOf('上班')<0&&action.indexOf('下班')<0)return false;return active({date:payload.scheduleDate||payload.correctDate,endTime:payload.scheduleEndTime||payload.endTime,scheduleSnapshot:payload.scheduleSnapshot||{}});}
+  function message(payload){return text(payload&&payload.correctAction).indexOf('上班')>=0?'這個班段仍在進行中，不能使用補上班卡。請立即使用「標準打卡」，系統會記錄實際到班時間與遲到分鐘；若因網路或外出等特殊原因無法正常打卡，請改用「特殊打卡」送主管審核。':'這個班段仍在進行中，不能使用補下班卡。請在班段結束時使用正常下班打卡；特殊狀況請依特殊打卡或請假流程處理。';}
+  function install(){var original=global.api;if(typeof original!=='function')return false;if(original.__activeShiftSupplementGuardV1)return true;var wrapped=async function(action,payload){if(action==='submitClockCorrection'&&block(payload))return {ok:false,activeShiftClockRequired:true,message:message(payload)};var result=await original.apply(this,arguments);return action==='getClockCompletionIssues'?filterRows(result):result;};wrapped.__activeShiftSupplementGuardV1=true;wrapped.__originalApi=original;global.api=wrapped;return true;}
+  function copy(){var note=document.querySelector('.missing-clock-note');if(note)note.textContent='系統會檢查今日與昨日班表。班段進行中若遲到，請直接使用標準打卡，系統會記錄實際到班時間；補打卡只在班段結束後、確定漏打時開放，並送主管審核。';var items=Array.from(document.querySelectorAll('.help-box li'));var item=items.find(function(x){return text(x.textContent).indexOf('如果已經有打卡紀錄但時間錯誤')>=0;});if(item)item.innerHTML='<strong>遲到仍要正常打卡：</strong>系統會照實記錄到班時間與遲到分鐘；有異議再提出修正。只有班段結束後確定漏打，才可從「待處理事項」提出補打卡。';}
+  install();var timer=global.setInterval(function(){if(install())global.clearInterval(timer);},200);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',copy,{once:true});else copy();global.addEventListener('pageshow',copy);
+})(window);
