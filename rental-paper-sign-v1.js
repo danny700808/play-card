@@ -4,23 +4,48 @@
   const R = global.YZRental;
   if (!R) return;
 
-  const BASE_SCRIPT = 'rental-paper-sign-v1-base.js?v=20260804-paper-preview-v3';
+  const BASE_SCRIPT = 'rental-paper-sign-v1-base.js?v=20260804-paper-handoff-v4';
+  const ACTIVE_STATUSES = ['租賃中', '租用中', '已成立', 'active', '待配送 / 待安裝', '到期提醒中'];
   let working = false;
   let previewFrame = 0;
   let lastPreviewMode = '';
+  let metadataTimer = 0;
+  let metadataRunning = false;
+  let activationWrapped = false;
 
   function clean(value) {
     return String(value == null ? '' : value).trim();
+  }
+
+  function nowText() {
+    return typeof R.nowText === 'function' ? R.nowText() : new Date().toISOString();
+  }
+
+  function operatorLabel() {
+    try {
+      const user = JSON.parse(global.localStorage.getItem('employeeUser') || 'null') || {};
+      return clean(user.name || user.displayName || user.email || user.id || user.employeeId) || '管理者';
+    } catch (_) {
+      return '管理者';
+    }
   }
 
   function currentContractId() {
     return clean(R.val('contractId'));
   }
 
+  function currentStatus() {
+    return clean(R.val('status'));
+  }
+
+  function isActiveStatus(value) {
+    return ACTIVE_STATUSES.includes(clean(value));
+  }
+
   function paperModeActive() {
     const button = document.querySelector('#rentalPaperSignPanel [data-sign-method="paper"]');
     if (button && button.classList.contains('active')) return true;
-    const status = clean(R.val('status'));
+    const status = currentStatus();
     return ['待紙本簽署', '紙本已上傳待確認'].includes(status) || global.__YZ_CURRENT_PAPER_SIGN_CONFIRMED__ === true;
   }
 
@@ -79,6 +104,209 @@
     } catch (_) {}
   }
 
+  function paperPanelState(panel) {
+    const documentBox = panel && panel.querySelector('[data-paper-document-box]');
+    const hasDocument = !!(documentBox && !documentBox.classList.contains('hidden'));
+    const confirmButton = panel && panel.querySelector('[data-paper-confirm]');
+    const confirmed = global.__YZ_CURRENT_PAPER_SIGN_CONFIRMED__ === true ||
+      !!(confirmButton && confirmButton.disabled && /已確認/.test(clean(confirmButton.textContent)));
+    return { hasDocument: hasDocument, confirmed: confirmed };
+  }
+
+  function enhancePaperPanel() {
+    const panel = document.getElementById('rentalPaperSignPanel');
+    if (!panel) return;
+
+    const heading = panel.querySelector('h3');
+    if (heading) heading.textContent = '客人簽署流程（管理端）';
+
+    const help = panel.querySelector('.paper-help');
+    if (help) {
+      help.textContent = '客人端始終只使用 LINE 或 Email 開啟網頁。客人若不會操作第二步，才由店家在這裡改用紙本接手；列印、拍照上傳與確認都只在後台進行。';
+      let notice = panel.querySelector('.paper-handoff-notice');
+      if (!notice) {
+        notice = document.createElement('div');
+        notice.className = 'paper-handoff-notice';
+        help.insertAdjacentElement('afterend', notice);
+      }
+      notice.innerHTML = '<b>客人不會看到「紙本簽署」選項。</b><span>切換紙本後，舊的線上補資料／簽名連結會停止操作；LINE 或 Email 仍繼續用於後續通知與查看正式文件。</span>';
+    }
+
+    const onlineButton = panel.querySelector('[data-sign-method="online"]');
+    const paperButton = panel.querySelector('[data-sign-method="paper"]');
+    const state = paperPanelState(panel);
+    if (onlineButton) {
+      const title = onlineButton.querySelector('b');
+      const copy = onlineButton.querySelector('span');
+      if (title) title.textContent = '客人自行線上完成';
+      if (copy) copy.textContent = '客人從 LINE 或 Email 開啟同一個網頁，填身分資料、上傳證明並用手機手寫簽名。';
+      if ((state.hasDocument || state.confirmed) && paperModeActive()) {
+        onlineButton.disabled = true;
+        onlineButton.title = '紙本文件已上傳；為保留正式紀錄，不能直接切回線上簽署。';
+      }
+    }
+    if (paperButton) {
+      const title = paperButton.querySelector('b');
+      const copy = paperButton.querySelector('span');
+      if (title) title.textContent = '店家紙本接手（備援）';
+      if (copy) copy.textContent = '客人已完成第一步申請，但不會操作下一步時，由店家列印、收回、拍照上傳。';
+    }
+
+    const onlineNote = panel.querySelector('[data-online-flow] .paper-online-note');
+    if (onlineNote) {
+      onlineNote.innerHTML = '<b>正常流程：客人自行完成。</b><br>LINE 與 Email 都只是傳送連結和通知；客人從手機瀏覽器開啟後都能上傳證件與線上簽名。';
+    }
+
+    const steps = panel.querySelector('.paper-flow-steps');
+    if (steps) {
+      steps.innerHTML = '' +
+        '<div class="paper-flow-step done">1. 客人完成第一步申請</div>' +
+        '<div class="paper-flow-step ' + (paperModeActive() ? 'done' : '') + '">2. 店家列印給客人手寫</div>' +
+        '<div class="paper-flow-step ' + (state.hasDocument ? 'done' : '') + '">3. 店家拍照／上傳 PDF</div>' +
+        '<div class="paper-flow-step ' + (state.confirmed ? 'done' : '') + '">4. 確認紙本後收款成立</div>';
+    }
+
+    const confirmButton = panel.querySelector('[data-paper-confirm]');
+    if (confirmButton) {
+      confirmButton.textContent = state.confirmed ? '紙本簽署已確認・可繼續收款成立' : '確認紙本已完成・下一步收款';
+    }
+
+    let activationBox = panel.querySelector('[data-paper-activation-box]');
+    const active = isActiveStatus(currentStatus());
+    if (state.confirmed) {
+      if (!activationBox) {
+        activationBox = document.createElement('div');
+        activationBox.className = 'paper-activation-box';
+        activationBox.setAttribute('data-paper-activation-box', '');
+        panel.appendChild(activationBox);
+      }
+      activationBox.innerHTML = active
+        ? '<b>這份紙本合約已轉為正式租賃</b><span>客人後續仍依原本選擇的 LINE 或 Email 接收通知，並可查看已簽紙本 PDF。</span>'
+        : '<b>紙本文件已完成，最後確認收款與起租資料</b><span>請先確認交付日期、租期與實收款項；按下後會沿用原本通知方式寄送正式租賃連結。</span><button class="btn paper-activate-btn" type="button" data-paper-activate-rental>確認已收款並成立租賃</button>';
+    } else if (activationBox) {
+      activationBox.remove();
+    }
+  }
+
+  function scheduleMetadataSync(methodHint, delay) {
+    clearTimeout(metadataTimer);
+    metadataTimer = global.setTimeout(function () {
+      syncSigningMetadata(methodHint).catch(function (error) {
+        console.warn('paper handoff metadata sync failed:', error);
+      });
+    }, Number(delay) || 700);
+  }
+
+  async function syncSigningMetadata(methodHint) {
+    if (metadataRunning) {
+      scheduleMetadataSync(methodHint, 500);
+      return;
+    }
+    const id = currentContractId();
+    if (!id) return;
+    metadataRunning = true;
+    try {
+      const row = await R.get('rentalContracts', id) || {};
+      const paper = methodHint === 'paper' || (!methodHint && (clean(row.signingMethod || row.signatureMethod) === 'paper' || !!row.paperSignedPdfUrl));
+      const confirmed = paper && !!(row.paperSignedConfirmedAt && (row.paperSignedPdfUrl || (Array.isArray(row.paperSignedPageUrls) && row.paperSignedPageUrls.length)));
+      const active = isActiveStatus(row.status);
+      const patch = { updatedAtText: nowText() };
+
+      if (paper) {
+        Object.assign(patch, {
+          signingMethod: 'paper',
+          signatureMethod: 'paper',
+          customerSigningFlow: 'paper_admin_assisted',
+          customerActionRequired: false,
+          customerOnlineSigningDisabled: true,
+          customerOnlineSigningDisabledAt: row.customerOnlineSigningDisabledAt || nowText(),
+          customerOnlineSigningDisabledReason: '客人無法或不便完成線上簽署，由店家改用紙本接手',
+          paperFallbackSelectedAt: row.paperFallbackSelectedAt || nowText(),
+          paperFallbackSelectedBy: row.paperFallbackSelectedBy || operatorLabel(),
+          notificationChannelPreserved: true
+        });
+        if (confirmed) {
+          Object.assign(patch, {
+            paperWorkflowReadyForPayment: true,
+            customerIdentityVerificationSource: 'paper_contract',
+            customerSignatureSource: 'paper_contract',
+            customerIdentityDataOnPaper: true,
+            customerPortalDocumentMode: 'paper_scan',
+            customerPortalReadOnly: active
+          });
+        }
+        if (active) {
+          Object.assign(patch, {
+            paperWorkflowReadyForPayment: false,
+            paperRentalActivatedAt: row.paperRentalActivatedAt || nowText(),
+            customerPortalReadOnly: true,
+            customerActionRequired: false
+          });
+        }
+      } else {
+        Object.assign(patch, {
+          signingMethod: 'online',
+          signatureMethod: 'online',
+          customerSigningFlow: 'online_self_service',
+          customerActionRequired: true,
+          customerOnlineSigningDisabled: false,
+          customerOnlineSigningDisabledAt: '',
+          customerOnlineSigningDisabledReason: '',
+          paperWorkflowReadyForPayment: false,
+          customerIdentityVerificationSource: 'online',
+          customerSignatureSource: 'online',
+          customerPortalDocumentMode: 'generated_contract',
+          customerPortalReadOnly: false
+        });
+        if (row.paperFallbackSelectedAt) {
+          patch.paperFallbackCancelledAt = nowText();
+          patch.paperFallbackCancelledBy = operatorLabel();
+        }
+      }
+
+      await R.db().collection('rentalContracts').doc(id).set(patch, { merge: true });
+    } finally {
+      metadataRunning = false;
+    }
+  }
+
+  function installActivationFinalizer() {
+    if (activationWrapped || typeof global.markDelivered !== 'function') return;
+    const original = global.markDelivered;
+    if (original.__paperHandoffV2) {
+      activationWrapped = true;
+      return;
+    }
+    const wrapped = async function () {
+      const id = currentContractId();
+      const before = id ? await R.get('rentalContracts', id).catch(function () { return null; }) : null;
+      const result = await original.apply(this, arguments);
+      if (id && before && clean(before.signingMethod || before.signatureMethod) === 'paper' && before.paperSignedConfirmedAt) {
+        const after = await R.get('rentalContracts', id).catch(function () { return null; });
+        if (after && isActiveStatus(after.status)) {
+          await R.db().collection('rentalContracts').doc(id).set({
+            customerSigningFlow: 'paper_admin_assisted',
+            customerActionRequired: false,
+            customerOnlineSigningDisabled: true,
+            customerIdentityVerificationSource: 'paper_contract',
+            customerSignatureSource: 'paper_contract',
+            customerIdentityDataOnPaper: true,
+            customerPortalDocumentMode: 'paper_scan',
+            customerPortalReadOnly: true,
+            paperWorkflowReadyForPayment: false,
+            paperRentalActivatedAt: after.paperRentalActivatedAt || nowText(),
+            updatedAtText: nowText()
+          }, { merge: true });
+          schedulePreviewSync();
+        }
+      }
+      return result;
+    };
+    wrapped.__paperHandoffV2 = true;
+    global.markDelivered = wrapped;
+    activationWrapped = true;
+  }
+
   function syncLivePreview() {
     previewFrame = 0;
     const mode = paperModeActive() ? 'paper' : 'online';
@@ -87,6 +315,8 @@
       rerenderPreviewForMode(mode);
     }
     if (mode === 'paper') applyPaperPreviewDecorations();
+    enhancePaperPanel();
+    installActivationFinalizer();
   }
 
   function schedulePreviewSync() {
@@ -112,10 +342,18 @@
     await R.db().collection('rentalContracts').doc(id).set({
       signingMethod: 'paper',
       signatureMethod: 'paper',
+      customerSigningFlow: 'paper_admin_assisted',
+      customerActionRequired: false,
+      customerOnlineSigningDisabled: true,
+      customerOnlineSigningDisabledAt: row.customerOnlineSigningDisabledAt || nowText(),
+      customerOnlineSigningDisabledReason: '客人無法或不便完成線上簽署，由店家改用紙本接手',
+      paperFallbackSelectedAt: row.paperFallbackSelectedAt || nowText(),
+      paperFallbackSelectedBy: row.paperFallbackSelectedBy || operatorLabel(),
+      notificationChannelPreserved: true,
       paperSigningStatus: row.paperSignedConfirmedAt ? 'confirmed' : (row.paperSignedPdfUrl ? 'uploaded' : 'awaiting_signature'),
-      paperContractPreparedAt: row.paperContractPreparedAt || (typeof R.nowText === 'function' ? R.nowText() : new Date().toISOString()),
+      paperContractPreparedAt: row.paperContractPreparedAt || nowText(),
       status: status,
-      updatedAtText: typeof R.nowText === 'function' ? R.nowText() : new Date().toISOString()
+      updatedAtText: nowText()
     }, { merge: true });
 
     const statusField = document.getElementById('status');
@@ -128,6 +366,7 @@
     lastPreviewMode = 'paper';
     const preview = document.getElementById('contractPreview');
     if (preview) preview.innerHTML = paperPrintHtml(contract);
+    scheduleMetadataSync('paper', 50);
     return { id: id, contract: contract };
   }
 
@@ -180,9 +419,9 @@
     const url = await ref.getDownloadURL();
     await R.db().collection('rentalContracts').doc(id).set({
       paperPrintablePdfUrl: url,
-      paperPrintablePdfGeneratedAt: typeof R.nowText === 'function' ? R.nowText() : new Date().toISOString(),
+      paperPrintablePdfGeneratedAt: nowText(),
       paperPrintablePdfFileName: fileName,
-      updatedAtText: typeof R.nowText === 'function' ? R.nowText() : new Date().toISOString()
+      updatedAtText: nowText()
     }, { merge: true });
     return { url: url, fileName: fileName };
   }
@@ -264,6 +503,56 @@
   }
 
   document.addEventListener('click', function (event) {
+    const signMethod = event.target && event.target.closest
+      ? event.target.closest('#rentalPaperSignPanel [data-sign-method]')
+      : null;
+    if (signMethod) {
+      const method = clean(signMethod.dataset.signMethod);
+      const panel = document.getElementById('rentalPaperSignPanel');
+      const state = paperPanelState(panel);
+      if (method === 'online' && paperModeActive() && (state.hasDocument || state.confirmed)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        R.toast('紙本文件已經上傳，為保留正式紀錄，不能直接切回線上簽署。', false);
+        return;
+      }
+      scheduleMetadataSync(method, 900);
+      global.setTimeout(schedulePreviewSync, 950);
+      return;
+    }
+
+    const activate = event.target && event.target.closest
+      ? event.target.closest('[data-paper-activate-rental]')
+      : null;
+    if (activate) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (typeof global.markDelivered !== 'function') {
+        R.toast('確認租用成立功能尚未載入，請重新整理後再試。', false);
+        return;
+      }
+      global.markDelivered();
+      return;
+    }
+
+    const confirmButton = event.target && event.target.closest
+      ? event.target.closest('[data-paper-confirm]')
+      : null;
+    if (confirmButton) {
+      scheduleMetadataSync('paper', 1200);
+      global.setTimeout(schedulePreviewSync, 1250);
+      return;
+    }
+
+    const uploadButton = event.target && event.target.closest
+      ? event.target.closest('[data-paper-upload]')
+      : null;
+    if (uploadButton) {
+      scheduleMetadataSync('paper', 1800);
+      global.setTimeout(schedulePreviewSync, 1850);
+      return;
+    }
+
     const target = event.target && event.target.closest
       ? event.target.closest('[data-paper-print],[data-paper-download]')
       : null;
@@ -286,7 +575,11 @@
   const script = document.createElement('script');
   script.src = BASE_SCRIPT;
   script.async = false;
-  script.onload = schedulePreviewSync;
+  script.onload = function () {
+    installActivationFinalizer();
+    schedulePreviewSync();
+    scheduleMetadataSync('', 1000);
+  };
   script.onerror = function () {
     R.toast('紙本簽署功能載入失敗，請重新整理後再試。', false);
   };
