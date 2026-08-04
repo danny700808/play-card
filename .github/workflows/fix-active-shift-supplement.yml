@@ -8,6 +8,8 @@ on:
       - ".github/scripts/fix-active-shift-supplement.cjs"
       - ".github/workflows/fix-active-shift-supplement.yml"
       - "clock-active-shift-guard-v1.js"
+  issue_comment:
+    types: [created]
   workflow_dispatch:
 
 permissions:
@@ -19,6 +21,7 @@ concurrency:
 
 jobs:
   apply-and-verify:
+    if: github.event_name != 'issue_comment' || contains(github.event.comment.body, '/run-active-shift-supplement-fix')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
