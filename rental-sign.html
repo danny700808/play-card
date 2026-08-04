@@ -21,7 +21,7 @@
 
     <section id="identityPanel" class="card2">
       <h2 class="section-title">甲方身分證資料</h2>
-      <div class="row2"><div class="field" id="idNumberField"><label>身分證字號 / 統編<span class="required-tag">必填</span></label><input id="customerIdNumber" placeholder="例如 A123456789"><div class="error-note">請填寫身分證字號 / 統編。</div></div><div class="field" id="idImageField"><label>甲方證明圖片<span class="required-tag">必填</span></label><input id="idImageInput" type="file" accept="image/*"><div class="hint">請上傳身分證或可供確認身分之證明圖片。圖片會自動加上「限柚子樂器設備租用使用」浮水印，並放在契約第二頁最下方備查。</div><div class="error-note">請上傳身分證證明圖片。</div></div></div>
+      <div class="row2"><div class="field" id="idNumberField"><label>身分證字號 / 統編<span class="required-tag">必填</span></label><input id="customerIdNumber" placeholder="例如 A123456789"><div class="error-note">請填寫身分證字號 / 統編。</div></div><div class="field" id="idImageField"><label>甲方證明圖片<span class="required-tag">必填</span></label><input id="idImageInput" type="file" accept="image/*" capture="environment"><div class="hint">請上傳身分證或可供確認身分之證明圖片。圖片會自動加上「限柚子樂器設備租用使用」浮水印，並放在契約第二頁最下方備查。</div><div class="error-note">請上傳身分證證明圖片。</div></div></div>
       <img id="idPreview" class="preview-img" style="display:none" alt="身分證證明預覽">
     </section>
 
@@ -64,14 +64,13 @@
       msgBox.style.marginTop = '12px';
       msgBox.innerHTML = '已收到您的身分證字號、證明文件與合約簽名。請依收到的付款資訊完成付款，柚子樂器確認款項後才會成立正式契約。';
       if(!msgBox.parentNode) document.body.prepend(msgBox);
-      const submitBtn = document.querySelector('button[type="submit"], #submitBtn, #submitSignBtn');
+      const submitBtn = document.querySelector('button[type="submit"], #submitBtn, #submitSignBtn, #submitSigBtn');
       if(submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = '完成';
       }
     }
  const params=new URLSearchParams(location.search); const contractId=params.get('contractId')||''; const token=params.get('token')||''; let contract=null; 
-        if(hasSubmittedIdentityAndSignature(contract)){ showAlreadySubmitted(contract); }
 let signed=false; let watermarkedIdImage='';
     const PAYMENT_IMAGE_URL = 'https://danny700808.github.io/play-card/rental-payment-info.jpg';
     function moneyNumber(){
@@ -166,9 +165,12 @@ let signed=false; let watermarkedIdImage='';
     }
     async function load(){
       try{
+        if(!contractId || !token) throw new Error('合約連結不完整，請確認是否複製完整網址。');
         contract=await R.get('rentalContracts', contractId); if(!contract) throw new Error('找不到合約');
-        if(R.clean(contract.signToken||contract.token)!==R.clean(token)) throw new Error('合約連結驗證失敗');
-        signed=!!contract.customerSignedAt;
+        if(R.clean(contract.signingMethod||contract.signatureMethod)==='paper') throw new Error('此合約已改用紙本簽署，請直接與柚子樂器確認。');
+        const validTokens=[contract.signToken,contract.token].map(R.clean).filter(Boolean);
+        if(!validTokens.includes(R.clean(token))) throw new Error('合約連結驗證失敗');
+        signed=!!contract.customerSignedAt || hasSubmittedIdentityAndSignature(contract);
         R.setVal('customerIdNumber', contract.customerIdNumber||contract.customerTaxId||'');
         watermarkedIdImage=contract.customerIdImageUrl||contract.idImageUrl||contract.idCardImageUrl||contract.customerIdImageWatermarkedDataUrl||contract.idImageWatermarkedDataUrl||'';
         if(watermarkedIdImage){ const img=R.qs('idPreview'); img.src=watermarkedIdImage; img.style.display='block'; }
