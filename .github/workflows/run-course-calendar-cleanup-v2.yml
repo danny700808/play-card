@@ -1,4 +1,4 @@
-# explicit-command-schedule-and-diagnostics
+# complete-block-extraction-with-diagnostics
 name: Run Course Calendar Cleanup V2
 
 on:
@@ -51,14 +51,13 @@ jobs:
           def extract(step_name, target):
               start = next(i for i, line in enumerate(source) if line.strip() == f'- name: {step_name}')
               run_line = next(i for i in range(start + 1, len(source)) if source[i].strip() == 'run: |')
-              indent = len(source[run_line]) - len(source[run_line].lstrip()) + 2
+              end = next(
+                  (i for i in range(run_line + 1, len(source)) if source[i].startswith('      - name: ')),
+                  len(source)
+              )
               rows = []
-              for line in source[run_line + 1:]:
-                  if line.strip().startswith('- name:') and len(line) - len(line.lstrip()) < indent:
-                      break
-                  if line.strip() and len(line) - len(line.lstrip()) < indent:
-                      break
-                  rows.append(line[indent:] if len(line) >= indent else '')
+              for line in source[run_line + 1:end]:
+                  rows.append(line[10:] if line.startswith('          ') else line)
               Path(target).write_text('\n'.join(rows) + '\n', encoding='utf-8')
 
           extract('Apply course calendar and binding cleanup', '/tmp/apply-course-cleanup.sh')
