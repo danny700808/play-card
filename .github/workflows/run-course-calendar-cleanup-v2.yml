@@ -1,4 +1,4 @@
-# complete-block-extraction-with-diagnostics
+# complete-block-extraction-whitespace-cleanup-diagnostics
 name: Run Course Calendar Cleanup V2
 
 on:
@@ -78,6 +78,22 @@ jobs:
             git push origin HEAD:main
             exit "$code"
           fi
+          python - <<'PY'
+          from pathlib import Path
+          for name in [
+              'operations-course-inline-template.html',
+              'operations-course-inline-runtime.js',
+              'course-scheduler.css',
+              'operations-course-inline.js',
+              'operations-phase1.js',
+              'portal.html',
+              'course-portal-admin.html',
+              'functions/coursePortal.js',
+          ]:
+              path = Path(name)
+              text = path.read_text(encoding='utf-8')
+              path.write_text('\n'.join(line.rstrip() for line in text.splitlines()) + '\n', encoding='utf-8')
+          PY
 
       - name: Verify frontend and backend changes with diagnostics
         run: |
