@@ -439,6 +439,7 @@
       paperSubmittedAt: at,
       status: PAPER_CONFIRMED
     });
+    global.__YZ_CURRENT_PAPER_SIGN_CONFIRMED__ = true;
     setStatusField(PAPER_CONFIRMED);
     setProgress(panel, 100, '紙本簽署已確認，案件已進入待付款確認。');
     await refreshPanel(panel, saved.id);
@@ -504,6 +505,7 @@
   async function refreshPanel(panel, id) {
     const currentId = id || currentContractId();
     const row = currentId ? (await readContract(currentId) || {}) : {};
+    global.__YZ_CURRENT_PAPER_SIGN_CONFIRMED__ = paperConfirmed(row);
     if (!panel || !document.contains(panel)) return;
     panel.innerHTML = panelMarkup(row);
     panel.dataset.contractId = currentId || '';

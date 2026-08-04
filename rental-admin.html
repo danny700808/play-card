@@ -864,7 +864,7 @@ ${url}
       syncRentalDatesFromDelivery('deliveryDate');
       if(chosenEndDate) R.setVal('endDate', chosenEndDate);
       const payload=collect();
-      const paperSigned=!!(selected && R.clean(selected.signingMethod||selected.signatureMethod)==='paper' && selected.paperSignedConfirmedAt && (selected.paperSignedPdfUrl || (Array.isArray(selected.paperSignedPageUrls)&&selected.paperSignedPageUrls.length)));
+      const paperSigned=!!(globalThis.__YZ_CURRENT_PAPER_SIGN_CONFIRMED__ || (selected && R.clean(selected.signingMethod||selected.signatureMethod)==='paper' && selected.paperSignedConfirmedAt && (selected.paperSignedPdfUrl || (Array.isArray(selected.paperSignedPageUrls)&&selected.paperSignedPageUrls.length))));
       if(!validateInternalRentalCountFor('確認租用成立')) return;
       const missing=[];
       if(!payload.deliveryDate) missing.push(adminDeliveryDateLabel(payload, true));
