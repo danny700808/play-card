@@ -7,7 +7,9 @@
   background:#f7fcfa;
 }
 .rental-paper-sign-panel h3{margin:0 0 5px;font-size:18px;color:#18314a}
-.rental-paper-sign-panel .paper-help{margin:0 0 12px;color:#64748b;font-size:12px;line-height:1.7}
+.rental-paper-sign-panel .paper-help{margin:0 0 9px;color:#64748b;font-size:12px;line-height:1.7}
+.paper-handoff-notice{display:grid;gap:3px;margin:0 0 12px;padding:10px 11px;border:1px solid #f3d38b;border-radius:12px;background:#fff9e9;color:#6f5312;font-size:12px;line-height:1.65}
+.paper-handoff-notice b{color:#875a00}
 .paper-method-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .paper-method-btn{
   min-height:72px;
@@ -24,9 +26,10 @@
 .paper-method-btn span{margin-top:4px;color:#64748b;font-size:11px;line-height:1.5}
 .paper-method-btn.active{border-color:#1f7a5a;background:#e8fff4;box-shadow:0 0 0 2px rgba(31,122,90,.08)}
 .paper-method-btn.active b{color:#146c43}
+.paper-method-btn:disabled{cursor:not-allowed;opacity:.58}
 .paper-flow-box{margin-top:12px;padding:12px;border:1px solid #dbe5ef;border-radius:14px;background:#fff}
 .paper-flow-box.hidden{display:none!important}
-.paper-flow-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:12px}
+.paper-flow-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:12px}
 .paper-flow-step{padding:8px;border-radius:10px;background:#f1f5f9;color:#475569;font-size:11px;line-height:1.5;text-align:center;font-weight:850}
 .paper-flow-step.done{background:#e8fff4;color:#146c43}
 .paper-flow-actions{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 12px}
@@ -60,6 +63,10 @@
 .paper-status-chip.confirmed{background:#e8fff4;color:#146c43}
 .paper-online-note{padding:10px 11px;border-radius:11px;background:#f8fafc;color:#475569;font-size:12px;line-height:1.7}
 .paper-file-name{display:block;margin-top:5px;color:#475569;font-size:11px;word-break:break-all}
+.paper-activation-box{display:grid;gap:6px;margin-top:12px;padding:13px;border:1px solid #9bcdb8;border-radius:14px;background:#eafff5;color:#31564a;line-height:1.65}
+.paper-activation-box b{color:#146c43;font-size:15px}
+.paper-activation-box span{font-size:12px}
+.paper-activate-btn{width:100%;min-height:48px;margin-top:4px;background:#1f7a5a!important;color:#fff!important}
 
 .rental-paper-contract-view{display:grid;gap:12px}
 .rental-paper-contract-view .paper-contract-page{padding:8px;border:1px solid #dbe5ef;border-radius:12px;background:#fff}
