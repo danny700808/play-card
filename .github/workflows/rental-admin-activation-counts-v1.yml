@@ -8,6 +8,8 @@ on:
       - ".github/workflows/rental-admin-activation-counts-v1.yml"
   issue_comment:
     types: [created]
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -19,7 +21,7 @@ concurrency:
 
 jobs:
   apply:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || contains(github.event.comment.body, '/run-rental-admin-activation-counts-v1')
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.comment.body, '/run-rental-admin-activation-counts-v1')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
