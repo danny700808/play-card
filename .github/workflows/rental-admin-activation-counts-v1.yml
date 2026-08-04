@@ -52,7 +52,7 @@ jobs:
           )
           admin = replace_once(
               admin,
-              '  <script src="rental-paper-sign-v1.js?v=20260803-paper-sign-v1"></script>',
+              '  <script src="rental-paper-sign-v1.js?v=20260804-paper-activation-v5"></script>',
               '  <script src="rental-admin-enhancements-v1.js?v=20260804-paper-activation-v6"></script>\n  <script src="rental-paper-sign-v1.js?v=20260804-paper-activation-v6"></script>',
               'rental admin activation scripts'
           )
