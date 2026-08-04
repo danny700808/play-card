@@ -1,0 +1,54 @@
+name: Fix Rental Paper Activation V1
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-rental-paper-activation-v1
+  cancel-in-progress: false
+
+jobs:
+  patch-and-verify:
+    if: github.event_name != 'issue_comment' || contains(github.event.comment.body, '/run-rental-paper-activation-v1')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply activation and customer-view fixes
+        run: python scripts/fix_rental_paper_activation_v1.py
+
+      - name: Verify paper flow
+        run: |
+          set -euo pipefail
+          node --check rental-paper-sign-v1.js
+          node --check rental-paper-contract-view-v1.js
+          grep -Fq "confirmButton.style.display = 'none'" rental-paper-sign-v1.js
+          grep -Fq "const paperAtStart = paperModeActive()" rental-paper-sign-v1.js
+          grep -Fq "正在開啟成立確認" rental-paper-sign-v1.js
+          grep -Fq "data-paper-contract-view" rental-paper-contract-view-v1.js
+          grep -Fq "開啟／下載已簽紙本 PDF" rental-paper-contract-view-v1.js
+          grep -Fq "rental-paper-sign-v1.js?v=20260804-paper-activation-v5" rental-admin.html
+          grep -Fq "rental-paper-contract-view-v1.js?v=20260804-paper-view-v2" rental-contract.html
+          git diff --check
+
+      - name: Commit verified fix
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f scripts/fix_rental_paper_activation_v1.py .github/workflows/fix-rental-paper-activation-v1.yml
+          git add -A
+          git commit -m "Fix paper rental activation progress and signed contract view"
+          git push origin HEAD:main
