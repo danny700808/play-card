@@ -1,4 +1,4 @@
-# explicit-command-trigger
+# explicit-command-and-schedule-trigger
 name: Run Course Calendar Cleanup V2
 
 on:
@@ -9,6 +9,8 @@ on:
       - ".github/workflows/run-course-calendar-cleanup-v2.yml"
   issue_comment:
     types: [created]
+  schedule:
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: write
