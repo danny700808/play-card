@@ -1,0 +1,64 @@
+name: Add Rental Paper Signing V1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/add-rental-paper-sign-v1.yml"
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: add-rental-paper-sign-v1
+  cancel-in-progress: false
+
+jobs:
+  patch-and-verify:
+    if: github.event_name != 'issue_comment' || contains(github.event.comment.body, '/run-rental-paper-sign-v1')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply paper signing integration
+        run: python scripts/add_rental_paper_sign_v1.py
+
+      - name: Verify syntax and preserved online flow
+        run: |
+          set -euo pipefail
+          node --check rental-paper-sign-v1.js
+          node --check rental-paper-contract-view-v1.js
+          grep -Fq 'rental-paper-sign-v1.css?v=20260803-paper-sign-v1' rental-admin.html
+          grep -Fq 'rental-paper-sign-v1.js?v=20260803-paper-sign-v1' rental-admin.html
+          grep -Fq 'data-send-fill-btn' rental-admin.html
+          grep -Fq "window.sendToCustomerForFill=async function" rental-admin.html
+          grep -Fq "signingMethod: 'paper'" rental-paper-sign-v1.js
+          grep -Fq 'paperSignedDocuments' rental-paper-sign-v1.js
+          grep -Fq 'paperSignedConfirmedAt' rental-admin.html
+          grep -Fq "status:'待付款確認'" rental-sign.html
+          grep -Fq "hasSubmittedIdentityAndSignature(contract)" rental-sign.html
+          grep -Fq "此合約已改用紙本簽署" rental-sign.html
+          grep -Fq 'rental-paper-contract-view-v1.js?v=20260803-paper-sign-v1' rental-contract.html
+          ! grep -Fq "if(hasSubmittedIdentityAndSignature(contract)){ showAlreadySubmitted(contract); }" rental-sign.html
+          git diff --check
+
+      - name: Commit verified rental paper signing update
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rental-admin.html rental-sign.html rental-contract.html
+          git commit -m "Add paper signing and signed scan upload to rental contracts"
+          git push origin HEAD:main
