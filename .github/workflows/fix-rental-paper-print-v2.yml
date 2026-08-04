@@ -1,3 +1,4 @@
+# trigger-via-pull-request
 name: Fix Rental Paper Print V2
 
 on:
@@ -123,9 +124,13 @@ jobs:
           admin = admin.replace(old_src, new_src, 1)
           admin_path.write_text(admin, encoding='utf-8')
 
-          workflow = Path('.github/workflows/fix-rental-paper-print-v2.yml')
-          if workflow.exists():
-              workflow.unlink()
+          for name in [
+              '.github/workflows/fix-rental-paper-print-v2.yml',
+              '.github/workflows/run-fix-rental-paper-print-v2.yml',
+          ]:
+              helper_path = Path(name)
+              if helper_path.exists():
+                  helper_path.unlink()
           PY
 
       - name: Verify paper-only output
@@ -139,6 +144,7 @@ jobs:
           grep -Fq 'rental-paper-sign-v1.js?v=20260804-paper-print-v2' rental-admin.html
           grep -Fq '客人正式填寫連結上傳身分證證明後' rental-common.js
           ! test -e .github/workflows/fix-rental-paper-print-v2.yml
+          ! test -e .github/workflows/run-fix-rental-paper-print-v2.yml
           git diff --check
 
       - name: Commit paper print correction
