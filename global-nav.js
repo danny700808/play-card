@@ -24,6 +24,17 @@
   function currentFile(){
     return String(location.pathname||'').split('/').pop().toLowerCase();
   }
+  function localDateKey(){
+    var d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function prepareClockPolicy(){
+    if(currentFile()!=='clock.html') return;
+    var effectiveDate='2026-08-05';
+    window.__YZ_CLOCK_ACTIVE_SHIFT_POLICY_EFFECTIVE_DATE__=effectiveDate;
+    // 2026/08/04 的既有案件不追溯套用；自隔日起才啟用班段進行中禁止補打卡。
+    if(localDateKey()<effectiveDate) window.__YZ_CLOCK_ACTIVE_SHIFT_GUARD_INLINE_V1__=true;
+  }
   function fallbackHref(){
     var user=readUser();
     var file=currentFile();
@@ -86,6 +97,7 @@
     }
     if(logout) logout.addEventListener('click',doLogout);
   }
+  prepareClockPolicy();
   loadMobileTheme();
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bind);
   else bind();
