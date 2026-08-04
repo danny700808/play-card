@@ -20,6 +20,7 @@
 
   let countTimer = 0;
   let activationBusy = false;
+  let paperAssetBypassInstalled = false;
 
   function clean(value) {
     return String(value == null ? '' : value).trim();
@@ -107,7 +108,10 @@
     const actions = document.getElementById('rentalProgressActions');
     if (title) title.textContent = '確認租用成立';
     if (text) text.textContent = '正在檢查紙本、收款與租期資料...';
-    if (fill) fill.style.width = '6%';
+    if (fill) {
+      fill.style.background = '#1f7a5a';
+      fill.style.width = '6%';
+    }
     if (actions) actions.style.display = 'none';
     return mask;
   }
@@ -119,20 +123,86 @@
     const actions = document.getElementById('rentalProgressActions');
     if (title) title.textContent = success ? '租用成立完成' : '租用尚未成立';
     if (message) message.textContent = text || (success ? '完成。' : '請依畫面提示確認資料。');
-    if (fill) fill.style.width = success ? '100%' : '0%';
+    if (fill) {
+      fill.style.background = success ? '#1f7a5a' : '#b42318';
+      fill.style.width = '100%';
+    }
     if (actions) actions.style.display = 'flex';
   }
 
-  async function contractIsActive() {
+  function confirmedPaperContract(row) {
+    row = row || {};
+    const paper = clean(row.signingMethod || row.signatureMethod) === 'paper' || !!row.paperSignedPdfUrl;
+    const hasDocument = !!(row.paperSignedPdfUrl || (Array.isArray(row.paperSignedPageUrls) && row.paperSignedPageUrls.some(Boolean)));
+    return paper && hasDocument && !!row.paperSignedConfirmedAt;
+  }
+
+  async function readCurrentContract(contractId) {
+    if (!R || typeof R.get !== 'function') return null;
+    const id = clean(contractId || (R.val && R.val('contractId')));
+    if (!id) return null;
     try {
-      if (!R || typeof R.get !== 'function') return false;
-      const id = clean(R.val && R.val('contractId'));
-      if (!id) return false;
-      const row = await R.get('rentalContracts', id);
-      return !!(row && ACTIVE_STATUSES.has(clean(row.status)));
+      return await R.get('rentalContracts', id);
     } catch (_) {
-      return false;
+      return null;
     }
+  }
+
+  function installPaperAssetBypass() {
+    if (paperAssetBypassInstalled) return;
+    const original = global.ensureRentalContractAssetsStored;
+    if (typeof original !== 'function') return;
+    if (original.__paperContractBypassV1) {
+      paperAssetBypassInstalled = true;
+      return;
+    }
+
+    const wrapped = async function (contractId, source) {
+      const stored = await readCurrentContract(contractId);
+      if (!confirmedPaperContract(stored)) {
+        return await original.apply(this, arguments);
+      }
+
+      const pageUrls = Array.isArray(stored.paperSignedPageUrls)
+        ? stored.paperSignedPageUrls.map(clean).filter(Boolean)
+        : [];
+      const originalPageUrls = Array.isArray(stored.paperSignedOriginalPageUrls)
+        ? stored.paperSignedOriginalPageUrls.map(clean).filter(Boolean)
+        : [];
+      const pdfUrl = clean(stored.paperSignedPdfUrl || stored.officialPaperSignedPdfUrl);
+
+      const patch = {
+        signingMethod: 'paper',
+        signatureMethod: 'paper',
+        paperSignedPdfUrl: pdfUrl,
+        officialPaperSignedPdfUrl: pdfUrl,
+        paperSignedPageUrls: pageUrls,
+        paperSignedOriginalPageUrls: originalPageUrls,
+        officialDocumentSource: 'paper-signed-scan',
+        customerIdentityVerificationSource: 'paper_contract',
+        customerSignatureSource: 'paper_contract',
+        customerIdentityDataOnPaper: true,
+        customerPortalDocumentMode: 'paper_scan',
+        customerOnlineSigningDisabled: true,
+        customerActionRequired: false,
+        updatedAtText: typeof R.nowText === 'function' ? R.nowText() : new Date().toISOString()
+      };
+
+      if (R && typeof R.db === 'function') {
+        await R.db().collection('rentalContracts').doc(clean(contractId)).set(patch, { merge: true });
+      }
+      return patch;
+    };
+
+    wrapped.__paperContractBypassV1 = true;
+    wrapped.__originalEnsureRentalAssets = original;
+    global.ensureRentalContractAssetsStored = wrapped;
+    paperAssetBypassInstalled = true;
+  }
+
+  async function contractIsActive() {
+    const row = await readCurrentContract();
+    return !!(row && ACTIVE_STATUSES.has(clean(row.status)));
   }
 
   async function activatePaperRental(button) {
@@ -143,10 +213,16 @@
     button.setAttribute('aria-busy', 'true');
     button.textContent = '正在檢查並準備成立...';
     ensureProgressMask();
+    installPaperAssetBypass();
 
     try {
       if (typeof global.markDelivered !== 'function') {
         throw new Error('確認租用成立功能尚未載入，請完全重新整理頁面後再試。');
+      }
+
+      const current = await readCurrentContract();
+      if (!confirmedPaperContract(current)) {
+        throw new Error('這份紙本合約尚未完成「確認紙本已完成」，請先確認紙本文件。');
       }
 
       await Promise.resolve(global.markDelivered());
@@ -193,23 +269,37 @@
   }, true);
 
   function observeUpdates() {
-    const observer = new MutationObserver(function () { scheduleTabCounts(30); });
+    const observer = new MutationObserver(function () {
+      scheduleTabCounts(30);
+      installPaperAssetBypass();
+    });
     const stats = document.getElementById('stats');
     const list = document.getElementById('list');
+    const detail = document.getElementById('detailBox');
     if (stats) observer.observe(stats, { childList: true, subtree: true, characterData: true });
     if (list) observer.observe(list, { childList: true, subtree: true });
+    if (detail) observer.observe(detail, { childList: true, subtree: true });
   }
 
   installStyles();
+  installPaperAssetBypass();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
       observeUpdates();
+      installPaperAssetBypass();
       scheduleTabCounts(250);
     }, { once: true });
   } else {
     observeUpdates();
+    installPaperAssetBypass();
     scheduleTabCounts(250);
   }
-  global.addEventListener('pageshow', function () { scheduleTabCounts(180); });
-  global.setInterval(function () { scheduleTabCounts(0); }, 4000);
+  global.addEventListener('pageshow', function () {
+    installPaperAssetBypass();
+    scheduleTabCounts(180);
+  });
+  global.setInterval(function () {
+    installPaperAssetBypass();
+    scheduleTabCounts(0);
+  }, 4000);
 })(window);
