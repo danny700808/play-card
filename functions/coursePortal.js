@@ -7667,11 +7667,17 @@ async function adminSaveRoomEquipment(data) {
   };
 }
 
+function managerAuthenticated(request) {
+  const token = request && request.auth && request.auth.token || {};
+  return token.manager === true || clean(token.role).toLowerCase() === 'admin';
+}
+
 function assertAdminPin(request) {
+  if (managerAuthenticated(request)) return;
   const value = clean(request && request.data && request.data.adminPin);
   let expected = '';
   try { expected = clean(ADMIN_PIN.value()); } catch (_) { expected = clean(process.env.INJIAOYUN_MANUAL_SYNC_PIN); }
-  if (!expected || !safeEqual(value, expected)) throw new HttpsError('permission-denied', '管理密碼錯誤。');
+  if (!expected || !safeEqual(value, expected)) throw new HttpsError('permission-denied', '管理者登入狀態已失效，請重新登入。');
 }
 
 async function adminRentalIdentityResolver() {

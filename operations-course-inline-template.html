@@ -22,7 +22,7 @@
             <button class="btn outline" type="button" id="weekScheduleBtn">週課表</button>
             <div class="date-heading"><strong id="dateTitle"></strong><span id="dateSubtitle"></span></div>
           </div>
-          <div class="toolbar-actions"><a class="btn outline" href="course-portal-admin.html">入口與綁定</a><button class="btn outline" type="button" id="conflictBtn">檢查衝突</button><button class="btn dark" type="button" data-view-jump="settings">教室與規則</button><button class="btn primary" type="button" id="calendarNewEvent">＋ 新增排課</button></div>
+
         </div>
 
         <section class="week-schedule card hidden" id="weekSchedulePanel">
@@ -34,7 +34,7 @@
           <article class="card kpi"><span>今日課程</span><strong id="kpiLessons">0</strong><small>不含教室租用</small></article>
           <article class="card kpi"><span>已簽到</span><strong id="kpiAttended">0</strong><small>完成堂數勾稽</small></article>
           <article class="card kpi"><span>教室使用</span><strong id="kpiRooms">0 / 0</strong><small>有安排／啟用</small></article>
-          <article class="card kpi"><span>待處理</span><strong id="kpiWarnings">0</strong><small>衝突、請假或曠課</small></article>
+          <button class="card kpi kpi-action" type="button" id="calendarIssuesBtn"><span>待處理</span><strong id="kpiWarnings">0</strong><small>點擊查看人員、課程與原因</small></button>
         </div>
 
         <div class="legend card" id="dailyLegend">
@@ -73,7 +73,7 @@
         </div>
 
         <div class="settings-panel active" data-settings-panel="general">
-          <section class="card settings-card"><h3>每日排課格線</h3><p>課程日表固定以 30 分鐘為單位；起訖時間可依營業時間調整。</p><div class="form-grid three"><div class="field"><label>開始時間</label><select id="startHour"></select></div><div class="field"><label>結束時間</label><select id="endHour"></select></div><div class="field"><label>預設一期堂數</label><input id="defaultLessons" type="number" min="1" max="99"></div></div></section>
+          <section class="card settings-card"><h3>每週排課顯示時間</h3><p>星期一到星期日可分別設定。課程日表只顯示當天時段；整點使用實線，半點使用虛線。</p><div class="daily-hours-grid" id="dailyHoursRows"></div><div class="settings-inline-note"><b>一期堂數由「收費方案」決定。</b><span>原本的「預設一期堂數」沒有套用到新增期別，已從這裡移除，避免誤解。</span></div></section>
           <section class="card notice-card"><h3>堂數與固定課原則</h3><ul><li>建立、增加或調課都不會立即扣堂。</li><li>只有實際完成簽到才扣學生堂數並列入老師薪資；請假與曠課都不計薪。</li><li>固定課只保存每週／隔週規則，未來時段會保留，但不預先建立大量正式課程紀錄。</li><li>學生請假只釋放當天教室，不會取消之後的固定時段。</li></ul></section>
         </div>
 
@@ -99,6 +99,13 @@
         </div>
       </section>
     </main></div>
+<div class="modal-backdrop" id="calendarIssuesModal" role="dialog" aria-modal="true" aria-labelledby="calendarIssuesTitle">
+    <div class="modal">
+      <div class="modal-head"><div><h2 id="calendarIssuesTitle">待處理明細</h2><p id="calendarIssuesSubtitle">列出當天需要確認的人員、課程與原因。</p></div><button class="modal-close" type="button" data-close-modal="calendarIssuesModal">×</button></div>
+      <div class="modal-body" id="calendarIssuesBody"></div>
+      <div class="modal-foot"><button class="btn primary" type="button" data-close-modal="calendarIssuesModal">關閉</button></div>
+    </div>
+  </div>
 <div class="modal-backdrop" id="scheduleModal" role="dialog" aria-modal="true" aria-labelledby="scheduleModalTitle">
     <div class="modal large">
       <div class="modal-head"><div><h2 id="scheduleModalTitle">新增排課</h2><p>先選學生與科目，再由系統篩選老師、學費期別並檢查衝突。</p></div><button class="modal-close" type="button" data-close-modal="scheduleModal">×</button></div>

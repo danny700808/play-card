@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
   <title>課務入口帳號管理｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
+  <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1"><style>body.binding-focus .portal-shell>section.card:not(.binding-admin-card):not(#managerAuthCard){display:none}body.binding-focus .binding-admin-card{margin-top:0}</style>
 </head>
 <body>
   <main class="portal-shell">
     <header class="portal-head">
       <div class="head-title"><span class="brand-mark">管</span><div><h1>登入帳號管理</h1><p>老師、學生／家長與一般租用者</p></div></div>
-      <a class="btn" href="portal.html#course-calendar">返回排課系統</a>
+      <a class="btn" href="portal.html#customers">返回客戶會員</a>
     </header>
     <section class="card">
       <div class="section-title"><div><h2>三個獨立入口</h2><p class="muted">老師調課在老師入口內，不是第四個入口。</p></div></div>
@@ -21,40 +21,37 @@
         <a class="btn primary" href="room-booking.html">教室租用入口</a>
       </div>
     </section>
-    <section class="card">
-      <div class="toolbar">
-        <div class="field"><label>管理密碼</label><input id="adminPin" type="password" autocomplete="current-password"></div>
-        <button class="btn primary" id="loadBtn" type="button">讀取帳號資料</button>
-      </div>
-      <div class="notice">「停用」可日後恢復；「刪除登入資料」會清除 LINE／一般登入、驗證碼與裝置登入，讓本人重新註冊。老師、學生、課程、租用與帳務歷史不會刪除。</div>
+    <section class="card hidden" id="managerAuthCard">
+      <input id="adminPin" type="hidden" value="">
+      <button class="btn primary" id="loadBtn" type="button">重新讀取帳號資料</button>
     </section>
     <section class="card">
       <div class="section-title">
         <div><h2>學費繳費待確認</h2><p class="muted">學生送出轉帳截圖或選擇現場繳費後，主管確認收款才會正式建立下一期。</p></div>
         <span class="badge warn" id="tuitionPaymentAdminBadge">0 筆</span>
       </div>
-      <div class="list" id="tuitionPaymentAdminList"><p class="muted">請先輸入管理密碼。</p></div>
+      <div class="list" id="tuitionPaymentAdminList"><p class="muted">正在讀取管理資料…</p></div>
     </section>
     <section class="card">
       <div class="section-title">
         <div><h2>學費收據紀錄</h2><p class="muted">每次確認實際收款後自動建立；可查看或依 15 × 10 公分補印。</p></div>
         <span class="badge" id="tuitionReceiptAdminBadge">0 筆</span>
       </div>
-      <div class="list" id="tuitionReceiptAdminList"><p class="muted">請先輸入管理密碼。</p></div>
+      <div class="list" id="tuitionReceiptAdminList"><p class="muted">正在讀取管理資料…</p></div>
     </section>
     <section class="card">
       <div class="section-title">
         <div><h2>取消簽到待確認</h2><p class="muted">主管核准後才會取消原簽到，並在老師薪資扣除行政處理費 NT$50。</p></div>
         <span class="badge warn" id="attendanceCancellationBadge">0 筆</span>
       </div>
-      <div class="list" id="attendanceCancellationList"><p class="muted">請先輸入管理密碼。</p></div>
+      <div class="list" id="attendanceCancellationList"><p class="muted">正在讀取管理資料…</p></div>
     </section>
     <section class="card">
       <div class="section-title">
         <div><h2>停課學費未繳清</h2><p class="muted">老師辦理停課後，有未結清學費的學生會集中在這裡。</p></div>
         <span class="badge danger" id="suspensionBadge">0 筆</span>
       </div>
-      <div class="list" id="suspensionList"><p class="muted">請先輸入管理密碼。</p></div>
+      <div class="list" id="suspensionList"><p class="muted">正在讀取管理資料…</p></div>
     </section>
     <section class="card binding-admin-card">
       <div class="toolbar">
@@ -66,7 +63,7 @@
         <button class="btn" type="button" data-filter="student">學生／家長</button>
         <button class="btn" type="button" data-filter="renter">一般租用</button>
       </nav>
-      <div class="list" id="bindingList"><p class="muted">請先輸入管理密碼。</p></div>
+      <div class="list" id="bindingList"><p class="muted">正在讀取管理資料…</p></div>
     </section>
 
     <section class="modal hidden" id="tuitionReceiptModal" role="dialog" aria-modal="true" aria-labelledby="tuitionReceiptTitle">
@@ -93,11 +90,16 @@
   </main>
   <script src="config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260802-timeout-phase1"></script>
+  <script src="app.js?v=20260803-login-gateway-v1"></script>
+  <script src="course-portal-common.js?v=20260804-manager-auth-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
+    const managerUser = typeof requireLogin === 'function' ? requireLogin() : null;
+    const pageParams = new URLSearchParams(location.search);
+    if (pageParams.get('section') === 'bindings') document.body.classList.add('binding-focus');
     let rows = [];
     let unpaidSuspensions = [];
     let tuitionPayments = [];
@@ -390,6 +392,34 @@
       printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>學費收據</title><style>@page{size:15cm 10cm;margin:0}html,body{margin:0;width:15cm;height:10cm}img{display:block;width:15cm;height:10cm;object-fit:fill}</style></head><body><img src="${P.escapeHtml(imageUrl)}" onload="window.print();window.close()"></body></html>`);
       printWindow.document.close();
     });
+
+    async function startManagerView() {
+      if (!managerUser || (typeof hasSettingsZoneAccess === 'function' && !hasSettingsZoneAccess(managerUser))) {
+        location.href = 'index.html';
+        return;
+      }
+      if (!window.firebase || typeof window.firebase.auth !== 'function') {
+        P.toast('管理者登入元件尚未載入，請重新整理。', 'error');
+        return;
+      }
+      await new Promise((resolve) => {
+        let finished = false;
+        const done = () => { if (finished) return; finished = true; clearTimeout(timer); if (unsubscribe) unsubscribe(); resolve(); };
+        const unsubscribe = firebase.auth().onAuthStateChanged(done);
+        const timer = setTimeout(done, 5000);
+      });
+      if (!firebase.auth().currentUser) {
+        P.toast('管理者登入狀態已失效，請重新登入。', 'error');
+        location.href = 'index.html';
+        return;
+      }
+      await load();
+      if (pageParams.get('section') === 'bindings') {
+        const card = document.querySelector('.binding-admin-card');
+        if (card) card.scrollIntoView({ block: 'start' });
+      }
+    }
+    startManagerView();
   })();
   </script>
 </body>
