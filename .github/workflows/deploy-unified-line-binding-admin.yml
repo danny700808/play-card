@@ -1,6 +1,18 @@
 name: Deploy Unified LINE Binding Admin
 
 on:
+  pull_request:
+    paths:
+      - "functions/unifiedLineBindingAdmin.js"
+      - "functions/courseLoginIndexV3.js"
+      - "line-binding-admin.html"
+      - "line-binding-admin.css"
+      - "line-binding-admin.js"
+      - "unified-line-binding-link-v1.js"
+      - "portal.html"
+      - "operations-hub.html"
+      - "tests/unified-line-binding-admin.test.js"
+      - ".github/workflows/deploy-unified-line-binding-admin.yml"
   push:
     branches:
       - main
@@ -21,7 +33,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-unified-line-binding-admin-main
+  group: deploy-unified-line-binding-admin-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -71,6 +83,7 @@ jobs:
           git diff --check
 
       - name: Prepare Firebase credentials
+        if: github.event_name != 'pull_request'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
           SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-firebase-service-account.json
@@ -81,9 +94,11 @@ jobs:
           chmod 600 "$SERVICE_ACCOUNT_PATH"
 
       - name: Install pinned Firebase CLI
+        if: github.event_name != 'pull_request'
         run: npm install --global firebase-tools@15.24.0
 
       - name: Deploy unified LINE binding endpoints
+        if: github.event_name != 'pull_request'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
@@ -92,5 +107,5 @@ jobs:
             --only "functions:coursePortalAdminUnifiedLineData,functions:coursePortalAdminUnifiedLineAction"
 
       - name: Remove temporary credentials
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         run: rm -f "${{ runner.temp }}/youzi-firebase-service-account.json"
