@@ -67,8 +67,8 @@ jobs:
           node --check line-binding-admin.js
           node --check unified-line-binding-link-v1.js
           node tests/unified-line-binding-admin.test.js
-          grep -Fq 'line-binding-admin.html' portal.html
-          grep -Fq 'line-binding-admin.html' operations-hub.html
+          grep -Fq 'unified-line-binding-link-v1.js' portal.html
+          grep -Fq 'unified-line-binding-link-v1.js' operations-hub.html
           (cd functions && node - <<'NODE'
           const deployed = require('.');
           for (const name of [
