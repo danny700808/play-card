@@ -262,7 +262,8 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     confirmResolve:null
   };
 
-  // 所有商品搜尋都和現場銷售相同：下一個畫面更新週期立即顯示結果。
+  // 先讓瀏覽器畫出使用者剛輸入的內容，再更新可能很大的完整結果清單。
+  const LIVE_SEARCH_INPUT_IDLE_MS = 240;
   const liveSearchJobs = Object.create(null);
 
   const PAGE_META = {
@@ -1380,22 +1381,38 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function cancelLiveSearchRender(inputId){
     const previous=liveSearchJobs[inputId];
     if(!previous)return;
+    previous.cancelled=true;
     if(previous.kind==='frame'&&typeof global.cancelAnimationFrame==='function')global.cancelAnimationFrame(previous.id);
     else global.clearTimeout(previous.id);
     delete liveSearchJobs[inputId];
   }
   function scheduleLiveSearchRender(inputId,value,immediate){
     cancelLiveSearchRender(inputId);
-    const captured=String(value==null?'':value);
+    const captured=String(value==null?'':value),job={kind:'timer',id:0,cancelled:false};
+    liveSearchJobs[inputId]=job;
     const run=function(){
+      if(job.cancelled||liveSearchJobs[inputId]!==job)return;
       delete liveSearchJobs[inputId];
       const input=byId(inputId);
       if(!input||input.value!==captured)return;
       if(!renderLiveSearchResults(inputId))rerenderKeepingFocus(inputId,captured);
     };
-    if(immediate)return run();
-    if(typeof global.requestAnimationFrame==='function')liveSearchJobs[inputId]={kind:'frame',id:global.requestAnimationFrame(run)};
-    else liveSearchJobs[inputId]={kind:'timer',id:global.setTimeout(run,0)};
+    const queueAfterInputPaint=function(){
+      if(job.cancelled||liveSearchJobs[inputId]!==job)return;
+      if(typeof global.requestAnimationFrame==='function'){
+        const waitOnePaint=function(){
+          if(job.cancelled||liveSearchJobs[inputId]!==job)return;
+          job.id=global.requestAnimationFrame(run);
+        };
+        job.kind='frame';
+        job.id=global.requestAnimationFrame(waitOnePaint);
+      }else{
+        job.kind='timer';
+        job.id=global.setTimeout(run,16);
+      }
+    };
+    if(immediate)return queueAfterInputPaint();
+    job.id=global.setTimeout(queueAfterInputPaint,LIVE_SEARCH_INPUT_IDLE_MS);
   }
   function searchInputSelection(input){
     const length=String(input&&input.value||'').length;
@@ -1429,7 +1446,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     if(targetId==='stocktakeSearch') state.stocktakeSeries='all';
     input.value=next.value;
     if(document.activeElement===input){try{input.setSelectionRange(next.caret,next.caret);}catch(error){}}
-    scheduleLiveSearchRender(targetId,next.value,true);
+    scheduleLiveSearchRender(targetId,next.value,false);
   }
   function enhanceMobileNumberInputs(scope){
     if(!isCompactMobile()) return;
@@ -4148,7 +4165,7 @@ function rerenderKeepingFocus(id,value){
     },true);
     document.addEventListener('keydown',function(event){
       if(event.key!=='Enter'||!isOpsSearchInput(event.target))return;
-      if(event.target.dataset.opsImeComposing==='1')return;
+      if(event.isComposing||event.keyCode===229||event.target.dataset.opsImeComposing==='1')return;
       scheduleLiveSearchRender(event.target.id,event.target.value,true);
     },true);
     document.addEventListener('input',function(event){

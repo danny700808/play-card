@@ -60,7 +60,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.js\?v=20260805-live-search-v5/);
+    assert.match(html, /operations-phase1\.js\?v=20260805-live-search-v6/);
   }
 });
 
@@ -77,13 +77,77 @@ test('all six searches keep their input and replace only a stable results contai
   assert.match(functionBody(engine, 'replaceLiveSearchHtml'), /replaceChildren/);
 });
 
-test('the next-frame live path tries the partial updater before any full-render fallback', () => {
+test('search paints the typed value before it starts replacing a large result list', () => {
   const scheduler = functionBody(engine, 'scheduleLiveSearchRender');
 
   assert.match(scheduler, /renderLiveSearchResults\(inputId\)/);
   assert.match(scheduler, /if\(!renderLiveSearchResults\(inputId\)\)rerenderKeepingFocus/);
+  assert.match(scheduler, /setTimeout\(queueAfterInputPaint,LIVE_SEARCH_INPUT_IDLE_MS\)/);
+  assert.match(scheduler, /requestAnimationFrame\(waitOnePaint\)/);
   assert.match(scheduler, /requestAnimationFrame\(run\)/);
+  assert.match(scheduler, /liveSearchJobs\[inputId\]!==job/);
+  assert.doesNotMatch(scheduler, /if\(immediate\)return run\(\)/);
   assert.doesNotMatch(engine, /SEARCH_IDLE_DELAY_MS|scheduleDeferredSearchRender|deferredSearchTimers|requestIdleCallback/);
+});
+
+test('rapid input is coalesced and the final value gets two paint frames before results render', () => {
+  const jobs = Object.create(null);
+  const timers = new Map();
+  const frames = new Map();
+  const delays = [];
+  let nextId = 0;
+  let renderCount = 0;
+  const input = { value: '' };
+  const fakeGlobal = {
+    setTimeout(callback, delay) {
+      const id = ++nextId;
+      delays.push(delay);
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimeout(id) { timers.delete(id); },
+    requestAnimationFrame(callback) {
+      const id = ++nextId;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) { frames.delete(id); }
+  };
+  const cancel = Function('liveSearchJobs', 'global', 'inputId', functionBody(engine, 'cancelLiveSearchRender'))
+    .bind(null, jobs, fakeGlobal);
+  const scheduleRaw = Function(
+    'cancelLiveSearchRender', 'global', 'byId', 'renderLiveSearchResults', 'rerenderKeepingFocus',
+    'liveSearchJobs', 'LIVE_SEARCH_INPUT_IDLE_MS', 'inputId', 'value', 'immediate',
+    functionBody(engine, 'scheduleLiveSearchRender')
+  );
+  function schedule(value, immediate = false) {
+    input.value = value;
+    return scheduleRaw(cancel, fakeGlobal, () => input, () => { renderCount += 1; return true; },
+      () => assert.fail('stable search container must avoid a full render'), jobs, 240, 'productSearch', value, immediate);
+  }
+  function runOnly(queue) {
+    assert.equal(queue.size, 1);
+    const [[id, callback]] = queue;
+    queue.delete(id);
+    callback();
+  }
+
+  schedule('1');
+  const staleOneDigitJob = [...timers.values()][0];
+  assert.equal(renderCount, 0);
+  schedule('12');
+  assert.equal(timers.size, 1, 'the stale one-digit search must be cancelled');
+  assert.deepEqual(delays, [240, 240]);
+  staleOneDigitJob();
+  assert.equal(frames.size, 0, 'a cancelled callback must not revive the stale one-digit search');
+
+  runOnly(timers);
+  assert.equal(renderCount, 0);
+  runOnly(frames);
+  assert.equal(renderCount, 0, 'the first animation frame is reserved for painting 12 in the input');
+  runOnly(frames);
+  assert.equal(renderCount, 1);
+  assert.equal(input.value, '12');
 });
 
 test('desktop and mobile keypads share the same caret-aware core action', () => {
@@ -100,7 +164,7 @@ test('desktop and mobile keypads share the same caret-aware core action', () => 
   assert.match(valueBuilder, /selection\.end/);
   assert.match(valueBuilder, /key==='clear'/);
   assert.match(valueBuilder, /key==='back'/);
-  assert.match(action, /scheduleLiveSearchRender\(targetId,next\.value,true\)/);
+  assert.match(action, /scheduleLiveSearchRender\(targetId,next\.value,false\)/);
 });
 
 test('keypad value logic handles 1, 12, backspace, clear and a middle caret', () => {
@@ -135,6 +199,10 @@ test('keypad value logic handles 1, 12, backspace, clear and a middle caret', ()
 test('mobile enhancement has no second POS search implementation', () => {
   assert.doesNotMatch(mobileHistory, /posSearch|updateSearchResults|stopImmediatePropagation/);
   assert.match(mobileHistory, /buildHistoryCards/);
+});
+
+test('IME Enter cannot start a search while iPhone composition is still active', () => {
+  assert.match(engine, /event\.isComposing\|\|event\.keyCode===229\|\|event\.target\.dataset\.opsImeComposing==='1'/);
 });
 
 test('catalog search text and SKU order are prepared once and reused', () => {
