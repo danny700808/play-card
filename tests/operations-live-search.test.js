@@ -60,7 +60,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.js\?v=20260805-live-search-v4/);
+    assert.match(html, /operations-phase1\.js\?v=20260805-live-search-v5/);
   }
 });
 
@@ -144,6 +144,29 @@ test('catalog search text and SKU order are prepared once and reused', () => {
   assert.match(functionBody(engine, 'productFiltered'), /catalogRowsInSkuOrder\(\)/);
   assert.match(functionBody(engine, 'purchaseEntryFilteredProducts'), /catalogRowsInSkuOrder\(\)/);
   assert.match(functionBody(engine, 'stocktakeFilteredProducts'), /catalogRowsInSkuOrder\(\)/);
+});
+
+test('every search returns all matches instead of stopping at 30', () => {
+  const product = functionBody(engine, 'productSearchResultsHtml');
+  const pos = functionBody(engine, 'posSearchResultsHtml');
+  const purchaseEntry = functionBody(engine, 'purchaseEntrySearchResult');
+  const stocktake = functionBody(engine, 'stocktakeSearchResult');
+  const purchaseLow = functionBody(engine, 'purchaseLowSearchResult');
+  const inventory = functionBody(engine, 'inventorySearchResult');
+
+  assert.match(product, /hasSearch\?rows:rows\.slice\(0,state\.productVisible\)/);
+  assert.match(pos, /catalogRowsInSkuOrder\(\)\.filter/);
+  assert.match(purchaseEntry, /clean\(state\.purchaseEntrySearch\)\?all:all\.slice\(0,240\)/);
+  assert.match(stocktake, /clean\(state\.stocktakeSearch\)\?all:all\.slice\(0,240\)/);
+  assert.match(purchaseLow, /term\?filtered:filtered\.slice\(0,80\)/);
+  assert.match(inventory, /term\?filtered:filtered\.slice\(0,300\)/);
+
+  for (const body of [product, pos, purchaseEntry, stocktake, purchaseLow, inventory]) {
+    assert.doesNotMatch(body, /slice\(0,\s*30\)|length\s*>=\s*30|\?30:/);
+  }
+  for (const name of ['renderSales', 'renderSalesV4', 'renderSalesV5']) {
+    assert.doesNotMatch(functionBody(engine, name), /slice\(0,\s*30\)|length\s*>=\s*30/);
+  }
 });
 
 test('variant-first product images are retained in the core renderer', () => {
