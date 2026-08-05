@@ -100,15 +100,8 @@ updatedAt: serverTimestamp(),
 updatedBy: actor,
 version: VERSION
 };
-if (alreadyApplied || inventoryAlreadyExists) {
-transaction.set(orderRef, Object.assign({}, baseResolvedPatch, {
-inventoryApplied: true,
-inventoryReversed: false,
-reversalApplied: false,
-processingStatus: 'inventory-applied'
-}), { merge: true });
-return { status: 'already-applied', orderId: orderId, productId: productId };
-}
+// 先判斷訂單是否仍是有效成交，再判斷舊扣庫存紀錄。
+// 已取消／退貨的訂單即使存在原始 onlineSale 紀錄，也不能被這個 SKU 修正功能重新標成有效成交。
 if (orderSkipsInventory(order)) {
 transaction.set(orderRef, Object.assign({}, baseResolvedPatch, {
 inventoryApplied: order.inventoryApplied === true,
@@ -129,15 +122,41 @@ returnFix,
 actor
 ), {
 productId: productId,
-matchStatus: 'matched'
+matchStatus: 'matched',
+inventoryApplied: order.inventoryApplied === true
 }), { merge: true });
 return { status: 'unresolved', orderId: orderId, productId: productId, issueStatus: 'manual-return-review', reason: returnReason };
+}
+if (order.inventoryApplied === true || inventoryAlreadyExists) {
+const reversalReason = '這筆訂單曾有中央庫存扣除紀錄，但目前平台狀態已不是有效成交；SKU 重新檢查不會直接改成已成交，以免取消回補或退貨庫存被覆蓋。';
+const reversalFix = '請先執行「立即同步」，由平台訂單取消／退款流程確認並回補；若仍失敗，再依訂單與庫存異動紀錄人工核對。';
+transaction.set(orderRef, Object.assign({}, unresolvedPatch(
+'reversal-error',
+reversalReason,
+reversalFix,
+1,
+actor
+), {
+productId: productId,
+matchStatus: 'matched',
+inventoryApplied: order.inventoryApplied === true
+}), { merge: true });
+return { status: 'unresolved', orderId: orderId, productId: productId, issueStatus: 'reversal-error', reason: reversalReason };
 }
 transaction.set(orderRef, Object.assign({}, baseResolvedPatch, {
 inventoryApplied: false,
 processingStatus: 'ignored-cancelled'
 }), { merge: true });
 return { status: 'resolved-not-sale', orderId: orderId, productId: productId };
+}
+if (alreadyApplied || inventoryAlreadyExists) {
+transaction.set(orderRef, Object.assign({}, baseResolvedPatch, {
+inventoryApplied: true,
+inventoryReversed: false,
+reversalApplied: false,
+processingStatus: 'inventory-applied'
+}), { merge: true });
+return { status: 'already-applied', orderId: orderId, productId: productId };
 }
 const quantity = Math.max(0, Math.round(Number(order.quantity || 0)));
 if (!quantity) throw new Error('訂單數量不是正整數，不能自動扣庫存。');
