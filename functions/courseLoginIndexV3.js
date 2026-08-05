@@ -7,3 +7,6 @@ Object.assign(exports, existingExports);
 
 const { registerCourseLoginAuthV3 } = require('./courseLoginAuthV3');
 registerCourseLoginAuthV3(exports);
+
+const { registerUnifiedLineBindingAdmin } = require('./unifiedLineBindingAdmin');
+registerUnifiedLineBindingAdmin(exports);
