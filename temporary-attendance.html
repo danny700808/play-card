@@ -36,7 +36,7 @@ body{background:var(--bg);color:var(--ink)}
 <div class="container">
 <div class="card">
   <h1 class="title">臨時出勤申請</h1>
-  <div class="muted">主管尚未排班、臨時增加出勤，或需要班表外額外出勤時使用。
+  <div class="muted">主管尚未排班、臨時增加出勤、需要班表外額外出勤，或已提出請假後又臨時回來出勤時使用。請假與臨時出勤是兩筆獨立紀錄，會各自保留、各自審核。
 若是「原本有班但忘記打卡」，請回打卡頁下方「有班但未完成打卡」提出補打卡；若是已打卡但時間錯誤，請在該筆紀錄點「修正這筆」。
 主管核准後，系統會正式補進打卡紀錄、工讀時數與薪資；員工不需要再回工讀時數頁重複登記。</div>
   <div id="msg" class="message"></div>
@@ -70,7 +70,7 @@ body{background:var(--bg);color:var(--ink)}
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script src="firebase-client.js?v=20260802-security-phase1"></script>
+<script src="firebase-client.js?v=20260805-attendance-independent-v2"></script>
 <script src="app.js?v=20260802-security-phase1"></script>
 <script>
 let employees=[];
@@ -110,6 +110,39 @@ function halfHourOptions(startMin=0,endMin=24*60){
   endMin=Math.floor(endMin/30)*30;
   for(let m=startMin;m<=endMin;m+=30) opts.push(minToTime(m));
   return opts;
+}
+function leaveStatusText(v){
+  const s=clean(v).toLowerCase();
+  if(!s||s==='pending'||s.includes('待')||s.includes('審核中'))return '待審核';
+  if(s==='approved'||s.includes('核准')||s.includes('同意'))return '已核准';
+  if(s==='rejected'||s.includes('駁回')||s.includes('拒絕'))return '已駁回';
+  return clean(v);
+}
+function normalizeLeaveRequestBlocks(context){
+  const direct=Array.isArray(context&&context.leaveRequestBlocks)?context.leaveRequestBlocks:null;
+  const source=direct||[].concat(Array.isArray(context&&context.leaveBlocks)?context.leaveBlocks:[],Array.isArray(context&&context.pendingLeaveBlocks)?context.pendingLeaveBlocks:[]);
+  return source.map(l=>{
+    let start=Number(l&&l.start),end=Number(l&&l.end);
+    if(!Number.isFinite(start))start=parseMinutes(l&&l.startTime||'');
+    if(!Number.isFinite(end))end=parseMinutes(l&&l.endTime||'');
+    if(l&&l.allDay){start=0;end=24*60;}
+    return {requestId:clean(l&&l.requestId),reason:clean(l&&l.reason)||'請假',status:leaveStatusText(l&&l.status),start,end,startTime:Number.isFinite(start)?minToTime(start):'',endTime:Number.isFinite(end)?minToTime(end):'',allDay:!!(l&&l.allDay)};
+  }).filter(l=>Number.isFinite(l.start)&&Number.isFinite(l.end)&&l.end>l.start);
+}
+function subtractMinuteRanges(start,end,blocks){
+  let pieces=[[start,end]];
+  (blocks||[]).slice().sort((a,b)=>a.start-b.start||a.end-b.end).forEach(block=>{
+    const next=[];
+    pieces.forEach(piece=>{
+      if(block.end<=piece[0]||block.start>=piece[1])next.push(piece);
+      else{
+        if(block.start>piece[0])next.push([piece[0],Math.min(block.start,piece[1])]);
+        if(block.end<piece[1])next.push([Math.max(block.end,piece[0]),piece[1]]);
+      }
+    });
+    pieces=next;
+  });
+  return pieces.filter(piece=>piece[1]>piece[0]);
 }
 function showBox(sel,text,type){
   const box=qs(sel);
@@ -252,29 +285,16 @@ async function analyzeSelectedDate(){
   }
 
   const schedules=Array.isArray(res.schedules)?res.schedules:((res.schedule&&res.schedule.hasSchedule)?[res.schedule]:[]);
-  const approvedLeaves=Array.isArray(res.leaveBlocks)?res.leaveBlocks.map(l=>({
-    requestId:l.requestId||'',
-    reason:l.reason||'請假',
-    startTime:l.startTime||'',
-    endTime:l.endTime||'',
-    allDay:!!l.allDay
-  })):[];
-  const allDayLeave=approvedLeaves.find(l=>l.allDay);
-  const leaveText=approvedLeaves.length ? ('\n已核准請假：'+approvedLeaves.map(l=>l.allDay?(l.reason+' 全天'):((l.startTime||'')+'～'+(l.endTime||'')+(l.reason?(' '+l.reason):''))).join('、')) : '';
-  if(allDayLeave){
-    const text='系統判斷：這一天已有全天核准請假，因此不開放臨時出勤申請。'+leaveText;
-    showBox('#analysisBox',text,'error');
-    setTimeSection(false);
-    currentAnalysis={ok:false,dayType:'已請假',existingHours:0,message:text,rawContext:res,approvedLeaves};
-    return;
-  }
+  const leaveRequests=normalizeLeaveRequestBlocks(res);
+  const approvedLeaves=leaveRequests.filter(l=>l.status==='已核准');
+  const leaveText=leaveRequests.length ? ('\n請假紀錄：'+leaveRequests.map(l=>`${l.status}｜${l.reason}｜${l.allDay?'全天':(l.startTime+'～'+l.endTime)}`).join('、')+'。請假與臨時出勤會各自保留、各自審核。') : '';
 
   const intervals=[];
   schedules.forEach(s=>{
     const st=parseMinutes(s.startTime||s.scheduleStartTime||'');
     const en=parseMinutes(s.endTime||s.scheduleEndTime||'');
     if(st!=null&&en!=null&&en>st){
-      intervals.push({start:st,end:en,label:(s.sourceLabel||'班表')+' '+(s.startTime||'')+'～'+(s.endTime||'')});
+      subtractMinuteRanges(st,en,leaveRequests).forEach(piece=>intervals.push({start:piece[0],end:piece[1],label:(s.sourceLabel||'班表')+' '+minToTime(piece[0])+'～'+minToTime(piece[1])}));
     }
   });
   intervals.sort((a,b)=>a.start-b.start);
@@ -290,7 +310,7 @@ async function analyzeSelectedDate(){
     const text=`系統判斷：這一天已有班表約 ${existing} 小時，已達每日工時上限，因此不能再送出臨時出勤申請。`+leaveText;
     showBox('#analysisBox',text,'error');
     setTimeSection(false);
-    currentAnalysis={ok:false,dayType:'平日',existingHours:existing,message:text,rawContext:res,approvedLeaves};
+    currentAnalysis={ok:false,dayType:'平日',existingHours:existing,message:text,rawContext:res,leaveRequests,approvedLeaves};
     return;
   }
 
@@ -306,37 +326,26 @@ async function analyzeSelectedDate(){
     if(24*60-cursor>=30) ranges.push({start:cursor,end:24*60});
   }
 
-  const dayType=merged.length?'平日':'無班';
+  const originalSchedules=Array.isArray(res.originalSchedules)?res.originalSchedules:[];
+  const dayType=merged.length?'平日':(leaveRequests.length&&originalSchedules.length?'有請假紀錄':'無班');
   const scheduleText=merged.length?merged.map(r=>minToTime(r.start)+'～'+minToTime(r.end)).join('、'):'目前沒有排班';
   const remainHours=Math.max(0,12-existing);
   const text=merged.length
-    ? `系統判斷：這一天已有班表 ${scheduleText}，原本排班約 ${existing} 小時。\n臨時出勤只開放班表外時間；如果是班表內忘記打卡，請回打卡頁「有班但未完成打卡」提出補打卡。\n本日可再申請最多約 ${remainHours} 小時，實際是否計薪由主管審核確認。`+leaveText
-    : '系統判斷：這一天目前沒有排班。\n可送出臨時出勤申請，主管核准後才會正式補進打卡、時數與薪資。\n本日出勤最多以12小時為上限，實際是否計薪由主管審核確認。'+leaveText;
+    ? `系統判斷：這一天仍有需要正常打卡的班表 ${scheduleText}，約 ${existing} 小時。\n臨時出勤開放班表外時間，以及已有請假紀錄的時間；如果是其他班表內忘記打卡，請回打卡頁提出補打卡。\n本日可再申請最多約 ${remainHours} 小時，實際是否計薪由主管審核確認。`+leaveText
+    : (leaveRequests.length?'系統判斷：原班表時間已有請假紀錄，仍可另外送出臨時出勤。兩筆紀錄不互相取消或覆寫。':'系統判斷：這一天目前沒有排班。\n可送出臨時出勤申請，主管核准後才會正式補進打卡、時數與薪資。\n本日出勤最多以12小時為上限，實際是否計薪由主管審核確認。')+leaveText;
 
   if(!ranges.length){
     const t='系統目前找不到可開放的臨時出勤時間，因此不開放送出。';
     showBox('#analysisBox',t,'error');
     setTimeSection(false);
-    currentAnalysis={ok:false,dayType,existingHours:existing,message:t,rawContext:res,approvedLeaves};
+    currentAnalysis={ok:false,dayType,existingHours:existing,message:t,rawContext:res,leaveRequests,approvedLeaves};
     return;
   }
 
-  currentAnalysis={ok:true,dayType,existingHours:existing,scheduleStart:merged[0]?minToTime(merged[0].start):'',scheduleEnd:merged[merged.length-1]?minToTime(merged[merged.length-1].end):'',allowedRanges:ranges,message:text,rawContext:res,approvedLeaves};
+  currentAnalysis={ok:true,dayType,existingHours:existing,scheduleStart:merged[0]?minToTime(merged[0].start):'',scheduleEnd:merged[merged.length-1]?minToTime(merged[merged.length-1].end):'',allowedRanges:ranges,message:text,rawContext:res,leaveRequests,approvedLeaves};
   setStartOptions(ranges);
   showBox('#analysisBox',text,'ok');
   setTimeSection(true);
-}
-
-
-function overlapsApprovedLeave(startMin,endMin,leaves){
-  if(!Array.isArray(leaves)) return null;
-  for(const l of leaves){
-    const ls=parseMinutes(l.startTime||'');
-    const le=parseMinutes(l.endTime||'');
-    if(ls==null||le==null||le<=ls) continue;
-    if(startMin<le && endMin>ls) return l;
-  }
-  return null;
 }
 
 
@@ -403,12 +412,6 @@ function validateSelectedTime(showMessage){
     const t='你選擇的時間不在系統開放的可申請時段內，請重新選擇。';
     showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
   }
-  const hitLeave=overlapsApprovedLeave(sm,em,a.approvedLeaves||[]);
-  if(hitLeave){
-    const t=`你選擇的時間與已核准請假 ${hitLeave.startTime||''}～${hitLeave.endTime||''} 重疊，不能用臨時出勤送出。`;
-    showBox('#lawHint',t,'error'); if(showMessage)msg(t,'error'); return {ok:false,message:t};
-  }
-
   const h=hoursBetween(date,start,end);
   if(h<=0){
     const t='下班時間必須晚於上班時間，請重新選擇。';
@@ -480,7 +483,8 @@ async function submitRequest(){
       hourlyRate:emp.hourlyRate,時薪:emp.hourlyRate,
       reason:reason,原因:reason,
       scheduleCheckNote:a.message,班表判斷:a.message,
-      approvedLeaves: a.approvedLeaves||[], 已核准請假: JSON.stringify(a.approvedLeaves||[]),
+      leaveRequests:a.leaveRequests||[],請假紀錄:JSON.stringify(a.leaveRequests||[]),leaveRequestIds:(a.leaveRequests||[]).map(l=>l.requestId).filter(Boolean),
+      approvedLeaves:a.approvedLeaves||[],已核准請假:JSON.stringify(a.approvedLeaves||[]),
       scheduleDebug: JSON.stringify(a.rawContext&&a.rawContext.debug||{}), 班表查詢明細: JSON.stringify(a.rawContext&&a.rawContext.debug||{}),
       lawCheckNote:check.message,送出前檢查:check.message,
       status:'待審核',狀態:'待審核',

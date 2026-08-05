@@ -29,7 +29,7 @@
   <main class="container">
     <section class="card">
       <h1>出勤勾稽檢查</h1>
-      <div class="muted">以同一套規則比對「原始班表－已核准請假＝有效出勤班段」，並核對應打卡、實際打卡、待審補卡及工讀薪資資料。</div>
+      <div class="muted">比對原始班表、請假、正式打卡與臨時出勤。請假和臨時出勤各自保留；核准的臨時出勤可證明實際出勤，但不會覆寫成原班表打卡。</div>
     </section>
     <section class="card">
       <div class="toolbar">
@@ -48,6 +48,7 @@
         <section class="card"><div class="section-title">核准後有效班段</div><div id="effectiveRows" class="rows"></div></section>
         <section class="card"><div class="section-title">應打卡項目</div><div id="expectedRows" class="rows"></div></section>
         <section class="card"><div class="section-title">實際打卡</div><div id="actualRows" class="rows"></div></section>
+        <section class="card"><div class="section-title">臨時出勤申請</div><div id="temporaryRows" class="rows"></div></section>
         <section class="card"><div class="section-title">缺卡／待處理</div><div id="issueRows" class="rows"></div></section>
         <section class="card"><div class="section-title">待審補卡／修正</div><div id="correctionRows" class="rows"></div></section>
         <section class="card"><div class="section-title">工讀／薪資紀錄</div><div id="parttimeRows" class="rows"></div></section>
@@ -58,7 +59,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260802-security-phase1"></script>
+  <script src="firebase-client.js?v=20260805-attendance-independent-v2"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
   <script>
     let currentUser=null;
@@ -78,13 +79,14 @@
     }
     function renderAudit(r){
       qs('#result').classList.remove('hidden');
-      const originals=r.originalSchedules||[],approved=r.approvedLeaves||[],pending=r.pendingLeaves||[],effective=r.effectiveSchedules||[],expected=r.expectedPunches||[],actual=r.actualPunches||[],missing=r.missingPunches||[],corrections=r.pendingCorrections||[],parts=r.parttimeRecords||[];
+      const originals=r.originalSchedules||[],approved=r.approvedLeaves||[],pending=r.pendingLeaves||[],rejected=r.rejectedLeaves||[],temporary=r.temporaryAttendances||[],effective=r.effectiveSchedules||[],expected=r.expectedPunches||[],actual=r.actualPunches||[],missing=r.missingPunches||[],corrections=r.pendingCorrections||[],parts=r.parttimeRecords||[];
       qs('#metrics').innerHTML=[['原始班表',originals.length],['核准請假',approved.length],['有效班段',effective.length],['有效時數',`${Number(r.effectiveHours||0)} 小時`],['缺卡',missing.length]].map(x=>`<div class="metric"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join('');
       renderRows('#originalRows',originals.map(s=>rowHtml(scheduleText(s),[s.sourceLabel,s.templateName,s.clockType].filter(Boolean).join('｜'),'原始')).join(''));
-      const leaveHtml=approved.map(l=>rowHtml(leaveText(l),`共 ${Number(l.hours||0)} 小時`,'已核准','ok')).concat(pending.map(l=>rowHtml(leaveText(l),`共 ${Number(l.hours||0)} 小時`,'待審核','warn'))).join('');renderRows('#leaveRows',leaveHtml);
+      const leaveHtml=approved.map(l=>rowHtml(leaveText(l),`共 ${Number(l.hours||0)} 小時`,'已核准','ok')).concat(pending.map(l=>rowHtml(leaveText(l),`共 ${Number(l.hours||0)} 小時`,'待審核','warn')),rejected.map(l=>rowHtml(leaveText(l),`共 ${Number(l.hours||0)} 小時`,'已駁回','bad'))).join('');renderRows('#leaveRows',leaveHtml);
       renderRows('#effectiveRows',effective.map(s=>rowHtml(scheduleText(s),[s.leaveAdjusted&&s.originalStartTime?`原班表 ${s.originalStartTime}-${s.originalEndTime}`:'',Number(s.splitCount||0)>1?`分段 ${s.splitIndex}/${s.splitCount}`:'',s.statusText].filter(Boolean).join('｜'),'應出勤','ok')).join(''));
-      renderRows('#expectedRows',expected.map(x=>rowHtml(`${x.time} ${x.action}`,clean(x.scheduleKey),'應打卡')).join(''));
-      renderRows('#actualRows',actual.map(x=>rowHtml(`${x.time} ${x.action}`,clean(x.scheduleKey),clean(x.status)||'已打卡',clean(x.status).includes('遲到')||clean(x.status).includes('早退')?'bad':'ok')).join(''));
+      renderRows('#expectedRows',expected.map(x=>rowHtml(`${x.time} ${x.action}`,clean(x.scheduleKey),x.coveredByTemporary?'另筆臨時出勤':'應打卡',x.coveredByTemporary?'ok':'')).join(''));
+      renderRows('#actualRows',actual.map(x=>rowHtml(`${x.time} ${x.action}`,x.independentTemporaryAttendance?'獨立臨時出勤紀錄':clean(x.scheduleKey),clean(x.status)||'已打卡',clean(x.status).includes('遲到')||clean(x.status).includes('早退')?'bad':'ok')).join(''));
+      renderRows('#temporaryRows',temporary.map(x=>rowHtml(`${clean(x.startTime)||'—'}－${clean(x.endTime)||'—'}`,clean(x.reason),clean(x.status)||'待審核',clean(x.status).includes('核准')?'ok':'warn')).join(''));
       renderRows('#issueRows',missing.map(x=>rowHtml(x,'尚未找到對應正式打卡','缺卡','bad')).join(''));
       renderRows('#correctionRows',corrections.map(x=>rowHtml(`${clean(x.correctDate||x['修正日期'])} ${clean(x.correctTime||x['修正時間']).slice(0,5)} ${clean(x.correctAction||x['修正動作'])}`,clean(x.reason||x['修正原因']),clean(x.status||x['狀態'])||'待審核','warn')).join(''));
       renderRows('#parttimeRows',parts.map(x=>{const paid=x.isPaidLeave||x.sourceType==='approvedPaidLeave';return rowHtml(`${Number(x.totalHours||x['總時數']||0)} 小時`,clean(x.note||x['備註']),paid?'核准支薪假':'工讀紀錄',paid?'warn':'ok')}).join(''));

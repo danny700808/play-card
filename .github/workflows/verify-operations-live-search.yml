@@ -1,0 +1,34 @@
+name: Verify Operations Live Search
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "operations-phase1.js"
+      - "operations-hub.html"
+      - "portal.html"
+      - "tests/operations-live-search.test.js"
+      - ".github/workflows/verify-operations-live-search.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: node --check operations-phase1.js
+      - name: Run live search tests
+        run: node --test tests/operations-live-search.test.js
+      - name: Verify markup and cache versions
+        run: |
+          set -euo pipefail
+          grep -Fq 'operations-phase1.js?v=20260805-live-search-v3' portal.html
+          grep -Fq 'operations-phase1.js?v=20260805-live-search-v3' operations-hub.html
+          ! grep -Fq 'operations-search-product-ux-v1' portal.html
+          ! grep -Fq 'operations-search-product-ux-v1' operations-hub.html
