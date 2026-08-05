@@ -228,6 +228,55 @@ test('safe recheck deducts exactly once and uses the deterministic inventory doc
   assert.equal(db._get('opsInternalProducts/p1').currentStock, 4);
 });
 
+test('cancelled order with an old onlineSale record is never reopened as an active sale', async () => {
+  const product = {
+    id: 'p1',
+    raw: {
+      internalSku: 'SKU-CANCEL',
+      internalName: '取消商品',
+      currentStock: 5,
+      costLayers: [{ layerId: 'L1', qtyRemaining: 5, unitCost: 50, receivedAt: '2026-01-01' }],
+      enabled: true
+    }
+  };
+  const db = makeMemoryDb({
+    'opsPlatformOrders/o-cancel': {
+      sku: 'SKU-CANCEL',
+      platform: 'EasyStore',
+      externalOrderNo: 'CANCEL-1',
+      productName: '取消商品',
+      quantity: 1,
+      unitPrice: 100,
+      grossAmount: 100,
+      lifecycle: 'cancelled',
+      validSale: false,
+      inventoryApplied: false,
+      reversalApplied: true,
+      processingStatus: 'error'
+    },
+    'opsInternalProducts/p1': product.raw,
+    'opsInventoryTransactions/online_o-cancel': {
+      type: 'onlineSale',
+      qtyChange: -1,
+      beforeStock: 5,
+      afterStock: 4
+    }
+  });
+  const context = {
+    db,
+    actor: 'tester',
+    settings: { applyInventory: true, estimatedNetRate: 0.87 },
+    productMap: anomaly.buildProductMap([product])
+  };
+
+  const result = await anomaly._test.recheckOrderWithContext('o-cancel', context);
+  assert.equal(result.status, 'unresolved');
+  assert.equal(result.issueStatus, 'reversal-error');
+  assert.equal(db._get('opsInternalProducts/p1').currentStock, 5);
+  assert.equal(db._get('opsPlatformOrders/o-cancel').processingStatus, 'reversal-error');
+  assert.equal(db._get('opsPlatformOrders/o-cancel').inventoryApplied, false);
+});
+
 test('summarizeResults separates applied, already-applied, unresolved, and failures', () => {
   assert.deepEqual(anomaly.summarizeResults([
     { status: 'applied' },
