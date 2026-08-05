@@ -1,0 +1,35 @@
+name: Verify Operations Search Product UX
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "operations-search-product-ux-v1.js"
+      - "operations-search-product-ux-v1.css"
+      - "operations-hub.html"
+      - "portal.html"
+      - "tests/operations-search-product-ux.test.js"
+      - ".github/workflows/verify-operations-search-product-ux.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: node --check operations-search-product-ux-v1.js
+      - name: Run search and product UX tests
+        run: node --test tests/operations-search-product-ux.test.js
+      - name: Verify markup and cache versions
+        run: |
+          set -euo pipefail
+          grep -Fq 'operations-search-product-ux-v1.css?v=20260805-search-product-ux-v1' portal.html
+          grep -Fq 'operations-search-product-ux-v1.js?v=20260805-search-product-ux-v1' portal.html
+          grep -Fq 'operations-search-product-ux-v1.css?v=20260805-search-product-ux-v1' operations-hub.html
+          grep -Fq 'operations-search-product-ux-v1.js?v=20260805-search-product-ux-v1' operations-hub.html
