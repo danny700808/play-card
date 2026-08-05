@@ -1,9484 +1,6074 @@
-'use strict';
-
-const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
-const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { defineSecret } = require('firebase-functions/params');
-const admin = require('firebase-admin');
-const crypto = require('crypto');
-const path = require('path');
-const sharp = require('sharp');
-const {
-  normalizePhone,
-  phoneMatches,
-  normalizeScheduleStatus,
-  courseSourceIds
-} = require('./coursePortalUtils');
-
-if (!admin.apps.length) admin.initializeApp();
-
-const db = admin.firestore();
-const FieldValue = admin.firestore.FieldValue;
-const Timestamp = admin.firestore.Timestamp;
-const REGION = 'us-central1';
-const TAIPEI = 'Asia/Taipei';
-const ADMIN_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
-const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET');
-const LINE_LOGIN_CHANNEL_ID = '2010902226';
-const LINE_LOGIN_CALLBACK_URL = 'https://us-central1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback';
-const PORTAL_BASE = 'https://danny700808.github.io/play-card';
-const EMAIL_OTP_TTL_MS = 180 * 1000;
-const EMAIL_OTP_MAX_ATTEMPTS = 5;
-const LINE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
-const LINE_SETUP_TTL_MS = 20 * 60 * 1000;
-const PORTAL_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-const TEACHER_PAYROLL_MIN_MONTH = '2026-07';
-const TUITION_PAYMENT_BANK = Object.freeze({
-  bankName: 'å°æ–°åœ‹éš›å•†æ¥­éŠ€è¡Œ',
-  bankCode: '812',
-  branchName: 'æ•¦å—åˆ†è¡Œ',
-  branchCode: '0023',
-  accountName: 'é»ƒéŠ˜å»·',
-  accountNumber: '28881010149129'
-});
-const TUITION_PAYMENT_REQUESTS = 'coursePortalTuitionPaymentRequests';
-const TUITION_PERIODS = 'coursePortalTuitionPeriods';
-const TUITION_TRANSACTIONS = 'coursePortalTuitionPaymentTransactions';
-const TUITION_SYSTEM_PERIODS = 'coursePortalTuitionSystemPeriods';
-const TUITION_RECEIPTS = 'coursePortalTuitionReceipts';
-const TUITION_RECEIPT_MAX_BYTES = 4 * 1024 * 1024;
-const TUITION_RECEIPT_TEMPLATE = path.join(__dirname, 'assets', 'tuition-receipt-blank.png');
-const TUITION_RECEIPT_FONT = require.resolve(
-  '@expo-google-fonts/noto-sans-tc/700Bold/NotoSansTC_700Bold.ttf'
-);
-const ATTENDANCE_RECORDS = 'coursePortalAttendanceRecords';
-const ATTENDANCE_CANCELLATIONS = 'coursePortalAttendanceCancellationRequests';
-const ATTENDANCE_PAYROLL = 'coursePortalTeacherAttendancePayroll';
-const ATTENDANCE_ADMIN_FEE = 50;
-const PORTAL_MAX_ADVANCE_MONTHS = 2;
-const CONTACT_BOOK_POSTS = 'coursePortalLessonContactPosts';
-const CONTACT_BOOK_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
-const CONTACT_BOOK_IMAGE_MAX_COUNT = 8;
-const ALLOWED_ORIGINS = [
-  'https://danny700808.github.io',
-  'https://www.mingtinghuang.com',
-  'https://mingtinghuang.com',
-  /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i
-];
-const MIRROR = Object.freeze({
-  rooms: 'opsEducationMirrorRooms',
-  subjects: 'opsEducationMirrorSubjects',
-  feePlans: 'opsEducationMirrorFeePlans',
-  students: 'opsEducationMirrorStudents',
-  teachers: 'opsEducationMirrorTeachers',
-  teacherPayroll: 'opsEducationMirrorTeacherPayroll',
-  teacherAdjustments: 'opsEducationMirrorTeacherAdjustments',
-  tuitionPeriods: 'opsEducationMirrorTuitionPeriods',
-  attendance: 'opsEducationMirrorAttendance',
-  fixedCourses: 'opsEducationMirrorFixedCourses',
-  temporaryCourses: 'opsEducationMirrorTemporaryCourses',
-  roomRentals: 'opsEducationMirrorRoomRentals',
-  events: 'opsEducationMirrorEvents'
-});
-const RENTAL_USES_VERSION = 4;
-const RENTAL_USE_OPTIONS = Object.freeze([
-  { id: 'piano', name: 'å½ˆé‹¼ç´', icon: 'ğŸ¹', roomIds: [] },
-  { id: 'drums', name: 'ç·´é¼“', icon: 'ğŸ¥', roomIds: [] },
-  { id: 'band', name: 'åœ˜ç·´', icon: 'ğŸ¸', roomIds: [] },
-  { id: 'guzheng', name: 'å¤ç®', icon: 'ğŸª•', roomIds: [] },
-  { id: 'recording', name: 'éŒ„éŸ³å®¤', icon: 'ğŸ™ï¸', roomIds: [], hourlyRate: 300 },
-  { id: 'other', name: 'å…¶ä»–ç”¨é€”', icon: 'ğŸµ', roomIds: [] }
-]);
-const DEFAULT_BUSINESS_HOURS = Object.freeze({
-  '0': { closed: false, start: '10:00', end: '21:00' },
-  '1': { closed: true, start: '', end: '' },
-  '2': { closed: false, start: '12:30', end: '21:00' },
-  '3': { closed: false, start: '12:30', end: '21:00' },
-  '4': { closed: false, start: '12:30', end: '21:00' },
-  '5': { closed: false, start: '12:30', end: '21:00' },
-  '6': { closed: false, start: '10:00', end: '21:00' }
-});
-
-function roomKind(room, setting = {}) {
-  const explicit = clean(setting.kind || setting.roomKind).toLowerCase();
-  if (['normal', 'video', 'holding'].includes(explicit)) return explicit;
-  const name = clean(room && room.name);
-  if (/ä¸å®šæ™‚/.test(name)) return 'holding';
-  if (/è¦–è¨Š/.test(name)) return 'video';
-  return 'normal';
-}
-
-function defaultRoomFee(room) {
-  const name = clean(room && room.name);
-  return /åœ˜ç·´å®¤|å±•æ¼”ç©ºé–“|å¹³å°é‹¼ç´|5è™Ÿé‹¼ç´|äº”è™Ÿé‹¼ç´/.test(name) ? 200 : 100;
-}
-
-function roomRentable(room, setting = {}) {
-  if (setting.roomRulesVersion === 1 && typeof setting.rentable === 'boolean') return setting.rentable;
-  return roomKind(room, setting) === 'normal';
-}
-
-function roomTeacherSchedulable(room, setting = {}) {
-  if (setting.roomRulesVersion === 1 && typeof setting.teacherSchedulable === 'boolean') return setting.teacherSchedulable;
-  return true;
-}
-
-function effectiveRoomFee(room, setting = {}) {
-  if (setting.roomRulesVersion === 1 && setting.rentalFee !== undefined && setting.rentalFee !== null && setting.rentalFee !== '') {
-    return Math.max(0, Number(setting.rentalFee) || 0);
-  }
-  return defaultRoomFee(room);
-}
-
-const RECORDING_RENTAL_OPTIONS = Object.freeze([
-  Object.freeze({
-    id: 'general_room',
-    name: 'ä¸€èˆ¬æ•™å®¤ä½¿ç”¨',
-    hourlyRate: 100
-  }),
-  Object.freeze({
-    id: 'studio_recording',
-    name: 'éŒ„éŸ³å®¤éŒ„éŸ³ä½¿ç”¨',
-    hourlyRate: 300
-  })
-]);
-
-function recordingRentalSelection(data, required = false) {
-  const useType = clean(data && data.useType);
-  const selectionId = clean(data && data.recordingUsage);
-  if (useType !== 'recording') {
-    if (selectionId) {
-      throw new HttpsError('invalid-argument', 'åªæœ‰éŒ„éŸ³å®¤ç”¨é€”å¯ä»¥é¸æ“‡éŒ„éŸ³å®¤ä½¿ç”¨æ–¹å¼ã€‚');
-    }
-    return null;
-  }
-  if (!selectionId) {
-    if (required) {
-      throw new HttpsError(
-        'invalid-argument',
-        'è«‹é¸æ“‡ã€Œä¸€èˆ¬æ•™å®¤ä½¿ç”¨ NT$100/å°æ™‚ã€æˆ–ã€ŒéŒ„éŸ³å®¤éŒ„éŸ³ä½¿ç”¨ NT$300/å°æ™‚ã€ã€‚'
-      );
-    }
-    return null;
-  }
-  const selection = RECORDING_RENTAL_OPTIONS.find((row) => row.id === selectionId);
-  if (!selection) {
-    throw new HttpsError('invalid-argument', 'éŒ„éŸ³å®¤ä½¿ç”¨æ–¹å¼ç„¡æ•ˆï¼Œè«‹é‡æ–°é¸æ“‡ã€‚');
-  }
-  return selection;
-}
-
-function rentalAmount(unitFee, durationMinutes, discountRate = 1) {
-  return Math.round(
-    Math.max(0, Number(unitFee) || 0) *
-    Math.max(0, Number(durationMinutes) || 0) / 60 *
-    Math.max(0, Number(discountRate) || 0)
-  );
-}
-
-function effectiveRentalFee(room, setting = {}, useOption = {}, recordingSelection = null) {
-  if (clean(useOption.id) === 'recording') {
-    return recordingSelection ? recordingSelection.hourlyRate : null;
-  }
-  if (useOption.hourlyRate !== undefined && useOption.hourlyRate !== null && useOption.hourlyRate !== '') {
-    return Math.max(0, Number(useOption.hourlyRate) || 0);
-  }
-  if (/éŒ„éŸ³å®¤|éŒ„éŸ³/.test(clean(room && room.name))) return 100;
-  return effectiveRoomFee(room, setting);
-}
-
-function defaultRentalUseOptions(rooms) {
-  const normal = (rooms || []).filter((room) => roomKind(room) === 'normal');
-  const ids = (pattern) => normal.filter((room) => pattern.test(clean(room.name))).map(sourceId);
-  return [
-    {
-      id: 'piano',
-      name: 'å½ˆé‹¼ç´',
-      icon: 'ğŸ¹',
-      description: 'å¯é¸æ“‡æ˜¯å¦æ’é™¤é›»é‹¼ç´',
-      roomIds: ids(/é‹¼ç´|å¹³å°|ç´æˆ¿|piano|yamaha|kawai|å¡å“‡ä¼Š|å±•æ¼”|åœ˜ç·´/i),
-      hourlyRate: null,
-      active: true
-    },
-    { id: 'drums', name: 'ç·´é¼“', icon: 'ğŸ¥', description: 'å¯æŒ‡å®šå‚³çµ±é¼“æˆ–é›»å­é¼“ï¼Œä¹Ÿå¯ä¸æŒ‡å®š', roomIds: ids(/é¼“|å±•æ¼”|åœ˜ç·´/), hourlyRate: null, active: true },
-    { id: 'band', name: 'åœ˜ç·´', icon: 'ğŸ¸', description: '', roomIds: ids(/å±•æ¼”|åœ˜ç·´/), hourlyRate: null, active: true },
-    {
-      id: 'guzheng',
-      name: 'å¤ç®',
-      icon: 'ğŸª•',
-      description: 'é è¨­å±•æ¼”ç©ºé–“ï¼›å¯è‡ªè¡Œæ¬é‹æ™‚æ‰åŠ å…¥ KAWAI æ•™å®¤',
-      roomIds: ids(/å±•æ¼”|kawai|å¡å“‡ä¼Š/i),
-      hourlyRate: null,
-      active: true
-    },
-    {
-      id: 'recording',
-      name: 'éŒ„éŸ³å®¤',
-      icon: 'ğŸ™ï¸',
-      description: 'éŒ„éŸ³ç”¨é€”æ¯å°æ™‚ NT$300ï¼›å…¶ä»–ç”¨é€”æ¯å°æ™‚ NT$100',
-      roomIds: ids(/éŒ„éŸ³å®¤|éŒ„éŸ³/),
-      hourlyRate: 300,
-      active: true
-    },
-    { id: 'other', name: 'å…¶ä»–ç”¨é€”', icon: 'ğŸµ', description: '', roomIds: normal.map(sourceId), hourlyRate: null, active: true }
-  ];
-}
-
-async function rentalUseOptions(rooms = []) {
-  const snap = await db.collection('coursePortalSettings').doc('rentalUses').get();
-  const defaults = defaultRentalUseOptions(rooms);
-  const saved = snap.exists ? snap.data() || {} : {};
-  const savedRows = Array.isArray(saved.items) ? saved.items : [];
-  let rows = defaults;
-  if (saved.version === RENTAL_USES_VERSION) {
-    rows = savedRows;
-  } else if (saved.version === 3) {
-    const defaultIds = new Set(defaults.map((row) => row.id));
-    rows = defaults.map((fallback) => {
-      const previous = savedRows.find((row) => clean(row.id) === fallback.id);
-      if (!previous) return fallback;
-      return Object.assign({}, fallback, {
-        name: clean(previous.name) || fallback.name,
-        icon: clean(previous.icon) || fallback.icon,
-        description: clean(fallback.description || previous.description),
-        roomIds: [...new Set([...(fallback.roomIds || []), ...(Array.isArray(previous.roomIds) ? previous.roomIds : [])])],
-        hourlyRate: fallback.hourlyRate == null ? previous.hourlyRate : fallback.hourlyRate,
-        active: previous.active !== false
-      });
-    }).concat(savedRows.filter((row) => !defaultIds.has(clean(row.id))));
-  }
-  return rows.map((row, index) => ({
-    id: clean(row.id) || ('use-' + (index + 1)),
-    name: clean(row.name) || ('ç”¨é€” ' + (index + 1)),
-    icon: clean(row.icon) || (defaults[index] && defaults[index].icon) || 'ğŸµ',
-    description: clean(row.description),
-    priceRangeText: clean(row.id) === 'recording' ? 'NT$100â€“300ï¼å°æ™‚' : '',
-    roomIds: Array.isArray(row.roomIds) && row.roomIds.length ? row.roomIds.map(clean).filter(Boolean) : ((defaults.find((item) => item.id === clean(row.id)) || {}).roomIds || []),
-    hourlyRate: row.hourlyRate === undefined || row.hourlyRate === null || row.hourlyRate === ''
-      ? null
-      : Math.max(0, Number(row.hourlyRate) || 0),
-    active: row.active !== false
-  })).filter((row) => row.active);
-}
-
-function rentalUseAllowsRoom(options, useType, roomId, room, setting = {}) {
-  const selectedUseType = clean(useType);
-  if (
-    setting.roomRulesVersion === 1 &&
-    Object.prototype.hasOwnProperty.call(setting, 'rentalUseTypes') &&
-    Array.isArray(setting.rentalUseTypes)
-  ) {
-    return setting.rentalUseTypes.map(clean).includes(selectedUseType);
-  }
-  if (
-    room &&
-    Object.prototype.hasOwnProperty.call(room, 'rentalUseTypes') &&
-    Array.isArray(room.rentalUseTypes)
-  ) {
-    return room.rentalUseTypes.map(clean).includes(selectedUseType);
-  }
-  const selected = (options || []).find((row) => row.id === clean(useType));
-  return Boolean(selected && selected.roomIds.includes(clean(roomId)));
-}
-
-async function rentalPolicySettings() {
-  const snap = await db.collection('coursePortalSettings').doc('rentalPolicy').get();
-  const saved = snap.exists ? snap.data() || {} : {};
-  const raw = saved.version === 3 ? saved : {};
-  const businessHours = {};
-  Object.keys(DEFAULT_BUSINESS_HOURS).forEach((day) => {
-    const fallback = DEFAULT_BUSINESS_HOURS[day];
-    const row = raw.businessHours && raw.businessHours[day] || {};
-    businessHours[day] = {
-      closed: row.closed === true || (row.closed == null && fallback.closed),
-      start: clean(row.start) || fallback.start,
-      end: clean(row.end) || fallback.end
-    };
-  });
-  return {
-    businessHours,
-    studentDiscountRate: Number(raw.studentDiscountRate == null ? 0.5 : raw.studentDiscountRate) || 0.5,
-    maxDurationMinutes: Math.min(300, Math.max(30, Number(raw.maxDurationMinutes || 300))),
-    onsitePayment: true
-  };
-}
-
-function businessWindow(policy, date) {
-  const row = policy.businessHours[String(weekday(date))] || {};
-  return {
-    closed: row.closed === true,
-    start: clean(row.start),
-    end: clean(row.end),
-    startMinutes: timeMinutes(row.start),
-    endMinutes: timeMinutes(row.end)
-  };
-}
-
-function bookingLockRows(date, roomId, startTime, endTime) {
-  const rows = [];
-  for (let minute = timeMinutes(startTime); minute < timeMinutes(endTime); minute += 30) {
-    const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
-    rows.push({ id: hash(['room-lock', date, roomId, slot].join('|')), slot, roomId, resourceId: '' });
-  }
-  return rows;
-}
-
-function sharedEquipmentLockRows(date, resourceIds, startTime, endTime) {
-  const rows = [];
-  [...new Set((resourceIds || []).map(clean).filter(Boolean))].forEach((resourceId) => {
-    for (let minute = timeMinutes(startTime); minute < timeMinutes(endTime); minute += 30) {
-      const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
-      rows.push({
-        id: hash(['equipment-lock', date, resourceId, slot].join('|')),
-        slot,
-        roomId: '',
-        resourceId
-      });
-    }
-  });
-  return rows;
-}
-
-function scheduleVersionRef() {
-  return db.collection('coursePortalRuntime').doc('scheduleVersion');
-}
-
-async function readScheduleVersion() {
-  const snapshot = await scheduleVersionRef().get();
-  return Number(snapshot.exists && snapshot.data().version || 0);
-}
-
-function scheduleSyncInProgress(snapshot) {
-  if (!snapshot || !snapshot.exists) return false;
-  const row = snapshot.data() || {};
-  return row.syncing === true && asMillis(row.syncingUntil) > Date.now();
-}
-
-function assertScheduleWritable(snapshot) {
-  if (scheduleSyncInProgress(snapshot)) {
-    throw new HttpsError('aborted', 'èª²è¡¨æ­£åœ¨åŒæ­¥æœ€æ–°è³‡æ–™ï¼Œè«‹ç¨å€™å†è©¦ã€‚');
-  }
-  if (snapshot && snapshot.exists) {
-    const row = snapshot.data() || {};
-    if (row.writesBlocked === true || clean(row.integrityStatus).toLowerCase() === 'error') {
-      throw new HttpsError(
-        'aborted',
-        'ä¸Šä¸€æ‰¹èª²è¡¨åŒæ­¥æœªå®Œæ•´å®Œæˆï¼Œç‚ºé¿å…é‡è¤‡æ’èª²ç›®å‰æš«åœå„²å­˜ï¼›è«‹ç”±ç®¡ç†è€…é‡æ–°åŒæ­¥æˆåŠŸå¾Œå†è©¦ã€‚'
-      );
-    }
-  }
-}
-
-function clean(value) {
-  return String(value == null ? '' : value).trim();
-}
-
-function normalizeName(value) {
-  return clean(value).replace(/\s+/g, '').toLowerCase();
-}
-
-function normalizeEmail(value) {
-  return clean(value).toLowerCase();
-}
-
-function validEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
-}
-
-function maskedEmail(value) {
-  const email = normalizeEmail(value);
-  const [name, domain] = email.split('@');
-  if (!name || !domain) return '';
-  const visible = name.length <= 2 ? name.slice(0, 1) : name.slice(0, 2);
-  return `${visible}${'*'.repeat(Math.max(2, Math.min(6, name.length - visible.length)))}@${domain}`;
-}
-
-function dateKey(value) {
-  const match = clean(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return '';
-  const date = new Date(`${match[1]}-${match[2]}-${match[3]}T12:00:00+08:00`);
-  if (!Number.isFinite(date.getTime())) return '';
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TAIPEI,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date) === match[0] ? match[0] : '';
-}
-
-function nowText() {
-  return new Intl.DateTimeFormat('zh-TW', {
-    timeZone: TAIPEI,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).format(new Date());
-}
-
-function hash(value) {
-  return crypto.createHash('sha256').update(clean(value)).digest('hex');
-}
-
-function randomToken(bytes = 24) {
-  return crypto.randomBytes(bytes).toString('base64url');
-}
-
-function randomBindCode() {
-  return `CP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-}
-
-function randomEmailOtp() {
-  return String(crypto.randomInt(0, 10000)).padStart(4, '0');
-}
-
-function safeEqual(left, right) {
-  const a = Buffer.from(clean(left));
-  const b = Buffer.from(clean(right));
-  return Boolean(a.length && a.length === b.length && crypto.timingSafeEqual(a, b));
-}
-
-function asMillis(value) {
-  if (!value) return 0;
-  if (typeof value.toMillis === 'function') return value.toMillis();
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function addDays(key, amount) {
-  const value = new Date(`${key}T12:00:00+08:00`);
-  value.setUTCDate(value.getUTCDate() + Number(amount || 0));
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TAIPEI,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(value);
-}
-
-function addMonths(key, amount) {
-  const value = dateKey(key);
-  if (!value) return '';
-  const [year, month, day] = value.split('-').map(Number);
-  const targetMonth = month - 1 + Number(amount || 0);
-  const targetYear = year + Math.floor(targetMonth / 12);
-  const normalizedMonth = ((targetMonth % 12) + 12) % 12;
-  const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
-  return [
-    targetYear,
-    String(normalizedMonth + 1).padStart(2, '0'),
-    String(Math.min(day, lastDay)).padStart(2, '0')
-  ].join('-');
-}
-
-function portalMaximumAdvanceDate() {
-  return addMonths(currentTaipeiDay(), PORTAL_MAX_ADVANCE_MONTHS);
-}
-
-function assertPortalAdvanceDate(date, label = 'æ—¥æœŸ') {
-  const value = dateKey(date);
-  const maximum = portalMaximumAdvanceDate();
-  if (!value) throw new HttpsError('invalid-argument', `${label}æ ¼å¼éŒ¯èª¤ã€‚`);
-  if (value > maximum) {
-    throw new HttpsError(
-      'failed-precondition',
-      `${label}æœ€å¤šåªèƒ½é¸æ“‡åˆ° ${maximum}ï¼ˆæ“ä½œæ—¥èµ·å…©å€‹æœˆå…§ï¼‰ã€‚`
-    );
-  }
-  return value;
-}
-
-function weekday(key) {
-  return new Date(`${key}T12:00:00+08:00`).getDay();
-}
-
-function timeMinutes(value) {
-  const match = clean(value).match(/^(\d{1,2}):(\d{2})/);
-  return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
-}
-
-function taipeiDateTimeMillis(date, time) {
-  const key = dateKey(date);
-  const value = clean(time).slice(0, 5);
-  if (!key || !/^\d{2}:\d{2}$/.test(value)) return 0;
-  const parsed = Date.parse(`${key}T${value}:00+08:00`);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function jsonValue(value) {
-  if (value == null) return value;
-  if (Array.isArray(value)) return value.map(jsonValue);
-  if (value && typeof value.toDate === 'function') return value.toDate().toISOString();
-  if (typeof value === 'object') {
-    const result = {};
-    Object.keys(value).forEach((key) => {
-      if (!key.startsWith('__')) result[key] = jsonValue(value[key]);
-    });
-    return result;
-  }
-  return value;
-}
-
-function sourceId(row) {
-  return clean(row && (row.id || row.sourceId || row._id || row.__id));
-}
-
-function sourcePhone(row) {
-  return clean(row && (
-    row.phone || row.mobile || row.tel || row.telephone ||
-    row.contactPhone || row.parentPhone || row.guardianPhone
-  ));
-}
-
-function sourceEmail(row) {
-  return normalizeEmail(row && (
-    row.email || row.mail || row.contactEmail || row.parentEmail ||
-    row.guardianEmail || row.loginEmail
-  ));
-}
-
-function sourceActive(row) {
-  const value = row && (row.active != null ? row.active : row.status);
-  if (value == null || value === '') return true;
-  return ![
-    'false', 'åœç”¨', 'é›¢è·', 'è¨»éŠ·', 'åœèª²', 'å–æ¶ˆ', 'å·²å–æ¶ˆ', 'å®Œæˆ',
-    'inactive', 'disabled', 'stopped', 'completed', 'cancelled', 'canceled'
-  ].includes(clean(value).toLowerCase());
-}
-
-async function mergeStudentProfileOverrides(rows) {
-  const snapshot = await db.collection('coursePortalStudentProfiles').get();
-  const overrides = new Map(snapshot.docs.map((doc) => [doc.id, doc.data() || {}]));
-  return rows.map((row) => {
-    const override = overrides.get(sourceId(row));
-    if (!override || override.active === false) return row;
-    const next = Object.assign({}, row);
-    const name = clean(override.name);
-    const phone = normalizePhone(override.phone);
-    if (name) next.name = name;
-    if (phone) next.phone = phone;
-    return next;
-  });
-}
-
-function transactionAmount(row) {
-  return Math.max(0, Number(row && (row.amount || row.paidAmount || row.receivedAmount) || 0));
-}
-
-function tuitionBasePaidAmount(row) {
-  return Math.max(0, Number(
-    row && (
-      row.paidAmount ||
-      row.receivedAmount ||
-      row.paid ||
-      row.received
-    ) || 0
-  ));
-}
-
-function mergePortalTuitionRows(rows, portalDocs, transactionDocs, receiptDocs = []) {
-  const merged = new Map((rows || []).map((row) => [sourceId(row), Object.assign({}, row)]).filter(([id]) => id));
-  (portalDocs || []).forEach((doc) => {
-    const source = jsonValue(typeof doc.data === 'function' ? doc.data() : doc) || {};
-    if (source.active === false) return;
-    const id = sourceId(source) || clean(doc.id);
-    if (!id) return;
-    merged.set(id, Object.assign({ __id: id }, merged.get(id) || {}, source, { id }));
-  });
-  const overlays = new Map();
-  (transactionDocs || []).forEach((doc) => {
-    const source = jsonValue(typeof doc.data === 'function' ? doc.data() : doc) || {};
-    if (source.active === false || clean(source.status) !== 'confirmed') return;
-    const periodId = clean(source.periodId);
-    if (!periodId) return;
-    if (!overlays.has(periodId)) overlays.set(periodId, []);
-    overlays.get(periodId).push(Object.assign({ id: clean(source.id || doc.id) }, source));
-  });
-  overlays.forEach((transactions, periodId) => {
-    const period = merged.get(periodId);
-    if (!period) return;
-    const existing = Array.isArray(period.transactions) ? period.transactions.slice() : [];
-    const existingIds = new Set(existing.map((row) => clean(row && row.id)).filter(Boolean));
-    const additions = transactions.filter((row) => !existingIds.has(clean(row.id)));
-    const paidAmount = tuitionBasePaidAmount(period) + additions.reduce((sum, row) => sum + transactionAmount(row), 0);
-    merged.set(periodId, Object.assign({}, period, {
-      paidAmount,
-      receivedAmount: paidAmount,
-      transactions: existing.concat(additions)
-    }));
-  });
-  const receiptsByPeriod = new Map();
-  (receiptDocs || []).forEach((doc) => {
-    const source = jsonValue(typeof doc.data === 'function' ? doc.data() : doc) || {};
-    if (source.active === false || clean(source.status) !== 'issued' || !clean(source.imageUrl)) return;
-    const periodId = clean(source.periodId);
-    if (!periodId) return;
-    if (!receiptsByPeriod.has(periodId)) receiptsByPeriod.set(periodId, []);
-    receiptsByPeriod.get(periodId).push(Object.assign({ id: clean(source.id || doc.id) }, source));
-  });
-  receiptsByPeriod.forEach((receipts, periodId) => {
-    const period = merged.get(periodId);
-    if (!period) return;
-    const transactions = (Array.isArray(period.transactions) ? period.transactions : []).map((row, index) => {
-      if (clean(row && row.type) === 'refund') return row;
-      const transactionId = clean(row && row.id);
-      const date = dateKey(row && (row.date || row.created));
-      const amount = transactionAmount(row);
-      const method = clean(row && (row.method || row.payType || row.paymentMethod));
-      const receipt = receipts.find((item) =>
-        (transactionId && clean(item.transactionId) === transactionId) ||
-        (
-          Number(item.transactionIndex) === index &&
-          dateKey(item.paymentDate) === date &&
-          Number(item.amount || 0) === amount &&
-          (clean(item.method) === method || !method || clean(item.method) === 'æ—¢æœ‰ç¹³è²»')
-        )
-      );
-      if (!receipt) return row;
-      return Object.assign({}, row, {
-        receiptId: clean(receipt.id),
-        receiptNo: clean(receipt.receiptNo),
-        receiptImageUrl: clean(receipt.imageUrl)
-      });
-    });
-    merged.set(periodId, Object.assign({}, period, { transactions }));
-  });
-  return [...merged.values()];
-}
-
-async function portalTuitionDocuments(studentId = '') {
-  const periodCollection = db.collection(TUITION_PERIODS);
-  const transactionCollection = db.collection(TUITION_TRANSACTIONS);
-  const receiptCollection = db.collection(TUITION_RECEIPTS);
-  const normalizedStudentId = clean(studentId);
-  const [periods, transactions, receipts] = await Promise.all([
-    normalizedStudentId
-      ? periodCollection.where('studentId', '==', normalizedStudentId).get()
-      : periodCollection.get(),
-    normalizedStudentId
-      ? transactionCollection.where('studentId', '==', normalizedStudentId).get()
-      : transactionCollection.get(),
-    normalizedStudentId
-      ? receiptCollection.where('studentId', '==', normalizedStudentId).get()
-      : receiptCollection.get()
-  ]);
-  return { periods: periods.docs, transactions: transactions.docs, receipts: receipts.docs };
-}
-
-function firstArray(row, keys) {
-  for (const key of keys) {
-    if (Array.isArray(row && row[key])) return row[key].map(clean).filter(Boolean);
-  }
-  return [];
-}
-
-async function mirrorRows(type) {
-  const snapshot = await db.collection(MIRROR[type]).where('sourceActive', '==', true).get();
-  let rows = snapshot.docs
-    .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}))
-    .filter(Boolean);
-  if (type === 'students') return mergeStudentProfileOverrides(rows);
-  if (type === 'tuitionPeriods') {
-    const portal = await portalTuitionDocuments();
-    rows = mergePortalTuitionRows(rows, portal.periods, portal.transactions, portal.receipts);
-  }
-  return rows;
-}
-
-async function mirrorRowsIncludingInactive(type) {
-  const snapshot = await db.collection(MIRROR[type]).get();
-  let rows = snapshot.docs
-    .map((doc) => Object.assign({
-      __id: doc.id,
-      __mirrorActive: (doc.data() || {}).sourceActive !== false
-    }, jsonValue((doc.data() || {}).source) || {}))
-    .filter(Boolean);
-  if (type === 'students') rows = await mergeStudentProfileOverrides(rows);
-  return rows;
-}
-
-async function mirrorRowsByDateRange(type, startDate, endDate, options = {}) {
-  const includeInactive = options.includeInactive === true;
-  const dates = [];
-  for (let key = dateKey(startDate), guard = 0; key && key <= endDate && guard < 3700; key = addDays(key, 1), guard += 1) {
-    dates.push(key);
-  }
-  if (!dates.length) return [];
-  try {
-    const chunks = [];
-    for (let offset = 0; offset < dates.length; offset += 30) chunks.push(dates.slice(offset, offset + 30));
-    const snapshots = await Promise.all(chunks.map((chunk) =>
-      db.collection(MIRROR[type]).where('source.date', 'in', chunk).get()
-    ));
-    const rows = new Map();
-    snapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
-      const envelope = doc.data() || {};
-      if (!includeInactive && envelope.sourceActive === false) return;
-      const source = jsonValue(envelope.source) || {};
-      rows.set(doc.id, Object.assign({
-        __id: doc.id,
-        __mirrorActive: envelope.sourceActive !== false,
-        __mirrorUpdatedAt: asMillis(envelope.sourceUpdatedAt || envelope.updatedAt)
-      }, source));
-    }));
-    return [...rows.values()];
-  } catch (error) {
-    console.warn('[course portal date range fallback]', type, clean(error && error.message));
-    const snapshot = includeInactive
-      ? await db.collection(MIRROR[type]).get()
-      : await db.collection(MIRROR[type]).where('sourceActive', '==', true).get();
-    return snapshot.docs.map((doc) => {
-      const envelope = doc.data() || {};
-      if (!includeInactive && envelope.sourceActive === false) return null;
-      const source = jsonValue(envelope.source) || {};
-      return Object.assign({
-        __id: doc.id,
-        __mirrorActive: envelope.sourceActive !== false,
-        __mirrorUpdatedAt: asMillis(envelope.sourceUpdatedAt || envelope.updatedAt)
-      }, source);
-    }).filter((row) => {
-      const key = row && eventDate(row);
-      return key >= startDate && key <= endDate;
-    });
-  }
-}
-
-async function mirrorRowsByField(type, field, value) {
-  const collection = db.collection(MIRROR[type]);
-  let rows;
-  try {
-    const snapshot = await collection
-      .where('sourceActive', '==', true)
-      .where(`source.${field}`, '==', clean(value))
-      .get();
-    rows = snapshot.docs
-      .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}));
-  } catch (error) {
-    console.warn('[course portal field query fallback]', type, field, clean(error && error.message));
-    const snapshot = await collection.where('sourceActive', '==', true).get();
-    rows = snapshot.docs
-      .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}))
-      .filter((row) => clean(row[field]) === clean(value));
-  }
-  if (type === 'tuitionPeriods') {
-    const portal = await portalTuitionDocuments(field === 'studentId' ? value : '');
-    rows = mergePortalTuitionRows(rows, portal.periods, portal.transactions, portal.receipts)
-      .filter((row) => clean(row[field]) === clean(value));
-  }
-  return rows;
-}
-
-async function scheduleChangeDocsByDateRange(startDate, endDate) {
-  const collection = db.collection('coursePortalScheduleChanges');
-  try {
-    const snapshots = await Promise.all([
-      collection.where('event.date', '>=', startDate).where('event.date', '<=', endDate).get(),
-      collection.where('sourceDate', '>=', startDate).where('sourceDate', '<=', endDate).get(),
-      collection.where('action', '==', 'permanent_move').get()
-    ]);
-    const docs = new Map();
-    snapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
-      const row = doc.data() || {};
-      if (row.active === false) return;
-      if (
-        clean(row.action) === 'permanent_move' &&
-        dateKey(row.cutoverDate || row.sourceDate || row.effectiveDate || row.event && row.event.date) > endDate
-      ) return;
-      docs.set(doc.id, doc);
-    }));
-    return [...docs.values()];
-  } catch (error) {
-    console.warn('[course portal schedule change range fallback]', clean(error && error.message));
-    const snapshot = await collection.where('active', '==', true).get();
-    return snapshot.docs;
-  }
-}
-
-function assertInput(value, label) {
-  if (!clean(value)) throw new HttpsError('invalid-argument', `è«‹å¡«å¯«${label}ã€‚`);
-}
-
-function currentTaipeiDay() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TAIPEI,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date());
-}
-
-async function consumeRateLimit(kind, identity) {
-  const day = currentTaipeiDay();
-  const rawIdentity = clean(identity);
-  const normalizedIdentity = rawIdentity.includes('@') ? normalizeEmail(rawIdentity) : normalizePhone(rawIdentity);
-  const ref = db.collection('coursePortalRateLimits').doc(hash(`${kind}|${normalizedIdentity}|${day}`));
-  await db.runTransaction(async (tx) => {
-    const snapshot = await tx.get(ref);
-    const count = Number(snapshot.exists && snapshot.data().count || 0);
-    if (count >= 8) throw new HttpsError('resource-exhausted', 'ä»Šå¤©å˜—è©¦æ¬¡æ•¸éå¤šï¼Œè«‹è¯çµ¡ç®¡ç†è€…å”åŠ©ç™»å…¥ã€‚');
-    tx.set(ref, {
-      kind,
-      count: count + 1,
-      day,
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-  });
-}
-
-async function findPerson(type, name, phone) {
-  const rows = await mirrorRows(type);
-  const wantedName = normalizeName(name);
-  const matches = rows.filter((row) =>
-    sourceActive(row) &&
-    normalizeName(row.name || row.teacherName || row.studentName) === wantedName &&
-    phoneMatches(sourcePhone(row), phone)
-  );
-  if (!matches.length) throw new HttpsError('not-found', 'å§“åèˆ‡é›»è©±æ‰¾ä¸åˆ°ç›¸ç¬¦è³‡æ–™ï¼Œè«‹ç¢ºèªè¼¸å…¥å…§å®¹æˆ–è«‹ç®¡ç†è€…å”åŠ©ã€‚');
-  if (matches.length > 1) throw new HttpsError('failed-precondition', 'æ‰¾åˆ°å¤šç­†ç›¸åŒè³‡æ–™ï¼Œè«‹ç”±ç®¡ç†è€…ç¢ºèªå¾Œå†ç™»å…¥ã€‚');
-  return matches[0];
-}
-
-async function createBindCode({ type, targetId, name, phone, email, relationship, renterId }) {
-  const code = randomBindCode();
-  const expiresAt = Timestamp.fromMillis(Date.now() + 20 * 60 * 1000);
-  await db.collection('coursePortalBindCodes').doc(hash(code)).set({
-    codeHint: code.slice(-4),
-    type,
-    targetId: clean(targetId),
-    renterId: clean(renterId),
-    name: clean(name),
-    phoneHash: hash(normalizePhone(phone)),
-    email: normalizeEmail(email),
-    emailNormalized: normalizeEmail(email),
-    emailVerified: Boolean(normalizeEmail(email)),
-    relationship: clean(relationship),
-    status: 'pending',
-    createdAt: FieldValue.serverTimestamp(),
-    expiresAt
-  });
-  const labels = {
-    teacher: 'è€å¸«å…¥å£',
-    student: 'å­¸ç”Ÿç¶å®š',
-    renter: 'ç§Ÿç”¨ç¶å®š'
-  };
-  const bindText = `æŸšå­${labels[type]} ${code}`;
-  return {
-    ok: true,
-    code,
-    bindText,
-    expiresAt: expiresAt.toDate().toISOString(),
-    lineUrl: `https://line.me/R/msg/text/?${encodeURIComponent(bindText)}`
-  };
-}
-
-async function startBinding(data) {
-  throw new HttpsError(
-    'failed-precondition',
-    'ç‚ºäº†ä¿è­·å¸³è™Ÿï¼Œè«‹å…ˆå®Œæˆ Email å››ç¢¼é©—è­‰ï¼Œå†é€²è¡Œç¬¬ä¸€æ¬¡ LINE ç¶å®šã€‚'
-  );
-}
-
-async function prepareBindingIdentity(data) {
-  const type = clean(data.type).toLowerCase();
-  const name = clean(data.name);
-  const phone = normalizePhone(data.phone);
-  const email = normalizeEmail(data.email);
-  if (!['teacher', 'student', 'renter'].includes(type)) {
-    throw new HttpsError('invalid-argument', 'ä¸æ”¯æ´çš„å…¥å£é¡å‹ã€‚');
-  }
-  assertInput(name, 'å§“å');
-  assertInput(phone, 'é›»è©±');
-  if (email && !validEmail(email)) {
-    throw new HttpsError('invalid-argument', 'Email æ ¼å¼ä¸æ­£ç¢ºã€‚');
-  }
-
-  if (type === 'teacher') {
-    const teacher = await findPerson('teachers', name, phone);
-    return { type, targetId: sourceId(teacher), name, phone, email, relationship: '', renterId: '' };
-  }
-  if (type === 'student') {
-    const student = await findPerson('students', name, phone);
-    return {
-      type,
-      targetId: sourceId(student),
-      name,
-      phone,
-      email,
-      relationship: clean(data.relationship) || 'æœ¬äºº'
-    };
-  }
-
-  const renterId = hash(`${normalizeName(name)}|${phone}`).slice(0, 32);
-  const renterSnapshot = await db.collection('coursePortalRenters').doc(renterId).get();
-  let existingEmailVerified = false;
-  if (renterSnapshot.exists) {
-    const renter = renterSnapshot.data() || {};
-    if (renter.active === false) {
-      throw new HttpsError('permission-denied', 'é€™å€‹ç§Ÿç”¨å¸³è™Ÿç›®å‰å·²åœç”¨ï¼Œè«‹è¯çµ¡æŸšå­æ¨‚å™¨ã€‚');
-    }
-    existingEmailVerified = renter.emailVerified === true;
-  }
-  return { type, targetId: '', renterId, name, phone, email, relationship: '', existingEmailVerified };
-}
-
-function bindingCollection(type) {
-  if (type === 'teacher') return 'coursePortalTeacherBindings';
-  if (type === 'student') return 'coursePortalStudentBindings';
-  return 'coursePortalRenterBindings';
-}
-
-function bindingNeedsManagerApproval(type) {
-  return type === 'teacher' || type === 'student';
-}
-
-function bindingStatusLabel(status) {
-  const value = clean(status);
-  if (value === 'pending') return 'ç­‰å¾…ä¸»ç®¡ç¢ºèª';
-  if (value === 'rejected') return 'ä¸»ç®¡å·²æ‹’çµ•';
-  if (value === 'revoked') return 'å·²åœç”¨';
-  return 'ä½¿ç”¨ä¸­';
-}
-
-function identityTargetField(type) {
-  if (type === 'teacher') return 'teacherId';
-  if (type === 'student') return 'studentId';
-  return 'renterId';
-}
-
-function identityTargetId(identity) {
-  return identity.type === 'renter' ? clean(identity.renterId) : clean(identity.targetId);
-}
-
-function regularAccountId(type, email) {
-  return hash(`regular-account|${clean(type)}|${normalizeEmail(email)}`);
-}
-
-function lineAccountId(type, lineUserId) {
-  return hash(`line-account|${clean(type)}|${clean(lineUserId)}`);
-}
-
-async function resolveRegularIdentity(identity) {
-  const type = clean(identity.type);
-  const targetField = identityTargetField(type);
-  const targetId = identityTargetId(identity);
-  const fallbackAuthAccountId = regularAccountId(type, identity.email);
-  const snapshot = await db.collection(bindingCollection(type))
-    .where(targetField, '==', targetId)
-    .get();
-  const rows = snapshot.docs.map((doc) => Object.assign({
-    __id: doc.id,
-    __ref: doc.ref
-  }, doc.data() || {}));
-  const sameAccount = rows.filter((row) =>
-    clean(row.authAccountId) === fallbackAuthAccountId ||
-    (
-      validEmail(identity.email) &&
-      normalizeEmail(row.emailNormalized || row.email) === normalizeEmail(identity.email)
-    )
-  );
-  if (sameAccount.some((row) => clean(row.status) === 'revoked')) {
-    throw new HttpsError('permission-denied', 'é€™å€‹å…¥å£å¸³è™Ÿç›®å‰å·²åœç”¨ï¼Œè«‹è¯çµ¡æŸšå­æ¨‚å™¨å”åŠ©æ¢å¾©ã€‚');
-  }
-  const active = sameAccount.find((row) =>
-    clean(row.status) === 'active' && clean(row.lineUserId)
-  ) || sameAccount.find((row) => clean(row.status) === 'active') || null;
-  return {
-    authAccountId: clean(active && active.authAccountId) || fallbackAuthAccountId,
-    bindingId: clean(active && active.__id),
-    lineUserId: clean(active && active.lineUserId)
-  };
-}
-
-async function findEmailLoginAccount(type, email) {
-  if (!['teacher', 'student', 'renter'].includes(type)) return null;
-  const snapshot = await db.collection(bindingCollection(type))
-    .where('emailNormalized', '==', normalizeEmail(email))
-    .get();
-  const rows = snapshot.docs
-    .map((doc) => Object.assign({ __id: doc.id }, doc.data() || {}))
-    .filter((row) => clean(row.status) === 'active' && row.emailVerified === true);
-  const accountKeys = [...new Set(rows.map((row) =>
-    clean(row.authAccountId) || (clean(row.lineUserId) ? `line:${clean(row.lineUserId)}` : '')
-  ).filter(Boolean))];
-  if (accountKeys.length !== 1) return null;
-  const row = rows.find((item) =>
-    (clean(item.authAccountId) || (clean(item.lineUserId) ? `line:${clean(item.lineUserId)}` : '')) === accountKeys[0]
-  ) || {};
-  return {
-    type,
-    lineUserId: clean(row.lineUserId),
-    authAccountId: clean(row.authAccountId),
-    targetId: type === 'teacher' ? clean(row.teacherId) : (type === 'student' ? clean(row.studentId) : ''),
-    renterId: type === 'renter' ? clean(row.renterId) : ''
-  };
-}
-
-async function prepareLineRegistrationIdentity(data, type) {
-  const setupToken = clean(data.setupToken);
-  if (!setupToken) {
-    throw new HttpsError('invalid-argument', 'LINE ç™»å…¥è³‡æ–™å·²éºå¤±ï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-  }
-  const lineSetupId = hash(setupToken);
-  const setupSnapshot = await db.collection('coursePortalLineSetupTokens').doc(lineSetupId).get();
-  const setup = setupSnapshot.exists ? setupSnapshot.data() || {} : null;
-  if (
-    !setup ||
-    clean(setup.status) !== 'pending' ||
-    asMillis(setup.expiresAt) < Date.now() ||
-    clean(setup.type) !== type ||
-    !clean(setup.lineUserId)
-  ) {
-    throw new HttpsError('permission-denied', 'LINE ç™»å…¥è³‡æ–™å·²å¤±æ•ˆï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-  }
-  const identity = await prepareBindingIdentity(Object.assign({}, data, { type }));
-  if (!validEmail(identity.email)) {
-    throw new HttpsError('invalid-argument', 'è«‹å¡«å¯« Email ä¸¦å®Œæˆå››ç¢¼é©—è­‰ã€‚');
-  }
-  return Object.assign(identity, {
-    lineSetupId,
-    lineUserId: clean(setup.lineUserId)
-  });
-}
-
-async function sendEmailOtp(data, helpers = {}) {
-  const requestedPurpose = clean(data.purpose).toLowerCase();
-  const purpose = ['account', 'login', 'line-registration'].includes(requestedPurpose)
-    ? requestedPurpose
-    : 'bind';
-  const type = clean(data.type).toLowerCase();
-  if (!['teacher', 'student', 'renter'].includes(type)) {
-    throw new HttpsError('invalid-argument', 'ä¸æ”¯æ´çš„å…¥å£é¡å‹ã€‚');
-  }
-
-  const email = normalizeEmail(data.email);
-  assertInput(email, 'Email');
-  if (!validEmail(email)) throw new HttpsError('invalid-argument', 'Email æ ¼å¼ä¸æ­£ç¢ºã€‚');
-  await consumeRateLimit(`email-otp-${purpose}-${type}`, email);
-
-  let identity = null;
-  if (purpose === 'line-registration') {
-    identity = await prepareLineRegistrationIdentity(data, type);
-  } else if (purpose === 'account' || purpose === 'bind') {
-    identity = await prepareBindingIdentity(data);
-    if (purpose === 'account') {
-      identity = Object.assign(identity, await resolveRegularIdentity(identity));
-    }
-  } else {
-    identity = await findEmailLoginAccount(type, email);
-  }
-  const challenge = randomToken(32);
-  const code = randomEmailOtp();
-  const expiresAt = Timestamp.fromMillis(Date.now() + EMAIL_OTP_TTL_MS);
-  const payload = {
-    purpose,
-    type,
-    email,
-    emailNormalized: email,
-    codeHash: hash(`${challenge}|${code}`),
-    attempts: 0,
-    maxAttempts: EMAIL_OTP_MAX_ATTEMPTS,
-    status: 'pending',
-    createdAt: FieldValue.serverTimestamp(),
-    expiresAt
-  };
-  if (identity) {
-    payload.lineUserId = clean(identity.lineUserId);
-    payload.authAccountId = clean(identity.authAccountId);
-    payload.bindingId = clean(identity.bindingId);
-    payload.targetId = clean(identity.targetId);
-    payload.renterId = clean(identity.renterId);
-    payload.name = clean(identity.name);
-    payload.phone = normalizePhone(identity.phone);
-    payload.relationship = clean(identity.relationship);
-    payload.lineSetupId = clean(identity.lineSetupId);
-  } else {
-    payload.decoy = true;
-  }
-  const ref = db.collection('coursePortalEmailOtps').doc(hash(challenge));
-  await ref.set(payload);
-
-  if (identity && typeof helpers.sendEmail !== 'function') {
-    await ref.delete().catch(() => {});
-    throw new HttpsError('internal', 'é©—è­‰ä¿¡æœå‹™å°šæœªå•Ÿç”¨ï¼Œè«‹ä½¿ç”¨ LINE å¿«é€Ÿç™»å…¥æˆ–è¯çµ¡ç®¡ç†è€…ã€‚');
-  }
-  if (identity) {
-    try {
-      await helpers.sendEmail({
-        channel: 'email',
-        targetEmail: email,
-        title: `æŸšå­æ¨‚å™¨${['bind', 'line-registration'].includes(purpose) ? 'é¦–æ¬¡é©—è­‰' : 'ç™»å…¥'}é©—è­‰ç¢¼`,
-        body: [
-          `æ‚¨çš„å››ç¢¼é©—è­‰ç¢¼æ˜¯ï¼š${code}`,
-          '',
-          'é©—è­‰ç¢¼ 180 ç§’å…§æœ‰æ•ˆï¼Œæœ€å¤šå¯è¼¸å…¥ 5 æ¬¡ã€‚',
-          'è‹¥ä¸æ˜¯æ‚¨æœ¬äººæ“ä½œï¼Œè«‹å¿½ç•¥é€™å°ä¿¡ï¼Œä¹Ÿä¸è¦æŠŠé©—è­‰ç¢¼å‘Šè¨´ä»»ä½•äººã€‚'
-        ].join('\n')
-      });
-    } catch (error) {
-      await ref.delete().catch(() => {});
-      console.error('[course portal email otp failed]', error);
-      throw new HttpsError('internal', 'é©—è­‰ä¿¡æš«æ™‚ç„¡æ³•å¯„å‡ºï¼Œè«‹ç¨å¾Œå†è©¦æˆ–ä½¿ç”¨ LINE å¿«é€Ÿç™»å…¥ã€‚');
-    }
-  }
-
-  return {
-    ok: true,
-    challengeToken: challenge,
-    expiresInSeconds: Math.floor(EMAIL_OTP_TTL_MS / 1000),
-    maskedEmail: maskedEmail(email),
-    message: 'å››ç¢¼é©—è­‰ç¢¼å·²å¯„åˆ°æ‚¨çš„ Emailã€‚'
-  };
-}
-
-async function activeStudentIdsForAccount(authAccountId) {
-  if (!clean(authAccountId)) return [];
-  const snapshot = await db.collection('coursePortalStudentBindings')
-    .where('authAccountId', '==', clean(authAccountId))
-    .where('status', '==', 'active')
-    .get();
-  return [...new Set(snapshot.docs.map((doc) => clean(doc.data().studentId)).filter(Boolean))];
-}
-
-async function activeStudentBindingsForSession(session) {
-  const queries = [];
-  if (clean(session && session.lineUserId)) {
-    queries.push(
-      db.collection('coursePortalStudentBindings')
-        .where('lineUserId', '==', clean(session.lineUserId))
-        .where('status', '==', 'active')
-        .get()
-    );
-  }
-  if (clean(session && session.authAccountId)) {
-    queries.push(
-      db.collection('coursePortalStudentBindings')
-        .where('authAccountId', '==', clean(session.authAccountId))
-        .where('status', '==', 'active')
-        .get()
-    );
-  }
-  const snapshots = await Promise.all(queries);
-  return [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [
-    doc.id,
-    Object.assign({ __id: doc.id, __ref: doc.ref }, doc.data() || {})
-  ])).values()];
-}
-
-async function activeStudentIdsForSession(session) {
-  const bindings = await activeStudentBindingsForSession(session);
-  const studentIds = [...new Set(bindings.map((row) => clean(row.studentId)).filter(Boolean))];
-  if (!studentIds.length) return [];
-  const today = currentTaipeiDay();
-  const [students, fixedCourses, temporaryCourses, events, suspensions] = await Promise.all([
-    mirrorRowsIncludingInactive('students'),
-    mirrorRows('fixedCourses'),
-    mirrorRows('temporaryCourses'),
-    mirrorRowsByDateRange('events', today, addDays(today, 120)),
-    reconcileStudentSuspensionsForNewSchedules(studentIds)
-  ]);
-  const active = activeLearningStudentIds(
-    students,
-    [...fixedCourses, ...temporaryCourses],
-    events,
-    suspensions
-  );
-  return studentIds.filter((studentId) => active.has(studentId));
-}
-
-function sessionOwnerKey(session) {
-  const authAccountId = clean(session && session.authAccountId);
-  const lineUserId = clean(session && session.lineUserId);
-  if (authAccountId) return `account:${authAccountId}`;
-  if (lineUserId) return `line:${lineUserId}`;
-  return '';
-}
-
-async function authorizedBindingsForSession(session) {
-  const role = clean(session && session.role);
-  if (!['teacher', 'student', 'renter'].includes(role)) return [];
-  if (role === 'student') return activeStudentBindingsForSession(session);
-  const collection = db.collection(bindingCollection(role));
-  const queries = [];
-  if (clean(session.lineUserId)) {
-    queries.push(collection.where('lineUserId', '==', clean(session.lineUserId)).get());
-  }
-  if (clean(session.authAccountId)) {
-    queries.push(collection.where('authAccountId', '==', clean(session.authAccountId)).get());
-  }
-  const targetField = role === 'teacher' ? 'teacherId' : 'renterId';
-  const targetId = clean(session[targetField]);
-  if (!queries.length && targetId) {
-    queries.push(collection.where(targetField, '==', targetId).get());
-  }
-  const snapshots = await Promise.all(queries);
-  return [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [
-    doc.id,
-    Object.assign({ __id: doc.id, __ref: doc.ref }, doc.data() || {})
-  ])).values()].filter((row) =>
-    clean(row.status) === 'active' &&
-    (!targetId || clean(row[targetField]) === targetId)
-  );
-}
-
-async function touchAuthorizedBindings(session) {
-  const bindings = await authorizedBindingsForSession(session);
-  if (!bindings.length) return false;
-  const batch = db.batch();
-  bindings.forEach((row) => batch.set(row.__ref, {
-    lastLoginAt: FieldValue.serverTimestamp(),
-    lastLoginAtText: nowText(),
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true }));
-  await batch.commit();
-  return true;
-}
-
-async function issueSession({ type, lineUserId, authAccountId, targetId, renterId, authMethod, ttlMs }) {
-  const session = randomToken(36);
-  const sessionTtlMs = Math.max(30 * 60 * 1000, Number(ttlMs || PORTAL_SESSION_TTL_MS));
-  const expiresAt = Timestamp.fromMillis(Date.now() + sessionTtlMs);
-  const sessionPayload = {
-    role: type,
-    lineUserId: clean(lineUserId),
-    authAccountId: clean(authAccountId),
-    teacherId: type === 'teacher' ? clean(targetId) : '',
-    renterId: type === 'renter' ? clean(renterId) : '',
-    authMethod: clean(authMethod) || 'line',
-    sliding: sessionTtlMs >= PORTAL_SESSION_TTL_MS,
-    sessionTtlMs,
-    status: 'active',
-    createdAt: FieldValue.serverTimestamp(),
-    lastUsedAt: FieldValue.serverTimestamp(),
-    expiresAt
-  };
-  if (type === 'student') {
-    const [lineStudentIds, accountStudentIds] = await Promise.all([
-      clean(lineUserId) ? activeStudentIdsForLine(lineUserId) : [],
-      clean(authAccountId) ? activeStudentIdsForAccount(authAccountId) : []
-    ]);
-    sessionPayload.studentIds = [...new Set([
-      ...lineStudentIds,
-      ...accountStudentIds,
-      clean(targetId)
-    ].filter(Boolean))];
-  }
-  const sessionRef = db.collection('coursePortalSessions').doc(hash(session));
-  await sessionRef.set(sessionPayload);
-  if (!(await touchAuthorizedBindings(sessionPayload))) {
-    await sessionRef.delete().catch(() => {});
-    throw new HttpsError('permission-denied', 'é€™å€‹ç™»å…¥æ¬Šé™å·²åœç”¨æˆ–å°šæœªæ ¸å‡†ï¼Œè«‹è¯çµ¡æŸšå­æ¨‚å™¨ã€‚');
-  }
-  await queueSessionSecurityNotice(hash(session), sessionPayload);
-  return { sessionToken: session, expiresAt };
-}
-
-async function completeRegularAccount(source) {
-  const type = clean(source.type);
-  const targetId = clean(source.targetId);
-  const renterId = clean(source.renterId);
-  const authAccountId = clean(source.authAccountId) || regularAccountId(type, source.email);
-  const collection = db.collection(bindingCollection(type));
-  const generatedBindingId = hash([
-    'regular-login',
-    type,
-    authAccountId,
-    type === 'renter' ? renterId : targetId
-  ].join('|'));
-  const bindingId = clean(source.bindingId) || generatedBindingId;
-  const bindingRef = collection.doc(bindingId);
-  const existing = await bindingRef.get();
-  const previous = existing.exists ? existing.data() || {} : {};
-  if (['revoked', 'rejected'].includes(clean(previous.status))) {
-    throw new HttpsError('permission-denied', 'é€™å€‹å…¥å£å¸³è™Ÿç›®å‰å·²åœç”¨ï¼Œè«‹è¯çµ¡æŸšå­æ¨‚å™¨å”åŠ©æ¢å¾©ã€‚');
-  }
-  const approved = type === 'renter' || clean(previous.status) === 'active';
-  const nextStatus = approved ? 'active' : 'pending';
-
-  const payload = {
-    type,
-    authAccountId,
-    authProvider: clean(previous.lineUserId) ? 'line-login+email' : 'email-otp',
-    name: clean(source.name),
-    phoneHash: hash(normalizePhone(source.phone)),
-    email: normalizeEmail(source.email),
-    emailNormalized: normalizeEmail(source.email),
-    emailVerified: true,
-    emailVerifiedAt: FieldValue.serverTimestamp(),
-    status: nextStatus,
-    approvalStatus: approved ? 'approved' : 'pending',
-    approvalRequestedAt: approved ? (previous.approvalRequestedAt || null) : FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    registeredAt: previous.registeredAt || FieldValue.serverTimestamp()
-  };
-  if (type === 'teacher') payload.teacherId = targetId;
-  if (type === 'student') {
-    payload.studentId = targetId;
-    payload.relationship = clean(source.relationship) || 'æœ¬äºº';
-  }
-  if (type === 'renter') payload.renterId = renterId;
-
-  const batch = db.batch();
-  if (type === 'renter') {
-    batch.set(db.collection('coursePortalRenters').doc(renterId), {
-      renterId,
-      name: clean(source.name),
-      phone: normalizePhone(source.phone),
-      email: normalizeEmail(source.email),
-      emailNormalized: normalizeEmail(source.email),
-      emailVerified: true,
-      emailVerifiedAt: FieldValue.serverTimestamp(),
-      source: 'regular-registration',
-      active: true,
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAtText: nowText()
-    }, { merge: true });
-  }
-  batch.set(bindingRef, payload, { merge: true });
-  await batch.commit();
-  if (!approved) {
-    await queueBindingApprovalNotices(Object.assign({}, previous, payload, {
-      id: bindingId,
-      targetId,
-      renterId
-    }));
-    return {
-      ok: true,
-      purpose: 'account',
-      role: type,
-      pendingApproval: true,
-      message: 'è³‡æ–™å·²é€å‡ºï¼Œä¸»ç®¡ç¢ºèªå¾Œå³å¯ç™»å…¥ï¼›è«‹ç¨å¾Œé‡æ–°é–‹å•Ÿå…¥å£ã€‚'
-    };
-  }
-
-  const issued = await issueSession({
-    type,
-    lineUserId: clean(previous.lineUserId || source.lineUserId),
-    authAccountId,
-    targetId,
-    renterId,
-    authMethod: 'email-otp'
-  });
-  return {
-    ok: true,
-    purpose: 'account',
-    role: type,
-    sessionToken: issued.sessionToken,
-    expiresAt: issued.expiresAt.toDate().toISOString()
-  };
-}
-
-async function studentPhoneAccess(data) {
-  void data;
-  throw new HttpsError(
-    'failed-precondition',
-    'å­¸ç”Ÿï¼å®¶é•·å§“åèˆ‡é›»è©±ç›´æ¥ç™»å…¥å·²åœç”¨ï¼›æ‰€æœ‰æ–°è¨»å†Šéƒ½å¿…é ˆå¡«å¯« Email ä¸¦å®Œæˆå››ç¢¼é©—è­‰ã€‚'
-  );
-}
-
-async function verifyEmailOtp(data) {
-  const challenge = clean(data.challengeToken);
-  const code = clean(data.code).replace(/\D/g, '');
-  if (!challenge || !/^\d{4}$/.test(code)) {
-    throw new HttpsError('invalid-argument', 'è«‹è¼¸å…¥å››ç¢¼é©—è­‰ç¢¼ã€‚');
-  }
-  const ref = db.collection('coursePortalEmailOtps').doc(hash(challenge));
-  let source = null;
-  let verificationError = null;
-  await db.runTransaction(async (tx) => {
-    const snapshot = await tx.get(ref);
-    const row = snapshot.exists ? snapshot.data() || {} : null;
-    if (!row || row.status !== 'pending' || asMillis(row.expiresAt) < Date.now()) {
-      throw new HttpsError('deadline-exceeded', 'é©—è­‰ç¢¼å·²å¤±æ•ˆï¼Œè«‹é‡æ–°å¯„é€ã€‚');
-    }
-    const attempts = Number(row.attempts || 0);
-    if (attempts >= EMAIL_OTP_MAX_ATTEMPTS) {
-      throw new HttpsError('resource-exhausted', 'é©—è­‰ç¢¼è¼¸å…¥æ¬¡æ•¸å·²é”ä¸Šé™ï¼Œè«‹é‡æ–°å¯„é€ã€‚');
-    }
-    if (!safeEqual(row.codeHash, hash(`${challenge}|${code}`))) {
-      tx.set(ref, {
-        attempts: attempts + 1,
-        status: attempts + 1 >= EMAIL_OTP_MAX_ATTEMPTS ? 'locked' : 'pending',
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-      verificationError = new HttpsError('permission-denied', 'é©—è­‰ç¢¼ä¸æ­£ç¢ºã€‚');
-      return;
-    }
-    source = row;
-    tx.set(ref, {
-      attempts: attempts + 1,
-      status: 'used',
-      usedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-  });
-  if (verificationError) throw verificationError;
-
-  if (!source || source.decoy) {
-    throw new HttpsError('permission-denied', 'é©—è­‰ç¢¼ä¸æ­£ç¢ºæˆ–å¸³è™Ÿè³‡æ–™ä¸ç›¸ç¬¦ã€‚');
-  }
-  if (source.purpose === 'line-registration') {
-    return completeVerifiedLineRegistration(source);
-  }
-  if (source.purpose === 'account') {
-    return completeRegularAccount(source);
-  }
-  if (source.purpose === 'login') {
-    const result = await issueSession({
-      type: source.type,
-      lineUserId: source.lineUserId,
-      authAccountId: source.authAccountId,
-      targetId: source.targetId,
-      renterId: source.renterId,
-      authMethod: 'email-otp'
-    });
-    return {
-      ok: true,
-      purpose: 'login',
-      role: source.type,
-      sessionToken: result.sessionToken,
-      expiresAt: result.expiresAt.toDate().toISOString()
-    };
-  }
-
-  if (source.type === 'renter') {
-    await db.collection('coursePortalRenters').doc(clean(source.renterId)).set({
-      renterId: clean(source.renterId),
-      name: clean(source.name),
-      phone: normalizePhone(source.phone),
-      email: normalizeEmail(source.email),
-      emailNormalized: normalizeEmail(source.email),
-      emailVerified: true,
-      emailVerifiedAt: FieldValue.serverTimestamp(),
-      source: 'public-registration',
-      active: true,
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAtText: nowText()
-    }, { merge: true });
-  }
-  const bind = await createBindCode({
-    type: source.type,
-    targetId: source.targetId,
-    renterId: source.renterId,
-    name: source.name,
-    phone: source.phone,
-    email: source.email,
-    relationship: source.relationship
-  });
-  return Object.assign({}, bind, { purpose: 'bind', emailVerified: true });
-}
-
-function portalPageForRole(type) {
-  if (type === 'teacher') return 'teacher-course-portal.html';
-  if (type === 'student') return 'student-course-portal.html';
-  return 'room-booking.html';
-}
-
-function portalUrlForRole(type, params = {}) {
-  const url = new URL(`${PORTAL_BASE}/${portalPageForRole(type)}`);
-  Object.keys(params).forEach((key) => {
-    const value = clean(params[key]);
-    if (value) url.searchParams.set(key, value);
-  });
-  return url.toString();
-}
-
-function lineAuthorizationUrl(state) {
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: LINE_LOGIN_CHANNEL_ID,
-    redirect_uri: LINE_LOGIN_CALLBACK_URL,
-    state,
-    scope: 'openid profile',
-    bot_prompt: 'aggressive'
-  });
-  return `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
-}
-
-async function startLineLogin(data) {
-  const type = clean(data.type).toLowerCase();
-  if (!['teacher', 'student', 'renter'].includes(type)) {
-    throw new HttpsError('invalid-argument', 'ä¸æ”¯æ´çš„å…¥å£é¡å‹ã€‚');
-  }
-  const state = randomToken(32);
-  const expiresAt = Timestamp.fromMillis(Date.now() + LINE_OAUTH_STATE_TTL_MS);
-  await db.collection('coursePortalLineOAuthStates').doc(hash(state)).set({
-    type,
-    linkAnother: type === 'student' && data.linkAnother === true,
-    stateHint: state.slice(-6),
-    status: 'pending',
-    createdAt: FieldValue.serverTimestamp(),
-    expiresAt
-  });
-  return {
-    ok: true,
-    authorizationUrl: lineAuthorizationUrl(state),
-    expiresAt: expiresAt.toDate().toISOString()
-  };
-}
-
-async function renterContactLogin(data) {
-  void data;
-  throw new HttpsError(
-    'failed-precondition',
-    'å§“ååŠ é›»è©±å¿«é€Ÿç™»å…¥å·²åœç”¨ï¼›è«‹ä½¿ç”¨ LINE ç™»å…¥ï¼Œæˆ–ä»¥å§“åã€é›»è©±åŠ Email æ¥æ”¶å››ç¢¼é©—è­‰ç¢¼ã€‚'
-  );
-}
-
-// èˆŠçš„å§“åï¼é›»è©±ç›´æ¥å…¥å£åªä¿ç•™ç›¸å®¹å‡½å¼åç¨±ï¼Œå¯¦éš›å·²å…¨é¢åœç”¨ã€‚
-// æ‰€æœ‰è§’è‰²çš„æ–°è¨»å†Šéƒ½å¿…é ˆå…ˆå®Œæˆ Email å››ç¢¼é©—è­‰ã€‚
-async function directRegularAccess(data) {
-  void data;
-  throw new HttpsError(
-    'failed-precondition',
-    'ä¸€èˆ¬ç›´æ¥ç™»å…¥å·²åœç”¨ï¼›æ‰€æœ‰æ–°è¨»å†Šéƒ½å¿…é ˆå¡«å¯« Email ä¸¦å®Œæˆå››ç¢¼é©—è­‰ã€‚'
-  );
-}
-
-async function issueAccessToken({ type, lineUserId, authAccountId, targetId, renterId, authMethod, lineFriendFlag }) {
-  const raw = randomToken(32);
-  const expiresAt = Timestamp.fromMillis(Date.now() + 10 * 60 * 1000);
-  await db.collection('coursePortalAccessTokens').doc(hash(raw)).set({
-    type,
-    lineUserId,
-    authAccountId: clean(authAccountId),
-    targetId: clean(targetId),
-    renterId: clean(renterId),
-    authMethod: clean(authMethod) || 'line',
-    lineFriendFlag: lineFriendFlag !== false,
-    status: 'active',
-    createdAt: FieldValue.serverTimestamp(),
-    expiresAt
-  });
-  return raw;
-}
-
-function lineQueryValue(req, key) {
-  const value = req && req.query && req.query[key];
-  return clean(Array.isArray(value) ? value[0] : value);
-}
-
-async function exchangeLineAuthorizationCode(code) {
-  const secret = clean(LINE_LOGIN_CHANNEL_SECRET.value());
-  if (!secret) throw new Error('LINE Login Channel secret å°šæœªè¨­å®šã€‚');
-  const body = new URLSearchParams({
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: LINE_LOGIN_CALLBACK_URL,
-    client_id: LINE_LOGIN_CHANNEL_ID,
-    client_secret: secret
-  });
-  const response = await fetch('https://api.line.me/oauth2/v2.1/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString()
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !clean(payload.access_token)) {
-    console.error('[course portal LINE token exchange failed]', response.status, payload.error || payload.error_description || '');
-    throw new Error('LINE ç™»å…¥æˆæ¬Šå·²å¤±æ•ˆï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-  }
-  return payload;
-}
-
-async function lineLoginProfile(accessToken) {
-  const headers = { Authorization: `Bearer ${accessToken}` };
-  const [profileResponse, friendResponse] = await Promise.all([
-    fetch('https://api.line.me/v2/profile', { headers }),
-    fetch('https://api.line.me/friendship/v1/status', { headers }).catch(() => null)
-  ]);
-  const profile = await profileResponse.json().catch(() => ({}));
-  if (!profileResponse.ok || !clean(profile.userId)) {
-    throw new Error('ç„¡æ³•å–å¾— LINE ç™»å…¥èº«åˆ†ï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-  }
-  let friendFlag = false;
-  if (friendResponse && friendResponse.ok) {
-    const friendship = await friendResponse.json().catch(() => ({}));
-    friendFlag = friendship.friendFlag === true;
-  }
-  return {
-    lineUserId: clean(profile.userId),
-    lineDisplayName: clean(profile.displayName),
-    linePictureUrl: clean(profile.pictureUrl),
-    lineFriendFlag: friendFlag
-  };
-}
-
-async function bindingsForLine(type, lineUserId) {
-  const snapshot = await db.collection(bindingCollection(type))
-    .where('lineUserId', '==', lineUserId)
-    .get();
-  return snapshot.docs
-    .map((doc) => Object.assign({ __id: doc.id, __ref: doc.ref }, doc.data() || {}));
-}
-
-async function refreshLineBindingProfile(bindings, profile) {
-  if (!bindings.length) return;
-  const batch = db.batch();
-  bindings.forEach((binding) => {
-    const update = {
-      lineDisplayName: profile.lineDisplayName,
-      linePictureUrl: profile.linePictureUrl,
-      lineFriendFlag: profile.lineFriendFlag,
-      lineProfileCheckedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    };
-    const type = clean(binding.type);
-    if (['teacher', 'student', 'renter'].includes(type)) {
-      update.authAccountId = lineAccountId(type, profile.lineUserId);
-    }
-    batch.set(binding.__ref, update, { merge: true });
-  });
-  await batch.commit();
-}
-
-function redirectLineLoginError(res, type, message) {
-  const safeType = ['teacher', 'student', 'renter'].includes(type) ? type : '';
-  const target = safeType
-    ? portalUrlForRole(safeType, { lineError: message || 'LINE ç™»å…¥æœªå®Œæˆï¼Œè«‹é‡æ–°æ“ä½œã€‚' })
-    : `${PORTAL_BASE}/course-portal.html?lineError=${encodeURIComponent(message || 'LINE ç™»å…¥æœªå®Œæˆï¼Œè«‹é‡æ–°æ“ä½œã€‚')}`;
-  res.redirect(302, target);
-}
-
-async function lineLoginCallback(req, res) {
-  res.set('Cache-Control', 'no-store');
-  if (req.method !== 'GET') {
-    res.status(405).send('Method Not Allowed');
-    return;
-  }
-
-  const state = lineQueryValue(req, 'state');
-  const code = lineQueryValue(req, 'code');
-  const lineError = lineQueryValue(req, 'error');
-  const stateRef = state
-    ? db.collection('coursePortalLineOAuthStates').doc(hash(state))
-    : null;
-  let type = '';
-
-  try {
-    if (!stateRef) throw new Error('LINE ç™»å…¥ç‹€æ…‹ä¸å®Œæ•´ï¼Œè«‹é‡æ–°æ“ä½œã€‚');
-    let stateRow = null;
-    await db.runTransaction(async (tx) => {
-      const snapshot = await tx.get(stateRef);
-      const row = snapshot.exists ? snapshot.data() || {} : null;
-      type = clean(row && row.type);
-      if (
-        !row ||
-        clean(row.status) !== 'pending' ||
-        asMillis(row.expiresAt) < Date.now() ||
-        !['teacher', 'student', 'renter'].includes(type)
-      ) {
-        throw new Error('LINE ç™»å…¥é€£çµå·²å¤±æ•ˆï¼Œè«‹å›åˆ°å…¥å£é‡æ–°ç™»å…¥ã€‚');
-      }
-      stateRow = row;
-      tx.set(stateRef, {
-        status: 'processing',
-        processingAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-    });
-    if (!stateRow) throw new Error('LINE ç™»å…¥ç‹€æ…‹ä¸å®Œæ•´ï¼Œè«‹é‡æ–°æ“ä½œã€‚');
-    if (lineError || !code) {
-      await stateRef.set({
-        status: 'cancelled',
-        error: lineError || 'missing_code',
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-      redirectLineLoginError(res, type, 'æ‚¨å·²å–æ¶ˆ LINE ç™»å…¥ã€‚');
-      return;
-    }
-
-    const token = await exchangeLineAuthorizationCode(code);
-    const profile = await lineLoginProfile(token.access_token);
-    let allBindings = await bindingsForLine(type, profile.lineUserId);
-    await refreshLineBindingProfile(allBindings, profile);
-    const pendingBindings = allBindings.filter((row) => clean(row.status) === 'pending');
-    if (pendingBindings.length) {
-      const batch = db.batch();
-      pendingBindings.forEach((binding) => batch.set(binding.__ref, {
-        status: 'active',
-        approvalStatus: 'approved',
-        approvedAt: FieldValue.serverTimestamp(),
-        approvedAtText: nowText(),
-        approvalSource: 'line-self-service',
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true }));
-      await batch.commit();
-      await Promise.all(pendingBindings.map((binding) =>
-        queueDirectLineBindingNotice(Object.assign({}, binding, {
-          id: binding.__id,
-          status: 'active',
-          lineDisplayName: profile.lineDisplayName
-        }))
-      ));
-      allBindings = allBindings.map((binding) =>
-        clean(binding.status) === 'pending'
-          ? Object.assign({}, binding, { status: 'active', approvalStatus: 'approved' })
-          : binding
-      );
-    }
-    const bindings = allBindings.filter((row) => clean(row.status) === 'active');
-    if (!bindings.length && allBindings.some((row) => ['revoked', 'rejected'].includes(clean(row.status)))) {
-      await stateRef.set({
-        status: 'blocked',
-        lineUserId: profile.lineUserId,
-        completedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-      redirectLineLoginError(res, type, 'é€™å€‹å…¥å£å¸³è™Ÿç›®å‰å·²åœç”¨ï¼Œè«‹è¯çµ¡æŸšå­æ¨‚å™¨å”åŠ©æ¢å¾©ã€‚');
-      return;
-    }
-    if (bindings.length && stateRow.linkAnother !== true) {
-      const binding = bindings[0];
-      const accessToken = await issueAccessToken({
-        type,
-        lineUserId: profile.lineUserId,
-        authAccountId: lineAccountId(type, profile.lineUserId),
-        targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
-        renterId: type === 'renter' ? clean(binding.renterId) : '',
-        authMethod: 'line-oauth',
-        lineFriendFlag: profile.lineFriendFlag
-      });
-      await stateRef.set({
-        status: 'used',
-        lineUserId: profile.lineUserId,
-        lineFriendFlag: profile.lineFriendFlag,
-        completedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-      res.redirect(302, portalUrlForRole(type, { access: accessToken }));
-      return;
-    }
-
-    const setupToken = randomToken(36);
-    const setupExpiresAt = Timestamp.fromMillis(Date.now() + LINE_SETUP_TTL_MS);
-    await db.collection('coursePortalLineSetupTokens').doc(hash(setupToken)).set({
-      type,
-      lineUserId: profile.lineUserId,
-      lineDisplayName: profile.lineDisplayName,
-      linePictureUrl: profile.linePictureUrl,
-      lineFriendFlag: profile.lineFriendFlag,
-      status: 'pending',
-      createdAt: FieldValue.serverTimestamp(),
-      expiresAt: setupExpiresAt
-    });
-    await stateRef.set({
-      status: 'used',
-      lineUserId: profile.lineUserId,
-      lineFriendFlag: profile.lineFriendFlag,
-      setupRequired: true,
-      completedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    res.redirect(302, portalUrlForRole(type, { lineSetup: setupToken }));
-  } catch (error) {
-    console.error('[course portal LINE callback failed]', error);
-    if (stateRef) {
-      await stateRef.set({
-        status: 'error',
-        error: clean(error && error.message).slice(0, 300),
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true }).catch(() => {});
-    }
-    redirectLineLoginError(res, type, clean(error && error.message) || 'LINE ç™»å…¥æœªå®Œæˆï¼Œè«‹é‡æ–°æ“ä½œã€‚');
-  }
-}
-
-async function completeVerifiedLineRegistration(data) {
-  const lineSetupId = clean(data.lineSetupId);
-  const requestedType = clean(data.type).toLowerCase();
-  if (!lineSetupId || !validEmail(data.email)) {
-    throw new HttpsError('failed-precondition', 'è«‹å…ˆå®Œæˆ Email å››ç¢¼é©—è­‰ï¼Œå†å»ºç«‹ LINE å¸³è™Ÿã€‚');
-  }
-  const setupRef = db.collection('coursePortalLineSetupTokens').doc(lineSetupId);
-  const setupSnapshot = await setupRef.get();
-  const setup = setupSnapshot.exists ? setupSnapshot.data() || {} : null;
-  const type = clean(setup && setup.type);
-  if (
-    !setup ||
-    clean(setup.status) !== 'pending' ||
-    asMillis(setup.expiresAt) < Date.now() ||
-    !['teacher', 'student', 'renter'].includes(type) ||
-    type !== requestedType ||
-    !clean(setup.lineUserId)
-  ) {
-    throw new HttpsError('permission-denied', 'LINE ç™»å…¥è³‡æ–™å·²å¤±æ•ˆï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-  }
-
-  const identity = await prepareBindingIdentity(Object.assign({}, data, { type }));
-  if (normalizeEmail(identity.email) !== normalizeEmail(data.email)) {
-    throw new HttpsError('permission-denied', 'Email é©—è­‰è³‡æ–™ä¸ä¸€è‡´ï¼Œè«‹é‡æ–°å–å¾—å››ç¢¼é©—è­‰ç¢¼ã€‚');
-  }
-  // LINE å¸³è™Ÿéµä»ç”± LINE ä½¿ç”¨è€…èº«åˆ†ç”¢ç”Ÿï¼›Email å››ç¢¼è² è²¬ç¢ºèªé¦–æ¬¡è¨»å†Šè€…
-  // èƒ½å¯¦éš›ä½¿ç”¨æ‰€å¡«ä¿¡ç®±ï¼Œå…©é …éƒ½å®Œæˆå¾Œæ‰å»ºç«‹å¸³è™Ÿã€‚
-  await consumeRateLimit(`line-oauth-setup-${type}`, identity.phone);
-  const lineUserId = clean(setup.lineUserId);
-  const authAccountId = lineAccountId(type, lineUserId);
-  const targetId = clean(identity.targetId);
-  const renterId = clean(identity.renterId);
-  const conflictField = type === 'teacher' ? 'teacherId' : (type === 'renter' ? 'renterId' : '');
-  if (conflictField) {
-    const conflicts = await db.collection(bindingCollection(type))
-      .where(conflictField, '==', type === 'teacher' ? targetId : renterId)
-      .get();
-    const conflictRows = conflicts.docs.map((doc) => doc.data() || {});
-    if (conflictRows.some((row) => ['revoked', 'rejected'].includes(clean(row.status)))) {
-      throw new HttpsError('permission-denied', 'é€™å€‹å…¥å£å¸³è™Ÿç›®å‰å·²åœç”¨ï¼Œè«‹è¯çµ¡æŸšå­æ¨‚å™¨å”åŠ©æ¢å¾©ã€‚');
-    }
-    const claimed = conflictRows.some((row) =>
-      clean(row.status) === 'active' &&
-      clean(row.lineUserId) &&
-      clean(row.lineUserId) !== lineUserId
-    );
-    if (claimed) {
-      throw new HttpsError('already-exists', 'é€™ç­†è³‡æ–™å·²ç”±å…¶ä»– LINE å¸³è™Ÿä½¿ç”¨ï¼Œè«‹ç”±ç®¡ç†è€…åˆªé™¤èˆŠç™»å…¥è³‡æ–™å¾Œå†è©¦ã€‚');
-    }
-  }
-
-  const bindingId = type === 'student'
-    ? hash(`${targetId}|${lineUserId}`)
-    : hash(lineUserId);
-  const bindingRef = db.collection(bindingCollection(type)).doc(bindingId);
-  const previousBinding = await bindingRef.get();
-  const previous = previousBinding.exists ? previousBinding.data() || {} : {};
-  if (['revoked', 'rejected'].includes(clean(previous.status))) {
-    throw new HttpsError('permission-denied', 'é€™å€‹å…¥å£å¸³è™Ÿç›®å‰å·²åœç”¨ï¼Œè«‹è¯çµ¡æŸšå­æ¨‚å™¨å”åŠ©æ¢å¾©ã€‚');
-  }
-  // LINE å·²å®Œæˆå¹³å°èº«åˆ†é©—è­‰ï¼Œä¸¦ä¸”å§“åã€é›»è©±ä»éœ€èˆ‡æ ¡å‹™è³‡æ–™å»åˆï¼Œ
-  // å› æ­¤ç¶å®šå¾Œç›´æ¥å•Ÿç”¨ï¼Œä¸å†å¢åŠ ä¸»ç®¡é€ç­†æ ¸å‡†ã€‚
-  const payload = {
-    type,
-    lineUserId,
-    lineDisplayName: clean(setup.lineDisplayName),
-    linePictureUrl: clean(setup.linePictureUrl),
-    lineFriendFlag: setup.lineFriendFlag === true,
-    lineVerified: true,
-    authAccountId,
-    authProvider: 'line-login+email-otp',
-    name: clean(identity.name),
-    phoneHash: hash(normalizePhone(identity.phone)),
-    status: 'active',
-    approvalStatus: 'approved',
-    approvalRequestedAt: previous.approvalRequestedAt || null,
-    approvedAt: FieldValue.serverTimestamp(),
-    approvedAtText: nowText(),
-    approvalSource: 'line-self-service',
-    updatedAt: FieldValue.serverTimestamp(),
-    boundAt: previous.boundAt || FieldValue.serverTimestamp(),
-    reminderLastLesson: true,
-    reminderPayment: true
-  };
-  payload.email = normalizeEmail(identity.email);
-  payload.emailNormalized = normalizeEmail(identity.email);
-  payload.emailVerified = true;
-  payload.emailVerifiedAt = FieldValue.serverTimestamp();
-  if (type === 'teacher') payload.teacherId = targetId;
-  if (type === 'student') {
-    payload.studentId = targetId;
-    payload.relationship = clean(identity.relationship) || 'æœ¬äºº';
-  }
-  if (type === 'renter') payload.renterId = renterId;
-
-  await db.runTransaction(async (tx) => {
-    const currentSetup = await tx.get(setupRef);
-    const current = currentSetup.exists ? currentSetup.data() || {} : null;
-    if (!current || clean(current.status) !== 'pending' || asMillis(current.expiresAt) < Date.now()) {
-      throw new HttpsError('permission-denied', 'LINE ç™»å…¥è³‡æ–™å·²ä½¿ç”¨æˆ–å¤±æ•ˆï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-    }
-    if (type === 'renter') {
-      const renterProfile = {
-        renterId,
-        name: clean(identity.name),
-        phone: normalizePhone(identity.phone),
-        email: normalizeEmail(identity.email),
-        emailNormalized: normalizeEmail(identity.email),
-        emailVerified: true,
-        emailVerifiedAt: FieldValue.serverTimestamp(),
-        source: 'line-login-registration',
-        active: true,
-        updatedAt: FieldValue.serverTimestamp(),
-        createdAtText: nowText()
-      };
-      tx.set(db.collection('coursePortalRenters').doc(renterId), renterProfile, { merge: true });
-    }
-    tx.set(bindingRef, payload, { merge: true });
-    tx.set(setupRef, {
-      status: 'used',
-      targetId,
-      renterId,
-      usedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-  });
-  await queueDirectLineBindingNotice(Object.assign({}, previous, payload, {
-    id: bindingId,
-    targetId,
-    renterId
-  }));
-
-  const issued = await issueSession({
-    type,
-    lineUserId,
-    authAccountId,
-    targetId,
-    renterId,
-    authMethod: 'line-oauth+email-otp-registration'
-  });
-  return {
-    ok: true,
-    role: type,
-    sessionToken: issued.sessionToken,
-    expiresAt: issued.expiresAt.toDate().toISOString(),
-    reminderReady: setup.lineFriendFlag === true
-  };
-}
-
-async function completeLineRegistration(data) {
-  void data;
-  throw new HttpsError(
-    'failed-precondition',
-    'ç¬¬ä¸€æ¬¡ä½¿ç”¨ LINE è¨»å†Šæ™‚ï¼Œå¿…é ˆå…ˆå¡«å¯« Email ä¸¦å®Œæˆå››ç¢¼é©—è­‰ã€‚'
-  );
-}
-
-async function activeStudentIdsForLine(lineUserId) {
-  const snapshot = await db.collection('coursePortalStudentBindings')
-    .where('lineUserId', '==', lineUserId)
-    .where('status', '==', 'active')
-    .get();
-  return [...new Set(snapshot.docs.map((doc) => clean(doc.data().studentId)).filter(Boolean))];
-}
-
-async function handleCoursePortalLineEvent(event, helpers = {}) {
-  const text = clean(event && event.message && event.message.text);
-  const bindMatch = text.match(/^æŸšå­(è€å¸«å…¥å£|å­¸ç”Ÿç¶å®š|ç§Ÿç”¨ç¶å®š)\s+(CP-[A-Z0-9]+)$/i);
-  const loginMatch = text.match(/^æŸšå­(è€å¸«|å­¸ç”Ÿ|ç§Ÿç”¨)å¿«é€Ÿç™»å…¥\s+(CP-L[A-Z0-9]+)$/i);
-  if (!bindMatch && !loginMatch) return false;
-
-  const lineUserId = clean(event && event.source && event.source.userId);
-  const replyToken = clean(event && event.replyToken);
-  const reply = helpers.replyLineMessage;
-  if (!lineUserId || typeof reply !== 'function') return true;
-
-  if (loginMatch) {
-    const typeMap = { è€å¸«: 'teacher', å­¸ç”Ÿ: 'student', ç§Ÿç”¨: 'renter' };
-    const type = typeMap[loginMatch[1]];
-    const code = loginMatch[2].toUpperCase();
-    const codeRef = db.collection('coursePortalLineLoginCodes').doc(hash(code));
-    const [codeSnapshot, bindings] = await Promise.all([
-      codeRef.get(),
-      db.collection(bindingCollection(type)).where('lineUserId', '==', lineUserId).get()
-    ]);
-    const row = codeSnapshot.exists ? codeSnapshot.data() || {} : null;
-    const active = bindings.docs
-      .map((doc) => doc.data() || {})
-      .filter((item) => clean(item.status) === 'active');
-    if (!row || row.status !== 'pending' || row.type !== type || asMillis(row.expiresAt) < Date.now() || !active.length) {
-      await reply(replyToken, 'å¿«é€Ÿç™»å…¥ç¢¼ç„¡æ•ˆã€å·²é€¾æ™‚ï¼Œæˆ–é€™å€‹ LINE å°šæœªç¶å®šã€‚è«‹å›åˆ°å…¥å£é é‡æ–°å–å¾—ã€‚');
-      return true;
-    }
-    const binding = active[0] || {};
-    await codeRef.set({
-      status: 'used',
-      usedAt: FieldValue.serverTimestamp(),
-      lineUserId
-    }, { merge: true });
-    const access = await issueAccessToken({
-      type,
-      lineUserId,
-      authAccountId: lineAccountId(type, lineUserId),
-      targetId: type === 'teacher' ? clean(binding.teacherId) : (type === 'student' ? clean(binding.studentId) : ''),
-      renterId: type === 'renter' ? clean(binding.renterId) : '',
-      authMethod: 'line-login'
-    });
-    const page = type === 'teacher'
-      ? 'teacher-course-portal.html'
-      : (type === 'student' ? 'student-course-portal.html' : 'room-booking.html');
-    const label = type === 'teacher' ? 'è€å¸«å…¥å£' : (type === 'student' ? 'å­¸ç”Ÿå…¥å£' : 'æ•™å®¤ç§Ÿç”¨å…¥å£');
-    const url = `${PORTAL_BASE}/${page}?access=${encodeURIComponent(access)}`;
-    await reply(replyToken, `èº«åˆ†ç¢ºèªå®Œæˆã€‚\nè«‹é–‹å•Ÿã€Œ${label}ã€ï¼š\n${url}\n\né€™ä¸æ˜¯é‡æ–°ç¶å®šï¼›ç™»å…¥å¾Œé€™å°ç€è¦½å™¨æœƒè¨˜ä½æ‚¨çš„å¸³è™Ÿã€‚`);
-    return true;
-  }
-
-  const typeMap = { è€å¸«å…¥å£: 'teacher', å­¸ç”Ÿç¶å®š: 'student', ç§Ÿç”¨ç¶å®š: 'renter' };
-  const type = typeMap[bindMatch[1]];
-  const code = bindMatch[2].toUpperCase();
-  const codeRef = db.collection('coursePortalBindCodes').doc(hash(code));
-  const codeSnapshot = await codeRef.get();
-  const row = codeSnapshot.exists ? codeSnapshot.data() || {} : null;
-  if (!row || row.status !== 'pending' || row.type !== type || asMillis(row.expiresAt) < Date.now()) {
-    await reply(replyToken, 'é€™çµ„ç¶å®šç¢¼ç„¡æ•ˆæˆ–å·²é€¾æ™‚ï¼Œè«‹å›åˆ°å…¥å£é é‡æ–°å–å¾—ã€‚');
-    return true;
-  }
-
-  let profile = {};
-  if (typeof helpers.getLineProfile === 'function') {
-    try { profile = await helpers.getLineProfile(lineUserId) || {}; } catch (_) { profile = {}; }
-  }
-
-  const bindId = type === 'student'
-    ? hash(`${row.targetId}|${lineUserId}`)
-    : hash(lineUserId);
-  const bindRef = db.collection(bindingCollection(type)).doc(bindId);
-  const previousBind = await bindRef.get();
-  const previousBinding = previousBind.exists ? previousBind.data() || {} : {};
-  if (['revoked', 'rejected'].includes(clean(previousBinding.status))) {
-    await reply(replyToken, 'é€™å€‹å…¥å£å¸³è™Ÿç›®å‰å·²åœç”¨ï¼Œè«‹è¯çµ¡æŸšå­æ¨‚å™¨å”åŠ©æ¢å¾©ã€‚');
-    return true;
-  }
-  const payload = {
-    type,
-    lineUserId,
-    authAccountId: lineAccountId(type, lineUserId),
-    lineDisplayName: clean(profile.displayName),
-    email: normalizeEmail(row.email),
-    emailNormalized: normalizeEmail(row.email),
-    emailVerified: row.emailVerified === true,
-    emailVerifiedAt: row.emailVerified === true ? FieldValue.serverTimestamp() : null,
-    status: 'active',
-    approvalStatus: 'approved',
-    approvalRequestedAt: previousBinding.approvalRequestedAt || null,
-    approvedAt: FieldValue.serverTimestamp(),
-    approvedAtText: nowText(),
-    approvalSource: 'line-self-service',
-    updatedAt: FieldValue.serverTimestamp(),
-    boundAt: FieldValue.serverTimestamp(),
-    reminderLastLesson: true,
-    reminderPayment: true
-  };
-  if (type === 'teacher') payload.teacherId = clean(row.targetId);
-  if (type === 'student') {
-    payload.studentId = clean(row.targetId);
-    payload.relationship = clean(row.relationship) || 'æœ¬äºº';
-  }
-  if (type === 'renter') payload.renterId = clean(row.renterId);
-  await bindRef.set(payload, { merge: true });
-  await codeRef.set({ status: 'used', usedAt: FieldValue.serverTimestamp(), lineUserId }, { merge: true });
-  await queueDirectLineBindingNotice(Object.assign({}, previousBinding, payload, {
-    id: bindId,
-    targetId: clean(row.targetId),
-    renterId: clean(row.renterId)
-  }));
-
-  const access = await issueAccessToken({
-    type,
-    lineUserId,
-    authAccountId: payload.authAccountId,
-    targetId: clean(row.targetId),
-    renterId: clean(row.renterId),
-    authMethod: 'line-binding'
-  });
-  const page = type === 'teacher'
-    ? 'teacher-course-portal.html'
-    : (type === 'student' ? 'student-course-portal.html' : 'room-booking.html');
-  const url = `${PORTAL_BASE}/${page}?access=${encodeURIComponent(access)}`;
-  const label = type === 'teacher' ? 'è€å¸«å…¥å£' : (type === 'student' ? 'å­¸ç”Ÿå…¥å£' : 'æ•™å®¤ç§Ÿç”¨å…¥å£');
-  await reply(replyToken, `ç¶å®šå®Œæˆã€‚\nè«‹é–‹å•Ÿã€Œ${label}ã€ï¼š\n${url}\n\næ­¤é€£çµ 10 åˆ†é˜å…§æœ‰æ•ˆï¼›ç™»å…¥å¾Œé€™å°è£ç½®æœƒä¿ç•™ç™»å…¥ç‹€æ…‹ã€‚`);
-  return true;
-}
-
-async function exchangeAccessToken(data) {
-  const raw = clean(data.accessToken);
-  if (!raw) throw new HttpsError('invalid-argument', 'ç¼ºå°‘ä¸€æ¬¡æ€§ç™»å…¥ç¢¼ã€‚');
-  const ref = db.collection('coursePortalAccessTokens').doc(hash(raw));
-  const snapshot = await ref.get();
-  const source = snapshot.exists ? snapshot.data() || {} : null;
-  const acceptedStatuses = ['active', 'used', 'exchanged'];
-  if (!source || !acceptedStatuses.includes(clean(source.status)) || asMillis(source.expiresAt) < Date.now()) {
-    throw new HttpsError('permission-denied', 'ç™»å…¥é€£çµå·²é€¾æ™‚ï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-  }
-
-  const issued = await issueSession({
-    type: source.type,
-    lineUserId: source.lineUserId,
-    authAccountId: source.authAccountId,
-    targetId: source.targetId,
-    renterId: source.renterId,
-    authMethod: source.authMethod || 'line'
-  });
-  // LINE å…§å»ºç€è¦½å™¨å¯èƒ½æœƒé‡è¤‡è¼‰å…¥ç¶²å€ã€‚å¿…é ˆå…ˆæˆåŠŸå»ºç«‹è£ç½®ç™»å…¥ï¼Œ
-  // å†è¨˜éŒ„äº¤æ›ç‹€æ…‹ï¼›çŸ­æ•ˆé€£çµåœ¨åˆ°æœŸå‰å¯å®‰å…¨é‡æ–°äº¤æ›ï¼Œä¸æœƒå¡æ­»ä½¿ç”¨è€…ã€‚
-  await ref.set({
-    status: 'exchanged',
-    lastExchangedAt: FieldValue.serverTimestamp(),
-    exchangeCount: FieldValue.increment(1)
-  }, { merge: true });
-  return {
-    ok: true,
-    sessionToken: issued.sessionToken,
-    role: source.type,
-    expiresAt: issued.expiresAt.toDate().toISOString(),
-    reminderReady: source.lineFriendFlag !== false
-  };
-}
-
-async function requireSession(data, allowedRoles) {
-  const raw = clean(data && data.sessionToken);
-  if (!raw) throw new HttpsError('unauthenticated', 'è«‹å…ˆç™»å…¥ã€‚');
-  const ref = db.collection('coursePortalSessions').doc(hash(raw));
-  const snapshot = await ref.get();
-  const session = snapshot.exists ? snapshot.data() || {} : null;
-  if (!session || session.status !== 'active' || asMillis(session.expiresAt) < Date.now()) {
-    throw new HttpsError('unauthenticated', 'ç™»å…¥ç‹€æ…‹å·²åˆ°æœŸï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-  }
-  if (allowedRoles && !allowedRoles.includes(session.role)) {
-    throw new HttpsError('permission-denied', 'é€™å€‹å¸³è™Ÿæ²’æœ‰æ­¤é é¢æ¬Šé™ã€‚');
-  }
-  const authorizedBindings = await authorizedBindingsForSession(session);
-  if (!authorizedBindings.length) {
-    await ref.set({
-      status: 'revoked',
-      revokedAt: FieldValue.serverTimestamp(),
-      revokedReason: 'binding-not-active'
-    }, { merge: true });
-    throw new HttpsError('permission-denied', 'é€™å€‹ç™»å…¥æ¬Šé™å·²åœç”¨æˆ–è§£é™¤ï¼Œè«‹é‡æ–°ç™»å…¥æˆ–è¯çµ¡æŸšå­æ¨‚å™¨ã€‚');
-  }
-  const update = { lastUsedAt: FieldValue.serverTimestamp() };
-  if (session.sliding !== false) {
-    update.expiresAt = Timestamp.fromMillis(Date.now() + PORTAL_SESSION_TTL_MS);
-  }
-  await ref.set(update, { merge: true });
-  return session;
-}
-
-function normalizedPersonName(value) {
-  return clean(value).normalize('NFKC').replace(/\s+/g, '').replace(/è€å¸«$/u, '').toLowerCase();
-}
-
-function employeePhone(row) {
-  return normalizePhone(row && (
-    row.mobilePhone || row.mobile || row.phone || row.tel || row.telephone || row.contactPhone
-  ));
-}
-
-function employeeEmail(row) {
-  return normalizeEmail(row && (row.email || row.Email || row.loginEmail || row.contactEmail));
-}
-
-function linkedEmployeeId(row) {
-  return clean(row && (
-    row.employeeId || row.externalTeacherEmployeeId || row.linkedEmployeeId ||
-    row.employeeDocId || row.userId
-  ));
-}
-
-function isExternalTeacherEmployee(row) {
-  const identity = clean(row && (row.identityType || row.employeeType || row.identityLabel || row.role)).toLowerCase();
-  return row && (
-    row.isExternalTeacher === true ||
-    identity === 'external' ||
-    identity === 'externalteacher' ||
-    /å¤–è˜/.test(clean(row.identityLabel || row.roleLabel))
-  );
-}
-
-function externalTeacherProfileMissingFields(row) {
-  const source = row || {};
-  const teaching = Array.isArray(source.teachingAbilities)
-    ? source.teachingAbilities.filter((item) => clean(item && (item.item || item.name || item.subject)))
-    : clean(source.teachingItems || source.teachingItemsText);
-  return [
-    ['name', 'å§“å', clean(source.name || source.displayName || source.employeeName)],
-    ['mobilePhone', 'è¡Œå‹•é›»è©±', employeePhone(source)],
-    ['email', 'Email', employeeEmail(source)],
-    ['birthDate', 'å‡ºç”Ÿå¹´æœˆæ—¥', clean(source.birthDate)],
-    ['idNumber', 'èº«åˆ†è­‰å­—è™Ÿ', clean(source.idNumber)],
-    ['address', 'è¯çµ¡åœ°å€', clean(source.address || source.mailingAddress || source.householdAddress)],
-    ['emergencyContact', 'ç·Šæ€¥è¯çµ¡äºº', clean(source.emergencyContact)],
-    ['emergencyPhone', 'ç·Šæ€¥è¯çµ¡äººé›»è©±', normalizePhone(source.emergencyPhone)],
-    ['teachingAbilities', 'æˆèª²é …ç›®', teaching],
-    ['identityDocumentUrl', 'èº«åˆ†è­‰æ˜æ–‡ä»¶', clean(source.identityDocumentUrl) || (Array.isArray(source.identityUrls) && source.identityUrls.length)]
-  ].filter((item) => !item[2]).map((item) => ({ key: item[0], label: item[1] }));
-}
-
-async function resolveTeacherUtilityEmployee(session) {
-  const teacherId = clean(session && session.teacherId);
-  const bindings = await authorizedBindingsForSession(session);
-  if (!bindings.length) throw new HttpsError('permission-denied', 'è€å¸«ç™»å…¥ç¶å®šå·²åœç”¨ï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-
-  const [teacherRows, employeeSnapshot, profileSnapshot, contractSnapshot] = await Promise.all([
-    mirrorRows('teachers'),
-    db.collection('employees').limit(2000).get(),
-    db.collection('externalTeacherProfiles').limit(2000).get(),
-    db.collection('externalTeacherContracts').limit(2000).get()
-  ]);
-  const teacher = teacherRows.find((row) => sourceId(row) === teacherId) || {};
-  const externalRows = profileSnapshot.docs.concat(contractSnapshot.docs).map((doc) =>
-    Object.assign({ __id: doc.id, __ref: doc.ref }, jsonValue(doc.data() || {}))
-  );
-  const relatedExternalRows = externalRows.filter((row) =>
-    clean(row.__id) === teacherId ||
-    clean(row.teacherId || row.externalTeacherId || row.coursePortalTeacherId) === teacherId
-  );
-
-  const explicitIds = new Set([teacherId]);
-  bindings.forEach((row) => {
-    const value = linkedEmployeeId(row);
-    if (value) explicitIds.add(value);
-  });
-  relatedExternalRows.forEach((row) => {
-    const value = linkedEmployeeId(row);
-    if (value) explicitIds.add(value);
-  });
-
-  const names = new Set();
-  const emails = new Set();
-  const phones = new Set();
-  function collectIdentity(row) {
-    const name = normalizedPersonName(row && (row.name || row.teacherName || row.displayName || row.employeeName));
-    const email = employeeEmail(row);
-    const phone = employeePhone(row);
-    if (name) names.add(name);
-    if (email) emails.add(email);
-    if (phone) phones.add(phone);
-  }
-  collectIdentity(teacher);
-  bindings.forEach(collectIdentity);
-  relatedExternalRows.forEach(collectIdentity);
-
-  const employees = employeeSnapshot.docs.map((doc) => Object.assign({ __id: doc.id, __ref: doc.ref }, jsonValue(doc.data() || {})));
-  const direct = employees.filter((row) => isExternalTeacherEmployee(row) && (
-    explicitIds.has(clean(row.__id)) ||
-    explicitIds.has(clean(row.employeeId || row.id || row.userId)) ||
-    clean(row.coursePortalTeacherId || row.legacyTeacherId) === teacherId ||
-    (Array.isArray(row.coursePortalTeacherIds) && row.coursePortalTeacherIds.map(clean).includes(teacherId))
-  ));
-  let employee = null;
-  if (direct.length === 1) employee = direct[0];
-  else if (direct.length > 1) {
-    throw new HttpsError('failed-precondition', 'è€å¸«è³‡æ–™é€£åˆ°å¤šå€‹å“¡å·¥ç·¨è™Ÿï¼Œè«‹å…ˆç”±ç®¡ç†è€…æ•´ç†é‡è¤‡è³‡æ–™ã€‚');
-  }
-
-  if (!employee) {
-    const scored = employees.filter(isExternalTeacherEmployee).map((row) => {
-      let score = 0;
-      const email = employeeEmail(row);
-      const phone = employeePhone(row);
-      const name = normalizedPersonName(row.name || row.displayName || row.employeeName);
-      if (email && emails.has(email)) score += 6;
-      if (phone && phones.has(phone)) score += 5;
-      if (name && names.has(name)) score += 2;
-      return { row, score };
-    }).filter((item) => item.score >= 6).sort((a, b) => b.score - a.score);
-    if (scored.length && (scored.length === 1 || scored[0].score > scored[1].score)) employee = scored[0].row;
-    else if (scored.length) {
-      throw new HttpsError('failed-precondition', 'æœ‰å¤šç­†ç›¸ä¼¼çš„å¤–è˜è€å¸«è³‡æ–™ï¼Œç‚ºé¿å…åˆä½µéŒ¯äººï¼Œè«‹å…ˆç”±ç®¡ç†è€…æŒ‡å®šå“¡å·¥ç·¨è™Ÿã€‚');
-    }
-  }
-  if (!employee) {
-    throw new HttpsError('failed-precondition', 'æ‰¾ä¸åˆ°å¯å®‰å…¨é€£çµçš„å¤–è˜è€å¸«å“¡å·¥è³‡æ–™ï¼Œè«‹å…ˆç”±ç®¡ç†è€…å®Œæˆä¸€æ¬¡å“¡å·¥ç·¨è™Ÿé€£çµã€‚');
-  }
-
-  const employeeId = clean(employee.employeeId || employee.id || employee.__id);
-  const profile = externalRows.find((row) => linkedEmployeeId(row) === employeeId) ||
-    relatedExternalRows[0] || {};
-  const merged = Object.assign({}, employee, profile, {
-    name: clean(profile.name || profile.teacherName || employee.name || employee.displayName),
-    email: employeeEmail(profile) || employeeEmail(employee),
-    mobilePhone: employeePhone(profile) || employeePhone(employee)
-  });
-  const missingProfileFields = externalTeacherProfileMissingFields(merged);
-  const employeePatch = {
-    employeeId,
-    id: clean(employee.id) || employeeId,
-    userId: clean(employee.userId) || employeeId,
-    coursePortalTeacherId: teacherId,
-    coursePortalTeacherIds: FieldValue.arrayUnion(teacherId),
-    updatedAt: FieldValue.serverTimestamp()
-  };
-  if (!clean(employee.legacyTeacherId)) employeePatch.legacyTeacherId = teacherId;
-  await employee.__ref.set(employeePatch, { merge: true });
-  const bindingBatch = db.batch();
-  bindings.forEach((row) => bindingBatch.set(row.__ref, {
-    employeeId,
-    externalTeacherEmployeeId: employeeId,
-    legacyTeacherId: teacherId,
-    linkedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true }));
-  relatedExternalRows.forEach((row) => bindingBatch.set(row.__ref, {
-    employeeId,
-    externalTeacherEmployeeId: employeeId,
-    employeeRef: `employees/${employeeId}`,
-    coursePortalTeacherId: teacherId,
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true }));
-  await bindingBatch.commit();
-
-  return {
-    employeeId,
-    user: {
-      id: employeeId,
-      employeeId,
-      name: clean(merged.name) || clean(teacher.name) || 'å¤–è˜è€å¸«',
-      displayName: clean(merged.name) || clean(teacher.name) || 'å¤–è˜è€å¸«',
-      email: employeeEmail(merged),
-      phone: employeePhone(merged),
-      mobilePhone: employeePhone(merged),
-      identityType: 'external',
-      identityLabel: 'å¤–è˜è€å¸«',
-      employeeType: 'external',
-      role: 'externalTeacher',
-      isExternalTeacher: true,
-      lineUserId: clean(merged.lineUserId || session.lineUserId),
-      lineNotifyEnabled: Boolean(clean(merged.lineUserId || session.lineUserId)),
-      accountStatus: clean(merged.accountStatus || 'active'),
-      employmentStatus: clean(merged.employmentStatus || 'active'),
-      legacyTeacherId: teacherId,
-      portalSessionBridge: true
-    },
-    profileComplete: missingProfileFields.length === 0,
-    missingProfileFields
-  };
-}
-
-async function teacherUtilitySession(data) {
-  const session = await requireSession(data, ['teacher']);
-  const resolved = await resolveTeacherUtilityEmployee(session);
-  return Object.assign({ ok: true, validatedAt: Date.now() }, resolved);
-}
-
-function safeRentalDisplayName(value) {
-  const name = clean(value).normalize('NFKC');
-  if (!name || name.length > 60 || /[@\r\n]/.test(name) || /[\p{Cc}\p{Cf}]/u.test(name)) return '';
-  const digits = name.replace(/\D/g, '');
-  if (digits.length >= 8) return '';
-  return name;
-}
-
-async function rentalSessionDisplayName(session) {
-  const directName = safeRentalDisplayName(session && (session.displayName || session.name));
-  if (directName) return directName;
-  try {
-    if (clean(session && session.role) === 'renter' && clean(session.renterId)) {
-      const renterSnapshot = await db.collection('coursePortalRenters').doc(clean(session.renterId)).get();
-      const renter = renterSnapshot.exists ? renterSnapshot.data() || {} : {};
-      const renterName = safeRentalDisplayName(renter.name || renter.displayName);
-      if (renterName) return renterName;
-    }
-
-    let bindings = [];
-    if (clean(session && session.role) === 'student') {
-      bindings = await activeStudentBindingsForSession(session);
-    } else {
-      const role = clean(session && session.role);
-      const collection = db.collection(bindingCollection(role));
-      const queries = [];
-      if (clean(session && session.authAccountId)) {
-        queries.push(collection.where('authAccountId', '==', clean(session.authAccountId)).get());
-      }
-      if (clean(session && session.lineUserId)) {
-        queries.push(collection.where('lineUserId', '==', clean(session.lineUserId)).get());
-      }
-      if (role === 'teacher' && clean(session.teacherId)) {
-        queries.push(collection.where('teacherId', '==', clean(session.teacherId)).get());
-      }
-      if (role === 'renter' && clean(session.renterId)) {
-        queries.push(collection.where('renterId', '==', clean(session.renterId)).get());
-      }
-      const snapshots = await Promise.all(queries);
-      bindings = [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [
-        doc.id,
-        Object.assign({ __id: doc.id }, doc.data() || {})
-      ])).values()];
-    }
-    const active = bindings.filter((row) => clean(row.status || 'active') === 'active');
-    const role = clean(session && session.role);
-    const exactBindings = role === 'teacher' && clean(session.teacherId)
-      ? active.filter((row) => clean(row.teacherId) === clean(session.teacherId))
-      : (role === 'renter' && clean(session.renterId)
-        ? active.filter((row) => clean(row.renterId) === clean(session.renterId))
-        : active);
-    const preferredBindings = exactBindings.length ? exactBindings : active;
-    const registeredName = preferredBindings
-      .map((row) => safeRentalDisplayName(row.name || row.displayName))
-      .find(Boolean);
-    if (registeredName) return registeredName;
-    const lineDisplayName = preferredBindings
-      .map((row) => safeRentalDisplayName(row.lineDisplayName))
-      .find(Boolean);
-    if (lineDisplayName) return lineDisplayName;
-
-    if (clean(session && session.role) === 'teacher' && clean(session.teacherId)) {
-      const teachers = await mirrorRows('teachers');
-      const teacher = teachers.find((row) => sourceId(row) === clean(session.teacherId)) || {};
-      return safeRentalDisplayName(teacher.name || teacher.displayName || teacher.teacherName);
-    }
-    if (clean(session && session.role) === 'student') {
-      const studentIds = [...new Set([
-        ...(Array.isArray(session.studentIds) ? session.studentIds : []),
-        ...active.map((row) => row.studentId)
-      ].map(clean).filter(Boolean))];
-      if (studentIds.length) {
-        const students = await mirrorRows('students');
-        const student = students.find((row) => studentIds.includes(sourceId(row))) || {};
-        return safeRentalDisplayName(student.name || student.displayName || student.studentName);
-      }
-    }
-    return '';
-  } catch (error) {
-    console.warn('[course portal rental display name]', clean(error && error.message));
-    return '';
-  }
-}
-
-async function rentalStudentOptions(session) {
-  if (clean(session && session.role) !== 'student') return [];
-  const bindings = await activeStudentBindingsForSession(session);
-  const studentIds = [...new Set([
-    ...(Array.isArray(session && session.studentIds) ? session.studentIds : []),
-    ...bindings.map((row) => row.studentId)
-  ].map(clean).filter(Boolean))];
-  if (!studentIds.length) return [];
-  const students = await mirrorRows('students');
-  const studentMap = indexById(students);
-  return studentIds.map((studentId) => {
-    const binding = bindings.find((row) => clean(row.studentId) === studentId) || {};
-    const student = studentMap[studentId] || {};
-    return {
-      id: studentId,
-      name: safeRentalDisplayName(
-        binding.name || binding.displayName || student.name || student.displayName || student.studentName
-      ) || 'å­¸ç”Ÿ',
-      phone: normalizePhone(sourcePhone(student) || binding.phone)
-    };
-  }).sort((left, right) => clean(left.name).localeCompare(clean(right.name), 'zh-Hant'));
-}
-
-async function rentalSessionIdentity(session, requestedStudentId) {
-  const role = clean(session && session.role);
-  const displayNamePromise = rentalSessionDisplayName(session);
-  const studentOptions = await rentalStudentOptions(session);
-  const requestedId = clean(requestedStudentId);
-  if (role === 'student' && requestedId && !studentOptions.some((row) => row.id === requestedId)) {
-    throw new HttpsError('permission-denied', 'æ²’æœ‰é€™ä½å­¸ç”Ÿçš„æ•™å®¤ç§Ÿç”¨æ¬Šé™ã€‚');
-  }
-  if (role === 'student' && studentOptions.length > 1 && !requestedId) {
-    return {
-      role,
-      displayName: await displayNamePromise,
-      clientName: '',
-      clientPhone: '',
-      studentId: '',
-      studentOptions,
-      requiresStudentSelection: true
-    };
-  }
-  if (role === 'student') {
-    const selected = studentOptions.find((row) => row.id === requestedId) || studentOptions[0] || {};
-    return {
-      role,
-      displayName: await displayNamePromise,
-      clientName: safeRentalDisplayName(selected.name) || await displayNamePromise,
-      clientPhone: normalizePhone(selected.phone),
-      studentId: clean(selected.id),
-      studentOptions,
-      requiresStudentSelection: false
-    };
-  }
-
-  let clientPhone = '';
-  if (role === 'renter' && clean(session && session.renterId)) {
-    const renterSnapshot = await db.collection('coursePortalRenters').doc(clean(session.renterId)).get();
-    const renter = renterSnapshot.exists ? renterSnapshot.data() || {} : {};
-    clientPhone = normalizePhone(sourcePhone(renter));
-  } else if (role === 'teacher' && clean(session && session.teacherId)) {
-    const teachers = await mirrorRows('teachers');
-    const teacher = teachers.find((row) => sourceId(row) === clean(session.teacherId)) || {};
-    clientPhone = normalizePhone(sourcePhone(teacher));
-  }
-  const displayName = await displayNamePromise;
-  return {
-    role,
-    displayName,
-    clientName: displayName,
-    clientPhone,
-    studentId: '',
-    studentOptions: [],
-    requiresStudentSelection: false
-  };
-}
-
-function eventDate(row) {
-  return dateKey(row.date || row.courseDate || row.startDate || row.lessonDate);
-}
-
-function eventStart(row) {
-  return clean(row.startTime || row.timeStart || row.beginTime || row.start).slice(0, 5);
-}
-
-function eventEnd(row) {
-  const explicit = clean(row.endTime || row.timeEnd || row.finishTime || row.end).slice(0, 5);
-  if (explicit) return explicit;
-  const start = eventStart(row);
-  if (!start) return '';
-  const duration = Math.max(30, Number(row.durationMinutes || row.duration || row.minutes || 60));
-  const end = timeMinutes(start) + duration;
-  return String(Math.floor(end / 60)).padStart(2, '0') + ':' + String(end % 60).padStart(2, '0');
-}
-
-function eventTeacherId(row) {
-  return clean(row.teacherId || row.teacher_id || row.instructorId);
-}
-
-function eventRoomId(row) {
-  return clean(row.roomId || row.room_id || row.classroomId);
-}
-
-function eventStudentIds(row) {
-  return firstArray(row, ['studentIds', 'students', 'student_ids']).concat(
-    clean(row.studentId) ? [clean(row.studentId)] : []
-  );
-}
-
-function eventSubjectId(row) {
-  return clean(row.subjectId || row.subject_id || row.courseId);
-}
-
-const GUZHENG_RESOURCE_ID = 'equipment:guzheng';
-
-function subjectUsesGuzheng(subjectId, maps = {}) {
-  const id = clean(subjectId).toLowerCase();
-  const subject = maps.subjects && maps.subjects[subjectId] || {};
-  const name = clean(subject.name || subject.subjectName || subject.title).toLowerCase();
-  return id === 'guzheng' || /å¤ç®/.test(name);
-}
-
-function eventUsesGuzheng(row, maps = {}) {
-  const useType = clean(row && (row.useType || row.rentalUseType || row.purposeType)).toLowerCase();
-  const description = clean(row && (row.useName || row.subjectName || row.purpose || row.title)).toLowerCase();
-  return useType === 'guzheng' ||
-    /å¤ç®/.test(description) ||
-    subjectUsesGuzheng(eventSubjectId(row || {}), maps);
-}
-
-function eventSharedResourceIds(row, maps = {}) {
-  const explicit = firstArray(row || {}, ['resourceIds', 'sharedResourceIds']).map(clean).filter(Boolean);
-  if (eventUsesGuzheng(row, maps)) explicit.push(GUZHENG_RESOURCE_ID);
-  return [...new Set(explicit)];
-}
-
-function sharedResourceConflict(events, resourceIds) {
-  const requested = new Set((resourceIds || []).map(clean).filter(Boolean));
-  if (!requested.size) return false;
-  return (events || []).some((event) =>
-    (event.resourceIds || []).some((resourceId) => requested.has(clean(resourceId)))
-  );
-}
-
-function requestedRentalResourceIds(data) {
-  return clean(data && data.useType).toLowerCase() === 'guzheng'
-    ? [GUZHENG_RESOURCE_ID]
-    : [];
-}
-
-function requestedSubjectResourceIds(subjectId, bundle) {
-  return subjectUsesGuzheng(subjectId, bundle && bundle.maps || {})
-    ? [GUZHENG_RESOURCE_ID]
-    : [];
-}
-
-function overlaps(aStart, aEnd, bStart, bEnd) {
-  return timeMinutes(aStart) < timeMinutes(bEnd) && timeMinutes(bStart) < timeMinutes(aEnd);
-}
-
-function validPortalTime(value, halfHourOnly = false) {
-  const match = clean(value).match(/^([01]\d|2[0-3]):([0-5]\d)$/);
-  if (!match) return false;
-  return !halfHourOnly || ['00', '30'].includes(match[2]);
-}
-
-function assertPortalInterval(startTime, endTime) {
-  if (!validPortalTime(startTime, true) || !validPortalTime(endTime, true)) {
-    throw new HttpsError('invalid-argument', 'æ™‚é–“å¿…é ˆä»¥ 30 åˆ†é˜ç‚ºå–®ä½ã€‚');
-  }
-  const duration = timeMinutes(endTime) - timeMinutes(startTime);
-  if (duration < 30 || duration > 300 || duration % 30 !== 0) {
-    throw new HttpsError('invalid-argument', 'çµæŸæ™‚é–“å¿…é ˆæ™šæ–¼é–‹å§‹æ™‚é–“ï¼Œä¸”æœ€é•·ç‚º 5 å°æ™‚ã€‚');
-  }
-  return duration;
-}
-
-function assertTeacherMoveDuration(targetDuration, source) {
-  const sourceDuration = assertPortalInterval(
-    clean(source && source.startTime).slice(0, 5),
-    clean(source && source.endTime).slice(0, 5)
-  );
-  if (Number(targetDuration) !== sourceDuration) {
-    throw new HttpsError(
-      'failed-precondition',
-      `åŸèª²ç¨‹æ˜¯ ${sourceDuration} åˆ†é˜ï¼Œå¿…é ˆé¸æ“‡å¯é€£çºŒä½¿ç”¨ ${sourceDuration} åˆ†é˜çš„æ™‚æ®µï¼Œä¸èƒ½åªæ’ ${Number(targetDuration) || 0} åˆ†é˜ã€‚`
-    );
-  }
-  return sourceDuration;
-}
-
-function safeFrequencyWeeks(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 1) return 1;
-  return Math.min(52, Math.max(1, Math.floor(parsed)));
-}
-
-function daysBetween(left, right) {
-  const start = dateKey(left);
-  const end = dateKey(right);
-  if (!start || !end) return NaN;
-  return Math.round(
-    (new Date(`${end}T12:00:00+08:00`).getTime() -
-      new Date(`${start}T12:00:00+08:00`).getTime()) / 86400000
-  );
-}
-
-function permanentLineage(row) {
-  return clean(row && (
-    row.sourceCourseId ||
-    row.sourceEventId ||
-    row.event && (row.event.fixedCourseId || row.event.seriesId)
-  ));
-}
-
-function permanentCutover(row) {
-  return dateKey(row && (
-    row.cutoverDate ||
-    row.sourceDate ||
-    row.effectiveDate ||
-    row.event && eventDate(row.event)
-  ));
-}
-
-function permanentAnchor(row) {
-  return dateKey(row && (
-    row.anchorDate ||
-    row.event && eventDate(row.event) ||
-    row.effectiveDate ||
-    permanentCutover(row)
-  ));
-}
-
-function changeOrderValue(row) {
-  return Math.max(
-    asMillis(row && row.updatedAt),
-    asMillis(row && row.createdAt),
-    asMillis(row && row.createdAtText)
-  );
-}
-
-function effectivePermanentChanges(rows) {
-  const latest = new Map();
-  (rows || []).filter((row) => clean(row && row.action) === 'permanent_move' && row.event).forEach((row) => {
-    const lineage = permanentLineage(row);
-    const cutover = permanentCutover(row);
-    if (!lineage || !cutover) return;
-    const key = `${lineage}|${cutover}`;
-    const current = latest.get(key);
-    if (
-      !current ||
-      changeOrderValue(row) > changeOrderValue(current) ||
-      (
-        changeOrderValue(row) === changeOrderValue(current) &&
-        clean(row.__id || row.id).localeCompare(clean(current.__id || current.id)) > 0
-      )
-    ) latest.set(key, row);
-  });
-  return [...latest.values()].sort((left, right) =>
-    permanentLineage(left).localeCompare(permanentLineage(right)) ||
-    permanentCutover(left).localeCompare(permanentCutover(right)) ||
-    changeOrderValue(left) - changeOrderValue(right) ||
-    clean(left.__id || left.id).localeCompare(clean(right.__id || right.id))
-  );
-}
-
-function translateRecurringStatusMap(statusByDate, cutoverDate, anchorDate, frequencyWeeks) {
-  const source = statusByDate && typeof statusByDate === 'object' ? statusByDate : {};
-  const cutover = dateKey(cutoverDate);
-  const anchor = dateKey(anchorDate);
-  const stepDays = safeFrequencyWeeks(frequencyWeeks) * 7;
-  if (!cutover || !anchor) return Object.assign({}, source);
-  return Object.entries(source).reduce((result, [rawDate, value]) => {
-    const key = dateKey(rawDate);
-    if (!key) return result;
-    if (key < cutover) {
-      result[key] = value;
-      return result;
-    }
-    const delta = daysBetween(cutover, key);
-    if (delta >= 0 && delta % stepDays === 0) {
-      result[addDays(anchor, delta)] = value;
-    } else {
-      // æœ‰äº›èˆŠè³‡æ–™å·²ç”¨èª¿æ•´å¾Œçš„å¯¦éš›æ—¥æœŸè¨˜éŒ„ä¾‹å¤–ï¼›éåŸé€±æœŸæ—¥ä¸å¯ç›´æ¥ä¸Ÿæ£„ã€‚
-      result[key] = value;
-    }
-    return result;
-  }, {});
-}
-
-function scheduleOccurrenceActive(row) {
-  return row && row.__mirrorActive !== false &&
-    normalizeScheduleStatus(row.status || 'scheduled') !== 'cancelled' &&
-    sourceActive(row);
-}
-
-function eventBlocksResource(event) {
-  const status = normalizeScheduleStatus(event && event.status);
-  // è«‹å‡ã€å–æ¶ˆæˆ–å·²èª¿èµ°æ‰æœƒé‡‹å‡ºç©ºé–“ã€‚æ› èª²æ™‚è€å¸«ä»å¯èƒ½åœ¨åŸæ•™å®¤ç­‰å¾…ï¼Œ
-  // å› æ­¤æ› èª²ä»å ç”¨è€å¸«èˆ‡æ•™å®¤ï¼Œé¿å…åŒæ™‚å†æ’å…¥å¦ä¸€å ‚èª²ã€‚
-  return !['leave', 'cancelled', 'pending_conflict'].includes(status);
-}
-
-function scheduleResourceConflicts(events) {
-  const slots = new Map();
-  (events || []).filter(eventBlocksResource).forEach((event) => {
-    const identity = [
-      clean(event.fixedCourseId || event.seriesId || event.sourceId || event.id),
-      clean(event.date),
-      clean(event.startTime),
-      clean(event.endTime)
-    ].join('|');
-    const resources = [
-      clean(event.roomId) ? `room:${clean(event.roomId)}` : '',
-      clean(event.teacherId) ? `teacher:${clean(event.teacherId)}` : '',
-      ...(event.studentIds || []).map((id) => clean(id) ? `student:${clean(id)}` : ''),
-      ...(event.resourceIds || []).map(clean)
-    ].filter(Boolean);
-    for (let minute = timeMinutes(event.startTime); minute < timeMinutes(event.endTime); minute += 30) {
-      const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
-      resources.forEach((resource) => {
-        const key = `${event.date}|${slot}|${resource}`;
-        if (!slots.has(key)) slots.set(key, new Map());
-        slots.get(key).set(identity, clean(event.id || event.sourceId));
-      });
-    }
-  });
-  return [...slots.entries()].filter(([, identities]) => identities.size > 1).slice(0, 500).map(([key, identities]) => {
-    const [date, slot, ...resourceParts] = key.split('|');
-    const resource = resourceParts.join('|');
-    return { date, slot, resource, eventIds: [...identities.values()].filter(Boolean) };
-  });
-}
-
-function isRoomRentalEvent(event) {
-  const type = clean(event && event.type).toLowerCase();
-  const action = clean(event && event.portalAction).toLowerCase();
-  return ['rental', 'room_rental'].includes(type) ||
-    ['rental', 'room_booking'].includes(action);
-}
-
-function publicRentalSlotIsPast(date, startTime) {
-  return taipeiDateTimeMillis(date, startTime) <= Date.now();
-}
-
-function roomPolicyForSlot(room, setting, date, startTime) {
-  const day = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][weekday(date)];
-  const policies = setting && setting.policies || room && room.policies || {};
-  return policies && policies[day] && policies[day][startTime] || {};
-}
-
-function roomAllowsInterval(room, setting, date, startTime, endTime, subjectId, mode) {
-  for (let minute = timeMinutes(startTime); minute < timeMinutes(endTime); minute += 30) {
-    const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
-    const policy = roomPolicyForSlot(room, setting, date, slot);
-    if (mode === 'rental' ? policy.blockRental === true : policy.blockSchedule === true) return false;
-    if (
-      mode !== 'rental' &&
-      Array.isArray(policy.subjectIds) &&
-      policy.subjectIds.length &&
-      !policy.subjectIds.map(clean).includes(clean(subjectId))
-    ) return false;
-  }
-  return true;
-}
-
-function roomSupportsSubject(room, subjectId, bundle, setting = {}) {
-  if (!subjectId) return true;
-  const subject = clean(bundle.maps.subjects[subjectId] && bundle.maps.subjects[subjectId].name).toLowerCase();
-  const roomName = clean(room.name).toLowerCase();
-  const configured = firstArray(setting, ['allowedSubjectIds']);
-  const sourceConfigured = firstArray(room, ['allowedSubjectIds', 'subjectIds']);
-  const allowed = configured.length ? configured : sourceConfigured;
-  if (allowed.length && !allowed.includes(subjectId)) return false;
-  const profile = rentalRoomProfile(room, setting);
-  if (/çˆµå£«é¼“|é›»å­é¼“|å‚³çµ±é¼“|é¼“çµ„/.test(subject)) {
-    return profile.equipment.some((item) => ['acoustic_drums', 'electronic_drums'].includes(item)) ||
-      /é¼“|å±•æ¼”|åœ˜ç·´/.test(roomName);
-  }
-  if (/å¤ç®/.test(subject)) {
-    return profile.equipment.includes('guzheng') || /å±•æ¼”|kawai|å¡å“‡ä¼Š/.test(roomName);
-  }
-  if (/é‹¼ç´|é›»å­ç´|keyboard|piano/.test(subject)) {
-    if (normalizePianoType(setting.pianoType || setting.pianoEquipmentType) === 'none') return false;
-    return profile.equipment.includes('piano') || Boolean(configuredPianoType(room, setting)) ||
-      /é‹¼ç´|å¹³å°|yamaha|kawai|å¡å“‡ä¼Š|ç´æˆ¿|å±•æ¼”|åœ˜ç·´/.test(roomName);
-  }
-  if (allowed.length) return true;
-  return true;
-}
-
-function roomRequiresGuzhengMove(room, subjectId, bundle) {
-  const subject = clean(bundle.maps.subjects[subjectId] && bundle.maps.subjects[subjectId].name).toLowerCase();
-  return /å¤ç®/.test(subject) && /kawai|å¡å“‡ä¼Š/i.test(clean(room && room.name));
-}
-
-function normalizePianoType(value) {
-  const type = clean(value).toLowerCase();
-  if (['none', 'no_piano'].includes(type)) return 'none';
-  if (['digital_piano', 'digital', 'electric_piano', 'é›»é‹¼ç´'].includes(type)) return 'digital_piano';
-  if (['grand_piano', 'grand', 'å¹³å°é‹¼ç´'].includes(type)) return 'grand_piano';
-  if (['upright_piano', 'upright', 'ç›´ç«‹é‹¼ç´'].includes(type)) return 'upright_piano';
-  return '';
-}
-
-function inferredPianoType(room) {
-  const name = clean(room && room.name);
-  if (/å±•æ¼”|åœ˜ç·´/.test(name)) return 'digital_piano';
-  if (/yamaha.*å¹³å°|å¹³å°.*yamaha|5è™Ÿé‹¼ç´|äº”è™Ÿé‹¼ç´/i.test(name)) return 'grand_piano';
-  if (/kawai|å¡å“‡ä¼Š|yamaha.*ç›´ç«‹|ç›´ç«‹.*yamaha/i.test(name)) return 'upright_piano';
-  return '';
-}
-
-function configuredPianoType(room, setting = {}) {
-  const explicit = normalizePianoType(setting.pianoType || setting.pianoEquipmentType);
-  if (explicit === 'none') return '';
-  if (explicit) return explicit;
-  const equipment = [
-    ...firstArray(setting, ['equipment', 'rentalEquipment']),
-    ...firstArray(room, ['equipment', 'rentalEquipment'])
-  ];
-  const configured = equipment.map(normalizePianoType).find((type) =>
-    ['digital_piano', 'grand_piano', 'upright_piano'].includes(type)
-  );
-  return configured || inferredPianoType(room);
-}
-
-function pianoTypeLabel(type) {
-  if (type === 'digital_piano') return 'é›»é‹¼ç´';
-  if (type === 'grand_piano') return 'å¹³å°é‹¼ç´';
-  if (type === 'upright_piano') return 'ç›´ç«‹é‹¼ç´';
-  return '';
-}
-
-function roomEquipmentLabel(room, setting = {}) {
-  return pianoTypeLabel(configuredPianoType(room, setting));
-}
-
-function rentalRoomProfile(room, setting = {}) {
-  const name = clean(room.name).toLowerCase();
-  let useTypes = firstArray(setting, ['useTypes', 'rentalUseTypes']);
-  let equipment = firstArray(setting, ['equipment', 'rentalEquipment']);
-  if (!useTypes.length) useTypes = firstArray(room, ['useTypes', 'rentalUseTypes']);
-  if (!equipment.length) equipment = firstArray(room, ['equipment', 'rentalEquipment']);
-  if (!useTypes.length) {
-    useTypes = ['guitar', 'teaching', 'other'];
-    if (/é¼“|å±•æ¼”|åœ˜ç·´/.test(name)) useTypes.push('drums', 'band');
-    if (/é‹¼ç´|å¹³å°|yamaha|kawai|å¡å“‡ä¼Š|ç´æˆ¿|å±•æ¼”|åœ˜ç·´/.test(name)) useTypes.push('piano');
-    if (/å±•æ¼”|åœ˜ç·´|è¡¨æ¼”/.test(name)) useTypes.push('band');
-    if (/å±•æ¼”|kawai|å¡å“‡ä¼Š/.test(name)) useTypes.push('guzheng');
-    if (/éŒ„éŸ³å®¤|éŒ„éŸ³/.test(name)) useTypes.push('recording');
-  }
-  if (/é›»å­é¼“/.test(name)) equipment.push('electronic_drums');
-  if (/å‚³çµ±é¼“|çˆµå£«é¼“|åœ˜ç·´/.test(name)) equipment.push('acoustic_drums');
-  if (/é‹¼ç´|å¹³å°|yamaha|kawai|ç´æˆ¿/.test(name)) equipment.push('piano');
-  if (/å±•æ¼”|åœ˜ç·´/.test(name)) equipment.push('digital_piano', 'piano');
-  if (/yamaha.*å¹³å°|å¹³å°.*yamaha|5è™Ÿé‹¼ç´|äº”è™Ÿé‹¼ç´/.test(name)) equipment.push('grand_piano', 'piano');
-  if (/kawai|å¡å“‡ä¼Š|yamaha.*ç›´ç«‹|ç›´ç«‹.*yamaha/.test(name)) equipment.push('upright_piano', 'piano');
-  if (/å±•æ¼”/.test(name)) equipment.push('guzheng');
-  const pianoType = configuredPianoType(room, setting);
-  if (pianoType) equipment.push(pianoType, 'piano');
-  const inferredCapacity = /å±•æ¼”|åœ˜ç·´|è¡¨æ¼”/.test(name) ? 8 : 3;
-  return {
-    useTypes: [...new Set(useTypes)],
-    equipment: [...new Set(equipment)],
-    capacity: Math.max(1, Number(setting.capacity || room.capacity || inferredCapacity)),
-    publicName: clean(setting.publicName || room.publicName || room.name)
-  };
-}
-
-function flagTrue(value) {
-  return value === true || clean(value).toLowerCase() === 'true';
-}
-
-function rentalPreferenceAllowsRoom(room, setting, data) {
-  const useType = clean(data && data.useType);
-  const name = clean(room && room.name);
-  if (useType === 'piano') {
-    if (normalizePianoType(setting && (setting.pianoType || setting.pianoEquipmentType)) === 'none') return false;
-    const roomPianoType = configuredPianoType(room, setting);
-    const preference = clean(data && data.pianoType).toLowerCase() ||
-      (flagTrue(data && data.excludeDigitalPiano) ? 'exclude_digital' : 'any');
-    if (preference === 'exclude_digital' && roomPianoType === 'digital_piano') return false;
-    if (preference === 'grand_piano' && roomPianoType !== 'grand_piano') return false;
-    if (preference === 'upright_piano' && roomPianoType !== 'upright_piano') return false;
-  }
-  if (useType === 'guzheng' && /kawai|å¡å“‡ä¼Š/i.test(name) && !flagTrue(data.allowGuzhengMove)) {
-    return false;
-  }
-  if (useType === 'drums') {
-    const drumType = clean(data.drumType);
-    if (['acoustic_drums', 'electronic_drums'].includes(drumType)) {
-      return rentalRoomProfile(room, setting).equipment.includes(drumType);
-    }
-  }
-  return true;
-}
-
-function rentalRoomMatch(room, setting, data) {
-  const profile = rentalRoomProfile(room, setting);
-  const useType = clean(data.useType);
-  const equipment = clean(data.equipment);
-  const partySize = Math.max(1, Number(data.partySize || 1));
-  if (profile.capacity < partySize) return { compatible: false, level: '', profile, reason: `æœ€å¤šå®¹ç´ ${profile.capacity} äºº` };
-  if (equipment && equipment !== 'own' && !profile.equipment.includes(equipment)) {
-    return { compatible: false, level: '', profile, reason: 'æ²’æœ‰æŒ‡å®šè¨­å‚™' };
-  }
-  if (!useType || profile.useTypes.includes(useType)) return { compatible: true, level: 'best', profile, reason: '' };
-  if (equipment === 'own' || !equipment) return { compatible: true, level: 'alternative', profile, reason: 'ç©ºé–“ä»å¯ä½¿ç”¨' };
-  return { compatible: false, level: '', profile, reason: 'ä¸é©åˆé€™é …ç”¨é€”' };
-}
-
-function resourceEvent(row, maps = {}, recurringLineages = new Set()) {
-  const seriesCandidateId = clean(
-    row.seriesId ||
-    row.fixedCourseId ||
-    row.sourceCourseId ||
-    row.courseId ||
-    row.scheduleId
-  );
-  const recurring = row.recurring === true ||
-    recurringLineages.has(seriesCandidateId) ||
-    (
-      clean(row.type || row.kind).toLowerCase() === 'fixed' &&
-      recurringLineages.has(clean(row.fixedCourseId || row.seriesId || sourceId(row)))
-    );
-  return {
-    id: sourceId(row),
-    sourceId: sourceId(row),
-    fixedCourseId: clean(row.fixedCourseId || row.sourceCourseId || row.seriesId || row.courseId || row.scheduleId),
-    seriesId: clean(row.seriesId || row.fixedCourseId || row.sourceCourseId || row.courseId || row.scheduleId),
-    recurring,
-    date: eventDate(row),
-    startTime: eventStart(row),
-    endTime: eventEnd(row),
-    roomId: eventRoomId(row),
-    teacherId: eventTeacherId(row),
-    studentIds: [...new Set(eventStudentIds(row))],
-    studentPaymentIds: firstArray(row, ['studentPaymentIds', 'tuitionPeriodIds', 'paymentIds']),
-    subjectId: eventSubjectId(row),
-    status: normalizeScheduleStatus(row.status || 'scheduled'),
-    type: clean(row.type || row.kind || 'lesson'),
-    portalAction: clean(row.portalAction),
-    portalChangeId: clean(row.portalChangeId),
-    requestedRoomId: clean(row.requestedRoomId),
-    pendingReason: clean(row.pendingReason),
-    resourceIds: eventSharedResourceIds(row, maps)
-  };
-}
-
-function publicEvent(row, maps, ownTeacherId, recurringLineages = new Set()) {
-  const resource = resourceEvent(row, maps, recurringLineages);
-  const isOwn = Boolean(ownTeacherId && resource.teacherId === ownTeacherId);
-  return {
-    id: resource.id,
-    sourceId: resource.sourceId,
-    fixedCourseId: resource.fixedCourseId,
-    seriesId: resource.seriesId,
-    recurring: resource.recurring,
-    date: resource.date,
-    startTime: resource.startTime,
-    endTime: resource.endTime,
-    roomId: resource.roomId,
-    roomName: clean(maps.rooms[resource.roomId] && maps.rooms[resource.roomId].name),
-    teacherId: resource.teacherId,
-    teacherName: isOwn ? clean(maps.teachers[resource.teacherId] && maps.teachers[resource.teacherId].name) : '',
-    studentIds: isOwn ? resource.studentIds : [],
-    studentPaymentIds: isOwn ? resource.studentPaymentIds : [],
-    studentNames: isOwn ? resource.studentIds.map((id) => clean(maps.students[id] && maps.students[id].name)).filter(Boolean) : [],
-    subjectId: resource.subjectId,
-    subjectName: clean(maps.subjects[resource.subjectId] && maps.subjects[resource.subjectId].name),
-    status: resource.status,
-    type: resource.type,
-    portalAction: resource.portalAction,
-    portalChangeId: resource.portalChangeId,
-    requestedRoomId: resource.requestedRoomId,
-    pendingReason: resource.pendingReason,
-    tuitionPeriodId: isOwn ? clean(row.tuitionPeriodId || row.periodId || row.studentPayment) : '',
-    tuitionAmount: isOwn ? Number(row.tuitionAmount || row.courseAmount || row.feeAmount || row.expectedAmount || 0) : 0,
-    teacherAmount: isOwn ? Number(row.teacherAmount || row.teacherPay || row.payAmount || row.specialTeacherPay || 0) : 0,
-    teacherRate: isOwn ? clean(row.teacherRate || row.shareRate || row.allotRate || row.percentage) : '',
-    specialLessonPrice: isOwn ? Number(row.specialLessonPrice || row.tuitionAmount || row.courseAmount || 0) : 0,
-    specialTeacherPay: isOwn ? Number(row.specialTeacherPay || row.teacherAmount || row.teacherPay || 0) : 0,
-    teacherPayAdjustment: isOwn ? Number(row.teacherPayAdjustment || 0) : 0,
-    teacherPayAdjustmentReason: isOwn ? clean(row.teacherPayAdjustmentReason) : '',
-    teacherPayable: isOwn ? row.teacherPayable !== false : false,
-    specialLesson: isOwn && (row.specialLesson === true || clean(row.portalAction) === 'teacher_gift'),
-    own: isOwn,
-    busy: !isOwn
-  };
-}
-
-function indexById(rows) {
-  return rows.reduce((acc, row) => {
-    const id = sourceId(row);
-    if (id) acc[id] = row;
-    return acc;
-  }, {});
-}
-
-async function activeStudentSuspensions() {
-  const snapshot = await db.collection('coursePortalStudentSuspensions')
-    .where('status', '==', 'active')
-    .get();
-  return snapshot.docs.map((doc) => Object.assign({
-    id: doc.id
-  }, jsonValue(doc.data()) || {}));
-}
-
-async function reconcileStudentSuspensionsForNewSchedules(studentIds) {
-  const wanted = new Set((studentIds || []).map(clean).filter(Boolean));
-  if (!wanted.size) return activeStudentSuspensions();
-  const [suspensions, fixedCourses, temporaryCourses, changeSnapshot] = await Promise.all([
-    activeStudentSuspensions(),
-    mirrorRows('fixedCourses'),
-    mirrorRows('temporaryCourses'),
-    db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
-  ]);
-  const changes = changeSnapshot.docs.map((doc) => Object.assign({
-    __id: doc.id,
-    __createdAtMillis: asMillis((doc.data() || {}).createdAt)
-  }, jsonValue(doc.data()) || {}));
-  const reactivated = [];
-  suspensions.filter((row) => wanted.has(clean(row.studentId))).forEach((suspension) => {
-    const studentId = clean(suspension.studentId);
-    const teacherId = clean(suspension.teacherId);
-    const atStop = new Set((suspension.courseIdsAtStop || []).map(clean).filter(Boolean));
-    const stoppedAt = asMillis(suspension.requestedAt);
-    const hasNewMirrorCourse = [...fixedCourses, ...temporaryCourses].some((course) => {
-      if (eventTeacherId(course) !== teacherId || !eventStudentIds(course).includes(studentId)) return false;
-      const courseIds = courseSourceIds(course).concat(sourceId(course)).map(clean).filter(Boolean);
-      if (atStop.size) return courseIds.some((id) => !atStop.has(id));
-      const courseUpdatedAt = asMillis(
-        course.createdAt || course.updatedAt || course.createdDate || course.updatedDate
-      );
-      return Boolean(stoppedAt && courseUpdatedAt > stoppedAt);
-    });
-    const hasNewPortalCourse = changes.some((change) =>
-      ['extra_lesson', 'teacher_gift'].includes(clean(change.action)) &&
-      eventTeacherId(change.event || change) === teacherId &&
-      eventStudentIds(change.event || change).includes(studentId) &&
-      (!stoppedAt || Number(change.__createdAtMillis || 0) > stoppedAt)
-    );
-    if (hasNewMirrorCourse || hasNewPortalCourse) reactivated.push(suspension);
-  });
-  if (reactivated.length) {
-    const batch = db.batch();
-    reactivated.forEach((row) => batch.set(
-      db.collection('coursePortalStudentSuspensions').doc(clean(row.id || row.suspensionId)),
-      {
-        status: 'reactivated',
-        reactivatedAt: FieldValue.serverTimestamp(),
-        reactivatedAtText: nowText(),
-        reactivatedReason: 'new-schedule-detected',
-        updatedAt: FieldValue.serverTimestamp()
-      },
-      { merge: true }
-    ));
-    batch.set(scheduleVersionRef(), {
-      version: FieldValue.increment(1),
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: 'student-auto-reactivation'
-    }, { merge: true });
-    await batch.commit();
-  }
-  const reactivatedIds = new Set(reactivated.map((row) => clean(row.id || row.suspensionId)));
-  return suspensions.filter((row) => !reactivatedIds.has(clean(row.id || row.suspensionId)));
-}
-
-function activeLearningStudentIds(studentRows, courseRows, eventRows, suspensions) {
-  const activeStudents = new Set((studentRows || [])
-    .filter((row) => row.__mirrorActive !== false && sourceActive(row))
-    .map(sourceId)
-    .filter(Boolean));
-  const available = new Set();
-  [...(courseRows || []), ...(eventRows || [])].forEach((course) => {
-    const teacherId = eventTeacherId(course);
-    eventStudentIds(course).forEach((studentId) => {
-      if (!activeStudents.has(studentId)) return;
-      const blocked = (suspensions || []).some((suspension) =>
-        clean(suspension.studentId) === studentId &&
-        clean(suspension.teacherId) === teacherId
-      );
-      if (!blocked) available.add(studentId);
-    });
-  });
-  return available;
-}
-
-function suspensionAppliesToEvent(suspension, row) {
-  const effectiveDate = dateKey(
-    suspension.effectiveDate ||
-    suspension.stopDate ||
-    suspension.requestedAtText
-  );
-  return clean(suspension.teacherId) === eventTeacherId(row) &&
-    eventStudentIds(row).includes(clean(suspension.studentId)) &&
-    (!effectiveDate || eventDate(row) >= effectiveDate);
-}
-
-function applyStudentSuspensions(row, suspensions) {
-  const originalStudentIds = eventStudentIds(row);
-  if (!originalStudentIds.length) return row;
-  const retainedStudentIds = originalStudentIds.filter((studentId) =>
-    !(suspensions || []).some((suspension) =>
-      clean(suspension.studentId) === studentId &&
-      suspensionAppliesToEvent(suspension, row)
-    )
-  );
-  if (retainedStudentIds.length === originalStudentIds.length) return row;
-  if (!retainedStudentIds.length) return null;
-  return Object.assign({}, row, {
-    studentId: retainedStudentIds.length === 1 ? retainedStudentIds[0] : '',
-    studentIds: retainedStudentIds,
-    students: retainedStudentIds,
-    student_ids: retainedStudentIds
-  });
-}
-
-async function scheduleBundle(startDate, endDate, ownTeacherId) {
-  const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions] = await Promise.all([
-    mirrorRows('rooms'),
-    mirrorRows('subjects'),
-    mirrorRows('students'),
-    mirrorRows('teachers'),
-    mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true }),
-    mirrorRows('fixedCourses'),
-    mirrorRowsByDateRange('temporaryCourses', startDate, endDate),
-    mirrorRowsByDateRange('roomRentals', startDate, endDate),
-    scheduleChangeDocsByDateRange(startDate, endDate),
-    activeStudentSuspensions()
-  ]);
-  const maps = {
-    rooms: indexById(rooms),
-    subjects: indexById(subjects),
-    students: indexById(students),
-    teachers: indexById(teachers)
-  };
-  const livePortalSource = (row) => /^course-portal/i.test(clean(row && row.source));
-  // å…¥å£å»ºç«‹çš„è³‡æ–™ä»¥ live change ç‚ºå”¯ä¸€æº–æ“šï¼›åŒæ­¥é€² mirror çš„èˆŠå‰¯æœ¬ä¸€å¾‹ä¸å†
-  // åƒèˆ‡å³æ™‚å ç”¨ï¼Œé€™æ¨£å–æ¶ˆå¾Œä¸æœƒç­‰ä¸‹ä¸€æ¬¡éŸ³æ•™é›²åŒæ­¥æ‰é‡‹å‡ºã€‚
-  const inRangeExact = (row) =>
-    !livePortalSource(row) &&
-    eventDate(row) >= startDate &&
-    eventDate(row) <= endDate &&
-    eventStart(row) &&
-    eventEnd(row);
-  const canonicalEvents = events.filter(inRangeExact);
-  const canonicalKeys = new Set();
-  canonicalEvents.forEach((row) => {
-    courseSourceIds(row).forEach((id) => canonicalKeys.add(`${id}|${eventDate(row)}`));
-  });
-  // æ­£å¼æ—¥è¡¨ events æ˜¯åŒèª²åŒæ—¥çš„å”¯ä¸€æº–æ“šã€‚å³ä½¿æ™‚é–“å·²æ”¹ã€æ¥­å‹™ç‹€æ…‹å·²å–æ¶ˆï¼Œ
-  // éƒ½å¿…é ˆè“‹é temporaryCourses / roomRentals çš„èˆŠå‰¯æœ¬ï¼›å› æ­¤å„ªå…ˆéµä¸å«æ™‚é–“ã€‚
-  const selectedCanonicalKeys = new Set();
-  const selectedCanonical = canonicalEvents
-    .filter(scheduleOccurrenceActive)
-    .slice()
-    .sort((left, right) =>
-      Number(right.__mirrorUpdatedAt || asMillis(right.updatedAt)) -
-        Number(left.__mirrorUpdatedAt || asMillis(left.updatedAt)) ||
-      sourceId(right).localeCompare(sourceId(left))
-    )
-    .filter((row) => {
-      const keys = courseSourceIds(row).map((id) => `${id}|${eventDate(row)}`);
-      if (keys.some((key) => selectedCanonicalKeys.has(key))) return false;
-      keys.forEach((key) => selectedCanonicalKeys.add(key));
-      return true;
-    });
-  const canonicalStatusByKey = new Map();
-  selectedCanonical.forEach((row) => {
-    courseSourceIds(row).forEach((id) => {
-      canonicalStatusByKey.set(`${id}|${eventDate(row)}`, normalizeScheduleStatus(row.status || 'scheduled'));
-    });
-  });
-  canonicalEvents.forEach((row) => {
-    courseSourceIds(row).forEach((id) => {
-      const key = `${id}|${eventDate(row)}`;
-      if (!canonicalStatusByKey.has(key)) canonicalStatusByKey.set(key, 'cancelled');
-    });
-  });
-  const lowerExactRows = [...temporary, ...rentals].filter(inRangeExact).filter((row) =>
-    !courseSourceIds(row).some((id) => canonicalKeys.has(`${id}|${eventDate(row)}`))
-  );
-  const exactSourceRows = [...canonicalEvents, ...lowerExactRows];
-  const exactCandidates = [...selectedCanonical, ...lowerExactRows.filter(scheduleOccurrenceActive)];
-  // æ—¥è¡¨ events æ˜¯æŒ‡å®šæ—¥æœŸçš„æœ€æ–°çœŸç›¸ï¼Œå„ªå…ˆæ–¼ temporaryCourses / roomRentals
-  // ä¸­å¯èƒ½ä»æ®˜ç•™çš„åŒä¸€ä¾†æºå‰¯æœ¬ã€‚ä»¥æ‰€æœ‰ä¾†æº id + æ—¥æœŸæ™‚é–“å»ºç«‹åˆ¥åï¼Œé¿å…åŒä¸€å ‚
-  // è¢«é‡è¤‡ç®—æˆå…©å€‹å ç”¨äº‹ä»¶ã€‚
-  const exactAlias = new Set();
-  const exact = [];
-  exactCandidates.forEach((row) => {
-    const aliases = courseSourceIds(row).map((id) =>
-      `${id}|${eventDate(row)}|${eventStart(row)}|${eventEnd(row)}`
-    );
-    if (aliases.some((key) => exactAlias.has(key))) return;
-    exact.push(row);
-    aliases.forEach((key) => exactAlias.add(key));
-  });
-  const exactKeys = new Set();
-  // å–æ¶ˆï¼åœèª²çš„æ—¥è¡¨åˆ—æœ¬èº«ä¸å ç”¨ï¼Œä½†ä»æ˜¯å›ºå®šèª²è©²æ—¥æœŸçš„ tombstoneï¼›
-  // å¿…é ˆé˜»æ­¢ recurring expansion æŠŠå®ƒé‡æ–°ç”Ÿå›ä¾†ã€‚
-  exactSourceRows.forEach((row) => {
-    courseSourceIds(row).forEach((id) => exactKeys.add(`${id}|${eventDate(row)}`));
-  });
-  const expanded = [];
-  fixed.filter((row) => !livePortalSource(row)).forEach((row) => {
-    const start = eventDate(row);
-    if (!start || !eventStart(row) || !eventEnd(row)) return;
-    const explicitEnd = dateKey(row.endDate || row.recurrenceEndDate);
-    const stopDate = dateKey(row.stopDate || row.stoppedAtDate || row.inactiveDate);
-    const finalDate = explicitEnd && stopDate
-      ? [explicitEnd, stopDate].sort()[0]
-      : (explicitEnd || stopDate || (sourceActive(row) ? endDate : start));
-    const interval = safeFrequencyWeeks(row.frequencyWeeks || row.intervalWeeks);
-    const stepDays = interval * 7;
-    const elapsedDays = Math.max(0, Math.floor(
-      (new Date(`${startDate}T12:00:00+08:00`).getTime() - new Date(`${start}T12:00:00+08:00`).getTime()) / 86400000
-    ));
-    let key = elapsedDays ? addDays(start, Math.ceil(elapsedDays / stepDays) * stepDays) : start;
-    for (; key <= endDate && key <= finalDate; key = addDays(key, stepDays)) {
-      const statusByDate = row.statusByDate || row.exceptions || {};
-      const status = normalizeScheduleStatus(statusByDate[key]);
-      if (status === 'cancelled') continue;
-      const clone = Object.assign({}, row, {
-        date: key,
-        status: status === 'scheduled' ? clean(row.status || 'scheduled') : status,
-        __id: `${sourceId(row)}@${key}`,
-        fixedCourseId: sourceId(row)
-      });
-      if (!exactKeys.has(`${sourceId(row)}|${key}`)) expanded.push(clone);
-    }
-  });
-  const overlay = changes.map((doc) => Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {}));
-  const removed = new Set(overlay.filter((row) => ['single_move', 'cancel', 'lesson_status'].includes(row.action))
-    .flatMap((row) => [
-      `${clean(row.sourceEventId)}|${dateKey(row.sourceDate)}`,
-      `${clean(row.sourceCourseId)}|${dateKey(row.sourceDate)}`
-    ]));
-  const activeFixedRows = fixed.filter((row) => !livePortalSource(row) && sourceActive(row));
-  const activeFixedByLineage = new Map(activeFixedRows.map((row) => [sourceId(row), row]));
-  const permanent = effectivePermanentChanges(overlay).filter((row) => {
-    if (row.action !== 'permanent_move' || !row.event) return false;
-    const lineage = permanentLineage(row);
-    return activeFixedByLineage.has(lineage);
-  });
-  const effectivePermanentIds = new Set(permanent.map((row) => clean(row.__id || row.id)));
-  const recurringLineages = new Set(
-    activeFixedRows.map(sourceId).filter(Boolean)
-  );
-  permanent.forEach((row) => {
-    const lineage = permanentLineage(row);
-    if (lineage) recurringLineages.add(lineage);
-  });
-  const permanentStatusById = new Map();
-  const permanentByLineage = new Map();
-  permanent.forEach((row) => {
-    const lineage = permanentLineage(row);
-    if (!permanentByLineage.has(lineage)) permanentByLineage.set(lineage, []);
-    permanentByLineage.get(lineage).push(row);
-  });
-  permanentByLineage.forEach((rows, lineage) => {
-    const sourceSeries = activeFixedByLineage.get(lineage) || {};
-    let statusByDate = Object.assign({}, sourceSeries.statusByDate || sourceSeries.exceptions || {});
-    canonicalStatusByKey.forEach((status, key) => {
-      const separator = key.lastIndexOf('|');
-      if (separator < 0 || key.slice(0, separator) !== lineage) return;
-      statusByDate[key.slice(separator + 1)] = { status, source: 'canonical-event' };
-    });
-    rows.slice().sort((left, right) =>
-      permanentCutover(left).localeCompare(permanentCutover(right)) ||
-      changeOrderValue(left) - changeOrderValue(right)
-    ).forEach((row) => {
-      const frequencyWeeks = safeFrequencyWeeks(row.frequencyWeeks || row.event.frequencyWeeks || row.intervalWeeks);
-      statusByDate = translateRecurringStatusMap(
-        statusByDate,
-        permanentCutover(row),
-        permanentAnchor(row),
-        frequencyWeeks
-      );
-      permanentStatusById.set(clean(row.__id || row.id), Object.assign({}, statusByDate));
-    });
-  });
-  const occurrenceIds = (row) => [...new Set([
-    ...courseSourceIds(row),
-    clean(row && row.seriesId),
-    clean(row && row.sourceEventId),
-    clean(row && row.portalChangeId)
-  ].filter(Boolean))];
-  const permanentMatchesOccurrence = (change, row) => {
-    const changeIds = new Set([
-      ...occurrenceIds(change),
-      ...occurrenceIds(change && change.event),
-      permanentLineage(change)
-    ].filter(Boolean));
-    return occurrenceIds(row).some((id) => changeIds.has(id));
-  };
-  const removedOccurrence = (row, key) => occurrenceIds(row).some((id) => removed.has(`${id}|${key}`));
-  const base = [...exact, ...expanded].filter((row) =>
-    !removedOccurrence(row, eventDate(row)) &&
-    !permanent.some((change) =>
-      permanentMatchesOccurrence(change, row) &&
-      eventDate(row) >= dateKey(change.cutoverDate || change.sourceDate || change.effectiveDate)
-    )
-  );
-  const handledPermanentExceptions = new Set();
-  [...overlay].sort((left, right) => {
-    const actionOrder =
-      (clean(left.action) === 'permanent_move' ? 0 : 1) -
-      (clean(right.action) === 'permanent_move' ? 0 : 1);
-    if (actionOrder) return actionOrder;
-    if (clean(left.action) === 'permanent_move') {
-      return permanentLineage(left).localeCompare(permanentLineage(right)) ||
-        permanentCutover(left).localeCompare(permanentCutover(right)) ||
-        changeOrderValue(left) - changeOrderValue(right);
-    }
-    return changeOrderValue(left) - changeOrderValue(right);
-  }).forEach((row) => {
-    if (row.action === 'permanent_move' && row.event) {
-      if (!effectivePermanentIds.has(clean(row.__id || row.id))) return;
-      const lineage = permanentLineage(row);
-      const cutoverDate = permanentCutover(row);
-      const anchorDate = permanentAnchor(row);
-      const intervalWeeks = safeFrequencyWeeks(row.frequencyWeeks || row.event.frequencyWeeks || row.intervalWeeks);
-      const nextPermanent = permanent
-        .filter((other) =>
-          other.__id !== row.__id &&
-          permanentLineage(other) === lineage &&
-          permanentCutover(other) > cutoverDate
-        )
-        .sort((left, right) =>
-          permanentCutover(left).localeCompare(permanentCutover(right))
-        )[0];
-      const sourceSeries = activeFixedByLineage.get(lineage) || {};
-      const sourceEnd = dateKey(sourceSeries.recurrenceEndDate || sourceSeries.endDate);
-      const storedEnd = dateKey(row.recurrenceEndDate || row.endDate || row.event.recurrenceEndDate || row.event.endDate);
-      const rowEnd = sourceEnd && storedEnd
-        ? [sourceEnd, storedEnd].sort()[0]
-        : (sourceEnd || storedEnd || endDate);
-      const finalDate = nextPermanent
-        ? [rowEnd, addDays(permanentCutover(nextPermanent), -1)].sort()[0]
-        : rowEnd;
-      for (let key = anchorDate; key && key <= endDate && key <= finalDate; key = addDays(key, intervalWeeks * 7)) {
-        if (key < startDate) continue;
-        const storedPending = (row.pendingDates || []).includes(key);
-        const stepDays = intervalWeeks * 7;
-        const matchingException = overlay.find((change) => {
-          if (!['single_move', 'lesson_status', 'cancel'].includes(clean(change.action))) return false;
-          const changeLineage = clean(change.sourceCourseId || change.event && (change.event.fixedCourseId || change.event.seriesId));
-          const exceptionDate = dateKey(change.sourceDate);
-          if (changeLineage !== lineage || !exceptionDate || exceptionDate < cutoverDate) return false;
-          const deltaDays = Math.round(
-            (new Date(`${exceptionDate}T12:00:00+08:00`).getTime() -
-              new Date(`${cutoverDate}T12:00:00+08:00`).getTime()) / 86400000
-          );
-          return deltaDays >= 0 && deltaDays % stepDays === 0 && addDays(anchorDate, deltaDays) === key;
-        });
-        if (matchingException && ['single_move', 'cancel'].includes(clean(matchingException.action))) {
-          // å–®æ¬¡èª¿èª²ç¨å¾Œä»æœƒåŠ å…¥å®ƒè‡ªå·±çš„ target eventï¼›é€™è£¡åªæŠ‘åˆ¶å°æ‡‰çš„æ–°å›ºå®š occurrenceã€‚
-          if (clean(matchingException.action) === 'cancel') handledPermanentExceptions.add(matchingException.__id);
-          continue;
-        }
-        const occurrenceId = `${row.__id}@${key}`;
-        const occurrence = Object.assign({}, row.event, {
-          id: occurrenceId,
-          fixedCourseId: lineage,
-          seriesId: lineage,
-          frequencyWeeks: intervalWeeks,
-          date: key,
-          portalChangeId: row.__id
-        });
-        const inheritedStatus = normalizeScheduleStatus(
-          (permanentStatusById.get(clean(row.__id || row.id)) || {})[key]
-        );
-        if (inheritedStatus === 'cancelled') continue;
-        if (inheritedStatus !== 'scheduled') occurrence.status = inheritedStatus;
-        let matchedLessonStatus = false;
-        if (matchingException && clean(matchingException.action) === 'lesson_status') {
-          occurrence.status = normalizeScheduleStatus(matchingException.event && matchingException.event.status);
-          occurrence.paymentStatus = clean(matchingException.event && matchingException.event.paymentStatus);
-          occurrence.teacherPayable = matchingException.event && matchingException.event.teacherPayable === true;
-          handledPermanentExceptions.add(matchingException.__id);
-          matchedLessonStatus = true;
-        }
-        if (!matchedLessonStatus && removedOccurrence(occurrence, key)) continue;
-        const roomId = clean((row.roomOverrides || {})[key] || row.event.roomId);
-        const candidate = Object.assign(occurrence, {
-          roomId,
-          portalAction: row.action,
-          __id: occurrenceId
-        });
-        const candidateResources = eventSharedResourceIds(candidate, maps);
-        const dynamicConflict = !storedPending && eventBlocksResource(candidate) && base.find((other) =>
-          eventDate(other) === key &&
-          eventBlocksResource(other) &&
-          overlaps(eventStart(candidate), eventEnd(candidate), eventStart(other), eventEnd(other)) &&
-          (
-            eventRoomId(other) === roomId ||
-            eventTeacherId(other) === eventTeacherId(candidate) ||
-            eventStudentIds(other).some((studentId) => eventStudentIds(candidate).includes(studentId)) ||
-            sharedResourceConflict(
-              [Object.assign({}, resourceEvent(other, maps, recurringLineages), {
-                resourceIds: eventSharedResourceIds(other, maps)
-              })],
-              candidateResources
-            )
-          )
-        );
-        if (storedPending || dynamicConflict) {
-          base.push(Object.assign({}, candidate, {
-            roomId: '',
-            requestedRoomId: roomId,
-            status: 'pending_conflict',
-            pendingReason: storedPending ? 'å»ºç«‹æ°¸ä¹…èª¿èª²æ™‚å·²æœ‰è¡çª' : 'ç›®å‰èª²è¡¨å·²æœ‰è¡çªï¼Œè«‹é‡æ–°å®‰æ’'
-          }));
-        } else {
-          base.push(candidate);
-        }
-      }
-    } else if (
-      !handledPermanentExceptions.has(row.__id) &&
-      row.event &&
-      eventDate(row.event) >= startDate &&
-      eventDate(row.event) <= endDate
-    ) {
-      const target = Object.assign({
-        __id: row.__id,
-        portalAction: clean(row.action),
-        portalChangeId: row.__id
-      }, row.event);
-      // å¾ŒçºŒå†æ¬¡èª¿èª²æ™‚ï¼Œä»¥å‰ä¸€æ¬¡ overlay event id ç²¾æº–ç§»é™¤èˆŠä½ç½®ã€‚
-      if (!removed.has(`${sourceId(target)}|${eventDate(target)}`) || row.action === 'lesson_status') {
-        base.push(target);
-      }
-    }
-  });
-  const validBase = base.map((row) => applyStudentSuspensions(row, suspensions)).filter((row) =>
-    row &&
-    eventDate(row) >= startDate &&
-    eventDate(row) <= endDate &&
-    validPortalTime(eventStart(row)) &&
-    validPortalTime(eventEnd(row)) &&
-    timeMinutes(eventEnd(row)) > timeMinutes(eventStart(row))
-  );
-  const resourceEvents = validBase.map((row) => resourceEvent(row, maps, recurringLineages));
-  return {
-    rooms,
-    subjects,
-    students,
-    teachers,
-    fixedCourses: activeFixedRows,
-    temporaryCourses: temporary.filter((row) => !livePortalSource(row)),
-    scheduleChanges: overlay,
-    suspensions,
-    maps,
-    resourceEvents,
-    resourceConflicts: scheduleResourceConflicts(resourceEvents),
-    events: validBase.map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
-  };
-}
-
-async function teacherPortalData(data) {
-  const session = await requireSession(data, ['teacher']);
-  const start = dateKey(data.weekStart);
-  if (!start) throw new HttpsError('invalid-argument', 'é€±èµ·å§‹æ—¥æœŸæ ¼å¼éŒ¯èª¤ã€‚');
-  const end = addDays(start, 6);
-  const month = clean(data.month).match(/^\d{4}-\d{2}$/) ? clean(data.month) : start.slice(0, 7);
-  if (data.includePayroll === true && month < TEACHER_PAYROLL_MIN_MONTH) {
-    throw new HttpsError('failed-precondition', 'è€å¸«è–ªè³‡æŸ¥è©¢åƒ…é–‹æ”¾æ°‘åœ‹ 115 å¹´ 7 æœˆèµ·çš„è³‡æ–™ã€‚');
-  }
-  const [bundle, roomSettingsSnapshot, attendanceCancellationSnapshot] = await Promise.all([
-    scheduleBundle(start, end, session.teacherId),
-    db.collection('coursePortalRoomSettings').get(),
-    db.collection(ATTENDANCE_CANCELLATIONS).where('teacherId', '==', session.teacherId).get()
-  ]);
-  const roomSettingsMap = {};
-  roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
-  const teacher = bundle.maps.teachers[session.teacherId];
-  if (!teacher) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™å€‹è€å¸«å¸³è™Ÿçš„è³‡æ–™ã€‚');
-  const cancellationRows = attendanceCancellationSnapshot.docs.map((doc) =>
-    Object.assign({ id: doc.id }, jsonValue(doc.data()) || {})
-  );
-  const ownEvents = bundle.events.filter((row) => row.teacherId === session.teacherId).map((row) => {
-    const request = cancellationRows.find((item) =>
-      dateKey(item.date) === row.date &&
-      (
-        clean(item.eventId) === clean(row.sourceId || row.id) ||
-        clean(item.courseId) === clean(row.fixedCourseId || row.sourceId || row.id)
-      )
-    );
-    return Object.assign({}, row, {
-      attendanceCancellationStatus: clean(request && request.status),
-      attendanceCancellationId: clean(request && request.id)
-    });
-  });
-  const stoppedStudentIds = new Set((bundle.suspensions || [])
-    .filter((row) => clean(row.teacherId) === session.teacherId)
-    .map((row) => clean(row.studentId))
-    .filter(Boolean));
-  const studentIds = [...new Set(
-    [...bundle.fixedCourses, ...bundle.temporaryCourses]
-      .filter((row) => eventTeacherId(row) === session.teacherId)
-      .flatMap(eventStudentIds)
-      .concat(ownEvents.flatMap((row) => row.studentIds))
-  )].filter((studentId) => !stoppedStudentIds.has(studentId));
-  const roster = studentIds.map((id) => {
-    const student = bundle.maps.students[id] || {};
-    const phone = normalizePhone(sourcePhone(student));
-    return {
-      id,
-      name: clean(student.name),
-      phone,
-      phoneLast4: phone.slice(-4),
-      teacherName: clean(teacher.name)
-    };
-  }).filter((row) => row.name);
-  const includePayroll = data.includePayroll === true;
-  const [payroll, adjustments, portalAdjustmentsSnap, portalPayrollSnap, payrollAttendance] = includePayroll
-    ? await Promise.all([
-      mirrorRowsByField('teacherPayroll', 'teacherId', session.teacherId),
-      mirrorRowsByField('teacherAdjustments', 'teacherId', session.teacherId),
-      db.collection('coursePortalTeacherAdjustments').where('teacherId','==',session.teacherId).get(),
-      db.collection(ATTENDANCE_PAYROLL).where('teacherId', '==', session.teacherId).get(),
-      mirrorRowsByField('attendance', 'teacherId', session.teacherId)
-    ])
-    : [[], [], { docs: [] }, { docs: [] }, []];
-  const portalAdjustments=portalAdjustmentsSnap.docs.map(doc=>Object.assign({__id:doc.id},jsonValue(doc.data())||{}));
-  const portalPayroll = portalPayrollSnap.docs
-    .map((doc) => Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {}));
-  const result = {
-    ok: true,
-    teacher: {
-      id: session.teacherId,
-      name: clean(teacher.name),
-      phoneLast4: normalizePhone(sourcePhone(teacher)).slice(-4),
-      subjectIds: firstArray(teacher, ['subjectIds', 'subjects'])
-    },
-    week: { start, end },
-    hours: { start: 10, end: 21, closedWeekday: 1 },
-    rooms: bundle.rooms.filter(sourceActive).map((room) => ({
-      id: sourceId(room),
-      name: rentalRoomProfile(room, roomSettingsMap[sourceId(room)] || {}).publicName,
-      equipmentLabel: roomEquipmentLabel(room, roomSettingsMap[sourceId(room)] || {}),
-      rentalFee: Number(room.rentalFee || room.price || 0),
-      allowedSubjectIds: firstArray(roomSettingsMap[sourceId(room)] || {}, ['allowedSubjectIds'])
-        .concat(firstArray(room, ['allowedSubjectIds', 'subjectIds']))
-    })),
-    subjects: bundle.subjects.map((subject) => ({ id: sourceId(subject), name: clean(subject.name) })),
-    events: bundle.events.map((row) =>
-      row.teacherId === session.teacherId
-        ? (ownEvents.find((item) => item.id === row.id) || row)
-        : row
-    ),
-    roster
-  };
-  if (includePayroll) {
-    const approvedCancellations = cancellationRows.filter((row) => clean(row.status) === 'approved');
-    result.payroll = mergeTeacherPayrollRows(
-      enrichTeacherPayrollRows(payroll, payrollAttendance),
-      portalPayroll,
-      approvedCancellations.concat(portalPayroll.filter((row) => row.active === false))
-    )
-      .filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
-    result.adjustments = mergeTeacherAdjustmentRows(adjustments, portalAdjustments)
-      .filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
-  }
-  return result;
-}
-
-async function teacherOwnsStudent(teacherId, studentId) {
-  const [fixedCourses, temporaryCourses] = await Promise.all([
-    mirrorRows('fixedCourses'),
-    mirrorRows('temporaryCourses')
-  ]);
-  return [...fixedCourses, ...temporaryCourses].some((row) =>
-    eventTeacherId(row) === clean(teacherId) &&
-    eventStudentIds(row).includes(clean(studentId))
-  );
-}
-
-function tuitionOutstandingAmount(row) {
-  const expected = Number(
-    row.expectedAmount ||
-    row.tuitionAmount ||
-    row.courseAmount ||
-    row.feeAmount ||
-    row.amount ||
-    0
-  );
-  const paid = Number(
-    row.paidAmount ||
-    row.receivedAmount ||
-    row.paid ||
-    row.received ||
-    0
-  );
-  return Math.max(0, expected - paid);
-}
-
-async function teacherUpdateStudent(data) {
-  const session = await requireSession(data, ['teacher']);
-  const studentId = clean(data.studentId);
-  const name = clean(data.name);
-  const phone = normalizePhone(data.phone);
-  assertInput(studentId, 'å­¸ç”Ÿ');
-  assertInput(name, 'å­¸ç”Ÿå§“å');
-  assertInput(phone, 'å­¸ç”Ÿé›»è©±');
-  if (!/^\d{8,15}$/.test(phone)) {
-    throw new HttpsError('invalid-argument', 'å­¸ç”Ÿé›»è©±æ ¼å¼ä¸æ­£ç¢ºã€‚');
-  }
-  if (!(await teacherOwnsStudent(session.teacherId, studentId))) {
-    throw new HttpsError('permission-denied', 'åªèƒ½ä¿®æ”¹ç›®å‰ç”±æ‚¨æˆèª²çš„å­¸ç”Ÿè³‡æ–™ã€‚');
-  }
-  const students = await mirrorRows('students');
-  if (!students.some((row) => sourceId(row) === studentId)) {
-    throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ä½å­¸ç”Ÿã€‚');
-  }
-  const bindingSnapshot = await db.collection('coursePortalStudentBindings')
-    .where('studentId', '==', studentId)
-    .get();
-  const batch = db.batch();
-  batch.set(db.collection('coursePortalStudentProfiles').doc(studentId), {
-    studentId,
-    name,
-    phone,
-    active: true,
-    updatedByTeacherId: session.teacherId,
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedAtText: nowText()
-  }, { merge: true });
-  bindingSnapshot.docs.forEach((doc) => {
-    batch.set(doc.ref, {
-      name,
-      phoneHash: hash(phone),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-  });
-  await batch.commit();
-  return {
-    ok: true,
-    studentId,
-    name,
-    phone,
-    message: 'å­¸ç”Ÿå§“åèˆ‡é›»è©±å·²åŒæ­¥æ›´æ–°ã€‚'
-  };
-}
-
-async function teacherStopStudent(data) {
-  const session = await requireSession(data, ['teacher']);
-  const studentId = clean(data.studentId);
-  assertInput(studentId, 'å­¸ç”Ÿ');
-  if (data.confirmed !== true) {
-    throw new HttpsError('failed-precondition', 'è«‹å…ˆå®Œæˆåœèª²ç¢ºèªã€‚');
-  }
-  if (!(await teacherOwnsStudent(session.teacherId, studentId))) {
-    throw new HttpsError('permission-denied', 'åªèƒ½è¾¦ç†ç”±æ‚¨æˆèª²çš„å­¸ç”Ÿåœèª²ã€‚');
-  }
-  const [students, teachers, periods, fixedCourses, temporaryCourses] = await Promise.all([
-    mirrorRows('students'),
-    mirrorRows('teachers'),
-    mirrorRowsByField('tuitionPeriods', 'studentId', studentId),
-    mirrorRows('fixedCourses'),
-    mirrorRows('temporaryCourses')
-  ]);
-  const student = students.find((row) => sourceId(row) === studentId) || {};
-  const teacher = teachers.find((row) => sourceId(row) === session.teacherId) || {};
-  if (!sourceId(student)) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ä½å­¸ç”Ÿã€‚');
-  const relatedPeriods = periods.filter((row) =>
-    !eventTeacherId(row) || eventTeacherId(row) === session.teacherId
-  );
-  const unpaidAmount = relatedPeriods.reduce((sum, row) => sum + tuitionOutstandingAmount(row), 0);
-  const courseIdsAtStop = [...new Set(
-    [...fixedCourses, ...temporaryCourses]
-      .filter((row) =>
-        eventTeacherId(row) === session.teacherId &&
-        eventStudentIds(row).includes(studentId)
-      )
-      .flatMap((row) => courseSourceIds(row).concat(sourceId(row)))
-      .map(clean)
-      .filter(Boolean)
-  )];
-  const suspensionId = hash(`teacher-stop|${session.teacherId}|${studentId}`);
-  const suspensionRef = db.collection('coursePortalStudentSuspensions').doc(suspensionId);
-  const existing = await suspensionRef.get();
-  if (existing.exists && clean(existing.data().status) === 'active') {
-    return {
-      ok: true,
-      suspensionId,
-      unpaidAmount: Number(existing.data().unpaidAmountAtStop || unpaidAmount),
-      message: 'é€™ä½å­¸ç”Ÿå·²å®Œæˆåœèª²ç™»è¨˜ã€‚'
-    };
-  }
-  const batch = db.batch();
-  batch.set(suspensionRef, {
-    suspensionId,
-    status: 'active',
-    studentId,
-    studentName: clean(student.name),
-    teacherId: session.teacherId,
-    teacherName: clean(teacher.name),
-    effectiveDate: currentTaipeiDay(),
-    courseIdsAtStop,
-    unpaidAmountAtStop: unpaidAmount,
-    requestedBy: 'teacher',
-    requestedAt: FieldValue.serverTimestamp(),
-    requestedAtText: nowText(),
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true });
-  batch.set(scheduleVersionRef(), {
-    version: FieldValue.increment(1),
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedBy: 'teacher-student-stop'
-  }, { merge: true });
-  await batch.commit();
-  return {
-    ok: true,
-    suspensionId,
-    unpaidAmount,
-    message: unpaidAmount > 0
-      ? 'åœèª²å·²å®Œæˆï¼Œæœªç¹³å­¸è²»å·²é€åˆ°ç®¡ç†è€…å°ˆç”¨å€ã€‚'
-      : 'åœèª²å·²å®Œæˆï¼Œç›®å‰æ²’æœ‰æœªç¹³å­¸è²»ã€‚'
-  };
-}
-
-async function teacherAvailability(data) {
-  const session = await requireSession(data, ['teacher']);
-  const requestedStartDate = dateKey(data.startDate || data.date);
-  if (!requestedStartDate) throw new HttpsError('invalid-argument', 'é–‹å§‹æ—¥æœŸæ ¼å¼éŒ¯èª¤ã€‚');
-  assertPortalAdvanceDate(requestedStartDate, 'èª²ç¨‹æ—¥æœŸ');
-  const startDate = requestedStartDate < currentTaipeiDay() ? currentTaipeiDay() : requestedStartDate;
-  const exactTarget = data.exactTarget === true;
-  const exactDate = exactTarget ? dateKey(data.date || data.startDate) : '';
-  const exactStartTime = exactTarget ? clean(data.startTime).slice(0, 5) : '';
-  if (exactTarget && (!exactDate || !validPortalTime(exactStartTime, true) || publicRentalSlotIsPast(exactDate, exactStartTime))) {
-    throw new HttpsError('invalid-argument', 'è«‹é¸æ“‡å°šæœªé–‹å§‹çš„ 30 åˆ†é˜æ™‚æ®µã€‚');
-  }
-  if (exactTarget) assertPortalAdvanceDate(exactDate, 'èª²ç¨‹æ—¥æœŸ');
-  const days = exactTarget ? 1 : Math.min(28, Math.max(7, Number(data.days || 14)));
-  const endDate = exactTarget
-    ? exactDate
-    : [addDays(startDate, days - 1), portalMaximumAdvanceDate()].sort()[0];
-  const sourceEventId = clean(data.sourceEventId);
-  const sourceCourseId = clean(data.sourceCourseId);
-  const sourceDate = dateKey(data.sourceDate);
-  const [bundle, policy, roomSettingsSnapshot] = await Promise.all([
-    scheduleBundle(startDate, endDate, session.teacherId),
-    rentalPolicySettings(),
-    db.collection('coursePortalRoomSettings').get()
-  ]);
-  const roomSettingsMap = {};
-  roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
-  let source = bundle.resourceEvents.find((event) =>
-    event.teacherId === session.teacherId &&
-    event.date === sourceDate &&
-    (
-      event.id === sourceEventId ||
-      event.sourceId === sourceEventId ||
-      event.fixedCourseId === sourceCourseId ||
-      event.seriesId === sourceCourseId
-    )
-  );
-  if (!source && sourceDate && (sourceDate < startDate || sourceDate > endDate)) {
-    const sourceBundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
-    source = sourceBundle.resourceEvents.find((event) =>
-      event.teacherId === session.teacherId &&
-      (
-        event.id === sourceEventId ||
-        event.sourceId === sourceEventId ||
-        event.fixedCourseId === sourceCourseId ||
-        event.seriesId === sourceCourseId
-      )
-    );
-  }
-  if ((sourceEventId || sourceCourseId) && !source) {
-    throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°å¯èª¿å‹•çš„åŸèª²ç¨‹ï¼Œè«‹é‡æ–°æ•´ç†èª²è¡¨ã€‚');
-  }
-  if (source && isRoomRentalEvent(source)) {
-    throw new HttpsError('failed-precondition', 'æ•™å®¤ç§Ÿç”¨ä¸æ˜¯èª²ç¨‹ï¼Œä¸èƒ½å¾è€å¸«èª¿èª²åŠŸèƒ½ç§»å‹•ã€‚');
-  }
-  if (source && normalizeScheduleStatus(source.status) !== 'scheduled') {
-    throw new HttpsError('failed-precondition', 'è«‹å‡ã€æ› èª²æˆ–å·²å–æ¶ˆçš„èª²ç¨‹ä¸èƒ½å†èª¿å‹•ã€‚');
-  }
-  if (source && publicRentalSlotIsPast(source.date, source.startTime)) {
-    throw new HttpsError('failed-precondition', 'å·²é–‹å§‹æˆ–å·²çµæŸçš„èª²ç¨‹ä¸èƒ½å†èª¿èª²ã€‚');
-  }
-  const sourceStartTime = source ? source.startTime : clean(data.sourceStartTime || data.startTime).slice(0, 5);
-  const sourceEndTime = source ? source.endTime : clean(data.sourceEndTime || data.endTime).slice(0, 5);
-  const requestedDuration = Number(data.durationMinutes || 60);
-  const duration = source
-    ? assertPortalInterval(sourceStartTime, sourceEndTime)
-    : requestedDuration;
-  if (!Number.isFinite(duration) || duration % 30 !== 0) {
-    throw new HttpsError('invalid-argument', 'èª²ç¨‹é•·åº¦å¿…é ˆä»¥ 30 åˆ†é˜ç‚ºå–®ä½ã€‚');
-  }
-  if (duration < 30 || duration > 300) {
-    throw new HttpsError('invalid-argument', 'èª²ç¨‹é•·åº¦å¿…é ˆä»‹æ–¼ 30 åˆ†é˜è‡³ 5 å°æ™‚ã€‚');
-  }
-  const subjectId = source ? source.subjectId : clean(data.subjectId);
-  const targetStudentIds = source
-    ? source.studentIds
-    : [...new Set(firstArray(data, ['studentIds']).concat(clean(data.studentId) ? [clean(data.studentId)] : []))];
-  if (!subjectId) throw new HttpsError('invalid-argument', 'è«‹å…ˆé¸æ“‡èª²ç¨‹ç§‘ç›®ã€‚');
-  if (!bundle.maps.subjects[subjectId] || !sourceActive(bundle.maps.subjects[subjectId])) {
-    throw new HttpsError('failed-precondition', 'é€™å€‹æˆèª²ç§‘ç›®å·²åœç”¨æˆ–ä¸å­˜åœ¨ã€‚');
-  }
-  if (!targetStudentIds.length) throw new HttpsError('invalid-argument', 'è«‹å…ˆé¸æ“‡å­¸ç”Ÿã€‚');
-  const compatibleRooms = bundle.rooms.filter(sourceActive).filter((room) =>
-    roomKind(room, roomSettingsMap[sourceId(room)] || {}) === 'normal' &&
-    roomTeacherSchedulable(room, roomSettingsMap[sourceId(room)] || {}) &&
-    roomSupportsSubject(room, subjectId, bundle, roomSettingsMap[sourceId(room)] || {})
-  );
-  const slots = [];
-  let permanentMinimumDate = '';
-  let permanentMaximumDate = '';
-  if (source && clean(data.action) === 'permanent_move') {
-    const sourceSeries = bundle.fixedCourses.find((row) =>
-      sourceId(row) === clean(source.fixedCourseId || source.seriesId || sourceCourseId)
-    ) || null;
-    if (!source.recurring || !sourceSeries || !sourceActive(sourceSeries)) {
-      throw new HttpsError('failed-precondition', 'é€™å ‚ä¸æ˜¯ä»æœ‰æ•ˆçš„å›ºå®šèª²ï¼Œä¸èƒ½æ°¸ä¹…èª¿èª²ã€‚');
-    }
-    if (clean(source.portalAction) === 'single_move') {
-      throw new HttpsError('failed-precondition', 'é€™å ‚å·²æ˜¯å–®æ¬¡èª¿èª²çµæœï¼Œåªèƒ½å†åšå–®æ¬¡èª¿èª²ã€‚');
-    }
-    const lineage = clean(source.fixedCourseId || source.seriesId || sourceCourseId);
-    const activeChanges = await db.collection('coursePortalScheduleChanges').where('active', '==', true).get();
-    const futureException = activeChanges.docs.some((doc) => {
-      const row = doc.data() || {};
-      if (
-        clean(row.action) === 'permanent_move' &&
-        permanentLineage(row) === lineage &&
-        permanentCutover(row) === sourceDate
-      ) return false;
-      if (doc.id === clean(source.portalChangeId) && permanentCutover(row) < sourceDate) return false;
-      return permanentLineage(row) === lineage &&
-        permanentCutover(row) >= sourceDate &&
-        ['single_move', 'lesson_status', 'cancel', 'permanent_move'].includes(clean(row.action));
-    });
-    if (futureException) {
-      throw new HttpsError(
-        'failed-precondition',
-        'é€™é–€å›ºå®šèª²ä¹‹å¾Œå·²æœ‰èª¿èª²ã€è«‹å‡æˆ–å…¶ä»–è®Šæ›´ï¼Œç›®å‰ä¸èƒ½æ°¸ä¹…èª¿èª²ã€‚'
-      );
-    }
-    permanentMinimumDate = sourceDate;
-    permanentMaximumDate = addDays(
-      sourceDate,
-      safeFrequencyWeeks(sourceSeries.frequencyWeeks || sourceSeries.intervalWeeks) * 7 - 1
-    );
-  }
-  const dates = (exactTarget
-    ? [exactDate]
-    : Array.from(
-      { length: Math.max(0, Math.round((Date.parse(`${endDate}T12:00:00+08:00`) - Date.parse(`${startDate}T12:00:00+08:00`)) / 86400000) + 1) },
-      (_, offset) => addDays(startDate, offset)
-    )).filter((date) =>
-    (!permanentMinimumDate || date >= permanentMinimumDate) &&
-    (!permanentMaximumDate || date <= permanentMaximumDate)
-  );
-  for (const date of dates) {
-    const window = businessWindow(policy, date);
-    if (window.closed) continue;
-    const candidateMinutes = exactTarget
-      ? [timeMinutes(exactStartTime)]
-      : Array.from(
-        { length: Math.max(0, Math.floor((window.endMinutes - duration - window.startMinutes) / 30) + 1) },
-        (_, index) => window.startMinutes + index * 30
-      );
-    for (const minute of candidateMinutes) {
-      if (minute < window.startMinutes || minute + duration > window.endMinutes) continue;
-      const slotStart = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
-      const slotEndMinute = minute + duration;
-      const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
-      if (publicRentalSlotIsPast(date, slotStart)) continue;
-      const blockers = bundle.resourceEvents.filter((event) => {
-        const sourceMatch = event.date === sourceDate && (
-          event.id === sourceEventId || event.sourceId === sourceEventId ||
-          event.fixedCourseId === sourceCourseId || event.seriesId === sourceCourseId
-        );
-        return event.date === date &&
-          eventBlocksResource(event) &&
-          !sourceMatch &&
-          overlaps(slotStart, slotEnd, event.startTime, event.endTime);
-      });
-      if (sharedResourceConflict(blockers, requestedSubjectResourceIds(subjectId, bundle))) continue;
-      if (
-        blockers.some((event) =>
-          event.teacherId === session.teacherId ||
-          event.studentIds.some((studentId) => targetStudentIds.includes(studentId))
-        )
-      ) continue;
-      const rooms = compatibleRooms.filter((room) =>
-        roomAllowsInterval(
-          room,
-          roomSettingsMap[sourceId(room)] || {},
-          date,
-          slotStart,
-          slotEnd,
-          subjectId,
-          'schedule'
-        ) &&
-        !blockers.some((event) => event.roomId === sourceId(room))
-      ).map((room) => ({
-        id: sourceId(room),
-        name: rentalRoomProfile(room, roomSettingsMap[sourceId(room)] || {}).publicName,
-        equipmentLabel: roomEquipmentLabel(room, roomSettingsMap[sourceId(room)] || {}),
-        requiresGuzhengMove: roomRequiresGuzhengMove(room, subjectId, bundle)
-      }));
-      if (rooms.length) slots.push({ date, startTime: slotStart, endTime: slotEnd, rooms });
-    }
-  }
-  return {
-    ok: true,
-    startDate,
-    endDate,
-    durationMinutes: duration,
-    source: source ? publicEvent(source, bundle.maps, session.teacherId) : null,
-    slots
-  };
-}
-
-async function teacherSlotOptions(data) {
-  const session = await requireSession(data, ['teacher']);
-  const targetDate = dateKey(data.date || data.targetDate);
-  const targetStartTime = clean(data.startTime || data.targetStartTime).slice(0, 5);
-  if (!targetDate || !validPortalTime(targetStartTime, true)) {
-    throw new HttpsError('invalid-argument', 'è«‹é¸æ“‡æœ‰æ•ˆçš„æ—¥æœŸèˆ‡ 30 åˆ†é˜æ™‚æ®µã€‚');
-  }
-  if (publicRentalSlotIsPast(targetDate, targetStartTime)) {
-    throw new HttpsError('failed-precondition', 'ä¸èƒ½æŠŠèª²ç¨‹èª¿åˆ°å·²ç¶“éå»çš„æ™‚é–“ã€‚');
-  }
-  assertPortalAdvanceDate(targetDate, 'èª¿èª²æ—¥æœŸ');
-  const today = currentTaipeiDay();
-  const candidateEnd = portalMaximumAdvanceDate();
-  const [candidateBundle, policy, roomSettingsSnapshot, activeChangeSnapshot] = await Promise.all([
-    scheduleBundle(today, candidateEnd, session.teacherId),
-    rentalPolicySettings(),
-    db.collection('coursePortalRoomSettings').get(),
-    db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
-  ]);
-  const targetBundle = targetDate >= today && targetDate <= candidateEnd
-    ? candidateBundle
-    : await scheduleBundle(targetDate, targetDate, session.teacherId);
-  const roomSettingsMap = {};
-  roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
-  const window = businessWindow(policy, targetDate);
-  if (window.closed) throw new HttpsError('failed-precondition', 'é€™ä¸€å¤©å…¬ä¼‘ï¼Œä¸èƒ½èª¿å…¥èª²ç¨‹ã€‚');
-  const seen = new Set();
-  const candidates = candidateBundle.resourceEvents.filter((event) => {
-    const key = `${event.id}|${event.date}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return event.teacherId === session.teacherId &&
-      normalizeScheduleStatus(event.status) === 'scheduled' &&
-      !isRoomRentalEvent(event) &&
-      event.studentIds.length > 0 &&
-      Boolean(event.subjectId) &&
-      !publicRentalSlotIsPast(event.date, event.startTime);
-  }).map((source) => {
-    const duration = timeMinutes(source.endTime) - timeMinutes(source.startTime);
-    if (duration < 30 || duration > 300 || duration % 30 !== 0) return null;
-    const targetEndMinute = timeMinutes(targetStartTime) + duration;
-    const targetEndTime = String(Math.floor(targetEndMinute / 60)).padStart(2, '0') + ':' +
-      String(targetEndMinute % 60).padStart(2, '0');
-    if (timeMinutes(targetStartTime) < window.startMinutes || targetEndMinute > window.endMinutes) return null;
-    if (source.date === targetDate && source.startTime === targetStartTime) return null;
-    const sourceMatch = (event) => event.date === source.date && (
-      event.id === source.id ||
-      event.sourceId === source.sourceId ||
-      (source.fixedCourseId && event.fixedCourseId === source.fixedCourseId)
-    );
-    const blockers = targetBundle.resourceEvents.filter((event) =>
-      event.date === targetDate &&
-      eventBlocksResource(event) &&
-      !sourceMatch(event) &&
-      overlaps(targetStartTime, targetEndTime, event.startTime, event.endTime)
-    );
-    if (sharedResourceConflict(blockers, requestedSubjectResourceIds(source.subjectId, targetBundle))) return null;
-    if (
-      blockers.some((event) =>
-        event.teacherId === session.teacherId ||
-        event.studentIds.some((studentId) => source.studentIds.includes(studentId))
-      )
-    ) return null;
-    const rooms = targetBundle.rooms.filter(sourceActive).filter((room) => {
-      const id = sourceId(room);
-      const setting = roomSettingsMap[id] || {};
-      return roomKind(room, setting) === 'normal' &&
-        roomTeacherSchedulable(room, setting) &&
-        roomSupportsSubject(room, source.subjectId, targetBundle, setting) &&
-        roomAllowsInterval(room, setting, targetDate, targetStartTime, targetEndTime, source.subjectId, 'schedule') &&
-        !blockers.some((event) => event.roomId === id);
-    }).map((room) => ({
-      id: sourceId(room),
-      name: rentalRoomProfile(room, roomSettingsMap[sourceId(room)] || {}).publicName,
-      equipmentLabel: roomEquipmentLabel(room, roomSettingsMap[sourceId(room)] || {}),
-      requiresGuzhengMove: roomRequiresGuzhengMove(room, source.subjectId, targetBundle)
-    }));
-    if (!rooms.length) return null;
-    const publicSource = publicEvent(source, candidateBundle.maps, session.teacherId);
-    const lineage = clean(source.fixedCourseId || source.seriesId || source.sourceId || source.id);
-    const frequencyWeeks = safeFrequencyWeeks(source.frequencyWeeks || source.intervalWeeks);
-    const permanentMaximumDate = addDays(source.date, frequencyWeeks * 7 - 1);
-    const futureException = activeChangeSnapshot.docs.some((doc) => {
-      const row = doc.data() || {};
-      if (
-        clean(row.action) === 'permanent_move' &&
-        permanentLineage(row) === lineage &&
-        permanentCutover(row) === source.date
-      ) return false;
-      if (doc.id === clean(source.portalChangeId) && permanentCutover(row) < source.date) return false;
-      return permanentLineage(row) === lineage &&
-        permanentCutover(row) >= source.date &&
-        ['single_move', 'lesson_status', 'cancel', 'permanent_move'].includes(clean(row.action));
-    });
-    const permanentMoveAllowed = source.recurring === true &&
-      clean(source.portalAction) !== 'single_move' &&
-      targetDate >= source.date &&
-      targetDate <= permanentMaximumDate &&
-      !futureException;
-    return Object.assign(publicSource, {
-      durationMinutes: duration,
-      targetEndTime,
-      permanentMoveAllowed,
-      rooms
-    });
-  }).filter(Boolean).slice(0, 120);
-  const rooms = new Map();
-  candidates.forEach((candidate) => candidate.rooms.forEach((room) => rooms.set(room.id, room)));
-  return {
-    ok: true,
-    targetDate,
-    targetStartTime,
-    rooms: [...rooms.values()].sort((left, right) => left.name.localeCompare(right.name, 'zh-Hant')),
-    candidateLessons: candidates
-  };
-}
-
-function tuitionExpectedAmount(row) {
-  return Math.max(0, Number(row && (
-    row.expectedAmount ||
-    row.tuitionAmount ||
-    row.courseAmount ||
-    row.feeAmount ||
-    row.amount
-  ) || 0));
-}
-
-function tuitionLessonCount(row) {
-  return Math.max(1, Number(row && (row.lessonCount || row.totalLessons) || 4));
-}
-
-function tuitionUsedCount(row) {
-  return Math.max(0, Number(row && (row.usedCount || row.attendedCount) || 0));
-}
-
-function tuitionPeriodNumber(row) {
-  return Math.max(0, Number(row && (row.periodNo || row.period) || 0));
-}
-
-function firstFiniteNumber(row, fields) {
-  for (const field of fields) {
-    if (!row || !Object.prototype.hasOwnProperty.call(row, field)) continue;
-    if (row[field] === '' || row[field] == null) continue;
-    const value = Number(clean(row[field]).replace(/%$/, ''));
-    if (Number.isFinite(value)) return value;
-  }
-  return null;
-}
-
-function roundPayrollMoney(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) {
-    throw new HttpsError('failed-precondition', 'èª²ç¨‹è–ªè³‡é‡‘é¡æ ¼å¼éŒ¯èª¤ï¼Œå·²åœæ­¢ç°½åˆ°ä»¥é¿å…å¯«å…¥éŒ¯èª¤è–ªè³‡ã€‚');
-  }
-  return Math.round(amount + Number.EPSILON);
-}
-
-function normalizeTeacherShareRatio(value) {
-  const raw = Number(clean(value).replace(/%$/, ''));
-  if (!Number.isFinite(raw) || raw <= 0 || raw > 100) {
-    throw new HttpsError(
-      'failed-precondition',
-      'è€å¸«åˆ†æˆæ¯”ä¾‹å¿…é ˆå¤§æ–¼ 0 ä¸”ä¸å¯è¶…é 100%ï¼›å·²åœæ­¢ç°½åˆ°ä»¥é¿å…å¯«å…¥éŒ¯èª¤è–ªè³‡ã€‚'
-    );
-  }
-  return raw <= 1 ? raw : raw / 100;
-}
-
-function tuitionPeriodAvailable(row) {
-  const status = clean(row && row.status).toLowerCase();
-  if (row && row.active === false) return false;
-  if (['cancelled', 'canceled', 'void', 'voided', 'refunded', 'å–æ¶ˆ', 'ä½œå»¢', 'é€€æ¬¾'].includes(status)) return false;
-  return tuitionUsedCount(row) < tuitionLessonCount(row);
-}
-
-function attendancePeriodCandidate(periods, event, studentId, sourceDate) {
-  const wantedStudentId = clean(studentId);
-  const wantedSubjectId = eventSubjectId(event || {});
-  const wantedTeacherId = eventTeacherId(event || {});
-  const lessonDate = dateKey(sourceDate || eventDate(event || {}));
-  const matching = (periods || []).filter((row) => {
-    if (clean(row.studentId) !== wantedStudentId) return false;
-    if (wantedSubjectId && clean(row.subjectId) && clean(row.subjectId) !== wantedSubjectId) return false;
-    if (wantedTeacherId && eventTeacherId(row) && eventTeacherId(row) !== wantedTeacherId) return false;
-    const startDate = dateKey(row.startDate || row.paymentDate);
-    const expiryDate = dateKey(row.expiryDate || row.endDate);
-    if (lessonDate && startDate && startDate > lessonDate) return false;
-    if (lessonDate && expiryDate && expiryDate < lessonDate) return false;
-    return tuitionPeriodAvailable(row);
-  });
-  if (!matching.length) return null;
-
-  const newestApplicable = (rows) => (rows || []).slice().sort((left, right) =>
-    tuitionPeriodNumber(right) - tuitionPeriodNumber(left) ||
-    dateKey(right.startDate || right.paymentDate).localeCompare(dateKey(left.startDate || left.paymentDate)) ||
-    sourceId(left).localeCompare(sourceId(right))
-  )[0] || null;
-  const normalizedPeriodIds = (ids) => {
-    const output = new Set();
-    (ids || []).map(clean).filter(Boolean).forEach((id) => {
-      output.add(id);
-      output.add(id.replace(/^period_/, ''));
-      output.add(`period_${id.replace(/^period_/, '')}`);
-    });
-    return output;
-  };
-  const rowsMatchingIds = (ids) => {
-    const normalizedIds = normalizedPeriodIds(ids);
-    if (!normalizedIds.size) return [];
-    return matching.filter((row) =>
-      normalizedIds.has(sourceId(row)) ||
-      normalizedIds.has(clean(row.sourcePaymentId))
-    );
-  };
-
-  const explicitByStudent = event && event.tuitionPeriodIds && typeof event.tuitionPeriodIds === 'object'
-    ? clean(event.tuitionPeriodIds[wantedStudentId])
-    : '';
-  // tuitionPeriodIds[studentId] æ˜¯é€ç”Ÿä¿å­˜çš„å–®ä¸€æœŸåˆ¥ï¼Œå¯ç›´æ¥å„ªå…ˆï¼›å›ºå®šèª²èˆŠæ¬„ä½å‰‡å¯èƒ½åŒæ™‚
-  // å¸¶è‘—å¤šå€‹æ­·å²ä»˜æ¬¾ç·¨è™Ÿï¼Œä»é ˆå¾å…¶ä¸­æŒ‘é¸æ—¥æœŸï¼æœŸæ•¸æœ€æ–°ä¸”å¯ç”¨çš„æœŸåˆ¥ã€‚
-  const explicitByStudentRow = newestApplicable(rowsMatchingIds([explicitByStudent]));
-  if (explicitByStudentRow) return explicitByStudentRow;
-  const explicitIds = [
-    clean(event && (event.tuitionPeriodId || event.periodId || event.studentPayment)),
-    ...firstArray(event || {}, ['studentPaymentIds', 'paymentIds'])
-  ].filter(Boolean);
-  const explicit = newestApplicable(rowsMatchingIds(explicitIds));
-  if (explicit) return explicit;
-
-  return newestApplicable(matching);
-}
-
-function attendancePeriodPayroll(studentId, period) {
-  const periodId = sourceId(period);
-  const planSnapshot = jsonValue(period && period.planSnapshot || {});
-  if (!periodId || !planSnapshot || typeof planSnapshot !== 'object' || !Object.keys(planSnapshot).length) {
-    throw new HttpsError(
-      'failed-precondition',
-      'æ‰¾ä¸åˆ°é€™ä½å­¸ç”Ÿèª²ç¨‹çš„æ”¶è²»æ–¹æ¡ˆå¿«ç…§ï¼Œå·²åœæ­¢ç°½åˆ°ï¼›è«‹å…ˆç¢ºèªå­¸è²»æœŸåˆ¥èˆ‡è€å¸«æ‹†å¸³è¨­å®šã€‚'
-    );
-  }
-  const lessonCount = firstFiniteNumber(period, ['lessonCount', 'totalLessons']);
-  const expectedAmount = firstFiniteNumber(period, [
-    'expectedAmount', 'tuitionAmount', 'courseAmount', 'feeAmount', 'amount'
-  ]);
-  const planAmount = firstFiniteNumber(planSnapshot, ['amount', 'expectedAmount', 'tuitionAmount']);
-  const totalAmount = expectedAmount != null && expectedAmount > 0 ? expectedAmount : planAmount;
-  const discount = Math.max(0, firstFiniteNumber(period, ['discount', 'discountAmount']) || 0);
-  if (!Number.isFinite(lessonCount) || lessonCount <= 0 || !Number.isFinite(totalAmount) || totalAmount <= 0) {
-    throw new HttpsError(
-      'failed-precondition',
-      'é€™ä½å­¸ç”Ÿçš„å­¸è²»ç¸½é¡æˆ–èª²å ‚æ•¸æœªè¨­å®šï¼Œå·²åœæ­¢ç°½åˆ°ä»¥é¿å…ç”¢ç”Ÿ NT$0 è€å¸«è–ªè³‡ã€‚'
-    );
-  }
-  let discountType = clean(period.discountType || planSnapshot.discountType).toLowerCase();
-  if (!['ratio', 'amount'].includes(discountType)) {
-    discountType = discount > 0 && discount <= 1 ? 'ratio' : 'amount';
-  }
-  const explicitTeacherPayBasis = clean(
-    period.teacherPayBasis || planSnapshot.teacherPayBasis
-  ).toLowerCase();
-  const payByDiscountKnown = typeof period.payByDiscount === 'boolean' ||
-    typeof planSnapshot.payByDiscount === 'boolean';
-  const payByDiscount = typeof period.payByDiscount === 'boolean'
-    ? period.payByDiscount
-    : planSnapshot.payByDiscount === true;
-  if (
-    discount > 0 &&
-    discount <= 1 &&
-    !['gross', 'net'].includes(explicitTeacherPayBasis) &&
-    !payByDiscountKnown
-  ) {
-    throw new HttpsError(
-      'failed-precondition',
-      'é€™å€‹èˆŠæœŸåˆ¥æœ‰æŠ˜æ‰£ï¼Œä½†æ²’æœ‰ä¿å­˜è€å¸«æŒ‰åŸåƒ¹æˆ–æŠ˜æ‰£å¾Œé‡‘é¡è¨ˆè–ªï¼›å·²åœæ­¢ç°½åˆ°ï¼Œè«‹å…ˆç¢ºèªè–ªè³‡åŸºæº–ã€‚'
-    );
-  }
-  const teacherPayBasis = ['gross', 'net'].includes(explicitTeacherPayBasis)
-    ? explicitTeacherPayBasis
-    : (payByDiscountKnown ? (payByDiscount ? 'net' : 'gross') : 'net');
-  const discountAmount = discountType === 'ratio'
-    ? totalAmount * Math.min(1, discount)
-    : discount;
-  const netTuition = Math.max(0, totalAmount - discountAmount);
-  const teacherPayTuition = teacherPayBasis === 'gross' ? totalAmount : netTuition;
-  const grossLessonPrice = roundPayrollMoney(totalAmount / lessonCount);
-  const netLessonPrice = roundPayrollMoney(netTuition / lessonCount);
-  const teacherPayLessonPrice = roundPayrollMoney(teacherPayTuition / lessonCount);
-  if (teacherPayLessonPrice <= 0) {
-    throw new HttpsError('failed-precondition', 'æœ¬å ‚å­¸è²»è¨ˆç®—ç‚º NT$0ï¼Œå·²åœæ­¢ç°½åˆ°ï¼›è«‹å…ˆä¿®æ­£å­¸è²»æœŸåˆ¥ã€‚');
-  }
-
-  const splitType = clean(
-    planSnapshot.splitType || planSnapshot.teacherSplitType || planSnapshot.shareType
-  ).toLowerCase();
-  let splitValue = firstFiniteNumber(planSnapshot, ['splitValue']);
-  let normalizedRatio = 0;
-  let teacherAmount = 0;
-  if (splitType === 'ratio') {
-    if (splitValue == null) {
-      splitValue = firstFiniteNumber(planSnapshot, ['allotRate', 'shareRate', 'teacherShare', 'allot']);
-    }
-    normalizedRatio = normalizeTeacherShareRatio(splitValue);
-    teacherAmount = roundPayrollMoney(teacherPayLessonPrice * normalizedRatio);
-  } else if (splitType === 'fixed') {
-    if (splitValue == null) {
-      splitValue = firstFiniteNumber(planSnapshot, ['hourlyFee', 'fixedTeacherAmount', 'teacherAmount']);
-    }
-    if (!Number.isFinite(splitValue) || splitValue <= 0) {
-      throw new HttpsError(
-        'failed-precondition',
-        'è€å¸«æ¯å ‚å›ºå®šè–ªè³‡æœªè¨­å®šï¼Œå·²åœæ­¢ç°½åˆ°ä»¥é¿å…ç”¢ç”Ÿ NT$0 è€å¸«è–ªè³‡ã€‚'
-      );
-    }
-    teacherAmount = roundPayrollMoney(splitValue);
-  } else {
-    throw new HttpsError(
-      'failed-precondition',
-      'é€™å€‹æ”¶è²»æ–¹æ¡ˆå°šæœªè¨­å®šã€Œæ¯”ä¾‹ã€æˆ–ã€Œæ¯å ‚å›ºå®šé‡‘é¡ã€çš„è€å¸«æ‹†å¸³ï¼Œå·²åœæ­¢ç°½åˆ°ã€‚'
-    );
-  }
-  if (teacherAmount <= 0) {
-    throw new HttpsError('failed-precondition', 'è€å¸«æœ¬å ‚è–ªè³‡è¨ˆç®—ç‚º NT$0ï¼Œå·²åœæ­¢ç°½åˆ°ï¼›è«‹å…ˆä¿®æ­£æ‹†å¸³è¨­å®šã€‚');
-  }
-  return {
-    studentId: clean(studentId),
-    periodId,
-    inputs: {
-      periodNo: tuitionPeriodNumber(period),
-      planId: clean(period.planId || planSnapshot.id),
-      startDate: dateKey(period.startDate || period.paymentDate),
-      expiryDate: dateKey(period.expiryDate || period.endDate),
-      lessonCount,
-      usedCount: tuitionUsedCount(period),
-      expectedAmount: totalAmount,
-      discount,
-      discountType,
-      discountAmount,
-      netTuition,
-      teacherPayBasis,
-      teacherPayTuition,
-      planSnapshot
-    },
-    outputs: {
-      // lessonPriceï¼collectedAmount ä¸€å¾‹ä»£è¡¨æœ¬å ‚å¯¦æ”¶ï¼›è€å¸«æ˜¯å¦æŒ‰åŸåƒ¹è¨ˆè–ªå¦å­˜ teacherPayLessonPriceã€‚
-      lessonPrice: netLessonPrice,
-      collectedAmount: netLessonPrice,
-      grossLessonPrice,
-      netLessonPrice,
-      teacherPayLessonPrice,
-      splitType,
-      splitValue: splitType === 'ratio' ? normalizedRatio : roundPayrollMoney(splitValue),
-      sourceSplitValue: splitValue,
-      normalizedRatio,
-      baseTeacherAmount: teacherAmount,
-      teacherAmount,
-      schoolShare: roundPayrollMoney(netLessonPrice - teacherAmount)
-    }
-  };
-}
-
-function attendancePayrollCalculation(event, periodRows, sourceDate) {
-  const specialLesson = event && (
-    event.specialLesson === true ||
-    clean(event.portalAction) === 'teacher_gift' ||
-    clean(event.type) === 'teacher_gift'
-  );
-  if (specialLesson) {
-    const unpaidTeacherGift = clean(event.portalAction) === 'teacher_gift' ||
-      clean(event.type) === 'teacher_gift' ||
-      event.teacherPayable === false;
-    const lessonPrice = roundPayrollMoney(firstFiniteNumber(event, [
-      'specialLessonPrice', 'tuitionAmount', 'courseAmount'
-    ]) || 0);
-    const configuredTeacherAmount = roundPayrollMoney(firstFiniteNumber(event, [
-      'specialTeacherPay', 'teacherAmount', 'teacherPay'
-    ]) || 0);
-    const baseTeacherAmount = unpaidTeacherGift ? 0 : configuredTeacherAmount;
-    if (!unpaidTeacherGift && baseTeacherAmount <= 0) {
-      throw new HttpsError(
-        'failed-precondition',
-        'è´ˆé€ï¼ç‰¹æ®Šèª²ç¨‹å°šæœªè¨­å®šè€å¸«è–ªè³‡ï¼Œå·²åœæ­¢ç°½åˆ°ä»¥é¿å…ç”¢ç”Ÿ NT$0 è–ªè³‡ã€‚'
-      );
-    }
-    const teacherPayAdjustment = firstFiniteNumber(event, ['teacherPayAdjustment']) || 0;
-    const teacherAmount = unpaidTeacherGift
-      ? 0
-      : Math.max(0, roundPayrollMoney(baseTeacherAmount + teacherPayAdjustment));
-    const studentIds = [...new Set(eventStudentIds(event).map(clean).filter(Boolean))];
-    const rate = unpaidTeacherGift ? 'è€å¸«å…è²»è´ˆèª²' : `ç‰¹æ®Šèª²å›ºå®š NT$${baseTeacherAmount}`;
-    return {
-      tuitionAmount: 0,
-      lessonPrice,
-      collectedAmount: 0,
-      baseTeacherAmount,
-      teacherPayAdjustment,
-      teacherPayAdjustmentReason: clean(event.teacherPayAdjustmentReason),
-      teacherAmount,
-      schoolShare: 0,
-      rate,
-      splitType: unpaidTeacherGift ? 'none' : 'fixed',
-      splitValue: baseTeacherAmount,
-      allotRate: 0,
-      hourlyFee: baseTeacherAmount,
-      teacherPayable: !unpaidTeacherGift,
-      payrollExcluded: unpaidTeacherGift,
-      payrollExclusionReason: unpaidTeacherGift ? 'teacher_gift_no_pay' : '',
-      periodId: '',
-      planSnapshot: {},
-      payrollCalculation: {
-        version: 'attendance-period-payroll-v1',
-        inputs: {
-          date: dateKey(sourceDate || eventDate(event)),
-          eventId: sourceId(event),
-          courseId: clean(event.fixedCourseId || event.sourceCourseId),
-          teacherId: eventTeacherId(event),
-          subjectId: eventSubjectId(event),
-          specialLesson: true,
-          teacherPayable: !unpaidTeacherGift,
-          payrollExcluded: unpaidTeacherGift,
-          specialLessonPrice: lessonPrice,
-          specialTeacherPay: baseTeacherAmount,
-          teacherPayAdjustment,
-          teacherPayAdjustmentReason: clean(event.teacherPayAdjustmentReason)
-        },
-        students: studentIds.map((studentId) => ({ studentId, periodId: '', specialLesson: true })),
-        outputs: {
-          lessonPrice,
-          collectedAmount: 0,
-          baseTeacherAmount,
-          teacherAmount,
-          schoolShare: 0,
-          rate
-        }
-      }
-    };
-  }
-  const students = (periodRows || []).map((row) =>
-    attendancePeriodPayroll(row.studentId, row.period)
-  );
-  const expectedStudentIds = [...new Set(eventStudentIds(event || {}).map(clean).filter(Boolean))];
-  if (!students.length || students.length !== expectedStudentIds.length) {
-    throw new HttpsError(
-      'failed-precondition',
-      'éƒ¨åˆ†å­¸ç”Ÿæ‰¾ä¸åˆ°å¯ç”¨çš„å­¸è²»æœŸåˆ¥ï¼Œå·²åœæ­¢ç°½åˆ°ä»¥é¿å…æ¼æ‰£å ‚æ•¸æˆ–æ¼ç®—è€å¸«è–ªè³‡ã€‚'
-    );
-  }
-  const resolvedStudentIds = new Set(students.map((row) => row.studentId));
-  if (expectedStudentIds.some((studentId) => !resolvedStudentIds.has(studentId))) {
-    throw new HttpsError('failed-precondition', 'å­¸ç”ŸæœŸåˆ¥é…å°ä¸å®Œæ•´ï¼Œå·²åœæ­¢ç°½åˆ°ã€‚');
-  }
-  const lessonPrice = roundPayrollMoney(students.reduce((sum, row) => sum + row.outputs.lessonPrice, 0));
-  const collectedAmount = roundPayrollMoney(students.reduce(
-    (sum, row) => sum + row.outputs.collectedAmount,
-    0
-  ));
-  const baseTeacherAmount = roundPayrollMoney(students.reduce(
-    (sum, row) => sum + row.outputs.baseTeacherAmount,
-    0
-  ));
-  const teacherPayAdjustment = firstFiniteNumber(event || {}, ['teacherPayAdjustment']) || 0;
-  const teacherAmount = Math.max(0, roundPayrollMoney(baseTeacherAmount + teacherPayAdjustment));
-  // è€å¸«å¯èƒ½æŒ‰åŸåƒ¹è¨ˆè–ªï¼Œå³ä½¿å­¸ç”ŸæŠ˜æ‰£å¾Œå¯¦æ”¶è¼ƒä½ï¼›æ­¤æ™‚å­¸æ ¡åˆ†æ½¤å¯ç‚ºè² æ•¸ï¼Œä¸èƒ½é¡¯ç¤ºå‡åˆ©æ½¤ã€‚
-  const schoolShare = roundPayrollMoney(collectedAmount - teacherAmount);
-  const signatures = [...new Set(students.map((row) => [
-    row.outputs.splitType,
-    row.outputs.splitValue
-  ].join(':')))];
-  const common = signatures.length === 1 ? students[0].outputs : null;
-  const rate = !common
-    ? 'ä¾å„å­¸ç”Ÿæ–¹æ¡ˆ'
-    : common.splitType === 'ratio'
-      ? `${roundPayrollMoney(common.normalizedRatio * 100)}%`
-      : `æ¯å ‚å›ºå®š NT$${roundPayrollMoney(common.splitValue)}`;
-  return {
-    tuitionAmount: lessonPrice,
-    lessonPrice,
-    collectedAmount,
-    baseTeacherAmount,
-    teacherPayAdjustment,
-    teacherPayAdjustmentReason: clean(event && event.teacherPayAdjustmentReason),
-    teacherAmount,
-    schoolShare,
-    rate,
-    splitType: common ? common.splitType : 'mixed',
-    splitValue: common ? common.splitValue : 0,
-    allotRate: common && common.splitType === 'ratio' ? common.normalizedRatio : 0,
-    hourlyFee: common && common.splitType === 'fixed' ? common.splitValue : 0,
-    periodId: students.length === 1 ? students[0].periodId : '',
-    planSnapshot: students.length === 1 ? students[0].inputs.planSnapshot : {},
-    payrollCalculation: {
-      version: 'attendance-period-payroll-v1',
-      inputs: {
-        date: dateKey(sourceDate || eventDate(event || {})),
-        eventId: sourceId(event || {}),
-        courseId: clean(event && (event.fixedCourseId || event.sourceCourseId)),
-        teacherId: eventTeacherId(event || {}),
-        subjectId: eventSubjectId(event || {}),
-        teacherPayAdjustment,
-        teacherPayAdjustmentReason: clean(event && event.teacherPayAdjustmentReason)
-      },
-      students,
-      outputs: {
-        lessonPrice,
-        collectedAmount,
-        baseTeacherAmount,
-        teacherAmount,
-        schoolShare,
-        rate
-      }
-    }
-  };
-}
-
-function tuitionCourseKey(row) {
-  const subjectId = clean(row && row.subjectId);
-  const subjectName = clean(row && (row.subjectName || row.courseName || row.subject));
-  if (subjectId) return subjectId;
-  if (subjectName) return `subject-name:${subjectName}`;
-  return `period:${sourceId(row)}`;
-}
-
-async function assignNewSystemPeriodNumbers(periods) {
-  const rows = (periods || []).map((row) => Object.assign({}, row));
-  if (!rows.length) return rows;
-  const snapshot = await db.collection(TUITION_SYSTEM_PERIODS).get();
-  const existing = new Map(snapshot.docs.map((doc) => {
-    const row = doc.data() || {};
-    return [clean(row.periodId || doc.id), Object.assign({ id: doc.id }, row)];
-  }));
-  const groups = new Map();
-  rows.forEach((row) => {
-    const periodId = sourceId(row);
-    const studentId = clean(row.studentId);
-    if (!periodId || !studentId) return;
-    const key = `${studentId}|${tuitionCourseKey(row)}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(row);
-  });
-  const writes = [];
-  groups.forEach((groupRows, groupKey) => {
-    const ordered = groupRows.slice().sort((left, right) =>
-      tuitionPeriodNumber(left) - tuitionPeriodNumber(right) ||
-      sourceId(left).localeCompare(sourceId(right))
-    );
-    const assigned = [...existing.values()].filter((row) =>
-      clean(row.groupKey) === groupKey ||
-      (
-        clean(row.studentId) === clean(ordered[0] && ordered[0].studentId) &&
-        clean(row.courseKey) === tuitionCourseKey(ordered[0] || {})
-      )
-    );
-    const maxSystemNo = assigned.reduce((max, row) =>
-      Math.max(max, Number(row.systemPeriodNo || 0)), 0);
-    const maxLegacyPeriodNo = assigned.reduce((max, row) =>
-      Math.max(max, Number(row.legacyPeriodNo || 0)), 0);
-    const candidates = assigned.length
-      ? ordered.filter((row) =>
-        !existing.has(sourceId(row)) &&
-        tuitionPeriodNumber(row) >= maxLegacyPeriodNo
-      )
-      : ordered.slice(-2);
-    let nextSystemNo = maxSystemNo;
-    candidates.forEach((row) => {
-      const periodId = sourceId(row);
-      if (existing.has(periodId)) return;
-      nextSystemNo += 1;
-      const assignment = {
-        id: hash(`new-system-period|${periodId}`),
-        periodId,
-        studentId: clean(row.studentId),
-        courseKey: tuitionCourseKey(row),
-        groupKey,
-        legacyPeriodNo: tuitionPeriodNumber(row),
-        systemPeriodNo: nextSystemNo,
-        createdAtText: nowText()
-      };
-      existing.set(periodId, assignment);
-      writes.push(assignment);
-    });
-  });
-  for (let offset = 0; offset < writes.length; offset += 400) {
-    const batch = db.batch();
-    writes.slice(offset, offset + 400).forEach((row) => {
-      batch.set(db.collection(TUITION_SYSTEM_PERIODS).doc(row.id), Object.assign({}, row, {
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp()
-      }), { merge: true });
-    });
-    await batch.commit();
-  }
-  return rows.map((row) => Object.assign({}, row, {
-    systemPeriodNo: Number(existing.get(sourceId(row)) && existing.get(sourceId(row)).systemPeriodNo || 0)
-  }));
-}
-
-function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, studentIds }) {
-  const allowed = new Set((studentIds || []).map(clean).filter(Boolean));
-  const studentMap = indexById(students || []);
-  const subjectMap = indexById(subjects || []);
-  const teacherMap = indexById(teachers || []);
-  const groups = new Map();
-  (periods || []).forEach((period) => {
-    const studentId = clean(period.studentId);
-    if (!studentId || (allowed.size && !allowed.has(studentId))) return;
-    const key = `${studentId}|${tuitionCourseKey(period)}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(period);
-  });
-  const candidates = [];
-  groups.forEach((rows) => {
-    const ordered = rows.slice().sort((left, right) =>
-      tuitionPeriodNumber(left) - tuitionPeriodNumber(right) ||
-      sourceId(left).localeCompare(sourceId(right))
-    );
-    const completed = ordered.filter((row) =>
-      tuitionUsedCount(row) >= 4 &&
-      tuitionPeriodNumber(row) > 0
-    ).pop();
-    if (!completed) return;
-    const currentPeriodNo = tuitionPeriodNumber(completed);
-    const existingNext = ordered.find((row) => tuitionPeriodNumber(row) > currentPeriodNo);
-    if (existingNext && tuitionOutstandingAmount(existingNext) <= 0) return;
-    const source = existingNext || completed;
-    const amount = existingNext ? tuitionOutstandingAmount(existingNext) : tuitionExpectedAmount(completed);
-    if (amount <= 0) return;
-    const studentId = clean(completed.studentId);
-    const subjectId = clean(source.subjectId || completed.subjectId);
-    const teacherId = clean(source.teacherId || completed.teacherId);
-    const nextPeriodNo = existingNext ? tuitionPeriodNumber(existingNext) : currentPeriodNo + 1;
-    const currentSystemPeriodNo = Math.max(1, Number(completed.systemPeriodNo || 1));
-    const nextSystemPeriodNo = existingNext
-      ? Math.max(currentSystemPeriodNo + 1, Number(existingNext.systemPeriodNo || 0))
-      : currentSystemPeriodNo + 1;
-    const targetPeriodId = existingNext ? sourceId(existingNext) : '';
-    const sourcePeriodId = sourceId(completed);
-    const id = hash([
-      'tuition-payment-request',
-      studentId,
-      tuitionCourseKey(completed),
-      sourcePeriodId,
-      nextPeriodNo
-    ].join('|'));
-    candidates.push({
-      id,
-      active: true,
-      status: 'payment_due',
-      studentId,
-      studentName: clean(studentMap[studentId] && studentMap[studentId].name),
-      subjectId,
-      subjectName: clean(
-        subjectMap[subjectId] && subjectMap[subjectId].name ||
-        source.subjectName || completed.subjectName || source.subject || completed.subject
-      ),
-      teacherId,
-      teacherName: clean(teacherMap[teacherId] && teacherMap[teacherId].name),
-      sourcePeriodId,
-      targetPeriodId,
-      currentPeriodNo,
-      nextPeriodNo,
-      currentSystemPeriodNo,
-      nextSystemPeriodNo,
-      triggerLessonCount: 4,
-      lessonCount: tuitionLessonCount(source),
-      expectedAmount: amount,
-      planId: clean(source.planId || completed.planId),
-      planSnapshot: jsonValue(source.planSnapshot || completed.planSnapshot || {}),
-      createdAtText: nowText(),
-      trigger: 'completed-period'
-    });
-  });
-  return candidates;
-}
-
-async function ensureTuitionPaymentRequests(options) {
-  const candidates = buildTuitionPaymentCandidates(options || {});
-  const existingRows = await tuitionPaymentRequestsForStudents(options && options.studentIds || []);
-  candidates.forEach((candidate) => {
-    const prior = existingRows.find((row) =>
-      clean(row.studentId) === clean(candidate.studentId) &&
-      clean(row.sourcePeriodId) === clean(candidate.sourcePeriodId) &&
-      Number(row.nextPeriodNo || 0) === Number(candidate.nextPeriodNo || 0) &&
-      clean(row.status) !== 'cancelled'
-    );
-    if (prior) candidate.id = clean(prior.id);
-  });
-  for (let offset = 0; offset < candidates.length; offset += 25) {
-    await Promise.all(candidates.slice(offset, offset + 25).map(async (candidate) => {
-      const ref = db.collection(TUITION_PAYMENT_REQUESTS).doc(candidate.id);
-      const snapshot = await ref.get();
-      if (snapshot.exists) {
-        const previous = snapshot.data() || {};
-        const preserve = {};
-        [
-          'paymentMethod', 'transferDate', 'transferLast5', 'receiptStoragePath',
-          'receiptContentType', 'receiptBytes', 'submittedAt', 'submittedAtText',
-          'submissionRevision', 'reviewNote', 'confirmedAmount', 'remainingAmount',
-          'confirmedAt', 'confirmedAtText', 'formalPeriodId', 'paymentDate',
-          'expectedAmount'
-        ].forEach((key) => {
-          if (Object.prototype.hasOwnProperty.call(previous, key)) preserve[key] = previous[key];
-        });
-        await ref.set(Object.assign({}, candidate, preserve, {
-          active: previous.active !== false,
-          status: clean(previous.status) || candidate.status,
-          createdAtText: clean(previous.createdAtText) || candidate.createdAtText,
-          updatedAt: FieldValue.serverTimestamp()
-        }), { merge: true });
-        return;
-      }
-      await ref.set(Object.assign({}, candidate, {
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp()
-      }));
-    }));
-  }
-  const candidateIds = new Set(candidates.map((row) => row.id));
-  const periodMap = new Map((options && options.periods || []).map((row) => [sourceId(row), row]));
-  await Promise.all(existingRows.filter((row) => {
-    if (candidateIds.has(clean(row.id)) || row.active === false) return false;
-    if (!['payment_due', 'needs_resubmission'].includes(clean(row.status))) return false;
-    const target = periodMap.get(clean(row.targetPeriodId)) ||
-      [...periodMap.values()].find((period) =>
-        clean(period.studentId) === clean(row.studentId) &&
-        tuitionPeriodNumber(period) === Number(row.nextPeriodNo || 0) &&
-        (!clean(row.subjectId) || clean(period.subjectId) === clean(row.subjectId))
-      );
-    return Boolean(target && tuitionOutstandingAmount(target) <= 0);
-  }).map((row) => db.collection(TUITION_PAYMENT_REQUESTS).doc(clean(row.id)).set({
-    active: false,
-    status: 'externally_settled',
-    settledAtText: nowText(),
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true })));
-  return candidates.map((row) => row.id);
-}
-
-async function tuitionPaymentRequestsForStudents(studentIds) {
-  const snapshots = await Promise.all((studentIds || []).map((studentId) =>
-    db.collection(TUITION_PAYMENT_REQUESTS).where('studentId', '==', clean(studentId)).get()
-  ));
-  return snapshots.flatMap((snapshot) => snapshot.docs.map((doc) => Object.assign({
-    id: doc.id
-  }, jsonValue(doc.data()) || {})));
-}
-
-function publicTuitionPaymentRequest(row) {
-  return {
-    id: clean(row.id),
-    studentId: clean(row.studentId),
-    studentName: clean(row.studentName),
-    subjectId: clean(row.subjectId),
-    subjectName: clean(row.subjectName),
-    teacherName: clean(row.teacherName),
-    currentPeriodNo: Number(row.currentPeriodNo || 0),
-    nextPeriodNo: Number(row.nextPeriodNo || 0),
-    currentSystemPeriodNo: Number(row.currentSystemPeriodNo || 0),
-    nextSystemPeriodNo: Number(row.nextSystemPeriodNo || 0),
-    sourcePeriodId: clean(row.sourcePeriodId),
-    targetPeriodId: clean(row.targetPeriodId),
-    lessonCount: Number(row.lessonCount || 4),
-    expectedAmount: Number(row.expectedAmount || 0),
-    confirmedAmount: Number(row.confirmedAmount || 0),
-    remainingAmount: Math.max(0, Number(
-      row.remainingAmount != null
-        ? row.remainingAmount
-        : Number(row.expectedAmount || 0) - Number(row.confirmedAmount || 0)
-    )),
-    paymentMethod: clean(row.paymentMethod),
-    status: clean(row.status || 'payment_due'),
-    transferDate: dateKey(row.transferDate),
-    transferLast5: clean(row.transferLast5).slice(-5),
-    submittedAtText: clean(row.submittedAtText),
-    confirmedAtText: clean(row.confirmedAtText),
-    reviewNote: clean(row.reviewNote)
-  };
-}
-
-function newSystemTuitionPeriodLabel(row, which) {
-  const field = which === 'current' ? 'currentSystemPeriodNo' : 'nextSystemPeriodNo';
-  const value = Math.max(0, Number(row && row[field] || 0));
-  if (value) return `æ–°ç³»çµ±ç¬¬ ${value} æœŸ`;
-  return which === 'current' ? 'æ–°ç³»çµ±æœ¬æœŸ' : 'æ–°ç³»çµ±ä¸‹ä¸€æœŸ';
-}
-
-function parseTuitionReceipt(dataUrl) {
-  const value = clean(dataUrl);
-  const match = value.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\s]+)$/i);
-  if (!match) throw new HttpsError('invalid-argument', 'åŒ¯æ¬¾æˆªåœ–æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹é‡æ–°é¸æ“‡åœ–ç‰‡ã€‚');
-  const buffer = Buffer.from(match[2].replace(/\s+/g, ''), 'base64');
-  if (!buffer.length || buffer.length > TUITION_RECEIPT_MAX_BYTES) {
-    throw new HttpsError('invalid-argument', 'åŒ¯æ¬¾æˆªåœ–éœ€å°æ–¼ 4 MBï¼Œè«‹é‡æ–°æ‹æ”æˆ–ç¸®å°åœ–ç‰‡ã€‚');
-  }
-  return { contentType: match[1].toLowerCase(), buffer };
-}
-
-async function queueCoursePortalNotice(id, payload) {
-  const ref = db.collection('notificationQueue').doc(clean(id) || randomToken(16));
-  try {
-    await ref.create(Object.assign({
-      queueId: ref.id,
-      channel: 'line',
-      status: 'å¾…ç™¼é€',
-      createdAt: FieldValue.serverTimestamp(),
-      createdAtText: nowText(),
-      source: 'course-portal'
-    }, payload || {}));
-  } catch (error) {
-    const code = clean(error && error.code).toLowerCase();
-    if (code !== '6' && !/already[-_ ]?exists/.test(code)) throw error;
-  }
-  return ref.id;
-}
-
-async function queueBindingApprovalNotices(binding) {
-  const type = clean(binding && binding.type);
-  const bindingId = clean(binding && binding.id);
-  if (!bindingId || !bindingNeedsManagerApproval(type)) return;
-  const targetName = clean(binding.name) || (type === 'teacher' ? 'è€å¸«' : 'å­¸ç”Ÿ');
-  const relationship = type === 'student'
-    ? (clean(binding.relationship) || 'å®¶é•·ï¼ç›£è­·äºº')
-    : 'è€å¸«æœ¬äºº';
-  const lineName = clean(binding.lineDisplayName) || 'æœªæä¾›';
-  const body = [
-    'æœ‰æ–°çš„èª²å‹™å…¥å£ç¶å®šç”³è«‹ç­‰å¾…ç¢ºèªã€‚',
-    '',
-    `èº«åˆ†ï¼š${type === 'teacher' ? 'è€å¸«' : 'å­¸ç”Ÿï¼å®¶é•·'}`,
-    `å§“åï¼š${targetName}`,
-    type === 'student' ? `é—œä¿‚ï¼š${relationship}` : '',
-    `LINE é¡¯ç¤ºåç¨±ï¼š${lineName}`,
-    '',
-    'æ ¸å‡†å‰ä¸æœƒé–‹æ”¾èª²è¡¨ã€å­¸è²»ã€ç°½åˆ°æˆ–è–ªè³‡è³‡æ–™ã€‚',
-    `${PORTAL_BASE}/course-portal-admin.html`
-  ].filter(Boolean).join('\n');
-  await queueCoursePortalNotice(`course-binding-manager-${type}-${bindingId}`, {
-    eventCode: 'course_portal_binding_pending',
-    target: 'admin',
-    targetRole: 'admin',
-    targetEmployeeId: 'PRIMARY_MANAGER_LINE',
-    targetName: 'æŸšå­æ¨‚å™¨ä¸»ç®¡',
-    title: 'ç™»å…¥ç¶å®šå¾…ç¢ºèª',
-    body,
-    text: body,
-    message: body,
-    bindingId,
-    bindingType: type
-  });
-  if (type !== 'student' || !clean(binding.studentId)) return;
-  const existing = await db.collection('coursePortalStudentBindings')
-    .where('studentId', '==', clean(binding.studentId))
-    .get();
-  const guardianBody = [
-    `æœ‰äººç”³è«‹æ–°å¢ ${targetName} çš„å®¶é•· LINEã€‚`,
-    `ç”³è«‹é—œä¿‚ï¼š${relationship}`,
-    `LINE é¡¯ç¤ºåç¨±ï¼š${lineName}`,
-    'ç›®å‰ä»åœ¨ç­‰å¾…ä¸»ç®¡ç¢ºèªï¼Œå°šæœªé–‹æ”¾ä»»ä½•å­¸ç”Ÿè³‡æ–™ã€‚',
-    'è‹¥ä¸æ˜¯æ‚¨çš„å®¶äººæ“ä½œï¼Œè«‹ç«‹å³è¯çµ¡æŸšå­æ¨‚å™¨ã€‚'
-  ].join('\n');
-  await Promise.all(existing.docs.filter((doc) => {
-    const row = doc.data() || {};
-    return doc.id !== bindingId &&
-      clean(row.status) === 'active' &&
-      clean(row.lineUserId);
-  }).map((doc) => queueCoursePortalNotice(
-    `course-binding-guardian-${bindingId}-${doc.id}`,
-    {
-      eventCode: 'course_portal_family_binding_requested',
-      targetLineUserId: clean(doc.data().lineUserId),
-      targetName,
-      title: 'æ–°çš„å®¶é•·ç¶å®šç”³è«‹',
-      body: guardianBody,
-      text: guardianBody,
-      message: guardianBody,
-      studentId: clean(binding.studentId),
-      bindingId
-    }
-  )));
-}
-
-async function queueDirectLineBindingNotice(binding) {
-  if (clean(binding && binding.type) !== 'student' || !clean(binding.studentId)) return;
-  const bindingId = clean(binding.id);
-  const studentName = clean(binding.name) || 'å­¸ç”Ÿ';
-  const relationship = clean(binding.relationship) || 'å®¶é•·ï¼ç›£è­·äºº';
-  const lineName = clean(binding.lineDisplayName) || 'æœªæä¾›';
-  const existing = await db.collection('coursePortalStudentBindings')
-    .where('studentId', '==', clean(binding.studentId))
-    .get();
-  const body = [
-    `${studentName}å‰›å‰›æ–°å¢äº†ä¸€å€‹å®¶é•· LINE ç¶å®šã€‚`,
-    `é—œä¿‚ï¼š${relationship}`,
-    `LINE é¡¯ç¤ºåç¨±ï¼š${lineName}`,
-    'ç¶å®šè€…å·²ä½¿ç”¨å­¸ç”Ÿå§“åèˆ‡ç™»è¨˜é›»è©±å®Œæˆç¢ºèªã€‚',
-    'è‹¥ä¸æ˜¯æ‚¨çš„å®¶äººæ“ä½œï¼Œè«‹ç«‹å³è¯çµ¡æŸšå­æ¨‚å™¨ï¼›ä¸»ç®¡å¯ä»¥åœç”¨ç¶å®šä¸¦å¼·åˆ¶ç™»å‡ºã€‚'
-  ].join('\n');
-  await Promise.all(existing.docs.filter((doc) => {
-    const row = doc.data() || {};
-    return doc.id !== bindingId &&
-      clean(row.status) === 'active' &&
-      clean(row.lineUserId);
-  }).map((doc) => queueCoursePortalNotice(
-    `course-binding-guardian-active-${bindingId}-${doc.id}`,
-    {
-      eventCode: 'course_portal_family_binding_added',
-      targetLineUserId: clean(doc.data().lineUserId),
-      targetName: studentName,
-      title: 'æ–°çš„å®¶é•· LINE ç¶å®š',
-      body,
-      text: body,
-      message: body,
-      studentId: clean(binding.studentId),
-      bindingId
-    }
-  )));
-}
-
-async function queueBindingDecisionNotice(binding, approved) {
-  const lineUserId = clean(binding && binding.lineUserId);
-  if (!lineUserId) return;
-  const type = clean(binding.type);
-  const targetName = clean(binding.name) || (type === 'teacher' ? 'è€å¸«' : 'å­¸ç”Ÿï¼å®¶é•·');
-  const body = approved
-    ? `${targetName}çš„${type === 'teacher' ? 'è€å¸«' : 'å­¸ç”Ÿï¼å®¶é•·'}å…¥å£ç¶å®šå·²ç”±ä¸»ç®¡æ ¸å‡†ï¼Œç¾åœ¨å¯ä»¥é‡æ–°ä½¿ç”¨ LINE ç™»å…¥ã€‚`
-    : `${targetName}çš„å…¥å£ç¶å®šç”³è«‹æœªé€šéã€‚è‹¥æ‚¨èªç‚ºæœ‰èª¤ï¼Œè«‹è¯çµ¡æŸšå­æ¨‚å™¨ç¢ºèªèº«åˆ†ã€‚`;
-  await queueCoursePortalNotice(
-    `course-binding-decision-${clean(binding.id)}-${approved ? 'approved' : 'rejected'}`,
-    {
-      eventCode: approved ? 'course_portal_binding_approved' : 'course_portal_binding_rejected',
-      targetLineUserId: lineUserId,
-      targetName,
-      title: approved ? 'ç™»å…¥ç¶å®šå·²æ ¸å‡†' : 'ç™»å…¥ç¶å®šæœªé€šé',
-      body,
-      text: body,
-      message: body,
-      bindingId: clean(binding.id),
-      bindingType: type
-    }
-  );
-}
-
-async function queueSessionSecurityNotice(sessionId, session) {
-  const role = clean(session && session.role);
-  if (!['teacher', 'student'].includes(role)) return;
-  const bindings = await authorizedBindingsForSession(session);
-  const targets = [...new Map(bindings.filter((row) => clean(row.lineUserId)).map((row) => [
-    clean(row.lineUserId),
-    row
-  ])).values()];
-  const body = [
-    `${role === 'teacher' ? 'è€å¸«' : 'å­¸ç”Ÿï¼å®¶é•·'}å…¥å£å‰›å‰›åœ¨æ–°çš„ç€è¦½å™¨å»ºç«‹ç™»å…¥ã€‚`,
-    `æ™‚é–“ï¼š${nowText()}`,
-    'è‹¥æ˜¯æ‚¨æœ¬äººæ“ä½œå¯å¿½ç•¥ï¼›è‹¥ä¸æ˜¯ï¼Œè«‹ç«‹å³è¯çµ¡æŸšå­æ¨‚å™¨ï¼Œä¸»ç®¡å¯ä»¥å¼·åˆ¶ç™»å‡ºæ‰€æœ‰è£ç½®ã€‚'
-  ].join('\n');
-  await Promise.all(targets.map((binding) => queueCoursePortalNotice(
-    `course-session-security-${clean(sessionId)}-${hash(clean(binding.lineUserId)).slice(0, 12)}`,
-    {
-      eventCode: 'course_portal_new_session',
-      targetLineUserId: clean(binding.lineUserId),
-      targetName: clean(binding.name || binding.lineDisplayName) || 'ä½¿ç”¨è€…',
-      title: 'æ–°çš„å…¥å£ç™»å…¥',
-      body,
-      text: body,
-      message: body,
-      bindingType: role
-    }
-  )));
-}
-
-async function queueStudentTuitionNotice(requestRow, title, body, eventCode, options = {}) {
-  const snapshot = await db.collection('coursePortalStudentBindings')
-    .where('studentId', '==', clean(requestRow.studentId))
-    .get();
-  const targets = snapshot.docs.filter((doc) => {
-    const row = doc.data() || {};
-    return clean(row.status) === 'active' &&
-      clean(row.lineUserId) &&
-      (options.forceBoundDelivery === true || row.reminderPayment !== false);
-  });
-  await Promise.all(targets.map((doc) => {
-    const row = doc.data() || {};
-    return queueCoursePortalNotice(
-      `course-tuition-${clean(requestRow.id)}-${clean(eventCode)}-${doc.id}`,
-      {
-        eventCode: clean(eventCode),
-        targetLineUserId: clean(row.lineUserId),
-        targetName: clean(requestRow.studentName) || 'å­¸ç”Ÿï¼å®¶é•·',
-        title,
-        body,
-        text: body,
-        message: body,
-        studentId: clean(requestRow.studentId),
-        tuitionPaymentRequestId: clean(requestRow.id),
-        tuitionReceiptId: clean(options.receiptId),
-        lineImageUrl: clean(options.imageUrl),
-        linePreviewImageUrl: clean(options.imageUrl)
-      }
-    );
-  }));
-  return targets.length;
-}
-
-async function studentSubmitTuitionPayment(data) {
-  const session = await requireSession(data, ['student']);
-  const requestId = clean(data.requestId);
-  const paymentMethod = clean(data.paymentMethod);
-  if (!requestId || !['bank_transfer', 'onsite'].includes(paymentMethod)) {
-    throw new HttpsError('invalid-argument', 'è«‹é¸æ“‡æ­£ç¢ºçš„ç¹³è²»æ–¹å¼ã€‚');
-  }
-  const sessionBindings = await activeStudentBindingsForSession(session);
-  const allowed = new Set(sessionBindings.map((row) => clean(row.studentId)).filter(Boolean));
-  const ref = db.collection(TUITION_PAYMENT_REQUESTS).doc(requestId);
-  const snapshot = await ref.get();
-  if (!snapshot.exists) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ç­†ä¸‹ä¸€æœŸå­¸è²»ã€‚');
-  const requestRow = Object.assign({ id: snapshot.id }, snapshot.data() || {});
-  if (!allowed.has(clean(requestRow.studentId))) {
-    throw new HttpsError('permission-denied', 'æ²’æœ‰é€™ç­†å­¸è²»çš„æ“ä½œæ¬Šé™ã€‚');
-  }
-  if (!['payment_due', 'needs_resubmission'].includes(clean(requestRow.status))) {
-    throw new HttpsError('failed-precondition', 'é€™ç­†å­¸è²»å·²ç¶“é€å‡ºæˆ–å®Œæˆï¼Œä¸èƒ½é‡è¤‡é€å‡ºã€‚');
-  }
-
-  const revision = Math.max(0, Number(requestRow.submissionRevision || 0)) + 1;
-  const oldReceiptStoragePath = clean(requestRow.receiptStoragePath);
-  let uploadedReceiptStoragePath = '';
-  const update = {
-    paymentMethod,
-    status: paymentMethod === 'bank_transfer' ? 'pending_review' : 'onsite_pending',
-    submittedAt: FieldValue.serverTimestamp(),
-    submittedAtText: nowText(),
-    submissionRevision: revision,
-    reviewNote: '',
-    updatedAt: FieldValue.serverTimestamp()
-  };
-  if (paymentMethod === 'bank_transfer') {
-    const transferDate = dateKey(data.transferDate);
-    const transferLast5 = clean(data.transferLast5).replace(/\D/g, '').slice(-5);
-    if (!transferDate) throw new HttpsError('invalid-argument', 'è«‹å¡«å¯«åŒ¯æ¬¾æ—¥æœŸã€‚');
-    if (transferDate > currentTaipeiDay()) {
-      throw new HttpsError('invalid-argument', 'åŒ¯æ¬¾æ—¥æœŸä¸èƒ½æ™šæ–¼ä»Šå¤©ï¼Œè«‹ç¢ºèªå¾Œé‡æ–°é€å‡ºã€‚');
-    }
-    if (transferLast5.length !== 5) throw new HttpsError('invalid-argument', 'è«‹å¡«å¯«åŒ¯æ¬¾å¸³è™Ÿæœ«äº”ç¢¼ã€‚');
-    const receipt = parseTuitionReceipt(data.receiptDataUrl);
-    const storagePath = [
-      'course-portal/tuition-payments',
-      clean(requestRow.studentId),
-      requestId,
-      `receipt-${revision}-${randomToken(6)}`
-    ].join('/');
-    uploadedReceiptStoragePath = storagePath;
-    await admin.storage().bucket().file(storagePath).save(receipt.buffer, {
-      resumable: false,
-      metadata: {
-        contentType: receipt.contentType,
-        cacheControl: 'private, no-store, max-age=0',
-        metadata: {
-          studentId: clean(requestRow.studentId),
-          tuitionPaymentRequestId: requestId
-        }
-      }
-    });
-    Object.assign(update, {
-      transferDate,
-      transferLast5,
-      receiptStoragePath: storagePath,
-      receiptContentType: receipt.contentType,
-      receiptBytes: receipt.buffer.length
-    });
-  } else {
-    Object.assign(update, {
-      transferDate: '',
-      transferLast5: '',
-      receiptStoragePath: FieldValue.delete(),
-      receiptContentType: FieldValue.delete(),
-      receiptBytes: FieldValue.delete()
-    });
-  }
-  try {
-    await db.runTransaction(async (tx) => {
-      const current = await tx.get(ref);
-      const currentStatus = clean(current.exists && current.data().status);
-      if (!current.exists || !['payment_due', 'needs_resubmission'].includes(currentStatus)) {
-        throw new HttpsError('failed-precondition', 'é€™ç­†å­¸è²»å‰›å‰›å·²ç¶“é€å‡ºæˆ–å®Œæˆï¼Œè«‹é‡æ–°æ•´ç†ã€‚');
-      }
-      tx.set(ref, update, { merge: true });
-    });
-  } catch (error) {
-    if (uploadedReceiptStoragePath) {
-      await admin.storage().bucket().file(uploadedReceiptStoragePath).delete({ ignoreNotFound: true }).catch(() => null);
-    }
-    throw error;
-  }
-  if (oldReceiptStoragePath && oldReceiptStoragePath !== uploadedReceiptStoragePath) {
-    await admin.storage().bucket().file(oldReceiptStoragePath).delete({ ignoreNotFound: true }).catch(() => null);
-  }
-  const methodText = paymentMethod === 'bank_transfer' ? 'è½‰å¸³ç¹³è²»' : 'ç¾å ´ç¹³è²»';
-  const adminBody = [
-    'å­¸ç”Ÿä¸‹ä¸€æœŸå­¸è²»å·²é€å‡ºï¼Œè«‹é€²å…¥å¾Œå°ç¢ºèªã€‚',
-    '',
-    `å­¸ç”Ÿï¼š${clean(requestRow.studentName) || clean(requestRow.studentId)}`,
-    `èª²ç¨‹ï¼š${clean(requestRow.subjectName) || 'æœªæä¾›'}`,
-    `æœŸåˆ¥ï¼š${newSystemTuitionPeriodLabel(requestRow, 'next')}`,
-    `é‡‘é¡ï¼šNT$${Number(requestRow.expectedAmount || 0).toLocaleString('zh-TW')}`,
-    `æ–¹å¼ï¼š${methodText}`,
-    paymentMethod === 'bank_transfer' ? `åŒ¯æ¬¾æœ«äº”ç¢¼ï¼š${clean(update.transferLast5)}` : '',
-    '',
-    `${PORTAL_BASE}/course-portal-admin.html`
-  ].filter((line) => line !== '').join('\n');
-  await queueCoursePortalNotice(
-    `course-tuition-manager-${requestId}-${revision}`,
-    {
-      eventCode: 'tuition_payment_submitted',
-      target: 'admin',
-      targetRole: 'admin',
-      targetEmployeeId: 'PRIMARY_MANAGER_LINE',
-      targetName: 'æŸšå­æ¨‚å™¨ä¸»ç®¡',
-      title: 'å­¸ç”Ÿå­¸è²»å¾…ç¢ºèª',
-      body: adminBody,
-      text: adminBody,
-      message: adminBody,
-      studentId: clean(requestRow.studentId),
-      tuitionPaymentRequestId: requestId
-    }
-  );
-  return {
-    ok: true,
-    requestId,
-    status: update.status,
-    message: paymentMethod === 'bank_transfer'
-      ? 'åŒ¯æ¬¾è³‡æ–™å·²é€å‡ºï¼Œå¾…ä¸»ç®¡ç¢ºèªå…¥å¸³ã€‚'
-      : 'å·²ç™»è¨˜ç¾å ´ç¹³è²»ï¼Œå¯¦éš›æ”¶æ¬¾å¾Œç”±ä¸»ç®¡ç¢ºèªã€‚'
-  };
-}
-
-async function portalAttendanceForStudents(studentIds) {
-  const snapshots = await Promise.all((studentIds || []).map((studentId) =>
-    db.collection(ATTENDANCE_RECORDS).where('studentId', '==', clean(studentId)).get()
-  ));
-  return snapshots.flatMap((snapshot) => snapshot.docs.map((doc) =>
-    Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
-  ));
-}
-
-function attendanceRowsMatch(left, right) {
-  if (clean(left.studentId) !== clean(right.studentId)) return false;
-  if (eventDate(left) !== eventDate(right)) return false;
-  if (eventTeacherId(left) && eventTeacherId(right) && eventTeacherId(left) !== eventTeacherId(right)) return false;
-  const leftEvent = clean(left.eventId || left.sourceEventId);
-  const rightEvent = clean(right.eventId || right.sourceEventId);
-  if (leftEvent && rightEvent && leftEvent === rightEvent) return true;
-  const leftCourse = clean(left.courseId || left.fixedCourseId || left.sourceCourseId);
-  const rightCourse = clean(right.courseId || right.fixedCourseId || right.sourceCourseId);
-  if (leftCourse && rightCourse) return leftCourse === rightCourse;
-  // ç¼ºå°‘å¯é©—è­‰äº‹ä»¶ï¼èª²ç¨‹ç·¨è™Ÿæ™‚ä¸å¯åªé ã€ŒåŒå­¸ç”ŸåŒä¸€å¤©ã€çŒœæ¸¬ï¼Œé¿å…èª¤åˆªåŒæ—¥ç¬¬äºŒå ‚ã€‚
-  return false;
-}
-
-function mergePortalAttendanceRows(mirrorAttendance, portalAttendance) {
-  const cancellations = (portalAttendance || []).filter((row) =>
-    clean(row.status) === 'cancelled' || row.active === false
-  );
-  const retainedMirror = (mirrorAttendance || []).filter((row) =>
-    !cancellations.some((cancelled) => attendanceRowsMatch(row, cancelled))
-  );
-  const activePortal = (portalAttendance || []).filter((row) =>
-    row.active !== false && normalizeScheduleStatus(row.status) === 'attended'
-  );
-  const merged = retainedMirror.slice();
-  activePortal.forEach((row) => {
-    if (!merged.some((existing) => attendanceRowsMatch(existing, row))) merged.push(row);
-  });
-  return merged;
-}
-
-function teacherPayrollCourseId(row) {
-  return clean(row && (
-    row.courseId || row.fixedCourseId || row.sourceCourseId || row.seriesId || row.scheduleId
-  ));
-}
-
-function teacherPayrollStudentIds(row) {
-  return [...new Set(
-    eventStudentIds(row || {}).concat(clean(row && row.studentId)).map(clean).filter(Boolean)
-  )];
-}
-
-function teacherPayrollMinute(row) {
-  const explicit = clean(row && (
-    row.occurredAt || row.attendedAt || row.startedAt || row.startAt
-  ));
-  if (explicit) {
-    const parsed = Date.parse(explicit);
-    if (Number.isFinite(parsed)) return Math.floor(parsed / 60000);
-  }
-  const date = eventDate(row || {});
-  const time = eventStart(row || {});
-  if (!date || !time) return null;
-  const parsed = Date.parse(`${date}T${time}:00+08:00`);
-  return Number.isFinite(parsed) ? Math.floor(parsed / 60000) : null;
-}
-
-function enrichTeacherPayrollRows(payrollRows, attendanceRows) {
-  const attendanceById = new Map();
-  (attendanceRows || []).forEach((row) => {
-    [sourceId(row), clean(row && row.id), clean(row && row.sourceId)]
-      .filter(Boolean)
-      .forEach((id) => attendanceById.set(id, row));
-  });
-  return (payrollRows || []).map((row) => {
-    const attendance = [sourceId(row), clean(row && row.id), clean(row && row.sourceId)]
-      .map((id) => attendanceById.get(id))
-      .find(Boolean);
-    if (!attendance) return row;
-    const merged = Object.assign({}, row);
-    if (!teacherPayrollCourseId(merged)) {
-      merged.courseId = clean(attendance.courseId || attendance.fixedCourseId || attendance.sourceCourseId);
-    }
-    if (!clean(merged.subjectId)) merged.subjectId = eventSubjectId(attendance);
-    if (!clean(merged.periodId)) merged.periodId = clean(attendance.periodId || attendance.studentPayment);
-    return merged;
-  });
-}
-
-function teacherPayrollMatchesCancellation(row, request) {
-  if (eventDate(row || {}) !== dateKey(request && request.date)) return false;
-  const requestTeacherId = eventTeacherId(request || {});
-  if (!requestTeacherId || eventTeacherId(row || {}) !== requestTeacherId) return false;
-  const requestStudentIds = teacherPayrollStudentIds(request);
-  const payrollStudentIds = teacherPayrollStudentIds(row);
-  if (
-    !requestStudentIds.length ||
-    !payrollStudentIds.length ||
-    !payrollStudentIds.some((studentId) => requestStudentIds.includes(studentId))
-  ) return false;
-
-  const payrollOperationIds = [row && row.operationId, row && row.id, row && row.__id]
-    .map(clean).filter(Boolean);
-  const requestOperationId = clean(request && request.operationId);
-  const exactOperation = Boolean(
-    requestOperationId && payrollOperationIds.includes(requestOperationId)
-  );
-  const payrollEventIds = [row && row.eventId, row && row.sourceEventId]
-    .map(clean).filter(Boolean);
-  const requestEventIds = [request && request.eventId, request && request.sourceEventId]
-    .map(clean).filter(Boolean);
-  const exactEvent = payrollEventIds.some((id) => requestEventIds.includes(id));
-  const payrollCourseId = teacherPayrollCourseId(row);
-  const requestCourseId = clean(request && (
-    request.courseId || request.fixedCourseId || request.sourceCourseId
-  ));
-  const exactCourse = Boolean(
-    payrollCourseId && requestCourseId && payrollCourseId === requestCourseId
-  );
-  if (!exactOperation && !exactEvent && !exactCourse) return false;
-
-  const payrollMinute = teacherPayrollMinute(row);
-  const requestMinute = teacherPayrollMinute(request);
-  if (payrollMinute != null && requestMinute != null && payrollMinute !== requestMinute) return false;
-  // åªæœ‰ operationId å¯è¦–ç‚ºå®Œæ•´å”¯ä¸€éµï¼›å…¶é¤˜äº‹ä»¶ï¼èª²ç¨‹åŒ¹é…éƒ½å¿…é ˆåŒæ™‚æ ¸å°ä¸Šèª²æ™‚é–“ï¼Œ
-  // é¿å…åŒä¸€å›ºå®šèª²åœ¨åŒä¸€å¤©åŠ èª²å…©æ¬¡æ™‚æ•´æ‰¹åˆªé™¤è–ªè³‡ã€‚
-  if (!exactOperation && (payrollMinute == null || requestMinute == null)) return false;
-  return true;
-}
-
-function teacherPayrollRowsMatch(mirrorRow, portalRow, studentId) {
-  if (clean(mirrorRow && mirrorRow.teacherId) !== clean(portalRow && portalRow.teacherId)) return false;
-  if (eventDate(mirrorRow || {}) !== eventDate(portalRow || {})) return false;
-  const wantedStudentId = clean(studentId);
-  if (wantedStudentId && !teacherPayrollStudentIds(mirrorRow).includes(wantedStudentId)) return false;
-  const mirrorCourseId = teacherPayrollCourseId(mirrorRow);
-  const portalCourseId = teacherPayrollCourseId(portalRow);
-  if (mirrorCourseId && portalCourseId && mirrorCourseId !== portalCourseId) return false;
-  const mirrorEventIds = [mirrorRow.id, mirrorRow.eventId, mirrorRow.sourceEventId].map(clean).filter(Boolean);
-  const portalEventIds = [portalRow.id, portalRow.eventId, portalRow.sourceEventId].map(clean).filter(Boolean);
-  const exactEvent = mirrorEventIds.some((id) => portalEventIds.includes(id));
-  const mirrorMinute = teacherPayrollMinute(mirrorRow);
-  const portalMinute = teacherPayrollMinute(portalRow);
-  if (mirrorMinute != null && portalMinute != null && mirrorMinute !== portalMinute) return false;
-  if (exactEvent) return true;
-  if (mirrorCourseId && portalCourseId) {
-    // æœ‰æ™‚é–“æ™‚å¿…é ˆåŒåˆ†é˜ï¼›èˆŠè³‡æ–™ä»»ä¸€å´ç¼ºæ™‚é–“æ™‚æ‰ä»¥ã€ŒåŒè€å¸«ã€æ—¥ã€å­¸ç”Ÿã€èª²ç¨‹ã€åšç›¸å®¹é…å°ã€‚
-    return mirrorMinute == null || portalMinute == null || mirrorMinute === portalMinute;
-  }
-  if (mirrorMinute != null && portalMinute != null && mirrorMinute === portalMinute) return true;
-  // èˆŠç‡Ÿé‹ä¾†æºæœ‰ä¸€æ®µæœŸé–“åªä¿å­˜æ¯å¤©ä¸­åˆçš„ä½”ä½æ™‚é–“ï¼›è‹¥åˆç¼ºèª²ç¨‹ç·¨è™Ÿï¼Œå°±ä¿ç•™å…©åˆ—ä¾›äººå·¥ç¨½æ ¸ï¼Œä¸èƒ½çŒœæ¸¬åˆªé™¤ã€‚
-  return false;
-}
-
-function mergeTeacherPayrollRows(mirrorPayroll, portalPayroll, approvedCancellations = []) {
-  const cancellations = (approvedCancellations || []).filter((row) =>
-    clean(row && row.status) === 'approved' ||
-    clean(row && row.status) === 'cancelled' ||
-    row && row.active === false
-  );
-  const retainedMirror = (mirrorPayroll || []).filter((row) =>
-    !cancellations.some((request) => teacherPayrollMatchesCancellation(row, request))
-  );
-  // æ–°ç‰ˆå¿«ç…§åˆ—æ˜¯æ­£å¼ä¾†æºï¼›å·²éƒ¨ç½²éçš„èˆŠç‰ˆæ­£è–ªè³‡é›–å°šç„¡ payrollCalculation.versionï¼Œ
-  // ä¹Ÿå¿…é ˆä¿ç•™ä¸¦ç”¨ç›¸åŒå¼·è­˜åˆ¥æ¶ˆé™¤é¡åƒé‡è¤‡ã€‚åªæœ‰èˆŠç‰ˆ NT$0 æš«å­˜åˆ—ä¸å¯è“‹æ‰é¡åƒã€‚
-  const canonicalPortal = (portalPayroll || []).filter((row) =>
-    row &&
-    row.active !== false &&
-    normalizeScheduleStatus(row.status) === 'attended' &&
-    (
-      clean(row.payrollCalculation && row.payrollCalculation.version) ||
-      Number(row.teacherAmount || 0) > 0
-    )
-  );
-  const mirrorAtoms = [];
-  retainedMirror.forEach((row, rowIndex) => {
-    teacherPayrollStudentIds(row).forEach((studentId) => {
-      mirrorAtoms.push({ rowIndex, studentId, consumed: false });
-    });
-  });
-  canonicalPortal.forEach((portalRow) => {
-    const studentIds = teacherPayrollStudentIds(portalRow);
-    for (const studentId of studentIds) {
-      const atom = mirrorAtoms.find((candidate) =>
-        !candidate.consumed &&
-        candidate.studentId === studentId &&
-        teacherPayrollRowsMatch(retainedMirror[candidate.rowIndex], portalRow, studentId)
-      );
-      if (atom) atom.consumed = true;
-    }
-    if (!studentIds.length) {
-      const portalEventId = clean(portalRow.eventId || portalRow.sourceEventId);
-      const rowIndex = portalEventId
-        ? retainedMirror.findIndex((mirrorRow) =>
-          [mirrorRow.id, mirrorRow.eventId, mirrorRow.sourceEventId]
-            .map(clean).includes(portalEventId)
-        )
-        : -1;
-      if (rowIndex >= 0) mirrorAtoms.push({ rowIndex, studentId: '', consumed: true });
-    }
-  });
-  const consumedRows = new Set(mirrorAtoms.filter((atom) => atom.consumed).map((atom) => atom.rowIndex));
-  const unconsumedRows = retainedMirror.filter((row, rowIndex) => !consumedRows.has(rowIndex));
-  return unconsumedRows.concat(canonicalPortal);
-}
-
-function mergeTeacherAdjustmentRows(mirrorAdjustments, portalAdjustments) {
-  const merged = new Map();
-  (mirrorAdjustments || []).concat(portalAdjustments || []).forEach((row, index) => {
-    if (!row || row.active === false) return;
-    const id = clean(row.id || row.__id || row.sourceId) || [
-      clean(row.teacherId),
-      clean(row.month || row.payrollMonth),
-      eventDate(row),
-      clean(row.type),
-      Number(row.amount || 0),
-      index
-    ].join('|');
-    merged.set(id, row);
-  });
-  return [...merged.values()];
-}
-
-function applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttendance) {
-  const rows = (periods || []).map((row) => Object.assign({}, row));
-  const activePortal = (portalAttendance || []).filter((row) =>
-    row.active !== false &&
-    normalizeScheduleStatus(row.status) === 'attended' &&
-    row.deducted !== false &&
-    clean(row.periodId) &&
-    !(mirrorAttendance || []).some((existing) => attendanceRowsMatch(existing, row))
-  );
-  const additions = activePortal.reduce((map, row) => {
-    const periodId = clean(row.periodId);
-    map[periodId] = Number(map[periodId] || 0) + 1;
-    return map;
-  }, {});
-  const approvedCancellations = (portalAttendance || []).filter((row) =>
-    (clean(row.status) === 'cancelled' || row.active === false) &&
-    ['attendance-cancellation-approved', 'teacher-same-day-attendance-cancellation']
-      .includes(clean(row.source))
-  );
-  const restorations = approvedCancellations.reduce((map, row) => {
-    const matched = (mirrorAttendance || []).find((existing) => attendanceRowsMatch(existing, row));
-    // é¡åƒå°šæœªåŒ…å«é€™æ¬¡ portal ç°½åˆ°æ™‚ï¼ŒusedCount æœ¬ä¾†å°±æ²’æœ‰åŠ  1ï¼›æ­¤æ™‚ä¸å¯å†å¤šé‚„ä¸€å ‚ã€‚
-    if (!matched) return map;
-    const originalPeriodId = clean(row.periodId || matched && (matched.periodId || matched.studentPayment));
-    // å–æ¶ˆå“ªä¸€æœŸçš„ç°½åˆ°ï¼Œå°±åªé‚„åˆ°åŒä¸€æœŸï¼›ä¸å¯å› å¾Œä¾†æ–°å¢æœŸåˆ¥è€ŒæŠŠå ‚æ•¸æŒªåˆ°æœ€æ–°ä¸€æœŸã€‚
-    if (originalPeriodId && rows.some((period) => sourceId(period) === originalPeriodId)) {
-      map[originalPeriodId] = Number(map[originalPeriodId] || 0) + 1;
-    }
-    return map;
-  }, {});
-  return rows.map((row) => {
-    const extra = Number(additions[sourceId(row)] || 0);
-    const restored = Number(restorations[sourceId(row)] || 0);
-    if (!extra && !restored) return row;
-    const beforeRestore = Math.max(0, Number(row.usedCount || row.attendedCount || 0) + extra);
-    const usedReduction = Math.min(beforeRestore, restored);
-    const extraLessonCredit = Math.max(0, restored - usedReduction);
-    const usedCount = beforeRestore - usedReduction;
-    const lessonCount = Math.max(1, Number(row.lessonCount || row.totalLessons || 4)) + extraLessonCredit;
-    return Object.assign({}, row, {
-      usedCount,
-      attendedCount: usedCount,
-      lessonCount,
-      totalLessons: lessonCount,
-      portalAttendanceCount: extra,
-      portalAttendanceCancelledCount: restored,
-      portalRestoredCreditCount: restored,
-      portalExtraLessonCreditCount: extraLessonCredit
-    });
-  });
-}
-
-async function studentPortalData(data) {
-  const session = await requireSession(data, ['student']);
-  const sessionBindings = await activeStudentBindingsForSession(session);
-  const currentIds = [...new Set(sessionBindings.map((row) => clean(row.studentId)).filter(Boolean))];
-  const requested = clean(data.studentId);
-  if (requested && !currentIds.includes(requested)) throw new HttpsError('permission-denied', 'æ²’æœ‰é€™ä½å­¸ç”Ÿçš„æŸ¥çœ‹æ¬Šé™ã€‚');
-  const studentIds = currentIds;
-  const today = currentTaipeiDay();
-  const [students, events, teachers, subjects, fixedCourses, temporaryCourses, suspensions] = await Promise.all([
-    mirrorRowsIncludingInactive('students'),
-    mirrorRowsByDateRange('events', today, addDays(today, 120)),
-    mirrorRows('teachers'),
-    mirrorRows('subjects'),
-    mirrorRows('fixedCourses'),
-    mirrorRows('temporaryCourses'),
-    reconcileStudentSuspensionsForNewSchedules(studentIds)
-  ]);
-  const currentStudentRows = students.filter((row) => studentIds.includes(sourceId(row)));
-  const learningIds = activeLearningStudentIds(
-    currentStudentRows,
-    [...fixedCourses, ...temporaryCourses],
-    events,
-    suspensions
-  );
-  const activeStudentIds = studentIds.filter((id) => learningIds.has(id));
-  const [periodsByStudent, attendanceByStudent, portalAttendance] = await Promise.all([
-    Promise.all(activeStudentIds.map((id) => mirrorRowsByField('tuitionPeriods', 'studentId', id))),
-    Promise.all(studentIds.map((id) => mirrorRowsByField('attendance', 'studentId', id))),
-    portalAttendanceForStudents(studentIds)
-  ]);
-  const uniqueRows = (groups) => [...new Map(
-    groups.flat().map((row) => [sourceId(row), row])
-  ).values()];
-  const mirrorPeriods = uniqueRows(periodsByStudent);
-  const mirrorAttendance = uniqueRows(attendanceByStudent);
-  const activeMirrorAttendance = mirrorAttendance.filter((row) =>
-    activeStudentIds.includes(clean(row.studentId))
-  );
-  const activePortalAttendance = portalAttendance.filter((row) =>
-    activeStudentIds.includes(clean(row.studentId))
-  );
-  const adjustedPeriods = applyPortalAttendanceToPeriods(
-    mirrorPeriods,
-    activeMirrorAttendance,
-    activePortalAttendance
-  );
-  const periods = await assignNewSystemPeriodNumbers(adjustedPeriods);
-  const attendance = mergePortalAttendanceRows(mirrorAttendance, portalAttendance);
-  const maps = { teachers: indexById(teachers), subjects: indexById(subjects) };
-  const allowed = new Set(activeStudentIds);
-  const studentMap = indexById(students);
-  const selectedStudents = studentIds.map((id) => {
-    const row = studentMap[id] || {};
-    const binding = sessionBindings.find((item) => clean(item.studentId) === id) || {};
-    return {
-      id,
-      name: clean(row.name || binding.name) || 'å­¸ç”Ÿ',
-      phoneLast4: normalizePhone(sourcePhone(row)).slice(-4),
-      accessStatus: allowed.has(id) ? 'active' : 'history_and_rental',
-      accessMessage: allowed.has(id)
-      ? ''
-      : 'ç›®å‰æ²’æœ‰é€²è¡Œä¸­çš„èª²ç¨‹ï¼›ä»å¯æŸ¥çœ‹éå»èª²è¡¨èˆ‡ä¸Šèª²ç´€éŒ„ï¼Œä¹Ÿå¯ä»¥ä½¿ç”¨æ•™å®¤ç§Ÿç”¨ã€‚æœªä¾†èª²ç¨‹ã€å ‚æ•¸ã€å­¸è²»èˆ‡åœ¨ç±å„ªæƒ æš«æ™‚é—œé–‰ã€‚'
-    };
-  });
-  const courseById = new Map();
-  [...fixedCourses, ...temporaryCourses].forEach((course) => {
-    [...courseSourceIds(course), sourceId(course)].map(clean).filter(Boolean)
-      .forEach((id) => courseById.set(id, course));
-  });
-  await ensureTuitionPaymentRequests({
-    periods,
-    students,
-    subjects,
-    teachers,
-    studentIds: activeStudentIds
-  });
-  const paymentRequests = await tuitionPaymentRequestsForStudents(activeStudentIds);
-  const contactSnapshots = await Promise.all(studentIds.map((id) =>
-    db.collection(CONTACT_BOOK_POSTS).where('studentId', '==', id).where('active', '==', true).get()
-  ));
-  const publicContactPosts = contactSnapshots.flatMap((snapshot) => snapshot.docs.map((doc) => {
-    const row = doc.data() || {};
-    return {
-      id: doc.id,
-      studentId: clean(row.studentId),
-      teacherName: clean(row.teacherName) || 'è€å¸«',
-      subjectName: clean(row.subjectName) || 'èª²ç¨‹',
-      date: dateKey(row.date),
-      startTime: clean(row.startTime),
-      text: clean(row.text),
-      createdAtText: clean(row.createdAtText),
-      images: (row.images || []).map((image, index) => ({ id: String(index), name: clean(image.name) || `ç…§ç‰‡ ${index + 1}` }))
-    };
-  })).sort((left, right) => `${right.date}|${right.createdAtText}`.localeCompare(`${left.date}|${left.createdAtText}`));
-  const publicPeriods = [];
-  const periodCounts = new Map();
-  periods.filter((row) => allowed.has(clean(row.studentId))).sort((left, right) =>
-    Number(right.periodNo || right.period || 0) - Number(left.periodNo || left.period || 0)
-  ).forEach((row) => {
-    const id = clean(row.studentId);
-    const count = periodCounts.get(id) || 0;
-    if (count < 2) publicPeriods.push(row);
-    periodCounts.set(id, count + 1);
-  });
-  return {
-    ok: true,
-    students: selectedStudents,
-    bindings: sessionBindings.map((row) => {
-      return {
-        studentId: clean(row.studentId),
-        relationship: clean(row.relationship),
-        reminderLastLesson: row.reminderLastLesson !== false,
-        reminderPayment: row.reminderPayment !== false
-      };
-    }),
-    // æ–°ç³»çµ±åªå…¬é–‹æ¯ä½å­¸ç”Ÿæœ€æ–°å…©æœŸï¼›æ›´æ—©å¸³å‹™è«‹ä»¥ç´™æœ¬ä¸Šèª²è­‰ç‚ºæº–ã€‚
-    periods: publicPeriods.map((row) => {
-      const course = courseById.get(clean(row.sourceCourseId || row.courseId || row.fixedCourseId)) ||
-        [...fixedCourses, ...temporaryCourses].filter((candidate) =>
-          eventStudentIds(candidate).includes(clean(row.studentId)) &&
-          (!clean(row.subjectId) || eventSubjectId(candidate) === clean(row.subjectId))
-        ).sort((left, right) =>
-          eventDate(right).localeCompare(eventDate(left)) ||
-          eventStart(right).localeCompare(eventStart(left))
-        )[0] || {};
-      const linkedAttendance = attendance.find((item) => clean(item.periodId) === sourceId(row)) || {};
-      const teacherId = clean(row.teacherId || row.instructorId || eventTeacherId(row) || eventTeacherId(course) || eventTeacherId(linkedAttendance));
-      const namedTeacher = clean(row.teacherName || row.instructorName || course.teacherName || linkedAttendance.teacherName);
-      const teacher = maps.teachers[teacherId] || teachers.find((item) =>
-        namedTeacher && normalizeName(item.name || item.teacherName) === normalizeName(namedTeacher)
-      ) || {};
-      return {
-        id: sourceId(row),
-        studentId: clean(row.studentId),
-        periodNo: Number(row.periodNo || row.period || 0),
-        systemPeriodNo: Number(row.systemPeriodNo || 0),
-        subjectId: clean(row.subjectId),
-        subjectName: clean(maps.subjects[clean(row.subjectId)] && maps.subjects[clean(row.subjectId)].name),
-        teacherId: teacherId || sourceId(teacher),
-        teacherName: clean(teacher.name || teacher.teacherName || namedTeacher),
-        teacherPhone: normalizePhone(sourcePhone(teacher)),
-        lessonCount: Number(row.lessonCount || row.totalLessons || 4),
-        usedCount: Number(row.usedCount || row.attendedCount || 0),
-        restoredCreditCount: Number(row.portalRestoredCreditCount || 0),
-        extraLessonCreditCount: Number(row.portalExtraLessonCreditCount || 0),
-        expectedAmount: Number(row.expectedAmount || row.amount || 0),
-        paidAmount: Number(row.paidAmount || row.receivedAmount || 0),
-        status: clean(row.status),
-        transactions: jsonValue(row.transactions || [])
-      };
-    }),
-    tuitionPayment: {
-      bank: TUITION_PAYMENT_BANK,
-      requests: paymentRequests
-        .filter((row) =>
-          allowed.has(clean(row.studentId)) &&
-          row.active !== false &&
-          clean(row.status) !== 'cancelled'
-        )
-        .map(publicTuitionPaymentRequest)
-    },
-    attendance: attendance
-      .filter((row) =>
-        studentIds.includes(clean(row.studentId)) &&
-        eventDate(row) &&
-        eventDate(row) <= today
-      )
-      .sort((left, right) => eventDate(left).localeCompare(eventDate(right)))
-      .map((row) => {
-        const course = courseById.get(clean(
-          row.sourceCourseId || row.courseId || row.fixedCourseId
-        )) || {};
-        const teacherId = eventTeacherId(row) || eventTeacherId(course);
-        const subjectId = eventSubjectId(row) || eventSubjectId(course);
-        return {
-          id: sourceId(row),
-          studentId: clean(row.studentId),
-          periodId: clean(row.periodId),
-          date: eventDate(row),
-          startTime: eventStart(row) || eventStart(course),
-          endTime: eventEnd(row) || eventEnd(course),
-          status: clean(row.status || row.type),
-          source: clean(row.source),
-          late: row.late === true,
-          lateFeeCharged: row.lateFeeCharged === true,
-          originalLessonDate: dateKey(row.originalLessonDate),
-          attendanceRecordedAtText: clean(row.attendanceRecordedAtText || row.createdAtText),
-          subjectName: clean(row.subjectName) ||
-            clean(maps.subjects[subjectId] && maps.subjects[subjectId].name),
-          teacherName: clean(row.teacherName) ||
-            clean(maps.teachers[teacherId] && maps.teachers[teacherId].name)
-        };
-      }),
-    attendanceCancellations: activePortalAttendance.filter((row) =>
-      clean(row.source) === 'attendance-cancellation-approved' &&
-      (clean(row.status) === 'cancelled' || row.active === false)
-    ).map((row) => ({
-      id: clean(row.__id || row.id),
-      studentId: clean(row.studentId),
-      date: eventDate(row),
-      subjectId: clean(row.subjectId),
-      teacherId: clean(row.teacherId),
-      cancelledAtText: clean(row.cancelledAtText),
-      note: 'ä¸»ç®¡æ ¸å‡†å–æ¶ˆç°½åˆ°ï¼Œå ‚æ•¸å·²è£œå›ç›®å‰æœŸåˆ¥'
-    })),
-    contactBook: publicContactPosts,
-    upcoming: events.filter((row) =>
-      eventDate(row) >= today &&
-      eventStudentIds(row).some((id) => allowed.has(id)) &&
-      !['cancelled', 'leave', 'absent'].includes(normalizeScheduleStatus(row.status))
-    ).slice(0, 30).map((row) => ({
-      id: sourceId(row),
-      date: eventDate(row),
-      startTime: eventStart(row),
-      endTime: eventEnd(row),
-      studentIds: eventStudentIds(row),
-      subjectName: clean(maps.subjects[eventSubjectId(row)] && maps.subjects[eventSubjectId(row)].name),
-      teacherName: clean(maps.teachers[eventTeacherId(row)] && maps.teachers[eventTeacherId(row)].name),
-      teacherId: eventTeacherId(row),
-      teacherPhone: normalizePhone(sourcePhone(maps.teachers[eventTeacherId(row)] || {})),
-      status: clean(row.status)
-    }))
-  };
-}
-
-async function updateStudentReminder(data) {
-  const session = await requireSession(data, ['student']);
-  const studentId = clean(data.studentId);
-  if (!studentId) throw new HttpsError('invalid-argument', 'è«‹é¸æ“‡å­¸ç”Ÿã€‚');
-  const sessionBindings = await activeStudentBindingsForSession(session);
-  const allowed = [...new Set(sessionBindings.map((row) => clean(row.studentId)).filter(Boolean))];
-  if (!allowed.includes(studentId)) {
-    throw new HttpsError('permission-denied', 'æ²’æœ‰é€™ä½å­¸ç”Ÿçš„æé†’è¨­å®šæ¬Šé™ã€‚');
-  }
-  const targets = sessionBindings.filter((row) => clean(row.studentId) === studentId);
-  if (!targets.length) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ä½å­¸ç”Ÿçš„æœ‰æ•ˆç™»å…¥å¸³è™Ÿã€‚');
-  const batch = db.batch();
-  targets.forEach((row) => batch.set(row.__ref, {
-    reminderLastLesson: data.reminderLastLesson !== false,
-    reminderPayment: data.reminderPayment !== false,
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true }));
-  await batch.commit();
-  return { ok: true, studentId };
-}
-
-async function rentalAvailability(data) {
-  const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const date = dateKey(data.date);
-  const startTime = clean(data.startTime).slice(0, 5);
-  const policy = await rentalPolicySettings();
-  const requestedDuration = Number(data.durationMinutes == null ? 60 : data.durationMinutes);
-  if (!Number.isFinite(requestedDuration) || requestedDuration < 30 || requestedDuration % 30 !== 0) {
-    throw new HttpsError('invalid-argument', 'ç§Ÿç”¨æ™‚é–“å¿…é ˆä»¥ 30 åˆ†é˜ç‚ºå–®ä½ã€‚');
-  }
-  if (requestedDuration > policy.maxDurationMinutes) {
-    throw new HttpsError(
-      'invalid-argument',
-      `å–®æ¬¡ç§Ÿç”¨æœ€é•·ç‚º ${Math.round(policy.maxDurationMinutes / 60 * 10) / 10} å°æ™‚ï¼Œè«‹é‡æ–°é¸æ“‡ç§Ÿç”¨æ™‚é–“ã€‚`
-    );
-  }
-  const duration = requestedDuration;
-  const startMinutes = timeMinutes(startTime);
-  const endMinutes = startMinutes + duration;
-  const endTime = String(Math.floor(endMinutes / 60)).padStart(2, '0') + ':' + String(endMinutes % 60).padStart(2, '0');
-  if (!date || !validPortalTime(startTime, true)) throw new HttpsError('invalid-argument', 'è«‹é¸æ“‡ 30 åˆ†é˜æ•´é»çš„æ—¥æœŸèˆ‡æ™‚é–“ã€‚');
-  assertPortalAdvanceDate(date, 'ç§Ÿç”¨æ—¥æœŸ');
-  if (publicRentalSlotIsPast(date, startTime)) {
-    throw new HttpsError('failed-precondition', 'ä¸€èˆ¬ç§Ÿç”¨åªèƒ½é ç´„å°šæœªé–‹å§‹çš„æ™‚æ®µã€‚');
-  }
-  const window = businessWindow(policy, date);
-  if (window.closed) throw new HttpsError('failed-precondition', 'é€™ä¸€å¤©å…¬ä¼‘ï¼Œä¸èƒ½é ç´„ã€‚');
-  if (startMinutes < window.startMinutes || endMinutes > window.endMinutes) {
-    throw new HttpsError('failed-precondition', 'æ‰€é¸æ™‚é–“ä¸åœ¨ç‡Ÿæ¥­æ™‚é–“å…§ã€‚');
-  }
-  const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
-  const roomSettings = await db.collection('coursePortalRoomSettings').get();
-  const useOptions = await rentalUseOptions(bundle.rooms);
-  const selectedUse = useOptions.find((row) => row.id === clean(data.useType));
-  if (!selectedUse) throw new HttpsError('invalid-argument', 'è«‹é¸æ“‡ç§Ÿç”¨ç”¨é€”ã€‚');
-  const recordingSelection = recordingRentalSelection({
-    useType: selectedUse.id,
-    recordingUsage: data.recordingUsage
-  });
-  const settingsMap = {};
-  roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
-  const discountRequested = data.studentDiscountRequested === true ||
-    clean(data.studentDiscountRequested).toLowerCase() === 'true';
-  const studentRate = discountRequested &&
-    session.role === 'student' &&
-    (await activeStudentIdsForSession(session)).length > 0;
-  const overlappingEvents = bundle.resourceEvents.filter((event) =>
-    eventBlocksResource(event) && event.date === date &&
-    overlaps(startTime, endTime, event.startTime, event.endTime)
-  );
-  const sharedEquipmentBusy = sharedResourceConflict(overlappingEvents, requestedRentalResourceIds(data));
-  const rooms = bundle.rooms.filter(sourceActive).map((room) => {
-    const id = sourceId(room);
-    const setting = settingsMap[id] || {};
-    const blocked = overlappingEvents.some((event) => event.roomId === id);
-    const profile = rentalRoomProfile(room, setting);
-    const rentable = roomRentable(room, setting);
-    const categoryAllowed = rentalUseAllowsRoom(useOptions, data.useType, id, room, setting);
-    const preferenceAllowed = rentalPreferenceAllowsRoom(room, setting, data);
-    const policyAllowed = roomAllowsInterval(room, setting, date, startTime, endTime, '', 'rental');
-    const baseFee = effectiveRentalFee(room, setting, selectedUse, recordingSelection);
-    const available = !blocked && !sharedEquipmentBusy && rentable && categoryAllowed && preferenceAllowed && policyAllowed;
-    const equipmentLabel = roomEquipmentLabel(room, setting);
-    return {
-      id,
-      name: profile.publicName,
-      kind: roomKind(room, setting),
-      available,
-      reason: sharedEquipmentBusy
-        ? 'å¤ç®åœ¨é€™å€‹æ™‚æ®µå·²è¢«ä½¿ç”¨'
-        : (blocked
-        ? 'æ™‚æ®µå·²è¢«ä½¿ç”¨'
-        : (!rentable
-          ? 'ä¸é–‹æ”¾ç§Ÿç”¨'
-          : (!categoryAllowed
-            ? 'ä¸å±¬æ–¼é€™å€‹ç”¨é€”'
-            : (!preferenceAllowed
-              ? 'å·²ä¾è¨­å‚™æ¢ä»¶æ’é™¤'
-              : (!policyAllowed ? 'é€™å€‹æ™‚æ®µä¸é–‹æ”¾ç§Ÿç”¨' : ''))))),
-      matchLevel: 'best',
-      capacity: profile.capacity,
-      equipment: profile.equipment,
-      equipmentLabel,
-      unitFee: baseFee,
-      price: baseFee == null
-        ? null
-        : rentalAmount(baseFee, duration, studentRate ? policy.studentDiscountRate : 1),
-      priceRangeText: selectedUse.id === 'recording' ? 'NT$100â€“300ï¼å°æ™‚' : '',
-      priceType: studentRate ? 'æŸšå­å­¸ç”ŸåŠåƒ¹' : 'ä¸€èˆ¬åƒ¹æ ¼'
-    };
-  });
-  return {
-    ok: true,
-    date,
-    startTime,
-    endTime,
-    durationMinutes: duration,
-    businessHours: policy.businessHours,
-    useOptions,
-    recordingUsageOptions: selectedUse.id === 'recording'
-      ? RECORDING_RENTAL_OPTIONS.map((row) => Object.assign({}, row))
-      : [],
-    studentDiscountRate: policy.studentDiscountRate,
-    rooms: rooms.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
-  };
-}
-
-async function rentalDayBoard(data) {
-  const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const date = dateKey(data.date);
-  if (!date) throw new HttpsError('invalid-argument', 'è«‹é¸æ“‡æ—¥æœŸã€‚');
-  assertPortalAdvanceDate(date, 'ç§Ÿç”¨æ—¥æœŸ');
-  const policy = await rentalPolicySettings();
-  const requestedDuration = Number(data.durationMinutes == null ? 60 : data.durationMinutes);
-  if (!Number.isFinite(requestedDuration) || requestedDuration < 30 || requestedDuration % 30 !== 0) {
-    throw new HttpsError('invalid-argument', 'ç§Ÿç”¨æ™‚é–“å¿…é ˆä»¥ 30 åˆ†é˜ç‚ºå–®ä½ã€‚');
-  }
-  if (requestedDuration > policy.maxDurationMinutes) {
-    throw new HttpsError('invalid-argument', 'å–®æ¬¡ç§Ÿç”¨æœ€é•·ç‚º 5 å°æ™‚ï¼Œè«‹é‡æ–°é¸æ“‡ç§Ÿç”¨æ™‚é–“ã€‚');
-  }
-  const duration = requestedDuration;
-  const window = businessWindow(policy, date);
-  const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
-  const roomSettings = await db.collection('coursePortalRoomSettings').get();
-  const useOptions = await rentalUseOptions(bundle.rooms);
-  const selectedUseType = useOptions.some((row) => row.id === clean(data.useType))
-    ? clean(data.useType)
-    : clean(useOptions[0] && useOptions[0].id);
-  const effectiveData = Object.assign({}, data, { useType: selectedUseType });
-  const settingsMap = {};
-  roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
-  const slots = [];
-  const dayPast = date < currentTaipeiDay();
-  if (!window.closed) {
-    for (let minute = window.startMinutes; minute + duration <= window.endMinutes; minute += 30) {
-      const startTime = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
-      const endMinute = minute + duration;
-      const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
-      const past = publicRentalSlotIsPast(date, startTime);
-      if (past) continue;
-      const overlappingEvents = bundle.resourceEvents.filter((event) =>
-        eventBlocksResource(event) && event.date === date &&
-        overlaps(startTime, endTime, event.startTime, event.endTime)
-      );
-      const sharedEquipmentBusy = sharedResourceConflict(
-        overlappingEvents,
-        requestedRentalResourceIds(effectiveData)
-      );
-      const availableRooms = bundle.rooms.filter(sourceActive).filter((room) => {
-        const id = sourceId(room);
-        const setting = settingsMap[id] || {};
-        if (
-          !roomRentable(room, setting) ||
-          !rentalUseAllowsRoom(useOptions, selectedUseType, id, room, setting) ||
-          !rentalPreferenceAllowsRoom(room, setting, effectiveData) ||
-          !roomAllowsInterval(room, setting, date, startTime, endTime, '', 'rental')
-        ) return false;
-        return !sharedEquipmentBusy && !overlappingEvents.some((event) => event.roomId === id);
-      }).map((room) => ({ id: sourceId(room), name: rentalRoomProfile(room, settingsMap[sourceId(room)] || {}).publicName }));
-      slots.push({ startTime, endTime, past, availableCount: availableRooms.length, rooms: availableRooms.slice(0, 8) });
-    }
-  }
-  return { ok: true, date, closed: window.closed, past: dayPast, role: session.role, selectedUseType, useOptions, slots };
-}
-
-async function rentalWeekBoard(data) {
-  const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const identityPromise = rentalSessionIdentity(session);
-  const studentDiscountEligiblePromise = session.role === 'student'
-    ? activeStudentIdsForSession(session).then((ids) => ids.length > 0)
-    : Promise.resolve(false);
-  const requestedStartDate = dateKey(data.startDate || data.date);
-  if (!requestedStartDate) throw new HttpsError('invalid-argument', 'è«‹é¸æ“‡é€±èµ·å§‹æ—¥æœŸã€‚');
-  assertPortalAdvanceDate(requestedStartDate, 'ç§Ÿç”¨æ—¥æœŸ');
-  const startDate = requestedStartDate < currentTaipeiDay() ? currentTaipeiDay() : requestedStartDate;
-  const endDate = [addDays(startDate, 6), portalMaximumAdvanceDate()].sort()[0];
-  const policy = await rentalPolicySettings();
-  const requestedDuration = Number(data.durationMinutes == null ? 60 : data.durationMinutes);
-  if (!Number.isFinite(requestedDuration) || requestedDuration < 30 || requestedDuration % 30 !== 0) {
-    throw new HttpsError('invalid-argument', 'ç§Ÿç”¨æ™‚é–“å¿…é ˆä»¥ 30 åˆ†é˜ç‚ºå–®ä½ã€‚');
-  }
-  if (requestedDuration > policy.maxDurationMinutes) {
-    throw new HttpsError('invalid-argument', 'å–®æ¬¡ç§Ÿç”¨æœ€é•·ç‚º 5 å°æ™‚ï¼Œè«‹é‡æ–°é¸æ“‡ç§Ÿç”¨æ™‚é–“ã€‚');
-  }
-  const duration = requestedDuration;
-  const bundle = await scheduleBundle(startDate, endDate, session.role === 'teacher' ? session.teacherId : '');
-  const roomSettings = await db.collection('coursePortalRoomSettings').get();
-  const useOptions = await rentalUseOptions(bundle.rooms);
-  const selectedUseType = useOptions.some((row) => row.id === clean(data.useType))
-    ? clean(data.useType)
-    : clean(useOptions[0] && useOptions[0].id);
-  const effectiveData = Object.assign({}, data, { useType: selectedUseType });
-  const settingsMap = {};
-  roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
-  const days = [];
-  const dayCount = Math.max(
-    1,
-    Math.round(
-      (Date.parse(`${endDate}T12:00:00+08:00`) - Date.parse(`${startDate}T12:00:00+08:00`)) /
-      86400000
-    ) + 1
-  );
-  for (let offset = 0; offset < dayCount; offset += 1) {
-    const date = addDays(startDate, offset);
-    const window = businessWindow(policy, date);
-    const dayPast = date < currentTaipeiDay();
-    const slots = [];
-    if (!window.closed) {
-      for (let minute = window.startMinutes; minute + duration <= window.endMinutes; minute += 30) {
-        const startTime = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
-        const endMinute = minute + duration;
-        const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
-        const past = publicRentalSlotIsPast(date, startTime);
-        if (past) continue;
-        const overlappingEvents = bundle.resourceEvents.filter((event) =>
-          eventBlocksResource(event) && event.date === date &&
-          overlaps(startTime, endTime, event.startTime, event.endTime)
-        );
-        const sharedEquipmentBusy = sharedResourceConflict(
-          overlappingEvents,
-          requestedRentalResourceIds(effectiveData)
-        );
-        const rooms = bundle.rooms.filter(sourceActive).filter((room) => {
-          const id = sourceId(room);
-          const setting = settingsMap[id] || {};
-          if (
-            !roomRentable(room, setting) ||
-            !rentalUseAllowsRoom(useOptions, selectedUseType, id, room, setting) ||
-            !rentalPreferenceAllowsRoom(room, setting, effectiveData) ||
-            !roomAllowsInterval(room, setting, date, startTime, endTime, '', 'rental')
-          ) return false;
-          return !sharedEquipmentBusy && !overlappingEvents.some((event) => event.roomId === id);
-        }).map((room) => ({ id: sourceId(room), name: rentalRoomProfile(room, settingsMap[sourceId(room)] || {}).publicName }));
-        slots.push({ startTime, endTime, past, availableCount: rooms.length, rooms: rooms.slice(0, 8) });
-      }
-    }
-    days.push({
-      date,
-      closed: window.closed,
-      past: dayPast,
-      availableSlotCount: slots.filter((slot) => !slot.past && slot.availableCount > 0).length,
-      slots
-    });
-  }
-  const identity = await identityPromise;
-  return {
-    ok: true,
-    startDate,
-    endDate,
-    role: session.role,
-    studentDiscountEligible: await studentDiscountEligiblePromise,
-    displayName: identity.displayName,
-    studentOptions: identity.studentOptions,
-    requiresStudentSelection: identity.requiresStudentSelection,
-    durationMinutes: duration,
-    selectedUseType,
-    useOptions,
-    businessHours: policy.businessHours,
-    days
-  };
-}
-
-async function createRoomBooking(data) {
-  const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const identityPromise = rentalSessionIdentity(session, data.studentId);
-  const recordingSelection = recordingRentalSelection(data, true);
-  const expectedVersion = await readScheduleVersion();
-  const availability = await rentalAvailability(data);
-  if (publicRentalSlotIsPast(availability.date, availability.startTime)) {
-    throw new HttpsError('failed-precondition', 'åªèƒ½é ç´„å°šæœªé–‹å§‹çš„æ™‚æ®µã€‚');
-  }
-  const room = availability.rooms.find((item) => item.id === clean(data.roomId));
-  if (!room || !room.available) throw new HttpsError('failed-precondition', room && room.reason || 'é€™é–“æ•™å®¤ç›®å‰ä¸èƒ½é ç´„ã€‚');
-  const id = db.collection('coursePortalRoomBookings').doc().id;
-  const identity = await identityPromise;
-  if (!identity.clientName) {
-    throw new HttpsError(
-      'invalid-argument',
-      session.role === 'student' ? 'è«‹é¸æ“‡æœ¬æ¬¡ä½¿ç”¨æ•™å®¤çš„å­¸ç”Ÿã€‚' : 'ç™»å…¥è³‡æ–™ç¼ºå°‘ç§Ÿç”¨äººå§“åï¼Œè«‹é‡æ–°ç™»å…¥ã€‚'
-    );
-  }
-  // å­¸ç”Ÿèº«åˆ†åªç”¨ä¾†åˆ¤æ–·æŠ˜æ‰£ï¼›ç§Ÿç”¨æœ¬èº«ä¸ç­‰æ–¼ä»»ä½•ä¸€ä½ç¶å®šå­¸ç”Ÿæ­£åœ¨ä¸Šèª²ã€‚
-  // å¦å‰‡å®¶é•·ç¶äº†å¤šä½å­å¥³æ™‚ï¼Œä¸€ç­†ç§Ÿç”¨æœƒéŒ¯èª¤é˜»æ“‹æ‰€æœ‰å­å¥³çš„èª²ç¨‹ã€‚
-  const studentIds = [];
-  const ownerKey = sessionOwnerKey(session);
-  if (!ownerKey) throw new HttpsError('unauthenticated', 'ç™»å…¥è³‡æ–™ä¸å®Œæ•´ï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-  const locks = bookingLockRows(availability.date, room.id, availability.startTime, availability.endTime)
-    .concat(sharedEquipmentLockRows(
-      availability.date,
-      requestedRentalResourceIds(data),
-      availability.startTime,
-      availability.endTime
-    ));
-  const booking = {
-    id,
-    type: 'room_rental',
-    date: availability.date,
-    startTime: availability.startTime,
-    endTime: availability.endTime,
-    roomId: room.id,
-    roomName: room.name,
-    purpose: clean(data.purpose),
-    useType: clean(data.useType),
-    useName: clean((availability.useOptions.find((row) => row.id === clean(data.useType)) || {}).name),
-    recordingUsage: clean(recordingSelection && recordingSelection.id),
-    recordingUsageName: clean(recordingSelection && recordingSelection.name),
-    pianoType: clean(data.pianoType).toLowerCase() ||
-      (flagTrue(data.excludeDigitalPiano) ? 'exclude_digital' : 'any'),
-    excludeDigitalPiano: flagTrue(data.excludeDigitalPiano),
-    allowGuzhengMove: flagTrue(data.allowGuzhengMove),
-    drumType: clean(data.drumType),
-    role: session.role,
-    teacherId: clean(session.teacherId),
-    renterId: clean(session.renterId),
-    studentIds,
-    rentalStudentId: identity.studentId,
-    clientName: identity.clientName,
-    clientPhone: identity.clientPhone,
-    studentDiscountRequested: room.priceType === 'æŸšå­å­¸ç”ŸåŠåƒ¹',
-    ownerKey,
-    lineUserId: clean(session.lineUserId),
-    authAccountId: clean(session.authAccountId),
-    amount: room.price,
-    recommendedPeople: Number(room.capacity || 0),
-    unitFee: room.unitFee,
-    equipmentLabel: clean(room.equipmentLabel),
-    priceType: room.priceType,
-    paymentStatus: 'onsite_unpaid',
-    status: 'confirmed',
-    active: true,
-    lockIds: locks.map((row) => row.id),
-    createdAt: FieldValue.serverTimestamp(),
-    createdAtText: nowText()
-  };
-  const bookingRef = db.collection('coursePortalRoomBookings').doc(id);
-  const changeRef = db.collection('coursePortalScheduleChanges').doc('rental-' + id);
-  const versionRef = scheduleVersionRef();
-  await db.runTransaction(async (tx) => {
-    if (publicRentalSlotIsPast(availability.date, availability.startTime)) {
-      throw new HttpsError('failed-precondition', 'é€™å€‹æ™‚æ®µå·²ç¶“é–‹å§‹ï¼Œè«‹é‡æ–°é¸æ“‡ã€‚');
-    }
-    const lockRefs = locks.map((row) => db.collection('coursePortalRoomLocks').doc(row.id));
-    const [versionSnapshot, ...lockSnapshots] = await Promise.all([
-      tx.get(versionRef),
-      ...lockRefs.map((ref) => tx.get(ref))
-    ]);
-    assertScheduleWritable(versionSnapshot);
-    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
-    if (currentVersion !== expectedVersion) {
-      throw new HttpsError('aborted', 'èª²è¡¨å‰›å‰›æœ‰æ›´æ–°ï¼Œè«‹é‡æ–°ç¢ºèªå¯ç§Ÿæ•™å®¤ã€‚');
-    }
-    const activeLocks = lockSnapshots.filter((snapshot) => snapshot.exists && snapshot.data().active !== false);
-    const lockBookings = [];
-    for (const lockSnapshot of activeLocks) {
-      const lock = lockSnapshot.data() || {};
-      lockBookings.push({
-        lockSnapshot,
-        bookingSnapshot: clean(lock.bookingId)
-          ? await tx.get(db.collection('coursePortalRoomBookings').doc(clean(lock.bookingId)))
-          : null
-      });
-    }
-    const staleLocks = [];
-    lockBookings.forEach(({ lockSnapshot, bookingSnapshot }) => {
-      const lock = lockSnapshot.data() || {};
-      const prior = bookingSnapshot && bookingSnapshot.exists ? bookingSnapshot.data() || {} : null;
-      const expired = asMillis(lock.endAt) && asMillis(lock.endAt) <= Date.now();
-      const inactive = !prior || prior.active === false || clean(prior.status) === 'cancelled';
-      if (expired || inactive) staleLocks.push(lockSnapshot.ref);
-      else {
-        throw new HttpsError(
-          'already-exists',
-          'é€™å€‹æ™‚æ®µå‰›å‰›å·²è¢«å…¶ä»–äººé ç´„ï¼Œç©ºä½è³‡æ–™å·²ç¶“æ›´æ–°ï¼Œè«‹é‡æ–°é¸æ“‡æ™‚æ®µæˆ–æ•™å®¤ã€‚'
-        );
-      }
-    });
-    staleLocks.forEach((ref) => tx.delete(ref));
-    tx.set(bookingRef, booking);
-    tx.set(changeRef, { action: 'room_booking', active: true, event: booking, createdAt: FieldValue.serverTimestamp() });
-    lockRefs.forEach((ref, index) => tx.set(ref, {
-      active: true,
-      bookingId: id,
-      date: availability.date,
-      roomId: locks[index].roomId,
-      resourceId: locks[index].resourceId,
-      slot: locks[index].slot,
-      endAt: Timestamp.fromMillis(taipeiDateTimeMillis(availability.date, availability.endTime)),
-      createdAt: FieldValue.serverTimestamp()
-    }));
-    tx.set(versionRef, {
-      version: currentVersion + 1,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: sessionOwnerKey(session)
-    }, { merge: true });
-  });
-  const reminderAt = Math.max(Date.now(), taipeiDateTimeMillis(booking.date, booking.startTime) - 60 * 60 * 1000);
-  if (clean(session.lineUserId)) {
-    await db.collection('notificationQueue').doc(`course-portal-booking-${id}-reminder`).set({
-      queueId: `course-portal-booking-${id}-reminder`,
-      channel: 'line',
-      targetLineUserId: session.lineUserId,
-      title: 'æ•™å®¤ç§Ÿç”¨æé†’',
-      body: [
-        `æ‚¨é ç´„çš„ã€Œ${booking.roomName}ã€å°‡æ–¼ ${booking.date} ${booking.startTime} é–‹å§‹ã€‚`,
-        `ç”¨é€”ï¼š${booking.useName || 'æ•™å®¤ç§Ÿç”¨'}`,
-        booking.recordingUsageName ? `éŒ„éŸ³å®¤ä½¿ç”¨æ–¹å¼ï¼š${booking.recordingUsageName}` : '',
-        `æ™‚é–“ï¼š${booking.startTime}ï½${booking.endTime}`,
-        `å¦‚ä¸ä½¿ç”¨ï¼Œè«‹åœ¨ç§Ÿç”¨é–‹å§‹å‰é€²å…¥ç§Ÿç”¨é å–æ¶ˆï¼š${PORTAL_BASE}/room-booking.html`
-      ].filter(Boolean).join('\n'),
-      message: [
-        `æ•™å®¤ç§Ÿç”¨æé†’`,
-        `æ‚¨é ç´„çš„ã€Œ${booking.roomName}ã€å°‡æ–¼ ${booking.date} ${booking.startTime} é–‹å§‹ã€‚`,
-        `æ™‚é–“ï¼š${booking.startTime}ï½${booking.endTime}`,
-        `å¦‚ä¸ä½¿ç”¨ï¼Œè«‹åœ¨ç§Ÿç”¨é–‹å§‹å‰é€²å…¥ç§Ÿç”¨é å–æ¶ˆï¼š${PORTAL_BASE}/room-booking.html`
-      ].join('\n'),
-      bookingId: id,
-      source: 'course-portal-room-booking',
-      status: 'å¾…ç™¼é€',
-      scheduledAt: Timestamp.fromMillis(reminderAt),
-      createdAt: FieldValue.serverTimestamp(),
-      createdAtText: nowText()
-    }, { merge: true }).catch((error) => {
-      console.error('[course portal rental reminder queue failed]', id, error);
-    });
-  }
-  return { ok: true, booking: jsonValue(booking) };
-}
-
-async function rentalMyBookings(data) {
-  const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const bookingQueries = [
-    db.collection('coursePortalRoomBookings').where('ownerKey', '==', sessionOwnerKey(session)).get()
-  ];
-  if (clean(session.lineUserId)) {
-    bookingQueries.push(
-      db.collection('coursePortalRoomBookings').where('lineUserId', '==', clean(session.lineUserId)).get()
-    );
-  }
-  if (clean(session.authAccountId)) {
-    bookingQueries.push(
-      db.collection('coursePortalRoomBookings').where('authAccountId', '==', clean(session.authAccountId)).get()
-    );
-  }
-  const bookingSnapshots = await Promise.all(bookingQueries);
-  const bookingDocs = [...new Map(bookingSnapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [doc.id, doc])).values()];
-  const bookings = bookingDocs.map((doc) => {
-    const row = jsonValue(doc.data()) || {};
-    return {
-      id: doc.id,
-      date: dateKey(row.date),
-      startTime: clean(row.startTime).slice(0, 5),
-      endTime: clean(row.endTime).slice(0, 5),
-      roomId: clean(row.roomId),
-      roomName: clean(row.roomName),
-      purpose: clean(row.purpose),
-      clientName: safeRentalDisplayName(row.clientName),
-      clientPhone: normalizePhone(row.clientPhone),
-      rentalStudentId: clean(row.rentalStudentId),
-      useType: clean(row.useType),
-      useName: clean(row.useName),
-      recordingUsage: clean(row.recordingUsage),
-      recordingUsageName: clean(row.recordingUsageName),
-      amount: Number(row.amount || 0),
-      paymentStatus: clean(row.paymentStatus),
-      status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),
-      active: row.active !== false,
-      canCancel: row.active !== false && taipeiDateTimeMillis(row.date, row.startTime) > Date.now(),
-      createdAtText: clean(row.createdAtText),
-      cancelledAtText: clean(row.cancelledAtText)
-    };
-  }).filter((row) => row.date && row.startTime)
-    .sort((a, b) => `${b.date} ${b.startTime}`.localeCompare(`${a.date} ${a.startTime}`))
-    .slice(0, 100);
-
-  if (bookings.some((row) => !row.roomName)) {
-    const rooms = indexById(await mirrorRows('rooms'));
-    bookings.forEach((row) => {
-      if (!row.roomName) row.roomName = clean(rooms[row.roomId] && rooms[row.roomId].name);
-    });
-  }
-  return { ok: true, bookings };
-}
-
-async function cancelRoomBooking(data) {
-  const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const bookingId = clean(data.bookingId);
-  if (!bookingId) throw new HttpsError('invalid-argument', 'ç¼ºå°‘ç§Ÿç”¨ç´€éŒ„ã€‚');
-  const bookingRef = db.collection('coursePortalRoomBookings').doc(bookingId);
-  const changeRef = db.collection('coursePortalScheduleChanges').doc(`rental-${bookingId}`);
-  const versionRef = scheduleVersionRef();
-  await db.runTransaction(async (tx) => {
-    const [snapshot, versionSnapshot] = await Promise.all([tx.get(bookingRef), tx.get(versionRef)]);
-    assertScheduleWritable(versionSnapshot);
-    if (!snapshot.exists) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ç­†ç§Ÿç”¨ç´€éŒ„ã€‚');
-    const booking = snapshot.data() || {};
-    const sameOwner =
-      (clean(booking.ownerKey) && clean(booking.ownerKey) === sessionOwnerKey(session)) ||
-      (clean(booking.lineUserId) && clean(booking.lineUserId) === clean(session.lineUserId)) ||
-      (clean(booking.authAccountId) && clean(booking.authAccountId) === clean(session.authAccountId));
-    if (!sameOwner) {
-      throw new HttpsError('permission-denied', 'åªèƒ½å–æ¶ˆè‡ªå·±é ç´„çš„æ•™å®¤ã€‚');
-    }
-    if (booking.active === false || clean(booking.status) === 'cancelled') {
-      throw new HttpsError('failed-precondition', 'é€™ç­†ç§Ÿç”¨å·²ç¶“å–æ¶ˆã€‚');
-    }
-    if (taipeiDateTimeMillis(booking.date, booking.startTime) <= Date.now()) {
-      throw new HttpsError('failed-precondition', 'ç§Ÿç”¨æ™‚é–“å·²ç¶“é–‹å§‹ï¼Œç„¡æ³•å†è‡ªè¡Œå–æ¶ˆã€‚');
-    }
-    tx.set(bookingRef, {
-      active: false,
-      status: 'cancelled',
-      cancelledAt: FieldValue.serverTimestamp(),
-      cancelledAtText: nowText(),
-      cancelledBy: session.role
-    }, { merge: true });
-    tx.set(changeRef, {
-      active: false,
-      status: 'cancelled',
-      cancelledAt: FieldValue.serverTimestamp(),
-      cancelledBy: session.role
-    }, { merge: true });
-    (Array.isArray(booking.lockIds) ? booking.lockIds : []).forEach((lockId) => {
-      tx.delete(db.collection('coursePortalRoomLocks').doc(clean(lockId)));
-    });
-    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
-    tx.set(versionRef, {
-      version: currentVersion + 1,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: sessionOwnerKey(session)
-    }, { merge: true });
-  });
-  await db.collection('notificationQueue').doc(`course-portal-booking-${bookingId}-reminder`).set({
-    status: 'å·²å–æ¶ˆ',
-    active: false,
-    cancelledAt: FieldValue.serverTimestamp(),
-    cancelledAtText: nowText()
-  }, { merge: true }).catch((error) => {
-    // ç§Ÿç”¨å–æ¶ˆå·²åœ¨äº¤æ˜“ä¸­å®Œæˆï¼›æé†’ä½‡åˆ—å±¬æ¬¡è¦è³‡æ–™ï¼Œå¤±æ•—ä¸èƒ½è®“ä½¿ç”¨è€…èª¤ä»¥ç‚ºæ²’å–æ¶ˆã€‚
-    console.error('[course portal rental reminder cancellation failed]', bookingId, error);
-  });
-  return { ok: true, bookingId, status: 'cancelled' };
-}
-
-function teacherEventMatchesRequest(event, teacherId, sourceDate, sourceEventId, sourceCourseId, portalChangeId) {
-  const wantedEventId = clean(sourceEventId);
-  const wantedCourseId = clean(sourceCourseId);
-  const wantedPortalChangeId = clean(portalChangeId);
-  if (!wantedEventId && !wantedCourseId && !wantedPortalChangeId) return false;
-  if (
-    clean(event && event.teacherId) !== clean(teacherId) ||
-    eventDate(event || {}) !== dateKey(sourceDate)
-  ) return false;
-  if (
-    wantedEventId &&
-    ![event && event.id, event && event.sourceId].map(clean).includes(wantedEventId)
-  ) return false;
-  if (
-    wantedCourseId &&
-    ![event && event.fixedCourseId, event && event.seriesId].map(clean).includes(wantedCourseId)
-  ) return false;
-  if (wantedPortalChangeId && clean(event && event.portalChangeId) !== wantedPortalChangeId) return false;
-  return true;
-}
-
-async function teacherLessonState(data) {
-  const session = await requireSession(data, ['teacher']);
-  const state = clean(data.state);
-  const portalChangeId = clean(data.portalChangeId);
-  if (state === 'cancel_change') {
-    if (!portalChangeId) throw new HttpsError('invalid-argument', 'é€™å ‚èª²ä¸æ˜¯è€å¸«æ–°å¢æˆ–èª¿æ•´çš„èª²ç¨‹ã€‚');
-    const ref = db.collection('coursePortalScheduleChanges').doc(portalChangeId);
-    const versionRef = scheduleVersionRef();
-    const expectedVersion = await readScheduleVersion();
-    const [previewSnapshot, activeChangesSnapshot] = await Promise.all([
-      ref.get(),
-      db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
-    ]);
-    const preview = previewSnapshot.exists ? previewSnapshot.data() || {} : null;
-    if (!preview || clean(preview.createdByTeacherId) !== clean(session.teacherId)) {
-      throw new HttpsError('permission-denied', 'åªèƒ½å–æ¶ˆè‡ªå·±æ–°å¢çš„èª²ç¨‹ã€‚');
-    }
-    if (!['extra_lesson', 'teacher_gift'].includes(clean(preview.action))) {
-      throw new HttpsError(
-        'failed-precondition',
-        'ç‚ºé¿å…åŸæ•™å®¤å·²è¢«ç§Ÿç”¨æˆ–æ’å…¥å…¶ä»–èª²ç¨‹ï¼Œèª¿èª²ã€è«‹å‡èˆ‡å›ºå®šè®Šæ›´ä¸èƒ½ç›´æ¥å¾©åŸï¼›è«‹é‡æ–°å®‰æ’ï¼Œæˆ–ç”±ç®¡ç†è€…ç¢ºèªå¾Œè™•ç†ã€‚'
-      );
-    }
-    const dependencyIds = new Set([
-      clean(preview.event && preview.event.id),
-      clean(preview.sourceCourseId),
-      clean(preview.id),
-      portalChangeId
-    ].filter(Boolean));
-    const dependent = activeChangesSnapshot.docs.find((doc) => {
-      if (doc.id === portalChangeId) return false;
-      const row = doc.data() || {};
-      return dependencyIds.has(clean(row.sourceEventId)) ||
-        dependencyIds.has(clean(row.sourceCourseId));
-    });
-    if (dependent) {
-      throw new HttpsError('failed-precondition', 'é€™å ‚æ–°å¢èª²å¾Œé¢é‚„æœ‰èª¿èª²æˆ–å›ºå®šè®Šæ›´ï¼Œè«‹å…ˆç”±ç®¡ç†è€…è™•ç†å¾ŒçºŒå®‰æ’ã€‚');
-    }
-    await db.runTransaction(async (tx) => {
-      const [snapshot, versionSnapshot] = await Promise.all([tx.get(ref), tx.get(versionRef)]);
-      assertScheduleWritable(versionSnapshot);
-      const row = snapshot.exists ? snapshot.data() || {} : null;
-      if (!row || row.active === false || clean(row.createdByTeacherId) !== clean(session.teacherId)) {
-        throw new HttpsError('permission-denied', 'åªèƒ½å–æ¶ˆè‡ªå·±æ–°å¢æˆ–èª¿æ•´çš„èª²ç¨‹ã€‚');
-      }
-      if (!['extra_lesson', 'teacher_gift'].includes(clean(row.action))) {
-        throw new HttpsError(
-          'failed-precondition',
-          'ç‚ºé¿å…åŸæ•™å®¤å·²è¢«ç§Ÿç”¨æˆ–æ’å…¥å…¶ä»–èª²ç¨‹ï¼Œèª¿èª²ã€è«‹å‡èˆ‡å›ºå®šè®Šæ›´ä¸èƒ½ç›´æ¥å¾©åŸï¼›è«‹é‡æ–°å®‰æ’ï¼Œæˆ–ç”±ç®¡ç†è€…ç¢ºèªå¾Œè™•ç†ã€‚'
-        );
-      }
-      if (row.event && publicRentalSlotIsPast(row.event.date, row.event.startTime)) {
-        throw new HttpsError('failed-precondition', 'å·²ç¶“é–‹å§‹æˆ–çµæŸçš„èª²ç¨‹ä¸èƒ½å†å–æ¶ˆå®‰æ’ã€‚');
-      }
-      const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
-      if (currentVersion !== expectedVersion) {
-        throw new HttpsError('aborted', 'èª²è¡¨å‰›å‰›æœ‰æ›´æ–°ï¼Œè«‹é‡æ–°æ•´ç†å¾Œå†å–æ¶ˆã€‚');
-      }
-      tx.set(ref, {
-        active: false,
-        cancelledAt: FieldValue.serverTimestamp(),
-        cancelledAtText: nowText(),
-        cancelledByTeacherId: session.teacherId
-      }, { merge: true });
-      tx.set(versionRef, {
-        version: currentVersion + 1,
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: session.teacherId
-      }, { merge: true });
-    });
-    return { ok: true, state: 'cancelled', message: 'æ­¤æ¬¡å®‰æ’å·²å–æ¶ˆã€‚' };
-  }
-
-  if (!['leave', 'absent'].includes(state)) {
-    throw new HttpsError('invalid-argument', 'ä¸æ”¯æ´çš„èª²ç¨‹ç‹€æ…‹ã€‚');
-  }
-  const sourceDate = dateKey(data.sourceDate);
-  const sourceEventId = clean(data.sourceEventId);
-  const sourceCourseId = clean(data.sourceCourseId);
-  if (!sourceDate || (!sourceEventId && !sourceCourseId)) {
-    throw new HttpsError('invalid-argument', 'ç¼ºå°‘åŸèª²ç¨‹è³‡æ–™ã€‚');
-  }
-  const expectedVersion = await readScheduleVersion();
-  const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
-  const source = bundle.events.find((event) => teacherEventMatchesRequest(
-    event,
-    session.teacherId,
-    sourceDate,
-    sourceEventId,
-    sourceCourseId,
-    portalChangeId
-  ));
-  if (!source) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™å ‚èª²ï¼Œè«‹é‡æ–°æ•´ç†å¾Œå†è©¦ã€‚');
-  if (isRoomRentalEvent(source)) {
-    throw new HttpsError('failed-precondition', 'æ•™å®¤ç§Ÿç”¨ä¸æ˜¯å­¸ç”Ÿèª²ç¨‹ï¼Œä¸èƒ½æ¨™ç¤ºè«‹å‡æˆ–æ› èª²ã€‚');
-  }
-  if (source.studentIds.length > 1) {
-    throw new HttpsError('failed-precondition', 'åœ˜é«”èª²éœ€é€ä½è¨˜éŒ„å­¸ç”Ÿç‹€æ…‹ï¼Œä¸èƒ½ç”¨æ•´å ‚è«‹å‡ï¼æ› èª²ï¼Œä»¥å…èª¤é‡‹å‡ºä»åœ¨ä¸Šèª²çš„æ•™å®¤ã€‚');
-  }
-  const today = currentTaipeiDay();
-  if (sourceDate < today) {
-    throw new HttpsError('failed-precondition', 'é€™å ‚èª²å·²ç¶“è¶…éç•¶å¤©ï¼Œåªèƒ½æŸ¥çœ‹æˆ–ä½¿ç”¨è£œç°½åˆ°ã€‚');
-  }
-  if (state === 'absent' && (
-    sourceDate !== today ||
-    taipeiDateTimeMillis(sourceDate, source.startTime) > Date.now()
-  )) {
-    throw new HttpsError('failed-precondition', 'èª²ç¨‹é–‹å§‹æ™‚é–“åˆ°é”å¾Œæ‰èƒ½æ¨™ç¤ºæ› èª²ã€‚');
-  }
-  if (state === 'absent' && normalizeScheduleStatus(source.status) === 'leave') {
-    throw new HttpsError(
-      'failed-precondition',
-      'è«‹å‡å¾Œæ•™å®¤å¯èƒ½å·²é‡æ–°æ’å…¥å…¶ä»–ä½¿ç”¨ï¼Œä¸èƒ½ç›´æ¥æ”¹å›æ› èª²ï¼›è«‹ç”±ç®¡ç†è€…ç¢ºèªç©ºé–“å¾Œè™•ç†ã€‚'
-    );
-  }
-  if (['attended', 'cancelled'].includes(normalizeScheduleStatus(source.status))) {
-    throw new HttpsError('failed-precondition', 'å·²ç°½åˆ°æˆ–å·²å–æ¶ˆçš„èª²ç¨‹ä¸èƒ½å†æ”¹æˆè«‹å‡æˆ–æ› èª²ã€‚');
-  }
-
-  const lineage = clean(source.fixedCourseId || sourceCourseId || source.sourceId || sourceEventId);
-  const id = `lesson-status-${hash([
-    session.teacherId,
-    lineage,
-    sourceDate
-  ].join('|'))}`;
-  const changeRef = db.collection('coursePortalScheduleChanges').doc(id);
-  const activeChanges = await scheduleChangeDocsByDateRange(sourceDate, sourceDate);
-  const priorStatusRefs = activeChanges.filter((doc) => {
-    const row = doc.data() || {};
-    return doc.id !== id &&
-      clean(row.action) === 'lesson_status' &&
-      clean(row.createdByTeacherId) === clean(session.teacherId) &&
-      dateKey(row.sourceDate) === sourceDate &&
-      (
-        clean(row.sourceCourseId) === lineage ||
-        clean(row.sourceEventId) === clean(source.sourceId || sourceEventId)
-      );
-  }).map((doc) => doc.ref);
-  const event = {
-    id: randomToken(12),
-    date: sourceDate,
-    startTime: source.startTime,
-    endTime: source.endTime,
-    roomId: source.roomId,
-    teacherId: session.teacherId,
-    studentId: source.studentIds[0] || '',
-    studentIds: source.studentIds,
-    subjectId: source.subjectId,
-    fixedCourseId: source.fixedCourseId || sourceCourseId,
-    type: source.type || 'lesson',
-    status: state,
-    paymentStatus: state === 'absent' ? 'student_absent_no_pay' : 'student_leave',
-    teacherPayable: false,
-    note: clean(data.note)
-  };
-  const changePayload = {
-    id,
-    action: 'lesson_status',
-    active: true,
-    sourceEventId: source.sourceId || sourceEventId,
-    sourceCourseId: source.fixedCourseId || sourceCourseId,
-    sourceDate,
-    event,
-    createdByTeacherId: session.teacherId,
-    createdAt: FieldValue.serverTimestamp(),
-    createdAtText: nowText()
-  };
-  const versionRef = scheduleVersionRef();
-  await db.runTransaction(async (tx) => {
-    const [versionSnapshot, changeSnapshot, ...priorSnapshots] = await Promise.all([
-      tx.get(versionRef),
-      tx.get(changeRef),
-      ...priorStatusRefs.map((ref) => tx.get(ref))
-    ]);
-    assertScheduleWritable(versionSnapshot);
-    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
-    if (currentVersion !== expectedVersion) {
-      throw new HttpsError('aborted', 'èª²è¡¨å‰›å‰›æœ‰æ›´æ–°ï¼Œå·²åœæ­¢é€™æ¬¡æ“ä½œï¼›è«‹é‡æ–°æ•´ç†å¾Œå†ç¢ºèªã€‚');
-    }
-    priorSnapshots.forEach((snapshot) => {
-      if (snapshot.exists && snapshot.data().active !== false) {
-        tx.set(snapshot.ref, {
-          active: false,
-          supersededBy: id,
-          supersededAt: FieldValue.serverTimestamp()
-        }, { merge: true });
-      }
-    });
-    tx.set(changeRef, Object.assign({}, changePayload, {
-      createdAt: changeSnapshot.exists
-        ? (changeSnapshot.data().createdAt || FieldValue.serverTimestamp())
-        : FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    }));
-    tx.set(versionRef, {
-      version: currentVersion + 1,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: session.teacherId
-    }, { merge: true });
-  });
-  return {
-    ok: true,
-    id,
-    state,
-    message: state === 'absent' ? 'å·²æ¨™ç¤ºæ› èª²ï¼›æœ¬å ‚æœªå®Œæˆç°½åˆ°ï¼Œä¸åˆ—å…¥è€å¸«è–ªè³‡ã€‚' : 'å·²æ¨™ç¤ºè«‹å‡ï¼Œè©²æ•™å®¤æ™‚æ®µå·²é‡‹å‡ºã€‚'
-  };
-}
-
-async function teacherAction(data) {
-  const session = await requireSession(data, ['teacher']);
-  const action = clean(data.action);
-  if (!['single_move', 'permanent_move', 'extra_lesson', 'teacher_gift'].includes(action)) {
-    throw new HttpsError('invalid-argument', 'ä¸æ”¯æ´çš„èª²å‹™æ“ä½œã€‚');
-  }
-  const date = dateKey(data.date);
-  const startTime = clean(data.startTime).slice(0, 5);
-  const endTime = clean(data.endTime).slice(0, 5);
-  const roomId = clean(data.roomId);
-  if (!date || !roomId) {
-    throw new HttpsError('invalid-argument', 'è«‹å®Œæ•´é¸æ“‡æ—¥æœŸã€æ™‚é–“èˆ‡æ•™å®¤ã€‚');
-  }
-  const targetDuration = assertPortalInterval(startTime, endTime);
-  if (publicRentalSlotIsPast(date, startTime)) {
-    throw new HttpsError('failed-precondition', 'ä¸èƒ½æ–°å¢æˆ–èª¿èª²åˆ°å·²ç¶“éå»çš„æ™‚é–“ã€‚');
-  }
-  assertPortalAdvanceDate(date, 'èª²ç¨‹æ—¥æœŸ');
-  const expectedVersion = await readScheduleVersion();
-  const operationId = clean(data.operationId) || randomToken(18);
-  const id = `teacher-${hash(`${session.teacherId}|${operationId}`)}`;
-  const changeRef = db.collection('coursePortalScheduleChanges').doc(id);
-  const existing = await changeRef.get();
-  if (existing.exists && clean(existing.data().createdByTeacherId) === clean(session.teacherId)) {
-    const prior = existing.data() || {};
-    return {
-      ok: true,
-      duplicate: true,
-      id,
-      event: jsonValue(prior.event),
-      pendingDates: jsonValue(prior.pendingDates || []),
-      message: 'é€™æ¬¡æ“ä½œå·²ç¶“å®Œæˆï¼Œä¸æœƒé‡è¤‡å»ºç«‹ã€‚'
-    };
-  }
-
-  const [policy, bundle, roomSettingsSnapshot] = await Promise.all([
-    rentalPolicySettings(),
-    scheduleBundle(date, date, session.teacherId),
-    db.collection('coursePortalRoomSettings').get()
-  ]);
-  const window = businessWindow(policy, date);
-  if (window.closed) throw new HttpsError('failed-precondition', 'é€™ä¸€å¤©å…¬ä¼‘ï¼Œä¸èƒ½å®‰æ’èª²ç¨‹ã€‚');
-  if (timeMinutes(startTime) < window.startMinutes || timeMinutes(endTime) > window.endMinutes) {
-    throw new HttpsError('failed-precondition', 'æ‰€é¸æ™‚é–“ä¸åœ¨ç‡Ÿæ¥­æ™‚é–“å…§ã€‚');
-  }
-  const roomSettingsMap = {};
-  roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
-  const sourceEventId = clean(data.sourceEventId);
-  const requestedSourceCourseId = clean(data.sourceCourseId);
-  const sourceDate = dateKey(data.sourceDate);
-  const moving = action === 'single_move' || action === 'permanent_move';
-  let source = null;
-  let sourceBundle = null;
-  let sourceSeries = null;
-  if (moving) {
-    if (!sourceDate || (!sourceEventId && !requestedSourceCourseId)) {
-      throw new HttpsError('invalid-argument', 'ç¼ºå°‘è¦èª¿å‹•çš„åŸèª²ç¨‹ã€‚');
-    }
-    sourceBundle = sourceDate === date ? bundle : await scheduleBundle(sourceDate, sourceDate, session.teacherId);
-    source = sourceBundle.resourceEvents.find((event) =>
-      event.teacherId === session.teacherId &&
-      event.date === sourceDate &&
-      (
-        event.id === sourceEventId ||
-        event.sourceId === sourceEventId ||
-        event.fixedCourseId === requestedSourceCourseId ||
-        event.seriesId === requestedSourceCourseId
-      )
-    );
-    if (!source) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™å ‚åŸèª²ç¨‹ï¼Œè«‹é‡æ–°æ•´ç†å¾Œå†è©¦ã€‚');
-    if (isRoomRentalEvent(source)) {
-      throw new HttpsError('failed-precondition', 'æ•™å®¤ç§Ÿç”¨ä¸èƒ½ç”¨èª²ç¨‹èª¿èª²åŠŸèƒ½ç§»å‹•ï¼Œè«‹åˆ°ç§Ÿç”¨å…¥å£å–æ¶ˆå¾Œé‡æ–°é ç´„ã€‚');
-    }
-    if (normalizeScheduleStatus(source.status) !== 'scheduled') {
-      throw new HttpsError('failed-precondition', 'è«‹å‡ã€æ› èª²æˆ–å·²å–æ¶ˆçš„èª²ç¨‹ä¸èƒ½å†èª¿å‹•ã€‚');
-    }
-    if (publicRentalSlotIsPast(source.date, source.startTime)) {
-      throw new HttpsError('failed-precondition', 'å·²ç¶“é–‹å§‹æˆ–çµæŸçš„èª²ç¨‹ä¸èƒ½å†èª¿å‹•ã€‚');
-    }
-    sourceSeries = sourceBundle.fixedCourses.find((row) =>
-      sourceId(row) === clean(source.fixedCourseId || source.seriesId || requestedSourceCourseId)
-    ) || (sourceBundle.scheduleChanges.find((row) =>
-      clean(row.__id) === clean(source.portalChangeId) ||
-      clean(row.sourceCourseId) === clean(source.fixedCourseId || source.seriesId)
-    ) || {}).event || null;
-    if (action === 'permanent_move' && (!source.recurring || !sourceSeries || !sourceActive(sourceSeries))) {
-      throw new HttpsError('failed-precondition', 'é€™å ‚ä¸æ˜¯ä»æœ‰æ•ˆçš„å›ºå®šèª²ï¼Œä¸èƒ½å¥—ç”¨ã€Œä¹‹å¾Œå›ºå®šèª¿èª²ã€ï¼›è«‹æ”¹ç”¨åªèª¿é€™ä¸€æ¬¡ã€‚');
-    }
-    if (action === 'permanent_move' && clean(source.portalAction) === 'single_move') {
-      throw new HttpsError('failed-precondition', 'é€™å ‚å·²æ˜¯å–®æ¬¡èª¿èª²çµæœï¼›è«‹å¾å°šæœªèª¿æ•´çš„å›ºå®šèª²å ‚æ¬¡é–‹å§‹è¨­å®šä¹‹å¾Œå›ºå®šèª¿èª²ã€‚');
-    }
-    assertTeacherMoveDuration(targetDuration, source);
-  } else if (data.durationMinutes != null) {
-    const declaredDuration = Number(data.durationMinutes);
-    if (
-      !Number.isFinite(declaredDuration) ||
-      declaredDuration < 30 ||
-      declaredDuration > 300 ||
-      declaredDuration % 30 !== 0 ||
-      declaredDuration !== targetDuration
-    ) {
-      throw new HttpsError('failed-precondition', 'åŠ èª²æ™‚æ®µèˆ‡èª²ç¨‹é•·åº¦ä¸ä¸€è‡´ï¼Œè«‹é‡æ–°é¸æ“‡å®Œæ•´ç©ºä½ã€‚');
-    }
-  }
-
-  const studentIds = moving
-    ? source.studentIds
-    : [...new Set(firstArray(data, ['studentIds']).concat(clean(data.studentId) ? [clean(data.studentId)] : []))];
-  const subjectId = moving ? source.subjectId : clean(data.subjectId);
-  if (!studentIds.length || !subjectId) {
-    throw new HttpsError('invalid-argument', 'è«‹å®Œæ•´é¸æ“‡å­¸ç”Ÿèˆ‡èª²ç¨‹ç§‘ç›®ã€‚');
-  }
-  if (!bundle.maps.subjects[subjectId] || !sourceActive(bundle.maps.subjects[subjectId])) {
-    throw new HttpsError('failed-precondition', 'é€™å€‹æˆèª²ç§‘ç›®å·²åœç”¨æˆ–ä¸å­˜åœ¨ã€‚');
-  }
-  if (!moving) {
-    const temporaryForTeacher = await mirrorRowsByField('temporaryCourses', 'teacherId', session.teacherId);
-    const ownStudentIds = new Set(
-      [...bundle.fixedCourses, ...temporaryForTeacher]
-        .filter((row) => eventTeacherId(row) === session.teacherId && sourceActive(row))
-        .flatMap(eventStudentIds)
-        .map(clean)
-        .filter(Boolean)
-    );
-    if (!studentIds.every((studentId) => ownStudentIds.has(studentId))) {
-      throw new HttpsError('permission-denied', 'è€å¸«åªèƒ½æ“ä½œç›®å‰ä»åœ¨è‡ªå·±åå–®ä¸­çš„å­¸ç”Ÿã€‚');
-    }
-  }
-  const teacher = bundle.maps.teachers[session.teacherId] || {};
-  const teacherSubjects = firstArray(teacher, ['subjectIds', 'subjects']);
-  if (teacherSubjects.length && !teacherSubjects.includes(subjectId)) {
-    throw new HttpsError('permission-denied', 'é€™å€‹ç§‘ç›®ä¸åœ¨è€å¸«å¯æˆèª²çš„é …ç›®ä¸­ã€‚');
-  }
-
-  const selectedRoom = bundle.rooms.find((room) => sourceId(room) === roomId);
-  const selectedRoomSetting = roomSettingsMap[roomId] || {};
-  if (
-    !selectedRoom ||
-    !sourceActive(selectedRoom) ||
-    roomKind(selectedRoom, selectedRoomSetting) !== 'normal' ||
-    !roomTeacherSchedulable(selectedRoom, selectedRoomSetting)
-  ) {
-    throw new HttpsError('failed-precondition', 'é€™å€‹æ•™å®¤ä¸é–‹æ”¾è€å¸«æ’èª²ã€‚');
-  }
-  if (!roomSupportsSubject(selectedRoom, subjectId, bundle, selectedRoomSetting)) {
-    throw new HttpsError('failed-precondition', 'é€™å€‹æ•™å®¤ä¸é©åˆæ‰€é¸æ¨‚å™¨ï¼Œè«‹æ”¹é¸å…¶ä»–æ•™å®¤ã€‚');
-  }
-  if (roomRequiresGuzhengMove(selectedRoom, subjectId, bundle) && !flagTrue(data.allowGuzhengMove)) {
-    throw new HttpsError('failed-precondition', 'KAWAI æ•™å®¤æ²’æœ‰å›ºå®šæ”¾ç½®å¤ç®ï¼›è«‹ç¢ºèªé¡˜æ„è‡ªè¡Œå¾å±•æ¼”ç©ºé–“æ¬é‹å¾Œå†å„²å­˜ã€‚');
-  }
-  if (!roomAllowsInterval(selectedRoom, selectedRoomSetting, date, startTime, endTime, subjectId, 'schedule')) {
-    throw new HttpsError('failed-precondition', 'é€™å€‹æ•™å®¤åœ¨æ‰€é¸æ™‚æ®µä¸é–‹æ”¾é€™é …èª²ç¨‹ã€‚');
-  }
-
-  const lineage = moving
-    ? clean(source.fixedCourseId || source.seriesId || requestedSourceCourseId || source.id)
-    : '';
-  const ignoredSource = (event) => Boolean(source) && event.date === source.date && (
-    event.id === source.id ||
-    event.sourceId === source.sourceId ||
-    (lineage && (event.fixedCourseId === lineage || event.seriesId === lineage))
-  );
-  const requestedResourceIds = requestedSubjectResourceIds(subjectId, bundle);
-  const conflict = bundle.resourceEvents.find((event) =>
-    event.date === date &&
-    eventBlocksResource(event) &&
-    !ignoredSource(event) &&
-    overlaps(startTime, endTime, event.startTime, event.endTime) &&
-    (
-      event.roomId === roomId ||
-      event.teacherId === session.teacherId ||
-      event.studentIds.some((studentId) => studentIds.includes(studentId)) ||
-      sharedResourceConflict([event], requestedResourceIds)
-    )
-  );
-  if (conflict) {
-    const studentConflict = conflict.studentIds.find((studentId) => studentIds.includes(studentId));
-    const studentName = studentConflict && clean(bundle.maps.students[studentConflict] && bundle.maps.students[studentConflict].name);
-    throw new HttpsError(
-      'already-exists',
-      sharedResourceConflict([conflict], requestedResourceIds)
-        ? 'å¤ç®åœ¨é€™å€‹æ™‚æ®µå·²è¢«å…¶ä»–èª²ç¨‹æˆ–ç§Ÿç”¨ä½¿ç”¨ã€‚'
-        : (conflict.roomId === roomId
-        ? `ã€Œ${clean(selectedRoom.name) || 'æ‰€é¸æ•™å®¤'}ã€åœ¨é€™å€‹æ™‚æ®µå·²è¢«ä½¿ç”¨ã€‚`
-        : (conflict.teacherId === session.teacherId
-          ? 'è€å¸«åœ¨é€™å€‹æ™‚æ®µå·²æœ‰èª²ç¨‹ã€‚'
-          : `${studentName || 'æ‰€é¸å­¸ç”Ÿ'}åœ¨é€™å€‹æ™‚æ®µå·²æœ‰èª²ç¨‹ã€‚`))
-    );
-  }
-
-  const event = {
-    id: randomToken(12),
-    date,
-    startTime,
-    endTime,
-    durationMinutes: targetDuration,
-    roomId,
-    teacherId: session.teacherId,
-    studentId: studentIds[0],
-    studentIds,
-    subjectId,
-    fixedCourseId: moving ? lineage : '',
-    seriesId: action === 'permanent_move' ? lineage : '',
-    recurring: action === 'permanent_move',
-    type: action === 'permanent_move' ? 'fixed' : 'single',
-    portalAction: action,
-    specialLesson: action === 'teacher_gift',
-    status: 'scheduled',
-    paymentStatus: action === 'teacher_gift' ? 'teacher_gift_no_charge' : clean(data.paymentStatus || 'not_applicable'),
-    teacherPayable: action !== 'teacher_gift',
-    note: clean(data.note)
-  };
-  const roomOverrides = {};
-  const requestedRoomOverrides = data.roomOverrides && typeof data.roomOverrides === 'object'
-    ? data.roomOverrides
-    : {};
-  const pendingDates = [];
-  const permanentConflicts = [];
-  let supersededPermanentRefs = [];
-  let validatedThrough = '';
-  let frequencyWeeks = safeFrequencyWeeks(sourceSeries && (sourceSeries.frequencyWeeks || sourceSeries.intervalWeeks));
-  let recurrenceEndDate = dateKey(sourceSeries && (sourceSeries.recurrenceEndDate || sourceSeries.endDate));
-  if (action === 'permanent_move') {
-    const activeChangeSnapshot = await db.collection('coursePortalScheduleChanges').where('active', '==', true).get();
-    supersededPermanentRefs = activeChangeSnapshot.docs.filter((doc) => {
-      const row = doc.data() || {};
-      return clean(row.action) === 'permanent_move' &&
-        permanentLineage(row) === lineage &&
-        permanentCutover(row) === sourceDate;
-    }).map((doc) => doc.ref);
-    const futureException = activeChangeSnapshot.docs.find((doc) => {
-      const row = doc.data() || {};
-      const rowLineage = permanentLineage(row);
-      const rowCutover = permanentCutover(row);
-      if (
-        clean(row.action) === 'permanent_move' &&
-        rowLineage === lineage &&
-        rowCutover === sourceDate
-      ) return false;
-      if (doc.id === clean(source.portalChangeId) && rowCutover < sourceDate) return false;
-      return rowLineage === lineage &&
-        rowCutover >= sourceDate &&
-        ['single_move', 'lesson_status', 'cancel', 'permanent_move'].includes(clean(row.action));
-    });
-    if (futureException) {
-      throw new HttpsError(
-        'failed-precondition',
-        'é€™é–€å›ºå®šèª²åœ¨ä¹‹å¾Œå·²æœ‰å–®æ¬¡èª¿èª²ã€è«‹å‡ï¼æ› èª²æˆ–å…¶ä»–å›ºå®šè®Šæ›´ï¼›ç‚ºé¿å…åŒä¸€é€±é‡è¤‡ä¸Šèª²ï¼Œè«‹å…ˆç”±ç®¡ç†è€…æ•´ç†æœªä¾†ä¾‹å¤–ã€‚'
-      );
-    }
-    const latestAnchorDate = addDays(sourceDate, frequencyWeeks * 7 - 1);
-    if (date < sourceDate || date > latestAnchorDate) {
-      throw new HttpsError(
-        'failed-precondition',
-        `æ–°çš„å›ºå®šæ™‚æ®µå¿…é ˆè½åœ¨åŸå ‚ ${sourceDate} åˆ° ${latestAnchorDate} ä¹‹é–“ï¼Œé¿å…ä¸­é–“èª²ç¨‹é‡è¤‡æˆ–æ¼æ’ã€‚`
-      );
-    }
-    if (recurrenceEndDate && date > recurrenceEndDate) {
-      throw new HttpsError('failed-precondition', 'æ–°çš„å›ºå®šæ™‚æ®µå·²è¶…éé€™é–€å›ºå®šèª²çš„çµæŸæ—¥æœŸã€‚');
-    }
-    const maximumFullValidationEnd = addDays(date, 3650);
-    const horizonEnd = recurrenceEndDate && recurrenceEndDate <= maximumFullValidationEnd
-      ? recurrenceEndDate
-      : addDays(date, 364);
-    validatedThrough = horizonEnd;
-    const future = await scheduleBundle(date, horizonEnd, session.teacherId);
-    for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, frequencyWeeks * 7)) {
-      const blockers = future.resourceEvents.filter((row) => {
-        const sourceMatch = lineage &&
-          (row.fixedCourseId === lineage || row.seriesId === lineage) &&
-          !['single_move', 'extra_lesson', 'teacher_gift', 'lesson_status'].includes(clean(row.portalAction));
-        return eventBlocksResource(row) &&
-          !sourceMatch &&
-          row.date === occurrence &&
-          overlaps(startTime, endTime, row.startTime, row.endTime);
-      });
-      const teacherOrStudentBusy = blockers.some((row) =>
-        row.teacherId === session.teacherId ||
-        row.studentIds.some((studentId) => studentIds.includes(studentId))
-      );
-      const sharedEquipmentBusy = sharedResourceConflict(blockers, requestedResourceIds);
-      const roomBusy = blockers.some((row) => row.roomId === roomId);
-      const policyBlocked = !roomAllowsInterval(
-        selectedRoom,
-        selectedRoomSetting,
-        occurrence,
-        startTime,
-        endTime,
-        subjectId,
-        'schedule'
-      );
-      if (!teacherOrStudentBusy && !sharedEquipmentBusy && !roomBusy && !policyBlocked) continue;
-      const alternatives = teacherOrStudentBusy || sharedEquipmentBusy
-        ? []
-        : future.rooms.filter(sourceActive).filter((room) => {
-          const alternativeId = sourceId(room);
-          const setting = roomSettingsMap[alternativeId] || {};
-          return roomKind(room, setting) === 'normal' &&
-            roomTeacherSchedulable(room, setting) &&
-            roomSupportsSubject(room, subjectId, future, setting) &&
-            roomAllowsInterval(room, setting, occurrence, startTime, endTime, subjectId, 'schedule') &&
-            !blockers.some((row) => row.roomId === alternativeId);
-        }).map((room) => ({
-          id: sourceId(room),
-          name: rentalRoomProfile(room, roomSettingsMap[sourceId(room)] || {}).publicName,
-          equipmentLabel: roomEquipmentLabel(room, roomSettingsMap[sourceId(room)] || {}),
-          requiresGuzhengMove: roomRequiresGuzhengMove(room, subjectId, future)
-        }));
-      const requestedOverrideId = clean(requestedRoomOverrides[occurrence]);
-      if (requestedOverrideId) {
-        const requestedAlternative = alternatives.find((room) => room.id === requestedOverrideId);
-        if (!requestedAlternative) {
-          throw new HttpsError('failed-precondition', `${occurrence} é¸æ“‡çš„æ›¿ä»£æ•™å®¤å·²ä¸å¯ç”¨ï¼Œè«‹é‡æ–°ç¢ºèªã€‚`);
-        }
-        if (requestedAlternative.requiresGuzhengMove && !flagTrue(data.allowGuzhengMove)) {
-          throw new HttpsError('failed-precondition', `${occurrence} é¸æ“‡ KAWAI æ•™å®¤æ™‚ï¼Œéœ€å…ˆç¢ºèªé¡˜æ„è‡ªè¡Œæ¬é‹å¤ç®ã€‚`);
-        }
-        roomOverrides[occurrence] = requestedOverrideId;
-        continue;
-      }
-      permanentConflicts.push({
-        date: occurrence,
-        reason: teacherOrStudentBusy
-          ? 'è€å¸«æˆ–å­¸ç”Ÿå·²æœ‰èª²ç¨‹'
-          : (sharedEquipmentBusy
-            ? 'å¤ç®å·²è¢«ä½¿ç”¨'
-            : (policyBlocked ? 'æ•™å®¤æ™‚æ®µä¸é–‹æ”¾' : 'æ•™å®¤å·²è¢«ä½¿ç”¨')),
-        alternativeRooms: alternatives
-      });
-    }
-    if (permanentConflicts.length && data.confirmPermanentConflicts !== true) {
-      return {
-        ok: false,
-        requiresConfirmation: true,
-        operationId,
-        conflicts: permanentConflicts,
-        message: `å¾ŒçºŒæœ‰ ${permanentConflicts.length} å€‹æ—¥æœŸç™¼ç”Ÿè¡çªï¼›ç¢ºèªå¾Œé€™äº›æ—¥æœŸæœƒä¿ç•™ç‚ºå¾…è£œæ’ï¼Œä¸æœƒè‡ªå‹•æ›æ•™å®¤ã€‚`
-      };
-    }
-    permanentConflicts.forEach((row) => pendingDates.push(row.date));
-    event.frequencyWeeks = frequencyWeeks;
-    event.recurrenceEndDate = recurrenceEndDate;
-  }
-  const changePayload = {
-    id,
-    operationId,
-    action,
-    active: true,
-    sourceEventId: source ? source.id : '',
-    sourceDate,
-    sourceCourseId: lineage,
-    effectiveDate: action === 'permanent_move' ? sourceDate : '',
-    cutoverDate: action === 'permanent_move' ? sourceDate : '',
-    anchorDate: action === 'permanent_move' ? date : '',
-    frequencyWeeks,
-    recurrenceEndDate,
-    validatedThrough,
-    event,
-    roomOverrides,
-    pendingDates,
-    permanentConflicts,
-    createdByTeacherId: session.teacherId,
-    createdAt: FieldValue.serverTimestamp(),
-    createdAtText: nowText()
-  };
-
-  const lockRows = bookingLockRows(date, roomId, startTime, endTime)
-    .concat(sharedEquipmentLockRows(date, requestedResourceIds, startTime, endTime));
-  const versionRef = scheduleVersionRef();
-  const transactionResult = await db.runTransaction(async (tx) => {
-    if (publicRentalSlotIsPast(date, startTime)) {
-      throw new HttpsError('failed-precondition', 'é€™å€‹æ™‚æ®µå·²ç¶“é–‹å§‹ï¼Œè«‹é‡æ–°é¸æ“‡ã€‚');
-    }
-    const snapshots = await Promise.all([
-      tx.get(versionRef),
-      tx.get(changeRef),
-      ...lockRows.map((row) => tx.get(db.collection('coursePortalRoomLocks').doc(row.id))),
-      ...supersededPermanentRefs.map((ref) => tx.get(ref))
-    ]);
-    const [versionSnapshot, changeSnapshot] = snapshots;
-    const lockSnapshots = snapshots.slice(2, 2 + lockRows.length);
-    const supersededPermanentSnapshots = snapshots.slice(2 + lockRows.length);
-    assertScheduleWritable(versionSnapshot);
-    if (changeSnapshot.exists) {
-      return { duplicate: true, change: jsonValue(changeSnapshot.data()) || {} };
-    }
-    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
-    if (currentVersion !== expectedVersion) {
-      throw new HttpsError('aborted', 'èª²è¡¨å‰›å‰›æœ‰æ›´æ–°ï¼Œå·²åœæ­¢é€™æ¬¡æ“ä½œï¼›è«‹é‡æ–°ç¢ºèªç©ºä½ã€‚');
-    }
-    const activeLocks = lockSnapshots.filter((snapshot) => snapshot.exists && snapshot.data().active !== false);
-    const bookingSnapshots = [];
-    for (const lockSnapshot of activeLocks) {
-      const lock = lockSnapshot.data() || {};
-      if (clean(lock.bookingId)) {
-        bookingSnapshots.push({
-          lockSnapshot,
-          snapshot: await tx.get(db.collection('coursePortalRoomBookings').doc(clean(lock.bookingId)))
-        });
-      } else {
-        bookingSnapshots.push({ lockSnapshot, snapshot: null });
-      }
-    }
-    const staleLocks = [];
-    bookingSnapshots.forEach(({ lockSnapshot, snapshot }) => {
-      const lock = lockSnapshot.data() || {};
-      const booking = snapshot && snapshot.exists ? snapshot.data() || {} : null;
-      const expired = asMillis(lock.endAt) && asMillis(lock.endAt) <= Date.now();
-      const inactive = !booking || booking.active === false || clean(booking.status) === 'cancelled';
-      if (expired || inactive) staleLocks.push(lockSnapshot.ref);
-      else throw new HttpsError('already-exists', 'é€™å€‹æ•™å®¤æ™‚æ®µå‰›å‰›å·²è¢«ç§Ÿç”¨ï¼Œè«‹é‡æ–°é¸æ“‡ã€‚');
-    });
-    staleLocks.forEach((ref) => tx.delete(ref));
-    supersededPermanentSnapshots.forEach((snapshot) => {
-      if (!snapshot.exists || snapshot.data().active === false) return;
-      tx.set(snapshot.ref, {
-        active: false,
-        supersededBy: id,
-        supersededAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-    });
-    tx.set(changeRef, changePayload);
-    tx.set(versionRef, {
-      version: currentVersion + 1,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: session.teacherId
-    }, { merge: true });
-    return { duplicate: false };
-  });
-  if (transactionResult && transactionResult.duplicate) {
-    const prior = transactionResult.change || {};
-    return {
-      ok: true,
-      duplicate: true,
-      id,
-      event: prior.event || {},
-      roomOverrides: prior.roomOverrides || {},
-      pendingDates: prior.pendingDates || [],
-      operationId,
-      message: 'é€™æ¬¡æ“ä½œå·²ç¶“å®Œæˆï¼Œä¸æœƒé‡è¤‡å»ºç«‹ã€‚'
-    };
-  }
-  return {
-    ok: true,
-    id,
-    event,
-    roomOverrides,
-    pendingDates,
-    operationId,
-    message: pendingDates.length
-      ? `æ°¸ä¹…èª¿èª²å·²å»ºç«‹ï¼›${pendingDates.length} å€‹è¡çªæ—¥æœŸå·²ä¿ç•™ç‚ºå¾…è£œæ’ï¼Œæ²’æœ‰è‡ªå‹•æ›´æ›æ•™å®¤ã€‚`
-      : (action === 'permanent_move' ? 'æ°¸ä¹…èª¿èª²å·²å»ºç«‹ã€‚' : 'èª²ç¨‹å·²å„²å­˜ã€‚')
-  };
-}
-
-function attendanceLineage(event, data = {}) {
-  return clean(
-    event && (event.fixedCourseId || event.sourceId || event.id) ||
-    data.sourceCourseId ||
-    data.sourceEventId
-  );
-}
-
-function attendanceOperationId(teacherId, sourceDate, event, data = {}) {
-  return hash([
-    'teacher-attendance',
-    clean(teacherId),
-    dateKey(sourceDate),
-    attendanceLineage(event, data)
-  ].join('|'));
-}
-
-function attendanceLessonLockId(sourceDate, event, data = {}) {
-  return hash([
-    'teacher-attendance-lesson',
-    dateKey(sourceDate),
-    attendanceLineage(event, data)
-  ].join('|'));
-}
-
-async function teacherAttendanceEvent(session, data) {
-  const sourceDate = dateKey(data.sourceDate);
-  const sourceEventId = clean(data.sourceEventId);
-  const sourceCourseId = clean(data.sourceCourseId);
-  const portalChangeId = clean(data.portalChangeId);
-  if (!sourceDate || (!sourceEventId && !sourceCourseId)) {
-    throw new HttpsError('invalid-argument', 'ç¼ºå°‘è¦è™•ç†çš„èª²ç¨‹ã€‚');
-  }
-  const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
-  const event = bundle.events.find((row) => teacherEventMatchesRequest(
-    row,
-    session.teacherId,
-    sourceDate,
-    sourceEventId,
-    sourceCourseId,
-    portalChangeId
-  ));
-  if (!event) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™å ‚èª²ã€‚');
-  if (isRoomRentalEvent(event)) {
-    throw new HttpsError('failed-precondition', 'æ•™å®¤ç§Ÿç”¨ä¸æ˜¯å­¸ç”Ÿèª²ç¨‹ï¼Œä¸èƒ½è™•ç†å­¸ç”Ÿç°½åˆ°ã€‚');
-  }
-  if (!(event.studentIds || []).length) {
-    throw new HttpsError('failed-precondition', 'é€™å ‚èª²æ²’æœ‰å­¸ç”Ÿï¼Œä¸èƒ½ç°½åˆ°ã€‚');
-  }
-  return { sourceDate, sourceEventId, sourceCourseId, event };
-}
-
-async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
-  const studentIds = [...new Set(eventStudentIds(event).map(clean).filter(Boolean))];
-  const groups = await Promise.all(studentIds.map(async (studentId) => {
-    const [periods, mirrorAttendance, portalAttendanceSnapshot] = await Promise.all([
-      mirrorRowsByField('tuitionPeriods', 'studentId', studentId),
-      mirrorRowsByField('attendance', 'studentId', studentId),
-      db.collection(ATTENDANCE_RECORDS).where('studentId', '==', studentId).get()
-    ]);
-    const portalAttendance = portalAttendanceSnapshot.docs.map((doc) =>
-      Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
-    );
-    const effectivePeriods = applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttendance);
-    return {
-      studentId,
-      period: attendancePeriodCandidate(effectivePeriods, event, studentId, sourceDate)
-    };
-  }));
-  const missing = groups.filter((row) => !row.period);
-  if (missing.length && options.allowMissing !== true) {
-    throw new HttpsError(
-      'failed-precondition',
-      `æ‰¾ä¸åˆ° ${missing.length} ä½å­¸ç”Ÿåœ¨æœ¬å ‚èª²é©ç”¨ä¸”å°šæœ‰å ‚æ•¸çš„å­¸è²»æœŸåˆ¥ï¼›å·²åœæ­¢ç°½åˆ°ï¼Œè«‹å…ˆç¢ºèªæœŸåˆ¥è³‡æ–™ã€‚`
-    );
-  }
-  const rows = groups.filter((row) => row.period);
-  return {
-    rows,
-    byStudent: rows.reduce((map, row) => {
-      map[row.studentId] = row.period;
-      return map;
-    }, {})
-  };
-}
-
-function attendanceChangePayload(event, sourceDate, sourceEventId, sourceCourseId, teacherId, status, note) {
-  const lineage = attendanceLineage(event, { sourceEventId, sourceCourseId });
-  const id = `lesson-status-${hash([teacherId, lineage, sourceDate].join('|'))}`;
-  return {
-    id,
-    action: 'lesson_status',
-    active: true,
-    sourceEventId: clean(event.sourceId || sourceEventId || event.id),
-    sourceCourseId: clean(event.fixedCourseId || sourceCourseId || lineage),
-    sourceDate,
-    event: {
-      id: randomToken(12),
-      date: sourceDate,
-      startTime: event.startTime,
-      endTime: event.endTime,
-      roomId: event.roomId,
-      teacherId,
-      studentId: (event.studentIds || [])[0] || '',
-      studentIds: event.studentIds || [],
-      subjectId: event.subjectId,
-      fixedCourseId: clean(event.fixedCourseId || sourceCourseId || lineage),
-      tuitionPeriodId: clean(event.tuitionPeriodId),
-      type: event.type || 'lesson',
-      status,
-      paymentStatus: status === 'attended' ? 'attended' : 'attendance_cancelled',
-      teacherPayable: status === 'attended',
-      note: clean(note)
-    },
-    createdByTeacherId: teacherId,
-    createdAt: FieldValue.serverTimestamp(),
-    createdAtText: nowText(),
-    updatedAt: FieldValue.serverTimestamp()
-  };
-}
-
-async function applyTeacherAttendance(data, late) {
-  const session = await requireSession(data, ['teacher']);
-  const resolved = await teacherAttendanceEvent(session, data);
-  const { sourceDate, sourceEventId, sourceCourseId, event } = resolved;
-  const today = currentTaipeiDay();
-  if (late && sourceDate >= today) {
-    throw new HttpsError('failed-precondition', 'ç•¶æ—¥èª²ç¨‹è«‹åœ¨æ™šä¸Š 12 é»å‰ä½¿ç”¨æ­£å¸¸ç°½åˆ°ï¼›éš”æ—¥å¾Œæ‰æœƒé¡¯ç¤ºè£œç°½åˆ°ã€‚');
-  }
-  if (!late && sourceDate !== today) {
-    throw new HttpsError('failed-precondition', sourceDate < today
-      ? 'é€™å ‚èª²å·²è¶…éç•¶æ—¥æ™šä¸Š 12 é»ï¼Œè«‹æ”¹ç”¨è£œç°½åˆ°ã€‚'
-      : 'å°šæœªåˆ°ä¸Šèª²æ—¥æœŸï¼Œä¸èƒ½æå‰ç°½åˆ°ã€‚');
-  }
-  if (!late && taipeiDateTimeMillis(sourceDate, event.startTime) > Date.now()) {
-    throw new HttpsError('failed-precondition', 'èª²ç¨‹å°šæœªé–‹å§‹ï¼Œä¸èƒ½æå‰ç°½åˆ°ã€‚');
-  }
-  const normalized = normalizeScheduleStatus(event.status);
-  const allowedStatuses = late ? ['scheduled', 'absent'] : ['scheduled'];
-  if (!allowedStatuses.includes(normalized)) {
-    throw new HttpsError('failed-precondition', 'è«‹å‡ã€å·²ç°½åˆ°æˆ–å·²å–æ¶ˆçš„èª²ç¨‹ä¸èƒ½å†æ¬¡ç°½åˆ°ã€‚');
-  }
-  const operationId = attendanceOperationId(session.teacherId, sourceDate, event, data);
-  const expectedVersion = await readScheduleVersion();
-  const giftLesson = event.specialLesson === true ||
-    clean(event.portalAction) === 'teacher_gift' ||
-    clean(event.type) === 'teacher_gift';
-  const chargeLateFee = late && !giftLesson;
-  const statusRef = db.collection('coursePortalScheduleChanges')
-    .doc(`lesson-status-${hash([session.teacherId, attendanceLineage(event, data), sourceDate].join('|'))}`);
-  const lateRef = db.collection('coursePortalLateAttendance').doc(operationId);
-  const adjustmentRef = db.collection('coursePortalTeacherAdjustments').doc(`attendance-fee-${operationId}`);
-  const payrollRef = db.collection(ATTENDANCE_PAYROLL).doc(operationId);
-  const priorCancellationRef = db.collection(ATTENDANCE_CANCELLATIONS)
-    .doc(hash(['attendance-cancellation', operationId].join('|')));
-  const lessonLockRef = db.collection('coursePortalAttendanceLessonLocks')
-    .doc(attendanceLessonLockId(sourceDate, event, { sourceEventId, sourceCourseId }));
-  const versionRef = scheduleVersionRef();
-  const periodResolution = await attendancePeriodsForEvent(event, sourceDate, { allowMissing: giftLesson });
-  const payrollCalculation = attendancePayrollCalculation(event, periodResolution.rows, sourceDate);
-  const periodIds = Object.keys(periodResolution.byStudent).reduce((map, studentId) => {
-    map[studentId] = sourceId(periodResolution.byStudent[studentId]);
-    return map;
-  }, {});
-  const attendanceRows = eventStudentIds(event).map((studentId) => ({
-    id: hash([operationId, studentId].join('|')),
-    studentId: clean(studentId)
-  }));
-  const attendanceRefs = attendanceRows.map((row) => db.collection(ATTENDANCE_RECORDS).doc(row.id));
-  const changePayload = attendanceChangePayload(
-    event,
-    sourceDate,
-    sourceEventId,
-    sourceCourseId,
-    session.teacherId,
-    'attended',
-    late ? 'è€å¸«è£œç°½åˆ°' : 'è€å¸«ç•¶æ—¥ç°½åˆ°'
-  );
-  changePayload.event.tuitionPeriodId = giftLesson ? '' : clean(periodIds[attendanceRows[0] && attendanceRows[0].studentId]);
-  changePayload.event.tuitionPeriodIds = giftLesson ? {} : Object.assign({}, periodIds);
-  changePayload.event.teacherPayable = payrollCalculation.teacherPayable !== false;
-  await db.runTransaction(async (tx) => {
-    const snapshots = await Promise.all([
-      tx.get(versionRef),
-      tx.get(statusRef),
-      tx.get(lateRef),
-      tx.get(payrollRef),
-      tx.get(priorCancellationRef),
-      tx.get(lessonLockRef),
-      ...attendanceRefs.map((ref) => tx.get(ref))
-    ]);
-    const versionSnapshot = snapshots[0];
-    assertScheduleWritable(versionSnapshot);
-    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
-    if (currentVersion !== expectedVersion) {
-      throw new HttpsError(
-        'aborted',
-        'é€™å ‚èª²å‰›å‰›å·²åœ¨å…¶ä»–è£ç½®æ›´æ–°ã€‚ç‚ºé¿å…è¦†è“‹è³‡æ–™ï¼Œè«‹é‡æ–°æ•´ç†å¾Œå†æ“ä½œã€‚'
-      );
-    }
-    const existingCancellation = snapshots[4].exists ? snapshots[4].data() || {} : {};
-    if (clean(existingCancellation.status) === 'approved') {
-      throw new HttpsError(
-        'failed-precondition',
-        'é€™å ‚èª²çš„å–æ¶ˆç°½åˆ°å·²ç¶“æ ¸å‡†ï¼›å¦‚éœ€æ¢å¾©ï¼Œè«‹å…ˆç”±ç®¡ç†è€…è™•ç†ï¼Œé¿å…é‡è¤‡è¨ˆè–ªã€‚'
-      );
-    }
-    const existingLessonLock = snapshots[5].exists ? snapshots[5].data() || {} : {};
-    if (clean(existingLessonLock.status) === 'cancelled') {
-      throw new HttpsError(
-        'failed-precondition',
-        'é€™å ‚èª²çš„ç°½åˆ°å·²å–æ¶ˆä¸¦é–å®šï¼›è«‹å…ˆç”±ç®¡ç†è€…æ¢å¾©å¾Œæ‰èƒ½é‡æ–°ç°½åˆ°ï¼Œæ”¹æ´¾è€å¸«ä¹Ÿä¸èƒ½é‡è¤‡è¨ˆè–ªã€‚'
-      );
-    }
-    if (
-      existingLessonLock.active !== false &&
-      clean(existingLessonLock.status) === 'attended' &&
-      clean(existingLessonLock.operationId) !== operationId
-    ) {
-      throw new HttpsError('already-exists', 'é€™å ‚èª²å·²ç”±å¦ä¸€ä½è€å¸«å®Œæˆç°½åˆ°ï¼Œä¸æœƒé‡è¤‡å»ºç«‹è–ªè³‡ã€‚');
-    }
-    const existingAttendance = snapshots.slice(6).some((snapshot) =>
-      snapshot.exists && clean(snapshot.data().status) === 'attended'
-    );
-    if (existingAttendance) throw new HttpsError('already-exists', 'é€™å ‚èª²å·²ç¶“å®Œæˆç°½åˆ°ã€‚');
-    const existingPayroll = snapshots[3].exists ? snapshots[3].data() || {} : {};
-    if (clean(existingPayroll.status) === 'attended' && existingPayroll.active !== false) {
-      throw new HttpsError('already-exists', 'é€™å ‚èª²çš„è–ªè³‡å·²ç¶“è¨˜éŒ„ï¼Œä¸æœƒé‡è¤‡å»ºç«‹ã€‚');
-    }
-    const existingStatus = snapshots[1].exists ? snapshots[1].data() || {} : {};
-    if (normalizeScheduleStatus(existingStatus.event && existingStatus.event.status) === 'attended') {
-      throw new HttpsError('already-exists', 'é€™å ‚èª²å·²ç¶“å®Œæˆç°½åˆ°ã€‚');
-    }
-    attendanceRows.forEach((row, index) => tx.set(attendanceRefs[index], {
-      id: row.id,
-      operationId,
-      active: true,
-      status: 'attended',
-      source: late ? 'teacher-late-attendance' : 'teacher-attendance',
-      teacherId: session.teacherId,
-      studentId: row.studentId,
-      studentIds: event.studentIds || [],
-      subjectId: clean(event.subjectId),
-      periodId: giftLesson ? '' : clean(periodIds[row.studentId]),
-      eventId: clean(event.sourceId || sourceEventId || event.id),
-      courseId: clean(event.fixedCourseId || sourceCourseId),
-      date: sourceDate,
-      deducted: !giftLesson,
-      late: late === true,
-      lateFeeCharged: chargeLateFee,
-      originalLessonDate: sourceDate,
-      attendanceRecordedAtText: nowText(),
-      createdAt: FieldValue.serverTimestamp(),
-      createdAtText: nowText(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true }));
-    tx.set(statusRef, changePayload, { merge: true });
-    tx.set(lessonLockRef, {
-      id: lessonLockRef.id,
-      operationId,
-      active: true,
-      status: 'attended',
-      date: sourceDate,
-      eventId: clean(event.sourceId || sourceEventId || event.id),
-      courseId: clean(event.fixedCourseId || sourceCourseId),
-      teacherId: session.teacherId,
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    tx.set(payrollRef, Object.assign({
-      id: operationId,
-      operationId,
-      active: true,
-      status: 'attended',
-      source: late ? 'teacher-late-attendance' : 'teacher-attendance',
-      teacherId: session.teacherId,
-      studentIds: event.studentIds || [],
-      studentId: clean((event.studentIds || [])[0]),
-      studentName: clean((event.studentNames || []).join('ã€')),
-      subjectId: clean(event.subjectId),
-      subjectName: clean(event.subjectName),
-      date: sourceDate,
-      month: sourceDate.slice(0, 7),
-      eventId: clean(event.sourceId || sourceEventId || event.id),
-      courseId: clean(event.fixedCourseId || sourceCourseId),
-      occurredAt: `${sourceDate}T${clean(event.startTime || '00:00')}:00+08:00`,
-      tuitionPeriodIds: Object.assign({}, periodIds),
-      createdAt: FieldValue.serverTimestamp(),
-      createdAtText: nowText(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, payrollCalculation), { merge: true });
-    if (late) {
-      if (snapshots[2].exists && clean(snapshots[2].data().status) === 'approved') {
-        throw new HttpsError('already-exists', 'é€™å ‚èª²å·²ç¶“è£œç°½åˆ°ã€‚');
-      }
-      tx.set(lateRef, {
-        id: operationId,
-        teacherId: session.teacherId,
-        date: sourceDate,
-        eventId: sourceEventId,
-        courseId: sourceCourseId,
-        studentIds: event.studentIds || [],
-        status: 'approved',
-        administrationFee: chargeLateFee ? ATTENDANCE_ADMIN_FEE : 0,
-        giftLesson,
-        createdAt: FieldValue.serverTimestamp(),
-        createdAtText: nowText()
-      }, { merge: true });
-      if (chargeLateFee) {
-        tx.set(adjustmentRef, {
-          id: adjustmentRef.id,
-          teacherId: session.teacherId,
-          month: currentTaipeiDay().slice(0, 7),
-          date: currentTaipeiDay(),
-          type: 'late_attendance_fee',
-          amount: -ATTENDANCE_ADMIN_FEE,
-          note: `è£œç°½åˆ°è¡Œæ”¿è™•ç†è²» NT$${ATTENDANCE_ADMIN_FEE}`,
-          source: 'teacher-portal',
-          createdAt: FieldValue.serverTimestamp(),
-          createdAtText: nowText()
-        }, { merge: true });
-      }
-    }
-    tx.set(versionRef, {
-      version: currentVersion + 1,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: session.teacherId
-    }, { merge: true });
-  });
-  return {
-    ok: true,
-    operationId,
-    message: late
-      ? (chargeLateFee
-        ? `è£œç°½åˆ°å·²å®Œæˆï¼Œä¸¦å·²åœ¨æœ¬æœˆè–ªè³‡æ‰£é™¤è¡Œæ”¿è™•ç†è²» NT$${ATTENDANCE_ADMIN_FEE}ã€‚`
-        : 'è´ˆé€èª²ç¨‹è£œç°½åˆ°å·²å®Œæˆï¼Œæœ¬æ¬¡ä¸æ”¶è¡Œæ”¿è™•ç†è²»ã€‚')
-      : 'ç°½åˆ°å·²å®Œæˆï¼›ä»Šå¤©æ™šä¸Š 12 é»å¾Œå¦‚éœ€å–æ¶ˆï¼Œå¿…é ˆé€ä¸»ç®¡å¯©æ ¸ã€‚'
-  };
-}
-
-async function teacherAttendance(data) {
-  return applyTeacherAttendance(data, false);
-}
-
-async function teacherLateAttendance(data) {
-  return applyTeacherAttendance(data, true);
-}
-
-async function cancelTeacherAttendanceSameDay(session, resolved, reason) {
-  const { sourceDate, sourceEventId, sourceCourseId, event } = resolved;
-  if (sourceDate !== currentTaipeiDay()) {
-    throw new HttpsError('failed-precondition', 'åªæœ‰ç•¶å¤©ç°½åˆ°å¯ä»¥ç›´æ¥å–æ¶ˆã€‚');
-  }
-  const operationId = attendanceOperationId(session.teacherId, sourceDate, event, {
-    sourceEventId,
-    sourceCourseId
-  });
-  const requestId = hash(['attendance-cancellation', operationId].join('|'));
-  const requestRef = db.collection(ATTENDANCE_CANCELLATIONS).doc(requestId);
-  const attendanceSnapshot = await db.collection(ATTENDANCE_RECORDS)
-    .where('operationId', '==', operationId)
-    .get();
-  const attendanceRefs = attendanceSnapshot.docs.map((doc) => doc.ref);
-  const lineage = attendanceLineage(event, { sourceEventId, sourceCourseId });
-  const statusRef = db.collection('coursePortalScheduleChanges')
-    .doc(`lesson-status-${hash([session.teacherId, lineage, sourceDate].join('|'))}`);
-  const payrollRef = db.collection(ATTENDANCE_PAYROLL).doc(operationId);
-  const lessonLockRef = db.collection('coursePortalAttendanceLessonLocks')
-    .doc(attendanceLessonLockId(sourceDate, event, { sourceEventId, sourceCourseId }));
-  const versionRef = scheduleVersionRef();
-  const expectedVersion = await readScheduleVersion();
-  await db.runTransaction(async (tx) => {
-    const snapshots = await Promise.all([
-      tx.get(versionRef),
-      tx.get(requestRef),
-      tx.get(statusRef),
-      tx.get(payrollRef),
-      tx.get(lessonLockRef),
-      ...attendanceRefs.map((ref) => tx.get(ref))
-    ]);
-    const versionSnapshot = snapshots[0];
-    assertScheduleWritable(versionSnapshot);
-    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
-    if (currentVersion !== expectedVersion) {
-      throw new HttpsError(
-        'aborted',
-        'é€™å ‚èª²å‰›å‰›å·²åœ¨å…¶ä»–è£ç½®æ›´æ–°ã€‚ç‚ºé¿å…è¦†è“‹è³‡æ–™ï¼Œè«‹é‡æ–°æ•´ç†å¾Œå†æ“ä½œã€‚'
-      );
-    }
-    const existingRequest = snapshots[1].exists ? snapshots[1].data() || {} : {};
-    if (clean(existingRequest.status) === 'approved') return;
-    const currentStatus = snapshots[2].exists ? snapshots[2].data() || {} : {};
-    if (normalizeScheduleStatus(currentStatus.event && currentStatus.event.status) !== 'attended') {
-      throw new HttpsError('failed-precondition', 'é€™å ‚èª²ç›®å‰ä¸æ˜¯å·²ç°½åˆ°ç‹€æ…‹ï¼Œè«‹é‡æ–°æ•´ç†ã€‚');
-    }
-    attendanceRefs.forEach((ref, index) => {
-      const prior = snapshots[5 + index].exists ? snapshots[5 + index].data() || {} : {};
-      tx.set(ref, {
-        active: false,
-        status: 'cancelled',
-        source: 'teacher-same-day-attendance-cancellation',
-        cancellationRequestId: requestId,
-        periodId: clean(prior.periodId),
-        cancelledAt: FieldValue.serverTimestamp(),
-        cancelledAtText: nowText(),
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-    });
-    tx.set(statusRef, attendanceChangePayload(
-      event,
-      sourceDate,
-      sourceEventId,
-      sourceCourseId,
-      session.teacherId,
-      'scheduled',
-      'è€å¸«ç•¶æ—¥å–æ¶ˆèª¤ç°½åˆ°'
-    ), { merge: true });
-    tx.set(payrollRef, {
-      active: false,
-      status: 'cancelled',
-      cancellationRequestId: requestId,
-      cancelledAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    tx.set(lessonLockRef, {
-      // ä¿ç•™è·¨è€å¸«å…±ç”¨çš„å–æ¶ˆ tombstoneï¼›æœªæä¾›ç®¡ç†è€…æ¢å¾©æµç¨‹å‰ï¼Œä¸å¯è®“æ”¹æ´¾è€å¸«ç¹éé‡ç°½é–ã€‚
-      active: true,
-      status: 'cancelled',
-      operationId,
-      cancellationRequestId: requestId,
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    tx.set(requestRef, {
-      id: requestId,
-      operationId,
-      status: 'approved',
-      approvalMode: 'same_day_teacher',
-      teacherId: session.teacherId,
-      teacherName: clean(event.teacherName),
-      studentIds: event.studentIds || [],
-      studentNames: event.studentNames || [],
-      subjectId: clean(event.subjectId),
-      subjectName: clean(event.subjectName),
-      date: sourceDate,
-      startTime: clean(event.startTime),
-      endTime: clean(event.endTime),
-      eventId: clean(event.sourceId || sourceEventId || event.id),
-      courseId: clean(event.fixedCourseId || sourceCourseId),
-      attendanceRecordIds: attendanceRefs.map((ref) => ref.id),
-      reason: clean(reason) || 'è€å¸«ç•¶æ—¥èª¤ç°½åˆ°',
-      administrationFee: 0,
-      requestedAt: FieldValue.serverTimestamp(),
-      requestedAtText: nowText(),
-      reviewedAt: FieldValue.serverTimestamp(),
-      reviewedAtText: nowText(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    tx.set(versionRef, {
-      version: currentVersion + 1,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: session.teacherId
-    }, { merge: true });
-  });
-  return {
-    ok: true,
-    requestId,
-    status: 'approved',
-    sameDay: true,
-    message: 'ç•¶æ—¥ç°½åˆ°å·²å–æ¶ˆï¼Œæœ¬æ¬¡ä¸æ”¶è¡Œæ”¿è™•ç†è²»ã€‚'
-  };
-}
-
-async function teacherAttendanceCancellationRequest(data) {
-  const session = await requireSession(data, ['teacher']);
-  const reason = clean(data.reason);
-  const resolved = await teacherAttendanceEvent(session, data);
-  const { sourceDate, sourceEventId, sourceCourseId, event } = resolved;
-  if (normalizeScheduleStatus(event.status) !== 'attended') {
-    throw new HttpsError('failed-precondition', 'åªæœ‰å·²ç°½åˆ°çš„èª²ç¨‹å¯ä»¥ç”³è«‹å–æ¶ˆç°½åˆ°ã€‚');
-  }
-  if (sourceDate === currentTaipeiDay()) {
-    return cancelTeacherAttendanceSameDay(session, resolved, reason);
-  }
-  if (!reason) throw new HttpsError('invalid-argument', 'è«‹å¡«å¯«å–æ¶ˆç°½åˆ°åŸå› ã€‚');
-  const operationId = attendanceOperationId(session.teacherId, sourceDate, event, data);
-  const requestId = hash(['attendance-cancellation', operationId].join('|'));
-  const requestRef = db.collection(ATTENDANCE_CANCELLATIONS).doc(requestId);
-  const attendanceSnapshot = await db.collection(ATTENDANCE_RECORDS)
-    .where('operationId', '==', operationId)
-    .get();
-  const existing = await requestRef.get();
-  if (existing.exists && ['pending', 'approved'].includes(clean(existing.data().status))) {
-    throw new HttpsError('already-exists', clean(existing.data().status) === 'pending'
-      ? 'å–æ¶ˆç°½åˆ°ç”³è«‹å·²é€å‡ºï¼Œæ­£åœ¨ç­‰å¾…ä¸»ç®¡ç¢ºèªã€‚'
-      : 'é€™å ‚èª²çš„å–æ¶ˆç°½åˆ°å·²ç¶“å®Œæˆã€‚');
-  }
-  const payload = {
-    id: requestId,
-    operationId,
-    status: 'pending',
-    teacherId: session.teacherId,
-    teacherName: clean(event.teacherName),
-    studentIds: event.studentIds || [],
-    studentNames: event.studentNames || [],
-    subjectId: clean(event.subjectId),
-    subjectName: clean(event.subjectName),
-    date: sourceDate,
-    startTime: clean(event.startTime),
-    endTime: clean(event.endTime),
-    roomId: clean(event.roomId),
-    type: clean(event.type || 'lesson'),
-    eventId: clean(event.sourceId || sourceEventId || event.id),
-    courseId: clean(event.fixedCourseId || sourceCourseId),
-    portalChangeId: clean(event.portalChangeId),
-    attendanceRecordIds: attendanceSnapshot.docs.map((doc) => doc.id),
-    reason,
-    administrationFee: ATTENDANCE_ADMIN_FEE,
-    requestedAt: FieldValue.serverTimestamp(),
-    requestedAtText: nowText(),
-    updatedAt: FieldValue.serverTimestamp()
-  };
-  await requestRef.set(payload, { merge: true });
-  const body = [
-    'è€å¸«æå‡ºå–æ¶ˆç°½åˆ°ç”³è«‹ï¼Œè«‹ä¸»ç®¡ç¢ºèªã€‚',
-    '',
-    `è€å¸«ï¼š${clean(event.teacherName) || session.teacherId}`,
-    `å­¸ç”Ÿï¼š${clean((event.studentNames || []).join('ã€')) || 'æœªæä¾›'}`,
-    `èª²ç¨‹ï¼š${clean(event.subjectName) || 'æœªæä¾›'}`,
-    `æ™‚é–“ï¼š${sourceDate} ${clean(event.startTime)}ï½${clean(event.endTime)}`,
-    `åŸå› ï¼š${reason}`,
-    `æ ¸å‡†å¾Œå°‡æ‰£é™¤è¡Œæ”¿è™•ç†è²» NT$${ATTENDANCE_ADMIN_FEE}ã€‚`,
-    '',
-    `${PORTAL_BASE}/course-portal-admin.html`
-  ].join('\n');
-  await queueCoursePortalNotice(`attendance-cancel-manager-${requestId}`, {
-    eventCode: 'attendance_cancellation_pending',
-    target: 'admin',
-    targetRole: 'admin',
-    targetEmployeeId: 'PRIMARY_MANAGER_LINE',
-    targetName: 'æŸšå­æ¨‚å™¨ä¸»ç®¡',
-    title: 'å–æ¶ˆç°½åˆ°å¾…ç¢ºèª',
-    body,
-    text: body,
-    message: body,
-    attendanceCancellationId: requestId
-  });
-  return {
-    ok: true,
-    requestId,
-    status: 'pending',
-    message: `å–æ¶ˆç°½åˆ°ç”³è«‹å·²é€å‡ºï¼›ä¸»ç®¡æ ¸å‡†å¾Œæ‰æœƒç”Ÿæ•ˆï¼Œä¸¦æ‰£é™¤è¡Œæ”¿è™•ç†è²» NT$${ATTENDANCE_ADMIN_FEE}ã€‚`
-  };
-}
-
-async function teacherBonusRequest(data){
-  const session=await requireSession(data,['teacher']);
-  const studentId=clean(data.studentId),description=clean(data.description);
-  if(!studentId||!description)throw new HttpsError('invalid-argument','è«‹é¸æ“‡å­¸ç”Ÿä¸¦å¡«å¯«ç”³è«‹å…§å®¹ã€‚');
-  const photoData=clean(data.photoData);
-  if(photoData.length>900000)throw new HttpsError('invalid-argument','ç…§ç‰‡å¤ªå¤§ï¼Œè«‹é‡æ–°æ‹æ”æˆ–ç¸®å°å¾Œä¸Šå‚³ã€‚');
-  const id=db.collection('coursePortalTeacherBonusRequests').doc().id;
-  await db.collection('coursePortalTeacherBonusRequests').doc(id).set({id,teacherId:session.teacherId,studentId,studentName:clean(data.studentName),description,photoData,status:'pending',approvedAmount:0,createdAt:FieldValue.serverTimestamp(),createdAtText:nowText()});
-  return {ok:true,id,message:'ç”³è«‹å·²é€å‡ºï¼Œå¾…ä¸»ç®¡ç¢ºèªçé‡‘é‡‘é¡ã€‚'};
-}
-
-async function adminBonusRequests(){
-  const [requests,teachers]=await Promise.all([db.collection('coursePortalTeacherBonusRequests').orderBy('createdAt','desc').limit(200).get(),mirrorRows('teachers')]);
-  const map=indexById(teachers);
-  return {ok:true,requests:requests.docs.map(doc=>{const row=jsonValue(doc.data())||{};return Object.assign({},row,{id:doc.id,teacherName:clean(map[clean(row.teacherId)]&&map[clean(row.teacherId)].name)});})};
-}
-async function adminApproveBonus(data){
-  const id=clean(data.id),amount=Math.max(0,Number(data.amount||0));
-  if(!id||!amount)throw new HttpsError('invalid-argument','è«‹è¼¸å…¥æ ¸å®šçé‡‘é‡‘é¡ã€‚');
-  const ref=db.collection('coursePortalTeacherBonusRequests').doc(id);
-  await db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw new HttpsError('not-found','æ‰¾ä¸åˆ°ç”³è«‹ã€‚');const row=snap.data()||{};if(clean(row.status)==='approved')throw new HttpsError('already-exists','é€™ç­†ç”³è«‹å·²æ ¸å®šã€‚');tx.set(ref,{status:'approved',approvedAmount:amount,approvedAt:FieldValue.serverTimestamp(),approvedAtText:nowText()},{merge:true});tx.set(db.collection('coursePortalTeacherAdjustments').doc('bonus-'+id),{id:'bonus-'+id,teacherId:clean(row.teacherId),studentId:clean(row.studentId),studentName:clean(row.studentName),month:new Intl.DateTimeFormat('en-CA',{timeZone:TAIPEI,year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7),date:new Intl.DateTimeFormat('en-CA',{timeZone:TAIPEI,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),type:'teacher_bonus',amount,note:clean(row.description),source:'teacher-bonus-request',createdAt:FieldValue.serverTimestamp(),createdAtText:nowText()});});
-  return {ok:true,message:'çé‡‘å·²æ ¸å®šä¸¦å¯«å…¥è€å¸«è–ªè³‡ã€‚'};
-}
-
-function normalizeAdminTeacherAdjustment(data, teacher) {
-  const teacherId = clean(data && data.teacherId);
-  const requestId = clean(data && data.requestId);
-  const date = dateKey(data && data.date);
-  const type = clean(data && data.type).toLowerCase();
-  const amountValue = Number(data && data.amount);
-  const note = clean(data && data.note);
-  if (!teacherId || !teacher || sourceId(teacher) !== teacherId) {
-    throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°æŒ‡å®šçš„è€å¸«ã€‚');
-  }
-  if (!/^[A-Za-z0-9_-]{12,120}$/.test(requestId)) {
-    throw new HttpsError('invalid-argument', 'æœ¬æ¬¡æ“ä½œè­˜åˆ¥ç¢¼æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹é‡æ–°é–‹å•Ÿè¦–çª—å¾Œå†è©¦ã€‚');
-  }
-  if (!date) throw new HttpsError('invalid-argument', 'è«‹é¸æ“‡æ­£ç¢ºçš„çå‹µï¼æ‰£è–ªæ—¥æœŸã€‚');
-  if (!['reward', 'deduction'].includes(type)) {
-    throw new HttpsError('invalid-argument', 'ç•°å‹•é¡å‹åªèƒ½é¸æ“‡çå‹µæˆ–æ‰£è–ªã€‚');
-  }
-  if (!Number.isFinite(amountValue) || amountValue <= 0 || amountValue > 1000000 || !Number.isInteger(amountValue)) {
-    throw new HttpsError('invalid-argument', 'é‡‘é¡å¿…é ˆæ˜¯ 1ï½1,000,000 å…ƒçš„æ•´æ•¸ã€‚');
-  }
-  if (note.length < 2 || note.length > 200) {
-    throw new HttpsError('invalid-argument', 'è«‹å¡«å¯« 2ï½200 å­—çš„çå‹µï¼æ‰£è–ªåŸå› ã€‚');
-  }
-  return {
-    id: `manual-${hash(requestId).slice(0, 32)}`,
-    requestId,
-    teacherId,
-    teacherName: clean(teacher.name || teacher.teacherName),
-    month: date.slice(0, 7),
-    date,
-    type,
-    amount: amountValue,
-    note,
-    source: 'admin-manual',
-    active: true
-  };
-}
-
-async function adminSaveTeacherAdjustment(data) {
-  const teacherId = clean(data && data.teacherId);
-  const teachers = await mirrorRowsIncludingInactive('teachers');
-  const teacher = teachers.find((row) => sourceId(row) === teacherId);
-  const adjustment = normalizeAdminTeacherAdjustment(data, teacher);
-  const ref = db.collection('coursePortalTeacherAdjustments').doc(adjustment.id);
-  let duplicate = false;
-  const createdAtText = nowText();
-  await db.runTransaction(async (tx) => {
-    const snapshot = await tx.get(ref);
-    if (snapshot.exists) {
-      const existing = snapshot.data() || {};
-      const sameRequest = ['requestId', 'teacherId', 'date', 'type', 'note'].every((key) =>
-        clean(existing[key]) === clean(adjustment[key])
-      ) && Number(existing.amount || 0) === adjustment.amount;
-      if (!sameRequest) throw new HttpsError('already-exists', 'é€™å€‹æ“ä½œè­˜åˆ¥ç¢¼å·²è¢«å…¶ä»–è–ªè³‡ç•°å‹•ä½¿ç”¨ã€‚');
-      duplicate = true;
-      return;
-    }
-    tx.set(ref, Object.assign({}, adjustment, {
-      createdAt: FieldValue.serverTimestamp(),
-      createdAtText,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: 'course-scheduler-admin'
-    }));
-  });
-  return {
-    ok: true,
-    duplicate,
-    adjustment: Object.assign({}, adjustment, { createdAtText }),
-    message: duplicate ? 'é€™ç­†è–ªè³‡ç•°å‹•å…ˆå‰å·²å„²å­˜ï¼Œæœªé‡è¤‡æ–°å¢ã€‚' : 'è€å¸«è–ªè³‡ç•°å‹•å·²å„²å­˜ã€‚'
-  };
-}
-
-async function publicRentalSettings() {
-  const rooms = await mirrorRows('rooms');
-  const [items, policy] = await Promise.all([rentalUseOptions(rooms), rentalPolicySettings()]);
-  return { ok: true, items, policy };
-}
-
-async function adminRentalSettingsData() {
-  const rooms = await mirrorRows('rooms');
-  const [items, policy, roomSettings] = await Promise.all([
-    rentalUseOptions(rooms),
-    rentalPolicySettings(),
-    db.collection('coursePortalRoomSettings').get()
-  ]);
-  const settingsMap = {};
-  roomSettings.docs.forEach((doc) => { settingsMap[doc.id] = doc.data() || {}; });
-  return {
-    ok: true,
-    items,
-    policy,
-    rooms: rooms.map((room) => {
-      const id = sourceId(room);
-      const setting = settingsMap[id] || {};
-      return {
-        id,
-        name: clean(room.name),
-        kind: roomKind(room, setting),
-        pianoType: configuredPianoType(room, setting),
-        rentalFee: effectiveRoomFee(room, setting),
-        rentable: roomRentable(room, setting),
-        teacherSchedulable: roomTeacherSchedulable(room, setting),
-        capacity: rentalRoomProfile(room, setting).capacity
-      };
-    })
-  };
-}
-
-async function adminScheduleConflictAudit(data) {
-  const startDate = dateKey(data && data.startDate) || currentTaipeiDay();
-  const days = Math.min(120, Math.max(1, Number(data && data.days || 35)));
-  const endDate = addDays(startDate, days - 1);
-  const bundle = await scheduleBundle(startDate, endDate, '');
-  return {
-    ok: true,
-    startDate,
-    endDate,
-    conflictCount: bundle.resourceConflicts.length,
-    conflicts: bundle.resourceConflicts
-  };
-}
-
-async function adminSaveRentalSettings(data) {
-  const rooms = await mirrorRows('rooms');
-  const allowed = new Set(rooms.map(sourceId));
-  const items = (Array.isArray(data.items) ? data.items : []).map((row, index) => ({
-    id: clean(row.id) || ('use-' + (index + 1)),
-    name: clean(row.name),
-    icon: clean(row.icon) || 'ğŸµ',
-    description: clean(row.description),
-    roomIds: (Array.isArray(row.roomIds) ? row.roomIds : []).map(clean).filter((id) => allowed.has(id)),
-    hourlyRate: row.hourlyRate === undefined || row.hourlyRate === null || row.hourlyRate === ''
-      ? null
-      : Math.max(0, Number(row.hourlyRate) || 0),
-    active: row.active !== false
-  })).filter((row) => row.name);
-  const policyInput = data.policy || {};
-  const businessHours = {};
-  Object.keys(DEFAULT_BUSINESS_HOURS).forEach((day) => {
-    const fallback = DEFAULT_BUSINESS_HOURS[day];
-    const row = policyInput.businessHours && policyInput.businessHours[day] || fallback;
-    businessHours[day] = {
-      closed: row.closed === true,
-      start: clean(row.start) || fallback.start,
-      end: clean(row.end) || fallback.end
-    };
-  });
-  const batch = db.batch();
-  batch.set(db.collection('coursePortalSettings').doc('rentalUses'), {
-    version: RENTAL_USES_VERSION,
-    items,
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedAtText: nowText()
-  }, { merge: true });
-  batch.set(db.collection('coursePortalSettings').doc('rentalPolicy'), {
-    version: 3,
-    businessHours,
-    studentDiscountRate: 0.5,
-    maxDurationMinutes: 300,
-    onsitePayment: true,
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedAtText: nowText()
-  }, { merge: true });
-  (Array.isArray(data.rooms) ? data.rooms : []).forEach((row) => {
-    const id = clean(row.id);
-    if (!allowed.has(id)) return;
-    batch.set(db.collection('coursePortalRoomSettings').doc(id), {
-      roomRulesVersion: 1,
-      kind: ['normal', 'video', 'holding'].includes(clean(row.kind)) ? clean(row.kind) : 'normal',
-      pianoType: normalizePianoType(row.pianoType) || 'none',
-      rentalFee: Math.max(0, Number(row.rentalFee || 0)),
-      rentable: row.rentable === true,
-      teacherSchedulable: row.teacherSchedulable !== false,
-      capacity: Math.max(1, Number(row.capacity || 1)),
-      rentalUseTypes: items.filter((item) =>
-        item.active !== false && item.roomIds.includes(id)
-      ).map((item) => item.id),
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedAtText: nowText()
-    }, { merge: true });
-  });
-  batch.set(scheduleVersionRef(), {
-    version: FieldValue.increment(1),
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedBy: 'admin-rental-settings'
-  }, { merge: true });
-  await batch.commit();
-  return adminRentalSettingsData();
-}
-
-async function adminSaveRoomEquipment(data) {
-  const roomId = clean(data.roomId);
-  if (!roomId) throw new HttpsError('invalid-argument', 'ç¼ºå°‘æ•™å®¤è³‡æ–™ã€‚');
-  const rooms = await mirrorRows('rooms');
-  const room = rooms.find((row) => sourceId(row) === roomId);
-  if (!room) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™é–“æ•™å®¤ã€‚');
-  const allowedEquipment = new Set([
-    'piano',
-    'digital_piano',
-    'grand_piano',
-    'upright_piano',
-    'acoustic_drums',
-    'electronic_drums',
-    'guzheng'
-  ]);
-  const pianoType = normalizePianoType(data.pianoType) || 'none';
-  const equipment = [...new Set(
-    (Array.isArray(data.equipment) ? data.equipment : [])
-      .map(clean)
-      .filter((value) => allowedEquipment.has(value))
-      .filter((value) => !['piano', 'digital_piano', 'grand_piano', 'upright_piano'].includes(value))
-      .concat(pianoType === 'none' ? [] : ['piano', pianoType])
-  )];
-  const policies = {};
-  const policyInput = data.policies && typeof data.policies === 'object' ? data.policies : {};
-  ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].forEach((day) => {
-    const dayInput = policyInput[day] && typeof policyInput[day] === 'object' ? policyInput[day] : {};
-    policies[day] = {};
-    Object.keys(dayInput).forEach((time) => {
-      if (!validPortalTime(time, true)) return;
-      const slot = dayInput[time] || {};
-      policies[day][time] = {
-        blockSchedule: slot.blockSchedule === true,
-        blockRental: slot.blockRental === true,
-        subjectIds: Array.isArray(slot.subjectIds) ? slot.subjectIds.map(clean).filter(Boolean) : []
-      };
-    });
-  });
-  const active = data.active !== false;
-  const setting = {
-    roomRulesVersion: 1,
-    active,
-    pianoType,
-    rentalEquipment: equipment,
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedAtText: nowText()
-  };
-  if (data.publicName !== undefined) setting.publicName = clean(data.publicName);
-  if (data.note !== undefined) setting.note = clean(data.note);
-  if (data.rentalFee !== undefined) setting.rentalFee = Math.max(0, Number(data.rentalFee || 0));
-  if (data.capacity !== undefined) setting.capacity = Math.max(1, Number(data.capacity || 1));
-  if (data.allowedSubjectIds !== undefined) {
-    setting.allowedSubjectIds = Array.isArray(data.allowedSubjectIds)
-      ? data.allowedSubjectIds.map(clean).filter(Boolean)
-      : [];
-  }
-  if (data.rentalUseTypes !== undefined || data.useTypes !== undefined) {
-    const publicUseTypes = new Set(RENTAL_USE_OPTIONS.map((row) => row.id));
-    setting.rentalUseTypes = [...new Set(
-      firstArray(data, ['rentalUseTypes', 'useTypes'])
-        .map((value) => ['guitar', 'teaching'].includes(clean(value)) ? 'other' : clean(value))
-        .filter((value) => publicUseTypes.has(value))
-    )];
-  }
-  if (data.policies !== undefined) setting.policies = policies;
-  setting.rentable = active && data.rentable !== false;
-  setting.teacherSchedulable = active && data.teacherSchedulable !== false;
-  const batch = db.batch();
-  batch.set(db.collection('coursePortalRoomSettings').doc(roomId), setting, { merge: true });
-  batch.set(scheduleVersionRef(), {
-    version: FieldValue.increment(1),
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedBy: 'admin-room-equipment'
-  }, { merge: true });
-  await batch.commit();
-  return {
-    ok: true,
-    roomId,
-    pianoType: pianoType === 'none' ? '' : pianoType,
-    equipment
-  };
-}
-
-function managerAuthenticated(request) {
-  const token = request && request.auth && request.auth.token || {};
-  return token.manager === true || clean(token.role).toLowerCase() === 'admin';
-}
-
-function assertAdminPin(request) {
-  if (managerAuthenticated(request)) return;
-  const value = clean(request && request.data && request.data.adminPin);
-  let expected = '';
-  try { expected = clean(ADMIN_PIN.value()); } catch (_) { expected = clean(process.env.INJIAOYUN_MANUAL_SYNC_PIN); }
-  if (!expected || !safeEqual(value, expected)) throw new HttpsError('permission-denied', 'ç®¡ç†è€…ç™»å…¥ç‹€æ…‹å·²å¤±æ•ˆï¼Œè«‹é‡æ–°ç™»å…¥ã€‚');
-}
-
-async function adminRentalIdentityResolver() {
-  const [teachers, students, renters, teacherBindings, studentBindings, renterBindings] = await Promise.all([
-    mirrorRows('teachers'),
-    mirrorRows('students'),
-    db.collection('coursePortalRenters').get(),
-    db.collection('coursePortalTeacherBindings').get(),
-    db.collection('coursePortalStudentBindings').get(),
-    db.collection('coursePortalRenterBindings').get()
-  ]);
-  const teacherMap = indexById(teachers);
-  const studentMap = indexById(students);
-  const renterMap = {};
-  renters.docs.forEach((doc) => { renterMap[doc.id] = doc.data() || {}; });
-  const identities = new Map();
-  const add = (key, identity) => {
-    if (!key || identities.has(key) || (!identity.name && !identity.phone)) return;
-    identities.set(key, identity);
-  };
-  const addBinding = (role, doc) => {
-    const row = doc.data() || {};
-    if (clean(row.status) !== 'active') return;
-    const targetId = role === 'teacher'
-      ? clean(row.teacherId)
-      : (role === 'student' ? clean(row.studentId) : clean(row.renterId));
-    const profile = role === 'teacher'
-      ? teacherMap[targetId] || {}
-      : (role === 'student' ? studentMap[targetId] || {} : renterMap[targetId] || {});
-    const identity = {
-      name: safeRentalDisplayName(row.name || row.displayName || profile.name || profile.displayName || row.lineDisplayName),
-      phone: normalizePhone(sourcePhone(profile) || row.phone),
-      studentId: role === 'student' ? targetId : ''
-    };
-    add(`${role}:target:${targetId}`, identity);
-    add(`${role}:account:${clean(row.authAccountId)}`, identity);
-    add(`${role}:line:${clean(row.lineUserId)}`, identity);
-  };
-  teacherBindings.docs.forEach((doc) => addBinding('teacher', doc));
-  studentBindings.docs.forEach((doc) => addBinding('student', doc));
-  renterBindings.docs.forEach((doc) => addBinding('renter', doc));
-
-  return (row) => {
-    const role = clean(row.role);
-    const targetId = role === 'teacher'
-      ? clean(row.teacherId)
-      : (role === 'student' ? clean(row.rentalStudentId) : clean(row.renterId));
-    const ownerKey = clean(row.ownerKey);
-    const keys = [
-      targetId ? `${role}:target:${targetId}` : '',
-      ownerKey ? `${role}:${ownerKey}` : '',
-      clean(row.authAccountId) ? `${role}:account:${clean(row.authAccountId)}` : '',
-      clean(row.lineUserId) ? `${role}:line:${clean(row.lineUserId)}` : ''
-    ].filter(Boolean);
-    const fallback = keys.map((key) => identities.get(key)).find(Boolean) || {};
-    return {
-      name: safeRentalDisplayName(row.clientName || row.renterName || fallback.name),
-      phone: normalizePhone(row.clientPhone || fallback.phone),
-      studentId: clean(row.rentalStudentId || fallback.studentId)
-    };
-  };
-}
-
-async function adminRoomBookings() {
-  const [snapshot, resolveIdentity] = await Promise.all([
-    db.collection('coursePortalRoomBookings').get(),
-    adminRentalIdentityResolver()
-  ]);
-  const bookings = snapshot.docs.map((doc) => {
-    const row = jsonValue(doc.data()) || {};
-    const identity = resolveIdentity(row);
-    return {
-      id: doc.id,
-      date: dateKey(row.date),
-      startTime: eventStart(row),
-      endTime: eventEnd(row),
-      durationMinutes: Math.max(30, Number(row.durationMinutes || row.duration ||
-        (timeMinutes(eventEnd(row)) - timeMinutes(eventStart(row))) || 60)),
-      roomId: clean(row.roomId),
-      roomName: clean(row.roomName),
-      useType: clean(row.useType),
-      useName: clean(row.useName),
-      recordingUsage: clean(row.recordingUsage),
-      recordingUsageName: clean(row.recordingUsageName),
-      purpose: clean(row.purpose),
-      clientName: identity.name,
-      clientPhone: identity.phone,
-      role: clean(row.role),
-      rentalStudentId: identity.studentId,
-      amount: Number(row.amount || row.rentalFee || 0),
-      paymentStatus: clean(row.paymentStatus),
-      priceType: clean(row.priceType),
-      status: clean(row.status || (row.active === false ? 'cancelled' : 'confirmed')),
-      active: row.active !== false,
-      createdAtText: clean(row.createdAtText),
-      cancelledAtText: clean(row.cancelledAtText),
-      cancellationReason: clean(row.cancellationReason),
-      source: 'course-portal'
-    };
-  }).filter((row) => row.date && row.startTime && row.roomId);
-  return { ok: true, bookings, updatedAt: new Date().toISOString() };
-}
-
-async function adminCancelRoomBooking(data) {
-  const bookingId = clean(data.bookingId);
-  const reason = clean(data.reason).slice(0, 200);
-  if (!bookingId) throw new HttpsError('invalid-argument', 'ç¼ºå°‘ç§Ÿç”¨ç´€éŒ„ã€‚');
-  const bookingRef = db.collection('coursePortalRoomBookings').doc(bookingId);
-  const changeRef = db.collection('coursePortalScheduleChanges').doc(`rental-${bookingId}`);
-  const versionRef = scheduleVersionRef();
-  const lockSnapshot = await db.collection('coursePortalRoomLocks').where('bookingId', '==', bookingId).get();
-  let cancelledBooking = null;
-  await db.runTransaction(async (tx) => {
-    const [bookingSnapshot, versionSnapshot] = await Promise.all([
-      tx.get(bookingRef),
-      tx.get(versionRef)
-    ]);
-    assertScheduleWritable(versionSnapshot);
-    if (!bookingSnapshot.exists) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ç­†ç§Ÿç”¨ç´€éŒ„ã€‚');
-    const booking = bookingSnapshot.data() || {};
-    if (booking.active === false || clean(booking.status) === 'cancelled') {
-      throw new HttpsError('failed-precondition', 'é€™ç­†ç§Ÿç”¨å·²ç¶“å–æ¶ˆã€‚');
-    }
-    cancelledBooking = booking;
-    const cancellation = {
-      active: false,
-      status: 'cancelled',
-      cancelledAt: FieldValue.serverTimestamp(),
-      cancelledAtText: nowText(),
-      cancelledBy: 'admin',
-      cancellationReason: reason || 'ç®¡ç†è€…å¼·åˆ¶å–æ¶ˆ',
-      updatedAt: FieldValue.serverTimestamp()
-    };
-    tx.set(bookingRef, cancellation, { merge: true });
-    tx.set(changeRef, cancellation, { merge: true });
-    const lockRefs = new Map();
-    (Array.isArray(booking.lockIds) ? booking.lockIds : []).map(clean).filter(Boolean).forEach((lockId) => {
-      const ref = db.collection('coursePortalRoomLocks').doc(lockId);
-      lockRefs.set(ref.path, ref);
-    });
-    lockSnapshot.docs.forEach((doc) => lockRefs.set(doc.ref.path, doc.ref));
-    lockRefs.forEach((ref) => tx.delete(ref));
-    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
-    tx.set(versionRef, {
-      version: currentVersion + 1,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: 'admin-room-booking-cancel'
-    }, { merge: true });
-  });
-
-  await db.collection('notificationQueue').doc(`course-portal-booking-${bookingId}-reminder`).set({
-    status: 'å·²å–æ¶ˆ',
-    active: false,
-    cancelledAt: FieldValue.serverTimestamp(),
-    cancelledAtText: nowText()
-  }, { merge: true }).catch((error) => {
-    console.error('[course portal admin rental reminder cancellation failed]', bookingId, error);
-  });
-  if (clean(cancelledBooking && cancelledBooking.lineUserId)) {
-    const cancellationText = [
-      'æ•™å®¤ç§Ÿç”¨å·²ç”±ç®¡ç†è€…å–æ¶ˆã€‚',
-      `æ•™å®¤ï¼š${clean(cancelledBooking.roomName) || 'æ•™å®¤'}`,
-      `æ™‚é–“ï¼š${dateKey(cancelledBooking.date)} ${eventStart(cancelledBooking)}ï½${eventEnd(cancelledBooking)}`,
-      reason ? `åŸå› ï¼š${reason}` : ''
-    ].filter(Boolean).join('\n');
-    await db.collection('notificationQueue').doc(`course-portal-booking-${bookingId}-admin-cancel`).set({
-      queueId: `course-portal-booking-${bookingId}-admin-cancel`,
-      channel: 'line',
-      targetLineUserId: clean(cancelledBooking.lineUserId),
-      title: 'æ•™å®¤ç§Ÿç”¨å–æ¶ˆé€šçŸ¥',
-      body: cancellationText,
-      message: cancellationText,
-      bookingId,
-      source: 'course-portal-admin-cancellation',
-      status: 'å¾…ç™¼é€',
-      scheduledAt: Timestamp.fromMillis(Date.now()),
-      createdAt: FieldValue.serverTimestamp(),
-      createdAtText: nowText()
-    }, { merge: true }).catch((error) => {
-      console.error('[course portal admin rental cancellation notice failed]', bookingId, error);
-    });
-  }
-  return { ok: true, bookingId, status: 'cancelled', message: 'ç§Ÿç”¨å·²å¼·åˆ¶å–æ¶ˆï¼Œæ•™å®¤æ™‚æ®µå·²é‡‹æ”¾ã€‚' };
-}
-
-function adminTuitionPaymentRow(doc) {
-  const source = doc.data ? doc.data() || {} : doc || {};
-  return {
-    id: clean(source.id || doc.id),
-    studentId: clean(source.studentId),
-    studentName: clean(source.studentName),
-    subjectName: clean(source.subjectName),
-    teacherName: clean(source.teacherName),
-    nextPeriodNo: Number(source.nextPeriodNo || 0),
-    nextSystemPeriodNo: Number(source.nextSystemPeriodNo || 0),
-    lessonCount: Number(source.lessonCount || 4),
-    expectedAmount: Number(source.expectedAmount || 0),
-    confirmedAmount: Number(source.confirmedAmount || 0),
-    remainingAmount: Math.max(0, Number(
-      source.remainingAmount != null
-        ? source.remainingAmount
-        : Number(source.expectedAmount || 0) - Number(source.confirmedAmount || 0)
-    )),
-    paymentMethod: clean(source.paymentMethod),
-    status: clean(source.status),
-    transferDate: dateKey(source.transferDate),
-    transferLast5: clean(source.transferLast5).slice(-5),
-    submittedAtText: clean(source.submittedAtText),
-    reviewNote: clean(source.reviewNote),
-    hasReceipt: Boolean(clean(source.receiptStoragePath)),
-    submissionRevision: Number(source.submissionRevision || 0)
-  };
-}
-
-async function adminTuitionPaymentScreenshot(data) {
-  const id = clean(data.id);
-  if (!id) throw new HttpsError('invalid-argument', 'ç¼ºå°‘å­¸è²»ä»˜æ¬¾è³‡æ–™ã€‚');
-  const snapshot = await db.collection(TUITION_PAYMENT_REQUESTS).doc(id).get();
-  if (!snapshot.exists) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ç­†å­¸è²»ä»˜æ¬¾è³‡æ–™ã€‚');
-  const row = snapshot.data() || {};
-  const storagePath = clean(row.receiptStoragePath);
-  if (!storagePath) throw new HttpsError('not-found', 'é€™ç­†è³‡æ–™æ²’æœ‰åŒ¯æ¬¾æˆªåœ–ã€‚');
-  const [buffer] = await admin.storage().bucket().file(storagePath).download();
-  if (!buffer.length || buffer.length > TUITION_RECEIPT_MAX_BYTES) {
-    throw new HttpsError('failed-precondition', 'åŒ¯æ¬¾æˆªåœ–å¤§å°ç•°å¸¸ï¼Œè«‹è«‹å­¸ç”Ÿé‡æ–°ä¸Šå‚³ã€‚');
-  }
-  const contentType = clean(row.receiptContentType) || 'image/jpeg';
-  return {
-    ok: true,
-    id,
-    contentType,
-    dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`
-  };
-}
-
-function escapeReceiptText(value) {
-  return clean(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-async function receiptTextLayer(value, fontSize) {
-  return sharp({
-    text: {
-      text: `<span foreground="#343a30">${escapeReceiptText(value)}</span>`,
-      font: `Noto Sans TC ${fontSize}`,
-      fontfile: TUITION_RECEIPT_FONT,
-      dpi: 96,
-      rgba: true
-    }
-  }).png().toBuffer({ resolveWithObject: true });
-}
-
-async function renderTuitionReceiptPng(receipt) {
-  const parts = (dateKey(receipt.paymentDate) || currentTaipeiDay()).split('-');
-  const amount = Math.max(0, Number(receipt.amount || 0)).toLocaleString('zh-TW');
-  const specs = [
-    { value: parts[0] || '', fontSize: 26, centerX: 263, top: 259 },
-    { value: parts[1] || '', fontSize: 26, centerX: 434, top: 259 },
-    { value: parts[2] || '', fontSize: 26, centerX: 607, top: 259 },
-    { value: receipt.studentName || 'å­¸ç”Ÿ', fontSize: 29, centerX: 457, top: 366 },
-    { value: amount, fontSize: 31, centerX: 433, top: 474 }
-  ];
-  const layers = await Promise.all(specs.map((spec) => receiptTextLayer(spec.value, spec.fontSize)));
-  return sharp(TUITION_RECEIPT_TEMPLATE)
-    .composite(layers.map((layer, index) => ({
-      input: layer.data,
-      left: Math.max(0, Math.round(specs[index].centerX - layer.info.width / 2)),
-      top: specs[index].top
-    })))
-    .png({ compressionLevel: 9, quality: 100 })
-    .toBuffer();
-}
-
-async function saveTuitionReceiptImage(receiptId, buffer) {
-  const storagePath = `course-portal/tuition-receipts/${clean(receiptId)}.png`;
-  const downloadToken = crypto.randomUUID();
-  const bucket = admin.storage().bucket();
-  await bucket.file(storagePath).save(buffer, {
-    resumable: false,
-    metadata: {
-      contentType: 'image/png',
-      cacheControl: 'private, max-age=0, no-transform',
-      metadata: {
-        firebaseStorageDownloadTokens: downloadToken,
-        tuitionReceiptId: clean(receiptId)
-      }
-    }
-  });
-  const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(downloadToken)}`;
-  return { storagePath, downloadToken, imageUrl };
-}
-
-function adminTuitionReceiptRow(doc) {
-  const source = doc.data ? doc.data() || {} : doc || {};
-  return {
-    id: clean(source.id || doc.id),
-    receiptNo: clean(source.receiptNo),
-    studentId: clean(source.studentId),
-    studentName: clean(source.studentName),
-    paymentDate: dateKey(source.paymentDate),
-    amount: Number(source.amount || 0),
-    method: clean(source.method),
-    imageUrl: clean(source.imageUrl),
-    renderStatus: clean(source.renderStatus),
-    lineDeliveryStatus: clean(source.lineDeliveryStatus),
-    lineRecipientCount: Number(source.lineRecipientCount || 0),
-    createdAtText: clean(source.createdAtText)
-  };
-}
-
-async function adminEnsureTuitionReceipt(data) {
-  const periodId = clean(data.periodId);
-  if (!periodId) throw new HttpsError('invalid-argument', 'ç¼ºå°‘å­¸è²»æœŸåˆ¥è³‡æ–™ã€‚');
-  const periods = await mirrorRows('tuitionPeriods');
-  const period = periods.find((row) => sourceId(row) === periodId);
-  if (!period) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ç­†å­¸è²»æœŸåˆ¥ã€‚');
-  const transactions = Array.isArray(period.transactions) ? period.transactions : [];
-  const requestedId = clean(data.transactionId);
-  const requestedIndex = Number.isInteger(Number(data.transactionIndex)) ? Number(data.transactionIndex) : -1;
-  let transactionIndex = transactions.findIndex((row) => requestedId && clean(row && row.id) === requestedId);
-  if (transactionIndex < 0 && requestedIndex >= 0 && requestedIndex < transactions.length) transactionIndex = requestedIndex;
-  if (transactionIndex < 0) {
-    const requestedDate = dateKey(data.paymentDate);
-    const requestedAmount = Math.max(0, Number(data.amount || 0));
-    const requestedMethod = clean(data.method);
-    transactionIndex = transactions.findIndex((row) =>
-      clean(row && row.type) !== 'refund' &&
-      dateKey(row && (row.date || row.created)) === requestedDate &&
-      transactionAmount(row) === requestedAmount &&
-      clean(row && (row.method || row.payType || row.paymentMethod)) === requestedMethod
-    );
-  }
-  const transaction = transactions[transactionIndex];
-  if (!transaction || clean(transaction.type) === 'refund') {
-    throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°å¯é–‹ç«‹æ”¶æ“šçš„æ”¶è²»ç´€éŒ„ã€‚');
-  }
-  const amount = transactionAmount(transaction);
-  if (!amount) throw new HttpsError('failed-precondition', 'é€™ç­†æ”¶è²»é‡‘é¡ç‚º 0ï¼Œç„¡æ³•é–‹ç«‹æ”¶æ“šã€‚');
-  const studentId = clean(period.studentId);
-  const students = await mirrorRows('students');
-  const student = students.find((row) => sourceId(row) === studentId) || {};
-  const paymentDate = dateKey(transaction.date || transaction.created || period.startDate) || currentTaipeiDay();
-  const method = clean(transaction.method || transaction.payType || transaction.paymentMethod) || 'æ—¢æœ‰ç¹³è²»';
-  const actualTransactionId = clean(transaction.id);
-  const identity = `${periodId}|${actualTransactionId}|${transactionIndex}|${paymentDate}|${amount}|${method}`;
-  const receiptId = `tuition-receipt-history-${hash(identity).slice(0, 24)}`;
-  const receiptNo = `RCT-${paymentDate.replace(/-/g, '')}-${hash(identity).slice(0, 6).toUpperCase()}`;
-  const receiptRef = db.collection(TUITION_RECEIPTS).doc(receiptId);
-  const existing = await receiptRef.get();
-  const existingRow = existing.exists ? existing.data() || {} : {};
-  if (clean(existingRow.imageUrl)) {
-    return {
-      ok: true,
-      receiptId,
-      receiptNo: clean(existingRow.receiptNo) || receiptNo,
-      receiptImageUrl: clean(existingRow.imageUrl),
-      created: false
-    };
-  }
-  await receiptRef.set({
-    id: receiptId,
-    receiptNo,
-    active: true,
-    source: 'historical-admin-backfill',
-    status: 'issued',
-    renderStatus: 'pending',
-    studentId,
-    studentName: clean(student.name) || clean(period.studentName) || 'å­¸ç”Ÿ',
-    subjectId: clean(period.subjectId),
-    periodId,
-    transactionId: actualTransactionId,
-    transactionIndex,
-    paymentDate,
-    amount,
-    method,
-    printWidthCm: 15,
-    printHeightCm: 10,
-    lineDeliveryStatus: 'historical_not_sent',
-    createdAt: existing.exists ? (existingRow.createdAt || FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
-    createdAtText: clean(existingRow.createdAtText) || nowText(),
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true });
-  try {
-    const receiptBuffer = await renderTuitionReceiptPng({
-      paymentDate,
-      studentName: clean(student.name) || clean(period.studentName) || 'å­¸ç”Ÿ',
-      amount
-    });
-    const savedReceipt = await saveTuitionReceiptImage(receiptId, receiptBuffer);
-    await receiptRef.set({
-      renderStatus: 'ready',
-      imageUrl: savedReceipt.imageUrl,
-      imageStoragePath: savedReceipt.storagePath,
-      imageContentType: 'image/png',
-      imageBytes: receiptBuffer.length,
-      renderedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    return {
-      ok: true,
-      receiptId,
-      receiptNo,
-      receiptImageUrl: savedReceipt.imageUrl,
-      created: true
-    };
-  } catch (error) {
-    const message = clean(error && error.message) || 'æ”¶æ“šåœ–ç‰‡ç”¢ç”Ÿå¤±æ•—';
-    await receiptRef.set({
-      renderStatus: 'failed',
-      renderError: message.slice(0, 500),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    throw new HttpsError('internal', `æ”¶æ“šå»ºç«‹å¤±æ•—ï¼š${message}`);
-  }
-}
-
-async function adminTuitionPaymentAction(data) {
-  const id = clean(data.id);
-  const action = clean(data.action);
-  if (!id || !['confirm', 'reject'].includes(action)) {
-    throw new HttpsError('invalid-argument', 'å­¸è²»ä»˜æ¬¾ç°½æ ¸è³‡æ–™ä¸å®Œæ•´ã€‚');
-  }
-  const requestRef = db.collection(TUITION_PAYMENT_REQUESTS).doc(id);
-  const preview = await requestRef.get();
-  if (!preview.exists) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ç­†å­¸è²»ä»˜æ¬¾è³‡æ–™ã€‚');
-  const previewRow = Object.assign({ id: preview.id }, preview.data() || {});
-  if (!['pending_review', 'onsite_pending'].includes(clean(previewRow.status))) {
-    throw new HttpsError('failed-precondition', 'é€™ç­†å­¸è²»ç›®å‰ä¸æ˜¯ç­‰å¾…ä¸»ç®¡ç¢ºèªçš„ç‹€æ…‹ã€‚');
-  }
-  if (action === 'reject') {
-    const reviewNote = clean(data.reviewNote) || 'åŒ¯æ¬¾è³‡æ–™ç„¡æ³•ç¢ºèªï¼Œè«‹é‡æ–°ä¸Šå‚³æ¸…æ¥šçš„ä»˜æ¬¾è³‡æ–™ã€‚';
-    await requestRef.set({
-      status: 'needs_resubmission',
-      reviewNote,
-      rejectedAt: FieldValue.serverTimestamp(),
-      rejectedAtText: nowText(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    const body = [
-      `${clean(previewRow.studentName) || 'åŒå­¸'}æ‚¨å¥½ï¼Œæ‚¨é€å‡ºçš„${newSystemTuitionPeriodLabel(previewRow, 'next')}å­¸è²»è³‡æ–™éœ€è¦é‡æ–°ç¢ºèªã€‚`,
-      `åŸå› ï¼š${reviewNote}`,
-      `è«‹é‡æ–°é€²å…¥å­¸ç”Ÿå…¥å£ä¸Šå‚³ï¼š${PORTAL_BASE}/student-course-portal.html?studentId=${encodeURIComponent(clean(previewRow.studentId))}`
-    ].join('\n');
-    await queueStudentTuitionNotice(previewRow, 'å­¸è²»è³‡æ–™è«‹é‡æ–°ä¸Šå‚³', body, `rejected-${Number(previewRow.submissionRevision || 0)}`);
-    return { ok: true, id, status: 'needs_resubmission', message: 'å·²é€€å›å­¸ç”Ÿé‡æ–°ä¸Šå‚³ã€‚' };
-  }
-
-  const priorConfirmed = Math.max(0, Number(previewRow.confirmedAmount || 0));
-  const remainingBefore = Math.max(0, Number(previewRow.expectedAmount || 0) - priorConfirmed);
-  const confirmedAmount = Math.max(0, Number(data.confirmedAmount || remainingBefore || 0));
-  if (!confirmedAmount) throw new HttpsError('invalid-argument', 'è«‹è¼¸å…¥å¯¦éš›æ”¶åˆ°çš„å­¸è²»é‡‘é¡ã€‚');
-  if (confirmedAmount > remainingBefore) {
-    throw new HttpsError('invalid-argument', `æœ¬æ¬¡é‡‘é¡ä¸å¯è¶…éå°šæœªç¹³æ¸…çš„ NT$${remainingBefore.toLocaleString('zh-TW')}ã€‚`);
-  }
-  const paymentMethod = clean(previewRow.paymentMethod);
-  if (!['bank_transfer', 'onsite'].includes(paymentMethod)) {
-    throw new HttpsError('failed-precondition', 'é€™ç­†è³‡æ–™æ²’æœ‰æ­£ç¢ºçš„ä»˜æ¬¾æ–¹å¼ã€‚');
-  }
-  const targetPeriodId = clean(previewRow.targetPeriodId);
-  const formalPeriodId = targetPeriodId || `portal-period-${id}`;
-  const periodRef = db.collection(TUITION_PERIODS).doc(formalPeriodId);
-  const transactionRevision = Math.max(1, Number(previewRow.submissionRevision || 1));
-  const transactionRef = db.collection(TUITION_TRANSACTIONS).doc(`portal-payment-${id}-${transactionRevision}`);
-  const paymentDate = paymentMethod === 'bank_transfer'
-    ? (dateKey(previewRow.transferDate) || currentTaipeiDay())
-    : currentTaipeiDay();
-  const receiptId = `tuition-receipt-${transactionRef.id}`;
-  const receiptRef = db.collection(TUITION_RECEIPTS).doc(receiptId);
-  const receiptNo = `RCT-${paymentDate.replace(/-/g, '')}-${hash(transactionRef.id).slice(0, 6).toUpperCase()}`;
-  await db.runTransaction(async (tx) => {
-    const [requestSnapshot, periodSnapshot, transactionSnapshot] = await Promise.all([
-      tx.get(requestRef),
-      tx.get(periodRef),
-      tx.get(transactionRef)
-    ]);
-    const requestRow = requestSnapshot.exists ? requestSnapshot.data() || {} : null;
-    if (!requestRow || !['pending_review', 'onsite_pending'].includes(clean(requestRow.status))) {
-      throw new HttpsError('failed-precondition', 'é€™ç­†å­¸è²»å·²è¢«å…¶ä»–äººè™•ç†ï¼Œè«‹é‡æ–°æ•´ç†ã€‚');
-    }
-    const currentConfirmed = Math.max(0, Number(requestRow.confirmedAmount || 0));
-    const currentRemaining = Math.max(0, Number(requestRow.expectedAmount || 0) - currentConfirmed);
-    if (confirmedAmount > currentRemaining) {
-      throw new HttpsError('failed-precondition', 'é€™ç­†å­¸è²»å‰›å‰›å·²ç”±å…¶ä»–è£ç½®æ›´æ–°ï¼Œè«‹é‡æ–°æ•´ç†å¾Œå†ç¢ºèªã€‚');
-    }
-    const cumulativeConfirmed = currentConfirmed + confirmedAmount;
-    const remainingAmount = Math.max(0, Number(requestRow.expectedAmount || 0) - cumulativeConfirmed);
-    if (!targetPeriodId && !periodSnapshot.exists) {
-      tx.set(periodRef, {
-        id: formalPeriodId,
-        active: true,
-        source: 'course-portal',
-        studentId: clean(requestRow.studentId),
-        subjectId: clean(requestRow.subjectId),
-        teacherId: clean(requestRow.teacherId),
-        planId: clean(requestRow.planId),
-        planSnapshot: jsonValue(requestRow.planSnapshot || {}),
-        periodNo: Number(requestRow.nextPeriodNo || 0),
-        lessonCount: Number(requestRow.lessonCount || 4),
-        usedCount: 0,
-        expectedAmount: Number(requestRow.expectedAmount || confirmedAmount),
-        paidAmount: 0,
-        status: 'active',
-        paymentRequestId: id,
-        createdAt: FieldValue.serverTimestamp(),
-        createdAtText: nowText(),
-        updatedAt: FieldValue.serverTimestamp()
-      });
-    }
-    if (!transactionSnapshot.exists) {
-      tx.set(transactionRef, {
-        id: transactionRef.id,
-        active: true,
-        status: 'confirmed',
-        source: 'course-portal',
-        type: 'payment',
-        studentId: clean(requestRow.studentId),
-        periodId: formalPeriodId,
-        paymentRequestId: id,
-        receiptId,
-        receiptNo,
-        date: paymentDate,
-        amount: confirmedAmount,
-        method: paymentMethod === 'bank_transfer' ? 'è½‰å¸³' : 'ç¾å ´ç¹³è²»',
-        transferLast5: clean(requestRow.transferLast5).slice(-5),
-        confirmedAt: FieldValue.serverTimestamp(),
-        confirmedAtText: nowText(),
-        createdAt: FieldValue.serverTimestamp()
-      });
-    }
-    tx.set(receiptRef, {
-      id: receiptId,
-      receiptNo,
-      active: true,
-      source: 'course-portal',
-      status: 'issued',
-      renderStatus: 'pending',
-      studentId: clean(requestRow.studentId),
-      studentName: clean(requestRow.studentName) || clean(previewRow.studentName) || 'å­¸ç”Ÿ',
-      subjectId: clean(requestRow.subjectId),
-      subjectName: clean(requestRow.subjectName),
-      periodId: formalPeriodId,
-      paymentRequestId: id,
-      transactionId: transactionRef.id,
-      paymentDate,
-      amount: confirmedAmount,
-      method: paymentMethod === 'bank_transfer' ? 'è½‰å¸³' : 'ç¾å ´ç¹³è²»',
-      printWidthCm: 15,
-      printHeightCm: 10,
-      lineDeliveryStatus: 'pending',
-      createdAt: FieldValue.serverTimestamp(),
-      createdAtText: nowText(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    tx.set(requestRef, {
-      status: remainingAmount > 0 ? 'payment_due' : 'confirmed',
-      confirmedAmount: cumulativeConfirmed,
-      remainingAmount,
-      formalPeriodId,
-      paymentDate,
-      confirmedAt: FieldValue.serverTimestamp(),
-      confirmedAtText: nowText(),
-      reviewNote: '',
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-  });
-  const methodText = paymentMethod === 'bank_transfer' ? 'è½‰å¸³' : 'ç¾å ´ç¹³è²»';
-  const confirmedRow = Object.assign({}, previewRow, {
-    id,
-    confirmedAmount: priorConfirmed + confirmedAmount,
-    remainingAmount: Math.max(0, remainingBefore - confirmedAmount),
-    formalPeriodId,
-    status: remainingBefore - confirmedAmount > 0 ? 'payment_due' : 'confirmed'
-  });
-  const remainingAmount = Math.max(0, remainingBefore - confirmedAmount);
-  let receiptImageUrl = '';
-  let receiptRenderError = '';
-  try {
-    const receiptBuffer = await renderTuitionReceiptPng({
-      paymentDate,
-      studentName: clean(previewRow.studentName) || 'å­¸ç”Ÿ',
-      amount: confirmedAmount
-    });
-    const savedReceipt = await saveTuitionReceiptImage(receiptId, receiptBuffer);
-    receiptImageUrl = savedReceipt.imageUrl;
-    await Promise.all([
-      receiptRef.set({
-        renderStatus: 'ready',
-        imageUrl: receiptImageUrl,
-        imageStoragePath: savedReceipt.storagePath,
-        imageContentType: 'image/png',
-        imageBytes: receiptBuffer.length,
-        renderedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true }),
-      transactionRef.set({
-        receiptId,
-        receiptNo,
-        receiptImageUrl,
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true }),
-      requestRef.set({
-        latestReceiptId: receiptId,
-        latestReceiptNo: receiptNo,
-        latestReceiptImageUrl: receiptImageUrl,
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true })
-    ]);
-  } catch (error) {
-    receiptRenderError = clean(error && error.message) || 'æ”¶æ“šåœ–ç‰‡ç”¢ç”Ÿå¤±æ•—';
-    console.error('[tuition receipt render failed]', receiptId, error);
-    await receiptRef.set({
-      renderStatus: 'failed',
-      renderError: receiptRenderError.slice(0, 500),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-  }
-  const body = [
-    `${clean(previewRow.studentName) || 'åŒå­¸'}æ‚¨å¥½ï¼Œå·²æ”¶åˆ°å­¸è²» NT$${confirmedAmount.toLocaleString('zh-TW')}ã€‚`,
-    `èª²ç¨‹ï¼š${clean(previewRow.subjectName) || 'èª²ç¨‹'}ãƒ»${newSystemTuitionPeriodLabel(previewRow, 'next')}`,
-    `ä»˜æ¬¾æ–¹å¼ï¼š${paymentMethod === 'bank_transfer' ? 'è½‰å¸³' : 'ç¾å ´ç¹³è²»'}`,
-    remainingAmount > 0 ? `å°šæœªç¹³æ¸…ï¼šNT$${remainingAmount.toLocaleString('zh-TW')}` : 'æœ¬æœŸå­¸è²»å·²ç¹³æ¸…ã€‚',
-    receiptImageUrl ? 'æ”¶æ“šå¦‚é™„åœ–ï¼Œè«‹ç•™å­˜ã€‚' : 'æ”¶æ“šå·²å»ºç«‹ï¼Œå¦‚éœ€è£œå°è«‹è¯çµ¡æŸšå­æ¨‚å™¨ã€‚',
-    'è¬è¬æ‚¨ã€‚'
-  ].join('\n');
-  const lineRecipientCount = await queueStudentTuitionNotice(
-    confirmedRow,
-    remainingAmount > 0 ? 'å­¸è²»å·²éƒ¨åˆ†å…¥å¸³' : 'ä¸‹ä¸€æœŸå­¸è²»å·²ç¢ºèª',
-    body,
-    `confirmed-${Number(previewRow.submissionRevision || 0)}`,
-    {
-      forceBoundDelivery: true,
-      receiptId,
-      imageUrl: receiptImageUrl
-    }
-  );
-  await receiptRef.set({
-    lineDeliveryStatus: lineRecipientCount > 0 ? 'queued' : 'not_bound',
-    lineRecipientCount,
-    lineQueuedAt: lineRecipientCount > 0 ? FieldValue.serverTimestamp() : null,
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true });
-  return {
-    ok: true,
-    id,
-    status: remainingAmount > 0 ? 'payment_due' : 'confirmed',
-    formalPeriodId,
-    remainingAmount,
-    receiptId,
-    receiptNo,
-    receiptImageUrl,
-    receiptRenderError,
-    lineRecipientCount,
-    message: remainingAmount > 0
-      ? `å·²ç¢ºèªæœ¬æ¬¡æ”¶æ¬¾ï¼Œå°šé¤˜ NT$${remainingAmount.toLocaleString('zh-TW')}ã€‚`
-      : 'å·²ç¢ºèªæ”¶æ¬¾ä¸¦å»ºç«‹æ­£å¼ä¸‹ä¸€æœŸå­¸è²»ç´€éŒ„ã€‚'
-  };
-}
-
-async function queueTeacherAttendanceDecision(requestRow, approved, reviewNote) {
-  const snapshot = await db.collection('coursePortalTeacherBindings')
-    .where('teacherId', '==', clean(requestRow.teacherId))
-    .get();
-  const body = approved
-    ? [
-      `æ‚¨åœ¨ ${clean(requestRow.date)} çš„å–æ¶ˆç°½åˆ°ç”³è«‹å·²æ ¸å‡†ã€‚`,
-      `å­¸ç”Ÿï¼š${clean((requestRow.studentNames || []).join('ã€')) || 'æœªæä¾›'}`,
-      `è¡Œæ”¿è™•ç†è²»ï¼šNT$${ATTENDANCE_ADMIN_FEE}ï¼Œå·²åˆ—å…¥è–ªè³‡æ‰£æ¬¾ã€‚`
-    ].join('\n')
-    : [
-      `æ‚¨åœ¨ ${clean(requestRow.date)} çš„å–æ¶ˆç°½åˆ°ç”³è«‹æœªé€šéï¼ŒåŸç°½åˆ°ç´€éŒ„ç¶­æŒä¸è®Šã€‚`,
-      reviewNote ? `ä¸»ç®¡èªªæ˜ï¼š${clean(reviewNote)}` : ''
-    ].filter(Boolean).join('\n');
-  await Promise.all(snapshot.docs.filter((doc) => {
-    const row = doc.data() || {};
-    return clean(row.status) === 'active' && clean(row.lineUserId);
-  }).map((doc) => queueCoursePortalNotice(
-    `attendance-cancel-teacher-${clean(requestRow.id)}-${approved ? 'approved' : 'rejected'}-${doc.id}`,
-    {
-      eventCode: approved ? 'attendance_cancellation_approved' : 'attendance_cancellation_rejected',
-      targetLineUserId: clean(doc.data().lineUserId),
-      targetName: clean(requestRow.teacherName) || 'è€å¸«',
-      title: approved ? 'å–æ¶ˆç°½åˆ°å·²æ ¸å‡†' : 'å–æ¶ˆç°½åˆ°æœªé€šé',
-      body,
-      text: body,
-      message: body,
-      attendanceCancellationId: clean(requestRow.id)
-    }
-  )));
-}
-
-async function adminAttendanceCancellationAction(data) {
-  const id = clean(data.id);
-  const action = clean(data.action);
-  const reviewNote = clean(data.reviewNote);
-  if (!id || !['approve', 'reject'].includes(action)) {
-    throw new HttpsError('invalid-argument', 'å–æ¶ˆç°½åˆ°å¯©æ ¸è³‡æ–™ä¸å®Œæ•´ã€‚');
-  }
-  const requestRef = db.collection(ATTENDANCE_CANCELLATIONS).doc(id);
-  const preview = await requestRef.get();
-  if (!preview.exists) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ç­†å–æ¶ˆç°½åˆ°ç”³è«‹ã€‚');
-  const requestRow = Object.assign({ id }, preview.data() || {});
-  if (clean(requestRow.status) !== 'pending') {
-    throw new HttpsError('failed-precondition', 'é€™ç­†ç”³è«‹å·²ç¶“è™•ç†å®Œæˆã€‚');
-  }
-  if (action === 'reject') {
-    let rejectedRow = requestRow;
-    await db.runTransaction(async (tx) => {
-      const currentSnapshot = await tx.get(requestRef);
-      const current = currentSnapshot.exists ? currentSnapshot.data() || {} : null;
-      if (!current || clean(current.status) !== 'pending') {
-        throw new HttpsError('failed-precondition', 'é€™ç­†ç”³è«‹å·²ç¶“è™•ç†å®Œæˆã€‚');
-      }
-      rejectedRow = Object.assign({ id }, current);
-      tx.set(requestRef, {
-        status: 'rejected',
-        reviewNote,
-        reviewedAt: FieldValue.serverTimestamp(),
-        reviewedAtText: nowText(),
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-    });
-    await queueTeacherAttendanceDecision(rejectedRow, false, reviewNote);
-    return { ok: true, id, status: 'rejected', message: 'å·²æ‹’çµ•å–æ¶ˆç°½åˆ°ï¼ŒåŸç´€éŒ„ç¶­æŒä¸è®Šã€‚' };
-  }
-
-  const lineage = clean(requestRow.courseId || requestRow.eventId);
-  const statusRef = db.collection('coursePortalScheduleChanges')
-    .doc(`lesson-status-${hash([requestRow.teacherId, lineage, requestRow.date].join('|'))}`);
-  const payrollRef = db.collection(ATTENDANCE_PAYROLL).doc(clean(requestRow.operationId));
-  const adjustmentRef = db.collection('coursePortalTeacherAdjustments').doc(`attendance-cancel-fee-${id}`);
-  const lessonLockRef = db.collection('coursePortalAttendanceLessonLocks')
-    .doc(attendanceLessonLockId(requestRow.date, {
-      fixedCourseId: lineage,
-      sourceId: requestRow.eventId
-    }, {
-      sourceCourseId: requestRow.courseId,
-      sourceEventId: requestRow.eventId
-    }));
-  const versionRef = scheduleVersionRef();
-  const attendanceRecordIds = [...new Set(
-    (requestRow.attendanceRecordIds || [])
-      .concat((requestRow.studentIds || []).map((studentId) =>
-        hash([clean(requestRow.operationId), clean(studentId)].join('|'))
-      ))
-      .map(clean)
-      .filter(Boolean)
-  )];
-  const attendanceRefs = attendanceRecordIds.map((recordId) =>
-    db.collection(ATTENDANCE_RECORDS).doc(recordId)
-  );
-  await db.runTransaction(async (tx) => {
-    const snapshots = await Promise.all([
-      tx.get(requestRef),
-      tx.get(versionRef),
-      tx.get(statusRef),
-      tx.get(payrollRef),
-      tx.get(adjustmentRef),
-      tx.get(lessonLockRef),
-      ...attendanceRefs.map((ref) => tx.get(ref))
-    ]);
-    const current = snapshots[0].exists ? snapshots[0].data() || {} : null;
-    if (!current || clean(current.status) !== 'pending') {
-      throw new HttpsError('failed-precondition', 'é€™ç­†ç”³è«‹å·²ç¶“è™•ç†å®Œæˆã€‚');
-    }
-    const versionSnapshot = snapshots[1];
-    assertScheduleWritable(versionSnapshot);
-    attendanceRefs.forEach((ref, index) => {
-      const studentId = clean((requestRow.studentIds || []).find((candidate) =>
-        hash([clean(requestRow.operationId), clean(candidate)].join('|')) === ref.id
-      ) || (requestRow.studentIds || [])[index]);
-      tx.set(ref, {
-        id: ref.id,
-        operationId: clean(requestRow.operationId),
-        active: false,
-        status: 'cancelled',
-        source: 'attendance-cancellation-approved',
-        teacherId: clean(requestRow.teacherId),
-        studentId,
-        studentIds: requestRow.studentIds || [],
-        subjectId: clean(requestRow.subjectId),
-        eventId: clean(requestRow.eventId),
-        courseId: clean(requestRow.courseId),
-        date: clean(requestRow.date),
-        cancellationRequestId: id,
-        cancelledAt: FieldValue.serverTimestamp(),
-        cancelledAtText: nowText(),
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-    });
-    tx.set(statusRef, {
-      id: statusRef.id,
-      action: 'lesson_status',
-      active: true,
-      sourceEventId: clean(requestRow.eventId),
-      sourceCourseId: lineage,
-      sourceDate: clean(requestRow.date),
-      event: {
-        id: randomToken(12),
-        date: clean(requestRow.date),
-        startTime: clean(requestRow.startTime),
-        endTime: clean(requestRow.endTime),
-        roomId: clean(requestRow.roomId),
-        teacherId: clean(requestRow.teacherId),
-        studentId: clean((requestRow.studentIds || [])[0]),
-        studentIds: requestRow.studentIds || [],
-        subjectId: clean(requestRow.subjectId),
-        fixedCourseId: lineage,
-        type: clean(requestRow.type || 'lesson'),
-        status: 'scheduled',
-        paymentStatus: 'attendance_cancelled',
-        teacherPayable: false,
-        note: `ä¸»ç®¡æ ¸å‡†å–æ¶ˆç°½åˆ°ï¼š${clean(requestRow.reason)}`
-      },
-      createdByTeacherId: clean(requestRow.teacherId),
-      approvedByManager: true,
-      attendanceCancellationId: id,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedAtText: nowText()
-    }, { merge: true });
-    tx.set(payrollRef, {
-      active: false,
-      status: 'cancelled',
-      cancellationRequestId: id,
-      cancelledAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    tx.set(lessonLockRef, {
-      // ä¸»ç®¡æ ¸å‡†å¾Œç•™ä¸‹è·¨è€å¸«å…±ç”¨çš„å–æ¶ˆ tombstoneï¼Œç›´åˆ°æœªä¾†æ˜ç¢ºçš„ç®¡ç†è€…æ¢å¾©å‹•ä½œè§£é™¤ã€‚
-      active: true,
-      status: 'cancelled',
-      operationId: clean(requestRow.operationId),
-      cancellationRequestId: id,
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    tx.set(adjustmentRef, {
-      id: adjustmentRef.id,
-      teacherId: clean(requestRow.teacherId),
-      month: currentTaipeiDay().slice(0, 7),
-      date: currentTaipeiDay(),
-      type: 'attendance_cancellation_fee',
-      amount: -ATTENDANCE_ADMIN_FEE,
-      note: `å–æ¶ˆç°½åˆ°è¡Œæ”¿è™•ç†è²» NT$${ATTENDANCE_ADMIN_FEE}`,
-      source: 'attendance-cancellation-approved',
-      requestId: id,
-      createdAt: FieldValue.serverTimestamp(),
-      createdAtText: nowText()
-    }, { merge: true });
-    tx.set(requestRef, {
-      status: 'approved',
-      reviewNote,
-      administrationFee: ATTENDANCE_ADMIN_FEE,
-      reviewedAt: FieldValue.serverTimestamp(),
-      reviewedAtText: nowText(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
-    tx.set(versionRef, {
-      version: currentVersion + 1,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: 'attendance-cancellation-approved'
-    }, { merge: true });
-  });
-  await queueTeacherAttendanceDecision(requestRow, true, reviewNote);
-  return {
-    ok: true,
-    id,
-    status: 'approved',
-    message: `å–æ¶ˆç°½åˆ°å·²æ ¸å‡†ï¼Œä¸¦å·²åœ¨è€å¸«è–ªè³‡æ‰£é™¤è¡Œæ”¿è™•ç†è²» NT$${ATTENDANCE_ADMIN_FEE}ã€‚`
-  };
-}
-
-async function adminData() {
-  const [teachers, students, renters, teacherRows, studentRows, renterRows, sessions, suspensionSnapshot, tuitionPaymentSnapshot, tuitionReceiptSnapshot, attendanceCancellationSnapshot] = await Promise.all([
-    db.collection('coursePortalTeacherBindings').get(),
-    db.collection('coursePortalStudentBindings').get(),
-    db.collection('coursePortalRenterBindings').get(),
-    mirrorRows('teachers'),
-    mirrorRows('students'),
-    db.collection('coursePortalRenters').get(),
-    db.collection('coursePortalSessions').get(),
-    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get(),
-    db.collection(TUITION_PAYMENT_REQUESTS).where('status', 'in', ['pending_review', 'onsite_pending']).get(),
-    db.collection(TUITION_RECEIPTS).get(),
-    db.collection(ATTENDANCE_CANCELLATIONS).where('status', '==', 'pending').get()
-  ]);
-  const teacherMap = indexById(teacherRows);
-  const studentMap = indexById(studentRows);
-  const renterMap = {};
-  renterRows.docs.forEach((doc) => { renterMap[doc.id] = doc.data() || {}; });
-  const activeSessionsByLine = {};
-  const activeSessionsByAccount = {};
-  sessions.docs.forEach((doc) => {
-    const row = doc.data() || {};
-    const lineUserId = clean(row.lineUserId);
-    const authAccountId = clean(row.authAccountId);
-    if (clean(row.status) !== 'active' || asMillis(row.expiresAt) < Date.now()) return;
-    if (lineUserId) {
-      activeSessionsByLine[lineUserId] = activeSessionsByLine[lineUserId] || new Set();
-      activeSessionsByLine[lineUserId].add(doc.id);
-    }
-    if (authAccountId) {
-      activeSessionsByAccount[authAccountId] = activeSessionsByAccount[authAccountId] || new Set();
-      activeSessionsByAccount[authAccountId].add(doc.id);
-    }
-  });
-  const map = (snapshot) => snapshot.docs.map((doc) => {
-    const row = doc.data() || {};
-    const activeSessionIds = new Set([
-      ...((activeSessionsByLine[clean(row.lineUserId)] || new Set())),
-      ...((activeSessionsByAccount[clean(row.authAccountId)] || new Set()))
-    ]);
-    const targetName = row.type === 'teacher'
-      ? clean(teacherMap[clean(row.teacherId)] && teacherMap[clean(row.teacherId)].name)
-      : (row.type === 'student'
-        ? clean(studentMap[clean(row.studentId)] && studentMap[clean(row.studentId)].name)
-        : clean(renterMap[clean(row.renterId)] && renterMap[clean(row.renterId)].name));
-    return {
-      id: doc.id,
-      type: clean(row.type),
-      status: clean(row.status),
-      targetName,
-      lineDisplayName: clean(row.lineDisplayName),
-      lineUserIdMasked: clean(row.lineUserId)
-        ? `${clean(row.lineUserId).slice(0, 6)}â€¦${clean(row.lineUserId).slice(-4)}`
-        : '',
-      lineFriendFlag: row.lineFriendFlag == null ? null : row.lineFriendFlag === true,
-      authProvider: clean(row.authProvider),
-      email: normalizeEmail(row.email),
-      emailVerified: row.emailVerified === true,
-      emailVerifiedAt: jsonValue(row.emailVerifiedAt),
-      relationship: clean(row.relationship),
-      teacherId: clean(row.teacherId),
-      studentId: clean(row.studentId),
-      renterId: clean(row.renterId),
-      boundAt: jsonValue(row.boundAt),
-      approvalRequestedAt: jsonValue(row.approvalRequestedAt),
-      approvedAt: jsonValue(row.approvedAt),
-      lastLoginAt: jsonValue(row.lastLoginAt),
-      lastLoginAtText: clean(row.lastLoginAtText),
-      activeSessionCount: activeSessionIds.size,
-      reminderLastLesson: row.reminderLastLesson !== false,
-      reminderPayment: row.reminderPayment !== false
-    };
-  });
-  const suspensionRows = suspensionSnapshot.docs.map((doc) => Object.assign({
-    id: doc.id
-  }, jsonValue(doc.data()) || {}));
-  const suspensionStudentIds = [...new Set(suspensionRows.map((row) => clean(row.studentId)).filter(Boolean))];
-  const periodGroups = await Promise.all(suspensionStudentIds.map((studentId) =>
-    mirrorRowsByField('tuitionPeriods', 'studentId', studentId)
-  ));
-  const periodsByStudent = new Map(suspensionStudentIds.map((studentId, index) => [
-    studentId,
-    periodGroups[index] || []
-  ]));
-  const unpaidSuspensions = suspensionRows.map((row) => {
-    const studentId = clean(row.studentId);
-    const teacherId = clean(row.teacherId);
-    const periods = periodsByStudent.get(studentId) || [];
-    const relatedPeriods = periods.filter((period) =>
-      !eventTeacherId(period) || eventTeacherId(period) === teacherId
-    );
-    const currentUnpaidAmount = relatedPeriods.length
-      ? relatedPeriods.reduce((sum, period) => sum + tuitionOutstandingAmount(period), 0)
-      : Number(row.unpaidAmountAtStop || 0);
-    return {
-      id: clean(row.id),
-      studentId,
-      studentName: clean(studentMap[studentId] && studentMap[studentId].name) || clean(row.studentName),
-      teacherId,
-      teacherName: clean(teacherMap[teacherId] && teacherMap[teacherId].name) || clean(row.teacherName),
-      effectiveDate: dateKey(row.effectiveDate),
-      requestedAtText: clean(row.requestedAtText),
-      unpaidAmountAtStop: Number(row.unpaidAmountAtStop || 0),
-      currentUnpaidAmount,
-      paymentStatus: clean(row.paymentStatus || 'pending')
-    };
-  }).filter((row) => row.paymentStatus !== 'settled' && row.currentUnpaidAmount > 0);
-  const tuitionPayments = tuitionPaymentSnapshot.docs
-    .filter((doc) => ['pending_review', 'onsite_pending'].includes(clean((doc.data() || {}).status)))
-    .sort((left, right) => asMillis((right.data() || {}).submittedAt) - asMillis((left.data() || {}).submittedAt))
-    .map(adminTuitionPaymentRow);
-  const tuitionReceipts = tuitionReceiptSnapshot.docs
-    .filter((doc) => (doc.data() || {}).active !== false)
-    .sort((left, right) => {
-      const leftRow = left.data() || {};
-      const rightRow = right.data() || {};
-      return dateKey(rightRow.paymentDate).localeCompare(dateKey(leftRow.paymentDate)) ||
-        asMillis(rightRow.createdAt) - asMillis(leftRow.createdAt);
-    })
-    .map(adminTuitionReceiptRow);
-  const attendanceCancellations = attendanceCancellationSnapshot.docs
-    .map((doc) => Object.assign({ id: doc.id }, jsonValue(doc.data()) || {}))
-    .sort((left, right) => asMillis(right.requestedAt) - asMillis(left.requestedAt))
-    .map((row) => Object.assign({}, row, {
-      teacherName: clean(row.teacherName) ||
-        clean(teacherMap[clean(row.teacherId)] && teacherMap[clean(row.teacherId)].name),
-      studentNames: Array.isArray(row.studentNames) && row.studentNames.length
-        ? row.studentNames
-        : (row.studentIds || []).map((studentId) =>
-          clean(studentMap[clean(studentId)] && studentMap[clean(studentId)].name)
-        ).filter(Boolean)
-    }));
-  return {
-    ok: true,
-    bindings: [...map(teachers), ...map(students), ...map(renters)],
-    unpaidSuspensions,
-    tuitionPayments,
-    tuitionReceipts,
-    attendanceCancellations
-  };
-}
-
-async function commitOperations(operations) {
-  const unique = [...new Map(operations.map((operation) => [operation.ref.path, operation])).values()];
-  for (let offset = 0; offset < unique.length; offset += 400) {
-    const batch = db.batch();
-    unique.slice(offset, offset + 400).forEach((operation) => {
-      if (operation.action === 'delete') batch.delete(operation.ref);
-      else batch.set(operation.ref, operation.data || {}, { merge: true });
-    });
-    await batch.commit();
-  }
-}
-
-async function adminBindingAction(data) {
-  const type = clean(data.type);
-  const id = clean(data.id);
-  if (!['teacher', 'student', 'renter'].includes(type) || !id) throw new HttpsError('invalid-argument', 'ç™»å…¥è³‡æ–™ä¸å®Œæ•´ã€‚');
-  const action = clean(data.action);
-  if (!['approve', 'reject', 'revoke', 'restore', 'force_logout', 'delete'].includes(action)) {
-    throw new HttpsError('invalid-argument', 'ä¸æ”¯æ´çš„å¸³è™Ÿæ“ä½œã€‚');
-  }
-  const bindingRef = db.collection(bindingCollection(type)).doc(id);
-  const bindingSnapshot = await bindingRef.get();
-  if (!bindingSnapshot.exists) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ç­†ç™»å…¥è³‡æ–™ã€‚');
-  const row = Object.assign({ id, type }, bindingSnapshot.data() || {});
-  const lineUserId = clean(row.lineUserId);
-  const authAccountId = clean(row.authAccountId);
-  const sessionSnapshots = await Promise.all([
-    lineUserId
-      ? db.collection('coursePortalSessions').where('lineUserId', '==', lineUserId).get()
-      : Promise.resolve({ docs: [] }),
-    authAccountId
-      ? db.collection('coursePortalSessions').where('authAccountId', '==', authAccountId).get()
-      : Promise.resolve({ docs: [] })
-  ]);
-  const sessionOperations = sessionSnapshots.flatMap((snapshot) => snapshot.docs).map((doc) => ({
-    action: 'set',
-    ref: doc.ref,
-    data: {
-      status: 'revoked',
-      revokedAt: FieldValue.serverTimestamp(),
-      revokedReason: `admin-${action}`
-    }
-  }));
-
-  if (action === 'approve' || action === 'restore') {
-    await bindingRef.set({
-      status: 'active',
-      approvalStatus: 'approved',
-      approvedAt: FieldValue.serverTimestamp(),
-      approvedAtText: nowText(),
-      rejectedAt: null,
-      revokedAt: null,
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    if (action === 'approve') await queueBindingDecisionNotice(row, true);
-    return { ok: true, status: 'active', message: action === 'approve' ? 'ç¶å®šå·²æ ¸å‡†ã€‚' : 'å¸³è™Ÿå·²æ¢å¾©ã€‚' };
-  }
-
-  if (action === 'reject' || action === 'revoke') {
-    const status = action === 'reject' ? 'rejected' : 'revoked';
-    await bindingRef.set({
-      status,
-      approvalStatus: action === 'reject' ? 'rejected' : clean(row.approvalStatus),
-      rejectedAt: action === 'reject' ? FieldValue.serverTimestamp() : null,
-      rejectedAtText: action === 'reject' ? nowText() : '',
-      revokedAt: action === 'revoke' ? FieldValue.serverTimestamp() : null,
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-    // å­¸ç”Ÿï¼å®¶é•·çš„åŒä¸€å€‹ LINE å¯èƒ½ä»ç¶å®šå…¶ä»–å­©å­ï¼›è³‡æ–™æ¬Šé™æ¯æ¬¡éƒ½æœƒé‡æ–°
-    // ä¾æœ‰æ•ˆç¶å®šåˆ¤æ–·ï¼Œå› æ­¤å–®ç­†åœç”¨ä¸å¼·åˆ¶ç™»å‡ºå…¶ä»–å­©å­ã€‚
-    if (type !== 'student') await commitOperations(sessionOperations);
-    if (action === 'reject') await queueBindingDecisionNotice(row, false);
-    return { ok: true, status, message: action === 'reject' ? 'ç¶å®šç”³è«‹å·²æ‹’çµ•ã€‚' : 'å¸³è™Ÿå·²åœç”¨ã€‚' };
-  }
-
-  if (action === 'force_logout') {
-    await commitOperations(sessionOperations);
-    return { ok: true, status: clean(row.status), message: 'æ‰€æœ‰å·²ç™»å…¥è£ç½®å·²ç™»å‡ºã€‚' };
-  }
-
-  if (action === 'delete') {
-    const collections = [
-      'coursePortalSessions',
-      'coursePortalAccessTokens',
-      'coursePortalEmailOtps',
-      'coursePortalBindCodes',
-      'coursePortalLineLoginCodes',
-      'coursePortalLineOAuthStates',
-      'coursePortalLineSetupTokens'
-    ];
-    const siblingSnapshots = await Promise.all(
-      ['teacher', 'student', 'renter'].map((role) => db.collection(bindingCollection(role)).get())
-    );
-    const siblings = siblingSnapshots.flatMap((snapshot) => snapshot.docs).filter((doc) =>
-      !(doc.ref.path === bindingRef.path) &&
-      (
-        (lineUserId && clean(doc.data().lineUserId) === lineUserId) ||
-        (authAccountId && clean(doc.data().authAccountId) === authAccountId)
-      )
-    );
-    const identityStillUsed = siblings.length > 0;
-    const lineSnapshots = lineUserId && !identityStillUsed
-      ? await Promise.all(collections.map((name) => db.collection(name).where('lineUserId', '==', lineUserId).get()))
-      : [];
-    const accountSnapshots = authAccountId && !identityStillUsed
-      ? await Promise.all([
-        db.collection('coursePortalSessions').where('authAccountId', '==', authAccountId).get(),
-        db.collection('coursePortalEmailOtps').where('authAccountId', '==', authAccountId).get()
-      ])
-      : [];
-    const operations = [{ action: 'delete', ref: bindingRef }];
-    [...lineSnapshots, ...accountSnapshots].forEach((snapshot) => snapshot.docs.forEach((doc) => {
-      operations.push({ action: 'delete', ref: doc.ref });
-    }));
-    const email = normalizeEmail(row.email);
-    if (email && !identityStillUsed) {
-      const emailSnapshots = await Promise.all([
-        db.collection('coursePortalEmailOtps').where('emailNormalized', '==', email).get(),
-        db.collection('coursePortalBindCodes').where('emailNormalized', '==', email).get()
-      ]);
-      emailSnapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
-        const source = doc.data() || {};
-        if (!clean(source.type) || clean(source.type) === type) {
-          operations.push({ action: 'delete', ref: doc.ref });
-        }
-      }));
-      ['bind', 'login', 'account'].forEach((purpose) => {
-        const kind = `email-otp-${purpose}-${type}`;
-        operations.push({
-          action: 'delete',
-          ref: db.collection('coursePortalRateLimits').doc(hash(`${kind}|${email}|${currentTaipeiDay()}`))
-        });
-      });
-    }
-    if (type === 'renter' && clean(row.renterId)) {
-      const renterSnapshot = await db.collection('coursePortalRenters').doc(clean(row.renterId)).get();
-      const renterPhone = normalizePhone(renterSnapshot.exists && renterSnapshot.data().phone);
-      if (renterPhone) {
-        operations.push({
-          action: 'delete',
-          ref: db.collection('coursePortalRateLimits').doc(
-            hash(`renter-contact-login|${renterPhone}|${currentTaipeiDay()}`)
-          )
-        });
-      }
-    }
-    await commitOperations(operations);
-    return {
-      ok: true,
-      status: 'deleted',
-      deletedAuthRecords: new Set(operations.map((operation) => operation.ref.path)).size,
-      retainedBusinessHistory: true,
-      retainedOtherBindings: identityStillUsed
-    };
-  }
-  throw new HttpsError('invalid-argument', 'ä¸æ”¯æ´çš„å¸³è™Ÿæ“ä½œã€‚');
-}
-
-async function adminSuspensionAction(data) {
-  const id = clean(data.id);
-  const action = clean(data.action);
-  if (!id || action !== 'settle') {
-    throw new HttpsError('invalid-argument', 'åœèª²å­¸è²»ç°½æ ¸è³‡æ–™ä¸å®Œæ•´ã€‚');
-  }
-  const ref = db.collection('coursePortalStudentSuspensions').doc(id);
-  const snapshot = await ref.get();
-  if (!snapshot.exists || clean(snapshot.data().status) !== 'active') {
-    throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™ç­†åœèª²è³‡æ–™ã€‚');
-  }
-  await ref.set({
-    paymentStatus: 'settled',
-    settledAt: FieldValue.serverTimestamp(),
-    settledAtText: nowText(),
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true });
-  return { ok: true, id, message: 'å·²ç¢ºèªå­¸è²»ç¹³æ¸…ã€‚' };
-}
-
-function teacherReminderDate(value) {
-  const date = dateKey(value);
-  if (!date) return '';
-  const [, month, day] = date.split('-').map(Number);
-  return `${month}æœˆ${day}æ—¥`;
-}
-
-function teacherReminderLessonType(row) {
-  const action = clean(row.portalAction);
-  if (action === 'teacher_gift') return 'è´ˆé€èª²ç¨‹';
-  if (action === 'teacher_add') return 'å¢åŠ èª²ç¨‹';
-  if (['single_move', 'permanent_move', 'permanent_room_exception'].includes(action)) return 'èª¿èª²èª²ç¨‹';
-  return 'å›ºå®šèª²ç¨‹';
-}
-
-function teacherReminderLessonLine(row, maps) {
-  const studentNames = eventStudentIds(row)
-    .map((studentId) => clean(maps.students[studentId] && maps.students[studentId].name))
-    .filter(Boolean)
-    .join('ã€') || 'å­¸ç”Ÿ';
-  const subjectName = clean(maps.subjects[eventSubjectId(row)] && maps.subjects[eventSubjectId(row)].name) ||
-    clean(row.subjectName) || 'èª²ç¨‹';
-  return `${teacherReminderDate(eventDate(row))} ${eventStart(row)}ï½${eventEnd(row)}ã€€${studentNames}ï½œ${subjectName}ï½œ${teacherReminderLessonType(row)}`;
-}
-
-async function dailyTeacherCourseReminders(pushLineMessage) {
-  if (typeof pushLineMessage !== 'function') return;
-  const today = currentTaipeiDay();
-  const yesterday = addDays(today, -1);
-  const [bindings, bundle] = await Promise.all([
-    db.collection('coursePortalTeacherBindings').where('status', '==', 'active').get(),
-    scheduleBundle(yesterday, today, '')
-  ]);
-  const targets = [...new Map(bindings.docs.map((doc) => {
-    const row = doc.data() || {};
-    const key = `${clean(row.teacherId)}|${clean(row.lineUserId)}`;
-    return [key, Object.assign({ id: doc.id }, row)];
-  }).filter(([key, row]) =>
-    key !== '|' && clean(row.teacherId) && clean(row.lineUserId)
-  )).values()];
-  for (const binding of targets) {
-    const teacherId = clean(binding.teacherId);
-    const rows = bundle.resourceEvents.filter((row) =>
-      eventTeacherId(row) === teacherId &&
-      !['cancelled', 'pending_conflict'].includes(normalizeScheduleStatus(row.status))
-    );
-    const todayRows = rows.filter((row) => eventDate(row) === today)
-      .sort((left, right) => eventStart(left).localeCompare(eventStart(right)));
-    const unfinished = rows.filter((row) =>
-      eventDate(row) === yesterday &&
-      normalizeScheduleStatus(row.status) === 'scheduled'
-    ).sort((left, right) => eventStart(left).localeCompare(eventStart(right)));
-    const parts = [
-      'ã€ä»Šæ—¥èª²ç¨‹ã€‘',
-      todayRows.length
-        ? todayRows.map((row) => teacherReminderLessonLine(row, bundle.maps)).join('\n')
-        : 'ä»Šæ—¥ç„¡èª²ç¨‹'
-    ];
-    if (unfinished.length) {
-      parts.push(
-        '',
-        'ã€æ˜¨æ—¥æœªå®Œæˆç´€éŒ„ã€‘',
-        unfinished.map((row) => teacherReminderLessonLine(row, bundle.maps)).join('\n'),
-        unfinished.length === 1
-          ? 'æ­¤èª²ç¨‹æ˜¨æ—¥æœªå®Œæˆç°½åˆ°ï¼Œå› æ­¤å°šæœªè¨˜éŒ„å ‚æ•¸ã€‚è‹¥ç•¶å¤©æ²’æœ‰ä¸Šèª²ï¼Œè«‹ä¸‹æ¬¡è¨˜å¾—ä¸»å‹•ç™»è¨˜è«‹å‡ï¼›è‹¥æœ‰ä¸Šèª²ï¼Œè«‹è€å¸«é€²å…¥èª²è¡¨å®Œæˆè£œç°½åˆ°ã€‚'
-          : 'ä»¥ä¸Šèª²ç¨‹æ˜¨æ—¥æœªå®Œæˆç°½åˆ°ï¼Œå› æ­¤å°šæœªè¨˜éŒ„å ‚æ•¸ã€‚è‹¥ç•¶å¤©æ²’æœ‰ä¸Šèª²ï¼Œè«‹ä¸‹æ¬¡è¨˜å¾—ä¸»å‹•ç™»è¨˜è«‹å‡ï¼›è‹¥æœ‰ä¸Šèª²ï¼Œè«‹è€å¸«é€²å…¥èª²è¡¨å®Œæˆè£œç°½åˆ°ã€‚'
-      );
-    }
-    const body = parts.join('\n');
-    const logRef = db.collection('coursePortalReminderLogs').doc(
-      hash(`teacher-daily|${today}|${teacherId}|${clean(binding.lineUserId)}`)
-    );
-    if ((await logRef.get()).exists) continue;
-    await pushLineMessage(clean(binding.lineUserId), body);
-    await logRef.set({
-      day: today,
-      teacherId,
-      lineUserId: clean(binding.lineUserId),
-      type: 'teacher_daily_courses',
-      messages: [body],
-      sentAt: FieldValue.serverTimestamp()
-    });
-  }
-}
-
-async function dailyStudentReminders(pushLineMessage) {
-  if (typeof pushLineMessage !== 'function') return;
-  const today = currentTaipeiDay();
-  const [bindings, periods, students, subjects, teachers, fixedCourses, temporaryCourses, events, suspensionSnapshot] = await Promise.all([
-    db.collection('coursePortalStudentBindings').where('status', '==', 'active').get(),
-    mirrorRows('tuitionPeriods'),
-    mirrorRows('students'),
-    mirrorRows('subjects'),
-    mirrorRows('teachers'),
-    mirrorRows('fixedCourses'),
-    mirrorRows('temporaryCourses'),
-    mirrorRowsByDateRange('events', today, addDays(today, 120)),
-    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get()
-  ]);
-  const learningIds = activeLearningStudentIds(
-    students,
-    [...fixedCourses, ...temporaryCourses],
-    events,
-    suspensionSnapshot.docs.map((doc) => doc.data() || {})
-  );
-  const studentMap = indexById(students);
-  const numberedPeriods = await assignNewSystemPeriodNumbers(periods);
-  await ensureTuitionPaymentRequests({
-    periods: numberedPeriods,
-    students,
-    subjects,
-    teachers,
-    studentIds: students.map(sourceId).filter((studentId) => learningIds.has(studentId))
-  });
-  const paymentSnapshot = await db.collection(TUITION_PAYMENT_REQUESTS)
-    .where('status', '==', 'payment_due')
-    .get();
-  const paymentRequests = paymentSnapshot.docs.map((doc) => Object.assign({
-    id: doc.id
-  }, doc.data() || {})).filter((row) => row.active !== false);
-  const day = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TAIPEI, year: 'numeric', month: '2-digit', day: '2-digit'
-  }).format(new Date());
-  for (const doc of bindings.docs) {
-    const binding = doc.data() || {};
-    if (!clean(binding.lineUserId)) continue;
-    const studentId = clean(binding.studentId);
-    if (!learningIds.has(studentId)) continue;
-    const studentPeriods = numberedPeriods.filter((row) => clean(row.studentId) === studentId && !['closed', 'completed'].includes(clean(row.status).toLowerCase()));
-    const lastLesson = studentPeriods.find((row) => Number(row.lessonCount || 4) - Number(row.usedCount || 0) === 1);
-    const name = clean(studentMap[studentId] && studentMap[studentId].name) || 'å­¸ç”Ÿ';
-    if (binding.reminderLastLesson !== false && lastLesson) {
-      const message = 'ç›®å‰èª²ç¨‹å‰©æœ€å¾Œä¸€å ‚ï¼Œè«‹ç•™æ„çºŒèª²å®‰æ’ã€‚';
-      const logRef = db.collection('coursePortalReminderLogs').doc(
-        hash(`${day}|${studentId}|${binding.lineUserId}|${message}`)
-      );
-      if (!(await logRef.get()).exists) {
-        await pushLineMessage(binding.lineUserId, `${name}èª²å‹™æé†’\n${message}`);
-        await logRef.set({
-          day,
-          studentId,
-          lineUserId: binding.lineUserId,
-          messages: [message],
-          sentAt: FieldValue.serverTimestamp()
-        });
-      }
-    }
-    if (binding.reminderPayment === false) continue;
-    const dueRequests = paymentRequests.filter((row) =>
-      clean(row.studentId) === studentId &&
-      clean(row.status) === 'payment_due'
-    );
-    for (const requestRow of dueRequests) {
-      const logRef = db.collection('coursePortalReminderLogs').doc(
-        hash(`tuition-due|${clean(requestRow.id)}|${clean(binding.lineUserId)}`)
-      );
-      if ((await logRef.get()).exists) continue;
-      const amount = Number(requestRow.expectedAmount || 0).toLocaleString('zh-TW');
-      const body = [
-        `æ‚¨å¥½ï¼Œ${name}çš„${newSystemTuitionPeriodLabel(requestRow, 'current')}èª²ç¨‹å·²å®Œæˆç¬¬ ${Number(requestRow.triggerLessonCount || 4)} å ‚ã€‚`,
-        '',
-        `ä¸‹ä¸€æœŸï¼š${newSystemTuitionPeriodLabel(requestRow, 'next')}`,
-        `èª²ç¨‹ï¼š${clean(requestRow.subjectName) || 'èª²ç¨‹'}`,
-        `å­¸è²»ï¼šNT$${amount}`,
-        '',
-        'å¯é¸æ“‡è½‰å¸³ç¹³è²»æˆ–ç¾å ´ç¹³è²»ï¼Œè«‹é»æ“Šä¸‹æ–¹é€£çµæŸ¥çœ‹ç¹³è²»è³‡æ–™ã€‚',
-        'æ¬¾é …éœ€ç¶“æŸšå­æ¨‚å™¨ç¢ºèªå¾Œï¼Œæ‰æœƒæ­£å¼é¡¯ç¤ºç‚ºç¹³è²»å®Œæˆã€‚',
-        `${PORTAL_BASE}/student-course-portal.html?studentId=${encodeURIComponent(studentId)}`
-      ].join('\n');
-      await pushLineMessage(binding.lineUserId, body);
-      await logRef.set({
-        day,
-        studentId,
-        lineUserId: binding.lineUserId,
-        tuitionPaymentRequestId: clean(requestRow.id),
-        messages: [body],
-        sentAt: FieldValue.serverTimestamp()
-      });
-    }
-  }
-}
-
-async function appendCoursePortalData(payload) {
-  if (!payload || typeof payload !== 'object') return payload;
-  const [
-    changes,
-    bookings,
-    roomSettings,
-    studentProfiles,
-    suspensions,
-    portalPeriods,
-    portalTransactions,
-    portalReceipts,
-    portalAttendanceSnapshot,
-    portalPayrollSnapshot,
-    portalAdjustmentsSnapshot,
-    approvedCancellationSnapshot
-  ] = await Promise.all([
-    db.collection('coursePortalScheduleChanges').where('active', '==', true).get(),
-    db.collection('coursePortalRoomBookings').where('active', '==', true).get(),
-    db.collection('coursePortalRoomSettings').get(),
-    db.collection('coursePortalStudentProfiles').get(),
-    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get(),
-    db.collection(TUITION_PERIODS).get(),
-    db.collection(TUITION_TRANSACTIONS).get(),
-    db.collection(TUITION_RECEIPTS).get(),
-    db.collection(ATTENDANCE_RECORDS).get(),
-    db.collection(ATTENDANCE_PAYROLL).get(),
-    db.collection('coursePortalTeacherAdjustments').get(),
-    db.collection(ATTENDANCE_CANCELLATIONS).where('status', '==', 'approved').get()
-  ]);
-  const roomSettingsMap = new Map(roomSettings.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
-  const studentProfileMap = new Map(studentProfiles.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
-  if (Array.isArray(payload.students)) {
-    payload.students = payload.students.map((student) => {
-      const profile = studentProfileMap.get(sourceId(student));
-      if (!profile || profile.active === false) return student;
-      const merged = Object.assign({}, student);
-      if (clean(profile.name)) merged.name = clean(profile.name);
-      if (normalizePhone(profile.phone)) merged.phone = normalizePhone(profile.phone);
-      return merged;
-    });
-  }
-  const mirrorAttendance = Array.isArray(payload.attendance) ? payload.attendance : [];
-  const portalAttendanceRows = portalAttendanceSnapshot.docs.map((doc) =>
-    Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
-  );
-  payload.attendance = mergePortalAttendanceRows(mirrorAttendance, portalAttendanceRows);
-  if (Array.isArray(payload.tuitionPeriods)) {
-    payload.tuitionPeriods = applyPortalAttendanceToPeriods(mergePortalTuitionRows(
-      payload.tuitionPeriods,
-      portalPeriods.docs,
-      portalTransactions.docs,
-      portalReceipts.docs
-    ), mirrorAttendance, portalAttendanceRows);
-  }
-  const portalPayrollRows = portalPayrollSnapshot.docs.map((doc) =>
-    Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
-  );
-  const approvedCancellations = approvedCancellationSnapshot.docs.map((doc) =>
-    Object.assign({ id: doc.id }, jsonValue(doc.data()) || {})
-  );
-  payload.teacherPayroll = mergeTeacherPayrollRows(
-    enrichTeacherPayrollRows(Array.isArray(payload.teacherPayroll) ? payload.teacherPayroll : [], mirrorAttendance),
-    portalPayrollRows,
-    approvedCancellations.concat(portalPayrollRows.filter((row) => row.active === false))
-  );
-  payload.teacherAdjustments = mergeTeacherAdjustmentRows(
-    Array.isArray(payload.teacherAdjustments) ? payload.teacherAdjustments : [],
-    portalAdjustmentsSnapshot.docs.map((doc) =>
-      Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
-    )
-  );
-  if (Array.isArray(payload.rooms)) {
-    payload.rooms = payload.rooms.map((room) => {
-      const setting = roomSettingsMap.get(sourceId(room));
-      if (!setting) return room;
-      const merged = Object.assign({}, room);
-      if (clean(setting.publicName)) {
-        merged.name = clean(setting.publicName);
-        merged.publicName = clean(setting.publicName);
-      }
-      [
-        'note',
-        'rentalFee',
-        'capacity',
-        'active',
-        'rentable',
-        'teacherSchedulable',
-        'allowedSubjectIds',
-        'rentalUseTypes',
-        'rentalEquipment',
-        'pianoType',
-        'kind',
-        'roomKind',
-        'policies',
-        'roomRulesVersion'
-      ].forEach((key) => {
-        if (Object.prototype.hasOwnProperty.call(setting, key)) merged[key] = setting[key];
-      });
-      return merged;
-    });
-  }
-  const changeRows = changes.docs.map((doc) => Object.assign({ id: doc.id }, jsonValue(doc.data()) || {}));
-  const removed = new Set(changeRows.filter((row) =>
-    ['single_move', 'cancel', 'lesson_status'].includes(clean(row.action))
-  )
-    .flatMap((row) => [
-      `${clean(row.sourceEventId)}|${dateKey(row.sourceDate)}`,
-      `${clean(row.sourceCourseId)}|${dateKey(row.sourceDate)}`
-    ]));
-  if (Array.isArray(payload.events)) {
-    payload.events = payload.events.filter((row) =>
-      !removed.has(`${sourceId(row)}|${eventDate(row)}`) &&
-      !removed.has(`${clean(row.fixedCourseId || row.sourceCourseId || row.courseId || row.scheduleId)}|${eventDate(row)}`)
-    );
-  }
-  payload.fixedCourses = Array.isArray(payload.fixedCourses) ? payload.fixedCourses : [];
-  changeRows.filter((row) =>
-    ['single_move', 'cancel', 'lesson_status'].includes(clean(row.action))
-  ).forEach((row) => {
-    const course = payload.fixedCourses.find((item) =>
-      sourceId(item) === clean(row.sourceCourseId || row.sourceEventId)
-    );
-    if (!course || !dateKey(row.sourceDate)) return;
-    const status = row.action === 'lesson_status'
-      ? normalizeScheduleStatus(row.event && row.event.status)
-      : 'cancelled';
-    course.statusByDate = Object.assign({}, course.statusByDate || {}, {
-      [dateKey(row.sourceDate)]: { status, source: 'course-portal' }
-    });
-  });
-  payload.temporaryCourses = Array.isArray(payload.temporaryCourses) ? payload.temporaryCourses : [];
-  const permanentGroups = new Map();
-  effectivePermanentChanges(changeRows).forEach((row) => {
-    const lineage = permanentLineage(row);
-    if (!lineage) return;
-    if (!permanentGroups.has(lineage)) permanentGroups.set(lineage, []);
-    permanentGroups.get(lineage).push(row);
-  });
-  permanentGroups.forEach((rows, lineage) => {
-    const course = payload.fixedCourses.find((item) => sourceId(item) === lineage);
-    // åº•å±¤å›ºå®šèª²å·²åœç”¨æˆ–ä¸å­˜åœ¨æ™‚ï¼Œä¸å†æŠŠèˆŠ portal è®Šæ›´å¾©æ´»æˆç„¡æœŸé™å¹½éˆèª²ç¨‹ã€‚
-    if (!course || !sourceActive(course)) return;
-    const originalEndDate = dateKey(course.recurrenceEndDate || course.endDate);
-    const courseTemplate = Object.assign({}, course, {
-      statusByDate: Object.assign({}, course.statusByDate || course.exceptions || {})
-    });
-    let activeStatusByDate = Object.assign({}, courseTemplate.statusByDate);
-    const ordered = rows.map((row) => Object.assign({}, row, {
-      __cutoverDate: dateKey(row.cutoverDate || row.sourceDate || row.effectiveDate),
-      __anchorDate: dateKey(row.anchorDate || eventDate(row.event) || row.effectiveDate)
-    })).filter((row) =>
-      row.__cutoverDate &&
-      row.__anchorDate &&
-      (!originalEndDate || row.__cutoverDate <= originalEndDate)
-    ).sort((left, right) => left.__cutoverDate.localeCompare(right.__cutoverDate));
-    if (!ordered.length) return;
-    course.recurrenceEndDate = addDays(ordered[0].__cutoverDate, -1);
-    course.endDate = addDays(ordered[0].__cutoverDate, -1);
-    ordered.forEach((row, index) => {
-      const nextCutover = ordered[index + 1] && ordered[index + 1].__cutoverDate;
-      const storedEnd = dateKey(row.recurrenceEndDate || row.event.recurrenceEndDate || originalEndDate);
-      const endCandidates = [
-        originalEndDate,
-        storedEnd,
-        nextCutover ? addDays(nextCutover, -1) : ''
-      ].filter(Boolean).sort();
-      const segmentEnd = endCandidates[0] || '';
-      if (segmentEnd && row.__anchorDate > segmentEnd) return;
-      const frequencyWeeks = safeFrequencyWeeks(row.frequencyWeeks || row.event.frequencyWeeks);
-      activeStatusByDate = translateRecurringStatusMap(
-        activeStatusByDate,
-        row.__cutoverDate,
-        row.__anchorDate,
-        frequencyWeeks
-      );
-      const statusByDate = Object.assign({}, activeStatusByDate);
-      (row.pendingDates || []).forEach((key) => {
-        statusByDate[key] = { status: 'pending_conflict', source: 'course-portal-pending' };
-      });
-      Object.keys(row.roomOverrides || {}).forEach((key) => {
-        statusByDate[key] = { status: 'cancelled', source: 'course-portal-room-override' };
-      });
-      payload.fixedCourses.push(Object.assign({}, courseTemplate, row.event, {
-        id: row.id,
-        startDate: row.__anchorDate,
-        date: row.__anchorDate,
-        start: eventStart(row.event),
-        duration: Math.max(30, timeMinutes(eventEnd(row.event)) - timeMinutes(eventStart(row.event))),
-        type: 'fixed',
-        recurring: true,
-        frequencyWeeks,
-        recurrenceEndDate: segmentEnd,
-        endDate: segmentEnd,
-        statusByDate,
-        source: 'course-portal',
-        portalAction: 'permanent_move',
-        cutoverDate: row.__cutoverDate,
-        anchorDate: row.__anchorDate
-      }));
-      Object.keys(row.roomOverrides || {}).forEach((key) => {
-        payload.temporaryCourses.push(Object.assign({}, row.event, {
-          id: `${row.id}-room-${key}`,
-          date: key,
-          start: eventStart(row.event),
-          duration: Math.max(30, timeMinutes(eventEnd(row.event)) - timeMinutes(eventStart(row.event))),
-          roomId: row.roomOverrides[key],
-          type: 'temporary',
-          source: 'course-portal',
-          portalAction: 'permanent_room_exception'
-        }));
-      });
-    });
-  });
-  changeRows.filter((row) => row.event && !['room_booking', 'permanent_move'].includes(row.action)).forEach((row) => {
-    payload.temporaryCourses.push(Object.assign({}, row.event, {
-      id: row.id,
-      start: eventStart(row.event),
-      duration: Math.max(30, timeMinutes(eventEnd(row.event)) - timeMinutes(eventStart(row.event))),
-      type: 'single',
-      specialLesson: clean(row.action) === 'teacher_gift',
-      portalAction: row.action,
-      source: 'course-portal'
-    }));
-  });
-  payload.roomRentals = Array.isArray(payload.roomRentals) ? payload.roomRentals : [];
-  bookings.docs.forEach((doc) => {
-    const row = jsonValue(doc.data()) || {};
-    payload.roomRentals.push(Object.assign({}, row, { id: doc.id, source: 'course-portal' }));
-  });
-  payload.portalMeta = {
-    changes: changeRows.length,
-    bookings: bookings.size,
-    roomSettings: roomSettings.size,
-    studentProfiles: studentProfiles.size,
-    studentSuspensions: suspensions.size,
-    attendance: portalAttendanceSnapshot.size,
-    teacherPayroll: portalPayrollSnapshot.size,
-    teacherAdjustments: portalAdjustmentsSnapshot.size,
-    mergedAt: new Date().toISOString()
-  };
-  return payload;
-}
-
-function registerCoursePortal(exportsObject, helpers = {}) {
-  const callable = (handler, options = {}) => onCall(Object.assign({
-    region: REGION,
-    cors: ALLOWED_ORIGINS,
-    timeoutSeconds: 120,
-    memory: '512MiB'
-  }, options), async (request) => handler(request && request.data || {}, request));
-
-  exportsObject.coursePortalStartBinding = callable(startBinding);
-  exportsObject.coursePortalStudentPhoneAccess = callable(studentPhoneAccess);
-  exportsObject.coursePortalDirectRegularAccess = callable(directRegularAccess);
-  exportsObject.coursePortalSendEmailOtp = callable((data) => sendEmailOtp(data, {
-    sendEmail: helpers.sendEmail
-  }));
-  exportsObject.coursePortalVerifyEmailOtp = callable(verifyEmailOtp);
-  exportsObject.coursePortalStartLineLogin = callable(startLineLogin);
-  exportsObject.coursePortalCompleteLineRegistration = callable(completeLineRegistration);
-  exportsObject.coursePortalLineLoginCallback = onRequest({
-    region: REGION,
-    timeoutSeconds: 60,
-    memory: '256MiB',
-    secrets: [LINE_LOGIN_CHANNEL_SECRET]
-  }, lineLoginCallback);
-  exportsObject.coursePortalRenterContactLogin = callable(renterContactLogin);
-  exportsObject.coursePortalExchangeAccess = callable(exchangeAccessToken);
-  exportsObject.coursePortalTeacherData = callable(teacherPortalData, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherUtilitySession = callable(teacherUtilitySession, { timeoutSeconds: 120, memory: '512MiB' });
-  exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalStudentContactBookImage = callable(studentContactBookImage, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalStudentSubmitTuitionPayment = callable(studentSubmitTuitionPayment, {
-    timeoutSeconds: 180,
-    memory: '1GiB'
-  });
-  exportsObject.coursePortalRentalDayBoard = callable(rentalDayBoard, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalRentalWeekBoard = callable(rentalWeekBoard, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalRentalAvailability = callable(rentalAvailability, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalCreateRoomBooking = callable(createRoomBooking, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalRentalMyBookings = callable(rentalMyBookings);
-  exportsObject.coursePortalCancelRoomBooking = callable(cancelRoomBooking);
-  exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherLessonState = callable(teacherLessonState, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherAttendance = callable(teacherAttendance, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherLateAttendance = callable(teacherLateAttendance, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherAttendanceCancellationRequest = callable(teacherAttendanceCancellationRequest, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherSubmitContactBookPost = callable(teacherSubmitContactBookPost, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherUpdateStudent = callable(teacherUpdateStudent, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherStopStudent = callable(teacherStopStudent, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherBonusRequest = callable(teacherBonusRequest, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalRentalUseSettings = callable(publicRentalSettings);
-  exportsObject.coursePortalAdminRentalSettingsData = callable(async (data, request) => {
-    assertAdminPin(request);
-    return adminRentalSettingsData();
-  }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminScheduleConflictAudit = callable(async (data, request) => {
-    assertAdminPin(request);
-    return adminScheduleConflictAudit(data);
-  }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalAdminSaveRentalSettings = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRentalSettings(data);},{secrets:[ADMIN_PIN]});
-  exportsObject.coursePortalAdminSaveRoomEquipment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRoomEquipment(data);},{secrets:[ADMIN_PIN]});
-  exportsObject.coursePortalAdminSaveTeacherAdjustment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTeacherAdjustment(data);},{secrets:[ADMIN_PIN]});
-  exportsObject.coursePortalAdminRoomBookings = callable(async (data,request)=>{assertAdminPin(request);return adminRoomBookings();},{secrets:[ADMIN_PIN]});
-  exportsObject.coursePortalAdminCancelRoomBooking = callable(async (data,request)=>{assertAdminPin(request);return adminCancelRoomBooking(data);},{secrets:[ADMIN_PIN]});
-  exportsObject.coursePortalAdminBonusRequests = callable(async (data,request)=>{assertAdminPin(request);return adminBonusRequests();},{secrets:[ADMIN_PIN]});
-  exportsObject.coursePortalAdminApproveBonus = callable(async (data,request)=>{assertAdminPin(request);return adminApproveBonus(data);},{secrets:[ADMIN_PIN]});
-  exportsObject.coursePortalUpdateStudentReminder = callable(updateStudentReminder);
-  exportsObject.coursePortalAdminData = callable(async (data, request) => {
-    assertAdminPin(request);
-    return adminData();
-  }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminBindingAction = callable(async (data, request) => {
-    assertAdminPin(request);
-    return adminBindingAction(data);
-  }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminAttendanceCancellationAction = callable(async (data, request) => {
-    assertAdminPin(request);
-    return adminAttendanceCancellationAction(data);
-  }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminSuspensionAction = callable(async (data, request) => {
-    assertAdminPin(request);
-    return adminSuspensionAction(data);
-  }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminTuitionPaymentAction = callable(async (data, request) => {
-    assertAdminPin(request);
-    return adminTuitionPaymentAction(data);
-  }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalAdminEnsureTuitionReceipt = callable(async (data, request) => {
-    assertAdminPin(request);
-    return adminEnsureTuitionReceipt(data);
-  }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalAdminTuitionPaymentScreenshot = callable(async (data, request) => {
-    assertAdminPin(request);
-    return adminTuitionPaymentScreenshot(data);
-  }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalStudentReminderDaily = onSchedule({
-    schedule: '0 * * * *',
-    timeZone: TAIPEI,
-    region: REGION,
-    timeoutSeconds: 180,
-    memory: '512MiB'
-  }, async () => dailyStudentReminders(helpers.pushLineMessage));
-  exportsObject.coursePortalTeacherDailyReminder = onSchedule({
-    schedule: '0 9 * * *',
-    timeZone: TAIPEI,
-    region: REGION,
-    timeoutSeconds: 180,
-    memory: '512MiB'
-  }, async () => dailyTeacherCourseReminders(helpers.pushLineMessage));
-}
-
-module.exports = {
-  appendCoursePortalData,
-  handleCoursePortalLineEvent,
-  normalizePhone,
-  phoneMatches,
-  registerCoursePortal
-};
-function parseContactBookImages(values) {
-  const images = Array.isArray(values) ? values : [];
-  if (images.length > CONTACT_BOOK_IMAGE_MAX_COUNT) {
-    throw new HttpsError('invalid-argument', `ä¸€æ¬¡æœ€å¤šå¯é™„ ${CONTACT_BOOK_IMAGE_MAX_COUNT} å¼µç…§ç‰‡ã€‚`);
-  }
-  return images.map((value, index) => {
-    const parsed = parseTuitionReceipt(value && value.dataUrl);
-    if (parsed.buffer.length > CONTACT_BOOK_IMAGE_MAX_BYTES) {
-      throw new HttpsError('invalid-argument', `ç¬¬ ${index + 1} å¼µç…§ç‰‡éœ€å°æ–¼ 3 MBã€‚`);
-    }
-    return { name: clean(value && value.name).slice(0, 100), contentType: parsed.contentType, buffer: parsed.buffer };
-  });
-}
-
-async function teacherSubmitContactBookPost(data) {
-  const session = await requireSession(data, ['teacher']);
-  const text = clean(data.text);
-  const resolved = await teacherAttendanceEvent(session, data);
-  const event = resolved.event;
-  const availableIds = (event.studentIds || []).map(clean).filter(Boolean);
-  const requested = clean(data.studentId);
-  const studentIds = requested ? [requested] : availableIds;
-  if (!studentIds.length || studentIds.some((id) => !availableIds.includes(id))) {
-    throw new HttpsError('permission-denied', 'é€™ä½å­¸ç”Ÿä¸åœ¨æœ¬å ‚èª²ä¸­ã€‚');
-  }
-  const images = parseContactBookImages(data.images);
-  if (!text && !images.length) throw new HttpsError('invalid-argument', 'è«‹è¼¸å…¥è¯çµ¡ç°¿å…§å®¹æˆ–é™„ä¸Šç…§ç‰‡ã€‚');
-  const postId = randomToken(12);
-  const imageRows = await Promise.all(images.map(async (image, index) => {
-    const path = `course-portal/contact-book/${postId}/${index}-${randomToken(5)}`;
-    await admin.storage().bucket().file(path).save(image.buffer, {
-      resumable: false,
-      metadata: { contentType: image.contentType, cacheControl: 'private, no-store, max-age=0' }
-    });
-    return { name: image.name || `ç…§ç‰‡ ${index + 1}`, storagePath: path, contentType: image.contentType, bytes: image.buffer.length };
-  }));
-  const rows = await Promise.all(studentIds.map(async (studentId) => {
-    const ref = db.collection(CONTACT_BOOK_POSTS).doc(`${postId}-${studentId}`);
-    await ref.set({
-      id: ref.id, postId, active: true, studentId, teacherId: session.teacherId,
-      teacherName: clean(event.teacherName), subjectName: clean(event.subjectName), subjectId: clean(event.subjectId),
-      date: resolved.sourceDate, startTime: clean(event.startTime), eventId: clean(event.sourceId || resolved.sourceEventId || event.id),
-      courseId: clean(event.fixedCourseId || resolved.sourceCourseId), text, images: imageRows,
-      createdAt: FieldValue.serverTimestamp(), createdAtText: nowText(), updatedAt: FieldValue.serverTimestamp()
-    });
-    return ref.id;
-  }));
-  await Promise.all(studentIds.map((studentId) => queueCoursePortalNotice(
-    `course-contact-book-${postId}-${studentId}`,
-    { eventCode: 'contact_book_posted', target: 'student', targetRole: 'student', studentId,
-      title: 'èª²å ‚è¯çµ¡ç°¿æœ‰æ–°å…§å®¹', body: 'è€å¸«å·²æ–°å¢èª²å ‚è¯çµ¡ç°¿ï¼Œè«‹ç™»å…¥å­¸ç”Ÿå…¥å£æŸ¥çœ‹ã€‚', text: 'è€å¸«å·²æ–°å¢èª²å ‚è¯çµ¡ç°¿ï¼Œè«‹ç™»å…¥å­¸ç”Ÿå…¥å£æŸ¥çœ‹ã€‚' }
-  )));
-  return { ok: true, ids: rows, message: 'èª²å ‚è¯çµ¡ç°¿å·²é€å‡ºçµ¦å®¶é•·ã€‚' };
-}
-
-async function studentContactBookImage(data) {
-  const session = await requireSession(data, ['student']);
-  const id = clean(data.postId);
-  const imageIndex = Number(data.imageIndex);
-  const allowed = new Set(await activeStudentIdsForSession(session));
-  const snapshot = await db.collection(CONTACT_BOOK_POSTS).doc(id).get();
-  if (!snapshot.exists || !allowed.has(clean(snapshot.data().studentId))) throw new HttpsError('permission-denied', 'æ²’æœ‰é€™å¼µç…§ç‰‡çš„æŸ¥çœ‹æ¬Šé™ã€‚');
-  const image = (snapshot.data().images || [])[imageIndex];
-  if (!image || !clean(image.storagePath)) throw new HttpsError('not-found', 'æ‰¾ä¸åˆ°é€™å¼µç…§ç‰‡ã€‚');
-  const [buffer] = await admin.storage().bucket().file(clean(image.storagePath)).download();
-  if (!buffer.length || buffer.length > CONTACT_BOOK_IMAGE_MAX_BYTES) throw new HttpsError('failed-precondition', 'ç…§ç‰‡è³‡æ–™ç•°å¸¸ã€‚');
-  return { ok: true, contentType: clean(image.contentType) || 'image/jpeg', dataUrl: `data:${clean(image.contentType) || 'image/jpeg'};base64,${buffer.toString('base64')}` };
-}
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×~½Ûtèµ©hºÚn¶X§zÍIİ\ÙHİšXİ	ÎÂ‚˜ÛÛœİÈÛØ[Û”™\]Y\İÑ\œ›ÜˆHH™\]Z\™J	Ùš\™X˜\ÙKY[˜İ[ÛœËİŒ‹ÚÉÊNÂ˜ÛÛœİÈÛ”ØÚY[HHH™\]Z\™J	Ùš\™X˜\ÙKY[˜İ[ÛœËİŒ‹ÜØÚY[\‰ÊNÂ˜ÛÛœİÈYš[™TÙXÜ™]HH™\]Z\™J	Ùš\™X˜\ÙKY[˜İ[ÛœËÜ\˜[\ÉÊNÂ˜ÛÛœİYZ[ˆH™\]Z\™J	Ùš\™X˜\ÙKXYZ[‰ÊNÂ˜ÛÛœİÜ\ÈH™\]Z\™J	ØÜ\ÉÊNÂ˜ÛÛœİ]H™\]Z\™J	Ü]	ÊNÂ˜ÛÛœİÚ\œH™\]Z\™J	ÜÚ\œ	ÊNÂ˜ÛÛœİÂˆ›Ü›X[^™TÛ™KˆÛ™SX]Ú\Ëˆ›Ü›X[^™TØÚY[Tİ]\ËˆÛİ\œÙTÛİ\˜ÙRYÂŸHH™\]Z\™J	Ë‹ØÛİ\œÙTÜ[][ÉÊNÂ˜ÛÛœİÈš[™[™ÒY[]Kš[™[™ÒY[]T]ÚXÚYS[™SÙÚ[š[™[™ÈHH™\]Z\™J	Ë‹ØÛİ\œÙSÙÚ[”ÛXŞIÊNÂ‚šYˆ
+XYZ[‹˜\Ë›[™İ
+HYZ[‹š[š]X[^™P\
+
+NÂ‚˜ÛÛœİˆHYZ[‹™š\™\İÜ™J
+NÂ˜ÛÛœİšY[˜[YHHYZ[‹™š\™\İÜ™K‘šY[˜[YNÂ˜ÛÛœİ[Y\İ[\HYZ[‹™š\™\İÜ™K•[Y\İ[\Â˜ÛÛœİ‘QÒSÓˆH	İ\ËXÙ[˜[IÎÂ˜ÛÛœİRTRHH	Ğ\ÚXKÕZ\ZIÎÂ˜ÛÛœİQRS—ÔSˆHYš[™TÙXÜ™]
+	ÒS’’PSÖUS—ÓPS•PSÔÖS×ÔS‰ÊNÂ˜ÛÛœİS‘WÓÑÒS—ĞÒS“‘SÔÑPÔ‘UHYš[™TÙXÜ™]
+	ÓS‘WÓÑÒS—ĞÒS“‘SÔÑPÔ‘U	ÊNÂ˜ÛÛœİS‘WÓÑÒS—ĞÒS“‘SÒQH	ÌŒLLŒŒ‰ÎÂ˜ÛÛœİS‘WÓÑÒS—ĞĞSPÒ×ÕT“H	ÚÎ‹Ëİ\ËXÙ[˜[K^[İ^šKXÌXÍ˜ÛİY[˜İ[ÛœË›™]ØÛİ\œÙTÜ[[™SÙÚ[Ø[˜XÚÉÎÂ˜ÛÛœİÔ•SĞTÑHH	ÚÎ‹ËÙ[›MÌ™Ú]X‹š[ËÜ^KXØ\™	ÎÂ˜ÛÛœİSPRSÓÕÕÓTÈHN
+ˆLÂ˜ÛÛœİSPRSÓÕÓPVĞUSTÈHNÂ˜ÛÛœİS‘WÓĞUUÔÕUWÕÓTÈHL
+ˆŒ
+ˆLÂ˜ÛÛœİS‘WÔÑUTÕÓTÈHŒ
+ˆŒ
+ˆLÂ˜ÛÛœİÔ•SÔÑTÔÒSÓ—ÕÓTÈHL
+ˆ
+ˆŒ
+ˆŒ
+ˆLÂ˜ÛÛœİPPÒT—ÔVT“ÓÓRS—ÓSÓ•H	ÌŒ‹LÉÎÂ˜ÛÛœİRUSÓ—ÔVSQS•ĞS’ÈHØš™Xİ™œ™Y^™JÂˆ˜[šÓ˜[YNˆ	ùcì9¥¬9g"úf¦ùea¹©kzb :(c	Ëˆ˜[šĞÛÙNˆ	ÎL‰Ëˆœ˜[˜Ú˜[YNˆ	ù¥i¹ceùb!º(c	Ëˆœ˜[˜ÚÛÙNˆ	ÌŒÉËˆXØÛİ[˜[YNˆ	únàúb¦9níÉËˆXØÛİ[[X™\ˆ	ÌLLMLLIÂŸJNÂ˜ÛÛœİRUSÓ—ÔVSQS•Ô‘TUQTÕÈH	ØÛİ\œÙTÜ[Z][Û”^[Y[™\]Y\İÉÎÂ˜ÛÛœİRUSÓ—ÔT’SÑÈH	ØÛİ\œÙTÜ[Z][Û”\š[ÙÉÎÂ˜ÛÛœİRUSÓ—ÕS”ĞPÕSÓ”ÈH	ØÛİ\œÙTÜ[Z][Û”^[Y[˜[œØXİ[ÛœÉÎÂ˜ÛÛœİRUSÓ—ÔÖTÕSWÔT’SÑÈH	ØÛİ\œÙTÜ[Z][Û”Ş\İ[T\š[ÙÉÎÂ˜ÛÛœİRUSÓ—Ô‘PÑRTÈH	ØÛİ\œÙTÜ[Z][Û”™XÙZ\ÉÎÂ˜ÛÛœİRUSÓ—Ô‘PÑRTÓPVĞ–UTÈH
+ˆL
+ˆLÂ˜ÛÛœİRUSÓ—Ô‘PÑRTÕSTUHH]š›Ú[Š×Ù\›˜[YK	Ø\ÜÙ]ÉË	İZ][Û‹\™XÙZ\X›[šËœ™ÉÊNÂ˜ÛÛœİRUSÓ—Ô‘PÑRTÑ“Ó•H™\]Z\™Kœ™\ÛÛ™Jˆ	Ğ^ËYÛÛÙÛKY›ÛËÛ›İË\Ø[œË]ËÍÌ›ÛÓ›İÔØ[œÕ×ÍÌ›Û‰ÂŠNÂ˜ÛÛœİUS‘SÑWÔ‘PÓÔ‘ÈH	ØÛİ\œÙTÜ[][™[˜ÙT™XÛÜ™ÉÎÂ˜ÛÛœİUS‘SÑWĞĞSÑSUSÓ”ÈH	ØÛİ\œÙTÜ[][™[˜ÙPØ[˜Ù[][Û”™\]Y\İÉÎÂ˜ÛÛœİUS‘SÑWÔVT“ÓH	ØÛİ\œÙTÜ[XXÚ\][™[˜ÙT^\›Û	ÎÂ˜ÛÛœİUS‘SÑWĞQRS—Ñ‘QHHLÂ˜ÛÛœİÔ•SÓPVĞQSÑWÓSÓ•ÈHÂ˜ÛÛœİÓÓ•PÕĞ“ÓÒ×ÔÔÕÈH	ØÛİ\œÙTÜ[\ÜÛÛÛÛXİÜİÉÎÂ˜ÛÛœİÓÓ•PÕĞ“ÓÒ×ÒSPQÑWÓPVĞ–UTÈHÈ
+ˆL
+ˆLÂ˜ÛÛœİÓÓ•PÕĞ“ÓÒ×ÒSPQÑWÓPVĞÓÕS•HÂ˜ÛÛœİSÕÑQÓÔ’QÒS”ÈHÂˆ	ÚÎ‹ËÙ[›MÌ™Ú]X‹š[ÉËˆ	ÚÎ‹ËİİİË›Z[™İ[™ÚX[™Ë˜ÛÛIËˆ	ÚÎ‹ËÛZ[™İ[™ÚX[™Ë˜ÛÛIËˆ×š—×ÊØØ[ÜİL×ŒŒŒJJ—
+ÊOÉÚB—NÂ˜ÛÛœİRT”“ÔˆHØš™Xİ™œ™Y^™JÂˆ›ÛÛ\Îˆ	ÛÜÑYXØ][Û“Z\œ›Ü”›ÛÛ\ÉËˆİXš™XİÎˆ	ÛÜÑYXØ][Û“Z\œ›Ü”İXš™XİÉËˆ™YT[œÎˆ	ÛÜÑYXØ][Û“Z\œ›Ü‘™YT[œÉËˆİY[Îˆ	ÛÜÑYXØ][Û“Z\œ›Ü”İY[ÉËˆXXÚ\œÎˆ	ÛÜÑYXØ][Û“Z\œ›Ü•XXÚ\œÉËˆXXÚ\”^\›Ûˆ	ÛÜÑYXØ][Û“Z\œ›Ü•XXÚ\”^\›Û	ËˆXXÚ\Y\İY[Îˆ	ÛÜÑYXØ][Û“Z\œ›Ü•XXÚ\Y\İY[ÉËˆZ][Û”\š[ÙÎˆ	ÛÜÑYXØ][Û“Z\œ›Ü•Z][Û”\š[ÙÉËˆ][™[˜ÙNˆ	ÛÜÑYXØ][Û“Z\œ›Ü][™[˜ÙIËˆš^YÛİ\œÙ\Îˆ	ÛÜÑYXØ][Û“Z\œ›Ü‘š^YÛİ\œÙ\ÉËˆ[\Ü˜\PÛİ\œÙ\Îˆ	ÛÜÑYXØ][Û“Z\œ›Ü•[\Ü˜\PÛİ\œÙ\ÉËˆ›ÛÛT™[[Îˆ	ÛÜÑYXØ][Û“Z\œ›Ü”›ÛÛT™[[ÉËˆ]™[Îˆ	ÛÜÑYXØ][Û“Z\œ›Ü‘]™[ÉÂŸJNÂ˜ÛÛœİ‘S•SÕTÑT×Õ‘T”ÒSÓˆHÂ˜ÛÛœİ‘S•SÕTÑWÓÔSÓ”ÈHØš™Xİ™œ™Y^™JÂˆÈYˆ	ÜX[›ÉË˜[YNˆ	ùob:bï9ä-	ËXÛÛˆ	ü'ã®IË›ÛÛRYÎˆ×HKˆÈYˆ	Ù[\ÉË˜[YNˆ	ùíí:o$ÉËXÛÛˆ	ü'é`IË›ÛÛRYÎˆ×HKˆÈYˆ	Ø˜[™	Ë˜[YNˆ	ùg&9íí	ËXÛÛˆ	ü'ã®	Ë›ÛÛRYÎˆ×HKˆÈYˆ	Ùİ^š[™ÉË˜[YNˆ	ùcé9ë£ÉËXÛÛˆ	ü'ê¥IË›ÛÛRYÎˆ×HKˆÈYˆ	Ü™XÛÜ™[™ÉË˜[YNˆ	úc!:gìùk©	ËXÛÛˆ	ü'ã¦{î#ÉË›ÛÛRYÎˆ×Kİ\›T˜]NˆÌKˆÈYˆ	Ûİ\‰Ë˜[YNˆ	ùam¹.å¹å*:`%	ËXÛÛˆ	ü'ã­IË›ÛÛRYÎˆ×HB—JNÂ˜ÛÛœİQUSĞ•TÒS‘TÔ×ÒÕT”ÈHØš™Xİ™œ™Y^™JÂˆ	Ì	ÎˆÈÛÜÙYˆ˜[ÙKİ\ˆ	ÌLŒ	Ë[™ˆ	ÌŒNŒ	ÈKˆ	ÌIÎˆÈÛÜÙYˆYKİ\ˆ	ÉË[™ˆ	ÉÈKˆ	Ì‰ÎˆÈÛÜÙYˆ˜[ÙKİ\ˆ	ÌLŒÌ	Ë[™ˆ	ÌŒNŒ	ÈKˆ	ÌÉÎˆÈÛÜÙYˆ˜[ÙKİ\ˆ	ÌLŒÌ	Ë[™ˆ	ÌŒNŒ	ÈKˆ	Í	ÎˆÈÛÜÙYˆ˜[ÙKİ\ˆ	ÌLŒÌ	Ë[™ˆ	ÌŒNŒ	ÈKˆ	ÍIÎˆÈÛÜÙYˆ˜[ÙKİ\ˆ	ÌLŒÌ	Ë[™ˆ	ÌŒNŒ	ÈKˆ	Í‰ÎˆÈÛÜÙYˆ˜[ÙKİ\ˆ	ÌLŒ	Ë[™ˆ	ÌŒNŒ	ÈBŸJNÂ‚™[˜İ[Ûˆ›ÛÛRÚ[™
+›ÛÛKÙ][™ÈHßJHÂˆÛÛœİ^XÚ]HÛX[ŠÙ][™ËšÚ[™Ù][™Ëœ›ÛÛRÚ[™
+KÓİÙ\Ø\ÙJ
+NÂˆYˆ
+ÉÛ›Ü›X[	Ë	İšY[ÉË	ÚÛ[™É×Kš[˜ÛY\Ê^XÚ]
+JH™]\›ˆ^XÚ]ÂˆÛÛœİ˜[YHHÛX[Š›ÛÛH	‰ˆ›ÛÛK›˜[YJNÂˆYˆ
+ù.#yk¦¹¦`‹Ë\İ
+˜[YJJH™]\›ˆ	ÚÛ[™ÉÎÂˆYˆ
+ú)¥º*"‹Ë\İ
+˜[YJJH™]\›ˆ	İšY[ÉÎÂˆ™]\›ˆ	Û›Ü›X[	ÎÂŸB‚™[˜İ[ÛˆY˜][›ÛÛQ™YJ›ÛÛJHÂˆÛÛœİ˜[YHHÛX[Š›ÛÛH	‰ˆ›ÛÛK›˜[YJNÂˆ™]\›ˆùg&9íí9k©9ley¯%9ênºe¤ß9nlùcì:bï9ä-z&gúbï9ä-9.¥:&gúbï9ä-Ë\İ
+˜[YJHÈŒˆLÂŸB‚™[˜İ[Ûˆ›ÛÛT™[X›J›ÛÛKÙ][™ÈHßJHÂˆYˆ
+Ù][™Ëœ›ÛÛT[\Õ™\œÚ[ÛˆOOHH	‰ˆ\[ÙˆÙ][™Ëœ™[X›HOOH	Ø›ÛÛX[‰ÊH™]\›ˆÙ][™Ëœ™[X›NÂˆ™]\›ˆ›ÛÛRÚ[™
+›ÛÛKÙ][™ÊHOOH	Û›Ü›X[	ÎÂŸB‚™[˜İ[Ûˆ›ÛÛUXXÚ\”ØÚY[X›J›ÛÛKÙ][™ÈHßJHÂˆYˆ
+Ù][™Ëœ›ÛÛT[\Õ™\œÚ[ÛˆOOHH	‰ˆ\[ÙˆÙ][™ËXXÚ\”ØÚY[X›HOOH	Ø›ÛÛX[‰ÊH™]\›ˆÙ][™ËXXÚ\”ØÚY[X›NÂˆ™]\›ˆYNÂŸB‚™[˜İ[ÛˆY™™Xİ]™T›ÛÛQ™YJ›ÛÛKÙ][™ÈHßJHÂˆYˆ
+Ù][™Ëœ›ÛÛT[\Õ™\œÚ[ÛˆOOHH	‰ˆÙ][™Ëœ™[[™YHOOH[™Yš[™Y	‰ˆÙ][™Ëœ™[[™YHOOH[	‰ˆÙ][™Ëœ™[[™YHOOH	ÉÊHÂˆ™]\›ˆX]›X^
+[X™\ŠÙ][™Ëœ™[[™YJH
+NÂˆBˆ™]\›ˆY˜][›ÛÛQ™YJ›ÛÛJNÂŸB‚˜ÛÛœİ‘PÓÔ‘S‘×Ô‘S•SÓÔSÓ”ÈHØš™Xİ™œ™Y^™JÂˆØš™Xİ™œ™Y^™JÂˆYˆ	ÙÙ[™\˜[Ü›ÛÛIËˆ˜[YNˆ	ù. :"+9¥fyk©9/oùå*	Ëˆİ\›T˜]NˆLˆJKˆØš™Xİ™œ™Y^™JÂˆYˆ	ÜİY[×Ü™XÛÜ™[™ÉËˆ˜[YNˆ	úc!:gìùk©:c!:gìù/oùå*	Ëˆİ\›T˜]NˆÌˆJB—JNÂ‚™[˜İ[Ûˆ™XÛÜ™[™Ô™[[Ù[Xİ[ÛŠ]K™\]Z\™YH˜[ÙJHÂˆÛÛœİ\ÙU\HHÛX[Š]H	‰ˆ]K\ÙU\JNÂˆÛÛœİÙ[Xİ[Û’YHÛX[Š]H	‰ˆ]Kœ™XÛÜ™[™Õ\ØYÙJNÂˆYˆ
+\ÙU\HOOH	Ü™XÛÜ™[™ÉÊHÂˆYˆ
+Ù[Xİ[Û’Y
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùcê¹§"zc!:gìùk©9å*:`%9cëù.éz`n9¤áúc!:gìùk©9/oùå*9¥®yo#øà ‰ÊNÂˆBˆ™]\›ˆ[ÂˆBˆYˆ
+\Ù[Xİ[Û’Y
+HÂˆYˆ
+™\]Z\™Y
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ú[˜[YX\™İ[Y[	Ëˆ	ú*âú`n9¤áøà#9. :"+9¥fyk©9/oùå*•	Lùl#ù¦`¸à#y¢%¸à#:c!:gìùk©:c!:gìù/oùå*•	Ìùl#ù¦`¸à#xà ‰Âˆ
+NÂˆBˆ™]\›ˆ[ÂˆBˆÛÛœİÙ[Xİ[ÛˆH‘PÓÔ‘S‘×Ô‘S•SÓÔSÓ”Ë™š[™
+
+›İÊHOˆ›İËšYOOHÙ[Xİ[Û’Y
+NÂˆYˆ
+\Ù[Xİ[ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	úc!:gìùk©9/oùå*9¥®yo#ùá(y¥b;ï#:*âúaãy¥¬:`n9¤áøà ‰ÊNÂˆBˆ™]\›ˆÙ[Xİ[ÛÂŸB‚™[˜İ[Ûˆ™[[[[İ[
+[š]™YK\˜][Û“Z[]\Ë\ØÛİ[˜]HHJHÂˆ™]\›ˆX]œ›İ[™
+ˆX]›X^
+[X™\Š[š]™YJH
+H
+‚ˆX]›X^
+[X™\Š\˜][Û“Z[]\ÊH
+HÈŒ
+‚ˆX]›X^
+[X™\Š\ØÛİ[˜]JH
+Bˆ
+NÂŸB‚™[˜İ[ÛˆY™™Xİ]™T™[[™YJ›ÛÛKÙ][™ÈHßK\ÙSÜ[ÛˆHßK™XÛÜ™[™ÔÙ[Xİ[ÛˆH[
+HÂˆYˆ
+ÛX[Š\ÙSÜ[Û‹šY
+HOOH	Ü™XÛÜ™[™ÉÊHÂˆ™]\›ˆ™XÛÜ™[™ÔÙ[Xİ[ÛˆÈ™XÛÜ™[™ÔÙ[Xİ[Û‹šİ\›T˜]Hˆ[ÂˆBˆYˆ
+\ÙSÜ[Û‹šİ\›T˜]HOOH[™Yš[™Y	‰ˆ\ÙSÜ[Û‹šİ\›T˜]HOOH[	‰ˆ\ÙSÜ[Û‹šİ\›T˜]HOOH	ÉÊHÂˆ™]\›ˆX]›X^
+[X™\Š\ÙSÜ[Û‹šİ\›T˜]JH
+NÂˆBˆYˆ
+úc!:gìùk©:c!:gìËË\İ
+ÛX[Š›ÛÛH	‰ˆ›ÛÛK›˜[YJJJH™]\›ˆLÂˆ™]\›ˆY™™Xİ]™T›ÛÛQ™YJ›ÛÛKÙ][™ÊNÂŸB‚™[˜İ[ÛˆY˜][™[[\ÙSÜ[ÛœÊ›ÛÛ\ÊHÂˆÛÛœİ›Ü›X[H
+›ÛÛ\È×JK™š[\Š
+›ÛÛJHOˆ›ÛÛRÚ[™
+›ÛÛJHOOH	Û›Ü›X[	ÊNÂˆÛÛœİYÈH
+]\›ŠHOˆ›Ü›X[™š[\Š
+›ÛÛJHOˆ]\›‹\İ
+ÛX[Š›ÛÛK›˜[YJJJK›X\
+Ûİ\˜ÙRY
+NÂˆ™]\›ˆÂˆÂˆYˆ	ÜX[›ÉËˆ˜[YNˆ	ùob:bï9ä-	ËˆXÛÛˆ	ü'ã®IËˆ\ØÜš\[Ûˆ	ùcëú`n9¤áù¦+ùd)¹£¤ºfi:fîúbï9ä-	Ëˆ›ÛÛRYÎˆYÊúbï9ä-9nlùcì9ä-9¢/ßX[›ßX[XZ_Ø]ØZ_9chydáù/"Ÿ9ley¯%9g&9ííÚJKˆİ\›T˜]Nˆ[ˆXİ]™NˆYBˆKˆÈYˆ	Ù[\ÉË˜[YNˆ	ùíí:o$ÉËXÛÛˆ	ü'é`IË\ØÜš\[Ûˆ	ùcëù£!ùk¦¹`¬ùílzo$ù¢%ºfîùkd:o$ûï#9.gùcëù.#y£!ùk¦‰Ë›ÛÛRYÎˆYÊúo$ß9ley¯%9g&9ííÊKİ\›T˜]Nˆ[Xİ]™NˆYHKˆÈYˆ	Ø˜[™	Ë˜[YNˆ	ùg&9íí	ËXÛÛˆ	ü'ã®	Ë\ØÜš\[Ûˆ	ÉË›ÛÛRYÎˆYÊùley¯%9g&9ííÊKİ\›T˜]Nˆ[Xİ]™NˆYHKˆÂˆYˆ	Ùİ^š[™ÉËˆ˜[YNˆ	ùcé9ë£ÉËˆXÛÛˆ	ü'ê¥IËˆ\ØÜš\[Ûˆ	úh$:*+yley¯%9ênºe¤ûï&ùcëú!êº(c9¤+:`bù¦`¹¢cyb¨9aiHĞUĞRH9¥fyk©	Ëˆ›ÛÛRYÎˆYÊùley¯%Ø]ØZ_9chydáù/"‹ÚJKˆİ\›T˜]Nˆ[ˆXİ]™NˆYBˆKˆÂˆYˆ	Ü™XÛÜ™[™ÉËˆ˜[YNˆ	úc!:gìùk©	ËˆXÛÛˆ	ü'ã¦{î#ÉËˆ\ØÜš\[Ûˆ	úc!:gìùå*:`%9«ãùl#ù¦`ˆ•	Ì;ï&ùam¹.å¹å*:`%9«ãùl#ù¦`ˆ•	L	Ëˆ›ÛÛRYÎˆYÊúc!:gìùk©:c!:gìËÊKˆİ\›T˜]NˆÌˆXİ]™NˆYBˆKˆÈYˆ	Ûİ\‰Ë˜[YNˆ	ùam¹.å¹å*:`%	ËXÛÛˆ	ü'ã­IË\ØÜš\[Ûˆ	ÉË›ÛÛRYÎˆ›Ü›X[›X\
+Ûİ\˜ÙRY
+Kİ\›T˜]Nˆ[Xİ]™NˆYHBˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[[\ÙSÜ[ÛœÊ›ÛÛ\ÈH×JHÂˆÛÛœİÛ˜\H]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù][™ÜÉÊK™ØÊ	Ü™[[\Ù\ÉÊK™Ù]
+
+NÂˆÛÛœİY˜][ÈHY˜][™[[\ÙSÜ[ÛœÊ›ÛÛ\ÊNÂˆÛÛœİØ]™YHÛ˜\™^\İÈÈÛ˜\™]J
+HßHˆßNÂˆÛÛœİØ]™Y›İÜÈH\œ˜^Kš\Ğ\œ˜^JØ]™Yš][\ÊHÈØ]™Yš][\Èˆ×NÂˆ]›İÜÈHY˜][ÎÂˆYˆ
+Ø]™Y™\œÚ[ÛˆOOH‘S•SÕTÑT×Õ‘T”ÒSÓŠHÂˆ›İÜÈHØ]™Y›İÜÎÂˆH[ÙHYˆ
+Ø]™Y™\œÚ[ÛˆOOHÊHÂˆÛÛœİY˜][YÈH™]ÈÙ]
+Y˜][Ë›X\
+
+›İÊHOˆ›İËšY
+JNÂˆ›İÜÈHY˜][Ë›X\
+
+˜[˜XÚÊHOˆÂˆÛÛœİ™]š[İ\ÈHØ]™Y›İÜË™š[™
+
+›İÊHOˆÛX[Š›İËšY
+HOOH˜[˜XÚËšY
+NÂˆYˆ
+\™]š[İ\ÊH™]\›ˆ˜[˜XÚÎÂˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠßK˜[˜XÚËÂˆ˜[YNˆÛX[Š™]š[İ\Ë›˜[YJH˜[˜XÚË›˜[YKˆXÛÛˆÛX[Š™]š[İ\ËšXÛÛŠH˜[˜XÚËšXÛÛ‹ˆ\ØÜš\[ÛˆÛX[Š˜[˜XÚË™\ØÜš\[Ûˆ™]š[İ\Ë™\ØÜš\[ÛŠKˆ›ÛÛRYÎˆË‹‹›™]ÈÙ]
+Ë‹‹Š˜[˜XÚËœ›ÛÛRYÈ×JK‹‹Š\œ˜^Kš\Ğ\œ˜^J™]š[İ\Ëœ›ÛÛRYÊHÈ™]š[İ\Ëœ›ÛÛRYÈˆ×JWJWKˆİ\›T˜]Nˆ˜[˜XÚËšİ\›T˜]HOH[È™]š[İ\Ëšİ\›T˜]Hˆ˜[˜XÚËšİ\›T˜]KˆXİ]™Nˆ™]š[İ\Ë˜Xİ]™HOOH˜[ÙBˆJNÂˆJK˜ÛÛ˜Ø]
+Ø]™Y›İÜË™š[\Š
+›İÊHOˆYY˜][YËš\ÊÛX[Š›İËšY
+JJJNÂˆBˆ™]\›ˆ›İÜË›X\
+
+›İË[™^
+HOˆ
+ÂˆYˆÛX[Š›İËšY
+H
+	İ\ÙKIÈ
+È
+[™^
+ÈJJKˆ˜[YNˆÛX[Š›İË›˜[YJH
+	ùå*:`%	È
+È
+[™^
+ÈJJKˆXÛÛˆÛX[Š›İËšXÛÛŠH
+Y˜][ÖÚ[™^H	‰ˆY˜][ÖÚ[™^KšXÛÛŠH	ü'ã­IËˆ\ØÜš\[ÛˆÛX[Š›İË™\ØÜš\[ÛŠKˆšXÙT˜[™ÙU^ˆÛX[Š›İËšY
+HOOH	Ü™XÛÜ™[™ÉÈÈ	Ó•	L8 $ÌÌ;ï#ùl#ù¦`‰Èˆ	ÉËˆ›ÛÛRYÎˆ\œ˜^Kš\Ğ\œ˜^J›İËœ›ÛÛRYÊH	‰ˆ›İËœ›ÛÛRYË›[™İÈ›İËœ›ÛÛRYË›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠHˆ
+
+Y˜][Ë™š[™
+
+][JHOˆ][KšYOOHÛX[Š›İËšY
+JHßJKœ›ÛÛRYÈ×JKˆİ\›T˜]Nˆ›İËšİ\›T˜]HOOH[™Yš[™Y›İËšİ\›T˜]HOOH[›İËšİ\›T˜]HOOH	ÉÂˆÈ[ˆˆX]›X^
+[X™\Š›İËšİ\›T˜]JH
+KˆXİ]™Nˆ›İË˜Xİ]™HOOH˜[ÙBˆJJK™š[\Š
+›İÊHOˆ›İË˜Xİ]™JNÂŸB‚™[˜İ[Ûˆ™[[\ÙP[İÜÔ›ÛÛJÜ[ÛœË\ÙU\K›ÛÛRY›ÛÛKÙ][™ÈHßJHÂˆÛÛœİÙ[XİY\ÙU\HHÛX[Š\ÙU\JNÂˆYˆ
+ˆÙ][™Ëœ›ÛÛT[\Õ™\œÚ[ÛˆOOHH	‰‚ˆØš™Xİœ›İİ\Kš\ÓİÛ”›Ü\K˜Ø[
+Ù][™Ë	Ü™[[\ÙU\\ÉÊH	‰‚ˆ\œ˜^Kš\Ğ\œ˜^JÙ][™Ëœ™[[\ÙU\\ÊBˆ
+HÂˆ™]\›ˆÙ][™Ëœ™[[\ÙU\\Ë›X\
+ÛX[ŠKš[˜ÛY\ÊÙ[XİY\ÙU\JNÂˆBˆYˆ
+ˆ›ÛÛH	‰‚ˆØš™Xİœ›İİ\Kš\ÓİÛ”›Ü\K˜Ø[
+›ÛÛK	Ü™[[\ÙU\\ÉÊH	‰‚ˆ\œ˜^Kš\Ğ\œ˜^J›ÛÛKœ™[[\ÙU\\ÊBˆ
+HÂˆ™]\›ˆ›ÛÛKœ™[[\ÙU\\Ë›X\
+ÛX[ŠKš[˜ÛY\ÊÙ[XİY\ÙU\JNÂˆBˆÛÛœİÙ[XİYH
+Ü[ÛœÈ×JK™š[™
+
+›İÊHOˆ›İËšYOOHÛX[Š\ÙU\JJNÂˆ™]\›ˆ›ÛÛX[ŠÙ[XİY	‰ˆÙ[XİYœ›ÛÛRYËš[˜ÛY\ÊÛX[Š›ÛÛRY
+JJNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[[ÛXŞTÙ][™ÜÊ
+HÂˆÛÛœİÛ˜\H]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù][™ÜÉÊK™ØÊ	Ü™[[ÛXŞIÊK™Ù]
+
+NÂˆÛÛœİØ]™YHÛ˜\™^\İÈÈÛ˜\™]J
+HßHˆßNÂˆÛÛœİ˜]ÈHØ]™Y™\œÚ[ÛˆOOHÈÈØ]™YˆßNÂˆÛÛœİ\Ú[™\ÜÒİ\œÈHßNÂˆØš™XİšÙ^\ÊQUSĞ•TÒS‘TÔ×ÒÕT”ÊK™›Ü‘XXÚ
+
+^JHOˆÂˆÛÛœİ˜[˜XÚÈHQUSĞ•TÒS‘TÔ×ÒÕT”ÖÙ^WNÂˆÛÛœİ›İÈH˜]Ë˜\Ú[™\ÜÒİ\œÈ	‰ˆ˜]Ë˜\Ú[™\ÜÒİ\œÖÙ^WHßNÂˆ\Ú[™\ÜÒİ\œÖÙ^WHHÂˆÛÜÙYˆ›İË˜ÛÜÙYOOHYH
+›İË˜ÛÜÙYOH[	‰ˆ˜[˜XÚË˜ÛÜÙY
+Kˆİ\ˆÛX[Š›İËœİ\
+H˜[˜XÚËœİ\ˆ[™ˆÛX[Š›İË™[™
+H˜[˜XÚË™[™ˆNÂˆJNÂˆ™]\›ˆÂˆ\Ú[™\ÜÒİ\œËˆİY[\ØÛİ[˜]Nˆ[X™\Š˜]ËœİY[\ØÛİ[˜]HOH[ÈHˆ˜]ËœİY[\ØÛİ[˜]JHKˆX^\˜][Û“Z[]\ÎˆX]›Z[ŠÌX]›X^
+Ì[X™\Š˜]Ë›X^\˜][Û“Z[]\ÈÌ
+JJKˆÛœÚ]T^[Y[ˆYBˆNÂŸB‚™[˜İ[Ûˆ\Ú[™\ÜÕÚ[™İÊÛXŞK]JHÂˆÛÛœİ›İÈHÛXŞK˜\Ú[™\ÜÒİ\œÖÔİš[™ÊÙYZÙ^J]JJWHßNÂˆ™]\›ˆÂˆÛÜÙYˆ›İË˜ÛÜÙYOOHYKˆİ\ˆÛX[Š›İËœİ\
+Kˆ[™ˆÛX[Š›İË™[™
+Kˆİ\Z[]\Îˆ[YSZ[]\Ê›İËœİ\
+Kˆ[™Z[]\Îˆ[YSZ[]\Ê›İË™[™
+BˆNÂŸB‚™[˜İ[Ûˆ›ÛÚÚ[™ÓØÚÔ›İÜÊ]K›ÛÛRYİ\[YK[™[YJHÂˆÛÛœİ›İÜÈH×NÂˆ›Üˆ
+]Z[]HH[YSZ[]\Êİ\[YJNÈZ[]H[YSZ[]\Ê[™[YJNÈZ[]H
+ÏHÌ
+HÂˆÛÛœİÛİHİš[™ÊX]™›ÛÜŠZ[]HÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™ÊZ[]H	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆ›İÜËœ\Ú
+ÈYˆ\Ú
+ÉÜ›ÛÛK[ØÚÉË]K›ÛÛRYÛİKš›Ú[Š	ß	ÊJKÛİ›ÛÛRY™\Ûİ\˜ÙRYˆ	ÉÈJNÂˆBˆ™]\›ˆ›İÜÎÂŸB‚™[˜İ[ÛˆÚ\™Y\]Z\Y[ØÚÔ›İÜÊ]K™\Ûİ\˜ÙRYËİ\[YK[™[YJHÂˆÛÛœİ›İÜÈH×NÂˆË‹‹›™]ÈÙ]
+
+™\Ûİ\˜ÙRYÈ×JK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠJWK™›Ü‘XXÚ
+
+™\Ûİ\˜ÙRY
+HOˆÂˆ›Üˆ
+]Z[]HH[YSZ[]\Êİ\[YJNÈZ[]H[YSZ[]\Ê[™[YJNÈZ[]H
+ÏHÌ
+HÂˆÛÛœİÛİHİš[™ÊX]™›ÛÜŠZ[]HÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™ÊZ[]H	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆ›İÜËœ\Ú
+ÂˆYˆ\Ú
+ÉÙ\]Z\Y[[ØÚÉË]K™\Ûİ\˜ÙRYÛİKš›Ú[Š	ß	ÊJKˆÛİˆ›ÛÛRYˆ	ÉËˆ™\Ûİ\˜ÙRYˆJNÂˆBˆJNÂˆ™]\›ˆ›İÜÎÂŸB‚™[˜İ[ÛˆØÚY[U™\œÚ[Û”™YŠ
+HÂˆ™]\›ˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[[YIÊK™ØÊ	ÜØÚY[U™\œÚ[Û‰ÊNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™XYØÚY[U™\œÚ[ÛŠ
+HÂˆÛÛœİÛ˜\ÚİH]ØZ]ØÚY[U™\œÚ[Û”™YŠ
+K™Ù]
+
+NÂˆ™]\›ˆ[X™\ŠÛ˜\Úİ™^\İÈ	‰ˆÛ˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂŸB‚™[˜İ[ÛˆØÚY[TŞ[˜Ò[”›ÙÜ™\ÜÊÛ˜\Úİ
+HÂˆYˆ
+\Û˜\Úİ\Û˜\Úİ™^\İÊH™]\›ˆ˜[ÙNÂˆÛÛœİ›İÈHÛ˜\Úİ™]J
+HßNÂˆ™]\›ˆ›İËœŞ[˜Ú[™ÈOOHYH	‰ˆ\ÓZ[\Ê›İËœŞ[˜Ú[™Õ[[
+Hˆ]K››İÊ
+NÂŸB‚™[˜İ[Ûˆ\ÜÙ\ØÚY[UÜš]X›JÛ˜\Úİ
+HÂˆYˆ
+ØÚY[TŞ[˜Ò[”›ÙÜ™\ÜÊÛ˜\Úİ
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	ØX›ÜY	Ë	ú*¬º(j9«hùg*9d#9«iy§ 9¥¬:,áù¥¦{ï#:*âùê#y`&ya£z*i¸à ‰ÊNÂˆBˆYˆ
+Û˜\Úİ	‰ˆÛ˜\Úİ™^\İÊHÂˆÛÛœİ›İÈHÛ˜\Úİ™]J
+HßNÂˆYˆ
+›İËÜš]\Ğ›ØÚÙYOOHYHÛX[Š›İËš[YÜš]Tİ]\ÊKÓİÙ\Ø\ÙJ
+HOOH	Ù\œ›Ü‰ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	ØX›ÜY	Ëˆ	ù."¹. 9¢nz*¬º(j9d#9«iy§*¹k£9¥m9k£9¢$;ï#9à®º`oùaczaãz)!ù£¤º*¬¹æë¹bcy¦ªù`g9a,¹kf;ï&ú*âùå,yë¨yä!º !zaãy¥¬9d#9«iy¢$9b§ùo£9a£z*i¸à ‰Âˆ
+NÂˆBˆBŸB‚™[˜İ[ÛˆÛX[Š˜[YJHÂˆ™]\›ˆİš[™Ê˜[YHOH[È	ÉÈˆ˜[YJKš[J
+NÂŸB‚™[˜İ[Ûˆ›Ü›X[^™S˜[YJ˜[YJHÂˆ™]\›ˆÛX[Š˜[YJKœ™\XÙJ×ÊËÙË	ÉÊKÓİÙ\Ø\ÙJ
+NÂŸB‚™[˜İ[Ûˆ›Ü›X[^™Q[XZ[
+˜[YJHÂˆ™]\›ˆÛX[Š˜[YJKÓİÙ\Ø\ÙJ
+NÂŸB‚™[˜İ[Ûˆ˜[Y[XZ[
+˜[YJHÂˆ™]\›ˆ×–×—ĞJĞ×—ĞJ×–×—ĞJÉË\İ
+›Ü›X[^™Q[XZ[
+˜[YJJNÂŸB‚™[˜İ[ÛˆX\ÚÙY[XZ[
+˜[YJHÂˆÛÛœİ[XZ[H›Ü›X[^™Q[XZ[
+˜[YJNÂˆÛÛœİÛ˜[YKÛXZ[—HH[XZ[œÜ]
+	Ğ	ÊNÂˆYˆ
+[˜[YHYÛXZ[ŠH™]\›ˆ	ÉÎÂˆÛÛœİš\ÚX›HH˜[YK›[™İHˆÈ˜[YKœÛXÙJJHˆ˜[YKœÛXÙJŠNÂˆ™]\›ˆ	İš\ÚX›_IÉÊ‰Ëœ™\X]
+X]›X^
+‹X]›Z[Š‹˜[YK›[™İHš\ÚX›K›[™İ
+JJ_P	ÙÛXZ[ŸXÂŸB‚™[˜İ[Ûˆ]RÙ^J˜[YJHÂˆÛÛœİX]ÚHÛX[Š˜[YJK›X]Ú
+×ŠÍJKJÌŸJKJÌŸJIÊNÂˆYˆ
+[X]Ú
+H™]\›ˆ	ÉÎÂˆÛÛœİ]HH™]È]J	ÛX]ÚÌW_KIÛX]ÚÌ—_KIÛX]ÚÌ×_ULŒŒ
+ÌŒ
+NÂˆYˆ
+S[X™\‹š\Ñš[š]J]K™Ù][YJ
+JJH™]\›ˆ	ÉÎÂˆ™]\›ˆ™]È[‘]U[YQ›Ü›X]
+	Ù[‹PĞIËÂˆ[YV›Û™NˆRTRKˆYX\ˆ	Û[Y\šXÉËˆ[Ûˆ	Ì‹YYÚ]	Ëˆ^Nˆ	Ì‹YYÚ]	ÂˆJK™›Ü›X]
+]JHOOHX]ÚÌHÈX]ÚÌHˆ	ÉÎÂŸB‚™[˜İ[Ûˆ›İÕ^
+
+HÂˆ™]\›ˆ™]È[‘]U[YQ›Ü›X]
+	ŞšUÉËÂˆ[YV›Û™NˆRTRKˆYX\ˆ	Û[Y\šXÉËˆ[Ûˆ	Ì‹YYÚ]	Ëˆ^Nˆ	Ì‹YYÚ]	Ëˆİ\ˆ	Ì‹YYÚ]	ËˆZ[]Nˆ	Ì‹YYÚ]	Ëˆİ\ŒLˆ˜[ÙBˆJK™›Ü›X]
+™]È]J
+JNÂŸB‚™[˜İ[Ûˆ\Ú
+˜[YJHÂˆ™]\›ˆÜ\Ë˜Ü™X]R\Ú
+	ÜÚLM‰ÊK\]JÛX[Š˜[YJJK™YÙ\İ
+	Ú^	ÊNÂŸB‚™[˜İ[Ûˆ˜[™ÛUÚÙ[Š]\ÈH
+HÂˆ™]\›ˆÜ\Ëœ˜[™ÛP]\Ê]\ÊKÔİš[™Ê	Ø˜\ÙM\›	ÊNÂŸB‚™[˜İ[Ûˆ˜[™ÛPš[™ÛÙJ
+HÂˆ™]\›ˆÔIØÜ\Ëœ˜[™ÛP]\Ê
+KÔİš[™Ê	Ú^	ÊKÕ\\Ø\ÙJ
+_XÂŸB‚™[˜İ[Ûˆ˜[™ÛQ[XZ[İ
+
+HÂˆ™]\›ˆİš[™ÊÜ\Ëœ˜[™ÛR[
+L
+JKœYİ\
+	Ì	ÊNÂŸB‚™[˜İ[ÛˆØY™Q\]X[
+YšYÚ
+HÂˆÛÛœİHHY™™\‹™œ›ÛJÛX[ŠY
+JNÂˆÛÛœİˆHY™™\‹™œ›ÛJÛX[ŠšYÚ
+JNÂˆ™]\›ˆ›ÛÛX[ŠK›[™İ	‰ˆK›[™İOOH‹›[™İ	‰ˆÜ\Ë[Z[™ÔØY™Q\]X[
+KŠJNÂŸB‚™[˜İ[Ûˆ\ÓZ[\Ê˜[YJHÂˆYˆ
+]˜[YJH™]\›ˆÂˆYˆ
+\[Ùˆ˜[YKÓZ[\ÈOOH	Ù[˜İ[Û‰ÊH™]\›ˆ˜[YKÓZ[\Ê
+NÂˆÛÛœİ\œÙYH™]È]J˜[YJK™Ù][YJ
+NÂˆ™]\›ˆ[X™\‹š\Ñš[š]J\œÙY
+HÈ\œÙYˆÂŸB‚™[˜İ[ÛˆY^\ÊÙ^K[[İ[
+HÂˆÛÛœİ˜[YHH™]È]J	ÚÙ^_ULŒŒ
+ÌŒ
+NÂˆ˜[YKœÙ]UÑ]J˜[YK™Ù]UÑ]J
+H
+È[X™\Š[[İ[
+JNÂˆ™]\›ˆ™]È[‘]U[YQ›Ü›X]
+	Ù[‹PĞIËÂˆ[YV›Û™NˆRTRKˆYX\ˆ	Û[Y\šXÉËˆ[Ûˆ	Ì‹YYÚ]	Ëˆ^Nˆ	Ì‹YYÚ]	ÂˆJK™›Ü›X]
+˜[YJNÂŸB‚™[˜İ[ÛˆY[ÛÊÙ^K[[İ[
+HÂˆÛÛœİ˜[YHH]RÙ^JÙ^JNÂˆYˆ
+]˜[YJH™]\›ˆ	ÉÎÂˆÛÛœİŞYX\‹[Û^WHH˜[YKœÜ]
+	ËIÊK›X\
+[X™\ŠNÂˆÛÛœİ\™Ù][ÛH[ÛHH
+È[X™\Š[[İ[
+NÂˆÛÛœİ\™Ù]YX\ˆHYX\ˆ
+ÈX]™›ÛÜŠ\™Ù][ÛÈLŠNÂˆÛÛœİ›Ü›X[^™Y[ÛH
+
+\™Ù][Û	HLŠH
+ÈLŠH	HLÂˆÛÛœİ\İ^HH™]È]J]K•UÊ\™Ù]YX\‹›Ü›X[^™Y[Û
+ÈK
+JK™Ù]UÑ]J
+NÂˆ™]\›ˆÂˆ\™Ù]YX\‹ˆİš[™Ê›Ü›X[^™Y[Û
+ÈJKœYİ\
+‹	Ì	ÊKˆİš[™ÊX]›Z[Š^K\İ^JJKœYİ\
+‹	Ì	ÊBˆKš›Ú[Š	ËIÊNÂŸB‚™[˜İ[ÛˆÜ[X^[][PY˜[˜ÙQ]J
+HÂˆ™]\›ˆY[ÛÊİ\œ™[Z\ZQ^J
+KÔ•SÓPVĞQSÑWÓSÓ•ÊNÂŸB‚™[˜İ[Ûˆ\ÜÙ\Ü[Y˜[˜ÙQ]J]KX™[H	ù¥éy§'ÉÊHÂˆÛÛœİ˜[YHH]RÙ^J]JNÂˆÛÛœİX^[][HHÜ[X^[][PY˜[˜ÙQ]J
+NÂˆYˆ
+]˜[YJH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ÛX™[y¨/9o#úc+ú*©8à ˜
+NÂˆYˆ
+˜[YHˆX^[][JHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ÛX™[y§ 9i&¹cêº ïz`n9¤áùb,	ÛX^[][_{ï"9¤ãy/g9¥éz-mùajy`"ù§"9aiûï"xà ˜ˆ
+NÂˆBˆ™]\›ˆ˜[YNÂŸB‚™[˜İ[ÛˆÙYZÙ^JÙ^JHÂˆ™]\›ˆ™]È]J	ÚÙ^_ULŒŒ
+ÌŒ
+K™Ù]^J
+NÂŸB‚™[˜İ[Ûˆ[YSZ[]\Ê˜[YJHÂˆÛÛœİX]ÚHÛX[Š˜[YJK›X]Ú
+×ŠÌKŸJNŠÌŸJKÊNÂˆ™]\›ˆX]ÚÈ[X™\ŠX]ÚÌWJH
+ˆŒ
+È[X™\ŠX]ÚÌ—JHˆÂŸB‚™[˜İ[ÛˆZ\ZQ]U[YSZ[\Ê]K[YJHÂˆÛÛœİÙ^HH]RÙ^J]JNÂˆÛÛœİ˜[YHHÛX[Š[YJKœÛXÙJJNÂˆYˆ
+ZÙ^HK×—ÌŸN—ÌŸIË\İ
+˜[YJJH™]\›ˆÂˆÛÛœİ\œÙYH]Kœ\œÙJ	ÚÙ^_U	İ˜[Y_NŒ
+ÌŒ
+NÂˆ™]\›ˆ[X™\‹š\Ñš[š]J\œÙY
+HÈ\œÙYˆÂŸB‚™[˜İ[ÛˆœÛÛ•˜[YJ˜[YJHÂˆYˆ
+˜[YHOH[
+H™]\›ˆ˜[YNÂˆYˆ
+\œ˜^Kš\Ğ\œ˜^J˜[YJJH™]\›ˆ˜[YK›X\
+œÛÛ•˜[YJNÂˆYˆ
+˜[YH	‰ˆ\[Ùˆ˜[YKÑ]HOOH	Ù[˜İ[Û‰ÊH™]\›ˆ˜[YKÑ]J
+KÒTÓÔİš[™Ê
+NÂˆYˆ
+\[Ùˆ˜[YHOOH	ÛØš™Xİ	ÊHÂˆÛÛœİ™\İ[HßNÂˆØš™XİšÙ^\Ê˜[YJK™›Ü‘XXÚ
+
+Ù^JHOˆÂˆYˆ
+ZÙ^Kœİ\ÕÚ]
+	××ÉÊJH™\İ[ÚÙ^WHHœÛÛ•˜[YJ˜[YVÚÙ^WJNÂˆJNÂˆ™]\›ˆ™\İ[ÂˆBˆ™]\›ˆ˜[YNÂŸB‚™[˜İ[ÛˆÛİ\˜ÙRY
+›İÊHÂˆ™]\›ˆÛX[Š›İÈ	‰ˆ
+›İËšY›İËœÛİ\˜ÙRY›İË—ÚY›İË—×ÚY
+JNÂŸB‚™[˜İ[ÛˆÛİ\˜ÙTÛ™J›İÊHÂˆ™]\›ˆÛX[Š›İÈ	‰ˆ
+ˆ›İËœÛ™H›İË›[Øš[H›İË[›İË[\Û™Hˆ›İË˜ÛÛXİÛ™H›İËœ\™[Û™H›İË™İX\™X[”Û™Bˆ
+JNÂŸB‚™[˜İ[ÛˆÛİ\˜ÙQ[XZ[
+›İÊHÂˆ™]\›ˆ›Ü›X[^™Q[XZ[
+›İÈ	‰ˆ
+ˆ›İË™[XZ[›İË›XZ[›İË˜ÛÛXİ[XZ[›İËœ\™[[XZ[ˆ›İË™İX\™X[‘[XZ[›İË›ÙÚ[‘[XZ[ˆ
+JNÂŸB‚™[˜İ[ÛˆÛİ\˜ÙPXİ]™J›İÊHÂˆÛÛœİ˜[YHH›İÈ	‰ˆ
+›İË˜Xİ]™HOH[È›İË˜Xİ]™Hˆ›İËœİ]\ÊNÂˆYˆ
+˜[YHOH[˜[YHOOH	ÉÊH™]\›ˆYNÂˆ™]\›ˆVÂˆ	Ù˜[ÙIË	ù`g9å*	Ë	úfèº mÉË	ú*.úb­ÉË	ù`g:*¬‰Ë	ùcå¹­¢	Ë	ùmì¹cå¹­¢	Ë	ùk£9¢$	Ëˆ	Ú[˜Xİ]™IË	Ù\ØX›Y	Ë	ÜİÜY	Ë	ØÛÛ\]Y	Ë	ØØ[˜Ù[Y	Ë	ØØ[˜Ù[Y	ÂˆKš[˜ÛY\ÊÛX[Š˜[YJKÓİÙ\Ø\ÙJ
+JNÂŸB‚˜\Ş[˜È[˜İ[ÛˆY\™ÙTİY[›Ùš[Sİ™\œšY\Ê›İÜÊHÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[›Ùš[\ÉÊK™Ù]
+
+NÂˆÛÛœİİ™\œšY\ÈH™]ÈX\
+Û˜\Úİ™ØÜË›X\
+
+ØÊHOˆÙØËšYØË™]J
+HßWJJNÂˆ™]\›ˆ›İÜË›X\
+
+›İÊHOˆÂˆÛÛœİİ™\œšYHHİ™\œšY\Ë™Ù]
+Ûİ\˜ÙRY
+›İÊJNÂˆYˆ
+[İ™\œšYHİ™\œšYK˜Xİ]™HOOH˜[ÙJH™]\›ˆ›İÎÂˆÛÛœİ™^HØš™Xİ˜\ÜÚYÛŠßK›İÊNÂˆÛÛœİ˜[YHHÛX[Šİ™\œšYK›˜[YJNÂˆÛÛœİÛ™HH›Ü›X[^™TÛ™Jİ™\œšYKœÛ™JNÂˆYˆ
+˜[YJH™^›˜[YHH˜[YNÂˆYˆ
+Û™JH™^œÛ™HHÛ™NÂˆ™]\›ˆ™^ÂˆJNÂŸB‚™[˜İ[Ûˆ˜[œØXİ[Û[[İ[
+›İÊHÂˆ™]\›ˆX]›X^
+[X™\Š›İÈ	‰ˆ
+›İË˜[[İ[›İËœZY[[İ[›İËœ™XÙZ]™Y[[İ[
+H
+JNÂŸB‚™[˜İ[ÛˆZ][Û˜\ÙTZY[[İ[
+›İÊHÂˆ™]\›ˆX]›X^
+[X™\Šˆ›İÈ	‰ˆ
+ˆ›İËœZY[[İ[ˆ›İËœ™XÙZ]™Y[[İ[ˆ›İËœZYˆ›İËœ™XÙZ]™Yˆ
+Hˆ
+JNÂŸB‚™[˜İ[ÛˆY\™ÙTÜ[Z][Û”›İÜÊ›İÜËÜ[ØÜË˜[œØXİ[Û‘ØÜË™XÙZ\ØÜÈH×JHÂˆÛÛœİY\™ÙYH™]ÈX\
+
+›İÜÈ×JK›X\
+
+›İÊHOˆÜÛİ\˜ÙRY
+›İÊKØš™Xİ˜\ÜÚYÛŠßK›İÊWJK™š[\Š
+ÚYJHOˆY
+JNÂˆ
+Ü[ØÜÈ×JK™›Ü‘XXÚ
+
+ØÊHOˆÂˆÛÛœİÛİ\˜ÙHHœÛÛ•˜[YJ\[ÙˆØË™]HOOH	Ù[˜İ[Û‰ÈÈØË™]J
+HˆØÊHßNÂˆYˆ
+Ûİ\˜ÙK˜Xİ]™HOOH˜[ÙJH™]\›ÂˆÛÛœİYHÛİ\˜ÙRY
+Ûİ\˜ÙJHÛX[ŠØËšY
+NÂˆYˆ
+ZY
+H™]\›ÂˆY\™ÙYœÙ]
+YØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆYKY\™ÙY™Ù]
+Y
+HßKÛİ\˜ÙKÈYJJNÂˆJNÂˆÛÛœİİ™\›^\ÈH™]ÈX\
+
+NÂˆ
+˜[œØXİ[Û‘ØÜÈ×JK™›Ü‘XXÚ
+
+ØÊHOˆÂˆÛÛœİÛİ\˜ÙHHœÛÛ•˜[YJ\[ÙˆØË™]HOOH	Ù[˜İ[Û‰ÈÈØË™]J
+HˆØÊHßNÂˆYˆ
+Ûİ\˜ÙK˜Xİ]™HOOH˜[ÙHÛX[ŠÛİ\˜ÙKœİ]\ÊHOOH	ØÛÛ™š\›YY	ÊH™]\›ÂˆÛÛœİ\š[ÙYHÛX[ŠÛİ\˜ÙKœ\š[ÙY
+NÂˆYˆ
+\\š[ÙY
+H™]\›ÂˆYˆ
+[İ™\›^\Ëš\Ê\š[ÙY
+JHİ™\›^\ËœÙ]
+\š[ÙY×JNÂˆİ™\›^\Ë™Ù]
+\š[ÙY
+Kœ\Ú
+Øš™Xİ˜\ÜÚYÛŠÈYˆÛX[ŠÛİ\˜ÙKšYØËšY
+HKÛİ\˜ÙJJNÂˆJNÂˆİ™\›^\Ë™›Ü‘XXÚ
+
+˜[œØXİ[ÛœË\š[ÙY
+HOˆÂˆÛÛœİ\š[ÙHY\™ÙY™Ù]
+\š[ÙY
+NÂˆYˆ
+\\š[Ù
+H™]\›ÂˆÛÛœİ^\İ[™ÈH\œ˜^Kš\Ğ\œ˜^J\š[Ù˜[œØXİ[ÛœÊHÈ\š[Ù˜[œØXİ[ÛœËœÛXÙJ
+Hˆ×NÂˆÛÛœİ^\İ[™ÒYÈH™]ÈÙ]
+^\İ[™Ë›X\
+
+›İÊHOˆÛX[Š›İÈ	‰ˆ›İËšY
+JK™š[\Š›ÛÛX[ŠJNÂˆÛÛœİY][ÛœÈH˜[œØXİ[ÛœË™š[\Š
+›İÊHOˆY^\İ[™ÒYËš\ÊÛX[Š›İËšY
+JJNÂˆÛÛœİZY[[İ[HZ][Û˜\ÙTZY[[İ[
+\š[Ù
+H
+ÈY][ÛœËœ™YXÙJ
+İ[K›İÊHOˆİ[H
+È˜[œØXİ[Û[[İ[
+›İÊK
+NÂˆY\™ÙYœÙ]
+\š[ÙYØš™Xİ˜\ÜÚYÛŠßK\š[ÙÂˆZY[[İ[ˆ™XÙZ]™Y[[İ[ˆZY[[İ[ˆ˜[œØXİ[ÛœÎˆ^\İ[™Ë˜ÛÛ˜Ø]
+Y][ÛœÊBˆJJNÂˆJNÂˆÛÛœİ™XÙZ\ĞT\š[ÙH™]ÈX\
+
+NÂˆ
+™XÙZ\ØÜÈ×JK™›Ü‘XXÚ
+
+ØÊHOˆÂˆÛÛœİÛİ\˜ÙHHœÛÛ•˜[YJ\[ÙˆØË™]HOOH	Ù[˜İ[Û‰ÈÈØË™]J
+HˆØÊHßNÂˆYˆ
+Ûİ\˜ÙK˜Xİ]™HOOH˜[ÙHÛX[ŠÛİ\˜ÙKœİ]\ÊHOOH	Ú\ÜİYY	ÈXÛX[ŠÛİ\˜ÙKš[XYÙU\›
+JH™]\›ÂˆÛÛœİ\š[ÙYHÛX[ŠÛİ\˜ÙKœ\š[ÙY
+NÂˆYˆ
+\\š[ÙY
+H™]\›ÂˆYˆ
+\™XÙZ\ĞT\š[Ùš\Ê\š[ÙY
+JH™XÙZ\ĞT\š[ÙœÙ]
+\š[ÙY×JNÂˆ™XÙZ\ĞT\š[Ù™Ù]
+\š[ÙY
+Kœ\Ú
+Øš™Xİ˜\ÜÚYÛŠÈYˆÛX[ŠÛİ\˜ÙKšYØËšY
+HKÛİ\˜ÙJJNÂˆJNÂˆ™XÙZ\ĞT\š[Ù™›Ü‘XXÚ
+
+™XÙZ\Ë\š[ÙY
+HOˆÂˆÛÛœİ\š[ÙHY\™ÙY™Ù]
+\š[ÙY
+NÂˆYˆ
+\\š[Ù
+H™]\›ÂˆÛÛœİ˜[œØXİ[ÛœÈH
+\œ˜^Kš\Ğ\œ˜^J\š[Ù˜[œØXİ[ÛœÊHÈ\š[Ù˜[œØXİ[ÛœÈˆ×JK›X\
+
+›İË[™^
+HOˆÂˆYˆ
+ÛX[Š›İÈ	‰ˆ›İË\JHOOH	Ü™Y[™	ÊH™]\›ˆ›İÎÂˆÛÛœİ˜[œØXİ[Û’YHÛX[Š›İÈ	‰ˆ›İËšY
+NÂˆÛÛœİ]HH]RÙ^J›İÈ	‰ˆ
+›İË™]H›İË˜Ü™X]Y
+JNÂˆÛÛœİ[[İ[H˜[œØXİ[Û[[İ[
+›İÊNÂˆÛÛœİY]ÙHÛX[Š›İÈ	‰ˆ
+›İË›Y]Ù›İËœ^U\H›İËœ^[Y[Y]Ù
+JNÂˆÛÛœİ™XÙZ\H™XÙZ\Ë™š[™
+
+][JHO‚ˆ
+˜[œØXİ[Û’Y	‰ˆÛX[Š][K˜[œØXİ[Û’Y
+HOOH˜[œØXİ[Û’Y
+Hˆ
+ˆ[X™\Š][K˜[œØXİ[Û’[™^
+HOOH[™^	‰‚ˆ]RÙ^J][Kœ^[Y[]JHOOH]H	‰‚ˆ[X™\Š][K˜[[İ[
+HOOH[[İ[	‰‚ˆ
+ÛX[Š][K›Y]Ù
+HOOHY]Ù[Y]ÙÛX[Š][K›Y]Ù
+HOOH	ù¥è¹§"yîlú,®ÉÊBˆ
+Bˆ
+NÂˆYˆ
+\™XÙZ\
+H™]\›ˆ›İÎÂˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠßK›İËÂˆ™XÙZ\YˆÛX[Š™XÙZ\šY
+Kˆ™XÙZ\›ÎˆÛX[Š™XÙZ\œ™XÙZ\›ÊKˆ™XÙZ\[XYÙU\›ˆÛX[Š™XÙZ\š[XYÙU\›
+BˆJNÂˆJNÂˆY\™ÙYœÙ]
+\š[ÙYØš™Xİ˜\ÜÚYÛŠßK\š[ÙÈ˜[œØXİ[ÛœÈJJNÂˆJNÂˆ™]\›ˆË‹‹›Y\™ÙY˜[Y\Ê
+WNÂŸB‚˜\Ş[˜È[˜İ[ÛˆÜ[Z][Û‘Øİ[Y[ÊİY[YH	ÉÊHÂˆÛÛœİ\š[ÙÛÛXİ[ÛˆH‹˜ÛÛXİ[ÛŠRUSÓ—ÔT’SÑÊNÂˆÛÛœİ˜[œØXİ[ÛÛÛXİ[ÛˆH‹˜ÛÛXİ[ÛŠRUSÓ—ÕS”ĞPÕSÓ”ÊNÂˆÛÛœİ™XÙZ\ÛÛXİ[ÛˆH‹˜ÛÛXİ[ÛŠRUSÓ—Ô‘PÑRTÊNÂˆÛÛœİ›Ü›X[^™YİY[YHÛX[ŠİY[Y
+NÂˆÛÛœİÜ\š[ÙË˜[œØXİ[ÛœË™XÙZ\×HH]ØZ]›ÛZ\ÙK˜[
+Âˆ›Ü›X[^™YİY[YˆÈ\š[ÙÛÛXİ[Û‹Ú\™J	ÜİY[Y	Ë	ÏOIË›Ü›X[^™YİY[Y
+K™Ù]
+
+Bˆˆ\š[ÙÛÛXİ[Û‹™Ù]
+
+Kˆ›Ü›X[^™YİY[YˆÈ˜[œØXİ[ÛÛÛXİ[Û‹Ú\™J	ÜİY[Y	Ë	ÏOIË›Ü›X[^™YİY[Y
+K™Ù]
+
+Bˆˆ˜[œØXİ[ÛÛÛXİ[Û‹™Ù]
+
+Kˆ›Ü›X[^™YİY[YˆÈ™XÙZ\ÛÛXİ[Û‹Ú\™J	ÜİY[Y	Ë	ÏOIË›Ü›X[^™YİY[Y
+K™Ù]
+
+Bˆˆ™XÙZ\ÛÛXİ[Û‹™Ù]
+
+BˆJNÂˆ™]\›ˆÈ\š[ÙÎˆ\š[ÙË™ØÜË˜[œØXİ[ÛœÎˆ˜[œØXİ[ÛœË™ØÜË™XÙZ\Îˆ™XÙZ\Ë™ØÜÈNÂŸB‚™[˜İ[Ûˆš\œİ\œ˜^J›İËÙ^\ÊHÂˆ›Üˆ
+ÛÛœİÙ^HÙˆÙ^\ÊHÂˆYˆ
+\œ˜^Kš\Ğ\œ˜^J›İÈ	‰ˆ›İÖÚÙ^WJJH™]\›ˆ›İÖÚÙ^WK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠNÂˆBˆ™]\›ˆ×NÂŸB‚˜\Ş[˜È[˜İ[ÛˆZ\œ›Ü”›İÜÊ\JHÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠRT”“Ô–İ\WJKÚ\™J	ÜÛİ\˜ÙPXİ]™IË	ÏOIËYJK™Ù]
+
+NÂˆ]›İÜÈHÛ˜\Úİ™ØÜÂˆ›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKœÛÛ•˜[YJ
+ØË™]J
+HßJKœÛİ\˜ÙJHßJJBˆ™š[\Š›ÛÛX[ŠNÂˆYˆ
+\HOOH	ÜİY[ÉÊH™]\›ˆY\™ÙTİY[›Ùš[Sİ™\œšY\Ê›İÜÊNÂˆYˆ
+\HOOH	İZ][Û”\š[ÙÉÊHÂˆÛÛœİÜ[H]ØZ]Ü[Z][Û‘Øİ[Y[Ê
+NÂˆ›İÜÈHY\™ÙTÜ[Z][Û”›İÜÊ›İÜËÜ[œ\š[ÙËÜ[˜[œØXİ[ÛœËÜ[œ™XÙZ\ÊNÂˆBˆ™]\›ˆ›İÜÎÂŸB‚˜\Ş[˜È[˜İ[ÛˆZ\œ›Ü”›İÜÒ[˜ÛY[™Ò[˜Xİ]™J\JHÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠRT”“Ô–İ\WJK™Ù]
+
+NÂˆ]›İÜÈHÛ˜\Úİ™ØÜÂˆ›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÂˆ×ÚYˆØËšYˆ×ÛZ\œ›ÜXİ]™Nˆ
+ØË™]J
+HßJKœÛİ\˜ÙPXİ]™HOOH˜[ÙBˆKœÛÛ•˜[YJ
+ØË™]J
+HßJKœÛİ\˜ÙJHßJJBˆ™š[\Š›ÛÛX[ŠNÂˆYˆ
+\HOOH	ÜİY[ÉÊH›İÜÈH]ØZ]Y\™ÙTİY[›Ùš[Sİ™\œšY\Ê›İÜÊNÂˆ™]\›ˆ›İÜÎÂŸB‚˜\Ş[˜È[˜İ[ÛˆZ\œ›Ü”›İÜĞQ]T˜[™ÙJ\Kİ\]K[™]KÜ[ÛœÈHßJHÂˆÛÛœİ[˜ÛYR[˜Xİ]™HHÜ[ÛœËš[˜ÛYR[˜Xİ]™HOOHYNÂˆÛÛœİ]\ÈH×NÂˆ›Üˆ
+]Ù^HH]RÙ^Jİ\]JKİX\™HÈÙ^H	‰ˆÙ^HH[™]H	‰ˆİX\™ÍÌÈÙ^HHY^\ÊÙ^KJKİX\™
+ÏHJHÂˆ]\Ëœ\Ú
+Ù^JNÂˆBˆYˆ
+Y]\Ë›[™İ
+H™]\›ˆ×NÂˆHÂˆÛÛœİÚ[šÜÈH×NÂˆ›Üˆ
+]Ù™œÙ]HÈÙ™œÙ]]\Ë›[™İÈÙ™œÙ]
+ÏHÌ
+HÚ[šÜËœ\Ú
+]\ËœÛXÙJÙ™œÙ]Ù™œÙ]
+ÈÌ
+JNÂˆÛÛœİÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+Ú[šÜË›X\
+
+Ú[šÊHO‚ˆ‹˜ÛÛXİ[ÛŠRT”“Ô–İ\WJKÚ\™J	ÜÛİ\˜ÙK™]IË	Ú[‰ËÚ[šÊK™Ù]
+
+Bˆ
+JNÂˆÛÛœİ›İÜÈH™]ÈX\
+
+NÂˆÛ˜\ÚİË™›Ü‘XXÚ
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÂˆÛÛœİ[™[ÜHHØË™]J
+HßNÂˆYˆ
+Z[˜ÛYR[˜Xİ]™H	‰ˆ[™[ÜKœÛİ\˜ÙPXİ]™HOOH˜[ÙJH™]\›ÂˆÛÛœİÛİ\˜ÙHHœÛÛ•˜[YJ[™[ÜKœÛİ\˜ÙJHßNÂˆ›İÜËœÙ]
+ØËšYØš™Xİ˜\ÜÚYÛŠÂˆ×ÚYˆØËšYˆ×ÛZ\œ›ÜXİ]™Nˆ[™[ÜKœÛİ\˜ÙPXİ]™HOOH˜[ÙKˆ×ÛZ\œ›Ü•\]Y]ˆ\ÓZ[\Ê[™[ÜKœÛİ\˜ÙU\]Y][™[ÜK\]Y]
+BˆKÛİ\˜ÙJJNÂˆJJNÂˆ™]\›ˆË‹‹œ›İÜË˜[Y\Ê
+WNÂˆHØ]Ú
+\œ›ÜŠHÂˆÛÛœÛÛKØ\›Š	ÖØÛİ\œÙHÜ[]H˜[™ÙH˜[˜XÚ×IË\KÛX[Š\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙJJNÂˆÛÛœİÛ˜\ÚİH[˜ÛYR[˜Xİ]™BˆÈ]ØZ]‹˜ÛÛXİ[ÛŠRT”“Ô–İ\WJK™Ù]
+
+Bˆˆ]ØZ]‹˜ÛÛXİ[ÛŠRT”“Ô–İ\WJKÚ\™J	ÜÛİ\˜ÙPXİ]™IË	ÏOIËYJK™Ù]
+
+NÂˆ™]\›ˆÛ˜\Úİ™ØÜË›X\
+
+ØÊHOˆÂˆÛÛœİ[™[ÜHHØË™]J
+HßNÂˆYˆ
+Z[˜ÛYR[˜Xİ]™H	‰ˆ[™[ÜKœÛİ\˜ÙPXİ]™HOOH˜[ÙJH™]\›ˆ[ÂˆÛÛœİÛİ\˜ÙHHœÛÛ•˜[YJ[™[ÜKœÛİ\˜ÙJHßNÂˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠÂˆ×ÚYˆØËšYˆ×ÛZ\œ›ÜXİ]™Nˆ[™[ÜKœÛİ\˜ÙPXİ]™HOOH˜[ÙKˆ×ÛZ\œ›Ü•\]Y]ˆ\ÓZ[\Ê[™[ÜKœÛİ\˜ÙU\]Y][™[ÜK\]Y]
+BˆKÛİ\˜ÙJNÂˆJK™š[\Š
+›İÊHOˆÂˆÛÛœİÙ^HH›İÈ	‰ˆ]™[]J›İÊNÂˆ™]\›ˆÙ^HHİ\]H	‰ˆÙ^HH[™]NÂˆJNÂˆBŸB‚˜\Ş[˜È[˜İ[ÛˆZ\œ›Ü”›İÜĞQšY[
+\KšY[˜[YJHÂˆÛÛœİÛÛXİ[ÛˆH‹˜ÛÛXİ[ÛŠRT”“Ô–İ\WJNÂˆ]›İÜÎÂˆHÂˆÛÛœİÛ˜\ÚİH]ØZ]ÛÛXİ[Û‚ˆÚ\™J	ÜÛİ\˜ÙPXİ]™IË	ÏOIËYJBˆÚ\™JÛİ\˜ÙK‰ÙšY[X	ÏOIËÛX[Š˜[YJJBˆ™Ù]
+
+NÂˆ›İÜÈHÛ˜\Úİ™ØÜÂˆ›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKœÛÛ•˜[YJ
+ØË™]J
+HßJKœÛİ\˜ÙJHßJJNÂˆHØ]Ú
+\œ›ÜŠHÂˆÛÛœÛÛKØ\›Š	ÖØÛİ\œÙHÜ[šY[]Y\H˜[˜XÚ×IË\KšY[ÛX[Š\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙJJNÂˆÛÛœİÛ˜\ÚİH]ØZ]ÛÛXİ[Û‹Ú\™J	ÜÛİ\˜ÙPXİ]™IË	ÏOIËYJK™Ù]
+
+NÂˆ›İÜÈHÛ˜\Úİ™ØÜÂˆ›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKœÛÛ•˜[YJ
+ØË™]J
+HßJKœÛİ\˜ÙJHßJJBˆ™š[\Š
+›İÊHOˆÛX[Š›İÖÙšY[JHOOHÛX[Š˜[YJJNÂˆBˆYˆ
+\HOOH	İZ][Û”\š[ÙÉÊHÂˆÛÛœİÜ[H]ØZ]Ü[Z][Û‘Øİ[Y[ÊšY[OOH	ÜİY[Y	ÈÈ˜[YHˆ	ÉÊNÂˆ›İÜÈHY\™ÙTÜ[Z][Û”›İÜÊ›İÜËÜ[œ\š[ÙËÜ[˜[œØXİ[ÛœËÜ[œ™XÙZ\ÊBˆ™š[\Š
+›İÊHOˆÛX[Š›İÖÙšY[JHOOHÛX[Š˜[YJJNÂˆBˆ™]\›ˆ›İÜÎÂŸB‚˜\Ş[˜È[˜İ[ÛˆØÚY[PÚ[™ÙQØÜĞQ]T˜[™ÙJİ\]K[™]JHÂˆÛÛœİÛÛXİ[ÛˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊNÂˆHÂˆÛÛœİÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+ÂˆÛÛXİ[Û‹Ú\™J	Ù]™[™]IË	ÏIËİ\]JKÚ\™J	Ù]™[™]IË	ÏIË[™]JK™Ù]
+
+KˆÛÛXİ[Û‹Ú\™J	ÜÛİ\˜ÙQ]IË	ÏIËİ\]JKÚ\™J	ÜÛİ\˜ÙQ]IË	ÏIË[™]JK™Ù]
+
+KˆÛÛXİ[Û‹Ú\™J	ØXİ[Û‰Ë	ÏOIË	Ü\›X[™[Û[İ™IÊK™Ù]
+
+BˆJNÂˆÛÛœİØÜÈH™]ÈX\
+
+NÂˆÛ˜\ÚİË™›Ü‘XXÚ
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆYˆ
+›İË˜Xİ]™HOOH˜[ÙJH™]\›ÂˆYˆ
+ˆÛX[Š›İË˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÈ	‰‚ˆ]RÙ^J›İË˜İ]İ™\‘]H›İËœÛİ\˜ÙQ]H›İË™Y™™Xİ]™Q]H›İË™]™[	‰ˆ›İË™]™[™]JHˆ[™]Bˆ
+H™]\›ÂˆØÜËœÙ]
+ØËšYØÊNÂˆJJNÂˆ™]\›ˆË‹‹™ØÜË˜[Y\Ê
+WNÂˆHØ]Ú
+\œ›ÜŠHÂˆÛÛœÛÛKØ\›Š	ÖØÛİ\œÙHÜ[ØÚY[HÚ[™ÙH˜[™ÙH˜[˜XÚ×IËÛX[Š\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙJJNÂˆÛÛœİÛ˜\ÚİH]ØZ]ÛÛXİ[Û‹Ú\™J	ØXİ]™IË	ÏOIËYJK™Ù]
+
+NÂˆ™]\›ˆÛ˜\Úİ™ØÜÎÂˆBŸB‚™[˜İ[Ûˆ\ÜÙ\[œ]
+˜[YKX™[
+HÂˆYˆ
+XÛX[Š˜[YJJH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë:*âùhjùkêÉÛX™[xà ˜
+NÂŸB‚™[˜İ[Ûˆİ\œ™[Z\ZQ^J
+HÂˆ™]\›ˆ™]È[‘]U[YQ›Ü›X]
+	Ù[‹PĞIËÂˆ[YV›Û™NˆRTRKˆYX\ˆ	Û[Y\šXÉËˆ[Ûˆ	Ì‹YYÚ]	Ëˆ^Nˆ	Ì‹YYÚ]	ÂˆJK™›Ü›X]
+™]È]J
+JNÂŸB‚˜\Ş[˜È[˜İ[ÛˆÛÛœİ[YT˜]S[Z]
+Ú[™Y[]JHÂˆÛÛœİ^HHİ\œ™[Z\ZQ^J
+NÂˆÛÛœİ˜]ÒY[]HHÛX[ŠY[]JNÂˆÛÛœİ›Ü›X[^™YY[]HH˜]ÒY[]Kš[˜ÛY\Ê	Ğ	ÊHÈ›Ü›X[^™Q[XZ[
+˜]ÒY[]JHˆ›Ü›X[^™TÛ™J˜]ÒY[]JNÂˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[˜]S[Z]ÉÊK™ØÊ\Ú
+	ÚÚ[™_	Û›Ü›X[^™YY[]__	Ù^_X
+JNÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÛ˜\ÚİH]ØZ]™Ù]
+™YŠNÂˆÛÛœİÛİ[H[X™\ŠÛ˜\Úİ™^\İÈ	‰ˆÛ˜\Úİ™]J
+K˜Ûİ[
+NÂˆYˆ
+Ûİ[H
+H›İÈ™]ÈÑ\œ›ÜŠ	Ü™\Ûİ\˜ÙKY^]\İY	Ë	ù.â¹i*yf%ú*i¹«(y¥n:`c¹i&»ï#:*âú kùíhyë¨yä!º !yce9bªyænùaixà ‰ÊNÂˆœÙ]
+™Y‹ÂˆÚ[™ˆÛİ[ˆÛİ[
+ÈKˆ^Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂŸB‚˜\Ş[˜È[˜İ[Ûˆš[™\œÛÛŠ\K˜[YKÛ™JHÂˆÛÛœİ›İÜÈH]ØZ]Z\œ›Ü”›İÜÊ\JNÂˆÛÛœİØ[Y˜[YHH›Ü›X[^™S˜[YJ˜[YJNÂˆÛÛœİX]Ú\ÈH›İÜË™š[\Š
+›İÊHO‚ˆÛİ\˜ÙPXİ]™J›İÊH	‰‚ˆ›Ü›X[^™S˜[YJ›İË›˜[YH›İËXXÚ\“˜[YH›İËœİY[˜[YJHOOHØ[Y˜[YH	‰‚ˆÛ™SX]Ú\ÊÛİ\˜ÙTÛ™J›İÊKÛ™JBˆ
+NÂˆYˆ
+[X]Ú\Ë›[™İ
+H›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ùiäùd#z"!úfîú*ly¢o¹.#yb,9æî9ë)º,áù¥¦{ï#:*âùè®º*£z/.9aiyaiùk®y¢%º*âùë¨yä!º !yce9bªxà ‰ÊNÂˆYˆ
+X]Ú\Ë›[™İˆJH›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù¢o¹b,9i&¹ëa¹æî9d#:,áù¥¦{ï#:*âùå,yë¨yä!º !yè®º*£yo£9a£yænùaixà ‰ÊNÂˆ™]\›ˆX]Ú\ÖÌNÂŸB‚˜\Ş[˜È[˜İ[ÛˆÜ™X]Pš[™ÛÙJÈ\K\™Ù]Y˜[YKÛ™K[XZ[™[][ÛœÚ\™[\’YJHÂˆÛÛœİÛÙHH˜[™ÛPš[™ÛÙJ
+NÂˆÛÛœİ^\™\Ğ]H[Y\İ[\™œ›ÛSZ[\Ê]K››İÊ
+H
+ÈŒ
+ˆŒ
+ˆL
+NÂˆ]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[š[™ÛÙ\ÉÊK™ØÊ\Ú
+ÛÙJJKœÙ]
+ÂˆÛÙR[ˆÛÙKœÛXÙJM
+Kˆ\Kˆ\™Ù]YˆÛX[Š\™Ù]Y
+Kˆ™[\’YˆÛX[Š™[\’Y
+Kˆ˜[YNˆÛX[Š˜[YJKˆÛ™R\Úˆ\Ú
+›Ü›X[^™TÛ™JÛ™JJKˆ[XZ[ˆ›Ü›X[^™Q[XZ[
+[XZ[
+Kˆ[XZ[›Ü›X[^™Yˆ›Ü›X[^™Q[XZ[
+[XZ[
+Kˆ[XZ[™\šYšYYˆ›ÛÛX[Š›Ü›X[^™Q[XZ[
+[XZ[
+JKˆ™[][ÛœÚ\ˆÛX[Š™[][ÛœÚ\
+Kˆİ]\Îˆ	Ü[™[™ÉËˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ^\™\Ğ]ˆJNÂˆÛÛœİX™[ÈHÂˆXXÚ\ˆ	ú  yn*ùaiycèÉËˆİY[ˆ	ùkn9å'ùí yk¦‰Ëˆ™[\ˆ	ùéçùå*9í yk¦‰ÂˆNÂˆÛÛœİš[™^H9§æ¹kd	ÛX™[Öİ\W_H	ØÛÙ_XÂˆ™]\›ˆÂˆÚÎˆYKˆÛÙKˆš[™^ˆ^\™\Ğ]ˆ^\™\Ğ]Ñ]J
+KÒTÓÔİš[™Ê
+Kˆ[™U\›ˆÎ‹ËÛ[™K›YKÔ‹Û\ÙËİ^ÏÉÙ[˜ÛÙUT’PÛÛ\Û™[
+š[™^
+_XˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆİ\š[™[™Ê]JHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ùà®¹.¡¹/çz+mùn,ú&gûï#:*âùab9k£9¢$[XZ[9fæùè¯:jeú+b{ï#9a£z`,º(c9ë+9. 9«(HS‘H9í yk¦¸à ‰Âˆ
+NÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™\\™Pš[™[™ÒY[]J]JHÂˆÛÛœİ\HHÛX[Š]K\JKÓİÙ\Ø\ÙJ
+NÂˆÛÛœİ˜[YHHÛX[Š]K›˜[YJNÂˆÛÛœİÛ™HH›Ü›X[^™TÛ™J]KœÛ™JNÂˆÛÛœİ[XZ[H›Ü›X[^™Q[XZ[
+]K™[XZ[
+NÂˆYˆ
+VÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê\JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù.#y¥+ù£í9æ¡9aiycèúhg¹g¢øà ‰ÊNÂˆBˆ\ÜÙ\[œ]
+˜[YK	ùiäùd#IÊNÂˆ\ÜÙ\[œ]
+Û™K	úfîú*lIÊNÂˆYˆ
+[XZ[	‰ˆ]˜[Y[XZ[
+[XZ[
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	Ñ[XZ[9¨/9o#ù.#y«hùè®¸à ‰ÊNÂˆB‚ˆYˆ
+\HOOH	İXXÚ\‰ÊHÂˆÛÛœİXXÚ\ˆH]ØZ]š[™\œÛÛŠ	İXXÚ\œÉË˜[YKÛ™JNÂˆ™]\›ˆÈ\K\™Ù]YˆÛİ\˜ÙRY
+XXÚ\ŠK˜[YKÛ™K[XZ[™[][ÛœÚ\ˆ	ÉË™[\’Yˆ	ÉÈNÂˆBˆYˆ
+\HOOH	ÜİY[	ÊHÂˆÛÛœİİY[H]ØZ]š[™\œÛÛŠ	ÜİY[ÉË˜[YKÛ™JNÂˆ™]\›ˆÂˆ\Kˆ\™Ù]YˆÛİ\˜ÙRY
+İY[
+Kˆ˜[YKˆÛ™Kˆ[XZ[ˆ™[][ÛœÚ\ˆÛX[Š]Kœ™[][ÛœÚ\
+H	ù§+9.®‰ÂˆNÂˆB‚ˆÛÛœİ™[\’YH\Ú
+	Û›Ü›X[^™S˜[YJ˜[YJ__	ÜÛ™_X
+KœÛXÙJÌŠNÂˆÛÛœİ™[\”Û˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\œÉÊK™ØÊ™[\’Y
+K™Ù]
+
+NÂˆ]^\İ[™Ñ[XZ[™\šYšYYH˜[ÙNÂˆYˆ
+™[\”Û˜\Úİ™^\İÊHÂˆÛÛœİ™[\ˆH™[\”Û˜\Úİ™]J
+HßNÂˆYˆ
+™[\‹˜Xİ]™HOOH˜[ÙJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y`"ùéçùå*9n,ú&gùæë¹bcymì¹`g9å*;ï#:*âú kùíhy§æ¹kd9ª ¹fj8à ‰ÊNÂˆBˆ^\İ[™Ñ[XZ[™\šYšYYH™[\‹™[XZ[™\šYšYYOOHYNÂˆBˆ™]\›ˆÈ\K\™Ù]Yˆ	ÉË™[\’Y˜[YKÛ™K[XZ[™[][ÛœÚ\ˆ	ÉË^\İ[™Ñ[XZ[™\šYšYYNÂŸB‚™[˜İ[Ûˆš[™[™ĞÛÛXİ[ÛŠ\JHÂˆYˆ
+\HOOH	İXXÚ\‰ÊH™]\›ˆ	ØÛİ\œÙTÜ[XXÚ\š[™[™ÜÉÎÂˆYˆ
+\HOOH	ÜİY[	ÊH™]\›ˆ	ØÛİ\œÙTÜ[İY[š[™[™ÜÉÎÂˆ™]\›ˆ	ØÛİ\œÙTÜ[™[\š[™[™ÜÉÎÂŸB‚™[˜İ[Ûˆš[™[™Ó™YYÓX[˜YÙ\\›İ˜[
+\JHÂˆ™]\›ˆ\HOOH	İXXÚ\‰È\HOOH	ÜİY[	ÎÂŸB‚™[˜İ[Ûˆš[™[™Ôİ]\ÓX™[
+İ]\ÊHÂˆÛÛœİ˜[YHHÛX[Šİ]\ÊNÂˆYˆ
+˜[YHOOH	Ü[™[™ÉÊH™]\›ˆ	ùëbyo¡y..ùë¨yè®º*£IÎÂˆYˆ
+˜[YHOOH	Ü™Z™XİY	ÊH™]\›ˆ	ù..ùë¨ymì¹¢ä¹íeIÎÂˆYˆ
+˜[YHOOH	Ü™]›ÚÙY	ÊH™]\›ˆ	ùmì¹`g9å*	ÎÂˆ™]\›ˆ	ù/oùå*9.+IÎÂŸB‚™[˜İ[ÛˆY[]U\™Ù]šY[
+\JHÂˆYˆ
+\HOOH	İXXÚ\‰ÊH™]\›ˆ	İXXÚ\’Y	ÎÂˆYˆ
+\HOOH	ÜİY[	ÊH™]\›ˆ	ÜİY[Y	ÎÂˆ™]\›ˆ	Ü™[\’Y	ÎÂŸB‚™[˜İ[ÛˆY[]U\™Ù]Y
+Y[]JHÂˆ™]\›ˆY[]K\HOOH	Ü™[\‰ÈÈÛX[ŠY[]Kœ™[\’Y
+HˆÛX[ŠY[]K\™Ù]Y
+NÂŸB‚™[˜İ[Ûˆ™Yİ[\XØÛİ[Y
+\K[XZ[
+HÂˆ™]\›ˆ\Ú
+™Yİ[\‹XXØÛİ[	ØÛX[Š\J__	Û›Ü›X[^™Q[XZ[
+[XZ[
+_X
+NÂŸB‚™[˜İ[Ûˆ[™PXØÛİ[Y
+\K[™U\Ù\’Y
+HÂˆ™]\›ˆ\Ú
+[™KXXØÛİ[	ØÛX[Š\J__	ØÛX[Š[™U\Ù\’Y
+_X
+NÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™\ÛÛ™T™Yİ[\’Y[]JY[]JHÂˆÛÛœİ\HHÛX[ŠY[]K\JNÂˆÛÛœİ\™Ù]šY[HY[]U\™Ù]šY[
+\JNÂˆÛÛœİ\™Ù]YHY[]U\™Ù]Y
+Y[]JNÂˆÛÛœİ˜[˜XÚĞ]]XØÛİ[YH™Yİ[\XØÛİ[Y
+\KY[]K™[XZ[
+NÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ\JJBˆÚ\™J\™Ù]šY[	ÏOIË\™Ù]Y
+Bˆ™Ù]
+
+NÂˆÛÛœİ›İÜÈHÛ˜\Úİ™ØÜË›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÂˆ×ÚYˆØËšYˆ×Ü™YˆØËœ™Y‚ˆKØË™]J
+HßJJNÂˆÛÛœİØ[YPXØÛİ[H›İÜË™š[\Š
+›İÊHO‚ˆÛX[Š›İË˜]]XØÛİ[Y
+HOOH˜[˜XÚĞ]]XØÛİ[Yˆ
+ˆ˜[Y[XZ[
+Y[]K™[XZ[
+H	‰‚ˆ›Ü›X[^™Q[XZ[
+›İË™[XZ[›Ü›X[^™Y›İË™[XZ[
+HOOH›Ü›X[^™Q[XZ[
+Y[]K™[XZ[
+Bˆ
+Bˆ
+NÂˆYˆ
+Ø[YPXØÛİ[œÛÛYJ
+›İÊHOˆÛX[Š›İËœİ]\ÊHOOH	Ü™]›ÚÙY	ÊJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y`"ùaiycèùn,ú&gùæë¹bcymì¹`g9å*;ï#:*âú kùíhy§æ¹kd9ª ¹fj9ce9bªy h¹oªxà ‰ÊNÂˆBˆÛÛœİXİ]™HHØ[YPXØÛİ[™š[™
+
+›İÊHO‚ˆÛX[Š›İËœİ]\ÊHOOH	ØXİ]™IÈ	‰ˆÛX[Š›İË›[™U\Ù\’Y
+Bˆ
+HØ[YPXØÛİ[™š[™
+
+›İÊHOˆÛX[Š›İËœİ]\ÊHOOH	ØXİ]™IÊH[Âˆ™]\›ˆÂˆ]]XØÛİ[YˆÛX[ŠXİ]™H	‰ˆXİ]™K˜]]XØÛİ[Y
+H˜[˜XÚĞ]]XØÛİ[Yˆš[™[™ÒYˆÛX[ŠXİ]™H	‰ˆXİ]™K—×ÚY
+Kˆ[™U\Ù\’YˆÛX[ŠXİ]™H	‰ˆXİ]™K›[™U\Ù\’Y
+BˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆš[™[XZ[ÙÚ[XØÛİ[
+\K[XZ[
+HÂˆYˆ
+VÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê\JJH™]\›ˆ[ÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ\JJBˆÚ\™J	Ù[XZ[›Ü›X[^™Y	Ë	ÏOIË›Ü›X[^™Q[XZ[
+[XZ[
+JBˆ™Ù]
+
+NÂˆÛÛœİ›İÜÈHÛ˜\Úİ™ØÜÂˆ›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKØË™]J
+HßJJBˆ™š[\Š
+›İÊHOˆÛX[Š›İËœİ]\ÊHOOH	ØXİ]™IÈ	‰ˆ›İË™[XZ[™\šYšYYOOHYJNÂˆÛÛœİXØÛİ[Ù^\ÈHË‹‹›™]ÈÙ]
+›İÜË›X\
+
+›İÊHO‚ˆÛX[Š›İË˜]]XØÛİ[Y
+H
+ÛX[Š›İË›[™U\Ù\’Y
+HÈ[™N‰ØÛX[Š›İË›[™U\Ù\’Y
+_Xˆ	ÉÊBˆ
+K™š[\Š›ÛÛX[ŠJWNÂˆYˆ
+XØÛİ[Ù^\Ë›[™İOOHJH™]\›ˆ[ÂˆÛÛœİ›İÈH›İÜË™š[™
+
+][JHO‚ˆ
+ÛX[Š][K˜]]XØÛİ[Y
+H
+ÛX[Š][K›[™U\Ù\’Y
+HÈ[™N‰ØÛX[Š][K›[™U\Ù\’Y
+_Xˆ	ÉÊJHOOHXØÛİ[Ù^\ÖÌBˆ
+HßNÂˆ™]\›ˆÂˆ\Kˆ[™U\Ù\’YˆÛX[Š›İË›[™U\Ù\’Y
+Kˆ]]XØÛİ[YˆÛX[Š›İË˜]]XØÛİ[Y
+Kˆ\™Ù]Yˆ\HOOH	İXXÚ\‰ÈÈÛX[Š›İËXXÚ\’Y
+Hˆ
+\HOOH	ÜİY[	ÈÈÛX[Š›İËœİY[Y
+Hˆ	ÉÊKˆ™[\’Yˆ\HOOH	Ü™[\‰ÈÈÛX[Š›İËœ™[\’Y
+Hˆ	ÉÂˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™\\™S[™T™YÚ\İ˜][Û’Y[]J]K\JHÂˆÛÛœİÙ]\ÚÙ[ˆHÛX[Š]KœÙ]\ÚÙ[ŠNÂˆYˆ
+\Ù]\ÚÙ[ŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ÓS‘H9ænùaiz,áù¥¦ymìº`n¹i,{ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂˆBˆÛÛœİ[™TÙ]\YH\Ú
+Ù]\ÚÙ[ŠNÂˆÛÛœİÙ]\Û˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[™TÙ]\ÚÙ[œÉÊK™ØÊ[™TÙ]\Y
+K™Ù]
+
+NÂˆÛÛœİÙ]\HÙ]\Û˜\Úİ™^\İÈÈÙ]\Û˜\Úİ™]J
+HßHˆ[ÂˆYˆ
+ˆ\Ù]\ˆÛX[ŠÙ]\œİ]\ÊHOOH	Ü[™[™ÉÈˆ\ÓZ[\ÊÙ]\™^\™\Ğ]
+H]K››İÊ
+HˆÛX[ŠÙ]\\JHOOH\HˆXÛX[ŠÙ]\›[™U\Ù\’Y
+Bˆ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ÓS‘H9ænùaiz,áù¥¦ymì¹i,y¥b;ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂˆBˆÛÛœİY[]HH]ØZ]™\\™Pš[™[™ÒY[]JØš™Xİ˜\ÜÚYÛŠßK]KÈ\HJJNÂˆYˆ
+]˜[Y[XZ[
+Y[]K™[XZ[
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âùhjùkêÈ[XZ[9.)¹k£9¢$9fæùè¯:jeú+bxà ‰ÊNÂˆBˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠY[]KÂˆ[™TÙ]\Yˆ[™U\Ù\’YˆÛX[ŠÙ]\›[™U\Ù\’Y
+BˆJNÂŸB‚˜\Ş[˜È[˜İ[ÛˆÙ[™[XZ[İ
+]K[\œÈHßJHÂˆÛÛœİ™\]Y\İY\œÜÙHHÛX[Š]Kœ\œÜÙJKÓİÙ\Ø\ÙJ
+NÂˆÛÛœİ\œÜÙHHÉØXØÛİ[	Ë	ÛÙÚ[‰Ë	Û[™K\™YÚ\İ˜][Û‰×Kš[˜ÛY\Ê™\]Y\İY\œÜÙJBˆÈ™\]Y\İY\œÜÙBˆˆ	Øš[™	ÎÂˆÛÛœİ\HHÛX[Š]K\JKÓİÙ\Ø\ÙJ
+NÂˆYˆ
+VÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê\JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù.#y¥+ù£í9æ¡9aiycèúhg¹g¢øà ‰ÊNÂˆB‚ˆÛÛœİ[XZ[H›Ü›X[^™Q[XZ[
+]K™[XZ[
+NÂˆ\ÜÙ\[œ]
+[XZ[	Ñ[XZ[	ÊNÂˆYˆ
+]˜[Y[XZ[
+[XZ[
+JH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	Ñ[XZ[9¨/9o#ù.#y«hùè®¸à ‰ÊNÂˆ]ØZ]ÛÛœİ[YT˜]S[Z]
+[XZ[[İIÜ\œÜÙ_KIİ\_X[XZ[
+NÂ‚ˆ]Y[]HH[ÂˆYˆ
+\œÜÙHOOH	Û[™K\™YÚ\İ˜][Û‰ÊHÂˆY[]HH]ØZ]™\\™S[™T™YÚ\İ˜][Û’Y[]J]K\JNÂˆH[ÙHYˆ
+\œÜÙHOOH	ØXØÛİ[	È\œÜÙHOOH	Øš[™	ÊHÂˆY[]HH]ØZ]™\\™Pš[™[™ÒY[]J]JNÂˆYˆ
+\œÜÙHOOH	ØXØÛİ[	ÊHÂˆY[]HHØš™Xİ˜\ÜÚYÛŠY[]K]ØZ]™\ÛÛ™T™Yİ[\’Y[]JY[]JJNÂˆBˆH[ÙHÂˆY[]HH]ØZ]š[™[XZ[ÙÚ[XØÛİ[
+\K[XZ[
+NÂˆBˆÛÛœİÚ[[™ÙHH˜[™ÛUÚÙ[ŠÌŠNÂˆÛÛœİÛÙHH˜[™ÛQ[XZ[İ
+
+NÂˆÛÛœİ^\™\Ğ]H[Y\İ[\™œ›ÛSZ[\Ê]K››İÊ
+H
+ÈSPRSÓÕÕÓTÊNÂˆÛÛœİ^[ØYHÂˆ\œÜÙKˆ\Kˆ[XZ[ˆ[XZ[›Ü›X[^™Yˆ[XZ[ˆÛÙR\Úˆ\Ú
+	ØÚ[[™Ù__	ØÛÙ_X
+Kˆ][\ÎˆˆX^][\ÎˆSPRSÓÕÓPVĞUSTËˆİ]\Îˆ	Ü[™[™ÉËˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ^\™\Ğ]ˆNÂˆYˆ
+Y[]JHÂˆ^[ØY›[™U\Ù\’YHÛX[ŠY[]K›[™U\Ù\’Y
+NÂˆ^[ØY˜]]XØÛİ[YHÛX[ŠY[]K˜]]XØÛİ[Y
+NÂˆ^[ØY˜š[™[™ÒYHÛX[ŠY[]K˜š[™[™ÒY
+NÂˆ^[ØY\™Ù]YHÛX[ŠY[]K\™Ù]Y
+NÂˆ^[ØYœ™[\’YHÛX[ŠY[]Kœ™[\’Y
+NÂˆ^[ØY›˜[YHHÛX[ŠY[]K›˜[YJNÂˆ^[ØYœÛ™HH›Ü›X[^™TÛ™JY[]KœÛ™JNÂˆ^[ØYœ™[][ÛœÚ\HÛX[ŠY[]Kœ™[][ÛœÚ\
+NÂˆ^[ØY›[™TÙ]\YHÛX[ŠY[]K›[™TÙ]\Y
+NÂˆH[ÙHÂˆ^[ØY™XÛŞHHYNÂˆBˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[XZ[İÉÊK™ØÊ\Ú
+Ú[[™ÙJJNÂˆ]ØZ]™Y‹œÙ]
+^[ØY
+NÂ‚ˆYˆ
+Y[]H	‰ˆ\[Ùˆ[\œËœÙ[™[XZ[OOH	Ù[˜İ[Û‰ÊHÂˆ]ØZ]™Y‹™[]J
+K˜Ø]Ú
+
+
+HOˆßJNÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[\›˜[	Ë	újeú+by/èy§#ybæyl&¹§*¹egùå*;ï#:*âù/oùå*S‘H9oêú`'ùænùaiy¢%º kùíhyë¨yä!º !xà ‰ÊNÂˆBˆYˆ
+Y[]JHÂˆHÂˆ]ØZ][\œËœÙ[™[XZ[
+ÂˆÚ[›™[ˆ	Ù[XZ[	Ëˆ\™Ù][XZ[ˆ[XZ[ˆ]Nˆ9§æ¹kd9ª ¹fj	ÖÉØš[™	Ë	Û[™K\™YÚ\İ˜][Û‰×Kš[˜ÛY\Ê\œÜÙJHÈ	úi¥¹«(zjeú+bIÈˆ	ùænùaiIßzjeú+byè¯ˆ›ÙNˆÂˆ9 ª9æ¡9fæùè¯:jeú+byè¯9¦+ûï&‰ØÛÙ_Xˆ	ÉËˆ	újeú+byè¯N9éä¹aiù§"y¥b;ï#9§ 9i&¹cëú/.9aiHH9«(xà ‰Ëˆ	ú"éy.#y¦+ù ª9§+9.®¹¤ãy/g;ï#:*âùoïyåiz`&yl y/è{ï#9.gù.#z) y¢¢ºjeú+byè¯9dbº*-9.îù/ey.®¸à ‰ÂˆKš›Ú[Š	×‰ÊBˆJNÂˆHØ]Ú
+\œ›ÜŠHÂˆ]ØZ]™Y‹™[]J
+K˜Ø]Ú
+
+
+HOˆßJNÂˆÛÛœÛÛK™\œ›ÜŠ	ÖØÛİ\œÙHÜ[[XZ[İ˜Z[YIË\œ›ÜŠNÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[\›˜[	Ë	újeú+by/èy¦ªù¦`¹á(y¬åyká9aî»ï#:*âùê#yo£9a£z*i¹¢%¹/oùå*S‘H9oêú`'ùænùaixà ‰ÊNÂˆBˆB‚ˆ™]\›ˆÂˆÚÎˆYKˆÚ[[™ÙUÚÙ[ˆÚ[[™ÙKˆ^\™\Ò[”ÙXÛÛ™ÎˆX]™›ÛÜŠSPRSÓÕÕÓTÈÈL
+KˆX\ÚÙY[XZ[ˆX\ÚÙY[XZ[
+[XZ[
+KˆY\ÜØYÙNˆ	ùfæùè¯:jeú+byè¯9mì¹ká9b,9 ª9æ¡[XZ[8à ‰ÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXİ]™TİY[YÑ›ÜXØÛİ[
+]]XØÛİ[Y
+HÂˆYˆ
+XÛX[Š]]XØÛİ[Y
+JH™]\›ˆ×NÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[š[™[™ÜÉÊBˆÚ\™J	Ø]]XØÛİ[Y	Ë	ÏOIËÛX[Š]]XØÛİ[Y
+JBˆÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊBˆ™Ù]
+
+NÂˆ™]\›ˆË‹‹›™]ÈÙ]
+Û˜\Úİ™ØÜË›X\
+
+ØÊHOˆÛX[ŠØË™]J
+KœİY[Y
+JK™š[\Š›ÛÛX[ŠJWNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXİ]™TİY[š[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠHÂˆÛÛœİ]Y\šY\ÈH×NÂˆYˆ
+ÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JHÂˆ]Y\šY\Ëœ\Ú
+ˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[š[™[™ÜÉÊBˆÚ\™J	Û[™U\Ù\’Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JBˆÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊBˆ™Ù]
+
+Bˆ
+NÂˆBˆYˆ
+ÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+JHÂˆ]Y\šY\Ëœ\Ú
+ˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[š[™[™ÜÉÊBˆÚ\™J	Ø]]XØÛİ[Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+JBˆÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊBˆ™Ù]
+
+Bˆ
+NÂˆBˆÛÛœİÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+]Y\šY\ÊNÂˆ™]\›ˆË‹‹›™]ÈX\
+Û˜\ÚİË™›]X\
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜÊK›X\
+
+ØÊHOˆÂˆØËšYˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšY×Ü™YˆØËœ™YˆKØË™]J
+HßJBˆJJK˜[Y\Ê
+WNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXİ]™TİY[YÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠHÂˆÛÛœİš[™[™ÜÈH]ØZ]Xİ]™TİY[š[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠNÂˆÛÛœİİY[YÈHË‹‹›™]ÈÙ]
+š[™[™ÜË›X\
+
+›İÊHOˆÛX[Š›İËœİY[Y
+JK™š[\Š›ÛÛX[ŠJWNÂˆYˆ
+\İY[YË›[™İ
+H™]\›ˆ×NÂˆÛÛœİÙ^HHİ\œ™[Z\ZQ^J
+NÂˆÛÛœİÜİY[Ëš^YÛİ\œÙ\Ë[\Ü˜\PÛİ\œÙ\Ë]™[Ëİ\Ü[œÚ[Ûœ×HH]ØZ]›ÛZ\ÙK˜[
+ÂˆZ\œ›Ü”›İÜÒ[˜ÛY[™Ò[˜Xİ]™J	ÜİY[ÉÊKˆZ\œ›Ü”›İÜÊ	Ùš^YÛİ\œÙ\ÉÊKˆZ\œ›Ü”›İÜÊ	İ[\Ü˜\PÛİ\œÙ\ÉÊKˆZ\œ›Ü”›İÜĞQ]T˜[™ÙJ	Ù]™[ÉËÙ^KY^\ÊÙ^KLŒ
+JKˆ™XÛÛ˜Ú[TİY[İ\Ü[œÚ[ÛœÑ›Ü“™]ÔØÚY[\ÊİY[YÊBˆJNÂˆÛÛœİXİ]™HHXİ]™SX\›š[™ÔİY[YÊˆİY[ËˆË‹‹™š^YÛİ\œÙ\Ë‹‹[\Ü˜\PÛİ\œÙ\×Kˆ]™[Ëˆİ\Ü[œÚ[ÛœÂˆ
+NÂˆ™]\›ˆİY[YË™š[\Š
+İY[Y
+HOˆXİ]™Kš\ÊİY[Y
+JNÂŸB‚™[˜İ[ÛˆÙ\ÜÚ[Û“İÛ™\’Ù^JÙ\ÜÚ[ÛŠHÂˆÛÛœİ]]XØÛİ[YHÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+NÂˆÛÛœİ[™U\Ù\’YHÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹›[™U\Ù\’Y
+NÂˆYˆ
+]]XØÛİ[Y
+H™]\›ˆXØÛİ[‰Ø]]XØÛİ[YXÂˆYˆ
+[™U\Ù\’Y
+H™]\›ˆ[™N‰Û[™U\Ù\’YXÂˆ™]\›ˆ	ÉÎÂŸB‚˜\Ş[˜È[˜İ[Ûˆ]]Üš^™Yš[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠHÂˆÛÛœİ›ÛHHÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ›ÛJNÂˆYˆ
+VÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê›ÛJJH™]\›ˆ×NÂˆYˆ
+›ÛHOOH	ÜİY[	ÊH™]\›ˆXİ]™TİY[š[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠNÂˆÛÛœİÛÛXİ[ÛˆH‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ›ÛJJNÂˆÛÛœİ]Y\šY\ÈH×NÂˆYˆ
+ÛX[ŠÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JHÂˆ]Y\šY\Ëœ\Ú
+ÛÛXİ[Û‹Ú\™J	Û[™U\Ù\’Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JK™Ù]
+
+JNÂˆBˆYˆ
+ÛX[ŠÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+JHÂˆ]Y\šY\Ëœ\Ú
+ÛÛXİ[Û‹Ú\™J	Ø]]XØÛİ[Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+JK™Ù]
+
+JNÂˆBˆÛÛœİ\™Ù]šY[H›ÛHOOH	İXXÚ\‰ÈÈ	İXXÚ\’Y	Èˆ	Ü™[\’Y	ÎÂˆÛÛœİ\™Ù]YHÛX[ŠÙ\ÜÚ[Û–İ\™Ù]šY[JNÂˆYˆ
+\]Y\šY\Ë›[™İ	‰ˆ\™Ù]Y
+HÂˆ]Y\šY\Ëœ\Ú
+ÛÛXİ[Û‹Ú\™J\™Ù]šY[	ÏOIË\™Ù]Y
+K™Ù]
+
+JNÂˆBˆÛÛœİÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+]Y\šY\ÊNÂˆ™]\›ˆË‹‹›™]ÈX\
+Û˜\ÚİË™›]X\
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜÊK›X\
+
+ØÊHOˆÂˆØËšYˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšY×Ü™YˆØËœ™YˆKØË™]J
+HßJBˆJJK˜[Y\Ê
+WK™š[\Š
+›İÊHO‚ˆÛX[Š›İËœİ]\ÊHOOH	ØXİ]™IÈ	‰‚ˆ
+]\™Ù]YÛX[Š›İÖİ\™Ù]šY[JHOOH\™Ù]Y
+Bˆ
+NÂŸB‚˜\Ş[˜È[˜İ[ÛˆİXÚ]]Üš^™Yš[™[™ÜÊÙ\ÜÚ[ÛŠHÂˆÛÛœİš[™[™ÜÈH]ØZ]]]Üš^™Yš[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠNÂˆYˆ
+Xš[™[™ÜË›[™İ
+H™]\›ˆ˜[ÙNÂˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆš[™[™ÜË™›Ü‘XXÚ
+
+›İÊHOˆ˜]ÚœÙ]
+›İË—×Ü™Y‹Âˆ\İÙÚ[]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\İÙÚ[]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂˆ™]\›ˆYNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ\ÜİYTÙ\ÜÚ[ÛŠÈ\K[™U\Ù\’Y]]XØÛİ[Y\™Ù]Y™[\’Y]]Y]Ù\ÈJHÂˆÛÛœİÙ\ÜÚ[ÛˆH˜[™ÛUÚÙ[ŠÍŠNÂˆÛÛœİÙ\ÜÚ[Û•\ÈHX]›X^
+Ì
+ˆŒ
+ˆL[X™\Š\ÈÔ•SÔÑTÔÒSÓ—ÕÓTÊJNÂˆÛÛœİ^\™\Ğ]H[Y\İ[\™œ›ÛSZ[\Ê]K››İÊ
+H
+ÈÙ\ÜÚ[Û•\ÊNÂˆÛÛœİÙ\ÜÚ[Û”^[ØYHÂˆ›ÛNˆ\Kˆ[™U\Ù\’YˆÛX[Š[™U\Ù\’Y
+Kˆ]]XØÛİ[YˆÛX[Š]]XØÛİ[Y
+KˆXXÚ\’Yˆ\HOOH	İXXÚ\‰ÈÈÛX[Š\™Ù]Y
+Hˆ	ÉËˆ™[\’Yˆ\HOOH	Ü™[\‰ÈÈÛX[Š™[\’Y
+Hˆ	ÉËˆ]]Y]ÙˆÛX[Š]]Y]Ù
+H	Û[™IËˆÛY[™ÎˆÙ\ÜÚ[Û•\ÈHÔ•SÔÑTÔÒSÓ—ÕÓTËˆÙ\ÜÚ[Û•\Ëˆİ]\Îˆ	ØXİ]™IËˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\İ\ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ^\™\Ğ]ˆNÂˆYˆ
+\HOOH	ÜİY[	ÊHÂˆÛÛœİÛ[™TİY[YËXØÛİ[İY[Y×HH]ØZ]›ÛZ\ÙK˜[
+ÂˆÛX[Š[™U\Ù\’Y
+HÈXİ]™TİY[YÑ›Ü“[™J[™U\Ù\’Y
+Hˆ×KˆÛX[Š]]XØÛİ[Y
+HÈXİ]™TİY[YÑ›ÜXØÛİ[
+]]XØÛİ[Y
+Hˆ×BˆJNÂˆÙ\ÜÚ[Û”^[ØYœİY[YÈHË‹‹›™]ÈÙ]
+Âˆ‹‹›[™TİY[YËˆ‹‹˜XØÛİ[İY[YËˆÛX[Š\™Ù]Y
+BˆK™š[\Š›ÛÛX[ŠJWNÂˆBˆÛÛœİÙ\ÜÚ[Û”™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù\ÜÚ[ÛœÉÊK™ØÊ\Ú
+Ù\ÜÚ[ÛŠJNÂˆ]ØZ]Ù\ÜÚ[Û”™Y‹œÙ]
+Ù\ÜÚ[Û”^[ØY
+NÂˆYˆ
+J]ØZ]İXÚ]]Üš^™Yš[™[™ÜÊÙ\ÜÚ[Û”^[ØY
+JJHÂˆ]ØZ]Ù\ÜÚ[Û”™Y‹™[]J
+K˜Ø]Ú
+
+
+HOˆßJNÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y`"ùænùaiy«"ºfd9mì¹`g9å*9¢%¹l&¹§*¹¨.9aá»ï#:*âú kùíhy§æ¹kd9ª ¹fj8à ‰ÊNÂˆBˆ]ØZ]]Y]YTÙ\ÜÚ[Û”ÙXİ\š]S›İXÙJ\Ú
+Ù\ÜÚ[ÛŠKÙ\ÜÚ[Û”^[ØY
+NÂˆ™]\›ˆÈÙ\ÜÚ[Û•ÚÙ[ˆÙ\ÜÚ[Û‹^\™\Ğ]NÂŸB‚˜\Ş[˜È[˜İ[ÛˆÛÛ\]T™Yİ[\XØÛİ[
+Ûİ\˜ÙJHÂˆÛÛœİ\HHÛX[ŠÛİ\˜ÙK\JNÂˆÛÛœİ\™Ù]YHÛX[ŠÛİ\˜ÙK\™Ù]Y
+NÂˆÛÛœİ™[\’YHÛX[ŠÛİ\˜ÙKœ™[\’Y
+NÂˆÛÛœİ]]XØÛİ[YHÛX[ŠÛİ\˜ÙK˜]]XØÛİ[Y
+H™Yİ[\XØÛİ[Y
+\KÛİ\˜ÙK™[XZ[
+NÂˆÛÛœİÛÛXİ[ÛˆH‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ\JJNÂˆÛÛœİÙ[™\˜]Yš[™[™ÒYH\Ú
+Âˆ	Ü™Yİ[\‹[ÙÚ[‰Ëˆ\Kˆ]]XØÛİ[Yˆ\HOOH	Ü™[\‰ÈÈ™[\’Yˆ\™Ù]YˆKš›Ú[Š	ß	ÊJNÂˆÛÛœİš[™[™ÒYHÛX[ŠÛİ\˜ÙK˜š[™[™ÒY
+HÙ[™\˜]Yš[™[™ÒYÂˆÛÛœİš[™[™Ô™YˆHÛÛXİ[Û‹™ØÊš[™[™ÒY
+NÂˆÛÛœİ^\İ[™ÈH]ØZ]š[™[™Ô™Y‹™Ù]
+
+NÂˆÛÛœİ™]š[İ\ÈH^\İ[™Ë™^\İÈÈ^\İ[™Ë™]J
+HßHˆßNÂˆYˆ
+ÉÜ™]›ÚÙY	Ë	Ü™Z™XİY	×Kš[˜ÛY\ÊÛX[Š™]š[İ\Ëœİ]\ÊJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y`"ùaiycèùn,ú&gùæë¹bcymì¹`g9å*;ï#:*âú kùíhy§æ¹kd9ª ¹fj9ce9bªy h¹oªxà ‰ÊNÂˆBˆÛÛœİ\›İ™YH\HOOH	Ü™[\‰ÈÛX[Š™]š[İ\Ëœİ]\ÊHOOH	ØXİ]™IÎÂˆÛÛœİ™^İ]\ÈH\›İ™YÈ	ØXİ]™IÈˆ	Ü[™[™ÉÎÂ‚ˆÛÛœİ^[ØYHÂˆ\Kˆ]]XØÛİ[Yˆ]]›İšY\ˆÛX[Š™]š[İ\Ë›[™U\Ù\’Y
+HÈ	Û[™K[ÙÚ[ŠÙ[XZ[	Èˆ	Ù[XZ[[İ	Ëˆ˜[YNˆÛX[ŠÛİ\˜ÙK›˜[YJKˆÛ™R\Úˆ\Ú
+›Ü›X[^™TÛ™JÛİ\˜ÙKœÛ™JJKˆ[XZ[ˆ›Ü›X[^™Q[XZ[
+Ûİ\˜ÙK™[XZ[
+Kˆ[XZ[›Ü›X[^™Yˆ›Ü›X[^™Q[XZ[
+Ûİ\˜ÙK™[XZ[
+Kˆ[XZ[™\šYšYYˆYKˆ[XZ[™\šYšYY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆİ]\Îˆ™^İ]\Ëˆ\›İ˜[İ]\Îˆ\›İ™YÈ	Ø\›İ™Y	Èˆ	Ü[™[™ÉËˆ\›İ˜[™\]Y\İY]ˆ\›İ™YÈ
+™]š[İ\Ë˜\›İ˜[™\]Y\İY][
+HˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™YÚ\İ\™Y]ˆ™]š[İ\Ëœ™YÚ\İ\™Y]šY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆNÂˆYˆ
+\HOOH	İXXÚ\‰ÊH^[ØYXXÚ\’YH\™Ù]YÂˆYˆ
+\HOOH	ÜİY[	ÊHÂˆ^[ØYœİY[YH\™Ù]YÂˆ^[ØYœ™[][ÛœÚ\HÛX[ŠÛİ\˜ÙKœ™[][ÛœÚ\
+H	ù§+9.®‰ÎÂˆBˆYˆ
+\HOOH	Ü™[\‰ÊH^[ØYœ™[\’YH™[\’YÂ‚ˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆYˆ
+\HOOH	Ü™[\‰ÊHÂˆ˜]ÚœÙ]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\œÉÊK™ØÊ™[\’Y
+KÂˆ™[\’Yˆ˜[YNˆÛX[ŠÛİ\˜ÙK›˜[YJKˆÛ™Nˆ›Ü›X[^™TÛ™JÛİ\˜ÙKœÛ™JKˆ[XZ[ˆ›Ü›X[^™Q[XZ[
+Ûİ\˜ÙK™[XZ[
+Kˆ[XZ[›Ü›X[^™Yˆ›Ü›X[^™Q[XZ[
+Ûİ\˜ÙK™[XZ[
+Kˆ[XZ[™\šYšYYˆYKˆ[XZ[™\šYšYY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÛİ\˜ÙNˆ	Ü™Yİ[\‹\™YÚ\İ˜][Û‰ËˆXİ]™NˆYKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆBˆ˜]ÚœÙ]
+š[™[™Ô™Y‹^[ØYÈY\™ÙNˆYHJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂˆYˆ
+X\›İ™Y
+HÂˆ]ØZ]]Y]YPš[™[™Ğ\›İ˜[›İXÙ\ÊØš™Xİ˜\ÜÚYÛŠßK™]š[İ\Ë^[ØYÂˆYˆš[™[™ÒYˆ\™Ù]Yˆ™[\’YˆJJNÂˆ™]\›ˆÂˆÚÎˆYKˆ\œÜÙNˆ	ØXØÛİ[	Ëˆ›ÛNˆ\Kˆ[™[™Ğ\›İ˜[ˆYKˆY\ÜØYÙNˆ	ú,áù¥¦ymìº` yaî»ï#9..ùë¨yè®º*£yo£9clùcëùænùai{ï&ú*âùê#yo£:aãy¥¬:e¢ùegùaiycèøà ‰ÂˆNÂˆB‚ˆÛÛœİ\ÜİYYH]ØZ]\ÜİYTÙ\ÜÚ[ÛŠÂˆ\Kˆ[™U\Ù\’YˆÛX[Š™]š[İ\Ë›[™U\Ù\’YÛİ\˜ÙK›[™U\Ù\’Y
+Kˆ]]XØÛİ[Yˆ\™Ù]Yˆ™[\’Yˆ]]Y]Ùˆ	Ù[XZ[[İ	ÂˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆ\œÜÙNˆ	ØXØÛİ[	Ëˆ›ÛNˆ\KˆÙ\ÜÚ[Û•ÚÙ[ˆ\ÜİYYœÙ\ÜÚ[Û•ÚÙ[‹ˆ^\™\Ğ]ˆ\ÜİYY™^\™\Ğ]Ñ]J
+KÒTÓÔİš[™Ê
+BˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆİY[Û™PXØÙ\ÜÊ]JHÂˆ›ÚY]NÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ùkn9å'ûï#ùk­ºemùiäùd#z"!úfîú*lyæí9£©yænùaiymì¹`g9å*;ï&ù¢`9§"y¥¬:*.ùa¢º`ïyoázh"9hjùkêÈ[XZ[9.)¹k£9¢$9fæùè¯:jeú+bxà ‰Âˆ
+NÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™\šYQ[XZ[İ
+]JHÂˆÛÛœİÚ[[™ÙHHÛX[Š]K˜Ú[[™ÙUÚÙ[ŠNÂˆÛÛœİÛÙHHÛX[Š]K˜ÛÙJKœ™\XÙJ×ÙË	ÉÊNÂˆYˆ
+XÚ[[™ÙHK×—ÍIË\İ
+ÛÙJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú/.9aiyfæùè¯:jeú+byè¯8à ‰ÊNÂˆBˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[XZ[İÉÊK™ØÊ\Ú
+Ú[[™ÙJJNÂˆ]Ûİ\˜ÙHH[Âˆ]™\šYšXØ][Û‘\œ›ÜˆH[Âˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÛ˜\ÚİH]ØZ]™Ù]
+™YŠNÂˆÛÛœİ›İÈHÛ˜\Úİ™^\İÈÈÛ˜\Úİ™]J
+HßHˆ[ÂˆYˆ
+\›İÈ›İËœİ]\ÈOOH	Ü[™[™ÉÈ\ÓZ[\Ê›İË™^\™\Ğ]
+H]K››İÊ
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	ÙXY[™KY^ÙYYY	Ë	újeú+byè¯9mì¹i,y¥b;ï#:*âúaãy¥¬9ká:` xà ‰ÊNÂˆBˆÛÛœİ][\ÈH[X™\Š›İË˜][\È
+NÂˆYˆ
+][\ÈHSPRSÓÕÓPVĞUSTÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü™\Ûİ\˜ÙKY^]\İY	Ë	újeú+byè¯:/.9aiy«(y¥n9mìº`e9."ºfd;ï#:*âúaãy¥¬9ká:` xà ‰ÊNÂˆBˆYˆ
+\ØY™Q\]X[
+›İË˜ÛÙR\Ú\Ú
+	ØÚ[[™Ù__	ØÛÙ_X
+JJHÂˆœÙ]
+™Y‹Âˆ][\Îˆ][\È
+ÈKˆİ]\Îˆ][\È
+ÈHHSPRSÓÕÓPVĞUSTÈÈ	ÛØÚÙY	Èˆ	Ü[™[™ÉËˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ™\šYšXØ][Û‘\œ›ÜˆH™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	újeú+byè¯9.#y«hùè®¸à ‰ÊNÂˆ™]\›ÂˆBˆÛİ\˜ÙHH›İÎÂˆœÙ]
+™Y‹Âˆ][\Îˆ][\È
+ÈKˆİ]\Îˆ	İ\ÙY	Ëˆ\ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆYˆ
+™\šYšXØ][Û‘\œ›ÜŠH›İÈ™\šYšXØ][Û‘\œ›ÜÂ‚ˆYˆ
+\Ûİ\˜ÙHÛİ\˜ÙK™XÛŞJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	újeú+byè¯9.#y«hùè®¹¢%¹n,ú&gú,áù¥¦y.#yæî9ë)¸à ‰ÊNÂˆBˆYˆ
+Ûİ\˜ÙKœ\œÜÙHOOH	Û[™K\™YÚ\İ˜][Û‰ÊHÂˆ™]\›ˆÛÛ\]U™\šYšYY[™T™YÚ\İ˜][ÛŠÛİ\˜ÙJNÂˆBˆYˆ
+Ûİ\˜ÙKœ\œÜÙHOOH	ØXØÛİ[	ÊHÂˆ™]\›ˆÛÛ\]T™Yİ[\XØÛİ[
+Ûİ\˜ÙJNÂˆBˆYˆ
+Ûİ\˜ÙKœ\œÜÙHOOH	ÛÙÚ[‰ÊHÂˆÛÛœİ™\İ[H]ØZ]\ÜİYTÙ\ÜÚ[ÛŠÂˆ\NˆÛİ\˜ÙK\Kˆ[™U\Ù\’YˆÛİ\˜ÙK›[™U\Ù\’Yˆ]]XØÛİ[YˆÛİ\˜ÙK˜]]XØÛİ[Yˆ\™Ù]YˆÛİ\˜ÙK\™Ù]Yˆ™[\’YˆÛİ\˜ÙKœ™[\’Yˆ]]Y]Ùˆ	Ù[XZ[[İ	ÂˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆ\œÜÙNˆ	ÛÙÚ[‰Ëˆ›ÛNˆÛİ\˜ÙK\KˆÙ\ÜÚ[Û•ÚÙ[ˆ™\İ[œÙ\ÜÚ[Û•ÚÙ[‹ˆ^\™\Ğ]ˆ™\İ[™^\™\Ğ]Ñ]J
+KÒTÓÔİš[™Ê
+BˆNÂˆB‚ˆYˆ
+Ûİ\˜ÙK\HOOH	Ü™[\‰ÊHÂˆ]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\œÉÊK™ØÊÛX[ŠÛİ\˜ÙKœ™[\’Y
+JKœÙ]
+Âˆ™[\’YˆÛX[ŠÛİ\˜ÙKœ™[\’Y
+Kˆ˜[YNˆÛX[ŠÛİ\˜ÙK›˜[YJKˆÛ™Nˆ›Ü›X[^™TÛ™JÛİ\˜ÙKœÛ™JKˆ[XZ[ˆ›Ü›X[^™Q[XZ[
+Ûİ\˜ÙK™[XZ[
+Kˆ[XZ[›Ü›X[^™Yˆ›Ü›X[^™Q[XZ[
+Ûİ\˜ÙK™[XZ[
+Kˆ[XZ[™\šYšYYˆYKˆ[XZ[™\šYšYY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÛİ\˜ÙNˆ	ÜX›XË\™YÚ\İ˜][Û‰ËˆXİ]™NˆYKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆBˆÛÛœİš[™H]ØZ]Ü™X]Pš[™ÛÙJÂˆ\NˆÛİ\˜ÙK\Kˆ\™Ù]YˆÛİ\˜ÙK\™Ù]Yˆ™[\’YˆÛİ\˜ÙKœ™[\’Yˆ˜[YNˆÛİ\˜ÙK›˜[YKˆÛ™NˆÛİ\˜ÙKœÛ™Kˆ[XZ[ˆÛİ\˜ÙK™[XZ[ˆ™[][ÛœÚ\ˆÛİ\˜ÙKœ™[][ÛœÚ\ˆJNÂˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠßKš[™È\œÜÙNˆ	Øš[™	Ë[XZ[™\šYšYYˆYHJNÂŸB‚™[˜İ[ÛˆÜ[YÙQ›Ü”›ÛJ\JHÂˆYˆ
+\HOOH	İXXÚ\‰ÊH™]\›ˆ	İXXÚ\‹XÛİ\œÙK\Ü[š[	ÎÂˆYˆ
+\HOOH	ÜİY[	ÊH™]\›ˆ	ÜİY[XÛİ\œÙK\Ü[š[	ÎÂˆ™]\›ˆ	Ü›ÛÛKX›ÛÚÚ[™Ëš[	ÎÂŸB‚™[˜İ[ÛˆÜ[\››Ü”›ÛJ\K\˜[\ÈHßJHÂˆÛÛœİ\›H™]ÈT“
+	ÔÔ•SĞTÑ_KÉÜÜ[YÙQ›Ü”›ÛJ\J_X
+NÂˆØš™XİšÙ^\Ê\˜[\ÊK™›Ü‘XXÚ
+
+Ù^JHOˆÂˆÛÛœİ˜[YHHÛX[Š\˜[\ÖÚÙ^WJNÂˆYˆ
+˜[YJH\›œÙX\˜Ú\˜[\ËœÙ]
+Ù^K˜[YJNÂˆJNÂˆ™]\›ˆ\›Ôİš[™Ê
+NÂŸB‚™[˜İ[ÛˆÙ[˜[Ü[\›
+\˜[\ÈHßJHÂˆÛÛœİ\›H™]ÈT“
+	ÔÔ•SĞTÑ_KØÛİ\œÙK\Ü[š[
+NÂˆØš™XİšÙ^\Ê\˜[\ÊK™›Ü‘XXÚ
+
+Ù^JHOˆÂˆÛÛœİ˜[YHHÛX[Š\˜[\ÖÚÙ^WJNÂˆYˆ
+˜[YJH\›œÙX\˜Ú\˜[\ËœÙ]
+Ù^K˜[YJNÂˆJNÂˆ™]\›ˆ\›Ôİš[™Ê
+NÂŸB‚™[˜İ[Ûˆ[™P]]Üš^˜][Û•\›
+İ]JHÂˆÛÛœİ\˜[\ÈH™]ÈT“ÙX\˜Ú\˜[\ÊÂˆ™\ÜÛœÙWİ\Nˆ	ØÛÙIËˆÛY[ÚYˆS‘WÓÑÒS—ĞÒS“‘SÒQˆ™Y\™Xİİ\šNˆS‘WÓÑÒS—ĞĞSPÒ×ÕT“ˆİ]KˆØÛÜNˆ	ÛÜ[šY›Ùš[IËˆ›İÜ›Û\ˆ	Û›Ü›X[	ÂˆJNÂˆ™]\›ˆÎ‹ËØXØÙ\ÜË›[™K›YKÛØ]]‹İŒ‹ŒKØ]]Üš^™OÉÜ\˜[\ËÔİš[™Ê
+_XÂŸB‚˜\Ş[˜È[˜İ[Ûˆİ\[™SÙÚ[Š]JHÂˆÛÛœİ\HHÛX[Š]K\JKÓİÙ\Ø\ÙJ
+NÂˆYˆ
+VÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê\JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù.#y¥+ù£í9æ¡9aiycèúhg¹g¢øà ‰ÊNÂˆBˆÛÛœİİ]HH˜[™ÛUÚÙ[ŠÌŠNÂˆÛÛœİ^\™\Ğ]H[Y\İ[\™œ›ÛSZ[\Ê]K››İÊ
+H
+ÈS‘WÓĞUUÔÕUWÕÓTÊNÂˆ]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[™SĞ]]İ]\ÉÊK™ØÊ\Ú
+İ]JJKœÙ]
+Âˆ\Kˆ[šĞ[›İ\ˆ\HOOH	ÜİY[	È	‰ˆ]K›[šĞ[›İ\ˆOOHYKˆİ]R[ˆİ]KœÛXÙJMŠKˆİ]\Îˆ	Ü[™[™ÉËˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ^\™\Ğ]ˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆ]]Üš^˜][Û•\›ˆ[™P]]Üš^˜][Û•\›
+İ]JKˆ^\™\Ğ]ˆ^\™\Ğ]Ñ]J
+KÒTÓÔİš[™Ê
+BˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[\ÛÛXİÙÚ[Š]JHÂˆ›ÚY]NÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ùiäùd#yb¨:fîú*lyoêú`'ùænùaiymì¹`g9å*;ï&ú*âù/oùå*S‘H9ænùai{ï#9¢%¹.éyiäùd#xà zfîú*lycâˆ[XZ[9£©y¥-¹fæùè¯:jeú+byè¯8à ‰Âˆ
+NÂŸB‚‹ËÈ:""¹æ¡9iäùd#{ï#úfîú*lyæí9£©yaiycèùcê¹/çyåfyæî9k®yaïyo#ùd#yê,{ï#9kéºf¦ùmì¹aj:gh¹`g9å*8à ‚‹ËÈ9¢`9§"z)äº"l¹æ¡9¥¬:*.ùa¢º`ïyoázh"9ab9k£9¢$[XZ[9fæùè¯:jeú+bxà ‚˜\Ş[˜È[˜İ[Ûˆ\™Xİ™Yİ[\XØÙ\ÜÊ]JHÂˆ›ÚY]NÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ù. :"+9æí9£©yænùaiymì¹`g9å*;ï&ù¢`9§"y¥¬:*.ùa¢º`ïyoázh"9hjùkêÈ[XZ[9.)¹k£9¢$9fæùè¯:jeú+bxà ‰Âˆ
+NÂŸB‚˜\Ş[˜È[˜İ[Ûˆ\ÜİYPXØÙ\ÜÕÚÙ[ŠÈ\K[™U\Ù\’Y]]XØÛİ[Y\™Ù]Y™[\’Y]]Y]Ù[™QœšY[™›YÈJHÂˆÛÛœİ˜]ÈH˜[™ÛUÚÙ[ŠÌŠNÂˆÛÛœİ^\™\Ğ]H[Y\İ[\™œ›ÛSZ[\Ê]K››İÊ
+H
+ÈL
+ˆŒ
+ˆL
+NÂˆ]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XØÙ\ÜÕÚÙ[œÉÊK™ØÊ\Ú
+˜]ÊJKœÙ]
+Âˆ\Kˆ[™U\Ù\’Yˆ]]XØÛİ[YˆÛX[Š]]XØÛİ[Y
+Kˆ\™Ù]YˆÛX[Š\™Ù]Y
+Kˆ™[\’YˆÛX[Š™[\’Y
+Kˆ]]Y]ÙˆÛX[Š]]Y]Ù
+H	Û[™IËˆ[™QœšY[™›YÎˆ[™QœšY[™›YÈOOH˜[ÙKˆİ]\Îˆ	ØXİ]™IËˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ^\™\Ğ]ˆJNÂˆ™]\›ˆ˜]ÎÂŸB‚™[˜İ[Ûˆ[™T]Y\U˜[YJ™\KÙ^JHÂˆÛÛœİ˜[YHH™\H	‰ˆ™\Kœ]Y\H	‰ˆ™\Kœ]Y\VÚÙ^WNÂˆ™]\›ˆÛX[Š\œ˜^Kš\Ğ\œ˜^J˜[YJHÈ˜[YVÌHˆ˜[YJNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ^Ú[™ÙS[™P]]Üš^˜][ÛÛÙJÛÙJHÂˆÛÛœİÙXÜ™]HÛX[ŠS‘WÓÑÒS—ĞÒS“‘SÔÑPÔ‘U˜[YJ
+JNÂˆYˆ
+\ÙXÜ™]
+H›İÈ™]È\œ›ÜŠ	ÓS‘HÙÚ[ˆÚ[›™[ÙXÜ™]9l&¹§*º*+yk¦¸à ‰ÊNÂˆÛÛœİ›ÙHH™]ÈT“ÙX\˜Ú\˜[\ÊÂˆÜ˜[İ\Nˆ	Ø]]Üš^˜][Û—ØÛÙIËˆÛÙKˆ™Y\™Xİİ\šNˆS‘WÓÑÒS—ĞĞSPÒ×ÕT“ˆÛY[ÚYˆS‘WÓÑÒS—ĞÒS“‘SÒQˆÛY[ÜÙXÜ™]ˆÙXÜ™]ˆJNÂˆÛÛœİ™\ÜÛœÙHH]ØZ]™]Ú
+	ÚÎ‹ËØ\K›[™K›YKÛØ]]‹İŒ‹ŒKİÚÙ[‰ËÂˆY]Ùˆ	ÔÔÕ	ËˆXY\œÎˆÈ	ĞÛÛ[U\IÎˆ	Ø\XØ][Û‹Ş]İİËY›Ü›K]\›[˜ÛÙY	ÈKˆ›ÙNˆ›ÙKÔİš[™Ê
+BˆJNÂˆÛÛœİ^[ØYH]ØZ]™\ÜÛœÙKšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆYˆ
+\™\ÜÛœÙK›ÚÈXÛX[Š^[ØY˜XØÙ\Ü×İÚÙ[ŠJHÂˆÛÛœÛÛK™\œ›ÜŠ	ÖØÛİ\œÙHÜ[S‘HÚÙ[ˆ^Ú[™ÙH˜Z[YIË™\ÜÛœÙKœİ]\Ë^[ØY™\œ›Üˆ^[ØY™\œ›Ü—Ù\ØÜš\[Ûˆ	ÉÊNÂˆ›İÈ™]È\œ›ÜŠ	ÓS‘H9ænùaiy£¢9«"¹mì¹i,y¥b;ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂˆBˆ™]\›ˆ^[ØYÂŸB‚˜\Ş[˜È[˜İ[Ûˆ[™SÙÚ[”›Ùš[JXØÙ\ÜÕÚÙ[ŠHÂˆÛÛœİXY\œÈHÈ]]Üš^˜][Ûˆ™X\™\ˆ	ØXØÙ\ÜÕÚÙ[ŸXNÂˆÛÛœİÜ›Ùš[T™\ÜÛœÙKœšY[™™\ÜÛœÙWHH]ØZ]›ÛZ\ÙK˜[
+Âˆ™]Ú
+	ÚÎ‹ËØ\K›[™K›YKİŒ‹Ü›Ùš[IËÈXY\œÈJKˆ™]Ú
+	ÚÎ‹ËØ\K›[™K›YKÙœšY[™Ú\İŒKÜİ]\ÉËÈXY\œÈJK˜Ø]Ú
+
+
+HOˆ[
+BˆJNÂˆÛÛœİ›Ùš[HH]ØZ]›Ùš[T™\ÜÛœÙKšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆYˆ
+\›Ùš[T™\ÜÛœÙK›ÚÈXÛX[Š›Ùš[K\Ù\’Y
+JHÂˆ›İÈ™]È\œ›ÜŠ	ùá(y¬åycå¹o¥ÈS‘H9ænùaiz.ªùb!»ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂˆBˆ]œšY[™›YÈH˜[ÙNÂˆYˆ
+œšY[™™\ÜÛœÙH	‰ˆœšY[™™\ÜÛœÙK›ÚÊHÂˆÛÛœİœšY[™Ú\H]ØZ]œšY[™™\ÜÛœÙKšœÛÛŠ
+K˜Ø]Ú
+
+
+HOˆ
+ßJJNÂˆœšY[™›YÈHœšY[™Ú\™œšY[™›YÈOOHYNÂˆBˆ™]\›ˆÂˆ[™U\Ù\’YˆÛX[Š›Ùš[K\Ù\’Y
+Kˆ[™Q\Ü^S˜[YNˆÛX[Š›Ùš[K™\Ü^S˜[YJKˆ[™TXİ\™U\›ˆÛX[Š›Ùš[KœXİ\™U\›
+Kˆ[™QœšY[™›YÎˆœšY[™›YÂˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆš[™[™ÜÑ›Ü“[™J\K[™U\Ù\’Y
+HÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ\JJBˆÚ\™J	Û[™U\Ù\’Y	Ë	ÏOIË[™U\Ù\’Y
+Bˆ™Ù]
+
+NÂˆ™]\›ˆÛ˜\Úİ™ØÜÂˆ›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšY×Ü™YˆØËœ™YˆKØË™]J
+HßJJNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™Yœ™\Ú[™Pš[™[™Ô›Ùš[Jš[™[™ÜË›Ùš[KÙÚ[•\JHÂˆYˆ
+Xš[™[™ÜË›[™İ
+H™]\›ÂˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆš[™[™ÜË™›Ü‘XXÚ
+
+š[™[™ÊHOˆÂˆÛÛœİ\]HHÂˆ[™Q\Ü^S˜[YNˆ›Ùš[K›[™Q\Ü^S˜[YKˆ[™TXİ\™U\›ˆ›Ùš[K›[™TXİ\™U\›ˆ[™QœšY[™›YÎˆ›Ùš[K›[™QœšY[™›YËˆ[™T›Ùš[PÚXÚÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆNÂˆÛÛœİ\HHÛX[Šš[™[™Ë\JHÛX[ŠÙÚ[•\JNÂˆYˆ
+ÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê\JJHÂˆ\]K˜]]XØÛİ[YH[™PXØÛİ[Y
+\K›Ùš[K›[™U\Ù\’Y
+NÂˆBˆØš™Xİ˜\ÜÚYÛŠ\]Kš[™[™ÒY[]T]Ú
+\Kš[™[™ÊJNÂˆ˜]ÚœÙ]
+š[™[™Ë—×Ü™Y‹\]KÈY\™ÙNˆYHJNÂˆJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂŸB‚™[˜İ[Ûˆ™Y\™Xİ[™SÙÚ[‘\œ›ÜŠ™\Ë\KY\ÜØYÙJHÂˆÛÛœİØY™U\HHÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê\JHÈ\Hˆ	ÉÎÂˆÛÛœİ\™Ù]HÙ[˜[Ü[\›
+ÂˆY]Ùˆ	Û[™IËˆ›ÛNˆØY™U\Kˆ[™Q\œ›ÜˆY\ÜØYÙH	ÓS‘H9ænùaiy§*¹k£9¢$;ï#:*âúaãy¥¬9¤ãy/g8à ‰ÂˆJNÂˆ™\Ëœ™Y\™Xİ
+Ì‹\™Ù]
+NÂŸB‚˜\Ş[˜È[˜İ[Ûˆ[™SÙÚ[Ø[˜XÚÊ™\K™\ÊHÂˆ™\ËœÙ]
+	ĞØXÚKPÛÛ›Û	Ë	Û›Ë\İÜ™IÊNÂˆYˆ
+™\K›Y]ÙOOH	ÑÑU	ÊHÂˆ™\Ëœİ]\ÊJKœÙ[™
+	ÓY]Ù›İ[İÙY	ÊNÂˆ™]\›ÂˆB‚ˆÛÛœİİ]HH[™T]Y\U˜[YJ™\K	Üİ]IÊNÂˆÛÛœİÛÙHH[™T]Y\U˜[YJ™\K	ØÛÙIÊNÂˆÛÛœİ[™Q\œ›ÜˆH[™T]Y\U˜[YJ™\K	Ù\œ›Ü‰ÊNÂˆÛÛœİİ]T™YˆHİ]BˆÈ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[™SĞ]]İ]\ÉÊK™ØÊ\Ú
+İ]JJBˆˆ[Âˆ]\HH	ÉÎÂ‚ˆHÂˆYˆ
+\İ]T™YŠH›İÈ™]È\œ›ÜŠ	ÓS‘H9ænùaiyâà9¡bù.#yk£9¥m;ï#:*âúaãy¥¬9¤ãy/g8à ‰ÊNÂˆ]İ]T›İÈH[Âˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÛ˜\ÚİH]ØZ]™Ù]
+İ]T™YŠNÂˆÛÛœİ›İÈHÛ˜\Úİ™^\İÈÈÛ˜\Úİ™]J
+HßHˆ[Âˆ\HHÛX[Š›İÈ	‰ˆ›İË\JNÂˆYˆ
+ˆ\›İÈˆÛX[Š›İËœİ]\ÊHOOH	Ü[™[™ÉÈˆ\ÓZ[\Ê›İË™^\™\Ğ]
+H]K››İÊ
+HˆVÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê\JBˆ
+HÂˆ›İÈ™]È\œ›ÜŠ	ÓS‘H9ænùaiz`(ùíd9mì¹i,y¥b;ï#:*âùfç¹b,9aiycèúaãy¥¬9ænùaixà ‰ÊNÂˆBˆİ]T›İÈH›İÎÂˆœÙ]
+İ]T™Y‹Âˆİ]\Îˆ	Ü›ØÙ\ÜÚ[™ÉËˆ›ØÙ\ÜÚ[™Ğ]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆYˆ
+\İ]T›İÊH›İÈ™]È\œ›ÜŠ	ÓS‘H9ænùaiyâà9¡bù.#yk£9¥m;ï#:*âúaãy¥¬9¤ãy/g8à ‰ÊNÂˆYˆ
+[™Q\œ›ÜˆXÛÙJHÂˆ]ØZ]İ]T™Y‹œÙ]
+Âˆİ]\Îˆ	ØØ[˜Ù[Y	Ëˆ\œ›Üˆ[™Q\œ›Üˆ	ÛZ\ÜÚ[™×ØÛÙIËˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ™Y\™Xİ[™SÙÚ[‘\œ›ÜŠ™\Ë\K	ù ª9mì¹cå¹­¢S‘H9ænùaixà ‰ÊNÂˆ™]\›ÂˆB‚ˆÛÛœİÚÙ[ˆH]ØZ]^Ú[™ÙS[™P]]Üš^˜][ÛÛÙJÛÙJNÂˆÛÛœİ›Ùš[HH]ØZ][™SÙÚ[”›Ùš[JÚÙ[‹˜XØÙ\Ü×İÚÙ[ŠNÂˆÛÛœİ[š[™[™ÜÈH]ØZ]š[™[™ÜÑ›Ü“[™J\K›Ùš[K›[™U\Ù\’Y
+NÂˆ]ØZ]™Yœ™\Ú[™Pš[™[™Ô›Ùš[J[š[™[™ÜË›Ùš[K\JNÂˆÛÛœİXÚ\Ú[ÛˆHXÚYS[™SÙÚ[š[™[™Ê\K[š[™[™ÜÊNÂˆYˆ
+ÉÜ[™[™ÉË	Ø›ØÚÙY	Ë	ØÛÛ™›Xİ	×Kš[˜ÛY\ÊXÚ\Ú[Û‹˜Xİ[ÛŠJHÂˆÛÛœİY\ÜØYÙHHXÚ\Ú[Û‹˜Xİ[ÛˆOOH	Ü[™[™ÉÂˆÈ	ú`&y`"ú.ªùb!¹mì¹k£9¢$:*.ùa¢»ï#9«hùg*9ëbyo¡yë¨yä!º !y¨.9aá»ï&ù¨.9aá¹o£9a£zaãy¥¬9ænùaiyclùcëøà ‰Âˆˆ
+XÚ\Ú[Û‹˜Xİ[ÛˆOOH	ØÛÛ™›Xİ	ÂˆÈ	ú`&y`"ÈS‘H9g*9d#9. :.ªùb!¹."ù§"yi&¹ëa¹§"y¥b:,áù¥¦{ï#9ìîùílymì¹`g9«hº!ê¹båz`n9¤áøà º*âú kùíhy§æ¹kd9ª ¹fj9ce9bªyè®º*£xà ‰Âˆˆ	ú`&y`"ùaiycèùn,ú&gùæë¹bcymì¹`g9å*;ï#:*âú kùíhy§æ¹kd9ª ¹fj9ce9bªy h¹oªxà ‰ÊNÂˆ]ØZ]İ]T™Y‹œÙ]
+Âˆİ]\ÎˆXÚ\Ú[Û‹˜Xİ[ÛˆOOH	Ü[™[™ÉÈÈ	Ø]ØZ][™ËX\›İ˜[	Èˆ	Ø›ØÚÙY	Ëˆ\œ›ÜˆY\ÜØYÙKˆ[™U\Ù\’Yˆ›Ùš[K›[™U\Ù\’YˆÛÛ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ™Y\™Xİ[™SÙÚ[‘\œ›ÜŠ™\Ë\KY\ÜØYÙJNÂˆ™]\›ÂˆBˆYˆ
+XÚ\Ú[Û‹˜Xİ[ÛˆOOH	ÛÙÚ[‰È	‰ˆİ]T›İË›[šĞ[›İ\ˆOOHYJHÂˆÛÛœİš[™[™ÈHXÚ\Ú[Û‹˜š[™[™ÎÂˆÛÛœİY[]RYHš[™[™ÒY[]J\Kš[™[™ÊNÂˆÛÛœİXØÙ\ÜÕÚÙ[ˆH]ØZ]\ÜİYPXØÙ\ÜÕÚÙ[ŠÂˆ\Kˆ[™U\Ù\’Yˆ›Ùš[K›[™U\Ù\’Yˆ]]XØÛİ[Yˆ[™PXØÛİ[Y
+\K›Ùš[K›[™U\Ù\’Y
+Kˆ\™Ù]Yˆ\HOOH	Ü™[\‰ÈÈ	ÉÈˆY[]RYˆ™[\’Yˆ\HOOH	Ü™[\‰ÈÈY[]RYˆ	ÉËˆ]]Y]Ùˆ	Û[™K[Ø]]	Ëˆ[™QœšY[™›YÎˆ›Ùš[K›[™QœšY[™›YÂˆJNÂˆ]ØZ]İ]T™Y‹œÙ]
+Âˆİ]\Îˆ	İ\ÙY	Ëˆ[™U\Ù\’Yˆ›Ùš[K›[™U\Ù\’Yˆ[™QœšY[™›YÎˆ›Ùš[K›[™QœšY[™›YËˆÛÛ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ™\Ëœ™Y\™Xİ
+Ì‹Ù[˜[Ü[\›
+ÈY]Ùˆ	Û[™IË›ÛNˆ\KXØÙ\ÜÎˆXØÙ\ÜÕÚÙ[ˆJJNÂˆ™]\›ÂˆB‚ˆÛÛœİÙ]\ÚÙ[ˆH˜[™ÛUÚÙ[ŠÍŠNÂˆÛÛœİÙ]\^\™\Ğ]H[Y\İ[\™œ›ÛSZ[\Ê]K››İÊ
+H
+ÈS‘WÔÑUTÕÓTÊNÂˆ]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[™TÙ]\ÚÙ[œÉÊK™ØÊ\Ú
+Ù]\ÚÙ[ŠJKœÙ]
+Âˆ\Kˆ[™U\Ù\’Yˆ›Ùš[K›[™U\Ù\’Yˆ[™Q\Ü^S˜[YNˆ›Ùš[K›[™Q\Ü^S˜[YKˆ[™TXİ\™U\›ˆ›Ùš[K›[™TXİ\™U\›ˆ[™QœšY[™›YÎˆ›Ùš[K›[™QœšY[™›YËˆİ]\Îˆ	Ü[™[™ÉËˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ^\™\Ğ]ˆÙ]\^\™\Ğ]ˆJNÂˆ]ØZ]İ]T™Y‹œÙ]
+Âˆİ]\Îˆ	İ\ÙY	Ëˆ[™U\Ù\’Yˆ›Ùš[K›[™U\Ù\’Yˆ[™QœšY[™›YÎˆ›Ùš[K›[™QœšY[™›YËˆÙ]\™\]Z\™YˆYKˆÛÛ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ™\Ëœ™Y\™Xİ
+Ì‹Ù[˜[Ü[\›
+ÈY]Ùˆ	Û[™IË›ÛNˆ\K[™TÙ]\ˆÙ]\ÚÙ[ˆJJNÂˆHØ]Ú
+\œ›ÜŠHÂˆÛÛœÛÛK™\œ›ÜŠ	ÖØÛİ\œÙHÜ[S‘HØ[˜XÚÈ˜Z[YIË\œ›ÜŠNÂˆYˆ
+İ]T™YŠHÂˆ]ØZ]İ]T™Y‹œÙ]
+Âˆİ]\Îˆ	Ù\œ›Ü‰Ëˆ\œ›ÜˆÛX[Š\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙJKœÛXÙJÌ
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJK˜Ø]Ú
+
+
+HOˆßJNÂˆBˆ™Y\™Xİ[™SÙÚ[‘\œ›ÜŠ™\Ë\KÛX[Š\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙJH	ÓS‘H9ænùaiy§*¹k£9¢$;ï#:*âúaãy¥¬9¤ãy/g8à ‰ÊNÂˆBŸB‚˜\Ş[˜È[˜İ[ÛˆÛÛ\]U™\šYšYY[™T™YÚ\İ˜][ÛŠ]JHÂˆÛÛœİ[™TÙ]\YHÛX[Š]K›[™TÙ]\Y
+NÂˆÛÛœİ™\]Y\İY\HHÛX[Š]K\JKÓİÙ\Ø\ÙJ
+NÂˆYˆ
+[[™TÙ]\Y]˜[Y[XZ[
+]K™[XZ[
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú*âùab9k£9¢$[XZ[9fæùè¯:jeú+b{ï#9a£ynî¹êâÈS‘H9n,ú&gøà ‰ÊNÂˆBˆÛÛœİÙ]\™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[™TÙ]\ÚÙ[œÉÊK™ØÊ[™TÙ]\Y
+NÂˆÛÛœİÙ]\Û˜\ÚİH]ØZ]Ù]\™Y‹™Ù]
+
+NÂˆÛÛœİÙ]\HÙ]\Û˜\Úİ™^\İÈÈÙ]\Û˜\Úİ™]J
+HßHˆ[ÂˆÛÛœİ\HHÛX[ŠÙ]\	‰ˆÙ]\\JNÂˆYˆ
+ˆ\Ù]\ˆÛX[ŠÙ]\œİ]\ÊHOOH	Ü[™[™ÉÈˆ\ÓZ[\ÊÙ]\™^\™\Ğ]
+H]K››İÊ
+HˆVÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê\JHˆ\HOOH™\]Y\İY\HˆXÛX[ŠÙ]\›[™U\Ù\’Y
+Bˆ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ÓS‘H9ænùaiz,áù¥¦ymì¹i,y¥b;ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂˆB‚ˆÛÛœİY[]HH]ØZ]™\\™Pš[™[™ÒY[]JØš™Xİ˜\ÜÚYÛŠßK]KÈ\HJJNÂˆYˆ
+›Ü›X[^™Q[XZ[
+Y[]K™[XZ[
+HOOH›Ü›X[^™Q[XZ[
+]K™[XZ[
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	Ñ[XZ[:jeú+bz,áù¥¦y.#y. :!í;ï#:*âúaãy¥¬9cå¹o¥ùfæùè¯:jeú+byè¯8à ‰ÊNÂˆBˆËÈS‘H9n,ú&gúcmy.ãyå,HS‘H9/oùå*: !z.ªùb!¹å(¹å'ûï&Ñ[XZ[9fæùè¯:,¨:,«9è®º*£zi¥¹«(z*.ùa¢º !BˆËÈ: ïykéºf¦ù/oùå*9¢`9hjù/èyë¬{ï#9ajzh!z`ïyk£9¢$9o£9¢cynî¹êâùn,ú&gøà ‚ˆ]ØZ]ÛÛœİ[YT˜]S[Z]
+[™K[Ø]]\Ù]\Iİ\_XY[]KœÛ™JNÂˆÛÛœİ[™U\Ù\’YHÛX[ŠÙ]\›[™U\Ù\’Y
+NÂˆÛÛœİ]]XØÛİ[YH[™PXØÛİ[Y
+\K[™U\Ù\’Y
+NÂˆÛÛœİ\™Ù]YHÛX[ŠY[]K\™Ù]Y
+NÂˆÛÛœİ™[\’YHÛX[ŠY[]Kœ™[\’Y
+NÂˆÛÛœİÛÛ™›XİšY[H\HOOH	İXXÚ\‰ÈÈ	İXXÚ\’Y	Èˆ
+\HOOH	Ü™[\‰ÈÈ	Ü™[\’Y	Èˆ	ÉÊNÂˆYˆ
+ÛÛ™›XİšY[
+HÂˆÛÛœİÛÛ™›XİÈH]ØZ]‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ\JJBˆÚ\™JÛÛ™›XİšY[	ÏOIË\HOOH	İXXÚ\‰ÈÈ\™Ù]Yˆ™[\’Y
+Bˆ™Ù]
+
+NÂˆÛÛœİÛÛ™›Xİ›İÜÈHÛÛ™›XİË™ØÜË›X\
+
+ØÊHOˆØË™]J
+HßJNÂˆYˆ
+ÛÛ™›Xİ›İÜËœÛÛYJ
+›İÊHOˆÉÜ™]›ÚÙY	Ë	Ü™Z™XİY	×Kš[˜ÛY\ÊÛX[Š›İËœİ]\ÊJJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y`"ùaiycèùn,ú&gùæë¹bcymì¹`g9å*;ï#:*âú kùíhy§æ¹kd9ª ¹fj9ce9bªy h¹oªxà ‰ÊNÂˆBˆÛÛœİÛZ[YYHÛÛ™›Xİ›İÜËœÛÛYJ
+›İÊHO‚ˆÛX[Š›İËœİ]\ÊHOOH	ØXİ]™IÈ	‰‚ˆÛX[Š›İË›[™U\Ù\’Y
+H	‰‚ˆÛX[Š›İË›[™U\Ù\’Y
+HOOH[™U\Ù\’Yˆ
+NÂˆYˆ
+ÛZ[YY
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉË	ú`&yëaº,áù¥¦ymì¹å,yam¹.åˆS‘H9n,ú&gù/oùå*;ï#:*âùå,yë¨yä!º !yb*ºfi:""¹ænùaiz,áù¥¦yo£9a£z*i¸à ‰ÊNÂˆBˆB‚ˆÛÛœİš[™[™ÒYH\HOOH	ÜİY[	ÂˆÈ\Ú
+	İ\™Ù]Y_	Û[™U\Ù\’YX
+Bˆˆ\Ú
+[™U\Ù\’Y
+NÂˆÛÛœİš[™[™Ô™YˆH‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ\JJK™ØÊš[™[™ÒY
+NÂˆÛÛœİ™]š[İ\Ğš[™[™ÈH]ØZ]š[™[™Ô™Y‹™Ù]
+
+NÂˆÛÛœİ™]š[İ\ÈH™]š[İ\Ğš[™[™Ë™^\İÈÈ™]š[İ\Ğš[™[™Ë™]J
+HßHˆßNÂˆYˆ
+ÉÜ™]›ÚÙY	Ë	Ü™Z™XİY	×Kš[˜ÛY\ÊÛX[Š™]š[İ\Ëœİ]\ÊJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y`"ùaiycèùn,ú&gùæë¹bcymì¹`g9å*;ï#:*âú kùíhy§æ¹kd9ª ¹fj9ce9bªy h¹oªxà ‰ÊNÂˆBˆËÈS‘H9mì¹k£9¢$9nlùcì:.ªùb!ºjeú+b{ï#9.)¹.%9iäùd#xà zfîú*ly.ãzg :"!ù¨(ybæz,áù¥¦yd.ùd";ï#ˆËÈ9fè9«i9í yk¦¹o£9æí9£©yegùå*;ï#9.#ya£yh§¹b¨9..ùë¨z`$9ëa¹¨.9aá¸à ‚ˆÛÛœİ^[ØYHÂˆ\Kˆ[™U\Ù\’Yˆ[™Q\Ü^S˜[YNˆÛX[ŠÙ]\›[™Q\Ü^S˜[YJKˆ[™TXİ\™U\›ˆÛX[ŠÙ]\›[™TXİ\™U\›
+Kˆ[™QœšY[™›YÎˆÙ]\›[™QœšY[™›YÈOOHYKˆ[™U™\šYšYYˆYKˆ]]XØÛİ[Yˆ]]›İšY\ˆ	Û[™K[ÙÚ[ŠÙ[XZ[[İ	Ëˆ˜[YNˆÛX[ŠY[]K›˜[YJKˆÛ™R\Úˆ\Ú
+›Ü›X[^™TÛ™JY[]KœÛ™JJKˆİ]\Îˆ	ØXİ]™IËˆ\›İ˜[İ]\Îˆ	Ø\›İ™Y	Ëˆ\›İ˜[™\]Y\İY]ˆ™]š[İ\Ë˜\›İ˜[™\]Y\İY][ˆ\›İ™Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\›İ™Y]^ˆ›İÕ^
+
+Kˆ\›İ˜[Ûİ\˜ÙNˆ	Û[™K\Ù[‹\Ù\šXÙIËˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ›İ[™]ˆ™]š[İ\Ë˜›İ[™]šY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™[Z[™\“\İ\ÜÛÛˆYKˆ™[Z[™\”^[Y[ˆYBˆNÂˆ^[ØY™[XZ[H›Ü›X[^™Q[XZ[
+Y[]K™[XZ[
+NÂˆ^[ØY™[XZ[›Ü›X[^™YH›Ü›X[^™Q[XZ[
+Y[]K™[XZ[
+NÂˆ^[ØY™[XZ[™\šYšYYHYNÂˆ^[ØY™[XZ[™\šYšYY]HšY[˜[YKœÙ\™\•[Y\İ[\
+
+NÂˆYˆ
+\HOOH	İXXÚ\‰ÊH^[ØYXXÚ\’YH\™Ù]YÂˆYˆ
+\HOOH	ÜİY[	ÊHÂˆ^[ØYœİY[YH\™Ù]YÂˆ^[ØYœ™[][ÛœÚ\HÛX[ŠY[]Kœ™[][ÛœÚ\
+H	ù§+9.®‰ÎÂˆBˆYˆ
+\HOOH	Ü™[\‰ÊH^[ØYœ™[\’YH™[\’YÂ‚ˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİİ\œ™[Ù]\H]ØZ]™Ù]
+Ù]\™YŠNÂˆÛÛœİİ\œ™[Hİ\œ™[Ù]\™^\İÈÈİ\œ™[Ù]\™]J
+HßHˆ[ÂˆYˆ
+Xİ\œ™[ÛX[Šİ\œ™[œİ]\ÊHOOH	Ü[™[™ÉÈ\ÓZ[\Êİ\œ™[™^\™\Ğ]
+H]K››İÊ
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ÓS‘H9ænùaiz,áù¥¦ymì¹/oùå*9¢%¹i,y¥b;ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂˆBˆYˆ
+\HOOH	Ü™[\‰ÊHÂˆÛÛœİ™[\”›Ùš[HHÂˆ™[\’Yˆ˜[YNˆÛX[ŠY[]K›˜[YJKˆÛ™Nˆ›Ü›X[^™TÛ™JY[]KœÛ™JKˆ[XZ[ˆ›Ü›X[^™Q[XZ[
+Y[]K™[XZ[
+Kˆ[XZ[›Ü›X[^™Yˆ›Ü›X[^™Q[XZ[
+Y[]K™[XZ[
+Kˆ[XZ[™\šYšYYˆYKˆ[XZ[™\šYšYY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÛİ\˜ÙNˆ	Û[™K[ÙÚ[‹\™YÚ\İ˜][Û‰ËˆXİ]™NˆYKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆNÂˆœÙ]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\œÉÊK™ØÊ™[\’Y
+K™[\”›Ùš[KÈY\™ÙNˆYHJNÂˆBˆœÙ]
+š[™[™Ô™Y‹^[ØYÈY\™ÙNˆYHJNÂˆœÙ]
+Ù]\™Y‹Âˆİ]\Îˆ	İ\ÙY	Ëˆ\™Ù]Yˆ™[\’Yˆ\ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆ]ØZ]]Y]YQ\™Xİ[™Pš[™[™Ó›İXÙJØš™Xİ˜\ÜÚYÛŠßK™]š[İ\Ë^[ØYÂˆYˆš[™[™ÒYˆ\™Ù]Yˆ™[\’YˆJJNÂ‚ˆÛÛœİ\ÜİYYH]ØZ]\ÜİYTÙ\ÜÚ[ÛŠÂˆ\Kˆ[™U\Ù\’Yˆ]]XØÛİ[Yˆ\™Ù]Yˆ™[\’Yˆ]]Y]Ùˆ	Û[™K[Ø]]
+Ù[XZ[[İ\™YÚ\İ˜][Û‰ÂˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆ›ÛNˆ\KˆÙ\ÜÚ[Û•ÚÙ[ˆ\ÜİYYœÙ\ÜÚ[Û•ÚÙ[‹ˆ^\™\Ğ]ˆ\ÜİYY™^\™\Ğ]Ñ]J
+KÒTÓÔİš[™Ê
+Kˆ™[Z[™\”™XYNˆÙ]\›[™QœšY[™›YÈOOHYBˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆÛÛ\]S[™T™YÚ\İ˜][ÛŠ]JHÂˆ›ÚY]NÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ùë+9. 9«(y/oùå*S‘H:*.ùa¢¹¦`»ï#9oázh"9ab9hjùkêÈ[XZ[9.)¹k£9¢$9fæùè¯:jeú+bxà ‰Âˆ
+NÂŸB‚˜\Ş[˜È[˜İ[ÛˆXİ]™TİY[YÑ›Ü“[™J[™U\Ù\’Y
+HÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[š[™[™ÜÉÊBˆÚ\™J	Û[™U\Ù\’Y	Ë	ÏOIË[™U\Ù\’Y
+BˆÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊBˆ™Ù]
+
+NÂˆ™]\›ˆË‹‹›™]ÈÙ]
+Û˜\Úİ™ØÜË›X\
+
+ØÊHOˆÛX[ŠØË™]J
+KœİY[Y
+JK™š[\Š›ÛÛX[ŠJWNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ[™PÛİ\œÙTÜ[[™Q]™[
+]™[[\œÈHßJHÂˆÛÛœİ^HÛX[Š]™[	‰ˆ]™[›Y\ÜØYÙH	‰ˆ]™[›Y\ÜØYÙK^
+NÂˆÛÛœİš[™X]ÚH^›X]Ú
+×¹§æ¹kd
+:  yn*ùaiycèß9kn9å'ùí yk¦Ÿ9éçùå*9í yk¦ŠWÊÊÔVĞKVŒNWJÊIÚJNÂˆÛÛœİÙÚ[“X]ÚH^›X]Ú
+×¹§æ¹kd
+:  yn*ß9kn9å'ß9éçùå*
+yoêú`'ùænùaiWÊÊÔSĞKVŒNWJÊIÚJNÂˆYˆ
+Xš[™X]Ú	‰ˆ[ÙÚ[“X]Ú
+H™]\›ˆ˜[ÙNÂ‚ˆÛÛœİ[™U\Ù\’YHÛX[Š]™[	‰ˆ]™[œÛİ\˜ÙH	‰ˆ]™[œÛİ\˜ÙK\Ù\’Y
+NÂˆÛÛœİ™\UÚÙ[ˆHÛX[Š]™[	‰ˆ]™[œ™\UÚÙ[ŠNÂˆÛÛœİ™\HH[\œËœ™\S[™SY\ÜØYÙNÂˆYˆ
+[[™U\Ù\’Y\[Ùˆ™\HOOH	Ù[˜İ[Û‰ÊH™]\›ˆYNÂ‚ˆYˆ
+ÙÚ[“X]Ú
+HÂˆÛÛœİ\SX\HÈ:  yn*Îˆ	İXXÚ\‰Ë9kn9å'Îˆ	ÜİY[	Ë9éçùå*ˆ	Ü™[\‰ÈNÂˆÛÛœİ\HH\SX\ÛÙÚ[“X]ÚÌWWNÂˆÛÛœİÛÙHHÙÚ[“X]ÚÌ—KÕ\\Ø\ÙJ
+NÂˆÛÛœİÛÙT™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[™SÙÚ[ÛÙ\ÉÊK™ØÊ\Ú
+ÛÙJJNÂˆÛÛœİØÛÙTÛ˜\Úİš[™[™Ü×HH]ØZ]›ÛZ\ÙK˜[
+ÂˆÛÙT™Y‹™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ\JJKÚ\™J	Û[™U\Ù\’Y	Ë	ÏOIË[™U\Ù\’Y
+K™Ù]
+
+BˆJNÂˆÛÛœİ›İÈHÛÙTÛ˜\Úİ™^\İÈÈÛÙTÛ˜\Úİ™]J
+HßHˆ[ÂˆÛÛœİXİ]™HHš[™[™ÜË™ØÜÂˆ›X\
+
+ØÊHOˆØË™]J
+HßJBˆ™š[\Š
+][JHOˆÛX[Š][Kœİ]\ÊHOOH	ØXİ]™IÊNÂˆYˆ
+\›İÈ›İËœİ]\ÈOOH	Ü[™[™ÉÈ›İË\HOOH\H\ÓZ[\Ê›İË™^\™\Ğ]
+H]K››İÊ
+HXXİ]™K›[™İ
+HÂˆ]ØZ]™\J™\UÚÙ[‹	ùoêú`'ùænùaiyè¯9á(y¥b8à ymìº`/¹¦`»ï#9¢%º`&y`"ÈS‘H9l&¹§*¹í yk¦¸à º*âùfç¹b,9aiycèúh zaãy¥¬9cå¹o¥øà ‰ÊNÂˆ™]\›ˆYNÂˆBˆÛÛœİš[™[™ÈHXİ]™VÌHßNÂˆ]ØZ]ÛÙT™Y‹œÙ]
+Âˆİ]\Îˆ	İ\ÙY	Ëˆ\ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ[™U\Ù\’YˆKÈY\™ÙNˆYHJNÂˆÛÛœİXØÙ\ÜÈH]ØZ]\ÜİYPXØÙ\ÜÕÚÙ[ŠÂˆ\Kˆ[™U\Ù\’Yˆ]]XØÛİ[Yˆ[™PXØÛİ[Y
+\K[™U\Ù\’Y
+Kˆ\™Ù]Yˆ\HOOH	İXXÚ\‰ÈÈÛX[Šš[™[™ËXXÚ\’Y
+Hˆ
+\HOOH	ÜİY[	ÈÈÛX[Šš[™[™ËœİY[Y
+Hˆ	ÉÊKˆ™[\’Yˆ\HOOH	Ü™[\‰ÈÈÛX[Šš[™[™Ëœ™[\’Y
+Hˆ	ÉËˆ]]Y]Ùˆ	Û[™K[ÙÚ[‰ÂˆJNÂˆÛÛœİYÙHH\HOOH	İXXÚ\‰ÂˆÈ	İXXÚ\‹XÛİ\œÙK\Ü[š[	Âˆˆ
+\HOOH	ÜİY[	ÈÈ	ÜİY[XÛİ\œÙK\Ü[š[	Èˆ	Ü›ÛÛKX›ÛÚÚ[™Ëš[	ÊNÂˆÛÛœİX™[H\HOOH	İXXÚ\‰ÈÈ	ú  yn*ùaiycèÉÈˆ
+\HOOH	ÜİY[	ÈÈ	ùkn9å'ùaiycèÉÈˆ	ù¥fyk©9éçùå*9aiycèÉÊNÂˆÛÛœİ\›H	ÔÔ•SĞTÑ_KÉÜYÙ_OØXØÙ\ÜÏIÙ[˜ÛÙUT’PÛÛ\Û™[
+XØÙ\ÜÊ_XÂˆ]ØZ]™\J™\UÚÙ[‹:.ªùb!¹è®º*£yk£9¢$8à —º*âúe¢ùegøà#	ÛX™[xà#{ï&—‰İ\›W—º`&y.#y¦+úaãy¥¬9í yk¦»ï&ùænùaiyo£:`&ycì9à#ú)¯yfj9§ ú*&9/cù ª9æ¡9n,ú&gøà ˜
+NÂˆ™]\›ˆYNÂˆB‚ˆÛÛœİ\SX\HÈ:  yn*ùaiycèÎˆ	İXXÚ\‰Ë9kn9å'ùí yk¦ˆ	ÜİY[	Ë9éçùå*9í yk¦ˆ	Ü™[\‰ÈNÂˆÛÛœİ\HH\SX\Øš[™X]ÚÌWWNÂˆÛÛœİÛÙHHš[™X]ÚÌ—KÕ\\Ø\ÙJ
+NÂˆÛÛœİÛÙT™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[š[™ÛÙ\ÉÊK™ØÊ\Ú
+ÛÙJJNÂˆÛÛœİÛÙTÛ˜\ÚİH]ØZ]ÛÙT™Y‹™Ù]
+
+NÂˆÛÛœİ›İÈHÛÙTÛ˜\Úİ™^\İÈÈÛÙTÛ˜\Úİ™]J
+HßHˆ[ÂˆYˆ
+\›İÈ›İËœİ]\ÈOOH	Ü[™[™ÉÈ›İË\HOOH\H\ÓZ[\Ê›İË™^\™\Ğ]
+H]K››İÊ
+JHÂˆ]ØZ]™\J™\UÚÙ[‹	ú`&yía9í yk¦¹è¯9á(y¥b9¢%¹mìº`/¹¦`»ï#:*âùfç¹b,9aiycèúh zaãy¥¬9cå¹o¥øà ‰ÊNÂˆ™]\›ˆYNÂˆB‚ˆ]›Ùš[HHßNÂˆYˆ
+\[Ùˆ[\œË™Ù][™T›Ùš[HOOH	Ù[˜İ[Û‰ÊHÂˆHÈ›Ùš[HH]ØZ][\œË™Ù][™T›Ùš[J[™U\Ù\’Y
+HßNÈHØ]Ú
+ÊHÈ›Ùš[HHßNÈBˆB‚ˆÛÛœİš[™YH\HOOH	ÜİY[	ÂˆÈ\Ú
+	Ü›İË\™Ù]Y_	Û[™U\Ù\’YX
+Bˆˆ\Ú
+[™U\Ù\’Y
+NÂˆÛÛœİš[™™YˆH‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ\JJK™ØÊš[™Y
+NÂˆÛÛœİ™]š[İ\Ğš[™H]ØZ]š[™™Y‹™Ù]
+
+NÂˆÛÛœİ™]š[İ\Ğš[™[™ÈH™]š[İ\Ğš[™™^\İÈÈ™]š[İ\Ğš[™™]J
+HßHˆßNÂˆYˆ
+ÉÜ™]›ÚÙY	Ë	Ü™Z™XİY	×Kš[˜ÛY\ÊÛX[Š™]š[İ\Ğš[™[™Ëœİ]\ÊJJHÂˆ]ØZ]™\J™\UÚÙ[‹	ú`&y`"ùaiycèùn,ú&gùæë¹bcymì¹`g9å*;ï#:*âú kùíhy§æ¹kd9ª ¹fj9ce9bªy h¹oªxà ‰ÊNÂˆ™]\›ˆYNÂˆBˆÛÛœİ^[ØYHÂˆ\Kˆ[™U\Ù\’Yˆ]]XØÛİ[Yˆ[™PXØÛİ[Y
+\K[™U\Ù\’Y
+Kˆ[™Q\Ü^S˜[YNˆÛX[Š›Ùš[K™\Ü^S˜[YJKˆ[XZ[ˆ›Ü›X[^™Q[XZ[
+›İË™[XZ[
+Kˆ[XZ[›Ü›X[^™Yˆ›Ü›X[^™Q[XZ[
+›İË™[XZ[
+Kˆ[XZ[™\šYšYYˆ›İË™[XZ[™\šYšYYOOHYKˆ[XZ[™\šYšYY]ˆ›İË™[XZ[™\šYšYYOOHYHÈšY[˜[YKœÙ\™\•[Y\İ[\
+
+Hˆ[ˆİ]\Îˆ	ØXİ]™IËˆ\›İ˜[İ]\Îˆ	Ø\›İ™Y	Ëˆ\›İ˜[™\]Y\İY]ˆ™]š[İ\Ğš[™[™Ë˜\›İ˜[™\]Y\İY][ˆ\›İ™Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\›İ™Y]^ˆ›İÕ^
+
+Kˆ\›İ˜[Ûİ\˜ÙNˆ	Û[™K\Ù[‹\Ù\šXÙIËˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ›İ[™]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™[Z[™\“\İ\ÜÛÛˆYKˆ™[Z[™\”^[Y[ˆYBˆNÂˆYˆ
+\HOOH	İXXÚ\‰ÊH^[ØYXXÚ\’YHÛX[Š›İË\™Ù]Y
+NÂˆYˆ
+\HOOH	ÜİY[	ÊHÂˆ^[ØYœİY[YHÛX[Š›İË\™Ù]Y
+NÂˆ^[ØYœ™[][ÛœÚ\HÛX[Š›İËœ™[][ÛœÚ\
+H	ù§+9.®‰ÎÂˆBˆYˆ
+\HOOH	Ü™[\‰ÊH^[ØYœ™[\’YHÛX[Š›İËœ™[\’Y
+NÂˆ]ØZ]š[™™Y‹œÙ]
+^[ØYÈY\™ÙNˆYHJNÂˆ]ØZ]ÛÙT™Y‹œÙ]
+Èİ]\Îˆ	İ\ÙY	Ë\ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+K[™U\Ù\’YKÈY\™ÙNˆYHJNÂˆ]ØZ]]Y]YQ\™Xİ[™Pš[™[™Ó›İXÙJØš™Xİ˜\ÜÚYÛŠßK™]š[İ\Ğš[™[™Ë^[ØYÂˆYˆš[™Yˆ\™Ù]YˆÛX[Š›İË\™Ù]Y
+Kˆ™[\’YˆÛX[Š›İËœ™[\’Y
+BˆJJNÂ‚ˆÛÛœİXØÙ\ÜÈH]ØZ]\ÜİYPXØÙ\ÜÕÚÙ[ŠÂˆ\Kˆ[™U\Ù\’Yˆ]]XØÛİ[Yˆ^[ØY˜]]XØÛİ[Yˆ\™Ù]YˆÛX[Š›İË\™Ù]Y
+Kˆ™[\’YˆÛX[Š›İËœ™[\’Y
+Kˆ]]Y]Ùˆ	Û[™KXš[™[™ÉÂˆJNÂˆÛÛœİYÙHH\HOOH	İXXÚ\‰ÂˆÈ	İXXÚ\‹XÛİ\œÙK\Ü[š[	Âˆˆ
+\HOOH	ÜİY[	ÈÈ	ÜİY[XÛİ\œÙK\Ü[š[	Èˆ	Ü›ÛÛKX›ÛÚÚ[™Ëš[	ÊNÂˆÛÛœİ\›H	ÔÔ•SĞTÑ_KÉÜYÙ_OØXØÙ\ÜÏIÙ[˜ÛÙUT’PÛÛ\Û™[
+XØÙ\ÜÊ_XÂˆÛÛœİX™[H\HOOH	İXXÚ\‰ÈÈ	ú  yn*ùaiycèÉÈˆ
+\HOOH	ÜİY[	ÈÈ	ùkn9å'ùaiycèÉÈˆ	ù¥fyk©9éçùå*9aiycèÉÊNÂˆ]ØZ]™\J™\UÚÙ[‹9í yk¦¹k£9¢$8à —º*âúe¢ùegøà#	ÛX™[xà#{ï&—‰İ\›W—¹«i:`(ùídL9b!ºd&9aiù§"y¥b;ï&ùænùaiyo£:`&ycì:(çyïk¹§ ù/çyåfyænùaiyâà9¡bøà ˜
+NÂˆ™]\›ˆYNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ^Ú[™ÙPXØÙ\ÜÕÚÙ[Š]JHÂˆÛÛœİ˜]ÈHÛX[Š]K˜XØÙ\ÜÕÚÙ[ŠNÂˆYˆ
+\˜]ÊH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùï.¹l$y. 9«(y )ùænùaiyè¯8à ‰ÊNÂˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XØÙ\ÜÕÚÙ[œÉÊK™ØÊ\Ú
+˜]ÊJNÂˆÛÛœİÛ˜\ÚİH]ØZ]™Y‹™Ù]
+
+NÂˆÛÛœİÛİ\˜ÙHHÛ˜\Úİ™^\İÈÈÛ˜\Úİ™]J
+HßHˆ[ÂˆÛÛœİXØÙ\Yİ]\Ù\ÈHÉØXİ]™IË	İ\ÙY	Ë	Ù^Ú[™ÙY	×NÂˆYˆ
+\Ûİ\˜ÙHXXØÙ\Yİ]\Ù\Ëš[˜ÛY\ÊÛX[ŠÛİ\˜ÙKœİ]\ÊJH\ÓZ[\ÊÛİ\˜ÙK™^\™\Ğ]
+H]K››İÊ
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ùænùaiz`(ùíd9mìº`/¹¦`»ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂˆB‚ˆÛÛœİ\ÜİYYH]ØZ]\ÜİYTÙ\ÜÚ[ÛŠÂˆ\NˆÛİ\˜ÙK\Kˆ[™U\Ù\’YˆÛİ\˜ÙK›[™U\Ù\’Yˆ]]XØÛİ[YˆÛİ\˜ÙK˜]]XØÛİ[Yˆ\™Ù]YˆÛİ\˜ÙK\™Ù]Yˆ™[\’YˆÛİ\˜ÙKœ™[\’Yˆ]]Y]ÙˆÛİ\˜ÙK˜]]Y]Ù	Û[™IÂˆJNÂˆËÈS‘H9aiùnî¹à#ú)¯yfj9cëú ïy§ úaãz)!ú/"yaiyí¬¹g`8à ¹oázh"9ab9¢$9b§ùnî¹êâú(çyïk¹ænùai{ï#ˆËÈ9a£z*&:c!9.©9£æùâà9¡bûï&ùçëy¥b:`(ùíd9g*9b,9§'ùbcycëùk¢yaj:aãy¥¬9.©9£æûï#9.#y§ ùchy«nù/oùå*: !xà ‚ˆ]ØZ]™Y‹œÙ]
+Âˆİ]\Îˆ	Ù^Ú[™ÙY	Ëˆ\İ^Ú[™ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ^Ú[™ÙPÛİ[ˆšY[˜[YKš[˜Ü™[Y[
+JBˆKÈY\™ÙNˆYHJNÂˆ™]\›ˆÂˆÚÎˆYKˆÙ\ÜÚ[Û•ÚÙ[ˆ\ÜİYYœÙ\ÜÚ[Û•ÚÙ[‹ˆ›ÛNˆÛİ\˜ÙK\Kˆ^\™\Ğ]ˆ\ÜİYY™^\™\Ğ]Ñ]J
+KÒTÓÔİš[™Ê
+Kˆ™[Z[™\”™XYNˆÛİ\˜ÙK›[™QœšY[™›YÈOOH˜[ÙBˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™\]Z\™TÙ\ÜÚ[ÛŠ]K[İÙY›Û\ÊHÂˆÛÛœİ˜]ÈHÛX[Š]H	‰ˆ]KœÙ\ÜÚ[Û•ÚÙ[ŠNÂˆYˆ
+\˜]ÊH›İÈ™]ÈÑ\œ›ÜŠ	İ[˜]][XØ]Y	Ë	ú*âùab9ænùaixà ‰ÊNÂˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù\ÜÚ[ÛœÉÊK™ØÊ\Ú
+˜]ÊJNÂˆÛÛœİÛ˜\ÚİH]ØZ]™Y‹™Ù]
+
+NÂˆÛÛœİÙ\ÜÚ[ÛˆHÛ˜\Úİ™^\İÈÈÛ˜\Úİ™]J
+HßHˆ[ÂˆYˆ
+\Ù\ÜÚ[ÛˆÙ\ÜÚ[Û‹œİ]\ÈOOH	ØXİ]™IÈ\ÓZ[\ÊÙ\ÜÚ[Û‹™^\™\Ğ]
+H]K››İÊ
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	İ[˜]][XØ]Y	Ë	ùænùaiyâà9¡bùmì¹b,9§'ûï#:*âúaãy¥¬9ænùaixà ‰ÊNÂˆBˆYˆ
+[İÙY›Û\È	‰ˆX[İÙY›Û\Ëš[˜ÛY\ÊÙ\ÜÚ[Û‹œ›ÛJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y`"ùn,ú&gù¬¤¹§"y«i:h zgh¹«"ºfd8à ‰ÊNÂˆBˆÛÛœİ]]Üš^™Yš[™[™ÜÈH]ØZ]]]Üš^™Yš[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠNÂˆYˆ
+X]]Üš^™Yš[™[™ÜË›[™İ
+HÂˆ]ØZ]™Y‹œÙ]
+Âˆİ]\Îˆ	Ü™]›ÚÙY	Ëˆ™]›ÚÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™]›ÚÙY™X\ÛÛˆ	Øš[™[™Ë[›İXXİ]™IÂˆKÈY\™ÙNˆYHJNÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y`"ùænùaiy«"ºfd9mì¹`g9å*9¢%º)èúfi;ï#:*âúaãy¥¬9ænùaiy¢%º kùíhy§æ¹kd9ª ¹fj8à ‰ÊNÂˆBˆÛÛœİ\]HHÈ\İ\ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+HNÂˆYˆ
+Ù\ÜÚ[Û‹œÛY[™ÈOOH˜[ÙJHÂˆ\]K™^\™\Ğ]H[Y\İ[\™œ›ÛSZ[\Ê]K››İÊ
+H
+ÈÔ•SÔÑTÔÒSÓ—ÕÓTÊNÂˆBˆ]ØZ]™Y‹œÙ]
+\]KÈY\™ÙNˆYHJNÂˆ™]\›ˆÙ\ÜÚ[ÛÂŸB‚™[˜İ[Ûˆ›Ü›X[^™Y\œÛÛ“˜[YJ˜[YJHÂˆ™]\›ˆÛX[Š˜[YJK››Ü›X[^™J	Ó‘’ĞÉÊKœ™\XÙJ×ÊËÙË	ÉÊKœ™\XÙJú  yn*ÉİK	ÉÊKÓİÙ\Ø\ÙJ
+NÂŸB‚™[˜İ[Ûˆ[\ŞYYTÛ™J›İÊHÂˆ™]\›ˆ›Ü›X[^™TÛ™J›İÈ	‰ˆ
+ˆ›İË›[Øš[TÛ™H›İË›[Øš[H›İËœÛ™H›İË[›İË[\Û™H›İË˜ÛÛXİÛ™Bˆ
+JNÂŸB‚™[˜İ[Ûˆ[\ŞYYQ[XZ[
+›İÊHÂˆ™]\›ˆ›Ü›X[^™Q[XZ[
+›İÈ	‰ˆ
+›İË™[XZ[›İË‘[XZ[›İË›ÙÚ[‘[XZ[›İË˜ÛÛXİ[XZ[
+JNÂŸB‚™[˜İ[Ûˆ[šÙY[\ŞYYRY
+›İÊHÂˆ™]\›ˆÛX[Š›İÈ	‰ˆ
+ˆ›İË™[\ŞYYRY›İË™^\›˜[XXÚ\‘[\ŞYYRY›İË›[šÙY[\ŞYYRYˆ›İË™[\ŞYYQØÒY›İË\Ù\’Yˆ
+JNÂŸB‚™[˜İ[Ûˆ\Ñ^\›˜[XXÚ\‘[\ŞYYJ›İÊHÂˆÛÛœİY[]HHÛX[Š›İÈ	‰ˆ
+›İËšY[]U\H›İË™[\ŞYYU\H›İËšY[]SX™[›İËœ›ÛJJKÓİÙ\Ø\ÙJ
+NÂˆ™]\›ˆ›İÈ	‰ˆ
+ˆ›İËš\Ñ^\›˜[XXÚ\ˆOOHYHˆY[]HOOH	Ù^\›˜[	ÈˆY[]HOOH	Ù^\›˜[XXÚ\‰Èˆùi%º fË\İ
+ÛX[Š›İËšY[]SX™[›İËœ›ÛSX™[
+JBˆ
+NÂŸB‚™[˜İ[Ûˆ^\›˜[XXÚ\”›Ùš[SZ\ÜÚ[™ÑšY[Ê›İÊHÂˆÛÛœİÛİ\˜ÙHH›İÈßNÂˆÛÛœİXXÚ[™ÈH\œ˜^Kš\Ğ\œ˜^JÛİ\˜ÙKXXÚ[™ĞXš[]Y\ÊBˆÈÛİ\˜ÙKXXÚ[™ĞXš[]Y\Ë™š[\Š
+][JHOˆÛX[Š][H	‰ˆ
+][Kš][H][K›˜[YH][KœİXš™Xİ
+JJBˆˆÛX[ŠÛİ\˜ÙKXXÚ[™Ò][\ÈÛİ\˜ÙKXXÚ[™Ò][\Õ^
+NÂˆ™]\›ˆÂˆÉÛ˜[YIË	ùiäùd#IËÛX[ŠÛİ\˜ÙK›˜[YHÛİ\˜ÙK™\Ü^S˜[YHÛİ\˜ÙK™[\ŞYYS˜[YJWKˆÉÛ[Øš[TÛ™IË	ú(c9båzfîú*lIË[\ŞYYTÛ™JÛİ\˜ÙJWKˆÉÙ[XZ[	Ë	Ñ[XZ[	Ë[\ŞYYQ[XZ[
+Ûİ\˜ÙJWKˆÉØš\]IË	ùaî¹å'ùnm9§"9¥éIËÛX[ŠÛİ\˜ÙK˜š\]JWKˆÉÚY[X™\‰Ë	ú.ªùb!º+bykeú&gÉËÛX[ŠÛİ\˜ÙKšY[X™\ŠWKˆÉØY™\ÜÉË	ú kùíhyg,9g`	ËÛX[ŠÛİ\˜ÙK˜Y™\ÜÈÛİ\˜ÙK›XZ[[™ĞY™\ÜÈÛİ\˜ÙKšİ\ÙZÛY™\ÜÊWKˆÉÙ[Y\™Ù[˜ŞPÛÛXİ	Ë	ùíâ¹ )z kùíhy.®‰ËÛX[ŠÛİ\˜ÙK™[Y\™Ù[˜ŞPÛÛXİ
+WKˆÉÙ[Y\™Ù[˜ŞTÛ™IË	ùíâ¹ )z kùíhy.®ºfîú*lIË›Ü›X[^™TÛ™JÛİ\˜ÙK™[Y\™Ù[˜ŞTÛ™JWKˆÉİXXÚ[™ĞXš[]Y\ÉË	ù£¢:*¬ºh!yæë‰ËXXÚ[™×KˆÉÚY[]QØİ[Y[\›	Ë	ú.ªùb!º+by¦#¹¥¡ù.í‰ËÛX[ŠÛİ\˜ÙKšY[]QØİ[Y[\›
+H
+\œ˜^Kš\Ğ\œ˜^JÛİ\˜ÙKšY[]U\›ÊH	‰ˆÛİ\˜ÙKšY[]U\›Ë›[™İ
+WBˆK™š[\Š
+][JHOˆZ][VÌ—JK›X\
+
+][JHOˆ
+ÈÙ^Nˆ][VÌKX™[ˆ][VÌWHJJNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™\ÛÛ™UXXÚ\•][]Q[\ŞYYJÙ\ÜÚ[ÛŠHÂˆÛÛœİXXÚ\’YHÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹XXÚ\’Y
+NÂˆÛÛœİš[™[™ÜÈH]ØZ]]]Üš^™Yš[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠNÂˆYˆ
+Xš[™[™ÜË›[™İ
+H›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú  yn*ùænùaiyí yk¦¹mì¹`g9å*;ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂ‚ˆÛÛœİİXXÚ\”›İÜË[\ŞYYTÛ˜\Úİ›Ùš[TÛ˜\ÚİÛÛ˜XİÛ˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+ÂˆZ\œ›Ü”›İÜÊ	İXXÚ\œÉÊKˆ‹˜ÛÛXİ[ÛŠ	Ù[\ŞYY\ÉÊK›[Z]
+Œ
+K™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	Ù^\›˜[XXÚ\”›Ùš[\ÉÊK›[Z]
+Œ
+K™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	Ù^\›˜[XXÚ\ÛÛ˜XİÉÊK›[Z]
+Œ
+K™Ù]
+
+BˆJNÂˆÛÛœİXXÚ\ˆHXXÚ\”›İÜË™š[™
+
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOHXXÚ\’Y
+HßNÂˆÛÛœİ^\›˜[›İÜÈH›Ùš[TÛ˜\Úİ™ØÜË˜ÛÛ˜Ø]
+ÛÛ˜XİÛ˜\Úİ™ØÜÊK›X\
+
+ØÊHO‚ˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšY×Ü™YˆØËœ™YˆKœÛÛ•˜[YJØË™]J
+HßJJBˆ
+NÂˆÛÛœİ™[]Y^\›˜[›İÜÈH^\›˜[›İÜË™š[\Š
+›İÊHO‚ˆÛX[Š›İË—×ÚY
+HOOHXXÚ\’YˆÛX[Š›İËXXÚ\’Y›İË™^\›˜[XXÚ\’Y›İË˜Ûİ\œÙTÜ[XXÚ\’Y
+HOOHXXÚ\’Yˆ
+NÂ‚ˆÛÛœİ^XÚ]YÈH™]ÈÙ]
+İXXÚ\’YJNÂˆš[™[™ÜË™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİ˜[YHH[šÙY[\ŞYYRY
+›İÊNÂˆYˆ
+˜[YJH^XÚ]YË˜Y
+˜[YJNÂˆJNÂˆ™[]Y^\›˜[›İÜË™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİ˜[YHH[šÙY[\ŞYYRY
+›İÊNÂˆYˆ
+˜[YJH^XÚ]YË˜Y
+˜[YJNÂˆJNÂ‚ˆÛÛœİ˜[Y\ÈH™]ÈÙ]
+
+NÂˆÛÛœİ[XZ[ÈH™]ÈÙ]
+
+NÂˆÛÛœİÛ™\ÈH™]ÈÙ]
+
+NÂˆ[˜İ[ÛˆÛÛXİY[]J›İÊHÂˆÛÛœİ˜[YHH›Ü›X[^™Y\œÛÛ“˜[YJ›İÈ	‰ˆ
+›İË›˜[YH›İËXXÚ\“˜[YH›İË™\Ü^S˜[YH›İË™[\ŞYYS˜[YJJNÂˆÛÛœİ[XZ[H[\ŞYYQ[XZ[
+›İÊNÂˆÛÛœİÛ™HH[\ŞYYTÛ™J›İÊNÂˆYˆ
+˜[YJH˜[Y\Ë˜Y
+˜[YJNÂˆYˆ
+[XZ[
+H[XZ[Ë˜Y
+[XZ[
+NÂˆYˆ
+Û™JHÛ™\Ë˜Y
+Û™JNÂˆBˆÛÛXİY[]JXXÚ\ŠNÂˆš[™[™ÜË™›Ü‘XXÚ
+ÛÛXİY[]JNÂˆ™[]Y^\›˜[›İÜË™›Ü‘XXÚ
+ÛÛXİY[]JNÂ‚ˆÛÛœİ[\ŞYY\ÈH[\ŞYYTÛ˜\Úİ™ØÜË›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšY×Ü™YˆØËœ™YˆKœÛÛ•˜[YJØË™]J
+HßJJJNÂˆÛÛœİ\™XİH[\ŞYY\Ë™š[\Š
+›İÊHOˆ\Ñ^\›˜[XXÚ\‘[\ŞYYJ›İÊH	‰ˆ
+ˆ^XÚ]YËš\ÊÛX[Š›İË—×ÚY
+JHˆ^XÚ]YËš\ÊÛX[Š›İË™[\ŞYYRY›İËšY›İË\Ù\’Y
+JHˆÛX[Š›İË˜Ûİ\œÙTÜ[XXÚ\’Y›İË›YØXŞUXXÚ\’Y
+HOOHXXÚ\’Yˆ
+\œ˜^Kš\Ğ\œ˜^J›İË˜Ûİ\œÙTÜ[XXÚ\’YÊH	‰ˆ›İË˜Ûİ\œÙTÜ[XXÚ\’YË›X\
+ÛX[ŠKš[˜ÛY\ÊXXÚ\’Y
+JBˆ
+JNÂˆ][\ŞYYHH[ÂˆYˆ
+\™Xİ›[™İOOHJH[\ŞYYHH\™XİÌNÂˆ[ÙHYˆ
+\™Xİ›[™İˆJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú  yn*ú,áù¥¦z`(ùb,9i&¹`"ùdèyméyíê:&gûï#:*âùab9å,yë¨yä!º !y¥m9ä!ºaãz)!ú,áù¥¦xà ‰ÊNÂˆB‚ˆYˆ
+Y[\ŞYYJHÂˆÛÛœİØÛÜ™YH[\ŞYY\Ë™š[\Š\Ñ^\›˜[XXÚ\‘[\ŞYYJK›X\
+
+›İÊHOˆÂˆ]ØÛÜ™HHÂˆÛÛœİ[XZ[H[\ŞYYQ[XZ[
+›İÊNÂˆÛÛœİÛ™HH[\ŞYYTÛ™J›İÊNÂˆÛÛœİ˜[YHH›Ü›X[^™Y\œÛÛ“˜[YJ›İË›˜[YH›İË™\Ü^S˜[YH›İË™[\ŞYYS˜[YJNÂˆYˆ
+[XZ[	‰ˆ[XZ[Ëš\Ê[XZ[
+JHØÛÜ™H
+ÏHÂˆYˆ
+Û™H	‰ˆÛ™\Ëš\ÊÛ™JJHØÛÜ™H
+ÏHNÂˆYˆ
+˜[YH	‰ˆ˜[Y\Ëš\Ê˜[YJJHØÛÜ™H
+ÏHÂˆ™]\›ˆÈ›İËØÛÜ™HNÂˆJK™š[\Š
+][JHOˆ][KœØÛÜ™HHŠKœÛÜ
+
+KŠHOˆ‹œØÛÜ™HHKœØÛÜ™JNÂˆYˆ
+ØÛÜ™Y›[™İ	‰ˆ
+ØÛÜ™Y›[™İOOHHØÛÜ™YÌKœØÛÜ™HˆØÛÜ™YÌWKœØÛÜ™JJH[\ŞYYHHØÛÜ™YÌKœ›İÎÂˆ[ÙHYˆ
+ØÛÜ™Y›[™İ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù§"yi&¹ëa¹æî9//9æ¡9i%º f:  yn*ú,áù¥¦{ï#9à®º`oùacyd"9/mzc+ù.®»ï#:*âùab9å,yë¨yä!º !y£!ùk¦¹dèyméyíê:&gøà ‰ÊNÂˆBˆBˆYˆ
+Y[\ŞYYJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù¢o¹.#yb,9cëùk¢yaj:`(ùíd9æ¡9i%º f:  yn*ùdèyméz,áù¥¦{ï#:*âùab9å,yë¨yä!º !yk£9¢$9. 9«(ydèyméyíê:&gú`(ùíd8à ‰ÊNÂˆB‚ˆÛÛœİ[\ŞYYRYHÛX[Š[\ŞYYK™[\ŞYYRY[\ŞYYKšY[\ŞYYK—×ÚY
+NÂˆÛÛœİ›Ùš[HH^\›˜[›İÜË™š[™
+
+›İÊHOˆ[šÙY[\ŞYYRY
+›İÊHOOH[\ŞYYRY
+Hˆ™[]Y^\›˜[›İÜÖÌHßNÂˆÛÛœİY\™ÙYHØš™Xİ˜\ÜÚYÛŠßK[\ŞYYK›Ùš[KÂˆ˜[YNˆÛX[Š›Ùš[K›˜[YH›Ùš[KXXÚ\“˜[YH[\ŞYYK›˜[YH[\ŞYYK™\Ü^S˜[YJKˆ[XZ[ˆ[\ŞYYQ[XZ[
+›Ùš[JH[\ŞYYQ[XZ[
+[\ŞYYJKˆ[Øš[TÛ™Nˆ[\ŞYYTÛ™J›Ùš[JH[\ŞYYTÛ™J[\ŞYYJBˆJNÂˆÛÛœİZ\ÜÚ[™Ô›Ùš[QšY[ÈH^\›˜[XXÚ\”›Ùš[SZ\ÜÚ[™ÑšY[ÊY\™ÙY
+NÂˆÛÛœİ[\ŞYYT]ÚHÂˆ[\ŞYYRYˆYˆÛX[Š[\ŞYYKšY
+H[\ŞYYRYˆ\Ù\’YˆÛX[Š[\ŞYYK\Ù\’Y
+H[\ŞYYRYˆÛİ\œÙTÜ[XXÚ\’YˆXXÚ\’YˆÛİ\œÙTÜ[XXÚ\’YÎˆšY[˜[YK˜\œ˜^U[š[ÛŠXXÚ\’Y
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆNÂˆYˆ
+XÛX[Š[\ŞYYK›YØXŞUXXÚ\’Y
+JH[\ŞYYT]Ú›YØXŞUXXÚ\’YHXXÚ\’YÂˆ]ØZ][\ŞYYK—×Ü™Y‹œÙ]
+[\ŞYYT]ÚÈY\™ÙNˆYHJNÂˆÛÛœİš[™[™Ğ˜]ÚH‹˜˜]Ú
+
+NÂˆš[™[™ÜË™›Ü‘XXÚ
+
+›İÊHOˆš[™[™Ğ˜]ÚœÙ]
+›İË—×Ü™Y‹Âˆ[\ŞYYRYˆ^\›˜[XXÚ\‘[\ŞYYRYˆ[\ŞYYRYˆYØXŞUXXÚ\’YˆXXÚ\’Yˆ[šÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJJNÂˆ™[]Y^\›˜[›İÜË™›Ü‘XXÚ
+
+›İÊHOˆš[™[™Ğ˜]ÚœÙ]
+›İË—×Ü™Y‹Âˆ[\ŞYYRYˆ^\›˜[XXÚ\‘[\ŞYYRYˆ[\ŞYYRYˆ[\ŞYYT™Yˆ[\ŞYY\ËÉÙ[\ŞYYRYXˆÛİ\œÙTÜ[XXÚ\’YˆXXÚ\’Yˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJJNÂˆ]ØZ]š[™[™Ğ˜]Ú˜ÛÛ[Z]
+
+NÂ‚ˆ™]\›ˆÂˆ[\ŞYYRYˆ\Ù\ˆÂˆYˆ[\ŞYYRYˆ[\ŞYYRYˆ˜[YNˆÛX[ŠY\™ÙY›˜[YJHÛX[ŠXXÚ\‹›˜[YJH	ùi%º f:  yn*ÉËˆ\Ü^S˜[YNˆÛX[ŠY\™ÙY›˜[YJHÛX[ŠXXÚ\‹›˜[YJH	ùi%º f:  yn*ÉËˆ[XZ[ˆ[\ŞYYQ[XZ[
+Y\™ÙY
+KˆÛ™Nˆ[\ŞYYTÛ™JY\™ÙY
+Kˆ[Øš[TÛ™Nˆ[\ŞYYTÛ™JY\™ÙY
+KˆY[]U\Nˆ	Ù^\›˜[	ËˆY[]SX™[ˆ	ùi%º f:  yn*ÉËˆ[\ŞYYU\Nˆ	Ù^\›˜[	Ëˆ›ÛNˆ	Ù^\›˜[XXÚ\‰Ëˆ\Ñ^\›˜[XXÚ\ˆYKˆ[™U\Ù\’YˆÛX[ŠY\™ÙY›[™U\Ù\’YÙ\ÜÚ[Û‹›[™U\Ù\’Y
+Kˆ[™S›İYQ[˜X›Yˆ›ÛÛX[ŠÛX[ŠY\™ÙY›[™U\Ù\’YÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JKˆXØÛİ[İ]\ÎˆÛX[ŠY\™ÙY˜XØÛİ[İ]\È	ØXİ]™IÊKˆ[\Ş[Y[İ]\ÎˆÛX[ŠY\™ÙY™[\Ş[Y[İ]\È	ØXİ]™IÊKˆYØXŞUXXÚ\’YˆXXÚ\’YˆÜ[Ù\ÜÚ[ÛœšYÙNˆYBˆKˆ›Ùš[PÛÛ\]NˆZ\ÜÚ[™Ô›Ùš[QšY[Ë›[™İOOHˆZ\ÜÚ[™Ô›Ùš[QšY[ÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\•][]TÙ\ÜÚ[ÛŠ]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİ™\ÛÛ™YH]ØZ]™\ÛÛ™UXXÚ\•][]Q[\ŞYYJÙ\ÜÚ[ÛŠNÂˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠÈÚÎˆYK˜[Y]Y]ˆ]K››İÊ
+HK™\ÛÛ™Y
+NÂŸB‚™[˜İ[ÛˆØY™T™[[\Ü^S˜[YJ˜[YJHÂˆÛÛœİ˜[YHHÛX[Š˜[YJK››Ü›X[^™J	Ó‘’ĞÉÊNÂˆYˆ
+[˜[YH˜[YK›[™İˆŒÖĞ——KË\İ
+˜[YJHÖ×ĞØßWĞÙŸWKİK\İ
+˜[YJJH™]\›ˆ	ÉÎÂˆÛÛœİYÚ]ÈH˜[YKœ™\XÙJ×ÙË	ÉÊNÂˆYˆ
+YÚ]Ë›[™İH
+H™]\›ˆ	ÉÎÂˆ™]\›ˆ˜[YNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[[Ù\ÜÚ[Û‘\Ü^S˜[YJÙ\ÜÚ[ÛŠHÂˆÛÛœİ\™Xİ˜[YHHØY™T™[[\Ü^S˜[YJÙ\ÜÚ[Ûˆ	‰ˆ
+Ù\ÜÚ[Û‹™\Ü^S˜[YHÙ\ÜÚ[Û‹›˜[YJJNÂˆYˆ
+\™Xİ˜[YJH™]\›ˆ\™Xİ˜[YNÂˆHÂˆYˆ
+ÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ›ÛJHOOH	Ü™[\‰È	‰ˆÛX[ŠÙ\ÜÚ[Û‹œ™[\’Y
+JHÂˆÛÛœİ™[\”Û˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\œÉÊK™ØÊÛX[ŠÙ\ÜÚ[Û‹œ™[\’Y
+JK™Ù]
+
+NÂˆÛÛœİ™[\ˆH™[\”Û˜\Úİ™^\İÈÈ™[\”Û˜\Úİ™]J
+HßHˆßNÂˆÛÛœİ™[\“˜[YHHØY™T™[[\Ü^S˜[YJ™[\‹›˜[YH™[\‹™\Ü^S˜[YJNÂˆYˆ
+™[\“˜[YJH™]\›ˆ™[\“˜[YNÂˆB‚ˆ]š[™[™ÜÈH×NÂˆYˆ
+ÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ›ÛJHOOH	ÜİY[	ÊHÂˆš[™[™ÜÈH]ØZ]Xİ]™TİY[š[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠNÂˆH[ÙHÂˆÛÛœİ›ÛHHÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ›ÛJNÂˆÛÛœİÛÛXİ[ÛˆH‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ›ÛJJNÂˆÛÛœİ]Y\šY\ÈH×NÂˆYˆ
+ÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+JHÂˆ]Y\šY\Ëœ\Ú
+ÛÛXİ[Û‹Ú\™J	Ø]]XØÛİ[Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+JK™Ù]
+
+JNÂˆBˆYˆ
+ÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JHÂˆ]Y\šY\Ëœ\Ú
+ÛÛXİ[Û‹Ú\™J	Û[™U\Ù\’Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JK™Ù]
+
+JNÂˆBˆYˆ
+›ÛHOOH	İXXÚ\‰È	‰ˆÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+JHÂˆ]Y\šY\Ëœ\Ú
+ÛÛXİ[Û‹Ú\™J	İXXÚ\’Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+JK™Ù]
+
+JNÂˆBˆYˆ
+›ÛHOOH	Ü™[\‰È	‰ˆÛX[ŠÙ\ÜÚ[Û‹œ™[\’Y
+JHÂˆ]Y\šY\Ëœ\Ú
+ÛÛXİ[Û‹Ú\™J	Ü™[\’Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹œ™[\’Y
+JK™Ù]
+
+JNÂˆBˆÛÛœİÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+]Y\šY\ÊNÂˆš[™[™ÜÈHË‹‹›™]ÈX\
+Û˜\ÚİË™›]X\
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜÊK›X\
+
+ØÊHOˆÂˆØËšYˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKØË™]J
+HßJBˆJJK˜[Y\Ê
+WNÂˆBˆÛÛœİXİ]™HHš[™[™ÜË™š[\Š
+›İÊHOˆÛX[Š›İËœİ]\È	ØXİ]™IÊHOOH	ØXİ]™IÊNÂˆÛÛœİ›ÛHHÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ›ÛJNÂˆÛÛœİ^Xİš[™[™ÜÈH›ÛHOOH	İXXÚ\‰È	‰ˆÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+BˆÈXİ]™K™š[\Š
+›İÊHOˆÛX[Š›İËXXÚ\’Y
+HOOHÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+JBˆˆ
+›ÛHOOH	Ü™[\‰È	‰ˆÛX[ŠÙ\ÜÚ[Û‹œ™[\’Y
+BˆÈXİ]™K™š[\Š
+›İÊHOˆÛX[Š›İËœ™[\’Y
+HOOHÛX[ŠÙ\ÜÚ[Û‹œ™[\’Y
+JBˆˆXİ]™JNÂˆÛÛœİ™Y™\œ™Yš[™[™ÜÈH^Xİš[™[™ÜË›[™İÈ^Xİš[™[™ÜÈˆXİ]™NÂˆÛÛœİ™YÚ\İ\™Y˜[YHH™Y™\œ™Yš[™[™ÜÂˆ›X\
+
+›İÊHOˆØY™T™[[\Ü^S˜[YJ›İË›˜[YH›İË™\Ü^S˜[YJJBˆ™š[™
+›ÛÛX[ŠNÂˆYˆ
+™YÚ\İ\™Y˜[YJH™]\›ˆ™YÚ\İ\™Y˜[YNÂˆÛÛœİ[™Q\Ü^S˜[YHH™Y™\œ™Yš[™[™ÜÂˆ›X\
+
+›İÊHOˆØY™T™[[\Ü^S˜[YJ›İË›[™Q\Ü^S˜[YJJBˆ™š[™
+›ÛÛX[ŠNÂˆYˆ
+[™Q\Ü^S˜[YJH™]\›ˆ[™Q\Ü^S˜[YNÂ‚ˆYˆ
+ÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ›ÛJHOOH	İXXÚ\‰È	‰ˆÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+JHÂˆÛÛœİXXÚ\œÈH]ØZ]Z\œ›Ü”›İÜÊ	İXXÚ\œÉÊNÂˆÛÛœİXXÚ\ˆHXXÚ\œË™š[™
+
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOHÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+JHßNÂˆ™]\›ˆØY™T™[[\Ü^S˜[YJXXÚ\‹›˜[YHXXÚ\‹™\Ü^S˜[YHXXÚ\‹XXÚ\“˜[YJNÂˆBˆYˆ
+ÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ›ÛJHOOH	ÜİY[	ÊHÂˆÛÛœİİY[YÈHË‹‹›™]ÈÙ]
+Âˆ‹‹Š\œ˜^Kš\Ğ\œ˜^JÙ\ÜÚ[Û‹œİY[YÊHÈÙ\ÜÚ[Û‹œİY[YÈˆ×JKˆ‹‹˜Xİ]™K›X\
+
+›İÊHOˆ›İËœİY[Y
+BˆK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠJWNÂˆYˆ
+İY[YË›[™İ
+HÂˆÛÛœİİY[ÈH]ØZ]Z\œ›Ü”›İÜÊ	ÜİY[ÉÊNÂˆÛÛœİİY[HİY[Ë™š[™
+
+›İÊHOˆİY[YËš[˜ÛY\ÊÛİ\˜ÙRY
+›İÊJJHßNÂˆ™]\›ˆØY™T™[[\Ü^S˜[YJİY[›˜[YHİY[™\Ü^S˜[YHİY[œİY[˜[YJNÂˆBˆBˆ™]\›ˆ	ÉÎÂˆHØ]Ú
+\œ›ÜŠHÂˆÛÛœÛÛKØ\›Š	ÖØÛİ\œÙHÜ[™[[\Ü^H˜[YWIËÛX[Š\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙJJNÂˆ™]\›ˆ	ÉÎÂˆBŸB‚˜\Ş[˜È[˜İ[Ûˆ™[[İY[Ü[ÛœÊÙ\ÜÚ[ÛŠHÂˆYˆ
+ÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ›ÛJHOOH	ÜİY[	ÊH™]\›ˆ×NÂˆÛÛœİš[™[™ÜÈH]ØZ]Xİ]™TİY[š[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠNÂˆÛÛœİİY[YÈHË‹‹›™]ÈÙ]
+Âˆ‹‹Š\œ˜^Kš\Ğ\œ˜^JÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œİY[YÊHÈÙ\ÜÚ[Û‹œİY[YÈˆ×JKˆ‹‹˜š[™[™ÜË›X\
+
+›İÊHOˆ›İËœİY[Y
+BˆK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠJWNÂˆYˆ
+\İY[YË›[™İ
+H™]\›ˆ×NÂˆÛÛœİİY[ÈH]ØZ]Z\œ›Ü”›İÜÊ	ÜİY[ÉÊNÂˆÛÛœİİY[X\H[™^RY
+İY[ÊNÂˆ™]\›ˆİY[YË›X\
+
+İY[Y
+HOˆÂˆÛÛœİš[™[™ÈHš[™[™ÜË™š[™
+
+›İÊHOˆÛX[Š›İËœİY[Y
+HOOHİY[Y
+HßNÂˆÛÛœİİY[HİY[X\ÜİY[YHßNÂˆ™]\›ˆÂˆYˆİY[Yˆ˜[YNˆØY™T™[[\Ü^S˜[YJˆš[™[™Ë›˜[YHš[™[™Ë™\Ü^S˜[YHİY[›˜[YHİY[™\Ü^S˜[YHİY[œİY[˜[YBˆ
+H	ùkn9å'ÉËˆÛ™Nˆ›Ü›X[^™TÛ™JÛİ\˜ÙTÛ™JİY[
+Hš[™[™ËœÛ™JBˆNÂˆJKœÛÜ
+
+YšYÚ
+HOˆÛX[ŠY›˜[YJK›ØØ[PÛÛ\\™JÛX[ŠšYÚ›˜[YJK	ŞšR[	ÊJNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[[Ù\ÜÚ[Û’Y[]JÙ\ÜÚ[Û‹™\]Y\İYİY[Y
+HÂˆÛÛœİ›ÛHHÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ›ÛJNÂˆÛÛœİ\Ü^S˜[YT›ÛZ\ÙHH™[[Ù\ÜÚ[Û‘\Ü^S˜[YJÙ\ÜÚ[ÛŠNÂˆÛÛœİİY[Ü[ÛœÈH]ØZ]™[[İY[Ü[ÛœÊÙ\ÜÚ[ÛŠNÂˆÛÛœİ™\]Y\İYYHÛX[Š™\]Y\İYİY[Y
+NÂˆYˆ
+›ÛHOOH	ÜİY[	È	‰ˆ™\]Y\İYY	‰ˆ\İY[Ü[ÛœËœÛÛYJ
+›İÊHOˆ›İËšYOOH™\]Y\İYY
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ù¬¤¹§"z`&y/cykn9å'ùæ¡9¥fyk©9éçùå*9«"ºfd8à ‰ÊNÂˆBˆYˆ
+›ÛHOOH	ÜİY[	È	‰ˆİY[Ü[ÛœË›[™İˆH	‰ˆ\™\]Y\İYY
+HÂˆ™]\›ˆÂˆ›ÛKˆ\Ü^S˜[YNˆ]ØZ]\Ü^S˜[YT›ÛZ\ÙKˆÛY[˜[YNˆ	ÉËˆÛY[Û™Nˆ	ÉËˆİY[Yˆ	ÉËˆİY[Ü[ÛœËˆ™\]Z\™\ÔİY[Ù[Xİ[ÛˆYBˆNÂˆBˆYˆ
+›ÛHOOH	ÜİY[	ÊHÂˆÛÛœİÙ[XİYHİY[Ü[ÛœË™š[™
+
+›İÊHOˆ›İËšYOOH™\]Y\İYY
+HİY[Ü[ÛœÖÌHßNÂˆ™]\›ˆÂˆ›ÛKˆ\Ü^S˜[YNˆ]ØZ]\Ü^S˜[YT›ÛZ\ÙKˆÛY[˜[YNˆØY™T™[[\Ü^S˜[YJÙ[XİY›˜[YJH]ØZ]\Ü^S˜[YT›ÛZ\ÙKˆÛY[Û™Nˆ›Ü›X[^™TÛ™JÙ[XİYœÛ™JKˆİY[YˆÛX[ŠÙ[XİYšY
+KˆİY[Ü[ÛœËˆ™\]Z\™\ÔİY[Ù[Xİ[Ûˆ˜[ÙBˆNÂˆB‚ˆ]ÛY[Û™HH	ÉÎÂˆYˆ
+›ÛHOOH	Ü™[\‰È	‰ˆÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹œ™[\’Y
+JHÂˆÛÛœİ™[\”Û˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\œÉÊK™ØÊÛX[ŠÙ\ÜÚ[Û‹œ™[\’Y
+JK™Ù]
+
+NÂˆÛÛœİ™[\ˆH™[\”Û˜\Úİ™^\İÈÈ™[\”Û˜\Úİ™]J
+HßHˆßNÂˆÛY[Û™HH›Ü›X[^™TÛ™JÛİ\˜ÙTÛ™J™[\ŠJNÂˆH[ÙHYˆ
+›ÛHOOH	İXXÚ\‰È	‰ˆÛX[ŠÙ\ÜÚ[Ûˆ	‰ˆÙ\ÜÚ[Û‹XXÚ\’Y
+JHÂˆÛÛœİXXÚ\œÈH]ØZ]Z\œ›Ü”›İÜÊ	İXXÚ\œÉÊNÂˆÛÛœİXXÚ\ˆHXXÚ\œË™š[™
+
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOHÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+JHßNÂˆÛY[Û™HH›Ü›X[^™TÛ™JÛİ\˜ÙTÛ™JXXÚ\ŠJNÂˆBˆÛÛœİ\Ü^S˜[YHH]ØZ]\Ü^S˜[YT›ÛZ\ÙNÂˆ™]\›ˆÂˆ›ÛKˆ\Ü^S˜[YKˆÛY[˜[YNˆ\Ü^S˜[YKˆÛY[Û™KˆİY[Yˆ	ÉËˆİY[Ü[ÛœÎˆ×Kˆ™\]Z\™\ÔİY[Ù[Xİ[Ûˆ˜[ÙBˆNÂŸB‚™[˜İ[Ûˆ]™[]J›İÊHÂˆ™]\›ˆ]RÙ^J›İË™]H›İË˜Ûİ\œÙQ]H›İËœİ\]H›İË›\ÜÛÛ‘]JNÂŸB‚™[˜İ[Ûˆ]™[İ\
+›İÊHÂˆ™]\›ˆÛX[Š›İËœİ\[YH›İË[YTİ\›İË˜™YÚ[•[YH›İËœİ\
+KœÛXÙJJNÂŸB‚™[˜İ[Ûˆ]™[[™
+›İÊHÂˆÛÛœİ^XÚ]HÛX[Š›İË™[™[YH›İË[YQ[™›İË™š[š\Ú[YH›İË™[™
+KœÛXÙJJNÂˆYˆ
+^XÚ]
+H™]\›ˆ^XÚ]ÂˆÛÛœİİ\H]™[İ\
+›İÊNÂˆYˆ
+\İ\
+H™]\›ˆ	ÉÎÂˆÛÛœİ\˜][ÛˆHX]›X^
+Ì[X™\Š›İË™\˜][Û“Z[]\È›İË™\˜][Ûˆ›İË›Z[]\ÈŒ
+JNÂˆÛÛœİ[™H[YSZ[]\Êİ\
+H
+È\˜][ÛÂˆ™]\›ˆİš[™ÊX]™›ÛÜŠ[™ÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™Ê[™	HŒ
+KœYİ\
+‹	Ì	ÊNÂŸB‚™[˜İ[Ûˆ]™[XXÚ\’Y
+›İÊHÂˆ™]\›ˆÛX[Š›İËXXÚ\’Y›İËXXÚ\—ÚY›İËš[œİXİÜ’Y
+NÂŸB‚™[˜İ[Ûˆ]™[›ÛÛRY
+›İÊHÂˆ™]\›ˆÛX[Š›İËœ›ÛÛRY›İËœ›ÛÛWÚY›İË˜Û\ÜÜ›ÛÛRY
+NÂŸB‚™[˜İ[Ûˆ]™[İY[YÊ›İÊHÂˆ™]\›ˆš\œİ\œ˜^J›İËÉÜİY[YÉË	ÜİY[ÉË	ÜİY[ÚYÉ×JK˜ÛÛ˜Ø]
+ˆÛX[Š›İËœİY[Y
+HÈØÛX[Š›İËœİY[Y
+WHˆ×Bˆ
+NÂŸB‚™[˜İ[Ûˆ]™[İXš™XİY
+›İÊHÂˆ™]\›ˆÛX[Š›İËœİXš™XİY›İËœİXš™XİÚY›İË˜Ûİ\œÙRY
+NÂŸB‚˜ÛÛœİÕV’S‘×Ô‘TÓÕTÑWÒQH	Ù\]Z\Y[™İ^š[™ÉÎÂ‚™[˜İ[ÛˆİXš™Xİ\Ù\Ñİ^š[™ÊİXš™XİYX\ÈHßJHÂˆÛÛœİYHÛX[ŠİXš™XİY
+KÓİÙ\Ø\ÙJ
+NÂˆÛÛœİİXš™XİHX\ËœİXš™XİÈ	‰ˆX\ËœİXš™XİÖÜİXš™XİYHßNÂˆÛÛœİ˜[YHHÛX[ŠİXš™Xİ›˜[YHİXš™XİœİXš™Xİ˜[YHİXš™Xİ]JKÓİÙ\Ø\ÙJ
+NÂˆ™]\›ˆYOOH	Ùİ^š[™ÉÈùcé9ë£ËË\İ
+˜[YJNÂŸB‚™[˜İ[Ûˆ]™[\Ù\Ñİ^š[™Ê›İËX\ÈHßJHÂˆÛÛœİ\ÙU\HHÛX[Š›İÈ	‰ˆ
+›İË\ÙU\H›İËœ™[[\ÙU\H›İËœ\œÜÙU\JJKÓİÙ\Ø\ÙJ
+NÂˆÛÛœİ\ØÜš\[ÛˆHÛX[Š›İÈ	‰ˆ
+›İË\ÙS˜[YH›İËœİXš™Xİ˜[YH›İËœ\œÜÙH›İË]JJKÓİÙ\Ø\ÙJ
+NÂˆ™]\›ˆ\ÙU\HOOH	Ùİ^š[™ÉÈˆùcé9ë£ËË\İ
+\ØÜš\[ÛŠHˆİXš™Xİ\Ù\Ñİ^š[™Ê]™[İXš™XİY
+›İÈßJKX\ÊNÂŸB‚™[˜İ[Ûˆ]™[Ú\™Y™\Ûİ\˜ÙRYÊ›İËX\ÈHßJHÂˆÛÛœİ^XÚ]Hš\œİ\œ˜^J›İÈßKÉÜ™\Ûİ\˜ÙRYÉË	ÜÚ\™Y™\Ûİ\˜ÙRYÉ×JK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠNÂˆYˆ
+]™[\Ù\Ñİ^š[™Ê›İËX\ÊJH^XÚ]œ\Ú
+ÕV’S‘×Ô‘TÓÕTÑWÒQ
+NÂˆ™]\›ˆË‹‹›™]ÈÙ]
+^XÚ]
+WNÂŸB‚™[˜İ[ÛˆÚ\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+]™[Ë™\Ûİ\˜ÙRYÊHÂˆÛÛœİ™\]Y\İYH™]ÈÙ]
+
+™\Ûİ\˜ÙRYÈ×JK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠJNÂˆYˆ
+\™\]Y\İYœÚ^™JH™]\›ˆ˜[ÙNÂˆ™]\›ˆ
+]™[È×JKœÛÛYJ
+]™[
+HO‚ˆ
+]™[œ™\Ûİ\˜ÙRYÈ×JKœÛÛYJ
+™\Ûİ\˜ÙRY
+HOˆ™\]Y\İYš\ÊÛX[Š™\Ûİ\˜ÙRY
+JJBˆ
+NÂŸB‚™[˜İ[Ûˆ™\]Y\İY™[[™\Ûİ\˜ÙRYÊ]JHÂˆ™]\›ˆÛX[Š]H	‰ˆ]K\ÙU\JKÓİÙ\Ø\ÙJ
+HOOH	Ùİ^š[™ÉÂˆÈÑÕV’S‘×Ô‘TÓÕTÑWÒQBˆˆ×NÂŸB‚™[˜İ[Ûˆ™\]Y\İYİXš™Xİ™\Ûİ\˜ÙRYÊİXš™XİY[™JHÂˆ™]\›ˆİXš™Xİ\Ù\Ñİ^š[™ÊİXš™XİY[™H	‰ˆ[™K›X\ÈßJBˆÈÑÕV’S‘×Ô‘TÓÕTÑWÒQBˆˆ×NÂŸB‚™[˜İ[Ûˆİ™\›\ÊTİ\Q[™”İ\‘[™
+HÂˆ™]\›ˆ[YSZ[]\ÊTİ\
+H[YSZ[]\Ê‘[™
+H	‰ˆ[YSZ[]\Ê”İ\
+H[YSZ[]\ÊQ[™
+NÂŸB‚™[˜İ[Ûˆ˜[YÜ[[YJ˜[YK[’İ\“Û›HH˜[ÙJHÂˆÛÛœİX]ÚHÛX[Š˜[YJK›X]Ú
+×ŠÌWW–ÌL×JNŠÌMWW
+IÊNÂˆYˆ
+[X]Ú
+H™]\›ˆ˜[ÙNÂˆ™]\›ˆZ[’İ\“Û›HÉÌ	Ë	ÌÌ	×Kš[˜ÛY\ÊX]ÚÌ—JNÂŸB‚™[˜İ[Ûˆ\ÜÙ\Ü[[\˜[
+İ\[YK[™[YJHÂˆYˆ
+]˜[YÜ[[YJİ\[YKYJH]˜[YÜ[[YJ[™[YKYJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù¦`ºe¤ùoázh"9.éHÌ9b!ºd&9à®¹e«¹/cxà ‰ÊNÂˆBˆÛÛœİ\˜][ÛˆH[YSZ[]\Ê[™[YJHH[YSZ[]\Êİ\[YJNÂˆYˆ
+\˜][ÛˆÌ\˜][ÛˆˆÌ\˜][Ûˆ	HÌOOH
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùíd9§gù¦`ºe¤ùoázh"9¦f¹¥¯:e¢ùiâù¦`ºe¤ûï#9.%9§ :emùà®ˆH9l#ù¦`¸à ‰ÊNÂˆBˆ™]\›ˆ\˜][ÛÂŸB‚™[˜İ[Ûˆ\ÜÙ\XXÚ\“[İ™Q\˜][ÛŠ\™Ù]\˜][Û‹Ûİ\˜ÙJHÂˆÛÛœİÛİ\˜ÙQ\˜][ÛˆH\ÜÙ\Ü[[\˜[
+ˆÛX[ŠÛİ\˜ÙH	‰ˆÛİ\˜ÙKœİ\[YJKœÛXÙJJKˆÛX[ŠÛİ\˜ÙH	‰ˆÛİ\˜ÙK™[™[YJKœÛXÙJJBˆ
+NÂˆYˆ
+[X™\Š\™Ù]\˜][ÛŠHOOHÛİ\˜ÙQ\˜][ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ9c§ú*¬¹ê"ù¦+È	ÜÛİ\˜ÙQ\˜][ÛŸH9b!ºd&;ï#9oázh":`n9¤áùcëú`(ùî£9/oùå*	ÜÛİ\˜ÙQ\˜][ÛŸH9b!ºd&9æ¡9¦`¹«­{ï#9.#z ïycê¹£¤ˆ	Ó[X™\Š\™Ù]\˜][ÛŠHH9b!ºd&8à ˜ˆ
+NÂˆBˆ™]\›ˆÛİ\˜ÙQ\˜][ÛÂŸB‚™[˜İ[ÛˆØY™Qœ™\]Y[˜ŞUÙYZÜÊ˜[YJHÂˆÛÛœİ\œÙYH[X™\Š˜[YJNÂˆYˆ
+S[X™\‹š\Ñš[š]J\œÙY
+H\œÙYJH™]\›ˆNÂˆ™]\›ˆX]›Z[ŠL‹X]›X^
+KX]™›ÛÜŠ\œÙY
+JJNÂŸB‚™[˜İ[Ûˆ^\Ğ™]ÙY[ŠYšYÚ
+HÂˆÛÛœİİ\H]RÙ^JY
+NÂˆÛÛœİ[™H]RÙ^JšYÚ
+NÂˆYˆ
+\İ\Y[™
+H™]\›ˆ˜SÂˆ™]\›ˆX]œ›İ[™
+ˆ
+™]È]J	Ù[™ULŒŒ
+ÌŒ
+K™Ù][YJ
+HBˆ™]È]J	Üİ\ULŒŒ
+ÌŒ
+K™Ù][YJ
+JHÈˆ
+NÂŸB‚™[˜İ[Ûˆ\›X[™[[™XYÙJ›İÊHÂˆ™]\›ˆÛX[Š›İÈ	‰ˆ
+ˆ›İËœÛİ\˜ÙPÛİ\œÙRYˆ›İËœÛİ\˜ÙQ]™[Yˆ›İË™]™[	‰ˆ
+›İË™]™[™š^YÛİ\œÙRY›İË™]™[œÙ\šY\ÒY
+Bˆ
+JNÂŸB‚™[˜İ[Ûˆ\›X[™[İ]İ™\Š›İÊHÂˆ™]\›ˆ]RÙ^J›İÈ	‰ˆ
+ˆ›İË˜İ]İ™\‘]Hˆ›İËœÛİ\˜ÙQ]Hˆ›İË™Y™™Xİ]™Q]Hˆ›İË™]™[	‰ˆ]™[]J›İË™]™[
+Bˆ
+JNÂŸB‚™[˜İ[Ûˆ\›X[™[[˜ÚÜŠ›İÊHÂˆ™]\›ˆ]RÙ^J›İÈ	‰ˆ
+ˆ›İË˜[˜ÚÜ‘]Hˆ›İË™]™[	‰ˆ]™[]J›İË™]™[
+Hˆ›İË™Y™™Xİ]™Q]Hˆ\›X[™[İ]İ™\Š›İÊBˆ
+JNÂŸB‚™[˜İ[ÛˆÚ[™ÙSÜ™\•˜[YJ›İÊHÂˆ™]\›ˆX]›X^
+ˆ\ÓZ[\Ê›İÈ	‰ˆ›İË\]Y]
+Kˆ\ÓZ[\Ê›İÈ	‰ˆ›İË˜Ü™X]Y]
+Kˆ\ÓZ[\Ê›İÈ	‰ˆ›İË˜Ü™X]Y]^
+Bˆ
+NÂŸB‚™[˜İ[ÛˆY™™Xİ]™T\›X[™[Ú[™Ù\Ê›İÜÊHÂˆÛÛœİ]\İH™]ÈX\
+
+NÂˆ
+›İÜÈ×JK™š[\Š
+›İÊHOˆÛX[Š›İÈ	‰ˆ›İË˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÈ	‰ˆ›İË™]™[
+K™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİ[™XYÙHH\›X[™[[™XYÙJ›İÊNÂˆÛÛœİİ]İ™\ˆH\›X[™[İ]İ™\Š›İÊNÂˆYˆ
+[[™XYÙHXİ]İ™\ŠH™]\›ÂˆÛÛœİÙ^HH	Û[™XYÙ__	Øİ]İ™\ŸXÂˆÛÛœİİ\œ™[H]\İ™Ù]
+Ù^JNÂˆYˆ
+ˆXİ\œ™[ˆÚ[™ÙSÜ™\•˜[YJ›İÊHˆÚ[™ÙSÜ™\•˜[YJİ\œ™[
+Hˆ
+ˆÚ[™ÙSÜ™\•˜[YJ›İÊHOOHÚ[™ÙSÜ™\•˜[YJİ\œ™[
+H	‰‚ˆÛX[Š›İË—×ÚY›İËšY
+K›ØØ[PÛÛ\\™JÛX[Šİ\œ™[—×ÚYİ\œ™[šY
+JHˆˆ
+Bˆ
+H]\İœÙ]
+Ù^K›İÊNÂˆJNÂˆ™]\›ˆË‹‹›]\İ˜[Y\Ê
+WKœÛÜ
+
+YšYÚ
+HO‚ˆ\›X[™[[™XYÙJY
+K›ØØ[PÛÛ\\™J\›X[™[[™XYÙJšYÚ
+JHˆ\›X[™[İ]İ™\ŠY
+K›ØØ[PÛÛ\\™J\›X[™[İ]İ™\ŠšYÚ
+JHˆÚ[™ÙSÜ™\•˜[YJY
+HHÚ[™ÙSÜ™\•˜[YJšYÚ
+HˆÛX[ŠY—×ÚYYšY
+K›ØØ[PÛÛ\\™JÛX[ŠšYÚ—×ÚYšYÚšY
+JBˆ
+NÂŸB‚™[˜İ[Ûˆ˜[œÛ]T™Xİ\œš[™Ôİ]\ÓX\
+İ]\ĞQ]Kİ]İ™\‘]K[˜ÚÜ‘]Kœ™\]Y[˜ŞUÙYZÜÊHÂˆÛÛœİÛİ\˜ÙHHİ]\ĞQ]H	‰ˆ\[Ùˆİ]\ĞQ]HOOH	ÛØš™Xİ	ÈÈİ]\ĞQ]HˆßNÂˆÛÛœİİ]İ™\ˆH]RÙ^Jİ]İ™\‘]JNÂˆÛÛœİ[˜ÚÜˆH]RÙ^J[˜ÚÜ‘]JNÂˆÛÛœİİ\^\ÈHØY™Qœ™\]Y[˜ŞUÙYZÜÊœ™\]Y[˜ŞUÙYZÜÊH
+ˆÎÂˆYˆ
+Xİ]İ™\ˆX[˜ÚÜŠH™]\›ˆØš™Xİ˜\ÜÚYÛŠßKÛİ\˜ÙJNÂˆ™]\›ˆØš™Xİ™[šY\ÊÛİ\˜ÙJKœ™YXÙJ
+™\İ[Ü˜]Ñ]K˜[YWJHOˆÂˆÛÛœİÙ^HH]RÙ^J˜]Ñ]JNÂˆYˆ
+ZÙ^JH™]\›ˆ™\İ[ÂˆYˆ
+Ù^Hİ]İ™\ŠHÂˆ™\İ[ÚÙ^WHH˜[YNÂˆ™]\›ˆ™\İ[ÂˆBˆÛÛœİ[HH^\Ğ™]ÙY[Šİ]İ™\‹Ù^JNÂˆYˆ
+[HH	‰ˆ[H	Hİ\^\ÈOOH
+HÂˆ™\İ[ØY^\Ê[˜ÚÜ‹[JWHH˜[YNÂˆH[ÙHÂˆËÈ9§"y.¦ú""º,áù¥¦ymì¹å*:*¯ù¥m9o£9æ¡9kéºf¦ù¥éy§'ú*&:c!9/¢ùi%»ï&úgg¹c§ú`,y§'ù¥éy.#ycëùæí9£©y.'ù¨á8à ‚ˆ™\İ[ÚÙ^WHH˜[YNÂˆBˆ™]\›ˆ™\İ[ÂˆKßJNÂŸB‚™[˜İ[ÛˆØÚY[SØØİ\œ™[˜ÙPXİ]™J›İÊHÂˆ™]\›ˆ›İÈ	‰ˆ›İË—×ÛZ\œ›ÜXİ]™HOOH˜[ÙH	‰‚ˆ›Ü›X[^™TØÚY[Tİ]\Ê›İËœİ]\È	ÜØÚY[Y	ÊHOOH	ØØ[˜Ù[Y	È	‰‚ˆÛİ\˜ÙPXİ]™J›İÊNÂŸB‚™[˜İ[Ûˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJ]™[
+HÂˆÛÛœİİ]\ÈH›Ü›X[^™TØÚY[Tİ]\Ê]™[	‰ˆ]™[œİ]\ÊNÂˆËÈ:*âù`aøà ycå¹­¢9¢%¹mìº*¯ú-l9¢cy§ úaâùaî¹ênºe¤øà ¹¦è:*¬¹¦`º  yn*ù.ãycëú ïyg*9c§ù¥fyk©9ëbyo¡{ï#ˆËÈ9fè9«i9¦è:*¬¹.ãych9å*:  yn*ú"!ù¥fyk©;ï#:`oùacyd#9¦`¹a£y£¤¹aiycé¹. 9h º*¬¸à ‚ˆ™]\›ˆVÉÛX]™IË	ØØ[˜Ù[Y	Ë	Ü[™[™×ØÛÛ™›Xİ	×Kš[˜ÛY\Êİ]\ÊNÂŸB‚™[˜İ[ÛˆØÚY[T™\Ûİ\˜ÙPÛÛ™›XİÊ]™[ÊHÂˆÛÛœİÛİÈH™]ÈX\
+
+NÂˆ
+]™[È×JK™š[\Š]™[›ØÚÜÔ™\Ûİ\˜ÙJK™›Ü‘XXÚ
+
+]™[
+HOˆÂˆÛÛœİY[]HHÂˆÛX[Š]™[™š^YÛİ\œÙRY]™[œÙ\šY\ÒY]™[œÛİ\˜ÙRY]™[šY
+KˆÛX[Š]™[™]JKˆÛX[Š]™[œİ\[YJKˆÛX[Š]™[™[™[YJBˆKš›Ú[Š	ß	ÊNÂˆÛÛœİ™\Ûİ\˜Ù\ÈHÂˆÛX[Š]™[œ›ÛÛRY
+HÈ›ÛÛN‰ØÛX[Š]™[œ›ÛÛRY
+_Xˆ	ÉËˆÛX[Š]™[XXÚ\’Y
+HÈXXÚ\‰ØÛX[Š]™[XXÚ\’Y
+_Xˆ	ÉËˆ‹‹Š]™[œİY[YÈ×JK›X\
+
+Y
+HOˆÛX[ŠY
+HÈİY[‰ØÛX[ŠY
+_Xˆ	ÉÊKˆ‹‹Š]™[œ™\Ûİ\˜ÙRYÈ×JK›X\
+ÛX[ŠBˆK™š[\Š›ÛÛX[ŠNÂˆ›Üˆ
+]Z[]HH[YSZ[]\Ê]™[œİ\[YJNÈZ[]H[YSZ[]\Ê]™[™[™[YJNÈZ[]H
+ÏHÌ
+HÂˆÛÛœİÛİHİš[™ÊX]™›ÛÜŠZ[]HÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™ÊZ[]H	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆ™\Ûİ\˜Ù\Ë™›Ü‘XXÚ
+
+™\Ûİ\˜ÙJHOˆÂˆÛÛœİÙ^HH	Ù]™[™]__	ÜÛİ_	Ü™\Ûİ\˜Ù_XÂˆYˆ
+\ÛİËš\ÊÙ^JJHÛİËœÙ]
+Ù^K™]ÈX\
+
+JNÂˆÛİË™Ù]
+Ù^JKœÙ]
+Y[]KÛX[Š]™[šY]™[œÛİ\˜ÙRY
+JNÂˆJNÂˆBˆJNÂˆ™]\›ˆË‹‹œÛİË™[šY\Ê
+WK™š[\Š
+ËY[]Y\×JHOˆY[]Y\ËœÚ^™HˆJKœÛXÙJL
+K›X\
+
+ÚÙ^KY[]Y\×JHOˆÂˆÛÛœİÙ]KÛİ‹‹œ™\Ûİ\˜ÙT\×HHÙ^KœÜ]
+	ß	ÊNÂˆÛÛœİ™\Ûİ\˜ÙHH™\Ûİ\˜ÙT\Ëš›Ú[Š	ß	ÊNÂˆ™]\›ˆÈ]KÛİ™\Ûİ\˜ÙK]™[YÎˆË‹‹šY[]Y\Ë˜[Y\Ê
+WK™š[\Š›ÛÛX[ŠHNÂˆJNÂŸB‚™[˜İ[Ûˆ\Ô›ÛÛT™[[]™[
+]™[
+HÂˆÛÛœİ\HHÛX[Š]™[	‰ˆ]™[\JKÓİÙ\Ø\ÙJ
+NÂˆÛÛœİXİ[ÛˆHÛX[Š]™[	‰ˆ]™[œÜ[Xİ[ÛŠKÓİÙ\Ø\ÙJ
+NÂˆ™]\›ˆÉÜ™[[	Ë	Ü›ÛÛWÜ™[[	×Kš[˜ÛY\Ê\JHˆÉÜ™[[	Ë	Ü›ÛÛWØ›ÛÚÚ[™É×Kš[˜ÛY\ÊXİ[ÛŠNÂŸB‚™[˜İ[ÛˆX›XÔ™[[Ûİ\Ô\İ
+]Kİ\[YJHÂˆ™]\›ˆZ\ZQ]U[YSZ[\Ê]Kİ\[YJHH]K››İÊ
+NÂŸB‚™[˜İ[Ûˆ›ÛÛTÛXŞQ›Ü”Ûİ
+›ÛÛKÙ][™Ë]Kİ\[YJHÂˆÛÛœİ^HHÉÜİ[‰Ë	Û[Û‰Ë	İYIË	İÙY	Ë	İIË	ÙœšIË	ÜØ]	×VİÙYZÙ^J]JWNÂˆÛÛœİÛXÚY\ÈHÙ][™È	‰ˆÙ][™ËœÛXÚY\È›ÛÛH	‰ˆ›ÛÛKœÛXÚY\ÈßNÂˆ™]\›ˆÛXÚY\È	‰ˆÛXÚY\ÖÙ^WH	‰ˆÛXÚY\ÖÙ^WVÜİ\[YWHßNÂŸB‚™[˜İ[Ûˆ›ÛÛP[İÜÒ[\˜[
+›ÛÛKÙ][™Ë]Kİ\[YK[™[YKİXš™XİY[ÙJHÂˆ›Üˆ
+]Z[]HH[YSZ[]\Êİ\[YJNÈZ[]H[YSZ[]\Ê[™[YJNÈZ[]H
+ÏHÌ
+HÂˆÛÛœİÛİHİš[™ÊX]™›ÛÜŠZ[]HÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™ÊZ[]H	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆÛÛœİÛXŞHH›ÛÛTÛXŞQ›Ü”Ûİ
+›ÛÛKÙ][™Ë]KÛİ
+NÂˆYˆ
+[ÙHOOH	Ü™[[	ÈÈÛXŞK˜›ØÚÔ™[[OOHYHˆÛXŞK˜›ØÚÔØÚY[HOOHYJH™]\›ˆ˜[ÙNÂˆYˆ
+ˆ[ÙHOOH	Ü™[[	È	‰‚ˆ\œ˜^Kš\Ğ\œ˜^JÛXŞKœİXš™XİYÊH	‰‚ˆÛXŞKœİXš™XİYË›[™İ	‰‚ˆ\ÛXŞKœİXš™XİYË›X\
+ÛX[ŠKš[˜ÛY\ÊÛX[ŠİXš™XİY
+JBˆ
+H™]\›ˆ˜[ÙNÂˆBˆ™]\›ˆYNÂŸB‚™[˜İ[Ûˆ›ÛÛTİ\ÜÔİXš™Xİ
+›ÛÛKİXš™XİY[™KÙ][™ÈHßJHÂˆYˆ
+\İXš™XİY
+H™]\›ˆYNÂˆÛÛœİİXš™XİHÛX[Š[™K›X\ËœİXš™XİÖÜİXš™XİYH	‰ˆ[™K›X\ËœİXš™XİÖÜİXš™XİYK›˜[YJKÓİÙ\Ø\ÙJ
+NÂˆÛÛœİ›ÛÛS˜[YHHÛX[Š›ÛÛK›˜[YJKÓİÙ\Ø\ÙJ
+NÂˆÛÛœİÛÛ™šYİ\™YHš\œİ\œ˜^JÙ][™ËÉØ[İÙYİXš™XİYÉ×JNÂˆÛÛœİÛİ\˜ÙPÛÛ™šYİ\™YHš\œİ\œ˜^J›ÛÛKÉØ[İÙYİXš™XİYÉË	ÜİXš™XİYÉ×JNÂˆÛÛœİ[İÙYHÛÛ™šYİ\™Y›[™İÈÛÛ™šYİ\™YˆÛİ\˜ÙPÛÛ™šYİ\™YÂˆYˆ
+[İÙY›[™İ	‰ˆX[İÙYš[˜ÛY\ÊİXš™XİY
+JH™]\›ˆ˜[ÙNÂˆÛÛœİ›Ùš[HH™[[›ÛÛT›Ùš[J›ÛÛKÙ][™ÊNÂˆYˆ
+ùâ-yhêúo$ß:fîùkd:o$ß9`¬ùílzo$ß:o$ùíaË\İ
+İXš™Xİ
+JHÂˆ™]\›ˆ›Ùš[K™\]Z\Y[œÛÛYJ
+][JHOˆÉØXÛİ\İX×Ù[\ÉË	Ù[Xİ›ÛšX×Ù[\É×Kš[˜ÛY\Ê][JJHˆúo$ß9ley¯%9g&9ííË\İ
+›ÛÛS˜[YJNÂˆBˆYˆ
+ùcé9ë£ËË\İ
+İXš™Xİ
+JHÂˆ™]\›ˆ›Ùš[K™\]Z\Y[š[˜ÛY\Ê	Ùİ^š[™ÉÊHùley¯%Ø]ØZ_9chydáù/"‹Ë\İ
+›ÛÛS˜[YJNÂˆBˆYˆ
+úbï9ä-:fîùkd9ä-Ù^X›Ø\™X[›ËË\İ
+İXš™Xİ
+JHÂˆYˆ
+›Ü›X[^™TX[›Õ\JÙ][™ËœX[›Õ\HÙ][™ËœX[›Ñ\]Z\Y[\JHOOH	Û›Û™IÊH™]\›ˆ˜[ÙNÂˆ™]\›ˆ›Ùš[K™\]Z\Y[š[˜ÛY\Ê	ÜX[›ÉÊH›ÛÛX[ŠÛÛ™šYİ\™YX[›Õ\J›ÛÛKÙ][™ÊJHˆúbï9ä-9nlùcìX[XZ_Ø]ØZ_9chydáù/"Ÿ9ä-9¢/ß9ley¯%9g&9ííË\İ
+›ÛÛS˜[YJNÂˆBˆYˆ
+[İÙY›[™İ
+H™]\›ˆYNÂˆ™]\›ˆYNÂŸB‚™[˜İ[Ûˆ›ÛÛT™\]Z\™\Ñİ^š[™Ó[İ™J›ÛÛKİXš™XİY[™JHÂˆÛÛœİİXš™XİHÛX[Š[™K›X\ËœİXš™XİÖÜİXš™XİYH	‰ˆ[™K›X\ËœİXš™XİÖÜİXš™XİYK›˜[YJKÓİÙ\Ø\ÙJ
+NÂˆ™]\›ˆùcé9ë£ËË\İ
+İXš™Xİ
+H	‰ˆÚØ]ØZ_9chydáù/"‹ÚK\İ
+ÛX[Š›ÛÛH	‰ˆ›ÛÛK›˜[YJJNÂŸB‚™[˜İ[Ûˆ›Ü›X[^™TX[›Õ\J˜[YJHÂˆÛÛœİ\HHÛX[Š˜[YJKÓİÙ\Ø\ÙJ
+NÂˆYˆ
+ÉÛ›Û™IË	Û›×ÜX[›É×Kš[˜ÛY\Ê\JJH™]\›ˆ	Û›Û™IÎÂˆYˆ
+ÉÙYÚ][ÜX[›ÉË	ÙYÚ][	Ë	Ù[XİšX×ÜX[›ÉË	úfîúbï9ä-	×Kš[˜ÛY\Ê\JJH™]\›ˆ	ÙYÚ][ÜX[›ÉÎÂˆYˆ
+ÉÙÜ˜[™ÜX[›ÉË	ÙÜ˜[™	Ë	ùnlùcì:bï9ä-	×Kš[˜ÛY\Ê\JJH™]\›ˆ	ÙÜ˜[™ÜX[›ÉÎÂˆYˆ
+Éİ\šYÚÜX[›ÉË	İ\šYÚ	Ë	ùæí9êâúbï9ä-	×Kš[˜ÛY\Ê\JJH™]\›ˆ	İ\šYÚÜX[›ÉÎÂˆ™]\›ˆ	ÉÎÂŸB‚™[˜İ[Ûˆ[™™\œ™YX[›Õ\J›ÛÛJHÂˆÛÛœİ˜[YHHÛX[Š›ÛÛH	‰ˆ›ÛÛK›˜[YJNÂˆYˆ
+ùley¯%9g&9ííË\İ
+˜[YJJH™]\›ˆ	ÙYÚ][ÜX[›ÉÎÂˆYˆ
+ŞX[XZKŠ¹nlùcì9nlùcìŠX[XZ_z&gúbï9ä-9.¥:&gúbï9ä-ÚK\İ
+˜[YJJH™]\›ˆ	ÙÜ˜[™ÜX[›ÉÎÂˆYˆ
+ÚØ]ØZ_9chydáù/"ŸX[XZKŠ¹æí9êâß9æí9êâËŠX[XZKÚK\İ
+˜[YJJH™]\›ˆ	İ\šYÚÜX[›ÉÎÂˆ™]\›ˆ	ÉÎÂŸB‚™[˜İ[ÛˆÛÛ™šYİ\™YX[›Õ\J›ÛÛKÙ][™ÈHßJHÂˆÛÛœİ^XÚ]H›Ü›X[^™TX[›Õ\JÙ][™ËœX[›Õ\HÙ][™ËœX[›Ñ\]Z\Y[\JNÂˆYˆ
+^XÚ]OOH	Û›Û™IÊH™]\›ˆ	ÉÎÂˆYˆ
+^XÚ]
+H™]\›ˆ^XÚ]ÂˆÛÛœİ\]Z\Y[HÂˆ‹‹™š\œİ\œ˜^JÙ][™ËÉÙ\]Z\Y[	Ë	Ü™[[\]Z\Y[	×JKˆ‹‹™š\œİ\œ˜^J›ÛÛKÉÙ\]Z\Y[	Ë	Ü™[[\]Z\Y[	×JBˆNÂˆÛÛœİÛÛ™šYİ\™YH\]Z\Y[›X\
+›Ü›X[^™TX[›Õ\JK™š[™
+
+\JHO‚ˆÉÙYÚ][ÜX[›ÉË	ÙÜ˜[™ÜX[›ÉË	İ\šYÚÜX[›É×Kš[˜ÛY\Ê\JBˆ
+NÂˆ™]\›ˆÛÛ™šYİ\™Y[™™\œ™YX[›Õ\J›ÛÛJNÂŸB‚™[˜İ[ÛˆX[›Õ\SX™[
+\JHÂˆYˆ
+\HOOH	ÙYÚ][ÜX[›ÉÊH™]\›ˆ	úfîúbï9ä-	ÎÂˆYˆ
+\HOOH	ÙÜ˜[™ÜX[›ÉÊH™]\›ˆ	ùnlùcì:bï9ä-	ÎÂˆYˆ
+\HOOH	İ\šYÚÜX[›ÉÊH™]\›ˆ	ùæí9êâúbï9ä-	ÎÂˆ™]\›ˆ	ÉÎÂŸB‚™[˜İ[Ûˆ›ÛÛQ\]Z\Y[X™[
+›ÛÛKÙ][™ÈHßJHÂˆ™]\›ˆX[›Õ\SX™[
+ÛÛ™šYİ\™YX[›Õ\J›ÛÛKÙ][™ÊJNÂŸB‚™[˜İ[Ûˆ™[[›ÛÛT›Ùš[J›ÛÛKÙ][™ÈHßJHÂˆÛÛœİ˜[YHHÛX[Š›ÛÛK›˜[YJKÓİÙ\Ø\ÙJ
+NÂˆ]\ÙU\\ÈHš\œİ\œ˜^JÙ][™ËÉİ\ÙU\\ÉË	Ü™[[\ÙU\\É×JNÂˆ]\]Z\Y[Hš\œİ\œ˜^JÙ][™ËÉÙ\]Z\Y[	Ë	Ü™[[\]Z\Y[	×JNÂˆYˆ
+]\ÙU\\Ë›[™İ
+H\ÙU\\ÈHš\œİ\œ˜^J›ÛÛKÉİ\ÙU\\ÉË	Ü™[[\ÙU\\É×JNÂˆYˆ
+Y\]Z\Y[›[™İ
+H\]Z\Y[Hš\œİ\œ˜^J›ÛÛKÉÙ\]Z\Y[	Ë	Ü™[[\]Z\Y[	×JNÂˆYˆ
+]\ÙU\\Ë›[™İ
+HÂˆ\ÙU\\ÈHÉÙİZ]\‰Ë	İXXÚ[™ÉË	Ûİ\‰×NÂˆYˆ
+úo$ß9ley¯%9g&9ííË\İ
+˜[YJJH\ÙU\\Ëœ\Ú
+	Ù[\ÉË	Ø˜[™	ÊNÂˆYˆ
+úbï9ä-9nlùcìX[XZ_Ø]ØZ_9chydáù/"Ÿ9ä-9¢/ß9ley¯%9g&9ííË\İ
+˜[YJJH\ÙU\\Ëœ\Ú
+	ÜX[›ÉÊNÂˆYˆ
+ùley¯%9g&9íí:(j9¯%Ë\İ
+˜[YJJH\ÙU\\Ëœ\Ú
+	Ø˜[™	ÊNÂˆYˆ
+ùley¯%Ø]ØZ_9chydáù/"‹Ë\İ
+˜[YJJH\ÙU\\Ëœ\Ú
+	Ùİ^š[™ÉÊNÂˆYˆ
+úc!:gìùk©:c!:gìËË\İ
+˜[YJJH\ÙU\\Ëœ\Ú
+	Ü™XÛÜ™[™ÉÊNÂˆBˆYˆ
+úfîùkd:o$ËË\İ
+˜[YJJH\]Z\Y[œ\Ú
+	Ù[Xİ›ÛšX×Ù[\ÉÊNÂˆYˆ
+ù`¬ùílzo$ß9â-yhêúo$ß9g&9ííË\İ
+˜[YJJH\]Z\Y[œ\Ú
+	ØXÛİ\İX×Ù[\ÉÊNÂˆYˆ
+úbï9ä-9nlùcìX[XZ_Ø]ØZ_9ä-9¢/ËË\İ
+˜[YJJH\]Z\Y[œ\Ú
+	ÜX[›ÉÊNÂˆYˆ
+ùley¯%9g&9ííË\İ
+˜[YJJH\]Z\Y[œ\Ú
+	ÙYÚ][ÜX[›ÉË	ÜX[›ÉÊNÂˆYˆ
+ŞX[XZKŠ¹nlùcì9nlùcìŠX[XZ_z&gúbï9ä-9.¥:&gúbï9ä-Ë\İ
+˜[YJJH\]Z\Y[œ\Ú
+	ÙÜ˜[™ÜX[›ÉË	ÜX[›ÉÊNÂˆYˆ
+ÚØ]ØZ_9chydáù/"ŸX[XZKŠ¹æí9êâß9æí9êâËŠX[XZKË\İ
+˜[YJJH\]Z\Y[œ\Ú
+	İ\šYÚÜX[›ÉË	ÜX[›ÉÊNÂˆYˆ
+ùley¯%Ë\İ
+˜[YJJH\]Z\Y[œ\Ú
+	Ùİ^š[™ÉÊNÂˆÛÛœİX[›Õ\HHÛÛ™šYİ\™YX[›Õ\J›ÛÛKÙ][™ÊNÂˆYˆ
+X[›Õ\JH\]Z\Y[œ\Ú
+X[›Õ\K	ÜX[›ÉÊNÂˆÛÛœİ[™™\œ™YØ\XÚ]HHùley¯%9g&9íí:(j9¯%Ë\İ
+˜[YJHÈˆÎÂˆ™]\›ˆÂˆ\ÙU\\ÎˆË‹‹›™]ÈÙ]
+\ÙU\\ÊWKˆ\]Z\Y[ˆË‹‹›™]ÈÙ]
+\]Z\Y[
+WKˆØ\XÚ]NˆX]›X^
+K[X™\ŠÙ][™Ë˜Ø\XÚ]H›ÛÛK˜Ø\XÚ]H[™™\œ™YØ\XÚ]JJKˆX›XÓ˜[YNˆÛX[ŠÙ][™ËœX›XÓ˜[YH›ÛÛKœX›XÓ˜[YH›ÛÛK›˜[YJBˆNÂŸB‚™[˜İ[Ûˆ›YÕYJ˜[YJHÂˆ™]\›ˆ˜[YHOOHYHÛX[Š˜[YJKÓİÙ\Ø\ÙJ
+HOOH	İYIÎÂŸB‚™[˜İ[Ûˆ™[[™Y™\™[˜ÙP[İÜÔ›ÛÛJ›ÛÛKÙ][™Ë]JHÂˆÛÛœİ\ÙU\HHÛX[Š]H	‰ˆ]K\ÙU\JNÂˆÛÛœİ˜[YHHÛX[Š›ÛÛH	‰ˆ›ÛÛK›˜[YJNÂˆYˆ
+\ÙU\HOOH	ÜX[›ÉÊHÂˆYˆ
+›Ü›X[^™TX[›Õ\JÙ][™È	‰ˆ
+Ù][™ËœX[›Õ\HÙ][™ËœX[›Ñ\]Z\Y[\JJHOOH	Û›Û™IÊH™]\›ˆ˜[ÙNÂˆÛÛœİ›ÛÛTX[›Õ\HHÛÛ™šYİ\™YX[›Õ\J›ÛÛKÙ][™ÊNÂˆÛÛœİ™Y™\™[˜ÙHHÛX[Š]H	‰ˆ]KœX[›Õ\JKÓİÙ\Ø\ÙJ
+Hˆ
+›YÕYJ]H	‰ˆ]K™^ÛYQYÚ][X[›ÊHÈ	Ù^ÛYWÙYÚ][	Èˆ	Ø[IÊNÂˆYˆ
+™Y™\™[˜ÙHOOH	Ù^ÛYWÙYÚ][	È	‰ˆ›ÛÛTX[›Õ\HOOH	ÙYÚ][ÜX[›ÉÊH™]\›ˆ˜[ÙNÂˆYˆ
+™Y™\™[˜ÙHOOH	ÙÜ˜[™ÜX[›ÉÈ	‰ˆ›ÛÛTX[›Õ\HOOH	ÙÜ˜[™ÜX[›ÉÊH™]\›ˆ˜[ÙNÂˆYˆ
+™Y™\™[˜ÙHOOH	İ\šYÚÜX[›ÉÈ	‰ˆ›ÛÛTX[›Õ\HOOH	İ\šYÚÜX[›ÉÊH™]\›ˆ˜[ÙNÂˆBˆYˆ
+\ÙU\HOOH	Ùİ^š[™ÉÈ	‰ˆÚØ]ØZ_9chydáù/"‹ÚK\İ
+˜[YJH	‰ˆY›YÕYJ]K˜[İÑİ^š[™Ó[İ™JJHÂˆ™]\›ˆ˜[ÙNÂˆBˆYˆ
+\ÙU\HOOH	Ù[\ÉÊHÂˆÛÛœİ[U\HHÛX[Š]K™[U\JNÂˆYˆ
+ÉØXÛİ\İX×Ù[\ÉË	Ù[Xİ›ÛšX×Ù[\É×Kš[˜ÛY\Ê[U\JJHÂˆ™]\›ˆ™[[›ÛÛT›Ùš[J›ÛÛKÙ][™ÊK™\]Z\Y[š[˜ÛY\Ê[U\JNÂˆBˆBˆ™]\›ˆYNÂŸB‚™[˜İ[Ûˆ™[[›ÛÛSX]Ú
+›ÛÛKÙ][™Ë]JHÂˆÛÛœİ›Ùš[HH™[[›ÛÛT›Ùš[J›ÛÛKÙ][™ÊNÂˆÛÛœİ\ÙU\HHÛX[Š]K\ÙU\JNÂˆÛÛœİ\]Z\Y[HÛX[Š]K™\]Z\Y[
+NÂˆÛÛœİ\TÚ^™HHX]›X^
+K[X™\Š]Kœ\TÚ^™HJJNÂˆYˆ
+›Ùš[K˜Ø\XÚ]H\TÚ^™JH™]\›ˆÈÛÛ\]X›Nˆ˜[ÙK]™[ˆ	ÉË›Ùš[K™X\ÛÛˆ9§ 9i&¹k®yí#H	Ü›Ùš[K˜Ø\XÚ]_H9.®˜NÂˆYˆ
+\]Z\Y[	‰ˆ\]Z\Y[OOH	ÛİÛ‰È	‰ˆ\›Ùš[K™\]Z\Y[š[˜ÛY\Ê\]Z\Y[
+JHÂˆ™]\›ˆÈÛÛ\]X›Nˆ˜[ÙK]™[ˆ	ÉË›Ùš[K™X\ÛÛˆ	ù¬¤¹§"y£!ùk¦º*+y`¦IÈNÂˆBˆYˆ
+]\ÙU\H›Ùš[K\ÙU\\Ëš[˜ÛY\Ê\ÙU\JJH™]\›ˆÈÛÛ\]X›NˆYK]™[ˆ	Ø™\İ	Ë›Ùš[K™X\ÛÛˆ	ÉÈNÂˆYˆ
+\]Z\Y[OOH	ÛİÛ‰ÈY\]Z\Y[
+H™]\›ˆÈÛÛ\]X›NˆYK]™[ˆ	Ø[\›˜]]™IË›Ùš[K™X\ÛÛˆ	ùênºe¤ù.ãycëù/oùå*	ÈNÂˆ™]\›ˆÈÛÛ\]X›Nˆ˜[ÙK]™[ˆ	ÉË›Ùš[K™X\ÛÛˆ	ù.#z`jyd":`&zh!yå*:`%	ÈNÂŸB‚™[˜İ[Ûˆ™\Ûİ\˜ÙQ]™[
+›İËX\ÈHßK™Xİ\œš[™Ó[™XYÙ\ÈH™]ÈÙ]
+
+JHÂˆÛÛœİÙ\šY\ĞØ[™Y]RYHÛX[Šˆ›İËœÙ\šY\ÒYˆ›İË™š^YÛİ\œÙRYˆ›İËœÛİ\˜ÙPÛİ\œÙRYˆ›İË˜Ûİ\œÙRYˆ›İËœØÚY[RYˆ
+NÂˆÛÛœİ™Xİ\œš[™ÈH›İËœ™Xİ\œš[™ÈOOHYHˆ™Xİ\œš[™Ó[™XYÙ\Ëš\ÊÙ\šY\ĞØ[™Y]RY
+Hˆ
+ˆÛX[Š›İË\H›İËšÚ[™
+KÓİÙ\Ø\ÙJ
+HOOH	Ùš^Y	È	‰‚ˆ™Xİ\œš[™Ó[™XYÙ\Ëš\ÊÛX[Š›İË™š^YÛİ\œÙRY›İËœÙ\šY\ÒYÛİ\˜ÙRY
+›İÊJJBˆ
+NÂˆ™]\›ˆÂˆYˆÛİ\˜ÙRY
+›İÊKˆÛİ\˜ÙRYˆÛİ\˜ÙRY
+›İÊKˆš^YÛİ\œÙRYˆÛX[Š›İË™š^YÛİ\œÙRY›İËœÛİ\˜ÙPÛİ\œÙRY›İËœÙ\šY\ÒY›İË˜Ûİ\œÙRY›İËœØÚY[RY
+KˆÙ\šY\ÒYˆÛX[Š›İËœÙ\šY\ÒY›İË™š^YÛİ\œÙRY›İËœÛİ\˜ÙPÛİ\œÙRY›İË˜Ûİ\œÙRY›İËœØÚY[RY
+Kˆ™Xİ\œš[™Ëˆ]Nˆ]™[]J›İÊKˆİ\[YNˆ]™[İ\
+›İÊKˆ[™[YNˆ]™[[™
+›İÊKˆ›ÛÛRYˆ]™[›ÛÛRY
+›İÊKˆXXÚ\’Yˆ]™[XXÚ\’Y
+›İÊKˆİY[YÎˆË‹‹›™]ÈÙ]
+]™[İY[YÊ›İÊJWKˆİY[^[Y[YÎˆš\œİ\œ˜^J›İËÉÜİY[^[Y[YÉË	İZ][Û”\š[ÙYÉË	Ü^[Y[YÉ×JKˆİXš™XİYˆ]™[İXš™XİY
+›İÊKˆİ]\Îˆ›Ü›X[^™TØÚY[Tİ]\Ê›İËœİ]\È	ÜØÚY[Y	ÊKˆ\NˆÛX[Š›İË\H›İËšÚ[™	Û\ÜÛÛ‰ÊKˆÜ[Xİ[ÛˆÛX[Š›İËœÜ[Xİ[ÛŠKˆÜ[Ú[™ÙRYˆÛX[Š›İËœÜ[Ú[™ÙRY
+Kˆ™\]Y\İY›ÛÛRYˆÛX[Š›İËœ™\]Y\İY›ÛÛRY
+Kˆ[™[™Ô™X\ÛÛˆÛX[Š›İËœ[™[™Ô™X\ÛÛŠKˆ™\Ûİ\˜ÙRYÎˆ]™[Ú\™Y™\Ûİ\˜ÙRYÊ›İËX\ÊBˆNÂŸB‚™[˜İ[ÛˆX›XÑ]™[
+›İËX\ËİÛ•XXÚ\’Y™Xİ\œš[™Ó[™XYÙ\ÈH™]ÈÙ]
+
+JHÂˆÛÛœİ™\Ûİ\˜ÙHH™\Ûİ\˜ÙQ]™[
+›İËX\Ë™Xİ\œš[™Ó[™XYÙ\ÊNÂˆÛÛœİ\ÓİÛˆH›ÛÛX[ŠİÛ•XXÚ\’Y	‰ˆ™\Ûİ\˜ÙKXXÚ\’YOOHİÛ•XXÚ\’Y
+NÂˆ™]\›ˆÂˆYˆ™\Ûİ\˜ÙKšYˆÛİ\˜ÙRYˆ™\Ûİ\˜ÙKœÛİ\˜ÙRYˆš^YÛİ\œÙRYˆ™\Ûİ\˜ÙK™š^YÛİ\œÙRYˆÙ\šY\ÒYˆ™\Ûİ\˜ÙKœÙ\šY\ÒYˆ™Xİ\œš[™Îˆ™\Ûİ\˜ÙKœ™Xİ\œš[™Ëˆ]Nˆ™\Ûİ\˜ÙK™]Kˆİ\[YNˆ™\Ûİ\˜ÙKœİ\[YKˆ[™[YNˆ™\Ûİ\˜ÙK™[™[YKˆ›ÛÛRYˆ™\Ûİ\˜ÙKœ›ÛÛRYˆ›ÛÛS˜[YNˆÛX[ŠX\Ëœ›ÛÛ\ÖÜ™\Ûİ\˜ÙKœ›ÛÛRYH	‰ˆX\Ëœ›ÛÛ\ÖÜ™\Ûİ\˜ÙKœ›ÛÛRYK›˜[YJKˆXXÚ\’Yˆ™\Ûİ\˜ÙKXXÚ\’YˆXXÚ\“˜[YNˆ\ÓİÛˆÈÛX[ŠX\ËXXÚ\œÖÜ™\Ûİ\˜ÙKXXÚ\’YH	‰ˆX\ËXXÚ\œÖÜ™\Ûİ\˜ÙKXXÚ\’YK›˜[YJHˆ	ÉËˆİY[YÎˆ\ÓİÛˆÈ™\Ûİ\˜ÙKœİY[YÈˆ×KˆİY[^[Y[YÎˆ\ÓİÛˆÈ™\Ûİ\˜ÙKœİY[^[Y[YÈˆ×KˆİY[˜[Y\Îˆ\ÓİÛˆÈ™\Ûİ\˜ÙKœİY[YË›X\
+
+Y
+HOˆÛX[ŠX\ËœİY[ÖÚYH	‰ˆX\ËœİY[ÖÚYK›˜[YJJK™š[\Š›ÛÛX[ŠHˆ×KˆİXš™XİYˆ™\Ûİ\˜ÙKœİXš™XİYˆİXš™Xİ˜[YNˆÛX[ŠX\ËœİXš™XİÖÜ™\Ûİ\˜ÙKœİXš™XİYH	‰ˆX\ËœİXš™XİÖÜ™\Ûİ\˜ÙKœİXš™XİYK›˜[YJKˆİ]\Îˆ™\Ûİ\˜ÙKœİ]\Ëˆ\Nˆ™\Ûİ\˜ÙK\KˆÜ[Xİ[Ûˆ™\Ûİ\˜ÙKœÜ[Xİ[Û‹ˆÜ[Ú[™ÙRYˆ™\Ûİ\˜ÙKœÜ[Ú[™ÙRYˆ™\]Y\İY›ÛÛRYˆ™\Ûİ\˜ÙKœ™\]Y\İY›ÛÛRYˆ[™[™Ô™X\ÛÛˆ™\Ûİ\˜ÙKœ[™[™Ô™X\ÛÛ‹ˆZ][Û”\š[ÙYˆ\ÓİÛˆÈÛX[Š›İËZ][Û”\š[ÙY›İËœ\š[ÙY›İËœİY[^[Y[
+Hˆ	ÉËˆZ][Û[[İ[ˆ\ÓİÛˆÈ[X™\Š›İËZ][Û[[İ[›İË˜Ûİ\œÙP[[İ[›İË™™YP[[İ[›İË™^XİY[[İ[
+HˆˆXXÚ\[[İ[ˆ\ÓİÛˆÈ[X™\Š›İËXXÚ\[[İ[›İËXXÚ\”^H›İËœ^P[[İ[›İËœÜXÚX[XXÚ\”^H
+HˆˆXXÚ\”˜]Nˆ\ÓİÛˆÈÛX[Š›İËXXÚ\”˜]H›İËœÚ\™T˜]H›İË˜[İ˜]H›İËœ\˜Ù[YÙJHˆ	ÉËˆÜXÚX[\ÜÛÛ”šXÙNˆ\ÓİÛˆÈ[X™\Š›İËœÜXÚX[\ÜÛÛ”šXÙH›İËZ][Û[[İ[›İË˜Ûİ\œÙP[[İ[
+HˆˆÜXÚX[XXÚ\”^Nˆ\ÓİÛˆÈ[X™\Š›İËœÜXÚX[XXÚ\”^H›İËXXÚ\[[İ[›İËXXÚ\”^H
+HˆˆXXÚ\”^PY\İY[ˆ\ÓİÛˆÈ[X™\Š›İËXXÚ\”^PY\İY[
+HˆˆXXÚ\”^PY\İY[™X\ÛÛˆ\ÓİÛˆÈÛX[Š›İËXXÚ\”^PY\İY[™X\ÛÛŠHˆ	ÉËˆXXÚ\”^XX›Nˆ\ÓİÛˆÈ›İËXXÚ\”^XX›HOOH˜[ÙHˆ˜[ÙKˆÜXÚX[\ÜÛÛˆ\ÓİÛˆ	‰ˆ
+›İËœÜXÚX[\ÜÛÛˆOOHYHÛX[Š›İËœÜ[Xİ[ÛŠHOOH	İXXÚ\—ÙÚY	ÊKˆİÛˆ\ÓİÛ‹ˆ\ŞNˆZ\ÓİÛ‚ˆNÂŸB‚™[˜İ[Ûˆ[™^RY
+›İÜÊHÂˆ™]\›ˆ›İÜËœ™YXÙJ
+XØË›İÊHOˆÂˆÛÛœİYHÛİ\˜ÙRY
+›İÊNÂˆYˆ
+Y
+HXØÖÚYHH›İÎÂˆ™]\›ˆXØÎÂˆKßJNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXİ]™TİY[İ\Ü[œÚ[ÛœÊ
+HÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[İ\Ü[œÚ[ÛœÉÊBˆÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊBˆ™Ù]
+
+NÂˆ™]\›ˆÛ˜\Úİ™ØÜË›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÂˆYˆØËšYˆKœÛÛ•˜[YJØË™]J
+JHßJJNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™XÛÛ˜Ú[TİY[İ\Ü[œÚ[ÛœÑ›Ü“™]ÔØÚY[\ÊİY[YÊHÂˆÛÛœİØ[YH™]ÈÙ]
+
+İY[YÈ×JK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠJNÂˆYˆ
+]Ø[YœÚ^™JH™]\›ˆXİ]™TİY[İ\Ü[œÚ[ÛœÊ
+NÂˆÛÛœİÜİ\Ü[œÚ[ÛœËš^YÛİ\œÙ\Ë[\Ü˜\PÛİ\œÙ\ËÚ[™ÙTÛ˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+ÂˆXİ]™TİY[İ\Ü[œÚ[ÛœÊ
+KˆZ\œ›Ü”›İÜÊ	Ùš^YÛİ\œÙ\ÉÊKˆZ\œ›Ü”›İÜÊ	İ[\Ü˜\PÛİ\œÙ\ÉÊKˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊKÚ\™J	ØXİ]™IË	ÏOIËYJK™Ù]
+
+BˆJNÂˆÛÛœİÚ[™Ù\ÈHÚ[™ÙTÛ˜\Úİ™ØÜË›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÂˆ×ÚYˆØËšYˆ×ØÜ™X]Y]Z[\Îˆ\ÓZ[\Ê
+ØË™]J
+HßJK˜Ü™X]Y]
+BˆKœÛÛ•˜[YJØË™]J
+JHßJJNÂˆÛÛœİ™XXİ]˜]YH×NÂˆİ\Ü[œÚ[ÛœË™š[\Š
+›İÊHOˆØ[Yš\ÊÛX[Š›İËœİY[Y
+JJK™›Ü‘XXÚ
+
+İ\Ü[œÚ[ÛŠHOˆÂˆÛÛœİİY[YHÛX[Šİ\Ü[œÚ[Û‹œİY[Y
+NÂˆÛÛœİXXÚ\’YHÛX[Šİ\Ü[œÚ[Û‹XXÚ\’Y
+NÂˆÛÛœİ]İÜH™]ÈÙ]
+
+İ\Ü[œÚ[Û‹˜Ûİ\œÙRYĞ]İÜ×JK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠJNÂˆÛÛœİİÜY]H\ÓZ[\Êİ\Ü[œÚ[Û‹œ™\]Y\İY]
+NÂˆÛÛœİ\Ó™]ÓZ\œ›ÜÛİ\œÙHHË‹‹™š^YÛİ\œÙ\Ë‹‹[\Ü˜\PÛİ\œÙ\×KœÛÛYJ
+Ûİ\œÙJHOˆÂˆYˆ
+]™[XXÚ\’Y
+Ûİ\œÙJHOOHXXÚ\’YY]™[İY[YÊÛİ\œÙJKš[˜ÛY\ÊİY[Y
+JH™]\›ˆ˜[ÙNÂˆÛÛœİÛİ\œÙRYÈHÛİ\œÙTÛİ\˜ÙRYÊÛİ\œÙJK˜ÛÛ˜Ø]
+Ûİ\˜ÙRY
+Ûİ\œÙJJK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠNÂˆYˆ
+]İÜœÚ^™JH™]\›ˆÛİ\œÙRYËœÛÛYJ
+Y
+HOˆX]İÜš\ÊY
+JNÂˆÛÛœİÛİ\œÙU\]Y]H\ÓZ[\ÊˆÛİ\œÙK˜Ü™X]Y]Ûİ\œÙK\]Y]Ûİ\œÙK˜Ü™X]Y]HÛİ\œÙK\]Y]Bˆ
+NÂˆ™]\›ˆ›ÛÛX[ŠİÜY]	‰ˆÛİ\œÙU\]Y]ˆİÜY]
+NÂˆJNÂˆÛÛœİ\Ó™]ÔÜ[Ûİ\œÙHHÚ[™Ù\ËœÛÛYJ
+Ú[™ÙJHO‚ˆÉÙ^˜WÛ\ÜÛÛ‰Ë	İXXÚ\—ÙÚY	×Kš[˜ÛY\ÊÛX[ŠÚ[™ÙK˜Xİ[ÛŠJH	‰‚ˆ]™[XXÚ\’Y
+Ú[™ÙK™]™[Ú[™ÙJHOOHXXÚ\’Y	‰‚ˆ]™[İY[YÊÚ[™ÙK™]™[Ú[™ÙJKš[˜ÛY\ÊİY[Y
+H	‰‚ˆ
+\İÜY][X™\ŠÚ[™ÙK—×ØÜ™X]Y]Z[\È
+HˆİÜY]
+Bˆ
+NÂˆYˆ
+\Ó™]ÓZ\œ›ÜÛİ\œÙH\Ó™]ÔÜ[Ûİ\œÙJH™XXİ]˜]Yœ\Ú
+İ\Ü[œÚ[ÛŠNÂˆJNÂˆYˆ
+™XXİ]˜]Y›[™İ
+HÂˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆ™XXİ]˜]Y™›Ü‘XXÚ
+
+›İÊHOˆ˜]ÚœÙ]
+ˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[İ\Ü[œÚ[ÛœÉÊK™ØÊÛX[Š›İËšY›İËœİ\Ü[œÚ[Û’Y
+JKˆÂˆİ]\Îˆ	Ü™XXİ]˜]Y	Ëˆ™XXİ]˜]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™XXİ]˜]Y]^ˆ›İÕ^
+
+Kˆ™XXİ]˜]Y™X\ÛÛˆ	Û™]Ë\ØÚY[KY]XİY	Ëˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKˆÈY\™ÙNˆYHBˆ
+JNÂˆ˜]ÚœÙ]
+ØÚY[U™\œÚ[Û”™YŠ
+KÂˆ™\œÚ[ÛˆšY[˜[YKš[˜Ü™[Y[
+JKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆ	ÜİY[X]]Ë\™XXİ]˜][Û‰ÂˆKÈY\™ÙNˆYHJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂˆBˆÛÛœİ™XXİ]˜]YYÈH™]ÈÙ]
+™XXİ]˜]Y›X\
+
+›İÊHOˆÛX[Š›İËšY›İËœİ\Ü[œÚ[Û’Y
+JJNÂˆ™]\›ˆİ\Ü[œÚ[ÛœË™š[\Š
+›İÊHOˆ\™XXİ]˜]YYËš\ÊÛX[Š›İËšY›İËœİ\Ü[œÚ[Û’Y
+JJNÂŸB‚™[˜İ[ÛˆXİ]™SX\›š[™ÔİY[YÊİY[›İÜËÛİ\œÙT›İÜË]™[›İÜËİ\Ü[œÚ[ÛœÊHÂˆÛÛœİXİ]™TİY[ÈH™]ÈÙ]
+
+İY[›İÜÈ×JBˆ™š[\Š
+›İÊHOˆ›İË—×ÛZ\œ›ÜXİ]™HOOH˜[ÙH	‰ˆÛİ\˜ÙPXİ]™J›İÊJBˆ›X\
+Ûİ\˜ÙRY
+Bˆ™š[\Š›ÛÛX[ŠJNÂˆÛÛœİ]˜Z[X›HH™]ÈÙ]
+
+NÂˆË‹‹ŠÛİ\œÙT›İÜÈ×JK‹‹Š]™[›İÜÈ×JWK™›Ü‘XXÚ
+
+Ûİ\œÙJHOˆÂˆÛÛœİXXÚ\’YH]™[XXÚ\’Y
+Ûİ\œÙJNÂˆ]™[İY[YÊÛİ\œÙJK™›Ü‘XXÚ
+
+İY[Y
+HOˆÂˆYˆ
+XXİ]™TİY[Ëš\ÊİY[Y
+JH™]\›ÂˆÛÛœİ›ØÚÙYH
+İ\Ü[œÚ[ÛœÈ×JKœÛÛYJ
+İ\Ü[œÚ[ÛŠHO‚ˆÛX[Šİ\Ü[œÚ[Û‹œİY[Y
+HOOHİY[Y	‰‚ˆÛX[Šİ\Ü[œÚ[Û‹XXÚ\’Y
+HOOHXXÚ\’Yˆ
+NÂˆYˆ
+X›ØÚÙY
+H]˜Z[X›K˜Y
+İY[Y
+NÂˆJNÂˆJNÂˆ™]\›ˆ]˜Z[X›NÂŸB‚™[˜İ[Ûˆİ\Ü[œÚ[Û\Y\ÕÑ]™[
+İ\Ü[œÚ[Û‹›İÊHÂˆÛÛœİY™™Xİ]™Q]HH]RÙ^Jˆİ\Ü[œÚ[Û‹™Y™™Xİ]™Q]Hˆİ\Ü[œÚ[Û‹œİÜ]Hˆİ\Ü[œÚ[Û‹œ™\]Y\İY]^ˆ
+NÂˆ™]\›ˆÛX[Šİ\Ü[œÚ[Û‹XXÚ\’Y
+HOOH]™[XXÚ\’Y
+›İÊH	‰‚ˆ]™[İY[YÊ›İÊKš[˜ÛY\ÊÛX[Šİ\Ü[œÚ[Û‹œİY[Y
+JH	‰‚ˆ
+YY™™Xİ]™Q]H]™[]J›İÊHHY™™Xİ]™Q]JNÂŸB‚™[˜İ[Ûˆ\TİY[İ\Ü[œÚ[ÛœÊ›İËİ\Ü[œÚ[ÛœÊHÂˆÛÛœİÜšYÚ[˜[İY[YÈH]™[İY[YÊ›İÊNÂˆYˆ
+[ÜšYÚ[˜[İY[YË›[™İ
+H™]\›ˆ›İÎÂˆÛÛœİ™]Z[™YİY[YÈHÜšYÚ[˜[İY[YË™š[\Š
+İY[Y
+HO‚ˆJİ\Ü[œÚ[ÛœÈ×JKœÛÛYJ
+İ\Ü[œÚ[ÛŠHO‚ˆÛX[Šİ\Ü[œÚ[Û‹œİY[Y
+HOOHİY[Y	‰‚ˆİ\Ü[œÚ[Û\Y\ÕÑ]™[
+İ\Ü[œÚ[Û‹›İÊBˆ
+Bˆ
+NÂˆYˆ
+™]Z[™YİY[YË›[™İOOHÜšYÚ[˜[İY[YË›[™İ
+H™]\›ˆ›İÎÂˆYˆ
+\™]Z[™YİY[YË›[™İ
+H™]\›ˆ[Âˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠßK›İËÂˆİY[Yˆ™]Z[™YİY[YË›[™İOOHHÈ™]Z[™YİY[YÖÌHˆ	ÉËˆİY[YÎˆ™]Z[™YİY[YËˆİY[Îˆ™]Z[™YİY[YËˆİY[ÚYÎˆ™]Z[™YİY[YÂˆJNÂŸB‚˜\Ş[˜È[˜İ[ÛˆØÚY[P[™Jİ\]K[™]KİÛ•XXÚ\’Y
+HÂˆÛÛœİÜ›ÛÛ\ËİXš™XİËİY[ËXXÚ\œË]™[Ëš^Y[\Ü˜\K™[[ËÚ[™Ù\Ëİ\Ü[œÚ[Ûœ×HH]ØZ]›ÛZ\ÙK˜[
+ÂˆZ\œ›Ü”›İÜÊ	Ü›ÛÛ\ÉÊKˆZ\œ›Ü”›İÜÊ	ÜİXš™XİÉÊKˆZ\œ›Ü”›İÜÊ	ÜİY[ÉÊKˆZ\œ›Ü”›İÜÊ	İXXÚ\œÉÊKˆZ\œ›Ü”›İÜĞQ]T˜[™ÙJ	Ù]™[ÉËİ\]K[™]KÈ[˜ÛYR[˜Xİ]™NˆYHJKˆZ\œ›Ü”›İÜÊ	Ùš^YÛİ\œÙ\ÉÊKˆZ\œ›Ü”›İÜĞQ]T˜[™ÙJ	İ[\Ü˜\PÛİ\œÙ\ÉËİ\]K[™]JKˆZ\œ›Ü”›İÜĞQ]T˜[™ÙJ	Ü›ÛÛT™[[ÉËİ\]K[™]JKˆØÚY[PÚ[™ÙQØÜĞQ]T˜[™ÙJİ\]K[™]JKˆXİ]™TİY[İ\Ü[œÚ[ÛœÊ
+BˆJNÂˆÛÛœİX\ÈHÂˆ›ÛÛ\Îˆ[™^RY
+›ÛÛ\ÊKˆİXš™XİÎˆ[™^RY
+İXš™XİÊKˆİY[Îˆ[™^RY
+İY[ÊKˆXXÚ\œÎˆ[™^RY
+XXÚ\œÊBˆNÂˆÛÛœİ]™TÜ[Ûİ\˜ÙHH
+›İÊHOˆ×˜Ûİ\œÙK\Ü[ÚK\İ
+ÛX[Š›İÈ	‰ˆ›İËœÛİ\˜ÙJJNÂˆËÈ9aiycèùnî¹êâùæ¡:,áù¥¦y.éH]™HÚ[™ÙH9à®¹e+ù. 9®¥¹¤æ»ï&ùd#9«iz`,ˆZ\œ›Üˆ9æ¡:""¹bkù§+9. 9o¢ù.#ya£BˆËÈ9càú"!ùclù¦`¹ch9å*;ï#:`&yª(ùcå¹­¢9o£9.#y§ ùëby."ù. 9«(zgìù¥fzfì¹d#9«iy¢czaâùaî¸à ‚ˆÛÛœİ[”˜[™ÙQ^XİH
+›İÊHO‚ˆ[]™TÜ[Ûİ\˜ÙJ›İÊH	‰‚ˆ]™[]J›İÊHHİ\]H	‰‚ˆ]™[]J›İÊHH[™]H	‰‚ˆ]™[İ\
+›İÊH	‰‚ˆ]™[[™
+›İÊNÂˆÛÛœİØ[›ÛšXØ[]™[ÈH]™[Ë™š[\Š[”˜[™ÙQ^Xİ
+NÂˆÛÛœİØ[›ÛšXØ[Ù^\ÈH™]ÈÙ]
+
+NÂˆØ[›ÛšXØ[]™[Ë™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛİ\œÙTÛİ\˜ÙRYÊ›İÊK™›Ü‘XXÚ
+
+Y
+HOˆØ[›ÛšXØ[Ù^\Ë˜Y
+	ÚY_	Ù]™[]J›İÊ_X
+JNÂˆJNÂˆËÈ9«hùo#ù¥éz(j]™[È9¦+ùd#:*¬¹d#9¥éyæ¡9e+ù. 9®¥¹¤æ¸à ¹clù/où¦`ºe¤ùmì¹¥.xà y©kybæyâà9¡bùmì¹cå¹­¢;ï#ˆËÈ:`ïyoázh":$âú`cˆ[\Ü˜\PÛİ\œÙ\ÈÈ›ÛÛT™[[È9æ¡:""¹bkù§+;ï&ùfè9«i9a*¹ab:cmy.#yd*ù¦`ºe¤øà ‚ˆÛÛœİÙ[XİYØ[›ÛšXØ[Ù^\ÈH™]ÈÙ]
+
+NÂˆÛÛœİÙ[XİYØ[›ÛšXØ[HØ[›ÛšXØ[]™[Âˆ™š[\ŠØÚY[SØØİ\œ™[˜ÙPXİ]™JBˆœÛXÙJ
+BˆœÛÜ
+
+YšYÚ
+HO‚ˆ[X™\ŠšYÚ—×ÛZ\œ›Ü•\]Y]\ÓZ[\ÊšYÚ\]Y]
+JHBˆ[X™\ŠY—×ÛZ\œ›Ü•\]Y]\ÓZ[\ÊY\]Y]
+JHˆÛİ\˜ÙRY
+šYÚ
+K›ØØ[PÛÛ\\™JÛİ\˜ÙRY
+Y
+JBˆ
+Bˆ™š[\Š
+›İÊHOˆÂˆÛÛœİÙ^\ÈHÛİ\œÙTÛİ\˜ÙRYÊ›İÊK›X\
+
+Y
+HOˆ	ÚY_	Ù]™[]J›İÊ_X
+NÂˆYˆ
+Ù^\ËœÛÛYJ
+Ù^JHOˆÙ[XİYØ[›ÛšXØ[Ù^\Ëš\ÊÙ^JJJH™]\›ˆ˜[ÙNÂˆÙ^\Ë™›Ü‘XXÚ
+
+Ù^JHOˆÙ[XİYØ[›ÛšXØ[Ù^\Ë˜Y
+Ù^JJNÂˆ™]\›ˆYNÂˆJNÂˆÛÛœİØ[›ÛšXØ[İ]\ĞRÙ^HH™]ÈX\
+
+NÂˆÙ[XİYØ[›ÛšXØ[™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛİ\œÙTÛİ\˜ÙRYÊ›İÊK™›Ü‘XXÚ
+
+Y
+HOˆÂˆØ[›ÛšXØ[İ]\ĞRÙ^KœÙ]
+	ÚY_	Ù]™[]J›İÊ_X›Ü›X[^™TØÚY[Tİ]\Ê›İËœİ]\È	ÜØÚY[Y	ÊJNÂˆJNÂˆJNÂˆØ[›ÛšXØ[]™[Ë™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛİ\œÙTÛİ\˜ÙRYÊ›İÊK™›Ü‘XXÚ
+
+Y
+HOˆÂˆÛÛœİÙ^HH	ÚY_	Ù]™[]J›İÊ_XÂˆYˆ
+XØ[›ÛšXØ[İ]\ĞRÙ^Kš\ÊÙ^JJHØ[›ÛšXØ[İ]\ĞRÙ^KœÙ]
+Ù^K	ØØ[˜Ù[Y	ÊNÂˆJNÂˆJNÂˆÛÛœİİÙ\‘^Xİ›İÜÈHË‹‹[\Ü˜\K‹‹œ™[[×K™š[\Š[”˜[™ÙQ^Xİ
+K™š[\Š
+›İÊHO‚ˆXÛİ\œÙTÛİ\˜ÙRYÊ›İÊKœÛÛYJ
+Y
+HOˆØ[›ÛšXØ[Ù^\Ëš\Ê	ÚY_	Ù]™[]J›İÊ_X
+JBˆ
+NÂˆÛÛœİ^XİÛİ\˜ÙT›İÜÈHË‹‹˜Ø[›ÛšXØ[]™[Ë‹‹›İÙ\‘^Xİ›İÜ×NÂˆÛÛœİ^XİØ[™Y]\ÈHË‹‹œÙ[XİYØ[›ÛšXØ[‹‹›İÙ\‘^Xİ›İÜË™š[\ŠØÚY[SØØİ\œ™[˜ÙPXİ]™JWNÂˆËÈ9¥éz(j]™[È9¦+ù£!ùk¦¹¥éy§'ùæ¡9§ 9¥¬9ç'ùæî;ï#9a*¹ab9¥¯[\Ü˜\PÛİ\œÙ\ÈÈ›ÛÛT™[[ÂˆËÈ9.+ycëú ïy.ãy«¦9åfyæ¡9d#9. 9/¡¹®¤9bkù§+8à ¹.éy¢`9§"y/¡¹®¤Y
+È9¥éy§'ù¦`ºe¤ùnî¹êâùb)yd#{ï#:`oùacyd#9. 9h ‚ˆËÈ:(ªúaãz)!ùë¥ù¢$9ajy`"ùch9å*9.¢ù.í¸à ‚ˆÛÛœİ^Xİ[X\ÈH™]ÈÙ]
+
+NÂˆÛÛœİ^XİH×NÂˆ^XİØ[™Y]\Ë™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİ[X\Ù\ÈHÛİ\œÙTÛİ\˜ÙRYÊ›İÊK›X\
+
+Y
+HO‚ˆ	ÚY_	Ù]™[]J›İÊ__	Ù]™[İ\
+›İÊ__	Ù]™[[™
+›İÊ_Xˆ
+NÂˆYˆ
+[X\Ù\ËœÛÛYJ
+Ù^JHOˆ^Xİ[X\Ëš\ÊÙ^JJJH™]\›Âˆ^Xİœ\Ú
+›İÊNÂˆ[X\Ù\Ë™›Ü‘XXÚ
+
+Ù^JHOˆ^Xİ[X\Ë˜Y
+Ù^JJNÂˆJNÂˆÛÛœİ^XİÙ^\ÈH™]ÈÙ]
+
+NÂˆËÈ9cå¹­¢;ï#ù`g:*¬¹æ¡9¥éz(j9b%ù§+:.ªù.#ych9å*;ï#9/a¹.ãy¦+ùfî¹k¦º*¬º*l¹¥éy§'ùæ¡ÛXœİÛ™{ï&ÂˆËÈ9oázh":f.ù«hˆ™Xİ\œš[™È^[œÚ[Ûˆ9¢¢¹k úaãy¥¬9å'ùfç¹/¡¸à ‚ˆ^XİÛİ\˜ÙT›İÜË™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛİ\œÙTÛİ\˜ÙRYÊ›İÊK™›Ü‘XXÚ
+
+Y
+HOˆ^XİÙ^\Ë˜Y
+	ÚY_	Ù]™[]J›İÊ_X
+JNÂˆJNÂˆÛÛœİ^[™YH×NÂˆš^Y™š[\Š
+›İÊHOˆ[]™TÜ[Ûİ\˜ÙJ›İÊJK™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİİ\H]™[]J›İÊNÂˆYˆ
+\İ\Y]™[İ\
+›İÊHY]™[[™
+›İÊJH™]\›ÂˆÛÛœİ^XÚ][™H]RÙ^J›İË™[™]H›İËœ™Xİ\œ™[˜ÙQ[™]JNÂˆÛÛœİİÜ]HH]RÙ^J›İËœİÜ]H›İËœİÜY]]H›İËš[˜Xİ]™Q]JNÂˆÛÛœİš[˜[]HH^XÚ][™	‰ˆİÜ]BˆÈÙ^XÚ][™İÜ]WKœÛÜ
+
+VÌBˆˆ
+^XÚ][™İÜ]H
+Ûİ\˜ÙPXİ]™J›İÊHÈ[™]Hˆİ\
+JNÂˆÛÛœİ[\˜[HØY™Qœ™\]Y[˜ŞUÙYZÜÊ›İË™œ™\]Y[˜ŞUÙYZÜÈ›İËš[\˜[ÙYZÜÊNÂˆÛÛœİİ\^\ÈH[\˜[
+ˆÎÂˆÛÛœİ[\ÙY^\ÈHX]›X^
+X]™›ÛÜŠˆ
+™]È]J	Üİ\]_ULŒŒ
+ÌŒ
+K™Ù][YJ
+HH™]È]J	Üİ\ULŒŒ
+ÌŒ
+K™Ù][YJ
+JHÈˆ
+JNÂˆ]Ù^HH[\ÙY^\ÈÈY^\Êİ\X]˜ÙZ[
+[\ÙY^\ÈÈİ\^\ÊH
+ˆİ\^\ÊHˆİ\Âˆ›Üˆ
+ÈÙ^HH[™]H	‰ˆÙ^HHš[˜[]NÈÙ^HHY^\ÊÙ^Kİ\^\ÊJHÂˆÛÛœİİ]\ĞQ]HH›İËœİ]\ĞQ]H›İË™^Ù\[ÛœÈßNÂˆÛÛœİİ]\ÈH›Ü›X[^™TØÚY[Tİ]\Êİ]\ĞQ]VÚÙ^WJNÂˆYˆ
+İ]\ÈOOH	ØØ[˜Ù[Y	ÊHÛÛ[YNÂˆÛÛœİÛÛ™HHØš™Xİ˜\ÜÚYÛŠßK›İËÂˆ]NˆÙ^Kˆİ]\Îˆİ]\ÈOOH	ÜØÚY[Y	ÈÈÛX[Š›İËœİ]\È	ÜØÚY[Y	ÊHˆİ]\Ëˆ×ÚYˆ	ÜÛİ\˜ÙRY
+›İÊ_P	ÚÙ^_Xˆš^YÛİ\œÙRYˆÛİ\˜ÙRY
+›İÊBˆJNÂˆYˆ
+Y^XİÙ^\Ëš\Ê	ÜÛİ\˜ÙRY
+›İÊ__	ÚÙ^_X
+JH^[™Yœ\Ú
+ÛÛ™JNÂˆBˆJNÂˆÛÛœİİ™\›^HHÚ[™Ù\Ë›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJJNÂˆÛÛœİ™[[İ™YH™]ÈÙ]
+İ™\›^K™š[\Š
+›İÊHOˆÉÜÚ[™ÛWÛ[İ™IË	ØØ[˜Ù[	Ë	Û\ÜÛÛ—Üİ]\É×Kš[˜ÛY\Ê›İË˜Xİ[ÛŠJBˆ™›]X\
+
+›İÊHOˆÂˆ	ØÛX[Š›İËœÛİ\˜ÙQ]™[Y
+__	Ù]RÙ^J›İËœÛİ\˜ÙQ]J_Xˆ	ØÛX[Š›İËœÛİ\˜ÙPÛİ\œÙRY
+__	Ù]RÙ^J›İËœÛİ\˜ÙQ]J_XˆJJNÂˆÛÛœİXİ]™Qš^Y›İÜÈHš^Y™š[\Š
+›İÊHOˆ[]™TÜ[Ûİ\˜ÙJ›İÊH	‰ˆÛİ\˜ÙPXİ]™J›İÊJNÂˆÛÛœİXİ]™Qš^YS[™XYÙHH™]ÈX\
+Xİ]™Qš^Y›İÜË›X\
+
+›İÊHOˆÜÛİ\˜ÙRY
+›İÊK›İ×JJNÂˆÛÛœİ\›X[™[HY™™Xİ]™T\›X[™[Ú[™Ù\Êİ™\›^JK™š[\Š
+›İÊHOˆÂˆYˆ
+›İË˜Xİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈ\›İË™]™[
+H™]\›ˆ˜[ÙNÂˆÛÛœİ[™XYÙHH\›X[™[[™XYÙJ›İÊNÂˆ™]\›ˆXİ]™Qš^YS[™XYÙKš\Ê[™XYÙJNÂˆJNÂˆÛÛœİY™™Xİ]™T\›X[™[YÈH™]ÈÙ]
+\›X[™[›X\
+
+›İÊHOˆÛX[Š›İË—×ÚY›İËšY
+JJNÂˆÛÛœİ™Xİ\œš[™Ó[™XYÙ\ÈH™]ÈÙ]
+ˆXİ]™Qš^Y›İÜË›X\
+Ûİ\˜ÙRY
+K™š[\Š›ÛÛX[ŠBˆ
+NÂˆ\›X[™[™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİ[™XYÙHH\›X[™[[™XYÙJ›İÊNÂˆYˆ
+[™XYÙJH™Xİ\œš[™Ó[™XYÙ\Ë˜Y
+[™XYÙJNÂˆJNÂˆÛÛœİ\›X[™[İ]\ĞRYH™]ÈX\
+
+NÂˆÛÛœİ\›X[™[S[™XYÙHH™]ÈX\
+
+NÂˆ\›X[™[™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİ[™XYÙHH\›X[™[[™XYÙJ›İÊNÂˆYˆ
+\\›X[™[S[™XYÙKš\Ê[™XYÙJJH\›X[™[S[™XYÙKœÙ]
+[™XYÙK×JNÂˆ\›X[™[S[™XYÙK™Ù]
+[™XYÙJKœ\Ú
+›İÊNÂˆJNÂˆ\›X[™[S[™XYÙK™›Ü‘XXÚ
+
+›İÜË[™XYÙJHOˆÂˆÛÛœİÛİ\˜ÙTÙ\šY\ÈHXİ]™Qš^YS[™XYÙK™Ù]
+[™XYÙJHßNÂˆ]İ]\ĞQ]HHØš™Xİ˜\ÜÚYÛŠßKÛİ\˜ÙTÙ\šY\Ëœİ]\ĞQ]HÛİ\˜ÙTÙ\šY\Ë™^Ù\[ÛœÈßJNÂˆØ[›ÛšXØ[İ]\ĞRÙ^K™›Ü‘XXÚ
+
+İ]\ËÙ^JHOˆÂˆÛÛœİÙ\\˜]ÜˆHÙ^K›\İ[™^ÙŠ	ß	ÊNÂˆYˆ
+Ù\\˜]ÜˆÙ^KœÛXÙJÙ\\˜]ÜŠHOOH[™XYÙJH™]\›Âˆİ]\ĞQ]VÚÙ^KœÛXÙJÙ\\˜]Üˆ
+ÈJWHHÈİ]\ËÛİ\˜ÙNˆ	ØØ[›ÛšXØ[Y]™[	ÈNÂˆJNÂˆ›İÜËœÛXÙJ
+KœÛÜ
+
+YšYÚ
+HO‚ˆ\›X[™[İ]İ™\ŠY
+K›ØØ[PÛÛ\\™J\›X[™[İ]İ™\ŠšYÚ
+JHˆÚ[™ÙSÜ™\•˜[YJY
+HHÚ[™ÙSÜ™\•˜[YJšYÚ
+Bˆ
+K™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİœ™\]Y[˜ŞUÙYZÜÈHØY™Qœ™\]Y[˜ŞUÙYZÜÊ›İË™œ™\]Y[˜ŞUÙYZÜÈ›İË™]™[™œ™\]Y[˜ŞUÙYZÜÈ›İËš[\˜[ÙYZÜÊNÂˆİ]\ĞQ]HH˜[œÛ]T™Xİ\œš[™Ôİ]\ÓX\
+ˆİ]\ĞQ]Kˆ\›X[™[İ]İ™\Š›İÊKˆ\›X[™[[˜ÚÜŠ›İÊKˆœ™\]Y[˜ŞUÙYZÜÂˆ
+NÂˆ\›X[™[İ]\ĞRYœÙ]
+ÛX[Š›İË—×ÚY›İËšY
+KØš™Xİ˜\ÜÚYÛŠßKİ]\ĞQ]JJNÂˆJNÂˆJNÂˆÛÛœİØØİ\œ™[˜ÙRYÈH
+›İÊHOˆË‹‹›™]ÈÙ]
+Âˆ‹‹˜Ûİ\œÙTÛİ\˜ÙRYÊ›İÊKˆÛX[Š›İÈ	‰ˆ›İËœÙ\šY\ÒY
+KˆÛX[Š›İÈ	‰ˆ›İËœÛİ\˜ÙQ]™[Y
+KˆÛX[Š›İÈ	‰ˆ›İËœÜ[Ú[™ÙRY
+BˆK™š[\Š›ÛÛX[ŠJWNÂˆÛÛœİ\›X[™[X]Ú\ÓØØİ\œ™[˜ÙHH
+Ú[™ÙK›İÊHOˆÂˆÛÛœİÚ[™ÙRYÈH™]ÈÙ]
+Âˆ‹‹›ØØİ\œ™[˜ÙRYÊÚ[™ÙJKˆ‹‹›ØØİ\œ™[˜ÙRYÊÚ[™ÙH	‰ˆÚ[™ÙK™]™[
+Kˆ\›X[™[[™XYÙJÚ[™ÙJBˆK™š[\Š›ÛÛX[ŠJNÂˆ™]\›ˆØØİ\œ™[˜ÙRYÊ›İÊKœÛÛYJ
+Y
+HOˆÚ[™ÙRYËš\ÊY
+JNÂˆNÂˆÛÛœİ™[[İ™YØØİ\œ™[˜ÙHH
+›İËÙ^JHOˆØØİ\œ™[˜ÙRYÊ›İÊKœÛÛYJ
+Y
+HOˆ™[[İ™Yš\Ê	ÚY_	ÚÙ^_X
+JNÂˆÛÛœİ˜\ÙHHË‹‹™^Xİ‹‹™^[™YK™š[\Š
+›İÊHO‚ˆ\™[[İ™YØØİ\œ™[˜ÙJ›İË]™[]J›İÊJH	‰‚ˆ\\›X[™[œÛÛYJ
+Ú[™ÙJHO‚ˆ\›X[™[X]Ú\ÓØØİ\œ™[˜ÙJÚ[™ÙK›İÊH	‰‚ˆ]™[]J›İÊHH]RÙ^JÚ[™ÙK˜İ]İ™\‘]HÚ[™ÙKœÛİ\˜ÙQ]HÚ[™ÙK™Y™™Xİ]™Q]JBˆ
+Bˆ
+NÂˆÛÛœİ[™Y\›X[™[^Ù\[ÛœÈH™]ÈÙ]
+
+NÂˆË‹‹›İ™\›^WKœÛÜ
+
+YšYÚ
+HOˆÂˆÛÛœİXİ[Û“Ü™\ˆBˆ
+ÛX[ŠY˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÈÈˆJHBˆ
+ÛX[ŠšYÚ˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÈÈˆJNÂˆYˆ
+Xİ[Û“Ü™\ŠH™]\›ˆXİ[Û“Ü™\ÂˆYˆ
+ÛX[ŠY˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÊHÂˆ™]\›ˆ\›X[™[[™XYÙJY
+K›ØØ[PÛÛ\\™J\›X[™[[™XYÙJšYÚ
+JHˆ\›X[™[İ]İ™\ŠY
+K›ØØ[PÛÛ\\™J\›X[™[İ]İ™\ŠšYÚ
+JHˆÚ[™ÙSÜ™\•˜[YJY
+HHÚ[™ÙSÜ™\•˜[YJšYÚ
+NÂˆBˆ™]\›ˆÚ[™ÙSÜ™\•˜[YJY
+HHÚ[™ÙSÜ™\•˜[YJšYÚ
+NÂˆJK™›Ü‘XXÚ
+
+›İÊHOˆÂˆYˆ
+›İË˜Xİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈ	‰ˆ›İË™]™[
+HÂˆYˆ
+YY™™Xİ]™T\›X[™[YËš\ÊÛX[Š›İË—×ÚY›İËšY
+JJH™]\›ÂˆÛÛœİ[™XYÙHH\›X[™[[™XYÙJ›İÊNÂˆÛÛœİİ]İ™\‘]HH\›X[™[İ]İ™\Š›İÊNÂˆÛÛœİ[˜ÚÜ‘]HH\›X[™[[˜ÚÜŠ›İÊNÂˆÛÛœİ[\˜[ÙYZÜÈHØY™Qœ™\]Y[˜ŞUÙYZÜÊ›İË™œ™\]Y[˜ŞUÙYZÜÈ›İË™]™[™œ™\]Y[˜ŞUÙYZÜÈ›İËš[\˜[ÙYZÜÊNÂˆÛÛœİ™^\›X[™[H\›X[™[ˆ™š[\Š
+İ\ŠHO‚ˆİ\‹—×ÚYOOH›İË—×ÚY	‰‚ˆ\›X[™[[™XYÙJİ\ŠHOOH[™XYÙH	‰‚ˆ\›X[™[İ]İ™\Šİ\ŠHˆİ]İ™\‘]Bˆ
+BˆœÛÜ
+
+YšYÚ
+HO‚ˆ\›X[™[İ]İ™\ŠY
+K›ØØ[PÛÛ\\™J\›X[™[İ]İ™\ŠšYÚ
+JBˆ
+VÌNÂˆÛÛœİÛİ\˜ÙTÙ\šY\ÈHXİ]™Qš^YS[™XYÙK™Ù]
+[™XYÙJHßNÂˆÛÛœİÛİ\˜ÙQ[™H]RÙ^JÛİ\˜ÙTÙ\šY\Ëœ™Xİ\œ™[˜ÙQ[™]HÛİ\˜ÙTÙ\šY\Ë™[™]JNÂˆÛÛœİİÜ™Y[™H]RÙ^J›İËœ™Xİ\œ™[˜ÙQ[™]H›İË™[™]H›İË™]™[œ™Xİ\œ™[˜ÙQ[™]H›İË™]™[™[™]JNÂˆÛÛœİ›İÑ[™HÛİ\˜ÙQ[™	‰ˆİÜ™Y[™ˆÈÜÛİ\˜ÙQ[™İÜ™Y[™KœÛÜ
+
+VÌBˆˆ
+Ûİ\˜ÙQ[™İÜ™Y[™[™]JNÂˆÛÛœİš[˜[]HH™^\›X[™[ˆÈÜ›İÑ[™Y^\Ê\›X[™[İ]İ™\Š™^\›X[™[
+KLJWKœÛÜ
+
+VÌBˆˆ›İÑ[™Âˆ›Üˆ
+]Ù^HH[˜ÚÜ‘]NÈÙ^H	‰ˆÙ^HH[™]H	‰ˆÙ^HHš[˜[]NÈÙ^HHY^\ÊÙ^K[\˜[ÙYZÜÈ
+ˆÊJHÂˆYˆ
+Ù^Hİ\]JHÛÛ[YNÂˆÛÛœİİÜ™Y[™[™ÈH
+›İËœ[™[™Ñ]\È×JKš[˜ÛY\ÊÙ^JNÂˆÛÛœİİ\^\ÈH[\˜[ÙYZÜÈ
+ˆÎÂˆÛÛœİX]Ú[™Ñ^Ù\[ÛˆHİ™\›^K™š[™
+
+Ú[™ÙJHOˆÂˆYˆ
+VÉÜÚ[™ÛWÛ[İ™IË	Û\ÜÛÛ—Üİ]\ÉË	ØØ[˜Ù[	×Kš[˜ÛY\ÊÛX[ŠÚ[™ÙK˜Xİ[ÛŠJJH™]\›ˆ˜[ÙNÂˆÛÛœİÚ[™ÙS[™XYÙHHÛX[ŠÚ[™ÙKœÛİ\˜ÙPÛİ\œÙRYÚ[™ÙK™]™[	‰ˆ
+Ú[™ÙK™]™[™š^YÛİ\œÙRYÚ[™ÙK™]™[œÙ\šY\ÒY
+JNÂˆÛÛœİ^Ù\[Û‘]HH]RÙ^JÚ[™ÙKœÛİ\˜ÙQ]JNÂˆYˆ
+Ú[™ÙS[™XYÙHOOH[™XYÙHY^Ù\[Û‘]H^Ù\[Û‘]Hİ]İ™\‘]JH™]\›ˆ˜[ÙNÂˆÛÛœİ[Q^\ÈHX]œ›İ[™
+ˆ
+™]È]J	Ù^Ù\[Û‘]_ULŒŒ
+ÌŒ
+K™Ù][YJ
+HBˆ™]È]J	Øİ]İ™\‘]_ULŒŒ
+ÌŒ
+K™Ù][YJ
+JHÈˆ
+NÂˆ™]\›ˆ[Q^\ÈH	‰ˆ[Q^\È	Hİ\^\ÈOOH	‰ˆY^\Ê[˜ÚÜ‘]K[Q^\ÊHOOHÙ^NÂˆJNÂˆYˆ
+X]Ú[™Ñ^Ù\[Ûˆ	‰ˆÉÜÚ[™ÛWÛ[İ™IË	ØØ[˜Ù[	×Kš[˜ÛY\ÊÛX[ŠX]Ú[™Ñ^Ù\[Û‹˜Xİ[ÛŠJJHÂˆËÈ9e«¹«(z*¯ú*¬¹ê#yo£9.ãy§ ùb¨9aiyk ú!ê¹mìyæ¡\™Ù]]™[;ï&ú`&z(èycê¹¢¤yb-¹l#y¡âyæ¡9¥¬9fî¹k¦ˆØØİ\œ™[˜Ùxà ‚ˆYˆ
+ÛX[ŠX]Ú[™Ñ^Ù\[Û‹˜Xİ[ÛŠHOOH	ØØ[˜Ù[	ÊH[™Y\›X[™[^Ù\[ÛœË˜Y
+X]Ú[™Ñ^Ù\[Û‹—×ÚY
+NÂˆÛÛ[YNÂˆBˆÛÛœİØØİ\œ™[˜ÙRYH	Ü›İË—×ÚYP	ÚÙ^_XÂˆÛÛœİØØİ\œ™[˜ÙHHØš™Xİ˜\ÜÚYÛŠßK›İË™]™[ÂˆYˆØØİ\œ™[˜ÙRYˆš^YÛİ\œÙRYˆ[™XYÙKˆÙ\šY\ÒYˆ[™XYÙKˆœ™\]Y[˜ŞUÙYZÜÎˆ[\˜[ÙYZÜËˆ]NˆÙ^KˆÜ[Ú[™ÙRYˆ›İË—×ÚYˆJNÂˆÛÛœİ[š\š]Yİ]\ÈH›Ü›X[^™TØÚY[Tİ]\Êˆ
+\›X[™[İ]\ĞRY™Ù]
+ÛX[Š›İË—×ÚY›İËšY
+JHßJVÚÙ^WBˆ
+NÂˆYˆ
+[š\š]Yİ]\ÈOOH	ØØ[˜Ù[Y	ÊHÛÛ[YNÂˆYˆ
+[š\š]Yİ]\ÈOOH	ÜØÚY[Y	ÊHØØİ\œ™[˜ÙKœİ]\ÈH[š\š]Yİ]\ÎÂˆ]X]ÚY\ÜÛÛ”İ]\ÈH˜[ÙNÂˆYˆ
+X]Ú[™Ñ^Ù\[Ûˆ	‰ˆÛX[ŠX]Ú[™Ñ^Ù\[Û‹˜Xİ[ÛŠHOOH	Û\ÜÛÛ—Üİ]\ÉÊHÂˆØØİ\œ™[˜ÙKœİ]\ÈH›Ü›X[^™TØÚY[Tİ]\ÊX]Ú[™Ñ^Ù\[Û‹™]™[	‰ˆX]Ú[™Ñ^Ù\[Û‹™]™[œİ]\ÊNÂˆØØİ\œ™[˜ÙKœ^[Y[İ]\ÈHÛX[ŠX]Ú[™Ñ^Ù\[Û‹™]™[	‰ˆX]Ú[™Ñ^Ù\[Û‹™]™[œ^[Y[İ]\ÊNÂˆØØİ\œ™[˜ÙKXXÚ\”^XX›HHX]Ú[™Ñ^Ù\[Û‹™]™[	‰ˆX]Ú[™Ñ^Ù\[Û‹™]™[XXÚ\”^XX›HOOHYNÂˆ[™Y\›X[™[^Ù\[ÛœË˜Y
+X]Ú[™Ñ^Ù\[Û‹—×ÚY
+NÂˆX]ÚY\ÜÛÛ”İ]\ÈHYNÂˆBˆYˆ
+[X]ÚY\ÜÛÛ”İ]\È	‰ˆ™[[İ™YØØİ\œ™[˜ÙJØØİ\œ™[˜ÙKÙ^JJHÛÛ[YNÂˆÛÛœİ›ÛÛRYHÛX[Š
+›İËœ›ÛÛSİ™\œšY\ÈßJVÚÙ^WH›İË™]™[œ›ÛÛRY
+NÂˆÛÛœİØ[™Y]HHØš™Xİ˜\ÜÚYÛŠØØİ\œ™[˜ÙKÂˆ›ÛÛRYˆÜ[Xİ[Ûˆ›İË˜Xİ[Û‹ˆ×ÚYˆØØİ\œ™[˜ÙRYˆJNÂˆÛÛœİØ[™Y]T™\Ûİ\˜Ù\ÈH]™[Ú\™Y™\Ûİ\˜ÙRYÊØ[™Y]KX\ÊNÂˆÛÛœİ[˜[ZXĞÛÛ™›XİH\İÜ™Y[™[™È	‰ˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJØ[™Y]JH	‰ˆ˜\ÙK™š[™
+
+İ\ŠHO‚ˆ]™[]Jİ\ŠHOOHÙ^H	‰‚ˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJİ\ŠH	‰‚ˆİ™\›\Ê]™[İ\
+Ø[™Y]JK]™[[™
+Ø[™Y]JK]™[İ\
+İ\ŠK]™[[™
+İ\ŠJH	‰‚ˆ
+ˆ]™[›ÛÛRY
+İ\ŠHOOH›ÛÛRYˆ]™[XXÚ\’Y
+İ\ŠHOOH]™[XXÚ\’Y
+Ø[™Y]JHˆ]™[İY[YÊİ\ŠKœÛÛYJ
+İY[Y
+HOˆ]™[İY[YÊØ[™Y]JKš[˜ÛY\ÊİY[Y
+JHˆÚ\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+ˆÓØš™Xİ˜\ÜÚYÛŠßK™\Ûİ\˜ÙQ]™[
+İ\‹X\Ë™Xİ\œš[™Ó[™XYÙ\ÊKÂˆ™\Ûİ\˜ÙRYÎˆ]™[Ú\™Y™\Ûİ\˜ÙRYÊİ\‹X\ÊBˆJWKˆØ[™Y]T™\Ûİ\˜Ù\Âˆ
+Bˆ
+Bˆ
+NÂˆYˆ
+İÜ™Y[™[™È[˜[ZXĞÛÛ™›Xİ
+HÂˆ˜\ÙKœ\Ú
+Øš™Xİ˜\ÜÚYÛŠßKØ[™Y]KÂˆ›ÛÛRYˆ	ÉËˆ™\]Y\İY›ÛÛRYˆ›ÛÛRYˆİ]\Îˆ	Ü[™[™×ØÛÛ™›Xİ	Ëˆ[™[™Ô™X\ÛÛˆİÜ™Y[™[™ÈÈ	ùnî¹êâù¬.9.az*¯ú*¬¹¦`¹mì¹§"z(gyê IÈˆ	ùæë¹bcz*¬º(j9mì¹§"z(gyê {ï#:*âúaãy¥¬9k¢y£¤‰ÂˆJJNÂˆH[ÙHÂˆ˜\ÙKœ\Ú
+Ø[™Y]JNÂˆBˆBˆH[ÙHYˆ
+ˆZ[™Y\›X[™[^Ù\[ÛœËš\Ê›İË—×ÚY
+H	‰‚ˆ›İË™]™[	‰‚ˆ]™[]J›İË™]™[
+HHİ\]H	‰‚ˆ]™[]J›İË™]™[
+HH[™]Bˆ
+HÂˆÛÛœİ\™Ù]HØš™Xİ˜\ÜÚYÛŠÂˆ×ÚYˆ›İË—×ÚYˆÜ[Xİ[ÛˆÛX[Š›İË˜Xİ[ÛŠKˆÜ[Ú[™ÙRYˆ›İË—×ÚYˆK›İË™]™[
+NÂˆËÈ9o£9î£9a£y«(z*¯ú*¬¹¦`»ï#9.éybcy. 9«(Hİ™\›^H]™[Y9ì¯¹®¥¹éîúfi:""¹/cyïk¸à ‚ˆYˆ
+\™[[İ™Yš\Ê	ÜÛİ\˜ÙRY
+\™Ù]
+__	Ù]™[]J\™Ù]
+_X
+H›İË˜Xİ[ÛˆOOH	Û\ÜÛÛ—Üİ]\ÉÊHÂˆ˜\ÙKœ\Ú
+\™Ù]
+NÂˆBˆBˆJNÂˆÛÛœİ˜[Y˜\ÙHH˜\ÙK›X\
+
+›İÊHOˆ\TİY[İ\Ü[œÚ[ÛœÊ›İËİ\Ü[œÚ[ÛœÊJK™š[\Š
+›İÊHO‚ˆ›İÈ	‰‚ˆ]™[]J›İÊHHİ\]H	‰‚ˆ]™[]J›İÊHH[™]H	‰‚ˆ˜[YÜ[[YJ]™[İ\
+›İÊJH	‰‚ˆ˜[YÜ[[YJ]™[[™
+›İÊJH	‰‚ˆ[YSZ[]\Ê]™[[™
+›İÊJHˆ[YSZ[]\Ê]™[İ\
+›İÊJBˆ
+NÂˆÛÛœİ™\Ûİ\˜ÙQ]™[ÈH˜[Y˜\ÙK›X\
+
+›İÊHOˆ™\Ûİ\˜ÙQ]™[
+›İËX\Ë™Xİ\œš[™Ó[™XYÙ\ÊJNÂˆ™]\›ˆÂˆ›ÛÛ\ËˆİXš™XİËˆİY[ËˆXXÚ\œËˆš^YÛİ\œÙ\ÎˆXİ]™Qš^Y›İÜËˆ[\Ü˜\PÛİ\œÙ\Îˆ[\Ü˜\K™š[\Š
+›İÊHOˆ[]™TÜ[Ûİ\˜ÙJ›İÊJKˆØÚY[PÚ[™Ù\Îˆİ™\›^Kˆİ\Ü[œÚ[ÛœËˆX\Ëˆ™\Ûİ\˜ÙQ]™[Ëˆ™\Ûİ\˜ÙPÛÛ™›XİÎˆØÚY[T™\Ûİ\˜ÙPÛÛ™›XİÊ™\Ûİ\˜ÙQ]™[ÊKˆ]™[Îˆ˜[Y˜\ÙK›X\
+
+›İÊHOˆX›XÑ]™[
+›İËX\ËİÛ•XXÚ\’Y™Xİ\œš[™Ó[™XYÙ\ÊJBˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\”Ü[]J]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİİ\H]RÙ^J]KÙYZÔİ\
+NÂˆYˆ
+\İ\
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú`,z-mùiâù¥éy§'ù¨/9o#úc+ú*©8à ‰ÊNÂˆÛÛœİ[™HY^\Êİ\ŠNÂˆÛÛœİ[ÛHÛX[Š]K›[Û
+K›X]Ú
+×—ÍKWÌŸIÊHÈÛX[Š]K›[Û
+Hˆİ\œÛXÙJÊNÂˆYˆ
+]Kš[˜ÛYT^\›ÛOOHYH	‰ˆ[ÛPPÒT—ÔVT“ÓÓRS—ÓSÓ•
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú  yn*ú%ªº,áù§éz*h¹`áze¢ù¥/¹¬$yg"ÈLMH9nmÈ9§":-mùæ¡:,áù¥¦xà ‰ÊNÂˆBˆÛÛœİØ[™K›ÛÛTÙ][™ÜÔÛ˜\Úİ][™[˜ÙPØ[˜Ù[][Û”Û˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+ÂˆØÚY[P[™Jİ\[™Ù\ÜÚ[Û‹XXÚ\’Y
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠUS‘SÑWĞĞSÑSUSÓ”ÊKÚ\™J	İXXÚ\’Y	Ë	ÏOIËÙ\ÜÚ[Û‹XXÚ\’Y
+K™Ù]
+
+BˆJNÂˆÛÛœİ›ÛÛTÙ][™ÜÓX\HßNÂˆ›ÛÛTÙ][™ÜÔÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈ›ÛÛTÙ][™ÜÓX\ÙØËšYHHØË™]J
+HßNÈJNÂˆÛÛœİXXÚ\ˆH[™K›X\ËXXÚ\œÖÜÙ\ÜÚ[Û‹XXÚ\’YNÂˆYˆ
+]XXÚ\ŠH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&y`"ú  yn*ùn,ú&gùæ¡:,áù¥¦xà ‰ÊNÂˆÛÛœİØ[˜Ù[][Û”›İÜÈH][™[˜ÙPØ[˜Ù[][Û”Û˜\Úİ™ØÜË›X\
+
+ØÊHO‚ˆØš™Xİ˜\ÜÚYÛŠÈYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJBˆ
+NÂˆÛÛœİİÛ‘]™[ÈH[™K™]™[Ë™š[\Š
+›İÊHOˆ›İËXXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’Y
+K›X\
+
+›İÊHOˆÂˆÛÛœİ™\]Y\İHØ[˜Ù[][Û”›İÜË™š[™
+
+][JHO‚ˆ]RÙ^J][K™]JHOOH›İË™]H	‰‚ˆ
+ˆÛX[Š][K™]™[Y
+HOOHÛX[Š›İËœÛİ\˜ÙRY›İËšY
+HˆÛX[Š][K˜Ûİ\œÙRY
+HOOHÛX[Š›İË™š^YÛİ\œÙRY›İËœÛİ\˜ÙRY›İËšY
+Bˆ
+Bˆ
+NÂˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠßK›İËÂˆ][™[˜ÙPØ[˜Ù[][Û”İ]\ÎˆÛX[Š™\]Y\İ	‰ˆ™\]Y\İœİ]\ÊKˆ][™[˜ÙPØ[˜Ù[][Û’YˆÛX[Š™\]Y\İ	‰ˆ™\]Y\İšY
+BˆJNÂˆJNÂˆÛÛœİİÜYİY[YÈH™]ÈÙ]
+
+[™Kœİ\Ü[œÚ[ÛœÈ×JBˆ™š[\Š
+›İÊHOˆÛX[Š›İËXXÚ\’Y
+HOOHÙ\ÜÚ[Û‹XXÚ\’Y
+Bˆ›X\
+
+›İÊHOˆÛX[Š›İËœİY[Y
+JBˆ™š[\Š›ÛÛX[ŠJNÂˆÛÛœİİY[YÈHË‹‹›™]ÈÙ]
+ˆË‹‹˜[™K™š^YÛİ\œÙ\Ë‹‹˜[™K[\Ü˜\PÛİ\œÙ\×Bˆ™š[\Š
+›İÊHOˆ]™[XXÚ\’Y
+›İÊHOOHÙ\ÜÚ[Û‹XXÚ\’Y
+Bˆ™›]X\
+]™[İY[YÊBˆ˜ÛÛ˜Ø]
+İÛ‘]™[Ë™›]X\
+
+›İÊHOˆ›İËœİY[YÊJBˆ
+WK™š[\Š
+İY[Y
+HOˆ\İÜYİY[YËš\ÊİY[Y
+JNÂˆÛÛœİ›Üİ\ˆHİY[YË›X\
+
+Y
+HOˆÂˆÛÛœİİY[H[™K›X\ËœİY[ÖÚYHßNÂˆÛÛœİÛ™HH›Ü›X[^™TÛ™JÛİ\˜ÙTÛ™JİY[
+JNÂˆ™]\›ˆÂˆYˆ˜[YNˆÛX[ŠİY[›˜[YJKˆÛ™KˆÛ™S\İˆÛ™KœÛXÙJM
+KˆXXÚ\“˜[YNˆÛX[ŠXXÚ\‹›˜[YJBˆNÂˆJK™š[\Š
+›İÊHOˆ›İË›˜[YJNÂˆÛÛœİ[˜ÛYT^\›ÛH]Kš[˜ÛYT^\›ÛOOHYNÂˆÛÛœİÜ^\›ÛY\İY[ËÜ[Y\İY[ÔÛ˜\Ü[^\›ÛÛ˜\^\›Û][™[˜ÙWHH[˜ÛYT^\›ÛˆÈ]ØZ]›ÛZ\ÙK˜[
+ÂˆZ\œ›Ü”›İÜĞQšY[
+	İXXÚ\”^\›Û	Ë	İXXÚ\’Y	ËÙ\ÜÚ[Û‹XXÚ\’Y
+KˆZ\œ›Ü”›İÜĞQšY[
+	İXXÚ\Y\İY[ÉË	İXXÚ\’Y	ËÙ\ÜÚ[Û‹XXÚ\’Y
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\Y\İY[ÉÊKÚ\™J	İXXÚ\’Y	Ë	ÏOIËÙ\ÜÚ[Û‹XXÚ\’Y
+K™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠUS‘SÑWÔVT“Ó
+KÚ\™J	İXXÚ\’Y	Ë	ÏOIËÙ\ÜÚ[Û‹XXÚ\’Y
+K™Ù]
+
+KˆZ\œ›Ü”›İÜĞQšY[
+	Ø][™[˜ÙIË	İXXÚ\’Y	ËÙ\ÜÚ[Û‹XXÚ\’Y
+BˆJBˆˆÖ×K×KÈØÜÎˆ×HKÈØÜÎˆ×HK×WNÂˆÛÛœİÜ[Y\İY[Ï\Ü[Y\İY[ÔÛ˜\™ØÜË›X\
+ØÏO“Øš™Xİ˜\ÜÚYÛŠ××ÚY™ØËšYKœÛÛ•˜[YJØË™]J
+J_ßJJNÂˆÛÛœİÜ[^\›ÛHÜ[^\›ÛÛ˜\™ØÜÂˆ›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJJNÂˆÛÛœİ™\İ[HÂˆÚÎˆYKˆXXÚ\ˆÂˆYˆÙ\ÜÚ[Û‹XXÚ\’Yˆ˜[YNˆÛX[ŠXXÚ\‹›˜[YJKˆÛ™S\İˆ›Ü›X[^™TÛ™JÛİ\˜ÙTÛ™JXXÚ\ŠJKœÛXÙJM
+KˆİXš™XİYÎˆš\œİ\œ˜^JXXÚ\‹ÉÜİXš™XİYÉË	ÜİXš™XİÉ×JBˆKˆÙYZÎˆÈİ\[™Kˆİ\œÎˆÈİ\ˆL[™ˆŒKÛÜÙYÙYZÙ^NˆHKˆ›ÛÛ\Îˆ[™Kœ›ÛÛ\Ë™š[\ŠÛİ\˜ÙPXİ]™JK›X\
+
+›ÛÛJHOˆ
+ÂˆYˆÛİ\˜ÙRY
+›ÛÛJKˆ˜[YNˆ™[[›ÛÛT›Ùš[J›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKœX›XÓ˜[YKˆ\]Z\Y[X™[ˆ›ÛÛQ\]Z\Y[X™[
+›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKˆ™[[™YNˆ[X™\Š›ÛÛKœ™[[™YH›ÛÛKœšXÙH
+Kˆ[İÙYİXš™XİYÎˆš\œİ\œ˜^J›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßKÉØ[İÙYİXš™XİYÉ×JBˆ˜ÛÛ˜Ø]
+š\œİ\œ˜^J›ÛÛKÉØ[İÙYİXš™XİYÉË	ÜİXš™XİYÉ×JJBˆJJKˆİXš™XİÎˆ[™KœİXš™XİË›X\
+
+İXš™Xİ
+HOˆ
+ÈYˆÛİ\˜ÙRY
+İXš™Xİ
+K˜[YNˆÛX[ŠİXš™Xİ›˜[YJHJJKˆ]™[Îˆ[™K™]™[Ë›X\
+
+›İÊHO‚ˆ›İËXXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’YˆÈ
+İÛ‘]™[Ë™š[™
+
+][JHOˆ][KšYOOH›İËšY
+H›İÊBˆˆ›İÂˆ
+Kˆ›Üİ\‚ˆNÂˆYˆ
+[˜ÛYT^\›Û
+HÂˆÛÛœİ\›İ™YØ[˜Ù[][ÛœÈHØ[˜Ù[][Û”›İÜË™š[\Š
+›İÊHOˆÛX[Š›İËœİ]\ÊHOOH	Ø\›İ™Y	ÊNÂˆ™\İ[œ^\›ÛHY\™ÙUXXÚ\”^\›Û›İÜÊˆ[œšXÚXXÚ\”^\›Û›İÜÊ^\›Û^\›Û][™[˜ÙJKˆÜ[^\›Ûˆ\›İ™YØ[˜Ù[][ÛœË˜ÛÛ˜Ø]
+Ü[^\›Û™š[\Š
+›İÊHOˆ›İË˜Xİ]™HOOH˜[ÙJJBˆ
+Bˆ™š[\Š
+›İÊHOˆÛX[Š›İË›[Û›İËœ^\›Û[Û]™[]J›İÊKœÛXÙJÊJHOOH[Û
+NÂˆ™\İ[˜Y\İY[ÈHY\™ÙUXXÚ\Y\İY[›İÜÊY\İY[ËÜ[Y\İY[ÊBˆ™š[\Š
+›İÊHOˆÛX[Š›İË›[Û›İËœ^\›Û[Û]™[]J›İÊKœÛXÙJÊJHOOH[Û
+NÂˆBˆ™]\›ˆ™\İ[ÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\“İÛœÔİY[
+XXÚ\’YİY[Y
+HÂˆÛÛœİÙš^YÛİ\œÙ\Ë[\Ü˜\PÛİ\œÙ\×HH]ØZ]›ÛZ\ÙK˜[
+ÂˆZ\œ›Ü”›İÜÊ	Ùš^YÛİ\œÙ\ÉÊKˆZ\œ›Ü”›İÜÊ	İ[\Ü˜\PÛİ\œÙ\ÉÊBˆJNÂˆ™]\›ˆË‹‹™š^YÛİ\œÙ\Ë‹‹[\Ü˜\PÛİ\œÙ\×KœÛÛYJ
+›İÊHO‚ˆ]™[XXÚ\’Y
+›İÊHOOHÛX[ŠXXÚ\’Y
+H	‰‚ˆ]™[İY[YÊ›İÊKš[˜ÛY\ÊÛX[ŠİY[Y
+JBˆ
+NÂŸB‚™[˜İ[ÛˆZ][Û“İ]İ[™[™Ğ[[İ[
+›İÊHÂˆÛÛœİ^XİYH[X™\Šˆ›İË™^XİY[[İ[ˆ›İËZ][Û[[İ[ˆ›İË˜Ûİ\œÙP[[İ[ˆ›İË™™YP[[İ[ˆ›İË˜[[İ[ˆˆ
+NÂˆÛÛœİZYH[X™\Šˆ›İËœZY[[İ[ˆ›İËœ™XÙZ]™Y[[İ[ˆ›İËœZYˆ›İËœ™XÙZ]™Yˆˆ
+NÂˆ™]\›ˆX]›X^
+^XİYHZY
+NÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\•\]TİY[
+]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİİY[YHÛX[Š]KœİY[Y
+NÂˆÛÛœİ˜[YHHÛX[Š]K›˜[YJNÂˆÛÛœİÛ™HH›Ü›X[^™TÛ™J]KœÛ™JNÂˆ\ÜÙ\[œ]
+İY[Y	ùkn9å'ÉÊNÂˆ\ÜÙ\[œ]
+˜[YK	ùkn9å'ùiäùd#IÊNÂˆ\ÜÙ\[œ]
+Û™K	ùkn9å'úfîú*lIÊNÂˆYˆ
+K×—ÎM_IË\İ
+Û™JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùkn9å'úfîú*ly¨/9o#ù.#y«hùè®¸à ‰ÊNÂˆBˆYˆ
+J]ØZ]XXÚ\“İÛœÔİY[
+Ù\ÜÚ[Û‹XXÚ\’YİY[Y
+JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ùcêº ïy/ë¹¥.yæë¹bcyå,y ª9£¢:*¬¹æ¡9kn9å'ú,áù¥¦xà ‰ÊNÂˆBˆÛÛœİİY[ÈH]ØZ]Z\œ›Ü”›İÜÊ	ÜİY[ÉÊNÂˆYˆ
+\İY[ËœÛÛYJ
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOHİY[Y
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&y/cykn9å'øà ‰ÊNÂˆBˆÛÛœİš[™[™ÔÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[š[™[™ÜÉÊBˆÚ\™J	ÜİY[Y	Ë	ÏOIËİY[Y
+Bˆ™Ù]
+
+NÂˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆ˜]ÚœÙ]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[›Ùš[\ÉÊK™ØÊİY[Y
+KÂˆİY[Yˆ˜[YKˆÛ™KˆXİ]™NˆYKˆ\]YUXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’Yˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆš[™[™ÔÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÂˆ˜]ÚœÙ]
+ØËœ™Y‹Âˆ˜[YKˆÛ™R\Úˆ\Ú
+Û™JKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂˆ™]\›ˆÂˆÚÎˆYKˆİY[Yˆ˜[YKˆÛ™KˆY\ÜØYÙNˆ	ùkn9å'ùiäùd#z"!úfîú*lymì¹d#9«iy¦í9¥¬8à ‰ÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\”İÜİY[
+]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİİY[YHÛX[Š]KœİY[Y
+NÂˆ\ÜÙ\[œ]
+İY[Y	ùkn9å'ÉÊNÂˆYˆ
+]K˜ÛÛ™š\›YYOOHYJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú*âùab9k£9¢$9`g:*¬¹è®º*£xà ‰ÊNÂˆBˆYˆ
+J]ØZ]XXÚ\“İÛœÔİY[
+Ù\ÜÚ[Û‹XXÚ\’YİY[Y
+JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ùcêº ïz/©¹ä!¹å,y ª9£¢:*¬¹æ¡9kn9å'ù`g:*¬¸à ‰ÊNÂˆBˆÛÛœİÜİY[ËXXÚ\œË\š[ÙËš^YÛİ\œÙ\Ë[\Ü˜\PÛİ\œÙ\×HH]ØZ]›ÛZ\ÙK˜[
+ÂˆZ\œ›Ü”›İÜÊ	ÜİY[ÉÊKˆZ\œ›Ü”›İÜÊ	İXXÚ\œÉÊKˆZ\œ›Ü”›İÜĞQšY[
+	İZ][Û”\š[ÙÉË	ÜİY[Y	ËİY[Y
+KˆZ\œ›Ü”›İÜÊ	Ùš^YÛİ\œÙ\ÉÊKˆZ\œ›Ü”›İÜÊ	İ[\Ü˜\PÛİ\œÙ\ÉÊBˆJNÂˆÛÛœİİY[HİY[Ë™š[™
+
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOHİY[Y
+HßNÂˆÛÛœİXXÚ\ˆHXXÚ\œË™š[™
+
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOHÙ\ÜÚ[Û‹XXÚ\’Y
+HßNÂˆYˆ
+\Ûİ\˜ÙRY
+İY[
+JH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&y/cykn9å'øà ‰ÊNÂˆÛÛœİ™[]Y\š[ÙÈH\š[ÙË™š[\Š
+›İÊHO‚ˆY]™[XXÚ\’Y
+›İÊH]™[XXÚ\’Y
+›İÊHOOHÙ\ÜÚ[Û‹XXÚ\’Yˆ
+NÂˆÛÛœİ[œZY[[İ[H™[]Y\š[ÙËœ™YXÙJ
+İ[K›İÊHOˆİ[H
+ÈZ][Û“İ]İ[™[™Ğ[[İ[
+›İÊK
+NÂˆÛÛœİÛİ\œÙRYĞ]İÜHË‹‹›™]ÈÙ]
+ˆË‹‹™š^YÛİ\œÙ\Ë‹‹[\Ü˜\PÛİ\œÙ\×Bˆ™š[\Š
+›İÊHO‚ˆ]™[XXÚ\’Y
+›İÊHOOHÙ\ÜÚ[Û‹XXÚ\’Y	‰‚ˆ]™[İY[YÊ›İÊKš[˜ÛY\ÊİY[Y
+Bˆ
+Bˆ™›]X\
+
+›İÊHOˆÛİ\œÙTÛİ\˜ÙRYÊ›İÊK˜ÛÛ˜Ø]
+Ûİ\˜ÙRY
+›İÊJJBˆ›X\
+ÛX[ŠBˆ™š[\Š›ÛÛX[ŠBˆ
+WNÂˆÛÛœİİ\Ü[œÚ[Û’YH\Ú
+XXÚ\‹\İÜ	ÜÙ\ÜÚ[Û‹XXÚ\’Y_	ÜİY[YX
+NÂˆÛÛœİİ\Ü[œÚ[Û”™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[İ\Ü[œÚ[ÛœÉÊK™ØÊİ\Ü[œÚ[Û’Y
+NÂˆÛÛœİ^\İ[™ÈH]ØZ]İ\Ü[œÚ[Û”™Y‹™Ù]
+
+NÂˆYˆ
+^\İ[™Ë™^\İÈ	‰ˆÛX[Š^\İ[™Ë™]J
+Kœİ]\ÊHOOH	ØXİ]™IÊHÂˆ™]\›ˆÂˆÚÎˆYKˆİ\Ü[œÚ[Û’Yˆ[œZY[[İ[ˆ[X™\Š^\İ[™Ë™]J
+K[œZY[[İ[]İÜ[œZY[[İ[
+KˆY\ÜØYÙNˆ	ú`&y/cykn9å'ùmì¹k£9¢$9`g:*¬¹ænú*&8à ‰ÂˆNÂˆBˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆ˜]ÚœÙ]
+İ\Ü[œÚ[Û”™Y‹Âˆİ\Ü[œÚ[Û’Yˆİ]\Îˆ	ØXİ]™IËˆİY[YˆİY[˜[YNˆÛX[ŠİY[›˜[YJKˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆXXÚ\“˜[YNˆÛX[ŠXXÚ\‹›˜[YJKˆY™™Xİ]™Q]Nˆİ\œ™[Z\ZQ^J
+KˆÛİ\œÙRYĞ]İÜˆ[œZY[[İ[]İÜˆ[œZY[[İ[ˆ™\]Y\İYNˆ	İXXÚ\‰Ëˆ™\]Y\İY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™\]Y\İY]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ˜]ÚœÙ]
+ØÚY[U™\œÚ[Û”™YŠ
+KÂˆ™\œÚ[ÛˆšY[˜[YKš[˜Ü™[Y[
+JKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆ	İXXÚ\‹\İY[\İÜ	ÂˆKÈY\™ÙNˆYHJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂˆ™]\›ˆÂˆÚÎˆYKˆİ\Ü[œÚ[Û’Yˆ[œZY[[İ[ˆY\ÜØYÙNˆ[œZY[[İ[ˆˆÈ	ù`g:*¬¹mì¹k£9¢$;ï#9§*¹îlùkn:,®ùmìº` yb,9ë¨yä!º !yl"9å*9c`8à ‰Âˆˆ	ù`g:*¬¹mì¹k£9¢$;ï#9æë¹bcy¬¤¹§"y§*¹îlùkn:,®øà ‰ÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\]˜Z[Xš[]J]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİ™\]Y\İYİ\]HH]RÙ^J]Kœİ\]H]K™]JNÂˆYˆ
+\™\]Y\İYİ\]JH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	úe¢ùiâù¥éy§'ù¨/9o#úc+ú*©8à ‰ÊNÂˆ\ÜÙ\Ü[Y˜[˜ÙQ]J™\]Y\İYİ\]K	ú*¬¹ê"ù¥éy§'ÉÊNÂˆÛÛœİİ\]HH™\]Y\İYİ\]Hİ\œ™[Z\ZQ^J
+HÈİ\œ™[Z\ZQ^J
+Hˆ™\]Y\İYİ\]NÂˆÛÛœİ^Xİ\™Ù]H]K™^Xİ\™Ù]OOHYNÂˆÛÛœİ^Xİ]HH^Xİ\™Ù]È]RÙ^J]K™]H]Kœİ\]JHˆ	ÉÎÂˆÛÛœİ^Xİİ\[YHH^Xİ\™Ù]ÈÛX[Š]Kœİ\[YJKœÛXÙJJHˆ	ÉÎÂˆYˆ
+^Xİ\™Ù]	‰ˆ
+Y^Xİ]H]˜[YÜ[[YJ^Xİİ\[YKYJHX›XÔ™[[Ûİ\Ô\İ
+^Xİ]K^Xİİ\[YJJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú`n9¤áùl&¹§*ºe¢ùiâùæ¡Ì9b!ºd&9¦`¹«­xà ‰ÊNÂˆBˆYˆ
+^Xİ\™Ù]
+H\ÜÙ\Ü[Y˜[˜ÙQ]J^Xİ]K	ú*¬¹ê"ù¥éy§'ÉÊNÂˆÛÛœİ^\ÈH^Xİ\™Ù]ÈHˆX]›Z[ŠX]›X^
+Ë[X™\Š]K™^\ÈM
+JJNÂˆÛÛœİ[™]HH^Xİ\™Ù]ˆÈ^Xİ]BˆˆØY^\Êİ\]K^\ÈHJKÜ[X^[][PY˜[˜ÙQ]J
+WKœÛÜ
+
+VÌNÂˆÛÛœİÛİ\˜ÙQ]™[YHÛX[Š]KœÛİ\˜ÙQ]™[Y
+NÂˆÛÛœİÛİ\˜ÙPÛİ\œÙRYHÛX[Š]KœÛİ\˜ÙPÛİ\œÙRY
+NÂˆÛÛœİÛİ\˜ÙQ]HH]RÙ^J]KœÛİ\˜ÙQ]JNÂˆÛÛœİØ[™KÛXŞK›ÛÛTÙ][™ÜÔÛ˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+ÂˆØÚY[P[™Jİ\]K[™]KÙ\ÜÚ[Û‹XXÚ\’Y
+Kˆ™[[ÛXŞTÙ][™ÜÊ
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™Ù]
+
+BˆJNÂˆÛÛœİ›ÛÛTÙ][™ÜÓX\HßNÂˆ›ÛÛTÙ][™ÜÔÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈ›ÛÛTÙ][™ÜÓX\ÙØËšYHHØË™]J
+HßNÈJNÂˆ]Ûİ\˜ÙHH[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[™
+
+]™[
+HO‚ˆ]™[XXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’Y	‰‚ˆ]™[™]HOOHÛİ\˜ÙQ]H	‰‚ˆ
+ˆ]™[šYOOHÛİ\˜ÙQ]™[Yˆ]™[œÛİ\˜ÙRYOOHÛİ\˜ÙQ]™[Yˆ]™[™š^YÛİ\œÙRYOOHÛİ\˜ÙPÛİ\œÙRYˆ]™[œÙ\šY\ÒYOOHÛİ\˜ÙPÛİ\œÙRYˆ
+Bˆ
+NÂˆYˆ
+\Ûİ\˜ÙH	‰ˆÛİ\˜ÙQ]H	‰ˆ
+Ûİ\˜ÙQ]Hİ\]HÛİ\˜ÙQ]Hˆ[™]JJHÂˆÛÛœİÛİ\˜ÙP[™HH]ØZ]ØÚY[P[™JÛİ\˜ÙQ]KÛİ\˜ÙQ]KÙ\ÜÚ[Û‹XXÚ\’Y
+NÂˆÛİ\˜ÙHHÛİ\˜ÙP[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[™
+
+]™[
+HO‚ˆ]™[XXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’Y	‰‚ˆ
+ˆ]™[šYOOHÛİ\˜ÙQ]™[Yˆ]™[œÛİ\˜ÙRYOOHÛİ\˜ÙQ]™[Yˆ]™[™š^YÛİ\œÙRYOOHÛİ\˜ÙPÛİ\œÙRYˆ]™[œÙ\šY\ÒYOOHÛİ\˜ÙPÛİ\œÙRYˆ
+Bˆ
+NÂˆBˆYˆ
+
+Ûİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRY
+H	‰ˆ\Ûİ\˜ÙJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,9cëú*¯ùbåyæ¡9c§ú*¬¹ê"ûï#:*âúaãy¥¬9¥m9ä!º*¬º(j8à ‰ÊNÂˆBˆYˆ
+Ûİ\˜ÙH	‰ˆ\Ô›ÛÛT™[[]™[
+Ûİ\˜ÙJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù¥fyk©9éçùå*9.#y¦+ú*¬¹ê"ûï#9.#z ïyo§º  yn*ú*¯ú*¬¹b§ú ïyéîùbåxà ‰ÊNÂˆBˆYˆ
+Ûİ\˜ÙH	‰ˆ›Ü›X[^™TØÚY[Tİ]\ÊÛİ\˜ÙKœİ]\ÊHOOH	ÜØÚY[Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú*âù`aøà y¦è:*¬¹¢%¹mì¹cå¹­¢9æ¡:*¬¹ê"ù.#z ïya£z*¯ùbåxà ‰ÊNÂˆBˆYˆ
+Ûİ\˜ÙH	‰ˆX›XÔ™[[Ûİ\Ô\İ
+Ûİ\˜ÙK™]KÛİ\˜ÙKœİ\[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùmìºe¢ùiâù¢%¹mì¹íd9§gùæ¡:*¬¹ê"ù.#z ïya£z*¯ú*¬¸à ‰ÊNÂˆBˆÛÛœİÛİ\˜ÙTİ\[YHHÛİ\˜ÙHÈÛİ\˜ÙKœİ\[YHˆÛX[Š]KœÛİ\˜ÙTİ\[YH]Kœİ\[YJKœÛXÙJJNÂˆÛÛœİÛİ\˜ÙQ[™[YHHÛİ\˜ÙHÈÛİ\˜ÙK™[™[YHˆÛX[Š]KœÛİ\˜ÙQ[™[YH]K™[™[YJKœÛXÙJJNÂˆÛÛœİ™\]Y\İY\˜][ÛˆH[X™\Š]K™\˜][Û“Z[]\ÈŒ
+NÂˆÛÛœİ\˜][ÛˆHÛİ\˜ÙBˆÈ\ÜÙ\Ü[[\˜[
+Ûİ\˜ÙTİ\[YKÛİ\˜ÙQ[™[YJBˆˆ™\]Y\İY\˜][ÛÂˆYˆ
+S[X™\‹š\Ñš[š]J\˜][ÛŠH\˜][Ûˆ	HÌOOH
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*¬¹ê"úemùn©¹oázh"9.éHÌ9b!ºd&9à®¹e«¹/cxà ‰ÊNÂˆBˆYˆ
+\˜][ÛˆÌ\˜][ÛˆˆÌ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*¬¹ê"úemùn©¹oázh"9.âù¥¯Ì9b!ºd&:!ìÈH9l#ù¦`¸à ‰ÊNÂˆBˆÛÛœİİXš™XİYHÛİ\˜ÙHÈÛİ\˜ÙKœİXš™XİYˆÛX[Š]KœİXš™XİY
+NÂˆÛÛœİ\™Ù]İY[YÈHÛİ\˜ÙBˆÈÛİ\˜ÙKœİY[YÂˆˆË‹‹›™]ÈÙ]
+š\œİ\œ˜^J]KÉÜİY[YÉ×JK˜ÛÛ˜Ø]
+ÛX[Š]KœİY[Y
+HÈØÛX[Š]KœİY[Y
+WHˆ×JJWNÂˆYˆ
+\İXš™XİY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âùab:`n9¤áú*¬¹ê"ùéäyæë¸à ‰ÊNÂˆYˆ
+X[™K›X\ËœİXš™XİÖÜİXš™XİYH\Ûİ\˜ÙPXİ]™J[™K›X\ËœİXš™XİÖÜİXš™XİYJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y`"ù£¢:*¬¹éäyæë¹mì¹`g9å*9¢%¹.#ykf9g*8à ‰ÊNÂˆBˆYˆ
+]\™Ù]İY[YË›[™İ
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âùab:`n9¤áùkn9å'øà ‰ÊNÂˆÛÛœİÛÛ\]X›T›ÛÛ\ÈH[™Kœ›ÛÛ\Ë™š[\ŠÛİ\˜ÙPXİ]™JK™š[\Š
+›ÛÛJHO‚ˆ›ÛÛRÚ[™
+›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJHOOH	Û›Ü›X[	È	‰‚ˆ›ÛÛUXXÚ\”ØÚY[X›J›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJH	‰‚ˆ›ÛÛTİ\ÜÔİXš™Xİ
+›ÛÛKİXš™XİY[™K›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJBˆ
+NÂˆÛÛœİÛİÈH×NÂˆ]\›X[™[Z[š[][Q]HH	ÉÎÂˆ]\›X[™[X^[][Q]HH	ÉÎÂˆYˆ
+Ûİ\˜ÙH	‰ˆÛX[Š]K˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÊHÂˆÛÛœİÛİ\˜ÙTÙ\šY\ÈH[™K™š^YÛİ\œÙ\Ë™š[™
+
+›İÊHO‚ˆÛİ\˜ÙRY
+›İÊHOOHÛX[ŠÛİ\˜ÙK™š^YÛİ\œÙRYÛİ\˜ÙKœÙ\šY\ÒYÛİ\˜ÙPÛİ\œÙRY
+Bˆ
+H[ÂˆYˆ
+\Ûİ\˜ÙKœ™Xİ\œš[™È\Ûİ\˜ÙTÙ\šY\È\Ûİ\˜ÙPXİ]™JÛİ\˜ÙTÙ\šY\ÊJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yh ¹.#y¦+ù.ãy§"y¥b9æ¡9fî¹k¦º*¬»ï#9.#z ïy¬.9.az*¯ú*¬¸à ‰ÊNÂˆBˆYˆ
+ÛX[ŠÛİ\˜ÙKœÜ[Xİ[ÛŠHOOH	ÜÚ[™ÛWÛ[İ™IÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yh ¹mì¹¦+ùe«¹«(z*¯ú*¬¹íd9§§;ï#9cêº ïya£y`f¹e«¹«(z*¯ú*¬¸à ‰ÊNÂˆBˆÛÛœİ[™XYÙHHÛX[ŠÛİ\˜ÙK™š^YÛİ\œÙRYÛİ\˜ÙKœÙ\šY\ÒYÛİ\˜ÙPÛİ\œÙRY
+NÂˆÛÛœİXİ]™PÚ[™Ù\ÈH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊKÚ\™J	ØXİ]™IË	ÏOIËYJK™Ù]
+
+NÂˆÛÛœİ]\™Q^Ù\[ÛˆHXİ]™PÚ[™Ù\Ë™ØÜËœÛÛYJ
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆYˆ
+ˆÛX[Š›İË˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÈ	‰‚ˆ\›X[™[[™XYÙJ›İÊHOOH[™XYÙH	‰‚ˆ\›X[™[İ]İ™\Š›İÊHOOHÛİ\˜ÙQ]Bˆ
+H™]\›ˆ˜[ÙNÂˆYˆ
+ØËšYOOHÛX[ŠÛİ\˜ÙKœÜ[Ú[™ÙRY
+H	‰ˆ\›X[™[İ]İ™\Š›İÊHÛİ\˜ÙQ]JH™]\›ˆ˜[ÙNÂˆ™]\›ˆ\›X[™[[™XYÙJ›İÊHOOH[™XYÙH	‰‚ˆ\›X[™[İ]İ™\Š›İÊHHÛİ\˜ÙQ]H	‰‚ˆÉÜÚ[™ÛWÛ[İ™IË	Û\ÜÛÛ—Üİ]\ÉË	ØØ[˜Ù[	Ë	Ü\›X[™[Û[İ™I×Kš[˜ÛY\ÊÛX[Š›İË˜Xİ[ÛŠJNÂˆJNÂˆYˆ
+]\™Q^Ù\[ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú`&ze 9fî¹k¦º*¬¹.bùo£9mì¹§"z*¯ú*¬¸à z*âù`aù¢%¹am¹.åº+¢¹¦í;ï#9æë¹bcy.#z ïy¬.9.az*¯ú*¬¸à ‰Âˆ
+NÂˆBˆ\›X[™[Z[š[][Q]HHÛİ\˜ÙQ]NÂˆ\›X[™[X^[][Q]HHY^\ÊˆÛİ\˜ÙQ]KˆØY™Qœ™\]Y[˜ŞUÙYZÜÊÛİ\˜ÙTÙ\šY\Ë™œ™\]Y[˜ŞUÙYZÜÈÛİ\˜ÙTÙ\šY\Ëš[\˜[ÙYZÜÊH
+ˆÈHBˆ
+NÂˆBˆÛÛœİ]\ÈH
+^Xİ\™Ù]ˆÈÙ^Xİ]WBˆˆ\œ˜^K™œ›ÛJˆÈ[™İˆX]›X^
+X]œ›İ[™
+
+]Kœ\œÙJ	Ù[™]_ULŒŒ
+ÌŒ
+HH]Kœ\œÙJ	Üİ\]_ULŒŒ
+ÌŒ
+JHÈ
+H
+ÈJHKˆ
+ËÙ™œÙ]
+HOˆY^\Êİ\]KÙ™œÙ]
+Bˆ
+JK™š[\Š
+]JHO‚ˆ
+\\›X[™[Z[š[][Q]H]HH\›X[™[Z[š[][Q]JH	‰‚ˆ
+\\›X[™[X^[][Q]H]HH\›X[™[X^[][Q]JBˆ
+NÂˆ›Üˆ
+ÛÛœİ]HÙˆ]\ÊHÂˆÛÛœİÚ[™İÈH\Ú[™\ÜÕÚ[™İÊÛXŞK]JNÂˆYˆ
+Ú[™İË˜ÛÜÙY
+HÛÛ[YNÂˆÛÛœİØ[™Y]SZ[]\ÈH^Xİ\™Ù]ˆÈİ[YSZ[]\Ê^Xİİ\[YJWBˆˆ\œ˜^K™œ›ÛJˆÈ[™İˆX]›X^
+X]™›ÛÜŠ
+Ú[™İË™[™Z[]\ÈH\˜][ÛˆHÚ[™İËœİ\Z[]\ÊHÈÌ
+H
+ÈJHKˆ
+Ë[™^
+HOˆÚ[™İËœİ\Z[]\È
+È[™^
+ˆÌˆ
+NÂˆ›Üˆ
+ÛÛœİZ[]HÙˆØ[™Y]SZ[]\ÊHÂˆYˆ
+Z[]HÚ[™İËœİ\Z[]\ÈZ[]H
+È\˜][ÛˆˆÚ[™İË™[™Z[]\ÊHÛÛ[YNÂˆÛÛœİÛİİ\H	Ôİš[™ÊX]™›ÛÜŠZ[]HÈŒ
+JKœYİ\
+‹	Ì	Ê_N‰Ôİš[™ÊZ[]H	HŒ
+KœYİ\
+‹	Ì	Ê_XÂˆÛÛœİÛİ[™Z[]HHZ[]H
+È\˜][ÛÂˆÛÛœİÛİ[™H	Ôİš[™ÊX]™›ÛÜŠÛİ[™Z[]HÈŒ
+JKœYİ\
+‹	Ì	Ê_N‰Ôİš[™ÊÛİ[™Z[]H	HŒ
+KœYİ\
+‹	Ì	Ê_XÂˆYˆ
+X›XÔ™[[Ûİ\Ô\İ
+]KÛİİ\
+JHÛÛ[YNÂˆÛÛœİ›ØÚÙ\œÈH[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[\Š
+]™[
+HOˆÂˆÛÛœİÛİ\˜ÙSX]ÚH]™[™]HOOHÛİ\˜ÙQ]H	‰ˆ
+ˆ]™[šYOOHÛİ\˜ÙQ]™[Y]™[œÛİ\˜ÙRYOOHÛİ\˜ÙQ]™[Yˆ]™[™š^YÛİ\œÙRYOOHÛİ\˜ÙPÛİ\œÙRY]™[œÙ\šY\ÒYOOHÛİ\˜ÙPÛİ\œÙRYˆ
+NÂˆ™]\›ˆ]™[™]HOOH]H	‰‚ˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJ]™[
+H	‰‚ˆ\Ûİ\˜ÙSX]Ú	‰‚ˆİ™\›\ÊÛİİ\Ûİ[™]™[œİ\[YK]™[™[™[YJNÂˆJNÂˆYˆ
+Ú\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+›ØÚÙ\œË™\]Y\İYİXš™Xİ™\Ûİ\˜ÙRYÊİXš™XİY[™JJJHÛÛ[YNÂˆYˆ
+ˆ›ØÚÙ\œËœÛÛYJ
+]™[
+HO‚ˆ]™[XXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’Yˆ]™[œİY[YËœÛÛYJ
+İY[Y
+HOˆ\™Ù]İY[YËš[˜ÛY\ÊİY[Y
+JBˆ
+Bˆ
+HÛÛ[YNÂˆÛÛœİ›ÛÛ\ÈHÛÛ\]X›T›ÛÛ\Ë™š[\Š
+›ÛÛJHO‚ˆ›ÛÛP[İÜÒ[\˜[
+ˆ›ÛÛKˆ›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßKˆ]KˆÛİİ\ˆÛİ[™ˆİXš™XİYˆ	ÜØÚY[IÂˆ
+H	‰‚ˆX›ØÚÙ\œËœÛÛYJ
+]™[
+HOˆ]™[œ›ÛÛRYOOHÛİ\˜ÙRY
+›ÛÛJJBˆ
+K›X\
+
+›ÛÛJHOˆ
+ÂˆYˆÛİ\˜ÙRY
+›ÛÛJKˆ˜[YNˆ™[[›ÛÛT›Ùš[J›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKœX›XÓ˜[YKˆ\]Z\Y[X™[ˆ›ÛÛQ\]Z\Y[X™[
+›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKˆ™\]Z\™\Ñİ^š[™Ó[İ™Nˆ›ÛÛT™\]Z\™\Ñİ^š[™Ó[İ™J›ÛÛKİXš™XİY[™JBˆJJNÂˆYˆ
+›ÛÛ\Ë›[™İ
+HÛİËœ\Ú
+È]Kİ\[YNˆÛİİ\[™[YNˆÛİ[™›ÛÛ\ÈJNÂˆBˆBˆ™]\›ˆÂˆÚÎˆYKˆİ\]Kˆ[™]Kˆ\˜][Û“Z[]\Îˆ\˜][Û‹ˆÛİ\˜ÙNˆÛİ\˜ÙHÈX›XÑ]™[
+Ûİ\˜ÙK[™K›X\ËÙ\ÜÚ[Û‹XXÚ\’Y
+Hˆ[ˆÛİÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\”ÛİÜ[ÛœÊ]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİ\™Ù]]HH]RÙ^J]K™]H]K\™Ù]]JNÂˆÛÛœİ\™Ù]İ\[YHHÛX[Š]Kœİ\[YH]K\™Ù]İ\[YJKœÛXÙJJNÂˆYˆ
+]\™Ù]]H]˜[YÜ[[YJ\™Ù]İ\[YKYJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú`n9¤áù§"y¥b9æ¡9¥éy§'ú"!ÈÌ9b!ºd&9¦`¹«­xà ‰ÊNÂˆBˆYˆ
+X›XÔ™[[Ûİ\Ô\İ
+\™Ù]]K\™Ù]İ\[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù.#z ïy¢¢º*¬¹ê"ú*¯ùb,9mì¹í¤ú`c¹c®ùæ¡9¦`ºe¤øà ‰ÊNÂˆBˆ\ÜÙ\Ü[Y˜[˜ÙQ]J\™Ù]]K	ú*¯ú*¬¹¥éy§'ÉÊNÂˆÛÛœİÙ^HHİ\œ™[Z\ZQ^J
+NÂˆÛÛœİØ[™Y]Q[™HÜ[X^[][PY˜[˜ÙQ]J
+NÂˆÛÛœİØØ[™Y]P[™KÛXŞK›ÛÛTÙ][™ÜÔÛ˜\ÚİXİ]™PÚ[™ÙTÛ˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+ÂˆØÚY[P[™JÙ^KØ[™Y]Q[™Ù\ÜÚ[Û‹XXÚ\’Y
+Kˆ™[[ÛXŞTÙ][™ÜÊ
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊKÚ\™J	ØXİ]™IË	ÏOIËYJK™Ù]
+
+BˆJNÂˆÛÛœİ\™Ù][™HH\™Ù]]HHÙ^H	‰ˆ\™Ù]]HHØ[™Y]Q[™ˆÈØ[™Y]P[™Bˆˆ]ØZ]ØÚY[P[™J\™Ù]]K\™Ù]]KÙ\ÜÚ[Û‹XXÚ\’Y
+NÂˆÛÛœİ›ÛÛTÙ][™ÜÓX\HßNÂˆ›ÛÛTÙ][™ÜÔÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈ›ÛÛTÙ][™ÜÓX\ÙØËšYHHØË™]J
+HßNÈJNÂˆÛÛœİÚ[™İÈH\Ú[™\ÜÕÚ[™İÊÛXŞK\™Ù]]JNÂˆYˆ
+Ú[™İË˜ÛÜÙY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y. 9i*yak9/${ï#9.#z ïz*¯ùaiz*¬¹ê"øà ‰ÊNÂˆÛÛœİÙY[ˆH™]ÈÙ]
+
+NÂˆÛÛœİØ[™Y]\ÈHØ[™Y]P[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[\Š
+]™[
+HOˆÂˆÛÛœİÙ^HH	Ù]™[šY_	Ù]™[™]_XÂˆYˆ
+ÙY[‹š\ÊÙ^JJH™]\›ˆ˜[ÙNÂˆÙY[‹˜Y
+Ù^JNÂˆ™]\›ˆ]™[XXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’Y	‰‚ˆ›Ü›X[^™TØÚY[Tİ]\Ê]™[œİ]\ÊHOOH	ÜØÚY[Y	È	‰‚ˆZ\Ô›ÛÛT™[[]™[
+]™[
+H	‰‚ˆ]™[œİY[YË›[™İˆ	‰‚ˆ›ÛÛX[Š]™[œİXš™XİY
+H	‰‚ˆ\X›XÔ™[[Ûİ\Ô\İ
+]™[™]K]™[œİ\[YJNÂˆJK›X\
+
+Ûİ\˜ÙJHOˆÂˆÛÛœİ\˜][ÛˆH[YSZ[]\ÊÛİ\˜ÙK™[™[YJHH[YSZ[]\ÊÛİ\˜ÙKœİ\[YJNÂˆYˆ
+\˜][ÛˆÌ\˜][ÛˆˆÌ\˜][Ûˆ	HÌOOH
+H™]\›ˆ[ÂˆÛÛœİ\™Ù][™Z[]HH[YSZ[]\Ê\™Ù]İ\[YJH
+È\˜][ÛÂˆÛÛœİ\™Ù][™[YHHİš[™ÊX]™›ÛÜŠ\™Ù][™Z[]HÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Âˆİš[™Ê\™Ù][™Z[]H	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆYˆ
+[YSZ[]\Ê\™Ù]İ\[YJHÚ[™İËœİ\Z[]\È\™Ù][™Z[]HˆÚ[™İË™[™Z[]\ÊH™]\›ˆ[ÂˆYˆ
+Ûİ\˜ÙK™]HOOH\™Ù]]H	‰ˆÛİ\˜ÙKœİ\[YHOOH\™Ù]İ\[YJH™]\›ˆ[ÂˆÛÛœİÛİ\˜ÙSX]ÚH
+]™[
+HOˆ]™[™]HOOHÛİ\˜ÙK™]H	‰ˆ
+ˆ]™[šYOOHÛİ\˜ÙKšYˆ]™[œÛİ\˜ÙRYOOHÛİ\˜ÙKœÛİ\˜ÙRYˆ
+Ûİ\˜ÙK™š^YÛİ\œÙRY	‰ˆ]™[™š^YÛİ\œÙRYOOHÛİ\˜ÙK™š^YÛİ\œÙRY
+Bˆ
+NÂˆÛÛœİ›ØÚÙ\œÈH\™Ù][™Kœ™\Ûİ\˜ÙQ]™[Ë™š[\Š
+]™[
+HO‚ˆ]™[™]HOOH\™Ù]]H	‰‚ˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJ]™[
+H	‰‚ˆ\Ûİ\˜ÙSX]Ú
+]™[
+H	‰‚ˆİ™\›\Ê\™Ù]İ\[YK\™Ù][™[YK]™[œİ\[YK]™[™[™[YJBˆ
+NÂˆYˆ
+Ú\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+›ØÚÙ\œË™\]Y\İYİXš™Xİ™\Ûİ\˜ÙRYÊÛİ\˜ÙKœİXš™XİY\™Ù][™JJJH™]\›ˆ[ÂˆYˆ
+ˆ›ØÚÙ\œËœÛÛYJ
+]™[
+HO‚ˆ]™[XXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’Yˆ]™[œİY[YËœÛÛYJ
+İY[Y
+HOˆÛİ\˜ÙKœİY[YËš[˜ÛY\ÊİY[Y
+JBˆ
+Bˆ
+H™]\›ˆ[ÂˆÛÛœİ›ÛÛ\ÈH\™Ù][™Kœ›ÛÛ\Ë™š[\ŠÛİ\˜ÙPXİ]™JK™š[\Š
+›ÛÛJHOˆÂˆÛÛœİYHÛİ\˜ÙRY
+›ÛÛJNÂˆÛÛœİÙ][™ÈH›ÛÛTÙ][™ÜÓX\ÚYHßNÂˆ™]\›ˆ›ÛÛRÚ[™
+›ÛÛKÙ][™ÊHOOH	Û›Ü›X[	È	‰‚ˆ›ÛÛUXXÚ\”ØÚY[X›J›ÛÛKÙ][™ÊH	‰‚ˆ›ÛÛTİ\ÜÔİXš™Xİ
+›ÛÛKÛİ\˜ÙKœİXš™XİY\™Ù][™KÙ][™ÊH	‰‚ˆ›ÛÛP[İÜÒ[\˜[
+›ÛÛKÙ][™Ë\™Ù]]K\™Ù]İ\[YK\™Ù][™[YKÛİ\˜ÙKœİXš™XİY	ÜØÚY[IÊH	‰‚ˆX›ØÚÙ\œËœÛÛYJ
+]™[
+HOˆ]™[œ›ÛÛRYOOHY
+NÂˆJK›X\
+
+›ÛÛJHOˆ
+ÂˆYˆÛİ\˜ÙRY
+›ÛÛJKˆ˜[YNˆ™[[›ÛÛT›Ùš[J›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKœX›XÓ˜[YKˆ\]Z\Y[X™[ˆ›ÛÛQ\]Z\Y[X™[
+›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKˆ™\]Z\™\Ñİ^š[™Ó[İ™Nˆ›ÛÛT™\]Z\™\Ñİ^š[™Ó[İ™J›ÛÛKÛİ\˜ÙKœİXš™XİY\™Ù][™JBˆJJNÂˆYˆ
+\›ÛÛ\Ë›[™İ
+H™]\›ˆ[ÂˆÛÛœİX›XÔÛİ\˜ÙHHX›XÑ]™[
+Ûİ\˜ÙKØ[™Y]P[™K›X\ËÙ\ÜÚ[Û‹XXÚ\’Y
+NÂˆÛÛœİ[™XYÙHHÛX[ŠÛİ\˜ÙK™š^YÛİ\œÙRYÛİ\˜ÙKœÙ\šY\ÒYÛİ\˜ÙKœÛİ\˜ÙRYÛİ\˜ÙKšY
+NÂˆÛÛœİœ™\]Y[˜ŞUÙYZÜÈHØY™Qœ™\]Y[˜ŞUÙYZÜÊÛİ\˜ÙK™œ™\]Y[˜ŞUÙYZÜÈÛİ\˜ÙKš[\˜[ÙYZÜÊNÂˆÛÛœİ\›X[™[X^[][Q]HHY^\ÊÛİ\˜ÙK™]Kœ™\]Y[˜ŞUÙYZÜÈ
+ˆÈHJNÂˆÛÛœİ]\™Q^Ù\[ÛˆHXİ]™PÚ[™ÙTÛ˜\Úİ™ØÜËœÛÛYJ
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆYˆ
+ˆÛX[Š›İË˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÈ	‰‚ˆ\›X[™[[™XYÙJ›İÊHOOH[™XYÙH	‰‚ˆ\›X[™[İ]İ™\Š›İÊHOOHÛİ\˜ÙK™]Bˆ
+H™]\›ˆ˜[ÙNÂˆYˆ
+ØËšYOOHÛX[ŠÛİ\˜ÙKœÜ[Ú[™ÙRY
+H	‰ˆ\›X[™[İ]İ™\Š›İÊHÛİ\˜ÙK™]JH™]\›ˆ˜[ÙNÂˆ™]\›ˆ\›X[™[[™XYÙJ›İÊHOOH[™XYÙH	‰‚ˆ\›X[™[İ]İ™\Š›İÊHHÛİ\˜ÙK™]H	‰‚ˆÉÜÚ[™ÛWÛ[İ™IË	Û\ÜÛÛ—Üİ]\ÉË	ØØ[˜Ù[	Ë	Ü\›X[™[Û[İ™I×Kš[˜ÛY\ÊÛX[Š›İË˜Xİ[ÛŠJNÂˆJNÂˆÛÛœİ\›X[™[[İ™P[İÙYHÛİ\˜ÙKœ™Xİ\œš[™ÈOOHYH	‰‚ˆÛX[ŠÛİ\˜ÙKœÜ[Xİ[ÛŠHOOH	ÜÚ[™ÛWÛ[İ™IÈ	‰‚ˆ\™Ù]]HHÛİ\˜ÙK™]H	‰‚ˆ\™Ù]]HH\›X[™[X^[][Q]H	‰‚ˆY]\™Q^Ù\[ÛÂˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠX›XÔÛİ\˜ÙKÂˆ\˜][Û“Z[]\Îˆ\˜][Û‹ˆ\™Ù][™[YKˆ\›X[™[[İ™P[İÙYˆ›ÛÛ\ÂˆJNÂˆJK™š[\Š›ÛÛX[ŠKœÛXÙJLŒ
+NÂˆÛÛœİ›ÛÛ\ÈH™]ÈX\
+
+NÂˆØ[™Y]\Ë™›Ü‘XXÚ
+
+Ø[™Y]JHOˆØ[™Y]Kœ›ÛÛ\Ë™›Ü‘XXÚ
+
+›ÛÛJHOˆ›ÛÛ\ËœÙ]
+›ÛÛKšY›ÛÛJJJNÂˆ™]\›ˆÂˆÚÎˆYKˆ\™Ù]]Kˆ\™Ù]İ\[YKˆ›ÛÛ\ÎˆË‹‹œ›ÛÛ\Ë˜[Y\Ê
+WKœÛÜ
+
+YšYÚ
+HOˆY›˜[YK›ØØ[PÛÛ\\™JšYÚ›˜[YK	ŞšR[	ÊJKˆØ[™Y]S\ÜÛÛœÎˆØ[™Y]\ÂˆNÂŸB‚™[˜İ[ÛˆZ][Û‘^XİY[[İ[
+›İÊHÂˆ™]\›ˆX]›X^
+[X™\Š›İÈ	‰ˆ
+ˆ›İË™^XİY[[İ[ˆ›İËZ][Û[[İ[ˆ›İË˜Ûİ\œÙP[[İ[ˆ›İË™™YP[[İ[ˆ›İË˜[[İ[ˆ
+H
+JNÂŸB‚™[˜İ[ÛˆZ][Û“\ÜÛÛÛİ[
+›İÊHÂˆ™]\›ˆX]›X^
+K[X™\Š›İÈ	‰ˆ
+›İË›\ÜÛÛÛİ[›İËİ[\ÜÛÛœÊH
+JNÂŸB‚™[˜İ[ÛˆZ][Û•\ÙYÛİ[
+›İÊHÂˆ™]\›ˆX]›X^
+[X™\Š›İÈ	‰ˆ
+›İË\ÙYÛİ[›İË˜][™YÛİ[
+H
+JNÂŸB‚™[˜İ[ÛˆZ][Û”\š[Ù[X™\Š›İÊHÂˆ™]\›ˆX]›X^
+[X™\Š›İÈ	‰ˆ
+›İËœ\š[Ù›È›İËœ\š[Ù
+H
+JNÂŸB‚™[˜İ[Ûˆš\œİš[š]S[X™\Š›İËšY[ÊHÂˆ›Üˆ
+ÛÛœİšY[ÙˆšY[ÊHÂˆYˆ
+\›İÈSØš™Xİœ›İİ\Kš\ÓİÛ”›Ü\K˜Ø[
+›İËšY[
+JHÛÛ[YNÂˆYˆ
+›İÖÙšY[HOOH	ÉÈ›İÖÙšY[HOH[
+HÛÛ[YNÂˆÛÛœİ˜[YHH[X™\ŠÛX[Š›İÖÙšY[JKœ™\XÙJÉIË	ÉÊJNÂˆYˆ
+[X™\‹š\Ñš[š]J˜[YJJH™]\›ˆ˜[YNÂˆBˆ™]\›ˆ[ÂŸB‚™[˜İ[Ûˆ›İ[™^\›Û[Û™^J˜[YJHÂˆÛÛœİ[[İ[H[X™\Š˜[YJNÂˆYˆ
+S[X™\‹š\Ñš[š]J[[İ[
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú*¬¹ê"ú%ªº,áúaäzhcy¨/9o#úc+ú*©;ï#9mì¹`g9«h¹ì/yb,9.éz`oùacykêùaizc+ú*©:%ªº,áøà ‰ÊNÂˆBˆ™]\›ˆX]œ›İ[™
+[[İ[
+È[X™\‹‘TÒSÓŠNÂŸB‚™[˜İ[Ûˆ›Ü›X[^™UXXÚ\”Ú\™T˜][Ê˜[YJHÂˆÛÛœİ˜]ÈH[X™\ŠÛX[Š˜[YJKœ™\XÙJÉIË	ÉÊJNÂˆYˆ
+S[X™\‹š\Ñš[š]J˜]ÊH˜]ÈH˜]ÈˆL
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú  yn*ùb!¹¢$9«å9/¢ùoázh"9i)ù¥¯9.%9.#ycëú-¡z`cˆL	{ï&ùmì¹`g9«h¹ì/yb,9.éz`oùacykêùaizc+ú*©:%ªº,áøà ‰Âˆ
+NÂˆBˆ™]\›ˆ˜]ÈHHÈ˜]Èˆ˜]ÈÈLÂŸB‚™[˜İ[ÛˆZ][Û”\š[Ù]˜Z[X›J›İÊHÂˆÛÛœİİ]\ÈHÛX[Š›İÈ	‰ˆ›İËœİ]\ÊKÓİÙ\Ø\ÙJ
+NÂˆYˆ
+›İÈ	‰ˆ›İË˜Xİ]™HOOH˜[ÙJH™]\›ˆ˜[ÙNÂˆYˆ
+ÉØØ[˜Ù[Y	Ë	ØØ[˜Ù[Y	Ë	İ›ÚY	Ë	İ›ÚYY	Ë	Ü™Y[™Y	Ë	ùcå¹­¢	Ë	ù/g9nè‰Ë	ú` 9«/‰×Kš[˜ÛY\Êİ]\ÊJH™]\›ˆ˜[ÙNÂˆ™]\›ˆZ][Û•\ÙYÛİ[
+›İÊHZ][Û“\ÜÛÛÛİ[
+›İÊNÂŸB‚™[˜İ[Ûˆ][™[˜ÙT\š[ÙØ[™Y]J\š[ÙË]™[İY[YÛİ\˜ÙQ]JHÂˆÛÛœİØ[YİY[YHÛX[ŠİY[Y
+NÂˆÛÛœİØ[YİXš™XİYH]™[İXš™XİY
+]™[ßJNÂˆÛÛœİØ[YXXÚ\’YH]™[XXÚ\’Y
+]™[ßJNÂˆÛÛœİ\ÜÛÛ‘]HH]RÙ^JÛİ\˜ÙQ]H]™[]J]™[ßJJNÂˆÛÛœİX]Ú[™ÈH
+\š[ÙÈ×JK™š[\Š
+›İÊHOˆÂˆYˆ
+ÛX[Š›İËœİY[Y
+HOOHØ[YİY[Y
+H™]\›ˆ˜[ÙNÂˆYˆ
+Ø[YİXš™XİY	‰ˆÛX[Š›İËœİXš™XİY
+H	‰ˆÛX[Š›İËœİXš™XİY
+HOOHØ[YİXš™XİY
+H™]\›ˆ˜[ÙNÂˆYˆ
+Ø[YXXÚ\’Y	‰ˆ]™[XXÚ\’Y
+›İÊH	‰ˆ]™[XXÚ\’Y
+›İÊHOOHØ[YXXÚ\’Y
+H™]\›ˆ˜[ÙNÂˆÛÛœİİ\]HH]RÙ^J›İËœİ\]H›İËœ^[Y[]JNÂˆÛÛœİ^\Q]HH]RÙ^J›İË™^\Q]H›İË™[™]JNÂˆYˆ
+\ÜÛÛ‘]H	‰ˆİ\]H	‰ˆİ\]Hˆ\ÜÛÛ‘]JH™]\›ˆ˜[ÙNÂˆYˆ
+\ÜÛÛ‘]H	‰ˆ^\Q]H	‰ˆ^\Q]H\ÜÛÛ‘]JH™]\›ˆ˜[ÙNÂˆ™]\›ˆZ][Û”\š[Ù]˜Z[X›J›İÊNÂˆJNÂˆYˆ
+[X]Ú[™Ë›[™İ
+H™]\›ˆ[Â‚ˆÛÛœİ™]Ù\İ\XØX›HH
+›İÜÊHOˆ
+›İÜÈ×JKœÛXÙJ
+KœÛÜ
+
+YšYÚ
+HO‚ˆZ][Û”\š[Ù[X™\ŠšYÚ
+HHZ][Û”\š[Ù[X™\ŠY
+Hˆ]RÙ^JšYÚœİ\]HšYÚœ^[Y[]JK›ØØ[PÛÛ\\™J]RÙ^JYœİ\]HYœ^[Y[]JJHˆÛİ\˜ÙRY
+Y
+K›ØØ[PÛÛ\\™JÛİ\˜ÙRY
+šYÚ
+JBˆ
+VÌH[ÂˆÛÛœİ›Ü›X[^™Y\š[ÙYÈH
+YÊHOˆÂˆÛÛœİİ]]H™]ÈÙ]
+
+NÂˆ
+YÈ×JK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠK™›Ü‘XXÚ
+
+Y
+HOˆÂˆİ]]˜Y
+Y
+NÂˆİ]]˜Y
+Yœ™\XÙJ×œ\š[ÙËË	ÉÊJNÂˆİ]]˜Y
+\š[ÙÉÚYœ™\XÙJ×œ\š[ÙËË	ÉÊ_X
+NÂˆJNÂˆ™]\›ˆİ]]ÂˆNÂˆÛÛœİ›İÜÓX]Ú[™ÒYÈH
+YÊHOˆÂˆÛÛœİ›Ü›X[^™YYÈH›Ü›X[^™Y\š[ÙYÊYÊNÂˆYˆ
+[›Ü›X[^™YYËœÚ^™JH™]\›ˆ×NÂˆ™]\›ˆX]Ú[™Ë™š[\Š
+›İÊHO‚ˆ›Ü›X[^™YYËš\ÊÛİ\˜ÙRY
+›İÊJHˆ›Ü›X[^™YYËš\ÊÛX[Š›İËœÛİ\˜ÙT^[Y[Y
+JBˆ
+NÂˆNÂ‚ˆÛÛœİ^XÚ]TİY[H]™[	‰ˆ]™[Z][Û”\š[ÙYÈ	‰ˆ\[Ùˆ]™[Z][Û”\š[ÙYÈOOH	ÛØš™Xİ	ÂˆÈÛX[Š]™[Z][Û”\š[ÙYÖİØ[YİY[YJBˆˆ	ÉÎÂˆËÈZ][Û”\š[ÙYÖÜİY[YH9¦+ú`$9å'ù/çykf9æ¡9e«¹. 9§'ùb){ï#9cëùæí9£©ya*¹ab;ï&ùfî¹k¦º*¬º""¹«!9/cybaùcëú ïyd#9¦`‚ˆËÈ9n-º$eùi&¹`"ù«mùcì¹.æ9«/¹íê:&gûï#9.ãzh"9o§¹am¹.+y£$z`n9¥éy§'ûï#ù§'ù¥n9§ 9¥¬9.%9cëùå*9æ¡9§'ùb)xà ‚ˆÛÛœİ^XÚ]TİY[›İÈH™]Ù\İ\XØX›J›İÜÓX]Ú[™ÒYÊÙ^XÚ]TİY[JJNÂˆYˆ
+^XÚ]TİY[›İÊH™]\›ˆ^XÚ]TİY[›İÎÂˆÛÛœİ^XÚ]YÈHÂˆÛX[Š]™[	‰ˆ
+]™[Z][Û”\š[ÙY]™[œ\š[ÙY]™[œİY[^[Y[
+JKˆ‹‹™š\œİ\œ˜^J]™[ßKÉÜİY[^[Y[YÉË	Ü^[Y[YÉ×JBˆK™š[\Š›ÛÛX[ŠNÂˆÛÛœİ^XÚ]H™]Ù\İ\XØX›J›İÜÓX]Ú[™ÒYÊ^XÚ]YÊJNÂˆYˆ
+^XÚ]
+H™]\›ˆ^XÚ]Â‚ˆ™]\›ˆ™]Ù\İ\XØX›JX]Ú[™ÊNÂŸB‚™[˜İ[Ûˆ][™[˜ÙT\š[Ù^\›Û
+İY[Y\š[Ù
+HÂˆÛÛœİ\š[ÙYHÛİ\˜ÙRY
+\š[Ù
+NÂˆÛÛœİ[”Û˜\ÚİHœÛÛ•˜[YJ\š[Ù	‰ˆ\š[Ùœ[”Û˜\ÚİßJNÂˆYˆ
+\\š[ÙY\[”Û˜\Úİ\[Ùˆ[”Û˜\ÚİOOH	ÛØš™Xİ	ÈSØš™XİšÙ^\Ê[”Û˜\Úİ
+K›[™İ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ù¢o¹.#yb,:`&y/cykn9å'ú*¬¹ê"ùæ¡9¥-º,®ù¥®y¨b9oêùáiûï#9mì¹`g9«h¹ì/yb,;ï&ú*âùab9è®º*£ykn:,®ù§'ùb)z"!ú  yn*ù¢á¹n,ú*+yk¦¸à ‰Âˆ
+NÂˆBˆÛÛœİ\ÜÛÛÛİ[Hš\œİš[š]S[X™\Š\š[ÙÉÛ\ÜÛÛÛİ[	Ë	İİ[\ÜÛÛœÉ×JNÂˆÛÛœİ^XİY[[İ[Hš\œİš[š]S[X™\Š\š[ÙÂˆ	Ù^XİY[[İ[	Ë	İZ][Û[[İ[	Ë	ØÛİ\œÙP[[İ[	Ë	Ù™YP[[İ[	Ë	Ø[[İ[	ÂˆJNÂˆÛÛœİ[[[İ[Hš\œİš[š]S[X™\Š[”Û˜\ÚİÉØ[[İ[	Ë	Ù^XİY[[İ[	Ë	İZ][Û[[İ[	×JNÂˆÛÛœİİ[[[İ[H^XİY[[İ[OH[	‰ˆ^XİY[[İ[ˆÈ^XİY[[İ[ˆ[[[İ[ÂˆÛÛœİ\ØÛİ[HX]›X^
+š\œİš[š]S[X™\Š\š[ÙÉÙ\ØÛİ[	Ë	Ù\ØÛİ[[[İ[	×JH
+NÂˆYˆ
+S[X™\‹š\Ñš[š]J\ÜÛÛÛİ[
+H\ÜÛÛÛİ[HS[X™\‹š\Ñš[š]Jİ[[[İ[
+Hİ[[[İ[H
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú`&y/cykn9å'ùæ¡9kn:,®ùî/zhcy¢%º*¬¹h ¹¥n9§*º*+yk¦»ï#9mì¹`g9«h¹ì/yb,9.éz`oùacyå(¹å'È•	:  yn*ú%ªº,áøà ‰Âˆ
+NÂˆBˆ]\ØÛİ[\HHÛX[Š\š[Ù™\ØÛİ[\H[”Û˜\Úİ™\ØÛİ[\JKÓİÙ\Ø\ÙJ
+NÂˆYˆ
+VÉÜ˜][ÉË	Ø[[İ[	×Kš[˜ÛY\Ê\ØÛİ[\JJHÂˆ\ØÛİ[\HH\ØÛİ[ˆ	‰ˆ\ØÛİ[HHÈ	Ü˜][ÉÈˆ	Ø[[İ[	ÎÂˆBˆÛÛœİ^XÚ]XXÚ\”^P˜\Ú\ÈHÛX[Šˆ\š[ÙXXÚ\”^P˜\Ú\È[”Û˜\ÚİXXÚ\”^P˜\Ú\Âˆ
+KÓİÙ\Ø\ÙJ
+NÂˆÛÛœİ^PQ\ØÛİ[Û›İÛˆH\[Ùˆ\š[Ùœ^PQ\ØÛİ[OOH	Ø›ÛÛX[‰Èˆ\[Ùˆ[”Û˜\Úİœ^PQ\ØÛİ[OOH	Ø›ÛÛX[‰ÎÂˆÛÛœİ^PQ\ØÛİ[H\[Ùˆ\š[Ùœ^PQ\ØÛİ[OOH	Ø›ÛÛX[‰ÂˆÈ\š[Ùœ^PQ\ØÛİ[ˆˆ[”Û˜\Úİœ^PQ\ØÛİ[OOHYNÂˆYˆ
+ˆ\ØÛİ[ˆ	‰‚ˆ\ØÛİ[HH	‰‚ˆVÉÙÜ›ÜÜÉË	Û™]	×Kš[˜ÛY\Ê^XÚ]XXÚ\”^P˜\Ú\ÊH	‰‚ˆ\^PQ\ØÛİ[Û›İÛ‚ˆ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú`&y`"ú""¹§'ùb)y§"y¢¦9¢hûï#9/a¹¬¤¹§"y/çykf:  yn*ù£"yc§ù`îy¢%¹¢¦9¢hùo£:aäzhcz*":%ª»ï&ùmì¹`g9«h¹ì/yb,;ï#:*âùab9è®º*£z%ªº,áùgî¹®¥¸à ‰Âˆ
+NÂˆBˆÛÛœİXXÚ\”^P˜\Ú\ÈHÉÙÜ›ÜÜÉË	Û™]	×Kš[˜ÛY\Ê^XÚ]XXÚ\”^P˜\Ú\ÊBˆÈ^XÚ]XXÚ\”^P˜\Ú\Âˆˆ
+^PQ\ØÛİ[Û›İÛˆÈ
+^PQ\ØÛİ[È	Û™]	Èˆ	ÙÜ›ÜÜÉÊHˆ	Û™]	ÊNÂˆÛÛœİ\ØÛİ[[[İ[H\ØÛİ[\HOOH	Ü˜][ÉÂˆÈİ[[[İ[
+ˆX]›Z[ŠK\ØÛİ[
+Bˆˆ\ØÛİ[ÂˆÛÛœİ™]Z][ÛˆHX]›X^
+İ[[[İ[H\ØÛİ[[[İ[
+NÂˆÛÛœİXXÚ\”^UZ][ÛˆHXXÚ\”^P˜\Ú\ÈOOH	ÙÜ›ÜÜÉÈÈİ[[[İ[ˆ™]Z][ÛÂˆÛÛœİÜ›ÜÜÓ\ÜÛÛ”šXÙHH›İ[™^\›Û[Û™^Jİ[[[İ[È\ÜÛÛÛİ[
+NÂˆÛÛœİ™]\ÜÛÛ”šXÙHH›İ[™^\›Û[Û™^J™]Z][ÛˆÈ\ÜÛÛÛİ[
+NÂˆÛÛœİXXÚ\”^S\ÜÛÛ”šXÙHH›İ[™^\›Û[Û™^JXXÚ\”^UZ][ÛˆÈ\ÜÛÛÛİ[
+NÂˆYˆ
+XXÚ\”^S\ÜÛÛ”šXÙHH
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù§+9h ¹kn:,®ú*"9ë¥ùà®ˆ•	;ï#9mì¹`g9«h¹ì/yb,;ï&ú*âùab9/ë¹«hùkn:,®ù§'ùb)xà ‰ÊNÂˆB‚ˆÛÛœİÜ]\HHÛX[Šˆ[”Û˜\ÚİœÜ]\H[”Û˜\ÚİXXÚ\”Ü]\H[”Û˜\ÚİœÚ\™U\Bˆ
+KÓİÙ\Ø\ÙJ
+NÂˆ]Ü]˜[YHHš\œİš[š]S[X™\Š[”Û˜\ÚİÉÜÜ]˜[YI×JNÂˆ]›Ü›X[^™Y˜][ÈHÂˆ]XXÚ\[[İ[HÂˆYˆ
+Ü]\HOOH	Ü˜][ÉÊHÂˆYˆ
+Ü]˜[YHOH[
+HÂˆÜ]˜[YHHš\œİš[š]S[X™\Š[”Û˜\ÚİÉØ[İ˜]IË	ÜÚ\™T˜]IË	İXXÚ\”Ú\™IË	Ø[İ	×JNÂˆBˆ›Ü›X[^™Y˜][ÈH›Ü›X[^™UXXÚ\”Ú\™T˜][ÊÜ]˜[YJNÂˆXXÚ\[[İ[H›İ[™^\›Û[Û™^JXXÚ\”^S\ÜÛÛ”šXÙH
+ˆ›Ü›X[^™Y˜][ÊNÂˆH[ÙHYˆ
+Ü]\HOOH	Ùš^Y	ÊHÂˆYˆ
+Ü]˜[YHOH[
+HÂˆÜ]˜[YHHš\œİš[š]S[X™\Š[”Û˜\ÚİÉÚİ\›Q™YIË	Ùš^YXXÚ\[[İ[	Ë	İXXÚ\[[İ[	×JNÂˆBˆYˆ
+S[X™\‹š\Ñš[š]JÜ]˜[YJHÜ]˜[YHH
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú  yn*ù«ãùh ¹fî¹k¦º%ªº,áù§*º*+yk¦»ï#9mì¹`g9«h¹ì/yb,9.éz`oùacyå(¹å'È•	:  yn*ú%ªº,áøà ‰Âˆ
+NÂˆBˆXXÚ\[[İ[H›İ[™^\›Û[Û™^JÜ]˜[YJNÂˆH[ÙHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú`&y`"ù¥-º,®ù¥®y¨b9l&¹§*º*+yk¦¸à#9«å9/¢øà#y¢%¸à#9«ãùh ¹fî¹k¦ºaäzhcxà#yæ¡:  yn*ù¢á¹n,ûï#9mì¹`g9«h¹ì/yb,8à ‰Âˆ
+NÂˆBˆYˆ
+XXÚ\[[İ[H
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú  yn*ù§+9h º%ªº,áú*"9ë¥ùà®ˆ•	;ï#9mì¹`g9«h¹ì/yb,;ï&ú*âùab9/ë¹«hù¢á¹n,ú*+yk¦¸à ‰ÊNÂˆBˆ™]\›ˆÂˆİY[YˆÛX[ŠİY[Y
+Kˆ\š[ÙYˆ[œ]ÎˆÂˆ\š[Ù›ÎˆZ][Û”\š[Ù[X™\Š\š[Ù
+Kˆ[’YˆÛX[Š\š[Ùœ[’Y[”Û˜\ÚİšY
+Kˆİ\]Nˆ]RÙ^J\š[Ùœİ\]H\š[Ùœ^[Y[]JKˆ^\Q]Nˆ]RÙ^J\š[Ù™^\Q]H\š[Ù™[™]JKˆ\ÜÛÛÛİ[ˆ\ÙYÛİ[ˆZ][Û•\ÙYÛİ[
+\š[Ù
+Kˆ^XİY[[İ[ˆİ[[[İ[ˆ\ØÛİ[ˆ\ØÛİ[\Kˆ\ØÛİ[[[İ[ˆ™]Z][Û‹ˆXXÚ\”^P˜\Ú\ËˆXXÚ\”^UZ][Û‹ˆ[”Û˜\ÚİˆKˆİ]]ÎˆÂˆËÈ\ÜÛÛ”šXÙ{ï#ØÛÛXİY[[İ[9. 9o¢ù.èú(j9§+9h ¹ké¹¥-»ï&ú  yn*ù¦+ùd)¹£"yc§ù`îz*":%ª¹cé¹kfXXÚ\”^S\ÜÛÛ”šXÙxà ‚ˆ\ÜÛÛ”šXÙNˆ™]\ÜÛÛ”šXÙKˆÛÛXİY[[İ[ˆ™]\ÜÛÛ”šXÙKˆÜ›ÜÜÓ\ÜÛÛ”šXÙKˆ™]\ÜÛÛ”šXÙKˆXXÚ\”^S\ÜÛÛ”šXÙKˆÜ]\KˆÜ]˜[YNˆÜ]\HOOH	Ü˜][ÉÈÈ›Ü›X[^™Y˜][Èˆ›İ[™^\›Û[Û™^JÜ]˜[YJKˆÛİ\˜ÙTÜ]˜[YNˆÜ]˜[YKˆ›Ü›X[^™Y˜][Ëˆ˜\ÙUXXÚ\[[İ[ˆXXÚ\[[İ[ˆXXÚ\[[İ[ˆØÚÛÛÚ\™Nˆ›İ[™^\›Û[Û™^J™]\ÜÛÛ”šXÙHHXXÚ\[[İ[
+BˆBˆNÂŸB‚™[˜İ[Ûˆ][™[˜ÙT^\›ÛØ[İ[][ÛŠ]™[\š[Ù›İÜËÛİ\˜ÙQ]JHÂˆÛÛœİÜXÚX[\ÜÛÛˆH]™[	‰ˆ
+ˆ]™[œÜXÚX[\ÜÛÛˆOOHYHˆÛX[Š]™[œÜ[Xİ[ÛŠHOOH	İXXÚ\—ÙÚY	ÈˆÛX[Š]™[\JHOOH	İXXÚ\—ÙÚY	Âˆ
+NÂˆYˆ
+ÜXÚX[\ÜÛÛŠHÂˆÛÛœİ[œZYXXÚ\‘ÚYHÛX[Š]™[œÜ[Xİ[ÛŠHOOH	İXXÚ\—ÙÚY	ÈˆÛX[Š]™[\JHOOH	İXXÚ\—ÙÚY	Èˆ]™[XXÚ\”^XX›HOOH˜[ÙNÂˆÛÛœİ\ÜÛÛ”šXÙHH›İ[™^\›Û[Û™^Jš\œİš[š]S[X™\Š]™[Âˆ	ÜÜXÚX[\ÜÛÛ”šXÙIË	İZ][Û[[İ[	Ë	ØÛİ\œÙP[[İ[	ÂˆJH
+NÂˆÛÛœİÛÛ™šYİ\™YXXÚ\[[İ[H›İ[™^\›Û[Û™^Jš\œİš[š]S[X™\Š]™[Âˆ	ÜÜXÚX[XXÚ\”^IË	İXXÚ\[[İ[	Ë	İXXÚ\”^IÂˆJH
+NÂˆÛÛœİ˜\ÙUXXÚ\[[İ[H[œZYXXÚ\‘ÚYÈˆÛÛ™šYİ\™YXXÚ\[[İ[ÂˆYˆ
+][œZYXXÚ\‘ÚY	‰ˆ˜\ÙUXXÚ\[[İ[H
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú-":` {ï#ùâny«¢º*¬¹ê"ùl&¹§*º*+yk¦º  yn*ú%ªº,áûï#9mì¹`g9«h¹ì/yb,9.éz`oùacyå(¹å'È•	:%ªº,áøà ‰Âˆ
+NÂˆBˆÛÛœİXXÚ\”^PY\İY[Hš\œİš[š]S[X™\Š]™[ÉİXXÚ\”^PY\İY[	×JHÂˆÛÛœİXXÚ\[[İ[H[œZYXXÚ\‘ÚYˆÈˆˆX]›X^
+›İ[™^\›Û[Û™^J˜\ÙUXXÚ\[[İ[
+ÈXXÚ\”^PY\İY[
+JNÂˆÛÛœİİY[YÈHË‹‹›™]ÈÙ]
+]™[İY[YÊ]™[
+K›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠJWNÂˆÛÛœİ˜]HH[œZYXXÚ\‘ÚYÈ	ú  yn*ùacz,®ú-":*¬‰Èˆ9âny«¢º*¬¹fî¹k¦ˆ•		Ø˜\ÙUXXÚ\[[İ[XÂˆ™]\›ˆÂˆZ][Û[[İ[ˆˆ\ÜÛÛ”šXÙKˆÛÛXİY[[İ[ˆˆ˜\ÙUXXÚ\[[İ[ˆXXÚ\”^PY\İY[ˆXXÚ\”^PY\İY[™X\ÛÛˆÛX[Š]™[XXÚ\”^PY\İY[™X\ÛÛŠKˆXXÚ\[[İ[ˆØÚÛÛÚ\™Nˆˆ˜]KˆÜ]\Nˆ[œZYXXÚ\‘ÚYÈ	Û›Û™IÈˆ	Ùš^Y	ËˆÜ]˜[YNˆ˜\ÙUXXÚ\[[İ[ˆ[İ˜]Nˆˆİ\›Q™YNˆ˜\ÙUXXÚ\[[İ[ˆXXÚ\”^XX›Nˆ][œZYXXÚ\‘ÚYˆ^\›Û^ÛYYˆ[œZYXXÚ\‘ÚYˆ^\›Û^Û\Ú[Û”™X\ÛÛˆ[œZYXXÚ\‘ÚYÈ	İXXÚ\—ÙÚYÛ›×Ü^IÈˆ	ÉËˆ\š[ÙYˆ	ÉËˆ[”Û˜\ÚİˆßKˆ^\›ÛØ[İ[][ÛˆÂˆ™\œÚ[Ûˆ	Ø][™[˜ÙK\\š[Ù\^\›Û]ŒIËˆ[œ]ÎˆÂˆ]Nˆ]RÙ^JÛİ\˜ÙQ]H]™[]J]™[
+JKˆ]™[YˆÛİ\˜ÙRY
+]™[
+KˆÛİ\œÙRYˆÛX[Š]™[™š^YÛİ\œÙRY]™[œÛİ\˜ÙPÛİ\œÙRY
+KˆXXÚ\’Yˆ]™[XXÚ\’Y
+]™[
+KˆİXš™XİYˆ]™[İXš™XİY
+]™[
+KˆÜXÚX[\ÜÛÛˆYKˆXXÚ\”^XX›Nˆ][œZYXXÚ\‘ÚYˆ^\›Û^ÛYYˆ[œZYXXÚ\‘ÚYˆÜXÚX[\ÜÛÛ”šXÙNˆ\ÜÛÛ”šXÙKˆÜXÚX[XXÚ\”^Nˆ˜\ÙUXXÚ\[[İ[ˆXXÚ\”^PY\İY[ˆXXÚ\”^PY\İY[™X\ÛÛˆÛX[Š]™[XXÚ\”^PY\İY[™X\ÛÛŠBˆKˆİY[ÎˆİY[YË›X\
+
+İY[Y
+HOˆ
+ÈİY[Y\š[ÙYˆ	ÉËÜXÚX[\ÜÛÛˆYHJJKˆİ]]ÎˆÂˆ\ÜÛÛ”šXÙKˆÛÛXİY[[İ[ˆˆ˜\ÙUXXÚ\[[İ[ˆXXÚ\[[İ[ˆØÚÛÛÚ\™Nˆˆ˜]BˆBˆBˆNÂˆBˆÛÛœİİY[ÈH
+5ëİ·¶‰ËkºwµçXÛX[ŠX\ËXXÚ\œÖİXXÚ\’YH	‰ˆX\ËXXÚ\œÖİXXÚ\’YK›˜[YJBˆNÂˆJKˆ][™[˜ÙPØ[˜Ù[][ÛœÎˆXİ]™TÜ[][™[˜ÙK™š[\Š
+›İÊHO‚ˆÛX[Š›İËœÛİ\˜ÙJHOOH	Ø][™[˜ÙKXØ[˜Ù[][Û‹X\›İ™Y	È	‰‚ˆ
+ÛX[Š›İËœİ]\ÊHOOH	ØØ[˜Ù[Y	È›İË˜Xİ]™HOOH˜[ÙJBˆ
+K›X\
+
+›İÊHOˆ
+ÂˆYˆÛX[Š›İË—×ÚY›İËšY
+KˆİY[YˆÛX[Š›İËœİY[Y
+Kˆ]Nˆ]™[]J›İÊKˆİXš™XİYˆÛX[Š›İËœİXš™XİY
+KˆXXÚ\’YˆÛX[Š›İËXXÚ\’Y
+KˆØ[˜Ù[Y]^ˆÛX[Š›İË˜Ø[˜Ù[Y]^
+Kˆ›İNˆ	ù..ùë¨y¨.9aá¹cå¹­¢9ì/yb,;ï#9h ¹¥n9mìº(ç9fç¹æë¹bcy§'ùb)IÂˆJJKˆÛÛXİ›ÛÚÎˆX›XĞÛÛXİÜİËˆ\ÛÛZ[™Îˆ]™[Ë™š[\Š
+›İÊHO‚ˆ]™[]J›İÊHHÙ^H	‰‚ˆ]™[İY[YÊ›İÊKœÛÛYJ
+Y
+HOˆ[İÙYš\ÊY
+JH	‰‚ˆVÉØØ[˜Ù[Y	Ë	ÛX]™IË	ØXœÙ[	×Kš[˜ÛY\Ê›Ü›X[^™TØÚY[Tİ]\Ê›İËœİ]\ÊJBˆ
+KœÛXÙJÌ
+K›X\
+
+›İÊHOˆ
+ÂˆYˆÛİ\˜ÙRY
+›İÊKˆ]Nˆ]™[]J›İÊKˆİ\[YNˆ]™[İ\
+›İÊKˆ[™[YNˆ]™[[™
+›İÊKˆİY[YÎˆ]™[İY[YÊ›İÊKˆİXš™Xİ˜[YNˆÛX[ŠX\ËœİXš™XİÖÙ]™[İXš™XİY
+›İÊWH	‰ˆX\ËœİXš™XİÖÙ]™[İXš™XİY
+›İÊWK›˜[YJKˆXXÚ\“˜[YNˆÛX[ŠX\ËXXÚ\œÖÙ]™[XXÚ\’Y
+›İÊWH	‰ˆX\ËXXÚ\œÖÙ]™[XXÚ\’Y
+›İÊWK›˜[YJKˆXXÚ\’Yˆ]™[XXÚ\’Y
+›İÊKˆXXÚ\”Û™Nˆ›Ü›X[^™TÛ™JÛİ\˜ÙTÛ™JX\ËXXÚ\œÖÙ]™[XXÚ\’Y
+›İÊWHßJJKˆİ]\ÎˆÛX[Š›İËœİ]\ÊBˆJJBˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ\]TİY[™[Z[™\Š]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉÜİY[	×JNÂˆÛÛœİİY[YHÛX[Š]KœİY[Y
+NÂˆYˆ
+\İY[Y
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú`n9¤áùkn9å'øà ‰ÊNÂˆÛÛœİÙ\ÜÚ[Ûš[™[™ÜÈH]ØZ]Xİ]™TİY[š[™[™ÜÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠNÂˆÛÛœİ[İÙYHË‹‹›™]ÈÙ]
+Ù\ÜÚ[Ûš[™[™ÜË›X\
+
+›İÊHOˆÛX[Š›İËœİY[Y
+JK™š[\Š›ÛÛX[ŠJWNÂˆYˆ
+X[İÙYš[˜ÛY\ÊİY[Y
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ù¬¤¹§"z`&y/cykn9å'ùæ¡9£ä:a¤º*+yk¦¹«"ºfd8à ‰ÊNÂˆBˆÛÛœİ\™Ù]ÈHÙ\ÜÚ[Ûš[™[™ÜË™š[\Š
+›İÊHOˆÛX[Š›İËœİY[Y
+HOOHİY[Y
+NÂˆYˆ
+]\™Ù]Ë›[™İ
+H›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&y/cykn9å'ùæ¡9§"y¥b9ænùaiyn,ú&gøà ‰ÊNÂˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆ\™Ù]Ë™›Ü‘XXÚ
+
+›İÊHOˆ˜]ÚœÙ]
+›İË—×Ü™Y‹Âˆ™[Z[™\“\İ\ÜÛÛˆ]Kœ™[Z[™\“\İ\ÜÛÛˆOOH˜[ÙKˆ™[Z[™\”^[Y[ˆ]Kœ™[Z[™\”^[Y[OOH˜[ÙKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂˆ™]\›ˆÈÚÎˆYKİY[YNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[[]˜Z[Xš[]J]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉÜİY[	Ë	Ü™[\‰Ë	İXXÚ\‰×JNÂˆÛÛœİ]HH]RÙ^J]K™]JNÂˆÛÛœİİ\[YHHÛX[Š]Kœİ\[YJKœÛXÙJJNÂˆÛÛœİÛXŞHH]ØZ]™[[ÛXŞTÙ][™ÜÊ
+NÂˆÛÛœİ™\]Y\İY\˜][ÛˆH[X™\Š]K™\˜][Û“Z[]\ÈOH[ÈŒˆ]K™\˜][Û“Z[]\ÊNÂˆYˆ
+S[X™\‹š\Ñš[š]J™\]Y\İY\˜][ÛŠH™\]Y\İY\˜][ÛˆÌ™\]Y\İY\˜][Ûˆ	HÌOOH
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùéçùå*9¦`ºe¤ùoázh"9.éHÌ9b!ºd&9à®¹e«¹/cxà ‰ÊNÂˆBˆYˆ
+™\]Y\İY\˜][ÛˆˆÛXŞK›X^\˜][Û“Z[]\ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ú[˜[YX\™İ[Y[	Ëˆ9e«¹«(yéçùå*9§ :emùà®ˆ	ÓX]œ›İ[™
+ÛXŞK›X^\˜][Û“Z[]\ÈÈŒ
+ˆL
+HÈLH9l#ù¦`»ï#:*âúaãy¥¬:`n9¤áùéçùå*9¦`ºe¤øà ˜ˆ
+NÂˆBˆÛÛœİ\˜][ÛˆH™\]Y\İY\˜][ÛÂˆÛÛœİİ\Z[]\ÈH[YSZ[]\Êİ\[YJNÂˆÛÛœİ[™Z[]\ÈHİ\Z[]\È
+È\˜][ÛÂˆÛÛœİ[™[YHHİš[™ÊX]™›ÛÜŠ[™Z[]\ÈÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™Ê[™Z[]\È	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆYˆ
+Y]H]˜[YÜ[[YJİ\[YKYJJH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú`n9¤áÈÌ9b!ºd&9¥m:nç¹æ¡9¥éy§'ú"!ù¦`ºe¤øà ‰ÊNÂˆ\ÜÙ\Ü[Y˜[˜ÙQ]J]K	ùéçùå*9¥éy§'ÉÊNÂˆYˆ
+X›XÔ™[[Ûİ\Ô\İ
+]Kİ\[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù. :"+9éçùå*9cêº ïzh$9í!9l&¹§*ºe¢ùiâùæ¡9¦`¹«­xà ‰ÊNÂˆBˆÛÛœİÚ[™İÈH\Ú[™\ÜÕÚ[™İÊÛXŞK]JNÂˆYˆ
+Ú[™İË˜ÛÜÙY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y. 9i*yak9/${ï#9.#z ïzh$9í!8à ‰ÊNÂˆYˆ
+İ\Z[]\ÈÚ[™İËœİ\Z[]\È[™Z[]\ÈˆÚ[™İË™[™Z[]\ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù¢`:`n9¦`ºe¤ù.#yg*9áçù©ky¦`ºe¤ùaiøà ‰ÊNÂˆBˆÛÛœİ[™HH]ØZ]ØÚY[P[™J]K]KÙ\ÜÚ[Û‹œ›ÛHOOH	İXXÚ\‰ÈÈÙ\ÜÚ[Û‹XXÚ\’Yˆ	ÉÊNÂˆÛÛœİ›ÛÛTÙ][™ÜÈH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™Ù]
+
+NÂˆÛÛœİ\ÙSÜ[ÛœÈH]ØZ]™[[\ÙSÜ[ÛœÊ[™Kœ›ÛÛ\ÊNÂˆÛÛœİÙ[XİY\ÙHH\ÙSÜ[ÛœË™š[™
+
+›İÊHOˆ›İËšYOOHÛX[Š]K\ÙU\JJNÂˆYˆ
+\Ù[XİY\ÙJH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú`n9¤áùéçùå*9å*:`%8à ‰ÊNÂˆÛÛœİ™XÛÜ™[™ÔÙ[Xİ[ÛˆH™XÛÜ™[™Ô™[[Ù[Xİ[ÛŠÂˆ\ÙU\NˆÙ[XİY\ÙKšYˆ™XÛÜ™[™Õ\ØYÙNˆ]Kœ™XÛÜ™[™Õ\ØYÙBˆJNÂˆÛÛœİÙ][™ÜÓX\HßNÂˆ›ÛÛTÙ][™ÜË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈÙ][™ÜÓX\ÙØËšYHHØË™]J
+HßNÈJNÂˆÛÛœİ\ØÛİ[™\]Y\İYH]KœİY[\ØÛİ[™\]Y\İYOOHYHˆÛX[Š]KœİY[\ØÛİ[™\]Y\İY
+KÓİÙ\Ø\ÙJ
+HOOH	İYIÎÂˆÛÛœİİY[˜]HH\ØÛİ[™\]Y\İY	‰‚ˆÙ\ÜÚ[Û‹œ›ÛHOOH	ÜİY[	È	‰‚ˆ
+]ØZ]Xİ]™TİY[YÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠJK›[™İˆÂˆÛÛœİİ™\›\[™Ñ]™[ÈH[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[\Š
+]™[
+HO‚ˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJ]™[
+H	‰ˆ]™[™]HOOH]H	‰‚ˆİ™\›\Êİ\[YK[™[YK]™[œİ\[YK]™[™[™[YJBˆ
+NÂˆÛÛœİÚ\™Y\]Z\Y[\ŞHHÚ\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+İ™\›\[™Ñ]™[Ë™\]Y\İY™[[™\Ûİ\˜ÙRYÊ]JJNÂˆÛÛœİ›ÛÛ\ÈH[™Kœ›ÛÛ\Ë™š[\ŠÛİ\˜ÙPXİ]™JK›X\
+
+›ÛÛJHOˆÂˆÛÛœİYHÛİ\˜ÙRY
+›ÛÛJNÂˆÛÛœİÙ][™ÈHÙ][™ÜÓX\ÚYHßNÂˆÛÛœİ›ØÚÙYHİ™\›\[™Ñ]™[ËœÛÛYJ
+]™[
+HOˆ]™[œ›ÛÛRYOOHY
+NÂˆÛÛœİ›Ùš[HH™[[›ÛÛT›Ùš[J›ÛÛKÙ][™ÊNÂˆÛÛœİ™[X›HH›ÛÛT™[X›J›ÛÛKÙ][™ÊNÂˆÛÛœİØ]YÛÜP[İÙYH™[[\ÙP[İÜÔ›ÛÛJ\ÙSÜ[ÛœË]K\ÙU\KY›ÛÛKÙ][™ÊNÂˆÛÛœİ™Y™\™[˜ÙP[İÙYH™[[™Y™\™[˜ÙP[İÜÔ›ÛÛJ›ÛÛKÙ][™Ë]JNÂˆÛÛœİÛXŞP[İÙYH›ÛÛP[İÜÒ[\˜[
+›ÛÛKÙ][™Ë]Kİ\[YK[™[YK	ÉË	Ü™[[	ÊNÂˆÛÛœİ˜\ÙQ™YHHY™™Xİ]™T™[[™YJ›ÛÛKÙ][™ËÙ[XİY\ÙK™XÛÜ™[™ÔÙ[Xİ[ÛŠNÂˆÛÛœİ]˜Z[X›HHX›ØÚÙY	‰ˆ\Ú\™Y\]Z\Y[\ŞH	‰ˆ™[X›H	‰ˆØ]YÛÜP[İÙY	‰ˆ™Y™\™[˜ÙP[İÙY	‰ˆÛXŞP[İÙYÂˆÛÛœİ\]Z\Y[X™[H›ÛÛQ\]Z\Y[X™[
+›ÛÛKÙ][™ÊNÂˆ™]\›ˆÂˆYˆ˜[YNˆ›Ùš[KœX›XÓ˜[YKˆÚ[™ˆ›ÛÛRÚ[™
+›ÛÛKÙ][™ÊKˆ]˜Z[X›Kˆ™X\ÛÛˆÚ\™Y\]Z\Y[\ŞBˆÈ	ùcé9ë£ùg*:`&y`"ù¦`¹«­ymìº(ªù/oùå*	Âˆˆ
+›ØÚÙYˆÈ	ù¦`¹«­ymìº(ªù/oùå*	Âˆˆ
+\™[X›BˆÈ	ù.#ze¢ù¥/¹éçùå*	Âˆˆ
+XØ]YÛÜP[İÙYˆÈ	ù.#ylk9¥¯:`&y`"ùå*:`%	Âˆˆ
+\™Y™\™[˜ÙP[İÙYˆÈ	ùmì¹/§z*+y`¦y¨§y.í¹£¤ºfi	Âˆˆ
+\ÛXŞP[İÙYÈ	ú`&y`"ù¦`¹«­y.#ze¢ù¥/¹éçùå*	Èˆ	ÉÊJJJJKˆX]Ú]™[ˆ	Ø™\İ	ËˆØ\XÚ]Nˆ›Ùš[K˜Ø\XÚ]Kˆ\]Z\Y[ˆ›Ùš[K™\]Z\Y[ˆ\]Z\Y[X™[ˆ[š]™YNˆ˜\ÙQ™YKˆšXÙNˆ˜\ÙQ™YHOH[ˆÈ[ˆˆ™[[[[İ[
+˜\ÙQ™YK\˜][Û‹İY[˜]HÈÛXŞKœİY[\ØÛİ[˜]HˆJKˆšXÙT˜[™ÙU^ˆÙ[XİY\ÙKšYOOH	Ü™XÛÜ™[™ÉÈÈ	Ó•	L8 $ÌÌ;ï#ùl#ù¦`‰Èˆ	ÉËˆšXÙU\NˆİY[˜]HÈ	ù§æ¹kd9kn9å'ùcb¹`îIÈˆ	ù. :"+9`îy¨/	ÂˆNÂˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆ]Kˆİ\[YKˆ[™[YKˆ\˜][Û“Z[]\Îˆ\˜][Û‹ˆ\Ú[™\ÜÒİ\œÎˆÛXŞK˜\Ú[™\ÜÒİ\œËˆ\ÙSÜ[ÛœËˆ™XÛÜ™[™Õ\ØYÙSÜ[ÛœÎˆÙ[XİY\ÙKšYOOH	Ü™XÛÜ™[™ÉÂˆÈ‘PÓÔ‘S‘×Ô‘S•SÓÔSÓ”Ë›X\
+
+›İÊHOˆØš™Xİ˜\ÜÚYÛŠßK›İÊJBˆˆ×KˆİY[\ØÛİ[˜]NˆÛXŞKœİY[\ØÛİ[˜]Kˆ›ÛÛ\Îˆ›ÛÛ\ËœÛÜ
+
+KŠHOˆK›˜[YK›ØØ[PÛÛ\\™J‹›˜[YK	ŞšR[	ÊJBˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[[^P›Ø\™
+]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉÜİY[	Ë	Ü™[\‰Ë	İXXÚ\‰×JNÂˆÛÛœİ]HH]RÙ^J]K™]JNÂˆYˆ
+Y]JH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú`n9¤áù¥éy§'øà ‰ÊNÂˆ\ÜÙ\Ü[Y˜[˜ÙQ]J]K	ùéçùå*9¥éy§'ÉÊNÂˆÛÛœİÛXŞHH]ØZ]™[[ÛXŞTÙ][™ÜÊ
+NÂˆÛÛœİ™\]Y\İY\˜][ÛˆH[X™\Š]K™\˜][Û“Z[]\ÈOH[ÈŒˆ]K™\˜][Û“Z[]\ÊNÂˆYˆ
+S[X™\‹š\Ñš[š]J™\]Y\İY\˜][ÛŠH™\]Y\İY\˜][ÛˆÌ™\]Y\İY\˜][Ûˆ	HÌOOH
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùéçùå*9¦`ºe¤ùoázh"9.éHÌ9b!ºd&9à®¹e«¹/cxà ‰ÊNÂˆBˆYˆ
+™\]Y\İY\˜][ÛˆˆÛXŞK›X^\˜][Û“Z[]\ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùe«¹«(yéçùå*9§ :emùà®ˆH9l#ù¦`»ï#:*âúaãy¥¬:`n9¤áùéçùå*9¦`ºe¤øà ‰ÊNÂˆBˆÛÛœİ\˜][ÛˆH™\]Y\İY\˜][ÛÂˆÛÛœİÚ[™İÈH\Ú[™\ÜÕÚ[™İÊÛXŞK]JNÂˆÛÛœİ[™HH]ØZ]ØÚY[P[™J]K]KÙ\ÜÚ[Û‹œ›ÛHOOH	İXXÚ\‰ÈÈÙ\ÜÚ[Û‹XXÚ\’Yˆ	ÉÊNÂˆÛÛœİ›ÛÛTÙ][™ÜÈH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™Ù]
+
+NÂˆÛÛœİ\ÙSÜ[ÛœÈH]ØZ]™[[\ÙSÜ[ÛœÊ[™Kœ›ÛÛ\ÊNÂˆÛÛœİÙ[XİY\ÙU\HH\ÙSÜ[ÛœËœÛÛYJ
+›İÊHOˆ›İËšYOOHÛX[Š]K\ÙU\JJBˆÈÛX[Š]K\ÙU\JBˆˆÛX[Š\ÙSÜ[ÛœÖÌH	‰ˆ\ÙSÜ[ÛœÖÌKšY
+NÂˆÛÛœİY™™Xİ]™Q]HHØš™Xİ˜\ÜÚYÛŠßK]KÈ\ÙU\NˆÙ[XİY\ÙU\HJNÂˆÛÛœİÙ][™ÜÓX\HßNÂˆ›ÛÛTÙ][™ÜË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈÙ][™ÜÓX\ÙØËšYHHØË™]J
+HßNÈJNÂˆÛÛœİÛİÈH×NÂˆÛÛœİ^T\İH]Hİ\œ™[Z\ZQ^J
+NÂˆYˆ
+]Ú[™İË˜ÛÜÙY
+HÂˆ›Üˆ
+]Z[]HHÚ[™İËœİ\Z[]\ÎÈZ[]H
+È\˜][ÛˆHÚ[™İË™[™Z[]\ÎÈZ[]H
+ÏHÌ
+HÂˆÛÛœİİ\[YHHİš[™ÊX]™›ÛÜŠZ[]HÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™ÊZ[]H	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆÛÛœİ[™Z[]HHZ[]H
+È\˜][ÛÂˆÛÛœİ[™[YHHİš[™ÊX]™›ÛÜŠ[™Z[]HÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™Ê[™Z[]H	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆÛÛœİ\İHX›XÔ™[[Ûİ\Ô\İ
+]Kİ\[YJNÂˆYˆ
+\İ
+HÛÛ[YNÂˆÛÛœİİ™\›\[™Ñ]™[ÈH[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[\Š
+]™[
+HO‚ˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJ]™[
+H	‰ˆ]™[™]HOOH]H	‰‚ˆİ™\›\Êİ\[YK[™[YK]™[œİ\[YK]™[™[™[YJBˆ
+NÂˆÛÛœİÚ\™Y\]Z\Y[\ŞHHÚ\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+ˆİ™\›\[™Ñ]™[Ëˆ™\]Y\İY™[[™\Ûİ\˜ÙRYÊY™™Xİ]™Q]JBˆ
+NÂˆÛÛœİ]˜Z[X›T›ÛÛ\ÈH[™Kœ›ÛÛ\Ë™š[\ŠÛİ\˜ÙPXİ]™JK™š[\Š
+›ÛÛJHOˆÂˆÛÛœİYHÛİ\˜ÙRY
+›ÛÛJNÂˆÛÛœİÙ][™ÈHÙ][™ÜÓX\ÚYHßNÂˆYˆ
+ˆ\›ÛÛT™[X›J›ÛÛKÙ][™ÊHˆ\™[[\ÙP[İÜÔ›ÛÛJ\ÙSÜ[ÛœËÙ[XİY\ÙU\KY›ÛÛKÙ][™ÊHˆ\™[[™Y™\™[˜ÙP[İÜÔ›ÛÛJ›ÛÛKÙ][™ËY™™Xİ]™Q]JHˆ\›ÛÛP[İÜÒ[\˜[
+›ÛÛKÙ][™Ë]Kİ\[YK[™[YK	ÉË	Ü™[[	ÊBˆ
+H™]\›ˆ˜[ÙNÂˆ™]\›ˆ\Ú\™Y\]Z\Y[\ŞH	‰ˆ[İ™\›\[™Ñ]™[ËœÛÛYJ
+]™[
+HOˆ]™[œ›ÛÛRYOOHY
+NÂˆJK›X\
+
+›ÛÛJHOˆ
+ÈYˆÛİ\˜ÙRY
+›ÛÛJK˜[YNˆ™[[›ÛÛT›Ùš[J›ÛÛKÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKœX›XÓ˜[YHJJNÂˆÛİËœ\Ú
+Èİ\[YK[™[YK\İ]˜Z[X›PÛİ[ˆ]˜Z[X›T›ÛÛ\Ë›[™İ›ÛÛ\Îˆ]˜Z[X›T›ÛÛ\ËœÛXÙJ
+HJNÂˆBˆBˆ™]\›ˆÈÚÎˆYK]KÛÜÙYˆÚ[™İË˜ÛÜÙY\İˆ^T\İ›ÛNˆÙ\ÜÚ[Û‹œ›ÛKÙ[XİY\ÙU\K\ÙSÜ[ÛœËÛİÈNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[[ÙYZĞ›Ø\™
+]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉÜİY[	Ë	Ü™[\‰Ë	İXXÚ\‰×JNÂˆÛÛœİY[]T›ÛZ\ÙHH™[[Ù\ÜÚ[Û’Y[]JÙ\ÜÚ[ÛŠNÂˆÛÛœİİY[\ØÛİ[[YÚX›T›ÛZ\ÙHHÙ\ÜÚ[Û‹œ›ÛHOOH	ÜİY[	ÂˆÈXİ]™TİY[YÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠK[Š
+YÊHOˆYË›[™İˆ
+Bˆˆ›ÛZ\ÙKœ™\ÛÛ™J˜[ÙJNÂˆÛÛœİ™\]Y\İYİ\]HH]RÙ^J]Kœİ\]H]K™]JNÂˆYˆ
+\™\]Y\İYİ\]JH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú`n9¤áú`,z-mùiâù¥éy§'øà ‰ÊNÂˆ\ÜÙ\Ü[Y˜[˜ÙQ]J™\]Y\İYİ\]K	ùéçùå*9¥éy§'ÉÊNÂˆÛÛœİİ\]HH™\]Y\İYİ\]Hİ\œ™[Z\ZQ^J
+HÈİ\œ™[Z\ZQ^J
+Hˆ™\]Y\İYİ\]NÂˆÛÛœİ[™]HHØY^\Êİ\]KŠKÜ[X^[][PY˜[˜ÙQ]J
+WKœÛÜ
+
+VÌNÂˆÛÛœİÛXŞHH]ØZ]™[[ÛXŞTÙ][™ÜÊ
+NÂˆÛÛœİ™\]Y\İY\˜][ÛˆH[X™\Š]K™\˜][Û“Z[]\ÈOH[ÈŒˆ]K™\˜][Û“Z[]\ÊNÂˆYˆ
+S[X™\‹š\Ñš[š]J™\]Y\İY\˜][ÛŠH™\]Y\İY\˜][ÛˆÌ™\]Y\İY\˜][Ûˆ	HÌOOH
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùéçùå*9¦`ºe¤ùoázh"9.éHÌ9b!ºd&9à®¹e«¹/cxà ‰ÊNÂˆBˆYˆ
+™\]Y\İY\˜][ÛˆˆÛXŞK›X^\˜][Û“Z[]\ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùe«¹«(yéçùå*9§ :emùà®ˆH9l#ù¦`»ï#:*âúaãy¥¬:`n9¤áùéçùå*9¦`ºe¤øà ‰ÊNÂˆBˆÛÛœİ\˜][ÛˆH™\]Y\İY\˜][ÛÂˆÛÛœİ[™HH]ØZ]ØÚY[P[™Jİ\]K[™]KÙ\ÜÚ[Û‹œ›ÛHOOH	İXXÚ\‰ÈÈÙ\ÜÚ[Û‹XXÚ\’Yˆ	ÉÊNÂˆÛÛœİ›ÛÛTÙ][™ÜÈH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™Ù]
+
+NÂˆÛÛœİ\ÙSÜ[ÛœÈH]ØZ]™[[\ÙSÜ[ÛœÊ[™Kœ›ÛÛ\ÊNÂˆÛÛœİÙ[XİY\ÙU\HH\ÙSÜ[ÛœËœÛÛYJ
+›İÊHOˆ›İËšYOOHÛX[Š]K\ÙU\JJBˆÈÛX[Š]K\ÙU\JBˆˆÛX[Š\ÙSÜ[ÛœÖÌH	‰ˆ\ÙSÜ[ÛœÖÌKšY
+NÂˆÛÛœİY™™Xİ]™Q]HHØš™Xİ˜\ÜÚYÛŠßK]KÈ\ÙU\NˆÙ[XİY\ÙU\HJNÂˆÛÛœİÙ][™ÜÓX\HßNÂˆ›ÛÛTÙ][™ÜË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈÙ][™ÜÓX\ÙØËšYHHØË™]J
+HßNÈJNÂˆÛÛœİ^\ÈH×NÂˆÛÛœİ^PÛİ[HX]›X^
+ˆKˆX]œ›İ[™
+ˆ
+]Kœ\œÙJ	Ù[™]_ULŒŒ
+ÌŒ
+HH]Kœ\œÙJ	Üİ\]_ULŒŒ
+ÌŒ
+JHÂˆˆ
+H
+ÈBˆ
+NÂˆ›Üˆ
+]Ù™œÙ]HÈÙ™œÙ]^PÛİ[ÈÙ™œÙ]
+ÏHJHÂˆÛÛœİ]HHY^\Êİ\]KÙ™œÙ]
+NÂˆÛÛœİÚ[™İÈH\Ú[™\ÜÕÚ[™İÊÛXŞK]JNÂˆÛÛœİ^T\İH]Hİ\œ™[Z\ZQ^J
+NÂˆÛÛœİÛİÈH×NÂˆYˆ
+]Ú[™İË˜ÛÜÙY
+HÂˆ›Üˆ
+]Z[]HHÚ[™İËœİ\Z[]\ÎÈZ[]H
+È\˜][ÛˆHÚ[™İË™[™Z[]\ÎÈZ[]H
+ÏHÌ
+HÂˆÛÛœİİ\[YHHİš[™ÊX]™›ÛÜŠZ[]HÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™ÊZ[]H	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆÛÛœİ[™Z[]HHZ[]H
+È\˜][ÛÂˆÛÛœİ[™[YHHİš[™ÊX]™›ÛÜŠ[™Z[]HÈŒ
+JKœYİ\
+‹	Ì	ÊH
+È	Î‰È
+Èİš[™Ê[™Z[]H	HŒ
+KœYİ\
+‹	Ì	ÊNÂˆÛÛœİ\İHX›XÔ™[[Ûİ\Ô\İ
+]Kİ\[YJNÂˆYˆ
+\İ
+HÛÛ[YNÂˆÛÛœİİ™\›\[™Ñ]™[ÈH[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[\Š
+]™[
+HO‚ˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJ]™[
+H	‰ˆ]™[™]HOOH]H	‰‚ˆİ™\›\Êİ\[YK[™[YK]™[œİ\[YK]™[™[™[YJBˆ
+NÂˆÛÛœİÚ\™Y\]Z\Y[\ŞHHÚ\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+ˆİ™\›\[™Ñ]™[Ëˆ™\]Y\İY™[[™\Ûİ\˜ÙRYÊY™™Xİ]™Q]JBˆ
+NÂˆÛÛœİ›ÛÛ\ÈH[™Kœ›ÛÛ\Ë™š[\ŠÛİ\˜ÙPXİ]™JK™š[\Š
+›ÛÛJHOˆÂˆÛÛœİYHÛİ\˜ÙRY
+›ÛÛJNÂˆÛÛœİÙ][™ÈHÙ][™ÜÓX\ÚYHßNÂˆYˆ
+ˆ\›ÛÛT™[X›J›ÛÛKÙ][™ÊHˆ\™[[\ÙP[İÜÔ›ÛÛJ\ÙSÜ[ÛœËÙ[XİY\ÙU\KY›ÛÛKÙ][™ÊHˆ\™[[™Y™\™[˜ÙP[İÜÔ›ÛÛJ›ÛÛKÙ][™ËY™™Xİ]™Q]JHˆ\›ÛÛP[İÜÒ[\˜[
+›ÛÛKÙ][™Ë]Kİ\[YK[™[YK	ÉË	Ü™[[	ÊBˆ
+H™]\›ˆ˜[ÙNÂˆ™]\›ˆ\Ú\™Y\]Z\Y[\ŞH	‰ˆ[İ™\›\[™Ñ]™[ËœÛÛYJ
+]™[
+HOˆ]™[œ›ÛÛRYOOHY
+NÂˆJK›X\
+
+›ÛÛJHOˆ
+ÈYˆÛİ\˜ÙRY
+›ÛÛJK˜[YNˆ™[[›ÛÛT›Ùš[J›ÛÛKÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKœX›XÓ˜[YHJJNÂˆÛİËœ\Ú
+Èİ\[YK[™[YK\İ]˜Z[X›PÛİ[ˆ›ÛÛ\Ë›[™İ›ÛÛ\Îˆ›ÛÛ\ËœÛXÙJ
+HJNÂˆBˆBˆ^\Ëœ\Ú
+Âˆ]KˆÛÜÙYˆÚ[™İË˜ÛÜÙYˆ\İˆ^T\İˆ]˜Z[X›TÛİÛİ[ˆÛİË™š[\Š
+Ûİ
+HOˆ\Ûİœ\İ	‰ˆÛİ˜]˜Z[X›PÛİ[ˆ
+K›[™İˆÛİÂˆJNÂˆBˆÛÛœİY[]HH]ØZ]Y[]T›ÛZ\ÙNÂˆ™]\›ˆÂˆÚÎˆYKˆİ\]Kˆ[™]Kˆ›ÛNˆÙ\ÜÚ[Û‹œ›ÛKˆİY[\ØÛİ[[YÚX›Nˆ]ØZ]İY[\ØÛİ[[YÚX›T›ÛZ\ÙKˆ\Ü^S˜[YNˆY[]K™\Ü^S˜[YKˆİY[Ü[ÛœÎˆY[]KœİY[Ü[ÛœËˆ™\]Z\™\ÔİY[Ù[Xİ[ÛˆY[]Kœ™\]Z\™\ÔİY[Ù[Xİ[Û‹ˆ\˜][Û“Z[]\Îˆ\˜][Û‹ˆÙ[XİY\ÙU\Kˆ\ÙSÜ[ÛœËˆ\Ú[™\ÜÒİ\œÎˆÛXŞK˜\Ú[™\ÜÒİ\œËˆ^\ÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆÜ™X]T›ÛÛP›ÛÚÚ[™Ê]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉÜİY[	Ë	Ü™[\‰Ë	İXXÚ\‰×JNÂˆÛÛœİY[]T›ÛZ\ÙHH™[[Ù\ÜÚ[Û’Y[]JÙ\ÜÚ[Û‹]KœİY[Y
+NÂˆÛÛœİ™XÛÜ™[™ÔÙ[Xİ[ÛˆH™XÛÜ™[™Ô™[[Ù[Xİ[ÛŠ]KYJNÂˆÛÛœİ^XİY™\œÚ[ÛˆH]ØZ]™XYØÚY[U™\œÚ[ÛŠ
+NÂˆÛÛœİ]˜Z[Xš[]HH]ØZ]™[[]˜Z[Xš[]J]JNÂˆYˆ
+X›XÔ™[[Ûİ\Ô\İ
+]˜Z[Xš[]K™]K]˜Z[Xš[]Kœİ\[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùcêº ïzh$9í!9l&¹§*ºe¢ùiâùæ¡9¦`¹«­xà ‰ÊNÂˆBˆÛÛœİ›ÛÛHH]˜Z[Xš[]Kœ›ÛÛ\Ë™š[™
+
+][JHOˆ][KšYOOHÛX[Š]Kœ›ÛÛRY
+JNÂˆYˆ
+\›ÛÛH\›ÛÛK˜]˜Z[X›JH›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë›ÛÛH	‰ˆ›ÛÛKœ™X\ÛÛˆ	ú`&ze¤ù¥fyk©9æë¹bcy.#z ïzh$9í!8à ‰ÊNÂˆÛÛœİYH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊK™ØÊ
+KšYÂˆÛÛœİY[]HH]ØZ]Y[]T›ÛZ\ÙNÂˆYˆ
+ZY[]K˜ÛY[˜[YJHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ú[˜[YX\™İ[Y[	ËˆÙ\ÜÚ[Û‹œ›ÛHOOH	ÜİY[	ÈÈ	ú*âú`n9¤áù§+9«(y/oùå*9¥fyk©9æ¡9kn9å'øà ‰Èˆ	ùænùaiz,áù¥¦yï.¹l$yéçùå*9.®¹iäùd#{ï#:*âúaãy¥¬9ænùaixà ‰Âˆ
+NÂˆBˆËÈ9kn9å'ú.ªùb!¹cê¹å*9/¡¹b)9¥­ù¢¦9¢hûï&ùéçùå*9§+:.ªù.#yëby¥¯9.îù/ey. 9/cyí yk¦¹kn9å'ù«hùg*9."º*¬¸à ‚ˆËÈ9d)¹baùk­ºemùí y.¡¹i&¹/cykd9ilù¦`»ï#9. 9ëa¹éçùå*9§ úc+ú*©:f.ù¤âù¢`9§"ykd9ilùæ¡:*¬¹ê"øà ‚ˆÛÛœİİY[YÈH×NÂˆÛÛœİİÛ™\’Ù^HHÙ\ÜÚ[Û“İÛ™\’Ù^JÙ\ÜÚ[ÛŠNÂˆYˆ
+[İÛ™\’Ù^JH›İÈ™]ÈÑ\œ›ÜŠ	İ[˜]][XØ]Y	Ë	ùænùaiz,áù¥¦y.#yk£9¥m;ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂˆÛÛœİØÚÜÈH›ÛÚÚ[™ÓØÚÔ›İÜÊ]˜Z[Xš[]K™]K›ÛÛKšY]˜Z[Xš[]Kœİ\[YK]˜Z[Xš[]K™[™[YJBˆ˜ÛÛ˜Ø]
+Ú\™Y\]Z\Y[ØÚÔ›İÜÊˆ]˜Z[Xš[]K™]Kˆ™\]Y\İY™[[™\Ûİ\˜ÙRYÊ]JKˆ]˜Z[Xš[]Kœİ\[YKˆ]˜Z[Xš[]K™[™[YBˆ
+JNÂˆÛÛœİ›ÛÚÚ[™ÈHÂˆYˆ\Nˆ	Ü›ÛÛWÜ™[[	Ëˆ]Nˆ]˜Z[Xš[]K™]Kˆİ\[YNˆ]˜Z[Xš[]Kœİ\[YKˆ[™[YNˆ]˜Z[Xš[]K™[™[YKˆ›ÛÛRYˆ›ÛÛKšYˆ›ÛÛS˜[YNˆ›ÛÛK›˜[YKˆ\œÜÙNˆÛX[Š]Kœ\œÜÙJKˆ\ÙU\NˆÛX[Š]K\ÙU\JKˆ\ÙS˜[YNˆÛX[Š
+]˜Z[Xš[]K\ÙSÜ[ÛœË™š[™
+
+›İÊHOˆ›İËšYOOHÛX[Š]K\ÙU\JJHßJK›˜[YJKˆ™XÛÜ™[™Õ\ØYÙNˆÛX[Š™XÛÜ™[™ÔÙ[Xİ[Ûˆ	‰ˆ™XÛÜ™[™ÔÙ[Xİ[Û‹šY
+Kˆ™XÛÜ™[™Õ\ØYÙS˜[YNˆÛX[Š™XÛÜ™[™ÔÙ[Xİ[Ûˆ	‰ˆ™XÛÜ™[™ÔÙ[Xİ[Û‹›˜[YJKˆX[›Õ\NˆÛX[Š]KœX[›Õ\JKÓİÙ\Ø\ÙJ
+Hˆ
+›YÕYJ]K™^ÛYQYÚ][X[›ÊHÈ	Ù^ÛYWÙYÚ][	Èˆ	Ø[IÊKˆ^ÛYQYÚ][X[›Îˆ›YÕYJ]K™^ÛYQYÚ][X[›ÊKˆ[İÑİ^š[™Ó[İ™Nˆ›YÕYJ]K˜[İÑİ^š[™Ó[İ™JKˆ[U\NˆÛX[Š]K™[U\JKˆ›ÛNˆÙ\ÜÚ[Û‹œ›ÛKˆXXÚ\’YˆÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+Kˆ™[\’YˆÛX[ŠÙ\ÜÚ[Û‹œ™[\’Y
+KˆİY[YËˆ™[[İY[YˆY[]KœİY[YˆÛY[˜[YNˆY[]K˜ÛY[˜[YKˆÛY[Û™NˆY[]K˜ÛY[Û™KˆİY[\ØÛİ[™\]Y\İYˆ›ÛÛKœšXÙU\HOOH	ù§æ¹kd9kn9å'ùcb¹`îIËˆİÛ™\’Ù^Kˆ[™U\Ù\’YˆÛX[ŠÙ\ÜÚ[Û‹›[™U\Ù\’Y
+Kˆ]]XØÛİ[YˆÛX[ŠÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+Kˆ[[İ[ˆ›ÛÛKœšXÙKˆ™XÛÛ[Y[™Y[ÜNˆ[X™\Š›ÛÛK˜Ø\XÚ]H
+Kˆ[š]™YNˆ›ÛÛK[š]™YKˆ\]Z\Y[X™[ˆÛX[Š›ÛÛK™\]Z\Y[X™[
+KˆšXÙU\Nˆ›ÛÛKœšXÙU\Kˆ^[Y[İ]\Îˆ	ÛÛœÚ]Wİ[œZY	Ëˆİ]\Îˆ	ØÛÛ™š\›YY	ËˆXİ]™NˆYKˆØÚÒYÎˆØÚÜË›X\
+
+›İÊHOˆ›İËšY
+KˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆNÂˆÛÛœİ›ÛÚÚ[™Ô™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊK™ØÊY
+NÂˆÛÛœİÚ[™ÙT™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊK™ØÊ	Ü™[[IÈ
+ÈY
+NÂˆÛÛœİ™\œÚ[Û”™YˆHØÚY[U™\œÚ[Û”™YŠ
+NÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆYˆ
+X›XÔ™[[Ûİ\Ô\İ
+]˜Z[Xš[]K™]K]˜Z[Xš[]Kœİ\[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y`"ù¦`¹«­ymì¹í¤úe¢ùiâûï#:*âúaãy¥¬:`n9¤áøà ‰ÊNÂˆBˆÛÛœİØÚÔ™YœÈHØÚÜË›X\
+
+›İÊHOˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛSØÚÜÉÊK™ØÊ›İËšY
+JNÂˆÛÛœİİ™\œÚ[Û”Û˜\Úİ‹‹›ØÚÔÛ˜\Úİ×HH]ØZ]›ÛZ\ÙK˜[
+Âˆ™Ù]
+™\œÚ[Û”™YŠKˆ‹‹›ØÚÔ™YœË›X\
+
+™YŠHOˆ™Ù]
+™YŠJBˆJNÂˆ\ÜÙ\ØÚY[UÜš]X›J™\œÚ[Û”Û˜\Úİ
+NÂˆÛÛœİİ\œ™[™\œÚ[ÛˆH[X™\Š™\œÚ[Û”Û˜\Úİ™^\İÈ	‰ˆ™\œÚ[Û”Û˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂˆYˆ
+İ\œ™[™\œÚ[ÛˆOOH^XİY™\œÚ[ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	ØX›ÜY	Ë	ú*¬º(j9bfùbfù§"y¦í9¥¬;ï#:*âúaãy¥¬9è®º*£ycëùéçù¥fyk©8à ‰ÊNÂˆBˆÛÛœİXİ]™SØÚÜÈHØÚÔÛ˜\ÚİË™š[\Š
+Û˜\Úİ
+HOˆÛ˜\Úİ™^\İÈ	‰ˆÛ˜\Úİ™]J
+K˜Xİ]™HOOH˜[ÙJNÂˆÛÛœİØÚĞ›ÛÚÚ[™ÜÈH×NÂˆ›Üˆ
+ÛÛœİØÚÔÛ˜\ÚİÙˆXİ]™SØÚÜÊHÂˆÛÛœİØÚÈHØÚÔÛ˜\Úİ™]J
+HßNÂˆØÚĞ›ÛÚÚ[™ÜËœ\Ú
+ÂˆØÚÔÛ˜\Úİˆ›ÛÚÚ[™ÔÛ˜\ÚİˆÛX[ŠØÚË˜›ÛÚÚ[™ÒY
+BˆÈ]ØZ]™Ù]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊK™ØÊÛX[ŠØÚË˜›ÛÚÚ[™ÒY
+JJBˆˆ[ˆJNÂˆBˆÛÛœİİ[SØÚÜÈH×NÂˆØÚĞ›ÛÚÚ[™ÜË™›Ü‘XXÚ
+
+ÈØÚÔÛ˜\Úİ›ÛÚÚ[™ÔÛ˜\ÚİJHOˆÂˆÛÛœİØÚÈHØÚÔÛ˜\Úİ™]J
+HßNÂˆÛÛœİš[ÜˆH›ÛÚÚ[™ÔÛ˜\Úİ	‰ˆ›ÛÚÚ[™ÔÛ˜\Úİ™^\İÈÈ›ÛÚÚ[™ÔÛ˜\Úİ™]J
+HßHˆ[ÂˆÛÛœİ^\™YH\ÓZ[\ÊØÚË™[™]
+H	‰ˆ\ÓZ[\ÊØÚË™[™]
+HH]K››İÊ
+NÂˆÛÛœİ[˜Xİ]™HH\š[Üˆš[Ü‹˜Xİ]™HOOH˜[ÙHÛX[Šš[Ü‹œİ]\ÊHOOH	ØØ[˜Ù[Y	ÎÂˆYˆ
+^\™Y[˜Xİ]™JHİ[SØÚÜËœ\Ú
+ØÚÔÛ˜\Úİœ™YŠNÂˆ[ÙHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ø[™XYKY^\İÉËˆ	ú`&y`"ù¦`¹«­ybfùbfùmìº(ªùam¹.å¹.®ºh$9í!;ï#9ên¹/cz,áù¥¦ymì¹í¤ù¦í9¥¬;ï#:*âúaãy¥¬:`n9¤áù¦`¹«­y¢%¹¥fyk©8à ‰Âˆ
+NÂˆBˆJNÂˆİ[SØÚÜË™›Ü‘XXÚ
+
+™YŠHOˆ™[]J™YŠJNÂˆœÙ]
+›ÛÚÚ[™Ô™Y‹›ÛÚÚ[™ÊNÂˆœÙ]
+Ú[™ÙT™Y‹ÈXİ[Ûˆ	Ü›ÛÛWØ›ÛÚÚ[™ÉËXİ]™NˆYK]™[ˆ›ÛÚÚ[™ËÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+HJNÂˆØÚÔ™YœË™›Ü‘XXÚ
+
+™Y‹[™^
+HOˆœÙ]
+™Y‹ÂˆXİ]™NˆYKˆ›ÛÚÚ[™ÒYˆYˆ]Nˆ]˜Z[Xš[]K™]Kˆ›ÛÛRYˆØÚÜÖÚ[™^Kœ›ÛÛRYˆ™\Ûİ\˜ÙRYˆØÚÜÖÚ[™^Kœ™\Ûİ\˜ÙRYˆÛİˆØÚÜÖÚ[™^KœÛİˆ[™]ˆ[Y\İ[\™œ›ÛSZ[\ÊZ\ZQ]U[YSZ[\Ê]˜Z[Xš[]K™]K]˜Z[Xš[]K™[™[YJJKˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆJJNÂˆœÙ]
+™\œÚ[Û”™Y‹Âˆ™\œÚ[Ûˆİ\œ™[™\œÚ[Ûˆ
+ÈKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆÙ\ÜÚ[Û“İÛ™\’Ù^JÙ\ÜÚ[ÛŠBˆKÈY\™ÙNˆYHJNÂˆJNÂˆÛÛœİ™[Z[™\]HX]›X^
+]K››İÊ
+KZ\ZQ]U[YSZ[\Ê›ÛÚÚ[™Ë™]K›ÛÚÚ[™Ëœİ\[YJHHŒ
+ˆŒ
+ˆL
+NÂˆYˆ
+ÛX[ŠÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JHÂˆ]ØZ]‹˜ÛÛXİ[ÛŠ	Û›İYšXØ][Û”]Y]YIÊK™ØÊÛİ\œÙK\Ü[X›ÛÚÚ[™ËIÚYK\™[Z[™\˜
+KœÙ]
+Âˆ]Y]YRYˆÛİ\œÙK\Ü[X›ÛÚÚ[™ËIÚYK\™[Z[™\˜ˆÚ[›™[ˆ	Û[™IËˆ\™Ù][™U\Ù\’YˆÙ\ÜÚ[Û‹›[™U\Ù\’Yˆ]Nˆ	ù¥fyk©9éçùå*9£ä:a¤‰Ëˆ›ÙNˆÂˆ9 ª:h$9í!9æ¡8à#	Ø›ÛÚÚ[™Ëœ›ÛÛS˜[Y_xà#yl!ù¥¯	Ø›ÛÚÚ[™Ë™]_H	Ø›ÛÚÚ[™Ëœİ\[Y_H:e¢ùiâøà ˜ˆ9å*:`%;ï&‰Ø›ÛÚÚ[™Ë\ÙS˜[YH	ù¥fyk©9éçùå*	ßXˆ›ÛÚÚ[™Ëœ™XÛÜ™[™Õ\ØYÙS˜[YHÈ:c!:gìùk©9/oùå*9¥®yo#ûï&‰Ø›ÛÚÚ[™Ëœ™XÛÜ™[™Õ\ØYÙS˜[Y_Xˆ	ÉËˆ9¦`ºe¤ûï&‰Ø›ÛÚÚ[™Ëœİ\[Y_{ïg‰Ø›ÛÚÚ[™Ë™[™[Y_Xˆ9i ¹.#y/oùå*;ï#:*âùg*9éçùå*:e¢ùiâùbcz`,¹aiyéçùå*:h ycå¹­¢;ï&‰ÔÔ•SĞTÑ_KÜ›ÛÛKX›ÛÚÚ[™Ëš[ˆK™š[\Š›ÛÛX[ŠKš›Ú[Š	×‰ÊKˆY\ÜØYÙNˆÂˆ9¥fyk©9éçùå*9£ä:a¤˜ˆ9 ª:h$9í!9æ¡8à#	Ø›ÛÚÚ[™Ëœ›ÛÛS˜[Y_xà#yl!ù¥¯	Ø›ÛÚÚ[™Ë™]_H	Ø›ÛÚÚ[™Ëœİ\[Y_H:e¢ùiâøà ˜ˆ9¦`ºe¤ûï&‰Ø›ÛÚÚ[™Ëœİ\[Y_{ïg‰Ø›ÛÚÚ[™Ë™[™[Y_Xˆ9i ¹.#y/oùå*;ï#:*âùg*9éçùå*:e¢ùiâùbcz`,¹aiyéçùå*:h ycå¹­¢;ï&‰ÔÔ•SĞTÑ_KÜ›ÛÛKX›ÛÚÚ[™Ëš[ˆKš›Ú[Š	×‰ÊKˆ›ÛÚÚ[™ÒYˆYˆÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[\›ÛÛKX›ÛÚÚ[™ÉËˆİ]\Îˆ	ùo¡yæo:` IËˆØÚY[Y]ˆ[Y\İ[\™œ›ÛSZ[\Ê™[Z[™\]
+KˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJK˜Ø]Ú
+
+\œ›ÜŠHOˆÂˆÛÛœÛÛK™\œ›ÜŠ	ÖØÛİ\œÙHÜ[™[[™[Z[™\ˆ]Y]YH˜Z[YIËY\œ›ÜŠNÂˆJNÂˆBˆ™]\›ˆÈÚÎˆYK›ÛÚÚ[™ÎˆœÛÛ•˜[YJ›ÛÚÚ[™ÊHNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[[^P›ÛÚÚ[™ÜÊ]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉÜİY[	Ë	Ü™[\‰Ë	İXXÚ\‰×JNÂˆÛÛœİ›ÛÚÚ[™Ô]Y\šY\ÈHÂˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊKÚ\™J	ÛİÛ™\’Ù^IË	ÏOIËÙ\ÜÚ[Û“İÛ™\’Ù^JÙ\ÜÚ[ÛŠJK™Ù]
+
+BˆNÂˆYˆ
+ÛX[ŠÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JHÂˆ›ÛÚÚ[™Ô]Y\šY\Ëœ\Ú
+ˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊKÚ\™J	Û[™U\Ù\’Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JK™Ù]
+
+Bˆ
+NÂˆBˆYˆ
+ÛX[ŠÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+JHÂˆ›ÛÚÚ[™Ô]Y\šY\Ëœ\Ú
+ˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊKÚ\™J	Ø]]XØÛİ[Y	Ë	ÏOIËÛX[ŠÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+JK™Ù]
+
+Bˆ
+NÂˆBˆÛÛœİ›ÛÚÚ[™ÔÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+›ÛÚÚ[™Ô]Y\šY\ÊNÂˆÛÛœİ›ÛÚÚ[™ÑØÜÈHË‹‹›™]ÈX\
+›ÛÚÚ[™ÔÛ˜\ÚİË™›]X\
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜÊK›X\
+
+ØÊHOˆÙØËšYØ×JJK˜[Y\Ê
+WNÂˆÛÛœİ›ÛÚÚ[™ÜÈH›ÛÚÚ[™ÑØÜË›X\
+
+ØÊHOˆÂˆÛÛœİ›İÈHœÛÛ•˜[YJØË™]J
+JHßNÂˆ™]\›ˆÂˆYˆØËšYˆ]Nˆ]RÙ^J›İË™]JKˆİ\[YNˆÛX[Š›İËœİ\[YJKœÛXÙJJKˆ[™[YNˆÛX[Š›İË™[™[YJKœÛXÙJJKˆ›ÛÛRYˆÛX[Š›İËœ›ÛÛRY
+Kˆ›ÛÛS˜[YNˆÛX[Š›İËœ›ÛÛS˜[YJKˆ\œÜÙNˆÛX[Š›İËœ\œÜÙJKˆÛY[˜[YNˆØY™T™[[\Ü^S˜[YJ›İË˜ÛY[˜[YJKˆÛY[Û™Nˆ›Ü›X[^™TÛ™J›İË˜ÛY[Û™JKˆ™[[İY[YˆÛX[Š›İËœ™[[İY[Y
+Kˆ\ÙU\NˆÛX[Š›İË\ÙU\JKˆ\ÙS˜[YNˆÛX[Š›İË\ÙS˜[YJKˆ™XÛÜ™[™Õ\ØYÙNˆÛX[Š›İËœ™XÛÜ™[™Õ\ØYÙJKˆ™XÛÜ™[™Õ\ØYÙS˜[YNˆÛX[Š›İËœ™XÛÜ™[™Õ\ØYÙS˜[YJKˆ[[İ[ˆ[X™\Š›İË˜[[İ[
+Kˆ^[Y[İ]\ÎˆÛX[Š›İËœ^[Y[İ]\ÊKˆİ]\ÎˆÛX[Š›İËœİ]\È
+›İË˜Xİ]™HOOH˜[ÙHÈ	ØØ[˜Ù[Y	Èˆ	ØÛÛ™š\›YY	ÊJKˆXİ]™Nˆ›İË˜Xİ]™HOOH˜[ÙKˆØ[Ø[˜Ù[ˆ›İË˜Xİ]™HOOH˜[ÙH	‰ˆZ\ZQ]U[YSZ[\Ê›İË™]K›İËœİ\[YJHˆ]K››İÊ
+KˆÜ™X]Y]^ˆÛX[Š›İË˜Ü™X]Y]^
+KˆØ[˜Ù[Y]^ˆÛX[Š›İË˜Ø[˜Ù[Y]^
+BˆNÂˆJK™š[\Š
+›İÊHOˆ›İË™]H	‰ˆ›İËœİ\[YJBˆœÛÜ
+
+KŠHOˆ	Ø‹™]_H	Ø‹œİ\[Y_X›ØØ[PÛÛ\\™J	ØK™]_H	ØKœİ\[Y_X
+JBˆœÛXÙJL
+NÂ‚ˆYˆ
+›ÛÚÚ[™ÜËœÛÛYJ
+›İÊHOˆ\›İËœ›ÛÛS˜[YJJHÂˆÛÛœİ›ÛÛ\ÈH[™^RY
+]ØZ]Z\œ›Ü”›İÜÊ	Ü›ÛÛ\ÉÊJNÂˆ›ÛÚÚ[™ÜË™›Ü‘XXÚ
+
+›İÊHOˆÂˆYˆ
+\›İËœ›ÛÛS˜[YJH›İËœ›ÛÛS˜[YHHÛX[Š›ÛÛ\ÖÜ›İËœ›ÛÛRYH	‰ˆ›ÛÛ\ÖÜ›İËœ›ÛÛRYK›˜[YJNÂˆJNÂˆBˆ™]\›ˆÈÚÎˆYK›ÛÚÚ[™ÜÈNÂŸB‚˜\Ş[˜È[˜İ[ÛˆØ[˜Ù[›ÛÛP›ÛÚÚ[™Ê]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉÜİY[	Ë	Ü™[\‰Ë	İXXÚ\‰×JNÂˆÛÛœİ›ÛÚÚ[™ÒYHÛX[Š]K˜›ÛÚÚ[™ÒY
+NÂˆYˆ
+X›ÛÚÚ[™ÒY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùï.¹l$yéçùå*9í :c!8à ‰ÊNÂˆÛÛœİ›ÛÚÚ[™Ô™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊK™ØÊ›ÛÚÚ[™ÒY
+NÂˆÛÛœİÚ[™ÙT™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊK™ØÊ™[[IØ›ÛÚÚ[™ÒYX
+NÂˆÛÛœİ™\œÚ[Û”™YˆHØÚY[U™\œÚ[Û”™YŠ
+NÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÜÛ˜\Úİ™\œÚ[Û”Û˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+İ™Ù]
+›ÛÚÚ[™Ô™YŠK™Ù]
+™\œÚ[Û”™YŠWJNÂˆ\ÜÙ\ØÚY[UÜš]X›J™\œÚ[Û”Û˜\Úİ
+NÂˆYˆ
+\Û˜\Úİ™^\İÊH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yëa¹éçùå*9í :c!8à ‰ÊNÂˆÛÛœİ›ÛÚÚ[™ÈHÛ˜\Úİ™]J
+HßNÂˆÛÛœİØ[YSİÛ™\ˆBˆ
+ÛX[Š›ÛÚÚ[™Ë›İÛ™\’Ù^JH	‰ˆÛX[Š›ÛÚÚ[™Ë›İÛ™\’Ù^JHOOHÙ\ÜÚ[Û“İÛ™\’Ù^JÙ\ÜÚ[ÛŠJHˆ
+ÛX[Š›ÛÚÚ[™Ë›[™U\Ù\’Y
+H	‰ˆÛX[Š›ÛÚÚ[™Ë›[™U\Ù\’Y
+HOOHÛX[ŠÙ\ÜÚ[Û‹›[™U\Ù\’Y
+JHˆ
+ÛX[Š›ÛÚÚ[™Ë˜]]XØÛİ[Y
+H	‰ˆÛX[Š›ÛÚÚ[™Ë˜]]XØÛİ[Y
+HOOHÛX[ŠÙ\ÜÚ[Û‹˜]]XØÛİ[Y
+JNÂˆYˆ
+\Ø[YSİÛ™\ŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ùcêº ïycå¹­¢:!ê¹mìzh$9í!9æ¡9¥fyk©8à ‰ÊNÂˆBˆYˆ
+›ÛÚÚ[™Ë˜Xİ]™HOOH˜[ÙHÛX[Š›ÛÚÚ[™Ëœİ]\ÊHOOH	ØØ[˜Ù[Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëa¹éçùå*9mì¹í¤ùcå¹­¢8à ‰ÊNÂˆBˆYˆ
+Z\ZQ]U[YSZ[\Ê›ÛÚÚ[™Ë™]K›ÛÚÚ[™Ëœİ\[YJHH]K››İÊ
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùéçùå*9¦`ºe¤ùmì¹í¤úe¢ùiâûï#9á(y¬åya£z!êº(c9cå¹­¢8à ‰ÊNÂˆBˆœÙ]
+›ÛÚÚ[™Ô™Y‹ÂˆXİ]™Nˆ˜[ÙKˆİ]\Îˆ	ØØ[˜Ù[Y	ËˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆØ[˜Ù[Y]^ˆ›İÕ^
+
+KˆØ[˜Ù[YNˆÙ\ÜÚ[Û‹œ›ÛBˆKÈY\™ÙNˆYHJNÂˆœÙ]
+Ú[™ÙT™Y‹ÂˆXİ]™Nˆ˜[ÙKˆİ]\Îˆ	ØØ[˜Ù[Y	ËˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆØ[˜Ù[YNˆÙ\ÜÚ[Û‹œ›ÛBˆKÈY\™ÙNˆYHJNÂˆ
+\œ˜^Kš\Ğ\œ˜^J›ÛÚÚ[™Ë›ØÚÒYÊHÈ›ÛÚÚ[™Ë›ØÚÒYÈˆ×JK™›Ü‘XXÚ
+
+ØÚÒY
+HOˆÂˆ™[]J‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛSØÚÜÉÊK™ØÊÛX[ŠØÚÒY
+JJNÂˆJNÂˆÛÛœİİ\œ™[™\œÚ[ÛˆH[X™\Š™\œÚ[Û”Û˜\Úİ™^\İÈ	‰ˆ™\œÚ[Û”Û˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂˆœÙ]
+™\œÚ[Û”™Y‹Âˆ™\œÚ[Ûˆİ\œ™[™\œÚ[Ûˆ
+ÈKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆÙ\ÜÚ[Û“İÛ™\’Ù^JÙ\ÜÚ[ÛŠBˆKÈY\™ÙNˆYHJNÂˆJNÂˆ]ØZ]‹˜ÛÛXİ[ÛŠ	Û›İYšXØ][Û”]Y]YIÊK™ØÊÛİ\œÙK\Ü[X›ÛÚÚ[™ËIØ›ÛÚÚ[™ÒYK\™[Z[™\˜
+KœÙ]
+Âˆİ]\Îˆ	ùmì¹cå¹­¢	ËˆXİ]™Nˆ˜[ÙKˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆØ[˜Ù[Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJK˜Ø]Ú
+
+\œ›ÜŠHOˆÂˆËÈ9éçùå*9cå¹­¢9mì¹g*9.©9¦$ù.+yk£9¢$;ï&ù£ä:a¤¹/aùb%ùlk9«(z) z,áù¥¦{ï#9i,y¥eù.#z ïz+¤ù/oùå*: !z*©9.éyà®¹¬¤¹cå¹­¢8à ‚ˆÛÛœÛÛK™\œ›ÜŠ	ÖØÛİ\œÙHÜ[™[[™[Z[™\ˆØ[˜Ù[][Ûˆ˜Z[YIË›ÛÚÚ[™ÒY\œ›ÜŠNÂˆJNÂˆ™]\›ˆÈÚÎˆYK›ÛÚÚ[™ÒYİ]\Îˆ	ØØ[˜Ù[Y	ÈNÂŸB‚™[˜İ[ÛˆXXÚ\‘]™[X]Ú\Ô™\]Y\İ
+]™[XXÚ\’YÛİ\˜ÙQ]KÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRYÜ[Ú[™ÙRY
+HÂˆÛÛœİØ[Y]™[YHÛX[ŠÛİ\˜ÙQ]™[Y
+NÂˆÛÛœİØ[YÛİ\œÙRYHÛX[ŠÛİ\˜ÙPÛİ\œÙRY
+NÂˆÛÛœİØ[YÜ[Ú[™ÙRYHÛX[ŠÜ[Ú[™ÙRY
+NÂˆYˆ
+]Ø[Y]™[Y	‰ˆ]Ø[YÛİ\œÙRY	‰ˆ]Ø[YÜ[Ú[™ÙRY
+H™]\›ˆ˜[ÙNÂˆYˆ
+ˆÛX[Š]™[	‰ˆ]™[XXÚ\’Y
+HOOHÛX[ŠXXÚ\’Y
+Hˆ]™[]J]™[ßJHOOH]RÙ^JÛİ\˜ÙQ]JBˆ
+H™]\›ˆ˜[ÙNÂˆYˆ
+ˆØ[Y]™[Y	‰‚ˆVÙ]™[	‰ˆ]™[šY]™[	‰ˆ]™[œÛİ\˜ÙRYK›X\
+ÛX[ŠKš[˜ÛY\ÊØ[Y]™[Y
+Bˆ
+H™]\›ˆ˜[ÙNÂˆYˆ
+ˆØ[YÛİ\œÙRY	‰‚ˆVÙ]™[	‰ˆ]™[™š^YÛİ\œÙRY]™[	‰ˆ]™[œÙ\šY\ÒYK›X\
+ÛX[ŠKš[˜ÛY\ÊØ[YÛİ\œÙRY
+Bˆ
+H™]\›ˆ˜[ÙNÂˆYˆ
+Ø[YÜ[Ú[™ÙRY	‰ˆÛX[Š]™[	‰ˆ]™[œÜ[Ú[™ÙRY
+HOOHØ[YÜ[Ú[™ÙRY
+H™]\›ˆ˜[ÙNÂˆ™]\›ˆYNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\“\ÜÛÛ”İ]J]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİİ]HHÛX[Š]Kœİ]JNÂˆÛÛœİÜ[Ú[™ÙRYHÛX[Š]KœÜ[Ú[™ÙRY
+NÂˆYˆ
+İ]HOOH	ØØ[˜Ù[ØÚ[™ÙIÊHÂˆYˆ
+\Ü[Ú[™ÙRY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú`&yh º*¬¹.#y¦+ú  yn*ù¥¬9h§¹¢%º*¯ù¥m9æ¡:*¬¹ê"øà ‰ÊNÂˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊK™ØÊÜ[Ú[™ÙRY
+NÂˆÛÛœİ™\œÚ[Û”™YˆHØÚY[U™\œÚ[Û”™YŠ
+NÂˆÛÛœİ^XİY™\œÚ[ÛˆH]ØZ]™XYØÚY[U™\œÚ[ÛŠ
+NÂˆÛÛœİÜ™]šY]ÔÛ˜\ÚİXİ]™PÚ[™Ù\ÔÛ˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+Âˆ™Y‹™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊKÚ\™J	ØXİ]™IË	ÏOIËYJK™Ù]
+
+BˆJNÂˆÛÛœİ™]šY]ÈH™]šY]ÔÛ˜\Úİ™^\İÈÈ™]šY]ÔÛ˜\Úİ™]J
+HßHˆ[ÂˆYˆ
+\™]šY]ÈÛX[Š™]šY]Ë˜Ü™X]YUXXÚ\’Y
+HOOHÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ùcêº ïycå¹­¢:!ê¹mìy¥¬9h§¹æ¡:*¬¹ê"øà ‰ÊNÂˆBˆYˆ
+VÉÙ^˜WÛ\ÜÛÛ‰Ë	İXXÚ\—ÙÚY	×Kš[˜ÛY\ÊÛX[Š™]šY]Ë˜Xİ[ÛŠJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ùà®º`oùacyc§ù¥fyk©9mìº(ªùéçùå*9¢%¹£¤¹aiyam¹.åº*¬¹ê"ûï#:*¯ú*¬¸à z*âù`aú"!ùfî¹k¦º+¢¹¦í9.#z ïyæí9£©yoªyc§ûï&ú*âúaãy¥¬9k¢y£¤»ï#9¢%¹å,yë¨yä!º !yè®º*£yo£:&eyä!¸à ‰Âˆ
+NÂˆBˆÛÛœİ\[™[˜ŞRYÈH™]ÈÙ]
+ÂˆÛX[Š™]šY]Ë™]™[	‰ˆ™]šY]Ë™]™[šY
+KˆÛX[Š™]šY]ËœÛİ\˜ÙPÛİ\œÙRY
+KˆÛX[Š™]šY]ËšY
+KˆÜ[Ú[™ÙRYˆK™š[\Š›ÛÛX[ŠJNÂˆÛÛœİ\[™[HXİ]™PÚ[™Ù\ÔÛ˜\Úİ™ØÜË™š[™
+
+ØÊHOˆÂˆYˆ
+ØËšYOOHÜ[Ú[™ÙRY
+H™]\›ˆ˜[ÙNÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆ™]\›ˆ\[™[˜ŞRYËš\ÊÛX[Š›İËœÛİ\˜ÙQ]™[Y
+JHˆ\[™[˜ŞRYËš\ÊÛX[Š›İËœÛİ\˜ÙPÛİ\œÙRY
+JNÂˆJNÂˆYˆ
+\[™[
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yh ¹¥¬9h§º*¬¹o£:ghº`¡9§"z*¯ú*¬¹¢%¹fî¹k¦º+¢¹¦í;ï#:*âùab9å,yë¨yä!º !z&eyä!¹o£9î£9k¢y£¤¸à ‰ÊNÂˆBˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÜÛ˜\Úİ™\œÚ[Û”Û˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+İ™Ù]
+™YŠK™Ù]
+™\œÚ[Û”™YŠWJNÂˆ\ÜÙ\ØÚY[UÜš]X›J™\œÚ[Û”Û˜\Úİ
+NÂˆÛÛœİ›İÈHÛ˜\Úİ™^\İÈÈÛ˜\Úİ™]J
+HßHˆ[ÂˆYˆ
+\›İÈ›İË˜Xİ]™HOOH˜[ÙHÛX[Š›İË˜Ü™X]YUXXÚ\’Y
+HOOHÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ùcêº ïycå¹­¢:!ê¹mìy¥¬9h§¹¢%º*¯ù¥m9æ¡:*¬¹ê"øà ‰ÊNÂˆBˆYˆ
+VÉÙ^˜WÛ\ÜÛÛ‰Ë	İXXÚ\—ÙÚY	×Kš[˜ÛY\ÊÛX[Š›İË˜Xİ[ÛŠJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ùà®º`oùacyc§ù¥fyk©9mìº(ªùéçùå*9¢%¹£¤¹aiyam¹.åº*¬¹ê"ûï#:*¯ú*¬¸à z*âù`aú"!ùfî¹k¦º+¢¹¦í9.#z ïyæí9£©yoªyc§ûï&ú*âúaãy¥¬9k¢y£¤»ï#9¢%¹å,yë¨yä!º !yè®º*£yo£:&eyä!¸à ‰Âˆ
+NÂˆBˆYˆ
+›İË™]™[	‰ˆX›XÔ™[[Ûİ\Ô\İ
+›İË™]™[™]K›İË™]™[œİ\[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùmì¹í¤úe¢ùiâù¢%¹íd9§gùæ¡:*¬¹ê"ù.#z ïya£ycå¹­¢9k¢y£¤¸à ‰ÊNÂˆBˆÛÛœİİ\œ™[™\œÚ[ÛˆH[X™\Š™\œÚ[Û”Û˜\Úİ™^\İÈ	‰ˆ™\œÚ[Û”Û˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂˆYˆ
+İ\œ™[™\œÚ[ÛˆOOH^XİY™\œÚ[ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	ØX›ÜY	Ë	ú*¬º(j9bfùbfù§"y¦í9¥¬;ï#:*âúaãy¥¬9¥m9ä!¹o£9a£ycå¹­¢8à ‰ÊNÂˆBˆœÙ]
+™Y‹ÂˆXİ]™Nˆ˜[ÙKˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆØ[˜Ù[Y]^ˆ›İÕ^
+
+KˆØ[˜Ù[YUXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆKÈY\™ÙNˆYHJNÂˆœÙ]
+™\œÚ[Û”™Y‹Âˆ™\œÚ[Ûˆİ\œ™[™\œÚ[Ûˆ
+ÈKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆÙ\ÜÚ[Û‹XXÚ\’YˆKÈY\™ÙNˆYHJNÂˆJNÂˆ™]\›ˆÈÚÎˆYKİ]Nˆ	ØØ[˜Ù[Y	ËY\ÜØYÙNˆ	ù«i9«(yk¢y£¤¹mì¹cå¹­¢8à ‰ÈNÂˆB‚ˆYˆ
+VÉÛX]™IË	ØXœÙ[	×Kš[˜ÛY\Êİ]JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù.#y¥+ù£í9æ¡:*¬¹ê"ùâà9¡bøà ‰ÊNÂˆBˆÛÛœİÛİ\˜ÙQ]HH]RÙ^J]KœÛİ\˜ÙQ]JNÂˆÛÛœİÛİ\˜ÙQ]™[YHÛX[Š]KœÛİ\˜ÙQ]™[Y
+NÂˆÛÛœİÛİ\˜ÙPÛİ\œÙRYHÛX[Š]KœÛİ\˜ÙPÛİ\œÙRY
+NÂˆYˆ
+\Ûİ\˜ÙQ]H
+\Ûİ\˜ÙQ]™[Y	‰ˆ\Ûİ\˜ÙPÛİ\œÙRY
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùï.¹l$yc§ú*¬¹ê"ú,áù¥¦xà ‰ÊNÂˆBˆÛÛœİ^XİY™\œÚ[ÛˆH]ØZ]™XYØÚY[U™\œÚ[ÛŠ
+NÂˆÛÛœİ[™HH]ØZ]ØÚY[P[™JÛİ\˜ÙQ]KÛİ\˜ÙQ]KÙ\ÜÚ[Û‹XXÚ\’Y
+NÂˆÛÛœİÛİ\˜ÙHH[™K™]™[Ë™š[™
+
+]™[
+HOˆXXÚ\‘]™[X]Ú\Ô™\]Y\İ
+ˆ]™[ˆÙ\ÜÚ[Û‹XXÚ\’YˆÛİ\˜ÙQ]KˆÛİ\˜ÙQ]™[YˆÛİ\˜ÙPÛİ\œÙRYˆÜ[Ú[™ÙRYˆ
+JNÂˆYˆ
+\Ûİ\˜ÙJH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yh º*¬»ï#:*âúaãy¥¬9¥m9ä!¹o£9a£z*i¸à ‰ÊNÂˆYˆ
+\Ô›ÛÛT™[[]™[
+Ûİ\˜ÙJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù¥fyk©9éçùå*9.#y¦+ùkn9å'ú*¬¹ê"ûï#9.#z ïyª&yé.º*âù`aù¢%¹¦è:*¬¸à ‰ÊNÂˆBˆYˆ
+Ûİ\˜ÙKœİY[YË›[™İˆJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùg&:jå:*¬ºg :`$9/cz*&:c!9kn9å'ùâà9¡bûï#9.#z ïyå*9¥m9h º*âù`aûï#ù¦è:*¬»ï#9.éyacz*©:aâùaî¹.ãyg*9."º*¬¹æ¡9¥fyk©8à ‰ÊNÂˆBˆÛÛœİÙ^HHİ\œ™[Z\ZQ^J
+NÂˆYˆ
+Ûİ\˜ÙQ]HÙ^JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yh º*¬¹mì¹í¤ú-¡z`c¹åm¹i*{ï#9cêº ïy§éyç"ù¢%¹/oùå*:(ç9ì/yb,8à ‰ÊNÂˆBˆYˆ
+İ]HOOH	ØXœÙ[	È	‰ˆ
+ˆÛİ\˜ÙQ]HOOHÙ^HˆZ\ZQ]U[YSZ[\ÊÛİ\˜ÙQ]KÛİ\˜ÙKœİ\[YJHˆ]K››İÊ
+Bˆ
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú*¬¹ê"úe¢ùiâù¦`ºe¤ùb,:`e9o£9¢cz ïyª&yé.¹¦è:*¬¸à ‰ÊNÂˆBˆYˆ
+İ]HOOH	ØXœÙ[	È	‰ˆ›Ü›X[^™TØÚY[Tİ]\ÊÛİ\˜ÙKœİ]\ÊHOOH	ÛX]™IÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú*âù`aùo£9¥fyk©9cëú ïymìºaãy¥¬9£¤¹aiyam¹.å¹/oùå*;ï#9.#z ïyæí9£©y¥.yfç¹¦è:*¬»ï&ú*âùå,yë¨yä!º !yè®º*£yênºe¤ùo£:&eyä!¸à ‰Âˆ
+NÂˆBˆYˆ
+ÉØ][™Y	Ë	ØØ[˜Ù[Y	×Kš[˜ÛY\Ê›Ü›X[^™TØÚY[Tİ]\ÊÛİ\˜ÙKœİ]\ÊJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùmì¹ì/yb,9¢%¹mì¹cå¹­¢9æ¡:*¬¹ê"ù.#z ïya£y¥.y¢$:*âù`aù¢%¹¦è:*¬¸à ‰ÊNÂˆB‚ˆÛÛœİ[™XYÙHHÛX[ŠÛİ\˜ÙK™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRYÛİ\˜ÙKœÛİ\˜ÙRYÛİ\˜ÙQ]™[Y
+NÂˆÛÛœİYH\ÜÛÛ‹\İ]\ËIÚ\Ú
+ÂˆÙ\ÜÚ[Û‹XXÚ\’Yˆ[™XYÙKˆÛİ\˜ÙQ]BˆKš›Ú[Š	ß	ÊJ_XÂˆÛÛœİÚ[™ÙT™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊK™ØÊY
+NÂˆÛÛœİXİ]™PÚ[™Ù\ÈH]ØZ]ØÚY[PÚ[™ÙQØÜĞQ]T˜[™ÙJÛİ\˜ÙQ]KÛİ\˜ÙQ]JNÂˆÛÛœİš[Ü”İ]\Ô™YœÈHXİ]™PÚ[™Ù\Ë™š[\Š
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆ™]\›ˆØËšYOOHY	‰‚ˆÛX[Š›İË˜Xİ[ÛŠHOOH	Û\ÜÛÛ—Üİ]\ÉÈ	‰‚ˆÛX[Š›İË˜Ü™X]YUXXÚ\’Y
+HOOHÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+H	‰‚ˆ]RÙ^J›İËœÛİ\˜ÙQ]JHOOHÛİ\˜ÙQ]H	‰‚ˆ
+ˆÛX[Š›İËœÛİ\˜ÙPÛİ\œÙRY
+HOOH[™XYÙHˆÛX[Š›İËœÛİ\˜ÙQ]™[Y
+HOOHÛX[ŠÛİ\˜ÙKœÛİ\˜ÙRYÛİ\˜ÙQ]™[Y
+Bˆ
+NÂˆJK›X\
+
+ØÊHOˆØËœ™YŠNÂˆÛÛœİ]™[HÂˆYˆ˜[™ÛUÚÙ[ŠLŠKˆ]NˆÛİ\˜ÙQ]Kˆİ\[YNˆÛİ\˜ÙKœİ\[YKˆ[™[YNˆÛİ\˜ÙK™[™[YKˆ›ÛÛRYˆÛİ\˜ÙKœ›ÛÛRYˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆİY[YˆÛİ\˜ÙKœİY[YÖÌH	ÉËˆİY[YÎˆÛİ\˜ÙKœİY[YËˆİXš™XİYˆÛİ\˜ÙKœİXš™XİYˆš^YÛİ\œÙRYˆÛİ\˜ÙK™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRYˆ\NˆÛİ\˜ÙK\H	Û\ÜÛÛ‰Ëˆİ]\Îˆİ]Kˆ^[Y[İ]\Îˆİ]HOOH	ØXœÙ[	ÈÈ	ÜİY[ØXœÙ[Û›×Ü^IÈˆ	ÜİY[ÛX]™IËˆXXÚ\”^XX›Nˆ˜[ÙKˆ›İNˆÛX[Š]K››İJBˆNÂˆÛÛœİÚ[™ÙT^[ØYHÂˆYˆXİ[Ûˆ	Û\ÜÛÛ—Üİ]\ÉËˆXİ]™NˆYKˆÛİ\˜ÙQ]™[YˆÛİ\˜ÙKœÛİ\˜ÙRYÛİ\˜ÙQ]™[YˆÛİ\˜ÙPÛİ\œÙRYˆÛİ\˜ÙK™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRYˆÛİ\˜ÙQ]Kˆ]™[ˆÜ™X]YUXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆNÂˆÛÛœİ™\œÚ[Û”™YˆHØÚY[U™\œÚ[Û”™YŠ
+NÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİİ™\œÚ[Û”Û˜\ÚİÚ[™ÙTÛ˜\Úİ‹‹œš[Ü”Û˜\Úİ×HH]ØZ]›ÛZ\ÙK˜[
+Âˆ™Ù]
+™\œÚ[Û”™YŠKˆ™Ù]
+Ú[™ÙT™YŠKˆ‹‹œš[Ü”İ]\Ô™YœË›X\
+
+™YŠHOˆ™Ù]
+™YŠJBˆJNÂˆ\ÜÙ\ØÚY[UÜš]X›J™\œÚ[Û”Û˜\Úİ
+NÂˆÛÛœİİ\œ™[™\œÚ[ÛˆH[X™\Š™\œÚ[Û”Û˜\Úİ™^\İÈ	‰ˆ™\œÚ[Û”Û˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂˆYˆ
+İ\œ™[™\œÚ[ÛˆOOH^XİY™\œÚ[ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	ØX›ÜY	Ë	ú*¬º(j9bfùbfù§"y¦í9¥¬;ï#9mì¹`g9«hº`&y«(y¤ãy/g;ï&ú*âúaãy¥¬9¥m9ä!¹o£9a£yè®º*£xà ‰ÊNÂˆBˆš[Ü”Û˜\ÚİË™›Ü‘XXÚ
+
+Û˜\Úİ
+HOˆÂˆYˆ
+Û˜\Úİ™^\İÈ	‰ˆÛ˜\Úİ™]J
+K˜Xİ]™HOOH˜[ÙJHÂˆœÙ]
+Û˜\Úİœ™Y‹ÂˆXİ]™Nˆ˜[ÙKˆİ\\œÙYYNˆYˆİ\\œÙYY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆBˆJNÂˆœÙ]
+Ú[™ÙT™Y‹Øš™Xİ˜\ÜÚYÛŠßKÚ[™ÙT^[ØYÂˆÜ™X]Y]ˆÚ[™ÙTÛ˜\Úİ™^\İÂˆÈ
+Ú[™ÙTÛ˜\Úİ™]J
+K˜Ü™X]Y]šY[˜[YKœÙ\™\•[Y\İ[\
+
+JBˆˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆJJNÂˆœÙ]
+™\œÚ[Û”™Y‹Âˆ™\œÚ[Ûˆİ\œ™[™\œÚ[Ûˆ
+ÈKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆÙ\ÜÚ[Û‹XXÚ\’YˆKÈY\™ÙNˆYHJNÂˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆYˆİ]KˆY\ÜØYÙNˆİ]HOOH	ØXœÙ[	ÈÈ	ùmì¹ª&yé.¹¦è:*¬»ï&ù§+9h ¹§*¹k£9¢$9ì/yb,;ï#9.#yb%ùaiz  yn*ú%ªº,áøà ‰Èˆ	ùmì¹ª&yé.º*âù`aûï#:*l¹¥fyk©9¦`¹«­ymìºaâùaî¸à ‰ÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\Xİ[ÛŠ]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİXİ[ÛˆHÛX[Š]K˜Xİ[ÛŠNÂˆYˆ
+VÉÜÚ[™ÛWÛ[İ™IË	Ü\›X[™[Û[İ™IË	Ù^˜WÛ\ÜÛÛ‰Ë	İXXÚ\—ÙÚY	×Kš[˜ÛY\ÊXİ[ÛŠJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù.#y¥+ù£í9æ¡:*¬¹bæy¤ãy/g8à ‰ÊNÂˆBˆÛÛœİ]HH]RÙ^J]K™]JNÂˆÛÛœİİ\[YHHÛX[Š]Kœİ\[YJKœÛXÙJJNÂˆÛÛœİ[™[YHHÛX[Š]K™[™[YJKœÛXÙJJNÂˆÛÛœİ›ÛÛRYHÛX[Š]Kœ›ÛÛRY
+NÂˆYˆ
+Y]H\›ÛÛRY
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âùk£9¥m:`n9¤áù¥éy§'øà y¦`ºe¤ú"!ù¥fyk©8à ‰ÊNÂˆBˆÛÛœİ\™Ù]\˜][ÛˆH\ÜÙ\Ü[[\˜[
+İ\[YK[™[YJNÂˆYˆ
+X›XÔ™[[Ûİ\Ô\İ
+]Kİ\[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù.#z ïy¥¬9h§¹¢%º*¯ú*¬¹b,9mì¹í¤ú`c¹c®ùæ¡9¦`ºe¤øà ‰ÊNÂˆBˆ\ÜÙ\Ü[Y˜[˜ÙQ]J]K	ú*¬¹ê"ù¥éy§'ÉÊNÂˆÛÛœİ^XİY™\œÚ[ÛˆH]ØZ]™XYØÚY[U™\œÚ[ÛŠ
+NÂˆÛÛœİÜ\˜][Û’YHÛX[Š]K›Ü\˜][Û’Y
+H˜[™ÛUÚÙ[ŠN
+NÂˆÛÛœİYHXXÚ\‹IÚ\Ú
+	ÜÙ\ÜÚ[Û‹XXÚ\’Y_	ÛÜ\˜][Û’YX
+_XÂˆÛÛœİÚ[™ÙT™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊK™ØÊY
+NÂˆÛÛœİ^\İ[™ÈH]ØZ]Ú[™ÙT™Y‹™Ù]
+
+NÂˆYˆ
+^\İ[™Ë™^\İÈ	‰ˆÛX[Š^\İ[™Ë™]J
+K˜Ü™X]YUXXÚ\’Y
+HOOHÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+JHÂˆÛÛœİš[ÜˆH^\İ[™Ë™]J
+HßNÂˆ™]\›ˆÂˆÚÎˆYKˆ\XØ]NˆYKˆYˆ]™[ˆœÛÛ•˜[YJš[Ü‹™]™[
+Kˆ[™[™Ñ]\ÎˆœÛÛ•˜[YJš[Ü‹œ[™[™Ñ]\È×JKˆY\ÜØYÙNˆ	ú`&y«(y¤ãy/g9mì¹í¤ùk£9¢$;ï#9.#y§ úaãz)!ùnî¹êâøà ‰ÂˆNÂˆB‚ˆÛÛœİÜÛXŞK[™K›ÛÛTÙ][™ÜÔÛ˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+Âˆ™[[ÛXŞTÙ][™ÜÊ
+KˆØÚY[P[™J]K]KÙ\ÜÚ[Û‹XXÚ\’Y
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™Ù]
+
+BˆJNÂˆÛÛœİÚ[™İÈH\Ú[™\ÜÕÚ[™İÊÛXŞK]JNÂˆYˆ
+Ú[™İË˜ÛÜÙY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y. 9i*yak9/${ï#9.#z ïyk¢y£¤º*¬¹ê"øà ‰ÊNÂˆYˆ
+[YSZ[]\Êİ\[YJHÚ[™İËœİ\Z[]\È[YSZ[]\Ê[™[YJHˆÚ[™İË™[™Z[]\ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù¢`:`n9¦`ºe¤ù.#yg*9áçù©ky¦`ºe¤ùaiøà ‰ÊNÂˆBˆÛÛœİ›ÛÛTÙ][™ÜÓX\HßNÂˆ›ÛÛTÙ][™ÜÔÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈ›ÛÛTÙ][™ÜÓX\ÙØËšYHHØË™]J
+HßNÈJNÂˆÛÛœİÛİ\˜ÙQ]™[YHÛX[Š]KœÛİ\˜ÙQ]™[Y
+NÂˆÛÛœİ™\]Y\İYÛİ\˜ÙPÛİ\œÙRYHÛX[Š]KœÛİ\˜ÙPÛİ\œÙRY
+NÂˆÛÛœİÛİ\˜ÙQ]HH]RÙ^J]KœÛİ\˜ÙQ]JNÂˆÛÛœİ[İš[™ÈHXİ[ÛˆOOH	ÜÚ[™ÛWÛ[İ™IÈXİ[ÛˆOOH	Ü\›X[™[Û[İ™IÎÂˆ]Ûİ\˜ÙHH[Âˆ]Ûİ\˜ÙP[™HH[Âˆ]Ûİ\˜ÙTÙ\šY\ÈH[ÂˆYˆ
+[İš[™ÊHÂˆYˆ
+\Ûİ\˜ÙQ]H
+\Ûİ\˜ÙQ]™[Y	‰ˆ\™\]Y\İYÛİ\˜ÙPÛİ\œÙRY
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùï.¹l$z) z*¯ùbåyæ¡9c§ú*¬¹ê"øà ‰ÊNÂˆBˆÛİ\˜ÙP[™HHÛİ\˜ÙQ]HOOH]HÈ[™Hˆ]ØZ]ØÚY[P[™JÛİ\˜ÙQ]KÛİ\˜ÙQ]KÙ\ÜÚ[Û‹XXÚ\’Y
+NÂˆÛİ\˜ÙHHÛİ\˜ÙP[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[™
+
+]™[
+HO‚ˆ]™[XXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’Y	‰‚ˆ]™[™]HOOHÛİ\˜ÙQ]H	‰‚ˆ
+ˆ]™[šYOOHÛİ\˜ÙQ]™[Yˆ]™[œÛİ\˜ÙRYOOHÛİ\˜ÙQ]™[Yˆ]™[™š^YÛİ\œÙRYOOH™\]Y\İYÛİ\˜ÙPÛİ\œÙRYˆ]™[œÙ\šY\ÒYOOH™\]Y\İYÛİ\˜ÙPÛİ\œÙRYˆ
+Bˆ
+NÂˆYˆ
+\Ûİ\˜ÙJH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yh ¹c§ú*¬¹ê"ûï#:*âúaãy¥¬9¥m9ä!¹o£9a£z*i¸à ‰ÊNÂˆYˆ
+\Ô›ÛÛT™[[]™[
+Ûİ\˜ÙJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù¥fyk©9éçùå*9.#z ïyå*:*¬¹ê"ú*¯ú*¬¹b§ú ïyéîùbå{ï#:*âùb,9éçùå*9aiycèùcå¹­¢9o£:aãy¥¬:h$9í!8à ‰ÊNÂˆBˆYˆ
+›Ü›X[^™TØÚY[Tİ]\ÊÛİ\˜ÙKœİ]\ÊHOOH	ÜØÚY[Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú*âù`aøà y¦è:*¬¹¢%¹mì¹cå¹­¢9æ¡:*¬¹ê"ù.#z ïya£z*¯ùbåxà ‰ÊNÂˆBˆYˆ
+X›XÔ™[[Ûİ\Ô\İ
+Ûİ\˜ÙK™]KÛİ\˜ÙKœİ\[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùmì¹í¤úe¢ùiâù¢%¹íd9§gùæ¡:*¬¹ê"ù.#z ïya£z*¯ùbåxà ‰ÊNÂˆBˆÛİ\˜ÙTÙ\šY\ÈHÛİ\˜ÙP[™K™š^YÛİ\œÙ\Ë™š[™
+
+›İÊHO‚ˆÛİ\˜ÙRY
+›İÊHOOHÛX[ŠÛİ\˜ÙK™š^YÛİ\œÙRYÛİ\˜ÙKœÙ\šY\ÒY™\]Y\İYÛİ\˜ÙPÛİ\œÙRY
+Bˆ
+H
+Ûİ\˜ÙP[™KœØÚY[PÚ[™Ù\Ë™š[™
+
+›İÊHO‚ˆÛX[Š›İË—×ÚY
+HOOHÛX[ŠÛİ\˜ÙKœÜ[Ú[™ÙRY
+HˆÛX[Š›İËœÛİ\˜ÙPÛİ\œÙRY
+HOOHÛX[ŠÛİ\˜ÙK™š^YÛİ\œÙRYÛİ\˜ÙKœÙ\šY\ÒY
+Bˆ
+HßJK™]™[[ÂˆYˆ
+Xİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈ	‰ˆ
+\Ûİ\˜ÙKœ™Xİ\œš[™È\Ûİ\˜ÙTÙ\šY\È\Ûİ\˜ÙPXİ]™JÛİ\˜ÙTÙ\šY\ÊJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yh ¹.#y¦+ù.ãy§"y¥b9æ¡9fî¹k¦º*¬»ï#9.#z ïyieùå*8à#9.bùo£9fî¹k¦º*¯ú*¬¸à#{ï&ú*âù¥.yå*9cêº*¯ú`&y. 9«(xà ‰ÊNÂˆBˆYˆ
+Xİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈ	‰ˆÛX[ŠÛİ\˜ÙKœÜ[Xİ[ÛŠHOOH	ÜÚ[™ÛWÛ[İ™IÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yh ¹mì¹¦+ùe«¹«(z*¯ú*¬¹íd9§§;ï&ú*âùo§¹l&¹§*º*¯ù¥m9æ¡9fî¹k¦º*¬¹h ¹«(ze¢ùiâú*+yk¦¹.bùo£9fî¹k¦º*¯ú*¬¸à ‰ÊNÂˆBˆ\ÜÙ\XXÚ\“[İ™Q\˜][ÛŠ\™Ù]\˜][Û‹Ûİ\˜ÙJNÂˆH[ÙHYˆ
+]K™\˜][Û“Z[]\ÈOH[
+HÂˆÛÛœİXÛ\™Y\˜][ÛˆH[X™\Š]K™\˜][Û“Z[]\ÊNÂˆYˆ
+ˆS[X™\‹š\Ñš[š]JXÛ\™Y\˜][ÛŠHˆXÛ\™Y\˜][ÛˆÌˆXÛ\™Y\˜][ÛˆˆÌˆXÛ\™Y\˜][Ûˆ	HÌOOHˆXÛ\™Y\˜][ÛˆOOH\™Ù]\˜][Û‚ˆ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùb¨:*¬¹¦`¹«­z"!ú*¬¹ê"úemùn©¹.#y. :!í;ï#:*âúaãy¥¬:`n9¤áùk£9¥m9ên¹/cxà ‰ÊNÂˆBˆB‚ˆÛÛœİİY[YÈH[İš[™ÂˆÈÛİ\˜ÙKœİY[YÂˆˆË‹‹›™]ÈÙ]
+š\œİ\œ˜^J]KÉÜİY[YÉ×JK˜ÛÛ˜Ø]
+ÛX[Š]KœİY[Y
+HÈØÛX[Š]KœİY[Y
+WHˆ×JJWNÂˆÛÛœİİXš™XİYH[İš[™ÈÈÛİ\˜ÙKœİXš™XİYˆÛX[Š]KœİXš™XİY
+NÂˆYˆ
+\İY[YË›[™İ\İXš™XİY
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âùk£9¥m:`n9¤áùkn9å'ú"!ú*¬¹ê"ùéäyæë¸à ‰ÊNÂˆBˆYˆ
+X[™K›X\ËœİXš™XİÖÜİXš™XİYH\Ûİ\˜ÙPXİ]™J[™K›X\ËœİXš™XİÖÜİXš™XİYJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y`"ù£¢:*¬¹éäyæë¹mì¹`g9å*9¢%¹.#ykf9g*8à ‰ÊNÂˆBˆYˆ
+[[İš[™ÊHÂˆÛÛœİ[\Ü˜\Q›Ü•XXÚ\ˆH]ØZ]Z\œ›Ü”›İÜĞQšY[
+	İ[\Ü˜\PÛİ\œÙ\ÉË	İXXÚ\’Y	ËÙ\ÜÚ[Û‹XXÚ\’Y
+NÂˆÛÛœİİÛ”İY[YÈH™]ÈÙ]
+ˆË‹‹˜[™K™š^YÛİ\œÙ\Ë‹‹[\Ü˜\Q›Ü•XXÚ\—Bˆ™š[\Š
+›İÊHOˆ]™[XXÚ\’Y
+›İÊHOOHÙ\ÜÚ[Û‹XXÚ\’Y	‰ˆÛİ\˜ÙPXİ]™J›İÊJBˆ™›]X\
+]™[İY[YÊBˆ›X\
+ÛX[ŠBˆ™š[\Š›ÛÛX[ŠBˆ
+NÂˆYˆ
+\İY[YË™]™\J
+İY[Y
+HOˆİÛ”İY[YËš\ÊİY[Y
+JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú  yn*ùcêº ïy¤ãy/g9æë¹bcy.ãyg*:!ê¹mìyd#ye«¹.+yæ¡9kn9å'øà ‰ÊNÂˆBˆBˆÛÛœİXXÚ\ˆH[™K›X\ËXXÚ\œÖÜÙ\ÜÚ[Û‹XXÚ\’YHßNÂˆÛÛœİXXÚ\”İXš™XİÈHš\œİ\œ˜^JXXÚ\‹ÉÜİXš™XİYÉË	ÜİXš™XİÉ×JNÂˆYˆ
+XXÚ\”İXš™XİË›[™İ	‰ˆ]XXÚ\”İXš™XİËš[˜ÛY\ÊİXš™XİY
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y`"ùéäyæë¹.#yg*:  yn*ùcëù£¢:*¬¹æ¡:h!yæë¹.+xà ‰ÊNÂˆB‚ˆÛÛœİÙ[XİY›ÛÛHH[™Kœ›ÛÛ\Ë™š[™
+
+›ÛÛJHOˆÛİ\˜ÙRY
+›ÛÛJHOOH›ÛÛRY
+NÂˆÛÛœİÙ[XİY›ÛÛTÙ][™ÈH›ÛÛTÙ][™ÜÓX\Ü›ÛÛRYHßNÂˆYˆ
+ˆ\Ù[XİY›ÛÛHˆ\Ûİ\˜ÙPXİ]™JÙ[XİY›ÛÛJHˆ›ÛÛRÚ[™
+Ù[XİY›ÛÛKÙ[XİY›ÛÛTÙ][™ÊHOOH	Û›Ü›X[	Èˆ\›ÛÛUXXÚ\”ØÚY[X›JÙ[XİY›ÛÛKÙ[XİY›ÛÛTÙ][™ÊBˆ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y`"ù¥fyk©9.#ze¢ù¥/º  yn*ù£¤º*¬¸à ‰ÊNÂˆBˆYˆ
+\›ÛÛTİ\ÜÔİXš™Xİ
+Ù[XİY›ÛÛKİXš™XİY[™KÙ[XİY›ÛÛTÙ][™ÊJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y`"ù¥fyk©9.#z`jyd"9¢`:`n9ª ¹fj;ï#:*âù¥.z`n9am¹.å¹¥fyk©8à ‰ÊNÂˆBˆYˆ
+›ÛÛT™\]Z\™\Ñİ^š[™Ó[İ™JÙ[XİY›ÛÛKİXš™XİY[™JH	‰ˆY›YÕYJ]K˜[İÑİ^š[™Ó[İ™JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ÒĞUĞRH9¥fyk©9¬¤¹§"yfî¹k¦¹¥/¹ïk¹cé9ë£ûï&ú*âùè®º*£zhf9¡#ú!êº(c9o§¹ley¯%9ênºe¤ù¤+:`bùo£9a£ya,¹kf8à ‰ÊNÂˆBˆYˆ
+\›ÛÛP[İÜÒ[\˜[
+Ù[XİY›ÛÛKÙ[XİY›ÛÛTÙ][™Ë]Kİ\[YK[™[YKİXš™XİY	ÜØÚY[IÊJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y`"ù¥fyk©9g*9¢`:`n9¦`¹«­y.#ze¢ù¥/º`&zh!z*¬¹ê"øà ‰ÊNÂˆB‚ˆÛÛœİ[™XYÙHH[İš[™ÂˆÈÛX[ŠÛİ\˜ÙK™š^YÛİ\œÙRYÛİ\˜ÙKœÙ\šY\ÒY™\]Y\İYÛİ\˜ÙPÛİ\œÙRYÛİ\˜ÙKšY
+Bˆˆ	ÉÎÂˆÛÛœİYÛ›Ü™YÛİ\˜ÙHH
+]™[
+HOˆ›ÛÛX[ŠÛİ\˜ÙJH	‰ˆ]™[™]HOOHÛİ\˜ÙK™]H	‰ˆ
+ˆ]™[šYOOHÛİ\˜ÙKšYˆ]™[œÛİ\˜ÙRYOOHÛİ\˜ÙKœÛİ\˜ÙRYˆ
+[™XYÙH	‰ˆ
+]™[™š^YÛİ\œÙRYOOH[™XYÙH]™[œÙ\šY\ÒYOOH[™XYÙJJBˆ
+NÂˆÛÛœİ™\]Y\İY™\Ûİ\˜ÙRYÈH™\]Y\İYİXš™Xİ™\Ûİ\˜ÙRYÊİXš™XİY[™JNÂˆÛÛœİÛÛ™›XİH[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[™
+
+]™[
+HO‚ˆ]™[™]HOOH]H	‰‚ˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJ]™[
+H	‰‚ˆZYÛ›Ü™YÛİ\˜ÙJ]™[
+H	‰‚ˆİ™\›\Êİ\[YK[™[YK]™[œİ\[YK]™[™[™[YJH	‰‚ˆ
+ˆ]™[œ›ÛÛRYOOH›ÛÛRYˆ]™[XXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’Yˆ]™[œİY[YËœÛÛYJ
+İY[Y
+HOˆİY[YËš[˜ÛY\ÊİY[Y
+JHˆÚ\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+Ù]™[K™\]Y\İY™\Ûİ\˜ÙRYÊBˆ
+Bˆ
+NÂˆYˆ
+ÛÛ™›Xİ
+HÂˆÛÛœİİY[ÛÛ™›XİHÛÛ™›XİœİY[YË™š[™
+
+İY[Y
+HOˆİY[YËš[˜ÛY\ÊİY[Y
+JNÂˆÛÛœİİY[˜[YHHİY[ÛÛ™›Xİ	‰ˆÛX[Š[™K›X\ËœİY[ÖÜİY[ÛÛ™›XİH	‰ˆ[™K›X\ËœİY[ÖÜİY[ÛÛ™›XİK›˜[YJNÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ø[™XYKY^\İÉËˆÚ\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+ØÛÛ™›XİK™\]Y\İY™\Ûİ\˜ÙRYÊBˆÈ	ùcé9ë£ùg*:`&y`"ù¦`¹«­ymìº(ªùam¹.åº*¬¹ê"ù¢%¹éçùå*9/oùå*8à ‰Âˆˆ
+ÛÛ™›Xİœ›ÛÛRYOOH›ÛÛRYˆÈ8à#	ØÛX[ŠÙ[XİY›ÛÛK›˜[YJH	ù¢`:`n9¥fyk©	ßxà#yg*:`&y`"ù¦`¹«­ymìº(ªù/oùå*8à ˜ˆˆ
+ÛÛ™›XİXXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’YˆÈ	ú  yn*ùg*:`&y`"ù¦`¹«­ymì¹§"z*¬¹ê"øà ‰Âˆˆ	ÜİY[˜[YH	ù¢`:`n9kn9å'Éßyg*:`&y`"ù¦`¹«­ymì¹§"z*¬¹ê"øà ˜
+JBˆ
+NÂˆB‚ˆÛÛœİ]™[HÂˆYˆ˜[™ÛUÚÙ[ŠLŠKˆ]Kˆİ\[YKˆ[™[YKˆ\˜][Û“Z[]\Îˆ\™Ù]\˜][Û‹ˆ›ÛÛRYˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆİY[YˆİY[YÖÌKˆİY[YËˆİXš™XİYˆš^YÛİ\œÙRYˆ[İš[™ÈÈ[™XYÙHˆ	ÉËˆÙ\šY\ÒYˆXİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈÈ[™XYÙHˆ	ÉËˆ™Xİ\œš[™ÎˆXİ[ÛˆOOH	Ü\›X[™[Û[İ™IËˆ\NˆXİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈÈ	Ùš^Y	Èˆ	ÜÚ[™ÛIËˆÜ[Xİ[ÛˆXİ[Û‹ˆÜXÚX[\ÜÛÛˆXİ[ÛˆOOH	İXXÚ\—ÙÚY	Ëˆİ]\Îˆ	ÜØÚY[Y	Ëˆ^[Y[İ]\ÎˆXİ[ÛˆOOH	İXXÚ\—ÙÚY	ÈÈ	İXXÚ\—ÙÚYÛ›×ØÚ\™ÙIÈˆÛX[Š]Kœ^[Y[İ]\È	Û›İØ\XØX›IÊKˆXXÚ\”^XX›NˆXİ[ÛˆOOH	İXXÚ\—ÙÚY	Ëˆ›İNˆÛX[Š]K››İJBˆNÂˆÛÛœİ›ÛÛSİ™\œšY\ÈHßNÂˆÛÛœİ™\]Y\İY›ÛÛSİ™\œšY\ÈH]Kœ›ÛÛSİ™\œšY\È	‰ˆ\[Ùˆ]Kœ›ÛÛSİ™\œšY\ÈOOH	ÛØš™Xİ	ÂˆÈ]Kœ›ÛÛSİ™\œšY\ÂˆˆßNÂˆÛÛœİ[™[™Ñ]\ÈH×NÂˆÛÛœİ\›X[™[ÛÛ™›XİÈH×NÂˆ]İ\\œÙYY\›X[™[™YœÈH×NÂˆ]˜[Y]Y›İYÚH	ÉÎÂˆ]œ™\]Y[˜ŞUÙYZÜÈHØY™Qœ™\]Y[˜ŞUÙYZÜÊÛİ\˜ÙTÙ\šY\È	‰ˆ
+Ûİ\˜ÙTÙ\šY\Ë™œ™\]Y[˜ŞUÙYZÜÈÛİ\˜ÙTÙ\šY\Ëš[\˜[ÙYZÜÊJNÂˆ]™Xİ\œ™[˜ÙQ[™]HH]RÙ^JÛİ\˜ÙTÙ\šY\È	‰ˆ
+Ûİ\˜ÙTÙ\šY\Ëœ™Xİ\œ™[˜ÙQ[™]HÛİ\˜ÙTÙ\šY\Ë™[™]JJNÂˆYˆ
+Xİ[ÛˆOOH	Ü\›X[™[Û[İ™IÊHÂˆÛÛœİXİ]™PÚ[™ÙTÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊKÚ\™J	ØXİ]™IË	ÏOIËYJK™Ù]
+
+NÂˆİ\\œÙYY\›X[™[™YœÈHXİ]™PÚ[™ÙTÛ˜\Úİ™ØÜË™š[\Š
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆ™]\›ˆÛX[Š›İË˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÈ	‰‚ˆ\›X[™[[™XYÙJ›İÊHOOH[™XYÙH	‰‚ˆ\›X[™[İ]İ™\Š›İÊHOOHÛİ\˜ÙQ]NÂˆJK›X\
+
+ØÊHOˆØËœ™YŠNÂˆÛÛœİ]\™Q^Ù\[ÛˆHXİ]™PÚ[™ÙTÛ˜\Úİ™ØÜË™š[™
+
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆÛÛœİ›İÓ[™XYÙHH\›X[™[[™XYÙJ›İÊNÂˆÛÛœİ›İĞİ]İ™\ˆH\›X[™[İ]İ™\Š›İÊNÂˆYˆ
+ˆÛX[Š›İË˜Xİ[ÛŠHOOH	Ü\›X[™[Û[İ™IÈ	‰‚ˆ›İÓ[™XYÙHOOH[™XYÙH	‰‚ˆ›İĞİ]İ™\ˆOOHÛİ\˜ÙQ]Bˆ
+H™]\›ˆ˜[ÙNÂˆYˆ
+ØËšYOOHÛX[ŠÛİ\˜ÙKœÜ[Ú[™ÙRY
+H	‰ˆ›İĞİ]İ™\ˆÛİ\˜ÙQ]JH™]\›ˆ˜[ÙNÂˆ™]\›ˆ›İÓ[™XYÙHOOH[™XYÙH	‰‚ˆ›İĞİ]İ™\ˆHÛİ\˜ÙQ]H	‰‚ˆÉÜÚ[™ÛWÛ[İ™IË	Û\ÜÛÛ—Üİ]\ÉË	ØØ[˜Ù[	Ë	Ü\›X[™[Û[İ™I×Kš[˜ÛY\ÊÛX[Š›İË˜Xİ[ÛŠJNÂˆJNÂˆYˆ
+]\™Q^Ù\[ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú`&ze 9fî¹k¦º*¬¹g*9.bùo£9mì¹§"ye«¹«(z*¯ú*¬¸à z*âù`aûï#ù¦è:*¬¹¢%¹am¹.å¹fî¹k¦º+¢¹¦í;ï&ùà®º`oùacyd#9. :`,zaãz)!ù."º*¬»ï#:*âùab9å,yë¨yä!º !y¥m9ä!¹§*¹/¡¹/¢ùi%¸à ‰Âˆ
+NÂˆBˆÛÛœİ]\İ[˜ÚÜ‘]HHY^\ÊÛİ\˜ÙQ]Kœ™\]Y[˜ŞUÙYZÜÈ
+ˆÈHJNÂˆYˆ
+]HÛİ\˜ÙQ]H]Hˆ]\İ[˜ÚÜ‘]JHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ9¥¬9æ¡9fî¹k¦¹¦`¹«­yoázh":$/yg*9c§ùh ˆ	ÜÛİ\˜ÙQ]_H9b,	Û]\İ[˜ÚÜ‘]_H9.búe¤ûï#:`oùacy.+ze¤ú*¬¹ê"úaãz)!ù¢%¹¯#ù£¤¸à ˜ˆ
+NÂˆBˆYˆ
+™Xİ\œ™[˜ÙQ[™]H	‰ˆ]Hˆ™Xİ\œ™[˜ÙQ[™]JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù¥¬9æ¡9fî¹k¦¹¦`¹«­ymìº-¡z`cº`&ze 9fî¹k¦º*¬¹æ¡9íd9§gù¥éy§'øà ‰ÊNÂˆBˆÛÛœİX^[][Q[˜[Y][Û‘[™HY^\Ê]KÍL
+NÂˆÛÛœİÜš^›Û‘[™H™Xİ\œ™[˜ÙQ[™]H	‰ˆ™Xİ\œ™[˜ÙQ[™]HHX^[][Q[˜[Y][Û‘[™ˆÈ™Xİ\œ™[˜ÙQ[™]BˆˆY^\Ê]KÍ
+NÂˆ˜[Y]Y›İYÚHÜš^›Û‘[™ÂˆÛÛœİ]\™HH]ØZ]ØÚY[P[™J]KÜš^›Û‘[™Ù\ÜÚ[Û‹XXÚ\’Y
+NÂˆ›Üˆ
+]ØØİ\œ™[˜ÙHH]NÈØØİ\œ™[˜ÙHHÜš^›Û‘[™ÈØØİ\œ™[˜ÙHHY^\ÊØØİ\œ™[˜ÙKœ™\]Y[˜ŞUÙYZÜÈ
+ˆÊJHÂˆÛÛœİ›ØÚÙ\œÈH]\™Kœ™\Ûİ\˜ÙQ]™[Ë™š[\Š
+›İÊHOˆÂˆÛÛœİÛİ\˜ÙSX]ÚH[™XYÙH	‰‚ˆ
+›İË™š^YÛİ\œÙRYOOH[™XYÙH›İËœÙ\šY\ÒYOOH[™XYÙJH	‰‚ˆVÉÜÚ[™ÛWÛ[İ™IË	Ù^˜WÛ\ÜÛÛ‰Ë	İXXÚ\—ÙÚY	Ë	Û\ÜÛÛ—Üİ]\É×Kš[˜ÛY\ÊÛX[Š›İËœÜ[Xİ[ÛŠJNÂˆ™]\›ˆ]™[›ØÚÜÔ™\Ûİ\˜ÙJ›İÊH	‰‚ˆ\Ûİ\˜ÙSX]Ú	‰‚ˆ›İË™]HOOHØØİ\œ™[˜ÙH	‰‚ˆİ™\›\Êİ\[YK[™[YK›İËœİ\[YK›İË™[™[YJNÂˆJNÂˆÛÛœİXXÚ\“Ü”İY[\ŞHH›ØÚÙ\œËœÛÛYJ
+›İÊHO‚ˆ›İËXXÚ\’YOOHÙ\ÜÚ[Û‹XXÚ\’Yˆ›İËœİY[YËœÛÛYJ
+İY[Y
+HOˆİY[YËš[˜ÛY\ÊİY[Y
+JBˆ
+NÂˆÛÛœİÚ\™Y\]Z\Y[\ŞHHÚ\™Y™\Ûİ\˜ÙPÛÛ™›Xİ
+›ØÚÙ\œË™\]Y\İY™\Ûİ\˜ÙRYÊNÂˆÛÛœİ›ÛÛP\ŞHH›ØÚÙ\œËœÛÛYJ
+›İÊHOˆ›İËœ›ÛÛRYOOH›ÛÛRY
+NÂˆÛÛœİÛXŞP›ØÚÙYH\›ÛÛP[İÜÒ[\˜[
+ˆÙ[XİY›ÛÛKˆÙ[XİY›ÛÛTÙ][™ËˆØØİ\œ™[˜ÙKˆİ\[YKˆ[™[YKˆİXš™XİYˆ	ÜØÚY[IÂˆ
+NÂˆYˆ
+]XXÚ\“Ü”İY[\ŞH	‰ˆ\Ú\™Y\]Z\Y[\ŞH	‰ˆ\›ÛÛP\ŞH	‰ˆ\ÛXŞP›ØÚÙY
+HÛÛ[YNÂˆÛÛœİ[\›˜]]™\ÈHXXÚ\“Ü”İY[\ŞHÚ\™Y\]Z\Y[\ŞBˆÈ×Bˆˆ]\™Kœ›ÛÛ\Ë™š[\ŠÛİ\˜ÙPXİ]™JK™š[\Š
+›ÛÛJHOˆÂˆÛÛœİ[\›˜]]™RYHÛİ\˜ÙRY
+›ÛÛJNÂˆÛÛœİÙ][™ÈH›ÛÛTÙ][™ÜÓX\Ø[\›˜]]™RYHßNÂˆ™]\›ˆ›ÛÛRÚ[™
+›ÛÛKÙ][™ÊHOOH	Û›Ü›X[	È	‰‚ˆ›ÛÛUXXÚ\”ØÚY[X›J›ÛÛKÙ][™ÊH	‰‚ˆ›ÛÛTİ\ÜÔİXš™Xİ
+›ÛÛKİXš™XİY]\™KÙ][™ÊH	‰‚ˆ›ÛÛP[İÜÒ[\˜[
+›ÛÛKÙ][™ËØØİ\œ™[˜ÙKİ\[YK[™[YKİXš™XİY	ÜØÚY[IÊH	‰‚ˆX›ØÚÙ\œËœÛÛYJ
+›İÊHOˆ›İËœ›ÛÛRYOOH[\›˜]]™RY
+NÂˆJK›X\
+
+›ÛÛJHOˆ
+ÂˆYˆÛİ\˜ÙRY
+›ÛÛJKˆ˜[YNˆ™[[›ÛÛT›Ùš[J›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKœX›XÓ˜[YKˆ\]Z\Y[X™[ˆ›ÛÛQ\]Z\Y[X™[
+›ÛÛK›ÛÛTÙ][™ÜÓX\ÜÛİ\˜ÙRY
+›ÛÛJWHßJKˆ™\]Z\™\Ñİ^š[™Ó[İ™Nˆ›ÛÛT™\]Z\™\Ñİ^š[™Ó[İ™J›ÛÛKİXš™XİY]\™JBˆJJNÂˆÛÛœİ™\]Y\İYİ™\œšYRYHÛX[Š™\]Y\İY›ÛÛSİ™\œšY\ÖÛØØİ\œ™[˜ÙWJNÂˆYˆ
+™\]Y\İYİ™\œšYRY
+HÂˆÛÛœİ™\]Y\İY[\›˜]]™HH[\›˜]]™\Ë™š[™
+
+›ÛÛJHOˆ›ÛÛKšYOOH™\]Y\İYİ™\œšYRY
+NÂˆYˆ
+\™\]Y\İY[\›˜]]™JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ÛØØİ\œ™[˜Ù_H:`n9¤áùæ¡9¦ïù.èù¥fyk©9mì¹.#ycëùå*;ï#:*âúaãy¥¬9è®º*£xà ˜
+NÂˆBˆYˆ
+™\]Y\İY[\›˜]]™Kœ™\]Z\™\Ñİ^š[™Ó[İ™H	‰ˆY›YÕYJ]K˜[İÑİ^š[™Ó[İ™JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ÛØØİ\œ™[˜Ù_H:`n9¤áÈĞUĞRH9¥fyk©9¦`»ï#:g 9ab9è®º*£zhf9¡#ú!êº(c9¤+:`bùcé9ë£øà ˜
+NÂˆBˆ›ÛÛSİ™\œšY\ÖÛØØİ\œ™[˜ÙWHH™\]Y\İYİ™\œšYRYÂˆÛÛ[YNÂˆBˆ\›X[™[ÛÛ™›XİËœ\Ú
+Âˆ]NˆØØİ\œ™[˜ÙKˆ™X\ÛÛˆXXÚ\“Ü”İY[\ŞBˆÈ	ú  yn*ù¢%¹kn9å'ùmì¹§"z*¬¹ê"ÉÂˆˆ
+Ú\™Y\]Z\Y[\ŞBˆÈ	ùcé9ë£ùmìº(ªù/oùå*	Âˆˆ
+ÛXŞP›ØÚÙYÈ	ù¥fyk©9¦`¹«­y.#ze¢ù¥/‰Èˆ	ù¥fyk©9mìº(ªù/oùå*	ÊJKˆ[\›˜]]™T›ÛÛ\Îˆ[\›˜]]™\ÂˆJNÂˆBˆYˆ
+\›X[™[ÛÛ™›XİË›[™İ	‰ˆ]K˜ÛÛ™š\›T\›X[™[ÛÛ™›XİÈOOHYJHÂˆ™]\›ˆÂˆÚÎˆ˜[ÙKˆ™\]Z\™\ĞÛÛ™š\›X][ÛˆYKˆÜ\˜][Û’YˆÛÛ™›XİÎˆ\›X[™[ÛÛ™›XİËˆY\ÜØYÙNˆ9o£9î£9§"H	Ü\›X[™[ÛÛ™›XİË›[™İH9`"ù¥éy§'ùæo9å'ú(gyê {ï&ùè®º*£yo£:`&y.¦ù¥éy§'ù§ ù/çyåfyà®¹o¡z(ç9£¤»ï#9.#y§ ú!ê¹båy£æù¥fyk©8à ˜ˆNÂˆBˆ\›X[™[ÛÛ™›XİË™›Ü‘XXÚ
+
+›İÊHOˆ[™[™Ñ]\Ëœ\Ú
+›İË™]JJNÂˆ]™[™œ™\]Y[˜ŞUÙYZÜÈHœ™\]Y[˜ŞUÙYZÜÎÂˆ]™[œ™Xİ\œ™[˜ÙQ[™]HH™Xİ\œ™[˜ÙQ[™]NÂˆBˆÛÛœİÚ[™ÙT^[ØYHÂˆYˆÜ\˜][Û’YˆXİ[Û‹ˆXİ]™NˆYKˆÛİ\˜ÙQ]™[YˆÛİ\˜ÙHÈÛİ\˜ÙKšYˆ	ÉËˆÛİ\˜ÙQ]KˆÛİ\˜ÙPÛİ\œÙRYˆ[™XYÙKˆY™™Xİ]™Q]NˆXİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈÈÛİ\˜ÙQ]Hˆ	ÉËˆİ]İ™\‘]NˆXİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈÈÛİ\˜ÙQ]Hˆ	ÉËˆ[˜ÚÜ‘]NˆXİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈÈ]Hˆ	ÉËˆœ™\]Y[˜ŞUÙYZÜËˆ™Xİ\œ™[˜ÙQ[™]Kˆ˜[Y]Y›İYÚˆ]™[ˆ›ÛÛSİ™\œšY\Ëˆ[™[™Ñ]\Ëˆ\›X[™[ÛÛ™›XİËˆÜ™X]YUXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆNÂ‚ˆÛÛœİØÚÔ›İÜÈH›ÛÚÚ[™ÓØÚÔ›İÜÊ]K›ÛÛRYİ\[YK[™[YJBˆ˜ÛÛ˜Ø]
+Ú\™Y\]Z\Y[ØÚÔ›İÜÊ]K™\]Y\İY™\Ûİ\˜ÙRYËİ\[YK[™[YJJNÂˆÛÛœİ™\œÚ[Û”™YˆHØÚY[U™\œÚ[Û”™YŠ
+NÂˆÛÛœİ˜[œØXİ[Û”™\İ[H]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆYˆ
+X›XÔ™[[Ûİ\Ô\İ
+]Kİ\[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&y`"ù¦`¹«­ymì¹í¤úe¢ùiâûï#:*âúaãy¥¬:`n9¤áøà ‰ÊNÂˆBˆÛÛœİÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+Âˆ™Ù]
+™\œÚ[Û”™YŠKˆ™Ù]
+Ú[™ÙT™YŠKˆ‹‹›ØÚÔ›İÜË›X\
+
+›İÊHOˆ™Ù]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛSØÚÜÉÊK™ØÊ›İËšY
+JJKˆ‹‹œİ\\œÙYY\›X[™[™YœË›X\
+
+™YŠHOˆ™Ù]
+™YŠJBˆJNÂˆÛÛœİİ™\œÚ[Û”Û˜\ÚİÚ[™ÙTÛ˜\ÚİHHÛ˜\ÚİÎÂˆÛÛœİØÚÔÛ˜\ÚİÈHÛ˜\ÚİËœÛXÙJ‹ˆ
+ÈØÚÔ›İÜË›[™İ
+NÂˆÛÛœİİ\\œÙYY\›X[™[Û˜\ÚİÈHÛ˜\ÚİËœÛXÙJˆ
+ÈØÚÔ›İÜË›[™İ
+NÂˆ\ÜÙ\ØÚY[UÜš]X›J™\œÚ[Û”Û˜\Úİ
+NÂˆYˆ
+Ú[™ÙTÛ˜\Úİ™^\İÊHÂˆ™]\›ˆÈ\XØ]NˆYKÚ[™ÙNˆœÛÛ•˜[YJÚ[™ÙTÛ˜\Úİ™]J
+JHßHNÂˆBˆÛÛœİİ\œ™[™\œÚ[ÛˆH[X™\Š™\œÚ[Û”Û˜\Úİ™^\İÈ	‰ˆ™\œÚ[Û”Û˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂˆYˆ
+İ\œ™[™\œÚ[ÛˆOOH^XİY™\œÚ[ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	ØX›ÜY	Ë	ú*¬º(j9bfùbfù§"y¦í9¥¬;ï#9mì¹`g9«hº`&y«(y¤ãy/g;ï&ú*âúaãy¥¬9è®º*£yên¹/cxà ‰ÊNÂˆBˆÛÛœİXİ]™SØÚÜÈHØÚÔÛ˜\ÚİË™š[\Š
+Û˜\Úİ
+HOˆÛ˜\Úİ™^\İÈ	‰ˆÛ˜\Úİ™]J
+K˜Xİ]™HOOH˜[ÙJNÂˆÛÛœİ›ÛÚÚ[™ÔÛ˜\ÚİÈH×NÂˆ›Üˆ
+ÛÛœİØÚÔÛ˜\ÚİÙˆXİ]™SØÚÜÊHÂˆÛÛœİØÚÈHØÚÔÛ˜\Úİ™]J
+HßNÂˆYˆ
+ÛX[ŠØÚË˜›ÛÚÚ[™ÒY
+JHÂˆ›ÛÚÚ[™ÔÛ˜\ÚİËœ\Ú
+ÂˆØÚÔÛ˜\ÚİˆÛ˜\Úİˆ]ØZ]™Ù]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊK™ØÊÛX[ŠØÚË˜›ÛÚÚ[™ÒY
+JJBˆJNÂˆH[ÙHÂˆ›ÛÚÚ[™ÔÛ˜\ÚİËœ\Ú
+ÈØÚÔÛ˜\ÚİÛ˜\Úİˆ[JNÂˆBˆBˆÛÛœİİ[SØÚÜÈH×NÂˆ›ÛÚÚ[™ÔÛ˜\ÚİË™›Ü‘XXÚ
+
+ÈØÚÔÛ˜\ÚİÛ˜\ÚİJHOˆÂˆÛÛœİØÚÈHØÚÔÛ˜\Úİ™]J
+HßNÂˆÛÛœİ›ÛÚÚ[™ÈHÛ˜\Úİ	‰ˆÛ˜\Úİ™^\İÈÈÛ˜\Úİ™]J
+HßHˆ[ÂˆÛÛœİ^\™YH\ÓZ[\ÊØÚË™[™]
+H	‰ˆ\ÓZ[\ÊØÚË™[™]
+HH]K››İÊ
+NÂˆÛÛœİ[˜Xİ]™HHX›ÛÚÚ[™È›ÛÚÚ[™Ë˜Xİ]™HOOH˜[ÙHÛX[Š›ÛÚÚ[™Ëœİ]\ÊHOOH	ØØ[˜Ù[Y	ÎÂˆYˆ
+^\™Y[˜Xİ]™JHİ[SØÚÜËœ\Ú
+ØÚÔÛ˜\Úİœ™YŠNÂˆ[ÙH›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉË	ú`&y`"ù¥fyk©9¦`¹«­ybfùbfùmìº(ªùéçùå*;ï#:*âúaãy¥¬:`n9¤áøà ‰ÊNÂˆJNÂˆİ[SØÚÜË™›Ü‘XXÚ
+
+™YŠHOˆ™[]J™YŠJNÂˆİ\\œÙYY\›X[™[Û˜\ÚİË™›Ü‘XXÚ
+
+Û˜\Úİ
+HOˆÂˆYˆ
+\Û˜\Úİ™^\İÈÛ˜\Úİ™]J
+K˜Xİ]™HOOH˜[ÙJH™]\›ÂˆœÙ]
+Û˜\Úİœ™Y‹ÂˆXİ]™Nˆ˜[ÙKˆİ\\œÙYYNˆYˆİ\\œÙYY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆœÙ]
+Ú[™ÙT™Y‹Ú[™ÙT^[ØY
+NÂˆœÙ]
+™\œÚ[Û”™Y‹Âˆ™\œÚ[Ûˆİ\œ™[™\œÚ[Ûˆ
+ÈKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆÙ\ÜÚ[Û‹XXÚ\’YˆKÈY\™ÙNˆYHJNÂˆ™]\›ˆÈ\XØ]Nˆ˜[ÙHNÂˆJNÂˆYˆ
+˜[œØXİ[Û”™\İ[	‰ˆ˜[œØXİ[Û”™\İ[™\XØ]JHÂˆÛÛœİš[ÜˆH˜[œØXİ[Û”™\İ[˜Ú[™ÙHßNÂˆ™]\›ˆÂˆÚÎˆYKˆ\XØ]NˆYKˆYˆ]™[ˆš[Ü‹™]™[ßKˆ›ÛÛSİ™\œšY\Îˆš[Ü‹œ›ÛÛSİ™\œšY\ÈßKˆ[™[™Ñ]\Îˆš[Ü‹œ[™[™Ñ]\È×KˆÜ\˜][Û’YˆY\ÜØYÙNˆ	ú`&y«(y¤ãy/g9mì¹í¤ùk£9¢$;ï#9.#y§ úaãz)!ùnî¹êâøà ‰ÂˆNÂˆBˆ™]\›ˆÂˆÚÎˆYKˆYˆ]™[ˆ›ÛÛSİ™\œšY\Ëˆ[™[™Ñ]\ËˆÜ\˜][Û’YˆY\ÜØYÙNˆ[™[™Ñ]\Ë›[™İˆÈ9¬.9.az*¯ú*¬¹mì¹nî¹êâûï&ÉÜ[™[™Ñ]\Ë›[™İH9`"ú(gyê y¥éy§'ùmì¹/çyåfyà®¹o¡z(ç9£¤»ï#9¬¤¹§"z!ê¹båy¦í9£æù¥fyk©8à ˜ˆˆ
+Xİ[ÛˆOOH	Ü\›X[™[Û[İ™IÈÈ	ù¬.9.az*¯ú*¬¹mì¹nî¹êâøà ‰Èˆ	ú*¬¹ê"ùmì¹a,¹kf8à ‰ÊBˆNÂŸB‚™[˜İ[Ûˆ][™[˜ÙS[™XYÙJ]™[]HHßJHÂˆ™]\›ˆÛX[Šˆ]™[	‰ˆ
+]™[™š^YÛİ\œÙRY]™[œÛİ\˜ÙRY]™[šY
+Hˆ]KœÛİ\˜ÙPÛİ\œÙRYˆ]KœÛİ\˜ÙQ]™[Yˆ
+NÂŸB‚™[˜İ[Ûˆ][™[˜ÙSÜ\˜][Û’Y
+XXÚ\’YÛİ\˜ÙQ]K]™[]HHßJHÂˆ™]\›ˆ\Ú
+Âˆ	İXXÚ\‹X][™[˜ÙIËˆÛX[ŠXXÚ\’Y
+Kˆ]RÙ^JÛİ\˜ÙQ]JKˆ][™[˜ÙS[™XYÙJ]™[]JBˆKš›Ú[Š	ß	ÊJNÂŸB‚™[˜İ[Ûˆ][™[˜ÙS\ÜÛÛ“ØÚÒY
+Ûİ\˜ÙQ]K]™[]HHßJHÂˆ™]\›ˆ\Ú
+Âˆ	İXXÚ\‹X][™[˜ÙK[\ÜÛÛ‰Ëˆ]RÙ^JÛİ\˜ÙQ]JKˆ][™[˜ÙS[™XYÙJ]™[]JBˆKš›Ú[Š	ß	ÊJNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\][™[˜ÙQ]™[
+Ù\ÜÚ[Û‹]JHÂˆÛÛœİÛİ\˜ÙQ]HH]RÙ^J]KœÛİ\˜ÙQ]JNÂˆÛÛœİÛİ\˜ÙQ]™[YHÛX[Š]KœÛİ\˜ÙQ]™[Y
+NÂˆÛÛœİÛİ\˜ÙPÛİ\œÙRYHÛX[Š]KœÛİ\˜ÙPÛİ\œÙRY
+NÂˆÛÛœİÜ[Ú[™ÙRYHÛX[Š]KœÜ[Ú[™ÙRY
+NÂˆYˆ
+\Ûİ\˜ÙQ]H
+\Ûİ\˜ÙQ]™[Y	‰ˆ\Ûİ\˜ÙPÛİ\œÙRY
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùï.¹l$z) z&eyä!¹æ¡:*¬¹ê"øà ‰ÊNÂˆBˆÛÛœİ[™HH]ØZ]ØÚY[P[™JÛİ\˜ÙQ]KÛİ\˜ÙQ]KÙ\ÜÚ[Û‹XXÚ\’Y
+NÂˆÛÛœİ]™[H[™K™]™[Ë™š[™
+
+›İÊHOˆXXÚ\‘]™[X]Ú\Ô™\]Y\İ
+ˆ›İËˆÙ\ÜÚ[Û‹XXÚ\’YˆÛİ\˜ÙQ]KˆÛİ\˜ÙQ]™[YˆÛİ\˜ÙPÛİ\œÙRYˆÜ[Ú[™ÙRYˆ
+JNÂˆYˆ
+Y]™[
+H›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yh º*¬¸à ‰ÊNÂˆYˆ
+\Ô›ÛÛT™[[]™[
+]™[
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ù¥fyk©9éçùå*9.#y¦+ùkn9å'ú*¬¹ê"ûï#9.#z ïz&eyä!¹kn9å'ùì/yb,8à ‰ÊNÂˆBˆYˆ
+J]™[œİY[YÈ×JK›[™İ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yh º*¬¹¬¤¹§"ykn9å'ûï#9.#z ïyì/yb,8à ‰ÊNÂˆBˆ™]\›ˆÈÛİ\˜ÙQ]KÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRY]™[NÂŸB‚˜\Ş[˜È[˜İ[Ûˆ][™[˜ÙT\š[ÙÑ›Ü‘]™[
+]™[Ûİ\˜ÙQ]KÜ[ÛœÈHßJHÂˆÛÛœİİY[YÈHË‹‹›™]ÈÙ]
+]™[İY[YÊ]™[
+K›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠJWNÂˆÛÛœİÜ›İ\ÈH]ØZ]›ÛZ\ÙK˜[
+İY[YË›X\
+\Ş[˜È
+İY[Y
+HOˆÂˆÛÛœİÜ\š[ÙËZ\œ›Ü][™[˜ÙKÜ[][™[˜ÙTÛ˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+ÂˆZ\œ›Ü”›İÜĞQšY[
+	İZ][Û”\š[ÙÉË	ÜİY[Y	ËİY[Y
+KˆZ\œ›Ü”›İÜĞQšY[
+	Ø][™[˜ÙIË	ÜİY[Y	ËİY[Y
+Kˆ‹˜ÛÛXİ[ÛŠUS‘SÑWÔ‘PÓÔ‘ÊKÚ\™J	ÜİY[Y	Ë	ÏOIËİY[Y
+K™Ù]
+
+BˆJNÂˆÛÛœİÜ[][™[˜ÙHHÜ[][™[˜ÙTÛ˜\Úİ™ØÜË›X\
+
+ØÊHO‚ˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJBˆ
+NÂˆÛÛœİY™™Xİ]™T\š[ÙÈH\TÜ[][™[˜ÙUÔ\š[ÙÊ\š[ÙËZ\œ›Ü][™[˜ÙKÜ[][™[˜ÙJNÂˆ™]\›ˆÂˆİY[Yˆ\š[Ùˆ][™[˜ÙT\š[ÙØ[™Y]JY™™Xİ]™T\š[ÙË]™[İY[YÛİ\˜ÙQ]JBˆNÂˆJJNÂˆÛÛœİZ\ÜÚ[™ÈHÜ›İ\Ë™š[\Š
+›İÊHOˆ\›İËœ\š[Ù
+NÂˆYˆ
+Z\ÜÚ[™Ë›[™İ	‰ˆÜ[ÛœË˜[İÓZ\ÜÚ[™ÈOOHYJHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ9¢o¹.#yb,	ÛZ\ÜÚ[™Ë›[™İH9/cykn9å'ùg*9§+9h º*¬º`jyå*9.%9l&¹§"yh ¹¥n9æ¡9kn:,®ù§'ùb){ï&ùmì¹`g9«h¹ì/yb,;ï#:*âùab9è®º*£y§'ùb)z,áù¥¦xà ˜ˆ
+NÂˆBˆÛÛœİ›İÜÈHÜ›İ\Ë™š[\Š
+›İÊHOˆ›İËœ\š[Ù
+NÂˆ™]\›ˆÂˆ›İÜËˆTİY[ˆ›İÜËœ™YXÙJ
+X\›İÊHOˆÂˆX\Ü›İËœİY[YHH›İËœ\š[ÙÂˆ™]\›ˆX\ÂˆKßJBˆNÂŸB‚™[˜İ[Ûˆ][™[˜ÙPÚ[™ÙT^[ØY
+]™[Ûİ\˜ÙQ]KÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRYXXÚ\’Yİ]\Ë›İJHÂˆÛÛœİ[™XYÙHH][™[˜ÙS[™XYÙJ]™[ÈÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRYJNÂˆÛÛœİYH\ÜÛÛ‹\İ]\ËIÚ\Ú
+İXXÚ\’Y[™XYÙKÛİ\˜ÙQ]WKš›Ú[Š	ß	ÊJ_XÂˆ™]\›ˆÂˆYˆXİ[Ûˆ	Û\ÜÛÛ—Üİ]\ÉËˆXİ]™NˆYKˆÛİ\˜ÙQ]™[YˆÛX[Š]™[œÛİ\˜ÙRYÛİ\˜ÙQ]™[Y]™[šY
+KˆÛİ\˜ÙPÛİ\œÙRYˆÛX[Š]™[™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRY[™XYÙJKˆÛİ\˜ÙQ]Kˆ]™[ˆÂˆYˆ˜[™ÛUÚÙ[ŠLŠKˆ]NˆÛİ\˜ÙQ]Kˆİ\[YNˆ]™[œİ\[YKˆ[™[YNˆ]™[™[™[YKˆ›ÛÛRYˆ]™[œ›ÛÛRYˆXXÚ\’YˆİY[Yˆ
+]™[œİY[YÈ×JVÌH	ÉËˆİY[YÎˆ]™[œİY[YÈ×KˆİXš™XİYˆ]™[œİXš™XİYˆš^YÛİ\œÙRYˆÛX[Š]™[™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRY[™XYÙJKˆZ][Û”\š[ÙYˆÛX[Š]™[Z][Û”\š[ÙY
+Kˆ\Nˆ]™[\H	Û\ÜÛÛ‰Ëˆİ]\Ëˆ^[Y[İ]\Îˆİ]\ÈOOH	Ø][™Y	ÈÈ	Ø][™Y	Èˆ	Ø][™[˜ÙWØØ[˜Ù[Y	ËˆXXÚ\”^XX›Nˆİ]\ÈOOH	Ø][™Y	Ëˆ›İNˆÛX[Š›İJBˆKˆÜ™X]YUXXÚ\’YˆXXÚ\’YˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ\UXXÚ\][™[˜ÙJ]K]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİ™\ÛÛ™YH]ØZ]XXÚ\][™[˜ÙQ]™[
+Ù\ÜÚ[Û‹]JNÂˆÛÛœİÈÛİ\˜ÙQ]KÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRY]™[HH™\ÛÛ™YÂˆÛÛœİÙ^HHİ\œ™[Z\ZQ^J
+NÂˆYˆ
+]H	‰ˆÛİ\˜ÙQ]HHÙ^JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùåm¹¥éz*¬¹ê"ú*âùg*9¦f¹."ˆLˆ:nç¹bcy/oùå*9«hùn.9ì/yb,;ï&úf¥9¥éyo£9¢cy§ úhkùé.º(ç9ì/yb,8à ‰ÊNÂˆBˆYˆ
+[]H	‰ˆÛİ\˜ÙQ]HOOHÙ^JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰ËÛİ\˜ÙQ]HÙ^BˆÈ	ú`&yh º*¬¹mìº-¡z`c¹åm¹¥éy¦f¹."ˆLˆ:nç»ï#:*âù¥.yå*:(ç9ì/yb,8à ‰Âˆˆ	ùl&¹§*¹b,9."º*¬¹¥éy§'ûï#9.#z ïy£ä9bcyì/yb,8à ‰ÊNÂˆBˆYˆ
+[]H	‰ˆZ\ZQ]U[YSZ[\ÊÛİ\˜ÙQ]K]™[œİ\[YJHˆ]K››İÊ
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú*¬¹ê"ùl&¹§*ºe¢ùiâûï#9.#z ïy£ä9bcyì/yb,8à ‰ÊNÂˆBˆÛÛœİ›Ü›X[^™YH›Ü›X[^™TØÚY[Tİ]\Ê]™[œİ]\ÊNÂˆÛÛœİ[İÙYİ]\Ù\ÈH]HÈÉÜØÚY[Y	Ë	ØXœÙ[	×HˆÉÜØÚY[Y	×NÂˆYˆ
+X[İÙYİ]\Ù\Ëš[˜ÛY\Ê›Ü›X[^™Y
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú*âù`aøà ymì¹ì/yb,9¢%¹mì¹cå¹­¢9æ¡:*¬¹ê"ù.#z ïya£y«(yì/yb,8à ‰ÊNÂˆBˆÛÛœİÜ\˜][Û’YH][™[˜ÙSÜ\˜][Û’Y
+Ù\ÜÚ[Û‹XXÚ\’YÛİ\˜ÙQ]K]™[]JNÂˆÛÛœİ^XİY™\œÚ[ÛˆH]ØZ]™XYØÚY[U™\œÚ[ÛŠ
+NÂˆÛÛœİÚY\ÜÛÛˆH]™[œÜXÚX[\ÜÛÛˆOOHYHˆÛX[Š]™[œÜ[Xİ[ÛŠHOOH	İXXÚ\—ÙÚY	ÈˆÛX[Š]™[\JHOOH	İXXÚ\—ÙÚY	ÎÂˆÛÛœİÚ\™ÙS]Q™YHH]H	‰ˆYÚY\ÜÛÛÂˆÛÛœİİ]\Ô™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊBˆ™ØÊ\ÜÛÛ‹\İ]\ËIÚ\Ú
+ÜÙ\ÜÚ[Û‹XXÚ\’Y][™[˜ÙS[™XYÙJ]™[]JKÛİ\˜ÙQ]WKš›Ú[Š	ß	ÊJ_X
+NÂˆÛÛœİ]T™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[]P][™[˜ÙIÊK™ØÊÜ\˜][Û’Y
+NÂˆÛÛœİY\İY[™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\Y\İY[ÉÊK™ØÊ][™[˜ÙKY™YKIÛÜ\˜][Û’YX
+NÂˆÛÛœİ^\›Û™YˆH‹˜ÛÛXİ[ÛŠUS‘SÑWÔVT“Ó
+K™ØÊÜ\˜][Û’Y
+NÂˆÛÛœİš[ÜØ[˜Ù[][Û”™YˆH‹˜ÛÛXİ[ÛŠUS‘SÑWĞĞSÑSUSÓ”ÊBˆ™ØÊ\Ú
+ÉØ][™[˜ÙKXØ[˜Ù[][Û‰ËÜ\˜][Û’YKš›Ú[Š	ß	ÊJJNÂˆÛÛœİ\ÜÛÛ“ØÚÔ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[][™[˜ÙS\ÜÛÛ“ØÚÜÉÊBˆ™ØÊ][™[˜ÙS\ÜÛÛ“ØÚÒY
+Ûİ\˜ÙQ]K]™[ÈÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRYJJNÂˆÛÛœİ™\œÚ[Û”™YˆHØÚY[U™\œÚ[Û”™YŠ
+NÂˆÛÛœİ\š[Ù™\ÛÛ][ÛˆH]ØZ]][™[˜ÙT\š[ÙÑ›Ü‘]™[
+]™[Ûİ\˜ÙQ]KÈ[İÓZ\ÜÚ[™ÎˆÚY\ÜÛÛˆJNÂˆÛÛœİ^\›ÛØ[İ[][ÛˆH][™[˜ÙT^\›ÛØ[İ[][ÛŠ]™[\š[Ù™\ÛÛ][Û‹œ›İÜËÛİ\˜ÙQ]JNÂˆÛÛœİ\š[ÙYÈHØš™XİšÙ^\Ê\š[Ù™\ÛÛ][Û‹˜TİY[
+Kœ™YXÙJ
+X\İY[Y
+HOˆÂˆX\ÜİY[YHHÛİ\˜ÙRY
+\š[Ù™\ÛÛ][Û‹˜TİY[ÜİY[YJNÂˆ™]\›ˆX\ÂˆKßJNÂˆÛÛœİ][™[˜ÙT›İÜÈH]™[İY[YÊ]™[
+K›X\
+
+İY[Y
+HOˆ
+ÂˆYˆ\Ú
+ÛÜ\˜][Û’YİY[YKš›Ú[Š	ß	ÊJKˆİY[YˆÛX[ŠİY[Y
+BˆJJNÂˆÛÛœİ][™[˜ÙT™YœÈH][™[˜ÙT›İÜË›X\
+
+›İÊHOˆ‹˜ÛÛXİ[ÛŠUS‘SÑWÔ‘PÓÔ‘ÊK™ØÊ›İËšY
+JNÂˆÛÛœİÚ[™ÙT^[ØYH][™[˜ÙPÚ[™ÙT^[ØY
+ˆ]™[ˆÛİ\˜ÙQ]KˆÛİ\˜ÙQ]™[YˆÛİ\˜ÙPÛİ\œÙRYˆÙ\ÜÚ[Û‹XXÚ\’Yˆ	Ø][™Y	Ëˆ]HÈ	ú  yn*ú(ç9ì/yb,	Èˆ	ú  yn*ùåm¹¥éyì/yb,	Âˆ
+NÂˆÚ[™ÙT^[ØY™]™[Z][Û”\š[ÙYHÚY\ÜÛÛˆÈ	ÉÈˆÛX[Š\š[ÙYÖØ][™[˜ÙT›İÜÖÌH	‰ˆ][™[˜ÙT›İÜÖÌKœİY[YJNÂˆÚ[™ÙT^[ØY™]™[Z][Û”\š[ÙYÈHÚY\ÜÛÛˆÈßHˆØš™Xİ˜\ÜÚYÛŠßK\š[ÙYÊNÂˆÚ[™ÙT^[ØY™]™[XXÚ\”^XX›HH^\›ÛØ[İ[][Û‹XXÚ\”^XX›HOOH˜[ÙNÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+Âˆ™Ù]
+™\œÚ[Û”™YŠKˆ™Ù]
+İ]\Ô™YŠKˆ™Ù]
+]T™YŠKˆ™Ù]
+^\›Û™YŠKˆ™Ù]
+š[ÜØ[˜Ù[][Û”™YŠKˆ™Ù]
+\ÜÛÛ“ØÚÔ™YŠKˆ‹‹˜][™[˜ÙT™YœË›X\
+
+™YŠHOˆ™Ù]
+™YŠJBˆJNÂˆÛÛœİ™\œÚ[Û”Û˜\ÚİHÛ˜\ÚİÖÌNÂˆ\ÜÙ\ØÚY[UÜš]X›J™\œÚ[Û”Û˜\Úİ
+NÂˆÛÛœİİ\œ™[™\œÚ[ÛˆH[X™\Š™\œÚ[Û”Û˜\Úİ™^\İÈ	‰ˆ™\œÚ[Û”Û˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂˆYˆ
+İ\œ™[™\œÚ[ÛˆOOH^XİY™\œÚ[ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	ØX›ÜY	Ëˆ	ú`&yh º*¬¹bfùbfùmì¹g*9am¹.åº(çyïk¹¦í9¥¬8à ¹à®º`oùacz)¡º$âú,áù¥¦{ï#:*âúaãy¥¬9¥m9ä!¹o£9a£y¤ãy/g8à ‰Âˆ
+NÂˆBˆÛÛœİ^\İ[™ĞØ[˜Ù[][ÛˆHÛ˜\ÚİÖÍK™^\İÈÈÛ˜\ÚİÖÍK™]J
+HßHˆßNÂˆYˆ
+ÛX[Š^\İ[™ĞØ[˜Ù[][Û‹œİ]\ÊHOOH	Ø\›İ™Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú`&yh º*¬¹æ¡9cå¹­¢9ì/yb,9mì¹í¤ù¨.9aá»ï&ùi ºg 9 h¹oª{ï#:*âùab9å,yë¨yä!º !z&eyä!»ï#:`oùaczaãz)!ú*":%ª¸à ‰Âˆ
+NÂˆBˆÛÛœİ^\İ[™Ó\ÜÛÛ“ØÚÈHÛ˜\ÚİÖÍWK™^\İÈÈÛ˜\ÚİÖÍWK™]J
+HßHˆßNÂˆYˆ
+ÛX[Š^\İ[™Ó\ÜÛÛ“ØÚËœİ]\ÊHOOH	ØØ[˜Ù[Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	Ù˜Z[Y\™XÛÛ™][Û‰Ëˆ	ú`&yh º*¬¹æ¡9ì/yb,9mì¹cå¹­¢9.)ºc¥¹k¦»ï&ú*âùab9å,yë¨yä!º !y h¹oªyo£9¢cz ïzaãy¥¬9ì/yb,;ï#9¥.y­/º  yn*ù.gù.#z ïzaãz)!ú*":%ª¸à ‰Âˆ
+NÂˆBˆYˆ
+ˆ^\İ[™Ó\ÜÛÛ“ØÚË˜Xİ]™HOOH˜[ÙH	‰‚ˆÛX[Š^\İ[™Ó\ÜÛÛ“ØÚËœİ]\ÊHOOH	Ø][™Y	È	‰‚ˆÛX[Š^\İ[™Ó\ÜÛÛ“ØÚË›Ü\˜][Û’Y
+HOOHÜ\˜][Û’Yˆ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉË	ú`&yh º*¬¹mì¹å,ycé¹. 9/cz  yn*ùk£9¢$9ì/yb,;ï#9.#y§ úaãz)!ùnî¹êâú%ªº,áøà ‰ÊNÂˆBˆÛÛœİ^\İ[™Ğ][™[˜ÙHHÛ˜\ÚİËœÛXÙJŠKœÛÛYJ
+Û˜\Úİ
+HO‚ˆÛ˜\Úİ™^\İÈ	‰ˆÛX[ŠÛ˜\Úİ™]J
+Kœİ]\ÊHOOH	Ø][™Y	Âˆ
+NÂˆYˆ
+^\İ[™Ğ][™[˜ÙJH›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉË	ú`&yh º*¬¹mì¹í¤ùk£9¢$9ì/yb,8à ‰ÊNÂˆÛÛœİ^\İ[™Ô^\›ÛHÛ˜\ÚİÖÌ×K™^\İÈÈÛ˜\ÚİÖÌ×K™]J
+HßHˆßNÂˆYˆ
+ÛX[Š^\İ[™Ô^\›Ûœİ]\ÊHOOH	Ø][™Y	È	‰ˆ^\İ[™Ô^\›Û˜Xİ]™HOOH˜[ÙJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉË	ú`&yh º*¬¹æ¡:%ªº,áùmì¹í¤ú*&:c!;ï#9.#y§ úaãz)!ùnî¹êâøà ‰ÊNÂˆBˆÛÛœİ^\İ[™Ôİ]\ÈHÛ˜\ÚİÖÌWK™^\İÈÈÛ˜\ÚİÖÌWK™]J
+HßHˆßNÂˆYˆ
+›Ü›X[^™TØÚY[Tİ]\Ê^\İ[™Ôİ]\Ë™]™[	‰ˆ^\İ[™Ôİ]\Ë™]™[œİ]\ÊHOOH	Ø][™Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉË	ú`&yh º*¬¹mì¹í¤ùk£9¢$9ì/yb,8à ‰ÊNÂˆBˆ][™[˜ÙT›İÜË™›Ü‘XXÚ
+
+›İË[™^
+HOˆœÙ]
+][™[˜ÙT™YœÖÚ[™^KÂˆYˆ›İËšYˆÜ\˜][Û’YˆXİ]™NˆYKˆİ]\Îˆ	Ø][™Y	ËˆÛİ\˜ÙNˆ]HÈ	İXXÚ\‹[]KX][™[˜ÙIÈˆ	İXXÚ\‹X][™[˜ÙIËˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆİY[Yˆ›İËœİY[YˆİY[YÎˆ]™[œİY[YÈ×KˆİXš™XİYˆÛX[Š]™[œİXš™XİY
+Kˆ\š[ÙYˆÚY\ÜÛÛˆÈ	ÉÈˆÛX[Š\š[ÙYÖÜ›İËœİY[YJKˆ]™[YˆÛX[Š]™[œÛİ\˜ÙRYÛİ\˜ÙQ]™[Y]™[šY
+KˆÛİ\œÙRYˆÛX[Š]™[™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRY
+Kˆ]NˆÛİ\˜ÙQ]KˆYXİYˆYÚY\ÜÛÛ‹ˆ]Nˆ]HOOHYKˆ]Q™YPÚ\™ÙYˆÚ\™ÙS]Q™YKˆÜšYÚ[˜[\ÜÛÛ‘]NˆÛİ\˜ÙQ]Kˆ][™[˜ÙT™XÛÜ™Y]^ˆ›İÕ^
+
+KˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJJNÂˆœÙ]
+İ]\Ô™Y‹Ú[™ÙT^[ØYÈY\™ÙNˆYHJNÂˆœÙ]
+\ÜÛÛ“ØÚÔ™Y‹ÂˆYˆ\ÜÛÛ“ØÚÔ™Y‹šYˆÜ\˜][Û’YˆXİ]™NˆYKˆİ]\Îˆ	Ø][™Y	Ëˆ]NˆÛİ\˜ÙQ]Kˆ]™[YˆÛX[Š]™[œÛİ\˜ÙRYÛİ\˜ÙQ]™[Y]™[šY
+KˆÛİ\œÙRYˆÛX[Š]™[™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRY
+KˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’Yˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆœÙ]
+^\›Û™Y‹Øš™Xİ˜\ÜÚYÛŠÂˆYˆÜ\˜][Û’YˆÜ\˜][Û’YˆXİ]™NˆYKˆİ]\Îˆ	Ø][™Y	ËˆÛİ\˜ÙNˆ]HÈ	İXXÚ\‹[]KX][™[˜ÙIÈˆ	İXXÚ\‹X][™[˜ÙIËˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆİY[YÎˆ]™[œİY[YÈ×KˆİY[YˆÛX[Š
+]™[œİY[YÈ×JVÌJKˆİY[˜[YNˆÛX[Š
+]™[œİY[˜[Y\È×JKš›Ú[Š	øà IÊJKˆİXš™XİYˆÛX[Š]™[œİXš™XİY
+KˆİXš™Xİ˜[YNˆÛX[Š]™[œİXš™Xİ˜[YJKˆ]NˆÛİ\˜ÙQ]Kˆ[ÛˆÛİ\˜ÙQ]KœÛXÙJÊKˆ]™[YˆÛX[Š]™[œÛİ\˜ÙRYÛİ\˜ÙQ]™[Y]™[šY
+KˆÛİ\œÙRYˆÛX[Š]™[™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRY
+KˆØØİ\œ™Y]ˆ	ÜÛİ\˜ÙQ]_U	ØÛX[Š]™[œİ\[YH	ÌŒ	Ê_NŒ
+ÌŒˆZ][Û”\š[ÙYÎˆØš™Xİ˜\ÜÚYÛŠßK\š[ÙYÊKˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆK^\›ÛØ[İ[][ÛŠKÈY\™ÙNˆYHJNÂˆYˆ
+]JHÂˆYˆ
+Û˜\ÚİÖÌ—K™^\İÈ	‰ˆÛX[ŠÛ˜\ÚİÖÌ—K™]J
+Kœİ]\ÊHOOH	Ø\›İ™Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉË	ú`&yh º*¬¹mì¹í¤ú(ç9ì/yb,8à ‰ÊNÂˆBˆœÙ]
+]T™Y‹ÂˆYˆÜ\˜][Û’YˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’Yˆ]NˆÛİ\˜ÙQ]Kˆ]™[YˆÛİ\˜ÙQ]™[YˆÛİ\œÙRYˆÛİ\˜ÙPÛİ\œÙRYˆİY[YÎˆ]™[œİY[YÈ×Kˆİ]\Îˆ	Ø\›İ™Y	ËˆYZ[š\İ˜][Û‘™YNˆÚ\™ÙS]Q™YHÈUS‘SÑWĞQRS—Ñ‘QHˆˆÚY\ÜÛÛ‹ˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆYˆ
+Ú\™ÙS]Q™YJHÂˆœÙ]
+Y\İY[™Y‹ÂˆYˆY\İY[™Y‹šYˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’Yˆ[Ûˆİ\œ™[Z\ZQ^J
+KœÛXÙJÊKˆ]Nˆİ\œ™[Z\ZQ^J
+Kˆ\Nˆ	Û]WØ][™[˜ÙWÙ™YIËˆ[[İ[ˆPUS‘SÑWĞQRS—Ñ‘QKˆ›İNˆ:(ç9ì/yb,:(c9¥/ú&eyä!º,®È•		ĞUS‘SÑWĞQRS—Ñ‘Q_XˆÛİ\˜ÙNˆ	İXXÚ\‹\Ü[	ËˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆBˆBˆœÙ]
+™\œÚ[Û”™Y‹Âˆ™\œÚ[Ûˆİ\œ™[™\œÚ[Ûˆ
+ÈKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆÙ\ÜÚ[Û‹XXÚ\’YˆKÈY\™ÙNˆYHJNÂˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆÜ\˜][Û’YˆY\ÜØYÙNˆ]BˆÈ
+Ú\™ÙS]Q™YBˆÈ:(ç9ì/yb,9mì¹k£9¢$;ï#9.)¹mì¹g*9§+9§":%ªº,áù¢húfi:(c9¥/ú&eyä!º,®È•		ĞUS‘SÑWĞQRS—Ñ‘Q_xà ˜ˆˆ	ú-":` z*¬¹ê"ú(ç9ì/yb,9mì¹k£9¢$;ï#9§+9«(y.#y¥-º(c9¥/ú&eyä!º,®øà ‰ÊBˆˆ	ùì/yb,9mì¹k£9¢$;ï&ù.â¹i*y¦f¹."ˆLˆ:nç¹o£9i ºg 9cå¹­¢;ï#9oázh":` y..ùë¨ykêy¨.8à ‰ÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\][™[˜ÙJ]JHÂˆ™]\›ˆ\UXXÚ\][™[˜ÙJ]K˜[ÙJNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\“]P][™[˜ÙJ]JHÂˆ™]\›ˆ\UXXÚ\][™[˜ÙJ]KYJNÂŸB‚˜\Ş[˜È[˜İ[ÛˆØ[˜Ù[XXÚ\][™[˜ÙTØ[YQ^JÙ\ÜÚ[Û‹™\ÛÛ™Y™X\ÛÛŠHÂˆÛÛœİÈÛİ\˜ÙQ]KÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRY]™[HH™\ÛÛ™YÂˆYˆ
+Ûİ\˜ÙQ]HOOHİ\œ™[Z\ZQ^J
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùcê¹§"yåm¹i*yì/yb,9cëù.éyæí9£©ycå¹­¢8à ‰ÊNÂˆBˆÛÛœİÜ\˜][Û’YH][™[˜ÙSÜ\˜][Û’Y
+Ù\ÜÚ[Û‹XXÚ\’YÛİ\˜ÙQ]K]™[ÂˆÛİ\˜ÙQ]™[YˆÛİ\˜ÙPÛİ\œÙRYˆJNÂˆÛÛœİ™\]Y\İYH\Ú
+ÉØ][™[˜ÙKXØ[˜Ù[][Û‰ËÜ\˜][Û’YKš›Ú[Š	ß	ÊJNÂˆÛÛœİ™\]Y\İ™YˆH‹˜ÛÛXİ[ÛŠUS‘SÑWĞĞSÑSUSÓ”ÊK™ØÊ™\]Y\İY
+NÂˆÛÛœİ][™[˜ÙTÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠUS‘SÑWÔ‘PÓÔ‘ÊBˆÚ\™J	ÛÜ\˜][Û’Y	Ë	ÏOIËÜ\˜][Û’Y
+Bˆ™Ù]
+
+NÂˆÛÛœİ][™[˜ÙT™YœÈH][™[˜ÙTÛ˜\Úİ™ØÜË›X\
+
+ØÊHOˆØËœ™YŠNÂˆÛÛœİ[™XYÙHH][™[˜ÙS[™XYÙJ]™[ÈÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRYJNÂˆÛÛœİİ]\Ô™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊBˆ™ØÊ\ÜÛÛ‹\İ]\ËIÚ\Ú
+ÜÙ\ÜÚ[Û‹XXÚ\’Y[™XYÙKÛİ\˜ÙQ]WKš›Ú[Š	ß	ÊJ_X
+NÂˆÛÛœİ^\›Û™YˆH‹˜ÛÛXİ[ÛŠUS‘SÑWÔVT“Ó
+K™ØÊÜ\˜][Û’Y
+NÂˆÛÛœİ\ÜÛÛ“ØÚÔ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[][™[˜ÙS\ÜÛÛ“ØÚÜÉÊBˆ™ØÊ][™[˜ÙS\ÜÛÛ“ØÚÒY
+Ûİ\˜ÙQ]K]™[ÈÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRYJJNÂˆÛÛœİ™\œÚ[Û”™YˆHØÚY[U™\œÚ[Û”™YŠ
+NÂˆÛÛœİ^XİY™\œÚ[ÛˆH]ØZ]™XYØÚY[U™\œÚ[ÛŠ
+NÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+Âˆ™Ù]
+™\œÚ[Û”™YŠKˆ™Ù]
+™\]Y\İ™YŠKˆ™Ù]
+İ]\Ô™YŠKˆ™Ù]
+^\›Û™YŠKˆ™Ù]
+\ÜÛÛ“ØÚÔ™YŠKˆ‹‹˜][™[˜ÙT™YœË›X\
+
+™YŠHOˆ™Ù]
+™YŠJBˆJNÂˆÛÛœİ™\œÚ[Û”Û˜\ÚİHÛ˜\ÚİÖÌNÂˆ\ÜÙ\ØÚY[UÜš]X›J™\œÚ[Û”Û˜\Úİ
+NÂˆÛÛœİİ\œ™[™\œÚ[ÛˆH[X™\Š™\œÚ[Û”Û˜\Úİ™^\İÈ	‰ˆ™\œÚ[Û”Û˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂˆYˆ
+İ\œ™[™\œÚ[ÛˆOOH^XİY™\œÚ[ÛŠHÂˆ›İÈ™]ÈÑ\œ›ÜŠˆ	ØX›ÜY	Ëˆ	ú`&yh º*¬¹bfùbfùmì¹g*9am¹.åº(çyïk¹¦í9¥¬8à ¹à®º`oùacz)¡º$âú,áù¥¦{ï#:*âúaãy¥¬9¥m9ä!¹o£9a£y¤ãy/g8à ‰Âˆ
+NÂˆBˆÛÛœİ^\İ[™Ô™\]Y\İHÛ˜\ÚİÖÌWK™^\İÈÈÛ˜\ÚİÖÌWK™]J
+HßHˆßNÂˆYˆ
+ÛX[Š^\İ[™Ô™\]Y\İœİ]\ÊHOOH	Ø\›İ™Y	ÊH™]\›ÂˆÛÛœİİ\œ™[İ]\ÈHÛ˜\ÚİÖÌ—K™^\İÈÈÛ˜\ÚİÖÌ—K™]J
+HßHˆßNÂˆYˆ
+›Ü›X[^™TØÚY[Tİ]\Êİ\œ™[İ]\Ë™]™[	‰ˆİ\œ™[İ]\Ë™]™[œİ]\ÊHOOH	Ø][™Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yh º*¬¹æë¹bcy.#y¦+ùmì¹ì/yb,9âà9¡bûï#:*âúaãy¥¬9¥m9ä!¸à ‰ÊNÂˆBˆ][™[˜ÙT™YœË™›Ü‘XXÚ
+
+™Y‹[™^
+HOˆÂˆÛÛœİš[ÜˆHÛ˜\ÚİÖÍH
+È[™^K™^\İÈÈÛ˜\ÚİÖÍH
+È[™^K™]J
+HßHˆßNÂˆœÙ]
+™Y‹ÂˆXİ]™Nˆ˜[ÙKˆİ]\Îˆ	ØØ[˜Ù[Y	ËˆÛİ\˜ÙNˆ	İXXÚ\‹\Ø[YKY^KX][™[˜ÙKXØ[˜Ù[][Û‰ËˆØ[˜Ù[][Û”™\]Y\İYˆ™\]Y\İYˆ\š[ÙYˆÛX[Šš[Ü‹œ\š[ÙY
+KˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆØ[˜Ù[Y]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆœÙ]
+İ]\Ô™Y‹][™[˜ÙPÚ[™ÙT^[ØY
+ˆ]™[ˆÛİ\˜ÙQ]KˆÛİ\˜ÙQ]™[YˆÛİ\˜ÙPÛİ\œÙRYˆÙ\ÜÚ[Û‹XXÚ\’Yˆ	ÜØÚY[Y	Ëˆ	ú  yn*ùåm¹¥éycå¹­¢:*©9ì/yb,	Âˆ
+KÈY\™ÙNˆYHJNÂˆœÙ]
+^\›Û™Y‹ÂˆXİ]™Nˆ˜[ÙKˆİ]\Îˆ	ØØ[˜Ù[Y	ËˆØ[˜Ù[][Û”™\]Y\İYˆ™\]Y\İYˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆœÙ]
+\ÜÛÛ“ØÚÔ™Y‹ÂˆËÈ9/çyåfz-ê:  yn*ùalyå*9æ¡9cå¹­¢ÛXœİÛ™{ï&ù§*¹£ä9/¦ùë¨yä!º !y h¹oªy­`yê"ùbc{ï#9.#ycëú+¤ù¥.y­/º  yn*ùîgº`cºaãyì/zc¥¸à ‚ˆXİ]™NˆYKˆİ]\Îˆ	ØØ[˜Ù[Y	ËˆÜ\˜][Û’YˆØ[˜Ù[][Û”™\]Y\İYˆ™\]Y\İYˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆœÙ]
+™\]Y\İ™Y‹ÂˆYˆ™\]Y\İYˆÜ\˜][Û’Yˆİ]\Îˆ	Ø\›İ™Y	Ëˆ\›İ˜[[ÙNˆ	ÜØ[YWÙ^WİXXÚ\‰ËˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆXXÚ\“˜[YNˆÛX[Š]™[XXÚ\“˜[YJKˆİY[YÎˆ]™[œİY[YÈ×KˆİY[˜[Y\Îˆ]™[œİY[˜[Y\È×KˆİXš™XİYˆÛX[Š]™[œİXš™XİY
+KˆİXš™Xİ˜[YNˆÛX[Š]™[œİXš™Xİ˜[YJKˆ]NˆÛİ\˜ÙQ]Kˆİ\[YNˆÛX[Š]™[œİ\[YJKˆ[™[YNˆÛX[Š]™[™[™[YJKˆ]™[YˆÛX[Š]™[œÛİ\˜ÙRYÛİ\˜ÙQ]™[Y]™[šY
+KˆÛİ\œÙRYˆÛX[Š]™[™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRY
+Kˆ][™[˜ÙT™XÛÜ™YÎˆ][™[˜ÙT™YœË›X\
+
+™YŠHOˆ™Y‹šY
+Kˆ™X\ÛÛˆÛX[Š™X\ÛÛŠH	ú  yn*ùåm¹¥éz*©9ì/yb,	ËˆYZ[š\İ˜][Û‘™YNˆˆ™\]Y\İY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™\]Y\İY]^ˆ›İÕ^
+
+Kˆ™]šY]ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™]šY]ÙY]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆœÙ]
+™\œÚ[Û”™Y‹Âˆ™\œÚ[Ûˆİ\œ™[™\œÚ[Ûˆ
+ÈKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆÙ\ÜÚ[Û‹XXÚ\’YˆKÈY\™ÙNˆYHJNÂˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆ™\]Y\İYˆİ]\Îˆ	Ø\›İ™Y	ËˆØ[YQ^NˆYKˆY\ÜØYÙNˆ	ùåm¹¥éyì/yb,9mì¹cå¹­¢;ï#9§+9«(y.#y¥-º(c9¥/ú&eyä!º,®øà ‰ÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\][™[˜ÙPØ[˜Ù[][Û”™\]Y\İ
+]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİ™X\ÛÛˆHÛX[Š]Kœ™X\ÛÛŠNÂˆÛÛœİ™\ÛÛ™YH]ØZ]XXÚ\][™[˜ÙQ]™[
+Ù\ÜÚ[Û‹]JNÂˆÛÛœİÈÛİ\˜ÙQ]KÛİ\˜ÙQ]™[YÛİ\˜ÙPÛİ\œÙRY]™[HH™\ÛÛ™YÂˆYˆ
+›Ü›X[^™TØÚY[Tİ]\Ê]™[œİ]\ÊHOOH	Ø][™Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùcê¹§"ymì¹ì/yb,9æ¡:*¬¹ê"ùcëù.éyå,ú*âùcå¹­¢9ì/yb,8à ‰ÊNÂˆBˆYˆ
+Ûİ\˜ÙQ]HOOHİ\œ™[Z\ZQ^J
+JHÂˆ™]\›ˆØ[˜Ù[XXÚ\][™[˜ÙTØ[YQ^JÙ\ÜÚ[Û‹™\ÛÛ™Y™X\ÛÛŠNÂˆBˆYˆ
+\™X\ÛÛŠH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âùhjùkêùcå¹­¢9ì/yb,9c§ùfè8à ‰ÊNÂˆÛÛœİÜ\˜][Û’YH][™[˜ÙSÜ\˜][Û’Y
+Ù\ÜÚ[Û‹XXÚ\’YÛİ\˜ÙQ]K]™[]JNÂˆÛÛœİ™\]Y\İYH\Ú
+ÉØ][™[˜ÙKXØ[˜Ù[][Û‰ËÜ\˜][Û’YKš›Ú[Š	ß	ÊJNÂˆÛÛœİ™\]Y\İ™YˆH‹˜ÛÛXİ[ÛŠUS‘SÑWĞĞSÑSUSÓ”ÊK™ØÊ™\]Y\İY
+NÂˆÛÛœİ][™[˜ÙTÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠUS‘SÑWÔ‘PÓÔ‘ÊBˆÚ\™J	ÛÜ\˜][Û’Y	Ë	ÏOIËÜ\˜][Û’Y
+Bˆ™Ù]
+
+NÂˆÛÛœİ^\İ[™ÈH]ØZ]™\]Y\İ™Y‹™Ù]
+
+NÂˆYˆ
+^\İ[™Ë™^\İÈ	‰ˆÉÜ[™[™ÉË	Ø\›İ™Y	×Kš[˜ÛY\ÊÛX[Š^\İ[™Ë™]J
+Kœİ]\ÊJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉËÛX[Š^\İ[™Ë™]J
+Kœİ]\ÊHOOH	Ü[™[™ÉÂˆÈ	ùcå¹­¢9ì/yb,9å,ú*âùmìº` yaî»ï#9«hùg*9ëbyo¡y..ùë¨yè®º*£xà ‰Âˆˆ	ú`&yh º*¬¹æ¡9cå¹­¢9ì/yb,9mì¹í¤ùk£9¢$8à ‰ÊNÂˆBˆÛÛœİ^[ØYHÂˆYˆ™\]Y\İYˆÜ\˜][Û’Yˆİ]\Îˆ	Ü[™[™ÉËˆXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆXXÚ\“˜[YNˆÛX[Š]™[XXÚ\“˜[YJKˆİY[YÎˆ]™[œİY[YÈ×KˆİY[˜[Y\Îˆ]™[œİY[˜[Y\È×KˆİXš™XİYˆÛX[Š]™[œİXš™XİY
+KˆİXš™Xİ˜[YNˆÛX[Š]™[œİXš™Xİ˜[YJKˆ]NˆÛİ\˜ÙQ]Kˆİ\[YNˆÛX[Š]™[œİ\[YJKˆ[™[YNˆÛX[Š]™[™[™[YJKˆ›ÛÛRYˆÛX[Š]™[œ›ÛÛRY
+Kˆ\NˆÛX[Š]™[\H	Û\ÜÛÛ‰ÊKˆ]™[YˆÛX[Š]™[œÛİ\˜ÙRYÛİ\˜ÙQ]™[Y]™[šY
+KˆÛİ\œÙRYˆÛX[Š]™[™š^YÛİ\œÙRYÛİ\˜ÙPÛİ\œÙRY
+KˆÜ[Ú[™ÙRYˆÛX[Š]™[œÜ[Ú[™ÙRY
+Kˆ][™[˜ÙT™XÛÜ™YÎˆ][™[˜ÙTÛ˜\Úİ™ØÜË›X\
+
+ØÊHOˆØËšY
+Kˆ™X\ÛÛ‹ˆYZ[š\İ˜][Û‘™YNˆUS‘SÑWĞQRS—Ñ‘QKˆ™\]Y\İY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™\]Y\İY]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆNÂˆ]ØZ]™\]Y\İ™Y‹œÙ]
+^[ØYÈY\™ÙNˆYHJNÂˆÛÛœİ›ÙHHÂˆ	ú  yn*ù£ä9aî¹cå¹­¢9ì/yb,9å,ú*âûï#:*âù..ùë¨yè®º*£xà ‰Ëˆ	ÉËˆ:  yn*ûï&‰ØÛX[Š]™[XXÚ\“˜[YJHÙ\ÜÚ[Û‹XXÚ\’YXˆ9kn9å'ûï&‰ØÛX[Š
+]™[œİY[˜[Y\È×JKš›Ú[Š	øà IÊJH	ù§*¹£ä9/¦ÉßXˆ:*¬¹ê"ûï&‰ØÛX[Š]™[œİXš™Xİ˜[YJH	ù§*¹£ä9/¦ÉßXˆ9¦`ºe¤ûï&‰ÜÛİ\˜ÙQ]_H	ØÛX[Š]™[œİ\[YJ_{ïg‰ØÛX[Š]™[™[™[YJ_Xˆ9c§ùfè;ï&‰Ü™X\ÛÛŸXˆ9¨.9aá¹o£9l!ù¢húfi:(c9¥/ú&eyä!º,®È•		ĞUS‘SÑWĞQRS—Ñ‘Q_xà ˜ˆ	ÉËˆ	ÔÔ•SĞTÑ_KØÛİ\œÙK\Ü[XYZ[‹š[ˆKš›Ú[Š	×‰ÊNÂˆ]ØZ]]Y]YPÛİ\œÙTÜ[›İXÙJ][™[˜ÙKXØ[˜Ù[[X[˜YÙ\‹IÜ™\]Y\İYXÂˆ]™[ÛÙNˆ	Ø][™[˜ÙWØØ[˜Ù[][Û—Ü[™[™ÉËˆ\™Ù]ˆ	ØYZ[‰Ëˆ\™Ù]›ÛNˆ	ØYZ[‰Ëˆ\™Ù][\ŞYYRYˆ	Ô’SPT–WÓPSQÑT—ÓS‘IËˆ\™Ù]˜[YNˆ	ù§æ¹kd9ª ¹fj9..ùë¨IËˆ]Nˆ	ùcå¹­¢9ì/yb,9o¡yè®º*£IËˆ›ÙKˆ^ˆ›ÙKˆY\ÜØYÙNˆ›ÙKˆ][™[˜ÙPØ[˜Ù[][Û’Yˆ™\]Y\İYˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆ™\]Y\İYˆİ]\Îˆ	Ü[™[™ÉËˆY\ÜØYÙNˆ9cå¹­¢9ì/yb,9å,ú*âùmìº` yaî»ï&ù..ùë¨y¨.9aá¹o£9¢cy§ ùå'ù¥b;ï#9.)¹¢húfi:(c9¥/ú&eyä!º,®È•		ĞUS‘SÑWĞQRS—Ñ‘Q_xà ˜ˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\›Û\Ô™\]Y\İ
+]J^ÂˆÛÛœİÙ\ÜÚ[ÛX]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİİY[YXÛX[Š]KœİY[Y
+K\ØÜš\[ÛXÛX[Š]K™\ØÜš\[ÛŠNÂˆYŠ\İY[YY\ØÜš\[ÛŠ]›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú`n9¤áùkn9å'ù.)¹hjùkêùå,ú*âùaiùk®xà ‰ÊNÂˆÛÛœİİÑ]OXÛX[Š]KœİÑ]JNÂˆYŠİÑ]K›[™İL
+]›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùáiùâaùi*¹i)ûï#:*âúaãy¥¬9¢ãy¥'y¢%¹î+¹l#ùo£9."¹`¬øà ‰ÊNÂˆÛÛœİYY‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\›Û\Ô™\]Y\İÉÊK™ØÊ
+KšYÂˆ]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\›Û\Ô™\]Y\İÉÊK™ØÊY
+KœÙ]
+ÚYXXÚ\’YœÙ\ÜÚ[Û‹XXÚ\’YİY[YİY[˜[YN˜ÛX[Š]KœİY[˜[YJK\ØÜš\[Û‹İÑ]Kİ]\Î‰Ü[™[™ÉË\›İ™Y[[İ[ŒÜ™X]Y]‘šY[˜[YKœÙ\™\•[Y\İ[\
+
+KÜ™X]Y]^››İÕ^
+
+_JNÂˆ™]\›ˆÛÚÎYKYY\ÜØYÙN‰ùå,ú*âùmìº` yaî»ï#9o¡y..ùë¨yè®º*£yãcºaäzaäzhcxà ‰ßNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[›Û\Ô™\]Y\İÊ
+^ÂˆÛÛœİÜ™\]Y\İËXXÚ\œ×OX]ØZ]›ÛZ\ÙK˜[
+Ù‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\›Û\Ô™\]Y\İÉÊK›Ü™\J	ØÜ™X]Y]	Ë	Ù\ØÉÊK›[Z]
+Œ
+K™Ù]
+
+KZ\œ›Ü”›İÜÊ	İXXÚ\œÉÊWJNÂˆÛÛœİX\Z[™^RY
+XXÚ\œÊNÂˆ™]\›ˆÛÚÎYK™\]Y\İÎœ™\]Y\İË™ØÜË›X\
+ØÏOØÛÛœİ›İÏZœÛÛ•˜[YJØË™]J
+J_ßNÜ™]\›ˆØš™Xİ˜\ÜÚYÛŠßK›İËÚY™ØËšYXXÚ\“˜[YN˜ÛX[ŠX\ØÛX[Š›İËXXÚ\’Y
+WI‰›X\ØÛX[Š›İËXXÚ\’Y
+WK›˜[YJ_JNßJ_NÂŸB˜\Ş[˜È[˜İ[ÛˆYZ[\›İ™P›Û\Ê]J^ÂˆÛÛœİYXÛX[Š]KšY
+K[[İ[SX]›X^
+[X™\Š]K˜[[İ[
+JNÂˆYŠZYX[[İ[
+]›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú/.9aiy¨.9k¦¹ãcºaäzaäzhcxà ‰ÊNÂˆÛÛœİ™YY‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\›Û\Ô™\]Y\İÉÊK™ØÊY
+NÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜ÈOØÛÛœİÛ˜\X]ØZ]™Ù]
+™YŠNÚYŠ\Û˜\™^\İÊ]›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,9å,ú*âøà ‰ÊNØÛÛœİ›İÏ\Û˜\™]J
+_ßNÚYŠÛX[Š›İËœİ]\ÊOOOIØ\›İ™Y	Ê]›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉË	ú`&yëa¹å,ú*âùmì¹¨.9k¦¸à ‰ÊNİœÙ]
+™Y‹Üİ]\Î‰Ø\›İ™Y	Ë\›İ™Y[[İ[˜[[İ[\›İ™Y]‘šY[˜[YKœÙ\™\•[Y\İ[\
+
+K\›İ™Y]^››İÕ^
+
+_KÛY\™ÙNY_JNİœÙ]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\Y\İY[ÉÊK™ØÊ	Ø›Û\ËIÊÚY
+KÚY‰Ø›Û\ËIÊÚYXXÚ\’Y˜ÛX[Š›İËXXÚ\’Y
+KİY[Y˜ÛX[Š›İËœİY[Y
+KİY[˜[YN˜ÛX[Š›İËœİY[˜[YJK[Û›™]È[‘]U[YQ›Ü›X]
+	Ù[‹PĞIËİ[YV›Û™N•RTRKYX\‰Û[Y\šXÉË[Û‰Ì‹YYÚ]	ßJK™›Ü›X]
+™]È]J
+JKœÛXÙJÊK]N›™]È[‘]U[YQ›Ü›X]
+	Ù[‹PĞIËİ[YV›Û™N•RTRKYX\‰Û[Y\šXÉË[Û‰Ì‹YYÚ]	Ë^N‰Ì‹YYÚ]	ßJK™›Ü›X]
+™]È]J
+JK\N‰İXXÚ\—Ø›Û\ÉË[[İ[›İN˜ÛX[Š›İË™\ØÜš\[ÛŠKÛİ\˜ÙN‰İXXÚ\‹X›Û\Ë\™\]Y\İ	ËÜ™X]Y]‘šY[˜[YKœÙ\™\•[Y\İ[\
+
+KÜ™X]Y]^››İÕ^
+
+_JNßJNÂˆ™]\›ˆÛÚÎYKY\ÜØYÙN‰ùãcºaäymì¹¨.9k¦¹.)¹kêùaiz  yn*ú%ªº,áøà ‰ßNÂŸB‚™[˜İ[Ûˆ›Ü›X[^™PYZ[•XXÚ\Y\İY[
+]KXXÚ\ŠHÂˆÛÛœİXXÚ\’YHÛX[Š]H	‰ˆ]KXXÚ\’Y
+NÂˆÛÛœİ™\]Y\İYHÛX[Š]H	‰ˆ]Kœ™\]Y\İY
+NÂˆÛÛœİ]HH]RÙ^J]H	‰ˆ]K™]JNÂˆÛÛœİ\HHÛX[Š]H	‰ˆ]K\JKÓİÙ\Ø\ÙJ
+NÂˆÛÛœİ[[İ[˜[YHH[X™\Š]H	‰ˆ]K˜[[İ[
+NÂˆÛÛœİ›İHHÛX[Š]H	‰ˆ]K››İJNÂˆYˆ
+]XXÚ\’Y]XXÚ\ˆÛİ\˜ÙRY
+XXÚ\ŠHOOHXXÚ\’Y
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,9£!ùk¦¹æ¡:  yn*øà ‰ÊNÂˆBˆYˆ
+K×–ĞKV˜K^ŒNWËW^ÌL‹LŒIË\İ
+™\]Y\İY
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù§+9«(y¤ãy/g:+f9b)yè¯9¨/9o#ù.#y«hùè®»ï#:*âúaãy¥¬:e¢ùegú)¥¹ê¥ùo£9a£z*i¸à ‰ÊNÂˆBˆYˆ
+Y]JH›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú`n9¤áù«hùè®¹æ¡9ãc¹bí{ï#ù¢hú%ª¹¥éy§'øà ‰ÊNÂˆYˆ
+VÉÜ™]Ø\™	Ë	ÙYXİ[Û‰×Kš[˜ÛY\Ê\JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùål9båzhg¹g¢ùcêº ïz`n9¤áùãc¹bíy¢%¹¢hú%ª¸à ‰ÊNÂˆBˆYˆ
+S[X™\‹š\Ñš[š]J[[İ[˜[YJH[[İ[˜[YHH[[İ[˜[YHˆLS[X™\‹š\Ò[YÙ\Š[[İ[˜[YJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	úaäzhcyoázh"9¦+È{ïgŒK9a`ùæ¡9¥m9¥n8à ‰ÊNÂˆBˆYˆ
+›İK›[™İˆ›İK›[™İˆŒ
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âùhjùkêÈ»ïgŒŒ9keùæ¡9ãc¹bí{ï#ù¢hú%ª¹c§ùfè8à ‰ÊNÂˆBˆ™]\›ˆÂˆYˆX[X[IÚ\Ú
+™\]Y\İY
+KœÛXÙJÌŠ_Xˆ™\]Y\İYˆXXÚ\’YˆXXÚ\“˜[YNˆÛX[ŠXXÚ\‹›˜[YHXXÚ\‹XXÚ\“˜[YJKˆ[Ûˆ]KœÛXÙJÊKˆ]Kˆ\Kˆ[[İ[ˆ[[İ[˜[YKˆ›İKˆÛİ\˜ÙNˆ	ØYZ[‹[X[X[	ËˆXİ]™NˆYBˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[”Ø]™UXXÚ\Y\İY[
+]JHÂˆÛÛœİXXÚ\’YHÛX[Š]H	‰ˆ]KXXÚ\’Y
+NÂˆÛÛœİXXÚ\œÈH]ØZ]Z\œ›Ü”›İÜÒ[˜ÛY[™Ò[˜Xİ]™J	İXXÚ\œÉÊNÂˆÛÛœİXXÚ\ˆHXXÚ\œË™š[™
+
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOHXXÚ\’Y
+NÂˆÛÛœİY\İY[H›Ü›X[^™PYZ[•XXÚ\Y\İY[
+]KXXÚ\ŠNÂˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\Y\İY[ÉÊK™ØÊY\İY[šY
+NÂˆ]\XØ]HH˜[ÙNÂˆÛÛœİÜ™X]Y]^H›İÕ^
+
+NÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÛ˜\ÚİH]ØZ]™Ù]
+™YŠNÂˆYˆ
+Û˜\Úİ™^\İÊHÂˆÛÛœİ^\İ[™ÈHÛ˜\Úİ™]J
+HßNÂˆÛÛœİØ[YT™\]Y\İHÉÜ™\]Y\İY	Ë	İXXÚ\’Y	Ë	Ù]IË	İ\IË	Û›İI×K™]™\J
+Ù^JHO‚ˆÛX[Š^\İ[™ÖÚÙ^WJHOOHÛX[ŠY\İY[ÚÙ^WJBˆ
+H	‰ˆ[X™\Š^\İ[™Ë˜[[İ[
+HOOHY\İY[˜[[İ[ÂˆYˆ
+\Ø[YT™\]Y\İ
+H›İÈ™]ÈÑ\œ›ÜŠ	Ø[™XYKY^\İÉË	ú`&y`"ù¤ãy/g:+f9b)yè¯9mìº(ªùam¹.åº%ªº,áùål9båy/oùå*8à ‰ÊNÂˆ\XØ]HHYNÂˆ™]\›ÂˆBˆœÙ]
+™Y‹Øš™Xİ˜\ÜÚYÛŠßKY\İY[ÂˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆ	ØÛİ\œÙK\ØÚY[\‹XYZ[‰ÂˆJJNÂˆJNÂˆ™]\›ˆÂˆÚÎˆYKˆ\XØ]KˆY\İY[ˆØš™Xİ˜\ÜÚYÛŠßKY\İY[ÈÜ™X]Y]^JKˆY\ÜØYÙNˆ\XØ]HÈ	ú`&yëaº%ªº,áùål9båyab9bcymì¹a,¹kf;ï#9§*ºaãz)!ù¥¬9h§¸à ‰Èˆ	ú  yn*ú%ªº,áùål9båymì¹a,¹kf8à ‰ÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆX›XÔ™[[Ù][™ÜÊ
+HÂˆÛÛœİ›ÛÛ\ÈH]ØZ]Z\œ›Ü”›İÜÊ	Ü›ÛÛ\ÉÊNÂˆÛÛœİÚ][\ËÛXŞWHH]ØZ]›ÛZ\ÙK˜[
+Ü™[[\ÙSÜ[ÛœÊ›ÛÛ\ÊK™[[ÛXŞTÙ][™ÜÊ
+WJNÂˆ™]\›ˆÈÚÎˆYK][\ËÛXŞHNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[”™[[Ù][™ÜÑ]J
+HÂˆÛÛœİ›ÛÛ\ÈH]ØZ]Z\œ›Ü”›İÜÊ	Ü›ÛÛ\ÉÊNÂˆÛÛœİÚ][\ËÛXŞK›ÛÛTÙ][™Ü×HH]ØZ]›ÛZ\ÙK˜[
+Âˆ™[[\ÙSÜ[ÛœÊ›ÛÛ\ÊKˆ™[[ÛXŞTÙ][™ÜÊ
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™Ù]
+
+BˆJNÂˆÛÛœİÙ][™ÜÓX\HßNÂˆ›ÛÛTÙ][™ÜË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈÙ][™ÜÓX\ÙØËšYHHØË™]J
+HßNÈJNÂˆ™]\›ˆÂˆÚÎˆYKˆ][\ËˆÛXŞKˆ›ÛÛ\Îˆ›ÛÛ\Ë›X\
+
+›ÛÛJHOˆÂˆÛÛœİYHÛİ\˜ÙRY
+›ÛÛJNÂˆÛÛœİÙ][™ÈHÙ][™ÜÓX\ÚYHßNÂˆ™]\›ˆÂˆYˆ˜[YNˆÛX[Š›ÛÛK›˜[YJKˆÚ[™ˆ›ÛÛRÚ[™
+›ÛÛKÙ][™ÊKˆX[›Õ\NˆÛÛ™šYİ\™YX[›Õ\J›ÛÛKÙ][™ÊKˆ™[[™YNˆY™™Xİ]™T›ÛÛQ™YJ›ÛÛKÙ][™ÊKˆ™[X›Nˆ›ÛÛT™[X›J›ÛÛKÙ][™ÊKˆXXÚ\”ØÚY[X›Nˆ›ÛÛUXXÚ\”ØÚY[X›J›ÛÛKÙ][™ÊKˆØ\XÚ]Nˆ™[[›ÛÛT›Ùš[J›ÛÛKÙ][™ÊK˜Ø\XÚ]BˆNÂˆJBˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[”ØÚY[PÛÛ™›Xİ]Y]
+]JHÂˆÛÛœİİ\]HH]RÙ^J]H	‰ˆ]Kœİ\]JHİ\œ™[Z\ZQ^J
+NÂˆÛÛœİ^\ÈHX]›Z[ŠLŒX]›X^
+K[X™\Š]H	‰ˆ]K™^\ÈÍJJJNÂˆÛÛœİ[™]HHY^\Êİ\]K^\ÈHJNÂˆÛÛœİ[™HH]ØZ]ØÚY[P[™Jİ\]K[™]K	ÉÊNÂˆ™]\›ˆÂˆÚÎˆYKˆİ\]Kˆ[™]KˆÛÛ™›XİÛİ[ˆ[™Kœ™\Ûİ\˜ÙPÛÛ™›XİË›[™İˆÛÛ™›XİÎˆ[™Kœ™\Ûİ\˜ÙPÛÛ™›XİÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[”Ø]™T™[[Ù][™ÜÊ]JHÂˆÛÛœİ›ÛÛ\ÈH]ØZ]Z\œ›Ü”›İÜÊ	Ü›ÛÛ\ÉÊNÂˆÛÛœİ[İÙYH™]ÈÙ]
+›ÛÛ\Ë›X\
+Ûİ\˜ÙRY
+JNÂˆÛÛœİ][\ÈH
+\œ˜^Kš\Ğ\œ˜^J]Kš][\ÊHÈ]Kš][\Èˆ×JK›X\
+
+›İË[™^
+HOˆ
+ÂˆYˆÛX[Š›İËšY
+H
+	İ\ÙKIÈ
+È
+[™^
+ÈJJKˆ˜[YNˆÛX[Š›İË›˜[YJKˆXÛÛˆÛX[Š›İËšXÛÛŠH	ü'ã­IËˆ\ØÜš\[ÛˆÛX[Š›İË™\ØÜš\[ÛŠKˆ›ÛÛRYÎˆ
+\œ˜^Kš\Ğ\œ˜^J›İËœ›ÛÛRYÊHÈ›İËœ›ÛÛRYÈˆ×JK›X\
+ÛX[ŠK™š[\Š
+Y
+HOˆ[İÙYš\ÊY
+JKˆİ\›T˜]Nˆ›İËšİ\›T˜]HOOH[™Yš[™Y›İËšİ\›T˜]HOOH[›İËšİ\›T˜]HOOH	ÉÂˆÈ[ˆˆX]›X^
+[X™\Š›İËšİ\›T˜]JH
+KˆXİ]™Nˆ›İË˜Xİ]™HOOH˜[ÙBˆJJK™š[\Š
+›İÊHOˆ›İË›˜[YJNÂˆÛÛœİÛXŞR[œ]H]KœÛXŞHßNÂˆÛÛœİ\Ú[™\ÜÒİ\œÈHßNÂˆØš™XİšÙ^\ÊQUSĞ•TÒS‘TÔ×ÒÕT”ÊK™›Ü‘XXÚ
+
+^JHOˆÂˆÛÛœİ˜[˜XÚÈHQUSĞ•TÒS‘TÔ×ÒÕT”ÖÙ^WNÂˆÛÛœİ›İÈHÛXŞR[œ]˜\Ú[™\ÜÒİ\œÈ	‰ˆÛXŞR[œ]˜\Ú[™\ÜÒİ\œÖÙ^WH˜[˜XÚÎÂˆ\Ú[™\ÜÒİ\œÖÙ^WHHÂˆÛÜÙYˆ›İË˜ÛÜÙYOOHYKˆİ\ˆÛX[Š›İËœİ\
+H˜[˜XÚËœİ\ˆ[™ˆÛX[Š›İË™[™
+H˜[˜XÚË™[™ˆNÂˆJNÂˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆ˜]ÚœÙ]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù][™ÜÉÊK™ØÊ	Ü™[[\Ù\ÉÊKÂˆ™\œÚ[Ûˆ‘S•SÕTÑT×Õ‘T”ÒSÓ‹ˆ][\Ëˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆ˜]ÚœÙ]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù][™ÜÉÊK™ØÊ	Ü™[[ÛXŞIÊKÂˆ™\œÚ[ÛˆËˆ\Ú[™\ÜÒİ\œËˆİY[\ØÛİ[˜]NˆKˆX^\˜][Û“Z[]\ÎˆÌˆÛœÚ]T^[Y[ˆYKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆ
+\œ˜^Kš\Ğ\œ˜^J]Kœ›ÛÛ\ÊHÈ]Kœ›ÛÛ\Èˆ×JK™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİYHÛX[Š›İËšY
+NÂˆYˆ
+X[İÙYš\ÊY
+JH™]\›Âˆ˜]ÚœÙ]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™ØÊY
+KÂˆ›ÛÛT[\Õ™\œÚ[ÛˆKˆÚ[™ˆÉÛ›Ü›X[	Ë	İšY[ÉË	ÚÛ[™É×Kš[˜ÛY\ÊÛX[Š›İËšÚ[™
+JHÈÛX[Š›İËšÚ[™
+Hˆ	Û›Ü›X[	ËˆX[›Õ\Nˆ›Ü›X[^™TX[›Õ\J›İËœX[›Õ\JH	Û›Û™IËˆ™[[™YNˆX]›X^
+[X™\Š›İËœ™[[™YH
+JKˆ™[X›Nˆ›İËœ™[X›HOOHYKˆXXÚ\”ØÚY[X›Nˆ›İËXXÚ\”ØÚY[X›HOOH˜[ÙKˆØ\XÚ]NˆX]›X^
+K[X™\Š›İË˜Ø\XÚ]HJJKˆ™[[\ÙU\\Îˆ][\Ë™š[\Š
+][JHO‚ˆ][K˜Xİ]™HOOH˜[ÙH	‰ˆ][Kœ›ÛÛRYËš[˜ÛY\ÊY
+Bˆ
+K›X\
+
+][JHOˆ][KšY
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆ˜]ÚœÙ]
+ØÚY[U™\œÚ[Û”™YŠ
+KÂˆ™\œÚ[ÛˆšY[˜[YKš[˜Ü™[Y[
+JKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆ	ØYZ[‹\™[[\Ù][™ÜÉÂˆKÈY\™ÙNˆYHJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂˆ™]\›ˆYZ[”™[[Ù][™ÜÑ]J
+NÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[”Ø]™T›ÛÛQ\]Z\Y[
+]JHÂˆÛÛœİ›ÛÛRYHÛX[Š]Kœ›ÛÛRY
+NÂˆYˆ
+\›ÛÛRY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùï.¹l$y¥fyk©:,áù¥¦xà ‰ÊNÂˆÛÛœİ›ÛÛ\ÈH]ØZ]Z\œ›Ü”›İÜÊ	Ü›ÛÛ\ÉÊNÂˆÛÛœİ›ÛÛHH›ÛÛ\Ë™š[™
+
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOH›ÛÛRY
+NÂˆYˆ
+\›ÛÛJH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&ze¤ù¥fyk©8à ‰ÊNÂˆÛÛœİ[İÙY\]Z\Y[H™]ÈÙ]
+Âˆ	ÜX[›ÉËˆ	ÙYÚ][ÜX[›ÉËˆ	ÙÜ˜[™ÜX[›ÉËˆ	İ\šYÚÜX[›ÉËˆ	ØXÛİ\İX×Ù[\ÉËˆ	Ù[Xİ›ÛšX×Ù[\ÉËˆ	Ùİ^š[™ÉÂˆJNÂˆÛÛœİX[›Õ\HH›Ü›X[^™TX[›Õ\J]KœX[›Õ\JH	Û›Û™IÎÂˆÛÛœİ\]Z\Y[HË‹‹›™]ÈÙ]
+ˆ
+\œ˜^Kš\Ğ\œ˜^J]K™\]Z\Y[
+HÈ]K™\]Z\Y[ˆ×JBˆ›X\
+ÛX[ŠBˆ™š[\Š
+˜[YJHOˆ[İÙY\]Z\Y[š\Ê˜[YJJBˆ™š[\Š
+˜[YJHOˆVÉÜX[›ÉË	ÙYÚ][ÜX[›ÉË	ÙÜ˜[™ÜX[›ÉË	İ\šYÚÜX[›É×Kš[˜ÛY\Ê˜[YJJBˆ˜ÛÛ˜Ø]
+X[›Õ\HOOH	Û›Û™IÈÈ×HˆÉÜX[›ÉËX[›Õ\WJBˆ
+WNÂˆÛÛœİÛXÚY\ÈHßNÂˆÛÛœİÛXŞR[œ]H]KœÛXÚY\È	‰ˆ\[Ùˆ]KœÛXÚY\ÈOOH	ÛØš™Xİ	ÈÈ]KœÛXÚY\ÈˆßNÂˆÉÜİ[‰Ë	Û[Û‰Ë	İYIË	İÙY	Ë	İIË	ÙœšIË	ÜØ]	×K™›Ü‘XXÚ
+
+^JHOˆÂˆÛÛœİ^R[œ]HÛXŞR[œ]Ù^WH	‰ˆ\[ÙˆÛXŞR[œ]Ù^WHOOH	ÛØš™Xİ	ÈÈÛXŞR[œ]Ù^WHˆßNÂˆÛXÚY\ÖÙ^WHHßNÂˆØš™XİšÙ^\Ê^R[œ]
+K™›Ü‘XXÚ
+
+[YJHOˆÂˆYˆ
+]˜[YÜ[[YJ[YKYJJH™]\›ÂˆÛÛœİÛİH^R[œ]İ[YWHßNÂˆÛXÚY\ÖÙ^WVİ[YWHHÂˆ›ØÚÔØÚY[NˆÛİ˜›ØÚÔØÚY[HOOHYKˆ›ØÚÔ™[[ˆÛİ˜›ØÚÔ™[[OOHYKˆİXš™XİYÎˆ\œ˜^Kš\Ğ\œ˜^JÛİœİXš™XİYÊHÈÛİœİXš™XİYË›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠHˆ×BˆNÂˆJNÂˆJNÂˆÛÛœİXİ]™HH]K˜Xİ]™HOOH˜[ÙNÂˆÛÛœİÙ][™ÈHÂˆ›ÛÛT[\Õ™\œÚ[ÛˆKˆXİ]™KˆX[›Õ\Kˆ™[[\]Z\Y[ˆ\]Z\Y[ˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]^ˆ›İÕ^
+
+BˆNÂˆYˆ
+]KœX›XÓ˜[YHOOH[™Yš[™Y
+HÙ][™ËœX›XÓ˜[YHHÛX[Š]KœX›XÓ˜[YJNÂˆYˆ
+]K››İHOOH[™Yš[™Y
+HÙ][™Ë››İHHÛX[Š]K››İJNÂˆYˆ
+]Kœ™[[™YHOOH[™Yš[™Y
+HÙ][™Ëœ™[[™YHHX]›X^
+[X™\Š]Kœ™[[™YH
+JNÂˆYˆ
+]K˜Ø\XÚ]HOOH[™Yš[™Y
+HÙ][™Ë˜Ø\XÚ]HHX]›X^
+K[X™\Š]K˜Ø\XÚ]HJJNÂˆYˆ
+]K˜[İÙYİXš™XİYÈOOH[™Yš[™Y
+HÂˆÙ][™Ë˜[İÙYİXš™XİYÈH\œ˜^Kš\Ğ\œ˜^J]K˜[İÙYİXš™XİYÊBˆÈ]K˜[İÙYİXš™XİYË›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠBˆˆ×NÂˆBˆYˆ
+]Kœ™[[\ÙU\\ÈOOH[™Yš[™Y]K\ÙU\\ÈOOH[™Yš[™Y
+HÂˆÛÛœİX›XÕ\ÙU\\ÈH™]ÈÙ]
+‘S•SÕTÑWÓÔSÓ”Ë›X\
+
+›İÊHOˆ›İËšY
+JNÂˆÙ][™Ëœ™[[\ÙU\\ÈHË‹‹›™]ÈÙ]
+ˆš\œİ\œ˜^J]KÉÜ™[[\ÙU\\ÉË	İ\ÙU\\É×JBˆ›X\
+
+˜[YJHOˆÉÙİZ]\‰Ë	İXXÚ[™É×Kš[˜ÛY\ÊÛX[Š˜[YJJHÈ	Ûİ\‰ÈˆÛX[Š˜[YJJBˆ™š[\Š
+˜[YJHOˆX›XÕ\ÙU\\Ëš\Ê˜[YJJBˆ
+WNÂˆBˆYˆ
+]KœÛXÚY\ÈOOH[™Yš[™Y
+HÙ][™ËœÛXÚY\ÈHÛXÚY\ÎÂˆÙ][™Ëœ™[X›HHXİ]™H	‰ˆ]Kœ™[X›HOOH˜[ÙNÂˆÙ][™ËXXÚ\”ØÚY[X›HHXİ]™H	‰ˆ]KXXÚ\”ØÚY[X›HOOH˜[ÙNÂˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆ˜]ÚœÙ]
+‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™ØÊ›ÛÛRY
+KÙ][™ËÈY\™ÙNˆYHJNÂˆ˜]ÚœÙ]
+ØÚY[U™\œÚ[Û”™YŠ
+KÂˆ™\œÚ[ÛˆšY[˜[YKš[˜Ü™[Y[
+JKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆ	ØYZ[‹\›ÛÛKY\]Z\Y[	ÂˆKÈY\™ÙNˆYHJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂˆ™]\›ˆÂˆÚÎˆYKˆ›ÛÛRYˆX[›Õ\NˆX[›Õ\HOOH	Û›Û™IÈÈ	ÉÈˆX[›Õ\Kˆ\]Z\Y[ˆNÂŸB‚™[˜İ[ÛˆX[˜YÙ\]][XØ]Y
+™\]Y\İ
+HÂˆÛÛœİÚÙ[ˆH™\]Y\İ	‰ˆ™\]Y\İ˜]]	‰ˆ™\]Y\İ˜]]ÚÙ[ˆßNÂˆ™]\›ˆÚÙ[‹›X[˜YÙ\ˆOOHYHÛX[ŠÚÙ[‹œ›ÛJKÓİÙ\Ø\ÙJ
+HOOH	ØYZ[‰ÎÂŸB‚™[˜İ[Ûˆ\ÜÙ\YZ[”[Š™\]Y\İ
+HÂˆYˆ
+X[˜YÙ\]][XØ]Y
+™\]Y\İ
+JH™]\›ÂˆÛÛœİ˜[YHHÛX[Š™\]Y\İ	‰ˆ™\]Y\İ™]H	‰ˆ™\]Y\İ™]K˜YZ[”[ŠNÂˆ]^XİYH	ÉÎÂˆHÈ^XİYHÛX[ŠQRS—ÔS‹˜[YJ
+JNÈHØ]Ú
+ÊHÈ^XİYHÛX[Š›ØÙ\ÜË™[‹’S’’PSÖUS—ÓPS•PSÔÖS×ÔSŠNÈBˆYˆ
+Y^XİY\ØY™Q\]X[
+˜[YK^XİY
+JH›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ùë¨yä!º !yænùaiyâà9¡bùmì¹i,y¥b;ï#:*âúaãy¥¬9ænùaixà ‰ÊNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[”™[[Y[]T™\ÛÛ™\Š
+HÂˆÛÛœİİXXÚ\œËİY[Ë™[\œËXXÚ\š[™[™ÜËİY[š[™[™ÜË™[\š[™[™Ü×HH]ØZ]›ÛZ\ÙK˜[
+ÂˆZ\œ›Ü”›İÜÊ	İXXÚ\œÉÊKˆZ\œ›Ü”›İÜÊ	ÜİY[ÉÊKˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\œÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\š[™[™ÜÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[š[™[™ÜÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\š[™[™ÜÉÊK™Ù]
+
+BˆJNÂˆÛÛœİXXÚ\“X\H[™^RY
+XXÚ\œÊNÂˆÛÛœİİY[X\H[™^RY
+İY[ÊNÂˆÛÛœİ™[\“X\HßNÂˆ™[\œË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈ™[\“X\ÙØËšYHHØË™]J
+HßNÈJNÂˆÛÛœİY[]Y\ÈH™]ÈX\
+
+NÂˆÛÛœİYH
+Ù^KY[]JHOˆÂˆYˆ
+ZÙ^HY[]Y\Ëš\ÊÙ^JH
+ZY[]K›˜[YH	‰ˆZY[]KœÛ™JJH™]\›ÂˆY[]Y\ËœÙ]
+Ù^KY[]JNÂˆNÂˆÛÛœİYš[™[™ÈH
+›ÛKØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆYˆ
+ÛX[Š›İËœİ]\ÊHOOH	ØXİ]™IÊH™]\›ÂˆÛÛœİ\™Ù]YH›ÛHOOH	İXXÚ\‰ÂˆÈÛX[Š›İËXXÚ\’Y
+Bˆˆ
+›ÛHOOH	ÜİY[	ÈÈÛX[Š›İËœİY[Y
+HˆÛX[Š›İËœ™[\’Y
+JNÂˆÛÛœİ›Ùš[HH›ÛHOOH	İXXÚ\‰ÂˆÈXXÚ\“X\İ\™Ù]YHßBˆˆ
+›ÛHOOH	ÜİY[	ÈÈİY[X\İ\™Ù]YHßHˆ™[\“X\İ\™Ù]YHßJNÂˆÛÛœİY[]HHÂˆ˜[YNˆØY™T™[[\Ü^S˜[YJ›İË›˜[YH›İË™\Ü^S˜[YH›Ùš[K›˜[YH›Ùš[K™\Ü^S˜[YH›İË›[™Q\Ü^S˜[YJKˆÛ™Nˆ›Ü›X[^™TÛ™JÛİ\˜ÙTÛ™J›Ùš[JH›İËœÛ™JKˆİY[Yˆ›ÛHOOH	ÜİY[	ÈÈ\™Ù]Yˆ	ÉÂˆNÂˆY
+	Ü›Û_N\™Ù]‰İ\™Ù]YXY[]JNÂˆY
+	Ü›Û_N˜XØÛİ[‰ØÛX[Š›İË˜]]XØÛİ[Y
+_XY[]JNÂˆY
+	Ü›Û_N›[™N‰ØÛX[Š›İË›[™U\Ù\’Y
+_XY[]JNÂˆNÂˆXXÚ\š[™[™ÜË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆYš[™[™Ê	İXXÚ\‰ËØÊJNÂˆİY[š[™[™ÜË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆYš[™[™Ê	ÜİY[	ËØÊJNÂˆ™[\š[™[™ÜË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆYš[™[™Ê	Ü™[\‰ËØÊJNÂ‚ˆ™]\›ˆ
+›İÊHOˆÂˆÛÛœİ›ÛHHÛX[Š›İËœ›ÛJNÂˆÛÛœİ\™Ù]YH›ÛHOOH	İXXÚ\‰ÂˆÈÛX[Š›İËXXÚ\’Y
+Bˆˆ
+›ÛHOOH	ÜİY[	ÈÈÛX[Š›İËœ™[[İY[Y
+HˆÛX[Š›İËœ™[\’Y
+JNÂˆÛÛœİİÛ™\’Ù^HHÛX[Š›İË›İÛ™\’Ù^JNÂˆÛÛœİÙ^\ÈHÂˆ\™Ù]YÈ	Ü›Û_N\™Ù]‰İ\™Ù]YXˆ	ÉËˆİÛ™\’Ù^HÈ	Ü›Û_N‰ÛİÛ™\’Ù^_Xˆ	ÉËˆÛX[Š›İË˜]]XØÛİ[Y
+HÈ	Ü›Û_N˜XØÛİ[‰ØÛX[Š›İË˜]]XØÛİ[Y
+_Xˆ	ÉËˆÛX[Š›İË›[™U\Ù\’Y
+HÈ	Ü›Û_N›[™N‰ØÛX[Š›İË›[™U\Ù\’Y
+_Xˆ	ÉÂˆK™š[\Š›ÛÛX[ŠNÂˆÛÛœİ˜[˜XÚÈHÙ^\Ë›X\
+
+Ù^JHOˆY[]Y\Ë™Ù]
+Ù^JJK™š[™
+›ÛÛX[ŠHßNÂˆ™]\›ˆÂˆ˜[YNˆØY™T™[[\Ü^S˜[YJ›İË˜ÛY[˜[YH›İËœ™[\“˜[YH˜[˜XÚË›˜[YJKˆÛ™Nˆ›Ü›X[^™TÛ™J›İË˜ÛY[Û™H˜[˜XÚËœÛ™JKˆİY[YˆÛX[Š›İËœ™[[İY[Y˜[˜XÚËœİY[Y
+BˆNÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[”›ÛÛP›ÛÚÚ[™ÜÊ
+HÂˆÛÛœİÜÛ˜\Úİ™\ÛÛ™RY[]WHH]ØZ]›ÛZ\ÙK˜[
+Âˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊK™Ù]
+
+KˆYZ[”™[[Y[]T™\ÛÛ™\Š
+BˆJNÂˆÛÛœİ›ÛÚÚ[™ÜÈHÛ˜\Úİ™ØÜË›X\
+
+ØÊHOˆÂˆÛÛœİ›İÈHœÛÛ•˜[YJØË™]J
+JHßNÂˆÛÛœİY[]HH™\ÛÛ™RY[]J›İÊNÂˆ™]\›ˆÂˆYˆØËšYˆ]Nˆ]RÙ^J›İË™]JKˆİ\[YNˆ]™[İ\
+›İÊKˆ[™[YNˆ]™[[™
+›İÊKˆ\˜][Û“Z[]\ÎˆX]›X^
+Ì[X™\Š›İË™\˜][Û“Z[]\È›İË™\˜][Ûˆˆ
+[YSZ[]\Ê]™[[™
+›İÊJHH[YSZ[]\Ê]™[İ\
+›İÊJJHŒ
+JKˆ›ÛÛRYˆÛX[Š›İËœ›ÛÛRY
+Kˆ›ÛÛS˜[YNˆÛX[Š›İËœ›ÛÛS˜[YJKˆ\ÙU\NˆÛX[Š›İË\ÙU\JKˆ\ÙS˜[YNˆÛX[Š›İË\ÙS˜[YJKˆ™XÛÜ™[™Õ\ØYÙNˆÛX[Š›İËœ™XÛÜ™[™Õ\ØYÙJKˆ™XÛÜ™[™Õ\ØYÙS˜[YNˆÛX[Š›İËœ™XÛÜ™[™Õ\ØYÙS˜[YJKˆ\œÜÙNˆÛX[Š›İËœ\œÜÙJKˆÛY[˜[YNˆY[]K›˜[YKˆÛY[Û™NˆY[]KœÛ™Kˆ›ÛNˆÛX[Š›İËœ›ÛJKˆ™[[İY[YˆY[]KœİY[Yˆ[[İ[ˆ[X™\Š›İË˜[[İ[›İËœ™[[™YH
+Kˆ^[Y[İ]\ÎˆÛX[Š›İËœ^[Y[İ]\ÊKˆšXÙU\NˆÛX[Š›İËœšXÙU\JKˆİ]\ÎˆÛX[Š›İËœİ]\È
+›İË˜Xİ]™HOOH˜[ÙHÈ	ØØ[˜Ù[Y	Èˆ	ØÛÛ™š\›YY	ÊJKˆXİ]™Nˆ›İË˜Xİ]™HOOH˜[ÙKˆÜ™X]Y]^ˆÛX[Š›İË˜Ü™X]Y]^
+KˆØ[˜Ù[Y]^ˆÛX[Š›İË˜Ø[˜Ù[Y]^
+KˆØ[˜Ù[][Û”™X\ÛÛˆÛX[Š›İË˜Ø[˜Ù[][Û”™X\ÛÛŠKˆÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[	ÂˆNÂˆJK™š[\Š
+›İÊHOˆ›İË™]H	‰ˆ›İËœİ\[YH	‰ˆ›İËœ›ÛÛRY
+NÂˆ™]\›ˆÈÚÎˆYK›ÛÚÚ[™ÜË\]Y]ˆ™]È]J
+KÒTÓÔİš[™Ê
+HNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[Ø[˜Ù[›ÛÛP›ÛÚÚ[™Ê]JHÂˆÛÛœİ›ÛÚÚ[™ÒYHÛX[Š]K˜›ÛÚÚ[™ÒY
+NÂˆÛÛœİ™X\ÛÛˆHÛX[Š]Kœ™X\ÛÛŠKœÛXÙJŒ
+NÂˆYˆ
+X›ÛÚÚ[™ÒY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùï.¹l$yéçùå*9í :c!8à ‰ÊNÂˆÛÛœİ›ÛÚÚ[™Ô™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊK™ØÊ›ÛÚÚ[™ÒY
+NÂˆÛÛœİÚ[™ÙT™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊK™ØÊ™[[IØ›ÛÚÚ[™ÒYX
+NÂˆÛÛœİ™\œÚ[Û”™YˆHØÚY[U™\œÚ[Û”™YŠ
+NÂˆÛÛœİØÚÔÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛSØÚÜÉÊKÚ\™J	Ø›ÛÚÚ[™ÒY	Ë	ÏOIË›ÛÚÚ[™ÒY
+K™Ù]
+
+NÂˆ]Ø[˜Ù[Y›ÛÚÚ[™ÈH[Âˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİØ›ÛÚÚ[™ÔÛ˜\Úİ™\œÚ[Û”Û˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+Âˆ™Ù]
+›ÛÚÚ[™Ô™YŠKˆ™Ù]
+™\œÚ[Û”™YŠBˆJNÂˆ\ÜÙ\ØÚY[UÜš]X›J™\œÚ[Û”Û˜\Úİ
+NÂˆYˆ
+X›ÛÚÚ[™ÔÛ˜\Úİ™^\İÊH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yëa¹éçùå*9í :c!8à ‰ÊNÂˆÛÛœİ›ÛÚÚ[™ÈH›ÛÚÚ[™ÔÛ˜\Úİ™]J
+HßNÂˆYˆ
+›ÛÚÚ[™Ë˜Xİ]™HOOH˜[ÙHÛX[Š›ÛÚÚ[™Ëœİ]\ÊHOOH	ØØ[˜Ù[Y	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëa¹éçùå*9mì¹í¤ùcå¹­¢8à ‰ÊNÂˆBˆØ[˜Ù[Y›ÛÚÚ[™ÈH›ÛÚÚ[™ÎÂˆÛÛœİØ[˜Ù[][ÛˆHÂˆXİ]™Nˆ˜[ÙKˆİ]\Îˆ	ØØ[˜Ù[Y	ËˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆØ[˜Ù[Y]^ˆ›İÕ^
+
+KˆØ[˜Ù[YNˆ	ØYZ[‰ËˆØ[˜Ù[][Û”™X\ÛÛˆ™X\ÛÛˆ	ùë¨yä!º !yo-ùb-¹cå¹­¢	Ëˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆNÂˆœÙ]
+›ÛÚÚ[™Ô™Y‹Ø[˜Ù[][Û‹ÈY\™ÙNˆYHJNÂˆœÙ]
+Ú[™ÙT™Y‹Ø[˜Ù[][Û‹ÈY\™ÙNˆYHJNÂˆÛÛœİØÚÔ™YœÈH™]ÈX\
+
+NÂˆ
+\œ˜^Kš\Ğ\œ˜^J›ÛÚÚ[™Ë›ØÚÒYÊHÈ›ÛÚÚ[™Ë›ØÚÒYÈˆ×JK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠK™›Ü‘XXÚ
+
+ØÚÒY
+HOˆÂˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛSØÚÜÉÊK™ØÊØÚÒY
+NÂˆØÚÔ™YœËœÙ]
+™Y‹œ]™YŠNÂˆJNÂˆØÚÔÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆØÚÔ™YœËœÙ]
+ØËœ™Y‹œ]ØËœ™YŠJNÂˆØÚÔ™YœË™›Ü‘XXÚ
+
+™YŠHOˆ™[]J™YŠJNÂˆÛÛœİİ\œ™[™\œÚ[ÛˆH[X™\Š™\œÚ[Û”Û˜\Úİ™^\İÈ	‰ˆ™\œÚ[Û”Û˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂˆœÙ]
+™\œÚ[Û”™Y‹Âˆ™\œÚ[Ûˆİ\œ™[™\œÚ[Ûˆ
+ÈKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆ	ØYZ[‹\›ÛÛKX›ÛÚÚ[™ËXØ[˜Ù[	ÂˆKÈY\™ÙNˆYHJNÂˆJNÂ‚ˆ]ØZ]‹˜ÛÛXİ[ÛŠ	Û›İYšXØ][Û”]Y]YIÊK™ØÊÛİ\œÙK\Ü[X›ÛÚÚ[™ËIØ›ÛÚÚ[™ÒYK\™[Z[™\˜
+KœÙ]
+Âˆİ]\Îˆ	ùmì¹cå¹­¢	ËˆXİ]™Nˆ˜[ÙKˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆØ[˜Ù[Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJK˜Ø]Ú
+
+\œ›ÜŠHOˆÂˆÛÛœÛÛK™\œ›ÜŠ	ÖØÛİ\œÙHÜ[YZ[ˆ™[[™[Z[™\ˆØ[˜Ù[][Ûˆ˜Z[YIË›ÛÚÚ[™ÒY\œ›ÜŠNÂˆJNÂˆYˆ
+ÛX[ŠØ[˜Ù[Y›ÛÚÚ[™È	‰ˆØ[˜Ù[Y›ÛÚÚ[™Ë›[™U\Ù\’Y
+JHÂˆÛÛœİØ[˜Ù[][Û•^HÂˆ	ù¥fyk©9éçùå*9mì¹å,yë¨yä!º !ycå¹­¢8à ‰Ëˆ9¥fyk©;ï&‰ØÛX[ŠØ[˜Ù[Y›ÛÚÚ[™Ëœ›ÛÛS˜[YJH	ù¥fyk©	ßXˆ9¦`ºe¤ûï&‰Ù]RÙ^JØ[˜Ù[Y›ÛÚÚ[™Ë™]J_H	Ù]™[İ\
+Ø[˜Ù[Y›ÛÚÚ[™Ê_{ïg‰Ù]™[[™
+Ø[˜Ù[Y›ÛÚÚ[™Ê_Xˆ™X\ÛÛˆÈ9c§ùfè;ï&‰Ü™X\ÛÛŸXˆ	ÉÂˆK™š[\Š›ÛÛX[ŠKš›Ú[Š	×‰ÊNÂˆ]ØZ]‹˜ÛÛXİ[ÛŠ	Û›İYšXØ][Û”]Y]YIÊK™ØÊÛİ\œÙK\Ü[X›ÛÚÚ[™ËIØ›ÛÚÚ[™ÒYKXYZ[‹XØ[˜Ù[
+KœÙ]
+Âˆ]Y]YRYˆÛİ\œÙK\Ü[X›ÛÚÚ[™ËIØ›ÛÚÚ[™ÒYKXYZ[‹XØ[˜Ù[ˆÚ[›™[ˆ	Û[™IËˆ\™Ù][™U\Ù\’YˆÛX[ŠØ[˜Ù[Y›ÛÚÚ[™Ë›[™U\Ù\’Y
+Kˆ]Nˆ	ù¥fyk©9éçùå*9cå¹­¢:`&¹çéIËˆ›ÙNˆØ[˜Ù[][Û•^ˆY\ÜØYÙNˆØ[˜Ù[][Û•^ˆ›ÛÚÚ[™ÒYˆÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[XYZ[‹XØ[˜Ù[][Û‰Ëˆİ]\Îˆ	ùo¡yæo:` IËˆØÚY[Y]ˆ[Y\İ[\™œ›ÛSZ[\Ê]K››İÊ
+JKˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJK˜Ø]Ú
+
+\œ›ÜŠHOˆÂˆÛÛœÛÛK™\œ›ÜŠ	ÖØÛİ\œÙHÜ[YZ[ˆ™[[Ø[˜Ù[][Ûˆ›İXÙH˜Z[YIË›ÛÚÚ[™ÒY\œ›ÜŠNÂˆJNÂˆBˆ™]\›ˆÈÚÎˆYK›ÛÚÚ[™ÒYİ]\Îˆ	ØØ[˜Ù[Y	ËY\ÜØYÙNˆ	ùéçùå*9mì¹o-ùb-¹cå¹­¢;ï#9¥fyk©9¦`¹«­ymìºaâù¥/¸à ‰ÈNÂŸB‚™[˜İ[ÛˆYZ[•Z][Û”^[Y[›İÊØÊHÂˆÛÛœİÛİ\˜ÙHHØË™]HÈØË™]J
+HßHˆØÈßNÂˆ™]\›ˆÂˆYˆÛX[ŠÛİ\˜ÙKšYØËšY
+KˆİY[YˆÛX[ŠÛİ\˜ÙKœİY[Y
+KˆİY[˜[YNˆÛX[ŠÛİ\˜ÙKœİY[˜[YJKˆİXš™Xİ˜[YNˆÛX[ŠÛİ\˜ÙKœİXš™Xİ˜[YJKˆXXÚ\“˜[YNˆÛX[ŠÛİ\˜ÙKXXÚ\“˜[YJKˆ™^\š[Ù›Îˆ[X™\ŠÛİ\˜ÙK›™^\š[Ù›È
+Kˆ™^Ş\İ[T\š[Ù›Îˆ[X™\ŠÛİ\˜ÙK›™^Ş\İ[T\š[Ù›È
+Kˆ\ÜÛÛÛİ[ˆ[X™\ŠÛİ\˜ÙK›\ÜÛÛÛİ[
+Kˆ^XİY[[İ[ˆ[X™\ŠÛİ\˜ÙK™^XİY[[İ[
+KˆÛÛ™š\›YY[[İ[ˆ[X™\ŠÛİ\˜ÙK˜ÛÛ™š\›YY[[İ[
+Kˆ™[XZ[š[™Ğ[[İ[ˆX]›X^
+[X™\ŠˆÛİ\˜ÙKœ™[XZ[š[™Ğ[[İ[OH[ˆÈÛİ\˜ÙKœ™[XZ[š[™Ğ[[İ[ˆˆ[X™\ŠÛİ\˜ÙK™^XİY[[İ[
+HH[X™\ŠÛİ\˜ÙK˜ÛÛ™š\›YY[[İ[
+Bˆ
+JKˆ^[Y[Y]ÙˆÛX[ŠÛİ\˜ÙKœ^[Y[Y]Ù
+Kˆİ]\ÎˆÛX[ŠÛİ\˜ÙKœİ]\ÊKˆ˜[œÙ™\‘]Nˆ]RÙ^JÛİ\˜ÙK˜[œÙ™\‘]JKˆ˜[œÙ™\“\İNˆÛX[ŠÛİ\˜ÙK˜[œÙ™\“\İJKœÛXÙJMJKˆİX›Z]Y]^ˆÛX[ŠÛİ\˜ÙKœİX›Z]Y]^
+Kˆ™]šY]Ó›İNˆÛX[ŠÛİ\˜ÙKœ™]šY]Ó›İJKˆ\Ô™XÙZ\ˆ›ÛÛX[ŠÛX[ŠÛİ\˜ÙKœ™XÙZ\İÜ˜YÙT]
+JKˆİX›Z\ÜÚ[Û”™]š\Ú[Ûˆ[X™\ŠÛİ\˜ÙKœİX›Z\ÜÚ[Û”™]š\Ú[Ûˆ
+BˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[•Z][Û”^[Y[ØÜ™Y[œÚİ
+]JHÂˆÛÛœİYHÛX[Š]KšY
+NÂˆYˆ
+ZY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùï.¹l$ykn:,®ù.æ9«/º,áù¥¦xà ‰ÊNÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠRUSÓ—ÔVSQS•Ô‘TUQTÕÊK™ØÊY
+K™Ù]
+
+NÂˆYˆ
+\Û˜\Úİ™^\İÊH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yëa¹kn:,®ù.æ9«/º,áù¥¦xà ‰ÊNÂˆÛÛœİ›İÈHÛ˜\Úİ™]J
+HßNÂˆÛÛœİİÜ˜YÙT]HÛX[Š›İËœ™XÙZ\İÜ˜YÙT]
+NÂˆYˆ
+\İÜ˜YÙT]
+H›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ú`&yëaº,áù¥¦y¬¤¹§"yc+ù«/¹¢*¹g%¸à ‰ÊNÂˆÛÛœİØY™™\—HH]ØZ]YZ[‹œİÜ˜YÙJ
+K˜XÚÙ]
+
+K™š[JİÜ˜YÙT]
+K™İÛ›ØY
+
+NÂˆYˆ
+XY™™\‹›[™İY™™\‹›[™İˆRUSÓ—Ô‘PÑRTÓPVĞ–UTÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùc+ù«/¹¢*¹g%¹i)ùl#ùål9n.;ï#:*âú*âùkn9å'úaãy¥¬9."¹`¬øà ‰ÊNÂˆBˆÛÛœİÛÛ[\HHÛX[Š›İËœ™XÙZ\ÛÛ[\JH	Ú[XYÙKÚœYÉÎÂˆ™]\›ˆÂˆÚÎˆYKˆYˆÛÛ[\Kˆ]U\›ˆ]N‰ØÛÛ[\_NØ˜\ÙM	ØY™™\‹Ôİš[™Ê	Ø˜\ÙM	Ê_XˆNÂŸB‚™[˜İ[Ûˆ\ØØ\T™XÙZ\^
+˜[YJHÂˆ™]\›ˆÛX[Š˜[YJBˆœ™\XÙJÉ‹ÙË	É˜[\ÉÊBˆœ™\XÙJÏÙË	É›ÉÊBˆœ™\XÙJÏ‹ÙË	É™İÉÊNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™XÙZ\^^Y\Š˜[YK›ÛÚ^™JHÂˆ™]\›ˆÚ\œ
+Âˆ^ˆÂˆ^ˆÜ[ˆ›Ü™YÜ›İ[™HˆÌÍØLÌ‰Ù\ØØ\T™XÙZ\^
+˜[YJ_OÜÜ[˜ˆ›Ûˆ›İÈØ[œÈÈ	Ù›ÛÚ^™_Xˆ›Ûš[NˆRUSÓ—Ô‘PÑRTÑ“Ó•ˆNˆM‹ˆ™Ø˜NˆYBˆBˆJKœ™Ê
+KĞY™™\ŠÈ™\ÛÛ™UÚ]Øš™XİˆYHJNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ™[™\•Z][Û”™XÙZ\™Ê™XÙZ\
+HÂˆÛÛœİ\ÈH
+]RÙ^J™XÙZ\œ^[Y[]JHİ\œ™[Z\ZQ^J
+JKœÜ]
+	ËIÊNÂˆÛÛœİ[[İ[HX]›X^
+[X™\Š™XÙZ\˜[[İ[
+JKÓØØ[Tİš[™Ê	ŞšUÉÊNÂˆÛÛœİÜXÜÈHÂˆÈ˜[YNˆ\ÖÌH	ÉË›ÛÚ^™Nˆ‹Ù[\–ˆŒËÜˆNHKˆÈ˜[YNˆ\ÖÌWH	ÉË›ÛÚ^™Nˆ‹Ù[\–ˆÍÜˆNHKˆÈ˜[YNˆ\ÖÌ—H	ÉË›ÛÚ^™Nˆ‹Ù[\–ˆŒËÜˆNHKˆÈ˜[YNˆ™XÙZ\œİY[˜[YH	ùkn9å'ÉË›ÛÚ^™NˆKÙ[\–ˆMËÜˆÍˆKˆÈ˜[YNˆ[[İ[›ÛÚ^™NˆÌKÙ[\–ˆÌËÜˆÍBˆNÂˆÛÛœİ^Y\œÈH]ØZ]›ÛZ\ÙK˜[
+ÜXÜË›X\
+
+ÜXÊHOˆ™XÙZ\^^Y\ŠÜXË˜[YKÜXË™›ÛÚ^™JJJNÂˆ™]\›ˆÚ\œ
+RUSÓ—Ô‘PÑRTÕSTUJBˆ˜ÛÛ\ÜÚ]J^Y\œË›X\
+
+^Y\‹[™^
+HOˆ
+Âˆ[œ]ˆ^Y\‹™]KˆYˆX]›X^
+X]œ›İ[™
+ÜXÜÖÚ[™^K˜Ù[\–H^Y\‹š[™›ËÚYÈŠJKˆÜˆÜXÜÖÚ[™^KÜˆJJJBˆœ™ÊÈÛÛ\™\ÜÚ[Û“]™[ˆK]X[]NˆLJBˆĞY™™\Š
+NÂŸB‚˜\Ş[˜È[˜İ[ÛˆØ]™UZ][Û”™XÙZ\[XYÙJ™XÙZ\YY™™\ŠHÂˆÛÛœİİÜ˜YÙT]HÛİ\œÙK\Ü[İZ][Û‹\™XÙZ\ËÉØÛX[Š™XÙZ\Y
+_Kœ™ØÂˆÛÛœİİÛ›ØYÚÙ[ˆHÜ\Ëœ˜[™ÛUURQ
+
+NÂˆÛÛœİXÚÙ]HYZ[‹œİÜ˜YÙJ
+K˜XÚÙ]
+
+NÂˆ]ØZ]XÚÙ]™š[JİÜ˜YÙT]
+KœØ]™JY™™\‹Âˆ™\İ[XX›Nˆ˜[ÙKˆY]Y]NˆÂˆÛÛ[\Nˆ	Ú[XYÙKÜ™ÉËˆØXÚPÛÛ›Ûˆ	Üš]˜]KX^XYÙOL›Ë]˜[œÙ›Ü›IËˆY]Y]NˆÂˆš\™X˜\ÙTİÜ˜YÙQİÛ›ØYÚÙ[œÎˆİÛ›ØYÚÙ[‹ˆZ][Û”™XÙZ\YˆÛX[Š™XÙZ\Y
+BˆBˆBˆJNÂˆÛÛœİ[XYÙU\›HÎ‹ËÙš\™X˜\Ù\İÜ˜YÙK™ÛÛÙÛX\\Ë˜ÛÛKİŒØ‹ÉÙ[˜ÛÙUT’PÛÛ\Û™[
+XÚÙ]›˜[YJ_KÛËÉÙ[˜ÛÙUT’PÛÛ\Û™[
+İÜ˜YÙT]
+_OØ[[YYXIÚÙ[IÙ[˜ÛÙUT’PÛÛ\Û™[
+İÛ›ØYÚÙ[Š_XÂˆ™]\›ˆÈİÜ˜YÙT]İÛ›ØYÚÙ[‹[XYÙU\›NÂŸB‚™[˜İ[ÛˆYZ[•Z][Û”™XÙZ\›İÊØÊHÂˆÛÛœİÛİ\˜ÙHHØË™]HÈØË™]J
+HßHˆØÈßNÂˆ™]\›ˆÂˆYˆÛX[ŠÛİ\˜ÙKšYØËšY
+Kˆ™XÙZ\›ÎˆÛX[ŠÛİ\˜ÙKœ™XÙZ\›ÊKˆİY[YˆÛX[ŠÛİ\˜ÙKœİY[Y
+KˆİY[˜[YNˆÛX[ŠÛİ\˜ÙKœİY[˜[YJKˆ^[Y[]Nˆ]RÙ^JÛİ\˜ÙKœ^[Y[]JKˆ[[İ[ˆ[X™\ŠÛİ\˜ÙK˜[[İ[
+KˆY]ÙˆÛX[ŠÛİ\˜ÙK›Y]Ù
+Kˆ[XYÙU\›ˆÛX[ŠÛİ\˜ÙKš[XYÙU\›
+Kˆ™[™\”İ]\ÎˆÛX[ŠÛİ\˜ÙKœ™[™\”İ]\ÊKˆ[™Q[]™\Tİ]\ÎˆÛX[ŠÛİ\˜ÙK›[™Q[]™\Tİ]\ÊKˆ[™T™XÚ\Y[Ûİ[ˆ[X™\ŠÛİ\˜ÙK›[™T™XÚ\Y[Ûİ[
+KˆÜ™X]Y]^ˆÛX[ŠÛİ\˜ÙK˜Ü™X]Y]^
+BˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[‘[œİ\™UZ][Û”™XÙZ\
+]JHÂˆÛÛœİ\š[ÙYHÛX[Š]Kœ\š[ÙY
+NÂˆYˆ
+\\š[ÙY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùï.¹l$ykn:,®ù§'ùb)z,áù¥¦xà ‰ÊNÂˆÛÛœİ\š[ÙÈH]ØZ]Z\œ›Ü”›İÜÊ	İZ][Û”\š[ÙÉÊNÂˆÛÛœİ\š[ÙH\š[ÙË™š[™
+
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOH\š[ÙY
+NÂˆYˆ
+\\š[Ù
+H›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yëa¹kn:,®ù§'ùb)xà ‰ÊNÂˆÛÛœİ˜[œØXİ[ÛœÈH\œ˜^Kš\Ğ\œ˜^J\š[Ù˜[œØXİ[ÛœÊHÈ\š[Ù˜[œØXİ[ÛœÈˆ×NÂˆÛÛœİ™\]Y\İYYHÛX[Š]K˜[œØXİ[Û’Y
+NÂˆÛÛœİ™\]Y\İY[™^H[X™\‹š\Ò[YÙ\Š[X™\Š]K˜[œØXİ[Û’[™^
+JHÈ[X™\Š]K˜[œØXİ[Û’[™^
+HˆLNÂˆ]˜[œØXİ[Û’[™^H˜[œØXİ[ÛœË™š[™[™^
+
+›İÊHOˆ™\]Y\İYY	‰ˆÛX[Š›İÈ	‰ˆ›İËšY
+HOOH™\]Y\İYY
+NÂˆYˆ
+˜[œØXİ[Û’[™^	‰ˆ™\]Y\İY[™^H	‰ˆ™\]Y\İY[™^˜[œØXİ[ÛœË›[™İ
+H˜[œØXİ[Û’[™^H™\]Y\İY[™^ÂˆYˆ
+˜[œØXİ[Û’[™^
+HÂˆÛÛœİ™\]Y\İY]HH]RÙ^J]Kœ^[Y[]JNÂˆÛÛœİ™\]Y\İY[[İ[HX]›X^
+[X™\Š]K˜[[İ[
+JNÂˆÛÛœİ™\]Y\İYY]ÙHÛX[Š]K›Y]Ù
+NÂˆ˜[œØXİ[Û’[™^H˜[œØXİ[ÛœË™š[™[™^
+
+›İÊHO‚ˆÛX[Š›İÈ	‰ˆ›İË\JHOOH	Ü™Y[™	È	‰‚ˆ]RÙ^J›İÈ	‰ˆ
+›İË™]H›İË˜Ü™X]Y
+JHOOH™\]Y\İY]H	‰‚ˆ˜[œØXİ[Û[[İ[
+›İÊHOOH™\]Y\İY[[İ[	‰‚ˆÛX[Š›İÈ	‰ˆ
+›İË›Y]Ù›İËœ^U\H›İËœ^[Y[Y]Ù
+JHOOH™\]Y\İYY]Ùˆ
+NÂˆBˆÛÛœİ˜[œØXİ[ÛˆH˜[œØXİ[ÛœÖİ˜[œØXİ[Û’[™^NÂˆYˆ
+]˜[œØXİ[ÛˆÛX[Š˜[œØXİ[Û‹\JHOOH	Ü™Y[™	ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,9cëúe¢ùêâù¥-¹¤æ¹æ¡9¥-º,®ùí :c!8à ‰ÊNÂˆBˆÛÛœİ[[İ[H˜[œØXİ[Û[[İ[
+˜[œØXİ[ÛŠNÂˆYˆ
+X[[İ[
+H›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëa¹¥-º,®úaäzhcyà®ˆ;ï#9á(y¬åze¢ùêâù¥-¹¤æ¸à ‰ÊNÂˆÛÛœİİY[YHÛX[Š\š[ÙœİY[Y
+NÂˆÛÛœİİY[ÈH]ØZ]Z\œ›Ü”›İÜÊ	ÜİY[ÉÊNÂˆÛÛœİİY[HİY[Ë™š[™
+
+›İÊHOˆÛİ\˜ÙRY
+›İÊHOOHİY[Y
+HßNÂˆÛÛœİ^[Y[]HH]RÙ^J˜[œØXİ[Û‹™]H˜[œØXİ[Û‹˜Ü™X]Y\š[Ùœİ\]JHİ\œ™[Z\ZQ^J
+NÂˆÛÛœİY]ÙHÛX[Š˜[œØXİ[Û‹›Y]Ù˜[œØXİ[Û‹œ^U\H˜[œØXİ[Û‹œ^[Y[Y]Ù
+H	ù¥è¹§"yîlú,®ÉÎÂˆÛÛœİXİX[˜[œØXİ[Û’YHÛX[Š˜[œØXİ[Û‹šY
+NÂˆÛÛœİY[]HH	Ü\š[ÙY_	ØXİX[˜[œØXİ[Û’Y_	İ˜[œØXİ[Û’[™^_	Ü^[Y[]__	Ø[[İ[_	ÛY]ÙXÂˆÛÛœİ™XÙZ\YHZ][Û‹\™XÙZ\Z\İÜKIÚ\Ú
+Y[]JKœÛXÙJ
+_XÂˆÛÛœİ™XÙZ\›ÈHÕIÜ^[Y[]Kœ™\XÙJËKÙË	ÉÊ_KIÚ\Ú
+Y[]JKœÛXÙJŠKÕ\\Ø\ÙJ
+_XÂˆÛÛœİ™XÙZ\™YˆH‹˜ÛÛXİ[ÛŠRUSÓ—Ô‘PÑRTÊK™ØÊ™XÙZ\Y
+NÂˆÛÛœİ^\İ[™ÈH]ØZ]™XÙZ\™Y‹™Ù]
+
+NÂˆÛÛœİ^\İ[™Ô›İÈH^\İ[™Ë™^\İÈÈ^\İ[™Ë™]J
+HßHˆßNÂˆYˆ
+ÛX[Š^\İ[™Ô›İËš[XYÙU\›
+JHÂˆ™]\›ˆÂˆÚÎˆYKˆ™XÙZ\Yˆ™XÙZ\›ÎˆÛX[Š^\İ[™Ô›İËœ™XÙZ\›ÊH™XÙZ\›Ëˆ™XÙZ\[XYÙU\›ˆÛX[Š^\İ[™Ô›İËš[XYÙU\›
+KˆÜ™X]Yˆ˜[ÙBˆNÂˆBˆ]ØZ]™XÙZ\™Y‹œÙ]
+ÂˆYˆ™XÙZ\Yˆ™XÙZ\›ËˆXİ]™NˆYKˆÛİ\˜ÙNˆ	Ú\İÜšXØ[XYZ[‹X˜XÚÙš[	Ëˆİ]\Îˆ	Ú\ÜİYY	Ëˆ™[™\”İ]\Îˆ	Ü[™[™ÉËˆİY[YˆİY[˜[YNˆÛX[ŠİY[›˜[YJHÛX[Š\š[ÙœİY[˜[YJH	ùkn9å'ÉËˆİXš™XİYˆÛX[Š\š[ÙœİXš™XİY
+Kˆ\š[ÙYˆ˜[œØXİ[Û’YˆXİX[˜[œØXİ[Û’Yˆ˜[œØXİ[Û’[™^ˆ^[Y[]Kˆ[[İ[ˆY]Ùˆš[ÚYÛNˆMKˆš[ZYÚÛNˆLˆ[™Q[]™\Tİ]\Îˆ	Ú\İÜšXØ[Û›İÜÙ[	ËˆÜ™X]Y]ˆ^\İ[™Ë™^\İÈÈ
+^\İ[™Ô›İË˜Ü™X]Y]šY[˜[YKœÙ\™\•[Y\İ[\
+
+JHˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆÛX[Š^\İ[™Ô›İË˜Ü™X]Y]^
+H›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆHÂˆÛÛœİ™XÙZ\Y™™\ˆH]ØZ]™[™\•Z][Û”™XÙZ\™ÊÂˆ^[Y[]KˆİY[˜[YNˆÛX[ŠİY[›˜[YJHÛX[Š\š[ÙœİY[˜[YJH	ùkn9å'ÉËˆ[[İ[ˆJNÂˆÛÛœİØ]™Y™XÙZ\H]ØZ]Ø]™UZ][Û”™XÙZ\[XYÙJ™XÙZ\Y™XÙZ\Y™™\ŠNÂˆ]ØZ]™XÙZ\™Y‹œÙ]
+Âˆ™[™\”İ]\Îˆ	Ü™XYIËˆ[XYÙU\›ˆØ]™Y™XÙZ\š[XYÙU\›ˆ[XYÙTİÜ˜YÙT]ˆØ]™Y™XÙZ\œİÜ˜YÙT]ˆ[XYÙPÛÛ[\Nˆ	Ú[XYÙKÜ™ÉËˆ[XYÙP]\Îˆ™XÙZ\Y™™\‹›[™İˆ™[™\™Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ™]\›ˆÂˆÚÎˆYKˆ™XÙZ\Yˆ™XÙZ\›Ëˆ™XÙZ\[XYÙU\›ˆØ]™Y™XÙZ\š[XYÙU\›ˆÜ™X]YˆYBˆNÂˆHØ]Ú
+\œ›ÜŠHÂˆÛÛœİY\ÜØYÙHHÛX[Š\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙJH	ù¥-¹¤æ¹g%¹âaùå(¹å'ùi,y¥eÉÎÂˆ]ØZ]™XÙZ\™Y‹œÙ]
+Âˆ™[™\”İ]\Îˆ	Ù˜Z[Y	Ëˆ™[™\‘\œ›ÜˆY\ÜØYÙKœÛXÙJL
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[\›˜[	Ë9¥-¹¤æ¹nî¹êâùi,y¥eûï&‰ÛY\ÜØYÙ_X
+NÂˆBŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[•Z][Û”^[Y[Xİ[ÛŠ]JHÂˆÛÛœİYHÛX[Š]KšY
+NÂˆÛÛœİXİ[ÛˆHÛX[Š]K˜Xİ[ÛŠNÂˆYˆ
+ZYVÉØÛÛ™š\›IË	Ü™Z™Xİ	×Kš[˜ÛY\ÊXİ[ÛŠJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùkn:,®ù.æ9«/¹ì/y¨.:,áù¥¦y.#yk£9¥m8à ‰ÊNÂˆBˆÛÛœİ™\]Y\İ™YˆH‹˜ÛÛXİ[ÛŠRUSÓ—ÔVSQS•Ô‘TUQTÕÊK™ØÊY
+NÂˆÛÛœİ™]šY]ÈH]ØZ]™\]Y\İ™Y‹™Ù]
+
+NÂˆYˆ
+\™]šY]Ë™^\İÊH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yëa¹kn:,®ù.æ9«/º,áù¥¦xà ‰ÊNÂˆÛÛœİ™]šY]Ô›İÈHØš™Xİ˜\ÜÚYÛŠÈYˆ™]šY]ËšYK™]šY]Ë™]J
+HßJNÂˆYˆ
+VÉÜ[™[™×Ü™]šY]ÉË	ÛÛœÚ]WÜ[™[™É×Kš[˜ÛY\ÊÛX[Š™]šY]Ô›İËœİ]\ÊJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëa¹kn:,®ùæë¹bcy.#y¦+ùëbyo¡y..ùë¨yè®º*£yæ¡9âà9¡bøà ‰ÊNÂˆBˆYˆ
+Xİ[ÛˆOOH	Ü™Z™Xİ	ÊHÂˆÛÛœİ™]šY]Ó›İHHÛX[Š]Kœ™]šY]Ó›İJH	ùc+ù«/º,áù¥¦yá(y¬åyè®º*£{ï#:*âúaãy¥¬9."¹`¬ù®!y©f¹æ¡9.æ9«/º,áù¥¦xà ‰ÎÂˆ]ØZ]™\]Y\İ™Y‹œÙ]
+Âˆİ]\Îˆ	Û™YY×Ü™\İX›Z\ÜÚ[Û‰Ëˆ™]šY]Ó›İKˆ™Z™XİY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™Z™XİY]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆÛÛœİ›ÙHHÂˆ	ØÛX[Š™]šY]Ô›İËœİY[˜[YJH	ùd#9kn	ßy ª9io{ï#9 ª:` yaî¹æ¡	Û™]ÔŞ\İ[UZ][Û”\š[ÙX™[
+™]šY]Ô›İË	Û™^	Ê_ykn:,®ú,áù¥¦zg :) zaãy¥¬9è®º*£xà ˜ˆ9c§ùfè;ï&‰Ü™]šY]Ó›İ_Xˆ:*âúaãy¥¬:`,¹aiykn9å'ùaiycèù."¹`¬ûï&‰ÔÔ•SĞTÑ_KÜİY[XÛİ\œÙK\Ü[š[ÜİY[YIÙ[˜ÛÙUT’PÛÛ\Û™[
+ÛX[Š™]šY]Ô›İËœİY[Y
+J_XˆKš›Ú[Š	×‰ÊNÂˆ]ØZ]]Y]YTİY[Z][Û“›İXÙJ™]šY]Ô›İË	ùkn:,®ú,áù¥¦z*âúaãy¥¬9."¹`¬ÉË›ÙK™Z™XİYIÓ[X™\Š™]šY]Ô›İËœİX›Z\ÜÚ[Û”™]š\Ú[Ûˆ
+_X
+NÂˆ™]\›ˆÈÚÎˆYKYİ]\Îˆ	Û™YY×Ü™\İX›Z\ÜÚ[Û‰ËY\ÜØYÙNˆ	ùmìº` 9fç¹kn9å'úaãy¥¬9."¹`¬øà ‰ÈNÂˆB‚ˆÛÛœİš[ÜÛÛ™š\›YYHX]›X^
+[X™\Š™]šY]Ô›İË˜ÛÛ™š\›YY[[İ[
+JNÂˆÛÛœİ™[XZ[š[™Ğ™Y›Ü™HHX]›X^
+[X™\Š™]šY]Ô›İË™^XİY[[İ[
+HHš[ÜÛÛ™š\›YY
+NÂˆÛÛœİÛÛ™š\›YY[[İ[HX]›X^
+[X™\Š]K˜ÛÛ™š\›YY[[İ[™[XZ[š[™Ğ™Y›Ü™H
+JNÂˆYˆ
+XÛÛ™š\›YY[[İ[
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú/.9aiykéºf¦ù¥-¹b,9æ¡9kn:,®úaäzhcxà ‰ÊNÂˆYˆ
+ÛÛ™š\›YY[[İ[ˆ™[XZ[š[™Ğ™Y›Ü™JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë9§+9«(zaäzhcy.#ycëú-¡z`c¹l&¹§*¹îlù®!yæ¡•		Ü™[XZ[š[™Ğ™Y›Ü™KÓØØ[Tİš[™Ê	ŞšUÉÊ_xà ˜
+NÂˆBˆÛÛœİ^[Y[Y]ÙHÛX[Š™]šY]Ô›İËœ^[Y[Y]Ù
+NÂˆYˆ
+VÉØ˜[š×İ˜[œÙ™\‰Ë	ÛÛœÚ]I×Kš[˜ÛY\Ê^[Y[Y]Ù
+JHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëaº,áù¥¦y¬¤¹§"y«hùè®¹æ¡9.æ9«/¹¥®yo#øà ‰ÊNÂˆBˆÛÛœİ\™Ù]\š[ÙYHÛX[Š™]šY]Ô›İË\™Ù]\š[ÙY
+NÂˆÛÛœİ›Ü›X[\š[ÙYH\™Ù]\š[ÙYÜ[\\š[ÙIÚYXÂˆÛÛœİ\š[Ù™YˆH‹˜ÛÛXİ[ÛŠRUSÓ—ÔT’SÑÊK™ØÊ›Ü›X[\š[ÙY
+NÂˆÛÛœİ˜[œØXİ[Û”™]š\Ú[ÛˆHX]›X^
+K[X™\Š™]šY]Ô›İËœİX›Z\ÜÚ[Û”™]š\Ú[ÛˆJJNÂˆÛÛœİ˜[œØXİ[Û”™YˆH‹˜ÛÛXİ[ÛŠRUSÓ—ÕS”ĞPÕSÓ”ÊK™ØÊÜ[\^[Y[IÚYKIİ˜[œØXİ[Û”™]š\Ú[ÛŸX
+NÂˆÛÛœİ^[Y[]HH^[Y[Y]ÙOOH	Ø˜[š×İ˜[œÙ™\‰ÂˆÈ
+]RÙ^J™]šY]Ô›İË˜[œÙ™\‘]JHİ\œ™[Z\ZQ^J
+JBˆˆİ\œ™[Z\ZQ^J
+NÂˆÛÛœİ™XÙZ\YHZ][Û‹\™XÙZ\Iİ˜[œØXİ[Û”™Y‹šYXÂˆÛÛœİ™XÙZ\™YˆH‹˜ÛÛXİ[ÛŠRUSÓ—Ô‘PÑRTÊK™ØÊ™XÙZ\Y
+NÂˆÛÛœİ™XÙZ\›ÈHÕIÜ^[Y[]Kœ™\XÙJËKÙË	ÉÊ_KIÚ\Ú
+˜[œØXİ[Û”™Y‹šY
+KœÛXÙJŠKÕ\\Ø\ÙJ
+_XÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÜ™\]Y\İÛ˜\Úİ\š[ÙÛ˜\Úİ˜[œØXİ[Û”Û˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+Âˆ™Ù]
+™\]Y\İ™YŠKˆ™Ù]
+\š[Ù™YŠKˆ™Ù]
+˜[œØXİ[Û”™YŠBˆJNÂˆÛÛœİ™\]Y\İ›İÈH™\]Y\İÛ˜\Úİ™^\İÈÈ™\]Y\İÛ˜\Úİ™]J
+HßHˆ[ÂˆYˆ
+\™\]Y\İ›İÈVÉÜ[™[™×Ü™]šY]ÉË	ÛÛœÚ]WÜ[™[™É×Kš[˜ÛY\ÊÛX[Š™\]Y\İ›İËœİ]\ÊJJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëa¹kn:,®ùmìº(ªùam¹.å¹.®º&eyä!»ï#:*âúaãy¥¬9¥m9ä!¸à ‰ÊNÂˆBˆÛÛœİİ\œ™[ÛÛ™š\›YYHX]›X^
+[X™\Š™\]Y\İ›İË˜ÛÛ™š\›YY[[İ[
+JNÂˆÛÛœİİ\œ™[™[XZ[š[™ÈHX]›X^
+[X™\Š™\]Y\İ›İË™^XİY[[İ[
+HHİ\œ™[ÛÛ™š\›YY
+NÂˆYˆ
+ÛÛ™š\›YY[[İ[ˆİ\œ™[™[XZ[š[™ÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëa¹kn:,®ùbfùbfùmì¹å,yam¹.åº(çyïk¹¦í9¥¬;ï#:*âúaãy¥¬9¥m9ä!¹o£9a£yè®º*£xà ‰ÊNÂˆBˆÛÛœİİ[][]]™PÛÛ™š\›YYHİ\œ™[ÛÛ™š\›YY
+ÈÛÛ™š\›YY[[İ[ÂˆÛÛœİ™[XZ[š[™Ğ[[İ[HX]›X^
+[X™\Š™\]Y\İ›İË™^XİY[[İ[
+HHİ[][]]™PÛÛ™š\›YY
+NÂˆYˆ
+]\™Ù]\š[ÙY	‰ˆ\\š[ÙÛ˜\Úİ™^\İÊHÂˆœÙ]
+\š[Ù™Y‹ÂˆYˆ›Ü›X[\š[ÙYˆXİ]™NˆYKˆÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[	ËˆİY[YˆÛX[Š™\]Y\İ›İËœİY[Y
+KˆİXš™XİYˆÛX[Š™\]Y\İ›İËœİXš™XİY
+KˆXXÚ\’YˆÛX[Š™\]Y\İ›İËXXÚ\’Y
+Kˆ[’YˆÛX[Š™\]Y\İ›İËœ[’Y
+Kˆ[”Û˜\ÚİˆœÛÛ•˜[YJ™\]Y\İ›İËœ[”Û˜\ÚİßJKˆ\š[Ù›Îˆ[X™\Š™\]Y\İ›İË›™^\š[Ù›È
+Kˆ\ÜÛÛÛİ[ˆ[X™\Š™\]Y\İ›İË›\ÜÛÛÛİ[
+Kˆ\ÙYÛİ[ˆˆ^XİY[[İ[ˆ[X™\Š™\]Y\İ›İË™^XİY[[İ[ÛÛ™š\›YY[[İ[
+KˆZY[[İ[ˆˆİ]\Îˆ	ØXİ]™IËˆ^[Y[™\]Y\İYˆYˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆJNÂˆBˆYˆ
+]˜[œØXİ[Û”Û˜\Úİ™^\İÊHÂˆœÙ]
+˜[œØXİ[Û”™Y‹ÂˆYˆ˜[œØXİ[Û”™Y‹šYˆXİ]™NˆYKˆİ]\Îˆ	ØÛÛ™š\›YY	ËˆÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[	Ëˆ\Nˆ	Ü^[Y[	ËˆİY[YˆÛX[Š™\]Y\İ›İËœİY[Y
+Kˆ\š[ÙYˆ›Ü›X[\š[ÙYˆ^[Y[™\]Y\İYˆYˆ™XÙZ\Yˆ™XÙZ\›Ëˆ]Nˆ^[Y[]Kˆ[[İ[ˆÛÛ™š\›YY[[İ[ˆY]Ùˆ^[Y[Y]ÙOOH	Ø˜[š×İ˜[œÙ™\‰ÈÈ	ú/byn,ÉÈˆ	ùãï¹h-9îlú,®ÉËˆ˜[œÙ™\“\İNˆÛX[Š™\]Y\İ›İË˜[œÙ™\“\İJKœÛXÙJMJKˆÛÛ™š\›YY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÛÛ™š\›YY]^ˆ›İÕ^
+
+KˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆJNÂˆBˆœÙ]
+™XÙZ\™Y‹ÂˆYˆ™XÙZ\Yˆ™XÙZ\›ËˆXİ]™NˆYKˆÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[	Ëˆİ]\Îˆ	Ú\ÜİYY	Ëˆ™[™\”İ]\Îˆ	Ü[™[™ÉËˆİY[YˆÛX[Š™\]Y\İ›İËœİY[Y
+KˆİY[˜[YNˆÛX[Š™\]Y\İ›İËœİY[˜[YJHÛX[Š™]šY]Ô›İËœİY[˜[YJH	ùkn9å'ÉËˆİXš™XİYˆÛX[Š™\]Y\İ›İËœİXš™XİY
+KˆİXš™Xİ˜[YNˆÛX[Š™\]Y\İ›İËœİXš™Xİ˜[YJKˆ\š[ÙYˆ›Ü›X[\š[ÙYˆ^[Y[™\]Y\İYˆYˆ˜[œØXİ[Û’Yˆ˜[œØXİ[Û”™Y‹šYˆ^[Y[]Kˆ[[İ[ˆÛÛ™š\›YY[[İ[ˆY]Ùˆ^[Y[Y]ÙOOH	Ø˜[š×İ˜[œÙ™\‰ÈÈ	ú/byn,ÉÈˆ	ùãï¹h-9îlú,®ÉËˆš[ÚYÛNˆMKˆš[ZYÚÛNˆLˆ[™Q[]™\Tİ]\Îˆ	Ü[™[™ÉËˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆœÙ]
+™\]Y\İ™Y‹Âˆİ]\Îˆ™[XZ[š[™Ğ[[İ[ˆÈ	Ü^[Y[ÙYIÈˆ	ØÛÛ™š\›YY	ËˆÛÛ™š\›YY[[İ[ˆİ[][]]™PÛÛ™š\›YYˆ™[XZ[š[™Ğ[[İ[ˆ›Ü›X[\š[ÙYˆ^[Y[]KˆÛÛ™š\›YY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÛÛ™š\›YY]^ˆ›İÕ^
+
+Kˆ™]šY]Ó›İNˆ	ÉËˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆÛÛœİY]Ù^H^[Y[Y]ÙOOH	Ø˜[š×İ˜[œÙ™\‰ÈÈ	ú/byn,ÉÈˆ	ùãï¹h-9îlú,®ÉÎÂˆÛÛœİÛÛ™š\›YY›İÈHØš™Xİ˜\ÜÚYÛŠßK™]šY]Ô›İËÂˆYˆÛÛ™š\›YY[[İ[ˆš[ÜÛÛ™š\›YY
+ÈÛÛ™š\›YY[[İ[ˆ™[XZ[š[™Ğ[[İ[ˆX]›X^
+™[XZ[š[™Ğ™Y›Ü™HHÛÛ™š\›YY[[İ[
+Kˆ›Ü›X[\š[ÙYˆİ]\Îˆ™[XZ[š[™Ğ™Y›Ü™HHÛÛ™š\›YY[[İ[ˆÈ	Ü^[Y[ÙYIÈˆ	ØÛÛ™š\›YY	ÂˆJNÂˆÛÛœİ™[XZ[š[™Ğ[[İ[HX]›X^
+™[XZ[š[™Ğ™Y›Ü™HHÛÛ™š\›YY[[İ[
+NÂˆ]™XÙZ\[XYÙU\›H	ÉÎÂˆ]™XÙZ\™[™\‘\œ›ÜˆH	ÉÎÂˆHÂˆÛÛœİ™XÙZ\Y™™\ˆH]ØZ]™[™\•Z][Û”™XÙZ\™ÊÂˆ^[Y[]KˆİY[˜[YNˆÛX[Š™]šY]Ô›İËœİY[˜[YJH	ùkn9å'ÉËˆ[[İ[ˆÛÛ™š\›YY[[İ[ˆJNÂˆÛÛœİØ]™Y™XÙZ\H]ØZ]Ø]™UZ][Û”™XÙZ\[XYÙJ™XÙZ\Y™XÙZ\Y™™\ŠNÂˆ™XÙZ\[XYÙU\›HØ]™Y™XÙZ\š[XYÙU\›Âˆ]ØZ]›ÛZ\ÙK˜[
+Âˆ™XÙZ\™Y‹œÙ]
+Âˆ™[™\”İ]\Îˆ	Ü™XYIËˆ[XYÙU\›ˆ™XÙZ\[XYÙU\›ˆ[XYÙTİÜ˜YÙT]ˆØ]™Y™XÙZ\œİÜ˜YÙT]ˆ[XYÙPÛÛ[\Nˆ	Ú[XYÙKÜ™ÉËˆ[XYÙP]\Îˆ™XÙZ\Y™™\‹›[™İˆ™[™\™Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJKˆ˜[œØXİ[Û”™Y‹œÙ]
+Âˆ™XÙZ\Yˆ™XÙZ\›Ëˆ™XÙZ\[XYÙU\›ˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJKˆ™\]Y\İ™Y‹œÙ]
+Âˆ]\İ™XÙZ\Yˆ™XÙZ\Yˆ]\İ™XÙZ\›Îˆ™XÙZ\›Ëˆ]\İ™XÙZ\[XYÙU\›ˆ™XÙZ\[XYÙU\›ˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJBˆJNÂˆHØ]Ú
+\œ›ÜŠHÂˆ™XÙZ\™[™\‘\œ›ÜˆHÛX[Š\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙJH	ù¥-¹¤æ¹g%¹âaùå(¹å'ùi,y¥eÉÎÂˆÛÛœÛÛK™\œ›ÜŠ	ÖİZ][Ûˆ™XÙZ\™[™\ˆ˜Z[YIË™XÙZ\Y\œ›ÜŠNÂˆ]ØZ]™XÙZ\™Y‹œÙ]
+Âˆ™[™\”İ]\Îˆ	Ù˜Z[Y	Ëˆ™[™\‘\œ›Üˆ™XÙZ\™[™\‘\œ›Ü‹œÛXÙJL
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆBˆÛÛœİ›ÙHHÂˆ	ØÛX[Š™]šY]Ô›İËœİY[˜[YJH	ùd#9kn	ßy ª9io{ï#9mì¹¥-¹b,9kn:,®È•		ØÛÛ™š\›YY[[İ[ÓØØ[Tİš[™Ê	ŞšUÉÊ_xà ˜ˆ:*¬¹ê"ûï&‰ØÛX[Š™]šY]Ô›İËœİXš™Xİ˜[YJH	ú*¬¹ê"ÉßxàîÉÛ™]ÔŞ\İ[UZ][Û”\š[ÙX™[
+™]šY]Ô›İË	Û™^	Ê_Xˆ9.æ9«/¹¥®yo#ûï&‰Ü^[Y[Y]ÙOOH	Ø˜[š×İ˜[œÙ™\‰ÈÈ	ú/byn,ÉÈˆ	ùãï¹h-9îlú,®ÉßXˆ™[XZ[š[™Ğ[[İ[ˆÈ9l&¹§*¹îlù®!{ï&“•		Ü™[XZ[š[™Ğ[[İ[ÓØØ[Tİš[™Ê	ŞšUÉÊ_Xˆ	ù§+9§'ùkn:,®ùmì¹îlù®!xà ‰Ëˆ™XÙZ\[XYÙU\›È	ù¥-¹¤æ¹i ºfa9g%»ï#:*âùåfykf8à ‰Èˆ	ù¥-¹¤æ¹mì¹nî¹êâûï#9i ºg :(ç9cl:*âú kùíhy§æ¹kd9ª ¹fj8à ‰Ëˆ	ú+'z+'y ª8à ‰ÂˆKš›Ú[Š	×‰ÊNÂˆÛÛœİ[™T™XÚ\Y[Ûİ[H]ØZ]]Y]YTİY[Z][Û“›İXÙJˆÛÛ™š\›YY›İËˆ™[XZ[š[™Ğ[[İ[ˆÈ	ùkn:,®ùmìº`ê9b!¹aiyn,ÉÈˆ	ù."ù. 9§'ùkn:,®ùmì¹è®º*£IËˆ›ÙKˆÛÛ™š\›YYIÓ[X™\Š™]šY]Ô›İËœİX›Z\ÜÚ[Û”™]š\Ú[Ûˆ
+_XˆÂˆ›Ü˜ÙP›İ[™[]™\NˆYKˆ™XÙZ\Yˆ[XYÙU\›ˆ™XÙZ\[XYÙU\›ˆBˆ
+NÂˆ]ØZ]™XÙZ\™Y‹œÙ]
+Âˆ[™Q[]™\Tİ]\Îˆ[™T™XÚ\Y[Ûİ[ˆÈ	Ü]Y]YY	Èˆ	Û›İØ›İ[™	Ëˆ[™T™XÚ\Y[Ûİ[ˆ[™T]Y]YY]ˆ[™T™XÚ\Y[Ûİ[ˆÈšY[˜[YKœÙ\™\•[Y\İ[\
+
+Hˆ[ˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ™]\›ˆÂˆÚÎˆYKˆYˆİ]\Îˆ™[XZ[š[™Ğ[[İ[ˆÈ	Ü^[Y[ÙYIÈˆ	ØÛÛ™š\›YY	Ëˆ›Ü›X[\š[ÙYˆ™[XZ[š[™Ğ[[İ[ˆ™XÙZ\Yˆ™XÙZ\›Ëˆ™XÙZ\[XYÙU\›ˆ™XÙZ\™[™\‘\œ›Ü‹ˆ[™T™XÚ\Y[Ûİ[ˆY\ÜØYÙNˆ™[XZ[š[™Ğ[[İ[ˆˆÈ9mì¹è®º*£y§+9«(y¥-¹«/»ï#9l&ºi&•		Ü™[XZ[š[™Ğ[[İ[ÓØØ[Tİš[™Ê	ŞšUÉÊ_xà ˜ˆˆ	ùmì¹è®º*£y¥-¹«/¹.)¹nî¹êâù«hùo#ù."ù. 9§'ùkn:,®ùí :c!8à ‰ÂˆNÂŸB‚˜\Ş[˜È[˜İ[Ûˆ]Y]YUXXÚ\][™[˜ÙQXÚ\Ú[ÛŠ™\]Y\İ›İË\›İ™Y™]šY]Ó›İJHÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\š[™[™ÜÉÊBˆÚ\™J	İXXÚ\’Y	Ë	ÏOIËÛX[Š™\]Y\İ›İËXXÚ\’Y
+JBˆ™Ù]
+
+NÂˆÛÛœİ›ÙHH\›İ™YˆÈÂˆ9 ª9g*	ØÛX[Š™\]Y\İ›İË™]J_H9æ¡9cå¹­¢9ì/yb,9å,ú*âùmì¹¨.9aá¸à ˜ˆ9kn9å'ûï&‰ØÛX[Š
+™\]Y\İ›İËœİY[˜[Y\È×JKš›Ú[Š	øà IÊJH	ù§*¹£ä9/¦ÉßXˆ:(c9¥/ú&eyä!º,®ûï&“•		ĞUS‘SÑWĞQRS—Ñ‘Q_{ï#9mì¹b%ùaiz%ªº,áù¢hù«/¸à ˜ˆKš›Ú[Š	×‰ÊBˆˆÂˆ9 ª9g*	ØÛX[Š™\]Y\İ›İË™]J_H9æ¡9cå¹­¢9ì/yb,9å,ú*âù§*º`&º`c»ï#9c§ùì/yb,9í :c!9í«y£ y.#z+¢¸à ˜ˆ™]šY]Ó›İHÈ9..ùë¨z*ª¹¦#»ï&‰ØÛX[Š™]šY]Ó›İJ_Xˆ	ÉÂˆK™š[\Š›ÛÛX[ŠKš›Ú[Š	×‰ÊNÂˆ]ØZ]›ÛZ\ÙK˜[
+Û˜\Úİ™ØÜË™š[\Š
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆ™]\›ˆÛX[Š›İËœİ]\ÊHOOH	ØXİ]™IÈ	‰ˆÛX[Š›İË›[™U\Ù\’Y
+NÂˆJK›X\
+
+ØÊHOˆ]Y]YPÛİ\œÙTÜ[›İXÙJˆ][™[˜ÙKXØ[˜Ù[]XXÚ\‹IØÛX[Š™\]Y\İ›İËšY
+_KIØ\›İ™YÈ	Ø\›İ™Y	Èˆ	Ü™Z™XİY	ßKIÙØËšYXˆÂˆ]™[ÛÙNˆ\›İ™YÈ	Ø][™[˜ÙWØØ[˜Ù[][Û—Ø\›İ™Y	Èˆ	Ø][™[˜ÙWØØ[˜Ù[][Û—Ü™Z™XİY	Ëˆ\™Ù][™U\Ù\’YˆÛX[ŠØË™]J
+K›[™U\Ù\’Y
+Kˆ\™Ù]˜[YNˆÛX[Š™\]Y\İ›İËXXÚ\“˜[YJH	ú  yn*ÉËˆ]Nˆ\›İ™YÈ	ùcå¹­¢9ì/yb,9mì¹¨.9aá‰Èˆ	ùcå¹­¢9ì/yb,9§*º`&º`c‰Ëˆ›ÙKˆ^ˆ›ÙKˆY\ÜØYÙNˆ›ÙKˆ][™[˜ÙPØ[˜Ù[][Û’YˆÛX[Š™\]Y\İ›İËšY
+BˆBˆ
+JJNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[][™[˜ÙPØ[˜Ù[][ÛXİ[ÛŠ]JHÂˆÛÛœİYHÛX[Š]KšY
+NÂˆÛÛœİXİ[ÛˆHÛX[Š]K˜Xİ[ÛŠNÂˆÛÛœİ™]šY]Ó›İHHÛX[Š]Kœ™]šY]Ó›İJNÂˆYˆ
+ZYVÉØ\›İ™IË	Ü™Z™Xİ	×Kš[˜ÛY\ÊXİ[ÛŠJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùcå¹­¢9ì/yb,9kêy¨.:,áù¥¦y.#yk£9¥m8à ‰ÊNÂˆBˆÛÛœİ™\]Y\İ™YˆH‹˜ÛÛXİ[ÛŠUS‘SÑWĞĞSÑSUSÓ”ÊK™ØÊY
+NÂˆÛÛœİ™]šY]ÈH]ØZ]™\]Y\İ™Y‹™Ù]
+
+NÂˆYˆ
+\™]šY]Ë™^\İÊH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yëa¹cå¹­¢9ì/yb,9å,ú*âøà ‰ÊNÂˆÛÛœİ™\]Y\İ›İÈHØš™Xİ˜\ÜÚYÛŠÈYK™]šY]Ë™]J
+HßJNÂˆYˆ
+ÛX[Š™\]Y\İ›İËœİ]\ÊHOOH	Ü[™[™ÉÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëa¹å,ú*âùmì¹í¤ú&eyä!¹k£9¢$8à ‰ÊNÂˆBˆYˆ
+Xİ[ÛˆOOH	Ü™Z™Xİ	ÊHÂˆ]™Z™XİY›İÈH™\]Y\İ›İÎÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİİ\œ™[Û˜\ÚİH]ØZ]™Ù]
+™\]Y\İ™YŠNÂˆÛÛœİİ\œ™[Hİ\œ™[Û˜\Úİ™^\İÈÈİ\œ™[Û˜\Úİ™]J
+HßHˆ[ÂˆYˆ
+Xİ\œ™[ÛX[Šİ\œ™[œİ]\ÊHOOH	Ü[™[™ÉÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëa¹å,ú*âùmì¹í¤ú&eyä!¹k£9¢$8à ‰ÊNÂˆBˆ™Z™XİY›İÈHØš™Xİ˜\ÜÚYÛŠÈYKİ\œ™[
+NÂˆœÙ]
+™\]Y\İ™Y‹Âˆİ]\Îˆ	Ü™Z™XİY	Ëˆ™]šY]Ó›İKˆ™]šY]ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™]šY]ÙY]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆ]ØZ]]Y]YUXXÚ\][™[˜ÙQXÚ\Ú[ÛŠ™Z™XİY›İË˜[ÙK™]šY]Ó›İJNÂˆ™]\›ˆÈÚÎˆYKYİ]\Îˆ	Ü™Z™XİY	ËY\ÜØYÙNˆ	ùmì¹¢ä¹íeycå¹­¢9ì/yb,;ï#9c§ùí :c!9í«y£ y.#z+¢¸à ‰ÈNÂˆB‚ˆÛÛœİ[™XYÙHHÛX[Š™\]Y\İ›İË˜Ûİ\œÙRY™\]Y\İ›İË™]™[Y
+NÂˆÛÛœİİ]\Ô™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊBˆ™ØÊ\ÜÛÛ‹\İ]\ËIÚ\Ú
+Ü™\]Y\İ›İËXXÚ\’Y[™XYÙK™\]Y\İ›İË™]WKš›Ú[Š	ß	ÊJ_X
+NÂˆÛÛœİ^\›Û™YˆH‹˜ÛÛXİ[ÛŠUS‘SÑWÔVT“Ó
+K™ØÊÛX[Š™\]Y\İ›İË›Ü\˜][Û’Y
+JNÂˆÛÛœİY\İY[™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\Y\İY[ÉÊK™ØÊ][™[˜ÙKXØ[˜Ù[Y™YKIÚYX
+NÂˆÛÛœİ\ÜÛÛ“ØÚÔ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[][™[˜ÙS\ÜÛÛ“ØÚÜÉÊBˆ™ØÊ][™[˜ÙS\ÜÛÛ“ØÚÒY
+™\]Y\İ›İË™]KÂˆš^YÛİ\œÙRYˆ[™XYÙKˆÛİ\˜ÙRYˆ™\]Y\İ›İË™]™[YˆKÂˆÛİ\˜ÙPÛİ\œÙRYˆ™\]Y\İ›İË˜Ûİ\œÙRYˆÛİ\˜ÙQ]™[Yˆ™\]Y\İ›İË™]™[YˆJJNÂˆÛÛœİ™\œÚ[Û”™YˆHØÚY[U™\œÚ[Û”™YŠ
+NÂˆÛÛœİ][™[˜ÙT™XÛÜ™YÈHË‹‹›™]ÈÙ]
+ˆ
+™\]Y\İ›İË˜][™[˜ÙT™XÛÜ™YÈ×JBˆ˜ÛÛ˜Ø]
+
+™\]Y\İ›İËœİY[YÈ×JK›X\
+
+İY[Y
+HO‚ˆ\Ú
+ØÛX[Š™\]Y\İ›İË›Ü\˜][Û’Y
+KÛX[ŠİY[Y
+WKš›Ú[Š	ß	ÊJBˆ
+JBˆ›X\
+ÛX[ŠBˆ™š[\Š›ÛÛX[ŠBˆ
+WNÂˆÛÛœİ][™[˜ÙT™YœÈH][™[˜ÙT™XÛÜ™YË›X\
+
+™XÛÜ™Y
+HO‚ˆ‹˜ÛÛXİ[ÛŠUS‘SÑWÔ‘PÓÔ‘ÊK™ØÊ™XÛÜ™Y
+Bˆ
+NÂˆ]ØZ]‹œ[•˜[œØXİ[ÛŠ\Ş[˜È
+
+HOˆÂˆÛÛœİÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+Âˆ™Ù]
+™\]Y\İ™YŠKˆ™Ù]
+™\œÚ[Û”™YŠKˆ™Ù]
+İ]\Ô™YŠKˆ™Ù]
+^\›Û™YŠKˆ™Ù]
+Y\İY[™YŠKˆ™Ù]
+\ÜÛÛ“ØÚÔ™YŠKˆ‹‹˜][™[˜ÙT™YœË›X\
+
+™YŠHOˆ™Ù]
+™YŠJBˆJNÂˆÛÛœİİ\œ™[HÛ˜\ÚİÖÌK™^\İÈÈÛ˜\ÚİÖÌK™]J
+HßHˆ[ÂˆYˆ
+Xİ\œ™[ÛX[Šİ\œ™[œİ]\ÊHOOH	Ü[™[™ÉÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ú`&yëa¹å,ú*âùmì¹í¤ú&eyä!¹k£9¢$8à ‰ÊNÂˆBˆÛÛœİ™\œÚ[Û”Û˜\ÚİHÛ˜\ÚİÖÌWNÂˆ\ÜÙ\ØÚY[UÜš]X›J™\œÚ[Û”Û˜\Úİ
+NÂˆ][™[˜ÙT™YœË™›Ü‘XXÚ
+
+™Y‹[™^
+HOˆÂˆÛÛœİİY[YHÛX[Š
+™\]Y\İ›İËœİY[YÈ×JK™š[™
+
+Ø[™Y]JHO‚ˆ\Ú
+ØÛX[Š™\]Y\İ›İË›Ü\˜][Û’Y
+KÛX[ŠØ[™Y]JWKš›Ú[Š	ß	ÊJHOOH™Y‹šYˆ
+H
+™\]Y\İ›İËœİY[YÈ×JVÚ[™^JNÂˆœÙ]
+™Y‹ÂˆYˆ™Y‹šYˆÜ\˜][Û’YˆÛX[Š™\]Y\İ›İË›Ü\˜][Û’Y
+KˆXİ]™Nˆ˜[ÙKˆİ]\Îˆ	ØØ[˜Ù[Y	ËˆÛİ\˜ÙNˆ	Ø][™[˜ÙKXØ[˜Ù[][Û‹X\›İ™Y	ËˆXXÚ\’YˆÛX[Š™\]Y\İ›İËXXÚ\’Y
+KˆİY[YˆİY[YÎˆ™\]Y\İ›İËœİY[YÈ×KˆİXš™XİYˆÛX[Š™\]Y\İ›İËœİXš™XİY
+Kˆ]™[YˆÛX[Š™\]Y\İ›İË™]™[Y
+KˆÛİ\œÙRYˆÛX[Š™\]Y\İ›İË˜Ûİ\œÙRY
+Kˆ]NˆÛX[Š™\]Y\İ›İË™]JKˆØ[˜Ù[][Û”™\]Y\İYˆYˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆØ[˜Ù[Y]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆJNÂˆœÙ]
+İ]\Ô™Y‹ÂˆYˆİ]\Ô™Y‹šYˆXİ[Ûˆ	Û\ÜÛÛ—Üİ]\ÉËˆXİ]™NˆYKˆÛİ\˜ÙQ]™[YˆÛX[Š™\]Y\İ›İË™]™[Y
+KˆÛİ\˜ÙPÛİ\œÙRYˆ[™XYÙKˆÛİ\˜ÙQ]NˆÛX[Š™\]Y\İ›İË™]JKˆ]™[ˆÂˆYˆ˜[™ÛUÚÙ[ŠLŠKˆ]NˆÛX[Š™\]Y\İ›İË™]JKˆİ\[YNˆÛX[Š™\]Y\İ›İËœİ\[YJKˆ[™[YNˆÛX[Š™\]Y\İ›İË™[™[YJKˆ›ÛÛRYˆÛX[Š™\]Y\İ›İËœ›ÛÛRY
+KˆXXÚ\’YˆÛX[Š™\]Y\İ›İËXXÚ\’Y
+KˆİY[YˆÛX[Š
+™\]Y\İ›İËœİY[YÈ×JVÌJKˆİY[YÎˆ™\]Y\İ›İËœİY[YÈ×KˆİXš™XİYˆÛX[Š™\]Y\İ›İËœİXš™XİY
+Kˆš^YÛİ\œÙRYˆ[™XYÙKˆ\NˆÛX[Š™\]Y\İ›İË\H	Û\ÜÛÛ‰ÊKˆİ]\Îˆ	ÜØÚY[Y	Ëˆ^[Y[İ]\Îˆ	Ø][™[˜ÙWØØ[˜Ù[Y	ËˆXXÚ\”^XX›Nˆ˜[ÙKˆ›İNˆ9..ùë¨y¨.9aá¹cå¹­¢9ì/yb,;ï&‰ØÛX[Š™\]Y\İ›İËœ™X\ÛÛŠ_XˆKˆÜ™X]YUXXÚ\’YˆÛX[Š™\]Y\İ›İËXXÚ\’Y
+Kˆ\›İ™YSX[˜YÙ\ˆYKˆ][™[˜ÙPØ[˜Ù[][Û’YˆYˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆœÙ]
+^\›Û™Y‹ÂˆXİ]™Nˆ˜[ÙKˆİ]\Îˆ	ØØ[˜Ù[Y	ËˆØ[˜Ù[][Û”™\]Y\İYˆYˆØ[˜Ù[Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆœÙ]
+\ÜÛÛ“ØÚÔ™Y‹ÂˆËÈ9..ùë¨y¨.9aá¹o£9åfy."ú-ê:  yn*ùalyå*9æ¡9cå¹­¢ÛXœİÛ™{ï#9æí9b,9§*¹/¡¹¦#¹è®¹æ¡9ë¨yä!º !y h¹oªybåy/g:)èúfi8à ‚ˆXİ]™NˆYKˆİ]\Îˆ	ØØ[˜Ù[Y	ËˆÜ\˜][Û’YˆÛX[Š™\]Y\İ›İË›Ü\˜][Û’Y
+KˆØ[˜Ù[][Û”™\]Y\İYˆYˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆœÙ]
+Y\İY[™Y‹ÂˆYˆY\İY[™Y‹šYˆXXÚ\’YˆÛX[Š™\]Y\İ›İËXXÚ\’Y
+Kˆ[Ûˆİ\œ™[Z\ZQ^J
+KœÛXÙJÊKˆ]Nˆİ\œ™[Z\ZQ^J
+Kˆ\Nˆ	Ø][™[˜ÙWØØ[˜Ù[][Û—Ù™YIËˆ[[İ[ˆPUS‘SÑWĞQRS—Ñ‘QKˆ›İNˆ9cå¹­¢9ì/yb,:(c9¥/ú&eyä!º,®È•		ĞUS‘SÑWĞQRS—Ñ‘Q_XˆÛİ\˜ÙNˆ	Ø][™[˜ÙKXØ[˜Ù[][Û‹X\›İ™Y	Ëˆ™\]Y\İYˆYˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÜ™X]Y]^ˆ›İÕ^
+
+BˆKÈY\™ÙNˆYHJNÂˆœÙ]
+™\]Y\İ™Y‹Âˆİ]\Îˆ	Ø\›İ™Y	Ëˆ™]šY]Ó›İKˆYZ[š\İ˜][Û‘™YNˆUS‘SÑWĞQRS—Ñ‘QKˆ™]šY]ÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™]šY]ÙY]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆÛÛœİİ\œ™[™\œÚ[ÛˆH[X™\Š™\œÚ[Û”Û˜\Úİ™^\İÈ	‰ˆ™\œÚ[Û”Û˜\Úİ™]J
+K™\œÚ[Ûˆ
+NÂˆœÙ]
+™\œÚ[Û”™Y‹Âˆ™\œÚ[Ûˆİ\œ™[™\œÚ[Ûˆ
+ÈKˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\]YNˆ	Ø][™[˜ÙKXØ[˜Ù[][Û‹X\›İ™Y	ÂˆKÈY\™ÙNˆYHJNÂˆJNÂˆ]ØZ]]Y]YUXXÚ\][™[˜ÙQXÚ\Ú[ÛŠ™\]Y\İ›İËYK™]šY]Ó›İJNÂˆ™]\›ˆÂˆÚÎˆYKˆYˆİ]\Îˆ	Ø\›İ™Y	ËˆY\ÜØYÙNˆ9cå¹­¢9ì/yb,9mì¹¨.9aá»ï#9.)¹mì¹g*:  yn*ú%ªº,áù¢húfi:(c9¥/ú&eyä!º,®È•		ĞUS‘SÑWĞQRS—Ñ‘Q_xà ˜ˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[‘]J
+HÂˆÛÛœİİXXÚ\œËİY[Ë™[\œËXXÚ\”›İÜËİY[›İÜË™[\”›İÜËÙ\ÜÚ[ÛœËİ\Ü[œÚ[Û”Û˜\ÚİZ][Û”^[Y[Û˜\ÚİZ][Û”™XÙZ\Û˜\Úİ][™[˜ÙPØ[˜Ù[][Û”Û˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+Âˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\š[™[™ÜÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[š[™[™ÜÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\š[™[™ÜÉÊK™Ù]
+
+KˆZ\œ›Ü”›İÜÊ	İXXÚ\œÉÊKˆZ\œ›Ü”›İÜÊ	ÜİY[ÉÊKˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\œÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù\ÜÚ[ÛœÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[İ\Ü[œÚ[ÛœÉÊKÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠRUSÓ—ÔVSQS•Ô‘TUQTÕÊKÚ\™J	Üİ]\ÉË	Ú[‰ËÉÜ[™[™×Ü™]šY]ÉË	ÛÛœÚ]WÜ[™[™É×JK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠRUSÓ—Ô‘PÑRTÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠUS‘SÑWĞĞSÑSUSÓ”ÊKÚ\™J	Üİ]\ÉË	ÏOIË	Ü[™[™ÉÊK™Ù]
+
+BˆJNÂˆÛÛœİXXÚ\“X\H[™^RY
+XXÚ\”›İÜÊNÂˆÛÛœİİY[X\H[™^RY
+İY[›İÜÊNÂˆÛÛœİ™[\“X\HßNÂˆ™[\”›İÜË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÈ™[\“X\ÙØËšYHHØË™]J
+HßNÈJNÂˆÛÛœİXİ]™TÙ\ÜÚ[ÛœĞS[™HHßNÂˆÛÛœİXİ]™TÙ\ÜÚ[ÛœĞPXØÛİ[HßNÂˆÙ\ÜÚ[ÛœË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆÛÛœİ[™U\Ù\’YHÛX[Š›İË›[™U\Ù\’Y
+NÂˆÛÛœİ]]XØÛİ[YHÛX[Š›İË˜]]XØÛİ[Y
+NÂˆYˆ
+ÛX[Š›İËœİ]\ÊHOOH	ØXİ]™IÈ\ÓZ[\Ê›İË™^\™\Ğ]
+H]K››İÊ
+JH™]\›ÂˆYˆ
+[™U\Ù\’Y
+HÂˆXİ]™TÙ\ÜÚ[ÛœĞS[™VÛ[™U\Ù\’YHHXİ]™TÙ\ÜÚ[ÛœĞS[™VÛ[™U\Ù\’YH™]ÈÙ]
+
+NÂˆXİ]™TÙ\ÜÚ[ÛœĞS[™VÛ[™U\Ù\’YK˜Y
+ØËšY
+NÂˆBˆYˆ
+]]XØÛİ[Y
+HÂˆXİ]™TÙ\ÜÚ[ÛœĞPXØÛİ[Ø]]XØÛİ[YHHXİ]™TÙ\ÜÚ[ÛœĞPXØÛİ[Ø]]XØÛİ[YH™]ÈÙ]
+
+NÂˆXİ]™TÙ\ÜÚ[ÛœĞPXØÛİ[Ø]]XØÛİ[YK˜Y
+ØËšY
+NÂˆBˆJNÂˆÛÛœİX\H
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜË›X\
+
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆÛÛœİXİ]™TÙ\ÜÚ[Û’YÈH™]ÈÙ]
+Âˆ‹‹Š
+Xİ]™TÙ\ÜÚ[ÛœĞS[™VØÛX[Š›İË›[™U\Ù\’Y
+WH™]ÈÙ]
+
+JJKˆ‹‹Š
+Xİ]™TÙ\ÜÚ[ÛœĞPXØÛİ[ØÛX[Š›İË˜]]XØÛİ[Y
+WH™]ÈÙ]
+
+JJBˆJNÂˆÛÛœİ\™Ù]˜[YHH›İË\HOOH	İXXÚ\‰ÂˆÈÛX[ŠXXÚ\“X\ØÛX[Š›İËXXÚ\’Y
+WH	‰ˆXXÚ\“X\ØÛX[Š›İËXXÚ\’Y
+WK›˜[YJBˆˆ
+›İË\HOOH	ÜİY[	ÂˆÈÛX[ŠİY[X\ØÛX[Š›İËœİY[Y
+WH	‰ˆİY[X\ØÛX[Š›İËœİY[Y
+WK›˜[YJBˆˆÛX[Š™[\“X\ØÛX[Š›İËœ™[\’Y
+WH	‰ˆ™[\“X\ØÛX[Š›İËœ™[\’Y
+WK›˜[YJJNÂˆ™]\›ˆÂˆYˆØËšYˆ\NˆÛX[Š›İË\JKˆİ]\ÎˆÛX[Š›İËœİ]\ÊKˆ\™Ù]˜[YKˆ[™Q\Ü^S˜[YNˆÛX[Š›İË›[™Q\Ü^S˜[YJKˆ[™U\Ù\’YX\ÚÙYˆÛX[Š›İË›[™U\Ù\’Y
+BˆÈ	ØÛX[Š›İË›[™U\Ù\’Y
+KœÛXÙJŠ_x )‰ØÛX[Š›İË›[™U\Ù\’Y
+KœÛXÙJM
+_Xˆˆ	ÉËˆ[™QœšY[™›YÎˆ›İË›[™QœšY[™›YÈOH[È[ˆ›İË›[™QœšY[™›YÈOOHYKˆ]]›İšY\ˆÛX[Š›İË˜]]›İšY\ŠKˆ[XZ[ˆ›Ü›X[^™Q[XZ[
+›İË™[XZ[
+Kˆ[XZ[™\šYšYYˆ›İË™[XZ[™\šYšYYOOHYKˆ[XZ[™\šYšYY]ˆœÛÛ•˜[YJ›İË™[XZ[™\šYšYY]
+Kˆ™[][ÛœÚ\ˆÛX[Š›İËœ™[][ÛœÚ\
+KˆXXÚ\’YˆÛX[Š›İËXXÚ\’Y
+KˆİY[YˆÛX[Š›İËœİY[Y
+Kˆ™[\’YˆÛX[Š›İËœ™[\’Y
+Kˆ›İ[™]ˆœÛÛ•˜[YJ›İË˜›İ[™]
+Kˆ\›İ˜[™\]Y\İY]ˆœÛÛ•˜[YJ›İË˜\›İ˜[™\]Y\İY]
+Kˆ\›İ™Y]ˆœÛÛ•˜[YJ›İË˜\›İ™Y]
+Kˆ\İÙÚ[]ˆœÛÛ•˜[YJ›İË›\İÙÚ[]
+Kˆ\İÙÚ[]^ˆÛX[Š›İË›\İÙÚ[]^
+KˆXİ]™TÙ\ÜÚ[ÛÛİ[ˆXİ]™TÙ\ÜÚ[Û’YËœÚ^™Kˆ™[Z[™\“\İ\ÜÛÛˆ›İËœ™[Z[™\“\İ\ÜÛÛˆOOH˜[ÙKˆ™[Z[™\”^[Y[ˆ›İËœ™[Z[™\”^[Y[OOH˜[ÙBˆNÂˆJNÂˆÛÛœİİ\Ü[œÚ[Û”›İÜÈHİ\Ü[œÚ[Û”Û˜\Úİ™ØÜË›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÂˆYˆØËšYˆKœÛÛ•˜[YJØË™]J
+JHßJJNÂˆÛÛœİİ\Ü[œÚ[Û”İY[YÈHË‹‹›™]ÈÙ]
+İ\Ü[œÚ[Û”›İÜË›X\
+
+›İÊHOˆÛX[Š›İËœİY[Y
+JK™š[\Š›ÛÛX[ŠJWNÂˆÛÛœİ\š[ÙÜ›İ\ÈH]ØZ]›ÛZ\ÙK˜[
+İ\Ü[œÚ[Û”İY[YË›X\
+
+İY[Y
+HO‚ˆZ\œ›Ü”›İÜĞQšY[
+	İZ][Û”\š[ÙÉË	ÜİY[Y	ËİY[Y
+Bˆ
+JNÂˆÛÛœİ\š[ÙĞTİY[H™]ÈX\
+İ\Ü[œÚ[Û”İY[YË›X\
+
+İY[Y[™^
+HOˆÂˆİY[Yˆ\š[ÙÜ›İ\ÖÚ[™^H×BˆJJNÂˆÛÛœİ[œZYİ\Ü[œÚ[ÛœÈHİ\Ü[œÚ[Û”›İÜË›X\
+
+›İÊHOˆÂˆÛÛœİİY[YHÛX[Š›İËœİY[Y
+NÂˆÛÛœİXXÚ\’YHÛX[Š›İËXXÚ\’Y
+NÂˆÛÛœİ\š[ÙÈH\š[ÙĞTİY[™Ù]
+İY[Y
+H×NÂˆÛÛœİ™[]Y\š[ÙÈH\š[ÙË™š[\Š
+\š[Ù
+HO‚ˆY]™[XXÚ\’Y
+\š[Ù
+H]™[XXÚ\’Y
+\š[Ù
+HOOHXXÚ\’Yˆ
+NÂˆÛÛœİİ\œ™[[œZY[[İ[H™[]Y\š[ÙË›[™İˆÈ™[]Y\š[ÙËœ™YXÙJ
+İ[K\š[Ù
+HOˆİ[H
+ÈZ][Û“İ]İ[™[™Ğ[[İ[
+\š[Ù
+K
+Bˆˆ[X™\Š›İË[œZY[[İ[]İÜ
+NÂˆ™]\›ˆÂˆYˆÛX[Š›İËšY
+KˆİY[YˆİY[˜[YNˆÛX[ŠİY[X\ÜİY[YH	‰ˆİY[X\ÜİY[YK›˜[YJHÛX[Š›İËœİY[˜[YJKˆXXÚ\’YˆXXÚ\“˜[YNˆÛX[ŠXXÚ\“X\İXXÚ\’YH	‰ˆXXÚ\“X\İXXÚ\’YK›˜[YJHÛX[Š›İËXXÚ\“˜[YJKˆY™™Xİ]™Q]Nˆ]RÙ^J›İË™Y™™Xİ]™Q]JKˆ™\]Y\İY]^ˆÛX[Š›İËœ™\]Y\İY]^
+Kˆ[œZY[[İ[]İÜˆ[X™\Š›İË[œZY[[İ[]İÜ
+Kˆİ\œ™[[œZY[[İ[ˆ^[Y[İ]\ÎˆÛX[Š›İËœ^[Y[İ]\È	Ü[™[™ÉÊBˆNÂˆJK™š[\Š
+›İÊHOˆ›İËœ^[Y[İ]\ÈOOH	ÜÙ]Y	È	‰ˆ›İË˜İ\œ™[[œZY[[İ[ˆ
+NÂˆÛÛœİZ][Û”^[Y[ÈHZ][Û”^[Y[Û˜\Úİ™ØÜÂˆ™š[\Š
+ØÊHOˆÉÜ[™[™×Ü™]šY]ÉË	ÛÛœÚ]WÜ[™[™É×Kš[˜ÛY\ÊÛX[Š
+ØË™]J
+HßJKœİ]\ÊJJBˆœÛÜ
+
+YšYÚ
+HOˆ\ÓZ[\Ê
+šYÚ™]J
+HßJKœİX›Z]Y]
+HH\ÓZ[\Ê
+Y™]J
+HßJKœİX›Z]Y]
+JBˆ›X\
+YZ[•Z][Û”^[Y[›İÊNÂˆÛÛœİZ][Û”™XÙZ\ÈHZ][Û”™XÙZ\Û˜\Úİ™ØÜÂˆ™š[\Š
+ØÊHOˆ
+ØË™]J
+HßJK˜Xİ]™HOOH˜[ÙJBˆœÛÜ
+
+YšYÚ
+HOˆÂˆÛÛœİY›İÈHY™]J
+HßNÂˆÛÛœİšYÚ›İÈHšYÚ™]J
+HßNÂˆ™]\›ˆ]RÙ^JšYÚ›İËœ^[Y[]JK›ØØ[PÛÛ\\™J]RÙ^JY›İËœ^[Y[]JJHˆ\ÓZ[\ÊšYÚ›İË˜Ü™X]Y]
+HH\ÓZ[\ÊY›İË˜Ü™X]Y]
+NÂˆJBˆ›X\
+YZ[•Z][Û”™XÙZ\›İÊNÂˆÛÛœİ][™[˜ÙPØ[˜Ù[][ÛœÈH][™[˜ÙPØ[˜Ù[][Û”Û˜\Úİ™ØÜÂˆ›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJJBˆœÛÜ
+
+YšYÚ
+HOˆ\ÓZ[\ÊšYÚœ™\]Y\İY]
+HH\ÓZ[\ÊYœ™\]Y\İY]
+JBˆ›X\
+
+›İÊHOˆØš™Xİ˜\ÜÚYÛŠßK›İËÂˆXXÚ\“˜[YNˆÛX[Š›İËXXÚ\“˜[YJHˆÛX[ŠXXÚ\“X\ØÛX[Š›İËXXÚ\’Y
+WH	‰ˆXXÚ\“X\ØÛX[Š›İËXXÚ\’Y
+WK›˜[YJKˆİY[˜[Y\Îˆ\œ˜^Kš\Ğ\œ˜^J›İËœİY[˜[Y\ÊH	‰ˆ›İËœİY[˜[Y\Ë›[™İˆÈ›İËœİY[˜[Y\Âˆˆ
+›İËœİY[YÈ×JK›X\
+
+İY[Y
+HO‚ˆÛX[ŠİY[X\ØÛX[ŠİY[Y
+WH	‰ˆİY[X\ØÛX[ŠİY[Y
+WK›˜[YJBˆ
+K™š[\Š›ÛÛX[ŠBˆJJNÂˆ™]\›ˆÂˆÚÎˆYKˆš[™[™ÜÎˆË‹‹›X\
+XXÚ\œÊK‹‹›X\
+İY[ÊK‹‹›X\
+™[\œÊWKˆ[œZYİ\Ü[œÚ[ÛœËˆZ][Û”^[Y[ËˆZ][Û”™XÙZ\Ëˆ][™[˜ÙPØ[˜Ù[][ÛœÂˆNÂŸB‚˜\Ş[˜È[˜İ[ÛˆÛÛ[Z]Ü\˜][ÛœÊÜ\˜][ÛœÊHÂˆÛÛœİ[š\]YHHË‹‹›™]ÈX\
+Ü\˜][ÛœË›X\
+
+Ü\˜][ÛŠHOˆÛÜ\˜][Û‹œ™Y‹œ]Ü\˜][Û—JJK˜[Y\Ê
+WNÂˆ›Üˆ
+]Ù™œÙ]HÈÙ™œÙ][š\]YK›[™İÈÙ™œÙ]
+ÏH
+HÂˆÛÛœİ˜]ÚH‹˜˜]Ú
+
+NÂˆ[š\]YKœÛXÙJÙ™œÙ]Ù™œÙ]
+È
+K™›Ü‘XXÚ
+
+Ü\˜][ÛŠHOˆÂˆYˆ
+Ü\˜][Û‹˜Xİ[ÛˆOOH	Ù[]IÊH˜]Ú™[]JÜ\˜][Û‹œ™YŠNÂˆ[ÙH˜]ÚœÙ]
+Ü\˜][Û‹œ™Y‹Ü\˜][Û‹™]HßKÈY\™ÙNˆYHJNÂˆJNÂˆ]ØZ]˜]Ú˜ÛÛ[Z]
+
+NÂˆBŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[š[™[™ĞXİ[ÛŠ]JHÂˆÛÛœİ\HHÛX[Š]K\JNÂˆÛÛœİYHÛX[Š]KšY
+NÂˆYˆ
+VÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×Kš[˜ÛY\Ê\JHZY
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ùænùaiz,áù¥¦y.#yk£9¥m8à ‰ÊNÂˆÛÛœİXİ[ÛˆHÛX[Š]K˜Xİ[ÛŠNÂˆYˆ
+VÉØ\›İ™IË	Ü™Z™Xİ	Ë	Ü™]›ÚÙIË	Ü™\İÜ™IË	Ù›Ü˜ÙWÛÙÛİ]	Ë	Ù[]I×Kš[˜ÛY\ÊXİ[ÛŠJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù.#y¥+ù£í9æ¡9n,ú&gù¤ãy/g8à ‰ÊNÂˆBˆÛÛœİš[™[™Ô™YˆH‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ\JJK™ØÊY
+NÂˆÛÛœİš[™[™ÔÛ˜\ÚİH]ØZ]š[™[™Ô™Y‹™Ù]
+
+NÂˆYˆ
+Xš[™[™ÔÛ˜\Úİ™^\İÊH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yëa¹ænùaiz,áù¥¦xà ‰ÊNÂˆÛÛœİ›İÈHØš™Xİ˜\ÜÚYÛŠÈY\HKš[™[™ÔÛ˜\Úİ™]J
+HßJNÂˆÛÛœİ[™U\Ù\’YHÛX[Š›İË›[™U\Ù\’Y
+NÂˆÛÛœİ]]XØÛİ[YHÛX[Š›İË˜]]XØÛİ[Y
+NÂˆÛÛœİÙ\ÜÚ[Û”Û˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+Âˆ[™U\Ù\’YˆÈ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù\ÜÚ[ÛœÉÊKÚ\™J	Û[™U\Ù\’Y	Ë	ÏOIË[™U\Ù\’Y
+K™Ù]
+
+Bˆˆ›ÛZ\ÙKœ™\ÛÛ™JÈØÜÎˆ×HJKˆ]]XØÛİ[YˆÈ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù\ÜÚ[ÛœÉÊKÚ\™J	Ø]]XØÛİ[Y	Ë	ÏOIË]]XØÛİ[Y
+K™Ù]
+
+Bˆˆ›ÛZ\ÙKœ™\ÛÛ™JÈØÜÎˆ×HJBˆJNÂˆÛÛœİÙ\ÜÚ[Û“Ü\˜][ÛœÈHÙ\ÜÚ[Û”Û˜\ÚİË™›]X\
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜÊK›X\
+
+ØÊHOˆ
+ÂˆXİ[Ûˆ	ÜÙ]	Ëˆ™YˆØËœ™Y‹ˆ]NˆÂˆİ]\Îˆ	Ü™]›ÚÙY	Ëˆ™]›ÚÙY]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ™]›ÚÙY™X\ÛÛˆYZ[‹IØXİ[ÛŸXˆBˆJJNÂ‚ˆYˆ
+Xİ[ÛˆOOH	Ø\›İ™IÈXİ[ÛˆOOH	Ü™\İÜ™IÊHÂˆ]ØZ]š[™[™Ô™Y‹œÙ]
+Âˆİ]\Îˆ	ØXİ]™IËˆ\›İ˜[İ]\Îˆ	Ø\›İ™Y	Ëˆ\›İ™Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+Kˆ\›İ™Y]^ˆ›İÕ^
+
+Kˆ™Z™XİY]ˆ[ˆ™]›ÚÙY]ˆ[ˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆYˆ
+Xİ[ÛˆOOH	Ø\›İ™IÊH]ØZ]]Y]YPš[™[™ÑXÚ\Ú[Û“›İXÙJ›İËYJNÂˆ™]\›ˆÈÚÎˆYKİ]\Îˆ	ØXİ]™IËY\ÜØYÙNˆXİ[ÛˆOOH	Ø\›İ™IÈÈ	ùí yk¦¹mì¹¨.9aá¸à ‰Èˆ	ùn,ú&gùmì¹ h¹oªxà ‰ÈNÂˆB‚ˆYˆ
+Xİ[ÛˆOOH	Ü™Z™Xİ	ÈXİ[ÛˆOOH	Ü™]›ÚÙIÊHÂˆÛÛœİİ]\ÈHXİ[ÛˆOOH	Ü™Z™Xİ	ÈÈ	Ü™Z™XİY	Èˆ	Ü™]›ÚÙY	ÎÂˆ]ØZ]š[™[™Ô™Y‹œÙ]
+Âˆİ]\Ëˆ\›İ˜[İ]\ÎˆXİ[ÛˆOOH	Ü™Z™Xİ	ÈÈ	Ü™Z™XİY	ÈˆÛX[Š›İË˜\›İ˜[İ]\ÊKˆ™Z™XİY]ˆXİ[ÛˆOOH	Ü™Z™Xİ	ÈÈšY[˜[YKœÙ\™\•[Y\İ[\
+
+Hˆ[ˆ™Z™XİY]^ˆXİ[ÛˆOOH	Ü™Z™Xİ	ÈÈ›İÕ^
+
+Hˆ	ÉËˆ™]›ÚÙY]ˆXİ[ÛˆOOH	Ü™]›ÚÙIÈÈšY[˜[YKœÙ\™\•[Y\İ[\
+
+Hˆ[ˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆËÈ9kn9å'ûï#ùk­ºemùæ¡9d#9. 9`"ÈS‘H9cëú ïy.ãyí yk¦¹am¹.å¹kjykd;ï&ú,áù¥¦y«"ºfd9«ãù«(z`ïy§ úaãy¥¬ˆËÈ9/§y§"y¥b9í yk¦¹b)9¥­ûï#9fè9«i9e«¹ëa¹`g9å*9.#yo-ùb-¹ænùaî¹am¹.å¹kjykd8à ‚ˆYˆ
+\HOOH	ÜİY[	ÊH]ØZ]ÛÛ[Z]Ü\˜][ÛœÊÙ\ÜÚ[Û“Ü\˜][ÛœÊNÂˆYˆ
+Xİ[ÛˆOOH	Ü™Z™Xİ	ÊH]ØZ]]Y]YPš[™[™ÑXÚ\Ú[Û“›İXÙJ›İË˜[ÙJNÂˆ™]\›ˆÈÚÎˆYKİ]\ËY\ÜØYÙNˆXİ[ÛˆOOH	Ü™Z™Xİ	ÈÈ	ùí yk¦¹å,ú*âùmì¹¢ä¹íexà ‰Èˆ	ùn,ú&gùmì¹`g9å*8à ‰ÈNÂˆB‚ˆYˆ
+Xİ[ÛˆOOH	Ù›Ü˜ÙWÛÙÛİ]	ÊHÂˆ]ØZ]ÛÛ[Z]Ü\˜][ÛœÊÙ\ÜÚ[Û“Ü\˜][ÛœÊNÂˆ™]\›ˆÈÚÎˆYKİ]\ÎˆÛX[Š›İËœİ]\ÊKY\ÜØYÙNˆ	ù¢`9§"ymì¹ænùaiz(çyïk¹mì¹ænùaî¸à ‰ÈNÂˆB‚ˆYˆ
+Xİ[ÛˆOOH	Ù[]IÊHÂˆÛÛœİÛÛXİ[ÛœÈHÂˆ	ØÛİ\œÙTÜ[Ù\ÜÚ[ÛœÉËˆ	ØÛİ\œÙTÜ[XØÙ\ÜÕÚÙ[œÉËˆ	ØÛİ\œÙTÜ[[XZ[İÉËˆ	ØÛİ\œÙTÜ[š[™ÛÙ\ÉËˆ	ØÛİ\œÙTÜ[[™SÙÚ[ÛÙ\ÉËˆ	ØÛİ\œÙTÜ[[™SĞ]]İ]\ÉËˆ	ØÛİ\œÙTÜ[[™TÙ]\ÚÙ[œÉÂˆNÂˆÛÛœİÚX›[™ÔÛ˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+ˆÉİXXÚ\‰Ë	ÜİY[	Ë	Ü™[\‰×K›X\
+
+›ÛJHOˆ‹˜ÛÛXİ[ÛŠš[™[™ĞÛÛXİ[ÛŠ›ÛJJK™Ù]
+
+JBˆ
+NÂˆÛÛœİÚX›[™ÜÈHÚX›[™ÔÛ˜\ÚİË™›]X\
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜÊK™š[\Š
+ØÊHO‚ˆJØËœ™Y‹œ]OOHš[™[™Ô™Y‹œ]
+H	‰‚ˆ
+ˆ
+[™U\Ù\’Y	‰ˆÛX[ŠØË™]J
+K›[™U\Ù\’Y
+HOOH[™U\Ù\’Y
+Hˆ
+]]XØÛİ[Y	‰ˆÛX[ŠØË™]J
+K˜]]XØÛİ[Y
+HOOH]]XØÛİ[Y
+Bˆ
+Bˆ
+NÂˆÛÛœİY[]Tİ[\ÙYHÚX›[™ÜË›[™İˆÂˆÛÛœİ[™TÛ˜\ÚİÈH[™U\Ù\’Y	‰ˆZY[]Tİ[\ÙYˆÈ]ØZ]›ÛZ\ÙK˜[
+ÛÛXİ[ÛœË›X\
+
+˜[YJHOˆ‹˜ÛÛXİ[ÛŠ˜[YJKÚ\™J	Û[™U\Ù\’Y	Ë	ÏOIË[™U\Ù\’Y
+K™Ù]
+
+JJBˆˆ×NÂˆÛÛœİXØÛİ[Û˜\ÚİÈH]]XØÛİ[Y	‰ˆZY[]Tİ[\ÙYˆÈ]ØZ]›ÛZ\ÙK˜[
+Âˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[Ù\ÜÚ[ÛœÉÊKÚ\™J	Ø]]XØÛİ[Y	Ë	ÏOIË]]XØÛİ[Y
+K™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[XZ[İÉÊKÚ\™J	Ø]]XØÛİ[Y	Ë	ÏOIË]]XØÛİ[Y
+K™Ù]
+
+BˆJBˆˆ×NÂˆÛÛœİÜ\˜][ÛœÈHŞÈXİ[Ûˆ	Ù[]IË™Yˆš[™[™Ô™YˆWNÂˆË‹‹›[™TÛ˜\ÚİË‹‹˜XØÛİ[Û˜\Úİ×K™›Ü‘XXÚ
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÂˆÜ\˜][ÛœËœ\Ú
+ÈXİ[Ûˆ	Ù[]IË™YˆØËœ™YˆJNÂˆJJNÂˆÛÛœİ[XZ[H›Ü›X[^™Q[XZ[
+›İË™[XZ[
+NÂˆYˆ
+[XZ[	‰ˆZY[]Tİ[\ÙY
+HÂˆÛÛœİ[XZ[Û˜\ÚİÈH]ØZ]›ÛZ\ÙK˜[
+Âˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[[XZ[İÉÊKÚ\™J	Ù[XZ[›Ü›X[^™Y	Ë	ÏOIË[XZ[
+K™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[š[™ÛÙ\ÉÊKÚ\™J	Ù[XZ[›Ü›X[^™Y	Ë	ÏOIË[XZ[
+K™Ù]
+
+BˆJNÂˆ[XZ[Û˜\ÚİË™›Ü‘XXÚ
+
+Û˜\Úİ
+HOˆÛ˜\Úİ™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÂˆÛÛœİÛİ\˜ÙHHØË™]J
+HßNÂˆYˆ
+XÛX[ŠÛİ\˜ÙK\JHÛX[ŠÛİ\˜ÙK\JHOOH\JHÂˆÜ\˜][ÛœËœ\Ú
+ÈXİ[Ûˆ	Ù[]IË™YˆØËœ™YˆJNÂˆBˆJJNÂˆÉØš[™	Ë	ÛÙÚ[‰Ë	ØXØÛİ[	×K™›Ü‘XXÚ
+
+\œÜÙJHOˆÂˆÛÛœİÚ[™H[XZ[[İIÜ\œÜÙ_KIİ\_XÂˆÜ\˜][ÛœËœ\Ú
+ÂˆXİ[Ûˆ	Ù[]IËˆ™Yˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[˜]S[Z]ÉÊK™ØÊ\Ú
+	ÚÚ[™_	Ù[XZ[_	Øİ\œ™[Z\ZQ^J
+_X
+JBˆJNÂˆJNÂˆBˆYˆ
+\HOOH	Ü™[\‰È	‰ˆÛX[Š›İËœ™[\’Y
+JHÂˆÛÛœİ™[\”Û˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[\œÉÊK™ØÊÛX[Š›İËœ™[\’Y
+JK™Ù]
+
+NÂˆÛÛœİ™[\”Û™HH›Ü›X[^™TÛ™J™[\”Û˜\Úİ™^\İÈ	‰ˆ™[\”Û˜\Úİ™]J
+KœÛ™JNÂˆYˆ
+™[\”Û™JHÂˆÜ\˜][ÛœËœ\Ú
+ÂˆXİ[Ûˆ	Ù[]IËˆ™Yˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[˜]S[Z]ÉÊK™ØÊˆ\Ú
+™[\‹XÛÛXİ[ÙÚ[Ÿ	Ü™[\”Û™__	Øİ\œ™[Z\ZQ^J
+_X
+Bˆ
+BˆJNÂˆBˆBˆ]ØZ]ÛÛ[Z]Ü\˜][ÛœÊÜ\˜][ÛœÊNÂˆ™]\›ˆÂˆÚÎˆYKˆİ]\Îˆ	Ù[]Y	Ëˆ[]Y]]™XÛÜ™Îˆ™]ÈÙ]
+Ü\˜][ÛœË›X\
+
+Ü\˜][ÛŠHOˆÜ\˜][Û‹œ™Y‹œ]
+JKœÚ^™Kˆ™]Z[™Y\Ú[™\ÜÒ\İÜNˆYKˆ™]Z[™Yİ\š[™[™ÜÎˆY[]Tİ[\ÙYˆNÂˆBˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù.#y¥+ù£í9æ¡9n,ú&gù¤ãy/g8à ‰ÊNÂŸB‚˜\Ş[˜È[˜İ[ÛˆYZ[”İ\Ü[œÚ[ÛXİ[ÛŠ]JHÂˆÛÛœİYHÛX[Š]KšY
+NÂˆÛÛœİXİ[ÛˆHÛX[Š]K˜Xİ[ÛŠNÂˆYˆ
+ZYXİ[ÛˆOOH	ÜÙ]IÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ù`g:*¬¹kn:,®ùì/y¨.:,áù¥¦y.#yk£9¥m8à ‰ÊNÂˆBˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[İ\Ü[œÚ[ÛœÉÊK™ØÊY
+NÂˆÛÛœİÛ˜\ÚİH]ØZ]™Y‹™Ù]
+
+NÂˆYˆ
+\Û˜\Úİ™^\İÈÛX[ŠÛ˜\Úİ™]J
+Kœİ]\ÊHOOH	ØXİ]™IÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yëa¹`g:*¬º,áù¥¦xà ‰ÊNÂˆBˆ]ØZ]™Y‹œÙ]
+Âˆ^[Y[İ]\Îˆ	ÜÙ]Y	ËˆÙ]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KˆÙ]Y]^ˆ›İÕ^
+
+Kˆ\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆKÈY\™ÙNˆYHJNÂˆ™]\›ˆÈÚÎˆYKYY\ÜØYÙNˆ	ùmì¹è®º*£ykn:,®ùîlù®!xà ‰ÈNÂŸB‚™[˜İ[ÛˆXXÚ\”™[Z[™\‘]J˜[YJHÂˆÛÛœİ]HH]RÙ^J˜[YJNÂˆYˆ
+Y]JH™]\›ˆ	ÉÎÂˆÛÛœİË[Û^WHH]KœÜ]
+	ËIÊK›X\
+[X™\ŠNÂˆ™]\›ˆ	Û[Ûy§"	Ù^_y¥éXÂŸB‚™[˜İ[ÛˆXXÚ\”™[Z[™\“\ÜÛÛ•\J›İÊHÂˆÛÛœİXİ[ÛˆHÛX[Š›İËœÜ[Xİ[ÛŠNÂˆYˆ
+Xİ[ÛˆOOH	İXXÚ\—ÙÚY	ÊH™]\›ˆ	ú-":` z*¬¹ê"ÉÎÂˆYˆ
+Xİ[ÛˆOOH	İXXÚ\—ØY	ÊH™]\›ˆ	ùh§¹b¨:*¬¹ê"ÉÎÂˆYˆ
+ÉÜÚ[™ÛWÛ[İ™IË	Ü\›X[™[Û[İ™IË	Ü\›X[™[Ü›ÛÛWÙ^Ù\[Û‰×Kš[˜ÛY\ÊXİ[ÛŠJH™]\›ˆ	ú*¯ú*¬º*¬¹ê"ÉÎÂˆ™]\›ˆ	ùfî¹k¦º*¬¹ê"ÉÎÂŸB‚™[˜İ[ÛˆXXÚ\”™[Z[™\“\ÜÛÛ“[™J›İËX\ÊHÂˆÛÛœİİY[˜[Y\ÈH]™[İY[YÊ›İÊBˆ›X\
+
+İY[Y
+HOˆÛX[ŠX\ËœİY[ÖÜİY[YH	‰ˆX\ËœİY[ÖÜİY[YK›˜[YJJBˆ™š[\Š›ÛÛX[ŠBˆš›Ú[Š	øà IÊH	ùkn9å'ÉÎÂˆÛÛœİİXš™Xİ˜[YHHÛX[ŠX\ËœİXš™XİÖÙ]™[İXš™XİY
+›İÊWH	‰ˆX\ËœİXš™XİÖÙ]™[İXš™XİY
+›İÊWK›˜[YJHˆÛX[Š›İËœİXš™Xİ˜[YJH	ú*¬¹ê"ÉÎÂˆ™]\›ˆ	İXXÚ\”™[Z[™\‘]J]™[]J›İÊJ_H	Ù]™[İ\
+›İÊ_{ïg‰Ù]™[[™
+›İÊ_xà 	ÜİY[˜[Y\ß{ïg	ÜİXš™Xİ˜[Y_{ïg	İXXÚ\”™[Z[™\“\ÜÛÛ•\J›İÊ_XÂŸB‚˜\Ş[˜È[˜İ[ÛˆZ[UXXÚ\Ûİ\œÙT™[Z[™\œÊ\Ú[™SY\ÜØYÙJHÂˆYˆ
+\[Ùˆ\Ú[™SY\ÜØYÙHOOH	Ù[˜İ[Û‰ÊH™]\›ÂˆÛÛœİÙ^HHİ\œ™[Z\ZQ^J
+NÂˆÛÛœİY\İ\™^HHY^\ÊÙ^KLJNÂˆÛÛœİØš[™[™ÜË[™WHH]ØZ]›ÛZ\ÙK˜[
+Âˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\š[™[™ÜÉÊKÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊK™Ù]
+
+KˆØÚY[P[™JY\İ\™^KÙ^K	ÉÊBˆJNÂˆÛÛœİ\™Ù]ÈHË‹‹›™]ÈX\
+š[™[™ÜË™ØÜË›X\
+
+ØÊHOˆÂˆÛÛœİ›İÈHØË™]J
+HßNÂˆÛÛœİÙ^HH	ØÛX[Š›İËXXÚ\’Y
+__	ØÛX[Š›İË›[™U\Ù\’Y
+_XÂˆ™]\›ˆÚÙ^KØš™Xİ˜\ÜÚYÛŠÈYˆØËšYK›İÊWNÂˆJK™š[\Š
+ÚÙ^K›İ×JHO‚ˆÙ^HOOH	ß	È	‰ˆÛX[Š›İËXXÚ\’Y
+H	‰ˆÛX[Š›İË›[™U\Ù\’Y
+Bˆ
+JK˜[Y\Ê
+WNÂˆ›Üˆ
+ÛÛœİš[™[™ÈÙˆ\™Ù]ÊHÂˆÛÛœİXXÚ\’YHÛX[Šš[™[™ËXXÚ\’Y
+NÂˆÛÛœİ›İÜÈH[™Kœ™\Ûİ\˜ÙQ]™[Ë™š[\Š
+›İÊHO‚ˆ]™[XXÚ\’Y
+›İÊHOOHXXÚ\’Y	‰‚ˆVÉØØ[˜Ù[Y	Ë	Ü[™[™×ØÛÛ™›Xİ	×Kš[˜ÛY\Ê›Ü›X[^™TØÚY[Tİ]\Ê›İËœİ]\ÊJBˆ
+NÂˆÛÛœİÙ^T›İÜÈH›İÜË™š[\Š
+›İÊHOˆ]™[]J›İÊHOOHÙ^JBˆœÛÜ
+
+YšYÚ
+HOˆ]™[İ\
+Y
+K›ØØ[PÛÛ\\™J]™[İ\
+šYÚ
+JJNÂˆÛÛœİ[™š[š\ÚYH›İÜË™š[\Š
+›İÊHO‚ˆ]™[]J›İÊHOOHY\İ\™^H	‰‚ˆ›Ü›X[^™TØÚY[Tİ]\Ê›İËœİ]\ÊHOOH	ÜØÚY[Y	Âˆ
+KœÛÜ
+
+YšYÚ
+HOˆ]™[İ\
+Y
+K›ØØ[PÛÛ\\™J]™[İ\
+šYÚ
+JJNÂˆÛÛœİ\ÈHÂˆ	øà$9.â¹¥éz*¬¹ê"øà$IËˆÙ^T›İÜË›[™İˆÈÙ^T›İÜË›X\
+
+›İÊHOˆXXÚ\”™[Z[™\“\ÜÛÛ“[™J›İË[™K›X\ÊJKš›Ú[Š	×‰ÊBˆˆ	ù.â¹¥éyá(z*¬¹ê"ÉÂˆNÂˆYˆ
+[™š[š\ÚY›[™İ
+HÂˆ\Ëœ\Ú
+ˆ	ÉËˆ	øà$9¦*9¥éy§*¹k£9¢$9í :c!8à$IËˆ[™š[š\ÚY›X\
+
+›İÊHOˆXXÚ\”™[Z[™\“\ÜÛÛ“[™J›İË[™K›X\ÊJKš›Ú[Š	×‰ÊKˆ[™š[š\ÚY›[™İOOHBˆÈ	ù«i:*¬¹ê"ù¦*9¥éy§*¹k£9¢$9ì/yb,;ï#9fè9«i9l&¹§*º*&:c!9h ¹¥n8à º"éyåm¹i*y¬¤¹§"y."º*¬»ï#:*âù."ù«(z*&9o¥ù..ùbåyænú*&:*âù`aûï&ú"éy§"y."º*¬»ï#:*âú  yn*ú`,¹aiz*¬º(j9k£9¢$:(ç9ì/yb,8à ‰Âˆˆ	ù.éy."º*¬¹ê"ù¦*9¥éy§*¹k£9¢$9ì/yb,;ï#9fè9«i9l&¹§*º*&:c!9h ¹¥n8à º"éyåm¹i*y¬¤¹§"y."º*¬»ï#:*âù."ù«(z*&9o¥ù..ùbåyænú*&:*âù`aûï&ú"éy§"y."º*¬»ï#:*âú  yn*ú`,¹aiz*¬º(j9k£9¢$:(ç9ì/yb,8à ‰Âˆ
+NÂˆBˆÛÛœİ›ÙHH\Ëš›Ú[Š	×‰ÊNÂˆÛÛœİÙÔ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[Z[™\“ÙÜÉÊK™ØÊˆ\Ú
+XXÚ\‹YZ[_	İÙ^__	İXXÚ\’Y_	ØÛX[Šš[™[™Ë›[™U\Ù\’Y
+_X
+Bˆ
+NÂˆYˆ
+
+]ØZ]ÙÔ™Y‹™Ù]
+
+JK™^\İÊHÛÛ[YNÂˆ]ØZ]\Ú[™SY\ÜØYÙJÛX[Šš[™[™Ë›[™U\Ù\’Y
+K›ÙJNÂˆ]ØZ]ÙÔ™Y‹œÙ]
+Âˆ^NˆÙ^KˆXXÚ\’Yˆ[™U\Ù\’YˆÛX[Šš[™[™Ë›[™U\Ù\’Y
+Kˆ\Nˆ	İXXÚ\—ÙZ[WØÛİ\œÙ\ÉËˆY\ÜØYÙ\ÎˆØ›ÙWKˆÙ[]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆJNÂˆBŸB‚˜\Ş[˜È[˜İ[ÛˆZ[TİY[™[Z[™\œÊ\Ú[™SY\ÜØYÙJHÂˆYˆ
+\[Ùˆ\Ú[™SY\ÜØYÙHOOH	Ù[˜İ[Û‰ÊH™]\›ÂˆÛÛœİÙ^HHİ\œ™[Z\ZQ^J
+NÂˆÛÛœİØš[™[™ÜË\š[ÙËİY[ËİXš™XİËXXÚ\œËš^YÛİ\œÙ\Ë[\Ü˜\PÛİ\œÙ\Ë]™[Ëİ\Ü[œÚ[Û”Û˜\ÚİHH]ØZ]›ÛZ\ÙK˜[
+Âˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[š[™[™ÜÉÊKÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊK™Ù]
+
+KˆZ\œ›Ü”›İÜÊ	İZ][Û”\š[ÙÉÊKˆZ\œ›Ü”›İÜÊ	ÜİY[ÉÊKˆZ\œ›Ü”›İÜÊ	ÜİXš™XİÉÊKˆZ\œ›Ü”›İÜÊ	İXXÚ\œÉÊKˆZ\œ›Ü”›İÜÊ	Ùš^YÛİ\œÙ\ÉÊKˆZ\œ›Ü”›İÜÊ	İ[\Ü˜\PÛİ\œÙ\ÉÊKˆZ\œ›Ü”›İÜĞQ]T˜[™ÙJ	Ù]™[ÉËÙ^KY^\ÊÙ^KLŒ
+JKˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[İ\Ü[œÚ[ÛœÉÊKÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊK™Ù]
+
+BˆJNÂˆÛÛœİX\›š[™ÒYÈHXİ]™SX\›š[™ÔİY[YÊˆİY[ËˆË‹‹™š^YÛİ\œÙ\Ë‹‹[\Ü˜\PÛİ\œÙ\×Kˆ]™[Ëˆİ\Ü[œÚ[Û”Û˜\Úİ™ØÜË›X\
+
+ØÊHOˆØË™]J
+HßJBˆ
+NÂˆÛÛœİİY[X\H[™^RY
+İY[ÊNÂˆÛÛœİ[X™\™Y\š[ÙÈH]ØZ]\ÜÚYÛ“™]ÔŞ\İ[T\š[Ù[X™\œÊ\š[ÙÊNÂˆ]ØZ][œİ\™UZ][Û”^[Y[™\]Y\İÊÂˆ\š[ÙÎˆ[X™\™Y\š[ÙËˆİY[ËˆİXš™XİËˆXXÚ\œËˆİY[YÎˆİY[Ë›X\
+Ûİ\˜ÙRY
+K™š[\Š
+İY[Y
+HOˆX\›š[™ÒYËš\ÊİY[Y
+JBˆJNÂˆÛÛœİ^[Y[Û˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠRUSÓ—ÔVSQS•Ô‘TUQTÕÊBˆÚ\™J	Üİ]\ÉË	ÏOIË	Ü^[Y[ÙYIÊBˆ™Ù]
+
+NÂˆÛÛœİ^[Y[™\]Y\İÈH^[Y[Û˜\Úİ™ØÜË›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÂˆYˆØËšYˆKØË™]J
+HßJJK™š[\Š
+›İÊHOˆ›İË˜Xİ]™HOOH˜[ÙJNÂˆÛÛœİ^HH™]È[‘]U[YQ›Ü›X]
+	Ù[‹PĞIËÂˆ[YV›Û™NˆRTRKYX\ˆ	Û[Y\šXÉË[Ûˆ	Ì‹YYÚ]	Ë^Nˆ	Ì‹YYÚ]	ÂˆJK™›Ü›X]
+™]È]J
+JNÂˆ›Üˆ
+ÛÛœİØÈÙˆš[™[™ÜË™ØÜÊHÂˆÛÛœİš[™[™ÈHØË™]J
+HßNÂˆYˆ
+XÛX[Šš[™[™Ë›[™U\Ù\’Y
+JHÛÛ[YNÂˆÛÛœİİY[YHÛX[Šš[™[™ËœİY[Y
+NÂˆYˆ
+[X\›š[™ÒYËš\ÊİY[Y
+JHÛÛ[YNÂˆÛÛœİİY[\š[ÙÈH[X™\™Y\š[ÙË™š[\Š
+›İÊHOˆÛX[Š›İËœİY[Y
+HOOHİY[Y	‰ˆVÉØÛÜÙY	Ë	ØÛÛ\]Y	×Kš[˜ÛY\ÊÛX[Š›İËœİ]\ÊKÓİÙ\Ø\ÙJ
+JJNÂˆÛÛœİ\İ\ÜÛÛˆHİY[\š[ÙË™š[™
+
+›İÊHOˆ[X™\Š›İË›\ÜÛÛÛİ[
+HH[X™\Š›İË\ÙYÛİ[
+HOOHJNÂˆÛÛœİ˜[YHHÛX[ŠİY[X\ÜİY[YH	‰ˆİY[X\ÜİY[YK›˜[YJH	ùkn9å'ÉÎÂˆYˆ
+š[™[™Ëœ™[Z[™\“\İ\ÜÛÛˆOOH˜[ÙH	‰ˆ\İ\ÜÛÛŠHÂˆÛÛœİY\ÜØYÙHH	ùæë¹bcz*¬¹ê"ùbjy§ 9o£9. 9h »ï#:*âùåfy¡#ùî£:*¬¹k¢y£¤¸à ‰ÎÂˆÛÛœİÙÔ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[Z[™\“ÙÜÉÊK™ØÊˆ\Ú
+	Ù^__	ÜİY[Y_	Øš[™[™Ë›[™U\Ù\’Y_	ÛY\ÜØYÙ_X
+Bˆ
+NÂˆYˆ
+J]ØZ]ÙÔ™Y‹™Ù]
+
+JK™^\İÊHÂˆ]ØZ]\Ú[™SY\ÜØYÙJš[™[™Ë›[™U\Ù\’Y	Û˜[Y_z*¬¹bæy£ä:a¤—‰ÛY\ÜØYÙ_X
+NÂˆ]ØZ]ÙÔ™Y‹œÙ]
+Âˆ^KˆİY[Yˆ[™U\Ù\’Yˆš[™[™Ë›[™U\Ù\’YˆY\ÜØYÙ\ÎˆÛY\ÜØYÙWKˆÙ[]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆJNÂˆBˆBˆYˆ
+š[™[™Ëœ™[Z[™\”^[Y[OOH˜[ÙJHÛÛ[YNÂˆÛÛœİYT™\]Y\İÈH^[Y[™\]Y\İË™š[\Š
+›İÊHO‚ˆÛX[Š›İËœİY[Y
+HOOHİY[Y	‰‚ˆÛX[Š›İËœİ]\ÊHOOH	Ü^[Y[ÙYIÂˆ
+NÂˆ›Üˆ
+ÛÛœİ™\]Y\İ›İÈÙˆYT™\]Y\İÊHÂˆÛÛœİÙÔ™YˆH‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[™[Z[™\“ÙÜÉÊK™ØÊˆ\Ú
+Z][Û‹YY_	ØÛX[Š™\]Y\İ›İËšY
+__	ØÛX[Šš[™[™Ë›[™U\Ù\’Y
+_X
+Bˆ
+NÂˆYˆ
+
+]ØZ]ÙÔ™Y‹™Ù]
+
+JK™^\İÊHÛÛ[YNÂˆÛÛœİ[[İ[H[X™\Š™\]Y\İ›İË™^XİY[[İ[
+KÓØØ[Tİš[™Ê	ŞšUÉÊNÂˆÛÛœİ›ÙHHÂˆ9 ª9io{ï#	Û˜[Y_yæ¡	Û™]ÔŞ\İ[UZ][Û”\š[ÙX™[
+™\]Y\İ›İË	Øİ\œ™[	Ê_z*¬¹ê"ùmì¹k£9¢$9ë+	Ó[X™\Š™\]Y\İ›İËšYÙÙ\“\ÜÛÛÛİ[
+_H9h ¸à ˜ˆ	ÉËˆ9."ù. 9§'ûï&‰Û™]ÔŞ\İ[UZ][Û”\š[ÙX™[
+™\]Y\İ›İË	Û™^	Ê_Xˆ:*¬¹ê"ûï&‰ØÛX[Š™\]Y\İ›İËœİXš™Xİ˜[YJH	ú*¬¹ê"ÉßXˆ9kn:,®ûï&“•		Ø[[İ[Xˆ	ÉËˆ	ùcëú`n9¤áú/byn,ùîlú,®ù¢%¹ãï¹h-9îlú,®ûï#:*âúnç¹¤â¹."ù¥®z`(ùíd9§éyç"ùîlú,®ú,áù¥¦xà ‰Ëˆ	ù«/ºh!zg 9í¤ù§æ¹kd9ª ¹fj9è®º*£yo£;ï#9¢cy§ ù«hùo#úhkùé.¹à®¹îlú,®ùk£9¢$8à ‰Ëˆ	ÔÔ•SĞTÑ_KÜİY[XÛİ\œÙK\Ü[š[ÜİY[YIÙ[˜ÛÙUT’PÛÛ\Û™[
+İY[Y
+_XˆKš›Ú[Š	×‰ÊNÂˆ]ØZ]\Ú[™SY\ÜØYÙJš[™[™Ë›[™U\Ù\’Y›ÙJNÂˆ]ØZ]ÙÔ™Y‹œÙ]
+Âˆ^KˆİY[Yˆ[™U\Ù\’Yˆš[™[™Ë›[™U\Ù\’YˆZ][Û”^[Y[™\]Y\İYˆÛX[Š™\]Y\İ›İËšY
+KˆY\ÜØYÙ\ÎˆØ›ÙWKˆÙ[]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆJNÂˆBˆBŸB‚˜\Ş[˜È[˜İ[Ûˆ\[™Ûİ\œÙTÜ[]J^[ØY
+HÂˆYˆ
+\^[ØY\[Ùˆ^[ØYOOH	ÛØš™Xİ	ÊH™]\›ˆ^[ØYÂˆÛÛœİÂˆÚ[™Ù\Ëˆ›ÛÚÚ[™ÜËˆ›ÛÛTÙ][™ÜËˆİY[›Ùš[\Ëˆİ\Ü[œÚ[ÛœËˆÜ[\š[ÙËˆÜ[˜[œØXİ[ÛœËˆÜ[™XÙZ\ËˆÜ[][™[˜ÙTÛ˜\ÚİˆÜ[^\›ÛÛ˜\ÚİˆÜ[Y\İY[ÔÛ˜\Úİˆ\›İ™YØ[˜Ù[][Û”Û˜\ÚİˆHH]ØZ]›ÛZ\ÙK˜[
+Âˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[ØÚY[PÚ[™Ù\ÉÊKÚ\™J	ØXİ]™IË	ÏOIËYJK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛP›ÛÚÚ[™ÜÉÊKÚ\™J	ØXİ]™IË	ÏOIËYJK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[›ÛÛTÙ][™ÜÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[›Ùš[\ÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[İY[İ\Ü[œÚ[ÛœÉÊKÚ\™J	Üİ]\ÉË	ÏOIË	ØXİ]™IÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠRUSÓ—ÔT’SÑÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠRUSÓ—ÕS”ĞPÕSÓ”ÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠRUSÓ—Ô‘PÑRTÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠUS‘SÑWÔ‘PÓÔ‘ÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠUS‘SÑWÔVT“Ó
+K™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠ	ØÛİ\œÙTÜ[XXÚ\Y\İY[ÉÊK™Ù]
+
+Kˆ‹˜ÛÛXİ[ÛŠUS‘SÑWĞĞSÑSUSÓ”ÊKÚ\™J	Üİ]\ÉË	ÏOIË	Ø\›İ™Y	ÊK™Ù]
+
+BˆJNÂˆÛÛœİ›ÛÛTÙ][™ÜÓX\H™]ÈX\
+›ÛÛTÙ][™ÜË™ØÜË›X\
+
+ØÊHOˆÙØËšYœÛÛ•˜[YJØË™]J
+JHßWJJNÂˆÛÛœİİY[›Ùš[SX\H™]ÈX\
+İY[›Ùš[\Ë™ØÜË›X\
+
+ØÊHOˆÙØËšYœÛÛ•˜[YJØË™]J
+JHßWJJNÂˆYˆ
+\œ˜^Kš\Ğ\œ˜^J^[ØYœİY[ÊJHÂˆ^[ØYœİY[ÈH^[ØYœİY[Ë›X\
+
+İY[
+HOˆÂˆÛÛœİ›Ùš[HHİY[›Ùš[SX\™Ù]
+Ûİ\˜ÙRY
+İY[
+JNÂˆYˆ
+\›Ùš[H›Ùš[K˜Xİ]™HOOH˜[ÙJH™]\›ˆİY[ÂˆÛÛœİY\™ÙYHØš™Xİ˜\ÜÚYÛŠßKİY[
+NÂˆYˆ
+ÛX[Š›Ùš[K›˜[YJJHY\™ÙY›˜[YHHÛX[Š›Ùš[K›˜[YJNÂˆYˆ
+›Ü›X[^™TÛ™J›Ùš[KœÛ™JJHY\™ÙYœÛ™HH›Ü›X[^™TÛ™J›Ùš[KœÛ™JNÂˆ™]\›ˆY\™ÙYÂˆJNÂˆBˆÛÛœİZ\œ›Ü][™[˜ÙHH\œ˜^Kš\Ğ\œ˜^J^[ØY˜][™[˜ÙJHÈ^[ØY˜][™[˜ÙHˆ×NÂˆÛÛœİÜ[][™[˜ÙT›İÜÈHÜ[][™[˜ÙTÛ˜\Úİ™ØÜË›X\
+
+ØÊHO‚ˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJBˆ
+NÂˆ^[ØY˜][™[˜ÙHHY\™ÙTÜ[][™[˜ÙT›İÜÊZ\œ›Ü][™[˜ÙKÜ[][™[˜ÙT›İÜÊNÂˆYˆ
+\œ˜^Kš\Ğ\œ˜^J^[ØYZ][Û”\š[ÙÊJHÂˆ^[ØYZ][Û”\š[ÙÈH\TÜ[][™[˜ÙUÔ\š[ÙÊY\™ÙTÜ[Z][Û”›İÜÊˆ^[ØYZ][Û”\š[ÙËˆÜ[\š[ÙË™ØÜËˆÜ[˜[œØXİ[ÛœË™ØÜËˆÜ[™XÙZ\Ë™ØÜÂˆ
+KZ\œ›Ü][™[˜ÙKÜ[][™[˜ÙT›İÜÊNÂˆBˆÛÛœİÜ[^\›Û›İÜÈHÜ[^\›ÛÛ˜\Úİ™ØÜË›X\
+
+ØÊHO‚ˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJBˆ
+NÂˆÛÛœİ\›İ™YØ[˜Ù[][ÛœÈH\›İ™YØ[˜Ù[][Û”Û˜\Úİ™ØÜË›X\
+
+ØÊHO‚ˆØš™Xİ˜\ÜÚYÛŠÈYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJBˆ
+NÂˆ^[ØYXXÚ\”^\›ÛHY\™ÙUXXÚ\”^\›Û›İÜÊˆ[œšXÚXXÚ\”^\›Û›İÜÊ\œ˜^Kš\Ğ\œ˜^J^[ØYXXÚ\”^\›Û
+HÈ^[ØYXXÚ\”^\›Ûˆ×KZ\œ›Ü][™[˜ÙJKˆÜ[^\›Û›İÜËˆ\›İ™YØ[˜Ù[][ÛœË˜ÛÛ˜Ø]
+Ü[^\›Û›İÜË™š[\Š
+›İÊHOˆ›İË˜Xİ]™HOOH˜[ÙJJBˆ
+NÂˆ^[ØYXXÚ\Y\İY[ÈHY\™ÙUXXÚ\Y\İY[›İÜÊˆ\œ˜^Kš\Ğ\œ˜^J^[ØYXXÚ\Y\İY[ÊHÈ^[ØYXXÚ\Y\İY[Èˆ×KˆÜ[Y\İY[ÔÛ˜\Úİ™ØÜË›X\
+
+ØÊHO‚ˆØš™Xİ˜\ÜÚYÛŠÈ×ÚYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJBˆ
+Bˆ
+NÂˆYˆ
+\œ˜^Kš\Ğ\œ˜^J^[ØYœ›ÛÛ\ÊJHÂˆ^[ØYœ›ÛÛ\ÈH^[ØYœ›ÛÛ\Ë›X\
+
+›ÛÛJHOˆÂˆÛÛœİÙ][™ÈH›ÛÛTÙ][™ÜÓX\™Ù]
+Ûİ\˜ÙRY
+›ÛÛJJNÂˆYˆ
+\Ù][™ÊH™]\›ˆ›ÛÛNÂˆÛÛœİY\™ÙYHØš™Xİ˜\ÜÚYÛŠßK›ÛÛJNÂˆYˆ
+ÛX[ŠÙ][™ËœX›XÓ˜[YJJHÂˆY\™ÙY›˜[YHHÛX[ŠÙ][™ËœX›XÓ˜[YJNÂˆY\™ÙYœX›XÓ˜[YHHÛX[ŠÙ][™ËœX›XÓ˜[YJNÂˆBˆÂˆ	Û›İIËˆ	Ü™[[™YIËˆ	ØØ\XÚ]IËˆ	ØXİ]™IËˆ	Ü™[X›IËˆ	İXXÚ\”ØÚY[X›IËˆ	Ø[İÙYİXš™XİYÉËˆ	Ü™[[\ÙU\\ÉËˆ	Ü™[[\]Z\Y[	Ëˆ	ÜX[›Õ\IËˆ	ÚÚ[™	Ëˆ	Ü›ÛÛRÚ[™	Ëˆ	ÜÛXÚY\ÉËˆ	Ü›ÛÛT[\Õ™\œÚ[Û‰ÂˆK™›Ü‘XXÚ
+
+Ù^JHOˆÂˆYˆ
+Øš™Xİœ›İİ\Kš\ÓİÛ”›Ü\K˜Ø[
+Ù][™ËÙ^JJHY\™ÙYÚÙ^WHHÙ][™ÖÚÙ^WNÂˆJNÂˆ™]\›ˆY\™ÙYÂˆJNÂˆBˆÛÛœİÚ[™ÙT›İÜÈHÚ[™Ù\Ë™ØÜË›X\
+
+ØÊHOˆØš™Xİ˜\ÜÚYÛŠÈYˆØËšYKœÛÛ•˜[YJØË™]J
+JHßJJNÂˆÛÛœİ™[[İ™YH™]ÈÙ]
+Ú[™ÙT›İÜË™š[\Š
+›İÊHO‚ˆÉÜÚ[™ÛWÛ[İ™IË	ØØ[˜Ù[	Ë	Û\ÜÛÛ—Üİ]\É×Kš[˜ÛY\ÊÛX[Š›İË˜Xİ[ÛŠJBˆ
+Bˆ™›]X\
+
+›İÊHOˆÂˆ	ØÛX[Š›İËœÛİ\˜ÙQ]™[Y
+__	Ù]RÙ^J›İËœÛİ\˜ÙQ]J_Xˆ	ØÛX[Š›İËœÛİ\˜ÙPÛİ\œÙRY
+__	Ù]RÙ^J›İËœÛİ\˜ÙQ]J_XˆJJNÂˆYˆ
+\œ˜^Kš\Ğ\œ˜^J^[ØY™]™[ÊJHÂˆ^[ØY™]™[ÈH^[ØY™]™[Ë™š[\Š
+›İÊHO‚ˆ\™[[İ™Yš\Ê	ÜÛİ\˜ÙRY
+›İÊ__	Ù]™[]J›İÊ_X
+H	‰‚ˆ\™[[İ™Yš\Ê	ØÛX[Š›İË™š^YÛİ\œÙRY›İËœÛİ\˜ÙPÛİ\œÙRY›İË˜Ûİ\œÙRY›İËœØÚY[RY
+__	Ù]™[]J›İÊ_X
+Bˆ
+NÂˆBˆ^[ØY™š^YÛİ\œÙ\ÈH\œ˜^Kš\Ğ\œ˜^J^[ØY™š^YÛİ\œÙ\ÊHÈ^[ØY™š^YÛİ\œÙ\Èˆ×NÂˆÚ[™ÙT›İÜË™š[\Š
+›İÊHO‚ˆÉÜÚ[™ÛWÛ[İ™IË	ØØ[˜Ù[	Ë	Û\ÜÛÛ—Üİ]\É×Kš[˜ÛY\ÊÛX[Š›İË˜Xİ[ÛŠJBˆ
+K™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİÛİ\œÙHH^[ØY™š^YÛİ\œÙ\Ë™š[™
+
+][JHO‚ˆÛİ\˜ÙRY
+][JHOOHÛX[Š›İËœÛİ\˜ÙPÛİ\œÙRY›İËœÛİ\˜ÙQ]™[Y
+Bˆ
+NÂˆYˆ
+XÛİ\œÙHY]RÙ^J›İËœÛİ\˜ÙQ]JJH™]\›ÂˆÛÛœİİ]\ÈH›İË˜Xİ[ÛˆOOH	Û\ÜÛÛ—Üİ]\ÉÂˆÈ›Ü›X[^™TØÚY[Tİ]\Ê›İË™]™[	‰ˆ›İË™]™[œİ]\ÊBˆˆ	ØØ[˜Ù[Y	ÎÂˆÛİ\œÙKœİ]\ĞQ]HHØš™Xİ˜\ÜÚYÛŠßKÛİ\œÙKœİ]\ĞQ]HßKÂˆÙ]RÙ^J›İËœÛİ\˜ÙQ]JWNˆÈİ]\ËÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[	ÈBˆJNÂˆJNÂˆ^[ØY[\Ü˜\PÛİ\œÙ\ÈH\œ˜^Kš\Ğ\œ˜^J^[ØY[\Ü˜\PÛİ\œÙ\ÊHÈ^[ØY[\Ü˜\PÛİ\œÙ\Èˆ×NÂˆÛÛœİ\›X[™[Ü›İ\ÈH™]ÈX\
+
+NÂˆY™™Xİ]™T\›X[™[Ú[™Ù\ÊÚ[™ÙT›İÜÊK™›Ü‘XXÚ
+
+›İÊHOˆÂˆÛÛœİ[™XYÙHH\›X[™[[™XYÙJ›İÊNÂˆYˆ
+[[™XYÙJH™]\›ÂˆYˆ
+\\›X[™[Ü›İ\Ëš\Ê[™XYÙJJH\›X[™[Ü›İ\ËœÙ]
+[™XYÙK×JNÂˆ\›X[™[Ü›İ\Ë™Ù]
+[™XYÙJKœ\Ú
+›İÊNÂˆJNÂˆ\›X[™[Ü›İ\Ë™›Ü‘XXÚ
+
+›İÜË[™XYÙJHOˆÂˆÛÛœİÛİ\œÙHH^[ØY™š^YÛİ\œÙ\Ë™š[™
+
+][JHOˆÛİ\˜ÙRY
+][JHOOH[™XYÙJNÂˆËÈ9n¥yli9fî¹k¦º*¬¹mì¹`g9å*9¢%¹.#ykf9g*9¦`»ï#9.#ya£y¢¢º""ˆÜ[:+¢¹¦í9oªy­.ù¢$9á(y§'úfd9nozgb:*¬¹ê"øà ‚ˆYˆ
+XÛİ\œÙH\Ûİ\˜ÙPXİ]™JÛİ\œÙJJH™]\›ÂˆÛÛœİÜšYÚ[˜[[™]HH]RÙ^JÛİ\œÙKœ™Xİ\œ™[˜ÙQ[™]HÛİ\œÙK™[™]JNÂˆÛÛœİÛİ\œÙU[\]HHØš™Xİ˜\ÜÚYÛŠßKÛİ\œÙKÂˆİ]\ĞQ]NˆØš™Xİ˜\ÜÚYÛŠßKÛİ\œÙKœİ]\ĞQ]HÛİ\œÙK™^Ù\[ÛœÈßJBˆJNÂˆ]Xİ]™Tİ]\ĞQ]HHØš™Xİ˜\ÜÚYÛŠßKÛİ\œÙU[\]Kœİ]\ĞQ]JNÂˆÛÛœİÜ™\™YH›İÜË›X\
+
+›İÊHOˆØš™Xİ˜\ÜÚYÛŠßK›İËÂˆ×Øİ]İ™\‘]Nˆ]RÙ^J›İË˜İ]İ™\‘]H›İËœÛİ\˜ÙQ]H›İË™Y™™Xİ]™Q]JKˆ×Ø[˜ÚÜ‘]Nˆ]RÙ^J›İË˜[˜ÚÜ‘]H]™[]J›İË™]™[
+H›İË™Y™™Xİ]™Q]JBˆJJK™š[\Š
+›İÊHO‚ˆ›İË—×Øİ]İ™\‘]H	‰‚ˆ›İË—×Ø[˜ÚÜ‘]H	‰‚ˆ
+[ÜšYÚ[˜[[™]H›İË—×Øİ]İ™\‘]HHÜšYÚ[˜[[™]JBˆ
+KœÛÜ
+
+YšYÚ
+HOˆY—×Øİ]İ™\‘]K›ØØ[PÛÛ\\™JšYÚ—×Øİ]İ™\‘]JJNÂˆYˆ
+[Ü™\™Y›[™İ
+H™]\›ÂˆÛİ\œÙKœ™Xİ\œ™[˜ÙQ[™]HHY^\ÊÜ™\™YÌK—×Øİ]İ™\‘]KLJNÂˆÛİ\œÙK™[™]HHY^\ÊÜ™\™YÌK—×Øİ]İ™\‘]KLJNÂˆÜ™\™Y™›Ü‘XXÚ
+
+›İË[™^
+HOˆÂˆÛÛœİ™^İ]İ™\ˆHÜ™\™YÚ[™^
+ÈWH	‰ˆÜ™\™YÚ[™^
+ÈWK—×Øİ]İ™\‘]NÂˆÛÛœİİÜ™Y[™H]RÙ^J›İËœ™Xİ\œ™[˜ÙQ[™]H›İË™]™[œ™Xİ\œ™[˜ÙQ[™]HÜšYÚ[˜[[™]JNÂˆÛÛœİ[™Ø[™Y]\ÈHÂˆÜšYÚ[˜[[™]KˆİÜ™Y[™ˆ™^İ]İ™\ˆÈY^\Ê™^İ]İ™\‹LJHˆ	ÉÂˆK™š[\Š›ÛÛX[ŠKœÛÜ
+
+NÂˆÛÛœİÙYÛY[[™H[™Ø[™Y]\ÖÌH	ÉÎÂˆYˆ
+ÙYÛY[[™	‰ˆ›İË—×Ø[˜ÚÜ‘]HˆÙYÛY[[™
+H™]\›ÂˆÛÛœİœ™\]Y[˜ŞUÙYZÜÈHØY™Qœ™\]Y[˜ŞUÙYZÜÊ›İË™œ™\]Y[˜ŞUÙYZÜÈ›İË™]™[™œ™\]Y[˜ŞUÙYZÜÊNÂˆXİ]™Tİ]\ĞQ]HH˜[œÛ]T™Xİ\œš[™Ôİ]\ÓX\
+ˆXİ]™Tİ]\ĞQ]Kˆ›İË—×Øİ]İ™\‘]Kˆ›İË—×Ø[˜ÚÜ‘]Kˆœ™\]Y[˜ŞUÙYZÜÂˆ
+NÂˆÛÛœİİ]\ĞQ]HHØš™Xİ˜\ÜÚYÛŠßKXİ]™Tİ]\ĞQ]JNÂˆ
+›İËœ[™[™Ñ]\È×JK™›Ü‘XXÚ
+
+Ù^JHOˆÂˆİ]\ĞQ]VÚÙ^WHHÈİ]\Îˆ	Ü[™[™×ØÛÛ™›Xİ	ËÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[\[™[™ÉÈNÂˆJNÂˆØš™XİšÙ^\Ê›İËœ›ÛÛSİ™\œšY\ÈßJK™›Ü‘XXÚ
+
+Ù^JHOˆÂˆİ]\ĞQ]VÚÙ^WHHÈİ]\Îˆ	ØØ[˜Ù[Y	ËÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[\›ÛÛK[İ™\œšYIÈNÂˆJNÂˆ^[ØY™š^YÛİ\œÙ\Ëœ\Ú
+Øš™Xİ˜\ÜÚYÛŠßKÛİ\œÙU[\]K›İË™]™[ÂˆYˆ›İËšYˆİ\]Nˆ›İË—×Ø[˜ÚÜ‘]Kˆ]Nˆ›İË—×Ø[˜ÚÜ‘]Kˆİ\ˆ]™[İ\
+›İË™]™[
+Kˆ\˜][ÛˆX]›X^
+Ì[YSZ[]\Ê]™[[™
+›İË™]™[
+JHH[YSZ[]\Ê]™[İ\
+›İË™]™[
+JJKˆ\Nˆ	Ùš^Y	Ëˆ™Xİ\œš[™ÎˆYKˆœ™\]Y[˜ŞUÙYZÜËˆ™Xİ\œ™[˜ÙQ[™]NˆÙYÛY[[™ˆ[™]NˆÙYÛY[[™ˆİ]\ĞQ]KˆÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[	ËˆÜ[Xİ[Ûˆ	Ü\›X[™[Û[İ™IËˆİ]İ™\‘]Nˆ›İË—×Øİ]İ™\‘]Kˆ[˜ÚÜ‘]Nˆ›İË—×Ø[˜ÚÜ‘]BˆJJNÂˆØš™XİšÙ^\Ê›İËœ›ÛÛSİ™\œšY\ÈßJK™›Ü‘XXÚ
+
+Ù^JHOˆÂˆ^[ØY[\Ü˜\PÛİ\œÙ\Ëœ\Ú
+Øš™Xİ˜\ÜÚYÛŠßK›İË™]™[ÂˆYˆ	Ü›İËšYK\›ÛÛKIÚÙ^_Xˆ]NˆÙ^Kˆİ\ˆ]™[İ\
+›İË™]™[
+Kˆ\˜][ÛˆX]›X^
+Ì[YSZ[]\Ê]™[[™
+›İË™]™[
+JHH[YSZ[]\Ê]™[İ\
+›İË™]™[
+JJKˆ›ÛÛRYˆ›İËœ›ÛÛSİ™\œšY\ÖÚÙ^WKˆ\Nˆ	İ[\Ü˜\IËˆÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[	ËˆÜ[Xİ[Ûˆ	Ü\›X[™[Ü›ÛÛWÙ^Ù\[Û‰ÂˆJJNÂˆJNÂˆJNÂˆJNÂˆÚ[™ÙT›İÜË™š[\Š
+›İÊHOˆ›İË™]™[	‰ˆVÉÜ›ÛÛWØ›ÛÚÚ[™ÉË	Ü\›X[™[Û[İ™I×Kš[˜ÛY\Ê›İË˜Xİ[ÛŠJK™›Ü‘XXÚ
+
+›İÊHOˆÂˆ^[ØY[\Ü˜\PÛİ\œÙ\Ëœ\Ú
+Øš™Xİ˜\ÜÚYÛŠßK›İË™]™[ÂˆYˆ›İËšYˆİ\ˆ]™[İ\
+›İË™]™[
+Kˆ\˜][ÛˆX]›X^
+Ì[YSZ[]\Ê]™[[™
+›İË™]™[
+JHH[YSZ[]\Ê]™[İ\
+›İË™]™[
+JJKˆ\Nˆ	ÜÚ[™ÛIËˆÜXÚX[\ÜÛÛˆÛX[Š›İË˜Xİ[ÛŠHOOH	İXXÚ\—ÙÚY	ËˆÜ[Xİ[Ûˆ›İË˜Xİ[Û‹ˆÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[	ÂˆJJNÂˆJNÂˆ^[ØYœ›ÛÛT™[[ÈH\œ˜^Kš\Ğ\œ˜^J^[ØYœ›ÛÛT™[[ÊHÈ^[ØYœ›ÛÛT™[[Èˆ×NÂˆ›ÛÚÚ[™ÜË™ØÜË™›Ü‘XXÚ
+
+ØÊHOˆÂˆÛÛœİ›İÈHœÛÛ•˜[YJØË™]J
+JHßNÂˆ^[ØYœ›ÛÛT™[[Ëœ\Ú
+Øš™Xİ˜\ÜÚYÛŠßK›İËÈYˆØËšYÛİ\˜ÙNˆ	ØÛİ\œÙK\Ü[	ÈJJNÂˆJNÂˆ^[ØYœÜ[Y]HHÂˆÚ[™Ù\ÎˆÚ[™ÙT›İÜË›[™İˆ›ÛÚÚ[™ÜÎˆ›ÛÚÚ[™ÜËœÚ^™Kˆ›ÛÛTÙ][™ÜÎˆ›ÛÛTÙ][™ÜËœÚ^™KˆİY[›Ùš[\ÎˆİY[›Ùš[\ËœÚ^™KˆİY[İ\Ü[œÚ[ÛœÎˆİ\Ü[œÚ[ÛœËœÚ^™Kˆ][™[˜ÙNˆÜ[][™[˜ÙTÛ˜\ÚİœÚ^™KˆXXÚ\”^\›ÛˆÜ[^\›ÛÛ˜\ÚİœÚ^™KˆXXÚ\Y\İY[ÎˆÜ[Y\İY[ÔÛ˜\ÚİœÚ^™KˆY\™ÙY]ˆ™]È]J
+KÒTÓÔİš[™Ê
+BˆNÂˆ™]\›ˆ^[ØYÂŸB‚™[˜İ[Ûˆ™YÚ\İ\Ûİ\œÙTÜ[
+^ÜÓØš™Xİ[\œÈHßJHÂˆÛÛœİØ[X›HH
+[™\‹Ü[ÛœÈHßJHOˆÛØ[
+Øš™Xİ˜\ÜÚYÛŠÂˆ™YÚ[Ûˆ‘QÒSÓ‹ˆÛÜœÎˆSÕÑQÓÔ’QÒS”Ëˆ[Y[İ]ÙXÛÛ™ÎˆLŒˆY[[ÜNˆ	ÍLL“ZP‰ÂˆKÜ[ÛœÊK\Ş[˜È
+™\]Y\İ
+HOˆ[™\Š™\]Y\İ	‰ˆ™\]Y\İ™]HßK™\]Y\İ
+JNÂ‚ˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[İ\š[™[™ÈHØ[X›Jİ\š[™[™ÊNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[İY[Û™PXØÙ\ÜÈHØ[X›JİY[Û™PXØÙ\ÜÊNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[\™Xİ™Yİ[\XØÙ\ÜÈHØ[X›J\™Xİ™Yİ[\XØÙ\ÜÊNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[Ù[™[XZ[İHØ[X›J
+]JHOˆÙ[™[XZ[İ
+]KÂˆÙ[™[XZ[ˆ[\œËœÙ[™[XZ[ˆJJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[™\šYQ[XZ[İHØ[X›J™\šYQ[XZ[İ
+NÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[İ\[™SÙÚ[ˆHØ[X›Jİ\[™SÙÚ[ŠNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[ÛÛ\]S[™T™YÚ\İ˜][ÛˆHØ[X›JÛÛ\]S[™T™YÚ\İ˜][ÛŠNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[[™SÙÚ[Ø[˜XÚÈHÛ”™\]Y\İ
+Âˆ™YÚ[Ûˆ‘QÒSÓ‹ˆ[Y[İ]ÙXÛÛ™ÎˆŒˆY[[ÜNˆ	ÌM“ZP‰ËˆÙXÜ™]ÎˆÓS‘WÓÑÒS—ĞÒS“‘SÔÑPÔ‘UBˆK[™SÙÚ[Ø[˜XÚÊNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[™[\ÛÛXİÙÚ[ˆHØ[X›J™[\ÛÛXİÙÚ[ŠNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[^Ú[™ÙPXØÙ\ÜÈHØ[X›J^Ú[™ÙPXØÙ\ÜÕÚÙ[ŠNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\‘]HHØ[X›JXXÚ\”Ü[]KÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\•][]TÙ\ÜÚ[ÛˆHØ[X›JXXÚ\•][]TÙ\ÜÚ[Û‹È[Y[İ]ÙXÛÛ™ÎˆLŒY[[ÜNˆ	ÍLL“ZP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\]˜Z[Xš[]HHØ[X›JXXÚ\]˜Z[Xš[]KÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\”ÛİÜ[ÛœÈHØ[X›JXXÚ\”ÛİÜ[ÛœËÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[İY[]HHØ[X›JİY[Ü[]KÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[İY[ÛÛXİ›ÛÚÒ[XYÙHHØ[X›JİY[ÛÛXİ›ÛÚÒ[XYÙKÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[İY[İX›Z]Z][Û”^[Y[HØ[X›JİY[İX›Z]Z][Û”^[Y[Âˆ[Y[İ]ÙXÛÛ™ÎˆNˆY[[ÜNˆ	ÌQÚP‰ÂˆJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[™[[^P›Ø\™HØ[X›J™[[^P›Ø\™È[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[™[[ÙYZĞ›Ø\™HØ[X›J™[[ÙYZĞ›Ø\™È[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[™[[]˜Z[Xš[]HHØ[X›J™[[]˜Z[Xš[]KÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[Ü™X]T›ÛÛP›ÛÚÚ[™ÈHØ[X›JÜ™X]T›ÛÛP›ÛÚÚ[™ËÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[™[[^P›ÛÚÚ[™ÜÈHØ[X›J™[[^P›ÛÚÚ[™ÜÊNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[Ø[˜Ù[›ÛÛP›ÛÚÚ[™ÈHØ[X›JØ[˜Ù[›ÛÛP›ÛÚÚ[™ÊNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\Xİ[ÛˆHØ[X›JXXÚ\Xİ[Û‹È[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\“\ÜÛÛ”İ]HHØ[X›JXXÚ\“\ÜÛÛ”İ]KÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\][™[˜ÙHHØ[X›JXXÚ\][™[˜ÙKÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\“]P][™[˜ÙHHØ[X›JXXÚ\“]P][™[˜ÙKÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\][™[˜ÙPØ[˜Ù[][Û”™\]Y\İHØ[X›JXXÚ\][™[˜ÙPØ[˜Ù[][Û”™\]Y\İÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\”İX›Z]ÛÛXİ›ÛÚÔÜİHØ[X›JXXÚ\”İX›Z]ÛÛXİ›ÛÚÔÜİÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\•\]TİY[HØ[X›JXXÚ\•\]TİY[È[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\”İÜİY[HØ[X›JXXÚ\”İÜİY[È[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\›Û\Ô™\]Y\İHØ[X›JXXÚ\›Û\Ô™\]Y\İÈ[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[™[[\ÙTÙ][™ÜÈHØ[X›JX›XÔ™[[Ù][™ÜÊNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[”™[[Ù][™ÜÑ]HHØ[X›J\Ş[˜È
+]K™\]Y\İ
+HOˆÂˆ\ÜÙ\YZ[”[Š™\]Y\İ
+NÂˆ™]\›ˆYZ[”™[[Ù][™ÜÑ]J
+NÂˆKÈÙXÜ™]ÎˆĞQRS—ÔS—HJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[”ØÚY[PÛÛ™›Xİ]Y]HØ[X›J\Ş[˜È
+]K™\]Y\İ
+HOˆÂˆ\ÜÙ\YZ[”[Š™\]Y\İ
+NÂˆ™]\›ˆYZ[”ØÚY[PÛÛ™›Xİ]Y]
+]JNÂˆKÈÙXÜ™]ÎˆĞQRS—ÔS—K[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[”Ø]™T™[[Ù][™ÜÈHØ[X›J\Ş[˜È
+]K™\]Y\İ
+OOØ\ÜÙ\YZ[”[Š™\]Y\İ
+NÜ™]\›ˆYZ[”Ø]™T™[[Ù][™ÜÊ]JNßKÜÙXÜ™]Î–ĞQRS—ÔS—_JNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[”Ø]™T›ÛÛQ\]Z\Y[HØ[X›J\Ş[˜È
+]K™\]Y\İ
+OOØ\ÜÙ\YZ[”[Š™\]Y\İ
+NÜ™]\›ˆYZ[”Ø]™T›ÛÛQ\]Z\Y[
+]JNßKÜÙXÜ™]Î–ĞQRS—ÔS—_JNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[”Ø]™UXXÚ\Y\İY[HØ[X›J\Ş[˜È
+]K™\]Y\İ
+OOØ\ÜÙ\YZ[”[Š™\]Y\İ
+NÜ™]\›ˆYZ[”Ø]™UXXÚ\Y\İY[
+]JNßKÜÙXÜ™]Î–ĞQRS—ÔS—_JNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[”›ÛÛP›ÛÚÚ[™ÜÈHØ[X›J\Ş[˜È
+]K™\]Y\İ
+OOØ\ÜÙ\YZ[”[Š™\]Y\İ
+NÜ™]\›ˆYZ[”›ÛÛP›ÛÚÚ[™ÜÊ
+NßKÜÙXÜ™]Î–ĞQRS—ÔS—_JNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[Ø[˜Ù[›ÛÛP›ÛÚÚ[™ÈHØ[X›J\Ş[˜È
+]K™\]Y\İ
+OOØ\ÜÙ\YZ[”[Š™\]Y\İ
+NÜ™]\›ˆYZ[Ø[˜Ù[›ÛÛP›ÛÚÚ[™Ê]JNßKÜÙXÜ™]Î–ĞQRS—ÔS—_JNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[›Û\Ô™\]Y\İÈHØ[X›J\Ş[˜È
+]K™\]Y\İ
+OOØ\ÜÙ\YZ[”[Š™\]Y\İ
+NÜ™]\›ˆYZ[›Û\Ô™\]Y\İÊ
+NßKÜÙXÜ™]Î–ĞQRS—ÔS—_JNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[\›İ™P›Û\ÈHØ[X›J\Ş[˜È
+]K™\]Y\İ
+OOØ\ÜÙ\YZ[”[Š™\]Y\İ
+NÜ™]\›ˆYZ[\›İ™P›Û\Ê]JNßKÜÙXÜ™]Î–ĞQRS—ÔS—_JNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[\]TİY[™[Z[™\ˆHØ[X›J\]TİY[™[Z[™\ŠNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[‘]HHØ[X›J\Ş[˜È
+]K™\]Y\İ
+HOˆÂˆ\ÜÙ\YZ[”[Š™\]Y\İ
+NÂˆ™]\›ˆYZ[‘]J
+NÂˆKÈÙXÜ™]ÎˆĞQRS—ÔS—HJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[š[™[™ĞXİ[ÛˆHØ[X›J\Ş[˜È
+]K™\]Y\İ
+HOˆÂˆ\ÜÙ\YZ[”[Š™\]Y\İ
+NÂˆ™]\›ˆYZ[š[™[™ĞXİ[ÛŠ]JNÂˆKÈÙXÜ™]ÎˆĞQRS—ÔS—HJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[][™[˜ÙPØ[˜Ù[][ÛXİ[ÛˆHØ[X›J\Ş[˜È
+]K™\]Y\İ
+HOˆÂˆ\ÜÙ\YZ[”[Š™\]Y\İ
+NÂˆ™]\›ˆYZ[][™[˜ÙPØ[˜Ù[][ÛXİ[ÛŠ]JNÂˆKÈÙXÜ™]ÎˆĞQRS—ÔS—HJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[”İ\Ü[œÚ[ÛXİ[ÛˆHØ[X›J\Ş[˜È
+]K™\]Y\İ
+HOˆÂˆ\ÜÙ\YZ[”[Š™\]Y\İ
+NÂˆ™]\›ˆYZ[”İ\Ü[œÚ[ÛXİ[ÛŠ]JNÂˆKÈÙXÜ™]ÎˆĞQRS—ÔS—HJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[•Z][Û”^[Y[Xİ[ÛˆHØ[X›J\Ş[˜È
+]K™\]Y\İ
+HOˆÂˆ\ÜÙ\YZ[”[Š™\]Y\İ
+NÂˆ™]\›ˆYZ[•Z][Û”^[Y[Xİ[ÛŠ]JNÂˆKÈÙXÜ™]ÎˆĞQRS—ÔS—K[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[‘[œİ\™UZ][Û”™XÙZ\HØ[X›J\Ş[˜È
+]K™\]Y\İ
+HOˆÂˆ\ÜÙ\YZ[”[Š™\]Y\İ
+NÂˆ™]\›ˆYZ[‘[œİ\™UZ][Û”™XÙZ\
+]JNÂˆKÈÙXÜ™]ÎˆĞQRS—ÔS—K[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[YZ[•Z][Û”^[Y[ØÜ™Y[œÚİHØ[X›J\Ş[˜È
+]K™\]Y\İ
+HOˆÂˆ\ÜÙ\YZ[”[Š™\]Y\İ
+NÂˆ™]\›ˆYZ[•Z][Û”^[Y[ØÜ™Y[œÚİ
+]JNÂˆKÈÙXÜ™]ÎˆĞQRS—ÔS—K[Y[İ]ÙXÛÛ™ÎˆNY[[ÜNˆ	ÌQÚP‰ÈJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[İY[™[Z[™\‘Z[HHÛ”ØÚY[JÂˆØÚY[Nˆ	Ì
+ˆ
+ˆ
+ˆ
+‰Ëˆ[YV›Û™NˆRTRKˆ™YÚ[Ûˆ‘QÒSÓ‹ˆ[Y[İ]ÙXÛÛ™ÎˆNˆY[[ÜNˆ	ÍLL“ZP‰ÂˆK\Ş[˜È
+
+HOˆZ[TİY[™[Z[™\œÊ[\œËœ\Ú[™SY\ÜØYÙJJNÂˆ^ÜÓØš™Xİ˜Ûİ\œÙTÜ[XXÚ\‘Z[T™[Z[™\ˆHÛ”ØÚY[JÂˆØÚY[Nˆ	ÌH
+ˆ
+ˆ
+‰Ëˆ[YV›Û™NˆRTRKˆ™YÚ[Ûˆ‘QÒSÓ‹ˆ[Y[İ]ÙXÛÛ™ÎˆNˆY[[ÜNˆ	ÍLL“ZP‰ÂˆK\Ş[˜È
+
+HOˆZ[UXXÚ\Ûİ\œÙT™[Z[™\œÊ[\œËœ\Ú[™SY\ÜØYÙJJNÂŸB‚›[Ù[K™^ÜÈHÂˆ\[™Ûİ\œÙTÜ[]Kˆ[™PÛİ\œÙTÜ[[™Q]™[ˆ›Ü›X[^™TÛ™KˆÛ™SX]Ú\Ëˆ™YÚ\İ\Ûİ\œÙTÜ[ŸNÂ™[˜İ[Ûˆ\œÙPÛÛXİ›ÛÚÒ[XYÙ\Ê˜[Y\ÊHÂˆÛÛœİ[XYÙ\ÈH\œ˜^Kš\Ğ\œ˜^J˜[Y\ÊHÈ˜[Y\Èˆ×NÂˆYˆ
+[XYÙ\Ë›[™İˆÓÓ•PÕĞ“ÓÒ×ÒSPQÑWÓPVĞÓÕS•
+HÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë9. 9«(y§ 9i&¹cëúfa	ĞÓÓ•PÕĞ“ÓÒ×ÒSPQÑWÓPVĞÓÕS•H9o-yáiùâaøà ˜
+NÂˆBˆ™]\›ˆ[XYÙ\Ë›X\
+
+˜[YK[™^
+HOˆÂˆÛÛœİ\œÙYH\œÙUZ][Û”™XÙZ\
+˜[YH	‰ˆ˜[YK™]U\›
+NÂˆYˆ
+\œÙY˜Y™™\‹›[™İˆÓÓ•PÕĞ“ÓÒ×ÒSPQÑWÓPVĞ–UTÊHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë9ë+	Ú[™^
+È_H9o-yáiùâaúg 9l#ù¥¯ÈP¸à ˜
+NÂˆBˆ™]\›ˆÈ˜[YNˆÛX[Š˜[YH	‰ˆ˜[YK›˜[YJKœÛXÙJL
+KÛÛ[\Nˆ\œÙY˜ÛÛ[\KY™™\ˆ\œÙY˜Y™™\ˆNÂˆJNÂŸB‚˜\Ş[˜È[˜İ[ÛˆXXÚ\”İX›Z]ÛÛXİ›ÛÚÔÜİ
+]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉİXXÚ\‰×JNÂˆÛÛœİ^HÛX[Š]K^
+NÂˆÛÛœİ™\ÛÛ™YH]ØZ]XXÚ\][™[˜ÙQ]™[
+Ù\ÜÚ[Û‹]JNÂˆÛÛœİ]™[H™\ÛÛ™Y™]™[ÂˆÛÛœİ]˜Z[X›RYÈH
+]™[œİY[YÈ×JK›X\
+ÛX[ŠK™š[\Š›ÛÛX[ŠNÂˆÛÛœİ™\]Y\İYHÛX[Š]KœİY[Y
+NÂˆÛÛœİİY[YÈH™\]Y\İYÈÜ™\]Y\İYHˆ]˜Z[X›RYÎÂˆYˆ
+\İY[YË›[™İİY[YËœÛÛYJ
+Y
+HOˆX]˜Z[X›RYËš[˜ÛY\ÊY
+JJHÂˆ›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ú`&y/cykn9å'ù.#yg*9§+9h º*¬¹.+xà ‰ÊNÂˆBˆÛÛœİ[XYÙ\ÈH\œÙPÛÛXİ›ÛÚÒ[XYÙ\Ê]Kš[XYÙ\ÊNÂˆYˆ
+]^	‰ˆZ[XYÙ\Ë›[™İ
+H›İÈ™]ÈÑ\œ›ÜŠ	Ú[˜[YX\™İ[Y[	Ë	ú*âú/.9aiz kùíhyì/ùaiùk®y¢%ºfa9."¹áiùâaøà ‰ÊNÂˆÛÛœİÜİYH˜[™ÛUÚÙ[ŠLŠNÂˆÛÛœİ[XYÙT›İÜÈH]ØZ]›ÛZ\ÙK˜[
+[XYÙ\Ë›X\
+\Ş[˜È
+[XYÙK[™^
+HOˆÂˆÛÛœİ]HÛİ\œÙK\Ü[ØÛÛXİX›ÛÚËÉÜÜİYKÉÚ[™^KIÜ˜[™ÛUÚÙ[ŠJ_XÂˆ]ØZ]YZ[‹œİÜ˜YÙJ
+K˜XÚÙ]
+
+K™š[J]
+KœØ]™J[XYÙK˜Y™™\‹Âˆ™\İ[XX›Nˆ˜[ÙKˆY]Y]NˆÈÛÛ[\Nˆ[XYÙK˜ÛÛ[\KØXÚPÛÛ›Ûˆ	Üš]˜]K›Ë\İÜ™KX^XYÙOL	ÈBˆJNÂˆ™]\›ˆÈ˜[YNˆ[XYÙK›˜[YH9áiùâaÈ	Ú[™^
+È_XİÜ˜YÙT]ˆ]ÛÛ[\Nˆ[XYÙK˜ÛÛ[\K]\Îˆ[XYÙK˜Y™™\‹›[™İNÂˆJJNÂˆÛÛœİ›İÜÈH]ØZ]›ÛZ\ÙK˜[
+İY[YË›X\
+\Ş[˜È
+İY[Y
+HOˆÂˆÛÛœİ™YˆH‹˜ÛÛXİ[ÛŠÓÓ•PÕĞ“ÓÒ×ÔÔÕÊK™ØÊ	ÜÜİYKIÜİY[YX
+NÂˆ]ØZ]™Y‹œÙ]
+ÂˆYˆ™Y‹šYÜİYXİ]™NˆYKİY[YXXÚ\’YˆÙ\ÜÚ[Û‹XXÚ\’YˆXXÚ\“˜[YNˆÛX[Š]™[XXÚ\“˜[YJKİXš™Xİ˜[YNˆÛX[Š]™[œİXš™Xİ˜[YJKİXš™XİYˆÛX[Š]™[œİXš™XİY
+Kˆ]Nˆ™\ÛÛ™YœÛİ\˜ÙQ]Kİ\[YNˆÛX[Š]™[œİ\[YJK]™[YˆÛX[Š]™[œÛİ\˜ÙRY™\ÛÛ™YœÛİ\˜ÙQ]™[Y]™[šY
+KˆÛİ\œÙRYˆÛX[Š]™[™š^YÛİ\œÙRY™\ÛÛ™YœÛİ\˜ÙPÛİ\œÙRY
+K^[XYÙ\Îˆ[XYÙT›İÜËˆÜ™X]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+KÜ™X]Y]^ˆ›İÕ^
+
+K\]Y]ˆšY[˜[YKœÙ\™\•[Y\İ[\
+
+BˆJNÂˆ™]\›ˆ™Y‹šYÂˆJJNÂˆ]ØZ]›ÛZ\ÙK˜[
+İY[YË›X\
+
+İY[Y
+HOˆ]Y]YPÛİ\œÙTÜ[›İXÙJˆÛİ\œÙKXÛÛXİX›ÛÚËIÜÜİYKIÜİY[YXˆÈ]™[ÛÙNˆ	ØÛÛXİØ›ÛÚ×ÜÜİY	Ë\™Ù]ˆ	ÜİY[	Ë\™Ù]›ÛNˆ	ÜİY[	ËİY[Yˆ]Nˆ	ú*¬¹h º kùíhyì/ù§"y¥¬9aiùk®IË›ÙNˆ	ú  yn*ùmì¹¥¬9h§º*¬¹h º kùíhyì/ûï#:*âùænùaiykn9å'ùaiycèù§éyç"øà ‰Ë^ˆ	ú  yn*ùmì¹¥¬9h§º*¬¹h º kùíhyì/ûï#:*âùænùaiykn9å'ùaiycèù§éyç"øà ‰ÈBˆ
+JJNÂˆ™]\›ˆÈÚÎˆYKYÎˆ›İÜËY\ÜØYÙNˆ	ú*¬¹h º kùíhyì/ùmìº` yaî¹íi¹k­ºemøà ‰ÈNÂŸB‚˜\Ş[˜È[˜İ[ÛˆİY[ÛÛXİ›ÛÚÒ[XYÙJ]JHÂˆÛÛœİÙ\ÜÚ[ÛˆH]ØZ]™\]Z\™TÙ\ÜÚ[ÛŠ]KÉÜİY[	×JNÂˆÛÛœİYHÛX[Š]KœÜİY
+NÂˆÛÛœİ[XYÙR[™^H[X™\Š]Kš[XYÙR[™^
+NÂˆÛÛœİ[İÙYH™]ÈÙ]
+]ØZ]Xİ]™TİY[YÑ›Ü”Ù\ÜÚ[ÛŠÙ\ÜÚ[ÛŠJNÂˆÛÛœİÛ˜\ÚİH]ØZ]‹˜ÛÛXİ[ÛŠÓÓ•PÕĞ“ÓÒ×ÔÔÕÊK™ØÊY
+K™Ù]
+
+NÂˆYˆ
+\Û˜\Úİ™^\İÈX[İÙYš\ÊÛX[ŠÛ˜\Úİ™]J
+KœİY[Y
+JJH›İÈ™]ÈÑ\œ›ÜŠ	Ü\›Z\ÜÚ[Û‹Y[šYY	Ë	ù¬¤¹§"z`&yo-yáiùâaùæ¡9§éyç"ù«"ºfd8à ‰ÊNÂˆÛÛœİ[XYÙHH
+Û˜\Úİ™]J
+Kš[XYÙ\È×JVÚ[XYÙR[™^NÂˆYˆ
+Z[XYÙHXÛX[Š[XYÙKœİÜ˜YÙT]
+JH›İÈ™]ÈÑ\œ›ÜŠ	Û›İY›İ[™	Ë	ù¢o¹.#yb,:`&yo-yáiùâaøà ‰ÊNÂˆÛÛœİØY™™\—HH]ØZ]YZ[‹œİÜ˜YÙJ
+K˜XÚÙ]
+
+K™š[JÛX[Š[XYÙKœİÜ˜YÙT]
+JK™İÛ›ØY
+
+NÂˆYˆ
+XY™™\‹›[™İY™™\‹›[™İˆÓÓ•PÕĞ“ÓÒ×ÒSPQÑWÓPVĞ–UTÊH›İÈ™]ÈÑ\œ›ÜŠ	Ù˜Z[Y\™XÛÛ™][Û‰Ë	ùáiùâaú,áù¥¦yål9n.8à ‰ÊNÂˆ™]\›ˆÈÚÎˆYKÛÛ[\NˆÛX[Š[XYÙK˜ÛÛ[\JH	Ú[XYÙKÚœYÉË]U\›ˆ]N‰ØÛX[Š[XYÙK˜ÛÛ[\JH	Ú[XYÙKÚœYÉßNØ˜\ÙM	ØY™™\‹Ôİš[™Ê	Ø˜\ÙM	Ê_XNÂŸB

@@ -16,7 +16,7 @@ function inlineScripts(source) {
 test('both login entries keep secondary actions in one compact white row', () => {
   for (const file of ['index.html', 'login.html']) {
     const source = read(file);
-    assert.match(source, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)!important/);
+    assert.match(source, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)(?:!important)?/);
     assert.match(source, /background:#fff!important/);
     assert.match(source, /color:#17252f!important/);
     assert.match(source, />忘記密碼</);
@@ -34,23 +34,34 @@ test('successful login redirects immediately and exposes a retry navigation', ()
   assert.match(app, /function loginDestination\(user\)/);
   assert.match(app, /window\.location\.replace\(target\)/);
 
-  for (const file of ['index.html', 'login.html']) {
-    const source = read(file);
-    assert.match(source, /btn\.dataset\.resumeTarget = target/);
-    assert.match(source, /redirectAfterLogin\(r\.user\)/);
-    assert.match(source, /progress\.reset\('進入系統'\)/);
-    assert.doesNotMatch(source, /setTimeout\(\(\) => redirectAfterLogin/);
-  }
+  const legacyLogin = read('login.html');
+  assert.match(legacyLogin, /btn\.dataset\.resumeTarget = target/);
+  assert.match(legacyLogin, /redirectAfterLogin\(r\.user\)/);
+  assert.match(legacyLogin, /progress\.reset\('進入系統'\)/);
+  assert.doesNotMatch(legacyLogin, /setTimeout\(\(\) => redirectAfterLogin/);
+
+  const gateway = read('index.html');
+  assert.match(gateway, /function finishInternalLogin\(user\)/);
+  assert.match(gateway, /if \(redirecting\) return/);
+  assert.match(gateway, /requestedLoginTarget\(\) \|\| loginDestination\(user\)/);
+  assert.match(gateway, /window\.location\.replace\(target\)/);
+  assert.match(gateway, /finishInternalLogin\(result\.user\)/);
+  assert.doesNotMatch(gateway, /setTimeout\(\(\) => finishInternalLogin/);
 });
 
-test('login pages group all public portals under other entries', () => {
-  for (const file of ['index.html', 'login.html']) {
-    const source = read(file);
-    assert.match(source, /href="student-course-portal\.html"[^>]*>學生／家長入口</);
-    assert.match(source, /href="room-booking\.html"[^>]*>教室租用入口</);
-    assert.match(source, /href="teacher-course-portal\.html"[^>]*>老師入口</);
-    assert.match(source, /href="teacher-apply\.html"[^>]*>應聘履歷投遞</);
-    assert.match(source, /href="rental-order\.html"[^>]*>設備租賃申請</);
-    assert.match(source, /class="external-entry-grid"/);
-  }
+test('public role login links all enter through the central role selector', () => {
+  const gateway = read('index.html');
+  assert.match(gateway, /href="course-portal\.html\?method=line"[^>]*id="lineGateway"/);
+  assert.match(gateway, /href="course-portal\.html\?method=email"/);
+  assert.doesNotMatch(gateway, /href="(?:student-course-portal|teacher-course-portal|room-booking)\.html"/);
+
+  const legacyLogin = read('login.html');
+  assert.match(legacyLogin, /href="course-portal\.html\?method=line"[^>]*data-primary-login-method="line"|data-primary-login-method="line"[^>]*href="course-portal\.html\?method=line"/);
+  assert.match(legacyLogin, /href="course-portal\.html\?method=line&amp;role=student"[^>]*>學生／家長入口</);
+  assert.match(legacyLogin, /href="course-portal\.html\?method=line&amp;role=renter"[^>]*>教室租用入口</);
+  assert.match(legacyLogin, /href="course-portal\.html\?method=line&amp;role=teacher"[^>]*>老師入口</);
+  assert.match(legacyLogin, /href="teacher-apply\.html"[^>]*>應聘履歷投遞</);
+  assert.match(legacyLogin, /href="rental-order\.html"[^>]*>設備租賃申請</);
+  assert.match(legacyLogin, /class="external-entry-grid"/);
+  assert.doesNotMatch(legacyLogin, /href="(?:student-course-portal|teacher-course-portal|room-booking)\.html"/);
 });

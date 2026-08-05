@@ -39,24 +39,39 @@ const pages = [
   'course-portal-admin.html'
 ];
 
-const portalLanding = fs.readFileSync(path.join(root, 'course-portal.html'), 'utf8');
-const portalRoutes = [
-  'student-course-portal.html',
-  'teacher-course-portal.html',
-  'room-booking.html'
-];
-portalRoutes.forEach((route) => {
-  const occurrences = portalLanding.split(`href="${route}"`).length - 1;
-  assert.strictEqual(occurrences, 1, `入口首頁的 ${route} 必須且只能出現一次`);
-});
-assert.strictEqual(
-  (portalLanding.match(/class="card stack"/g) || []).length,
-  3,
-  '入口首頁必須維持三個獨立入口'
+const loginGateway = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+assert(
+  loginGateway.includes('href="course-portal.html?method=line" id="lineGateway"'),
+  '首頁 LINE 登入必須只開啟中央入口，讓使用者明確選擇身分'
 );
-assert(!portalLanding.includes('請選擇您的入口'), '入口首頁仍顯示多餘的小字說明');
-assert(!portalLanding.includes('所有入口都可使用 LINE 安全登入'), '入口首頁仍顯示多餘的 LINE 說明');
-assert(portalLanding.includes('id="portalEntryNotice"') && portalLanding.includes('notice hidden'), 'LINE 錯誤訊息區沒有預設隱藏');
+assert(!loginGateway.includes('auto=1'), '首頁仍會依照舊身分自動開始 LINE 登入');
+
+const portalLanding = fs.readFileSync(path.join(root, 'course-portal.html'), 'utf8');
+const portalRoles = [
+  ['teacher', 'teacher-course-portal.html'],
+  ['student', 'student-course-portal.html'],
+  ['renter', 'room-booking.html']
+];
+portalRoles.forEach(([role, route]) => {
+  assert(
+    portalLanding.includes(`id:'${role}'`) && portalLanding.includes(`page:'${route}'`),
+    `中央入口缺少 ${role} 的明確身分選項`
+  );
+});
+assert(portalLanding.includes('data-method="line"'), '中央入口缺少 LINE 登入方式');
+assert(portalLanding.includes('data-method="email"'), '中央入口缺少 Email 登入方式');
+assert(portalLanding.includes('id="entryNotice"'), '中央入口缺少登入錯誤訊息區');
+assert(!portalLanding.includes('const shouldAuto'), '中央入口仍會以 lastRole 自動開始登入');
+assert(!portalLanding.includes("params.get('auto')"), '中央入口仍會讀取舊版 auto 自動跳轉參數');
+assert(portalLanding.includes('await startLineLogin(role, button)'), '明確選擇身分後無法開始 LINE 登入');
+assert(portalLanding.includes("pendingFlow = 'line-registration'"), 'LINE 第一次使用流程已遺失');
+
+const configSource = fs.readFileSync(path.join(root, 'config.js'), 'utf8');
+new vm.Script(configSource, { filename: 'config.js' });
+assert(configSource.includes('AUTH_STATE_MIGRATION_KEY'), '缺少版本化瀏覽器登入狀態遷移');
+assert(configSource.includes('youzi.coursePortal.authStateMigration.20260805.v1'), '登入狀態遷移沒有獨立版本');
+assert(configSource.includes("'youzi.coursePortal.dataCache.'"), '登入狀態遷移沒有清除舊課務快取');
+assert(!configSource.includes('installRolePageRecovery'), '角色頁仍有第二層畫面監看與自動跳轉');
 
 const commonSource = fs.readFileSync(path.join(root, 'course-portal-common.js'), 'utf8');
 assert(commonSource.trimStart().startsWith('(function'), 'course-portal-common.js 不是可執行的 JavaScript');
@@ -245,6 +260,30 @@ const teacherRoomRulesSource = fs.readFileSync(path.join(root, 'teacher-room-rul
 new vm.Script(rentalSource, { filename: 'room-booking-v2.js' });
 new vm.Script(rentalSettingsSource, { filename: 'course-portal-settings-v2.js' });
 new vm.Script(teacherRoomRulesSource, { filename: 'teacher-room-rules-v1.js' });
+const rentalSessionResolver = rentalSource.slice(
+  rentalSource.indexOf('function requestedRoomRole()'),
+  rentalSource.indexOf('function renderUses(')
+);
+assert(
+  rentalSessionResolver.includes("return requested === 'teacher' || requested === 'student' ? requested : 'renter'"),
+  '教室租用未把無 from 的入口固定為租用者身分'
+);
+assert(
+  rentalSessionResolver.includes('const currentToken = P.getSession(requested)'),
+  '教室租用沒有只讀取網址明確指定的角色工作階段'
+);
+assert(!rentalSessionResolver.includes("P.getSession('student')"), '無 from 的租用入口仍會回退使用學生工作階段');
+assert(!rentalSessionResolver.includes("P.getSession('teacher')"), '無 from 的租用入口仍會回退使用老師工作階段');
+assert(rentalSource.includes('P.invalidateSession(saved.role, error)'), '租用工作階段失效後沒有統一返回中央入口');
+assert(rentalSource.includes('P.invalidateSession(requested, error)'), '租用 access 驗證失敗後沒有統一返回中央入口');
+assert(rentalSource.includes("redirectToRoleLogin(requestedRoomRole(), null, 'login-required')"), '租用入口缺少工作階段時沒有返回中央入口');
+assert(!rentalSource.includes('P.installAuth('), '租用頁仍安裝第二套登入畫面');
+assert(!rentalSource.includes('showBooking(false)'), '租用頁仍會顯示第二套登入畫面');
+assert(
+  configSource.includes("if (requested === 'teacher' || requested === 'student') return requested;") &&
+    configSource.includes("return 'renter';"),
+  '共用路由沒有遵守教室租用的明確 from 身分'
+);
 assert(rentalSource.includes('rental-room-equipment'), '租用教室卡片缺少鋼琴類型標示');
 [
   '不指定',
@@ -1897,7 +1936,7 @@ assert(backend.includes("accessStatus: allowed.has(id) ? 'active' : 'history_and
 assert(backend.includes("Promise.all(studentIds.map((id) => mirrorRowsByField('attendance'"), '停課學生沒有讀取自己的歷史上課紀錄');
 assert(backend.includes('studentDiscountEligible: await studentDiscountEligiblePromise'), '停課學生仍可能取得在籍學生租用折扣');
 assert(commonSource.includes("linkAnother: role === 'student' && authView.dataset.addStudent === 'true'"), '家長無法從已登入狀態啟動另一位學生的 LINE 綁定');
-assert(backend.includes('bindings.length && stateRow.linkAnother !== true'), 'LINE 已有學生綁定時仍會略過新增另一位學生的流程');
+assert(backend.includes("decision.action === 'login' && stateRow.linkAnother !== true"), 'LINE 已有學生綁定時仍會略過新增另一位學生的流程');
 assert(backend.includes('if (!learningIds.has(studentId)) continue;'), '停課學生仍可能收到上課或學費 LINE 提醒');
 assert(backend.includes("type: 'late_attendance_fee'"), '補簽到沒有建立 NT$50 薪資扣款');
 assert(backend.includes("type: 'attendance_cancellation_fee'"), '取消簽到核准後沒有建立 NT$50 薪資扣款');
@@ -1923,7 +1962,7 @@ assert(cancellationRejectSource.includes('db.runTransaction'), '取消簽到 rej
 assert(cancellationRejectSource.includes('tx.get(requestRef)') && cancellationRejectSource.includes("clean(current.status) !== 'pending'"), '取消簽到 reject 沒有在交易內重新確認 pending');
 assert(backend.includes("paymentStatus: state === 'absent' ? 'student_absent_no_pay'"), '曠課仍被錯誤標記為老師可計薪');
 assert(backend.includes("const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET')"), 'LINE Channel secret 未使用後端密鑰');
-assert(backend.includes("bot_prompt: 'aggressive'"), 'LINE 登入未顯示加入官方帳號流程');
+assert(backend.includes("bot_prompt: 'normal'"), 'LINE 登入仍會額外跳出加入好友頁，造成登入流程不連續');
 assert(backend.includes('https://api.line.me/friendship/v1/status'), 'LINE 登入未確認好友狀態');
 assert(backend.includes("authMethod: 'line-oauth'"), 'LINE OAuth 登入未建立正式工作階段');
 assert(backend.includes('LINE_OAUTH_STATE_TTL_MS'), 'LINE OAuth 缺少短效 state 驗證');

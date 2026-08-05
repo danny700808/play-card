@@ -7,7 +7,7 @@
   <title>統一 LINE 綁定管理｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
-  <link rel="stylesheet" href="line-binding-admin.css?v=20260805-unified-line-v1">
+  <link rel="stylesheet" href="line-binding-admin.css?v=20260805-unified-line-v3">
 </head>
 <body>
   <main class="line-admin-shell">
@@ -29,9 +29,9 @@
 
     <section class="line-admin-summary" id="lineSummary" aria-live="polite">
       <div class="line-summary-card"><span>LINE 帳號</span><b>—</b><small>正在讀取</small></div>
-      <div class="line-summary-card"><span>有效來源</span><b>—</b><small>正在讀取</small></div>
-      <div class="line-summary-card attention"><span>需整理</span><b>—</b><small>正在讀取</small></div>
-      <div class="line-summary-card"><span>多身分帳號</span><b>—</b><small>正在讀取</small></div>
+      <div class="line-summary-card"><span>有效身分</span><b>—</b><small>正在讀取</small></div>
+      <div class="line-summary-card attention"><span>需處理帳號</span><b>—</b><small>正在讀取</small></div>
+      <div class="line-summary-card"><span>同角色衝突</span><b>—</b><small>正在讀取</small></div>
     </section>
 
     <section class="line-admin-card">
@@ -48,8 +48,8 @@
 
       <nav class="line-filter-tabs" id="lineFilterTabs" aria-label="LINE 綁定篩選">
         <button class="active" type="button" data-filter="all">全部</button>
-        <button type="button" data-filter="attention">需整理</button>
-        <button type="button" data-filter="multi">多身分</button>
+        <button type="button" data-filter="attention">需處理</button>
+        <button type="button" data-filter="multi">同角色衝突</button>
         <button type="button" data-filter="employee">員工／外聘</button>
         <button type="button" data-filter="course">老師／學生／租用</button>
         <button type="button" data-filter="rental">設備租賃</button>
@@ -68,12 +68,12 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260508frontendperf1"></script>
+  <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="app.js?v=20260803-login-gateway-v1"></script>
-  <script src="course-portal-common.js?v=20260804-manager-auth-v1"></script>
-  <script src="line-binding-admin.js?v=20260805-unified-line-v1"></script>
+  <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
+  <script src="line-binding-admin.js?v=20260805-manager-auth-bridge-v3"></script>
 </body>
 </html>

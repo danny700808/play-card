@@ -119,15 +119,43 @@
     } catch (error) {
       const code = clean(error && error.code).toLowerCase();
       if (code.includes('deadline-exceeded')) {
-        throw new Error('資料讀取超過 90 秒，已停止等待。請稍後重試，不會覆蓋目前資料。');
+        const timeoutError = new Error('資料讀取超過 90 秒，已停止等待。請稍後重試，不會覆蓋目前資料。');
+        timeoutError.code = code;
+        throw timeoutError;
       }
       const message = clean(
         error && error.details ||
         error && error.message ||
         '連線失敗，請稍後再試。'
       ).replace(/^FirebaseError:\s*/i, '');
-      throw new Error(message);
+      const wrapped = new Error(message);
+      wrapped.code = code;
+      wrapped.details = error && error.details;
+      throw wrapped;
     }
+  }
+
+  function isSessionAuthError(error) {
+    const code = clean(error && error.code).toLowerCase();
+    const message = clean(error && (error.message || error.details || error));
+    if (code.includes('unauthenticated')) return true;
+    return /請先登入|登入狀態.{0,8}(到期|失效)|登入資料.{0,8}(不完整|失效)|登入(權限|綁定).{0,12}(停用|解除|尚未核准)|入口帳號.{0,12}停用|尚未核准|session.{0,12}(expired|invalid|revoked)/i.test(message);
+  }
+
+  function invalidateSession(role, error) {
+    const safeRole = ['teacher', 'student', 'renter'].includes(clean(role)) ? clean(role) : '';
+    if (!safeRole) return false;
+    setSession(safeRole, '');
+    try {
+      if (clean(global.localStorage.getItem('youzi.coursePortal.lastRole.v2')) === safeRole) {
+        global.localStorage.removeItem('youzi.coursePortal.lastRole.v2');
+      }
+    } catch (_) {}
+    const params = new URLSearchParams({ method: 'line', role: safeRole });
+    if (isSessionAuthError(error)) params.set('reason', 'session-expired');
+    else params.set('lineError', clean(error && error.message) || '登入狀態確認失敗，請重新登入。');
+    global.location.replace(`course-portal.html?${params.toString()}`);
+    return true;
   }
 
   async function call(name, data) {
@@ -436,6 +464,8 @@
     escapeHtml,
     exchangeAccess,
     getSession,
+    invalidateSession,
+    isSessionAuthError,
     loading,
     monday,
     money,

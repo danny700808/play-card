@@ -145,30 +145,34 @@ test('teacher utility pages keep inline scripts valid and static local assets pr
   }
 });
 
-test('outer login presents LINE first and legacy Email password second', () => {
+test('outer login presents LINE first and keeps manager password login available', () => {
   const app = read('app.js');
   assert.match(app, /function requireLogin\(\).*location\.href='index\.html'/);
   assert.match(app, /function logout\(\).*location\.href='index\.html'/);
 
-  for (const file of ['index.html', 'login.html']) {
-    const source = read(file);
-    const methods = [...source.matchAll(/data-primary-login-method="([^"]+)"/g)]
-      .map((match) => match[1]);
-    assert.deepStrictEqual(methods, ['line', 'email-password']);
-    assert.match(source, /data-primary-login-method="line" href="course-portal\.html"/);
-    assert.doesNotMatch(source, /老師、學生／家長與教室租用/);
-    assert.doesNotMatch(source, /管理者後台不使用此登入/);
-    assert.doesNotMatch(source, /LINE 最快；既有管理者與員工帳號/);
-    assert.match(source, /data-primary-login-method="email-password"/);
-    assert.match(source, /管理者／員工登入/);
-    assert.match(source, /api\('login'/);
-    assert.match(source, /const requestedTarget = requestedLoginTarget\(\)/);
-    assert.match(source, /const target = requestedTarget \|\| loginDestination\(r\.user\)/);
-    assert.match(source, /redirectToLoginTarget\(target\)/);
-    assert.match(source, /redirectAfterLogin\(r\.user\)/);
-    assert.match(source, /const loginReturnPages = new Set/);
-    assert.doesNotMatch(source, /employeeBindText|LINE 綁定文字/);
-  }
+  const gateway = read('index.html');
+  assert.match(gateway, /class="login-primary-card" href="course-portal\.html\?method=line"/);
+  assert.match(gateway, /class="service-email-link" href="course-portal\.html\?method=email"/);
+  assert.match(gateway, /管理者／員工帳號登入/);
+  assert.match(gateway, /api\('login'/);
+  assert.match(gateway, /function finishInternalLogin\(user\)/);
+  assert.match(gateway, /const target = requestedLoginTarget\(\) \|\| loginDestination\(user\)/);
+  assert.doesNotMatch(gateway, /employeeBindText|LINE 綁定文字/);
+
+  const legacyLogin = read('login.html');
+  const methods = [...legacyLogin.matchAll(/data-primary-login-method="([^"]+)"/g)]
+    .map((match) => match[1]);
+  assert.deepStrictEqual(methods, ['line', 'email-password']);
+  assert.match(legacyLogin, /data-primary-login-method="line" href="course-portal\.html\?method=line"/);
+  assert.match(legacyLogin, /data-primary-login-method="email-password"/);
+  assert.match(legacyLogin, /管理者／員工登入/);
+  assert.match(legacyLogin, /api\('login'/);
+  assert.match(legacyLogin, /const requestedTarget = requestedLoginTarget\(\)/);
+  assert.match(legacyLogin, /const target = requestedTarget \|\| loginDestination\(r\.user\)/);
+  assert.match(legacyLogin, /redirectToLoginTarget\(target\)/);
+  assert.match(legacyLogin, /redirectAfterLogin\(r\.user\)/);
+  assert.match(legacyLogin, /const loginReturnPages = new Set/);
+  assert.doesNotMatch(legacyLogin, /employeeBindText|LINE 綁定文字/);
 });
 
 test('media and inquiry regressions stay fixed', () => {

@@ -8,10 +8,12 @@ on:
       - "line-binding-admin.html"
       - "line-binding-admin.css"
       - "line-binding-admin.js"
+      - "login.html"
       - "unified-line-binding-link-v1.js"
       - "portal.html"
       - "operations-hub.html"
       - "tests/unified-line-binding-admin.test.js"
+      - "tests/line-binding-admin-auth.test.js"
       - ".github/workflows/deploy-unified-line-binding-admin.yml"
   push:
     branches:
@@ -22,10 +24,12 @@ on:
       - "line-binding-admin.html"
       - "line-binding-admin.css"
       - "line-binding-admin.js"
+      - "login.html"
       - "unified-line-binding-link-v1.js"
       - "portal.html"
       - "operations-hub.html"
       - "tests/unified-line-binding-admin.test.js"
+      - "tests/line-binding-admin-auth.test.js"
       - ".github/workflows/deploy-unified-line-binding-admin.yml"
   workflow_dispatch:
 
@@ -67,6 +71,7 @@ jobs:
           node --check line-binding-admin.js
           node --check unified-line-binding-link-v1.js
           node tests/unified-line-binding-admin.test.js
+          node --test tests/line-binding-admin-auth.test.js
           grep -Fq 'unified-line-binding-link-v1.js' portal.html
           grep -Fq 'unified-line-binding-link-v1.js' operations-hub.html
           (cd functions && node - <<'NODE'

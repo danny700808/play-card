@@ -18,7 +18,7 @@
       measurementId: 'G-WLYK892EDW'
     },
     FIREBASE_ENABLED: true,
-    BUILD: '2026-08-03-rental-session-bridge-v1'
+    BUILD: '2026-08-05-auth-route-cleanup-v1'
   };
 
   const params = new URLSearchParams(global.location.search || '');
@@ -45,13 +45,10 @@
   };
 
   /*
-   * 課務登入穩定層：
-   * 1. 老師／學生／租用頁不再各自顯示另一套登入畫面。
+   * 課務登入共用路由：
+   * 1. 中央入口只依照使用者明確選擇的登入方式與身分前進。
    * 2. LINE 第一次綁定、錯誤與失效狀態統一回到 course-portal.html。
-   * 3. 換手機不使用舊式登入碼；同一個 LINE 帳號重新授權即可。
-   * 4. bot_prompt 改為 normal，好友選項留在同一個 LINE 同意畫面，不再額外跳一頁。
-   * 5. 中央入口會直接交換 LINE 回傳的 access，再開啟正確的身分頁。
-   * 6. 老師或學生由自己的入口前往教室租用時，沿用原本工作階段。
+   * 3. 老師或學生由自己的入口前往教室租用時，只沿用網址 from 指定的工作階段。
    */
   const COURSE_ROLE_PAGES = Object.freeze({
     'teacher-course-portal.html': 'teacher',
@@ -64,15 +61,67 @@
     renter: 'room-booking.html'
   });
   const LAST_ROLE_KEY = 'youzi.coursePortal.lastRole.v2';
+  const LEGACY_LAST_ROLE_KEY = 'youzi.coursePortal.lastRole';
   const ENTRY_INTENT_KEYS = [
     'youzi.coursePortal.entryIntent.v1',
     'youzi.coursePortal.entryIntent.v2'
   ];
+  const AUTH_STATE_MIGRATION_KEY = 'youzi.coursePortal.authStateMigration.20260805.v1';
+  const STALE_AUTH_STATE_KEYS = Object.freeze([
+    LAST_ROLE_KEY,
+    LEGACY_LAST_ROLE_KEY,
+    'youzi.coursePortal.teacher.session.v1',
+    'youzi.coursePortal.student.session.v1',
+    'youzi.coursePortal.renter.session.v1',
+    'youzi.coursePortal.pendingRole',
+    'youzi.coursePortal.autoRedirect',
+    'coursePortalEntryRole',
+    'coursePortalAutoRedirect',
+    ...ENTRY_INTENT_KEYS
+  ]);
+  const STALE_AUTH_STATE_PREFIXES = Object.freeze([
+    'youzi.coursePortal.dataCache.'
+  ]);
 
   function clean(value){ return String(value == null ? '' : value).trim(); }
   function pageName(){ return clean(global.location.pathname.split('/').pop()).toLowerCase(); }
   function validRole(role){ return ['teacher','student','renter'].includes(clean(role)) ? clean(role) : ''; }
   function sessionKey(role){ return 'youzi.coursePortal.' + role + '.session.v1'; }
+  function storageHasMigrationMarker(storage){
+    try { return storage.getItem(AUTH_STATE_MIGRATION_KEY) === 'done'; }
+    catch (_) { return false; }
+  }
+  function storageKeys(storage){
+    const keys = [];
+    try {
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (key) keys.push(key);
+      }
+    } catch (_) {}
+    return keys;
+  }
+  function clearStaleAuthState(storage){
+    STALE_AUTH_STATE_KEYS.forEach(function(key){
+      try { storage.removeItem(key); } catch (_) {}
+    });
+    storageKeys(storage).forEach(function(key){
+      if (STALE_AUTH_STATE_PREFIXES.some(function(prefix){ return key.indexOf(prefix) === 0; })) {
+        try { storage.removeItem(key); } catch (_) {}
+      }
+    });
+  }
+  function migrateBrowserAuthStateOnce(){
+    const storages = [global.localStorage, global.sessionStorage].filter(Boolean);
+    let migrated = false;
+    storages.forEach(function(storage){
+      if (storageHasMigrationMarker(storage)) return;
+      clearStaleAuthState(storage);
+      try { storage.setItem(AUTH_STATE_MIGRATION_KEY, 'done'); } catch (_) {}
+      migrated = true;
+    });
+    return migrated;
+  }
   function courseSession(role){
     const key = sessionKey(role);
     try {
@@ -86,13 +135,11 @@
     if (!value) return;
     try {
       global.localStorage.setItem(LAST_ROLE_KEY, value);
-      global.localStorage.setItem('youzi.coursePortal.lastRole', value);
     } catch (_) {}
   }
   function lastCourseRole(){
     try {
-      return validRole(global.localStorage.getItem(LAST_ROLE_KEY)) ||
-        validRole(global.localStorage.getItem('youzi.coursePortal.lastRole'));
+      return validRole(global.localStorage.getItem(LAST_ROLE_KEY));
     } catch (_) {
       return '';
     }
@@ -142,6 +189,7 @@
   }
 
   global.YouziCoursePortalEntry = Object.assign({}, global.YouziCoursePortalEntry || {}, {
+    authStateMigrationVersion: AUTH_STATE_MIGRATION_KEY,
     rolePages: COURSE_ROLE_PAGES_BY_ROLE,
     getSession: courseSession,
     getLastRole: lastCourseRole,
@@ -150,19 +198,15 @@
     entryUrl: courseEntryUrl
   });
   global.normalizeYouziLineAuthorizationUrl = normalizeLineAuthorizationUrl;
+  migrateBrowserAuthStateOnce();
   clearExpiredEntryIntents();
 
   function rentalBridgeRole(){
     if (pageName() !== 'room-booking.html') return '';
     const search = new URLSearchParams(global.location.search || '');
     const requested = validRole(search.get('from'));
-    if ((requested === 'teacher' || requested === 'student') && courseSession(requested)) {
-      return requested;
-    }
-    if (courseSession('renter')) return 'renter';
-    if (courseSession('student')) return 'student';
-    if (courseSession('teacher')) return 'teacher';
-    return '';
+    if (requested === 'teacher' || requested === 'student') return requested;
+    return 'renter';
   }
 
   const currentPage = pageName();
@@ -191,36 +235,6 @@
       return;
     }
     if (access || courseSession(currentRole)) rememberCourseRole(currentRole);
-
-    function installRolePageRecovery(){
-      const authView = document.querySelector('[data-auth-view]') ||
-        document.getElementById('bindView') || document.getElementById('publicBindView');
-      const appView = document.querySelector('[data-app-view]') ||
-        document.getElementById('appView') || document.getElementById('bookingView');
-      if (!authView && !appView) return;
-      let redirecting = false;
-      function hidden(node){ return !node || node.classList.contains('hidden'); }
-      function check(){
-        if (redirecting) return;
-        if (appView && !hidden(appView)) {
-          rememberCourseRole(currentRole);
-          return;
-        }
-        const addingAnotherStudent = authView && authView.dataset.addStudent === 'true';
-        const liveAccess = clean(new URLSearchParams(global.location.search || '').get('access'));
-        if (authView && !hidden(authView) && !addingAnotherStudent && !liveAccess) {
-          redirecting = true;
-          safeReplace(courseEntryUrl({ method:'line', role:currentRole, reason:'session-expired' }));
-        }
-      }
-      const observer = new MutationObserver(check);
-      if (authView) observer.observe(authView, { attributes:true, attributeFilter:['class','data-add-student'] });
-      if (appView) observer.observe(appView, { attributes:true, attributeFilter:['class'] });
-      check();
-      global.setTimeout(check, 16000);
-    }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installRolePageRecovery, { once:true });
-    else installRolePageRecovery();
   }
 
   /* course-portal-common.js 載入後自動包裝，不需每一頁各自再改一次。 */
@@ -254,49 +268,6 @@
       };
     }
 
-    /*
-     * 已綁定的 LINE 帳號可能由後端回到中央入口並帶入一次性 access。
-     * 入口在此直接交換工作階段並前往身分頁，不讓使用者再按第二次。
-     */
-    if (pageName() === 'course-portal.html' && !global.__YOUZI_CENTRAL_ACCESS_EXCHANGE_V4__) {
-      const centralParams = new URLSearchParams(global.location.search || '');
-      const accessToken = clean(centralParams.get('access'));
-      const accessRole = validRole(centralParams.get('role'));
-      if (accessToken && accessRole && typeof portal.call === 'function' && typeof portal.setSession === 'function') {
-        global.__YOUZI_CENTRAL_ACCESS_EXCHANGE_V4__ = true;
-        const loadingView = document.getElementById('loadingView');
-        const loadingTitle = document.getElementById('loadingTitle');
-        const loadingText = document.getElementById('loadingText');
-        if (loadingTitle) loadingTitle.textContent = 'LINE 登入完成';
-        if (loadingText) loadingText.textContent = '正在建立這台裝置的登入狀態，完成後會直接進入。';
-        if (loadingView) {
-          ['methodView','roleView','setupView','emailView','otpView'].forEach(function(id){
-            const node = document.getElementById(id);
-            if (node) node.classList.add('hidden');
-          });
-          loadingView.classList.remove('hidden');
-        }
-        portal.call('coursePortalExchangeAccess', { accessToken:accessToken }).then(function(result){
-          if (!result || validRole(result.role) !== accessRole || !clean(result.sessionToken)) {
-            throw new Error('LINE 登入資料不完整，請重新操作。');
-          }
-          portal.setSession(accessRole, result.sessionToken);
-          rememberCourseRole(accessRole);
-          ENTRY_INTENT_KEYS.forEach(function(key){
-            try { global.sessionStorage.removeItem(key); } catch (_) {}
-            try { global.localStorage.removeItem(key); } catch (_) {}
-          });
-          safeReplace(COURSE_ROLE_PAGES_BY_ROLE[accessRole]);
-        }).catch(function(error){
-          const message = clean(error && error.message) || 'LINE 登入未完成，請重新操作。';
-          try {
-            global.sessionStorage.removeItem(sessionKey(accessRole));
-            global.localStorage.removeItem(sessionKey(accessRole));
-          } catch (_) {}
-          safeReplace(courseEntryUrl({ method:'line', role:accessRole, lineError:message }));
-        });
-      }
-    }
   }
   global.setTimeout(installCoursePortalHooks, 0);
 })(window);

@@ -5,6 +5,7 @@
   if (!global.firebase || !config) throw new Error('Firebase 尚未載入。');
   if (!global.firebase.apps.length) global.firebase.initializeApp(config);
   const functions = global.firebase.app().functions('us-central1');
+  const PortalAuth = global.CoursePortal;
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v2';
@@ -709,7 +710,11 @@
         mergeData(fresh);
         writeCache(weekStart, payrollMonth, data);
         renderAll();
-      }).catch(() => {});
+      }).catch((error) => {
+        if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
+          PortalAuth.invalidateSession('teacher', error);
+        }
+      });
       return;
     }
     const result = await invoke('coursePortalTeacherData', request);
@@ -723,10 +728,12 @@
       await fetchData(Boolean(force));
       refreshTeacherUtilityStatus(false);
     } catch (error) {
-      if (/登入|綁定|權限|到期/.test(error.message || '')) {
-        setSession('');
-        token = '';
-        showBound(false);
+      if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
+        if (PortalAuth && typeof PortalAuth.invalidateSession === 'function') {
+          PortalAuth.invalidateSession('teacher', error);
+          return;
+        }
+        setSession(''); token = ''; showBound(false);
       }
       toast(error.message || '讀取失敗', 'error');
     }
@@ -1784,7 +1791,10 @@
   document.getElementById('closeBonusRequest').addEventListener('click',()=>document.getElementById('bonusRequestModal').classList.add('hidden'));
   document.getElementById('bonusRequestForm').addEventListener('submit',async(event)=>{event.preventDefault();const button=event.submitter;loading(button,true,'送出中…');try{const form=event.currentTarget;let photoData='';const file=document.getElementById('bonusPhoto').files[0];if(file){photoData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=reject;reader.readAsDataURL(file);});}const result=await invoke('coursePortalTeacherBonusRequest',{sessionToken:token,studentId:form.elements.studentId.value,studentName:form.elements.studentName.value,description:form.elements.description.value,photoData});document.getElementById('bonusRequestModal').classList.add('hidden');form.reset();toast(result.message||'申請已送出。');}catch(error){toast(error.message,'error');}finally{loading(button,false);}});
 
-  logoutBtn.addEventListener('click', () => { setSession(''); location.reload(); });
+  logoutBtn.addEventListener('click', () => {
+    setSession('');
+    location.replace('course-portal.html?method=line&role=teacher');
+  });
   document.getElementById('payrollMonth').min = PAYROLL_MIN_MONTH;
   document.getElementById('payrollMonth').value = payrollMonth;
 
@@ -1793,14 +1803,16 @@
     try {
       token = await exchangeAccess();
       if (token) await load(false);
-      else showBound(false);
+      else if (PortalAuth && typeof PortalAuth.invalidateSession === 'function') {
+        PortalAuth.invalidateSession('teacher', new Error('請先登入老師入口。'));
+      } else showBound(false);
     } catch (error) {
-      setSession('');
-      const params = new URLSearchParams(location.search);
-      params.delete('access');
-      history.replaceState({}, '', `${location.pathname}${params.toString() ? `?${params}` : ''}`);
-      toast(error.message, 'error');
-      showBound(false);
+      if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
+        PortalAuth.invalidateSession('teacher', error);
+      } else {
+        toast(error.message, 'error');
+        showBound(false);
+      }
     }
   })();
 })(window);

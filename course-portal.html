@@ -126,12 +126,12 @@
     </section>
   </main>
 
-  <script src="config.js?v=20260803-login-stability-v3"></script>
+  <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260803-login-stability-v3"></script>
+  <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
   <script>
-    (function () {
+    (async function () {
       'use strict';
 
       const P = window.CoursePortal;
@@ -227,8 +227,6 @@
         try { sessionStorage.removeItem(key); } catch (_) {}
         try { localStorage.removeItem(key); } catch (_) {}
       }
-      function savedRoles() { return roles.filter(function (role) { return Boolean(roleSession(role.id)); }); }
-
       function identityFields(role, submitLabel, cancelAttribute) {
         const labels = role.id === 'teacher'
           ? { name:'老師姓名', phone:'手機號碼' }
@@ -303,6 +301,32 @@
         document.getElementById('loadingTitle').textContent = title || '正在處理';
         document.getElementById('loadingText').textContent = text || '完成後會自動開啟。';
         showOnly(loadingView);
+      }
+
+      async function exchangeCentralAccess(accessToken, role) {
+        method = 'line';
+        selectedRole = role;
+        // 交換完成前保留一次性票據；手機 WebView 若中途重載，可以從同一網址安全續跑。
+        showLoading('LINE 登入完成', '正在建立這台裝置的登入狀態，完成後會直接進入。');
+        try {
+          const result = await P.call('coursePortalExchangeAccess', { accessToken:accessToken });
+          if (!result || result.role !== role.id || !result.sessionToken) {
+            throw new Error('LINE 登入資料不完整，請重新操作。');
+          }
+          P.setSession(role.id, result.sessionToken);
+          rememberRole(role.id);
+          clearIntent();
+          if (result.reminderReady === false) {
+            P.toast('LINE 登入成功；請將柚子樂器官方帳號加入好友，才能收到課程與租用提醒。', 'error');
+          }
+          location.replace(role.page);
+        } catch (error) {
+          clearRoleSession(role.id);
+          setUrl({ method:'line', role:role.id });
+          renderRoles();
+          showOnly(roleView);
+          showNotice((error && error.message ? error.message : 'LINE 登入未完成，請重新操作。') + '\n請直接在這一頁重新登入。', true);
+        }
       }
 
       async function startLineLogin(role, button) {
@@ -479,18 +503,25 @@
         showOnly(roleView);
       });
 
-      /* 移除只供舊版自動跳轉使用的標記，但保留正式登入工作階段。 */
-      try {
-        ['youzi.coursePortal.pendingRole','youzi.coursePortal.autoRedirect','coursePortalEntryRole','coursePortalAutoRedirect'].forEach(function (key) {
-          localStorage.removeItem(key);
-          sessionStorage.removeItem(key);
-        });
-      } catch (_) {}
-
       const requestedRole = validRole(params.get('role'));
       const requestedMethod = String(params.get('method') || '').trim().toLowerCase();
       const reason = String(params.get('reason') || '').trim();
       const lineError = String(params.get('lineError') || '').trim();
+      const accessToken = String(params.get('access') || '').trim();
+
+      if (accessToken) {
+        const role = roleById(requestedRole);
+        if (!role) {
+          setUrl({ method:'line' });
+          method = 'line';
+          renderRoles();
+          showOnly(roleView);
+          showNotice('LINE 登入資料缺少身分，請重新選擇後登入。', true);
+        } else {
+          await exchangeCentralAccess(accessToken, role);
+        }
+        return;
+      }
 
       if (reason === 'session-expired' || reason === 'login-required') {
         if (requestedRole) clearRoleSession(requestedRole);
@@ -518,20 +549,7 @@
 
       if (requestedMethod === 'line' || requestedMethod === 'email') {
         method = requestedMethod;
-        const shouldAuto = params.get('auto') === '1' && requestedMethod === 'line' && !lineError && !reason;
-        if (shouldAuto) {
-          const saved = savedRoles();
-          const preferred = roleById(lastRole()) || (saved.length === 1 ? saved[0] : null);
-          if (preferred) {
-            if (roleSession(preferred.id)) {
-              rememberRole(preferred.id);
-              location.replace(preferred.page);
-            } else {
-              startLineLogin(preferred, null);
-            }
-            return;
-          }
-        }
+        setUrl({ method:method, role:requestedRole });
         renderRoles();
         showOnly(roleView);
         return;

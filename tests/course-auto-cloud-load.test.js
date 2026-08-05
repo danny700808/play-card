@@ -18,6 +18,7 @@ const operations = read('operations-phase1.js');
 const autoRead = read('functions/injiaoyunEducationAutoRead.js');
 const mirror = read('functions/injiaoyunEducationMirror.js');
 const courseIndex = read('functions/courseIndex.js');
+const courseLoginIndex = read('functions/courseLoginIndexV3.js');
 const portalUtils = read('functions/coursePortalUtils.js');
 const publicAccessScript = read('.github/scripts/course-mirror-public.cjs');
 const reportScript = read('.github/scripts/course-mirror-report.cjs');
@@ -36,6 +37,7 @@ const center = read('course-center.html');
   ['functions/injiaoyunEducationAutoRead.js', autoRead],
   ['functions/injiaoyunEducationMirror.js', mirror],
   ['functions/courseIndex.js', courseIndex],
+  ['functions/courseLoginIndexV3.js', courseLoginIndex],
   ['functions/coursePortalUtils.js', portalUtils],
   ['.github/scripts/course-mirror-public.cjs', publicAccessScript],
   ['.github/scripts/course-mirror-report.cjs', reportScript]
@@ -50,7 +52,13 @@ const bindEventsSource = (
 const requiredRuntimeIds = new Set(
   Array.from(bindEventsSource.matchAll(/(?<!\$)\$\(['"]([^'"]+)['"]\)/g), (match) => match[1])
 );
-const missingRuntimeIds = Array.from(requiredRuntimeIds).filter((id) => !htmlIds.has(id));
+const guardedOptionalIds = new Set();
+if (/var conflictButton=\$\('conflictBtn'\);if\(conflictButton\)/.test(bindEventsSource)) {
+  guardedOptionalIds.add('conflictBtn');
+}
+const missingRuntimeIds = Array.from(requiredRuntimeIds).filter((id) =>
+  !htmlIds.has(id) && !guardedOptionalIds.has(id)
+);
 assert.deepStrictEqual(
   missingRuntimeIds,
   [],
@@ -99,7 +107,8 @@ assert(
   '入口解鎖未同時驗證 running、scope、兩份 owner 與 pending source'
 );
 
-assert.strictEqual(packageJson.main, 'courseIndex.js', 'Firebase Functions 未使用明確課務入口');
+assert.strictEqual(packageJson.main, 'courseLoginIndexV3.js', 'Firebase Functions 未使用包含 LINE V3 的正式入口');
+assert(courseLoginIndex.includes("require('./courseIndex')"), 'LINE V3 入口未鏈入完整課務 Functions');
 assert(courseIndex.includes("require('./index')"), '課務入口未保留既有 Functions');
 assert(courseIndex.includes('registerInjiaoyunEducationAutoRead(exports)'), '課務入口未註冊唯讀課表函式');
 assert(!portalUtils.includes('registerInjiaoyunEducationAutoRead'), '工具模組仍在循環載入期間註冊 Firebase Function');
@@ -125,7 +134,7 @@ assert(workflow.includes('Fail workflow when deployment, access, or health check
   assert(!html.includes('operations-course-authoritative-v1.js'), '營運入口仍載入舊課務轉址層');
   assert(!html.includes('operations-mobile-course-fix-v1.js'), '營運入口仍載入舊手機補丁');
   assert(!html.includes('operations-mobile-course-dense-v1.css'), '營運入口仍載入舊手機樣式');
-  assert(html.includes('operations-course-inline.js?v=20260802-rental-identity-cancel-v1'), '營運入口未載入統一 inline 課務');
+  assert(/operations-course-inline\.js\?v=[^"']+/.test(html), '營運入口未載入統一 inline 課務');
 });
 
 assert(operations.includes('YouziOperationsCourseInline.mount(content,courseView)'), '營運中心沒有掛載 inline 課務');

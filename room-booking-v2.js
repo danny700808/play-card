@@ -108,18 +108,24 @@
     document.getElementById('logoutBtn').classList.toggle('hidden', !active);
   }
 
-  function currentSession() {
+  function requestedRoomRole() {
     const params = new URLSearchParams(location.search);
-    if (params.get('from') === 'student' && P.getSession('student')) {
-      return { role: 'student', token: P.getSession('student') };
-    }
-    if (params.get('from') === 'teacher' && P.getSession('teacher')) {
-      return { role: 'teacher', token: P.getSession('teacher') };
-    }
-    if (P.getSession('renter')) return { role: 'renter', token: P.getSession('renter') };
-    if (P.getSession('student')) return { role: 'student', token: P.getSession('student') };
-    if (P.getSession('teacher')) return { role: 'teacher', token: P.getSession('teacher') };
-    return null;
+    const requested = clean(params.get('from')).toLowerCase();
+    return requested === 'teacher' || requested === 'student' ? requested : 'renter';
+  }
+
+  function currentSession() {
+    const requested = requestedRoomRole();
+    const currentToken = P.getSession(requested);
+    return currentToken ? { role: requested, token: currentToken } : null;
+  }
+
+  function redirectToRoleLogin(requested, error, reason) {
+    const loginParams = new URLSearchParams({ method: 'line', role: requested });
+    if (reason) loginParams.set('reason', reason);
+    else if (isAuthError(error)) loginParams.set('reason', 'session-expired');
+    else loginParams.set('lineError', clean(error && error.message) || '登入狀態確認失敗，請重新登入。');
+    location.replace(`course-portal.html?${loginParams.toString()}`);
   }
 
   function renderUses(items) {
@@ -158,7 +164,7 @@
   }
 
   function isAuthError(error) {
-    return /登入|綁定|權限|到期|session|unauthenticated/i.test(clean(error && error.message));
+    return Boolean(P && typeof P.isSessionAuthError === 'function' && P.isSessionAuthError(error));
   }
 
   async function loadRentalData() {
@@ -501,8 +507,6 @@
     await Promise.all([loadRentalData(), loadBookings()]);
   }
 
-  P.installAuth({ role: 'renter', authViewId: 'publicBindView' });
-
   document.getElementById('rentalUseGrid').addEventListener('click', (event) => {
     const retry = event.target.closest('[data-retry-rental]');
     if (retry) {
@@ -654,18 +658,22 @@
   });
 
   document.getElementById('logoutBtn').addEventListener('click', () => {
-    if (role === 'renter') P.setSession('renter', '');
-    if (role === 'student') P.setSession('student', '');
-    if (role === 'teacher') P.setSession('teacher', '');
-    location.reload();
+    const logoutRole = ['renter', 'student', 'teacher'].includes(role) ? role : requestedRoomRole();
+    P.setSession(logoutRole, '');
+    location.replace(`course-portal.html?method=line&role=${logoutRole}`);
   });
 
   (async function init() {
     try {
       const params = new URLSearchParams(location.search);
       if (params.get('access')) {
-        token = await P.exchangeAccess('renter');
-        await openBooking('renter', token);
+        const accessRole = requestedRoomRole();
+        try {
+          token = await P.exchangeAccess(accessRole);
+          await openBooking(accessRole, token);
+        } catch (error) {
+          redirectToRoleLogin(accessRole, error);
+        }
         return;
       }
       const saved = currentSession();
@@ -673,15 +681,24 @@
         try {
           await openBooking(saved.role, saved.token);
         } catch (error) {
-          P.setSession(saved.role, '');
-          throw error;
+          if (isAuthError(error)) {
+            P.invalidateSession(saved.role, error);
+            return;
+          }
+          showBooking(true);
+          showRentalLoadFailure(error);
         }
         return;
       }
-      showBooking(false);
+      redirectToRoleLogin(requestedRoomRole(), null, 'login-required');
     } catch (error) {
-      P.toast(error.message, 'error');
-      showBooking(false);
+      const requested = requestedRoomRole();
+      if (isAuthError(error)) {
+        P.invalidateSession(requested, error);
+        return;
+      }
+      showBooking(true);
+      showRentalLoadFailure(error);
     }
   })();
 })(window);

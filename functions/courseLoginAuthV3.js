@@ -4,6 +4,7 @@ const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const { bindingIdentity, bindingIdentityPatch, decideLineLoginBinding } = require('./courseLoginPolicy');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -169,57 +170,32 @@ async function bindingsForLine(type, lineUserId) {
   }, doc.data() || {}));
 }
 
-async function refreshAndActivateBindings(bindings, profile, type) {
+async function refreshBindingProfiles(bindings, profile, type) {
   if (!bindings.length) return bindings;
 
   const batch = db.batch();
-  const nowText = new Intl.DateTimeFormat('zh-TW', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  }).format(new Date());
-
   bindings.forEach((binding) => {
-    const pending = clean(binding.status) === 'pending';
     const update = {
       type,
       lineDisplayName: profile.lineDisplayName,
       linePictureUrl: profile.linePictureUrl,
       lineFriendFlag: profile.lineFriendFlag,
       lineProfileCheckedAt: FieldValue.serverTimestamp(),
-      authAccountId: lineAccountId(type, profile.lineUserId),
-      updatedAt: FieldValue.serverTimestamp()
+      authAccountId: lineAccountId(type, profile.lineUserId)
     };
-    if (pending) {
-      Object.assign(update, {
-        status: 'active',
-        approvalStatus: 'approved',
-        approvedAt: FieldValue.serverTimestamp(),
-        approvedAtText: nowText,
-        approvalSource: 'line-self-service-v3'
-      });
-    }
+    Object.assign(update, bindingIdentityPatch(type, binding));
     batch.set(binding.__ref, update, { merge: true });
   });
   await batch.commit();
-
-  return bindings.map((binding) => clean(binding.status) === 'pending'
-    ? Object.assign({}, binding, { status: 'active', approvalStatus: 'approved' })
-    : binding);
+  return bindings;
 }
 
 async function issueAccessToken({ type, profile, binding }) {
   const raw = randomToken(32);
   const expiresAt = Timestamp.fromMillis(Date.now() + ACCESS_TOKEN_TTL_MS);
-  const targetId = type === 'teacher'
-    ? clean(binding.teacherId)
-    : (type === 'student' ? clean(binding.studentId) : '');
-  const renterId = type === 'renter' ? clean(binding.renterId) : '';
+  const identityId = bindingIdentity(type, binding);
+  const targetId = type === 'renter' ? '' : identityId;
+  const renterId = type === 'renter' ? identityId : '';
 
   await db.collection('coursePortalAccessTokens').doc(hash(raw)).set({
     type,
@@ -363,16 +339,22 @@ async function lineLoginCallback(req, res) {
 
     const token = await exchangeLineAuthorizationCode(code);
     const profile = await lineLoginProfile(token.access_token);
-    let allBindings = await bindingsForLine(type, profile.lineUserId);
-    allBindings = await refreshAndActivateBindings(allBindings, profile, type);
+    const allBindings = await refreshBindingProfiles(
+      await bindingsForLine(type, profile.lineUserId),
+      profile,
+      type
+    );
+    const decision = decideLineLoginBinding(type, allBindings);
 
-    const activeBindings = allBindings.filter((row) => clean(row.status) === 'active');
-    if (!activeBindings.length && allBindings.some((row) =>
-      ['revoked', 'rejected'].includes(clean(row.status)))) {
-      const message = '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。';
+    if (['pending', 'blocked', 'conflict'].includes(decision.action)) {
+      const message = decision.action === 'pending'
+        ? '這個身分已完成註冊，正在等待管理者核准；核准後再重新登入即可。'
+        : (decision.action === 'conflict'
+          ? '這個 LINE 在同一身分下有多筆有效資料，系統已停止自動選擇。請聯絡柚子樂器協助確認。'
+          : '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
       const redirectUrl = portalEntryUrl({ method: 'line', role: type, lineError: message });
       await stateRef.set({
-        status: 'blocked',
+        status: decision.action === 'pending' ? 'awaiting-approval' : 'blocked',
         error: message,
         lineUserId: profile.lineUserId,
         redirectUrl,
@@ -384,11 +366,11 @@ async function lineLoginCallback(req, res) {
     }
 
     let redirectUrl = '';
-    if (activeBindings.length && stateRow.linkAnother !== true) {
+    if (decision.action === 'login' && stateRow.linkAnother !== true) {
       const accessToken = await issueAccessToken({
         type,
         profile,
-        binding: activeBindings[0]
+        binding: decision.binding
       });
       redirectUrl = portalEntryUrl({
         method: 'line',
@@ -408,7 +390,7 @@ async function lineLoginCallback(req, res) {
       status: 'used',
       lineUserId: profile.lineUserId,
       lineFriendFlag: profile.lineFriendFlag,
-      setupRequired: !(activeBindings.length && stateRow.linkAnother !== true),
+      setupRequired: !(decision.action === 'login' && stateRow.linkAnother !== true),
       redirectUrl,
       completedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()

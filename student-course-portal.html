@@ -150,10 +150,10 @@
     </section>
   </main>
 
-  <script src="config.js"></script>
+  <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260802-timeout-phase1"></script>
+  <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -455,9 +455,17 @@
         render();
         showBound(true);
       } catch (error) {
-        if (/登入|綁定|權限|到期/.test(error.message)) {
-          P.setSession('student', '');
-          showBound(false);
+        if (P.isSessionAuthError(error)) {
+          P.invalidateSession('student', error);
+          return;
+        }
+        if (requested && /permission-denied/i.test(String(error.code || '')) && /沒有這位學生的查看權限/.test(error.message || '')) {
+          const params = new URLSearchParams(location.search);
+          params.delete('studentId');
+          history.replaceState({}, '', `${location.pathname}${params.toString() ? `?${params}` : ''}`);
+          studentId = '';
+          await load('');
+          return;
         }
         P.toast(error.message, 'error');
       }
@@ -564,7 +572,10 @@
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     });
-    document.getElementById('logoutBtn').addEventListener('click', () => { P.setSession('student', ''); location.reload(); });
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      P.setSession('student', '');
+      location.replace('course-portal.html?method=line&role=student');
+    });
 
     (async () => {
       try {
@@ -576,8 +587,11 @@
             location.href = 'room-booking.html?from=student';
           }
         }
-        else showBound(false);
-      } catch (error) { P.toast(error.message, 'error'); showBound(false); }
+        else P.invalidateSession('student', new Error('請先登入學生／家長入口。'));
+      } catch (error) {
+        if (P.isSessionAuthError(error)) P.invalidateSession('student', error);
+        else { P.toast(error.message, 'error'); showBound(false); }
+      }
     })();
   })();
   </script>

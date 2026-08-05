@@ -39,7 +39,7 @@
           <strong>選擇登入方式</strong>
         </div>
         <div class="login-method-list">
-          <a class="login-method-card login-method-line" data-primary-login-method="line" href="course-portal.html">
+          <a class="login-method-card login-method-line" data-primary-login-method="line" href="course-portal.html?method=line">
             <div class="login-method-heading">
               <span class="login-method-icon">LINE</span>
               <span class="login-method-copy"><strong>LINE 登入</strong></span>
@@ -86,9 +86,9 @@
         <div class="external-entry-zone">
           <div class="external-entry-title">其他服務入口</div>
           <div class="external-entry-grid">
-            <a href="student-course-portal.html" class="btn secondary external-entry-link">學生／家長入口</a>
-            <a href="room-booking.html" class="btn secondary external-entry-link">教室租用入口</a>
-            <a href="teacher-course-portal.html" class="btn secondary external-entry-link">老師入口</a>
+            <a href="course-portal.html?method=line&amp;role=student" class="btn secondary external-entry-link">學生／家長入口</a>
+            <a href="course-portal.html?method=line&amp;role=renter" class="btn secondary external-entry-link">教室租用入口</a>
+            <a href="course-portal.html?method=line&amp;role=teacher" class="btn secondary external-entry-link">老師入口</a>
             <a href="teacher-apply.html" class="btn secondary external-entry-link">應聘履歷投遞</a>
             <a href="rental-order.html" class="btn secondary external-entry-link">設備租賃申請</a>
           </div>
@@ -146,7 +146,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260502_btnprogress_final"></script>
+  <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
@@ -167,7 +167,8 @@
       'announcements.html',
       'task.html',
       'teacher-goods.html',
-      'forms-hub.html'
+      'forms-hub.html',
+      'line-binding-admin.html'
     ]);
 
     function requestedLoginTarget(){
