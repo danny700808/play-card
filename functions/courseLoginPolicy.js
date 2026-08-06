@@ -38,7 +38,30 @@ function isPendingBinding(row) {
   return status === 'pending' || ['pending', 'waiting', '待審核', '等待主管確認'].includes(approval);
 }
 
+
+// A unified LINE unlink removes the messaging/login association, but it is not
+// a permanent account suspension. Legacy unlink rows used revoked/revoked;
+// current rows use unbound/unbound. Explicit administrator rejection remains blocked.
+function isRecoverableUnboundBinding(row) {
+  if (!row) return false;
+  const status = lower(row.status);
+  const approval = lower(row.approvalStatus);
+  if (status === 'rejected' || approval === 'rejected') return false;
+  if (['unbound', 'unlinked'].includes(status) || ['unbound', 'unlinked'].includes(approval)) return true;
+  const globallyUnlinked = Boolean(
+    row.globalLineRevokedAt ||
+    clean(row.globalLineRevokedReason) ||
+    clean(row.globalLineRevokedBy)
+  );
+  if (!globallyUnlinked) return false;
+  return status === 'revoked' ||
+    approval === 'revoked' ||
+    lower(row.lineBindStatus) === 'unbound' ||
+    lower(row.lineLinkStatus) === 'unlinked';
+}
+
 function isBlockedBinding(row) {
+  if (isRecoverableUnboundBinding(row)) return false;
   const status = lower(row && row.status);
   const approval = lower(row && row.approvalStatus);
   return ['revoked', 'rejected', 'disabled', 'inactive', '已拒絕', '已解除', '已停用'].includes(status) ||
@@ -112,5 +135,6 @@ module.exports = {
   decideLineLoginBinding,
   isApprovedActiveBinding,
   isBlockedBinding,
-  isPendingBinding
+  isPendingBinding,
+  isRecoverableUnboundBinding
 };

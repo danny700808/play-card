@@ -549,9 +549,12 @@ function clearPatch(source, actor, reason) {
   }
   CLEAR_LINE_NAMES.forEach((field) => { patch[field] = FV.delete(); });
   if (/^coursePortal.+Bindings$/.test(source.collection)) {
-    patch.status = 'revoked';
-    patch.approvalStatus = 'revoked';
-    patch.revokedAt = FV.serverTimestamp();
+    // 完全解除只取消 LINE 關聯，不代表永久停用老師、學生或租用帳號。
+    patch.status = 'unbound';
+    patch.approvalStatus = 'unbound';
+    patch.unboundAt = FV.serverTimestamp();
+    patch.revokedAt = FV.delete();
+    patch.rejectedAt = FV.delete();
   }
   if (['employeeLineBindings', 'externalTeacherLineBindings'].includes(source.collection)) {
     patch.status = 'revoked';

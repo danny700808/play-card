@@ -80,6 +80,17 @@ async function main() {
   );
   assert.strictEqual(_test.first({ employeeId: 'EMP001' }, ['employeeId']), 'EMP001');
 
+
+const portalUnlinkPatch = _test.clearPatch(
+  { collection: 'coursePortalTeacherBindings', row: { lineUserId: 'U-PORTAL' } },
+  '管理者',
+  '管理者於統一入口完全解除 LINE'
+);
+assert.strictEqual(portalUnlinkPatch.status, 'unbound');
+assert.strictEqual(portalUnlinkPatch.approvalStatus, 'unbound');
+assert.deepStrictEqual(portalUnlinkPatch.lineUserId, { __delete: true });
+assert.deepStrictEqual(portalUnlinkPatch.revokedAt, { __delete: true });
+
   // A converted application and its contract are two visible business records but one
   // effective equipment-rental identity, even if the contract only links back through
   // the application's linkedContractId.

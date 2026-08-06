@@ -13,7 +13,7 @@ const {
   normalizeScheduleStatus,
   courseSourceIds
 } = require('./coursePortalUtils');
-const { bindingIdentity, bindingIdentityPatch, decideLineLoginBinding } = require('./courseLoginPolicy');
+const { bindingIdentity, bindingIdentityPatch, decideLineLoginBinding, isRecoverableUnboundBinding } = require('./courseLoginPolicy');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -1811,7 +1811,10 @@ async function completeVerifiedLineRegistration(data) {
       .where(conflictField, '==', type === 'teacher' ? targetId : renterId)
       .get();
     const conflictRows = conflicts.docs.map((doc) => doc.data() || {});
-    if (conflictRows.some((row) => ['revoked', 'rejected'].includes(clean(row.status)))) {
+    if (conflictRows.some((row) =>
+      ['revoked', 'rejected'].includes(clean(row.status)) &&
+      !isRecoverableUnboundBinding(row)
+    )) {
       throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
     }
     const claimed = conflictRows.some((row) =>
@@ -1830,7 +1833,10 @@ async function completeVerifiedLineRegistration(data) {
   const bindingRef = db.collection(bindingCollection(type)).doc(bindingId);
   const previousBinding = await bindingRef.get();
   const previous = previousBinding.exists ? previousBinding.data() || {} : {};
-  if (['revoked', 'rejected'].includes(clean(previous.status))) {
+  if (
+    ['revoked', 'rejected'].includes(clean(previous.status)) &&
+    !isRecoverableUnboundBinding(previous)
+  ) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
   // LINE 已完成平台身分驗證，並且姓名、電話仍需與校務資料吻合，
@@ -1848,6 +1854,14 @@ async function completeVerifiedLineRegistration(data) {
     phoneHash: hash(normalizePhone(identity.phone)),
     status: 'active',
     approvalStatus: 'approved',
+    lineBindStatus: 'bound',
+    lineLinkStatus: 'linked',
+    globalLineRevokedAt: null,
+    globalLineRevokedBy: '',
+    globalLineRevokedReason: '',
+    unboundAt: null,
+    revokedAt: null,
+    rejectedAt: null,
     approvalRequestedAt: previous.approvalRequestedAt || null,
     approvedAt: FieldValue.serverTimestamp(),
     approvedAtText: nowText(),
@@ -2010,7 +2024,10 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
   const bindRef = db.collection(bindingCollection(type)).doc(bindId);
   const previousBind = await bindRef.get();
   const previousBinding = previousBind.exists ? previousBind.data() || {} : {};
-  if (['revoked', 'rejected'].includes(clean(previousBinding.status))) {
+  if (
+    ['revoked', 'rejected'].includes(clean(previousBinding.status)) &&
+    !isRecoverableUnboundBinding(previousBinding)
+  ) {
     await reply(replyToken, '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
     return true;
   }
@@ -2025,6 +2042,14 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     emailVerifiedAt: row.emailVerified === true ? FieldValue.serverTimestamp() : null,
     status: 'active',
     approvalStatus: 'approved',
+    lineBindStatus: 'bound',
+    lineLinkStatus: 'linked',
+    globalLineRevokedAt: null,
+    globalLineRevokedBy: '',
+    globalLineRevokedReason: '',
+    unboundAt: null,
+    revokedAt: null,
+    rejectedAt: null,
     approvalRequestedAt: previousBinding.approvalRequestedAt || null,
     approvedAt: FieldValue.serverTimestamp(),
     approvedAtText: nowText(),
@@ -8739,6 +8764,12 @@ async function adminBindingAction(data) {
       approvedAtText: nowText(),
       rejectedAt: null,
       revokedAt: null,
+      lineBindStatus: 'bound',
+      lineLinkStatus: 'linked',
+      globalLineRevokedAt: null,
+      globalLineRevokedBy: '',
+      globalLineRevokedReason: '',
+      unboundAt: null,
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
     if (action === 'approve') await queueBindingDecisionNotice(row, true);
@@ -8753,6 +8784,10 @@ async function adminBindingAction(data) {
       rejectedAt: action === 'reject' ? FieldValue.serverTimestamp() : null,
       rejectedAtText: action === 'reject' ? nowText() : '',
       revokedAt: action === 'revoke' ? FieldValue.serverTimestamp() : null,
+      globalLineRevokedAt: null,
+      globalLineRevokedBy: '',
+      globalLineRevokedReason: '',
+      unboundAt: null,
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
     // 學生／家長的同一個 LINE 可能仍綁定其他孩子；資料權限每次都會重新

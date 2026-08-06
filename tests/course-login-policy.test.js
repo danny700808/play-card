@@ -8,7 +8,8 @@ const path = require('node:path');
 const {
   bindingIdentityPatch,
   decideLineLoginBinding,
-  isApprovedActiveBinding
+  isApprovedActiveBinding,
+  isRecoverableUnboundBinding
 } = require('../functions/courseLoginPolicy');
 
 test('pending LINE bindings stay pending and cannot log in', () => {
@@ -73,11 +74,29 @@ test('one parent may retain multiple active student bindings', () => {
   assert.deepEqual(result.identities, ['S001', 'S002']);
 });
 
-test('unknown LINE account enters setup while revoked account stays blocked', () => {
+test('global unlink is recoverable while explicit revocation or rejection stays blocked', () => {
   assert.equal(decideLineLoginBinding('teacher', []).action, 'setup');
-  assert.equal(decideLineLoginBinding('teacher', [
-    { __id: 'revoked', teacherId: 'T001', status: 'revoked' }
-  ]).action, 'blocked');
+
+  const explicitRevocation = { __id: 'revoked', teacherId: 'T001', status: 'revoked' };
+  assert.equal(isRecoverableUnboundBinding(explicitRevocation), false);
+  assert.equal(decideLineLoginBinding('teacher', [explicitRevocation]).action, 'blocked');
+
+  const currentUnlink = {
+    __id: 'unbound', teacherId: 'T001', status: 'unbound', approvalStatus: 'unbound'
+  };
+  assert.equal(isRecoverableUnboundBinding(currentUnlink), true);
+  assert.equal(decideLineLoginBinding('teacher', [currentUnlink]).action, 'setup');
+
+  const legacyUnlink = {
+    __id: 'legacy-unlink', teacherId: 'T001', status: 'revoked', approvalStatus: 'revoked',
+    lineBindStatus: 'unbound', globalLineRevokedReason: '管理者於統一入口完全解除 LINE'
+  };
+  assert.equal(isRecoverableUnboundBinding(legacyUnlink), true);
+  assert.equal(decideLineLoginBinding('teacher', [legacyUnlink]).action, 'setup');
+
+  const rejected = Object.assign({}, legacyUnlink, { status: 'rejected', approvalStatus: 'rejected' });
+  assert.equal(isRecoverableUnboundBinding(rejected), false);
+  assert.equal(decideLineLoginBinding('teacher', [rejected]).action, 'blocked');
 });
 
 test('both deployed and legacy callbacks use the shared policy and never self-approve pending rows', () => {
