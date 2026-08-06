@@ -82,6 +82,8 @@ jobs:
           node --check functions/employeeAuth.js
           node --check functions/easystoreCatalogSync.js
           node --check functions/externalTeacherOnboarding.js
+          node --check operations-manager-auth.js
+          node --check operations-phase1.js
           node --check course-portal-common.js
           node --check room-booking-v2.js
           node --check teacher-course-portal-v8.js
@@ -90,6 +92,7 @@ jobs:
           node tests/course-login-routing.test.js
           node tests/room-booking-v2.test.js
           node tests/teacher-course-portal-mobile.test.js
+          node --test tests/operations-manager-auth.test.js
           (cd functions && node - <<'NODE'
           const deployed = require('.');
           for (const name of ['employeeSecureLogin','employeeChangePassword','employeeForgotPassword','sendGmailTestEmail','syncEasyStoreCatalog','externalTeacherCreateBindCode','externalTeacherListContractTemplate','externalTeacherSaveContractTemplate','externalTeacherListContracts']) {

@@ -13,6 +13,7 @@ const SYNC_LOCK_MS = 35 * 60 * 1000;
 const MIN_SYNC_INTERVAL_MS = 60 * 1000;
 const API_REQUEST_TIMEOUT_MS = 60 * 1000;
 const MAX_TRANSIENT_RETRIES = 3;
+const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
@@ -191,9 +192,18 @@ function buildCatalog(products) {
   return { rows, duplicateSkus };
 }
 
+function managerClaimsAllowed(token) {
+  const claims = token || {};
+  const role = clean(claims.role || claims.userRole || claims.permissionRole).toLowerCase();
+  const email = clean(claims.email).toLowerCase();
+  return claims.admin === true || claims.manager === true || claims.owner === true ||
+    ['admin', 'manager', 'owner', '主管', '管理者'].includes(role) ||
+    ADMIN_EMAILS.has(email);
+}
+
 function isAllowedCaller(request) {
   const token = request && request.auth && request.auth.token;
-  return !!(token && token.employee === true && (token.manager === true || ['admin', 'manager'].includes(clean(token.role).toLowerCase())));
+  return Boolean(token && managerClaimsAllowed(token));
 }
 
 async function apiRequest(url, token, attempt = 0) {
@@ -494,7 +504,7 @@ function registerEasyStoreCatalogSync(exportsObject) {
     secrets: [EASYSTORE_ACCESS_TOKEN]
   }, async (request) => {
     if (!isAllowedCaller(request)) {
-      throw new HttpsError('permission-denied', '此同步功能只允許從管理網站執行。');
+      throw new HttpsError('permission-denied', '請使用具有管理權限的管理者帳號登入後再執行同步。');
     }
 
     const token = clean(EASYSTORE_ACCESS_TOKEN.value());
@@ -584,4 +594,4 @@ function registerEasyStoreCatalogSync(exportsObject) {
   });
 }
 
-module.exports = { registerEasyStoreCatalogSync };
+module.exports = { registerEasyStoreCatalogSync, managerClaimsAllowed, isAllowedCaller };

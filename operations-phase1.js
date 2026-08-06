@@ -3552,11 +3552,31 @@ function ensureSalesClock(){
     }catch(error){showAlert('匯入中斷：'+errorMessage(error)+'。已完成的批次會保留，可重新選同一檔案繼續。','error');toast('匯入未完成',errorMessage(error),'error');}
   }
 
+  async function requireEasyStoreManagerAuth(){
+    const bridge=global.YouziOperationsManagerAuth;
+    if(!bridge||typeof bridge.ensureManagerAuth!=='function')throw new Error('營運中心安全驗證元件尚未載入，請重新整理後再試。');
+    const manager=state.user||(typeof global.getUser==='function'?global.getUser():null);
+    const result=await bridge.ensureManagerAuth(global,manager,{timeoutMs:8000});
+    if(result&&result.ok){bridge.clearRedirectMarker(global);return result;}
+    if(result&&result.reauth){
+      const redirected=await bridge.redirectToLoginOnce(global,result.auth);
+      throw new Error(redirected?'管理者安全登入需要重新驗證，正在返回登入頁。':(result.message||'尚未取得管理者權限，請確認使用的是管理者帳號。'));
+    }
+    throw new Error(result&&result.message||'目前無法確認管理者權限，請重新整理後再試。');
+  }
   async function syncEasyStoreApi(){
     if(!(global.firebase&&global.firebase.functions)) return toast('無法同步','頁面未載入 Firebase Functions SDK。','warning');
     if(state.easyStoreSyncPending) return toast('圖片仍在同步','請等待目前這次同步完成，不要重複按。','warning');
     const central=state.internalProducts.length;
     if(!central) return toast('尚無中央商品','請先匯入原始商品 Excel。','warning');
+    try{
+      await requireEasyStoreManagerAuth();
+    }catch(error){
+      const message=errorMessage(error);
+      toast('需要確認管理者登入',message,'warning');
+      showAlert(message,'error');
+      return;
+    }
     const yes=await confirmAction('從 EasyStore API 同步','將直接讀取 EasyStore 全部商品與規格，以完全相同 SKU 對照 '+central+' 筆中央商品，補入網路名稱、售價與圖片。這個動作只讀 EasyStore，不會修改 EasyStore 商品或庫存。','開始同步');
     if(!yes) return;
     state.easyStoreSyncPending=true;
