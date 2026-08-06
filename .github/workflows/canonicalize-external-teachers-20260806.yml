@@ -1,0 +1,194 @@
+name: Canonicalize External Teachers 20260806
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/canonicalize-external-teachers-20260806.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: canonicalize-external-teachers-20260806
+  cancel-in-progress: false
+
+jobs:
+  patch-test-deploy-migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply canonical replacement fix
+        run: python3 scripts/canonicalize_external_teachers_20260806.py
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Verify canonical replacement
+        env:
+          NODE_PATH: functions/node_modules
+        run: |
+          set -euo pipefail
+          node --check functions/coursePortal.js
+          node --check teacher-more-auth-bridge.js
+          node tests/external-teacher-center.test.js
+          (cd functions && node - <<'NODE'
+          const deployed = require('.');
+          if (!deployed.coursePortalTeacherUtilitySession) throw new Error('Missing coursePortalTeacherUtilitySession');
+          console.log('Canonical teacher utility export verified');
+          NODE
+          )
+          git diff --check
+
+      - name: Commit canonical replacement
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/canonicalize-external-teachers-20260806.yml
+          rm -f scripts/canonicalize_external_teachers_20260806.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "No canonicalization changes staged" >&2; exit 1; }
+          git commit -m "Replace legacy teacher links with canonical external records"
+          git push origin HEAD:main
+
+      - name: Prepare Firebase credentials and runtime settings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_MESSAGING_ACCESS_TOKEN: ${{ secrets.LINE_MESSAGING_ACCESS_TOKEN }}
+          LINE_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}" || { echo "FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is empty" >&2; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$SERVICE_ACCOUNT_PATH"
+          RUNTIME_LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-${LINE_MESSAGING_ACCESS_TOKEN:-${LINE_ACCESS_TOKEN:-}}}"
+          test -n "$RUNTIME_LINE_TOKEN" || { echo "LINE access token is empty" >&2; exit 1; }
+          export RUNTIME_LINE_TOKEN
+          node <<'NODE'
+          const fs = require('fs');
+          const rows = {
+            LINE_CHANNEL_ACCESS_TOKEN: process.env.RUNTIME_LINE_TOKEN || '',
+            GMAIL_USER: process.env.GMAIL_USER || '',
+            GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
+            EMAIL_FROM: process.env.EMAIL_FROM || '',
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/'
+          };
+          fs.writeFileSync('functions/.env', Object.entries(rows).map(([k,v]) => `${k}=${JSON.stringify(String(v))}`).join('\n') + '\n', {mode:0o600});
+          NODE
+
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+
+      - name: Deploy canonical teacher utility
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          firebase deploy --project youzi-c1b74 --non-interactive --force \
+            --only "functions:coursePortalTeacherUtilitySession"
+
+      - name: Migrate active teacher bindings
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+          NODE_PATH: functions/node_modules
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const admin = require('firebase-admin');
+          const crypto = require('crypto');
+          if (!admin.apps.length) admin.initializeApp({projectId:'youzi-c1b74'});
+          const db = admin.firestore();
+          const FV = admin.firestore.FieldValue;
+          const clean = value => String(value == null ? '' : value).trim();
+          const hash = value => crypto.createHash('sha256').update(String(value || '')).digest('hex');
+          const isExternal = row => {
+            const id = clean(row && (row.identityType || row.employeeType || row.identityLabel || row.role)).toLowerCase();
+            return row && (row.isExternalTeacher === true || id === 'external' || id === 'externalteacher' || /外聘/.test(clean(row.identityLabel || row.roleLabel)));
+          };
+          (async () => {
+            const [bindingSnap, employeeSnap] = await Promise.all([
+              db.collection('coursePortalTeacherBindings').get(),
+              db.collection('employees').get()
+            ]);
+            const bindings = bindingSnap.docs.map(doc => ({ref:doc.ref,id:doc.id,row:doc.data()||{}}))
+              .filter(item => clean(item.row.status || 'active') === 'active' && clean(item.row.teacherId));
+            const employees = employeeSnap.docs.map(doc => ({ref:doc.ref,id:doc.id,row:doc.data()||{}}));
+            const operations = new Map();
+            const teacherIds = new Set();
+            let replaced = 0;
+            for (const item of bindings) {
+              const row = item.row;
+              const teacherId = clean(row.teacherId);
+              teacherIds.add(teacherId);
+              const canonicalId = `EXT_${hash(`course-teacher:${teacherId}`).slice(0,16)}`;
+              const canonicalRef = db.collection('employees').doc(canonicalId);
+              const name = clean(row.name || row.teacherName || row.targetName);
+              const email = clean(row.email || row.emailNormalized).toLowerCase();
+              const employeeData = {
+                employeeId:canonicalId,id:canonicalId,userId:canonicalId,
+                identityType:'external',identityLabel:'外聘老師',employeeType:'external',role:'externalTeacher',isExternalTeacher:true,
+                accountStatus:'active',employmentStatus:'active',hiddenFromActiveLists:false,
+                coursePortalTeacherId:teacherId,coursePortalTeacherIds:FV.arrayUnion(teacherId),legacyTeacherId:teacherId,
+                coursePortalTeacherCanonical:true,canonicalTeacherKey:`course-teacher:${teacherId}`,
+                source:'course-portal-canonical-external-teacher',updatedAt:FV.serverTimestamp()
+              };
+              if (name) { employeeData.name=name; employeeData.displayName=name; }
+              if (email) employeeData.email=email;
+              operations.set(`set|${canonicalRef.path}`, {action:'set',ref:canonicalRef,data:employeeData});
+              operations.set(`set|${item.ref.path}`, {action:'set',ref:item.ref,data:{
+                employeeId:canonicalId,externalTeacherEmployeeId:canonicalId,employeeRef:`employees/${canonicalId}`,
+                legacyTeacherId:teacherId,coursePortalTeacherCanonical:true,updatedAt:FV.serverTimestamp()
+              }});
+              const oldLinked = new Set([clean(row.employeeId),clean(row.externalTeacherEmployeeId),clean(row.linkedEmployeeId)].filter(Boolean));
+              for (const employee of employees) {
+                const data = employee.row;
+                const employeeId = clean(data.employeeId || data.id || data.userId || employee.id);
+                if (!employeeId || employeeId === canonicalId || !isExternal(data)) continue;
+                const related = oldLinked.has(employeeId) || clean(data.coursePortalTeacherId || data.legacyTeacherId) === teacherId ||
+                  (Array.isArray(data.coursePortalTeacherIds) && data.coursePortalTeacherIds.map(clean).includes(teacherId));
+                if (!related) continue;
+                replaced += 1;
+                operations.set(`set|${employee.ref.path}`, {action:'set',ref:employee.ref,data:{
+                  accountStatus:'archived',employmentStatus:'archived',hiddenFromActiveLists:true,
+                  coursePortalTeacherCanonicalReplaced:true,canonicalReplacementEmployeeId:canonicalId,
+                  canonicalReplacementTeacherId:teacherId,canonicalReplacementAt:FV.serverTimestamp(),
+                  statusNote:'舊課務老師自動配對資料已由新的固定外聘老師主檔取代。',updatedAt:FV.serverTimestamp()
+                }});
+              }
+            }
+            const rows = [...operations.values()];
+            for (let offset=0; offset<rows.length; offset+=350) {
+              const batch=db.batch();
+              rows.slice(offset,offset+350).forEach(op => batch.set(op.ref,op.data,{merge:true}));
+              await batch.commit();
+            }
+            console.log(`Canonical external teacher migration complete: ${teacherIds.size} teachers, ${bindings.length} bindings, ${replaced} legacy links archived, ${rows.length} writes.`);
+          })().catch(error => { console.error(error && error.stack || error); process.exit(1); });
+          NODE
+
+      - name: Remove temporary credentials
+        if: always()
+        run: |
+          rm -f "${{ runner.temp }}/youzi-firebase-service-account.json"
+          git checkout -- functions/.env 2>/dev/null || rm -f functions/.env
