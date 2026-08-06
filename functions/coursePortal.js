@@ -2206,22 +2206,17 @@ function externalTeacherProfileMissingFields(row) {
 
 async function resolveTeacherUtilityEmployee(session) {
   const teacherId = clean(session && session.teacherId);
+  if (!teacherId) throw new HttpsError('failed-precondition', '老師登入資料缺少老師編號，請重新登入。');
   const bindings = await authorizedBindingsForSession(session);
   if (!bindings.length) throw new HttpsError('permission-denied', '老師登入綁定已停用，請重新登入。');
 
-  const [teacherRows, employeeSnapshot, profileSnapshot, contractSnapshot] = await Promise.all([
+  const [teacherRows, employeeSnapshot] = await Promise.all([
     mirrorRows('teachers'),
-    db.collection('employees').limit(2000).get(),
-    db.collection('externalTeacherProfiles').limit(2000).get(),
-    db.collection('externalTeacherContracts').limit(2000).get()
+    db.collection('employees').limit(2000).get()
   ]);
   const teacher = teacherRows.find((row) => sourceId(row) === teacherId) || {};
-  const externalRows = profileSnapshot.docs.concat(contractSnapshot.docs).map((doc) =>
+  const employees = employeeSnapshot.docs.map((doc) =>
     Object.assign({ __id: doc.id, __ref: doc.ref }, jsonValue(doc.data() || {}))
-  );
-  const relatedExternalRows = externalRows.filter((row) =>
-    clean(row.__id) === teacherId ||
-    clean(row.teacherId || row.externalTeacherId || row.coursePortalTeacherId) === teacherId
   );
 
   const explicitIds = new Set([teacherId]);
@@ -2229,102 +2224,104 @@ async function resolveTeacherUtilityEmployee(session) {
     const value = linkedEmployeeId(row);
     if (value) explicitIds.add(value);
   });
-  relatedExternalRows.forEach((row) => {
-    const value = linkedEmployeeId(row);
-    if (value) explicitIds.add(value);
-  });
-
-  const names = new Set();
-  const emails = new Set();
-  const phones = new Set();
-  function collectIdentity(row) {
-    const name = normalizedPersonName(row && (row.name || row.teacherName || row.displayName || row.employeeName));
-    const email = employeeEmail(row);
-    const phone = employeePhone(row);
-    if (name) names.add(name);
-    if (email) emails.add(email);
-    if (phone) phones.add(phone);
-  }
-  collectIdentity(teacher);
-  bindings.forEach(collectIdentity);
-  relatedExternalRows.forEach(collectIdentity);
-
-  const employees = employeeSnapshot.docs.map((doc) => Object.assign({ __id: doc.id, __ref: doc.ref }, jsonValue(doc.data() || {})));
   const direct = employees.filter((row) => isExternalTeacherEmployee(row) && (
     explicitIds.has(clean(row.__id)) ||
     explicitIds.has(clean(row.employeeId || row.id || row.userId)) ||
     clean(row.coursePortalTeacherId || row.legacyTeacherId) === teacherId ||
     (Array.isArray(row.coursePortalTeacherIds) && row.coursePortalTeacherIds.map(clean).includes(teacherId))
   ));
-  let employee = null;
-  if (direct.length === 1) employee = direct[0];
-  else if (direct.length > 1) {
-    throw new HttpsError('failed-precondition', '老師資料連到多個員工編號，請先由管理者整理重複資料。');
+  if (direct.length > 1) {
+    throw new HttpsError('failed-precondition', '這個老師編號連到多個外聘老師主檔，請先由管理者整理重複資料。');
   }
 
+  let employee = direct[0] || null;
   if (!employee) {
-    const scored = employees.filter(isExternalTeacherEmployee).map((row) => {
-      let score = 0;
-      const email = employeeEmail(row);
-      const phone = employeePhone(row);
-      const name = normalizedPersonName(row.name || row.displayName || row.employeeName);
-      if (email && emails.has(email)) score += 6;
-      if (phone && phones.has(phone)) score += 5;
-      if (name && names.has(name)) score += 2;
-      return { row, score };
-    }).filter((item) => item.score >= 6).sort((a, b) => b.score - a.score);
-    if (scored.length && (scored.length === 1 || scored[0].score > scored[1].score)) employee = scored[0].row;
-    else if (scored.length) {
-      throw new HttpsError('failed-precondition', '有多筆相似的外聘老師資料，為避免合併錯人，請先由管理者指定員工編號。');
+    const employeeId = `EXT_${hash(`course-teacher:${teacherId}`).slice(0, 16)}`;
+    const employeeRef = db.collection('employees').doc(employeeId);
+    const existingSnapshot = await employeeRef.get();
+    const existing = existingSnapshot.exists ? jsonValue(existingSnapshot.data() || {}) : {};
+    if (existingSnapshot.exists && !isExternalTeacherEmployee(existing)) {
+      throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
     }
-  }
-  if (!employee) {
-    throw new HttpsError('failed-precondition', '找不到可安全連結的外聘老師員工資料，請先由管理者完成一次員工編號連結。');
+    const identityRows = [teacher].concat(bindings);
+    const name = clean(identityRows.map((row) => row && (
+      row.name || row.teacherName || row.targetName || row.displayName
+    )).find(clean)) || '外聘老師';
+    const email = identityRows.map(employeeEmail).find(clean) || '';
+    const phone = identityRows.map(employeePhone).find(clean) || '';
+    const createdAt = existingSnapshot.exists
+      ? (existing.createdAt || existing.createdAtText || null)
+      : FieldValue.serverTimestamp();
+    const fresh = {
+      employeeId,
+      id: employeeId,
+      userId: employeeId,
+      name,
+      displayName: name,
+      email,
+      mobilePhone: phone,
+      phone,
+      identityType: 'external',
+      identityLabel: '外聘老師',
+      employeeType: 'external',
+      role: 'externalTeacher',
+      isExternalTeacher: true,
+      accountStatus: 'active',
+      employmentStatus: 'active',
+      hiddenFromActiveLists: false,
+      coursePortalTeacherId: teacherId,
+      coursePortalTeacherIds: FieldValue.arrayUnion(teacherId),
+      legacyTeacherId: teacherId,
+      source: 'course-portal-canonical-external-teacher',
+      createdAt,
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    await employeeRef.set(fresh, { merge: true });
+    employee = Object.assign({}, existing, fresh, { __id: employeeId, __ref: employeeRef });
   }
 
   const employeeId = clean(employee.employeeId || employee.id || employee.__id);
-  const profile = externalRows.find((row) => linkedEmployeeId(row) === employeeId) ||
-    relatedExternalRows[0] || {};
-  const merged = Object.assign({}, employee, profile, {
-    name: clean(profile.name || profile.teacherName || employee.name || employee.displayName),
-    email: employeeEmail(profile) || employeeEmail(employee),
-    mobilePhone: employeePhone(profile) || employeePhone(employee)
-  });
-  const missingProfileFields = externalTeacherProfileMissingFields(merged);
-  const employeePatch = {
+  const employeeRef = employee.__ref || db.collection('employees').doc(employeeId);
+  const canonicalPatch = {
     employeeId,
     id: clean(employee.id) || employeeId,
     userId: clean(employee.userId) || employeeId,
+    identityType: 'external',
+    identityLabel: '外聘老師',
+    employeeType: 'external',
+    role: 'externalTeacher',
+    isExternalTeacher: true,
     coursePortalTeacherId: teacherId,
     coursePortalTeacherIds: FieldValue.arrayUnion(teacherId),
     updatedAt: FieldValue.serverTimestamp()
   };
-  if (!clean(employee.legacyTeacherId)) employeePatch.legacyTeacherId = teacherId;
-  await employee.__ref.set(employeePatch, { merge: true });
+  if (!clean(employee.legacyTeacherId)) canonicalPatch.legacyTeacherId = teacherId;
+  await employeeRef.set(canonicalPatch, { merge: true });
+
   const bindingBatch = db.batch();
   bindings.forEach((row) => bindingBatch.set(row.__ref, {
     employeeId,
     externalTeacherEmployeeId: employeeId,
     legacyTeacherId: teacherId,
-    linkedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true }));
-  relatedExternalRows.forEach((row) => bindingBatch.set(row.__ref, {
-    employeeId,
-    externalTeacherEmployeeId: employeeId,
     employeeRef: `employees/${employeeId}`,
-    coursePortalTeacherId: teacherId,
+    linkedAt: row.linkedAt || FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true }));
   await bindingBatch.commit();
 
+  const merged = Object.assign({}, employee, canonicalPatch, {
+    name: clean(employee.name || employee.displayName || teacher.name || teacher.teacherName) || '外聘老師',
+    email: employeeEmail(employee),
+    mobilePhone: employeePhone(employee)
+  });
+  const missingProfileFields = externalTeacherProfileMissingFields(merged);
   return {
     employeeId,
     user: {
       id: employeeId,
       employeeId,
-      name: clean(merged.name) || clean(teacher.name) || '外聘老師',
-      displayName: clean(merged.name) || clean(teacher.name) || '外聘老師',
+      name: merged.name,
+      displayName: merged.name,
       email: employeeEmail(merged),
       phone: employeePhone(merged),
       mobilePhone: employeePhone(merged),
@@ -2333,10 +2330,10 @@ async function resolveTeacherUtilityEmployee(session) {
       employeeType: 'external',
       role: 'externalTeacher',
       isExternalTeacher: true,
-      lineUserId: clean(merged.lineUserId || session.lineUserId),
-      lineNotifyEnabled: Boolean(clean(merged.lineUserId || session.lineUserId)),
-      accountStatus: clean(merged.accountStatus || 'active'),
-      employmentStatus: clean(merged.employmentStatus || 'active'),
+      lineUserId: clean(session.lineUserId),
+      lineNotifyEnabled: Boolean(clean(session.lineUserId)),
+      accountStatus: clean(employee.accountStatus || 'active'),
+      employmentStatus: clean(employee.employmentStatus || 'active'),
       legacyTeacherId: teacherId,
       portalSessionBridge: true
     },

@@ -4,7 +4,7 @@
   const TEACHER_PORTAL_SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const LEGACY_USER_KEY = 'employeeUser';
   const LEGACY_USER_ID_KEY = 'employeeUserId';
-  const AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v2';
+  const AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v3';
   const AUTH_CACHE_TTL_MS = 30 * 60 * 1000;
   const FUNCTIONS_COMPAT_URL = 'https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js';
   const ALLOWED_RETURN_PAGES = new Set([

@@ -623,7 +623,7 @@
       }catch(err){
         console.warn('薪資投保資料讀取失敗，員工管理仍會先顯示基本資料', err);
       }
-      const mergedRows = (res.rows || []).map(function(row){ return mergeSalaryIntoEmployee(row, salaryMap); }).filter(externalConfirmedForEmployeeAdmin);
+      const mergedRows = (res.rows || []).map(function(row){ return mergeSalaryIntoEmployee(row, salaryMap); });
       const cleaned=dedupeEmployees(mergedRows.filter(e => empId(e) || emailOf(e)));
       allEmployees = cleaned.rows;
       const duplicateCount=Math.max(cleaned.duplicateCount,Array.isArray(res.duplicateGroups)?res.duplicateGroups.length:0);
@@ -726,17 +726,19 @@
       const contractRows=[],profileRows=[];
       const directIds=[firstValue(e,['currentExternalContractId']),firstValue(e,['latestExternalContractId']),firstValue(e,['externalTeacherContractId']),firstValue(e,['externalTeacherProfileId'])].map(clean).filter(Boolean);
       for(const id of Array.from(new Set(directIds))){const [c,p]=await Promise.all([readDocSafe('externalTeacherContracts',id),readDocSafe('externalTeacherProfiles',id)]);if(c)contractRows.push(c);if(p)profileRows.push(p);}
-      const eid=empId(e),email=emailOf(e),mobile=clean(firstValue(e,['mobilePhone','phone','mobile']));
+      const eid=empId(e);
       const jobs=[];
       if(eid){jobs.push(queryDocsSafe('externalTeacherContracts','employeeId',eid,30).then(x=>contractRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherContracts','externalTeacherEmployeeId',eid,30).then(x=>contractRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherProfiles','employeeId',eid,30).then(x=>profileRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherProfiles','externalTeacherEmployeeId',eid,30).then(x=>profileRows.push(...x)));}
-      if(email){jobs.push(queryDocsSafe('externalTeacherContracts','email',email,30).then(x=>contractRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherProfiles','email',email,30).then(x=>profileRows.push(...x)));}
-      if(mobile){jobs.push(queryDocsSafe('externalTeacherContracts','mobile',mobile,30).then(x=>contractRows.push(...x)));jobs.push(queryDocsSafe('externalTeacherProfiles','mobile',mobile,30).then(x=>profileRows.push(...x)));}
       await Promise.all(jobs);
       return {externalContract:latestRow(contractRows),externalProfile:latestRow(profileRows)};
     }
     async function loadEmployeeSupplement(e){
-      const [registration,external]=await Promise.all([loadRegistrationSupplement(e),loadExternalSupplement(e)]);
-      return {registration:registration||{},externalProfile:(external&&external.externalProfile)||{},externalContract:(external&&external.externalContract)||{}};
+      if(identityType(e)==='external'){
+        const external=await loadExternalSupplement(e);
+        return {registration:{},externalProfile:(external&&external.externalProfile)||{},externalContract:(external&&external.externalContract)||{}};
+      }
+      const registration=await loadRegistrationSupplement(e);
+      return {registration:registration||{},externalProfile:{},externalContract:{}};
     }
 
     async function selectEmployee(id){
@@ -1134,6 +1136,7 @@
 
     document.addEventListener('DOMContentLoaded', init);
   </script>
+  <script src="external-teacher-admin-route-v1.js?v=20260806-external-teacher-canonical-v1"></script>
   <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body>

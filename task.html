@@ -12,7 +12,7 @@
 </style>
   <link rel="stylesheet" href="global-nav.css?v=20260603unified1">
   <link rel="stylesheet" href="teacher-more-pages.css?v=20260730-teacher-more-v1">
-  <script src="teacher-more-auth-bridge.js?v=20260801-teacher-session-v2"></script>
+  <script src="teacher-more-auth-bridge.js?v=20260806-external-teacher-canonical-v1"></script>
 </head>
 <body class="admin-wide-page teacher-utility-page utility-task">
   <div class="yz-global-nav" data-yz-global-nav>
@@ -78,7 +78,27 @@
     async function runBusy(btn,text,fn){if(typeof btn==='string'){fn=text;text=btn;btn=(window.event&&window.event.currentTarget)||null} if(loading)return;loading=true;setButtonBusy(btn,true,text);try{return await fn()}catch(e){showMsg(e.message||String(e),false)}finally{setButtonBusy(btn,false);loading=false}}
     function managerMode(){const u=currentUser()||{};return !!(u.showSettingsZone||u.isAdmin||String(u.role||'').toLowerCase()==='admin'||u.identityType==='admin')}
     function initHeader(){return currentUser()}
-    async function loadEmployees(selectId){try{const res=await api('getEmployeeOptions',{userId:uid()});employees=res.employees||res.rows||[];$(selectId).innerHTML='<option value="">請選擇員工</option>'+employees.map(x=>`<option value="${esc(x.id||x.employeeId||'')}">${esc(x.name||x.employeeName||'')}</option>`).join('')}catch(e){}}
+    async function loadEmployees(selectId){
+      try{
+        const externalOnly=new URLSearchParams(location.search||'').get('identity')==='external';
+        const res=externalOnly
+          ? await api('getEmployeeManagementData',{userId:uid(),statusMode:'all'})
+          : await api('getEmployeeOptions',{userId:uid()});
+        employees=res.employees||res.rows||[];
+        if(externalOnly){
+          employees=employees.filter(x=>{
+            const sources=[x||{},x&&x.raw||{},x&&x.profile||{}];
+            let raw='';
+            for(const source of sources){
+              raw=String(source&&(source.identityType||source.employeeType||source.identityLabel||source.roleLabel||source.role||source['身分類型'])||'').trim().toLowerCase();
+              if(raw)break;
+            }
+            return raw.includes('external')||raw.includes('外聘');
+          });
+        }
+        $(selectId).innerHTML='<option value="">'+(externalOnly?'請選擇外聘老師':'請選擇員工')+'</option>'+employees.map(x=>`<option value="${esc(x.id||x.employeeId||x.__id||'')}">${esc(x.name||x.employeeName||x.displayName||'')}</option>`).join('');
+      }catch(e){}
+    }
     const rec={};
     function recHtml(key){return `<div class="rec-line" data-rec="${key}"><span class="pill blue">錄音</span><span class="rec-time" id="rt_${key}">00:00</span><div class="rec-buttons"><button class="mini-btn primary" type="button" onclick="startRec('${key}')">開始</button><button class="mini-btn" type="button" onclick="stopRec('${key}')" disabled>停止</button><button class="mini-btn danger" type="button" onclick="clearRec('${key}')" disabled>刪除</button></div><audio id="ra_${key}" class="audio-mini hidden" controls></audio></div>`}
     async function startRec(key){try{const box=document.querySelector(`[data-rec="${key}"]`);const stream=await navigator.mediaDevices.getUserMedia({audio:true});const chunks=[];const mr=new MediaRecorder(stream);rec[key]={mr,stream,chunks,sec:0,file:null,timer:setInterval(()=>{rec[key].sec++;$('rt_'+key).textContent=String(Math.floor(rec[key].sec/60)).padStart(2,'0')+':'+String(rec[key].sec%60).padStart(2,'0')},1000)};mr.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};mr.onstop=()=>{clearInterval(rec[key].timer);const blob=new Blob(chunks,{type:mr.mimeType||'audio/webm'});rec[key].file=new File([blob],`record_${Date.now()}.webm`,{type:blob.type});stream.getTracks().forEach(t=>t.stop());const a=$('ra_'+key);a.src=URL.createObjectURL(rec[key].file);a.classList.remove('hidden');box.querySelectorAll('button')[0].disabled=false;box.querySelectorAll('button')[1].disabled=true;box.querySelectorAll('button')[2].disabled=false};mr.start();box.querySelectorAll('button')[0].disabled=true;box.querySelectorAll('button')[1].disabled=false;box.querySelectorAll('button')[2].disabled=true}catch(e){alert('無法啟用錄音：'+(e.message||e))}}
@@ -115,6 +135,7 @@
   
 function scheduleIdle_(fn){if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:1200});else setTimeout(fn,160);}
 </script>
+  <script src="external-teacher-admin-route-v1.js?v=20260806-external-teacher-canonical-v1"></script>
   <script src="global-nav.js?v=20260801-teacher-session-v2"></script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
 </body></html>
