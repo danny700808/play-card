@@ -21,6 +21,7 @@ on:
       - "student-course-portal.html"
       - "teacher-course-portal.html"
       - "teacher-course-portal-v8.css"
+      - "teacher-daily-reminder.js"
       - "teacher-course-session-v8.js"
       - "teacher-course-portal-v8.js"
       - "functions/coursePortal.js"
@@ -39,6 +40,8 @@ on:
       - "tests/course-login-routing.test.js"
       - "tests/room-booking-v2.test.js"
       - "tests/teacher-course-portal-mobile.test.js"
+      - "tests/teacher-daily-reminder.test.js"
+      - "tests/teacher-utility-pending.test.js"
       - ".github/workflows/deploy-course-portal-auth.yml"
   workflow_dispatch:
 
@@ -87,11 +90,14 @@ jobs:
           node --check course-portal-common.js
           node --check room-booking-v2.js
           node --check teacher-course-portal-v8.js
+          node --check teacher-daily-reminder.js
           node tests/course-portal.test.js
           node --test tests/course-login-policy.test.js
           node tests/course-login-routing.test.js
           node tests/room-booking-v2.test.js
           node tests/teacher-course-portal-mobile.test.js
+          node --test tests/teacher-daily-reminder.test.js
+          node --test tests/teacher-utility-pending.test.js
           node --test tests/operations-manager-auth.test.js
           (cd functions && node - <<'NODE'
           const deployed = require('.');

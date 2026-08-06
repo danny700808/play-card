@@ -136,7 +136,24 @@
         .httpsCallable('coursePortalTeacherUtilitySession')({ sessionToken: token });
       return response && response.data || {};
     } catch (error) {
-      throw new Error(String(error && (error.details || error.message) || '老師資料確認失敗。').replace(/^FirebaseError:\s*/i, ''));
+      const wrapped = new Error(String(error && (error.details || error.message) || '老師資料確認失敗。').replace(/^FirebaseError:\s*/i, ''));
+      wrapped.code = String(error && error.code || '');
+      wrapped.portalAuthExpired = /(?:^|\/)(?:unauthenticated|permission-denied)$/i.test(wrapped.code) ||
+        /登入狀態已到期|請先登入|登入權限已停用|綁定已停用|這個帳號沒有此頁面權限/.test(wrapped.message);
+      throw wrapped;
+    }
+  }
+
+  async function fetchUtilitySession() {
+    try {
+      const result = await invokeUtilitySession();
+      if (!result || result.ok === false || !result.user) {
+        throw new Error('老師資料確認結果不完整。');
+      }
+      return result;
+    } catch (error) {
+      if (error && error.portalAuthExpired === true) clearPortalBridge();
+      throw error;
     }
   }
 
@@ -163,6 +180,8 @@
     const user = readEmployeeUser();
     try {
       global.localStorage.removeItem(AUTH_CACHE_KEY);
+      global.localStorage.removeItem('youzi.teacherMore.authorization.v2');
+      global.localStorage.removeItem('youzi.teacherMore.authorization.v3');
       global.localStorage.removeItem(TEACHER_PORTAL_SESSION_KEY);
       if (user && user.portalSessionBridge === true) {
         global.localStorage.removeItem(LEGACY_USER_KEY);
@@ -214,6 +233,7 @@
   global.YZTeacherMoreAuth = Object.freeze({
     blockIfPortalOnly,
     clearPortalBridge,
+    fetchUtilitySession,
     hasLegacyEmployeeUser,
     hasTeacherPortalSession,
     hasFreshPortalAuthorization,

@@ -6,11 +6,13 @@
   if (!global.firebase.apps.length) global.firebase.initializeApp(config);
   const functions = global.firebase.app().functions('us-central1');
   const PortalAuth = global.CoursePortal;
+  const TeacherDailyReminder = global.YZTeacherDailyReminder;
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v2';
   const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.';
   const CACHE_TTL = 90 * 1000;
+  const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
 
   const bindView = document.getElementById('bindView');
@@ -28,6 +30,10 @@
   let availabilityRequestId = 0;
   let weekSnapTimer = 0;
   let teacherUtilityStatusLoaded = false;
+  let teacherUtilityStatusLoadedAt = 0;
+  let teacherUtilityStatusLoading = false;
+  let teacherUtilityResult = null;
+  let teacherUtilityRequestId = 0;
 
   function emptyData() {
     return {
@@ -195,6 +201,10 @@
         }
       } catch (_) {}
       teacherUtilityStatusLoaded = false;
+      teacherUtilityStatusLoadedAt = 0;
+      teacherUtilityStatusLoading = false;
+      teacherUtilityResult = null;
+      teacherUtilityRequestId += 1;
     }
     if (prior !== next) clearCache();
   }
@@ -291,43 +301,191 @@
     }));
   }
 
-  function renderTeacherUtilityStatus(result, error) {
-    const alert = document.getElementById('teacherProfileAlert');
-    const title = document.getElementById('teacherProfileAlertTitle');
-    const text = document.getElementById('teacherProfileAlertText');
-    const hint = document.getElementById('teacherProfileLinkHint');
-    if (!alert || !title || !text) return;
-    if (error) {
-      alert.classList.remove('hidden');
-      alert.classList.add('error');
-      title.textContent = '其他功能尚未連結';
-      text.textContent = error.message || '請聯絡管理者確認老師員工編號。';
-      if (hint) hint.textContent = '需要管理者確認員工編號';
-      return;
-    }
+  function count(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
+  }
+
+  function setPendingBadge(id, value, bangOnly) {
+    const badge = document.getElementById(id);
+    if (!badge) return;
+    const amount = count(value);
+    badge.classList.toggle('hidden', amount <= 0);
+    badge.setAttribute('aria-hidden', amount > 0 ? 'false' : 'true');
+    badge.textContent = bangOnly ? '!' : (amount > 99 ? '99+' : String(amount || '!'));
+  }
+
+  function pendingState(result) {
+    const summary = result && result.pendingSummary || {};
+    const user = result && result.user || {};
+    const employeeId = clean(result && result.employeeId || user.employeeId || user.id);
     const missing = Array.isArray(result && result.missingProfileFields) ? result.missingProfileFields : [];
-    if (!missing.length) {
-      alert.classList.add('hidden');
-      alert.classList.remove('error');
-      if (hint) hint.textContent = '基本資料與通知設定';
+    const profileCount = summary.profileCount == null
+      ? (result && result.profileComplete === true ? 0 : (missing.length ? 1 : 0))
+      : count(summary.profileCount);
+    const contractCount = count(summary.contractCount);
+    const taskCount = count(summary.taskCount);
+    const announcementCount = count(summary.announcementCount);
+    const goodsCount = count(summary.goodsCount);
+    const goodsAttentionCount = count(summary.goodsAttentionCount);
+    const announcementsUnseen = Boolean(TeacherDailyReminder && TeacherDailyReminder.isRevisionUnseen(
+      global.localStorage,
+      employeeId,
+      'announcements',
+      summary.announcementRevision,
+      announcementCount
+    ));
+    const goodsUnseen = Boolean(TeacherDailyReminder && TeacherDailyReminder.isRevisionUnseen(
+      global.localStorage,
+      employeeId,
+      'goods',
+      summary.goodsRevision,
+      goodsCount
+    ));
+    const goodsAttentionUnseen = Boolean(TeacherDailyReminder && TeacherDailyReminder.isRevisionUnseen(
+      global.localStorage,
+      employeeId,
+      'goods-attention',
+      summary.goodsAttentionRevision,
+      goodsAttentionCount
+    ));
+    const items = [];
+    if (profileCount) items.push({ kind: 'profile', text: '基本資料尚未完成' });
+    if (contractCount) items.push({ kind: 'contracts', text: `有 ${contractCount} 份合約待查看或簽署` });
+    if (announcementsUnseen) items.push({ kind: 'announcements', text: `有 ${announcementCount} 則公告可以查看` });
+    if (taskCount) items.push({ kind: 'tasks', text: `有 ${taskCount} 項協助事項待處理` });
+    if (goodsAttentionUnseen) items.push({ kind: 'goods-attention', text: `有 ${goodsAttentionCount} 筆詢價更新可以查看` });
+    if (goodsUnseen) items.push({ kind: 'goods', text: '有商品更新可以查看' });
+    return {
+      employeeId,
+      summary,
+      available: summary.available !== false,
+      profileCount,
+      contractCount,
+      taskCount,
+      announcementCount: announcementsUnseen ? announcementCount : 0,
+      goodsBadgeCount: goodsAttentionUnseen ? goodsAttentionCount : (goodsUnseen ? 1 : 0),
+      items
+    };
+  }
+
+  function overlayIsOpen(id) {
+    const node = document.getElementById(id);
+    return Boolean(node && !node.classList.contains('hidden'));
+  }
+
+  function syncTeacherOverlayScrollLock() {
+    const locked = ['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop']
+      .some(overlayIsOpen);
+    document.body.classList.toggle('teacher-more-open', locked);
+  }
+
+  function closeDailyReminder() {
+    const dialog = document.getElementById('teacherDailyReminderBackdrop');
+    if (!dialog) return;
+    dialog.classList.add('hidden');
+    dialog.setAttribute('aria-hidden', 'true');
+    syncTeacherOverlayScrollLock();
+  }
+
+  function showDailyReminder(state) {
+    if (!state.available || !state.items.length || !TeacherDailyReminder || !TeacherDailyReminder.shouldShowDaily(
+      global.localStorage,
+      state.employeeId,
+      state.items.length,
+      undefined,
+      state.available
+    )) return;
+    const list = document.getElementById('teacherDailyReminderList');
+    const dialog = document.getElementById('teacherDailyReminderBackdrop');
+    if (!list || !dialog) return;
+    TeacherDailyReminder.markDailyShown(global.localStorage, state.employeeId);
+    list.replaceChildren(...state.items.map((item) => {
+      const row = document.createElement('li');
+      row.textContent = item.text;
+      row.dataset.pendingKind = item.kind;
+      return row;
+    }));
+    dialog.classList.remove('hidden');
+    dialog.setAttribute('aria-hidden', 'false');
+    syncTeacherOverlayScrollLock();
+    requestAnimationFrame(() => document.getElementById('teacherDailyReminderConfirm').focus());
+  }
+
+  function renderTeacherUtilityStatus(result, error, options) {
+    const hint = document.getElementById('teacherProfileLinkHint');
+    ['teacherProfileBadge','teacherContractBadge','teacherAnnouncementBadge','teacherTaskBadge','teacherGoodsBadge','teacherMoreBadge']
+      .forEach((id) => setPendingBadge(id, 0, true));
+    if (error) {
+      teacherUtilityResult = null;
+      setPendingBadge('teacherProfileBadge', 1, true);
+      setPendingBadge('teacherMoreBadge', 1, true);
+      if (hint) hint.textContent = '資料狀態暫時無法確認';
       return;
     }
-    alert.classList.remove('hidden', 'error');
-    title.textContent = '請完成老師資料';
-    text.textContent = `尚缺：${missing.map((item) => clean(item.label)).filter(Boolean).join('、')}`;
-    if (hint) hint.textContent = `尚缺 ${missing.length} 項資料，請完成填寫`;
+    teacherUtilityResult = result || null;
+    const state = pendingState(result || {});
+    setPendingBadge('teacherProfileBadge', state.profileCount, true);
+    setPendingBadge('teacherContractBadge', state.contractCount, false);
+    setPendingBadge('teacherAnnouncementBadge', state.announcementCount, false);
+    setPendingBadge('teacherTaskBadge', state.taskCount, false);
+    setPendingBadge('teacherGoodsBadge', state.goodsBadgeCount, state.goodsBadgeCount === 1);
+    setPendingBadge('teacherMoreBadge', state.items.length, true);
+    if (hint) hint.textContent = state.profileCount ? '資料尚未完成，請前往填寫' : '基本資料與登入方式';
+    if (!(options && options.suppressDaily)) showDailyReminder(state);
+  }
+
+  function markTeacherRevisionSeen(kind) {
+    if (!teacherUtilityResult || !TeacherDailyReminder) return;
+    const state = pendingState(teacherUtilityResult);
+    const summary = state.summary || {};
+    if (kind === 'goods') {
+      TeacherDailyReminder.markRevisionSeen(
+        global.localStorage,
+        state.employeeId,
+        'goods',
+        summary.goodsRevision,
+        summary.goodsCount
+      );
+      TeacherDailyReminder.markRevisionSeen(
+        global.localStorage,
+        state.employeeId,
+        'goods-attention',
+        summary.goodsAttentionRevision,
+        summary.goodsAttentionCount
+      );
+    } else {
+      TeacherDailyReminder.markRevisionSeen(
+        global.localStorage,
+        state.employeeId,
+        'announcements',
+        summary.announcementRevision,
+        summary.announcementCount
+      );
+    }
+    renderTeacherUtilityStatus(teacherUtilityResult, null, { suppressDaily: true });
   }
 
   async function refreshTeacherUtilityStatus(force) {
-    if (!token || (teacherUtilityStatusLoaded && !force)) return;
-    teacherUtilityStatusLoaded = true;
+    const fresh = teacherUtilityStatusLoaded && Date.now() - teacherUtilityStatusLoadedAt < TEACHER_UTILITY_STATUS_TTL;
+    if (!token || teacherUtilityStatusLoading || (fresh && !force)) return;
+    teacherUtilityStatusLoading = true;
+    const requestId = ++teacherUtilityRequestId;
     try {
       const result = await invoke('coursePortalTeacherUtilitySession', { sessionToken: token });
+      if (requestId !== teacherUtilityRequestId) return;
+      const pendingSummaryAvailable = !(result && result.pendingSummary && result.pendingSummary.available === false);
+      teacherUtilityStatusLoaded = pendingSummaryAvailable;
+      teacherUtilityStatusLoadedAt = pendingSummaryAvailable ? Date.now() : 0;
       saveTeacherUtilityAuthorization(result);
       renderTeacherUtilityStatus(result, null);
     } catch (error) {
+      if (requestId !== teacherUtilityRequestId) return;
       teacherUtilityStatusLoaded = false;
+      teacherUtilityStatusLoadedAt = 0;
       renderTeacherUtilityStatus(null, error);
+    } finally {
+      if (requestId === teacherUtilityRequestId) teacherUtilityStatusLoading = false;
     }
   }
 
@@ -753,14 +911,14 @@
     const node = document.getElementById('teacherMoreBackdrop');
     node.classList.remove('hidden');
     node.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('teacher-more-open');
+    syncTeacherOverlayScrollLock();
   }
 
   function closeMore() {
     const node = document.getElementById('teacherMoreBackdrop');
     node.classList.add('hidden');
     node.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('teacher-more-open');
+    syncTeacherOverlayScrollLock();
   }
 
   function closeQuick() {
@@ -768,7 +926,7 @@
     const node = document.getElementById('teacherQuickBackdrop');
     node.classList.add('hidden');
     node.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('teacher-more-open');
+    syncTeacherOverlayScrollLock();
     quickContext = null;
   }
 
@@ -780,7 +938,7 @@
     const node = document.getElementById('teacherQuickBackdrop');
     node.classList.remove('hidden');
     node.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('teacher-more-open');
+    syncTeacherOverlayScrollLock();
   }
 
   function setFlowBanner(title, detail) {
@@ -1512,6 +1670,10 @@
     load(true);
   });
   document.getElementById('teacherMoreBtn').addEventListener('click', openMore);
+  document.getElementById('teacherDailyReminderConfirm').addEventListener('click', closeDailyReminder);
+  document.querySelectorAll('[data-teacher-seen-kind]').forEach((link) => {
+    link.addEventListener('click', () => markTeacherRevisionSeen(link.dataset.teacherSeenKind));
+  });
   document.getElementById('closeTeacherMore').addEventListener('click', closeMore);
   document.getElementById('teacherMoreBackdrop').addEventListener('click', (event) => { if (event.target.id === 'teacherMoreBackdrop') closeMore(); });
   document.getElementById('closeTeacherQuick').addEventListener('click', closeQuick);
@@ -1521,6 +1683,7 @@
   document.getElementById('cancelTeacherFlow').addEventListener('click', () => cancelPlanner(true));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+      closeDailyReminder();
       closeMore();
       closeQuick();
       closeStudentEdit();

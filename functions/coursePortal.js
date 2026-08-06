@@ -2190,18 +2190,298 @@ function externalTeacherProfileMissingFields(row) {
   const teaching = Array.isArray(source.teachingAbilities)
     ? source.teachingAbilities.filter((item) => clean(item && (item.item || item.name || item.subject)))
     : clean(source.teachingItems || source.teachingItemsText);
+  const contactMethod = clean(
+    source.lineUserId || source.lineUid || source.lineId || source.LINEUserId
+  ) || employeeEmail(source);
   return [
     ['name', '姓名', clean(source.name || source.displayName || source.employeeName)],
     ['mobilePhone', '行動電話', employeePhone(source)],
-    ['email', 'Email', employeeEmail(source)],
+    ['contactMethod', 'LINE 或 Email', contactMethod],
     ['birthDate', '出生年月日', clean(source.birthDate)],
     ['idNumber', '身分證字號', clean(source.idNumber)],
-    ['address', '聯絡地址', clean(source.address || source.mailingAddress || source.householdAddress)],
+    ['householdAddress', '戶籍地址', clean(source.householdAddress)],
+    ['mailingAddress', '通訊地址', clean(source.mailingAddress || source.contactAddress)],
     ['emergencyContact', '緊急聯絡人', clean(source.emergencyContact)],
     ['emergencyPhone', '緊急聯絡人電話', normalizePhone(source.emergencyPhone)],
     ['teachingAbilities', '授課項目', teaching],
     ['identityDocumentUrl', '身分證明文件', clean(source.identityDocumentUrl) || (Array.isArray(source.identityUrls) && source.identityUrls.length)]
   ].filter((item) => !item[2]).map((item) => ({ key: item[0], label: item[1] }));
+}
+
+const TEACHER_UTILITY_RESOLVE_QUERY_LIMIT = 50;
+const TEACHER_UTILITY_IDENTITY_URL_LIMIT = 4;
+
+function teacherUtilityUnique(values, normalizer = clean) {
+  return [...new Set((values || []).map(normalizer).filter(Boolean))];
+}
+
+function teacherUtilityDocumentRow(doc) {
+  if (!doc || doc.exists === false) return null;
+  return Object.assign({
+    __id: clean(doc.id),
+    __ref: doc.ref
+  }, jsonValue(typeof doc.data === 'function' ? doc.data() || {} : {}));
+}
+
+async function teacherUtilityResolveRows(collectionName, directIds, lookups) {
+  const collection = db.collection(collectionName);
+  const requests = [];
+  const seenRequests = new Set();
+  teacherUtilityUnique(directIds).forEach((id) => {
+    if (id.includes('/')) return;
+    const key = `doc:${id}`;
+    if (seenRequests.has(key)) return;
+    seenRequests.add(key);
+    requests.push(collection.doc(id).get());
+  });
+  (lookups || []).forEach((lookup) => {
+    const field = clean(lookup && lookup.field);
+    const operator = clean(lookup && lookup.operator) || '==';
+    const value = clean(lookup && lookup.value);
+    if (!field || !value) return;
+    const key = `${field}:${operator}:${value}`;
+    if (seenRequests.has(key)) return;
+    seenRequests.add(key);
+    requests.push(collection.where(field, operator, value).limit(TEACHER_UTILITY_RESOLVE_QUERY_LIMIT).get());
+  });
+  let snapshots;
+  try {
+    snapshots = await Promise.all(requests);
+  } catch (error) {
+    console.error('[teacher utility identity query failed]', collectionName, clean(error && error.message));
+    throw new HttpsError('unavailable', '老師資料暫時無法讀取，請稍後再試。');
+  }
+  const rows = new Map();
+  snapshots.forEach((snapshot) => {
+    const docs = Array.isArray(snapshot && snapshot.docs)
+      ? snapshot.docs
+      : (snapshot && snapshot.exists ? [snapshot] : []);
+    docs.forEach((doc) => {
+      const row = teacherUtilityDocumentRow(doc);
+      if (row && row.__id) rows.set(row.__id, row);
+    });
+  });
+  return [...rows.values()];
+}
+
+function teacherUtilityExternalYear(row) {
+  const source = row || {};
+  const raw = clean(
+    source.contractGregorianYear || source.contractYear || source.gregorianYear ||
+    source.renewalTargetYear || source.contractYearKey || source.contractRocYear
+  );
+  const number = Number(raw.replace(/[^0-9]/g, ''));
+  if (!Number.isFinite(number) || !number) return 0;
+  return number < 1911 ? number + 1911 : number;
+}
+
+function teacherUtilityExternalActive(row) {
+  const source = row || {};
+  if (source.active === false || source.enabled === false || source.deleted === true || source.isDeleted === true) {
+    return false;
+  }
+  const status = clean(
+    source.status || source.contractStatus || source.profileStatus || source.externalTeacherStatus
+  ).normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+  return ![
+    'cancelled', 'canceled', 'rejected', 'expired', 'revoked', 'archived', 'deleted',
+    'inactive', 'disabled', '已取消', '取消', '已拒絕', '拒絕', '已過期', '已撤銷',
+    '已封存', '已刪除', '刪除', '已停用', '停用', '作廢'
+  ].includes(status);
+}
+
+function teacherUtilityExternalUpdatedAt(row) {
+  const source = row || {};
+  return Math.max(
+    asMillis(source.updatedAt),
+    asMillis(source.signedAt),
+    asMillis(source.submittedAt),
+    asMillis(source.createdAt)
+  );
+}
+
+function teacherUtilitySelectExternalRow(rows, preferredIds, year = Number(currentTaipeiDay().slice(0, 4))) {
+  const preferred = teacherUtilityUnique(preferredIds);
+  return (rows || []).slice().sort((left, right) => {
+    const leftIndex = preferred.indexOf(clean(left && left.__id));
+    const rightIndex = preferred.indexOf(clean(right && right.__id));
+    const leftPreferred = leftIndex < 0 ? 0 : preferred.length - leftIndex;
+    const rightPreferred = rightIndex < 0 ? 0 : preferred.length - rightIndex;
+    if (leftPreferred !== rightPreferred) return rightPreferred - leftPreferred;
+    const leftCurrent = teacherUtilityExternalYear(left) === year ? 1 : 0;
+    const rightCurrent = teacherUtilityExternalYear(right) === year ? 1 : 0;
+    if (leftCurrent !== rightCurrent) return rightCurrent - leftCurrent;
+    const leftActive = teacherUtilityExternalActive(left) ? 1 : 0;
+    const rightActive = teacherUtilityExternalActive(right) ? 1 : 0;
+    if (leftActive !== rightActive) return rightActive - leftActive;
+    const updatedDifference = teacherUtilityExternalUpdatedAt(right) - teacherUtilityExternalUpdatedAt(left);
+    if (updatedDifference) return updatedDifference;
+    return clean(left && left.__id).localeCompare(clean(right && right.__id));
+  })[0] || null;
+}
+
+function teacherUtilityExternalRowBelongs(row, employeeId, teacherId, directIds, emails, phones, linkedEmployeeIds) {
+  const source = row || {};
+  const linkedId = linkedEmployeeId(source);
+  const trustedEmployeeIds = new Set(teacherUtilityUnique([employeeId].concat(linkedEmployeeIds || [])));
+  if (linkedId && !trustedEmployeeIds.has(linkedId)) return false;
+  const rowTeacherIds = teacherUtilityUnique([
+    source.teacherId,
+    source.externalTeacherId,
+    source.coursePortalTeacherId,
+    ...(Array.isArray(source.coursePortalTeacherIds) ? source.coursePortalTeacherIds : [])
+  ]);
+  if (rowTeacherIds.length && !rowTeacherIds.includes(teacherId)) return false;
+  if (teacherUtilityUnique(directIds).includes(clean(source.__id))) return true;
+  if (linkedId && trustedEmployeeIds.has(linkedId)) return true;
+  if (rowTeacherIds.includes(teacherId)) return true;
+  const rowEmail = employeeEmail(source);
+  const rowPhone = employeePhone(source);
+  return Boolean(
+    !linkedId &&
+    !rowTeacherIds.length &&
+    rowEmail &&
+    rowPhone &&
+    teacherUtilityUnique(emails, normalizeEmail).includes(rowEmail) &&
+    teacherUtilityUnique(phones, normalizePhone).includes(rowPhone)
+  );
+}
+
+function teacherUtilityFirstText(sources, fields) {
+  for (const source of sources || []) {
+    for (const field of fields || []) {
+      const value = clean(source && source[field]);
+      if (value) return value;
+    }
+  }
+  return '';
+}
+
+function teacherUtilityTeachingAbilities(sources) {
+  for (const source of sources || []) {
+    const abilities = Array.isArray(source && source.teachingAbilities)
+      ? source.teachingAbilities.map((item) => {
+        if (typeof item === 'string') return { item: clean(item) };
+        const name = clean(item && (item.item || item.name || item.subject));
+        return name ? { item: name } : null;
+      }).filter(Boolean)
+      : [];
+    if (abilities.length) return abilities;
+    const text = clean(source && (source.teachingItemsText || source.teachingItems));
+    if (text) {
+      return text.split(/[、,，\n]+/u).map(clean).filter(Boolean).map((item) => ({ item }));
+    }
+  }
+  return [];
+}
+
+function teacherUtilityHttpsUrl(value) {
+  const url = clean(typeof value === 'string'
+    ? value
+    : value && (value.downloadUrl || value.url || value.secureUrl || value.publicUrl));
+  return /^https:\/\//i.test(url) ? url : '';
+}
+
+function teacherUtilityIdentityUrls(sources) {
+  const urls = [];
+  function add(value) {
+    const url = teacherUtilityHttpsUrl(value);
+    if (url && !urls.includes(url) && urls.length < TEACHER_UTILITY_IDENTITY_URL_LIMIT) urls.push(url);
+  }
+  (sources || []).forEach((source) => {
+    if (!source) return;
+    ['identityUrls', 'identityFiles', 'identityDocumentUrls'].forEach((field) => {
+      if (Array.isArray(source[field])) source[field].forEach(add);
+    });
+    add(source.identityDocumentUrl);
+  });
+  return urls;
+}
+
+function teacherUtilityMaskedId(value) {
+  const id = clean(value).toUpperCase();
+  if (!id) return '';
+  if (/[*•]/u.test(id)) return id;
+  if (id.length <= 5) return '*'.repeat(id.length);
+  return `${id.slice(0, 1)}*****${id.slice(-4)}`;
+}
+
+function teacherUtilityProfileBundle(options) {
+  const source = options || {};
+  const employee = source.employee || {};
+  const externalProfile = source.externalProfile || {};
+  const externalContract = source.externalContract || {};
+  const teacherSnapshot = externalContract.teacherSnapshot && typeof externalContract.teacherSnapshot === 'object'
+    ? externalContract.teacherSnapshot
+    : {};
+  const teacher = source.teacher || {};
+  const personalSources = [externalProfile, teacherSnapshot, externalContract, employee, teacher];
+  const lineSources = (source.bindings || []).concat([externalProfile, externalContract, employee]);
+  const teachingAbilities = teacherUtilityTeachingAbilities(personalSources);
+  const teachingItemsText = teachingAbilities.map((item) => clean(item.item)).filter(Boolean).join('、');
+  const identityUrls = teacherUtilityIdentityUrls([externalProfile, externalContract, teacherSnapshot, employee]);
+  const rawIdNumber = teacherUtilityFirstText(personalSources, ['idNumber', 'identityNumber']);
+  const storedMaskedId = teacherUtilityFirstText(personalSources, ['idNumberMasked']);
+  const statusSources = [externalContract, externalProfile, employee];
+  const profile = {
+    employeeId: clean(source.employeeId),
+    name: teacherUtilityFirstText(personalSources, ['name', 'teacherName', 'displayName', 'employeeName']),
+    email: normalizeEmail(teacherUtilityFirstText(personalSources, ['email', 'Email', 'loginEmail', 'contactEmail'])),
+    mobilePhone: normalizePhone(teacherUtilityFirstText(personalSources, [
+      'mobilePhone', 'mobile', 'phone', 'tel', 'telephone', 'contactPhone'
+    ])),
+    birthDate: teacherUtilityFirstText(personalSources, ['birthDate']),
+    idNumberMasked: teacherUtilityMaskedId(rawIdNumber || storedMaskedId),
+    householdAddress: teacherUtilityFirstText(personalSources, ['householdAddress']),
+    mailingAddress: teacherUtilityFirstText(personalSources, ['mailingAddress', 'contactAddress']),
+    emergencyContact: teacherUtilityFirstText(personalSources, ['emergencyContact']),
+    emergencyPhone: normalizePhone(teacherUtilityFirstText(personalSources, [
+      'emergencyPhone', 'emergencyContactPhone'
+    ])),
+    teachingAbilities,
+    teachingItemsText,
+    teachingItems: teachingItemsText,
+    identityUrls,
+    identityDocumentUrl: identityUrls[0] || '',
+    status: teacherUtilityFirstText(statusSources, ['status', 'contractStatus', 'profileStatus', 'externalTeacherStatus']),
+    profileStatus: teacherUtilityFirstText([externalProfile, externalContract], ['profileStatus', 'status']),
+    contractStatus: teacherUtilityFirstText([externalContract, externalProfile], ['contractStatus', 'status']),
+    progressStatus: teacherUtilityFirstText(statusSources, ['progressStatus']),
+    identityPhotoStatus: teacherUtilityFirstText([externalProfile, externalContract, employee], ['identityPhotoStatus']),
+    identityVerificationStatus: teacherUtilityFirstText(
+      [externalProfile, externalContract, employee],
+      ['identityVerificationStatus']
+    ),
+    identityDocumentVerified: [externalProfile, externalContract, employee]
+      .some((row) => row && row.identityDocumentVerified === true),
+    onboardingUrl: teacherUtilityHttpsUrl(
+      teacherUtilityFirstText([externalContract, externalProfile], ['onboardingUrl'])
+    ),
+    lineUserId: teacherUtilityFirstText(lineSources, ['lineUserId', 'lineUid', 'lineId', 'LINEUserId']) || clean(source.sessionLineUserId),
+    lineDisplayName: teacherUtilityFirstText(lineSources, ['lineDisplayName']),
+    lineBindStatus: teacherUtilityFirstText(lineSources, ['lineBindStatus']),
+    lineNotifyEnabled: Boolean(
+      teacherUtilityFirstText(lineSources, ['lineUserId', 'lineUid', 'lineId', 'LINEUserId']) || clean(source.sessionLineUserId)
+    ),
+    bindingMethod: teacherUtilityFirstText(lineSources, ['bindingMethod']),
+    externalTeacherProfileId: clean(externalProfile.__id),
+    externalTeacherContractId: clean(externalContract.__id)
+  };
+  const completenessSource = Object.assign({}, profile, {
+    idNumber: rawIdNumber,
+    lineUserId: profile.lineUserId
+  });
+  return { profile, completenessSource };
+}
+
+function teacherUtilityEmployeeFallbackScore(row, names, emails, phones) {
+  const email = employeeEmail(row);
+  const phone = employeePhone(row);
+  const emailMatches = Boolean(email && emails && emails.has(email));
+  const phoneMatches = Boolean(phone && phones && phones.has(phone));
+  if (!emailMatches || !phoneMatches) return 0;
+  const name = normalizedPersonName(row && (row.name || row.displayName || row.employeeName));
+  return 11 + (name && names && names.has(name) ? 2 : 0);
 }
 
 async function resolveTeacherUtilityEmployee(session) {
@@ -2279,6 +2559,86 @@ async function resolveTeacherUtilityEmployee(session) {
       clean(row.coursePortalTeacherId || row.legacyTeacherId) === teacherId ||
       (Array.isArray(row.coursePortalTeacherIds) && row.coursePortalTeacherIds.map(clean).includes(teacherId));
   });
+  const trustedEmployeeIds = teacherUtilityUnique([
+    canonicalEmployeeId,
+    ...oldLinkedIds,
+    ...replacedRows.map((row) => row.employeeId || row.id || row.userId || row.__id)
+  ]);
+  const directExternalIds = teacherUtilityUnique([
+    teacherId,
+    canonicalExisting.externalTeacherProfileId,
+    canonicalExisting.currentExternalContractId,
+    canonicalExisting.externalTeacherContractId,
+    ...bindings.flatMap((row) => [
+      row.externalTeacherProfileId,
+      row.currentExternalContractId,
+      row.externalTeacherContractId
+    ]),
+    ...replacedRows.flatMap((row) => [
+      row.externalTeacherProfileId,
+      row.currentExternalContractId,
+      row.externalTeacherContractId
+    ])
+  ]);
+  const externalLookups = [];
+  trustedEmployeeIds.forEach((value) => {
+    ['employeeId', 'externalTeacherEmployeeId', 'linkedEmployeeId'].forEach((field) => {
+      externalLookups.push({ field, value });
+    });
+  });
+  ['teacherId', 'externalTeacherId', 'coursePortalTeacherId'].forEach((field) => {
+    externalLookups.push({ field, value: teacherId });
+  });
+  const ownerEmails = teacherUtilityUnique(
+    [verifiedEmail, employeeEmail(canonicalExisting), ...identityRows.map(employeeEmail)],
+    normalizeEmail
+  );
+  const ownerPhones = teacherUtilityUnique(
+    [verifiedPhone, employeePhone(canonicalExisting), ...identityRows.map(employeePhone)],
+    normalizePhone
+  );
+  ownerEmails.forEach((value) => {
+    ['email', 'Email'].forEach((field) => externalLookups.push({ field, value }));
+  });
+  let [profileRows, contractRows] = await Promise.all([
+    teacherUtilityResolveRows('externalTeacherProfiles', directExternalIds, externalLookups),
+    teacherUtilityResolveRows('externalTeacherContracts', directExternalIds, externalLookups)
+  ]);
+  profileRows = profileRows.filter((row) =>
+    teacherUtilityExternalRowBelongs(
+      row,
+      canonicalEmployeeId,
+      teacherId,
+      directExternalIds,
+      ownerEmails,
+      ownerPhones,
+      trustedEmployeeIds
+    )
+  );
+  contractRows = contractRows.filter((row) =>
+    teacherUtilityExternalRowBelongs(
+      row,
+      canonicalEmployeeId,
+      teacherId,
+      directExternalIds,
+      ownerEmails,
+      ownerPhones,
+      trustedEmployeeIds
+    )
+  );
+  const preferredProfileIds = [
+    canonicalExisting.externalTeacherProfileId,
+    ...bindings.map((row) => row.externalTeacherProfileId),
+    ...replacedRows.map((row) => row.externalTeacherProfileId)
+  ];
+  const preferredContractIds = [
+    canonicalExisting.currentExternalContractId,
+    canonicalExisting.externalTeacherContractId,
+    ...bindings.flatMap((row) => [row.currentExternalContractId, row.externalTeacherContractId]),
+    ...replacedRows.flatMap((row) => [row.currentExternalContractId, row.externalTeacherContractId])
+  ];
+  const externalProfile = teacherUtilitySelectExternalRow(profileRows, preferredProfileIds);
+  const externalContract = teacherUtilitySelectExternalRow(contractRows, preferredContractIds);
 
   const batch = db.batch();
   bindings.forEach((row) => batch.set(row.__ref, {
@@ -2301,6 +2661,23 @@ async function resolveTeacherUtilityEmployee(session) {
     statusNote: '舊課務老師自動配對資料已由新的固定外聘老師主檔取代。',
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true }));
+  profileRows.concat(contractRows).forEach((row) => batch.set(row.__ref, {
+    employeeId: canonicalEmployeeId,
+    externalTeacherEmployeeId: canonicalEmployeeId,
+    employeeRef: `employees/${canonicalEmployeeId}`,
+    coursePortalTeacherId: teacherId,
+    coursePortalTeacherCanonical: true,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true }));
+  const canonicalLinks = { updatedAt: FieldValue.serverTimestamp() };
+  if (externalProfile && externalProfile.__id) {
+    canonicalLinks.externalTeacherProfileId = clean(externalProfile.__id);
+  }
+  if (externalContract && externalContract.__id) {
+    canonicalLinks.currentExternalContractId = clean(externalContract.__id);
+    canonicalLinks.externalTeacherContractId = clean(externalContract.__id);
+  }
+  batch.set(canonicalRef, canonicalLinks, { merge: true });
   await batch.commit();
 
   const canonicalReload = await canonicalRef.get();
@@ -2309,19 +2686,26 @@ async function resolveTeacherUtilityEmployee(session) {
     canonicalReload.exists ? jsonValue(canonicalReload.data() || {}) : {},
     { employeeId: canonicalEmployeeId }
   );
-  const merged = Object.assign({}, employee, {
-    name: clean(employee.name || employee.displayName || verifiedName) || '外聘老師',
-    email: employeeEmail(employee),
-    mobilePhone: employeePhone(employee)
+  const bindingLineUserId = bindings.map((row) => clean(row.lineUserId)).filter(Boolean)[0];
+  const profileBundle = teacherUtilityProfileBundle({
+    employeeId: canonicalEmployeeId,
+    employee,
+    externalProfile,
+    externalContract,
+    teacher,
+    bindings,
+    sessionLineUserId: bindingLineUserId || session.lineUserId
   });
+  const merged = profileBundle.completenessSource;
   const missingProfileFields = externalTeacherProfileMissingFields(merged);
+  const displayName = clean(merged.name || employee.name || employee.displayName || verifiedName) || '外聘老師';
   return {
     employeeId: canonicalEmployeeId,
     user: {
       id: canonicalEmployeeId,
       employeeId: canonicalEmployeeId,
-      name: merged.name,
-      displayName: merged.name,
+      name: displayName,
+      displayName,
       email: employeeEmail(merged),
       phone: employeePhone(merged),
       mobilePhone: employeePhone(merged),
@@ -2330,23 +2714,334 @@ async function resolveTeacherUtilityEmployee(session) {
       employeeType: 'external',
       role: 'externalTeacher',
       isExternalTeacher: true,
-      lineUserId: clean(session.lineUserId),
-      lineNotifyEnabled: Boolean(clean(session.lineUserId)),
-      accountStatus: 'active',
-      employmentStatus: 'active',
+      lineUserId: clean(merged.lineUserId || session.lineUserId),
+      lineNotifyEnabled: Boolean(clean(merged.lineUserId || session.lineUserId)),
+      accountStatus: clean(employee.accountStatus || 'active'),
+      employmentStatus: clean(employee.employmentStatus || 'active'),
       legacyTeacherId: teacherId,
       portalSessionBridge: true,
       coursePortalTeacherCanonical: true
     },
+    profile: profileBundle.profile,
     profileComplete: missingProfileFields.length === 0,
     missingProfileFields
   };
+}
+function teacherUtilityBoolean(value) {
+  if (value === true) return true;
+  return ['true', '1', 'yes', '是', '啟用', 'enabled', 'active', '上架', '已發布', '發布']
+    .includes(clean(value).toLowerCase());
+}
+
+function teacherUtilityFalse(value) {
+  if (value === false) return true;
+  return ['false', '0', 'no', '否', '停用', 'disabled', 'inactive', '下架']
+    .includes(clean(value).toLowerCase());
+}
+
+function teacherUtilityStatus(value) {
+  return clean(value).normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+}
+
+function teacherUtilityDeleted(row) {
+  const source = row || {};
+  return teacherUtilityBoolean(source.deleted || source.isDeleted) ||
+    teacherUtilityFalse(source.active);
+}
+
+function teacherUtilityIdentity(resolved, session) {
+  const user = resolved && resolved.user || {};
+  const ids = [
+    resolved && resolved.employeeId,
+    user.id,
+    user.employeeId,
+    user.legacyTeacherId,
+    session && session.teacherId
+  ].map(clean).filter(Boolean);
+  const emails = [user.email].map(normalizeEmail).filter(Boolean);
+  return {
+    ids: new Set(ids),
+    emails: new Set(emails)
+  };
+}
+
+function teacherUtilityRowMatches(row, identity, idFields, emailFields) {
+  const source = row || {};
+  const ids = (idFields || []).flatMap((field) => {
+    const value = source[field];
+    return Array.isArray(value) ? value : [value];
+  }).map(clean).filter(Boolean);
+  if (ids.some((value) => identity.ids.has(value))) return true;
+  const emails = (emailFields || []).flatMap((field) => {
+    const value = source[field];
+    return Array.isArray(value) ? value : [value];
+  }).map(normalizeEmail).filter(Boolean);
+  return emails.some((value) => identity.emails.has(value));
+}
+
+function teacherUtilityContractPending(row) {
+  if (teacherUtilityDeleted(row)) return false;
+  const status = teacherUtilityStatus(row && (
+    row.status || row.assignmentStatus || row.contractStatus || row.statusLabel
+  ));
+  return ![
+    'signed', 'archived', 'cancelled', 'canceled', 'completed', 'complete', 'done',
+    'deleted', 'inactive', 'disabled', '已簽署', '已封存', '已取消', '取消', '已完成',
+    '完成', '已結案', '已停用', '停用', '刪除', '作廢'
+  ].includes(status);
+}
+
+function teacherUtilityTaskPending(row) {
+  if (teacherUtilityDeleted(row)) return false;
+  const status = teacherUtilityStatus(row && (row.status || row.taskStatus || row.statusLabel));
+  return ![
+    'completed', 'complete', 'done', 'approved', 'archived', 'cancelled', 'canceled', 'inactive', 'disabled',
+    'deleted', 'closed', '已完成', '完成', '已核准', '核准', '已處理', '已結案',
+    '已封存', '已取消', '取消', '已停用', '停用', '已刪除', '刪除', '作廢'
+  ].includes(status);
+}
+
+function teacherUtilityPublishedAnnouncement(row) {
+  const source = row || {};
+  if (teacherUtilityDeleted(source)) return false;
+  const status = teacherUtilityStatus(source.status || source.publishStatus);
+  if (['draft', 'unpublished', 'archived', 'deleted', 'inactive', 'disabled', 'cancelled', 'canceled',
+    '草稿', '未發布', '已下架', '下架', '已封存', '已刪除', '已停用', '已取消'
+  ].includes(status)) return false;
+  return teacherUtilityBoolean(source.published) || teacherUtilityBoolean(source.enabled) ||
+    status === 'published';
+}
+
+function teacherUtilityArray(value) {
+  if (Array.isArray(value)) return value.map(clean).filter(Boolean);
+  return clean(value).split(/[,\s、，]+/u).map(clean).filter(Boolean);
+}
+
+function teacherUtilityAnnouncementMatches(row, identity) {
+  const source = row || {};
+  const targetIds = [
+    source.targetEmployeeIds, source.employeeIds, source.targetTeacherIds, source.teacherIds
+  ].flatMap(teacherUtilityArray);
+  if (targetIds.length && !targetIds.some((value) => identity.ids.has(value))) return false;
+  const targetEmails = [source.targetEmails, source.employeeEmails]
+    .flatMap(teacherUtilityArray)
+    .map(normalizeEmail)
+    .filter(Boolean);
+  if (targetEmails.length && !targetEmails.some((value) => identity.emails.has(value))) return false;
+  const audience = teacherUtilityArray(
+    source.audience || source.audiences || source.targetAudience || source.targetRole
+  ).map((value) => teacherUtilityStatus(value));
+  if (!audience.length) return true;
+  return audience.some((value) => [
+    'all', '全部', '全部對象', 'external', 'externalteacher', 'teacher', '外聘', '外聘老師', '老師'
+  ].includes(value));
+}
+
+function teacherUtilityGoodsActive(row) {
+  const source = row || {};
+  if (teacherUtilityDeleted(source)) return false;
+  if (source.enabled !== undefined && source.enabled !== null && source.enabled !== '') {
+    return !teacherUtilityFalse(source.enabled);
+  }
+  const status = teacherUtilityStatus(source.status || source.stockStatus);
+  return !['disabled', 'inactive', 'archived', 'deleted', '已下架', '下架', '已封存', '已刪除']
+    .includes(status);
+}
+
+function teacherUtilityInquiryActive(row) {
+  if (teacherUtilityDeleted(row)) return false;
+  const status = teacherUtilityStatus(row && (row.status || row.replyStatus));
+  return ![
+    'completed', 'complete', 'done', 'closed', 'archived', 'cancelled', 'canceled', 'deleted',
+    'inactive', 'disabled', '已完成', '完成', '已結案', '已取消', '取消',
+    '已刪除', '刪除', '已封存', '已停用', '停用'
+  ].includes(status);
+}
+
+function teacherUtilityInquiryNeedsAttention(row) {
+  if (!teacherUtilityInquiryActive(row)) return false;
+  const status = teacherUtilityStatus(row && (row.status || row.replyStatus));
+  const waitingStatuses = [
+    '', 'pending', 'waiting', 'waitingreply', '待處理', '等待回覆', '詢價中', '處理中'
+  ];
+  if (waitingStatuses.includes(status)) return false;
+  return Boolean(
+    status || clean(row && (
+      row.replySummary || row.replyNote || row.replyStock || row.replyTeacherPrice || row.repliedAt
+    ))
+  );
+}
+
+function teacherUtilityRevision(namespace, rows, fields) {
+  const tokens = (rows || []).map((row) => {
+    const values = (fields || []).map((field) => {
+      const value = typeof field === 'function' ? field(row) : row && row[field];
+      if (Array.isArray(value)) return value.map(clean).sort().join(',');
+      return asMillis(value) || clean(value);
+    });
+    return [clean(row && (row.__id || row.id)), ...values].join('|');
+  }).sort();
+  return tokens.length ? hash(`${namespace}:${JSON.stringify(tokens)}`).slice(0, 24) : '';
+}
+
+const TEACHER_UTILITY_GLOBAL_LIMIT = 500;
+const TEACHER_UTILITY_PERSON_LIMIT = 250;
+const TEACHER_UTILITY_IN_QUERY_LIMIT = 10;
+
+function teacherUtilityChunks(values, size = TEACHER_UTILITY_IN_QUERY_LIMIT) {
+  const rows = [...new Set((values || []).map(clean).filter(Boolean))];
+  const chunks = [];
+  for (let index = 0; index < rows.length; index += size) {
+    chunks.push(rows.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function teacherUtilityCollectQueries(collectionName, queries) {
+  const results = await Promise.allSettled((queries || []).map((query) => query.get()));
+  const rows = new Map();
+  results.filter((result) => result.status === 'fulfilled').forEach((result) => {
+    result.value.docs.forEach((doc) => {
+      rows.set(doc.id, Object.assign({ __id: doc.id }, doc.data() || {}));
+    });
+  });
+  const available = results.every((result) => result.status === 'fulfilled');
+  if (!available) console.warn('[teacher utility collection unavailable]', collectionName);
+  return { rows: [...rows.values()], available };
+}
+
+function teacherUtilityBoundedRows(collectionName) {
+  return teacherUtilityCollectQueries(collectionName, [
+    db.collection(collectionName).limit(TEACHER_UTILITY_GLOBAL_LIMIT)
+  ]);
+}
+
+function teacherUtilityMatchedRows(collectionName, identity, idFields, emailFields) {
+  const collection = db.collection(collectionName);
+  const queries = [];
+  teacherUtilityChunks([...identity.ids]).forEach((values) => {
+    (idFields || []).forEach((field) => {
+      queries.push(collection.where(field, 'in', values).limit(TEACHER_UTILITY_PERSON_LIMIT));
+    });
+  });
+  teacherUtilityChunks([...identity.emails]).forEach((values) => {
+    (emailFields || []).forEach((field) => {
+      queries.push(collection.where(field, 'in', values).limit(TEACHER_UTILITY_PERSON_LIMIT));
+    });
+  });
+  if (!queries.length) return Promise.resolve({ rows: [], available: true });
+  return teacherUtilityCollectQueries(collectionName, queries);
+}
+
+async function teacherUtilityPendingSummary(resolved, session) {
+  const identity = teacherUtilityIdentity(resolved, session);
+  const collectionNames = {
+    contracts: 'teacherContractAssignments',
+    announcements: 'announcements',
+    tasks: 'tasks',
+    goods: 'teacherGoods',
+    goodsAttention: 'teacherGoodsInquiry'
+  };
+  const [contractResult, announcementResult, taskResult, goodsResult, inquiryResult] = await Promise.all([
+    teacherUtilityMatchedRows(
+      collectionNames.contracts,
+      identity,
+      ['teacherId', 'employeeId', 'externalTeacherEmployeeId'],
+      ['email', 'teacherEmail']
+    ),
+    teacherUtilityBoundedRows(collectionNames.announcements),
+    teacherUtilityMatchedRows(
+      collectionNames.tasks,
+      identity,
+      ['assigneeId', 'employeeId', 'teacherId'],
+      ['assigneeEmail', 'email']
+    ),
+    teacherUtilityBoundedRows(collectionNames.goods),
+    teacherUtilityMatchedRows(
+      collectionNames.goodsAttention,
+      identity,
+      ['teacherId', 'userId', 'employeeId'],
+      ['email', 'teacherEmail']
+    )
+  ]);
+  const unavailableCollections = Object.entries({
+    contracts: contractResult,
+    announcements: announcementResult,
+    tasks: taskResult,
+    goods: goodsResult,
+    goodsAttention: inquiryResult
+  }).filter(([, result]) => !result.available).map(([name]) => name);
+  if (unavailableCollections.length) {
+    console.warn('[teacher utility pending summary unavailable]', unavailableCollections.join(','));
+  }
+
+  const contracts = contractResult.rows.filter((row) =>
+    teacherUtilityRowMatches(
+      row,
+      identity,
+      ['teacherId', 'employeeId', 'externalTeacherEmployeeId', 'userId'],
+      ['email', 'teacherEmail']
+    ) && teacherUtilityContractPending(row)
+  );
+  const announcements = announcementResult.rows.filter((row) =>
+    teacherUtilityPublishedAnnouncement(row) && teacherUtilityAnnouncementMatches(row, identity)
+  );
+  const tasks = taskResult.rows.filter((row) =>
+    teacherUtilityRowMatches(
+      row,
+      identity,
+      ['assigneeId', 'employeeId', 'teacherId', 'userId', 'assigneeIds'],
+      ['assigneeEmail', 'email', 'teacherEmail']
+    ) && teacherUtilityTaskPending(row)
+  );
+  const goods = goodsResult.rows.filter(teacherUtilityGoodsActive);
+  const inquiries = inquiryResult.rows.filter((row) =>
+    teacherUtilityRowMatches(
+      row,
+      identity,
+      ['teacherId', 'userId', 'employeeId'],
+      ['email', 'teacherEmail']
+    ) && teacherUtilityInquiryNeedsAttention(row)
+  );
+  const announcementRevision = teacherUtilityRevision('teacher-announcements', announcements, [
+    'updatedAt', 'updatedAtText', 'createdAt', 'createdAtText', 'publishDate', 'title', 'audience',
+    'published', 'requireReply', 'replyDeadline'
+  ]);
+  const goodsRevision = teacherUtilityRevision('teacher-goods', goods, [
+    'updatedAt', 'updatedAtText', 'createdAt', 'createdAtText', 'name', 'itemName', 'enabled', 'status',
+    'teacherPrice', 'stockStatus'
+  ]);
+  const goodsAttentionRevision = teacherUtilityRevision('teacher-goods-attention', inquiries, [
+    'updatedAt', 'updatedAtText', 'createdAt', 'createdAtText', 'status', 'replyStatus',
+    'replySummary', 'replyNote', 'replyStock', 'replyTeacherPrice', 'repliedAt'
+  ]);
+  const profileCount = resolved && resolved.profileComplete ? 0 : 1;
+  const summary = {
+    profileCount,
+    contractCount: contracts.length,
+    announcementCount: announcements.length,
+    announcementRevision,
+    taskCount: tasks.length,
+    goodsCount: goods.length,
+    goodsAttentionCount: inquiries.length,
+    goodsRevision,
+    goodsAttentionRevision,
+    announcementCountMode: 'applicable-device-revision',
+    goodsCountMode: 'active-offers',
+    goodsAttentionCountMode: 'own-replied-active-inquiries',
+    available: unavailableCollections.length === 0,
+    unavailableSections: unavailableCollections
+  };
+  summary.totalCount = summary.profileCount + summary.contractCount + summary.announcementCount +
+    summary.taskCount + summary.goodsCount + summary.goodsAttentionCount;
+  return summary;
 }
 
 async function teacherUtilitySession(data) {
   const session = await requireSession(data, ['teacher']);
   const resolved = await resolveTeacherUtilityEmployee(session);
-  return Object.assign({ ok: true, validatedAt: Date.now() }, resolved);
+  const pendingSummary = await teacherUtilityPendingSummary(resolved, session);
+  return Object.assign({ ok: true, validatedAt: Date.now(), pendingSummary }, resolved);
 }
 
 function safeRentalDisplayName(value) {

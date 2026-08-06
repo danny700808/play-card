@@ -56,6 +56,40 @@ assert(source.includes("PAYROLL_MIN_MONTH = '2026-07'"), '薪資月份前端沒�
 
 const tabs = html.slice(html.indexOf('<nav class="tabs teacher-bottom-tabs"'), html.indexOf('</nav>'));
 assert.strictEqual((tabs.match(/<(?:button|a)\b/g) || []).length, 5, '老師頁底部必須維持五個功能頁籤');
+assert(!html.includes('id="teacherProfileAlert"'), '老師首頁不應常駐顯示未完成資料明細');
+assert.strictEqual((html.match(/id="teacherDailyReminderBackdrop"/g) || []).length, 1, '老師首頁必須只有一個每日合併提醒視窗');
+assert(html.includes('id="teacherDailyReminderList"'), '每日提醒缺少合併待辦清單');
+assert(html.includes('id="teacherDailyReminderConfirm"'), '每日提醒缺少單一確認按鈕');
+const reminderStart = html.indexOf('id="teacherDailyReminderBackdrop"');
+const reminderEnd = html.indexOf('</section>', reminderStart);
+const reminderDialog = html.slice(reminderStart, reminderEnd);
+assert.strictEqual((reminderDialog.match(/<button\b/g) || []).length, 1, '每日提醒只應有一個「我知道了」按鈕');
+assert(/(?:我知道了|確認)/.test(reminderDialog), '每日提醒確認按鈕文案不清楚');
+assert(html.includes('id="teacherMoreBadge"'), '「其他」頁籤缺少待辦驚嘆號');
+[
+  'teacherProfileBadge',
+  'teacherContractBadge',
+  'teacherAnnouncementBadge',
+  'teacherTaskBadge',
+  'teacherGoodsBadge'
+].forEach((id) => assert(html.includes(`id="${id}"`), `其他功能缺少 ${id} 待辦徽章`));
+assert(source.includes('YZTeacherDailyReminder'), '老師首頁尚未使用每日提醒狀態工具');
+assert(source.includes('shouldShowDaily') && source.includes('markDailyShown'), '老師首頁未落實每日只提醒一次');
+assert(source.includes('summary.available !== false'), '待辦資料未完整讀取時不應消耗當日合併提醒');
+assert(source.includes('if (!state.available || !state.items.length'), '待辦資料未完整讀取時仍可能彈出合併提醒');
+assert(source.includes('TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000'), '其他功能待辦狀態缺少合理的重新整理期限');
+assert(source.includes('refreshTeacherUtilityStatus(false);') && !source.includes('refreshTeacherUtilityStatus(true);'), '每次開啟其他功能不應強制全量讀取');
+assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') && source.includes('pendingSummaryAvailable ? Date.now() : 0'), '待辦只讀到部分資料後，下一次開啟其他功能必須能立即重試');
+assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
+assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
+assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260806-daily-reminder-v1'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260806-daily-reminder-v1'), '老師首頁程式 cache key 過期');
+
+const lineLoginIndex = html.indexOf('data-line-login');
+const emailLoginIndex = html.indexOf('data-regular-auth-form');
+assert(lineLoginIndex >= 0 && emailLoginIndex > lineLoginIndex, '老師登入必須保留 LINE 優先及 Email 備用入口');
+assert(html.includes('Email 驗證登入') && /data-regular-auth-form[\s\S]*name="email"/.test(html), '沒有 LINE 的老師必須能使用 Email 驗證登入');
 assert(html.includes('id="teacherFlowBanner"'), '原地課務操作狀態遺失');
 assert(html.includes('id="teacherQuickBackdrop"'), '原地快速操作選單遺失');
 assert(source.includes('data-student-action='), '學生頁原地加課操作遺失');

@@ -7,10 +7,12 @@ on:
     paths:
       - "teacher-course-portal.html"
       - "teacher-course-portal-v8.js"
+      - "teacher-daily-reminder.js"
       - "teacher-course-session-v8.js"
       - "teacher-course-portal-v8.css"
       - "teacher-home.html"
       - "profile.html"
+      - "firebase-client.js"
       - "contract.html"
       - "announcements.html"
       - "task.html"
@@ -22,7 +24,9 @@ on:
       - "login.html"
       - "tests/login-clean-ui.test.js"
       - "tests/teacher-course-portal-mobile.test.js"
+      - "tests/teacher-daily-reminder.test.js"
       - "tests/teacher-more-pages.test.js"
+      - "tests/course-login-routing.test.js"
       - ".github/workflows/verify-teacher-course-app.yml"
   workflow_dispatch:
 
@@ -43,10 +47,14 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check teacher-course-portal-v8.js
+          node --check teacher-daily-reminder.js
           node --check teacher-course-session-v8.js
           node --check teacher-more-auth-bridge.js
+          node --check firebase-client.js
           node tests/login-clean-ui.test.js
+          node tests/course-login-routing.test.js
           node tests/teacher-course-portal-mobile.test.js
+          node --test tests/teacher-daily-reminder.test.js
           node tests/teacher-more-pages.test.js
 
       - name: Verify one teacher app shell
@@ -62,7 +70,8 @@ jobs:
 
           const requiredTabs = ['課表','學生','薪資','租用','其他'];
           for (const label of requiredTabs) {
-            if (!new RegExp(`(?:button|a)[^>]*>${label}<(?:/button|/a)>`).test(html)) throw new Error(`Teacher tab is missing: ${label}`);
+            const tabPattern = new RegExp(`<(button|a)\\b[^>]*>\\s*${label}(?:<span\\b[^>]*>.*?<\\/span>)?\\s*<\\/\\1>`);
+            if (!tabPattern.test(html)) throw new Error(`Teacher tab is missing: ${label}`);
           }
           if ((html.match(/teacher-bottom-tabs/g) || []).length !== 1) throw new Error('Teacher bottom navigation must exist exactly once');
           if (html.includes('teacherQuickHome') || html.includes('data-teacher-quick')) throw new Error('Duplicate top teacher shortcuts remain');

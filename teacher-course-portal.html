@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260730-student-tools-v1">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260806-daily-reminder-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
 </head>
 <body class="teacher-course-app clean-portal-ui">
@@ -61,16 +61,12 @@
     </section>
 
     <section class="hidden" id="appView" data-app-view>
-      <aside class="teacher-profile-alert hidden" id="teacherProfileAlert" role="status" aria-live="polite">
-        <div><b id="teacherProfileAlertTitle">請完成老師資料</b><span id="teacherProfileAlertText"></span></div>
-        <a href="profile.html">前往填寫</a>
-      </aside>
       <nav class="tabs teacher-bottom-tabs" aria-label="老師課務功能">
         <button class="btn active" type="button" data-tab="schedule">課表</button>
         <button class="btn" type="button" data-tab="students">學生</button>
         <button class="btn" type="button" data-tab="payroll">薪資</button>
         <a class="btn soft" href="room-booking.html?from=teacher">租用</a>
-        <button class="btn" id="teacherMoreBtn" type="button">其他</button>
+        <button class="btn teacher-more-button" id="teacherMoreBtn" type="button">其他<span class="teacher-pending-badge hidden" id="teacherMoreBadge" aria-label="有待處理項目">!</span></button>
       </nav>
 
       <section class="card tab-panel" data-panel="schedule">
@@ -106,17 +102,29 @@
     </section>
   </main>
 
+  <div class="teacher-daily-backdrop hidden" id="teacherDailyReminderBackdrop" aria-hidden="true">
+    <section class="teacher-daily-dialog" role="dialog" aria-modal="true" aria-labelledby="teacherDailyReminderTitle" aria-describedby="teacherDailyReminderIntro">
+      <span class="teacher-daily-symbol" aria-hidden="true">!</span>
+      <div>
+        <h2 id="teacherDailyReminderTitle">今天有事項可以查看</h2>
+        <p id="teacherDailyReminderIntro">以下只提醒一次；詳細內容請到「其他」查看。</p>
+      </div>
+      <ul id="teacherDailyReminderList"></ul>
+      <button class="btn primary" id="teacherDailyReminderConfirm" type="button">我知道了</button>
+    </section>
+  </div>
+
   <div class="teacher-more-backdrop hidden" id="teacherMoreBackdrop" aria-hidden="true">
     <section class="teacher-more-sheet" role="dialog" aria-modal="true" aria-labelledby="teacherMoreTitle">
       <div class="teacher-more-handle" aria-hidden="true"></div>
       <div class="section-title"><div><h2 id="teacherMoreTitle">其他功能</h2><p class="muted">較少使用的老師功能集中在這裡。</p></div><button class="btn" id="closeTeacherMore" type="button">關閉</button></div>
       <div class="teacher-more-grid">
-        <a href="announcements.html"><span>告</span><b>公告</b><small>最新公告與通知</small></a>
-        <a href="task.html"><span>辦</span><b>協助事項</b><small>待處理與回報</small></a>
-        <a href="teacher-goods.html"><span>貨</span><b>拿貨／詢價</b><small>商品搜尋與詢價</small></a>
-        <a href="forms-hub.html"><span>表</span><b>表格</b><small>集點卡與證明申請</small></a>
-        <a href="profile.html" id="teacherProfileLink"><span>人</span><b>我的資料</b><small id="teacherProfileLinkHint">基本資料與通知設定</small></a>
-        <a href="contract.html"><span>約</span><b>合約</b><small>查看與簽署合約</small></a>
+        <a href="announcements.html" id="teacherAnnouncementLink" data-teacher-seen-kind="announcements"><span class="teacher-more-icon">告</span><b>公告</b><small>最新公告與通知</small><em class="teacher-item-badge hidden" id="teacherAnnouncementBadge" aria-label="有公告可查看">!</em></a>
+        <a href="task.html" id="teacherTaskLink"><span class="teacher-more-icon">辦</span><b>協助事項</b><small>待處理與回報</small><em class="teacher-item-badge hidden" id="teacherTaskBadge" aria-label="有待處理事項">!</em></a>
+        <a href="teacher-goods.html" id="teacherGoodsLink" data-teacher-seen-kind="goods"><span class="teacher-more-icon">貨</span><b>拿貨／詢價</b><small>商品與詢價</small><em class="teacher-item-badge hidden" id="teacherGoodsBadge" aria-label="有商品或詢價更新">!</em></a>
+        <a href="forms-hub.html"><span class="teacher-more-icon">表</span><b>表格</b><small>集點卡與證明申請</small></a>
+        <a href="profile.html" id="teacherProfileLink"><span class="teacher-more-icon">人</span><b>我的資料</b><small id="teacherProfileLinkHint">基本資料與登入方式</small><em class="teacher-item-badge hidden" id="teacherProfileBadge" aria-label="資料尚未完成">!</em></a>
+        <a href="contract.html" id="teacherContractLink"><span class="teacher-more-icon">約</span><b>合約</b><small>查看與簽署合約</small><em class="teacher-item-badge hidden" id="teacherContractBadge" aria-label="有待簽合約">!</em></a>
       </div>
       <p class="teacher-more-note">這些功能使用原本的老師帳號，不會重新載入或覆蓋課表資料。</p>
     </section>
@@ -163,6 +171,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260805-auth-route-cleanup-v1"></script>
+  <script src="teacher-daily-reminder.js?v=20260806-daily-reminder-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260806-daily-reminder-v1"></script>
 </body>
 </html>

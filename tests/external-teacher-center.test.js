@@ -55,7 +55,7 @@ const bridge = read('teacher-more-auth-bridge.js');
 assert(bridge.includes('youzi.teacherMore.authorization.v4'));
 const course = read('functions/coursePortal.js');
 const resolverStart = course.indexOf('async function resolveTeacherUtilityEmployee(session)');
-const resolverEnd = course.indexOf('async function teacherUtilitySession(data)', resolverStart);
+const resolverEnd = course.indexOf('function teacherUtilityBoolean', resolverStart);
 const resolver = course.slice(resolverStart, resolverEnd);
 assert(resolver.includes("source: 'course-portal-canonical-external-teacher'"));
 assert(resolver.includes('canonicalEmployeeId'));

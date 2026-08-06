@@ -36,7 +36,11 @@ test('teacher other pages share the compact utility theme and explicit auth boun
     const source = read(file);
     assert.match(source, /class="[^"]*teacher-utility-page/);
     assert.match(source, /teacher-more-pages\.css\?v=20260730-teacher-more-v1/);
-    assert.match(source, /teacher-more-auth-bridge\.js\?v=20260801-teacher-session-v2/);
+    if (file === 'profile.html') {
+      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260806-external-teacher-reminder-v3/);
+    } else {
+      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260806-external-teacher-canonical-v2/);
+    }
     assert.match(source, /data-teacher-utility-root/);
     assert.match(source, /blockIfPortalOnly/);
   }
@@ -44,6 +48,7 @@ test('teacher other pages share the compact utility theme and explicit auth boun
   const bridge = read('teacher-more-auth-bridge.js');
   assert.match(bridge, /youzi\.coursePortal\.teacher\.session\.v1/);
   assert.match(bridge, /coursePortalTeacherUtilitySession/);
+  assert.match(bridge, /async function fetchUtilitySession\(\)/);
   assert.match(bridge, /saveAuthorizedUser/);
   assert.match(bridge, /portalSessionBridge:\s*true/);
   assert.doesNotMatch(bridge, /使用既有 Email／密碼|需要原員工帳號/);
@@ -74,6 +79,7 @@ test('teacher portal session is revalidated before the six utility pages receive
     APP_CONFIG: { FIREBASE_CONFIG: { projectId: 'test-project' } }
   };
   const callableNames = [];
+  const callablePayloads = [];
   window.firebase = {
     apps: [{}],
     functions() {},
@@ -84,15 +90,16 @@ test('teacher portal session is revalidated before the six utility pages receive
           return {
             httpsCallable(name) {
               callableNames.push(name);
-              return async (payload) => ({
-                data: {
+              return async (payload) => {
+                callablePayloads.push(payload);
+                return ({ data: {
                   ok: true,
                   profileComplete: false,
                   missingProfileFields: ['緊急聯絡人'],
                   user: { employeeId: 'EMP-007', id: 'EMP-007', name: '測試老師', identityType: 'external' },
-                  payload
-                }
-              });
+                  profile: { employeeId: 'EMP-007', name: '測試老師', idNumberMasked: 'A*****6789' }
+                } });
+              };
             }
           };
         }
@@ -129,6 +136,69 @@ test('teacher portal session is revalidated before the six utility pages receive
   assert.equal(bridgedUser.portalSessionBridge, true);
   assert.equal(reloads, 1);
   assert.equal(window.YZTeacherMoreAuth.blockIfPortalOnly({ title: '協助事項' }), false);
+
+  const secureResult = await window.YZTeacherMoreAuth.fetchUtilitySession({
+    sessionToken: 'attacker-token',
+    employeeId: 'OTHER-EMPLOYEE'
+  });
+  assert.equal(secureResult.profile.employeeId, 'EMP-007');
+  assert.deepStrictEqual(callableNames, ['coursePortalTeacherUtilitySession', 'coursePortalTeacherUtilitySession']);
+  assert.equal(JSON.stringify(callablePayloads), JSON.stringify([
+    { sessionToken: 'teacher-session-token' },
+    { sessionToken: 'teacher-session-token' }
+  ]), '公開的安全方法只能使用當前裝置的老師 session token');
+});
+
+test('secure profile fetch clears bridged identity when the teacher session expires', async () => {
+  const bridge = read('teacher-more-auth-bridge.js');
+  const storage = {
+    'youzi.coursePortal.teacher.session.v1': 'expired-token',
+    employeeUser: JSON.stringify({ employeeId: 'EMP-007', portalSessionBridge: true }),
+    employeeUserId: 'EMP-007',
+    'youzi.teacherMore.authorization.v2': JSON.stringify({ employeeId: 'EMP-007' })
+  };
+  const window = {
+    localStorage: {
+      getItem(key) { return Object.hasOwn(storage, key) ? storage[key] : null; },
+      setItem(key, value) { storage[key] = String(value); },
+      removeItem(key) { delete storage[key]; }
+    },
+    location: { pathname: '/profile.html' },
+    APP_CONFIG: { FIREBASE_CONFIG: { projectId: 'test-project' } },
+    firebase: {
+      apps: [{}],
+      functions() {},
+      initializeApp() {},
+      app() {
+        return {
+          functions() {
+            return {
+              httpsCallable() {
+                return async () => {
+                  const error = new Error('登入狀態已到期，請重新登入。');
+                  error.code = 'functions/unauthenticated';
+                  throw error;
+                };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const document = {
+    querySelector() { return null; },
+    head: { appendChild() {} },
+    createElement() { return {}; }
+  };
+  const context = vm.createContext({ window, document, Date, Math, JSON, String, Object, Set, Promise, Error });
+  new vm.Script(bridge, { filename: 'teacher-more-auth-bridge.js' }).runInContext(context);
+
+  await assert.rejects(() => window.YZTeacherMoreAuth.fetchUtilitySession(), /登入狀態已到期/);
+  assert.equal(storage['youzi.coursePortal.teacher.session.v1'], undefined);
+  assert.equal(storage['youzi.teacherMore.authorization.v2'], undefined);
+  assert.equal(storage.employeeUser, undefined);
+  assert.equal(storage.employeeUserId, undefined);
 });
 
 test('teacher utility pages keep inline scripts valid and static local assets present', () => {
@@ -194,4 +264,56 @@ test('media and inquiry regressions stay fixed', () => {
   assert.match(goods, /id="askNeedBy" type="date"/);
   assert.match(goods, /const indexed=rows\.map\(\(row,index\)=>\(\{row,index\}\)\)/);
   assert.match(goods, /teacherRecordCard_\(row,index,true\)/);
+});
+
+test('profile explains automatic LINE login and Email fallback without legacy notification choices', () => {
+  const profile = read('profile.html');
+  const client = read('firebase-client.js');
+
+  assert.match(profile, /登入與通知方式/);
+  assert.match(profile, /LINE[^。<]*(?:快速登入|優先通知)/);
+  assert.match(profile, /(?:沒有(?:使用 )?LINE[^。<]*Email|Email[^。<]*備用)/);
+  assert.doesNotMatch(profile, /name="notificationPreference"/);
+  assert.doesNotMatch(profile, /請至少保留 LINE 或 Email/);
+  assert.doesNotMatch(profile, />儲存通知設定</);
+  assert.match(profile, /Array\.isArray\(p\.identityUrls\)/);
+  assert.match(profile, /戶籍地址/);
+  assert.match(profile, /通訊地址/);
+  assert.match(profile, /補齊／更新外聘老師資料/);
+  assert.match(profile, /url\.origin !== window\.location\.origin/);
+  assert.match(profile, /external-teacher-onboarding\\\.html/);
+  assert.match(profile, /請聯絡管理者退回補件/);
+  assert.doesNotMatch(profile, /type="file"/, '我的資料頁不可繞過既有安全流程直接上傳證件');
+
+  assert.match(profile, /user\.portalSessionBridge === true/);
+  assert.match(profile, /window\.YZTeacherMoreAuth\.fetchUtilitySession\(\)/);
+  const securePortalBranch = profile.slice(
+    profile.indexOf('if(portalSessionBridge){'),
+    profile.indexOf('}else{', profile.indexOf('if(portalSessionBridge){'))
+  );
+  assert.doesNotMatch(securePortalBranch, /firebaseOnly\(|getMyProfileFull|employeeId:user|email:user/,
+    '老師 portal 資料不得 fallback 到前端人員編號查詢');
+  assert.doesNotMatch(profile, /MY_PROFILE_FULL_CACHE|localStorage\.setItem\(/,
+    '證件、薪資與補件 bearer 不得快取在 localStorage');
+  assert.doesNotMatch(profile, /clearLineBinding|clearMyLineBindingWithFallback|clearLineBindBtn|>解除 LINE 綁定</);
+  assert.match(profile, /更換或解除，請聯絡管理者處理/);
+  assert.match(profile, /id="ensureLineBindBtn"[^>]*style="display:none"[^>]*disabled/);
+  assert.match(profile, /id="copyLineBindBtn"[^>]*style="display:none"[^>]*disabled/);
+  assert.match(profile, /id="contactChangeCard" style="display:none"/);
+  assert.match(profile, /copyButton\.style\.display = portalSessionBridge \? 'none'/);
+  assert.match(profile, /applyPortalSecureMode\(user\.portalSessionBridge === true\)/);
+  assert.match(profile, /contactCard\.style\.display = enabled \? 'none'/);
+  assert.match(profile, /請使用安全補件入口，或聯絡管理者更新授課項目/);
+  assert.match(profile, /portalSessionBridge \? '目前沒有可用的 Email；請使用安全補件入口，或聯絡管理者更新/);
+  assert.match(profile, /LINE 是選用的快速登入與即時提醒方式/);
+  assert.match(profile, /Email 仍可獨立用於驗證登入/);
+
+  const unifiedStart = client.indexOf('我的資料與通知設定整合 2026-06-29');
+  const unifiedProfileClient = client.slice(unifiedStart);
+  assert.ok(unifiedStart >= 0);
+  assert.doesNotMatch(unifiedProfileClient, /externalTeacherProfiles|externalTeacherContracts|findExternalTeacherSources|findExternalTeacherRow/,
+    '我的資料前端整合層不得直接讀寫外聘老師敏感 collection');
+  assert.match(unifiedProfileClient, /localUser\(\)\.portalSessionBridge===true[\s\S]*老師課務登入請使用安全資料管道/);
+  assert.match(unifiedProfileClient, /a==='clearMyLineBindingWithFallback'[\s\S]*請由管理者處理/);
+  assert.match(unifiedProfileClient, /localUser\(\)\.portalSessionBridge===true[\s\S]*saveMyTeachingAbilities[\s\S]*submitProfileChangeRequest[\s\S]*安全補件入口/);
 });
