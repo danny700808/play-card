@@ -1,0 +1,71 @@
+name: Finalize External Teacher Contract Scope 20260806
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/finalize-external-teacher-contract-scope-20260806.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-external-teacher-contract-scope-20260806
+  cancel-in-progress: false
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Restrict teacher contract lookup to canonical employee id
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('contract.html')
+          text = path.read_text(encoding='utf-8')
+          old = "async function loadStatus(){const r=await api('getTeacherContractStatus',{userId:currentUser.id,email:currentUser.email});"
+          new = "async function loadStatus(){const canonical=!!(currentUser&&currentUser.portalSessionBridge===true);const payload={userId:currentUser.id,employeeId:currentUser.employeeId||currentUser.id,canonicalExternalTeacher:canonical};if(!canonical&&currentUser.email)payload.email=currentUser.email;const r=await api('getTeacherContractStatus',payload);"
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'contract lookup marker: expected 1, found {count}')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+
+          test = Path('tests/external-teacher-center.test.js')
+          rows = test.read_text(encoding='utf-8')
+          marker = "const bridge = read('teacher-more-auth-bridge.js');"
+          addition = "const contractPage = read('contract.html');\nassert(contractPage.includes('canonicalExternalTeacher:canonical'));\nassert(contractPage.includes('if(!canonical&&currentUser.email)'));\n\n"
+          if addition.strip() not in rows:
+              if marker not in rows:
+                  raise SystemExit('external teacher test marker not found')
+              rows = rows.replace(marker, addition + marker, 1)
+          test.write_text(rows, encoding='utf-8')
+          PY
+
+      - name: Verify exact contract scope
+        run: |
+          set -euo pipefail
+          node tests/external-teacher-center.test.js
+          grep -Fq 'canonicalExternalTeacher:canonical' contract.html
+          git diff --check
+
+      - name: Commit final contract scope
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/finalize-external-teacher-contract-scope-20260806.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "No contract scope changes staged" >&2; exit 1; }
+          git commit -m "Scope teacher contracts to canonical external identity"
+          git push origin HEAD:main
