@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1f7a5a">
+  <title>外聘老師表格與證明｜柚子樂器</title>
+  <link rel="stylesheet" href="style.css?v=20260806-external-teacher-center-v1">
+  <link rel="stylesheet" href="global-nav.css?v=20260806-external-teacher-center-v1">
+  <style>
+    body{margin:0;background:#f1f7f4;color:#18314a;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif}
+    .shell{width:min(1040px,100%);margin:0 auto;padding:16px 14px 44px;box-sizing:border-box}
+    .hero{padding:22px;border:1px solid #cfe2da;border-radius:24px;background:linear-gradient(135deg,#eaf8f1,#fff);box-shadow:0 12px 30px rgba(31,122,90,.08);margin-bottom:16px}
+    .hero h1{margin:0;color:#155d47;font-size:30px}.hero p{margin:8px 0 0;color:#60756d;line-height:1.7}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .card{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid #dce7e2;border-radius:22px;padding:20px;min-height:150px;box-shadow:0 10px 26px rgba(15,23,42,.05)}
+    .card:hover{transform:translateY(-1px);border-color:#9dc9b8}.card b{display:block;font-size:23px;color:#173f32;margin-bottom:8px}.card span{display:block;color:#64776f;line-height:1.65}.tag{display:inline-flex!important;width:max-content;margin-bottom:10px;padding:5px 9px;border-radius:999px;background:#eaf8f1;color:#1f7a5a!important;font-size:12px;font-weight:900}
+    .notice{margin-top:16px;padding:14px 16px;border:1px solid #d8e6e0;border-radius:18px;background:#fff;color:#52675f;line-height:1.75}
+    @media(max-width:680px){.grid{grid-template-columns:1fr}.hero h1{font-size:26px}.card{min-height:126px;padding:18px}}
+  </style>
+</head>
+<body>
+  <div class="yz-global-nav" data-yz-global-nav>
+    <button class="yz-nav-btn yz-nav-back" type="button" data-yz-nav-back>回到上一頁</button>
+    <button class="yz-nav-btn yz-nav-logout" type="button" data-yz-nav-logout>登出</button>
+  </div>
+  <main class="shell">
+    <section class="hero">
+      <h1>外聘老師表格與證明</h1>
+      <p>集點卡、在職證明與教學證明集中在這裡管理。設備租賃不屬於外聘老師表格，已不放在此區。</p>
+    </section>
+    <section class="grid">
+      <a class="card" href="gift-point-card-admin.html?source=teacher-hub">
+        <span class="tag">共用表格</span><b>集點卡設定</b><span>設定集點卡標題、欄位與注意事項，老師端只會看到可列印版本。</span>
+      </a>
+      <a class="card" href="employment-certificate-hub.html?identity=external&source=teacher-hub">
+        <span class="tag">外聘老師</span><b>在職證明管理</b><span>查看申請、審核資料、核准後產生正式文件。</span>
+      </a>
+      <a class="card" href="teaching-certificate-hub.html?identity=external&source=teacher-hub">
+        <span class="tag">外聘老師</span><b>教學證明管理</b><span>管理任教科目、任教期間與證明文件申請。</span>
+      </a>
+      <a class="card" href="certificate-review-admin.html?identity=external&source=teacher-hub">
+        <span class="tag">待處理</span><b>證明文件審核</b><span>集中查看待審核、已核准與退回補件的證明申請。</span>
+      </a>
+    </section>
+    <div class="notice">資料來源以「員工管理 → 外聘老師」為主。證明申請只依同一個外聘老師員工編號顯示，不再用姓名、電話或 Email 自動連結舊資料。</div>
+  </main>
+  <script src="config.js?v=20260806-external-teacher-center-v1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="app.js?v=20260806-external-teacher-center-v1"></script>
+  <script>
+    (function(){
+      const user=typeof requireLogin==='function'?requireLogin():null;
+      if(!user)return;
+      if(typeof hasSettingsZoneAccess==='function'&&!hasSettingsZoneAccess(user)){location.replace('dashboard.html');}
+    })();
+  </script>
+  <script src="global-nav.js?v=20260806-external-teacher-center-v1"></script>
+</body>
+</html>
