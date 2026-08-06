@@ -1,0 +1,490 @@
+name: Hotfix LINE Unlink Rebind 20260806
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/hotfix-line-unlink-rebind-20260806.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hotfix-line-unlink-rebind-20260806
+  cancel-in-progress: false
+
+jobs:
+  patch-test-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply unlink and rebind hotfix
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected 1 match, found {count}')
+              return text.replace(old, new, 1)
+
+          def function_bounds(text, name):
+              marker = f'async function {name}'
+              start = text.index(marker)
+              end = text.find('\nasync function ', start + len(marker))
+              return start, len(text) if end < 0 else end
+
+          def replace_in_function(text, name, old, new, label):
+              start, end = function_bounds(text, name)
+              section = text[start:end]
+              section = replace_once(section, old, new, label)
+              return text[:start] + section + text[end:]
+
+          policy_path = Path('functions/courseLoginPolicy.js')
+          policy = policy_path.read_text(encoding='utf-8')
+          helper = """// A unified LINE unlink removes the messaging/login association, but it is not
+          // a permanent account suspension. Legacy unlink rows used revoked/revoked;
+          // current rows use unbound/unbound. Explicit administrator rejection remains blocked.
+          function isRecoverableUnboundBinding(row) {
+            if (!row) return false;
+            const status = lower(row.status);
+            const approval = lower(row.approvalStatus);
+            if (status === 'rejected' || approval === 'rejected') return false;
+            if (['unbound', 'unlinked'].includes(status) || ['unbound', 'unlinked'].includes(approval)) return true;
+            const globallyUnlinked = Boolean(
+              row.globalLineRevokedAt ||
+              clean(row.globalLineRevokedReason) ||
+              clean(row.globalLineRevokedBy)
+            );
+            if (!globallyUnlinked) return false;
+            return status === 'revoked' ||
+              approval === 'revoked' ||
+              lower(row.lineBindStatus) === 'unbound' ||
+              lower(row.lineLinkStatus) === 'unlinked';
+          }
+
+          """
+          if 'function isRecoverableUnboundBinding(row)' not in policy:
+              policy = replace_once(
+                  policy,
+                  'function isBlockedBinding(row) {\n',
+                  helper + 'function isBlockedBinding(row) {\n',
+                  'insert recoverable unlink policy'
+              )
+          if 'function isBlockedBinding(row) {\n  if (isRecoverableUnboundBinding(row)) return false;' not in policy:
+              policy = replace_once(
+                  policy,
+                  'function isBlockedBinding(row) {\n  const status = lower(row && row.status);',
+                  'function isBlockedBinding(row) {\n  if (isRecoverableUnboundBinding(row)) return false;\n  const status = lower(row && row.status);',
+                  'use recoverable unlink policy'
+              )
+          if '  isRecoverableUnboundBinding\n};' not in policy:
+              policy = replace_once(
+                  policy,
+                  '  isBlockedBinding,\n  isPendingBinding\n};',
+                  '  isBlockedBinding,\n  isPendingBinding,\n  isRecoverableUnboundBinding\n};',
+                  'export recoverable unlink policy'
+              )
+          policy_path.write_text(policy, encoding='utf-8')
+
+          unified_path = Path('functions/unifiedLineBindingAdmin.js')
+          unified = unified_path.read_text(encoding='utf-8')
+          unified = replace_once(
+              unified,
+              """  if (/^coursePortal.+Bindings$/.test(source.collection)) {
+              patch.status = 'revoked';
+              patch.approvalStatus = 'revoked';
+              patch.revokedAt = FV.serverTimestamp();
+            }""",
+              """  if (/^coursePortal.+Bindings$/.test(source.collection)) {
+              // 完全解除只取消 LINE 關聯，不代表永久停用老師、學生或租用帳號。
+              patch.status = 'unbound';
+              patch.approvalStatus = 'unbound';
+              patch.unboundAt = FV.serverTimestamp();
+              patch.revokedAt = FV.delete();
+              patch.rejectedAt = FV.delete();
+            }""",
+              'change unified unlink from revoked to unbound'
+          )
+          unified_path.write_text(unified, encoding='utf-8')
+
+          portal_path = Path('functions/coursePortal.js')
+          portal = portal_path.read_text(encoding='utf-8')
+          portal = replace_once(
+              portal,
+              "const { bindingIdentity, bindingIdentityPatch, decideLineLoginBinding } = require('./courseLoginPolicy');",
+              "const { bindingIdentity, bindingIdentityPatch, decideLineLoginBinding, isRecoverableUnboundBinding } = require('./courseLoginPolicy');",
+              'import recoverable unlink policy'
+          )
+
+          portal = replace_in_function(
+              portal,
+              'completeVerifiedLineRegistration',
+              """    if (conflictRows.some((row) => ['revoked', 'rejected'].includes(clean(row.status)))) {
+              throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+            }""",
+              """    if (conflictRows.some((row) =>
+              ['revoked', 'rejected'].includes(clean(row.status)) &&
+              !isRecoverableUnboundBinding(row)
+            )) {
+              throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+            }""",
+              'allow legacy globally unlinked identity conflict'
+          )
+          portal = replace_in_function(
+              portal,
+              'completeVerifiedLineRegistration',
+              """  if (['revoked', 'rejected'].includes(clean(previous.status))) {
+            throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+          }""",
+              """  if (
+            ['revoked', 'rejected'].includes(clean(previous.status)) &&
+            !isRecoverableUnboundBinding(previous)
+          ) {
+            throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+          }""",
+              'allow previous globally unlinked binding'
+          )
+          registration_reset = """    approvalStatus: 'approved',
+            lineBindStatus: 'bound',
+            lineLinkStatus: 'linked',
+            globalLineRevokedAt: null,
+            globalLineRevokedBy: '',
+            globalLineRevokedReason: '',
+            unboundAt: null,
+            revokedAt: null,
+            rejectedAt: null,
+          """
+          portal = replace_in_function(
+              portal,
+              'completeVerifiedLineRegistration',
+              "    approvalStatus: 'approved',\n",
+              registration_reset,
+              'clear unlink markers after verified registration'
+          )
+
+          portal = replace_in_function(
+              portal,
+              'handleCoursePortalLineEvent',
+              """  if (['revoked', 'rejected'].includes(clean(previousBinding.status))) {
+            await reply(replyToken, '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+            return true;
+          }""",
+              """  if (
+            ['revoked', 'rejected'].includes(clean(previousBinding.status)) &&
+            !isRecoverableUnboundBinding(previousBinding)
+          ) {
+            await reply(replyToken, '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
+            return true;
+          }""",
+              'allow legacy LINE message rebind'
+          )
+          portal = replace_in_function(
+              portal,
+              'handleCoursePortalLineEvent',
+              "    approvalStatus: 'approved',\n",
+              registration_reset,
+              'clear unlink markers after LINE message binding'
+          )
+
+          approve_reset = """      revokedAt: null,
+              lineBindStatus: 'bound',
+              lineLinkStatus: 'linked',
+              globalLineRevokedAt: null,
+              globalLineRevokedBy: '',
+              globalLineRevokedReason: '',
+              unboundAt: null,
+          """
+          portal = replace_in_function(
+              portal,
+              'adminBindingAction',
+              "      revokedAt: null,\n",
+              approve_reset,
+              'clear unlink markers on admin approve or restore'
+          )
+          revoke_reset = """      revokedAt: action === 'revoke' ? FieldValue.serverTimestamp() : null,
+              globalLineRevokedAt: null,
+              globalLineRevokedBy: '',
+              globalLineRevokedReason: '',
+              unboundAt: null,
+          """
+          portal = replace_in_function(
+              portal,
+              'adminBindingAction',
+              "      revokedAt: action === 'revoke' ? FieldValue.serverTimestamp() : null,\n",
+              revoke_reset,
+              'keep explicit admin revoke permanently blocked'
+          )
+          portal_path.write_text(portal, encoding='utf-8')
+
+          policy_test_path = Path('tests/course-login-policy.test.js')
+          policy_test = policy_test_path.read_text(encoding='utf-8')
+          policy_test = replace_once(
+              policy_test,
+              """  decideLineLoginBinding,
+            isApprovedActiveBinding
+          } = require('../functions/courseLoginPolicy');""",
+              """  decideLineLoginBinding,
+            isApprovedActiveBinding,
+            isRecoverableUnboundBinding
+          } = require('../functions/courseLoginPolicy');""",
+              'import recoverable policy in test'
+          )
+          policy_test = replace_once(
+              policy_test,
+              """test('unknown LINE account enters setup while revoked account stays blocked', () => {
+            assert.equal(decideLineLoginBinding('teacher', []).action, 'setup');
+            assert.equal(decideLineLoginBinding('teacher', [
+              { __id: 'revoked', teacherId: 'T001', status: 'revoked' }
+            ]).action, 'blocked');
+          });""",
+              """test('global unlink is recoverable while explicit revocation or rejection stays blocked', () => {
+            assert.equal(decideLineLoginBinding('teacher', []).action, 'setup');
+
+            const explicitRevocation = { __id: 'revoked', teacherId: 'T001', status: 'revoked' };
+            assert.equal(isRecoverableUnboundBinding(explicitRevocation), false);
+            assert.equal(decideLineLoginBinding('teacher', [explicitRevocation]).action, 'blocked');
+
+            const currentUnlink = {
+              __id: 'unbound', teacherId: 'T001', status: 'unbound', approvalStatus: 'unbound'
+            };
+            assert.equal(isRecoverableUnboundBinding(currentUnlink), true);
+            assert.equal(decideLineLoginBinding('teacher', [currentUnlink]).action, 'setup');
+
+            const legacyUnlink = {
+              __id: 'legacy-unlink', teacherId: 'T001', status: 'revoked', approvalStatus: 'revoked',
+              lineBindStatus: 'unbound', globalLineRevokedReason: '管理者於統一入口完全解除 LINE'
+            };
+            assert.equal(isRecoverableUnboundBinding(legacyUnlink), true);
+            assert.equal(decideLineLoginBinding('teacher', [legacyUnlink]).action, 'setup');
+
+            const rejected = Object.assign({}, legacyUnlink, { status: 'rejected', approvalStatus: 'rejected' });
+            assert.equal(isRecoverableUnboundBinding(rejected), false);
+            assert.equal(decideLineLoginBinding('teacher', [rejected]).action, 'blocked');
+          });""",
+              'replace revoked policy regression test'
+          )
+          policy_test_path.write_text(policy_test, encoding='utf-8')
+
+          unified_test_path = Path('tests/unified-line-binding-admin.test.js')
+          unified_test = unified_test_path.read_text(encoding='utf-8')
+          unified_test = replace_once(
+              unified_test,
+              "  assert.strictEqual(_test.first({ employeeId: 'EMP001' }, ['employeeId']), 'EMP001');\n",
+              """  assert.strictEqual(_test.first({ employeeId: 'EMP001' }, ['employeeId']), 'EMP001');
+
+            const portalUnlinkPatch = _test.clearPatch(
+              { collection: 'coursePortalTeacherBindings', row: { lineUserId: 'U-PORTAL' } },
+              '管理者',
+              '管理者於統一入口完全解除 LINE'
+            );
+            assert.strictEqual(portalUnlinkPatch.status, 'unbound');
+            assert.strictEqual(portalUnlinkPatch.approvalStatus, 'unbound');
+            assert.deepStrictEqual(portalUnlinkPatch.lineUserId, { __delete: true });
+            assert.deepStrictEqual(portalUnlinkPatch.revokedAt, { __delete: true });
+          """,
+              'add unified unlink regression test'
+          )
+          unified_test_path.write_text(unified_test, encoding='utf-8')
+
+          checks = {
+              'policy helper': 'function isRecoverableUnboundBinding(row)' in policy_path.read_text(encoding='utf-8'),
+              'future unlink state': "patch.status = 'unbound';" in unified_path.read_text(encoding='utf-8'),
+              'verified registration recovery': '!isRecoverableUnboundBinding(previous)' in portal_path.read_text(encoding='utf-8'),
+              'legacy identity recovery': '!isRecoverableUnboundBinding(row)' in portal_path.read_text(encoding='utf-8')
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          if failed:
+              raise RuntimeError('Static hotfix checks failed: ' + ', '.join(failed))
+          print('Applied LINE unlink/rebind hotfix:', ', '.join(checks))
+          PY
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Test hotfix
+        env:
+          NODE_PATH: functions/node_modules
+        run: |
+          set -euo pipefail
+          node --check functions/courseLoginPolicy.js
+          node --check functions/coursePortal.js
+          node --check functions/unifiedLineBindingAdmin.js
+          node --test tests/course-login-policy.test.js
+          node tests/unified-line-binding-admin.test.js
+          NODE_PATH=functions/node_modules node tests/course-portal.test.js
+          (cd functions && node - <<'NODE'
+          const deployed = require('.');
+          for (const name of [
+            'coursePortalStartLineLogin',
+            'coursePortalLineLoginCallback',
+            'coursePortalSendEmailOtp',
+            'coursePortalVerifyEmailOtp',
+            'coursePortalAdminBindingAction',
+            'coursePortalAdminUnifiedLineData',
+            'coursePortalAdminUnifiedLineAction'
+          ]) {
+            if (!deployed[name]) throw new Error(`Missing Firebase Function export: ${name}`);
+          }
+          console.log('Hotfix Function exports verified');
+          NODE
+          )
+          git diff --check
+
+      - name: Commit hotfix to main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            functions/courseLoginPolicy.js \
+            functions/coursePortal.js \
+            functions/unifiedLineBindingAdmin.js \
+            tests/course-login-policy.test.js \
+            tests/unified-line-binding-admin.test.js
+          git diff --cached --quiet && { echo 'No source changes staged' >&2; exit 1; }
+          git commit -m "fix: allow re-registration after unified LINE unlink"
+          git push origin HEAD:main
+
+      - name: Prepare Firebase credentials and runtime settings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_MESSAGING_ACCESS_TOKEN: ${{ secrets.LINE_MESSAGING_ACCESS_TOKEN }}
+          LINE_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}" || { echo "FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is empty" >&2; exit 1; }
+          test -n "${GMAIL_USER:-}" || { echo "GMAIL_USER is empty" >&2; exit 1; }
+          test -n "${GMAIL_APP_PASSWORD:-}" || { echo "GMAIL_APP_PASSWORD is empty" >&2; exit 1; }
+          RUNTIME_LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-${LINE_MESSAGING_ACCESS_TOKEN:-${LINE_ACCESS_TOKEN:-}}}"
+          test -n "$RUNTIME_LINE_TOKEN" || { echo "LINE access token is empty" >&2; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$SERVICE_ACCOUNT_PATH"
+          export RUNTIME_LINE_TOKEN
+          node <<'NODE'
+          const fs = require('fs');
+          const rows = {
+            LINE_CHANNEL_ACCESS_TOKEN: process.env.RUNTIME_LINE_TOKEN || '',
+            GMAIL_USER: process.env.GMAIL_USER || '',
+            GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
+            EMAIL_FROM: process.env.EMAIL_FROM || '',
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/'
+          };
+          fs.writeFileSync(
+            'functions/.env',
+            Object.entries(rows).map(([key, value]) => `${key}=${JSON.stringify(String(value))}`).join('\n') + '\n',
+            { mode: 0o600 }
+          );
+          NODE
+
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+
+      - name: Deploy authentication and unified LINE Functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          firebase deploy --project youzi-c1b74 --non-interactive --force \
+            --only "functions:lineWebhook,functions:coursePortalSendEmailOtp,functions:coursePortalVerifyEmailOtp,functions:coursePortalStartLineLogin,functions:coursePortalCompleteLineRegistration,functions:coursePortalLineLoginCallback,functions:coursePortalExchangeAccess,functions:coursePortalAdminBindingAction,functions:coursePortalAdminUnifiedLineData,functions:coursePortalAdminUnifiedLineAction"
+
+      - name: Migrate legacy unified-unlink records to unbound
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+          NODE_PATH: functions/node_modules
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const admin = require('firebase-admin');
+          if (!admin.apps.length) admin.initializeApp({ projectId: 'youzi-c1b74' });
+          const db = admin.firestore();
+          const FV = admin.firestore.FieldValue;
+          const collections = [
+            'coursePortalTeacherBindings',
+            'coursePortalStudentBindings',
+            'coursePortalRenterBindings'
+          ];
+          const clean = (value) => String(value == null ? '' : value).trim().toLowerCase();
+
+          (async () => {
+            const operations = [];
+            for (const name of collections) {
+              const snapshot = await db.collection(name).get();
+              for (const doc of snapshot.docs) {
+                const row = doc.data() || {};
+                const legacyGlobalUnlink = clean(row.status) === 'revoked' &&
+                  clean(row.approvalStatus) !== 'rejected' &&
+                  Boolean(
+                    row.globalLineRevokedAt ||
+                    String(row.globalLineRevokedReason || '').trim() ||
+                    clean(row.lineBindStatus) === 'unbound' ||
+                    clean(row.lineLinkStatus) === 'unlinked'
+                  );
+                if (!legacyGlobalUnlink) continue;
+                operations.push({
+                  ref: doc.ref,
+                  data: {
+                    status: 'unbound',
+                    approvalStatus: 'unbound',
+                    unboundAt: FV.serverTimestamp(),
+                    revokedAt: FV.delete(),
+                    updatedAt: FV.serverTimestamp()
+                  }
+                });
+              }
+            }
+            for (let offset = 0; offset < operations.length; offset += 400) {
+              const batch = db.batch();
+              operations.slice(offset, offset + 400).forEach((operation) => batch.update(operation.ref, operation.data));
+              await batch.commit();
+            }
+            let remaining = 0;
+            for (const name of collections) {
+              const snapshot = await db.collection(name).get();
+              remaining += snapshot.docs.filter((doc) => {
+                const row = doc.data() || {};
+                return clean(row.status) === 'revoked' && Boolean(
+                  row.globalLineRevokedAt ||
+                  String(row.globalLineRevokedReason || '').trim() ||
+                  clean(row.lineBindStatus) === 'unbound' ||
+                  clean(row.lineLinkStatus) === 'unlinked'
+                );
+              }).length;
+            }
+            if (remaining) throw new Error(`Legacy unified-unlink migration incomplete: ${remaining} rows remain`);
+            console.log(`Legacy unified-unlink migration complete: ${operations.length} rows changed; ${remaining} remain.`);
+          })().catch((error) => {
+            console.error(error && error.stack || error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Remove temporary credentials
+        if: always()
+        run: |
+          rm -f "${{ runner.temp }}/youzi-firebase-service-account.json"
+          rm -f functions/.env
