@@ -2218,108 +2218,108 @@ async function resolveTeacherUtilityEmployee(session) {
   const employees = employeeSnapshot.docs.map((doc) =>
     Object.assign({ __id: doc.id, __ref: doc.ref }, jsonValue(doc.data() || {}))
   );
-
-  const explicitIds = new Set([teacherId]);
-  bindings.forEach((row) => {
-    const value = linkedEmployeeId(row);
-    if (value) explicitIds.add(value);
-  });
-  const direct = employees.filter((row) => isExternalTeacherEmployee(row) && (
-    explicitIds.has(clean(row.__id)) ||
-    explicitIds.has(clean(row.employeeId || row.id || row.userId)) ||
-    clean(row.coursePortalTeacherId || row.legacyTeacherId) === teacherId ||
-    (Array.isArray(row.coursePortalTeacherIds) && row.coursePortalTeacherIds.map(clean).includes(teacherId))
-  ));
-  if (direct.length > 1) {
-    throw new HttpsError('failed-precondition', '這個老師編號連到多個外聘老師主檔，請先由管理者整理重複資料。');
+  const canonicalEmployeeId = `EXT_${hash(`course-teacher:${teacherId}`).slice(0, 16)}`;
+  const canonicalRef = db.collection('employees').doc(canonicalEmployeeId);
+  const canonicalSnapshot = await canonicalRef.get();
+  const canonicalExisting = canonicalSnapshot.exists ? jsonValue(canonicalSnapshot.data() || {}) : {};
+  if (canonicalSnapshot.exists && !isExternalTeacherEmployee(canonicalExisting)) {
+    throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
   }
 
-  let employee = direct[0] || null;
-  if (!employee) {
-    const employeeId = `EXT_${hash(`course-teacher:${teacherId}`).slice(0, 16)}`;
-    const employeeRef = db.collection('employees').doc(employeeId);
-    const existingSnapshot = await employeeRef.get();
-    const existing = existingSnapshot.exists ? jsonValue(existingSnapshot.data() || {}) : {};
-    if (existingSnapshot.exists && !isExternalTeacherEmployee(existing)) {
-      throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
-    }
-    const identityRows = [teacher].concat(bindings);
-    const name = clean(identityRows.map((row) => row && (
-      row.name || row.teacherName || row.targetName || row.displayName
-    )).find(clean)) || '外聘老師';
-    const email = identityRows.map(employeeEmail).find(clean) || '';
-    const phone = identityRows.map(employeePhone).find(clean) || '';
-    const createdAt = existingSnapshot.exists
-      ? (existing.createdAt || existing.createdAtText || null)
-      : FieldValue.serverTimestamp();
-    const fresh = {
-      employeeId,
-      id: employeeId,
-      userId: employeeId,
-      name,
-      displayName: name,
-      email,
-      mobilePhone: phone,
-      phone,
-      identityType: 'external',
-      identityLabel: '外聘老師',
-      employeeType: 'external',
-      role: 'externalTeacher',
-      isExternalTeacher: true,
-      accountStatus: 'active',
-      employmentStatus: 'active',
-      hiddenFromActiveLists: false,
-      coursePortalTeacherId: teacherId,
-      coursePortalTeacherIds: FieldValue.arrayUnion(teacherId),
-      legacyTeacherId: teacherId,
-      source: 'course-portal-canonical-external-teacher',
-      createdAt,
-      updatedAt: FieldValue.serverTimestamp()
-    };
-    await employeeRef.set(fresh, { merge: true });
-    employee = Object.assign({}, existing, fresh, { __id: employeeId, __ref: employeeRef });
-  }
-
-  const employeeId = clean(employee.employeeId || employee.id || employee.__id);
-  const employeeRef = employee.__ref || db.collection('employees').doc(employeeId);
-  const canonicalPatch = {
-    employeeId,
-    id: clean(employee.id) || employeeId,
-    userId: clean(employee.userId) || employeeId,
+  const identityRows = [teacher].concat(bindings);
+  const verifiedName = clean(identityRows.map((row) => row && (
+    row.name || row.teacherName || row.targetName || row.displayName
+  )).find(clean));
+  const verifiedEmail = identityRows.map(employeeEmail).find(clean) || '';
+  const verifiedPhone = identityRows.map(employeePhone).find(clean) || '';
+  const canonicalSeed = {
+    employeeId: canonicalEmployeeId,
+    id: canonicalEmployeeId,
+    userId: canonicalEmployeeId,
     identityType: 'external',
     identityLabel: '外聘老師',
     employeeType: 'external',
     role: 'externalTeacher',
     isExternalTeacher: true,
+    accountStatus: 'active',
+    employmentStatus: 'active',
+    hiddenFromActiveLists: false,
     coursePortalTeacherId: teacherId,
     coursePortalTeacherIds: FieldValue.arrayUnion(teacherId),
+    legacyTeacherId: teacherId,
+    coursePortalTeacherCanonical: true,
+    canonicalTeacherKey: `course-teacher:${teacherId}`,
+    source: 'course-portal-canonical-external-teacher',
     updatedAt: FieldValue.serverTimestamp()
   };
-  if (!clean(employee.legacyTeacherId)) canonicalPatch.legacyTeacherId = teacherId;
-  await employeeRef.set(canonicalPatch, { merge: true });
+  if (verifiedName) {
+    canonicalSeed.name = verifiedName;
+    canonicalSeed.displayName = verifiedName;
+  } else if (!clean(canonicalExisting.name || canonicalExisting.displayName)) {
+    canonicalSeed.name = '外聘老師';
+    canonicalSeed.displayName = '外聘老師';
+  }
+  if (verifiedEmail) canonicalSeed.email = verifiedEmail;
+  if (verifiedPhone) {
+    canonicalSeed.mobilePhone = verifiedPhone;
+    canonicalSeed.phone = verifiedPhone;
+  }
+  if (!canonicalSnapshot.exists) canonicalSeed.createdAt = FieldValue.serverTimestamp();
+  await canonicalRef.set(canonicalSeed, { merge: true });
 
-  const bindingBatch = db.batch();
-  bindings.forEach((row) => bindingBatch.set(row.__ref, {
-    employeeId,
-    externalTeacherEmployeeId: employeeId,
+  const oldLinkedIds = new Set();
+  bindings.forEach((row) => {
+    const value = linkedEmployeeId(row);
+    if (value && value !== canonicalEmployeeId) oldLinkedIds.add(value);
+  });
+  const replacedRows = employees.filter((row) => {
+    const employeeId = clean(row.employeeId || row.id || row.userId || row.__id);
+    if (!employeeId || employeeId === canonicalEmployeeId || !isExternalTeacherEmployee(row)) return false;
+    return oldLinkedIds.has(employeeId) ||
+      clean(row.coursePortalTeacherId || row.legacyTeacherId) === teacherId ||
+      (Array.isArray(row.coursePortalTeacherIds) && row.coursePortalTeacherIds.map(clean).includes(teacherId));
+  });
+
+  const batch = db.batch();
+  bindings.forEach((row) => batch.set(row.__ref, {
+    employeeId: canonicalEmployeeId,
+    externalTeacherEmployeeId: canonicalEmployeeId,
     legacyTeacherId: teacherId,
-    employeeRef: `employees/${employeeId}`,
+    employeeRef: `employees/${canonicalEmployeeId}`,
+    coursePortalTeacherCanonical: true,
     linkedAt: row.linkedAt || FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true }));
-  await bindingBatch.commit();
+  replacedRows.forEach((row) => batch.set(row.__ref, {
+    accountStatus: 'archived',
+    employmentStatus: 'archived',
+    hiddenFromActiveLists: true,
+    coursePortalTeacherCanonicalReplaced: true,
+    canonicalReplacementEmployeeId: canonicalEmployeeId,
+    canonicalReplacementTeacherId: teacherId,
+    canonicalReplacementAt: FieldValue.serverTimestamp(),
+    statusNote: '舊課務老師自動配對資料已由新的固定外聘老師主檔取代。',
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true }));
+  await batch.commit();
 
-  const merged = Object.assign({}, employee, canonicalPatch, {
-    name: clean(employee.name || employee.displayName || teacher.name || teacher.teacherName) || '外聘老師',
+  const canonicalReload = await canonicalRef.get();
+  const employee = Object.assign(
+    { __id: canonicalEmployeeId, __ref: canonicalRef },
+    canonicalReload.exists ? jsonValue(canonicalReload.data() || {}) : {},
+    { employeeId: canonicalEmployeeId }
+  );
+  const merged = Object.assign({}, employee, {
+    name: clean(employee.name || employee.displayName || verifiedName) || '外聘老師',
     email: employeeEmail(employee),
     mobilePhone: employeePhone(employee)
   });
   const missingProfileFields = externalTeacherProfileMissingFields(merged);
   return {
-    employeeId,
+    employeeId: canonicalEmployeeId,
     user: {
-      id: employeeId,
-      employeeId,
+      id: canonicalEmployeeId,
+      employeeId: canonicalEmployeeId,
       name: merged.name,
       displayName: merged.name,
       email: employeeEmail(merged),
@@ -2332,10 +2332,11 @@ async function resolveTeacherUtilityEmployee(session) {
       isExternalTeacher: true,
       lineUserId: clean(session.lineUserId),
       lineNotifyEnabled: Boolean(clean(session.lineUserId)),
-      accountStatus: clean(employee.accountStatus || 'active'),
-      employmentStatus: clean(employee.employmentStatus || 'active'),
+      accountStatus: 'active',
+      employmentStatus: 'active',
       legacyTeacherId: teacherId,
-      portalSessionBridge: true
+      portalSessionBridge: true,
+      coursePortalTeacherCanonical: true
     },
     profileComplete: missingProfileFields.length === 0,
     missingProfileFields

@@ -623,7 +623,7 @@
       }catch(err){
         console.warn('薪資投保資料讀取失敗，員工管理仍會先顯示基本資料', err);
       }
-      const mergedRows = (res.rows || []).map(function(row){ return mergeSalaryIntoEmployee(row, salaryMap); });
+      const mergedRows = (res.rows || []).map(function(row){ return mergeSalaryIntoEmployee(row, salaryMap); }).filter(function(row){ return lower(firstValue(row,['coursePortalTeacherCanonicalReplaced','canonicalReplaced']))!=='true'; });
       const cleaned=dedupeEmployees(mergedRows.filter(e => empId(e) || emailOf(e)));
       allEmployees = cleaned.rows;
       const duplicateCount=Math.max(cleaned.duplicateCount,Array.isArray(res.duplicateGroups)?res.duplicateGroups.length:0);

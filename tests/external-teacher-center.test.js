@@ -48,14 +48,19 @@ const settings = read('settings.html');
 assert(settings.includes('名單、資料、合約、公告、協助事項、拿貨與表格'));
 
 const bridge = read('teacher-more-auth-bridge.js');
-assert(bridge.includes('youzi.teacherMore.authorization.v3'));
+assert(bridge.includes('youzi.teacherMore.authorization.v4'));
 const course = read('functions/coursePortal.js');
 const resolverStart = course.indexOf('async function resolveTeacherUtilityEmployee(session)');
 const resolverEnd = course.indexOf('async function teacherUtilitySession(data)', resolverStart);
 const resolver = course.slice(resolverStart, resolverEnd);
 assert(resolver.includes("source: 'course-portal-canonical-external-teacher'"));
-assert(resolver.includes('coursePortalTeacherId: teacherId'));
+assert(resolver.includes('canonicalEmployeeId'));
+assert(resolver.includes('coursePortalTeacherCanonicalReplaced'));
+assert(resolver.includes('canonicalReplacementEmployeeId'));
 assert(!resolver.includes('const scored ='));
 assert(!resolver.includes('emails.has'));
 assert(!resolver.includes('phones.has'));
 console.log('external teacher center tests passed');
+
+assert(read('teacher-hub.html').includes('!replaced(row)'));
+assert(read('employee-admin.html').includes('coursePortalTeacherCanonicalReplaced'));
