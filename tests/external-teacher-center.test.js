@@ -47,6 +47,10 @@ assert(forms.includes('教學證明'));
 const settings = read('settings.html');
 assert(settings.includes('名單、資料、合約、公告、協助事項、拿貨與表格'));
 
+const contractPage = read('contract.html');
+assert(contractPage.includes('canonicalExternalTeacher:canonical'));
+assert(contractPage.includes('if(!canonical&&currentUser.email)'));
+
 const bridge = read('teacher-more-auth-bridge.js');
 assert(bridge.includes('youzi.teacherMore.authorization.v4'));
 const course = read('functions/coursePortal.js');
