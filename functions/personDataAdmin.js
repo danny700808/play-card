@@ -15,6 +15,8 @@ const MAX_ACTION_WRITES = 380;
 const clean = (value) => String(value == null ? '' : value).trim();
 const lower = (value) => clean(value).toLowerCase();
 const uniq = (values) => [...new Set((values || []).map(clean).filter(Boolean))];
+const truthy = (value) => value === true || ['true', '1', 'yes', 'y', '是', '啟用', '使用中'].includes(lower(value));
+const falsey = (value) => value === false || ['false', '0', 'no', 'n', '否', '停用', '未啟用'].includes(lower(value));
 const hash = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex');
 const first = (row, fields) => {
   for (const field of fields || []) {
@@ -41,16 +43,29 @@ const SOURCE_SPECS = [
   ['coursePortalScheduleChanges', '課務班表異動', ['employeeId', 'personMasterId'], ['teacherId'], 'schedule'],
   ['clockRecords', '打卡紀錄', ['employeeId', 'userId', 'personMasterId'], [], 'attendance'],
   ['leaveRequests', '請假紀錄', ['employeeId', 'userId', 'personMasterId'], [], 'attendance'],
+  ['leaveRecords', '請假核准歷史', ['employeeId', 'userId', 'personMasterId'], [], 'attendance'],
   ['temporaryAttendanceRequests', '臨時出勤', ['employeeId', 'userId', 'personMasterId'], [], 'attendance'],
   ['clockCorrections', '打卡修正', ['employeeId', 'userId', 'personMasterId'], [], 'attendance'],
   ['coursePortalTeacherAttendancePayroll', '老師出勤薪資', ['employeeId', 'personMasterId'], ['teacherId'], 'payroll'],
   ['coursePortalTeacherAdjustments', '老師薪資調整', ['employeeId', 'personMasterId'], ['teacherId'], 'payroll'],
   ['coursePortalTeacherBonusRequests', '老師獎金申請', ['employeeId', 'personMasterId'], ['teacherId'], 'payroll'],
   ['coursePortalLateAttendance', '老師遲到出勤', ['employeeId', 'personMasterId'], ['teacherId'], 'attendance'],
+  ['coursePortalAttendanceRecords', '老師簽到紀錄', ['employeeId', 'personMasterId'], ['teacherId', 'createdByTeacherId'], 'attendance'],
+  ['coursePortalAttendanceCancellationRequests', '取消簽到申請', ['employeeId', 'personMasterId'], ['teacherId'], 'attendance'],
+  ['coursePortalAttendanceLessonLocks', '簽到課程鎖定', ['employeeId', 'personMasterId'], ['teacherId'], 'attendance'],
   ['attendanceReconciliations', '出勤核對紀錄', ['employeeId', 'userId', 'personMasterId'], [], 'attendance'],
   ['parttimeRecords', '工讀時數薪資', ['employeeId', 'userId', 'personMasterId'], [], 'payroll'],
   ['employeeSalaryConfigs', '薪資設定', ['employeeId', 'userId', 'personMasterId'], [], 'payroll-config'],
   ['employeeSalaryConfigHistory', '薪資設定歷史', ['employeeId', 'userId', 'personMasterId'], [], 'payroll-config'],
+  ['profileChangeRequests', '個資修改申請', ['employeeId', 'userId', 'applicantId', 'personMasterId'], [], 'application'],
+  ['certificateApplications', '員工證明申請', ['employeeId', 'userId', 'applicantId', 'personMasterId'], [], 'application'],
+  ['parttimeHourRequests', '工讀時數申請', ['employeeId', 'userId', 'personMasterId'], [], 'payroll'],
+  ['teacherContractLogs', '老師合約歷程', ['employeeId', 'personMasterId'], ['teacherId'], 'contract'],
+  ['teacherGoodsInquiry', '老師商品詢問', ['employeeId', 'userId', 'personMasterId'], ['teacherId'], 'activity'],
+  ['lineBindingLogs', 'LINE 綁定歷程', ['employeeId', 'targetEmployeeId', 'userId', 'personMasterId'], ['teacherId'], 'log'],
+  ['notificationQueue', '人員通知佇列', ['employeeId', 'targetEmployeeId', 'userId', 'personMasterId'], ['teacherId'], 'notification'],
+  ['notificationLogs', '人員通知歷程', ['employeeId', 'targetEmployeeId', 'userId', 'personMasterId'], ['teacherId'], 'notification'],
+  ['coursePortalReminderLogs', '老師提醒歷程', ['employeeId', 'personMasterId'], ['teacherId'], 'log'],
   ['coursePortalSessions', '登入工作階段', ['employeeId', 'personMasterId'], ['teacherId'], 'auth'],
   ['coursePortalAccessTokens', '登入交換票據', ['employeeId', 'personMasterId'], ['teacherId'], 'auth']
 ].map(([collection, label, employeeFields, teacherFields, kind]) => ({
@@ -59,7 +74,10 @@ const SOURCE_SPECS = [
 
 const SPEC_BY_COLLECTION = new Map(SOURCE_SPECS.map((spec) => [spec.collection, spec]));
 const FORMAL_KINDS = new Set(['attendance', 'payroll']);
-const CASCADE_KINDS = new Set(['master', 'role', 'application', 'profile', 'private', 'contract', 'binding', 'schedule', 'auth', 'payroll-config']);
+const CASCADE_KINDS = new Set([
+  'master', 'role', 'application', 'profile', 'private', 'contract', 'binding', 'schedule',
+  'auth', 'payroll-config', 'activity', 'log', 'notification'
+]);
 
 function assertManager(request) {
   const token = request && request.auth && request.auth.token || {};
@@ -99,15 +117,24 @@ function rowStatus(row) {
 }
 
 function rowName(row) {
-  return first(row, ['name', 'displayName', 'employeeName', 'teacherName', 'targetName', 'applicantName']);
+  return first(row, [
+    'name', 'displayName', 'employeeName', 'teacherName', 'targetName', 'applicantName',
+    '姓名', '員工姓名', '老師姓名', '申請人'
+  ]);
 }
 
 function rowEmail(row) {
-  return lower(first(row, ['email', 'Email', 'loginEmail', 'contactEmail', 'teacherEmail']));
+  return lower(first(row, [
+    'email', 'Email', 'loginEmail', 'loginAccount', 'contactEmail', 'teacherEmail',
+    '電子信箱', '登入帳號'
+  ]));
 }
 
 function rowPhone(row) {
-  return first(row, ['mobilePhone', 'mobile', 'phone', 'telephone', 'contactPhone']).replace(/[^0-9+]/g, '');
+  return first(row, [
+    'mobilePhone', 'mobile', 'phone', 'telephone', 'contactPhone',
+    '行動電話', '手機', '電話'
+  ]).replace(/[^0-9+]/g, '');
 }
 
 function lineIds(row) {
@@ -118,11 +145,17 @@ function lineIds(row) {
 function identityKeys(spec, row, docId) {
   const keys = [];
   if (spec.collection === 'employees') keys.push(`employee:${clean(docId)}`);
-  (spec.employeeFields || []).forEach((field) => {
+  uniq((spec.employeeFields || []).concat([
+    'employeeId', 'userId', 'personMasterId', 'canonicalEmployeeId', 'targetEmployeeId',
+    'approvedEmployeeId', 'linkedEmployeeId', 'externalTeacherEmployeeId', 'employeeDocId',
+    'applicantId', '員工ID', '使用者ID', '申請人ID'
+  ])).forEach((field) => {
     const value = clean(row && row[field]);
     if (value) keys.push(`employee:${value.replace(/^employees\//, '')}`);
   });
-  (spec.teacherFields || []).forEach((field) => {
+  uniq((spec.teacherFields || []).concat([
+    'teacherId', 'coursePortalTeacherId', 'legacyTeacherId', '老師ID', '教師ID'
+  ])).forEach((field) => {
     const value = clean(row && row[field]);
     if (value) keys.push(`teacher:${value}`);
   });
@@ -163,7 +196,22 @@ function activeEmployee(row) {
     'profile_draft', 'pending_review', 'pending', 'inactive', 'disabled', 'archived', 'rejected',
     'resigned', 'suspended', 'contractorended', 'contract_ended', 'deleted'
   ]);
-  return row.active !== false && row.hiddenFromActiveLists !== true && !blocked.has(account) && !blocked.has(employment);
+  return !falsey(row.active) && !truthy(row.hiddenFromActiveLists) &&
+    !blocked.has(account) && !blocked.has(employment);
+}
+
+function recordBelongsToPersonnel(spec, row) {
+  const source = row || {};
+  const explicitEmployee = (spec.employeeFields || []).some((field) => clean(source[field]));
+  const explicitTeacher = (spec.teacherFields || []).some((field) => clean(source[field]));
+  if (['coursePortalSessions', 'coursePortalAccessTokens'].includes(spec.collection)) {
+    const role = lower(source.role || source.type || source.accountType || source.portalRole);
+    return explicitEmployee || explicitTeacher || role === 'teacher' || role === 'external';
+  }
+  if (['notificationQueue', 'notificationLogs'].includes(spec.collection)) {
+    return explicitEmployee || explicitTeacher;
+  }
+  return true;
 }
 
 async function readAll(spec) {
@@ -173,12 +221,11 @@ async function readAll(spec) {
     let query = db.collection(spec.collection).orderBy(admin.firestore.FieldPath.documentId()).limit(PAGE_SIZE);
     if (cursor) query = query.startAfter(cursor);
     const snapshot = await query.get();
-    snapshot.docs.forEach((doc) => rows.push({
-      spec,
-      docId: doc.id,
-      ref: doc.ref,
-      row: doc.data() || {}
-    }));
+    snapshot.docs.forEach((doc) => {
+      const row = doc.data() || {};
+      if (!recordBelongsToPersonnel(spec, row)) return;
+      rows.push({ spec, docId: doc.id, ref: doc.ref, row });
+    });
     if (snapshot.size < PAGE_SIZE) break;
     cursor = snapshot.docs[snapshot.docs.length - 1];
   }
@@ -674,6 +721,7 @@ module.exports = {
     contractIsFormal,
     rowIsFormal,
     activeEmployee,
+    recordBelongsToPersonnel,
     profileReadiness,
     SOURCE_SPECS
   }

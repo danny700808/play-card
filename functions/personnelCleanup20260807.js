@@ -1,0 +1,162 @@
+'use strict';
+
+const personData = require('./personDataAdmin').__test;
+
+const KEEP_PARTTIME_NAME = '廖浤鈞';
+const KEEP_MANAGER_NAME = '黃銘廷';
+const PRIMARY_MANAGER_ID = 'PRIMARY_MANAGER_LINE';
+
+const clean = (value) => String(value == null ? '' : value).trim();
+const lower = (value) => clean(value).toLowerCase();
+const uniq = (values) => [...new Set((values || []).map(clean).filter(Boolean))];
+const truthy = (value) => value === true || ['true', '1', 'yes', 'y', '是', '啟用', '使用中'].includes(lower(value));
+
+function rowName(row) {
+  const source = row || {};
+  return clean(source.name || source.displayName || source.employeeName || source.teacherName ||
+    source.targetName || source.applicantName || source['姓名']);
+}
+
+function rowEmail(row) {
+  const source = row || {};
+  return lower(source.email || source.Email || source.loginEmail || source.loginAccount ||
+    source.contactEmail || source.teacherEmail || source.targetEmail || source['登入帳號']);
+}
+
+function managerAccount(record) {
+  const row = record && record.row || {};
+  const role = lower(row.role || row.userRole || row['角色']);
+  return record && (record.spec.collection === 'admins' ||
+    ['admin', 'manager', '主管', '管理者'].includes(role) ||
+    truthy(row.showSettingsZone) || truthy(row.isAdmin) || truthy(row.isManager) ||
+    truthy(row.canViewSettings) || truthy(row['是否顯示設定區']) ||
+    truthy(row['可看設定區']) || truthy(row['管理權限']));
+}
+
+function activeParttimeEmployee(record) {
+  if (!record || record.spec.collection !== 'employees') return false;
+  const row = record.row || {};
+  const identity = lower(row.identityType || row.employeeType || row['身分類型']);
+  const parttime = identity === 'parttime' || identity.includes('工讀') ||
+    truthy(row.isPartTime) || truthy(row['是否工讀生']);
+  return parttime && personData.activeEmployee(row);
+}
+
+function primaryManagerInfrastructure(record) {
+  const row = record && record.row || {};
+  return Boolean(record && record.spec.collection === 'employees' &&
+    (record.docId === PRIMARY_MANAGER_ID || clean(row.employeeId) === PRIMARY_MANAGER_ID ||
+      truthy(row.isPrimaryManagerLineRecipient)));
+}
+
+function managerKeepRecord(record) {
+  if (!record) return false;
+  if (managerAccount(record)) return true;
+  return record.spec.collection === 'employeeLineBindings';
+}
+
+function countByCollection(records) {
+  const result = {};
+  (records || []).forEach((record) => {
+    const name = record.spec.collection;
+    result[name] = (result[name] || 0) + 1;
+  });
+  return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function buildCleanupPlan(records) {
+  const personnelRecords = (records || []).filter((record) =>
+    personData.recordBelongsToPersonnel(record.spec, record.row || {}));
+  const groups = personData.buildGroups(personnelRecords);
+  const parttimeGroups = groups.filter((group) => group.names.includes(KEEP_PARTTIME_NAME));
+  const managerGroups = groups.filter((group) =>
+    group.names.includes(KEEP_MANAGER_NAME) && group.rows.some(managerAccount));
+  const managerLineGroups = groups.filter((group) =>
+    group.names.includes(KEEP_MANAGER_NAME) &&
+    group.rows.some((record) => record.spec.collection === 'employeeLineBindings'));
+  const infrastructureGroups = groups.filter((group) => group.rows.some(primaryManagerInfrastructure));
+
+  if (!parttimeGroups.length || !parttimeGroups.some((group) => group.rows.some(activeParttimeEmployee))) {
+    throw new Error(`找不到啟用中的工讀生「${KEEP_PARTTIME_NAME}」，已停止清理。`);
+  }
+  if (!managerGroups.length) {
+    throw new Error(`找不到管理者「${KEEP_MANAGER_NAME}」，已停止清理。`);
+  }
+
+  const keepPaths = new Set();
+  const keepParttimeRecords = [];
+  const keepManagerRecords = [];
+  parttimeGroups.forEach((group) => group.rows.forEach((record) => {
+    keepPaths.add(record.ref.path);
+    keepParttimeRecords.push(record);
+  }));
+  managerGroups.forEach((group) => group.rows.forEach((record) => {
+    if (!managerKeepRecord(record)) return;
+    keepPaths.add(record.ref.path);
+    keepManagerRecords.push(record);
+  }));
+  managerLineGroups.forEach((group) => group.rows.forEach((record) => {
+    if (record.spec.collection !== 'employeeLineBindings') return;
+    keepPaths.add(record.ref.path);
+    keepManagerRecords.push(record);
+  }));
+  infrastructureGroups.forEach((group) => group.rows.forEach((record) => {
+    keepPaths.add(record.ref.path);
+    keepManagerRecords.push(record);
+  }));
+
+  const targetRecords = personnelRecords.filter((record) => !keepPaths.has(record.ref.path));
+  const keepEmails = uniq(keepParttimeRecords.concat(keepManagerRecords).map((record) => rowEmail(record.row)));
+  const deleteEmails = uniq(targetRecords.map((record) => rowEmail(record.row))).filter((email) => !keepEmails.includes(email));
+  const targetEmployeeIds = uniq(targetRecords.flatMap((record) => (record.keys || [])
+    .filter((key) => key.startsWith('employee:')).map((key) => key.slice(9))));
+  const targetTeacherIds = uniq(targetRecords.flatMap((record) => (record.keys || [])
+    .filter((key) => key.startsWith('teacher:')).map((key) => key.slice(8))));
+  const targetProfileIds = uniq(targetRecords.flatMap((record) => (record.keys || [])
+    .filter((key) => key.startsWith('profile:')).map((key) => key.slice(8))));
+  const deleteNames = uniq(targetRecords.map((record) => rowName(record.row)))
+    .filter((name) => ![KEEP_PARTTIME_NAME, KEEP_MANAGER_NAME].includes(name));
+  const keepPersonIds = uniq(keepParttimeRecords.concat(keepManagerRecords).flatMap((record) =>
+    (record.keys || []).filter((key) => key.startsWith('employee:') || key.startsWith('teacher:'))
+      .map((key) => key.slice(key.indexOf(':') + 1))));
+
+  return {
+    groups,
+    keepPaths,
+    keepParttimeRecords,
+    keepManagerRecords,
+    targetRecords,
+    keepEmails,
+    deleteEmails,
+    targetEmployeeIds,
+    targetTeacherIds,
+    targetProfileIds,
+    keepPersonIds,
+    deleteNames,
+    summary: {
+      scannedPeople: groups.length,
+      scannedRecords: personnelRecords.length,
+      keepParttimeGroups: parttimeGroups.length,
+      keepManagerGroups: managerGroups.length,
+      keepManagerLineGroups: managerLineGroups.length,
+      keepInfrastructureGroups: infrastructureGroups.length,
+      deleteRecords: targetRecords.length,
+      deleteGroups: groups.filter((group) => group.rows.some((record) => !keepPaths.has(record.ref.path))).length,
+      deleteByCollection: countByCollection(targetRecords)
+    }
+  };
+}
+
+module.exports = {
+  KEEP_PARTTIME_NAME,
+  KEEP_MANAGER_NAME,
+  PRIMARY_MANAGER_ID,
+  rowName,
+  rowEmail,
+  managerAccount,
+  activeParttimeEmployee,
+  primaryManagerInfrastructure,
+  managerKeepRecord,
+  buildCleanupPlan,
+  countByCollection
+};

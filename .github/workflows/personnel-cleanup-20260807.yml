@@ -1,0 +1,69 @@
+name: One-time Personnel Cleanup 20260807
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "functions/personnelCleanup20260807.js"
+      - "functions/scripts/personnel-cleanup-20260807.js"
+      - "functions/scripts/personnel-cleanup-20260807.mode"
+      - "tests/personnel-cleanup-20260807.test.js"
+      - ".github/workflows/personnel-cleanup-20260807.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-time-personnel-cleanup-20260807
+  cancel-in-progress: false
+
+jobs:
+  audit-or-clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Verify one-time cleanup safeguards
+        run: |
+          set -euo pipefail
+          node --check functions/personDataAdmin.js
+          node --check functions/personnelCleanup20260807.js
+          node --check functions/scripts/personnel-cleanup-20260807.js
+          node --test tests/personnel-cleanup-20260807.test.js
+          test "$(tr -d '\r\n ' < functions/scripts/personnel-cleanup-20260807.mode)" = "audit" -o \
+               "$(tr -d '\r\n ' < functions/scripts/personnel-cleanup-20260807.mode)" = "execute"
+
+      - name: Prepare Firebase credential
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}" || { echo "Firebase credential is unavailable" >&2; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$SERVICE_ACCOUNT_PATH"
+
+      - name: Audit or execute personnel cleanup
+        working-directory: functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+          PERSONNEL_CLEANUP_CONFIRM: 保留廖浤鈞工讀生與黃銘廷管理者，刪除其餘測試人員
+        run: node scripts/personnel-cleanup-20260807.js
+
+      - name: Remove temporary credential
+        if: always()
+        run: rm -f "${{ runner.temp }}/youzi-firebase-service-account.json"
