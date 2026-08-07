@@ -6727,7 +6727,7 @@
   function teacherRow(o){
     o=o||{};
     const id=clean(o.employeeId || o['員工ID'] || o.id || o.__id);
-    return { id, teacherId:id, employeeId:id, name:clean(o.name || o['姓名'] || '未命名老師'), email:lower(o.email || o['Email']), lineUserId:clean(o.lineUserId || o['LINE User ID']), lineNotifyEnabled:truthy(o.lineNotifyEnabled || o['LINE 通知啟用']), accountStatus:clean(o.accountStatus || o['帳號狀態'] || 'active'), employmentStatus:clean(o.employmentStatus || o['任職狀態'] || 'active') };
+    return { id, teacherId:id, employeeId:id, name:clean(o.name || o['姓名'] || '未命名老師'), email:lower(o.email || o['Email']), lineUserId:clean(o.lineUserId || o['LINE User ID']), lineNotifyEnabled:truthy(o.lineNotifyEnabled || o['LINE 通知啟用']), accountStatus:clean(o.accountStatus || o['帳號狀態'] || 'active'), employmentStatus:clean(o.employmentStatus || o['任職狀態'] || 'active'), portalProfileId:clean(o.portalProfileId || o.externalTeacherProfileId), externalTeacherProfileId:clean(o.externalTeacherProfileId || o.portalProfileId), portalProfileVersion:Number(o.portalProfileVersion || 0), portalProfileSource:clean(o.portalProfileSource) };
   }
   async function activeExternalTeachers(){
     const rows=(await all('employees')).filter(o=>identityOf(o)==='external' && !isHiddenEmployee(o)).map(teacherRow);
@@ -6787,7 +6787,7 @@
       const id=assignmentId(contractId, teacher.teacherId);
       const old=await get('teacherContractAssignments', id).catch(()=>null);
       if(old && clean(old.status)==='signed') continue;
-      await set('teacherContractAssignments', id, {assignmentId:id, contractId, templateId:contractId, year:t.year, version:t.version, contractName:t.contractName, teacherId:teacher.teacherId, employeeId:teacher.teacherId, teacherName:teacher.name, email:teacher.email, status:'pending', statusLabel:'待簽署', publishedAt:serverTime(), publishedAtText, contractSnapshot:t, source:'firebase-contract-assignment'});
+      await set('teacherContractAssignments', id, {assignmentId:id, contractId, templateId:contractId, year:t.year, version:t.version, contractName:t.contractName, teacherId:teacher.teacherId, employeeId:teacher.teacherId, teacherName:teacher.name, email:teacher.email, portalProfileId:teacher.portalProfileId, externalTeacherProfileId:teacher.externalTeacherProfileId, portalProfileVersion:teacher.portalProfileVersion, portalProfileSource:teacher.portalProfileSource, status:'pending', statusLabel:'待簽署', publishedAt:serverTime(), publishedAtText, contractSnapshot:t, source:'firebase-contract-assignment'});
       count++;
     }
     return {ok:true,message:`已發布 ${t.year} 年度合約，建立 ${count} 筆待簽署任務。`,count};
@@ -6795,7 +6795,7 @@
   function normalizeAssignment(o){
     o=o||{};
     const snap=normalizeTemplate(o.contractSnapshot || {});
-    return { assignmentId:clean(o.assignmentId || o.__id), recordId:clean(o.recordId || o.assignmentId || o.__id), contractId:clean(o.contractId || o.templateId || snap.contractId), year:clean(o.year || snap.year), version:clean(o.version || snap.version), contractName:clean(o.contractName || snap.contractName), teacherId:clean(o.teacherId || o.employeeId), employeeId:clean(o.teacherId || o.employeeId), teacherName:clean(o.teacherName || o.name || '未命名老師'), email:lower(o.email || o.teacherEmail), status:clean(o.status || 'pending'), statusLabel:clean(o.statusLabel || (clean(o.status)==='signed'?'已簽署':'待簽署')), publishedAtText:fmtDateTime(o.publishedAtText || o.publishedAt || ''), signedAtText:fmtDateTime(o.signedAtText || o.signedAt || ''), signDate:fmtDate(o.signDate || ''), signTime:clean(o.signTime || ''), signatureUrl:clean(o.signatureUrl || o.signatureDataUrl || ''), idNumber:clean(o.idNumber || o.teacherIdNumber || ''), address:clean(o.address || o.teacherAddress || ''), course:clean(o.course || o.teacherCourse || ''), contractSnapshot:o.contractSnapshot || snap };
+    return { assignmentId:clean(o.assignmentId || o.__id), recordId:clean(o.recordId || o.assignmentId || o.__id), contractId:clean(o.contractId || o.templateId || snap.contractId), year:clean(o.year || snap.year), version:clean(o.version || snap.version), contractName:clean(o.contractName || snap.contractName), teacherId:clean(o.teacherId || o.employeeId), employeeId:clean(o.teacherId || o.employeeId), teacherName:clean(o.teacherName || o.name || '未命名老師'), email:lower(o.email || o.teacherEmail), portalProfileId:clean(o.portalProfileId || o.externalTeacherProfileId || o.profileId), externalTeacherProfileId:clean(o.externalTeacherProfileId || o.portalProfileId || o.profileId), portalProfileVersion:Number(o.portalProfileVersion || 0), portalProfileSource:clean(o.portalProfileSource), status:clean(o.status || 'pending'), statusLabel:clean(o.statusLabel || (clean(o.status)==='signed'?'已簽署':'待簽署')), publishedAtText:fmtDateTime(o.publishedAtText || o.publishedAt || ''), signedAtText:fmtDateTime(o.signedAtText || o.signedAt || ''), signDate:fmtDate(o.signDate || ''), signTime:clean(o.signTime || ''), signatureUrl:clean(o.signatureUrl || o.signatureDataUrl || ''), idNumber:clean(o.idNumber || o.teacherIdNumber || ''), address:clean(o.address || o.teacherAddress || ''), course:clean(o.course || o.teacherCourse || ''), contractSnapshot:o.contractSnapshot || snap };
   }
   async function getTeacherContractAdminList(payload){
     const year=clean(payload && payload.year);
@@ -6813,6 +6813,7 @@
   async function getTeacherContractStatus(payload){
     const uid=clean(payload && payload.userId); const email=lower(payload && payload.email);
     let rows=(await all('teacherContractAssignments')).map(normalizeAssignment).filter(r=>(uid && r.teacherId===uid) || (email && r.email===email));
+    if(payload && payload.canonicalExternalTeacher===true){const profileId=clean(payload.portalProfileId || payload.externalTeacherProfileId);const profileVersion=Number(payload.portalProfileVersion || 0);rows=rows.filter(r=>profileId && r.portalProfileId===profileId && profileVersion>0 && r.portalProfileVersion===profileVersion);}
     rows.sort((a,b)=>String(b.year).localeCompare(String(a.year)) || String(b.publishedAtText).localeCompare(String(a.publishedAtText)));
     const pending=rows.filter(r=>r.status!=='signed' && r.status!=='archived');
     const signed=rows.filter(r=>r.status==='signed');

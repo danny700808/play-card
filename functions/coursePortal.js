@@ -2154,10 +2154,6 @@ async function requireSession(data, allowedRoles) {
   return session;
 }
 
-function normalizedPersonName(value) {
-  return clean(value).normalize('NFKC').replace(/\s+/g, '').replace(/老師$/u, '').toLowerCase();
-}
-
 function employeePhone(row) {
   return normalizePhone(row && (
     row.mobilePhone || row.mobile || row.phone || row.tel || row.telephone || row.contactPhone
@@ -2166,13 +2162,6 @@ function employeePhone(row) {
 
 function employeeEmail(row) {
   return normalizeEmail(row && (row.email || row.Email || row.loginEmail || row.contactEmail));
-}
-
-function linkedEmployeeId(row) {
-  return clean(row && (
-    row.employeeId || row.externalTeacherEmployeeId || row.linkedEmployeeId ||
-    row.employeeDocId || row.userId
-  ));
 }
 
 function isExternalTeacherEmployee(row) {
@@ -2208,143 +2197,35 @@ function externalTeacherProfileMissingFields(row) {
   ].filter((item) => !item[2]).map((item) => ({ key: item[0], label: item[1] }));
 }
 
-const TEACHER_UTILITY_RESOLVE_QUERY_LIMIT = 50;
 const TEACHER_UTILITY_IDENTITY_URL_LIMIT = 4;
+const TEACHER_PORTAL_PROFILE_VERSION = 2;
+const TEACHER_PORTAL_PROFILE_SOURCE = 'course-portal-fresh-external-teacher-v2';
 
-function teacherUtilityUnique(values, normalizer = clean) {
-  return [...new Set((values || []).map(normalizer).filter(Boolean))];
+function teacherPortalProfileId(teacherId) {
+  return `EXTP_${hash(`course-portal-profile-v${TEACHER_PORTAL_PROFILE_VERSION}:${teacherId}`).slice(0, 24)}`;
 }
 
-function teacherUtilityDocumentRow(doc) {
-  if (!doc || doc.exists === false) return null;
-  return Object.assign({
-    __id: clean(doc.id),
-    __ref: doc.ref
-  }, jsonValue(typeof doc.data === 'function' ? doc.data() || {} : {}));
+function teacherPortalProfileUrl(profileId, token) {
+  return `${PORTAL_BASE}/external-teacher-onboarding.html?id=${encodeURIComponent(profileId)}` +
+    `&code=${encodeURIComponent(token)}&fresh=1`;
 }
 
-async function teacherUtilityResolveRows(collectionName, directIds, lookups) {
-  const collection = db.collection(collectionName);
-  const requests = [];
-  const seenRequests = new Set();
-  teacherUtilityUnique(directIds).forEach((id) => {
-    if (id.includes('/')) return;
-    const key = `doc:${id}`;
-    if (seenRequests.has(key)) return;
-    seenRequests.add(key);
-    requests.push(collection.doc(id).get());
-  });
-  (lookups || []).forEach((lookup) => {
-    const field = clean(lookup && lookup.field);
-    const operator = clean(lookup && lookup.operator) || '==';
-    const value = clean(lookup && lookup.value);
-    if (!field || !value) return;
-    const key = `${field}:${operator}:${value}`;
-    if (seenRequests.has(key)) return;
-    seenRequests.add(key);
-    requests.push(collection.where(field, operator, value).limit(TEACHER_UTILITY_RESOLVE_QUERY_LIMIT).get());
-  });
-  let snapshots;
-  try {
-    snapshots = await Promise.all(requests);
-  } catch (error) {
-    console.error('[teacher utility identity query failed]', collectionName, clean(error && error.message));
-    throw new HttpsError('unavailable', '老師資料暫時無法讀取，請稍後再試。');
-  }
-  const rows = new Map();
-  snapshots.forEach((snapshot) => {
-    const docs = Array.isArray(snapshot && snapshot.docs)
-      ? snapshot.docs
-      : (snapshot && snapshot.exists ? [snapshot] : []);
-    docs.forEach((doc) => {
-      const row = teacherUtilityDocumentRow(doc);
-      if (row && row.__id) rows.set(row.__id, row);
-    });
-  });
-  return [...rows.values()];
-}
-
-function teacherUtilityExternalYear(row) {
-  const source = row || {};
-  const raw = clean(
-    source.contractGregorianYear || source.contractYear || source.gregorianYear ||
-    source.renewalTargetYear || source.contractYearKey || source.contractRocYear
-  );
-  const number = Number(raw.replace(/[^0-9]/g, ''));
-  if (!Number.isFinite(number) || !number) return 0;
-  return number < 1911 ? number + 1911 : number;
-}
-
-function teacherUtilityExternalActive(row) {
-  const source = row || {};
-  if (source.active === false || source.enabled === false || source.deleted === true || source.isDeleted === true) {
-    return false;
-  }
-  const status = clean(
-    source.status || source.contractStatus || source.profileStatus || source.externalTeacherStatus
-  ).normalize('NFKC').replace(/\s+/g, '').toLowerCase();
-  return ![
-    'cancelled', 'canceled', 'rejected', 'expired', 'revoked', 'archived', 'deleted',
-    'inactive', 'disabled', '已取消', '取消', '已拒絕', '拒絕', '已過期', '已撤銷',
-    '已封存', '已刪除', '刪除', '已停用', '停用', '作廢'
+function teacherPortalProfileStatusIsConfirmed(row) {
+  const status = clean(row && (
+    row.status || row.contractStatus || row.profileStatus || row.externalTeacherStatus
+  )).normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+  return [
+    'active', 'confirmed', 'contract_effective', 'completed', 'complete',
+    '已確認', '已生效', '契約生效', '完成', '管理端已確認，契約生效'
   ].includes(status);
 }
 
-function teacherUtilityExternalUpdatedAt(row) {
+function teacherPortalProfileIsCurrent(row, teacherId, profileId) {
   const source = row || {};
-  return Math.max(
-    asMillis(source.updatedAt),
-    asMillis(source.signedAt),
-    asMillis(source.submittedAt),
-    asMillis(source.createdAt)
-  );
-}
-
-function teacherUtilitySelectExternalRow(rows, preferredIds, year = Number(currentTaipeiDay().slice(0, 4))) {
-  const preferred = teacherUtilityUnique(preferredIds);
-  return (rows || []).slice().sort((left, right) => {
-    const leftIndex = preferred.indexOf(clean(left && left.__id));
-    const rightIndex = preferred.indexOf(clean(right && right.__id));
-    const leftPreferred = leftIndex < 0 ? 0 : preferred.length - leftIndex;
-    const rightPreferred = rightIndex < 0 ? 0 : preferred.length - rightIndex;
-    if (leftPreferred !== rightPreferred) return rightPreferred - leftPreferred;
-    const leftCurrent = teacherUtilityExternalYear(left) === year ? 1 : 0;
-    const rightCurrent = teacherUtilityExternalYear(right) === year ? 1 : 0;
-    if (leftCurrent !== rightCurrent) return rightCurrent - leftCurrent;
-    const leftActive = teacherUtilityExternalActive(left) ? 1 : 0;
-    const rightActive = teacherUtilityExternalActive(right) ? 1 : 0;
-    if (leftActive !== rightActive) return rightActive - leftActive;
-    const updatedDifference = teacherUtilityExternalUpdatedAt(right) - teacherUtilityExternalUpdatedAt(left);
-    if (updatedDifference) return updatedDifference;
-    return clean(left && left.__id).localeCompare(clean(right && right.__id));
-  })[0] || null;
-}
-
-function teacherUtilityExternalRowBelongs(row, employeeId, teacherId, directIds, emails, phones, linkedEmployeeIds) {
-  const source = row || {};
-  const linkedId = linkedEmployeeId(source);
-  const trustedEmployeeIds = new Set(teacherUtilityUnique([employeeId].concat(linkedEmployeeIds || [])));
-  if (linkedId && !trustedEmployeeIds.has(linkedId)) return false;
-  const rowTeacherIds = teacherUtilityUnique([
-    source.teacherId,
-    source.externalTeacherId,
-    source.coursePortalTeacherId,
-    ...(Array.isArray(source.coursePortalTeacherIds) ? source.coursePortalTeacherIds : [])
-  ]);
-  if (rowTeacherIds.length && !rowTeacherIds.includes(teacherId)) return false;
-  if (teacherUtilityUnique(directIds).includes(clean(source.__id))) return true;
-  if (linkedId && trustedEmployeeIds.has(linkedId)) return true;
-  if (rowTeacherIds.includes(teacherId)) return true;
-  const rowEmail = employeeEmail(source);
-  const rowPhone = employeePhone(source);
-  return Boolean(
-    !linkedId &&
-    !rowTeacherIds.length &&
-    rowEmail &&
-    rowPhone &&
-    teacherUtilityUnique(emails, normalizeEmail).includes(rowEmail) &&
-    teacherUtilityUnique(phones, normalizePhone).includes(rowPhone)
-  );
+  return Number(source.portalProfileVersion || 0) === TEACHER_PORTAL_PROFILE_VERSION &&
+    clean(source.portalProfileSource || source.source) === TEACHER_PORTAL_PROFILE_SOURCE &&
+    clean(source.coursePortalTeacherId) === clean(teacherId) &&
+    clean(source.__id || source.id || source.teacherId) === clean(profileId);
 }
 
 function teacherUtilityFirstText(sources, fields) {
@@ -2414,8 +2295,7 @@ function teacherUtilityProfileBundle(options) {
   const teacherSnapshot = externalContract.teacherSnapshot && typeof externalContract.teacherSnapshot === 'object'
     ? externalContract.teacherSnapshot
     : {};
-  const teacher = source.teacher || {};
-  const personalSources = [externalProfile, teacherSnapshot, externalContract, employee, teacher];
+  const personalSources = [externalProfile, teacherSnapshot, externalContract, employee];
   const lineSources = (source.bindings || []).concat([externalProfile, externalContract, employee]);
   const teachingAbilities = teacherUtilityTeachingAbilities(personalSources);
   const teachingItemsText = teachingAbilities.map((item) => clean(item.item)).filter(Boolean).join('、');
@@ -2474,231 +2354,168 @@ function teacherUtilityProfileBundle(options) {
   return { profile, completenessSource };
 }
 
-function teacherUtilityEmployeeFallbackScore(row, names, emails, phones) {
-  const email = employeeEmail(row);
-  const phone = employeePhone(row);
-  const emailMatches = Boolean(email && emails && emails.has(email));
-  const phoneMatches = Boolean(phone && phones && phones.has(phone));
-  if (!emailMatches || !phoneMatches) return 0;
-  const name = normalizedPersonName(row && (row.name || row.displayName || row.employeeName));
-  return 11 + (name && names && names.has(name) ? 2 : 0);
-}
-
 async function resolveTeacherUtilityEmployee(session) {
   const teacherId = clean(session && session.teacherId);
   if (!teacherId) throw new HttpsError('failed-precondition', '老師登入資料缺少老師編號，請重新登入。');
   const bindings = await authorizedBindingsForSession(session);
   if (!bindings.length) throw new HttpsError('permission-denied', '老師登入綁定已停用，請重新登入。');
-
-  const [teacherRows, employeeSnapshot] = await Promise.all([
-    mirrorRows('teachers'),
-    db.collection('employees').limit(2000).get()
-  ]);
-  const teacher = teacherRows.find((row) => sourceId(row) === teacherId) || {};
-  const employees = employeeSnapshot.docs.map((doc) =>
-    Object.assign({ __id: doc.id, __ref: doc.ref }, jsonValue(doc.data() || {}))
-  );
   const canonicalEmployeeId = `EXT_${hash(`course-teacher:${teacherId}`).slice(0, 16)}`;
+  const profileId = teacherPortalProfileId(teacherId);
   const canonicalRef = db.collection('employees').doc(canonicalEmployeeId);
-  const canonicalSnapshot = await canonicalRef.get();
+  const profileRef = db.collection('externalTeacherProfiles').doc(profileId);
+  const contractRef = db.collection('externalTeacherContracts').doc(profileId);
+  const [canonicalSnapshot, profileSnapshot, contractSnapshot] = await Promise.all([
+    canonicalRef.get(),
+    profileRef.get(),
+    contractRef.get()
+  ]);
   const canonicalExisting = canonicalSnapshot.exists ? jsonValue(canonicalSnapshot.data() || {}) : {};
   if (canonicalSnapshot.exists && !isExternalTeacherEmployee(canonicalExisting)) {
     throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
   }
+  const existingProfile = profileSnapshot.exists
+    ? Object.assign({ __id: profileSnapshot.id, __ref: profileRef }, jsonValue(profileSnapshot.data() || {}))
+    : null;
+  const existingContract = contractSnapshot.exists
+    ? Object.assign({ __id: contractSnapshot.id, __ref: contractRef }, jsonValue(contractSnapshot.data() || {}))
+    : null;
+  if (existingProfile && !teacherPortalProfileIsCurrent(existingProfile, teacherId, profileId)) {
+    throw new HttpsError('failed-precondition', '老師資料編號發生衝突，請聯絡管理者。');
+  }
+  if (existingContract && !teacherPortalProfileIsCurrent(existingContract, teacherId, profileId)) {
+    throw new HttpsError('failed-precondition', '老師契約編號發生衝突，請聯絡管理者。');
+  }
 
-  const identityRows = [teacher].concat(bindings);
-  const verifiedName = clean(identityRows.map((row) => row && (
-    row.name || row.teacherName || row.targetName || row.displayName
-  )).find(clean));
-  const verifiedEmail = identityRows.map(employeeEmail).find(clean) || '';
-  const verifiedPhone = identityRows.map(employeePhone).find(clean) || '';
-  const canonicalSeed = {
+  const lineUserId = clean(
+    session.lineUserId || bindings.map((row) => row.lineUserId).find(clean)
+  );
+  const authenticatedEmail = bindings.map(employeeEmail).find(clean) || '';
+  const authMethod = clean(session.authMethod).toLowerCase();
+  const bindingMethod = lineUserId ? 'line' : 'email';
+  const bindingCode = clean(
+    (existingContract && (existingContract.bindingCode || existingContract.onboardingToken)) ||
+    (existingProfile && (existingProfile.bindingCode || existingProfile.onboardingToken))
+  ) || randomToken(24);
+  const onboardingUrl = teacherPortalProfileUrl(profileId, bindingCode);
+  const freshSeed = {
+    id: profileId,
+    teacherId: profileId,
+    profileId,
+    contractId: profileId,
     employeeId: canonicalEmployeeId,
-    id: canonicalEmployeeId,
-    userId: canonicalEmployeeId,
-    identityType: 'external',
-    identityLabel: '外聘老師',
-    employeeType: 'external',
-    role: 'externalTeacher',
-    isExternalTeacher: true,
-    accountStatus: 'active',
-    employmentStatus: 'active',
-    hiddenFromActiveLists: false,
+    externalTeacherEmployeeId: canonicalEmployeeId,
+    employeeRef: `employees/${canonicalEmployeeId}`,
     coursePortalTeacherId: teacherId,
-    coursePortalTeacherIds: FieldValue.arrayUnion(teacherId),
-    legacyTeacherId: teacherId,
-    coursePortalTeacherCanonical: true,
-    canonicalTeacherKey: `course-teacher:${teacherId}`,
-    source: 'course-portal-canonical-external-teacher',
+    portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+    portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
+    source: TEACHER_PORTAL_PROFILE_SOURCE,
+    bindingCode,
+    onboardingToken: bindingCode,
+    onboardingUrl,
+    bindingMethod,
+    bindingMethodLabel: bindingMethod === 'line' ? '只用 LINE' : '只用 Email',
+    lineUserId,
+    lineBindStatus: lineUserId ? 'bound' : 'pending',
+    emailBindStatus: authMethod === 'email' || (!lineUserId && authenticatedEmail) ? 'bound' : 'pending',
+    status: 'waiting_profile',
+    profileStatus: 'waiting_profile',
+    contractStatus: 'waiting_profile',
+    progressStatus: '等待老師填寫全新資料',
+    active: true,
     updatedAt: FieldValue.serverTimestamp()
   };
-  if (verifiedName) {
-    canonicalSeed.name = verifiedName;
-    canonicalSeed.displayName = verifiedName;
-  } else if (!clean(canonicalExisting.name || canonicalExisting.displayName)) {
-    canonicalSeed.name = '外聘老師';
-    canonicalSeed.displayName = '外聘老師';
-  }
-  if (verifiedEmail) canonicalSeed.email = verifiedEmail;
-  if (verifiedPhone) {
-    canonicalSeed.mobilePhone = verifiedPhone;
-    canonicalSeed.phone = verifiedPhone;
-  }
-  if (!canonicalSnapshot.exists) canonicalSeed.createdAt = FieldValue.serverTimestamp();
-  await canonicalRef.set(canonicalSeed, { merge: true });
-
-  const oldLinkedIds = new Set();
-  bindings.forEach((row) => {
-    const value = linkedEmployeeId(row);
-    if (value && value !== canonicalEmployeeId) oldLinkedIds.add(value);
-  });
-  const replacedRows = employees.filter((row) => {
-    const employeeId = clean(row.employeeId || row.id || row.userId || row.__id);
-    if (!employeeId || employeeId === canonicalEmployeeId || !isExternalTeacherEmployee(row)) return false;
-    return oldLinkedIds.has(employeeId) ||
-      clean(row.coursePortalTeacherId || row.legacyTeacherId) === teacherId ||
-      (Array.isArray(row.coursePortalTeacherIds) && row.coursePortalTeacherIds.map(clean).includes(teacherId));
-  });
-  const trustedEmployeeIds = teacherUtilityUnique([
-    canonicalEmployeeId,
-    ...oldLinkedIds,
-    ...replacedRows.map((row) => row.employeeId || row.id || row.userId || row.__id)
-  ]);
-  const directExternalIds = teacherUtilityUnique([
-    teacherId,
-    canonicalExisting.externalTeacherProfileId,
-    canonicalExisting.currentExternalContractId,
-    canonicalExisting.externalTeacherContractId,
-    ...bindings.flatMap((row) => [
-      row.externalTeacherProfileId,
-      row.currentExternalContractId,
-      row.externalTeacherContractId
-    ]),
-    ...replacedRows.flatMap((row) => [
-      row.externalTeacherProfileId,
-      row.currentExternalContractId,
-      row.externalTeacherContractId
-    ])
-  ]);
-  const externalLookups = [];
-  trustedEmployeeIds.forEach((value) => {
-    ['employeeId', 'externalTeacherEmployeeId', 'linkedEmployeeId'].forEach((field) => {
-      externalLookups.push({ field, value });
-    });
-  });
-  ['teacherId', 'externalTeacherId', 'coursePortalTeacherId'].forEach((field) => {
-    externalLookups.push({ field, value: teacherId });
-  });
-  const ownerEmails = teacherUtilityUnique(
-    [verifiedEmail, employeeEmail(canonicalExisting), ...identityRows.map(employeeEmail)],
-    normalizeEmail
-  );
-  const ownerPhones = teacherUtilityUnique(
-    [verifiedPhone, employeePhone(canonicalExisting), ...identityRows.map(employeePhone)],
-    normalizePhone
-  );
-  ownerEmails.forEach((value) => {
-    ['email', 'Email'].forEach((field) => externalLookups.push({ field, value }));
-  });
-  let [profileRows, contractRows] = await Promise.all([
-    teacherUtilityResolveRows('externalTeacherProfiles', directExternalIds, externalLookups),
-    teacherUtilityResolveRows('externalTeacherContracts', directExternalIds, externalLookups)
-  ]);
-  profileRows = profileRows.filter((row) =>
-    teacherUtilityExternalRowBelongs(
-      row,
-      canonicalEmployeeId,
-      teacherId,
-      directExternalIds,
-      ownerEmails,
-      ownerPhones,
-      trustedEmployeeIds
-    )
-  );
-  contractRows = contractRows.filter((row) =>
-    teacherUtilityExternalRowBelongs(
-      row,
-      canonicalEmployeeId,
-      teacherId,
-      directExternalIds,
-      ownerEmails,
-      ownerPhones,
-      trustedEmployeeIds
-    )
-  );
-  const preferredProfileIds = [
-    canonicalExisting.externalTeacherProfileId,
-    ...bindings.map((row) => row.externalTeacherProfileId),
-    ...replacedRows.map((row) => row.externalTeacherProfileId)
-  ];
-  const preferredContractIds = [
-    canonicalExisting.currentExternalContractId,
-    canonicalExisting.externalTeacherContractId,
-    ...bindings.flatMap((row) => [row.currentExternalContractId, row.externalTeacherContractId]),
-    ...replacedRows.flatMap((row) => [row.currentExternalContractId, row.externalTeacherContractId])
-  ];
-  const externalProfile = teacherUtilitySelectExternalRow(profileRows, preferredProfileIds);
-  const externalContract = teacherUtilitySelectExternalRow(contractRows, preferredContractIds);
-
+  if (!existingProfile) freshSeed.createdAt = FieldValue.serverTimestamp();
   const batch = db.batch();
+  if (!existingProfile) batch.set(profileRef, freshSeed, { merge: false });
+  else batch.set(profileRef, {
+    employeeId: canonicalEmployeeId,
+    externalTeacherEmployeeId: canonicalEmployeeId,
+    employeeRef: `employees/${canonicalEmployeeId}`,
+    coursePortalTeacherId: teacherId,
+    portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+    portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
+    bindingCode,
+    onboardingToken: bindingCode,
+    onboardingUrl,
+    lineUserId,
+    lineBindStatus: lineUserId ? 'bound' : clean(existingProfile.lineBindStatus || 'pending'),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  if (!existingContract) batch.set(contractRef, Object.assign({}, freshSeed, {
+    createdAt: FieldValue.serverTimestamp()
+  }), { merge: false });
+  else batch.set(contractRef, {
+    employeeId: canonicalEmployeeId,
+    externalTeacherEmployeeId: canonicalEmployeeId,
+    employeeRef: `employees/${canonicalEmployeeId}`,
+    coursePortalTeacherId: teacherId,
+    portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+    portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
+    bindingCode,
+    onboardingToken: bindingCode,
+    onboardingUrl,
+    lineUserId,
+    lineBindStatus: lineUserId ? 'bound' : clean(existingContract.lineBindStatus || 'pending'),
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
   bindings.forEach((row) => batch.set(row.__ref, {
     employeeId: canonicalEmployeeId,
     externalTeacherEmployeeId: canonicalEmployeeId,
     legacyTeacherId: teacherId,
     employeeRef: `employees/${canonicalEmployeeId}`,
-    coursePortalTeacherCanonical: true,
+    externalTeacherProfileId: profileId,
+    currentExternalContractId: profileId,
+    externalTeacherContractId: profileId,
+    portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+    portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
     linkedAt: row.linkedAt || FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true }));
-  replacedRows.forEach((row) => batch.set(row.__ref, {
-    accountStatus: 'archived',
-    employmentStatus: 'archived',
-    hiddenFromActiveLists: true,
-    coursePortalTeacherCanonicalReplaced: true,
-    canonicalReplacementEmployeeId: canonicalEmployeeId,
-    canonicalReplacementTeacherId: teacherId,
-    canonicalReplacementAt: FieldValue.serverTimestamp(),
-    statusNote: '舊課務老師自動配對資料已由新的固定外聘老師主檔取代。',
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true }));
-  profileRows.concat(contractRows).forEach((row) => batch.set(row.__ref, {
-    employeeId: canonicalEmployeeId,
-    externalTeacherEmployeeId: canonicalEmployeeId,
-    employeeRef: `employees/${canonicalEmployeeId}`,
-    coursePortalTeacherId: teacherId,
-    coursePortalTeacherCanonical: true,
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true }));
-  const canonicalLinks = { updatedAt: FieldValue.serverTimestamp() };
-  if (externalProfile && externalProfile.__id) {
-    canonicalLinks.externalTeacherProfileId = clean(externalProfile.__id);
+  const currentRecordConfirmed = teacherPortalProfileStatusIsConfirmed(existingProfile) ||
+    teacherPortalProfileStatusIsConfirmed(existingContract);
+  if (
+    canonicalSnapshot.exists &&
+    clean(canonicalExisting.source) === 'course-portal-canonical-external-teacher' &&
+    canonicalExisting.coursePortalTeacherCanonical === true &&
+    !currentRecordConfirmed
+  ) {
+    batch.delete(canonicalRef);
   }
-  if (externalContract && externalContract.__id) {
-    canonicalLinks.currentExternalContractId = clean(externalContract.__id);
-    canonicalLinks.externalTeacherContractId = clean(externalContract.__id);
-  }
-  batch.set(canonicalRef, canonicalLinks, { merge: true });
   await batch.commit();
 
-  const canonicalReload = await canonicalRef.get();
-  const employee = Object.assign(
-    { __id: canonicalEmployeeId, __ref: canonicalRef },
-    canonicalReload.exists ? jsonValue(canonicalReload.data() || {}) : {},
-    { employeeId: canonicalEmployeeId }
+  const [profileReload, contractReload, employeeReload] = await Promise.all([
+    profileRef.get(),
+    contractRef.get(),
+    canonicalRef.get()
+  ]);
+  const externalProfile = Object.assign(
+    { __id: profileId, __ref: profileRef },
+    profileReload.exists ? jsonValue(profileReload.data() || {}) : {}
   );
-  const bindingLineUserId = bindings.map((row) => clean(row.lineUserId)).filter(Boolean)[0];
+  const externalContract = Object.assign(
+    { __id: profileId, __ref: contractRef },
+    contractReload.exists ? jsonValue(contractReload.data() || {}) : {}
+  );
+  const confirmed = teacherPortalProfileStatusIsConfirmed(externalProfile) ||
+    teacherPortalProfileStatusIsConfirmed(externalContract);
+  const employee = confirmed && employeeReload.exists
+    ? Object.assign(
+      { __id: canonicalEmployeeId, __ref: canonicalRef },
+      jsonValue(employeeReload.data() || {}),
+      { employeeId: canonicalEmployeeId }
+    )
+    : {};
   const profileBundle = teacherUtilityProfileBundle({
     employeeId: canonicalEmployeeId,
     employee,
     externalProfile,
     externalContract,
-    teacher,
     bindings,
-    sessionLineUserId: bindingLineUserId || session.lineUserId
+    sessionLineUserId: lineUserId
   });
   const merged = profileBundle.completenessSource;
   const missingProfileFields = externalTeacherProfileMissingFields(merged);
-  const displayName = clean(merged.name || employee.name || employee.displayName || verifiedName) || '外聘老師';
+  const displayName = clean(merged.name || employee.name || employee.displayName) || '外聘老師';
   return {
     employeeId: canonicalEmployeeId,
     user: {
@@ -2716,11 +2533,18 @@ async function resolveTeacherUtilityEmployee(session) {
       isExternalTeacher: true,
       lineUserId: clean(merged.lineUserId || session.lineUserId),
       lineNotifyEnabled: Boolean(clean(merged.lineUserId || session.lineUserId)),
-      accountStatus: clean(employee.accountStatus || 'active'),
-      employmentStatus: clean(employee.employmentStatus || 'active'),
+      accountStatus: clean(employee.accountStatus || (confirmed ? 'active' : 'pending_profile')),
+      employmentStatus: clean(employee.employmentStatus || (confirmed ? 'active' : 'pending_profile')),
       legacyTeacherId: teacherId,
+      coursePortalTeacherId: teacherId,
+      externalTeacherProfileId: profileId,
+      externalTeacherContractId: profileId,
+      portalProfileId: profileId,
+      portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+      portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
       portalSessionBridge: true,
-      coursePortalTeacherCanonical: true
+      coursePortalTeacherCanonical: true,
+      employeeRecordCreated: confirmed && employeeReload.exists
     },
     profile: profileBundle.profile,
     profileComplete: missingProfileFields.length === 0,
@@ -2777,6 +2601,21 @@ function teacherUtilityRowMatches(row, identity, idFields, emailFields) {
     return Array.isArray(value) ? value : [value];
   }).map(normalizeEmail).filter(Boolean);
   return emails.some((value) => identity.emails.has(value));
+}
+
+function teacherUtilityContractMatchesProfile(row, resolved) {
+  const user = resolved && resolved.user || {};
+  const version = Number(user.portalProfileVersion || 0);
+  if (version !== TEACHER_PORTAL_PROFILE_VERSION) return true;
+  const expectedProfileId = clean(user.portalProfileId || user.externalTeacherProfileId);
+  const rowProfileId = clean(row && (
+    row.portalProfileId || row.externalTeacherProfileId || row.profileId
+  ));
+  return Boolean(
+    expectedProfileId &&
+    rowProfileId === expectedProfileId &&
+    Number(row && row.portalProfileVersion || 0) === version
+  );
 }
 
 function teacherUtilityContractPending(row) {
@@ -2981,7 +2820,7 @@ async function teacherUtilityPendingSummary(resolved, session) {
       identity,
       ['teacherId', 'employeeId', 'externalTeacherEmployeeId', 'userId'],
       ['email', 'teacherEmail']
-    ) && teacherUtilityContractPending(row)
+    ) && teacherUtilityContractMatchesProfile(row, resolved) && teacherUtilityContractPending(row)
   );
   const announcements = announcementResult.rows.filter((row) =>
     teacherUtilityPublishedAnnouncement(row) && teacherUtilityAnnouncementMatches(row, identity)

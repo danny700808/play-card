@@ -49,7 +49,8 @@ assert(settings.includes('名單、資料、合約、公告、協助事項、拿
 
 const contractPage = read('contract.html');
 assert(contractPage.includes('canonicalExternalTeacher:canonical'));
-assert(contractPage.includes('if(!canonical&&currentUser.email)'));
+assert(contractPage.includes('payload.portalProfileId=currentUser.portalProfileId'));
+assert(contractPage.includes('payload.portalProfileVersion=Number(currentUser.portalProfileVersion||0)'));
 
 const bridge = read('teacher-more-auth-bridge.js');
 assert(bridge.includes('youzi.teacherMore.authorization.v4'));
@@ -57,13 +58,41 @@ const course = read('functions/coursePortal.js');
 const resolverStart = course.indexOf('async function resolveTeacherUtilityEmployee(session)');
 const resolverEnd = course.indexOf('function teacherUtilityBoolean', resolverStart);
 const resolver = course.slice(resolverStart, resolverEnd);
-assert(resolver.includes("source: 'course-portal-canonical-external-teacher'"));
+assert(resolver.includes('teacherPortalProfileId(teacherId)'));
+assert(resolver.includes('TEACHER_PORTAL_PROFILE_SOURCE'));
 assert(resolver.includes('canonicalEmployeeId'));
-assert(resolver.includes('coursePortalTeacherCanonicalReplaced'));
-assert(resolver.includes('canonicalReplacementEmployeeId'));
-assert(!resolver.includes('const scored ='));
-assert(!resolver.includes('emails.has'));
-assert(!resolver.includes('phones.has'));
+assert(resolver.includes("clean(canonicalExisting.source) === 'course-portal-canonical-external-teacher'"));
+assert(resolver.includes('batch.delete(canonicalRef)'));
+assert(!resolver.includes("teacherUtilityResolveRows('externalTeacherProfiles'"));
+assert(!resolver.includes("mirrorRows('teachers')"));
+assert(!resolver.includes("collection('employees').limit"));
+
+const onboarding = read('external-teacher-onboarding.html');
+const createStart = onboarding.indexOf('async function createOrResumeBinding()');
+const createEnd = onboarding.indexOf('function requiredBindingDone', createStart);
+const createFlow = onboarding.slice(createStart, createEnd);
+assert(onboarding.includes("DRAFT_KEY_PREFIX='externalTeacherOnboardingDraftV3:'"));
+assert(onboarding.includes('sessionStorage.setItem(activeDraftKey()'));
+assert(onboarding.includes("p.get('fresh')==='1'"));
+assert(onboarding.includes('freshPortalMode&&!hasBasic'));
+assert(onboarding.includes("clearLegacyDraftState()"));
+assert(!createFlow.includes('findReusableExternalContract('));
+assert(!onboarding.includes('findReusableExternalContract'));
+assert(!onboarding.includes('findExternalEmployeeByContact'));
+assert(!onboarding.includes('syncExternalTeacherEmployee'));
+assert(!createFlow.includes("localStorage.setItem('externalTeacherCurrentId'"));
+assert(!onboarding.includes("const lastId=localStorage.getItem('externalTeacherCurrentId')"));
+
+const externalAdmin = read('external-teacher-admin.html');
+assert(externalAdmin.includes("source:'external-teacher-admin-confirmed'"));
+assert(externalAdmin.includes('portalProfileVersion:Number(c.portalProfileVersion||0)'));
+const onboardingBackend = read('functions/externalTeacherOnboarding.js');
+const createCallableStart = onboardingBackend.indexOf('exportsObj.externalTeacherCreateBindCode');
+const createCallableEnd = onboardingBackend.indexOf('exportsObj.externalTeacherGetOnboarding', createCallableStart);
+const createCallable = onboardingBackend.slice(createCallableStart, createCallableEnd);
+assert(createCallable.includes("db().collection('externalTeacherProfiles').doc().id"));
+assert(!createCallable.includes('request.auth.uid'));
+assert(!createCallable.includes('resolveExternalEmployeeId'));
 console.log('external teacher center tests passed');
 
 assert(read('teacher-hub.html').includes('!replaced(row)'));

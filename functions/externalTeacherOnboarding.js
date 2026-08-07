@@ -350,6 +350,10 @@ async function syncExternalTeacherEmployee(teacherId, row = {}) {
     bindingMethod: clean(row.bindingMethod || old.bindingMethod || ''),
     bindingMethodLabel: clean(row.bindingMethodLabel || old.bindingMethodLabel || ''),
     externalTeacherProfileId: clean(row.externalTeacherProfileId || old.externalTeacherProfileId || contractId),
+    portalProfileId: clean(row.portalProfileId || row.externalTeacherProfileId || old.portalProfileId || old.externalTeacherProfileId || contractId),
+    portalProfileVersion: Number(row.portalProfileVersion || old.portalProfileVersion || 0),
+    portalProfileSource: clean(row.portalProfileSource || old.portalProfileSource || ''),
+    coursePortalTeacherId: clean(row.coursePortalTeacherId || old.coursePortalTeacherId || ''),
     externalTeacherContractId: contractId || clean(old.externalTeacherContractId || ''),
     currentExternalContractId: contractId || clean(old.currentExternalContractId || ''),
     externalTeacherStatus: clean(row.status || old.externalTeacherStatus || ''),
@@ -1680,8 +1684,8 @@ function registerExternalTeacherOnboarding(exportsObj) {
       throw new HttpsError('failed-precondition', '下一年度契約需於每年 12 月 15 日起開放簽署。');
     }
 
-    let teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
-    if (!teacherId) teacherId = await resolveExternalEmployeeId({ name, mobile, email });
+    let teacherId = clean(data.teacherId || data.profileId || '');
+    if (!teacherId) teacherId = db().collection('externalTeacherProfiles').doc().id;
     const token = makeToken();
     const bindCode = wantsLine(bindingMethod) ? makeBindCode() : '';
     const url = onboardingUrl(teacherId, token);

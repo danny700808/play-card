@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const Module = require('node:module');
 const path = require('node:path');
@@ -31,6 +32,12 @@ function fixtureDb(collections) {
     }
 
     async set() {}
+
+    async delete() {
+      const rows = collections[this.name] || [];
+      const index = rows.findIndex((row) => String(row.__id || '') === this.id);
+      if (index >= 0) rows.splice(index, 1);
+    }
   }
 
   class FixtureQuery {
@@ -79,9 +86,28 @@ function fixtureDb(collections) {
       return new FixtureQuery(name);
     },
     batch() {
+      const operations = [];
       return {
-        set() {},
-        async commit() {}
+        set(ref, data, options) { operations.push({ type: 'set', ref, data, options }); },
+        delete(ref) { operations.push({ type: 'delete', ref }); },
+        async commit() {
+          for (const operation of operations) {
+            if (operation.type === 'delete') {
+              await operation.ref.delete();
+              continue;
+            }
+            const rows = collections[operation.ref.name] || (collections[operation.ref.name] = []);
+            const index = rows.findIndex((row) => String(row.__id || '') === operation.ref.id);
+            const next = Object.assign(
+              {},
+              operation.options && operation.options.merge && index >= 0 ? rows[index] : {},
+              operation.data,
+              { __id: operation.ref.id }
+            );
+            if (index >= 0) rows[index] = next;
+            else rows.push(next);
+          }
+        }
       };
     }
   };
@@ -129,10 +155,9 @@ function loadHelpers(collections) {
       `${backendSource}\n` +
       'module.exports.__pendingSummary = teacherUtilityPendingSummary;\n' +
       'module.exports.__missingFields = externalTeacherProfileMissingFields;\n' +
-      'module.exports.__selectExternalRow = teacherUtilitySelectExternalRow;\n' +
       'module.exports.__profileBundle = teacherUtilityProfileBundle;\n' +
-      'module.exports.__employeeFallbackScore = teacherUtilityEmployeeFallbackScore;\n' +
-      'module.exports.__externalRowBelongs = teacherUtilityExternalRowBelongs;\n' +
+      'module.exports.__portalProfileId = teacherPortalProfileId;\n' +
+      'module.exports.__contractMatchesProfile = teacherUtilityContractMatchesProfile;\n' +
       'module.exports.__resolveEmployee = resolveTeacherUtilityEmployee;\n',
       backendPath
     );
@@ -192,103 +217,20 @@ test('profile requires household and mailing addresses independently', () => {
   );
 });
 
-test('multi-year external records use explicit employee links, then current active latest record', () => {
-  const helpers = loadHelpers({});
-  const rows = [
-    { __id: 'contract-2025', contractGregorianYear: 2025, status: 'active', updatedAt: '2026-08-06T12:00:00Z' },
-    { __id: 'contract-2026-inactive', contractGregorianYear: 2026, status: 'cancelled', updatedAt: '2026-08-06T13:00:00Z' },
-    { __id: 'contract-2026-old', contractGregorianYear: 2026, status: 'active', updatedAt: '2026-07-01T12:00:00Z' },
-    { __id: 'contract-2026-latest', contractYearKey: '115', status: 'active', updatedAt: '2026-08-01T12:00:00Z' }
-  ];
-  assert.equal(helpers.__selectExternalRow(rows, [], 2026).__id, 'contract-2026-latest');
-  assert.equal(
-    helpers.__selectExternalRow(rows, ['contract-2025'], 2026).__id,
-    'contract-2025',
-    'employee.currentExternalContractId must win over an arbitrary annual row'
-  );
-});
-
-test('email-only external rows cannot poison employee resolution before owner identity is established', () => {
-  const helpers = loadHelpers({});
-  const names = new Set(['甲']);
-  const emails = new Set(['shared@example.com']);
-  const phones = new Set(['0911111111']);
-  const linkedToAnotherTeacher = {
-    employeeId: 'E2',
-    teacherId: 'T2',
-    name: '乙老師',
-    email: 'shared@example.com',
-    mobilePhone: '0922222222'
-  };
-
-  assert.equal(
-    helpers.__employeeFallbackScore(linkedToAnotherTeacher, names, emails, phones),
-    0,
-    'T1 僅以 Email 命中屬於 T2／E2 的資料時，E2 不得成為候選員工'
-  );
-  assert.equal(
-    helpers.__employeeFallbackScore(
-      Object.assign({}, linkedToAnotherTeacher, { mobilePhone: '0911111111' }),
-      names,
-      emails,
-      phones
-    ),
-    11,
-    'Email 與電話都一致才能進入 fallback 候選'
-  );
-  assert.equal(
-    helpers.__employeeFallbackScore(
-      Object.assign({}, linkedToAnotherTeacher, { name: '甲老師', mobilePhone: '0911111111' }),
-      names,
-      emails,
-      phones
-    ),
-    13,
-    '姓名再一致時只能增加已有雙因子的分數'
-  );
-
+test('fresh portal resolver never scans or guesses legacy people by name, email, or phone', () => {
   const resolverStart = backendSource.indexOf('async function resolveTeacherUtilityEmployee(session)');
   const resolverEnd = backendSource.indexOf('function teacherUtilityBoolean', resolverStart);
   const resolverSource = backendSource.slice(resolverStart, resolverEnd);
-  const employeeSelectedAt = resolverSource.indexOf('const canonicalEmployeeId =');
-  const externalProfileReadAt = resolverSource.indexOf("teacherUtilityResolveRows('externalTeacherProfiles'");
   assert.ok(resolverStart >= 0 && resolverEnd > resolverStart);
-  assert.ok(employeeSelectedAt >= 0 && externalProfileReadAt > employeeSelectedAt,
-    'external profile/contract 必須在員工身分安全選定之後才可讀取，不得反向污染 employee resolver');
+  assert.match(resolverSource, /teacherPortalProfileId\(teacherId\)/);
+  assert.doesNotMatch(resolverSource, /teacherUtilityResolveRows\(/);
+  assert.doesNotMatch(resolverSource, /mirrorRows\('teachers'\)/);
+  assert.doesNotMatch(resolverSource, /collection\('employees'\)\.limit\(/);
+  assert.doesNotMatch(resolverSource, /verifiedName|verifiedEmail|verifiedPhone|replacedRows/);
 });
 
-test('external rows without an explicit owner require both trusted email and phone', () => {
-  const helpers = loadHelpers({});
-  const emails = ['teacher@example.com'];
-  const phones = ['0911111111'];
-
-  assert.equal(helpers.__externalRowBelongs({
-    __id: 'foreign-linked-row',
-    linkedEmployeeId: 'E2',
-    teacherId: 'T2',
-    email: 'teacher@example.com',
-    mobilePhone: '0911111111'
-  }, 'E1', 'T1', [], emails, phones), false);
-  assert.equal(helpers.__externalRowBelongs({
-    __id: 'email-only-row',
-    email: 'teacher@example.com'
-  }, 'E1', 'T1', [], emails, phones), false,
-  '無明確 owner 的 external row 不得只靠 Email 歸屬');
-  assert.equal(helpers.__externalRowBelongs({
-    __id: 'wrong-phone-row',
-    email: 'teacher@example.com',
-    mobilePhone: '0922222222'
-  }, 'E1', 'T1', [], emails, phones), false);
-  assert.equal(helpers.__externalRowBelongs({
-    __id: 'two-factor-row',
-    email: 'teacher@example.com',
-    mobilePhone: '0911111111'
-  }, 'E1', 'T1', [], emails, phones), true,
-  'Email 與電話都完全符合時，才允許無明確 link 的舊資料歸屬');
-});
-
-test('T1 email hit on an external row owned by T2 and E2 cannot replace the canonical T1 identity', async () => {
-  const helpers = loadHelpers({
+test('new teacher receives a dedicated blank profile and ignores every old matching record', async () => {
+  const collections = {
     coursePortalTeacherBindings: [{
       __id: 'binding-t1',
       status: 'active',
@@ -320,7 +262,8 @@ test('T1 email hit on an external row owned by T2 and E2 cannot replace the cano
       name: '乙老師',
       email: 'shared@example.com'
     }]
-  });
+  };
+  const helpers = loadHelpers(collections);
 
   const resolved = await helpers.__resolveEmployee({
     role: 'teacher',
@@ -329,8 +272,88 @@ test('T1 email hit on an external row owned by T2 and E2 cannot replace the cano
   });
   assert.match(resolved.employeeId, /^EXT_[a-f0-9]{16}$/);
   assert.notEqual(resolved.employeeId, 'E2', 'T1 不得因同 Email 資料而選中屬於 T2 的 E2');
-  assert.notEqual(resolved.profile && resolved.profile.name, '乙老師');
-  assert.equal(resolved.profile && resolved.profile.externalTeacherProfileId, '');
+  assert.equal(resolved.profile && resolved.profile.name, '');
+  assert.match(resolved.profile && resolved.profile.externalTeacherProfileId, /^EXTP_[a-f0-9]{24}$/);
+  assert.equal(resolved.user.employeeRecordCreated, false);
+  assert.equal(resolved.user.portalProfileVersion, 2);
+  assert.match(resolved.profile.onboardingUrl, /external-teacher-onboarding\.html\?id=EXTP_/);
+  assert.match(resolved.profile.onboardingUrl, /&fresh=1$/);
+  const ownProfile = collections.externalTeacherProfiles.find((row) =>
+    row.__id === resolved.user.portalProfileId
+  );
+  const ownContract = collections.externalTeacherContracts.find((row) =>
+    row.__id === resolved.user.portalProfileId
+  );
+  assert.ok(ownProfile && ownContract);
+  assert.equal(ownProfile.name, undefined, '新資料不得寫入課務鏡像姓名');
+  assert.equal(ownContract.email, undefined, '新資料不得寫入舊 Email');
+  assert.equal(collections.externalTeacherProfiles.find((row) => row.__id === 'poison-t2-e2').name, '乙老師');
+  assert.ok(collections.employees.some((row) => row.__id === 'E2'), '不相關的舊人不可被誤刪');
+});
+
+test('unapproved employee shell created by the old resolver is deleted exactly, not reused', async () => {
+  const teacherId = 'T-NEW';
+  const canonicalEmployeeId = `EXT_${crypto.createHash('sha256').update(`course-teacher:${teacherId}`).digest('hex').slice(0, 16)}`;
+  const collections = {
+    coursePortalTeacherBindings: [{
+      __id: 'binding-new', status: 'active', authAccountId: 'ACCOUNT-NEW', teacherId
+    }],
+    employees: [{
+      __id: canonicalEmployeeId,
+      employeeId: canonicalEmployeeId,
+      identityType: 'external',
+      name: '黃銘廷',
+      source: 'course-portal-canonical-external-teacher',
+      coursePortalTeacherCanonical: true
+    }],
+    externalTeacherProfiles: [],
+    externalTeacherContracts: []
+  };
+  const resolved = await loadHelpers(collections).__resolveEmployee({
+    role: 'teacher', teacherId, authAccountId: 'ACCOUNT-NEW', authMethod: 'email'
+  });
+  assert.equal(resolved.employeeId, canonicalEmployeeId);
+  assert.equal(resolved.profile.name, '');
+  assert.equal(resolved.user.employeeRecordCreated, false);
+  assert.equal(collections.employees.some((row) => row.__id === canonicalEmployeeId), false);
+});
+
+test('manager-confirmed fresh profile keeps its formal employee and returns only its own data', async () => {
+  const teacherId = 'T-CONFIRMED';
+  const helpersForId = loadHelpers({});
+  const profileId = helpersForId.__portalProfileId(teacherId);
+  const canonicalEmployeeId = `EXT_${crypto.createHash('sha256').update(`course-teacher:${teacherId}`).digest('hex').slice(0, 16)}`;
+  const base = {
+    __id: profileId,
+    id: profileId,
+    teacherId: profileId,
+    coursePortalTeacherId: teacherId,
+    portalProfileVersion: 2,
+    portalProfileSource: 'course-portal-fresh-external-teacher-v2',
+    bindingCode: 'SAFE-TOKEN',
+    onboardingToken: 'SAFE-TOKEN',
+    status: 'active'
+  };
+  const collections = {
+    coursePortalTeacherBindings: [{
+      __id: 'binding-confirmed', status: 'active', authAccountId: 'ACCOUNT-CONFIRMED', teacherId
+    }],
+    externalTeacherProfiles: [Object.assign({}, base, completeProfile({ name: '新老師' }))],
+    externalTeacherContracts: [Object.assign({}, base, { contractStatus: 'active' })],
+    employees: [{
+      __id: canonicalEmployeeId,
+      employeeId: canonicalEmployeeId,
+      identityType: 'external',
+      name: '新老師',
+      source: 'external-teacher-admin-confirmed'
+    }]
+  };
+  const resolved = await loadHelpers(collections).__resolveEmployee({
+    role: 'teacher', teacherId, authAccountId: 'ACCOUNT-CONFIRMED'
+  });
+  assert.equal(resolved.profile.name, '新老師');
+  assert.equal(resolved.user.employeeRecordCreated, true);
+  assert.ok(collections.employees.some((row) => row.__id === canonicalEmployeeId));
 });
 
 test('teacher utility profile is whitelisted, masks ID, and only keeps safe own URLs', () => {
@@ -386,6 +409,26 @@ test('teacher utility profile is whitelisted, masks ID, and only keeps safe own 
   assert.equal(profile.lineUserId, 'U-LINE');
   assert.equal(profile.householdAddress, '戶籍地址');
   assert.equal(profile.mailingAddress, '通訊地址');
+});
+
+test('fresh teacher contract view accepts only assignments issued for the same profile lifecycle', () => {
+  const helpers = loadHelpers({});
+  const resolved = {
+    user: {
+      portalProfileId: 'EXTP-CURRENT',
+      externalTeacherProfileId: 'EXTP-CURRENT',
+      portalProfileVersion: 2
+    }
+  };
+  assert.equal(helpers.__contractMatchesProfile({
+    portalProfileId: 'EXTP-CURRENT', portalProfileVersion: 2
+  }, resolved), true);
+  assert.equal(helpers.__contractMatchesProfile({
+    portalProfileId: 'EXTP-OLD', portalProfileVersion: 2
+  }, resolved), false);
+  assert.equal(helpers.__contractMatchesProfile({
+    employeeId: 'SAME-EMPLOYEE', status: 'pending'
+  }, resolved), false, '只用同員工編號的舊測試合約不得出現');
 });
 
 test('teacher utility summary matches the linked teacher and excludes completed or inactive rows', async () => {
