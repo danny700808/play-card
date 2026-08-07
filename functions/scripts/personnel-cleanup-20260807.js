@@ -206,19 +206,34 @@ async function commitDeletes(records) {
 }
 
 async function normalizeKeepers(plan) {
-  const operations = [];
+  const operations = new Map();
+  const queue = (ref, patch) => {
+    const prior = operations.get(ref.path);
+    operations.set(ref.path, { ref, patch: Object.assign({}, prior && prior.patch || {}, patch) });
+  };
   plan.keepParttimeRecords.forEach((record) => {
     if (record.spec.collection !== 'employees' || cleanup.rowName(record.row) !== cleanup.KEEP_PARTTIME_NAME) return;
-    operations.push([record.ref, {
+    queue(record.ref, {
       name: cleanup.KEEP_PARTTIME_NAME, displayName: cleanup.KEEP_PARTTIME_NAME,
       identityType: 'parttime', role: 'staff', isPartTime: true, isExternalTeacher: false,
       isAdmin: false, isManager: false, adminBootstrap: false,
       showSettingsZone: false, canViewSettings: false, active: true,
       accountStatus: 'active', employmentStatus: 'active', hiddenFromActiveLists: false,
       personnelCleanupProtected: true, updatedAt: FV.serverTimestamp()
-    }]);
+    });
   });
   plan.keepManagerRecords.forEach((record) => {
+    if (cleanup.activeEmployeeLineBinding(record)) {
+      queue(record.ref, {
+        employeeId: cleanup.BOOTSTRAP_MANAGER_ID,
+        employeeDocId: cleanup.BOOTSTRAP_MANAGER_ID,
+        targetEmployeeId: cleanup.BOOTSTRAP_MANAGER_ID,
+        name: cleanup.KEEP_MANAGER_NAME,
+        employeeName: cleanup.KEEP_MANAGER_NAME,
+        updatedAt: FV.serverTimestamp()
+      });
+      return;
+    }
     if (!cleanup.canonicalManagerAccount(record) && !cleanup.primaryManagerInfrastructure(record)) return;
     const patch = {
       name: cleanup.KEEP_MANAGER_NAME, displayName: cleanup.KEEP_MANAGER_NAME,
@@ -228,15 +243,35 @@ async function normalizeKeepers(plan) {
     if (record.spec.collection === 'employees') Object.assign(patch, {
       identityType: 'admin', isPartTime: false, isExternalTeacher: false, hiddenFromActiveLists: true
     });
-    operations.push([record.ref, patch]);
+    if (record.spec.collection === 'admins') Object.assign(patch, {
+      adminId: record.docId, employeeId: cleanup.BOOTSTRAP_MANAGER_ID,
+      personMasterId: cleanup.BOOTSTRAP_MANAGER_ID
+    });
+    queue(record.ref, patch);
   });
-  for (let offset = 0; offset < operations.length; offset += BATCH_SIZE) {
+  const managerEmployeeRef = db.collection('employees').doc(cleanup.BOOTSTRAP_MANAGER_ID);
+  queue(managerEmployeeRef, {
+    employeeId: cleanup.BOOTSTRAP_MANAGER_ID,
+    personMasterId: cleanup.BOOTSTRAP_MANAGER_ID,
+    canonicalEmployeeId: cleanup.BOOTSTRAP_MANAGER_ID,
+    name: cleanup.KEEP_MANAGER_NAME,
+    displayName: cleanup.KEEP_MANAGER_NAME,
+    email: cleanup.BOOTSTRAP_MANAGER_EMAIL,
+    role: 'admin', identityType: 'admin', active: true,
+    accountStatus: 'active', employmentStatus: 'active',
+    showSettingsZone: true, canViewSettings: true, isManager: true,
+    isPartTime: false, isExternalTeacher: false, hiddenFromActiveLists: true,
+    adminBootstrap: true, personnelCleanupProtected: true,
+    updatedAt: FV.serverTimestamp()
+  });
+  const rows = [...operations.values()];
+  for (let offset = 0; offset < rows.length; offset += BATCH_SIZE) {
     const batch = db.batch();
-    operations.slice(offset, offset + BATCH_SIZE).forEach(([ref, patch]) =>
+    rows.slice(offset, offset + BATCH_SIZE).forEach(({ ref, patch }) =>
       batch.set(ref, patch, { merge: true }));
     await batch.commit();
   }
-  return operations.length;
+  return rows.length;
 }
 
 async function deleteAuthUsers(plan) {
@@ -273,7 +308,9 @@ async function deleteAuthUsers(plan) {
   let normalized = 0;
   for (const keeper of keepers) {
     const ids = keeper.manager ? managerIds : parttimeIds;
-    const employeeId = ids.has(keeper.claimedId) ? keeper.claimedId : [...ids][0];
+    const employeeId = keeper.manager
+      ? cleanup.BOOTSTRAP_MANAGER_ID
+      : (ids.has(keeper.claimedId) ? keeper.claimedId : [...ids][0]);
     if (!employeeId) throw new Error('保留帳號缺少唯一人員 ID，已停止清理。');
     await admin.auth().updateUser(keeper.user.uid, {
       displayName: keeper.manager ? cleanup.KEEP_MANAGER_NAME : cleanup.KEEP_PARTTIME_NAME

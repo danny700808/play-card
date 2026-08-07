@@ -136,7 +136,7 @@ test('retained part-time worker does not keep an old admin or teacher role', () 
 });
 
 test('recognizes the production bootstrap manager even when its old display name is not canonical', () => {
-  const rows = baseKeepers().slice(0, 1).concat([
+  const rows = baseKeepers().concat([
     record('employees', 'ADMIN_DANNY', {
       employeeId: 'ADMIN_DANNY', name: 'Danny', email: 'danny700808@gmail.com',
       role: 'admin', identityType: 'admin', adminBootstrap: true
@@ -148,9 +148,26 @@ test('recognizes the production bootstrap manager even when its old display name
   assert.equal(plan.keepPaths.has('employeeSchedules/OLD-MANAGER-SHIFT'), false);
 });
 
+test('a manager account that shares the retained worker id is split onto ADMIN_DANNY', () => {
+  const rows = [
+    record('employees', 'PT-KEEP', {
+      employeeId: 'PT-KEEP', name: '廖浤鈞', identityType: 'parttime',
+      isPartTime: true, active: true
+    }),
+    record('admins', 'ADMIN-LOGIN', {
+      adminId: 'ADMIN-LOGIN', employeeId: 'PT-KEEP', name: '黃銘廷',
+      email: 'danny700808@gmail.com', role: 'admin'
+    })
+  ];
+  const plan = cleanup.buildCleanupPlan(rows);
+  assert.deepEqual(plan.keepParttimeAccountIds, ['PT-KEEP']);
+  assert.deepEqual(plan.keepManagerAccountIds, ['ADMIN_DANNY']);
+  assert.equal(plan.summary.remediatedRoleOverlapRecords, 1);
+});
+
 test('fails closed when either exact retained identity is missing', () => {
   assert.throws(() => cleanup.buildCleanupPlan(baseKeepers().slice(1)), /廖浤鈞/);
-  assert.throws(() => cleanup.buildCleanupPlan(baseKeepers().slice(0, 1)), /黃銘廷/);
+  assert.throws(() => cleanup.buildCleanupPlan(baseKeepers().slice(0, 1)), /管理者帳號/);
 });
 
 test('removes only targeted embedded salary entries and always protects the retained part-time worker', () => {

@@ -86,7 +86,10 @@ function primaryManagerInfrastructure(record) {
 
 function managerKeepRecord(record) {
   if (!record) return false;
-  if (canonicalManagerAccount(record)) return true;
+  if (canonicalManagerAccount(record)) {
+    return record.spec.collection === 'admins' ||
+      (record.spec.collection === 'employees' && record.docId === BOOTSTRAP_MANAGER_ID);
+  }
   return activeEmployeeLineBinding(record);
 }
 
@@ -120,12 +123,14 @@ function buildCleanupPlan(records) {
     group.names.includes(KEEP_MANAGER_NAME) &&
     group.rows.some((record) => record.spec.collection === 'employeeLineBindings'));
   const infrastructureGroups = groups.filter((group) => group.rows.some(primaryManagerInfrastructure));
+  const managerLoginRecords = managerGroups.flatMap((group) => group.rows)
+    .filter((record) => canonicalManagerAccount(record) && record.spec.collection === 'admins');
 
   if (!parttimeGroups.length || !parttimeGroups.some((group) => group.rows.some(activeParttimeEmployee))) {
     throw new Error(`找不到啟用中的工讀生「${KEEP_PARTTIME_NAME}」，已停止清理。`);
   }
-  if (!managerGroups.length) {
-    throw new Error(`找不到管理者「${KEEP_MANAGER_NAME}」，已停止清理。`);
+  if (managerLoginRecords.length !== 1) {
+    throw new Error(`管理者帳號數量為 ${managerLoginRecords.length}，必須正好 1 筆，已停止清理。`);
   }
 
   const keepPaths = new Set();
@@ -153,7 +158,8 @@ function buildCleanupPlan(records) {
 
   const targetRecords = personnelRecords.filter((record) => !keepPaths.has(record.ref.path));
   const keepParttimeEmails = uniq(keepParttimeRecords.map((record) => rowEmail(record.row)));
-  const keepManagerEmails = uniq(keepManagerRecords.map((record) => rowEmail(record.row)));
+  const keepManagerEmails = uniq(keepManagerRecords.concat(managerLoginRecords)
+    .map((record) => rowEmail(record.row)).concat([BOOTSTRAP_MANAGER_EMAIL]));
   const keepEmails = uniq(keepParttimeEmails.concat(keepManagerEmails));
   const deleteEmails = uniq(targetRecords.map((record) => rowEmail(record.row))).filter((email) => !keepEmails.includes(email));
   const targetEmployeeIds = uniq(targetRecords.flatMap((record) => (record.keys || [])
@@ -164,9 +170,6 @@ function buildCleanupPlan(records) {
     .filter((key) => key.startsWith('profile:')).map((key) => key.slice(8))));
   const deleteNames = uniq(targetRecords.map((record) => rowName(record.row)))
     .filter((name) => ![KEEP_PARTTIME_NAME, KEEP_MANAGER_NAME].includes(name));
-  const keepPersonIds = uniq(keepParttimeRecords.concat(keepManagerRecords).flatMap((record) =>
-    (record.keys || []).filter((key) => key.startsWith('employee:') || key.startsWith('teacher:'))
-      .map((key) => key.slice(key.indexOf(':') + 1))));
   const keepParttimeIds = uniq(keepParttimeRecords.flatMap((record) =>
     (record.keys || []).filter((key) => key.startsWith('employee:') || key.startsWith('teacher:'))
       .map((key) => key.slice(key.indexOf(':') + 1))));
@@ -174,16 +177,17 @@ function buildCleanupPlan(records) {
     .filter((record) => record.spec.collection === 'employees')
     .flatMap((record) => (record.keys || []).filter((key) => key.startsWith('employee:'))
       .map((key) => key.slice(9))));
-  const keepManagerAccountIds = uniq(keepManagerRecords
-    .filter(canonicalManagerAccount)
-    .flatMap((record) => (record.keys || []).filter((key) => key.startsWith('employee:'))
-      .map((key) => key.slice(9))));
+  const keepManagerAccountIds = [BOOTSTRAP_MANAGER_ID];
+  const keepPersonIds = uniq(keepParttimeIds.concat(keepManagerAccountIds, [PRIMARY_MANAGER_ID]));
+  const parttimeGroupPaths = new Set(parttimeGroups.flatMap((group) => group.rows.map((record) => record.ref.path)));
+  const remediatedRoleOverlapRecords = managerLoginRecords.filter((record) => parttimeGroupPaths.has(record.ref.path));
 
   return {
     groups,
     keepPaths,
     keepParttimeRecords,
     keepManagerRecords,
+    managerLoginRecords,
     targetRecords,
     keepEmails,
     keepParttimeEmails,
@@ -204,6 +208,7 @@ function buildCleanupPlan(records) {
       keepManagerGroups: managerGroups.length,
       keepManagerLineGroups: managerLineGroups.length,
       keepInfrastructureGroups: infrastructureGroups.length,
+      remediatedRoleOverlapRecords: remediatedRoleOverlapRecords.length,
       deleteRecords: targetRecords.length,
       deleteGroups: groups.filter((group) => group.rows.some((record) => !keepPaths.has(record.ref.path))).length,
       deleteByCollection: countByCollection(targetRecords)
