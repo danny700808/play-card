@@ -1,9 +1,14 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const personData = require('../functions/personDataAdmin').__test;
 const cleanup = require('../functions/personnelCleanup20260807');
+const executorSource = fs.readFileSync(path.join(
+  __dirname, '..', 'functions', 'scripts', 'personnel-cleanup-20260807.js'
+), 'utf8');
 
 const spec = (collection) => personData.SOURCE_SPECS.find((item) => item.collection === collection);
 const record = (collection, docId, row) => ({
@@ -114,6 +119,22 @@ test('deletes obsolete pending manager bind codes instead of treating them as ma
   assert.equal(plan.targetRecords.some((item) => item.ref.path === 'employeeLineBindings/OLD-PENDING-CODE'), true);
 });
 
+test('retained part-time worker does not keep an old admin or teacher role', () => {
+  const rows = baseKeepers().concat([
+    record('admins', 'PT-OLD-ADMIN', {
+      employeeId: 'PT-KEEP', name: '廖浤鈞', role: 'admin'
+    }),
+    record('coursePortalTeacherBindings', 'PT-OLD-TEACHER', {
+      employeeId: 'PT-KEEP', teacherId: 'PT-TEACHER', name: '廖浤鈞', status: 'active'
+    }),
+    record('employeeSchedules', 'PT-SHIFT', { employeeId: 'PT-KEEP', name: '廖浤鈞' })
+  ]);
+  const plan = cleanup.buildCleanupPlan(rows);
+  assert.equal(plan.keepPaths.has('employeeSchedules/PT-SHIFT'), true);
+  assert.equal(plan.keepPaths.has('admins/PT-OLD-ADMIN'), false);
+  assert.equal(plan.keepPaths.has('coursePortalTeacherBindings/PT-OLD-TEACHER'), false);
+});
+
 test('recognizes the production bootstrap manager even when its old display name is not canonical', () => {
   const rows = baseKeepers().slice(0, 1).concat([
     record('employees', 'ADMIN_DANNY', {
@@ -144,4 +165,13 @@ test('removes only targeted embedded salary entries and always protects the reta
     ['PT-KEEP', 'OLD-EMPLOYEE', 'OLD-CHINESE-ID'],
     ['PT-KEEP']
   ).sort(), ['OLD-EMPLOYEE', 'alias']);
+});
+
+test('execution normalizes retained Firebase Auth claims to one role each', () => {
+  assert.match(executorSource, /admin: true, manager: true, role: 'admin', identityType: 'admin'/);
+  assert.match(executorSource, /admin: false, manager: false, role: 'staff', identityType: 'parttime'/);
+  assert.match(executorSource, /displayName: keeper\.manager \? cleanup\.KEEP_MANAGER_NAME : cleanup\.KEEP_PARTTIME_NAME/);
+  assert.match(executorSource, /`\$\{projectId\}\.firebasestorage\.app`/);
+  assert.ok(executorSource.indexOf('const deletedFiles = await deleteStorage(paths)') <
+    executorSource.indexOf('const deletedRecords = await commitDeletes(deleteRecords)'));
 });

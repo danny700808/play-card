@@ -7,6 +7,14 @@ const KEEP_MANAGER_NAME = '黃銘廷';
 const PRIMARY_MANAGER_ID = 'PRIMARY_MANAGER_LINE';
 const BOOTSTRAP_MANAGER_ID = 'ADMIN_DANNY';
 const BOOTSTRAP_MANAGER_EMAIL = 'danny700808@gmail.com';
+const PARTTIME_ROLE_COLLECTIONS = new Set([
+  'admins', 'externalTeacherProfiles', 'teacherPrivateProfiles', 'externalTeacherFiles',
+  'externalTeacherContracts', 'teacherContractAssignments', 'coursePortalTeacherBindings',
+  'externalTeacherLineBindings', 'coursePortalScheduleChanges',
+  'coursePortalTeacherAttendancePayroll', 'coursePortalTeacherAdjustments',
+  'coursePortalTeacherBonusRequests', 'coursePortalLateAttendance',
+  'teacherContractLogs', 'teacherGoodsInquiry', 'coursePortalReminderLogs'
+]);
 
 const clean = (value) => String(value == null ? '' : value).trim();
 const lower = (value) => clean(value).toLowerCase();
@@ -45,13 +53,19 @@ function canonicalManagerAccount(record) {
     rowEmail(record.row) === BOOTSTRAP_MANAGER_EMAIL);
 }
 
-function activeManagerLineBinding(record) {
+function activeEmployeeLineBinding(record) {
   if (!record || record.spec.collection !== 'employeeLineBindings') return false;
   const row = record.row || {};
   const status = lower(row.status || row.lineBindStatus || row.approvalStatus);
   const blocked = /pending|revoked|rejected|expired|cancelled|unbound|待|撤銷|駁回|過期|取消|解除/.test(status);
   const lineId = clean(row.lineUserId || row.targetLineUserId || row.lineUid || row.lineId || row['LINE User ID']);
   return Boolean(lineId && !blocked && row.active !== false);
+}
+
+function parttimeKeepRecord(record) {
+  if (!record || PARTTIME_ROLE_COLLECTIONS.has(record.spec.collection)) return false;
+  if (record.spec.collection === 'employeeLineBindings') return activeEmployeeLineBinding(record);
+  return true;
 }
 
 function activeParttimeEmployee(record) {
@@ -73,7 +87,7 @@ function primaryManagerInfrastructure(record) {
 function managerKeepRecord(record) {
   if (!record) return false;
   if (canonicalManagerAccount(record)) return true;
-  return activeManagerLineBinding(record);
+  return activeEmployeeLineBinding(record);
 }
 
 function countByCollection(records) {
@@ -118,6 +132,7 @@ function buildCleanupPlan(records) {
   const keepParttimeRecords = [];
   const keepManagerRecords = [];
   parttimeGroups.forEach((group) => group.rows.forEach((record) => {
+    if (!parttimeKeepRecord(record)) return;
     keepPaths.add(record.ref.path);
     keepParttimeRecords.push(record);
   }));
@@ -127,7 +142,7 @@ function buildCleanupPlan(records) {
     keepManagerRecords.push(record);
   }));
   managerLineGroups.forEach((group) => group.rows.forEach((record) => {
-    if (!activeManagerLineBinding(record)) return;
+    if (!activeEmployeeLineBinding(record)) return;
     keepPaths.add(record.ref.path);
     keepManagerRecords.push(record);
   }));
@@ -137,7 +152,9 @@ function buildCleanupPlan(records) {
   }));
 
   const targetRecords = personnelRecords.filter((record) => !keepPaths.has(record.ref.path));
-  const keepEmails = uniq(keepParttimeRecords.concat(keepManagerRecords).map((record) => rowEmail(record.row)));
+  const keepParttimeEmails = uniq(keepParttimeRecords.map((record) => rowEmail(record.row)));
+  const keepManagerEmails = uniq(keepManagerRecords.map((record) => rowEmail(record.row)));
+  const keepEmails = uniq(keepParttimeEmails.concat(keepManagerEmails));
   const deleteEmails = uniq(targetRecords.map((record) => rowEmail(record.row))).filter((email) => !keepEmails.includes(email));
   const targetEmployeeIds = uniq(targetRecords.flatMap((record) => (record.keys || [])
     .filter((key) => key.startsWith('employee:')).map((key) => key.slice(9))));
@@ -153,6 +170,14 @@ function buildCleanupPlan(records) {
   const keepParttimeIds = uniq(keepParttimeRecords.flatMap((record) =>
     (record.keys || []).filter((key) => key.startsWith('employee:') || key.startsWith('teacher:'))
       .map((key) => key.slice(key.indexOf(':') + 1))));
+  const keepParttimeAccountIds = uniq(keepParttimeRecords
+    .filter((record) => record.spec.collection === 'employees')
+    .flatMap((record) => (record.keys || []).filter((key) => key.startsWith('employee:'))
+      .map((key) => key.slice(9))));
+  const keepManagerAccountIds = uniq(keepManagerRecords
+    .filter(canonicalManagerAccount)
+    .flatMap((record) => (record.keys || []).filter((key) => key.startsWith('employee:'))
+      .map((key) => key.slice(9))));
 
   return {
     groups,
@@ -161,12 +186,16 @@ function buildCleanupPlan(records) {
     keepManagerRecords,
     targetRecords,
     keepEmails,
+    keepParttimeEmails,
+    keepManagerEmails,
     deleteEmails,
     targetEmployeeIds,
     targetTeacherIds,
     targetProfileIds,
     keepPersonIds,
     keepParttimeIds,
+    keepParttimeAccountIds,
+    keepManagerAccountIds,
     deleteNames,
     summary: {
       scannedPeople: groups.length,
@@ -192,7 +221,8 @@ module.exports = {
   rowEmail,
   managerAccount,
   canonicalManagerAccount,
-  activeManagerLineBinding,
+  activeEmployeeLineBinding,
+  parttimeKeepRecord,
   activeParttimeEmployee,
   primaryManagerInfrastructure,
   managerKeepRecord,

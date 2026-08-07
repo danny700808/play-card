@@ -26,7 +26,7 @@ if (!admin.apps.length) {
   const projectId = serviceAccountProjectId();
   admin.initializeApp(Object.assign({}, projectId ? {
     projectId,
-    storageBucket: clean(process.env.FIREBASE_STORAGE_BUCKET) || `${projectId}.appspot.com`
+    storageBucket: clean(process.env.FIREBASE_STORAGE_BUCKET) || `${projectId}.firebasestorage.app`
   } : {}));
 }
 const db = admin.firestore();
@@ -210,7 +210,10 @@ async function normalizeKeepers(plan) {
   plan.keepParttimeRecords.forEach((record) => {
     if (record.spec.collection !== 'employees' || cleanup.rowName(record.row) !== cleanup.KEEP_PARTTIME_NAME) return;
     operations.push([record.ref, {
-      identityType: 'parttime', isPartTime: true, active: true,
+      name: cleanup.KEEP_PARTTIME_NAME, displayName: cleanup.KEEP_PARTTIME_NAME,
+      identityType: 'parttime', role: 'staff', isPartTime: true, isExternalTeacher: false,
+      isAdmin: false, isManager: false, adminBootstrap: false,
+      showSettingsZone: false, canViewSettings: false, active: true,
       accountStatus: 'active', employmentStatus: 'active', hiddenFromActiveLists: false,
       personnelCleanupProtected: true, updatedAt: FV.serverTimestamp()
     }]);
@@ -241,8 +244,13 @@ async function deleteAuthUsers(plan) {
   const emails = new Set(plan.deleteEmails.map(lower));
   const keepEmails = new Set(plan.keepEmails.map(lower));
   const keepPersonIds = new Set(plan.keepPersonIds || []);
+  const parttimeEmails = new Set((plan.keepParttimeEmails || []).map(lower));
+  const managerEmails = new Set((plan.keepManagerEmails || []).map(lower));
+  const parttimeIds = new Set(plan.keepParttimeAccountIds || []);
+  const managerIds = new Set(plan.keepManagerAccountIds || []);
   let pageToken;
   const targets = [];
+  const keepers = [];
   do {
     const page = await admin.auth().listUsers(1000, pageToken);
     page.users.forEach((user) => {
@@ -251,11 +259,34 @@ async function deleteAuthUsers(plan) {
       const personnelClaim = claims.employee === true || claims.manager === true ||
         ['employee', 'teacher', 'external', 'staff', 'parttime', 'admin', 'manager'].includes(lower(claims.role || claims.identityType));
       const email = lower(user.email);
+      const isManager = managerEmails.has(email) || (claimedId && managerIds.has(claimedId));
+      const isParttime = parttimeEmails.has(email) || (claimedId && parttimeIds.has(claimedId));
+      if (isManager || isParttime) {
+        keepers.push({ user, claimedId, manager: isManager });
+        return;
+      }
       if (keepEmails.has(email) || (claimedId && keepPersonIds.has(claimedId))) return;
       if (personnelClaim && ((claimedId && employeeIds.has(claimedId)) || (email && emails.has(email)))) targets.push(user.uid);
     });
     pageToken = page.pageToken;
   } while (pageToken);
+  let normalized = 0;
+  for (const keeper of keepers) {
+    const ids = keeper.manager ? managerIds : parttimeIds;
+    const employeeId = ids.has(keeper.claimedId) ? keeper.claimedId : [...ids][0];
+    if (!employeeId) throw new Error('保留帳號缺少唯一人員 ID，已停止清理。');
+    await admin.auth().updateUser(keeper.user.uid, {
+      displayName: keeper.manager ? cleanup.KEEP_MANAGER_NAME : cleanup.KEEP_PARTTIME_NAME
+    });
+    await admin.auth().setCustomUserClaims(keeper.user.uid, keeper.manager ? {
+      employee: true, admin: true, manager: true, role: 'admin', identityType: 'admin',
+      employeeId, sourceCollection: 'employees'
+    } : {
+      employee: true, admin: false, manager: false, role: 'staff', identityType: 'parttime',
+      employeeId, sourceCollection: 'employees'
+    });
+    normalized += 1;
+  }
   let deleted = 0;
   for (let offset = 0; offset < targets.length; offset += 1000) {
     const result = await admin.auth().deleteUsers(targets.slice(offset, offset + 1000));
@@ -265,19 +296,22 @@ async function deleteAuthUsers(plan) {
       throw new Error(`Firebase Auth 刪除失敗 ${result.failureCount} 筆：${uniq(codes).join(', ') || '未知錯誤'}`);
     }
   }
-  return deleted;
+  return { deleted, normalized };
 }
 
 async function deleteStorage(paths) {
   let deleted = 0;
+  const failures = [];
   for (const storagePath of paths) {
     try {
       await admin.storage().bucket().file(storagePath).delete({ ignoreNotFound: true });
       deleted += 1;
     } catch (error) {
       console.error('[personnel cleanup storage]', sha256(storagePath).slice(0, 16), error && error.message || error);
+      failures.push(error);
     }
   }
+  if (failures.length) throw new Error(`人員附件刪除失敗 ${failures.length} 筆，Firestore 主資料尚未刪除，可安全重試。`);
   return deleted;
 }
 
@@ -334,10 +368,13 @@ async function run() {
   const paths = storagePaths(deleteRecords);
   const keeperWrites = await normalizeKeepers(plan);
   // 先移除待刪人員的身分驗證；如 Auth 批次失敗，尚未刪除 Firestore 主資料，可安全重試。
-  const deletedAuthUsers = await deleteAuthUsers(plan);
+  const authResult = await deleteAuthUsers(plan);
+  const deletedAuthUsers = authResult.deleted;
+  const normalizedAuthUsers = authResult.normalized;
+  // 先確認私密附件已刪除，再刪 Firestore 索引；失敗時主資料仍在，可重試。
+  const deletedFiles = await deleteStorage(paths);
   const deletedRecords = await commitDeletes(deleteRecords);
   const deletedSalaryEntries = await deleteEmbeddedSalaryEntries(salaryTargets);
-  const deletedFiles = await deleteStorage(paths);
 
   const remainingRecords = await readPersonnelRecords();
   const verification = cleanup.buildCleanupPlan(remainingRecords);
@@ -351,12 +388,14 @@ async function run() {
     throw new Error(`清理後仍有 ${verification.targetRecords.length} 筆非保留人員資料。`);
   }
   await operationRef.set({
-    status: 'completed', deletedRecords, deletedAuthUsers, deletedFiles, deletedSalaryEntries, keeperWrites,
+    status: 'completed', deletedRecords, deletedAuthUsers, normalizedAuthUsers,
+    deletedFiles, deletedSalaryEntries, keeperWrites,
     verifiedRemainingRecords: remainingRecords.length,
     completedAt: FV.serverTimestamp()
   }, { merge: true });
   console.log('PERSONNEL_CLEANUP_RESULT=' + JSON.stringify({
-    status: 'completed', deletedRecords, deletedAuthUsers, deletedFiles, deletedSalaryEntries, keeperWrites,
+    status: 'completed', deletedRecords, deletedAuthUsers, normalizedAuthUsers,
+    deletedFiles, deletedSalaryEntries, keeperWrites,
     verifiedNoOtherPersonnel: true
   }));
 }
