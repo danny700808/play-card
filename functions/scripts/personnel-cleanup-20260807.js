@@ -42,13 +42,41 @@ const EXTRA_COLLECTIONS = [
   ['coursePortalLineOAuthStates', ['employeeId', 'personMasterId'], ['teacherId'], []],
   ['coursePortalLineSetupTokens', ['employeeId', 'personMasterId'], ['teacherId'], []]
 ];
+const oneTimeSpec = (collection, label, employeeFields, teacherFields, kind, unwrapSource) => ({
+  collection, label, employeeFields: employeeFields || [], teacherFields: teacherFields || [],
+  kind, unwrapSource: unwrapSource === true
+});
+const ONE_TIME_PERSONNEL_SPECS = [
+  oneTimeSpec('clockFailures', '打卡失敗紀錄', ['employeeId', 'userId', '員工ID'], [], 'attendance'),
+  oneTimeSpec('opsEducationMirrorTeachers', '課務老師鏡像', [], ['id', 'teacherId', 'sourceId'], 'role', true),
+  oneTimeSpec('opsEducationMirrorTeacherPayroll', '課務老師薪資鏡像', [], ['teacherId'], 'payroll', true),
+  oneTimeSpec('opsEducationMirrorTeacherAdjustments', '課務老師調整鏡像', [], ['teacherId'], 'payroll', true),
+  oneTimeSpec('opsEducationMirrorAttendance', '課務簽到鏡像', [], ['teacherId'], 'attendance', true),
+  oneTimeSpec('opsInjiaoyunTestTeachers', '舊課務老師來源', [], ['id', 'teacherId', 'sourceId'], 'role'),
+  oneTimeSpec('opsInjiaoyunTestTeacherDetails', '舊課務老師資料', [], ['id', 'teacherId', 'sourceId'], 'profile'),
+  oneTimeSpec('opsInjiaoyunTestTeacherAnalysis', '舊課務老師分析', [], ['id', 'teacherId', 'sourceId'], 'profile'),
+  oneTimeSpec('opsInjiaoyunTestTeacherFixedCourses', '舊課務固定課程', [], ['teacherId'], 'schedule'),
+  oneTimeSpec('opsInjiaoyunTestTeacherTemporaryCourses', '舊課務臨時課程', [], ['teacherId'], 'schedule'),
+  oneTimeSpec('opsInjiaoyunTestTeacherNoCourses', '舊課務無課紀錄', [], ['teacherId'], 'schedule'),
+  oneTimeSpec('opsInjiaoyunTestTeacherDeductions', '舊課務老師扣款', [], ['teacherId'], 'payroll'),
+  oneTimeSpec('opsInjiaoyunTestTeacherRewards', '舊課務老師獎勵', [], ['teacherId'], 'payroll'),
+  oneTimeSpec('opsInjiaoyunTestHistoryPayrollCheckins', '舊薪資簽到', [], ['teacherId'], 'payroll'),
+  oneTimeSpec('opsInjiaoyunTestHistoryPayrollReducePaychecks', '舊薪資扣款', [], ['teacherId'], 'payroll'),
+  oneTimeSpec('opsInjiaoyunTestHistoryPayrollRewards', '舊薪資獎勵', [], ['teacherId'], 'payroll'),
+  oneTimeSpec('opsInjiaoyunTestCheckinLeaves', '舊課務簽到請假', [], ['teacherId'], 'attendance'),
+  oneTimeSpec('opsInjiaoyunTestLeaves', '舊課務請假', [], ['teacherId'], 'attendance')
+];
 const PERSONNEL_COLLECTION_HINT = /(employee|teacher|staff|admin|manager|attendance|clock|leave|payroll|salary|person|notification|binding|session|token|contract|profile)/i;
 const KNOWN_NON_PERSONNEL_COLLECTIONS = new Set([
   'coursePortalStudentBindings', 'coursePortalRenterBindings', 'coursePortalStudentProfiles',
   'coursePortalStudentSuspensions', 'coursePortalRoomBookings', 'coursePortalAttendanceLessonLocks',
   'rentalApplications', 'rentalContracts', 'rentalRenewalRequests', 'rentalReturnRequests',
   'externalTeacherContractTemplates', 'lineBindingAdminAudit', 'personDataAdminAudits',
-  'personDeletionTombstones'
+  'personDeletionTombstones', 'notificationFeatureSettings', 'notificationManagerRecipients',
+  'notificationSettings', 'notificationSettingsV2', 'notificationTimeRules', 'notificationUniversal',
+  'notificationV2Settings', 'opsEducationMirrorLeaveReasons', 'opsInjiaoyunTestLeaveReasons',
+  'opsInjiaoyunTestPermissionManagerLogs', 'salarySetup', 'salarySettings',
+  'teacherContractSettings', 'teacherContractTemplates'
 ]);
 
 async function readCollection(collection, spec) {
@@ -59,7 +87,10 @@ async function readCollection(collection, spec) {
     if (cursor) query = query.startAfter(cursor);
     const snapshot = await query.get();
     snapshot.docs.forEach((doc) => {
-      const row = doc.data() || {};
+      const stored = doc.data() || {};
+      const row = spec && spec.unwrapSource && stored.source && typeof stored.source === 'object'
+        ? Object.assign({}, stored, stored.source)
+        : stored;
       if (spec && !personData.recordBelongsToPersonnel(spec, row)) return;
       rows.push({ spec, docId: doc.id, ref: doc.ref, row });
     });
@@ -70,12 +101,13 @@ async function readCollection(collection, spec) {
 }
 
 async function readPersonnelRecords() {
-  const chunks = await Promise.all(personData.SOURCE_SPECS.map((spec) => readCollection(spec.collection, spec)));
+  const specs = personData.SOURCE_SPECS.concat(ONE_TIME_PERSONNEL_SPECS);
+  const chunks = await Promise.all(specs.map((spec) => readCollection(spec.collection, spec)));
   return chunks.flat();
 }
 
 async function uncoveredPersonnelCollections() {
-  const covered = new Set(personData.SOURCE_SPECS.map((spec) => spec.collection)
+  const covered = new Set(personData.SOURCE_SPECS.concat(ONE_TIME_PERSONNEL_SPECS).map((spec) => spec.collection)
     .concat(EXTRA_COLLECTIONS.map((item) => item[0])));
   const collections = await db.listCollections();
   return collections.map((collection) => collection.id).filter((name) =>
@@ -214,6 +246,10 @@ async function deleteStorage(paths) {
 function publicSummary(plan, extraCount) {
   return Object.assign({}, plan.summary, {
     extraRelatedRecords: Number(extraCount || 0),
+    keepParttimeByCollection: cleanup.countByCollection(plan.keepParttimeRecords),
+    keepManagerByCollection: cleanup.countByCollection(plan.keepManagerRecords),
+    keepManagerReferenceHashes: uniq(plan.keepManagerRecords.map((record) =>
+      sha256(record.ref.path).slice(0, 12))).sort(),
     keepParttimeValidated: true,
     keepManagerValidated: true
   });
