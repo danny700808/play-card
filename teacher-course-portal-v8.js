@@ -9,7 +9,7 @@
   const TeacherDailyReminder = global.YZTeacherDailyReminder;
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
-  const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v2';
+  const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v4';
   const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.';
   const CACHE_TTL = 90 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;

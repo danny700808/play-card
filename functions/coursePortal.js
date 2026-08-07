@@ -2182,18 +2182,18 @@ function externalTeacherProfileMissingFields(row) {
   const contactMethod = clean(
     source.lineUserId || source.lineUid || source.lineId || source.LINEUserId
   ) || employeeEmail(source);
+  const identityDocument = clean(source.identityDocumentUrl) ||
+    (Array.isArray(source.identityUrls) && source.identityUrls.length) ||
+    (Array.isArray(source.identityFiles) && source.identityFiles.some((file) => clean(
+      typeof file === 'string' ? file : file && (file.storagePath || file.downloadUrl || file.url)
+    )));
   return [
     ['name', '姓名', clean(source.name || source.displayName || source.employeeName)],
     ['mobilePhone', '行動電話', employeePhone(source)],
     ['contactMethod', 'LINE 或 Email', contactMethod],
-    ['birthDate', '出生年月日', clean(source.birthDate)],
     ['idNumber', '身分證字號', clean(source.idNumber)],
-    ['householdAddress', '戶籍地址', clean(source.householdAddress)],
-    ['mailingAddress', '通訊地址', clean(source.mailingAddress || source.contactAddress)],
-    ['emergencyContact', '緊急聯絡人', clean(source.emergencyContact)],
-    ['emergencyPhone', '緊急聯絡人電話', normalizePhone(source.emergencyPhone)],
     ['teachingAbilities', '授課項目', teaching],
-    ['identityDocumentUrl', '身分證明文件', clean(source.identityDocumentUrl) || (Array.isArray(source.identityUrls) && source.identityUrls.length)]
+    ['identityDocument', '身分證明文件', identityDocument]
   ].filter((item) => !item[2]).map((item) => ({ key: item[0], label: item[1] }));
 }
 
@@ -2205,9 +2205,8 @@ function teacherPortalProfileId(teacherId) {
   return `EXTP_${hash(`course-portal-profile-v${TEACHER_PORTAL_PROFILE_VERSION}:${teacherId}`).slice(0, 24)}`;
 }
 
-function teacherPortalProfileUrl(profileId, token) {
-  return `${PORTAL_BASE}/external-teacher-onboarding.html?id=${encodeURIComponent(profileId)}` +
-    `&code=${encodeURIComponent(token)}&fresh=1`;
+function teacherPortalProfileUrl() {
+  return `${PORTAL_BASE}/teacher-profile.html`;
 }
 
 function teacherPortalProfileStatusIsConfirmed(row) {
@@ -2216,6 +2215,7 @@ function teacherPortalProfileStatusIsConfirmed(row) {
   )).normalize('NFKC').replace(/\s+/g, '').toLowerCase();
   return [
     'active', 'confirmed', 'contract_effective', 'completed', 'complete',
+    'profile_complete',
     '已確認', '已生效', '契約生效', '完成', '管理端已確認，契約生效'
   ].includes(status);
 }
@@ -2291,18 +2291,24 @@ function teacherUtilityProfileBundle(options) {
   const source = options || {};
   const employee = source.employee || {};
   const externalProfile = source.externalProfile || {};
-  const externalContract = source.externalContract || {};
-  const teacherSnapshot = externalContract.teacherSnapshot && typeof externalContract.teacherSnapshot === 'object'
-    ? externalContract.teacherSnapshot
-    : {};
-  const personalSources = [externalProfile, teacherSnapshot, externalContract, employee];
-  const lineSources = (source.bindings || []).concat([externalProfile, externalContract, employee]);
+  const privateProfile = source.privateProfile || {};
+  // The current profile is authoritative personal data.  Contracts are immutable
+  // legal snapshots and must not silently refill or overwrite the profile.
+  const personalSources = [privateProfile, externalProfile, employee];
+  const lineSources = (source.bindings || []).concat([externalProfile, employee]);
   const teachingAbilities = teacherUtilityTeachingAbilities(personalSources);
   const teachingItemsText = teachingAbilities.map((item) => clean(item.item)).filter(Boolean).join('、');
-  const identityUrls = teacherUtilityIdentityUrls([externalProfile, externalContract, teacherSnapshot, employee]);
+  const identityUrls = teacherUtilityIdentityUrls([privateProfile, externalProfile, employee]);
+  const identityFilesSource = Array.isArray(privateProfile.identityFiles)
+    ? privateProfile.identityFiles
+    : (Array.isArray(externalProfile.identityFiles) ? externalProfile.identityFiles : []);
+  const identityFiles = identityFilesSource
+    .filter((file) => clean(
+      typeof file === 'string' ? file : file && (file.storagePath || file.downloadUrl || file.url)
+    ));
   const rawIdNumber = teacherUtilityFirstText(personalSources, ['idNumber', 'identityNumber']);
   const storedMaskedId = teacherUtilityFirstText(personalSources, ['idNumberMasked']);
-  const statusSources = [externalContract, externalProfile, employee];
+  const statusSources = [externalProfile, employee];
   const profile = {
     employeeId: clean(source.employeeId),
     name: teacherUtilityFirstText(personalSources, ['name', 'teacherName', 'displayName', 'employeeName']),
@@ -2323,20 +2329,19 @@ function teacherUtilityProfileBundle(options) {
     teachingItems: teachingItemsText,
     identityUrls,
     identityDocumentUrl: identityUrls[0] || '',
-    status: teacherUtilityFirstText(statusSources, ['status', 'contractStatus', 'profileStatus', 'externalTeacherStatus']),
-    profileStatus: teacherUtilityFirstText([externalProfile, externalContract], ['profileStatus', 'status']),
-    contractStatus: teacherUtilityFirstText([externalContract, externalProfile], ['contractStatus', 'status']),
+    identityFileCount: Math.max(identityUrls.length, identityFiles.length),
+    identityDocumentUploaded: identityUrls.length > 0 || identityFiles.length > 0,
+    status: teacherUtilityFirstText(statusSources, ['status', 'profileStatus', 'externalTeacherStatus']),
+    profileStatus: teacherUtilityFirstText([externalProfile], ['profileStatus', 'status']),
     progressStatus: teacherUtilityFirstText(statusSources, ['progressStatus']),
-    identityPhotoStatus: teacherUtilityFirstText([externalProfile, externalContract, employee], ['identityPhotoStatus']),
+    identityPhotoStatus: teacherUtilityFirstText([externalProfile, employee], ['identityPhotoStatus']),
     identityVerificationStatus: teacherUtilityFirstText(
-      [externalProfile, externalContract, employee],
+      [externalProfile, employee],
       ['identityVerificationStatus']
     ),
-    identityDocumentVerified: [externalProfile, externalContract, employee]
+    identityDocumentVerified: [externalProfile, employee]
       .some((row) => row && row.identityDocumentVerified === true),
-    onboardingUrl: teacherUtilityHttpsUrl(
-      teacherUtilityFirstText([externalContract, externalProfile], ['onboardingUrl'])
-    ),
+    onboardingUrl: teacherPortalProfileUrl(),
     lineUserId: teacherUtilityFirstText(lineSources, ['lineUserId', 'lineUid', 'lineId', 'LINEUserId']) || clean(source.sessionLineUserId),
     lineDisplayName: teacherUtilityFirstText(lineSources, ['lineDisplayName']),
     lineBindStatus: teacherUtilityFirstText(lineSources, ['lineBindStatus']),
@@ -2344,8 +2349,7 @@ function teacherUtilityProfileBundle(options) {
       teacherUtilityFirstText(lineSources, ['lineUserId', 'lineUid', 'lineId', 'LINEUserId']) || clean(source.sessionLineUserId)
     ),
     bindingMethod: teacherUtilityFirstText(lineSources, ['bindingMethod']),
-    externalTeacherProfileId: clean(externalProfile.__id),
-    externalTeacherContractId: clean(externalContract.__id)
+    externalTeacherProfileId: clean(externalProfile.__id)
   };
   const completenessSource = Object.assign({}, profile, {
     idNumber: rawIdNumber,
@@ -2363,11 +2367,13 @@ async function resolveTeacherUtilityEmployee(session) {
   const profileId = teacherPortalProfileId(teacherId);
   const canonicalRef = db.collection('employees').doc(canonicalEmployeeId);
   const profileRef = db.collection('externalTeacherProfiles').doc(profileId);
-  const contractRef = db.collection('externalTeacherContracts').doc(profileId);
-  const [canonicalSnapshot, profileSnapshot, contractSnapshot] = await Promise.all([
+  const privateProfileRef = db.collection('teacherPrivateProfiles').doc(profileId);
+  const legacyContractRef = db.collection('externalTeacherContracts').doc(profileId);
+  const [canonicalSnapshot, profileSnapshot, privateProfileSnapshot, legacyContractSnapshot] = await Promise.all([
     canonicalRef.get(),
     profileRef.get(),
-    contractRef.get()
+    privateProfileRef.get(),
+    legacyContractRef.get()
   ]);
   const canonicalExisting = canonicalSnapshot.exists ? jsonValue(canonicalSnapshot.data() || {}) : {};
   if (canonicalSnapshot.exists && !isExternalTeacherEmployee(canonicalExisting)) {
@@ -2376,15 +2382,25 @@ async function resolveTeacherUtilityEmployee(session) {
   const existingProfile = profileSnapshot.exists
     ? Object.assign({ __id: profileSnapshot.id, __ref: profileRef }, jsonValue(profileSnapshot.data() || {}))
     : null;
-  const existingContract = contractSnapshot.exists
-    ? Object.assign({ __id: contractSnapshot.id, __ref: contractRef }, jsonValue(contractSnapshot.data() || {}))
-    : null;
+  const existingPrivateProfile = privateProfileSnapshot.exists
+    ? Object.assign({ __id: privateProfileSnapshot.id, __ref: privateProfileRef }, jsonValue(privateProfileSnapshot.data() || {}))
+    : {};
   if (existingProfile && !teacherPortalProfileIsCurrent(existingProfile, teacherId, profileId)) {
     throw new HttpsError('failed-precondition', '老師資料編號發生衝突，請聯絡管理者。');
   }
-  if (existingContract && !teacherPortalProfileIsCurrent(existingContract, teacherId, profileId)) {
-    throw new HttpsError('failed-precondition', '老師契約編號發生衝突，請聯絡管理者。');
-  }
+  const legacyContract = legacyContractSnapshot.exists
+    ? Object.assign({ __id: legacyContractSnapshot.id, __ref: legacyContractRef }, jsonValue(legacyContractSnapshot.data() || {}))
+    : null;
+  const legacyContractStatus = clean(legacyContract && (
+    legacyContract.contractStatus || legacyContract.status || legacyContract.profileStatus
+  )).toLowerCase();
+  const disposableLegacyContract = Boolean(
+    legacyContract &&
+    teacherPortalProfileIsCurrent(legacyContract, teacherId, profileId) &&
+    ['waiting_profile', 'profile_draft', 'pending_profile', ''].includes(legacyContractStatus) &&
+    !clean(legacyContract.signatureUrl || legacyContract.signatureDataUrl || legacyContract.contractHtmlUrl ||
+      legacyContract.signedAt || legacyContract.confirmedAt || legacyContract.approvedAt)
+  );
 
   const lineUserId = clean(
     session.lineUserId || bindings.map((row) => row.lineUserId).find(clean)
@@ -2392,16 +2408,10 @@ async function resolveTeacherUtilityEmployee(session) {
   const authenticatedEmail = bindings.map(employeeEmail).find(clean) || '';
   const authMethod = clean(session.authMethod).toLowerCase();
   const bindingMethod = lineUserId ? 'line' : 'email';
-  const bindingCode = clean(
-    (existingContract && (existingContract.bindingCode || existingContract.onboardingToken)) ||
-    (existingProfile && (existingProfile.bindingCode || existingProfile.onboardingToken))
-  ) || randomToken(24);
-  const onboardingUrl = teacherPortalProfileUrl(profileId, bindingCode);
   const freshSeed = {
     id: profileId,
     teacherId: profileId,
     profileId,
-    contractId: profileId,
     employeeId: canonicalEmployeeId,
     externalTeacherEmployeeId: canonicalEmployeeId,
     employeeRef: `employees/${canonicalEmployeeId}`,
@@ -2409,17 +2419,14 @@ async function resolveTeacherUtilityEmployee(session) {
     portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
     portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
     source: TEACHER_PORTAL_PROFILE_SOURCE,
-    bindingCode,
-    onboardingToken: bindingCode,
-    onboardingUrl,
+    onboardingUrl: teacherPortalProfileUrl(),
     bindingMethod,
     bindingMethodLabel: bindingMethod === 'line' ? '只用 LINE' : '只用 Email',
     lineUserId,
     lineBindStatus: lineUserId ? 'bound' : 'pending',
     emailBindStatus: authMethod === 'email' || (!lineUserId && authenticatedEmail) ? 'bound' : 'pending',
-    status: 'waiting_profile',
-    profileStatus: 'waiting_profile',
-    contractStatus: 'waiting_profile',
+    status: 'profile_draft',
+    profileStatus: 'profile_draft',
     progressStatus: '等待老師填寫全新資料',
     active: true,
     updatedAt: FieldValue.serverTimestamp()
@@ -2434,45 +2441,67 @@ async function resolveTeacherUtilityEmployee(session) {
     coursePortalTeacherId: teacherId,
     portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
     portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
-    bindingCode,
-    onboardingToken: bindingCode,
-    onboardingUrl,
+    onboardingUrl: teacherPortalProfileUrl(),
     lineUserId,
     lineBindStatus: lineUserId ? 'bound' : clean(existingProfile.lineBindStatus || 'pending'),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
-  if (!existingContract) batch.set(contractRef, Object.assign({}, freshSeed, {
-    createdAt: FieldValue.serverTimestamp()
-  }), { merge: false });
-  else batch.set(contractRef, {
+  const privateSeed = {
+    profileId,
     employeeId: canonicalEmployeeId,
-    externalTeacherEmployeeId: canonicalEmployeeId,
-    employeeRef: `employees/${canonicalEmployeeId}`,
     coursePortalTeacherId: teacherId,
     portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
     portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
-    bindingCode,
-    onboardingToken: bindingCode,
-    onboardingUrl,
-    lineUserId,
-    lineBindStatus: lineUserId ? 'bound' : clean(existingContract.lineBindStatus || 'pending'),
     updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true });
-  bindings.forEach((row) => batch.set(row.__ref, {
-    employeeId: canonicalEmployeeId,
-    externalTeacherEmployeeId: canonicalEmployeeId,
-    legacyTeacherId: teacherId,
-    employeeRef: `employees/${canonicalEmployeeId}`,
-    externalTeacherProfileId: profileId,
-    currentExternalContractId: profileId,
-    externalTeacherContractId: profileId,
-    portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
-    portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
-    linkedAt: row.linkedAt || FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp()
-  }, { merge: true }));
-  const currentRecordConfirmed = teacherPortalProfileStatusIsConfirmed(existingProfile) ||
-    teacherPortalProfileStatusIsConfirmed(existingContract);
+  };
+  // Move raw ID data and attachment references out of the client-readable legacy
+  // profile.  The private collection is server-only under the default Firestore deny.
+  if (!clean(existingPrivateProfile.idNumber) && clean(existingProfile && existingProfile.idNumber)) {
+    privateSeed.idNumber = clean(existingProfile.idNumber);
+  }
+  if (!Array.isArray(existingPrivateProfile.identityFiles) && Array.isArray(existingProfile && existingProfile.identityFiles)) {
+    privateSeed.identityFiles = existingProfile.identityFiles;
+  }
+  if (!Array.isArray(existingPrivateProfile.identityUrls) && Array.isArray(existingProfile && existingProfile.identityUrls)) {
+    privateSeed.identityUrls = existingProfile.identityUrls;
+  }
+  batch.set(privateProfileRef, privateSeed, { merge: true });
+  if (existingProfile && (
+    clean(existingProfile.idNumber) || clean(existingProfile.identityNumber) ||
+    Array.isArray(existingProfile.identityFiles) || Array.isArray(existingProfile.identityUrls)
+  )) {
+    batch.set(profileRef, {
+      idNumber: FieldValue.delete(),
+      identityNumber: FieldValue.delete(),
+      identityFiles: FieldValue.delete(),
+      identityUrls: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
+  // Version 2 briefly created an empty contract shell whenever the profile was
+  // opened.  Only that exact unsigned shell may be removed; real contracts remain.
+  if (disposableLegacyContract) batch.delete(legacyContractRef);
+  bindings.forEach((row) => {
+    const patch = {
+      employeeId: canonicalEmployeeId,
+      externalTeacherEmployeeId: canonicalEmployeeId,
+      legacyTeacherId: teacherId,
+      employeeRef: `employees/${canonicalEmployeeId}`,
+      externalTeacherProfileId: profileId,
+      portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+      portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
+      linkedAt: row.linkedAt || FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    if (disposableLegacyContract && clean(row.currentExternalContractId) === profileId) {
+      patch.currentExternalContractId = FieldValue.delete();
+    }
+    if (disposableLegacyContract && clean(row.externalTeacherContractId) === profileId) {
+      patch.externalTeacherContractId = FieldValue.delete();
+    }
+    batch.set(row.__ref, patch, { merge: true });
+  });
+  const currentRecordConfirmed = teacherPortalProfileStatusIsConfirmed(existingProfile);
   if (
     canonicalSnapshot.exists &&
     clean(canonicalExisting.source) === 'course-portal-canonical-external-teacher' &&
@@ -2483,21 +2512,20 @@ async function resolveTeacherUtilityEmployee(session) {
   }
   await batch.commit();
 
-  const [profileReload, contractReload, employeeReload] = await Promise.all([
+  const [profileReload, privateProfileReload, employeeReload] = await Promise.all([
     profileRef.get(),
-    contractRef.get(),
+    privateProfileRef.get(),
     canonicalRef.get()
   ]);
   const externalProfile = Object.assign(
     { __id: profileId, __ref: profileRef },
     profileReload.exists ? jsonValue(profileReload.data() || {}) : {}
   );
-  const externalContract = Object.assign(
-    { __id: profileId, __ref: contractRef },
-    contractReload.exists ? jsonValue(contractReload.data() || {}) : {}
+  const privateProfile = Object.assign(
+    { __id: profileId, __ref: privateProfileRef },
+    privateProfileReload.exists ? jsonValue(privateProfileReload.data() || {}) : {}
   );
-  const confirmed = teacherPortalProfileStatusIsConfirmed(externalProfile) ||
-    teacherPortalProfileStatusIsConfirmed(externalContract);
+  const confirmed = teacherPortalProfileStatusIsConfirmed(externalProfile);
   const employee = confirmed && employeeReload.exists
     ? Object.assign(
       { __id: canonicalEmployeeId, __ref: canonicalRef },
@@ -2509,7 +2537,7 @@ async function resolveTeacherUtilityEmployee(session) {
     employeeId: canonicalEmployeeId,
     employee,
     externalProfile,
-    externalContract,
+    privateProfile,
     bindings,
     sessionLineUserId: lineUserId
   });
@@ -2538,7 +2566,6 @@ async function resolveTeacherUtilityEmployee(session) {
       legacyTeacherId: teacherId,
       coursePortalTeacherId: teacherId,
       externalTeacherProfileId: profileId,
-      externalTeacherContractId: profileId,
       portalProfileId: profileId,
       portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
       portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
@@ -2874,6 +2901,197 @@ async function teacherUtilityPendingSummary(resolved, session) {
   summary.totalCount = summary.profileCount + summary.contractCount + summary.announcementCount +
     summary.taskCount + summary.goodsCount + summary.goodsAttentionCount;
   return summary;
+}
+
+function teacherUtilityDraftText(data, key, maxLength) {
+  if (!Object.prototype.hasOwnProperty.call(data || {}, key)) return undefined;
+  const value = clean(data[key]);
+  if (value.length > maxLength) {
+    throw new HttpsError('invalid-argument', `${key} 內容過長，請縮短後再儲存。`);
+  }
+  return value;
+}
+
+function teacherUtilityDraftAbilities(value) {
+  if (!Array.isArray(value)) return undefined;
+  if (value.length > 20) throw new HttpsError('invalid-argument', '授課項目最多 20 筆。');
+  return value.map((row) => {
+    const item = clean(row && (row.item || row.name || row.subject)).slice(0, 80);
+    const level = clean(row && row.level).slice(0, 30);
+    return item ? { item, level } : null;
+  }).filter(Boolean);
+}
+
+function teacherUtilityIdentityImage(value) {
+  const row = value || {};
+  const raw = clean(row.dataUrl);
+  const match = raw.match(/^data:(image\/jpeg);base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!match) throw new HttpsError('invalid-argument', '身分證照片格式不正確，請重新選擇圖片。');
+  const buffer = Buffer.from(match[2].replace(/\s+/g, ''), 'base64');
+  if (!buffer.length || buffer.length > 4 * 1024 * 1024) {
+    throw new HttpsError('invalid-argument', '每張身分證照片需小於 4 MB。');
+  }
+  return {
+    buffer,
+    contentType: match[1].toLowerCase(),
+    fileName: clean(row.fileName).replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 100) || 'identity.jpg',
+    watermarkApplied: row.watermarkApplied === true
+  };
+}
+
+async function teacherUtilitySaveProfileDraft(data) {
+  const session = await requireSession(data, ['teacher']);
+  const resolved = await resolveTeacherUtilityEmployee(session);
+  const profileId = clean(resolved && resolved.user && resolved.user.portalProfileId);
+  if (!profileId) throw new HttpsError('failed-precondition', '找不到老師個人資料編號。');
+  const profileRef = db.collection('externalTeacherProfiles').doc(profileId);
+  const privateProfileRef = db.collection('teacherPrivateProfiles').doc(profileId);
+  const [profileSnapshot, privateProfileSnapshot] = await Promise.all([
+    profileRef.get(),
+    privateProfileRef.get()
+  ]);
+  if (!profileSnapshot.exists) throw new HttpsError('not-found', '找不到老師個人資料。');
+  const existing = jsonValue(profileSnapshot.data() || {});
+  const existingPrivate = privateProfileSnapshot.exists ? jsonValue(privateProfileSnapshot.data() || {}) : {};
+  if (!teacherPortalProfileIsCurrent(Object.assign({ __id: profileId }, existing), session.teacherId, profileId)) {
+    throw new HttpsError('permission-denied', '這筆個人資料不屬於目前登入的老師。');
+  }
+
+  const patch = {
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText(),
+    lastSavedFrom: 'teacher-course-portal-profile-v1'
+  };
+  const privatePatch = {
+    profileId,
+    employeeId: clean(resolved.employeeId),
+    coursePortalTeacherId: clean(session.teacherId),
+    portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+    portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText()
+  };
+  const textFields = [
+    ['name', 80], ['mobilePhone', 30], ['email', 160],
+    ['birthDate', 20], ['householdAddress', 240], ['mailingAddress', 240],
+    ['emergencyContact', 80], ['emergencyPhone', 30]
+  ];
+  textFields.forEach(([key, maxLength]) => {
+    const value = teacherUtilityDraftText(data, key, maxLength);
+    if (value === undefined) return;
+    patch[key] = key === 'email' ? normalizeEmail(value) : value;
+  });
+  if (Object.prototype.hasOwnProperty.call(patch, 'mobilePhone')) {
+    patch.mobile = normalizePhone(patch.mobilePhone);
+    patch.phone = patch.mobile;
+    patch.mobilePhone = patch.mobile;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'emergencyPhone')) {
+    patch.emergencyPhone = normalizePhone(patch.emergencyPhone);
+  }
+  if (Object.prototype.hasOwnProperty.call(data || {}, 'idNumber')) {
+    privatePatch.idNumber = clean(data.idNumber).toUpperCase().replace(/\s+/g, '');
+    if (privatePatch.idNumber && !/^[A-Z0-9-]{6,30}$/.test(privatePatch.idNumber)) {
+      throw new HttpsError('invalid-argument', '身分證字號格式不正確。');
+    }
+    patch.idNumberMasked = teacherUtilityMaskedId(privatePatch.idNumber);
+  }
+  if (patch.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patch.email)) {
+    throw new HttpsError('invalid-argument', 'Email 格式不正確。');
+  }
+  const teachingAbilities = teacherUtilityDraftAbilities(data && data.teachingAbilities);
+  if (teachingAbilities !== undefined) {
+    patch.teachingAbilities = teachingAbilities;
+    patch.teachingItems = teachingAbilities.map((row) => row.item).join('、');
+    patch.teachingItemsText = patch.teachingItems;
+  }
+
+  const incomingImages = Array.isArray(data && data.identityImages) ? data.identityImages : [];
+  if (incomingImages.length > 2) throw new HttpsError('invalid-argument', '一次最多上傳 2 張身分證照片。');
+  const savedImages = [];
+  for (let index = 0; index < incomingImages.length; index += 1) {
+    const image = teacherUtilityIdentityImage(incomingImages[index]);
+    const storagePath = `teacher-private-profiles/${profileId}/identity/${Date.now()}-${index}-${randomToken(8)}.jpg`;
+    await admin.storage().bucket().file(storagePath).save(image.buffer, {
+      resumable: false,
+      metadata: {
+        contentType: 'image/jpeg',
+        cacheControl: 'private, no-store, max-age=0'
+      }
+    });
+    savedImages.push({
+      storagePath,
+      fileName: image.fileName.replace(/\.[^.]+$/, '') + '.jpg',
+      contentType: 'image/jpeg',
+      size: image.buffer.length,
+      watermarkApplied: image.watermarkApplied,
+      uploadedAtText: nowText()
+    });
+  }
+  if (savedImages.length) {
+    const existingFiles = Array.isArray(existingPrivate.identityFiles) ? existingPrivate.identityFiles : [];
+    privatePatch.identityFiles = existingFiles.concat(savedImages).slice(-4);
+    patch.identityPhotoStatus = 'uploaded';
+  }
+
+  const preview = Object.assign({}, existing, existingPrivate, patch, privatePatch, {
+    lineUserId: clean(existing.lineUserId || session.lineUserId),
+    identityFiles: privatePatch.identityFiles || existingPrivate.identityFiles || []
+  });
+  const missing = externalTeacherProfileMissingFields(preview);
+  const complete = missing.length === 0;
+  patch.status = complete ? 'profile_complete' : 'profile_draft';
+  patch.profileStatus = patch.status;
+  patch.progressStatus = complete ? '個人資料已完成' : '個人資料尚未完成';
+  patch.profileCompletedAt = complete ? (existing.profileCompletedAt || FieldValue.serverTimestamp()) : FieldValue.delete();
+  const saveBatch = db.batch();
+  saveBatch.set(profileRef, Object.assign({}, patch, {
+    idNumber: FieldValue.delete(),
+    identityNumber: FieldValue.delete(),
+    identityFiles: FieldValue.delete(),
+    identityUrls: FieldValue.delete()
+  }), { merge: true });
+  saveBatch.set(privateProfileRef, privatePatch, { merge: true });
+  await saveBatch.commit();
+
+  if (complete) {
+    const employeeId = clean(resolved.employeeId);
+    const employeeRef = db.collection('employees').doc(employeeId);
+    const employeeSnapshot = await employeeRef.get();
+    const employeeExisting = employeeSnapshot.exists ? employeeSnapshot.data() || {} : {};
+    if (employeeSnapshot.exists && !isExternalTeacherEmployee(employeeExisting)) {
+      throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
+    }
+    await employeeRef.set({
+      id: employeeId,
+      employeeId,
+      name: clean(preview.name),
+      displayName: clean(preview.name),
+      mobile: employeePhone(preview),
+      mobilePhone: employeePhone(preview),
+      email: employeeEmail(preview),
+      identityType: 'external',
+      identityLabel: '外聘老師',
+      employeeType: 'external',
+      role: 'externalTeacher',
+      isExternalTeacher: true,
+      active: employeeExisting.active === true,
+      accountStatus: clean(employeeExisting.accountStatus || 'pending_review'),
+      employmentStatus: clean(employeeExisting.employmentStatus || 'pending_review'),
+      source: 'course-portal-canonical-external-teacher',
+      coursePortalTeacherCanonical: true,
+      coursePortalTeacherId: clean(session.teacherId),
+      externalTeacherProfileId: profileId,
+      portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+      portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
+      teachingAbilities: teachingAbilities === undefined ? existing.teachingAbilities || [] : teachingAbilities,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: employeeExisting.createdAt || FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
+
+  const refreshed = await resolveTeacherUtilityEmployee(session);
+  return Object.assign({ ok: true, savedAt: Date.now(), savedIdentityCount: savedImages.length }, refreshed);
 }
 
 async function teacherUtilitySession(data) {
@@ -9884,6 +10102,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalExchangeAccess = callable(exchangeAccessToken);
   exportsObject.coursePortalTeacherData = callable(teacherPortalData, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherUtilitySession = callable(teacherUtilitySession, { timeoutSeconds: 120, memory: '512MiB' });
+  exportsObject.coursePortalTeacherSaveProfileDraft = callable(teacherUtilitySaveProfileDraft, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });

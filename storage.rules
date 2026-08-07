@@ -18,6 +18,11 @@ service firebase.storage {
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf' || request.resource.contentType == 'text/html');
     }
 
+    // 新老師個資頁的身分證照片只由 Cloud Functions 存取；不建立公開下載網址。
+    match /teacher-private-profiles/{profileId}/{fileName=**} {
+      allow read, write: if false;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

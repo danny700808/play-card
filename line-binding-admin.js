@@ -433,6 +433,7 @@
           </div>
           <div class="line-group-actions">
             <button class="line-cleanup-btn" type="button" data-line-action="cleanup_line" data-index="${index}" ${row.staleSourceCount ? '' : 'disabled'}>整理殘留</button>
+            ${row.teacherResetCandidate ? `<button class="line-reset-btn" type="button" data-line-action="reset_test_teacher" data-index="${index}">重設測試老師</button>` : ''}
             <button class="line-revoke-btn" type="button" data-line-action="revoke_all" data-index="${index}" ${row.lineIdConflict ? 'disabled title="同一筆資料含不同 LINE 帳號，請先人工確認"' : ''}>完全解除 LINE</button>
           </div>
         </header>
@@ -478,6 +479,18 @@
     let confirmText = '';
     if (action === 'cleanup_line') {
       if (!global.confirm(`整理「${row.lineDisplayName}」的散落、重複或失效資料？\n\n有效綁定會保留。`)) return;
+    } else if (action === 'reset_test_teacher') {
+      const typed = global.prompt(
+        `確定要讓「${row.lineDisplayName}」的測試老師申請回到全新狀態嗎？\n\n` +
+        `只有未核准、沒有正式合約、薪資或出勤紀錄的老師可以執行。\n` +
+        `系統會清除登入、LINE 綁定及未完成草稿；正式歷史不會刪除。\n\n` +
+        `請輸入「重設」確認：`
+      );
+      if (typed !== '重設') {
+        P.toast('未輸入「重設」，操作已取消。');
+        return;
+      }
+      confirmText = typed;
     } else if (action === 'revoke_all') {
       const typed = global.prompt(
         `確定要完全解除「${row.lineDisplayName}」的 LINE 嗎？\n\n` +
@@ -492,8 +505,11 @@
       confirmText = typed;
     }
 
-    P.loading(button, true, action === 'revoke_all' ? '解除中…' : '整理中…');
-    showMask(action === 'revoke_all' ? '正在完全解除 LINE' : '正在整理 LINE 資料', '系統正在同步處理所有來源與尚未送出的通知。');
+    const actionLabel = action === 'revoke_all' ? '解除中…' : (action === 'reset_test_teacher' ? '重設中…' : '整理中…');
+    const actionTitle = action === 'revoke_all' ? '正在完全解除 LINE' :
+      (action === 'reset_test_teacher' ? '正在重設測試老師' : '正在整理 LINE 資料');
+    P.loading(button, true, actionLabel);
+    showMask(actionTitle, '系統正在安全檢查所有來源與正式歷史，請不要關閉頁面。');
     try {
       await requireManagerFirebaseSession();
       const result = await P.call('coursePortalAdminUnifiedLineAction', {

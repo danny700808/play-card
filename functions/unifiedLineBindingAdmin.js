@@ -455,6 +455,9 @@ function buildInventory(docs) {
       kind !== 'student' && identityIds.size > 1
     );
     const lineIdConflict = list.some((source) => source.destructiveBlocked);
+    const teacherResetCandidate = kinds.includes('teacher') &&
+      kinds.every((kind) => ['teacher', 'external'].includes(kind)) &&
+      !lineIdConflict && !multiIdentity;
     return {
       lineUserId,
       lineUserIdMasked: mask(lineUserId),
@@ -468,6 +471,7 @@ function buildInventory(docs) {
       // This count represents effective role identities, not mirrored business rows.
       activeSourceCount: activeIdentityKeys.length,
       activeRecordCount: active.length,
+      teacherResetCandidate,
       staleSourceCount: stale.length,
       manualReviewSourceCount: manualReview.length,
       lineIdConflict,
@@ -894,6 +898,219 @@ async function cleanupAll(request) {
   };
 }
 
+function formalExternalContract(row) {
+  const source = row || {};
+  const status = lower(source.contractStatus || source.status || source.progressStatus);
+  if (clean(source.signatureUrl || source.signatureDataUrl || source.contractHtmlUrl ||
+    source.signedAt || source.confirmedAt || source.approvedAt || source.contractNumber)) return true;
+  return [
+    'active', 'confirmed', 'approved', 'signed', 'completed', 'contract_effective',
+    '已生效', '已確認', '已核准', '已簽署', '完成', '契約生效'
+  ].includes(status);
+}
+
+function disposableTeacherProfile(row) {
+  const source = row || {};
+  const marker = clean(source.portalProfileSource || source.source) === 'course-portal-fresh-external-teacher-v2' &&
+    Number(source.portalProfileVersion || 0) === 2;
+  const status = lower(source.profileStatus || source.status);
+  return marker && [
+    '', 'waiting_profile', 'pending_profile', 'profile_draft', 'profile_complete'
+  ].includes(status) && !formalExternalContract(source);
+}
+
+function disposableTeacherEmployee(row) {
+  const source = row || {};
+  return clean(source.source) === 'course-portal-canonical-external-teacher' &&
+    source.coursePortalTeacherCanonical === true &&
+    !['active', 'confirmed', 'approved'].includes(lower(source.employmentStatus || source.accountStatus));
+}
+
+async function queryMany(collection, fields, values) {
+  const docs = [];
+  for (const value of uniq(values)) {
+    for (const field of fields) docs.push(...await queryEq(collection, field, value));
+  }
+  return [...new Map(docs.map((doc) => [doc.ref.path, doc])).values()];
+}
+
+async function resetTestTeacher(lineUserId, request) {
+  const actor = actorOf(request);
+  const data = await inventory();
+  const matched = data.sources.filter((source) => source.lineUserId === lineUserId);
+  if (!matched.length) throw new HttpsError('not-found', '找不到這個 LINE 的老師資料。');
+  const kinds = uniq(matched.map((source) => source.kind));
+  if (!kinds.includes('teacher') || kinds.some((kind) => !['teacher', 'external'].includes(kind))) {
+    throw new HttpsError(
+      'failed-precondition',
+      '這個 LINE 同時具有學生、租用、員工或管理者等其他身分，不能使用測試老師重設；請改用個別解除。'
+    );
+  }
+  if (matched.some((source) => source.destructiveBlocked)) {
+    throw new HttpsError('failed-precondition', '資料中含不同 LINE 帳號，為避免誤刪，系統未執行重設。');
+  }
+
+  const teacherSources = matched.filter((source) => source.collection === 'coursePortalTeacherBindings');
+  const teacherIds = uniq(teacherSources.flatMap((source) => [
+    source.row && source.row.teacherId,
+    source.row && source.row.targetId,
+    source.row && source.row.legacyTeacherId
+  ]));
+  const employeeIds = uniq(matched.flatMap((source) => [
+    source.row && source.row.employeeId,
+    source.row && source.row.externalTeacherEmployeeId,
+    source.row && source.row.linkedEmployeeId
+  ]));
+  const profileIds = uniq(matched.flatMap((source) => [
+    source.collection === 'externalTeacherProfiles' ? source.sourceId : '',
+    source.row && source.row.externalTeacherProfileId,
+    source.row && source.row.portalProfileId,
+    source.row && source.row.profileId
+  ]));
+  if (!teacherIds.length) throw new HttpsError('failed-precondition', '老師綁定缺少老師編號，不能安全重設。');
+
+  const [contractDocs, assignmentDocs, payrollDocs, clockDocs, fileDocs, registrationDocs] = await Promise.all([
+    queryMany('externalTeacherContracts', [
+      'employeeId', 'externalTeacherEmployeeId', 'coursePortalTeacherId', 'externalTeacherProfileId', 'profileId'
+    ], employeeIds.concat(teacherIds, profileIds)),
+    queryMany('teacherContractAssignments', [
+      'employeeId', 'teacherId', 'coursePortalTeacherId', 'portalProfileId', 'externalTeacherProfileId'
+    ], employeeIds.concat(teacherIds, profileIds)),
+    queryMany('coursePortalTeacherAttendancePayroll', ['teacherId', 'coursePortalTeacherId'], teacherIds),
+    queryMany('clockRecords', ['employeeId'], employeeIds),
+    queryMany('externalTeacherFiles', [
+      'employeeId', 'externalTeacherEmployeeId', 'teacherId', 'contractId', 'profileId'
+    ], employeeIds.concat(teacherIds, profileIds)),
+    queryMany('registrationApplications', LINE_FIELDS, [lineUserId])
+  ]);
+  const formalContracts = contractDocs.filter((doc) => formalExternalContract(doc.data() || {}));
+  const activeAssignments = assignmentDocs.filter((doc) => {
+    const status = lower((doc.data() || {}).status);
+    return !['cancelled', 'canceled', 'archived', 'rejected', '已取消', '已封存', '已拒絕'].includes(status);
+  });
+  if (formalContracts.length || activeAssignments.length || payrollDocs.length || clockDocs.length) {
+    throw new HttpsError(
+      'failed-precondition',
+      '這位老師已有合約、薪資或出勤正式紀錄，不能永久重設；請改用「完全解除 LINE」或封存人員。'
+    );
+  }
+
+  const extraProfiles = [];
+  for (const profileId of profileIds) {
+    const snap = await db.collection('externalTeacherProfiles').doc(profileId).get();
+    if (snap.exists) extraProfiles.push(snap);
+  }
+  const profileDocs = [...new Map(
+    matched.filter((source) => source.collection === 'externalTeacherProfiles')
+      .map((source) => [source.path, { ref: source.ref, data: () => source.row, updateTime: source.updateTime }])
+      .concat(extraProfiles.map((doc) => [doc.ref.path, doc]))
+  ).values()];
+  const privateProfileDocs = [];
+  for (const profileId of profileIds) {
+    const snap = await db.collection('teacherPrivateProfiles').doc(profileId).get();
+    if (snap.exists) privateProfileDocs.push(snap);
+  }
+  const unsafeProfile = profileDocs.find((doc) => !disposableTeacherProfile(doc.data() || {}));
+  if (unsafeProfile) {
+    throw new HttpsError('failed-precondition', '老師個人資料不是可清除的測試／未核准資料，系統未執行重設。');
+  }
+  const employeeDocs = [];
+  for (const employeeId of employeeIds) {
+    const snap = await db.collection('employees').doc(employeeId).get();
+    if (snap.exists) employeeDocs.push(snap);
+  }
+  if (employeeDocs.some((doc) => !disposableTeacherEmployee(doc.data() || {}))) {
+    throw new HttpsError('failed-precondition', '老師已是正式人員主檔，不能以測試資料重設；請改用封存或解除 LINE。');
+  }
+  const unsafeRegistration = registrationDocs.some((doc) => {
+    const status = lower((doc.data() || {}).status || (doc.data() || {}).approvalStatus);
+    return ['approved', 'active', 'confirmed', 'hired', '已核准', '已啟用', '已錄取'].includes(status);
+  });
+  if (unsafeRegistration) {
+    throw new HttpsError('failed-precondition', '這個 LINE 已有核准的人員申請，不能以測試資料重設。');
+  }
+
+  const ops = [];
+  matched.forEach((source) => {
+    if (['coursePortalTeacherBindings', 'externalTeacherLineBindings', 'employeeLineBindings'].includes(source.collection)) {
+      ops.push({ action: 'delete', ref: source.ref, updateTime: source.updateTime || null });
+      return;
+    }
+    if (source.collection === 'externalTeacherProfiles' && disposableTeacherProfile(source.row)) {
+      ops.push({ action: 'delete', ref: source.ref, updateTime: source.updateTime || null });
+      return;
+    }
+    if (source.collection === 'externalTeacherContracts' && !formalExternalContract(source.row)) {
+      ops.push({ action: 'delete', ref: source.ref, updateTime: source.updateTime || null });
+      return;
+    }
+    if (source.collection === 'employees' && disposableTeacherEmployee(source.row)) {
+      ops.push({ action: 'delete', ref: source.ref, updateTime: source.updateTime || null });
+    }
+  });
+  extraProfiles.forEach((doc) => {
+    if (!ops.some((op) => op.ref.path === doc.ref.path)) {
+      ops.push({ action: 'delete', ref: doc.ref, updateTime: doc.updateTime || null });
+    }
+  });
+  privateProfileDocs.forEach((doc) => {
+    ops.push({ action: 'delete', ref: doc.ref, updateTime: doc.updateTime || null });
+  });
+  contractDocs.filter((doc) => !formalExternalContract(doc.data() || {})).forEach((doc) => {
+    ops.push({ action: 'delete', ref: doc.ref, updateTime: doc.updateTime || null });
+  });
+  employeeDocs.forEach((doc) => {
+    ops.push({ action: 'delete', ref: doc.ref, updateTime: doc.updateTime || null });
+  });
+  fileDocs.forEach((doc) => {
+    ops.push({ action: 'delete', ref: doc.ref, updateTime: doc.updateTime || null });
+  });
+  registrationDocs.forEach((doc) => {
+    ops.push({ action: 'delete', ref: doc.ref, updateTime: doc.updateTime || null });
+  });
+  ops.push(...await authAndQueueOps(lineUserId, actor, '管理者重設未核准的測試老師申請'));
+  const changed = dedupeOperations(ops).length;
+  ops.push(auditWriteOperation('reset_test_teacher', lineUserId, actor, {
+    teacherIds,
+    employeeIds,
+    profileIds,
+    changedRecordCount: changed
+  }));
+  await commitAtomic(ops);
+  const storagePaths = uniq(profileDocs.concat(privateProfileDocs, contractDocs, fileDocs).flatMap((doc) => {
+    const row = doc.data() || {};
+    const direct = [row.storagePath, row.identityStoragePath, row.signatureStoragePath, row.contractStoragePath];
+    const nested = ['identityFiles', 'files', 'attachments'].flatMap((field) =>
+      Array.isArray(row[field]) ? row[field].map((file) => file && file.storagePath) : []
+    );
+    return direct.concat(nested);
+  })).filter((storagePath) => storagePath.startsWith('external-teachers/') || storagePath.startsWith('teacher-private-profiles/'));
+  let removedFiles = 0;
+  for (const storagePath of storagePaths) {
+    try {
+      await admin.storage().bucket().file(storagePath).delete({ ignoreNotFound: true });
+      removedFiles += 1;
+    } catch (error) {
+      console.error('[teacher reset file cleanup failed]', storagePath, error && error.message || error);
+    }
+  }
+  for (const profileId of profileIds) {
+    try {
+      const [files] = await admin.storage().bucket().getFiles({ prefix: `teacher-private-profiles/${profileId}/` });
+      await Promise.all(files.map((file) => file.delete().then(() => { removedFiles += 1; })));
+    } catch (error) {
+      console.error('[teacher reset private file cleanup failed]', profileId, error && error.message || error);
+    }
+  }
+  return {
+    ok: true,
+    action: 'reset_test_teacher',
+    changedRecordCount: changed,
+    removedFileCount: removedFiles,
+    message: '已清除這位未核准測試老師的登入、綁定與草稿；下次將從全新申請開始。'
+  };
+}
+
 function registerUnifiedLineBindingAdmin(exportsObject) {
   exportsObject.coursePortalAdminUnifiedLineData = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
     assertManager(request);
@@ -912,6 +1129,10 @@ function registerUnifiedLineBindingAdmin(exportsObject) {
       if (clean(data.confirmText) !== '解除') throw new HttpsError('failed-precondition', '請輸入「解除」確認完全斷開 LINE。');
       return revokeAll(lineUserId, request, '管理者於統一入口完全解除 LINE');
     }
+    if (action === 'reset_test_teacher') {
+      if (clean(data.confirmText) !== '重設') throw new HttpsError('failed-precondition', '請輸入「重設」確認清除測試老師申請。');
+      return resetTestTeacher(lineUserId, request);
+    }
     throw new HttpsError('invalid-argument', '不支援的 LINE 綁定管理操作。');
   });
 }
@@ -923,6 +1144,7 @@ module.exports = {
     sourceTimestamp, canonicalIdentityId, compareSourcePreference,
     buildIdentityContext, buildInventory, readSource, queryEq, SOURCES,
     sourceAutoCleanable, effectiveIdentityKey, queueCanBeCancelled, queueCancelPatch,
-    clearPatch, dedupeOperations, commitAtomic, MAX_ATOMIC_WRITES
+    clearPatch, dedupeOperations, commitAtomic, formalExternalContract,
+    disposableTeacherProfile, disposableTeacherEmployee, MAX_ATOMIC_WRITES
   }
 };

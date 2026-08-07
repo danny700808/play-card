@@ -202,18 +202,17 @@ test('profile contact is complete with LINE or Email, and only missing when both
   );
 });
 
-test('profile requires household and mailing addresses independently', () => {
+test('profile completion stays focused on the short teacher onboarding fields', () => {
   const helpers = loadHelpers({});
   assert.equal(helpers.__missingFields(completeProfile()).length, 0);
+  const missing = helpers.__missingFields(completeProfile({
+    birthDate: '', householdAddress: '', mailingAddress: '', emergencyContact: '', emergencyPhone: ''
+  })).map((row) => row.key);
+  assert.deepEqual(missing, []);
   assert.deepEqual(
-    helpers.__missingFields(completeProfile({ householdAddress: '', address: '不能代替戶籍地址' }))
+    helpers.__missingFields(completeProfile({ idNumber: '', identityUrls: [], identityFiles: [] }))
       .map((row) => row.key),
-    ['householdAddress']
-  );
-  assert.deepEqual(
-    helpers.__missingFields(completeProfile({ mailingAddress: '', address: '不能代替通訊地址' }))
-      .map((row) => row.key),
-    ['mailingAddress']
+    ['idNumber', 'identityDocument']
   );
 });
 
@@ -276,23 +275,21 @@ test('new teacher receives a dedicated blank profile and ignores every old match
   assert.match(resolved.profile && resolved.profile.externalTeacherProfileId, /^EXTP_[a-f0-9]{24}$/);
   assert.equal(resolved.user.employeeRecordCreated, false);
   assert.equal(resolved.user.portalProfileVersion, 2);
-  assert.match(resolved.profile.onboardingUrl, /external-teacher-onboarding\.html\?id=EXTP_/);
-  assert.match(resolved.profile.onboardingUrl, /&fresh=1$/);
+  assert.match(resolved.profile.onboardingUrl, /teacher-profile\.html$/);
   const ownProfile = collections.externalTeacherProfiles.find((row) =>
     row.__id === resolved.user.portalProfileId
   );
-  const ownContract = collections.externalTeacherContracts.find((row) =>
-    row.__id === resolved.user.portalProfileId
-  );
-  assert.ok(ownProfile && ownContract);
+  const ownContract = collections.externalTeacherContracts.find((row) => row.__id === resolved.user.portalProfileId);
+  assert.ok(ownProfile);
+  assert.equal(ownContract, undefined, '開啟個人資料不得順便建立契約空殼');
   assert.equal(ownProfile.name, undefined, '新資料不得寫入課務鏡像姓名');
-  assert.equal(ownContract.email, undefined, '新資料不得寫入舊 Email');
   assert.equal(collections.externalTeacherProfiles.find((row) => row.__id === 'poison-t2-e2').name, '乙老師');
   assert.ok(collections.employees.some((row) => row.__id === 'E2'), '不相關的舊人不可被誤刪');
 });
 
 test('unapproved employee shell created by the old resolver is deleted exactly, not reused', async () => {
   const teacherId = 'T-NEW';
+  const profileId = loadHelpers({}).__portalProfileId(teacherId);
   const canonicalEmployeeId = `EXT_${crypto.createHash('sha256').update(`course-teacher:${teacherId}`).digest('hex').slice(0, 16)}`;
   const collections = {
     coursePortalTeacherBindings: [{
@@ -307,7 +304,15 @@ test('unapproved employee shell created by the old resolver is deleted exactly, 
       coursePortalTeacherCanonical: true
     }],
     externalTeacherProfiles: [],
-    externalTeacherContracts: []
+    externalTeacherContracts: [{
+      __id: profileId,
+      id: profileId,
+      teacherId: profileId,
+      coursePortalTeacherId: teacherId,
+      portalProfileVersion: 2,
+      portalProfileSource: 'course-portal-fresh-external-teacher-v2',
+      status: 'waiting_profile'
+    }]
   };
   const resolved = await loadHelpers(collections).__resolveEmployee({
     role: 'teacher', teacherId, authAccountId: 'ACCOUNT-NEW', authMethod: 'email'
@@ -316,6 +321,8 @@ test('unapproved employee shell created by the old resolver is deleted exactly, 
   assert.equal(resolved.profile.name, '');
   assert.equal(resolved.user.employeeRecordCreated, false);
   assert.equal(collections.employees.some((row) => row.__id === canonicalEmployeeId), false);
+  assert.equal(collections.externalTeacherContracts.some((row) => row.__id === profileId), false,
+    '舊版自動產生的未簽契約空殼應安全移除');
 });
 
 test('manager-confirmed fresh profile keeps its formal employee and returns only its own data', async () => {
@@ -405,7 +412,9 @@ test('teacher utility profile is whitelisted, masks ID, and only keeps safe own 
     'https://files.example/extra-1.jpg',
     'https://files.example/extra-2.jpg'
   ]);
-  assert.equal(profile.onboardingUrl, 'https://portal.example/current');
+  assert.match(profile.onboardingUrl, /teacher-profile\.html$/);
+  assert.equal(Object.hasOwn(profile, 'contractStatus'), false);
+  assert.equal(Object.hasOwn(profile, 'externalTeacherContractId'), false);
   assert.equal(profile.lineUserId, 'U-LINE');
   assert.equal(profile.householdAddress, '戶籍地址');
   assert.equal(profile.mailingAddress, '通訊地址');

@@ -54,6 +54,7 @@ body{margin:0;background:var(--line-page);color:var(--line-ink);font-family:"Not
 .line-group-actions button{min-height:38px;border:0;border-radius:10px;padding:8px 11px;font-weight:900;cursor:pointer}
 .line-group-actions button:disabled{cursor:not-allowed;opacity:.48}
 .line-cleanup-btn{background:#edf3f0;color:var(--line-ink)}
+.line-reset-btn{background:#fff1c9;color:#7a5000}
 .line-revoke-btn{background:var(--line-red);color:#fff}
 .line-source-list{display:grid}
 .line-source-row{display:grid;grid-template-columns:minmax(140px,.8fr) minmax(180px,1.35fr) minmax(170px,1fr) minmax(150px,.9fr);gap:10px;align-items:center;padding:12px 15px;border-top:1px solid #e4ece8}

@@ -80,6 +80,20 @@ async function main() {
   );
   assert.strictEqual(_test.first({ employeeId: 'EMP001' }, ['employeeId']), 'EMP001');
 
+  assert.strictEqual(_test.formalExternalContract({ status: 'signed' }), true);
+  assert.strictEqual(_test.formalExternalContract({ status: 'profile_draft' }), false);
+  assert.strictEqual(_test.disposableTeacherProfile({
+    portalProfileSource: 'course-portal-fresh-external-teacher-v2',
+    portalProfileVersion: 2,
+    status: 'profile_complete'
+  }), true);
+  assert.strictEqual(_test.disposableTeacherProfile({
+    portalProfileSource: 'course-portal-fresh-external-teacher-v2',
+    portalProfileVersion: 2,
+    status: 'signed',
+    signedAt: '2026-08-01'
+  }), false);
+
 
 const portalUnlinkPatch = _test.clearPatch(
   { collection: 'coursePortalTeacherBindings', row: { lineUserId: 'U-PORTAL' } },
@@ -164,6 +178,7 @@ assert.deepStrictEqual(portalUnlinkPatch.revokedAt, { __delete: true });
   assert.strictEqual(externalRow.activeSourceCount, 1);
   assert.strictEqual(externalRow.multiIdentity, false);
   assert.strictEqual(externalRow.staleSourceCount, 0);
+  assert.strictEqual(externalRow.teacherResetCandidate, false, '沒有課務老師綁定時不可顯示重設按鈕');
   assert.deepStrictEqual(externalRow.identities, ['external|EMP-EXT-1']);
   assert(externalRow.sources.every((item) => item.canonicalIdentityId === 'EMP-EXT-1'));
   assert.strictEqual(
@@ -243,6 +258,7 @@ assert.deepStrictEqual(portalUnlinkPatch.revokedAt, { __delete: true });
   const rolesRow = rowFor(roles, 'U-ROLES');
   assert.strictEqual(rolesRow.activeSourceCount, 2);
   assert.strictEqual(rolesRow.multiIdentity, false);
+  assert.strictEqual(rolesRow.teacherResetCandidate, false, '老師與學生共用 LINE 時不可做測試老師整體重設');
   const familyRow = rowFor(roles, 'U-FAMILY');
   assert.strictEqual(familyRow.activeSourceCount, 2);
   assert.strictEqual(familyRow.multiIdentity, false);
@@ -252,6 +268,17 @@ assert.deepStrictEqual(portalUnlinkPatch.revokedAt, { __delete: true });
   assert.strictEqual(conflictRow.multiIdentity, true);
   assert.strictEqual(conflictRow.needsAttention, true);
   assert.strictEqual(conflictRow.staleSourceCount, 0);
+
+  const resettableTeacher = rowFor(_test.buildInventory([
+    source('coursePortalTeacherBindings', 'TB-RESET', {
+      teacherId: 'TEACHER-RESET', lineUserId: 'U-RESET', status: 'active', approvalStatus: 'approved'
+    }),
+    source('externalTeacherProfiles', 'PROFILE-RESET', {
+      employeeId: 'EMP-RESET', coursePortalTeacherId: 'TEACHER-RESET',
+      lineUserId: 'U-RESET', status: 'profile_draft'
+    })
+  ]), 'U-RESET');
+  assert.strictEqual(resettableTeacher.teacherResetCandidate, true);
 
   // Duplicate retention is independent of Firestore read order: valid, active and then
   // newest wins. Only the older binding mirror is offered to cleanup.

@@ -34,7 +34,7 @@ const portal = read('teacher-course-portal.html');
 const gridStart = portal.indexOf('<div class="teacher-more-grid">');
 const gridEnd = portal.indexOf('</div>', gridStart);
 const menu = portal.slice(gridStart, gridEnd);
-const positions = ['announcements.html','task.html','teacher-goods.html','forms-hub.html','profile.html','contract.html'].map(x => menu.indexOf(x));
+const positions = ['announcements.html','task.html','teacher-goods.html','forms-hub.html','teacher-profile.html','contract.html'].map(x => menu.indexOf(x));
 positions.forEach(x => assert(x >= 0));
 for(let i=1;i<positions.length;i++) assert(positions[i] > positions[i-1]);
 

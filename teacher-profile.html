@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>我的資料｜老師課務</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="teacher-more-pages.css?v=20260730-teacher-more-v1">
+  <style>
+    :root{--profile-green:#1f6b4f;--profile-soft:#edf7f2;--profile-warn:#fff7e2}
+    body{background:#eef4f1;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
+    .teacher-profile-shell{width:min(720px,calc(100% - 24px));margin:0 auto;padding:14px 0 24px}
+    .profile-nav{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+    .profile-nav button{min-height:48px;border-radius:14px;border:1px solid #cbd8d1;background:#fff;color:#294b3e;font-weight:900;font-size:16px}
+    .profile-nav .logout{color:#a33f3f;background:#fff8f8;border-color:#eccaca}
+    .profile-card{background:#fff;border:1px solid #d5e1db;border-radius:20px;padding:18px;margin-bottom:12px;box-shadow:0 5px 16px rgba(27,72,54,.06)}
+    .profile-card h1,.profile-card h2{margin:0;color:#173c2f}
+    .profile-card h1{font-size:27px}.profile-card h2{font-size:20px}
+    .profile-subtitle{color:#65756e;margin:6px 0 0;line-height:1.6}
+    .profile-status{display:flex;align-items:flex-start;gap:12px;background:var(--profile-soft);border-color:#bcdccc}
+    .profile-status.incomplete{background:var(--profile-warn);border-color:#ecd28b}
+    .status-mark{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:50%;background:var(--profile-green);color:#fff;font-size:22px;font-weight:900}
+    .profile-status.incomplete .status-mark{background:#a36a00}
+    .status-text{font-size:14px;color:#56675f;margin-top:5px;line-height:1.6}
+    .channel-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .channel-chip{display:inline-flex;align-items:center;min-height:34px;padding:5px 11px;border-radius:999px;background:#edf7f2;color:#1f6b4f;font-size:13px;font-weight:900}
+    .channel-chip.off{background:#f2f3f3;color:#6e7773}
+    .profile-form{display:grid;gap:14px}
+    .profile-form .field{margin:0}.profile-form label{display:block;font-weight:900;color:#253f35;margin-bottom:6px}
+    .profile-form input,.profile-form textarea{box-sizing:border-box;width:100%;font-size:16px;border-radius:13px}
+    .required{color:#bb3c34;margin-left:3px}
+    .field-help{font-size:13px;color:#6c7973;margin-top:5px;line-height:1.55}
+    .file-state{margin-top:8px;padding:10px 12px;background:#f3f7f5;border-radius:12px;color:#496158;font-size:14px;font-weight:800}
+    .form-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
+    .form-actions button{min-height:52px;border-radius:14px;font-size:17px;font-weight:900}
+    .primary-action{border:0;background:var(--profile-green);color:#fff}
+    .secondary-action{border:1px solid #b9cbc2;background:#fff;color:#245541}
+    .profile-message{display:none;margin-top:12px;padding:11px 13px;border-radius:12px;background:#edf7f2;color:#245541;font-weight:800;line-height:1.55}
+    .profile-message.error{background:#fff0ef;color:#a12d27}
+    .profile-loading{display:flex;align-items:center;gap:10px;color:#4f655b;font-weight:800}
+    .profile-loading::before{content:"";width:20px;height:20px;border:3px solid #bfd2c8;border-top-color:var(--profile-green);border-radius:50%;animation:profile-spin .8s linear infinite}
+    @keyframes profile-spin{to{transform:rotate(360deg)}}
+    .hidden{display:none!important}
+    @media(max-width:520px){
+      .teacher-profile-shell{width:min(100% - 16px,720px);padding-top:8px}
+      .profile-card{padding:15px;border-radius:17px}.profile-card h1{font-size:24px}
+      .form-actions{grid-template-columns:1fr}.profile-status{gap:10px}
+    }
+  </style>
+  <script src="config.js?v=20260807-teacher-profile-v1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="teacher-more-auth-bridge.js?v=20260807-teacher-profile-v1"></script>
+</head>
+<body>
+  <main class="teacher-profile-shell">
+    <nav class="profile-nav" aria-label="頁面操作">
+      <button type="button" id="profileBackBtn">回老師課務</button>
+      <button type="button" class="logout" id="profileLogoutBtn">登出</button>
+    </nav>
+
+    <section class="profile-card">
+      <h1>我的資料</h1>
+      <p class="profile-subtitle">可先儲存目前已填內容，下次再繼續。</p>
+      <div class="profile-message" id="profileMessage" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="profile-card" id="profileLoadingCard">
+      <div class="profile-loading">資料讀取中</div>
+    </section>
+
+    <section class="profile-card profile-status hidden" id="profileStatusCard">
+      <div class="status-mark" id="profileStatusMark">!</div>
+      <div>
+        <h2 id="profileStatusTitle">資料尚未完成</h2>
+        <div class="status-text" id="profileStatusText">填寫後可隨時儲存。</div>
+        <div class="channel-row">
+          <span class="channel-chip off" id="profileLineStatus">LINE</span>
+          <span class="channel-chip off" id="profileEmailStatus">Email</span>
+        </div>
+      </div>
+    </section>
+
+    <form class="profile-card profile-form hidden" id="teacherProfileForm" novalidate>
+      <div class="field">
+        <label for="profileName">姓名<span class="required">*</span></label>
+        <input id="profileName" name="name" autocomplete="name" maxlength="80">
+      </div>
+      <div class="field">
+        <label for="profileMobile">行動電話<span class="required">*</span></label>
+        <input id="profileMobile" name="mobilePhone" inputmode="tel" autocomplete="tel" maxlength="30">
+      </div>
+      <div class="field">
+        <label for="profileEmail">Email</label>
+        <input id="profileEmail" name="email" type="email" autocomplete="email" maxlength="160">
+      </div>
+      <div class="field">
+        <label for="profileIdNumber">身分證字號<span class="required">*</span></label>
+        <input id="profileIdNumber" name="idNumber" autocapitalize="characters" maxlength="30">
+        <div class="field-help" id="profileIdHint"></div>
+      </div>
+      <div class="field">
+        <label for="profileTeaching">授課項目<span class="required">*</span></label>
+        <textarea id="profileTeaching" name="teaching" rows="4" placeholder="每行填寫一個項目，例如：&#10;鋼琴&#10;長笛"></textarea>
+      </div>
+      <div class="field">
+        <label for="profileIdentityFiles">身分證明照片<span class="required">*</span></label>
+        <input id="profileIdentityFiles" name="identityFiles" type="file" accept="image/*" multiple>
+        <div class="field-help">最多選擇 2 張；送出前會自動縮小並加上用途浮水印。</div>
+        <div class="file-state" id="profileFileState">尚未上傳</div>
+      </div>
+      <div class="form-actions">
+        <button class="secondary-action" id="profileSaveBtn" type="submit">儲存</button>
+        <button class="primary-action" id="profileSaveReturnBtn" type="button">儲存並返回</button>
+      </div>
+    </form>
+
+    <section class="profile-card hidden" id="profileErrorCard">
+      <h2>目前無法讀取資料</h2>
+      <p class="profile-subtitle" id="profileErrorText"></p>
+      <div class="form-actions">
+        <button class="secondary-action" id="profileRetryBtn" type="button">重新讀取</button>
+        <button class="primary-action" id="profileErrorBackBtn" type="button">回老師課務</button>
+      </div>
+    </section>
+  </main>
+  <script src="teacher-profile.js?v=20260807-teacher-profile-v1"></script>
+</body>
+</html>

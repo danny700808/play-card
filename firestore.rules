@@ -165,6 +165,8 @@ service cloud.firestore {
     match /coursePortalAttendanceCancellationRequests/{document=**} { allow read, write: if false; }
     match /coursePortalTeacherAttendancePayroll/{document=**} { allow read, write: if false; }
     match /coursePortalLessonContactPosts/{document=**} { allow read, write: if false; }
+    // 老師身分證字號與私密附件索引只能由驗證過的 Cloud Functions 存取。
+    match /teacherPrivateProfiles/{document=**} { allow read, write: if false; }
 
     // 其他未知集合先不開放，避免整個資料庫完全裸開。
     match /{document=**} {

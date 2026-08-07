@@ -12,6 +12,8 @@ on:
       - "teacher-course-portal-v8.css"
       - "teacher-home.html"
       - "profile.html"
+      - "teacher-profile.html"
+      - "teacher-profile.js"
       - "firebase-client.js"
       - "contract.html"
       - "announcements.html"
@@ -47,6 +49,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check teacher-course-portal-v8.js
+          node --check teacher-profile.js
           node --check teacher-daily-reminder.js
           node --check teacher-course-session-v8.js
           node --check teacher-more-auth-bridge.js
@@ -78,7 +81,7 @@ jobs:
           if (!html.includes('id="teacherMoreBackdrop"')) throw new Error('Other bottom sheet is missing');
           if (!html.includes('id="teacherQuickBackdrop"')) throw new Error('Teacher quick actions are missing');
           if (html.includes('id="weekPicker"') || runtime.includes("getElementById('weekPicker')")) throw new Error('Obsolete teacher date picker remains');
-          for (const path of ['profile.html','contract.html','announcements.html','task.html','teacher-goods.html','forms-hub.html']) {
+          for (const path of ['teacher-profile.html','contract.html','announcements.html','task.html','teacher-goods.html','forms-hub.html']) {
             if (!html.includes(`href="${path}"`)) throw new Error(`Other action is missing: ${path}`);
           }
           if (!html.includes('teacher-course-session-v8.js') || !html.includes('teacher-course-portal-v8.js')) throw new Error('Canonical teacher scripts are not loaded');
