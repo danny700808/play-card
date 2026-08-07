@@ -37,11 +37,21 @@ function managerAccount(record) {
 
 function canonicalManagerAccount(record) {
   if (!record) return false;
+  if (!['admins', 'employees'].includes(record.spec.collection)) return false;
   const canonicalIdentity = rowName(record.row) === KEEP_MANAGER_NAME ||
     record.docId === BOOTSTRAP_MANAGER_ID || rowEmail(record.row) === BOOTSTRAP_MANAGER_EMAIL ||
     truthy(record.row && record.row.adminBootstrap);
   return canonicalIdentity && (managerAccount(record) || record.docId === BOOTSTRAP_MANAGER_ID ||
     rowEmail(record.row) === BOOTSTRAP_MANAGER_EMAIL);
+}
+
+function activeManagerLineBinding(record) {
+  if (!record || record.spec.collection !== 'employeeLineBindings') return false;
+  const row = record.row || {};
+  const status = lower(row.status || row.lineBindStatus || row.approvalStatus);
+  const blocked = /pending|revoked|rejected|expired|cancelled|unbound|待|撤銷|駁回|過期|取消|解除/.test(status);
+  const lineId = clean(row.lineUserId || row.targetLineUserId || row.lineUid || row.lineId || row['LINE User ID']);
+  return Boolean(lineId && !blocked && row.active !== false);
 }
 
 function activeParttimeEmployee(record) {
@@ -63,7 +73,7 @@ function primaryManagerInfrastructure(record) {
 function managerKeepRecord(record) {
   if (!record) return false;
   if (canonicalManagerAccount(record)) return true;
-  return record.spec.collection === 'employeeLineBindings';
+  return activeManagerLineBinding(record);
 }
 
 function countByCollection(records) {
@@ -73,6 +83,17 @@ function countByCollection(records) {
     result[name] = (result[name] || 0) + 1;
   });
   return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function embeddedSalaryTargetKeys(map, targetIds, keepIds) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return [];
+  const targets = new Set((targetIds || []).map(clean).filter(Boolean));
+  const keep = new Set((keepIds || []).map(clean).filter(Boolean));
+  return Object.keys(map).filter((key) => {
+    const row = map[key] && typeof map[key] === 'object' ? map[key] : {};
+    const employeeId = clean(row.employeeId || row.userId || row.id || row['員工ID'] || key);
+    return !keep.has(employeeId) && (targets.has(clean(key)) || targets.has(employeeId));
+  });
 }
 
 function buildCleanupPlan(records) {
@@ -106,7 +127,7 @@ function buildCleanupPlan(records) {
     keepManagerRecords.push(record);
   }));
   managerLineGroups.forEach((group) => group.rows.forEach((record) => {
-    if (record.spec.collection !== 'employeeLineBindings') return;
+    if (!activeManagerLineBinding(record)) return;
     keepPaths.add(record.ref.path);
     keepManagerRecords.push(record);
   }));
@@ -129,6 +150,9 @@ function buildCleanupPlan(records) {
   const keepPersonIds = uniq(keepParttimeRecords.concat(keepManagerRecords).flatMap((record) =>
     (record.keys || []).filter((key) => key.startsWith('employee:') || key.startsWith('teacher:'))
       .map((key) => key.slice(key.indexOf(':') + 1))));
+  const keepParttimeIds = uniq(keepParttimeRecords.flatMap((record) =>
+    (record.keys || []).filter((key) => key.startsWith('employee:') || key.startsWith('teacher:'))
+      .map((key) => key.slice(key.indexOf(':') + 1))));
 
   return {
     groups,
@@ -142,6 +166,7 @@ function buildCleanupPlan(records) {
     targetTeacherIds,
     targetProfileIds,
     keepPersonIds,
+    keepParttimeIds,
     deleteNames,
     summary: {
       scannedPeople: groups.length,
@@ -167,9 +192,11 @@ module.exports = {
   rowEmail,
   managerAccount,
   canonicalManagerAccount,
+  activeManagerLineBinding,
   activeParttimeEmployee,
   primaryManagerInfrastructure,
   managerKeepRecord,
   buildCleanupPlan,
-  countByCollection
+  countByCollection,
+  embeddedSalaryTargetKeys
 };

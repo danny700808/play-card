@@ -47,24 +47,7 @@ const oneTimeSpec = (collection, label, employeeFields, teacherFields, kind, unw
   kind, unwrapSource: unwrapSource === true
 });
 const ONE_TIME_PERSONNEL_SPECS = [
-  oneTimeSpec('clockFailures', '打卡失敗紀錄', ['employeeId', 'userId', '員工ID'], [], 'attendance'),
-  oneTimeSpec('opsEducationMirrorTeachers', '課務老師鏡像', [], ['id', 'teacherId', 'sourceId'], 'role', true),
-  oneTimeSpec('opsEducationMirrorTeacherPayroll', '課務老師薪資鏡像', [], ['teacherId'], 'payroll', true),
-  oneTimeSpec('opsEducationMirrorTeacherAdjustments', '課務老師調整鏡像', [], ['teacherId'], 'payroll', true),
-  oneTimeSpec('opsEducationMirrorAttendance', '課務簽到鏡像', [], ['teacherId'], 'attendance', true),
-  oneTimeSpec('opsInjiaoyunTestTeachers', '舊課務老師來源', [], ['id', 'teacherId', 'sourceId'], 'role'),
-  oneTimeSpec('opsInjiaoyunTestTeacherDetails', '舊課務老師資料', [], ['id', 'teacherId', 'sourceId'], 'profile'),
-  oneTimeSpec('opsInjiaoyunTestTeacherAnalysis', '舊課務老師分析', [], ['id', 'teacherId', 'sourceId'], 'profile'),
-  oneTimeSpec('opsInjiaoyunTestTeacherFixedCourses', '舊課務固定課程', [], ['teacherId'], 'schedule'),
-  oneTimeSpec('opsInjiaoyunTestTeacherTemporaryCourses', '舊課務臨時課程', [], ['teacherId'], 'schedule'),
-  oneTimeSpec('opsInjiaoyunTestTeacherNoCourses', '舊課務無課紀錄', [], ['teacherId'], 'schedule'),
-  oneTimeSpec('opsInjiaoyunTestTeacherDeductions', '舊課務老師扣款', [], ['teacherId'], 'payroll'),
-  oneTimeSpec('opsInjiaoyunTestTeacherRewards', '舊課務老師獎勵', [], ['teacherId'], 'payroll'),
-  oneTimeSpec('opsInjiaoyunTestHistoryPayrollCheckins', '舊薪資簽到', [], ['teacherId'], 'payroll'),
-  oneTimeSpec('opsInjiaoyunTestHistoryPayrollReducePaychecks', '舊薪資扣款', [], ['teacherId'], 'payroll'),
-  oneTimeSpec('opsInjiaoyunTestHistoryPayrollRewards', '舊薪資獎勵', [], ['teacherId'], 'payroll'),
-  oneTimeSpec('opsInjiaoyunTestCheckinLeaves', '舊課務簽到請假', [], ['teacherId'], 'attendance'),
-  oneTimeSpec('opsInjiaoyunTestLeaves', '舊課務請假', [], ['teacherId'], 'attendance')
+  oneTimeSpec('clockFailures', '打卡失敗紀錄', ['employeeId', 'userId', '員工ID'], [], 'attendance')
 ];
 const PERSONNEL_COLLECTION_HINT = /(employee|teacher|staff|admin|manager|attendance|clock|leave|payroll|salary|person|notification|binding|session|token|contract|profile)/i;
 const KNOWN_NON_PERSONNEL_COLLECTIONS = new Set([
@@ -76,7 +59,18 @@ const KNOWN_NON_PERSONNEL_COLLECTIONS = new Set([
   'notificationSettings', 'notificationSettingsV2', 'notificationTimeRules', 'notificationUniversal',
   'notificationV2Settings', 'opsEducationMirrorLeaveReasons', 'opsInjiaoyunTestLeaveReasons',
   'opsInjiaoyunTestPermissionManagerLogs', 'salarySetup', 'salarySettings',
-  'teacherContractSettings', 'teacherContractTemplates'
+  'teacherContractSettings', 'teacherContractTemplates',
+  // 課務鏡像與舊匯入表同時承載學生課程、繳費、簽到核對歷史，
+  // 不得當成人員主檔連鎖刪除；現職與登入權以 employees/bindings 為準。
+  'opsEducationMirrorAttendance', 'opsEducationMirrorTeacherAdjustments',
+  'opsEducationMirrorTeacherPayroll', 'opsEducationMirrorTeachers',
+  'opsInjiaoyunTestCheckinLeaves', 'opsInjiaoyunTestHistoryPayrollCheckins',
+  'opsInjiaoyunTestHistoryPayrollReducePaychecks', 'opsInjiaoyunTestHistoryPayrollRewards',
+  'opsInjiaoyunTestLeaves', 'opsInjiaoyunTestTeacherAnalysis',
+  'opsInjiaoyunTestTeacherDeductions', 'opsInjiaoyunTestTeacherDetails',
+  'opsInjiaoyunTestTeacherFixedCourses', 'opsInjiaoyunTestTeacherNoCourses',
+  'opsInjiaoyunTestTeacherRewards', 'opsInjiaoyunTestTeachers',
+  'opsInjiaoyunTestTeacherTemporaryCourses'
 ]);
 
 async function readCollection(collection, spec) {
@@ -134,6 +128,50 @@ async function readExtraTargets(plan) {
     });
   }
   return results;
+}
+
+async function readEmbeddedSalaryTargets(plan) {
+  const targets = [];
+  for (const collection of ['salarySetup', 'salarySettings']) {
+    const rows = await readCollection(collection, null);
+    rows.forEach((record) => {
+      const map = record.row && record.row.employeeConfigMap;
+      if (!map || typeof map !== 'object' || Array.isArray(map)) return;
+      const keys = cleanup.embeddedSalaryTargetKeys(
+        map, plan.targetEmployeeIds, plan.keepParttimeIds
+      );
+      if (keys.length) targets.push({ ref: record.ref, keys });
+    });
+  }
+  return targets;
+}
+
+async function deleteEmbeddedSalaryEntries(targets) {
+  let deleted = 0;
+  for (const target of targets || []) {
+    const changed = await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(target.ref);
+      if (!snapshot.exists) return 0;
+      const row = snapshot.data() || {};
+      const map = row.employeeConfigMap;
+      if (!map || typeof map !== 'object' || Array.isArray(map)) return 0;
+      const next = Object.assign({}, map);
+      let count = 0;
+      target.keys.forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(next, key)) return;
+        delete next[key];
+        count += 1;
+      });
+      if (!count) return 0;
+      transaction.set(target.ref, {
+        employeeConfigMap: next,
+        personnelCleanupUpdatedAt: FV.serverTimestamp()
+      }, { merge: true });
+      return count;
+    });
+    deleted += Number(changed || 0);
+  }
+  return deleted;
 }
 
 function storagePaths(records) {
@@ -243,13 +281,12 @@ async function deleteStorage(paths) {
   return deleted;
 }
 
-function publicSummary(plan, extraCount) {
+function publicSummary(plan, extraCount, salaryTargets) {
   return Object.assign({}, plan.summary, {
     extraRelatedRecords: Number(extraCount || 0),
+    embeddedSalaryEntries: (salaryTargets || []).reduce((sum, item) => sum + item.keys.length, 0),
     keepParttimeByCollection: cleanup.countByCollection(plan.keepParttimeRecords),
     keepManagerByCollection: cleanup.countByCollection(plan.keepManagerRecords),
-    keepManagerReferenceHashes: uniq(plan.keepManagerRecords.map((record) =>
-      sha256(record.ref.path).slice(0, 12))).sort(),
     keepParttimeValidated: true,
     keepManagerValidated: true
   });
@@ -262,8 +299,9 @@ async function run() {
   const records = await readPersonnelRecords();
   const plan = cleanup.buildCleanupPlan(records);
   const extras = await readExtraTargets(plan);
+  const salaryTargets = await readEmbeddedSalaryTargets(plan);
   const uncovered = await uncoveredPersonnelCollections();
-  const summary = Object.assign(publicSummary(plan, extras.length), {
+  const summary = Object.assign(publicSummary(plan, extras.length, salaryTargets), {
     uncoveredPersonnelCollections: uncovered
   });
   console.log('PERSONNEL_CLEANUP_AUDIT=' + JSON.stringify(summary));
@@ -298,24 +336,27 @@ async function run() {
   // 先移除待刪人員的身分驗證；如 Auth 批次失敗，尚未刪除 Firestore 主資料，可安全重試。
   const deletedAuthUsers = await deleteAuthUsers(plan);
   const deletedRecords = await commitDeletes(deleteRecords);
+  const deletedSalaryEntries = await deleteEmbeddedSalaryEntries(salaryTargets);
   const deletedFiles = await deleteStorage(paths);
 
   const remainingRecords = await readPersonnelRecords();
   const verification = cleanup.buildCleanupPlan(remainingRecords);
-  if (verification.targetRecords.length) {
+  const remainingSalaryTargets = await readEmbeddedSalaryTargets(verification);
+  if (verification.targetRecords.length || remainingSalaryTargets.length) {
     await operationRef.set({
       status: 'incomplete', remainingRecords: verification.targetRecords.length,
+      remainingSalaryEntries: remainingSalaryTargets.reduce((sum, item) => sum + item.keys.length, 0),
       updatedAt: FV.serverTimestamp()
     }, { merge: true });
     throw new Error(`清理後仍有 ${verification.targetRecords.length} 筆非保留人員資料。`);
   }
   await operationRef.set({
-    status: 'completed', deletedRecords, deletedAuthUsers, deletedFiles, keeperWrites,
+    status: 'completed', deletedRecords, deletedAuthUsers, deletedFiles, deletedSalaryEntries, keeperWrites,
     verifiedRemainingRecords: remainingRecords.length,
     completedAt: FV.serverTimestamp()
   }, { merge: true });
   console.log('PERSONNEL_CLEANUP_RESULT=' + JSON.stringify({
-    status: 'completed', deletedRecords, deletedAuthUsers, deletedFiles, keeperWrites,
+    status: 'completed', deletedRecords, deletedAuthUsers, deletedFiles, deletedSalaryEntries, keeperWrites,
     verifiedNoOtherPersonnel: true
   }));
 }

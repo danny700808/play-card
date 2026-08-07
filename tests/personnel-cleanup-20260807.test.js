@@ -39,7 +39,9 @@ test('keeps every explicitly linked record for active part-time worker and delet
 
 test('manager keeps only manager account and employee LINE binding, not teacher or attendance history', () => {
   const rows = baseKeepers().concat([
-    record('employeeLineBindings', 'LB-KEEP', { employeeId: 'ADMIN-KEEP', name: '黃銘廷' }),
+    record('employeeLineBindings', 'LB-KEEP', {
+      employeeId: 'ADMIN-KEEP', name: '黃銘廷', status: 'active', lineUserId: 'U_MANAGER'
+    }),
     record('externalTeacherProfiles', 'PROFILE-OLD', { employeeId: 'ADMIN-KEEP', name: '黃銘廷' }),
     record('employeeSchedules', 'S-OLD', { employeeId: 'ADMIN-KEEP' }),
     record('clockRecords', 'C-OLD', { employeeId: 'ADMIN-KEEP' })
@@ -93,11 +95,23 @@ test('accepts legacy Chinese boolean and identity fields for the retained part-t
 test('preserves a separately keyed manager LINE binding carrying the exact manager name', () => {
   const rows = baseKeepers().concat([
     record('employeeLineBindings', 'UNLINKED-MANAGER-LINE', {
-      employeeId: 'LEGACY-MANAGER-LINE-ID', name: '黃銘廷', status: 'active'
+      employeeId: 'LEGACY-MANAGER-LINE-ID', name: '黃銘廷', status: 'active',
+      lineUserId: 'U_MANAGER'
     })
   ]);
   const plan = cleanup.buildCleanupPlan(rows);
   assert.equal(plan.keepPaths.has('employeeLineBindings/UNLINKED-MANAGER-LINE'), true);
+});
+
+test('deletes obsolete pending manager bind codes instead of treating them as manager accounts', () => {
+  const rows = baseKeepers().concat([
+    record('employeeLineBindings', 'OLD-PENDING-CODE', {
+      employeeId: 'OLD-MANAGER-ID', name: '黃銘廷', role: 'admin', status: 'pending'
+    })
+  ]);
+  const plan = cleanup.buildCleanupPlan(rows);
+  assert.equal(plan.keepPaths.has('employeeLineBindings/OLD-PENDING-CODE'), false);
+  assert.equal(plan.targetRecords.some((item) => item.ref.path === 'employeeLineBindings/OLD-PENDING-CODE'), true);
 });
 
 test('recognizes the production bootstrap manager even when its old display name is not canonical', () => {
@@ -116,4 +130,18 @@ test('recognizes the production bootstrap manager even when its old display name
 test('fails closed when either exact retained identity is missing', () => {
   assert.throws(() => cleanup.buildCleanupPlan(baseKeepers().slice(1)), /廖浤鈞/);
   assert.throws(() => cleanup.buildCleanupPlan(baseKeepers().slice(0, 1)), /黃銘廷/);
+});
+
+test('removes only targeted embedded salary entries and always protects the retained part-time worker', () => {
+  const map = {
+    'PT-KEEP': { employeeId: 'PT-KEEP', hourlyRate: 196 },
+    'OLD-EMPLOYEE': { employeeId: 'OLD-EMPLOYEE', hourlyRate: 200 },
+    alias: { '員工ID': 'OLD-CHINESE-ID', hourlyRate: 210 },
+    unrelated: { employeeId: 'UNRELATED', hourlyRate: 220 }
+  };
+  assert.deepEqual(cleanup.embeddedSalaryTargetKeys(
+    map,
+    ['PT-KEEP', 'OLD-EMPLOYEE', 'OLD-CHINESE-ID'],
+    ['PT-KEEP']
+  ).sort(), ['OLD-EMPLOYEE', 'alias']);
 });
