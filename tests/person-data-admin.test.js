@@ -106,6 +106,23 @@ test('manager page exposes safe actions and login allowlist', () => {
   assert.match(employeeAdmin, /person-data-admin\.html/);
 });
 
+test('approved teacher profile changes stay pending until manager copies them to the employee master', () => {
+  const source = fs.readFileSync(path.join(root, 'functions/personDataAdmin.js'), 'utf8');
+  const approveStart = source.indexOf('async function approveProfile(group, request)');
+  const returnStart = source.indexOf('async function returnProfile(group, request, reason)', approveStart);
+  const archiveStart = source.indexOf('async function archiveGroup(group, request, reason)', returnStart);
+  const approve = source.slice(approveStart, returnStart);
+  const returned = source.slice(returnStart, archiveStart);
+  assert.match(approve, /name:\s*rowName\(profileRow\)/);
+  assert.match(approve, /mobilePhone:\s*rowPhone\(profileRow\)/);
+  assert.match(approve, /email:\s*rowEmail\(profileRow\)/);
+  assert.match(approve, /teachingAbilities/);
+  assert.match(approve, /profileReviewStatus:\s*'approved'/);
+  assert.match(returned, /establishedTeacher\s*=\s*activeEmployee\(existingEmployee\)/);
+  assert.match(returned, /active:\s*establishedTeacher\s*\?\s*true\s*:\s*false/);
+  assert.match(returned, /profileReviewStatus:\s*'needs_revision'/);
+});
+
 test('attendance flow refuses schedules when employee master is absent or inactive', () => {
   const runtime = fs.readFileSync(path.join(root, 'firebase-client.js'), 'utf8');
   const start = runtime.lastIndexOf('async function activeEmployeeMaster');

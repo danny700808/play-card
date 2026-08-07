@@ -36,13 +36,17 @@ test('teacher other pages share the compact utility theme and explicit auth boun
     const source = read(file);
     assert.match(source, /class="[^"]*teacher-utility-page/);
     assert.match(source, /teacher-more-pages\.css\?v=20260730-teacher-more-v1/);
-    if (file === 'profile.html') {
+    if (file === 'contract.html') {
+      assert.match(source, /firebase-functions-compat\.js/);
+      assert.match(source, /teacher-contract\.js\?v=20260808-contract-profile-gate-v1/);
+      assert.doesNotMatch(source, /teacher-more-auth-bridge\.js|blockIfPortalOnly/);
+    } else if (file === 'profile.html') {
       assert.match(source, /teacher-more-auth-bridge\.js\?v=20260806-external-teacher-reminder-v3/);
     } else {
       assert.match(source, /teacher-more-auth-bridge\.js\?v=20260806-external-teacher-canonical-v2/);
     }
     assert.match(source, /data-teacher-utility-root/);
-    assert.match(source, /blockIfPortalOnly/);
+    if (file !== 'contract.html') assert.match(source, /blockIfPortalOnly/);
   }
 
   const bridge = read('teacher-more-auth-bridge.js');
@@ -253,12 +257,13 @@ test('media and inquiry regressions stay fixed', () => {
 
   const contractCss = read('teacher-more-pages.css');
   const contract = read('contract.html');
+  const contractRuntime = read('teacher-contract.js');
   assert.match(contractCss, /body\.utility-contract \.preview-page[\s\S]*overflow: visible/);
   assert.match(contractCss, /body\.utility-contract \.stamp-box img[\s\S]*object-fit: contain/);
   assert.match(contractCss, /body\.utility-contract \.seam-stamp-half img[\s\S]*max-width: none/);
   assert.doesNotMatch(contractCss, /body\.utility-contract \.seam-stamp-half\s*\{\s*display:\s*none/);
-  assert.match(contract, /snapshot\.getContext\('2d'\)\.drawImage\(signCanvas,0,0\)/);
-  assert.match(contract, /if\(snapshot\)ctx\.drawImage\(snapshot,0,0,rect\.width,rect\.height\)/);
+  assert.match(contractRuntime, /snapshot\.getContext\('2d'\)\.drawImage\(canvas, 0, 0\)/);
+  assert.match(contractRuntime, /if \(snapshot\) context\.drawImage\(snapshot, 0, 0, rect\.width, rect\.height\)/);
 
   const goods = read('teacher-goods.html');
   assert.match(goods, /id="askNeedBy" type="date"/);

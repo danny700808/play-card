@@ -2546,18 +2546,23 @@ async function resolveTeacherUtilityEmployee(session) {
   const seedName = teacherUtilityFirstText(seedSources, ['name', 'targetName', 'teacherName', 'displayName', 'employeeName']);
   const seedEmail = normalizeEmail(teacherUtilityFirstText(seedSources, ['email', 'Email', 'loginEmail', 'contactEmail']));
   const seedPhone = normalizePhone(teacherUtilityFirstText(seedSources, ['mobilePhone', 'mobile', 'phone', 'tel', 'telephone']));
-  if (seedName) employeeSeed.name = employeeSeed.displayName = seedName;
-  else if (!teacherPortalProfileStatusIsConfirmed(existingProfile)) {
-    employeeSeed.name = FieldValue.delete();
-    employeeSeed.displayName = FieldValue.delete();
-  }
-  if (seedEmail) employeeSeed.email = seedEmail;
-  else if (!teacherPortalProfileStatusIsConfirmed(existingProfile)) employeeSeed.email = FieldValue.delete();
-  if (seedPhone) employeeSeed.mobile = employeeSeed.mobilePhone = seedPhone;
-  else if (!teacherPortalProfileStatusIsConfirmed(existingProfile)) {
-    employeeSeed.mobile = FieldValue.delete();
-    employeeSeed.mobilePhone = FieldValue.delete();
-    employeeSeed.phone = FieldValue.delete();
+  const currentProfileConfirmed = teacherPortalProfileStatusIsConfirmed(existingProfile);
+  const employeeAlreadyEstablished = canonicalExisting.active === true;
+  const maySyncProfileIntoEmployee = !employeeAlreadyEstablished || currentProfileConfirmed;
+  if (maySyncProfileIntoEmployee) {
+    if (seedName) employeeSeed.name = employeeSeed.displayName = seedName;
+    else if (!currentProfileConfirmed) {
+      employeeSeed.name = FieldValue.delete();
+      employeeSeed.displayName = FieldValue.delete();
+    }
+    if (seedEmail) employeeSeed.email = seedEmail;
+    else if (!currentProfileConfirmed) employeeSeed.email = FieldValue.delete();
+    if (seedPhone) employeeSeed.mobile = employeeSeed.mobilePhone = seedPhone;
+    else if (!currentProfileConfirmed) {
+      employeeSeed.mobile = FieldValue.delete();
+      employeeSeed.mobilePhone = FieldValue.delete();
+      employeeSeed.phone = FieldValue.delete();
+    }
   }
   batch.set(canonicalRef, employeeSeed, { merge: true });
   await batch.commit();
@@ -2683,17 +2688,20 @@ function teacherUtilityRowMatches(row, identity, idFields, emailFields) {
 
 function teacherUtilityContractMatchesProfile(row, resolved) {
   const user = resolved && resolved.user || {};
+  const source = row || {};
   const version = Number(user.portalProfileVersion || 0);
   if (version !== TEACHER_PORTAL_PROFILE_VERSION) return true;
   const expectedProfileId = clean(user.portalProfileId || user.externalTeacherProfileId);
-  const rowProfileId = clean(row && (
-    row.portalProfileId || row.externalTeacherProfileId || row.profileId
-  ));
-  return Boolean(
-    expectedProfileId &&
-    rowProfileId === expectedProfileId &&
-    Number(row && row.portalProfileVersion || 0) === version
+  const rowProfileId = clean(
+    source.portalProfileId || source.externalTeacherProfileId || source.profileId
   );
+  const rowProfileVersion = Number(source.portalProfileVersion || 0);
+  const canBindUnscoped = clean(source.assignmentProfilePolicy) === 'canonical-profile-or-protected-person-v1';
+  if (!expectedProfileId) return false;
+  if (rowProfileId && rowProfileId !== expectedProfileId) return false;
+  if (rowProfileVersion && rowProfileVersion !== version) return false;
+  if (!rowProfileId || !rowProfileVersion) return canBindUnscoped;
+  return true;
 }
 
 function teacherUtilityContractPending(row) {
@@ -2702,7 +2710,8 @@ function teacherUtilityContractPending(row) {
     row.status || row.assignmentStatus || row.contractStatus || row.statusLabel
   ));
   return ![
-    'signed', 'archived', 'cancelled', 'canceled', 'completed', 'complete', 'done',
+    'signed', 'submitted_pending_admin', 'active', 'confirmed', 'contract_effective',
+    'archived', 'cancelled', 'canceled', 'completed', 'complete', 'done',
     'deleted', 'inactive', 'disabled', '已簽署', '已封存', '已取消', '取消', '已完成',
     '完成', '已結案', '已停用', '停用', '刪除', '作廢'
   ].includes(status);
@@ -2995,15 +3004,19 @@ async function teacherUtilitySaveProfileDraft(data) {
   const resolved = await resolveTeacherUtilityEmployee(session);
   const profileId = clean(resolved && resolved.user && resolved.user.portalProfileId);
   if (!profileId) throw new HttpsError('failed-precondition', '找不到老師個人資料編號。');
+  const employeeId = clean(resolved.employeeId);
   const profileRef = db.collection('externalTeacherProfiles').doc(profileId);
   const privateProfileRef = db.collection('teacherPrivateProfiles').doc(profileId);
-  const [profileSnapshot, privateProfileSnapshot] = await Promise.all([
+  const employeeRef = db.collection('employees').doc(employeeId);
+  const [profileSnapshot, privateProfileSnapshot, employeeSnapshot] = await Promise.all([
     profileRef.get(),
-    privateProfileRef.get()
+    privateProfileRef.get(),
+    employeeRef.get()
   ]);
   if (!profileSnapshot.exists) throw new HttpsError('not-found', '找不到老師個人資料。');
   const existing = jsonValue(profileSnapshot.data() || {});
   const existingPrivate = privateProfileSnapshot.exists ? jsonValue(privateProfileSnapshot.data() || {}) : {};
+  const employeeExisting = employeeSnapshot.exists ? employeeSnapshot.data() || {} : {};
   if (!teacherPortalProfileIsCurrent(Object.assign({ __id: profileId }, existing), session.teacherId, profileId)) {
     throw new HttpsError('permission-denied', '這筆個人資料不屬於目前登入的老師。');
   }
@@ -3096,18 +3109,18 @@ async function teacherUtilitySaveProfileDraft(data) {
     throw new HttpsError('failed-precondition', `資料尚缺 ${missing.map((row) => row.label).join('、')}，請補齊後再送出。`);
   }
   const currentConfirmed = teacherPortalProfileStatusIsConfirmed(existing);
+  const employeeConfirmed = employeeExisting.active === true ||
+    teacherPortalProfileStatusIsConfirmed(employeeExisting) || currentConfirmed;
   const currentStatus = clean(existing.profileStatus || existing.status).toLowerCase();
-  patch.status = currentConfirmed
-    ? clean(existing.status || existing.profileStatus || 'active')
-    : (submitForReview
-      ? 'pending_review'
-      : (['pending_review', 'needs_revision'].includes(currentStatus) ? currentStatus : 'profile_draft'));
+  patch.status = submitForReview
+    ? 'pending_review'
+    : (['pending_review', 'needs_revision'].includes(currentStatus) ? currentStatus : 'profile_draft');
   patch.profileStatus = patch.status;
-  patch.progressStatus = currentConfirmed
-    ? '已建立為外聘老師'
-    : (patch.status === 'pending_review'
-      ? '等待管理者確認'
-      : (patch.status === 'needs_revision' ? '管理者退回補件' : '資料填寫中'));
+  patch.progressStatus = patch.status === 'pending_review'
+    ? '等待管理者確認'
+    : (patch.status === 'needs_revision'
+      ? '管理者退回補件'
+      : (employeeConfirmed ? '個人資料修改中' : '資料填寫中'));
   patch.profileCompletedAt = complete ? (existing.profileCompletedAt || FieldValue.serverTimestamp()) : FieldValue.delete();
   if (submitForReview) patch.profileSubmittedAt = FieldValue.serverTimestamp();
   const saveBatch = db.batch();
@@ -3120,26 +3133,15 @@ async function teacherUtilitySaveProfileDraft(data) {
   saveBatch.set(privateProfileRef, privatePatch, { merge: true });
   await saveBatch.commit();
 
-  const employeeId = clean(resolved.employeeId);
-  const employeeRef = db.collection('employees').doc(employeeId);
-  const employeeSnapshot = await employeeRef.get();
-  const employeeExisting = employeeSnapshot.exists ? employeeSnapshot.data() || {} : {};
   if (employeeSnapshot.exists && !isExternalTeacherEmployee(employeeExisting)) {
     const managerLinked = resolved && resolved.user && resolved.user.managerLinkedPerson === true;
     if (!managerLinked) throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
   }
-  const employeeConfirmed = employeeExisting.active === true ||
-    teacherPortalProfileStatusIsConfirmed(employeeExisting) || currentConfirmed;
   const nextPersonStatus = employeeConfirmed ? 'active' :
     (patch.status === 'pending_review' ? 'pending_review' : (patch.status === 'needs_revision' ? 'needs_revision' : 'profile_draft'));
-  await employeeRef.set({
+  const employeePatch = {
     id: employeeId,
     employeeId,
-    name: clean(preview.name),
-    displayName: clean(preview.name),
-    mobile: employeePhone(preview),
-    mobilePhone: employeePhone(preview),
-    email: employeeEmail(preview),
     identityType: clean(employeeExisting.identityType || 'external'),
     identityLabel: clean(employeeExisting.identityLabel || (employeeExisting.identityType ? '' : '外聘老師')),
     employeeType: clean(employeeExisting.employeeType || employeeExisting.identityType || 'external'),
@@ -3151,16 +3153,26 @@ async function teacherUtilitySaveProfileDraft(data) {
     employmentStatus: employeeConfirmed ? clean(employeeExisting.employmentStatus || 'active') : (nextPersonStatus === 'needs_revision' ? 'profile_draft' : nextPersonStatus),
     hiddenFromActiveLists: employeeExisting.hiddenFromActiveLists === true,
     personLifecycleStatus: nextPersonStatus,
+    profileReviewStatus: patch.status,
     source: 'course-portal-canonical-external-teacher',
     coursePortalTeacherCanonical: true,
     coursePortalTeacherId: clean(session.teacherId),
     externalTeacherProfileId: profileId,
     portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
     portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
-    teachingAbilities: teachingAbilities === undefined ? existing.teachingAbilities || [] : teachingAbilities,
     updatedAt: FieldValue.serverTimestamp(),
     createdAt: employeeExisting.createdAt || FieldValue.serverTimestamp()
-  }, { merge: true });
+  };
+  if (patch.status === 'pending_review') employeePatch.profileReviewSubmittedAt = FieldValue.serverTimestamp();
+  if (!employeeConfirmed) {
+    employeePatch.name = clean(preview.name);
+    employeePatch.displayName = clean(preview.name);
+    employeePatch.mobile = employeePhone(preview);
+    employeePatch.mobilePhone = employeePhone(preview);
+    employeePatch.email = employeeEmail(preview);
+    employeePatch.teachingAbilities = teachingAbilities === undefined ? existing.teachingAbilities || [] : teachingAbilities;
+  }
+  await employeeRef.set(employeePatch, { merge: true });
 
   const refreshed = await resolveTeacherUtilityEmployee(session);
   return Object.assign({
@@ -3176,6 +3188,282 @@ async function teacherUtilitySession(data) {
   const resolved = await resolveTeacherUtilityEmployee(session);
   const pendingSummary = await teacherUtilityPendingSummary(resolved, session);
   return Object.assign({ ok: true, validatedAt: Date.now(), pendingSummary }, resolved);
+}
+
+const TEACHER_CONTRACT_SIGNABLE_STATUSES = new Set([
+  '', 'pending', 'waiting_contract', 'needs_revision', 'overdue_unsigned'
+]);
+const TEACHER_CONTRACT_REVIEW_STATUSES = new Set(['signed', 'submitted_pending_admin']);
+const TEACHER_CONTRACT_ACTIVE_STATUSES = new Set(['active', 'confirmed', 'contract_effective']);
+
+function teacherContractStatus(row) {
+  return clean(row && (row.status || row.assignmentStatus || row.contractStatus))
+    .normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+}
+
+function teacherContractBelongsToCurrentProfile(row, resolved, session) {
+  const source = row || {};
+  const user = resolved && resolved.user || {};
+  const profileId = clean(user.portalProfileId || user.externalTeacherProfileId);
+  const profileVersion = Number(user.portalProfileVersion || 0);
+  if (!profileId || profileVersion !== TEACHER_PORTAL_PROFILE_VERSION) return false;
+  // 管理者可以在老師第一次開啟個人資料前先發布年度合約。這種舊指派尚未有
+  // profileId/version，但仍須以受保護的 employee/teacher ID 精準命中本人；
+  // 一旦指派已綁定 profile，則不允許跨 profile 或跨版本沿用。
+  const assignedProfileId = clean(source.portalProfileId || source.externalTeacherProfileId);
+  const assignedProfileVersion = Number(source.portalProfileVersion || 0);
+  const canBindUnscoped = clean(source.assignmentProfilePolicy) === 'canonical-profile-or-protected-person-v1';
+  if (assignedProfileId && assignedProfileId !== profileId) return false;
+  if (assignedProfileVersion && assignedProfileVersion !== profileVersion) return false;
+  if ((!assignedProfileId || !assignedProfileVersion) && !canBindUnscoped) return false;
+  const expectedIds = new Set([
+    clean(resolved && resolved.employeeId),
+    clean(user.employeeId),
+    clean(user.legacyTeacherId),
+    clean(session && session.teacherId)
+  ].filter(Boolean));
+  const rowIds = [source.teacherId, source.employeeId, source.externalTeacherEmployeeId]
+    .map(clean).filter(Boolean);
+  return rowIds.some((value) => expectedIds.has(value));
+}
+
+async function teacherContractAssignmentRows(resolved, session) {
+  const user = resolved && resolved.user || {};
+  const profileId = clean(user.portalProfileId || user.externalTeacherProfileId);
+  const employeeId = clean(resolved && resolved.employeeId);
+  const teacherId = clean(session && session.teacherId);
+  const collection = db.collection('teacherContractAssignments');
+  const queries = [
+    profileId ? collection.where('portalProfileId', '==', profileId).limit(80).get() : null,
+    profileId ? collection.where('externalTeacherProfileId', '==', profileId).limit(80).get() : null,
+    employeeId ? collection.where('employeeId', '==', employeeId).limit(80).get() : null,
+    employeeId ? collection.where('teacherId', '==', employeeId).limit(80).get() : null,
+    teacherId ? collection.where('teacherId', '==', teacherId).limit(80).get() : null
+  ].filter(Boolean);
+  const settled = await Promise.allSettled(queries);
+  const rows = new Map();
+  settled.filter((result) => result.status === 'fulfilled').forEach((result) => {
+    result.value.docs.forEach((doc) => rows.set(doc.id, Object.assign({
+      __id: doc.id,
+      assignmentId: doc.id
+    }, jsonValue(doc.data() || {}))));
+  });
+  if (settled.length && settled.every((result) => result.status === 'rejected')) {
+    throw new HttpsError('unavailable', '合約資料暫時無法讀取，請稍後再試。');
+  }
+  return [...rows.values()].filter((row) =>
+    teacherContractBelongsToCurrentProfile(row, resolved, session) &&
+    !['archived', 'cancelled', 'canceled', 'deleted', 'void'].includes(teacherContractStatus(row))
+  ).sort((left, right) =>
+    clean(right.year).localeCompare(clean(left.year)) ||
+    asMillis(right.publishedAt || right.updatedAt) - asMillis(left.publishedAt || left.updatedAt)
+  ).slice(0, 50);
+}
+
+async function teacherContractPrivateSnapshots(rows) {
+  const pairs = await Promise.all((rows || []).map(async (row) => {
+    const id = clean(row.assignmentId || row.__id);
+    if (!id) return [id, {}];
+    const snapshot = await db.collection('teacherContractPrivateSnapshots').doc(id).get();
+    return [id, snapshot.exists ? jsonValue(snapshot.data() || {}) : {}];
+  }));
+  return new Map(pairs);
+}
+
+function teacherContractProfileData(resolved, privateProfile) {
+  const profile = resolved && resolved.profile || {};
+  const teachingAbilities = Array.isArray(profile.teachingAbilities)
+    ? profile.teachingAbilities.map((item) => ({
+      item: clean(item && (item.item || item.name || item.subject)),
+      level: clean(item && (item.level || item.degree || item.proficiency))
+    })).filter((item) => item.item)
+    : [];
+  const teachingItemsText = teachingAbilities.map((item) =>
+    item.level ? `${item.item}（${item.level}）` : item.item
+  ).join('、');
+  return {
+    name: clean(profile.name),
+    email: normalizeEmail(profile.email),
+    mobilePhone: normalizePhone(profile.mobilePhone),
+    birthDate: clean(profile.birthDate),
+    idNumber: clean(privateProfile && (privateProfile.idNumber || privateProfile.identityNumber)),
+    idNumberMasked: clean(profile.idNumberMasked),
+    householdAddress: clean(profile.householdAddress),
+    mailingAddress: clean(profile.mailingAddress),
+    contractAddress: clean(profile.householdAddress || profile.mailingAddress),
+    emergencyContact: clean(profile.emergencyContact),
+    emergencyPhone: normalizePhone(profile.emergencyPhone),
+    teachingAbilities,
+    teachingItemsText
+  };
+}
+
+function teacherContractPublicRow(row, privateSnapshot, currentProfileData) {
+  const source = row || {};
+  const privateRow = privateSnapshot || {};
+  const signedProfile = privateRow.profileSnapshot && typeof privateRow.profileSnapshot === 'object'
+    ? privateRow.profileSnapshot
+    : null;
+  const personalData = signedProfile || currentProfileData || {};
+  return {
+    assignmentId: clean(source.assignmentId || source.__id),
+    contractId: clean(source.contractId || source.templateId),
+    templateId: clean(source.templateId || source.contractId),
+    year: clean(source.year),
+    version: clean(source.version),
+    contractName: clean(source.contractName || source.title || '外聘老師年度契約'),
+    status: teacherContractStatus(source),
+    statusLabel: clean(source.statusLabel || source.progressStatus),
+    progressStatus: clean(source.progressStatus),
+    revisionReason: clean(source.revisionReason),
+    publishedAtText: clean(source.publishedAtText),
+    submittedAtText: clean(source.submittedAtText || source.signedAtText),
+    confirmedAtText: clean(source.confirmedAtText),
+    contractSnapshot: source.contractSnapshot || source.signedSnapshot || {},
+    personalData,
+    signDate: clean(privateRow.signDate || source.signDate),
+    signatureDataUrl: clean(privateRow.signatureDataUrl || source.signatureDataUrl || source.signatureUrl)
+  };
+}
+
+async function teacherContractSession(data) {
+  const session = await requireSession(data, ['teacher']);
+  const resolved = await resolveTeacherUtilityEmployee(session);
+  const profileId = clean(resolved && resolved.user && resolved.user.portalProfileId);
+  const privateProfileSnapshot = profileId
+    ? await db.collection('teacherPrivateProfiles').doc(profileId).get()
+    : null;
+  const privateProfile = privateProfileSnapshot && privateProfileSnapshot.exists
+    ? jsonValue(privateProfileSnapshot.data() || {})
+    : {};
+  const profileData = teacherContractProfileData(resolved, privateProfile);
+  const rows = await teacherContractAssignmentRows(resolved, session);
+  const privateRows = await teacherContractPrivateSnapshots(rows);
+  const history = rows.map((row) => teacherContractPublicRow(
+    row,
+    privateRows.get(clean(row.assignmentId || row.__id)),
+    profileData
+  ));
+  const signable = history.filter((row) => TEACHER_CONTRACT_SIGNABLE_STATUSES.has(row.status));
+  const waitingApproval = history.filter((row) => TEACHER_CONTRACT_REVIEW_STATUSES.has(row.status));
+  const active = history.filter((row) => TEACHER_CONTRACT_ACTIVE_STATUSES.has(row.status));
+  return {
+    ok: true,
+    profileComplete: resolved.profileComplete === true,
+    missingProfileFields: resolved.missingProfileFields || [],
+    profileData,
+    pendingAssignments: signable,
+    waitingApprovalRecords: waitingApproval,
+    activeRecords: active,
+    history
+  };
+}
+
+function teacherContractSignature(value) {
+  const raw = clean(value);
+  const match = raw.match(/^data:image\/png;base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!match) throw new HttpsError('invalid-argument', '簽名格式不正確，請清除後重新簽名。');
+  const bytes = Buffer.from(match[1].replace(/\s+/g, ''), 'base64');
+  if (bytes.length < 150 || bytes.length > 700 * 1024) {
+    throw new HttpsError('invalid-argument', '簽名內容不完整或檔案過大，請重新簽名。');
+  }
+  return raw;
+}
+
+async function teacherSubmitContract(data) {
+  const session = await requireSession(data, ['teacher']);
+  const resolved = await resolveTeacherUtilityEmployee(session);
+  if (resolved.profileComplete !== true) {
+    throw new HttpsError('failed-precondition', '請先完成基本資料，再進行合約簽署。');
+  }
+  const assignmentId = clean(data && data.assignmentId);
+  if (!assignmentId) throw new HttpsError('invalid-argument', '請先選擇要簽署的合約。');
+  const signatureDataUrl = teacherContractSignature(data && data.signatureDataUrl);
+  const rows = await teacherContractAssignmentRows(resolved, session);
+  const assignment = rows.find((row) => clean(row.assignmentId || row.__id) === assignmentId);
+  if (!assignment) throw new HttpsError('permission-denied', '這筆合約不屬於目前登入的老師。');
+  if (!TEACHER_CONTRACT_SIGNABLE_STATUSES.has(teacherContractStatus(assignment))) {
+    throw new HttpsError('failed-precondition', '這筆合約目前不能重複送出，請重新整理。');
+  }
+  const profileId = clean(resolved.user && resolved.user.portalProfileId);
+  const privateProfileSnapshot = await db.collection('teacherPrivateProfiles').doc(profileId).get();
+  const profileData = teacherContractProfileData(
+    resolved,
+    privateProfileSnapshot.exists ? jsonValue(privateProfileSnapshot.data() || {}) : {}
+  );
+  const missing = externalTeacherProfileMissingFields(Object.assign({}, profileData, {
+    lineUserId: clean(resolved.profile && resolved.profile.lineUserId),
+    identityFiles: resolved.profile && resolved.profile.identityDocumentUploaded
+      ? [{ storagePath: 'server-verified-private-file' }]
+      : []
+  }));
+  if (missing.length) {
+    throw new HttpsError('failed-precondition', '基本資料剛剛有變動，請先回到「我的資料」補齊後再簽署。');
+  }
+  const signDate = currentTaipeiDay();
+  const signDateObject = new Date(`${signDate}T12:00:00+08:00`);
+  const signRocYear = String(signDateObject.getFullYear() - 1911);
+  const signMonth = String(signDateObject.getMonth() + 1);
+  const signDay = String(signDateObject.getDate());
+  const assignmentRef = db.collection('teacherContractAssignments').doc(assignmentId);
+  const privateRef = db.collection('teacherContractPrivateSnapshots').doc(assignmentId);
+  const logRef = db.collection('teacherContractLogs').doc(assignmentId);
+  await db.runTransaction(async (transaction) => {
+    const latestSnapshot = await transaction.get(assignmentRef);
+    if (!latestSnapshot.exists) throw new HttpsError('not-found', '找不到這筆合約，請重新整理。');
+    const latest = latestSnapshot.data() || {};
+    if (!teacherContractBelongsToCurrentProfile(latest, resolved, session)) {
+      throw new HttpsError('permission-denied', '這筆合約不屬於目前登入的老師。');
+    }
+    if (!TEACHER_CONTRACT_SIGNABLE_STATUSES.has(teacherContractStatus(latest))) {
+      throw new HttpsError('failed-precondition', '這筆合約已經送出，請勿重複簽署。');
+    }
+    const common = {
+      assignmentId,
+      employeeId: clean(resolved.employeeId),
+      externalTeacherEmployeeId: clean(resolved.employeeId),
+      teacherId: clean(latest.teacherId || resolved.employeeId),
+      portalProfileId: profileId,
+      externalTeacherProfileId: profileId,
+      portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+      status: 'submitted_pending_admin',
+      statusLabel: '等待主管確認',
+      progressStatus: '老師已簽署，等待主管確認',
+      teacherName: profileData.name,
+      email: profileData.email,
+      mobilePhone: profileData.mobilePhone,
+      idNumberMasked: teacherUtilityMaskedId(profileData.idNumber),
+      teachingItemsText: profileData.teachingItemsText,
+      signatureRecorded: true,
+      signDate,
+      signRocYear,
+      signMonth,
+      signDay,
+      submittedAt: FieldValue.serverTimestamp(),
+      submittedAtText: nowText(),
+      signedAt: FieldValue.serverTimestamp(),
+      signedAtText: nowText(),
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    transaction.set(assignmentRef, common, { merge: true });
+    transaction.set(privateRef, Object.assign({}, common, {
+      profileSnapshot: profileData,
+      signatureDataUrl,
+      contractSnapshot: latest.contractSnapshot || latest.signedSnapshot || {}
+    }), { merge: true });
+    transaction.set(logRef, Object.assign({}, common, {
+      recordId: assignmentId,
+      contractId: clean(latest.contractId || latest.templateId),
+      contractName: clean(latest.contractName || latest.title),
+      year: clean(latest.year),
+      source: 'course-portal-teacher-contract'
+    }), { merge: true });
+  });
+  return {
+    ok: true,
+    status: 'submitted_pending_admin',
+    message: '合約已送出，等待主管確認。主管確認後才會正式生效。'
+  };
 }
 
 function safeRentalDisplayName(value) {
@@ -10180,6 +10468,8 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherData = callable(teacherPortalData, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherUtilitySession = callable(teacherUtilitySession, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherSaveProfileDraft = callable(teacherUtilitySaveProfileDraft, { timeoutSeconds: 120, memory: '512MiB' });
+  exportsObject.coursePortalTeacherContractSession = callable(teacherContractSession, { timeoutSeconds: 120, memory: '512MiB' });
+  exportsObject.coursePortalTeacherSubmitContract = callable(teacherSubmitContract, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });

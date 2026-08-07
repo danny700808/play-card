@@ -48,9 +48,14 @@ const settings = read('settings.html');
 assert(settings.includes('名單、資料、合約、公告、協助事項、拿貨與表格'));
 
 const contractPage = read('contract.html');
-assert(contractPage.includes('canonicalExternalTeacher:canonical'));
-assert(contractPage.includes('payload.portalProfileId=currentUser.portalProfileId'));
-assert(contractPage.includes('payload.portalProfileVersion=Number(currentUser.portalProfileVersion||0)'));
+const contractRuntime = read('teacher-contract.js');
+assert(contractPage.includes('id="contractProfileRequired"'));
+assert(contractPage.includes('請先完成基本資料'));
+assert(!contractPage.includes('teacherIdNumber'));
+assert(!contractPage.includes('teacherAddress'));
+assert(contractRuntime.includes("SESSION_KEY = 'youzi.coursePortal.teacher.session.v1'"));
+assert(contractRuntime.includes('coursePortalTeacherContractSession'));
+assert(contractRuntime.includes('coursePortalTeacherSubmitContract'));
 
 const bridge = read('teacher-more-auth-bridge.js');
 assert(bridge.includes('youzi.teacherMore.authorization.v4'));

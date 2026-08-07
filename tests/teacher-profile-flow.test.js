@@ -19,8 +19,10 @@ test('teacher profile is a stable standalone page, not a profile-and-contract wi
   assert.match(page, /id="teacherProfileForm"/);
   assert.match(page, /id="profileSaveBtn"[^>]*>儲存，下次繼續</);
   assert.match(page, /id="profileSubmitBtn"[^>]*>送出管理者確認</);
-  assert.match(page, /可先儲存目前內容，下次再繼續/);
   assert.match(page, /id="profileIdentityFiles"[^>]*type="file"/);
+  assert.match(page, /id="profileIdentityCamera"[^>]*type="file"[^>]*capture="environment"/);
+  assert.match(page, /for="profileIdentityCamera">直接拍照</);
+  assert.match(page, /for="profileIdentityFiles">選擇照片</);
   assert.match(page, /id="profileBirthDate"/);
   assert.match(page, /id="profileHouseholdAddress"/);
   assert.match(page, /id="profileMailingAddress"/);
@@ -28,10 +30,15 @@ test('teacher profile is a stable standalone page, not a profile-and-contract wi
   assert.match(runtime, /teaching-level/);
   assert.match(page, /LINE/);
   assert.match(page, /Email/);
+  assert.match(page, /profile-title-row[\s\S]*profileLineStatus[\s\S]*profileEmailStatus/);
+  assert.doesNotMatch(page, /id="profileStatusCard"|資料填寫中|id="profileLoginCard"|<h2>登入方式<\/h2>/);
+  assert.doesNotMatch(page, /可先儲存目前內容，下次再繼續|這不代表個人資料是否完成|姓名、電話與 Email 會同步/);
   assert.doesNotMatch(page, /查看契約並簽名|確認送出契約|contract\.html/);
   assert.doesNotMatch(runtime, /external-teacher-onboarding|showContractStep|go\(4\)/);
   assert.match(runtime, /coursePortalTeacherSaveProfileDraft/);
   assert.match(runtime, /僅供柚子樂器外聘教師資料建檔使用/);
+  assert.match(runtime, /pendingIdentityFiles/);
+  assert.match(runtime, /送出修改供管理者確認/);
   assert.doesNotMatch(runtime, /localStorage\.setItem\([^)]*(?:profile|draft|idNumber)/i);
   new vm.Script(runtime, { filename: 'teacher-profile.js' });
 });
@@ -53,6 +60,10 @@ test('profile API stores a server draft without creating or navigating to a cont
   assert.match(save, /profile_draft/);
   assert.match(save, /pending_review/);
   assert.match(save, /submitForReview/);
+  assert.match(save, /patch\.status = submitForReview[\s\S]*'pending_review'/);
+  assert.doesNotMatch(save, /currentConfirmed\s*\?[\s\S]{0,120}existing\.status/);
+  assert.match(save, /profileReviewStatus:\s*patch\.status/);
+  assert.match(save, /if \(!employeeConfirmed\)/);
   assert.match(save, /teacher-private-profiles\/\$\{profileId\}\/identity/);
   assert.match(save, /db\.collection\('teacherPrivateProfiles'\)\.doc\(profileId\)/);
   assert.match(save, /idNumber:\s*FieldValue\.delete\(\)/);
@@ -70,6 +81,9 @@ test('employee master exists from first login and remains separate from annual c
   assert.match(resolver, /batch\.set\(canonicalRef, employeeSeed/);
   assert.doesNotMatch(resolver, /batch\.delete\(canonicalRef\)/);
   assert.match(resolver, /accountStatus:\s*clean\(canonicalExisting\.accountStatus \|\| 'profile_draft'\)/);
+  assert.match(resolver, /employeeAlreadyEstablished\s*=\s*canonicalExisting\.active === true/);
+  assert.match(resolver, /maySyncProfileIntoEmployee\s*=\s*!employeeAlreadyEstablished \|\| currentProfileConfirmed/);
+  assert.match(resolver, /if \(maySyncProfileIntoEmployee\)/);
 });
 
 test('old fresh onboarding links leave before rendering the obsolete wizard', () => {
@@ -96,4 +110,85 @@ test('manager reset is distinct from LINE unlink and refuses formal teacher hist
   assert.match(backend, /formalExternalContract/);
   assert.match(backend, /coursePortalTeacherAttendancePayroll/);
   assert.match(backend, /confirmText\) !== '重設'/);
+});
+
+test('contract page is blocked until the canonical personal profile is complete', () => {
+  const page = read('contract.html');
+  const runtime = read('teacher-contract.js');
+  assert.match(page, /id="contractProfileRequired"[\s\S]*請先完成基本資料/);
+  assert.match(page, /id="contractOpenProfile"[^>]*>前往我的資料</);
+  assert.match(runtime, /if \(!result\.profileComplete\)/);
+  assert.match(runtime, /teacher-profile\.html/);
+  assert.match(runtime, /coursePortalTeacherContractSession/);
+  assert.doesNotMatch(page, /id="teacherName"|id="teacherEmail"|id="teacherIdNumber"|id="teacherAddress"|id="teacherCourse"/);
+  assert.doesNotMatch(page, /firebase-client\.js|teacher-more-auth-bridge\.js/);
+  new vm.Script(runtime, { filename: 'teacher-contract.js' });
+});
+
+test('contract imports profile data and requires manager approval before activation', () => {
+  const backend = read('functions/coursePortal.js');
+  const manager = read('functions/personDataAdmin.js');
+  const adminPage = read('external-teacher-admin.html');
+  const start = backend.indexOf('async function teacherSubmitContract(data)');
+  const end = backend.indexOf('function safeRentalDisplayName', start);
+  const submit = backend.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(submit, /if \(resolved\.profileComplete !== true\)/);
+  assert.match(submit, /請先完成基本資料，再進行合約簽署/);
+  assert.match(submit, /teacherContractProfileData\(\s*resolved/);
+  assert.match(submit, /teacherContractPrivateSnapshots/);
+  assert.match(submit, /profileSnapshot:\s*profileData/);
+  assert.match(submit, /status:\s*'submitted_pending_admin'/);
+  assert.match(submit, /等待主管確認/);
+  assert.doesNotMatch(submit, /status:\s*'active'/);
+  assert.match(backend, /coursePortalTeacherContractSession\s*=\s*callable\(teacherContractSession/);
+  assert.match(backend, /coursePortalTeacherSubmitContract\s*=\s*callable\(teacherSubmitContract/);
+  assert.match(manager, /personDataAdminContractAction/);
+  assert.match(manager, /personDataAdminContractDetail/);
+  assert.match(manager, /status:\s*'active'[\s\S]*主管已確認，契約生效/);
+  assert.match(manager, /status:\s*'needs_revision'[\s\S]*等待老師重新簽署/);
+  assert.doesNotMatch(manager.slice(manager.indexOf('async function personDataContractAction')), /profileStatus:\s*'active'/);
+  assert.match(adminPage, /personDataAdminContractInventory/);
+  assert.match(adminPage, /personDataAdminContractAction/);
+  assert.match(adminPage, /personDataAdminContractDetail/);
+  assert.match(adminPage, /openAssignmentPreview/);
+});
+
+test('a contract published before the first profile visit can bind only by the same protected person id', () => {
+  const backend = read('functions/coursePortal.js');
+  const summaryStart = backend.indexOf('function teacherUtilityContractMatchesProfile');
+  const summaryEnd = backend.indexOf('function teacherUtilityContractPending', summaryStart);
+  const summaryMatch = backend.slice(summaryStart, summaryEnd);
+  const start = backend.indexOf('function teacherContractBelongsToCurrentProfile');
+  const end = backend.indexOf('async function teacherContractAssignmentRows', start);
+  const belongs = backend.slice(start, end);
+  assert.match(summaryMatch, /if \(rowProfileId && rowProfileId !== expectedProfileId\) return false/);
+  assert.match(summaryMatch, /if \(rowProfileVersion && rowProfileVersion !== version\) return false/);
+  assert.match(summaryMatch, /assignmentProfilePolicy/);
+  assert.match(summaryMatch, /if \(!rowProfileId \|\| !rowProfileVersion\) return canBindUnscoped/);
+  assert.match(belongs, /if \(assignedProfileId && assignedProfileId !== profileId\) return false/);
+  assert.match(belongs, /if \(assignedProfileVersion && assignedProfileVersion !== profileVersion\) return false/);
+  assert.match(belongs, /assignmentProfilePolicy/);
+  assert.match(read('firebase-client.js'), /assignmentProfilePolicy:'canonical-profile-or-protected-person-v1'/);
+  assert.match(belongs, /rowIds\.some\(\(value\) => expectedIds\.has\(value\)\)/);
+  assert.doesNotMatch(belongs, /assignedProfileId\) !== profileId/);
+});
+
+test('all manager contract links use the current annual contract manager', () => {
+  const hub = read('teacher-hub.html');
+  const review = read('external-teacher-admin.html');
+  const publisher = read('contract-admin.html');
+  const legacy = read('external-teacher-contract-admin.html');
+  const login = read('login.html');
+  assert.match(hub, /href="contract-admin\.html"/);
+  assert.match(review, /href="contract-admin\.html"/);
+  assert.doesNotMatch(hub, /href="external-teacher-contract-admin\.html/);
+  assert.doesNotMatch(review, /href="external-teacher-contract-admin\.html/);
+  assert.match(legacy, /location\.replace\(['"]contract-admin\.html['"]\)/);
+  assert.match(publisher, /await waitForManagerAuth\(\)/);
+  assert.match(publisher, /getIdTokenResult\(true\)/);
+  assert.match(login, /'contract-admin\.html'/);
+  const rules = read('firestore.rules');
+  assert.match(rules, /match \/teacherContractAssignments\/\{document=\*\*\} \{ allow read, write: if isManagerAuth\(\); \}/);
+  assert.match(rules, /match \/teacherContractPrivateSnapshots\/\{document=\*\*\} \{ allow read, write: if false; \}/);
 });

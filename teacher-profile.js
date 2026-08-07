@@ -5,6 +5,8 @@
   const WATERMARK = '僅供柚子樂器外聘教師資料建檔使用';
   let currentResult = null;
   let saving = false;
+  let storedIdentityFileCount = 0;
+  let pendingIdentityFiles = [];
 
   function $(id) { return document.getElementById(id); }
   function clean(value) { return String(value == null ? '' : value).trim(); }
@@ -57,21 +59,10 @@
     }
   }
   function profileOf(result) { return result && result.profile && typeof result.profile === 'object' ? result.profile : {}; }
-  function lifecycle(profile, result) {
-    const status = clean(profile && (profile.profileStatus || profile.status) || result && result.user && result.user.accountStatus).toLowerCase();
-    if (['active', 'approved', 'confirmed', 'contract_effective'].includes(status)) {
-      return { title: '已建立為外聘老師', text: '個人資料已由管理者確認；年度合約請到「其他 → 合約」查看。', mark: '✓', tone: 'complete' };
-    }
-    if (['pending_review', 'pending', 'submitted'].includes(status)) {
-      return { title: '等待管理者確認', text: '資料已送出；仍可儲存補充內容，合約會另外處理。', mark: '…', tone: 'pending' };
-    }
-    if (['needs_revision', 'returned', 'rejected'].includes(status)) {
-      return { title: '管理者退回補件', text: '請依管理者說明補齊資料，再重新送出確認。', mark: '!', tone: 'incomplete' };
-    }
-    if (['archived', 'inactive', 'disabled'].includes(status)) {
-      return { title: '資料已封存', text: '目前無法送出；如需重新啟用，請聯絡管理者。', mark: '—', tone: 'incomplete' };
-    }
-    return { title: '資料填寫中', text: '可以先儲存，下次再繼續；填完後再送出管理者確認。', mark: '!', tone: 'incomplete' };
+  function confirmedProfile(profile, result) {
+    const status = clean(profile && (profile.profileStatus || profile.status)).toLowerCase();
+    const accountStatus = clean(result && result.user && result.user.accountStatus).toLowerCase();
+    return ['active', 'approved', 'confirmed', 'contract_effective'].includes(status) || accountStatus === 'active';
   }
   function addTeachingRow(value) {
     const list = $('profileTeachingList');
@@ -128,7 +119,6 @@
   function render(result) {
     currentResult = result || {};
     const profile = profileOf(result);
-    const missing = Array.isArray(result.missingProfileFields) ? result.missingProfileFields : [];
     $('profileName').value = clean(profile.name);
     $('profileMobile').value = clean(profile.mobilePhone);
     $('profileEmail').value = clean(profile.email);
@@ -142,29 +132,23 @@
     $('profileIdNumber').placeholder = masked ? '已留存；需要更換時再輸入' : '請輸入身分證字號';
     $('profileIdHint').textContent = masked ? `目前已留存：${masked}` : '';
     renderTeachingRows(profile.teachingAbilities);
-    const fileCount = Math.max(0, Number(profile.identityFileCount || 0));
-    $('profileFileState').textContent = fileCount ? `已安全留存 ${fileCount} 份附件` : '尚未上傳';
-    const state = lifecycle(profile, result);
-    $('profileStatusCard').classList.toggle('incomplete', state.tone === 'incomplete');
-    $('profileStatusMark').textContent = state.mark;
-    $('profileStatusTitle').textContent = state.title;
-    $('profileStatusText').textContent = state.text + (missing.length ? ` 尚缺：${missing.map((row) => clean(row && row.label)).filter(Boolean).join('、')}。` : '');
+    storedIdentityFileCount = Math.max(0, Number(profile.identityFileCount || 0));
+    updateFileState();
     const lineOn = Boolean(clean(profile.lineUserId));
     const emailOn = Boolean(clean(profile.email));
     $('profileLineStatus').textContent = lineOn ? 'LINE 已綁定' : 'LINE 未綁定';
     $('profileLineStatus').classList.toggle('off', !lineOn);
-    $('profileEmailStatus').textContent = emailOn ? 'Email 可使用' : 'Email 未設定';
+    $('profileEmailStatus').textContent = emailOn ? 'Email 已綁定' : 'Email 未綁定';
     $('profileEmailStatus').classList.toggle('off', !emailOn);
+    $('profileSubmitBtn').textContent = confirmedProfile(profile, result)
+      ? '送出修改供管理者確認'
+      : '送出管理者確認';
     show($('profileLoadingCard'), false);
     show($('profileErrorCard'), false);
-    show($('profileStatusCard'), true);
-    show($('profileLoginCard'), true);
     show($('teacherProfileForm'), true);
   }
   function showFailure(error) {
     show($('profileLoadingCard'), false);
-    show($('profileStatusCard'), false);
-    show($('profileLoginCard'), false);
     show($('teacherProfileForm'), false);
     show($('profileErrorCard'), true);
     $('profileErrorText').textContent = errorText(error);
@@ -224,6 +208,28 @@
       watermarkApplied: true
     };
   }
+  function updateFileState() {
+    const parts = [];
+    if (storedIdentityFileCount) parts.push(`已留存 ${storedIdentityFileCount} 份`);
+    if (pendingIdentityFiles.length) parts.push(`本次已選 ${pendingIdentityFiles.length} 張`);
+    $('profileFileState').textContent = parts.length ? parts.join('；') : '尚未上傳';
+  }
+  function addIdentityFiles(fileList, sourceInput) {
+    const files = Array.from(fileList || []).filter((file) => file && /^image\//i.test(clean(file.type)));
+    if (!files.length) {
+      if (sourceInput) sourceInput.value = '';
+      return;
+    }
+    if (pendingIdentityFiles.length + files.length > 2) {
+      message('身分證正反面一次最多選擇 2 張。', true);
+      if (sourceInput) sourceInput.value = '';
+      return;
+    }
+    pendingIdentityFiles = pendingIdentityFiles.concat(files);
+    if (sourceInput) sourceInput.value = '';
+    updateFileState();
+    message('', false);
+  }
   async function payload() {
     const value = {
       name: clean($('profileName').value),
@@ -238,7 +244,7 @@
     };
     const idNumber = clean($('profileIdNumber').value);
     if (idNumber || !clean(profileOf(currentResult).idNumberMasked)) value.idNumber = idNumber;
-    const files = Array.from($('profileIdentityFiles').files || []);
+    const files = pendingIdentityFiles.slice();
     if (files.length > 2) throw new Error('一次最多選擇 2 張照片。');
     value.identityImages = [];
     for (const file of files) value.identityImages.push(await prepareImage(file));
@@ -260,9 +266,11 @@
       const data = await payload();
       data.submitForReview = submitForReview === true;
       const result = await call('coursePortalTeacherSaveProfileDraft', data);
+      pendingIdentityFiles = [];
+      $('profileIdentityCamera').value = '';
       $('profileIdentityFiles').value = '';
       render(result);
-      message(submitForReview ? '已送出管理者確認。' : '已儲存目前內容，下次可繼續填寫。', false);
+      message(submitForReview ? '已送出管理者確認。' : '已儲存目前內容。', false);
     } catch (error) {
       if (error && error.portalAuthExpired) {
         showFailure(error);
@@ -280,6 +288,13 @@
   $('profileRetryBtn').addEventListener('click', load);
   $('profileCopyAddress').addEventListener('click', function () { $('profileMailingAddress').value = $('profileHouseholdAddress').value; });
   $('profileAddTeaching').addEventListener('click', function () { addTeachingRow({}); });
+  $('profileEmail').addEventListener('input', function () {
+    const emailOn = Boolean(clean(this.value));
+    $('profileEmailStatus').textContent = emailOn ? 'Email 已綁定' : 'Email 未綁定';
+    $('profileEmailStatus').classList.toggle('off', !emailOn);
+  });
+  $('profileIdentityCamera').addEventListener('change', function () { addIdentityFiles(this.files, this); });
+  $('profileIdentityFiles').addEventListener('change', function () { addIdentityFiles(this.files, this); });
   $('teacherProfileForm').addEventListener('submit', function (event) { event.preventDefault(); save(false); });
   $('profileSubmitBtn').addEventListener('click', function () { save(true); });
   load();

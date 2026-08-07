@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="teacher-more-pages.css?v=20260730-teacher-more-v1">
   <style>
-    :root{--profile-green:#1f6b4f;--profile-soft:#edf7f2;--profile-warn:#fff7e2}
+    :root{--profile-green:#1f6b4f;--profile-soft:#edf7f2}
     body{background:#eef4f1;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
     .teacher-profile-shell{width:min(720px,calc(100% - 24px));margin:0 auto;padding:14px 0 24px}
     .profile-nav{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
@@ -17,12 +17,8 @@
     .profile-card h1,.profile-card h2{margin:0;color:#173c2f}
     .profile-card h1{font-size:27px}.profile-card h2{font-size:20px}
     .profile-subtitle{color:#65756e;margin:6px 0 0;line-height:1.6}
-    .profile-status{display:flex;align-items:flex-start;gap:12px;background:var(--profile-soft);border-color:#bcdccc}
-    .profile-status.incomplete{background:var(--profile-warn);border-color:#ecd28b}
-    .status-mark{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:50%;background:var(--profile-green);color:#fff;font-size:22px;font-weight:900}
-    .profile-status.incomplete .status-mark{background:#a36a00}
-    .status-text{font-size:14px;color:#56675f;margin-top:5px;line-height:1.6}
-    .channel-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .profile-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .channel-row{display:flex;gap:8px;flex-wrap:wrap}
     .channel-chip{display:inline-flex;align-items:center;min-height:34px;padding:5px 11px;border-radius:999px;background:#edf7f2;color:#1f6b4f;font-size:13px;font-weight:900}
     .channel-chip.off{background:#f2f3f3;color:#6e7773}
     .profile-form{display:grid;gap:14px}
@@ -38,6 +34,9 @@
     .required{color:#bb3c34;margin-left:3px}
     .field-help{font-size:13px;color:#6c7973;margin-top:5px;line-height:1.55}
     .file-state{margin-top:8px;padding:10px 12px;background:#f3f7f5;border-radius:12px;color:#496158;font-size:14px;font-weight:800}
+    .file-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .file-action{display:flex!important;align-items:center;justify-content:center;min-height:48px;margin:0!important;border:1px solid #aac6b8;border-radius:13px;background:#f4fbf7;color:#1f6b4f;font-weight:900;cursor:pointer}
+    .file-input-hidden{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}
     .form-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
     .form-actions button{min-height:52px;border-radius:14px;font-size:17px;font-weight:900}
     .primary-action{border:0;background:var(--profile-green);color:#fff}
@@ -51,7 +50,7 @@
     @media(max-width:520px){
       .teacher-profile-shell{width:min(100% - 16px,720px);padding-top:8px}
       .profile-card{padding:15px;border-radius:17px}.profile-card h1{font-size:24px}
-      .form-actions{grid-template-columns:1fr}.profile-status{gap:10px}
+      .form-actions,.file-actions{grid-template-columns:1fr}
     }
   </style>
   <script src="config.js?v=20260808-person-master-v1"></script>
@@ -67,8 +66,13 @@
     </nav>
 
     <section class="profile-card">
-      <h1>我的資料</h1>
-      <p class="profile-subtitle">可先儲存目前內容，下次再繼續；資料與年度合約會分開處理。</p>
+      <div class="profile-title-row">
+        <h1>我的資料</h1>
+        <div class="channel-row" aria-label="登入綁定狀態">
+          <span class="channel-chip off" id="profileLineStatus">LINE 未綁定</span>
+          <span class="channel-chip off" id="profileEmailStatus">Email 未綁定</span>
+        </div>
+      </div>
       <div class="profile-message" id="profileMessage" role="status" aria-live="polite"></div>
     </section>
 
@@ -76,25 +80,8 @@
       <div class="profile-loading">資料讀取中</div>
     </section>
 
-    <section class="profile-card profile-status hidden" id="profileStatusCard">
-      <div class="status-mark" id="profileStatusMark">!</div>
-      <div>
-        <h2 id="profileStatusTitle">資料尚未完成</h2>
-        <div class="status-text" id="profileStatusText">填寫後可隨時儲存。</div>
-      </div>
-    </section>
-
-    <section class="profile-card hidden" id="profileLoginCard">
-      <h2>登入方式</h2>
-      <p class="profile-subtitle">LINE 供快速登入與提醒；沒有 LINE 仍可使用 Email 驗證登入，這不代表個人資料是否完成。</p>
-      <div class="channel-row">
-        <span class="channel-chip off" id="profileLineStatus">LINE</span>
-        <span class="channel-chip off" id="profileEmailStatus">Email</span>
-      </div>
-    </section>
-
     <form class="profile-card profile-form hidden" id="teacherProfileForm" novalidate>
-      <div class="section-heading"><h2>基本資料</h2><p>姓名、電話與 Email 會同步到同一個人員主檔。</p></div>
+      <div class="section-heading"><h2>基本資料</h2></div>
       <div class="field">
         <label for="profileName">姓名<span class="required">*</span></label>
         <input id="profileName" name="name" autocomplete="name" maxlength="80">
@@ -129,7 +116,7 @@
         <input id="profileEmergencyPhone" name="emergencyPhone" inputmode="tel" maxlength="30">
       </div>
 
-      <div class="section-heading"><h2>身分資料</h2><p>身分證字號與照片放在同一區，僅供管理者核對。</p></div>
+      <div class="section-heading"><h2>身分資料</h2></div>
       <div class="identity-grid">
         <div class="field">
           <label for="profileIdNumber">身分證字號<span class="required">*</span></label>
@@ -137,14 +124,19 @@
           <div class="field-help" id="profileIdHint"></div>
         </div>
         <div class="field">
-          <label for="profileIdentityFiles">身分證明照片<span class="required">*</span></label>
-          <input id="profileIdentityFiles" name="identityFiles" type="file" accept="image/*" multiple>
-          <div class="field-help">正反面最多 2 張；送出前會縮小並加上用途浮水印。</div>
+          <label>身分證明照片<span class="required">*</span></label>
+          <div class="file-actions">
+            <label class="file-action" for="profileIdentityCamera">直接拍照</label>
+            <label class="file-action" for="profileIdentityFiles">選擇照片</label>
+          </div>
+          <input class="file-input-hidden" id="profileIdentityCamera" name="identityCamera" type="file" accept="image/*" capture="environment">
+          <input class="file-input-hidden" id="profileIdentityFiles" name="identityFiles" type="file" accept="image/*" multiple>
+          <div class="field-help">正反面最多 2 張。</div>
           <div class="file-state" id="profileFileState">尚未上傳</div>
         </div>
       </div>
 
-      <div class="section-heading"><h2>授課能力</h2><p>每一項分別填寫科目與程度。</p></div>
+      <div class="section-heading"><h2>授課能力</h2></div>
       <div class="teaching-list" id="profileTeachingList"></div>
       <button class="add-teaching" id="profileAddTeaching" type="button">＋ 新增授課項目</button>
       <div class="form-actions">
@@ -162,6 +154,6 @@
       </div>
     </section>
   </main>
-  <script src="teacher-profile.js?v=20260808-person-master-v1"></script>
+  <script src="teacher-profile.js?v=20260808-profile-clean-v2"></script>
 </body>
 </html>

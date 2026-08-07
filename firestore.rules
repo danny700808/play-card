@@ -3,6 +3,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isManagerAuth() {
+      return request.auth != null && (
+        request.auth.token.get('admin', false) == true ||
+        request.auth.token.get('manager', false) == true ||
+        request.auth.token.get('owner', false) == true ||
+        request.auth.token.get('role', '') in ['admin', 'manager', 'owner', '主管', '管理者'] ||
+        request.auth.token.get('userRole', '') in ['admin', 'manager', 'owner', '主管', '管理者'] ||
+        request.auth.token.get('permissionRole', '') in ['admin', 'manager', 'owner', '主管', '管理者'] ||
+        request.auth.token.get('email', '') == 'danny700808@gmail.com'
+      );
+    }
+
     // 這裡列出目前網站前端會直接讀寫的頂層集合。
     // 目的：保留租賃新系統，同時恢復員工、薪資、工讀、提醒數字、各種表格設定。
     function isClientSideOpenCollection(collectionId) {
@@ -84,10 +96,6 @@ service cloud.firestore {
         // 老師合約 / 商品 / 官網商品快取
         'teacherGoods',
         'teacherGoodsInquiry',
-        'teacherContractLogs',
-        'teacherContractTemplates',
-        'teacherContractAssignments',
-        'teacherContractSettings',
         'contractTemplates',
         'contractLogs',
         'contracts',
@@ -167,6 +175,13 @@ service cloud.firestore {
     match /coursePortalLessonContactPosts/{document=**} { allow read, write: if false; }
     // 老師身分證字號與私密附件索引只能由驗證過的 Cloud Functions 存取。
     match /teacherPrivateProfiles/{document=**} { allow read, write: if false; }
+    match /teacherContractPrivateSnapshots/{document=**} { allow read, write: if false; }
+    // 年度合約由老師 session callable 寫入、由主管 Firebase Auth 審核；
+    // 不再允許未登入瀏覽器直接把狀態改成生效。
+    match /teacherContractAssignments/{document=**} { allow read, write: if isManagerAuth(); }
+    match /teacherContractLogs/{document=**} { allow read, write: if isManagerAuth(); }
+    match /teacherContractTemplates/{document=**} { allow read, write: if isManagerAuth(); }
+    match /teacherContractSettings/{document=**} { allow read, write: if isManagerAuth(); }
 
     // 其他未知集合先不開放，避免整個資料庫完全裸開。
     match /{document=**} {

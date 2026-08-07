@@ -16,6 +16,9 @@ on:
       - "teacher-profile.js"
       - "firebase-client.js"
       - "contract.html"
+      - "teacher-contract.js"
+      - "contract-admin.html"
+      - "external-teacher-contract-admin.html"
       - "announcements.html"
       - "task.html"
       - "teacher-goods.html"
@@ -50,6 +53,7 @@ jobs:
         run: |
           node --check teacher-course-portal-v8.js
           node --check teacher-profile.js
+          node --check teacher-contract.js
           node --check teacher-daily-reminder.js
           node --check teacher-course-session-v8.js
           node --check teacher-more-auth-bridge.js

@@ -443,6 +443,11 @@ test('fresh teacher contract view accepts only assignments issued for the same p
   assert.equal(helpers.__contractMatchesProfile({
     employeeId: 'SAME-EMPLOYEE', status: 'pending'
   }, resolved), false, '只用同員工編號的舊測試合約不得出現');
+  assert.equal(helpers.__contractMatchesProfile({
+    employeeId: 'SAME-EMPLOYEE',
+    status: 'pending',
+    assignmentProfilePolicy: 'canonical-profile-or-protected-person-v1'
+  }, resolved), true, '新流程正式發布的未綁定合約可在同一受保護人員編號下接回');
 });
 
 test('teacher utility summary matches the linked teacher and excludes completed or inactive rows', async () => {

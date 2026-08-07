@@ -35,6 +35,7 @@ const SOURCE_SPECS = [
   ['externalTeacherFiles', '外聘老師附件', ['employeeId', 'externalTeacherEmployeeId', 'personMasterId'], ['teacherId', 'coursePortalTeacherId'], 'private'],
   ['externalTeacherContracts', '外聘老師年度契約', ['employeeId', 'externalTeacherEmployeeId', 'personMasterId'], ['coursePortalTeacherId', 'legacyTeacherId'], 'contract'],
   ['teacherContractAssignments', '年度合約指派', ['employeeId', 'externalTeacherEmployeeId', 'personMasterId'], ['teacherId', 'coursePortalTeacherId'], 'contract'],
+  ['teacherContractPrivateSnapshots', '年度合約簽署私密快照', ['employeeId', 'externalTeacherEmployeeId', 'personMasterId'], ['teacherId', 'coursePortalTeacherId'], 'private'],
   ['coursePortalTeacherBindings', '老師登入綁定', ['employeeId', 'externalTeacherEmployeeId', 'personMasterId'], ['teacherId', 'targetId', 'legacyTeacherId'], 'binding'],
   ['employeeLineBindings', '員工 LINE 綁定', ['employeeId', 'employeeDocId', 'targetEmployeeId', 'personMasterId'], [], 'binding'],
   ['externalTeacherLineBindings', '外聘老師 LINE 綁定', ['employeeId', 'externalTeacherEmployeeId', 'personMasterId'], ['teacherId'], 'binding'],
@@ -502,11 +503,21 @@ async function approveProfile(group, request) {
     throw new HttpsError('failed-precondition', `個人資料尚缺：${readiness.missing.join('、')}。請先退回老師補齊。`);
   }
   const batch = db.batch();
+  const profileRow = profile.row || {};
+  const teachingAbilities = Array.isArray(profileRow.teachingAbilities) ? profileRow.teachingAbilities : [];
   batch.set(employees[0].ref, {
+    name: rowName(profileRow),
+    displayName: rowName(profileRow),
+    mobile: rowPhone(profileRow),
+    mobilePhone: rowPhone(profileRow),
+    email: rowEmail(profileRow),
+    teachingAbilities,
     active: true,
     accountStatus: 'active',
     employmentStatus: 'active',
     personLifecycleStatus: 'active',
+    profileReviewStatus: 'approved',
+    profileRevisionReason: FV.delete(),
     hiddenFromActiveLists: false,
     profileApprovedAt: FV.serverTimestamp(),
     profileApprovedBy: actorOf(request),
@@ -534,11 +545,14 @@ async function returnProfile(group, request, reason) {
     throw new HttpsError('failed-precondition', '這組資料沒有唯一人員主檔與個人資料，請先整理歸屬。');
   }
   const batch = db.batch();
+  const existingEmployee = employees[0].row || {};
+  const establishedTeacher = activeEmployee(existingEmployee);
   batch.set(employees[0].ref, {
-    active: false,
-    accountStatus: 'profile_draft',
-    employmentStatus: 'profile_draft',
-    personLifecycleStatus: 'needs_revision',
+    active: establishedTeacher ? true : false,
+    accountStatus: establishedTeacher ? clean(existingEmployee.accountStatus || 'active') : 'profile_draft',
+    employmentStatus: establishedTeacher ? clean(existingEmployee.employmentStatus || 'active') : 'profile_draft',
+    personLifecycleStatus: establishedTeacher ? 'active' : 'needs_revision',
+    profileReviewStatus: 'needs_revision',
     profileRevisionReason: reason,
     updatedAt: FV.serverTimestamp()
   }, { merge: true });
@@ -704,6 +718,196 @@ async function personDataAction(data, request) {
   throw new HttpsError('invalid-argument', '不支援的人員資料操作。');
 }
 
+function contractAssignmentReviewStatus(row) {
+  return lower(row && (row.status || row.assignmentStatus || row.contractStatus));
+}
+
+function publicContractAssignment(item) {
+  const row = item && item.row || {};
+  const rawYear = Number(clean(row.year || row.contractYear));
+  const rocYear = Number.isFinite(rawYear) && rawYear > 1911 ? String(rawYear - 1911) : clean(row.contractRocYear || row.rocYear || row.year);
+  return {
+    id: clean(row.assignmentId || item.docId),
+    __id: clean(row.assignmentId || item.docId),
+    assignmentId: clean(row.assignmentId || item.docId),
+    contractId: clean(row.contractId || row.templateId),
+    contractName: clean(row.contractName || row.title || '外聘老師年度契約'),
+    year: clean(row.year || row.contractYear),
+    contractRocYear: rocYear,
+    employeeId: clean(row.employeeId || row.externalTeacherEmployeeId),
+    externalTeacherEmployeeId: clean(row.externalTeacherEmployeeId || row.employeeId),
+    teacherId: clean(row.teacherId),
+    portalProfileId: clean(row.portalProfileId || row.externalTeacherProfileId),
+    externalTeacherProfileId: clean(row.externalTeacherProfileId || row.portalProfileId),
+    portalProfileVersion: Number(row.portalProfileVersion || 0),
+    teacherName: rowName(row),
+    name: rowName(row),
+    email: rowEmail(row),
+    mobile: rowPhone(row),
+    bindingMethod: clean(row.bindingMethod),
+    lineBindStatus: clean(row.lineBindStatus),
+    emailBindStatus: clean(row.emailBindStatus),
+    status: contractAssignmentReviewStatus(row),
+    statusLabel: clean(row.statusLabel),
+    progressStatus: clean(row.progressStatus),
+    revisionReason: clean(row.revisionReason),
+    publishedAtText: clean(row.publishedAtText),
+    submittedAtText: clean(row.submittedAtText || row.signedAtText),
+    confirmedAtText: clean(row.confirmedAtText),
+    signatureRecorded: row.signatureRecorded === true || Boolean(clean(row.signatureDataUrl || row.signatureUrl || row.signedAt)),
+    _sourceCollection: 'teacherContractAssignments',
+    _contractWorkflow: 'assignment'
+  };
+}
+
+async function personDataContractInventory(data, request) {
+  assertManager(request);
+  const spec = SPEC_BY_COLLECTION.get('teacherContractAssignments');
+  const records = await readAll(spec);
+  const focusId = clean(data && data.assignmentId);
+  let rows = records.map(publicContractAssignment);
+  if (focusId) rows = rows.filter((row) => row.assignmentId === focusId);
+  rows.sort((left, right) => String(right.year).localeCompare(String(left.year)) ||
+    left.teacherName.localeCompare(right.teacherName, 'zh-Hant'));
+  return { ok: true, rows };
+}
+
+async function personDataContractDetail(data, request) {
+  assertManager(request);
+  const assignmentId = clean(data && data.assignmentId);
+  if (!assignmentId) throw new HttpsError('invalid-argument', '缺少合約指派編號。');
+  const [assignmentSnapshot, privateSnapshot] = await Promise.all([
+    db.collection('teacherContractAssignments').doc(assignmentId).get(),
+    db.collection('teacherContractPrivateSnapshots').doc(assignmentId).get()
+  ]);
+  if (!assignmentSnapshot.exists) throw new HttpsError('not-found', '找不到這筆合約。');
+  const row = assignmentSnapshot.data() || {};
+  const privateRow = privateSnapshot.exists ? privateSnapshot.data() || {} : {};
+  const profile = privateRow.profileSnapshot && typeof privateRow.profileSnapshot === 'object'
+    ? privateRow.profileSnapshot
+    : {
+      name: rowName(row),
+      email: rowEmail(row),
+      mobilePhone: rowPhone(row),
+      idNumber: clean(row.idNumber || row.teacherIdNumber),
+      contractAddress: clean(row.address || row.teacherAddress),
+      teachingItemsText: clean(row.teachingItemsText || row.course || row.teacherCourse)
+    };
+  return {
+    ok: true,
+    assignment: publicContractAssignment({ docId: assignmentSnapshot.id, row }),
+    profile: {
+      name: clean(profile.name),
+      email: normalizeEmailForAdmin(profile.email),
+      mobilePhone: clean(profile.mobilePhone),
+      idNumber: clean(profile.idNumber),
+      idNumberMasked: clean(profile.idNumberMasked),
+      householdAddress: clean(profile.householdAddress),
+      mailingAddress: clean(profile.mailingAddress),
+      contractAddress: clean(profile.contractAddress || profile.householdAddress || profile.mailingAddress),
+      teachingItemsText: clean(profile.teachingItemsText)
+    },
+    contractSnapshot: privateRow.contractSnapshot || row.contractSnapshot || row.signedSnapshot || {},
+    signatureDataUrl: clean(privateRow.signatureDataUrl || row.signatureDataUrl || row.signatureUrl),
+    signDate: clean(privateRow.signDate || row.signDate)
+  };
+}
+
+function normalizeEmailForAdmin(value) {
+  return lower(value);
+}
+
+async function personDataContractAction(data, request) {
+  assertManager(request);
+  const assignmentId = clean(data && data.assignmentId);
+  const action = clean(data && data.action);
+  const reason = clean(data && data.reason);
+  if (!assignmentId) throw new HttpsError('invalid-argument', '缺少合約指派編號。');
+  if (!['approve', 'return'].includes(action)) throw new HttpsError('invalid-argument', '不支援的合約操作。');
+  if (action === 'return' && !reason) throw new HttpsError('invalid-argument', '請填寫退回原因。');
+  const assignmentRef = db.collection('teacherContractAssignments').doc(assignmentId);
+  const privateRef = db.collection('teacherContractPrivateSnapshots').doc(assignmentId);
+  const logRef = db.collection('teacherContractLogs').doc(assignmentId);
+  await db.runTransaction(async (transaction) => {
+    const assignmentSnapshot = await transaction.get(assignmentRef);
+    if (!assignmentSnapshot.exists) throw new HttpsError('not-found', '找不到這筆合約，請重新整理。');
+    const row = assignmentSnapshot.data() || {};
+    const status = contractAssignmentReviewStatus(row);
+    if (!['submitted_pending_admin', 'signed'].includes(status)) {
+      throw new HttpsError('failed-precondition', '這筆合約目前不是等待主管確認的狀態。');
+    }
+    const privateSnapshot = await transaction.get(privateRef);
+    const privateRow = privateSnapshot.exists ? privateSnapshot.data() || {} : {};
+    const hasSignature = row.signatureRecorded === true || Boolean(clean(
+      privateRow.signatureDataUrl || row.signatureDataUrl || row.signatureUrl || row.signedAt
+    ));
+    if (!hasSignature) throw new HttpsError('failed-precondition', '這筆合約沒有老師簽名，不能核准。');
+    const actor = actorOf(request);
+    if (action === 'approve') {
+      const patch = {
+        status: 'active',
+        statusLabel: '契約生效',
+        progressStatus: '主管已確認，契約生效',
+        confirmedAt: FV.serverTimestamp(),
+        confirmedAtText: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }),
+        confirmedBy: actor,
+        revisionReason: FV.delete(),
+        updatedAt: FV.serverTimestamp()
+      };
+      transaction.set(assignmentRef, patch, { merge: true });
+      if (privateSnapshot.exists) transaction.set(privateRef, patch, { merge: true });
+      transaction.set(logRef, Object.assign({
+        assignmentId,
+        employeeId: clean(row.employeeId || row.externalTeacherEmployeeId),
+        teacherId: clean(row.teacherId),
+        contractId: clean(row.contractId || row.templateId),
+        contractName: clean(row.contractName || row.title),
+        year: clean(row.year),
+        source: 'person-data-admin-contract-review'
+      }, patch), { merge: true });
+      const employeeId = clean(row.employeeId || row.externalTeacherEmployeeId);
+      if (employeeId) {
+        transaction.set(db.collection('employees').doc(employeeId), {
+          currentExternalContractId: assignmentId,
+          externalTeacherContractId: assignmentId,
+          latestExternalContractId: assignmentId,
+          latestExternalContractYear: clean(row.year),
+          latestExternalContractStatus: 'active',
+          latestExternalContractProgress: '主管已確認，契約生效',
+          contractReviewStatus: 'active',
+          updatedAt: FV.serverTimestamp()
+        }, { merge: true });
+      }
+      return;
+    }
+    const patch = {
+      status: 'needs_revision',
+      statusLabel: '退回修改',
+      progressStatus: '主管退回，等待老師重新簽署',
+      revisionReason: reason,
+      returnedAt: FV.serverTimestamp(),
+      returnedBy: actor,
+      updatedAt: FV.serverTimestamp()
+    };
+    transaction.set(assignmentRef, patch, { merge: true });
+    if (privateSnapshot.exists) transaction.set(privateRef, patch, { merge: true });
+    transaction.set(logRef, Object.assign({
+      assignmentId,
+      employeeId: clean(row.employeeId || row.externalTeacherEmployeeId),
+      teacherId: clean(row.teacherId),
+      contractId: clean(row.contractId || row.templateId),
+      contractName: clean(row.contractName || row.title),
+      year: clean(row.year),
+      source: 'person-data-admin-contract-review'
+    }, patch), { merge: true });
+  });
+  return {
+    ok: true,
+    status: action === 'approve' ? 'active' : 'needs_revision',
+    message: action === 'approve' ? '已確認合約生效。' : '已退回老師重新簽署。'
+  };
+}
+
 function registerPersonDataAdmin(exportsObject) {
   exportsObject.personDataAdminInventory = onCall({ region: REGION, timeoutSeconds: 300, memory: '1GiB' }, (request) =>
     personDataInventory(request && request.data || {}, request));
@@ -711,6 +915,12 @@ function registerPersonDataAdmin(exportsObject) {
     personDataDetail(request && request.data || {}, request));
   exportsObject.personDataAdminAction = onCall({ region: REGION, timeoutSeconds: 300, memory: '1GiB' }, (request) =>
     personDataAction(request && request.data || {}, request));
+  exportsObject.personDataAdminContractInventory = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+    personDataContractInventory(request && request.data || {}, request));
+  exportsObject.personDataAdminContractDetail = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+    personDataContractDetail(request && request.data || {}, request));
+  exportsObject.personDataAdminContractAction = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+    personDataContractAction(request && request.data || {}, request));
 }
 
 module.exports = {
@@ -723,6 +933,8 @@ module.exports = {
     activeEmployee,
     recordBelongsToPersonnel,
     profileReadiness,
+    contractAssignmentReviewStatus,
+    publicContractAssignment,
     SOURCE_SPECS
   }
 };

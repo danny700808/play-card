@@ -6784,8 +6784,8 @@
     for(const teacher of teachers){
       const id=assignmentId(contractId, teacher.teacherId);
       const old=await get('teacherContractAssignments', id).catch(()=>null);
-      if(old && clean(old.status)==='signed') continue;
-      await set('teacherContractAssignments', id, {assignmentId:id, contractId, templateId:contractId, year:t.year, version:t.version, contractName:t.contractName, teacherId:teacher.teacherId, employeeId:teacher.teacherId, teacherName:teacher.name, email:teacher.email, portalProfileId:teacher.portalProfileId, externalTeacherProfileId:teacher.externalTeacherProfileId, portalProfileVersion:teacher.portalProfileVersion, portalProfileSource:teacher.portalProfileSource, status:'pending', statusLabel:'待簽署', publishedAt:serverTime(), publishedAtText, contractSnapshot:t, source:'firebase-contract-assignment'});
+      if(old && !['','pending','waiting_contract','overdue_unsigned'].includes(clean(old.status))) continue;
+      await set('teacherContractAssignments', id, {assignmentId:id, contractId, templateId:contractId, year:t.year, version:t.version, contractName:t.contractName, teacherId:teacher.teacherId, employeeId:teacher.teacherId, teacherName:teacher.name, email:teacher.email, portalProfileId:teacher.portalProfileId, externalTeacherProfileId:teacher.externalTeacherProfileId, portalProfileVersion:teacher.portalProfileVersion, portalProfileSource:teacher.portalProfileSource, assignmentProfilePolicy:'canonical-profile-or-protected-person-v1', status:'pending', statusLabel:'待簽署', publishedAt:serverTime(), publishedAtText, contractSnapshot:t, source:'firebase-contract-assignment'});
       count++;
     }
     return {ok:true,message:`已發布 ${t.year} 年度合約，建立 ${count} 筆待簽署任務。`,count};
@@ -6820,19 +6820,8 @@
     return {ok:true,contract,assignment:active,pendingAssignments:pending,signedRecords:signed,history:rows,signed:!active && signed.length>0,record:signed[0]||null};
   }
   async function submitTeacherContractSignature(payload){
-    const assignmentIdValue=clean(payload.assignmentId || payload.recordId);
-    const assignment=assignmentIdValue ? normalizeAssignment(await get('teacherContractAssignments', assignmentIdValue)) : null;
-    if(!assignment || !assignment.assignmentId) throw new Error('找不到待簽署合約任務，請重新整理頁面。');
-    const snapshot=normalizeTemplate(assignment.contractSnapshot);
-    const signDate=clean(payload.signDate) || nowDate();
-    const d=new Date(signDate+'T00:00:00');
-    const rocYear=!isNaN(d.getTime()) ? String(d.getFullYear()-1911) : '';
-    const signMonth=!isNaN(d.getTime()) ? String(d.getMonth()+1) : '';
-    const signDay=!isNaN(d.getTime()) ? String(d.getDate()) : '';
-    const row={status:'signed', statusLabel:'已簽署', signDate, signTime:nowText().slice(11,19), signedAt:serverTime(), signedAtText:nowText(), teacherName:clean(payload.teacherName || assignment.teacherName), email:lower(payload.teacherEmail || assignment.email), idNumber:clean(payload.teacherIdNumber), address:clean(payload.teacherAddress), course:clean(payload.teacherCourse), signatureDataUrl:clean(payload.signatureDataUrl), signatureUrl:clean(payload.signatureDataUrl), contractSnapshot:snapshot, signedSnapshot:snapshot, signRocYear:rocYear, signMonth, signDay, source:'firebase-contract-signature'};
-    await update('teacherContractAssignments', assignment.assignmentId, row);
-    await set('teacherContractLogs', assignment.assignmentId, Object.assign({}, assignment, row, {recordId:assignment.assignmentId}));
-    return {ok:true,message:'合約已簽署並儲存到 Firebase。',recordId:assignment.assignmentId,record:Object.assign({}, assignment,row)};
+    void payload;
+    throw new Error('舊版合約送出方式已停用，請從老師課務的「其他 > 合約」重新開啟。');
   }
   async function archiveTeacherContract(payload){
     const contractId=clean(payload.contractId || payload.settingId);
@@ -7903,17 +7892,17 @@
   function mergeExternalTeacherCountRows(contractRows,profileRows){const map=new Map();function put(row){const key=externalTeacherRowKey(row);if(!key)return;map.set(key,Object.assign({},map.get(key)||{},row));}(profileRows||[]).forEach(r=>put(externalTeacherProfileCountRow(r)));(contractRows||[]).forEach(put);return Array.from(map.values());}
   async function countExternalTeacherPendingContracts(){
     try{
-      const [contracts,profiles]=await Promise.all([all('externalTeacherContracts').catch(()=>[]),all('externalTeacherProfiles').catch(()=>[])]);
-      return mergeExternalTeacherCountRows(contracts,profiles).filter(isPendingExternalTeacherContract).length;
+      const [contracts,profiles,assignments]=await Promise.all([all('externalTeacherContracts').catch(()=>[]),all('externalTeacherProfiles').catch(()=>[]),all('teacherContractAssignments').catch(()=>[])]);
+      return mergeExternalTeacherCountRows(contracts,profiles).filter(isPendingExternalTeacherContract).length+assignments.filter(isPendingExternalTeacherContract).length;
     }catch(e){return 0;}
   }
   async function adjustPendingCounts(action,payload){
     const base=typeof previousHandle==='function'?await previousHandle(action,payload||{}).catch(()=>({ok:true})):({ok:true});
-    const [leaves,corrs,temps,externalTeacherContracts,externalTeacherProfiles]=await Promise.all([all('leaveRequests').catch(()=>[]),all('clockCorrections').catch(()=>[]),all('temporaryAttendanceRequests').catch(()=>[]),all('externalTeacherContracts').catch(()=>[]),all('externalTeacherProfiles').catch(()=>[])]);
+    const [leaves,corrs,temps,externalTeacherContracts,externalTeacherProfiles,teacherContractAssignments]=await Promise.all([all('leaveRequests').catch(()=>[]),all('clockCorrections').catch(()=>[]),all('temporaryAttendanceRequests').catch(()=>[]),all('externalTeacherContracts').catch(()=>[]),all('externalTeacherProfiles').catch(()=>[]),all('teacherContractAssignments').catch(()=>[])]);
     const baseCounts=Object.assign({},base.counts||base.summary||base);
     const pendingLeaveIds=new Set(leaves.filter(r=>statusOf(r)===PENDING).map(r=>clean(r.requestId||r.__id)));
     const clockCount=corrs.filter(r=>statusOf(r)===PENDING&&!pendingLeaveIds.has(clean(r.relatedLeaveRequestId))).length,tempCount=temps.filter(r=>statusOf(r)===PENDING).length,leaveCount=pendingLeaveIds.size;
-    const externalTeacherContractPendingCount=mergeExternalTeacherCountRows(externalTeacherContracts,externalTeacherProfiles).filter(isPendingExternalTeacherContract).length;
+    const externalTeacherContractPendingCount=mergeExternalTeacherCountRows(externalTeacherContracts,externalTeacherProfiles).filter(isPendingExternalTeacherContract).length+teacherContractAssignments.filter(isPendingExternalTeacherContract).length;
     const previousExternal=Number(baseCounts.externalTeacherContractPendingCount||baseCounts.externalTeacherPendingContractCount||baseCounts.externalTeacherPendingCount||baseCounts.teacherPendingCount||0)||0;
     const previousApproval=Number(baseCounts.approvalCount||0)||0;
     const registrationCount=Number(baseCounts.registrationCount||baseCounts.pendingRegistrationCount||baseCounts.registrations||0)||0;
