@@ -146,8 +146,9 @@ async function normalizeKeepers(plan) {
     }]);
   });
   plan.keepManagerRecords.forEach((record) => {
-    if (!cleanup.managerAccount(record) && !cleanup.primaryManagerInfrastructure(record)) return;
+    if (!cleanup.canonicalManagerAccount(record) && !cleanup.primaryManagerInfrastructure(record)) return;
     const patch = {
+      name: cleanup.KEEP_MANAGER_NAME, displayName: cleanup.KEEP_MANAGER_NAME,
       role: 'admin', active: true, accountStatus: 'active', showSettingsZone: true,
       isManager: true, personnelCleanupProtected: true, updatedAt: FV.serverTimestamp()
     };

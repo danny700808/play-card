@@ -5,6 +5,8 @@ const personData = require('./personDataAdmin').__test;
 const KEEP_PARTTIME_NAME = '廖浤鈞';
 const KEEP_MANAGER_NAME = '黃銘廷';
 const PRIMARY_MANAGER_ID = 'PRIMARY_MANAGER_LINE';
+const BOOTSTRAP_MANAGER_ID = 'ADMIN_DANNY';
+const BOOTSTRAP_MANAGER_EMAIL = 'danny700808@gmail.com';
 
 const clean = (value) => String(value == null ? '' : value).trim();
 const lower = (value) => clean(value).toLowerCase();
@@ -33,6 +35,15 @@ function managerAccount(record) {
     truthy(row['可看設定區']) || truthy(row['管理權限']));
 }
 
+function canonicalManagerAccount(record) {
+  if (!record) return false;
+  const canonicalIdentity = rowName(record.row) === KEEP_MANAGER_NAME ||
+    record.docId === BOOTSTRAP_MANAGER_ID || rowEmail(record.row) === BOOTSTRAP_MANAGER_EMAIL ||
+    truthy(record.row && record.row.adminBootstrap);
+  return canonicalIdentity && (managerAccount(record) || record.docId === BOOTSTRAP_MANAGER_ID ||
+    rowEmail(record.row) === BOOTSTRAP_MANAGER_EMAIL);
+}
+
 function activeParttimeEmployee(record) {
   if (!record || record.spec.collection !== 'employees') return false;
   const row = record.row || {};
@@ -51,7 +62,7 @@ function primaryManagerInfrastructure(record) {
 
 function managerKeepRecord(record) {
   if (!record) return false;
-  if (managerAccount(record)) return true;
+  if (canonicalManagerAccount(record)) return true;
   return record.spec.collection === 'employeeLineBindings';
 }
 
@@ -69,8 +80,7 @@ function buildCleanupPlan(records) {
     personData.recordBelongsToPersonnel(record.spec, record.row || {}));
   const groups = personData.buildGroups(personnelRecords);
   const parttimeGroups = groups.filter((group) => group.names.includes(KEEP_PARTTIME_NAME));
-  const managerGroups = groups.filter((group) =>
-    group.names.includes(KEEP_MANAGER_NAME) && group.rows.some(managerAccount));
+  const managerGroups = groups.filter((group) => group.rows.some(canonicalManagerAccount));
   const managerLineGroups = groups.filter((group) =>
     group.names.includes(KEEP_MANAGER_NAME) &&
     group.rows.some((record) => record.spec.collection === 'employeeLineBindings'));
@@ -151,9 +161,12 @@ module.exports = {
   KEEP_PARTTIME_NAME,
   KEEP_MANAGER_NAME,
   PRIMARY_MANAGER_ID,
+  BOOTSTRAP_MANAGER_ID,
+  BOOTSTRAP_MANAGER_EMAIL,
   rowName,
   rowEmail,
   managerAccount,
+  canonicalManagerAccount,
   activeParttimeEmployee,
   primaryManagerInfrastructure,
   managerKeepRecord,

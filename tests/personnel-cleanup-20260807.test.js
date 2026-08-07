@@ -100,6 +100,19 @@ test('preserves a separately keyed manager LINE binding carrying the exact manag
   assert.equal(plan.keepPaths.has('employeeLineBindings/UNLINKED-MANAGER-LINE'), true);
 });
 
+test('recognizes the production bootstrap manager even when its old display name is not canonical', () => {
+  const rows = baseKeepers().slice(0, 1).concat([
+    record('employees', 'ADMIN_DANNY', {
+      employeeId: 'ADMIN_DANNY', name: 'Danny', email: 'danny700808@gmail.com',
+      role: 'admin', identityType: 'admin', adminBootstrap: true
+    }),
+    record('employeeSchedules', 'OLD-MANAGER-SHIFT', { employeeId: 'ADMIN_DANNY' })
+  ]);
+  const plan = cleanup.buildCleanupPlan(rows);
+  assert.equal(plan.keepPaths.has('employees/ADMIN_DANNY'), true);
+  assert.equal(plan.keepPaths.has('employeeSchedules/OLD-MANAGER-SHIFT'), false);
+});
+
 test('fails closed when either exact retained identity is missing', () => {
   assert.throws(() => cleanup.buildCleanupPlan(baseKeepers().slice(1)), /廖浤鈞/);
   assert.throws(() => cleanup.buildCleanupPlan(baseKeepers().slice(0, 1)), /黃銘廷/);
