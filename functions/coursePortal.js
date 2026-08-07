@@ -2192,6 +2192,11 @@ function externalTeacherProfileMissingFields(row) {
     ['mobilePhone', '行動電話', employeePhone(source)],
     ['contactMethod', 'LINE 或 Email', contactMethod],
     ['idNumber', '身分證字號', clean(source.idNumber)],
+    ['birthDate', '出生年月日', clean(source.birthDate)],
+    ['householdAddress', '戶籍地址', clean(source.householdAddress)],
+    ['mailingAddress', '通訊地址', clean(source.mailingAddress || source.contactAddress)],
+    ['emergencyContact', '緊急聯絡人', clean(source.emergencyContact)],
+    ['emergencyPhone', '緊急聯絡人電話', normalizePhone(source.emergencyPhone || source.emergencyContactPhone)],
     ['teachingAbilities', '授課項目', teaching],
     ['identityDocument', '身分證明文件', identityDocument]
   ].filter((item) => !item[2]).map((item) => ({ key: item[0], label: item[1] }));
@@ -2214,9 +2219,8 @@ function teacherPortalProfileStatusIsConfirmed(row) {
     row.status || row.contractStatus || row.profileStatus || row.externalTeacherStatus
   )).normalize('NFKC').replace(/\s+/g, '').toLowerCase();
   return [
-    'active', 'confirmed', 'contract_effective', 'completed', 'complete',
-    'profile_complete',
-    '已確認', '已生效', '契約生效', '完成', '管理端已確認，契約生效'
+    'active', 'confirmed', 'contract_effective', 'approved',
+    '已確認', '已核准', '已生效', '契約生效', '管理端已確認，契約生效'
   ].includes(status);
 }
 
@@ -2244,13 +2248,14 @@ function teacherUtilityTeachingAbilities(sources) {
       ? source.teachingAbilities.map((item) => {
         if (typeof item === 'string') return { item: clean(item) };
         const name = clean(item && (item.item || item.name || item.subject));
-        return name ? { item: name } : null;
+        const level = clean(item && (item.level || item.degree || item.proficiency));
+        return name ? { item: name, level } : null;
       }).filter(Boolean)
       : [];
     if (abilities.length) return abilities;
     const text = clean(source && (source.teachingItemsText || source.teachingItems));
     if (text) {
-      return text.split(/[、,，\n]+/u).map(clean).filter(Boolean).map((item) => ({ item }));
+      return text.split(/[、,，\n]+/u).map(clean).filter(Boolean).map((item) => ({ item, level: '' }));
     }
   }
   return [];
@@ -2294,7 +2299,10 @@ function teacherUtilityProfileBundle(options) {
   const privateProfile = source.privateProfile || {};
   // The current profile is authoritative personal data.  Contracts are immutable
   // legal snapshots and must not silently refill or overwrite the profile.
-  const personalSources = [privateProfile, externalProfile, employee];
+  // The current teacher profile is the only self-service personal-data source.
+  // Employee and contract records may contain an older person's test data and
+  // therefore must never refill a fresh profile merely because an ID was reused.
+  const personalSources = [privateProfile, externalProfile];
   const lineSources = (source.bindings || []).concat([externalProfile, employee]);
   const teachingAbilities = teacherUtilityTeachingAbilities(personalSources);
   const teachingItemsText = teachingAbilities.map((item) => clean(item.item)).filter(Boolean).join('、');
@@ -2363,7 +2371,12 @@ async function resolveTeacherUtilityEmployee(session) {
   if (!teacherId) throw new HttpsError('failed-precondition', '老師登入資料缺少老師編號，請重新登入。');
   const bindings = await authorizedBindingsForSession(session);
   if (!bindings.length) throw new HttpsError('permission-denied', '老師登入綁定已停用，請重新登入。');
-  const canonicalEmployeeId = `EXT_${hash(`course-teacher:${teacherId}`).slice(0, 16)}`;
+  const managerLinkedEmployeeIds = [...new Set(bindings.filter((row) => row.linkedByManagerAt || row.linkedByManager)
+    .map((row) => clean(row.personMasterId || row.canonicalEmployeeId)).filter(Boolean))];
+  if (managerLinkedEmployeeIds.length > 1) {
+    throw new HttpsError('failed-precondition', '這位老師被管理者連到多個人員主檔，請先到人員資料整理中心修正。');
+  }
+  const canonicalEmployeeId = managerLinkedEmployeeIds[0] || `EXT_${hash(`course-teacher:${teacherId}`).slice(0, 16)}`;
   const profileId = teacherPortalProfileId(teacherId);
   const canonicalRef = db.collection('employees').doc(canonicalEmployeeId);
   const profileRef = db.collection('externalTeacherProfiles').doc(profileId);
@@ -2376,7 +2389,8 @@ async function resolveTeacherUtilityEmployee(session) {
     legacyContractRef.get()
   ]);
   const canonicalExisting = canonicalSnapshot.exists ? jsonValue(canonicalSnapshot.data() || {}) : {};
-  if (canonicalSnapshot.exists && !isExternalTeacherEmployee(canonicalExisting)) {
+  const explicitlyLinkedByManager = managerLinkedEmployeeIds[0] === canonicalEmployeeId;
+  if (canonicalSnapshot.exists && !isExternalTeacherEmployee(canonicalExisting) && !explicitlyLinkedByManager) {
     throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
   }
   const existingProfile = profileSnapshot.exists
@@ -2501,15 +2515,51 @@ async function resolveTeacherUtilityEmployee(session) {
     }
     batch.set(row.__ref, patch, { merge: true });
   });
-  const currentRecordConfirmed = teacherPortalProfileStatusIsConfirmed(existingProfile);
-  if (
-    canonicalSnapshot.exists &&
-    clean(canonicalExisting.source) === 'course-portal-canonical-external-teacher' &&
-    canonicalExisting.coursePortalTeacherCanonical === true &&
-    !currentRecordConfirmed
-  ) {
-    batch.delete(canonicalRef);
+  // The employee master is the canonical person record.  Create it as soon as a
+  // teacher has authenticated, even while the profile is still a draft.  Older
+  // code deleted this row until the profile was "confirmed", which made the
+  // teacher see saved data while Employee Management showed zero people.
+  const seedSources = [existingPrivateProfile, existingProfile];
+  const employeeSeed = {
+    id: canonicalEmployeeId,
+    employeeId: canonicalEmployeeId,
+    identityType: clean(canonicalExisting.identityType || 'external'),
+    identityLabel: clean(canonicalExisting.identityLabel || (canonicalExisting.identityType ? '' : '外聘老師')),
+    employeeType: clean(canonicalExisting.employeeType || canonicalExisting.identityType || 'external'),
+    role: clean(canonicalExisting.role || 'externalTeacher'),
+    roles: [...new Set([].concat(Array.isArray(canonicalExisting.roles) ? canonicalExisting.roles : [], ['externalTeacher']).map(clean).filter(Boolean))],
+    isExternalTeacher: true,
+    active: canonicalExisting.active === true,
+    accountStatus: clean(canonicalExisting.accountStatus || 'profile_draft'),
+    employmentStatus: clean(canonicalExisting.employmentStatus || 'profile_draft'),
+    hiddenFromActiveLists: canonicalExisting.hiddenFromActiveLists === true,
+    source: 'course-portal-canonical-external-teacher',
+    coursePortalTeacherCanonical: true,
+    coursePortalTeacherId: teacherId,
+    externalTeacherProfileId: profileId,
+    portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+    portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
+    personLifecycleStatus: clean(canonicalExisting.personLifecycleStatus || 'profile_draft'),
+    updatedAt: FieldValue.serverTimestamp(),
+    createdAt: canonicalExisting.createdAt || FieldValue.serverTimestamp()
+  };
+  const seedName = teacherUtilityFirstText(seedSources, ['name', 'targetName', 'teacherName', 'displayName', 'employeeName']);
+  const seedEmail = normalizeEmail(teacherUtilityFirstText(seedSources, ['email', 'Email', 'loginEmail', 'contactEmail']));
+  const seedPhone = normalizePhone(teacherUtilityFirstText(seedSources, ['mobilePhone', 'mobile', 'phone', 'tel', 'telephone']));
+  if (seedName) employeeSeed.name = employeeSeed.displayName = seedName;
+  else if (!teacherPortalProfileStatusIsConfirmed(existingProfile)) {
+    employeeSeed.name = FieldValue.delete();
+    employeeSeed.displayName = FieldValue.delete();
   }
+  if (seedEmail) employeeSeed.email = seedEmail;
+  else if (!teacherPortalProfileStatusIsConfirmed(existingProfile)) employeeSeed.email = FieldValue.delete();
+  if (seedPhone) employeeSeed.mobile = employeeSeed.mobilePhone = seedPhone;
+  else if (!teacherPortalProfileStatusIsConfirmed(existingProfile)) {
+    employeeSeed.mobile = FieldValue.delete();
+    employeeSeed.mobilePhone = FieldValue.delete();
+    employeeSeed.phone = FieldValue.delete();
+  }
+  batch.set(canonicalRef, employeeSeed, { merge: true });
   await batch.commit();
 
   const [profileReload, privateProfileReload, employeeReload] = await Promise.all([
@@ -2526,7 +2576,7 @@ async function resolveTeacherUtilityEmployee(session) {
     privateProfileReload.exists ? jsonValue(privateProfileReload.data() || {}) : {}
   );
   const confirmed = teacherPortalProfileStatusIsConfirmed(externalProfile);
-  const employee = confirmed && employeeReload.exists
+  const employee = employeeReload.exists
     ? Object.assign(
       { __id: canonicalEmployeeId, __ref: canonicalRef },
       jsonValue(employeeReload.data() || {}),
@@ -2571,7 +2621,8 @@ async function resolveTeacherUtilityEmployee(session) {
       portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
       portalSessionBridge: true,
       coursePortalTeacherCanonical: true,
-      employeeRecordCreated: confirmed && employeeReload.exists
+      managerLinkedPerson: explicitlyLinkedByManager,
+      employeeRecordCreated: employeeReload.exists
     },
     profile: profileBundle.profile,
     profileComplete: missingProfileFields.length === 0,
@@ -3040,10 +3091,25 @@ async function teacherUtilitySaveProfileDraft(data) {
   });
   const missing = externalTeacherProfileMissingFields(preview);
   const complete = missing.length === 0;
-  patch.status = complete ? 'profile_complete' : 'profile_draft';
+  const submitForReview = data && data.submitForReview === true;
+  if (submitForReview && !complete) {
+    throw new HttpsError('failed-precondition', `資料尚缺 ${missing.map((row) => row.label).join('、')}，請補齊後再送出。`);
+  }
+  const currentConfirmed = teacherPortalProfileStatusIsConfirmed(existing);
+  const currentStatus = clean(existing.profileStatus || existing.status).toLowerCase();
+  patch.status = currentConfirmed
+    ? clean(existing.status || existing.profileStatus || 'active')
+    : (submitForReview
+      ? 'pending_review'
+      : (['pending_review', 'needs_revision'].includes(currentStatus) ? currentStatus : 'profile_draft'));
   patch.profileStatus = patch.status;
-  patch.progressStatus = complete ? '個人資料已完成' : '個人資料尚未完成';
+  patch.progressStatus = currentConfirmed
+    ? '已建立為外聘老師'
+    : (patch.status === 'pending_review'
+      ? '等待管理者確認'
+      : (patch.status === 'needs_revision' ? '管理者退回補件' : '資料填寫中'));
   patch.profileCompletedAt = complete ? (existing.profileCompletedAt || FieldValue.serverTimestamp()) : FieldValue.delete();
+  if (submitForReview) patch.profileSubmittedAt = FieldValue.serverTimestamp();
   const saveBatch = db.batch();
   saveBatch.set(profileRef, Object.assign({}, patch, {
     idNumber: FieldValue.delete(),
@@ -3054,44 +3120,55 @@ async function teacherUtilitySaveProfileDraft(data) {
   saveBatch.set(privateProfileRef, privatePatch, { merge: true });
   await saveBatch.commit();
 
-  if (complete) {
-    const employeeId = clean(resolved.employeeId);
-    const employeeRef = db.collection('employees').doc(employeeId);
-    const employeeSnapshot = await employeeRef.get();
-    const employeeExisting = employeeSnapshot.exists ? employeeSnapshot.data() || {} : {};
-    if (employeeSnapshot.exists && !isExternalTeacherEmployee(employeeExisting)) {
-      throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
-    }
-    await employeeRef.set({
-      id: employeeId,
-      employeeId,
-      name: clean(preview.name),
-      displayName: clean(preview.name),
-      mobile: employeePhone(preview),
-      mobilePhone: employeePhone(preview),
-      email: employeeEmail(preview),
-      identityType: 'external',
-      identityLabel: '外聘老師',
-      employeeType: 'external',
-      role: 'externalTeacher',
-      isExternalTeacher: true,
-      active: employeeExisting.active === true,
-      accountStatus: clean(employeeExisting.accountStatus || 'pending_review'),
-      employmentStatus: clean(employeeExisting.employmentStatus || 'pending_review'),
-      source: 'course-portal-canonical-external-teacher',
-      coursePortalTeacherCanonical: true,
-      coursePortalTeacherId: clean(session.teacherId),
-      externalTeacherProfileId: profileId,
-      portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
-      portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
-      teachingAbilities: teachingAbilities === undefined ? existing.teachingAbilities || [] : teachingAbilities,
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAt: employeeExisting.createdAt || FieldValue.serverTimestamp()
-    }, { merge: true });
+  const employeeId = clean(resolved.employeeId);
+  const employeeRef = db.collection('employees').doc(employeeId);
+  const employeeSnapshot = await employeeRef.get();
+  const employeeExisting = employeeSnapshot.exists ? employeeSnapshot.data() || {} : {};
+  if (employeeSnapshot.exists && !isExternalTeacherEmployee(employeeExisting)) {
+    const managerLinked = resolved && resolved.user && resolved.user.managerLinkedPerson === true;
+    if (!managerLinked) throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
   }
+  const employeeConfirmed = employeeExisting.active === true ||
+    teacherPortalProfileStatusIsConfirmed(employeeExisting) || currentConfirmed;
+  const nextPersonStatus = employeeConfirmed ? 'active' :
+    (patch.status === 'pending_review' ? 'pending_review' : (patch.status === 'needs_revision' ? 'needs_revision' : 'profile_draft'));
+  await employeeRef.set({
+    id: employeeId,
+    employeeId,
+    name: clean(preview.name),
+    displayName: clean(preview.name),
+    mobile: employeePhone(preview),
+    mobilePhone: employeePhone(preview),
+    email: employeeEmail(preview),
+    identityType: clean(employeeExisting.identityType || 'external'),
+    identityLabel: clean(employeeExisting.identityLabel || (employeeExisting.identityType ? '' : '外聘老師')),
+    employeeType: clean(employeeExisting.employeeType || employeeExisting.identityType || 'external'),
+    role: clean(employeeExisting.role || 'externalTeacher'),
+    roles: [...new Set([].concat(Array.isArray(employeeExisting.roles) ? employeeExisting.roles : [], ['externalTeacher']).map(clean).filter(Boolean))],
+    isExternalTeacher: true,
+    active: employeeConfirmed,
+    accountStatus: employeeConfirmed ? clean(employeeExisting.accountStatus || 'active') : (nextPersonStatus === 'needs_revision' ? 'profile_draft' : nextPersonStatus),
+    employmentStatus: employeeConfirmed ? clean(employeeExisting.employmentStatus || 'active') : (nextPersonStatus === 'needs_revision' ? 'profile_draft' : nextPersonStatus),
+    hiddenFromActiveLists: employeeExisting.hiddenFromActiveLists === true,
+    personLifecycleStatus: nextPersonStatus,
+    source: 'course-portal-canonical-external-teacher',
+    coursePortalTeacherCanonical: true,
+    coursePortalTeacherId: clean(session.teacherId),
+    externalTeacherProfileId: profileId,
+    portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+    portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
+    teachingAbilities: teachingAbilities === undefined ? existing.teachingAbilities || [] : teachingAbilities,
+    updatedAt: FieldValue.serverTimestamp(),
+    createdAt: employeeExisting.createdAt || FieldValue.serverTimestamp()
+  }, { merge: true });
 
   const refreshed = await resolveTeacherUtilityEmployee(session);
-  return Object.assign({ ok: true, savedAt: Date.now(), savedIdentityCount: savedImages.length }, refreshed);
+  return Object.assign({
+    ok: true,
+    savedAt: Date.now(),
+    savedIdentityCount: savedImages.length,
+    submittedForReview: submitForReview
+  }, refreshed);
 }
 
 async function teacherUtilitySession(data) {

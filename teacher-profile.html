@@ -28,6 +28,13 @@
     .profile-form{display:grid;gap:14px}
     .profile-form .field{margin:0}.profile-form label{display:block;font-weight:900;color:#253f35;margin-bottom:6px}
     .profile-form input,.profile-form textarea{box-sizing:border-box;width:100%;font-size:16px;border-radius:13px}
+    .section-heading{padding-top:5px;border-top:1px solid #e5ece8}.section-heading:first-child{border-top:0;padding-top:0}
+    .section-heading h2{font-size:20px}.section-heading p{margin:4px 0 0;color:#6c7973;font-size:14px}
+    .identity-grid{display:grid;grid-template-columns:1fr;gap:12px;padding:13px;border-radius:16px;background:#f8faf9;border:1px solid #e1e9e5}
+    .teaching-list{display:grid;gap:9px}
+    .teaching-row{display:grid;grid-template-columns:minmax(0,1fr) 150px 42px;gap:8px;align-items:end}
+    .teaching-row button{min-height:48px;border:0;border-radius:12px;background:#fff0ef;color:#a12d27;font-weight:900;font-size:20px}
+    .add-teaching{min-height:46px;border:1px dashed #83ac99;border-radius:13px;background:#f4fbf7;color:#1f6b4f;font-weight:900}
     .required{color:#bb3c34;margin-left:3px}
     .field-help{font-size:13px;color:#6c7973;margin-top:5px;line-height:1.55}
     .file-state{margin-top:8px;padding:10px 12px;background:#f3f7f5;border-radius:12px;color:#496158;font-size:14px;font-weight:800}
@@ -47,10 +54,10 @@
       .form-actions{grid-template-columns:1fr}.profile-status{gap:10px}
     }
   </style>
-  <script src="config.js?v=20260807-teacher-profile-v1"></script>
+  <script src="config.js?v=20260808-person-master-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="teacher-more-auth-bridge.js?v=20260807-teacher-profile-v1"></script>
+  <script src="teacher-more-auth-bridge.js?v=20260808-person-master-v1"></script>
 </head>
 <body>
   <main class="teacher-profile-shell">
@@ -61,7 +68,7 @@
 
     <section class="profile-card">
       <h1>我的資料</h1>
-      <p class="profile-subtitle">可先儲存目前已填內容，下次再繼續。</p>
+      <p class="profile-subtitle">可先儲存目前內容，下次再繼續；資料與年度合約會分開處理。</p>
       <div class="profile-message" id="profileMessage" role="status" aria-live="polite"></div>
     </section>
 
@@ -74,14 +81,20 @@
       <div>
         <h2 id="profileStatusTitle">資料尚未完成</h2>
         <div class="status-text" id="profileStatusText">填寫後可隨時儲存。</div>
-        <div class="channel-row">
-          <span class="channel-chip off" id="profileLineStatus">LINE</span>
-          <span class="channel-chip off" id="profileEmailStatus">Email</span>
-        </div>
+      </div>
+    </section>
+
+    <section class="profile-card hidden" id="profileLoginCard">
+      <h2>登入方式</h2>
+      <p class="profile-subtitle">LINE 供快速登入與提醒；沒有 LINE 仍可使用 Email 驗證登入，這不代表個人資料是否完成。</p>
+      <div class="channel-row">
+        <span class="channel-chip off" id="profileLineStatus">LINE</span>
+        <span class="channel-chip off" id="profileEmailStatus">Email</span>
       </div>
     </section>
 
     <form class="profile-card profile-form hidden" id="teacherProfileForm" novalidate>
+      <div class="section-heading"><h2>基本資料</h2><p>姓名、電話與 Email 會同步到同一個人員主檔。</p></div>
       <div class="field">
         <label for="profileName">姓名<span class="required">*</span></label>
         <input id="profileName" name="name" autocomplete="name" maxlength="80">
@@ -95,23 +108,48 @@
         <input id="profileEmail" name="email" type="email" autocomplete="email" maxlength="160">
       </div>
       <div class="field">
-        <label for="profileIdNumber">身分證字號<span class="required">*</span></label>
-        <input id="profileIdNumber" name="idNumber" autocapitalize="characters" maxlength="30">
-        <div class="field-help" id="profileIdHint"></div>
+        <label for="profileBirthDate">出生年月日<span class="required">*</span></label>
+        <input id="profileBirthDate" name="birthDate" type="date" autocomplete="bday">
       </div>
       <div class="field">
-        <label for="profileTeaching">授課項目<span class="required">*</span></label>
-        <textarea id="profileTeaching" name="teaching" rows="4" placeholder="每行填寫一個項目，例如：&#10;鋼琴&#10;長笛"></textarea>
+        <label for="profileHouseholdAddress">戶籍地址<span class="required">*</span></label>
+        <input id="profileHouseholdAddress" name="householdAddress" autocomplete="street-address" maxlength="240">
       </div>
       <div class="field">
-        <label for="profileIdentityFiles">身分證明照片<span class="required">*</span></label>
-        <input id="profileIdentityFiles" name="identityFiles" type="file" accept="image/*" multiple>
-        <div class="field-help">最多選擇 2 張；送出前會自動縮小並加上用途浮水印。</div>
-        <div class="file-state" id="profileFileState">尚未上傳</div>
+        <label for="profileMailingAddress">通訊地址<span class="required">*</span></label>
+        <input id="profileMailingAddress" name="mailingAddress" autocomplete="street-address" maxlength="240">
+        <button class="add-teaching" id="profileCopyAddress" type="button">同戶籍地址</button>
       </div>
+      <div class="field">
+        <label for="profileEmergencyContact">緊急聯絡人<span class="required">*</span></label>
+        <input id="profileEmergencyContact" name="emergencyContact" maxlength="80">
+      </div>
+      <div class="field">
+        <label for="profileEmergencyPhone">緊急聯絡人電話<span class="required">*</span></label>
+        <input id="profileEmergencyPhone" name="emergencyPhone" inputmode="tel" maxlength="30">
+      </div>
+
+      <div class="section-heading"><h2>身分資料</h2><p>身分證字號與照片放在同一區，僅供管理者核對。</p></div>
+      <div class="identity-grid">
+        <div class="field">
+          <label for="profileIdNumber">身分證字號<span class="required">*</span></label>
+          <input id="profileIdNumber" name="idNumber" autocapitalize="characters" maxlength="30">
+          <div class="field-help" id="profileIdHint"></div>
+        </div>
+        <div class="field">
+          <label for="profileIdentityFiles">身分證明照片<span class="required">*</span></label>
+          <input id="profileIdentityFiles" name="identityFiles" type="file" accept="image/*" multiple>
+          <div class="field-help">正反面最多 2 張；送出前會縮小並加上用途浮水印。</div>
+          <div class="file-state" id="profileFileState">尚未上傳</div>
+        </div>
+      </div>
+
+      <div class="section-heading"><h2>授課能力</h2><p>每一項分別填寫科目與程度。</p></div>
+      <div class="teaching-list" id="profileTeachingList"></div>
+      <button class="add-teaching" id="profileAddTeaching" type="button">＋ 新增授課項目</button>
       <div class="form-actions">
-        <button class="secondary-action" id="profileSaveBtn" type="submit">儲存</button>
-        <button class="primary-action" id="profileSaveReturnBtn" type="button">儲存並返回</button>
+        <button class="secondary-action" id="profileSaveBtn" type="submit">儲存，下次繼續</button>
+        <button class="primary-action" id="profileSubmitBtn" type="button">送出管理者確認</button>
       </div>
     </form>
 
@@ -124,6 +162,6 @@
       </div>
     </section>
   </main>
-  <script src="teacher-profile.js?v=20260807-teacher-profile-v1"></script>
+  <script src="teacher-profile.js?v=20260808-person-master-v1"></script>
 </body>
 </html>

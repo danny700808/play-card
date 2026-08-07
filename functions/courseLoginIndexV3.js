@@ -10,3 +10,6 @@ registerCourseLoginAuthV3(exports);
 
 const { registerUnifiedLineBindingAdmin } = require('./unifiedLineBindingAdmin');
 registerUnifiedLineBindingAdmin(exports);
+
+const { registerPersonDataAdmin } = require('./personDataAdmin');
+registerPersonDataAdmin(exports);

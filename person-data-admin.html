@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#173a34">
+  <title>人員資料整理｜柚子樂器</title>
+  <link rel="icon" href="yuzu-logo-green.png">
+  <style>
+    :root{--green:#17634a;--soft:#eef7f2;--line:#d8e4dd;--ink:#17352b;--muted:#64766d;--red:#ad3129;--amber:#9a6200}
+    *{box-sizing:border-box}body{margin:0;background:#f1f6f3;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",sans-serif;line-height:1.55}
+    button,input{font:inherit}.shell{width:min(1080px,calc(100% - 24px));margin:auto;padding:14px 0 40px}.head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}.head h1{font-size:30px;margin:0}.head p{margin:3px 0 0;color:var(--muted)}
+    .btn{border:0;border-radius:13px;min-height:44px;padding:9px 14px;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.btn.primary{background:var(--green);color:#fff}.btn.soft{background:#fff;color:var(--green);border:1px solid #bfd4c8}.btn.danger{background:var(--red);color:#fff}.btn.warn{background:#fff4d8;color:#795000;border:1px solid #ebcc7e}.btn:disabled{opacity:.5;cursor:not-allowed}
+    .notice,.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}.notice{background:#fff9e9;border-color:#edd59a;color:#735000}.notice strong{display:block;margin-bottom:4px}.summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px}.summary div{background:#fff;border:1px solid var(--line);border-radius:16px;padding:13px}.summary span{display:block;color:var(--muted);font-size:13px;font-weight:800}.summary b{display:block;font-size:27px;margin-top:4px}
+    .toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}.toolbar input{min-height:48px;border:2px solid #d6e1db;border-radius:13px;padding:9px 12px;font-size:16px}.status{padding:10px 0;color:var(--muted);font-weight:800}.list{display:grid;gap:10px}.person{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fff;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px}.person h2{font-size:21px;margin:0}.meta,.sources{font-size:14px;color:var(--muted);margin-top:5px;word-break:break-word}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.tag{border-radius:999px;padding:4px 9px;background:var(--soft);color:var(--green);font-size:12px;font-weight:900}.tag.warn{background:#fff4d8;color:#815500}.tag.bad{background:#ffefed;color:#9c2d26}
+    .mask{position:fixed;inset:0;background:rgba(13,35,27,.58);display:grid;place-items:center;padding:12px;z-index:30}.mask.hidden{display:none}.dialog{width:min(780px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:20px;padding:18px}.dialog-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.dialog h2{margin:0;font-size:25px}.close{border:0;background:#eef2f0;border-radius:50%;width:42px;height:42px;font-size:24px}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}.detail-box{background:#f7faf8;border:1px solid #e2e9e5;border-radius:14px;padding:11px}.detail-box span{display:block;color:var(--muted);font-size:12px}.detail-box b{word-break:break-word}.source-list{display:grid;gap:7px}.source-row{border:1px solid #e0e8e3;border-radius:12px;padding:10px}.source-row strong{display:block}.source-row small{color:var(--muted);word-break:break-all}.actions{display:grid;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid #e4ebe7}.action-row{display:flex;gap:8px;flex-wrap:wrap}.action-row input{flex:1;min-width:210px;border:1px solid #cad8d0;border-radius:12px;padding:9px 11px}.message{display:none;border-radius:12px;padding:10px 12px;background:var(--soft);color:var(--green);font-weight:800}.message.error{background:#ffefed;color:var(--red)}
+    @media(max-width:700px){.head{align-items:flex-start}.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.toolbar{grid-template-columns:1fr}.person{grid-template-columns:1fr}.person .btn{width:100%}.detail-grid{grid-template-columns:1fr}.shell{width:min(100% - 16px,1080px)}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="head"><div><h1>人員資料整理</h1><p>同一個人員主檔，集中查看個資、角色、LINE、合約、班表與歷史。</p></div><a class="btn soft" href="employee-admin.html">返回員工管理</a></header>
+    <section class="notice"><strong>這裡不會自動合併或刪除。</strong>系統只依明確的人員／老師編號整理，不會用姓名、Email 或電話猜測同一人。正式合約、薪資與出勤存在時只能封存；只有沒有正式歷史的測試資料才可永久刪除。</section>
+    <section class="summary" id="personSummary"><div><span>人員群組</span><b>—</b></div><div><span>需確認歸屬</span><b>—</b></div><div><span>可刪測試資料</span><b>—</b></div><div><span>含正式歷史</span><b>—</b></div><div><span>資料來源</span><b>—</b></div></section>
+    <section class="card"><div class="toolbar"><input id="personSearch" type="search" autocomplete="off" placeholder="搜尋姓名、Email、人員或老師編號"><button class="btn primary" id="personReload" type="button">重新掃描</button></div><div class="status" id="personStatus">正在安全掃描所有人員資料來源…</div><div class="list" id="personList"></div><datalist id="personEmployeeOptions"></datalist></section>
+  </main>
+  <div class="mask hidden" id="personMask"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="personDetailTitle"><div class="dialog-head"><div><h2 id="personDetailTitle">人員資料</h2><div class="meta" id="personDetailMeta"></div></div><button class="close" id="personClose" type="button" aria-label="關閉">×</button></div><div class="message" id="personMessage"></div><div class="detail-grid" id="personDetailGrid"></div><h3>目前找到的資料來源</h3><div class="source-list" id="personSourceList"></div><div class="actions" id="personActions"></div></section></div>
+  <script src="config.js?v=20260808-person-master-v1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="app.js?v=20260808-person-master-v1"></script>
+  <script src="person-data-admin.js?v=20260808-person-master-v1"></script>
+</body>
+</html>

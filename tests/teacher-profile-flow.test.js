@@ -17,10 +17,15 @@ test('teacher profile is a stable standalone page, not a profile-and-contract wi
   assert.match(portal, /href="teacher-profile\.html"[^>]*id="teacherProfileLink"/);
   assert.doesNotMatch(portal, /href="profile\.html"[^>]*id="teacherProfileLink"/);
   assert.match(page, /id="teacherProfileForm"/);
-  assert.match(page, /id="profileSaveBtn"[^>]*>儲存</);
-  assert.match(page, /id="profileSaveReturnBtn"[^>]*>儲存並返回</);
-  assert.match(page, /可先儲存目前已填內容，下次再繼續/);
+  assert.match(page, /id="profileSaveBtn"[^>]*>儲存，下次繼續</);
+  assert.match(page, /id="profileSubmitBtn"[^>]*>送出管理者確認</);
+  assert.match(page, /可先儲存目前內容，下次再繼續/);
   assert.match(page, /id="profileIdentityFiles"[^>]*type="file"/);
+  assert.match(page, /id="profileBirthDate"/);
+  assert.match(page, /id="profileHouseholdAddress"/);
+  assert.match(page, /id="profileMailingAddress"/);
+  assert.match(page, /id="profileTeachingList"/);
+  assert.match(runtime, /teaching-level/);
   assert.match(page, /LINE/);
   assert.match(page, /Email/);
   assert.doesNotMatch(page, /查看契約並簽名|確認送出契約|contract\.html/);
@@ -46,13 +51,25 @@ test('profile API stores a server draft without creating or navigating to a cont
   assert.match(resolver, /batch\.delete\(legacyContractRef\)/);
   assert.ok(saveStart >= 0 && saveEnd > saveStart);
   assert.match(save, /profile_draft/);
-  assert.match(save, /profile_complete/);
+  assert.match(save, /pending_review/);
+  assert.match(save, /submitForReview/);
   assert.match(save, /teacher-private-profiles\/\$\{profileId\}\/identity/);
   assert.match(save, /db\.collection\('teacherPrivateProfiles'\)\.doc\(profileId\)/);
   assert.match(save, /idNumber:\s*FieldValue\.delete\(\)/);
   assert.match(save, /saveBatch\.set\(privateProfileRef, privatePatch/);
+  assert.match(save, /db\.collection\('employees'\)\.doc\(employeeId\)/);
   assert.doesNotMatch(save, /externalTeacherContracts|teacherContractAssignments|waiting_contract|pendingContract/);
   assert.match(backend, /coursePortalTeacherSaveProfileDraft\s*=\s*callable\(teacherUtilitySaveProfileDraft/);
+});
+
+test('employee master exists from first login and remains separate from annual contracts', () => {
+  const backend = read('functions/coursePortal.js');
+  const resolverStart = backend.indexOf('async function resolveTeacherUtilityEmployee(session)');
+  const resolverEnd = backend.indexOf('function teacherUtilityBoolean', resolverStart);
+  const resolver = backend.slice(resolverStart, resolverEnd);
+  assert.match(resolver, /batch\.set\(canonicalRef, employeeSeed/);
+  assert.doesNotMatch(resolver, /batch\.delete\(canonicalRef\)/);
+  assert.match(resolver, /accountStatus:\s*clean\(canonicalExisting\.accountStatus \|\| 'profile_draft'\)/);
 });
 
 test('old fresh onboarding links leave before rendering the obsolete wizard', () => {

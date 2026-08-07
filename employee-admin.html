@@ -291,7 +291,8 @@
         {key:'signatureFileLink',label:'簽名檔案',types:['external'],defaults:[],full:true,kind:'link'},
         {key:'revisionReason',label:'退回補件原因',types:['external'],defaults:[],full:true},
         {key:'externalContractId',label:'外聘契約資料編號',types:['external'],defaults:[]},
-        {key:'externalAdminLink',label:'年度契約管理',types:['external'],defaults:['external'],full:true,kind:'link'}
+        {key:'externalAdminLink',label:'年度契約管理',types:['external'],defaults:['external'],full:true,kind:'link'},
+        {key:'personDataAdminLink',label:'完整人員資料',types:['external'],defaults:['external'],full:true,kind:'link'}
       ]},
       {id:'line',title:'LINE 與通知資料',tone:'green',fields:[
         {key:'lineBoundStatus',label:'LINE 狀態',types:['staff','parttime','external'],defaults:['staff','parttime','external']},
@@ -443,21 +444,25 @@
       const statusText = lower(firstValue(e, ['status','狀態','contractStatus','profileStatus','externalTeacherStatus','latestExternalContractStatus']));
       const progressText = clean(firstValue(e, ['progressStatus','latestExternalContractProgress']));
       const hidden = !!firstValue(e, ['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏']);
-      if(/submitted_pending_admin|pending|waiting|待審核|待確認|待主管確認|待管理端確認|等待/.test([acc,emp,statusText,progressText].join('|'))) return '待審核';
+      if(/profile_draft|資料填寫中/.test([acc,emp,statusText,progressText].join('|'))) return '資料填寫中';
+      if(/submitted_pending_admin|pending_review|pending|waiting|待審核|待確認|待主管確認|待管理端確認|等待/.test([acc,emp,statusText,progressText].join('|'))) return '待管理者確認';
       if(emp === 'resigned' || emp === '離職') return '離職';
       if(acc === 'inactive') return hidden ? '停用 / 隱藏' : '停用';
       if(hidden) return '隱藏';
       return '在職';
     }
-    function canShowDaily(e){ return !/離職|停用|隱藏|封存|駁回|待審核|待確認|等待|pending/i.test(statusLabel(e)); }
+    function canShowDaily(e){ return !/離職|停用|隱藏|封存|駁回|填寫中|待審核|待確認|等待|pending/i.test(statusLabel(e)); }
+    function isOnboardingEmployee(e){ return /填寫中|待審核|待確認|等待|profile_draft|pending/i.test([statusLabel(e),firstValue(e,['accountStatus','employmentStatus'])].join('|')); }
     function accountStatusDisplay(e){
       const raw=lower(firstValue(e,['accountStatus','帳號狀態']));
-      const map={active:'啟用',inactive:'停用',archived:'封存',pending:'待審核',rejected:'註冊駁回'};
+      const map={active:'啟用',inactive:'停用',archived:'封存',profile_draft:'資料填寫中',pending_review:'待管理者確認',pending:'待審核',rejected:'註冊駁回'};
       return map[raw]||clean(firstValue(e,['accountStatus','帳號狀態']))||statusLabel(e);
     }
     function employmentStatusDisplay(e,type){
       const raw=lower(firstValue(e,['employmentStatus','任職狀態','合作狀態']));
       if(raw==='active')return type==='external'?'合作中':'在職';
+      if(raw==='profile_draft')return '資料填寫中';
+      if(raw==='pending_review'||raw==='pending')return '待管理者確認';
       if(raw==='resigned')return '離職';
       if(raw==='suspended')return type==='external'?'暫停合作':'暫停任用';
       if(raw==='contractorended'||raw==='contractor_ended')return '外聘合作結束';
@@ -635,19 +640,21 @@
 
     function renderCategories(){
       const active = {staff:0, parttime:0, external:0};
+      const onboarding = {staff:0, parttime:0, external:0};
       const inactive = {staff:0, parttime:0, external:0};
-      allEmployees.forEach(e => (canShowDaily(e)?active:inactive)[identityType(e)]++);
+      allEmployees.forEach(e => (canShowDaily(e)?active:(isOnboardingEmployee(e)?onboarding:inactive))[identityType(e)]++);
       const peopleCards = [
         ['staff','專職人員','staff'], ['parttime','工讀生','parttime'], ['external','外聘老師','external']
       ].map(([type,title,cls]) => `
         <div class="category-card ${cls}" onclick="openCategory('${type}')">
           <div class="cat-title">${title}</div>
           <div class="cat-count">${active[type] || 0}<span>人</span></div>
-          <div class="cat-secondary">離職／停用／封存：${inactive[type] || 0} 人</div>
+          <div class="cat-secondary">填寫／待確認：${onboarding[type] || 0} 人<br>離職／停用／封存：${inactive[type] || 0} 人</div>
         </div>
       `).join('');
+      const cleanupCard=`<div class="category-card settings" onclick="location.href='person-data-admin.html'"><div class="cat-title">人員資料整理</div><div class="cat-count" style="font-size:28px">查看</div><div class="cat-secondary">找出舊資料、歸到同一人或安全刪除</div></div>`;
       const settingsCard=`<div class="category-card settings" onclick="openVisibilitySettings()"><div class="cat-title">顯示設定</div><div class="cat-count" style="font-size:28px">自訂</div><div class="cat-secondary">勾選各身分要顯示的資料</div></div>`;
-      $('#categoryCards').innerHTML=peopleCards+settingsCard;
+      $('#categoryCards').innerHTML=peopleCards+cleanupCard+settingsCard;
     }
 
     function openCategory(type){
@@ -664,7 +671,7 @@
       const includeHidden = $('#includeHidden') && $('#includeHidden').checked;
       return allEmployees.filter(e => {
         if(identityType(e) !== currentType) return false;
-        if(!includeHidden && !canShowDaily(e)) return false;
+        if(!includeHidden && !canShowDaily(e) && !isOnboardingEmployee(e)) return false;
         if(!kw) return true;
         const hay = [nameOf(e), emailOf(e), empId(e), statusLabel(e)].join(' ').toLowerCase();
         return hay.includes(kw);
@@ -935,9 +942,10 @@
       if(k==='externalAdminLink'){
         const cid=firstValue(e,['contractId','currentExternalContractId','latestExternalContractId','externalTeacherContractId','__id']);return linkField(spec.label,[{url:`external-teacher-admin.html?contractId=${encode(cid)}`,label:'開啟年度契約管理',secondary:true}],true);
       }
+      if(k==='personDataAdminLink')return linkField(spec.label,[{url:`person-data-admin.html?employeeId=${encode(empId(e))}`,label:'查看此人的全部資料',secondary:true}],true);
       if(k==='clearLineBindingAction')return `<div class="field full"><label>${esc(spec.label)}</label><div class="field-actions"><button class="danger" type="button" onclick="clearLineBinding()">清除此人員 LINE 綁定</button></div></div>`;
-      if(k==='accountStatusControl')return editableSelect('帳號狀態','accountStatus',[['active','啟用'],['inactive','停用'],['archived','封存'],['pending','待審核'],['rejected','註冊駁回']]);
-      if(k==='employmentStatusControl')return editableSelect(ctx.type==='external'?'合作狀態':'任職狀態','employmentStatus',[['active',ctx.type==='external'?'合作中':'在職'],['resigned','離職'],['suspended',ctx.type==='external'?'暫停合作':'暫停任用'],['contractorEnded','外聘合作結束'],['archived','封存']]);
+      if(k==='accountStatusControl')return editableSelect('帳號狀態','accountStatus',[['profile_draft','資料填寫中'],['pending_review','待管理者確認'],['active','啟用'],['inactive','停用'],['archived','封存'],['rejected','註冊駁回']]);
+      if(k==='employmentStatusControl')return editableSelect(ctx.type==='external'?'合作狀態':'任職狀態','employmentStatus',[['profile_draft','資料填寫中'],['pending_review','待管理者確認'],['active',ctx.type==='external'?'合作中':'在職'],['resigned','離職'],['suspended',ctx.type==='external'?'暫停合作':'暫停任用'],['contractorEnded','外聘合作結束'],['archived','封存']]);
       if(k==='hiddenControl')return editableSelect('是否隱藏於日常清單','hiddenFromActiveLists',[['false','否'],['true','是']]);
       if(k==='endDateControl')return `<div class="field"><label>${ctx.type==='external'?'合作結束日期':'離職日期'}</label><input id="resignedDate" type="date" value="${esc(fmt(firstValue(e,['resignedDate','leaveDate','cooperationEndDate','離職日'])))}"></div>`;
       if(k==='statusNoteControl')return `<div class="field full"><label>主管狀態備註</label><textarea id="statusNote" rows="3" placeholder="主管內部備註">${esc(firstValue(e,['statusNote','狀態備註','managerNote']))}</textarea></div>`;
@@ -1003,9 +1011,9 @@
         <div id="msg" class="msg"></div>`;
 
       const accEl=$('#accountStatus');
-      if(accEl){const acc=lower(firstValue(e,['accountStatus','帳號狀態']))||'active';accEl.value=['active','inactive','archived','pending','rejected'].includes(acc)?acc:'active';}
+      if(accEl){const acc=lower(firstValue(e,['accountStatus','帳號狀態']))||'active';accEl.value=['active','inactive','archived','profile_draft','pending_review','pending','rejected'].includes(acc)?acc:'active';}
       const empEl=$('#employmentStatus');
-      if(empEl){const empStatus=lower(firstValue(e,['employmentStatus','任職狀態']))||'active';empEl.value=['active','resigned','suspended','contractorended','contractorEnded','archived'].includes(empStatus)?(empStatus==='contractorended'?'contractorEnded':empStatus):'active';}
+      if(empEl){const empStatus=lower(firstValue(e,['employmentStatus','任職狀態']))||'active';empEl.value=['active','profile_draft','pending_review','pending','resigned','suspended','contractorended','contractorEnded','archived'].includes(empStatus)?(empStatus==='contractorended'?'contractorEnded':empStatus):'active';}
       const hiddenEl=$('#hiddenFromActiveLists');if(hiddenEl)hiddenEl.value=firstValue(e,['hiddenFromActiveLists','隱藏於日常清單','hidden','隱藏'])?'true':'false';
     }
 

@@ -202,13 +202,15 @@ test('profile contact is complete with LINE or Email, and only missing when both
   );
 });
 
-test('profile completion stays focused on the short teacher onboarding fields', () => {
+test('profile completion requires the complete personal-data set', () => {
   const helpers = loadHelpers({});
   assert.equal(helpers.__missingFields(completeProfile()).length, 0);
   const missing = helpers.__missingFields(completeProfile({
     birthDate: '', householdAddress: '', mailingAddress: '', emergencyContact: '', emergencyPhone: ''
   })).map((row) => row.key);
-  assert.deepEqual(missing, []);
+  assert.deepEqual(missing, [
+    'birthDate', 'householdAddress', 'mailingAddress', 'emergencyContact', 'emergencyPhone'
+  ]);
   assert.deepEqual(
     helpers.__missingFields(completeProfile({ idNumber: '', identityUrls: [], identityFiles: [] }))
       .map((row) => row.key),
@@ -273,7 +275,7 @@ test('new teacher receives a dedicated blank profile and ignores every old match
   assert.notEqual(resolved.employeeId, 'E2', 'T1 不得因同 Email 資料而選中屬於 T2 的 E2');
   assert.equal(resolved.profile && resolved.profile.name, '');
   assert.match(resolved.profile && resolved.profile.externalTeacherProfileId, /^EXTP_[a-f0-9]{24}$/);
-  assert.equal(resolved.user.employeeRecordCreated, false);
+  assert.equal(resolved.user.employeeRecordCreated, true);
   assert.equal(resolved.user.portalProfileVersion, 2);
   assert.match(resolved.profile.onboardingUrl, /teacher-profile\.html$/);
   const ownProfile = collections.externalTeacherProfiles.find((row) =>
@@ -287,7 +289,7 @@ test('new teacher receives a dedicated blank profile and ignores every old match
   assert.ok(collections.employees.some((row) => row.__id === 'E2'), '不相關的舊人不可被誤刪');
 });
 
-test('unapproved employee shell created by the old resolver is deleted exactly, not reused', async () => {
+test('unapproved employee shell is retained as the person master but old personal data is cleared', async () => {
   const teacherId = 'T-NEW';
   const profileId = loadHelpers({}).__portalProfileId(teacherId);
   const canonicalEmployeeId = `EXT_${crypto.createHash('sha256').update(`course-teacher:${teacherId}`).digest('hex').slice(0, 16)}`;
@@ -319,8 +321,11 @@ test('unapproved employee shell created by the old resolver is deleted exactly, 
   });
   assert.equal(resolved.employeeId, canonicalEmployeeId);
   assert.equal(resolved.profile.name, '');
-  assert.equal(resolved.user.employeeRecordCreated, false);
-  assert.equal(collections.employees.some((row) => row.__id === canonicalEmployeeId), false);
+  assert.equal(resolved.user.employeeRecordCreated, true);
+  assert.equal(collections.employees.some((row) => row.__id === canonicalEmployeeId), true);
+  const person = collections.employees.find((row) => row.__id === canonicalEmployeeId);
+  assert.notEqual(person.name, '黃銘廷');
+  assert.equal(person.accountStatus, 'profile_draft');
   assert.equal(collections.externalTeacherContracts.some((row) => row.__id === profileId), false,
     '舊版自動產生的未簽契約空殼應安全移除');
 });

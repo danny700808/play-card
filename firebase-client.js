@@ -5679,7 +5679,8 @@
     const raw=clean((o||{}).accountStatus || (o||{})['帳號狀態'] || (o||{}).status || (o||{})['狀態']);
     const s=lower(raw);
     if(!s) return 'active';
-    if(['pending','待審核','待主管審核'].indexOf(s)>=0) return 'pending';
+    if(['profile_draft','draft','資料填寫中'].indexOf(s)>=0) return 'profile_draft';
+    if(['pending_review','pending','待審核','待主管審核','等待管理者確認'].indexOf(s)>=0) return 'pending_review';
     if(['rejected','已駁回','駁回'].indexOf(s)>=0) return 'rejected';
     if(['inactive','disabled','停用','停用登入','不可登入'].indexOf(s)>=0) return 'inactive';
     if(['archived','封存'].indexOf(s)>=0) return 'archived';
@@ -5691,6 +5692,8 @@
     const raw=clean((o||{}).employmentStatus || (o||{})['任職狀態'] || (o||{}).workStatus || (o||{})['在職狀態']);
     const s=lower(raw);
     if(!s) return 'active';
+    if(['profile_draft','draft','資料填寫中'].indexOf(s)>=0) return 'profile_draft';
+    if(['pending_review','pending','待審核','待主管審核','等待管理者確認'].indexOf(s)>=0) return 'pending_review';
     if(['resigned','離職','已離職'].indexOf(s)>=0) return 'resigned';
     if(['suspended','暫停','暫停任用','暫停合作'].indexOf(s)>=0) return 'suspended';
     if(['contractorended','contract_ended','合作結束','外聘合作結束'].indexOf(s)>=0) return 'contractorEnded';
@@ -5701,7 +5704,8 @@
   function hiddenFromLists(o){ return truthy((o||{}).hiddenFromActiveLists || (o||{})['隱藏於日常清單'] || (o||{}).hidden || (o||{})['隱藏']); }
   function isManager(o){ const role=lower((o||{}).role || (o||{})['角色']); return role==='admin' || role==='manager' || truthy((o||{}).showSettingsZone || (o||{})['管理區權限'] || (o||{})['管理權限']); }
   function statusLabel(accountStatus, employmentStatus, hidden){
-    if(accountStatus==='pending') return '待審核';
+    if(accountStatus==='profile_draft') return '資料填寫中';
+    if(accountStatus==='pending_review' || accountStatus==='pending') return '待管理者確認';
     if(accountStatus==='rejected') return '註冊駁回';
     if(accountStatus==='archived' || employmentStatus==='archived') return '封存';
     if(employmentStatus==='resigned') return '離職';
@@ -5713,7 +5717,8 @@
   }
   function statusReason(row){
     const reasons=[];
-    if(row.accountStatus==='pending') reasons.push('註冊尚未審核');
+    if(row.accountStatus==='profile_draft') reasons.push('個人資料仍在填寫');
+    if(row.accountStatus==='pending_review' || row.accountStatus==='pending') reasons.push('資料等待管理者確認');
     if(row.accountStatus==='rejected') reasons.push('註冊已駁回');
     if(row.accountStatus==='inactive') reasons.push('帳號不可登入');
     if(row.accountStatus==='archived') reasons.push('帳號已封存');
@@ -5792,30 +5797,22 @@
     }));
     return {ok:true,rows,employees:rows,list:rows,source:'firebase-employee-master-active-filter'};
   }
-  function externalConfirmedForManagement(row){
-    row=row||{};
-    const type=lower(row.identityType||row.employeeType||row.identityLabel||row.role||'');
-    const isExternal=row.isExternalTeacher===true||type.indexOf('external')>=0||type.indexOf('外聘')>=0;
-    if(!isExternal) return true;
-    const statusText=lower([row.latestExternalContractStatus,row.contractStatus,row.externalTeacherStatus,row.status,row.profileStatus,row.accountStatus].join('|'));
-    const progressText=lower([row.latestExternalContractProgress,row.progressStatus].join('|'));
-    return /active|confirmed|contract_effective|已確認|契約生效|管理端已確認/.test(statusText+'|'+progressText);
-  }
   async function getEmployeeManagementData(payload){
-    const allRows=(await employeeRows(Object.assign({}, payload||{}, {includeAll:true}))).filter(r=>r.id || r.email).filter(externalConfirmedForManagement);
+    const allRows=(await employeeRows(Object.assign({}, payload||{}, {includeAll:true}))).filter(r=>r.id || r.email);
     const keyword=lower(payload && payload.keyword);
     const mode=clean(payload && payload.statusMode) || 'active';
     let rows=allRows.filter(r=>matchesKeyword(r,keyword));
     if(mode==='active') rows=rows.filter(r=>r.isActiveForDailyUse);
-    else if(mode==='pending') rows=rows.filter(r=>r.accountStatus==='pending');
-    else if(mode==='hidden') rows=rows.filter(r=>!r.isActiveForDailyUse && r.accountStatus!=='pending' && r.accountStatus!=='rejected');
+    else if(mode==='pending') rows=rows.filter(r=>['profile_draft','pending_review','pending'].includes(r.accountStatus));
+    else if(mode==='hidden') rows=rows.filter(r=>!r.isActiveForDailyUse && !['profile_draft','pending_review','pending','rejected'].includes(r.accountStatus));
     else if(mode==='rejected') rows=rows.filter(r=>r.accountStatus==='rejected');
     else if(mode==='all') rows=rows;
     const counts={
       total:allRows.length,
       active:allRows.filter(r=>r.isActiveForDailyUse).length,
-      pending:allRows.filter(r=>r.accountStatus==='pending').length,
-      hidden:allRows.filter(r=>!r.isActiveForDailyUse && r.accountStatus!=='pending' && r.accountStatus!=='rejected').length,
+      draft:allRows.filter(r=>r.accountStatus==='profile_draft').length,
+      pending:allRows.filter(r=>['pending_review','pending'].includes(r.accountStatus)).length,
+      hidden:allRows.filter(r=>!r.isActiveForDailyUse && !['profile_draft','pending_review','pending','rejected'].includes(r.accountStatus)).length,
       rejected:allRows.filter(r=>r.accountStatus==='rejected').length
     };
     return {ok:true,rows,counts,source:'firebase-employee-master'};
@@ -5855,6 +5852,7 @@
     const user=readUser();
     const data={
       accountStatus, employmentStatus, hiddenFromActiveLists:hidden,
+      active:accountStatus==='active' && employmentStatus==='active',
       resignedDate:clean(payload.resignedDate), statusNote:clean(payload.statusNote),
       updatedAt:serverTs(), updatedAtText:nowText(), updatedBy:clean(user.id || user.employeeId || user.email),
       source:'employee-admin-status'
@@ -7524,8 +7522,26 @@
     });
     return {schedules,unassigned:rows.filter(r=>!used.has(r.id))};
   }
+  async function activeEmployeeMaster(employeeId){
+    const id=clean(employeeId); if(!id)return null;
+    let snap=await db().collection('employees').doc(id).get().catch(()=>null);
+    if(!snap||!snap.exists){
+      const query=await db().collection('employees').where('employeeId','==',id).limit(1).get().catch(()=>null);
+      snap=query&&!query.empty?query.docs[0]:null;
+    }
+    if(!snap||!snap.exists)return null;
+    const row=Object.assign({__id:snap.id},snap.data()||{});
+    const account=lower(row.accountStatus||row.status||'active');
+    const employment=lower(row.employmentStatus||row.workStatus||'active');
+    const blocked=['profile_draft','pending_review','pending','inactive','disabled','archived','rejected','revoked','deleted','resigned','suspended','contractorended','contract_ended'];
+    if(row.active===false||row.hiddenFromActiveLists===true||row.personDeleted===true||blocked.includes(account)||blocked.includes(employment))return null;
+    return row;
+  }
   async function effectiveScheduleInfo(employeeId,dateKey,options){
-    options=options||{}; const base=await baseScheduleInfo(employeeId,dateKey); const rawSchedules=(base.schedules||[]).filter(s=>Number.isFinite(minutes(s.startTime))&&Number.isFinite(minutes(s.endTime))&&minutes(s.endTime)>minutes(s.startTime));
+    options=options||{};
+    const employee=await activeEmployeeMaster(employeeId);
+    if(!employee)return{ok:true,employeeId,date:dateKey,hasSchedule:false,okToClock:false,originalSchedules:[],schedules:[],schedule:null,scheduleText:'',allowedClockTypes:[],message:'這個人員主檔不存在或未啟用，不會讀取舊班表。',clockRecords:[],temporaryAttendanceBlocks:[],attendanceFlowVersion:VERSION};
+    const base=await baseScheduleInfo(employeeId,dateKey); const rawSchedules=(base.schedules||[]).filter(s=>Number.isFinite(minutes(s.startTime))&&Number.isFinite(minutes(s.endTime))&&minutes(s.endTime)>minutes(s.startTime));
     let leaveRows=await rowsByEmployee('leaveRequests',employeeId).catch(()=>[]);
     const leaves=leaveRows.map(normalizeLeave);
     const requested=leaveIntervalsForDate(leaves.filter(l=>isActiveRow(l.raw)),dateKey);
