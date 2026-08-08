@@ -8149,7 +8149,7 @@ async function applyTeacherAttendance(data, late) {
     sourceCourseId,
     session.teacherId,
     'attended',
-    late ? '老師補簽到' : (earlyAttendance ? '老師提早簽到' : '老師當日簽到')
+    late ? '老師補簽到' : '老師當日簽到'
   );
   changePayload.event.tuitionPeriodId = giftLesson ? '' : clean(periodIds[attendanceRows[0] && attendanceRows[0].studentId]);
   changePayload.event.tuitionPeriodIds = giftLesson ? {} : Object.assign({}, periodIds);
@@ -8310,9 +8310,7 @@ async function applyTeacherAttendance(data, late) {
       ? (chargeLateFee
         ? `補簽到已完成，並已在本月薪資扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`
         : '贈送課程補簽到已完成，本次不收行政處理費。')
-      : (earlyAttendance
-        ? '提早簽到已完成；學生堂數與老師薪資已立即記錄。'
-        : '簽到已完成；今天晚上 12 點後如需取消，必須送主管審核。')
+      : '簽到已完成；今天晚上 12 點後如需取消，必須送主管審核。'
   };
 }
 
