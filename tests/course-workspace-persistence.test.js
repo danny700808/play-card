@@ -16,6 +16,8 @@ const template = read('operations-course-inline-template.html');
 const scheduler = read('course-scheduler.js');
 const operations = read('operations-phase1.js');
 const portalCommon = read('course-portal-common.js');
+const inlineBuilder = read('.github/scripts/build-inline-course-workspace.cjs');
+const inlineWorkflow = read('.github/workflows/build-live-course-scheduler.yml');
 
 [
   ['operations-course-inline.js', controller],
@@ -59,6 +61,14 @@ assert(controller.includes('isDemo(source)'), '課務控制器沒有排除示範
 assert(controller.includes('global.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__ = workspace ? clone(workspace) : null'), '工作區沒有交給 inline runtime');
 assert(!controller.includes('YouziCoursePreviewData.load'), '正常開頁仍會自動重新讀取雲端鏡像');
 assert(!controller.includes('YouziCoursePreviewData.sync'), '正常開頁仍會自動執行音教雲同步');
+assert(inlineBuilder.includes("const VERSION = '20260808-tuition-receipt-v1'"), '課務產生器仍使用舊快取版本');
+assert(inlineBuilder.includes('money(periodNetExpectedAmount(period))'), '課務產生器會重新產生錯誤的比例折扣金額');
+assert.strictEqual((inlineBuilder.match(/money\(period\.expectedAmount-period\.discount\)/g) || []).length, 1, '課務產生器的學生 renderer 仍直接以比例值扣原價');
+assert(inlineBuilder.includes('if (existingIsScoped)'), '課務產生器不會保留已完成更新的 inline runtime');
+assert(inlineBuilder.includes('if (inlineTag.test(source))'), '課務產生器不會原位更新既有 inline script 版本');
+assert(!inlineBuilder.includes('source = source.replace(/course-scheduler-data'), '課務產生器仍會誤改 course-scheduler-data 快取版本');
+assert(inlineWorkflow.includes("operations.includes('href=\"course-portal-admin.html?section=bindings\"')"), '課務 workflow 未從營運中心主程式驗證入口綁定');
+assert(!inlineWorkflow.includes("template.includes('course-portal-admin.html')"), '課務 workflow 仍對課務模板套用舊入口假設');
 
 assert(operations.includes('YouziOperationsCourseInline.mount(content,courseView)'), '營運中心未在原頁掛載完整課務');
 assert(!operations.includes('<iframe id="opsCourseFrame"'), '營運中心仍使用舊 iframe 課務');
