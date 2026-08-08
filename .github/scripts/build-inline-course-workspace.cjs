@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260808-teacher-payroll-month-v1';
+const VERSION = '20260808-teacher-payroll-breakdown-v2';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
