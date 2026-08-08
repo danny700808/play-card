@@ -49,6 +49,9 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-quick-sheet{width:min(440px,100%);max-height:min(84dvh,720px);overflow:auto;border-radius:24px 24px 18px 18px;background:#fff;border:1px solid var(--line);box-shadow:0 -20px 55px rgba(20,55,44,.22);padding:10px 14px calc(16px + env(safe-area-inset-bottom));animation:teacherSheetUp .2s ease-out}
 .teacher-quick-subtitle{margin-top:2px;font-size:11px;line-height:1.45}
 .teacher-quick-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.teacher-quick-actions .teacher-quick-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.teacher-quick-actions .teacher-quick-row>*{min-width:0}
+.teacher-quick-placeholder{visibility:hidden;min-height:46px}
 .teacher-quick-actions button,.teacher-quick-actions a{display:flex;align-items:center;justify-content:center;min-height:46px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#f8fbf9;color:var(--ink);font-size:13px;font-weight:850;text-align:center;text-decoration:none}
 .teacher-quick-actions button.primary{border-color:var(--green);background:var(--green-soft);color:var(--green)}
 .teacher-quick-actions button.danger{border-color:#efc6c3;background:#fff5f4;color:#9f3f37}
