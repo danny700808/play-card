@@ -996,6 +996,10 @@
     return `<div class="teacher-quick-row">${left || '<span class="teacher-quick-placeholder" aria-hidden="true"></span>'}${right || '<span class="teacher-quick-placeholder" aria-hidden="true"></span>'}</div>`;
   }
 
+  function unavailableQuickAction(label) {
+    return `<button type="button" disabled data-quick-unavailable>${escapeHtml(label)}</button>`;
+  }
+
   function openQuickForLesson(row) {
     const eventType = clean(row && row.type).toLowerCase();
     const portalAction = clean(row && row.portalAction).toLowerCase();
@@ -1042,41 +1046,41 @@
           ? `<button type="button" data-quick-late>${giftLesson ? '補簽到（贈送課程不收行政費）' : '補簽到'}</button>`
           : (waitingForFuture
             ? '<button type="button" disabled data-quick-attendance-wait>老師簽到</button>'
-            : '')));
+            : unavailableQuickAction('老師簽到'))));
     const leaveAction = canLeave
       ? '<button type="button" data-quick-state="leave">學生請假</button>'
-      : '';
+      : unavailableQuickAction('學生請假');
     const cancelAttendanceAction = attended && !cancellationPending
       ? `<button type="button" data-quick-cancel-attendance>${sameDay ? '取消簽到' : '申請取消簽到'}</button>`
       : (cancellationPending ? '<div class="teacher-quick-status">等待主管確認</div>' : '');
     const singleMoveAction = movable
       ? '<button type="button" data-quick-action="single_move">只調這一次</button>'
-      : '';
-    const permanentMoveAction = movable && row.recurring === true
-      ? '<button type="button" data-quick-action="permanent_move">之後固定改到新時段</button>'
-      : '';
+      : unavailableQuickAction('只調這一次');
     const cancelAddedAction = !pastDate && row.portalChangeId && ['extra_lesson', 'teacher_gift'].includes(clean(row.portalAction))
       ? '<button type="button" data-quick-state="cancel_change">取消此次新增</button>'
       : '';
+    const permanentMoveAction = cancelAddedAction || (movable && row.recurring === true
+      ? '<button type="button" data-quick-action="permanent_move">之後固定改到新時段</button>'
+      : unavailableQuickAction('之後固定改到新時段'));
     const extraLessonAction = canAddFromLesson
       ? '<button type="button" data-quick-action="extra_lesson">增加一堂課</button>'
-      : '';
+      : unavailableQuickAction('增加一堂課');
     const giftLessonAction = canAddFromLesson
       ? '<button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>'
-      : '';
+      : unavailableQuickAction('免費贈送一堂');
     const contactBookAction = canContactBook
       ? '<button type="button" data-quick-contact-book>寫課堂聯絡簿</button>'
-      : '';
+      : unavailableQuickAction('寫課堂聯絡簿');
     const absentAction = canAbsent
       ? '<button type="button" data-quick-state="absent">標示曠課</button>'
-      : '';
+      : unavailableQuickAction('標示曠課');
     showQuick(
       (row.studentNames || []).join('、') || '這堂課',
       `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`,
       `
       ${quickActionRow(attendanceAction, attended ? cancelAttendanceAction : leaveAction)}
       ${cancellationPending ? '<div class="notice">取消簽到已送出，正在等待主管確認；目前紀錄仍維持已簽到。</div>' : ''}
-      ${quickActionRow(singleMoveAction, permanentMoveAction || cancelAddedAction)}
+      ${quickActionRow(singleMoveAction, permanentMoveAction)}
       ${quickActionRow(extraLessonAction, giftLessonAction)}
       ${quickActionRow(contactBookAction, absentAction)}
     `,
