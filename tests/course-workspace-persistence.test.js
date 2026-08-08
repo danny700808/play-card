@@ -67,6 +67,47 @@ assert(runtime.includes('window.__YOUZI_COURSE_INLINE_DOCUMENT__'), '完整課�
 assert(runtime.includes('window.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__'), '完整課表沒有從控制器接收工作區');
 assert(runtime.includes('refreshPortalRentals();'), '開啟課表後沒有更新入口成立或取消的租用');
 assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), '開頁仍會重複還原資料後再讀租用');
+[
+  ['inline 課務', runtime],
+  ['獨立課務', scheduler]
+].forEach(([label, source]) => {
+  assert(source.includes('class="btn small outline tuition-receipt-button"'), `${label}已繳清摘要缺少收據按鈕`);
+  assert(source.includes("receiptButton(latestPayment)"), `${label}收據按鈕沒有連到最新一筆收費`);
+  assert(source.includes("payment='<span class=\"payment-summary\">'+paymentStatus+receiptButton(latestPayment)+'</span>'"), `${label}部分付款時沒有在上方保留唯一收據按鈕`);
+  assert(!source.includes("receiptButton(entry,'查看／補印收據')"), `${label}每筆收費右側仍重複顯示收據按鈕`);
+  assert(!source.includes("button.textContent='查看／補印收據'"), `${label}補建收據後仍恢復舊按鈕文字`);
+  assert(source.includes('var viewer=openTuitionReceiptPlaceholder()'), `${label}補建收據未先開啟視窗，可能被瀏覽器阻擋`);
+  assert(source.includes('openTuitionReceipt(transaction.receiptImageUrl,viewer)'), `${label}補建完成後未沿用預先開啟的收據視窗`);
+  assert(!source.includes('money(period.expectedAmount-period.discount)'), `${label}學生列表仍直接扣除比例折扣值`);
+  assert(!source.includes('(numberOf(period.expectedAmount)-numberOf(period.discount))'), `${label}單堂、薪資或退款仍直接扣除比例折扣值`);
+  assert(source.includes('money(periodNetExpectedAmount(period))'), `${label}學生列表未顯示折扣後應收金額`);
+  assert(source.includes('Math.round(periodNetExpectedAmount(period)/Math.max(1,numberOf(period.lessonCount)))'), `${label}單堂或退款金額未使用折扣後應收金額`);
+  assert((source.match(/periodNetExpectedAmount\(period\)/g) || []).length >= 9, `${label}仍有財務計算未統一使用折扣後應收金額`);
+  assert(source.includes('discountType:clean(current.discountType||current.planSnapshot&&current.planSnapshot.discountType)'), `${label}自動延續下一期時遺失折扣類型`);
+
+  const netHelper = (source.match(/function periodNetExpectedAmount\(period\)\{[^\n]+\}/) || [])[0];
+  const balanceHelper = (source.match(/function periodBalance\(period\)\{[^\n]+\}/) || [])[0];
+  assert(netHelper && balanceHelper, `${label}缺少依折扣類型計算應收餘額的函式`);
+  const tuitionMath = new Function(
+    'numberOf',
+    'clean',
+    'periodRefunded',
+    'periodPaid',
+    `${netHelper}\n${balanceHelper}\nreturn {periodNetExpectedAmount,periodBalance};`
+  )(
+    (value) => Number.isFinite(Number(value)) ? Number(value) : 0,
+    (value) => String(value == null ? '' : value).trim(),
+    (period) => (period.transactions || []).filter((row) => row.type === 'refund').reduce((total, row) => total + Number(row.amount || 0), 0),
+    (period) => (period.transactions || []).reduce((total, row) => total + (row.type === 'refund' ? -Number(row.amount || 0) : Number(row.amount || 0)), 0)
+  );
+  const ratioPeriod = { expectedAmount: 4000, discount: 0.1, discountType: 'ratio', lessonCount: 4 };
+  assert.strictEqual(tuitionMath.periodNetExpectedAmount(ratioPeriod), 3600, `${label}九折應收金額不是 3600`);
+  assert.strictEqual(tuitionMath.periodNetExpectedAmount(ratioPeriod) / ratioPeriod.lessonCount, 900, `${label}九折後單堂金額不是 900`);
+  assert.strictEqual(tuitionMath.periodBalance(ratioPeriod), 3600, `${label}九折應收餘額不是 3600`);
+  assert.strictEqual(tuitionMath.periodBalance({ expectedAmount: 4000, discount: 200, discountType: 'amount' }), 3800, `${label}金額折扣應收餘額錯誤`);
+  assert.strictEqual(tuitionMath.periodBalance({ expectedAmount: 4000, discount: 0.1, planSnapshot: { discountType: 'ratio' } }), 3600, `${label}沒有沿用方案快照的比例折扣`);
+  assert.strictEqual(tuitionMath.periodBalance({ expectedAmount: 4000, discount: 0.1, discountType: 'ratio', transactions: [{ type: 'payment', amount: 1000 }] }), 2600, `${label}比例折扣後的部分付款餘額錯誤`);
+});
 
 assert(scheduler.includes("WORKSPACE_DB_KEY='workspace'"), '互動課表未使用 workspace 資料庫');
 assert(scheduler.includes("FORMAL_DB_KEY='latest'"), '互動課表未使用 latest 正式快照');

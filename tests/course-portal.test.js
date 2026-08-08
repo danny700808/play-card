@@ -353,6 +353,8 @@ assert(schedulerDataSource.includes("call('coursePortalAdminSaveTeacherAdjustmen
 assert(schedulerDataSource.includes("call('coursePortalAdminCancelRoomBooking'"), '管理者強制取消租用沒有連接後端');
 assert(schedulerCss.includes('.slot.event-from-prev{border-top-color:transparent}'), '跨半小時課程仍會顯示內部上格線');
 assert(schedulerCss.includes('.slot.event-to-next{border-bottom-color:transparent}'), '跨半小時課程仍會顯示內部下格線');
+assert(schedulerCss.includes('.payment-summary{display:flex;align-items:center;justify-content:space-between'), '已繳清與收據按鈕沒有分列左右');
+assert(schedulerCss.includes('.tuition-receipt-button{flex:0 0 auto;min-width:54px;margin-left:auto'), '收據按鈕未固定靠右或可能在桌機版被擠壓');
 assert(!schedulerCss.includes('.event.leave,.event.absent,.event.cancelled{opacity:.38'), '請假／曠課卡片不可再以透明浮水印顯示');
 assert(!schedulerUiHtml.includes('半透明＝請假／停課'), '課表圖例仍誤導為半透明狀態');
 assert(schedulerUiHtml.includes('老師贈課'), '桌面課表圖例缺少老師贈課');
@@ -566,6 +568,11 @@ function loadBackendForScheduleTests(state) {
       'module.exports.__testAttendancePeriodCandidate = attendancePeriodCandidate;\n' +
       'module.exports.__testAttendancePeriodPayroll = attendancePeriodPayroll;\n' +
       'module.exports.__testAttendancePayrollCalculation = attendancePayrollCalculation;\n' +
+      'module.exports.__testBuildAttendanceTuitionRollover = buildAttendanceTuitionRollover;\n' +
+      'module.exports.__testAssertAttendanceRolloverPeriod = assertAttendanceRolloverPeriod;\n' +
+      'module.exports.__testAttendancePeriodFinancialFingerprint = attendancePeriodFinancialFingerprint;\n' +
+      'module.exports.__testAssertAttendanceRolloverPaymentRequest = assertAttendanceRolloverPaymentRequest;\n' +
+      'module.exports.__testAssignNewSystemPeriodNumbers = assignNewSystemPeriodNumbers;\n' +
       'module.exports.__testApplyPortalAttendanceToPeriods = applyPortalAttendanceToPeriods;\n' +
       'module.exports.__testMergeTeacherPayrollRows = mergeTeacherPayrollRows;\n' +
       'module.exports.__testTeacherPayrollMatchesCancellation = teacherPayrollMatchesCancellation;\n' +
@@ -709,6 +716,19 @@ async function runBackendScheduleRegressionTests() {
       coursePortalScheduleChanges: [
         { id: 'permanent-old', data: oldPermanent },
         { id: 'permanent-new', data: newPermanent }
+      ],
+      coursePortalTuitionSystemPeriods: [
+        {
+          id: 'system-period-mapped',
+          data: {
+            periodId: 'period-mapped-source',
+            studentId: 'student-1',
+            courseKey: 'subject-piano',
+            groupKey: 'student-1|subject-piano',
+            legacyPeriodNo: 9,
+            systemPeriodNo: 5
+          }
+        }
       ],
       coursePortalTeacherAttendancePayroll: [
         { id: 'portal-admin-payroll', data: {
@@ -876,6 +896,192 @@ async function runBackendScheduleRegressionTests() {
       perStudentPeriodCandidate.id,
       'period-student-exact',
       '逐生保存的精準期別 ID 必須優先於固定課的多期付款清單'
+    );
+    const completedRatioPeriod = Object.assign({}, ratioPeriod, {
+      id: 'period-ratio-completed',
+      periodNo: 4,
+      systemPeriodNo: 2,
+      usedCount: 4,
+      discount: 0,
+      discountType: 'amount',
+      teacherPayBasis: 'net',
+      payByDiscount: true
+    });
+    const rolloverEvent = Object.assign({}, event, {
+      id: 'event-rollover',
+      date: '2026-07-31',
+      studentNames: ['林小明'],
+      subjectName: '鋼琴',
+      teacherName: '王老師'
+    });
+    const rollover = duplicatePermanentBackend.__testBuildAttendanceTuitionRollover({
+      periods: [completedRatioPeriod],
+      event: rolloverEvent,
+      studentId: 'student-1',
+      sourceDate: rolloverEvent.date
+    });
+    const repeatedRollover = duplicatePermanentBackend.__testBuildAttendanceTuitionRollover({
+      periods: [completedRatioPeriod],
+      event: rolloverEvent,
+      studentId: 'student-1',
+      sourceDate: rolloverEvent.date
+    });
+    assert(rollover, '上期剛好用完時應可建立安全的簽到續期資料');
+    assert.strictEqual(rollover.period.id, repeatedRollover.period.id, '續期期別 ID 必須可重試且不重複');
+    assert.strictEqual(rollover.paymentRequest.id, repeatedRollover.paymentRequest.id, '待繳請求 ID 必須可重試且不重複');
+    assert.strictEqual(rollover.period.sourcePeriodId, completedRatioPeriod.id, '續期沒有連回可稽核的上期');
+    assert.strictEqual(rollover.period.periodNo, 5, '續期期數錯誤');
+    assert.strictEqual(rollover.period.systemPeriodNo, 3, '新系統期數沒有遞增');
+    assert.strictEqual(rollover.period.lessonCount, 4, '續期沒有沿用上期堂數');
+    assert.strictEqual(rollover.period.expectedAmount, 2800, '續期沒有沿用上期學費');
+    assert.strictEqual(rollover.period.planId, 'plan-ratio', '續期沒有沿用收費方案');
+    assert.strictEqual(rollover.period.planSnapshot.splitValue, 0.6, '續期沒有沿用老師拆帳快照');
+    assert.strictEqual(rollover.period.usedCount, 0, '新期原始堂數不應在簽到紀錄外重複預扣');
+    assert.strictEqual(rollover.period.paidAmount, 0, '自動續期不可假裝已收款');
+    assert.strictEqual(rollover.paymentRequest.status, 'payment_due', '自動續期沒有建立待繳狀態');
+    assert.strictEqual(rollover.paymentRequest.targetPeriodId, rollover.period.id, '待繳資料沒有連到新期別');
+    assert(!Object.prototype.hasOwnProperty.call(rollover.period, 'transactions'), '自動續期不可產生付款交易');
+    assert(!Object.keys(rollover.paymentRequest).some((key) => /receipt/i.test(key)), '自動續期不可產生收據');
+    const discountedRollover = duplicatePermanentBackend.__testBuildAttendanceTuitionRollover({
+      periods: [Object.assign({}, completedRatioPeriod, {
+        id: 'period-ratio-discounted',
+        expectedAmount: 4000,
+        discount: 0.1,
+        discountType: 'ratio'
+      })],
+      event: rolloverEvent,
+      studentId: 'student-1',
+      sourceDate: rolloverEvent.date
+    });
+    assert.strictEqual(discountedRollover.period.expectedAmount, 4000, '新期別必須保留折扣前原價供稽核');
+    assert.strictEqual(discountedRollover.period.discount, 0.1, '新期別沒有沿用上期折扣');
+    assert.strictEqual(discountedRollover.paymentRequest.expectedAmount, 3600, '家長待繳金額不可誤顯示折扣前原價');
+    assert.strictEqual(discountedRollover.paymentRequest.remainingAmount, 3600, '折扣後尚未繳金額錯誤');
+    [
+      ['gross', { expectedAmount: 4100 }],
+      ['discount', { discount: 0.2 }],
+      ['discount type', { discountType: 'amount' }],
+      ['teacher pay basis', { teacherPayBasis: 'gross' }],
+      ['pay by discount', { payByDiscount: false }],
+      ['lesson count', { lessonCount: 6 }],
+      ['system period', { systemPeriodNo: 99 }],
+      ['plan snapshot', {
+        planSnapshot: Object.assign({}, discountedRollover.period.planSnapshot, { name: '被替換的方案' })
+      }],
+      ['payroll split', {
+        planSnapshot: Object.assign({}, discountedRollover.period.planSnapshot, { splitValue: 0.5 })
+      }]
+    ].forEach(([label, mutation]) => {
+      assert.throws(
+        () => duplicatePermanentBackend.__testAssertAttendanceRolloverPeriod(
+          Object.assign({}, discountedRollover.period, mutation),
+          discountedRollover.period
+        ),
+        /./,
+        `deterministic 期別 ${label} 指紋不同時不可沿用`
+      );
+    });
+    const compatibleUnsubmittedPayment = {
+      id: discountedRollover.paymentRequest.id,
+      active: true,
+      status: 'payment_due',
+      studentId: discountedRollover.paymentRequest.studentId,
+      subjectId: discountedRollover.paymentRequest.subjectId,
+      teacherId: discountedRollover.paymentRequest.teacherId,
+      sourcePeriodId: discountedRollover.paymentRequest.sourcePeriodId,
+      nextPeriodNo: discountedRollover.paymentRequest.nextPeriodNo
+    };
+    duplicatePermanentBackend.__testAssertAttendanceRolloverPaymentRequest(
+      compatibleUnsubmittedPayment,
+      discountedRollover.paymentRequest,
+      discountedRollover.period.id
+    );
+    [
+      ['cancelled', { status: 'cancelled' }],
+      ['inactive', { active: false }],
+      ['submitted', { status: 'pending_review', submissionRevision: 1 }],
+      ['submitted timestamp', { submittedAt: { seconds: 1 } }],
+      ['partially paid', { confirmedAmount: 100 }],
+      ['payment method selected', { paymentMethod: 'onsite' }],
+      ['different target', { targetPeriodId: 'another-period' }],
+      ['different net amount', { expectedAmount: 3500 }],
+      ['different remaining amount', { remainingAmount: 3500 }],
+      ['different gross amount', { grossExpectedAmount: 3900 }],
+      ['different discount', { discount: 0.2 }],
+      ['different plan', { planId: 'another-plan' }],
+      ['different plan snapshot', { planSnapshot: { id: 'another-plan' } }]
+    ].forEach(([label, mutation]) => {
+      assert.throws(
+        () => duplicatePermanentBackend.__testAssertAttendanceRolloverPaymentRequest(
+          Object.assign({}, compatibleUnsubmittedPayment, mutation),
+          discountedRollover.paymentRequest,
+          discountedRollover.period.id
+        ),
+        /繳費資料/,
+        `已有 payment request ${label} 時必須 fail closed`
+      );
+    });
+    const discountedReminder = duplicatePermanentBackend.__testBuildTuitionPaymentCandidates({
+      students: [{ id: 'student-1', name: '林小明' }],
+      subjects: [{ id: 'subject-piano', name: '鋼琴' }],
+      teachers: [{ id: 'teacher-1', name: '王老師' }],
+      studentIds: ['student-1'],
+      periods: [Object.assign({}, completedRatioPeriod, {
+        id: 'period-ratio-discounted',
+        expectedAmount: 4000,
+        discount: 0.1,
+        discountType: 'ratio'
+      })]
+    });
+    assert.strictEqual(discountedReminder[0].expectedAmount, 3600, '定時待繳提醒也必須使用折扣後應收金額');
+    assert.strictEqual(discountedReminder[0].grossExpectedAmount, 4000, '定時待繳資料沒有保留折扣前原價');
+    assert.strictEqual(discountedReminder[0].discount, 0.1, '定時待繳資料沒有保留折扣，先繳費後會無法正確計薪');
+    const firstLessonDeduction = duplicatePermanentBackend.__testApplyPortalAttendanceToPeriods(
+      [rollover.period],
+      [],
+      [{
+        id: 'attendance-rollover-first',
+        active: true,
+        status: 'attended',
+        deducted: true,
+        studentId: 'student-1',
+        periodId: rollover.period.id,
+        date: rolloverEvent.date,
+        eventId: rolloverEvent.id
+      }]
+    );
+    assert.strictEqual(firstLessonDeduction[0].usedCount, 1, '本次簽到沒有成為新期第 1 堂');
+    duplicatePermanentBackend.__testAssertAttendanceRolloverPeriod(
+      Object.assign({}, rollover.period),
+      rollover.period
+    );
+    assert.throws(
+      () => duplicatePermanentBackend.__testAssertAttendanceRolloverPeriod(
+        Object.assign({}, rollover.period, { sourcePeriodId: 'other-period' }),
+        rollover.period
+      ),
+      /其他裝置更新/,
+      '已有 deterministic 期別屬於其他上期時不可 merge 覆蓋'
+    );
+    assert.throws(
+      () => duplicatePermanentBackend.__testBuildAttendanceTuitionRollover({
+        periods: [Object.assign({}, completedRatioPeriod, { teacherId: '' })],
+        event: rolloverEvent,
+        studentId: 'student-1',
+        sourceDate: rolloverEvent.date
+      }),
+      /科目或老師編號/,
+      '沒有明確老師 ID 的舊期別不可猜測後自動續期'
+    );
+    assert.throws(
+      () => duplicatePermanentBackend.__testBuildAttendanceTuitionRollover({
+        periods: [Object.assign({}, completedRatioPeriod, { planId: '', planSnapshot: {} })],
+        event: rolloverEvent,
+        studentId: 'student-1',
+        sourceDate: rolloverEvent.date
+      }),
+      /收費方案快照/,
+      '缺收費與拆帳快照時必須阻擋簽到續期'
     );
     const attendedPayroll = duplicatePermanentBackend.__testAttendancePayrollCalculation(
       event,
@@ -1270,6 +1476,41 @@ async function runBackendScheduleRegressionTests() {
       authAccountId: 'account-student'
     })
   ]);
+  const mappedSystemPeriods = await duplicatePermanentBackend.__testAssignNewSystemPeriodNumbers([{
+    id: 'period-mapped-source',
+    studentId: 'student-1',
+    subjectId: 'subject-piano',
+    teacherId: 'teacher-1',
+    periodNo: 9,
+    lessonCount: 4,
+    usedCount: 4,
+    expectedAmount: 2800,
+    discount: 0,
+    discountType: 'amount',
+    teacherPayBasis: 'net',
+    payByDiscount: true,
+    planId: 'plan-ratio',
+    planSnapshot: {
+      id: 'plan-ratio',
+      splitType: 'ratio',
+      splitValue: 0.6
+    }
+  }]);
+  const mappedSystemRollover = duplicatePermanentBackend.__testBuildAttendanceTuitionRollover({
+    periods: mappedSystemPeriods,
+    event: {
+      id: 'event-mapped-rollover',
+      date: '2026-07-31',
+      teacherId: 'teacher-1',
+      teacherName: '王老師',
+      subjectId: 'subject-piano',
+      subjectName: '鋼琴',
+      studentIds: ['student-1'],
+      studentNames: ['林小明']
+    },
+    studentId: 'student-1',
+    sourceDate: '2026-07-31'
+  });
   const mergedTuitionRows = duplicatePermanentBackend.__testMergePortalTuitionRows(
     [{
       id: 'period-existing',
@@ -1341,10 +1582,46 @@ async function runBackendScheduleRegressionTests() {
       }
     ]
   });
+  const unfinishedSixLessonCandidates = duplicatePermanentBackend.__testBuildTuitionPaymentCandidates({
+    students: [{ id: 'student-1', name: '林小明' }],
+    subjects: [{ id: 'subject-piano', name: '鋼琴' }],
+    teachers: [{ id: 'teacher-1', name: '王老師' }],
+    studentIds: ['student-1'],
+    periods: [{
+      id: 'period-six-lessons',
+      studentId: 'student-1',
+      subjectId: 'subject-piano',
+      teacherId: 'teacher-1',
+      periodNo: 6,
+      lessonCount: 6,
+      usedCount: 5,
+      expectedAmount: 4800,
+      paidAmount: 4800
+    }]
+  });
+  const completedSixLessonCandidates = duplicatePermanentBackend.__testBuildTuitionPaymentCandidates({
+    students: [{ id: 'student-1', name: '林小明' }],
+    subjects: [{ id: 'subject-piano', name: '鋼琴' }],
+    teachers: [{ id: 'teacher-1', name: '王老師' }],
+    studentIds: ['student-1'],
+    periods: [{
+      id: 'period-six-lessons',
+      studentId: 'student-1',
+      subjectId: 'subject-piano',
+      teacherId: 'teacher-1',
+      periodNo: 6,
+      lessonCount: 6,
+      usedCount: 6,
+      expectedAmount: 4800,
+      paidAmount: 4800
+    }]
+  });
   check(() => {
     assert.strictEqual(renterDisplayName, '林租客', '一般或 LINE 租用登入未保留已註冊姓名');
     assert.strictEqual(teacherDisplayName, '王老師', '老師租用頁未優先使用目前 teacherId 的綁定姓名');
     assert.strictEqual(studentDisplayName, '學生', '學生租用頁缺少 mirror 姓名 fallback');
+    assert.strictEqual(mappedSystemPeriods[0].systemPeriodNo, 5, 'mirror 期別缺 systemPeriodNo 時沒有解析持久 mapping');
+    assert.strictEqual(mappedSystemRollover.period.systemPeriodNo, 6, '續期沒有承接真實 mapping，仍誤寫為新系統第 2 期');
     const portalPeriod = mergedTuitionRows.find((row) => row.id === 'period-portal');
     assert(portalPeriod, '主管確認後沒有建立新的入口學費期別');
     assert.strictEqual(portalPeriod.paidAmount, 3200, '入口付款沒有合併到正確期別');
@@ -1356,6 +1633,9 @@ async function runBackendScheduleRegressionTests() {
     assert.strictEqual(nextTuitionCandidates[0].studentName, '林小明', '下一期繳費資料缺少學生姓名');
     assert.strictEqual(nextTuitionCandidates[0].expectedAmount, 3200, '下一期沒有沿用本期學費金額');
     assert.strictEqual(paidNextTuitionCandidates.length, 0, '下一期已繳費仍重複產生繳費提醒');
+    assert.strictEqual(unfinishedSixLessonCandidates.length, 0, '6 堂方案只上 5 堂時不可因舊的第 4 堂硬編碼提前續期');
+    assert.strictEqual(completedSixLessonCandidates.length, 1, '6 堂方案完成第 6 堂後沒有產生下一期');
+    assert.strictEqual(completedSixLessonCandidates[0].triggerLessonCount, 6, '待繳提醒沒有保存真實觸發堂數');
     const general = duplicatePermanentBackend.__testRecordingRentalSelection({
       useType: 'recording',
       recordingUsage: 'general_room'
@@ -1902,8 +2182,14 @@ assert(backend.includes("authMethod: 'line-oauth+email-otp-registration'"), 'LIN
 assert(backend.includes("const TEACHER_PAYROLL_MIN_MONTH = '2026-07'"), '老師薪資後端未限制民國 115 年 7 月起');
 assert(backend.includes("db.collection('coursePortalStudentProfiles')"), '老師修改學生資料沒有保存同步覆寫資料');
 assert(backend.includes("db.collection('coursePortalStudentSuspensions')"), '老師停課沒有建立管理者追蹤資料');
-assert(backend.includes('tuitionUsedCount(row) >= 4'), '學生完成第 4 堂後沒有建立下一期繳費流程');
+assert(backend.includes('tuitionUsedCount(row) >= tuitionLessonCount(row)'), '下一期繳費流程仍硬編碼為第 4 堂，沒有依真實方案堂數觸發');
 assert(backend.includes("status: 'payment_due'"), '下一期學費沒有先建立待繳狀態');
+assert(backend.includes("source: 'teacher-attendance-auto-renewal'"), '上期用完後簽到沒有在正式資料建立可稽核的未繳新期');
+assert(backend.includes('requestRow.grossExpectedAmount || requestRow.expectedAmount'), '家長先繳費時新期別沒有保留折扣前原價，會影響老師計薪');
+assert(backend.includes('await assignNewSystemPeriodNumbers(adjustedPeriods)'), '簽到續期沒有先解析 mirror 的真實新系統期數');
+assert(backend.includes('assertAttendanceRolloverPaymentRequest('), '已有待繳資料沒有 fail-closed 狀態與財務指紋驗證');
+assert(backend.includes('...rolloverPeriodRefs.map((ref) => tx.get(ref))'), '簽到續期沒有在同一 Firestore transaction 先讀期別');
+assert(backend.includes('...rolloverPaymentRefs.map((ref) => tx.get(ref))'), '簽到續期沒有在同一 Firestore transaction 先讀待繳資料');
 assert(backend.includes("? 'pending_review' : 'onsite_pending'"), '匯款與現場繳費沒有進入各自的待確認狀態');
 assert(backend.includes("status: 'confirmed'"), '主管確認後沒有建立正式付款狀態');
 assert(backend.includes("admin.storage().bucket().file(storagePath).save"), '匯款截圖沒有由後端存進私人儲存空間');

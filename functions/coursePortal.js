@@ -4755,14 +4755,7 @@ async function teacherOwnsStudent(teacherId, studentId) {
 }
 
 function tuitionOutstandingAmount(row) {
-  const expected = Number(
-    row.expectedAmount ||
-    row.tuitionAmount ||
-    row.courseAmount ||
-    row.feeAmount ||
-    row.amount ||
-    0
-  );
+  const expected = tuitionNetExpectedAmount(row);
   const paid = Number(
     row.paidAmount ||
     row.receivedAmount ||
@@ -5222,6 +5215,19 @@ function tuitionExpectedAmount(row) {
   ) || 0));
 }
 
+function tuitionNetExpectedAmount(row) {
+  const expected = tuitionExpectedAmount(row);
+  const discount = Math.max(0, firstFiniteNumber(row, ['discount', 'discountAmount']) || 0);
+  let discountType = clean(row && (row.discountType || row.planSnapshot && row.planSnapshot.discountType)).toLowerCase();
+  if (!['ratio', 'amount'].includes(discountType)) {
+    discountType = discount > 0 && discount <= 1 ? 'ratio' : 'amount';
+  }
+  const discountAmount = discountType === 'ratio'
+    ? expected * Math.min(1, discount)
+    : discount;
+  return Math.max(0, expected - discountAmount);
+}
+
 function tuitionLessonCount(row) {
   return Math.max(1, Number(row && (row.lessonCount || row.totalLessons) || 4));
 }
@@ -5270,28 +5276,45 @@ function tuitionPeriodAvailable(row) {
   return tuitionUsedCount(row) < tuitionLessonCount(row);
 }
 
-function attendancePeriodCandidate(periods, event, studentId, sourceDate) {
+function tuitionPeriodUsableIdentity(row) {
+  const status = clean(row && row.status).toLowerCase();
+  if (row && row.active === false) return false;
+  return !['cancelled', 'canceled', 'void', 'voided', 'refunded', '取消', '作廢', '退款']
+    .includes(status);
+}
+
+function attendancePeriodMatches(row, event, studentId, sourceDate, options = {}) {
   const wantedStudentId = clean(studentId);
   const wantedSubjectId = eventSubjectId(event || {});
   const wantedTeacherId = eventTeacherId(event || {});
   const lessonDate = dateKey(sourceDate || eventDate(event || {}));
-  const matching = (periods || []).filter((row) => {
-    if (clean(row.studentId) !== wantedStudentId) return false;
-    if (wantedSubjectId && clean(row.subjectId) && clean(row.subjectId) !== wantedSubjectId) return false;
-    if (wantedTeacherId && eventTeacherId(row) && eventTeacherId(row) !== wantedTeacherId) return false;
+  if (!tuitionPeriodUsableIdentity(row) || clean(row && row.studentId) !== wantedStudentId) return false;
+  if (wantedSubjectId && clean(row.subjectId) && clean(row.subjectId) !== wantedSubjectId) return false;
+  if (wantedTeacherId && eventTeacherId(row) && eventTeacherId(row) !== wantedTeacherId) return false;
+  if (options.ignoreDate !== true) {
     const startDate = dateKey(row.startDate || row.paymentDate);
     const expiryDate = dateKey(row.expiryDate || row.endDate);
     if (lessonDate && startDate && startDate > lessonDate) return false;
     if (lessonDate && expiryDate && expiryDate < lessonDate) return false;
-    return tuitionPeriodAvailable(row);
-  });
-  if (!matching.length) return null;
+  }
+  return true;
+}
 
-  const newestApplicable = (rows) => (rows || []).slice().sort((left, right) =>
+function newestAttendancePeriod(rows) {
+  return (rows || []).slice().sort((left, right) =>
     tuitionPeriodNumber(right) - tuitionPeriodNumber(left) ||
     dateKey(right.startDate || right.paymentDate).localeCompare(dateKey(left.startDate || left.paymentDate)) ||
     sourceId(left).localeCompare(sourceId(right))
   )[0] || null;
+}
+
+function attendancePeriodCandidate(periods, event, studentId, sourceDate) {
+  const wantedStudentId = clean(studentId);
+  const matching = (periods || []).filter((row) => {
+    return attendancePeriodMatches(row, event, wantedStudentId, sourceDate) && tuitionPeriodAvailable(row);
+  });
+  if (!matching.length) return null;
+
   const normalizedPeriodIds = (ids) => {
     const output = new Set();
     (ids || []).map(clean).filter(Boolean).forEach((id) => {
@@ -5315,16 +5338,16 @@ function attendancePeriodCandidate(periods, event, studentId, sourceDate) {
     : '';
   // tuitionPeriodIds[studentId] 是逐生保存的單一期別，可直接優先；固定課舊欄位則可能同時
   // 帶著多個歷史付款編號，仍須從其中挑選日期／期數最新且可用的期別。
-  const explicitByStudentRow = newestApplicable(rowsMatchingIds([explicitByStudent]));
+  const explicitByStudentRow = newestAttendancePeriod(rowsMatchingIds([explicitByStudent]));
   if (explicitByStudentRow) return explicitByStudentRow;
   const explicitIds = [
     clean(event && (event.tuitionPeriodId || event.periodId || event.studentPayment)),
     ...firstArray(event || {}, ['studentPaymentIds', 'paymentIds'])
   ].filter(Boolean);
-  const explicit = newestApplicable(rowsMatchingIds(explicitIds));
+  const explicit = newestAttendancePeriod(rowsMatchingIds(explicitIds));
   if (explicit) return explicit;
 
-  return newestApplicable(matching);
+  return newestAttendancePeriod(matching);
 }
 
 function attendancePeriodPayroll(studentId, period) {
@@ -5609,6 +5632,292 @@ function attendancePayrollCalculation(event, periodRows, sourceDate) {
   };
 }
 
+function tuitionPaymentRequestId(sourcePeriod, studentId, nextPeriodNo) {
+  return hash([
+    'tuition-payment-request',
+    clean(studentId),
+    tuitionCourseKey(sourcePeriod),
+    sourceId(sourcePeriod),
+    Number(nextPeriodNo || 0)
+  ].join('|'));
+}
+
+function buildAttendanceTuitionRollover({ periods, event, studentId, sourceDate }) {
+  const normalizedStudentId = clean(studentId);
+  const lessonDate = dateKey(sourceDate || eventDate(event || {}));
+  if (!normalizedStudentId || !lessonDate) return null;
+  if (attendancePeriodCandidate(periods, event, normalizedStudentId, lessonDate)) return null;
+
+  const looselyMatching = (periods || []).filter((row) =>
+    attendancePeriodMatches(row, event, normalizedStudentId, lessonDate, { ignoreDate: true })
+  );
+  const wantedSubjectId = eventSubjectId(event || {});
+  const wantedTeacherId = eventTeacherId(event || {});
+  const sameCourse = looselyMatching.filter((row) =>
+    wantedSubjectId && clean(row.subjectId) === wantedSubjectId &&
+    wantedTeacherId && eventTeacherId(row) === wantedTeacherId
+  );
+  if (!sameCourse.length) {
+    const ambiguousCompleted = looselyMatching.some((row) =>
+      attendancePeriodMatches(row, event, normalizedStudentId, lessonDate) &&
+      tuitionUsedCount(row) >= tuitionLessonCount(row)
+    );
+    if (ambiguousCompleted) {
+      throw new HttpsError(
+        'failed-precondition',
+        '上一期沒有完整保存科目或老師編號，系統不會猜測跨科或跨師收費；請先由管理者確認期別資料。'
+      );
+    }
+    return null;
+  }
+  const applicable = sameCourse.filter((row) =>
+    attendancePeriodMatches(row, event, normalizedStudentId, lessonDate)
+  );
+  const completed = newestAttendancePeriod(applicable);
+  if (!completed || tuitionUsedCount(completed) < tuitionLessonCount(completed)) return null;
+
+  // 若已有更新期別（例如已先收下期學費但開課日在未來），不可另外自動複製一期。
+  const newestSameCourse = newestAttendancePeriod(sameCourse);
+  if (newestSameCourse && sourceId(newestSameCourse) !== sourceId(completed)) return null;
+
+  const sourcePeriodId = sourceId(completed);
+  const currentPeriodNo = tuitionPeriodNumber(completed);
+  if (!sourcePeriodId || currentPeriodNo <= 0) {
+    throw new HttpsError(
+      'failed-precondition',
+      '上一期的期別編號或期數不完整，無法安全自動延續；請先由管理者確認期別資料。'
+    );
+  }
+  const payroll = attendancePeriodPayroll(normalizedStudentId, completed);
+  const planSnapshot = jsonValue(payroll.inputs.planSnapshot || {});
+  const planId = clean(completed.planId || planSnapshot.id);
+  if (!planId) {
+    throw new HttpsError(
+      'failed-precondition',
+      '上一期沒有保存收費方案編號，無法安全自動延續；請先由管理者確認方案與拆帳資料。'
+    );
+  }
+
+  const nextPeriodNo = currentPeriodNo + 1;
+  const currentSystemPeriodNo = Math.max(1, Number(completed.systemPeriodNo || 1));
+  const nextSystemPeriodNo = currentSystemPeriodNo + 1;
+  const paymentRequestId = tuitionPaymentRequestId(completed, normalizedStudentId, nextPeriodNo);
+  const periodId = `portal-period-${paymentRequestId}`;
+  const studentIds = eventStudentIds(event || {});
+  const studentIndex = studentIds.indexOf(normalizedStudentId);
+  const studentName = clean(
+    event && Array.isArray(event.studentNames) && event.studentNames[studentIndex] ||
+    completed.studentName
+  );
+  const subjectId = clean(eventSubjectId(event || {}) || completed.subjectId);
+  const teacherId = clean(eventTeacherId(event || {}) || completed.teacherId);
+  const subjectName = clean(event && event.subjectName || completed.subjectName || completed.subject);
+  const teacherName = clean(event && event.teacherName || completed.teacherName);
+  const discount = Number(payroll.inputs.discount || 0);
+  const discountType = clean(payroll.inputs.discountType);
+  const teacherPayBasis = clean(payroll.inputs.teacherPayBasis);
+  const payByDiscount = teacherPayBasis === 'net';
+  const expectedAmount = Number(payroll.inputs.expectedAmount || 0);
+  const payableAmount = Number(payroll.inputs.netTuition || 0);
+  const lessonCount = Number(payroll.inputs.lessonCount || 0);
+  const period = {
+    id: periodId,
+    active: true,
+    source: 'teacher-attendance-auto-renewal',
+    studentId: normalizedStudentId,
+    studentName,
+    subjectId,
+    subjectName,
+    teacherId,
+    teacherName,
+    sourcePeriodId,
+    planId,
+    planSnapshot,
+    periodNo: nextPeriodNo,
+    systemPeriodNo: nextSystemPeriodNo,
+    startDate: lessonDate,
+    lessonCount,
+    usedCount: 0,
+    expectedAmount,
+    paidAmount: 0,
+    discount,
+    discountType,
+    teacherPayBasis,
+    payByDiscount,
+    status: 'active',
+    paymentStatus: 'payment_due',
+    paymentRequestId
+  };
+  const paymentRequest = {
+    id: paymentRequestId,
+    active: true,
+    status: 'payment_due',
+    studentId: normalizedStudentId,
+    studentName,
+    subjectId,
+    subjectName,
+    teacherId,
+    teacherName,
+    sourcePeriodId,
+    targetPeriodId: periodId,
+    currentPeriodNo,
+    nextPeriodNo,
+    currentSystemPeriodNo,
+    nextSystemPeriodNo,
+    triggerLessonCount: tuitionLessonCount(completed),
+    lessonCount,
+    expectedAmount: payableAmount,
+    grossExpectedAmount: expectedAmount,
+    confirmedAmount: 0,
+    remainingAmount: payableAmount,
+    discount,
+    discountType,
+    teacherPayBasis,
+    payByDiscount,
+    planId,
+    planSnapshot,
+    createdAtText: nowText(),
+    trigger: 'attendance-auto-renewal'
+  };
+  return {
+    studentId: normalizedStudentId,
+    source: completed,
+    period,
+    paymentRequest
+  };
+}
+
+function canonicalFingerprintValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalFingerprintValue);
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce((output, key) => {
+      output[key] = canonicalFingerprintValue(value[key]);
+      return output;
+    }, {});
+  }
+  return value;
+}
+
+function financialFingerprint(value) {
+  return hash(JSON.stringify(canonicalFingerprintValue(jsonValue(value) || {})));
+}
+
+function attendancePeriodFinancialFingerprint(studentId, period) {
+  const payroll = attendancePeriodPayroll(clean(studentId), period || {});
+  const planSnapshot = jsonValue(payroll.inputs.planSnapshot || {});
+  const explicitPayByDiscount = typeof period.payByDiscount === 'boolean'
+    ? period.payByDiscount
+    : typeof planSnapshot.payByDiscount === 'boolean'
+      ? planSnapshot.payByDiscount
+      : payroll.inputs.teacherPayBasis === 'net';
+  return financialFingerprint({
+    lessonCount: Number(payroll.inputs.lessonCount),
+    grossExpectedAmount: Number(payroll.inputs.expectedAmount),
+    discount: Number(payroll.inputs.discount),
+    discountType: clean(payroll.inputs.discountType),
+    discountAmount: Number(payroll.inputs.discountAmount),
+    netExpectedAmount: Number(payroll.inputs.netTuition),
+    teacherPayBasis: clean(payroll.inputs.teacherPayBasis),
+    payByDiscount: explicitPayByDiscount,
+    teacherPayTuition: Number(payroll.inputs.teacherPayTuition),
+    planId: clean(payroll.inputs.planId),
+    planSnapshot,
+    payroll: {
+      grossLessonPrice: Number(payroll.outputs.grossLessonPrice),
+      netLessonPrice: Number(payroll.outputs.netLessonPrice),
+      teacherPayLessonPrice: Number(payroll.outputs.teacherPayLessonPrice),
+      splitType: clean(payroll.outputs.splitType),
+      splitValue: Number(payroll.outputs.splitValue),
+      sourceSplitValue: Number(payroll.outputs.sourceSplitValue),
+      normalizedRatio: Number(payroll.outputs.normalizedRatio),
+      baseTeacherAmount: Number(payroll.outputs.baseTeacherAmount),
+      teacherAmount: Number(payroll.outputs.teacherAmount),
+      schoolShare: Number(payroll.outputs.schoolShare)
+    }
+  });
+}
+
+function assertAttendanceRolloverPeriod(existing, expected) {
+  const same = clean(existing && existing.studentId) === clean(expected && expected.studentId) &&
+    clean(existing && existing.subjectId) === clean(expected && expected.subjectId) &&
+    clean(existing && existing.teacherId) === clean(expected && expected.teacherId) &&
+    clean(existing && existing.sourcePeriodId) === clean(expected && expected.sourcePeriodId) &&
+    clean(existing && existing.paymentRequestId) === clean(expected && expected.paymentRequestId) &&
+    tuitionPeriodNumber(existing) === tuitionPeriodNumber(expected) &&
+    Number(existing && existing.systemPeriodNo || 0) === Number(expected && expected.systemPeriodNo || 0) &&
+    attendancePeriodFinancialFingerprint(clean(expected && expected.studentId), existing) ===
+      attendancePeriodFinancialFingerprint(clean(expected && expected.studentId), expected);
+  if (!same || !tuitionPeriodAvailable(existing)) {
+    throw new HttpsError(
+      'aborted',
+      '下一期學費資料剛剛已被其他裝置更新；請重新整理後再簽到，避免重複建期或計薪。'
+    );
+  }
+}
+
+function paymentRequestHasValue(row, key) {
+  return Boolean(row && Object.prototype.hasOwnProperty.call(row, key) && row[key] !== '' && row[key] != null);
+}
+
+function paymentRequestFinancialFieldsCompatible(existing, expected) {
+  const numberFields = [
+    'lessonCount', 'expectedAmount', 'grossExpectedAmount', 'discount',
+    'remainingAmount', 'triggerLessonCount',
+    'currentPeriodNo', 'nextPeriodNo', 'currentSystemPeriodNo', 'nextSystemPeriodNo'
+  ];
+  if (numberFields.some((key) =>
+    paymentRequestHasValue(existing, key) && Number(existing[key]) !== Number(expected[key])
+  )) return false;
+  const textFields = ['discountType', 'teacherPayBasis', 'planId'];
+  if (textFields.some((key) =>
+    paymentRequestHasValue(existing, key) && clean(existing[key]) !== clean(expected[key])
+  )) return false;
+  if (
+    paymentRequestHasValue(existing, 'payByDiscount') &&
+    existing.payByDiscount !== expected.payByDiscount
+  ) return false;
+  const existingPlan = jsonValue(existing && existing.planSnapshot || {});
+  if (
+    existingPlan && Object.keys(existingPlan).length &&
+    financialFingerprint(existingPlan) !== financialFingerprint(expected && expected.planSnapshot || {})
+  ) return false;
+  return true;
+}
+
+function assertAttendanceRolloverPaymentRequest(existing, expected, periodId) {
+  const targetPeriodId = clean(existing && (existing.targetPeriodId || existing.formalPeriodId));
+  const identityMatches = clean(existing && existing.studentId) === clean(expected && expected.studentId) &&
+    clean(existing && existing.subjectId) === clean(expected && expected.subjectId) &&
+    clean(existing && existing.teacherId) === clean(expected && expected.teacherId) &&
+    clean(existing && existing.sourcePeriodId) === clean(expected && expected.sourcePeriodId) &&
+    Number(existing && existing.nextPeriodNo || 0) === Number(expected && expected.nextPeriodNo || 0);
+  const unsubmitted = existing && existing.active !== false &&
+    clean(existing.status) === 'payment_due' &&
+    Number(existing.confirmedAmount || 0) === 0 &&
+    Number(existing.submissionRevision || 0) === 0 &&
+    !clean(existing.paymentMethod) &&
+    !existing.submittedAt &&
+    !clean(existing.submittedAtText) &&
+    !clean(existing.formalPeriodId) &&
+    !existing.confirmedAt &&
+    !clean(existing.confirmedAtText) &&
+    !clean(existing.paymentDate) &&
+    !clean(existing.transferDate) &&
+    !clean(existing.transferLast5) &&
+    !clean(existing.receiptStoragePath) &&
+    !clean(existing.receiptContentType) &&
+    !Number(existing.receiptBytes || 0);
+  const safe = identityMatches && unsubmitted &&
+    (!targetPeriodId || targetPeriodId === clean(periodId)) &&
+    paymentRequestFinancialFieldsCompatible(existing, expected);
+  if (!safe) {
+    throw new HttpsError(
+      'aborted',
+      '下一期繳費資料已取消、送出或被其他裝置更新；請重新整理並由管理者確認後再簽到。'
+    );
+  }
+}
+
 function tuitionCourseKey(row) {
   const subjectId = clean(row && row.subjectId);
   const subjectName = clean(row && (row.subjectName || row.courseName || row.subject));
@@ -5640,6 +5949,23 @@ async function assignNewSystemPeriodNumbers(periods) {
       tuitionPeriodNumber(left) - tuitionPeriodNumber(right) ||
       sourceId(left).localeCompare(sourceId(right))
     );
+    ordered.forEach((row) => {
+      const periodId = sourceId(row);
+      const embeddedSystemPeriodNo = Math.max(0, Number(row.systemPeriodNo || 0));
+      if (!periodId || !embeddedSystemPeriodNo || existing.has(periodId)) return;
+      const assignment = {
+        id: hash(`new-system-period|${periodId}`),
+        periodId,
+        studentId: clean(row.studentId),
+        courseKey: tuitionCourseKey(row),
+        groupKey,
+        legacyPeriodNo: tuitionPeriodNumber(row),
+        systemPeriodNo: embeddedSystemPeriodNo,
+        createdAtText: nowText()
+      };
+      existing.set(periodId, assignment);
+      writes.push(assignment);
+    });
     const assigned = [...existing.values()].filter((row) =>
       clean(row.groupKey) === groupKey ||
       (
@@ -5711,7 +6037,7 @@ function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, 
       sourceId(left).localeCompare(sourceId(right))
     );
     const completed = ordered.filter((row) =>
-      tuitionUsedCount(row) >= 4 &&
+      tuitionUsedCount(row) >= tuitionLessonCount(row) &&
       tuitionPeriodNumber(row) > 0
     ).pop();
     if (!completed) return;
@@ -5719,8 +6045,20 @@ function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, 
     const existingNext = ordered.find((row) => tuitionPeriodNumber(row) > currentPeriodNo);
     if (existingNext && tuitionOutstandingAmount(existingNext) <= 0) return;
     const source = existingNext || completed;
-    const amount = existingNext ? tuitionOutstandingAmount(existingNext) : tuitionExpectedAmount(completed);
+    const amount = existingNext ? tuitionOutstandingAmount(existingNext) : tuitionNetExpectedAmount(completed);
     if (amount <= 0) return;
+    const grossExpectedAmount = tuitionExpectedAmount(source);
+    const discount = Math.max(0, firstFiniteNumber(source, ['discount', 'discountAmount']) || 0);
+    let discountType = clean(source.discountType || source.planSnapshot && source.planSnapshot.discountType).toLowerCase();
+    if (!['ratio', 'amount'].includes(discountType)) {
+      discountType = discount > 0 && discount <= 1 ? 'ratio' : 'amount';
+    }
+    const teacherPayBasis = clean(source.teacherPayBasis || source.planSnapshot && source.planSnapshot.teacherPayBasis);
+    const payByDiscount = typeof source.payByDiscount === 'boolean'
+      ? source.payByDiscount
+      : source.planSnapshot && typeof source.planSnapshot.payByDiscount === 'boolean'
+        ? source.planSnapshot.payByDiscount
+        : teacherPayBasis !== 'gross';
     const studentId = clean(completed.studentId);
     const subjectId = clean(source.subjectId || completed.subjectId);
     const teacherId = clean(source.teacherId || completed.teacherId);
@@ -5731,13 +6069,7 @@ function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, 
       : currentSystemPeriodNo + 1;
     const targetPeriodId = existingNext ? sourceId(existingNext) : '';
     const sourcePeriodId = sourceId(completed);
-    const id = hash([
-      'tuition-payment-request',
-      studentId,
-      tuitionCourseKey(completed),
-      sourcePeriodId,
-      nextPeriodNo
-    ].join('|'));
+    const id = tuitionPaymentRequestId(completed, studentId, nextPeriodNo);
     candidates.push({
       id,
       active: true,
@@ -5757,9 +6089,14 @@ function buildTuitionPaymentCandidates({ periods, students, subjects, teachers, 
       nextPeriodNo,
       currentSystemPeriodNo,
       nextSystemPeriodNo,
-      triggerLessonCount: 4,
+      triggerLessonCount: tuitionLessonCount(completed),
       lessonCount: tuitionLessonCount(source),
       expectedAmount: amount,
+      grossExpectedAmount,
+      discount,
+      discountType,
+      teacherPayBasis,
+      payByDiscount,
       planId: clean(source.planId || completed.planId),
       planSnapshot: jsonValue(source.planSnapshot || completed.planSnapshot || {}),
       createdAtText: nowText(),
@@ -8038,10 +8375,24 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     const portalAttendance = portalAttendanceSnapshot.docs.map((doc) =>
       Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
     );
-    const effectivePeriods = applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttendance);
+    const adjustedPeriods = applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttendance);
+    // mirror 舊期別不會內嵌新系統期數；先讀取／建立持久 mapping，不可每次都假設上期是第 1 期。
+    const effectivePeriods = options.allowRollover === true
+      ? await assignNewSystemPeriodNumbers(adjustedPeriods)
+      : adjustedPeriods;
+    const existingPeriod = attendancePeriodCandidate(effectivePeriods, event, studentId, sourceDate);
+    const rollover = !existingPeriod && options.allowRollover === true
+      ? buildAttendanceTuitionRollover({
+        periods: effectivePeriods,
+        event,
+        studentId,
+        sourceDate
+      })
+      : null;
     return {
       studentId,
-      period: attendancePeriodCandidate(effectivePeriods, event, studentId, sourceDate)
+      period: existingPeriod || rollover && rollover.period,
+      rollover
     };
   }));
   const missing = groups.filter((row) => !row.period);
@@ -8054,6 +8405,7 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
   const rows = groups.filter((row) => row.period);
   return {
     rows,
+    rollovers: groups.map((row) => row.rollover).filter(Boolean),
     byStudent: rows.reduce((map, row) => {
       map[row.studentId] = row.period;
       return map;
@@ -8131,7 +8483,10 @@ async function applyTeacherAttendance(data, late) {
   const lessonLockRef = db.collection('coursePortalAttendanceLessonLocks')
     .doc(attendanceLessonLockId(sourceDate, event, { sourceEventId, sourceCourseId }));
   const versionRef = scheduleVersionRef();
-  const periodResolution = await attendancePeriodsForEvent(event, sourceDate, { allowMissing: giftLesson });
+  const periodResolution = await attendancePeriodsForEvent(event, sourceDate, {
+    allowMissing: giftLesson,
+    allowRollover: !giftLesson
+  });
   const payrollCalculation = attendancePayrollCalculation(event, periodResolution.rows, sourceDate);
   const periodIds = Object.keys(periodResolution.byStudent).reduce((map, studentId) => {
     map[studentId] = sourceId(periodResolution.byStudent[studentId]);
@@ -8142,6 +8497,13 @@ async function applyTeacherAttendance(data, late) {
     studentId: clean(studentId)
   }));
   const attendanceRefs = attendanceRows.map((row) => db.collection(ATTENDANCE_RECORDS).doc(row.id));
+  const tuitionRollovers = periodResolution.rollovers || [];
+  const rolloverPeriodRefs = tuitionRollovers.map((row) =>
+    db.collection(TUITION_PERIODS).doc(clean(row.period.id))
+  );
+  const rolloverPaymentRefs = tuitionRollovers.map((row) =>
+    db.collection(TUITION_PAYMENT_REQUESTS).doc(clean(row.paymentRequest.id))
+  );
   const changePayload = attendanceChangePayload(
     event,
     sourceDate,
@@ -8162,8 +8524,13 @@ async function applyTeacherAttendance(data, late) {
       tx.get(payrollRef),
       tx.get(priorCancellationRef),
       tx.get(lessonLockRef),
-      ...attendanceRefs.map((ref) => tx.get(ref))
+      ...attendanceRefs.map((ref) => tx.get(ref)),
+      ...rolloverPeriodRefs.map((ref) => tx.get(ref)),
+      ...rolloverPaymentRefs.map((ref) => tx.get(ref))
     ]);
+    const attendanceOffset = 6;
+    const rolloverPeriodOffset = attendanceOffset + attendanceRefs.length;
+    const rolloverPaymentOffset = rolloverPeriodOffset + rolloverPeriodRefs.length;
     const versionSnapshot = snapshots[0];
     assertScheduleWritable(versionSnapshot);
     const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
@@ -8194,7 +8561,7 @@ async function applyTeacherAttendance(data, late) {
     ) {
       throw new HttpsError('already-exists', '這堂課已由另一位老師完成簽到，不會重複建立薪資。');
     }
-    const existingAttendance = snapshots.slice(6).some((snapshot) =>
+    const existingAttendance = snapshots.slice(attendanceOffset, rolloverPeriodOffset).some((snapshot) =>
       snapshot.exists && clean(snapshot.data().status) === 'attended'
     );
     if (existingAttendance) throw new HttpsError('already-exists', '這堂課已經完成簽到。');
@@ -8206,6 +8573,36 @@ async function applyTeacherAttendance(data, late) {
     if (normalizeScheduleStatus(existingStatus.event && existingStatus.event.status) === 'attended') {
       throw new HttpsError('already-exists', '這堂課已經完成簽到。');
     }
+    tuitionRollovers.forEach((rollover, index) => {
+      const periodSnapshot = snapshots[rolloverPeriodOffset + index];
+      const paymentSnapshot = snapshots[rolloverPaymentOffset + index];
+      if (periodSnapshot.exists) {
+        assertAttendanceRolloverPeriod(periodSnapshot.data() || {}, rollover.period);
+      } else {
+        tx.set(rolloverPeriodRefs[index], Object.assign({}, rollover.period, {
+          createdAt: FieldValue.serverTimestamp(),
+          createdAtText: nowText(),
+          updatedAt: FieldValue.serverTimestamp()
+        }));
+      }
+      if (paymentSnapshot.exists) {
+        const existingPayment = paymentSnapshot.data() || {};
+        assertAttendanceRolloverPaymentRequest(
+          existingPayment,
+          rollover.paymentRequest,
+          rollover.period.id
+        );
+        // 只有尚未送出的同一筆 payment_due 可補齊快照；已送出或部分入帳一律 fail closed。
+        tx.set(rolloverPaymentRefs[index], Object.assign({}, rollover.paymentRequest, {
+          updatedAt: FieldValue.serverTimestamp()
+        }), { merge: true });
+      } else {
+        tx.set(rolloverPaymentRefs[index], Object.assign({}, rollover.paymentRequest, {
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
+        }));
+      }
+    });
     attendanceRows.forEach((row, index) => tx.set(attendanceRefs[index], {
       id: row.id,
       operationId,
@@ -9332,13 +9729,21 @@ async function adminTuitionPaymentAction(data) {
         studentId: clean(requestRow.studentId),
         subjectId: clean(requestRow.subjectId),
         teacherId: clean(requestRow.teacherId),
+        sourcePeriodId: clean(requestRow.sourcePeriodId),
         planId: clean(requestRow.planId),
         planSnapshot: jsonValue(requestRow.planSnapshot || {}),
         periodNo: Number(requestRow.nextPeriodNo || 0),
+        systemPeriodNo: Number(requestRow.nextSystemPeriodNo || 0),
         lessonCount: Number(requestRow.lessonCount || 4),
         usedCount: 0,
-        expectedAmount: Number(requestRow.expectedAmount || confirmedAmount),
+        expectedAmount: Number(requestRow.grossExpectedAmount || requestRow.expectedAmount || confirmedAmount),
         paidAmount: 0,
+        discount: Math.max(0, Number(requestRow.discount || 0)),
+        discountType: clean(requestRow.discountType),
+        teacherPayBasis: clean(requestRow.teacherPayBasis),
+        payByDiscount: typeof requestRow.payByDiscount === 'boolean'
+          ? requestRow.payByDiscount
+          : clean(requestRow.teacherPayBasis) !== 'gross',
         status: 'active',
         paymentRequestId: id,
         createdAt: FieldValue.serverTimestamp(),
