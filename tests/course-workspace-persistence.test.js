@@ -62,7 +62,7 @@ assert(controller.includes('isDemo(source)'), '課務控制器沒有排除示範
 assert(controller.includes('global.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__ = workspace ? clone(workspace) : null'), '工作區沒有交給 inline runtime');
 assert(!controller.includes('YouziCoursePreviewData.load'), '正常開頁仍會自動重新讀取雲端鏡像');
 assert(!controller.includes('YouziCoursePreviewData.sync'), '正常開頁仍會自動執行音教雲同步');
-assert(inlineBuilder.includes("const VERSION = '20260808-teacher-payroll-month-v1'"), '課務產生器仍使用舊快取版本');
+assert(inlineBuilder.includes("const VERSION = '20260808-teacher-payroll-breakdown-v2'"), '課務產生器仍使用舊快取版本');
 assert(inlineBuilder.includes('money(periodNetExpectedAmount(period))'), '課務產生器會重新產生錯誤的比例折扣金額');
 assert.strictEqual((inlineBuilder.match(/money\(period\.expectedAmount-period\.discount\)/g) || []).length, 1, '課務產生器的學生 renderer 仍直接以比例值扣原價');
 assert(inlineBuilder.includes('if (existingIsScoped)'), '課務產生器不會保留已完成更新的 inline runtime');
@@ -106,6 +106,13 @@ assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), 
   assert(source.includes("$('teacherListMonthPrev').addEventListener('click'"), `${label}缺少上一月操作`);
   assert(source.includes("$('teacherListMonthNext').addEventListener('click'"), `${label}缺少下一月操作`);
   assert(source.includes("$('teacherListMonthCurrent').addEventListener('click'"), `${label}缺少回到本月操作`);
+  assert(teacherRenderer.includes("metric(monthLabel+'課堂拆帳',money(basePay),'不含獎勵與扣薪')"), `${label}老師總表沒有把課堂拆帳獨立顯示`);
+  assert(teacherRenderer.includes("metric(monthLabel+'獎勵／扣薪'"), `${label}老師總表沒有把獎勵／扣薪獨立顯示`);
+  assert(teacherRenderer.includes("metric(monthLabel+'實際薪資合計',money(finalPay)"), `${label}老師總表缺少實際薪資合計`);
+  assert(!teacherRenderer.includes("metric(monthLabel+'老師薪資'"), `${label}老師總表仍將獎勵混入未標示的薪資金額`);
+  assert(teacherRenderer.includes('<span>課堂拆帳</span><span>獎勵／扣薪</span><span>實際合計</span>'), `${label}每位老師沒有分欄顯示薪資組成`);
+  assert(teacherRenderer.includes('basePay=sum(completed.map'), `${label}每位老師的課堂拆帳仍未獨立計算`);
+  assert(teacherRenderer.includes('adjustmentPay=sum(teacherAdjustments.map(signedTeacherAdjustment))'), `${label}每位老師的獎勵／扣薪仍未獨立計算`);
 
   const netHelper = (source.match(/function periodNetExpectedAmount\(period\)\{[^\n]+\}/) || [])[0];
   const balanceHelper = (source.match(/function periodBalance\(period\)\{[^\n]+\}/) || [])[0];
