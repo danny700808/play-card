@@ -14,6 +14,7 @@ const controller = read('operations-course-inline.js');
 const runtime = read('operations-course-inline-runtime.js');
 const template = read('operations-course-inline-template.html');
 const scheduler = read('course-scheduler.js');
+const schedulerCss = read('course-scheduler.css');
 const operations = read('operations-phase1.js');
 const portalCommon = read('course-portal-common.js');
 const inlineBuilder = read('.github/scripts/build-inline-course-workspace.cjs');
@@ -61,7 +62,7 @@ assert(controller.includes('isDemo(source)'), '課務控制器沒有排除示範
 assert(controller.includes('global.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__ = workspace ? clone(workspace) : null'), '工作區沒有交給 inline runtime');
 assert(!controller.includes('YouziCoursePreviewData.load'), '正常開頁仍會自動重新讀取雲端鏡像');
 assert(!controller.includes('YouziCoursePreviewData.sync'), '正常開頁仍會自動執行音教雲同步');
-assert(inlineBuilder.includes("const VERSION = '20260808-tuition-receipt-v1'"), '課務產生器仍使用舊快取版本');
+assert(inlineBuilder.includes("const VERSION = '20260808-teacher-payroll-month-v1'"), '課務產生器仍使用舊快取版本');
 assert(inlineBuilder.includes('money(periodNetExpectedAmount(period))'), '課務產生器會重新產生錯誤的比例折扣金額');
 assert.strictEqual((inlineBuilder.match(/money\(period\.expectedAmount-period\.discount\)/g) || []).length, 1, '課務產生器的學生 renderer 仍直接以比例值扣原價');
 assert(inlineBuilder.includes('if (existingIsScoped)'), '課務產生器不會保留已完成更新的 inline runtime');
@@ -94,6 +95,17 @@ assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), 
   assert(source.includes('Math.round(periodNetExpectedAmount(period)/Math.max(1,numberOf(period.lessonCount)))'), `${label}單堂或退款金額未使用折扣後應收金額`);
   assert((source.match(/periodNetExpectedAmount\(period\)/g) || []).length >= 9, `${label}仍有財務計算未統一使用折扣後應收金額`);
   assert(source.includes('discountType:clean(current.discountType||current.planSnapshot&&current.planSnapshot.discountType)'), `${label}自動延續下一期時遺失折扣類型`);
+
+  const teacherRenderer = source.slice(source.indexOf('function renderTeachers(){'), source.indexOf('function splitText(row)'));
+  assert(source.includes('function teacherListMonthKey()'), `${label}老師薪資總表沒有月份狀態`);
+  assert(source.includes('function shiftMonthKey(key,amount)'), `${label}老師薪資總表無法切換前後月份`);
+  assert(teacherRenderer.includes('monthKey=teacherListMonthKey()'), `${label}老師薪資總表沒有依選擇月份查詢`);
+  assert(teacherRenderer.includes("clean(row.date).slice(0,7)===monthKey"), `${label}老師薪資資料沒有按月份篩選`);
+  assert(!teacherRenderer.includes('state.currentDate.slice(0,7)'), `${label}老師薪資仍錯誤跟著課表日期切換`);
+  assert(source.includes("$('teacherPayrollMonth').value=teacherListMonthKey()"), `${label}老師薪資明細沒有沿用總表月份`);
+  assert(source.includes("$('teacherListMonthPrev').addEventListener('click'"), `${label}缺少上一月操作`);
+  assert(source.includes("$('teacherListMonthNext').addEventListener('click'"), `${label}缺少下一月操作`);
+  assert(source.includes("$('teacherListMonthCurrent').addEventListener('click'"), `${label}缺少回到本月操作`);
 
   const netHelper = (source.match(/function periodNetExpectedAmount\(period\)\{[^\n]+\}/) || [])[0];
   const balanceHelper = (source.match(/function periodBalance\(period\)\{[^\n]+\}/) || [])[0];
@@ -133,6 +145,10 @@ assert(scheduler.includes('setAttendance'), '完整課表缺少簽到、請假�
   'calendarPage',
   'studentsPage',
   'teachersPage',
+  'teacherListMonth',
+  'teacherListMonthPrev',
+  'teacherListMonthNext',
+  'teacherListMonthCurrent',
   'settingsPage',
   'scheduleModal',
   'eventModal',
@@ -143,6 +159,10 @@ assert(scheduler.includes('setAttendance'), '完整課表缺少簽到、請假�
   'teacherAdjustmentModal',
   'policyModal'
 ].forEach((id) => assert(template.includes(`id="${id}"`), `inline 課務缺少完整功能：${id}`));
+assert(/id="teacherListMonth" type="month"/.test(template), '老師薪資總表缺少月份選擇欄位');
+assert(template.includes('薪資月份查詢'), '老師薪資總表沒有清楚標示月份查詢');
+assert(schedulerCss.includes('.teacher-month-filter'), '老師薪資月份查詢缺少桌機版排版');
+assert(schedulerCss.includes('.teacher-month-control'), '老師薪資月份欄位缺少整體樣式');
 ['rooms', 'subjects', 'fees'].forEach((tab) => {
   assert(template.includes(`data-settings-tab="${tab}"`), `inline 課務缺少設定分頁：${tab}`);
 });
