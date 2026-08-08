@@ -566,6 +566,11 @@ function loadBackendForScheduleTests(state) {
       'module.exports.__testBuildTuitionPaymentCandidates = buildTuitionPaymentCandidates;\n' +
       'module.exports.__testNormalizeTeacherShareRatio = normalizeTeacherShareRatio;\n' +
       'module.exports.__testAttendancePeriodCandidate = attendancePeriodCandidate;\n' +
+      'module.exports.__testAttendanceHistoricalSplitSource = attendanceHistoricalSplitSource;\n' +
+      'module.exports.__testHistoricalTeacherSplitCandidate = historicalTeacherSplitCandidate;\n' +
+      'module.exports.__testPeriodWithHistoricalTeacherSplit = periodWithHistoricalTeacherSplit;\n' +
+      'module.exports.__testTeacherPayrollSplitRows = teacherPayrollSplitRows;\n' +
+      'module.exports.__testEnrichTeacherPayrollRows = enrichTeacherPayrollRows;\n' +
       'module.exports.__testAttendancePeriodPayroll = attendancePeriodPayroll;\n' +
       'module.exports.__testAttendancePayrollCalculation = attendancePayrollCalculation;\n' +
       'module.exports.__testBuildAttendanceTuitionRollover = buildAttendanceTuitionRollover;\n' +
@@ -851,6 +856,220 @@ async function runBackendScheduleRegressionTests() {
     }));
     assert.strictEqual(fixedPay.outputs.teacherAmount, 600, '固定拆帳應直接計入每堂 NT$600');
 
+    const unresolvedLegacyPeriod = Object.assign({}, ratioPeriod, {
+      id: 'period-legacy-unresolved',
+      sourcePaymentId: 'payment-legacy-unresolved',
+      sourceCourseId: 'fixed-1',
+      planSnapshot: {
+        id: 'plan-legacy',
+        name: '舊木吉他四堂',
+        splitType: 'none',
+        splitValue: 0
+      }
+    });
+    const historicalPayrollRows = [
+      {
+        id: 'payroll-wrong-student', teacherId: 'teacher-1', studentId: 'student-2',
+        subjectId: 'subject-piano', courseId: 'fixed-1', periodId: unresolvedLegacyPeriod.id,
+        date: '2026-07-20', splitType: 'ratio', splitValue: 0.9
+      },
+      {
+        id: 'payroll-same-subject-newer', teacherId: 'teacher-1', studentId: 'student-1',
+        subjectId: 'subject-piano', courseId: 'another-course', periodId: 'another-period',
+        date: '2026-07-29', splitType: 'ratio', splitValue: 0.7
+      },
+      {
+        id: 'payroll-exact-period', teacherId: 'teacher-1', studentId: 'student-1',
+        subjectId: 'subject-piano', courseId: 'fixed-1', periodId: unresolvedLegacyPeriod.id,
+        date: '2026-07-28', splitType: 'ratio', allotRate: 60, teacherAmount: 420
+      },
+      {
+        id: 'payroll-future', teacherId: 'teacher-1', studentId: 'student-1',
+        subjectId: 'subject-piano', courseId: 'fixed-1', periodId: unresolvedLegacyPeriod.id,
+        date: '2026-08-01', splitType: 'fixed', hourlyFee: 999
+      },
+      {
+        id: 'payroll-special-lesson', teacherId: 'teacher-1', studentId: 'student-1',
+        subjectId: 'subject-piano', courseId: 'fixed-1', periodId: unresolvedLegacyPeriod.id,
+        date: '2026-07-30', splitType: 'fixed', splitValue: 999,
+        hourlyFee: 999, teacherAmount: 999,
+        payrollCalculation: {
+          inputs: { specialLesson: true, teacherPayable: true },
+          students: []
+        }
+      }
+    ];
+    const legacyEvent = {
+      id: 'event-legacy', fixedCourseId: 'fixed-1', date: '2026-07-31',
+      teacherId: 'teacher-1', subjectId: 'subject-piano', subjectName: '鋼琴',
+      studentIds: ['student-1']
+    };
+    const historicalSplit = duplicatePermanentBackend.__testHistoricalTeacherSplitCandidate(
+      historicalPayrollRows,
+      legacyEvent,
+      'student-1',
+      unresolvedLegacyPeriod,
+      legacyEvent.date
+    );
+    assert.strictEqual(historicalSplit.splitType, 'ratio', '舊薪資歷史的比例拆帳沒有被辨識');
+    assert.strictEqual(historicalSplit.splitValue, 0.6, '60% 舊拆帳沒有正規化成 0.6');
+    assert.strictEqual(historicalSplit.payrollId, 'payroll-exact-period', '應優先沿用同一期的明確舊拆帳');
+    const repairedLegacyPeriod = duplicatePermanentBackend.__testPeriodWithHistoricalTeacherSplit(
+      unresolvedLegacyPeriod,
+      historicalPayrollRows,
+      legacyEvent,
+      'student-1',
+      legacyEvent.date
+    );
+    assert.strictEqual(repairedLegacyPeriod.planSnapshot.splitType, 'ratio');
+    assert.strictEqual(repairedLegacyPeriod.planSnapshot.splitValue, 0.6);
+    assert.strictEqual(
+      repairedLegacyPeriod.planSnapshot.splitSource,
+      'historical-teacher-payroll',
+      '補回的拆帳必須保存可稽核來源'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', repairedLegacyPeriod).outputs.teacherAmount,
+      420,
+      '補回舊拆帳後應能正確計算本堂老師薪資'
+    );
+    const amountOnlyPeriod = duplicatePermanentBackend.__testPeriodWithHistoricalTeacherSplit(
+      unresolvedLegacyPeriod,
+      [{
+        id: 'payroll-amount-only', teacherId: 'teacher-1', studentId: 'student-1',
+        subjectId: 'subject-piano', courseId: 'fixed-1', date: '2026-07-28', teacherAmount: 500
+      }],
+      legacyEvent,
+      'student-1',
+      legacyEvent.date
+    );
+    assert.strictEqual(
+      amountOnlyPeriod.planSnapshot.splitType,
+      'none',
+      '只有薪資總額但沒有比例／固定欄位時不可自行猜拆帳方式'
+    );
+    const legacyAliasPeriod = Object.assign({}, unresolvedLegacyPeriod, {
+      planSnapshot: {
+        id: 'plan-legacy-alias',
+        name: '舊欄位比例方案',
+        teacherSplitType: 'ratio',
+        shareRate: 0.65
+      }
+    });
+    const preservedLegacyAlias = duplicatePermanentBackend.__testPeriodWithHistoricalTeacherSplit(
+      legacyAliasPeriod,
+      [{
+        id: 'payroll-newer-different-rate', teacherId: 'teacher-1', studentId: 'student-1',
+        subjectId: 'subject-piano', courseId: 'fixed-1', date: '2026-07-30',
+        splitType: 'ratio', splitValue: 0.7
+      }],
+      legacyEvent,
+      'student-1',
+      legacyEvent.date
+    );
+    assert.strictEqual(
+      preservedLegacyAlias,
+      legacyAliasPeriod,
+      '原方案已有 teacherSplitType/shareRate 時不得被歷史薪資覆寫'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', preservedLegacyAlias).outputs.teacherAmount,
+      455,
+      '舊欄位比例方案應沿用原本 65% 計薪'
+    );
+    const nestedGroupSplit = duplicatePermanentBackend.__testHistoricalTeacherSplitCandidate(
+      [{
+        id: 'payroll-group', teacherId: 'teacher-1', studentIds: ['student-1', 'student-2'],
+        subjectId: 'subject-piano', courseId: 'fixed-1', date: '2026-07-30', splitType: 'mixed',
+        payrollCalculation: {
+          inputs: { courseId: 'fixed-1', subjectId: 'subject-piano' },
+          students: [
+            {
+              studentId: 'student-1', periodId: 'legacy-unresolved',
+              outputs: { splitType: 'ratio', splitValue: 0.6, normalizedRatio: 0.6, teacherAmount: 420 }
+            },
+            {
+              studentId: 'student-2', periodId: 'period-other',
+              outputs: { splitType: 'fixed', splitValue: 500, teacherAmount: 500 }
+            }
+          ]
+        }
+      }],
+      legacyEvent,
+      'student-1',
+      Object.assign({}, unresolvedLegacyPeriod, { id: 'period_legacy-unresolved' }),
+      legacyEvent.date
+    );
+    assert.strictEqual(nestedGroupSplit.splitType, 'ratio', '團課薪資必須讀取逐生拆帳，不能使用 mixed 頂層');
+    assert.strictEqual(nestedGroupSplit.splitValue, 0.6, '團課中不可套用另一位學生的固定薪資');
+    assert.strictEqual(nestedGroupSplit.matchedBy, 'period', 'period_ 前綴差異不應讓同一期配對失敗');
+    assert.strictEqual(nestedGroupSplit.payrollId, 'payroll-group', '團課拆成逐生資料後仍須保留原始薪資單 ID');
+    const enrichedMissingStudent = duplicatePermanentBackend.__testEnrichTeacherPayrollRows(
+      [{
+        id: 'attendance-with-student', teacherId: 'teacher-1', date: '2026-07-20',
+        splitType: 'fixed', splitValue: 500
+      }],
+      [{
+        id: 'attendance-with-student', studentId: 'student-1', courseId: 'fixed-1',
+        subjectId: 'subject-piano', periodId: 'period-ratio'
+      }]
+    );
+    assert.strictEqual(enrichedMissingStudent[0].studentId, 'student-1', '舊薪資缺學生 ID 時應由同一筆簽到安全回填');
+    const specialOnlySplit = duplicatePermanentBackend.__testHistoricalTeacherSplitCandidate(
+      [historicalPayrollRows.find((row) => row.id === 'payroll-special-lesson')],
+      legacyEvent,
+      'student-1',
+      unresolvedLegacyPeriod,
+      legacyEvent.date
+    );
+    assert.strictEqual(specialOnlySplit, null, '特殊加課的一次性薪資不可變成一般課永久拆帳');
+    const unlinkedLegacyFixedSplit = duplicatePermanentBackend.__testHistoricalTeacherSplitCandidate(
+      [{
+        id: 'payroll-legacy-special-like',
+        teacherId: 'teacher-1',
+        studentId: 'student-1',
+        subjectId: 'subject-piano',
+        subjectName: '鋼琴',
+        courseId: 'fixed-1',
+        date: '2026-07-30',
+        splitType: 'fixed',
+        splitValue: 900,
+        hourlyFee: 900,
+        teacherAmount: 900
+      }],
+      legacyEvent,
+      'student-1',
+      unresolvedLegacyPeriod,
+      legacyEvent.date
+    );
+    assert.strictEqual(
+      unlinkedLegacyFixedSplit,
+      null,
+      '沒有期別／付款連結的舊固定薪資可能是一次性特殊課，不可只靠課程或科目沿用'
+    );
+    const linkedLegacySplit = duplicatePermanentBackend.__testHistoricalTeacherSplitCandidate(
+      [{
+        id: 'payroll-legacy-linked',
+        teacherId: 'teacher-1',
+        studentId: 'student-1',
+        subjectId: 'subject-piano',
+        courseId: 'fixed-1',
+        sourcePaymentId: unresolvedLegacyPeriod.sourcePaymentId,
+        date: '2026-07-30',
+        splitType: 'ratio',
+        allotRate: 60,
+        splitValue: 60,
+        teacherAmount: 420
+      }],
+      legacyEvent,
+      'student-1',
+      unresolvedLegacyPeriod,
+      legacyEvent.date
+    );
+    assert.strictEqual(linkedLegacySplit.splitType, 'ratio', '有明確付款／期別連結的一般舊薪資仍應可沿用');
+    assert.strictEqual(linkedLegacySplit.splitValue, 0.6, '明確連結的舊比例薪資仍須正規化');
+    assert.strictEqual(linkedLegacySplit.matchedBy, 'period', '歷史拆帳只可標記為精準期別配對');
+
     const event = {
       id: 'event-attended',
       fixedCourseId: 'fixed-1',
@@ -859,6 +1078,51 @@ async function runBackendScheduleRegressionTests() {
       subjectId: 'subject-piano',
       studentIds: ['student-1']
     };
+    const activeExplicitPeriod = Object.assign({}, ratioPeriod, {
+      id: 'period-active-explicit',
+      periodNo: 5,
+      usedCount: 1,
+      startDate: '2026-07-01'
+    });
+    const oldCompletedMissingSplit = Object.assign({}, unresolvedLegacyPeriod, {
+      id: 'period-old-completed-missing-split',
+      periodNo: 4,
+      usedCount: 4,
+      startDate: '2026-06-01'
+    });
+    assert.strictEqual(
+      duplicatePermanentBackend.__testAttendanceHistoricalSplitSource(
+        [oldCompletedMissingSplit, activeExplicitPeriod],
+        event,
+        'student-1',
+        event.date,
+        true
+      ),
+      null,
+      '本期已有完整拆帳時，不可因舊完成期別缺拆帳而每次全量讀取薪資歷史'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testAttendanceHistoricalSplitSource(
+        [Object.assign({}, unresolvedLegacyPeriod, { usedCount: 1 })],
+        event,
+        'student-1',
+        event.date,
+        true
+      ).id,
+      unresolvedLegacyPeriod.id,
+      '本次實際要扣的 active 期別缺拆帳時才應讀取歷史薪資'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testAttendanceHistoricalSplitSource(
+        [oldCompletedMissingSplit],
+        event,
+        'student-1',
+        event.date,
+        true
+      ).id,
+      oldCompletedMissingSplit.id,
+      '沒有 active 期別時，只能為實際續期來源補查歷史拆帳'
+    );
     const selected = duplicatePermanentBackend.__testAttendancePeriodCandidate(
       [Object.assign({}, ratioPeriod, { id: 'period-old', periodNo: 2, usedCount: 4 }), ratioPeriod],
       event,
@@ -2188,6 +2452,10 @@ assert(backend.includes("source: 'teacher-attendance-auto-renewal'"), '上期用
 assert(backend.includes('requestRow.grossExpectedAmount || requestRow.expectedAmount'), '家長先繳費時新期別沒有保留折扣前原價，會影響老師計薪');
 assert(backend.includes('await assignNewSystemPeriodNumbers(adjustedPeriods)'), '簽到續期沒有先解析 mirror 的真實新系統期數');
 assert(backend.includes('assertAttendanceRolloverPaymentRequest('), '已有待繳資料沒有 fail-closed 狀態與財務指紋驗證');
+assert(backend.includes("mirrorRowsByField('teacherPayroll', 'teacherId', teacherId)"), '簽到沒有讀取同老師的既有薪資歷史來補回舊拆帳');
+assert(backend.includes("splitSource: 'historical-teacher-payroll'"), '從舊薪資補回的拆帳沒有留下可稽核來源');
+assert(backend.includes('const needsHistoricalPayroll = baseGroups.some((group) => Boolean(group.historicalSplitSource))'), '一般已有完整方案的簽到仍會無條件讀取全部歷史薪資');
+assert(backend.includes('payrollInputs.specialLesson === true'), '特殊課的一次性固定薪資仍可能被補成一般課拆帳');
 assert(backend.includes('...rolloverPeriodRefs.map((ref) => tx.get(ref))'), '簽到續期沒有在同一 Firestore transaction 先讀期別');
 assert(backend.includes('...rolloverPaymentRefs.map((ref) => tx.get(ref))'), '簽到續期沒有在同一 Firestore transaction 先讀待繳資料');
 assert(backend.includes("? 'pending_review' : 'onsite_pending'"), '匯款與現場繳費沒有進入各自的待確認狀態');

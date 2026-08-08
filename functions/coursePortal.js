@@ -5350,6 +5350,188 @@ function attendancePeriodCandidate(periods, event, studentId, sourceDate) {
   return newestAttendancePeriod(matching);
 }
 
+function explicitTeacherSplitFromPayroll(row) {
+  const source = row || {};
+  const splitType = clean(source.splitType || source.teacherSplitType || source.shareType).toLowerCase();
+  let splitValue = firstFiniteNumber(source, ['splitValue']);
+  if (splitType === 'fixed') {
+    if (splitValue == null) {
+      splitValue = firstFiniteNumber(source, ['hourlyFee', 'fixedTeacherAmount', 'teacherAmount']);
+    }
+    if (!Number.isFinite(splitValue) || splitValue <= 0) return null;
+    return { splitType: 'fixed', splitValue: roundPayrollMoney(splitValue) };
+  }
+  if (splitType === 'ratio') {
+    if (splitValue == null) {
+      splitValue = firstFiniteNumber(source, ['allotRate', 'shareRate', 'teacherShare', 'allot']);
+    }
+    try {
+      return { splitType: 'ratio', splitValue: normalizeTeacherShareRatio(splitValue) };
+    } catch (error) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function teacherPayrollSplitRows(payrollRows) {
+  const output = [];
+  (payrollRows || []).forEach((row) => {
+    if (row && row.__teacherSplitAtom === true) {
+      output.push(row);
+      return;
+    }
+    const students = row && row.payrollCalculation && Array.isArray(row.payrollCalculation.students)
+      ? row.payrollCalculation.students
+      : [];
+    if (!students.length) {
+      output.push(Object.assign({}, row, {
+        __teacherSplitAtom: true,
+        sourcePayrollId: sourceId(row)
+      }));
+      return;
+    }
+    students.forEach((student, index) => {
+      const inputs = student && student.inputs || {};
+      const outputs = student && student.outputs || {};
+      const studentId = clean(student && student.studentId);
+      const tuitionPeriodIds = row && row.tuitionPeriodIds ||
+        row && row.payrollCalculation && row.payrollCalculation.inputs &&
+          row.payrollCalculation.inputs.tuitionPeriodIds || {};
+      output.push(Object.assign({}, row, {
+        __teacherSplitAtom: true,
+        sourcePayrollId: sourceId(row),
+        id: `${sourceId(row)}-student-${studentId || index + 1}`,
+        studentId,
+        studentIds: studentId ? [studentId] : [],
+        periodId: clean(student && student.periodId || tuitionPeriodIds && tuitionPeriodIds[studentId]),
+        sourcePaymentId: clean(inputs.sourcePaymentId),
+        courseId: clean(
+          row.courseId ||
+          row.payrollCalculation.inputs && row.payrollCalculation.inputs.courseId
+        ),
+        subjectId: clean(
+          row.subjectId ||
+          row.payrollCalculation.inputs && row.payrollCalculation.inputs.subjectId
+        ),
+        splitType: clean(outputs.splitType),
+        splitValue: outputs.splitValue,
+        allotRate: clean(outputs.splitType) === 'ratio' ? outputs.normalizedRatio || outputs.splitValue : 0,
+        hourlyFee: clean(outputs.splitType) === 'fixed' ? outputs.splitValue : 0,
+        teacherAmount: outputs.teacherAmount
+      }));
+    });
+  });
+  return output;
+}
+
+function normalizedTuitionLinkIds(values) {
+  const output = new Set();
+  (values || []).map(clean).filter(Boolean).forEach((id) => {
+    const bare = id.replace(/^period_/, '');
+    output.add(id);
+    output.add(bare);
+    output.add(`period_${bare}`);
+  });
+  return output;
+}
+
+function historicalTeacherSplitCandidate(payrollRows, event, studentId, period, sourceDate) {
+  const wantedTeacherId = eventTeacherId(event || {});
+  const wantedStudentId = clean(studentId);
+  const wantedPeriodIds = normalizedTuitionLinkIds([
+    sourceId(period || {}),
+    period && period.sourcePaymentId,
+    period && period.paymentId,
+    period && period.tuitionPeriodId
+  ]);
+  const cutoff = dateKey(sourceDate || eventDate(event || {}));
+  if (!wantedTeacherId || !wantedStudentId || !cutoff) return null;
+
+  return teacherPayrollSplitRows(payrollRows).map((row) => {
+    if (!row || row.active === false || eventTeacherId(row) !== wantedTeacherId) return null;
+    const payrollInputs = row.payrollCalculation && row.payrollCalculation.inputs || {};
+    const payrollKind = clean(
+      row.portalAction || row.action || row.type ||
+      payrollInputs.portalAction || payrollInputs.action || payrollInputs.type
+    ).toLowerCase();
+    if (
+      row.specialLesson === true ||
+      payrollInputs.specialLesson === true ||
+      row.teacherPayable === false ||
+      payrollInputs.teacherPayable === false ||
+      payrollInputs.payrollExcluded === true ||
+      ['teacher_gift', 'gift', 'free_gift', 'special_lesson'].includes(payrollKind)
+    ) return null;
+    if (!teacherPayrollStudentIds(row).includes(wantedStudentId)) return null;
+    const rowDate = eventDate(row || {});
+    if (!rowDate || rowDate >= cutoff) return null;
+    const status = clean(row.status).toLowerCase();
+    if (['cancelled', 'canceled', 'void', 'voided', 'rejected'].includes(status)) return null;
+    const split = explicitTeacherSplitFromPayroll(row);
+    if (!split) return null;
+
+    const rowTuitionPeriodIds = row.tuitionPeriodIds && typeof row.tuitionPeriodIds === 'object'
+      ? row.tuitionPeriodIds
+      : {};
+    const payrollTuitionPeriodIds = payrollInputs.tuitionPeriodIds &&
+      typeof payrollInputs.tuitionPeriodIds === 'object'
+      ? payrollInputs.tuitionPeriodIds
+      : {};
+    const rowPeriodIds = normalizedTuitionLinkIds([
+      row.periodId,
+      row.sourcePaymentId,
+      row.paymentId,
+      row.tuitionPeriodId,
+      rowTuitionPeriodIds[wantedStudentId],
+      payrollInputs.periodId,
+      payrollInputs.sourcePaymentId,
+      payrollInputs.paymentId,
+      payrollInputs.tuitionPeriodId,
+      payrollTuitionPeriodIds[wantedStudentId]
+    ]);
+    const periodMatch = [...rowPeriodIds].some((id) => wantedPeriodIds.has(id));
+    // 舊資料的一次性／特殊課不一定有 specialLesson 標記，卻可能與正式課共用老師、學生、
+    // 科目甚至固定課 ID。只有能精準連回目前學費期別／付款的歷史薪資，才可複製拆帳。
+    if (!periodMatch) return null;
+
+    return Object.assign({}, split, {
+      matchedBy: 'period',
+      matchRank: 4,
+      payrollId: clean(row.sourcePayrollId) || sourceId(row),
+      payrollDate: rowDate,
+      payrollMoment: clean(row.occurredAt || row.attendedAt || row.startedAt || rowDate)
+    });
+  }).filter(Boolean).sort((left, right) =>
+    right.matchRank - left.matchRank ||
+    right.payrollMoment.localeCompare(left.payrollMoment) ||
+    right.payrollId.localeCompare(left.payrollId)
+  )[0] || null;
+}
+
+function periodWithHistoricalTeacherSplit(period, payrollRows, event, studentId, sourceDate) {
+  const planSnapshot = jsonValue(period && period.planSnapshot || {});
+  if (explicitTeacherSplitFromPayroll(planSnapshot)) return period;
+  const historical = historicalTeacherSplitCandidate(
+    payrollRows,
+    event,
+    studentId,
+    period,
+    sourceDate
+  );
+  if (!historical) return period;
+  return Object.assign({}, period, {
+    planSnapshot: Object.assign({}, planSnapshot, {
+      splitType: historical.splitType,
+      splitValue: historical.splitValue,
+      splitSource: 'historical-teacher-payroll',
+      historicalTeacherPayrollId: historical.payrollId,
+      historicalTeacherPayrollDate: historical.payrollDate,
+      historicalTeacherPayrollMatch: historical.matchedBy
+    })
+  });
+}
+
 function attendancePeriodPayroll(studentId, period) {
   const periodId = sourceId(period);
   const planSnapshot = jsonValue(period && period.planSnapshot || {});
@@ -5642,7 +5824,7 @@ function tuitionPaymentRequestId(sourcePeriod, studentId, nextPeriodNo) {
   ].join('|'));
 }
 
-function buildAttendanceTuitionRollover({ periods, event, studentId, sourceDate }) {
+function attendanceRolloverSourcePeriod({ periods, event, studentId, sourceDate }) {
   const normalizedStudentId = clean(studentId);
   const lessonDate = dateKey(sourceDate || eventDate(event || {}));
   if (!normalizedStudentId || !lessonDate) return null;
@@ -5679,6 +5861,34 @@ function buildAttendanceTuitionRollover({ periods, event, studentId, sourceDate 
   // 若已有更新期別（例如已先收下期學費但開課日在未來），不可另外自動複製一期。
   const newestSameCourse = newestAttendancePeriod(sameCourse);
   if (newestSameCourse && sourceId(newestSameCourse) !== sourceId(completed)) return null;
+
+  return completed;
+}
+
+function attendanceHistoricalSplitSource(periods, event, studentId, sourceDate, allowRollover) {
+  const existingPeriod = attendancePeriodCandidate(periods, event, studentId, sourceDate);
+  if (existingPeriod) {
+    return explicitTeacherSplitFromPayroll(existingPeriod && existingPeriod.planSnapshot || {})
+      ? null
+      : existingPeriod;
+  }
+  if (allowRollover !== true) return null;
+  const rolloverSource = attendanceRolloverSourcePeriod({
+    periods,
+    event,
+    studentId,
+    sourceDate
+  });
+  return rolloverSource && !explicitTeacherSplitFromPayroll(rolloverSource.planSnapshot || {})
+    ? rolloverSource
+    : null;
+}
+
+function buildAttendanceTuitionRollover({ periods, event, studentId, sourceDate }) {
+  const normalizedStudentId = clean(studentId);
+  const lessonDate = dateKey(sourceDate || eventDate(event || {}));
+  const completed = attendanceRolloverSourcePeriod({ periods, event, studentId, sourceDate });
+  if (!completed) return null;
 
   const sourcePeriodId = sourceId(completed);
   const currentPeriodNo = tuitionPeriodNumber(completed);
@@ -6645,6 +6855,10 @@ function enrichTeacherPayrollRows(payrollRows, attendanceRows) {
       .find(Boolean);
     if (!attendance) return row;
     const merged = Object.assign({}, row);
+    if (!teacherPayrollStudentIds(merged).length) {
+      const attendanceStudentIds = eventStudentIds(attendance || {});
+      if (attendanceStudentIds.length === 1) merged.studentId = attendanceStudentIds[0];
+    }
     if (!teacherPayrollCourseId(merged)) {
       merged.courseId = clean(attendance.courseId || attendance.fixedCourseId || attendance.sourceCourseId);
     }
@@ -8366,7 +8580,7 @@ async function teacherAttendanceEvent(session, data) {
 
 async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
   const studentIds = [...new Set(eventStudentIds(event).map(clean).filter(Boolean))];
-  const groups = await Promise.all(studentIds.map(async (studentId) => {
+  const baseGroups = await Promise.all(studentIds.map(async (studentId) => {
     const [periods, mirrorAttendance, portalAttendanceSnapshot] = await Promise.all([
       mirrorRowsByField('tuitionPeriods', 'studentId', studentId),
       mirrorRowsByField('attendance', 'studentId', studentId),
@@ -8380,10 +8594,49 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     const effectivePeriods = options.allowRollover === true
       ? await assignNewSystemPeriodNumbers(adjustedPeriods)
       : adjustedPeriods;
-    const existingPeriod = attendancePeriodCandidate(effectivePeriods, event, studentId, sourceDate);
+    const historicalSplitSource = options.allowRollover === true
+      ? attendanceHistoricalSplitSource(
+        effectivePeriods,
+        event,
+        studentId,
+        sourceDate,
+        options.allowRollover
+      )
+      : null;
+    return { studentId, mirrorAttendance, effectivePeriods, historicalSplitSource };
+  }));
+  const needsHistoricalPayroll = baseGroups.some((group) => Boolean(group.historicalSplitSource));
+  const teacherId = eventTeacherId(event || {});
+  const [mirrorTeacherPayroll, portalTeacherPayrollSnapshot] = needsHistoricalPayroll && teacherId
+    ? await Promise.all([
+      mirrorRowsByField('teacherPayroll', 'teacherId', teacherId),
+      db.collection(ATTENDANCE_PAYROLL).where('teacherId', '==', teacherId).get()
+    ])
+    : [[], { docs: [] }];
+  const portalTeacherPayroll = portalTeacherPayrollSnapshot.docs.map((doc) =>
+    Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
+  );
+  const groups = baseGroups.map(({
+    studentId,
+    mirrorAttendance,
+    effectivePeriods,
+    historicalSplitSource
+  }) => {
+    const historicalPayroll = teacherPayrollSplitRows(
+      enrichTeacherPayrollRows(mirrorTeacherPayroll, mirrorAttendance).concat(portalTeacherPayroll)
+    );
+    const historicalSourceId = sourceId(historicalSplitSource || {});
+    const payrollReadyPeriods = historicalSplitSource
+      ? effectivePeriods.map((period) => (
+        period === historicalSplitSource || historicalSourceId && sourceId(period) === historicalSourceId
+          ? periodWithHistoricalTeacherSplit(period, historicalPayroll, event, studentId, sourceDate)
+          : period
+      ))
+      : effectivePeriods;
+    const existingPeriod = attendancePeriodCandidate(payrollReadyPeriods, event, studentId, sourceDate);
     const rollover = !existingPeriod && options.allowRollover === true
       ? buildAttendanceTuitionRollover({
-        periods: effectivePeriods,
+        periods: payrollReadyPeriods,
         event,
         studentId,
         sourceDate
@@ -8394,7 +8647,7 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
       period: existingPeriod || rollover && rollover.period,
       rollover
     };
-  }));
+  });
   const missing = groups.filter((row) => !row.period);
   if (missing.length && options.allowMissing !== true) {
     throw new HttpsError(
