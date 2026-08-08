@@ -281,6 +281,14 @@
     font-size: 11px;
     line-height: 1.25;
     white-space: normal;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    text-decoration: none;
+    background: #111827 !important;
+    border-color: #111827 !important;
+    color: #fff !important;
   }
 
   .ops-approved-week-nav {

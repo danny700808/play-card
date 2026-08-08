@@ -18,9 +18,9 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260806-operations-manager-auth-v1/);
+  assert.match(portal, /operations-phase1\.js\?v=20260809-mobile-quick-nav-v1/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
-  assert.match(portal, /operations-mobile-home-v1\.css\?v=20260803-mobile-overview-day-v1/);
+  assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
 });
 
@@ -58,6 +58,33 @@ test('mobile overview is compact while desktop keeps the full report', () => {
   assert.doesNotMatch(source, /id="opsMobileOverviewDetails"/);
   assert.match(source, /if\(isCompactMobile\(\)\)return rangeHtml\+mobileProfitHtml\+mobileQuickNavHtml\+'<template/);
   assert.match(source, /return rangeHtml\+heroHtml\+'<div class="ops-v8-channel-grid">'/);
+});
+
+test('mobile common actions mirror the full sidebar and use one black style', () => {
+  const source = read('operations-phase1.js');
+  const css = read('operations-mobile-home-v1.css');
+  const required = [
+    ['overview', '營運總覽'],
+    ['course-calendar', '課程日表'],
+    ['course-students', '學生與學費'],
+    ['course-teachers', '老師薪資'],
+    ['course-settings', '系統設定'],
+    ['sales', '現場銷售'],
+    ['sync', '平台訂單'],
+    ['products', '商品資訊'],
+    ['purchases', '庫存作業'],
+    ['receivables', '應收帳款'],
+    ['customers', '客戶會員'],
+    ['rentals', '租賃營運'],
+    ['expenses', '營運支出']
+  ];
+  required.forEach(([view, label]) => {
+    assert.match(source, new RegExp(`class="ops-button" data-nav="${view}">${label}<`));
+  });
+  assert.match(source, /class="ops-button ops-mobile-admin-link" href="settings\.html">返回管理首頁</);
+  assert.doesNotMatch(source, /data-action="mobile-overview-details">營運報表/);
+  assert.match(css, /\.ops-mobile-direct-nav \.ops-button[\s\S]*background:\s*#111827\s*!important/);
+  assert.match(css, /\.ops-mobile-direct-nav \.ops-button[\s\S]*color:\s*#fff\s*!important/);
 });
 
 test('mobile profit and expense groups use distinct semantic styling', () => {

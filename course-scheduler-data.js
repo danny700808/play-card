@@ -3,6 +3,7 @@
 
   var FUNCTION_REGION='us-central1';
   var LOAD_FUNCTION_NAME='loadInjiaoyunEducationMirror';
+  var AUTO_LOAD_FUNCTION_NAME='loadInjiaoyunEducationMirrorAuto';
   var SYNC_FUNCTION_NAME='syncInjiaoyunEducationMirrorNow';
   var GUZHENG_RESOURCE_ID='equipment:guzheng';
 
@@ -326,6 +327,35 @@
     if(!payload.ok)throw new Error('課務資料讀取未完成。');return buildState(payload,options.anchorDate);
   }
 
+  async function loadTeacherPayrollMonth(options){
+    options=options||{};
+    var month=clean(options.month),pin=clean(options.manualSyncPin),payload;
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))throw new Error('薪資月份格式不正確。');
+    try{
+      payload=await call(AUTO_LOAD_FUNCTION_NAME,{
+        source:'course-scheduler-teacher-payroll',
+        scope:'teacher-payroll-month',
+        month:month
+      },{timeout:180000});
+    }catch(error){
+      if(!pin)throw error;
+      payload=await call(LOAD_FUNCTION_NAME,{
+        source:'course-scheduler-teacher-payroll-fallback',
+        manualSyncPin:pin
+      },{timeout:300000});
+    }
+    if(!payload||payload.ok!==true)throw new Error('老師薪資資料讀取未完成。');
+    return {
+      ok:true,
+      month:month,
+      teacherPayroll:normalizeTeacherPayroll(payload).filter(function(row){return row.date.slice(0,7)===month;}),
+      teacherAdjustments:normalizeTeacherAdjustments(payload).filter(function(row){return row.date.slice(0,7)===month;}),
+      loadedAt:clean(payload.loadedAt)||new Date().toISOString(),
+      runId:clean(payload.runId),
+      counts:payload.counts||{}
+    };
+  }
+
   async function sync(options){
     options=options||{};var pin=clean(options.manualSyncPin);if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
     var refreshDate=dateKey(options.refreshDate||options.date);
@@ -425,5 +455,5 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={load:load,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
+  global.YouziCoursePreviewData={load:load,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);
