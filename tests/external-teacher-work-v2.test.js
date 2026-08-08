@@ -107,6 +107,9 @@ test('production workflow deploys the V2 work endpoint and only the canonical LI
   assert.match(workflow, /functions:sendNotificationQueueOnCreate/);
   assert.match(workflow, /functions:flushNotificationQueue/);
   assert.match(workflow, /LINE_CHANNEL_ACCESS_TOKEN:\s*\$\{\{ secrets\.LINE_CHANNEL_ACCESS_TOKEN \}\}/);
+  assert.match(workflow, /LINE_CHANNEL_SECRET:\s*\$\{\{ secrets\.LINE_CHANNEL_SECRET \}\}/);
+  assert.match(workflow, /functions:secrets:access LINE_CHANNEL_SECRET/);
+  assert.match(workflow, /functions:secrets:set LINE_CHANNEL_SECRET/);
   assert.doesNotMatch(workflow, /\bLINE_MESSAGING_ACCESS_TOKEN\b|\bLINE_ACCESS_TOKEN\b/);
 });
 

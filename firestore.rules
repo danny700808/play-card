@@ -172,7 +172,7 @@ service cloud.firestore {
     match /coursePortalAttendanceCancellationRequests/{document=**} { allow read, write: if false; }
     match /coursePortalTeacherAttendancePayroll/{document=**} { allow read, write: if false; }
     match /coursePortalLessonContactPosts/{document=**} { allow read, write: if false; }
-    // 外聘老師 V2 使用獨立集合，全部經 Cloud Functions 驗證；舊員工公告／任務不會混入。
+    // 外聘老師 V2 使用獨立集合，只允許 Admin SDK；瀏覽器端一律拒絕，舊員工公告／任務不會混入。
     match /externalTeacherAnnouncementsV2/{document=**} { allow read, write: if false; }
     match /externalTeacherAnnouncementViewsV2/{document=**} { allow read, write: if false; }
     match /externalTeacherTasksV2/{document=**} { allow read, write: if false; }

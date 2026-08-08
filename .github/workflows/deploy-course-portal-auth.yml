@@ -151,10 +151,12 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-firebase-service-account.json
+          LINE_CHANNEL_SECRET_PATH: ${{ runner.temp }}/line-channel-secret.txt
         run: |
           set -euo pipefail
           test -n "${FIREBASE_SERVICE_ACCOUNT:-}" || { echo "FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is empty" >&2; exit 1; }
@@ -162,8 +164,11 @@ jobs:
           test -n "${GMAIL_APP_PASSWORD:-}" || { echo "GMAIL_APP_PASSWORD is empty" >&2; exit 1; }
           RUNTIME_LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-}"
           test -n "$RUNTIME_LINE_TOKEN" || { echo "LINE access token is empty" >&2; exit 1; }
+          test -n "${LINE_CHANNEL_SECRET:-}" || { echo "LINE_CHANNEL_SECRET is empty" >&2; exit 1; }
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
+          printf '%s' "$LINE_CHANNEL_SECRET" > "$LINE_CHANNEL_SECRET_PATH"
           chmod 600 "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$LINE_CHANNEL_SECRET_PATH"
           export RUNTIME_LINE_TOKEN
           node <<'NODE'
           const fs = require('fs');
@@ -182,6 +187,26 @@ jobs:
 
       - name: Install pinned Firebase CLI
         run: npm install --global firebase-tools@15.24.0
+
+      - name: Synchronize LINE webhook secret with Firebase Secret Manager
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+          LINE_CHANNEL_SECRET_PATH: ${{ runner.temp }}/line-channel-secret.txt
+          EXISTING_LINE_SECRET_PATH: ${{ runner.temp }}/existing-line-channel-secret.txt
+        run: |
+          set -euo pipefail
+          if firebase functions:secrets:access LINE_CHANNEL_SECRET \
+            --project youzi-c1b74 \
+            > "$EXISTING_LINE_SECRET_PATH" 2>/dev/null && \
+            cmp -s "$LINE_CHANNEL_SECRET_PATH" "$EXISTING_LINE_SECRET_PATH"; then
+            echo "LINE webhook secret is already current."
+          else
+            firebase functions:secrets:set LINE_CHANNEL_SECRET \
+              --project youzi-c1b74 \
+              --data-file "$LINE_CHANNEL_SECRET_PATH" \
+              --non-interactive
+          fi
+          rm -f "$EXISTING_LINE_SECRET_PATH"
 
       - name: Deploy portal and protected internal Functions
         env:
@@ -239,4 +264,6 @@ jobs:
         if: always()
         run: |
           rm -f "${{ runner.temp }}/youzi-firebase-service-account.json"
+          rm -f "${{ runner.temp }}/line-channel-secret.txt"
+          rm -f "${{ runner.temp }}/existing-line-channel-secret.txt"
           rm -f functions/.env
