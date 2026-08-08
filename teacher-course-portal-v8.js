@@ -1253,7 +1253,7 @@
 
   async function updateAttendance(row, button) {
     if (!row) return;
-    if (!confirm('確定完成這堂課的當日簽到？若當天發現誤簽，可以直接取消；隔天後則需主管核准。')) return;
+    if (!confirm('確定完成這堂課的當日簽到？今天晚上 12 點前可直接取消，也可以取消後重新簽到；隔天後則需主管處理。')) return;
     loading(button, true, '簽到中…');
     try {
       const result = await invoke('coursePortalTeacherAttendance', {
@@ -1278,7 +1278,7 @@
     if (!row) return;
     const sameDay = row.date === todayKey();
     if (sameDay) {
-      if (!confirm('確定取消這堂課的當日簽到？取消後不計堂數，家長端會恢復為未使用。')) return;
+      if (!confirm('確定取消這堂課的當日簽到？取消後不計堂數，家長端會恢復為未使用；今天晚上 12 點前仍可重新簽到。')) return;
       loading(button, true, '取消中…');
       try {
         const result = await invoke('coursePortalTeacherAttendanceCancellationRequest', {

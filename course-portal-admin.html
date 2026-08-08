@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#24735c">
-  <title>課務入口帳號管理｜柚子樂器</title>
-  <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1"><style>body.binding-focus .portal-shell>section.card:not(.binding-admin-card):not(#managerAuthCard){display:none}body.binding-focus .binding-admin-card{margin-top:0}</style>
+  <title>入口與主管待辦｜柚子樂器</title>
+  <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1"><style>body.binding-focus .binding-admin-card{margin-top:0}</style>
 </head>
 <body>
   <main class="portal-shell">
     <header class="portal-head">
-      <div class="head-title"><span class="brand-mark">管</span><div><h1>登入帳號管理</h1><p>老師、學生／家長與一般租用者</p></div></div>
+      <div class="head-title"><span class="brand-mark">管</span><div><h1>入口與主管待辦</h1><p>簽到審核、學費與登入帳號</p></div></div>
       <a class="btn" href="portal.html#customers">返回客戶會員</a>
     </header>
     <section class="card">
@@ -45,6 +45,13 @@
         <span class="badge warn" id="attendanceCancellationBadge">0 筆</span>
       </div>
       <div class="list" id="attendanceCancellationList"><p class="muted">正在讀取管理資料…</p></div>
+    </section>
+    <section class="card">
+      <div class="section-title">
+        <div><h2>簽到取消／恢復紀錄</h2><p class="muted">當日由老師自行取消或恢復，以及跨日由主管處理的結果，都會保留在這裡。</p></div>
+        <span class="badge" id="attendanceCancellationHistoryBadge">0 筆</span>
+      </div>
+      <div class="list" id="attendanceCancellationHistoryList"><p class="muted">正在讀取管理資料…</p></div>
     </section>
     <section class="card">
       <div class="section-title">
@@ -105,6 +112,7 @@
     let tuitionPayments = [];
     let tuitionReceipts = [];
     let attendanceCancellations = [];
+    let attendanceCancellationHistory = [];
     let filter = 'all';
     let search = '';
 
@@ -174,6 +182,31 @@
         : '<p class="muted">目前沒有等待主管確認的取消簽到申請。</p>';
     }
 
+    function attendanceHistoryLabel(row) {
+      if (row.status === 'reinstated') return '已恢復簽到';
+      if (row.status === 'approved' && row.approvalMode === 'same_day_teacher') return '當日已取消';
+      if (row.status === 'approved') return '主管已核准取消';
+      if (row.status === 'rejected') return '主管未核准';
+      return row.status || '已處理';
+    }
+
+    function renderAttendanceCancellationHistory() {
+      document.getElementById('attendanceCancellationHistoryBadge').textContent = `${attendanceCancellationHistory.length} 筆`;
+      document.getElementById('attendanceCancellationHistoryList').innerHTML = attendanceCancellationHistory.length
+        ? attendanceCancellationHistory.map((row) => `
+          <article class="list-row">
+            <strong>${P.escapeHtml(row.teacherName || row.teacherId || '老師')}｜${P.escapeHtml(attendanceHistoryLabel(row))}</strong>
+            <span>${P.escapeHtml((row.studentNames || []).join('、') || '學生未提供')}｜${P.escapeHtml(row.subjectName || '課程')}</span>
+            <span>${P.escapeHtml(row.date || '')} ${P.escapeHtml(row.startTime || '')}～${P.escapeHtml(row.endTime || '')}</span>
+            <span>原因：${P.escapeHtml(row.reason || '未填寫')}</span>
+            <span>${P.escapeHtml(row.lastActionAtText || row.reviewedAtText || row.requestedAtText || '')}${Number(row.administrationFee || 0) ? `｜行政費 ${P.money(row.administrationFee)}` : ''}</span>
+            ${Number(row.cancellationCount || 0) || Number(row.reinstatementCount || 0)
+              ? `<span>當日操作：取消 ${Number(row.cancellationCount || 0)} 次、恢復 ${Number(row.reinstatementCount || 0)} 次</span>`
+              : ''}
+          </article>`).join('')
+        : '<p class="muted">目前沒有簽到取消或恢復紀錄。</p>';
+    }
+
     function renderSuspensions() {
       document.getElementById('suspensionBadge').textContent = `${unpaidSuspensions.length} 筆`;
       document.getElementById('suspensionList').innerHTML = unpaidSuspensions.length ? unpaidSuspensions.map((row) => `
@@ -229,11 +262,13 @@
         tuitionPayments = result.tuitionPayments || [];
         tuitionReceipts = result.tuitionReceipts || [];
         attendanceCancellations = result.attendanceCancellations || [];
+        attendanceCancellationHistory = result.attendanceCancellationHistory || [];
         render();
         renderSuspensions();
         renderTuitionPayments();
         renderTuitionReceipts();
         renderAttendanceCancellations();
+        renderAttendanceCancellationHistory();
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     }

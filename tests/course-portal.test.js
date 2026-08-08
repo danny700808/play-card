@@ -194,6 +194,9 @@ assert(adminPortal.includes('停課學費未繳清'), '管理者頁缺少停課�
 assert(adminPortal.includes('coursePortalAdminSuspensionAction'), '管理者欠費簽核未連接後端');
 assert(adminPortal.includes('取消簽到待確認'), '管理者頁缺少取消簽到審核窗口');
 assert(adminPortal.includes('coursePortalAdminAttendanceCancellationAction'), '管理者取消簽到審核未連接後端');
+assert(adminPortal.includes('簽到取消／恢復紀錄'), '管理者頁缺少簽到取消與恢復歷史');
+assert(adminPortal.includes('attendanceCancellationHistory'), '管理者頁未讀取簽到取消與恢復歷史');
+assert(!adminPortal.includes('section.card:not(.binding-admin-card)'), '從客戶會員進入時仍會隱藏主管待辦');
 assert(adminPortal.includes('id="bindingSearch"'), '登入帳號管理缺少搜尋');
 assert(adminPortal.includes('data-action="approve"'), '管理者缺少登入綁定核准');
 assert(adminPortal.includes('data-action="force_logout"'), '管理者缺少強制登出裝置');
@@ -582,6 +585,7 @@ function loadBackendForScheduleTests(state) {
       'module.exports.__testMergeTeacherPayrollRows = mergeTeacherPayrollRows;\n' +
       'module.exports.__testTeacherPayrollMatchesCancellation = teacherPayrollMatchesCancellation;\n' +
       'module.exports.__testAttendanceLessonLockId = attendanceLessonLockId;\n' +
+      'module.exports.__testCanReinstateSameDayTeacherCancellation = canReinstateSameDayTeacherCancellation;\n' +
       'module.exports.__testTeacherEventMatchesRequest = teacherEventMatchesRequest;\n' +
       'module.exports.__testNormalizeAdminTeacherAdjustment = normalizeAdminTeacherAdjustment;\n',
       backendPath
@@ -1783,6 +1787,63 @@ async function runBackendScheduleRegressionTests() {
       }),
       '簽到取消 tombstone 必須跨老師共用，改派老師不可繞過鎖'
     );
+    const sameDayCancellationId = 'cancel-request-1';
+    const sameDayCancellationRow = {
+      id: sameDayCancellationId,
+      status: 'approved',
+      approvalMode: 'same_day_teacher',
+      date: '2026-08-08',
+      operationId: 'attendance-operation-1'
+    };
+    const sameDayCancellationLock = {
+      status: 'cancelled',
+      operationId: 'attendance-operation-1',
+      cancellationRequestId: sameDayCancellationId
+    };
+    assert.strictEqual(
+      duplicatePermanentBackend.__testCanReinstateSameDayTeacherCancellation(
+        '2026-08-08',
+        'attendance-operation-1',
+        sameDayCancellationRow,
+        sameDayCancellationLock,
+        '2026-08-08'
+      ),
+      true,
+      '同一台北日期、同一老師與同一堂課的直接取消必須允許重新簽到'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testCanReinstateSameDayTeacherCancellation(
+        '2026-08-08',
+        'attendance-operation-1',
+        sameDayCancellationRow,
+        sameDayCancellationLock,
+        '2026-08-09'
+      ),
+      false,
+      '跨過台北午夜後不可由老師自行恢復昨天的簽到'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testCanReinstateSameDayTeacherCancellation(
+        '2026-08-08',
+        'another-operation',
+        sameDayCancellationRow,
+        sameDayCancellationLock,
+        '2026-08-08'
+      ),
+      false,
+      '其他老師或其他堂課不可利用當日恢復規則繞過課堂鎖'
+    );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testCanReinstateSameDayTeacherCancellation(
+        '2026-08-08',
+        'attendance-operation-1',
+        Object.assign({}, sameDayCancellationRow, { approvalMode: 'manager_review' }),
+        sameDayCancellationLock,
+        '2026-08-08'
+      ),
+      false,
+      '主管核准的跨日取消不可偽裝成老師當日直接取消後自行恢復'
+    );
     assert.strictEqual(
       duplicatePermanentBackend.__testTeacherEventMatchesRequest({
         id: 'same-day-first',
@@ -2616,7 +2677,8 @@ assert(backend.includes("db.collection(ATTENDANCE_PAYROLL).get()"), '管理端�
 assert(backend.includes('payload.teacherPayroll = mergeTeacherPayrollRows'), '管理端沒有把新舊老師薪資安全去重合併');
 assert(backend.includes('payload.attendance = mergePortalAttendanceRows'), '管理端沒有合併新系統正式簽到');
 assert(backend.includes("db.collection('coursePortalAttendanceLessonLocks')"), '正式簽到缺少不含老師編號的課堂唯一鎖');
-assert(backend.includes("if (clean(existingLessonLock.status) === 'cancelled')"), '已取消簽到的 tombstone 沒有阻擋改派老師重簽');
+assert(backend.includes('canReinstateSameDayTeacherCancellation('), '同日恢復簽到缺少嚴格的老師、日期、操作與課堂鎖驗證');
+assert(backend.includes("clean(existingLessonLock.status) === 'cancelled' && !sameDayReinstatement"), '跨日或改派老師仍可繞過已取消簽到的 tombstone');
 assert(
   (backend.match(/active: true,\n\s+status: 'cancelled',\n\s+operationId/g) || []).length >= 2,
   '同日取消與主管核准取消都必須保留 active cancellation tombstone'

@@ -8590,6 +8590,20 @@ function attendanceLessonLockId(sourceDate, event, data = {}) {
   ].join('|'));
 }
 
+function canReinstateSameDayTeacherCancellation(sourceDate, operationId, cancellation, lessonLock, today = currentTaipeiDay()) {
+  const cancellationId = clean(cancellation && cancellation.id);
+  return dateKey(sourceDate) === dateKey(today) &&
+    clean(cancellation && cancellation.status) === 'approved' &&
+    clean(cancellation && cancellation.approvalMode) === 'same_day_teacher' &&
+    dateKey(cancellation && cancellation.date) === dateKey(sourceDate) &&
+    clean(cancellation && cancellation.operationId) === clean(operationId) &&
+    clean(lessonLock && lessonLock.status) === 'cancelled' &&
+    clean(lessonLock && lessonLock.operationId) === clean(operationId) &&
+    (!clean(lessonLock && lessonLock.cancellationRequestId) ||
+      !cancellationId ||
+      clean(lessonLock && lessonLock.cancellationRequestId) === cancellationId);
+}
+
 async function teacherAttendanceEvent(session, data) {
   const sourceDate = dateKey(data.sourceDate);
   const sourceEventId = clean(data.sourceEventId);
@@ -8832,15 +8846,22 @@ async function applyTeacherAttendance(data, late) {
         '這堂課剛剛已在其他裝置更新。為避免覆蓋資料，請重新整理後再操作。'
       );
     }
-    const existingCancellation = snapshots[4].exists ? snapshots[4].data() || {} : {};
-    if (clean(existingCancellation.status) === 'approved') {
+    const existingCancellation = snapshots[4].exists ? Object.assign({ id: priorCancellationRef.id }, snapshots[4].data() || {}) : {};
+    const existingLessonLock = snapshots[5].exists ? snapshots[5].data() || {} : {};
+    const sameDayReinstatement = !late && canReinstateSameDayTeacherCancellation(
+      sourceDate,
+      operationId,
+      existingCancellation,
+      existingLessonLock,
+      today
+    );
+    if (clean(existingCancellation.status) === 'approved' && !sameDayReinstatement) {
       throw new HttpsError(
         'failed-precondition',
         '這堂課的取消簽到已經核准；如需恢復，請先由管理者處理，避免重複計薪。'
       );
     }
-    const existingLessonLock = snapshots[5].exists ? snapshots[5].data() || {} : {};
-    if (clean(existingLessonLock.status) === 'cancelled') {
+    if (clean(existingLessonLock.status) === 'cancelled' && !sameDayReinstatement) {
       throw new HttpsError(
         'failed-precondition',
         '這堂課的簽到已取消並鎖定；請先由管理者恢復後才能重新簽到，改派老師也不能重複計薪。'
@@ -8895,7 +8916,7 @@ async function applyTeacherAttendance(data, late) {
         }));
       }
     });
-    attendanceRows.forEach((row, index) => tx.set(attendanceRefs[index], {
+    attendanceRows.forEach((row, index) => tx.set(attendanceRefs[index], Object.assign({
       id: row.id,
       operationId,
       active: true,
@@ -8918,9 +8939,15 @@ async function applyTeacherAttendance(data, late) {
       createdAt: FieldValue.serverTimestamp(),
       createdAtText: nowText(),
       updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true }));
+    }, sameDayReinstatement ? {
+      cancellationRequestId: '',
+      cancelledAt: null,
+      cancelledAtText: '',
+      reinstatedAt: FieldValue.serverTimestamp(),
+      reinstatedAtText: nowText()
+    } : {}), { merge: true }));
     tx.set(statusRef, changePayload, { merge: true });
-    tx.set(lessonLockRef, {
+    tx.set(lessonLockRef, Object.assign({
       id: lessonLockRef.id,
       operationId,
       active: true,
@@ -8930,7 +8957,9 @@ async function applyTeacherAttendance(data, late) {
       courseId: clean(event.fixedCourseId || sourceCourseId),
       teacherId: session.teacherId,
       updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
+    }, sameDayReinstatement ? {
+      cancellationRequestId: ''
+    } : {}), { merge: true });
     tx.set(payrollRef, Object.assign({
       id: operationId,
       operationId,
@@ -8953,7 +8982,27 @@ async function applyTeacherAttendance(data, late) {
       createdAt: FieldValue.serverTimestamp(),
       createdAtText: nowText(),
       updatedAt: FieldValue.serverTimestamp()
-    }, payrollCalculation), { merge: true });
+    }, payrollCalculation, sameDayReinstatement ? {
+      cancellationRequestId: '',
+      cancelledAt: null,
+      reinstatedAt: FieldValue.serverTimestamp(),
+      reinstatedAtText: nowText()
+    } : {}), { merge: true });
+    if (sameDayReinstatement) {
+      tx.set(priorCancellationRef, {
+        active: false,
+        status: 'reinstated',
+        lastAction: 'reinstated',
+        lastActionAt: FieldValue.serverTimestamp(),
+        lastActionAtText: nowText(),
+        reinstatedAt: FieldValue.serverTimestamp(),
+        reinstatedAtText: nowText(),
+        reinstatedByTeacherId: session.teacherId,
+        cancellationCount: Math.max(1, Number(existingCancellation.cancellationCount || 0)),
+        reinstatementCount: Number(existingCancellation.reinstatementCount || 0) + 1,
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
     if (late) {
       if (snapshots[2].exists && clean(snapshots[2].data().status) === 'approved') {
         throw new HttpsError('already-exists', '這堂課已經補簽到。');
@@ -8999,7 +9048,7 @@ async function applyTeacherAttendance(data, late) {
       ? (chargeLateFee
         ? `補簽到已完成，並已在本月薪資扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`
         : '贈送課程補簽到已完成，本次不收行政處理費。')
-      : '簽到已完成；今天晚上 12 點後如需取消，必須送主管審核。'
+      : '簽到已完成；今天晚上 12 點前可直接取消或取消後重新簽到，跨日後則必須送主管處理。'
   };
 }
 
@@ -9098,6 +9147,7 @@ async function cancelTeacherAttendanceSameDay(session, resolved, reason) {
     tx.set(requestRef, {
       id: requestId,
       operationId,
+      active: true,
       status: 'approved',
       approvalMode: 'same_day_teacher',
       teacherId: session.teacherId,
@@ -9114,6 +9164,10 @@ async function cancelTeacherAttendanceSameDay(session, resolved, reason) {
       attendanceRecordIds: attendanceRefs.map((ref) => ref.id),
       reason: clean(reason) || '老師當日誤簽到',
       administrationFee: 0,
+      cancellationCount: Number(existingRequest.cancellationCount || 0) + 1,
+      lastAction: 'cancelled',
+      lastActionAt: FieldValue.serverTimestamp(),
+      lastActionAtText: nowText(),
       requestedAt: FieldValue.serverTimestamp(),
       requestedAtText: nowText(),
       reviewedAt: FieldValue.serverTimestamp(),
@@ -9131,7 +9185,7 @@ async function cancelTeacherAttendanceSameDay(session, resolved, reason) {
     requestId,
     status: 'approved',
     sameDay: true,
-    message: '當日簽到已取消，本次不收行政處理費。'
+    message: '當日簽到已取消；今天晚上 12 點前仍可重新簽到，本次不收行政處理費。'
   };
 }
 
@@ -9162,7 +9216,9 @@ async function teacherAttendanceCancellationRequest(data) {
   const payload = {
     id: requestId,
     operationId,
+    active: true,
     status: 'pending',
+    approvalMode: 'manager_review',
     teacherId: session.teacherId,
     teacherName: clean(event.teacherName),
     studentIds: event.studentIds || [],
@@ -9180,6 +9236,9 @@ async function teacherAttendanceCancellationRequest(data) {
     attendanceRecordIds: attendanceSnapshot.docs.map((doc) => doc.id),
     reason,
     administrationFee: ATTENDANCE_ADMIN_FEE,
+    lastAction: 'pending_review',
+    lastActionAt: FieldValue.serverTimestamp(),
+    lastActionAtText: nowText(),
     requestedAt: FieldValue.serverTimestamp(),
     requestedAtText: nowText(),
     updatedAt: FieldValue.serverTimestamp()
@@ -10249,7 +10308,11 @@ async function adminAttendanceCancellationAction(data) {
       }
       rejectedRow = Object.assign({ id }, current);
       tx.set(requestRef, {
+        active: false,
         status: 'rejected',
+        lastAction: 'rejected',
+        lastActionAt: FieldValue.serverTimestamp(),
+        lastActionAtText: nowText(),
         reviewNote,
         reviewedAt: FieldValue.serverTimestamp(),
         reviewedAtText: nowText(),
@@ -10383,7 +10446,11 @@ async function adminAttendanceCancellationAction(data) {
       createdAtText: nowText()
     }, { merge: true });
     tx.set(requestRef, {
+      active: true,
       status: 'approved',
+      lastAction: 'cancelled',
+      lastActionAt: FieldValue.serverTimestamp(),
+      lastActionAtText: nowText(),
       reviewNote,
       administrationFee: ATTENDANCE_ADMIN_FEE,
       reviewedAt: FieldValue.serverTimestamp(),
@@ -10418,7 +10485,7 @@ async function adminData() {
     db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get(),
     db.collection(TUITION_PAYMENT_REQUESTS).where('status', 'in', ['pending_review', 'onsite_pending']).get(),
     db.collection(TUITION_RECEIPTS).get(),
-    db.collection(ATTENDANCE_CANCELLATIONS).where('status', '==', 'pending').get()
+    db.collection(ATTENDANCE_CANCELLATIONS).orderBy('requestedAt', 'desc').limit(200).get()
   ]);
   const teacherMap = indexById(teacherRows);
   const studentMap = indexById(studentRows);
@@ -10526,9 +10593,11 @@ async function adminData() {
         asMillis(rightRow.createdAt) - asMillis(leftRow.createdAt);
     })
     .map(adminTuitionReceiptRow);
-  const attendanceCancellations = attendanceCancellationSnapshot.docs
+  const attendanceCancellationRows = attendanceCancellationSnapshot.docs
     .map((doc) => Object.assign({ id: doc.id }, jsonValue(doc.data()) || {}))
-    .sort((left, right) => asMillis(right.requestedAt) - asMillis(left.requestedAt))
+    .sort((left, right) =>
+      asMillis(right.updatedAt || right.requestedAt) - asMillis(left.updatedAt || left.requestedAt)
+    )
     .map((row) => Object.assign({}, row, {
       teacherName: clean(row.teacherName) ||
         clean(teacherMap[clean(row.teacherId)] && teacherMap[clean(row.teacherId)].name),
@@ -10538,13 +10607,19 @@ async function adminData() {
           clean(studentMap[clean(studentId)] && studentMap[clean(studentId)].name)
         ).filter(Boolean)
     }));
+  const attendanceCancellations = attendanceCancellationRows
+    .filter((row) => clean(row.status) === 'pending');
+  const attendanceCancellationHistory = attendanceCancellationRows
+    .filter((row) => clean(row.status) !== 'pending')
+    .slice(0, 100);
   return {
     ok: true,
     bindings: [...map(teachers), ...map(students), ...map(renters)],
     unpaidSuspensions,
     tuitionPayments,
     tuitionReceipts,
-    attendanceCancellations
+    attendanceCancellations,
+    attendanceCancellationHistory
   };
 }
 
