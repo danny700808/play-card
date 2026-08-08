@@ -86,8 +86,8 @@ assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') 
 assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.css?v=20260808-lesson-attendance-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260808-four-row-actions-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260808-four-row-visible-v2'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260808-four-row-visible-v2'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');
@@ -104,7 +104,7 @@ assert(lessonQuickSource.includes("const canNormalAttendance = sameDay && status
 assert(lessonQuickSource.includes('data-quick-attendance>老師簽到</button>'), '當日簽到按鈕名稱不是老師簽到');
 assert(!lessonQuickSource.includes('提早簽到'), '老師端不應另外顯示提早簽到名稱');
 assert(lessonQuickSource.includes('quickActionRow(attendanceAction, attended ? cancelAttendanceAction : leaveAction)'), '第一排不是老師簽到與學生請假／取消簽到');
-assert(lessonQuickSource.includes('quickActionRow(singleMoveAction, permanentMoveAction || cancelAddedAction)'), '第二排不是單次調課與永久固定調課');
+assert(lessonQuickSource.includes('quickActionRow(singleMoveAction, permanentMoveAction)'), '第二排不是單次調課與永久固定調課');
 assert(lessonQuickSource.includes('quickActionRow(extraLessonAction, giftLessonAction)'), '第三排不是增加一堂與免費贈送一堂');
 assert(lessonQuickSource.includes('quickActionRow(contactBookAction, absentAction)'), '第四排不是聯絡簿與曠課');
 assert(lessonQuickSource.lastIndexOf('quickActionRow(contactBookAction, absentAction)') > lessonQuickSource.indexOf('quickActionRow(extraLessonAction, giftLessonAction)'), '曠課所在列必須排在最後');
@@ -114,5 +114,10 @@ assert(!source.includes('這是「提早簽到」'), '簽到確認仍顯示提�
 assert(!source.includes('scheduleAttendanceAvailability'), '當天簽到已全天開放，不應再等待上課時間重畫');
 assert(css.includes('button[data-quick-attendance-wait]:disabled'), '未開放簽到按鈕缺少專用停用樣式');
 assert(css.includes('.teacher-quick-actions .teacher-quick-row'), '課堂快速操作缺少固定兩欄列樣式');
+assert(lessonQuickSource.includes("unavailableQuickAction('只調這一次')"), '課程開始後單次調課按鈕會整個消失');
+assert(lessonQuickSource.includes("unavailableQuickAction('之後固定改到新時段')"), '課程開始後永久調課按鈕會整個消失');
+assert(lessonQuickSource.includes("unavailableQuickAction('寫課堂聯絡簿')"), '聯絡簿尚未開放時按鈕會整個消失');
+assert(lessonQuickSource.includes("unavailableQuickAction('標示曠課')"), '曠課尚未開放時按鈕會整個消失');
+assert(css.includes('button[data-quick-unavailable]:disabled'), '固定四排的停用按鈕缺少中性樣式');
 
 console.log('teacher course portal mobile tests passed');
