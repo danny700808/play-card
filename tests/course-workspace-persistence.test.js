@@ -62,7 +62,7 @@ assert(controller.includes('isDemo(source)'), '課務控制器沒有排除示範
 assert(controller.includes('global.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__ = workspace ? clone(workspace) : null'), '工作區沒有交給 inline runtime');
 assert(!controller.includes('YouziCoursePreviewData.load'), '正常開頁仍會自動重新讀取雲端鏡像');
 assert(!controller.includes('YouziCoursePreviewData.sync'), '正常開頁仍會自動執行音教雲同步');
-assert(inlineBuilder.includes("const VERSION = '20260808-teacher-payroll-breakdown-v2'"), '課務產生器仍使用舊快取版本');
+assert(inlineBuilder.includes("const VERSION = '20260809-teacher-payroll-month-refresh-v1'"), '課務產生器仍使用舊快取版本');
 assert(inlineBuilder.includes('money(periodNetExpectedAmount(period))'), '課務產生器會重新產生錯誤的比例折扣金額');
 assert.strictEqual((inlineBuilder.match(/money\(period\.expectedAmount-period\.discount\)/g) || []).length, 1, '課務產生器的學生 renderer 仍直接以比例值扣原價');
 assert(inlineBuilder.includes('if (existingIsScoped)'), '課務產生器不會保留已完成更新的 inline runtime');
@@ -98,6 +98,8 @@ assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), 
 
   const teacherRenderer = source.slice(source.indexOf('function renderTeachers(){'), source.indexOf('function splitText(row)'));
   assert(source.includes('function teacherListMonthKey()'), `${label}老師薪資總表沒有月份狀態`);
+  assert(source.includes('function refreshTeacherPayrollMonth(monthKey)'), `${label}老師薪資不會更新所選月份的雲端資料`);
+  assert(source.includes("filter(function(row){return clean(row.date).slice(0,7)!==monthKey;}).concat(result.teacherPayroll||[])"), `${label}薪資更新會覆蓋非所選月份資料`);
   assert(source.includes('function shiftMonthKey(key,amount)'), `${label}老師薪資總表無法切換前後月份`);
   assert(teacherRenderer.includes('monthKey=teacherListMonthKey()'), `${label}老師薪資總表沒有依選擇月份查詢`);
   assert(teacherRenderer.includes("clean(row.date).slice(0,7)===monthKey"), `${label}老師薪資資料沒有按月份篩選`);

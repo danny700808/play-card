@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260808-teacher-payroll-breakdown-v2';
+const VERSION = '20260809-teacher-payroll-month-refresh-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
@@ -46,6 +46,7 @@ function buildRuntime() {
     const requiredMarkers = [
       'function studentPageIndex()',
       'function teacherListMonthKey()',
+      'function refreshTeacherPayrollMonth(monthKey)',
       'function periodNetExpectedAmount(period)',
       'money(periodNetExpectedAmount(period))',
       'refreshPortalRentals();'

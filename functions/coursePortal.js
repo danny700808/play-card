@@ -7041,6 +7041,78 @@ function mergeTeacherAdjustmentRows(mirrorAdjustments, portalAdjustments) {
   return [...merged.values()];
 }
 
+function teacherPayrollMonthBounds(value) {
+  const month = clean(value);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    throw new HttpsError('invalid-argument', '薪資月份格式不正確。');
+  }
+  const [year, monthNumber] = month.split('-').map(Number);
+  const next = new Date(Date.UTC(year, monthNumber, 1)).toISOString().slice(0, 7);
+  const startDate = `${month}-01`;
+  return { month, startDate, endDate: addDays(`${next}-01`, -1) };
+}
+
+async function portalRowsByDateRange(collectionName, startDate, endDate) {
+  const collection = db.collection(collectionName);
+  let documents = [];
+  try {
+    const snapshot = await collection
+      .where('date', '>=', startDate)
+      .where('date', '<=', endDate)
+      .get();
+    documents = snapshot.docs;
+  } catch (error) {
+    console.warn('[course portal payroll month fallback]', collectionName, clean(error && error.message));
+    documents = (await collection.get()).docs;
+  }
+  return documents.map((doc) => Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {}))
+    .filter((row) => {
+      const key = eventDate(row || {});
+      return key >= startDate && key <= endDate;
+    });
+}
+
+async function teacherPayrollMonthData(monthValue) {
+  const bounds = teacherPayrollMonthBounds(monthValue);
+  const [
+    mirrorPayroll,
+    mirrorAdjustments,
+    mirrorAttendance,
+    portalPayroll,
+    portalAdjustments,
+    cancellationRows
+  ] = await Promise.all([
+    mirrorRowsByDateRange('teacherPayroll', bounds.startDate, bounds.endDate),
+    mirrorRowsByDateRange('teacherAdjustments', bounds.startDate, bounds.endDate),
+    mirrorRowsByDateRange('attendance', bounds.startDate, bounds.endDate),
+    portalRowsByDateRange(ATTENDANCE_PAYROLL, bounds.startDate, bounds.endDate),
+    portalRowsByDateRange('coursePortalTeacherAdjustments', bounds.startDate, bounds.endDate),
+    portalRowsByDateRange(ATTENDANCE_CANCELLATIONS, bounds.startDate, bounds.endDate)
+  ]);
+  const approvedCancellations = cancellationRows.filter((row) => clean(row.status) === 'approved');
+  const teacherPayroll = mergeTeacherPayrollRows(
+    enrichTeacherPayrollRows(mirrorPayroll, mirrorAttendance),
+    portalPayroll,
+    approvedCancellations.concat(portalPayroll.filter((row) => row.active === false))
+  ).filter((row) => eventDate(row || {}).slice(0, 7) === bounds.month);
+  const teacherAdjustments = mergeTeacherAdjustmentRows(
+    mirrorAdjustments,
+    portalAdjustments
+  ).filter((row) => eventDate(row || {}).slice(0, 7) === bounds.month);
+  return {
+    ok: true,
+    scope: 'teacher-payroll-month',
+    month: bounds.month,
+    teacherPayroll,
+    teacherAdjustments,
+    counts: {
+      teacherPayroll: teacherPayroll.length,
+      teacherAdjustments: teacherAdjustments.length
+    },
+    loadedAt: new Date().toISOString()
+  };
+}
+
 function applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttendance) {
   const rows = (periods || []).map((row) => Object.assign({}, row));
   const activePortal = (portalAttendance || []).filter((row) =>
@@ -11395,7 +11467,8 @@ module.exports = {
   phoneMatches,
   registerCoursePortal,
   requireSession,
-  resolveTeacherUtilityEmployee
+  resolveTeacherUtilityEmployee,
+  teacherPayrollMonthData
 };
 function parseContactBookImages(values) {
   const images = Array.isArray(values) ? values : [];

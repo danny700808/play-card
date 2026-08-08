@@ -7,7 +7,7 @@ if (!admin.apps.length) admin.initializeApp();
 
 const db = admin.firestore();
 const REGION = 'us-central1';
-const VERSION = '2026.08.01-auto-read-v4-portal-payroll-merge';
+const VERSION = '2026.08.09-auto-read-v5-payroll-month';
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -138,6 +138,17 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
   }, async (request) => {
     assertAllowedRead(request);
     try {
+      if (clean(request && request.data && request.data.scope) === 'teacher-payroll-month') {
+        const { teacherPayrollMonthData } = require('./coursePortal');
+        const result = await teacherPayrollMonthData(request && request.data && request.data.month);
+        const settingsSnapshot = await SETTINGS_REF.get();
+        const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
+        return Object.assign({}, result, {
+          runId: clean(settings.sourceRunId),
+          mirrorCompletedAt: jsonValue(settings.completedAt || null),
+          version: VERSION
+        });
+      }
       return await readMirrorPayload();
     } catch (error) {
       if (error instanceof HttpsError) throw error;

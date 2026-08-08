@@ -16,6 +16,7 @@ const scheduler = read('course-scheduler.js');
 const schedulerHtml = read('course-scheduler.html');
 const operations = read('operations-phase1.js');
 const autoRead = read('functions/injiaoyunEducationAutoRead.js');
+const coursePortal = read('functions/coursePortal.js');
 const mirror = read('functions/injiaoyunEducationMirror.js');
 const courseIndex = read('functions/courseIndex.js');
 const courseLoginIndex = read('functions/courseLoginIndexV3.js');
@@ -80,6 +81,10 @@ assert(runtime.includes('refreshPortalRentals();'), 'inline runtime 沒有更新
 assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), '開頁仍重複還原正式資料');
 assert(runtime.includes('function syncInjiaoyun()'), '完整課表缺少使用者主動同步功能');
 assert(runtime.includes('YouziCoursePreviewData.sync'), '主動同步沒有呼叫音教雲同步元件');
+assert(runtime.includes('function refreshTeacherPayrollMonth(monthKey)'), '老師薪資沒有依月份自動更新');
+assert(runtime.includes('YouziCoursePreviewData.loadTeacherPayrollMonth'), '老師薪資沒有使用月份專用雲端讀取');
+assert(schedulerData.includes('async function loadTeacherPayrollMonth(options)'), '課務資料元件缺少薪資月份讀取');
+assert(schedulerData.includes("scope:'teacher-payroll-month'"), '薪資月份仍會要求整包課務資料');
 
 assert(scheduler.includes('function bindEvents()'), '互動課表缺少事件綁定');
 assert(scheduler.includes("$('scheduleGrid').addEventListener('click'"), '課表格線無法點擊新增或查看課程');
@@ -95,6 +100,10 @@ assert(autoRead.includes("where('sourceActive', '==', true)"), '後端未優先�
 assert(autoRead.includes("invoker: 'public'"), '唯讀課表函式沒有宣告網站可公開呼叫');
 assert(!autoRead.includes('MANUAL_SYNC_PIN'), '一般唯讀資料不應要求手動同步密碼');
 assert(!autoRead.includes('syncInjiaoyunEducationMirrorNow'), '唯讀函式不得觸發音教雲同步');
+assert(autoRead.includes("=== 'teacher-payroll-month'"), '唯讀函式沒有薪資月份的輕量路徑');
+assert(coursePortal.includes('async function teacherPayrollMonthData(monthValue)'), '後端缺少月份薪資合併');
+assert(coursePortal.includes("mirrorRowsByDateRange('teacherPayroll'"), '月份薪資沒有依日期讀取舊系統鏡像');
+assert(coursePortal.includes('mergeTeacherPayrollRows('), '月份薪資沒有合併新版入口簽到資料');
 
 assert(mirror.includes('COURSE_PORTAL_SCHEDULE_VERSION_REF'), '音教雲鏡像沒有連動入口衝突版本');
 assert(mirror.includes('async function markCoursePortalScheduleUpdated'), '音教雲鏡像缺少版本更新函式');
