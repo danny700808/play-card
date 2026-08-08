@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260808-tuition-receipt-v1';
+const VERSION = '20260808-teacher-payroll-month-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
@@ -20,7 +20,7 @@ function buildTemplate() {
   const main = html.match(/<main class="main-content">([\s\S]*?)<\/main>/);
   if (!main) {
     const existingTemplate = fs.readFileSync('operations-course-inline-template.html', 'utf8');
-    const requiredIds = ['dataModePanel', 'syncInjiaoyunBtn', 'calendarPage', 'studentsPage', 'teachersPage', 'settingsPage'];
+    const requiredIds = ['dataModePanel', 'syncInjiaoyunBtn', 'calendarPage', 'studentsPage', 'teachersPage', 'teacherListMonth', 'teacherListMonthPrev', 'teacherListMonthNext', 'teacherListMonthCurrent', 'settingsPage'];
     for (const id of requiredIds) {
       if (!existingTemplate.includes(`id="${id}"`)) throw new Error(`Existing inline course template is incomplete: ${id}`);
     }
@@ -45,6 +45,7 @@ function buildRuntime() {
   if (existingIsScoped) {
     const requiredMarkers = [
       'function studentPageIndex()',
+      'function teacherListMonthKey()',
       'function periodNetExpectedAmount(period)',
       'money(periodNetExpectedAmount(period))',
       'refreshPortalRentals();'
