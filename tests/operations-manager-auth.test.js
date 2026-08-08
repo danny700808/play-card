@@ -115,9 +115,10 @@ test('both operations entries load auth before the protected sync code', () => {
   }
 
   const login = fs.readFileSync(path.join(root, 'login.html'), 'utf8');
-  assert.match(login, /'portal\.html#products'/);
-  assert.match(login, /'operations-hub\.html#products'/);
-  assert.match(login, /return loginReturnPages\.has\(value\) \? value : '';/);
+  assert.match(login, /'portal\.html'/);
+  assert.match(login, /'operations-hub\.html'/);
+  assert.match(login, /const page = value\.split\(\/\[\?\#\]\//);
+  assert.match(login, /return loginReturnPages\.has\(page\) \? value : '';/);
 });
 
 test('EasyStore sync refreshes manager auth before opening the callable', () => {

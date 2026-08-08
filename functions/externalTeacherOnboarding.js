@@ -186,42 +186,10 @@ async function isAdminRequest(request, data = {}) {
   return isAdminToken(request);
 }
 
-async function getSystemSettingValue(keys) {
-  const wanted = new Set((keys || []).map(clean).filter(Boolean));
-  if (!wanted.size) return '';
-  try {
-    const snap = await db().collection('systemSettings').limit(300).get();
-    let found = '';
-    snap.forEach((doc) => {
-      if (found) return;
-      const data = doc.data() || {};
-      const key = clean(data.key || data.name || doc.id);
-      if (wanted.has(key)) found = clean(data.value || data.token || data.accessToken || data.secret || data.text);
-    });
-    return found;
-  } catch (err) {
-    logger.warn('getSystemSettingValue failed', err);
-    return '';
-  }
-}
-
 async function getLineAccessToken() {
-  const env = clean(
-    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
-    process.env.LINE_MESSAGING_ACCESS_TOKEN ||
-    process.env.LINE_ACCESS_TOKEN ||
-    process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN ||
-    ''
-  );
-  if (env) return env;
-  return await getSystemSettingValue([
-    'LINE_CHANNEL_ACCESS_TOKEN',
-    'LINE Channel Access Token',
-    'LINE Messaging API Token',
-    'LINE Access Token',
-    'LINE Bot Access Token',
-    'LINE_TOKEN'
-  ]);
+  // The active OA is configured in one explicit runtime variable.  Do not
+  // silently fall back to legacy aliases or tokens left in Firestore.
+  return clean(process.env.LINE_CHANNEL_ACCESS_TOKEN || '');
 }
 
 
@@ -1131,155 +1099,17 @@ async function handleExternalTeacherLineEvent(event) {
   const text = event && event.message && event.message.type === 'text' ? clean(event.message.text) : '';
   const legacyMatch = text.match(/^外聘老師綁定\s+([A-Z0-9-]+)$/i);
   const personnelMatch = text.match(/^柚子人員綁定\s+([A-Z0-9-]+)$/i);
-  const match = legacyMatch || personnelMatch;
-  if (!match) return false;
-
-  const bindCode = match[1].toUpperCase();
-  const replyToken = event.replyToken;
-  const lineUserId = event.source && event.source.userId;
-  if (!lineUserId) {
-    await replyLineMessage(replyToken, 'LINE 綁定失敗：系統無法取得您的 LINE 使用者 ID。');
+  // 新版「柚子人員綁定 EMP-...」一律交給員工主檔流程處理；舊 EXT 綁定只保留查核，
+  // 不再自動修復索引或把外聘舊資料回寫到 employees。
+  if (personnelMatch) return false;
+  if (legacyMatch) {
+    await replyLineMessage(
+      event.replyToken,
+      '這是舊版外聘老師綁定碼，已停止自動回寫。請從新版老師課務入口以 LINE／Email 登入；如需保留舊紀錄，請聯絡管理者核對。'
+    );
     return true;
   }
-
-  const bindingRef = db().collection('externalTeacherLineBindings').doc(bindCode);
-  let bindingSnap = await bindingRef.get();
-  let binding = bindingSnap.exists ? (bindingSnap.data() || {}) : {};
-  let teacherId = clean(binding.teacherId || binding.externalTeacherContractId || '');
-  let token = clean(binding.onboardingToken || '');
-
-  // 既有契約可能還在，但綁定索引曾被刪除或未完整建立；收到訊息時自動補回。
-  if (!bindingSnap.exists || !teacherId) {
-    const repaired = await repairExternalTeacherBindingIndex(bindCode, binding);
-    if (!repaired) {
-      if (personnelMatch) return false; // 交由一般員工綁定流程判斷。
-      await replyLineMessage(replyToken, '查不到這組外聘老師綁定碼。\n\n請確認文字是否完整，例如：\n柚子人員綁定 EMP-123456');
-      return true;
-    }
-    binding = repaired.binding || {};
-    teacherId = repaired.teacherId;
-    token = repaired.token;
-    bindingSnap = await bindingRef.get();
-  }
-
-  if (binding.expiresAt && binding.expiresAt.toMillis && binding.expiresAt.toMillis() < Date.now()) {
-    await bindingRef.set({ status: 'expired', updatedAt: nowTs() }, { merge: true });
-    await replyLineMessage(replyToken, '這組外聘老師綁定碼已逾期，請重新產生綁定碼。');
-    return true;
-  }
-
-  const { ref, profile } = await getExternalTeacherProfile(teacherId);
-  if (!profile) {
-    await replyLineMessage(replyToken, '系統找不到此外聘老師資料，請重新開啟填寫連結或聯絡柚子樂器官方 LINE。');
-    return true;
-  }
-
-  const lineProfile = await getLineProfile(lineUserId);
-  const lineDisplayName = clean(lineProfile.displayName || '');
-  const teacherName = clean(profile.name || profile.displayName || binding.teacherName || '老師');
-  const linkedEmployeeId = clean(
-    binding.employeeId ||
-    binding.externalTeacherEmployeeId ||
-    profile.employeeId ||
-    profile.externalTeacherEmployeeId ||
-    ''
-  );
-  const nextToken = token || clean(profile.onboardingToken || profile.bindingCode || profile.employeeBindCode || bindCode) || bindCode;
-  const keepStatus = shouldKeepExternalTeacherStatus(profile);
-  const currentStatus = clean(profile.status || profile.contractStatus || profile.profileStatus || '');
-  const currentProgress = clean(profile.progressStatus || '');
-  const employeeBindingRef = db().collection('employeeLineBindings').doc(bindCode);
-
-  await db().runTransaction(async (tx) => {
-    const boundAt = nowTs();
-    tx.set(bindingRef, {
-      status: 'bound',
-      lineUserId,
-      lineDisplayName,
-      boundAt,
-      updatedAt: nowTs()
-    }, { merge: true });
-
-    tx.set(employeeBindingRef, {
-      bindingCode: bindCode,
-      employeeBindCode: bindCode,
-      bindText: `柚子人員綁定 ${bindCode}`,
-      employeeId: linkedEmployeeId,
-      employeeDocId: linkedEmployeeId,
-      targetCollection: 'externalTeacherContracts',
-      externalTeacherContractId: teacherId,
-      teacherId,
-      status: 'bound',
-      name: teacherName,
-      teacherName,
-      email: lower(profile.email || binding.email || ''),
-      mobilePhone: clean(profile.mobile || profile.phone || binding.mobile || ''),
-      mobile: clean(profile.mobile || profile.phone || binding.mobile || ''),
-      bindingMethod: clean(profile.bindingMethod || binding.bindingMethod || 'line'),
-      notificationPreference: clean(profile.bindingMethod || binding.bindingMethod || 'line'),
-      onboardingToken: nextToken,
-      onboardingUrl: externalTeacherContractUrl(teacherId, nextToken, false),
-      lineUserId,
-      lineDisplayName,
-      boundAt,
-      updatedAt: nowTs(),
-      source: 'external-teacher-line-binding'
-    }, { merge: true });
-
-    const linePatch = {
-      lineUserId,
-      lineNotifyEnabled: true,
-      lineBindStatus: 'bound',
-      lineDisplayName,
-      lineBoundAt: boundAt,
-      bindingCode: bindCode,
-      employeeBindCode: bindCode,
-      employeeBindText: `柚子人員綁定 ${bindCode}`,
-      bindCode,
-      onboardingToken: nextToken,
-      onboardingUrl: externalTeacherContractUrl(teacherId, nextToken, false),
-      status: keepStatus ? currentStatus : 'waiting_contract',
-      progressStatus: keepStatus ? currentProgress : 'LINE 已綁定，等待老師從 LINE 下一步連結進入正式資料填寫',
-      verifiedBy: 'line',
-      verifiedAt: boundAt,
-      updatedAt: nowTs()
-    };
-    if (linkedEmployeeId) {
-      linePatch.employeeId = linkedEmployeeId;
-      linePatch.externalTeacherEmployeeId = linkedEmployeeId;
-      linePatch.employeeRef = `employees/${linkedEmployeeId}`;
-    }
-
-    tx.set(ref, linePatch, { merge: true });
-    tx.set(db().collection('externalTeacherContracts').doc(teacherId), linePatch, { merge: true });
-  });
-
-  // 既有外聘老師若已經有員工管理資料，只更新現有帳號，不建立新的空白帳號。
-  if (linkedEmployeeId) {
-    try {
-      const employeeRef = db().collection('employees').doc(linkedEmployeeId);
-      const employeeSnap = await employeeRef.get();
-      if (employeeSnap.exists) {
-        await employeeRef.set({
-          lineUserId,
-          lineDisplayName,
-          lineNotifyEnabled: true,
-          lineBindStatus: 'bound',
-          employeeBindCode: bindCode,
-          employeeBindText: `柚子人員綁定 ${bindCode}`,
-          updatedAt: nowTs(),
-          source: 'external-teacher-line-binding'
-        }, { merge: true });
-      }
-    } catch (err) {
-      logger.warn('linked external teacher employee update failed', { linkedEmployeeId, error: err && err.message });
-    }
-  }
-
-  const nextUrl = externalTeacherContractUrl(teacherId, nextToken, false);
-  await replyLineMessage(replyToken, `外聘老師 LINE 綁定完成 ✅\n\n您好 ${teacherName}，系統已完成您的 LINE 綁定。\n\n請點選下方下一步連結，繼續完成正式資料、身分證明文件與契約簽署。\n\n${nextUrl}`);
-  await pushAdminMessage(`外聘老師 LINE 綁定完成\n\n姓名：${teacherName}\n狀態：待填資料`, { contractId: teacherId, source: 'external-teacher-line-bound' });
-  return true;
+  return false;
 }
 
 function buildExternalTeacherEmailBody({ name, url, bindText, bindingMethod, contractRocYear, contractStartDate, contractEndDate }) {

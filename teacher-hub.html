@@ -38,9 +38,9 @@
     <div class="rule"><b>唯一資料來源：</b>外聘老師就是「員工管理」中身分類型為外聘老師的人員。這裡不建立第二份老師名單，也不使用姓名、電話或 Email 自動接回舊外聘資料。</div>
 
     <section class="summary" aria-live="polite">
-      <div class="summary-card"><span>目前合作</span><b id="activeCount">—</b></div>
-      <div class="summary-card"><span>全部外聘老師</span><b id="totalCount">—</b></div>
-      <div class="summary-card"><span>停用／封存</span><b id="inactiveCount">—</b></div>
+      <div class="summary-card"><span>外聘老師總數</span><b id="activeCount">—</b></div>
+      <div class="summary-card"><span>資料填寫中</span><b id="draftCount">—</b></div>
+      <div class="summary-card"><span>待管理者確認</span><b id="reviewCount">—</b></div>
     </section>
 
     <section class="section">
@@ -49,44 +49,28 @@
         <a class="manage-card" href="employee-admin.html?type=external&source=teacher-hub"><span class="icon">人</span><b>外聘老師名單與資料</b><span>直接使用員工管理的外聘老師分類，新增、查看、停用與封存都在同一份資料上。</span></a>
         <a class="manage-card" href="external-teacher-admin.html?source=teacher-hub"><span class="icon">約</span><b>年度合約</b><span>建立年度簽約入口、查看待簽、待確認與已生效合約。</span></a>
         <a class="manage-card" href="contract-admin.html"><span class="icon">文</span><b>年度合約與條文</b><span>編輯年度契約、發布給外聘老師，並管理未來簽署時使用的內容與版型。</span></a>
-        <a class="manage-card" href="announcement-admin.html?audience=external&source=teacher-hub"><span class="icon">告</span><b>外聘老師公告</b><span>入口預設只勾選外聘老師，可設定附件、回覆要求與截止日。</span></a>
-        <a class="manage-card" href="task.html?mode=admin&identity=external&source=teacher-hub"><span class="icon">辦</span><b>協助事項</b><span>只從外聘老師名單選擇負責人，交辦、回覆、退回與結案集中處理。</span></a>
+        <a class="manage-card" href="announcement-admin.html?audience=external&source=teacher-hub"><span class="icon">告</span><b>外聘老師公告</b><span>固定發布給外聘老師，可附圖片、影片、錄音與文件。</span></a>
+        <a class="manage-card" href="task.html?mode=admin&identity=external&source=teacher-hub"><span class="icon">辦</span><b>協助事項</b><span>預設全體外聘老師、無期限；需要時再改負責人與完成規則。</span></a>
         <a class="manage-card" href="teacher-goods-admin.html?source=teacher-hub"><span class="icon">貨</span><b>拿貨／詢價</b><span>查看老師詢價、回覆老師價與庫存，管理提供給老師的商品。</span></a>
         <a class="manage-card" href="external-teacher-forms-admin.html"><span class="icon">表</span><b>表格與證明</b><span>管理集點卡、在職證明、教學證明與待審核文件。</span></a>
       </div>
     </section>
 
-    <section class="section">
-      <div class="section-head"><div><h2>外聘老師名單</h2><p>這份名單與「員工管理 → 外聘老師」完全相同。</p></div><a class="pill" href="employee-admin.html?type=external&source=teacher-hub">開啟完整管理</a></div>
-      <div class="toolbar"><input id="teacherSearch" type="search" autocomplete="off" placeholder="搜尋姓名、Email 或外聘老師編號"><button id="reloadTeachers" type="button">重新讀取</button></div>
-      <div id="teacherList" class="teacher-list"><div class="empty">正在讀取外聘老師名單…</div></div>
-      <div id="loadStatus" class="status"></div>
-    </section>
   </main>
 
   <script src="config.js?v=20260806-external-teacher-center-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260808-contract-profile-gate-v1"></script>
-  <script src="app.js?v=20260806-external-teacher-center-v1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="firebase-client.js?v=20260808-external-work-v2"></script>
+  <script src="app.js?v=20260808-external-work-v2"></script>
+  <script src="manager-auth.js?v=20260808-external-work-v2"></script>
   <script>
     (function(){
-      let user=null, rows=[];
-      const clean=v=>String(v==null?'':v).trim();
-      const lower=v=>clean(v).toLowerCase();
-      const esc=v=>clean(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-      function sources(row){return [row||{},row&&row.raw||{},row&&row.profile||{},row&&row.registration||{}]}
-      function first(row,keys){for(const src of sources(row)){for(const key of keys){const value=src&&src[key];if(clean(value))return value}}return''}
-      function idOf(row){return clean(first(row,['employeeId','id','userId','__id','員工ID']))}
-      function nameOf(row){return clean(first(row,['name','displayName','employeeName','teacherName','姓名']))||'未命名外聘老師'}
-      function emailOf(row){return clean(first(row,['email','Email','loginEmail']))}
-      function identityType(row){const raw=lower(first(row,['identityType','employeeType','identityLabel','role','身分類型']));return raw.includes('external')||raw.includes('外聘')||raw.includes('teacher')?'external':(raw.includes('parttime')||raw.includes('工讀')?'parttime':'staff')}
-      function active(row){const status=lower(first(row,['accountStatus','employmentStatus','personStatus','status']));if(row&&row.hiddenFromActiveLists===true)return false;return !['inactive','disabled','archived','resigned','rejected','contractorended','停用','封存','離職','合作結束'].some(x=>status.includes(x))}
-      function replaced(row){return String(first(row,['coursePortalTeacherCanonicalReplaced','canonicalReplaced'])||'').trim().toLowerCase()==='true'||first(row,['coursePortalTeacherCanonicalReplaced','canonicalReplaced'])===true} function dedupe(list){const map=new Map();list.forEach(row=>{const key=idOf(row)||lower(emailOf(row));if(key&&!map.has(key))map.set(key,row)});return Array.from(map.values())}
-      function render(){const term=lower(document.getElementById('teacherSearch').value);const visible=rows.filter(row=>!term||[nameOf(row),emailOf(row),idOf(row)].join(' ').toLowerCase().includes(term));const box=document.getElementById('teacherList');box.innerHTML=visible.length?visible.map(row=>{const id=idOf(row),isActive=active(row);return `<a class="teacher-card" href="employee-admin.html?type=external&employeeId=${encodeURIComponent(id)}&source=teacher-hub"><div><div class="teacher-name">${esc(nameOf(row))}</div><div class="teacher-meta">${esc(id||'尚未建立編號')}${emailOf(row)?'｜'+esc(emailOf(row)):''}</div></div><span class="pill ${isActive?'':'off'}">${isActive?'合作中':'停用／封存'}</span></a>`}).join(''):'<div class="empty">目前沒有符合條件的外聘老師。</div>';}
-      async function load(){const box=document.getElementById('teacherList');box.innerHTML='<div class="empty">正在讀取外聘老師名單…</div>';document.getElementById('loadStatus').textContent='';try{const res=await api('getEmployeeManagementData',{userId:user.id,statusMode:'all'});if(!res||res.ok===false)throw new Error(res&&res.message||'讀取失敗');rows=dedupe((res.rows||[]).filter(row=>identityType(row)==='external'&&!replaced(row)));const activeRows=rows.filter(active);document.getElementById('activeCount').textContent=activeRows.length;document.getElementById('totalCount').textContent=rows.length;document.getElementById('inactiveCount').textContent=rows.length-activeRows.length;document.getElementById('loadStatus').textContent=`已從員工管理讀取 ${rows.length} 位外聘老師。`;render()}catch(err){rows=[];['activeCount','totalCount','inactiveCount'].forEach(id=>document.getElementById(id).textContent='0');box.innerHTML='<div class="empty">目前無法讀取外聘老師名單，請確認管理者登入後重新整理。</div>';document.getElementById('loadStatus').textContent=err.message||String(err)}}
-      function init(){user=typeof requireLogin==='function'?requireLogin():null;if(!user)return;if(typeof hasSettingsZoneAccess==='function'&&!hasSettingsZoneAccess(user)){location.replace('dashboard.html');return}document.getElementById('teacherSearch').addEventListener('input',render);document.getElementById('reloadTeachers').addEventListener('click',load);load()}
+      let user=null;
+      async function load(){try{const res=await api('getExternalTeacherWorkAssignees',{userId:user.id,workScope:'external-teacher-v2'});if(!res||res.ok===false)throw new Error(res&&res.message||'讀取失敗');const rows=res.rows||[];document.getElementById('activeCount').textContent=rows.length;document.getElementById('draftCount').textContent=rows.filter(row=>row.statusLabel==='資料填寫中').length;document.getElementById('reviewCount').textContent=rows.filter(row=>row.statusLabel==='待管理者確認').length;}catch(err){['activeCount','draftCount','reviewCount'].forEach(id=>document.getElementById(id).textContent='—');}}
+      async function init(){try{user=await window.YZManagerAuth.requireManager({next:'teacher-hub.html'});if(typeof fillHeader==='function')fillHeader();load();}catch(error){}}
       if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
     })();
   </script>

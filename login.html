@@ -151,9 +151,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="firebase-client.js?v=20260802-manager-login-hotfix1"></script>
+  <script src="firebase-client.js?v=20260808-external-work-v2"></script>
 
-  <script src="app.js?v=20260802-security-phase1"></script>
+  <script src="app.js?v=20260808-external-work-v2"></script>
   <script>
     const msg = qs('#msg');
     const panels = {
@@ -171,13 +171,17 @@
       'line-binding-admin.html',
       'person-data-admin.html',
       'contract-admin.html',
-      'portal.html#products',
-      'operations-hub.html#products'
+      'announcement-admin.html',
+      'teacher-hub.html',
+      'portal.html',
+      'operations-hub.html'
     ]);
 
     function requestedLoginTarget(){
-      const value = String(new URLSearchParams(window.location.search).get('next') || '').trim().toLowerCase();
-      return loginReturnPages.has(value) ? value : '';
+      const value = String(new URLSearchParams(window.location.search).get('next') || '').trim();
+      if(!/^[a-z0-9._-]+\.html(?:\?[^#]*)?(?:#.*)?$/i.test(value)) return '';
+      const page = value.split(/[?#]/)[0].toLowerCase();
+      return loginReturnPages.has(page) ? value : '';
     }
 
     function redirectToLoginTarget(target){

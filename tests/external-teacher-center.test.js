@@ -9,7 +9,9 @@ assert(hub.includes('employee-admin.html?type=external'));
 assert(hub.includes('announcement-admin.html?audience=external'));
 assert(hub.includes('task.html?mode=admin&identity=external'));
 assert(hub.includes('external-teacher-forms-admin.html'));
-assert(hub.includes("getEmployeeManagementData"));
+assert(hub.includes("getExternalTeacherWorkAssignees"));
+assert(!hub.includes('id="teacherList"'));
+assert(!hub.includes('未命名外聘老師'));
 
 const employee = read('employee-admin.html');
 assert(!employee.includes('}).filter(externalConfirmedForEmployeeAdmin);'));
@@ -23,12 +25,30 @@ assert(employee.includes('external-teacher-admin-route-v1.js'));
 
 const task = read('task.html');
 assert(task.includes("get('identity')==='external'"));
-assert(task.includes("getEmployeeManagementData"));
-assert(task.includes('請選擇外聘老師'));
+assert(task.includes("getExternalTeacherWorkAssignees"));
+assert(task.includes('__ALL_EXTERNAL__'));
+assert(task.includes('全體外聘老師（公告）'));
+assert(task.includes("const external=routeParams.get('identity')==='external'"));
+assert(task.includes("$('dueType').value=external?'none':'today'"));
+assert(task.includes("$('needReport').checked=!external"));
+assert(task.includes("$('allowComment').checked=!external"));
+assert(task.includes("$('allowRedo').checked=!external"));
+assert(task.includes("workScope:'external-teacher-v2'"));
 assert(task.includes('external-teacher-admin-route-v1.js'));
 
 const announcement = read('announcement-admin.html');
+const externalRoute = read('external-teacher-admin-route-v1.js');
 assert(announcement.includes('external-teacher-admin-route-v1.js'));
+assert(announcement.includes('資訊提醒'), '一般員工共用入口仍保留原公告等級');
+assert(externalRoute.includes("['一般公告', '重要公告'].includes(option.value)"));
+assert(externalRoute.includes('option.remove()'));
+assert(externalRoute.includes('audienceBox.hidden = true'));
+assert(announcement.includes("workScope:'external-teacher-v2'"));
+const saveStart = announcement.indexOf('async function saveAnnouncement()');
+const saveEnd = announcement.indexOf('function scheduleIdle_', saveStart);
+const saveFlow = announcement.slice(saveStart, saveEnd);
+assert(saveFlow.includes('YZManagerAuth.requireManager'));
+assert(saveFlow.indexOf('YZManagerAuth.requireManager') < saveFlow.indexOf("filesToAssets('#imageInput'"));
 
 const portal = read('teacher-course-portal.html');
 const gridStart = portal.indexOf('<div class="teacher-more-grid">');
@@ -93,6 +113,12 @@ const externalAdmin = read('external-teacher-admin.html');
 assert(externalAdmin.includes("source:'external-teacher-admin-confirmed'"));
 assert(externalAdmin.includes('portalProfileVersion:Number(c.portalProfileVersion||0)'));
 const onboardingBackend = read('functions/externalTeacherOnboarding.js');
+const legacyLineStart = onboardingBackend.indexOf('async function handleExternalTeacherLineEvent(event)');
+const legacyLineEnd = onboardingBackend.indexOf('function buildExternalTeacherEmailBody', legacyLineStart);
+const legacyLineFlow = onboardingBackend.slice(legacyLineStart, legacyLineEnd);
+assert(legacyLineFlow.includes('舊版外聘老師綁定碼，已停止自動回寫'));
+assert(!legacyLineFlow.includes("collection('externalTeacherLineBindings')"));
+assert(!legacyLineFlow.includes("collection('employeeLineBindings')"));
 const createCallableStart = onboardingBackend.indexOf('exportsObj.externalTeacherCreateBindCode');
 const createCallableEnd = onboardingBackend.indexOf('exportsObj.externalTeacherGetOnboarding', createCallableStart);
 const createCallable = onboardingBackend.slice(createCallableStart, createCallableEnd);
@@ -101,5 +127,16 @@ assert(!createCallable.includes('request.auth.uid'));
 assert(!createCallable.includes('resolveExternalEmployeeId'));
 console.log('external teacher center tests passed');
 
-assert(read('teacher-hub.html').includes('!replaced(row)'));
 assert(read('employee-admin.html').includes('coursePortalTeacherCanonicalReplaced'));
+
+const workBackend = read('functions/externalTeacherWork.js');
+assert(workBackend.includes("announcements: 'externalTeacherAnnouncementsV2'"));
+assert(workBackend.includes("tasks: 'externalTeacherTasksV2'"));
+assert(!workBackend.includes("db.collection('announcements')"));
+assert(!workBackend.includes("db.collection('tasks')"));
+assert(workBackend.includes('舊版事項，不能直接覆蓋'));
+assert(workBackend.includes('PROFILE_IN_PROGRESS'));
+
+const rules = read('firestore.rules');
+assert(rules.includes('match /externalTeacherAnnouncementsV2/{document=**} { allow read, write: if false; }'));
+assert(rules.includes('match /externalTeacherTasksV2/{document=**} { allow read, write: if false; }'));

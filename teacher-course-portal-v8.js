@@ -352,7 +352,12 @@
     const items = [];
     if (profileCount) items.push({ kind: 'profile', text: '基本資料尚未完成' });
     if (contractCount) items.push({ kind: 'contracts', text: `有 ${contractCount} 份合約待查看或簽署` });
-    if (announcementsUnseen) items.push({ kind: 'announcements', text: `有 ${announcementCount} 則公告可以查看` });
+    if (announcementCount) items.push({
+      kind: 'announcements',
+      text: announcementsUnseen
+        ? `有 ${announcementCount} 則新公告或待回覆公告`
+        : `仍有 ${announcementCount} 則公告待查看或回覆`
+    });
     if (taskCount) items.push({ kind: 'tasks', text: `有 ${taskCount} 項協助事項待處理` });
     if (goodsAttentionUnseen) items.push({ kind: 'goods-attention', text: `有 ${goodsAttentionCount} 筆詢價更新可以查看` });
     if (goodsUnseen) items.push({ kind: 'goods', text: '有商品更新可以查看' });
@@ -363,7 +368,7 @@
       profileCount,
       contractCount,
       taskCount,
-      announcementCount: announcementsUnseen ? announcementCount : 0,
+      announcementCount,
       goodsBadgeCount: goodsAttentionUnseen ? goodsAttentionCount : (goodsUnseen ? 1 : 0),
       items
     };

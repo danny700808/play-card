@@ -24,9 +24,9 @@ const REGION = 'us-central1';
 const TAIPEI = 'Asia/Taipei';
 const ADMIN_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET');
-const LINE_LOGIN_CHANNEL_ID = '2010902226';
-const LINE_LOGIN_CALLBACK_URL = 'https://us-central1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback';
-const PORTAL_BASE = 'https://danny700808.github.io/play-card';
+const LINE_LOGIN_CHANNEL_ID = String(process.env.LINE_LOGIN_CHANNEL_ID || '2010902226').trim();
+const LINE_LOGIN_CALLBACK_URL = String(process.env.LINE_LOGIN_CALLBACK_URL || 'https://us-central1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback').trim();
+const PORTAL_BASE = String(process.env.PUBLIC_WEB_BASE_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
 const EMAIL_OTP_TTL_MS = 180 * 1000;
 const EMAIL_OTP_MAX_ATTEMPTS = 5;
 const LINE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -2727,6 +2727,28 @@ function teacherUtilityTaskPending(row) {
   ].includes(status);
 }
 
+function teacherUtilityCanonicalWorkRow(row) {
+  const source = row || {};
+  return clean(source.systemVersion) === 'external-teacher-work-v2' ||
+    clean(source.source) === 'firestore-canonical-external-teacher-work';
+}
+
+function teacherUtilityTaskMatches(row, identity) {
+  const source = row || {};
+  if (clean(source.assigneeMode) === 'all_external') {
+    const snapshotIds = [...new Set((Array.isArray(source.assigneeIds) ? source.assigneeIds : [])
+      .map(clean).filter(Boolean))];
+    if (!snapshotIds.length) return true;
+    return snapshotIds.some((value) => identity.ids.has(value));
+  }
+  return teacherUtilityRowMatches(
+    source,
+    identity,
+    ['assigneeId', 'employeeId', 'teacherId', 'userId', 'assigneeIds'],
+    ['assigneeEmail', 'email', 'teacherEmail']
+  );
+}
+
 function teacherUtilityPublishedAnnouncement(row) {
   const source = row || {};
   if (teacherUtilityDeleted(source)) return false;
@@ -2863,12 +2885,14 @@ async function teacherUtilityPendingSummary(resolved, session) {
   const identity = teacherUtilityIdentity(resolved, session);
   const collectionNames = {
     contracts: 'teacherContractAssignments',
-    announcements: 'announcements',
-    tasks: 'tasks',
+    announcements: 'externalTeacherAnnouncementsV2',
+    announcementViews: 'externalTeacherAnnouncementViewsV2',
+    tasks: 'externalTeacherTasksV2',
+    taskResponses: 'externalTeacherTaskResponsesV2',
     goods: 'teacherGoods',
     goodsAttention: 'teacherGoodsInquiry'
   };
-  const [contractResult, announcementResult, taskResult, goodsResult, inquiryResult] = await Promise.all([
+  const [contractResult, announcementResult, taskResult, goodsResult, inquiryResult, announcementViewResult, taskResponseResult] = await Promise.all([
     teacherUtilityMatchedRows(
       collectionNames.contracts,
       identity,
@@ -2876,26 +2900,25 @@ async function teacherUtilityPendingSummary(resolved, session) {
       ['email', 'teacherEmail']
     ),
     teacherUtilityBoundedRows(collectionNames.announcements),
-    teacherUtilityMatchedRows(
-      collectionNames.tasks,
-      identity,
-      ['assigneeId', 'employeeId', 'teacherId'],
-      ['assigneeEmail', 'email']
-    ),
+    teacherUtilityBoundedRows(collectionNames.tasks),
     teacherUtilityBoundedRows(collectionNames.goods),
     teacherUtilityMatchedRows(
       collectionNames.goodsAttention,
       identity,
       ['teacherId', 'userId', 'employeeId'],
       ['email', 'teacherEmail']
-    )
+    ),
+    teacherUtilityMatchedRows(collectionNames.announcementViews, identity, ['employeeId', 'teacherId'], []),
+    teacherUtilityMatchedRows(collectionNames.taskResponses, identity, ['employeeId', 'teacherId'], [])
   ]);
   const unavailableCollections = Object.entries({
     contracts: contractResult,
     announcements: announcementResult,
     tasks: taskResult,
     goods: goodsResult,
-    goodsAttention: inquiryResult
+    goodsAttention: inquiryResult,
+    announcementViews: announcementViewResult,
+    taskResponses: taskResponseResult
   }).filter(([, result]) => !result.available).map(([name]) => name);
   if (unavailableCollections.length) {
     console.warn('[teacher utility pending summary unavailable]', unavailableCollections.join(','));
@@ -2909,17 +2932,18 @@ async function teacherUtilityPendingSummary(resolved, session) {
       ['email', 'teacherEmail']
     ) && teacherUtilityContractMatchesProfile(row, resolved) && teacherUtilityContractPending(row)
   );
-  const announcements = announcementResult.rows.filter((row) =>
-    teacherUtilityPublishedAnnouncement(row) && teacherUtilityAnnouncementMatches(row, identity)
-  );
-  const tasks = taskResult.rows.filter((row) =>
-    teacherUtilityRowMatches(
-      row,
-      identity,
-      ['assigneeId', 'employeeId', 'teacherId', 'userId', 'assigneeIds'],
-      ['assigneeEmail', 'email', 'teacherEmail']
-    ) && teacherUtilityTaskPending(row)
-  );
+  const announcementViews = new Map(announcementViewResult.rows.map((row) => [clean(row.announcementId), row]));
+  const taskResponses = new Map(taskResponseResult.rows.map((row) => [clean(row.taskId), row]));
+  const announcements = announcementResult.rows.filter((row) => {
+    if (!teacherUtilityCanonicalWorkRow(row) || !teacherUtilityPublishedAnnouncement(row) || !teacherUtilityAnnouncementMatches(row, identity)) return false;
+    const view = announcementViews.get(clean(row.__id || row.id || row.announcementId)) || {};
+    return !view.readAt || (row.requireReply === true && !clean(view.replyText));
+  });
+  const tasks = taskResult.rows.filter((row) => {
+    if (!teacherUtilityCanonicalWorkRow(row) || !teacherUtilityTaskMatches(row, identity) || !teacherUtilityTaskPending(row)) return false;
+    const response = taskResponses.get(clean(row.__id || row.id || row.taskId)) || {};
+    return teacherUtilityTaskPending(response);
+  });
   const goods = goodsResult.rows.filter(teacherUtilityGoodsActive);
   const inquiries = inquiryResult.rows.filter((row) =>
     teacherUtilityRowMatches(
@@ -2952,7 +2976,7 @@ async function teacherUtilityPendingSummary(resolved, session) {
     goodsAttentionCount: inquiries.length,
     goodsRevision,
     goodsAttentionRevision,
-    announcementCountMode: 'applicable-device-revision',
+    announcementCountMode: 'pending-unread-or-reply',
     goodsCountMode: 'active-offers',
     goodsAttentionCountMode: 'own-replied-active-inquiries',
     available: unavailableCollections.length === 0,
@@ -10040,7 +10064,31 @@ function teacherReminderLessonLine(row, maps) {
   return `${teacherReminderDate(eventDate(row))} ${eventStart(row)}～${eventEnd(row)}　${studentNames}｜${subjectName}｜${teacherReminderLessonType(row)}`;
 }
 
-async function dailyTeacherCourseReminders(pushLineMessage) {
+async function teacherDailyWorkIdentity(teacherId, binding = {}) {
+  const direct = await db.collection('employees').doc(clean(teacherId)).get();
+  let doc = direct.exists ? direct : null;
+  if (!doc) {
+    const matched = await db.collection('employees').where('coursePortalTeacherId', '==', clean(teacherId)).limit(2).get();
+    doc = matched.empty ? null : matched.docs[0];
+  }
+  if (!doc) return {
+    employeeId: clean(binding.employeeId || binding.personMasterId || binding.canonicalEmployeeId),
+    teacherId: clean(teacherId),
+    email: normalizeEmail(binding.email || binding.teacherEmail),
+    external: true,
+    name: clean(binding.targetName || binding.teacherName || binding.name || '外聘老師')
+  };
+  const row = doc.data() || {};
+  return {
+    employeeId: clean(row.employeeId || doc.id),
+    teacherId: clean(teacherId),
+    email: normalizeEmail(row.email || row.Email || row.loginEmail),
+    external: true,
+    name: clean(row.name || row.displayName || '外聘老師')
+  };
+}
+
+async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCounts) {
   if (typeof pushLineMessage !== 'function') return;
   const today = currentTaipeiDay();
   const yesterday = addDays(today, -1);
@@ -10082,6 +10130,20 @@ async function dailyTeacherCourseReminders(pushLineMessage) {
           ? '此課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請老師進入課表完成補簽到。'
           : '以上課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請老師進入課表完成補簽到。'
       );
+    }
+    if (typeof teacherWorkPendingCounts === 'function') {
+      try {
+        const identity = await teacherDailyWorkIdentity(teacherId, binding);
+        const pending = await teacherWorkPendingCounts(identity);
+        if (Number(pending && pending.announcementCount || 0) || Number(pending && pending.taskCount || 0)) {
+          parts.push('', '【系統待辦】');
+          if (Number(pending.announcementCount || 0)) parts.push(`有 ${Number(pending.announcementCount)} 則新公告或待回覆公告`);
+          if (Number(pending.taskCount || 0)) parts.push(`有 ${Number(pending.taskCount)} 項協助事項尚未完成`);
+          parts.push(`查看：${PORTAL_BASE}/teacher-course-portal.html`);
+        }
+      } catch (error) {
+        console.warn('[teacher daily work reminder unavailable]', teacherId, clean(error && error.message));
+      }
     }
     const body = parts.join('\n');
     const logRef = db.collection('coursePortalReminderLogs').doc(
@@ -10551,7 +10613,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     region: REGION,
     timeoutSeconds: 180,
     memory: '512MiB'
-  }, async () => dailyTeacherCourseReminders(helpers.pushLineMessage));
+  }, async () => dailyTeacherCourseReminders(helpers.pushLineMessage, helpers.teacherWorkPendingCounts));
 }
 
 module.exports = {
@@ -10559,7 +10621,9 @@ module.exports = {
   handleCoursePortalLineEvent,
   normalizePhone,
   phoneMatches,
-  registerCoursePortal
+  registerCoursePortal,
+  requireSession,
+  resolveTeacherUtilityEmployee
 };
 function parseContactBookImages(values) {
   const images = Array.isArray(values) ? values : [];

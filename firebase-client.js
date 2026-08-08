@@ -249,7 +249,6 @@
   global.YZFirebase = {init,enabled,handleApi,getEmployee,getMyProfile,normalizeClockDoc,getClockRowsByEmployee,getEditableClockHistory,getClockHistoryRange,addClockRecordFromClient,getLeaveHistory,getPendingLeaveApprovals,getAdminLeaveEmployeeSummary,getParttimeHistory,getNotificationSettings,getNotificationTimeRules,mirrorNotificationSettings,mirrorNotificationTimeRules,getDashboardSummary,getPendingCounts,mirrorApiWrite};
 })(window);
 
-
 /* =========================================================
  * Firebase 全站接上橋接層（第4階段）
  * 原則：Firebase 有資料就優先讀 Firebase；沒有資料或格式不合，回退原 GS。
@@ -8093,4 +8092,93 @@
     return null;
   };
   global.YZFirebase=fb;
+})(window);
+
+/* =========================================================
+ * 外聘老師公告 / 協助事項 V2
+ * - 一律經 Cloud Functions 驗證管理者 Firebase Auth 或老師課務 session。
+ * - 不再回退 Apps Script，也不直接讀取舊版 Firestore 文件。
+ * ========================================================= */
+(function (global) {
+  'use strict';
+  const fb = global.YZFirebase || (global.YZFirebase = {});
+  const previousHandle = fb.handleApi;
+  const actions = new Set([
+    'getExternalTeacherWorkAssignees',
+    'getAnnouncementAdminList', 'getAnnouncements', 'saveAnnouncement', 'toggleAnnouncement',
+    'deleteAnnouncement', 'submitAnnouncementReply',
+    'createTask', 'getTasks', 'getUnifiedWorkItems', 'completeUnifiedWorkItem', 'completeTask',
+    'markUnifiedWorkItemRedo', 'markTaskRedo', 'deleteTask'
+  ]);
+  const functionsCompatUrl = 'https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js';
+  let compatPromise = null;
+
+  function clean(value) { return String(value == null ? '' : value).trim(); }
+
+  function loadFunctionsCompat() {
+    if (global.firebase && typeof global.firebase.functions === 'function') return Promise.resolve();
+    if (compatPromise) return compatPromise;
+    compatPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = functionsCompatUrl;
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('安全資料服務載入失敗，請確認網路後重新整理。'));
+      document.head.appendChild(script);
+    });
+    return compatPromise;
+  }
+
+  function portalSessionToken() {
+    try { return clean(global.localStorage.getItem('youzi.coursePortal.teacher.session.v1')); } catch (_) { return ''; }
+  }
+
+  function currentUser() {
+    try { return JSON.parse(global.localStorage.getItem('employeeUser') || 'null') || {}; } catch (_) { return {}; }
+  }
+
+  function externalScope(payload) {
+    const data = payload || {};
+    const user = currentUser();
+    const identity = clean(user.identityType || user.employeeType || user.identityLabel).toLowerCase();
+    const explicitExternalWork = clean(data.workScope) === 'external-teacher-v2';
+    const externalShell = user.portalSessionBridge === true || user.isExternalTeacher === true ||
+      identity.includes('external') || identity.includes('外聘');
+    const internalShell = Boolean(clean(user.id || user.employeeId || user.email)) && !externalShell;
+    // A stale Course Portal token must not reroute ordinary manager/staff pages.
+    return explicitExternalWork || externalShell || (!internalShell && Boolean(portalSessionToken()));
+  }
+
+  async function callWork(action, payload) {
+    await loadFunctionsCompat();
+    const config = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
+    if (!global.firebase) throw new Error('Firebase 尚未載入。');
+    if (!global.firebase.apps.length) {
+      if (!config) throw new Error('Firebase 設定不完整。');
+      global.firebase.initializeApp(config);
+    }
+    const data = Object.assign({}, payload || {}, { action });
+    const sessionToken = portalSessionToken();
+    if (sessionToken) data.sessionToken = sessionToken;
+    try {
+      const response = await global.firebase.app().functions('us-central1')
+        .httpsCallable('externalTeacherWork', { timeout: 120000 })(data);
+      return response && response.data || { ok: false, message: '安全資料服務沒有回傳結果。' };
+    } catch (error) {
+      const message = clean(error && (error.details || error.message) || '安全資料服務連線失敗。')
+        .replace(/^FirebaseError:\s*/i, '');
+      throw new Error(message);
+    }
+  }
+
+  fb.handleApi = async function (action, payload) {
+    const name = clean(action);
+    if (actions.has(name) && (name === 'getExternalTeacherWorkAssignees' || externalScope(payload))) {
+      return callWork(name, payload || {});
+    }
+    if (typeof previousHandle === 'function') return previousHandle(action, payload || {});
+    return null;
+  };
+  fb.externalTeacherWorkActions = actions;
+  global.YZFirebase = fb;
 })(window);

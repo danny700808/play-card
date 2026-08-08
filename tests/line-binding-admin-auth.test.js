@@ -157,6 +157,8 @@ test('expired split auth clears shell state and redirects automatically only onc
 test('normal manager login accepts only the allowlisted local return page', () => {
   const source = fs.readFileSync(path.join(root, 'login.html'), 'utf8');
   assert.match(source, /const loginReturnPages = new Set\(\[[\s\S]*'line-binding-admin\.html'[\s\S]*\]\);/);
-  assert.match(source, /return loginReturnPages\.has\(value\) \? value : '';/);
+  assert.match(source, /\^\[a-z0-9\._-\]\+\\\.html/);
+  assert.match(source, /const page = value\.split\(\/\[\?\#\]\//);
+  assert.match(source, /return loginReturnPages\.has\(page\) \? value : '';/);
   assert.doesNotMatch(source, /window\.location\.replace\(new URLSearchParams[^)]*next/);
 });

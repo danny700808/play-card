@@ -32,6 +32,12 @@ on:
       - "contract-admin.html"
       - "external-teacher-contract-admin.html"
       - "teacher-hub.html"
+      - "announcement-admin.html"
+      - "announcements.html"
+      - "task.html"
+      - "app.js"
+      - "manager-auth.js"
+      - "external-teacher-admin-route-v1.js"
       - "login.html"
       - "firebase-client.js"
       - "person-data-admin.html"
@@ -50,6 +56,7 @@ on:
       - "functions/employeeAuth.js"
       - "functions/easystoreCatalogSync.js"
       - "functions/externalTeacherOnboarding.js"
+      - "functions/externalTeacherWork.js"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firestore.rules"
@@ -61,6 +68,8 @@ on:
       - "tests/teacher-course-portal-mobile.test.js"
       - "tests/teacher-daily-reminder.test.js"
       - "tests/teacher-utility-pending.test.js"
+      - "tests/external-teacher-work-v2.test.js"
+      - "tests/external-teacher-center.test.js"
       - "tests/teacher-profile-flow.test.js"
       - "tests/person-data-admin.test.js"
       - ".github/workflows/deploy-course-portal-auth.yml"
@@ -107,6 +116,8 @@ jobs:
           node --check functions/employeeAuth.js
           node --check functions/easystoreCatalogSync.js
           node --check functions/externalTeacherOnboarding.js
+          node --check functions/externalTeacherWork.js
+          node --check manager-auth.js
           node --check operations-manager-auth.js
           node --check operations-phase1.js
           node --check course-portal-common.js
@@ -126,9 +137,11 @@ jobs:
           node --test tests/teacher-profile-flow.test.js
           node --test tests/person-data-admin.test.js
           node --test tests/operations-manager-auth.test.js
+          node --test tests/external-teacher-work-v2.test.js
+          node tests/external-teacher-center.test.js
           (cd functions && node - <<'NODE'
           const deployed = require('.');
-          for (const name of ['coursePortalTeacherSaveProfileDraft','coursePortalTeacherContractSession','coursePortalTeacherSubmitContract','personDataAdminInventory','personDataAdminDetail','personDataAdminAction','personDataAdminContractInventory','personDataAdminContractDetail','personDataAdminContractAction','employeeSecureLogin','employeeChangePassword','employeeForgotPassword','sendGmailTestEmail','syncEasyStoreCatalog','externalTeacherCreateBindCode','externalTeacherListContractTemplate','externalTeacherSaveContractTemplate','externalTeacherListContracts']) {
+          for (const name of ['coursePortalTeacherSaveProfileDraft','coursePortalTeacherContractSession','coursePortalTeacherSubmitContract','personDataAdminInventory','personDataAdminDetail','personDataAdminAction','personDataAdminContractInventory','personDataAdminContractDetail','personDataAdminContractAction','employeeSecureLogin','employeeChangePassword','employeeForgotPassword','sendGmailTestEmail','syncEasyStoreCatalog','externalTeacherCreateBindCode','externalTeacherListContractTemplate','externalTeacherSaveContractTemplate','externalTeacherListContracts','externalTeacherWork','sendNotificationQueueOnCreate','flushNotificationQueue']) {
             if (!deployed[name]) throw new Error(`Missing Firebase Function export: ${name}`);
           }
           NODE
@@ -138,8 +151,6 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          LINE_MESSAGING_ACCESS_TOKEN: ${{ secrets.LINE_MESSAGING_ACCESS_TOKEN }}
-          LINE_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
@@ -149,7 +160,7 @@ jobs:
           test -n "${FIREBASE_SERVICE_ACCOUNT:-}" || { echo "FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is empty" >&2; exit 1; }
           test -n "${GMAIL_USER:-}" || { echo "GMAIL_USER is empty" >&2; exit 1; }
           test -n "${GMAIL_APP_PASSWORD:-}" || { echo "GMAIL_APP_PASSWORD is empty" >&2; exit 1; }
-          RUNTIME_LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-${LINE_MESSAGING_ACCESS_TOKEN:-${LINE_ACCESS_TOKEN:-}}}"
+          RUNTIME_LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-}"
           test -n "$RUNTIME_LINE_TOKEN" || { echo "LINE access token is empty" >&2; exit 1; }
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
           chmod 600 "$SERVICE_ACCOUNT_PATH"
@@ -178,7 +189,7 @@ jobs:
         run: |
           set -euo pipefail
           firebase deploy --project youzi-c1b74 --non-interactive --force \
-            --only "functions:lineWebhook,functions:coursePortalStartBinding,functions:coursePortalStudentPhoneAccess,functions:coursePortalDirectRegularAccess,functions:coursePortalSendEmailOtp,functions:coursePortalVerifyEmailOtp,functions:coursePortalStartLineLogin,functions:coursePortalCompleteLineRegistration,functions:coursePortalLineLoginCallback,functions:coursePortalRenterContactLogin,functions:coursePortalExchangeAccess,functions:coursePortalTeacherData,functions:coursePortalTeacherUtilitySession,functions:coursePortalTeacherSaveProfileDraft,functions:coursePortalTeacherContractSession,functions:coursePortalTeacherSubmitContract,functions:personDataAdminInventory,functions:personDataAdminDetail,functions:personDataAdminAction,functions:personDataAdminContractInventory,functions:personDataAdminContractDetail,functions:personDataAdminContractAction,functions:coursePortalTeacherAvailability,functions:coursePortalTeacherSlotOptions,functions:coursePortalStudentData,functions:coursePortalStudentContactBookImage,functions:coursePortalStudentSubmitTuitionPayment,functions:coursePortalRentalUseSettings,functions:coursePortalRentalDayBoard,functions:coursePortalRentalWeekBoard,functions:coursePortalRentalAvailability,functions:coursePortalCreateRoomBooking,functions:coursePortalRentalMyBookings,functions:coursePortalCancelRoomBooking,functions:coursePortalTeacherAction,functions:coursePortalTeacherLessonState,functions:coursePortalTeacherAttendance,functions:coursePortalTeacherLateAttendance,functions:coursePortalTeacherAttendanceCancellationRequest,functions:coursePortalTeacherSubmitContactBookPost,functions:coursePortalTeacherUpdateStudent,functions:coursePortalTeacherStopStudent,functions:coursePortalTeacherBonusRequest,functions:coursePortalAdminRentalSettingsData,functions:coursePortalAdminSaveRentalSettings,functions:coursePortalAdminSaveRoomEquipment,functions:coursePortalAdminSaveTeacherAdjustment,functions:coursePortalAdminRoomBookings,functions:coursePortalAdminCancelRoomBooking,functions:coursePortalUpdateStudentReminder,functions:coursePortalAdminData,functions:coursePortalAdminBindingAction,functions:coursePortalAdminAttendanceCancellationAction,functions:coursePortalAdminSuspensionAction,functions:coursePortalAdminTuitionPaymentAction,functions:coursePortalAdminEnsureTuitionReceipt,functions:coursePortalAdminTuitionPaymentScreenshot,functions:coursePortalStudentReminderDaily,functions:coursePortalTeacherDailyReminder,functions:employeeSecureLogin,functions:employeeChangePassword,functions:employeeForgotPassword,functions:sendGmailTestEmail,functions:syncEasyStoreCatalog,functions:externalTeacherCreateBindCode,functions:externalTeacherListContractTemplate,functions:externalTeacherSaveContractTemplate,functions:externalTeacherListContracts"
+            --only "functions:lineWebhook,functions:sendNotificationQueueOnCreate,functions:flushNotificationQueue,functions:externalTeacherWork,functions:coursePortalStartBinding,functions:coursePortalStudentPhoneAccess,functions:coursePortalDirectRegularAccess,functions:coursePortalSendEmailOtp,functions:coursePortalVerifyEmailOtp,functions:coursePortalStartLineLogin,functions:coursePortalCompleteLineRegistration,functions:coursePortalLineLoginCallback,functions:coursePortalRenterContactLogin,functions:coursePortalExchangeAccess,functions:coursePortalTeacherData,functions:coursePortalTeacherUtilitySession,functions:coursePortalTeacherSaveProfileDraft,functions:coursePortalTeacherContractSession,functions:coursePortalTeacherSubmitContract,functions:personDataAdminInventory,functions:personDataAdminDetail,functions:personDataAdminAction,functions:personDataAdminContractInventory,functions:personDataAdminContractDetail,functions:personDataAdminContractAction,functions:coursePortalTeacherAvailability,functions:coursePortalTeacherSlotOptions,functions:coursePortalStudentData,functions:coursePortalStudentContactBookImage,functions:coursePortalStudentSubmitTuitionPayment,functions:coursePortalRentalUseSettings,functions:coursePortalRentalDayBoard,functions:coursePortalRentalWeekBoard,functions:coursePortalRentalAvailability,functions:coursePortalCreateRoomBooking,functions:coursePortalRentalMyBookings,functions:coursePortalCancelRoomBooking,functions:coursePortalTeacherAction,functions:coursePortalTeacherLessonState,functions:coursePortalTeacherAttendance,functions:coursePortalTeacherLateAttendance,functions:coursePortalTeacherAttendanceCancellationRequest,functions:coursePortalTeacherSubmitContactBookPost,functions:coursePortalTeacherUpdateStudent,functions:coursePortalTeacherStopStudent,functions:coursePortalTeacherBonusRequest,functions:coursePortalAdminRentalSettingsData,functions:coursePortalAdminSaveRentalSettings,functions:coursePortalAdminSaveRoomEquipment,functions:coursePortalAdminSaveTeacherAdjustment,functions:coursePortalAdminRoomBookings,functions:coursePortalAdminCancelRoomBooking,functions:coursePortalUpdateStudentReminder,functions:coursePortalAdminData,functions:coursePortalAdminBindingAction,functions:coursePortalAdminAttendanceCancellationAction,functions:coursePortalAdminSuspensionAction,functions:coursePortalAdminTuitionPaymentAction,functions:coursePortalAdminEnsureTuitionReceipt,functions:coursePortalAdminTuitionPaymentScreenshot,functions:coursePortalStudentReminderDaily,functions:coursePortalTeacherDailyReminder,functions:employeeSecureLogin,functions:employeeChangePassword,functions:employeeForgotPassword,functions:sendGmailTestEmail,functions:syncEasyStoreCatalog,functions:externalTeacherCreateBindCode,functions:externalTeacherListContractTemplate,functions:externalTeacherSaveContractTemplate,functions:externalTeacherListContracts"
 
       - name: Detect an explicit Firestore rules change
         id: firestore_rules

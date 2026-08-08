@@ -42,6 +42,8 @@ test('teacher other pages share the compact utility theme and explicit auth boun
       assert.doesNotMatch(source, /teacher-more-auth-bridge\.js|blockIfPortalOnly/);
     } else if (file === 'profile.html') {
       assert.match(source, /teacher-more-auth-bridge\.js\?v=20260806-external-teacher-reminder-v3/);
+    } else if (file === 'task.html') {
+      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260808-external-work-v2/);
     } else {
       assert.match(source, /teacher-more-auth-bridge\.js\?v=20260806-external-teacher-canonical-v2/);
     }
@@ -124,7 +126,7 @@ test('teacher portal session is revalidated before the six utility pages receive
     head: { appendChild() {} },
     createElement() { return {}; }
   };
-  const context = vm.createContext({ window, document, encodeURIComponent, Date, Math, JSON, String, Object, Set, Promise });
+  const context = vm.createContext({ window, document, encodeURIComponent, URLSearchParams, Date, Math, JSON, String, Object, Set, Promise });
   new vm.Script(bridge, { filename: 'teacher-more-auth-bridge.js' }).runInContext(context);
 
   assert.equal(window.YZTeacherMoreAuth.blockIfPortalOnly({ title: '協助事項' }), true);
@@ -205,8 +207,8 @@ test('secure profile fetch clears bridged identity when the teacher session expi
   assert.equal(storage.employeeUserId, undefined);
 });
 
-test('teacher utility pages keep inline scripts valid and static local assets present', () => {
-  for (const file of [...pages, 'index.html', 'login.html']) {
+test('teacher utility and external-manager pages keep inline scripts valid and static local assets present', () => {
+  for (const file of [...pages, 'index.html', 'login.html', 'announcement-admin.html', 'teacher-hub.html']) {
     const source = read(file);
     inlineScripts(source).forEach((script, index) => {
       assert.doesNotThrow(

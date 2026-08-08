@@ -1,6 +1,7 @@
 const { onRequest, onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { defineSecret } = require('firebase-functions/params');
 const nodemailer = require('nodemailer');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -10,11 +11,18 @@ const { registerPlatformOrderSync } = require('./platformOrderSync');
 const { registerInjiaoyunManualSync } = require('./injiaoyunManualSync');
 const { registerInjiaoyunEducationPreview } = require('./injiaoyunEducationPreview');
 const { registerInjiaoyunEducationMirror } = require('./injiaoyunEducationMirror');
-const { registerCoursePortal, handleCoursePortalLineEvent } = require('./coursePortal');
+const {
+  registerCoursePortal,
+  handleCoursePortalLineEvent,
+  requireSession: requireCoursePortalSession,
+  resolveTeacherUtilityEmployee
+} = require('./coursePortal');
 const { registerEmployeeAuth } = require('./employeeAuth');
+const { registerExternalTeacherWork, pendingCountsForIdentity } = require('./externalTeacherWork');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
+const LINE_CHANNEL_SECRET = defineSecret('LINE_CHANNEL_SECRET');
 
 registerExternalTeacherOnboarding(exports);
 registerEasyStoreCatalogSync(exports);
@@ -24,9 +32,14 @@ registerInjiaoyunEducationPreview(exports);
 registerInjiaoyunEducationMirror(exports);
 registerCoursePortal(exports, {
   pushLineMessage,
-  sendEmail: sendEmailViaGmail
+  sendEmail: sendEmailViaGmail,
+  teacherWorkPendingCounts: pendingCountsForIdentity
 });
 registerEmployeeAuth(exports, { sendEmail: sendEmailViaGmail });
+registerExternalTeacherWork(exports, {
+  requireTeacherSession: requireCoursePortalSession,
+  resolveTeacherEmployee: resolveTeacherUtilityEmployee
+});
 
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_ADMIN_DOC_ID = 'ADMIN_DANNY';
@@ -605,6 +618,14 @@ async function handleEmployeeCodeBinding({ bindCode, lineUserId, replyToken }) {
     await replyLineMessage(replyToken, `查不到這組人員 LINE 綁定碼：${code}\n\n請確認是否完整複製後再貼上，或請主管從後台重新提供綁定文字。`);
     return;
   }
+  const binding = target.binding || {};
+  const legacyExternalBinding = clean(binding.targetCollection).toLowerCase().startsWith('externalteacher') ||
+    clean(binding.externalTeacherContractId || binding.externalTeacherId) ||
+    /^external-teacher/i.test(clean(binding.source));
+  if (legacyExternalBinding) {
+    await replyLineMessage(replyToken, '這組碼屬於舊版外聘老師資料，已停止自動回寫。請改從新版老師課務入口以 LINE／Email 登入。');
+    return;
+  }
 
   const primaryManagerLineUserId = await getPrimaryManagerLineUserId();
   if (primaryManagerLineUserId && primaryManagerLineUserId === lineUserId) {
@@ -844,56 +865,13 @@ function httpEndpoint(handler, options = {}) {
   });
 }
 
-async function getSystemSettingValue(names) {
-  const wanted = (Array.isArray(names) ? names : [names]).map(clean).filter(Boolean);
-  for (const name of wanted) {
-    try {
-      const snap = await db.collection('systemSettings').doc(name).get();
-      if (snap.exists) {
-        const data = snap.data() || {};
-        const value = clean(data.value || data.token || data.accessToken || data.secret || data.text);
-        if (value) return value;
-      }
-    } catch (err) {
-      // keep trying below
-    }
-  }
-  try {
-    const snap = await db.collection('systemSettings').limit(200).get();
-    let found = '';
-    snap.forEach((doc) => {
-      if (found) return;
-      const data = doc.data() || {};
-      const key = clean(data.key || data.name || doc.id);
-      if (wanted.includes(key)) found = clean(data.value || data.token || data.accessToken || data.secret || data.text);
-    });
-    return found;
-  } catch (err) {
-    return '';
-  }
-}
-
 async function resolveLineAccessToken() {
-  const envCandidates = [
-    ['LINE_CHANNEL_ACCESS_TOKEN', process.env.LINE_CHANNEL_ACCESS_TOKEN],
-    ['LINE_MESSAGING_ACCESS_TOKEN', process.env.LINE_MESSAGING_ACCESS_TOKEN],
-    ['LINE_ACCESS_TOKEN', process.env.LINE_ACCESS_TOKEN],
-    ['LINE_BOT_CHANNEL_ACCESS_TOKEN', process.env.LINE_BOT_CHANNEL_ACCESS_TOKEN]
-  ];
-  for (const [name, value] of envCandidates) {
-    const token = clean(value || '');
-    if (token) return { token, configured: true, source: `env:${name}` };
-  }
-  const token = await getSystemSettingValue([
-    'LINE_CHANNEL_ACCESS_TOKEN',
-    'LINE Channel Access Token',
-    'LINE Messaging API Token',
-    'LINE Access Token',
-    'LINE Bot Access Token',
-    'LINE_TOKEN'
-  ]);
+  // One canonical runtime variable is the only Messaging API credential source.
+  // Never fall back to an older alias or a browser-readable Firestore setting,
+  // because that could silently send through the retired Official Account.
+  const token = clean(process.env.LINE_CHANNEL_ACCESS_TOKEN || '');
   return token
-    ? { token, configured: true, source: 'firestore:systemSettings' }
+    ? { token, configured: true, source: 'env:LINE_CHANNEL_ACCESS_TOKEN' }
     : { token: '', configured: false, source: '' };
 }
 
@@ -2135,10 +2113,22 @@ exports.rentalCompleteReturnHttp = httpEndpoint(async (data) => {
   return { contractId, status: '已退租', queueId: notifyResult.queueIds[0] || '', notificationResult: notifyResult };
 });
 
+function validLineWebhookSignature(req) {
+  const secret = normalizeText(LINE_CHANNEL_SECRET.value() || process.env.LINE_CHANNEL_SECRET);
+  const actual = normalizeText(req && req.headers && req.headers['x-line-signature']);
+  const rawBody = req && req.rawBody;
+  if (!secret || !actual || !rawBody) return false;
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
+  const left = Buffer.from(actual);
+  const right = Buffer.from(expected);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
 exports.lineWebhook = onRequest(
   {
     region: 'us-central1',
-    cors: false
+    cors: false,
+    secrets: [LINE_CHANNEL_SECRET]
   },
   async (req, res) => {
     try {
@@ -2149,6 +2139,11 @@ exports.lineWebhook = onRequest(
 
       if (req.method !== 'POST') {
         res.status(405).send('Method Not Allowed');
+        return;
+      }
+
+      if (!validLineWebhookSignature(req)) {
+        res.status(401).send('Invalid LINE signature');
         return;
       }
 

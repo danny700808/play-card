@@ -458,19 +458,19 @@ test('teacher utility summary matches the linked teacher and excludes completed 
       { __id: 'contract-signed', employeeId: 'E-1', status: 'signed' },
       { __id: 'contract-other', employeeId: 'E-2', status: 'pending' }
     ],
-    announcements: [
-      { __id: 'announcement-all', published: true, audience: ['all'], title: '全部公告', updatedAtText: '2026-08-06 09:00' },
-      { __id: 'announcement-external', published: true, audience: ['external'], title: '外聘公告', updatedAtText: '2026-08-06 10:00' },
-      { __id: 'announcement-target', published: true, audience: ['external'], targetTeacherIds: ['T-1'], title: '指定公告' },
-      { __id: 'announcement-staff', published: true, audience: ['staff'], title: '員工公告' },
-      { __id: 'announcement-draft', published: false, audience: ['external'], title: '草稿' },
-      { __id: 'announcement-other', published: true, audience: ['external'], targetEmployeeIds: ['E-2'], title: '其他人' }
+    externalTeacherAnnouncementsV2: [
+      { __id: 'announcement-all', systemVersion: 'external-teacher-work-v2', published: true, audience: ['all'], title: '全部公告', updatedAtText: '2026-08-06 09:00' },
+      { __id: 'announcement-external', systemVersion: 'external-teacher-work-v2', published: true, audience: ['external'], title: '外聘公告', updatedAtText: '2026-08-06 10:00' },
+      { __id: 'announcement-target', systemVersion: 'external-teacher-work-v2', published: true, audience: ['external'], targetTeacherIds: ['T-1'], title: '指定公告' },
+      { __id: 'announcement-staff', systemVersion: 'external-teacher-work-v2', published: true, audience: ['staff'], title: '員工公告' },
+      { __id: 'announcement-draft', systemVersion: 'external-teacher-work-v2', published: false, audience: ['external'], title: '草稿' },
+      { __id: 'announcement-other', systemVersion: 'external-teacher-work-v2', published: true, audience: ['external'], targetEmployeeIds: ['E-2'], title: '其他人' }
     ],
-    tasks: [
-      { __id: 'task-1', assigneeId: 'E-1', status: '待處理' },
-      { __id: 'task-email', assigneeEmail: 'teacher@example.com', status: '退回重做' },
-      { __id: 'task-done', assigneeId: 'E-1', status: '已完成' },
-      { __id: 'task-other', assigneeId: 'E-2', status: '待處理' }
+    externalTeacherTasksV2: [
+      { __id: 'task-1', systemVersion: 'external-teacher-work-v2', assigneeId: 'E-1', status: '待處理' },
+      { __id: 'task-email', systemVersion: 'external-teacher-work-v2', assigneeEmail: 'teacher@example.com', status: '退回重做' },
+      { __id: 'task-done', systemVersion: 'external-teacher-work-v2', assigneeId: 'E-1', status: '已完成' },
+      { __id: 'task-other', systemVersion: 'external-teacher-work-v2', assigneeId: 'E-2', status: '待處理' }
     ],
     teacherGoods: [
       { __id: 'goods-1', enabled: true, name: '琴弦', updatedAtText: '2026-08-06 09:00' },
@@ -521,7 +521,7 @@ test('teacher utility summary matches the linked teacher and excludes completed 
   assert.equal(first.goodsRevision, second.goodsRevision);
   assert.equal(first.goodsAttentionRevision, second.goodsAttentionRevision);
 
-  collections.announcements[0].title = '全部公告（更新）';
+  collections.externalTeacherAnnouncementsV2[0].title = '全部公告（更新）';
   const changedHelpers = loadHelpers(collections);
   const changed = await changedHelpers.__pendingSummary(resolved, { teacherId: 'T-1' });
   assert.notEqual(first.announcementRevision, changed.announcementRevision);
@@ -540,8 +540,8 @@ test('teacher utility summary matches the linked teacher and excludes completed 
 test('one unavailable pending collection does not fail the teacher utility login summary', async () => {
   const helpers = loadHelpers({
     teacherContractAssignments: [],
-    announcements: new Error('temporary Firestore error'),
-    tasks: [{ __id: 'task-1', assigneeId: 'E-1', status: '待處理' }],
+    externalTeacherAnnouncementsV2: new Error('temporary Firestore error'),
+    externalTeacherTasksV2: [{ __id: 'task-1', systemVersion: 'external-teacher-work-v2', assigneeId: 'E-1', status: '待處理' }],
     teacherGoods: [],
     teacherGoodsInquiry: []
   });
@@ -554,4 +554,35 @@ test('one unavailable pending collection does not fail the teacher utility login
   assert.deepEqual(summary.unavailableSections, ['announcements']);
   assert.equal(summary.announcementCount, 0);
   assert.equal(summary.taskCount, 1);
+});
+
+test('daily pending summary includes all-external tasks and clears read or completed V2 work per teacher', async () => {
+  const collections = {
+    teacherContractAssignments: [],
+    externalTeacherAnnouncementsV2: [
+      { __id: 'ann-read', systemVersion: 'external-teacher-work-v2', published: true, audience: ['external'], title: '已讀' },
+      { __id: 'ann-reply', systemVersion: 'external-teacher-work-v2', published: true, audience: ['external'], requireReply: true, title: '待回覆' }
+    ],
+    externalTeacherAnnouncementViewsV2: [
+      { __id: 'ann-read__E-1', announcementId: 'ann-read', employeeId: 'E-1', readAt: '2026-08-08' },
+      { __id: 'ann-reply__E-1', announcementId: 'ann-reply', employeeId: 'E-1', readAt: '2026-08-08', replyText: '' }
+    ],
+    externalTeacherTasksV2: [
+      { __id: 'task-all-pending', systemVersion: 'external-teacher-work-v2', assigneeMode: 'all_external', assigneeIds: ['E-1'], status: 'pending' },
+      { __id: 'task-all-done', systemVersion: 'external-teacher-work-v2', assigneeMode: 'all_external', assigneeIds: ['E-1'], status: 'pending' },
+      { __id: 'task-before-this-teacher', systemVersion: 'external-teacher-work-v2', assigneeMode: 'all_external', assigneeIds: ['E-2'], status: 'pending' }
+    ],
+    externalTeacherTaskResponsesV2: [
+      { __id: 'task-all-done__E-1', taskId: 'task-all-done', employeeId: 'E-1', status: 'completed' }
+    ],
+    teacherGoods: [],
+    teacherGoodsInquiry: []
+  };
+  const summary = await loadHelpers(collections).__pendingSummary({
+    employeeId: 'E-1',
+    profileComplete: true,
+    user: { id: 'E-1', employeeId: 'E-1', identityType: 'external', email: 'teacher@example.com' }
+  }, { teacherId: 'T-1' });
+  assert.equal(summary.announcementCount, 1, '已讀的一般公告消失，但尚未回覆的公告仍需提醒');
+  assert.equal(summary.taskCount, 1, '全體事項需依每位老師自己的完成紀錄判斷');
 });

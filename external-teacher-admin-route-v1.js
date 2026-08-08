@@ -22,6 +22,7 @@
 
   function configureAnnouncement() {
     if (page !== 'announcement-admin.html' || params.get('audience') !== 'external') return;
+    document.title = '外聘老師公告管理';
     const all = document.getElementById('audAll');
     const staff = document.getElementById('audStaff');
     const parttime = document.getElementById('audParttime');
@@ -37,7 +38,24 @@
     const title = document.querySelector('.title');
     if (title) title.textContent = '外聘老師公告管理';
     const desc = document.querySelector('.admin-card .section-desc');
-    if (desc) desc.textContent = '此入口預設只發布給外聘老師；需要改成其他對象時仍可自行調整。';
+    if (desc) desc.textContent = '此入口固定只發布給外聘老師；舊版公告不會自動混入。';
+    const publishDesc = document.getElementById('announcementPublishDesc');
+    if (publishDesc) publishDesc.textContent = '需要回覆時，老師端才會出現回覆框；不需要回覆時只顯示內容與附件。';
+    const attachmentDesc = document.getElementById('announcementAttachmentDesc');
+    if (attachmentDesc) attachmentDesc.textContent = '附件保存到新版外聘老師公告區，不會寫回舊版公告資料。';
+    const category = document.getElementById('categoryInput');
+    if (category) {
+      [...category.options].forEach(function (option) {
+        if (!['一般公告', '重要公告'].includes(option.value)) option.remove();
+      });
+      if (!['一般公告', '重要公告'].includes(category.value)) category.value = '一般公告';
+    }
+    const audienceBox = document.getElementById('audienceOptionBox');
+    if (audienceBox) {
+      audienceBox.hidden = true;
+      if (audienceBox.parentElement) audienceBox.parentElement.style.gridTemplateColumns = 'minmax(0,1fr)';
+    }
+    external.disabled = true;
   }
 
   function configureTask() {
@@ -46,7 +64,25 @@
     const section = document.querySelector('#adminWrap .section-title');
     if (section) section.innerHTML = '<span class="num">1</span>外聘老師協助事項';
     const assignee = document.querySelector('label[for="assigneeId"]');
-    if (assignee) assignee.textContent = '外聘老師';
+    if (assignee) assignee.textContent = '負責人';
+    const assigneeSelect = document.getElementById('assigneeId');
+    if (assigneeSelect && !assigneeSelect.querySelector('option[value="__ALL_EXTERNAL__"]')) {
+      const allExternal = document.createElement('option');
+      allExternal.value = '__ALL_EXTERNAL__';
+      allExternal.textContent = '全體外聘老師（公告）';
+      assigneeSelect.prepend(allExternal);
+      assigneeSelect.value = '__ALL_EXTERNAL__';
+    }
+    const dueType = document.getElementById('dueType');
+    const dueTime = document.getElementById('dueTime');
+    const title = document.getElementById('taskTitle');
+    if (dueType && !(title && String(title.value || '').trim())) dueType.value = 'none';
+    if (dueTime && dueType && dueType.value === 'none') dueTime.value = '';
+    ['needReport', 'allowComment', 'allowRedo', 'needDoneFile'].forEach(function (id) {
+      const node = document.getElementById(id);
+      if (node && !(title && String(title.value || '').trim())) node.checked = false;
+    });
+    if (typeof global.renderDueFields === 'function') global.renderDueFields();
   }
 
   function configureEmployeeAdmin(attempt) {

@@ -69,15 +69,28 @@ async function api(action, payload={}){
     getTeacherContracts:true,
     getTeacherContractStatus:true,
     submitTeacherContractSignature:true,
-    resendTeacherContractPdf:true
+    resendTeacherContractPdf:true,
+    getExternalTeacherWorkAssignees:true
   };
+  const externalTeacherWorkActions = new Set([
+    'getExternalTeacherWorkAssignees',
+    'getAnnouncementAdminList','getAnnouncements','saveAnnouncement','toggleAnnouncement','deleteAnnouncement','submitAnnouncementReply',
+    'createTask','getTasks','getUnifiedWorkItems','completeUnifiedWorkItem','completeTask','markUnifiedWorkItemRedo','markTaskRedo','deleteTask'
+  ]);
+  const apiUser = getUser() || {};
+  const externalTeacherWorkScope = payload && payload.workScope === 'external-teacher-v2' ||
+    apiUser.portalSessionBridge === true || isExternalTeacher(apiUser);
+  if(externalTeacherWorkScope && externalTeacherWorkActions.has(action)) firebaseOnlyActions[action] = true;
+  const firebaseOnlyError = externalTeacherWorkScope && externalTeacherWorkActions.has(action)
+    ? '新版外聘老師資料服務目前無法連線；為避免混入舊資料，系統不會改走舊版服務。'
+    : 'Firebase 尚未回應此薪資投保功能';
   // Firebase 第二階段：讀取型資料優先走 Firebase；薪資/投保相關資料已正式切換為 Firebase-only。
   try{
     if(window.YZFirebase && typeof window.YZFirebase.handleApi === 'function'){
       const fbRes = await window.YZFirebase.handleApi(action, payload || {});
       if(fbRes) return fbRes;
     }
-    if(firebaseOnlyActions[action]) throw new Error('Firebase 尚未回應此薪資投保功能');
+    if(firebaseOnlyActions[action]) throw new Error(firebaseOnlyError);
   }catch(firebaseErr){
     if(firebaseOnlyActions[action]){
       console.warn('[Firebase only action failed]', action, firebaseErr);
@@ -85,7 +98,7 @@ async function api(action, payload={}){
     }
     console.warn('[Firebase read fallback to GS]', action, firebaseErr);
   }
-  if(firebaseOnlyActions[action]) throw new Error('薪資與投保設定目前只允許使用 Firebase / Firestore，不再回退舊系統。');
+  if(firebaseOnlyActions[action]) throw new Error(firebaseOnlyError);
   const apiUrl=getApiUrl();
   if(!apiUrl) throw new Error('尚未設定 API 網址');
   const res=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});

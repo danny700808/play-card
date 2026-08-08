@@ -90,7 +90,6 @@ service cloud.firestore {
         'externalTeacherProfiles',
         'externalTeacherContracts',
         'externalTeacherContractTemplates',
-        'externalTeacherLineBindings',
         'externalTeacherFiles',
 
         // 老師合約 / 商品 / 官網商品快取
@@ -173,6 +172,13 @@ service cloud.firestore {
     match /coursePortalAttendanceCancellationRequests/{document=**} { allow read, write: if false; }
     match /coursePortalTeacherAttendancePayroll/{document=**} { allow read, write: if false; }
     match /coursePortalLessonContactPosts/{document=**} { allow read, write: if false; }
+    // 外聘老師 V2 使用獨立集合，全部經 Cloud Functions 驗證；舊員工公告／任務不會混入。
+    match /externalTeacherAnnouncementsV2/{document=**} { allow read, write: if false; }
+    match /externalTeacherAnnouncementViewsV2/{document=**} { allow read, write: if false; }
+    match /externalTeacherTasksV2/{document=**} { allow read, write: if false; }
+    match /externalTeacherTaskResponsesV2/{document=**} { allow read, write: if false; }
+    // 舊 EXT 專用索引只供管理者查核；新版外聘工作通知只接受 employees／課務入口綁定。
+    match /externalTeacherLineBindings/{document=**} { allow read, write: if isManagerAuth(); }
     // 老師身分證字號與私密附件索引只能由驗證過的 Cloud Functions 存取。
     match /teacherPrivateProfiles/{document=**} { allow read, write: if false; }
     match /teacherContractPrivateSnapshots/{document=**} { allow read, write: if false; }

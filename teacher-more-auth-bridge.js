@@ -213,6 +213,8 @@
 
   function blockIfPortalOnly(options) {
     options = options || {};
+    const params = new URLSearchParams(global.location && global.location.search || '');
+    if (params.get('mode') === 'admin' || params.get('source') === 'teacher-hub') return false;
     const token = readStorage(TEACHER_PORTAL_SESSION_KEY);
     if (!token) {
       const user = readEmployeeUser();
