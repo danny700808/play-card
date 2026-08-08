@@ -35,7 +35,7 @@ test('teacher other pages share the compact utility theme and explicit auth boun
   for (const file of pages) {
     const source = read(file);
     assert.match(source, /class="[^"]*teacher-utility-page/);
-    assert.match(source, /teacher-more-pages\.css\?v=20260730-teacher-more-v1/);
+    assert.match(source, /teacher-more-pages\.css\?v=20260808-announcement-layout-v1/);
     if (file === 'contract.html') {
       assert.match(source, /firebase-functions-compat\.js/);
       assert.match(source, /teacher-contract\.js\?v=20260808-contract-profile-gate-v1/);
@@ -254,6 +254,10 @@ test('outer login presents LINE first and keeps manager password login available
 test('media and inquiry regressions stay fixed', () => {
   const announcements = read('announcements.html');
   assert.match(announcements, /function usableAssets/);
+  assert.match(announcements, /function linkifyText/);
+  assert.match(announcements, /最近 14 天公告/);
+  assert.match(announcements, /兩週前的歷史公告/);
+  assert.match(announcements, /grid-template-columns:minmax\(0,1fr\)!important/);
   assert.match(announcements, /object-fit:cover/);
   assert.match(read('teacher-more-pages.css'), /body\.utility-announcements \.image-grid img[\s\S]*object-fit: contain/);
 
@@ -271,6 +275,22 @@ test('media and inquiry regressions stay fixed', () => {
   assert.match(goods, /id="askNeedBy" type="date"/);
   assert.match(goods, /const indexed=rows\.map\(\(row,index\)=>\(\{row,index\}\)\)/);
   assert.match(goods, /teacherRecordCard_\(row,index,true\)/);
+});
+
+test('teacher utility pages share one compact back and logout header', () => {
+  [
+    'announcements.html', 'task.html', 'teacher-goods.html', 'forms-hub.html',
+    'teacher-profile.html', 'contract.html', 'gift-point-card.html',
+    'employment-certificate.html', 'teaching-certificate.html'
+  ].forEach((name) => {
+    assert.match(read(name), /data-yz-teacher-nav/, `${name} 缺少老師統一頁首`);
+  });
+  const nav = read('global-nav.js');
+  const css = read('global-nav.css');
+  assert.match(nav, /back\.textContent='回老師課務'/);
+  assert.match(nav, /course-portal\.html\?method=line&role=teacher/);
+  assert.match(css, /\.yz-global-nav\.yz-teacher-nav/);
+  assert.match(css, /min-height:40px/);
 });
 
 test('profile explains automatic LINE login and Email fallback without legacy notification choices', () => {

@@ -12,6 +12,7 @@ const REGION = 'us-central1';
 const VERSION = 'external-teacher-work-v2';
 const SOURCE = 'firestore-canonical-external-teacher-work';
 const ALL_EXTERNAL = '__ALL_EXTERNAL__';
+const ANNOUNCEMENT_RECENT_DAYS = 14;
 const COLLECTIONS = Object.freeze({
   announcements: 'externalTeacherAnnouncementsV2',
   announcementViews: 'externalTeacherAnnouncementViewsV2',
@@ -72,6 +73,36 @@ function iso(value) {
 function dateKey(value) {
   const match = clean(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[1]}-${match[2]}-${match[3]}` : '';
+}
+
+function taipeiDateKey(value = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(value instanceof Date ? value : new Date(value));
+  const fields = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${fields.year}-${fields.month}-${fields.day}`;
+}
+
+function shiftDateKey(value, days) {
+  const key = dateKey(value);
+  if (!key) return '';
+  const [year, month, day] = key.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + Number(days || 0), 12));
+  return date.toISOString().slice(0, 10);
+}
+
+function announcementRecentCutoff(now = new Date()) {
+  return shiftDateKey(taipeiDateKey(now), -(ANNOUNCEMENT_RECENT_DAYS - 1));
+}
+
+function announcementDisplayDate(row) {
+  const source = row || {};
+  return dateKey(source.publishDate) || dateKey(iso(source.createdAt || source.updatedAt));
+}
+
+function isRecentAnnouncement(row, now = new Date()) {
+  const published = announcementDisplayDate(row);
+  return !published || published >= announcementRecentCutoff(now);
 }
 
 function safeId(value) {
@@ -478,9 +509,7 @@ async function teacherAnnouncementList(data, identity) {
   }
   let rows = docs.map((doc) => announcementJson(doc.id, doc.data(), viewMap.get(doc.id), 0));
   const history = bool(data.historyMode) || clean(data.historyMode) === '是';
-  rows = rows.filter((row) => history
-    ? row.isRead && (!row.requireReply || Boolean(row.myReply))
-    : !row.isRead || (row.requireReply && !row.myReply));
+  rows = rows.filter((row) => history ? !isRecentAnnouncement(row) : isRecentAnnouncement(row));
   const start = dateKey(data.startDate || data.historyStart);
   const end = dateKey(data.endDate || data.historyEnd);
   if (history && start) rows = rows.filter((row) => row.publishDate >= start);
@@ -837,6 +866,7 @@ module.exports = {
   VERSION,
   SOURCE,
   ALL_EXTERNAL,
+  ANNOUNCEMENT_RECENT_DAYS,
   COLLECTIONS,
   registerExternalTeacherWork,
   pendingCountsForIdentity,
@@ -847,5 +877,7 @@ module.exports = {
   employeeStatusLabel,
   normalizeTaskStatus,
   taskMatchesIdentity,
-  announcementMatchesIdentity
+  announcementMatchesIdentity,
+  announcementRecentCutoff,
+  isRecentAnnouncement
 };

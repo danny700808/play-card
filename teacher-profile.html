@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>我的資料｜老師課務</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="teacher-more-pages.css?v=20260730-teacher-more-v1">
+  <link rel="stylesheet" href="teacher-more-pages.css?v=20260808-announcement-layout-v1">
+  <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
   <style>
     :root{--profile-green:#1f6b4f;--profile-soft:#edf7f2}
     body{background:#eef4f1;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
@@ -60,9 +61,9 @@
 </head>
 <body>
   <main class="teacher-profile-shell">
-    <nav class="profile-nav" aria-label="頁面操作">
-      <button type="button" id="profileBackBtn">回老師課務</button>
-      <button type="button" class="logout" id="profileLogoutBtn">登出</button>
+    <nav class="yz-global-nav yz-teacher-nav" data-yz-teacher-nav aria-label="頁面操作">
+      <button class="yz-nav-btn yz-nav-back" type="button" id="profileBackBtn">回老師課務</button>
+      <button class="yz-nav-btn yz-nav-logout" type="button" id="profileLogoutBtn">登出</button>
     </nav>
 
     <section class="profile-card">

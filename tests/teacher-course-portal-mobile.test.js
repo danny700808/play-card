@@ -12,10 +12,12 @@ const css = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.css'), 'ut
 
 new vm.Script(source, { filename: 'teacher-course-portal-v8.js' });
 
-const header = html.slice(html.indexOf('<header class="portal-head">'), html.indexOf('</header>'));
-assert(header.includes('id="teacherWelcomeTitle"'), '老師頁首缺少可更新的歡迎標題');
-assert(source.includes('`老師課務｜歡迎 ${name}老師`'), '老師頁首未顯示老師姓名');
-assert(!/(手機|phone|email)/i.test(header), '老師登入後頁首不應顯示手機或 Email');
+const teacherNav = html.slice(html.indexOf('id="teacherPortalNav"'), html.indexOf('</nav>', html.indexOf('id="teacherPortalNav"')));
+assert(teacherNav.includes('id="teacherHomeBtn"') && teacherNav.includes('回老師課務'), '老師頁首缺少固定的回老師課務按鈕');
+assert(teacherNav.includes('id="logoutBtn"') && teacherNav.includes('>登出<'), '老師頁首缺少精簡登出按鈕');
+assert.strictEqual((teacherNav.match(/yz-nav-btn/g) || []).length, 2, '老師頁首必須只有兩個同格式按鈕');
+assert(!html.includes('teacherWelcomeTitle'), '老師登入後不應再顯示重複的歡迎姓名標題');
+assert(!source.includes('老師課務｜歡迎'), '老師程式不應再動態加入歡迎姓名');
 
 assert(!html.includes('id="weekPicker"'), '手機課表不應顯示日期／星期選擇器');
 assert(!source.includes("getElementById('weekPicker')"), '老師課表仍保留日期跳轉邏輯');
@@ -54,7 +56,8 @@ assert(source.includes('coursePortalTeacherStopStudent') && source.includes('con
 assert(html.includes('id="payrollMonth" type="month" min="2026-07"'), '薪資查詢未限制民國 115 年 7 月起');
 assert(source.includes("PAYROLL_MIN_MONTH = '2026-07'"), '薪資月份前端沒有再次驗證最早月份');
 
-const tabs = html.slice(html.indexOf('<nav class="tabs teacher-bottom-tabs"'), html.indexOf('</nav>'));
+const tabsStart = html.indexOf('<nav class="tabs teacher-bottom-tabs"');
+const tabs = html.slice(tabsStart, html.indexOf('</nav>', tabsStart));
 assert.strictEqual((tabs.match(/<(?:button|a)\b/g) || []).length, 5, '老師頁底部必須維持五個功能頁籤');
 assert(!html.includes('id="teacherProfileAlert"'), '老師首頁不應常駐顯示未完成資料明細');
 assert.strictEqual((html.match(/id="teacherDailyReminderBackdrop"/g) || []).length, 1, '老師首頁必須只有一個每日合併提醒視窗');
@@ -84,7 +87,7 @@ assert(source.includes("'goods-attention'") && source.includes('summary.goodsAtt
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
 assert(html.includes('teacher-course-portal-v8.css?v=20260806-daily-reminder-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260807-teacher-profile-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260808-teacher-nav-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');

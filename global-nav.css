@@ -54,6 +54,51 @@
 .yz-nav-logout:active{background:#a93631!important}
 .yz-nav-btn:focus-visible{outline:3px solid rgba(92,226,175,.35);outline-offset:2px}
 
+/* 老師課務：所有頁面固定使用相同、較精簡的返回／登出列。 */
+.yz-global-nav.yz-teacher-nav{
+  position:sticky;
+  top:6px;
+  width:min(calc(100% - 20px),760px);
+  margin:8px auto 0;
+  padding:5px;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:6px;
+  background:rgba(247,250,248,.94);
+  border:1px solid #d8e4de;
+  border-radius:14px;
+  box-shadow:0 7px 18px rgba(26,72,54,.08);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+.yz-global-nav.yz-teacher-nav .yz-nav-btn{
+  box-sizing:border-box;
+  width:100%;
+  min-width:0;
+  min-height:40px;
+  padding:8px 10px;
+  border:1px solid #cbd9d2;
+  border-radius:10px;
+  background:#fff!important;
+  color:#245541!important;
+  -webkit-text-fill-color:#245541!important;
+  font-size:14px;
+  font-weight:900;
+}
+.yz-global-nav.yz-teacher-nav .yz-nav-back:active{background:#edf7f2!important}
+.yz-global-nav.yz-teacher-nav .yz-nav-logout{
+  border-color:#eccaca;
+  background:#fff8f8!important;
+  color:#a33f3f!important;
+  -webkit-text-fill-color:#a33f3f!important;
+}
+.yz-global-nav.yz-teacher-nav .yz-nav-logout:active{background:#fff0ef!important}
+.teacher-course-app .portal-shell>.yz-global-nav.yz-teacher-nav,
+.teacher-profile-shell>.yz-global-nav.yz-teacher-nav,
+.contract-shell>.yz-global-nav.yz-teacher-nav{
+  width:100%;
+  margin:0 0 10px;
+}
+
 /* 只在已登入的內部頁套用，不影響客戶公開頁 */
 body.yz-internal-theme{
   --bg:var(--yz-bg);

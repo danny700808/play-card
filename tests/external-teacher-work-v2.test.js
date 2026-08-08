@@ -23,6 +23,22 @@ test('external teacher V2 uses collections that cannot collide with legacy staff
   assert.match(source, /repliesByAnnouncement/);
 });
 
+test('teacher announcement list keeps the latest 14 calendar days visible', () => {
+  assert.equal(work.ANNOUNCEMENT_RECENT_DAYS, 14);
+  const now = new Date('2026-08-08T05:00:00.000Z');
+  assert.equal(work.announcementRecentCutoff(now), '2026-07-26');
+  assert.equal(work.isRecentAnnouncement({ publishDate: '2026-08-08' }, now), true);
+  assert.equal(work.isRecentAnnouncement({ publishDate: '2026-07-26' }, now), true);
+  assert.equal(work.isRecentAnnouncement({ publishDate: '2026-07-25' }, now), false);
+
+  const source = fs.readFileSync(path.join(root, 'functions', 'externalTeacherWork.js'), 'utf8');
+  const listStart = source.indexOf('async function teacherAnnouncementList');
+  const listEnd = source.indexOf('async function submitAnnouncementReply', listStart);
+  const listFlow = source.slice(listStart, listEnd);
+  assert.match(listFlow, /history \? !isRecentAnnouncement\(row\) : isRecentAnnouncement\(row\)/);
+  assert.doesNotMatch(listFlow, /row\.isRead\s*&&/);
+});
+
 test('profile drafts remain visible but terminal and replaced people do not', () => {
   assert.equal(work.inactiveEmployee({
     active: false,

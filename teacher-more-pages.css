@@ -181,6 +181,18 @@ body.utility-announcements .image-grid a {
   background: #fff;
 }
 
+body.teacher-utility-page.utility-announcements .cards {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  width: 100% !important;
+}
+
+body.teacher-utility-page.utility-announcements .cardx {
+  box-sizing: border-box;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
 body.utility-announcements .image-grid img {
   width: 100%;
   height: auto;

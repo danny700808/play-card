@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>我的合約｜老師課務</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="teacher-more-pages.css?v=20260730-teacher-more-v1">
+  <link rel="stylesheet" href="teacher-more-pages.css?v=20260808-announcement-layout-v1">
+  <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
   <style>
     :root{--contract-green:#1f6b4f;--contract-soft:#edf7f2;--contract-line:#d4e1da;--contract-ink:#183b2f}
     *{box-sizing:border-box}body{margin:0;background:#eef4f1;color:var(--contract-ink);padding-bottom:calc(30px + env(safe-area-inset-bottom));font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",sans-serif}
@@ -19,7 +20,7 @@
     .preview-card{overflow:hidden}.preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.preview{overflow:auto;background:#edf0ee;border-radius:14px;padding:12px}.preview-page{position:relative;width:210mm;min-height:297mm;margin:0 auto 12px;padding:15mm 14mm;background:#fff;color:#202522;box-shadow:0 3px 15px rgba(0,0,0,.12);font-family:"Noto Serif TC","PMingLiU",serif}.preview-title{text-align:center;font-size:24px;font-weight:900;letter-spacing:2px;margin:0 0 14px}.preview-meta,.preview-body{font-size:14px;line-height:1.85}.preview-body{white-space:normal}.article{margin-bottom:10px}.article-title{font-weight:900}.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}.sign-party{border:1px solid #d9dfdb;border-radius:10px;padding:12px;min-height:150px}.signature-view{height:75px;margin-top:10px;border:1px solid #d8dedb;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#89928e}.signature-view img{max-width:100%;max-height:100%}.page-no{position:absolute;right:14mm;bottom:10mm;color:#8a938f;font-size:11px}
     @media(max-width:900px){.contract-layout{grid-template-columns:1fr}.preview{padding:8px}.preview-page{transform-origin:top left;margin:0 0 -135mm;transform:scale(.52)}}
     @media(max-width:520px){.contract-shell{width:min(100% - 16px,1180px);padding-top:8px}.contract-card{padding:14px;border-radius:16px}.contract-card h1{font-size:24px}.summary-grid,.sign-actions{grid-template-columns:1fr}.submit,.summary-grid .wide{grid-column:auto}.preview-page{margin-bottom:-160mm;transform:scale(.43)}}
-    @media print{body{background:#fff}.contract-nav,.side,.preview-head{display:none!important}.contract-shell,.contract-layout,.preview-card,.preview{display:block;width:auto;margin:0;padding:0;border:0;box-shadow:none;background:#fff}.preview-page{width:210mm;min-height:297mm;transform:none!important;margin:0;box-shadow:none;page-break-after:always}.preview-page:last-child{page-break-after:auto}@page{size:A4 portrait;margin:0}}
+    @media print{body{background:#fff}.contract-nav,.yz-teacher-nav,.side,.preview-head{display:none!important}.contract-shell,.contract-layout,.preview-card,.preview{display:block;width:auto;margin:0;padding:0;border:0;box-shadow:none;background:#fff}.preview-page{width:210mm;min-height:297mm;transform:none!important;margin:0;box-shadow:none;page-break-after:always}.preview-page:last-child{page-break-after:auto}@page{size:A4 portrait;margin:0}}
   </style>
   <script src="config.js?v=20260808-contract-profile-gate-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -27,9 +28,9 @@
 </head>
 <body class="teacher-utility-page utility-contract">
   <main class="contract-shell" data-teacher-utility-root>
-    <nav class="contract-nav" aria-label="頁面操作">
-      <button type="button" id="contractBackBtn">回老師課務</button>
-      <button type="button" class="logout" id="contractLogoutBtn">登出</button>
+    <nav class="yz-global-nav yz-teacher-nav" data-yz-teacher-nav aria-label="頁面操作">
+      <button class="yz-nav-btn yz-nav-back" type="button" id="contractBackBtn">回老師課務</button>
+      <button class="yz-nav-btn yz-nav-logout" type="button" id="contractLogoutBtn">登出</button>
     </nav>
     <section class="contract-card">
       <h1>我的合約</h1>
