@@ -28,6 +28,12 @@ test('teacher profile is a stable standalone page, not a profile-and-contract wi
   assert.match(page, /id="profileMailingAddress"/);
   assert.match(page, /id="profileTeachingList"/);
   assert.match(runtime, /teaching-level/);
+  assert.match(runtime, /Object\.freeze\(\['初學', '入門', '普通', '良好', '專業', '專精'\]\)/);
+  assert.match(runtime, /document\.createElement\('select'\)/);
+  assert.match(runtime, /請選擇程度/);
+  assert.match(runtime, /source\.proficiency\) \|\| '普通'/);
+  assert.doesNotMatch(runtime, /level\.placeholder\s*=|例如：初階～進階/);
+  assert.match(page, /teacher-profile\.js\?v=20260808-teaching-level-select-v1/);
   assert.match(page, /LINE/);
   assert.match(page, /Email/);
   assert.match(page, /profile-title-row[\s\S]*profileLineStatus[\s\S]*profileEmailStatus/);

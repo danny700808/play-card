@@ -3,6 +3,7 @@
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const WATERMARK = '僅供柚子樂器外聘教師資料建檔使用';
+  const TEACHING_LEVELS = Object.freeze(['初學', '入門', '普通', '良好', '專業', '專精']);
   let currentResult = null;
   let saving = false;
   let storedIdentityFileCount = 0;
@@ -84,11 +85,27 @@
     levelField.className = 'field';
     const levelLabel = document.createElement('label');
     levelLabel.textContent = '程度';
-    const level = document.createElement('input');
+    const level = document.createElement('select');
     level.className = 'teaching-level';
-    level.maxLength = 30;
-    level.placeholder = '例如：初階～進階';
-    level.value = clean(source.level || source.degree || source.proficiency);
+    const savedLevel = clean(source.level || source.degree || source.proficiency) || '普通';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '請選擇程度';
+    placeholder.disabled = true;
+    level.appendChild(placeholder);
+    TEACHING_LEVELS.forEach(function (name) {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      level.appendChild(option);
+    });
+    if (savedLevel && !TEACHING_LEVELS.includes(savedLevel)) {
+      const legacyOption = document.createElement('option');
+      legacyOption.value = savedLevel;
+      legacyOption.textContent = `${savedLevel}（原資料）`;
+      level.appendChild(legacyOption);
+    }
+    level.value = savedLevel;
     levelField.append(levelLabel, level);
     const remove = document.createElement('button');
     remove.type = 'button';
