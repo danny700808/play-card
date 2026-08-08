@@ -25,6 +25,8 @@
     .profile-form{display:grid;gap:14px}
     .profile-form .field{margin:0}.profile-form label{display:block;font-weight:900;color:#253f35;margin-bottom:6px}
     .profile-form input,.profile-form textarea,.profile-form select{box-sizing:border-box;width:100%;font-size:16px;border-radius:13px}
+    .birth-select-row{display:grid;grid-template-columns:1.45fr 1fr 1fr;gap:8px}
+    .birth-select-row select{min-width:0;background:#fff}
     .section-heading{padding-top:5px;border-top:1px solid #e5ece8}.section-heading:first-child{border-top:0;padding-top:0}
     .section-heading h2{font-size:20px}.section-heading p{margin:4px 0 0;color:#6c7973;font-size:14px}
     .identity-grid{display:grid;grid-template-columns:1fr;gap:12px;padding:13px;border-radius:16px;background:#f8faf9;border:1px solid #e1e9e5}
@@ -35,7 +37,7 @@
     .required{color:#bb3c34;margin-left:3px}
     .field-help{font-size:13px;color:#6c7973;margin-top:5px;line-height:1.55}
     .file-state{margin-top:8px;padding:10px 12px;background:#f3f7f5;border-radius:12px;color:#496158;font-size:14px;font-weight:800}
-    .file-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .file-actions{display:grid;grid-template-columns:1fr;gap:10px}
     .file-action{display:flex!important;align-items:center;justify-content:center;min-height:48px;margin:0!important;border:1px solid #aac6b8;border-radius:13px;background:#f4fbf7;color:#1f6b4f;font-weight:900;cursor:pointer}
     .file-input-hidden{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}
     .form-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
@@ -52,6 +54,8 @@
       .teacher-profile-shell{width:min(100% - 16px,720px);padding-top:8px}
       .profile-card{padding:15px;border-radius:17px}.profile-card h1{font-size:24px}
       .form-actions,.file-actions{grid-template-columns:1fr}
+      .birth-select-row{grid-template-columns:1.35fr .9fr .9fr;gap:6px}
+      .birth-select-row select{padding-left:8px;padding-right:6px}
     }
   </style>
   <script src="config.js?v=20260808-person-master-v1"></script>
@@ -96,8 +100,14 @@
         <input id="profileEmail" name="email" type="email" autocomplete="email" maxlength="160">
       </div>
       <div class="field">
-        <label for="profileBirthDate">出生年月日<span class="required">*</span></label>
-        <input id="profileBirthDate" name="birthDate" type="date" autocomplete="bday">
+        <label for="profileBirthYear">出生年月日<span class="required">*</span></label>
+        <input id="profileBirthDate" name="birthDate" type="hidden">
+        <div class="birth-select-row" aria-label="出生年月日">
+          <select id="profileBirthYear" aria-label="出生年份"><option value="">年份</option></select>
+          <select id="profileBirthMonth" aria-label="出生月份"><option value="">月份</option></select>
+          <select id="profileBirthDay" aria-label="出生日期"><option value="">日期</option></select>
+        </div>
+        <div class="field-help">依序選擇年、月、日；手機可直接滑動選單。</div>
       </div>
       <div class="field">
         <label for="profileHouseholdAddress">戶籍地址<span class="required">*</span></label>
@@ -127,12 +137,10 @@
         <div class="field">
           <label>身分證明照片<span class="required">*</span></label>
           <div class="file-actions">
-            <label class="file-action" for="profileIdentityCamera">直接拍照</label>
-            <label class="file-action" for="profileIdentityFiles">選擇照片</label>
+            <label class="file-action" for="profileIdentityFiles">拍照或選擇照片</label>
           </div>
-          <input class="file-input-hidden" id="profileIdentityCamera" name="identityCamera" type="file" accept="image/*" capture="environment">
-          <input class="file-input-hidden" id="profileIdentityFiles" name="identityFiles" type="file" accept="image/*" multiple>
-          <div class="field-help">正反面最多 2 張。</div>
+          <input class="file-input-hidden" id="profileIdentityFiles" name="identityFiles" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif" multiple>
+          <div class="field-help">Android／Apple 手機會讓你選擇直接拍照或從相簿挑選；支援一般手機圖片，送出前會自動轉成 JPG。正反面最多 2 張。</div>
           <div class="file-state" id="profileFileState">尚未上傳</div>
         </div>
       </div>
@@ -155,6 +163,6 @@
       </div>
     </section>
   </main>
-  <script src="teacher-profile.js?v=20260808-teaching-level-select-v1"></script>
+  <script src="teacher-profile.js?v=20260808-mobile-profile-v2"></script>
 </body>
 </html>

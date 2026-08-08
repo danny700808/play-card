@@ -293,6 +293,24 @@ test('teacher utility pages share one compact back and logout header', () => {
   assert.match(css, /min-height:40px/);
 });
 
+test('gift point card is directly printable or shareable from a phone', () => {
+  const gift = read('gift-point-card.html');
+  const forms = read('forms-hub.html');
+  assert.match(gift, /id="printArea"[^>]*print-click-target[^>]*onclick="printOrShareGiftCard\(\)"/);
+  assert.match(gift, />列印／分享</);
+  assert.match(gift, />選擇印表機</);
+  assert.match(gift, /Apple AirPrint/);
+  assert.match(gift, /Android 系統列印/);
+  assert.match(gift, /html2canvas@1\.4\.1/);
+  assert.match(gift, /jspdf@2\.5\.1/);
+  assert.match(gift, /async function giftPointCardPdfBlob\(\)/);
+  assert.match(gift, /async function printOrShareGiftCard\(\)/);
+  assert.match(gift, /navigator\.share\(shareData\)/);
+  assert.match(gift, /async function downloadGiftPointCardPdf\(\)/);
+  assert.match(forms, /用手機選擇印表機/);
+  inlineScripts(gift).forEach((script, index) => new vm.Script(script, { filename: `gift-point-card-inline-${index}.js` }));
+});
+
 test('profile explains automatic LINE login and Email fallback without legacy notification choices', () => {
   const profile = read('profile.html');
   const client = read('firebase-client.js');

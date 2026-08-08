@@ -8,6 +8,17 @@
   <style>
     body{background:#f5f7fb}.wrap{max-width:1200px;margin:0 auto;padding:18px}.page-card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap}.mini-actions .btn{width:auto}.muted-tip{font-size:13px;color:#64748b;line-height:1.8}.sheet-scale-wrap{display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:8px;min-height:420px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px}.a4-sheet{width:210mm;min-height:297mm;background:#fff;box-shadow:0 10px 35px rgba(15,23,42,.12);box-sizing:border-box;padding:10mm 10mm 9mm;display:grid;grid-template-rows:1fr;margin:0 auto}.a4-main-card{position:relative;border:1.5px solid #9ec8b6;border-radius:20px;background:linear-gradient(135deg,#fff 0%,#fff 58%,#fff8d8 100%);padding:10mm 9mm 8mm;box-sizing:border-box;overflow:hidden;display:grid;grid-template-rows:auto auto 1fr auto;gap:5mm;min-height:100%}.a4-main-card:before{content:"";position:absolute;right:-18mm;top:-18mm;width:58mm;height:58mm;border-radius:50%;background:rgba(31,122,90,.10)}.a4-main-card:after{content:"♪";position:absolute;right:11mm;top:8mm;font-size:28px;color:rgba(31,122,90,.20);font-weight:900}.gift-cut{position:absolute;inset:2mm;border:1px dashed rgba(148,163,184,.55);border-radius:18px;pointer-events:none}.gift-head{position:relative;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.gift-title{font-size:30px;font-weight:950;letter-spacing:1px;color:#17324d;line-height:1.15;margin:0}.gift-subtitle{font-size:15px;color:#5f7086;font-weight:800;margin-top:4px;line-height:1.5}.gift-badge{border:1px solid #f1c453;background:#fff4bf;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:950;color:#7c4a03;white-space:nowrap;transform:rotate(-3deg)}.gift-info{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#334155;font-weight:800;position:relative}.gift-line-field{border-bottom:1px solid #94a3b8;min-height:20px;padding-bottom:2px;min-width:120px;flex:1 1 180px}.gift-points-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:2.4mm;align-content:start}.gift-point{aspect-ratio:1/1;border:1.5px solid #9ec8b6;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:rgba(31,122,90,.38);font-size:14px;font-weight:900;box-shadow:inset 0 0 0 2px rgba(31,122,90,.04)}.gift-rules{position:relative;border-top:1px dashed #bdd6c9;padding-top:4mm;color:#334155;font-size:12px;line-height:1.55;display:grid;gap:1.5mm}.gift-rules-title{font-weight:950;color:#17324d}@media(max-width:760px){.a4-sheet{transform:scale(.46);transform-origin:top left;margin-right:-115mm;margin-bottom:-160mm}.sheet-scale-wrap{justify-content:flex-start}.mini-actions .btn{width:100%}}@media print{html,body{margin:0!important;padding:0!important;background:#fff!important}body *{visibility:hidden!important}#printArea,#printArea *{visibility:visible!important}#printArea{position:absolute!important;left:0!important;top:0!important;width:210mm!important;margin:0!important;padding:0!important;background:#fff!important;box-shadow:none!important;border:none!important;overflow:visible!important}.sheet-scale-wrap{display:block!important;overflow:visible!important;padding:0!important;min-height:0!important}.a4-sheet{width:210mm!important;min-height:297mm!important;padding:10mm 10mm 9mm!important;margin:0!important;box-shadow:none!important;border:none!important;transform:none!important}.wrap,.page-card{padding:0!important;margin:0!important;border:0!important;box-shadow:none!important}.page-return-wrap,.preview-toolbar{display:none!important}@page{size:A4 portrait;margin:0}}
   </style>
+  <style>
+    .mobile-print-note{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin:0 0 14px;padding:13px 14px;border:1px solid #b8d8c9;border-radius:16px;background:#eef9f3;color:#245541;line-height:1.65}
+    .mobile-print-note b{display:block;font-size:16px}.mobile-print-note span{display:block;font-size:13px;margin-top:2px}
+    .print-click-target{cursor:pointer;touch-action:manipulation;position:relative}
+    .print-click-target:after{content:"點一下即可列印／分享";position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:3;border-radius:999px;background:rgba(23,50,77,.88);color:#fff;padding:7px 12px;font-size:13px;font-weight:900;white-space:nowrap;pointer-events:none;box-shadow:0 5px 14px rgba(15,23,42,.18)}
+    .print-click-target:focus-visible{outline:3px solid #1f7a5a;outline-offset:3px}
+    .gift-export-host{position:fixed;left:-10000px;top:0;width:210mm;background:#fff;z-index:-1;pointer-events:none}
+    .gift-export-host .a4-sheet{width:210mm!important;min-height:297mm!important;transform:none!important;margin:0!important;margin-right:0!important;margin-bottom:0!important;box-shadow:none!important}
+    @media(max-width:760px){.mobile-print-note{grid-template-columns:1fr}.mobile-print-note .btn{width:100%}.print-click-target:after{bottom:10px;font-size:12px}}
+    @media print{.print-click-target:after{display:none!important}}
+  </style>
   <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
 </head>
 <body onload="initPage()">
@@ -18,8 +29,9 @@
 
   <div class="wrap">
     <div class="page-card">
-      <div class="preview-toolbar"><div><h1 class="title" style="margin:0">集點卡</h1><div class="muted-tip">此頁只顯示預覽，不提供設定欄位。</div></div><div class="mini-actions"><button class="btn" type="button" onclick="window.print()">列印</button><button class="btn secondary" type="button" onclick="window.print()">另存新檔</button></div></div>
-      <div id="printArea" class="sheet-scale-wrap"></div>
+      <div class="preview-toolbar"><div><h1 class="title" style="margin:0">集點卡</h1><div class="muted-tip">A4 直式；手機也能直接開啟列印或分享。</div></div><div class="mini-actions"><button class="btn" type="button" data-gift-print-action onclick="printOrShareGiftCard()">列印／分享</button><button class="btn secondary" type="button" data-gift-print-action onclick="downloadGiftPointCardPdf()">下載 PDF</button></div></div>
+      <div class="mobile-print-note"><div><b>手機不必開電腦</b><span>點下面的集點卡，或按「列印／分享」；再從手機選單選擇「列印」。印表機需支援 Apple AirPrint、Android 系統列印或 Mopria。</span></div><button class="btn" type="button" data-gift-print-action onclick="printOrShareGiftCard()">選擇印表機</button></div>
+      <div id="printArea" class="sheet-scale-wrap print-click-target" role="button" tabindex="0" aria-label="點一下列印或分享集點卡" onclick="printOrShareGiftCard()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();printOrShareGiftCard();}"></div>
       <div id="msg" class="muted-tip" style="margin-top:10px"></div>
     </div>
   </div>
@@ -29,10 +41,52 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="firebase-client.js?v=20260802-security-phase1"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script>
     const DEFAULTS={cardTitle:'柚子樂器 集點卡',cardSubtitle:'學生兌換禮物專用',badgeText:'集滿可兌換禮物',fieldA:'姓名',fieldB:'課程',fieldC:'',rules:'1. 不可與其他優惠合併使用。\n2. 本卡遺失，點數一律作廢。\n3. 集點可選擇轉扭蛋，或兌換對應的集點禮物。'};
+    let giftPrintBusy=false;
     function esc(v){return String(v==null?'':v).trim().replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));}
     function render(data){data=Object.assign({},DEFAULTS,data||{}); const fields=[data.fieldA,data.fieldB,data.fieldC].filter(Boolean).map(x=>`<div class="gift-line-field">${esc(x)}：</div>`).join(''); const points=Array.from({length:100}).map((_,i)=>`<div class="gift-point">${(i%10)+1}</div>`).join(''); const rules=String(data.rules||'').split(/\n/).filter(Boolean).map(x=>`<div>${esc(x)}</div>`).join(''); document.getElementById('printArea').innerHTML=`<div class="a4-sheet"><div class="a4-main-card"><div class="gift-cut"></div><div class="gift-head"><div><h2 class="gift-title">${esc(data.cardTitle)}</h2><div class="gift-subtitle">${esc(data.cardSubtitle)}</div></div><div class="gift-badge">${esc(data.badgeText)}</div></div><div class="gift-info">${fields}</div><div class="gift-points-grid">${points}</div><div class="gift-rules"><div class="gift-rules-title">注意事項</div>${rules}</div></div></div>`;}
+    function giftMessage(text){const node=document.getElementById('msg');if(node)node.textContent=text||'';}
+    function setGiftPrintBusy(active){giftPrintBusy=active;document.querySelectorAll('[data-gift-print-action]').forEach(button=>{button.disabled=active;});}
+    function mobileGiftDevice(){return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'')||(window.matchMedia&&window.matchMedia('(max-width: 760px)').matches);}
+    async function giftPointCardPdfBlob(){
+      const source=document.querySelector('#printArea .a4-sheet');
+      if(!source)throw new Error('集點卡尚未載入，請稍後再試。');
+      if(!(window.html2canvas&&window.jspdf&&window.jspdf.jsPDF))throw new Error('列印工具尚未載入，請重新整理後再試。');
+      const host=document.createElement('div');host.className='gift-export-host';
+      const clone=source.cloneNode(true);host.appendChild(clone);document.body.appendChild(host);
+      try{
+        const canvas=await window.html2canvas(clone,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false});
+        const pdf=new window.jspdf.jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+        pdf.addImage(canvas.toDataURL('image/jpeg',.95),'JPEG',0,0,210,297,undefined,'FAST');
+        return pdf.output('blob');
+      }finally{host.remove();}
+    }
+    function downloadGiftBlob(blob){const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='柚子樂器-集點卡-A4.pdf';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
+    async function downloadGiftPointCardPdf(){
+      if(giftPrintBusy)return;setGiftPrintBusy(true);giftMessage('正在產生 A4 PDF…');
+      try{const blob=await giftPointCardPdfBlob();downloadGiftBlob(blob);giftMessage('已產生 A4 PDF；可從手機下載檔開啟後選擇「分享／列印」。');}
+      catch(error){giftMessage((error&&error.message)||'目前無法產生 PDF，請稍後再試。');}
+      finally{setGiftPrintBusy(false);}
+    }
+    async function printOrShareGiftCard(){
+      if(giftPrintBusy)return;
+      if(!mobileGiftDevice()){window.print();return;}
+      setGiftPrintBusy(true);giftMessage('正在準備手機列印檔…');
+      try{
+        const blob=await giftPointCardPdfBlob();
+        const file=new File([blob],'柚子樂器-集點卡-A4.pdf',{type:'application/pdf'});
+        const shareData={title:'柚子樂器集點卡',text:'A4 集點卡列印檔',files:[file]};
+        const canShare=typeof navigator.share==='function'&&(!navigator.canShare||navigator.canShare(shareData));
+        if(canShare){await navigator.share(shareData);giftMessage('已開啟手機分享選單；選擇「列印」即可連接支援的印表機。');return;}
+        downloadGiftBlob(blob);giftMessage('此瀏覽器未提供分享選單，已下載 A4 PDF；請開啟檔案後選擇「分享／列印」。');
+      }catch(error){
+        if(error&&error.name==='AbortError'){giftMessage('已取消列印／分享。');}
+        else{giftMessage('改用瀏覽器列印；若沒有跳出選單，請按「下載 PDF」。');setTimeout(()=>window.print(),120);}
+      }finally{setGiftPrintBusy(false);}
+    }
     async function initPage(){const user=requireLogin(); if(!user) return; try{ const doc=firebase.firestore().collection('printTemplates').doc('giftPointCard'); const snap=await doc.get(); render(snap.exists?snap.data():DEFAULTS); }catch(e){ render(DEFAULTS); document.getElementById('msg').textContent='目前使用預設集點卡。'; }}
   </script>
   <script src="global-nav.js?v=20260808-teacher-nav-v1"></script>

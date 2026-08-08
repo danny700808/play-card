@@ -4,6 +4,7 @@
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const WATERMARK = '僅供柚子樂器外聘教師資料建檔使用';
   const TEACHING_LEVELS = Object.freeze(['初學', '入門', '普通', '良好', '專業', '專精']);
+  const BIRTH_MIN_YEAR = 1900;
   let currentResult = null;
   let saving = false;
   let storedIdentityFileCount = 0;
@@ -11,6 +12,64 @@
 
   function $(id) { return document.getElementById(id); }
   function clean(value) { return String(value == null ? '' : value).trim(); }
+  function fillBirthOptions() {
+    const year = $('profileBirthYear');
+    const month = $('profileBirthMonth');
+    if (!year || !month || year.dataset.ready === '1') return;
+    const currentYear = new Date().getFullYear();
+    for (let value = currentYear; value >= BIRTH_MIN_YEAR; value -= 1) {
+      const option = document.createElement('option');
+      option.value = String(value);
+      option.textContent = `${value}年`;
+      year.appendChild(option);
+    }
+    for (let value = 1; value <= 12; value += 1) {
+      const option = document.createElement('option');
+      option.value = String(value).padStart(2, '0');
+      option.textContent = `${value}月`;
+      month.appendChild(option);
+    }
+    year.dataset.ready = '1';
+    refreshBirthDays();
+  }
+  function refreshBirthDays() {
+    const year = $('profileBirthYear');
+    const month = $('profileBirthMonth');
+    const day = $('profileBirthDay');
+    if (!year || !month || !day) return;
+    const previous = day.value;
+    day.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '日期';
+    day.appendChild(placeholder);
+    const count = year.value && month.value
+      ? new Date(Number(year.value), Number(month.value), 0).getDate()
+      : 31;
+    for (let value = 1; value <= count; value += 1) {
+      const option = document.createElement('option');
+      option.value = String(value).padStart(2, '0');
+      option.textContent = `${value}日`;
+      day.appendChild(option);
+    }
+    if (previous && Number(previous) <= count) day.value = previous;
+  }
+  function updateBirthDateValue() {
+    const year = clean($('profileBirthYear') && $('profileBirthYear').value);
+    const month = clean($('profileBirthMonth') && $('profileBirthMonth').value);
+    const day = clean($('profileBirthDay') && $('profileBirthDay').value);
+    $('profileBirthDate').value = year && month && day ? `${year}-${month}-${day}` : '';
+    return $('profileBirthDate').value;
+  }
+  function setBirthDateValue(value) {
+    fillBirthOptions();
+    const matched = clean(value).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    $('profileBirthYear').value = matched ? matched[1] : '';
+    $('profileBirthMonth').value = matched ? String(Number(matched[2])).padStart(2, '0') : '';
+    refreshBirthDays();
+    $('profileBirthDay').value = matched ? String(Number(matched[3])).padStart(2, '0') : '';
+    updateBirthDateValue();
+  }
   function token() {
     try { return clean(global.localStorage.getItem(SESSION_KEY)); } catch (_) { return ''; }
   }
@@ -139,7 +198,7 @@
     $('profileName').value = clean(profile.name);
     $('profileMobile').value = clean(profile.mobilePhone);
     $('profileEmail').value = clean(profile.email);
-    $('profileBirthDate').value = clean(profile.birthDate);
+    setBirthDateValue(profile.birthDate);
     $('profileHouseholdAddress').value = clean(profile.householdAddress);
     $('profileMailingAddress').value = clean(profile.mailingAddress);
     $('profileEmergencyContact').value = clean(profile.emergencyContact);
@@ -232,7 +291,10 @@
     $('profileFileState').textContent = parts.length ? parts.join('；') : '尚未上傳';
   }
   function addIdentityFiles(fileList, sourceInput) {
-    const files = Array.from(fileList || []).filter((file) => file && /^image\//i.test(clean(file.type)));
+    const files = Array.from(fileList || []).filter(function (file) {
+      if (!file) return false;
+      return /^image\//i.test(clean(file.type)) || /\.(?:jpe?g|png|webp|heic|heif)$/i.test(clean(file.name));
+    });
     if (!files.length) {
       if (sourceInput) sourceInput.value = '';
       return;
@@ -252,7 +314,7 @@
       name: clean($('profileName').value),
       mobilePhone: clean($('profileMobile').value),
       email: clean($('profileEmail').value),
-      birthDate: clean($('profileBirthDate').value),
+      birthDate: updateBirthDateValue(),
       householdAddress: clean($('profileHouseholdAddress').value),
       mailingAddress: clean($('profileMailingAddress').value),
       emergencyContact: clean($('profileEmergencyContact').value),
@@ -284,7 +346,6 @@
       data.submitForReview = submitForReview === true;
       const result = await call('coursePortalTeacherSaveProfileDraft', data);
       pendingIdentityFiles = [];
-      $('profileIdentityCamera').value = '';
       $('profileIdentityFiles').value = '';
       render(result);
       message(submitForReview ? '已送出管理者確認。' : '已儲存目前內容。', false);
@@ -310,9 +371,12 @@
     $('profileEmailStatus').textContent = emailOn ? 'Email 已綁定' : 'Email 未綁定';
     $('profileEmailStatus').classList.toggle('off', !emailOn);
   });
-  $('profileIdentityCamera').addEventListener('change', function () { addIdentityFiles(this.files, this); });
   $('profileIdentityFiles').addEventListener('change', function () { addIdentityFiles(this.files, this); });
+  $('profileBirthYear').addEventListener('change', function () { refreshBirthDays(); updateBirthDateValue(); });
+  $('profileBirthMonth').addEventListener('change', function () { refreshBirthDays(); updateBirthDateValue(); });
+  $('profileBirthDay').addEventListener('change', updateBirthDateValue);
   $('teacherProfileForm').addEventListener('submit', function (event) { event.preventDefault(); save(false); });
   $('profileSubmitBtn').addEventListener('click', function () { save(true); });
+  fillBirthOptions();
   load();
 })(window);
