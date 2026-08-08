@@ -87,7 +87,7 @@ assert(source.includes("'goods-attention'") && source.includes('summary.goodsAtt
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
 assert(html.includes('teacher-course-portal-v8.css?v=20260808-lesson-attendance-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260808-lesson-attendance-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260808-early-attendance-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');
@@ -100,8 +100,8 @@ assert(source.includes('data-student-action='), '學生頁原地加課操作遺�
 const lessonQuickStart = source.indexOf('function openQuickForLesson(row)');
 const lessonQuickEnd = source.indexOf('function openContactBook(row)', lessonQuickStart);
 const lessonQuickSource = source.slice(lessonQuickStart, lessonQuickEnd);
-assert(lessonQuickSource.includes('data-quick-attendance-wait'), '未到上課時間時仍應顯示簽到入口');
-assert(lessonQuickSource.includes('scheduleAttendanceAvailability(row);'), '簽到入口沒有在上課時間到達後自動啟用');
+assert(lessonQuickSource.includes("const canNormalAttendance = sameDay && status === 'scheduled'"), '老師不能在當天提早簽到晚一點的課程');
+assert(lessonQuickSource.includes('✓ 提早簽到'), '提早簽到按鈕沒有清楚標示');
 assert(lessonQuickSource.includes('✓ 老師簽到'), '簽到按鈕沒有清楚標示為老師簽到');
 const attendanceActionIndex = lessonQuickSource.indexOf('${attendanceAction}');
 const studentLeaveIndex = lessonQuickSource.indexOf('data-quick-state="leave"');
@@ -112,7 +112,8 @@ assert(
   '簽到與學生請假必須排在調課、加課等操作之前'
 );
 assert(source.includes("timeZone: 'Asia/Taipei'"), '簽到日期未固定使用台北時區');
-assert(source.includes('button:disabled:not([data-quick-attendance-wait])'), '簽到到點重畫未避開正在處理的課堂操作');
+assert(source.includes('這是「提早簽到」') && source.includes('會立即扣除學生堂數並列入老師薪資'), '提早簽到前沒有清楚警告扣堂與計薪');
+assert(!source.includes('scheduleAttendanceAvailability'), '當天簽到已全天開放，不應再等待上課時間重畫');
 assert(css.includes('button[data-quick-attendance-wait]:disabled'), '未開放簽到按鈕缺少專用停用樣式');
 
 console.log('teacher course portal mobile tests passed');
