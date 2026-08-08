@@ -5374,6 +5374,19 @@ function explicitTeacherSplitFromPayroll(row) {
   return null;
 }
 
+function explicitNoPerLessonTeacherPayPlan(row) {
+  const source = row || {};
+  const splitType = clean(source.splitType || source.teacherSplitType || source.shareType).toLowerCase();
+  const splitValue = firstFiniteNumber(source, [
+    'splitValue', 'allotRate', 'shareRate', 'teacherShare', 'allot',
+    'hourlyFee', 'fixedTeacherAmount', 'teacherAmount'
+  ]);
+  const planName = clean(source.name || source.planName || source.title);
+  // 「專職」是舊音教雲正式方案名稱，代表老師採月薪／專職制度，不按每堂拆帳。
+  // 只有方案本身明確保存 none + 0 才採用；其他缺欄位的舊方案仍維持 fail closed。
+  return splitType === 'none' && (!Number.isFinite(splitValue) || splitValue === 0) && /^專職/.test(planName);
+}
+
 function teacherPayrollSplitRows(payrollRows) {
   const output = [];
   (payrollRows || []).forEach((row) => {
@@ -5511,7 +5524,10 @@ function historicalTeacherSplitCandidate(payrollRows, event, studentId, period, 
 
 function periodWithHistoricalTeacherSplit(period, payrollRows, event, studentId, sourceDate) {
   const planSnapshot = jsonValue(period && period.planSnapshot || {});
-  if (explicitTeacherSplitFromPayroll(planSnapshot)) return period;
+  if (
+    explicitTeacherSplitFromPayroll(planSnapshot) ||
+    explicitNoPerLessonTeacherPayPlan(planSnapshot)
+  ) return period;
   const historical = historicalTeacherSplitCandidate(
     payrollRows,
     event,
@@ -5595,6 +5611,7 @@ function attendancePeriodPayroll(studentId, period) {
   const splitType = clean(
     planSnapshot.splitType || planSnapshot.teacherSplitType || planSnapshot.shareType
   ).toLowerCase();
+  const noPerLessonTeacherPay = explicitNoPerLessonTeacherPayPlan(planSnapshot);
   let splitValue = firstFiniteNumber(planSnapshot, ['splitValue']);
   let normalizedRatio = 0;
   let teacherAmount = 0;
@@ -5615,13 +5632,16 @@ function attendancePeriodPayroll(studentId, period) {
       );
     }
     teacherAmount = roundPayrollMoney(splitValue);
+  } else if (noPerLessonTeacherPay) {
+    splitValue = 0;
+    teacherAmount = 0;
   } else {
     throw new HttpsError(
       'failed-precondition',
       '這個收費方案尚未設定「比例」或「每堂固定金額」的老師拆帳，已停止簽到。'
     );
   }
-  if (teacherAmount <= 0) {
+  if (teacherAmount <= 0 && !noPerLessonTeacherPay) {
     throw new HttpsError('failed-precondition', '老師本堂薪資計算為 NT$0，已停止簽到；請先修正拆帳設定。');
   }
   return {
@@ -5641,6 +5661,9 @@ function attendancePeriodPayroll(studentId, period) {
       netTuition,
       teacherPayBasis,
       teacherPayTuition,
+      teacherPayable: !noPerLessonTeacherPay,
+      payrollExcluded: noPerLessonTeacherPay,
+      payrollExclusionReason: noPerLessonTeacherPay ? 'full_time_plan_no_per_lesson_split' : '',
       planSnapshot
     },
     outputs: {
@@ -5656,7 +5679,10 @@ function attendancePeriodPayroll(studentId, period) {
       normalizedRatio,
       baseTeacherAmount: teacherAmount,
       teacherAmount,
-      schoolShare: roundPayrollMoney(netLessonPrice - teacherAmount)
+      schoolShare: roundPayrollMoney(netLessonPrice - teacherAmount),
+      teacherPayable: !noPerLessonTeacherPay,
+      payrollExcluded: noPerLessonTeacherPay,
+      payrollExclusionReason: noPerLessonTeacherPay ? 'full_time_plan_no_per_lesson_split' : ''
     }
   };
 }
@@ -5762,6 +5788,8 @@ function attendancePayrollCalculation(event, periodRows, sourceDate) {
   ));
   const teacherPayAdjustment = firstFiniteNumber(event || {}, ['teacherPayAdjustment']) || 0;
   const teacherAmount = Math.max(0, roundPayrollMoney(baseTeacherAmount + teacherPayAdjustment));
+  const teacherPayable = students.some((row) => row.outputs.teacherPayable !== false);
+  const payrollExcluded = students.every((row) => row.outputs.payrollExcluded === true);
   // 老師可能按原價計薪，即使學生折扣後實收較低；此時學校分潤可為負數，不能顯示假利潤。
   const schoolShare = roundPayrollMoney(collectedAmount - teacherAmount);
   const signatures = [...new Set(students.map((row) => [
@@ -5773,7 +5801,9 @@ function attendancePayrollCalculation(event, periodRows, sourceDate) {
     ? '依各學生方案'
     : common.splitType === 'ratio'
       ? `${roundPayrollMoney(common.normalizedRatio * 100)}%`
-      : `每堂固定 NT$${roundPayrollMoney(common.splitValue)}`;
+      : common.splitType === 'fixed'
+        ? `每堂固定 NT$${roundPayrollMoney(common.splitValue)}`
+        : '專職方案（不按堂拆帳）';
   return {
     tuitionAmount: lessonPrice,
     lessonPrice,
@@ -5784,6 +5814,9 @@ function attendancePayrollCalculation(event, periodRows, sourceDate) {
     teacherAmount,
     schoolShare,
     rate,
+    teacherPayable,
+    payrollExcluded,
+    payrollExclusionReason: payrollExcluded ? 'full_time_plan_no_per_lesson_split' : '',
     splitType: common ? common.splitType : 'mixed',
     splitValue: common ? common.splitValue : 0,
     allotRate: common && common.splitType === 'ratio' ? common.normalizedRatio : 0,
@@ -5798,6 +5831,9 @@ function attendancePayrollCalculation(event, periodRows, sourceDate) {
         courseId: clean(event && (event.fixedCourseId || event.sourceCourseId)),
         teacherId: eventTeacherId(event || {}),
         subjectId: eventSubjectId(event || {}),
+        teacherPayable,
+        payrollExcluded,
+        payrollExclusionReason: payrollExcluded ? 'full_time_plan_no_per_lesson_split' : '',
         teacherPayAdjustment,
         teacherPayAdjustmentReason: clean(event && event.teacherPayAdjustmentReason)
       },
@@ -5868,7 +5904,8 @@ function attendanceRolloverSourcePeriod({ periods, event, studentId, sourceDate 
 function attendanceHistoricalSplitSource(periods, event, studentId, sourceDate, allowRollover) {
   const existingPeriod = attendancePeriodCandidate(periods, event, studentId, sourceDate);
   if (existingPeriod) {
-    return explicitTeacherSplitFromPayroll(existingPeriod && existingPeriod.planSnapshot || {})
+    const existingPlan = existingPeriod && existingPeriod.planSnapshot || {};
+    return explicitTeacherSplitFromPayroll(existingPlan) || explicitNoPerLessonTeacherPayPlan(existingPlan)
       ? null
       : existingPeriod;
   }
@@ -5879,7 +5916,9 @@ function attendanceHistoricalSplitSource(periods, event, studentId, sourceDate, 
     studentId,
     sourceDate
   });
-  return rolloverSource && !explicitTeacherSplitFromPayroll(rolloverSource.planSnapshot || {})
+  return rolloverSource &&
+    !explicitTeacherSplitFromPayroll(rolloverSource.planSnapshot || {}) &&
+    !explicitNoPerLessonTeacherPayPlan(rolloverSource.planSnapshot || {})
     ? rolloverSource
     : null;
 }

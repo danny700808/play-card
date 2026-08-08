@@ -856,6 +856,76 @@ async function runBackendScheduleRegressionTests() {
     }));
     assert.strictEqual(fixedPay.outputs.teacherAmount, 600, '固定拆帳應直接計入每堂 NT$600');
 
+    const fullTimePeriod = Object.assign({}, ratioPeriod, {
+      id: 'period-full-time',
+      periodNo: 25,
+      systemPeriodNo: 25,
+      usedCount: 2,
+      sourcePaymentId: 'payment-full-time',
+      planId: 'plan-full-time',
+      planSnapshot: {
+        id: 'plan-full-time',
+        name: '專職2800',
+        amount: 2800,
+        lessonCount: 4,
+        splitType: 'none',
+        splitValue: 0,
+        splitSource: 'unresolved'
+      }
+    });
+    const fullTimePay = duplicatePermanentBackend.__testAttendancePeriodPayroll(
+      'student-1',
+      fullTimePeriod
+    );
+    assert.strictEqual(fullTimePay.outputs.lessonPrice, 700, '專職方案仍須正常扣除每堂 NT$700 學費');
+    assert.strictEqual(fullTimePay.outputs.teacherAmount, 0, '專職方案不可另外產生按堂老師薪資');
+    assert.strictEqual(fullTimePay.outputs.schoolShare, 700, '專職方案學費須完整保留為非按堂拆帳金額');
+    assert.strictEqual(fullTimePay.outputs.teacherPayable, false, '專職方案須明確標記本堂不按堂計薪');
+    assert.strictEqual(fullTimePay.outputs.payrollExcluded, true, '專職方案須留下排除按堂薪資的稽核旗標');
+    assert.strictEqual(
+      fullTimePay.outputs.payrollExclusionReason,
+      'full_time_plan_no_per_lesson_split',
+      '專職方案須留下可辨識的排除原因'
+    );
+    const preservedFullTimePeriod = duplicatePermanentBackend.__testPeriodWithHistoricalTeacherSplit(
+      fullTimePeriod,
+      [{
+        id: 'payroll-full-time-wrong-override',
+        teacherId: 'teacher-1',
+        studentId: 'student-1',
+        periodId: fullTimePeriod.id,
+        date: '2026-07-30',
+        splitType: 'ratio',
+        splitValue: 0.6
+      }],
+      {
+        id: 'event-full-time',
+        fixedCourseId: 'fixed-1',
+        date: '2026-07-31',
+        teacherId: 'teacher-1',
+        subjectId: 'subject-piano',
+        studentIds: ['student-1']
+      },
+      'student-1',
+      '2026-07-31'
+    );
+    assert.strictEqual(
+      preservedFullTimePeriod,
+      fullTimePeriod,
+      '專職方案明確不按堂拆帳時，即使同班其他學生觸發歷史查詢也不可被比例薪資覆寫'
+    );
+    assert.throws(
+      () => duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', Object.assign({}, fullTimePeriod, {
+        id: 'period-generic-no-split',
+        planSnapshot: Object.assign({}, fullTimePeriod.planSnapshot, {
+          id: 'plan-generic-no-split',
+          name: '一般方案2800'
+        })
+      })),
+      /尚未設定.*老師拆帳/,
+      '一般或外聘方案缺拆帳時仍須停止簽到，不能把所有 none 方案都當成專職'
+    );
+
     const unresolvedLegacyPeriod = Object.assign({}, ratioPeriod, {
       id: 'period-legacy-unresolved',
       sourcePaymentId: 'payment-legacy-unresolved',
@@ -1123,6 +1193,17 @@ async function runBackendScheduleRegressionTests() {
       oldCompletedMissingSplit.id,
       '沒有 active 期別時，只能為實際續期來源補查歷史拆帳'
     );
+    assert.strictEqual(
+      duplicatePermanentBackend.__testAttendanceHistoricalSplitSource(
+        [fullTimePeriod],
+        event,
+        'student-1',
+        event.date,
+        true
+      ),
+      null,
+      '專職方案已明確表示不按堂拆帳，不應每次簽到再掃描歷史薪資'
+    );
     const selected = duplicatePermanentBackend.__testAttendancePeriodCandidate(
       [Object.assign({}, ratioPeriod, { id: 'period-old', periodNo: 2, usedCount: 4 }), ratioPeriod],
       event,
@@ -1221,6 +1302,20 @@ async function runBackendScheduleRegressionTests() {
     assert.strictEqual(discountedRollover.period.discount, 0.1, '新期別沒有沿用上期折扣');
     assert.strictEqual(discountedRollover.paymentRequest.expectedAmount, 3600, '家長待繳金額不可誤顯示折扣前原價');
     assert.strictEqual(discountedRollover.paymentRequest.remainingAmount, 3600, '折扣後尚未繳金額錯誤');
+    const fullTimeRollover = duplicatePermanentBackend.__testBuildAttendanceTuitionRollover({
+      periods: [Object.assign({}, fullTimePeriod, { usedCount: 4 })],
+      event: rolloverEvent,
+      studentId: 'student-1',
+      sourceDate: rolloverEvent.date
+    });
+    assert(fullTimeRollover, '專職方案上期滿堂後也須能安全建立下一期');
+    assert.strictEqual(fullTimeRollover.period.periodNo, 26, '專職方案下一期期數沒有遞增');
+    assert.strictEqual(fullTimeRollover.period.systemPeriodNo, 26, '專職方案下一期系統期數沒有遞增');
+    assert.strictEqual(fullTimeRollover.period.expectedAmount, 2800, '專職方案下一期沒有沿用原收費');
+    assert.strictEqual(fullTimeRollover.period.lessonCount, 4, '專職方案下一期沒有沿用四堂');
+    assert.strictEqual(fullTimeRollover.period.planSnapshot.name, '專職2800', '專職方案下一期沒有保存原方案');
+    assert.strictEqual(fullTimeRollover.period.planSnapshot.splitType, 'none', '專職方案下一期不可捏造老師拆帳');
+    assert.strictEqual(fullTimeRollover.paymentRequest.expectedAmount, 2800, '專職方案下一期待繳金額錯誤');
     [
       ['gross', { expectedAmount: 4100 }],
       ['discount', { discount: 0.2 }],
@@ -1360,6 +1455,23 @@ async function runBackendScheduleRegressionTests() {
     assert.strictEqual(attendedPayroll.payrollCalculation.inputs.eventId, 'event-attended');
     assert.strictEqual(attendedPayroll.payrollCalculation.students[0].periodId, 'period-ratio');
     assert.strictEqual(attendedPayroll.payrollCalculation.outputs.teacherAmount, 420);
+
+    const fullTimePayroll = duplicatePermanentBackend.__testAttendancePayrollCalculation(
+      event,
+      [{ studentId: 'student-1', period: fullTimePeriod }],
+      event.date
+    );
+    assert.strictEqual(fullTimePayroll.lessonPrice, 700, '專職方案簽到仍須記錄本堂學費');
+    assert.strictEqual(fullTimePayroll.teacherAmount, 0, '專職方案簽到不可產生按堂老師薪資');
+    assert.strictEqual(fullTimePayroll.schoolShare, 700, '專職方案本堂非按堂拆帳金額錯誤');
+    assert.strictEqual(fullTimePayroll.rate, '專職方案（不按堂拆帳）');
+    assert.strictEqual(fullTimePayroll.teacherPayable, false);
+    assert.strictEqual(fullTimePayroll.payrollExcluded, true);
+    assert.strictEqual(
+      fullTimePayroll.payrollCalculation.inputs.payrollExclusionReason,
+      'full_time_plan_no_per_lesson_split',
+      '專職方案簽到紀錄須留下排除按堂薪資的原因'
+    );
 
     const freeGiftPayroll = duplicatePermanentBackend.__testAttendancePayrollCalculation({
       id: 'gift-free',
