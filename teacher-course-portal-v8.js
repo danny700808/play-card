@@ -14,6 +14,12 @@
   const CACHE_TTL = 90 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
+  const TAIPEI_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
 
   const bindView = document.getElementById('bindView');
   const appView = document.getElementById('appView');
@@ -31,6 +37,7 @@
   let planner = null;
   let availabilityRequestId = 0;
   let weekSnapTimer = 0;
+  let attendanceAvailabilityTimer = 0;
   let teacherUtilityStatusLoaded = false;
   let teacherUtilityStatusLoadedAt = 0;
   let teacherUtilityStatusLoading = false;
@@ -92,17 +99,19 @@
   }
 
   function monthKey() {
-    const date = new Date();
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    return todayKey().slice(0, 7);
   }
 
   function todayKey() {
-    const date = new Date();
-    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+    const parts = TAIPEI_DATE_FORMATTER.formatToParts(new Date()).reduce((result, part) => {
+      if (part.type !== 'literal') result[part.type] = part.value;
+      return result;
+    }, {});
+    return `${parts.year}-${parts.month}-${parts.day}`;
   }
 
   function monday(value) {
-    const date = value ? new Date(`${value}T12:00:00`) : new Date();
+    const date = new Date(`${value || todayKey()}T12:00:00`);
     const day = date.getDay();
     date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
     return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
@@ -919,6 +928,8 @@
 
   function closeQuick() {
     if (quickContext && quickContext.type === 'target-search') availabilityRequestId += 1;
+    global.clearTimeout(attendanceAvailabilityTimer);
+    attendanceAvailabilityTimer = 0;
     const node = document.getElementById('teacherQuickBackdrop');
     node.classList.add('hidden');
     node.setAttribute('aria-hidden', 'true');
@@ -927,6 +938,8 @@
   }
 
   function showQuick(title, subtitle, html, context) {
+    global.clearTimeout(attendanceAvailabilityTimer);
+    attendanceAvailabilityTimer = 0;
     quickContext = context || null;
     document.getElementById('teacherQuickTitle').textContent = clean(title) || '選擇操作';
     document.getElementById('teacherQuickSubtitle').textContent = clean(subtitle);
@@ -979,6 +992,26 @@
     return `${dayLabel(row.date)} ${row.startTime}～${row.endTime}・${(row.studentNames || []).join('、') || '未指定學生'}・${row.subjectName || '未指定科目'}`;
   }
 
+  function scheduleAttendanceAvailability(row) {
+    if (!row || row.date !== todayKey() || clean(row.status || 'scheduled').toLowerCase() !== 'scheduled') return;
+    const opensAt = Date.parse(`${clean(row.date)}T${clean(row.startTime).slice(0, 5)}:00+08:00`);
+    const wait = opensAt - Date.now();
+    if (!Number.isFinite(wait) || wait <= 0 || wait > 24 * 60 * 60 * 1000) return;
+    const refreshAtStart = () => {
+      attendanceAvailabilityTimer = 0;
+      if (!quickContext || quickContext.type !== 'lesson') return;
+      const active = quickContext.row || {};
+      if (clean(active.id) !== clean(row.id) || clean(active.date) !== clean(row.date)) return;
+      const actionInProgress = document.querySelector('#teacherQuickActions button:disabled:not([data-quick-attendance-wait])');
+      if (actionInProgress) {
+        attendanceAvailabilityTimer = global.setTimeout(refreshAtStart, 350);
+        return;
+      }
+      openQuickForLesson(active);
+    };
+    attendanceAvailabilityTimer = global.setTimeout(refreshAtStart, wait + 150);
+  }
+
   function choiceSummary(title, details, note) {
     return `<div class="teacher-choice-summary"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(details)}</span>${note ? `<small>${escapeHtml(note)}</small>` : ''}</div>`;
   }
@@ -1020,27 +1053,40 @@
       clean(row.portalAction) === 'teacher_gift' ||
       clean(row.type) === 'teacher_gift';
     const canContactBook = attended || started;
+    const waitingForToday = sameDay && !started && status === 'scheduled';
+    const waitingForFuture = row.date > today && status === 'scheduled';
+    const attendanceAction = attended
+      ? '<div class="teacher-quick-status success">✓ 已完成簽到</div>'
+      : (canNormalAttendance
+        ? '<button class="primary" type="button" data-quick-attendance>✓ 老師簽到</button>'
+        : (canLateAttendance
+          ? `<button type="button" data-quick-late>${giftLesson ? '補簽到（贈送課程不收行政費）' : '補簽到'}</button>`
+          : (waitingForToday
+            ? `<button type="button" disabled data-quick-attendance-wait>${escapeHtml(row.startTime)} 開放簽到</button>`
+            : (waitingForFuture
+              ? '<button type="button" disabled data-quick-attendance-wait>上課當天開放簽到</button>'
+              : ''))));
     showQuick(
       (row.studentNames || []).join('、') || '這堂課',
       `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`,
       `
+      ${attendanceAction}
+      ${canLeave ? '<button class="primary" type="button" data-quick-state="leave">學生請假</button>' : ''}
+      ${attended && !cancellationPending ? `<button class="danger" type="button" data-quick-cancel-attendance>${sameDay ? '取消簽到' : '申請取消簽到'}</button>` : ''}
+      ${cancellationPending ? '<div class="notice">取消簽到已送出，正在等待主管確認；目前紀錄仍維持已簽到。</div>' : ''}
+      ${canAbsent ? '<button class="danger" type="button" data-quick-state="absent">標示曠課</button>' : ''}
       ${movable ? '<button class="primary" type="button" data-quick-action="single_move">只調這一次</button>' : ''}
       ${movable && row.recurring === true ? '<button type="button" data-quick-action="permanent_move">之後固定改到新時段</button>' : ''}
       ${canAddFromLesson ? '<button type="button" data-quick-action="extra_lesson">增加一堂課</button>' : ''}
       ${canAddFromLesson ? '<button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>' : ''}
-      ${canLeave ? '<button type="button" data-quick-state="leave">學生請假</button>' : ''}
-      ${canAbsent ? '<button class="danger" type="button" data-quick-state="absent">標示曠課</button>' : ''}
-      ${canNormalAttendance ? '<button class="primary" type="button" data-quick-attendance>✓ 當日簽到</button>' : ''}
-      ${canLateAttendance ? `<button type="button" data-quick-late>${giftLesson ? '補簽到（贈送課程不收行政費）' : '補簽到'}</button>` : ''}
       ${canContactBook ? '<button type="button" data-quick-contact-book>寫課堂聯絡簿</button>' : ''}
-      ${attended && !cancellationPending ? `<button class="danger" type="button" data-quick-cancel-attendance>${sameDay ? '取消簽到' : '申請取消簽到'}</button>` : ''}
-      ${cancellationPending ? '<div class="notice">取消簽到已送出，正在等待主管確認；目前紀錄仍維持已簽到。</div>' : ''}
       ${!pastDate && row.portalChangeId && ['extra_lesson', 'teacher_gift'].includes(clean(row.portalAction))
         ? '<button class="danger" type="button" data-quick-state="cancel_change">取消此次新增</button>'
         : ''}
     `,
       { type: 'lesson', row }
     );
+    scheduleAttendanceAvailability(row);
   }
 
   function openContactBook(row) {
