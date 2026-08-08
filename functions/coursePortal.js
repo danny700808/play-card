@@ -8109,9 +8109,7 @@ async function applyTeacherAttendance(data, late) {
       ? '這堂課已超過當日晚上 12 點，請改用補簽到。'
       : '尚未到上課日期，不能提前簽到。');
   }
-  if (!late && taipeiDateTimeMillis(sourceDate, event.startTime) > Date.now()) {
-    throw new HttpsError('failed-precondition', '課程尚未開始，不能提前簽到。');
-  }
+  const earlyAttendance = !late && taipeiDateTimeMillis(sourceDate, event.startTime) > Date.now();
   const normalized = normalizeScheduleStatus(event.status);
   const allowedStatuses = late ? ['scheduled', 'absent'] : ['scheduled'];
   if (!allowedStatuses.includes(normalized)) {
@@ -8151,7 +8149,7 @@ async function applyTeacherAttendance(data, late) {
     sourceCourseId,
     session.teacherId,
     'attended',
-    late ? '老師補簽到' : '老師當日簽到'
+    late ? '老師補簽到' : (earlyAttendance ? '老師提早簽到' : '老師當日簽到')
   );
   changePayload.event.tuitionPeriodId = giftLesson ? '' : clean(periodIds[attendanceRows[0] && attendanceRows[0].studentId]);
   changePayload.event.tuitionPeriodIds = giftLesson ? {} : Object.assign({}, periodIds);
@@ -8224,6 +8222,7 @@ async function applyTeacherAttendance(data, late) {
       date: sourceDate,
       deducted: !giftLesson,
       late: late === true,
+      earlyAttendance,
       lateFeeCharged: chargeLateFee,
       originalLessonDate: sourceDate,
       attendanceRecordedAtText: nowText(),
@@ -8260,6 +8259,7 @@ async function applyTeacherAttendance(data, late) {
       eventId: clean(event.sourceId || sourceEventId || event.id),
       courseId: clean(event.fixedCourseId || sourceCourseId),
       occurredAt: `${sourceDate}T${clean(event.startTime || '00:00')}:00+08:00`,
+      earlyAttendance,
       tuitionPeriodIds: Object.assign({}, periodIds),
       createdAt: FieldValue.serverTimestamp(),
       createdAtText: nowText(),
@@ -8310,7 +8310,9 @@ async function applyTeacherAttendance(data, late) {
       ? (chargeLateFee
         ? `補簽到已完成，並已在本月薪資扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`
         : '贈送課程補簽到已完成，本次不收行政處理費。')
-      : '簽到已完成；今天晚上 12 點後如需取消，必須送主管審核。'
+      : (earlyAttendance
+        ? '提早簽到已完成；學生堂數與老師薪資已立即記錄。'
+        : '簽到已完成；今天晚上 12 點後如需取消，必須送主管審核。')
   };
 }
 

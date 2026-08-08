@@ -52,6 +52,9 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-quick-actions button,.teacher-quick-actions a{display:flex;align-items:center;justify-content:center;min-height:46px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#f8fbf9;color:var(--ink);font-size:13px;font-weight:850;text-align:center;text-decoration:none}
 .teacher-quick-actions button.primary{border-color:var(--green);background:var(--green-soft);color:var(--green)}
 .teacher-quick-actions button.danger{border-color:#efc6c3;background:#fff5f4;color:#9f3f37}
+.teacher-quick-actions button[data-quick-attendance-wait]:disabled{border-style:dashed;background:#f2f5f3;color:#71817b;opacity:1}
+.teacher-quick-status{display:flex;align-items:center;justify-content:center;min-height:46px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#f8fbf9;font-size:13px;font-weight:900;text-align:center}
+.teacher-quick-status.success{border-color:#70b49a;background:#e9f7f1;color:#155d46}
 .teacher-course-app .modal{z-index:100}
 .teacher-course-app .modal-panel{max-height:88dvh}
 .teacher-stop-warning{display:grid;gap:7px;padding:14px;border:1px solid #efc6c3;border-radius:13px;background:#fff7f6}.teacher-stop-warning strong{font-size:20px;color:#8f312d}.teacher-stop-warning p{margin:0;color:var(--muted);line-height:1.7}.teacher-stop-confirm{width:100%;min-height:46px;margin-top:12px;background:#fff4f3}

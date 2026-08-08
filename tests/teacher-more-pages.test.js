@@ -293,21 +293,21 @@ test('teacher utility pages share one compact back and logout header', () => {
   assert.match(css, /min-height:40px/);
 });
 
-test('gift point card is directly printable or shareable from a phone', () => {
+test('gift point card keeps only print and save-image actions', () => {
   const gift = read('gift-point-card.html');
   const forms = read('forms-hub.html');
-  assert.match(gift, /id="printArea"[^>]*print-click-target[^>]*onclick="printOrShareGiftCard\(\)"/);
-  assert.match(gift, />列印／分享</);
-  assert.match(gift, />選擇印表機</);
-  assert.match(gift, /Apple AirPrint/);
-  assert.match(gift, /Android 系統列印/);
+  assert.match(gift, /id="printArea" class="sheet-scale-wrap"/);
+  assert.equal((gift.match(/<button[^>]*data-gift-print-action/g) || []).length, 2);
+  assert.match(gift, /onclick="printGiftPointCard\(\)">列印<\/button>/);
+  assert.match(gift, /onclick="saveGiftPointCardImage\(\)">儲存圖片<\/button>/);
+  assert.doesNotMatch(gift, /列印／分享|下載 PDF|選擇印表機|手機不必開電腦|AirPrint|Mopria|print-click-target|mobile-print-note/);
   assert.match(gift, /html2canvas@1\.4\.1/);
-  assert.match(gift, /jspdf@2\.5\.1/);
-  assert.match(gift, /async function giftPointCardPdfBlob\(\)/);
-  assert.match(gift, /async function printOrShareGiftCard\(\)/);
+  assert.doesNotMatch(gift, /jspdf|giftPointCardPdfBlob|downloadGiftPointCardPdf/);
+  assert.match(gift, /function printGiftPointCard\(\)/);
+  assert.match(gift, /async function giftPointCardImageBlob\(\)/);
+  assert.match(gift, /async function saveGiftPointCardImage\(\)/);
   assert.match(gift, /navigator\.share\(shareData\)/);
-  assert.match(gift, /async function downloadGiftPointCardPdf\(\)/);
-  assert.match(forms, /用手機選擇印表機/);
+  assert.match(forms, /可直接列印或儲存圖片/);
   inlineScripts(gift).forEach((script, index) => new vm.Script(script, { filename: `gift-point-card-inline-${index}.js` }));
 });
 

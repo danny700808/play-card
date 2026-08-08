@@ -14,6 +14,12 @@
   const CACHE_TTL = 90 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
+  const TAIPEI_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
 
   const bindView = document.getElementById('bindView');
   const appView = document.getElementById('appView');
@@ -92,17 +98,19 @@
   }
 
   function monthKey() {
-    const date = new Date();
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    return todayKey().slice(0, 7);
   }
 
   function todayKey() {
-    const date = new Date();
-    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+    const parts = TAIPEI_DATE_FORMATTER.formatToParts(new Date()).reduce((result, part) => {
+      if (part.type !== 'literal') result[part.type] = part.value;
+      return result;
+    }, {});
+    return `${parts.year}-${parts.month}-${parts.day}`;
   }
 
   function monday(value) {
-    const date = value ? new Date(`${value}T12:00:00`) : new Date();
+    const date = new Date(`${value || todayKey()}T12:00:00`);
     const day = date.getDay();
     date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
     return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
@@ -1010,7 +1018,8 @@
     const singleStudent = (row.studentIds || []).length <= 1;
     const movable = !isPastSlot(row.date, row.startTime) && status === 'scheduled';
     const attended = ['attended', 'checked_in', 'present'].includes(status);
-    const canNormalAttendance = started && status === 'scheduled';
+    const canNormalAttendance = sameDay && status === 'scheduled';
+    const earlyAttendance = canNormalAttendance && !started;
     const canLateAttendance = pastDate && ['scheduled', 'absent'].includes(status);
     const cancellationPending = clean(row.attendanceCancellationStatus) === 'pending';
     const canLeave = futureOrToday && singleStudent && status === 'scheduled';
@@ -1020,21 +1029,30 @@
       clean(row.portalAction) === 'teacher_gift' ||
       clean(row.type) === 'teacher_gift';
     const canContactBook = attended || started;
+    const waitingForFuture = row.date > today && status === 'scheduled';
+    const attendanceAction = attended
+      ? '<div class="teacher-quick-status success">✓ 已完成簽到</div>'
+      : (canNormalAttendance
+        ? `<button class="primary" type="button" data-quick-attendance>${earlyAttendance ? '✓ 提早簽到' : '✓ 老師簽到'}</button>`
+        : (canLateAttendance
+          ? `<button type="button" data-quick-late>${giftLesson ? '補簽到（贈送課程不收行政費）' : '補簽到'}</button>`
+          : (waitingForFuture
+            ? '<button type="button" disabled data-quick-attendance-wait>上課當天開放簽到</button>'
+            : '')));
     showQuick(
       (row.studentNames || []).join('、') || '這堂課',
       `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`,
       `
+      ${attendanceAction}
+      ${canLeave ? '<button class="primary" type="button" data-quick-state="leave">學生請假</button>' : ''}
+      ${attended && !cancellationPending ? `<button class="danger" type="button" data-quick-cancel-attendance>${sameDay ? '取消簽到' : '申請取消簽到'}</button>` : ''}
+      ${cancellationPending ? '<div class="notice">取消簽到已送出，正在等待主管確認；目前紀錄仍維持已簽到。</div>' : ''}
+      ${canAbsent ? '<button class="danger" type="button" data-quick-state="absent">標示曠課</button>' : ''}
       ${movable ? '<button class="primary" type="button" data-quick-action="single_move">只調這一次</button>' : ''}
       ${movable && row.recurring === true ? '<button type="button" data-quick-action="permanent_move">之後固定改到新時段</button>' : ''}
       ${canAddFromLesson ? '<button type="button" data-quick-action="extra_lesson">增加一堂課</button>' : ''}
       ${canAddFromLesson ? '<button type="button" data-quick-action="teacher_gift">免費贈送一堂</button>' : ''}
-      ${canLeave ? '<button type="button" data-quick-state="leave">學生請假</button>' : ''}
-      ${canAbsent ? '<button class="danger" type="button" data-quick-state="absent">標示曠課</button>' : ''}
-      ${canNormalAttendance ? '<button class="primary" type="button" data-quick-attendance>✓ 當日簽到</button>' : ''}
-      ${canLateAttendance ? `<button type="button" data-quick-late>${giftLesson ? '補簽到（贈送課程不收行政費）' : '補簽到'}</button>` : ''}
       ${canContactBook ? '<button type="button" data-quick-contact-book>寫課堂聯絡簿</button>' : ''}
-      ${attended && !cancellationPending ? `<button class="danger" type="button" data-quick-cancel-attendance>${sameDay ? '取消簽到' : '申請取消簽到'}</button>` : ''}
-      ${cancellationPending ? '<div class="notice">取消簽到已送出，正在等待主管確認；目前紀錄仍維持已簽到。</div>' : ''}
       ${!pastDate && row.portalChangeId && ['extra_lesson', 'teacher_gift'].includes(clean(row.portalAction))
         ? '<button class="danger" type="button" data-quick-state="cancel_change">取消此次新增</button>'
         : ''}
@@ -1207,7 +1225,12 @@
   }
 
   async function updateAttendance(row, button) {
-    if (!row || !confirm('確定完成這堂課的當日簽到？若當天發現誤簽，可以直接取消；隔天後則需主管核准。')) return;
+    if (!row) return;
+    const earlyAttendance = row.date === todayKey() && !isPastSlot(row.date, row.startTime);
+    const confirmation = earlyAttendance
+      ? `這堂課是今天 ${row.startTime}，目前尚未開始。\n\n這是「提早簽到」，送出後會立即扣除學生堂數並列入老師薪資。確定要提早簽到嗎？`
+      : '確定完成這堂課的當日簽到？若當天發現誤簽，可以直接取消；隔天後則需主管核准。';
+    if (!confirm(confirmation)) return;
     loading(button, true, '簽到中…');
     try {
       const result = await invoke('coursePortalTeacherAttendance', {

@@ -186,6 +186,8 @@ assert(teacherSource.includes('coursePortalTeacherAttendance'), '老師端缺少
 assert(teacherSource.includes('coursePortalTeacherLateAttendance'), '老師端缺少逾期補簽到');
 assert(teacherSource.includes('coursePortalTeacherAttendanceCancellationRequest'), '老師端缺少取消簽到送主管審核');
 assert(teacherSource.includes('row.date === todayKey()'), '老師正常簽到未限制當天');
+assert(teacherSource.includes("const canNormalAttendance = sameDay && status === 'scheduled'"), '老師當日簽到仍被限制必須等到上課時間');
+assert(teacherSource.includes('這是「提早簽到」'), '老師提早簽到缺少明確確認警告');
 assert(teacherSource.includes("giftLesson ? '補簽到（贈送課程不收行政費）' : '補簽到'"), '補簽按鈕不應在老師點擊前顯示行政費');
 assert(teacherSource.includes('補簽到會收取行政處理費 NT$50'), '老師點擊補簽後未清楚顯示行政費');
 assert(adminPortal.includes('停課學費未繳清'), '管理者頁缺少停課學費未繳清專區');
@@ -1939,6 +1941,9 @@ assert(commonSource.includes("linkAnother: role === 'student' && authView.datase
 assert(backend.includes("decision.action === 'login' && stateRow.linkAnother !== true"), 'LINE 已有學生綁定時仍會略過新增另一位學生的流程');
 assert(backend.includes('if (!learningIds.has(studentId)) continue;'), '停課學生仍可能收到上課或學費 LINE 提醒');
 assert(backend.includes("type: 'late_attendance_fee'"), '補簽到沒有建立 NT$50 薪資扣款');
+assert(!backend.includes("throw new HttpsError('failed-precondition', '課程尚未開始，不能提前簽到。')"), '後端仍阻擋當天提早簽到');
+assert(backend.includes("earlyAttendance ? '老師提早簽到' : '老師當日簽到'"), '後端沒有標記提早簽到稽核資料');
+assert(backend.includes('earlyAttendance,\n      lateFeeCharged'), '正式簽到紀錄沒有保存提早簽到狀態');
 assert(backend.includes("type: 'attendance_cancellation_fee'"), '取消簽到核准後沒有建立 NT$50 薪資扣款');
 assert(backend.includes("status: 'pending'") && backend.includes('ATTENDANCE_CANCELLATIONS'), '取消簽到沒有等待主管核准');
 assert(backend.includes("db.collection(ATTENDANCE_PAYROLL).get()"), '管理端鏡像沒有讀取新系統老師薪資');
