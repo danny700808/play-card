@@ -333,6 +333,27 @@ assert.deepStrictEqual(payrollRows.map((row) => ({
   schoolShare: 400
 }], '薪資鏡像須直接沿用每日來源已算好的老師所得與教室分成');
 
+const payrollStudentRecoveredFromAttendance = buildTeacherPayroll([{
+  _id: '2026-07-06',
+  dateKey: '2026-07-06',
+  sessions: [{
+    sourceId: 'payroll_0706_student_fallback',
+    teacherId: 'teacher_1',
+    lessonPrice: 800,
+    hourlyFee: 500,
+    teacherAmount: 500,
+    schoolShare: 300
+  }]
+}], [{
+  id: 'payroll_0706_student_fallback',
+  studentId: 'student_1'
+}]);
+assert.strictEqual(
+  payrollStudentRecoveredFromAttendance[0].studentId,
+  'student_1',
+  '每日薪資缺學生欄位時，應由同 sourceId 的簽到紀錄安全補回'
+);
+
 function attemptSyncFinalization(status, requestedOwner, settingsOwner, scheduleOwner, overrides = {}) {
   const sourceVersion = 'source-v1';
   const syncScope = overrides.syncScope || 'full';

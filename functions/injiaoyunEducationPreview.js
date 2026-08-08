@@ -1523,7 +1523,7 @@ function buildTeacherPayroll(dailyRows, attendanceRows = []) {
       id,
       teacherId,
       teacherName: clean(session.teacherName),
-      studentId: idOf(session.studentId || session.student),
+      studentId: idOf(session.studentId || session.student) || idOf(attendance.studentId),
       studentName: clean(session.studentName),
       subject: clean(firstValue(session.subject, session.chargeName)),
       chargeName: clean(session.chargeName),
