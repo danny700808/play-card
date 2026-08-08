@@ -133,6 +133,7 @@ const teacherSource = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.
 const teacherCss = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.css'), 'utf8');
 const studentPortal = fs.readFileSync(path.join(root, 'student-course-portal.html'), 'utf8');
 const adminPortal = fs.readFileSync(path.join(root, 'course-portal-admin.html'), 'utf8');
+assert(adminPortal.includes('id="attendance-cancellation-review"'), '主管頁缺少取消簽到待確認的直接定位');
 new vm.Script(teacherSource, { filename: 'teacher-course-portal-v8.js' });
 assert(teacherSource.includes('data-quick-action="single_move"'), '老師入口缺少單次調課');
 assert(teacherSource.includes('data-quick-action="permanent_move"'), '老師入口缺少永久調課');
