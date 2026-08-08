@@ -56,6 +56,7 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-quick-actions button.primary{border-color:var(--green);background:var(--green-soft);color:var(--green)}
 .teacher-quick-actions button.danger{border-color:#efc6c3;background:#fff5f4;color:#9f3f37}
 .teacher-quick-actions button[data-quick-attendance-wait]:disabled{border-style:dashed;background:#f2f5f3;color:#71817b;opacity:1}
+.teacher-quick-actions button[data-quick-unavailable]:disabled{border-style:solid;background:#f5f6f5;color:#89938f;opacity:.72}
 .teacher-quick-status{display:flex;align-items:center;justify-content:center;min-height:46px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#f8fbf9;font-size:13px;font-weight:900;text-align:center}
 .teacher-quick-status.success{border-color:#70b49a;background:#e9f7f1;color:#155d46}
 .teacher-course-app .modal{z-index:100}
