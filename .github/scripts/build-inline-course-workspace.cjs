@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260802-rental-identity-cancel-v1';
+const VERSION = '20260808-tuition-receipt-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
@@ -37,6 +37,30 @@ function buildTemplate() {
 }
 
 function buildRuntime() {
+  const existing = fs.existsSync('operations-course-inline-runtime.js')
+    ? fs.readFileSync('operations-course-inline-runtime.js', 'utf8')
+    : '';
+  const existingIsScoped = existing.includes('window.__YOUZI_COURSE_INLINE_DOCUMENT__')
+    && existing.includes('window.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__');
+  if (existingIsScoped) {
+    const requiredMarkers = [
+      'function studentPageIndex()',
+      'function periodNetExpectedAmount(period)',
+      'money(periodNetExpectedAmount(period))',
+      'refreshPortalRentals();'
+    ];
+    for (const marker of requiredMarkers) {
+      if (!existing.includes(marker)) throw new Error(`Existing inline course runtime is incomplete: ${marker}`);
+    }
+    if (existing.includes('money(period.expectedAmount-period.discount)')) {
+      throw new Error('Existing inline course runtime still contains the ratio-discount regression.');
+    }
+    if (existing.includes('restoreFormalDatabase().then(refreshPortalRentals)')) {
+      throw new Error('Existing inline course runtime still performs the duplicate startup restore.');
+    }
+    return;
+  }
+
   let source = fs.readFileSync(schedulerJsPath, 'utf8');
   source = replaceRequired(
     source,
@@ -113,7 +137,7 @@ function buildRuntime() {
     var index=studentPageIndex(),search=clean($('studentSearch').value).toLowerCase(),filter=$('studentPaymentFilter').value;
     var rows=index.rows.filter(function(item){if(search&&item.hay.indexOf(search)<0)return false;if(filter==='due'&&!item.due)return false;if(filter==='low'&&!item.low)return false;if(filter==='active'&&item.student.active===false)return false;return true;}).sort(function(a,b){return bySort(a.student,b.student);});
     $('studentMetrics').innerHTML=metric('學生總數',state.students.length,'含停課資料')+metric('尚有未繳',index.dueByStudent.size,'依每一期付款加總')+metric('剩 1 堂以下',index.lowByStudent.size,'建議準備下一期');
-    $('studentRows').innerHTML=rows.map(function(item){var student=item.student,period=item.latest,event=item.event,subject=item.subject,teacher=item.teacher;return '<tr><td><b>'+esc(student.name)+'</b><small>'+(student.active===false?'已停課':'上課中')+'</small></td><td>'+esc(student.phone||'未填')+'<small>LINE：'+(student.line===true?'已綁定':student.line===false?'未綁定':'未確認')+'</small></td><td>'+esc(subject.name||'尚無學費期別')+'<small>'+esc(teacher.name||'未指定老師')+'</small></td><td>'+(period.id?'<b>'+period.usedCount+' / '+period.lessonCount+'</b><small>剩 '+periodRemaining(period)+' 堂</small>':'—')+'</td><td>'+(period.id?'<b>'+money(periodPaid(period))+' / '+money(period.expectedAmount-period.discount)+'</b><small>'+(periodBalance(period)?'尚欠 '+money(periodBalance(period)):'已繳清')+'</small>':'—')+'</td><td>'+(event.id?esc(event.date+' '+event.start):'尚未排課')+'</td><td><button class="btn small secondary" data-student-id="'+esc(student.id)+'">查看學費紀錄</button></td></tr>';}).join('')||'<tr><td colspan="7">沒有符合條件的學生。</td></tr>';
+    $('studentRows').innerHTML=rows.map(function(item){var student=item.student,period=item.latest,event=item.event,subject=item.subject,teacher=item.teacher;return '<tr><td><b>'+esc(student.name)+'</b><small>'+(student.active===false?'已停課':'上課中')+'</small></td><td>'+esc(student.phone||'未填')+'<small>LINE：'+(student.line===true?'已綁定':student.line===false?'未綁定':'未確認')+'</small></td><td>'+esc(subject.name||'尚無學費期別')+'<small>'+esc(teacher.name||'未指定老師')+'</small></td><td>'+(period.id?'<b>'+period.usedCount+' / '+period.lessonCount+'</b><small>剩 '+periodRemaining(period)+' 堂</small>':'—')+'</td><td>'+(period.id?'<b>'+money(periodPaid(period))+' / '+money(periodNetExpectedAmount(period))+'</b><small>'+(periodBalance(period)?'尚欠 '+money(periodBalance(period)):'已繳清')+'</small>':'—')+'</td><td>'+(event.id?esc(event.date+' '+event.start):'尚未排課')+'</td><td><button class="btn small secondary" data-student-id="'+esc(student.id)+'">查看學費紀錄</button></td></tr>';}).join('')||'<tr><td colspan="7">沒有符合條件的學生。</td></tr>';
   }
   function metric(label,value,small){`);
 
@@ -308,14 +332,17 @@ function patchPortal(path) {
 
   source = source.replace(/\s*<link rel="stylesheet" href="operations-mobile-course-dense-v1\.css\?v=[^"]+">\s*/g, '\n');
   source = source.replace(/\s*<script src="operations-mobile-course-fix-v1\.js\?v=[^"]+"><\/script>\s*/g, '\n');
-  source = source.replace(/\s*<script src="operations-course-inline\.js\?v=[^"]+"><\/script>\s*/g, '\n');
   const operationsTag = /<script src="operations-phase1\.js\?v=[^"]+"><\/script>/;
   if (!operationsTag.test(source)) throw new Error(`Unable to locate operations-phase1.js in ${path}`);
-  source = source.replace(
-    operationsTag,
-    `<script src="operations-course-inline.js?v=${VERSION}"></script>\n  $&`
-  );
-  source = source.replace(/course-scheduler-data\.js\?v=[^"]+/g, `course-scheduler-data.js?v=${VERSION}`);
+  const inlineTag = /<script src="operations-course-inline\.js\?v=[^"]+"><\/script>/;
+  if (inlineTag.test(source)) {
+    source = source.replace(inlineTag, `<script src="operations-course-inline.js?v=${VERSION}"></script>`);
+  } else {
+    source = source.replace(
+      operationsTag,
+      `<script src="operations-course-inline.js?v=${VERSION}"></script>\n  $&`
+    );
+  }
   if (source.includes('course-scheduler.html?view=')) throw new Error(`Standalone course links remain in ${path}`);
   fs.writeFileSync(path, source);
 }
