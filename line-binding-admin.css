@@ -18,6 +18,10 @@ body{margin:0;background:var(--line-page);color:var(--line-ink);font-family:"Not
 .line-admin-title h1{margin:0;font-size:27px;line-height:1.25}
 .line-admin-title p{margin:4px 0 0;color:var(--line-muted);line-height:1.6}
 .line-admin-mark{display:grid;place-items:center;width:68px;height:54px;border-radius:16px;background:var(--line-green);color:#fff;font-size:15px;font-weight:950;letter-spacing:.02em;flex:0 0 auto}
+.line-admin-course-entry{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px;padding:14px 16px;border:1px solid var(--line-border);border-radius:16px;background:#fff}
+.line-admin-course-entry h2{margin:0;font-size:20px}
+.line-admin-course-entry p{margin:4px 0 0;color:var(--line-muted);line-height:1.55}
+.line-admin-course-entry .btn{flex:0 0 auto}
 .line-admin-notice{display:grid;gap:4px;margin-bottom:14px;padding:13px 15px;border:1px solid #efc1bd;border-radius:16px;background:var(--line-red-soft);color:#7b241c;line-height:1.65}
 .line-admin-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
 .line-summary-card{display:grid;gap:4px;padding:14px 16px;border:1px solid var(--line-border);border-radius:16px;background:#fff}
@@ -79,6 +83,8 @@ body{margin:0;background:var(--line-page);color:var(--line-ink);font-family:"Not
   .line-admin-shell{padding:10px 10px 36px}
   .line-admin-head{display:grid;padding:14px}
   .line-admin-head>.btn{width:100%}
+  .line-admin-course-entry{display:grid}
+  .line-admin-course-entry .btn{width:100%}
   .line-admin-title{align-items:flex-start}
   .line-admin-title h1{font-size:22px}
   .line-admin-mark{width:58px;height:48px;border-radius:13px;font-size:13px}
