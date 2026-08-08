@@ -58,7 +58,15 @@
       <section class="view" id="teachersPage">
         <div class="section-heading"><div><h2>老師與薪資</h2><p>老師可教授科目會直接限制排課選項；獎勵、扣薪與實際授課分開計算。</p></div><button class="btn primary" type="button" id="addTeacherBtn">＋ 新增老師</button></div>
         <div class="metric-grid" id="teacherMetrics"></div>
-        <div class="filters"><input class="search-control" id="teacherSearch" placeholder="搜尋老師姓名、電話或教授科目"></div>
+        <div class="filters teacher-payroll-filters">
+          <div class="teacher-month-filter" aria-label="薪資月份查詢">
+            <button class="btn outline" type="button" id="teacherListMonthPrev">← 上一月</button>
+            <label class="teacher-month-control"><span>薪資月份</span><input class="control" id="teacherListMonth" type="month"></label>
+            <button class="btn outline" type="button" id="teacherListMonthNext">下一月 →</button>
+            <button class="btn secondary" type="button" id="teacherListMonthCurrent">本月</button>
+          </div>
+          <input class="search-control" id="teacherSearch" placeholder="搜尋老師姓名、電話或教授科目">
+        </div>
         <div class="teacher-list card" id="teacherCards"></div>
       </section>
 
