@@ -34,7 +34,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.09-unified-preorder-v1';
+  const VERSION = '2026.08.09-ysv104-history-repair-v2';
   // 後端最長執行 30 分鐘；瀏覽器多留 1 分鐘接收後端的最終成功／失敗回應。
   const EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS = 31 * 60 * 1000;
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v10_operating_expenses';
@@ -1281,6 +1281,42 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
 
   async function writeAudit(action,entityType,entityId,summary){
     try{ await state.db.collection(COLLECTIONS.audit).add({action:action,entityType:entityType,entityId:entityId||'',summary:summary||'',createdBy:userLabel(),createdAt:serverTimestamp(),version:VERSION}); }catch(err){}
+  }
+
+  function exactTimestamp(value,iso){
+    const date=dateFrom(value);
+    return !!(date&&date.toISOString()===iso);
+  }
+  function exactTimestampOneOf(value,isos){return isos.some(function(iso){return exactTimestamp(value,iso);});}
+
+  async function repairYsv104PreorderHistoryOnce(){
+    const repairId='YSV104_1920102_HISTFIX_20260809',saleId='bJ2oefMhfrsvbEEDYr1a',receivableId='Mhwu2eeQ0Wv0a1JIdg2A',depositId='CD486cAze4ipgKYGUJnE',tailPaymentId='JDCC45otSrorKnfx4Jlt',productId='mLxgBUQMvWpQWjw7Na5f',stockInId='JGwgBVcy6y1KVzKaoXXY',stockOutId='yN8GiyxjwfKZZa8oA0YB',saleNo='PRE-20260716085756-UNWVV',soldAtIso='2026-07-16T08:57:56.140Z',deliveredAtIso='2026-08-05T05:04:00.000Z',stockReadyIso='2026-08-05T05:03:59.000Z',originalFulfillmentIso='2026-08-09T12:29:31.877Z',originalStockInIso='2026-08-09T12:28:56.778Z';
+    const markerRef=state.db.collection(COLLECTIONS.audit).doc(repairId),saleRef=state.db.collection(COLLECTIONS.sales).doc(saleId),receivableRef=state.db.collection(COLLECTIONS.receivables).doc(receivableId),depositRef=state.db.collection(COLLECTIONS.receivablePayments).doc(depositId),tailPaymentRef=state.db.collection(COLLECTIONS.receivablePayments).doc(tailPaymentId),productRef=state.db.collection(COLLECTIONS.products).doc(productId),stockInRef=state.db.collection(COLLECTIONS.inventory).doc(stockInId),stockOutRef=state.db.collection(COLLECTIONS.inventory).doc(stockOutId);
+    return state.db.runTransaction(async function(tx){
+      const markerSnap=await tx.get(markerRef);
+      if(markerSnap.exists)return 'already_repaired';
+      const saleSnap=await tx.get(saleRef),receivableSnap=await tx.get(receivableRef),depositSnap=await tx.get(depositRef),tailPaymentSnap=await tx.get(tailPaymentRef),productSnap=await tx.get(productRef),stockInSnap=await tx.get(stockInRef),stockOutSnap=await tx.get(stockOutRef);
+      function requireRepair(condition,message){if(!condition)throw new Error('YSV-104 歷史更正已停止：'+message);}
+      requireRepair(saleSnap.exists&&receivableSnap.exists&&depositSnap.exists&&tailPaymentSnap.exists&&productSnap.exists&&stockInSnap.exists&&stockOutSnap.exists,'指定的原始文件不完整');
+      const sale=saleSnap.data()||{},receivable=receivableSnap.data()||{},deposit=depositSnap.data()||{},tailPayment=tailPaymentSnap.data()||{},product=productSnap.data()||{},stockIn=stockInSnap.data()||{},stockOut=stockOutSnap.data()||{};
+      requireRepair(clean(sale.saleNo)===saleNo&&clean(sale.saleType)==='preorder','預購單身分不符');
+      requireRepair(Number(sale.total||sale.orderTotal||0)===28500&&Number(sale.costTotal||0)===15000&&Number(sale.grossProfit||0)===13500,'成交金額、成本或毛利不符');
+      requireRepair(exactTimestamp(sale.preorderAt,soldAtIso)&&exactTimestampOneOf(sale.soldAt,[originalFulfillmentIso,soldAtIso])&&exactTimestampOneOf(sale.deliveredAt,[originalFulfillmentIso,deliveredAtIso]),'原成交日或交貨日已被其他操作改變');
+      requireRepair(clean(receivable.saleId)===saleId&&Number(receivable.totalAmount||0)===28500&&Number(receivable.receivedAmount||0)===28500&&Number(receivable.outstandingAmount||0)===0&&clean(receivable.status)==='paid','應收帳款不是已收清 28,500 元');
+      requireRepair(clean(deposit.saleId)===saleId&&Number(deposit.amount||0)===10000&&exactTimestamp(deposit.paidAt,soldAtIso),'7/16 訂金 10,000 元紀錄不符');
+      requireRepair(clean(tailPayment.saleId)===saleId&&Number(tailPayment.amount||0)===18500&&exactTimestamp(tailPayment.paidAt,deliveredAtIso),'8/5 尾款 18,500 元紀錄不符');
+      requireRepair(clean(product.internalSku)==='1920102'&&Number(product.currentStock||0)===0&&Number(product.reservedStock||0)===0,'商品或最終庫存不是 0');
+      requireRepair(clean(stockIn.productId)===productId&&Number(stockIn.qtyChange||0)===1&&Number(stockIn.beforeStock||0)===0&&Number(stockIn.afterStock||0)===1,'8/9 補登入庫紀錄不符');
+      requireRepair(clean(stockOut.productId)===productId&&clean(stockOut.referenceId)===saleNo&&Number(stockOut.qtyChange||0)===-1&&Number(stockOut.beforeStock||0)===1&&Number(stockOut.afterStock||0)===0,'8/9 補登交貨扣庫紀錄不符');
+      requireRepair(exactTimestampOneOf(stockIn.occurredAt,[originalStockInIso,stockReadyIso])&&exactTimestampOneOf(stockOut.occurredAt,[originalFulfillmentIso,deliveredAtIso]),'兩筆庫存紀錄日期已被其他操作改變');
+      const soldAt=new Date(soldAtIso),deliveredAt=new Date(deliveredAtIso),stockReadyAt=new Date(stockReadyIso),actor=userLabel(),now=serverTimestamp(),originalNote=clean(sale.note),correctionNote='歷史更正：2026/8/5 13:04 尾款收清並交貨；2026/8/9 操作僅補登庫存與交貨，不另計營收';
+      tx.set(saleRef,{soldAt:soldAt,preorderAt:soldAt,deliveredAt:deliveredAt,fulfillmentStatus:'delivered',status:'completed',paymentStatus:'paid',receivedAmount:28500,orderTotal:28500,total:28500,costTotal:15000,grossProfit:13500,costEstimated:false,costSource:'fifo',costConfirmedAt:deliveredAt,note:originalNote.includes(correctionNote)?originalNote:[originalNote,correctionNote].filter(Boolean).join('｜'),historicalCorrectionId:repairId,updatedAt:now,updatedBy:actor,version:VERSION},{merge:true});
+      tx.set(stockInRef,{occurredAt:stockReadyAt,note:'歷史更正｜商品於 2026/8/5 交貨前已可交付；原紀錄於 8/9 補登',historicalCorrectionId:repairId,updatedAt:now,updatedBy:actor,version:VERSION},{merge:true});
+      tx.set(stockOutRef,{occurredAt:deliveredAt,note:'歷史更正｜2026/8/5 13:04 已交貨（不含收款）；原紀錄於 8/9 補登',historicalCorrectionId:repairId,updatedAt:now,updatedBy:actor,version:VERSION},{merge:true});
+      // 收款文件、應收帳款與商品最終庫存只做上方核對，完全不寫入，避免重複入帳或再次增減庫存。
+      tx.set(markerRef,{action:'歷史更正：預購成交與交貨日期',entityType:'preorder',entityId:saleId,summary:saleNo+'｜成交 2026/7/16｜訂金 10,000｜尾款與交貨 2026/8/5｜8/9 僅為補登，不新增收款',saleId:saleId,receivableId:receivableId,paymentIds:[depositId,tailPaymentId],inventoryTransactionIds:[stockInId,stockOutId],createdBy:actor,createdAt:now,version:VERSION});
+      return 'repaired';
+    });
   }
 
   function kpi(title,value,sub,icon){
@@ -4326,10 +4362,13 @@ function rerenderKeepingFocus(id,value){
     const expenseEngineReady=await ensureOperatingExpenseEngineLoaded();
     state.user=user; setText('opsUserChip',userLabel());
     try{state.db=initDb();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('Firebase初始化失敗',errorMessage(error)));return;}
+    let ysv104RepairResult='';
+    try{ysv104RepairResult=await repairYsv104PreorderHistoryOnce();}catch(error){console.error('YSV-104 historical repair stopped safely',error);showAlert(errorMessage(error),'error');}
     if(!expenseEngineReady)showAlert('營運支出程式暂時未載入，其他功能仍可正常使用；重新整理後系統會再自動嘗試。','warning');
     const restoredFastState=await restoreFastStateCache();
     watchInjiaoyunCloudSync();
     bindEvents();
+    if(ysv104RepairResult==='repaired')toast('YSV-104 歷史紀錄已更正','7/16 認列成交；8/5 尾款收清並交貨；沒有新增收款。','success');
     const initialView=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     const cache=initialView==='overview'?getDashboardCache():null;
     if(isCourseWorkspaceView(initialView)){
