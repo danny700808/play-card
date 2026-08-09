@@ -256,18 +256,34 @@ body.rental-booking-v2 {
 }
 
 .rental-room-card {
-  min-height: 122px;
-  padding: 10px 7px;
+  min-height: 150px;
+  padding: 7px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #fff;
   color: var(--ink);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.rental-room-select {
+  width: 100%;
+  min-height: 104px;
+  flex: 1;
+  padding: 5px 2px 7px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   gap: 5px;
+  cursor: pointer;
 }
 
 .rental-room-card b {
@@ -296,10 +312,165 @@ body.rental-booking-v2 {
   font-size: 14px;
 }
 
+.rental-room-select-hint {
+  color: #5e7068;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.rental-room-photo-button {
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 3px;
+  border: 1px solid #acd2c1;
+  border-radius: 10px;
+  background: #eef8f3;
+  color: #1f6752;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.rental-room-photo-button span {
+  margin-right: 2px;
+}
+
 .rental-room-card:hover,
-.rental-room-card:focus {
+.rental-room-card:focus-within {
   border-color: var(--green);
   background: var(--green-soft);
+  box-shadow: 0 0 0 2px rgba(36, 115, 92, .08);
+}
+
+.rental-room-photo-button:hover,
+.rental-room-photo-button:focus-visible {
+  border-color: var(--green);
+  background: #dff2e9;
+  outline: none;
+}
+
+body.rental-photo-open {
+  overflow: hidden;
+}
+
+.rental-photo-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  background: rgba(9, 22, 18, .78);
+  backdrop-filter: blur(5px);
+}
+
+.rental-photo-dialog {
+  width: min(680px, 100%);
+  max-height: calc(100svh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: hidden;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .35);
+  touch-action: pan-y;
+}
+
+.rental-photo-head {
+  min-height: 66px;
+  padding: 10px 10px 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rental-photo-head span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.rental-photo-head h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.rental-photo-close {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 50%;
+  background: #eef2ef;
+  color: #1b2c26;
+  font-size: 31px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rental-photo-stage {
+  position: relative;
+  min-height: 260px;
+  max-height: calc(100svh - 140px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  padding: 8px;
+  background: #101512;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.rental-photo-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100svh - 165px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 9px;
+}
+
+.rental-photo-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 44px;
+  height: 54px;
+  border: 0;
+  border-radius: 13px;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, .88);
+  color: #17352c;
+  font-size: 34px;
+  line-height: 1;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .2);
+  cursor: pointer;
+}
+
+.rental-photo-prev {
+  left: 12px;
+}
+
+.rental-photo-next {
+  right: 12px;
+}
+
+.rental-photo-footer {
+  min-height: 48px;
+  padding: 8px 14px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rental-photo-footer strong {
+  color: var(--ink);
+  font-size: 14px;
 }
 
 .rental-confirm-backdrop {
@@ -456,5 +627,52 @@ body.rental-booking-v2 {
 
   .rental-recording-options {
     grid-template-columns: 1fr;
+  }
+
+  .rental-room-card {
+    min-height: 146px;
+    padding: 5px;
+  }
+
+  .rental-room-select {
+    min-height: 102px;
+  }
+
+  .rental-room-photo-button {
+    min-height: 32px;
+    font-size: 10px;
+  }
+
+  .rental-photo-backdrop {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .rental-photo-dialog {
+    border-radius: 18px;
+  }
+
+  .rental-photo-head {
+    min-height: 60px;
+    padding-left: 13px;
+  }
+
+  .rental-photo-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .rental-photo-nav {
+    width: 39px;
+    height: 50px;
+    background: rgba(255, 255, 255, .82);
+  }
+
+  .rental-photo-prev {
+    left: 7px;
+  }
+
+  .rental-photo-next {
+    right: 7px;
   }
 }
