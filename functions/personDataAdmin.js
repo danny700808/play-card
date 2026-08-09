@@ -9,6 +9,7 @@ const {
   prepareTeachingAbilitySubjects,
   profileAssignmentPatch
 } = require('./courseSubjectCatalog');
+const { normalizeAbilities } = require('./teacherProfileChanges');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -17,6 +18,8 @@ const REGION = 'us-central1';
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const PAGE_SIZE = 400;
 const MAX_ACTION_WRITES = 380;
+const TEACHER_PROFILE_DRAFTS = 'teacherProfileDrafts';
+const TEACHER_PROFILE_CHANGE_DRAFTS = 'teacherProfileChangeDrafts';
 
 const clean = (value) => String(value == null ? '' : value).trim();
 const lower = (value) => clean(value).toLowerCase();
@@ -954,6 +957,295 @@ async function personDataContractAction(data, request) {
   };
 }
 
+function profileChangeStatus(row) {
+  const source = row || {};
+  const approval = lower(source.approvalStatus);
+  if (approval === 'approved') return '已核准';
+  if (approval === 'rejected') return '已駁回';
+  return clean(source.status || source['狀態'] || '待審核');
+}
+
+function pendingProfileChange(row) {
+  const status = lower(profileChangeStatus(row));
+  return ['', 'pending', 'pending_review', '待審核', '未處理'].includes(status);
+}
+
+function publicProfileChanges(row) {
+  const source = row || {};
+  if (Array.isArray(source.changes)) {
+    return source.changes.slice(0, 40).map((change) => ({
+      key: clean(change && change.key),
+      label: clean(change && change.label) || '資料欄位',
+      before: clean(change && change.before) || '未填寫',
+      after: clean(change && change.after) || '已刪除',
+      immediate: change && change.immediate === true
+    }));
+  }
+  const legacyFields = [
+    ['mobilePhone', '行動電話'],
+    ['email', 'Email'],
+    ['address', '聯絡地址'],
+    ['emergencyContact', '緊急聯絡人'],
+    ['emergencyPhone', '緊急聯絡人電話']
+  ];
+  return legacyFields.map(([key, label]) => ({
+    key,
+    label,
+    before: '原正式資料',
+    after: clean(source[key] || source[label])
+  })).filter((change) => change.after);
+}
+
+function profileChangeDateText(row, field, fallbackField) {
+  const source = row || {};
+  const direct = clean(source[fallbackField]);
+  if (direct) return direct;
+  const millis = timestampMs(source[field]);
+  return millis ? new Date(millis).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) : '';
+}
+
+function publicProfileChangeRequest(doc) {
+  const row = doc.data() || {};
+  const status = profileChangeStatus(row);
+  return {
+    requestId: clean(row.requestId || doc.id),
+    profileId: clean(row.profileId || row.externalTeacherProfileId),
+    employeeId: clean(row.employeeId || row.userId || row.applicantId),
+    teacherId: clean(row.teacherId),
+    name: clean(row.name || row.teacherName || row.employeeName) || '未命名人員',
+    status,
+    approvalStatus: clean(row.approvalStatus) || (pendingProfileChange(row) ? 'pending' : ''),
+    changes: publicProfileChanges(row),
+    changeCount: Number(row.changeCount || 0) || publicProfileChanges(row).length,
+    subjectChangesAlreadyEffective: row.subjectChangesAlreadyEffective === true,
+    rejectReason: clean(row.rejectReason || row.revisionReason || row['駁回原因']),
+    reviewedBy: clean(row.reviewedBy),
+    createdAt: profileChangeDateText(row, 'createdAt', 'createdAtText'),
+    createdAtMs: timestampMs(row.createdAt),
+    reviewedAt: profileChangeDateText(row, 'reviewedAt', 'reviewedAtText'),
+    source: clean(row.source),
+    pending: pendingProfileChange(row)
+  };
+}
+
+async function personDataProfileChangeInventory(data, request) {
+  assertManager(request);
+  const snapshot = await db.collection('profileChangeRequests').limit(1000).get();
+  let rows = snapshot.docs.map(publicProfileChangeRequest);
+  const focusId = clean(data && data.requestId);
+  if (focusId) rows = rows.filter((row) => row.requestId === focusId);
+  rows.sort((left, right) =>
+    Number(right.createdAtMs || 0) - Number(left.createdAtMs || 0) || right.requestId.localeCompare(left.requestId)
+  );
+  return { ok: true, rows };
+}
+
+function reviewedRequestPatch(action, request, reason) {
+  const approved = action === 'approve';
+  return {
+    status: approved ? '已核准' : '已駁回',
+    '狀態': approved ? '已核准' : '已駁回',
+    approvalStatus: approved ? 'approved' : 'rejected',
+    reviewedAt: FV.serverTimestamp(),
+    reviewedAtText: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }),
+    reviewedBy: actorOf(request),
+    rejectReason: approved ? FV.delete() : reason,
+    updatedAt: FV.serverTimestamp()
+  };
+}
+
+function submittedProfilePublicPatch(source) {
+  const row = source || {};
+  const teachingAbilities = normalizeAbilities(row.teachingAbilities);
+  const mobilePhone = rowPhone(row);
+  return {
+    name: clean(row.name),
+    mobilePhone,
+    mobile: mobilePhone,
+    phone: mobilePhone,
+    email: lower(row.email),
+    birthDate: clean(row.birthDate),
+    householdAddress: clean(row.householdAddress),
+    mailingAddress: clean(row.mailingAddress),
+    emergencyContact: clean(row.emergencyContact),
+    emergencyPhone: rowPhone({ mobilePhone: row.emergencyPhone }),
+    teachingAbilities,
+    teachingItems: teachingAbilities.map((ability) => ability.item).join('、'),
+    teachingItemsText: teachingAbilities.map((ability) => ability.item).join('、'),
+    idNumberMasked: clean(row.idNumberMasked),
+    identityFileCount: Math.max(0, Number(row.identityFileCount || 0)),
+    identityPhotoStatus: Number(row.identityFileCount || 0) > 0 ? 'uploaded' : 'missing',
+    idNumber: FV.delete(),
+    identityNumber: FV.delete(),
+    identityFiles: FV.delete(),
+    identityUrls: FV.delete(),
+    profileChangeStatus: 'approved',
+    pendingProfileChangeRequestId: FV.delete(),
+    profileRevisionReason: FV.delete(),
+    updatedAt: FV.serverTimestamp()
+  };
+}
+
+function submittedProfilePrivatePatch(source, profileId, employeeId, teacherId) {
+  const row = source || {};
+  return {
+    profileId,
+    employeeId,
+    coursePortalTeacherId: teacherId,
+    idNumber: clean(row.idNumber || row.identityNumber),
+    identityFiles: Array.isArray(row.identityFiles) ? row.identityFiles : [],
+    updatedAt: FV.serverTimestamp()
+  };
+}
+
+function submittedEmployeePatch(publicProfile) {
+  const row = publicProfile || {};
+  const mobilePhone = rowPhone(row);
+  const teachingAbilities = normalizeAbilities(row.teachingAbilities);
+  return {
+    name: clean(row.name),
+    displayName: clean(row.name),
+    mobilePhone,
+    mobile: mobilePhone,
+    phone: mobilePhone,
+    email: lower(row.email),
+    householdAddress: clean(row.householdAddress),
+    mailingAddress: clean(row.mailingAddress),
+    emergencyContact: clean(row.emergencyContact),
+    emergencyPhone: rowPhone({ mobilePhone: row.emergencyPhone }),
+    teachingAbilities,
+    teachingItems: teachingAbilities.map((ability) => ability.item).join('、'),
+    profileChangeStatus: 'approved',
+    pendingProfileChangeRequestId: FV.delete(),
+    profileChangeSubmittedAt: FV.delete(),
+    profileRevisionReason: FV.delete(),
+    updatedAt: FV.serverTimestamp()
+  };
+}
+
+async function personDataProfileChangeAction(data, request) {
+  assertManager(request);
+  const requestId = clean(data && data.requestId);
+  const action = clean(data && data.action);
+  const reason = clean(data && (data.reason || data.rejectReason));
+  if (!requestId) throw new HttpsError('invalid-argument', '缺少個資修改申請編號。');
+  if (!['approve', 'reject'].includes(action)) throw new HttpsError('invalid-argument', '不支援的個資簽核操作。');
+  if (action === 'reject' && !reason) throw new HttpsError('invalid-argument', '請填寫退回原因。');
+  const requestRef = db.collection('profileChangeRequests').doc(requestId);
+  const submittedDraftRef = db.collection(TEACHER_PROFILE_CHANGE_DRAFTS).doc(requestId);
+  await db.runTransaction(async (transaction) => {
+    const requestSnapshot = await transaction.get(requestRef);
+    if (!requestSnapshot.exists) throw new HttpsError('not-found', '找不到這筆個資修改申請。');
+    const requestRow = requestSnapshot.data() || {};
+    const submittedDraftSnapshot = await transaction.get(submittedDraftRef);
+    const portalRequest = submittedDraftSnapshot.exists;
+    if (!portalRequest) {
+      if (!pendingProfileChange(requestRow)) throw new HttpsError('failed-precondition', '這筆申請已經處理過。');
+      const employeeId = clean(requestRow.employeeId || requestRow.userId || requestRow.applicantId);
+      if (action === 'approve' && employeeId) {
+        const employeeRef = db.collection('employees').doc(employeeId);
+        const employeeSnapshot = await transaction.get(employeeRef);
+        if (!employeeSnapshot.exists) throw new HttpsError('not-found', '找不到這筆申請對應的人員主檔。');
+        const patch = { updatedAt: FV.serverTimestamp(), source: 'profile-change-approved' };
+        [
+          ['mobilePhone', 'mobilePhone'], ['address', 'address'], ['email', 'email'],
+          ['emergencyContact', 'emergencyContact'], ['emergencyPhone', 'emergencyPhone']
+        ].forEach(([sourceKey, targetKey]) => {
+          const value = clean(requestRow[sourceKey]);
+          if (value) patch[targetKey] = sourceKey === 'email' ? lower(value) : value;
+        });
+        transaction.set(employeeRef, patch, { merge: true });
+      }
+      transaction.set(requestRef, reviewedRequestPatch(action, request, reason), { merge: true });
+      return;
+    }
+
+    const submitted = submittedDraftSnapshot.data() || {};
+    if (clean(submitted.status) !== 'pending_review') {
+      throw new HttpsError('failed-precondition', '這筆申請已經處理過，請重新整理。');
+    }
+    const profileId = clean(submitted.profileId);
+    const employeeId = clean(submitted.employeeId);
+    const teacherId = clean(submitted.teacherId);
+    if (!profileId || !employeeId || !teacherId || clean(submitted.requestId) !== requestId) {
+      throw new HttpsError('failed-precondition', '這筆申請的老師歸屬不完整，已停止處理。');
+    }
+    if ((clean(requestRow.profileId) && clean(requestRow.profileId) !== profileId) ||
+        (clean(requestRow.employeeId) && clean(requestRow.employeeId) !== employeeId) ||
+        (clean(requestRow.teacherId) && clean(requestRow.teacherId) !== teacherId)) {
+      throw new HttpsError('failed-precondition', '申請清單與安全快照的老師歸屬不一致，已停止處理。');
+    }
+    const profileRef = db.collection('externalTeacherProfiles').doc(profileId);
+    const privateRef = db.collection('teacherPrivateProfiles').doc(profileId);
+    const employeeRef = db.collection('employees').doc(employeeId);
+    const editableDraftRef = db.collection(TEACHER_PROFILE_DRAFTS).doc(profileId);
+    const [profileSnapshot, privateSnapshot, employeeSnapshot, editableDraftSnapshot] = await Promise.all([
+      transaction.get(profileRef),
+      transaction.get(privateRef),
+      transaction.get(employeeRef),
+      transaction.get(editableDraftRef)
+    ]);
+    if (!profileSnapshot.exists || !employeeSnapshot.exists) {
+      throw new HttpsError('not-found', '找不到老師的正式個人資料或人員主檔。');
+    }
+    const editableDraft = editableDraftSnapshot.exists ? editableDraftSnapshot.data() || {} : {};
+    if (editableDraftSnapshot.exists && clean(editableDraft.requestId) && clean(editableDraft.requestId) !== requestId) {
+      throw new HttpsError('failed-precondition', '老師已有較新的修改草稿，請重新整理後再處理。');
+    }
+    const publicProfile = submitted.publicProfile && typeof submitted.publicProfile === 'object'
+      ? submitted.publicProfile
+      : {};
+    const privateProfile = submitted.privateProfile && typeof submitted.privateProfile === 'object'
+      ? submitted.privateProfile
+      : {};
+    const reviewedPatch = reviewedRequestPatch(action, request, reason);
+    if (action === 'approve') {
+      transaction.set(profileRef, submittedProfilePublicPatch(publicProfile), { merge: true });
+      transaction.set(privateRef, submittedProfilePrivatePatch(privateProfile, profileId, employeeId, teacherId), { merge: true });
+      transaction.set(employeeRef, submittedEmployeePatch(publicProfile), { merge: true });
+      transaction.set(requestRef, reviewedPatch, { merge: true });
+      transaction.delete(submittedDraftRef);
+      if (editableDraftSnapshot.exists) transaction.delete(editableDraftRef);
+      return;
+    }
+    transaction.set(profileRef, {
+      profileChangeStatus: 'needs_revision',
+      pendingProfileChangeRequestId: FV.delete(),
+      profileRevisionReason: reason,
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+    transaction.set(employeeRef, {
+      profileChangeStatus: 'needs_revision',
+      pendingProfileChangeRequestId: FV.delete(),
+      profileChangeSubmittedAt: FV.delete(),
+      profileRevisionReason: reason,
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+    transaction.set(requestRef, reviewedPatch, { merge: true });
+    transaction.set(submittedDraftRef, {
+      status: 'rejected',
+      revisionReason: reason,
+      reviewedAt: FV.serverTimestamp(),
+      reviewedBy: actorOf(request)
+    }, { merge: true });
+    transaction.set(editableDraftRef, {
+      requestId: FV.delete(),
+      status: 'needs_revision',
+      revisionReason: reason,
+      submittedAt: FV.delete(),
+      submittedAtText: FV.delete(),
+      updatedAt: FV.serverTimestamp()
+    }, { merge: true });
+  });
+  return {
+    ok: true,
+    status: action === 'approve' ? 'approved' : 'rejected',
+    message: action === 'approve'
+      ? '已核准並更新老師正式資料；老師自填的授課科目仍維持即時生效。'
+      : '已退回老師修改；授課科目屬老師自填資料，維持目前設定。'
+  };
+}
+
 function registerPersonDataAdmin(exportsObject) {
   exportsObject.personDataAdminInventory = onCall({ region: REGION, timeoutSeconds: 300, memory: '1GiB' }, (request) =>
     personDataInventory(request && request.data || {}, request));
@@ -967,6 +1259,10 @@ function registerPersonDataAdmin(exportsObject) {
     personDataContractDetail(request && request.data || {}, request));
   exportsObject.personDataAdminContractAction = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
     personDataContractAction(request && request.data || {}, request));
+  exportsObject.personDataAdminProfileChangeInventory = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+    personDataProfileChangeInventory(request && request.data || {}, request));
+  exportsObject.personDataAdminProfileChangeAction = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+    personDataProfileChangeAction(request && request.data || {}, request));
 }
 
 module.exports = {
@@ -979,6 +1275,9 @@ module.exports = {
     activeEmployee,
     recordBelongsToPersonnel,
     profileReadiness,
+    pendingProfileChange,
+    publicProfileChanges,
+    publicProfileChangeRequest,
     contractAssignmentReviewStatus,
     publicContractAssignment,
     SOURCE_SPECS

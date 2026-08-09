@@ -26,8 +26,13 @@ const {
   mergeSubjectRows,
   mergeTeacherRows,
   normalizedSubjectName,
-  prepareTeachingAbilitySubjects
+  prepareTeachingAbilitySubjects,
+  profileAssignmentPatch
 } = require('./courseSubjectCatalog');
+const {
+  profileChangeRows,
+  profileDraftSnapshot
+} = require('./teacherProfileChanges');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -2243,6 +2248,8 @@ function externalTeacherProfileMissingFields(row) {
 const TEACHER_UTILITY_IDENTITY_URL_LIMIT = 4;
 const TEACHER_PORTAL_PROFILE_VERSION = 2;
 const TEACHER_PORTAL_PROFILE_SOURCE = 'course-portal-fresh-external-teacher-v2';
+const TEACHER_PROFILE_DRAFTS = 'teacherProfileDrafts';
+const TEACHER_PROFILE_CHANGE_DRAFTS = 'teacherProfileChangeDrafts';
 
 function teacherPortalProfileId(teacherId) {
   return `EXTP_${hash(`course-portal-profile-v${TEACHER_PORTAL_PROFILE_VERSION}:${teacherId}`).slice(0, 24)}`;
@@ -3062,6 +3069,63 @@ function teacherUtilityIdentityImage(value) {
   };
 }
 
+function teacherUtilityPublicProfile(source) {
+  const row = source || {};
+  return {
+    name: clean(row.name),
+    mobilePhone: normalizePhone(row.mobilePhone || row.mobile || row.phone),
+    email: normalizeEmail(row.email),
+    birthDate: clean(row.birthDate),
+    householdAddress: clean(row.householdAddress),
+    mailingAddress: clean(row.mailingAddress || row.contactAddress),
+    emergencyContact: clean(row.emergencyContact),
+    emergencyPhone: normalizePhone(row.emergencyPhone || row.emergencyContactPhone),
+    teachingAbilities: teacherUtilityDraftAbilities(row.teachingAbilities) || [],
+    idNumberMasked: clean(row.idNumberMasked),
+    identityFileCount: Math.max(0, Number(row.identityFileCount || 0))
+  };
+}
+
+function teacherUtilityPrivateProfile(source) {
+  const row = source || {};
+  return {
+    idNumber: clean(row.idNumber || row.identityNumber),
+    identityFiles: Array.isArray(row.identityFiles) ? row.identityFiles : []
+  };
+}
+
+function teacherUtilityDraftProfileForDisplay(resolved, draftRow) {
+  const result = Object.assign({}, resolved || {});
+  const draft = draftRow || {};
+  if (!draft.publicProfile || typeof draft.publicProfile !== 'object') return result;
+  const official = result.profile || {};
+  const proposed = draft.publicProfile || {};
+  const privateDraft = draft.privateProfile || {};
+  result.profile = Object.assign({}, official, proposed, {
+    idNumberMasked: clean(proposed.idNumberMasked || official.idNumberMasked),
+    identityFileCount: Math.max(
+      Number(official.identityFileCount || 0),
+      Array.isArray(privateDraft.identityFiles) ? privateDraft.identityFiles.length : 0
+    ),
+    profileChangeStatus: clean(draft.status),
+    profileChangeRequestId: clean(draft.requestId),
+    profileRevisionReason: clean(draft.revisionReason)
+  });
+  result.profileChangePending = clean(draft.status) === 'pending_review';
+  result.profileChangeRequestId = clean(draft.requestId);
+  result.profileRevisionReason = clean(draft.revisionReason);
+  return result;
+}
+
+async function teacherUtilityResolvedWithDraft(resolved) {
+  const profileId = clean(resolved && resolved.user && resolved.user.portalProfileId);
+  if (!profileId) return resolved;
+  const snapshot = await db.collection(TEACHER_PROFILE_DRAFTS).doc(profileId).get();
+  return snapshot.exists
+    ? teacherUtilityDraftProfileForDisplay(resolved, jsonValue(snapshot.data() || {}))
+    : resolved;
+}
+
 async function teacherUtilitySaveProfileDraft(data) {
   const session = await requireSession(data, ['teacher']);
   const resolved = await resolveTeacherUtilityEmployee(session);
@@ -3071,33 +3135,46 @@ async function teacherUtilitySaveProfileDraft(data) {
   const profileRef = db.collection('externalTeacherProfiles').doc(profileId);
   const privateProfileRef = db.collection('teacherPrivateProfiles').doc(profileId);
   const employeeRef = db.collection('employees').doc(employeeId);
-  const [profileSnapshot, privateProfileSnapshot, employeeSnapshot] = await Promise.all([
+  const draftRef = db.collection(TEACHER_PROFILE_DRAFTS).doc(profileId);
+  const assignmentRef = db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION).doc(clean(session.teacherId));
+  const [profileSnapshot, privateProfileSnapshot, employeeSnapshot, draftSnapshot, assignmentSnapshot] = await Promise.all([
     profileRef.get(),
     privateProfileRef.get(),
-    employeeRef.get()
+    employeeRef.get(),
+    draftRef.get(),
+    assignmentRef.get()
   ]);
   if (!profileSnapshot.exists) throw new HttpsError('not-found', '找不到老師個人資料。');
   const existing = jsonValue(profileSnapshot.data() || {});
   const existingPrivate = privateProfileSnapshot.exists ? jsonValue(privateProfileSnapshot.data() || {}) : {};
   const employeeExisting = employeeSnapshot.exists ? employeeSnapshot.data() || {} : {};
+  const existingDraft = draftSnapshot.exists ? jsonValue(draftSnapshot.data() || {}) : {};
   if (!teacherPortalProfileIsCurrent(Object.assign({ __id: profileId }, existing), session.teacherId, profileId)) {
     throw new HttpsError('permission-denied', '這筆個人資料不屬於目前登入的老師。');
   }
+  if (clean(existingDraft.status) === 'pending_review') {
+    throw new HttpsError('failed-precondition', '這次修改已送出主管確認；請等待處理後再繼續修改。');
+  }
 
-  const patch = {
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedAtText: nowText(),
-    lastSavedFrom: 'teacher-course-portal-profile-v1'
-  };
-  const privatePatch = {
-    profileId,
-    employeeId: clean(resolved.employeeId),
-    coursePortalTeacherId: clean(session.teacherId),
-    portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
-    portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedAtText: nowText()
-  };
+  const currentConfirmed = teacherPortalProfileStatusIsConfirmed(existing);
+  const employeeConfirmed = employeeExisting.active === true ||
+    teacherPortalProfileStatusIsConfirmed(employeeExisting) || currentConfirmed;
+  const officialSnapshot = profileDraftSnapshot(existing, existingPrivate);
+  const publicDraft = Object.assign(
+    {},
+    teacherUtilityPublicProfile(existing),
+    existingDraft.publicProfile && typeof existingDraft.publicProfile === 'object'
+      ? existingDraft.publicProfile
+      : {}
+  );
+  const privateDraft = Object.assign(
+    {},
+    teacherUtilityPrivateProfile(existingPrivate),
+    existingDraft.privateProfile && typeof existingDraft.privateProfile === 'object'
+      ? existingDraft.privateProfile
+      : {}
+  );
+
   const textFields = [
     ['name', 80], ['mobilePhone', 30], ['email', 160],
     ['birthDate', 20], ['householdAddress', 240], ['mailingAddress', 240],
@@ -3106,24 +3183,18 @@ async function teacherUtilitySaveProfileDraft(data) {
   textFields.forEach(([key, maxLength]) => {
     const value = teacherUtilityDraftText(data, key, maxLength);
     if (value === undefined) return;
-    patch[key] = key === 'email' ? normalizeEmail(value) : value;
+    publicDraft[key] = key === 'email' ? normalizeEmail(value) : value;
   });
-  if (Object.prototype.hasOwnProperty.call(patch, 'mobilePhone')) {
-    patch.mobile = normalizePhone(patch.mobilePhone);
-    patch.phone = patch.mobile;
-    patch.mobilePhone = patch.mobile;
-  }
-  if (Object.prototype.hasOwnProperty.call(patch, 'emergencyPhone')) {
-    patch.emergencyPhone = normalizePhone(patch.emergencyPhone);
-  }
+  publicDraft.mobilePhone = normalizePhone(publicDraft.mobilePhone);
+  publicDraft.emergencyPhone = normalizePhone(publicDraft.emergencyPhone);
   if (Object.prototype.hasOwnProperty.call(data || {}, 'idNumber')) {
-    privatePatch.idNumber = clean(data.idNumber).toUpperCase().replace(/\s+/g, '');
-    if (privatePatch.idNumber && !/^[A-Z0-9-]{6,30}$/.test(privatePatch.idNumber)) {
+    privateDraft.idNumber = clean(data.idNumber).toUpperCase().replace(/\s+/g, '');
+    if (privateDraft.idNumber && !/^[A-Z0-9-]{6,30}$/.test(privateDraft.idNumber)) {
       throw new HttpsError('invalid-argument', '身分證字號格式不正確。');
     }
-    patch.idNumberMasked = teacherUtilityMaskedId(privatePatch.idNumber);
+    publicDraft.idNumberMasked = teacherUtilityMaskedId(privateDraft.idNumber);
   }
-  if (patch.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patch.email)) {
+  if (publicDraft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(publicDraft.email)) {
     throw new HttpsError('invalid-argument', 'Email 格式不正確。');
   }
   let teachingAbilities = teacherUtilityDraftAbilities(data && data.teachingAbilities);
@@ -3141,9 +3212,7 @@ async function teacherUtilitySaveProfileDraft(data) {
       nowText: nowText()
     });
     teachingAbilities = subjectPlan.abilities;
-    patch.teachingAbilities = teachingAbilities;
-    patch.teachingItems = teachingAbilities.map((row) => row.item).join('、');
-    patch.teachingItemsText = patch.teachingItems;
+    publicDraft.teachingAbilities = teachingAbilities;
   }
 
   const incomingImages = Array.isArray(data && data.identityImages) ? data.identityImages : [];
@@ -3169,14 +3238,14 @@ async function teacherUtilitySaveProfileDraft(data) {
     });
   }
   if (savedImages.length) {
-    const existingFiles = Array.isArray(existingPrivate.identityFiles) ? existingPrivate.identityFiles : [];
-    privatePatch.identityFiles = existingFiles.concat(savedImages).slice(-4);
-    patch.identityPhotoStatus = 'uploaded';
+    const existingFiles = Array.isArray(privateDraft.identityFiles) ? privateDraft.identityFiles : [];
+    privateDraft.identityFiles = existingFiles.concat(savedImages).slice(-4);
   }
+  publicDraft.identityFileCount = Array.isArray(privateDraft.identityFiles) ? privateDraft.identityFiles.length : 0;
 
-  const preview = Object.assign({}, existing, existingPrivate, patch, privatePatch, {
+  const preview = Object.assign({}, existing, existingPrivate, publicDraft, privateDraft, {
     lineUserId: clean(existing.lineUserId || session.lineUserId),
-    identityFiles: privatePatch.identityFiles || existingPrivate.identityFiles || []
+    identityFiles: privateDraft.identityFiles || []
   });
   const missing = externalTeacherProfileMissingFields(preview);
   const complete = missing.length === 0;
@@ -3184,42 +3253,31 @@ async function teacherUtilitySaveProfileDraft(data) {
   if (submitForReview && !complete) {
     throw new HttpsError('failed-precondition', `資料尚缺 ${missing.map((row) => row.label).join('、')}，請補齊後再送出。`);
   }
-  const currentConfirmed = teacherPortalProfileStatusIsConfirmed(existing);
-  const employeeConfirmed = employeeExisting.active === true ||
-    teacherPortalProfileStatusIsConfirmed(employeeExisting) || currentConfirmed;
-  const currentStatus = clean(existing.profileStatus || existing.status).toLowerCase();
-  patch.status = submitForReview
-    ? 'pending_review'
-    : (['pending_review', 'needs_revision'].includes(currentStatus) ? currentStatus : 'profile_draft');
-  patch.profileStatus = patch.status;
-  patch.progressStatus = patch.status === 'pending_review'
-    ? '等待管理者確認'
-    : (patch.status === 'needs_revision'
-      ? '管理者退回補件'
-      : (employeeConfirmed ? '個人資料修改中' : '資料填寫中'));
-  patch.profileCompletedAt = complete ? (existing.profileCompletedAt || FieldValue.serverTimestamp()) : FieldValue.delete();
-  if (submitForReview) patch.profileSubmittedAt = FieldValue.serverTimestamp();
-  const saveBatch = db.batch();
-  saveBatch.set(profileRef, Object.assign({}, patch, {
-    idNumber: FieldValue.delete(),
-    identityNumber: FieldValue.delete(),
-    identityFiles: FieldValue.delete(),
-    identityUrls: FieldValue.delete()
-  }), { merge: true });
-  saveBatch.set(privateProfileRef, privatePatch, { merge: true });
-  if (subjectPlan) {
-    subjectPlan.catalogWrites.forEach((write) => {
-      saveBatch.set(db.collection(SUBJECT_CATALOG_COLLECTION).doc(write.id), write.patch, { merge: true });
-    });
-  }
-  await saveBatch.commit();
-
   if (employeeSnapshot.exists && !isExternalTeacherEmployee(employeeExisting)) {
     const managerLinked = resolved && resolved.user && resolved.user.managerLinkedPerson === true;
     if (!managerLinked) throw new HttpsError('failed-precondition', '外聘老師主檔編號發生衝突，請聯絡管理者。');
   }
+
+  const assignmentPatch = subjectPlan ? profileAssignmentPatch(
+    assignmentSnapshot.exists ? assignmentSnapshot.data() || {} : {},
+    subjectPlan.allSubjectIds,
+    {
+      teacherId: clean(session.teacherId),
+      employeeId,
+      profileId,
+      activeProfileSubjectIds: subjectPlan.subjectIds,
+      source: 'teacher-self-declared-profile',
+      nowText: nowText()
+    },
+    FieldValue
+  ) : null;
+
+  const currentStatus = clean(existing.profileStatus || existing.status).toLowerCase();
+  const initialStatus = submitForReview
+    ? 'pending_review'
+    : (['pending_review', 'needs_revision'].includes(currentStatus) ? currentStatus : 'profile_draft');
   const nextPersonStatus = employeeConfirmed ? 'active' :
-    (patch.status === 'pending_review' ? 'pending_review' : (patch.status === 'needs_revision' ? 'needs_revision' : 'profile_draft'));
+    (initialStatus === 'pending_review' ? 'pending_review' : (initialStatus === 'needs_revision' ? 'needs_revision' : 'profile_draft'));
   const employeePatch = {
     id: employeeId,
     employeeId,
@@ -3234,7 +3292,7 @@ async function teacherUtilitySaveProfileDraft(data) {
     employmentStatus: employeeConfirmed ? clean(employeeExisting.employmentStatus || 'active') : (nextPersonStatus === 'needs_revision' ? 'profile_draft' : nextPersonStatus),
     hiddenFromActiveLists: employeeExisting.hiddenFromActiveLists === true,
     personLifecycleStatus: nextPersonStatus,
-    profileReviewStatus: patch.status,
+    profileReviewStatus: employeeConfirmed ? clean(employeeExisting.profileReviewStatus || 'approved') : initialStatus,
     source: 'course-portal-canonical-external-teacher',
     coursePortalTeacherCanonical: true,
     coursePortalTeacherId: clean(session.teacherId),
@@ -3244,18 +3302,139 @@ async function teacherUtilitySaveProfileDraft(data) {
     updatedAt: FieldValue.serverTimestamp(),
     createdAt: employeeExisting.createdAt || FieldValue.serverTimestamp()
   };
-  if (patch.status === 'pending_review') employeePatch.profileReviewSubmittedAt = FieldValue.serverTimestamp();
+  if (subjectPlan) {
+    employeePatch.teachingAbilities = teachingAbilities;
+    employeePatch.teachingItems = teachingAbilities.map((row) => row.item).join('、');
+    employeePatch.subjectIds = assignmentPatch ? assignmentPatch.effectiveSubjectIds : subjectPlan.subjectIds;
+  }
+
+  const saveBatch = db.batch();
+  if (subjectPlan) {
+    subjectPlan.catalogWrites.forEach((write) => {
+      saveBatch.set(db.collection(SUBJECT_CATALOG_COLLECTION).doc(write.id), write.patch, { merge: true });
+    });
+    if (assignmentPatch) saveBatch.set(assignmentRef, assignmentPatch, { merge: true });
+    saveBatch.set(profileRef, {
+      teachingAbilities,
+      teachingItems: teachingAbilities.map((row) => row.item).join('、'),
+      teachingItemsText: teachingAbilities.map((row) => row.item).join('、'),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
+
+  if (employeeConfirmed) {
+    const baselineProfile = existingDraft.baselineProfile && typeof existingDraft.baselineProfile === 'object'
+      ? existingDraft.baselineProfile
+      : officialSnapshot;
+    const draftRow = {
+      profileId,
+      employeeId,
+      teacherId: clean(session.teacherId),
+      publicProfile: publicDraft,
+      privateProfile: privateDraft,
+      baselineProfile,
+      status: 'draft',
+      revisionReason: FieldValue.delete(),
+      source: 'teacher-course-portal-profile-change-v2',
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtText: nowText(),
+      createdAt: existingDraft.createdAt || FieldValue.serverTimestamp()
+    };
+    if (submitForReview) {
+      const afterSnapshot = profileDraftSnapshot(publicDraft, privateDraft);
+      const changes = profileChangeRows(baselineProfile, afterSnapshot);
+      if (!changes.length) throw new HttpsError('failed-precondition', '目前資料沒有任何修改，不需要重新送出。');
+      const requestRef = db.collection('profileChangeRequests').doc();
+      const submittedDraftRef = db.collection(TEACHER_PROFILE_CHANGE_DRAFTS).doc(requestRef.id);
+      const requestRow = {
+        requestId: requestRef.id,
+        profileId,
+        employeeId,
+        teacherId: clean(session.teacherId),
+        name: clean(publicDraft.name || existing.name),
+        status: '待審核',
+        approvalStatus: 'pending',
+        changes,
+        changeCount: changes.length,
+        subjectChangesAlreadyEffective: changes.some((row) => row.key === 'teachingAbilities'),
+        source: 'teacher-course-portal-profile-change-v2',
+        createdAt: FieldValue.serverTimestamp(),
+        createdAtText: nowText(),
+        updatedAt: FieldValue.serverTimestamp()
+      };
+      saveBatch.set(requestRef, requestRow);
+      const submittedDraftRow = Object.assign({}, draftRow, {
+        requestId: requestRef.id,
+        status: 'pending_review',
+        submittedAt: FieldValue.serverTimestamp(),
+        submittedAtText: nowText()
+      });
+      // The editable draft uses a delete sentinel to clear a previous return
+      // reason. A new immutable review snapshot cannot contain that sentinel.
+      delete submittedDraftRow.revisionReason;
+      saveBatch.set(submittedDraftRef, submittedDraftRow);
+      draftRow.requestId = requestRef.id;
+      draftRow.status = 'pending_review';
+      draftRow.submittedAt = FieldValue.serverTimestamp();
+      draftRow.submittedAtText = nowText();
+      employeePatch.pendingProfileChangeRequestId = requestRef.id;
+      employeePatch.profileChangeStatus = 'pending_review';
+      employeePatch.profileChangeSubmittedAt = FieldValue.serverTimestamp();
+    } else {
+      employeePatch.profileChangeStatus = 'draft';
+    }
+    saveBatch.set(draftRef, draftRow, { merge: true });
+    saveBatch.set(profileRef, {
+      profileChangeStatus: submitForReview ? 'pending_review' : 'draft',
+      pendingProfileChangeRequestId: submitForReview ? draftRow.requestId : FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  } else {
+    const initialPatch = Object.assign({}, publicDraft, {
+      mobile: publicDraft.mobilePhone,
+      phone: publicDraft.mobilePhone,
+      teachingItems: publicDraft.teachingAbilities.map((row) => row.item).join('、'),
+      teachingItemsText: publicDraft.teachingAbilities.map((row) => row.item).join('、'),
+      identityPhotoStatus: publicDraft.identityFileCount ? 'uploaded' : clean(existing.identityPhotoStatus),
+      status: initialStatus,
+      profileStatus: initialStatus,
+      progressStatus: initialStatus === 'pending_review' ? '等待管理者確認' :
+        (initialStatus === 'needs_revision' ? '管理者退回補件' : '資料填寫中'),
+      profileCompletedAt: complete ? (existing.profileCompletedAt || FieldValue.serverTimestamp()) : FieldValue.delete(),
+      profileSubmittedAt: submitForReview ? FieldValue.serverTimestamp() : existing.profileSubmittedAt || FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtText: nowText(),
+      lastSavedFrom: 'teacher-course-portal-profile-v2',
+      idNumber: FieldValue.delete(),
+      identityNumber: FieldValue.delete(),
+      identityFiles: FieldValue.delete(),
+      identityUrls: FieldValue.delete()
+    });
+    const initialPrivatePatch = Object.assign({}, privateDraft, {
+      profileId,
+      employeeId,
+      coursePortalTeacherId: clean(session.teacherId),
+      portalProfileVersion: TEACHER_PORTAL_PROFILE_VERSION,
+      portalProfileSource: TEACHER_PORTAL_PROFILE_SOURCE,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtText: nowText()
+    });
+    saveBatch.set(profileRef, initialPatch, { merge: true });
+    saveBatch.set(privateProfileRef, initialPrivatePatch, { merge: true });
+    if (initialStatus === 'pending_review') employeePatch.profileReviewSubmittedAt = FieldValue.serverTimestamp();
+  }
+
   if (!employeeConfirmed) {
-    employeePatch.name = clean(preview.name);
-    employeePatch.displayName = clean(preview.name);
+    employeePatch.name = clean(publicDraft.name);
+    employeePatch.displayName = clean(publicDraft.name);
     employeePatch.mobile = employeePhone(preview);
     employeePatch.mobilePhone = employeePhone(preview);
     employeePatch.email = employeeEmail(preview);
-    employeePatch.teachingAbilities = teachingAbilities === undefined ? existing.teachingAbilities || [] : teachingAbilities;
   }
-  await employeeRef.set(employeePatch, { merge: true });
+  saveBatch.set(employeeRef, employeePatch, { merge: true });
+  await saveBatch.commit();
 
-  const refreshed = await resolveTeacherUtilityEmployee(session);
+  const refreshed = await teacherUtilityResolvedWithDraft(await resolveTeacherUtilityEmployee(session));
   return Object.assign({
     ok: true,
     savedAt: Date.now(),
@@ -3266,7 +3445,7 @@ async function teacherUtilitySaveProfileDraft(data) {
 
 async function teacherUtilitySession(data) {
   const session = await requireSession(data, ['teacher']);
-  const resolved = await resolveTeacherUtilityEmployee(session);
+  const resolved = await teacherUtilityResolvedWithDraft(await resolveTeacherUtilityEmployee(session));
   const [pendingSummary, subjects] = await Promise.all([
     teacherUtilityPendingSummary(resolved, session),
     mirrorRows('subjects')

@@ -338,7 +338,7 @@ function profileAssignmentPatch(existing, profileSubjectIds, meta, FieldValue) {
     managerAddedSubjectIds: added,
     managerExcludedSubjectIds: [...excluded],
     effectiveSubjectIds: effective,
-    source: 'approved-teacher-profile',
+    source: clean(meta && meta.source) || 'teacher-self-declared-profile',
     updatedAt: FieldValue.serverTimestamp(),
     updatedAtText: clean(meta && meta.nowText) || new Date().toISOString()
   };
