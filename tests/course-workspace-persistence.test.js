@@ -62,7 +62,7 @@ assert(controller.includes('isDemo(source)'), '課務控制器沒有排除示範
 assert(controller.includes('global.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__ = workspace ? clone(workspace) : null'), '工作區沒有交給 inline runtime');
 assert(!controller.includes('YouziCoursePreviewData.load'), '正常開頁仍會自動重新讀取雲端鏡像');
 assert(!controller.includes('YouziCoursePreviewData.sync'), '正常開頁仍會自動執行音教雲同步');
-assert(inlineBuilder.includes("const VERSION = '20260809-teacher-payroll-parity-v2'"), '課務產生器仍使用舊快取版本');
+assert(inlineBuilder.includes("const VERSION = '20260809-mobile-teacher-payroll-cards-v3'"), '課務產生器仍使用舊快取版本');
 assert(inlineBuilder.includes('money(periodNetExpectedAmount(period))'), '課務產生器會重新產生錯誤的比例折扣金額');
 assert.strictEqual((inlineBuilder.match(/money\(period\.expectedAmount-period\.discount\)/g) || []).length, 1, '課務產生器的學生 renderer 仍直接以比例值扣原價');
 assert(inlineBuilder.includes('if (existingIsScoped)'), '課務產生器不會保留已完成更新的 inline runtime');
@@ -115,6 +115,9 @@ assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), 
   assert(teacherRenderer.includes('<span>課堂拆帳</span><span>獎勵／扣薪</span><span>實際合計</span>'), `${label}每位老師沒有分欄顯示薪資組成`);
   assert(teacherRenderer.includes('basePay=sum(completed.map'), `${label}每位老師的課堂拆帳仍未獨立計算`);
   assert(teacherRenderer.includes('adjustmentPay=sum(teacherAdjustments.map(signedTeacherAdjustment))'), `${label}每位老師的獎勵／扣薪仍未獨立計算`);
+  assert(teacherRenderer.includes('class="teacher-list-cell teacher-list-identity" data-label="老師／電話"'), `${label}手機老師卡缺少姓名與電話標籤`);
+  assert(teacherRenderer.includes('class="teacher-list-cell teacher-list-subjects teacher-subject-summary" data-label="主要教授科目"'), `${label}手機老師卡缺少教授科目標籤`);
+  assert(teacherRenderer.includes('class="teacher-list-cell teacher-list-final-pay" data-label="實際合計"'), `${label}手機老師卡缺少實際薪資合計`);
 
   const netHelper = (source.match(/function periodNetExpectedAmount\(period\)\{[^\n]+\}/) || [])[0];
   const balanceHelper = (source.match(/function periodBalance\(period\)\{[^\n]+\}/) || [])[0];
@@ -139,6 +142,13 @@ assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), 
   assert.strictEqual(tuitionMath.periodBalance({ expectedAmount: 4000, discount: 0.1, planSnapshot: { discountType: 'ratio' } }), 3600, `${label}沒有沿用方案快照的比例折扣`);
   assert.strictEqual(tuitionMath.periodBalance({ expectedAmount: 4000, discount: 0.1, discountType: 'ratio', transactions: [{ type: 'payment', amount: 1000 }] }), 2600, `${label}比例折扣後的部分付款餘額錯誤`);
 });
+
+assert(schedulerCss.includes('.teacher-list{display:grid;gap:10px;overflow:visible'), '手機老師清單仍會水平捲動');
+assert(schedulerCss.includes('.teacher-list-head{display:none}'), '手機老師清單仍顯示桌機表頭');
+assert(schedulerCss.includes('.teacher-list-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;min-width:0'), '手機老師資料未改為可完整閱讀的雙欄卡片');
+assert(schedulerCss.includes('.teacher-list-cell::before{content:attr(data-label)'), '手機老師卡缺少欄位名稱');
+assert(schedulerCss.includes('.teacher-list-identity,.teacher-list-subjects,.teacher-list-final-pay{grid-column:1/-1}'), '手機老師卡的重要資訊沒有使用完整寬度');
+assert(schedulerCss.includes('.teacher-list-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'), '手機老師操作仍可能超出畫面');
 
 assert(scheduler.includes("WORKSPACE_DB_KEY='workspace'"), '互動課表未使用 workspace 資料庫');
 assert(scheduler.includes("FORMAL_DB_KEY='latest'"), '互動課表未使用 latest 正式快照');

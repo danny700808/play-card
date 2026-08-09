@@ -72,6 +72,23 @@ a{color:inherit;text-decoration:none}
   body{font-size:15px}.app-shell{display:block}.sidebar{position:sticky;top:0;width:auto;height:auto;padding:8px;display:block;z-index:50}.brand,.mode-pill,.sidebar-foot{display:none}.main-nav{display:flex;overflow:auto}.main-nav button{padding:8px 10px;white-space:nowrap}.main-nav button span{width:28px;height:28px}.main-content{padding:0 10px 30px}.page-header{position:relative;padding:14px 2px 10px}.page-header h1{font-size:24px}.page-header p,.save-state{display:none}.header-actions .btn{min-height:40px}.data-mode{align-items:flex-start;flex-direction:column}.data-mode-actions{width:100%}.data-mode-actions .btn{flex:1}.calendar-toolbar{align-items:flex-start;flex-direction:column}.date-actions,.toolbar-actions{width:100%}.toolbar-actions .btn{flex:1}.date-heading{min-width:0;flex:1}.schedule-scroll{max-height:72vh}.kpi-grid{gap:7px}.kpi{padding:11px}.kpi strong{font-size:23px}.teacher-grid,.metric-grid{grid-template-columns:1fr}.form-grid,.form-grid.three,.detail-hero{grid-template-columns:1fr}.field.span-2{grid-column:auto}.record-summary{grid-template-columns:repeat(2,1fr)}.status-actions{grid-template-columns:repeat(2,1fr)}.modal-backdrop{padding:0;align-items:flex-end}.modal{border-radius:18px 18px 0 0;max-height:96vh}.policy-row,.policy-row.simple{grid-template-columns:74px 1fr 1fr}.policy-row.simple>span{grid-column:1/-1}.policy-row .policy-subjects{grid-column:1/-1}.section-heading,.panel-actions{align-items:stretch;flex-direction:column}.filters{align-items:stretch;flex-direction:column}.search-control{min-width:0}.schedule-instructions{align-items:flex-start;flex-direction:column}
   .teacher-month-filter{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}.teacher-month-control{grid-column:1/-1;grid-row:1;justify-content:space-between}.teacher-month-control .control{min-width:0;flex:1}.teacher-month-filter .btn{min-width:0;padding-left:8px;padding-right:8px}
   .teacher-payroll-sync{align-items:center;margin-bottom:9px}
+  .teacher-list{display:grid;gap:10px;overflow:visible;border:0;background:transparent;box-shadow:none}
+  .teacher-list-head{display:none}
+  .teacher-list-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;min-width:0;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 5px 16px rgba(18,53,45,.07)}
+  .teacher-list-row:hover{background:#fff}
+  .teacher-list-row.inactive{background:#f0f1f1}
+  .teacher-list-cell{min-width:0;padding:10px 12px;border-bottom:1px solid #e8efec;overflow-wrap:anywhere}
+  .teacher-list-cell::before{content:attr(data-label);display:block;margin-bottom:2px;color:var(--muted);font-size:12px;font-weight:800}
+  .teacher-list-identity,.teacher-list-subjects,.teacher-list-final-pay{grid-column:1/-1}
+  .teacher-list-identity{background:#f1f7f4}
+  .teacher-list-identity b{font-size:18px}
+  .teacher-list-subjects{background:#fbfdfc}
+  .teacher-list-status,.teacher-list-base-pay{border-right:1px solid #e8efec}
+  .teacher-list-final-pay{background:#f1f7f4;color:var(--green-dark)}
+  .teacher-list-final-pay b{font-size:18px}
+  .teacher-list-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:11px 12px}
+  .teacher-list-actions .btn{min-width:0;min-height:42px;white-space:normal;line-height:1.35}
+  .teacher-list-actions .btn:nth-child(3){grid-column:1/-1}
 }
 
 /* 排課主畫面：課程種類維持固定主色，簽到與請假只作狀態提示。 */
