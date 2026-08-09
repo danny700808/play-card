@@ -72,7 +72,7 @@
       </section>
 
       <section class="view" id="settingsPage">
-        <div class="section-heading"><div><h2>系統設定</h2><p>先設定排課格線、教室規則、科目、收費方案與請假原因。</p></div><button class="btn primary" type="button" id="saveSettingsBtn">儲存設定</button></div>
+        <div class="section-heading"><div><h2>系統設定</h2><p>共用科目、老師可教項目與收費方案分開保存；老師只選會教的科目，收費由管理者需要時再設定。</p></div><button class="btn primary" type="button" id="saveSettingsBtn">儲存設定</button></div>
         <div class="settings-tabs" role="tablist">
           <button class="active" type="button" data-settings-tab="general">排課時間</button>
           <button type="button" data-settings-tab="rooms">教室空間</button>
@@ -92,12 +92,12 @@
         </div>
 
         <div class="settings-panel" data-settings-panel="subjects">
-          <div class="panel-actions"><div><h3>科目類別</h3><p>科目會勾稽老師可授課範圍、收費方案與教室適用規則。</p></div><button class="btn primary" type="button" id="addSubjectBtn">＋ 新增科目</button></div>
+          <div class="panel-actions"><div><h3>科目類別</h3><p>老師新增的項目會加入共用清單；管理者可視需要設定收費、對應既有科目或停用，未設定費用不影響老師勾選。</p></div><button class="btn primary" type="button" id="addSubjectBtn">＋ 新增科目</button></div>
           <div class="table-card card"><table class="data-table"><thead><tr><th>排序</th><th>科目名稱</th><th>可授課老師</th><th>收費方案</th><th>狀態</th><th>操作</th></tr></thead><tbody id="subjectRows"></tbody></table></div>
         </div>
 
         <div class="settings-panel" data-settings-panel="fees">
-          <div class="panel-actions"><div><h3>收費方案</h3><p>直接拖曳整列調整常用順序；排課與新增期數會沿用此排列。</p></div><button class="btn primary" type="button" id="addFeePlanBtn">＋ 新增收費方案</button></div>
+          <div class="panel-actions"><div><h3>收費方案</h3><p>所有共用科目都可在這裡設定學生收費與老師拆帳；暫時沒有學生使用的科目可以不設定。拆帳比例或固定金額可為 0，續期會沿用原值。</p></div><button class="btn primary" type="button" id="addFeePlanBtn">＋ 新增收費方案</button></div>
           <div class="filters"><select class="control" id="feeSubjectFilter"><option value="all">全部科目</option></select></div>
           <div class="table-card card"><table class="data-table"><thead><tr><th>拖曳</th><th>科目</th><th>方案名稱</th><th>費用／堂數</th><th>老師拆帳</th><th>請假規則</th><th>狀態</th><th>操作</th></tr></thead><tbody id="feePlanRows"></tbody></table></div>
         </div>

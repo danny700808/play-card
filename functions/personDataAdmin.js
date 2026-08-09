@@ -3,6 +3,12 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const {
+  SUBJECT_CATALOG_COLLECTION,
+  TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION,
+  prepareTeachingAbilitySubjects,
+  profileAssignmentPatch
+} = require('./courseSubjectCatalog');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -42,6 +48,7 @@ const SOURCE_SPECS = [
   ['employeeSchedules', '固定班表', ['employeeId', 'userId', 'personMasterId'], [], 'schedule'],
   ['singleDaySchedules', '單日班表', ['employeeId', 'userId', 'personMasterId'], [], 'schedule'],
   ['coursePortalScheduleChanges', '課務班表異動', ['employeeId', 'personMasterId'], ['teacherId'], 'schedule'],
+  ['coursePortalTeacherSubjectAssignments', '老師授課科目', ['employeeId', 'personMasterId'], ['teacherId'], 'schedule'],
   ['clockRecords', '打卡紀錄', ['employeeId', 'userId', 'personMasterId'], [], 'attendance'],
   ['leaveRequests', '請假紀錄', ['employeeId', 'userId', 'personMasterId'], [], 'attendance'],
   ['leaveRecords', '請假核准歷史', ['employeeId', 'userId', 'personMasterId'], [], 'attendance'],
@@ -502,9 +509,40 @@ async function approveProfile(group, request) {
   if (!readiness.ready) {
     throw new HttpsError('failed-precondition', `個人資料尚缺：${readiness.missing.join('、')}。請先退回老師補齊。`);
   }
-  const batch = db.batch();
   const profileRow = profile.row || {};
-  const teachingAbilities = Array.isArray(profileRow.teachingAbilities) ? profileRow.teachingAbilities : [];
+  const employeeRow = employees[0].row || {};
+  const teacherId = first(Object.assign({}, employeeRow, profileRow), ['coursePortalTeacherId', 'legacyTeacherId', 'teacherId']) ||
+    clean(group.teacherIds && group.teacherIds[0]);
+  const teachingPlan = await prepareTeachingAbilitySubjects({
+    db,
+    FieldValue: FV,
+    abilities: Array.isArray(profileRow.teachingAbilities) ? profileRow.teachingAbilities : [],
+    approveNew: true,
+    profileId: profile.docId,
+    teacherId,
+    employeeId: employees[0].docId,
+    actor: actorOf(request),
+    source: 'approved-teacher-profile-subject',
+    nowText: new Date().toISOString()
+  });
+  const teachingAbilities = teachingPlan.abilities;
+  const assignmentRef = teacherId
+    ? db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION).doc(teacherId)
+    : null;
+  const assignmentSnapshot = assignmentRef ? await assignmentRef.get() : null;
+  const assignmentPatch = assignmentRef ? profileAssignmentPatch(
+    assignmentSnapshot && assignmentSnapshot.exists ? assignmentSnapshot.data() || {} : {},
+    teachingPlan.allSubjectIds,
+    {
+      teacherId,
+      employeeId: employees[0].docId,
+      profileId: profile.docId,
+      activeProfileSubjectIds: teachingPlan.subjectIds,
+      nowText: new Date().toISOString()
+    },
+    FV
+  ) : null;
+  const batch = db.batch();
   batch.set(employees[0].ref, {
     name: rowName(profileRow),
     displayName: rowName(profileRow),
@@ -512,6 +550,8 @@ async function approveProfile(group, request) {
     mobilePhone: rowPhone(profileRow),
     email: rowEmail(profileRow),
     teachingAbilities,
+    teachingItems: teachingAbilities.map((row) => row.item).join('、'),
+    subjectIds: assignmentPatch ? assignmentPatch.effectiveSubjectIds : teachingPlan.subjectIds,
     active: true,
     accountStatus: 'active',
     employmentStatus: 'active',
@@ -529,9 +569,15 @@ async function approveProfile(group, request) {
     progressStatus: '已建立為外聘老師',
     approvedAt: FV.serverTimestamp(),
     approvedBy: actorOf(request),
+    teachingAbilities,
+    teachingItems: teachingAbilities.map((row) => row.item).join('、'),
     active: true,
     updatedAt: FV.serverTimestamp()
   }, { merge: true });
+  teachingPlan.catalogWrites.forEach((write) => {
+    batch.set(db.collection(SUBJECT_CATALOG_COLLECTION).doc(write.id), write.patch, { merge: true });
+  });
+  if (assignmentRef && assignmentPatch) batch.set(assignmentRef, assignmentPatch, { merge: true });
   batchAudit(batch, 'approve-profile', group, request);
   await batch.commit();
   return { ok: true, message: '已確認個人資料並啟用此外聘老師。' };

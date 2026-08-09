@@ -52,7 +52,7 @@
       if(!name)return null;
       if(byId.has(id))return byId.get(id);
       if(byName.has(name))return byName.get(name);
-      var row={id:id,name:name,sort:numberOf(source.sort)||rows.length+1,active:source.active!==false};
+      var row={id:id,name:name,sort:numberOf(source.sort)||rows.length+1,active:source.active!==false,approvalStatus:clean(source.approvalStatus||source.status),pricingStatus:clean(source.pricingStatus),catalogManaged:source.catalogManaged===true,suggestedByTeacherIds:unique(source.suggestedByTeacherIds),suggestedByProfileIds:unique(source.suggestedByProfileIds)};
       rows.push(row);byId.set(id,row);byName.set(name,row);return row;
     }
     array(payload.subjects).forEach(add);
@@ -72,7 +72,8 @@
         name:clean(row.name)||'未命名方案',amount:amount,lessonCount:lessons,
         splitType:clean(row.splitType)||(splitValue>0&&splitValue<=1?'ratio':'fixed'),splitValue:splitValue,
         leaveNoDeduct:row.leaveNoDeduct!=null?row.leaveNoDeduct===true:row.leaveDelay!==false,
-        expiryDays:numberOf(row.expiryDays),active:row.active!==false&&row.off!==true,listed:row.listed!==false
+        expiryDays:numberOf(row.expiryDays),active:row.active!==false&&row.off!==true,listed:row.listed!==false,
+        zeroTeacherPayConfirmed:row.zeroTeacherPayConfirmed===true,portalManaged:row.portalManaged===true
       };
     });
   }
@@ -375,6 +376,73 @@
     return result;
   }
 
+  async function courseAdminMutation(name,payload,pin){
+    var usesManagerAuth=Boolean(global.YouziOperationsManagerAuth&&typeof global.YouziOperationsManagerAuth.ensureManagerAuth==='function');
+    try{
+      await ensureTeacherPayrollManagerAuth();
+      return await call(name,payload||{});
+    }catch(error){
+      if(usesManagerAuth||!clean(pin))throw error;
+      return call(name,Object.assign({},payload||{},{adminPin:clean(pin)}));
+    }
+  }
+
+  async function saveTeacherSubjects(options){
+    options=options||{};
+    var teacherId=clean(options.teacherId);
+    if(!teacherId)throw new Error('缺少老師資料。');
+    var result=await courseAdminMutation('coursePortalAdminSaveTeacherSubjects',{
+      teacherId:teacherId,
+      subjectIds:unique(options.subjectIds)
+    },options.manualSyncPin);
+    if(!result||result.ok!==true)throw new Error('老師授課科目尚未同步完成。');
+    return result;
+  }
+
+  async function saveSubjectCatalog(options){
+    options=options||{};
+    var name=clean(options.name);
+    if(!name)throw new Error('請填寫科目名稱。');
+    var result=await courseAdminMutation('coursePortalAdminSaveSubjectCatalog',{
+      id:clean(options.id),
+      name:name,
+      sort:Number(options.sort||0),
+      active:options.active!==false
+    },options.manualSyncPin);
+    if(!result||result.ok!==true||!result.subject)throw new Error('共用科目尚未同步完成。');
+    return result;
+  }
+
+  async function saveFeePlan(options){
+    options=options||{};
+    var result=await courseAdminMutation('coursePortalAdminSaveFeePlan',{
+      id:clean(options.id),
+      subjectId:clean(options.subjectId),
+      name:clean(options.name),
+      sort:Number(options.sort||0),
+      amount:Number(options.amount),
+      lessonCount:Number(options.lessonCount),
+      splitType:clean(options.splitType),
+      splitValue:Number(options.splitValue),
+      leaveNoDeduct:options.leaveNoDeduct!==false,
+      expiryDays:Number(options.expiryDays||0),
+      active:options.active!==false,
+      listed:options.listed!==false
+    },options.manualSyncPin);
+    if(!result||result.ok!==true||!result.feePlan)throw new Error('正式收費方案尚未同步完成。');
+    return result;
+  }
+
+  async function mapSubjectSuggestion(options){
+    options=options||{};
+    var result=await courseAdminMutation('coursePortalAdminMapSubjectSuggestion',{
+      suggestionId:clean(options.suggestionId),
+      targetSubjectId:clean(options.targetSubjectId)
+    },options.manualSyncPin);
+    if(!result||result.ok!==true)throw new Error('授課項目尚未完成對應。');
+    return result;
+  }
+
   async function saveRoomSettings(options){
     options=options||{};
     var pin=clean(options.manualSyncPin),roomId=clean(options.roomId);
@@ -466,5 +534,5 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={load:load,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
+  global.YouziCoursePreviewData={load:load,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);

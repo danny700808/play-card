@@ -10,6 +10,7 @@ on:
       - "functions/injiaoyunEducationMirror.js"
       - "functions/injiaoyunEducationPreview.js"
       - "functions/coursePortal.js"
+      - "functions/courseSubjectCatalog.js"
       - "functions/coursePortalUtils.js"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -21,6 +22,7 @@ on:
       - "tests/course-payroll-mobile-parity.test.js"
       - "tests/course-workspace-persistence.test.js"
       - "tests/course-portal.test.js"
+      - "tests/course-subject-catalog.test.js"
       - "tests/injiaoyun-unified-sync-model.test.js"
       - ".github/workflows/firebase-functions-deploy.yml"
   workflow_dispatch:
@@ -114,9 +116,11 @@ jobs:
           NODE
           cd ..
           node --check functions/coursePortal.js
+          node --check functions/courseSubjectCatalog.js
           node --check functions/injiaoyunEducationMirror.js
           node --check functions/injiaoyunEducationPreview.js
           NODE_PATH=functions/node_modules node tests/course-portal.test.js
+          NODE_PATH=functions/node_modules node --test tests/course-subject-catalog.test.js
           NODE_PATH=functions/node_modules node tests/injiaoyun-unified-sync-model.test.js
 
       - name: Validate Firebase service account
