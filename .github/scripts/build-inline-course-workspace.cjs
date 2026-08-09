@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260809-teacher-payroll-parity-v2';
+const VERSION = '20260809-mobile-teacher-payroll-cards-v3';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
