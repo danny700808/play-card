@@ -316,6 +316,15 @@
     if(!global.firebase.apps.length)global.firebase.initializeApp(config);return global.firebase.app().functions(FUNCTION_REGION);
   }
 
+  async function ensureTeacherPayrollManagerAuth(){
+    var bridge=global.YouziOperationsManagerAuth;
+    if(!bridge||typeof bridge.ensureManagerAuth!=='function')return null;
+    var manager=typeof global.getUser==='function'?global.getUser():null;
+    var result=await bridge.ensureManagerAuth(global,manager,{timeoutMs:20000});
+    if(result&&result.ok)return result;
+    throw new Error(result&&result.message||'管理者安全登入尚未恢復，請重新開啟頁面後再試。');
+  }
+
   async function call(name,data,options){
     var callable=firebaseFunctions().httpsCallable(name,options||{}),result=await callable(data);
     return result&&result.data||{};
@@ -330,15 +339,17 @@
   async function loadTeacherPayrollMonth(options){
     options=options||{};
     var month=clean(options.month),pin=clean(options.manualSyncPin),payload;
+    var usesManagerAuth=Boolean(global.YouziOperationsManagerAuth&&typeof global.YouziOperationsManagerAuth.ensureManagerAuth==='function');
     if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))throw new Error('薪資月份格式不正確。');
     try{
+      await ensureTeacherPayrollManagerAuth();
       payload=await call(AUTO_LOAD_FUNCTION_NAME,{
         source:'course-scheduler-teacher-payroll',
         scope:'teacher-payroll-month',
         month:month
       },{timeout:180000});
     }catch(error){
-      if(!pin)throw error;
+      if(usesManagerAuth||!pin)throw error;
       payload=await call(LOAD_FUNCTION_NAME,{
         source:'course-scheduler-teacher-payroll-fallback',
         manualSyncPin:pin

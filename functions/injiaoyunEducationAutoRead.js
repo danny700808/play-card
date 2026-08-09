@@ -7,7 +7,7 @@ if (!admin.apps.length) admin.initializeApp();
 
 const db = admin.firestore();
 const REGION = 'us-central1';
-const VERSION = '2026.08.09-auto-read-v5-payroll-month';
+const VERSION = '2026.08.09-auto-read-v6-payroll-parity';
 const SETTINGS_REF = db.collection('opsSettings').doc('injiaoyunEducationMirror');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -15,6 +15,7 @@ const ALLOWED_ORIGINS = new Set([
   'https://mingtinghuang.com'
 ]);
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const MIRROR_TYPES = Object.freeze({
   rooms: 'opsEducationMirrorRooms',
   subjects: 'opsEducationMirrorSubjects',
@@ -49,7 +50,14 @@ function requestOrigin(request) {
 function assertAllowedRead(request) {
   const token = request && request.auth && request.auth.token;
   const role = clean(token && token.role).toLowerCase();
-  if (token && token.employee === true && (token.manager === true || ['admin', 'manager'].includes(role))) return;
+  const email = clean(token && token.email).toLowerCase();
+  if (token && (
+    token.admin === true ||
+    token.manager === true ||
+    token.owner === true ||
+    ['admin', 'manager', 'owner'].includes(role) ||
+    ADMIN_EMAILS.has(email)
+  )) return;
   throw new HttpsError('permission-denied', '請先使用管理者帳號登入，再讀取課務資料。');
 }
 
