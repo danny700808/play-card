@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#24735c">
   <title>教室租用｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
-  <link rel="stylesheet" href="room-booking-v2.css?v=20260802-rental-identity-v1">
+  <link rel="stylesheet" href="room-booking-v2.css?v=20260809-room-photos-fast-uses-v1">
 </head>
 <body class="rental-booking-v2 clean-portal-ui">
   <main class="portal-shell">
@@ -62,7 +62,14 @@
     <section class="hidden" id="bookingView" data-app-view>
       <section class="card rental-step">
         <h2 class="rental-step-title"><b>1</b>用途</h2>
-        <div class="rental-use-grid" id="rentalUseGrid"><div class="rental-empty">正在載入用途…</div></div>
+        <div class="rental-use-grid" id="rentalUseGrid">
+          <button class="rental-use-card active" type="button" data-use="piano"><span>🎹</span><b>彈鋼琴</b></button>
+          <button class="rental-use-card" type="button" data-use="drums"><span>🥁</span><b>練鼓</b></button>
+          <button class="rental-use-card" type="button" data-use="band"><span>🎸</span><b>團練</b></button>
+          <button class="rental-use-card" type="button" data-use="guzheng"><img class="rental-use-image" src="rental-guzheng.png?v=20260801-guzheng-v1" alt=""><b>古箏</b></button>
+          <button class="rental-use-card" type="button" data-use="recording"><span>🎙️</span><b>錄音室</b></button>
+          <button class="rental-use-card" type="button" data-use="other"><span>🎵</span><b>其他用途</b></button>
+        </div>
         <div class="rental-preference hidden" id="rentalPreference"></div>
       </section>
 
@@ -92,6 +99,27 @@
       </section>
     </section>
   </main>
+
+  <div class="rental-photo-backdrop hidden" id="rentalPhotoBackdrop" aria-hidden="true">
+    <section class="rental-photo-dialog" role="dialog" aria-modal="true" aria-labelledby="rentalPhotoTitle" tabindex="-1">
+      <header class="rental-photo-head">
+        <div>
+          <span>教室實景</span>
+          <h2 id="rentalPhotoTitle">教室照片</h2>
+        </div>
+        <button class="rental-photo-close" id="closeRentalPhoto" type="button" aria-label="關閉教室照片">×</button>
+      </header>
+      <div class="rental-photo-stage">
+        <button class="rental-photo-nav rental-photo-prev" id="prevRentalPhoto" type="button" aria-label="上一張照片">‹</button>
+        <img class="rental-photo-image" id="rentalPhotoImage" alt="">
+        <button class="rental-photo-nav rental-photo-next" id="nextRentalPhoto" type="button" aria-label="下一張照片">›</button>
+      </div>
+      <footer class="rental-photo-footer">
+        <strong id="rentalPhotoCounter" aria-live="polite"></strong>
+        <span>可左右滑動查看</span>
+      </footer>
+    </section>
+  </div>
 
   <div class="rental-confirm-backdrop hidden" id="rentalConfirmBackdrop">
     <section class="rental-confirm-sheet" role="dialog" aria-modal="true">
@@ -131,6 +159,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
-  <script src="room-booking-v2.js?v=20260805-auth-route-cleanup-v1"></script>
+  <script src="room-booking-v2.js?v=20260809-room-photos-fast-uses-v1"></script>
 </body>
 </html>

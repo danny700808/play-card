@@ -24,6 +24,10 @@
   let pendingStart = '';
   let boardRequestId = 0;
   let roomRequestId = 0;
+  let activeRoomPhotoName = '';
+  let activeRoomPhotos = [];
+  let activeRoomPhotoIndex = 0;
+  let roomPhotoTouchStartX = 0;
 
   function maximumAdvanceDate() {
     const today = new Date(`${todayKey()}T12:00:00`);
@@ -42,10 +46,95 @@
     general_room: 100,
     studio_recording: 300
   });
+  const immediateRentalUseOptions = Object.freeze([
+    { id: 'piano', name: '彈鋼琴', icon: '🎹', description: '可選擇是否排除電鋼琴' },
+    { id: 'drums', name: '練鼓', icon: '🥁', description: '可指定傳統鼓或電子鼓，也可不指定' },
+    { id: 'band', name: '團練', icon: '🎸', description: '' },
+    { id: 'guzheng', name: '古箏', icon: '🪕', description: '預設展演空間；可自行搬運時才加入 KAWAI 教室' },
+    { id: 'recording', name: '錄音室', icon: '🎙️', description: '錄音用途每小時 NT$300；其他用途每小時 NT$100' },
+    { id: 'other', name: '其他用途', icon: '🎵', description: '' }
+  ]);
+  const roomPhotoSets = Object.freeze([
+    {
+      match: /KAWAI.*直立|卡哇伊.*直立/i,
+      images: [
+        'https://cdn.store-assets.com/s/887148/f/10015248.png',
+        'https://cdn.store-assets.com/s/887148/f/10015250.png',
+        'https://cdn.store-assets.com/s/887148/f/10015251.png'
+      ]
+    },
+    {
+      match: /5\s*號.*鋼琴|5\s*號.*表演/i,
+      images: [
+        'https://cdn.store-assets.com/s/887148/f/14490247.png',
+        'https://cdn.store-assets.com/s/887148/f/14490248.png',
+        'https://cdn.store-assets.com/s/887148/f/14490251.png'
+      ]
+    },
+    {
+      match: /YAMAHA.*平台|山葉.*平台/i,
+      images: [
+        'https://cdn.store-assets.com/s/887148/f/10015252.png',
+        'https://cdn.store-assets.com/s/887148/f/10015263.png',
+        'https://cdn.store-assets.com/s/887148/f/10015254.png'
+      ]
+    },
+    {
+      match: /鼓教室.*電子鼓|電子鼓.*鼓教室/i,
+      images: [
+        'https://cdn.store-assets.com/s/887148/f/10015293.png',
+        'https://cdn.store-assets.com/s/887148/f/10083689.png',
+        'https://cdn.store-assets.com/s/887148/f/10015295.png'
+      ]
+    },
+    {
+      match: /錄音室|錄音教室/i,
+      images: [
+        'https://cdn.store-assets.com/s/887148/f/10302631.png',
+        'https://cdn.store-assets.com/s/887148/f/10302622.png',
+        'https://cdn.store-assets.com/s/887148/f/10302632.png'
+      ]
+    },
+    {
+      match: /吉他教室/i,
+      images: [
+        'https://cdn.store-assets.com/s/887148/f/10015300.png',
+        'https://cdn.store-assets.com/s/887148/f/10015291.png',
+        'https://cdn.store-assets.com/s/887148/f/10015297.png'
+      ]
+    },
+    {
+      match: /YAMAHA.*直立|山葉.*直立/i,
+      images: [
+        'https://cdn.store-assets.com/s/887148/f/14490311.png',
+        'https://cdn.store-assets.com/s/887148/f/14490312.png',
+        'https://cdn.store-assets.com/s/887148/f/14490313.png'
+      ]
+    },
+    {
+      match: /展演空間|展演.*電子鼓/i,
+      images: [
+        'https://cdn.store-assets.com/s/887148/f/10015264.png',
+        'https://cdn.store-assets.com/s/887148/f/10015312.png',
+        'https://cdn.store-assets.com/s/887148/f/10015276.png'
+      ]
+    },
+    {
+      match: /團練室.*傳統鼓|傳統鼓.*團練室/i,
+      images: [
+        'https://cdn.store-assets.com/s/887148/f/10015283.png',
+        'https://cdn.store-assets.com/s/887148/f/10015311.png',
+        'https://cdn.store-assets.com/s/887148/f/10015310.png'
+      ]
+    }
+  ]);
 
   const bindView = document.getElementById('publicBindView');
   const bookingView = document.getElementById('bookingView');
   const confirmBackdrop = document.getElementById('rentalConfirmBackdrop');
+  const photoBackdrop = document.getElementById('rentalPhotoBackdrop');
+  const photoDialog = photoBackdrop.querySelector('.rental-photo-dialog');
+  const photoImage = document.getElementById('rentalPhotoImage');
   const initialParams = new URLSearchParams(location.search);
   const initialDate = clean(initialParams.get('date'));
   const initialDuration = Number(initialParams.get('duration'));
@@ -99,6 +188,57 @@
       digits.length >= 8;
     document.getElementById('rentalHeaderTitle').textContent =
       name && !sensitive ? `教室租用｜歡迎 ${name}` : '教室租用';
+  }
+
+  function photosForRoom(room) {
+    const name = clean(room && room.name);
+    const photoSet = roomPhotoSets.find((row) => row.match.test(name));
+    return photoSet ? photoSet.images.slice() : [];
+  }
+
+  function renderRoomPhoto() {
+    if (!activeRoomPhotos.length) return;
+    const total = activeRoomPhotos.length;
+    activeRoomPhotoIndex = (activeRoomPhotoIndex + total) % total;
+    document.getElementById('rentalPhotoTitle').textContent = activeRoomPhotoName || '教室照片';
+    document.getElementById('rentalPhotoCounter').textContent = `${activeRoomPhotoIndex + 1} / ${total}`;
+    photoImage.alt = `${activeRoomPhotoName}照片 ${activeRoomPhotoIndex + 1}`;
+    photoImage.src = activeRoomPhotos[activeRoomPhotoIndex];
+    document.getElementById('prevRentalPhoto').classList.toggle('hidden', total < 2);
+    document.getElementById('nextRentalPhoto').classList.toggle('hidden', total < 2);
+  }
+
+  function moveRoomPhoto(step) {
+    if (activeRoomPhotos.length < 2) return;
+    activeRoomPhotoIndex += Number(step || 0);
+    renderRoomPhoto();
+  }
+
+  function openRoomPhotos(room) {
+    const images = photosForRoom(room);
+    if (!images.length) {
+      P.toast('這間教室目前沒有可顯示的照片。', 'error');
+      return;
+    }
+    activeRoomPhotoName = clean(room && room.name) || '教室照片';
+    activeRoomPhotos = images;
+    activeRoomPhotoIndex = 0;
+    renderRoomPhoto();
+    photoBackdrop.classList.remove('hidden');
+    photoBackdrop.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('rental-photo-open');
+    setTimeout(() => document.getElementById('closeRentalPhoto').focus(), 0);
+  }
+
+  function closeRoomPhotos() {
+    photoBackdrop.classList.add('hidden');
+    photoBackdrop.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('rental-photo-open');
+    activeRoomPhotoName = '';
+    activeRoomPhotos = [];
+    activeRoomPhotoIndex = 0;
+    photoImage.removeAttribute('src');
+    photoImage.alt = '';
   }
 
   function showBooking(active) {
@@ -155,11 +295,13 @@
     const message = raw && raw !== 'internal'
       ? raw
       : '租用資料暫時無法讀取，請按「重新讀取」。';
-    document.getElementById('rentalUseGrid').innerHTML = `
-      <button class="btn soft" type="button" data-retry-rental>重新讀取租用資料</button>
+    if (!document.querySelector('#rentalUseGrid [data-use]')) renderUses(immediateRentalUseOptions);
+    document.getElementById('rentalBoard').innerHTML = `
+      <div class="rental-empty">
+        <p>登入已完成，時段資料尚未載入。</p>
+        <button class="btn soft" type="button" data-retry-rental>重新讀取時段</button>
+      </div>
     `;
-    document.getElementById('rentalBoard').innerHTML =
-      '<div class="rental-empty">登入已完成，租用資料尚未載入。</div>';
     P.toast(message, 'error');
   }
 
@@ -319,7 +461,12 @@
       if (selectedStart) await loadRooms();
     } catch (error) {
       if (isAuthError(error)) throw error;
-      document.getElementById('rentalBoard').innerHTML = '<div class="rental-empty">讀取失敗。</div>';
+      document.getElementById('rentalBoard').innerHTML = `
+        <div class="rental-empty">
+          <p>時段讀取失敗，用途仍可先選擇。</p>
+          <button class="btn soft" type="button" data-retry-rental>重新讀取時段</button>
+        </div>
+      `;
       P.toast(error.message, 'error');
     }
   }
@@ -328,13 +475,22 @@
     const rows = (roomData && roomData.rooms || []).filter((row) => row.available);
     document.getElementById('roomGrid').innerHTML = rows.map((room) => {
       const equipment = roomEquipmentText(room);
+      const photos = photosForRoom(room);
       return `
-      <button class="rental-room-card" type="button" data-room="${P.escapeHtml(room.id)}">
-        <b>${P.escapeHtml(room.name)}</b>
-        ${equipment ? `<span class="rental-room-equipment">${P.escapeHtml(equipment)}</span>` : ''}
-        ${Number(room.capacity || 0) > 0 ? `<span class="rental-room-capacity">建議人數：${Number(room.capacity)} 人以內</span>` : ''}
-        <strong class="rental-room-price">${selectedUse === 'recording' ? 'NT$100–300／小時' : P.money(room.price)}</strong>
-      </button>
+      <article class="rental-room-card">
+        <button class="rental-room-select" type="button" data-room="${P.escapeHtml(room.id)}">
+          <b>${P.escapeHtml(room.name)}</b>
+          ${equipment ? `<span class="rental-room-equipment">${P.escapeHtml(equipment)}</span>` : ''}
+          ${Number(room.capacity || 0) > 0 ? `<span class="rental-room-capacity">建議人數：${Number(room.capacity)} 人以內</span>` : ''}
+          <strong class="rental-room-price">${selectedUse === 'recording' ? 'NT$100–300／小時' : P.money(room.price)}</strong>
+          <span class="rental-room-select-hint">選擇這間</span>
+        </button>
+        ${photos.length ? `
+          <button class="rental-room-photo-button" type="button" data-room-photo="${P.escapeHtml(room.id)}" aria-label="查看 ${P.escapeHtml(room.name)} 的照片">
+            <span aria-hidden="true">📷</span> 看教室照片
+          </button>
+        ` : ''}
+      </article>
     `;
     }).join('') || '<div class="rental-empty">這段時間沒有符合條件的教室。</div>';
   }
@@ -501,6 +657,7 @@
   async function openBooking(nextRole, nextToken) {
     role = nextRole;
     token = nextToken;
+    renderUses(immediateRentalUseOptions);
     showBooking(true);
     renderDurations();
     renderRateChoice();
@@ -554,6 +711,11 @@
   });
 
   document.getElementById('rentalBoard').addEventListener('click', (event) => {
+    const retry = event.target.closest('[data-retry-rental]');
+    if (retry) {
+      loadRentalData();
+      return;
+    }
     const button = event.target.closest('[data-slot]');
     if (!button) return;
     selectedStart = button.dataset.slot;
@@ -562,10 +724,42 @@
   });
 
   document.getElementById('roomGrid').addEventListener('click', (event) => {
+    const photoButton = event.target.closest('[data-room-photo]');
+    if (photoButton && roomData) {
+      const photoRoom = (roomData.rooms || []).find((row) => row.id === photoButton.dataset.roomPhoto);
+      if (photoRoom) openRoomPhotos(photoRoom);
+      return;
+    }
     const button = event.target.closest('[data-room]');
     if (!button || !roomData) return;
     const room = (roomData.rooms || []).find((row) => row.id === button.dataset.room);
     if (room) openConfirm(room);
+  });
+
+  document.getElementById('closeRentalPhoto').addEventListener('click', closeRoomPhotos);
+  document.getElementById('prevRentalPhoto').addEventListener('click', () => moveRoomPhoto(-1));
+  document.getElementById('nextRentalPhoto').addEventListener('click', () => moveRoomPhoto(1));
+  photoBackdrop.addEventListener('click', (event) => {
+    if (event.target === photoBackdrop) closeRoomPhotos();
+  });
+  photoDialog.addEventListener('touchstart', (event) => {
+    roomPhotoTouchStartX = event.changedTouches && event.changedTouches[0]
+      ? event.changedTouches[0].clientX
+      : 0;
+  }, { passive: true });
+  photoDialog.addEventListener('touchend', (event) => {
+    const endX = event.changedTouches && event.changedTouches[0]
+      ? event.changedTouches[0].clientX
+      : roomPhotoTouchStartX;
+    const distance = endX - roomPhotoTouchStartX;
+    if (Math.abs(distance) >= 44) moveRoomPhoto(distance < 0 ? 1 : -1);
+    roomPhotoTouchStartX = 0;
+  }, { passive: true });
+  document.addEventListener('keydown', (event) => {
+    if (photoBackdrop.classList.contains('hidden')) return;
+    if (event.key === 'Escape') closeRoomPhotos();
+    else if (event.key === 'ArrowLeft') moveRoomPhoto(-1);
+    else if (event.key === 'ArrowRight') moveRoomPhoto(1);
   });
 
   document.querySelectorAll('input[name="rentalRate"]').forEach((node) => {
