@@ -184,6 +184,10 @@ service cloud.firestore {
     match /externalTeacherLineBindings/{document=**} { allow read, write: if isManagerAuth(); }
     // 老師身分證字號與私密附件索引只能由驗證過的 Cloud Functions 存取。
     match /teacherPrivateProfiles/{document=**} { allow read, write: if false; }
+    // 老師修改中的草稿與送審快照可能含證件資料，只能由驗證過的
+    // 老師／主管 Cloud Functions 存取，瀏覽器不可直接讀寫。
+    match /teacherProfileDrafts/{document=**} { allow read, write: if false; }
+    match /teacherProfileChangeDrafts/{document=**} { allow read, write: if false; }
     match /teacherContractPrivateSnapshots/{document=**} { allow read, write: if false; }
     // 年度合約由老師 session callable 寫入、由主管 Firebase Auth 審核；
     // 不再允許未登入瀏覽器直接把狀態改成生效。

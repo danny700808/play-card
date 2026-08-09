@@ -254,9 +254,19 @@
     $('profileSubmitBtn').textContent = confirmedProfile(profile, result)
       ? '送出修改供管理者確認'
       : '送出管理者確認';
+    const pendingReview = result && result.profileChangePending === true;
+    Array.from(document.querySelectorAll('#teacherProfileForm input, #teacherProfileForm select, #teacherProfileForm textarea, #teacherProfileForm button')).forEach(function (control) {
+      control.disabled = pendingReview;
+    });
+    setSaving(saving);
     show($('profileLoadingCard'), false);
     show($('profileErrorCard'), false);
     show($('teacherProfileForm'), true);
+    if (pendingReview) {
+      message('這次修改已送出主管確認；授課科目與程度已先同步套用，其他基本資料會在主管核准後更新。', false);
+    } else if (clean(result && result.profileRevisionReason || profile.profileRevisionReason)) {
+      message(`主管退回：${clean(result && result.profileRevisionReason || profile.profileRevisionReason)}`, true);
+    }
   }
   function showFailure(error) {
     show($('profileLoadingCard'), false);
@@ -366,9 +376,10 @@
   }
   function setSaving(active) {
     saving = active;
+    const locked = Boolean(currentResult && currentResult.profileChangePending);
     [$('profileSaveBtn'), $('profileSubmitBtn')].forEach(function (button) {
       if (!button) return;
-      button.disabled = active;
+      button.disabled = active || locked;
     });
     $('profileSaveBtn').textContent = active ? '儲存中…' : '儲存，下次繼續';
   }
