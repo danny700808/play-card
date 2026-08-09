@@ -2142,3 +2142,56 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-nav-submenu{margin-left:16px}
   .ops-course-workspace{height:calc(100dvh - 72px);min-height:520px;border-radius:13px}
 }
+
+/* 2026-08-09：預購成交、收款與交貨集中追蹤 */
+.ops-preorder-tracking-board{margin:14px 0;border:2px solid #d9b96f;background:#fff9e9}
+.ops-preorder-tracking-board .ops-v8-section-head p{max-width:760px}
+.ops-preorder-tracking-list{display:grid;gap:8px}
+.ops-preorder-tracking-card{appearance:none;width:100%;display:grid;grid-template-columns:minmax(260px,1.5fr) minmax(190px,.8fr) minmax(170px,.7fr) auto;align-items:center;gap:12px;padding:12px;border:1px solid #e4d3a8;border-radius:13px;background:#fff;color:var(--ops-text);text-align:left;cursor:pointer}
+.ops-preorder-tracking-card:hover{border-color:#b99032;box-shadow:0 5px 15px rgba(109,79,18,.08)}
+.ops-preorder-tracking-main{display:grid;gap:3px;min-width:0}
+.ops-preorder-tracking-main b{font-size:13px;line-height:1.45}
+.ops-preorder-tracking-main small,.ops-preorder-tracking-money small{color:var(--ops-muted);font-size:10px}
+.ops-preorder-status-pair{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.ops-preorder-tracking-money{display:grid;gap:2px;text-align:right}
+.ops-preorder-tracking-money b{color:#8d5a10;font-size:12px}
+.ops-preorder-tracking-card em{color:#17684e;font-size:11px;font-style:normal;font-weight:900;white-space:nowrap}
+.ops-preorder-tracking-drawer{display:grid;gap:12px}
+.ops-preorder-identity{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ops-preorder-identity>div,.ops-preorder-finance-grid>div{padding:10px;border:1px solid #dce6e1;border-radius:11px;background:#fff}
+.ops-preorder-identity span,.ops-preorder-finance-grid span{display:block;color:var(--ops-muted);font-size:10px}
+.ops-preorder-identity b,.ops-preorder-finance-grid b{display:block;margin-top:3px;font-size:13px;color:var(--ops-text)}
+.ops-preorder-finance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px;border:1px solid #b9dfcb;border-radius:13px;background:#edf8f2}
+.ops-preorder-finance-grid>div{border-color:#cce5d8}
+.ops-preorder-finance-grid small{display:block;margin-top:3px;color:var(--ops-muted);font-size:9px;line-height:1.35}
+.ops-preorder-status-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ops-preorder-status-summary>div{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:5px 8px;padding:10px;border:1px solid #dce4e8;border-radius:11px;background:#f7fafb}
+.ops-preorder-status-summary>div>span:first-child{font-size:11px;font-weight:900}
+.ops-preorder-status-summary small{grid-column:1/-1;color:var(--ops-muted);font-size:10px}
+.ops-preorder-action-section{display:grid;gap:10px;padding:12px;border:1px solid #dfe6e8;border-radius:13px;background:#fff}
+.ops-preorder-section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ops-preorder-section-head h3{margin:0;font-size:14px}
+.ops-preorder-section-head p{margin:3px 0 0;color:var(--ops-muted);font-size:10px;line-height:1.5}
+.ops-preorder-payment-list{display:grid;gap:6px}
+.ops-preorder-payment-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 10px;border-radius:10px;background:#f5f8f7}
+.ops-preorder-payment-row span{display:grid;gap:2px;min-width:0}
+.ops-preorder-payment-row b{font-size:11px}
+.ops-preorder-payment-row small,.ops-preorder-payment-empty{color:var(--ops-muted);font-size:10px;line-height:1.45}
+.ops-preorder-payment-row strong{font-size:12px;white-space:nowrap}
+.ops-preorder-item-row strong{white-space:nowrap}
+.ops-v8-sales-history-table .ops-preorder-status-pair{min-width:150px}
+
+@media(max-width:900px){
+  .ops-preorder-tracking-card{grid-template-columns:1fr auto}
+  .ops-preorder-tracking-card .ops-preorder-status-pair,.ops-preorder-tracking-money{grid-column:1/2;text-align:left}
+  .ops-preorder-tracking-card em{grid-column:2;grid-row:1/4}
+}
+@media(max-width:620px){
+  .ops-preorder-tracking-board{padding:10px}
+  .ops-preorder-tracking-card{grid-template-columns:1fr;padding:10px}
+  .ops-preorder-tracking-card .ops-preorder-status-pair,.ops-preorder-tracking-money,.ops-preorder-tracking-card em{grid-column:auto;grid-row:auto;text-align:left}
+  .ops-preorder-tracking-card em{justify-self:start}
+  .ops-preorder-identity,.ops-preorder-finance-grid,.ops-preorder-status-summary{grid-template-columns:1fr}
+  .ops-preorder-section-head{display:grid}
+  .ops-preorder-payment-row{align-items:flex-start}
+}

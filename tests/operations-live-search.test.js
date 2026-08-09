@@ -60,7 +60,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.js\?v=20260809-mobile-quick-nav-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260809-unified-preorder-v1/);
   }
 });
 
