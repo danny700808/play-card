@@ -134,6 +134,9 @@ assert(publicAccessScript.includes('cloudfunctions.googleapis.com/v2/'), 'IAM �
 assert(publicAccessScript.includes(':setIamPolicy'), 'IAM 腳本未設定 Cloud Run 呼叫權限');
 assert(publicAccessScript.includes('roles/run.invoker'), 'IAM 腳本未授權 Cloud Run Invoker');
 assert(publicAccessScript.includes('allUsers'), 'IAM 腳本未允許網站匿名呼叫唯讀課表');
+assert(publicAccessScript.includes('if (!changed)'), 'IAM 腳本仍會在公開權限已存在時重複寫入');
+assert(publicAccessScript.includes('retryableQuotaError'), 'IAM 腳本遇到 Cloud Run 寫入額度時不會安全重試');
+assert(publicAccessScript.includes('IAM_RETRY_DELAYS_MS'), 'IAM 腳本缺少有限次退避重試');
 assert(reportScript.includes('DEPLOY_OUTCOME'), '部署回報未包含 Firebase 結果');
 assert(workflow.includes('firebase deploy'), '工作流程沒有真正部署 Firebase Function');
 assert(workflow.includes('node .github/scripts/course-mirror-public.cjs'), '工作流程未執行 Cloud Run 權限腳本');
