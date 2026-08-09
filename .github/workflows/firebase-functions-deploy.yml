@@ -18,6 +18,7 @@ on:
       - ".github/scripts/course-mirror-public.cjs"
       - ".github/scripts/course-mirror-report.cjs"
       - "tests/course-auto-cloud-load.test.js"
+      - "tests/course-payroll-mobile-parity.test.js"
       - "tests/course-workspace-persistence.test.js"
       - "tests/course-portal.test.js"
       - "tests/injiaoyun-unified-sync-model.test.js"
@@ -84,6 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           node tests/course-auto-cloud-load.test.js
+          node tests/course-payroll-mobile-parity.test.js
           node tests/course-workspace-persistence.test.js
 
       - name: Install functions dependencies

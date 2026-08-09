@@ -62,7 +62,7 @@ assert(controller.includes('isDemo(source)'), '課務控制器沒有排除示範
 assert(controller.includes('global.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__ = workspace ? clone(workspace) : null'), '工作區沒有交給 inline runtime');
 assert(!controller.includes('YouziCoursePreviewData.load'), '正常開頁仍會自動重新讀取雲端鏡像');
 assert(!controller.includes('YouziCoursePreviewData.sync'), '正常開頁仍會自動執行音教雲同步');
-assert(inlineBuilder.includes("const VERSION = '20260809-teacher-payroll-month-refresh-v1'"), '課務產生器仍使用舊快取版本');
+assert(inlineBuilder.includes("const VERSION = '20260809-teacher-payroll-parity-v2'"), '課務產生器仍使用舊快取版本');
 assert(inlineBuilder.includes('money(periodNetExpectedAmount(period))'), '課務產生器會重新產生錯誤的比例折扣金額');
 assert.strictEqual((inlineBuilder.match(/money\(period\.expectedAmount-period\.discount\)/g) || []).length, 1, '課務產生器的學生 renderer 仍直接以比例值扣原價');
 assert(inlineBuilder.includes('if (existingIsScoped)'), '課務產生器不會保留已完成更新的 inline runtime');

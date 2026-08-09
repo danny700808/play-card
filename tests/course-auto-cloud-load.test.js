@@ -83,8 +83,14 @@ assert(runtime.includes('function syncInjiaoyun()'), '完整課表缺少使用�
 assert(runtime.includes('YouziCoursePreviewData.sync'), '主動同步沒有呼叫音教雲同步元件');
 assert(runtime.includes('function refreshTeacherPayrollMonth(monthKey)'), '老師薪資沒有依月份自動更新');
 assert(runtime.includes('YouziCoursePreviewData.loadTeacherPayrollMonth'), '老師薪資沒有使用月份專用雲端讀取');
+assert(runtime.includes('teacherPayrollSyncState'), '老師薪資沒有顯示雲端同步狀態');
+assert(runtime.includes("$('teacherPayrollRefreshBtn').addEventListener('click'"), '老師薪資缺少手動重試按鈕');
+assert(template.includes('id="teacherPayrollSyncPanel"'), '老師薪資缺少手機與電腦共用的同步狀態區');
 assert(schedulerData.includes('async function loadTeacherPayrollMonth(options)'), '課務資料元件缺少薪資月份讀取');
 assert(schedulerData.includes("scope:'teacher-payroll-month'"), '薪資月份仍會要求整包課務資料');
+assert(schedulerData.includes('await ensureTeacherPayrollManagerAuth();'), '月份薪資沒有先等待管理者 Firebase 登入恢復');
+assert(schedulerData.indexOf('await ensureTeacherPayrollManagerAuth();') < schedulerData.indexOf("payload=await call(AUTO_LOAD_FUNCTION_NAME"), '月份薪資在管理者登入恢復前就讀取雲端');
+assert(schedulerData.includes('if(usesManagerAuth||!pin)throw error;'), '管理頁薪資更新失敗時仍可能靜默退回舊整包資料');
 
 assert(scheduler.includes('function bindEvents()'), '互動課表缺少事件綁定');
 assert(scheduler.includes("$('scheduleGrid').addEventListener('click'"), '課表格線無法點擊新增或查看課程');
@@ -101,6 +107,9 @@ assert(autoRead.includes("invoker: 'public'"), '唯讀課表函式沒有宣告�
 assert(!autoRead.includes('MANUAL_SYNC_PIN'), '一般唯讀資料不應要求手動同步密碼');
 assert(!autoRead.includes('syncInjiaoyunEducationMirrorNow'), '唯讀函式不得觸發音教雲同步');
 assert(autoRead.includes("=== 'teacher-payroll-month'"), '唯讀函式沒有薪資月份的輕量路徑');
+assert(autoRead.includes("const ADMIN_EMAILS = new Set(['danny700808@gmail.com'])"), '薪資月份後端沒有沿用正式管理者帳號');
+assert(autoRead.includes('token.admin === true'), '薪資月份後端沒有接受管理者權限');
+assert(autoRead.includes('token.owner === true'), '薪資月份後端沒有接受擁有者權限');
 assert(coursePortal.includes('async function teacherPayrollMonthData(monthValue)'), '後端缺少月份薪資合併');
 assert(coursePortal.includes("mirrorRowsByDateRange('teacherPayroll'"), '月份薪資沒有依日期讀取舊系統鏡像');
 assert(coursePortal.includes('mergeTeacherPayrollRows('), '月份薪資沒有合併新版入口簽到資料');
