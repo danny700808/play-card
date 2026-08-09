@@ -14,6 +14,20 @@ const {
   courseSourceIds
 } = require('./coursePortalUtils');
 const { bindingIdentity, bindingIdentityPatch, decideLineLoginBinding, isRecoverableUnboundBinding } = require('./courseLoginPolicy');
+const {
+  FEE_PLAN_COLLECTION,
+  SUBJECT_CATALOG_COLLECTION,
+  TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION,
+  catalogSubjectId,
+  feePlanConfigured,
+  feePlanId,
+  managerAssignmentPatch,
+  mergeFeePlanRows,
+  mergeSubjectRows,
+  mergeTeacherRows,
+  normalizedSubjectName,
+  prepareTeachingAbilitySubjects
+} = require('./courseSubjectCatalog');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -679,6 +693,18 @@ async function mirrorRows(type) {
   let rows = snapshot.docs
     .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}))
     .filter(Boolean);
+  if (type === 'subjects') {
+    const catalog = await db.collection(SUBJECT_CATALOG_COLLECTION).get();
+    rows = mergeSubjectRows(rows, catalog.docs);
+  }
+  if (type === 'feePlans') {
+    const portalPlans = await db.collection(FEE_PLAN_COLLECTION).get();
+    rows = mergeFeePlanRows(rows, portalPlans.docs);
+  }
+  if (type === 'teachers') {
+    const assignments = await db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION).get();
+    rows = mergeTeacherRows(rows, assignments.docs);
+  }
   if (type === 'students') return mergeStudentProfileOverrides(rows);
   if (type === 'tuitionPeriods') {
     const portal = await portalTuitionDocuments();
@@ -695,6 +721,18 @@ async function mirrorRowsIncludingInactive(type) {
       __mirrorActive: (doc.data() || {}).sourceActive !== false
     }, jsonValue((doc.data() || {}).source) || {}))
     .filter(Boolean);
+  if (type === 'subjects') {
+    const catalog = await db.collection(SUBJECT_CATALOG_COLLECTION).get();
+    rows = mergeSubjectRows(rows, catalog.docs, { includePending: true });
+  }
+  if (type === 'feePlans') {
+    const portalPlans = await db.collection(FEE_PLAN_COLLECTION).get();
+    rows = mergeFeePlanRows(rows, portalPlans.docs, { includeInactive: true });
+  }
+  if (type === 'teachers') {
+    const assignments = await db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION).get();
+    rows = mergeTeacherRows(rows, assignments.docs);
+  }
   if (type === 'students') rows = await mergeStudentProfileOverrides(rows);
   return rows;
 }
@@ -3000,9 +3038,10 @@ function teacherUtilityDraftAbilities(value) {
   if (!Array.isArray(value)) return undefined;
   if (value.length > 20) throw new HttpsError('invalid-argument', '授課項目最多 20 筆。');
   return value.map((row) => {
+    const subjectId = clean(row && (row.subjectId || row.id)).slice(0, 120);
     const item = clean(row && (row.item || row.name || row.subject)).slice(0, 80);
     const level = clean(row && row.level).slice(0, 30);
-    return item ? { item, level } : null;
+    return item ? { subjectId, item, level } : null;
   }).filter(Boolean);
 }
 
@@ -3087,8 +3126,21 @@ async function teacherUtilitySaveProfileDraft(data) {
   if (patch.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patch.email)) {
     throw new HttpsError('invalid-argument', 'Email 格式不正確。');
   }
-  const teachingAbilities = teacherUtilityDraftAbilities(data && data.teachingAbilities);
+  let teachingAbilities = teacherUtilityDraftAbilities(data && data.teachingAbilities);
+  let subjectPlan = null;
   if (teachingAbilities !== undefined) {
+    subjectPlan = await prepareTeachingAbilitySubjects({
+      db,
+      FieldValue,
+      abilities: teachingAbilities,
+      approveNew: false,
+      profileId,
+      teacherId: clean(session.teacherId),
+      employeeId,
+      source: 'teacher-profile-subject-suggestion',
+      nowText: nowText()
+    });
+    teachingAbilities = subjectPlan.abilities;
     patch.teachingAbilities = teachingAbilities;
     patch.teachingItems = teachingAbilities.map((row) => row.item).join('、');
     patch.teachingItemsText = patch.teachingItems;
@@ -3155,6 +3207,11 @@ async function teacherUtilitySaveProfileDraft(data) {
     identityUrls: FieldValue.delete()
   }), { merge: true });
   saveBatch.set(privateProfileRef, privatePatch, { merge: true });
+  if (subjectPlan) {
+    subjectPlan.catalogWrites.forEach((write) => {
+      saveBatch.set(db.collection(SUBJECT_CATALOG_COLLECTION).doc(write.id), write.patch, { merge: true });
+    });
+  }
   await saveBatch.commit();
 
   if (employeeSnapshot.exists && !isExternalTeacherEmployee(employeeExisting)) {
@@ -3210,8 +3267,18 @@ async function teacherUtilitySaveProfileDraft(data) {
 async function teacherUtilitySession(data) {
   const session = await requireSession(data, ['teacher']);
   const resolved = await resolveTeacherUtilityEmployee(session);
-  const pendingSummary = await teacherUtilityPendingSummary(resolved, session);
-  return Object.assign({ ok: true, validatedAt: Date.now(), pendingSummary }, resolved);
+  const [pendingSummary, subjects] = await Promise.all([
+    teacherUtilityPendingSummary(resolved, session),
+    mirrorRows('subjects')
+  ]);
+  const subjectCatalog = subjects.filter((row) => row.active !== false).map((row) => ({
+    id: sourceId(row),
+    name: clean(row.name),
+    sort: Number(row.sort || 0)
+  })).filter((row) => row.id && row.name).sort((left, right) =>
+    Number(left.sort || 0) - Number(right.sort || 0) || left.name.localeCompare(right.name, 'zh-TW')
+  );
+  return Object.assign({ ok: true, validatedAt: Date.now(), pendingSummary, subjectCatalog }, resolved);
 }
 
 const TEACHER_CONTRACT_SIGNABLE_STATUSES = new Set([
@@ -5259,11 +5326,12 @@ function roundPayrollMoney(value) {
 }
 
 function normalizeTeacherShareRatio(value) {
-  const raw = Number(clean(value).replace(/%$/, ''));
-  if (!Number.isFinite(raw) || raw <= 0 || raw > 100) {
+  const text = clean(value).replace(/%$/, '');
+  const raw = Number(text);
+  if (!text || !Number.isFinite(raw) || raw < 0 || raw > 100) {
     throw new HttpsError(
       'failed-precondition',
-      '老師分成比例必須大於 0 且不可超過 100%；已停止簽到以避免寫入錯誤薪資。'
+      '老師分成比例必須介於 0～100%；已停止簽到以避免寫入錯誤薪資。'
     );
   }
   return raw <= 1 ? raw : raw / 100;
@@ -5358,7 +5426,7 @@ function explicitTeacherSplitFromPayroll(row) {
     if (splitValue == null) {
       splitValue = firstFiniteNumber(source, ['hourlyFee', 'fixedTeacherAmount', 'teacherAmount']);
     }
-    if (!Number.isFinite(splitValue) || splitValue <= 0) return null;
+    if (!Number.isFinite(splitValue) || splitValue < 0) return null;
     return { splitType: 'fixed', splitValue: roundPayrollMoney(splitValue) };
   }
   if (splitType === 'ratio') {
@@ -5381,10 +5449,9 @@ function explicitNoPerLessonTeacherPayPlan(row) {
     'splitValue', 'allotRate', 'shareRate', 'teacherShare', 'allot',
     'hourlyFee', 'fixedTeacherAmount', 'teacherAmount'
   ]);
-  const planName = clean(source.name || source.planName || source.title);
-  // 「專職」是舊音教雲正式方案名稱，代表老師採月薪／專職制度，不按每堂拆帳。
-  // 只有方案本身明確保存 none + 0 才採用；其他缺欄位的舊方案仍維持 fail closed。
-  return splitType === 'none' && (!Number.isFinite(splitValue) || splitValue === 0) && /^專職/.test(planName);
+  // 舊資料的「專職 0」只是拆帳設定的一種名稱，不代表另一種老師身分。
+  // 只要方案明確保存 none + 0，就視為有效的零元拆帳並原樣延續。
+  return splitType === 'none' && Number.isFinite(splitValue) && splitValue === 0;
 }
 
 function teacherPayrollSplitRows(payrollRows) {
@@ -5625,10 +5692,10 @@ function attendancePeriodPayroll(studentId, period) {
     if (splitValue == null) {
       splitValue = firstFiniteNumber(planSnapshot, ['hourlyFee', 'fixedTeacherAmount', 'teacherAmount']);
     }
-    if (!Number.isFinite(splitValue) || splitValue <= 0) {
+    if (!Number.isFinite(splitValue) || splitValue < 0) {
       throw new HttpsError(
         'failed-precondition',
-        '老師每堂固定薪資未設定，已停止簽到以避免產生 NT$0 老師薪資。'
+        '老師每堂固定薪資不可小於 0，已停止簽到。'
       );
     }
     teacherAmount = roundPayrollMoney(splitValue);
@@ -5641,8 +5708,8 @@ function attendancePeriodPayroll(studentId, period) {
       '這個收費方案尚未設定「比例」或「每堂固定金額」的老師拆帳，已停止簽到。'
     );
   }
-  if (teacherAmount <= 0 && !noPerLessonTeacherPay) {
-    throw new HttpsError('failed-precondition', '老師本堂薪資計算為 NT$0，已停止簽到；請先修正拆帳設定。');
+  if (teacherAmount < 0) {
+    throw new HttpsError('failed-precondition', '老師本堂薪資不可小於 NT$0，已停止簽到。');
   }
   return {
     studentId: clean(studentId),
@@ -5661,9 +5728,9 @@ function attendancePeriodPayroll(studentId, period) {
       netTuition,
       teacherPayBasis,
       teacherPayTuition,
-      teacherPayable: !noPerLessonTeacherPay,
-      payrollExcluded: noPerLessonTeacherPay,
-      payrollExclusionReason: noPerLessonTeacherPay ? 'full_time_plan_no_per_lesson_split' : '',
+      teacherPayable: true,
+      payrollExcluded: false,
+      payrollExclusionReason: '',
       planSnapshot
     },
     outputs: {
@@ -5680,9 +5747,9 @@ function attendancePeriodPayroll(studentId, period) {
       baseTeacherAmount: teacherAmount,
       teacherAmount,
       schoolShare: roundPayrollMoney(netLessonPrice - teacherAmount),
-      teacherPayable: !noPerLessonTeacherPay,
-      payrollExcluded: noPerLessonTeacherPay,
-      payrollExclusionReason: noPerLessonTeacherPay ? 'full_time_plan_no_per_lesson_split' : ''
+      teacherPayable: true,
+      payrollExcluded: false,
+      payrollExclusionReason: ''
     }
   };
 }
@@ -5803,7 +5870,7 @@ function attendancePayrollCalculation(event, periodRows, sourceDate) {
       ? `${roundPayrollMoney(common.normalizedRatio * 100)}%`
       : common.splitType === 'fixed'
         ? `每堂固定 NT$${roundPayrollMoney(common.splitValue)}`
-        : '專職方案（不按堂拆帳）';
+        : '每堂 NT$0';
   return {
     tuitionAmount: lessonPrice,
     lessonPrice,
@@ -9444,6 +9511,290 @@ async function adminSaveTeacherAdjustment(data) {
   };
 }
 
+async function adminSaveTeacherSubjects(data) {
+  const teacherId = clean(data && data.teacherId);
+  const selectedSubjectIds = [...new Set(
+    (Array.isArray(data && data.subjectIds) ? data.subjectIds : []).map(clean).filter(Boolean)
+  )];
+  if (!teacherId) throw new HttpsError('invalid-argument', '缺少老師資料。');
+  const [teachers, subjects] = await Promise.all([
+    mirrorRowsIncludingInactive('teachers'),
+    mirrorRows('subjects')
+  ]);
+  const teacher = teachers.find((row) => sourceId(row) === teacherId);
+  if (!teacher) throw new HttpsError('not-found', '找不到指定的老師。');
+  const activeSubjectIds = new Set(subjects.filter((row) => row.active !== false)
+    .map(sourceId).filter(Boolean));
+  const unknown = selectedSubjectIds.filter((id) => !activeSubjectIds.has(id));
+  if (unknown.length) {
+    throw new HttpsError('failed-precondition', '部分授課科目不存在或已停用，請先確認共用科目清單。');
+  }
+  const assignmentRef = db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION).doc(teacherId);
+  const versionRef = scheduleVersionRef();
+  let savedPatch = null;
+  await db.runTransaction(async (tx) => {
+    const [assignmentSnapshot, versionSnapshot] = await Promise.all([
+      tx.get(assignmentRef),
+      tx.get(versionRef)
+    ]);
+    const existing = assignmentSnapshot.exists ? assignmentSnapshot.data() || {} : {};
+    savedPatch = managerAssignmentPatch(existing, selectedSubjectIds, {
+      teacherId,
+      employeeId: clean(teacher.employeeId || teacher.personMasterId),
+      nowText: nowText()
+    }, FieldValue);
+    tx.set(assignmentRef, Object.assign({}, savedPatch, {
+      updatedBy: 'course-scheduler-manager'
+    }), { merge: true });
+    tx.set(versionRef, {
+      version: Number(versionSnapshot.exists && versionSnapshot.data().version || 0) + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: 'admin-teacher-subjects'
+    }, { merge: true });
+  });
+  return {
+    ok: true,
+    teacherId,
+    subjectIds: savedPatch.effectiveSubjectIds,
+    message: '老師可教授科目已同步。'
+  };
+}
+
+function adminMutationResultRow(row) {
+  const result = Object.assign({}, row || {});
+  ['createdAt', 'updatedAt', 'approvedAt'].forEach((key) => delete result[key]);
+  return result;
+}
+
+async function adminSaveSubjectCatalog(data) {
+  const name = clean(data && data.name).normalize('NFKC');
+  if (!name || name.length > 80) throw new HttpsError('invalid-argument', '科目名稱需為 1～80 個字。');
+  const requestedId = clean(data && data.id);
+  const [subjects, feePlans] = await Promise.all([
+    mirrorRowsIncludingInactive('subjects'),
+    mirrorRowsIncludingInactive('feePlans')
+  ]);
+  const current = requestedId ? subjects.find((row) => sourceId(row) === requestedId) : null;
+  const normalizedName = normalizedSubjectName(name);
+  const duplicate = subjects.find((row) =>
+    normalizedSubjectName(row.name) === normalizedName && (!current || sourceId(row) !== sourceId(current))
+  );
+  if (current && duplicate) throw new HttpsError('already-exists', '已有相同名稱的科目，請直接使用既有項目。');
+  const id = sourceId(current || duplicate) || catalogSubjectId(name);
+  if (!id) throw new HttpsError('invalid-argument', '科目資料不完整。');
+  const hasConfiguredPlan = feePlans.some((row) =>
+    clean(row.subjectId) === id && feePlanConfigured(row)
+  );
+  const requestedActive = data && data.active !== false;
+  const active = requestedActive;
+  const approvalStatus = active ? 'active' : 'inactive';
+  const subject = {
+    id,
+    subjectId: id,
+    name,
+    normalizedName,
+    sort: Number.isFinite(Number(data && data.sort)) ? Number(data.sort) : Number(current && current.sort || 0),
+    active,
+    approvalStatus,
+    status: approvalStatus,
+    pricingStatus: hasConfiguredPlan ? 'configured' : 'unconfigured',
+    source: 'course-scheduler-manager',
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText()
+  };
+  if (active) {
+    subject.approvedBy = 'course-scheduler-manager';
+    subject.approvedAt = FieldValue.serverTimestamp();
+  }
+  const batch = db.batch();
+  batch.set(db.collection(SUBJECT_CATALOG_COLLECTION).doc(id), subject, { merge: true });
+  batch.set(scheduleVersionRef(), {
+    version: FieldValue.increment(1),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: 'admin-subject-catalog'
+  }, { merge: true });
+  await batch.commit();
+  return {
+    ok: true,
+    subject: adminMutationResultRow(subject),
+    needsFeePlan: !hasConfiguredPlan,
+    message: hasConfiguredPlan
+      ? (duplicate ? '已沿用既有科目。' : '共用科目已同步。')
+      : '共用科目已儲存；目前尚未設定收費，需要時再新增即可。'
+  };
+}
+
+function normalizeAdminFeePlan(data, existing = {}) {
+  const name = clean(data && data.name).normalize('NFKC');
+  const subjectId = clean(data && data.subjectId);
+  const amount = Number(data && data.amount);
+  const lessonCount = Number(data && data.lessonCount);
+  const splitType = clean(data && data.splitType).toLowerCase();
+  let splitValue = Number(data && data.splitValue);
+  if (!name || name.length > 80) throw new HttpsError('invalid-argument', '方案名稱需為 1～80 個字。');
+  if (!subjectId) throw new HttpsError('invalid-argument', '請選擇科目。');
+  if (!Number.isFinite(amount) || amount <= 0) throw new HttpsError('invalid-argument', '請填寫大於 0 的正式收費金額。');
+  if (!Number.isInteger(lessonCount) || lessonCount <= 0 || lessonCount > 100) {
+    throw new HttpsError('invalid-argument', '每期堂數需為 1～100 堂。');
+  }
+  if (!['ratio', 'fixed', 'none'].includes(splitType)) {
+    throw new HttpsError('invalid-argument', '請選擇老師拆帳方式。');
+  }
+  if (splitType === 'none') splitValue = 0;
+  if (splitType === 'ratio' && (!Number.isFinite(splitValue) || splitValue < 0 || splitValue > 100)) {
+    throw new HttpsError('invalid-argument', '老師拆帳比例需介於 0～100%。');
+  }
+  if (splitType === 'fixed' && (!Number.isFinite(splitValue) || splitValue < 0)) {
+    throw new HttpsError('invalid-argument', '每堂固定老師薪資不可小於 0。');
+  }
+  const id = clean(data && data.id) || feePlanId(subjectId, name);
+  if (!id) throw new HttpsError('invalid-argument', '收費方案資料不完整。');
+  return {
+    id,
+    subjectId,
+    name,
+    sort: Number.isFinite(Number(data && data.sort)) ? Number(data.sort) : Number(existing.sort || 0),
+    amount,
+    lessonCount,
+    splitType,
+    splitValue,
+    zeroTeacherPayConfirmed: splitValue === 0,
+    leaveNoDeduct: data && data.leaveNoDeduct !== false,
+    expiryDays: Math.max(0, Math.round(Number(data && data.expiryDays) || 0)),
+    active: data && data.active !== false,
+    listed: data && data.listed !== false,
+    source: 'course-scheduler-manager',
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText()
+  };
+}
+
+async function adminSaveFeePlan(data) {
+  const requestedId = clean(data && data.id);
+  const [subjects, feePlans] = await Promise.all([
+    mirrorRowsIncludingInactive('subjects'),
+    mirrorRowsIncludingInactive('feePlans')
+  ]);
+  const existing = requestedId ? feePlans.find((row) => sourceId(row) === requestedId) || {} : {};
+  const plan = normalizeAdminFeePlan(data, existing);
+  const subject = subjects.find((row) => sourceId(row) === plan.subjectId);
+  if (!subject) throw new HttpsError('not-found', '找不到指定科目，請重新整理後再試。');
+  const subjectHasConfiguredPlan = feePlans
+    .filter((row) => sourceId(row) !== plan.id)
+    .concat([plan])
+    .some((row) => clean(row.subjectId) === plan.subjectId && feePlanConfigured(row));
+  const catalogRef = db.collection(SUBJECT_CATALOG_COLLECTION).doc(plan.subjectId);
+  const catalogSnapshot = await catalogRef.get();
+  const catalogExisting = catalogSnapshot.exists ? catalogSnapshot.data() || {} : {};
+  const batch = db.batch();
+  const planWrite = Object.assign({}, plan);
+  if (!existing.id) planWrite.createdAt = FieldValue.serverTimestamp();
+  batch.set(db.collection(FEE_PLAN_COLLECTION).doc(plan.id), planWrite, { merge: true });
+  const subjectPatch = {
+    id: plan.subjectId,
+    subjectId: plan.subjectId,
+    name: clean(subject.name),
+    normalizedName: normalizedSubjectName(subject.name),
+    sort: Number(subject.sort || catalogExisting.sort || 0),
+    approvalStatus: subject.active === false ? 'inactive' : 'active',
+    status: subject.active === false ? 'inactive' : 'active',
+    pricingStatus: subjectHasConfiguredPlan ? 'configured' : 'unconfigured',
+    active: subject.active !== false,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText(),
+    source: clean(catalogExisting.source) || 'course-scheduler-manager'
+  };
+  if (subject.active !== false) {
+    subjectPatch.approvedBy = 'course-scheduler-manager';
+    subjectPatch.approvedAt = FieldValue.serverTimestamp();
+  }
+  batch.set(catalogRef, subjectPatch, { merge: true });
+  batch.set(scheduleVersionRef(), {
+    version: FieldValue.increment(1),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: 'admin-fee-plan'
+  }, { merge: true });
+  await batch.commit();
+  return {
+    ok: true,
+    feePlan: adminMutationResultRow(plan),
+    subject: adminMutationResultRow(subjectPatch),
+    activatedTeacherIds: [],
+    message: subjectHasConfiguredPlan
+      ? '收費方案已儲存。老師可教科目不受影響。'
+      : '收費方案已停用；共用科目與老師授課能力仍保留。'
+  };
+}
+
+function replaceAssignmentSubject(existing, sourceSubjectId, targetSubjectId) {
+  const replace = (values) => [...new Set((values || []).map(clean).filter(Boolean).map((id) =>
+    id === sourceSubjectId ? targetSubjectId : id
+  ))];
+  const profileSubjectIds = replace(existing.profileSubjectIds);
+  const managerAddedSubjectIds = replace(existing.managerAddedSubjectIds);
+  const managerExcludedSubjectIds = replace(existing.managerExcludedSubjectIds);
+  const excluded = new Set(managerExcludedSubjectIds);
+  const effectiveSubjectIds = [...new Set(
+    profileSubjectIds.concat(managerAddedSubjectIds).filter((id) => !excluded.has(id))
+  )];
+  return { profileSubjectIds, managerAddedSubjectIds, managerExcludedSubjectIds, effectiveSubjectIds };
+}
+
+async function adminMapSubjectSuggestion(data) {
+  const suggestionId = clean(data && data.suggestionId);
+  const targetSubjectId = clean(data && data.targetSubjectId);
+  if (!suggestionId || !targetSubjectId || suggestionId === targetSubjectId) {
+    throw new HttpsError('invalid-argument', '請選擇要對應的既有科目。');
+  }
+  const [suggestionSnapshot, subjects, assignments] = await Promise.all([
+    db.collection(SUBJECT_CATALOG_COLLECTION).doc(suggestionId).get(),
+    mirrorRows('subjects'),
+    db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION)
+      .where('profileSubjectIds', 'array-contains', suggestionId).get()
+  ]);
+  if (!suggestionSnapshot.exists) throw new HttpsError('not-found', '找不到待處理的授課項目。');
+  const target = subjects.find((row) => sourceId(row) === targetSubjectId && row.active !== false);
+  if (!target) {
+    throw new HttpsError('failed-precondition', '目標科目不存在或已停用，不能進行對應。');
+  }
+  const batch = db.batch();
+  batch.set(suggestionSnapshot.ref, {
+    approvalStatus: 'mapped',
+    status: 'mapped',
+    active: false,
+    mappedToSubjectId: targetSubjectId,
+    mappedToSubjectName: clean(target.name),
+    mappedAt: FieldValue.serverTimestamp(),
+    mappedBy: 'course-scheduler-manager',
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedAtText: nowText()
+  }, { merge: true });
+  const teacherIds = [];
+  assignments.docs.forEach((doc) => {
+    const row = doc.data() || {};
+    teacherIds.push(clean(row.teacherId) || doc.id);
+    batch.set(doc.ref, Object.assign({}, replaceAssignmentSubject(row, suggestionId, targetSubjectId), {
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtText: nowText(),
+      updatedBy: 'subject-suggestion-mapping'
+    }), { merge: true });
+  });
+  batch.set(scheduleVersionRef(), {
+    version: FieldValue.increment(1),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: 'admin-subject-mapping'
+  }, { merge: true });
+  await batch.commit();
+  return {
+    ok: true,
+    suggestionId,
+    targetSubjectId,
+    targetSubjectName: clean(target.name),
+    teacherIds,
+    message: `已對應到「${clean(target.name)}」。`
+  };
+}
+
 async function publicRentalSettings() {
   const rooms = await mirrorRows('rooms');
   const [items, policy] = await Promise.all([rentalUseOptions(rooms), rentalPolicySettings()]);
@@ -11117,7 +11468,10 @@ async function appendCoursePortalData(payload) {
     portalAttendanceSnapshot,
     portalPayrollSnapshot,
     portalAdjustmentsSnapshot,
-    approvedCancellationSnapshot
+    approvedCancellationSnapshot,
+    subjectCatalogSnapshot,
+    teacherSubjectAssignmentsSnapshot,
+    portalFeePlansSnapshot
   ] = await Promise.all([
     db.collection('coursePortalScheduleChanges').where('active', '==', true).get(),
     db.collection('coursePortalRoomBookings').where('active', '==', true).get(),
@@ -11130,10 +11484,36 @@ async function appendCoursePortalData(payload) {
     db.collection(ATTENDANCE_RECORDS).get(),
     db.collection(ATTENDANCE_PAYROLL).get(),
     db.collection('coursePortalTeacherAdjustments').get(),
-    db.collection(ATTENDANCE_CANCELLATIONS).where('status', '==', 'approved').get()
+    db.collection(ATTENDANCE_CANCELLATIONS).where('status', '==', 'approved').get(),
+    db.collection(SUBJECT_CATALOG_COLLECTION).get(),
+    db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION).get(),
+    db.collection(FEE_PLAN_COLLECTION).get()
   ]);
   const roomSettingsMap = new Map(roomSettings.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
   const studentProfileMap = new Map(studentProfiles.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
+  payload.subjects = mergeSubjectRows(
+    Array.isArray(payload.subjects) ? payload.subjects : [],
+    subjectCatalogSnapshot.docs,
+    { includePending: true }
+  );
+  payload.feePlans = mergeFeePlanRows(
+    Array.isArray(payload.feePlans) ? payload.feePlans : [],
+    portalFeePlansSnapshot.docs,
+    { includeInactive: true }
+  );
+  const configuredSubjectIds = new Set(
+    payload.feePlans.filter(feePlanConfigured).map((row) => clean(row.subjectId)).filter(Boolean)
+  );
+  payload.subjects = payload.subjects.map((row) => {
+    const configured = configuredSubjectIds.has(sourceId(row));
+    return Object.assign({}, row, {
+      pricingStatus: configured ? 'configured' : 'unconfigured'
+    });
+  });
+  payload.teachers = mergeTeacherRows(
+    Array.isArray(payload.teachers) ? payload.teachers : [],
+    teacherSubjectAssignmentsSnapshot.docs
+  );
   if (Array.isArray(payload.students)) {
     payload.students = payload.students.map((student) => {
       const profile = studentProfileMap.get(sourceId(student));
@@ -11341,6 +11721,9 @@ async function appendCoursePortalData(payload) {
     attendance: portalAttendanceSnapshot.size,
     teacherPayroll: portalPayrollSnapshot.size,
     teacherAdjustments: portalAdjustmentsSnapshot.size,
+    subjectCatalog: subjectCatalogSnapshot.size,
+    teacherSubjectAssignments: teacherSubjectAssignmentsSnapshot.size,
+    portalFeePlans: portalFeePlansSnapshot.size,
     mergedAt: new Date().toISOString()
   };
   return payload;
@@ -11410,6 +11793,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalAdminSaveRentalSettings = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRentalSettings(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveRoomEquipment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRoomEquipment(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminSaveTeacherSubjects = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTeacherSubjects(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminSaveSubjectCatalog = callable(async (data,request)=>{assertAdminPin(request);return adminSaveSubjectCatalog(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminSaveFeePlan = callable(async (data,request)=>{assertAdminPin(request);return adminSaveFeePlan(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminMapSubjectSuggestion = callable(async (data,request)=>{assertAdminPin(request);return adminMapSubjectSuggestion(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveTeacherAdjustment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTeacherAdjustment(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminRoomBookings = callable(async (data,request)=>{assertAdminPin(request);return adminRoomBookings();},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminCancelRoomBooking = callable(async (data,request)=>{assertAdminPin(request);return adminCancelRoomBooking(data);},{secrets:[ADMIN_PIN]});

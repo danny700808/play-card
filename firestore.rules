@@ -164,6 +164,9 @@ service cloud.firestore {
     match /coursePortalScheduleChanges/{document=**} { allow read, write: if false; }
     match /coursePortalRoomBookings/{document=**} { allow read, write: if false; }
     match /coursePortalRoomSettings/{document=**} { allow read, write: if false; }
+    match /coursePortalSubjectCatalog/{document=**} { allow read, write: if false; }
+    match /coursePortalTeacherSubjectAssignments/{document=**} { allow read, write: if false; }
+    match /coursePortalFeePlans/{document=**} { allow read, write: if false; }
     match /coursePortalReminderLogs/{document=**} { allow read, write: if false; }
     match /coursePortalTuitionPaymentRequests/{document=**} { allow read, write: if false; }
     match /coursePortalTuitionPeriods/{document=**} { allow read, write: if false; }

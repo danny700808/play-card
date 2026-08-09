@@ -30,7 +30,13 @@ test('teacher profile is a stable standalone page, not a profile-and-contract wi
   assert.match(page, /id="profileHouseholdAddress"/);
   assert.match(page, /id="profileMailingAddress"/);
   assert.match(page, /id="profileTeachingList"/);
+  assert.match(page, /id="profileSubjectCatalog"/);
+  assert.match(page, /新項目會加入共用科目清單/);
+  assert.match(page, /收費與老師拆帳由管理者另外設定/);
   assert.match(runtime, /teaching-level/);
+  assert.match(runtime, /subject\.setAttribute\('list', 'profileSubjectCatalog'\)/);
+  assert.match(runtime, /subjectId:\s*clean\(matched && matched\.id\) \|\| preservedId/);
+  assert.match(runtime, /function renderSubjectCatalog\(\)/);
   assert.match(runtime, /Object\.freeze\(\['初學', '入門', '普通', '良好', '專業', '專精'\]\)/);
   assert.match(runtime, /const BIRTH_MIN_YEAR = 1900/);
   assert.match(runtime, /function fillBirthOptions\(\)/);
@@ -41,7 +47,7 @@ test('teacher profile is a stable standalone page, not a profile-and-contract wi
   assert.match(runtime, /請選擇程度/);
   assert.match(runtime, /source\.proficiency\) \|\| '普通'/);
   assert.doesNotMatch(runtime, /level\.placeholder\s*=|例如：初階～進階/);
-  assert.match(page, /teacher-profile\.js\?v=20260808-mobile-profile-v2/);
+  assert.match(page, /teacher-profile\.js\?v=20260809-subject-fee-separate-v3/);
   assert.match(page, /LINE/);
   assert.match(page, /Email/);
   assert.match(page, /profile-title-row[\s\S]*profileLineStatus[\s\S]*profileEmailStatus/);
@@ -82,9 +88,13 @@ test('profile API stores a server draft without creating or navigating to a cont
   assert.match(save, /db\.collection\('teacherPrivateProfiles'\)\.doc\(profileId\)/);
   assert.match(save, /idNumber:\s*FieldValue\.delete\(\)/);
   assert.match(save, /saveBatch\.set\(privateProfileRef, privatePatch/);
+  assert.match(save, /prepareTeachingAbilitySubjects/);
+  assert.match(save, /approveNew:\s*false/);
+  assert.match(save, /subjectPlan\.catalogWrites/);
   assert.match(save, /db\.collection\('employees'\)\.doc\(employeeId\)/);
   assert.doesNotMatch(save, /externalTeacherContracts|teacherContractAssignments|waiting_contract|pendingContract/);
   assert.match(backend, /coursePortalTeacherSaveProfileDraft\s*=\s*callable\(teacherUtilitySaveProfileDraft/);
+  assert.match(backend, /subjectCatalog/);
 });
 
 test('employee master exists from first login and remains separate from annual contracts', () => {

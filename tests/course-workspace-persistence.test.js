@@ -15,6 +15,7 @@ const runtime = read('operations-course-inline-runtime.js');
 const template = read('operations-course-inline-template.html');
 const scheduler = read('course-scheduler.js');
 const schedulerCss = read('course-scheduler.css');
+const schedulerData = read('course-scheduler-data.js');
 const operations = read('operations-phase1.js');
 const portalCommon = read('course-portal-common.js');
 const inlineBuilder = read('.github/scripts/build-inline-course-workspace.cjs');
@@ -24,6 +25,7 @@ const inlineWorkflow = read('.github/workflows/build-live-course-scheduler.yml')
   ['operations-course-inline.js', controller],
   ['operations-course-inline-runtime.js', runtime],
   ['course-scheduler.js', scheduler],
+  ['course-scheduler-data.js', schedulerData],
   ['operations-phase1.js', operations],
   ['course-portal-common.js', portalCommon]
 ].forEach(([filename, source]) => new vm.Script(source, { filename }));
@@ -62,7 +64,7 @@ assert(controller.includes('isDemo(source)'), '課務控制器沒有排除示範
 assert(controller.includes('global.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__ = workspace ? clone(workspace) : null'), '工作區沒有交給 inline runtime');
 assert(!controller.includes('YouziCoursePreviewData.load'), '正常開頁仍會自動重新讀取雲端鏡像');
 assert(!controller.includes('YouziCoursePreviewData.sync'), '正常開頁仍會自動執行音教雲同步');
-assert(inlineBuilder.includes("const VERSION = '20260809-compact-mobile-teacher-v4'"), '課務產生器仍使用舊快取版本');
+assert(inlineBuilder.includes("const VERSION = '20260809-subject-fee-separate-v3'"), '課務產生器仍使用舊快取版本');
 assert(inlineBuilder.includes('money(periodNetExpectedAmount(period))'), '課務產生器會重新產生錯誤的比例折扣金額');
 assert.strictEqual((inlineBuilder.match(/money\(period\.expectedAmount-period\.discount\)/g) || []).length, 1, '課務產生器的學生 renderer 仍直接以比例值扣原價');
 assert(inlineBuilder.includes('if (existingIsScoped)'), '課務產生器不會保留已完成更新的 inline runtime');
@@ -78,10 +80,28 @@ assert(runtime.includes('window.__YOUZI_COURSE_INLINE_DOCUMENT__'), '完整課�
 assert(runtime.includes('window.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__'), '完整課表沒有從控制器接收工作區');
 assert(runtime.includes('refreshPortalRentals();'), '開啟課表後沒有更新入口成立或取消的租用');
 assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), '開頁仍會重複還原資料後再讀租用');
+assert(schedulerData.includes('async function saveTeacherSubjects(options)'), '課務資料層缺少共用老師科目儲存');
+assert(schedulerData.includes('async function saveSubjectCatalog(options)'), '課務資料層缺少共用科目主檔儲存');
+assert(schedulerData.includes('async function saveFeePlan(options)'), '課務資料層缺少正式收費方案儲存');
+assert(schedulerData.includes('async function mapSubjectSuggestion(options)'), '課務資料層缺少老師建議科目對應');
+assert(schedulerData.includes('coursePortalAdminSaveTeacherSubjects'), '老師科目沒有寫入正式後端');
+assert(schedulerData.includes('coursePortalAdminSaveSubjectCatalog'), '科目主檔沒有寫入正式後端');
+assert(schedulerData.includes('coursePortalAdminSaveFeePlan'), '正式收費方案沒有寫入正式後端');
+assert(schedulerData.includes('coursePortalAdminMapSubjectSuggestion'), '老師建議科目沒有寫入正式後端');
 [
   ['inline 課務', runtime],
   ['獨立課務', scheduler]
 ].forEach(([label, source]) => {
+  assert(source.includes('async function submitEntity(event)'), `${label}設定儲存沒有等待正式同步`);
+  assert(source.includes('YouziCoursePreviewData.saveTeacherSubjects'), `${label}老師科目仍只存瀏覽器`);
+  assert(source.includes('YouziCoursePreviewData.saveSubjectCatalog'), `${label}科目主檔仍只存瀏覽器`);
+  assert(source.includes('YouziCoursePreviewData.saveFeePlan'), `${label}正式收費仍只存瀏覽器`);
+  assert(source.includes('YouziCoursePreviewData.mapSubjectSuggestion'), `${label}老師建議科目無法對應正式科目`);
+  assert(source.includes('data-subject-price'), `${label}待定價科目缺少設定收費入口`);
+  assert(source.includes('data-subject-map'), `${label}待定價科目缺少對應既有入口`);
+  assert(source.includes("['none','老師薪資 $0']"), `${label}缺少一般零元老師薪資選項`);
+  assert(source.includes('比例或每堂金額（可填 0）'), `${label}沒有允許拆帳比例或固定金額沿用 0`);
+  assert(source.includes('共用科目已可選；有學生需要時再設定收費即可'), `${label}仍把可教科目錯綁成必須先定價`);
   assert(source.includes('class="btn small outline tuition-receipt-button"'), `${label}已繳清摘要缺少收據按鈕`);
   assert(source.includes("receiptButton(latestPayment)"), `${label}收據按鈕沒有連到最新一筆收費`);
   assert(source.includes("payment='<span class=\"payment-summary\">'+paymentStatus+receiptButton(latestPayment)+'</span>'"), `${label}部分付款時沒有在上方保留唯一收據按鈕`);

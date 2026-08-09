@@ -117,6 +117,13 @@ test('approved teacher profile changes stay pending until manager copies them to
   assert.match(approve, /mobilePhone:\s*rowPhone\(profileRow\)/);
   assert.match(approve, /email:\s*rowEmail\(profileRow\)/);
   assert.match(approve, /teachingAbilities/);
+  assert.match(approve, /prepareTeachingAbilitySubjects/);
+  assert.match(approve, /approveNew:\s*true/);
+  assert.match(approve, /teachingPlan\.allSubjectIds/);
+  assert.match(approve, /activeProfileSubjectIds:\s*teachingPlan\.subjectIds/);
+  assert.match(approve, /profileAssignmentPatch/);
+  assert.match(approve, /coursePortalSubjectCatalog|SUBJECT_CATALOG_COLLECTION/);
+  assert.match(approve, /coursePortalTeacherSubjectAssignments|TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION/);
   assert.match(approve, /profileReviewStatus:\s*'approved'/);
   assert.match(returned, /establishedTeacher\s*=\s*activeEmployee\(existingEmployee\)/);
   assert.match(returned, /active:\s*establishedTeacher\s*\?\s*true\s*:\s*false/);

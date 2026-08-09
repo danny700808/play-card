@@ -12,6 +12,30 @@
 
   function $(id) { return document.getElementById(id); }
   function clean(value) { return String(value == null ? '' : value).trim(); }
+  function normalizedSubjectName(value) {
+    return clean(value).normalize('NFKC').toLocaleLowerCase('zh-TW').replace(/\s+/gu, '');
+  }
+  function subjectCatalogRows() {
+    return currentResult && Array.isArray(currentResult.subjectCatalog) ? currentResult.subjectCatalog : [];
+  }
+  function catalogSubjectFor(name) {
+    const key = normalizedSubjectName(name);
+    return subjectCatalogRows().find(function (row) {
+      return normalizedSubjectName(row && row.name) === key;
+    }) || null;
+  }
+  function renderSubjectCatalog() {
+    const list = $('profileSubjectCatalog');
+    if (!list) return;
+    list.replaceChildren();
+    subjectCatalogRows().forEach(function (row) {
+      const name = clean(row && row.name);
+      if (!name) return;
+      const option = document.createElement('option');
+      option.value = name;
+      list.appendChild(option);
+    });
+  }
   function fillBirthOptions() {
     const year = $('profileBirthYear');
     const month = $('profileBirthMonth');
@@ -136,9 +160,12 @@
     subjectLabel.textContent = '授課項目';
     const subject = document.createElement('input');
     subject.className = 'teaching-subject';
+    subject.setAttribute('list', 'profileSubjectCatalog');
     subject.maxLength = 80;
     subject.placeholder = '例如：鋼琴';
     subject.value = clean(source.item || source.name || source.subject);
+    subject.dataset.subjectId = clean(source.subjectId || source.id);
+    subject.dataset.subjectName = subject.value;
     subjectField.append(subjectLabel, subject);
     const levelField = document.createElement('div');
     levelField.className = 'field';
@@ -186,8 +213,15 @@
   }
   function teachingPayload() {
     return Array.from(document.querySelectorAll('#profileTeachingList .teaching-row')).map(function (row) {
+      const input = row.querySelector('.teaching-subject');
+      const item = clean(input && input.value);
+      const matched = catalogSubjectFor(item);
+      const preservedId = normalizedSubjectName(input && input.dataset.subjectName) === normalizedSubjectName(item)
+        ? clean(input && input.dataset.subjectId)
+        : '';
       return {
-        item: clean(row.querySelector('.teaching-subject') && row.querySelector('.teaching-subject').value),
+        subjectId: clean(matched && matched.id) || preservedId,
+        item,
         level: clean(row.querySelector('.teaching-level') && row.querySelector('.teaching-level').value)
       };
     }).filter((row) => row.item);
@@ -207,6 +241,7 @@
     const masked = clean(profile.idNumberMasked);
     $('profileIdNumber').placeholder = masked ? '已留存；需要更換時再輸入' : '請輸入身分證字號';
     $('profileIdHint').textContent = masked ? `目前已留存：${masked}` : '';
+    renderSubjectCatalog();
     renderTeachingRows(profile.teachingAbilities);
     storedIdentityFileCount = Math.max(0, Number(profile.identityFileCount || 0));
     updateFileState();
