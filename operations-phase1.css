@@ -867,6 +867,15 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-product-spec-textarea{min-height:150px}
 .ops-product-description-textarea{min-height:180px}
 .ops-product-research-prompt{min-height:520px;font-family:inherit;line-height:1.65}
+.ops-drawer.ops-listing-case-drawer{width:min(920px,100%)}
+.ops-listing-case-summary{display:grid;grid-template-columns:110px minmax(0,1fr);gap:14px;align-items:center;margin-bottom:16px;padding:13px;border:1px solid #cfe3da;border-radius:16px;background:#f2faf6}
+.ops-listing-case-summary img,.ops-listing-case-summary>.ops-detail-no-image{width:110px;height:110px;border-radius:12px;object-fit:contain;background:#fff}
+.ops-listing-case-summary>div:last-child{min-width:0}
+.ops-listing-case-summary span{font-size:11px;font-weight:900;color:#1c7859}
+.ops-listing-case-summary h3{margin:4px 0 5px;font-size:18px;line-height:1.4}
+.ops-listing-case-summary p,.ops-listing-case-summary small{display:block;margin:0;color:#607581;font-size:11px;line-height:1.55}
+.ops-listing-case-button{flex:0 0 auto;border:1px solid #59788a;border-radius:8px;background:#f1f6f9;color:#294d60;padding:5px 8px;font-size:10px;font-weight:900;line-height:1.2;cursor:pointer;white-space:nowrap}
+.ops-listing-case-button:hover{background:#294d60;color:#fff}
 .ops-product-shipping-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .ops-product-shipping-choice{display:flex;align-items:flex-start;gap:10px;min-height:92px;padding:13px;border:1px solid #d4e1dc;border-radius:14px;background:#fff;cursor:pointer;transition:.18s}
 .ops-product-shipping-choice:hover,.ops-product-shipping-choice.active{border-color:#1f8e6b;background:#f0faf5;box-shadow:0 0 0 2px rgba(31,142,107,.1)}
@@ -919,6 +928,8 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-form-grid.cols-4{grid-template-columns:1fr}
   .ops-product-shipping-grid{grid-template-columns:1fr}
   .ops-product-shipping-choice{min-height:0}
+  .ops-listing-case-summary{grid-template-columns:76px minmax(0,1fr)}
+  .ops-listing-case-summary img,.ops-listing-case-summary>.ops-detail-no-image{width:76px;height:76px}
   .ops-product-name-field{grid-column:auto}
   .ops-product-media-main{min-height:220px}
   .ops-product-preview-overlay{padding:20px 12px}
@@ -960,7 +971,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-display-mode-toggle button:hover{background:#edf7f1;color:#207558}
 .ops-display-mode-toggle button.active{background:var(--ops-green);color:#fff}
 .ops-product-text-list{display:flex;flex-direction:column;gap:7px;overflow-x:auto;padding-bottom:3px}
-.ops-product-text-row{width:100%;min-width:1240px;display:grid;grid-template-columns:minmax(118px,.72fr) minmax(240px,2.2fr) 72px repeat(6,minmax(105px,.72fr));gap:12px;align-items:center;border:1px solid var(--ops-line);border-radius:12px;background:#fff;color:inherit;padding:11px 13px;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
+.ops-product-text-row{width:100%;min-width:1340px;display:grid;grid-template-columns:minmax(118px,.72fr) minmax(240px,2.2fr) 72px repeat(6,minmax(105px,.72fr)) minmax(90px,.6fr);gap:12px;align-items:center;border:1px solid var(--ops-line);border-radius:12px;background:#fff;color:inherit;padding:11px 13px;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
 .ops-product-text-row:hover{border-color:#5ba78a;box-shadow:0 5px 15px rgba(23,132,95,.1);transform:translateY(-1px)}
 .ops-product-text-row.active{border-color:var(--ops-green);box-shadow:0 0 0 2px rgba(27,132,94,.12)}
 .ops-product-text-row>span{min-width:0}
@@ -976,7 +987,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-product-title-row>.ops-card-actions{justify-content:flex-start}
   .ops-product-series-tabs{flex-wrap:nowrap;overflow-x:auto;padding:9px}
   .ops-product-toolbar{grid-template-columns:minmax(0,1fr) auto}
-  .ops-product-text-row{grid-template-columns:110px minmax(240px,1.7fr) 72px repeat(6,100px);gap:8px;padding:10px}
+  .ops-product-text-row{grid-template-columns:110px minmax(240px,1.7fr) 72px repeat(6,100px) 90px;gap:8px;padding:10px}
 }
 @media(max-width:620px){
   .ops-product-toolbar>.ops-input{grid-column:1/-1}
@@ -988,6 +999,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-product-text-value{display:flex;align-items:baseline;justify-content:flex-start;gap:5px;text-align:left}
   .ops-product-text-value small{margin:0}
   .ops-product-text-value b{margin:0}
+  .ops-product-text-row>.ops-listing-case-button{grid-column:2;justify-self:start}
 }
 
 

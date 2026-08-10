@@ -106,6 +106,7 @@ service cloud.firestore {
 
         // 全通路營運中心
         'opsInternalProducts',
+        'opsProductListingCases',
         'opsInventoryTransactions',
         'opsStoreSales',
         'opsQuickIncomes',

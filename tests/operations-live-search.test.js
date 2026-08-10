@@ -8,6 +8,7 @@ const engine = fs.readFileSync('operations-phase1.js', 'utf8');
 const mobileHistory = fs.readFileSync('operations-mobile-pos-v4.js', 'utf8');
 const portal = fs.readFileSync('portal.html', 'utf8');
 const hub = fs.readFileSync('operations-hub.html', 'utf8');
+const firestoreRules = fs.readFileSync('firestore.rules', 'utf8');
 
 const searchFields = [
   ['posSearch', 'posSearchResults'],
@@ -60,7 +61,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.js\?v=20260809-ysv104-history-repair-v2/);
+    assert.match(html, /operations-phase1\.js\?v=20260811-listing-case-v1/);
   }
 });
 
@@ -214,7 +215,7 @@ test('catalog search text and SKU order are prepared once and reused', () => {
   assert.match(functionBody(engine, 'stocktakeFilteredProducts'), /catalogRowsInSkuOrder\(\)/);
 });
 
-test('every search returns all matches instead of stopping at 30', () => {
+test('product search renders 24 at a time while the other working searches retain their existing bounds', () => {
   const product = functionBody(engine, 'productSearchResultsHtml');
   const pos = functionBody(engine, 'posSearchResultsHtml');
   const purchaseEntry = functionBody(engine, 'purchaseEntrySearchResult');
@@ -222,7 +223,8 @@ test('every search returns all matches instead of stopping at 30', () => {
   const purchaseLow = functionBody(engine, 'purchaseLowSearchResult');
   const inventory = functionBody(engine, 'inventorySearchResult');
 
-  assert.match(product, /hasSearch\?rows:rows\.slice\(0,state\.productVisible\)/);
+  assert.match(product, /visible=rows\.slice\(0,state\.productVisible\)/);
+  assert.doesNotMatch(product, /hasSearch\?rows/);
   assert.match(pos, /catalogRowsInSkuOrder\(\)\.filter/);
   assert.match(purchaseEntry, /clean\(state\.purchaseEntrySearch\)\?all:all\.slice\(0,240\)/);
   assert.match(stocktake, /clean\(state\.stocktakeSearch\)\?all:all\.slice\(0,240\)/);
@@ -235,6 +237,33 @@ test('every search returns all matches instead of stopping at 30', () => {
   for (const name of ['renderSales', 'renderSalesV4', 'renderSalesV5']) {
     assert.doesNotMatch(functionBody(engine, name), /slice\(0,\s*30\)|length\s*>=\s*30/);
   }
+});
+
+test('listing research is a lazy per-product case and no longer part of the product editor', () => {
+  const productForm = functionBody(engine, 'productFormHtml');
+  const saveProduct = functionBody(engine, 'saveProduct');
+  const openCase = functionBody(engine, 'openProductListingCase');
+  const caseForm = functionBody(engine, 'productListingCaseFormHtml');
+  const saveCase = functionBody(engine, 'saveProductListingCase');
+
+  for (const field of ['productResearchStatus', 'shopeeCategoryPath', 'shippingDecision', 'packageLengthCm']) {
+    assert.doesNotMatch(productForm, new RegExp(field), `${field} must stay out of the main product form`);
+    assert.doesNotMatch(saveProduct, new RegExp(field), `${field} must not be written by saveProduct`);
+    assert.match(saveCase, new RegExp(field), `${field} must be written by saveProductListingCase`);
+  }
+  assert.match(caseForm, /productResearchStatus/);
+  assert.match(caseForm, /shopeeCategoryPath/);
+  assert.match(caseForm, /productShippingChoiceHtml\(shipping\.decision\)/);
+  assert.match(caseForm, /packageLengthCm/);
+
+  assert.match(engine, /listingCases:'opsProductListingCases'/);
+  assert.match(firestoreRules, /'opsProductListingCases'/);
+  assert.match(openCase, /COLLECTIONS\.listingCases\)\.doc\(id\)\.get\(\)/);
+  assert.doesNotMatch(engine, /getCollection\(COLLECTIONS\.listingCases/);
+  assert.match(engine, /data-action="product-listing-case-open"/);
+  assert.match(saveCase, /COLLECTIONS\.listingCases\)\.doc\(id\)/);
+  assert.match(saveCase, /priceSnapshot/);
+  assert.match(caseForm, /蝦皮仍由 EasyStore 發佈/);
 });
 
 test('variant-first product images are retained in the core renderer', () => {
