@@ -861,6 +861,40 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-product-media-thumb.active,.ops-product-media-thumb:hover{border-color:#1f8e6b;box-shadow:0 0 0 2px rgba(31,142,107,.12)}
 .ops-product-media-thumb img{width:100%;height:100%;min-height:82px;object-fit:contain;display:block;background:#fff}
 .ops-product-value-fields .ops-input[readonly]{background:#f7fafb}
+.ops-section-title-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.ops-section-title-actions .ops-button{margin-left:auto}
+.ops-textarea.compact{min-height:74px}
+.ops-product-spec-textarea{min-height:150px}
+.ops-product-description-textarea{min-height:180px}
+.ops-product-research-prompt{min-height:520px;font-family:inherit;line-height:1.65}
+.ops-product-shipping-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ops-product-shipping-choice{display:flex;align-items:flex-start;gap:10px;min-height:92px;padding:13px;border:1px solid #d4e1dc;border-radius:14px;background:#fff;cursor:pointer;transition:.18s}
+.ops-product-shipping-choice:hover,.ops-product-shipping-choice.active{border-color:#1f8e6b;background:#f0faf5;box-shadow:0 0 0 2px rgba(31,142,107,.1)}
+.ops-product-shipping-choice input{margin:3px 0 0;accent-color:#1f8e6b}
+.ops-product-shipping-choice span{display:grid;gap:5px;min-width:0}
+.ops-product-shipping-choice b{font-size:13px;color:#173247}
+.ops-product-shipping-choice small{font-size:11px;line-height:1.5;color:#607581}
+.ops-product-shipping-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ops-product-shipping-actions small{color:#607581;line-height:1.5}
+.ops-listing-draft-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.ops-listing-draft-summary>div{display:grid;gap:3px;padding:11px 12px;border:1px solid var(--ops-line);border-radius:12px;background:#f8fafb;min-width:0}
+.ops-listing-draft-summary span{font-size:11px;color:var(--ops-muted)}
+.ops-listing-draft-summary b{font-size:13px;overflow-wrap:anywhere}
+.ops-listing-draft-summary a{color:#147a57}
+.ops-listing-platform-grid{display:grid;gap:12px}
+.ops-listing-platform-card{padding:14px;border:1px solid var(--ops-line);border-radius:16px;background:#fff}
+.ops-listing-platform-card p{margin:12px 0 0;font-size:12px;line-height:1.6;color:#5c707b}
+.ops-listing-platform-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.ops-listing-platform-head h3{margin:0;font-size:17px}
+.ops-listing-checks{display:grid;gap:7px}
+.ops-listing-check-row{display:flex;align-items:flex-start;gap:9px;padding:8px 9px;border-radius:10px;background:#f7faf8}
+.ops-listing-check-row>span{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;flex:0 0 20px;font-size:12px;font-weight:900}
+.ops-listing-check-row.ok>span{background:#dff5e9;color:#11734f}
+.ops-listing-check-row.missing{background:#fff7e5}
+.ops-listing-check-row.missing>span{background:#ffe3a6;color:#895e00}
+.ops-listing-check-row div{display:grid;gap:2px;min-width:0}
+.ops-listing-check-row b{font-size:12px}
+.ops-listing-check-row small{font-size:11px;line-height:1.45;color:#647782;overflow-wrap:anywhere}
 .ops-product-preview-overlay{position:fixed;z-index:120;inset:0;display:flex;align-items:flex-start;justify-content:center;padding:50px 20px 20px}
 .ops-product-preview-backdrop{position:absolute;inset:0;border:0;background:rgba(8,16,23,.55);cursor:pointer}
 .ops-product-preview-dialog{position:relative;z-index:1;width:min(980px,100%);background:#fff;border-radius:20px;padding:24px 54px 18px;box-shadow:0 24px 60px rgba(0,0,0,.26)}
@@ -883,6 +917,8 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-inline-product-header{flex-direction:column;align-items:stretch}
   .ops-inline-product-layout{grid-template-columns:1fr;gap:14px;padding:14px}
   .ops-form-grid.cols-4{grid-template-columns:1fr}
+  .ops-product-shipping-grid{grid-template-columns:1fr}
+  .ops-product-shipping-choice{min-height:0}
   .ops-product-name-field{grid-column:auto}
   .ops-product-media-main{min-height:220px}
   .ops-product-preview-overlay{padding:20px 12px}
@@ -899,6 +935,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-product-media-thumb img,.ops-product-preview-thumb img{min-height:58px}
   .ops-product-preview-dialog{padding:16px 40px 14px}
   .ops-product-preview-nav{width:36px;height:36px;font-size:26px}
+  .ops-listing-draft-summary{grid-template-columns:1fr}
 }
 
 

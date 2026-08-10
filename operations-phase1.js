@@ -34,7 +34,15 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.09-ysv104-history-repair-v2';
+  const VERSION = '2026.08.10-product-research-draft-v2';
+  const PRODUCT_SHIPPING_DECISIONS = {
+    convenience:{label:'可超商寄',description:'小型商品；可先使用安全的估算包裝資料。'},
+    home:{label:'不可超商／一般宅配',description:'超過超商限制，但仍可用一般宅配寄送。'},
+    freight:{label:'大型商品／新竹物流',description:'大型或較重商品；送出平台草稿前需補齊外箱尺寸。'}
+  };
+  const PRODUCT_PACKAGE_PRESETS = {
+    convenience:{lengthCm:40,widthCm:30,heightCm:10,weightKg:1}
+  };
   // 後端最長執行 30 分鐘；瀏覽器多留 1 分鐘接收後端的最終成功／失敗回應。
   const EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS = 31 * 60 * 1000;
   const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v10_operating_expenses';
@@ -640,6 +648,12 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     if(newStock<=0){return {layers:[],averageCost:null,nextFifoCost:null,inventoryValue:0,costIncomplete:false,consumedCost:0};}
     const consume=Math.max(0,Math.max(0,oldStock)-newStock); const result=consumeFifo(raw,consume); return {layers:result.layers,averageCost:result.averageCost,nextFifoCost:result.nextFifoCost,inventoryValue:result.inventoryValue,costIncomplete:result.costIncomplete,consumedCost:result.costTotal};
   }
+  function normalizeProductResearchSourceUrls(value){
+    const rows=Array.isArray(value)?value:clean(value).split(/[\n|]+/);
+    const result=[];
+    rows.forEach(function(item){const raw=clean(item);if(!/^https?:\/\//i.test(raw))return;const url=safeUrl(raw);if(url&&!result.includes(url))result.push(url);});
+    return result.slice(0,10);
+  }
   function normalizeInternal(obj,docId){
     const layers=normalizeCostLayers(obj.costLayers); const raw=Object.assign({},obj,{costLayers:layers}); const stats=costLayerStats(raw);
     const pricesInitialized=obj.platformPricesInitialized===true;
@@ -651,7 +665,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     }
     return {
       docId:docId,sourceKey:clean(obj.sourceKey),sourceCollection:clean(obj.sourceCollection),sourceProductId:clean(obj.sourceProductId),sourceVariantId:clean(obj.sourceVariantId),
-      internalSku:normalizeCode(firstValue(obj,['internalSku','sku','code','productCode','商品編號'])),barcode:clean(firstValue(obj,['barcode','ean','條碼'])),
+      internalSku:normalizeCode(firstValue(obj,['internalSku','sku','code','productCode','商品編號'])),barcode:clean(firstValue(obj,['barcode','ean','條碼'])),model:clean(firstValue(obj,['model','modelNo','型號'])),
       internalName:clean(firstValue(obj,['internalName','originalName','name','商品名稱'])),originalName:clean(firstValue(obj,['originalName','internalName','name'])),onlineName:clean(obj.onlineName),
       imageUrl:safeUrl(obj.imageUrl),imageUrls:Array.isArray(obj.imageUrls)?obj.imageUrls.map(safeUrl).filter(Boolean):[],parentImageUrls:Array.isArray(obj.parentImageUrls)?obj.parentImageUrls.map(safeUrl).filter(Boolean):[],variantImageUrls:Array.isArray(obj.variantImageUrls)?obj.variantImageUrls.map(safeUrl).filter(Boolean):[],onlineUrl:safeUrl(obj.onlineUrl),brand:clean(obj.brand),category:clean(obj.category),variantName:clean(obj.variantName),
       onlinePrice:numberOrNull(obj.onlinePrice),storePrice:numberOrNull(firstValue(obj,['storePrice','originalSalePrice','salePrice','retailPrice'])),originalSalePrice:numberOrNull(firstValue(obj,['originalSalePrice','storePrice','salePrice'])),
@@ -659,6 +673,11 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       latestPurchaseCost:numberOrNull(firstValue(obj,['latestPurchaseCost','referencePurchaseCost','purchaseCost','purchasePrice'])),averageCost:stats.averageCost!=null?stats.averageCost:numberOrNull(firstValue(obj,['averageCost','avgCost','movingAverageCost'])),
       nextFifoCost:stats.nextFifoCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,costLayers:layers,
       platformPriceSync:obj.platformPriceSync&&typeof obj.platformPriceSync==='object'?obj.platformPriceSync:{},platformMappings:obj.platformMappings&&typeof obj.platformMappings==='object'?obj.platformMappings:{},
+      shopeeCategoryPath:clean(obj.shopeeCategoryPath),momoCategoryCode:clean(obj.momoCategoryCode),coupangCategoryCode:clean(obj.coupangCategoryCode),
+      productResearchStatus:['not-searched','partial','researched','manual'].includes(clean(obj.productResearchStatus))?clean(obj.productResearchStatus):'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(obj.productResearchSourceUrls),productResearchUpdatedAt:obj.productResearchUpdatedAt||'',
+      alternateNames:clean(obj.alternateNames),searchKeywords:clean(obj.searchKeywords),sellingPoints:clean(obj.sellingPoints),specificationText:clean(obj.specificationText),includedItems:clean(obj.includedItems),material:clean(obj.material),color:clean(obj.color),countryOfOrigin:clean(obj.countryOfOrigin),warrantyInfo:clean(obj.warrantyInfo),commonProductDescription:clean(obj.commonProductDescription),
+      shippingDecision:PRODUCT_SHIPPING_DECISIONS[clean(obj.shippingDecision)]?clean(obj.shippingDecision):'',packageLengthCm:numberOrNull(obj.packageLengthCm),packageWidthCm:numberOrNull(obj.packageWidthCm),packageHeightCm:numberOrNull(obj.packageHeightCm),packageWeightKg:numberOrNull(obj.packageWeightKg),
+      packageMeasurementMode:['estimated','provided','measured'].includes(clean(obj.packageMeasurementMode))?clean(obj.packageMeasurementMode):'',packageResearchStatus:['not-searched','found','not-found','manual'].includes(clean(obj.packageResearchStatus))?clean(obj.packageResearchStatus):'not-searched',packageResearchSourceUrl:safeUrl(obj.packageResearchSourceUrl),packageResearchNote:clean(obj.packageResearchNote),
       zeroCostConfirmed:obj.zeroCostConfirmed===true,zeroCostConfirmedAt:obj.zeroCostConfirmedAt||'',zeroCostConfirmedBy:clean(obj.zeroCostConfirmedBy),
       currentStock:numberOrNull(firstValue(obj,['currentStock','openingStock','onHand','stock']))||0,openingStock:numberOrNull(obj.openingStock),openingUnitCost:numberOrNull(obj.openingUnitCost),reservedStock:numberOrNull(firstValue(obj,['reservedStock','reserved']))||0,safetyStock:numberOrNull(firstValue(obj,['safetyStock','minStock']))||0,
       saleRewardPercent:numberOrNull(obj.saleRewardPercent),easyStoreMatched:obj.easyStoreMatched===true||clean(obj.sourceCollection)==='easyStoreApi',easyStoreSyncedAt:obj.easyStoreSyncedAt||'',status:clean(obj.status)||'active',note:clean(firstValue(obj,['note','remark','備註'])),enabled:obj.enabled!==false,autoCreated:obj.autoCreated===true,source:clean(obj.source),sourceFile:clean(obj.sourceFile),importInitialized:obj.importInitialized===true,createdAt:obj.createdAt||'',updatedAt:obj.updatedAt||''
@@ -688,7 +707,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     const easyStorePrice=internal&&internal.easyStorePrice!=null?internal.easyStorePrice:(!pricesInitialized?sharedOnlinePrice:null),momoPrice=internal&&internal.momoPrice!=null?internal.momoPrice:(!pricesInitialized?sharedOnlinePrice:null),coupangPrice=internal&&internal.coupangPrice!=null?internal.coupangPrice:(!pricesInitialized?sharedOnlinePrice:null);
     const current=internal?Number(internal.currentStock||0):0; const reserved=internal?Number(internal.reservedStock||0):0; const safety=internal?Number(internal.safetyStock||0):0; const available=Math.max(0,current-reserved-safety);
     const costForMargin=internal?(internal.nextFifoCost!=null?internal.nextFifoCost:internal.averageCost):null; const margin=(storePrice!=null&&costForMargin!=null&&storePrice!==0)?((storePrice-costForMargin)/storePrice*100):null;
-    return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,imageUrl:images[0]||'',imageUrls:images,parentImageUrls:parentImages,variantImageUrls:variantImages,onlinePrice:onlinePrice,storePrice:storePrice,easyStorePrice:easyStorePrice,momoPrice:momoPrice,coupangPrice:coupangPrice,platformPricesInitialized:pricesInitialized,originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,zeroCostConfirmed:!!(internal&&internal.zeroCostConfirmed===true),zeroCostConfirmedAt:internal?internal.zeroCostConfirmedAt:'',zeroCostConfirmedBy:internal?internal.zeroCostConfirmedBy:'',currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,platformPriceSync:internal?internal.platformPriceSync||{}:{},negativeStock:current<0};
+    return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,barcode:internal?internal.barcode:'',model:internal?internal.model:'',imageUrl:images[0]||'',imageUrls:images,parentImageUrls:parentImages,variantImageUrls:variantImages,onlinePrice:onlinePrice,storePrice:storePrice,easyStorePrice:easyStorePrice,momoPrice:momoPrice,coupangPrice:coupangPrice,platformPricesInitialized:pricesInitialized,originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,zeroCostConfirmed:!!(internal&&internal.zeroCostConfirmed===true),zeroCostConfirmedAt:internal?internal.zeroCostConfirmedAt:'',zeroCostConfirmedBy:internal?internal.zeroCostConfirmedBy:'',currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,platformPriceSync:internal?internal.platformPriceSync||{}:{},shopeeCategoryPath:internal?internal.shopeeCategoryPath:'',momoCategoryCode:internal?internal.momoCategoryCode:'',coupangCategoryCode:internal?internal.coupangCategoryCode:'',productResearchStatus:internal?internal.productResearchStatus:'not-searched',productResearchSourceUrls:internal?internal.productResearchSourceUrls:[],productResearchUpdatedAt:internal?internal.productResearchUpdatedAt:'',alternateNames:internal?internal.alternateNames:'',searchKeywords:internal?internal.searchKeywords:'',sellingPoints:internal?internal.sellingPoints:'',specificationText:internal?internal.specificationText:'',includedItems:internal?internal.includedItems:'',material:internal?internal.material:'',color:internal?internal.color:'',countryOfOrigin:internal?internal.countryOfOrigin:'',warrantyInfo:internal?internal.warrantyInfo:'',commonProductDescription:internal?internal.commonProductDescription:'',shippingDecision:internal?internal.shippingDecision:'',packageLengthCm:internal?internal.packageLengthCm:null,packageWidthCm:internal?internal.packageWidthCm:null,packageHeightCm:internal?internal.packageHeightCm:null,packageWeightKg:internal?internal.packageWeightKg:null,packageMeasurementMode:internal?internal.packageMeasurementMode:'',packageResearchStatus:internal?internal.packageResearchStatus:'not-searched',packageResearchSourceUrl:internal?internal.packageResearchSourceUrl:'',packageResearchNote:internal?internal.packageResearchNote:'',negativeStock:current<0};
   }
 
   function saveDashboardCache(){
@@ -3052,6 +3071,58 @@ function ensureSalesClock(){
     const preview=query('.ops-product-preview-overlay');if(preview)preview.remove();
     return true;
   }
+  function shippingDecisionLabel(value){
+    const decision=PRODUCT_SHIPPING_DECISIONS[clean(value)];
+    return decision?decision.label:'尚未判斷';
+  }
+  function packageResearchStatusOptions(selected){
+    return [
+      ['not-searched','尚未查詢'],
+      ['found','已查到可靠資料'],
+      ['not-found','網路查不到，採人工判斷'],
+      ['manual','已人工實測']
+    ].map(function(row){return '<option value="'+row[0]+'" '+(row[0]===selected?'selected':'')+'>'+row[1]+'</option>';}).join('');
+  }
+  function productResearchStatusOptions(selected){
+    return [
+      ['not-searched','尚未查詢'],
+      ['partial','已查詢，資料仍不完整'],
+      ['researched','已完成網路研究'],
+      ['manual','網路查不到，已人工補齊']
+    ].map(function(row){return '<option value="'+row[0]+'" '+(row[0]===selected?'selected':'')+'>'+row[1]+'</option>';}).join('');
+  }
+  function productShippingChoiceHtml(selected){
+    return Object.keys(PRODUCT_SHIPPING_DECISIONS).map(function(value){
+      const item=PRODUCT_SHIPPING_DECISIONS[value];
+      return '<label class="ops-product-shipping-choice '+(selected===value?'active':'')+'"><input type="radio" name="shippingDecision" value="'+value+'" '+(selected===value?'checked':'')+'><span><b>'+escapeHtml(item.label)+'</b><small>'+escapeHtml(item.description)+'</small></span></label>';
+    }).join('');
+  }
+  function productShippingValues(source){
+    const row=source||{};
+    return {
+      decision:clean(row.shippingDecision),
+      lengthCm:numberOrNull(row.packageLengthCm),
+      widthCm:numberOrNull(row.packageWidthCm),
+      heightCm:numberOrNull(row.packageHeightCm),
+      weightKg:numberOrNull(row.packageWeightKg)
+    };
+  }
+  function productShippingSummaryHtml(values){
+    const row=productShippingValues(values),parts=[row.lengthCm,row.widthCm,row.heightCm],hasAll=parts.every(function(value){return value!=null&&value>0;})&&row.weightKg!=null&&row.weightKg>0;
+    if(!row.decision)return '<div class="ops-callout"><b>先選擇實際出貨方式</b><br><span>這是人工最終判定；網路查到的尺寸只協助提醒，不會自動改掉你的選擇。</span></div>';
+    if(!hasAll){
+      if(row.decision==='convenience')return '<div class="ops-callout"><b>可套用小型商品建議值</b><br><span>若沒有可靠尺寸，可先用 40 × 30 × 10 公分、1 公斤建立草稿，再由你確認。</span></div>';
+      return '<div class="ops-callout"><b>'+escapeHtml(shippingDecisionLabel(row.decision))+'：尚缺包裝資料</b><br><span>商品主檔可以先儲存，但送出平台草稿前仍要補齊外箱長、寬、高與重量。</span></div>';
+    }
+    const total=row.lengthCm+row.widthCm+row.heightCm,maxSide=Math.max.apply(Math,parts),limits=row.decision==='convenience'?{sum:105,max:45,weight:5}:row.decision==='home'?{sum:150,max:100,weight:15}:{sum:210,max:150,weight:20};
+    const over=total>limits.sum||maxSide>limits.max||row.weightKg>limits.weight;
+    return '<div class="ops-callout '+(over?'red':'green')+'"><b>'+escapeHtml(shippingDecisionLabel(row.decision))+'｜'+formatNumber(row.lengthCm)+' × '+formatNumber(row.widthCm)+' × '+formatNumber(row.heightCm)+' cm｜'+formatNumber(row.weightKg)+' kg</b><br><span>'+(over?'依保守檢查值可能超過此物流級距，請人工確認；系統不會改掉你的選擇。':'目前未超過保守檢查值；正式上架仍以平台當下顯示的物流規則為準。')+'</span></div>';
+  }
+  function productListingSuggestedDefaults(p){
+    const name=clean(p&&((p.originalName)||(p.onlineName)||(p.name)));
+    if(/音樂書包|樂器書包|譜本收納|樂譜袋|譜袋/.test(name))return {shopeeCategoryPath:'愛好與收藏品 > 樂器與樂器配件 > 樂器配件',shippingDecision:'convenience',packageLengthCm:40,packageWidthCm:30,packageHeightCm:10,packageWeightKg:1,packageMeasurementMode:'estimated'};
+    return {};
+  }
   function productFormHtml(p){
     const internal=p&&p.internal,avg=p&&p.averageCost,isNew=!p;
     const displayName=(p&&((p.originalName)||(p.onlineName)||(p.name)))||'新增商品';
@@ -3059,7 +3130,40 @@ function ensureSalesClock(){
     const easyStorePrice=p&&p.easyStorePrice!=null?p.easyStorePrice:(p&&p.onlinePrice!=null?p.onlinePrice:'');
     const momoPrice=p&&p.momoPrice!=null?p.momoPrice:'';
     const coupangPrice=p&&p.coupangPrice!=null?p.coupangPrice:'';
-    return '<form id="productForm" data-id="'+attr(p?p.docId:'')+'"><section class="ops-inline-product-editor" id="opsProductEditor"><div class="ops-inline-product-header"><div><h3>'+escapeHtml(title)+'</h3>'+(p?'<div class="ops-inline-product-meta">SKU '+escapeHtml(p.sku||'未設定')+' ・ 庫存 '+escapeHtml(formatNumber(p.currentStock))+'</div>':'')+'</div><div class="ops-card-actions"><button class="ops-button ghost" type="button" data-action="product-edit-cancel">取消編輯</button><button class="ops-button primary" type="submit">'+(isNew?'儲存商品':'儲存變更')+'</button></div></div><div class="ops-inline-product-layout"><div class="ops-inline-product-media">'+productImagePanelHtml(p)+'</div><div class="ops-inline-product-fields"><div class="ops-form-grid cols-3"><div class="ops-field"><label class="ops-required">SKU／商品編號</label><input class="ops-input" name="internalSku" value="'+attr((p&&p.sku)||'')+'" required></div><div class="ops-field full ops-product-name-field"><label class="ops-required">商品名稱</label><input class="ops-input" name="internalName" value="'+attr((internal&&internal.internalName)||(p&&p.originalName)||(p&&p.onlineName)||'')+'" required></div></div><div class="ops-form-grid cols-3"><div class="ops-field"><label>品牌</label><input class="ops-input" name="brand" value="'+attr((p&&p.brand)||'')+'"></div><div class="ops-field"><label>分類</label><input class="ops-input" name="category" value="'+attr((p&&p.category)||'')+'"></div><div class="ops-field"><label>狀態</label><select class="ops-select" name="status"><option value="active">正常銷售</option><option value="inactive">停用</option><option value="discontinued">停售</option></select></div></div><div class="ops-section-title">成本資訊</div><div class="ops-form-grid cols-2 ops-product-value-fields"><div class="ops-field"><label>進貨成本</label><input class="ops-input" type="number" min="0" step="0.01" name="latestPurchaseCost" value="'+attr(p&&p.latestPurchaseCost!=null?p.latestPurchaseCost:'')+'"></div><div class="ops-field"><label>平均成本</label><input class="ops-input" value="'+attr(avg!=null?avg:'')+'" readonly></div></div><div class="ops-section-title">售價資訊</div><div class="ops-form-grid cols-4 ops-product-value-fields"><div class="ops-field"><label>門市售價</label><input class="ops-input" type="number" min="0" step="1" name="storePrice" value="'+attr(p&&p.storePrice!=null?p.storePrice:'')+'"></div><div class="ops-field"><label>EASY STORE 售價</label><input class="ops-input" type="number" min="0" step="1" name="easyStorePrice" value="'+attr(easyStorePrice)+'"></div><div class="ops-field"><label>MOMO 售價</label><input class="ops-input" type="number" min="0" step="1" name="momoPrice" value="'+attr(momoPrice)+'"></div><div class="ops-field"><label>Coupang／酷澎售價</label><input class="ops-input" type="number" min="0" step="1" name="coupangPrice" value="'+attr(coupangPrice)+'"></div><div class="ops-field full"><small>第一次只有一個網路價時會先帶入三平台。之後可分別修改；EasyStore 可自動送出，MOMO 尚待官方改價權限，酷澎價格須為 10 元倍數並由店內固定 IP 同步。</small></div></div><div class="ops-form-grid"><div class="ops-field"><label>現有庫存</label><input class="ops-input" type="number" step="1" name="currentStock" value="'+attr(p&&p.currentStock!=null?p.currentStock:0)+'"><small>標準流程請使用「庫存作業／盤點調整」；在此修改時會先要求確認並留下盤點紀錄。</small></div><div class="ops-field"><label>安全庫存</label><input class="ops-input" type="number" min="0" step="1" name="safetyStock" value="'+attr(p&&p.safetyStock!=null?p.safetyStock:0)+'"></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note">'+escapeHtml((internal&&internal.note)||'')+'</textarea></div></div></div></div></section></form>';
+    const suggested=productListingSuggestedDefaults(p),shipping=productShippingValues({shippingDecision:(internal&&internal.shippingDecision)||suggested.shippingDecision,packageLengthCm:internal&&internal.packageLengthCm!=null?internal.packageLengthCm:suggested.packageLengthCm,packageWidthCm:internal&&internal.packageWidthCm!=null?internal.packageWidthCm:suggested.packageWidthCm,packageHeightCm:internal&&internal.packageHeightCm!=null?internal.packageHeightCm:suggested.packageHeightCm,packageWeightKg:internal&&internal.packageWeightKg!=null?internal.packageWeightKg:suggested.packageWeightKg});
+    const researchStatus=(internal&&internal.packageResearchStatus)||'not-searched',productResearchStatus=(internal&&internal.productResearchStatus)||'not-searched',productResearchSources=((internal&&internal.productResearchSourceUrls)||[]).join('\n');
+    return '<form id="productForm" data-id="'+attr(p?p.docId:'')+'">'
+      +'<section class="ops-inline-product-editor" id="opsProductEditor">'
+      +'<div class="ops-inline-product-header"><div><h3>'+escapeHtml(title)+'</h3>'+(p?'<div class="ops-inline-product-meta">SKU '+escapeHtml(p.sku||'未設定')+' ・ 庫存 '+escapeHtml(formatNumber(p.currentStock))+'</div>':'')+'</div>'
+      +'<div class="ops-card-actions"><button class="ops-button soft" type="button" data-action="product-listing-preview">上架草稿預覽</button><button class="ops-button ghost" type="button" data-action="product-edit-cancel">取消編輯</button><button class="ops-button primary" type="submit">'+(isNew?'儲存商品':'儲存變更')+'</button></div></div>'
+      +'<div class="ops-inline-product-layout"><div class="ops-inline-product-media">'+productImagePanelHtml(p)+'</div><div class="ops-inline-product-fields">'
+      +'<div class="ops-form-grid cols-3"><div class="ops-field"><label class="ops-required">SKU／商品編號</label><input class="ops-input" name="internalSku" value="'+attr((p&&p.sku)||'')+'" required></div><div class="ops-field full ops-product-name-field"><label class="ops-required">商品名稱</label><input class="ops-input" name="internalName" value="'+attr((internal&&internal.internalName)||(p&&p.originalName)||(p&&p.onlineName)||'')+'" required></div></div>'
+      +'<div class="ops-form-grid cols-3"><div class="ops-field"><label>品牌</label><input class="ops-input" name="brand" value="'+attr((p&&p.brand)||'')+'"></div><div class="ops-field"><label>型號</label><input class="ops-input" name="model" value="'+attr((internal&&internal.model)||'')+'" placeholder="例如 JUPITER 型號"></div><div class="ops-field"><label>國際條碼／GTIN</label><input class="ops-input" name="barcode" value="'+attr((internal&&internal.barcode)||'')+'" placeholder="沒有就先留白"></div><div class="ops-field"><label>中央分類</label><input class="ops-input" name="category" value="'+attr((p&&p.category)||'')+'"></div><div class="ops-field"><label>狀態</label><select class="ops-select" name="status"><option value="active">正常銷售</option><option value="inactive">停用</option><option value="discontinued">停售</option></select></div></div>'
+      +'<div class="ops-section-title ops-section-title-actions"><span>完整商品研究（上架前只查一次）</span><button class="ops-button soft small" type="button" data-action="product-research-copy-prompt">複製給 ChatGPT 的查詢指令</button></div><div class="ops-callout green"><b>先建立一份共用的正確資料，再轉成各平台欄位</b><br><span>優先查品牌官網、原廠型錄或可靠商品頁；不知道的規格保留空白，不用猜。資料完整有助分類、屬性比對與搜尋，但不代表保證排名。</span></div>'
+      +'<div class="ops-form-grid cols-3"><div class="ops-field"><label>研究狀態</label><select class="ops-select" name="productResearchStatus">'+productResearchStatusOptions(productResearchStatus)+'</select></div><div class="ops-field full ops-product-name-field"><label>常見名稱／別名</label><input class="ops-input" name="alternateNames" value="'+attr((internal&&internal.alternateNames)||'')+'" placeholder="例如：樂譜袋、譜本收納包"></div><div class="ops-field full"><label>搜尋關鍵字</label><textarea class="ops-textarea compact" name="searchKeywords" placeholder="品牌、型號、品類、用途、常見搜尋詞；用逗號分隔">'+escapeHtml((internal&&internal.searchKeywords)||'')+'</textarea></div><div class="ops-field full"><label>研究來源網址</label><textarea class="ops-textarea compact" name="productResearchSourceUrls" placeholder="一行一個品牌官網、原廠型錄或可靠商品頁網址">'+escapeHtml(productResearchSources)+'</textarea></div></div>'
+      +'<div class="ops-form-grid cols-2"><div class="ops-field full"><label>完整規格</label><textarea class="ops-textarea ops-product-spec-textarea" name="specificationText" placeholder="一行一項，例如：&#10;適用尺寸：A4 樂譜本&#10;開口方式：拉鍊&#10;提把：有">'+escapeHtml((internal&&internal.specificationText)||'')+'</textarea><small>之後會依平台分類，把這些資料對應到蝦皮、MOMO、酷澎的必要屬性。</small></div><div class="ops-field full"><label>商品賣點</label><textarea class="ops-textarea" name="sellingPoints" placeholder="一行一個重點，避免誇大或沒有來源的說法">'+escapeHtml((internal&&internal.sellingPoints)||'')+'</textarea></div><div class="ops-field"><label>材質</label><input class="ops-input" name="material" value="'+attr((internal&&internal.material)||'')+'"></div><div class="ops-field"><label>顏色</label><input class="ops-input" name="color" value="'+attr((internal&&internal.color)||'')+'"></div><div class="ops-field"><label>產地</label><input class="ops-input" name="countryOfOrigin" value="'+attr((internal&&internal.countryOfOrigin)||'')+'"></div><div class="ops-field"><label>保固</label><input class="ops-input" name="warrantyInfo" value="'+attr((internal&&internal.warrantyInfo)||'')+'" placeholder="例如：無保固／原廠一年"></div><div class="ops-field full"><label>包裝內容物</label><input class="ops-input" name="includedItems" value="'+attr((internal&&internal.includedItems)||'')+'" placeholder="例如：音樂書包本體 × 1、背帶 × 1"></div><div class="ops-field full"><label>共用商品說明</label><textarea class="ops-textarea ops-product-description-textarea" name="commonProductDescription" placeholder="以查到的正確資料整理完整說明；之後再依各平台格式轉換">'+escapeHtml((internal&&internal.commonProductDescription)||'')+'</textarea></div></div>'
+      +'<div class="ops-section-title">平台上架分類</div><div class="ops-callout green"><b>蝦皮仍走 EasyStore 原本的發佈流程</b><br><span>這裡只保存各平台對照資料，不會直接呼叫蝦皮 API，也不會改動既有訂單同步。</span></div>'
+      +'<div class="ops-form-grid cols-3"><div class="ops-field"><label>EasyStore → 蝦皮分類</label><input class="ops-input" name="shopeeCategoryPath" value="'+attr((internal&&internal.shopeeCategoryPath)||suggested.shopeeCategoryPath||'')+'" placeholder="愛好與收藏品 > 樂器與樂器配件 > 樂器配件"><small>音樂書包建議放「樂器配件」，不要放「管樂器」。</small></div><div class="ops-field"><label>MOMO 分類代碼／名稱</label><input class="ops-input" name="momoCategoryCode" value="'+attr((internal&&internal.momoCategoryCode)||'')+'" placeholder="由 MOMO CategoryTree 查得"></div><div class="ops-field"><label>Coupang 分類代碼／名稱</label><input class="ops-input" name="coupangCategoryCode" value="'+attr((internal&&internal.coupangCategoryCode)||'')+'" placeholder="由酷澎分類 Excel 查得"></div></div>'
+      +'<div class="ops-section-title">上架與物流判斷</div><input type="hidden" name="packageMeasurementMode" value="'+attr((internal&&internal.packageMeasurementMode)||suggested.packageMeasurementMode||'')+'"><div class="ops-product-shipping-grid">'+productShippingChoiceHtml(shipping.decision)+'</div>'
+      +'<div class="ops-form-grid cols-4 ops-product-value-fields"><div class="ops-field"><label>外箱長（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageLengthCm" value="'+attr(shipping.lengthCm==null?'':shipping.lengthCm)+'"></div><div class="ops-field"><label>外箱寬（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWidthCm" value="'+attr(shipping.widthCm==null?'':shipping.widthCm)+'"></div><div class="ops-field"><label>外箱高（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageHeightCm" value="'+attr(shipping.heightCm==null?'':shipping.heightCm)+'"></div><div class="ops-field"><label>包裝重量（kg）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWeightKg" value="'+attr(shipping.weightKg==null?'':shipping.weightKg)+'"></div></div>'
+      +'<div class="ops-product-shipping-actions"><button class="ops-button soft" type="button" data-action="product-shipping-preset">套用小型商品建議值</button><small>只有「可超商寄」會套用 40 × 30 × 10 cm、1 kg；宅配與大型商品不會亂猜尺寸。</small></div><div id="productShippingSummary">'+productShippingSummaryHtml(shipping)+'</div>'
+      +'<div class="ops-form-grid cols-3"><div class="ops-field"><label>尺寸資料狀態</label><select class="ops-select" name="packageResearchStatus">'+packageResearchStatusOptions(researchStatus)+'</select></div><div class="ops-field full ops-product-name-field"><label>尺寸資料來源網址</label><input class="ops-input" type="url" name="packageResearchSourceUrl" value="'+attr((internal&&internal.packageResearchSourceUrl)||'')+'" placeholder="品牌官網或可靠商品頁；沒有就留白"></div><div class="ops-field full"><label>尺寸判斷備註</label><textarea class="ops-textarea" name="packageResearchNote" placeholder="例如：網路查不到，老闆判定可超商寄">'+escapeHtml((internal&&internal.packageResearchNote)||'')+'</textarea><small>若網路資料與你的實際判斷不同，系統只顯示警告，仍以你的選擇為主。</small></div></div>'
+      +'<div class="ops-section-title">成本資訊</div><div class="ops-form-grid cols-2 ops-product-value-fields"><div class="ops-field"><label>進貨成本</label><input class="ops-input" type="number" min="0" step="0.01" name="latestPurchaseCost" value="'+attr(p&&p.latestPurchaseCost!=null?p.latestPurchaseCost:'')+'"></div><div class="ops-field"><label>平均成本</label><input class="ops-input" value="'+attr(avg!=null?avg:'')+'" readonly></div></div>'
+      +'<div class="ops-section-title">售價資訊</div><div class="ops-form-grid cols-4 ops-product-value-fields"><div class="ops-field"><label>門市售價</label><input class="ops-input" type="number" min="0" step="1" name="storePrice" value="'+attr(p&&p.storePrice!=null?p.storePrice:'')+'"></div><div class="ops-field"><label>EASY STORE 售價</label><input class="ops-input" type="number" min="0" step="1" name="easyStorePrice" value="'+attr(easyStorePrice)+'"></div><div class="ops-field"><label>MOMO 售價</label><input class="ops-input" type="number" min="0" step="1" name="momoPrice" value="'+attr(momoPrice)+'"></div><div class="ops-field"><label>Coupang／酷澎售價</label><input class="ops-input" type="number" min="0" step="1" name="coupangPrice" value="'+attr(coupangPrice)+'"></div><div class="ops-field full"><small>第一次只有一個網路價時會先帶入三平台。之後可分別修改；EasyStore 可自動送出，MOMO 尚待官方改價權限，酷澎價格須為 10 元倍數並由店內固定 IP 同步。</small></div></div>'
+      +'<div class="ops-form-grid"><div class="ops-field"><label>現有庫存</label><input class="ops-input" type="number" step="1" name="currentStock" value="'+attr(p&&p.currentStock!=null?p.currentStock:0)+'"><small>標準流程請使用「庫存作業／盤點調整」；在此修改時會先要求確認並留下盤點紀錄。</small></div><div class="ops-field"><label>安全庫存</label><input class="ops-input" type="number" min="0" step="1" name="safetyStock" value="'+attr(p&&p.safetyStock!=null?p.safetyStock:0)+'"></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note">'+escapeHtml((internal&&internal.note)||'')+'</textarea></div></div>'
+      +'</div></div></section></form>';
+  }
+  async function copyProductResearchPrompt(form){
+    if(!form)return;
+    const data=new FormData(form),name=clean(data.get('internalName')),brand=clean(data.get('brand')),model=clean(data.get('model')),sku=normalizeCode(data.get('internalSku'));
+    if(!name&&!brand&&!model){toast('資料不足','請先填商品名稱、品牌或型號。','warning');return;}
+    const prompt='請上網研究以下商品，優先採用品牌官網、原廠型錄與可靠來源；不要自行猜測查不到的資料。\n\n商品名稱：'+(name||'未填')+'\n品牌：'+(brand||'未填')+'\n型號：'+(model||'未填')+'\n內部 SKU：'+(sku||'未填')+'\n\n請整理：\n1. 正確商品名稱與常見別名\n2. 品牌、完整型號、條碼／GTIN（若查得到）\n3. 完整規格（每項用「欄位：內容」）\n4. 材質、顏色、產地、保固\n5. 包裝內容物\n6. 商品尺寸、包裝尺寸與重量，並區分兩者\n7. 可確認的商品賣點；不要誇大\n8. 台灣消費者可能使用的搜尋關鍵字\n9. 可直接整理成 EasyStore、蝦皮、MOMO、Coupang／酷澎商品頁的共用商品說明\n10. 列出每一個資料來源網址，並標示哪些欄位仍查不到。';
+    try{
+      if(!global.navigator||!navigator.clipboard||typeof navigator.clipboard.writeText!=='function')throw new Error('clipboard unavailable');
+      await navigator.clipboard.writeText(prompt);toast('查詢指令已複製','可以直接貼到 ChatGPT，完成後把結果填回這一區。','success');
+    }catch(error){
+      openDrawer('商品研究查詢指令','請複製後貼到 ChatGPT。','<textarea class="ops-textarea ops-product-research-prompt" readonly>'+escapeHtml(prompt)+'</textarea><div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">關閉</button></div>');
+    }
   }
 
   function imageGalleryHtml(images,alt){images=(images||[]).slice(0,3);if(!images.length)return '<div class="ops-detail-gallery"><div class="ops-detail-no-image">尚無圖片</div></div>';return '<div class="ops-detail-gallery">'+images.map(function(url,index){return '<img class="'+(index===0?'main':'')+'" src="'+attr(url)+'" alt="'+attr(alt)+'">';}).join('')+'</div>';}
@@ -3091,9 +3195,131 @@ function ensureSalesClock(){
     const layerHtml=layers.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>批次</th><th>日期</th><th class="num">剩餘數量</th><th class="num">單位成本</th><th>來源</th></tr></thead><tbody>'+layers.map(function(l){return '<tr><td>'+escapeHtml(l.layerId)+'</td><td>'+escapeHtml(dateText(l.receivedAt))+'</td><td class="num">'+formatNumber(l.qtyRemaining)+'</td><td class="num">'+money(l.unitCost)+'</td><td>'+escapeHtml(l.referenceType+' '+(l.referenceId||''))+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無 FIFO 成本批次','庫存為零、成本缺漏，或尚未完成原始 Excel 匯入。');
     const body='<div class="ops-detail-hero">'+imageGalleryHtml(p.imageUrls,p.originalName||p.name)+'<div><h3>'+escapeHtml(p.originalName||p.name)+'</h3><p>網路名稱：'+escapeHtml(p.onlineName||'未上架／未配對')+'</p><p>SKU：'+escapeHtml(p.sku||'尚未設定')+'</p><p>'+escapeHtml([p.brand,p.category,p.variantName].filter(Boolean).join('・')||'未設定品牌／分類')+'</p></div></div><div class="ops-grid-equal"><div class="ops-card"><div class="ops-summary-list"><div class="ops-summary-line"><span>現有庫存</span><b>'+formatNumber(p.currentStock)+'</b></div><div class="ops-summary-line"><span>保留庫存</span><b>'+formatNumber(p.reservedStock)+'</b></div><div class="ops-summary-line"><span>安全庫存</span><b>'+formatNumber(p.safetyStock)+'</b></div><div class="ops-summary-line total"><span>可銷售庫存</span><b>'+formatNumber(p.availableStock)+'</b></div></div></div><div class="ops-card"><div class="ops-summary-list"><div class="ops-summary-line"><span>門市售價</span><b>'+money(p.storePrice)+'</b></div><div class="ops-summary-line"><span>EASY STORE 售價</span><b>'+money(p.easyStorePrice)+'</b></div><div class="ops-summary-line"><span>MOMO 售價</span><b>'+money(p.momoPrice)+'</b></div><div class="ops-summary-line"><span>Coupang／酷澎售價</span><b>'+money(p.coupangPrice)+'</b></div><div class="ops-summary-line"><span>下一件 FIFO 成本</span><b>'+money(p.nextFifoCost)+'</b></div><div class="ops-summary-line"><span>剩餘平均成本</span><b>'+money(p.averageCost)+'</b></div><div class="ops-summary-line"><span>庫存總成本</span><b>'+money(p.inventoryValue)+'</b></div><div class="ops-summary-line total"><span>下一件預估毛利率</span><b>'+percentage(p.margin)+'</b></div></div></div></div><div class="ops-section-title">FIFO 剩餘成本批次</div>'+layerHtml+'<div class="ops-section-title">最近庫存異動</div>'+txHtml+'<div class="ops-drawer-footer"><button class="ops-button ghost" data-action="drawer-close">關閉</button><button class="ops-button primary" data-action="product-edit" data-id="'+attr(p.docId)+'">編輯主檔</button></div>';openDrawer('商品完整資料','原始名稱、網路名稱、圖片、庫存與 FIFO 成本。',body);
   }
+  function productPackageFromFormData(data,applyConvenienceFallback){
+    const decision=clean(data.get('shippingDecision'));
+    const values={
+      decision:decision,
+      lengthCm:numberOrNull(data.get('packageLengthCm')),
+      widthCm:numberOrNull(data.get('packageWidthCm')),
+      heightCm:numberOrNull(data.get('packageHeightCm')),
+      weightKg:numberOrNull(data.get('packageWeightKg')),
+      usedPreset:false
+    };
+    const preset=PRODUCT_PACKAGE_PRESETS[decision];
+    if(applyConvenienceFallback&&preset){
+      if(values.lengthCm==null){values.lengthCm=preset.lengthCm;values.usedPreset=true;}
+      if(values.widthCm==null){values.widthCm=preset.widthCm;values.usedPreset=true;}
+      if(values.heightCm==null){values.heightCm=preset.heightCm;values.usedPreset=true;}
+      if(values.weightKg==null){values.weightKg=preset.weightKg;values.usedPreset=true;}
+    }
+    return values;
+  }
+  function applyProductShippingPreset(form,force){
+    if(!form)return;
+    const decision=clean(new FormData(form).get('shippingDecision'));
+    const preset=PRODUCT_PACKAGE_PRESETS[decision];
+    if(!preset){
+      toast('沒有自動套用尺寸',decision?'宅配或大型商品請填實際外箱資料。':'請先選擇「可超商寄」。','warning');
+      updateProductShippingSummary(form);
+      return;
+    }
+    let applied=false;
+    [['packageLengthCm',preset.lengthCm],['packageWidthCm',preset.widthCm],['packageHeightCm',preset.heightCm],['packageWeightKg',preset.weightKg]].forEach(function(pair){
+      const input=query('[name="'+pair[0]+'"]',form);
+      if(input&&(force||clean(input.value)==='')){input.value=String(pair[1]);applied=true;}
+    });
+    const mode=query('[name="packageMeasurementMode"]',form);if(mode&&applied)mode.value='estimated';
+    updateProductShippingSummary(form);
+    if(force)toast('已套用小型商品建議值','40 × 30 × 10 公分、1 公斤；請依實際包裝調整。','success');
+  }
+  function updateProductShippingSummary(form){
+    const target=byId('productShippingSummary');
+    if(!form||!target)return;
+    const values=productPackageFromFormData(new FormData(form),false);
+    target.innerHTML=productShippingSummaryHtml({shippingDecision:values.decision,packageLengthCm:values.lengthCm,packageWidthCm:values.widthCm,packageHeightCm:values.heightCm,packageWeightKg:values.weightKg});
+    queryAll('.ops-product-shipping-choice',form).forEach(function(label){const input=query('input',label);label.classList.toggle('active',!!(input&&input.checked));});
+  }
+  function clearEstimatedProductPackage(form){
+    if(!form)return;
+    const mode=query('[name="packageMeasurementMode"]',form);
+    if(!mode||mode.value!=='estimated')return;
+    ['packageLengthCm','packageWidthCm','packageHeightCm','packageWeightKg'].forEach(function(name){const input=query('[name="'+name+'"]',form);if(input)input.value='';});
+    mode.value='';
+  }
+  function productListingDraftFromForm(form){
+    const data=new FormData(form),id=clean(form.dataset.id),product=id?catalogById(id):null,packageInfo=productPackageFromFormData(data,true);
+    return {
+      id:id,product:product,sku:normalizeCode(data.get('internalSku')),name:clean(data.get('internalName')),brand:clean(data.get('brand')),model:clean(data.get('model')),barcode:clean(data.get('barcode')),
+      productResearchStatus:clean(data.get('productResearchStatus'))||'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(data.get('productResearchSourceUrls')),alternateNames:clean(data.get('alternateNames')),searchKeywords:clean(data.get('searchKeywords')),sellingPoints:clean(data.get('sellingPoints')),specificationText:clean(data.get('specificationText')),includedItems:clean(data.get('includedItems')),material:clean(data.get('material')),color:clean(data.get('color')),countryOfOrigin:clean(data.get('countryOfOrigin')),warrantyInfo:clean(data.get('warrantyInfo')),commonProductDescription:clean(data.get('commonProductDescription')),
+      shopeeCategoryPath:clean(data.get('shopeeCategoryPath')),momoCategoryCode:clean(data.get('momoCategoryCode')),coupangCategoryCode:clean(data.get('coupangCategoryCode')),
+      easyStorePrice:numberOrNull(data.get('easyStorePrice')),momoPrice:numberOrNull(data.get('momoPrice')),coupangPrice:numberOrNull(data.get('coupangPrice')),stock:numberOrNull(data.get('currentStock')),
+      shippingDecision:packageInfo.decision,packageLengthCm:packageInfo.lengthCm,packageWidthCm:packageInfo.widthCm,packageHeightCm:packageInfo.heightCm,packageWeightKg:packageInfo.weightKg,usedPreset:packageInfo.usedPreset||clean(data.get('packageMeasurementMode'))==='estimated',
+      packageResearchStatus:clean(data.get('packageResearchStatus')),packageResearchSourceUrl:safeUrl(data.get('packageResearchSourceUrl')),packageResearchNote:clean(data.get('packageResearchNote')),
+      imageCount:productEditorImages(product).length
+    };
+  }
+  function productListingPackageReady(draft){
+    return !!(draft.shippingDecision&&draft.packageLengthCm>0&&draft.packageWidthCm>0&&draft.packageHeightCm>0&&draft.packageWeightKg>0);
+  }
+  function productResearchStatusLabel(value){
+    return {"not-searched":'尚未查詢',partial:'資料仍不完整',researched:'已完成網路研究',manual:'已人工補齊'}[clean(value)]||'尚未查詢';
+  }
+  function productResearchReady(draft){
+    const completed=['researched','manual'].includes(draft.productResearchStatus),sourceReady=draft.productResearchStatus==='manual'||(draft.productResearchSourceUrls||[]).length>0;
+    return !!(completed&&sourceReady&&draft.searchKeywords&&draft.specificationText&&draft.commonProductDescription);
+  }
+  function productListingCheckRow(label,value,ok,note){
+    return '<div class="ops-listing-check-row '+(ok?'ok':'missing')+'"><span>'+(ok?'✓':'!')+'</span><div><b>'+escapeHtml(label)+'</b><small>'+escapeHtml(value||note||'尚未填寫')+'</small></div></div>';
+  }
+  function productPlatformDraftCard(title,status,rows,note){
+    return '<section class="ops-listing-platform-card"><div class="ops-listing-platform-head"><h3>'+escapeHtml(title)+'</h3>'+statusTag(status.ok?'資料齊全':'尚有缺件',status.ok?'green':'yellow')+'</div><div class="ops-listing-checks">'+rows.join('')+'</div><p>'+escapeHtml(note)+'</p></section>';
+  }
+  function openProductListingPreview(form){
+    if(!form)return;
+    const draft=productListingDraftFromForm(form),packageReady=productListingPackageReady(draft),researchReady=productResearchReady(draft),hasImages=draft.imageCount>0,shippingText=draft.shippingDecision?shippingDecisionLabel(draft.shippingDecision):'';
+    const packageText=packageReady?formatNumber(draft.packageLengthCm)+' × '+formatNumber(draft.packageWidthCm)+' × '+formatNumber(draft.packageHeightCm)+' cm／'+formatNumber(draft.packageWeightKg)+' kg'+(draft.usedPreset?'（小型商品建議值）':''):'';
+    const researchText=productResearchStatusLabel(draft.productResearchStatus),researchRows=[
+      productListingCheckRow('研究狀態',researchText,['researched','manual'].includes(draft.productResearchStatus)),productListingCheckRow('資料來源',(draft.productResearchSourceUrls||[]).length+' 個網址',draft.productResearchStatus==='manual'||(draft.productResearchSourceUrls||[]).length>0),
+      productListingCheckRow('搜尋關鍵字',draft.searchKeywords,!!draft.searchKeywords),productListingCheckRow('完整規格',draft.specificationText?'已填 '+draft.specificationText.length+' 字':'',!!draft.specificationText),productListingCheckRow('共用商品說明',draft.commonProductDescription?'已填 '+draft.commonProductDescription.length+' 字':'',!!draft.commonProductDescription)
+    ];
+    const easyRows=[
+      productListingCheckRow('SKU',draft.sku,!!draft.sku),productListingCheckRow('商品名稱',draft.name,!!draft.name),productListingCheckRow('商品圖片',draft.imageCount+' 張',hasImages),
+      productListingCheckRow('共用商品研究',researchText,researchReady),productListingCheckRow('蝦皮分類',draft.shopeeCategoryPath,!!draft.shopeeCategoryPath),productListingCheckRow('EasyStore 售價',money(draft.easyStorePrice),draft.easyStorePrice!=null),productListingCheckRow('物流判斷',shippingText,!!draft.shippingDecision),productListingCheckRow('包裝資料',packageText,packageReady)
+    ];
+    const momoRows=[
+      productListingCheckRow('單一 SKU／entpGoodsNo',draft.sku,!!draft.sku),productListingCheckRow('共用商品研究',researchText,researchReady),productListingCheckRow('國際條碼／internationalNo',draft.barcode,!!draft.barcode,'MOMO 草稿前需確認條碼規則'),productListingCheckRow('MOMO 分類',draft.momoCategoryCode,!!draft.momoCategoryCode),
+      productListingCheckRow('MOMO 售價',money(draft.momoPrice),draft.momoPrice!=null),productListingCheckRow('商品圖片',draft.imageCount+' 張',hasImages),productListingCheckRow('物流與包裝',shippingText+(packageText?'｜'+packageText:''),packageReady)
+    ];
+    const coupangRows=[
+      productListingCheckRow('賣家 SKU',draft.sku,!!draft.sku),productListingCheckRow('共用商品研究',researchText,researchReady),productListingCheckRow('Coupang 分類',draft.coupangCategoryCode,!!draft.coupangCategoryCode),productListingCheckRow('Coupang 售價',money(draft.coupangPrice),draft.coupangPrice!=null),
+      productListingCheckRow('商品圖片',draft.imageCount+' 張',hasImages),productListingCheckRow('物流與包裝',shippingText+(packageText?'｜'+packageText:''),packageReady)
+    ];
+    const easyOk=!!(draft.sku&&draft.name&&researchReady&&hasImages&&draft.shopeeCategoryPath&&draft.easyStorePrice!=null&&packageReady),momoOk=!!(draft.sku&&researchReady&&draft.barcode&&draft.momoCategoryCode&&draft.momoPrice!=null&&hasImages&&packageReady),coupangOk=!!(draft.sku&&researchReady&&draft.coupangCategoryCode&&draft.coupangPrice!=null&&hasImages&&packageReady);
+    const source=draft.packageResearchSourceUrl?'<a href="'+attr(draft.packageResearchSourceUrl)+'" target="_blank" rel="noopener">查看尺寸資料來源</a>':'尚未附尺寸資料來源';
+    const body='<div class="ops-callout green"><b>這是上架前草稿檢查，不會送出任何平台</b><br><span>蝦皮仍由 EasyStore 發佈；MOMO 與 Coupang 目前只檢查建立草稿所需資料。</span></div>'
+      +'<section class="ops-listing-draft-summary"><div><span>商品</span><b>'+escapeHtml(draft.name||'尚未命名')+'</b></div><div><span>SKU</span><b>'+escapeHtml(draft.sku||'尚未填寫')+'</b></div><div><span>人工物流判斷</span><b>'+escapeHtml(shippingText||'尚未選擇')+'</b></div><div><span>尺寸資料</span><b>'+source+'</b></div></section>'
+      +'<div class="ops-listing-platform-grid">'
+      +productPlatformDraftCard('共用商品研究',{ok:researchReady},researchRows,'同一份正確資料只研究一次；各平台標題、描述與分類屬性再從這裡分流，不需要重複查四次。')
+      +productPlatformDraftCard('EasyStore → 蝦皮',{ok:easyOk},easyRows,'保留現有 EasyStore 與蝦皮的合作同步；發佈前仍在 EasyStore 確認分類、屬性與物流。')
+      +productPlatformDraftCard('MOMO',{ok:momoOk},momoRows,'一個商品只有一個 SKU 沒問題；會建立一筆 skuParamList。若沒有原廠條碼，送草稿前需先測試 MOMO 是否接受同值或要求其他條碼。')
+      +productPlatformDraftCard('Coupang／酷澎',{ok:coupangOk},coupangRows,'先以官方分類 Excel 產生上架檔；分類代碼會決定該商品還有哪些必填欄位。')
+      +'</div><div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">關閉預覽</button></div>';
+    openDrawer('上架草稿預覽',draft.name||'尚未命名商品',body);
+  }
   async function saveProduct(form){
     const requestedId=clean(form.dataset.id),p=requestedId?catalogById(requestedId):null;if(requestedId&&(!p||!p.internal))throw new Error('找不到中央商品主檔');
     const data=new FormData(form),sku=normalizeCode(data.get('internalSku')),name=clean(data.get('internalName'));if(!sku)throw new Error('SKU 不可空白');if(!name)throw new Error('商品名稱不可空白');
+    const packageInfo=productPackageFromFormData(data,true),researchSourceRaw=clean(data.get('packageResearchSourceUrl')),researchSourceUrl=safeUrl(researchSourceRaw);
+    const productResearchStatus=clean(data.get('productResearchStatus'))||'not-searched',productResearchSourceRaw=clean(data.get('productResearchSourceUrls')),productResearchSourceRows=productResearchSourceRaw.split(/[\n|]+/).map(clean).filter(Boolean),productResearchSourceUrls=normalizeProductResearchSourceUrls(productResearchSourceRows),researchComplete=['researched','manual'].includes(productResearchStatus);
+    if(packageInfo.decision&&!PRODUCT_SHIPPING_DECISIONS[packageInfo.decision])throw new Error('物流判斷格式不正確');
+    if([packageInfo.lengthCm,packageInfo.widthCm,packageInfo.heightCm,packageInfo.weightKg].some(function(value){return value!=null&&value<=0;}))throw new Error('包裝尺寸與重量必須大於 0');
+    if(researchSourceRaw&&(!/^https?:\/\//i.test(researchSourceRaw)||!researchSourceUrl))throw new Error('尺寸資料來源網址格式不正確，請填入完整的 http 或 https 網址');
+    if(!['not-searched','partial','researched','manual'].includes(productResearchStatus))throw new Error('商品研究狀態格式不正確');
+    if(productResearchSourceRows.some(function(row){return !/^https?:\/\//i.test(row)||!safeUrl(row);}))throw new Error('商品研究來源請一行填一個完整的 http 或 https 網址');
+    if(productResearchStatus==='researched'&&!productResearchSourceUrls.length)throw new Error('已完成網路研究時，至少需要一個資料來源網址');
+    if(researchComplete&&!clean(data.get('specificationText')))throw new Error('完成商品研究前，請填寫完整規格');
+    if(researchComplete&&!clean(data.get('searchKeywords')))throw new Error('完成商品研究前，請填寫搜尋關鍵字');
+    if(researchComplete&&!clean(data.get('commonProductDescription')))throw new Error('完成商品研究前，請填寫共用商品說明');
     const duplicate=state.internalProducts.find(function(x){return x.internalSku===sku&&x.docId!==requestedId;});if(duplicate)throw new Error('此 SKU 已被其他商品使用：'+sku);
     const ref=requestedId?state.db.collection(COLLECTIONS.products).doc(requestedId):state.db.collection(COLLECTIONS.products).doc(),id=ref.id,oldStock=p?Number(p.currentStock||0):0,requestedStock=numberOrNull(data.get('currentStock'));if(requestedStock==null)throw new Error('現有庫存格式不正確');
     let finalStock=requestedStock,stockAdjustmentConfirmed=true;
@@ -3123,7 +3349,7 @@ function ensureSalesClock(){
       nextPriceSync[platform]=Object.assign({},currentPriceSync[platform]||{},{targetPrice:newPrice,status:status,message:message,requestedAt:serverTimestamp()});
     });
     if(priceChanged)nextPriceSync.lastUpdatedAt=serverTimestamp();
-    const payload={internalSku:sku,internalName:name,originalName:name,barcode:p&&p.internal?clean(p.internal.barcode):'',storePrice:prices.storePrice,originalSalePrice:prices.storePrice,easyStorePrice:prices.easyStorePrice,momoPrice:prices.momoPrice,coupangPrice:prices.coupangPrice,platformPricesInitialized:true,latestPurchaseCost:latest,currentStock:finalStock,reservedStock:p?Number(p.reservedStock||0):0,safetyStock:numberOrNull(data.get('safetyStock'))||0,saleRewardPercent:p&&p.internal?p.internal.saleRewardPercent:null,status:clean(data.get('status'))||'active',brand:clean(data.get('brand')),category:clean(data.get('category')),note:clean(data.get('note')),costLayers:layerResult.layers,averageCost:layerResult.averageCost,inventoryValue:layerResult.inventoryValue,costIncomplete:layerResult.costIncomplete,platformPriceSync:nextPriceSync,importInitialized:true,enabled:true,source:p?clean(p.internal.source)||'manual':'manual',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+    const payload={internalSku:sku,internalName:name,originalName:name,barcode:clean(data.get('barcode')),model:clean(data.get('model')),storePrice:prices.storePrice,originalSalePrice:prices.storePrice,easyStorePrice:prices.easyStorePrice,momoPrice:prices.momoPrice,coupangPrice:prices.coupangPrice,platformPricesInitialized:true,latestPurchaseCost:latest,currentStock:finalStock,reservedStock:p?Number(p.reservedStock||0):0,safetyStock:numberOrNull(data.get('safetyStock'))||0,saleRewardPercent:p&&p.internal?p.internal.saleRewardPercent:null,status:clean(data.get('status'))||'active',brand:clean(data.get('brand')),category:clean(data.get('category')),productResearchStatus:productResearchStatus,productResearchSourceUrls:productResearchSourceUrls,productResearchUpdatedAt:researchComplete?serverTimestamp():(p&&p.internal?p.internal.productResearchUpdatedAt||'':''),alternateNames:clean(data.get('alternateNames')),searchKeywords:clean(data.get('searchKeywords')),sellingPoints:clean(data.get('sellingPoints')),specificationText:clean(data.get('specificationText')),includedItems:clean(data.get('includedItems')),material:clean(data.get('material')),color:clean(data.get('color')),countryOfOrigin:clean(data.get('countryOfOrigin')),warrantyInfo:clean(data.get('warrantyInfo')),commonProductDescription:clean(data.get('commonProductDescription')),shopeeCategoryPath:clean(data.get('shopeeCategoryPath')),momoCategoryCode:clean(data.get('momoCategoryCode')),coupangCategoryCode:clean(data.get('coupangCategoryCode')),shippingDecision:packageInfo.decision,packageLengthCm:packageInfo.lengthCm,packageWidthCm:packageInfo.widthCm,packageHeightCm:packageInfo.heightCm,packageWeightKg:packageInfo.weightKg,packageMeasurementMode:packageInfo.decision?(clean(data.get('packageResearchStatus'))==='manual'?'measured':packageInfo.usedPreset||clean(data.get('packageMeasurementMode'))==='estimated'?'estimated':'provided'):'',packageResearchStatus:clean(data.get('packageResearchStatus'))||'not-searched',packageResearchSourceUrl:researchSourceUrl,packageResearchNote:clean(data.get('packageResearchNote')),note:clean(data.get('note')),costLayers:layerResult.layers,averageCost:layerResult.averageCost,inventoryValue:layerResult.inventoryValue,costIncomplete:layerResult.costIncomplete,platformPriceSync:nextPriceSync,importInitialized:true,enabled:true,source:p?clean(p.internal.source)||'manual':'manual',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
     if(!p){payload.createdAt=serverTimestamp();payload.createdBy=userLabel();payload.openingStock=finalStock;payload.openingUnitCost=latest;}
     const batch=state.db.batch();batch.set(ref,payload,{merge:true});
     if(needsSyncRequest){const syncRef=state.db.collection(COLLECTIONS.platformSyncRequests).doc();batch.set(syncRef,{requestId:syncRef.id,status:'pending',reason:'platform-price-change',productIds:[id],requestedAt:serverTimestamp(),requestedBy:userLabel(),source:'product-editor',version:VERSION});}
@@ -3571,8 +3797,8 @@ function ensureSalesClock(){
   }
   function csvCell(value){ const text=clean(value).replace(/"/g,'""'); return '"'+text+'"'; }
   function downloadProductTemplate(){
-    const header=['code','name','salePrice','easyStorePrice','momoPrice','coupangPrice','purchasePrice','withoutWarehouseStocks','reservedStock','safetyStock','onlineName','onlinePrice','matchedOnline','imageUrl','saleRewardPercent','remark'];
-    const rows=state.catalog.filter(function(p){return p.initialized;}).map(function(p){const i=p.internal||{};return [p.sku,p.originalName||'',p.storePrice==null?'':p.storePrice,p.easyStorePrice==null?'':p.easyStorePrice,p.momoPrice==null?'':p.momoPrice,p.coupangPrice==null?'':p.coupangPrice,p.latestPurchaseCost==null?'':p.latestPurchaseCost,p.currentStock,p.reservedStock,p.safetyStock,p.onlineName||'',p.onlinePrice==null?'':p.onlinePrice,p.matchedOnline?'是':'否',p.imageUrl||'',p.saleRewardPercent==null?'':p.saleRewardPercent,i.note||''];});
+    const header=['code','name','brand','model','barcode','category','productResearchStatus','productResearchSourceUrls','alternateNames','searchKeywords','sellingPoints','specificationText','includedItems','material','color','countryOfOrigin','warrantyInfo','commonProductDescription','salePrice','easyStorePrice','momoPrice','coupangPrice','purchasePrice','withoutWarehouseStocks','reservedStock','safetyStock','shopeeCategoryPath','momoCategoryCode','coupangCategoryCode','shippingDecision','packageLengthCm','packageWidthCm','packageHeightCm','packageWeightKg','packageResearchStatus','packageResearchSourceUrl','packageResearchNote','onlineName','onlinePrice','matchedOnline','imageUrl','saleRewardPercent','remark'];
+    const rows=state.catalog.filter(function(p){return p.initialized;}).map(function(p){const i=p.internal||{};return [p.sku,p.originalName||'',p.brand||'',p.model||'',p.barcode||'',p.category||'',p.productResearchStatus||'not-searched',(p.productResearchSourceUrls||[]).join('\n'),p.alternateNames||'',p.searchKeywords||'',p.sellingPoints||'',p.specificationText||'',p.includedItems||'',p.material||'',p.color||'',p.countryOfOrigin||'',p.warrantyInfo||'',p.commonProductDescription||'',p.storePrice==null?'':p.storePrice,p.easyStorePrice==null?'':p.easyStorePrice,p.momoPrice==null?'':p.momoPrice,p.coupangPrice==null?'':p.coupangPrice,p.latestPurchaseCost==null?'':p.latestPurchaseCost,p.currentStock,p.reservedStock,p.safetyStock,p.shopeeCategoryPath||'',p.momoCategoryCode||'',p.coupangCategoryCode||'',p.shippingDecision||'',p.packageLengthCm==null?'':p.packageLengthCm,p.packageWidthCm==null?'':p.packageWidthCm,p.packageHeightCm==null?'':p.packageHeightCm,p.packageWeightKg==null?'':p.packageWeightKg,p.packageResearchStatus||'not-searched',p.packageResearchSourceUrl||'',p.packageResearchNote||'',p.onlineName||'',p.onlinePrice==null?'':p.onlinePrice,p.matchedOnline?'是':'否',p.imageUrl||'',p.saleRewardPercent==null?'':p.saleRewardPercent,i.note||''];});
     const csv='\uFEFF'+[header].concat(rows).map(function(r){return r.map(csvCell).join(',');}).join('\r\n'); downloadBlob('營運中心_商品主檔匯入範本_'+dateText(new Date())+'.csv',csv,'text/csv;charset=utf-8');
   }
   function exportBackup(){
@@ -3593,7 +3819,11 @@ function ensureSalesClock(){
   function importValue(row,names){const keys=Object.keys(row||{});for(const name of names){const target=normalizedHeader(name);const key=keys.find(function(k){return normalizedHeader(k)===target;});if(key!==undefined&&hasValue(row[key]))return row[key];}return '';}
   async function parseImportFile(file){
     if(!file)return;state.importFileName=file.name;let rows=[];if(/\.csv$/i.test(file.name)){const text=await file.text();const wb=XLSX.read(text,{type:'string'}),ws=wb.Sheets[wb.SheetNames[0]];rows=XLSX.utils.sheet_to_json(ws,{defval:''});}else if(global.XLSX){const data=await file.arrayBuffer(),wb=XLSX.read(data,{type:'array'}),ws=wb.Sheets[wb.SheetNames[0]];rows=XLSX.utils.sheet_to_json(ws,{defval:''});}else throw new Error('Excel 解析元件尚未載入');
-    state.importRows=rows.map(function(row,index){const sku=normalizeCode(importValue(row,['code','internalSku','sku','商品編號','內部商品編號'])),name=clean(importValue(row,['name','internalName','商品名稱','品名'])),cost=numberOrNull(importValue(row,['purchasePrice','latestPurchaseCost','進貨成本','最近進貨成本'])),stock=numberOrNull(importValue(row,['withoutWarehouseStocks','currentStock','stock','庫存','現有庫存']));return {row:index+2,internalSku:sku,internalName:name,storePrice:numberOrNull(importValue(row,['salePrice','storePrice','門市售價','售價'])),easyStorePrice:numberOrNull(importValue(row,['easyStorePrice','EASY STORE 售價','EasyStore售價'])),momoPrice:numberOrNull(importValue(row,['momoPrice','MOMO 售價','MOMO售價'])),coupangPrice:numberOrNull(importValue(row,['coupangPrice','Coupang 售價','酷澎售價'])),latestPurchaseCost:cost,currentStock:stock,saleRewardPercent:numberOrNull(importValue(row,['saleRewardPercent','獎金比例'])),note:clean(importValue(row,['remark','note','備註']))};}).filter(function(r){return r.internalSku||r.internalName;});
+    state.importRows=rows.map(function(row,index){
+      const sku=normalizeCode(importValue(row,['code','internalSku','sku','商品編號','內部商品編號'])),name=clean(importValue(row,['name','internalName','商品名稱','品名'])),cost=numberOrNull(importValue(row,['purchasePrice','latestPurchaseCost','進貨成本','最近進貨成本'])),stock=numberOrNull(importValue(row,['withoutWarehouseStocks','currentStock','stock','庫存','現有庫存']));
+      const shippingDecision=clean(importValue(row,['shippingDecision','物流判斷'])),researchStatus=clean(importValue(row,['packageResearchStatus','尺寸資料狀態']))||'not-searched',fullResearchStatus=clean(importValue(row,['productResearchStatus','商品研究狀態']))||'not-searched';
+      return {row:index+2,internalSku:sku,internalName:name,brand:clean(importValue(row,['brand','品牌'])),model:clean(importValue(row,['model','型號'])),barcode:clean(importValue(row,['barcode','國際條碼','GTIN'])),category:clean(importValue(row,['category','中央分類'])),productResearchStatus:['not-searched','partial','researched','manual'].includes(fullResearchStatus)?fullResearchStatus:'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(importValue(row,['productResearchSourceUrls','商品研究來源網址'])),alternateNames:clean(importValue(row,['alternateNames','常見名稱','別名'])),searchKeywords:clean(importValue(row,['searchKeywords','搜尋關鍵字'])),sellingPoints:clean(importValue(row,['sellingPoints','商品賣點'])),specificationText:clean(importValue(row,['specificationText','完整規格'])),includedItems:clean(importValue(row,['includedItems','包裝內容物'])),material:clean(importValue(row,['material','材質'])),color:clean(importValue(row,['color','顏色'])),countryOfOrigin:clean(importValue(row,['countryOfOrigin','產地'])),warrantyInfo:clean(importValue(row,['warrantyInfo','保固'])),commonProductDescription:clean(importValue(row,['commonProductDescription','共用商品說明'])),storePrice:numberOrNull(importValue(row,['salePrice','storePrice','門市售價','售價'])),easyStorePrice:numberOrNull(importValue(row,['easyStorePrice','EASY STORE 售價','EasyStore售價'])),momoPrice:numberOrNull(importValue(row,['momoPrice','MOMO 售價','MOMO售價'])),coupangPrice:numberOrNull(importValue(row,['coupangPrice','Coupang 售價','酷澎售價'])),latestPurchaseCost:cost,currentStock:stock,shopeeCategoryPath:clean(importValue(row,['shopeeCategoryPath','蝦皮分類'])),momoCategoryCode:clean(importValue(row,['momoCategoryCode','MOMO分類'])),coupangCategoryCode:clean(importValue(row,['coupangCategoryCode','Coupang分類','酷澎分類'])),shippingDecision:PRODUCT_SHIPPING_DECISIONS[shippingDecision]?shippingDecision:'',packageLengthCm:numberOrNull(importValue(row,['packageLengthCm','外箱長'])),packageWidthCm:numberOrNull(importValue(row,['packageWidthCm','外箱寬'])),packageHeightCm:numberOrNull(importValue(row,['packageHeightCm','外箱高'])),packageWeightKg:numberOrNull(importValue(row,['packageWeightKg','包裝重量'])),packageResearchStatus:['not-searched','found','not-found','manual'].includes(researchStatus)?researchStatus:'not-searched',packageResearchSourceUrl:safeUrl(importValue(row,['packageResearchSourceUrl','尺寸資料來源網址'])),packageResearchNote:clean(importValue(row,['packageResearchNote','尺寸判斷備註'])),saleRewardPercent:numberOrNull(importValue(row,['saleRewardPercent','獎金比例'])),note:clean(importValue(row,['remark','note','備註']))};
+    }).filter(function(r){return r.internalSku||r.internalName;});
     const valid=state.importRows.filter(function(r){return r.internalSku;}),missingName=valid.filter(function(r){return !r.internalName;}).length,negative=valid.filter(function(r){return r.currentStock!=null&&r.currentStock<0;}).length,missingCost=valid.filter(function(r){return r.latestPurchaseCost==null;}).length,zeroCost=valid.filter(function(r){return r.latestPurchaseCost===0;}).length,positive=valid.filter(function(r){return r.currentStock>0;}).length,onlineSku=new Set(state.onlineProducts.map(function(x){return x.sku;}).filter(Boolean)),matched=valid.filter(function(r){return onlineSku.has(r.internalSku);}).length;
     state.importSummary={total:state.importRows.length,valid:valid.length,missingName:missingName,negative:negative,missingCost:missingCost,zeroCost:zeroCost,positive:positive,matched:matched};
     html('importPreview','<div class="ops-summary-list"><div class="ops-summary-line"><span>檔案</span><b>'+escapeHtml(file.name)+'</b></div><div class="ops-summary-line"><span>有效 SKU</span><b>'+formatNumber(valid.length)+'</b></div><div class="ops-summary-line"><span>預估可配對網路商品</span><b>'+formatNumber(matched)+'</b></div><div class="ops-summary-line"><span>有正庫存</span><b>'+formatNumber(positive)+'</b></div><div class="ops-summary-line"><span>負庫存（保留原值）</span><b>'+formatNumber(negative)+'</b></div><div class="ops-summary-line"><span>名稱空白</span><b>'+formatNumber(missingName)+'</b></div><div class="ops-summary-line"><span>成本空白／成本為零</span><b>'+formatNumber(missingCost)+' / '+formatNumber(zeroCost)+'</b></div></div>'+(valid.length?'<div class="ops-table-wrap" style="margin-top:12px"><table class="ops-table"><thead><tr><th>列</th><th>SKU</th><th>原始名稱</th><th class="num">定價</th><th class="num">成本</th><th class="num">庫存</th></tr></thead><tbody>'+valid.slice(0,20).map(function(r){return '<tr><td>'+r.row+'</td><td>'+escapeHtml(r.internalSku)+'</td><td>'+escapeHtml(r.internalName||'（名稱空白）')+'</td><td class="num">'+money(r.storePrice)+'</td><td class="num">'+money(r.latestPurchaseCost)+'</td><td class="num">'+formatNumber(r.currentStock)+'</td></tr>';}).join('')+'</tbody></table></div>':''));const btn=byId('confirmImportBtn');if(btn)btn.disabled=!valid.length;
@@ -3604,6 +3834,13 @@ function ensureSalesClock(){
     try{
       for(let start=0;start<rows.length;start+=BATCH_SIZE){const batch=state.db.batch();rows.slice(start,start+BATCH_SIZE).forEach(function(r){const existing=bySku.get(r.internalSku),id=existing?existing.docId:('sku_'+hashText(r.internalSku)),ref=state.db.collection(COLLECTIONS.products).doc(id),hasActivity=existing&&activityIds.has(existing.docId),stock=r.currentStock==null?0:r.currentStock,cost=r.latestPurchaseCost,layers=stock>0?[{layerId:'OPENING-'+hashText(r.internalSku),qtyRemaining:stock,originalQty:stock,unitCost:cost,costKnown:cost!=null,receivedAt:new Date().toISOString(),referenceType:'openingExcel',referenceId:state.importFileName}]:[];
         const payload={internalSku:r.internalSku,internalName:r.internalName,originalName:r.internalName,storePrice:r.storePrice,originalSalePrice:r.storePrice,easyStorePrice:r.easyStorePrice,momoPrice:r.momoPrice,coupangPrice:r.coupangPrice,latestPurchaseCost:cost,referencePurchaseCost:cost,note:r.note,status:'active',enabled:true,source:'originalExcel',sourceFile:state.importFileName,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+        if(r.brand)payload.brand=r.brand;if(r.model)payload.model=r.model;if(r.barcode)payload.barcode=r.barcode;if(r.category)payload.category=r.category;
+        if(r.productResearchStatus&&r.productResearchStatus!=='not-searched')payload.productResearchStatus=r.productResearchStatus;if(r.productResearchSourceUrls&&r.productResearchSourceUrls.length)payload.productResearchSourceUrls=r.productResearchSourceUrls;
+        if(r.alternateNames)payload.alternateNames=r.alternateNames;if(r.searchKeywords)payload.searchKeywords=r.searchKeywords;if(r.sellingPoints)payload.sellingPoints=r.sellingPoints;if(r.specificationText)payload.specificationText=r.specificationText;if(r.includedItems)payload.includedItems=r.includedItems;
+        if(r.material)payload.material=r.material;if(r.color)payload.color=r.color;if(r.countryOfOrigin)payload.countryOfOrigin=r.countryOfOrigin;if(r.warrantyInfo)payload.warrantyInfo=r.warrantyInfo;if(r.commonProductDescription)payload.commonProductDescription=r.commonProductDescription;
+        if(r.shopeeCategoryPath)payload.shopeeCategoryPath=r.shopeeCategoryPath;if(r.momoCategoryCode)payload.momoCategoryCode=r.momoCategoryCode;if(r.coupangCategoryCode)payload.coupangCategoryCode=r.coupangCategoryCode;
+        if(r.shippingDecision)payload.shippingDecision=r.shippingDecision;if(r.packageLengthCm!=null)payload.packageLengthCm=r.packageLengthCm;if(r.packageWidthCm!=null)payload.packageWidthCm=r.packageWidthCm;if(r.packageHeightCm!=null)payload.packageHeightCm=r.packageHeightCm;if(r.packageWeightKg!=null)payload.packageWeightKg=r.packageWeightKg;
+        if(r.packageResearchStatus&&r.packageResearchStatus!=='not-searched')payload.packageResearchStatus=r.packageResearchStatus;if(r.packageResearchSourceUrl)payload.packageResearchSourceUrl=r.packageResearchSourceUrl;if(r.packageResearchNote)payload.packageResearchNote=r.packageResearchNote;
         if(r.saleRewardPercent!=null)payload.saleRewardPercent=r.saleRewardPercent;
         if(initial&&(!existing||!hasActivity)){payload.currentStock=stock;payload.openingStock=stock;payload.openingUnitCost=cost;payload.costLayers=layers;const stats=statsFromLayers(layers);payload.averageCost=stats.averageCost!=null?stats.averageCost:cost;payload.inventoryValue=stats.inventoryValue;payload.costIncomplete=stock>0&&(cost==null);payload.importInitialized=true;payload.importedAt=serverTimestamp();if(!existing){payload.reservedStock=0;payload.safetyStock=0;payload.createdAt=serverTimestamp();payload.createdBy=userLabel();created+=1;}else updated+=1;}else{if(existing){updated+=1;if(initial&&hasActivity)preserved+=1;}else{payload.currentStock=stock;payload.openingStock=stock;payload.openingUnitCost=cost;payload.costLayers=layers;const stats=statsFromLayers(layers);payload.averageCost=stats.averageCost!=null?stats.averageCost:cost;payload.inventoryValue=stats.inventoryValue;payload.costIncomplete=stock>0&&(cost==null);payload.importInitialized=true;payload.reservedStock=0;payload.safetyStock=0;payload.createdAt=serverTimestamp();payload.createdBy=userLabel();created+=1;}}
         batch.set(ref,payload,{merge:true});});await batch.commit();processed=Math.min(rows.length,start+BATCH_SIZE);showAlert('中央商品主檔匯入中：'+processed+' / '+rows.length+'，請不要關閉頁面…','');}
@@ -4016,6 +4253,9 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='product-low-stock'){if(!closeProductEditorForListChange())return;state.productFilter=state.productFilter==='low'?'all':'low';state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
     if(action==='product-display-mode'){if(!closeProductEditorForListChange())return;state.productDisplayMode=el.dataset.mode==='text'?'text':'image';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
     if(action==='product-edit-cancel'){clearProductEditorState();return renderKeepingViewport();}
+    if(action==='product-research-copy-prompt'){return copyProductResearchPrompt(byId('productForm')).catch(function(error){toast('無法產生查詢指令',errorMessage(error),'error');});}
+    if(action==='product-shipping-preset'){return applyProductShippingPreset(byId('productForm'),true);}
+    if(action==='product-listing-preview'){return openProductListingPreview(byId('productForm'));}
     if(action==='product-preview-open'){const p=state.productEditId&&state.productEditId!=='__new__'?catalogById(state.productEditId):null;state.productPreviewImages=productEditorImages(p);state.productPreviewIndex=Math.max(0,Number(el.dataset.index)||0);state.productPreviewTitle=(p&&((p.originalName)||(p.onlineName)||(p.name)))||'商品圖片';return renderKeepingViewport();}
     if(action==='product-preview-close'){state.productPreviewImages=[];state.productPreviewIndex=0;return renderKeepingViewport();}
     if(action==='product-preview-prev'){const total=(state.productPreviewImages||[]).length||1;state.productPreviewIndex=(state.productPreviewIndex-1+total)%total;return renderKeepingViewport();}
@@ -4256,6 +4496,7 @@ function rerenderKeepingFocus(id,value){
         if(event.isComposing||event.target.dataset.opsImeComposing==='1') return;
         applyOpsSearchInput(event.target);
       }
+      else if(event.target.closest('#productForm')&&['packageLengthCm','packageWidthCm','packageHeightCm','packageWeightKg'].includes(event.target.name)){updateProductShippingSummary(event.target.closest('#productForm'));}
       else if(event.target.matches('[data-cart-qty]')){const item=state.cart[Number(event.target.dataset.cartQty)];if(item){item.qty=Math.max(1,Math.round(Number(event.target.value||1)));updateCartTotals();updateInlineCheckoutTotals();if(state.salesMode==='usage'){const amount=sum(state.cart,function(row){return row.qty*row.unitPrice;}),cost=estimateCartCost();setText('stockUsageAmount',money(amount));setText('stockUsageResult',money(amount-cost));}}}
       else if(event.target.matches('[data-cart-price]')){const item=state.cart[Number(event.target.dataset.cartPrice)];if(item){item.unitPrice=Math.max(0,Number(event.target.value||0));updateCartTotals();updateInlineCheckoutTotals();if(state.salesMode==='usage'){const amount=sum(state.cart,function(row){return row.qty*row.unitPrice;}),cost=estimateCartCost();setText('stockUsageAmount',money(amount));setText('stockUsageResult',money(amount-cost));}}}
       else if(event.target.closest('#checkoutFormInline')&&event.target.name==='actualCashReceived'){state.checkoutActualCash=event.target.value;updateInlineCheckoutTotals();if(state.checkoutDiscount>0){state.checkoutEarnPoints=false;const checkoutForm=event.target.closest('#checkoutFormInline'),earnInput=query('[name="earnPointsEnabled"]',checkoutForm);if(earnInput)earnInput.value='false';queryAll('[data-name="earnPointsEnabled"]').forEach(function(button){button.classList.toggle('active',button.dataset.value==='none');});updateInlineCheckoutTotals();}}
@@ -4282,6 +4523,11 @@ function rerenderKeepingFocus(id,value){
     document.addEventListener('change',function(event){
       if(event.target.matches('[data-cart-qty]')){const item=state.cart[Number(event.target.dataset.cartQty)];if(item){item.qty=Math.max(1,Math.round(Number(event.target.value||1)));event.target.value=String(item.qty);updateCartTotals();updateInlineCheckoutTotals();}return;}
       if(event.target.matches('[data-cart-price]')){const item=state.cart[Number(event.target.dataset.cartPrice)];if(item){item.unitPrice=Math.max(0,Number(event.target.value||0));event.target.value=String(item.unitPrice);updateCartTotals();updateInlineCheckoutTotals();}return;}
+      if(event.target.matches('#productForm [name="shippingDecision"]')){
+        const form=event.target.closest('#productForm');
+        if(event.target.value==='convenience')applyProductShippingPreset(form,false);else{clearEstimatedProductPackage(form);updateProductShippingSummary(form);}
+        return;
+      }
       if(event.target.id==='productFilter'){
         if(!closeProductEditorForListChange()){event.target.value=state.productFilter;return;}
         state.productFilter=event.target.value;state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;render();
