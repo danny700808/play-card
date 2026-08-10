@@ -550,7 +550,9 @@ function registerProductAiResearch(target) {
     try {
       let apiKey = '';
       try { apiKey = clean(OPENAI_API_KEY.value()); } catch (_) { apiKey = clean(process.env.OPENAI_API_KEY); }
-      if (!apiKey) throw new Error('OpenAI API 尚未設定，請先設定 Firebase Secret：OPENAI_API_KEY。');
+      if (!apiKey || apiKey === 'OPENAI_API_KEY_NOT_CONFIGURED') {
+        throw new Error('OpenAI API 尚未設定，請先設定 Firebase Secret：OPENAI_API_KEY。');
+      }
       const researched = await researchWithOpenAI(apiKey, context, model);
       const latestCaseSnap = await caseRef.get();
       const latestCase = latestCaseSnap.exists ? latestCaseSnap.data() || {} : {};

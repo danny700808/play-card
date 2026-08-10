@@ -224,6 +224,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_KEY_PATH: ${{ runner.temp }}/openai-api-key.txt
           EXISTING_OPENAI_KEY_PATH: ${{ runner.temp }}/existing-openai-api-key.txt
+          OPENAI_KEY_PLACEHOLDER: OPENAI_API_KEY_NOT_CONFIGURED
         run: |
           set -euo pipefail
           if [ -n "${OPENAI_API_KEY:-}" ]; then
@@ -241,14 +242,27 @@ jobs:
                 --non-interactive
             fi
             echo "configured=true" >> "$GITHUB_OUTPUT"
-          elif firebase functions:secrets:access OPENAI_API_KEY --project youzi-c1b74 >/dev/null 2>&1; then
-            echo "Existing Firebase OPENAI_API_KEY found."
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+          elif firebase functions:secrets:access OPENAI_API_KEY \
+            --project youzi-c1b74 \
+            > "$EXISTING_OPENAI_KEY_PATH" 2>/dev/null; then
+            if [ "$(tr -d '\r\n' < "$EXISTING_OPENAI_KEY_PATH")" = "$OPENAI_KEY_PLACEHOLDER" ]; then
+              echo "::warning::OPENAI_API_KEY is still a safe placeholder; Product AI deployment is skipped."
+              echo "configured=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Existing Firebase OPENAI_API_KEY found."
+              echo "configured=true" >> "$GITHUB_OUTPUT"
+            fi
           else
-            echo "::warning::Product AI Function will remain undeployed until an OPENAI_API_KEY repository secret is added and this workflow is rerun."
+            printf '%s' "$OPENAI_KEY_PLACEHOLDER" > "$OPENAI_KEY_PATH"
+            chmod 600 "$OPENAI_KEY_PATH"
+            firebase functions:secrets:set OPENAI_API_KEY \
+              --project youzi-c1b74 \
+              --data-file "$OPENAI_KEY_PATH" \
+              --non-interactive
+            echo "::warning::A safe placeholder was created so existing Functions can deploy. Product AI remains disabled until the OPENAI_API_KEY repository secret is added and this workflow is rerun."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           fi
-          rm -f "$EXISTING_OPENAI_KEY_PATH"
+          rm -f "$OPENAI_KEY_PATH" "$EXISTING_OPENAI_KEY_PATH"
 
       - name: Deploy portal and protected internal Functions
         env:
