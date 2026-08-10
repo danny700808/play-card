@@ -56,6 +56,7 @@ on:
       - "functions/index.js"
       - "functions/employeeAuth.js"
       - "functions/easystoreCatalogSync.js"
+      - "functions/productAiResearch.js"
       - "functions/externalTeacherOnboarding.js"
       - "functions/externalTeacherWork.js"
       - "functions/package.json"
@@ -74,6 +75,7 @@ on:
       - "tests/external-teacher-center.test.js"
       - "tests/teacher-profile-flow.test.js"
       - "tests/person-data-admin.test.js"
+      - "tests/product-ai-research.test.js"
       - ".github/workflows/deploy-course-portal-auth.yml"
   workflow_dispatch:
 
@@ -118,6 +120,7 @@ jobs:
           node --check functions/index.js
           node --check functions/employeeAuth.js
           node --check functions/easystoreCatalogSync.js
+          node --check functions/productAiResearch.js
           node --check functions/externalTeacherOnboarding.js
           node --check functions/externalTeacherWork.js
           node --check manager-auth.js
@@ -142,11 +145,12 @@ jobs:
           node --test tests/teacher-profile-change-review.test.js
           node --test tests/person-data-admin.test.js
           node --test tests/operations-manager-auth.test.js
+          node --test tests/product-ai-research.test.js
           node --test tests/external-teacher-work-v2.test.js
           node tests/external-teacher-center.test.js
           (cd functions && node - <<'NODE'
           const deployed = require('.');
-          for (const name of ['coursePortalTeacherSaveProfileDraft','coursePortalTeacherContractSession','coursePortalTeacherSubmitContract','coursePortalAdminSaveTeacherSubjects','coursePortalAdminSaveSubjectCatalog','coursePortalAdminSaveFeePlan','coursePortalAdminMapSubjectSuggestion','personDataAdminInventory','personDataAdminDetail','personDataAdminAction','personDataAdminContractInventory','personDataAdminContractDetail','personDataAdminContractAction','personDataAdminProfileChangeInventory','personDataAdminProfileChangeAction','employeeSecureLogin','employeeChangePassword','employeeForgotPassword','sendGmailTestEmail','syncEasyStoreCatalog','externalTeacherCreateBindCode','externalTeacherListContractTemplate','externalTeacherSaveContractTemplate','externalTeacherListContracts','externalTeacherWork','sendNotificationQueueOnCreate','flushNotificationQueue']) {
+          for (const name of ['coursePortalTeacherSaveProfileDraft','coursePortalTeacherContractSession','coursePortalTeacherSubmitContract','coursePortalAdminSaveTeacherSubjects','coursePortalAdminSaveSubjectCatalog','coursePortalAdminSaveFeePlan','coursePortalAdminMapSubjectSuggestion','personDataAdminInventory','personDataAdminDetail','personDataAdminAction','personDataAdminContractInventory','personDataAdminContractDetail','personDataAdminContractAction','personDataAdminProfileChangeInventory','personDataAdminProfileChangeAction','employeeSecureLogin','employeeChangePassword','employeeForgotPassword','sendGmailTestEmail','syncEasyStoreCatalog','researchProductListingCase','externalTeacherCreateBindCode','externalTeacherListContractTemplate','externalTeacherSaveContractTemplate','externalTeacherListContracts','externalTeacherWork','sendNotificationQueueOnCreate','flushNotificationQueue']) {
             if (!deployed[name]) throw new Error(`Missing Firebase Function export: ${name}`);
           }
           NODE
@@ -213,6 +217,39 @@ jobs:
           fi
           rm -f "$EXISTING_LINE_SECRET_PATH"
 
+      - name: Prepare optional OpenAI API secret
+        id: openai_secret
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_KEY_PATH: ${{ runner.temp }}/openai-api-key.txt
+          EXISTING_OPENAI_KEY_PATH: ${{ runner.temp }}/existing-openai-api-key.txt
+        run: |
+          set -euo pipefail
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            printf '%s' "$OPENAI_API_KEY" > "$OPENAI_KEY_PATH"
+            chmod 600 "$OPENAI_KEY_PATH"
+            if firebase functions:secrets:access OPENAI_API_KEY \
+              --project youzi-c1b74 \
+              > "$EXISTING_OPENAI_KEY_PATH" 2>/dev/null && \
+              cmp -s "$OPENAI_KEY_PATH" "$EXISTING_OPENAI_KEY_PATH"; then
+              echo "OpenAI API secret is already current."
+            else
+              firebase functions:secrets:set OPENAI_API_KEY \
+                --project youzi-c1b74 \
+                --data-file "$OPENAI_KEY_PATH" \
+                --non-interactive
+            fi
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          elif firebase functions:secrets:access OPENAI_API_KEY --project youzi-c1b74 >/dev/null 2>&1; then
+            echo "Existing Firebase OPENAI_API_KEY found."
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Product AI Function will remain undeployed until an OPENAI_API_KEY repository secret is added and this workflow is rerun."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f "$EXISTING_OPENAI_KEY_PATH"
+
       - name: Deploy portal and protected internal Functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
@@ -220,6 +257,12 @@ jobs:
           set -euo pipefail
           firebase deploy --project youzi-c1b74 --non-interactive --force \
             --only "functions:lineWebhook,functions:sendNotificationQueueOnCreate,functions:flushNotificationQueue,functions:externalTeacherWork,functions:coursePortalStartBinding,functions:coursePortalStudentPhoneAccess,functions:coursePortalDirectRegularAccess,functions:coursePortalSendEmailOtp,functions:coursePortalVerifyEmailOtp,functions:coursePortalStartLineLogin,functions:coursePortalCompleteLineRegistration,functions:coursePortalLineLoginCallback,functions:coursePortalRenterContactLogin,functions:coursePortalExchangeAccess,functions:coursePortalTeacherData,functions:coursePortalTeacherUtilitySession,functions:coursePortalTeacherSaveProfileDraft,functions:coursePortalTeacherContractSession,functions:coursePortalTeacherSubmitContract,functions:personDataAdminInventory,functions:personDataAdminDetail,functions:personDataAdminAction,functions:personDataAdminContractInventory,functions:personDataAdminContractDetail,functions:personDataAdminContractAction,functions:personDataAdminProfileChangeInventory,functions:personDataAdminProfileChangeAction,functions:coursePortalTeacherAvailability,functions:coursePortalTeacherSlotOptions,functions:coursePortalStudentData,functions:coursePortalStudentContactBookImage,functions:coursePortalStudentSubmitTuitionPayment,functions:coursePortalRentalUseSettings,functions:coursePortalRentalDayBoard,functions:coursePortalRentalWeekBoard,functions:coursePortalRentalAvailability,functions:coursePortalCreateRoomBooking,functions:coursePortalRentalMyBookings,functions:coursePortalCancelRoomBooking,functions:coursePortalTeacherAction,functions:coursePortalTeacherLessonState,functions:coursePortalTeacherAttendance,functions:coursePortalTeacherLateAttendance,functions:coursePortalTeacherAttendanceCancellationRequest,functions:coursePortalTeacherSubmitContactBookPost,functions:coursePortalTeacherUpdateStudent,functions:coursePortalTeacherStopStudent,functions:coursePortalTeacherBonusRequest,functions:coursePortalAdminRentalSettingsData,functions:coursePortalAdminSaveRentalSettings,functions:coursePortalAdminSaveRoomEquipment,functions:coursePortalAdminSaveTeacherSubjects,functions:coursePortalAdminSaveSubjectCatalog,functions:coursePortalAdminSaveFeePlan,functions:coursePortalAdminMapSubjectSuggestion,functions:coursePortalAdminSaveTeacherAdjustment,functions:coursePortalAdminRoomBookings,functions:coursePortalAdminCancelRoomBooking,functions:coursePortalUpdateStudentReminder,functions:coursePortalAdminData,functions:coursePortalAdminBindingAction,functions:coursePortalAdminAttendanceCancellationAction,functions:coursePortalAdminSuspensionAction,functions:coursePortalAdminTuitionPaymentAction,functions:coursePortalAdminEnsureTuitionReceipt,functions:coursePortalAdminTuitionPaymentScreenshot,functions:coursePortalStudentReminderDaily,functions:coursePortalTeacherDailyReminder,functions:employeeSecureLogin,functions:employeeChangePassword,functions:employeeForgotPassword,functions:sendGmailTestEmail,functions:syncEasyStoreCatalog,functions:externalTeacherCreateBindCode,functions:externalTeacherListContractTemplate,functions:externalTeacherSaveContractTemplate,functions:externalTeacherListContracts"
+
+      - name: Deploy Product AI Function when its secret is configured
+        if: steps.openai_secret.outputs.configured == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: firebase deploy --project youzi-c1b74 --non-interactive --force --only functions:researchProductListingCase
 
       - name: Detect an explicit Firestore rules change
         id: firestore_rules
@@ -271,4 +314,6 @@ jobs:
           rm -f "${{ runner.temp }}/youzi-firebase-service-account.json"
           rm -f "${{ runner.temp }}/line-channel-secret.txt"
           rm -f "${{ runner.temp }}/existing-line-channel-secret.txt"
+          rm -f "${{ runner.temp }}/openai-api-key.txt"
+          rm -f "${{ runner.temp }}/existing-openai-api-key.txt"
           rm -f functions/.env

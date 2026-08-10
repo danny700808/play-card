@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "operations-phase1.js"
+      - "operations-phase1.css"
       - "operations-hub.html"
       - "portal.html"
       - "tests/operations-live-search.test.js"
@@ -28,8 +29,8 @@ jobs:
       - name: Verify markup and cache versions
         run: |
           set -euo pipefail
-          grep -Fq 'operations-phase1.js?v=20260811-listing-case-v1' portal.html
-          grep -Fq 'operations-phase1.js?v=20260811-listing-case-v1' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260811-product-ai-v1' portal.html
+          grep -Fq 'operations-phase1.js?v=20260811-product-ai-v1' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html
