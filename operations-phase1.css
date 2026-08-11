@@ -869,8 +869,8 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-product-description-textarea{min-height:180px}
 .ops-product-research-prompt{min-height:520px;font-family:inherit;line-height:1.65}
 .ops-drawer.ops-listing-case-drawer{width:min(920px,100%)}
-.ops-listing-case-section{margin:0 0 12px;border:1px solid #d8e2e7;border-radius:16px;background:#fff;overflow:hidden}
-.ops-listing-case-section>summary{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 16px;background:#f7fafb;cursor:pointer;list-style:none}
+.ops-listing-case-section{margin:0 0 9px;border:1px solid #d8e2e7;border-radius:14px;background:#fff;overflow:hidden}
+.ops-listing-case-section>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:#f7fafb;cursor:pointer;list-style:none}
 .ops-listing-case-section>summary::-webkit-details-marker{display:none}
 .ops-listing-case-section>summary span{display:grid;gap:3px;min-width:0}
 .ops-listing-case-section>summary b{font-size:14px;color:#173247}
@@ -878,7 +878,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-case-section>summary i{font-style:normal;color:#45606d;transition:transform .18s}
 .ops-listing-case-section[open]>summary{border-bottom:1px solid #dfe7eb;background:#f1f8f5}
 .ops-listing-case-section[open]>summary i{transform:rotate(180deg)}
-.ops-listing-case-section-body{display:grid;gap:13px;padding:16px}
+.ops-listing-case-section-body{display:grid;gap:11px;padding:13px 14px}
 .ops-listing-upload-box{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;border:1px dashed #98c8b3;border-radius:14px;background:#f3fbf7}
 .ops-listing-upload-box>div{display:grid;gap:3px}
 .ops-listing-upload-box b{font-size:13px;color:#185f49}
@@ -892,6 +892,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-image-url-details{border:1px solid #dce5e9;border-radius:12px;background:#f8fafb;overflow:hidden}
 .ops-listing-image-url-details>summary{padding:11px 13px;cursor:pointer;color:#536a76;font-size:11px;font-weight:800}
 .ops-listing-image-url-details>.ops-field{padding:0 13px 13px}
+.ops-listing-advanced-body{padding:0 13px 13px}
 .ops-listing-source-toolbar,.ops-listing-generated-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:9px}
 .ops-listing-source-toolbar span,.ops-listing-generated-toolbar span{font-size:11px;color:#58707c}
 .ops-listing-source-toolbar>div{display:flex;gap:6px}
@@ -921,8 +922,9 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-platform-toggle b{font-size:12px;color:#174f3d}
 .ops-listing-platform-toggle small{font-size:10px;color:#637782}
 .ops-product-html-textarea{min-height:250px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;line-height:1.55}
-.ops-listing-case-summary{display:grid;grid-template-columns:110px minmax(0,1fr);gap:14px;align-items:center;margin-bottom:16px;padding:13px;border:1px solid #cfe3da;border-radius:16px;background:#f2faf6}
-.ops-listing-case-summary img,.ops-listing-case-summary>.ops-detail-no-image{width:110px;height:110px;border-radius:12px;object-fit:contain;background:#fff}
+.ops-listing-case-summary{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;align-items:center;margin-bottom:10px;padding:11px 12px;border:1px solid #cfe3da;border-radius:14px;background:#f2faf6}
+.ops-listing-case-summary.no-image{grid-template-columns:minmax(0,1fr);padding:10px 13px}
+.ops-listing-case-summary img,.ops-listing-case-summary>.ops-detail-no-image{width:96px;height:96px;border-radius:12px;object-fit:contain;background:#fff}
 .ops-listing-case-summary>div:last-child{min-width:0}
 .ops-listing-case-summary span{font-size:11px;font-weight:900;color:#1c7859}
 .ops-listing-case-summary h3{margin:4px 0 5px;font-size:18px;line-height:1.4}
@@ -997,6 +999,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-product-shipping-grid{grid-template-columns:1fr}
   .ops-product-shipping-choice{min-height:0}
   .ops-listing-case-summary{grid-template-columns:76px minmax(0,1fr)}
+  .ops-listing-case-summary.no-image{grid-template-columns:minmax(0,1fr)}
   .ops-listing-case-summary img,.ops-listing-case-summary>.ops-detail-no-image{width:76px;height:76px}
   .ops-listing-upload-box{align-items:stretch;flex-direction:column}
   .ops-listing-url-import{align-items:stretch;flex-direction:column}
