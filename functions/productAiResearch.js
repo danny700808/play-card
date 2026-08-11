@@ -4,11 +4,15 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const dns = require('dns').promises;
+const net = require('net');
+const sharp = require('sharp');
 
 const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
 const REGION = 'us-central1';
 const DEFAULT_MODEL = 'gpt-5.6-sol';
 const DEFAULT_IMAGE_WORKFLOW_MODEL = 'gpt-5.6';
+const DEFAULT_IMAGE_EDIT_MODEL = 'gpt-image-2';
 const PRODUCT_COLLECTION = 'opsInternalProducts';
 const LISTING_CASE_COLLECTION = 'opsProductListingCases';
 const LOCK_TTL_MS = 10 * 60 * 1000;
@@ -343,11 +347,11 @@ function buildOpenAIImageRequest(context, listingCase, imageUrls, model) {
   const content = [{
     type: 'input_text',
     text: [
-      '請根據提供的真實商品參考照片，製作一張全新的正方形電商商品介紹圖。',
-      '這是待人工審核的候選圖，不可變造商品外觀、配件數量、品牌、型號、材質或功能，也不可加入來源未證實的規格。',
-      '不要複製供應商或淘寶原圖的版面；重新設計乾淨、專業、適合台灣樂器行的視覺。',
-      '商品本體必須是主角，背景簡潔，保留足夠留白。若加入文字，只能使用自然繁體中文，最多三個很短且已確認的重點；文字不確定時寧可不放。',
-      '不要加入價格、折扣、平台標誌、QR code、聯絡方式、浮水印或虛構認證。',
+      '這是一張已排版的供應商商品介紹圖，請做「最小幅度的台灣繁體中文在地化」。',
+      '必須保留原圖的商品外觀、顏色、型號、材質、配件數量、拍攝角度、裁切、背景、圖示、視覺層級與整體版面；不重新設計、不改成正方形。',
+      '將圖中的簡體中文改為自然的台灣繁體中文，尺寸、數字、型號、單位與已確認商品事實不變。',
+      '可清除人民幣價格、折扣、購物平台介面標記、賣家聯絡方式與 QR code；但不可移除品牌標誌、著作權標示或權利人浮水印。',
+      '若原文太小而無法準確辨識，保留原圖而不猜測；不新增未經確認的規格、認證、保固或贈品。',
       `確認商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
       `已確認短介紹：${clean(source.shortDescription) || '未提供'}`,
       `已確認特色：${clean(source.featureList) || clean(source.sellingPoints) || '未提供'}`,
@@ -364,6 +368,25 @@ function buildOpenAIImageRequest(context, listingCase, imageUrls, model) {
     input: [{ role: 'user', content }],
     tools: [{ type: 'image_generation', action: 'edit' }]
   };
+}
+
+function buildLocalizedImagePrompt(context, listingCase, position, total) {
+  const source = listingCase || {};
+  return [
+    '你正在編輯一張已完成排版的供應商商品介紹圖。目標是用於台灣電商上架，只做必要的繁體中文在地化。',
+    '這是圖像編輯任務，不是重新設計。輸出必須保持與輸入圖相同的寬高比與構圖。',
+    '嚴格保留：商品本體、品牌、型號、顏色、材質、配件數量、拍攝角度、背景、圖示、圖片順序感、文字區塊位置及視覺風格。',
+    '將可清楚辨識的簡體中文改為自然、正確的台灣繁體中文；數字、規格、型號與單位不得改變。',
+    '可移除：人民幣價格、折扣、購物平台介面元素、賣家聯絡方式、賣家 QR code。',
+    '必須保留：品牌標誌、合法的著作權標示、權利人浮水印。不得仿製、遮蓋或移除這些權利標示。',
+    '不得猜測難以辨識的小字，不得新增來源未證實的功能、認證、價格、保固或贈品。',
+    `本批第 ${Math.max(1, Number(position) || 1)} 張／共 ${Math.max(1, Number(total) || 1)} 張。`,
+    `商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
+    `品牌：${clean(source.brand) || context.brand || '未提供'}`,
+    `型號：${clean(source.model) || context.model || '未提供'}`,
+    `顏色：${clean(source.color) || '以原圖為準'}`,
+    `店家補充：${clean(source.imageGenerationInstructions) || '無；維持原版面即可'}`
+  ].join('\n');
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -421,6 +444,118 @@ async function callOpenAIImage(apiKey, context, listingCase, imageUrls, model) {
     throw error;
   }
   return body;
+}
+
+function isPrivateIpAddress(address) {
+  const value = clean(address).toLowerCase();
+  if (!value) return true;
+  if (value === '::1' || value === '::' || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe80:')) return true;
+  const mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  const ipv4 = mapped ? mapped[1] : value;
+  if (net.isIP(ipv4) !== 4) return false;
+  const parts = ipv4.split('.').map(Number);
+  return parts[0] === 10 || parts[0] === 127 || parts[0] === 0 ||
+    (parts[0] === 169 && parts[1] === 254) ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168) ||
+    (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) ||
+    parts[0] >= 224;
+}
+
+async function assertPublicRemoteUrl(value) {
+  const url = safeHttpUrl(value);
+  if (!url) throw new Error('圖片網址格式不正確。');
+  const parsed = new URL(url);
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
+    throw new Error('圖片網址不可使用內部主機。');
+  }
+  if (net.isIP(host)) {
+    if (isPrivateIpAddress(host)) throw new Error('圖片網址不可使用內部 IP。');
+  } else {
+    const addresses = await dns.lookup(host, { all: true, verbatim: true }).catch(() => []);
+    if (!addresses.length || addresses.some((row) => isPrivateIpAddress(row && row.address))) {
+      throw new Error('圖片網址無法安全讀取。');
+    }
+  }
+  return url;
+}
+
+async function downloadImageForEdit(value) {
+  let url = await assertPublicRemoteUrl(value);
+  for (let redirectCount = 0; redirectCount <= 4; redirectCount += 1) {
+    const response = await fetchWithTimeout(url, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: { Accept: 'image/avif,image/webp,image/png,image/jpeg,*/*;q=0.7', 'User-Agent': 'YouziProductListingImageEditor/1.0' }
+    }, 90 * 1000);
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = clean(response.headers.get('location'));
+      if (!location || redirectCount === 4) throw new Error('圖片轉址次數過多。');
+      url = await assertPublicRemoteUrl(new URL(location, url).href);
+      continue;
+    }
+    if (!response.ok) throw new Error(`無法讀取來源圖片（HTTP ${response.status}）。`);
+    const declaredLength = Number(response.headers.get('content-length') || 0);
+    if (declaredLength > 20 * 1024 * 1024) throw new Error('來源圖片超過 20 MB。');
+    const contentType = clean(response.headers.get('content-type')).split(';')[0].toLowerCase();
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+      throw new Error('只支援 JPG、PNG 或 WebP 來源圖片。');
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > 20 * 1024 * 1024) throw new Error('來源圖片大小不正確。');
+    const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+    const metadata = await sharp(bytes, { limitInputPixels: 100000000 }).metadata().catch(() => ({}));
+    const width = Math.max(0, Number(metadata.width) || 0), height = Math.max(0, Number(metadata.height) || 0);
+    if (!width || !height) throw new Error('來源圖片無法辨識。');
+    return { bytes, contentType, extension, finalUrl: url, width, height };
+  }
+  throw new Error('無法讀取來源圖片。');
+}
+
+async function callOpenAIImageEdit(apiKey, sourceImageUrl, prompt, model) {
+  const source = await downloadImageForEdit(sourceImageUrl);
+  const form = new FormData();
+  form.append('model', model || DEFAULT_IMAGE_EDIT_MODEL);
+  form.append('image[]', new Blob([source.bytes], { type: source.contentType }), `source.${source.extension}`);
+  form.append('prompt', clean(prompt));
+  form.append('quality', 'high');
+  form.append('size', source.width > source.height * 1.15 ? '1536x1024' : source.height > source.width * 1.15 ? '1024x1536' : '1024x1024');
+  form.append('output_format', 'png');
+  const response = await fetchWithTimeout('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form
+  }, REQUEST_TIMEOUT_MS);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(openAIErrorMessage(response.status, body).replace('OpenAI 研究失敗', 'OpenAI 圖片轉換失敗'));
+    error.status = response.status;
+    error.rawBody = body;
+    throw error;
+  }
+  const data = Array.isArray(body && body.data) ? body.data : [];
+  const imageBase64 = clean(data[0] && data[0].b64_json);
+  if (!imageBase64) throw new Error('OpenAI 沒有回傳可使用的繁體化圖片。');
+  return { response: body, imageBase64, sourceFinalUrl: source.finalUrl };
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function run() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = { ok: true, value: await worker(items[index], index) };
+      } catch (error) {
+        results[index] = { ok: false, error };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, () => run()));
+  return results;
 }
 
 function responseGeneratedImageBase64(response) {
@@ -815,8 +950,14 @@ function registerProductAiResearch(target) {
     if (!productSnap.exists || !caseSnap.exists) throw new HttpsError('not-found', '找不到商品或上架案件。');
     const listingCase = caseSnap.data() || {};
     const context = buildProductContext(productId, productSnap.data() || {}, listingCase);
-    const imageUrls = [];
-    [listingCase.listingImageUrls, listingCase.referenceImageUrls].forEach((value) => pushUrlRows(imageUrls, value));
+    const allowedImageUrls = [];
+    [listingCase.referenceImageUrls, listingCase.listingImageUrls].forEach((value) => pushUrlRows(allowedImageUrls, value));
+    const requestedImageUrls = [];
+    pushUrlRows(requestedImageUrls, request && request.data && request.data.imageUrls);
+    const savedSelection = [];
+    pushUrlRows(savedSelection, listingCase.selectedReferenceImageUrls);
+    const preferredImageUrls = requestedImageUrls.length ? requestedImageUrls : savedSelection.length ? savedSelection : allowedImageUrls;
+    const imageUrls = preferredImageUrls.filter((url) => allowedImageUrls.includes(url)).slice(0, 10);
     if (!imageUrls.length) {
       throw new HttpsError('failed-precondition', '請先上傳至少一張你有權使用的真實商品照片。');
     }
@@ -825,64 +966,86 @@ function registerProductAiResearch(target) {
     if (!apiKey || apiKey === 'OPENAI_API_KEY_NOT_CONFIGURED') {
       throw new HttpsError('failed-precondition', 'OpenAI API 尚未設定，請先設定 Firebase Secret：OPENAI_API_KEY。');
     }
-    const model = clean(process.env.OPENAI_PRODUCT_IMAGE_MODEL) || DEFAULT_IMAGE_WORKFLOW_MODEL;
+    const model = clean(process.env.OPENAI_PRODUCT_IMAGE_EDIT_MODEL) || DEFAULT_IMAGE_EDIT_MODEL;
     try {
-      const response = await callOpenAIImage(apiKey, context, listingCase, imageUrls, model);
-      const imageBase64 = responseGeneratedImageBase64(response);
-      if (!imageBase64) throw new Error('OpenAI 沒有回傳可使用的候選圖片。');
-      const imageBytes = Buffer.from(imageBase64, 'base64');
-      if (!imageBytes.length || imageBytes.length > 25 * 1024 * 1024) throw new Error('OpenAI 回傳的圖片大小不正確。');
       const bucket = admin.storage().bucket();
-      const downloadToken = crypto.randomUUID();
-      const objectPath = `ops-product-listing-cases/${productId}/generated/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.png`;
-      await bucket.file(objectPath).save(imageBytes, {
-        resumable: false,
-        metadata: {
-          contentType: 'image/png',
-          cacheControl: 'public,max-age=31536000,immutable',
+      await caseRef.set({
+        lastImageGeneration: {
+          status: 'running', model, requestedCount: imageUrls.length,
+          startedAt: admin.firestore.FieldValue.serverTimestamp()
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: 'OpenAI 圖片繁體化'
+      }, { merge: true });
+      const batchResults = await mapWithConcurrency(imageUrls, 2, async (sourceImageUrl, index) => {
+        const prompt = buildLocalizedImagePrompt(context, listingCase, index + 1, imageUrls.length);
+        const edited = await callOpenAIImageEdit(apiKey, sourceImageUrl, prompt, model);
+        const imageBytes = Buffer.from(edited.imageBase64, 'base64');
+        if (!imageBytes.length || imageBytes.length > 25 * 1024 * 1024) throw new Error('OpenAI 回傳的圖片大小不正確。');
+        const downloadToken = crypto.randomUUID();
+        const objectPath = `ops-product-listing-cases/${productId}/generated/${Date.now()}-${String(index + 1).padStart(2, '0')}-${crypto.randomBytes(4).toString('hex')}.png`;
+        await bucket.file(objectPath).save(imageBytes, {
+          resumable: false,
           metadata: {
-            firebaseStorageDownloadTokens: downloadToken,
-            productId,
-            generatedBy: 'OpenAI'
+            contentType: 'image/png',
+            cacheControl: 'public,max-age=31536000,immutable',
+            metadata: {
+              firebaseStorageDownloadTokens: downloadToken,
+              productId,
+              generatedBy: 'OpenAI',
+              workflow: 'traditional-chinese-localization'
+            }
           }
-        }
+        });
+        return {
+          id: crypto.randomUUID(),
+          url: firebaseDownloadUrl(bucket.name, objectPath, downloadToken),
+          status: 'candidate',
+          mode: 'localized',
+          model,
+          sourceImageUrl,
+          sourceFinalUrl: edited.sourceFinalUrl,
+          sourceOrder: index + 1,
+          instructions: clean(listingCase.imageGenerationInstructions),
+          createdAt: new Date().toISOString(),
+          createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者'
+        };
       });
-      const imageUrl = firebaseDownloadUrl(bucket.name, objectPath, downloadToken);
-      const candidates = (Array.isArray(listingCase.generatedListingImages) ? listingCase.generatedListingImages : [])
-        .filter((row) => row && safeHttpUrl(row.url)).slice(-5);
-      candidates.push({
-        id: crypto.randomUUID(),
-        url: imageUrl,
-        status: 'candidate',
-        model,
-        responseId: clean(response && response.id),
-        sourceImageUrls: imageUrls.slice(0, 4),
-        instructions: clean(listingCase.imageGenerationInstructions),
-        createdAt: new Date().toISOString(),
-        createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者'
-      });
+      const completed = batchResults.filter((row) => row.ok).map((row) => row.value);
+      const failed = batchResults.map((row, index) => row.ok ? null : {
+        sourceImageUrl: imageUrls[index],
+        message: (clean(row.error && row.error.message) || '圖片轉換失敗。').slice(0, 300)
+      }).filter(Boolean);
+      if (!completed.length) throw (batchResults.find((row) => !row.ok) || {}).error || new Error('圖片轉換失敗。');
+      const candidates = completed.slice(0, 10);
       await caseRef.set({
         generatedListingImages: candidates,
         lastImageGeneration: {
-          status: 'completed', model, responseId: clean(response && response.id), imageUrl,
+          status: failed.length ? 'partial' : 'completed', model,
+          requestedCount: imageUrls.length, completedCount: completed.length, failedCount: failed.length,
+          imageUrls: completed.map((row) => row.url), failures: failed,
           completedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedBy: 'OpenAI 候選圖製作',
-        schemaVersion: 4
+        updatedBy: 'OpenAI 圖片繁體化',
+        schemaVersion: 5
       }, { merge: true });
       await db.collection('opsAuditLogs').add({
-        action: 'OpenAI 製作商品候選圖',
+        action: 'OpenAI 批次繁體化商品圖',
         entityType: 'productListingCase',
         entityId: productId,
-        summary: `${context.sku || productId}｜${context.name || '未命名商品'}｜候選圖待人工採用`,
+        summary: `${context.sku || productId}｜${context.name || '未命名商品'}｜完成 ${completed.length} 張／失敗 ${failed.length} 張｜待人工採用`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者',
-        version: '2026.08.11-product-ai-image-v1'
+        version: '2026.08.11-product-image-localization-v1'
       });
-      return { ok: true, status: 'candidate', productId, imageUrl, model };
+      return {
+        ok: true, status: failed.length ? 'partial' : 'completed', productId, model,
+        requestedCount: imageUrls.length, completedCount: completed.length, failedCount: failed.length,
+        imageUrls: completed.map((row) => row.url), failures: failed
+      };
     } catch (error) {
-      const message = clean(error && error.message) || 'OpenAI 候選圖製作失敗。';
+      const message = clean(error && error.message) || 'OpenAI 圖片繁體化失敗。';
       console.error('generateProductListingImage failed:', error);
       await caseRef.set({
         lastImageGeneration: {
@@ -890,7 +1053,7 @@ function registerProductAiResearch(target) {
           failedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedBy: 'OpenAI 候選圖製作'
+        updatedBy: 'OpenAI 圖片繁體化'
       }, { merge: true }).catch(() => {});
       if (/尚未設定|請先|至少一張/.test(message)) throw new HttpsError('failed-precondition', message);
       if (/用量|速率限制/.test(message)) throw new HttpsError('resource-exhausted', message);
@@ -906,6 +1069,8 @@ module.exports = {
   productResearchSchema,
   buildOpenAIRequest,
   buildOpenAIImageRequest,
+  buildLocalizedImagePrompt,
+  isPrivateIpAddress,
   responseGeneratedImageBase64,
   responseOutputText,
   collectResponseSourceUrls,
@@ -914,5 +1079,6 @@ module.exports = {
   buildResearchUpdate,
   isAllowedManager,
   DEFAULT_MODEL,
-  DEFAULT_IMAGE_WORKFLOW_MODEL
+  DEFAULT_IMAGE_WORKFLOW_MODEL,
+  DEFAULT_IMAGE_EDIT_MODEL
 };
