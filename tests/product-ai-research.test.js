@@ -109,7 +109,7 @@ test('OpenAI request uses web search, product images and strict structured outpu
   assert.deepEqual(new Set(request.text.format.schema.required), new Set(Object.keys(request.text.format.schema.properties)));
 });
 
-test('AI candidate image edits real product photos and excludes the internal SKU', () => {
+test('AI product image workflow localizes a source image without redesigning it', () => {
   const context = { name: 'aNueNue L10 木吉他', sku: '100117-1' };
   const request = research.buildOpenAIImageRequest(context, {
     researchedProductName: 'aNueNue L10 木吉他',
@@ -123,9 +123,27 @@ test('AI candidate image edits real product photos and excludes the internal SKU
   assert.deepEqual(request.tools, [{ type: 'image_generation', action: 'edit' }]);
   assert.equal(request.input[0].content.filter((part) => part.type === 'input_image').length, 1);
   assert.equal(request.input[0].content[1].detail, 'high');
-  assert.match(request.input[0].content[0].text, /待人工審核/);
+  assert.match(request.input[0].content[0].text, /最小幅度的台灣繁體中文在地化/);
+  assert.match(request.input[0].content[0].text, /不重新設計、不改成正方形/);
   assert.doesNotMatch(request.input[0].content[0].text, /100117-1/);
   assert.equal(research.responseGeneratedImageBase64({ output: [{ type: 'image_generation_call', result: 'YWJj' }] }), 'YWJj');
+
+  const prompt = research.buildLocalizedImagePrompt(context, {
+    researchedProductName: 'aNueNue L10 木吉他',
+    brand: 'aNueNue', model: 'L10', color: '原木色'
+  }, 2, 10);
+  assert.match(prompt, /這是圖像編輯任務，不是重新設計/);
+  assert.match(prompt, /第 2 張／共 10 張/);
+  assert.match(prompt, /必須保留：品牌標誌/);
+  assert.equal(research.DEFAULT_IMAGE_EDIT_MODEL, 'gpt-image-2');
+});
+
+test('remote image safety blocks local and private addresses', () => {
+  assert.equal(research.isPrivateIpAddress('127.0.0.1'), true);
+  assert.equal(research.isPrivateIpAddress('192.168.1.10'), true);
+  assert.equal(research.isPrivateIpAddress('169.254.169.254'), true);
+  assert.equal(research.isPrivateIpAddress('8.8.8.8'), false);
+  assert.equal(research.isPrivateIpAddress('2001:4860:4860::8888'), false);
 });
 
 test('response parsing combines cited sources with model sources', () => {

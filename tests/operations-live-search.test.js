@@ -61,8 +61,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-simple-v5/);
-    assert.match(html, /operations-phase1\.js\?v=20260811-product-listing-simple-v5/);
+    assert.match(html, /operations-phase1\.css\?v=20260811-product-image-localization-v6/);
+    assert.match(html, /operations-phase1\.js\?v=20260811-product-image-localization-v6/);
   }
 });
 
@@ -269,6 +269,9 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(caseForm, /蝦皮仍由 EasyStore 發佈/);
   assert.match(caseForm, /商品網址（可不填）/);
   assert.match(caseForm, /productReferenceImageUpload/);
+  assert.match(caseForm, /productReferenceImageSelectorHtml/);
+  assert.match(caseForm, /AI 批次轉成繁體介紹圖/);
+  assert.match(caseForm, /一張原圖會產生一張繁體版/);
   assert.match(caseForm, /imageGenerationInstructions/);
   assert.match(caseForm, /product-ai-image-generate/);
   assert.match(caseForm, /AI 幫我完成上架資料/);
@@ -311,6 +314,9 @@ test('listing case supports manager-only image upload and a truthful publish pre
   assert.match(storageRules, /generated/);
   assert.match(generator, /requireEasyStoreManagerAuth/);
   assert.match(generator, /generateProductListingImage/);
+  assert.match(generator, /selectedReferenceImageUrls/);
+  assert.match(generator, /imageUrls:reference/);
+  assert.match(uploader, /slice\(0,10\)/);
   assert.doesNotMatch(generator, /identityDecision|identityStatus/);
   assert.match(publisher, /type:'productListingPublish'/);
   assert.match(publisher, /dryRun:true/);
