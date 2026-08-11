@@ -101,6 +101,7 @@ test('OpenAI request uses web search, product images and strict structured outpu
   assert.match(request.input[0].content[0].text, /https:\/\/brand\.example\/product/);
   assert.doesNotMatch(request.input[0].content[0].text, /3800106/);
   assert.match(request.input[0].content[0].text, /任務是把「這一件商品」整理成可直接檢查、修改與上架的資料/);
+  assert.match(request.input[0].content[0].text, /shortDescription 寫成 2～4 句自然、活潑、面向顧客的介紹/);
   assert.match(request.input[0].content[0].text, /featureList 必須寫 6～10 點/);
   assert.doesNotMatch(request.input[0].content[0].text, /這是完整研究|完成下列四個階段/);
   assert.equal(request.text.format.type, 'json_schema');

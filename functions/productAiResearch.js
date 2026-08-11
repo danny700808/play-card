@@ -414,7 +414,7 @@ function researchPrompt(context) {
     '如果有使用者提供的商品頁，先打開該頁；再以品牌官網、台灣代理商、型錄或可用的零售頁補齊資料。沒有網址時，直接依商品名稱、品牌、型號與圖片搜尋。',
     '目標是實用且大致正確的完整度，不必為了追求研究等級的完美而阻擋上架。但條碼、認證、產地、保固、包裝尺寸與重量不可憑空猜測；不確定就回傳 null。',
     '參考網址若是淘寶或供應商頁，可以參考圖片、排版、簡體中文與特色，但請重新寫成自然的台灣繁體中文，不逐字複製。',
-    'sellingPoints 寫一句有吸引力的商品賣點；shortDescription 寫 2～4 句簡介。specificationText 一行一項，格式為「欄位：內容」。',
+    'sellingPoints 寫一句有吸引力的商品賣點；shortDescription 寫成 2～4 句自然、活潑、面向顧客的介紹，先說適合誰或使用情境，再帶出核心特色，避免研究報告口吻與空泛誇大。specificationText 一行一項，格式為「欄位：內容」。',
     'featureList 必須寫 6～10 點，每點獨立一行並以「1. 」「2. 」依序編號。可納入結構、材質、操作、音色、適用對象、收納或使用情境，但不可捏造未知功能。',
     'commonProductDescription 是本商品的完整上架介紹，要好讀且有購買參考價值；整合商品簡介、特色、規格、內容物與適用對象，不要寫研究過程、來源比對或身分確認說明。',
     '根據同一份商品事實產生 EasyStore、蝦皮、MOMO 與 Coupang／酷澎內容；相同事實不重複發明，只調整各平台的標題、格式、分類與特殊必填欄位。',
@@ -1496,7 +1496,7 @@ function registerProductAiResearch(target) {
         return {
           id: crypto.randomUUID(),
           url: firebaseDownloadUrl(bucket.name, objectPath, downloadToken),
-          status: 'candidate',
+          status: 'ready',
           mode: 'localized',
           model,
           sourceImageUrl,
@@ -1514,8 +1514,12 @@ function registerProductAiResearch(target) {
       }).filter(Boolean);
       if (!completed.length) throw (batchResults.find((row) => !row.ok) || {}).error || new Error('圖片轉換失敗。');
       const candidates = completed.slice(0, 10);
+      const listingImageUrls = [];
+      pushUrlRows(listingImageUrls, candidates.map((row) => row.url));
+      pushUrlRows(listingImageUrls, listingCase.listingImageUrls);
       await caseRef.set({
         generatedListingImages: candidates,
+        listingImageUrls: listingImageUrls.slice(0, 10),
         lastImageGeneration: {
           status: failed.length ? 'partial' : 'completed', model,
           requestedCount: imageUrls.length, completedCount: completed.length, failedCount: failed.length,
@@ -1530,7 +1534,7 @@ function registerProductAiResearch(target) {
         action: 'OpenAI 批次繁體化商品圖',
         entityType: 'productListingCase',
         entityId: productId,
-        summary: `${context.sku || productId}｜${context.name || '未命名商品'}｜完成 ${completed.length} 張／失敗 ${failed.length} 張｜待人工採用`,
+        summary: `${context.sku || productId}｜${context.name || '未命名商品'}｜完成 ${completed.length} 張／失敗 ${failed.length} 張｜已加入準備上架`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者',
         version: '2026.08.11-product-image-localization-v1'
@@ -1538,7 +1542,7 @@ function registerProductAiResearch(target) {
       return {
         ok: true, status: failed.length ? 'partial' : 'completed', productId, model,
         requestedCount: imageUrls.length, completedCount: completed.length, failedCount: failed.length,
-        imageUrls: completed.map((row) => row.url), failures: failed
+        imageUrls: completed.map((row) => row.url), listingImageUrls: listingImageUrls.slice(0, 10), failures: failed
       };
     } catch (error) {
       const message = clean(error && error.message) || 'OpenAI 圖片繁體化失敗。';
