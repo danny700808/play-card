@@ -61,8 +61,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-case-v4/);
-    assert.match(html, /operations-phase1\.js\?v=20260811-product-listing-case-v4/);
+    assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-simple-v5/);
+    assert.match(html, /operations-phase1\.js\?v=20260811-product-listing-simple-v5/);
   }
 });
 
@@ -240,7 +240,7 @@ test('product search renders 24 at a time while the other working searches retai
   }
 });
 
-test('listing research is a lazy per-product case and no longer part of the product editor', () => {
+test('listing preparation is a simple per-product workspace and no longer part of the product editor', () => {
   const productForm = functionBody(engine, 'productFormHtml');
   const saveProduct = functionBody(engine, 'saveProduct');
   const openCase = functionBody(engine, 'openProductListingCase');
@@ -264,21 +264,25 @@ test('listing research is a lazy per-product case and no longer part of the prod
   assert.match(engine, /data-action="product-listing-case-open"/);
   assert.match(saveCase, /COLLECTIONS\.listingCases\)\.doc\(id\)/);
   assert.match(saveCase, /priceSnapshot/);
+  assert.match(saveCase, /easyStore:numberOrNull\(p\.easyStorePrice\)/);
+  assert.doesNotMatch(saveCase, /easyStore:p\.easyStorePrice/);
   assert.match(caseForm, /蝦皮仍由 EasyStore 發佈/);
-  assert.match(caseForm, /供應商／淘寶／原廠參考網址/);
+  assert.match(caseForm, /商品網址（可不填）/);
   assert.match(caseForm, /productReferenceImageUpload/);
   assert.match(caseForm, /imageGenerationInstructions/);
   assert.match(caseForm, /product-ai-image-generate/);
-  assert.match(caseForm, /AI 候選圖不會自動上架/);
+  assert.match(caseForm, /AI 幫我完成上架資料/);
+  assert.match(caseForm, /6～10 點商品特色/);
+  assert.doesNotMatch(caseForm, /完整研究|身分確認依據|版本／來源衝突|實際採用的研究來源/);
   assert.match(caseForm, /commonContentDecision/);
   assert.match(caseForm, /momoHtml/);
   assert.match(caseForm, /coupangDescriptionHtml/);
 });
 
-test('AI research runs only for the opened listing case and never writes the product master', () => {
-  const autoCheck = functionBody(engine, 'shouldAutoResearchProductListingCase');
+test('AI listing completion runs only after the user presses the button and never writes the product master', () => {
   const runner = functionBody(engine, 'runProductAiResearch');
   const saveProduct = functionBody(engine, 'saveProduct');
+  const openCase = functionBody(engine, 'openProductListingCase');
 
   assert.match(engine, /data-action="product-ai-research-run"/);
   assert.match(engine, /researchProductListingCase/);
@@ -286,11 +290,9 @@ test('AI research runs only for the opened listing case and never writes the pro
   assert.match(runner, /COLLECTIONS\.listingCases|openProductListingCase/);
   assert.doesNotMatch(runner, /COLLECTIONS\.products|opsInternalProducts/);
   assert.doesNotMatch(saveProduct, /aiResearch|researchProductListingCase/);
-  assert.match(autoCheck, /aiResearchStatus/);
-  assert.match(autoCheck, /productResearchStatus\)!=='not-searched'/);
-  assert.match(engine, /skipAutoResearch/);
-  assert.match(engine, /不覆寫 5,701 筆原商品主檔/);
-  assert.match(engine, /SKU 只做內部追蹤，AI 不拿它辨識商品/);
+  assert.doesNotMatch(engine, /function shouldAutoResearchProductListingCase/);
+  assert.doesNotMatch(openCase, /runProductAiResearch/);
+  assert.match(engine, /AI 幫我完成上架資料/);
   assert.doesNotMatch(engine, /OPENAI_API_KEY|api\.openai\.com/);
 });
 
@@ -309,7 +311,7 @@ test('listing case supports manager-only image upload and a truthful publish pre
   assert.match(storageRules, /generated/);
   assert.match(generator, /requireEasyStoreManagerAuth/);
   assert.match(generator, /generateProductListingImage/);
-  assert.match(generator, /identityDecision/);
+  assert.doesNotMatch(generator, /identityDecision|identityStatus/);
   assert.match(publisher, /type:'productListingPublish'/);
   assert.match(publisher, /dryRun:true/);
   assert.match(publisher, /status:'prepared'/);

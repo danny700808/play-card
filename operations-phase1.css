@@ -865,6 +865,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-section-title-actions .ops-button{margin-left:auto}
 .ops-textarea.compact{min-height:74px}
 .ops-product-spec-textarea{min-height:150px}
+.ops-product-feature-textarea{min-height:200px}
 .ops-product-description-textarea{min-height:180px}
 .ops-product-research-prompt{min-height:520px;font-family:inherit;line-height:1.65}
 .ops-drawer.ops-listing-case-drawer{width:min(920px,100%)}
@@ -921,6 +922,8 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-product-shipping-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .ops-product-shipping-actions small{color:#607581;line-height:1.5}
 .ops-product-ai-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.ops-product-ai-main-action{margin-top:2px}
+.ops-product-ai-main-action .ops-button{width:100%;min-height:48px;font-size:15px}
 .ops-product-ai-status{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;margin:10px 0 12px;padding:11px 12px;border:1px solid #d5e3dd;border-radius:13px;background:#f6faf8}
 .ops-product-ai-status>span{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#dcefe6;color:#17684e;font-size:11px;font-weight:950}
 .ops-product-ai-status b,.ops-product-ai-status small{display:block}

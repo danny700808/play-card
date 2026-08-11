@@ -280,15 +280,15 @@ function researchPrompt(context) {
     ? context.referenceUrls.map((url, index) => `${index + 1}. ${url}`).join('\n')
     : '未提供';
   return [
-    '你是台灣樂器行的資深商品研究與電商上架編輯。這是完整研究，不是快速搜尋。請主動多次使用網路搜尋，完成下列四個階段後才輸出。',
-    '階段一｜精確辨識：以使用者提供的商品名稱、參考網址與圖片作為辨識種子；內部 SKU 故意不提供，也絕對不可拿 SKU 當品牌、型號或搜尋依據。',
-    '階段二｜來源查證：先打開使用者提供的網址，再找品牌官網、原廠型錄／說明書、台灣官方代理商；不足時才用大型零售商或平台頁交叉比對。',
-    '階段三｜版本防呆：只合併完全相同品牌、型號、尺寸／年份／版本的資料。若 L10、L10E 或其他版本不同，必須列入 sourceConflicts，不可混用。',
-    '階段四｜上架編輯：根據已確認事實，產生繁體中文共用內容以及 EasyStore、蝦皮、MOMO、Coupang／酷澎需要的專用內容。',
-    'identityStatus：至少有型號或清楚圖片且官方／兩個獨立來源吻合才可 confirmed；只有部分吻合用 possible；資料互相矛盾用 conflict；完全找不到用 not_found。',
-    '如果參考網址是淘寶／供應商頁，可讀取其中的圖片與簡體中文作為辨識線索，但文案要重新整理成自然的繁體中文；不得逐字抄襲，也不得把未查證廣告詞寫成事實。',
-    '所有可驗證欄位都要在 fieldEvidence 留下欄位、採用來源網址與簡短依據。找不到的欄位回傳 null 並列入 missingFields，不可猜條碼、認證、產地、保固或尺寸。',
-    '完整規格 specificationText 一行一項，格式為「欄位：內容」。featureList 請整理 6～10 點有來源支持的特色；不足 6 點就誠實少寫。FAQ 只回答可由來源支持的常見問題。',
+    '你是台灣樂器行的商品上架編輯。任務是把「這一件商品」整理成可直接檢查、修改與上架的資料，不是撰寫研究或稽核報告。',
+    '先使用商品名稱、使用者貼的網址與圖片判斷商品；使用者指定的型號、顏色與版本就是本次上架對象。內部 SKU 故意不提供，不可拿 SKU 當品牌、型號或搜尋依據。',
+    '如果有使用者提供的商品頁，先打開該頁；再以品牌官網、台灣代理商、型錄或可用的零售頁補齊資料。沒有網址時，直接依商品名稱、品牌、型號與圖片搜尋。',
+    '目標是實用且大致正確的完整度，不必為了追求研究等級的完美而阻擋上架。但條碼、認證、產地、保固、包裝尺寸與重量不可憑空猜測；不確定就回傳 null。',
+    '參考網址若是淘寶或供應商頁，可以參考圖片、排版、簡體中文與特色，但請重新寫成自然的台灣繁體中文，不逐字複製。',
+    'sellingPoints 寫一句有吸引力的商品賣點；shortDescription 寫 2～4 句簡介。specificationText 一行一項，格式為「欄位：內容」。',
+    'featureList 必須寫 6～10 點，每點獨立一行並以「1. 」「2. 」依序編號。可納入結構、材質、操作、音色、適用對象、收納或使用情境，但不可捏造未知功能。',
+    'commonProductDescription 是本商品的完整上架介紹，要好讀且有購買參考價值；整合商品簡介、特色、規格、內容物與適用對象，不要寫研究過程、來源比對或身分確認說明。',
+    '根據同一份商品事實產生 EasyStore、蝦皮、MOMO 與 Coupang／酷澎內容；相同事實不重複發明，只調整各平台的標題、格式、分類與特殊必填欄位。',
     'EasyStore、MOMO 的 HTML，以及作為 Coupang 轉接來源的格式化內容，都只使用安全的 h2、h3、p、ul、li、strong、br 標籤，不放屬性、script、style、iframe 或外部追蹤碼。蝦皮描述請純文字，不用 HTML。',
     '平台分類只能提供實際查到或合理建議的分類路徑／名稱；未查到正式分類代碼時，不可杜撰代碼，並在對應 requiredNotes 說明待人工選擇。',
     'imagePlan 是圖片製作與編排指示（主圖、規格圖、特色圖、內容物圖等），不是聲稱圖片已經生成；不得假設使用者有未提供的授權素材。',
@@ -296,7 +296,7 @@ function researchPrompt(context) {
     '若是明顯可超商寄送的小型商品，但找不到官方包裝尺寸，可用保守估算並將 packageMeasurementMode 設為 estimated；大型樂器不可估成小包裹。',
     '判斷 convenience 時，請查詢蝦皮台灣目前可用物流的材積與重量限制，並在 packageResearchNote 簡述判斷依據；若無法確認就不要把大型商品判成可超商。',
     'shippingDecision 僅能是 convenience（可超商）、home（一般宅配）或 freight（大型／新竹物流）。這只是 AI 建議，人工決定會優先。',
-    'productResearchSourceUrls 只能列出你實際開啟、搜尋並採用的完整網址，最多 20 個。',
+    'identityStatus、fieldEvidence、sourceConflicts、productResearchSourceUrls 是系統內部記錄：簡短、足夠追溯即可，不要讓這些內容取代實際的上架文案。productResearchSourceUrls 只列實際用到的完整網址，最多 20 個。',
     '',
     `商品名稱：${context.name || '未提供'}`,
     `EasyStore 名稱：${context.onlineName || '未提供'}`,
@@ -330,7 +330,7 @@ function buildOpenAIRequest(context, model, includeImages) {
     text: {
       format: {
         type: 'json_schema',
-        name: 'product_listing_research',
+        name: 'product_listing_content',
         strict: true,
         schema: productResearchSchema()
       }
@@ -514,13 +514,20 @@ function mergeSourceUrls(existing, researched) {
   return result.slice(0, 20);
 }
 
-function fillBlank(update, existing, key, value, filledFields, preservedFields) {
-  if (clean(existing[key])) {
+function fillBlank(update, existing, key, value, filledFields, preservedFields, replaceExisting) {
+  const existingValue = clean(existing[key]);
+  if (existingValue && !replaceExisting) {
     if (clean(value)) preservedFields.push(key);
     return;
   }
   const normalized = clean(value);
-  if (!normalized) return;
+  if (!normalized) {
+    if (existingValue && replaceExisting) {
+      update[key] = '';
+      filledFields.push(key);
+    }
+    return;
+  }
   update[key] = normalized;
   filledFields.push(key);
 }
@@ -530,8 +537,9 @@ function buildResearchUpdate(existingCase, result, meta) {
   const update = {};
   const filledFields = [];
   const preservedFields = [];
-  fillBlank(update, existing, 'researchedProductName', result.identifiedProductName, filledFields, preservedFields);
-  RESEARCH_STRING_FIELDS.forEach((key) => fillBlank(update, existing, key, result[key], filledFields, preservedFields));
+  const replaceFields = new Set(Array.isArray(meta.replaceFields) ? meta.replaceFields.map(clean).filter(Boolean) : []);
+  fillBlank(update, existing, 'researchedProductName', result.identifiedProductName, filledFields, preservedFields, replaceFields.has('researchedProductName'));
+  RESEARCH_STRING_FIELDS.forEach((key) => fillBlank(update, existing, key, result[key], filledFields, preservedFields, replaceFields.has(key)));
   update.identityStatus = ['confirmed', 'possible', 'conflict', 'not_found'].includes(clean(result.identityStatus)) ? clean(result.identityStatus) : 'not_found';
   update.fieldEvidence = Array.isArray(result.fieldEvidence) ? result.fieldEvidence : [];
   update.sourceConflicts = Array.isArray(result.sourceConflicts) ? result.sourceConflicts : [];
@@ -595,9 +603,9 @@ function buildResearchUpdate(existingCase, result, meta) {
 
   const merged = { ...existing, ...update };
   const coreReady = !!(
-    clean(merged.identityStatus) === 'confirmed' && sourceUrls.length &&
-    clean(merged.specificationText) && clean(merged.searchKeywords) &&
-    clean(merged.sellingPoints) && clean(merged.commonProductDescription)
+    (clean(merged.researchedProductName) || clean(merged.productName)) &&
+    clean(merged.specificationText) && clean(merged.featureList) &&
+    clean(merged.commonProductDescription)
   );
   const platformReady = !!(
     clean(merged.shopeeTitle) && clean(merged.shopeeDescription) &&
@@ -627,8 +635,8 @@ function buildResearchUpdate(existingCase, result, meta) {
     completedAt: admin.firestore.FieldValue.serverTimestamp()
   };
   update.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-  update.updatedBy = 'OpenAI 自動研究';
-  update.schemaVersion = 3;
+  update.updatedBy = 'OpenAI 上架整理';
+  update.schemaVersion = 4;
   return { update, ready, filledFields: update.aiResearch.filledFields };
 }
 
@@ -675,7 +683,7 @@ function registerProductAiResearch(target) {
     const existingCase = caseSnap.exists ? caseSnap.data() || {} : {};
     const context = buildProductContext(productId, productSnap.data() || {}, existingCase);
     if (!context.name && !context.brand && !context.model && !context.imageUrls.length && !context.referenceUrls.length) {
-      throw new HttpsError('failed-precondition', '商品名稱、品牌、型號、參考網址與圖片都不足，無法進行研究。');
+      throw new HttpsError('failed-precondition', '商品名稱、品牌、型號、參考網址與圖片都不足，無法整理上架資料。');
     }
     const inputFingerprint = fingerprintProduct(context);
     const existingAi = existingCase.aiResearch && typeof existingCase.aiResearch === 'object' ? existingCase.aiResearch : {};
@@ -707,8 +715,8 @@ function registerProductAiResearch(target) {
           startedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedBy: 'OpenAI 自動研究',
-        schemaVersion: 3
+        updatedBy: 'OpenAI 上架整理',
+        schemaVersion: 4
       };
       if (!latestSnap.exists) {
         seed.createdAt = admin.firestore.FieldValue.serverTimestamp();
@@ -740,17 +748,18 @@ function registerProductAiResearch(target) {
         responseId: researched.response && researched.response.id,
         model,
         imageCount: researched.imageCount,
-        inputFingerprint
+        inputFingerprint,
+        replaceFields: force && Array.isArray(latestAi.filledFields) ? latestAi.filledFields : []
       });
       await caseRef.set(merged.update, { merge: true });
       await db.collection('opsAuditLogs').add({
-        action: 'OpenAI 自動研究商品',
+        action: 'OpenAI 整理商品上架資料',
         entityType: 'productListingCase',
         entityId: productId,
         summary: `${context.sku || productId}｜${context.name || '未命名商品'}｜補入 ${merged.filledFields.length} 個欄位`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者',
-        version: '2026.08.11-product-ai-v3'
+        version: '2026.08.11-product-listing-ai-v4'
       });
       return {
         ok: true,
@@ -765,7 +774,7 @@ function registerProductAiResearch(target) {
         confidence: merged.update.aiResearch.confidence
       };
     } catch (error) {
-      const message = clean(error && error.message) || 'OpenAI 商品研究失敗。';
+      const message = clean(error && error.message) || 'OpenAI 商品上架資料整理失敗。';
       console.error('researchProductListingCase failed:', error);
       await caseRef.set({
         caseStatus: ['published', 'archived'].includes(clean(existingCase.caseStatus)) ? clean(existingCase.caseStatus) : 'draft',
@@ -778,7 +787,7 @@ function registerProductAiResearch(target) {
           failedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedBy: 'OpenAI 自動研究'
+        updatedBy: 'OpenAI 上架整理'
       }, { merge: true }).catch(() => {});
       if (error instanceof HttpsError) throw error;
       if (/尚未設定/.test(message)) throw new HttpsError('failed-precondition', message);
@@ -805,9 +814,6 @@ function registerProductAiResearch(target) {
     const [productSnap, caseSnap] = await Promise.all([productRef.get(), caseRef.get()]);
     if (!productSnap.exists || !caseSnap.exists) throw new HttpsError('not-found', '找不到商品或上架案件。');
     const listingCase = caseSnap.data() || {};
-    if (clean(listingCase.identityStatus) !== 'confirmed' || clean(listingCase.identityDecision) !== 'accepted') {
-      throw new HttpsError('failed-precondition', '請先確認是同一個商品，並將「你的身分確認」設為採用。');
-    }
     const context = buildProductContext(productId, productSnap.data() || {}, listingCase);
     const imageUrls = [];
     [listingCase.listingImageUrls, listingCase.referenceImageUrls].forEach((value) => pushUrlRows(imageUrls, value));
@@ -863,7 +869,7 @@ function registerProductAiResearch(target) {
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedBy: 'OpenAI 候選圖製作',
-        schemaVersion: 3
+        schemaVersion: 4
       }, { merge: true });
       await db.collection('opsAuditLogs').add({
         action: 'OpenAI 製作商品候選圖',

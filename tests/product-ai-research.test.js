@@ -48,7 +48,7 @@ function completeResult(overrides = {}) {
     warrantyInfo: '無保固',
     shortDescription: '樂譜與配件收納用書包。',
     commonProductDescription: 'JUPITER 樂器書包，適合收納樂譜與配件。',
-    featureList: '樂譜收納\n附背帶',
+    featureList: '1. 樂譜收納\n2. 配件分類\n3. 附背帶\n4. 輕巧攜帶\n5. 日常練習適用\n6. 管樂學習用品整理',
     faqText: 'Q：可放樂譜嗎？\nA：可以。',
     easyStoreHtml: '<h2>JUPITER 樂器書包</h2><p>適合收納樂譜與配件。</p>',
     shopeeTitle: 'JUPITER 音樂書包 樂譜收納袋',
@@ -100,6 +100,9 @@ test('OpenAI request uses web search, product images and strict structured outpu
   assert.ok(request.input[0].content.filter((part) => part.type === 'input_image').every((part) => part.detail === 'high'));
   assert.match(request.input[0].content[0].text, /https:\/\/brand\.example\/product/);
   assert.doesNotMatch(request.input[0].content[0].text, /3800106/);
+  assert.match(request.input[0].content[0].text, /任務是把「這一件商品」整理成可直接檢查、修改與上架的資料/);
+  assert.match(request.input[0].content[0].text, /featureList 必須寫 6～10 點/);
+  assert.doesNotMatch(request.input[0].content[0].text, /這是完整研究|完成下列四個階段/);
   assert.equal(request.text.format.type, 'json_schema');
   assert.equal(request.text.format.strict, true);
   assert.equal(request.text.format.schema.additionalProperties, false);
@@ -166,7 +169,7 @@ test('AI fills blank case fields while preserving manual copy and shipping choic
   assert.equal(merged.update.researchedProductName, 'JUPITER 音樂書包');
   assert.equal(merged.update.shopeeTitle, 'JUPITER 音樂書包 樂譜收納袋');
   assert.equal(merged.update.identityStatus, 'confirmed');
-  assert.equal(merged.update.schemaVersion, 3);
+  assert.equal(merged.update.schemaVersion, 4);
   assert.equal(merged.update.fieldEvidence.length, 1);
   assert.equal(merged.update.sellingPoints, undefined);
   assert.equal(merged.update.shippingDecision, undefined);
@@ -177,6 +180,24 @@ test('AI fills blank case fields while preserving manual copy and shipping choic
   ]);
   assert.ok(merged.update.aiResearch.preservedManualFields.includes('sellingPoints'));
   assert.ok(merged.update.aiResearch.preservedManualFields.includes('shippingDecision'));
+});
+
+test('explicit refresh replaces only fields previously filled by AI', () => {
+  const existing = {
+    researchedProductName: '舊 AI 名稱',
+    featureList: '舊 AI 特色',
+    sellingPoints: '店長人工內容'
+  };
+  const merged = research.buildResearchUpdate(existing, completeResult(), {
+    requestId: 'req-refresh', responseId: 'resp-refresh', model: 'gpt-5.6-sol',
+    imageCount: 1, inputFingerprint: 'refresh',
+    replaceFields: ['researchedProductName', 'featureList']
+  });
+
+  assert.equal(merged.update.researchedProductName, 'JUPITER 音樂書包');
+  assert.match(merged.update.featureList, /^1\. /);
+  assert.equal(merged.update.sellingPoints, undefined);
+  assert.ok(merged.update.aiResearch.preservedManualFields.includes('sellingPoints'));
 });
 
 test('small convenience-store products receive safe estimates only when no package size exists', () => {
