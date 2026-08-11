@@ -131,3 +131,12 @@ test('EasyStore sync refreshes manager auth before opening the callable', () => 
   assert.ok(body.indexOf('await requireEasyStoreManagerAuth()') < body.indexOf("httpsCallable('syncEasyStoreCatalog'"));
   assert.match(authSource, /getIdTokenResult\(true\)/);
 });
+
+test('Product AI refreshes manager auth before opening the callable', () => {
+  const source = fs.readFileSync(path.join(root, 'operations-phase1.js'), 'utf8');
+  const start = source.indexOf('async function runProductAiResearch(');
+  const end = source.indexOf('function imageGalleryHtml', start);
+  const body = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.ok(body.indexOf('await requireEasyStoreManagerAuth()') < body.indexOf("httpsCallable('researchProductListingCase'"));
+});
