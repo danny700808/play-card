@@ -17,6 +17,9 @@ const PRODUCT_COLLECTION = 'opsInternalProducts';
 const LISTING_CASE_COLLECTION = 'opsProductListingCases';
 const LOCK_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 480 * 1000;
+const IMAGE_IMPORT_PAGE_LIMIT = 8;
+const IMAGE_IMPORT_CANDIDATE_LIMIT = 40;
+const IMAGE_IMPORT_MAX_IMAGES = 10;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 
 const RESEARCH_STRING_FIELDS = [
@@ -66,6 +69,126 @@ function safeHttpUrl(value) {
   } catch (_) {
     return '';
   }
+}
+
+function decodeHtmlEntities(value) {
+  return clean(value)
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Math.min(0x10ffff, Number(code) || 0)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Math.min(0x10ffff, parseInt(code, 16) || 0)))
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function parseHtmlAttributes(tag) {
+  const attributes = {};
+  String(tag || '').replace(/([^\s=/>]+)\s*(?:=\s*(?:(["'])([\s\S]*?)\2|([^\s>]+)))?/g, (_, name, _quote, quoted, bare) => {
+    const key = clean(name).toLowerCase();
+    if (key && key !== 'meta' && key !== 'img' && key !== 'source' && key !== 'link') {
+      attributes[key] = decodeHtmlEntities(quoted === undefined ? bare || '' : quoted);
+    }
+    return '';
+  });
+  return attributes;
+}
+
+function normalizePageAssetUrl(value, pageUrl) {
+  let raw = decodeHtmlEntities(value)
+    .replace(/\\u002f/gi, '/')
+    .replace(/\\\//g, '/')
+    .replace(/^[\s"']+|[\s"']+$/g, '');
+  if (!raw || /^(?:data|blob|javascript):/i.test(raw)) return '';
+  if (/^\/\//.test(raw)) raw = `https:${raw}`;
+  try {
+    return safeHttpUrl(new URL(raw, pageUrl).href);
+  } catch (_) {
+    return '';
+  }
+}
+
+function imageCandidatePenalty(url) {
+  const value = clean(url).toLowerCase();
+  let penalty = 0;
+  if (/(?:^|[\/_\-.])(logo|icon|favicon|avatar|sprite|spacer|loading|placeholder|qrcode|qr-code)(?:[\/_\-.]|$)/.test(value)) penalty += 80;
+  if (/(?:badge|payment|rating|star|flag|social|emoji|tracking|pixel)/.test(value)) penalty += 45;
+  if (/\.svg(?:$|\?)/.test(value)) penalty += 100;
+  return penalty;
+}
+
+function extractImageCandidatesFromHtml(html, pageUrl) {
+  const candidates = new Map();
+  function add(value, priority, source) {
+    if (!value) return;
+    const parts = /(?:srcset|set)$/i.test(source || '')
+      ? String(value).split(',').map((row) => row.trim().split(/\s+/)[0])
+      : [value];
+    parts.forEach((part) => {
+      const url = normalizePageAssetUrl(part, pageUrl);
+      if (!url) return;
+      const score = Math.max(0, Number(priority) || 0) - imageCandidatePenalty(url);
+      const existing = candidates.get(url);
+      if (!existing || score > existing.score) candidates.set(url, { url, score, source: clean(source) || 'page' });
+    });
+  }
+
+  const source = String(html || '');
+  (source.match(/<meta\b[^>]*>/gi) || []).forEach((tag) => {
+    const attributes = parseHtmlAttributes(tag);
+    const key = clean(attributes.property || attributes.name || attributes.itemprop).toLowerCase();
+    if (/^(?:og:image(?::secure_url)?|twitter:image(?::src)?|image|thumbnailurl)$/.test(key)) {
+      add(attributes.content, 130, `meta:${key}`);
+    }
+  });
+  (source.match(/<link\b[^>]*>/gi) || []).forEach((tag) => {
+    const attributes = parseHtmlAttributes(tag);
+    const rel = clean(attributes.rel).toLowerCase();
+    if (rel === 'image_src' || (rel === 'preload' && clean(attributes.as).toLowerCase() === 'image')) {
+      add(attributes.href, rel === 'image_src' ? 120 : 80, `link:${rel}`);
+      add(attributes.imagesrcset, 78, 'link:srcset');
+    }
+  });
+  (source.match(/<(?:img|source)\b[^>]*>/gi) || []).forEach((tag) => {
+    const attributes = parseHtmlAttributes(tag);
+    ['src', 'data-src', 'data-original', 'data-lazy-src', 'data-lazyload', 'data-ks-lazyload'].forEach((key) => add(attributes[key], key === 'src' ? 70 : 85, `tag:${key}`));
+    ['srcset', 'data-srcset'].forEach((key) => add(attributes[key], 75, `tag:${key}`));
+  });
+
+  function visitJson(value, depth) {
+    if (!value || depth > 8) return;
+    if (typeof value === 'string') return add(value, 105, 'json-ld:image');
+    if (Array.isArray(value)) return value.forEach((item) => visitJson(item, depth + 1));
+    if (typeof value !== 'object') return;
+    ['image', 'images', 'thumbnailUrl', 'contentUrl'].forEach((key) => {
+      if (value[key]) visitJson(value[key], depth + 1);
+    });
+    if (value.url && /imageobject/i.test(clean(value['@type']))) add(value.url, 105, 'json-ld:imageobject');
+    Object.entries(value).forEach(([key, item]) => {
+      if (!['image', 'images', 'thumbnailUrl', 'contentUrl', 'url'].includes(key) && item && typeof item === 'object') visitJson(item, depth + 1);
+    });
+  }
+  const jsonLdPattern = /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script\s*>/gi;
+  let jsonMatch;
+  while ((jsonMatch = jsonLdPattern.exec(source))) {
+    try { visitJson(JSON.parse(decodeHtmlEntities(jsonMatch[1])), 0); } catch (_) { /* Ignore malformed third-party markup. */ }
+  }
+
+  const normalizedSource = source.replace(/\\u002f/gi, '/').replace(/\\\//g, '/');
+  const embeddedPattern = /https?:\/\/[^"'<>\\\s]+?\.(?:jpe?g|png|webp|avif)(?:\?[^"'<>\\\s]*)?/gi;
+  (normalizedSource.match(embeddedPattern) || []).forEach((url) => add(url, 45, 'embedded-url'));
+  return Array.from(candidates.values())
+    .sort((a, b) => b.score - a.score || a.url.localeCompare(b.url))
+    .slice(0, IMAGE_IMPORT_CANDIDATE_LIMIT);
+}
+
+function isBlockedCommercePage(url, html, status) {
+  if ([401, 403, 407, 429].includes(Number(status))) return true;
+  const location = clean(url).toLowerCase();
+  if (/(?:login|passport|captcha|verify|sec-check|punish)/.test(location)) return true;
+  const text = clean(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 50000).toLowerCase();
+  const markers = ['请登录', '請登入', '安全验证', '安全驗證', '滑动验证', '滑動驗證', '访问验证', '訪問驗證', '验证码', '驗證碼', 'captcha', 'verify you are human'];
+  return markers.some((marker) => text.includes(marker));
 }
 
 function sanitizeSafeProductHtml(value) {
@@ -156,6 +279,7 @@ function buildProductContext(productId, product, listingCase) {
     barcode: clean(source.barcode) || productValue(product, ['barcode', 'ean', 'gtin']),
     category: productValue(product, ['category']),
     variantName: productValue(product, ['variantName']),
+    color: clean(source.color),
     productUrl: referenceUrls[0] || '',
     referenceUrls: referenceUrls.slice(0, 15),
     sourceProductDescription: clean(source.sourceProductDescription),
@@ -173,6 +297,7 @@ function fingerprintProduct(context) {
     barcode: context.barcode,
     category: context.category,
     variantName: context.variantName,
+    color: context.color,
     referenceUrls: context.referenceUrls,
     sourceProductDescription: context.sourceProductDescription,
     researchInstructions: context.researchInstructions,
@@ -342,6 +467,55 @@ function buildOpenAIRequest(context, model, includeImages) {
   };
 }
 
+function buildProductImageSourceDiscoveryRequest(context, model) {
+  return {
+    model: model || DEFAULT_MODEL,
+    store: false,
+    reasoning: { effort: 'medium' },
+    max_output_tokens: 3000,
+    tools: [{ type: 'web_search' }],
+    include: ['web_search_call.action.sources'],
+    input: [{
+      role: 'user',
+      content: [{
+        type: 'input_text',
+        text: [
+          '替台灣樂器行尋找「同一品牌、同一型號、同一顏色／版本」商品的公開網頁，目的是從頁面取得商品主圖、規格圖與情境圖。',
+          '優先順序：品牌官網、台灣代理商、可公開瀏覽的授權零售頁。排除需要登入、App 才能開啟、社群貼文、搜尋結果頁與明顯不同顏色或不同型號。',
+          '只能列出實際搜尋到且可直接開啟的完整 https 網址，不可捏造網址；最多六頁。',
+          `商品名稱：${context.name || '未提供'}`,
+          `品牌：${context.brand || '未提供'}`,
+          `型號：${context.model || '未提供'}`,
+          `規格／顏色：${context.color || context.variantName || '未提供'}`,
+          `既有商品網址：${(context.referenceUrls || []).join('\n') || '未提供'}`
+        ].join('\n')
+      }]
+    }],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'product_image_source_pages',
+        strict: true,
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['pages'],
+          properties: {
+            pages: {
+              type: 'array', maxItems: 6,
+              items: {
+                type: 'object', additionalProperties: false,
+                required: ['url', 'reason'],
+                properties: { url: { type: 'string' }, reason: { type: 'string' } }
+              }
+            }
+          }
+        }
+      }
+    }
+  };
+}
+
 function buildOpenAIImageRequest(context, listingCase, imageUrls, model) {
   const source = listingCase || {};
   const content = [{
@@ -427,6 +601,25 @@ async function callOpenAI(apiKey, context, model, includeImages) {
   return body;
 }
 
+async function discoverPublicProductPageUrls(apiKey, context, model) {
+  const response = await fetchWithTimeout('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(buildProductImageSourceDiscoveryRequest(context, model))
+  }, REQUEST_TIMEOUT_MS);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(openAIErrorMessage(response.status, body).replace('OpenAI 研究失敗', '公開圖片來源搜尋失敗'));
+  let parsed = {};
+  try { parsed = JSON.parse(responseOutputText(body) || '{}'); } catch (_) { parsed = {}; }
+  const urls = [];
+  (Array.isArray(parsed.pages) ? parsed.pages : []).forEach((row) => pushUrl(urls, row && row.url));
+  collectResponseSourceUrls(body).forEach((url) => pushUrl(urls, url));
+  return urls.slice(0, 6);
+}
+
 async function callOpenAIImage(apiKey, context, listingCase, imageUrls, model) {
   const response = await fetchWithTimeout('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -479,6 +672,96 @@ async function assertPublicRemoteUrl(value) {
     }
   }
   return url;
+}
+
+async function fetchPublicProductPage(value) {
+  let url = await assertPublicRemoteUrl(value);
+  for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+    const response = await fetchWithTimeout(url, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,image/avif,image/webp,image/png,image/jpeg;q=0.8,*/*;q=0.5',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.7',
+        'User-Agent': 'YouziProductImageImporter/1.0'
+      }
+    }, 90 * 1000);
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = clean(response.headers.get('location'));
+      if (!location || redirectCount === 5) throw new Error('商品頁轉址次數過多。');
+      url = await assertPublicRemoteUrl(new URL(location, url).href);
+      continue;
+    }
+    const contentType = clean(response.headers.get('content-type')).split(';')[0].toLowerCase();
+    if (contentType.startsWith('image/')) {
+      if (!response.ok) throw new Error(`無法讀取商品圖片（HTTP ${response.status}）。`);
+      return { pageUrl: url, candidates: [{ url, score: 160, source: 'direct-image' }], blocked: false };
+    }
+    const declaredLength = Number(response.headers.get('content-length') || 0);
+    if (declaredLength > 5 * 1024 * 1024) throw new Error('商品頁內容過大，無法安全讀取。');
+    const html = await response.text();
+    if (Buffer.byteLength(html, 'utf8') > 5 * 1024 * 1024) throw new Error('商品頁內容過大，無法安全讀取。');
+    if (isBlockedCommercePage(url, html, response.status)) {
+      const error = new Error('商品頁要求登入或安全驗證，雲端無法直接讀取；不需要提供帳號密碼。');
+      error.code = 'page-blocked';
+      throw error;
+    }
+    if (!response.ok) throw new Error(`無法讀取商品頁（HTTP ${response.status}）。`);
+    if (contentType && !/(?:html|xhtml|json|text)/.test(contentType)) throw new Error('這個網址不是可讀取的商品頁。');
+    const candidates = extractImageCandidatesFromHtml(html, url);
+    if (!candidates.length) throw new Error('商品頁可開啟，但沒有找到可用的商品圖片。');
+    return { pageUrl: url, candidates, blocked: false };
+  }
+  throw new Error('無法讀取商品頁。');
+}
+
+async function downloadImageForImport(value, sourcePageUrl) {
+  let url = await assertPublicRemoteUrl(value);
+  for (let redirectCount = 0; redirectCount <= 4; redirectCount += 1) {
+    const response = await fetchWithTimeout(url, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: {
+        Accept: 'image/avif,image/webp,image/png,image/jpeg,*/*;q=0.5',
+        Referer: safeHttpUrl(sourcePageUrl) || new URL(url).origin + '/',
+        'User-Agent': 'YouziProductImageImporter/1.0'
+      }
+    }, 90 * 1000);
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = clean(response.headers.get('location'));
+      if (!location || redirectCount === 4) throw new Error('圖片轉址次數過多。');
+      url = await assertPublicRemoteUrl(new URL(location, url).href);
+      continue;
+    }
+    if (!response.ok) throw new Error(`無法讀取來源圖片（HTTP ${response.status}）。`);
+    const declaredLength = Number(response.headers.get('content-length') || 0);
+    if (declaredLength > 20 * 1024 * 1024) throw new Error('來源圖片超過 20 MB。');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > 20 * 1024 * 1024) throw new Error('來源圖片大小不正確。');
+    const metadata = await sharp(bytes, { limitInputPixels: 100000000 }).metadata().catch(() => ({}));
+    const width = Math.max(0, Number(metadata.width) || 0), height = Math.max(0, Number(metadata.height) || 0);
+    if (!width || !height) throw new Error('來源圖片無法辨識。');
+    if (Math.max(width, height) < 600 || width * height < 240000) throw new Error('圖片尺寸太小，略過圖示或縮圖。');
+    const ratio = Math.max(width / height, height / width);
+    if (ratio > 5) throw new Error('圖片比例過長，略過橫幅或裝飾圖。');
+    const output = await sharp(bytes, { limitInputPixels: 100000000 })
+      .rotate()
+      .resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 92, chromaSubsampling: '4:4:4' })
+      .toBuffer();
+    const outputMetadata = await sharp(output).metadata();
+    return {
+      bytes: output,
+      contentType: 'image/jpeg',
+      extension: 'jpg',
+      finalUrl: url,
+      width: Number(outputMetadata.width) || width,
+      height: Number(outputMetadata.height) || height,
+      hash: crypto.createHash('sha256').update(output).digest('hex')
+    };
+  }
+  throw new Error('無法讀取來源圖片。');
 }
 
 async function downloadImageForEdit(value) {
@@ -931,6 +1214,219 @@ function registerProductAiResearch(target) {
     }
   });
 
+  target.importProductListingImages = onCall({
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '2GiB',
+    secrets: [OPENAI_API_KEY],
+    enforceAppCheck: false
+  }, async (request) => {
+    if (!isAllowedManager(request)) throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
+    const productId = clean(request && request.data && request.data.productId);
+    if (!productId || productId.length > 200 || productId.includes('/')) {
+      throw new HttpsError('invalid-argument', '商品 ID 格式不正確。');
+    }
+    const requestedPageUrls = [];
+    pushUrlRows(requestedPageUrls, request && request.data && request.data.pageUrls);
+    const db = admin.firestore();
+    const productRef = db.collection(PRODUCT_COLLECTION).doc(productId);
+    const caseRef = db.collection(LISTING_CASE_COLLECTION).doc(productId);
+    const [productSnap, caseSnap] = await Promise.all([productRef.get(), caseRef.get()]);
+    if (!productSnap.exists || !caseSnap.exists) throw new HttpsError('not-found', '找不到商品或上架案件。');
+    const product = productSnap.data() || {};
+    const listingCase = caseSnap.data() || {};
+    const context = buildProductContext(productId, product, listingCase);
+    const existingImageUrls = [];
+    pushUrlRows(existingImageUrls, listingCase.referenceImageUrls);
+    const availableSlots = Math.max(0, IMAGE_IMPORT_MAX_IMAGES - existingImageUrls.length);
+    if (!availableSlots) throw new HttpsError('failed-precondition', '這件商品已經有 10 張來源圖片，請先移除不需要的圖片再匯入。');
+
+    const initialPageUrls = [];
+    [requestedPageUrls, listingCase.referenceUrls, listingCase.productResearchSourceUrls, context.referenceUrls]
+      .forEach((value) => pushUrlRows(initialPageUrls, value));
+    const pageResults = [];
+    const failures = [];
+    const candidateMap = new Map();
+    function failureRow(pageUrl, error) {
+      let host = '';
+      try { host = new URL(pageUrl).hostname; } catch (_) { host = clean(pageUrl).slice(0, 120); }
+      return {
+        pageUrl: safeHttpUrl(pageUrl),
+        host,
+        blocked: clean(error && error.code) === 'page-blocked',
+        message: (clean(error && error.message) || '無法讀取此頁').slice(0, 240)
+      };
+    }
+    async function collectPages(urls, origin) {
+      const unique = [];
+      (urls || []).forEach((url) => {
+        url = safeHttpUrl(url);
+        if (url && !pageResults.some((row) => row.requestedUrl === url) && !unique.includes(url)) unique.push(url);
+      });
+      const results = await mapWithConcurrency(unique.slice(0, IMAGE_IMPORT_PAGE_LIMIT), 2, async (pageUrl) => {
+        const result = await fetchPublicProductPage(pageUrl);
+        return { ...result, requestedUrl: pageUrl, origin };
+      });
+      results.forEach((row, index) => {
+        const requestedUrl = unique[index];
+        if (!row.ok) {
+          failures.push(failureRow(requestedUrl, row.error));
+          pageResults.push({ requestedUrl, origin, ok: false });
+          return;
+        }
+        const page = row.value;
+        pageResults.push({ requestedUrl, pageUrl: page.pageUrl, origin, ok: true, imageCount: page.candidates.length });
+        page.candidates.forEach((candidate) => {
+          if (existingImageUrls.includes(candidate.url)) return;
+          const current = candidateMap.get(candidate.url);
+          const next = { ...candidate, sourcePageUrl: page.pageUrl, origin };
+          if (!current || next.score > current.score) candidateMap.set(candidate.url, next);
+        });
+      });
+    }
+
+    await caseRef.set({
+      lastImageImport: {
+        status: 'running',
+        requestedPageCount: initialPageUrls.length,
+        startedAt: admin.firestore.FieldValue.serverTimestamp()
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: '商品網址圖片匯入'
+    }, { merge: true });
+
+    try {
+      await collectPages(initialPageUrls, 'provided');
+      let searchedPublicSources = false;
+      if (candidateMap.size < Math.max(6, availableSlots)) {
+        let apiKey = '';
+        try { apiKey = clean(OPENAI_API_KEY.value()); } catch (_) { apiKey = clean(process.env.OPENAI_API_KEY); }
+        if (apiKey && apiKey !== 'OPENAI_API_KEY_NOT_CONFIGURED') {
+          try {
+            const discovered = await discoverPublicProductPageUrls(apiKey, context, clean(process.env.OPENAI_PRODUCT_RESEARCH_MODEL) || DEFAULT_MODEL);
+            const alreadyTried = new Set(pageResults.map((row) => row.requestedUrl));
+            const additional = discovered.filter((url) => !alreadyTried.has(url));
+            if (additional.length) {
+              searchedPublicSources = true;
+              await collectPages(additional, 'public-search');
+            }
+          } catch (error) {
+            failures.push(failureRow('https://api.openai.com/v1/responses', error));
+          }
+        }
+      }
+
+      const candidates = Array.from(candidateMap.values())
+        .sort((a, b) => b.score - a.score || a.url.localeCompare(b.url))
+        .slice(0, Math.min(24, IMAGE_IMPORT_CANDIDATE_LIMIT));
+      const downloaded = [];
+      const seenHashes = new Set();
+      for (let offset = 0; offset < candidates.length && downloaded.length < availableSlots; offset += 4) {
+        const batch = candidates.slice(offset, offset + 4);
+        const rows = await mapWithConcurrency(batch, 3, async (candidate) => ({ candidate, image: await downloadImageForImport(candidate.url, candidate.sourcePageUrl) }));
+        rows.forEach((row) => {
+          if (!row.ok || downloaded.length >= availableSlots) return;
+          if (seenHashes.has(row.value.image.hash)) return;
+          seenHashes.add(row.value.image.hash);
+          downloaded.push(row.value);
+        });
+      }
+      if (!downloaded.length) {
+        const blocked = failures.some((row) => row.blocked);
+        throw new Error(blocked
+          ? '供應商頁要求登入或安全驗證，雲端無法直接讀取；系統已嘗試同型號公開頁，但仍找不到足夠圖片。請直接上傳截圖或原圖，不需要提供帳號密碼。'
+          : '目前網址與同型號公開頁都沒有找到尺寸足夠的商品圖片；可以改貼原廠商品頁，或直接上傳截圖。');
+      }
+
+      const bucket = admin.storage().bucket();
+      const imported = [];
+      for (let index = 0; index < downloaded.length; index += 1) {
+        const row = downloaded[index], downloadToken = crypto.randomUUID();
+        const objectPath = `ops-product-listing-cases/${productId}/references/imported/${Date.now()}-${String(index + 1).padStart(2, '0')}-${row.image.hash.slice(0, 10)}.jpg`;
+        await bucket.file(objectPath).save(row.image.bytes, {
+          resumable: false,
+          metadata: {
+            contentType: 'image/jpeg',
+            cacheControl: 'public,max-age=31536000,immutable',
+            metadata: {
+              firebaseStorageDownloadTokens: downloadToken,
+              productId,
+              importedBy: 'product-page-image-import',
+              sourcePageUrl: clean(row.candidate.sourcePageUrl).slice(0, 1000),
+              sourceImageUrl: clean(row.image.finalUrl).slice(0, 1000)
+            }
+          }
+        });
+        imported.push({
+          id: crypto.randomUUID(),
+          url: firebaseDownloadUrl(bucket.name, objectPath, downloadToken),
+          sourcePageUrl: safeHttpUrl(row.candidate.sourcePageUrl),
+          sourceImageUrl: safeHttpUrl(row.image.finalUrl),
+          width: row.image.width,
+          height: row.image.height,
+          importedAt: new Date().toISOString()
+        });
+      }
+      const referenceImageUrls = existingImageUrls.concat(imported.map((row) => row.url)).slice(0, IMAGE_IMPORT_MAX_IMAGES);
+      const selectedImageUrls = [];
+      [listingCase.selectedReferenceImageUrls, imported.map((row) => row.url)].forEach((value) => pushUrlRows(selectedImageUrls, value));
+      const existingImported = Array.isArray(listingCase.importedReferenceImages) ? listingCase.importedReferenceImages : [];
+      await caseRef.set({
+        referenceImageUrls,
+        selectedReferenceImageUrls: selectedImageUrls.filter((url) => referenceImageUrls.includes(url)).slice(0, IMAGE_IMPORT_MAX_IMAGES),
+        importedReferenceImages: existingImported.concat(imported).slice(-30),
+        lastImageImport: {
+          status: 'completed',
+          requestedPageCount: initialPageUrls.length,
+          readablePageCount: pageResults.filter((row) => row.ok).length,
+          searchedPublicSources,
+          importedCount: imported.length,
+          blockedPageCount: failures.filter((row) => row.blocked).length,
+          failures: failures.slice(0, 12),
+          completedAt: admin.firestore.FieldValue.serverTimestamp()
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: '商品網址圖片匯入',
+        schemaVersion: 6
+      }, { merge: true });
+      await db.collection('opsAuditLogs').add({
+        action: '從商品網址匯入候選圖片',
+        entityType: 'productListingCase',
+        entityId: productId,
+        summary: `${context.sku || productId}｜${context.name || '未命名商品'}｜匯入 ${imported.length} 張｜${searchedPublicSources ? '含同型號公開來源' : '商品頁來源'}`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者',
+        version: '2026.08.11-product-image-url-import-v1'
+      });
+      return {
+        ok: true,
+        productId,
+        importedCount: imported.length,
+        referenceImageUrls,
+        searchedPublicSources,
+        blockedPageCount: failures.filter((row) => row.blocked).length,
+        failures: failures.slice(0, 12)
+      };
+    } catch (error) {
+      const message = clean(error && error.message) || '商品網址圖片匯入失敗。';
+      console.error('importProductListingImages failed:', error);
+      await caseRef.set({
+        lastImageImport: {
+          status: 'failed',
+          error: message.slice(0, 500),
+          failures: failures.slice(0, 12),
+          failedAt: admin.firestore.FieldValue.serverTimestamp()
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: '商品網址圖片匯入'
+      }, { merge: true }).catch(() => {});
+      if (/請先|已經有 10 張|要求登入|沒有找到|找不到足夠|改貼原廠|直接上傳/.test(message)) {
+        throw new HttpsError('failed-precondition', message);
+      }
+      throw new HttpsError('internal', message);
+    }
+  });
+
   target.generateProductListingImage = onCall({
     region: REGION,
     timeoutSeconds: 540,
@@ -1068,8 +1564,11 @@ module.exports = {
   fingerprintProduct,
   productResearchSchema,
   buildOpenAIRequest,
+  buildProductImageSourceDiscoveryRequest,
   buildOpenAIImageRequest,
   buildLocalizedImagePrompt,
+  extractImageCandidatesFromHtml,
+  isBlockedCommercePage,
   isPrivateIpAddress,
   responseGeneratedImageBase64,
   responseOutputText,

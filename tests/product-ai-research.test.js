@@ -146,6 +146,42 @@ test('remote image safety blocks local and private addresses', () => {
   assert.equal(research.isPrivateIpAddress('2001:4860:4860::8888'), false);
 });
 
+test('product page image discovery finds main, lazy, JSON-LD and escaped marketplace images', () => {
+  const html = `
+    <meta property="og:image" content="/images/main.jpg">
+    <script type="application/ld+json">{"@type":"Product","image":["https://cdn.example.com/spec.webp"]}</script>
+    <img data-ks-lazyload="//cdn.example.com/lifestyle.png" src="/images/loading.gif">
+    <script>window.detail={"image":"https:\\/\\/cbu01.alicdn.com\\/img\\/ibank\\/detail.jpg"}</script>
+  `;
+  const rows = research.extractImageCandidatesFromHtml(html, 'https://shop.example.com/item/123');
+  const urls = rows.map((row) => row.url);
+
+  assert.equal(urls[0], 'https://shop.example.com/images/main.jpg');
+  assert.ok(urls.includes('https://cdn.example.com/spec.webp'));
+  assert.ok(urls.includes('https://cdn.example.com/lifestyle.png'));
+  assert.ok(urls.includes('https://cbu01.alicdn.com/img/ibank/detail.jpg'));
+  assert.ok(urls.indexOf('https://shop.example.com/images/loading.gif') === -1 || urls.indexOf('https://shop.example.com/images/loading.gif') > 2);
+});
+
+test('commerce login and verification pages are reported as blocked without requesting passwords', () => {
+  assert.equal(research.isBlockedCommercePage('https://login.taobao.com/member/login.jhtml', '<html></html>', 200), true);
+  assert.equal(research.isBlockedCommercePage('https://detail.1688.com/offer/1.html', '<h1>请登录后继续</h1><p>滑动验证</p>', 200), true);
+  assert.equal(research.isBlockedCommercePage('https://www.ibanez.com/na/products/detail/azes40_1p_01.html', '<h1>AZES40</h1>', 200), false);
+});
+
+test('public image-source fallback searches exact product pages and does not expose internal SKU', () => {
+  const request = research.buildProductImageSourceDiscoveryRequest({
+    name: 'Ibanez AZES40-MGR 薄荷綠電吉他', brand: 'Ibanez', model: 'AZES40-MGR',
+    variantName: '薄荷綠', sku: '1040160-1', referenceUrls: ['https://qr.1688.com/s/example']
+  }, research.DEFAULT_MODEL);
+
+  assert.deepEqual(request.tools, [{ type: 'web_search' }]);
+  assert.match(request.input[0].content[0].text, /同一品牌、同一型號、同一顏色/);
+  assert.match(request.input[0].content[0].text, /AZES40-MGR/);
+  assert.doesNotMatch(request.input[0].content[0].text, /1040160-1/);
+  assert.equal(request.text.format.strict, true);
+});
+
 test('response parsing combines cited sources with model sources', () => {
   const result = completeResult();
   const response = {
