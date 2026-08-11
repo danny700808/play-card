@@ -61,8 +61,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260811-product-image-localization-v6/);
-    assert.match(html, /operations-phase1\.js\?v=20260811-product-image-localization-v6/);
+    assert.match(html, /operations-phase1\.css\?v=20260811-product-image-url-import-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260811-product-image-url-import-v1/);
   }
 });
 
@@ -269,6 +269,8 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(caseForm, /蝦皮仍由 EasyStore 發佈/);
   assert.match(caseForm, /商品網址（可不填）/);
   assert.match(caseForm, /productReferenceImageUpload/);
+  assert.match(caseForm, /從網址／型號自動找商品圖/);
+  assert.match(caseForm, /product-source-images-import/);
   assert.match(caseForm, /productReferenceImageSelectorHtml/);
   assert.match(caseForm, /AI 批次轉成繁體介紹圖/);
   assert.match(caseForm, /一張原圖會產生一張繁體版/);
@@ -301,12 +303,15 @@ test('AI listing completion runs only after the user presses the button and neve
 
 test('listing case supports manager-only image upload and a truthful publish preparation job', () => {
   const uploader = functionBody(engine, 'uploadProductReferenceImages');
+  const urlImporter = functionBody(engine, 'importProductListingImagesFromUrls');
   const generator = functionBody(engine, 'generateProductListingImage');
   const publisher = functionBody(engine, 'prepareProductListingPublish');
   const storageRules = fs.readFileSync('storage.rules', 'utf8');
 
   assert.match(hub, /firebase-storage-compat\.js/);
   assert.match(uploader, /requireEasyStoreManagerAuth/);
+  assert.match(urlImporter, /importProductListingImages/);
+  assert.match(urlImporter, /requireEasyStoreManagerAuth/);
   assert.match(uploader, /ops-product-listing-cases/);
   assert.match(uploader, /image\/jpeg/);
   assert.match(storageRules, /ops-product-listing-cases/);
