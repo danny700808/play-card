@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+const fs = require('node:fs');
 
 const originalLoad = Module._load;
 Module._load = function mockFirebase(request, parent, isMain) {
@@ -74,4 +75,157 @@ test('each platform reports missing fields instead of pretending to publish', ()
   assert.equal(helpers.overallPublishStatus({ easyStore: { status: 'created' }, momo: { status: 'missing-fields' } }), 'needs-input');
   assert.equal(helpers.overallPublishStatus({ easyStore: { status: 'updated' }, shopee: { status: 'waiting-easystore-sync' } }), 'submitted');
   assert.equal(helpers.overallPublishStatus({ easyStore: { status: 'failed' } }), 'partial-failed');
+});
+
+test('Shopee helper payload maps researched guitar fields and large-item logistics without changing stock', () => {
+  const snapshot = helpers.buildListingSnapshot('guitar-1', {
+    internalSku: '1040160-1', currentStock: 0, easyStorePrice: 14800, brand: '舊資料品牌',
+    model: 'AZES40-PRB', barcode: '4549763289575'
+  }, {
+    researchedProductName: 'Ibanez AZES40-PRB 電吉他',
+    productDescription: '完整商品介紹',
+    listingImageUrls: ['https://example.com/guitar.jpg'],
+    brand: '舊資料品牌', shopeeBrand: 'Ibanez', model: 'AZES40-PRB', color: 'Purist Blue', identityStatus: 'confirmed',
+    shopeeTitle: 'Ibanez AZES40-PRB 電吉他',
+    shopeeCategoryPath: '愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯',
+    shopeeAttributeValues: [
+      { label: 'Body Material', value: 'Poplar', confidence: 'high', note: 'Ibanez 官方規格' },
+      { label: 'Pickup Configuration', value: 'HSS', confidence: 'high', note: 'Ibanez 官方規格' }
+    ],
+    packageLengthCm: 106.7, packageWidthCm: 45.7, packageHeightCm: 10.2, packageWeightKg: 4.2,
+    shippingDecision: 'freight', enabledPlatforms: { easyStoreShopee: true, momo: false, coupang: false }
+  });
+  const payload = helpers.buildShopeeAutofillPayload(snapshot, { productId: '16403950' });
+
+  assert.equal(snapshot.stock, 0);
+  assert.equal(payload.sku, '1040160-1');
+  assert.equal(payload.brand, 'Ibanez');
+  assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);
+  assert.deepEqual(payload.attributes.map((row) => [row.label, row.value]), [
+    ['Body Material', 'Poplar'], ['Pickup Configuration', 'HSS']
+  ]);
+  assert.equal(payload.logistics.packageTotalCm, 162.6);
+  assert.deepEqual(payload.logistics.methods.find((row) => row.label === '新竹物流'), {
+    label: '新竹物流', enabled: true, option: 'S170', sellerPays: false
+  });
+  assert.equal(payload.preorder.enabled, false);
+  assert.equal(payload.easyStoreUrl, 'https://admin.easystore.co/products/16403950');
+  assert.match(payload.nonce, /^[a-f0-9]{32}$/);
+  assert.equal(Object.hasOwn(payload, 'costPrice'), false);
+});
+
+test('Shopee helper leaves Hsinchu Logistics off when package limits are incomplete or exceeded', () => {
+  const missing = helpers.buildShopeeLogistics({ shippingDecision: 'freight', packageLengthCm: 100, packageWidthCm: 40 });
+  assert.equal(missing.methods.find((row) => row.label === '新竹物流').enabled, false);
+  assert.equal(missing.requiresConfirmation, true);
+
+  const tooHeavy = helpers.buildShopeeLogistics({
+    shippingDecision: 'freight', packageLengthCm: 100, packageWidthCm: 40, packageHeightCm: 20, packageWeightKg: 21
+  });
+  assert.equal(tooHeavy.methods.find((row) => row.label === '新竹物流').enabled, false);
+  assert.equal(tooHeavy.requiresConfirmation, true);
+});
+
+test('manual shipping choice controls autofill and convenience limits are enforced when measurements are known', () => {
+  const manualConvenience = helpers.buildShopeeLogistics({ shippingDecision: 'convenience' });
+  assert.equal(manualConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, false);
+  assert.equal(manualConvenience.methods.find((row) => row.label === '新竹物流').enabled, false);
+  assert.equal(manualConvenience.packageTotalCm, null);
+  assert.equal(manualConvenience.requiresConfirmation, true);
+
+  const verifiedConvenience = helpers.buildShopeeLogistics({
+    shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30,
+    packageHeightCm: 20, packageWeightKg: 4
+  });
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, true);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '7-ELEVEN').enabled, true);
+  assert.equal(verifiedConvenience.requiresConfirmation, false);
+
+  const oversizedConvenience = helpers.buildShopeeLogistics({
+    shippingDecision: 'convenience', packageLengthCm: 46, packageWidthCm: 30,
+    packageHeightCm: 20, packageWeightKg: 4
+  });
+  assert.equal(oversizedConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, false);
+  assert.equal(oversizedConvenience.requiresConfirmation, true);
+
+  const overweightConvenience = helpers.buildShopeeLogistics({
+    shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30,
+    packageHeightCm: 20, packageWeightKg: 5.1
+  });
+  assert.equal(overweightConvenience.methods.find((row) => row.label === '7-ELEVEN').enabled, false);
+  assert.equal(overweightConvenience.requiresConfirmation, true);
+
+  const manualHome = helpers.buildShopeeLogistics({
+    shippingDecision: 'home', packageLengthCm: 106.7, packageWidthCm: 45.7,
+    packageHeightCm: 10.2, packageWeightKg: 4.2
+  });
+  assert.equal(manualHome.methods.find((row) => row.label === '新竹物流').enabled, false);
+  assert.equal(manualHome.requiresConfirmation, true);
+});
+
+test('Shopee persistence summary never stores one-time autofill handoff secrets', () => {
+  const platforms = {
+    easyStore: {
+      status: 'created', message: 'EasyStore 商品已建立。', productId: '16403950', variantIds: ['v1']
+    },
+    shopee: {
+      status: 'waiting-easystore-sync', message: '可啟動蝦皮助手。',
+      autofillPayload: {
+        nonce: '0123456789abcdef0123456789abcdef',
+        createdAt: 1800000000000,
+        expiresAt: 1800001800000,
+        easyStoreProductId: '16403950',
+        sku: '1040160-1'
+      }
+    },
+    momo: {
+      status: 'missing-fields', message: '請先補資料。', missingFields: ['MOMO 分類'], queueId: 'queue-1'
+    }
+  };
+  const stored = helpers.summarizePlatformsForStorage(platforms);
+
+  assert.deepEqual(stored, {
+    easyStore: { status: 'created', message: 'EasyStore 商品已建立。' },
+    shopee: { status: 'waiting-easystore-sync', message: '可啟動蝦皮助手。' },
+    momo: { status: 'missing-fields', message: '請先補資料。', missingFields: ['MOMO 分類'], queueId: 'queue-1' }
+  });
+  assert.doesNotMatch(JSON.stringify(stored), /autofillPayload|nonce|createdAt|expiresAt|16403950|1040160-1/);
+  assert.equal(platforms.shopee.autofillPayload.nonce, '0123456789abcdef0123456789abcdef');
+
+  const source = fs.readFileSync('functions/productListingPublish.js', 'utf8');
+  assert.match(source, /const platformsForStorage = summarizePlatformsForStorage\(platforms\)/);
+  assert.match(source, /jobRef\.set\(\{ status, platforms: platformsForStorage,/);
+  assert.match(source, /publishState: \{ jobId, status, platforms: platformsForStorage,/);
+  assert.match(source, /return \{ ok:[\s\S]*status, platforms \};/);
+  assert.match(source, /updatedBy: '商品上架', schemaVersion: 8/);
+  assert.match(source, /version: '2026\.08\.12-shopee-autofill-v1'/);
+  assert.doesNotMatch(source, /updatedBy: '商品上架', schemaVersion: 7/);
+});
+
+test('Shopee autofill accepts explicit manual confirmation while unresolved identity stays blocked', () => {
+  assert.equal(helpers.identityAllowsShopeeAutofill('confirmed'), true);
+  assert.equal(helpers.identityAllowsShopeeAutofill('possible'), true);
+  assert.equal(helpers.identityAllowsShopeeAutofill('conflict'), false);
+  assert.equal(helpers.identityAllowsShopeeAutofill('conflict', true), true);
+  assert.equal(helpers.identityAllowsShopeeAutofill('not_found', true), true);
+  assert.equal(helpers.identityAllowsShopeeAutofill('conflict', false), false);
+  assert.equal(helpers.identityAllowsShopeeAutofill('not_found'), false);
+  assert.equal(helpers.identityAllowsShopeeAutofill(''), false);
+});
+
+test('listing snapshot keeps the manual identity confirmation audit fields', () => {
+  const confirmedAt = { seconds: 1800000000, nanoseconds: 0 };
+  const snapshot = helpers.buildListingSnapshot('guitar-2', { internalSku: 'GUITAR-2' }, {
+    identityStatus: 'conflict',
+    identityManualConfirmed: true,
+    identityManualConfirmedAt: confirmedAt,
+    identityManualConfirmedBy: 'manager@example.com',
+    identityManualConfirmationNote: '已核對型號、顏色與照片。'
+  });
+
+  assert.equal(snapshot.identityStatus, 'conflict');
+  assert.equal(snapshot.identityManualConfirmed, true);
+  assert.equal(snapshot.identityManualConfirmedAt, confirmedAt);
+  assert.equal(snapshot.identityManualConfirmedBy, 'manager@example.com');
+  assert.equal(snapshot.identityManualConfirmationNote, '已核對型號、顏色與照片。');
 });
