@@ -61,7 +61,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.js\?v=20260811-product-ai-auth-v2/);
+    assert.match(html, /operations-phase1\.js\?v=20260811-product-listing-case-v4/);
   }
 });
 
@@ -264,6 +264,14 @@ test('listing research is a lazy per-product case and no longer part of the prod
   assert.match(saveCase, /COLLECTIONS\.listingCases\)\.doc\(id\)/);
   assert.match(saveCase, /priceSnapshot/);
   assert.match(caseForm, /蝦皮仍由 EasyStore 發佈/);
+  assert.match(caseForm, /供應商／淘寶／原廠參考網址/);
+  assert.match(caseForm, /productReferenceImageUpload/);
+  assert.match(caseForm, /imageGenerationInstructions/);
+  assert.match(caseForm, /product-ai-image-generate/);
+  assert.match(caseForm, /AI 候選圖不會自動上架/);
+  assert.match(caseForm, /commonContentDecision/);
+  assert.match(caseForm, /momoHtml/);
+  assert.match(caseForm, /coupangDescriptionHtml/);
 });
 
 test('AI research runs only for the opened listing case and never writes the product master', () => {
@@ -280,8 +288,31 @@ test('AI research runs only for the opened listing case and never writes the pro
   assert.match(autoCheck, /aiResearchStatus/);
   assert.match(autoCheck, /productResearchStatus\)!=='not-searched'/);
   assert.match(engine, /skipAutoResearch/);
-  assert.match(engine, /只補空白欄位，不會改商品主檔或直接改蝦皮/);
+  assert.match(engine, /不覆寫 5,701 筆原商品主檔/);
+  assert.match(engine, /SKU 只做內部追蹤，AI 不拿它辨識商品/);
   assert.doesNotMatch(engine, /OPENAI_API_KEY|api\.openai\.com/);
+});
+
+test('listing case supports manager-only image upload and a truthful publish preparation job', () => {
+  const uploader = functionBody(engine, 'uploadProductReferenceImages');
+  const generator = functionBody(engine, 'generateProductListingImage');
+  const publisher = functionBody(engine, 'prepareProductListingPublish');
+  const storageRules = fs.readFileSync('storage.rules', 'utf8');
+
+  assert.match(hub, /firebase-storage-compat\.js/);
+  assert.match(uploader, /requireEasyStoreManagerAuth/);
+  assert.match(uploader, /ops-product-listing-cases/);
+  assert.match(uploader, /image\/jpeg/);
+  assert.match(storageRules, /ops-product-listing-cases/);
+  assert.match(storageRules, /isManagerAuth/);
+  assert.match(storageRules, /generated/);
+  assert.match(generator, /requireEasyStoreManagerAuth/);
+  assert.match(generator, /generateProductListingImage/);
+  assert.match(generator, /identityDecision/);
+  assert.match(publisher, /type:'productListingPublish'/);
+  assert.match(publisher, /dryRun:true/);
+  assert.match(publisher, /status:'prepared'/);
+  assert.doesNotMatch(publisher, /status:'published'/);
 });
 
 test('variant-first product images are retained in the core renderer', () => {

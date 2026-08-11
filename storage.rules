@@ -2,6 +2,38 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function isManagerAuth() {
+      return request.auth != null && (
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        ('manager' in request.auth.token && request.auth.token.manager == true) ||
+        ('owner' in request.auth.token && request.auth.token.owner == true) ||
+        ('role' in request.auth.token && request.auth.token.role in ['admin', 'manager', 'owner', '主管', '管理者']) ||
+        ('userRole' in request.auth.token && request.auth.token.userRole in ['admin', 'manager', 'owner', '主管', '管理者']) ||
+        ('permissionRole' in request.auth.token && request.auth.token.permissionRole in ['admin', 'manager', 'owner', '主管', '管理者']) ||
+        ('email' in request.auth.token && request.auth.token.email == 'danny700808@gmail.com')
+      );
+    }
+
+    // 商品上架案件參考圖：只有管理者可上傳；下載網址供 AI 研究與案件預覽使用。
+    match /ops-product-listing-cases/{productId}/references/{fileName} {
+      allow read: if true;
+      allow create, update: if isManagerAuth()
+        && request.resource != null
+        && request.resource.size < 8388608
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if isManagerAuth();
+    }
+
+    // OpenAI 產生的商品圖只先作為候選圖；後端建立後，管理者可在案件中預覽與採用。
+    match /ops-product-listing-cases/{productId}/generated/{fileName} {
+      allow read: if true;
+      allow create, update: if isManagerAuth()
+        && request.resource != null
+        && request.resource.size < 26214400
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if isManagerAuth();
+    }
+
     // 租賃契約附件：保留原本租賃系統使用路徑。
     match /rental-contracts/{contractId}/{fileName=**} {
       allow read: if true;

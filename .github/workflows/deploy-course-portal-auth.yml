@@ -150,7 +150,7 @@ jobs:
           node tests/external-teacher-center.test.js
           (cd functions && node - <<'NODE'
           const deployed = require('.');
-          for (const name of ['coursePortalTeacherSaveProfileDraft','coursePortalTeacherContractSession','coursePortalTeacherSubmitContract','coursePortalAdminSaveTeacherSubjects','coursePortalAdminSaveSubjectCatalog','coursePortalAdminSaveFeePlan','coursePortalAdminMapSubjectSuggestion','personDataAdminInventory','personDataAdminDetail','personDataAdminAction','personDataAdminContractInventory','personDataAdminContractDetail','personDataAdminContractAction','personDataAdminProfileChangeInventory','personDataAdminProfileChangeAction','employeeSecureLogin','employeeChangePassword','employeeForgotPassword','sendGmailTestEmail','syncEasyStoreCatalog','researchProductListingCase','externalTeacherCreateBindCode','externalTeacherListContractTemplate','externalTeacherSaveContractTemplate','externalTeacherListContracts','externalTeacherWork','sendNotificationQueueOnCreate','flushNotificationQueue']) {
+          for (const name of ['coursePortalTeacherSaveProfileDraft','coursePortalTeacherContractSession','coursePortalTeacherSubmitContract','coursePortalAdminSaveTeacherSubjects','coursePortalAdminSaveSubjectCatalog','coursePortalAdminSaveFeePlan','coursePortalAdminMapSubjectSuggestion','personDataAdminInventory','personDataAdminDetail','personDataAdminAction','personDataAdminContractInventory','personDataAdminContractDetail','personDataAdminContractAction','personDataAdminProfileChangeInventory','personDataAdminProfileChangeAction','employeeSecureLogin','employeeChangePassword','employeeForgotPassword','sendGmailTestEmail','syncEasyStoreCatalog','researchProductListingCase','generateProductListingImage','externalTeacherCreateBindCode','externalTeacherListContractTemplate','externalTeacherSaveContractTemplate','externalTeacherListContracts','externalTeacherWork','sendNotificationQueueOnCreate','flushNotificationQueue']) {
             if (!deployed[name]) throw new Error(`Missing Firebase Function export: ${name}`);
           }
           NODE
@@ -276,7 +276,7 @@ jobs:
         if: steps.openai_secret.outputs.configured == 'true'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
-        run: firebase deploy --project youzi-c1b74 --non-interactive --force --only functions:researchProductListingCase
+        run: firebase deploy --project youzi-c1b74 --non-interactive --force --only functions:researchProductListingCase,functions:generateProductListingImage
 
       - name: Detect an explicit Firestore rules change
         id: firestore_rules

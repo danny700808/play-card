@@ -30,7 +30,10 @@ Module._load = originalLoad;
 
 function completeResult(overrides = {}) {
   return {
+    identityStatus: 'confirmed',
     identifiedProductName: 'JUPITER 音樂書包',
+    identityEvidence: '商品圖片與原廠頁面外觀一致。',
+    identityConflictSummary: null,
     brand: 'JUPITER',
     model: null,
     barcode: null,
@@ -43,7 +46,22 @@ function completeResult(overrides = {}) {
     color: '灰色',
     countryOfOrigin: null,
     warrantyInfo: '無保固',
+    shortDescription: '樂譜與配件收納用書包。',
     commonProductDescription: 'JUPITER 樂器書包，適合收納樂譜與配件。',
+    featureList: '樂譜收納\n附背帶',
+    faqText: 'Q：可放樂譜嗎？\nA：可以。',
+    easyStoreHtml: '<h2>JUPITER 樂器書包</h2><p>適合收納樂譜與配件。</p>',
+    shopeeTitle: 'JUPITER 音樂書包 樂譜收納袋',
+    shopeeDescription: 'JUPITER 樂器書包，適合收納樂譜與配件。',
+    shopeeRequiredNotes: '分類屬性待 EasyStore 發佈時確認。',
+    momoGoodsName: 'JUPITER 音樂書包',
+    momoSlogan: '樂譜與配件收納',
+    momoHtml: '<h2>JUPITER 音樂書包</h2><p>樂譜收納。</p>',
+    momoRequiredNotes: '分類必要屬性待確認。',
+    coupangTitle: 'JUPITER 音樂書包',
+    coupangDescriptionHtml: '<h2>JUPITER 音樂書包</h2><p>樂譜收納。</p>',
+    coupangRequiredNotes: '分類必要屬性待確認。',
+    imagePlan: '1. 白底主圖\n2. 收納空間圖',
     shopeeCategoryPath: '愛好與收藏品 > 樂器與樂器配件 > 管樂器',
     momoCategoryCode: null,
     coupangCategoryCode: null,
@@ -56,6 +74,8 @@ function completeResult(overrides = {}) {
     packageResearchSourceUrl: null,
     packageResearchNote: '未找到原廠外箱尺寸，小型軟袋可保守估算。',
     productResearchSourceUrls: ['https://example.com/jupiter-bag'],
+    fieldEvidence: [{ field: '品牌', sourceUrl: 'https://example.com/jupiter-bag', note: '原廠頁標示 JUPITER', confidence: 'high' }],
+    sourceConflicts: [],
     confidence: 'medium',
     missingFields: ['model', 'barcode'],
     imageEvidenceUsed: true,
@@ -68,17 +88,41 @@ test('OpenAI request uses web search, product images and strict structured outpu
   const context = {
     productId: 'p1', sku: '3800106', name: 'JUPITER 音樂書包', onlineName: '',
     brand: 'JUPITER', model: '', barcode: '', category: '管樂器', variantName: '',
-    productUrl: '', imageUrls: ['https://example.com/one.jpg', 'https://example.com/two.jpg']
+    productUrl: '', referenceUrls: ['https://brand.example/product'], sourceProductDescription: '', researchInstructions: '', imageUrls: ['https://example.com/one.jpg', 'https://example.com/two.jpg']
   };
-  const request = research.buildOpenAIRequest(context, 'gpt-5.4-mini', true);
+  const request = research.buildOpenAIRequest(context, research.DEFAULT_MODEL, true);
 
   assert.deepEqual(request.tools, [{ type: 'web_search' }]);
+  assert.equal(request.model, 'gpt-5.6-sol');
+  assert.deepEqual(request.reasoning, { effort: 'high' });
   assert.equal(request.store, false);
   assert.equal(request.input[0].content.filter((part) => part.type === 'input_image').length, 2);
+  assert.ok(request.input[0].content.filter((part) => part.type === 'input_image').every((part) => part.detail === 'high'));
+  assert.match(request.input[0].content[0].text, /https:\/\/brand\.example\/product/);
+  assert.doesNotMatch(request.input[0].content[0].text, /3800106/);
   assert.equal(request.text.format.type, 'json_schema');
   assert.equal(request.text.format.strict, true);
   assert.equal(request.text.format.schema.additionalProperties, false);
   assert.deepEqual(new Set(request.text.format.schema.required), new Set(Object.keys(request.text.format.schema.properties)));
+});
+
+test('AI candidate image edits real product photos and excludes the internal SKU', () => {
+  const context = { name: 'aNueNue L10 木吉他', sku: '100117-1' };
+  const request = research.buildOpenAIImageRequest(context, {
+    researchedProductName: 'aNueNue L10 木吉他',
+    shortDescription: '41 吋原聲木吉他',
+    featureList: '雲杉面板\n桃花心木側背板',
+    imagePlan: '乾淨白底特色圖',
+    imageGenerationInstructions: '不要放價格'
+  }, ['https://example.com/guitar.jpg'], research.DEFAULT_IMAGE_WORKFLOW_MODEL);
+
+  assert.equal(request.model, 'gpt-5.6');
+  assert.deepEqual(request.tools, [{ type: 'image_generation', action: 'edit' }]);
+  assert.equal(request.input[0].content.filter((part) => part.type === 'input_image').length, 1);
+  assert.equal(request.input[0].content[1].detail, 'high');
+  assert.match(request.input[0].content[0].text, /待人工審核/);
+  assert.doesNotMatch(request.input[0].content[0].text, /100117-1/);
+  assert.equal(research.responseGeneratedImageBase64({ output: [{ type: 'image_generation_call', result: 'YWJj' }] }), 'YWJj');
 });
 
 test('response parsing combines cited sources with model sources', () => {
@@ -95,6 +139,11 @@ test('response parsing combines cited sources with model sources', () => {
     'https://brand.example/product',
     'https://example.com/jupiter-bag'
   ]);
+});
+
+test('platform HTML keeps only the small safe formatting allowlist', () => {
+  const safe = research.sanitizeSafeProductHtml('<h2 class="bad">特色</h2><p onclick="x()">內容<strong>重點</strong></p><script>alert(1)</script><img src=x>');
+  assert.equal(safe, '<h2>特色</h2><p>內容<strong>重點</strong></p>');
 });
 
 test('AI fills blank case fields while preserving manual copy and shipping choices', () => {
@@ -115,6 +164,10 @@ test('AI fills blank case fields while preserving manual copy and shipping choic
 
   assert.equal(merged.update.brand, 'JUPITER');
   assert.equal(merged.update.researchedProductName, 'JUPITER 音樂書包');
+  assert.equal(merged.update.shopeeTitle, 'JUPITER 音樂書包 樂譜收納袋');
+  assert.equal(merged.update.identityStatus, 'confirmed');
+  assert.equal(merged.update.schemaVersion, 3);
+  assert.equal(merged.update.fieldEvidence.length, 1);
   assert.equal(merged.update.sellingPoints, undefined);
   assert.equal(merged.update.shippingDecision, undefined);
   assert.equal(merged.update.packageLengthCm, undefined);
