@@ -9,6 +9,7 @@ const { registerExternalTeacherOnboarding, handleExternalTeacherLineEvent } = re
 const { registerEasyStoreCatalogSync } = require('./easystoreCatalogSync');
 const { registerPlatformOrderSync } = require('./platformOrderSync');
 const { registerProductAiResearch } = require('./productAiResearch');
+const { registerProductListingPublish } = require('./productListingPublish');
 const { registerInjiaoyunManualSync } = require('./injiaoyunManualSync');
 const { registerInjiaoyunEducationPreview } = require('./injiaoyunEducationPreview');
 const { registerInjiaoyunEducationMirror } = require('./injiaoyunEducationMirror');
@@ -29,6 +30,7 @@ registerExternalTeacherOnboarding(exports);
 registerEasyStoreCatalogSync(exports);
 registerPlatformOrderSync(exports);
 registerProductAiResearch(exports);
+registerProductListingPublish(exports);
 registerInjiaoyunManualSync(exports);
 registerInjiaoyunEducationPreview(exports);
 registerInjiaoyunEducationMirror(exports);
