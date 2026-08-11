@@ -28,7 +28,7 @@ const RESEARCH_STRING_FIELDS = [
   'countryOfOrigin', 'warrantyInfo', 'commonProductDescription',
   'identityEvidence', 'identityConflictSummary', 'shortDescription',
   'featureList', 'faqText', 'easyStoreHtml',
-  'shopeeTitle', 'shopeeDescription', 'shopeeRequiredNotes',
+  'shopeeTitle', 'shopeeDescription', 'shopeeRequiredNotes', 'shopeeBrand',
   'momoGoodsName', 'momoSlogan', 'momoHtml', 'momoRequiredNotes',
   'coupangTitle', 'coupangDescriptionHtml', 'coupangRequiredNotes',
   'imagePlan', 'shopeeCategoryPath', 'momoCategoryCode', 'coupangCategoryCode'
@@ -323,6 +323,7 @@ function productResearchSchema() {
       'material', 'color', 'countryOfOrigin', 'warrantyInfo',
       'productDescription', 'shortDescription', 'commonProductDescription', 'featureList', 'faqText',
       'easyStoreHtml', 'shopeeTitle', 'shopeeDescription', 'shopeeRequiredNotes',
+      'shopeeBrand', 'shopeeAttributeValues',
       'momoGoodsName', 'momoSlogan', 'momoHtml', 'momoRequiredNotes',
       'coupangTitle', 'coupangDescriptionHtml', 'coupangRequiredNotes',
       'imagePlan', 'shopeeCategoryPath', 'momoCategoryCode', 'coupangCategoryCode',
@@ -359,6 +360,20 @@ function productResearchSchema() {
       shopeeTitle: nullableText,
       shopeeDescription: nullableText,
       shopeeRequiredNotes: nullableText,
+      shopeeBrand: nullableText,
+      shopeeAttributeValues: {
+        type: 'array', maxItems: 30,
+        items: {
+          type: 'object', additionalProperties: false,
+          required: ['label', 'value', 'confidence', 'note'],
+          properties: {
+            label: { type: 'string' },
+            value: { type: 'string' },
+            confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+            note: nullableText
+          }
+        }
+      },
       momoGoodsName: nullableText,
       momoSlogan: nullableText,
       momoHtml: nullableText,
@@ -424,6 +439,9 @@ function researchPrompt(context) {
     '根據同一份商品事實產生 EasyStore、蝦皮、MOMO 與 Coupang／酷澎內容；相同事實不重複發明，只調整各平台的標題、格式、分類與特殊必填欄位。',
     'EasyStore、MOMO 的 HTML，以及作為 Coupang 轉接來源的格式化內容，都只使用安全的 h2、h3、p、ul、li、strong、br 標籤，不放屬性、script、style、iframe 或外部追蹤碼。蝦皮描述請純文字，不用 HTML。',
     '平台分類只能提供實際查到或合理建議的分類路徑／名稱；未查到正式分類代碼時，不可杜撰代碼，並在對應 requiredNotes 說明待人工選擇。',
+    '另外整理 EasyStore 發佈到蝦皮時可自動填寫的欄位：shopeeBrand 放品牌；shopeeAttributeValues 是陣列，每筆 label 必須盡量使用 EasyStore 畫面顯示的原文欄位名稱，value 使用畫面下拉選單最可能出現的簡短值。',
+    '樂器常見 label 包含 Weight、Warranty Duration、Warranty Type、Accessory Type、Length、Neck Material、Traditional Music Instrument、Guitar Shape、Hand Configuration、Quantity、Quantity per Pack、Body Material、Guitar Type、Pickup Configuration、Fretboard Material、Dimension (L x W x H)、Number of Strings、Item condition、Color。只放與此商品有關且有根據的欄位。',
+    'NCC、BSMI、保固、產地等不可推測；不適用或不確定時不要加入 shopeeAttributeValues。Quantity 與 Quantity per Pack 若為單件商品可填 1；Item condition 只有明確為新品時才填 New。每筆標示 high、medium 或 low，並用 note 簡短寫依據。',
     'imagePlan 是圖片製作與編排指示（主圖、規格圖、特色圖、內容物圖等），不是聲稱圖片已經生成；不得假設使用者有未提供的授權素材。',
     '包裝尺寸必須優先尋找外箱／包裝長寬高與毛重，不要把商品本體尺寸冒充包裝尺寸。',
     '若是明顯可超商寄送的小型商品，但找不到官方包裝尺寸，可用保守估算並將 packageMeasurementMode 設為 estimated；大型樂器不可估成小包裹。',
@@ -948,6 +966,29 @@ function mergeSourceUrls(existing, researched) {
   return result.slice(0, 20);
 }
 
+function normalizeShopeeAttributeValues(value) {
+  const rows = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const result = [];
+  rows.forEach((row) => {
+    const label = clean(row && row.label).slice(0, 120);
+    const fieldValue = clean(row && row.value).slice(0, 300);
+    const confidence = ['high', 'medium', 'low'].includes(clean(row && row.confidence))
+      ? clean(row.confidence) : 'low';
+    if (!label || !fieldValue) return;
+    const key = label.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push({
+      label,
+      value: fieldValue,
+      confidence,
+      note: clean(row && row.note).slice(0, 500) || null
+    });
+  });
+  return result.slice(0, 30);
+}
+
 function fillBlank(update, existing, key, value, filledFields, preservedFields, replaceExisting) {
   const existingValue = clean(existing[key]);
   if (existingValue && !replaceExisting) {
@@ -974,6 +1015,14 @@ function buildResearchUpdate(existingCase, result, meta) {
   const replaceFields = new Set(Array.isArray(meta.replaceFields) ? meta.replaceFields.map(clean).filter(Boolean) : []);
   fillBlank(update, existing, 'researchedProductName', result.identifiedProductName, filledFields, preservedFields, replaceFields.has('researchedProductName'));
   RESEARCH_STRING_FIELDS.forEach((key) => fillBlank(update, existing, key, result[key], filledFields, preservedFields, replaceFields.has(key)));
+  const existingShopeeAttributes = normalizeShopeeAttributeValues(existing.shopeeAttributeValues);
+  const researchedShopeeAttributes = normalizeShopeeAttributeValues(result.shopeeAttributeValues);
+  if (existingShopeeAttributes.length && !replaceFields.has('shopeeAttributeValues')) {
+    if (researchedShopeeAttributes.length) preservedFields.push('shopeeAttributeValues');
+  } else if (researchedShopeeAttributes.length || replaceFields.has('shopeeAttributeValues')) {
+    update.shopeeAttributeValues = researchedShopeeAttributes;
+    filledFields.push('shopeeAttributeValues');
+  }
   update.identityStatus = ['confirmed', 'possible', 'conflict', 'not_found'].includes(clean(result.identityStatus)) ? clean(result.identityStatus) : 'not_found';
   update.fieldEvidence = Array.isArray(result.fieldEvidence) ? result.fieldEvidence : [];
   update.sourceConflicts = Array.isArray(result.sourceConflicts) ? result.sourceConflicts : [];
@@ -1066,7 +1115,7 @@ function buildResearchUpdate(existingCase, result, meta) {
   };
   update.updatedAt = admin.firestore.FieldValue.serverTimestamp();
   update.updatedBy = 'OpenAI 上架整理';
-  update.schemaVersion = 7;
+  update.schemaVersion = 8;
   return { update, ready, filledFields: update.aiResearch.filledFields };
 }
 
@@ -1147,7 +1196,7 @@ function registerProductAiResearch(target) {
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedBy: 'OpenAI 上架整理',
-        schemaVersion: 7
+        schemaVersion: 8
       };
       if (!latestSnap.exists) {
         seed.createdAt = admin.firestore.FieldValue.serverTimestamp();
@@ -1190,7 +1239,7 @@ function registerProductAiResearch(target) {
         summary: `${context.sku || productId}｜${context.name || '未命名商品'}｜補入 ${merged.filledFields.length} 個欄位`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者',
-        version: '2026.08.11-product-listing-ai-v4'
+        version: '2026.08.12-product-listing-ai-v5'
       });
       return {
         ok: true,
@@ -1599,6 +1648,7 @@ module.exports = {
   collectResponseSourceUrls,
   parseResearchResponse,
   sanitizeSafeProductHtml,
+  normalizeShopeeAttributeValues,
   buildResearchUpdate,
   isAllowedManager,
   DEFAULT_MODEL,

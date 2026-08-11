@@ -3,6 +3,7 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
+const crypto = require('crypto');
 
 const EASYSTORE_ACCESS_TOKEN = defineSecret('EASYSTORE_ACCESS_TOKEN');
 const REGION = 'us-central1';
@@ -49,6 +50,132 @@ function normalizeUrls(value, limit = 9) {
     if (url && !result.includes(url)) result.push(url);
   });
   return result.slice(0, limit);
+}
+
+function normalizeShopeeAttributes(value) {
+  const rows = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return rows.map((row) => {
+    const label = clean(row && row.label).slice(0, 120);
+    const fieldValue = clean(row && row.value).slice(0, 300);
+    const confidence = ['high', 'medium', 'low'].includes(clean(row && row.confidence))
+      ? clean(row.confidence) : 'low';
+    if (!label || !fieldValue) return null;
+    const key = label.toLowerCase();
+    if (seen.has(key)) return null;
+    seen.add(key);
+    return { label, value: fieldValue, confidence, note: clean(row && row.note).slice(0, 500) };
+  }).filter(Boolean).slice(0, 30);
+}
+
+function shopeeCategorySegments(value) {
+  return clean(value).split(/\s*(?:>|＞|→|\/|｜)\s*/).map(clean).filter(Boolean).slice(0, 8);
+}
+
+function hsinchuSizeBand(totalCm) {
+  const total = numberOrNull(totalCm);
+  if (total === null || total <= 0 || total > 210) return '';
+  if (total <= 60) return 'S60';
+  if (total <= 90) return 'S90';
+  if (total <= 120) return 'S120';
+  if (total <= 140) return 'S150';
+  if (total <= 160) return 'S160';
+  if (total <= 170) return 'S170';
+  if (total <= 180) return 'S180';
+  if (total <= 190) return 'S190';
+  if (total <= 200) return 'S200';
+  return 'S210';
+}
+
+function buildShopeeLogistics(snapshot) {
+  const dimensions = [snapshot.packageLengthCm, snapshot.packageWidthCm, snapshot.packageHeightCm].map(numberOrNull);
+  const hasCompletePackage = dimensions.every((value) => value !== null && value > 0);
+  const totalCm = hasCompletePackage ? dimensions.reduce((sum, value) => sum + value, 0) : 0;
+  const longestCm = hasCompletePackage ? Math.max(...dimensions) : 0;
+  const weightKg = numberOrNull(snapshot.packageWeightKg);
+  const hasValidWeight = weightKg !== null && weightKg > 0;
+  const decision = clean(snapshot.shippingDecision);
+  const hsinchuBand = hasCompletePackage && longestCm <= 150 && totalCm <= 210
+    && hasValidWeight && weightKg <= 20 ? hsinchuSizeBand(totalCm) : '';
+  const canVerifyConvenience = hasCompletePackage && hasValidWeight;
+  const convenienceFits = canVerifyConvenience && longestCm <= 45 && totalCm <= 105 && weightKg <= 5;
+  const convenience = decision === 'convenience' && convenienceFits;
+  const freight = decision === 'freight';
+  const methods = [
+    { label: '黑貓宅急便', enabled: false },
+    { label: '蝦皮店到店 - 隔日到貨', enabled: false },
+    { label: '蝦皮店到店', enabled: convenience },
+    { label: '7-ELEVEN', enabled: convenience },
+    { label: '新竹物流', enabled: Boolean(freight && hsinchuBand), option: freight ? hsinchuBand : '' },
+    { label: '全家', enabled: convenience },
+    { label: '賣家宅配：大型/超重物品運送', enabled: false },
+    { label: '嘉里快遞', enabled: false },
+    { label: '店到家宅配', enabled: false }
+  ];
+  return {
+    decision,
+    packageTotalCm: hasCompletePackage ? Math.round(totalCm * 100) / 100 : null,
+    methods: methods.map((row) => ({ ...row, sellerPays: false })),
+    requiresConfirmation: !hasCompletePackage || !hasValidWeight || !decision || decision === 'home'
+      || (decision === 'freight' && !hsinchuBand)
+      || (decision === 'convenience' && !convenienceFits)
+  };
+}
+
+function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
+  const easyStoreProductId = clean(easyStoreResult && easyStoreResult.productId);
+  const now = Date.now();
+  return {
+    schemaVersion: 1,
+    nonce: crypto.randomBytes(16).toString('hex'),
+    createdAt: now,
+    expiresAt: now + 30 * 60 * 1000,
+    productId: snapshot.productId,
+    easyStoreProductId,
+    easyStoreUrl: easyStoreProductId ? `https://admin.easystore.co/products/${encodeURIComponent(easyStoreProductId)}` : 'https://admin.easystore.co/',
+    sku: snapshot.sku,
+    title: snapshot.shopeeTitle,
+    categoryPath: shopeeCategorySegments(snapshot.shopeeCategoryPath),
+    brand: snapshot.shopeeBrand || snapshot.brand,
+    attributes: normalizeShopeeAttributes(snapshot.shopeeAttributeValues),
+    package: {
+      lengthCm: snapshot.packageLengthCm,
+      widthCm: snapshot.packageWidthCm,
+      heightCm: snapshot.packageHeightCm,
+      weightKg: snapshot.packageWeightKg
+    },
+    logistics: buildShopeeLogistics(snapshot),
+    preorder: { enabled: false, days: 1 },
+    guard: {
+      brand: snapshot.brand,
+      model: snapshot.model,
+      color: snapshot.color,
+      identityStatus: snapshot.identityStatus
+    }
+  };
+}
+
+function identityAllowsShopeeAutofill(status, manualConfirmed) {
+  return manualConfirmed === true || ['confirmed', 'possible'].includes(clean(status));
+}
+
+function summarizePlatformsForStorage(platforms) {
+  const summary = {};
+  Object.entries(platforms && typeof platforms === 'object' ? platforms : {}).forEach(([platform, raw]) => {
+    if (!raw || typeof raw !== 'object') return;
+    const key = clean(platform).slice(0, 60);
+    if (!key) return;
+    const row = {
+      status: clean(raw.status).slice(0, 80),
+      message: clean(raw.message).slice(0, 800)
+    };
+    if (Array.isArray(raw.missingFields)) {
+      row.missingFields = raw.missingFields.map((value) => clean(value).slice(0, 160)).filter(Boolean).slice(0, 30);
+    }
+    if (clean(raw.queueId)) row.queueId = clean(raw.queueId).slice(0, 200);
+    summary[key] = row;
+  });
+  return summary;
 }
 
 function escapeHtml(value) {
@@ -142,7 +269,17 @@ function buildListingSnapshot(productId, product, listingCase) {
     packageWeightKg: numberOrNull(listingCase.packageWeightKg),
     shippingDecision: clean(listingCase.shippingDecision),
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
+    shopeeDescription: clean(listingCase.shopeeDescription) || description,
+    shopeeRequiredNotes: clean(listingCase.shopeeRequiredNotes),
     shopeeCategoryPath: clean(listingCase.shopeeCategoryPath),
+    shopeeBrand: clean(listingCase.shopeeBrand) || clean(listingCase.brand || product.brand),
+    shopeeAttributeValues: normalizeShopeeAttributes(listingCase.shopeeAttributeValues),
+    identityStatus: clean(listingCase.identityStatus),
+    identityManualConfirmed: listingCase.identityManualConfirmed === true,
+    identityManualConfirmedAt: listingCase.identityManualConfirmedAt || null,
+    identityManualConfirmedBy: clean(listingCase.identityManualConfirmedBy),
+    identityManualConfirmationNote: clean(listingCase.identityManualConfirmationNote),
+    color: clean(listingCase.color || product.color),
     momoGoodsName: clean(listingCase.momoGoodsName) || listingName(product, listingCase),
     momoSlogan: clean(listingCase.momoSlogan),
     momoCategoryCode: clean(listingCase.momoCategoryCode),
@@ -509,9 +646,23 @@ function registerProductListingPublish(target) {
               message: result.action === 'created' ? 'EasyStore 商品已建立。' : 'EasyStore 商品已更新。',
               productId: result.productId, variantIds: result.variantIds
             };
-            platforms.shopee = snapshot.shopeeCategoryPath
-              ? { status: 'waiting-easystore-sync', message: `請在 EasyStore 發佈到蝦皮並確認分類：${snapshot.shopeeCategoryPath}` }
-              : { status: 'action-required', message: '請在 EasyStore 發佈到蝦皮時選擇蝦皮分類與必要屬性。' };
+            const autofillPayload = buildShopeeAutofillPayload(snapshot, result);
+            const identityAllowsAutofill = identityAllowsShopeeAutofill(
+              snapshot.identityStatus,
+              snapshot.identityManualConfirmed
+            );
+            platforms.shopee = snapshot.shopeeCategoryPath && identityAllowsAutofill
+              ? {
+                status: 'waiting-easystore-sync',
+                message: `EasyStore 商品已完成；可啟動蝦皮助手自動填寫：${snapshot.shopeeCategoryPath}`,
+                autofillPayload
+              }
+              : {
+                status: 'action-required',
+                message: !snapshot.shopeeCategoryPath
+                  ? '請先完成蝦皮分類，再啟動自動填寫。'
+                  : '商品型號或顏色尚未確認，請先核對後再送到蝦皮。'
+              };
           } catch (error) {
             platforms.easyStore = { status: 'failed', message: clean(error && error.message).slice(0, 800) || 'EasyStore 上架失敗。' };
             platforms.shopee = { status: 'waiting-easystore', message: 'EasyStore 尚未完成，因此尚未送往蝦皮。' };
@@ -522,18 +673,19 @@ function registerProductListingPublish(target) {
       if (snapshot.enabledMomo) platforms.momo = await queueFixedIpPlatform(db, jobId, 'MOMO', snapshot, momoMissingFields(snapshot));
       if (snapshot.enabledCoupang) platforms.coupang = await queueFixedIpPlatform(db, jobId, 'Coupang', snapshot, coupangMissingFields(snapshot));
       const status = overallPublishStatus(platforms);
+      const platformsForStorage = summarizePlatformsForStorage(platforms);
       await Promise.all([
-        jobRef.set({ status, platforms, updatedAt: admin.firestore.FieldValue.serverTimestamp(), finishedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+        jobRef.set({ status, platforms: platformsForStorage, updatedAt: admin.firestore.FieldValue.serverTimestamp(), finishedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
         caseRef.set({
           caseStatus: status === 'completed' ? 'published' : 'submitted',
-          publishState: { jobId, status, platforms, submittedAt: admin.firestore.FieldValue.serverTimestamp(), submittedBy: createdBy },
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架', schemaVersion: 7
+          publishState: { jobId, status, platforms: platformsForStorage, submittedAt: admin.firestore.FieldValue.serverTimestamp(), submittedBy: createdBy },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架', schemaVersion: 8
         }, { merge: true }),
         db.collection('opsAuditLogs').add({
           action: '確認商品上架', entityType: 'productListingPublish', entityId: jobId,
           summary: `${snapshot.sku || productId}｜${snapshot.title}｜${status}`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy,
-          version: '2026.08.11-product-listing-publish-v1'
+          version: '2026.08.12-shopee-autofill-v1'
         })
       ]);
       lockStatus = status;
@@ -562,6 +714,13 @@ module.exports = {
     productDescriptionToSafeHtml,
     buildListingSnapshot,
     buildEasyStoreProductBody,
+    normalizeShopeeAttributes,
+    shopeeCategorySegments,
+    hsinchuSizeBand,
+    buildShopeeLogistics,
+    buildShopeeAutofillPayload,
+    identityAllowsShopeeAutofill,
+    summarizePlatformsForStorage,
     exactEasyStoreMatches,
     easyStoreMissingFields,
     momoMissingFields,

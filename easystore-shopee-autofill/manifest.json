@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "柚子樂器 EasyStore 蝦皮自動填寫",
+  "version": "0.2.0",
+  "description": "安全接收全通路營運中心的商品資料，並在 EasyStore 蝦皮頁面由使用者確認後自動填寫。",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://danny700808.github.io/play-card/*",
+    "https://admin.easystore.co/products/*",
+    "https://admin.easystore.co/channels/shopee/taiwan/products/sync*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://danny700808.github.io/play-card/*"
+      ],
+      "js": [
+        "helpers.js",
+        "bridge.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://admin.easystore.co/products/*",
+        "https://admin.easystore.co/channels/shopee/taiwan/products/sync*"
+      ],
+      "js": [
+        "helpers.js",
+        "easystore.js"
+      ],
+      "css": [
+        "overlay.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -64,7 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-publish-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260811-product-listing-publish-v1/);
+    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260812-shopee-autofill-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260812-shopee-autofill-v1/);
   }
 });
 
@@ -257,6 +258,8 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(caseForm, /productResearchStatus/);
   assert.match(caseForm, /shopeeCategoryPath/);
   assert.match(caseForm, /productShippingChoiceHtml\(shipping\.decision\)/);
+  assert.match(caseForm, /name="shopeeAttributeValues"/);
+  assert.match(saveCase, /shopeeAttributeValues:normalizeProductShopeeAttributes/);
   assert.match(caseForm, /packageLengthCm/);
 
   assert.match(engine, /listingCases:'opsProductListingCases'/);
@@ -349,6 +352,45 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(productListingPublishSource, /awaiting-store-agent/);
   assert.match(productListingPublishSource, /waiting-easystore-sync/);
   assert.match(firestoreRules, /'opsProductListingQueue'/);
+});
+
+test('listing review honors manager identity and brand decisions and gates logistics truthfully', () => {
+  const normalizer = functionBody(engine, 'normalizeProductListingCase');
+  const formRenderer = functionBody(engine, 'productListingCaseFormHtml');
+  const identityRenderer = functionBody(engine, 'productIdentityReviewHtml');
+  const saver = functionBody(engine, 'saveProductListingCase');
+  const drafter = functionBody(engine, 'productListingDraftFromForm');
+  const logistics = functionBody(engine, 'productListingShopeeLogisticsReady');
+  const readiness = functionBody(engine, 'productListingReadiness');
+  const preview = functionBody(engine, 'openProductListingPreview');
+  const resultRenderer = functionBody(engine, 'openProductListingPublishResult');
+  const savedPublisher = functionBody(engine, 'publishSavedProductListingCase');
+  const publisher = functionBody(engine, 'prepareProductListingPublish');
+
+  assert.match(normalizer, /identityManualConfirmed/);
+  assert.match(normalizer, /identityManualConfirmedAt/);
+  assert.match(normalizer, /identityManualConfirmedBy/);
+  assert.match(normalizer, /identityManualConfirmationNote/);
+  assert.match(formRenderer, /productIdentityReviewHtml/);
+  assert.match(identityRenderer, /我已人工核對，確認是同一件商品/);
+  assert.match(saver, /shopeeBrand:clean\(data\.get\('shopeeBrand'\)\)\|\|clean\(data\.get\('brand'\)\)/);
+  assert.match(saver, /identityManualConfirmedAt=serverTimestamp\(\)/);
+  assert.match(saver, /writeAudit\('人工確認同一商品'/);
+  assert.match(saver, /productPackageFromFormData\(data,false\)/);
+  assert.match(drafter, /productPackageFromFormData\(data,false\)/);
+  assert.match(logistics, /longest<=45&&total<=105&&weight<=5/);
+  assert.match(logistics, /shippingDecision==='home'\)return true/);
+  assert.match(logistics, /longest<=150&&total<=210&&weight<=20/);
+  assert.match(readiness, /shopeeLogisticsReady/);
+  assert.match(readiness, /shopeeLogisticsManualConfirmationRequired/);
+  assert.match(preview, /一般宅配可以先送出/);
+  assert.match(preview, /蝦皮實際物流尚未自動選好/);
+  assert.match(preview, /可送出・待選物流/);
+  assert.match(preview, /請先補齊再上架/);
+  assert.match(resultRenderer, /一般宅配不會自動選擇蝦皮物流/);
+  assert.match(savedPublisher, /shippingDecision:clean\(raw\.shippingDecision\)/);
+  assert.match(publisher, /if\(!readiness\.all\)/);
+  assert.match(publisher, /尚未送出上架/);
 });
 
 test('variant-first product images are retained in the core renderer', () => {

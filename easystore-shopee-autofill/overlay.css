@@ -1,0 +1,134 @@
+#youzi-shopee-autofill-overlay {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483647;
+  box-sizing: border-box;
+  width: min(390px, calc(100vw - 28px));
+  max-height: min(620px, calc(100vh - 28px));
+  overflow: auto;
+  border: 1px solid #cfe0d8;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 16px 44px rgba(24, 53, 43, 0.2);
+  color: #18352b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#youzi-shopee-autofill-overlay * {
+  box-sizing: border-box;
+}
+
+.youzi-autofill__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #edf3f0;
+}
+
+.youzi-autofill__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 750;
+}
+
+.youzi-autofill__subtitle {
+  margin-top: 3px;
+  color: #60756d;
+  font-size: 12px;
+}
+
+.youzi-autofill__close {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: #f0f5f3;
+  color: #35574b;
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 9px;
+}
+
+.youzi-autofill__body {
+  padding: 14px 18px 18px;
+}
+
+.youzi-autofill__identity {
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: #f4f9f6;
+  padding: 10px 12px;
+}
+
+.youzi-autofill__notice {
+  margin: 10px 0;
+  border-radius: 10px;
+  background: #fff8e5;
+  color: #725712;
+  padding: 9px 11px;
+}
+
+.youzi-autofill__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.youzi-autofill__start {
+  width: 100%;
+  appearance: none;
+  border: 0;
+  border-radius: 11px;
+  background: #0b7a4b;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+  padding: 11px 14px;
+}
+
+.youzi-autofill__start:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.youzi-autofill__status {
+  margin-top: 12px;
+  color: #3d5b50;
+}
+
+.youzi-autofill__counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.youzi-autofill__count {
+  border-radius: 9px;
+  background: #f5f7f6;
+  padding: 7px 9px;
+}
+
+.youzi-autofill__report {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.youzi-autofill__report li {
+  border-top: 1px solid #edf3f0;
+  padding: 7px 0;
+}
+
+@media (max-width: 540px) {
+  #youzi-shopee-autofill-overlay {
+    right: 10px;
+    bottom: 10px;
+    width: calc(100vw - 20px);
+  }
+}

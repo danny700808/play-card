@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+const fs = require('node:fs');
 
 const originalLoad = Module._load;
 const serverTimestamp = Object.freeze({ __serverTimestamp: true });
@@ -55,6 +56,12 @@ function completeResult(overrides = {}) {
     shopeeTitle: 'JUPITER 音樂書包 樂譜收納袋',
     shopeeDescription: 'JUPITER 樂器書包，適合收納樂譜與配件。',
     shopeeRequiredNotes: '分類屬性待 EasyStore 發佈時確認。',
+    shopeeBrand: 'JUPITER',
+    shopeeAttributeValues: [
+      { label: 'Quantity', value: '1', confidence: 'high', note: '單件販售' },
+      { label: 'Quantity per Pack', value: '1', confidence: 'high', note: '單件販售' },
+      { label: 'Item condition', value: 'New', confidence: 'high', note: '新品上架' }
+    ],
     momoGoodsName: 'JUPITER 音樂書包',
     momoSlogan: '樂譜與配件收納',
     momoHtml: '<h2>JUPITER 音樂書包</h2><p>樂譜收納。</p>',
@@ -227,7 +234,9 @@ test('AI fills blank case fields while preserving manual copy and shipping choic
   assert.equal(merged.update.researchedProductName, 'JUPITER 音樂書包');
   assert.equal(merged.update.shopeeTitle, 'JUPITER 音樂書包 樂譜收納袋');
   assert.equal(merged.update.identityStatus, 'confirmed');
-  assert.equal(merged.update.schemaVersion, 7);
+  assert.equal(merged.update.schemaVersion, 8);
+  assert.equal(merged.update.shopeeBrand, 'JUPITER');
+  assert.equal(merged.update.shopeeAttributeValues.length, 3);
   assert.equal(merged.update.fieldEvidence.length, 1);
   assert.equal(merged.update.sellingPoints, undefined);
   assert.equal(merged.update.shippingDecision, undefined);
@@ -238,6 +247,13 @@ test('AI fills blank case fields while preserving manual copy and shipping choic
   ]);
   assert.ok(merged.update.aiResearch.preservedManualFields.includes('sellingPoints'));
   assert.ok(merged.update.aiResearch.preservedManualFields.includes('shippingDecision'));
+});
+
+test('AI research writes the current listing-case schema and audit version', () => {
+  const source = fs.readFileSync('functions/productAiResearch.js', 'utf8');
+  assert.match(source, /updatedBy: 'OpenAI 上架整理',[\s\S]*schemaVersion: 8/);
+  assert.match(source, /version: '2026\.08\.12-product-listing-ai-v5'/);
+  assert.doesNotMatch(source, /updatedBy: 'OpenAI 上架整理',[\s\S]*schemaVersion: 7/);
 });
 
 test('explicit refresh replaces only fields previously filled by AI', () => {
@@ -256,6 +272,28 @@ test('explicit refresh replaces only fields previously filled by AI', () => {
   assert.match(merged.update.productDescription, /商品特色/);
   assert.equal(merged.update.sellingPoints, undefined);
   assert.ok(merged.update.aiResearch.preservedManualFields.includes('sellingPoints'));
+});
+
+test('Shopee attribute research is normalized and never overwrites manual values', () => {
+  const manual = [{ label: 'Warranty Type', value: 'Supplier Warranty', confidence: 'high', note: '店長設定' }];
+  const first = research.buildResearchUpdate({ shopeeAttributeValues: manual }, completeResult(), {
+    requestId: 'attrs-1', responseId: 'resp-1', model: 'gpt-5.6-sol', imageCount: 0, inputFingerprint: 'attrs'
+  });
+  assert.equal(first.update.shopeeAttributeValues, undefined);
+  assert.ok(first.update.aiResearch.preservedManualFields.includes('shopeeAttributeValues'));
+
+  const refreshed = research.buildResearchUpdate({ shopeeAttributeValues: manual }, completeResult({
+    shopeeAttributeValues: [
+      { label: ' Pickup Configuration ', value: ' HSS ', confidence: 'high', note: '原廠規格' },
+      { label: 'pickup configuration', value: 'SSS', confidence: 'low', note: '重複資料' }
+    ]
+  }), {
+    requestId: 'attrs-2', responseId: 'resp-2', model: 'gpt-5.6-sol', imageCount: 0,
+    inputFingerprint: 'attrs-refresh', replaceFields: ['shopeeAttributeValues']
+  });
+  assert.deepEqual(refreshed.update.shopeeAttributeValues, [
+    { label: 'Pickup Configuration', value: 'HSS', confidence: 'high', note: '原廠規格' }
+  ]);
 });
 
 test('checked source images are the only image evidence used during refresh', () => {
