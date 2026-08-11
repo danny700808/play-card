@@ -40,6 +40,7 @@ function completeResult(overrides = {}) {
     alternateNames: '樂器書包、譜袋',
     searchKeywords: 'JUPITER 音樂書包、管樂譜袋',
     sellingPoints: '可收納樂譜與配件',
+    productDescription: 'JUPITER 音樂書包適合日常練習與演出攜帶，能整齊收納樂譜與常用配件。\n\n商品特色\n1. 可收納樂譜\n2. 配件分層整理\n3. 附可調式背帶\n4. 輕巧好攜帶\n5. 適合日常練習\n6. 管樂學習用品整理\n\n商品規格\n品牌：JUPITER\n用途：樂譜與配件收納\n顏色：灰色',
     specificationText: '用途：樂譜收納\n品牌：JUPITER',
     includedItems: '書包本體、背帶',
     material: '聚酯纖維',
@@ -101,8 +102,9 @@ test('OpenAI request uses web search, product images and strict structured outpu
   assert.match(request.input[0].content[0].text, /https:\/\/brand\.example\/product/);
   assert.doesNotMatch(request.input[0].content[0].text, /3800106/);
   assert.match(request.input[0].content[0].text, /任務是把「這一件商品」整理成可直接檢查、修改與上架的資料/);
-  assert.match(request.input[0].content[0].text, /shortDescription 寫成 2～4 句自然、活潑、面向顧客的介紹/);
-  assert.match(request.input[0].content[0].text, /featureList 必須寫 6～10 點/);
+  assert.match(request.input[0].content[0].text, /productDescription 是店家唯一需要檢查與編輯的完整商品介紹/);
+  assert.match(request.input[0].content[0].text, /先用 2～4 句自然、活潑的繁體中文介紹商品/);
+  assert.match(request.input[0].content[0].text, /再列 6～10 點/);
   assert.doesNotMatch(request.input[0].content[0].text, /這是完整研究|完成下列四個階段/);
   assert.equal(request.text.format.type, 'json_schema');
   assert.equal(request.text.format.strict, true);
@@ -114,6 +116,7 @@ test('AI product image workflow localizes a source image without redesigning it'
   const context = { name: 'aNueNue L10 木吉他', sku: '100117-1' };
   const request = research.buildOpenAIImageRequest(context, {
     researchedProductName: 'aNueNue L10 木吉他',
+    productDescription: 'aNueNue L10 41 吋原聲木吉他。\n\n商品特色\n1. 雲杉面板\n2. 桃花心木側背板\n\n商品規格\n尺寸：41 吋',
     shortDescription: '41 吋原聲木吉他',
     featureList: '雲杉面板\n桃花心木側背板',
     imagePlan: '乾淨白底特色圖',
@@ -224,7 +227,7 @@ test('AI fills blank case fields while preserving manual copy and shipping choic
   assert.equal(merged.update.researchedProductName, 'JUPITER 音樂書包');
   assert.equal(merged.update.shopeeTitle, 'JUPITER 音樂書包 樂譜收納袋');
   assert.equal(merged.update.identityStatus, 'confirmed');
-  assert.equal(merged.update.schemaVersion, 4);
+  assert.equal(merged.update.schemaVersion, 7);
   assert.equal(merged.update.fieldEvidence.length, 1);
   assert.equal(merged.update.sellingPoints, undefined);
   assert.equal(merged.update.shippingDecision, undefined);
@@ -240,19 +243,32 @@ test('AI fills blank case fields while preserving manual copy and shipping choic
 test('explicit refresh replaces only fields previously filled by AI', () => {
   const existing = {
     researchedProductName: '舊 AI 名稱',
-    featureList: '舊 AI 特色',
+    productDescription: '舊 AI 完整介紹',
     sellingPoints: '店長人工內容'
   };
   const merged = research.buildResearchUpdate(existing, completeResult(), {
     requestId: 'req-refresh', responseId: 'resp-refresh', model: 'gpt-5.6-sol',
     imageCount: 1, inputFingerprint: 'refresh',
-    replaceFields: ['researchedProductName', 'featureList']
+    replaceFields: ['researchedProductName', 'productDescription']
   });
 
   assert.equal(merged.update.researchedProductName, 'JUPITER 音樂書包');
-  assert.match(merged.update.featureList, /^1\. /);
+  assert.match(merged.update.productDescription, /商品特色/);
   assert.equal(merged.update.sellingPoints, undefined);
   assert.ok(merged.update.aiResearch.preservedManualFields.includes('sellingPoints'));
+});
+
+test('checked source images are the only image evidence used during refresh', () => {
+  const context = research.buildProductContext('p1', {
+    internalName: 'Ibanez AZES40-MGR',
+    imageUrls: ['https://example.com/master.jpg']
+  }, {
+    referenceImageUrls: ['https://example.com/one.jpg', 'https://example.com/two.jpg'],
+    listingImageUrls: ['https://example.com/old-listing.jpg'],
+    selectedReferenceImageUrls: ['https://example.com/two.jpg']
+  });
+
+  assert.deepEqual(context.imageUrls, ['https://example.com/two.jpg']);
 });
 
 test('small convenience-store products receive safe estimates only when no package size exists', () => {

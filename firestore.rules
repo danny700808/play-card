@@ -127,7 +127,8 @@ service cloud.firestore {
         'opsPlatformOrders',
         'opsPlatformSyncRuns',
         'opsPlatformSyncRequests',
-        'opsPlatformInventoryQueue'
+        'opsPlatformInventoryQueue',
+        'opsProductListingQueue'
       ];
     }
 

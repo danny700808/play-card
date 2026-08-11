@@ -10,6 +10,7 @@ const portal = fs.readFileSync('portal.html', 'utf8');
 const hub = fs.readFileSync('operations-hub.html', 'utf8');
 const firestoreRules = fs.readFileSync('firestore.rules', 'utf8');
 const productAiResearchSource = fs.readFileSync('functions/productAiResearch.js', 'utf8');
+const productListingPublishSource = fs.readFileSync('functions/productListingPublish.js', 'utf8');
 
 const searchFields = [
   ['posSearch', 'posSearchResults'],
@@ -62,8 +63,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-compact-v2/);
-    assert.match(html, /operations-phase1\.js\?v=20260811-product-listing-compact-v2/);
+    assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-publish-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260811-product-listing-publish-v1/);
   }
 });
 
@@ -273,22 +274,22 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(caseForm, /從網址／型號自動找商品圖/);
   assert.match(caseForm, /product-source-images-import/);
   assert.match(caseForm, /productReferenceImageSelectorHtml/);
-  assert.match(caseForm, /AI 轉成繁體並加入上架圖/);
+  assert.match(caseForm, /只重新製作勾選圖片/);
   assert.match(caseForm, /imageGenerationInstructions/);
   assert.match(caseForm, /product-ai-image-generate/);
-  assert.match(caseForm, /AI 幫我完成上架資料/);
-  assert.match(caseForm, /活潑商品介紹/);
+  assert.match(caseForm, /AI 完成文字與勾選圖片/);
+  assert.match(caseForm, /完整商品介紹/);
   assert.match(caseForm, /6～10 點特色/);
   assert.match(caseForm, /商品規格/);
+  assert.match(caseForm, /name="productDescription"/);
   assert.match(caseForm, /<textarea name="sellingPoints" hidden>/);
   assert.match(caseForm, /<textarea name="commonProductDescription" hidden>/);
-  assert.doesNotMatch(caseForm, /一句商品賣點|完整商品介紹|先把你有的資料放進來|有網址或照片就放進來|ops-detail-no-image/);
+  assert.doesNotMatch(caseForm, /一句商品賣點|活潑商品介紹|勾選的原圖直接上架|先把你有的資料放進來|有網址或照片就放進來|ops-detail-no-image/);
   assert.doesNotMatch(caseForm, /完整研究|身分確認依據|版本／來源衝突|實際採用的研究來源/);
   assert.match(caseForm, /commonContentDecision/);
   assert.match(caseForm, /momoHtml/);
   assert.match(caseForm, /coupangDescriptionHtml/);
-  assert.match(functionBody(engine, 'productResearchReady'), /draft\.shortDescription/);
-  assert.doesNotMatch(functionBody(engine, 'productResearchReady'), /draft\.commonProductDescription/);
+  assert.match(functionBody(engine, 'productResearchReady'), /draft\.productDescription/);
 });
 
 test('AI listing completion runs only after the user presses the button and never writes the product master', () => {
@@ -299,19 +300,22 @@ test('AI listing completion runs only after the user presses the button and neve
   assert.match(engine, /data-action="product-ai-research-run"/);
   assert.match(engine, /researchProductListingCase/);
   assert.match(runner, /productId:id/);
+  assert.match(runner, /requestProductListingImageGeneration/);
+  assert.match(runner, /selectedReferenceImageUrls/);
   assert.match(runner, /COLLECTIONS\.listingCases|openProductListingCase/);
   assert.doesNotMatch(runner, /COLLECTIONS\.products|opsInternalProducts/);
   assert.doesNotMatch(saveProduct, /aiResearch|researchProductListingCase/);
   assert.doesNotMatch(engine, /function shouldAutoResearchProductListingCase/);
   assert.doesNotMatch(openCase, /runProductAiResearch/);
-  assert.match(engine, /AI 幫我完成上架資料/);
+  assert.match(engine, /AI 完成文字與勾選圖片/);
   assert.doesNotMatch(engine, /OPENAI_API_KEY|api\.openai\.com/);
 });
 
-test('listing case supports manager-only image upload and a truthful publish preparation job', () => {
+test('listing case supports manager-only image processing and a truthful actual publish call', () => {
   const uploader = functionBody(engine, 'uploadProductReferenceImages');
   const urlImporter = functionBody(engine, 'importProductListingImagesFromUrls');
   const generator = functionBody(engine, 'generateProductListingImage');
+  const generationRequester = functionBody(engine, 'requestProductListingImageGeneration');
   const publisher = functionBody(engine, 'prepareProductListingPublish');
   const storageRules = fs.readFileSync('storage.rules', 'utf8');
 
@@ -325,18 +329,26 @@ test('listing case supports manager-only image upload and a truthful publish pre
   assert.match(storageRules, /isManagerAuth/);
   assert.match(storageRules, /generated/);
   assert.match(generator, /requireEasyStoreManagerAuth/);
-  assert.match(generator, /generateProductListingImage/);
+  assert.match(generator, /requestProductListingImageGeneration/);
+  assert.match(generationRequester, /generateProductListingImage/);
   assert.match(generator, /selectedReferenceImageUrls/);
-  assert.match(generator, /imageUrls:reference/);
+  assert.match(generationRequester, /imageUrls:reference/);
   assert.match(productAiResearchSource, /listingImageUrls: listingImageUrls\.slice\(0, 10\)/);
   assert.match(productAiResearchSource, /status: 'ready'/);
   assert.match(productAiResearchSource, /已加入準備上架/);
   assert.match(uploader, /slice\(0,10\)/);
   assert.doesNotMatch(generator, /identityDecision|identityStatus/);
-  assert.match(publisher, /type:'productListingPublish'/);
-  assert.match(publisher, /dryRun:true/);
-  assert.match(publisher, /status:'prepared'/);
-  assert.doesNotMatch(publisher, /status:'published'/);
+  assert.match(publisher, /confirmAndPublishProductListingCase/);
+  assert.doesNotMatch(publisher, /dryRun:true|status:'prepared'/);
+  assert.match(functionBody(engine, 'confirmAndPublishProductListingCase'), /publishProductListingCase/);
+  assert.match(productListingPublishSource, /dryRun: false/);
+  assert.match(productListingPublishSource, /upsertEasyStoreProduct/);
+  assert.match(productListingPublishSource, /findEasyStoreMappingInProduct/);
+  assert.match(productListingPublishSource, /acquirePublishLock/);
+  assert.match(productListingPublishSource, /正在上架，請等待目前工作完成/);
+  assert.match(productListingPublishSource, /awaiting-store-agent/);
+  assert.match(productListingPublishSource, /waiting-easystore-sync/);
+  assert.match(firestoreRules, /'opsProductListingQueue'/);
 });
 
 test('variant-first product images are retained in the core renderer', () => {

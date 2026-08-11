@@ -24,7 +24,7 @@ const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 
 const RESEARCH_STRING_FIELDS = [
   'brand', 'model', 'barcode', 'alternateNames', 'searchKeywords',
-  'sellingPoints', 'specificationText', 'includedItems', 'material', 'color',
+  'sellingPoints', 'productDescription', 'specificationText', 'includedItems', 'material', 'color',
   'countryOfOrigin', 'warrantyInfo', 'commonProductDescription',
   'identityEvidence', 'identityConflictSummary', 'shortDescription',
   'featureList', 'faqText', 'easyStoreHtml',
@@ -262,9 +262,13 @@ function productValue(product, keys) {
 function buildProductContext(productId, product, listingCase) {
   const source = listingCase || {};
   const name = productValue(product, ['internalName', 'originalName', 'name', 'onlineName']);
-  const imageUrls = collectProductImages(product);
-  [source.productImageUrl, source.productImageUrls, source.referenceImageUrls, source.listingImageUrls]
-    .forEach((value) => pushUrlRows(imageUrls, value));
+  const selectedImageUrls = [];
+  pushUrlRows(selectedImageUrls, source.selectedReferenceImageUrls);
+  const imageUrls = selectedImageUrls.length ? selectedImageUrls : collectProductImages(product);
+  if (!selectedImageUrls.length) {
+    [source.productImageUrl, source.productImageUrls, source.referenceImageUrls, source.listingImageUrls]
+      .forEach((value) => pushUrlRows(imageUrls, value));
+  }
   const referenceUrls = [];
   [source.referenceUrls, source.supplierReferenceUrls, source.productResearchSourceUrls,
     product.onlineUrl, product.url, product.productUrl]
@@ -317,7 +321,7 @@ function productResearchSchema() {
       'identityConflictSummary', 'brand', 'model', 'barcode', 'alternateNames',
       'searchKeywords', 'sellingPoints', 'specificationText', 'includedItems',
       'material', 'color', 'countryOfOrigin', 'warrantyInfo',
-      'shortDescription', 'commonProductDescription', 'featureList', 'faqText',
+      'productDescription', 'shortDescription', 'commonProductDescription', 'featureList', 'faqText',
       'easyStoreHtml', 'shopeeTitle', 'shopeeDescription', 'shopeeRequiredNotes',
       'momoGoodsName', 'momoSlogan', 'momoHtml', 'momoRequiredNotes',
       'coupangTitle', 'coupangDescriptionHtml', 'coupangRequiredNotes',
@@ -346,6 +350,7 @@ function productResearchSchema() {
       color: nullableText,
       countryOfOrigin: nullableText,
       warrantyInfo: nullableText,
+      productDescription: nullableText,
       shortDescription: nullableText,
       commonProductDescription: nullableText,
       featureList: nullableText,
@@ -414,9 +419,8 @@ function researchPrompt(context) {
     '如果有使用者提供的商品頁，先打開該頁；再以品牌官網、台灣代理商、型錄或可用的零售頁補齊資料。沒有網址時，直接依商品名稱、品牌、型號與圖片搜尋。',
     '目標是實用且大致正確的完整度，不必為了追求研究等級的完美而阻擋上架。但條碼、認證、產地、保固、包裝尺寸與重量不可憑空猜測；不確定就回傳 null。',
     '參考網址若是淘寶或供應商頁，可以參考圖片、排版、簡體中文與特色，但請重新寫成自然的台灣繁體中文，不逐字複製。',
-    'sellingPoints 寫一句有吸引力的商品賣點；shortDescription 寫成 2～4 句自然、活潑、面向顧客的介紹，先說適合誰或使用情境，再帶出核心特色，避免研究報告口吻與空泛誇大。specificationText 一行一項，格式為「欄位：內容」。',
-    'featureList 必須寫 6～10 點，每點獨立一行並以「1. 」「2. 」依序編號。可納入結構、材質、操作、音色、適用對象、收納或使用情境，但不可捏造未知功能。',
-    'commonProductDescription 是本商品的完整上架介紹，要好讀且有購買參考價值；整合商品簡介、特色、規格、內容物與適用對象，不要寫研究過程、來源比對或身分確認說明。',
+    'productDescription 是店家唯一需要檢查與編輯的完整商品介紹。格式固定為：先用 2～4 句自然、活潑的繁體中文介紹商品、適合對象與使用情境；空一行後寫「商品特色」，再列 6～10 點並以「1. 」「2. 」編號；再空一行寫「商品規格」，每項使用「欄位：內容」。必要時可加「包裝內容」。不要寫研究過程、來源比對或身分確認說明。',
+    '為了相容既有資料，shortDescription、featureList、specificationText 分別放入 productDescription 的介紹段、特色段與規格段；commonProductDescription 必須與 productDescription 相同。sellingPoints 可取最重要的一項特色。',
     '根據同一份商品事實產生 EasyStore、蝦皮、MOMO 與 Coupang／酷澎內容；相同事實不重複發明，只調整各平台的標題、格式、分類與特殊必填欄位。',
     'EasyStore、MOMO 的 HTML，以及作為 Coupang 轉接來源的格式化內容，都只使用安全的 h2、h3、p、ul、li、strong、br 標籤，不放屬性、script、style、iframe 或外部追蹤碼。蝦皮描述請純文字，不用 HTML。',
     '平台分類只能提供實際查到或合理建議的分類路徑／名稱；未查到正式分類代碼時，不可杜撰代碼，並在對應 requiredNotes 說明待人工選擇。',
@@ -527,8 +531,7 @@ function buildOpenAIImageRequest(context, listingCase, imageUrls, model) {
       '可清除人民幣價格、折扣、購物平台介面標記、賣家聯絡方式與 QR code；但不可移除品牌標誌、著作權標示或權利人浮水印。',
       '若原文太小而無法準確辨識，保留原圖而不猜測；不新增未經確認的規格、認證、保固或贈品。',
       `確認商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
-      `已確認短介紹：${clean(source.shortDescription) || '未提供'}`,
-      `已確認特色：${clean(source.featureList) || clean(source.sellingPoints) || '未提供'}`,
+      `已確認完整介紹：${clean(source.productDescription) || clean(source.commonProductDescription) || '未提供'}`,
       `圖片規劃：${clean(source.imagePlan) || '白底或簡潔情境的商品介紹圖'}`,
       `店家補充製圖要求：${clean(source.imageGenerationInstructions) || '未提供'}`
     ].join('\n')
@@ -554,13 +557,26 @@ function buildLocalizedImagePrompt(context, listingCase, position, total) {
     '可移除：人民幣價格、折扣、購物平台介面元素、賣家聯絡方式、賣家 QR code。',
     '必須保留：品牌標誌、合法的著作權標示、權利人浮水印。不得仿製、遮蓋或移除這些權利標示。',
     '不得猜測難以辨識的小字，不得新增來源未證實的功能、認證、價格、保固或贈品。',
+    '若原圖本來就有清楚的賣點區塊或足夠留白，可從下方「已查證重點」挑選 1～3 點，以簡短台灣繁體中文補入；沒有合適空間就只轉換原文，不要硬塞文字或大幅改版。',
+    '新增重點不可重複原圖已經表達的內容，每點以一句短語呈現，文字必須清楚可讀。',
     `本批第 ${Math.max(1, Number(position) || 1)} 張／共 ${Math.max(1, Number(total) || 1)} 張。`,
     `商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
     `品牌：${clean(source.brand) || context.brand || '未提供'}`,
     `型號：${clean(source.model) || context.model || '未提供'}`,
     `顏色：${clean(source.color) || '以原圖為準'}`,
+    `已查證完整介紹：${(clean(source.productDescription) || clean(source.commonProductDescription)).slice(0, 2200) || '未提供；不要自行新增'}`,
     `店家補充：${clean(source.imageGenerationInstructions) || '無；維持原版面即可'}`
   ].join('\n');
+}
+
+function imageEditOutputSize(width, height) {
+  const sourceWidth = Math.max(1, Number(width) || 1);
+  const sourceHeight = Math.max(1, Number(height) || 1);
+  const landscape = sourceWidth >= sourceHeight;
+  const ratio = Math.min(3, Math.max(1, landscape ? sourceWidth / sourceHeight : sourceHeight / sourceWidth));
+  const longEdge = 1536;
+  const shortEdge = Math.max(512, Math.min(longEdge, Math.round((longEdge / ratio) / 16) * 16));
+  return landscape ? `${longEdge}x${shortEdge}` : `${shortEdge}x${longEdge}`;
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -803,7 +819,7 @@ async function callOpenAIImageEdit(apiKey, sourceImageUrl, prompt, model) {
   form.append('image[]', new Blob([source.bytes], { type: source.contentType }), `source.${source.extension}`);
   form.append('prompt', clean(prompt));
   form.append('quality', 'high');
-  form.append('size', source.width > source.height * 1.15 ? '1536x1024' : source.height > source.width * 1.15 ? '1024x1536' : '1024x1024');
+  form.append('size', imageEditOutputSize(source.width, source.height));
   form.append('output_format', 'png');
   const response = await fetchWithTimeout('https://api.openai.com/v1/images/edits', {
     method: 'POST',
@@ -1020,11 +1036,7 @@ function buildResearchUpdate(existingCase, result, meta) {
   }
 
   const merged = { ...existing, ...update };
-  const coreReady = !!(
-    (clean(merged.researchedProductName) || clean(merged.productName)) &&
-    clean(merged.specificationText) && clean(merged.featureList) &&
-    clean(merged.commonProductDescription)
-  );
+  const coreReady = !!((clean(merged.researchedProductName) || clean(merged.productName)) && clean(merged.productDescription || merged.commonProductDescription));
   const platformReady = !!(
     clean(merged.shopeeTitle) && clean(merged.shopeeDescription) &&
     clean(merged.momoGoodsName) && clean(merged.momoHtml) &&
@@ -1054,7 +1066,7 @@ function buildResearchUpdate(existingCase, result, meta) {
   };
   update.updatedAt = admin.firestore.FieldValue.serverTimestamp();
   update.updatedBy = 'OpenAI 上架整理';
-  update.schemaVersion = 4;
+  update.schemaVersion = 7;
   return { update, ready, filledFields: update.aiResearch.filledFields };
 }
 
@@ -1130,11 +1142,12 @@ function registerProductAiResearch(target) {
           model: clean(process.env.OPENAI_PRODUCT_RESEARCH_MODEL) || DEFAULT_MODEL,
           inputFingerprint,
           imageCount: context.imageUrls.length,
+          filledFields: Array.isArray(latestAi.filledFields) ? latestAi.filledFields : [],
           startedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedBy: 'OpenAI 上架整理',
-        schemaVersion: 4
+        schemaVersion: 7
       };
       if (!latestSnap.exists) {
         seed.createdAt = admin.firestore.FieldValue.serverTimestamp();
@@ -1513,10 +1526,17 @@ function registerProductAiResearch(target) {
         message: (clean(row.error && row.error.message) || '圖片轉換失敗。').slice(0, 300)
       }).filter(Boolean);
       if (!completed.length) throw (batchResults.find((row) => !row.ok) || {}).error || new Error('圖片轉換失敗。');
-      const candidates = completed.slice(0, 10);
+      const replacedSources = new Set(completed.map((row) => safeHttpUrl(row.sourceImageUrl)).filter(Boolean));
+      const previousCandidates = (Array.isArray(listingCase.generatedListingImages) ? listingCase.generatedListingImages : [])
+        .filter((row) => safeHttpUrl(row && row.url) && !replacedSources.has(safeHttpUrl(row && row.sourceImageUrl)));
+      const candidates = completed.concat(previousCandidates).slice(0, 10);
+      const previousGeneratedUrls = new Set((Array.isArray(listingCase.generatedListingImages) ? listingCase.generatedListingImages : [])
+        .map((row) => safeHttpUrl(row && row.url)).filter(Boolean));
+      const existingListingImageUrls = [];
+      pushUrlRows(existingListingImageUrls, listingCase.listingImageUrls);
       const listingImageUrls = [];
       pushUrlRows(listingImageUrls, candidates.map((row) => row.url));
-      pushUrlRows(listingImageUrls, listingCase.listingImageUrls);
+      pushUrlRows(listingImageUrls, existingListingImageUrls.filter((url) => !previousGeneratedUrls.has(safeHttpUrl(url))));
       await caseRef.set({
         generatedListingImages: candidates,
         listingImageUrls: listingImageUrls.slice(0, 10),
