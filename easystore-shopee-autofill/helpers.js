@@ -732,6 +732,7 @@
     if (!isPlainObject(queue)) return null;
     const ids = new Set(extractProductIds(pageUrl));
     if (ids.size === 0) return null;
+    const routeKind = easyStoreRouteKind(pageUrl);
     const candidates = Object.values(queue)
       .filter((record) => isPlainObject(record) && isPlainObject(record.payload))
       .sort((left, right) => Number(right.receivedAt || 0) - Number(left.receivedAt || 0));
@@ -739,7 +740,9 @@
       const validation = validateQueuePayload(record.payload, now);
       if (!validation.ok) continue;
       const payload = validation.value;
-      if (ids.has(payload.easyStoreProductId) && textContainsExactToken(pageText, payload.sku)) {
+      const idMatches = ids.has(payload.easyStoreProductId);
+      const identityMatches = routeKind === "product" || textContainsExactToken(pageText, payload.sku);
+      if (idMatches && identityMatches) {
         return {
           payload,
           receivedAt: record.receivedAt,

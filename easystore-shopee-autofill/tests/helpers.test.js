@@ -208,12 +208,16 @@ test("recognizes a user-driven route change from product page to Shopee sync pag
   assert.equal(helpers.shouldInspectQueue(productUrl, "https://admin.easystore.co/settings"), false);
 });
 
-test("requires both exact EasyStore product ID and exact SKU token", () => {
+test("product page selects by canonical ID while Shopee sync still requires ID plus exact SKU", () => {
   const now = 1_800_000_000_000;
   const payload = helpers.validateQueuePayload(validPayload(now), now).value;
   const queue = { [payload.easyStoreProductId]: { payload, receivedAt: now } };
+  const productUrl = "https://admin.easystore.co/products/3969443";
   const url = "https://admin.easystore.co/channels/shopee/taiwan/products/sync?product_ids=3969443";
+  assert.ok(helpers.selectQueueRecord(queue, productUrl, "商品名稱與介紹，畫面暫時沒有顯示 SKU", now));
+  assert.equal(helpers.selectQueueRecord(queue, productUrl.replace("3969443", "3969444"), "", now), null);
   assert.ok(helpers.selectQueueRecord(queue, url, "賣家 SKU 1040160-1 價格 NT$14,800", now));
+  assert.equal(helpers.selectQueueRecord(queue, url, "畫面尚未顯示 SKU", now), null);
   assert.equal(helpers.selectQueueRecord(queue, url, "賣家 SKU 1040160-10", now), null);
   assert.equal(helpers.selectQueueRecord(queue, url.replace("3969443", "3969444"), "SKU 1040160-1", now), null);
 });

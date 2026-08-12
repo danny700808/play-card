@@ -132,7 +132,7 @@ ACK 格式：
 
 - 嚴格驗證 `schemaVersion`、`nonce`、建立／到期時間、SKU、EasyStore 商品 ID、EasyStore 網址、資料大小及欄位結構；已過期資料直接拒絕，不會替它延長期限。
 - EasyStore 商品網址一律由通過驗證的商品 ID 重建為 `https://admin.easystore.co/products/{id}`；不信任訊息內可任意指定的路徑、查詢參數或片段。
-- 頁面必須同時匹配 EasyStore 商品 ID 與完整 SKU。
+- EasyStore 商品首頁先以網址中的唯一商品 ID 接續助手；進入蝦皮設定頁後，必須再同時匹配 EasyStore 商品 ID 與完整 SKU，才允許填寫或送出。
 - 助手會把 EasyStore 蝦皮入口分類為 `update`、`create` 或 `unknown`。`update` 可繼續；`create` 需要 `listingPolicy.allowCreate: true`；`unknown` 一律停止。
 - `allowCreate` 只有 `decision: "new"` 時才能為 `true`。標示為 `existing` 卻出現新品入口時，助手會要求先匯入並使用 **Match product**，不會代替使用者刪除原商品。
 - 分類、品牌與商品屬性的非空白欄位視為人工資料並保留；物流與預購則依本次上架規則校正為指定狀態。
