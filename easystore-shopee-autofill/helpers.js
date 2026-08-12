@@ -715,6 +715,42 @@
     return new RegExp(`(^|[^A-Za-z0-9._/-])${escaped}(?![A-Za-z0-9._/-])`, "i").test(String(text || ""));
   }
 
+  function resolveQueuePageIdentity(payload, pageUrl, pageText) {
+    const targetId = parsePositiveId(payload && payload.easyStoreProductId);
+    const sku = String(payload && payload.sku || "").trim();
+    const routeKind = easyStoreRouteKind(pageUrl);
+    if (!targetId || !sku || !routeKind) return "mismatch";
+
+    let url;
+    try {
+      url = new URL(String(pageUrl));
+    } catch (error) {
+      return "mismatch";
+    }
+
+    if (routeKind === "product") {
+      const match = url.pathname.match(/^\/products\/([1-9]\d{0,29})\/?$/);
+      return match && match[1] === targetId ? "confirmed" : "mismatch";
+    }
+
+    const explicitStoreTokens = ["store_product_id", "store_product_ids"]
+      .flatMap((key) => String(url.searchParams.get(key) || "").split(","))
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const explicitStoreIds = explicitStoreTokens.map(parsePositiveId).filter(Boolean);
+    if (explicitStoreTokens.length !== explicitStoreIds.length) return "mismatch";
+    const uniqueStoreIds = Array.from(new Set(explicitStoreIds));
+    if (uniqueStoreIds.length === 1) {
+      if (uniqueStoreIds[0] !== targetId) return "mismatch";
+      const hasObservedSellerSku = /賣家\s*sku|seller\s*sku/i.test(String(pageText || ""));
+      return hasObservedSellerSku && !textContainsExactToken(pageText, sku) ? "mismatch" : "confirmed";
+    }
+
+    const routeIds = new Set(extractProductIds(url.href));
+    if (!routeIds.has(targetId)) return "mismatch";
+    return textContainsExactToken(pageText, sku) ? "confirmed" : "pending";
+  }
+
   function pruneAndMergeQueue(currentQueue, payload, receivedAt, now) {
     const timestamp = Number.isFinite(now) ? now : Date.now();
     const next = {};
@@ -758,22 +794,7 @@
 
   function selectQueueRecord(queue, pageUrl, pageText, now) {
     if (!isPlainObject(queue)) return null;
-    const ids = new Set(extractProductIds(pageUrl));
-    if (ids.size === 0) return null;
-    const routeKind = easyStoreRouteKind(pageUrl);
-    let explicitStoreIds = [];
-    if (routeKind === "shopee-sync") {
-      try {
-        const url = new URL(String(pageUrl));
-        explicitStoreIds = ["store_product_id", "store_product_ids"]
-          .flatMap((key) => String(url.searchParams.get(key) || "").split(","))
-          .map(parsePositiveId)
-          .filter(Boolean);
-      } catch (error) {
-        explicitStoreIds = [];
-      }
-    }
-    const hasUniqueExplicitStoreId = new Set(explicitStoreIds).size === 1;
+    if (!easyStoreRouteKind(pageUrl)) return null;
     const candidates = Object.values(queue)
       .filter((record) => isPlainObject(record) && isPlainObject(record.payload))
       .sort((left, right) => Number(right.receivedAt || 0) - Number(left.receivedAt || 0));
@@ -781,14 +802,7 @@
       const validation = validateQueuePayload(record.payload, now);
       if (!validation.ok) continue;
       const payload = validation.value;
-      const idMatches = ids.has(payload.easyStoreProductId);
-      // The real EasyStore Shopee form initially contains no seller SKU text.
-      // Its unique store_product_ids value is the canonical EasyStore identity,
-      // while legacy product_ids-only URLs still need the exact visible SKU.
-      const identityMatches = routeKind === "product"
-        || (routeKind === "shopee-sync" && hasUniqueExplicitStoreId)
-        || textContainsExactToken(pageText, payload.sku);
-      if (idMatches && identityMatches) {
+      if (resolveQueuePageIdentity(payload, pageUrl, pageText) === "confirmed") {
         return {
           payload,
           receivedAt: record.receivedAt,
@@ -861,6 +875,7 @@
     validateQueuePayload,
     extractProductIds,
     textContainsExactToken,
+    resolveQueuePageIdentity,
     pruneAndMergeQueue,
     withQueueNavigationMode,
     selectQueueRecord,

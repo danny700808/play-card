@@ -220,6 +220,107 @@ test("real EasyStore sync URL matches the queued store product, not Shopee's cha
   assert.equal(selected.payload.easyStoreProductId, "16965067");
 });
 
+test("real Shopee sync form confirms its canonical store product before SKU and category render", () => {
+  const now = 1_800_000_000_000;
+  const payload = validPayload(now);
+  payload.easyStoreProductId = "16965067";
+  payload.easyStoreUrl = "https://admin.easystore.co/products/16965067";
+  const validated = helpers.validateQueuePayload(payload, now).value;
+  const url = "https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=16965067&account_id=11850&product_ids=4116442&request_id=140315";
+  const initialText = "蝦皮購物 規格 分類 請先選擇分類 銷售資訊 請先選擇分類";
+
+  assert.deepEqual(helpers.extractProductIds(url), ["16965067"]);
+  assert.equal(helpers.resolveQueuePageIdentity(validated, url, initialText), "confirmed");
+  assert.equal(
+    helpers.selectQueueRecord({ "16965067": { payload: validated, receivedAt: now } }, url, initialText, now).payload.easyStoreProductId,
+    "16965067"
+  );
+});
+
+test("canonical store_product_ids wins over a newer queue record for Shopee's channel product id", () => {
+  const now = 1_800_000_000_000;
+  const storePayload = validPayload(now);
+  storePayload.easyStoreProductId = "16965067";
+  storePayload.easyStoreUrl = "https://admin.easystore.co/products/16965067";
+  const channelPayload = validPayload(now);
+  channelPayload.nonce = "channel-4116442-1";
+  channelPayload.easyStoreProductId = "4116442";
+  channelPayload.easyStoreUrl = "https://admin.easystore.co/products/4116442";
+  const storeRecord = helpers.validateQueuePayload(storePayload, now).value;
+  const channelRecord = helpers.validateQueuePayload(channelPayload, now).value;
+  const queue = {
+    "16965067": { payload: storeRecord, receivedAt: now },
+    "4116442": { payload: channelRecord, receivedAt: now + 1000 }
+  };
+  const url = "https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=16965067&account_id=11850&product_ids=4116442&request_id=140315";
+
+  assert.equal(helpers.resolveQueuePageIdentity(channelRecord, url, ""), "mismatch");
+  assert.equal(helpers.selectQueueRecord(queue, url, "", now).payload.easyStoreProductId, "16965067");
+});
+
+test("queue page identity rejects wrong routes and waits for exact SKU on ambiguous or legacy sync URLs", () => {
+  const now = 1_800_000_000_000;
+  const payload = validPayload(now);
+  payload.easyStoreProductId = "16965067";
+  payload.easyStoreUrl = "https://admin.easystore.co/products/16965067";
+  const validated = helpers.validateQueuePayload(payload, now).value;
+  const exactSkuText = "商品名稱 Ibanez AZES40-PRB 賣家 SKU 1040160-1 價格 NT$14,800";
+  const wrongSkuText = "商品名稱 Ibanez AZES40-PRB 賣家 SKU 1040160-10 價格 NT$14,800";
+  const ambiguousUrl = "https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=16965067,16965068&product_ids=4116442";
+  const legacyUrl = "https://admin.easystore.co/channels/shopee/taiwan/products/sync?product_ids=16965067";
+
+  assert.equal(helpers.resolveQueuePageIdentity(validated, "https://admin.easystore.co/products/16965067", ""), "confirmed");
+  assert.equal(helpers.resolveQueuePageIdentity(validated, "https://admin.easystore.co/products/16965068", exactSkuText), "mismatch");
+  assert.equal(
+    helpers.resolveQueuePageIdentity(
+      validated,
+      "https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=16965068&product_ids=4116442",
+      exactSkuText
+    ),
+    "mismatch"
+  );
+  assert.equal(
+    helpers.resolveQueuePageIdentity(
+      validated,
+      "https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=16965067&product_ids=4116442",
+      "賣家 SKU 1040160-10"
+    ),
+    "mismatch"
+  );
+  assert.equal(
+    helpers.resolveQueuePageIdentity(
+      validated,
+      "https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=16965067,unsafe&product_ids=4116442",
+      exactSkuText
+    ),
+    "mismatch"
+  );
+  assert.equal(helpers.resolveQueuePageIdentity(validated, ambiguousUrl, "請先選擇分類"), "pending");
+  assert.equal(helpers.resolveQueuePageIdentity(validated, ambiguousUrl, wrongSkuText), "pending");
+  assert.equal(helpers.resolveQueuePageIdentity(validated, ambiguousUrl, exactSkuText), "confirmed");
+  assert.equal(helpers.resolveQueuePageIdentity(validated, legacyUrl, "請先選擇分類"), "pending");
+  assert.equal(helpers.resolveQueuePageIdentity(validated, legacyUrl, wrongSkuText), "pending");
+  assert.equal(helpers.resolveQueuePageIdentity(validated, legacyUrl, exactSkuText), "confirmed");
+  assert.equal(helpers.resolveQueuePageIdentity(validated, "https://admin.easystore.co/settings?product_ids=16965067", exactSkuText), "mismatch");
+  assert.equal(helpers.resolveQueuePageIdentity(validated, "https://example.com/products/16965067", exactSkuText), "mismatch");
+});
+
+test("selectQueueRecord only returns confirmed identities, never pending legacy or ambiguous sync forms", () => {
+  const now = 1_800_000_000_000;
+  const payload = validPayload(now);
+  payload.easyStoreProductId = "16965067";
+  payload.easyStoreUrl = "https://admin.easystore.co/products/16965067";
+  const validated = helpers.validateQueuePayload(payload, now).value;
+  const queue = { "16965067": { payload: validated, receivedAt: now } };
+  const ambiguousUrl = "https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=16965067,16965068";
+  const legacyUrl = "https://admin.easystore.co/channels/shopee/taiwan/products/sync?product_ids=16965067";
+
+  assert.equal(helpers.selectQueueRecord(queue, ambiguousUrl, "請先選擇分類", now), null);
+  assert.equal(helpers.selectQueueRecord(queue, legacyUrl, "請先選擇分類", now), null);
+  assert.ok(helpers.selectQueueRecord(queue, ambiguousUrl, "賣家 SKU 1040160-1", now));
+  assert.ok(helpers.selectQueueRecord(queue, legacyUrl, "賣家 SKU 1040160-1", now));
+});
+
 test("recognizes a user-driven route change from product page to Shopee sync page", () => {
   const productUrl = "https://admin.easystore.co/products/3969443";
   const syncUrl = "https://admin.easystore.co/channels/shopee/taiwan/products/sync?request_id=1&product_ids=3969443";
@@ -306,6 +407,12 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
   assert.match(source, /setTimeout\(\(\) => \{[\s\S]*start\.click\(\)/);
   assert.match(source, /setTimeout\(\(\) => \{[\s\S]*openShopee\.click\(\)/);
   assert.match(source, /publishToShopee/);
+  assert.match(source, /helpers\.resolveQueuePageIdentity/);
+  assert.match(source, /visibleSellerSkuObservation/);
+  assert.match(source, /const identity = verifyIdentity\(payload\);[\s\S]*await fillCategory/);
+  assert.match(source, /await fillCategory\(payload, report\);[\s\S]*await waitForVerifiedSellerSku\(payload, 5000\)/);
+  assert.match(source, /async function publishToShopee[\s\S]*verifyIdentity\(payload, \{ requireSellerSku: true \}\)/);
+  assert.doesNotMatch(source, /textContainsExactToken\(document\.body\.innerText/);
   assert.match(source, /report\.missing\.length > 0/);
   assert.match(source, /const state = await reconcileLogisticsToggle\(labels, method\.enabled === true\)/);
   assert.match(source, /const currentBand = controlDisplayValue\(bandControl\)/);

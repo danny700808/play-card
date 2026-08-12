@@ -350,6 +350,10 @@
   }
 
   async function publishToShopee(payload, report, navigationMode) {
+    const identity = verifyIdentity(payload, { requireSellerSku: true });
+    if (!identity.ok) {
+      throw new Error(identity.message);
+    }
     const gate = helpers.autoPublishGate(payload, report, navigationMode);
     if (!gate.ok) {
       throw new Error(gate.reasons.join("；"));
@@ -969,15 +973,127 @@
     return { filled: [], preserved: [], skipped: [], missing: [] };
   }
 
-  function verifyIdentity(payload) {
-    const ids = helpers.extractProductIds(location.href);
-    if (!ids.includes(payload.easyStoreProductId)) {
+  function normalizedSellerSku(value) {
+    return String(value == null ? "" : value)
+      .normalize("NFKC")
+      .replace(/\u00a0/g, " ")
+      .trim()
+      .replace(/^'+/, "")
+      .toUpperCase();
+  }
+
+  function staticSellerSkuValues(label) {
+    const values = [];
+    const inspect = (element) => {
+      if (!(element instanceof Element) || !isVisible(element)) return;
+      if (element.closest("#youzi-shopee-autofill-overlay")) return;
+      if (findExactTextElements(Object.values(FIELD_LABELS).flat(), element).some((candidate) => candidate !== label)) return;
+      const text = String(element.textContent || "").normalize("NFKC").replace(/\u00a0/g, " ").trim();
+      if (!text || text.length > 160) return;
+      const sku = String(text.replace(/^[:：\s-]+/, "").split(/\s+/)[0] || "");
+      if (/^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$/.test(sku)) values.push(sku);
+    };
+
+    inspect(label.nextElementSibling);
+    const parent = label.parentElement;
+    if (parent && parent.getBoundingClientRect().width <= 720 && parent.getBoundingClientRect().height <= 180) {
+      Array.from(parent.children).filter((child) => child !== label).forEach(inspect);
+    }
+    return values;
+  }
+
+  function visibleSellerSkuObservation() {
+    const labels = findExactTextElements(FIELD_LABELS.sku);
+    if (labels.length === 0) {
+      return { state: "absent", values: [] };
+    }
+
+    const candidates = [];
+    labels.forEach((label) => {
+      if (label.tagName === "LABEL" && label.htmlFor) {
+        const direct = document.getElementById(label.htmlFor);
+        if (direct && isVisible(direct)) candidates.push(direct);
+      }
+
+      let container = label.parentElement;
+      for (let depth = 0; container && depth < 5; depth += 1, container = container.parentElement) {
+        const eligibleControls = fieldControls(container).filter((control) =>
+          !control.matches("input[type='checkbox'], input[type='radio'], button")
+        );
+        const controls = eligibleControls.filter((control) => {
+          if (control.matches("input[type='checkbox'], input[type='radio'], button")) return false;
+          const metadata = [
+            control.getAttribute("name"),
+            control.id,
+            control.getAttribute("aria-label"),
+            control.getAttribute("placeholder")
+          ].filter(Boolean).join(" ");
+          return /seller[\s_-]*sku|賣家[\s_-]*sku|^sku$/i.test(metadata.trim());
+        });
+        if (controls.length > 0) {
+          candidates.push(...controls);
+          break;
+        }
+        const otherFieldLabel = findExactTextElements(Object.values(FIELD_LABELS).flat(), container)
+          .find((candidate) => candidate !== label && !helpers.exactApprovedMatch(candidate.textContent, FIELD_LABELS.sku));
+        if (eligibleControls.length === 1 && !otherFieldLabel) {
+          candidates.push(eligibleControls[0]);
+          break;
+        }
+      }
+      candidates.push(...staticSellerSkuValues(label));
+    });
+
+    const values = helpers.uniqueStrings(
+      candidates.map((candidate) => normalizedSellerSku(
+        candidate instanceof Element ? controlValue(candidate) : candidate
+      )).filter(Boolean)
+    );
+    if (values.length === 0) return { state: "empty", values: [] };
+    if (values.length > 1) return { state: "ambiguous", values };
+    return { state: "value", values };
+  }
+
+  function verifyIdentity(payload, options) {
+    const requireSellerSku = Boolean(options && options.requireSellerSku);
+    const observed = visibleSellerSkuObservation();
+    const observedSkuText = observed.state === "value"
+      ? `賣家 SKU ${observed.values[0]}`
+      : "";
+    const pageIdentity = helpers.resolveQueuePageIdentity(
+      payload,
+      location.href,
+      observedSkuText
+    );
+    if (pageIdentity === "mismatch") {
       return { ok: false, message: "網址中的 EasyStore 商品 ID 與排隊資料不符。" };
     }
-    if (!helpers.textContainsExactToken(document.body.innerText, payload.sku)) {
+    if (observed.state === "ambiguous") {
+      return { ok: false, message: "頁面上出現多個不同的賣家 SKU，為避免填錯商品已停止。" };
+    }
+    if (
+      observed.state === "value"
+      && observed.values[0] !== normalizedSellerSku(payload.sku)
+    ) {
       return { ok: false, message: "頁面上的賣家 SKU 與排隊資料不符。" };
     }
+    if (
+      pageIdentity === "pending"
+      || (requireSellerSku && (observed.state === "absent" || observed.state === "empty"))
+    ) {
+      return { ok: false, pending: true, message: "頁面尚未顯示可核對的賣家 SKU；請等待欄位載入後再試。" };
+    }
     return { ok: true, message: "" };
+  }
+
+  async function waitForVerifiedSellerSku(payload, timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const identity = verifyIdentity(payload, { requireSellerSku: true });
+      if (identity.ok || !identity.pending) return identity;
+      await sleep(120);
+    }
+    return verifyIdentity(payload, { requireSellerSku: true });
   }
 
   async function runAutofill(payload) {
@@ -991,6 +1107,12 @@
     }
     const report = createReport();
     await fillCategory(payload, report);
+    if (!report.missing.some((item) => /^分類(?:：|$)/.test(item))) {
+      const categoryIdentity = await waitForVerifiedSellerSku(payload, 5000);
+      if (!categoryIdentity.ok) {
+        throw new Error(categoryIdentity.message);
+      }
+    }
     await fillBrand(payload, report);
     for (const row of payload.attributes || []) {
       await fillAttribute(row, report);
@@ -1449,7 +1571,10 @@
       const record = helpers.selectQueueRecord(
         stored[helpers.QUEUE_STORAGE_KEY],
         location.href,
-        document.body ? document.body.innerText : "",
+        (() => {
+          const observed = isSyncPage ? visibleSellerSkuObservation() : { state: "absent", values: [] };
+          return observed.state === "value" ? `賣家 SKU ${observed.values[0]}` : "";
+        })(),
         Date.now()
       );
       if (record) {
