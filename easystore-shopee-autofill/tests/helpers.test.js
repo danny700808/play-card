@@ -71,6 +71,27 @@ test("normalizes exact labels without fuzzy substring matching", () => {
   assert.equal(helpers.resolveAttributeKey("Neck"), "");
 });
 
+test("recognizes exact and compact compound Shopee sales-channel rows", () => {
+  const approved = ["連接商品到蝦皮購物", "更新到蝦皮購物", "蝦皮購物"];
+  assert.equal(helpers.shopeeEntryTextMatch("蝦皮購物", approved), true);
+  assert.equal(
+    helpers.shopeeEntryTextMatch("蝦皮購物  請先完成您的「蝦皮購物」設定。 刷新", approved),
+    true
+  );
+  assert.equal(helpers.shopeeEntryTextMatch("更新到蝦皮購物｜已連線", approved), true);
+  assert.equal(helpers.shopeeEntryTextMatch("蝦皮購物 已連線"), true);
+});
+
+test("Shopee entry matching rejects unrelated, reversed and page-sized text", () => {
+  const approved = ["蝦皮購物"];
+  assert.equal(helpers.shopeeEntryTextMatch("請到蝦皮購物完成設定", approved), false);
+  assert.equal(helpers.shopeeEntryTextMatch("MOMO 與蝦皮購物均已連線", approved), false);
+  assert.equal(helpers.shopeeEntryTextMatch("", approved), false);
+  assert.equal(helpers.shopeeEntryTextMatch(`蝦皮購物${"商品管理與訂單資料".repeat(30)}`, approved), false);
+  assert.equal(helpers.shopeeEntryTextMatch("蝦皮購物", []), false);
+  assert.equal(helpers.shopeeEntryTextMatch("蝦皮購物", "蝦皮購物"), false);
+});
+
 test("accepts the production page bridge payload shape", () => {
   const now = 1_800_000_000_000;
   const result = helpers.validateQueuePayload(validPayload(now), now);
@@ -260,6 +281,17 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
   assert.match(source, /開啟蝦皮設定/);
   assert.match(source, /shopeeSyncLinkForProduct/);
   assert.match(source, /helpers\.extractProductIds\(url\.href\)\.includes/);
+  assert.match(source, /helpers\.shopeeEntryTextMatch\(actual, approved\)/);
+  assert.match(source, /waitForShopeeNavigationTargets\(record, navigationOverlay, 10000\)/);
+  assert.match(source, /productNavigationIsCurrent\(record, navigationOverlay\)/);
+  assert.match(source, /\["store_product_id", "store_product_ids"\]/);
+  assert.match(source, /new Set\(storeIds\)\.size === 1 && storeIds\[0\] === String\(record\.payload\.easyStoreProductId\)/);
+  assert.match(source, /正在等待 EasyStore 載入蝦皮銷售管道/);
+  assert.match(source, /SHOPEE_REFRESH_LABELS/);
+  assert.match(source, /const allowGenericEntry = isShopeeRefreshTarget\(ignoredTarget\)/);
+  assert.match(source, /isShopeeFollowupTarget\(record, target, allowGenericEntry\)/);
+  assert.match(source, /for \(let step = 0; step < 4 && nextTarget/);
+  assert.doesNotMatch(source, /attemptedTargetKeys/);
   assert.match(source, /openShopee\.disabled = false/);
   assert.match(source, /EasyStore 沒有轉到設定頁/);
   assert.match(source, /setInterval\([\s\S]*const nextUrl = location\.href/);
@@ -267,6 +299,8 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
   assert.match(source, /helpers\.resolveShopeeNavigationMode/);
   assert.match(source, /helpers\.autoPublishGate\(currentRecord\.payload, report, navigationMode\)/);
   assert.match(source, /helpers\.listingSafetyGate\(record\.payload, mode\)/);
+  assert.match(source, /if \(mode !== "unknown"\) \{[\s\S]*helpers\.listingSafetyGate\(record\.payload, mode\)/);
+  assert.doesNotMatch(source, /mode !== "unknown" \|\| isDirectSyncLink/);
   assert.match(source, /rememberShopeeNavigationMode/);
   assert.match(source, /findEnabledExactButton/);
   assert.match(source, /setTimeout\(\(\) => \{[\s\S]*start\.click\(\)/);

@@ -65,6 +65,7 @@
     "同步到蝦皮購物",
     "蝦皮購物"
   ]);
+  const SHOPEE_REFRESH_LABELS = Object.freeze(["刷新", "重新整理"]);
   const FINAL_PUBLISH_LABELS = Object.freeze([
     "準備發布",
     "準備發佈",
@@ -1051,27 +1052,94 @@
       }) || null;
   }
 
+  function shopeeRefreshTargets() {
+    const targets = [];
+    for (const label of findExactTextElements(SHOPEE_REFRESH_LABELS)) {
+      let parent = label.parentElement;
+      let belongsToShopee = false;
+      for (let depth = 0; parent && depth < 6; depth += 1, parent = parent.parentElement) {
+        if (parent.id === "youzi-shopee-autofill-overlay" || parent.matches("body, html")) break;
+        if (helpers.shopeeEntryTextMatch(parent.textContent, SHOPEE_ENTRY_LABELS)) {
+          belongsToShopee = true;
+          break;
+        }
+      }
+      if (!belongsToShopee) continue;
+      const target = label.closest("a, button, [role='button'], [tabindex]") || label;
+      if (isVisible(target) && !targets.includes(target)) targets.push(target);
+    }
+    return targets;
+  }
+
   function shopeeNavigationTargets(record) {
     const directLink = shopeeSyncLinkForProduct(record.payload.easyStoreProductId);
     const targets = directLink ? [directLink] : [];
-    for (const label of findExactTextElements(SHOPEE_ENTRY_LABELS)) {
+    const labels = findTextElements(
+      SHOPEE_ENTRY_LABELS,
+      document,
+      (actual, approved) => helpers.shopeeEntryTextMatch(actual, approved)
+    );
+    for (const label of labels) {
       const target = label.closest("a, button, [role='button'], [tabindex]") || label;
       if (!targets.includes(target)) {
         targets.push(target);
       }
     }
+    for (const target of shopeeRefreshTargets()) {
+      if (!targets.includes(target)) targets.push(target);
+    }
     return targets.sort((left, right) => {
       const score = (element) => {
         const href = element instanceof HTMLAnchorElement ? element.href : "";
-        const text = String(element.textContent || "");
+        const text = shopeeTargetText(element);
         if (href && helpers.easyStoreRouteKind(href) === "shopee-sync") return 100;
-        if (/連接|更新|發佈|發布|同步/.test(text)) return 60;
-        if (element instanceof HTMLAnchorElement) return 40;
+        if (isShopeeRefreshTarget(element)) return 90;
+        if (helpers.classifyShopeeActionText(text) !== "unknown") return 80;
         if (element.matches("button, [role='button']")) return 20;
+        if (element instanceof HTMLAnchorElement) return 10;
         return 0;
       };
       return score(right) - score(left);
     });
+  }
+
+  function isShopeeRefreshTarget(element) {
+    if (!(element instanceof Element)) return false;
+    return [
+      element.textContent,
+      element.getAttribute("aria-label"),
+      element.getAttribute("title"),
+      element.getAttribute("data-label")
+    ].some((value) => helpers.exactApprovedMatch(value, SHOPEE_REFRESH_LABELS));
+  }
+
+  function isShopeeFollowupTarget(record, element, allowGenericEntry) {
+    if (!(element instanceof Element)) return false;
+    const href = element instanceof HTMLAnchorElement ? element.href : "";
+    if (href && helpers.easyStoreRouteKind(href) === "shopee-sync") return true;
+    if (isShopeeRefreshTarget(element)) return true;
+    if (allowGenericEntry && helpers.shopeeEntryTextMatch(shopeeTargetText(element), SHOPEE_ENTRY_LABELS)) return true;
+    return shopeeNavigationModeForTarget(record, element) !== "unknown";
+  }
+
+  function productNavigationIsCurrent(record, navigationOverlay) {
+    if (!record || !record.payload || !navigationOverlay || !navigationOverlay.isConnected) return false;
+    if (!currentRecord || currentRecord.payload.nonce !== record.payload.nonce) return false;
+    if (helpers.easyStoreRouteKind(location.href) !== "product") return false;
+    return helpers.extractProductIds(location.href).includes(String(record.payload.easyStoreProductId));
+  }
+
+  async function waitForShopeeNavigationTargets(record, navigationOverlay, timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      if (!productNavigationIsCurrent(record, navigationOverlay)) return [];
+      const targets = shopeeNavigationTargets(record);
+      if (targets.length > 0) return targets;
+      await sleep(250);
+    }
+    return productNavigationIsCurrent(record, navigationOverlay)
+      ? shopeeNavigationTargets(record)
+      : [];
   }
 
   function shopeeTargetText(element) {
@@ -1133,17 +1201,37 @@
     });
   }
 
-  async function waitForShopeeNavigation(record, previousUrl, timeout, ignoredLink) {
+  async function waitForShopeeNavigation(record, navigationOverlay, previousUrl, timeout, ignoredTarget) {
     const started = Date.now();
     while (Date.now() - started < timeout) {
-      if (location.href !== previousUrl && helpers.easyStoreRouteKind(location.href) === "shopee-sync") {
-        return { navigated: true, link: null };
+      const routeKind = helpers.easyStoreRouteKind(location.href);
+      if (location.href !== previousUrl && routeKind === "shopee-sync") {
+        let storeIds = [];
+        try {
+          const url = new URL(location.href);
+          storeIds = ["store_product_id", "store_product_ids"]
+            .flatMap((key) => String(url.searchParams.get(key) || "").split(","))
+            .map((value) => value.trim())
+            .filter(Boolean);
+        } catch (error) {
+          storeIds = [];
+        }
+        return new Set(storeIds).size === 1 && storeIds[0] === String(record.payload.easyStoreProductId)
+          ? { navigated: true, link: null }
+          : { navigated: false, link: null };
       }
+      if (!productNavigationIsCurrent(record, navigationOverlay)) return { navigated: false, link: null };
       const link = shopeeSyncLinkForProduct(record.payload.easyStoreProductId);
-      if (link && link !== ignoredLink) {
+      if (link && link !== ignoredTarget) {
         return { navigated: false, link };
       }
-      await sleep(120);
+      const allowGenericEntry = isShopeeRefreshTarget(ignoredTarget);
+      const followup = shopeeNavigationTargets(record).find((target) => (
+        target !== ignoredTarget
+        && isShopeeFollowupTarget(record, target, allowGenericEntry)
+      ));
+      if (followup) return { navigated: false, link: followup };
+      await sleep(250);
     }
     return { navigated: false, link: null };
   }
@@ -1295,19 +1383,25 @@
     document.documentElement.appendChild(overlay);
 
     async function openShopeeSettings() {
-      const targets = shopeeNavigationTargets(record);
+      openShopee.disabled = true;
+      status.textContent = "正在等待 EasyStore 載入蝦皮銷售管道……";
+      const navigationOverlay = overlay;
+      const targets = await waitForShopeeNavigationTargets(record, navigationOverlay, 10000);
+      if (!productNavigationIsCurrent(record, navigationOverlay)) return;
       if (targets.length === 0) {
         status.textContent = "找不到蝦皮入口；請在商品頁展開「銷售管道」，再點「蝦皮購物」。";
+        openShopee.disabled = false;
         return;
       }
-      openShopee.disabled = true;
       status.textContent = "正在開啟蝦皮設定……";
       const previousUrl = location.href;
       async function clickTarget(target) {
+        if (!productNavigationIsCurrent(record, navigationOverlay) || !target || !target.isConnected) return false;
         const mode = shopeeNavigationModeForTarget(record, target);
-        const href = target instanceof HTMLAnchorElement ? target.href : "";
-        const isDirectSyncLink = href && helpers.easyStoreRouteKind(href) === "shopee-sync";
-        if (mode !== "unknown" || isDirectSyncLink) {
+        // Opening EasyStore's product-specific sync form does not create a
+        // listing by itself. Gate explicit create/update actions here, then
+        // gate the final submit again after the form exposes its real mode.
+        if (mode !== "unknown") {
           const gate = helpers.listingSafetyGate(record.payload, mode);
           if (!gate.ok) {
             status.textContent = `已停止：${gate.reasons.join("；")}`;
@@ -1319,26 +1413,18 @@
         target.click();
         return true;
       }
-      const firstTarget = targets[0];
-      if (!await clickTarget(firstTarget)) return;
-      let result = await waitForShopeeNavigation(record, previousUrl, 2200, firstTarget);
-      if (result.navigated) {
-        return;
-      }
-      if (result.link && result.link !== firstTarget) {
-        if (!await clickTarget(result.link)) return;
-        result = await waitForShopeeNavigation(record, previousUrl, 2200, result.link);
-        if (result.navigated) {
-          return;
-        }
-      }
-      const nextTarget = shopeeNavigationTargets(record).find((target) => target !== firstTarget && target !== result.link);
-      if (nextTarget) {
+      let nextTarget = targets[0];
+      for (let step = 0; step < 4 && nextTarget; step += 1) {
         if (!await clickTarget(nextTarget)) return;
-        result = await waitForShopeeNavigation(record, previousUrl, 2200, nextTarget);
-        if (result.navigated) {
-          return;
-        }
+        const result = await waitForShopeeNavigation(
+          record,
+          navigationOverlay,
+          previousUrl,
+          step === 0 ? 7000 : 9000,
+          nextTarget
+        );
+        if (result.navigated) return;
+        nextTarget = result.link;
       }
       openShopee.disabled = false;
       status.textContent = "蝦皮區已展開，但 EasyStore 沒有轉到設定頁；請點商品頁內的「蝦皮購物／連接商品」，進入後助手會自動接續。";

@@ -20,6 +20,16 @@
   const MIN_TTL_MS = 1000;
   const MAX_PAYLOAD_BYTES = 64 * 1024;
   const SELLER_LARGE_HOME_FEE_TWD = 100;
+  const DEFAULT_SHOPEE_ENTRY_LABELS = Object.freeze([
+    "連接商品到蝦皮購物 Shopee Taiwan",
+    "連接商品到蝦皮購物",
+    "更新到蝦皮購物",
+    "發佈到蝦皮購物",
+    "發布到蝦皮購物",
+    "同步到蝦皮購物",
+    "蝦皮購物"
+  ]);
+  const MAX_SHOPEE_ENTRY_TEXT_LENGTH = 180;
 
   const ATTRIBUTE_DEFINITIONS = Object.freeze({
     ncc: { labels: ["NCC"], inputMode: "text" },
@@ -105,6 +115,24 @@
       return false;
     }
     return approvedValues.some((candidate) => normalizeText(candidate) === normalizedActual);
+  }
+
+  function shopeeEntryTextMatch(value, approvedTexts) {
+    const normalizedValue = normalizeText(value);
+    if (!normalizedValue || normalizedValue.length > MAX_SHOPEE_ENTRY_TEXT_LENGTH) {
+      return false;
+    }
+    const labels = approvedTexts === undefined ? DEFAULT_SHOPEE_ENTRY_LABELS : approvedTexts;
+    if (!Array.isArray(labels)) {
+      return false;
+    }
+    return labels.some((label) => {
+      const normalizedLabel = normalizeText(label);
+      return normalizedLabel && (
+        normalizedValue === normalizedLabel
+        || normalizedValue.startsWith(normalizedLabel)
+      );
+    });
   }
 
   function logisticsOptionMatch(actual, approvedValues) {
@@ -818,6 +846,7 @@
     directSyncNavigationMode,
     resolveShopeeNavigationMode,
     exactApprovedMatch,
+    shopeeEntryTextMatch,
     logisticsOptionMatch,
     uniqueStrings,
     parsePositiveId,
