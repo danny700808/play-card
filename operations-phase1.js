@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.12-shopee-autofill-v1';
+  const VERSION = '2026.08.12-shopee-autopublish-v2';
   let pendingShopeeAutofillPayload = null;
   const PRODUCT_SHIPPING_DECISIONS = {
     convenience:{label:'可超商寄',description:'小型商品；可先使用安全的估算包裝資料。'},
@@ -3603,13 +3603,13 @@ function ensureSalesClock(){
     pendingShopeeAutofillPayload=platforms.shopee&&platforms.shopee.autofillPayload||null;
     const cards=Object.keys(platforms).map(function(key){
       const row=platforms[key]||{},meta=productListingPublishStatusMeta(row.status),missing=Array.isArray(row.missingFields)&&row.missingFields.length?'<small>缺少：'+escapeHtml(row.missingFields.join('、'))+'</small>':'';
-      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">在 EasyStore 自動填寫</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.2.0.zip" download>店內電腦第一次使用：下載助手</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會帶入分類、品牌與商品屬性；一般宅配不會自動選擇蝦皮物流，請在 EasyStore 人工確認後再按「上架」。':'會帶入分類、品牌、商品屬性與物流；填完後由你檢查並按 EasyStore 的「上架」。')+'</small>':'';
+      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">送到 EasyStore 並上架蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.0.zip" download>店內電腦第一次使用：下載助手</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會帶入分類、品牌與商品屬性；一般宅配仍需人工確認物流，助手會停在 EasyStore 不會誤上架。':'會帶入分類、品牌、商品屬性與物流；資料完整後由 EasyStore 送到蝦皮。')+'</small>':'';
       return '<section class="ops-listing-platform-card"><div class="ops-listing-platform-head"><h3>'+escapeHtml(productListingPublishPlatformTitle(key))+'</h3>'+statusTag(meta.label,meta.type)+'</div><div class="ops-listing-check-row '+(meta.ok?'ok':'missing')+'"><span>'+(meta.ok?'✓':'!')+'</span><div><b>'+escapeHtml(row.message||meta.label)+'</b>'+missing+helper+'</div></div></section>';
     }).join('');
     const needsInput=result.status==='needs-input'||Object.values(platforms).some(function(row){return clean(row&&row.status)==='missing-fields';});
     const hasFailure=result.status==='partial-failed'||Object.values(platforms).some(function(row){return clean(row&&row.status)==='failed';});
     const headline=hasFailure?'有平台尚未完成':needsInput?'請補齊標示的資料':'上架工作已送出';
-    const detail=hasFailure?'已完成的平台不會重複建立；修正錯誤後可以再次確認上架。':needsInput?'補完資料後再次按「確認上架」即可；已完成的平台會依相同 SKU 更新，不會新增重複商品。':'EasyStore 已實際建立或更新；蝦皮可按下方按鈕自動填表，最後再由你確認上架。'+(shopeeHomeLogisticsNeedsManualConfirmation?' 一般宅配的蝦皮實際物流仍須在 EasyStore 人工選擇。':'');
+    const detail=hasFailure?'已完成的平台不會重複建立；修正錯誤後可以再次確認上架。':needsInput?'補完資料後再次按「確認上架」即可；已完成的平台會依相同 SKU 更新，不會新增重複商品。':'EasyStore 已實際建立或更新；按下方按鈕會填好蝦皮資料並在資料完整時直接送出上架。'+(shopeeHomeLogisticsNeedsManualConfirmation?' 一般宅配的蝦皮實際物流仍須在 EasyStore 人工選擇。':'');
     const body='<div class="ops-callout '+(!hasFailure&&!needsInput?'green':'yellow')+'"><b>'+escapeHtml(headline)+'</b><br><span>'+escapeHtml(detail)+'</span></div><div class="ops-listing-platform-grid">'+(cards||emptyHtml('沒有平台結果','請返回商品上架資料重試。'))+'</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉</button><button class="ops-button primary" type="button" data-action="product-listing-case-open" data-id="'+attr(draft.id)+'">'+(needsInput||hasFailure?'返回修改':'查看上架資料')+'</button></div>';
     openDrawer('上架結果',(draft.researchedName||draft.name||draft.sku)+'｜工作 '+clean(result.jobId),body);
   }
@@ -3617,7 +3617,7 @@ function ensureSalesClock(){
     if(!pendingShopeeAutofillPayload)throw new Error('找不到這件商品的蝦皮自動填寫資料，請重新執行「確認上架」。');
     if(!global.YouziShopeeAutofill||typeof global.YouziShopeeAutofill.queueAndOpen!=='function')throw new Error('蝦皮自動填寫橋接程式尚未載入，請重新整理頁面。');
     const result=await global.YouziShopeeAutofill.queueAndOpen(pendingShopeeAutofillPayload);
-    if(result&&result.extensionReady)toast('蝦皮資料已交給助手','EasyStore 已開啟；請依助手按鈕進入蝦皮設定並開始自動填寫。','success');
+    if(result&&result.extensionReady)toast('蝦皮資料已交給助手','EasyStore 已開啟；助手會自動進入蝦皮設定、填寫並送出上架。','success');
     else toast('EasyStore 已開啟','若沒有看到「柚子蝦皮上架助手」，請先在店內電腦的 Chrome 安裝助手。','warning');
     return result;
   }

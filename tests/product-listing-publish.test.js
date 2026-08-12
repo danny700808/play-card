@@ -99,6 +99,8 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
 
   assert.equal(snapshot.stock, 0);
   assert.equal(payload.sku, '1040160-1');
+  assert.equal(payload.schemaVersion, 2);
+  assert.equal(payload.publishMode, 'auto');
   assert.equal(payload.brand, 'Ibanez');
   assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);
   assert.deepEqual(payload.attributes.map((row) => [row.label, row.value]), [
@@ -198,7 +200,7 @@ test('Shopee persistence summary never stores one-time autofill handoff secrets'
   assert.match(source, /publishState: \{ jobId, status, platforms: platformsForStorage,/);
   assert.match(source, /return \{ ok:[\s\S]*status, platforms \};/);
   assert.match(source, /updatedBy: '商品上架', schemaVersion: 8/);
-  assert.match(source, /version: '2026\.08\.12-shopee-autofill-v1'/);
+  assert.match(source, /version: '2026\.08\.12-shopee-autopublish-v2'/);
   assert.doesNotMatch(source, /updatedBy: '商品上架', schemaVersion: 7/);
 });
 

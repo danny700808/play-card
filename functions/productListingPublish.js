@@ -126,7 +126,7 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
   const easyStoreProductId = clean(easyStoreResult && easyStoreResult.productId);
   const now = Date.now();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     nonce: crypto.randomBytes(16).toString('hex'),
     createdAt: now,
     expiresAt: now + 30 * 60 * 1000,
@@ -135,6 +135,7 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
     easyStoreUrl: easyStoreProductId ? `https://admin.easystore.co/products/${encodeURIComponent(easyStoreProductId)}` : 'https://admin.easystore.co/',
     sku: snapshot.sku,
     title: snapshot.shopeeTitle,
+    publishMode: 'auto',
     categoryPath: shopeeCategorySegments(snapshot.shopeeCategoryPath),
     brand: snapshot.shopeeBrand || snapshot.brand,
     attributes: normalizeShopeeAttributes(snapshot.shopeeAttributeValues),
@@ -685,7 +686,7 @@ function registerProductListingPublish(target) {
           action: '確認商品上架', entityType: 'productListingPublish', entityId: jobId,
           summary: `${snapshot.sku || productId}｜${snapshot.title}｜${status}`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy,
-          version: '2026.08.12-shopee-autofill-v1'
+          version: '2026.08.12-shopee-autopublish-v2'
         })
       ]);
       lockStatus = status;

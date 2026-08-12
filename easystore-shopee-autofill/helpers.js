@@ -9,7 +9,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function buildHelpers() {
   "use strict";
 
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
   const QUEUE_STORAGE_KEY = "youziShopeeAutofillQueueV1";
   const MAX_QUEUE_ITEMS = 20;
   const MAX_TTL_MS = 30 * 60 * 1000;
@@ -66,6 +66,7 @@
     "easyStoreUrl",
     "sku",
     "title",
+    "publishMode",
     "categoryPath",
     "brand",
     "attributes",
@@ -327,6 +328,10 @@
       errors.push("sku 只可使用英數字、點、底線、斜線與連字號。");
     }
     const title = validateString(payload.title, "title", errors, { required: false, max: 255 });
+    const publishMode = validateString(payload.publishMode, "publishMode", errors, { max: 20 });
+    if (publishMode && !["auto", "fill-only"].includes(publishMode)) {
+      errors.push("publishMode 必須是 auto 或 fill-only。");
+    }
     const brand = validateString(payload.brand, "brand", errors, { required: false, max: 120 });
 
     const categoryPath = [];
@@ -502,6 +507,7 @@
         easyStoreUrl,
         sku,
         title,
+        publishMode,
         categoryPath,
         brand,
         attributes,
@@ -584,6 +590,16 @@
     return null;
   }
 
+  function autoPublishGate(payload, report) {
+    const reasons = [];
+    const row = payload && typeof payload === "object" ? payload : {};
+    const result = report && typeof report === "object" ? report : {};
+    if (row.publishMode !== "auto") reasons.push("這件商品設定為填寫後人工確認。");
+    if (row.logistics && row.logistics.requiresConfirmation === true) reasons.push("物流仍需人工確認。");
+    if (Array.isArray(result.missing) && result.missing.length > 0) reasons.push(`仍有 ${result.missing.length} 個待補欄位。`);
+    return { ok: reasons.length === 0, reasons };
+  }
+
   return Object.freeze({
     SCHEMA_VERSION,
     QUEUE_STORAGE_KEY,
@@ -606,6 +622,7 @@
     extractProductIds,
     textContainsExactToken,
     pruneAndMergeQueue,
-    selectQueueRecord
+    selectQueueRecord,
+    autoPublishGate
   });
 });

@@ -13,7 +13,7 @@ on:
       - "tests/operations-live-search.test.js"
       - "tests/shopee-autofill-handoff.test.js"
       - "easystore-shopee-autofill/**"
-      - "youzi-easystore-shopee-autofill-v0.2.0.zip"
+      - "youzi-easystore-shopee-autofill-v0.3.0.zip"
       - ".github/workflows/verify-operations-live-search.yml"
   workflow_dispatch:
 
@@ -36,7 +36,7 @@ jobs:
           node --check easystore-shopee-autofill/easystore.js
           node --check easystore-shopee-autofill/helpers.js
           node -e "JSON.parse(require('fs').readFileSync('easystore-shopee-autofill/manifest.json', 'utf8'))"
-          test -s youzi-easystore-shopee-autofill-v0.2.0.zip
+          test -s youzi-easystore-shopee-autofill-v0.3.0.zip
       - name: Run operations, bridge and extension tests
         run: >-
           node --test
@@ -46,10 +46,10 @@ jobs:
       - name: Verify markup and cache versions
         run: |
           set -euo pipefail
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260812-shopee-autofill-v1' portal.html
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260812-shopee-autofill-v1' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260812-shopee-autofill-v1' portal.html
-          grep -Fq 'operations-phase1.js?v=20260812-shopee-autofill-v1' operations-hub.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260812-shopee-autopublish-v2' portal.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260812-shopee-autopublish-v2' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260812-shopee-autopublish-v2' portal.html
+          grep -Fq 'operations-phase1.js?v=20260812-shopee-autopublish-v2' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

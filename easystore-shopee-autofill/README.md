@@ -1,11 +1,12 @@
 # 柚子樂器 EasyStore 蝦皮自動填寫
 
-這是獨立的 Chrome Manifest V3 擴充套件。它會從全通路營運中心接收一次性的蝦皮待填資料，在 EasyStore 蝦皮設定頁核對商品 ID 與 SKU，等使用者按「開始自動填寫」後再依欄位名稱填入分類、品牌、商品屬性、物流與預購。
+這是獨立的 Chrome Manifest V3 擴充套件。它會從全通路營運中心接收一次性的蝦皮待填資料，在 EasyStore 蝦皮設定頁核對商品 ID 與 SKU，依欄位名稱填入分類、品牌、商品屬性、物流與預購；資料完整時接著按 EasyStore 的上架送到蝦皮。
 
 重要限制：
 
 - **目前只支援桌面版 Google Chrome。** 手機 Safari、手機 Chrome 不能安裝此擴充套件。
-- 擴充套件**永遠不會按 EasyStore 最後的「上架」**；填完仍由使用者檢查並按上架。
+- 只有資料設定為自動上架、物流不需人工確認且填寫報告沒有「待補」時，才會按 EasyStore 最後的上架。
+- 若找不到完全相符欄位、分類、物流級距或 EasyStore 顯示錯誤，會停止並留在畫面讓使用者處理。
 - 待填資料只存於 `chrome.storage.session`，關閉 Chrome 會清除；完成一次自動填寫後也會立刻刪除該筆資料。
 - 不會讀取或儲存 EasyStore 密碼、Cookie 或登入權杖。
 
@@ -27,13 +28,13 @@
 ## 使用流程
 
 1. 在全通路營運中心完成「確認上架」。
-2. 在蝦皮結果按「在 EasyStore 自動填寫」。
+2. 在蝦皮結果按「送到 EasyStore 並上架蝦皮」。
 3. 頁面送出一次性資料，擴充套件以 `YOUZI_SHOPEE_AUTOFILL_ACK` 回覆相同 `nonce`。
-4. EasyStore 商品頁會顯示助手；按「開啟蝦皮設定」。
+4. EasyStore 商品頁會顯示助手並自動進入蝦皮設定；若 EasyStore 頁面較慢，可按畫面上的按鈕重試。
 5. 進入蝦皮設定頁後，擴充套件必須同時核對網址中的 EasyStore 商品 ID 與頁面的完整賣家 SKU，才顯示填寫面板。
-6. 使用者按「開始自動填寫」。
-7. 檢查「已填／保留人工值／略過／待補」報告。
-8. 人工確認價格、庫存、分類、屬性及物流後，再按 EasyStore 的「上架」。
+6. 助手自動開始填寫；畫面上的「自動填寫並上架蝦皮」保留作為重試按鈕。
+7. 助手產生「已填／保留人工值／略過／待補」報告。
+8. 沒有待補且物流資料明確時，助手按 EasyStore 的上架；否則停止並顯示缺少內容。
 
 ## 現行訊息格式
 
@@ -51,7 +52,7 @@ window.postMessage({
 
 ```js
 const payload = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   nonce: "azes40-prb-00000001",
   createdAt: Date.now(),
   expiresAt: Date.now() + 10 * 60 * 1000,
@@ -60,6 +61,7 @@ const payload = {
   easyStoreUrl: "https://admin.easystore.co/products/3969443",
   sku: "1040160-1",
   title: "Ibanez AZES40-PRB AZ Essentials 電吉他－馬卡藍",
+  publishMode: "auto",
   categoryPath: [
     "愛好與收藏品",
     "樂器與樂器配件",
@@ -120,7 +122,7 @@ ACK 格式：
 - S170 僅核准 `S170`、`161–170 cm`、`170cm（含）以下`、`≤170cm` 等同義顯示；不接受舊的 `151–180cm`。
 - 找不到完全相符的新竹級距時，如果物流是擴充套件剛開啟的，會復原為關閉並列入「待補」。
 - 找不到欄位或核准選項時列入「待補」，不強行輸入。
-- 完成自動填寫後刪除一次性 session 記錄，且不會按最後「上架」。
+- 成功送出上架後刪除一次性 session 記錄；若有待補或送出失敗則保留，方便修正後重試。
 
 ## 測試
 
