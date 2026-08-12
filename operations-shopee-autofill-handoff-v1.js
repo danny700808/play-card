@@ -4,7 +4,7 @@
   const QUEUE_TYPE = 'YOUZI_SHOPEE_AUTOFILL_QUEUE';
   const ACK_TYPE = 'YOUZI_SHOPEE_AUTOFILL_ACK';
   const SOURCE = 'youzi-operations-hub';
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
   const MAX_TTL_MS = 30 * 60 * 1000;
   const MIN_REMAINING_MS = 1000;
 
@@ -80,6 +80,17 @@
       sku: clean(value.sku, 120),
       title: clean(value.title, 255),
       publishMode: clean(value.publishMode, 20),
+      listingPolicy: {
+        decision: clean(value.listingPolicy && value.listingPolicy.decision, 20),
+        matchKey: clean(value.listingPolicy && value.listingPolicy.matchKey, 20),
+        allowCreate: value.listingPolicy && value.listingPolicy.allowCreate === true,
+        existingListingIds: (value.listingPolicy && Array.isArray(value.listingPolicy.existingListingIds)
+          ? value.listingPolicy.existingListingIds : [])
+          .map((item) => clean(item, 100)).filter(Boolean).slice(0, 20),
+        onZero: clean(value.listingPolicy && value.listingPolicy.onZero, 40),
+        onOne: clean(value.listingPolicy && value.listingPolicy.onOne, 20),
+        onMultiple: clean(value.listingPolicy && value.listingPolicy.onMultiple, 20)
+      },
       categoryPath,
       brand: clean(value.brand, 120),
       attributes,
@@ -108,6 +119,17 @@
     };
     if (!payload.nonce || !payload.productId || !payload.sku || !payload.categoryPath.length) {
       throw new Error('蝦皮自動填寫資料不完整，請重新執行「確認上架」。');
+    }
+    if (
+      !['auto', 'new', 'existing'].includes(payload.listingPolicy.decision) ||
+      payload.listingPolicy.matchKey !== 'sku' ||
+      payload.listingPolicy.allowCreate !== (payload.listingPolicy.decision === 'new') ||
+      (payload.listingPolicy.existingListingIds.length > 0 && payload.listingPolicy.decision !== 'existing') ||
+      payload.listingPolicy.onZero !== 'create-only-if-confirmed' ||
+      payload.listingPolicy.onOne !== 'update' ||
+      payload.listingPolicy.onMultiple !== 'block'
+    ) {
+      throw new Error('蝦皮既有商品防重規則不完整，請重新執行「確認上架」。');
     }
     return payload;
   }

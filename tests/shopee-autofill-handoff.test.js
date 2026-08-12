@@ -10,7 +10,7 @@ const source = fs.readFileSync('operations-shopee-autofill-handoff-v1.js', 'utf8
 function rawPayload() {
   const now = Date.now();
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     nonce: '0123456789abcdef0123456789abcdef',
     createdAt: now,
     expiresAt: now + 10 * 60 * 1000,
@@ -20,6 +20,10 @@ function rawPayload() {
     sku: '1040160-1',
     title: 'Ibanez AZES40-PRB 電吉他',
     publishMode: 'auto',
+    listingPolicy: {
+      decision: 'auto', matchKey: 'sku', allowCreate: false, existingListingIds: [],
+      onZero: 'create-only-if-confirmed', onOne: 'update', onMultiple: 'block'
+    },
     categoryPath: ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯'],
     brand: 'Ibanez',
     attributes: [
@@ -69,7 +73,11 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
   const payload = api.sanitizePayload(rawPayload());
   const serialized = JSON.stringify(payload);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 3);
+  assert.equal(payload.schemaVersion, 4);
+  assert.deepEqual(JSON.parse(JSON.stringify(payload.listingPolicy)), {
+    decision: 'auto', matchKey: 'sku', allowCreate: false, existingListingIds: [],
+    onZero: 'create-only-if-confirmed', onOne: 'update', onMultiple: 'block'
+  });
   assert.equal(payload.attributes[0].value, 'HSS');
   assert.equal(payload.publishMode, 'auto');
   const hct = payload.logistics.methods.find((row) => row.label === '新竹物流');
@@ -95,6 +103,17 @@ test('handoff refuses incomplete identity data', () => {
   const payload = rawPayload();
   payload.sku = '';
   assert.throws(() => api.sanitizePayload(payload), /資料不完整/);
+});
+
+test('handoff refuses an unsafe or contradictory listing policy', () => {
+  const { api } = loadBridge();
+  const payload = rawPayload();
+  payload.listingPolicy.allowCreate = true;
+  assert.throws(() => api.sanitizePayload(payload), /防重規則不完整/);
+  payload.listingPolicy.decision = 'new';
+  assert.doesNotThrow(() => api.sanitizePayload(payload));
+  payload.listingPolicy.existingListingIds = ['4116442'];
+  assert.throws(() => api.sanitizePayload(payload), /防重規則不完整/);
 });
 
 test('handoff rejects an expired record and never silently extends its expiry', () => {

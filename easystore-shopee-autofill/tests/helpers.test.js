@@ -8,7 +8,7 @@ const helpers = require("../helpers.js");
 
 function validPayload(now) {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     nonce: "azes40-prb-00000001",
     createdAt: now,
     expiresAt: now + 10 * 60 * 1000,
@@ -18,6 +18,15 @@ function validPayload(now) {
     sku: "1040160-1",
     title: "Ibanez AZES40-PRB AZ Essentials 電吉他－馬卡藍",
     publishMode: "auto",
+    listingPolicy: {
+      decision: "auto",
+      matchKey: "sku",
+      allowCreate: false,
+      existingListingIds: [],
+      onZero: "create-only-if-confirmed",
+      onOne: "update",
+      onMultiple: "block"
+    },
     categoryPath: ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"],
     brand: "Ibanez",
     attributes: [
@@ -236,7 +245,9 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
   assert.match(source, /EasyStore 沒有轉到設定頁/);
   assert.match(source, /setInterval\([\s\S]*const nextUrl = location\.href/);
   assert.match(source, /helpers\.shouldInspectQueue\(previousUrl, nextUrl\)/);
-  assert.match(source, /helpers\.autoPublishGate\(payload, report\)/);
+  assert.match(source, /helpers\.autoPublishGate\(currentRecord\.payload, report, currentRecord\.navigationMode\)/);
+  assert.match(source, /helpers\.listingSafetyGate\(record\.payload, mode\)/);
+  assert.match(source, /rememberShopeeNavigationMode/);
   assert.match(source, /findEnabledExactButton/);
   assert.match(source, /setTimeout\(\(\) => \{[\s\S]*start\.click\(\)/);
   assert.match(source, /setTimeout\(\(\) => \{[\s\S]*openShopee\.click\(\)/);
@@ -253,17 +264,82 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
 
 test("automatic publish is allowed only when the report and logistics are complete", () => {
   const payload = validPayload(1_800_000_000_000);
-  assert.deepEqual(helpers.autoPublishGate(payload, { missing: [] }), { ok: true, reasons: [] });
-  const missing = helpers.autoPublishGate(payload, { missing: ["分類"] });
+  assert.deepEqual(helpers.autoPublishGate(payload, { missing: [] }, "update"), { ok: true, reasons: [] });
+  const missing = helpers.autoPublishGate(payload, { missing: ["分類"] }, "update");
   assert.equal(missing.ok, false);
   assert.match(missing.reasons.join(" "), /待補/);
   payload.logistics.requiresConfirmation = true;
-  const logistics = helpers.autoPublishGate(payload, { missing: [] });
+  const logistics = helpers.autoPublishGate(payload, { missing: [] }, "update");
   assert.equal(logistics.ok, false);
   assert.match(logistics.reasons.join(" "), /物流/);
   payload.logistics.requiresConfirmation = false;
   payload.publishMode = "fill-only";
-  const manual = helpers.autoPublishGate(payload, { missing: [] });
+  const manual = helpers.autoPublishGate(payload, { missing: [] }, "update");
   assert.equal(manual.ok, false);
   assert.match(manual.reasons.join(" "), /人工確認/);
+});
+
+test("classifies update and create actions conservatively", () => {
+  assert.equal(helpers.classifyShopeeActionText("重新同步到蝦皮"), "update");
+  assert.equal(helpers.classifyShopeeActionText("Sync again"), "update");
+  assert.equal(helpers.classifyShopeeActionText("連接商品到蝦皮購物 Shopee Taiwan"), "create");
+  assert.equal(helpers.classifyShopeeActionText("發佈到蝦皮購物"), "create");
+  assert.equal(helpers.classifyShopeeActionText("更新到蝦皮購物｜發佈到蝦皮購物"), "unknown");
+  assert.equal(helpers.classifyShopeeActionText("蝦皮購物"), "unknown");
+});
+
+test("duplicate guard permits updates but requires explicit confirmation before creation", () => {
+  const auto = validPayload(1_800_000_000_000);
+  assert.deepEqual(helpers.listingSafetyGate(auto, "update"), { ok: true, reasons: [] });
+  assert.equal(helpers.listingSafetyGate(auto, "create").ok, false);
+  assert.match(helpers.listingSafetyGate(auto, "create").reasons.join(" "), /不能建立新品/);
+  assert.equal(helpers.listingSafetyGate(auto, "unknown").ok, false);
+  assert.match(helpers.listingSafetyGate(auto, "unknown").reasons.join(" "), /無法確認/);
+
+  const existing = validPayload(1_800_000_000_000);
+  existing.listingPolicy.decision = "existing";
+  existing.listingPolicy.existingListingIds = ["4116442"];
+  assert.equal(helpers.listingSafetyGate(existing, "create").ok, false);
+  assert.match(helpers.listingSafetyGate(existing, "create").reasons.join(" "), /Match product/);
+  assert.equal(helpers.listingSafetyGate(existing, "update").ok, true);
+
+  existing.listingPolicy.existingListingIds = ["4116442", "4116443"];
+  assert.equal(helpers.listingSafetyGate(existing, "update").ok, false);
+  assert.match(helpers.listingSafetyGate(existing, "update").reasons.join(" "), /2 個蝦皮商品/);
+
+  const newListing = validPayload(1_800_000_000_000);
+  newListing.listingPolicy.decision = "new";
+  newListing.listingPolicy.allowCreate = true;
+  assert.equal(helpers.listingSafetyGate(newListing, "create").ok, true);
+
+  newListing.listingPolicy.existingListingIds = ["4116442"];
+  assert.equal(helpers.listingSafetyGate(newListing, "create").ok, false);
+  assert.match(helpers.listingSafetyGate(newListing, "create").reasons.join(" "), /不能建立新品/);
+});
+
+test("rejects a create decision that also claims an existing Shopee listing", () => {
+  const now = 1_800_000_000_000;
+  const payload = validPayload(now);
+  payload.listingPolicy.decision = "new";
+  payload.listingPolicy.allowCreate = true;
+  payload.listingPolicy.existingListingIds = ["4116442"];
+  const result = helpers.validateQueuePayload(payload, now);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join(" "), /必須是 existing/);
+});
+
+test("navigation mode remains attached to the exact queued product and nonce", () => {
+  const now = 1_800_000_000_000;
+  const payload = helpers.validateQueuePayload(validPayload(now), now).value;
+  const queue = helpers.pruneAndMergeQueue({}, payload, now, now);
+  const updated = helpers.withQueueNavigationMode(queue, payload.easyStoreProductId, payload.nonce, "update", now + 1);
+  const selected = helpers.selectQueueRecord(
+    updated,
+    `https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=${payload.easyStoreProductId}`,
+    `SKU ${payload.sku}`,
+    now + 2
+  );
+  assert.equal(selected.navigationMode, "update");
+  const unchanged = helpers.withQueueNavigationMode(updated, payload.easyStoreProductId, "wrong-nonce", "create", now + 3);
+  assert.equal(unchanged[payload.easyStoreProductId].navigationMode, "update");
 });

@@ -16,8 +16,10 @@ const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const REQUEST_TIMEOUT_MS = 60 * 1000;
 const PUBLISH_LOCK_MS = 15 * 60 * 1000;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
-const SHOPEE_AUTOFILL_SCHEMA_VERSION = 3;
+const SHOPEE_AUTOFILL_SCHEMA_VERSION = 4;
 const SELLER_LARGE_HOME_FEE_TWD = 100;
+const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'processing']);
+const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
@@ -25,6 +27,11 @@ function clean(value) {
 
 function normalizeSku(value) {
   return clean(value).replace(/^'+/, '').replace(/\u00a0/g, ' ').toUpperCase();
+}
+
+function normalizeListingDecision(value) {
+  const decision = clean(value).toLowerCase();
+  return ['auto', 'new', 'existing'].includes(decision) ? decision : 'auto';
 }
 
 function numberOrNull(value) {
@@ -148,6 +155,17 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
     sku: snapshot.sku,
     title: snapshot.shopeeTitle,
     publishMode: 'auto',
+    listingPolicy: {
+      decision: normalizeListingDecision(snapshot.shopeeListingDecision),
+      matchKey: 'sku',
+      allowCreate: normalizeListingDecision(snapshot.shopeeListingDecision) === 'new',
+      existingListingIds: Array.isArray(snapshot.shopeeExistingListingIds)
+        ? snapshot.shopeeExistingListingIds.map(clean).filter(Boolean).slice(0, 20)
+        : [],
+      onZero: 'create-only-if-confirmed',
+      onOne: 'update',
+      onMultiple: 'block'
+    },
     categoryPath: shopeeCategorySegments(snapshot.shopeeCategoryPath),
     brand: snapshot.shopeeBrand || snapshot.brand,
     attributes: normalizeShopeeAttributes(snapshot.shopeeAttributeValues),
@@ -258,6 +276,7 @@ function listingDescription(listingCase) {
 function buildListingSnapshot(productId, product, listingCase) {
   const enabled = listingCase.enabledPlatforms && typeof listingCase.enabledPlatforms === 'object'
     ? listingCase.enabledPlatforms : { easyStoreShopee: true, momo: true, coupang: true };
+  const shopeeExistingListingIds = platformListingIds(product, 'shopee');
   const description = listingDescription(listingCase);
   const images = normalizeUrls(listingCase.listingImageUrls, 9);
   const snapshot = {
@@ -284,6 +303,10 @@ function buildListingSnapshot(productId, product, listingCase) {
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
     shopeeDescription: clean(listingCase.shopeeDescription) || description,
     shopeeRequiredNotes: clean(listingCase.shopeeRequiredNotes),
+    shopeeListingDecision: shopeeExistingListingIds.length
+      ? 'existing'
+      : normalizeListingDecision(listingCase.shopeeListingDecision),
+    shopeeExistingListingIds,
     shopeeCategoryPath: clean(listingCase.shopeeCategoryPath),
     shopeeBrand: clean(listingCase.shopeeBrand) || clean(listingCase.brand || product.brand),
     shopeeAttributeValues: normalizeShopeeAttributes(listingCase.shopeeAttributeValues),
@@ -382,6 +405,68 @@ function variantIdOf(variant) {
   return clean(variant && (variant.id || variant.variant_id || variant.variantId));
 }
 
+function platformListingIds(product, platform) {
+  const mappings = product && product.platformMappings && typeof product.platformMappings === 'object'
+    ? product.platformMappings : {};
+  const key = clean(platform).toLowerCase();
+  const mapping = mappings[key] && typeof mappings[key] === 'object' ? mappings[key] : {};
+  let candidates = [];
+  if (key === 'shopee') {
+    candidates = [mapping.itemIds, mapping.itemId, mapping.channelProductIds, mapping.channelProductId, mapping.productIds, mapping.productId];
+  } else if (key === 'momo') {
+    const goodsCodes = (Array.isArray(mapping.goodsCodes) ? mapping.goodsCodes : [mapping.goodsCode]).map(clean).filter(Boolean);
+    const goodsdtCodes = (Array.isArray(mapping.goodsdtCodes) ? mapping.goodsdtCodes : [mapping.goodsdtCode]).map(clean).filter(Boolean);
+    const entpGoodsNos = (Array.isArray(mapping.entpGoodsNos) ? mapping.entpGoodsNos : [mapping.entpGoodsNo]).map(clean).filter(Boolean);
+    if (goodsCodes.length && goodsCodes.length === goodsdtCodes.length) {
+      candidates = goodsCodes.map((goodsCode, index) => `${goodsCode}|${goodsdtCodes[index]}`);
+    } else if (entpGoodsNos.length) candidates = entpGoodsNos;
+    else candidates = goodsdtCodes.length ? goodsdtCodes : goodsCodes;
+  } else if (key === 'coupang') {
+    candidates = [mapping.vendorItemIds, mapping.vendorItemId, mapping.sellerProductIds, mapping.sellerProductId];
+  }
+  const ids = [];
+  candidates.forEach((value) => {
+    const rows = Array.isArray(value) ? value : [value];
+    rows.forEach((row) => {
+      const id = clean(row);
+      if (id && !ids.includes(id)) ids.push(id);
+    });
+  });
+  return ids.slice(0, 50);
+}
+
+function platformQueueFingerprint(platform, snapshot) {
+  const key = clean(platform).toLowerCase();
+  const platformFields = key === 'momo'
+    ? [snapshot.momoGoodsName, snapshot.momoSlogan, snapshot.momoCategoryCode, snapshot.momoPrice]
+    : [snapshot.coupangTitle, snapshot.coupangCategoryCode, snapshot.coupangPrice];
+  return crypto.createHash('sha256').update(JSON.stringify({
+    platform: key,
+    productId: snapshot.productId,
+    sku: snapshot.sku,
+    title: snapshot.title,
+    description: snapshot.description,
+    images: snapshot.images,
+    stock: snapshot.stock,
+    package: [snapshot.packageLengthCm, snapshot.packageWidthCm, snapshot.packageHeightCm, snapshot.packageWeightKg],
+    platformFields
+  })).digest('hex');
+}
+
+function buildPlatformQueuePolicy(product, platform, snapshot) {
+  const existingListingIds = platformListingIds(product, platform);
+  return {
+    mode: existingListingIds.length > 1 ? 'block-duplicate' : existingListingIds.length ? 'update-existing' : 'upsert-by-exact-sku',
+    matchKey: 'sku',
+    sku: snapshot.sku,
+    existingListingIds,
+    onZero: 'create',
+    onOne: 'update',
+    onMultiple: 'block',
+    onUncertain: 'block'
+  };
+}
+
 function exactEasyStoreMatches(payload, sku) {
   const normalizedSku = normalizeSku(sku);
   const matches = [];
@@ -476,7 +561,13 @@ async function upsertEasyStoreProduct(snapshot, product, token) {
       createdPayload = await easyStoreRequest('/products.json', token, { method: 'POST', body: buildEasyStoreProductBody(snapshot, true) });
     } catch (error) {
       // POST 可能已成功但回應在途中斷線；先以完全相同 SKU 回查，絕不盲目重送造成重複商品。
-      const recovered = await findEasyStoreMappingBySku(snapshot, token).catch(() => null);
+      let recovered = null;
+      try {
+        recovered = await findEasyStoreMappingBySku(snapshot, token);
+      } catch (recoveryError) {
+        if (/找到 \d+ 筆相同 SKU/.test(clean(recoveryError && recoveryError.message))) throw recoveryError;
+        throw error;
+      }
       if (!recovered) throw error;
       return { action: 'created', productId: recovered.productId, variantIds: [recovered.variantId], recoveredAfterUncertainResponse: true };
     }
@@ -534,21 +625,63 @@ function coupangMissingFields(snapshot) {
   return missing;
 }
 
-async function queueFixedIpPlatform(db, jobId, platform, snapshot, missingFields) {
+async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, missingFields) {
   if (missingFields.length) {
     return { status: 'missing-fields', message: `請先補：${missingFields.join('、')}`, missingFields };
   }
   const queueRef = db.collection(PLATFORM_QUEUE_COLLECTION).doc(`${snapshot.productId}_${platform.toLowerCase()}`);
-  await queueRef.set({
-    jobId, productId: snapshot.productId, sku: snapshot.sku, platform,
-    status: 'awaiting-store-agent', payload: snapshot,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    createdBy: '全通路營運中心', schemaVersion: 1
-  }, { merge: true });
+  const listingPolicy = buildPlatformQueuePolicy(product, platform, snapshot);
+  if (listingPolicy.mode === 'block-duplicate') {
+    return {
+      status: 'action-required',
+      message: `${platform} 的相同 SKU 已對到 ${listingPolicy.existingListingIds.length} 個平台商品，為避免更新錯商品已停止。`
+    };
+  }
+  const fingerprint = platformQueueFingerprint(platform, snapshot);
+  let reusedStatus = '';
+  await db.runTransaction(async (transaction) => {
+    const existingSnapshot = await transaction.get(queueRef);
+    const existing = existingSnapshot.exists ? existingSnapshot.data() || {} : {};
+    const sameIdentity = normalizeSku(existing.sku) === snapshot.sku
+      && clean(existing.productId) === snapshot.productId;
+    const sameFingerprint = clean(existing.fingerprint) === fingerprint;
+    const existingStatus = clean(existing.status).toLowerCase();
+    if (sameIdentity && sameFingerprint && PLATFORM_QUEUE_PENDING_STATUSES.has(existingStatus)) {
+      reusedStatus = 'already-queued';
+      return;
+    }
+    if (sameIdentity && sameFingerprint && PLATFORM_QUEUE_COMPLETED_STATUSES.has(existingStatus)) {
+      reusedStatus = 'already-completed';
+      return;
+    }
+    transaction.set(queueRef, {
+      jobId, productId: snapshot.productId, sku: snapshot.sku, platform,
+      status: 'awaiting-store-agent', payload: snapshot, listingPolicy, fingerprint,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: '全通路營運中心', schemaVersion: 2
+    }, { merge: true });
+  });
+  if (reusedStatus === 'already-queued') {
+    return {
+      status: 'already-queued',
+      message: `${platform} 相同 SKU 的工作已在處理中，本次不會再排第二筆。`,
+      queueId: queueRef.id
+    };
+  }
+  if (reusedStatus === 'already-completed') {
+    return {
+      status: 'already-completed',
+      message: `${platform} 相同版本已處理完成，本次不會重複建立。`,
+      queueId: queueRef.id
+    };
+  }
+  const message = listingPolicy.existingListingIds.length
+    ? `${platform} 已找到既有平台編號，將更新原商品，不會建立第二筆。`
+    : `${platform} 將先用完全相同 SKU 查詢：唯一一筆就更新、零筆才建立、多筆或不確定就停止。`;
   return {
     status: 'awaiting-store-agent',
-    message: `${platform} 已排入店內固定 IP 電腦的新品上架佇列。`,
+    message,
     queueId: queueRef.id
   };
 }
@@ -590,7 +723,7 @@ function overallPublishStatus(platforms) {
   const states = Object.values(platforms).map((row) => clean(row && row.status));
   if (states.some((status) => status === 'failed')) return 'partial-failed';
   if (states.some((status) => status === 'missing-fields')) return 'needs-input';
-  if (states.some((status) => ['awaiting-store-agent', 'waiting-easystore-sync', 'action-required'].includes(status))) return 'submitted';
+  if (states.some((status) => ['awaiting-store-agent', 'waiting-easystore-sync', 'action-required', 'already-queued'].includes(status))) return 'submitted';
   return states.length ? 'completed' : 'no-platform';
 }
 
@@ -683,8 +816,8 @@ function registerProductListingPublish(target) {
         }
       }
 
-      if (snapshot.enabledMomo) platforms.momo = await queueFixedIpPlatform(db, jobId, 'MOMO', snapshot, momoMissingFields(snapshot));
-      if (snapshot.enabledCoupang) platforms.coupang = await queueFixedIpPlatform(db, jobId, 'Coupang', snapshot, coupangMissingFields(snapshot));
+      if (snapshot.enabledMomo) platforms.momo = await queueFixedIpPlatform(db, jobId, 'MOMO', snapshot, product, momoMissingFields(snapshot));
+      if (snapshot.enabledCoupang) platforms.coupang = await queueFixedIpPlatform(db, jobId, 'Coupang', snapshot, product, coupangMissingFields(snapshot));
       const status = overallPublishStatus(platforms);
       const platformsForStorage = summarizePlatformsForStorage(platforms);
       await Promise.all([
@@ -698,7 +831,7 @@ function registerProductListingPublish(target) {
           action: '確認商品上架', entityType: 'productListingPublish', entityId: jobId,
           summary: `${snapshot.sku || productId}｜${snapshot.title}｜${status}`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy,
-          version: '2026.08.12-shopee-autopublish-v3'
+          version: '2026.08.12-shopee-autopublish-v4'
         })
       ]);
       lockStatus = status;
@@ -732,6 +865,10 @@ module.exports = {
     hsinchuSizeBand,
     buildShopeeLogistics,
     buildShopeeAutofillPayload,
+    normalizeListingDecision,
+    platformListingIds,
+    platformQueueFingerprint,
+    buildPlatformQueuePolicy,
     identityAllowsShopeeAutofill,
     summarizePlatformsForStorage,
     exactEasyStoreMatches,

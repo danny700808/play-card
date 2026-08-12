@@ -64,8 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-publish-v1/);
-    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260812-shopee-autopublish-v3/);
-    assert.match(html, /operations-phase1\.js\?v=20260812-shopee-autopublish-v3/);
+    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260812-shopee-autopublish-v4/);
+    assert.match(html, /operations-phase1\.js\?v=20260812-shopee-autopublish-v4/);
   }
 });
 
@@ -250,7 +250,7 @@ test('listing preparation is a simple per-product workspace and no longer part o
   const caseForm = functionBody(engine, 'productListingCaseFormHtml');
   const saveCase = functionBody(engine, 'saveProductListingCase');
 
-  for (const field of ['productResearchStatus', 'shopeeCategoryPath', 'shippingDecision', 'packageLengthCm']) {
+  for (const field of ['productResearchStatus', 'shopeeCategoryPath', 'shopeeListingDecision', 'shippingDecision', 'packageLengthCm']) {
     assert.doesNotMatch(productForm, new RegExp(field), `${field} must stay out of the main product form`);
     assert.doesNotMatch(saveProduct, new RegExp(field), `${field} must not be written by saveProduct`);
     assert.match(saveCase, new RegExp(field), `${field} must be written by saveProductListingCase`);
@@ -271,7 +271,10 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(saveCase, /priceSnapshot/);
   assert.match(saveCase, /easyStore:numberOrNull\(p\.easyStorePrice\)/);
   assert.doesNotMatch(saveCase, /easyStore:p\.easyStorePrice/);
-  assert.match(caseForm, /蝦皮仍由 EasyStore 發佈/);
+  assert.match(caseForm, /蝦皮防重複檢查/);
+  assert.match(caseForm, /已有商品要先用 Match product 配對/);
+  assert.match(caseForm, /name="shopeeListingDecision"/);
+  assert.match(caseForm, /無法確認就停止/);
   assert.match(caseForm, /商品網址（可不填）/);
   assert.match(caseForm, /productReferenceImageUpload/);
   assert.match(caseForm, /從網址／型號自動找商品圖/);
@@ -349,6 +352,10 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(productListingPublishSource, /findEasyStoreMappingInProduct/);
   assert.match(productListingPublishSource, /acquirePublishLock/);
   assert.match(productListingPublishSource, /正在上架，請等待目前工作完成/);
+  assert.match(productListingPublishSource, /platformQueueFingerprint/);
+  assert.match(productListingPublishSource, /already-queued/);
+  assert.match(productListingPublishSource, /mode === 'block-duplicate'/);
+  assert.match(productListingPublishSource, /onMultiple: 'block'/);
   assert.match(productListingPublishSource, /awaiting-store-agent/);
   assert.match(productListingPublishSource, /waiting-easystore-sync/);
   assert.match(firestoreRules, /'opsProductListingQueue'/);
@@ -377,7 +384,9 @@ test('listing review honors manager identity and brand decisions and gates logis
   assert.match(saver, /identityManualConfirmedAt=serverTimestamp\(\)/);
   assert.match(saver, /writeAudit\('人工確認同一商品'/);
   assert.match(saver, /productPackageFromFormData\(data,false\)/);
+  assert.match(saver, /shopeeListingDecision/);
   assert.match(drafter, /productPackageFromFormData\(data,false\)/);
+  assert.match(drafter, /shopeeListingDecision/);
   assert.match(logistics, /longest<=45&&total<=105&&weight<=5/);
   assert.match(logistics, /shippingDecision==='home'\)return true/);
   assert.match(logistics, /longest<=150&&total<=210&&weight<=20/);
@@ -386,9 +395,12 @@ test('listing review honors manager identity and brand decisions and gates logis
   assert.match(preview, /一般宅配可以先送出/);
   assert.match(preview, /蝦皮實際物流尚未自動選好/);
   assert.match(preview, /可送出・待選物流/);
+  assert.match(preview, /Match product 配對／更新/);
   assert.match(preview, /請先補齊再上架/);
-  assert.match(resultRenderer, /一般宅配仍需人工確認物流/);
+  assert.match(resultRenderer, /一般宅配與新增／更新狀態仍須確認/);
+  assert.match(resultRenderer, /多筆或不確定就停止/);
   assert.match(savedPublisher, /shippingDecision:clean\(raw\.shippingDecision\)/);
+  assert.match(savedPublisher, /shopeeListingDecision/);
   assert.match(publisher, /if\(!readiness\.all\)/);
   assert.match(publisher, /尚未送出上架/);
 });

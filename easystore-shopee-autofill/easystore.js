@@ -343,8 +343,8 @@
     return null;
   }
 
-  async function publishToShopee(payload, report) {
-    const gate = helpers.autoPublishGate(payload, report);
+  async function publishToShopee(payload, report, navigationMode) {
+    const gate = helpers.autoPublishGate(payload, report, navigationMode);
     if (!gate.ok) {
       throw new Error(gate.reasons.join("；"));
     }
@@ -1069,6 +1069,68 @@
     });
   }
 
+  function shopeeTargetText(element) {
+    if (!(element instanceof Element)) return "";
+    const parts = [];
+    for (const value of [
+      element.textContent,
+      element.getAttribute("aria-label"),
+      element.getAttribute("title"),
+      element.getAttribute("data-label")
+    ]) {
+      const text = String(value || "").trim();
+      if (text && !parts.includes(text)) parts.push(text);
+    }
+    return parts.join("｜");
+  }
+
+  function shopeeNavigationModeForTarget(record, element) {
+    let mode = helpers.classifyShopeeActionText(shopeeTargetText(element));
+    if (mode !== "unknown") return mode;
+    let parent = element instanceof Element ? element.parentElement : null;
+    for (let depth = 0; parent && depth < 4; depth += 1, parent = parent.parentElement) {
+      const text = String(parent.textContent || "").trim();
+      if (!text || text.length > 500) continue;
+      mode = helpers.classifyShopeeActionText(text);
+      if (mode !== "unknown") return mode;
+    }
+    const policy = record && record.payload && record.payload.listingPolicy || {};
+    const href = element instanceof HTMLAnchorElement ? element.href : "";
+    const isDirectSyncLink = href && helpers.easyStoreRouteKind(href) === "shopee-sync";
+    if (isDirectSyncLink && Array.isArray(policy.existingListingIds) && policy.existingListingIds.length > 0) {
+      return "update";
+    }
+    if (isDirectSyncLink && policy.allowCreate === true) return "create";
+    return "unknown";
+  }
+
+  function rememberShopeeNavigationMode(record, mode) {
+    return new Promise((resolve, reject) => {
+      chrome.storage.session.get(helpers.QUEUE_STORAGE_KEY, (stored) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        const queue = helpers.withQueueNavigationMode(
+          stored[helpers.QUEUE_STORAGE_KEY],
+          record.payload.easyStoreProductId,
+          record.payload.nonce,
+          mode,
+          Date.now()
+        );
+        chrome.storage.session.set({ [helpers.QUEUE_STORAGE_KEY]: queue }, () => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          record.navigationMode = helpers.normalizeShopeeNavigationMode(mode);
+          record.navigationObservedAt = Date.now();
+          resolve(record.navigationMode);
+        });
+      });
+    });
+  }
+
   async function waitForShopeeNavigation(record, previousUrl, timeout, ignoredLink) {
     const started = Date.now();
     while (Date.now() - started < timeout) {
@@ -1166,7 +1228,7 @@
       try {
         const report = await runAutofill(currentRecord.payload);
         renderReport(reportContainer, report);
-        const gate = helpers.autoPublishGate(currentRecord.payload, report);
+        const gate = helpers.autoPublishGate(currentRecord.payload, report, currentRecord.navigationMode);
         if (!gate.ok) {
           status.textContent = `已停止上架：${gate.reasons.join("；")}`;
           start.disabled = false;
@@ -1174,7 +1236,7 @@
           return;
         }
         status.textContent = "欄位已完成，正在送到蝦皮……";
-        await publishToShopee(currentRecord.payload, report);
+        await publishToShopee(currentRecord.payload, report, currentRecord.navigationMode);
         await consumeQueueRecord(currentRecord.payload);
         status.textContent = "已送出 EasyStore → 蝦皮上架；請等待 EasyStore／蝦皮處理結果。";
         start.textContent = "已送出蝦皮上架";
@@ -1235,14 +1297,30 @@
       openShopee.disabled = true;
       status.textContent = "正在開啟蝦皮設定……";
       const previousUrl = location.href;
+      async function clickTarget(target) {
+        const mode = shopeeNavigationModeForTarget(record, target);
+        const href = target instanceof HTMLAnchorElement ? target.href : "";
+        const isDirectSyncLink = href && helpers.easyStoreRouteKind(href) === "shopee-sync";
+        if (mode !== "unknown" || isDirectSyncLink) {
+          const gate = helpers.listingSafetyGate(record.payload, mode);
+          if (!gate.ok) {
+            status.textContent = `已停止：${gate.reasons.join("；")}`;
+            openShopee.disabled = false;
+            return false;
+          }
+          await rememberShopeeNavigationMode(record, mode);
+        }
+        target.click();
+        return true;
+      }
       const firstTarget = targets[0];
-      firstTarget.click();
+      if (!await clickTarget(firstTarget)) return;
       let result = await waitForShopeeNavigation(record, previousUrl, 2200, firstTarget);
       if (result.navigated) {
         return;
       }
       if (result.link && result.link !== firstTarget) {
-        result.link.click();
+        if (!await clickTarget(result.link)) return;
         result = await waitForShopeeNavigation(record, previousUrl, 2200, result.link);
         if (result.navigated) {
           return;
@@ -1250,7 +1328,7 @@
       }
       const nextTarget = shopeeNavigationTargets(record).find((target) => target !== firstTarget && target !== result.link);
       if (nextTarget) {
-        nextTarget.click();
+        if (!await clickTarget(nextTarget)) return;
         result = await waitForShopeeNavigation(record, previousUrl, 2200, nextTarget);
         if (result.navigated) {
           return;

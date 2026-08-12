@@ -93,6 +93,7 @@ test('each platform reports missing fields instead of pretending to publish', ()
   assert.ok(helpers.coupangMissingFields(empty).includes('酷澎分類'));
   assert.equal(helpers.overallPublishStatus({ easyStore: { status: 'created' }, momo: { status: 'missing-fields' } }), 'needs-input');
   assert.equal(helpers.overallPublishStatus({ easyStore: { status: 'updated' }, shopee: { status: 'waiting-easystore-sync' } }), 'submitted');
+  assert.equal(helpers.overallPublishStatus({ momo: { status: 'already-queued' }, coupang: { status: 'already-completed' } }), 'submitted');
   assert.equal(helpers.overallPublishStatus({ easyStore: { status: 'failed' } }), 'partial-failed');
 });
 
@@ -106,6 +107,7 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     listingImageUrls: ['https://example.com/guitar.jpg'],
     brand: '舊資料品牌', shopeeBrand: 'Ibanez', model: 'AZES40-PRB', color: 'Purist Blue', identityStatus: 'confirmed',
     shopeeTitle: 'Ibanez AZES40-PRB 電吉他',
+    shopeeListingDecision: 'new',
     shopeeCategoryPath: '愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯',
     shopeeAttributeValues: [
       { label: 'Body Material', value: 'Poplar', confidence: 'high', note: 'Ibanez 官方規格' },
@@ -118,8 +120,12 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
 
   assert.equal(snapshot.stock, 0);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 3);
+  assert.equal(payload.schemaVersion, 4);
   assert.equal(payload.publishMode, 'auto');
+  assert.deepEqual(payload.listingPolicy, {
+    decision: 'new', matchKey: 'sku', allowCreate: true, existingListingIds: [],
+    onZero: 'create-only-if-confirmed', onOne: 'update', onMultiple: 'block'
+  });
   assert.equal(payload.brand, 'Ibanez');
   assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);
   assert.deepEqual(payload.attributes.map((row) => [row.label, row.value]), [
@@ -248,8 +254,59 @@ test('Shopee persistence summary never stores one-time autofill handoff secrets'
   assert.match(source, /publishState: \{ jobId, status, platforms: platformsForStorage,/);
   assert.match(source, /return \{ ok:[\s\S]*status, platforms \};/);
   assert.match(source, /updatedBy: '商品上架', schemaVersion: 8/);
-  assert.match(source, /version: '2026\.08\.12-shopee-autopublish-v3'/);
+  assert.match(source, /version: '2026\.08\.12-shopee-autopublish-v4'/);
   assert.doesNotMatch(source, /updatedBy: '商品上架', schemaVersion: 7/);
+});
+
+test('platform listing identity always prefers existing IDs and otherwise requires exact SKU upsert', () => {
+  const product = {
+    platformMappings: {
+      shopee: { itemIds: ['4116442', '4116442'] },
+      momo: { goodsCode: 'MOMO-100', goodsdtCodes: ['MOMO-100-RED'] },
+      coupang: { vendorItemIds: ['90001'] }
+    }
+  };
+  const snapshot = { productId: 'p1', sku: 'SKU-1' };
+  assert.deepEqual(helpers.platformListingIds(product, 'shopee'), ['4116442']);
+  assert.deepEqual(helpers.platformListingIds(product, 'momo'), ['MOMO-100|MOMO-100-RED']);
+  assert.deepEqual(helpers.platformListingIds(product, 'coupang'), ['90001']);
+  assert.deepEqual(helpers.buildPlatformQueuePolicy(product, 'MOMO', snapshot), {
+    mode: 'update-existing', matchKey: 'sku', sku: 'SKU-1',
+    existingListingIds: ['MOMO-100|MOMO-100-RED'], onZero: 'create', onOne: 'update',
+    onMultiple: 'block', onUncertain: 'block'
+  });
+  assert.deepEqual(helpers.buildPlatformQueuePolicy({}, 'Coupang', snapshot), {
+    mode: 'upsert-by-exact-sku', matchKey: 'sku', sku: 'SKU-1', existingListingIds: [],
+    onZero: 'create', onOne: 'update', onMultiple: 'block', onUncertain: 'block'
+  });
+  assert.equal(helpers.buildPlatformQueuePolicy({
+    platformMappings: { coupang: { vendorItemIds: ['90001', '90002'] } }
+  }, 'Coupang', snapshot).mode, 'block-duplicate');
+});
+
+test('platform queue fingerprint is stable for a retry and changes with listing content', () => {
+  const snapshot = {
+    productId: 'p1', sku: 'SKU-1', title: '商品', description: '內容', images: ['https://example.com/1.jpg'],
+    stock: 0, packageLengthCm: 10, packageWidthCm: 20, packageHeightCm: 30, packageWeightKg: 1,
+    momoGoodsName: 'MOMO 商品', momoSlogan: '', momoCategoryCode: 'CAT', momoPrice: 100,
+    coupangTitle: '酷澎商品', coupangCategoryCode: 'C-CAT', coupangPrice: 110
+  };
+  const first = helpers.platformQueueFingerprint('MOMO', snapshot);
+  const retry = helpers.platformQueueFingerprint('MOMO', { ...snapshot });
+  const changed = helpers.platformQueueFingerprint('MOMO', { ...snapshot, momoPrice: 101 });
+  assert.match(first, /^[a-f0-9]{64}$/);
+  assert.equal(first, retry);
+  assert.notEqual(first, changed);
+});
+
+test('known Shopee mapping forces update policy even when the form still says new', () => {
+  const snapshot = helpers.buildListingSnapshot('p1', {
+    internalSku: 'SKU-1', platformMappings: { shopee: { itemId: '4116442' } }
+  }, { shopeeListingDecision: 'new' });
+  const payload = helpers.buildShopeeAutofillPayload(snapshot, { productId: '16965067' });
+  assert.equal(snapshot.shopeeListingDecision, 'existing');
+  assert.deepEqual(payload.listingPolicy.existingListingIds, ['4116442']);
+  assert.equal(payload.listingPolicy.allowCreate, false);
 });
 
 test('Shopee autofill accepts explicit manual confirmation while unresolved identity stays blocked', () => {

@@ -7,6 +7,8 @@
 - **目前只支援桌面版 Google Chrome。** 手機 Safari、手機 Chrome 不能安裝此擴充套件。
 - 只有資料設定為自動上架、物流不需人工確認且填寫報告沒有「待補」時，才會按 EasyStore 最後的上架。
 - 若找不到完全相符欄位、分類、物流級距或 EasyStore 顯示錯誤，會停止並留在畫面讓使用者處理。
+- 蝦皮只有在明確辨識為「更新既有商品」，或使用者已明確確認「沒有既有商品、允許新增」時才會送出；狀態不明就停止，避免建立重複商品。
+- 蝦皮已有相同商品時，不刪除原商品；請先從蝦皮匯入 EasyStore，再用 **Match product** 連結到相同 SKU，之後走更新／重新同步。
 - 待填資料只存於 `chrome.storage.session`，關閉 Chrome 會清除；完成一次自動填寫後也會立刻刪除該筆資料。
 - 不會讀取或儲存 EasyStore 密碼、Cookie 或登入權杖。
 - EasyStore 商品庫存為 `0` 時仍會照常建立或更新並送出蝦皮上架，商品會以缺貨狀態存在；之後由既有庫存同步流程更新可售庫存。
@@ -29,13 +31,14 @@
 ## 使用流程
 
 1. 在全通路營運中心完成「確認上架」。
-2. 在蝦皮結果按「送到 EasyStore 並上架蝦皮」。
+2. 在蝦皮結果按「安全開啟 EasyStore／蝦皮」。
 3. 頁面送出一次性資料，擴充套件以 `YOUZI_SHOPEE_AUTOFILL_ACK` 回覆相同 `nonce`。
 4. EasyStore 商品頁會顯示助手並自動進入蝦皮設定；若 EasyStore 頁面較慢，可按畫面上的按鈕重試。
 5. 進入蝦皮設定頁後，擴充套件必須同時核對網址中的 EasyStore 商品 ID 與頁面的完整賣家 SKU，才顯示填寫面板。
-6. 助手自動開始填寫；畫面上的「自動填寫並上架蝦皮」保留作為重試按鈕。
-7. 助手產生「已填／保留人工值／略過／待補」報告。
-8. 沒有待補且物流資料明確時，助手按 EasyStore 的上架；否則停止並顯示缺少內容。
+6. 助手先辨識目前入口是「建立新品」或「更新舊商品」；建立新品只有在上架資料明確允許時才能繼續。
+7. 助手自動開始填寫；畫面上的「自動填寫並上架蝦皮」保留作為重試按鈕。
+8. 助手產生「已填／保留人工值／略過／待補」報告。
+9. 沒有待補、物流明確且新增／更新狀態安全時，助手按 EasyStore 的上架；否則停止並顯示原因。
 
 ## 現行訊息格式
 
@@ -53,7 +56,7 @@ window.postMessage({
 
 ```js
 const payload = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   nonce: "azes40-prb-00000001",
   createdAt: Date.now(),
   expiresAt: Date.now() + 30 * 60 * 1000,
@@ -63,6 +66,15 @@ const payload = {
   sku: "1040160-1",
   title: "Ibanez AZES40-PRB AZ Essentials 電吉他－馬卡藍",
   publishMode: "auto",
+  listingPolicy: {
+    decision: "auto", // auto、existing 或 new
+    matchKey: "sku",
+    allowCreate: false,
+    existingListingIds: [],
+    onZero: "create-only-if-confirmed",
+    onOne: "update",
+    onMultiple: "block"
+  },
   categoryPath: [
     "愛好與收藏品",
     "樂器與樂器配件",
@@ -120,6 +132,8 @@ ACK 格式：
 - 嚴格驗證 `schemaVersion`、`nonce`、建立／到期時間、SKU、EasyStore 商品 ID、EasyStore 網址、資料大小及欄位結構；已過期資料直接拒絕，不會替它延長期限。
 - EasyStore 商品網址一律由通過驗證的商品 ID 重建為 `https://admin.easystore.co/products/{id}`；不信任訊息內可任意指定的路徑、查詢參數或片段。
 - 頁面必須同時匹配 EasyStore 商品 ID 與完整 SKU。
+- 助手會把 EasyStore 蝦皮入口分類為 `update`、`create` 或 `unknown`。`update` 可繼續；`create` 需要 `listingPolicy.allowCreate: true`；`unknown` 一律停止。
+- `allowCreate` 只有 `decision: "new"` 時才能為 `true`。標示為 `existing` 卻出現新品入口時，助手會要求先匯入並使用 **Match product**，不會代替使用者刪除原商品。
 - 分類、品牌與商品屬性的非空白欄位視為人工資料並保留；物流與預購則依本次上架規則校正為指定狀態。
 - 下拉選單只選完全相符值或程式內明列的核准同義詞，不做模糊猜測。
 - `confidence: "low"` 的屬性不自動填。
