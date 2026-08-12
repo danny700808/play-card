@@ -38,7 +38,7 @@
       })).filter((row) => row.label).slice(0, 20);
     const createdAt = numberOrNull(value.createdAt);
     const expiresAt = numberOrNull(value.expiresAt);
-    if (value.schemaVersion !== 1) {
+    if (value.schemaVersion !== 2) {
       throw new Error('蝦皮自動填寫資料版本不相容，請重新執行「確認上架」。');
     }
     if (!Number.isSafeInteger(createdAt) || createdAt <= 0 || createdAt > now + 60 * 1000) {
@@ -62,7 +62,7 @@
     }
     const canonicalEasyStoreUrl = `https://admin.easystore.co/products/${easyStoreProductId}`;
     const payload = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       nonce: clean(value.nonce, 100),
       createdAt,
       expiresAt,
@@ -71,6 +71,7 @@
       easyStoreUrl: canonicalEasyStoreUrl,
       sku: clean(value.sku, 120),
       title: clean(value.title, 255),
+      publishMode: clean(value.publishMode, 20),
       categoryPath,
       brand: clean(value.brand, 120),
       attributes,

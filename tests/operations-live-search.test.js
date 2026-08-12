@@ -64,8 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-publish-v1/);
-    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260812-shopee-autofill-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260812-shopee-autofill-v1/);
+    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260812-shopee-autopublish-v2/);
+    assert.match(html, /operations-phase1\.js\?v=20260812-shopee-autopublish-v2/);
   }
 });
 
@@ -387,7 +387,7 @@ test('listing review honors manager identity and brand decisions and gates logis
   assert.match(preview, /蝦皮實際物流尚未自動選好/);
   assert.match(preview, /可送出・待選物流/);
   assert.match(preview, /請先補齊再上架/);
-  assert.match(resultRenderer, /一般宅配不會自動選擇蝦皮物流/);
+  assert.match(resultRenderer, /一般宅配仍需人工確認物流/);
   assert.match(savedPublisher, /shippingDecision:clean\(raw\.shippingDecision\)/);
   assert.match(publisher, /if\(!readiness\.all\)/);
   assert.match(publisher, /尚未送出上架/);

@@ -10,7 +10,7 @@ const source = fs.readFileSync('operations-shopee-autofill-handoff-v1.js', 'utf8
 function rawPayload() {
   const now = Date.now();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     nonce: '0123456789abcdef0123456789abcdef',
     createdAt: now,
     expiresAt: now + 10 * 60 * 1000,
@@ -19,6 +19,7 @@ function rawPayload() {
     easyStoreUrl: 'https://admin.easystore.co/products/16403950',
     sku: '1040160-1',
     title: 'Ibanez AZES40-PRB 電吉他',
+    publishMode: 'auto',
     categoryPath: ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯'],
     brand: 'Ibanez',
     attributes: [
@@ -59,6 +60,7 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
   const serialized = JSON.stringify(payload);
   assert.equal(payload.sku, '1040160-1');
   assert.equal(payload.attributes[0].value, 'HSS');
+  assert.equal(payload.publishMode, 'auto');
   assert.equal(payload.logistics.methods[0].option, 'S170');
   assert.doesNotMatch(serialized, /7400|must-not-leak|accessToken|costPrice/);
 });

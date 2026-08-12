@@ -8,7 +8,7 @@ const helpers = require("../helpers.js");
 
 function validPayload(now) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     nonce: "azes40-prb-00000001",
     createdAt: now,
     expiresAt: now + 10 * 60 * 1000,
@@ -17,6 +17,7 @@ function validPayload(now) {
     easyStoreUrl: "https://admin.easystore.co/products/3969443",
     sku: "1040160-1",
     title: "Ibanez AZES40-PRB AZ Essentials 電吉他－馬卡藍",
+    publishMode: "auto",
     categoryPath: ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"],
     brand: "Ibanez",
     attributes: [
@@ -86,7 +87,7 @@ test("AZES40 package total 162.6 cm maps only to approved S170 aliases", () => {
 test("rejects expired, wrong-version, malformed SKU and unknown top-level fields", () => {
   const now = 1_800_000_000_000;
   const payload = validPayload(now);
-  payload.schemaVersion = 2;
+  payload.schemaVersion = 1;
   payload.expiresAt = now - 1;
   payload.sku = "bad sku!";
   payload.unexpected = true;
@@ -165,7 +166,7 @@ test("prunes expired session records before merging a fresh one", () => {
   assert.deepEqual(Object.keys(queue), ["3969443"]);
 });
 
-test("product-page handoff survives EasyStore SPA navigation and never clicks final publish", () => {
+test("product-page handoff survives EasyStore SPA navigation and final publish stays gated", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
   assert.match(source, /mountProductNavigationOverlay/);
   assert.match(source, /開啟蝦皮設定/);
@@ -175,6 +176,27 @@ test("product-page handoff survives EasyStore SPA navigation and never clicks fi
   assert.match(source, /EasyStore 沒有轉到設定頁/);
   assert.match(source, /setInterval\([\s\S]*const nextUrl = location\.href/);
   assert.match(source, /helpers\.shouldInspectQueue\(previousUrl, nextUrl\)/);
-  assert.doesNotMatch(source, /findExactTextElement\(\[\s*["']上架["']/);
-  assert.doesNotMatch(source, /querySelector\([^\n]*上架/);
+  assert.match(source, /helpers\.autoPublishGate\(payload, report\)/);
+  assert.match(source, /findEnabledExactButton/);
+  assert.match(source, /setTimeout\(\(\) => \{[\s\S]*start\.click\(\)/);
+  assert.match(source, /setTimeout\(\(\) => \{[\s\S]*openShopee\.click\(\)/);
+  assert.match(source, /publishToShopee/);
+  assert.match(source, /report\.missing\.length > 0/);
+});
+
+test("automatic publish is allowed only when the report and logistics are complete", () => {
+  const payload = validPayload(1_800_000_000_000);
+  assert.deepEqual(helpers.autoPublishGate(payload, { missing: [] }), { ok: true, reasons: [] });
+  const missing = helpers.autoPublishGate(payload, { missing: ["分類"] });
+  assert.equal(missing.ok, false);
+  assert.match(missing.reasons.join(" "), /待補/);
+  payload.logistics.requiresConfirmation = true;
+  const logistics = helpers.autoPublishGate(payload, { missing: [] });
+  assert.equal(logistics.ok, false);
+  assert.match(logistics.reasons.join(" "), /物流/);
+  payload.logistics.requiresConfirmation = false;
+  payload.publishMode = "fill-only";
+  const manual = helpers.autoPublishGate(payload, { missing: [] });
+  assert.equal(manual.ok, false);
+  assert.match(manual.reasons.join(" "), /人工確認/);
 });

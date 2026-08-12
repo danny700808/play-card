@@ -57,6 +57,21 @@
     "同步到蝦皮購物",
     "蝦皮購物"
   ]);
+  const FINAL_PUBLISH_LABELS = Object.freeze([
+    "準備發布",
+    "準備發佈",
+    "確認上架",
+    "立即上架",
+    "上架"
+  ]);
+  const FINAL_CONFIRM_LABELS = Object.freeze([
+    "確定上架",
+    "確認上架",
+    "確定發布",
+    "確認發布",
+    "確定發佈",
+    "確認發佈"
+  ]);
   let currentRecord = null;
   let overlay = null;
   let retryTimer = null;
@@ -207,6 +222,63 @@
 
   function addReport(report, bucket, label, detail) {
     report[bucket].push(detail ? `${label}：${detail}` : label);
+  }
+
+  function isEnabledClickTarget(element) {
+    if (!(element instanceof Element) || !isVisible(element)) return false;
+    if (element.matches(":disabled, [disabled], [aria-disabled='true']")) return false;
+    return true;
+  }
+
+  function clickableForExactText(element) {
+    return element && (element.closest("button, [role='button'], a, [tabindex]") || element);
+  }
+
+  function findEnabledExactButton(labels, excludedElements) {
+    const excluded = new Set((excludedElements || []).filter(Boolean));
+    return findExactTextElements(labels).map(clickableForExactText).find((element) =>
+      element &&
+      !excluded.has(element) &&
+      !element.closest("#youzi-shopee-autofill-overlay") &&
+      isEnabledClickTarget(element)
+    ) || null;
+  }
+
+  async function waitForEnabledExactButton(labels, timeout, excludedElements) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const button = findEnabledExactButton(labels, excludedElements);
+      if (button) return button;
+      await sleep(120);
+    }
+    return null;
+  }
+
+  async function publishToShopee(payload, report) {
+    const gate = helpers.autoPublishGate(payload, report);
+    if (!gate.ok) {
+      throw new Error(gate.reasons.join("；"));
+    }
+    const publishButton = await waitForEnabledExactButton(FINAL_PUBLISH_LABELS, 3500);
+    if (!publishButton) {
+      throw new Error("找不到可按的 EasyStore 最後上架按鈕；請確認頁面是否仍有紅字或必填欄位。");
+    }
+    const beforeUrl = location.href;
+    publishButton.click();
+    const confirmButton = await waitForEnabledExactButton(FINAL_CONFIRM_LABELS, 2200, [publishButton]);
+    if (confirmButton) confirmButton.click();
+    await sleep(1400);
+    const errorText = findExactTextElements([
+      "請填寫所有必填欄位",
+      "請完成所有必填欄位",
+      "上架失敗",
+      "發布失敗",
+      "發佈失敗"
+    ]).map((element) => String(element.textContent || "").trim()).find(Boolean);
+    if (errorText) {
+      throw new Error(`EasyStore 未接受上架：${errorText}`);
+    }
+    return { submitted: true, navigated: location.href !== beforeUrl };
   }
 
   async function fillBrand(payload, report) {
@@ -710,11 +782,9 @@
       items.forEach((item) => appendTextElement(list, "li", "", `${bucketLabel}｜${item}`));
     });
     container.appendChild(list);
-    appendTextElement(
-      container,
-      "div",
-      "youzi-autofill__notice",
-      "擴充套件不會按最後的「上架」。請檢查待補欄位、價格、庫存與物流後，再由您確認上架。"
+    appendTextElement(container, "div", "youzi-autofill__notice", report.missing.length > 0
+      ? "仍有待補欄位，因此不會送出；補齊後可再執行一次。"
+      : "資料完整時會接著按 EasyStore 的上架；若 EasyStore 仍顯示錯誤，助手會停下並保留畫面。"
     );
   }
 
@@ -731,7 +801,7 @@
     header.className = "youzi-autofill__header";
     const heading = document.createElement("div");
     appendTextElement(heading, "h2", "youzi-autofill__title", "蝦皮資料已準備好");
-    appendTextElement(heading, "div", "youzi-autofill__subtitle", "先核對商品，再由您開始自動填寫");
+    appendTextElement(heading, "div", "youzi-autofill__subtitle", "自動填寫完成且沒有待補時，接著送到蝦皮");
     header.appendChild(heading);
     const close = appendTextElement(header, "button", "youzi-autofill__close", "關閉");
     close.type = "button";
@@ -754,7 +824,7 @@
     );
     const actions = document.createElement("div");
     actions.className = "youzi-autofill__actions";
-    const start = appendTextElement(actions, "button", "youzi-autofill__start", "開始自動填寫");
+    const start = appendTextElement(actions, "button", "youzi-autofill__start", "自動填寫並上架蝦皮");
     start.type = "button";
     body.appendChild(actions);
     const status = appendTextElement(body, "div", "youzi-autofill__status", "尚未修改任何欄位。 ");
@@ -763,23 +833,35 @@
     overlay.appendChild(body);
     document.documentElement.appendChild(overlay);
 
-    start.addEventListener("click", async () => {
+    async function startAutofillAndPublish() {
       start.disabled = true;
       status.textContent = "正在依欄位名稱填寫，請不要切換商品……";
       reportContainer.textContent = "";
       try {
         const report = await runAutofill(currentRecord.payload);
-        await consumeQueueRecord(currentRecord.payload);
-        status.textContent = report.missing.length > 0
-          ? "自動填寫完成，仍有欄位需要您確認。"
-          : "自動填寫完成，請檢查後由您按 EasyStore 的上架。";
         renderReport(reportContainer, report);
-        start.textContent = "一次性填寫已完成";
+        const gate = helpers.autoPublishGate(currentRecord.payload, report);
+        if (!gate.ok) {
+          status.textContent = `已停止上架：${gate.reasons.join("；")}`;
+          start.disabled = false;
+          start.textContent = "補齊後重新檢查並上架";
+          return;
+        }
+        status.textContent = "欄位已完成，正在送到蝦皮……";
+        await publishToShopee(currentRecord.payload, report);
+        await consumeQueueRecord(currentRecord.payload);
+        status.textContent = "已送出 EasyStore → 蝦皮上架；請等待 EasyStore／蝦皮處理結果。";
+        start.textContent = "已送出蝦皮上架";
       } catch (error) {
         status.textContent = `已停止：${error.message}`;
         start.disabled = false;
+        start.textContent = "重新檢查並上架";
       }
-    });
+    }
+    start.addEventListener("click", startAutofillAndPublish);
+    setTimeout(() => {
+      if (overlay && overlay.isConnected && !start.disabled) start.click();
+    }, 450);
   }
 
   function mountProductNavigationOverlay(record) {
@@ -818,7 +900,7 @@
     overlay.appendChild(body);
     document.documentElement.appendChild(overlay);
 
-    openShopee.addEventListener("click", async () => {
+    async function openShopeeSettings() {
       const targets = shopeeNavigationTargets(record);
       if (targets.length === 0) {
         status.textContent = "找不到蝦皮入口；請在商品頁展開「銷售管道」，再點「蝦皮購物」。";
@@ -850,7 +932,11 @@
       }
       openShopee.disabled = false;
       status.textContent = "蝦皮區已展開，但 EasyStore 沒有轉到設定頁；請點商品頁內的「蝦皮購物／連接商品」，進入後助手會自動接續。";
-    });
+    }
+    openShopee.addEventListener("click", openShopeeSettings);
+    setTimeout(() => {
+      if (overlay && overlay.isConnected && !openShopee.disabled) openShopee.click();
+    }, 450);
   }
 
   function inspectQueue(attempt) {
