@@ -35,7 +35,7 @@
 2. 在蝦皮結果按「安全開啟 EasyStore／蝦皮」。
 3. 頁面送出一次性資料，擴充套件以 `YOUZI_SHOPEE_AUTOFILL_ACK` 回覆相同 `nonce`。
 4. EasyStore 商品頁會顯示助手並自動進入蝦皮設定；若 EasyStore 頁面較慢，可按畫面上的按鈕重試。
-5. 進入蝦皮設定頁後，擴充套件必須同時核對網址中的 EasyStore 商品 ID 與頁面的完整賣家 SKU，才顯示填寫面板。
+5. 進入蝦皮設定頁後，擴充套件優先核對網址中唯一的 `store_product_ids`；舊版網址若只有一般 `product_ids`，仍必須再核對頁面的完整賣家 SKU，才顯示填寫面板。
 6. 助手先辨識目前入口是「建立新品」或「更新舊商品」；建立新品只有在上架資料明確允許時才能繼續。
 7. 助手自動開始填寫；畫面上的「自動填寫並上架蝦皮」保留作為重試按鈕。
 8. 助手產生「已填／保留人工值／略過／待補」報告。
@@ -132,7 +132,7 @@ ACK 格式：
 
 - 嚴格驗證 `schemaVersion`、`nonce`、建立／到期時間、SKU、EasyStore 商品 ID、EasyStore 網址、資料大小及欄位結構；已過期資料直接拒絕，不會替它延長期限。
 - EasyStore 商品網址一律由通過驗證的商品 ID 重建為 `https://admin.easystore.co/products/{id}`；不信任訊息內可任意指定的路徑、查詢參數或片段。
-- EasyStore 商品首頁先以網址中的唯一商品 ID 接續助手；進入蝦皮設定頁後，必須再同時匹配 EasyStore 商品 ID 與完整 SKU，才允許填寫或送出。
+- EasyStore 商品首頁以網址中的唯一商品 ID 接續助手；蝦皮設定頁若帶唯一 `store_product_ids`，以該 EasyStore 商品 ID 接續（因分類完成前頁面不會顯示 SKU）；舊版網址仍須同時匹配完整 SKU。
 - 助手會把 EasyStore 蝦皮入口分類為 `update`、`create` 或 `unknown`。`update` 可繼續；`create` 需要 `listingPolicy.allowCreate: true`；`unknown` 一律停止。
 - `allowCreate` 只有 `decision: "new"` 時才能為 `true`。標示為 `existing` 卻出現新品入口時，助手會要求先匯入並使用 **Match product**，不會代替使用者刪除原商品。
 - 分類、品牌與商品屬性的非空白欄位視為人工資料並保留；物流與預購則依本次上架規則校正為指定狀態。

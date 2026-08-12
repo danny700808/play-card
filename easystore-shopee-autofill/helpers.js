@@ -733,6 +733,19 @@
     const ids = new Set(extractProductIds(pageUrl));
     if (ids.size === 0) return null;
     const routeKind = easyStoreRouteKind(pageUrl);
+    let explicitStoreIds = [];
+    if (routeKind === "shopee-sync") {
+      try {
+        const url = new URL(String(pageUrl));
+        explicitStoreIds = ["store_product_id", "store_product_ids"]
+          .flatMap((key) => String(url.searchParams.get(key) || "").split(","))
+          .map(parsePositiveId)
+          .filter(Boolean);
+      } catch (error) {
+        explicitStoreIds = [];
+      }
+    }
+    const hasUniqueExplicitStoreId = new Set(explicitStoreIds).size === 1;
     const candidates = Object.values(queue)
       .filter((record) => isPlainObject(record) && isPlainObject(record.payload))
       .sort((left, right) => Number(right.receivedAt || 0) - Number(left.receivedAt || 0));
@@ -741,7 +754,12 @@
       if (!validation.ok) continue;
       const payload = validation.value;
       const idMatches = ids.has(payload.easyStoreProductId);
-      const identityMatches = routeKind === "product" || textContainsExactToken(pageText, payload.sku);
+      // The real EasyStore Shopee form initially contains no seller SKU text.
+      // Its unique store_product_ids value is the canonical EasyStore identity,
+      // while legacy product_ids-only URLs still need the exact visible SKU.
+      const identityMatches = routeKind === "product"
+        || (routeKind === "shopee-sync" && hasUniqueExplicitStoreId)
+        || textContainsExactToken(pageText, payload.sku);
       if (idMatches && identityMatches) {
         return {
           payload,
