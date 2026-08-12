@@ -16,6 +16,8 @@ const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const REQUEST_TIMEOUT_MS = 60 * 1000;
 const PUBLISH_LOCK_MS = 15 * 60 * 1000;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
+const SHOPEE_AUTOFILL_SCHEMA_VERSION = 3;
+const SELLER_LARGE_HOME_FEE_TWD = 100;
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
@@ -108,14 +110,24 @@ function buildShopeeLogistics(snapshot) {
     { label: '7-ELEVEN', enabled: convenience },
     { label: '新竹物流', enabled: Boolean(freight && hsinchuBand), option: freight ? hsinchuBand : '' },
     { label: '全家', enabled: convenience },
-    { label: '賣家宅配：大型/超重物品運送', enabled: false },
+    {
+      label: '賣家宅配：大型/超重物品運送',
+      enabled: freight,
+      feeTwd: freight ? SELLER_LARGE_HOME_FEE_TWD : null
+    },
     { label: '嘉里快遞', enabled: false },
     { label: '店到家宅配', enabled: false }
   ];
   return {
     decision,
     packageTotalCm: hasCompletePackage ? Math.round(totalCm * 100) / 100 : null,
-    methods: methods.map((row) => ({ ...row, sellerPays: false })),
+    methods: methods.map((row) => ({
+      label: row.label,
+      enabled: row.enabled === true,
+      option: clean(row.option),
+      feeTwd: numberOrNull(row.feeTwd),
+      sellerPays: false
+    })),
     requiresConfirmation: !hasCompletePackage || !hasValidWeight || !decision || decision === 'home'
       || (decision === 'freight' && !hsinchuBand)
       || (decision === 'convenience' && !convenienceFits)
@@ -126,7 +138,7 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
   const easyStoreProductId = clean(easyStoreResult && easyStoreResult.productId);
   const now = Date.now();
   return {
-    schemaVersion: 2,
+    schemaVersion: SHOPEE_AUTOFILL_SCHEMA_VERSION,
     nonce: crypto.randomBytes(16).toString('hex'),
     createdAt: now,
     expiresAt: now + 30 * 60 * 1000,
@@ -686,7 +698,7 @@ function registerProductListingPublish(target) {
           action: '確認商品上架', entityType: 'productListingPublish', entityId: jobId,
           summary: `${snapshot.sku || productId}｜${snapshot.title}｜${status}`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy,
-          version: '2026.08.12-shopee-autopublish-v2'
+          version: '2026.08.12-shopee-autopublish-v3'
         })
       ]);
       lockStatus = status;

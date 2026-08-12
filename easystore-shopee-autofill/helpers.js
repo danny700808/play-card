@@ -9,12 +9,13 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function buildHelpers() {
   "use strict";
 
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
   const QUEUE_STORAGE_KEY = "youziShopeeAutofillQueueV1";
   const MAX_QUEUE_ITEMS = 20;
   const MAX_TTL_MS = 30 * 60 * 1000;
   const MIN_TTL_MS = 1000;
   const MAX_PAYLOAD_BYTES = 64 * 1024;
+  const SELLER_LARGE_HOME_FEE_TWD = 100;
 
   const ATTRIBUTE_DEFINITIONS = Object.freeze({
     ncc: { labels: ["NCC"], inputMode: "text" },
@@ -99,6 +100,14 @@
       return false;
     }
     return approvedValues.some((candidate) => normalizeText(candidate) === normalizedActual);
+  }
+
+  function logisticsOptionMatch(actual, approvedValues) {
+    const withoutPrice = String(actual == null ? "" : actual).replace(
+      /\s*[-–—]\s*\(?\s*(?:(?:NT\$|TWD)\s*)?\d+(?:\.\d+)?\s*(?:TWD)?\s*\)?\s*$/i,
+      ""
+    );
+    return exactApprovedMatch(withoutPrice, approvedValues);
   }
 
   function uniqueStrings(values) {
@@ -231,21 +240,21 @@
     const text = String(value == null ? "" : value).trim().toUpperCase();
     const match = /^S(60|90|120|150|160|170|180|190|200|210)$/.exec(text);
     if (!match) return uniqueStrings([value]);
-    const upper = Number(match[1]);
-    const lowerByBand = {
-      60: 0,
-      90: 61,
-      120: 91,
-      150: 121,
-      160: 141,
-      170: 161,
-      180: 171,
-      190: 181,
-      200: 191,
-      210: 201
+    const code = Number(match[1]);
+    const limitsByBand = {
+      60: [0, 60],
+      90: [61, 90],
+      120: [91, 120],
+      150: [121, 140],
+      160: [141, 160],
+      170: [161, 170],
+      180: [171, 180],
+      190: [181, 190],
+      200: [191, 200],
+      210: [201, 210]
     };
-    const lower = lowerByBand[upper];
-    const aliases = [text, `S ${upper}`];
+    const [lower, upper] = limitsByBand[code];
+    const aliases = [text, `S ${code}`];
     if (lower === 0) {
       aliases.push(`0-${upper}cm`, `0～${upper} cm`, `${upper}cm（含）以下`, `≤${upper}cm`, `<=${upper}cm`);
     } else {
@@ -265,6 +274,15 @@
     if (value == null || value === "") return null;
     if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > max) {
       errors.push(`${name} 必須是大於 0 且不超過 ${max} 的數字，或 null。`);
+      return null;
+    }
+    return value;
+  }
+
+  function feeOrNull(value, name, errors) {
+    if (value == null || value === "") return null;
+    if (!Number.isSafeInteger(value) || value < 0 || value > 100000) {
+      errors.push(`${name} 必須是 0 到 100000 的整數，或 null。`);
       return null;
     }
     return value;
@@ -419,7 +437,7 @@
             errors.push(`${name} 必須是物件。`);
             return;
           }
-          rejectUnknownKeys(row, new Set(["label", "enabled", "option", "sellerPays"]), name, errors);
+          rejectUnknownKeys(row, new Set(["label", "enabled", "option", "feeTwd", "sellerPays"]), name, errors);
           const label = validateString(row.label, `${name}.label`, errors, { max: 120 });
           const key = resolveLogisticsKey(label);
           if (!key) errors.push(`${name}.label 不是核准的物流名稱。`);
@@ -428,12 +446,19 @@
           if (typeof row.enabled !== "boolean") errors.push(`${name}.enabled 必須是布林值。`);
           if (typeof row.sellerPays !== "boolean") errors.push(`${name}.sellerPays 必須是布林值。`);
           const option = validateString(row.option, `${name}.option`, errors, { required: false, max: 120 });
+          const feeTwd = feeOrNull(row.feeTwd, `${name}.feeTwd`, errors);
           methods.push({
             label,
             enabled: row.enabled === true,
             option,
+            feeTwd,
             sellerPays: row.sellerPays === true
           });
+        });
+        Object.keys(LOGISTICS_DEFINITIONS).forEach((key) => {
+          if (!seenMethods.has(key)) {
+            errors.push(`logistics.methods 缺少「${LOGISTICS_DEFINITIONS[key][0]}」設定。`);
+          }
         });
       }
       logistics = {
@@ -482,15 +507,35 @@
         if (logistics.packageTotalCm !== null && Math.abs(logistics.packageTotalCm - total) > 0.11) {
           errors.push("logistics.packageTotalCm 與 package 三邊總和不符。");
         }
-        const hct = logistics.methods.find((method) => resolveLogisticsKey(method.label) === "hct" && method.enabled);
-        if (hct) {
-          const expectedBand = Math.max(...dimensions) <= 150 && packageInfo.weightKg !== null && packageInfo.weightKg <= 20
-            ? hsinchuSizeBand(total)
-            : "";
-          if (!expectedBand || !hct.option || !exactApprovedMatch(hct.option, logisticsOptionAliases(expectedBand))) {
-            errors.push("新竹物流級距與包裝尺寸／重量不相符。");
-          }
+        const hct = logistics.methods.find((method) => resolveLogisticsKey(method.label) === "hct");
+        const expectedBand = Math.max(...dimensions) <= 150 && packageInfo.weightKg !== null && packageInfo.weightKg <= 20
+          ? hsinchuSizeBand(total)
+          : "";
+        if (hct && hct.enabled && (!expectedBand || !hct.option || !exactApprovedMatch(hct.option, logisticsOptionAliases(expectedBand)))) {
+          errors.push("新竹物流級距與包裝尺寸／重量不相符。");
         }
+        if (logistics.decision === "freight" && expectedBand && (!hct || !hct.enabled)) {
+          errors.push("大型商品在符合新竹物流限制時必須同時開啟新竹物流。");
+        }
+      }
+      const sellerLargeHome = logistics.methods.find((method) => resolveLogisticsKey(method.label) === "sellerLargeHome");
+      if (logistics.decision === "freight") {
+        if (
+          !sellerLargeHome ||
+          !sellerLargeHome.enabled ||
+          sellerLargeHome.feeTwd !== SELLER_LARGE_HOME_FEE_TWD ||
+          sellerLargeHome.sellerPays
+        ) {
+          errors.push(`大型商品必須開啟賣家宅配，並固定收取 NT$${SELLER_LARGE_HOME_FEE_TWD}。`);
+        }
+        logistics.methods.forEach((method) => {
+          const key = resolveLogisticsKey(method.label);
+          if (!['hct', 'sellerLargeHome'].includes(key) && method.enabled) {
+            errors.push(`大型商品不應開啟「${method.label}」。`);
+          }
+        });
+      } else if (sellerLargeHome && sellerLargeHome.enabled) {
+        errors.push("非大型商品不應開啟大型／超重賣家宅配。");
       }
     }
 
@@ -527,7 +572,12 @@
     } catch (error) {
       return [];
     }
-    ["product_id", "product_ids", "productId", "id"].forEach((key) => {
+    const routeKind = easyStoreRouteKind(url.href);
+    const storeKeys = ["store_product_id", "store_product_ids"];
+    const genericKeys = ["product_id", "product_ids", "productId", "id"];
+    const hasStoreId = storeKeys.some((key) => String(url.searchParams.get(key) || "").trim());
+    const queryKeys = routeKind === "shopee-sync" && hasStoreId ? storeKeys : genericKeys;
+    queryKeys.forEach((key) => {
       const raw = url.searchParams.get(key);
       if (!raw) return;
       raw.split(",").forEach((entry) => {
@@ -604,10 +654,12 @@
     SCHEMA_VERSION,
     QUEUE_STORAGE_KEY,
     MAX_TTL_MS,
+    SELLER_LARGE_HOME_FEE_TWD,
     ATTRIBUTE_DEFINITIONS,
     LOGISTICS_DEFINITIONS,
     normalizeText,
     exactApprovedMatch,
+    logisticsOptionMatch,
     uniqueStrings,
     parsePositiveId,
     canonicalEasyStoreProductUrl,

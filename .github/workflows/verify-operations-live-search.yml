@@ -13,7 +13,7 @@ on:
       - "tests/operations-live-search.test.js"
       - "tests/shopee-autofill-handoff.test.js"
       - "easystore-shopee-autofill/**"
-      - "youzi-easystore-shopee-autofill-v0.3.0.zip"
+      - "youzi-easystore-shopee-autofill-v*.zip"
       - ".github/workflows/verify-operations-live-search.yml"
   workflow_dispatch:
 
@@ -24,6 +24,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      EXTENSION_DIR: easystore-shopee-autofill
+      EXTENSION_VERSION: 0.3.1
+      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.1.zip
     steps:
       - uses: actions/checkout@v4
       - name: Check JavaScript syntax
@@ -36,7 +40,29 @@ jobs:
           node --check easystore-shopee-autofill/easystore.js
           node --check easystore-shopee-autofill/helpers.js
           node -e "JSON.parse(require('fs').readFileSync('easystore-shopee-autofill/manifest.json', 'utf8'))"
-          test -s youzi-easystore-shopee-autofill-v0.3.0.zip
+      - name: Verify packaged Chrome extension
+        run: |
+          set -euo pipefail
+          test -s "$EXTENSION_ZIP"
+          if unzip -Z1 "$EXTENSION_ZIP" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+            echo "Extension ZIP contains an unsafe path." >&2
+            exit 1
+          fi
+          package_dir="$(mktemp -d)"
+          unzip -q "$EXTENSION_ZIP" -d "$package_dir"
+          top_entries="$(find "$package_dir" -mindepth 1 -maxdepth 1 -printf '%f\n')"
+          test "$top_entries" = "$EXTENSION_DIR"
+          test -f "$package_dir/$EXTENSION_DIR/manifest.json"
+          test -f "$package_dir/$EXTENSION_DIR/package.json"
+          test ! -e "$package_dir/$EXTENSION_DIR/$EXTENSION_DIR/manifest.json"
+          test -z "$(find "$package_dir" -type l -print -quit)"
+          if find "$package_dir" \( -name '__MACOSX' -o -name '.DS_Store' -o -name 'node_modules' \) -print -quit | grep -q .; then
+            echo "Extension ZIP contains packaging-only or dependency files." >&2
+            exit 1
+          fi
+          node -e "const fs=require('fs');const row=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(row.manifest_version!==3||row.version!==process.env.EXTENSION_VERSION)throw new Error('Packaged manifest version mismatch');" "$package_dir/$EXTENSION_DIR/manifest.json"
+          node -e "const fs=require('fs');const row=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(row.version!==process.env.EXTENSION_VERSION)throw new Error('Packaged package version mismatch');" "$package_dir/$EXTENSION_DIR/package.json"
+          diff -qr "$EXTENSION_DIR" "$package_dir/$EXTENSION_DIR"
       - name: Run operations, bridge and extension tests
         run: >-
           node --test
@@ -46,10 +72,10 @@ jobs:
       - name: Verify markup and cache versions
         run: |
           set -euo pipefail
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260812-shopee-autopublish-v2' portal.html
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260812-shopee-autopublish-v2' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260812-shopee-autopublish-v2' portal.html
-          grep -Fq 'operations-phase1.js?v=20260812-shopee-autopublish-v2' operations-hub.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260812-shopee-autopublish-v3' portal.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260812-shopee-autopublish-v3' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260812-shopee-autopublish-v3' portal.html
+          grep -Fq 'operations-phase1.js?v=20260812-shopee-autopublish-v3' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

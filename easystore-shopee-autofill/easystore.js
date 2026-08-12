@@ -46,6 +46,9 @@
     kerry: ["嘉里快遞"],
     homeDelivery: ["店到家宅配"]
   });
+  const ALL_LOGISTICS_LABELS = Object.freeze(
+    Object.values(LOGISTICS_LABELS).flat()
+  );
 
   const EMPTY_MARKERS = ["", "請選擇", "請先選擇", "select", "choose"];
   const SHOPEE_ENTRY_LABELS = Object.freeze([
@@ -90,9 +93,10 @@
     return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
   }
 
-  function findExactTextElements(approvedTexts, root) {
+  function findTextElements(approvedTexts, root, matcher) {
     const scope = root || document;
     const approved = helpers.uniqueStrings(approvedTexts);
+    const matches = typeof matcher === "function" ? matcher : helpers.exactApprovedMatch;
     const candidates = [];
     const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT);
     let node = walker.currentNode instanceof Element ? walker.currentNode : walker.nextNode();
@@ -101,7 +105,7 @@
         node.id !== "youzi-shopee-autofill-overlay" &&
         !node.closest("#youzi-shopee-autofill-overlay") &&
         isVisible(node) &&
-        helpers.exactApprovedMatch(node.textContent, approved)
+        matches(node.textContent, approved)
       ) {
         candidates.push(node);
       }
@@ -114,6 +118,10 @@
       }
       return left.getBoundingClientRect().width - right.getBoundingClientRect().width;
     });
+  }
+
+  function findExactTextElements(approvedTexts, root) {
+    return findTextElements(approvedTexts, root, helpers.exactApprovedMatch);
   }
 
   function findExactTextElement(approvedTexts, root) {
@@ -155,6 +163,16 @@
     return { label, container: label.parentElement || label, controls: [] };
   }
 
+  async function waitForField(labelAliases, timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const field = findField(labelAliases);
+      if (field && field.controls.length > 0) return field;
+      await sleep(120);
+    }
+    return findField(labelAliases);
+  }
+
   function controlValue(control) {
     if (!control) {
       return "";
@@ -163,6 +181,14 @@
       return String(control.value || "").trim();
     }
     return String(control.getAttribute("data-value") || control.textContent || "").trim();
+  }
+
+  function controlDisplayValue(control) {
+    if (control instanceof HTMLSelectElement) {
+      const selected = control.selectedOptions && control.selectedOptions[0];
+      return String(selected ? selected.textContent : control.value || "").trim();
+    }
+    return controlValue(control);
   }
 
   function isEmptyValue(value) {
@@ -197,6 +223,42 @@
     return null;
   }
 
+  function approvedOptionCandidate(approvedTexts, matcher, exclude) {
+    const matches = typeof matcher === "function" ? matcher : helpers.exactApprovedMatch;
+    const excluded = exclude instanceof Element ? exclude : null;
+    return findTextElements(approvedTexts, document, matches)
+      .filter((element) => element !== excluded && !excluded?.contains(element))
+      .map((element) => {
+        const clickable = element.closest("[role='option'], li, button, [data-value], [tabindex]") || element;
+        const inPopup = Boolean(element.closest([
+          "[role='listbox']",
+          "[role='menu']",
+          "[class*='dropdown' i]",
+          "[class*='popover' i]",
+          "[class*='option-list' i]"
+        ].join(",")));
+        let score = 0;
+        if (clickable.matches("[role='option']")) score += 100;
+        if (clickable.matches("li, [data-value]")) score += 70;
+        if (clickable.matches("button")) score += 35;
+        if (clickable.matches("[tabindex]")) score += 25;
+        if (inPopup) score += 50;
+        return { clickable, score };
+      })
+      .filter((candidate) => candidate.score > 0 && isEnabledClickTarget(candidate.clickable))
+      .sort((left, right) => right.score - left.score)[0]?.clickable || null;
+  }
+
+  async function waitForApprovedOption(approvedTexts, matcher, timeout, exclude) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const option = approvedOptionCandidate(approvedTexts, matcher, exclude);
+      if (option) return option;
+      await sleep(100);
+    }
+    return null;
+  }
+
   async function chooseExactOption(control, approvedOptions) {
     const options = helpers.uniqueStrings(approvedOptions);
     if (control instanceof HTMLSelectElement) {
@@ -207,16 +269,43 @@
       control.value = option.value;
       control.dispatchEvent(new Event("input", { bubbles: true }));
       control.dispatchEvent(new Event("change", { bubbles: true }));
-      return true;
+      await sleep(80);
+      return helpers.exactApprovedMatch(controlDisplayValue(control), options);
     }
     control.click();
-    const option = await waitForExactText(options, 2600, control);
+    const option = await waitForApprovedOption(options, helpers.exactApprovedMatch, 3000, control);
     if (!option) {
       return false;
     }
-    const clickable = option.closest("[role='option'], li, button, [data-value]") || option;
-    clickable.click();
-    await sleep(180);
+    option.click();
+    await sleep(220);
+    return !control.isConnected || helpers.exactApprovedMatch(controlDisplayValue(control), options);
+  }
+
+  function logisticsOptionMatches(actual, approvedOptions) {
+    return typeof helpers.logisticsOptionMatch === "function"
+      ? helpers.logisticsOptionMatch(actual, approvedOptions)
+      : helpers.exactApprovedMatch(actual, approvedOptions);
+  }
+
+  async function chooseLogisticsOption(control, approvedOptions) {
+    const options = helpers.uniqueStrings(approvedOptions);
+    if (control instanceof HTMLSelectElement) {
+      const option = Array.from(control.options).find((entry) =>
+        logisticsOptionMatches(entry.textContent, options)
+      );
+      if (!option) return false;
+      control.value = option.value;
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+      control.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(80);
+      return logisticsOptionMatches(controlDisplayValue(control), options);
+    }
+    control.click();
+    const option = await waitForApprovedOption(options, logisticsOptionMatches, 3500, control);
+    if (!option) return false;
+    option.click();
+    await sleep(220);
     return true;
   }
 
@@ -286,7 +375,7 @@
       addReport(report, "skipped", "品牌", "待人工確認");
       return;
     }
-    const field = findField(FIELD_LABELS.brand);
+    const field = await waitForField(FIELD_LABELS.brand, 8000);
     if (!field || field.controls.length === 0) {
       addReport(report, "missing", "品牌", "找不到欄位");
       return;
@@ -298,11 +387,25 @@
     }
     if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
       setNativeValue(control, payload.brand);
-      const suggestion = await waitForExactText([payload.brand], 700, control);
-      if (suggestion && !field.container.contains(suggestion)) {
-        (suggestion.closest("[role='option'], li, button") || suggestion).click();
+      const suggestion = await waitForApprovedOption(
+        [payload.brand],
+        helpers.exactApprovedMatch,
+        3500,
+        control
+      );
+      if (!suggestion) {
+        addReport(report, "missing", "品牌", `找不到完全相符的「${payload.brand}」選項`);
+        return;
       }
-      addReport(report, "filled", "品牌", payload.brand);
+      suggestion.click();
+      await sleep(250);
+      const applied = !control.isConnected || helpers.exactApprovedMatch(controlValue(control), [payload.brand]);
+      addReport(
+        report,
+        applied ? "filled" : "missing",
+        "品牌",
+        applied ? payload.brand : `無法套用「${payload.brand}」`
+      );
       return;
     }
     const selected = await chooseExactOption(control, [payload.brand]);
@@ -344,7 +447,12 @@
   }
 
   async function fillCategory(payload, report) {
-    const field = findCategoryField();
+    let field = findCategoryField();
+    const started = Date.now();
+    while (!field && Date.now() - started < 8000) {
+      await sleep(120);
+      field = findCategoryField();
+    }
     if (!field) {
       addReport(report, "missing", "分類", "找不到欄位");
       return;
@@ -364,14 +472,31 @@
     clickTarget.click();
     await sleep(250);
     for (const segment of payload.categoryPath) {
-      const option = await waitForExactText([segment], 3500, null);
+      const option = await waitForApprovedOption(
+        [segment],
+        helpers.exactApprovedMatch,
+        4500,
+        clickTarget
+      );
       if (!option) {
         addReport(report, "missing", "分類", `找不到「${segment}」`);
         return;
       }
-      (option.closest("[role='option'], li, button, [data-value]") || option).click();
-      await sleep(300);
+      option.click();
+      await sleep(420);
     }
+    const appliedStarted = Date.now();
+    let applied = false;
+    while (!applied && Date.now() - appliedStarted < 8000) {
+      await sleep(120);
+      const refreshed = findCategoryField();
+      applied = Boolean(refreshed && categoryCurrentValue(refreshed));
+    }
+    if (!applied) {
+      addReport(report, "missing", "分類", "選擇後未能確認分類已套用");
+      return;
+    }
+    await waitForField(FIELD_LABELS.brand, 8000);
     addReport(report, "filled", "分類", payload.categoryPath.join(" ＞ "));
   }
 
@@ -426,7 +551,7 @@
       return;
     }
     const labels = FIELD_LABELS[key];
-    const field = findField(labels);
+    const field = await waitForField(labels, 2200);
     const displayLabel = row.label;
     if (!field || field.controls.length === 0) {
       addReport(report, "missing", displayLabel, "找不到欄位");
@@ -474,20 +599,60 @@
     addReport(report, "filled", displayLabel, `${descriptor.value}${descriptor.unit ? ` ${descriptor.unit}` : ""}`);
   }
 
-  function findLogisticsRow(labelAliases) {
-    const label = findExactTextElement(labelAliases);
-    if (!label) {
-      return null;
-    }
-    let container = label.parentElement;
-    for (let depth = 0; container && depth < 6; depth += 1, container = container.parentElement) {
-      const toggle = container.querySelector("[role='switch'], button[aria-checked]") ||
-        Array.from(container.querySelectorAll("input[type='checkbox']")).find((control) =>
-          !control.closest("label")?.textContent?.includes("我將承擔運費")
-        );
-      if (toggle && isVisible(toggle)) {
-        return { label, container, toggle };
+  function isSellerPaysToggle(control) {
+    const labelText = String(control.closest("label")?.textContent || "");
+    return labelText.includes("我將承擔運費");
+  }
+
+  function primaryLogisticsToggles(container) {
+    if (!container) return [];
+    return Array.from(container.querySelectorAll([
+      "[role='switch']",
+      "button[aria-checked]",
+      "input[type='checkbox']"
+    ].join(","))).filter((control) => isVisible(control) && !isSellerPaysToggle(control));
+  }
+
+  function distinctLogisticsLabels(container) {
+    return new Set(
+      findExactTextElements(ALL_LOGISTICS_LABELS, container)
+        .map((element) => helpers.normalizeText(element.textContent))
+        .filter(Boolean)
+    );
+  }
+
+  function logisticsRowFromLabel(label) {
+    let toggleContainer = label.parentElement;
+    let toggle = null;
+    for (let depth = 0; toggleContainer && depth < 7; depth += 1, toggleContainer = toggleContainer.parentElement) {
+      const candidates = primaryLogisticsToggles(toggleContainer);
+      if (candidates.length === 1) {
+        toggle = candidates[0];
+        break;
       }
+      if (candidates.length > 1) return null;
+    }
+    if (!toggle || !toggleContainer) return null;
+
+    // The switch often lives in a small heading wrapper while its dynamically
+    // rendered size/fee controls are siblings. Expand only while this is still
+    // exactly one logistics row, never into the whole logistics list/form.
+    let container = toggleContainer;
+    let parent = container.parentElement;
+    for (let depth = 0; parent && depth < 6; depth += 1, parent = parent.parentElement) {
+      if (!parent.contains(label) || !parent.contains(toggle)) break;
+      if (primaryLogisticsToggles(parent).length > 1) break;
+      if (distinctLogisticsLabels(parent).size > 1) break;
+      if (findExactTextElement(FIELD_LABELS.preorder, parent)) break;
+      container = parent;
+    }
+    return { label, container, toggle };
+  }
+
+  function findLogisticsRow(labelAliases) {
+    for (const label of findExactTextElements(labelAliases)) {
+      const row = logisticsRowFromLabel(label);
+      if (row) return row;
     }
     return null;
   }
@@ -503,6 +668,131 @@
     return toggle.classList.contains("active") || toggle.classList.contains("checked") || toggle.dataset.state === "checked";
   }
 
+  async function waitForLogisticsRow(labelAliases, timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const row = findLogisticsRow(labelAliases);
+      if (row) return row;
+      await sleep(120);
+    }
+    return findLogisticsRow(labelAliases);
+  }
+
+  function logisticsBandControl(row) {
+    if (!row) return null;
+    const sellerPays = sellerPaysControl(row);
+    return fieldControls(row.container)
+      .filter((control) => control !== row.toggle && control !== sellerPays)
+      .map((control) => {
+        const display = controlDisplayValue(control);
+        let score = 0;
+        if (
+          control instanceof HTMLSelectElement ||
+          control.getAttribute("role") === "combobox" ||
+          control.hasAttribute("aria-haspopup")
+        ) score += 100;
+        if (/S\s*\d+|\d+\s*[-–~至～]\s*\d+\s*cm|≤\s*\d+\s*cm/i.test(display)) score += 70;
+        if (isEmptyValue(display)) score += 10;
+        return { control, score };
+      })
+      .filter((candidate) => candidate.score > 0)
+      .sort((left, right) => right.score - left.score)[0]?.control || null;
+  }
+
+  async function waitForLogisticsBandControl(labelAliases, timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const row = findLogisticsRow(labelAliases);
+      const control = logisticsBandControl(row);
+      if (row && control) return { row, control };
+      await sleep(120);
+    }
+    const row = findLogisticsRow(labelAliases);
+    return { row, control: logisticsBandControl(row) };
+  }
+
+  async function waitForLogisticsBandValue(labelAliases, approvedOptions, timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const row = findLogisticsRow(labelAliases);
+      const control = logisticsBandControl(row);
+      if (control && logisticsOptionMatches(controlDisplayValue(control), approvedOptions)) {
+        return { row, control };
+      }
+      await sleep(120);
+    }
+    return null;
+  }
+
+  async function reconcileLogisticsToggle(labelAliases, enabled) {
+    let row = await waitForLogisticsRow(labelAliases, 2500);
+    if (!row) return { ok: !enabled, row: null, changed: false };
+    if (toggleState(row.toggle) === enabled) return { ok: true, row, changed: false };
+    row.toggle.click();
+    const started = Date.now();
+    while (Date.now() - started < 3000) {
+      await sleep(120);
+      row = findLogisticsRow(labelAliases) || row;
+      if (toggleState(row.toggle) === enabled) return { ok: true, row, changed: true };
+    }
+    return { ok: false, row, changed: true };
+  }
+
+  function sellerPaysControl(row) {
+    if (!row) return null;
+    const label = findExactTextElement(["我將承擔運費"], row.container);
+    return label && (
+      label.closest("label")?.querySelector("input[type='checkbox'], [role='checkbox']") ||
+      label.parentElement?.querySelector("input[type='checkbox'], [role='checkbox']")
+    );
+  }
+
+  function sellerFeeControl(row) {
+    if (!row) return null;
+    const pays = sellerPaysControl(row);
+    return fieldControls(row.container).find((control) =>
+      control !== row.toggle &&
+      control !== pays &&
+      (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) &&
+      !["checkbox", "radio", "hidden"].includes(String(control.type || "").toLowerCase()) &&
+      !control.readOnly &&
+      !control.disabled
+    ) || null;
+  }
+
+  async function reconcileSellerPays(labelAliases, desired, displayLabel, report) {
+    let row = findLogisticsRow(labelAliases);
+    let control = sellerPaysControl(row);
+    const started = Date.now();
+    while (!control && Date.now() - started < 2500) {
+      await sleep(120);
+      row = findLogisticsRow(labelAliases);
+      control = sellerPaysControl(row);
+    }
+    if (!control) {
+      if (desired) addReport(report, "missing", `${displayLabel}運費`, "找不到賣家承擔運費欄位");
+      return;
+    }
+    if (toggleState(control) !== desired) {
+      control.click();
+      const verifyStarted = Date.now();
+      let applied = false;
+      while (!applied && Date.now() - verifyStarted < 2000) {
+        await sleep(120);
+        row = findLogisticsRow(labelAliases);
+        control = sellerPaysControl(row) || control;
+        applied = toggleState(control) === desired;
+      }
+      if (!applied) {
+        addReport(report, "missing", `${displayLabel}運費`, "無法套用運費承擔設定");
+        return;
+      }
+      addReport(report, "filled", `${displayLabel}運費`, desired ? "賣家承擔" : "買家支付");
+    } else {
+      addReport(report, "preserved", `${displayLabel}運費`, desired ? "賣家承擔" : "買家支付");
+    }
+  }
+
   async function fillLogistics(payload, report) {
     const methods = payload.logistics && Array.isArray(payload.logistics.methods)
       ? payload.logistics.methods
@@ -515,76 +805,83 @@
       }
       const labels = LOGISTICS_LABELS[key];
       const displayLabel = method.label;
-      const row = findLogisticsRow(labels);
-      if (!row) {
-        addReport(report, "missing", displayLabel, "找不到物流選項");
-        continue;
-      }
-      const wasEnabled = toggleState(row.toggle);
-      let toggledByExtension = false;
-      if (!method.enabled) {
+      const state = await reconcileLogisticsToggle(labels, method.enabled === true);
+      if (!state.row) {
         addReport(
           report,
-          wasEnabled ? "preserved" : "skipped",
+          method.enabled ? "missing" : "skipped",
           displayLabel,
-          wasEnabled ? "保留人工開啟狀態" : "維持關閉"
+          method.enabled ? "找不到物流選項" : "頁面未提供，視為關閉"
         );
         continue;
       }
-      if (!wasEnabled) {
-        row.toggle.click();
-        toggledByExtension = true;
-        await sleep(300);
-      } else {
-        addReport(report, "preserved", displayLabel, "原本已開啟");
+      if (!state.ok) {
+        addReport(report, "missing", displayLabel, method.enabled ? "無法開啟" : "無法關閉");
+        continue;
       }
+      let activeRow = state.row;
+      if (!method.enabled) {
+        addReport(report, state.changed ? "filled" : "skipped", displayLabel, state.changed ? "已關閉" : "維持關閉");
+        continue;
+      }
+      addReport(report, state.changed ? "filled" : "preserved", displayLabel, state.changed ? "已開啟" : "原本已開啟");
 
       if (method.option) {
-        const activeRow = wasEnabled ? row : (findLogisticsRow(labels) || row);
-        const controls = fieldControls(activeRow.container).filter((control) => control !== activeRow.toggle);
-        const bandControl = controls.find((control) => {
-          const value = controlValue(control);
-          return isEmptyValue(value) || /S\s*\d+|\d+\s*[-–~至～]\s*\d+\s*cm|≤\s*\d+\s*cm/i.test(value);
-        });
+        const located = await waitForLogisticsBandControl(labels, 4000);
+        activeRow = located.row || activeRow;
+        const bandControl = located.control;
         if (!bandControl) {
-          if (toggledByExtension) {
-            activeRow.toggle.click();
-          }
+          await reconcileLogisticsToggle(labels, false);
           addReport(report, "missing", `${displayLabel}尺寸`, "找不到尺寸級距");
           continue;
         }
-        const currentBand = controlValue(bandControl);
-        if (wasEnabled && !isEmptyValue(currentBand)) {
-          addReport(report, "preserved", `${displayLabel}尺寸`, currentBand);
-          continue;
-        }
+        const currentBand = controlDisplayValue(bandControl);
         const approvedOptions = helpers.logisticsOptionAliases(method.option);
-        const selected = await chooseExactOption(bandControl, approvedOptions);
-        if (!selected) {
-          if (toggledByExtension) activeRow.toggle.click();
-          addReport(report, "missing", `${displayLabel}尺寸`, "找不到完全相符級距");
-          continue;
+        if (!isEmptyValue(currentBand) && logisticsOptionMatches(currentBand, approvedOptions)) {
+          addReport(report, "preserved", `${displayLabel}尺寸`, currentBand);
+        } else {
+          const clicked = await chooseLogisticsOption(bandControl, approvedOptions);
+          const selected = clicked
+            ? await waitForLogisticsBandValue(labels, approvedOptions, 3500)
+            : null;
+          if (!selected) {
+            await reconcileLogisticsToggle(labels, false);
+            addReport(report, "missing", `${displayLabel}尺寸`, "找不到完全相符級距");
+            continue;
+          }
+          activeRow = selected.row || activeRow;
+          addReport(report, "filled", `${displayLabel}尺寸`, method.option);
         }
-        addReport(report, "filled", `${displayLabel}尺寸`, method.option);
-        if (toggledByExtension) addReport(report, "filled", displayLabel, "已開啟");
-      } else if (toggledByExtension) {
-        addReport(report, "filled", displayLabel, "已開啟");
       }
 
-      const updatedRow = findLogisticsRow(labels) || row;
-      const sellerPaysLabel = findExactTextElement(["我將承擔運費"], updatedRow.container);
-      const sellerPaysControl = sellerPaysLabel && (
-        sellerPaysLabel.closest("label")?.querySelector("input[type='checkbox']") ||
-        sellerPaysLabel.parentElement?.querySelector("input[type='checkbox'], [role='checkbox']")
-      );
-      if (method.sellerPays && sellerPaysControl && !toggleState(sellerPaysControl)) {
-        sellerPaysControl.click();
-        addReport(report, "filled", `${displayLabel}運費`, "賣家承擔");
-      } else if (sellerPaysControl && toggleState(sellerPaysControl)) {
-        addReport(report, "preserved", `${displayLabel}運費`, "賣家承擔");
-      } else if (method.sellerPays) {
-        addReport(report, "missing", `${displayLabel}運費`, "找不到賣家承擔運費欄位");
+      activeRow = findLogisticsRow(labels) || activeRow;
+      if (method.feeTwd !== null && method.feeTwd !== undefined) {
+        let feeControl = sellerFeeControl(activeRow);
+        const feeStarted = Date.now();
+        while (!feeControl && Date.now() - feeStarted < 3000) {
+          await sleep(120);
+          activeRow = findLogisticsRow(labels) || activeRow;
+          feeControl = sellerFeeControl(activeRow);
+        }
+        if (!feeControl) {
+          addReport(report, "missing", `${displayLabel}費用`, "找不到運費輸入欄位");
+          continue;
+        }
+        const currentFee = Number(String(controlValue(feeControl)).replace(/[^0-9.-]/g, ""));
+        if (currentFee === method.feeTwd) {
+          addReport(report, "preserved", `${displayLabel}費用`, `NT$${method.feeTwd}`);
+        } else {
+          setNativeValue(feeControl, method.feeTwd);
+          await sleep(180);
+          const appliedFee = Number(String(controlValue(feeControl)).replace(/[^0-9.-]/g, ""));
+          if (appliedFee !== method.feeTwd) {
+            addReport(report, "missing", `${displayLabel}費用`, `無法設定 NT$${method.feeTwd}`);
+            continue;
+          }
+          addReport(report, "filled", `${displayLabel}費用`, `NT$${method.feeTwd}`);
+        }
       }
+      await reconcileSellerPays(labels, method.sellerPays === true, displayLabel, report);
     }
   }
 
@@ -599,7 +896,12 @@
     if (!payload.preorder) {
       return;
     }
-    const label = findExactTextElement(FIELD_LABELS.preorder);
+    let label = findExactTextElement(FIELD_LABELS.preorder);
+    const labelStarted = Date.now();
+    while (!label && Date.now() - labelStarted < 5000) {
+      await sleep(120);
+      label = findExactTextElement(FIELD_LABELS.preorder);
+    }
     if (!label) {
       addReport(report, "missing", "預購", "找不到欄位");
       return;
@@ -614,16 +916,40 @@
           const checkedText = String(checked.closest("label, [role='radio']")?.textContent || checked.value || "").trim();
           if (helpers.exactApprovedMatch(checkedText, approvedOptions)) {
             addReport(report, "preserved", "預購", checkedText || (payload.preorder.enabled ? "是" : "否"));
-          } else {
-            addReport(report, "preserved", "預購", `保留人工值「${checkedText || "已選擇"}」`);
+            return;
           }
-          return;
         }
-        const desiredText = findExactTextElement(approvedOptions, container);
-        const desiredRadio = desiredText?.closest("label")?.querySelector("input[type='radio']") || desiredText?.closest("[role='radio']");
+        const desiredRadio = radios.find((radio) => {
+          const text = String(radio.closest("label, [role='radio']")?.textContent || radio.value || "").trim();
+          return helpers.exactApprovedMatch(text, approvedOptions);
+        });
         if (desiredRadio) {
           desiredRadio.click();
-          addReport(report, "filled", "預購", payload.preorder.enabled ? "是" : "否");
+          const verifyStarted = Date.now();
+          let applied = radioChecked(desiredRadio);
+          while (!applied && Date.now() - verifyStarted < 2000) {
+            await sleep(120);
+            const refreshedLabel = findExactTextElement(FIELD_LABELS.preorder);
+            let refreshedContainer = refreshedLabel?.parentElement;
+            for (let refreshedDepth = 0; refreshedContainer && refreshedDepth < 6; refreshedDepth += 1, refreshedContainer = refreshedContainer.parentElement) {
+              const refreshedRadios = Array.from(
+                refreshedContainer.querySelectorAll("input[type='radio'], [role='radio']")
+              ).filter(isVisible);
+              const refreshedDesired = refreshedRadios.find((radio) => {
+                const text = String(radio.closest("label, [role='radio']")?.textContent || radio.value || "").trim();
+                return helpers.exactApprovedMatch(text, approvedOptions);
+              });
+              if (refreshedDesired) {
+                applied = radioChecked(refreshedDesired);
+                break;
+              }
+            }
+          }
+          if (applied) {
+            addReport(report, "filled", "預購", payload.preorder.enabled ? "是" : "否");
+          } else {
+            addReport(report, "missing", "預購", "無法套用指定選項");
+          }
         } else {
           addReport(report, "missing", "預購", "找不到完全相符選項");
         }

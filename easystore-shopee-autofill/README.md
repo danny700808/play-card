@@ -9,6 +9,7 @@
 - 若找不到完全相符欄位、分類、物流級距或 EasyStore 顯示錯誤，會停止並留在畫面讓使用者處理。
 - 待填資料只存於 `chrome.storage.session`，關閉 Chrome 會清除；完成一次自動填寫後也會立刻刪除該筆資料。
 - 不會讀取或儲存 EasyStore 密碼、Cookie 或登入權杖。
+- EasyStore 商品庫存為 `0` 時仍會照常建立或更新並送出蝦皮上架，商品會以缺貨狀態存在；之後由既有庫存同步流程更新可售庫存。
 
 ## 安裝
 
@@ -52,10 +53,10 @@ window.postMessage({
 
 ```js
 const payload = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   nonce: "azes40-prb-00000001",
   createdAt: Date.now(),
-  expiresAt: Date.now() + 10 * 60 * 1000,
+  expiresAt: Date.now() + 30 * 60 * 1000,
   productId: "catalog-azes40-prb",
   easyStoreProductId: "3969443",
   easyStoreUrl: "https://admin.easystore.co/products/3969443",
@@ -86,10 +87,15 @@ const payload = {
     decision: "freight",
     packageTotalCm: 162.6,
     methods: [
-      { label: "蝦皮店到店", enabled: false, option: "", sellerPays: false },
-      { label: "7-ELEVEN", enabled: false, option: "", sellerPays: false },
-      { label: "新竹物流", enabled: true, option: "S170", sellerPays: false },
-      { label: "全家", enabled: false, option: "", sellerPays: false }
+      { label: "黑貓宅急便", enabled: false, option: "", feeTwd: null, sellerPays: false },
+      { label: "蝦皮店到店 - 隔日到貨", enabled: false, option: "", feeTwd: null, sellerPays: false },
+      { label: "蝦皮店到店", enabled: false, option: "", feeTwd: null, sellerPays: false },
+      { label: "7-ELEVEN", enabled: false, option: "", feeTwd: null, sellerPays: false },
+      { label: "新竹物流", enabled: true, option: "S170", feeTwd: null, sellerPays: false },
+      { label: "全家", enabled: false, option: "", feeTwd: null, sellerPays: false },
+      { label: "賣家宅配：大型/超重物品運送", enabled: true, option: "", feeTwd: 100, sellerPays: false },
+      { label: "嘉里快遞", enabled: false, option: "", feeTwd: null, sellerPays: false },
+      { label: "店到家宅配", enabled: false, option: "", feeTwd: null, sellerPays: false }
     ],
     requiresConfirmation: false
   },
@@ -114,14 +120,16 @@ ACK 格式：
 - 嚴格驗證 `schemaVersion`、`nonce`、建立／到期時間、SKU、EasyStore 商品 ID、EasyStore 網址、資料大小及欄位結構；已過期資料直接拒絕，不會替它延長期限。
 - EasyStore 商品網址一律由通過驗證的商品 ID 重建為 `https://admin.easystore.co/products/{id}`；不信任訊息內可任意指定的路徑、查詢參數或片段。
 - 頁面必須同時匹配 EasyStore 商品 ID 與完整 SKU。
-- 非空白欄位視為人工資料並保留。
+- 分類、品牌與商品屬性的非空白欄位視為人工資料並保留；物流與預購則依本次上架規則校正為指定狀態。
 - 下拉選單只選完全相符值或程式內明列的核准同義詞，不做模糊猜測。
 - `confidence: "low"` 的屬性不自動填。
-- 不會關閉人工已開啟的物流。
+- 物流會依後端已確認的商品尺寸與配送決策套用成一致狀態；未核准的物流會關閉，避免沿用上一件商品或人工測試留下的錯誤選項。
+- 大型商品（`freight`）在符合新竹物流限制時，會同時開啟「新竹物流」與「賣家宅配：大型/超重物品運送」；賣家宅配固定向買家收取 **NT$100**，不勾選「我將承擔運費」。
 - 新竹物流會用包裝最長邊、三邊總和及重量交叉檢查。AZES40 的 `106.7 + 45.7 + 10.2 = 162.6 cm`，因此對應 **S170**。
 - S170 僅核准 `S170`、`161–170 cm`、`170cm（含）以下`、`≤170cm` 等同義顯示；不接受舊的 `151–180cm`。
-- 找不到完全相符的新竹級距時，如果物流是擴充套件剛開啟的，會復原為關閉並列入「待補」。
+- 找不到完全相符的新竹級距時，會關閉新竹物流並列入「待補」，不會保留錯誤級距後送出。
 - 找不到欄位或核准選項時列入「待補」，不強行輸入。
+- 庫存 `0` 不是待補條件，也不會阻止自動上架；助手不會自行把缺貨商品改成有庫存。
 - 成功送出上架後刪除一次性 session 記錄；若有待補或送出失敗則保留，方便修正後重試。
 
 ## 測試

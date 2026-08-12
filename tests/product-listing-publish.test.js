@@ -59,6 +59,25 @@ test('EasyStore payload publishes one exact SKU with stock, price, package and a
   assert.match(body.published_at, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
 });
 
+test('zero stock remains published as out of stock and does not fail the EasyStore publish gate', () => {
+  const snapshot = helpers.buildListingSnapshot('out-of-stock-1', {
+    internalSku: 'OUT-OF-STOCK-1', currentStock: 0, easyStorePrice: 9800
+  }, {
+    researchedProductName: '缺貨但仍需上架的商品',
+    productDescription: '商品資料完整，庫存稍後由既有庫存同步流程更新。',
+    listingImageUrls: ['https://example.com/out-of-stock.jpg'],
+    enabledPlatforms: { easyStoreShopee: true, momo: false, coupang: false }
+  });
+  const body = helpers.buildEasyStoreProductBody(snapshot, true).product;
+
+  assert.equal(snapshot.stock, 0);
+  assert.equal(body.variants[0].inventory_quantity, 0);
+  assert.equal(body.variants[0].inventory_policy, false);
+  assert.equal(body.variants[0].is_enabled, true);
+  assert.match(body.published_at, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  assert.deepEqual(helpers.easyStoreMissingFields(snapshot), []);
+});
+
 test('EasyStore duplicate guard matches only the exact normalized SKU', () => {
   const payload = { data: { products: [{ id: 99, variants: [
     { id: 1, sku: '1040160-10' },
@@ -99,7 +118,7 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
 
   assert.equal(snapshot.stock, 0);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 2);
+  assert.equal(payload.schemaVersion, 3);
   assert.equal(payload.publishMode, 'auto');
   assert.equal(payload.brand, 'Ibanez');
   assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);
@@ -108,9 +127,20 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
   ]);
   assert.equal(payload.logistics.packageTotalCm, 162.6);
   assert.deepEqual(payload.logistics.methods.find((row) => row.label === '新竹物流'), {
-    label: '新竹物流', enabled: true, option: 'S170', sellerPays: false
+    label: '新竹物流', enabled: true, option: 'S170', feeTwd: null, sellerPays: false
   });
-  assert.equal(payload.preorder.enabled, false);
+  assert.deepEqual(payload.logistics.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送'), {
+    label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false
+  });
+  assert.deepEqual(
+    payload.logistics.methods.filter((row) => row.enabled).map((row) => row.label),
+    ['新竹物流', '賣家宅配：大型/超重物品運送']
+  );
+  assert.equal(payload.logistics.methods.length, 9);
+  assert.ok(payload.logistics.methods
+    .filter((row) => !['新竹物流', '賣家宅配：大型/超重物品運送'].includes(row.label))
+    .every((row) => row.enabled === false));
+  assert.deepEqual(payload.preorder, { enabled: false, days: 1 });
   assert.equal(payload.easyStoreUrl, 'https://admin.easystore.co/products/16403950');
   assert.match(payload.nonce, /^[a-f0-9]{32}$/);
   assert.equal(Object.hasOwn(payload, 'costPrice'), false);
@@ -119,13 +149,31 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
 test('Shopee helper leaves Hsinchu Logistics off when package limits are incomplete or exceeded', () => {
   const missing = helpers.buildShopeeLogistics({ shippingDecision: 'freight', packageLengthCm: 100, packageWidthCm: 40 });
   assert.equal(missing.methods.find((row) => row.label === '新竹物流').enabled, false);
+  assert.deepEqual(missing.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送'), {
+    label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false
+  });
   assert.equal(missing.requiresConfirmation, true);
 
   const tooHeavy = helpers.buildShopeeLogistics({
     shippingDecision: 'freight', packageLengthCm: 100, packageWidthCm: 40, packageHeightCm: 20, packageWeightKg: 21
   });
   assert.equal(tooHeavy.methods.find((row) => row.label === '新竹物流').enabled, false);
+  assert.deepEqual(tooHeavy.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送'), {
+    label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false
+  });
+  assert.ok(tooHeavy.methods
+    .filter((row) => row.label !== '賣家宅配：大型/超重物品運送')
+    .every((row) => row.enabled === false));
   assert.equal(tooHeavy.requiresConfirmation, true);
+});
+
+test('backend Hsinchu tariff boundaries stay aligned with the extension contract', () => {
+  assert.equal(helpers.hsinchuSizeBand(140), 'S150');
+  assert.equal(helpers.hsinchuSizeBand(140.1), 'S160');
+  assert.equal(helpers.hsinchuSizeBand(160), 'S160');
+  assert.equal(helpers.hsinchuSizeBand(160.1), 'S170');
+  assert.equal(helpers.hsinchuSizeBand(170), 'S170');
+  assert.equal(helpers.hsinchuSizeBand(170.1), 'S180');
 });
 
 test('manual shipping choice controls autofill and convenience limits are enforced when measurements are known', () => {
@@ -200,7 +248,7 @@ test('Shopee persistence summary never stores one-time autofill handoff secrets'
   assert.match(source, /publishState: \{ jobId, status, platforms: platformsForStorage,/);
   assert.match(source, /return \{ ok:[\s\S]*status, platforms \};/);
   assert.match(source, /updatedBy: '商品上架', schemaVersion: 8/);
-  assert.match(source, /version: '2026\.08\.12-shopee-autopublish-v2'/);
+  assert.match(source, /version: '2026\.08\.12-shopee-autopublish-v3'/);
   assert.doesNotMatch(source, /updatedBy: '商品上架', schemaVersion: 7/);
 });
 

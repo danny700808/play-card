@@ -8,7 +8,7 @@ const helpers = require("../helpers.js");
 
 function validPayload(now) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     nonce: "azes40-prb-00000001",
     createdAt: now,
     expiresAt: now + 10 * 60 * 1000,
@@ -37,11 +37,15 @@ function validPayload(now) {
       decision: "freight",
       packageTotalCm: 162.6,
       methods: [
-        { label: "黑貓宅急便", enabled: false, option: "", sellerPays: false },
-        { label: "蝦皮店到店", enabled: false, option: "", sellerPays: false },
-        { label: "7-ELEVEN", enabled: false, option: "", sellerPays: false },
-        { label: "新竹物流", enabled: true, option: "S170", sellerPays: false },
-        { label: "全家", enabled: false, option: "", sellerPays: false }
+        { label: "黑貓宅急便", enabled: false, option: "", feeTwd: null, sellerPays: false },
+        { label: "蝦皮店到店 - 隔日到貨", enabled: false, option: "", feeTwd: null, sellerPays: false },
+        { label: "蝦皮店到店", enabled: false, option: "", feeTwd: null, sellerPays: false },
+        { label: "7-ELEVEN", enabled: false, option: "", feeTwd: null, sellerPays: false },
+        { label: "新竹物流", enabled: true, option: "S170", feeTwd: null, sellerPays: false },
+        { label: "全家", enabled: false, option: "", feeTwd: null, sellerPays: false },
+        { label: "賣家宅配：大型/超重物品運送", enabled: true, option: "", feeTwd: 100, sellerPays: false },
+        { label: "嘉里快遞", enabled: false, option: "", feeTwd: null, sellerPays: false },
+        { label: "店到家宅配", enabled: false, option: "", feeTwd: null, sellerPays: false }
       ],
       requiresConfirmation: false
     },
@@ -82,6 +86,17 @@ test("AZES40 package total 162.6 cm maps only to approved S170 aliases", () => {
   assert.equal(helpers.exactApprovedMatch("161～170 cm", aliases), true);
   assert.equal(helpers.exactApprovedMatch("170cm（含）以下", aliases), true);
   assert.equal(helpers.exactApprovedMatch("151-180cm", aliases), false);
+  assert.equal(helpers.logisticsOptionMatch("161-170cm - (135 TWD)", aliases), true);
+  assert.equal(helpers.logisticsOptionMatch("151-180cm - (135 TWD)", aliases), false);
+});
+
+test("Hsinchu tariff boundaries follow the approved 140/160/170 cm cutoffs", () => {
+  assert.equal(helpers.hsinchuSizeBand(140), "S150");
+  assert.equal(helpers.hsinchuSizeBand(140.1), "S160");
+  assert.equal(helpers.hsinchuSizeBand(160), "S160");
+  assert.equal(helpers.hsinchuSizeBand(160.1), "S170");
+  assert.equal(helpers.hsinchuSizeBand(170), "S170");
+  assert.equal(helpers.hsinchuSizeBand(170.1), "S180");
 });
 
 test("rejects expired, wrong-version, malformed SKU and unknown top-level fields", () => {
@@ -112,6 +127,27 @@ test("rejects EasyStore URL, logistics label and Hsinchu band mismatches", () =>
   assert.match(result.errors.join(" "), /新竹物流級距/);
 });
 
+test("requires a complete and authoritative freight policy", () => {
+  const now = 1_800_000_000_000;
+  const missingMethod = validPayload(now);
+  missingMethod.logistics.methods = missingMethod.logistics.methods.filter((row) => row.label !== "全家");
+  const missingResult = helpers.validateQueuePayload(missingMethod, now);
+  assert.equal(missingResult.ok, false);
+  assert.match(missingResult.errors.join(" "), /缺少「全家」設定/);
+
+  const wrongSellerFee = validPayload(now);
+  wrongSellerFee.logistics.methods.find((row) => row.label.startsWith("賣家宅配")).feeTwd = 99;
+  const wrongFeeResult = helpers.validateQueuePayload(wrongSellerFee, now);
+  assert.equal(wrongFeeResult.ok, false);
+  assert.match(wrongFeeResult.errors.join(" "), /固定收取 NT\$100/);
+
+  const extraMethod = validPayload(now);
+  extraMethod.logistics.methods.find((row) => row.label === "7-ELEVEN").enabled = true;
+  const extraResult = helpers.validateQueuePayload(extraMethod, now);
+  assert.equal(extraResult.ok, false);
+  assert.match(extraResult.errors.join(" "), /不應開啟「7-ELEVEN」/);
+});
+
 test("requires the canonical EasyStore product URL and never trusts query or fragment variants", () => {
   const now = 1_800_000_000_000;
   const payload = validPayload(now);
@@ -128,6 +164,30 @@ test("extracts product IDs from EasyStore sync and product URLs", () => {
     ["3969443"]
   );
   assert.deepEqual(helpers.extractProductIds("https://admin.easystore.co/products/3969443"), ["3969443"]);
+  assert.deepEqual(
+    helpers.extractProductIds("https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=16965067&account_id=11850&product_ids=4116442&request_id=139658"),
+    ["16965067"]
+  );
+});
+
+test("real EasyStore sync URL matches the queued store product, not Shopee's channel product id", () => {
+  const now = 1_800_000_000_000;
+  const storePayload = validPayload(now);
+  storePayload.easyStoreProductId = "16965067";
+  storePayload.easyStoreUrl = "https://admin.easystore.co/products/16965067";
+  const channelPayload = validPayload(now);
+  channelPayload.nonce = "channel-00000001";
+  channelPayload.easyStoreProductId = "4116442";
+  channelPayload.easyStoreUrl = "https://admin.easystore.co/products/4116442";
+  const storeRecord = helpers.validateQueuePayload(storePayload, now).value;
+  const channelRecord = helpers.validateQueuePayload(channelPayload, now).value;
+  const queue = {
+    "16965067": { payload: storeRecord, receivedAt: now },
+    "4116442": { payload: channelRecord, receivedAt: now + 1 }
+  };
+  const url = "https://admin.easystore.co/channels/shopee/taiwan/products/sync?store_product_ids=16965067&account_id=11850&product_ids=4116442&request_id=139658";
+  const selected = helpers.selectQueueRecord(queue, url, "賣家 SKU 1040160-1", now);
+  assert.equal(selected.payload.easyStoreProductId, "16965067");
 });
 
 test("recognizes a user-driven route change from product page to Shopee sync page", () => {
@@ -182,6 +242,13 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
   assert.match(source, /setTimeout\(\(\) => \{[\s\S]*openShopee\.click\(\)/);
   assert.match(source, /publishToShopee/);
   assert.match(source, /report\.missing\.length > 0/);
+  assert.match(source, /const state = await reconcileLogisticsToggle\(labels, method\.enabled === true\)/);
+  assert.match(source, /const currentBand = controlDisplayValue\(bandControl\)/);
+  assert.match(source, /logisticsOptionMatches\(currentBand, approvedOptions\)/);
+  assert.match(source, /await reconcileLogisticsToggle\(labels, false\)/);
+  assert.match(source, /setNativeValue\(feeControl, method\.feeTwd\)/);
+  assert.match(source, /await reconcileSellerPays\(labels, method\.sellerPays === true/);
+  assert.match(source, /if \(helpers\.exactApprovedMatch\(checkedText, approvedOptions\)\)[\s\S]*desiredRadio\.click\(\)/);
 });
 
 test("automatic publish is allowed only when the report and logistics are complete", () => {

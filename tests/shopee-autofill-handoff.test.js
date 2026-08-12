@@ -10,7 +10,7 @@ const source = fs.readFileSync('operations-shopee-autofill-handoff-v1.js', 'utf8
 function rawPayload() {
   const now = Date.now();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     nonce: '0123456789abcdef0123456789abcdef',
     createdAt: now,
     expiresAt: now + 10 * 60 * 1000,
@@ -28,7 +28,17 @@ function rawPayload() {
     package: { lengthCm: 106.7, widthCm: 45.7, heightCm: 10.2, weightKg: 4.2 },
     logistics: {
       decision: 'freight', packageTotalCm: 162.6, requiresConfirmation: false,
-      methods: [{ label: '新竹物流', enabled: true, option: 'S170', sellerPays: false }]
+      methods: [
+        { label: '黑貓宅急便', enabled: false, option: '', feeTwd: null, sellerPays: false },
+        { label: '蝦皮店到店 - 隔日到貨', enabled: false, option: '', feeTwd: null, sellerPays: false },
+        { label: '蝦皮店到店', enabled: false, option: '', feeTwd: null, sellerPays: false },
+        { label: '7-ELEVEN', enabled: false, option: '', feeTwd: null, sellerPays: false },
+        { label: '新竹物流', enabled: true, option: 'S170', feeTwd: null, sellerPays: false },
+        { label: '全家', enabled: false, option: '', feeTwd: null, sellerPays: false },
+        { label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false },
+        { label: '嘉里快遞', enabled: false, option: '', feeTwd: null, sellerPays: false },
+        { label: '店到家宅配', enabled: false, option: '', feeTwd: null, sellerPays: false }
+      ]
     },
     preorder: { enabled: false, days: 1 },
     guard: { brand: 'Ibanez', model: 'AZES40-PRB', color: 'Purist Blue', identityStatus: 'confirmed' },
@@ -59,9 +69,24 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
   const payload = api.sanitizePayload(rawPayload());
   const serialized = JSON.stringify(payload);
   assert.equal(payload.sku, '1040160-1');
+  assert.equal(payload.schemaVersion, 3);
   assert.equal(payload.attributes[0].value, 'HSS');
   assert.equal(payload.publishMode, 'auto');
-  assert.equal(payload.logistics.methods[0].option, 'S170');
+  const hct = payload.logistics.methods.find((row) => row.label === '新竹物流');
+  const sellerLargeHome = payload.logistics.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送');
+  assert.equal(hct.enabled, true);
+  assert.equal(hct.option, 'S170');
+  assert.equal(hct.feeTwd, null);
+  assert.equal(sellerLargeHome.enabled, true);
+  assert.equal(sellerLargeHome.feeTwd, 100);
+  assert.equal(sellerLargeHome.sellerPays, false);
+  assert.equal(payload.logistics.methods.length, 9);
+  assert.equal(payload.logistics.methods.filter((row) => row.enabled).length, 2);
+  assert.equal(payload.logistics.methods
+    .filter((row) => !['新竹物流', '賣家宅配：大型/超重物品運送'].includes(row.label))
+    .every((row) => row.enabled === false), true);
+  assert.equal(payload.preorder.enabled, false);
+  assert.equal(payload.preorder.days, 1);
   assert.doesNotMatch(serialized, /7400|must-not-leak|accessToken|costPrice/);
 });
 

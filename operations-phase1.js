@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.12-shopee-autopublish-v2';
+  const VERSION = '2026.08.12-shopee-autopublish-v3';
   let pendingShopeeAutofillPayload = null;
   const PRODUCT_SHIPPING_DECISIONS = {
     convenience:{label:'可超商寄',description:'小型商品；可先使用安全的估算包裝資料。'},
@@ -3603,7 +3603,7 @@ function ensureSalesClock(){
     pendingShopeeAutofillPayload=platforms.shopee&&platforms.shopee.autofillPayload||null;
     const cards=Object.keys(platforms).map(function(key){
       const row=platforms[key]||{},meta=productListingPublishStatusMeta(row.status),missing=Array.isArray(row.missingFields)&&row.missingFields.length?'<small>缺少：'+escapeHtml(row.missingFields.join('、'))+'</small>':'';
-      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">送到 EasyStore 並上架蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.0.zip" download>店內電腦第一次使用：下載助手</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會帶入分類、品牌與商品屬性；一般宅配仍需人工確認物流，助手會停在 EasyStore 不會誤上架。':'會帶入分類、品牌、商品屬性與物流；資料完整後由 EasyStore 送到蝦皮。')+'</small>':'';
+      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">送到 EasyStore 並上架蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.1.zip" download>店內電腦第一次使用：下載助手</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會帶入分類、品牌與商品屬性；一般宅配仍需人工確認物流，助手會停在 EasyStore 不會誤上架。':'會帶入分類、品牌、商品屬性與物流；資料完整後由 EasyStore 送到蝦皮。')+'</small>':'';
       return '<section class="ops-listing-platform-card"><div class="ops-listing-platform-head"><h3>'+escapeHtml(productListingPublishPlatformTitle(key))+'</h3>'+statusTag(meta.label,meta.type)+'</div><div class="ops-listing-check-row '+(meta.ok?'ok':'missing')+'"><span>'+(meta.ok?'✓':'!')+'</span><div><b>'+escapeHtml(row.message||meta.label)+'</b>'+missing+helper+'</div></div></section>';
     }).join('');
     const needsInput=result.status==='needs-input'||Object.values(platforms).some(function(row){return clean(row&&row.status)==='missing-fields';});
