@@ -6,6 +6,11 @@
     return;
   }
 
+  const queueStorage = chrome.storage && chrome.storage[helpers.QUEUE_STORAGE_AREA];
+  if (!queueStorage) {
+    return;
+  }
+
   const FIELD_LABELS = Object.freeze({
     category: ["分類", "Category"],
     brand: ["品牌", "Brand"],
@@ -996,7 +1001,7 @@
 
   function consumeQueueRecord(payload) {
     return new Promise((resolve, reject) => {
-      chrome.storage.session.get(helpers.QUEUE_STORAGE_KEY, (stored) => {
+      queueStorage.get(helpers.QUEUE_STORAGE_KEY, (stored) => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
           return;
@@ -1014,9 +1019,9 @@
           else resolve(true);
         };
         if (Object.keys(next).length === 0) {
-          chrome.storage.session.remove(helpers.QUEUE_STORAGE_KEY, done);
+          queueStorage.remove(helpers.QUEUE_STORAGE_KEY, done);
         } else {
-          chrome.storage.session.set({ [helpers.QUEUE_STORAGE_KEY]: next }, done);
+          queueStorage.set({ [helpers.QUEUE_STORAGE_KEY]: next }, done);
         }
       });
     });
@@ -1097,16 +1102,13 @@
     const policy = record && record.payload && record.payload.listingPolicy || {};
     const href = element instanceof HTMLAnchorElement ? element.href : "";
     const isDirectSyncLink = href && helpers.easyStoreRouteKind(href) === "shopee-sync";
-    if (isDirectSyncLink && Array.isArray(policy.existingListingIds) && policy.existingListingIds.length > 0) {
-      return "update";
-    }
-    if (isDirectSyncLink && policy.allowCreate === true) return "create";
+    if (isDirectSyncLink) return helpers.directSyncNavigationMode(policy);
     return "unknown";
   }
 
   function rememberShopeeNavigationMode(record, mode) {
     return new Promise((resolve, reject) => {
-      chrome.storage.session.get(helpers.QUEUE_STORAGE_KEY, (stored) => {
+      queueStorage.get(helpers.QUEUE_STORAGE_KEY, (stored) => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
           return;
@@ -1118,7 +1120,7 @@
           mode,
           Date.now()
         );
-        chrome.storage.session.set({ [helpers.QUEUE_STORAGE_KEY]: queue }, () => {
+        queueStorage.set({ [helpers.QUEUE_STORAGE_KEY]: queue }, () => {
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
             return;
@@ -1228,7 +1230,11 @@
       try {
         const report = await runAutofill(currentRecord.payload);
         renderReport(reportContainer, report);
-        const gate = helpers.autoPublishGate(currentRecord.payload, report, currentRecord.navigationMode);
+        const navigationMode = helpers.resolveShopeeNavigationMode(
+          document.body ? document.body.innerText : "",
+          currentRecord.navigationMode
+        );
+        const gate = helpers.autoPublishGate(currentRecord.payload, report, navigationMode);
         if (!gate.ok) {
           status.textContent = `已停止上架：${gate.reasons.join("；")}`;
           start.disabled = false;
@@ -1236,7 +1242,7 @@
           return;
         }
         status.textContent = "欄位已完成，正在送到蝦皮……";
-        await publishToShopee(currentRecord.payload, report, currentRecord.navigationMode);
+        await publishToShopee(currentRecord.payload, report, navigationMode);
         await consumeQueueRecord(currentRecord.payload);
         status.textContent = "已送出 EasyStore → 蝦皮上架；請等待 EasyStore／蝦皮處理結果。";
         start.textContent = "已送出蝦皮上架";
@@ -1350,7 +1356,7 @@
     if (!isSyncPage && !isProductPage) {
       return;
     }
-    chrome.storage.session.get(helpers.QUEUE_STORAGE_KEY, (stored) => {
+    queueStorage.get(helpers.QUEUE_STORAGE_KEY, (stored) => {
       if (chrome.runtime.lastError) {
         return;
       }
@@ -1378,7 +1384,7 @@
   }
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === "session" && changes[helpers.QUEUE_STORAGE_KEY]) {
+    if (areaName === helpers.QUEUE_STORAGE_AREA && changes[helpers.QUEUE_STORAGE_KEY]) {
       inspectQueue(0);
     }
   });

@@ -80,7 +80,7 @@ test("accepts the production page bridge payload shape", () => {
   assert.equal(result.value.logistics.methods.find((row) => row.label === "新竹物流").option, "S170");
 });
 
-test("valid normalized payload can be validated again after session storage", () => {
+test("valid normalized payload can be validated again after extension storage", () => {
   const now = 1_800_000_000_000;
   const first = helpers.validateQueuePayload(validPayload(now), now);
   assert.equal(first.ok, true, first.errors.join("\n"));
@@ -218,7 +218,8 @@ test("requires both exact EasyStore product ID and exact SKU token", () => {
   assert.equal(helpers.selectQueueRecord(queue, url.replace("3969443", "3969444"), "SKU 1040160-1", now), null);
 });
 
-test("prunes expired session records before merging a fresh one", () => {
+test("uses reliable local handoff storage and prunes expired records before merging a fresh one", () => {
+  assert.equal(helpers.QUEUE_STORAGE_AREA, "local");
   const now = 1_800_000_000_000;
   const stale = validPayload(now);
   stale.nonce = "stale-00000001";
@@ -237,6 +238,9 @@ test("prunes expired session records before merging a fresh one", () => {
 
 test("product-page handoff survives EasyStore SPA navigation and final publish stays gated", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
+  assert.match(source, /chrome\.storage\[helpers\.QUEUE_STORAGE_AREA\]/);
+  assert.match(source, /areaName === helpers\.QUEUE_STORAGE_AREA/);
+  assert.doesNotMatch(source, /chrome\.storage\.session|areaName === ["']session["']/);
   assert.match(source, /mountProductNavigationOverlay/);
   assert.match(source, /開啟蝦皮設定/);
   assert.match(source, /shopeeSyncLinkForProduct/);
@@ -245,7 +249,8 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
   assert.match(source, /EasyStore 沒有轉到設定頁/);
   assert.match(source, /setInterval\([\s\S]*const nextUrl = location\.href/);
   assert.match(source, /helpers\.shouldInspectQueue\(previousUrl, nextUrl\)/);
-  assert.match(source, /helpers\.autoPublishGate\(currentRecord\.payload, report, currentRecord\.navigationMode\)/);
+  assert.match(source, /helpers\.resolveShopeeNavigationMode/);
+  assert.match(source, /helpers\.autoPublishGate\(currentRecord\.payload, report, navigationMode\)/);
   assert.match(source, /helpers\.listingSafetyGate\(record\.payload, mode\)/);
   assert.match(source, /rememberShopeeNavigationMode/);
   assert.match(source, /findEnabledExactButton/);
@@ -284,8 +289,25 @@ test("classifies update and create actions conservatively", () => {
   assert.equal(helpers.classifyShopeeActionText("Sync again"), "update");
   assert.equal(helpers.classifyShopeeActionText("連接商品到蝦皮購物 Shopee Taiwan"), "create");
   assert.equal(helpers.classifyShopeeActionText("發佈到蝦皮購物"), "create");
+  assert.equal(helpers.classifyShopeeActionText("發布商品到蝦皮購物"), "create");
   assert.equal(helpers.classifyShopeeActionText("更新到蝦皮購物｜發佈到蝦皮購物"), "unknown");
   assert.equal(helpers.classifyShopeeActionText("蝦皮購物"), "unknown");
+});
+
+test("a direct sync URL never becomes update solely because an old listing id is stored", () => {
+  const existing = validPayload(1_800_000_000_000).listingPolicy;
+  existing.decision = "existing";
+  existing.existingListingIds = ["4116442"];
+  assert.equal(helpers.directSyncNavigationMode(existing), "unknown");
+
+  const confirmedNew = validPayload(1_800_000_000_000).listingPolicy;
+  confirmedNew.decision = "new";
+  confirmedNew.allowCreate = true;
+  assert.equal(helpers.directSyncNavigationMode(confirmedNew), "create");
+
+  assert.equal(helpers.resolveShopeeNavigationMode("發布商品到蝦皮購物", "unknown"), "create");
+  assert.equal(helpers.resolveShopeeNavigationMode("發布商品到蝦皮購物", "update"), "unknown");
+  assert.equal(helpers.resolveShopeeNavigationMode("重新同步到蝦皮", "update"), "update");
 });
 
 test("duplicate guard permits updates but requires explicit confirmation before creation", () => {

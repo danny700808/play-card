@@ -11,6 +11,10 @@
 
   const SCHEMA_VERSION = 4;
   const QUEUE_STORAGE_KEY = "youziShopeeAutofillQueueV1";
+  // Content scripts can always share storage.local across the Operations and
+  // EasyStore tabs. storage.session requires a service-worker access-level
+  // bootstrap and was observed to drop the handoff on store computers.
+  const QUEUE_STORAGE_AREA = "local";
   const MAX_QUEUE_ITEMS = 20;
   const MAX_TTL_MS = 30 * 60 * 1000;
   const MIN_TTL_MS = 1000;
@@ -164,11 +168,29 @@
     const text = String(value == null ? "" : value).normalize("NFKC").toLocaleLowerCase("zh-TW");
     if (!text.trim()) return "unknown";
     const hasUpdate = /(?:重新|再次|再)同步|同步最新|重新發[佈布]|更新(?:商品|至蝦皮)?|sync\s*again|re-?sync|republish|update(?:\s+product)?/.test(text);
-    const hasCreate = /連接商品(?:到|至)?\s*蝦皮|發[佈布](?:到|至)?\s*蝦皮|上架(?:到|至)?\s*蝦皮|publish\s+(?:on|to)\s+shopee|新品上架/.test(text);
+    const hasCreate = /連接商品(?:到|至)?\s*蝦皮|發[佈布](?:商品)?(?:到|至)?\s*蝦皮|上架(?:到|至)?\s*蝦皮|publish\s+(?:on|to)\s+shopee|新品上架/.test(text);
     if (hasUpdate === hasCreate) return "unknown";
     if (hasUpdate) return "update";
     if (hasCreate) return "create";
     return "unknown";
+  }
+
+  function directSyncNavigationMode(listingPolicy) {
+    const policy = isPlainObject(listingPolicy) ? listingPolicy : {};
+    const existingListingIds = Array.isArray(policy.existingListingIds)
+      ? uniqueStrings(policy.existingListingIds)
+      : [];
+    return policy.decision === "new" && policy.allowCreate === true && existingListingIds.length === 0
+      ? "create"
+      : "unknown";
+  }
+
+  function resolveShopeeNavigationMode(pageText, storedMode) {
+    const observedMode = classifyShopeeActionText(pageText);
+    const rememberedMode = normalizeShopeeNavigationMode(storedMode);
+    if (observedMode === "unknown") return rememberedMode;
+    if (rememberedMode !== "unknown" && rememberedMode !== observedMode) return "unknown";
+    return observedMode;
   }
 
   function validateString(value, name, errors, options) {
@@ -738,7 +760,9 @@
     if (existingListingIds.length > 1) {
       reasons.push(`同一 SKU 已對到 ${existingListingIds.length} 個蝦皮商品，為避免更新錯商品已停止。`);
     } else if (mode === "unknown") {
-      reasons.push("無法確認這是更新舊商品還是建立新品，為避免重複已停止。");
+      reasons.push(existingListingIds.length > 0 || policy.decision === "existing"
+        ? "已記錄蝦皮既有商品，但 EasyStore 沒有顯示明確的更新動作；請先用 Match product 配對後再重新同步。"
+        : "無法確認這是更新舊商品還是建立新品，為避免重複已停止。");
     } else if (mode === "create" && existingListingIds.length > 0) {
       reasons.push("已記錄蝦皮既有商品；請使用 Match product 配對／更新，不能建立新品。");
     } else if (mode === "create" && policy.allowCreate !== true) {
@@ -762,6 +786,7 @@
   return Object.freeze({
     SCHEMA_VERSION,
     QUEUE_STORAGE_KEY,
+    QUEUE_STORAGE_AREA,
     MAX_TTL_MS,
     SELLER_LARGE_HOME_FEE_TWD,
     ATTRIBUTE_DEFINITIONS,
@@ -769,6 +794,8 @@
     normalizeText,
     normalizeShopeeNavigationMode,
     classifyShopeeActionText,
+    directSyncNavigationMode,
+    resolveShopeeNavigationMode,
     exactApprovedMatch,
     logisticsOptionMatch,
     uniqueStrings,

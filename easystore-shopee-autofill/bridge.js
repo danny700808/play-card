@@ -11,6 +11,11 @@
     return;
   }
 
+  const queueStorage = chrome.storage && chrome.storage[helpers.QUEUE_STORAGE_AREA];
+  if (!queueStorage) {
+    return;
+  }
+
   function acknowledge(nonce, ok, error, details) {
     window.postMessage(Object.assign({
       type: ACK_MESSAGE,
@@ -41,7 +46,7 @@
       return;
     }
 
-    chrome.storage.session.get(helpers.QUEUE_STORAGE_KEY, (stored) => {
+    queueStorage.get(helpers.QUEUE_STORAGE_KEY, (stored) => {
       if (chrome.runtime.lastError) {
         acknowledge(nonce, false, chrome.runtime.lastError.message, { code: "STORAGE_READ_FAILED" });
         return;
@@ -53,7 +58,7 @@
         now,
         now
       );
-      chrome.storage.session.set({ [helpers.QUEUE_STORAGE_KEY]: queue }, () => {
+      queueStorage.set({ [helpers.QUEUE_STORAGE_KEY]: queue }, () => {
         if (chrome.runtime.lastError) {
           acknowledge(nonce, false, chrome.runtime.lastError.message, { code: "STORAGE_WRITE_FAILED" });
           return;

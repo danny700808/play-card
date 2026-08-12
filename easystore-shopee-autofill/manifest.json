@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "柚子樂器 EasyStore 蝦皮自動填寫",
-  "version": "0.3.2",
-  "description": "安全接收商品資料，辨識蝦皮新增或更新狀態，完成 EasyStore 必填欄位後才送出。",
+  "version": "0.3.3",
+  "description": "可靠接收跨分頁商品資料，辨識蝦皮新增或更新狀態，完成 EasyStore 必填欄位後才送出。",
   "permissions": [
     "storage"
   ],
@@ -11,9 +11,6 @@
     "https://admin.easystore.co/products/*",
     "https://admin.easystore.co/channels/shopee/taiwan/products/sync*"
   ],
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [
     {
       "matches": [
