@@ -112,6 +112,9 @@ test('OpenAI request uses web search, product images and strict structured outpu
   assert.match(request.input[0].content[0].text, /productDescription 是店家唯一需要檢查與編輯的完整商品介紹/);
   assert.match(request.input[0].content[0].text, /先用 2～4 句自然、活潑的繁體中文介紹商品/);
   assert.match(request.input[0].content[0].text, /再列 6～10 點/);
+  assert.match(request.input[0].content[0].text, /第三層只能從「鍵盤樂器、打擊樂器、管樂器、樂器配件、其他、弦樂器」選一個/);
+  assert.match(request.input[0].content[0].text, /弦樂器 > 吉他、貝斯/);
+  assert.match(request.input[0].content[0].text, /Warranty Duration/);
   assert.doesNotMatch(request.input[0].content[0].text, /這是完整研究|完成下列四個階段/);
   assert.equal(request.text.format.type, 'json_schema');
   assert.equal(request.text.format.strict, true);
@@ -274,13 +277,13 @@ test('explicit refresh replaces only fields previously filled by AI', () => {
   assert.ok(merged.update.aiResearch.preservedManualFields.includes('sellingPoints'));
 });
 
-test('Shopee attribute research is normalized and never overwrites manual values', () => {
+test('Shopee attribute research preserves manual values and adds missing researched fields', () => {
   const manual = [{ label: 'Warranty Type', value: 'Supplier Warranty', confidence: 'high', note: '店長設定' }];
   const first = research.buildResearchUpdate({ shopeeAttributeValues: manual }, completeResult(), {
     requestId: 'attrs-1', responseId: 'resp-1', model: 'gpt-5.6-sol', imageCount: 0, inputFingerprint: 'attrs'
   });
-  assert.equal(first.update.shopeeAttributeValues, undefined);
-  assert.ok(first.update.aiResearch.preservedManualFields.includes('shopeeAttributeValues'));
+  assert.deepEqual(first.update.shopeeAttributeValues[0], manual[0]);
+  assert.ok(first.update.shopeeAttributeValues.some((row) => row.label === 'Quantity' && row.value === '1'));
 
   const refreshed = research.buildResearchUpdate({ shopeeAttributeValues: manual }, completeResult({
     shopeeAttributeValues: [
@@ -294,6 +297,31 @@ test('Shopee attribute research is normalized and never overwrites manual values
   assert.deepEqual(refreshed.update.shopeeAttributeValues, [
     { label: 'Pickup Configuration', value: 'HSS', confidence: 'high', note: '原廠規格' }
   ]);
+});
+
+test('guitar template removes stale attributes while preserving manager-confirmed answers', () => {
+  const merged = research.buildResearchUpdate({
+    shopeeCategoryPath: '愛好與收藏品 > 樂器與配件 > 吉他與貝斯 > 電吉他',
+    shopeeAttributeValues: [
+      { label: 'Warranty Type', value: 'Supplier Warranty', confidence: 'high', note: '管理者於上架前確認' },
+      { label: 'Item condition', value: 'New', confidence: 'high', note: '舊模板欄位' }
+    ]
+  }, completeResult({
+    identifiedProductName: 'Ibanez AZES40 電吉他',
+    shopeeTitle: 'Ibanez AZES40 電吉他',
+    shopeeCategoryPath: '愛好與收藏品 > 樂器與配件 > 吉他與貝斯 > 電吉他',
+    shopeeAttributeValues: [
+      { label: 'Pickup Configuration', value: 'HSS', confidence: 'high', note: '原廠規格' }
+    ]
+  }), {
+    requestId: 'guitar-template', responseId: 'resp-guitar', model: 'gpt-5.6-sol', imageCount: 0,
+    inputFingerprint: 'guitar', context: { name: 'Ibanez AZES40 電吉他' }
+  });
+
+  assert.equal(merged.update.shopeeCategoryPath, '愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯');
+  assert.ok(merged.update.shopeeAttributeValues.some((row) => row.label === 'Warranty Type' && row.confidence === 'high'));
+  assert.ok(merged.update.shopeeAttributeValues.some((row) => row.label === 'Pickup Configuration' && row.value === 'HSS'));
+  assert.equal(merged.update.shopeeAttributeValues.some((row) => row.label === 'Item condition'), false);
 });
 
 test('checked source images are the only image evidence used during refresh', () => {

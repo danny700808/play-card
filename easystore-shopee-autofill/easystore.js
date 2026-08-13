@@ -319,6 +319,77 @@
     return !control.isConnected || helpers.exactApprovedMatch(controlDisplayValue(control), options);
   }
 
+  function visiblePopupOptionRows() {
+    const roots = Array.from(document.querySelectorAll([
+      "[role='listbox']",
+      ".el-select-dropdown",
+      "[class*='dropdown-menu' i]",
+      "[class*='option-list' i]"
+    ].join(","))).filter((element) => isVisible(element) && !element.closest("#youzi-shopee-autofill-overlay"));
+    const seen = new Set();
+    const rows = [];
+    roots.forEach((root) => {
+      Array.from(root.querySelectorAll("[role='option'], li, [data-value]")).forEach((element) => {
+        const clickable = element.closest("[role='option'], li, [data-value]") || element;
+        const text = String(element.textContent || "").trim();
+        const key = helpers.normalizeText(text);
+        if (!key || seen.has(key) || !isEnabledClickTarget(clickable)) return;
+        seen.add(key);
+        rows.push({ text, clickable });
+      });
+    });
+    return rows;
+  }
+
+  async function waitForVisiblePopupOptions(timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const rows = visiblePopupOptionRows();
+      if (rows.length) return rows;
+      await sleep(100);
+    }
+    return visiblePopupOptionRows();
+  }
+
+  function selectedValueInField(field, approvedOptions) {
+    if (!field || !field.container) return "";
+    return Array.from(field.container.querySelectorAll([
+      ".el-select__selected-item",
+      "[class*='selected-value' i]",
+      "[data-value]"
+    ].join(",")))
+      .map((element) => String(element.textContent || element.getAttribute("data-value") || "").trim())
+      .find((value) => helpers.exactApprovedMatch(value, approvedOptions)) || "";
+  }
+
+  async function chooseExactAttributeOption(field, control, approvedOptions) {
+    const options = helpers.uniqueStrings(approvedOptions);
+    if (control instanceof HTMLSelectElement) {
+      const observed = Array.from(control.options).map((entry) => String(entry.textContent || "").trim()).filter(Boolean);
+      const option = Array.from(control.options).find((entry) => helpers.exactApprovedMatch(entry.textContent, options));
+      if (!option) return { selected: false, observed };
+      control.value = option.value;
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+      control.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(80);
+      return { selected: helpers.exactApprovedMatch(controlDisplayValue(control), options), observed };
+    }
+    control.focus();
+    control.click();
+    const rows = await waitForVisiblePopupOptions(3000);
+    const exact = rows.filter((row) => helpers.exactApprovedMatch(row.text, options));
+    if (exact.length !== 1) return { selected: false, observed: rows.map((row) => row.text) };
+    exact[0].clickable.click();
+    const started = Date.now();
+    while (Date.now() - started < 2200) {
+      if (!control.isConnected || selectedValueInField(field, options) || helpers.exactApprovedMatch(controlDisplayValue(control), options)) {
+        return { selected: true, observed: rows.map((row) => row.text) };
+      }
+      await sleep(100);
+    }
+    return { selected: false, observed: rows.map((row) => row.text) };
+  }
+
   function logisticsOptionMatches(actual, approvedOptions) {
     return typeof helpers.logisticsOptionMatch === "function"
       ? helpers.logisticsOptionMatch(actual, approvedOptions)
@@ -1190,6 +1261,7 @@
     }
 
     const writableInput = primary instanceof HTMLTextAreaElement || (primary instanceof HTMLInputElement && !primary.readOnly);
+    let observedOptionCount = 0;
     const shouldType = descriptor.inputMode === "text" || (
       ["auto", "composite"].includes(descriptor.inputMode) &&
       writableInput
@@ -1202,9 +1274,18 @@
         return;
       }
     } else {
-      const selected = await chooseExactOption(primary, descriptor.approvedOptions);
-      if (!selected) {
-        addReport(report, "missing", displayLabel, "找不到完全相符或核准同義詞");
+      const selection = await chooseExactAttributeOption(field, primary, descriptor.approvedOptions);
+      observedOptionCount = helpers.uniqueStrings(selection.observed || []).length;
+      if (!selection.selected) {
+        const observed = helpers.uniqueStrings(selection.observed || []).slice(0, 16);
+        addReport(
+          report,
+          "missing",
+          displayLabel,
+          observed.length
+            ? `預先準備的「${descriptor.value}」不在蝦皮固定選項中；實際選項：${observed.join("、")}`
+            : "點開後沒有讀到可選項目"
+        );
         return;
       }
     }
@@ -1216,8 +1297,8 @@
       } else if (!isEmptyValue(controlValue(unitControl))) {
         addReport(report, "preserved", `${displayLabel}單位`, controlValue(unitControl));
       } else {
-        const selectedUnit = await chooseExactOption(unitControl, descriptor.unitOptions);
-        if (!selectedUnit) {
+        const selectedUnit = await chooseExactAttributeOption(field, unitControl, descriptor.unitOptions);
+        if (!selectedUnit.selected) {
           addReport(report, "missing", `${displayLabel}單位`, "找不到完全相符單位");
         }
       }
@@ -1225,7 +1306,12 @@
     if (report.missing.some((item) => item.startsWith(`${displayLabel}單位：`))) {
       return;
     }
-    addReport(report, "filled", displayLabel, `${descriptor.value}${descriptor.unit ? ` ${descriptor.unit}` : ""}`);
+    addReport(
+      report,
+      "filled",
+      displayLabel,
+      `${descriptor.value}${descriptor.unit ? ` ${descriptor.unit}` : ""}${observedOptionCount ? `（已核對 ${observedOptionCount} 個固定選項）` : ""}`
+    );
   }
 
   function isSellerPaysToggle(control) {

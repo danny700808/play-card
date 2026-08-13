@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.13-shopee-autopublish-v16';
+  const VERSION = '2026.08.13-shopee-autopublish-v17';
   let pendingShopeeAutofillPayload = null;
   const PRODUCT_SHIPPING_DECISIONS = {
     convenience:{label:'可超商寄',description:'小型商品；可先使用安全的估算包裝資料。'},
@@ -3159,6 +3159,88 @@ function ensureSalesClock(){
       return {label:label.slice(0,120),value:fieldValue.slice(0,300),confidence:['high','medium','low'].includes(confidence)?confidence:'low',note:clean(row&&row.note).slice(0,500)};
     }).filter(Boolean).slice(0,30);
   }
+  const SHOPEE_GUITAR_CATEGORY_PATH='愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯';
+  const SHOPEE_GUITAR_ATTRIBUTE_TEMPLATE=[
+    {label:'Weight',hint:'查商品本體重量；沒有可靠資料時請人工確認。'},
+    {label:'Warranty Duration',manual:true,options:['1 Month','2 Months','3 Months','6 Months','12 Months','24 Months','3 Years','5 Years','No Warranty'],hint:'請依柚子樂器實際提供的保固期間確認。'},
+    {label:'Warranty Type',manual:true,hint:'請依柚子樂器實際承擔保固的方式確認。'},
+    {label:'Neck Material',hint:'琴頸材質'},
+    {label:'Traditional Music Instrument',options:['No','Yes'],hint:'一般吉他與貝斯為 No。'},
+    {label:'Guitar Shape',hint:'吉他外型'},
+    {label:'Hand Configuration',hint:'左手或右手版本'},
+    {label:'Body Material',hint:'琴身材質'},
+    {label:'Guitar Type',hint:'電吉他、木吉他或貝斯'},
+    {label:'Pickup Configuration',hint:'例如 HSS、SSS、HH'},
+    {label:'Fretboard Material',hint:'指板材質'},
+    {label:'Dimension (L x W x H)',hint:'商品本體尺寸，不是包裝尺寸'},
+    {label:'Number of Strings',hint:'實際弦數'},
+    {label:'Quantity',defaultValue:'1',hint:'單件販售固定 1'},
+    {label:'Quantity per Pack',defaultValue:'1',hint:'單件販售固定 1'}
+  ];
+  function shopeeMusicFamilyFromText(value){
+    const text=clean(value);if(!text)return '';
+    if(/(琴弦|吉他弦|貝斯弦|烏克麗麗弦|弦組|撥片|pick|背帶|琴袋|琴盒|琴架|鍵盤架|鼓棒|鼓皮|鼓鎖|調音器|節拍器|移調夾|capo|導線|訊號線|連接線|轉接頭|變壓器|電源供應器|效果器|踏板|簧片|吹嘴|束圈|清潔布|譜架|樂譜袋|譜袋|音樂書包|樂器書包|保養油|弱音器)/i.test(text))return '樂器配件';
+    if(/(電鋼琴|數位鋼琴|電子琴|鍵盤樂器|keyboard|synthesizer|synth|合成器|鋼琴|手風琴|midi鍵盤|主控鍵盤)/i.test(text))return '鍵盤樂器';
+    if(/(爵士鼓|電子鼓|木箱鼓|非洲鼓|手鼓|鈴鼓|定音鼓|小鼓|大鼓|軍鼓|銅鈸|鈸|cajon|drum|percussion|打擊樂器|木琴|鐵琴|馬林巴)/i.test(text))return '打擊樂器';
+    if(/(薩克斯|薩克斯風|saxophone|長笛|短笛|單簧管|豎笛|黑管|雙簧管|巴松管|低音管|小號|長號|法國號|上低音號|低音號|直笛|陶笛|口琴|管樂器|clarinet|flute|trumpet|trombone|recorder|harmonica)/i.test(text))return '管樂器';
+    if(/(電吉他|木吉他|古典吉他|民謠吉他|吉他|guitar|電貝斯|貝斯|bass|烏克麗麗|ukulele|小提琴|中提琴|大提琴|低音提琴|二胡|古箏|琵琶|弦樂器)/i.test(text))return '弦樂器';
+    if(/樂器配件/i.test(text))return '樂器配件';
+    if(/其他/i.test(text))return '其他';
+    return '';
+  }
+  function productMusicFamily(p,row,path){
+    const productText=[p&&p.originalName,p&&p.onlineName,p&&p.name,row&&row.researchedProductName,row&&row.shopeeTitle].map(clean).filter(Boolean).join(' ');
+    return shopeeMusicFamilyFromText(productText)||shopeeMusicFamilyFromText(path);
+  }
+  function productLooksLikeGuitar(p,row,path){
+    const productText=[p&&p.originalName,p&&p.onlineName,p&&p.name,row&&row.researchedProductName,row&&row.shopeeTitle].map(clean).filter(Boolean).join(' ');
+    const guitarPattern=/(電吉他|木吉他|古典吉他|民謠吉他|吉他|guitar|電貝斯|貝斯|bass)/i,directFamily=shopeeMusicFamilyFromText(productText);
+    if(directFamily)return directFamily==='弦樂器'&&guitarPattern.test(productText);
+    return shopeeMusicFamilyFromText(path)==='弦樂器'&&guitarPattern.test(path);
+  }
+  function normalizeShopeeCategoryPathForProduct(value,p,row){
+    const path=clean(value);
+    if(productLooksLikeGuitar(p,row,path))return SHOPEE_GUITAR_CATEGORY_PATH;
+    const parts=path.split(/\s*(?:>|＞|→|\/|｜)\s*/).map(function(segment){segment=clean(segment);return segment==='樂器與配件'?'樂器與樂器配件':segment;}).filter(Boolean);
+    const families=['鍵盤樂器','打擊樂器','管樂器','樂器配件','其他','弦樂器'],family=productMusicFamily(p,row,path),existingFamily=parts.find(function(segment){return families.includes(segment);})||'';
+    if(family){
+      const descendants=family===existingFamily?parts.filter(function(segment){return !['愛好與收藏品','樂器與樂器配件'].includes(segment)&&!families.includes(segment);}):[];
+      return ['愛好與收藏品','樂器與樂器配件',family].concat(descendants).join(' > ');
+    }
+    if(parts[0]==='樂器與樂器配件')parts.unshift('愛好與收藏品');
+    if(families.includes(parts[0]))parts.unshift('愛好與收藏品','樂器與樂器配件');
+    return parts.join(' > ');
+  }
+  function productShopeeAttributeEditorRows(p,row){
+    if(!productLooksLikeGuitar(p,row,row&&row.shopeeCategoryPath))return normalizeProductShopeeAttributes(row&&row.shopeeAttributeValues).map(function(item){return Object.assign({hint:'AI 已準備'},item);});
+    const values=new Map(normalizeProductShopeeAttributes(row&&row.shopeeAttributeValues).map(function(item){return [clean(item.label).toLowerCase(),item];}));
+    return SHOPEE_GUITAR_ATTRIBUTE_TEMPLATE.map(function(field){
+      const current=values.get(field.label.toLowerCase())||{},managerConfirmed=/管理者於上架前確認/.test(clean(current.note));
+      return Object.assign({},field,{value:field.manual&&!managerConfirmed?'':clean(current.value)||clean(field.defaultValue),confidence:field.manual&&!managerConfirmed?'low':clean(current.confidence)||'low',note:clean(current.note)});
+    });
+  }
+  function productShopeeAttributeEditorHtml(p,row){
+    const rows=productShopeeAttributeEditorRows(p,row);if(!rows.length)return '';
+    return '<div class="ops-section-title">蝦皮分類屬性（上架前先準備）</div><div class="ops-callout"><b>這些欄位會依分類固定重複使用</b><br><span>AI 先查可確認的規格；黃色欄位必須由你依實際銷售與保固方式確認，助手只負責照答案填入。</span></div><div class="ops-form-grid cols-2">'+rows.map(function(field){
+      const manual=field.manual===true,value=clean(field.value),options=Array.isArray(field.options)?field.options:[];
+      const metadata=' data-shopee-attribute-label="'+attr(field.label)+'" data-shopee-attribute-manual="'+(manual?'1':'0')+'" data-shopee-attribute-note="'+attr(field.note)+'" data-shopee-attribute-confidence="'+attr(field.confidence||'low')+'" data-shopee-attribute-original="'+attr(value)+'"';
+      const control=options.length?'<select class="ops-select"'+metadata+'><option value="">'+(manual?'請人工確認':'尚未找到答案')+'</option>'+options.map(function(option){return '<option value="'+attr(option)+'" '+(option===value?'selected':'')+'>'+escapeHtml(option)+'</option>';}).join('')+'</select>':'<input class="ops-input"'+metadata+' value="'+attr(value)+'" placeholder="'+attr(manual?'請人工確認':'AI 尚未找到，可人工補填')+'">';
+      return '<div class="ops-field '+(manual&&!value?'ops-shopee-attribute-manual':'')+'"><label>'+(manual?'＊ ':'')+escapeHtml(field.label)+'</label>'+control+'<small>'+escapeHtml(field.hint||'')+(value&&!manual?'｜AI 已準備：'+escapeHtml(value):'')+'</small></div>';
+    }).join('')+'</div>';
+  }
+  function productShopeeAttributesFromForm(form){
+    const controls=queryAll('[data-shopee-attribute-label]',form);
+    if(!controls.length){const hidden=query('[name="shopeeAttributeValues"]',form);return normalizeProductShopeeAttributes(hidden&&hidden.value);}
+    return controls.map(function(control){
+      const label=clean(control.dataset.shopeeAttributeLabel),value=clean(control.value),manual=control.dataset.shopeeAttributeManual==='1',changed=value!==clean(control.dataset.shopeeAttributeOriginal);if(!label||!value)return null;
+      return {label:label,value:value,confidence:manual||changed?'high':(['high','medium','low'].includes(clean(control.dataset.shopeeAttributeConfidence))?clean(control.dataset.shopeeAttributeConfidence):'low'),note:manual||changed?'管理者於上架前確認':clean(control.dataset.shopeeAttributeNote)||'AI 商品研究與分類模板'};
+    }).filter(Boolean).slice(0,30);
+  }
+  function missingManualShopeeAttributes(value,p,row){
+    if(!productLooksLikeGuitar(p,row,row&&row.shopeeCategoryPath))return [];
+    const values=new Set(normalizeProductShopeeAttributes(value).map(function(item){return clean(item.label).toLowerCase();}));
+    return SHOPEE_GUITAR_ATTRIBUTE_TEMPLATE.filter(function(field){return field.manual&&!values.has(field.label.toLowerCase());}).map(function(field){return field.label;});
+  }
   function normalizeProductListingCase(raw,p){
     const source=raw&&typeof raw==='object'?raw:{},legacy=p&&p.internal?p.internal:{},suggested=productListingSuggestedDefaults(p);
     const ai=source.aiResearch&&typeof source.aiResearch==='object'?source.aiResearch:{};
@@ -3170,7 +3252,7 @@ function ensureSalesClock(){
     const legacySpecificationText=clean(listingCaseValue(source,legacy,'specificationText',''));
     const legacyCommonDescription=clean(listingCaseValue(source,legacy,'commonProductDescription',''));
     const productDescription=clean(listingCaseValue(source,legacy,'productDescription',''))||legacyCommonDescription||[legacyShortDescription,legacyFeatureList,legacySpecificationText].filter(Boolean).join('\n\n');
-    return {
+    const normalized={
       caseStatus:clean(source.caseStatus)||'draft',
       sourceProductDescription:clean(source.sourceProductDescription),researchInstructions:clean(source.researchInstructions),referenceUrls:normalizeProductResearchSourceUrls(source.referenceUrls),referenceImageUrls:normalizeProductResearchSourceUrls(source.referenceImageUrls),selectedReferenceImageUrls:Array.isArray(source.selectedReferenceImageUrls)?normalizeProductResearchSourceUrls(source.selectedReferenceImageUrls):normalizeProductResearchSourceUrls(source.referenceImageUrls),listingImageUrls:normalizeProductResearchSourceUrls(source.listingImageUrls),
       brand:clean(listingCaseValue(source,legacy,'brand',p&&p.brand||'')),shopeeBrand:clean(source.shopeeBrand)||clean(listingCaseValue(source,legacy,'brand',p&&p.brand||'')),shopeeAttributeValues:normalizeProductShopeeAttributes(source.shopeeAttributeValues),model:clean(listingCaseValue(source,legacy,'model',p&&p.model||'')),barcode:clean(listingCaseValue(source,legacy,'barcode',p&&p.barcode||'')),
@@ -3185,6 +3267,8 @@ function ensureSalesClock(){
       packageResearchStatus:['not-searched','found','not-found','manual'].includes(packageResearchStatus)?packageResearchStatus:'not-searched',packageResearchSourceUrl:safeUrl(listingCaseValue(source,legacy,'packageResearchSourceUrl','')),packageResearchNote:clean(listingCaseValue(source,legacy,'packageResearchNote','')),caseNote:clean(source.caseNote),updatedAt:source.updatedAt||'',
       aiResearchStatus:clean(ai.status),aiResearchError:clean(ai.error),aiResearchModel:clean(ai.model),aiResearchConfidence:clean(ai.confidence),aiResearchSummary:clean(ai.researchSummary),aiResearchCompletedAt:ai.completedAt||'',aiResearchFilledFields:Array.isArray(ai.filledFields)?ai.filledFields:[],aiResearchMissingFields:Array.isArray(ai.missingFields)?ai.missingFields:[],aiResearchImageEvidenceUsed:ai.imageEvidenceUsed===true
     };
+    normalized.shopeeCategoryPath=normalizeShopeeCategoryPathForProduct(normalized.shopeeCategoryPath,p,normalized);
+    return normalized;
   }
 
   function productListingSection(title,subtitle,body,open){
@@ -3246,7 +3330,7 @@ function ensureSalesClock(){
     const commonSection='<textarea name="sellingPoints" hidden>'+escapeHtml(row.sellingPoints)+'</textarea><textarea name="shortDescription" hidden>'+escapeHtml(row.shortDescription)+'</textarea><textarea name="featureList" hidden>'+escapeHtml(row.featureList)+'</textarea><textarea name="specificationText" hidden>'+escapeHtml(row.specificationText)+'</textarea><textarea name="commonProductDescription" hidden>'+escapeHtml(row.commonProductDescription)+'</textarea>'+productIdentityReviewHtml(row)+'<div class="ops-form-grid"><div class="ops-field full"><label>上架商品名稱</label><input class="ops-input" name="researchedProductName" value="'+attr(row.researchedProductName)+'" placeholder="AI 會填入，你也可以自己修改"></div><div class="ops-field full"><label>完整商品介紹</label><textarea class="ops-textarea ops-product-description-textarea" name="productDescription" placeholder="先用 2～4 句介紹商品與適合對象。\n\n商品特色\n1. 特色一\n2. 特色二\n\n商品規格\n品牌：\n型號：\n顏色：">'+escapeHtml(row.productDescription)+'</textarea><small>商品簡介、6～10 點特色與規格都寫在這一格；系統會自動轉成各平台需要的純文字或安全 HTML。</small></div></div><details class="ops-listing-image-url-details"><summary>其他商品資料</summary><div class="ops-listing-advanced-body">'+commonDetails+'</div></details>';
     const mediaSection='<textarea name="imagePlan" hidden>'+escapeHtml(row.imagePlan)+'</textarea><textarea name="listingImageUrls" hidden>'+escapeHtml(listingImages.join('\n'))+'</textarea><div class="ops-form-grid"><div class="ops-field full"><label>圖片修改要求（可不填）</label><textarea class="ops-textarea compact" name="imageGenerationInstructions" placeholder="例如：只把簡體轉繁體；版面不要大改；這批是馬卡藍色">'+escapeHtml(row.imageGenerationInstructions)+'</textarea></div></div><div id="productAiImageGenerationStatus">'+(row.lastImageGenerationStatus==='failed'?'<div class="ops-product-ai-status failed"><span>!</span><div><b>上次圖片轉換未完成</b><small>'+escapeHtml(row.lastImageGenerationError||'請重新嘗試。')+'</small></div></div>':'')+'</div>'+productGeneratedImageCandidatesHtml(row.generatedListingImages)+'<div id="productListingImagePreview">'+(listingImages.length?productListingImagePreviewHtml(listingImages,'準備上架圖片'):'<div class="ops-listing-image-empty">尚未產生上架圖片；勾選上方來源圖後按「AI 完成文字與勾選圖片」。</div>')+'</div><details class="ops-listing-image-url-details"><summary>其他圖片工具</summary><div class="ops-listing-advanced-body"><button class="ops-button soft small" type="button" data-action="product-ai-image-generate">只重新製作勾選圖片</button></div></details>';
     const sharedPlatformContent='<div class="ops-callout green"><b>商品介紹不用重複填</b><br><span>上面的「完整商品介紹」會自動轉成平台純文字與安全 HTML。</span></div>';
-    const easySection='<textarea name="shopeeDescription" hidden>'+escapeHtml(row.productDescription)+'</textarea><textarea name="easyStoreHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><label class="ops-listing-platform-toggle"><input type="checkbox" name="enabledEasyStoreShopee" value="1" '+(row.enabledEasyStoreShopee?'checked':'')+'><span><b>EasyStore 與蝦皮都要處理</b><small>EasyStore 依完全相同 SKU 建立或更新；蝦皮會先判斷新增或更新。</small></span></label>'+sharedPlatformContent+'<div class="ops-callout yellow"><b>蝦皮防重複檢查</b><br><span>蝦皮官方串接的「發布新品」一定會新增商品；已有商品要先用 Match product 配對，不能直接再發布一次。</span></div><div class="ops-form-grid"><div class="ops-field full"><label>蝦皮目前是否已有這個 SKU</label><select class="ops-select" name="shopeeListingDecision"><option value="auto" '+(row.shopeeListingDecision==='auto'?'selected':'')+'>系統先檢查；無法確認就停止（建議）</option><option value="existing" '+(row.shopeeListingDecision==='existing'?'selected':'')+'>蝦皮已經有：只能配對／更新舊商品</option><option value="new" '+(row.shopeeListingDecision==='new'?'selected':'')+'>已確認蝦皮沒有：允許建立新品</option></select><small>不確定就保留第一項；系統不會冒險新增。</small></div><div class="ops-field full ops-product-name-field"><label>蝦皮商品標題</label><input class="ops-input" name="shopeeTitle" value="'+attr(row.shopeeTitle)+'"></div><div class="ops-field full"><label>EasyStore → 蝦皮分類</label><input class="ops-input" name="shopeeCategoryPath" value="'+attr(row.shopeeCategoryPath)+'"></div><div class="ops-field full"><label>平台另外需要補的欄位（如有）</label><textarea class="ops-textarea compact" name="shopeeRequiredNotes">'+escapeHtml(row.shopeeRequiredNotes)+'</textarea></div></div>';
+    const easySection='<textarea name="shopeeDescription" hidden>'+escapeHtml(row.productDescription)+'</textarea><textarea name="easyStoreHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><label class="ops-listing-platform-toggle"><input type="checkbox" name="enabledEasyStoreShopee" value="1" '+(row.enabledEasyStoreShopee?'checked':'')+'><span><b>EasyStore 與蝦皮都要處理</b><small>EasyStore 依完全相同 SKU 建立或更新；蝦皮會先判斷新增或更新。</small></span></label>'+sharedPlatformContent+'<div class="ops-callout yellow"><b>蝦皮防重複檢查</b><br><span>蝦皮官方串接的「發布新品」一定會新增商品；已有商品要先用 Match product 配對，不能直接再發布一次。</span></div><div class="ops-form-grid"><div class="ops-field full"><label>蝦皮目前是否已有這個 SKU</label><select class="ops-select" name="shopeeListingDecision"><option value="auto" '+(row.shopeeListingDecision==='auto'?'selected':'')+'>系統先檢查；無法確認就停止（建議）</option><option value="existing" '+(row.shopeeListingDecision==='existing'?'selected':'')+'>蝦皮已經有：只能配對／更新舊商品</option><option value="new" '+(row.shopeeListingDecision==='new'?'selected':'')+'>已確認蝦皮沒有：允許建立新品</option></select><small>不確定就保留第一項；系統不會冒險新增。</small></div><div class="ops-field full ops-product-name-field"><label>蝦皮商品標題</label><input class="ops-input" name="shopeeTitle" value="'+attr(row.shopeeTitle)+'"></div><div class="ops-field full"><label>EasyStore → 蝦皮分類</label><input class="ops-input" name="shopeeCategoryPath" value="'+attr(row.shopeeCategoryPath)+'" readonly><small>分類由商品類型與蝦皮固定模板產生；吉他不會跳過「弦樂器」。</small></div><div class="ops-field full"><label>平台另外需要補的欄位（如有）</label><textarea class="ops-textarea compact" name="shopeeRequiredNotes">'+escapeHtml(row.shopeeRequiredNotes)+'</textarea></div></div>'+productShopeeAttributeEditorHtml(p,row);
     const momoSection='<textarea name="momoHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><label class="ops-listing-platform-toggle"><input type="checkbox" name="enabledMomo" value="1" '+(row.enabledMomo?'checked':'')+'><span><b>MOMO 要上架</b><small>仍使用同一個商品 SKU。</small></span></label>'+sharedPlatformContent+'<div class="ops-form-grid"><div class="ops-field full"><label>MOMO 商品名稱</label><input class="ops-input" name="momoGoodsName" value="'+attr(row.momoGoodsName)+'"></div><div class="ops-field full"><label>MOMO 行銷標語</label><input class="ops-input" name="momoSlogan" value="'+attr(row.momoSlogan)+'"></div><div class="ops-field full"><label>MOMO 分類</label><input class="ops-input" name="momoCategoryCode" value="'+attr(row.momoCategoryCode)+'"></div><div class="ops-field full"><label>平台另外需要補的欄位（如有）</label><textarea class="ops-textarea compact" name="momoRequiredNotes">'+escapeHtml(row.momoRequiredNotes)+'</textarea></div></div>';
     const coupangSection='<textarea name="coupangDescriptionHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><label class="ops-listing-platform-toggle"><input type="checkbox" name="enabledCoupang" value="1" '+(row.enabledCoupang?'checked':'')+'><span><b>酷澎要上架</b><small>內容會在送出時轉成酷澎需要的格式。</small></span></label>'+sharedPlatformContent+'<div class="ops-form-grid"><div class="ops-field full"><label>酷澎商品標題</label><input class="ops-input" name="coupangTitle" value="'+attr(row.coupangTitle)+'"></div><div class="ops-field full"><label>酷澎分類</label><input class="ops-input" name="coupangCategoryCode" value="'+attr(row.coupangCategoryCode)+'"></div><div class="ops-field full"><label>平台另外需要補的欄位（如有）</label><textarea class="ops-textarea compact" name="coupangRequiredNotes">'+escapeHtml(row.coupangRequiredNotes)+'</textarea></div></div>';
     const shippingSection='<div class="ops-product-shipping-grid">'+productShippingChoiceHtml(shipping.decision)+'</div><div class="ops-form-grid cols-4 ops-product-value-fields"><div class="ops-field"><label>外箱長（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageLengthCm" value="'+attr(shipping.lengthCm==null?'':shipping.lengthCm)+'"></div><div class="ops-field"><label>外箱寬（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWidthCm" value="'+attr(shipping.widthCm==null?'':shipping.widthCm)+'"></div><div class="ops-field"><label>外箱高（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageHeightCm" value="'+attr(shipping.heightCm==null?'':shipping.heightCm)+'"></div><div class="ops-field"><label>包裝重量（kg）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWeightKg" value="'+attr(shipping.weightKg==null?'':shipping.weightKg)+'"></div></div><div class="ops-product-shipping-actions"><button class="ops-button soft" type="button" data-action="product-shipping-preset">套用小型商品建議值</button><small>你的人工勾選是最後決定；網路尺寸只提供參考。</small></div><div id="productShippingSummary">'+productShippingSummaryHtml(shipping)+'</div><div class="ops-form-grid cols-3"><div class="ops-field"><label>尺寸資料狀態</label><select class="ops-select" name="packageResearchStatus">'+packageResearchStatusOptions(row.packageResearchStatus)+'</select></div><div class="ops-field full ops-product-name-field"><label>尺寸資料來源網址</label><input class="ops-input" type="url" name="packageResearchSourceUrl" value="'+attr(row.packageResearchSourceUrl)+'"></div><div class="ops-field full"><label>尺寸判斷備註</label><textarea class="ops-textarea" name="packageResearchNote">'+escapeHtml(row.packageResearchNote)+'</textarea></div><div class="ops-field full"><label>案件備註</label><textarea class="ops-textarea" name="caseNote">'+escapeHtml(row.caseNote)+'</textarea></div></div>';
@@ -3292,7 +3376,7 @@ function ensureSalesClock(){
     const ref=state.db.collection(COLLECTIONS.listingCases).doc(id),payload={
       productId:id,productSku:p.sku,productName:p.originalName||p.name,productImageUrl:p.imageUrl||'',caseStatus:clean(data.get('caseStatus'))||'draft',
       sourceProductDescription:clean(data.get('sourceProductDescription')),researchInstructions:clean(data.get('researchInstructions')),referenceUrls:referenceUrls,referenceImageUrls:referenceImageUrls,selectedReferenceImageUrls:selectedReferenceImageUrls,listingImageUrls:listingImageUrls,
-      brand:clean(data.get('brand')),shopeeBrand:clean(data.get('shopeeBrand'))||clean(data.get('brand')),shopeeAttributeValues:normalizeProductShopeeAttributes(data.get('shopeeAttributeValues')),model:clean(data.get('model')),barcode:clean(data.get('barcode')),identityStatus:identityStatus,identityEvidence:clean(data.get('identityEvidence')),identityConflictSummary:clean(data.get('identityConflictSummary')),identityDecision:identityManualConfirmed?'accepted':clean(data.get('identityDecision')),identityManualConfirmed:identityManualConfirmed,identityManualConfirmedBy:identityManualConfirmed?userLabel():'',identityManualConfirmationNote:identityManualConfirmationNote,
+      brand:clean(data.get('brand')),shopeeBrand:clean(data.get('shopeeBrand'))||clean(data.get('brand')),shopeeAttributeValues:productShopeeAttributesFromForm(form),model:clean(data.get('model')),barcode:clean(data.get('barcode')),identityStatus:identityStatus,identityEvidence:clean(data.get('identityEvidence')),identityConflictSummary:clean(data.get('identityConflictSummary')),identityDecision:identityManualConfirmed?'accepted':clean(data.get('identityDecision')),identityManualConfirmed:identityManualConfirmed,identityManualConfirmedBy:identityManualConfirmed?userLabel():'',identityManualConfirmationNote:identityManualConfirmationNote,
       productResearchStatus:productResearchStatus,productResearchSourceUrls:sourceUrls,productResearchUpdatedAt:researchComplete?serverTimestamp():'',researchedProductName:clean(data.get('researchedProductName')),alternateNames:clean(data.get('alternateNames')),searchKeywords:clean(data.get('searchKeywords')),
       sellingPoints:sellingPoints,productDescription:productDescription,specificationText:legacySpecificationText,includedItems:clean(data.get('includedItems')),material:clean(data.get('material')),color:clean(data.get('color')),countryOfOrigin:clean(data.get('countryOfOrigin')),warrantyInfo:clean(data.get('warrantyInfo')),shortDescription:legacyShortDescription,commonProductDescription:productDescription,featureList:legacyFeatureList,faqText:clean(data.get('faqText')),commonContentDecision:clean(data.get('commonContentDecision')),
       imagePlan:clean(data.get('imagePlan')),imageGenerationInstructions:clean(data.get('imageGenerationInstructions')),mediaDecision:clean(data.get('mediaDecision')),
@@ -3519,7 +3603,7 @@ function ensureSalesClock(){
       id:id,product:product,sku:normalizeCode(data.get('internalSku')),name:clean(data.get('internalName')),researchedName:clean(data.get('researchedProductName')),brand:clean(data.get('brand')),model:clean(data.get('model')),barcode:clean(data.get('barcode')),
       identityStatus:clean(data.get('identityStatus')),identityDecision:clean(data.get('identityDecision')),productResearchStatus:clean(data.get('productResearchStatus'))||'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(data.get('productResearchSourceUrls')),alternateNames:clean(data.get('alternateNames')),searchKeywords:clean(data.get('searchKeywords')),sellingPoints:clean(data.get('sellingPoints')),productDescription:productDescription,specificationText:clean(data.get('specificationText')),includedItems:clean(data.get('includedItems')),material:clean(data.get('material')),color:clean(data.get('color')),countryOfOrigin:clean(data.get('countryOfOrigin')),warrantyInfo:clean(data.get('warrantyInfo')),shortDescription:clean(data.get('shortDescription')),commonProductDescription:productDescription,featureList:clean(data.get('featureList')),faqText:clean(data.get('faqText')),commonContentDecision:clean(data.get('commonContentDecision')),
       referenceUrls:normalizeProductResearchSourceUrls(data.get('referenceUrls')),referenceImageUrls:normalizeProductResearchSourceUrls(data.get('referenceImageUrls')),listingImageUrls:normalizeProductResearchSourceUrls(data.get('listingImageUrls')),imagePlan:clean(data.get('imagePlan')),mediaDecision:clean(data.get('mediaDecision')),
-      enabledEasyStoreShopee:data.get('enabledEasyStoreShopee')==='1',easyStoreShopeeDecision:clean(data.get('easyStoreShopeeDecision')),easyStoreHtml:sharedHtml,shopeeTitle:clean(data.get('shopeeTitle')),shopeeDescription:productDescription,shopeeCategoryPath:clean(data.get('shopeeCategoryPath')),shopeeListingDecision:['auto','new','existing'].includes(clean(data.get('shopeeListingDecision')))?clean(data.get('shopeeListingDecision')):'auto',
+      enabledEasyStoreShopee:data.get('enabledEasyStoreShopee')==='1',easyStoreShopeeDecision:clean(data.get('easyStoreShopeeDecision')),easyStoreHtml:sharedHtml,shopeeTitle:clean(data.get('shopeeTitle')),shopeeDescription:productDescription,shopeeCategoryPath:clean(data.get('shopeeCategoryPath')),shopeeAttributeValues:productShopeeAttributesFromForm(form),shopeeListingDecision:['auto','new','existing'].includes(clean(data.get('shopeeListingDecision')))?clean(data.get('shopeeListingDecision')):'auto',
       enabledMomo:data.get('enabledMomo')==='1',momoDecision:clean(data.get('momoDecision')),momoGoodsName:clean(data.get('momoGoodsName')),momoSlogan:clean(data.get('momoSlogan')),momoHtml:sharedHtml,momoCategoryCode:clean(data.get('momoCategoryCode')),
       enabledCoupang:data.get('enabledCoupang')==='1',coupangDecision:clean(data.get('coupangDecision')),coupangTitle:clean(data.get('coupangTitle')),coupangDescriptionHtml:sharedHtml,coupangCategoryCode:clean(data.get('coupangCategoryCode')),
       easyStorePrice:numberOrNull(data.get('easyStorePrice')),momoPrice:numberOrNull(data.get('momoPrice')),coupangPrice:numberOrNull(data.get('coupangPrice')),stock:numberOrNull(data.get('currentStock')),
@@ -3544,11 +3628,13 @@ function ensureSalesClock(){
   }
   function productListingReadiness(draft){
     const common=productResearchReady(draft),media=draft.imageCount>0,packageReady=productListingPackageReady(draft),shopeeLogisticsReady=!draft.enabledEasyStoreShopee||productListingShopeeLogisticsReady(draft),shopeeLogisticsManualConfirmationRequired=!!(draft.enabledEasyStoreShopee&&packageReady&&draft.shippingDecision==='home'),listingName=draft.researchedName||draft.name;
-    const easy=!draft.enabledEasyStoreShopee||!!(draft.sku&&listingName&&common&&media&&draft.easyStoreHtml&&draft.shopeeTitle&&draft.shopeeDescription&&draft.shopeeCategoryPath&&draft.easyStorePrice!=null&&shopeeLogisticsReady);
+    const shopeeAttributeMissing=draft.enabledEasyStoreShopee?missingManualShopeeAttributes(draft.shopeeAttributeValues,draft.product,draft):[];
+    const shopeeAttributesReady=shopeeAttributeMissing.length===0;
+    const easy=!draft.enabledEasyStoreShopee||!!(draft.sku&&listingName&&common&&media&&draft.easyStoreHtml&&draft.shopeeTitle&&draft.shopeeDescription&&draft.shopeeCategoryPath&&draft.easyStorePrice!=null&&shopeeLogisticsReady&&shopeeAttributesReady);
     const momo=!draft.enabledMomo||!!(draft.sku&&common&&media&&draft.momoGoodsName&&draft.momoHtml&&draft.momoCategoryCode&&draft.momoPrice!=null&&packageReady);
     const coupang=!draft.enabledCoupang||!!(draft.sku&&common&&media&&draft.coupangTitle&&draft.coupangDescriptionHtml&&draft.coupangCategoryCode&&draft.coupangPrice!=null&&packageReady);
     const selected=[draft.enabledEasyStoreShopee?'EasyStore/Shopee':'',draft.enabledMomo?'MOMO':'',draft.enabledCoupang?'Coupang':''].filter(Boolean);
-    return {common:common,media:media,packageReady:packageReady,shopeeLogisticsReady:shopeeLogisticsReady,shopeeLogisticsManualConfirmationRequired:shopeeLogisticsManualConfirmationRequired,easy:easy,momo:momo,coupang:coupang,selected:selected,all:selected.length>0&&easy&&momo&&coupang};
+    return {common:common,media:media,packageReady:packageReady,shopeeLogisticsReady:shopeeLogisticsReady,shopeeLogisticsManualConfirmationRequired:shopeeLogisticsManualConfirmationRequired,shopeeAttributesReady:shopeeAttributesReady,shopeeAttributeMissing:shopeeAttributeMissing,easy:easy,momo:momo,coupang:coupang,selected:selected,all:selected.length>0&&easy&&momo&&coupang};
   }
   function productListingCheckRow(label,value,ok,note){
     return '<div class="ops-listing-check-row '+(ok?'ok':'missing')+'"><span>'+(ok?'✓':'!')+'</span><div><b>'+escapeHtml(label)+'</b><small>'+escapeHtml(value||note||'尚未填寫')+'</small></div></div>';
@@ -3568,7 +3654,7 @@ function ensureSalesClock(){
       productListingCheckRow('上架商品名稱',listingName,!!listingName),productListingCheckRow('完整商品介紹',draft.productDescription?'已填 '+draft.productDescription.length+' 字':'',!!draft.productDescription),productListingCheckRow('上架圖片',draft.imageCount+' 張',hasImages)
     ];
     const easyRows=[
-      productListingCheckRow('SKU',draft.sku,!!draft.sku),productListingCheckRow('蝦皮防重複方式',shopeeListingDecisionLabel(draft.shopeeListingDecision),true),productListingCheckRow('蝦皮標題',draft.shopeeTitle,!!draft.shopeeTitle),productListingCheckRow('EasyStore 商品內容',draft.easyStoreHtml?'已填 '+draft.easyStoreHtml.length+' 字':'',!!draft.easyStoreHtml),productListingCheckRow('蝦皮分類',draft.shopeeCategoryPath,!!draft.shopeeCategoryPath),productListingCheckRow('EasyStore 售價',money(draft.easyStorePrice),draft.easyStorePrice!=null),productListingCheckRow(readiness.shopeeLogisticsManualConfirmationRequired?'外箱資料':'物流與包裝',shippingText+(packageText?'｜'+packageText:'')+(readiness.shopeeLogisticsManualConfirmationRequired?'｜蝦皮實際物流尚未自動選好':''),readiness.shopeeLogisticsReady,packageReady?'目前物流選擇或尺寸仍需人工確認':'請填寫外箱尺寸與重量')
+      productListingCheckRow('SKU',draft.sku,!!draft.sku),productListingCheckRow('蝦皮防重複方式',shopeeListingDecisionLabel(draft.shopeeListingDecision),true),productListingCheckRow('蝦皮標題',draft.shopeeTitle,!!draft.shopeeTitle),productListingCheckRow('EasyStore 商品內容',draft.easyStoreHtml?'已填 '+draft.easyStoreHtml.length+' 字':'',!!draft.easyStoreHtml),productListingCheckRow('蝦皮分類',draft.shopeeCategoryPath,!!draft.shopeeCategoryPath),productListingCheckRow('蝦皮分類屬性',readiness.shopeeAttributesReady?'已依分類模板準備':readiness.shopeeAttributeMissing.join('、'),readiness.shopeeAttributesReady,'請先回到上架資料確認保固欄位'),productListingCheckRow('EasyStore 售價',money(draft.easyStorePrice),draft.easyStorePrice!=null),productListingCheckRow(readiness.shopeeLogisticsManualConfirmationRequired?'外箱資料':'物流與包裝',shippingText+(packageText?'｜'+packageText:'')+(readiness.shopeeLogisticsManualConfirmationRequired?'｜蝦皮實際物流尚未自動選好':''),readiness.shopeeLogisticsReady,packageReady?'目前物流選擇或尺寸仍需人工確認':'請填寫外箱尺寸與重量')
     ];
     const momoRows=[
       productListingCheckRow('單一 SKU',draft.sku,!!draft.sku),productListingCheckRow('MOMO 商品名稱',draft.momoGoodsName,!!draft.momoGoodsName),productListingCheckRow('MOMO 商品內容',draft.momoHtml?'已填 '+draft.momoHtml.length+' 字':'',!!draft.momoHtml),productListingCheckRow('MOMO 分類',draft.momoCategoryCode,!!draft.momoCategoryCode),productListingCheckRow('MOMO 售價',money(draft.momoPrice),draft.momoPrice!=null),productListingCheckRow('物流與包裝',shippingText+(packageText?'｜'+packageText:''),packageReady)
@@ -3608,7 +3694,7 @@ function ensureSalesClock(){
     pendingShopeeAutofillPayload=platforms.shopee&&platforms.shopee.autofillPayload||null;
     const cards=Object.keys(platforms).map(function(key){
       const row=platforms[key]||{},meta=productListingPublishStatusMeta(row.status),missing=Array.isArray(row.missingFields)&&row.missingFields.length?'<small>缺少：'+escapeHtml(row.missingFields.join('、'))+'</small>':'';
-      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">安全開啟 EasyStore／蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.14.zip" download>下載／更新助手 0.3.14</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會帶入分類、品牌與商品屬性；一般宅配與新增／更新狀態仍須確認，助手不會誤建重複商品。':'已有商品只配對／更新；只有明確確認蝦皮沒有相同 SKU 時才允許建立新品。')+'</small>':'';
+      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">安全開啟 EasyStore／蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.15.zip" download>下載／更新助手 0.3.15</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會帶入分類、品牌與商品屬性；一般宅配與新增／更新狀態仍須確認，助手不會誤建重複商品。':'已有商品只配對／更新；只有明確確認蝦皮沒有相同 SKU 時才允許建立新品。')+'</small>':'';
       return '<section class="ops-listing-platform-card"><div class="ops-listing-platform-head"><h3>'+escapeHtml(productListingPublishPlatformTitle(key))+'</h3>'+statusTag(meta.label,meta.type)+'</div><div class="ops-listing-check-row '+(meta.ok?'ok':'missing')+'"><span>'+(meta.ok?'✓':'!')+'</span><div><b>'+escapeHtml(row.message||meta.label)+'</b>'+missing+helper+'</div></div></section>';
     }).join('');
     const needsInput=result.status==='needs-input'||Object.values(platforms).some(function(row){return ['missing-fields','action-required'].includes(clean(row&&row.status));});
@@ -3623,7 +3709,7 @@ function ensureSalesClock(){
     if(!global.YouziShopeeAutofill||typeof global.YouziShopeeAutofill.queueAndOpen!=='function')throw new Error('蝦皮自動填寫橋接程式尚未載入，請重新整理頁面。');
     const result=await global.YouziShopeeAutofill.queueAndOpen(pendingShopeeAutofillPayload);
     if(result&&result.extensionReady)toast('蝦皮資料已交給助手','EasyStore 已開啟；助手會自動進入蝦皮設定、填寫並送出上架。','success');
-    else toast('助手沒有收到商品資料',clean(result&&result.error)||'請安裝或更新到助手 0.3.14，重新整理營運中心後，再按一次「安全開啟 EasyStore／蝦皮」。','warning');
+    else toast('助手沒有收到商品資料',clean(result&&result.error)||'請安裝或更新到助手 0.3.15，重新整理營運中心後，再按一次「安全開啟 EasyStore／蝦皮」。','warning');
     return result;
   }
   async function confirmAndPublishProductListingCase(draft){

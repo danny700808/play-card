@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const dns = require('dns').promises;
 const net = require('net');
 const sharp = require('sharp');
+const shopeeTaxonomy = require('./shopeeMusicTaxonomy');
 
 const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
 const REGION = 'us-central1';
@@ -428,6 +429,14 @@ function researchPrompt(context) {
   const referenceUrls = (context.referenceUrls || []).length
     ? context.referenceUrls.map((url, index) => `${index + 1}. ${url}`).join('\n')
     : '未提供';
+  const categoryTemplate = shopeeTaxonomy.templateForProduct(context, context.category);
+  const categoryTemplateGuide = categoryTemplate
+    ? [
+      `本商品套用的固定蝦皮分類模板：${categoryTemplate.path.join(' > ')}`,
+      '此模板需要預先研究的屬性：',
+      ...categoryTemplate.attributes.map((row) => `- ${row.label}：${row.research}${row.manualConfirmation ? '（必須保留給管理者確認）' : ''}`)
+    ].join('\n')
+    : '目前沒有命中已建檔的葉分類模板；仍須完整保留「愛好與收藏品 > 樂器與樂器配件 > 正確第三層」且不可跳層。';
   return [
     '你是台灣樂器行的商品上架編輯。任務是把「這一件商品」整理成可直接檢查、修改與上架的資料，不是撰寫研究或稽核報告。',
     '先使用商品名稱、使用者貼的網址與圖片判斷商品；使用者指定的型號、顏色與版本就是本次上架對象。內部 SKU 故意不提供，不可拿 SKU 當品牌、型號或搜尋依據。',
@@ -438,9 +447,13 @@ function researchPrompt(context) {
     '為了相容既有資料，shortDescription、featureList、specificationText 分別放入 productDescription 的介紹段、特色段與規格段；commonProductDescription 必須與 productDescription 相同。sellingPoints 可取最重要的一項特色。',
     '根據同一份商品事實產生 EasyStore、蝦皮、MOMO 與 Coupang／酷澎內容；相同事實不重複發明，只調整各平台的標題、格式、分類與特殊必填欄位。',
     'EasyStore、MOMO 的 HTML，以及作為 Coupang 轉接來源的格式化內容，都只使用安全的 h2、h3、p、ul、li、strong、br 標籤，不放屬性、script、style、iframe 或外部追蹤碼。蝦皮描述請純文字，不用 HTML。',
-    '平台分類只能提供實際查到或合理建議的分類路徑／名稱；未查到正式分類代碼時，不可杜撰代碼，並在對應 requiredNotes 說明待人工選擇。',
+    '柚子樂器的蝦皮樂器分類固定先走「愛好與收藏品 > 樂器與樂器配件」，第三層只能從「鍵盤樂器、打擊樂器、管樂器、樂器配件、其他、弦樂器」選一個，不可跳層，也不可自行改寫分類名稱。',
+    '電吉他、木吉他與貝斯的完整分類固定為「愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯」；不可寫成「吉他與貝斯」，不可略過「弦樂器」，也不可在後面杜撰「電吉他」等不存在的層級。其他商品必須依商品本身選正確第三層，不能沿用吉他分類。',
+    'shopeeCategoryPath 決定後，必須把該分類模板列出的每個適用屬性逐欄研究並放入 shopeeAttributeValues。可由原廠規格確認的材質、弦數、拾音器配置等先找齊；Warranty Duration、Warranty Type、實際店家保固、無可靠來源的重量或尺寸不可猜測，留空並列入 missingFields，讓管理者在確認上架前填寫。',
+    '平台分類只能提供實際查到或分類模板允許的路徑／名稱；未查到正式分類代碼時，不可杜撰代碼，並在對應 requiredNotes 說明待人工選擇。',
     '另外整理 EasyStore 發佈到蝦皮時可自動填寫的欄位：shopeeBrand 放品牌；shopeeAttributeValues 是陣列，每筆 label 必須盡量使用 EasyStore 畫面顯示的原文欄位名稱，value 使用畫面下拉選單最可能出現的簡短值。',
     '樂器常見 label 包含 Weight、Warranty Duration、Warranty Type、Accessory Type、Length、Neck Material、Traditional Music Instrument、Guitar Shape、Hand Configuration、Quantity、Quantity per Pack、Body Material、Guitar Type、Pickup Configuration、Fretboard Material、Dimension (L x W x H)、Number of Strings、Item condition、Color。只放與此商品有關且有根據的欄位。',
+    categoryTemplateGuide,
     'NCC、BSMI、保固、產地等不可推測；不適用或不確定時不要加入 shopeeAttributeValues。Quantity 與 Quantity per Pack 若為單件商品可填 1；Item condition 只有明確為新品時才填 New。每筆標示 high、medium 或 low，並用 note 簡短寫依據。',
     'imagePlan 是圖片製作與編排指示（主圖、規格圖、特色圖、內容物圖等），不是聲稱圖片已經生成；不得假設使用者有未提供的授權素材。',
     '包裝尺寸必須優先尋找外箱／包裝長寬高與毛重，不要把商品本體尺寸冒充包裝尺寸。',
@@ -1007,21 +1020,95 @@ function fillBlank(update, existing, key, value, filledFields, preservedFields, 
   filledFields.push(key);
 }
 
+function normalizeResearchShopeeData(result, meta) {
+  const source = { ...(result || {}) };
+  const context = { ...((meta && meta.context) || {}), ...source };
+  source.shopeeCategoryPath = shopeeTaxonomy.formatCategoryPath(source.shopeeCategoryPath, context);
+  const template = shopeeTaxonomy.templateAttributeRows(context, source.shopeeCategoryPath);
+  let attributes = normalizeShopeeAttributeValues(source.shopeeAttributeValues);
+  if (template.length) {
+    const fields = new Map(template.map((row) => [clean(row.label).toLowerCase(), row]));
+    attributes = attributes.filter((row) => fields.has(clean(row.label).toLowerCase())).map((row) => {
+      const field = fields.get(clean(row.label).toLowerCase());
+      if (!field.manualConfirmation) return row;
+      return {
+        ...row,
+        confidence: 'low',
+        note: [clean(row.note), '此欄位必須由管理者依店家實際政策確認'].filter(Boolean).join('；')
+      };
+    });
+    const existing = new Set(attributes.map((row) => clean(row.label).toLowerCase()));
+    template.forEach((field) => {
+      const key = clean(field.label).toLowerCase();
+      if (existing.has(key) || !clean(field.defaultValue)) return;
+      attributes.push({
+        label: field.label,
+        value: clean(field.defaultValue),
+        confidence: 'high',
+        note: clean(field.research) || '分類模板固定值'
+      });
+      existing.add(key);
+    });
+  }
+  source.shopeeAttributeValues = attributes.slice(0, 30);
+  return source;
+}
+
 function buildResearchUpdate(existingCase, result, meta) {
   const existing = existingCase || {};
+  result = normalizeResearchShopeeData(result, meta);
   const update = {};
   const filledFields = [];
   const preservedFields = [];
   const replaceFields = new Set(Array.isArray(meta.replaceFields) ? meta.replaceFields.map(clean).filter(Boolean) : []);
   fillBlank(update, existing, 'researchedProductName', result.identifiedProductName, filledFields, preservedFields, replaceFields.has('researchedProductName'));
-  RESEARCH_STRING_FIELDS.forEach((key) => fillBlank(update, existing, key, result[key], filledFields, preservedFields, replaceFields.has(key)));
-  const existingShopeeAttributes = normalizeShopeeAttributeValues(existing.shopeeAttributeValues);
+  RESEARCH_STRING_FIELDS.filter((key) => key !== 'shopeeCategoryPath').forEach((key) => {
+    fillBlank(update, existing, key, result[key], filledFields, preservedFields, replaceFields.has(key));
+  });
+  const normalizedExistingCategory = shopeeTaxonomy.formatCategoryPath(existing.shopeeCategoryPath, {
+    ...((meta && meta.context) || {}),
+    ...existing,
+    ...result
+  });
+  if (clean(result.shopeeCategoryPath) && clean(result.shopeeCategoryPath) !== clean(normalizedExistingCategory)) {
+    update.shopeeCategoryPath = clean(result.shopeeCategoryPath);
+    filledFields.push('shopeeCategoryPath');
+  } else if (clean(normalizedExistingCategory) && clean(existing.shopeeCategoryPath) !== clean(normalizedExistingCategory)) {
+    update.shopeeCategoryPath = clean(normalizedExistingCategory);
+    filledFields.push('shopeeCategoryPath');
+  } else if (!clean(existing.shopeeCategoryPath) && clean(result.shopeeCategoryPath)) {
+    update.shopeeCategoryPath = clean(result.shopeeCategoryPath);
+    filledFields.push('shopeeCategoryPath');
+  }
+  const storedShopeeAttributes = normalizeShopeeAttributeValues(existing.shopeeAttributeValues);
+  const attributeTemplate = shopeeTaxonomy.templateAttributeRows({
+    ...((meta && meta.context) || {}),
+    ...existing,
+    ...result
+  }, result.shopeeCategoryPath || normalizedExistingCategory);
+  const allowedAttributeLabels = new Set(attributeTemplate.map((row) => clean(row.label).toLowerCase()));
+  const existingShopeeAttributes = attributeTemplate.length
+    ? storedShopeeAttributes.filter((row) => allowedAttributeLabels.has(clean(row.label).toLowerCase()))
+    : storedShopeeAttributes;
   const researchedShopeeAttributes = normalizeShopeeAttributeValues(result.shopeeAttributeValues);
-  if (existingShopeeAttributes.length && !replaceFields.has('shopeeAttributeValues')) {
-    if (researchedShopeeAttributes.length) preservedFields.push('shopeeAttributeValues');
-  } else if (researchedShopeeAttributes.length || replaceFields.has('shopeeAttributeValues')) {
+  if (replaceFields.has('shopeeAttributeValues')) {
     update.shopeeAttributeValues = researchedShopeeAttributes;
     filledFields.push('shopeeAttributeValues');
+  } else {
+    const mergedAttributes = [...existingShopeeAttributes];
+    const seenAttributes = new Set(mergedAttributes.map((row) => clean(row.label).toLowerCase()));
+    researchedShopeeAttributes.forEach((row) => {
+      const key = clean(row.label).toLowerCase();
+      if (seenAttributes.has(key)) return;
+      mergedAttributes.push(row);
+      seenAttributes.add(key);
+    });
+    if (JSON.stringify(mergedAttributes) !== JSON.stringify(storedShopeeAttributes)) {
+      update.shopeeAttributeValues = mergedAttributes.slice(0, 30);
+      filledFields.push('shopeeAttributeValues');
+    } else if (existingShopeeAttributes.length && researchedShopeeAttributes.length) {
+      preservedFields.push('shopeeAttributeValues');
+    }
   }
   update.identityStatus = ['confirmed', 'possible', 'conflict', 'not_found'].includes(clean(result.identityStatus)) ? clean(result.identityStatus) : 'not_found';
   update.fieldEvidence = Array.isArray(result.fieldEvidence) ? result.fieldEvidence : [];
@@ -1229,6 +1316,7 @@ function registerProductAiResearch(target) {
         model,
         imageCount: researched.imageCount,
         inputFingerprint,
+        context,
         replaceFields: force && Array.isArray(latestAi.filledFields) ? latestAi.filledFields : []
       });
       await caseRef.set(merged.update, { merge: true });
@@ -1649,6 +1737,7 @@ module.exports = {
   parseResearchResponse,
   sanitizeSafeProductHtml,
   normalizeShopeeAttributeValues,
+  normalizeResearchShopeeData,
   buildResearchUpdate,
   isAllowedManager,
   DEFAULT_MODEL,

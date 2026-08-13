@@ -91,6 +91,10 @@ test("legacy music category wording is converted to the exact EasyStore category
     helpers.canonicalCategoryPath(legacyPath),
     ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"]
   );
+  assert.deepEqual(
+    helpers.canonicalCategoryPath(["愛好與收藏品", "樂器與配件", "吉他與貝斯", "電吉他"]),
+    ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"]
+  );
   assert.equal(
     helpers.orderedCategoryPathMatch(
       "愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯",

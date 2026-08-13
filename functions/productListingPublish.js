@@ -4,6 +4,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const shopeeTaxonomy = require('./shopeeMusicTaxonomy');
 
 const EASYSTORE_ACCESS_TOKEN = defineSecret('EASYSTORE_ACCESS_TOKEN');
 const REGION = 'us-central1';
@@ -78,18 +79,32 @@ function normalizeShopeeAttributes(value) {
 }
 
 function canonicalShopeeCategorySegment(value) {
-  const segment = clean(value);
-  const normalized = segment.normalize('NFKC').replace(/\s+/g, '');
-  return normalized === '樂器與配件' ? '樂器與樂器配件' : segment;
+  return shopeeTaxonomy.canonicalSegment(value);
 }
 
-function shopeeCategorySegments(value) {
-  const segments = clean(value)
-    .split(/\s*(?:>|＞|→|\/|｜)\s*/)
-    .map(canonicalShopeeCategorySegment)
-    .filter(Boolean);
-  if (segments[0] === '樂器與樂器配件') segments.unshift('愛好與收藏品');
-  return segments.slice(0, 8);
+function shopeeCategorySegments(value, evidence) {
+  return shopeeTaxonomy.normalizeMusicCategoryPath(value, evidence);
+}
+
+function applyShopeeAttributeTemplate(value, evidence, categoryPath) {
+  const researched = normalizeShopeeAttributes(value);
+  const template = shopeeTaxonomy.templateAttributeRows(evidence, categoryPath);
+  if (!template.length) return researched;
+  const allowed = new Map(template.map((row) => [clean(row.label).toLowerCase(), row]));
+  const result = researched.filter((row) => allowed.has(clean(row.label).toLowerCase()));
+  const existing = new Set(result.map((row) => clean(row.label).toLowerCase()));
+  template.forEach((field) => {
+    const key = clean(field.label).toLowerCase();
+    if (existing.has(key) || !clean(field.defaultValue)) return;
+    result.push({
+      label: field.label,
+      value: clean(field.defaultValue),
+      confidence: 'high',
+      note: clean(field.research) || '分類模板固定值'
+    });
+    existing.add(key);
+  });
+  return result.slice(0, 30);
 }
 
 function hsinchuSizeBand(totalCm) {
@@ -177,7 +192,7 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
       onOne: 'update',
       onMultiple: 'block'
     },
-    categoryPath: shopeeCategorySegments(snapshot.shopeeCategoryPath),
+    categoryPath: shopeeCategorySegments(snapshot.shopeeCategoryPath, snapshot),
     brand: snapshot.shopeeBrand || snapshot.brand,
     attributes: normalizeShopeeAttributes(snapshot.shopeeAttributeValues),
     package: {
@@ -336,6 +351,13 @@ function buildListingSnapshot(productId, product, listingCase) {
     enabledMomo: enabled.momo !== false,
     enabledCoupang: enabled.coupang !== false
   };
+  snapshot.category = clean(listingCase.category || product.category);
+  snapshot.shopeeCategoryPath = shopeeTaxonomy.formatCategoryPath(snapshot.shopeeCategoryPath, snapshot);
+  snapshot.shopeeAttributeValues = applyShopeeAttributeTemplate(
+    snapshot.shopeeAttributeValues,
+    snapshot,
+    snapshot.shopeeCategoryPath
+  );
   return snapshot;
 }
 
@@ -611,6 +633,13 @@ function easyStoreMissingFields(snapshot) {
   if (!snapshot.description) missing.push('完整商品介紹');
   if (!snapshot.images.length) missing.push('上架圖片');
   if (snapshot.easyStorePrice == null) missing.push('EasyStore 售價');
+  const template = shopeeTaxonomy.templateAttributeRows(snapshot, snapshot.shopeeCategoryPath);
+  const attributes = new Map(normalizeShopeeAttributes(snapshot.shopeeAttributeValues)
+    .map((row) => [clean(row.label).toLowerCase(), row]));
+  template.filter((field) => field.manualConfirmation === true).forEach((field) => {
+    const row = attributes.get(clean(field.label).toLowerCase());
+    if (!row || row.confidence !== 'high') missing.push(`蝦皮屬性 ${field.label}`);
+  });
   return missing;
 }
 
@@ -835,6 +864,8 @@ function registerProductListingPublish(target) {
         jobRef.set({ status, platforms: platformsForStorage, updatedAt: admin.firestore.FieldValue.serverTimestamp(), finishedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
         caseRef.set({
           caseStatus: status === 'completed' ? 'published' : 'submitted',
+          shopeeCategoryPath: snapshot.shopeeCategoryPath,
+          shopeeAttributeValues: snapshot.shopeeAttributeValues,
           publishState: { jobId, status, platforms: platformsForStorage, submittedAt: admin.firestore.FieldValue.serverTimestamp(), submittedBy: createdBy },
           updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架', schemaVersion: 8
         }, { merge: true }),
@@ -842,7 +873,7 @@ function registerProductListingPublish(target) {
           action: '確認商品上架', entityType: 'productListingPublish', entityId: jobId,
           summary: `${snapshot.sku || productId}｜${snapshot.title}｜${status}`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy,
-          version: '2026.08.12-shopee-autopublish-v4'
+          version: '2026.08.13-shopee-taxonomy-v5'
         })
       ]);
       lockStatus = status;
@@ -872,6 +903,7 @@ module.exports = {
     buildListingSnapshot,
     buildEasyStoreProductBody,
     normalizeShopeeAttributes,
+    applyShopeeAttributeTemplate,
     canonicalShopeeCategorySegment,
     shopeeCategorySegments,
     hsinchuSizeBand,

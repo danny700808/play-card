@@ -64,8 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-publish-v1/);
-    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v16/);
-    assert.match(html, /operations-phase1\.js\?v=20260813-shopee-autopublish-v16/);
+    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
+    assert.match(html, /operations-phase1\.js\?v=20260813-shopee-autopublish-v17/);
   }
 });
 
@@ -259,7 +259,16 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(caseForm, /shopeeCategoryPath/);
   assert.match(caseForm, /productShippingChoiceHtml\(shipping\.decision\)/);
   assert.match(caseForm, /name="shopeeAttributeValues"/);
-  assert.match(saveCase, /shopeeAttributeValues:normalizeProductShopeeAttributes/);
+  assert.match(saveCase, /shopeeAttributeValues:productShopeeAttributesFromForm/);
+  assert.match(caseForm, /productShopeeAttributeEditorHtml\(p,row\)/);
+  assert.match(engine, /愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯/);
+  assert.match(engine, /Warranty Duration/);
+  assert.match(engine, /Warranty Type/);
+  assert.match(engine, /管理者於上架前確認/);
+  assert.match(engine, /function productMusicFamily\(p,row,path\)/);
+  assert.match(engine, /shopeeMusicFamilyFromText\(productText\)\|\|shopeeMusicFamilyFromText\(path\)/);
+  assert.match(engine, /const descendants=family===existingFamily/);
+  assert.match(engine, /data-shopee-attribute-original/);
   assert.match(caseForm, /packageLengthCm/);
 
   assert.match(engine, /listingCases:'opsProductListingCases'/);

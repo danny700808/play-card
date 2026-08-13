@@ -74,8 +74,12 @@
   });
 
   const CATEGORY_SEGMENT_DEFINITIONS = Object.freeze({
-    "樂器與樂器配件": Object.freeze(["樂器與樂器配件", "樂器與配件"])
+    "樂器與樂器配件": Object.freeze(["樂器與樂器配件", "樂器與配件"]),
+    "吉他、貝斯": Object.freeze(["吉他、貝斯", "吉他與貝斯", "吉他及貝斯"])
   });
+  const MUSIC_CATEGORY_FAMILIES = Object.freeze([
+    "鍵盤樂器", "打擊樂器", "管樂器", "樂器配件", "其他", "弦樂器"
+  ]);
 
   const TOP_LEVEL_KEYS = new Set([
     "schemaVersion",
@@ -140,8 +144,13 @@
     const path = Array.isArray(values)
       ? values.map(canonicalCategorySegment).filter(Boolean)
       : [];
+    if (path.some((segment) => exactApprovedMatch(segment, categorySegmentOptions("吉他、貝斯")))) {
+      return ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"];
+    }
     if (exactApprovedMatch(path[0], ["樂器與樂器配件"])) {
       path.unshift("愛好與收藏品");
+    } else if (MUSIC_CATEGORY_FAMILIES.some((family) => exactApprovedMatch(path[0], [family]))) {
+      path.unshift("愛好與收藏品", "樂器與樂器配件");
     }
     return path;
   }

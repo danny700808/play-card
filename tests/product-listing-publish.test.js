@@ -129,7 +129,8 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
   assert.equal(payload.brand, 'Ibanez');
   assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);
   assert.deepEqual(payload.attributes.map((row) => [row.label, row.value]), [
-    ['Body Material', 'Poplar'], ['Pickup Configuration', 'HSS']
+    ['Body Material', 'Poplar'], ['Pickup Configuration', 'HSS'],
+    ['Quantity', '1'], ['Quantity per Pack', '1']
   ]);
   assert.equal(payload.logistics.packageTotalCm, 162.6);
   assert.deepEqual(payload.logistics.methods.find((row) => row.label === '新竹物流'), {
@@ -159,6 +160,29 @@ test('legacy researched category wording is canonicalized before the EasyStore h
   );
   assert.deepEqual(
     helpers.shopeeCategorySegments('愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯'),
+    ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']
+  );
+  assert.deepEqual(
+    helpers.shopeeCategorySegments('愛好與收藏品 > 樂器與配件 > 吉他與貝斯 > 電吉他', { title: 'Ibanez AZES40 電吉他' }),
+    ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']
+  );
+});
+
+test('music products choose one controlled Shopee family instead of inheriting the guitar branch', () => {
+  assert.deepEqual(helpers.shopeeCategorySegments('樂器與配件 > 電鋼琴', { title: 'Roland FP-30X 電鋼琴' }).slice(0, 3),
+    ['愛好與收藏品', '樂器與樂器配件', '鍵盤樂器']);
+  assert.deepEqual(helpers.shopeeCategorySegments('樂器與配件 > 電子鼓', { title: 'NUX DM-210 電子鼓' }).slice(0, 3),
+    ['愛好與收藏品', '樂器與樂器配件', '打擊樂器']);
+  assert.deepEqual(helpers.shopeeCategorySegments('樂器與配件 > 長笛', { title: 'Yamaha YFL-212 長笛' }).slice(0, 3),
+    ['愛好與收藏品', '樂器與樂器配件', '管樂器']);
+  assert.deepEqual(helpers.shopeeCategorySegments('樂器與配件 > 吉他弦', { title: 'Elixir 吉他弦' }).slice(0, 3),
+    ['愛好與收藏品', '樂器與樂器配件', '樂器配件']);
+  assert.deepEqual(
+    helpers.shopeeCategorySegments('愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯', { title: 'Elixir 吉他弦' }),
+    ['愛好與收藏品', '樂器與樂器配件', '樂器配件']
+  );
+  assert.deepEqual(
+    helpers.shopeeCategorySegments('愛好與收藏品 > 樂器與樂器配件 > 樂器配件 > 效果器', { title: 'Ibanez AZES40 電吉他' }),
     ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']
   );
 });
@@ -265,7 +289,7 @@ test('Shopee persistence summary never stores one-time autofill handoff secrets'
   assert.match(source, /publishState: \{ jobId, status, platforms: platformsForStorage,/);
   assert.match(source, /return \{ ok:[\s\S]*status, platforms \};/);
   assert.match(source, /updatedBy: '商品上架', schemaVersion: 8/);
-  assert.match(source, /version: '2026\.08\.12-shopee-autopublish-v4'/);
+  assert.match(source, /version: '2026\.08\.13-shopee-taxonomy-v5'/);
   assert.doesNotMatch(source, /updatedBy: '商品上架', schemaVersion: 7/);
 });
 
