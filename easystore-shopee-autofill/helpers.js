@@ -73,6 +73,10 @@
     homeDelivery: ["店到家宅配"]
   });
 
+  const CATEGORY_SEGMENT_DEFINITIONS = Object.freeze({
+    "樂器與樂器配件": Object.freeze(["樂器與樂器配件", "樂器與配件"])
+  });
+
   const TOP_LEVEL_KEYS = new Set([
     "schemaVersion",
     "nonce",
@@ -119,10 +123,23 @@
     return approvedValues.some((candidate) => normalizeText(candidate) === normalizedActual);
   }
 
+  function canonicalCategorySegment(value) {
+    const segment = String(value == null ? "" : value).trim();
+    const canonical = Object.keys(CATEGORY_SEGMENT_DEFINITIONS).find((key) =>
+      exactApprovedMatch(segment, CATEGORY_SEGMENT_DEFINITIONS[key])
+    );
+    return canonical || segment;
+  }
+
+  function categorySegmentOptions(value) {
+    const canonical = canonicalCategorySegment(value);
+    return CATEGORY_SEGMENT_DEFINITIONS[canonical] || [canonical];
+  }
+
   function orderedCategoryPathMatch(value, segments) {
     const text = normalizeText(value);
     const approved = Array.isArray(segments)
-      ? segments.map(normalizeText).filter(Boolean)
+      ? segments.map(canonicalCategorySegment).map(normalizeText).filter(Boolean)
       : [];
     if (!text || approved.length === 0) return false;
     let cursor = 0;
@@ -251,7 +268,7 @@
         || nonNegativeCategoryLevel(option.levelIndex) !== level) {
         return;
       }
-      if (exactApprovedMatch(option.text, [target])) matches.push(index);
+      if (exactApprovedMatch(option.text, categorySegmentOptions(target))) matches.push(index);
     });
     return matches;
   }
@@ -737,7 +754,8 @@
       errors.push("categoryPath 必須有 1 到 8 層。");
     } else {
       payload.categoryPath.forEach((entry, index) => {
-        categoryPath.push(validateString(entry, `categoryPath[${index}]`, errors, { max: 120 }));
+        const segment = validateString(entry, `categoryPath[${index}]`, errors, { max: 120 });
+        categoryPath.push(canonicalCategorySegment(segment));
       });
     }
 
@@ -1117,6 +1135,7 @@
     ATTRIBUTE_DEFINITIONS,
     LOGISTICS_DEFINITIONS,
     normalizeText,
+    canonicalCategorySegment,
     normalizeShopeeNavigationMode,
     classifyShopeeActionText,
     directSyncNavigationMode,

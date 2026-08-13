@@ -90,7 +90,7 @@ test("extension package no longer needs a background service worker for handoff"
   const bridge = fs.readFileSync(path.join(extensionRoot, "bridge.js"), "utf8");
   const easystore = fs.readFileSync(path.join(extensionRoot, "easystore.js"), "utf8");
 
-  assert.equal(manifest.version, "0.3.12");
+  assert.equal(manifest.version, "0.3.13");
   assert.equal(manifest.background, undefined);
   assert.match(bridge, /chrome\.storage\[helpers\.QUEUE_STORAGE_AREA\]/);
   assert.match(easystore, /chrome\.storage\[helpers\.QUEUE_STORAGE_AREA\]/);

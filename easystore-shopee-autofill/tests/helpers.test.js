@@ -84,6 +84,29 @@ test("category stages require the full approved path in order", () => {
   ), false);
 });
 
+test("legacy music category wording is converted to the exact EasyStore category", () => {
+  const legacyPath = ["愛好與收藏品", "樂器與配件", "弦樂器", "吉他、貝斯"];
+  assert.equal(helpers.canonicalCategorySegment("樂器與配件"), "樂器與樂器配件");
+  assert.equal(
+    helpers.orderedCategoryPathMatch(
+      "愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯",
+      legacyPath
+    ),
+    true
+  );
+  assert.equal(
+    helpers.exactVisibleCategoryOptionIndex([
+      categoryOption("樂器與樂器配件", 1)
+    ], "樂器與配件", 1),
+    0
+  );
+  const payload = validPayload(1_800_000_000_000);
+  payload.categoryPath = legacyPath;
+  const result = helpers.validateQueuePayload(payload, 1_800_000_000_000);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.value.categoryPath, ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"]);
+});
+
 test("decorated EasyStore category labels and the empty prompt remain discoverable", () => {
   assert.equal(helpers.categoryLabelTextMatch("分類"), true);
   assert.equal(helpers.categoryLabelTextMatch("* 分類 ⓘ"), true);

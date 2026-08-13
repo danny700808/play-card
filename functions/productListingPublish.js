@@ -77,8 +77,18 @@ function normalizeShopeeAttributes(value) {
   }).filter(Boolean).slice(0, 30);
 }
 
+function canonicalShopeeCategorySegment(value) {
+  const segment = clean(value);
+  const normalized = segment.normalize('NFKC').replace(/\s+/g, '');
+  return normalized === '樂器與配件' ? '樂器與樂器配件' : segment;
+}
+
 function shopeeCategorySegments(value) {
-  return clean(value).split(/\s*(?:>|＞|→|\/|｜)\s*/).map(clean).filter(Boolean).slice(0, 8);
+  return clean(value)
+    .split(/\s*(?:>|＞|→|\/|｜)\s*/)
+    .map(canonicalShopeeCategorySegment)
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function hsinchuSizeBand(totalCm) {
@@ -861,6 +871,7 @@ module.exports = {
     buildListingSnapshot,
     buildEasyStoreProductBody,
     normalizeShopeeAttributes,
+    canonicalShopeeCategorySegment,
     shopeeCategorySegments,
     hsinchuSizeBand,
     buildShopeeLogistics,

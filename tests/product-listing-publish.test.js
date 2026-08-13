@@ -152,6 +152,13 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
   assert.equal(Object.hasOwn(payload, 'costPrice'), false);
 });
 
+test('legacy researched category wording is canonicalized before the EasyStore handoff', () => {
+  assert.deepEqual(
+    helpers.shopeeCategorySegments('愛好與收藏品 > 樂器與配件 > 弦樂器 > 吉他、貝斯'),
+    ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']
+  );
+});
+
 test('Shopee helper leaves Hsinchu Logistics off when package limits are incomplete or exceeded', () => {
   const missing = helpers.buildShopeeLogistics({ shippingDecision: 'freight', packageLengthCm: 100, packageWidthCm: 40 });
   assert.equal(missing.methods.find((row) => row.label === '新竹物流').enabled, false);
