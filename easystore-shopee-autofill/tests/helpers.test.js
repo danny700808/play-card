@@ -142,6 +142,25 @@ test("category card discovery climbs past a prompt-only child to the first card 
   ]), -1);
 });
 
+test("real EasyStore category field uses its wide facil input trigger when no pencil exists", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
+  assert.match(source, /function categoryInputTriggerCandidates\(label\)/);
+  assert.match(source, /\.facil-input-text \.cursor-pointer/);
+  assert.match(source, /rect\.width >= fieldRect\.width \* 0\.55/);
+  assert.match(
+    source,
+    /const clickTarget = field\.inputTriggers\[0\] \|\| field\.editControls\[0\] \|\| field\.controls\[0\]/
+  );
+  assert.match(source, /找不到可點擊的分類輸入框或鉛筆按鈕/);
+});
+
+test("real EasyStore logistics rows use Element Plus switches without ARIA roles", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
+  assert.match(source, /"\.el-switch"/);
+  assert.match(source, /classList\.contains\("is-checked"\)/);
+  assert.match(source, /!control\.classList\.contains\("is-disabled"\)/);
+});
+
 test("full category prompts remain empty controls", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
   assert.match(source, /"請先選擇分類"/);

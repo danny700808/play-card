@@ -521,6 +521,34 @@
       .sort((left, right) => right.score - left.score || right.rightRatio - left.rightRatio);
   }
 
+  function categoryInputTriggerCandidates(label) {
+    if (!(label instanceof Element) || !(label.parentElement instanceof Element)) return [];
+    const fieldRoot = label.parentElement;
+    const fieldRect = fieldRoot.getBoundingClientRect();
+    const candidates = Array.from(fieldRoot.querySelectorAll([
+      ".facil-input-text .cursor-pointer",
+      ".facil-input-text [role='button']",
+      ".facil-input-text button"
+    ].join(",")));
+    const seen = new Set();
+    return candidates.filter((target) => {
+      if (seen.has(target) || !isEnabledClickTarget(target)) return false;
+      seen.add(target);
+      const inputRoot = target.closest(".facil-input-text");
+      const rect = target.getBoundingClientRect();
+      return inputRoot
+        && fieldRoot.contains(inputRoot)
+        && rect.width >= 180
+        && rect.height >= 28
+        && rect.height <= 84
+        && rect.width >= fieldRect.width * 0.55;
+    }).sort((left, right) => {
+      const leftRect = left.getBoundingClientRect();
+      const rightRect = right.getBoundingClientRect();
+      return rightRect.width - leftRect.width || leftRect.height - rightRect.height;
+    });
+  }
+
   function categoryPathIsApplied(field, categoryPath) {
     if (!field) return false;
     return helpers.orderedCategoryPathMatch(categoryCurrentValue(field), categoryPath)
@@ -563,7 +591,8 @@
         label: label || anchor,
         container: resolvedContainer || anchor.parentElement || anchor,
         controls: fieldControls(resolvedContainer || anchor.parentElement || anchor),
-        editControls: card ? card.actions.map((row) => row.target) : []
+        editControls: card ? card.actions.map((row) => row.target) : [],
+        inputTriggers: categoryInputTriggerCandidates(label || anchor)
       };
       if (card) return result;
       if (!fallback) fallback = result;
@@ -1008,10 +1037,10 @@
       }
       return;
     }
-    const clickTarget = field.editControls[0] || field.controls[0];
+    const clickTarget = field.inputTriggers[0] || field.editControls[0] || field.controls[0];
     let dialog = findActiveCategoryDialog();
     if (!dialog && !clickTarget) {
-      addReport(report, "missing", "分類", `步驟 1/${totalSteps}：找不到分類卡右側的鉛筆按鈕`);
+      addReport(report, "missing", "分類", `步驟 1/${totalSteps}：找不到可點擊的分類輸入框或鉛筆按鈕`);
       return;
     }
     if (!dialog) {
@@ -1183,8 +1212,13 @@
     return Array.from(container.querySelectorAll([
       "[role='switch']",
       "button[aria-checked]",
-      "input[type='checkbox']"
-    ].join(","))).filter((control) => isVisible(control) && !isSellerPaysToggle(control));
+      "input[type='checkbox']",
+      ".el-switch"
+    ].join(","))).filter((control) =>
+      isVisible(control) &&
+      !control.classList.contains("is-disabled") &&
+      !isSellerPaysToggle(control)
+    );
   }
 
   function distinctLogisticsLabels(container) {
@@ -1239,7 +1273,10 @@
     if (aria === "true" || aria === "false") {
       return aria === "true";
     }
-    return toggle.classList.contains("active") || toggle.classList.contains("checked") || toggle.dataset.state === "checked";
+    return toggle.classList.contains("active") ||
+      toggle.classList.contains("checked") ||
+      toggle.classList.contains("is-checked") ||
+      toggle.dataset.state === "checked";
   }
 
   async function waitForLogisticsRow(labelAliases, timeout) {
