@@ -58,6 +58,7 @@ on:
       - "functions/easystoreCatalogSync.js"
       - "functions/productAiResearch.js"
       - "functions/productListingPublish.js"
+      - "functions/shopeeMusicTaxonomy.js"
       - "functions/externalTeacherOnboarding.js"
       - "functions/externalTeacherWork.js"
       - "functions/package.json"
@@ -124,6 +125,7 @@ jobs:
           node --check functions/easystoreCatalogSync.js
           node --check functions/productAiResearch.js
           node --check functions/productListingPublish.js
+          node --check functions/shopeeMusicTaxonomy.js
           node --check functions/externalTeacherOnboarding.js
           node --check functions/externalTeacherWork.js
           node --check manager-auth.js
