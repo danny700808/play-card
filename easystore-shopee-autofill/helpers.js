@@ -198,6 +198,178 @@
     return fullPathApplied === true ? "complete" : "wait-application";
   }
 
+  function nonNegativeCategoryLevel(value) {
+    if (value === null || value === undefined || typeof value === "boolean") return -1;
+    if (typeof value === "string" && !value.trim()) return -1;
+    const level = Number(value);
+    return Number.isInteger(level) && level >= 0 ? level : -1;
+  }
+
+  function finiteCategoryMetric(value) {
+    if (value === null || value === undefined || typeof value === "boolean") return Number.NaN;
+    if (typeof value === "string" && !value.trim()) return Number.NaN;
+    const metric = Number(value);
+    return Number.isFinite(metric) ? metric : Number.NaN;
+  }
+
+  function normalizeCategorySearchState(value, levelIndex) {
+    const level = nonNegativeCategoryLevel(levelIndex);
+    if (level < 0) return null;
+    if (!isPlainObject(value) || nonNegativeCategoryLevel(value.levelIndex) !== level) {
+      return {
+        levelIndex: level,
+        initialized: false,
+        attempts: 0,
+        lastObservedTop: null
+      };
+    }
+    const attempts = finiteCategoryMetric(value.attempts);
+    const lastObservedTop = finiteCategoryMetric(value.lastObservedTop);
+    return {
+      levelIndex: level,
+      initialized: value.initialized === true,
+      attempts: Number.isInteger(attempts) && attempts >= 0 ? attempts : 0,
+      lastObservedTop: Number.isFinite(lastObservedTop) && lastObservedTop >= 0
+        ? lastObservedTop
+        : null
+    };
+  }
+
+  function categoryOptionMatchIndexes(options, target, levelIndex) {
+    if (!Array.isArray(options)) return [];
+    const level = nonNegativeCategoryLevel(levelIndex);
+    if (level < 0 || !normalizeText(target)) return [];
+    const matches = [];
+    options.forEach((option, index) => {
+      if (!isPlainObject(option)
+        || option.visible !== true
+        || option.inCategoryModal !== true
+        || option.inActiveColumn !== true
+        || option.disabled === true
+        || nonNegativeCategoryLevel(option.levelIndex) !== level) {
+        return;
+      }
+      if (exactApprovedMatch(option.text, [target])) matches.push(index);
+    });
+    return matches;
+  }
+
+  function exactVisibleCategoryOptionIndex(options, target, levelIndex) {
+    const matches = categoryOptionMatchIndexes(options, target, levelIndex);
+    return matches.length === 1 ? matches[0] : -1;
+  }
+
+  function safeCategoryScrollContainerIndex(candidates, levelIndex) {
+    if (!Array.isArray(candidates)) return -1;
+    const level = nonNegativeCategoryLevel(levelIndex);
+    if (level < 0) return -1;
+    const safe = [];
+    candidates.forEach((candidate, index) => {
+      if (!isPlainObject(candidate)
+        || candidate.visible !== true
+        || candidate.inCategoryModal !== true
+        || candidate.isListColumn !== true
+        || nonNegativeCategoryLevel(candidate.levelIndex) !== level) {
+        return;
+      }
+      const scrollTop = finiteCategoryMetric(candidate.scrollTop);
+      const clientHeight = finiteCategoryMetric(candidate.clientHeight);
+      const scrollHeight = finiteCategoryMetric(candidate.scrollHeight);
+      if (!Number.isFinite(scrollTop)
+        || !Number.isFinite(clientHeight)
+        || !Number.isFinite(scrollHeight)
+        || scrollTop < 0
+        || clientHeight <= 0
+        // A horizontal rail or a fixed-height wrapper can still advertise an
+        // overflow style. Only a column with real vertical range is safe.
+        || scrollHeight <= clientHeight + 1) {
+        return;
+      }
+      safe.push({ index, active: candidate.active === true });
+    });
+    const active = safe.filter((candidate) => candidate.active);
+    if (active.length === 1) return active[0].index;
+    return -1;
+  }
+
+  function planCategorySearchStep(input) {
+    const row = isPlainObject(input) ? input : {};
+    const levelIndex = nonNegativeCategoryLevel(row.levelIndex);
+    const state = normalizeCategorySearchState(row.state, levelIndex);
+    const stop = (reason, currentState) => ({
+      action: "stop",
+      reason,
+      optionIndex: -1,
+      containerIndex: -1,
+      scrollTop: null,
+      state: currentState
+    });
+    if (!state || !normalizeText(row.target)) return stop("invalid-input", state);
+
+    const optionMatches = categoryOptionMatchIndexes(row.options, row.target, levelIndex);
+    if (optionMatches.length > 1) return stop("ambiguous-option", state);
+    if (optionMatches.length === 1) {
+      return {
+        action: "select",
+        reason: "exact-option",
+        optionIndex: optionMatches[0],
+        containerIndex: -1,
+        scrollTop: null,
+        state
+      };
+    }
+
+    const containerIndex = safeCategoryScrollContainerIndex(row.containers, levelIndex);
+    if (containerIndex < 0) return stop("unsafe-container", state);
+    const container = row.containers[containerIndex];
+    const currentTop = finiteCategoryMetric(container.scrollTop);
+    const clientHeight = finiteCategoryMetric(container.clientHeight);
+    const maxScrollTop = Math.max(0, finiteCategoryMetric(container.scrollHeight) - clientHeight);
+    const epsilon = 1;
+    const maxAttemptsValue = Number(row.maxAttempts);
+    const maxAttempts = Number.isInteger(maxAttemptsValue) && maxAttemptsValue > 0
+      ? Math.min(maxAttemptsValue, 100)
+      : 40;
+
+    if (!state.initialized && currentTop > epsilon) {
+      return {
+        action: "scroll",
+        reason: "reset-level",
+        optionIndex: -1,
+        containerIndex,
+        scrollTop: 0,
+        state: Object.assign({}, state, {
+          initialized: true,
+          lastObservedTop: currentTop
+        })
+      };
+    }
+    const initializedState = state.initialized ? state : Object.assign({}, state, { initialized: true });
+    if (currentTop >= maxScrollTop - epsilon) return stop("end-of-list", initializedState);
+    if (initializedState.attempts >= maxAttempts) return stop("attempt-limit", initializedState);
+    if (initializedState.lastObservedTop !== null
+      && Math.abs(currentTop - initializedState.lastObservedTop) <= epsilon) {
+      return stop("no-scroll-progress", initializedState);
+    }
+
+    // Keep a 20% overlap between viewports so short or partly clipped rows are
+    // never skipped while the active category column is scanned downward.
+    const increment = Math.max(48, Math.floor(clientHeight * 0.8));
+    const nextTop = Math.min(maxScrollTop, currentTop + increment);
+    if (nextTop <= currentTop + epsilon) return stop("end-of-list", initializedState);
+    return {
+      action: "scroll",
+      reason: "scan-next-segment",
+      optionIndex: -1,
+      containerIndex,
+      scrollTop: nextTop,
+      state: Object.assign({}, initializedState, {
+        attempts: initializedState.attempts + 1,
+        lastObservedTop: currentTop
+      })
+    };
+  }
+
   function shopeeEntryTextMatch(value, approvedTexts) {
     const normalizedValue = normalizeText(value);
     if (!normalizedValue || normalizedValue.length > MAX_SHOPEE_ENTRY_TEXT_LENGTH) {
@@ -953,6 +1125,10 @@
     categoryActionScore,
     smallestCategoryCardIndex,
     nextCategoryStage,
+    normalizeCategorySearchState,
+    exactVisibleCategoryOptionIndex,
+    safeCategoryScrollContainerIndex,
+    planCategorySearchStep,
     shopeeEntryTextMatch,
     logisticsOptionMatch,
     uniqueStrings,

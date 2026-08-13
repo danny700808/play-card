@@ -1,3809 +1,2064 @@
-(function(global){
-  'use strict';
-
-  const ONLINE_COLLECTIONS = []; // V3ï¼šç¶²è·¯è³‡æ–™åªç”± EasyStore API æä¾›
-  const COLLECTIONS = {
-    products:'opsInternalProducts',
-    listingCases:'opsProductListingCases',
-    inventory:'opsInventoryTransactions',
-    sales:'opsStoreSales',
-    incomes:'opsQuickIncomes',
-    purchases:'opsPurchases',
-    rentalLedgers:'opsRentalLedgers',
-    cases:'opsCases',
-    expenses:'opsExpenses',
-    syncJobs:'opsSyncJobs',
-    audit:'opsAuditLogs',
-    imports:'opsInternalProductImports',
-    settings:'opsSettings',
-    customers:'opsCustomers',
-    points:'opsPointTransactions',
-    receivables:'opsReceivables',
-    receivablePayments:'opsReceivablePayments',
-    salesReturns:'opsSalesReturns',
-    educationDaily:'opsEducationDaily',
-    platformOrders:'opsPlatformOrders',
-    platformSyncRuns:'opsPlatformSyncRuns',
-    platformSyncRequests:'opsPlatformSyncRequests',
-    platformInventoryQueue:'opsPlatformInventoryQueue',
-    employees:'employees',
-    employeeSalaryConfigs:'employeeSalaryConfigs',
-    employeeSalaryConfigHistory:'employeeSalaryConfigHistory',
-    parttimeRecords:'parttimeRecords'
-  };
-  const READ_LIMIT = 10000;
-  const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
-  const BATCH_SIZE = 400;
-  const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.13-shopee-autopublish-v11';
-  let pendingShopeeAutofillPayload = null;
-  const PRODUCT_SHIPPING_DECISIONS = {
-    convenience:{label:'å¯è¶…å•†å¯„',description:'å°åž‹å•†å“ï¼›å¯å…ˆä½¿ç”¨å®‰å…¨çš„ä¼°ç®—åŒ…è£è³‡æ–™ã€‚'},
-    home:{label:'ä¸å¯è¶…å•†ï¼ä¸€èˆ¬å®…é…',description:'è¶…éŽè¶…å•†é™åˆ¶ï¼Œä½†ä»å¯ç”¨ä¸€èˆ¬å®…é…å¯„é€ã€‚'},
-    freight:{label:'å¤§åž‹å•†å“ï¼æ–°ç«¹ç‰©æµ',description:'å¤§åž‹æˆ–è¼ƒé‡å•†å“ï¼›é€å‡ºå¹³å°è‰ç¨¿å‰éœ€è£œé½Šå¤–ç®±å°ºå¯¸ã€‚'}
-  };
-  const PRODUCT_PACKAGE_PRESETS = {
-    convenience:{lengthCm:40,widthCm:30,heightCm:10,weightKg:1}
-  };
-  // å¾Œç«¯æœ€é•·åŸ·è¡Œ 30 åˆ†é˜ï¼›ç€è¦½å™¨å¤šç•™ 1 åˆ†é˜æŽ¥æ”¶å¾Œç«¯çš„æœ€çµ‚æˆåŠŸï¼å¤±æ•—å›žæ‡‰ã€‚
-  const EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS = 31 * 60 * 1000;
-  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v10_operating_expenses';
-  const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-  const FAST_STATE_DB_NAME = 'youzi-operations-fast-start';
-  const FAST_STATE_STORE = 'snapshots';
-  const FAST_STATE_KEY = 'latest';
-  const FAST_STATE_TTL_MS = 12 * 60 * 60 * 1000;
-  const DEFAULT_MEMBERSHIP_SETTINGS = {
-    enabled:true,
-    rewardPercent:5,
-    annualRules:{},
-    redeemPoints:1,
-    redeemAmount:1,
-    minRedeemPoints:1,
-    maxRedeemPercent:20,
-    redemptionMode:'auto'
-  };
-
-const DEFAULT_PLATFORM_FEE_SETTINGS = {
-  EasyStore:{enabled:true,platformRate:0,invoiceRate:0},
-  MOMO:{enabled:true,platformRate:13,invoiceRate:0},
-  Coupang:{enabled:true,platformRate:13,invoiceRate:0}
-};
-
-  const OPERATING_EXPENSE_FALLBACK_CATEGORIES=[
-    {id:'rent',label:'æˆ¿å±‹ç§Ÿé‡‘',defaultMode:'monthly'},{id:'yamaha-authorization',label:'Yamaha æŽˆæ¬Šè²»',defaultMode:'monthly'},
-    {id:'electricity',label:'é›»è²»',defaultMode:'bimonthly'},{id:'water',label:'æ°´è²»',defaultMode:'monthly'},{id:'phone-internet',label:'é›»è©±ï¼ç¶²è·¯è²»',defaultMode:'monthly'},
-    {id:'payroll',label:'è–ªè³‡',defaultMode:'monthly'},
-    {id:'labor-insurance',label:'å‹žä¿å…¬å¸è² æ“”',defaultMode:'monthly'},{id:'health-insurance',label:'å¥ä¿å…¬å¸è² æ“”',defaultMode:'monthly'},{id:'labor-pension',label:'å‹žé€€å…¬å¸æç¹³',defaultMode:'monthly'},
-    {id:'occupational-insurance',label:'è·ç½ä¿éšª',defaultMode:'monthly'},{id:'accounting',label:'æœƒè¨ˆï¼è¨˜å¸³è²»',defaultMode:'monthly'},{id:'marketing',label:'å»£å‘Šï¼è¡ŒéŠ·è²»',defaultMode:'actual'},
-    {id:'software',label:'è»Ÿé«”ï¼é›²ç«¯è¨‚é–±',defaultMode:'monthly'},{id:'bank-fee',label:'éŠ€è¡Œï¼åˆ·å¡æ‰‹çºŒè²»',defaultMode:'actual'},{id:'cleaning',label:'æ¸…æ½”ï¼åžƒåœ¾è™•ç†è²»',defaultMode:'actual'},
-    {id:'supplies',label:'æ–‡å…·ï¼å°åˆ·ï¼æ•™å­¸è€—æ',defaultMode:'actual'},{id:'maintenance',label:'ç¶­ä¿®ä¿é¤Šè²»',defaultMode:'actual'},{id:'transport',label:'é‹è²»ï¼æ²¹è³‡ï¼åœè»Šè²»',defaultMode:'actual'},
-    {id:'insurance',label:'å…¬å…±æ„å¤–ï¼è¨­å‚™ä¿éšª',defaultMode:'annual'},{id:'tax',label:'ç¨…è²»',defaultMode:'actual'},{id:'other',label:'å…¶ä»–æ”¯å‡º',defaultMode:'actual'}
-  ];
-  function fallbackExpenseSettings(raw){
-    const source=raw&&typeof raw==='object'?raw:{},rules=Array.isArray(source.recurringRules)?source.recurringRules:[];
-    function mode(value){return ['actual','monthly','bimonthly','annual'].includes(String(value||''))?String(value):'monthly';}
-    function normalize(row,fallback){const found=row||{},base=fallback||{},allocationMode=mode(found.allocationMode||base.allocationMode);return {id:String(found.id||base.id||''),category:String(found.category||base.category||'å…¶ä»–æ”¯å‡º'),amount:Math.max(0,Math.floor(Number(found.amount==null?base.amount:found.amount)||0)),startMonth:/^\d{4}-\d{2}$/.test(found.startMonth||'')?found.startMonth:(base.startMonth||'2026-07'),endMonth:/^\d{4}-\d{2}$/.test(found.endMonth||'')?found.endMonth:'',active:found.active==null?base.active!==false:found.active!==false,note:String(found.note||''),allocationMode:allocationMode,monthlyOverrides:(Array.isArray(found.monthlyOverrides)?found.monthlyOverrides:[]).filter(function(item){return /^\d{4}-\d{2}$/.test(item&&item.month||'');}).map(function(item){const itemMode=mode(item.mode||item.allocationMode||allocationMode),periodStartMonth=/^\d{4}-\d{2}$/.test(item.periodStartMonth||'')?item.periodStartMonth:'',periodEndMonth=/^\d{4}-\d{2}$/.test(item.periodEndMonth||'')?item.periodEndMonth:'';return {month:item.month,amount:Math.max(0,Math.floor(Number(item.amount)||0)),mode:itemMode,periodId:String(item.periodId||''),periodStartMonth:periodStartMonth,periodEndMonth:periodEndMonth,periodTotal:Math.max(0,Math.floor(Number(item.periodTotal)||0)),periodNote:String(item.periodNote||'')};}).sort(function(a,b){return a.month.localeCompare(b.month);})};}
-    const defaults=[{id:'rent',category:'æˆ¿å±‹ç§Ÿé‡‘',amount:42500,startMonth:'2026-07',allocationMode:'monthly',active:true},{id:'yamaha-authorization',category:'Yamaha æŽˆæ¬Šè²»',amount:6500,startMonth:'2026-07',allocationMode:'monthly',active:true}],normalized=defaults.map(function(base){return normalize(rules.find(function(row){return row&&row.id===base.id;}),base);});
-    rules.forEach(function(row){if(row&&row.id&&!normalized.some(function(item){return item.id===row.id;}))normalized.push(normalize(row));});
-    return {startMonth:'2026-07',closedWeekdays:[1],recurringRules:normalized};
-  }
-  function fallbackEffectiveExpenseRule(rule,month){const row=Object.assign({},rule),available=!!row.active&&month>=row.startMonth&&(!row.endMonth||month<=row.endMonth);let allocationMode=row.allocationMode||'monthly',amount=allocationMode==='monthly'||month===row.startMonth?row.amount:0,sourceMonth=row.startMonth,changedThisMonth=month===row.startMonth,periodId='',periodStartMonth='',periodEndMonth='',periodTotal=0,periodNote='';(row.monthlyOverrides||[]).forEach(function(item){if(item.month===month){amount=item.amount;allocationMode=item.mode||allocationMode;sourceMonth=item.month;changedThisMonth=true;periodId=item.periodId||'';periodStartMonth=item.periodStartMonth||'';periodEndMonth=item.periodEndMonth||'';periodTotal=Number(item.periodTotal||0);periodNote=item.periodNote||'';}else if(item.month<month){amount=(item.mode||'monthly')==='monthly'?item.amount:0;allocationMode=item.mode||allocationMode;sourceMonth=item.month;changedThisMonth=false;periodId='';periodStartMonth='';periodEndMonth='';periodTotal=0;periodNote='';}});return Object.assign(row,{amount:available?amount:0,allocationMode:allocationMode,sourceMonth:available?sourceMonth:'',changedThisMonth:available&&changedThisMonth,periodId:periodId,periodStartMonth:periodStartMonth,periodEndMonth:periodEndMonth,periodTotal:periodTotal,periodNote:periodNote,available:available});}
-  const OPERATING_EXPENSE_FALLBACK_ENGINE={
-    EXPENSE_CATEGORIES:OPERATING_EXPENSE_FALLBACK_CATEGORIES,
-    normalizeSettings:fallbackExpenseSettings,
-    effectiveRuleForMonth:fallbackEffectiveExpenseRule,
-    recurringRulesForMonth:function(settings,month,includeZero){return fallbackExpenseSettings(settings).recurringRules.map(function(rule){return fallbackEffectiveExpenseRule(rule,month);}).filter(function(rule){return rule.available&&(includeZero!==false||rule.amount>0);});},
-    normalizeExpenseMode:function(value){return ['actual','monthly','bimonthly','annual'].includes(String(value||''))?String(value):'actual';},
-    buildLedger:function(){return [];},
-    summarizeByCategory:function(){return [];},
-    nextMonth:function(value,step){if(!/^\d{4}-\d{2}$/.test(String(value||'')))return '';const part=String(value).split('-').map(Number),date=new Date(part[0],part[1]-1+(Number(step)||1),1);return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0');}
-  };
-  function operatingExpenseEngine(){return global.YouziOperatingExpenses||OPERATING_EXPENSE_FALLBACK_ENGINE;}
-  let operatingExpenseLoadPromise=null;
-  function ensureOperatingExpenseEngineLoaded(){
-    if(global.YouziOperatingExpenses)return Promise.resolve(true);
-    if(operatingExpenseLoadPromise)return operatingExpenseLoadPromise;
-    operatingExpenseLoadPromise=new Promise(function(resolve){
-      let settled=false;function finish(ok){if(settled)return;settled=true;resolve(!!ok);}
-      const script=document.createElement('script');script.src='operations-expenses.js?v=20260801-operating-expenses-v6-retry';script.async=false;script.onload=function(){finish(!!global.YouziOperatingExpenses);};script.onerror=function(){finish(false);};document.head.appendChild(script);setTimeout(function(){finish(!!global.YouziOperatingExpenses);},8000);
-    });
-    return operatingExpenseLoadPromise;
-  }
-  const OPERATING_EXPENSE_DEPARTMENTS=[
-    {id:'store',label:'å°šå“æ¨‚å™¨è¡Œ',shortLabel:'ç‡Ÿæ¥­éƒ¨é–€'},
-    {id:'academy',label:'å‡±ç«‹éŸ³æ¨‚è£œç¿’ç­',shortLabel:'è£œç¿’éƒ¨é–€'}
-  ];
-  function zeroOperatingExpenseSettings(){
-    return operatingExpenseEngine().normalizeSettings({recurringRules:[
-      {id:'rent',category:'æˆ¿å±‹ç§Ÿé‡‘',amount:0,startMonth:'2026-07',allocationMode:'monthly',active:true},
-      {id:'yamaha-authorization',category:'Yamaha æŽˆæ¬Šè²»',amount:0,startMonth:'2026-07',allocationMode:'monthly',active:true}
-    ]});
-  }
-  function normalizeOperatingExpenseSettings(raw){
-    const source=raw&&typeof raw==='object'?raw:{},departments=source.departments&&typeof source.departments==='object'?source.departments:{},store=operatingExpenseEngine().normalizeSettings(departments.store||source),academy=departments.academy?operatingExpenseEngine().normalizeSettings(departments.academy):zeroOperatingExpenseSettings();
-    return Object.assign({},store,{schemaVersion:2,departments:{store:store,academy:academy}});
-  }
-  function defaultOperatingExpenseSettings(){return normalizeOperatingExpenseSettings({});}
-
-
-  const state = {
-    user:null,
-    db:null,
-    view:'overview',
-    loading:false,
-    loadedAt:null,
-    fullLoadedAt:null,
-    onlineSource:'EasyStore API',
-    onlineProducts:[],
-    easyStoreSync:{},
-    easyStoreSyncPending:false,
-    injiaoyunCloudSync:{},
-    injiaoyunCloudSyncSignature:'',
-    injiaoyunCloudStatusSignature:'',
-    injiaoyunCloudSyncUnsubscribe:null,
-    injiaoyunCloudStatusTimer:null,
-    injiaoyunManualRequestPending:false,
-    onlineOrphans:[],
-    matchingStats:{central:0,onlineRows:0,matched:0,unmatchedCentral:0,unmatchedOnline:0},
-    internalProducts:[],
-    catalog:[],
-    rentals:[],
-    rentalLedgers:[],
-    sales:[],
-    incomes:[],
-    purchases:[],
-    inventory:[],
-    suppliers:[],
-    inventoryCountSettings:{enabled:true,pinHash:'',updatedAt:''},
-    cases:[],
-    expenses:[],
-    syncJobs:[],
-    audit:[],
-    customers:[],
-    pointTransactions:[],
-    receivables:[],
-    receivablePayments:[],
-    salesReturns:[],
-    educationDaily:[],
-    platformOrders:[],
-    platformSyncRuns:[],
-    platformInventoryQueue:[],
-    employees:[],
-    employeeSalaryConfigs:[],
-    employeeSalaryConfigHistory:[],
-    parttimeRecords:[],
-    platformSyncPanel:'',
-    platformFeeSettings:JSON.parse(JSON.stringify(DEFAULT_PLATFORM_FEE_SETTINGS)),
-    operatingExpenseSettings:defaultOperatingExpenseSettings(),
-    operatingExpenseDepartment:'store',
-    platformLocalAgent:{},
-    diagnostics:[],
-    productVisible:PRODUCT_PAGE_SIZE,
-    productSearch:'',
-    productFilter:'all',
-    productSort:'sku',
-    productDisplayMode:'image',
-    productSeries:'all',
-    productEditId:'',
-    productPreviewImages:[],
-    productPreviewIndex:0,
-    productPreviewTitle:'',
-    posSearch:'',
-    salesMode:'product',
-    selectedCustomerId:'',
-    posCustomerMode:'walkin',
-    posMemberSearch:'',
-    posMemberPickerOpen:false,
-    checkoutPaymentMethod:'ç¾é‡‘',
-    checkoutPaymentStatus:'paid',
-    checkoutOrderType:'sale',
-    checkoutDiscount:0,
-    checkoutPoints:0,
-    checkoutPointsTouched:false,
-    checkoutEarnPoints:true,
-    checkoutActualCash:'',
-    checkoutReceived:'',
-    incomeCategory:'å…¶ä»–æ”¶å…¥',
-    directIncomeAmount:'',
-    stockUsageReason:'åº—å…§è‡ªç”¨',
-    stockUsageNote:'',
-    saleInvoiceSearch:'',
-    saleInvoiceFrom:'',
-    saleInvoiceTo:'',
-    salesHistoryExpanded:false,
-    purchaseWorkspaceTab:'inbound',
-    purchaseLowSearch:'',
-    purchaseRange:'today',
-    purchaseDate:dateText(new Date()),
-    purchaseMonth:(function(){const now=new Date();return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');})(),
-    purchaseFrom:'',
-    purchaseTo:'',
-    purchaseEntrySearch:'',
-    purchaseEntrySeries:'all',
-    purchaseEntrySort:'sku',
-    purchaseEntryDisplayMode:'image',
-    purchaseEntryCart:[],
-    purchaseEntryReceivedAt:'',
-    purchaseEntrySupplier:'',
-    purchaseEntrySupplierId:'',
-    purchaseEntryExternalNo:'',
-    purchaseEntryExtraCost:0,
-    purchaseEntryNote:'',
-    purchaseEntryPaymentStatus:'unpaid',
-    purchaseEntryPaymentDate:'',
-    purchaseEntryPaymentMethod:'',
-    purchaseEditId:'',
-    stocktakeSearch:'',
-    stocktakeSeries:'all',
-    stocktakeSort:'sku',
-    stocktakeCart:[],
-    stocktakeOperator:'',
-    stocktakeNote:'',
-    stocktakeCorrectionId:'',
-    membershipSettings:Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS),
-    cart:[],
-    financeRange:'month',
-    platformOrderRange:'today',
-    platformOrderDate:dateText(new Date()),
-    platformOrderMonth:(function(){const now=new Date();return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');})(),
-    platformOrderFrom:'',
-    platformOrderTo:'',
-    platformOrderPlatform:'all',
-    platformOrderSearch:'',
-    platformOrderIssueFilter:'all',
-    rentalSearch:'',
-    caseSearch:'',
-    inventorySearch:'',
-    customerSearch:'',
-    receivableSearch:'',
-    overviewRange:'today',
-    overviewDate:dateText(new Date()),
-    overviewSearch:'',
-    overviewFrom:'',
-    overviewTo:'',
-    overviewMonth:(function(){const now=new Date();return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');})(),
-    operatingExpenseMonth:(function(){const now=new Date(),value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');return value<'2026-07'?'2026-07':value;})(),
-    injiaoyunRequestId:'',
-    importRows:[],
-    importFileName:'',
-    importMode:'initial',
-    importSummary:null,
-    confirmResolve:null
-  };
-
-  // å…ˆè®“ç€è¦½å™¨ç•«å‡ºä½¿ç”¨è€…å‰›è¼¸å…¥çš„å…§å®¹ï¼Œå†æ›´æ–°å¯èƒ½å¾ˆå¤§çš„å®Œæ•´çµæžœæ¸…å–®ã€‚
-  const LIVE_SEARCH_INPUT_IDLE_MS = 240;
-  const liveSearchJobs = Object.create(null);
-
-  const PAGE_META = {
-    overview:['ç‡Ÿé‹ç¸½è¦½',''],
-    'course-calendar':['èª²ç¨‹æ—¥è¡¨',''],
-    'course-students':['å­¸ç”Ÿèˆ‡å­¸è²»',''],
-    'course-teachers':['è€å¸«è–ªè³‡',''],
-    'course-settings':['ç³»çµ±è¨­å®š',''],
-    products:['å•†å“è³‡è¨Š',''],
-    sales:['ç¾å ´éŠ·å”®',''],
-    customers:['å®¢æˆ¶æœƒå“¡','æœƒå“¡ã€è€å¸«èˆ‡ä¸€èˆ¬å®¢æˆ¶å…±ç”¨åŒä¸€ä»½å®¢æˆ¶è³‡æ–™ã€‚'],
-    receivables:['æ‡‰æ”¶å¸³æ¬¾','æ‡‰æ”¶å¸³æ¬¾æœƒé€£å›žå®¢æˆ¶èˆ‡åŽŸå§‹éŠ·å”®ã€‚'],
-    expenses:['ç‡Ÿé‹æ”¯å‡º','æŒ‰æœˆç™»éŒ„æ°´é›»ã€è–ªè³‡ã€å‹žå¥ä¿èˆ‡å…¶ä»–è²»ç”¨ï¼Œä¸¦æŸ¥çœ‹æ¯æ—¥æ”¤æã€‚'],
-    purchases:['åº«å­˜ä½œæ¥­',''],
-    'purchase-entry':['é€²è²¨å…¥åº«å·¥ä½œå°',''],
-    stocktake:['åº«å­˜ç›¤é»žå·¥ä½œå°',''],
-    rentals:['ç§Ÿè³ƒç‡Ÿé‹','æ­£å¼åˆç´„é€å‡ºå³åˆ—å…¥ç§Ÿè³ƒæ”¶å…¥ï¼ŒæŠ¼é‡‘ä¸åˆ—å…¥ç‡Ÿæ¥­æ”¶å…¥ã€‚'],
-    sync:['å¹³å°è¨‚å–®',''],
-    connection:['è³‡æ–™å‚™ä»½','']
-  };
-  const COURSE_WORKSPACE_VIEWS = {
-    'course-calendar':'calendar',
-    'course-students':'students',
-    'course-teachers':'teachers',
-    'course-settings':'settings'
-  };
-  const COURSE_WORKSPACE_HASHES = {
-    calendar:'course-calendar',
-    students:'course-students',
-    teachers:'course-teachers',
-    settings:'course-settings'
-  };
-
-  function isCourseWorkspaceView(view){
-    return Object.prototype.hasOwnProperty.call(COURSE_WORKSPACE_VIEWS,view);
-  }
-  function courseWorkspaceView(view){
-    return COURSE_WORKSPACE_VIEWS[view]||'calendar';
-  }
-
-  function clean(value){ return String(value == null ? '' : value).trim(); }
-  function lower(value){ return clean(value).toLowerCase(); }
-  function displayOnlineName(value){ return clean(value).replace(/æŸšå­æ¨‚å™¨/g,'').replace(/^[\sï½œ|Â·ãƒ»:ï¼šâ€”-]+|[\sï½œ|Â·ãƒ»:ï¼šâ€”-]+$/g,'').replace(/\s{2,}/g,' ').trim(); }
-  function escapeHtml(value){
-    return clean(value).replace(/[&<>"']/g,function(ch){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]; });
-  }
-  function attr(value){ return escapeHtml(value).replace(/`/g,'&#96;'); }
-  function getPath(obj,path){
-    if(!obj || !path) return undefined;
-    if(Object.prototype.hasOwnProperty.call(obj,path)) return obj[path];
-    let cursor=obj;
-    for(const part of String(path).split('.')){
-      if(cursor==null || !Object.prototype.hasOwnProperty.call(cursor,part)) return undefined;
-      cursor=cursor[part];
-    }
-    return cursor;
-  }
-  function firstValue(obj,keys){
-    for(const key of keys){
-      const value=getPath(obj,key);
-      if(value!==undefined && value!==null && clean(value)!=='') return value;
-    }
-    return '';
-  }
-  function numberInfo(value){
-    if(value===undefined || value===null || clean(value)==='') return {found:false,value:0};
-    const n=Number(String(value).replace(/,/g,'').replace(/[^0-9.\-]/g,''));
-    return Number.isFinite(n)?{found:true,value:n}:{found:false,value:0};
-  }
-  function firstNumber(obj,keys){
-    for(const key of keys){ const result=numberInfo(getPath(obj,key)); if(result.found) return result; }
-    return {found:false,value:0};
-  }
-  function boolValue(value,defaultValue){
-    if(typeof value==='boolean') return value;
-    const text=lower(value);
-    if(['1','true','yes','y','æ˜¯','å•Ÿç”¨','ä¸Šæž¶','active','enabled'].includes(text)) return true;
-    if(['0','false','no','n','å¦','åœç”¨','ä¸‹æž¶','inactive','disabled'].includes(text)) return false;
-    return !!defaultValue;
-  }
-  function safeUrl(value){
-    const raw=clean(value); if(!raw) return '';
-    try{ const url=new URL(raw,global.location.href); return ['http:','https:'].includes(url.protocol)?url.href:''; }catch(err){ return ''; }
-  }
-  function imageFrom(value){
-    if(!value) return '';
-    if(typeof value==='string') return safeUrl(value);
-    if(Array.isArray(value)){ for(const item of value){ const found=imageFrom(item); if(found) return found; } return ''; }
-    if(typeof value==='object') return safeUrl(firstValue(value,['src','url','imageUrl','original','large','medium','small','secure_url','downloadURL']));
-    return '';
-  }
-  function pushUniqueImage(list,value){
-    if(!value) return;
-    if(Array.isArray(value)){ value.forEach(function(item){pushUniqueImage(list,item);}); return; }
-    if(typeof value==='object'){
-      const direct=firstValue(value,['src','url','imageUrl','original','large','medium','small','secure_url','downloadURL']);
-      if(direct) pushUniqueImage(list,direct);
-      ['images','photos','media','gallery'].forEach(function(key){if(value[key]) pushUniqueImage(list,value[key]);});
-      return;
-    }
-    const url=safeUrl(value); if(url && !list.includes(url)) list.push(url);
-  }
-  function collectImageUrls(obj){
-    const list=[]; obj=obj||{};
-    ['variantImageUrl','variantImage','imageUrl','image','picture','cover','featuredImage','featured_image','mainImage','thumbnail','photo','åœ–ç‰‡'].forEach(function(key){pushUniqueImage(list,obj[key]);});
-    ['images','photos','media','gallery','imageUrls','additionalImages'].forEach(function(key){pushUniqueImage(list,obj[key]);});
-    return list;
-  }
-  function productImage(obj){ return collectImageUrls(obj)[0]||''; }
-  function arrayLike(value){
-    if(Array.isArray(value)) return value;
-    if(!value || typeof value!=='object') return [];
-    if(Array.isArray(value.nodes)) return value.nodes;
-    if(Array.isArray(value.edges)) return value.edges.map(function(x){return x&&x.node?x.node:x;});
-    return Object.keys(value).map(function(key){return value[key];}).filter(function(x){return x&&typeof x==='object';});
-  }
-  function unwrapOnlineObject(obj){
-    obj=obj||{};
-    const nested=[obj.data,obj.product,obj.item,obj.payload,obj.result,obj.rawProduct,obj.rawData].filter(function(x){return x&&typeof x==='object'&&!Array.isArray(x);});
-    if(!nested.length) return obj;
-    let best=obj; let score=-1;
-    [obj].concat(nested).forEach(function(candidate){
-      const s=(hasValue(firstValue(candidate,['name','title','productName','itemName']))?5:0)+(hasValue(firstValue(candidate,['sku','SKU','productCode']))?4:0)+(arrayLike(candidate.variants||candidate.options||candidate.skus||candidate.variations).length?6:0)+(collectImageUrls(candidate).length?2:0);
-      if(s>score){score=s;best=candidate;}
-    });
-    return Object.assign({},obj,best);
-  }
-  function onlineVariantList(obj){
-    const keys=['variants','options','productVariants','skus','variations','children','variantList'];
-    for(const key of keys){ const arr=arrayLike(obj&&obj[key]); if(arr.length) return arr; }
-    return [];
-  }
-  function decodeReadable(value){
-    let text=clean(value); if(!text) return '';
-    for(let i=0;i<2;i+=1){
-      try{ const next=decodeURIComponent(text.replace(/\+/g,'%20')); if(next===text) break; text=next; }catch(err){ break; }
-    }
-    return text.replace(/[\u0000-\u001f]/g,'').trim();
-  }
-  function normalizeCode(value){ return clean(value).replace(/^'+/,'').replace(/\u00a0/g,' ').trim().toUpperCase(); }
-  function formatLabelSku(value){
-    const raw=clean(value).replace(/\s+/g,'');
-    if(!raw)return '';
-    if(/^\d{3}-/.test(raw))return raw;
-    const match=raw.match(/^(\d{3})(\d{4})(.*)$/);
-    return match?match[1]+'-'+match[2]+match[3]:raw;
-  }
-  function compactSearchCode(value){return lower(value).replace(/[^a-z0-9]/g,'');}
-  function matchesSearch(values,term){
-    const hay=lower((Array.isArray(values)?values:[values]).join(' '));
-    const needle=lower(term);
-    return !needle||hay.includes(needle)||(compactSearchCode(needle)&&compactSearchCode(hay).includes(compactSearchCode(needle)));
-  }
-  function hashText(value){
-    let hash=2166136261;
-    const text=clean(value);
-    for(let i=0;i<text.length;i+=1){ hash^=text.charCodeAt(i); hash=Math.imul(hash,16777619); }
-    return (hash>>>0).toString(36);
-  }
-  function dateFrom(value){
-    if(!value) return null;
-    try{
-      if(value && typeof value.toDate==='function') return value.toDate();
-      if(value instanceof Date) return Number.isNaN(value.getTime())?null:value;
-      if(typeof value==='object' && Number.isFinite(Number(value.seconds))) return new Date(Number(value.seconds)*1000);
-      const text=clean(value); if(!text) return null;
-      const normalized=/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(text)?text.replace(/\s+/,'T'):text;const d=/^\d{4}-\d{2}-\d{2}$/.test(normalized)?new Date(normalized+'T00:00:00'):new Date(normalized);
-      return Number.isNaN(d.getTime())?null:d;
-    }catch(err){ return null; }
-  }
-  function dateText(value){
-    const d=dateFrom(value); if(!d) return clean(value)||'â€”';
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  }
-  function dateTimeText(value){
-    const d=dateFrom(value); if(!d) return clean(value)||'â€”';
-    return dateText(d)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-  }
-  function inferMomoOrderDateFromNumber(orderNo,referenceValue){
-    // MOMO è¨‚å–®ç·¨è™Ÿå¦‚ 66071500721372ï¼Œç¬¬ 3ï½ž6 ç¢¼ä»£è¡¨ MMDDã€‚
-    // èˆŠç‰ˆåŒæ­¥æ›¾æŠŠã€Œæœ¬æ¬¡åŒæ­¥æ™‚é–“ã€å¯«é€² orderedAtï¼›é‡åˆ°é€™ç¨®è³‡æ–™æ™‚ï¼Œä»¥ç·¨è™Ÿå…§çš„æ—¥æœŸå›žå¾©æ­£ç¢ºæ—¥æœŸï¼Œçµ•ä¸æ²¿ç”¨åŒæ­¥æ™‚é–“ã€‚
-    const digits=clean(orderNo).replace(/\D/g,''),match=digits.match(/^\d{2}(\d{2})(\d{2})\d{6,}$/);
-    if(!match)return null;
-    const month=Number(match[1]),day=Number(match[2]),reference=dateFrom(referenceValue)||new Date();
-    if(month<1||month>12||day<1||day>31)return null;
-    let candidate=new Date(reference.getFullYear(),month-1,day,0,0,0,0);
-    if(candidate.getMonth()!==month-1||candidate.getDate()!==day)return null;
-    if(candidate.getTime()>reference.getTime()+2*24*60*60*1000)candidate=new Date(reference.getFullYear()-1,month-1,day,0,0,0,0);
-    return candidate;
-  }
-  function platformOrderLooksLikeSyncTime(obj,orderedAt){
-    const ordered=dateFrom(orderedAt),seen=dateFrom(obj&&(obj.firstSeenAt||obj.lastSeenAt||obj.updatedAt||obj.createdAt));
-    return !!(ordered&&seen&&Math.abs(ordered.getTime()-seen.getTime())<=15*60*1000);
-  }
-  function inputDateTime(value){
-    const d=dateFrom(value)||new Date();
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-  }
-  function startOfDay(value){ const source=dateFrom(value);const d=source?new Date(source.getTime()):new Date();d.setHours(0,0,0,0);return d; }
-  function endOfDay(value){ const source=dateFrom(value);const d=source?new Date(source.getTime()):new Date();d.setHours(23,59,59,999);return d; }
-  function daysUntil(value){ const d=startOfDay(value); return Math.ceil((d.getTime()-startOfDay(new Date()).getTime())/86400000); }
-  function money(value){ const n=Number(value); return Number.isFinite(n)?'NT$ '+Math.round(n).toLocaleString('zh-TW'):'â€”'; }
-  function compactMoney(value){ const n=Number(value); return Number.isFinite(n)?'$'+Math.round(n).toLocaleString('zh-TW'):'â€”'; }
-  function formatNumber(value){ const n=Number(value); return Number.isFinite(n)?n.toLocaleString('zh-TW',{maximumFractionDigits:2}):'â€”'; }
-  function percentage(value){ const n=Number(value); return Number.isFinite(n)?(Math.round(n*10)/10).toFixed(1).replace('.0','')+'%':'â€”'; }
-  function sum(rows,fn){ return rows.reduce(function(total,row){ const n=Number(fn(row)); return total+(Number.isFinite(n)?n:0); },0); }
-  function uid(prefix){ return prefix+'-'+new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14)+'-'+Math.random().toString(36).slice(2,7).toUpperCase(); }
-  function userLabel(){ return clean(state.user && (state.user.id||state.user.employeeId||state.user.email||state.user.name||state.user.displayName)) || 'ç®¡ç†è€…'; }
-  function fieldValue(){ return global.firebase && firebase.firestore && firebase.firestore.FieldValue ? firebase.firestore.FieldValue : null; }
-  function serverTimestamp(){ const fv=fieldValue(); return fv?fv.serverTimestamp():new Date().toISOString(); }
-  function setText(id,value){ const el=document.getElementById(id); if(el) el.textContent=value; }
-  function html(id,value){ const el=document.getElementById(id); if(el) el.innerHTML=value; }
-  function byId(id){ return document.getElementById(id); }
-  function query(selector,root){ return (root||document).querySelector(selector); }
-  function queryAll(selector,root){ return Array.from((root||document).querySelectorAll(selector)); }
-  function hasValue(value){ return value!==undefined && value!==null && clean(value)!==''; }
-  function numberOrNull(value){ const info=numberInfo(value); return info.found?info.value:null; }
-  function statusTag(text,type){ return '<span class="ops-tag '+(type||'')+'">'+escapeHtml(text)+'</span>'; }
-  function errorMessage(error){ return clean(error && (error.message||error.code||error)) || 'æœªçŸ¥éŒ¯èª¤'; }
-
-  function toast(title,message,type){
-    const stack=byId('opsToastStack'); if(!stack) return;
-    const el=document.createElement('div'); el.className='ops-toast '+(type||'');
-    el.innerHTML='<b>'+escapeHtml(title)+'</b><span>'+escapeHtml(message||'')+'</span>';
-    stack.appendChild(el);
-    setTimeout(function(){ el.remove(); },4200);
-  }
-  function showAlert(message,type){
-    const el=byId('opsGlobalAlert'); if(!el) return;
-    el.className='ops-alert '+(type||''); el.textContent=message; el.classList.remove('hidden');
-  }
-  function clearAlert(){ const el=byId('opsGlobalAlert'); if(el) el.classList.add('hidden'); }
-  function loadingHtml(text){ return '<div class="ops-loading"><div class="ops-spinner"></div>'+escapeHtml(text||'è³‡æ–™è®€å–ä¸­â€¦')+'</div>'; }
-  function emptyHtml(title,text,button){
-    return '<div class="ops-empty"><strong>'+escapeHtml(title)+'</strong><p>'+escapeHtml(text||'')+'</p>'+(button||'')+'</div>';
-  }
-
-  function confirmAction(title,message,okText){
-    return new Promise(function(resolve){
-      state.confirmResolve=resolve;
-      setText('opsConfirmTitle',title||'ç¢ºèªæ“ä½œ');
-      setText('opsConfirmMessage',message||'æ˜¯å¦ç¢ºèªåŸ·è¡Œï¼Ÿ');
-      setText('opsConfirmOk',okText||'ç¢ºèª');
-      byId('opsConfirmModal').classList.add('open');
-    });
-  }
-  function closeConfirm(result){
-    const modal=byId('opsConfirmModal'); if(modal) modal.classList.remove('open');
-    const resolver=state.confirmResolve; state.confirmResolve=null; if(resolver) resolver(!!result);
-  }
-  function openDrawer(title,subtitle,body){
-    byId('opsDrawer').classList.remove('ops-listing-case-drawer');
-    setText('opsDrawerTitle',title||'è³‡æ–™ç·¨è¼¯'); setText('opsDrawerSubtitle',subtitle||''); html('opsDrawerBody',body||'');
-    enhanceMobileNumberInputs(byId('opsDrawerBody'));
-    byId('opsDrawer').classList.add('open'); byId('opsDrawerBackdrop').classList.add('open');
-  }
-  function closeDrawer(){ byId('opsDrawer').classList.remove('open'); byId('opsDrawerBackdrop').classList.remove('open'); }
-
-  function recursiveValuesByKeys(value,keys,depth,seen){
-    depth=depth==null?0:depth; seen=seen||new Set(); if(value==null||depth>7) return [];
-    if(typeof value!=='object') return [];
-    if(seen.has(value)) return []; seen.add(value);
-    const wanted=new Set(keys.map(function(k){return lower(k);})); const results=[];
-    Object.keys(value).forEach(function(key){
-      const child=value[key]; if(wanted.has(lower(key)) && child!==undefined && child!==null && clean(child)!=='') results.push(child);
-      if(child&&typeof child==='object') results.push.apply(results,recursiveValuesByKeys(child,keys,depth+1,seen));
-    });
-    return results;
-  }
-  function recursiveFirstCode(obj){
-    const vals=recursiveValuesByKeys(obj,['sku','SKU','code','productCode','itemCode','internalCode','variantSku','å•†å“ç·¨è™Ÿ','è²¨è™Ÿ'],0,new Set());
-    for(const value of vals){ const code=normalizeCode(value); if(code && code.length<=80) return code; }
-    return '';
-  }
-  function recursiveVariantCandidates(obj){
-    const result=[],seen=new Set();
-    function walk(value,depth){
-      if(!value||typeof value!=='object'||depth>7||seen.has(value)) return; seen.add(value);
-      const code=recursiveFirstCode(value), imgs=collectImageUrls(value), name=decodeReadable(firstValue(value,['name','title','variantName','optionName','specification','è¦æ ¼']));
-      if(code && (imgs.length||name||firstNumber(value,['price','salePrice','variantPrice']).found)) result.push(value);
-      Object.keys(value).forEach(function(k){const child=value[k]; if(child&&typeof child==='object') walk(child,depth+1);});
-    }
-    walk(obj,0);
-    const unique=[],codes=new Set(); result.forEach(function(v){const c=recursiveFirstCode(v); if(c&&!codes.has(c)){codes.add(c);unique.push(v);}}); return unique;
-  }
-  function normalizeOnlineBase(obj,collection,docId){
-    obj=unwrapOnlineObject(obj||{});
-    const price=firstNumber(obj,['price','marketPrice','salePrice','websiteOriginalPrice','regularPrice','variantPrice','compareAtPrice','å®˜ç¶²åƒ¹æ ¼','åƒ¹æ ¼']);
-    const stock=firstNumber(obj,['availableQuantity','availableStock','inventoryQuantity','stockQuantity','quantity','stock','inventory','åº«å­˜','åº«å­˜æ•¸é‡']);
-    const name=decodeReadable(firstValue(obj,['name','title','itemName','productName','å•†å“åç¨±']))||'æœªå‘½åç¶²è·¯å•†å“';
-    const sku=normalizeCode(firstValue(obj,['sku','SKU','productCode','itemCode','internalCode','variantSku','å•†å“ç·¨è™Ÿ','code','è²¨è™Ÿ']))||recursiveFirstCode(obj);
-    const sourceId=clean(firstValue(obj,['productId','websiteProductId','itemId','id','__id']))||docId;
-    const images=collectImageUrls(obj);
-    return {
-      id:sourceId,docId:docId,sourceKey:collection+'::'+docId,sourceCollection:collection,sourceProductId:sourceId,
-      sourceVariantId:clean(firstValue(obj,['variantId','variationId','optionId'])),onlineName:name,sku:sku,
-      onlinePrice:price.found?price.value:null,onlineStock:stock.found?stock.value:null,imageUrl:images[0]||'',imageUrls:images,
-      url:safeUrl(firstValue(obj,['url','productUrl','websiteProductUrl','permalink','link','é€£çµ'])),
-      brand:clean(firstValue(obj,['brand','vendor','manufacturer','å“ç‰Œ'])),category:clean(firstValue(obj,['category','productType','type','åˆ†é¡ž'])),
-      variantName:decodeReadable(firstValue(obj,['variantSummary','optionsText','variantName','specification','è¦æ ¼'])),raw:obj
-    };
-  }
-  function normalizeOnlineDoc(obj,collection,docId){
-    const root=unwrapOnlineObject(obj||{}); const base=normalizeOnlineBase(root,collection,docId); let variants=onlineVariantList(root); if(!variants.length) variants=recursiveVariantCandidates(root);
-    if(!variants.length) return [base];
-    return variants.map(function(variant,index){
-      variant=unwrapOnlineObject(variant||{});
-      const row=normalizeOnlineBase(Object.assign({},root,variant),collection,docId+'::'+index);
-      row.sourceKey=collection+'::'+docId+'::'+clean(firstValue(variant,['id','variantId','variationId','sku','name','title'])||index);
-      row.sourceProductId=base.sourceProductId; row.sourceVariantId=clean(firstValue(variant,['id','variantId','variationId','optionId']))||row.sourceVariantId;
-      row.onlineName=base.onlineName; row.sku=row.sku||normalizeCode(firstValue(variant,['sku','SKU','code','productCode','itemCode','variantSku','è²¨è™Ÿ']))||recursiveFirstCode(variant)||base.sku;
-      row.onlinePrice=row.onlinePrice==null?base.onlinePrice:row.onlinePrice; row.onlineStock=row.onlineStock==null?base.onlineStock:row.onlineStock;
-      const variantImages=collectImageUrls(variant), baseImages=(base.imageUrls||[]).slice();
-      row.parentImageUrls=baseImages;
-      row.variantImageUrls=variantImages;
-      row.imageUrls=[]; baseImages.concat(variantImages).forEach(function(url){if(url&&!row.imageUrls.includes(url))row.imageUrls.push(url);});
-      row.imageUrl=row.imageUrls[0]||base.imageUrl; row.url=row.url||base.url; row.brand=row.brand||base.brand; row.category=row.category||base.category;
-      row.variantName=decodeReadable(firstValue(variant,['name','title','optionName','variantName','sku','optionsText']))||base.variantName;
-      return row;
-    });
-  }
-  function normalizeCostLayers(value){
-    const rows=Array.isArray(value)?value:[];
-    return rows.map(function(layer,index){
-      const qty=numberOrNull(firstValue(layer||{},['qtyRemaining','remainingQty','qty','quantity']));
-      const cost=numberOrNull(firstValue(layer||{},['unitCost','cost','purchasePrice']));
-      return {layerId:clean(firstValue(layer||{},['layerId','id']))||('L'+index),qtyRemaining:qty==null?0:Math.max(0,qty),originalQty:numberOrNull(firstValue(layer||{},['originalQty','qty','quantity']))||Math.max(0,qty||0),unitCost:cost,costKnown:layer&&layer.costKnown!==false&&cost!=null,receivedAt:firstValue(layer||{},['receivedAt','date','createdAt'])||'',referenceType:clean(firstValue(layer||{},['referenceType','source']))||'unknown',referenceId:clean(firstValue(layer||{},['referenceId','sourceId']))};
-    }).filter(function(layer){return layer.qtyRemaining>0;}).sort(function(a,b){return (dateFrom(a.receivedAt)||0)-(dateFrom(b.receivedAt)||0);});
-  }
-  function costLayerStats(raw){
-    const current=Math.max(0,Number(raw&&raw.currentStock||0)); const layers=normalizeCostLayers(raw&&raw.costLayers);
-    const trackedQty=sum(layers,function(x){return x.qtyRemaining;}); const knownValue=sum(layers,function(x){return x.costKnown&&x.unitCost!=null?x.qtyRemaining*x.unitCost:0;});
-    const knownQty=sum(layers,function(x){return x.costKnown&&x.unitCost!=null?x.qtyRemaining:0;});
-    const fallback=numberOrNull(firstValue(raw||{},['averageCost','latestPurchaseCost','purchasePrice']));
-    const average=trackedQty>0 && knownQty===trackedQty ? knownValue/trackedQty : fallback;
-    const first=layers.find(function(x){return x.qtyRemaining>0;}); const next=first&&first.unitCost!=null?first.unitCost:fallback;
-    return {layers:layers,trackedQty:trackedQty,untrackedQty:Math.max(0,current-trackedQty),inventoryValue:knownValue+(Math.max(0,current-trackedQty)*(fallback||0)),averageCost:average,nextFifoCost:next,costIncomplete:(current>0&&(knownQty<trackedQty||trackedQty<current||next==null))};
-  }
-  function materializeCostLayers(raw){
-    raw=raw||{}; const target=Math.max(0,Number(raw.currentStock||0)); let layers=normalizeCostLayers(raw.costLayers); let total=sum(layers,function(x){return x.qtyRemaining;});
-    if(total<target){ const fallback=numberOrNull(firstValue(raw,['averageCost','latestPurchaseCost','purchasePrice'])); layers.push({layerId:'fallback_'+hashText(String(target)+'_'+String(fallback)),qtyRemaining:target-total,originalQty:target-total,unitCost:fallback,costKnown:fallback!=null,receivedAt:'1970-01-01T00:00:00.000Z',referenceType:'fallback',referenceId:'LEGACY'}); total=target; }
-    if(total>target){ let extra=total-target; for(let i=layers.length-1;i>=0&&extra>0;i-=1){const take=Math.min(extra,layers[i].qtyRemaining);layers[i].qtyRemaining-=take;extra-=take;} layers=layers.filter(function(x){return x.qtyRemaining>0;}); }
-    return layers;
-  }
-  function statsFromLayers(layers){
-    layers=normalizeCostLayers(layers); const qty=sum(layers,function(x){return x.qtyRemaining;}); const knownQty=sum(layers,function(x){return x.costKnown&&x.unitCost!=null?x.qtyRemaining:0;}); const value=sum(layers,function(x){return x.costKnown&&x.unitCost!=null?x.qtyRemaining*x.unitCost:0;});
-    return {layers:layers,qty:qty,inventoryValue:value,averageCost:qty>0&&knownQty===qty?value/qty:null,nextFifoCost:layers.length?layers[0].unitCost:null,costIncomplete:qty>knownQty};
-  }
-  function consumeFifo(raw,qty,allowNegativeStock){
-    qty=Math.max(0,Math.round(Number(qty||0))); const layers=materializeCostLayers(raw); let remaining=qty,costTotal=0,unknownQty=0; const breakdown=[];
-    for(const layer of layers){ if(remaining<=0) break; const take=Math.min(remaining,layer.qtyRemaining); if(take<=0) continue; const unit=layer.unitCost; if(unit==null){unknownQty+=take;} else costTotal+=take*unit; breakdown.push({layerId:layer.layerId,qty:take,unitCost:unit,referenceId:layer.referenceId}); layer.qtyRemaining-=take; remaining-=take; }
-    if(remaining>0){
-      if(!allowNegativeStock) throw new Error('FIFO æˆæœ¬å±¤æ•¸é‡ä¸è¶³ï¼Œè«‹å…ˆé‡æ–°æ•´ç†å•†å“åº«å­˜');
-      const fallback=numberOrNull(firstValue(raw||{},['averageCost','latestPurchaseCost','purchasePrice']));
-      if(fallback==null)unknownQty+=remaining;else costTotal+=remaining*fallback;
-      breakdown.push({layerId:'NEGATIVE_STOCK',qty:remaining,unitCost:fallback,referenceId:'NEGATIVE_STOCK'});
-      remaining=0;
-    }
-    const left=layers.filter(function(x){return x.qtyRemaining>0;}); const stats=statsFromLayers(left);
-    return {costTotal:costTotal,unknownCostQty:unknownQty,breakdown:breakdown,layers:left,averageCost:stats.averageCost,nextFifoCost:stats.nextFifoCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete||unknownQty>0};
-  }
-  function estimatePreorderCost(raw,qty){
-    const estimate=consumeFifo(raw,qty,true);
-    return {costTotal:estimate.costTotal,unknownCostQty:estimate.unknownCostQty,breakdown:estimate.breakdown};
-  }
-  function addFifoLayer(raw,qty,unitCost,meta){
-    const layers=materializeCostLayers(raw); const receivedAt=(meta&&meta.receivedAt)||new Date().toISOString();
-    layers.push({layerId:(meta&&meta.layerId)||uid('LAYER'),qtyRemaining:qty,originalQty:qty,unitCost:unitCost,costKnown:unitCost!=null,receivedAt:receivedAt,referenceType:(meta&&meta.referenceType)||'purchase',referenceId:(meta&&meta.referenceId)||''});
-    const stats=statsFromLayers(layers); return {layers:stats.layers,averageCost:stats.averageCost,nextFifoCost:stats.nextFifoCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete};
-  }
-  function adjustFifoLayers(raw,newStock,unitCost,meta){
-    const oldStock=Number(raw&&raw.currentStock||0); newStock=Number(newStock||0);
-    if(newStock===oldStock){const stats=costLayerStats(raw);return {layers:stats.layers,averageCost:stats.averageCost,nextFifoCost:stats.nextFifoCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,consumedCost:0};}
-    if(newStock>oldStock){const add=Math.max(0,newStock-Math.max(0,oldStock));const added=addFifoLayer(raw,add,unitCost,meta);return Object.assign({consumedCost:0},added);}
-    if(newStock<=0){return {layers:[],averageCost:null,nextFifoCost:null,inventoryValue:0,costIncomplete:false,consumedCost:0};}
-    const consume=Math.max(0,Math.max(0,oldStock)-newStock); const result=consumeFifo(raw,consume); return {layers:result.layers,averageCost:result.averageCost,nextFifoCost:result.nextFifoCost,inventoryValue:result.inventoryValue,costIncomplete:result.costIncomplete,consumedCost:result.costTotal};
-  }
-  function normalizeProductResearchSourceUrls(value){
-    const rows=Array.isArray(value)?value:clean(value).split(/[\n|]+/);
-    const result=[];
-    rows.forEach(function(item){const raw=clean(item);if(!/^https?:\/\//i.test(raw))return;const url=safeUrl(raw);if(url&&!result.includes(url))result.push(url);});
-    return result.slice(0,20);
-  }
-  function normalizeInternal(obj,docId){
-    const layers=normalizeCostLayers(obj.costLayers); const raw=Object.assign({},obj,{costLayers:layers}); const stats=costLayerStats(raw);
-    const pricesInitialized=obj.platformPricesInitialized===true;
-    const sharedOnlinePrice=numberOrNull(firstValue(obj,['easyStorePrice','onlinePrice','momoPrice','coupangPrice']));
-    function platformPrice(field){
-      const own=Object.prototype.hasOwnProperty.call(obj,field),value=numberOrNull(obj[field]);
-      if(pricesInitialized)return own?value:null;
-      return value!=null?value:sharedOnlinePrice;
-    }
-    return {
-      docId:docId,sourceKey:clean(obj.sourceKey),sourceCollection:clean(obj.sourceCollection),sourceProductId:clean(obj.sourceProductId),sourceVariantId:clean(obj.sourceVariantId),
-      internalSku:normalizeCode(firstValue(obj,['internalSku','sku','code','productCode','å•†å“ç·¨è™Ÿ'])),barcode:clean(firstValue(obj,['barcode','ean','æ¢ç¢¼'])),model:clean(firstValue(obj,['model','modelNo','åž‹è™Ÿ'])),
-      internalName:clean(firstValue(obj,['internalName','originalName','name','å•†å“åç¨±'])),originalName:clean(firstValue(obj,['originalName','internalName','name'])),onlineName:clean(obj.onlineName),
-      imageUrl:safeUrl(obj.imageUrl),imageUrls:Array.isArray(obj.imageUrls)?obj.imageUrls.map(safeUrl).filter(Boolean):[],parentImageUrls:Array.isArray(obj.parentImageUrls)?obj.parentImageUrls.map(safeUrl).filter(Boolean):[],variantImageUrls:Array.isArray(obj.variantImageUrls)?obj.variantImageUrls.map(safeUrl).filter(Boolean):[],onlineUrl:safeUrl(obj.onlineUrl),brand:clean(obj.brand),category:clean(obj.category),variantName:clean(obj.variantName),
-      onlinePrice:numberOrNull(obj.onlinePrice),storePrice:numberOrNull(firstValue(obj,['storePrice','originalSalePrice','salePrice','retailPrice'])),originalSalePrice:numberOrNull(firstValue(obj,['originalSalePrice','storePrice','salePrice'])),
-      easyStorePrice:platformPrice('easyStorePrice'),momoPrice:platformPrice('momoPrice'),coupangPrice:platformPrice('coupangPrice'),platformPricesInitialized:pricesInitialized,
-      latestPurchaseCost:numberOrNull(firstValue(obj,['latestPurchaseCost','referencePurchaseCost','purchaseCost','purchasePrice'])),averageCost:stats.averageCost!=null?stats.averageCost:numberOrNull(firstValue(obj,['averageCost','avgCost','movingAverageCost'])),
-      nextFifoCost:stats.nextFifoCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,costLayers:layers,
-      platformPriceSync:obj.platformPriceSync&&typeof obj.platformPriceSync==='object'?obj.platformPriceSync:{},platformMappings:obj.platformMappings&&typeof obj.platformMappings==='object'?obj.platformMappings:{},
-      shopeeCategoryPath:clean(obj.shopeeCategoryPath),momoCategoryCode:clean(obj.momoCategoryCode),coupangCategoryCode:clean(obj.coupangCategoryCode),
-      productResearchStatus:['not-searched','partial','researched','manual'].includes(clean(obj.productResearchStatus))?clean(obj.productResearchStatus):'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(obj.productResearchSourceUrls),productResearchUpdatedAt:obj.productResearchUpdatedAt||'',
-      alternateNames:clean(obj.alternateNames),searchKeywords:clean(obj.searchKeywords),sellingPoints:clean(obj.sellingPoints),specificationText:clean(obj.specificationText),includedItems:clean(obj.includedItems),material:clean(obj.material),color:clean(obj.color),countryOfOrigin:clean(obj.countryOfOrigin),warrantyInfo:clean(obj.warrantyInfo),commonProductDescription:clean(obj.commonProductDescription),
-      shippingDecision:PRODUCT_SHIPPING_DECISIONS[clean(obj.shippingDecision)]?clean(obj.shippingDecision):'',packageLengthCm:numberOrNull(obj.packageLengthCm),packageWidthCm:numberOrNull(obj.packageWidthCm),packageHeightCm:numberOrNull(obj.packageHeightCm),packageWeightKg:numberOrNull(obj.packageWeightKg),
-      packageMeasurementMode:['estimated','provided','measured'].includes(clean(obj.packageMeasurementMode))?clean(obj.packageMeasurementMode):'',packageResearchStatus:['not-searched','found','not-found','manual'].includes(clean(obj.packageResearchStatus))?clean(obj.packageResearchStatus):'not-searched',packageResearchSourceUrl:safeUrl(obj.packageResearchSourceUrl),packageResearchNote:clean(obj.packageResearchNote),
-      zeroCostConfirmed:obj.zeroCostConfirmed===true,zeroCostConfirmedAt:obj.zeroCostConfirmedAt||'',zeroCostConfirmedBy:clean(obj.zeroCostConfirmedBy),
-      currentStock:numberOrNull(firstValue(obj,['currentStock','openingStock','onHand','stock']))||0,openingStock:numberOrNull(obj.openingStock),openingUnitCost:numberOrNull(obj.openingUnitCost),reservedStock:numberOrNull(firstValue(obj,['reservedStock','reserved']))||0,safetyStock:numberOrNull(firstValue(obj,['safetyStock','minStock']))||0,
-      saleRewardPercent:numberOrNull(obj.saleRewardPercent),easyStoreMatched:obj.easyStoreMatched===true||clean(obj.sourceCollection)==='easyStoreApi',easyStoreSyncedAt:obj.easyStoreSyncedAt||'',status:clean(obj.status)||'active',note:clean(firstValue(obj,['note','remark','å‚™è¨»'])),enabled:obj.enabled!==false,autoCreated:obj.autoCreated===true,source:clean(obj.source),sourceFile:clean(obj.sourceFile),importInitialized:obj.importInitialized===true,createdAt:obj.createdAt||'',updatedAt:obj.updatedAt||''
-    };
-  }
-  function onlineScore(row){return (row&&row.sku?30:0)+(row&&row.variantName?10:0)+(row&&row.imageUrls?row.imageUrls.length*4:0)+(row&&row.onlinePrice!=null?3:0);}
-  function mergeCatalog(){
-    const active=state.internalProducts.filter(function(x){return x.enabled!==false;});
-    state.onlineProducts=[];
-    state.onlineOrphans=[];
-    state.catalog=active.map(function(internal){
-      return Object.assign({online:null,internal:internal,docId:internal.docId},buildCatalogValues(null,internal));
-    });
-    prepareCatalogSearchIndex();
-    const matched=active.filter(function(x){return x.easyStoreMatched===true || !!x.onlineName || (Array.isArray(x.imageUrls)&&x.imageUrls.length>0);}).length;
-    state.matchingStats={central:active.length,onlineRows:Number(state.easyStoreSync.variantCount||0),matched:matched,unmatchedCentral:Math.max(0,active.length-matched),unmatchedOnline:Number(state.easyStoreSync.unmatchedApiSkuCount||0)};
-  }
-  function buildCatalogValues(online,internal){
-    const originalName=(internal&&internal.internalName)||''; const onlineName=(online&&online.onlineName)||(internal&&internal.onlineName)||''; const display=originalName||onlineName||'æœªå‘½åå•†å“';
-    const sku=(internal&&internal.internalSku)||(online&&online.sku)||''; const images=[];
-    const parentImages=((online&&online.parentImageUrls)||(internal&&internal.parentImageUrls)||[]).map(safeUrl).filter(Boolean);
-    const variantImages=((online&&online.variantImageUrls)||(internal&&internal.variantImageUrls)||[]).map(safeUrl).filter(Boolean);
-    parentImages.concat(variantImages).concat((online&&online.imageUrls)||[]).concat((internal&&internal.imageUrls)||[]).concat([(online&&online.imageUrl)||(internal&&internal.imageUrl)||'']).forEach(function(url){url=safeUrl(url);if(url&&!images.includes(url))images.push(url);});
-    const onlinePrice=online&&online.onlinePrice!=null?online.onlinePrice:(internal&&internal.onlinePrice!=null?internal.onlinePrice:null); const storePrice=internal&&internal.storePrice!=null?internal.storePrice:null;
-    const pricesInitialized=!!(internal&&internal.platformPricesInitialized===true);
-    const sharedOnlinePrice=[internal&&internal.easyStorePrice,onlinePrice,internal&&internal.momoPrice,internal&&internal.coupangPrice].map(numberOrNull).find(function(value){return value!=null;});
-    const easyStorePrice=internal&&internal.easyStorePrice!=null?internal.easyStorePrice:(!pricesInitialized?sharedOnlinePrice:null),momoPrice=internal&&internal.momoPrice!=null?internal.momoPrice:(!pricesInitialized?sharedOnlinePrice:null),coupangPrice=internal&&internal.coupangPrice!=null?internal.coupangPrice:(!pricesInitialized?sharedOnlinePrice:null);
-    const current=internal?Number(internal.currentStock||0):0; const reserved=internal?Number(internal.reservedStock||0):0; const safety=internal?Number(internal.safetyStock||0):0; const available=Math.max(0,current-reserved-safety);
-    const costForMargin=internal?(internal.nextFifoCost!=null?internal.nextFifoCost:internal.averageCost):null; const margin=(storePrice!=null&&costForMargin!=null&&storePrice!==0)?((storePrice-costForMargin)/storePrice*100):null;
-    return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,barcode:internal?internal.barcode:'',model:internal?internal.model:'',imageUrl:images[0]||'',imageUrls:images,parentImageUrls:parentImages,variantImageUrls:variantImages,onlinePrice:onlinePrice,storePrice:storePrice,easyStorePrice:easyStorePrice,momoPrice:momoPrice,coupangPrice:coupangPrice,platformPricesInitialized:pricesInitialized,originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,zeroCostConfirmed:!!(internal&&internal.zeroCostConfirmed===true),zeroCostConfirmedAt:internal?internal.zeroCostConfirmedAt:'',zeroCostConfirmedBy:internal?internal.zeroCostConfirmedBy:'',currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,platformPriceSync:internal?internal.platformPriceSync||{}:{},negativeStock:current<0};
-  }
-
-  function saveDashboardCache(){
-    const previousRange=state.overviewRange;
-    try{
-      state.overviewRange='today';
-      const payload={
-        savedAt:Date.now(),
-        loadedAt:state.loadedAt?state.loadedAt.toISOString():new Date().toISOString(),
-        html:renderOverviewV7()
-      };
-      localStorage.setItem(DASHBOARD_CACHE_KEY,JSON.stringify(payload));
-    }catch(error){ console.warn('dashboard cache save failed',error); }
-    finally{state.overviewRange=previousRange;}
-  }
-  function getDashboardCache(){
-    try{
-      const raw=localStorage.getItem(DASHBOARD_CACHE_KEY); if(!raw)return null;
-      const data=JSON.parse(raw); if(!data||!data.html||!data.savedAt)return null;
-      if(Date.now()-Number(data.savedAt)>DASHBOARD_CACHE_TTL_MS)return null;
-      return data;
-    }catch(error){return null;}
-  }
-  function showCachedDashboard(cache){
-    state.view='overview';
-    setText('opsPageTitle',PAGE_META.overview[0]);
-    setText('opsPageSubtitle',PAGE_META.overview[1]);
-    setText('opsLastReadText','å¿«å–è³‡æ–™ï¼š'+dateTimeText(cache.loadedAt||cache.savedAt));
-    queryAll('#opsNav a[data-view]').forEach(function(a){ a.classList.toggle('active',a.dataset.view==='overview'); });
-    html('opsContent',cache.html);
-    bindViewSpecific();
-  }
-  function openFastStateDb(){
-    return new Promise(function(resolve,reject){
-      if(!global.indexedDB){reject(new Error('IndexedDB unavailable'));return;}
-      const request=global.indexedDB.open(FAST_STATE_DB_NAME,1);
-      request.onupgradeneeded=function(){const db=request.result;if(!db.objectStoreNames.contains(FAST_STATE_STORE))db.createObjectStore(FAST_STATE_STORE);};
-      request.onsuccess=function(){resolve(request.result);};
-      request.onerror=function(){reject(request.error||new Error('IndexedDB open failed'));};
-    });
-  }
-  async function saveFastStateCache(){
-    try{
-      const db=await openFastStateDb();
-      const payload={savedAt:Date.now(),loadedAt:state.loadedAt?state.loadedAt.toISOString():'',fullLoadedAt:state.fullLoadedAt?state.fullLoadedAt.toISOString():'',data:{
-        onlineSource:state.onlineSource,onlineProducts:state.onlineProducts,easyStoreSync:state.easyStoreSync,onlineOrphans:state.onlineOrphans,matchingStats:state.matchingStats,
-        internalProducts:state.internalProducts,catalog:state.catalog,rentals:state.rentals,rentalLedgers:state.rentalLedgers,sales:state.sales,incomes:state.incomes,purchases:state.purchases,inventory:state.inventory,suppliers:state.suppliers,
-        inventoryCountSettings:state.inventoryCountSettings,cases:state.cases,expenses:state.expenses,syncJobs:state.syncJobs,audit:state.audit,customers:state.customers,pointTransactions:state.pointTransactions,
-        receivables:state.receivables,receivablePayments:state.receivablePayments,salesReturns:state.salesReturns,educationDaily:state.educationDaily,platformOrders:state.platformOrders,platformSyncRuns:state.platformSyncRuns,
-        platformInventoryQueue:state.platformInventoryQueue,platformFeeSettings:state.platformFeeSettings,operatingExpenseSettings:state.operatingExpenseSettings,platformLocalAgent:state.platformLocalAgent,membershipSettings:state.membershipSettings,injiaoyunCloudSync:state.injiaoyunCloudSync
-      }};
-      await new Promise(function(resolve,reject){const tx=db.transaction(FAST_STATE_STORE,'readwrite');tx.objectStore(FAST_STATE_STORE).put(payload,FAST_STATE_KEY);tx.oncomplete=resolve;tx.onerror=function(){reject(tx.error||new Error('IndexedDB write failed'));};});
-      db.close();
-    }catch(error){console.warn('operations fast-state cache save failed',error);}
-  }
-  async function restoreFastStateCache(){
-    try{
-      const db=await openFastStateDb();
-      const payload=await new Promise(function(resolve,reject){const tx=db.transaction(FAST_STATE_STORE,'readonly');const request=tx.objectStore(FAST_STATE_STORE).get(FAST_STATE_KEY);request.onsuccess=function(){resolve(request.result||null);};request.onerror=function(){reject(request.error||new Error('IndexedDB read failed'));};});
-      db.close();
-      if(!payload||!payload.savedAt||Date.now()-Number(payload.savedAt)>FAST_STATE_TTL_MS||!payload.data)return false;
-      Object.keys(payload.data).forEach(function(key){state[key]=payload.data[key];});
-      state.operatingExpenseSettings=normalizeOperatingExpenseSettings(state.operatingExpenseSettings);
-      state.operatingExpenseDepartment=state.operatingExpenseDepartment==='academy'?'academy':'store';
-      state.loadedAt=payload.loadedAt?new Date(payload.loadedAt):null;
-      state.fullLoadedAt=payload.fullLoadedAt?new Date(payload.fullLoadedAt):null;
-      state.diagnostics=[];
-      return !!(state.loadedAt||state.fullLoadedAt);
-    }catch(error){console.warn('operations fast-state cache restore failed',error);return false;}
-  }
-
-  function ensureDataForCurrentView(){
-    const view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
-    if(isCourseWorkspaceView(view))return false;
-    if(view==='products'){
-      if(!state.loadedAt&&!state.loading){ loadProductsOnly(false); return true; }
-      return false;
-    }
-    if(!state.fullLoadedAt&&!state.loading){ loadAll(false); return true; }
-    return false;
-  }
-
-  function withReadTimeout(promise,label){
-    return new Promise(function(resolve,reject){
-      let settled=false;
-      const timer=setTimeout(function(){
-        if(settled)return;
-        settled=true;
-        reject(new Error((label||'è³‡æ–™')+'è®€å–è¶…éŽ 45 ç§’ï¼Œå·²ä¿ç•™åŽŸæœ‰è³‡æ–™ã€‚'));
-      },FIRESTORE_READ_TIMEOUT_MS);
-      Promise.resolve(promise).then(function(value){
-        if(settled)return;
-        settled=true;
-        clearTimeout(timer);
-        resolve(value);
-      },function(error){
-        if(settled)return;
-        settled=true;
-        clearTimeout(timer);
-        reject(error);
-      });
-    });
-  }
-
-  async function getCollection(name,limit,orderField,orderDirection){
-    const started=Date.now();
-    try{
-      let request=state.db.collection(name);
-      if(orderField)request=request.orderBy(orderField,orderDirection||'desc');
-      const snap=await withReadTimeout(request.limit(limit||READ_LIMIT).get(),name);
-      state.diagnostics.push({collection:name,ok:true,count:snap.size,ms:Date.now()-started});
-      return snap.docs.map(function(doc){ return Object.assign({__id:doc.id},doc.data()||{}); });
-    }catch(error){
-      state.diagnostics.push({collection:name,ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});
-      throw new Error(name+' è®€å–å¤±æ•—ï¼š'+errorMessage(error));
-    }
-  }
-  async function loadOnlineProducts(){
-    state.onlineSource='EasyStore API';
-    state.onlineProducts=[];
-    try{
-      const doc=await state.db.collection('opsSettings').doc('easyStoreCatalogSync').get();
-      state.easyStoreSync=doc.exists?(doc.data()||{}):{};
-      state.diagnostics.push({collection:'opsSettings/easyStoreCatalogSync',ok:true,count:doc.exists?1:0,ms:0});
-    }catch(error){
-      state.easyStoreSync={};
-      state.diagnostics.push({collection:'opsSettings/easyStoreCatalogSync',ok:false,count:0,ms:0,error:errorMessage(error)});
-    }
-  }
-  async function loadMembershipSettings(){
-    try{
-      const doc=await state.db.collection(COLLECTIONS.settings).doc('membershipPoints').get();
-      state.membershipSettings=Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS,doc.exists?(doc.data()||{}):{});
-      state.diagnostics.push({collection:COLLECTIONS.settings+'/membershipPoints',ok:true,count:doc.exists?1:0,ms:0});
-    }catch(error){
-      state.membershipSettings=Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS);
-      state.diagnostics.push({collection:COLLECTIONS.settings+'/membershipPoints',ok:false,count:0,ms:0,error:errorMessage(error)});
-    }
-  }
-  async function loadOperatingExpenseSettings(){
-    const started=Date.now();
-    try{
-      const doc=await state.db.collection(COLLECTIONS.settings).doc('operatingExpenses').get();
-      state.operatingExpenseSettings=normalizeOperatingExpenseSettings(doc.exists?(doc.data()||{}):{});
-      state.diagnostics.push({collection:COLLECTIONS.settings+'/operatingExpenses',ok:true,count:doc.exists?1:0,ms:Date.now()-started});
-    }catch(error){
-      state.operatingExpenseSettings=defaultOperatingExpenseSettings();
-      state.diagnostics.push({collection:COLLECTIONS.settings+'/operatingExpenses',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});
-    }
-  }
-  async function loadInjiaoyunCloudSync(){
-    try{
-      const doc=await state.db.collection(COLLECTIONS.settings).doc('injiaoyunCloudSync').get();
-      state.injiaoyunCloudSync=doc.exists?(doc.data()||{}):{};
-      state.injiaoyunCloudSyncSignature=syncTimestampSignature(state.injiaoyunCloudSync.lastSucceededAt);
-      state.injiaoyunCloudStatusSignature=injiaoyunStatusSignature(state.injiaoyunCloudSync);
-      state.diagnostics.push({collection:COLLECTIONS.settings+'/injiaoyunCloudSync',ok:true,count:doc.exists?1:0,ms:0});
-    }catch(error){
-      state.injiaoyunCloudSync={};
-      state.diagnostics.push({collection:COLLECTIONS.settings+'/injiaoyunCloudSync',ok:false,count:0,ms:0,error:errorMessage(error)});
-    }
-  }
-  function syncTimestampSignature(value){
-    if(!value)return '';
-    if(typeof value.toMillis==='function')return String(value.toMillis());
-    if(value.seconds!=null)return String(value.seconds)+':'+String(value.nanoseconds||0);
-    return String(value);
-  }
-  function injiaoyunStatusSignature(value){
-    const row=value||{};
-    return [clean(row.status),syncTimestampSignature(row.lastStartedAt),syncTimestampSignature(row.lastSucceededAt),syncTimestampSignature(row.lastFailedAt),clean(row.lastError),clean(row.manualRequestId)].join('|');
-  }
-  function syncTimestampMillis(value){
-    if(!value)return 0;
-    if(typeof value.toMillis==='function')return value.toMillis();
-    if(value.seconds!=null)return Number(value.seconds)*1000;
-    const date=dateFrom(value);
-    return date?date.getTime():0;
-  }
-  function injiaoyunSyncIsBusy(value){
-    const row=value||{},status=lower(row.status);
-    if(status!=='queued'&&status!=='running')return false;
-    const started=status==='queued'?syncTimestampMillis(row.manualRequestedAt):syncTimestampMillis(row.lastStartedAt);
-    if(!started)return state.injiaoyunManualRequestPending;
-    return Date.now()-started<(status==='queued'?16*60*1000:25*60*1000);
-  }
-  function scheduleInjiaoyunStatusRefresh(value){
-    if(state.injiaoyunCloudStatusTimer){clearTimeout(state.injiaoyunCloudStatusTimer);state.injiaoyunCloudStatusTimer=null;}
-    const row=value||{},status=lower(row.status);
-    if(status!=='queued'&&status!=='running')return;
-    const started=status==='queued'?syncTimestampMillis(row.manualRequestedAt):syncTimestampMillis(row.lastStartedAt);
-    if(!started)return;
-    const remaining=(status==='queued'?16*60*1000:25*60*1000)-(Date.now()-started)+1000;
-    if(remaining<=0)return;
-    state.injiaoyunCloudStatusTimer=setTimeout(function(){state.injiaoyunCloudStatusTimer=null;if(state.view==='overview')renderKeepingViewport();},remaining);
-  }
-  function watchInjiaoyunCloudSync(){
-    if(state.injiaoyunCloudSyncUnsubscribe)return;
-    let initialized=false;
-    state.injiaoyunCloudSyncUnsubscribe=state.db.collection(COLLECTIONS.settings).doc('injiaoyunCloudSync').onSnapshot(function(doc){
-      const next=doc.exists?(doc.data()||{}):{};
-      const signature=syncTimestampSignature(next.lastSucceededAt);
-      const statusSignature=injiaoyunStatusSignature(next);
-      const successChanged=initialized&&next.status==='success'&&signature&&signature!==state.injiaoyunCloudSyncSignature;
-      const failureChanged=initialized&&next.status==='error'&&statusSignature!==state.injiaoyunCloudStatusSignature;
-      const statusChanged=initialized&&statusSignature!==state.injiaoyunCloudStatusSignature;
-      state.injiaoyunCloudSync=next;
-      state.injiaoyunCloudSyncSignature=signature;
-      state.injiaoyunCloudStatusSignature=statusSignature;
-      scheduleInjiaoyunStatusRefresh(next);
-      initialized=true;
-      if(successChanged&&!state.loading){
-        try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(error){}
-        toast('éŸ³æ•™é›²åŒæ­¥å®Œæˆ',(clean(next.lastStartDateKey)&&clean(next.lastEndDateKey)?clean(next.lastStartDateKey)+'ï½ž'+clean(next.lastEndDateKey)+'ï½œ':'')+'ç‡Ÿé‹è³‡æ–™å·²æ›´æ–°','success');
-        loadAll(true);
-      }else if(failureChanged&&!state.loading){
-        toast('éŸ³æ•™é›²åŒæ­¥å¤±æ•—',clean(next.lastError)||'è«‹æŸ¥çœ‹é›²ç«¯åŒæ­¥è¨˜éŒ„ã€‚','error');
-        if(state.view==='overview')renderKeepingViewport();
-      }else if(statusChanged&&!state.loading&&state.view==='overview'){
-        renderKeepingViewport();
-      }
-    },function(error){console.warn('éŸ³æ•™é›²åŒæ­¥ç‹€æ…‹ç›£è½å¤±æ•—',error);});
-  }
-
-async function loadPlatformFeeSettings(){
-  try{
-    const snap=await state.db.collection(COLLECTIONS.settings).doc('platformFeeSettings').get();
-    const raw=snap.exists?(snap.data()||{}):{},platforms=raw.platforms&&typeof raw.platforms==='object'?raw.platforms:{};
-    const merged={};
-    ['EasyStore','MOMO','Coupang'].forEach(function(name){merged[name]=normalizePlatformFeeSetting(name,platforms[name]);});
-    state.platformFeeSettings=merged;
-    state.diagnostics.push({collection:'opsSettings/platformFeeSettings',ok:true,count:snap.exists?1:0,ms:0});
-  }catch(error){
-    state.platformFeeSettings=JSON.parse(JSON.stringify(DEFAULT_PLATFORM_FEE_SETTINGS));
-    state.diagnostics.push({collection:'opsSettings/platformFeeSettings',ok:false,count:0,ms:0,error:errorMessage(error)});
-  }
-}
-
-
-async function loadPlatformLocalAgent(){
-  try{
-    const snap=await state.db.collection(COLLECTIONS.settings).doc('platformLocalAgent').get();
-    state.platformLocalAgent=snap.exists?(snap.data()||{}):{};
-    state.diagnostics.push({collection:'opsSettings/platformLocalAgent',ok:true,count:snap.exists?1:0,ms:0});
-  }catch(error){
-    state.platformLocalAgent={};
-    state.diagnostics.push({collection:'opsSettings/platformLocalAgent',ok:false,count:0,ms:0,error:errorMessage(error)});
-  }
-}
-
-  async function loadSupplierDirectory(){
-    const started=Date.now();
-    try{
-      const snap=await state.db.collection(COLLECTIONS.settings).doc('suppliers').collection('directory').limit(1000).get();
-      state.suppliers=snap.docs.map(function(doc){const raw=doc.data()||{};return {id:doc.id,name:clean(raw.name),contactName:clean(raw.contactName),phone:clean(raw.phone),mobile:clean(raw.mobile),email:clean(raw.email),address:clean(raw.address),taxId:clean(raw.taxId),paymentInfo:clean(raw.paymentInfo),note:clean(raw.note),enabled:raw.enabled!==false,createdAt:raw.createdAt||'',updatedAt:raw.updatedAt||''};}).filter(function(row){return row.enabled!==false;}).sort(function(a,b){return a.name.localeCompare(b.name,'zh-Hant');});
-      state.diagnostics.push({collection:'opsSettings/suppliers/directory',ok:true,count:state.suppliers.length,ms:Date.now()-started});
-    }catch(error){state.suppliers=[];state.diagnostics.push({collection:'opsSettings/suppliers/directory',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
-  }
-  async function loadInventoryCountSettings(){
-    const started=Date.now();
-    try{
-      const snap=await state.db.collection(COLLECTIONS.settings).doc('inventoryCount').get();
-      const raw=snap.exists?(snap.data()||{}):{};
-      state.inventoryCountSettings={enabled:raw.enabled!==false,pinHash:clean(raw.pinHash),updatedAt:raw.updatedAt||''};
-      state.diagnostics.push({collection:'opsSettings/inventoryCount',ok:true,count:snap.exists?1:0,ms:Date.now()-started});
-    }catch(error){state.inventoryCountSettings={enabled:true,pinHash:'',updatedAt:''};state.diagnostics.push({collection:'opsSettings/inventoryCount',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
-  }
-  async function loadPlatformInventoryQueueErrors(){
-    const started=Date.now();
-    try{
-      const snap=await state.db.collection(COLLECTIONS.platformInventoryQueue).where('lastAttemptStatus','==','error').limit(1000).get();
-      state.platformInventoryQueue=snap.docs.map(function(doc){return normalizePlatformInventoryQueue(Object.assign({__id:doc.id},doc.data()||{}));});
-      state.diagnostics.push({collection:COLLECTIONS.platformInventoryQueue+'(errors)',ok:true,count:state.platformInventoryQueue.length,ms:Date.now()-started});
-    }catch(error){state.platformInventoryQueue=[];state.diagnostics.push({collection:COLLECTIONS.platformInventoryQueue+'(errors)',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
-  }
-
-  async function loadProductsOnly(silent){
-    if(state.loading) return;
-    state.loading=true; clearAlert();
-    if(!silent) html('opsContent',loadingHtml('æ­£åœ¨è®€å–å•†å“è³‡æ–™â€¦'));
-    state.diagnostics=[];
-    try{
-      await withReadTimeout(loadOnlineProducts(),'å•†å“åŒæ­¥è¨­å®š');
-      const rows=await getCollection(COLLECTIONS.products,10000);
-      state.internalProducts=rows.map(function(row){ return normalizeInternal(row,row.__id); });
-      mergeCatalog();
-      state.loadedAt=new Date();
-      setText('opsLastReadText','å•†å“æœ€å¾Œè®€å–ï¼š'+dateTimeText(state.loadedAt));
-      saveFastStateCache();
-      render();
-    }catch(error){
-      showAlert('å•†å“è³‡æ–™è®€å–å¤±æ•—ï¼š'+errorMessage(error),'error');
-      if(state.loadedAt && state.internalProducts.length){
-        render();
-      }else{
-        html('opsContent',emptyHtml('ç„¡æ³•è¼‰å…¥å•†å“è³‡æ–™','è«‹ç¢ºèªç¶²è·¯ã€Firebaseè¨­å®šèˆ‡Firestoreè¦å‰‡å¾Œé‡æ–°è®€å–ã€‚','<button class="ops-button primary" data-action="refresh">é‡æ–°è®€å–</button>'));
-      }
-    }finally{ state.loading=false; }
-  }
-
-  async function loadAll(silent){
-    if(state.loading) return;
-    state.loading=true; clearAlert();
-    if(!silent) html('opsContent',loadingHtml('æ­£åœ¨æ•´ç†å•†å“ã€åº«å­˜ã€éŠ·å”®ã€ç§Ÿè³ƒèˆ‡æ¡ˆä»¶è³‡æ–™â€¦'));
-    state.diagnostics=[];
-    try{
-      await withReadTimeout(Promise.all([loadOnlineProducts(),loadMembershipSettings(),loadOperatingExpenseSettings(),loadInjiaoyunCloudSync(),loadPlatformFeeSettings(),loadPlatformLocalAgent(),loadSupplierDirectory(),loadInventoryCountSettings(),loadPlatformInventoryQueueErrors()]),'ç‡Ÿé‹è¨­å®š');
-      const results=await Promise.all([
-        getCollection(COLLECTIONS.products,10000),
-        getCollection('rentalContracts',1000),
-        getCollection(COLLECTIONS.rentalLedgers,1000),
-        getCollection(COLLECTIONS.sales,10000),
-        getCollection(COLLECTIONS.incomes,1200),
-        getCollection(COLLECTIONS.purchases,1200),
-        getCollection(COLLECTIONS.inventory,10000),
-        getCollection(COLLECTIONS.cases,1000),
-        getCollection(COLLECTIONS.expenses,1200),
-        getCollection(COLLECTIONS.syncJobs,500),
-        getCollection(COLLECTIONS.audit,500),
-        getCollection(COLLECTIONS.customers,3000),
-        getCollection(COLLECTIONS.points,3000),
-        getCollection(COLLECTIONS.receivables,3000),
-        getCollection(COLLECTIONS.receivablePayments,3000),
-        getCollection(COLLECTIONS.salesReturns,3000),
-        getCollection(COLLECTIONS.educationDaily,3000,'businessDate','desc'),
-        getCollection(COLLECTIONS.platformOrders,10000,'orderedAt','desc'),
-        getCollection(COLLECTIONS.platformSyncRuns,500,'startedAt','desc'),
-        getCollection(COLLECTIONS.employees,3000),
-        getCollection(COLLECTIONS.employeeSalaryConfigs,3000),
-        getCollection(COLLECTIONS.employeeSalaryConfigHistory,10000),
-        getCollection(COLLECTIONS.parttimeRecords,10000)
-      ]);
-      state.internalProducts=results[0].map(function(row){ return normalizeInternal(row,row.__id); });
-      state.rentals=results[1].map(normalizeRental);
-      state.rentalLedgers=results[2].map(normalizeRentalLedger);
-      state.sales=results[3].map(normalizeSale).filter(function(row){return clean(row.status)!=='voided';});
-      state.incomes=results[4].map(normalizeIncome).filter(function(row){return clean(row.status)!=='voided';});
-      state.purchases=results[5].map(normalizePurchase);
-      state.inventory=results[6].map(normalizeInventory);
-      state.cases=results[7].map(normalizeCase);
-      state.expenses=results[8].map(normalizeExpense);
-      state.syncJobs=results[9].map(normalizeSyncJob);
-      state.audit=results[10].map(normalizeAudit);
-      state.customers=results[11].map(normalizeCustomer);
-      state.pointTransactions=results[12].map(normalizePointTransaction);
-      state.receivables=results[13].map(normalizeReceivable);
-      state.receivablePayments=results[14].map(normalizeReceivablePayment);
-      state.salesReturns=results[15].map(normalizeSaleReturn);
-      state.educationDaily=results[16].map(normalizeEducationDaily);
-      state.platformOrders=results[17].map(normalizePlatformOrder);
-      state.platformSyncRuns=results[18].map(normalizePlatformSyncRun);
-      state.employees=results[19];
-      state.employeeSalaryConfigs=results[20];
-      state.employeeSalaryConfigHistory=results[21];
-      state.parttimeRecords=results[22];
-      mergeCatalog();
-      state.loadedAt=new Date();
-      state.fullLoadedAt=state.loadedAt;
-      setText('opsLastReadText','æœ€å¾Œè®€å–ï¼š'+dateTimeText(state.loadedAt));
-      saveDashboardCache();
-      saveFastStateCache();
-      render();
-    }catch(error){
-      showAlert('è³‡æ–™è®€å–å¤±æ•—ï¼š'+errorMessage(error),'error');
-      if(state.fullLoadedAt){
-        render();
-      }else{
-        html('opsContent',emptyHtml('ç„¡æ³•è¼‰å…¥ç‡Ÿé‹è³‡æ–™','è«‹ç¢ºèªç¶²è·¯ã€Firebaseè¨­å®šèˆ‡Firestoreè¦å‰‡å¾Œé‡æ–°è®€å–ã€‚','<button class="ops-button primary" data-action="refresh">é‡æ–°è®€å–</button>'));
-      }
-    }finally{ state.loading=false; }
-  }
-
-  function normalizeRental(obj){
-    const start=firstValue(obj,['officialStartDate','startDate','rentalStartDate','contractStartDate','deliveryDate','é–‹å§‹æ—¥æœŸ']);
-    const end=firstValue(obj,['officialEndDate','endDate','rentalEndDate','contractEndDate','åˆ°æœŸæ—¥æœŸ']);
-    const equipmentItems=Array.isArray(obj.equipmentItems)?obj.equipmentItems:[];
-    const firstEquipment=equipmentItems.length?(clean(equipmentItems[0]&&equipmentItems[0].name)||clean(equipmentItems[0]&&equipmentItems[0].title)):'';
-    const rentInfo=firstNumber(obj,['rentalIncomeAmount','rentFee','rentalFee','monthlyRent','ç§Ÿé‡‘']);
-    const rentFee=firstNumber(obj,['rentFee','rentalFee','monthlyRent','ç§Ÿé‡‘']).value;
-    const shippingFee=firstNumber(obj,['shippingFee','deliveryFee','floorExtraFee','é‹è²»']).value;
-    return {
-      id:clean(obj.__id),
-      contractNo:clean(firstValue(obj,['contractNo','contractId','rentalContractNo','applicationNo','ç·¨è™Ÿ']))||clean(obj.__id),
-      customer:clean(firstValue(obj,['customerName','name','applicantName','æ‰¿ç§Ÿäºº','å®¢æˆ¶']))||'æœªæä¾›',
-      phone:clean(firstValue(obj,['customerPhone','phone','customerMobile','mobile','é›»è©±'])),
-      equipment:clean(firstValue(obj,['equipmentName','rentalItem','equipmentCategory','instrumentName','productName','deviceName','equipmentType','è¨­å‚™']))||firstEquipment||'æœªæä¾›',
-      brand:clean(firstValue(obj,['equipmentBrand','brand','å“ç‰Œ'])),
-      model:clean(firstValue(obj,['equipmentModel','modelName','model','åž‹è™Ÿ'])),
-      assetNo:clean(firstValue(obj,['equipmentNo','assetNo','serialNo','è¨­å‚™ç·¨è™Ÿ'])),
-      startDate:start,
-      endDate:end,
-      rentFee:rentFee,
-      shippingFee:shippingFee,
-      depositFee:firstNumber(obj,['depositFee','deposit','æŠ¼é‡‘']).value,
-      incomeRecognizedAt:firstValue(obj,['rentalIncomeRecognizedAt','officialConfirmedAt','officialContractNoticeQueueCreatedAt','officialContractNoticeSentAt','confirmedAt','officialPdfGeneratedAt']),
-      incomeAmount:firstNumber(obj,['rentalIncomeAmount']).found?firstNumber(obj,['rentalIncomeAmount']).value:(rentFee+shippingFee),
-      status:clean(firstValue(obj,['status','contractStatus','rentalStatus','ç‹€æ…‹']))||'æœªè¨­å®š',
-      raw:obj
-    };
-  }
-  function normalizeRentalLedger(obj){
-    return {id:clean(obj.__id),rentalContractId:clean(firstValue(obj,['rentalContractId','contractId']))||clean(obj.__id),receivedAmount:firstNumber(obj,['receivedAmount']).value,deliveryCost:firstNumber(obj,['deliveryCost']).value,maintenanceCost:firstNumber(obj,['maintenanceCost']).value,otherCost:firstNumber(obj,['otherCost']).value,note:clean(obj.note),updatedAt:obj.updatedAt||''};
-  }
-  function normalizeSale(obj){
-    const total=firstNumber(obj,['total']).value,status=clean(obj.paymentStatus)||'paid',received=firstNumber(obj,['receivedAmount']),orderValue=firstNumber(obj,['orderTotal']),saleType=clean(obj.saleType)||'sale',fulfillment=clean(obj.fulfillmentStatus)||(saleType==='preorder'&&clean(obj.status)!=='completed'?'waiting_stock':'delivered');
-    return {id:clean(obj.__id),saleNo:clean(obj.saleNo)||clean(obj.__id),soldAt:obj.soldAt||obj.createdAt||'',preorderAt:obj.preorderAt||'',deliveredAt:obj.deliveredAt||'',saleType:saleType,fulfillmentStatus:fulfillment,usageReason:clean(obj.usageReason),usageNote:clean(obj.usageNote),items:Array.isArray(obj.items)?obj.items:[],subtotal:firstNumber(obj,['subtotal']).value,manualDiscount:firstNumber(obj,['manualDiscount']).found?firstNumber(obj,['manualDiscount']).value:firstNumber(obj,['discount']).value,pointDiscount:firstNumber(obj,['pointDiscount']).value,discount:firstNumber(obj,['discount']).value,orderTotal:orderValue.found?orderValue.value:total,total:total,costTotal:firstNumber(obj,['costTotal']).value,costEstimated:obj.costEstimated===true,costSource:clean(obj.costSource),costConfirmedAt:obj.costConfirmedAt||'',unknownCostQty:firstNumber(obj,['unknownCostQty']).value,returnedCost:firstNumber(obj,['returnedCost']).value,returnStatus:clean(obj.returnStatus),grossProfit:firstNumber(obj,['grossProfit']).value,paymentMethod:clean(obj.paymentMethod),customerId:clean(obj.customerId),customerName:clean(obj.customerName),customerType:clean(obj.customerType),memberNo:clean(obj.memberNo),pricingTier:clean(obj.pricingTier),paymentStatus:status,receivedAmount:received.found?received.value:(status==='paid'?(orderValue.found?orderValue.value:total):0),pointsEarned:firstNumber(obj,['pointsEarned']).value,pendingPointsEarned:firstNumber(obj,['pendingPointsEarned']).value,pointsRedeemed:firstNumber(obj,['pointsRedeemed']).value,earnPointsEnabled:obj.earnPointsEnabled!==false,note:clean(obj.note),status:clean(obj.status)||'completed',createdAt:obj.createdAt||''};
-  }
-  function normalizeCustomer(obj){return {id:clean(obj.__id),name:clean(obj.name)||'æœªå‘½åå®¢æˆ¶',phone:clean(obj.phone),email:clean(obj.email),customerType:clean(obj.customerType)||'general',memberNo:clean(obj.memberNo),pricingTier:clean(obj.pricingTier)||'retail',externalTeacherId:clean(obj.externalTeacherId),pointBalance:firstNumber(obj,['pointBalance']).value,creditLimit:firstNumber(obj,['creditLimit']).value,note:clean(obj.note),enabled:obj.enabled!==false,createdAt:obj.createdAt||'',updatedAt:obj.updatedAt||''};}
-  function normalizePointTransaction(obj){return {id:clean(obj.__id),customerId:clean(obj.customerId),saleId:clean(obj.saleId),type:clean(obj.type),points:firstNumber(obj,['points']).value,balanceAfter:firstNumber(obj,['balanceAfter']).value,note:clean(obj.note),createdAt:obj.createdAt||''};}
-  function normalizeReceivable(obj){const total=firstNumber(obj,['totalAmount']).value,received=firstNumber(obj,['receivedAmount']).value;return {id:clean(obj.__id),receivableNo:clean(obj.receivableNo)||clean(obj.__id),sourceType:clean(obj.sourceType)||(obj.incomeId?'income':'sale'),saleId:clean(obj.saleId),saleNo:clean(obj.saleNo),incomeId:clean(obj.incomeId),incomeNo:clean(obj.incomeNo),customerId:clean(obj.customerId),customerName:clean(obj.customerName)||'æœªæŒ‡å®šå®¢æˆ¶',totalAmount:total,receivedAmount:received,outstandingAmount:Math.max(0,firstNumber(obj,['outstandingAmount']).found?firstNumber(obj,['outstandingAmount']).value:total-received),status:clean(obj.status)||'unpaid',dueDate:obj.dueDate||'',createdAt:obj.createdAt||''};}
-  function normalizeReceivablePayment(obj){return {id:clean(obj.__id),receivableId:clean(obj.receivableId),sourceType:clean(obj.sourceType),saleId:clean(obj.saleId),incomeId:clean(obj.incomeId),customerId:clean(obj.customerId),amount:firstNumber(obj,['amount']).value,paymentMethod:clean(obj.paymentMethod),paidAt:obj.paidAt||obj.createdAt||'',note:clean(obj.note)};}
-  function normalizeSaleReturn(obj){return {id:clean(obj.__id),returnNo:clean(obj.returnNo)||clean(obj.__id),saleId:clean(obj.saleId),saleNo:clean(obj.saleNo),customerId:clean(obj.customerId),customerName:clean(obj.customerName),items:Array.isArray(obj.items)?obj.items:[],refundAmount:firstNumber(obj,['refundAmount']).value,restockedCost:firstNumber(obj,['restockedCost']).value,pointsRestored:firstNumber(obj,['pointsRestored']).value,pointsReversed:firstNumber(obj,['pointsReversed']).value,pointRecoveryAmount:firstNumber(obj,['pointRecoveryAmount']).value,createdAt:obj.createdAt||'',status:clean(obj.status)||'completed'};}
-  function normalizeEducationDaily(obj){
-    const summary=obj&&typeof obj.summary==='object'?obj.summary:{};
-    return {
-      id:clean(obj.__id),
-      source:'injiaoyun',
-      studioId:clean(obj.studioId),
-      studioName:clean(obj.studioName),
-      dateKey:clean(obj.dateKey),
-      businessDate:obj.businessDate||clean(obj.dateKey),
-      includeUnpaid:obj.includeUnpaid===true,
-      sessions:Array.isArray(obj.sessions)?obj.sessions:[],
-      teachers:Array.isArray(obj.teachers)?obj.teachers:[],
-      tuitionReceipts:Array.isArray(obj.tuitionReceipts)?obj.tuitionReceipts:[],
-      roomRentals:Array.isArray(obj.roomRentals)?obj.roomRentals:[],
-      summary:{
-        lessonCount:firstNumber(summary,['lessonCount']).value,
-        lessonGross:firstNumber(summary,['lessonGross']).value,
-        teacherPayable:firstNumber(summary,['teacherPayable']).value,
-        schoolShare:firstNumber(summary,['schoolShare']).value,
-        tuitionReceived:firstNumber(summary,['tuitionReceived']).value,
-        roomRentalReceived:firstNumber(summary,['roomRentalReceived']).value
-      },
-      capturedAt:obj.capturedAt||'',
-      importedAt:obj.importedAt||''
-    };
-  }
-  function normalizeIncome(obj){
-    return {id:clean(obj.__id),incomeNo:clean(obj.incomeNo)||clean(obj.__id),occurredAt:obj.occurredAt||obj.createdAt||'',category:clean(obj.category)||'å…¶ä»–æ”¶å…¥',itemName:clean(obj.itemName||obj.title||obj.description),amount:firstNumber(obj,['amount']).value,paymentMethod:clean(obj.paymentMethod),paymentStatus:clean(obj.paymentStatus)||'paid',receivedAmount:firstNumber(obj,['receivedAmount']).found?firstNumber(obj,['receivedAmount']).value:firstNumber(obj,['amount']).value,customerId:clean(obj.customerId),customerName:clean(obj.customerName),note:clean(obj.note),status:clean(obj.status)||'completed',voidedAt:obj.voidedAt||'',createdAt:obj.createdAt||''};
-  }
-  function normalizePurchase(obj){
-    return {id:clean(obj.__id),purchaseNo:clean(obj.purchaseNo)||clean(obj.__id),externalNo:clean(obj.externalNo),receivedAt:obj.receivedAt||obj.createdAt||'',supplierId:clean(obj.supplierId),supplier:clean(obj.supplier),items:Array.isArray(obj.items)?obj.items:[],subtotal:firstNumber(obj,['subtotal']).value,extraCost:firstNumber(obj,['extraCost']).value,totalCost:firstNumber(obj,['totalCost']).value,paymentStatus:clean(obj.paymentStatus)||'unpaid',paymentDate:obj.paymentDate||'',paymentMethod:clean(obj.paymentMethod),note:clean(obj.note),revisionHistory:Array.isArray(obj.revisionHistory)?obj.revisionHistory:[],createdAt:obj.createdAt||'',updatedAt:obj.updatedAt||''};
-  }
-  function normalizeInventory(obj){
-    return {id:clean(obj.__id),type:clean(obj.type),productId:clean(obj.productId),productName:clean(obj.productName),sku:clean(obj.sku),qtyChange:firstNumber(obj,['qtyChange']).value,beforeStock:firstNumber(obj,['beforeStock']).value,afterStock:firstNumber(obj,['afterStock']).value,unitCost:numberOrNull(obj.unitCost),referenceType:clean(obj.referenceType),referenceId:clean(obj.referenceId),stocktakeNo:clean(obj.stocktakeNo),counterName:clean(obj.counterName||obj.operatorName),source:clean(obj.source),correctionOf:clean(obj.correctionOf),note:clean(obj.note),occurredAt:obj.occurredAt||obj.createdAt||'',createdAt:obj.createdAt||'',correctedAt:obj.correctedAt||'',correctedTo:firstNumber(obj,['correctedTo']).found?firstNumber(obj,['correctedTo']).value:null};
-  }
-  function normalizeCase(obj){
-    const quoted=firstNumber(obj,['quotedAmount']).value; const received=firstNumber(obj,['receivedAmount']).value;
-    const material=firstNumber(obj,['materialCost']).value; const labor=firstNumber(obj,['laborCost']).value; const transport=firstNumber(obj,['transportCost']).value; const other=firstNumber(obj,['otherCost']).value;
-    return {id:clean(obj.__id),caseNo:clean(obj.caseNo)||clean(obj.__id),name:clean(obj.name)||'æœªå‘½åæ¡ˆä»¶',customer:clean(obj.customer),status:clean(obj.status)||'planning',quotedAmount:quoted,receivedAmount:received,materialCost:material,laborCost:labor,transportCost:transport,otherCost:other,totalCost:material+labor+transport+other,profit:received-(material+labor+transport+other),outstanding:Math.max(0,quoted-received),startDate:obj.startDate||'',dueDate:obj.dueDate||'',note:clean(obj.note),createdAt:obj.createdAt||'',updatedAt:obj.updatedAt||''};
-  }
-  function normalizeExpense(obj){ return {id:clean(obj.__id),expenseNo:clean(obj.expenseNo)||clean(obj.__id),occurredAt:obj.occurredAt||obj.createdAt||'',category:clean(obj.category)||'å…¶ä»–æ”¯å‡º',amount:firstNumber(obj,['amount']).value,paymentMethod:clean(obj.paymentMethod),allocationMode:operatingExpenseEngine().normalizeExpenseMode(obj.allocationMode),expenseMonth:clean(obj.expenseMonth),periodStartMonth:clean(obj.periodStartMonth),periodEndMonth:clean(obj.periodEndMonth),referenceType:clean(obj.referenceType),referenceId:clean(obj.referenceId),note:clean(obj.note),createdAt:obj.createdAt||''}; }
-  function normalizeSyncJob(obj){ return {id:clean(obj.__id),jobNo:clean(obj.jobNo)||clean(obj.__id),type:clean(obj.type),status:clean(obj.status)||'preview',platforms:Array.isArray(obj.platforms)?obj.platforms:[],productCount:firstNumber(obj,['productCount']).value,createdAt:obj.createdAt||'',createdBy:clean(obj.createdBy),note:clean(obj.note)}; }
-  function normalizePlatformOrder(obj){
-    const quantity=firstNumber(obj,['quantity']).value,unitPrice=firstNumber(obj,['unitPrice']).value,grossAmount=firstNumber(obj,['grossAmount']).value,costTotal=firstNumber(obj,['costTotal']).value;
-    const platform=clean(obj.platform),externalOrderId=clean(obj.externalOrderId),externalOrderNo=clean(obj.externalOrderNo)||externalOrderId,storedOrderedAt=obj.orderedAt||'';
-    const initialSource=lower(obj.orderDateSource),knownSource=['easystore-created-at','coupang-ordered-at','momo-api-order-date','momo-order-number-inferred','agent-order-time-validated'].includes(initialSource);
-    // å¯ä¿¡çš„å¹³å°åŽŸå§‹ä¸‹å–®æ™‚é–“å„ªå…ˆæ–¼èˆŠç‰ˆç•™ä¸‹çš„ hasOriginalOrderDate=falseã€‚
-    // èˆŠè³‡æ–™å¯èƒ½å·²ç¶“æœ‰ EasyStore created_atï¼Œä½†åœ¨èˆŠåŒæ­¥æµç¨‹ä¸­è¢«æ¨™æˆ falseï¼›
-    // ä¸èƒ½å› æ­¤æŠŠçœŸæ­£ç•¶å¤©ä¸‹å–®çš„è¨‚å–®å…¨éƒ¨å¾žç•«é¢éš±è—ã€‚
-    let orderedAt=storedOrderedAt,hasOriginalOrderDate=(knownSource&&!!dateFrom(storedOrderedAt))||obj.hasOriginalOrderDate===true,orderDateSource=clean(obj.orderDateSource),orderTimeEstimated=obj.orderTimeEstimated===true,orderDateRepaired=obj.orderDateRepaired===true;
-    if(platform==='MOMO'){
-      const inferred=inferMomoOrderDateFromNumber(externalOrderNo||externalOrderId,storedOrderedAt||obj.firstSeenAt||obj.lastSeenAt),storedDate=dateFrom(storedOrderedAt),source=lower(orderDateSource);
-      const dateMismatch=!!(inferred&&(!storedDate||dateText(storedDate)!==dateText(inferred)));
-      const syncTime=platformOrderLooksLikeSyncTime(obj,storedOrderedAt);
-      const explicitlySyncTime=['sync','sync-time','synchronized-at','legacy-sync','missing','unknown'].includes(source);
-      if(inferred&&(dateMismatch||syncTime||explicitlySyncTime)){
-        orderedAt=inferred;
-        hasOriginalOrderDate=true;
-        orderDateSource='momo-order-number-inferred';
-        orderTimeEstimated=true;
-        orderDateRepaired=true;
-      }
-    }
-    return {
-      id:clean(obj.__id),platform:platform,externalOrderId:externalOrderId,externalOrderNo:externalOrderNo,externalLineId:clean(obj.externalLineId),orderedAt:orderedAt,reportedOrderedAt:orderDateRepaired?(obj.reportedOrderedAt||storedOrderedAt):(obj.reportedOrderedAt||''),hasOriginalOrderDate:hasOriginalOrderDate,orderDateSource:orderDateSource,orderTimeEstimated:orderTimeEstimated,orderDateRepaired:orderDateRepaired,paidAt:obj.paidAt||'',shippedAt:obj.shippedAt||'',completedAt:obj.completedAt||'',settledAt:obj.settledAt||'',refundedAt:obj.refundedAt||'',cancelledAt:obj.cancelledAt||'',statusUpdatedAt:obj.statusUpdatedAt||'',sku:clean(obj.sku),productName:clean(obj.productName)||'æœªå‘½åå•†å“',variantName:clean(obj.variantName),quantity:quantity,unitPrice:unitPrice,grossAmount:grossAmount,estimatedNetAmount:firstNumber(obj,['estimatedNetAmount']).value,actualSettledAmount:numberOrNull(obj.actualSettledAmount),refundAmount:numberOrNull(obj.refundAmount),costTotal:costTotal,costEstimated:obj.costEstimated===true,costSource:clean(obj.costSource),estimatedProfit:firstNumber(obj,['estimatedProfit']).value,orderStatus:clean(obj.orderStatus),paymentStatus:clean(obj.paymentStatus),customerName:clean(obj.customerName),processingStatus:clean(obj.processingStatus),historicalImport:obj.historicalImport===true,historicalImportBatch:clean(obj.historicalImportBatch),inventorySkipped:obj.inventorySkipped===true,inventoryEffect:clean(obj.inventoryEffect),inventoryApplied:obj.inventoryApplied===true,inventoryReversed:obj.inventoryReversed===true,reversalApplied:obj.reversalApplied===true,reversalReason:clean(obj.reversalReason||obj.cancellationReason),reversalQuantity:firstNumber(obj,['reversalQuantity']).value,reversalCostTotal:firstNumber(obj,['reversalCostTotal']).value,inventoryBefore:firstNumber(obj,['inventoryBefore']).value,inventoryAfter:firstNumber(obj,['inventoryAfter']).value,inventoryBeforeReversal:firstNumber(obj,['inventoryBeforeReversal']).value,inventoryAfterReversal:firstNumber(obj,['inventoryAfterReversal']).value,missingFromPlatformCount:firstNumber(obj,['missingFromPlatformCount']).value,productId:clean(obj.productId),processingError:clean(obj.processingError),firstSeenAt:obj.firstSeenAt||'',lastSeenAt:obj.lastSeenAt||'',reversedAt:obj.reversedAt||'',syncRunId:clean(obj.syncRunId),returnHandlingStatus:clean(obj.returnHandlingStatus),returnDisposition:clean(obj.returnDisposition),returnQuantity:firstNumber(obj,['returnQuantity']).value,returnNote:clean(obj.returnNote),returnedReceivedAt:obj.returnedReceivedAt||'',returnProcessedAt:obj.returnProcessedAt||'',returnInventoryApplied:obj.returnInventoryApplied===true
-    };
-  }
-  function normalizePlatformSyncRun(obj){
-    return {id:clean(obj.__id),runId:clean(obj.runId)||clean(obj.__id),trigger:clean(obj.trigger),status:clean(obj.status),startedAt:obj.startedAt||'',finishedAt:obj.finishedAt||'',summary:obj.summary&&typeof obj.summary==='object'?obj.summary:{},error:clean(obj.error)};
-  }
-  function normalizePlatformInventoryQueue(obj){
-    return {
-      id:clean(obj.__id),
-      productId:clean(obj.productId)||clean(obj.__id),
-      sku:clean(obj.sku),
-      productName:clean(obj.productName),
-      targetStock:firstNumber(obj,['targetStock']).value,
-      status:clean(obj.status)||'pending',
-      reason:clean(obj.reason),
-      lastAttemptStatus:clean(obj.lastAttemptStatus),
-      lastAttemptAt:obj.lastAttemptAt||'',
-      updatedAt:obj.updatedAt||'',
-      runId:clean(obj.runId),
-      results:obj.results&&typeof obj.results==='object'?obj.results:{}
-    };
-  }
-  function inventorySyncAnomalyReason(status,message){
-    const raw=clean(message),text=lower([status,raw].join(' '));
-    if(text.includes('externalvendorsku')||text.includes('sellerproductid')||text.includes('vendoritemid'))return 'æ‰¾ä¸åˆ°å¹³å°å•†å“æˆ–è¦æ ¼ SKU é…å°';
-    if(text.includes('å•†å“ä»£ç¢¼')||text.includes('è¦æ ¼ä»£ç¢¼')||text.includes('æ‰¾ä¸åˆ°')||text.includes('not found')||text.includes('no match'))return 'æ‰¾ä¸åˆ°å¹³å°å•†å“é…å°';
-    if(text.includes('unauthorized')||text.includes('forbidden')||text.includes('401')||text.includes('403'))return 'å¹³å°æŽˆæ¬Šæˆ–æ¬Šé™ç•°å¸¸';
-    if(text.includes('timeout')||text.includes('timed out')||text.includes('é€¾æ™‚'))return 'å¹³å°é€£ç·šé€¾æ™‚';
-    if(text.includes('rate limit')||text.includes('too many requests')||text.includes('429'))return 'å¹³å°å‘¼å«æ¬¡æ•¸å—é™';
-    if(clean(status)==='NOT_RUN')return 'å¹³å°åº«å­˜æ›´æ–°æœªåŸ·è¡Œ';
-    return raw||clean(status)||'å¹³å°å›žå‚³æœªæ˜ŽéŒ¯èª¤';
-  }
-  function inventorySyncAnomalies(){
-    const rows=[];
-    (state.platformInventoryQueue||[]).forEach(function(queue){
-      if(queue.lastAttemptStatus!=='error')return;
-      const results=queue.results||{},platformNames=Object.keys(results);
-      if(!platformNames.length){
-        rows.push({queueId:queue.id,productId:queue.productId,sku:queue.sku,productName:queue.productName,targetStock:queue.targetStock,platform:'æœªè¾¨è­˜å¹³å°',status:'ERROR',message:'åŒæ­¥ç¨‹å¼æ²’æœ‰ç•™ä¸‹å¹³å°æ˜Žç´°',reason:'åŒæ­¥çµæžœä¸å®Œæ•´',lastAttemptAt:queue.lastAttemptAt||queue.updatedAt,runId:queue.runId});
-        return;
-      }
-      platformNames.forEach(function(platform){
-        const result=results[platform]&&typeof results[platform]==='object'?results[platform]:{};
-        if(result.success===true)return;
-        rows.push({queueId:queue.id,productId:queue.productId,sku:queue.sku,productName:queue.productName,targetStock:queue.targetStock,platform:platform,status:clean(result.status)||'ERROR',message:clean(result.message),reason:inventorySyncAnomalyReason(result.status,result.message),lastAttemptAt:queue.lastAttemptAt||queue.updatedAt,runId:queue.runId});
-      });
-    });
-    return rows.sort(function(a,b){return (dateFrom(b.lastAttemptAt)||0)-(dateFrom(a.lastAttemptAt)||0)||a.platform.localeCompare(b.platform,'zh-Hant')||a.sku.localeCompare(b.sku,'zh-Hant');});
-  }
-  function priceSyncAnomalyReason(status,message){
-    const raw=clean(message),text=lower([status,raw].join(' '));
-    if(clean(status)==='unsupported')return raw||'ç›®å‰åŒæ­¥ç¨‹å¼å°šæœªæ”¯æ´æ­¤å¹³å°ç›´æŽ¥æ”¹åƒ¹';
-    if(text.includes('productid')||text.includes('variantid')||text.includes('vendoritemid')||text.includes('sku')||text.includes('æ‰¾ä¸åˆ°')||text.includes('unmapped'))return 'æ‰¾ä¸åˆ°å¹³å°å•†å“æˆ–è¦æ ¼é…å°';
-    if(text.includes('unauthorized')||text.includes('forbidden')||text.includes('401')||text.includes('403'))return 'å¹³å°æŽˆæ¬Šæˆ–æ”¹åƒ¹æ¬Šé™ç•°å¸¸';
-    if(text.includes('timeout')||text.includes('timed out')||text.includes('é€¾æ™‚'))return 'å¹³å°æ”¹åƒ¹é€£ç·šé€¾æ™‚';
-    if(text.includes('price')||text.includes('å”®åƒ¹')||text.includes('åƒ¹æ ¼'))return raw||'å¹³å°æ‹’çµ•åƒ¹æ ¼æ›´æ–°';
-    return raw||clean(status)||'å¹³å°åƒ¹æ ¼åŒæ­¥å¤±æ•—';
-  }
-  function priceSyncAnomalies(){
-    const rows=[];
-    (state.catalog||[]).forEach(function(product){
-      const sync=product.platformPriceSync&&typeof product.platformPriceSync==='object'?product.platformPriceSync:{};
-      ['EasyStore','MOMO','Coupang'].forEach(function(platform){
-        const row=sync[platform]&&typeof sync[platform]==='object'?sync[platform]:{},status=clean(row.status).toLowerCase();
-        if(!['error','unmapped'].includes(status))return;
-        rows.push({kind:'price',productId:product.docId,sku:product.sku,productName:product.originalName||product.name,targetPrice:numberOrNull(row.targetPrice),platform:platform,status:status.toUpperCase(),message:clean(row.message),reason:priceSyncAnomalyReason(status,row.message),lastAttemptAt:row.lastAttemptAt||row.requestedAt||sync.lastUpdatedAt,runId:clean(row.runId)});
-      });
-    });
-    return rows;
-  }
-  function platformSyncAnomalies(){
-    const inventory=inventorySyncAnomalies().map(function(row){return Object.assign({kind:'inventory'},row);});
-    return inventory.concat(priceSyncAnomalies()).sort(function(a,b){return (dateFrom(b.lastAttemptAt)||0)-(dateFrom(a.lastAttemptAt)||0)||a.platform.localeCompare(b.platform,'zh-Hant')||clean(a.sku).localeCompare(clean(b.sku),'zh-Hant');});
-  }
-  function anomalyNameKey(value){
-    return lower(clean(value)).replace(/\s+/g,'').replace(/[\-_/\\.,ï¼Œã€‚ãƒ»:ï¼š;ï¼›()ï¼ˆï¼‰\[\]ã€ã€‘ã€Œã€ã€Žã€'"`]/g,'');
-  }
-  function platformSyncAnomalyGroups(rows){
-    const catalogByDoc={},catalogBySku={},catalogByName={};
-    (state.catalog||[]).forEach(function(product){
-      const docId=clean(product.docId),sku=lower(clean(product.sku)),name=clean(product.originalName||product.onlineName||product.name),nameKey=anomalyNameKey(name);
-      if(docId)catalogByDoc[docId]=product;
-      if(sku&&!catalogBySku[sku])catalogBySku[sku]=product;
-      if(nameKey&&!catalogByName[nameKey])catalogByName[nameKey]=product;
-    });
-    const groups=[],aliases={};
-    (rows||[]).forEach(function(source,index){
-      const row=Object.assign({},source),rawId=clean(row.productId),rawSku=clean(row.sku),rawName=clean(row.productName);
-      const matched=(rawId&&catalogByDoc[rawId])||(rawSku&&catalogBySku[lower(rawSku)])||(rawName&&catalogByName[anomalyNameKey(rawName)])||null;
-      const productId=rawId||clean(matched&&matched.docId),sku=rawSku||clean(matched&&matched.sku),productName=rawName||clean(matched&&(matched.originalName||matched.onlineName||matched.name));
-      row.productId=productId;row.sku=sku;row.productName=productName;
-      const candidateAliases=[];
-      if(productId)candidateAliases.push('id:'+productId);
-      if(sku)candidateAliases.push('sku:'+lower(sku));
-      const nameKey=anomalyNameKey(productName);if(nameKey)candidateAliases.push('name:'+nameKey);
-      let group=null;
-      candidateAliases.some(function(alias){if(aliases[alias]){group=aliases[alias];return true;}return false;});
-      if(!group){group={key:'anomaly-'+groups.length,productId:productId,sku:sku,productName:productName,issues:[],lastAttemptAt:row.lastAttemptAt};groups.push(group);}
-      if(!group.productId&&productId)group.productId=productId;
-      if(!group.sku&&sku)group.sku=sku;
-      if(!group.productName&&productName)group.productName=productName;
-      candidateAliases.forEach(function(alias){aliases[alias]=group;});
-      const issueKey=[row.platform,row.kind,row.reason,row.message,row.targetPrice,row.targetStock].map(clean).join('|');
-      if(!group.issues.some(function(issue){return issue.__issueKey===issueKey;})){row.__issueKey=issueKey;group.issues.push(row);}
-      if((dateFrom(row.lastAttemptAt)||0)>(dateFrom(group.lastAttemptAt)||0))group.lastAttemptAt=row.lastAttemptAt;
-    });
-    groups.forEach(function(group){group.issues.sort(function(a,b){return a.platform.localeCompare(b.platform,'zh-Hant')||a.kind.localeCompare(b.kind,'zh-Hant');});});
-    return groups.sort(function(a,b){return (dateFrom(b.lastAttemptAt)||0)-(dateFrom(a.lastAttemptAt)||0)||clean(a.productName).localeCompare(clean(b.productName),'zh-Hant')||clean(a.sku).localeCompare(clean(b.sku),'zh-Hant');});
-  }
-  function normalizeAudit(obj){ return {id:clean(obj.__id),action:clean(obj.action),entityType:clean(obj.entityType),entityId:clean(obj.entityId),summary:clean(obj.summary),createdAt:obj.createdAt||'',createdBy:clean(obj.createdBy)}; }
-
-
-function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const ref=state.db.collection(COLLECTIONS.platformInventoryQueue).doc(productId);tx.set(ref,{productId:productId,sku:clean(sku),targetStock:Math.max(0,Number(stock||0)),status:'pending',reason:clean(reason),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});}
-
-  async function writeAudit(action,entityType,entityId,summary){
-    try{ await state.db.collection(COLLECTIONS.audit).add({action:action,entityType:entityType,entityId:entityId||'',summary:summary||'',createdBy:userLabel(),createdAt:serverTimestamp(),version:VERSION}); }catch(err){}
-  }
-
-  function exactTimestamp(value,iso){
-    const date=dateFrom(value);
-    return !!(date&&date.toISOString()===iso);
-  }
-  function exactTimestampOneOf(value,isos){return isos.some(function(iso){return exactTimestamp(value,iso);});}
-
-  async function repairYsv104PreorderHistoryOnce(){
-    const repairId='YSV104_1920102_HISTFIX_20260809',saleId='bJ2oefMhfrsvbEEDYr1a',receivableId='Mhwu2eeQ0Wv0a1JIdg2A',depositId='CD486cAze4ipgKYGUJnE',tailPaymentId='JDCC45otSrorKnfx4Jlt',productId='mLxgBUQMvWpQWjw7Na5f',stockInId='JGwgBVcy6y1KVzKaoXXY',stockOutId='yN8GiyxjwfKZZa8oA0YB',saleNo='PRE-20260716085756-UNWVV',soldAtIso='2026-07-16T08:57:56.140Z',deliveredAtIso='2026-08-05T05:04:00.000Z',stockReadyIso='2026-08-05T05:03:59.000Z',originalFulfillmentIso='2026-08-09T12:29:31.877Z',originalStockInIso='2026-08-09T12:28:56.778Z';
-    const markerRef=state.db.collection(COLLECTIONS.audit).doc(repairId),saleRef=state.db.collection(COLLECTIONS.sales).doc(saleId),receivableRef=state.db.collection(COLLECTIONS.receivables).doc(receivableId),depositRef=state.db.collection(COLLECTIONS.receivablePayments).doc(depositId),tailPaymentRef=state.db.collection(COLLECTIONS.receivablePayments).doc(tailPaymentId),productRef=state.db.collection(COLLECTIONS.products).doc(productId),stockInRef=state.db.collection(COLLECTIONS.inventory).doc(stockInId),stockOutRef=state.db.collection(COLLECTIONS.inventory).doc(stockOutId);
-    return state.db.runTransaction(async function(tx){
-      const markerSnap=await tx.get(markerRef);
-      if(markerSnap.exists)return 'already_repaired';
-      const saleSnap=await tx.get(saleRef),receivableSnap=await tx.get(receivableRef),depositSnap=await tx.get(depositRef),tailPaymentSnap=await tx.get(tailPaymentRef),productSnap=await tx.get(productRef),stockInSnap=await tx.get(stockInRef),stockOutSnap=await tx.get(stockOutRef);
-      function requireRepair(condition,message){if(!condition)throw new Error('YSV-104 æ­·å²æ›´æ­£å·²åœæ­¢ï¼š'+message);}
-      requireRepair(saleSnap.exists&&receivableSnap.exists&&depositSnap.exists&&tailPaymentSnap.exists&&productSnap.exists&&stockInSnap.exists&&stockOutSnap.exists,'æŒ‡å®šçš„åŽŸå§‹æ–‡ä»¶ä¸å®Œæ•´');
-      const sale=saleSnap.data()||{},receivable=receivableSnap.data()||{},deposit=depositSnap.data()||{},tailPayment=tailPaymentSnap.data()||{},product=productSnap.data()||{},stockIn=stockInSnap.data()||{},stockOut=stockOutSnap.data()||{};
-      requireRepair(clean(sale.saleNo)===saleNo&&clean(sale.saleType)==='preorder','é è³¼å–®èº«åˆ†ä¸ç¬¦');
-      requireRepair(Number(sale.total||sale.orderTotal||0)===28500&&Number(sale.costTotal||0)===15000&&Number(sale.grossProfit||0)===13500,'æˆäº¤é‡‘é¡ã€æˆæœ¬æˆ–æ¯›åˆ©ä¸ç¬¦');
-      requireRepair(exactTimestamp(sale.preorderAt,soldAtIso)&&exactTimestampOneOf(sale.soldAt,[originalFulfillmentIso,soldAtIso])&&exactTimestampOneOf(sale.deliveredAt,[originalFulfillmentIso,deliveredAtIso]),'åŽŸæˆäº¤æ—¥æˆ–äº¤è²¨æ—¥å·²è¢«å…¶ä»–æ“ä½œæ”¹è®Š');
-      requireRepair(clean(receivable.saleId)===saleId&&Number(receivable.totalAmount||0)===28500&&Number(receivable.receivedAmount||0)===28500&&Number(receivable.outstandingAmount||0)===0&&clean(receivable.status)==='paid','æ‡‰æ”¶å¸³æ¬¾ä¸æ˜¯å·²æ”¶æ¸… 28,500 å…ƒ');
-      requireRepair(clean(deposit.saleId)===saleId&&Number(deposit.amount||0)===10000&&exactTimestamp(deposit.paidAt,soldAtIso),'7/16 è¨‚é‡‘ 10,000 å…ƒç´€éŒ„ä¸ç¬¦');
-      requireRepair(clean(tailPayment.saleId)===saleId&&Number(tailPayment.amount||0)===18500&&exactTimestamp(tailPayment.paidAt,deliveredAtIso),'8/5 å°¾æ¬¾ 18,500 å…ƒç´€éŒ„ä¸ç¬¦');
-      requireRepair(clean(product.internalSku)==='1920102'&&Number(product.currentStock||0)===0&&Number(product.reservedStock||0)===0,'å•†å“æˆ–æœ€çµ‚åº«å­˜ä¸æ˜¯ 0');
-      requireRepair(clean(stockIn.productId)===productId&&Number(stockIn.qtyChange||0)===1&&Number(stockIn.beforeStock||0)===0&&Number(stockIn.afterStock||0)===1,'8/9 è£œç™»å…¥åº«ç´€éŒ„ä¸ç¬¦');
-      requireRepair(clean(stockOut.productId)===productId&&clean(stockOut.referenceId)===saleNo&&Number(stockOut.qtyChange||0)===-1&&Number(stockOut.beforeStock||0)===1&&Number(stockOut.afterStock||0)===0,'8/9 è£œç™»äº¤è²¨æ‰£åº«ç´€éŒ„ä¸ç¬¦');
-      requireRepair(exactTimestampOneOf(stockIn.occurredAt,[originalStockInIso,stockReadyIso])&&exactTimestampOneOf(stockOut.occurredAt,[originalFulfillmentIso,deliveredAtIso]),'å…©ç­†åº«å­˜ç´€éŒ„æ—¥æœŸå·²è¢«å…¶ä»–æ“ä½œæ”¹è®Š');
-      const soldAt=new Date(soldAtIso),deliveredAt=new Date(deliveredAtIso),stockReadyAt=new Date(stockReadyIso),actor=userLabel(),now=serverTimestamp(),originalNote=clean(sale.note),correctionNote='æ­·å²æ›´æ­£ï¼š2026/8/5 13:04 å°¾æ¬¾æ”¶æ¸…ä¸¦äº¤è²¨ï¼›2026/8/9 æ“ä½œåƒ…è£œç™»åº«å­˜èˆ‡äº¤è²¨ï¼Œä¸å¦è¨ˆç‡Ÿæ”¶';
-      tx.set(saleRef,{soldAt:soldAt,preorderAt:soldAt,deliveredAt:deliveredAt,fulfillmentStatus:'delivered',status:'completed',paymentStatus:'paid',receivedAmount:28500,orderTotal:28500,total:28500,costTotal:15000,grossProfit:13500,costEstimated:false,costSource:'fifo',costConfirmedAt:deliveredAt,note:originalNote.includes(correctionNote)?originalNote:[originalNote,correctionNote].filter(Boolean).join('ï½œ'),historicalCorrectionId:repairId,updatedAt:now,updatedBy:actor,version:VERSION},{merge:true});
-      tx.set(stockInRef,{occurredAt:stockReadyAt,note:'æ­·å²æ›´æ­£ï½œå•†å“æ–¼ 2026/8/5 äº¤è²¨å‰å·²å¯äº¤ä»˜ï¼›åŽŸç´€éŒ„æ–¼ 8/9 è£œç™»',historicalCorrectionId:repairId,updatedAt:now,updatedBy:actor,version:VERSION},{merge:true});
-      tx.set(stockOutRef,{occurredAt:deliveredAt,note:'æ­·å²æ›´æ­£ï½œ2026/8/5 13:04 å·²äº¤è²¨ï¼ˆä¸å«æ”¶æ¬¾ï¼‰ï¼›åŽŸç´€éŒ„æ–¼ 8/9 è£œç™»',historicalCorrectionId:repairId,updatedAt:now,updatedBy:actor,version:VERSION},{merge:true});
-      // æ”¶æ¬¾æ–‡ä»¶ã€æ‡‰æ”¶å¸³æ¬¾èˆ‡å•†å“æœ€çµ‚åº«å­˜åªåšä¸Šæ–¹æ ¸å°ï¼Œå®Œå…¨ä¸å¯«å…¥ï¼Œé¿å…é‡è¤‡å…¥å¸³æˆ–å†æ¬¡å¢žæ¸›åº«å­˜ã€‚
-      tx.set(markerRef,{action:'æ­·å²æ›´æ­£ï¼šé è³¼æˆäº¤èˆ‡äº¤è²¨æ—¥æœŸ',entityType:'preorder',entityId:saleId,summary:saleNo+'ï½œæˆäº¤ 2026/7/16ï½œè¨‚é‡‘ 10,000ï½œå°¾æ¬¾èˆ‡äº¤è²¨ 2026/8/5ï½œ8/9 åƒ…ç‚ºè£œç™»ï¼Œä¸æ–°å¢žæ”¶æ¬¾',saleId:saleId,receivableId:receivableId,paymentIds:[depositId,tailPaymentId],inventoryTransactionIds:[stockInId,stockOutId],createdBy:actor,createdAt:now,version:VERSION});
-      return 'repaired';
-    });
-  }
-
-  function kpi(title,value,sub,icon){
-    return '<article class="ops-kpi"><div class="ops-kpi-head"><span>'+escapeHtml(title)+'</span><span class="ops-kpi-icon">'+escapeHtml(icon||'â€¢')+'</span></div><strong>'+escapeHtml(value)+'</strong><small>'+escapeHtml(sub||'')+'</small></article>';
-  }
-  function kpiAction(title,value,sub,icon,action){
-    return '<button type="button" class="ops-kpi ops-kpi-action" data-action="'+attr(action)+'"><div class="ops-kpi-head"><span>'+escapeHtml(title)+'</span><span class="ops-kpi-icon">'+escapeHtml(icon||'â€¢')+'</span></div><strong>'+escapeHtml(value)+'</strong><small>'+escapeHtml(sub||'')+'</small></button>';
-  }
-  function renderCourseWorkspace(view){
-    const courseView=courseWorkspaceView(view);
-    return '<div class="ops-course-inline-placeholder" data-course-view="'+attr(courseView)+'">æ­£åœ¨é–‹å•Ÿå®Œæ•´èª²å‹™åŠŸèƒ½â€¦</div>';
-  }
-  function sendCourseWorkspaceView(frame,view){
-    if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.show==='function')global.YouziOperationsCourseInline.show(view);
-  }
-  function handleCourseWorkspaceMessage(){}
-
-  function render(){
-    state.view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
-    if(!PAGE_META[state.view]) state.view='overview';
-    const meta=PAGE_META[state.view]; setText('opsPageTitle',meta[0]); setText('opsPageSubtitle',meta[1]);
-    const pageClock=byId('opsPageClock'); if(pageClock) pageClock.classList.toggle('hidden',state.view!=='sales');
-    const navView=(state.view==='purchase-entry'||state.view==='stocktake')?'purchases':state.view;
-    queryAll('#opsNav a[data-view]').forEach(function(a){ a.classList.toggle('active',a.dataset.view===navView); });
-    const courseGroup=byId('opsCourseGroup'),courseToggle=byId('opsCourseMenuToggle'),courseViewActive=isCourseWorkspaceView(state.view);
-    if(courseGroup){
-      courseGroup.classList.toggle('active',courseViewActive);
-      if(courseViewActive)courseGroup.classList.add('open');
-    }
-    if(courseToggle)courseToggle.setAttribute('aria-expanded',courseGroup&&courseGroup.classList.contains('open')?'true':'false');
-    const content=byId('opsContent'); if(!content) return;
-    content.classList.toggle('ops-course-content',courseViewActive);
-    if(courseViewActive){
-      const courseView=courseWorkspaceView(state.view);
-      if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.mount==='function'){
-        global.YouziOperationsCourseInline.mount(content,courseView);
-      }else{
-        content.innerHTML=renderCourseWorkspace(state.view);
-      }
-      return;
-    }
-    if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.detach==='function')global.YouziOperationsCourseInline.detach();
-    if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
-    const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,expenses:renderOperatingExpensesPage,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
-    content.innerHTML=(renderers[state.view]||renderOverview)();
-    enhanceMobileNumberInputs(content);
-    bindViewSpecific();
-  }
-
-  function todayRows(rows,getDate){ const start=startOfDay(new Date()); const end=endOfDay(new Date()); return rows.filter(function(row){ const d=dateFrom(getDate(row)); return d&&d>=start&&d<=end; }); }
-  function currentMonthRows(rows,getDate){ const now=new Date(); return rows.filter(function(row){ const d=dateFrom(getDate(row)); return d&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth(); }); }
-  function isCompactMobile(){ return (global.innerWidth||0)<=780; }
-  function todayDateKey(){ return dateText(new Date()); }
-  function overviewDateKey(){
-    const today=todayDateKey();
-    const raw=clean(state.overviewDate);
-    const valid=/^\d{4}-\d{2}-\d{2}$/.test(raw)?raw:today;
-    state.overviewDate=valid>today?today:valid;
-    return state.overviewDate;
-  }
-  function dateKeyShift(dateKey,step){ const base=new Date(dateKey+'T00:00:00'); base.setDate(base.getDate()+Number(step||0)); return dateText(base); }
-  function weekdayText(value){ return 'æ—¥ä¸€äºŒä¸‰å››äº”å…­'[new Date(value).getDay()]||''; }
-  function overviewDateLabel(dateKey){ return dateKey.replace(/-/g,'/')+'ï¼ˆ'+weekdayText(dateKey)+'ï¼‰'; }
-  function overviewDayNavigatorHtml(){
-    const current=overviewDateKey(),today=todayDateKey(),next=dateKeyShift(current,1),disableNext=next>today,todayParts=today.split('-');
-    const mobile=isCompactMobile();
-    return '<div class="ops-overview-day-nav'+(mobile?' ops-mobile-overview-day-nav':'')+'">'
-      +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="-1">â† å‰ä¸€å¤©</button>'
-      +'<button type="button" class="ops-button ops-overview-today '+(state.overviewRange==='today'&&current===today?'primary':'ghost')+'" data-action="overview-range" data-range="today"><b>ä»Šå¤©</b><small>'+Number(todayParts[1])+'/'+Number(todayParts[2])+'</small></button>'
-      +'<button type="button" class="ops-button ghost" data-action="overview-day-shift" data-step="1" '+(disableNext?'disabled':'')+'>å¾Œä¸€å¤© â†’</button>'
-      +(mobile?'':'<label class="ops-overview-day-label"><span>æŸ¥è©¢æ—¥æœŸ</span><input class="ops-input" id="overviewDate" type="date" max="'+attr(today)+'" value="'+attr(current)+'"></label>')
-      +'</div>';
-  }
-  function overviewMonthSelectHtml(){
-    const now=new Date(),year=now.getFullYear(),currentMonth=now.getMonth()+1,currentKey=year+'-'+String(currentMonth).padStart(2,'0'),selected=clean(state.overviewMonth)||currentKey;
-    const options=[];
-    for(let month=1;month<=12;month+=1){const key=year+'-'+String(month).padStart(2,'0');options.push('<option value="'+attr(key)+'" '+(key===selected?'selected':'')+' '+(month>currentMonth?'disabled':'')+'>'+year+' å¹´ '+month+' æœˆ</option>');}
-    return '<button type="button" class="ops-button '+(state.overviewRange==='month'&&selected===currentKey?'primary':'ghost')+'" data-action="overview-current-month">æœ¬æœˆ</button>'
-      +'<label class="ops-overview-month-select '+(state.overviewRange==='month'?'active':'')+'"><span>é¸æ“‡æœˆä»½</span><select class="ops-select" id="overviewMonth">'+options.join('')+'</select></label>';
-  }
-  function overviewRangeControlsHtml(){
-    const customLabel='è‡ªè¨‚å€é–“';
-    if(isCompactMobile()){
-      return '<div class="ops-v8-overview-range ops-mobile-overview-range">'
-        +overviewDayNavigatorHtml()
-        +'<div class="ops-mobile-overview-periods">'
-        +overviewMonthSelectHtml()
-        +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">æœå°‹æ—¥æœŸ</summary><div class="ops-overview-dropdown-panel"><label>é–‹å§‹æ—¥æœŸ<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>çµæŸæ—¥æœŸ<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">æŸ¥è©¢</button></div></details>'
-        +'</div></div>';
-    }
-    return '<div class="ops-v8-overview-range">'
-      +overviewDayNavigatorHtml()
-      +overviewMonthSelectHtml()
-      +'<button type="button" class="ops-button '+(state.overviewRange==='year'?'primary':'ghost')+'" data-action="overview-range" data-range="year">ä»Šå¹´</button>'
-      +'<details class="ops-overview-dropdown"><summary class="ops-button '+(state.overviewRange==='custom'?'primary':'ghost')+'">'+escapeHtml(customLabel)+'</summary><div class="ops-overview-dropdown-panel"><label>é–‹å§‹æ—¥æœŸ<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>çµæŸæ—¥æœŸ<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label><button type="button" class="ops-button primary wide" data-action="overview-custom-apply">å¥—ç”¨å€é–“</button></div></details>'
-      +'</div>';
-  }
-  function mobileSearchPadHtml(targetId){
-    if(!isCompactMobile()) return '';
-    return '<div class="ops-mobile-search-pad" aria-label="SKU æ•¸å­—éµç›¤">'+['1','2','3','4','5','6','7','8','9','clear','0','back'].map(function(key){const label=key==='clear'?'æ¸…é™¤':key==='back'?'âŒ«':key;return '<button type="button" data-action="mobile-key" data-target="'+attr(targetId)+'" data-key="'+key+'">'+label+'</button>';}).join('')+'</div>';
-  }
-  function cancelLiveSearchRender(inputId){
-    const previous=liveSearchJobs[inputId];
-    if(!previous)return;
-    previous.cancelled=true;
-    if(previous.kind==='frame'&&typeof global.cancelAnimationFrame==='function')global.cancelAnimationFrame(previous.id);
-    else global.clearTimeout(previous.id);
-    delete liveSearchJobs[inputId];
-  }
-  function scheduleLiveSearchRender(inputId,value,immediate){
-    cancelLiveSearchRender(inputId);
-    const captured=String(value==null?'':value),job={kind:'timer',id:0,cancelled:false};
-    liveSearchJobs[inputId]=job;
-    const run=function(){
-      if(job.cancelled||liveSearchJobs[inputId]!==job)return;
-      delete liveSearchJobs[inputId];
-      const input=byId(inputId);
-      if(!input||input.value!==captured)return;
-      if(!renderLiveSearchResults(inputId))rerenderKeepingFocus(inputId,captured);
-    };
-    const queueAfterInputPaint=function(){
-      if(job.cancelled||liveSearchJobs[inputId]!==job)return;
-      if(typeof global.requestAnimationFrame==='function'){
-        const waitOnePaint=function(){
-          if(job.cancelled||liveSearchJobs[inputId]!==job)return;
-          job.id=global.requestAnimationFrame(run);
-        };
-        job.kind='frame';
-        job.id=global.requestAnimationFrame(waitOnePaint);
-      }else{
-        job.kind='timer';
-        job.id=global.setTimeout(run,16);
-      }
-    };
-    if(immediate)return queueAfterInputPaint();
-    job.id=global.setTimeout(queueAfterInputPaint,LIVE_SEARCH_INPUT_IDLE_MS);
-  }
-  function searchInputSelection(input){
-    const length=String(input&&input.value||'').length;
-    if(document.activeElement!==input)return {start:length,end:length};
-    const start=typeof input.selectionStart==='number'?input.selectionStart:length;
-    const end=typeof input.selectionEnd==='number'?input.selectionEnd:start;
-    return {start:Math.max(0,start),end:Math.max(0,end)};
-  }
-  function nextSearchKeyValue(input,key){
-    const value=String(input&&input.value!=null?input.value:''),selection=searchInputSelection(input);
-    if(key==='clear')return {value:'',caret:0};
-    if(key==='back'){
-      if(selection.end>selection.start)return {value:value.slice(0,selection.start)+value.slice(selection.end),caret:selection.start};
-      if(selection.start<=0)return {value:value,caret:0};
-      return {value:value.slice(0,selection.start-1)+value.slice(selection.end),caret:selection.start-1};
-    }
-    const text=String(key||'');
-    return {value:value.slice(0,selection.start)+text+value.slice(selection.end),caret:selection.start+text.length};
-  }
-  function applySearchKeyInput(targetId,key){
-    const map={posSearch:'posSearch',productSearch:'productSearch',purchaseLowSearch:'purchaseLowSearch',purchaseEntrySearch:'purchaseEntrySearch',stocktakeSearch:'stocktakeSearch',inventorySearch:'inventorySearch'};
-    const stateKey=map[targetId];
-    if(!stateKey) return;
-    if(targetId==='productSearch'&&!closeProductEditorForListChange()) return;
-    const input=byId(targetId);
-    if(!input)return;
-    const next=nextSearchKeyValue(input,key);
-    state[stateKey]=next.value;
-    if(targetId==='productSearch'){ state.productSeries='all'; state.productFilter='all'; state.productVisible=PRODUCT_PAGE_SIZE; }
-    if(targetId==='purchaseEntrySearch') state.purchaseEntrySeries='all';
-    if(targetId==='stocktakeSearch') state.stocktakeSeries='all';
-    input.value=next.value;
-    if(document.activeElement===input){try{input.setSelectionRange(next.caret,next.caret);}catch(error){}}
-    scheduleLiveSearchRender(targetId,next.value,false);
-  }
-  function enhanceMobileNumberInputs(scope){
-    if(!isCompactMobile()) return;
-    const root=scope||document;
-    queryAll('input[type="number"]',root).forEach(function(input){
-      const step=clean(input.getAttribute('step'));
-      const decimal=!!(step && step!=='1');
-      input.setAttribute('inputmode',decimal?'decimal':'numeric');
-      if(!decimal) input.setAttribute('pattern','[0-9]*');
-    });
-  }
-  function recentActivity(){
-    const rows=[];
-    state.sales.forEach(function(x){ rows.push({date:x.soldAt,type:'ç¾å ´éŠ·å”®',icon:'ï¼„',title:x.saleNo,sub:money(x.total)}); });
-    state.incomes.forEach(function(x){ rows.push({date:x.occurredAt,type:'å¿«é€Ÿæ”¶å…¥',icon:'ï¼‹',title:x.category,sub:money(x.amount)}); });
-    state.purchases.forEach(function(x){ rows.push({date:x.receivedAt,type:'é€²è²¨å…¥åº«',icon:'â‡§',title:x.purchaseNo,sub:money(x.totalCost)}); });
-    state.cases.forEach(function(x){ rows.push({date:x.updatedAt||x.createdAt,type:'æ¡ˆä»¶',icon:'â–£',title:x.name,sub:'å·²æ”¶ '+money(x.receivedAmount)}); });
-    return rows.sort(function(a,b){ return (dateFrom(b.date)||0)-(dateFrom(a.date)||0); }).slice(0,8);
-  }
-  function overviewBounds(){
-    const now=new Date();let start=null,end=null,label='ä»Šå¤©';
-    if(state.overviewRange==='today'){const selected=new Date(overviewDateKey()+'T00:00:00');start=startOfDay(selected);end=endOfDay(selected);label=overviewDateLabel(overviewDateKey());}
-    else if(state.overviewRange==='month'){
-      const currentKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-      const selected=/^\d{4}-(0[1-9]|1[0-2])$/.test(clean(state.overviewMonth))&&state.overviewMonth<=currentKey?state.overviewMonth:currentKey;
-      const parts=selected.split('-').map(Number);state.overviewMonth=selected;
-      start=new Date(parts[0],parts[1]-1,1);end=selected===currentKey?endOfDay(now):endOfDay(new Date(parts[0],parts[1],0));label=selected===currentKey?'æœ¬æœˆ':parts[0]+' å¹´ '+parts[1]+' æœˆ';
-    }
-    else if(state.overviewRange==='year'){start=new Date(now.getFullYear(),0,1);end=endOfDay(new Date(now.getFullYear(),11,31));label='ä»Šå¹´';}
-    else{label='è‡ªè¨‚å€é–“';if(state.overviewFrom)start=new Date(state.overviewFrom+'T00:00:00');if(state.overviewTo)end=new Date(state.overviewTo+'T23:59:59');}
-    return {start:start,end:end,label:label};
-  }
-  function operatingExpenseDepartmentKey(){return state.operatingExpenseDepartment==='academy'?'academy':'store';}
-  function operatingExpenseDepartmentMeta(key){return OPERATING_EXPENSE_DEPARTMENTS.find(function(row){return row.id===key;})||OPERATING_EXPENSE_DEPARTMENTS[0];}
-  function operatingExpenseSettingsForDepartment(key){return normalizeOperatingExpenseSettings(state.operatingExpenseSettings).departments[key==='academy'?'academy':'store'];}
-  function operatingExpenseRecordsForDepartment(key){return state.expenses.filter(function(row){return (clean(row.department||row.departmentKey)||'store')===(key==='academy'?'academy':'store');});}
-  function normalizedOperatingExpenseCategory(value){const category=clean(value)||'å…¶ä»–æ”¯å‡º';return category==='å·¥è®€ç”Ÿè–ªè³‡'||category==='å°ˆè·å“¡å·¥è–ªè³‡'?'è–ªè³‡':category;}
-  function tagOperatingExpenseRows(rows,key){const meta=operatingExpenseDepartmentMeta(key);return (rows||[]).map(function(row){return Object.assign({},row,{category:normalizedOperatingExpenseCategory(row.category),department:key,departmentLabel:meta.label,departmentShortLabel:meta.shortLabel});});}
-  function payrollEmployeeId(row){return clean(row&&(row.employeeId||row.userId||row.id||row.__id));}
-  function payrollEmployeeName(row){return clean(row&&(row.name||row.displayName||row.employeeName||row['å§“å']))||payrollEmployeeId(row)||'æœªå‘½åå“¡å·¥';}
-  function payrollEmployeeType(row){const value=lower(row&&(row.identityType||row.employeeType||row.type||row['èº«åˆ†é¡žåž‹']));if(value==='external'||value.includes('å¤–è˜'))return'external';if(value==='parttime'||value.includes('å·¥è®€')||row&&row.isPartTime===true)return'parttime';if(value==='staff'||value.includes('å°ˆè·')||value.includes('æ­£è·'))return'staff';return'';}
-  function payrollDepartment(row,employee){return clean(row&&(row.costDepartment||row.expenseDepartment)||employee&&(employee.costDepartment||employee.expenseDepartment))==='academy'?'academy':'store';}
-  function payrollDateKey(value){const engine=operatingExpenseEngine(),key=engine.dateKeyFromValue?engine.dateKeyFromValue(value):dateText(value);return /^\d{4}-\d{2}-\d{2}$/.test(clean(key))?clean(key):'';}
-  function payrollEffectiveDate(row){return payrollDateKey(row&&(row.effectiveDate||row.salaryEffectiveDate||row['ç”Ÿæ•ˆæ—¥æœŸ']))||'2026-07-01';}
-  function payrollLineItemsTotal(value){return (Array.isArray(value)?value:[]).reduce(function(total,item){const raw=typeof item==='number'?item:(item&&typeof item==='object'?(item.amount||item.value||item.money||item.total||item['é‡‘é¡']):0),number=Number(String(raw==null?'':raw).replace(/,/g,''));return total+(Number.isFinite(number)?number:0);},0);}
-  function payrollAmount(value){const number=Number(String(value==null?'':value).replace(/,/g,''));return Number.isFinite(number)?Math.max(0,Math.round(number)):0;}
-  function payrollStatusActive(value){return value===true||['åœ¨ä¿','å·²æŠ•ä¿','æŠ•ä¿','åŠ ä¿','æœ‰æ•ˆ','æ˜¯','active','true','1','enabled'].includes(clean(value).toLowerCase());}
-  function payrollFirstAmount(row,keys){for(let i=0;i<keys.length;i+=1){const value=row&&row[keys[i]],amount=payrollAmount(value);if(amount>0)return amount;}return 0;}
-  function payrollPlanSalary(row,directKeys,planKeys){const direct=payrollFirstAmount(row,directKeys);if(direct)return direct;for(let i=0;i<planKeys.length;i+=1){const text=clean(row&&row[planKeys[i]]).replace(/,/g,''),matches=text.match(/\d+(?:\.\d+)?/g);if(matches&&matches.length){const amount=payrollAmount(matches[matches.length-1]);if(amount)return amount;}}return 0;}
-  function payrollLaborInsuredSalary(row){return payrollPlanSalary(row,['laborInsuredSalary','laborSalary','laborInsuranceSalary','å‹žä¿æŠ•ä¿è–ªè³‡'],['laborPlan','laborPlanCode','laborInsuranceLevel','laborLevel','å‹žä¿ç´šè·']);}
-  function payrollHealthInsuredSalary(row){return payrollPlanSalary(row,['healthInsuredSalary','healthSalary','healthInsuranceSalary','å¥ä¿æŠ•ä¿è–ªè³‡'],['healthPlan','healthPlanCode','healthInsuranceLevel','healthLevel','å¥ä¿ç´šè·']);}
-  function payrollLaborEmployerPay(row){const saved=payrollFirstAmount(row,['laborEmployerPay','laborInsuranceEmployerPay','å‹žä¿å…¬å¸è² æ“”']);if(saved)return saved;if(!payrollStatusActive(row&&(row.laborStatus||row.laborInsuranceStatus)))return 0;const salary=payrollLaborInsuredSalary(row);return salary?payrollAmount(salary*0.115*0.70)+payrollAmount(salary*0.01*0.70):0;}
-  function payrollHealthEmployerPay(row){const saved=payrollFirstAmount(row,['healthEmployerPay','healthInsuranceEmployerPay','å¥ä¿å…¬å¸è² æ“”']);if(saved)return saved;if(!payrollStatusActive(row&&(row.healthStatus||row.healthInsuranceStatus)))return 0;const salary=payrollHealthInsuredSalary(row);return salary?payrollAmount(salary*0.0517*0.60*1.56):0;}
-  function payrollRetirementBase(row,type){const saved=payrollFirstAmount(row,['laborRetirementSalary','retirementSalary','laborPensionSalary','monthlyRetirementWage','å‹žé€€æœˆæç¹³å·¥è³‡']);if(saved)return saved;if(type==='parttime')return payrollFirstAmount(row,['averageSalary','parttimeAverageSalary','ç›®å‰ç”³å ±æœˆå¹³å‡è–ªè³‡ç¸½é¡'])||payrollLaborInsuredSalary(row);return payrollFirstAmount(row,['baseSalary','staffBaseSalary','monthlySalary','salary','æœ¬è–ª'])||payrollLaborInsuredSalary(row);}
-  function payrollRetirementEmployerPay(row,type){const saved=payrollFirstAmount(row,['laborRetirementEmployerAmount','retirementEmployerAmount','é›‡ä¸»æç¹³é‡‘é¡']);if(saved)return saved;const base=payrollRetirementBase(row,type),rate=payrollFirstAmount(row,['laborRetirementEmployerRate','retirementEmployerRate'])||6;return base?payrollAmount(base*rate/100):0;}
-  function payrollEmployeeRows(){
-    const byId=new Map();
-    (state.employees||[]).forEach(function(row){const id=payrollEmployeeId(row);if(id)byId.set(id,row);});
-    return Array.from(byId.entries()).map(function(entry){return {id:entry[0],employee:entry[1]};});
-  }
-  function salaryConfigRowsForEmployee(id,employee){
-    const employeeEmail=lower(employee&&(employee.email||employee.Email)),matches=function(row){const rowId=payrollEmployeeId(row),rowEmail=lower(row&&(row.email||row.Email));return rowId===id||(!rowId&&employeeEmail&&rowEmail===employeeEmail);},rows=[];
-    (state.employeeSalaryConfigHistory||[]).filter(matches).forEach(function(row){rows.push(Object.assign({__salarySourceRank:1},row));});
-    (state.employeeSalaryConfigs||[]).filter(matches).forEach(function(row){rows.push(Object.assign({__salarySourceRank:2},row));});
-    if(employee&&['baseSalary','hourlyRate','laborEmployerPay','healthEmployerPay','laborRetirementEmployerAmount','retirementEmployerAmount'].some(function(key){return employee[key]!=null&&employee[key]!=='';}))rows.push(Object.assign({__salarySourceRank:0},employee));
-    return rows.sort(function(a,b){return payrollEffectiveDate(a).localeCompare(payrollEffectiveDate(b))||Number(a.__salarySourceRank||0)-Number(b.__salarySourceRank||0);});
-  }
-  function effectiveSalaryConfig(id,employee,dateKey){
-    const rows=salaryConfigRowsForEmployee(id,employee).filter(function(row){return payrollEffectiveDate(row)<=dateKey;});
-    return rows.length?rows[rows.length-1]:null;
-  }
-  function employeeWorksInMonth(employee,month){
-    const status=lower(employee&&(employee.accountStatus||employee.status||employee['å¸³è™Ÿç‹€æ…‹']));
-    if(['rejected','deleted','cancelled','ä½œå»¢','é§å›ž'].includes(status))return false;
-    const hire=payrollDateKey(employee&&(employee.hireDate||employee.startDate||employee.joinDate||employee['åˆ°è·æ—¥'])),leave=payrollDateKey(employee&&(employee.terminationDate||employee.leaveDate||employee.endDate||employee['é›¢è·æ—¥']));
-    const last=month+'-'+String(new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate()).padStart(2,'0');
-    return (!hire||hire<=last)&&(!leave||leave>=month+'-01');
-  }
-  function allocatePayrollMonthly(rows,total,month,category,sourceId,note,department){
-    const engine=operatingExpenseEngine();
-    (engine.allocateMonthlyAmount?engine.allocateMonthlyAmount(payrollAmount(total),month,[1]):[]).forEach(function(day){rows.push({dateKey:day.dateKey,amount:day.amount,category:category,sourceType:'payroll',sourceId:sourceId,expenseMonth:month,allocationMode:'monthly',paymentDateKey:'',note:note,department:department});});
-  }
-  function automaticPayrollLedger(startValue,endValue){
-    const engine=operatingExpenseEngine(),startKey=payrollDateKey(startValue),endKey=payrollDateKey(endValue),rows=[],employeeRows=payrollEmployeeRows(),employeesById=new Map(employeeRows.map(function(entry){return [entry.id,entry.employee];}));
-    if(!startKey||!endKey||startKey>endKey||endKey<'2026-07-01')return rows;
-    const startMonth=startKey.slice(0,7)<'2026-07'?'2026-07':startKey.slice(0,7),endMonth=endKey.slice(0,7),months=engine.monthKeysBetween?engine.monthKeysBetween(startMonth,endMonth):[startMonth];
-    employeeRows.forEach(function(entry){
-      const id=entry.id,employee=entry.employee,type=payrollEmployeeType(employee),name=payrollEmployeeName(employee);
-      if(!['staff','parttime'].includes(type))return;
-      months.forEach(function(month){
-        if(!employeeWorksInMonth(employee,month))return;
-        const monthEnd=month+'-'+String(new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate()).padStart(2,'0'),config=effectiveSalaryConfig(id,employee,monthEnd);
-        if(!config)return;
-        const department=payrollDepartment(config,employee),configType=type;
-        if(configType==='staff'){
-          const base=payrollAmount(config.baseSalary||config.staffBaseSalary||config.monthlySalary||config.salary),allowance=payrollLineItemsTotal(config.jobAllowances||config.jobAllowanceItems)+payrollLineItemsTotal(config.allowances||config.allowanceItems),salary=payrollAmount(base+allowance);
-          if(salary)allocatePayrollMonthly(rows,salary,month,'è–ªè³‡','payroll-staff-'+id+'-'+month,name+'ï½œæœ¬è–ªèˆ‡å›ºå®šåŠ çµ¦',department);
-        }
-        const laborSalary=payrollLaborInsuredSalary(config),healthSalary=payrollHealthInsuredSalary(config),retirementBase=payrollRetirementBase(config,configType);
-        const costs=[
-          {category:'å‹žä¿å…¬å¸è² æ“”',amount:payrollLaborEmployerPay(config),note:laborSalary?name+'ï½œæŠ•ä¿è–ªè³‡ '+money(laborSalary):name+'ï½œè–ªè³‡æŠ•ä¿è¨­å®š'},
-          {category:'å¥ä¿å…¬å¸è² æ“”',amount:payrollHealthEmployerPay(config),note:healthSalary?name+'ï½œæŠ•ä¿è–ªè³‡ '+money(healthSalary):name+'ï½œè–ªè³‡æŠ•ä¿è¨­å®š'},
-          {category:'å‹žé€€å…¬å¸æç¹³',amount:payrollRetirementEmployerPay(config,configType),note:retirementBase?name+'ï½œæœˆæç¹³å·¥è³‡ '+money(retirementBase)+' Ã— 6%':name+'ï½œè–ªè³‡æŠ•ä¿è¨­å®š'},
-          {category:'è·ç½ä¿éšª',amount:config.occupationalInsuranceEmployerPay||config.occupationalEmployerPay,note:name+'ï½œè–ªè³‡æŠ•ä¿è¨­å®š'}
-        ];
-        costs.forEach(function(cost){const amount=payrollAmount(cost.amount);if(amount)allocatePayrollMonthly(rows,amount,month,cost.category,'payroll-cost-'+id+'-'+hashText(cost.category)+'-'+month,cost.note,department);});
-      });
-    });
-    (state.parttimeRecords||[]).forEach(function(record){
-      const dateKey=payrollDateKey(record.workDate||record.date||record['æ—¥æœŸ']),status=lower(record.status||record['ç‹€æ…‹']),payable=lower(record.payable||record['æ˜¯å¦è¨ˆè–ª']);
-      if(!dateKey||dateKey<startKey||dateKey>endKey||dateKey<'2026-07-01'||['rejected','deleted','cancelled','voided','pending','ä½œå»¢','é§å›ž','å–æ¶ˆ','å¾…å¯©æ ¸','å¾…ä¸»ç®¡å¯©æ ¸'].includes(status)||record.payable===false||['false','no','å¦','ä¸è¨ˆè–ª','ä¸æ”¯è–ª'].includes(payable))return;
-      const id=payrollEmployeeId(record),employee=employeesById.get(id),config=employee?(effectiveSalaryConfig(id,employee,dateKey)||{}):{},rate=payrollAmount(record.hourlyRate||record['æ™‚è–ª']||config.hourlyRate),hours=Number(record.totalHours||record.hours||record['ç¸½æ™‚æ•¸']||record['æ™‚æ•¸']||0)+(record.halfHour===true&&!record.totalHours?0.5:0),gross=payrollAmount(record.grossPay||record['ç•¶ç­†æ¯›é¡']||(Number.isFinite(hours)?hours*rate:0));
-      if(!id||!employee||payrollEmployeeType(employee)!=='parttime'||!gross)return;
-      rows.push({dateKey:dateKey,amount:gross,category:'è–ªè³‡',sourceType:'payroll',sourceId:'payroll-parttime-'+clean(record.recordId||record.__id||id+'-'+dateKey),expenseMonth:dateKey.slice(0,7),allocationMode:'actual',paymentDateKey:dateKey,note:payrollEmployeeName(employee)+'ï½œå·¥è®€å¯¦éš›æ™‚æ•¸',department:payrollDepartment(config,employee)});
-    });
-    return rows.filter(function(row){return row.dateKey>=startKey&&row.dateKey<=endKey;}).sort(function(a,b){return a.dateKey.localeCompare(b.dateKey)||a.category.localeCompare(b.category)||a.sourceId.localeCompare(b.sourceId);});
-  }
-  function automaticPayrollRowsForDepartment(key,bounds){
-    const meta=operatingExpenseDepartmentMeta(key);
-    return automaticPayrollLedger(bounds.start,bounds.end).filter(function(row){return row.department===key;}).map(function(row){return Object.assign({},row,{department:key,departmentLabel:meta.label,departmentShortLabel:meta.shortLabel});});
-  }
-  function operatingExpenseLedgerForDepartmentBounds(key,bounds){
-    if(!bounds||!bounds.start||!bounds.end)return [];
-    const now=endOfDay(new Date()),end=bounds.includeFuture?bounds.end:(bounds.end>now?now:bounds.end);if(bounds.start>end)return [];
-    const base=tagOperatingExpenseRows(operatingExpenseEngine().buildLedger({settings:operatingExpenseSettingsForDepartment(key),expenses:operatingExpenseRecordsForDepartment(key),start:bounds.start,end:end}),key),automatic=automaticPayrollRowsForDepartment(key,{start:bounds.start,end:end}),automaticKeys=new Set(automatic.map(function(row){return row.category+'|'+row.expenseMonth;})),managed=new Set(['è–ªè³‡','å‹žä¿å…¬å¸è² æ“”','å¥ä¿å…¬å¸è² æ“”','å‹žé€€å…¬å¸æç¹³','è·ç½ä¿éšª']);
-    return base.filter(function(row){return !managed.has(row.category)||!automaticKeys.has(row.category+'|'+row.expenseMonth);}).concat(automatic).sort(function(a,b){return a.dateKey.localeCompare(b.dateKey)||a.category.localeCompare(b.category)||a.sourceId.localeCompare(b.sourceId);});
-  }
-  function operatingExpenseLedgerForBounds(bounds){
-    return operatingExpenseLedgerForDepartmentBounds('store',bounds).concat(operatingExpenseLedgerForDepartmentBounds('academy',bounds));
-  }
-  function renderOverview(){
-    const bounds=overviewBounds();
-    const sales=state.sales.filter(function(sale){const date=dateFrom(sale.soldAt);return date&&(!bounds.start||date>=bounds.start)&&(!bounds.end||date<=bounds.end);});
-    let rows=[];
-    sales.forEach(function(sale){(sale.items||[]).forEach(function(item){rows.push({date:sale.soldAt,saleNo:sale.saleNo,name:clean(item.name)||'æœªå‘½åå•†å“',sku:clean(item.sku),qty:Number(item.qty||1),amount:Number(item.lineTotal!=null?item.lineTotal:Number(item.qty||1)*Number(item.unitPrice||0)),cost:Number(item.lineCost||0)});});});
-    const term=lower(state.overviewSearch).trim();
-    if(term)rows=rows.filter(function(row){return lower([row.name,row.sku,row.saleNo].join(' ')).includes(term);});
-    rows.sort(function(a,b){return (dateFrom(b.date)||0)-(dateFrom(a.date)||0);});
-    const revenue=term?sum(rows,function(row){return row.amount;}):sum(sales,function(sale){return sale.total;});
-    const cost=term?sum(rows,function(row){return row.cost;}):sum(sales,function(sale){return sale.costTotal;});
-    const profit=revenue-cost;
-    const qty=sum(rows,function(row){return row.qty;});
-    const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">ä»Šå¤©</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">æœˆä»½</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">ä»Šå¹´</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">è‡ªè¨‚å€é–“</button></div>';
-    const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>æŸ¥çœ‹æœˆä»½<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
-    const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>é–‹å§‹æ—¥æœŸ<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>çµæŸæ—¥æœŸ<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
-    const list=rows.length?'<div class="ops-today-list">'+rows.map(function(row){return '<div class="ops-today-row"><div class="no-image">å•†å“</div><div><b>'+escapeHtml(row.name)+'</b><small>'+escapeHtml((row.sku?'ç·¨è™Ÿ '+row.sku+'ãƒ»':'')+'æ•¸é‡ '+row.qty+'ãƒ»'+dateTimeText(row.date))+'</small></div><strong>'+money(row.amount)+'</strong></div>';}).join('')+'</div>':emptyHtml('é€™æ®µæœŸé–“æ²’æœ‰å•†å“éŠ·å”®',term?'è«‹æ›´æ›æœå°‹æ–‡å­—ã€‚':'å®Œæˆç¾å ´å•†å“éŠ·å”®å¾Œæœƒé¡¯ç¤ºã€‚');
-    return tabs+monthPicker+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi(bounds.label+'éŠ·å”®æ”¶å…¥',money(revenue),term?rows.length+' å€‹ç¬¦åˆå“é …':sales.length+' ç­†éŠ·å”®','ï¼„')+kpi('å•†å“æˆæœ¬',money(cost),'å·²å”®å•†å“æˆæœ¬','æˆæœ¬')+kpi(bounds.label+'è³ºå¤šå°‘',money(profit),'éŠ·å”®æ”¶å…¥ï¼å•†å“æˆæœ¬','â†—')+kpi('è³£å‡ºæ•¸é‡',formatNumber(qty),term?'ç¬¦åˆç›®å‰æœå°‹':'å…¨éƒ¨è³£å‡ºæ•¸é‡','ä»¶')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>'+bounds.label+'è³£äº†ä»€éº¼</h2></div><button class="ops-button small primary" data-nav="sales">å‰å¾€éŠ·å”®</button></div><input class="ops-input ops-overview-search" id="overviewSearch" placeholder="æœå°‹å•†å“åç¨±ã€ç·¨è™Ÿæˆ–éŠ·å”®å–®è™Ÿ" value="'+attr(state.overviewSearch)+'">'+list+'</section>';
-  }
-  function renderOverviewV6(){
-    const bounds=overviewBounds();
-    function inRange(value){const date=dateFrom(value);return date&&(!bounds.start||date>=bounds.start)&&(!bounds.end||date<=bounds.end);}
-    const sales=state.sales.filter(function(sale){return inRange(sale.soldAt);});
-    const incomes=state.incomes.filter(function(income){return inRange(income.occurredAt);});
-    const rentals=state.rentals.filter(function(rental){return inRange(rental.incomeRecognizedAt);});
-    const returns=state.salesReturns.filter(function(row){return inRange(row.createdAt);});
-    const educationRows=state.educationDaily.filter(function(row){return inRange(row.businessDate||row.dateKey);});
-    let productRows=[];
-    sales.forEach(function(sale){
-      const saleSubtotal=Number(sale.subtotal||0)||sum(sale.items||[],function(item){return Number(item.lineTotal!=null?item.lineTotal:Number(item.qty||1)*Number(item.unitPrice||0));});
-      const ratio=saleSubtotal>0?Math.max(0,Number(sale.total||0))/saleSubtotal:1;
-      (sale.items||[]).forEach(function(item){
-        const lineTotal=Number(item.lineTotal!=null?item.lineTotal:Number(item.qty||1)*Number(item.unitPrice||0));
-        productRows.push({type:'product',date:sale.soldAt,no:sale.saleNo,name:clean(item.name)||'æœªå‘½åå•†å“',sku:clean(item.sku),qty:Number(item.qty||1),amount:lineTotal*ratio,cost:Number(item.lineCost||0)});
-      });
-    });
-    let incomeRows=incomes.map(function(income){const repair=income.category==='ç¶­ä¿®æ”¶å…¥';return {type:repair?'repair':'other',date:income.occurredAt,no:income.incomeNo,name:clean([income.category,income.customerName].filter(Boolean).join('ï½œ'))||'å…¶ä»–æ”¶å…¥',sku:'',qty:0,amount:Number(income.amount||0),cost:0};});
-    let rentalRows=rentals.map(function(rental){return {type:'rental',date:rental.incomeRecognizedAt,no:rental.contractNo,name:clean([rental.customer,rental.equipment].filter(Boolean).join('ï½œ'))||'ç§Ÿè³ƒæ”¶ç›Š',sku:'',qty:0,amount:Number(rental.incomeAmount||0),cost:0};});
-    const productRevenue=sum(productRows,function(row){return row.amount;});
-    const repairRevenue=sum(incomeRows.filter(function(row){return row.type==='repair';}),function(row){return row.amount;});
-    const otherRevenue=sum(incomeRows.filter(function(row){return row.type==='other';}),function(row){return row.amount;});
-    const rentalRevenue=sum(rentalRows,function(row){return row.amount;});
-    const revenue=productRevenue+repairRevenue+otherRevenue+rentalRevenue;
-    const cost=Math.max(0,sum(productRows,function(row){return row.cost;})-sum(returns,function(row){return row.restockedCost||0;}));
-    const profit=revenue-cost;
-    const qty=sum(productRows,function(row){return row.qty;});
-    const educationSessions=[];
-    educationRows.forEach(function(row){(row.sessions||[]).forEach(function(session){educationSessions.push(session);});});
-    const educationSummary={
-      lessonCount:educationSessions.length,
-      lessonGross:sum(educationSessions,function(session){return session.lessonPrice;}),
-      teacherPayable:sum(educationSessions,function(session){return session.teacherAmount;}),
-      schoolShare:sum(educationSessions,function(session){return hasValue(session.schoolShare)?session.schoolShare:Number(session.lessonPrice||0)-Number(session.teacherAmount||0);}),
-      tuitionReceived:sum(educationRows,function(row){return row.summary.tuitionReceived;}),
-      roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
-    };
-    const teacherMap=new Map();
-    educationSessions.forEach(function(session){
-        const key=clean(session.teacherId)||clean(session.teacherName)||'æœªå‘½å';
-        const current=teacherMap.get(key)||{key:key,name:clean(session.teacherName)||'æœªå‘½åè€å¸«',lessonCount:0,amount:0};
-        current.lessonCount+=1;
-        current.amount+=Number(session.teacherAmount||0);
-        teacherMap.set(key,current);
-    });
-    const teacherRows=Array.from(teacherMap.values()).sort(function(a,b){return b.amount-a.amount;});
-    const tabs='<div class="ops-range-tabs"><button class="'+(state.overviewRange==='today'?'active':'')+'" data-action="overview-range" data-range="today">ä»Šå¤©</button><button class="'+(state.overviewRange==='month'?'active':'')+'" data-action="overview-range" data-range="month">æœˆä»½</button><button class="'+(state.overviewRange==='year'?'active':'')+'" data-action="overview-range" data-range="year">ä»Šå¹´</button><button class="'+(state.overviewRange==='custom'?'active':'')+'" data-action="overview-range" data-range="custom">è‡ªè¨‚å€é–“</button></div>';
-    const monthPicker=state.overviewRange==='month'?'<div class="ops-range-custom"><label>æŸ¥çœ‹æœˆä»½<input class="ops-input" id="overviewMonth" type="month" max="'+attr(dateText(new Date()).slice(0,7))+'" value="'+attr(state.overviewMonth)+'"></label></div>':'';
-    const custom=state.overviewRange==='custom'?'<div class="ops-range-custom"><label>é–‹å§‹æ—¥æœŸ<input class="ops-input" id="overviewFrom" type="date" value="'+attr(state.overviewFrom)+'"></label><label>çµæŸæ—¥æœŸ<input class="ops-input" id="overviewTo" type="date" value="'+attr(state.overviewTo)+'"></label></div>':'';
-    const educationSyncBusy=state.injiaoyunManualRequestPending||injiaoyunSyncIsBusy(state.injiaoyunCloudSync);
-    const teacherHtml=teacherRows.length?'<div class="ops-education-teachers">'+teacherRows.map(function(teacher){return '<button type="button" data-action="education-teacher-detail" data-teacher-key="'+attr(teacher.key)+'"><b>'+escapeHtml(teacher.name)+'</b><span>'+formatNumber(teacher.lessonCount)+' å ‚</span><strong>'+money(teacher.amount)+'</strong></button>';}).join('')+'</div>':educationRows.length?emptyHtml('æ­¤æœŸé–“æ²’æœ‰ä¸Šèª²è³‡æ–™',''):emptyHtml('å°šæœªå–å¾—èª²å‹™è³‡æ–™','è«‹æŒ‰ä¸Šæ–¹æ‰‹å‹•åŒæ­¥ï¼Œæˆ–ç­‰å¾…æ¯å¤© 22:00 è‡ªå‹•åŒæ­¥ã€‚');
-    const educationHtml='<section class="ops-card ops-education-section"><div class="ops-card-head"><div><h2>éŸ³æ•™é›²èª²å‹™</h2></div><button class="ops-button primary" data-action="injiaoyun-import" '+(educationSyncBusy?'disabled':'')+'>'+(educationSyncBusy?'åŒæ­¥ä¸­â€¦':'æ‰‹å‹•åŒæ­¥')+'</button></div><div class="ops-kpi-grid ops-education-kpis">'+kpi('ä¸Šèª²å ‚æ•¸',formatNumber(educationSummary.lessonCount),'','å ‚')+kpi('èª²å ‚é‡‘é¡',money(educationSummary.lessonGross),'','èª²')+kpi('èª²å ‚æ‹†å¸³',money(educationSummary.teacherPayable),'','å¸«')+kpi('æ•™å®¤ä¿ç•™',money(educationSummary.schoolShare),'','ç•™')+kpi('å­¸è²»å¯¦æ”¶',money(educationSummary.tuitionReceived),'','æ”¶')+kpi('æ•™å®¤ç§Ÿç”¨',money(educationSummary.roomRentalReceived),'','ç§Ÿ')+'</div>'+teacherHtml+'</section>';
-    return tabs+monthPicker+custom+'<div class="ops-kpi-grid ops-today-kpis">'+kpi('å•†å“éŠ·å”®',money(productRevenue),'','ï¼„')+kpi('ç¶­ä¿®æ”¶å…¥',money(repairRevenue),'','ä¿®')+kpi('å…¶ä»–æ”¶å…¥',money(otherRevenue),'','ï¼‹')+kpi('ç§Ÿè³ƒæ”¶ç›Š',money(rentalRevenue),'','ç§Ÿ')+kpi('ç¸½æ”¶å…¥',money(revenue),'','åˆ')+kpi('å•†å“æˆæœ¬',money(cost),'','æˆæœ¬')+kpi(bounds.label+'è³ºå¤šå°‘',money(profit),'','â†—')+kpi('è³£å‡ºæ•¸é‡',formatNumber(qty),'','ä»¶')+'</div>'+educationHtml;
-  }
-
-function renderOverviewV7(){
-  const bounds=overviewBounds();
-  function inRange(value){const date=dateFrom(value);return date&&(!bounds.start||date>=bounds.start)&&(!bounds.end||date<=bounds.end);}
-  const sales=state.sales.filter(function(sale){return inRange(sale.soldAt);});
-  const incomes=state.incomes.filter(function(income){return inRange(income.occurredAt);});
-  const rentals=state.rentals.filter(function(rental){return rentalIsEstablished(rental)&&inRange(rental.incomeRecognizedAt);});
-  const returns=state.salesReturns.filter(function(row){return inRange(row.createdAt);});
-  const paymentsInRange=state.receivablePayments.filter(function(payment){return inRange(payment.paidAt);});
-  const paymentByIncome=new Map();
-  state.receivablePayments.forEach(function(payment){
-    if(payment.incomeId)paymentByIncome.set(payment.incomeId,Number(paymentByIncome.get(payment.incomeId)||0)+Number(payment.amount||0));
-  });
-  const recognizedSales=sales.filter(function(sale){return sale.saleType!=='internalUse';});
-  const productRevenue=sum(recognizedSales,function(sale){return Math.max(0,Number(sale.total||sale.orderTotal||0));});
-  const incomeCash={repair:0,other:0,pianoRental:0,refund:0};
-  function incomeKind(income){const category=clean(income&&income.category);if(category.includes('å•†å“é€€è²¨é€€æ¬¾'))return 'refund';if(category==='é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥')return 'pianoRental';if(category.includes('ç¶­ä¿®'))return 'repair';return 'other';}
-  function addIncomeCash(income,amount){incomeCash[incomeKind(income)]+=Number(amount||0);}
-  incomes.forEach(function(income){addIncomeCash(income,Number(income.receivedAmount||0)-Number(paymentByIncome.get(income.id)||0));});
-  paymentsInRange.filter(function(payment){return payment.incomeId||payment.sourceType==='income';}).forEach(function(payment){addIncomeCash(state.incomes.find(function(income){return income.id===payment.incomeId;})||{},payment.amount);});
-  const repairRevenue=incomeCash.repair,otherRevenue=incomeCash.other,pianoRentalRevenue=incomeCash.pianoRental,returnRefund=Math.max(0,-incomeCash.refund);
-  const storeRevenue=productRevenue+repairRevenue+otherRevenue-returnRefund;
-  const productCost=sum(recognizedSales,function(sale){return sale.costTotal;})-sum(returns,function(row){return row.restockedCost||0;});
-  const storeBalance=storeRevenue-productCost;
-
-  const contractRentalRevenue=sum(rentals,function(rental){return rental.incomeAmount;});
-  const rentalRevenue=contractRentalRevenue+pianoRentalRevenue;
-  const rentalCountLabel=state.overviewRange==='month'?(Number((state.overviewMonth||'').slice(5,7))||new Date().getMonth()+1)+' æœˆç§Ÿè³ƒä»¶æ•¸':state.overviewRange==='today'?'ä»Šæ—¥ç§Ÿè³ƒä»¶æ•¸':state.overviewRange==='year'?'ä»Šå¹´ç§Ÿè³ƒä»¶æ•¸':'å€é–“ç§Ÿè³ƒä»¶æ•¸';
-
-  const educationRows=state.educationDaily.filter(function(row){return inRange(row.businessDate||row.dateKey);}),educationSessions=[];
-  educationRows.forEach(function(row){(row.sessions||[]).forEach(function(session){educationSessions.push(session);});});
-  const educationSummary={
-    lessonCount:educationSessions.length,
-    lessonGross:sum(educationSessions,function(session){return session.lessonPrice;}),
-    teacherPayable:sum(educationSessions,function(session){return session.teacherAmount;}),
-    schoolShare:sum(educationSessions,function(session){return hasValue(session.schoolShare)?session.schoolShare:Number(session.lessonPrice||0)-Number(session.teacherAmount||0);}),
-    tuitionReceived:sum(educationRows,function(row){return row.summary.tuitionReceived;}),
-    roomRentalReceived:sum(educationRows,function(row){return row.summary.roomRentalReceived;})
-  };
-  const educationCash=educationSummary.tuitionReceived+educationSummary.roomRentalReceived;
-  const educationRetainedWithRental=educationSummary.schoolShare+educationSummary.roomRentalReceived;
-  const networkRows=visiblePlatformOrders(state.platformOrders).filter(function(row){return platformOrderIsEffective(row)&&inRange(row.orderedAt);}),networkFeeMetrics=platformFeeMetrics(networkRows);
-  const networkGross=networkFeeMetrics.gross,networkNet=networkFeeMetrics.net,networkCost=networkFeeMetrics.cost,networkProfit=networkFeeMetrics.profit;
-  const networkQty=sum(networkRows,function(row){return row.quantity;});
-  const networkOrderCount=new Set(networkRows.map(function(row){return row.platform+'|'+row.externalOrderNo;})).size;
-  const networkFees=networkFeeMetrics.variableFees;
-
-  const rangeControls=overviewRangeControlsHtml();
-  const sync=state.injiaoyunCloudSync||{};
-  const syncRange=clean(sync.lastStartDateKey)&&clean(sync.lastEndDateKey)?clean(sync.lastStartDateKey)+'ï½ž'+clean(sync.lastEndDateKey):'';
-  const syncStatus=lower(sync.status),syncBusy=state.injiaoyunManualRequestPending||injiaoyunSyncIsBusy(sync),syncStale=(syncStatus==='queued'||syncStatus==='running')&&!syncBusy;
-  let syncText='å°šæœªå–å¾—åŒæ­¥ç´€éŒ„';
-  if(syncStale)syncText='ä¸Šæ¬¡åŒæ­¥å¯èƒ½ä¸­æ–·æˆ–é€¾æ™‚ï¼Œå¯é‡æ–°æŒ‰ã€Œæ‰‹å‹•åŒæ­¥ã€ã€‚';
-  else if(syncStatus==='queued')syncText='æ‰‹å‹•åŒæ­¥å·²æŽ’éšŠï¼Œæ­£åœ¨ç­‰å¾…é›²ç«¯å·¥ä½œå•Ÿå‹•â€¦';
-  else if(syncStatus==='running')syncText='éŸ³æ•™é›²æ­£åœ¨åŒæ­¥ä¸­'+(clean(sync.currentStartDateKey)&&clean(sync.currentEndDateKey)?'ï½œè³‡æ–™ç¯„åœï¼š'+clean(sync.currentStartDateKey)+'ï½ž'+clean(sync.currentEndDateKey):'')+'â€¦';
-  else if(syncStatus==='error')syncText='åŒæ­¥å¤±æ•—'+(sync.lastFailedAt?'ï¼ˆ'+dateTimeText(sync.lastFailedAt)+'ï¼‰':'')+'ï¼š'+(clean(sync.lastError)||'è«‹æŸ¥çœ‹é›²ç«¯åŸ·è¡Œè¨˜éŒ„ã€‚').slice(0,180);
-  else if(syncStatus==='success'&&sync.lastSucceededAt)syncText='æœ€å¾ŒåŒæ­¥ï¼š'+dateTimeText(sync.lastSucceededAt)+(syncRange?'ï½œè³‡æ–™ç¯„åœï¼š'+syncRange:'')+(clean(sync.lastTrigger)==='manual'?'ï½œæ‰‹å‹•':'ï½œ22:00 è‡ªå‹•');
-
-  const allGrossProfit=storeBalance+networkProfit+rentalRevenue+educationRetainedWithRental;
-  const operatingExpenseRows=operatingExpenseLedgerForBounds(bounds);
-  const operatingExpenseTotal=sum(operatingExpenseRows,function(row){return row.amount;});
-  const netProfit=allGrossProfit-operatingExpenseTotal;
-  const syncAnomalies=platformSyncAnomalies(),syncAnomalyGroups=platformSyncAnomalyGroups(syncAnomalies),syncAnomalyCount=syncAnomalyGroups.length;
-  const pendingPlatformRows=visiblePlatformOrders(state.platformOrders).filter(function(row){return platformOrderNeedsAttention(row)&&clean(row.processingStatus)!=='manual-return-review';}),pendingPlatform=pendingPlatformRows.length;
-  const openReceivables=state.receivables.filter(function(row){return row.status!=='paid'&&Number(row.outstandingAmount||0)>0;});
-  const outstanding=sum(openReceivables,function(row){return row.outstandingAmount;});
-  const lowStock=state.catalog.filter(function(product){return product.initialized&&Number(product.currentStock||0)<=Number(product.safetyStock||0);});
-  const attentionKinds=(syncAnomalyCount?1:0)+(pendingPlatform?1:0)+(openReceivables.length?1:0)+(lowStock.length?1:0);
-  function summaryBox(label,value,kind){return '<div class="ops-v8-summary-box '+(kind||'')+'"><span>'+escapeHtml(label)+'</span><b>'+value+'</b></div>';}
-  function summaryAction(label,value,kind,action){return '<button type="button" class="ops-v8-summary-box ops-v8-summary-action '+(kind||'')+'" data-action="'+attr(action)+'"><span>'+escapeHtml(label)+'</span><b>'+value+'</b><small>é»žæ“ŠæŸ¥çœ‹æ”¯å‡ºè¡¨æ ¼</small></button>';}
-  function metricRow(label,value){return '<div class="ops-v8-metric-row"><span>'+escapeHtml(label)+'</span><b>'+value+'</b></div>';}
-  function metricAction(label,value,action){return '<button type="button" class="ops-v8-metric-row ops-v8-metric-action" data-action="'+attr(action)+'"><span>'+escapeHtml(label)+'</span><b>'+value+'</b></button>';}
-
-  const rangeHtml=rangeControls;
-  const heroHtml='<section class="ops-card ops-v8-overview-hero"><div class="ops-v8-hero-primary"><span>'+escapeHtml(bounds.label)+'é ä¼°æ·¨åˆ©</span><strong class="'+(netProfit<0?'negative':'')+'">'+money(netProfit)+'</strong><small>å››å¤§ç‡Ÿé‹æ¯›åˆ©ï¼ç‡Ÿé‹æ”¯å‡º</small></div><div class="ops-v8-hero-secondary">'+summaryBox('å››å¤§ç‡Ÿé‹æ¯›åˆ©',money(allGrossProfit),allGrossProfit<0?'warning':'success')+summaryAction('ç‡Ÿé‹æ”¯å‡º',money(operatingExpenseTotal),operatingExpenseTotal?'warning':'','operating-expense-detail')+'</div></section>';
-  function mobileProfitBox(label,value,nav,kind){
-    const tag=nav?'button':'div',navAttr=nav?' type="button" data-nav="'+attr(nav)+'"':'';
-    const valueClass=(value<0?' negative':'')+(Math.abs(Number(value)||0)>=100000?' is-wide':'');
-    return '<'+tag+' class="ops-mobile-profit-box '+attr(kind||'')+'"'+navAttr+'><span>'+escapeHtml(label)+'</span><strong class="'+valueClass.trim()+'">'+money(value)+'</strong></'+tag+'>';
-  }
-  function mobileExpenseBox(label,value){
-    return '<button type="button" class="ops-mobile-profit-box is-expense" data-action="operating-expense-detail"><span>'+escapeHtml(label)+'</span><strong>'+money(value)+'</strong></button>';
-  }
-  const mobileProfitHtml='<section class="ops-card ops-mobile-profit-card"><div class="ops-card-head"><div><h2>'+escapeHtml(bounds.label)+'æ¯›åˆ©èˆ‡æ·¨åˆ©</h2></div></div><div class="ops-mobile-profit-grid">'
-    +'<div class="ops-mobile-profit-section-label">ä¸»è¦çµæžœèˆ‡æ‰£é™¤</div><div class="ops-mobile-profit-summary">'
-    +mobileProfitBox('é ä¼°æ·¨åˆ©',netProfit,'','is-net')
-    +mobileProfitBox('å…¨éƒ¨æ¯›åˆ©',allGrossProfit,'','is-gross')
-    +mobileExpenseBox('ç‡Ÿé‹æ”¯å‡º',operatingExpenseTotal)
-    +'</div><div class="ops-mobile-profit-section-label">å„ç‡Ÿé‹æ¯›åˆ©</div><div class="ops-mobile-profit-channels">'
-    +mobileProfitBox('é–€å¸‚æ¯›åˆ©',storeBalance,'sales','is-store')
-    +mobileProfitBox('å¹³å°æ¯›åˆ©',networkProfit,'sync','is-platform')
-    +mobileProfitBox('èª²ç¨‹æ¯›åˆ©',educationRetainedWithRental,'course-calendar','is-course')
-    +mobileProfitBox('ç§Ÿç”¨æ¯›åˆ©',rentalRevenue,'rentals','is-rental')
-    +'</div>'
-    +'</div></section>';
-  const mobileQuickNavHtml='<section class="ops-card ops-mobile-direct-card"><div class="ops-card-head"><div><h2>å¸¸ç”¨åŠŸèƒ½</h2></div></div><div class="ops-mobile-direct-nav">'
-    +'<button type="button" class="ops-button" data-nav="overview">ç‡Ÿé‹ç¸½è¦½</button>'
-    +'<button type="button" class="ops-button" data-nav="course-calendar">èª²ç¨‹æ—¥è¡¨</button>'
-    +'<button type="button" class="ops-button" data-nav="course-students">å­¸ç”Ÿèˆ‡å­¸è²»</button>'
-    +'<button type="button" class="ops-button" data-nav="course-teachers">è€å¸«è–ªè³‡</button>'
-    +'<button type="button" class="ops-button" data-nav="course-settings">ç³»çµ±è¨­å®š</button>'
-    +'<button type="button" class="ops-button" data-nav="sales">ç¾å ´éŠ·å”®</button>'
-    +'<button type="button" class="ops-button" data-nav="sync">å¹³å°è¨‚å–®</button>'
-    +'<button type="button" class="ops-button" data-nav="products">å•†å“è³‡è¨Š</button>'
-    +'<button type="button" class="ops-button" data-nav="purchases">åº«å­˜ä½œæ¥­</button>'
-    +'<button type="button" class="ops-button" data-nav="receivables">æ‡‰æ”¶å¸³æ¬¾</button>'
-    +'<button type="button" class="ops-button" data-nav="customers">å®¢æˆ¶æœƒå“¡</button>'
-    +'<button type="button" class="ops-button" data-nav="rentals">ç§Ÿè³ƒç‡Ÿé‹</button>'
-    +'<button type="button" class="ops-button" data-nav="expenses">ç‡Ÿé‹æ”¯å‡º</button>'
-    +'<a class="ops-button ops-mobile-admin-link" href="settings.html">è¿”å›žç®¡ç†é¦–é </a>'
-    +'</div></section>';
-
-  const storeHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-store"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>é–€å¸‚ç‡Ÿé‹</h2><p>å•†å“ä¾æˆäº¤æ—¥èªåˆ—ï¼›æ”¶æ¬¾èˆ‡äº¤è²¨å¦å¤–è¿½è¹¤</p></div><button class="ops-button small ops-v8-channel-link" data-nav="sales">å‰å¾€éŠ·å”®</button></div><div class="ops-v8-channel-summary">'+summaryBox('é–€å¸‚æˆäº¤ï¼æ”¶å…¥',money(storeRevenue))+summaryBox('æˆäº¤æ¯›åˆ©',money(storeBalance),storeBalance<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('å•†å“æˆäº¤',money(productRevenue))+metricRow('ç¶­ä¿®ï¼å…¶ä»–',money(repairRevenue+otherRevenue))+metricRow('å•†å“æˆæœ¬',money(productCost))+metricRow('é€€è²¨é€€æ¬¾',money(returnRefund))+'</div></section>';
-  const networkHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-network"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>ç¶²è·¯ç‡Ÿé‹</h2><p>EasyStoreã€MOMOã€Coupang</p></div><button class="ops-button small ops-v8-channel-link" data-nav="sync">å‰å¾€è¨‚å–®</button></div><div class="ops-v8-channel-summary">'+summaryBox('é ä¼°å…¥å¸³',money(networkNet))+summaryBox('é ä¼°æ¯›åˆ©',money(networkProfit),networkProfit<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('æˆäº¤é‡‘é¡',money(networkGross))+metricRow('å¹³å°è²»ï¼‹ç™¼ç¥¨ç¨…',money(networkFees))+metricRow('å•†å“æˆæœ¬',money(networkCost))+metricRow('è¨‚å–®ï¼ä»¶æ•¸',formatNumber(networkOrderCount)+' å–®ï¼'+formatNumber(networkQty)+' ä»¶')+'</div></section>';
-  const rentalHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-rental"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>ç§Ÿè³ƒç‡Ÿé‹</h2><p>ä¾ä¸Šæ–¹é¸æ“‡çš„æ—¥æœŸå€é–“çµ±è¨ˆ</p></div><button class="ops-button small ops-v8-channel-link" data-nav="rentals">å‰å¾€ç§Ÿè³ƒ</button></div><div class="ops-v8-channel-summary">'+summaryBox('ç§Ÿè³ƒæ”¶å…¥',money(rentalRevenue))+summaryBox(rentalCountLabel,formatNumber(rentals.length)+' ä»¶','success')+'</div><div class="ops-v8-metric-list">'+metricRow('æ­£å¼åˆç´„æ”¶å…¥',money(contractRentalRevenue))+metricRow('é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥',money(pianoRentalRevenue))+metricRow(bounds.label+'æˆç«‹åˆç´„',formatNumber(rentals.length)+' ä»¶')+'</div></section>';
-  const educationHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-school"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>è£œç¿’ç­ç‡Ÿé‹</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button small ops-v8-channel-link" data-nav="course-calendar">å‰å¾€èª²å‹™</button></div><div class="ops-v8-channel-summary">'+summaryBox('è£œç¿’ç­å¯¦æ”¶',money(educationCash))+summaryBox('æ•™å®¤ä¿ç•™ï¼‹æ•™å®¤ç§Ÿç”¨',money(educationRetainedWithRental),'success')+'</div><div class="ops-v8-metric-list">'+metricAction('å­¸è²»å¯¦æ”¶',money(educationSummary.tuitionReceived),'education-tuition-detail')+metricAction('æ•™å®¤ç§Ÿç”¨',money(educationSummary.roomRentalReceived),'education-rental-detail')+metricAction('è€å¸«æ‹†å¸³',money(educationSummary.teacherPayable),'education-teacher-summary')+metricAction('æ•™å®¤ä¿ç•™æ˜Žç´°',money(educationSummary.schoolShare),'education-school-share-detail')+'</div></section>';
-
-  const alerts=[];
-  if(openReceivables.length)alerts.push('<button type="button" class="ops-v8-attention-row" data-nav="receivables"><span class="ops-v8-attention-icon danger">å¸³</span><span><b>é–€å¸‚æ‡‰æ”¶å¸³æ¬¾</b><small>'+formatNumber(openReceivables.length)+' ç­†ï¼Œå…± '+money(outstanding)+'</small></span><em>æŸ¥çœ‹</em></button>');
-  if(syncAnomalyCount){const counts={};syncAnomalies.forEach(function(row){counts[row.platform]=Number(counts[row.platform]||0)+1;});const detail=Object.keys(counts).sort().map(function(name){return name+' '+counts[name]+' é …';}).join('ã€');alerts.push('<button type="button" class="ops-v8-attention-row" data-action="overview-sync-errors"><span class="ops-v8-attention-icon danger">åŒ</span><span><b>å¹³å°åŒæ­¥ç•°å¸¸</b><small>'+formatNumber(syncAnomalyCount)+' ä»¶å•†å“'+(detail?'ï¼š'+escapeHtml(detail):'')+'</small></span><em>æŸ¥çœ‹æ˜Žç´°</em></button>');}
-  if(pendingPlatform){const matchCount=pendingPlatformRows.filter(function(row){return ['missing-sku','unmatched-sku','duplicate-sku'].includes(row.processingStatus);}).length,otherCount=Math.max(0,pendingPlatform-matchCount);alerts.push('<button type="button" class="ops-v8-attention-row" data-action="overview-order-errors"><span class="ops-v8-attention-icon">ç¶²</span><span><b>å¹³å°è¨‚å–®è³‡æ–™å¾…ç¢ºèª</b><small>'+formatNumber(pendingPlatform)+' ç­†ï¼šSKU '+formatNumber(matchCount)+'ã€å…¶ä»– '+formatNumber(otherCount)+'</small></span><em>æŸ¥çœ‹</em></button>');}
-  if(lowStock.length)alerts.push('<button type="button" class="ops-v8-attention-row" data-action="overview-low-stock"><span class="ops-v8-attention-icon warning">åº«</span><span><b>ä½Žæ–¼å®‰å…¨åº«å­˜</b><small>'+formatNumber(lowStock.length)+' é …å•†å“éœ€è¦ç¢ºèªè£œè²¨</small></span><em>è™•ç†</em></button>');
-  const attentionHtml=alerts.length?alerts.join(''):'<div class="ops-v8-attention-empty"><b>ç›®å‰æ²’æœ‰éœ€è¦ç«‹å³è™•ç†çš„é …ç›®</b><span>ä¸»è¦ç‡Ÿé‹èˆ‡åŒæ­¥ç‹€æ…‹æ­£å¸¸ã€‚</span></div>';
-  const bottomHtml='<div class="ops-v8-overview-bottom ops-v8-overview-bottom-single"><section class="ops-card"><div class="ops-v8-section-head"><div><h2>éœ€è¦æ³¨æ„</h2><p>åŒæ­¥ç•°å¸¸ã€è¨‚å–®ç•°å¸¸ã€æ‡‰æ”¶å¸³æ¬¾èˆ‡ä½Žåº«å­˜æœƒé›†ä¸­é¡¯ç¤º</p></div>'+(attentionKinds?'<span class="ops-tag yellow">'+formatNumber(attentionKinds)+' é¡ž</span>':'<span class="ops-tag green">æ­£å¸¸</span>')+'</div><div class="ops-v8-attention-list">'+attentionHtml+'</div></section></div>';
-  if(isCompactMobile())return rangeHtml+mobileProfitHtml+mobileQuickNavHtml+'<template id="opsMobileOverviewReportTemplate"><div class="ops-v8-channel-grid">'+storeHtml+networkHtml+rentalHtml+educationHtml+'</div></template>'+bottomHtml;
-  return rangeHtml+heroHtml+'<div class="ops-v8-channel-grid">'+storeHtml+networkHtml+rentalHtml+educationHtml+'</div>'+bottomHtml;
-}
-
-  function educationSessionTeacherKey(session){return clean(session&&session.teacherId)||clean(session&&session.teacherName)||'æœªå‘½å';}
-  function educationRowsInOverviewRange(){
-    const bounds=overviewBounds();
-    return state.educationDaily.filter(function(day){const value=dateFrom(day.businessDate||day.dateKey);return value&&(!bounds.start||value>=bounds.start)&&(!bounds.end||value<=bounds.end);});
-  }
-  function educationSessionsInOverviewRange(){
-    const rows=[];educationRowsInOverviewRange().forEach(function(day){(day.sessions||[]).forEach(function(session){rows.push(session);});});return rows;
-  }
-  function educationDrawerRows(rows,emptyTitle,emptyText){
-    return rows.length?rows:emptyHtml(emptyTitle,emptyText||'');
-  }
-  function openEducationTuitionDetail(){
-    const rows=[];educationRowsInOverviewRange().forEach(function(day){(day.tuitionReceipts||[]).forEach(function(item){if(item.isRevenue!==false)rows.push(item);});});
-    rows.sort(function(a,b){return (dateFrom(b.paidAt)||0)-(dateFrom(a.paidAt)||0);});
-    const body=educationDrawerRows(rows.map(function(item){return '<article class="ops-education-session-row"><div class="ops-education-session-main"><span>'+escapeHtml(dateText(item.paidAt))+'</span><b>'+escapeHtml(item.studentName||'æœªå‘½åå­¸ç”Ÿ')+'</b><em>'+escapeHtml(item.subject||'å­¸è²»æ”¶æ¬¾')+'</em></div><div><span>ä»˜æ¬¾æ–¹å¼</span><b>'+escapeHtml(item.paymentMethod||'æœªæ¨™ç¤º')+'</b></div><div><span>å¯¦æ”¶é‡‘é¡</span><b>'+money(item.amount)+'</b></div></article>';}).join(''),'æ­¤æœŸé–“æ²’æœ‰å­¸è²»å¯¦æ”¶','');
-    openDrawer('å­¸è²»å¯¦æ”¶',overviewBounds().label+'ï½œå­¸ç”Ÿå¯¦éš›ç¹³è²»æ˜Žç´°',body+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">é—œé–‰</button></div>');
-  }
-  function openEducationRentalDetail(){
-    const rows=[];educationRowsInOverviewRange().forEach(function(day){(day.roomRentals||[]).forEach(function(item){rows.push(item);});});
-    rows.sort(function(a,b){return (dateFrom(b.startAt)||0)-(dateFrom(a.startAt)||0);});
-    const body=educationDrawerRows(rows.map(function(item){return '<article class="ops-education-session-row"><div class="ops-education-session-main"><span>'+escapeHtml(dateText(item.startAt))+'</span><b>'+escapeHtml(item.clientName||'æœªå‘½åç§Ÿç”¨äºº')+'</b><em>'+escapeHtml(item.roomName||'æ•™å®¤ç§Ÿç”¨')+'</em></div><div><span>ç§Ÿç”¨é‡‘é¡</span><b>'+money(item.amount)+'</b></div></article>';}).join(''),'æ­¤æœŸé–“æ²’æœ‰æ•™å®¤ç§Ÿç”¨æ”¶å…¥','');
-    openDrawer('æ•™å®¤ç§Ÿç”¨',overviewBounds().label+'ï½œæ¯æ—¥æ•™å®¤ç§Ÿç”¨æ˜Žç´°',body+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">é—œé–‰</button></div>');
-  }
-  function openEducationTeacherSummary(){
-    const teachers=new Map();educationSessionsInOverviewRange().forEach(function(session){const key=educationSessionTeacherKey(session),row=teachers.get(key)||{key:key,name:clean(session.teacherName)||'æœªå‘½åè€å¸«',lessonCount:0,amount:0};row.lessonCount+=1;row.amount+=Number(session.teacherAmount||0);teachers.set(key,row);});
-    const rows=Array.from(teachers.values()).sort(function(a,b){return b.amount-a.amount;});
-    const body=educationDrawerRows(rows.map(function(row){return '<button type="button" class="ops-education-teacher-row" data-action="education-teacher-detail" data-teacher-key="'+attr(row.key)+'"><b>'+escapeHtml(row.name)+'</b><span>'+formatNumber(row.lessonCount)+' å ‚</span><strong>'+money(row.amount)+'</strong></button>';}).join(''),'æ­¤æœŸé–“æ²’æœ‰è€å¸«æ‹†å¸³è³‡æ–™','');
-    openDrawer('è€å¸«æ‹†å¸³',overviewBounds().label+'ï½œé»žé¸è€å¸«å¯æŸ¥çœ‹æ¯å ‚èª²çš„æ‹†å¸³',body+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">é—œé–‰</button></div>');
-  }
-  function openEducationSchoolShareDetail(){
-    const rows=educationSessionsInOverviewRange().sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);});
-    const body=educationDrawerRows(rows.map(function(session){const retained=hasValue(session.schoolShare)?Number(session.schoolShare):Number(session.lessonPrice||0)-Number(session.teacherAmount||0);const label=clean(session.subject)||clean(session.chargeName)||'æœªæ¨™ç¤ºèª²ç¨‹';return '<article class="ops-education-session-row"><div class="ops-education-session-main"><span>'+escapeHtml(dateText(session.occurredAt))+'</span><b>'+escapeHtml(session.studentName||'æœªå‘½åå­¸ç”Ÿ')+'</b><em>'+escapeHtml(label)+'</em></div><div><span>å–®å ‚é‡‘é¡</span><b>'+money(session.lessonPrice)+'</b></div><div><span>è€å¸«æ‹†å¸³</span><b>'+money(session.teacherAmount)+'</b></div><div><span>æ•™å®¤ä¿ç•™</span><b>'+money(retained)+'</b></div></article>';}).join(''),'æ­¤æœŸé–“æ²’æœ‰èª²ç¨‹æ‹†å¸³è³‡æ–™','');
-    openDrawer('æ•™å®¤ä¿ç•™',overviewBounds().label+'ï½œå–®å ‚é‡‘é¡æ‰£é™¤è€å¸«æ‹†å¸³å¾Œçš„ä¿ç•™é‡‘é¡',body+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">é—œé–‰</button></div>');
-  }
-  function educationSplitText(session){
-    const hourly=Number(session&&session.hourlyFee||0),rate=Number(session&&session.allotRate||0);
-    if(hourly>0)return 'å›ºå®š '+money(hourly);
-    if(rate>0)return percentage(rate>1?rate:rate*100);
-    return 'æœªæ¨™ç¤º';
-  }
-  function openEducationTeacherDetail(teacherKey){
-    const bounds=overviewBounds(),sessions=[];
-    state.educationDaily.forEach(function(day){
-      const businessDate=dateFrom(day.businessDate||day.dateKey);
-      if(!businessDate||(bounds.start&&businessDate<bounds.start)||(bounds.end&&businessDate>bounds.end))return;
-      (day.sessions||[]).forEach(function(session){if(educationSessionTeacherKey(session)===teacherKey)sessions.push(session);});
-    });
-    sessions.sort(function(a,b){return (dateFrom(a.occurredAt)||0)-(dateFrom(b.occurredAt)||0);});
-    if(!sessions.length)return toast('æ‰¾ä¸åˆ°èª²å ‚è³‡æ–™','è«‹é‡æ–°æ•´ç†å¾Œå†è©¦ã€‚','warning');
-    const teacherName=clean(sessions[0].teacherName)||'æœªå‘½åè€å¸«';
-    const students=new Set(sessions.map(function(session){return clean(session.studentId)||clean(session.studentName);}).filter(Boolean));
-    const lessonGross=sum(sessions,function(session){return session.lessonPrice;});
-    const teacherShare=sum(sessions,function(session){return session.teacherAmount;});
-    const schoolShare=sum(sessions,function(session){return hasValue(session.schoolShare)?session.schoolShare:Number(session.lessonPrice||0)-Number(session.teacherAmount||0);});
-    const summary='<div class="ops-education-detail-summary"><div><span>å ‚æ•¸</span><b>'+formatNumber(sessions.length)+'</b></div><div><span>å­¸ç”Ÿ</span><b>'+formatNumber(students.size)+'</b></div><div><span>èª²å ‚é‡‘é¡</span><b>'+money(lessonGross)+'</b></div><div><span>è€å¸«æ‹†å¸³</span><b>'+money(teacherShare)+'</b></div><div><span>æ•™å®¤ä¿ç•™</span><b>'+money(schoolShare)+'</b></div></div>';
-    const rows='<div class="ops-education-session-list">'+sessions.map(function(session){
-      const labels=[];if(clean(session.subject))labels.push(clean(session.subject));if(clean(session.chargeName)&&!labels.includes(clean(session.chargeName)))labels.push(clean(session.chargeName));
-      const retained=hasValue(session.schoolShare)?Number(session.schoolShare):Number(session.lessonPrice||0)-Number(session.teacherAmount||0);
-      return '<article class="ops-education-session-row"><div class="ops-education-session-main"><span>'+escapeHtml(dateText(session.occurredAt))+'</span><b>'+escapeHtml(session.studentName||'æœªå‘½åå­¸ç”Ÿ')+'</b><em>'+escapeHtml(labels.join('ï½œ')||'æœªæ¨™ç¤ºèª²ç¨‹')+'</em></div><div><span>å–®å ‚å­¸è²»</span><b>'+money(session.lessonPrice)+'</b></div><div><span>æ‹†å¸³æ–¹å¼</span><b>'+escapeHtml(educationSplitText(session))+'</b></div><div><span>è€å¸«åˆ†å¾—</span><b>'+money(session.teacherAmount)+'</b></div><div><span>æ•™å®¤ä¿ç•™</span><b>'+money(retained)+'</b></div></article>';
-    }).join('')+'</div>';
-    openDrawer(teacherName,bounds.label+'èª²å ‚æ˜Žç´°ï½œä¸å«çŽå‹µèˆ‡æ‰£è–ª',summary+rows+'<div class="ops-drawer-footer"><button class="ops-button primary" type="button" data-action="drawer-close">é—œé–‰</button></div>');
-  }
-  function productCompletenessHtml(){
-    const total=state.catalog.length||1; const image=state.catalog.filter(function(p){return p.imageUrls&&p.imageUrls.length;}).length; const cost=state.catalog.filter(function(p){return p.averageCost!=null||p.nextFifoCost!=null;}).length; const matched=state.catalog.filter(function(p){return p.matchedOnline;}).length; const nonNegative=state.catalog.filter(function(p){return p.currentStock>=0;}).length;
-    function row(label,count){return '<div class="ops-status-row"><div><b>'+escapeHtml(label)+'</b><small>'+count+' / '+state.catalog.length+'</small></div><div style="width:43%"><div class="ops-progress"><span style="width:'+Math.round(count/total*100)+'%"></span></div></div></div>';}
-    return row('å·²é…å° EasyStoreï¼ç¶²è·¯å•†å“',matched)+row('æœ‰å•†å“åœ–ç‰‡',image)+row('å·²æœ‰æˆæœ¬è³‡æ–™',cost)+row('éžè² åº«å­˜è³‡æ–™',nonNegative);
-  }
-
-  const PRODUCT_SERIES=[
-    ['100','æœ¨å‰ä»–'],['102','å¤å…¸å‰ä»–'],['104','é›»å‰ä»–'],['106','é›»è²æ–¯'],['108','çƒå…‹éº—éº—'],
-    ['120','é›»é‹¼ç´'],['122','é›»å­ç´'],['130','çˆµå£«é¼“'],['132','é›»å­é¼“'],['134','æœ¨ç®±é¼“'],['138','ä¸–ç•Œæ‰“æ“Šæ¨‚'],
-    ['140','å£ç´'],['142','é™¶ç¬›'],['144','å¡æž—å·´'],['146','ç›´ç¬›'],['148','ç¶œåˆå°æ¨‚å™¨'],
-    ['150','äºŒèƒ¡ï¼èƒ¡ç´'],['152','ä¸­åœ‹ç¬›'],['154','çµç¶'],['156','æŸ³ç´'],['158','é˜®é¡ž'],['160','å¤ç®'],
-    ['162','æšç´'],['164','åœ‹æ¨‚ç®¡æ¨‚'],['166','å…¶ä»–åœ‹æ¨‚'],['180','é•·ç¬›'],['182','å°è™Ÿ'],['184','é›»å­å¹ç®¡'],['192','å°æç´ï¼ä¸­æç´'],
-    ['5','é›»å­é¡ž','5ç³»åˆ— é›»å­é¡ž'],['9','æ›¸ç±','9ç³»åˆ— æ›¸ç±']
-  ];
-  function productSeriesLabel(row){return row[2]||row[0]+' '+row[1];}
-  function productSeriesTabs(){
-    return '<div class="ops-product-series-tabs"><button type="button" class="'+(state.productSeries==='all'?'active':'')+'" data-action="product-series" data-series="all">å…¨éƒ¨</button>'+PRODUCT_SERIES.map(function(row){return '<button type="button" class="'+(state.productSeries===row[0]?'active':'')+'" data-action="product-series" data-series="'+row[0]+'">'+escapeHtml(productSeriesLabel(row))+'</button>';}).join('')+'</div>';
-  }
-  function compareCatalogSku(a,b){
-    const aSku=clean(a&&a.sku),bSku=clean(b&&b.sku);
-    if(!aSku&&!bSku)return clean(a&&(a.originalName||a.name)).localeCompare(clean(b&&(b.originalName||b.name)),'zh-Hant',{numeric:true,sensitivity:'base'});
-    if(!aSku)return 1;
-    if(!bSku)return -1;
-    const bySku=aSku.localeCompare(bSku,'zh-Hant',{numeric:true,sensitivity:'base'});
-    if(bySku)return bySku;
-    return clean(a&&(a.originalName||a.name)).localeCompare(clean(b&&(b.originalName||b.name)),'zh-Hant',{numeric:true,sensitivity:'base'});
-  }
-  let catalogSearchSource=null;
-  let catalogSkuOrder=[];
-  function prepareCatalogSearchIndex(){
-    catalogSearchSource=state.catalog;
-    (state.catalog||[]).forEach(function(product){
-      const text=lower([
-        product.originalName,product.onlineName,product.name,product.sku,formatLabelSku(product.sku),
-        product.barcode,product.brand,product.category,product.variantName,product.docId
-      ].join(' '));
-      product.__searchText=text;
-      product.__searchCompact=compactSearchCode(text);
-    });
-    catalogSkuOrder=(state.catalog||[]).slice().sort(compareCatalogSku);
-  }
-  function catalogRowsInSkuOrder(){
-    if(catalogSearchSource!==state.catalog)prepareCatalogSearchIndex();
-    return catalogSkuOrder;
-  }
-  function catalogMatchesSearch(product,term){
-    const needle=lower(term);
-    if(!needle)return true;
-    if(catalogSearchSource!==state.catalog)prepareCatalogSearchIndex();
-    const hay=product.__searchText||'',compactNeedle=compactSearchCode(needle);
-    return hay.includes(needle)||(compactNeedle&&String(product.__searchCompact||'').includes(compactNeedle));
-  }
-  function displayModeToggleHtml(action,currentMode,label){
-    const mode=currentMode==='text'?'text':'image';
-    return '<div class="ops-display-mode-toggle" role="group" aria-label="'+attr(label||'é¡¯ç¤ºæ¨¡å¼')+'"><button type="button" class="'+(mode==='image'?'active':'')+'" data-action="'+attr(action)+'" data-mode="image" aria-pressed="'+(mode==='image'?'true':'false')+'">åœ–ç‰‡æ¨¡å¼</button><button type="button" class="'+(mode==='text'?'active':'')+'" data-action="'+attr(action)+'" data-mode="text" aria-pressed="'+(mode==='text'?'true':'false')+'">æ–‡å­—æ¨¡å¼</button></div>';
-  }
-  function productFiltered(){
-    const term=lower(state.productSearch); let rows=catalogRowsInSkuOrder().filter(function(p){
-      if(state.productSeries!=='all'&&!clean(p.sku).startsWith(state.productSeries))return false;
-      if(term&&!catalogMatchesSearch(p,term))return false;
-      if(state.productFilter==='missing-cost'&&!(p.averageCost==null&&p.nextFifoCost==null))return false;
-      if(state.productFilter==='low'&&!(p.currentStock<=p.safetyStock))return false;
-      if(state.productFilter==='in-stock'&&p.currentStock<=0)return false;
-      if(state.productFilter==='matched'&&!p.matchedOnline)return false;
-      if(state.productFilter==='unmatched'&&p.matchedOnline)return false;
-      if(state.productFilter==='no-image'&&p.imageUrls.length)return false;
-      if(state.productFilter==='negative'&&p.currentStock>=0)return false;
-      return true;
-    });
-    return rows;
-  }
-  function abbreviatedOnlineProductName(value){
-    const name=displayOnlineName(value);
-    if(!name)return '';
-    const chars=Array.from(name);
-    return chars.slice(0,5).join('')+(chars.length>5?'â€¦':'');
-  }
-  function productCard(p){
-    const allImages=Array.from(new Set((p.imageUrls||[]).concat(p.imageUrl?[p.imageUrl]:[]).filter(Boolean)));
-    const parentImages=Array.from(new Set((p.parentImageUrls||[]).filter(Boolean)));
-    const variantImages=Array.from(new Set((p.variantImageUrls||[]).filter(Boolean)));
-    const mainImage=variantImages[0]||parentImages[0]||allImages[0]||'';
-    const variantImage=variantImages.find(function(url){return url!==mainImage;})||parentImages.find(function(url){return url!==mainImage;})||allImages.find(function(url){return url!==mainImage;})||'';
-    const urls=(isCompactMobile()?[mainImage]:[mainImage,variantImage]).filter(Boolean);
-    const systemName=clean(p.originalName||p.name||p.onlineName)||'æœªå‘½åå•†å“';
-    const cleanOnline=displayOnlineName(p.onlineName);
-    const variant=clean(p.variantName);
-    const onlineSummary=cleanOnline?'ç¶²è·¯ï¼š'+abbreviatedOnlineProductName(cleanOnline)+(variant?'ï¼ˆ'+variant+'ï¼‰':''):'';
-    const imageHtml=urls.length?urls.map(function(url,index){return '<img loading="lazy" src="'+attr(url)+'" alt="'+attr(index===1&&variant?variant:systemName)+'" onerror="this.style.display=\'none\'">';}).join(''):'<div class="placeholder">ç„¡åœ–</div>';
-    const active=state.productEditId===p.docId?' active':'';
-    return '<article class="ops-product-card ops-product-card-full'+active+'" data-action="product-edit" data-id="'+attr(p.docId)+'" role="button" tabindex="0"><div class="ops-product-image-grid '+(urls.length<2?'single':'')+'">'+imageHtml+'</div><div class="ops-product-body"><div class="ops-product-sku-row"><div class="ops-product-sku-main"><b>'+escapeHtml(p.sku||'æœªè¨­å®š')+'</b>'+(p.sku?'<button type="button" class="ops-label-print-button" data-action="product-print-label" data-id="'+attr(p.docId)+'">åˆ—å°æ¢ç¢¼</button>':'')+'<button type="button" class="ops-listing-case-button" data-action="product-listing-case-open" data-id="'+attr(p.docId)+'">æº–å‚™ä¸Šæž¶</button></div><span class="ops-product-inline-stock">åº«å­˜ <strong>'+escapeHtml(formatNumber(p.currentStock))+'</strong></span></div><div class="ops-product-name-rows"><b>'+escapeHtml(systemName)+'</b></div>'+(onlineSummary?'<div class="ops-product-variant-row"><b>'+escapeHtml(onlineSummary)+'</b></div>':'')+'<div class="ops-product-detail-grid"><div><span>é–€å¸‚å®šåƒ¹</span><b>'+money(p.storePrice)+'</b></div><div><span>ç¶²è·¯å”®åƒ¹</span><b>'+money(p.onlinePrice)+'</b></div><div><span>é€²è²¨æˆæœ¬</span><b>'+money(p.latestPurchaseCost)+'</b></div><div><span>å¹³å‡æˆæœ¬</span><b>'+money(p.averageCost)+'</b></div></div></div></article>';
-  }
-  function productTextRow(p){
-    const name=clean(p.originalName||p.name)||'æœªå‘½åå•†å“';
-    const variant=clean(p.variantName);
-    const active=state.productEditId===p.docId?' active':'';
-    return '<div class="ops-product-text-row'+active+'" data-action="product-edit" data-id="'+attr(p.docId)+'" role="button" tabindex="0"><span class="ops-product-text-sku">'+escapeHtml(p.sku||'æœªè¨­å®š')+'</span><span class="ops-product-text-name"><b>'+escapeHtml(name)+'</b>'+(variant?'<small>'+escapeHtml(variant)+'</small>':'')+'</span><span class="ops-product-text-value"><small>åº«å­˜</small><b>'+escapeHtml(formatNumber(p.currentStock))+'</b></span><span class="ops-product-text-value"><small>é–€å¸‚å”®åƒ¹</small><b>'+money(p.storePrice)+'</b></span><span class="ops-product-text-value"><small>é€²è²¨æˆæœ¬</small><b>'+money(p.latestPurchaseCost)+'</b></span><span class="ops-product-text-value"><small>å¹³å‡æˆæœ¬</small><b>'+money(p.averageCost)+'</b></span><span class="ops-product-text-value"><small>EasyStore</small><b>'+money(p.easyStorePrice)+'</b></span><span class="ops-product-text-value"><small>MOMO</small><b>'+money(p.momoPrice)+'</b></span><span class="ops-product-text-value"><small>é…·æ¾Ž</small><b>'+money(p.coupangPrice)+'</b></span><button type="button" class="ops-listing-case-button" data-action="product-listing-case-open" data-id="'+attr(p.docId)+'">æº–å‚™ä¸Šæž¶</button></div>';
-  }
-  function productSearchResultsHtml(){
-    const rows=productFiltered(),visible=rows.slice(0,state.productVisible),central=state.matchingStats.central;
-    if(!visible.length)return emptyHtml(central?'æ‰¾ä¸åˆ°å•†å“':'å°šæœªå»ºç«‹å•†å“',central?'è«‹èª¿æ•´æœå°‹æ¢ä»¶ã€‚':'è«‹å…ˆæ–°å¢žå•†å“æˆ–åŒ¯å…¥å•†å“è³‡æ–™ã€‚','<button class="ops-button primary" data-action="product-new">æ–°å¢žå•†å“</button>');
-    const list=state.productDisplayMode==='text'
-      ?'<div class="ops-product-text-list">'+visible.map(productTextRow).join('')+'</div>'
-      :'<div class="ops-products-grid">'+visible.map(productCard).join('')+'</div>';
-    return list+(visible.length<rows.length?'<div class="ops-pagination"><button class="ops-button ghost" data-action="load-more-products">é¡¯ç¤ºæ›´å¤š</button></div>':'');
-  }
-
-  const LABEL_PRINT_ENDPOINTS=['http://127.0.0.1:18181','http://localhost:18181'];
-  let labelPrintEndpoint='';
-  function labelPrintProductData(product){
-    const name=clean(product&&(product.originalName||product.name||product.onlineName))||'æœªå‘½åå•†å“';
-    const variant='';
-    const storePrice=numberOrNull(product&&product.storePrice);
-    const onlinePrice=numberOrNull(product&&product.onlinePrice);
-    const sku=clean(product&&product.sku);
-    return {productId:clean(product&&product.docId),sku:sku,displaySku:formatLabelSku(sku),name:name,variant:variant,price:Math.round(storePrice!=null?storePrice:(onlinePrice!=null?onlinePrice:0))};
-  }
-  async function labelPrintFetch(path,options){
-    const endpoints=labelPrintEndpoint?[labelPrintEndpoint].concat(LABEL_PRINT_ENDPOINTS.filter(function(url){return url!==labelPrintEndpoint;})):LABEL_PRINT_ENDPOINTS.slice();
-    let lastError=null;
-    for(const endpoint of endpoints){
-      try{
-        const controller=typeof AbortController!=='undefined'?new AbortController():null;
-        const timer=controller?setTimeout(function(){controller.abort();},3500):null;
-        let response;
-        try{response=await fetch(endpoint+path,Object.assign({cache:'no-store',mode:'cors'},options||{},controller?{signal:controller.signal}:{}));}
-        finally{if(timer)clearTimeout(timer);}
-        const bodyText=await response.text();let payload={};
-        try{payload=bodyText?JSON.parse(bodyText):{};}catch(err){payload={message:bodyText};}
-        if(!response.ok)throw new Error(clean(payload.error||payload.message)||('åˆ—å°æœå‹™å›žæ‡‰ '+response.status));
-        labelPrintEndpoint=endpoint;return payload;
-      }catch(error){lastError=error;}
-    }
-    throw lastError||new Error('æ‰¾ä¸åˆ°æ¢ç¢¼åˆ—å°æœå‹™');
-  }
-  function labelPreviewHalf(data){
-    const displaySku=data.displaySku||formatLabelSku(data.sku);
-    const skuLength=displaySku.length;
-    const skuClass=skuLength>12?'long':(skuLength>10?'compact':'normal');
-    const productText=[data.name,data.variant].filter(Boolean).join(' ');
-    const textLength=productText.length;
-    const textClass=textLength>30?'small':(textLength>22?'compact':'normal');
-    return '<div class="ops-label-preview-half"><div class="ops-label-preview-left"><div class="ops-label-preview-qr"><i></i></div><div class="ops-label-preview-price">'+escapeHtml(String(data.price))+'</div></div><div class="ops-label-preview-right"><div class="ops-label-preview-sku '+skuClass+'">'+escapeHtml(displaySku)+'</div><div class="ops-label-preview-name '+textClass+'">'+escapeHtml(productText||'æœªå‘½åå•†å“')+'</div></div></div>';
-  }
-  function openProductLabelPrint(productId){
-    const product=catalogById(productId);if(!product)return toast('æ‰¾ä¸åˆ°å•†å“','è«‹é‡æ–°è®€å–å•†å“è³‡æ–™ã€‚','error');
-    const data=labelPrintProductData(product);if(!data.sku)return toast('ç„¡æ³•åˆ—å°æ¢ç¢¼','é€™é …å•†å“å°šæœªè¨­å®šå•†å“ç·¨è™Ÿã€‚','warning');
-    const body='<form id="labelPrintForm" data-product-id="'+attr(productId)+'"><div class="ops-label-print-summary"><div><span>å•†å“ç·¨è™Ÿ</span><b>'+escapeHtml(data.displaySku||data.sku)+'</b></div><div><span>é–€å¸‚å”®åƒ¹</span><b>'+money(data.price)+'</b></div><div class="full"><span>å•†å“åç¨±</span><b>'+escapeHtml(data.name)+(data.variant?'ï½œ'+escapeHtml(data.variant):'')+'</b></div></div><div class="ops-label-preview">'+labelPreviewHalf(data)+labelPreviewHalf(data)+'</div><p class="ops-label-print-note">35 Ã— 25 mm é›™è¯æ¨™ç±¤ï¼Œä¸Šä¸‹å…§å®¹ç›¸åŒï¼›é¡¯ç¤ºç·¨è™ŸæŽ¡ 500-1234-1 æ ¼å¼ï¼ŒQR Code ä»å°æ‡‰å•†å“ç·¨è™Ÿã€‚</p><div class="ops-label-service-status checking" id="labelPrintServiceStatus">æ­£åœ¨ç¢ºèªé€™å°é›»è…¦çš„ TSC åˆ—å°æœå‹™â€¦</div><div class="ops-field"><label class="ops-required">åˆ—å°å¼µæ•¸</label><input class="ops-input ops-label-copies" name="copies" type="number" inputmode="numeric" min="1" max="500" step="1" value="1" required></div><button class="ops-button primary wide" id="labelPrintSubmit" type="submit">åˆ—å°æ¢ç¢¼</button></form>';
-    openDrawer('åˆ—å°æ¢ç¢¼','TSC TTP-244 Plusï½œ35 Ã— 25 mm é›™è¯æ¨™ç±¤',body);
-    setTimeout(checkLabelPrintService,30);
-  }
-  async function checkLabelPrintService(){
-    const status=byId('labelPrintServiceStatus');if(!status)return;
-    try{
-      const result=await labelPrintFetch('/health',{method:'GET'});
-      if(result.printerInstalled===false)throw new Error('Windows æ‰¾ä¸åˆ° '+clean(result.printerName||'TSC TTP-244 Plus'));
-      status.className='ops-label-service-status ready';
-      status.textContent='å·²é€£ç·šï¼š'+clean(result.printerName||'TSC TTP-244 Plus')+'ï¼Œå¯ä»¥ç›´æŽ¥åˆ—å°ã€‚';
-    }catch(error){
-      status.className='ops-label-service-status offline';
-      status.textContent='å°šæœªé€£ç·šã€‚è«‹ç¢ºèªæ¢ç¢¼æ©Ÿé›»è…¦çš„è‡ªå‹•åˆ—å°æœå‹™å·²å®‰è£ä¸¦å•Ÿå‹•ã€‚';
-    }
-  }
-  async function saveLabelPrint(form){
-    const product=catalogById(form.dataset.productId);if(!product)throw new Error('æ‰¾ä¸åˆ°å•†å“è³‡æ–™');
-    const data=labelPrintProductData(product);const formData=new FormData(form);const copies=Math.max(1,Math.min(500,Math.round(Number(formData.get('copies')||1))));
-    const status=byId('labelPrintServiceStatus');if(status){status.className='ops-label-service-status checking';status.textContent='æ­£åœ¨é€å‡ºåˆ—å°å·¥ä½œâ€¦';}
-    const result=await labelPrintFetch('/print',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({sku:data.displaySku||data.sku,rawSku:data.sku,displaySku:data.displaySku||data.sku,name:data.name,variant:data.variant,price:data.price,copies:copies,labelLayoutVersion:'20260716-v2'})});
-    closeDrawer();toast('æ¢ç¢¼å·²é€å‡º',(data.displaySku||data.sku)+'ï½œ'+copies+' å¼µï½œ'+clean(result.printerName||'TSC TTP-244 Plus'),'success');
-  }
-
-  function renderProducts(){
-    const central=state.matchingStats.central;
-    const inventoryValue=sum(state.catalog,function(p){return p.inventoryValue||0;});
-    const low=state.catalog.filter(function(p){return p.initialized&&p.currentStock<=p.safetyStock;}).length;
-    const editingProduct=state.productEditId&&state.productEditId!=='__new__'?catalogById(state.productEditId):null;
-    const editorHtml=state.productEditId?productFormHtml(editingProduct):'';
-    const previewHtml=renderProductPreviewModal();
-    const lowActive=state.productFilter==='low';
-    return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>å•†å“åº«å­˜</h2><div class="ops-product-title-stat">åº«å­˜æˆæœ¬ç¸½é¡ï¼š<b>'+money(inventoryValue)+'</b></div><button type="button" class="ops-product-low-button '+(lowActive?'active':'')+'" data-action="product-low-stock">ä½Žæ–¼å®‰å…¨åº«å­˜ï¼š<b>'+formatNumber(low)+' é …</b></button></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">æ–°å¢žå•†å“</button><button class="ops-button soft" data-action="sync-easystore-api" '+(state.easyStoreSyncPending?'disabled aria-busy="true"':'')+'>'+(state.easyStoreSyncPending?'åœ–ç‰‡åŒæ­¥ä¸­â€¦':'åŒæ­¥åœ–ç‰‡')+'</button><button class="ops-button soft" data-action="open-import">'+(central?'æ›´æ–°å•†å“è³‡æ–™':'åŒ¯å…¥å•†å“è³‡æ–™')+'</button></div></div>'+productSeriesTabs()+'<div class="ops-product-toolbar"><input class="ops-input" id="productSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="æœå°‹å•†å“åç¨±æˆ– SKU" value="'+attr(state.productSearch)+'">'+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'å•†å“é¡¯ç¤ºæ–¹å¼')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+'<div id="productSearchResults">'+productSearchResultsHtml()+'</div></section>'+previewHtml;
-  }
-
-  function estimateFifoCostForProduct(p,qty){if(!p||!p.internal)return 0;try{return consumeFifo(p.internal,qty).costTotal;}catch(err){return qty*Number(p.nextFifoCost||p.averageCost||0);}}
-  function estimateCartCost(){return sum(state.cart,function(item){const p=catalogById(item.productId);return estimateFifoCostForProduct(p,item.qty);});}
-  function renderDirectIncomeForm(mode){
-    const repair=mode==='repair';
-    const title=repair?'ç¶­ä¿®æ”¶å…¥':'æœªç™»éŒ„å•†å“ï¼å…¶ä»–æ”¶å…¥';
-    const category=repair?'ç¶­ä¿®æ”¶å…¥':'';
-    return '<section class="ops-card ops-direct-income"><div class="ops-card-head"><div><h2>'+title+'</h2></div></div><form id="quickIncomeForm"><input type="hidden" name="occurredAt" value="'+inputDateTime(new Date())+'"><div class="ops-form-grid"><div class="ops-field full"><label class="ops-required">'+(repair?'ç¶­ä¿®é …ç›®':'æ”¶å…¥é …ç›®')+'</label><input class="ops-input" name="category" value="'+attr(category)+'" placeholder="'+(repair?'ä¾‹å¦‚ï¼šå‰ä»–ç¶­ä¿®':'ä¾‹å¦‚ï¼šæœªç™»éŒ„å•†å“ã€æ¬é‹è²»')+'" required></div><div class="ops-field"><label class="ops-required">é‡‘é¡</label><input class="ops-input" type="number" inputmode="decimal" min="0" step="1" name="amount" required></div><div class="ops-field"><label>ä»˜æ¬¾æ–¹å¼</label><select class="ops-select" name="paymentMethod"><option>ç¾é‡‘</option><option>ä¿¡ç”¨å¡</option><option>è½‰å¸³</option><option>LINE Pay</option><option>å…¶ä»–</option></select></div><div class="ops-field"><label>å®¢æˆ¶å§“å</label><input class="ops-input" name="customerName"></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note"></textarea></div></div><button class="ops-button primary wide" type="submit">ç¢ºèªæ”¶æ¬¾</button></form></section>';
-  }
-  function renderSales(){
-    const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}); const term=lower(state.posSearch).trim();
-    const choices=term.length>=1?products.filter(function(p){return matchesSearch([p.originalName,p.onlineName,p.sku,formatLabelSku(p.sku),p.barcode,p.brand,p.category],term);}):[];
-    const cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;});
-    const todaySales=todayRows(state.sales,function(x){return x.soldAt;});const todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;});
-    let productHtml='';
-    if(choices.length) productHtml=choices.map(function(p){const image=p.imageUrl||'';return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="" onerror="this.style.display=\'none\'">':'<div class="ops-pos-no-image">ç„¡åœ–</div>')+'<div><b>'+escapeHtml(p.originalName||p.name)+'</b>'+(p.onlineName?'<small class="ops-pos-online">ç¶²è·¯ï¼š'+escapeHtml(p.onlineName)+'</small>':'')+'<small>ç·¨è™Ÿ '+escapeHtml(p.sku||'æœªè¨­å®š')+'ãƒ»åº«å­˜ '+formatNumber(p.currentStock)+'ãƒ»'+money(p.storePrice)+'</small></div></button>';}).join('');
-    else if(term) productHtml='<div class="ops-no-result">æ‰¾ä¸åˆ°å•†å“</div>';
-    const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>ç·¨è™Ÿ '+escapeHtml(item.sku||'')+'ãƒ»åº«å­˜ '+formatNumber(p?p.currentStock:item.currentStock)+'</small></div><input aria-label="æ•¸é‡" type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input aria-label="å”®åƒ¹" type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">Ã—</button></div>';}).join(''):'<div class="ops-empty"><strong>å°šæœªé¸å•†å“</strong></div>';
-    const productRevenue=sum(todaySales,function(x){return x.total;});const otherRevenue=sum(todayIncome,function(x){return x.amount;});const todayProfit=sum(todaySales,function(x){return x.grossProfit;})+otherRevenue;
-    return '<div class="ops-pos-layout"><section class="ops-card"><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" placeholder="å•†å“ç·¨è™Ÿï¼åç¨±" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">æ¸…é™¤</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><div><h2>è¦è³£çš„å•†å“</h2></div><button class="ops-button small ghost" data-action="cart-clear">æ¸…ç©º</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total" style="margin-top:12px"><span>é€™æ¬¡æ‡‰æ”¶é‡‘é¡</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+'<div style="margin-top:13px"><button class="ops-button primary wide" data-action="checkout" '+(state.cart.length?'':'disabled')+'>å‰å¾€çµå¸³</button></div></section></div><div class="ops-income-shortcuts" style="margin-top:15px"><button class="ops-button soft" data-action="open-quick-income" data-category="ç¶­ä¿®æ”¶å…¥">ï¼‹ ç¶­ä¿®æ”¶å…¥</button><button class="ops-button soft" data-action="open-quick-income" data-category="æœªç™»éŒ„å•†å“">ï¼‹ æœªç™»éŒ„å•†å“</button><button class="ops-button soft" data-action="open-quick-income" data-category="å…¶ä»–æ”¶å…¥">ï¼‹ å…¶ä»–æ”¶å…¥</button></div><section class="ops-card"><div class="ops-card-head"><div><h2>ä»Šå¤©æ”¶å…¥</h2></div><button class="ops-button small ghost" data-action="show-sales-history">æŸ¥çœ‹éŠ·å”®ç´€éŒ„</button></div><div class="ops-kpi-grid" style="margin-bottom:0">'+kpi('å•†å“éŠ·å”®',money(productRevenue),todaySales.length+' ç­†','ï¼„')+kpi('å…¶ä»–æ”¶å…¥',money(otherRevenue),todayIncome.length+' ç­†','ï¼‹')+kpi('ä»Šå¤©è³ºå¤šå°‘',money(todayProfit),'æ”¶å…¥æ‰£é™¤å•†å“æˆæœ¬','â†—')+'</div></section>';
-  }
-
-  function customerTypeName(value){return {general:'ä¸€èˆ¬å®¢æˆ¶',member:'æœƒå“¡',teacher:'è€å¸«',organization:'æ©Ÿæ§‹'}[value]||'ä¸€èˆ¬å®¢æˆ¶';}
-  function pricingTierName(value){return {retail:'ä¸€èˆ¬å”®åƒ¹',teacher:'è€å¸«åƒ¹',custom:'è‡ªè¨‚åƒ¹æ ¼'}[value]||'ä¸€èˆ¬å”®åƒ¹';}
-  function renderCustomers(){
-    const term=lower(state.customerSearch);const rows=state.customers.filter(function(x){return !term||lower([x.name,x.phone,x.email,x.memberNo,x.customerType].join(' ')).includes(term);}).sort(function(a,b){return a.name.localeCompare(b.name,'zh-Hant');});
-    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>å®¢æˆ¶</th><th>èº«åˆ†ï¼åƒ¹æ ¼</th><th>è¯çµ¡æ–¹å¼</th><th class="num">é»žæ•¸</th><th class="num">æœªæ”¶æ¬¾</th><th></th></tr></thead><tbody>'+rows.map(function(x){const due=sum(state.receivables.filter(function(r){return r.customerId===x.id&&r.status!=='paid';}),function(r){return r.outstandingAmount;});return '<tr><td><b>'+escapeHtml(x.name)+'</b><br><small>'+escapeHtml(x.memberNo||'å°šç„¡æœƒå“¡ç·¨è™Ÿ')+'</small></td><td>'+statusTag(customerTypeName(x.customerType),x.customerType==='teacher'?'yellow':'green')+'<br><small>'+escapeHtml(pricingTierName(x.pricingTier))+'</small></td><td>'+escapeHtml(x.phone||'â€”')+'<br><small>'+escapeHtml(x.email||'')+'</small></td><td class="num">'+formatNumber(x.pointBalance)+'</td><td class="num">'+money(due)+'</td><td><button class="ops-button small ghost" data-action="customer-edit" data-id="'+attr(x.id)+'">ç·¨è¼¯</button></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('å°šç„¡å®¢æˆ¶è³‡æ–™','å…ˆå»ºç«‹æœƒå“¡ã€è€å¸«æˆ–ä¸€èˆ¬å®¢æˆ¶ã€‚','<button class="ops-button primary" data-action="customer-new">æ–°å¢žå®¢æˆ¶</button>');
-    return '<div class="ops-kpi-grid">'+kpi('å®¢æˆ¶ç¸½æ•¸',formatNumber(state.customers.length),'å…¨éƒ¨å®¢æˆ¶','äºº')+kpi('æœƒå“¡',formatNumber(state.customers.filter(function(x){return x.customerType==='member';}).length),'å·²å»ºç«‹æœƒå“¡','é»ž')+kpi('è€å¸«',formatNumber(state.customers.filter(function(x){return x.customerType==='teacher';}).length),'å¯å¥—ç”¨è€å¸«åƒ¹','å¸«')+kpi('ç´¯ç©æœªæ”¶æ¬¾',money(sum(state.receivables,function(x){return x.outstandingAmount;})),'é€£çµæ‡‰æ”¶å¸³æ¬¾','å¸³')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>å®¢æˆ¶èˆ‡æœƒå“¡</h2><p>é»žæ•¸è¦å‰‡èˆ‡è€å¸«æŠ˜æ‰£å…ˆä¿ç•™ï¼Œä¹‹å¾Œå†è¨­å®šã€‚</p></div><button class="ops-button primary" data-action="customer-new">æ–°å¢žå®¢æˆ¶</button></div><div class="ops-toolbar"><input class="ops-input grow" id="customerSearch" placeholder="æœå°‹å§“åã€é›»è©±ã€Email æˆ–æœƒå“¡ç·¨è™Ÿ" value="'+attr(state.customerSearch)+'"></div>'+table+'</section>';
-  }
-
-  function selectedCustomer(){return state.customers.find(function(x){return x.id===state.selectedCustomerId&&x.enabled;})||null;}
-  function customerOptions(selectedId){
-    return '<option value="">é–€å¸‚æ•£å®¢</option>'+state.customers.filter(function(x){return x.enabled;}).sort(function(a,b){return a.name.localeCompare(b.name,'zh-Hant');}).map(function(x){return '<option value="'+attr(x.id)+'" '+(x.id===selectedId?'selected':'')+'>'+escapeHtml(x.name)+(x.memberNo?'ï½œ'+escapeHtml(x.memberNo):'')+'</option>';}).join('');
-  }
-  function membershipRuleForDate(value){
-    const s=state.membershipSettings||DEFAULT_MEMBERSHIP_SETTINGS,d=dateFrom(value)||new Date(),year=String(d.getFullYear()),rules=s.annualRules&&typeof s.annualRules==='object'?s.annualRules:{},years=Object.keys(rules).filter(function(y){return /^\d{4}$/.test(y)&&Number(y)<=Number(year);}).sort();const yearly=rules[year]||(years.length?rules[years[years.length-1]]:null)||{};return Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS,s,yearly,{year:Number(yearly.year||year),annualRules:rules});
-  }
-  function membershipRuleActive(value){const rule=membershipRuleForDate(value);return rule.enabled!==false;}
-  function calculateEarnPoints(amount,value){const rule=membershipRuleForDate(value);if(rule.enabled===false)return 0;return Math.floor(Math.max(0,Number(amount||0))*Math.max(0,Number(rule.rewardPercent||0))/100);}
-  function pointDiscount(points,value){const s=membershipRuleForDate(value);if(Number(s.redeemPoints)<=0)return 0;return Math.floor(Math.max(0,Number(points||0))/Number(s.redeemPoints))*Math.max(0,Number(s.redeemAmount||0));}
-  function productRewardPercent(raw,value){const custom=numberOrNull(raw&&raw.saleRewardPercent);return custom==null?Math.max(0,Number(membershipRuleForDate(value).rewardPercent||0)):Math.max(0,custom);}
-  function calculatePreparedRewardPoints(prepared,total,subtotal,value){if(!membershipRuleActive(value)||subtotal<=0||total<=0)return 0;const ratio=Math.min(1,total/subtotal),rawPoints=sum(prepared,function(x){return (x.qty*x.unitPrice)*ratio*productRewardPercent(x.raw,value)/100;});return Math.floor(Math.max(0,rawPoints));}
-  function maxRedeemablePoints(customer,subtotal){
-    if(!customer||customer.customerType!=='member'||!membershipRuleActive())return 0;const s=membershipRuleForDate(new Date()),step=Math.max(1,Math.floor(Number(s.redeemPoints||1))),balance=Math.floor(Math.max(0,Number(customer.pointBalance||0))/step)*step,percent=Math.max(0,Math.min(100,Number(s.maxRedeemPercent||0))),maxDiscount=Math.max(0,Number(subtotal||0))*percent/100,units=Number(s.redeemAmount)>0?Math.floor(maxDiscount/Number(s.redeemAmount)):0,maxByAmount=units*step,result=Math.min(balance,maxByAmount);return result>=Math.max(step,Math.floor(Number(s.minRedeemPoints||1)))?result:0;
-  }
-  function posCustomerBar(){
-    const c=selectedCustomer();return '<section class="ops-card ops-pos-customer"><select class="ops-select" id="posCustomerSelect">'+customerOptions(c?c.id:'')+'</select><button class="ops-button primary" data-action="pos-customer-new">æ–°å¢žæœƒå“¡</button>'+(c?'<button class="ops-button ghost" data-action="customer-history" data-id="'+attr(c.id)+'">æ¶ˆè²»ç´€éŒ„</button><div class="ops-pos-customer-info"><b>'+escapeHtml(c.name)+'</b><span>'+escapeHtml(customerTypeName(c.customerType))+'</span>'+(c.customerType==='member'?'<strong>'+formatNumber(c.pointBalance)+' é»ž</strong>':'')+'</div>':'')+'</section>';
-  }
-  function renderDirectIncomeV4(mode){
-    const repair=mode==='repair',c=selectedCustomer();return '<section class="ops-card ops-direct-income"><form id="quickIncomeForm"><input type="hidden" name="occurredAt" value="'+inputDateTime(new Date())+'"><input type="hidden" name="customerId" value="'+attr(c?c.id:'')+'"><div class="ops-form-grid"><div class="ops-field full"><label class="ops-required">'+(repair?'ç¶­ä¿®é …ç›®':'æ”¶å…¥é …ç›®')+'</label>'+(repair?'<input class="ops-input" name="category" value="ç¶­ä¿®æ”¶å…¥" required>':'<select class="ops-select" name="category"><option value="æœªç™»éŒ„å•†å“">æœªç™»éŒ„å•†å“</option><option value="å…¶ä»–æ”¶å…¥">å…¶ä»–æ”¶å…¥</option></select>')+'</div><div class="ops-field"><label class="ops-required">é‡‘é¡</label><input class="ops-input" type="number" inputmode="decimal" min="0" step="1" name="amount" required></div><div class="ops-field"><label>ä»˜æ¬¾æ–¹å¼</label><select class="ops-select" name="paymentMethod"><option>ç¾é‡‘</option><option>ä¿¡ç”¨å¡</option><option>è½‰å¸³</option><option>LINE Pay</option><option>å…¶ä»–</option></select></div><div class="ops-field"><label>æ”¶æ¬¾ç‹€æ…‹</label><select class="ops-select" name="paymentStatus"><option value="paid">å·²æ”¶æ¸…</option><option value="partial">éƒ¨åˆ†æ”¶æ¬¾</option><option value="unpaid">æœªæ”¶æ¬¾</option></select></div><div class="ops-field"><label>æœ¬æ¬¡å·²æ”¶</label><input class="ops-input" type="number" inputmode="decimal" min="0" step="1" name="receivedAmount"></div></div><button class="ops-button primary wide" type="submit">ç¢ºèª</button></form></section>';
-  }
-  function renderSalesV4(){
-    const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}),term=lower(state.posSearch).trim(),choices=term?products.filter(function(p){return matchesSearch([p.originalName,p.onlineName,p.sku,formatLabelSku(p.sku),p.barcode,p.brand,p.category],term);}):[],cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),todaySales=todayRows(state.sales,function(x){return x.soldAt;}),todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;}),repairIncome=todayIncome.filter(function(x){return x.category==='ç¶­ä¿®æ”¶å…¥';}),otherIncome=todayIncome.filter(function(x){return x.category!=='ç¶­ä¿®æ”¶å…¥';});
-    let main='';
-    if(state.salesMode==='product'){
-      let productHtml='';if(choices.length)productHtml=choices.map(function(p){const image=p.imageUrl||'';return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="" onerror="this.style.display=\'none\'">':'<div class="ops-pos-no-image">ç„¡åœ–</div>')+'<div><b>'+escapeHtml(p.originalName||p.name)+'</b><small>ç·¨è™Ÿ '+escapeHtml(p.sku||'æœªè¨­å®š')+'ãƒ»åº«å­˜ '+formatNumber(p.currentStock)+'ãƒ»'+money(p.storePrice)+'</small></div></button>';}).join('');else if(term)productHtml='<div class="ops-no-result">æ‰¾ä¸åˆ°å•†å“</div>';
-      const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>ç·¨è™Ÿ '+escapeHtml(item.sku||'')+'ãƒ»åº«å­˜ '+formatNumber(p?p.currentStock:item.currentStock)+'</small></div><input aria-label="æ•¸é‡" type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input aria-label="å”®åƒ¹" type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">Ã—</button></div>';}).join(''):'<div class="ops-empty"><strong>å°šæœªé¸å•†å“</strong></div>';
-      main='<div class="ops-pos-layout"><section class="ops-card"><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" placeholder="å•†å“ç·¨è™Ÿï¼åç¨±" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">æ¸…é™¤</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><h2>è¦è³£çš„å•†å“</h2><button class="ops-button small ghost" data-action="cart-clear">æ¸…ç©º</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total"><span>æ‡‰æ”¶é‡‘é¡</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+'<button class="ops-button primary wide" data-action="checkout" '+(state.cart.length?'':'disabled')+'>çµå¸³</button></section></div>';
-    }else main=renderDirectIncomeV4(state.salesMode);
-    const productRevenue=sum(todaySales,function(x){return x.total;}),repairRevenue=sum(repairIncome,function(x){return x.amount;}),otherRevenue=sum(otherIncome,function(x){return x.amount;});
-    return posCustomerBar()+'<div class="ops-sales-modes"><button data-action="sales-mode" data-mode="product" class="'+(state.salesMode==='product'?'active':'')+'">å•†å“éŠ·å”®</button><button data-action="sales-mode" data-mode="repair" class="'+(state.salesMode==='repair'?'active':'')+'">ç¶­ä¿®æ”¶å…¥</button><button data-action="sales-mode" data-mode="other" class="'+(state.salesMode==='other'?'active':'')+'">å…¶ä»–æ”¶å…¥</button></div>'+main+'<section class="ops-card ops-sales-total"><div class="ops-kpi-grid">'+kpi('å•†å“éŠ·å”®',money(productRevenue),'','ï¼„')+kpi('ç¶­ä¿®æ”¶å…¥',money(repairRevenue),'','ä¿®')+kpi('å…¶ä»–æ”¶å…¥',money(otherRevenue),'','ï¼‹')+kpi('ä»Šæ—¥ç¸½è¨ˆ',money(productRevenue+repairRevenue+otherRevenue),'','åˆ')+'</div></section>';
-  }
-  function posChoiceButtons(name,current,items){return '<div class="ops-choice-grid '+(items.length===2?'two':'')+'">'+items.map(function(item){return '<button type="button" class="'+(item.value===current?'active':'')+'" data-action="pos-choice" data-name="'+attr(name)+'" data-value="'+attr(item.value)+'">'+escapeHtml(item.label)+'</button>';}).join('')+'</div>';}
-
-
-function posCustomerBarV5(){
-  const c=selectedCustomer(),term=lower(state.posMemberSearch),members=state.customers.filter(function(x){return x.enabled&&x.customerType==='member'&&(!term||lower([x.name,x.phone,x.email,x.memberNo].join(' ')).includes(term));}).slice(0,12);
-  let popover='';
-  if(state.posCustomerMode==='member'&&state.posMemberPickerOpen){
-    const resultHtml=term?(members.length?members.map(function(x){return '<button type="button" class="'+(x.id===state.selectedCustomerId?'active':'')+'" data-action="pos-member-select" data-id="'+attr(x.id)+'"><b>'+escapeHtml(x.name)+'</b><span>'+escapeHtml(x.phone||x.email||x.memberNo||'')+'</span><strong>'+formatNumber(x.pointBalance)+' é»ž</strong></button>';}).join(''):'<div class="ops-member-empty">æ‰¾ä¸åˆ°æœƒå“¡</div>'):'<div class="ops-member-empty">è¼¸å…¥å§“åã€é›»è©±ã€Email æˆ–æœƒå“¡ç·¨è™Ÿ</div>';
-    popover='<div class="ops-member-popover"><input class="ops-input" id="posMemberSearch" placeholder="æœå°‹æœƒå“¡" value="'+attr(state.posMemberSearch)+'"><div class="ops-member-results">'+resultHtml+'</div></div>';
-  }
-  return '<section class="ops-card ops-pos-customer-v5 ops-pos-customer-compact"><div class="ops-customer-mode-grid"><button type="button" class="'+(state.posCustomerMode==='walkin'?'active':'')+'" data-action="pos-customer-mode" data-mode="walkin">é–€å¸‚æ•£å®¢</button><button type="button" class="'+(state.posCustomerMode==='member'?'active':'')+'" data-action="pos-customer-mode" data-mode="member">'+(c&&state.posCustomerMode==='member'?escapeHtml(c.name):'é¸æ“‡æœƒå“¡')+'</button><button type="button" data-action="pos-customer-new">æ–°å¢žæœƒå“¡</button></div>'+popover+'</section>';
-}
-
-  function renderInlineCheckout(){
-    if(!state.cart.length)return '';
-    const preorder=state.checkoutOrderType==='preorder',subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),c=selectedCustomer(),walkin=!c||state.posCustomerMode==='walkin',settings=membershipRuleForDate(new Date());
-    let manualDiscount=Math.max(0,Number(state.checkoutDiscount||0)),maxPoints=(preorder||walkin)?0:maxRedeemablePoints(c,Math.max(0,subtotal-manualDiscount));
-    if(!preorder&&!walkin&&settings.redemptionMode==='auto'&&!state.checkoutPointsTouched)state.checkoutPoints=maxPoints;
-    if(preorder){state.checkoutPoints=0;state.checkoutPointsTouched=true;}
-    let points=Math.min(maxPoints,Math.max(0,Math.floor(Number(state.checkoutPoints||0)))),pointValue=pointDiscount(points);
-    if(!preorder&&clean(state.checkoutActualCash)!==''){
-      const actualCash=Math.max(0,Number(state.checkoutActualCash||0));
-      manualDiscount=Math.max(0,subtotal-pointValue-actualCash);
-      state.checkoutDiscount=manualDiscount;
-      maxPoints=walkin?0:maxRedeemablePoints(c,Math.max(0,subtotal-manualDiscount));
-      points=Math.min(maxPoints,points);
-      pointValue=pointDiscount(points);
-      manualDiscount=Math.max(0,subtotal-pointValue-actualCash);
-      state.checkoutDiscount=manualDiscount;
-    }
-    const total=Math.max(0,subtotal-manualDiscount-pointValue),status=preorder?'partial':walkin?'paid':state.checkoutPaymentStatus,member=!!(c&&c.customerType==='member'),earnEnabled=member&&state.checkoutEarnPoints!==false;
-    const prepared=state.cart.map(function(item){const p=catalogById(item.productId);return {qty:item.qty,unitPrice:item.unitPrice,raw:p&&p.internal?p.internal:{}};}),earned=earnEnabled?calculatePreparedRewardPoints(prepared,total,subtotal,new Date()):0,remaining=Math.max(0,Number(c&&c.pointBalance||0)-points);
-    state.checkoutPoints=points;if(walkin&&!preorder){state.checkoutPaymentStatus='paid';state.checkoutReceived='';state.checkoutPointsTouched=false;state.checkoutEarnPoints=true;}
-    const memberSummary=member?'<div class="ops-member-payment-summary"><div><span>æœƒå“¡</span><b>'+escapeHtml(c.name)+' '+escapeHtml(c.memberNo||'')+'</b></div><div><span>å¯ç”¨é»žæ•¸</span><b>'+formatNumber(c.pointBalance)+' é»ž</b></div><div><span>æœ¬æ¬¡æŠ˜æŠµ</span><b id="inlinePointDiscount">'+formatNumber(points)+' é»žï¼'+money(pointValue)+'</b></div><div><span>æŠ˜æŠµå¾Œå‰©é¤˜</span><b id="inlinePointRemaining">'+formatNumber(remaining)+' é»ž</b></div><div><span>'+(preorder?'äº¤è²¨çµæ¸…å¾Œç´¯ç©':'æœ¬æ¬¡ç´¯ç©')+'</span><b id="inlinePointsEarned">'+(earnEnabled?formatNumber(earned)+' é»ž':'ä¸ç´¯ç©')+'</b></div></div><input type="hidden" name="earnPointsEnabled" value="'+(earnEnabled?'true':'false')+'"><div class="ops-checkout-block"><label>æœ¬æ¬¡é»žæ•¸</label>'+posChoiceButtons('earnPointsEnabled',earnEnabled?'earn':'none',[{value:'earn',label:'ç´¯ç©é»žæ•¸'},{value:'none',label:'ä¸ç´¯ç©é»žæ•¸'}])+'</div>':'<input type="hidden" name="earnPointsEnabled" value="false">';
-    const orderTypeBlock='<div class="ops-checkout-block"><label>äº¤æ˜“æ–¹å¼</label>'+posChoiceButtons('orderType',preorder?'preorder':'sale',[{value:'sale',label:'ç¾è²¨éŠ·å”®'},{value:'preorder',label:'é è³¼ï¼æ”¶è¨‚é‡‘'}])+'</div>';
-    const paymentBlock=preorder?'<input type="hidden" name="paymentStatus" value="partial"><div class="ops-callout green"><b>é è³¼æˆäº¤ã€æ”¶æ¬¾ã€äº¤è²¨æœƒåˆ†é–‹è¿½è¹¤</b><br><span>ä»Šå¤©ç¢ºèªè¨‚å–®å¾Œå°±æœƒä»¥ä»Šå¤©è¨ˆå…¥å®Œæ•´æˆäº¤é‡‘é¡ã€æˆæœ¬èˆ‡æ¯›åˆ©ï¼›è¨‚é‡‘ï¼å°¾æ¬¾åªæ›´æ–°æ”¶æ¬¾ï¼Œäº¤è²¨åªæ‰£åº«å­˜ï¼Œå…©è€…éƒ½ä¸æœƒæ”¹å‹•æˆäº¤æ—¥ã€‚</span></div><div class="ops-field"><label>æœ¬æ¬¡çœŸçš„æ”¶åˆ°çš„è¨‚é‡‘</label><input class="ops-input ops-number-clean" type="number" inputmode="decimal" min="0" max="'+total+'" step="1" name="receivedAmount" value="'+attr(state.checkoutReceived)+'" placeholder="å°šæœªæ”¶åˆ°å¯è¼¸å…¥ 0"></div>':'<input type="hidden" name="paymentStatus" value="'+attr(status)+'"><div class="ops-checkout-block"><label>æ”¶æ¬¾ç‹€æ…‹</label>'+posChoiceButtons('paymentStatus',status,walkin?[{value:'paid',label:'å·²æ”¶æ¸…'}]:[{value:'paid',label:'å·²æ”¶æ¸…'},{value:'partial',label:'éƒ¨åˆ†æ”¶æ¬¾'},{value:'unpaid',label:'æœªæ”¶æ¬¾'}])+'</div>'+(status==='partial'?'<div class="ops-field"><label>æœ¬æ¬¡å·²æ”¶</label><input class="ops-input ops-number-clean" type="number" inputmode="decimal" min="0" step="1" name="receivedAmount" value="'+attr(state.checkoutReceived)+'"></div>':'');
-    const pointField=member&&!preorder&&settings.redemptionMode!=='earn-only'?'<div class="ops-field"><label>é»žæ•¸æŠ˜æŠµ</label><input class="ops-input ops-number-clean" type="number" inputmode="numeric" min="0" max="'+maxPoints+'" step="'+Math.max(1,Math.floor(Number(settings.redeemPoints||1)))+'" name="pointsToRedeem" value="'+points+'"></div>':'<input type="hidden" name="pointsToRedeem" value="0">';
-    const actualCashField=preorder?'':'<div class="ops-field"><label>å¯¦éš›æ”¶åˆ°çš„ç¾é‡‘</label><input class="ops-input ops-number-clean" type="number" inputmode="decimal" min="0" max="'+Math.max(0,subtotal-pointValue)+'" step="1" name="actualCashReceived" value="'+attr(state.checkoutActualCash)+'" placeholder="è¼¸å…¥å¾Œè‡ªå‹•è¨ˆç®—æŠ˜æ‰£"></div>';
-    return '<form id="checkoutFormInline" class="ops-inline-checkout"><h3>'+(preorder?'å»ºç«‹é è³¼ï¼è¨‚é‡‘å–®':'çµå¸³')+'</h3><input type="hidden" name="orderType" value="'+(preorder?'preorder':'sale')+'"><input type="hidden" name="customerId" value="'+attr(walkin?'':c.id)+'"><input type="hidden" name="paymentMethod" value="'+attr(state.checkoutPaymentMethod)+'">'+orderTypeBlock+(preorder&&walkin?'<div class="ops-callout"><b>è«‹å…ˆé¸æ“‡æˆ–æ–°å¢žæœƒå“¡</b><br><span>é è³¼éœ€è¦ä¿ç•™å®¢æˆ¶è³‡æ–™ï¼Œæ–¹ä¾¿åˆ°è²¨å¾Œç›´æŽ¥æ‰¾åˆ°åŽŸè¨‚å–®å®Œæˆäº¤è²¨ã€‚</span></div>':'')+memberSummary+'<div class="ops-checkout-block"><label>ä»˜æ¬¾æ–¹å¼</label>'+posChoiceButtons('paymentMethod',state.checkoutPaymentMethod,[{value:'ç¾é‡‘',label:'ç¾é‡‘'},{value:'ä¿¡ç”¨å¡',label:'ä¿¡ç”¨å¡'},{value:'è½‰å¸³',label:'è½‰å¸³'}])+'</div>'+paymentBlock+'<div class="ops-checkout-fields">'+actualCashField+'<div class="ops-field"><label>é¡å¤–æŠ˜æ‰£</label><input class="ops-input ops-number-clean" type="number" inputmode="decimal" min="0" step="1" name="discount" value="'+attr(state.checkoutDiscount)+'"></div>'+pointField+'</div><div class="ops-summary-list"><div class="ops-summary-line"><span>å•†å“é‡‘é¡</span><b id="inlineProductSubtotal">'+money(subtotal)+'</b></div><div class="ops-summary-line"><span>æŠ˜æ‰£</span><b id="inlineDiscountTotal">'+money(manualDiscount+pointValue)+'</b></div><div class="ops-summary-line total"><span>'+(preorder?'è¨‚å–®ç¸½é¡':'æ‡‰æ”¶é‡‘é¡')+'</span><b id="inlineCheckoutTotal">'+money(total)+'</b></div></div><button class="ops-button primary wide" type="submit">'+(preorder?'ç¢ºèªå»ºç«‹é è³¼å–®':'ç¢ºèªçµå¸³')+'</button></form>';
-  }
-  function renderDirectIncomeV5(mode){
-    const repair=mode==='repair',pianoRental=mode==='pianoRental',category=repair?'ç¶­ä¿®æ”¶å…¥':pianoRental?'é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥':'å…¶ä»–æ”¶å…¥',c=selectedCustomer(),walkin=!c||state.posCustomerMode==='walkin',status=walkin?'paid':state.checkoutPaymentStatus;
-    if(walkin)state.checkoutPaymentStatus='paid';
-    return '<section class="ops-card ops-direct-income ops-v10-direct-income"><div class="ops-v8-section-head"><div><h2>'+category+'</h2></div></div><form id="quickIncomeForm"><input type="hidden" name="occurredAt" value="'+inputDateTime(new Date())+'"><input type="hidden" name="customerId" value="'+attr(walkin?'':c.id)+'"><input type="hidden" name="category" value="'+attr(category)+'"><input type="hidden" name="paymentMethod" value="'+attr(state.checkoutPaymentMethod)+'"><input type="hidden" name="paymentStatus" value="'+attr(status)+'"><div class="ops-form-grid"><div class="ops-field full"><label class="ops-required">'+(repair?'ç¶­ä¿®é …ç›®':pianoRental?'ç§Ÿç”¨å…§å®¹':'æ”¶å…¥é …ç›®')+'</label><input class="ops-input" name="itemName" placeholder="'+(repair?'ä¾‹å¦‚ï¼šå‰ä»–æ›å¼¦ã€å°Žç·šç¶­ä¿®':pianoRental?'ä¾‹å¦‚ï¼šèˆŠè³‡æ–™è£œç™»ã€é›»é‹¼ç´ç§Ÿç”¨':'ä¾‹å¦‚ï¼šæ¬é‹è²»ã€å ´åœ°è²»ã€å…¶ä»–æ”¶å…¥å…§å®¹')+'" required></div><div class="ops-field full"><label class="ops-required">é‡‘é¡</label><input class="ops-input ops-number-clean" type="number" inputmode="decimal" min="0" step="1" name="amount" value="'+attr(state.directIncomeAmount)+'" required></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note" placeholder="å¯è£œå……å®¢æˆ¶éœ€æ±‚ã€è™•ç†å…§å®¹æˆ–å…¶ä»–èªªæ˜Ž"></textarea></div></div><div class="ops-checkout-block"><label>ä»˜æ¬¾æ–¹å¼</label>'+posChoiceButtons('paymentMethod',state.checkoutPaymentMethod,[{value:'ç¾é‡‘',label:'ç¾é‡‘'},{value:'ä¿¡ç”¨å¡',label:'ä¿¡ç”¨å¡'},{value:'è½‰å¸³',label:'è½‰å¸³'}])+'</div><div class="ops-checkout-block"><label>æ”¶æ¬¾ç‹€æ…‹</label>'+posChoiceButtons('paymentStatus',status,walkin?[{value:'paid',label:'å·²æ”¶æ¸…'}]:[{value:'paid',label:'å·²æ”¶æ¸…'},{value:'partial',label:'éƒ¨åˆ†æ”¶æ¬¾'},{value:'unpaid',label:'æœªæ”¶æ¬¾'}])+'</div>'+(status==='partial'?'<div class="ops-field"><label>æœ¬æ¬¡å·²æ”¶</label><input class="ops-input ops-number-clean" type="number" inputmode="decimal" min="0" step="1" name="receivedAmount" value="'+attr(state.checkoutReceived)+'"></div>':'')+'<button class="ops-button primary wide" type="submit">ç¢ºèª</button></form></section>';
-  }
-
-function renderTodayInvoices(){
-  const term=lower(state.saleInvoiceSearch).trim(),from=state.saleInvoiceFrom?new Date(state.saleInvoiceFrom+'T00:00:00'):null,to=state.saleInvoiceTo?new Date(state.saleInvoiceTo+'T23:59:59'):null;
-  const rows=state.sales.filter(function(x){
-    const soldAt=dateFrom(x.soldAt),customer=state.customers.find(function(row){return row.id===x.customerId;});
-    if(from&&(!soldAt||soldAt<from))return false;
-    if(to&&(!soldAt||soldAt>to))return false;
-    return !term||lower([x.saleNo,x.customerName,x.paymentMethod,customer&&customer.phone].concat(x.items.map(function(i){return i.name+' '+i.sku;})).join(' ')).includes(term);
-  }).sort(function(a,b){return (dateFrom(b.soldAt)||0)-(dateFrom(a.soldAt)||0);}).slice(0,120);
-  return '<section class="ops-card ops-invoice-list ops-sales-history-simple"><div class="ops-card-head"><h2>éŠ·å”®è¨˜éŒ„</h2></div><div class="ops-history-toolbar"><input class="ops-input grow" id="saleInvoiceSearch" placeholder="æœå°‹å–®è™Ÿã€æœƒå“¡ã€é›»è©±æˆ–å•†å“" value="'+attr(state.saleInvoiceSearch)+'"><label class="ops-inline-field"><span>é–‹å§‹æ—¥æœŸ</span><input class="ops-input" id="saleInvoiceFrom" type="date" value="'+attr(state.saleInvoiceFrom)+'"></label><label class="ops-inline-field"><span>çµæŸæ—¥æœŸ</span><input class="ops-input" id="saleInvoiceTo" type="date" value="'+attr(state.saleInvoiceTo)+'"></label><button class="ops-button ghost" data-action="sale-history-reset-range">æ¸…é™¤å€é–“</button></div><div class="ops-invoice-rows">'+(rows.length?rows.map(function(x){return '<button type="button" data-action="sale-edit" data-id="'+attr(x.id)+'"><span>'+escapeHtml(dateText(x.soldAt))+'</span><b>'+escapeHtml(x.saleNo)+'</b><em>'+escapeHtml(x.customerName||'é–€å¸‚æ•£å®¢')+(x.returnStatus?'ãƒ»å·²é€€è²¨':'')+'</em><strong>'+money(x.total)+'</strong><i>è™•ç†</i></button>';}).join(''):emptyHtml('æ‰¾ä¸åˆ°ç¬¦åˆæ¢ä»¶çš„éŠ·å”®è¨˜éŒ„','è«‹èª¿æ•´æœå°‹æ–‡å­—æˆ–æ—¥æœŸå€é–“ã€‚'))+'</div></section>';
-}
-
-
-function renderSalesV5(){
-  const products=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';}),term=lower(state.posSearch).trim(),choices=term?products.filter(function(p){return matchesSearch([p.originalName,p.onlineName,p.sku,formatLabelSku(p.sku),p.barcode,p.brand,p.category],term);}):[],cartSubtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),todaySales=todayRows(state.sales,function(x){return x.soldAt;}),todayIncome=todayRows(state.incomes,function(x){return x.occurredAt;}),repairIncome=todayIncome.filter(function(x){return x.category==='ç¶­ä¿®æ”¶å…¥';}),otherIncome=todayIncome.filter(function(x){return x.category!=='ç¶­ä¿®æ”¶å…¥';});
-  let main='';
-  if(state.salesMode==='product'){
-    let productHtml='';
-    if(choices.length)productHtml=choices.map(function(p){const image=p.imageUrl||'';return '<button class="ops-pos-item" data-action="cart-add" data-id="'+attr(p.docId)+'">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="" onerror="this.style.display=&quot;none&quot;">':'<div class="ops-pos-no-image">ç„¡åœ–</div>')+'<div><b>'+escapeHtml(p.originalName||p.name)+'</b><small>ç·¨è™Ÿ '+escapeHtml(p.sku||'æœªè¨­å®š')+'ãƒ»åº«å­˜ '+formatNumber(p.currentStock)+'ãƒ»'+money(p.storePrice)+'</small></div></button>';}).join('');
-    else if(term)productHtml='<div class="ops-no-result">æ‰¾ä¸åˆ°å•†å“</div>';
-    const cartHtml=state.cart.length?state.cart.map(function(item,index){const p=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>ç·¨è™Ÿ '+escapeHtml(item.sku||'')+'ãƒ»åº«å­˜ '+formatNumber(p?p.currentStock:item.currentStock)+'</small></div><input class="ops-number-clean" aria-label="æ•¸é‡" type="number" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'"><input class="ops-number-clean" aria-label="å”®åƒ¹" type="number" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'"><button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">Ã—</button></div>';}).join(''):'<div class="ops-empty"><strong>å°šæœªé¸å•†å“</strong></div>';
-    main='<div class="ops-pos-layout"><section class="ops-card"><div class="ops-toolbar"><input class="ops-input grow ops-pos-search" id="posSearch" placeholder="å•†å“ç·¨è™Ÿï¼åç¨±" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">æ¸…é™¤</button></div><div class="ops-pos-products">'+productHtml+'</div></section><section class="ops-card"><div class="ops-card-head"><h2>è¦è³£çš„å•†å“</h2><button class="ops-button small ghost" data-action="cart-clear">æ¸…ç©º</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total"><span>å•†å“é‡‘é¡</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+renderInlineCheckout()+'</section></div>';
-  }else main=renderDirectIncomeV5(state.salesMode);
-  const productRevenue=sum(todaySales,function(x){return x.total;}),repairRevenue=sum(repairIncome,function(x){return x.amount;}),otherRevenue=sum(otherIncome,function(x){return x.amount;});
-  return '<div class="ops-sales-simple">'+posCustomerBarV5()+'<section class="ops-sale-workspace ops-sales-main-simple"><div class="ops-sales-modes ops-sales-modes-simple"><button data-action="sales-mode" data-mode="product" class="'+(state.salesMode==='product'?'active':'')+'">å•†å“éŠ·å”®</button><button data-action="sales-mode" data-mode="repair" class="'+(state.salesMode==='repair'?'active':'')+'">ç¶­ä¿®æ”¶å…¥</button><button data-action="sales-mode" data-mode="other" class="'+(state.salesMode==='other'?'active':'')+'">å…¶ä»–æ”¶å…¥</button></div><div class="ops-sales-main-label"><h2>ä¸»è¦éŠ·å”®å€</h2><span class="ops-sales-clock" id="opsSalesClock">'+formatSalesClock(new Date())+'</span></div>'+main+'</section><section class="ops-card ops-sales-total ops-sales-total-simple"><div class="ops-kpi-grid">'+kpi('å•†å“éŠ·å”®',money(productRevenue),'','ï¼„')+kpi('ç¶­ä¿®æ”¶å…¥',money(repairRevenue),'','ä¿®')+kpi('å…¶ä»–æ”¶å…¥',money(otherRevenue),'','ï¼‹')+kpi('ä»Šæ—¥ç¸½è¨ˆ',money(productRevenue+repairRevenue+otherRevenue),'','åˆ')+'</div></section>'+renderTodayInvoices()+'</div>';
-}
-
-  function posNumberPadHtml(){return '<div class="ops-number-pad ops-pos-number-pad" aria-label="å•†å“ç·¨è™Ÿæ•¸å­—éµç›¤">'+['1','2','3','4','5','6','7','8','9','clear','0','back'].map(function(key){const label=key==='clear'?'æ¸…é™¤':key==='back'?'âŒ«':key;return '<button type="button" data-action="pos-key" data-key="'+key+'">'+label+'</button>';}).join('')+'</div>';}
-  function renderSalesV6(){return renderSalesV5().replace('<div class="ops-pos-products">',posNumberPadHtml()+'<div class="ops-pos-products">');}
-
-  function preorderTrackingState(sale){
-    const receivable=state.receivables.find(function(row){return row.saleId===sale.id;})||null,orderTotal=Math.max(0,Number(sale.total||sale.orderTotal||0)),received=Math.max(0,Number(receivable?receivable.receivedAmount:sale.receivedAmount||0)),outstanding=Math.max(0,receivable?Number(receivable.outstandingAmount||0):orderTotal-received),paymentStatus=outstanding<=0?'paid':received>0?'partial':'unpaid',delivered=sale.fulfillmentStatus==='delivered',cost=Math.max(0,Number(sale.costTotal||0)),profit=numberOrNull(sale.grossProfit)==null?orderTotal-cost:Number(sale.grossProfit);
-    return {receivable:receivable,orderTotal:orderTotal,received:received,outstanding:outstanding,paymentStatus:paymentStatus,paymentLabel:paymentStatus==='paid'?'å·²æ”¶æ¸…':paymentStatus==='partial'?'éƒ¨åˆ†æ”¶æ¬¾':'æœªæ”¶æ¬¾',delivered:delivered,deliveryLabel:delivered?'å·²äº¤è²¨':'å¾…äº¤è²¨',cost:cost,profit:profit};
-  }
-  function preorderPaymentsForSale(sale){
-    const tracking=preorderTrackingState(sale);
-    return state.receivablePayments.filter(function(row){return row.saleId===sale.id||(tracking.receivable&&row.receivableId===tracking.receivable.id);}).sort(function(a,b){return (dateFrom(a.paidAt)||0)-(dateFrom(b.paidAt)||0);});
-  }
-  function renderOpenPreorderTrackingV1(){
-    const rows=state.sales.filter(function(sale){if(sale.saleType!=='preorder')return false;const tracking=preorderTrackingState(sale);return !tracking.delivered||tracking.outstanding>0;}).sort(function(a,b){return (dateFrom(b.soldAt)||0)-(dateFrom(a.soldAt)||0);});
-    if(!rows.length)return '';
-    const cards=rows.map(function(sale){const tracking=preorderTrackingState(sale),itemText=(sale.items||[]).map(function(item){return clean(item.name)||clean(item.sku);}).filter(Boolean).join('ã€');return '<button type="button" class="ops-preorder-tracking-card" data-action="preorder-track" data-id="'+attr(sale.id)+'"><span class="ops-preorder-tracking-main"><b>'+escapeHtml(sale.customerName||'æœªæŒ‡å®šå®¢æˆ¶')+'ï½œ'+escapeHtml(itemText||'é è³¼å•†å“')+'</b><small>'+escapeHtml(sale.saleNo)+'ï½œæˆäº¤ '+escapeHtml(dateTimeText(sale.soldAt||sale.preorderAt))+'</small></span><span class="ops-preorder-status-pair">'+statusTag('æ”¶æ¬¾ï¼š'+tracking.paymentLabel,tracking.paymentStatus==='paid'?'green':'yellow')+statusTag('äº¤è²¨ï¼š'+tracking.deliveryLabel,tracking.delivered?'green':'yellow')+'</span><span class="ops-preorder-tracking-money"><small>æˆäº¤ '+money(tracking.orderTotal)+'</small><small>å·²æ”¶ '+money(tracking.received)+'</small><b>æœªæ”¶ '+money(tracking.outstanding)+'</b></span><em>æŸ¥çœ‹ï¼è™•ç†</em></button>';}).join('');
-    return '<section class="ops-card ops-preorder-tracking-board"><div class="ops-v8-section-head"><div><h2>é è³¼é›†ä¸­è¿½è¹¤</h2><p>æœªæ”¶æ¸…æˆ–æœªäº¤è²¨çš„è¨‚å–®éƒ½åœ¨é€™è£¡ï¼›æˆäº¤ã€æ”¶æ¬¾ã€äº¤è²¨ä¸æœƒå†æ··æˆåŒä¸€å€‹æŒ‰éˆ•ã€‚</p></div><span class="ops-tag yellow">'+formatNumber(rows.length)+' ç­†å¾…è™•ç†</span></div><div class="ops-preorder-tracking-list">'+cards+'</div></section>';
-  }
-  function renderSalesHistoryV7(){
-    const term=lower(state.saleInvoiceSearch).trim(),from=state.saleInvoiceFrom?new Date(state.saleInvoiceFrom+'T00:00:00'):null,to=state.saleInvoiceTo?new Date(state.saleInvoiceTo+'T23:59:59'):null,entries=[];
-    state.sales.forEach(function(sale){entries.push({kind:'sale',date:sale.soldAt||sale.preorderAt,row:sale});});
-    state.incomes.forEach(function(income){entries.push({kind:'income',date:income.occurredAt,row:income});});
-    const rows=entries.filter(function(entry){
-      const date=dateFrom(entry.date),row=entry.row,customer=state.customers.find(function(item){return item.id===row.customerId;});
-      if(from&&(!date||date<from))return false;
-      if(to&&(!date||date>to))return false;
-      const search=entry.kind==='income'?[row.incomeNo,row.category,row.itemName,row.customerName,row.paymentMethod,row.note,customer&&customer.phone]:[row.saleNo,row.customerName,row.paymentMethod,row.saleType,row.fulfillmentStatus,row.usageReason,row.usageNote,customer&&customer.phone,customer&&customer.email].concat((row.items||[]).map(function(item){return item.name+' '+item.sku;}));
-      return !term||lower(search.join(' ')).includes(term);
-    }).sort(function(a,b){return (dateFrom(b.date)||0)-(dateFrom(a.date)||0);});
-    const visible=rows.slice(0,160);
-    const todayKey=dateText(new Date()),monthStart=todayKey.slice(0,8)+'01',rangeMode=!state.saleInvoiceFrom&&!state.saleInvoiceTo?'all':state.saleInvoiceFrom===todayKey&&state.saleInvoiceTo===todayKey?'today':state.saleInvoiceFrom===monthStart&&state.saleInvoiceTo===todayKey?'month':state.saleInvoiceFrom&&state.saleInvoiceFrom===state.saleInvoiceTo?'day':'custom';
-    const quick='<div class="ops-sales-history-quick"><span>å¿«é€Ÿæ—¥æœŸ</span><button class="'+(rangeMode==='today'?'active':'')+'" data-action="sale-history-range" data-mode="today">ä»Šå¤©</button><button data-action="sale-history-range" data-mode="prev">â† å‰ä¸€å¤©</button><button data-action="sale-history-range" data-mode="next">å¾Œä¸€å¤© â†’</button><button class="'+(rangeMode==='month'?'active':'')+'" data-action="sale-history-range" data-mode="month">æœ¬æœˆ</button><button class="'+(rangeMode==='all'?'active':'')+'" data-action="sale-history-range" data-mode="all">å…¨éƒ¨</button><button class="'+(rangeMode==='custom'?'active':'')+'" data-action="sale-history-range" data-mode="custom">è‡ªè¨‚å€é–“</button></div>';
-    const toolbar='<div class="ops-v8-sales-history-tools">'+quick+'<div class="ops-sales-history-fields"><input class="ops-input grow" id="saleInvoiceSearch" placeholder="æœå°‹å–®è™Ÿã€é …ç›®ã€ç”¨é€”ã€é›»è©±æˆ–å•†å“" value="'+attr(state.saleInvoiceSearch)+'"><label><span>é–‹å§‹æ—¥æœŸ</span><input class="ops-input" id="saleInvoiceFrom" type="date" value="'+attr(state.saleInvoiceFrom)+'"></label><label><span>çµæŸæ—¥æœŸ</span><input class="ops-input" id="saleInvoiceTo" type="date" value="'+attr(state.saleInvoiceTo)+'"></label><button class="ops-button small ghost" data-action="sale-history-reset-range">æ¸…é™¤å€é–“</button></div></div>';
-    const rowHtml=visible.length?visible.map(function(entry){
-      if(entry.kind==='income'){
-        const income=entry.row,paymentStatus=clean(income.paymentStatus)||'paid',status=paymentStatus==='paid'?'å·²æ”¶æ¸…':paymentStatus==='partial'?'éƒ¨åˆ†æ”¶æ¬¾':'æœªæ”¶æ¬¾',type=income.category==='ç¶­ä¿®æ”¶å…¥'?'ç¶­ä¿®æ”¶å…¥':income.category==='é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥'?'é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥':'å…¶ä»–æ”¶å…¥',content=income.itemName||income.note||type;
-        return '<tr><td>'+escapeHtml(dateTimeText(income.occurredAt))+'</td><td><b>'+escapeHtml(type)+'</b><br><small>'+escapeHtml(income.incomeNo||income.id)+'</small></td><td>'+escapeHtml(income.customerName||'é–€å¸‚æ•£å®¢')+'</td><td>'+escapeHtml(content)+'</td><td>'+statusTag(status,paymentStatus==='paid'?'green':'yellow')+'</td><td class="num"><b>'+money(income.amount)+'</b></td><td class="num">'+money(0)+'</td><td class="num"><b>'+money(income.amount)+'</b></td><td><button class="ops-button small ghost" data-action="income-edit" data-id="'+attr(income.id)+'">ä¿®æ”¹</button></td></tr>';
-      }
-      const sale=entry.row,internalUse=sale.saleType==='internalUse',preorder=sale.saleType==='preorder',tracking=preorder?preorderTrackingState(sale):null,items=(sale.items||[]),paymentStatus=preorder?tracking.paymentStatus:(clean(sale.paymentStatus)||'paid'),paymentLabel=preorder?tracking.paymentLabel:(paymentStatus==='paid'?'å·²æ”¶æ¸…':paymentStatus==='partial'?'éƒ¨åˆ†æ”¶æ¬¾':'æœªæ”¶æ¬¾'),ownerText=internalUse?(sale.usageReason||'å…§éƒ¨è€—ç”¨ï¼å ±å»¢'):(sale.customerName||'é–€å¸‚æ•£å®¢'),type=preorder?'é è³¼æˆäº¤':internalUse?'å…§éƒ¨è€—ç”¨ï¼å ±å»¢':'å•†å“éŠ·å”®',saleAmount=preorder?tracking.orderTotal:Number(sale.total||0),saleCost=preorder?tracking.cost:Number(sale.costTotal||0),saleProfit=preorder?tracking.profit:(numberOrNull(sale.grossProfit)==null?saleAmount-saleCost:Number(sale.grossProfit)),costEstimated=preorder&&sale.costEstimated===true,itemDetails=items.length?items.map(function(item){const qty=Math.max(1,Number(item.qty||1)),lineAmount=Number(item.lineTotal==null?qty*Number(item.unitPrice||0):item.lineTotal),lineCost=Number(item.lineCost||0),name=clean(item.name)||clean(item.sku)||'å•†å“',estimated=preorder&&(item.costEstimated===true||costEstimated);return '<div class="ops-sales-item-analysis"><b>'+escapeHtml(name)+'</b><small>'+escapeHtml(item.sku||'æœªè¨­å®šç·¨è™Ÿ')+' Ã— '+formatNumber(qty)+'ï½œå°è¨ˆ '+money(lineAmount)+'ï½œæˆæœ¬ '+money(lineCost)+(estimated?'ï¼ˆæˆäº¤æ™‚é ä¼°ï¼‰':'')+'</small></div>';}).join(''):'â€”',statusHtml=preorder?'<div class="ops-preorder-status-pair">'+statusTag('æ”¶æ¬¾ï¼š'+paymentLabel,paymentStatus==='paid'?'green':'yellow')+statusTag('äº¤è²¨ï¼š'+tracking.deliveryLabel,tracking.delivered?'green':'yellow')+'</div>':statusTag(internalUse?'å·²æ‰£åº«å­˜':paymentLabel,internalUse?'yellow':paymentStatus==='paid'?'green':'yellow'),amountHtml='<b>'+money(saleAmount)+'</b>'+(preorder?'<br><small>å·²æ”¶ '+money(tracking.received)+'ï¼æœªæ”¶ '+money(tracking.outstanding)+'</small>':''),dateHtml='<b>æˆäº¤ '+escapeHtml(dateTimeText(entry.date))+'</b>'+(preorder&&tracking.delivered?'<br><small>äº¤è²¨ '+escapeHtml(dateTimeText(sale.deliveredAt))+'</small>':'');
-      return '<tr><td>'+dateHtml+'</td><td><b>'+escapeHtml(type)+'</b><br><small>'+escapeHtml(sale.saleNo||sale.id)+'</small></td><td>'+escapeHtml(ownerText)+'</td><td>'+itemDetails+(sale.returnStatus?'<div class="ops-sales-return-note">å·²é€€å›žï¼è™•ç†ä¸­</div>':'')+'</td><td>'+statusHtml+'</td><td class="num">'+amountHtml+'</td><td class="num">'+money(saleCost)+(costEstimated?'<br><small>äº¤è²¨å¾Œæ ¡æ­£</small>':'')+'</td><td class="num"><b>'+money(saleProfit)+'</b>'+(costEstimated?'<br><small>é ä¼°æ¯›åˆ©</small>':'')+'</td><td>'+(preorder?'<button class="ops-button small primary" data-action="preorder-track" data-id="'+attr(sale.id)+'">æŸ¥çœ‹ï¼è™•ç†</button>':'<button class="ops-button small ghost" data-action="sale-edit" data-id="'+attr(sale.id)+'">ä¿®æ”¹</button>')+'</td></tr>';
-    }).join(''):'';
-    const table=rowHtml?'<div class="ops-table-wrap"><table class="ops-table ops-v8-sales-history-table"><thead><tr><th>æˆäº¤ï¼äº¤è²¨æ™‚é–“</th><th>é¡žåž‹ï¼å–®è™Ÿ</th><th>å®¢æˆ¶ï¼ç”¨é€”</th><th>å•†å“èˆ‡æˆæœ¬æ˜Žç´°</th><th>æ”¶æ¬¾ï¼äº¤è²¨</th><th class="num">æˆäº¤é‡‘é¡</th><th class="num">æˆæœ¬</th><th class="num">æ¯›åˆ©</th><th></th></tr></thead><tbody>'+rowHtml+'</tbody></table></div>':emptyHtml('æ‰¾ä¸åˆ°ç¬¦åˆæ¢ä»¶çš„ç´€éŒ„','è«‹èª¿æ•´æœå°‹æ–‡å­—æˆ–æ—¥æœŸå€é–“ã€‚');
-    return '<section class="ops-card ops-v8-sales-history"><div class="ops-v8-section-head"><div><h2>æœ€è¿‘éŠ·å”®ã€é è³¼ã€æ”¶å…¥èˆ‡è€—ç”¨ç´€éŒ„</h2><p>å•†å“ä¸€å¾‹ä¾åŽŸæˆäº¤æ—¥é¡¯ç¤ºï¼›æ”¶æ¬¾èˆ‡äº¤è²¨æ—¥æœŸä¸æœƒæ¬å‹•æˆäº¤èˆ‡æ¯›åˆ©ã€‚</p></div></div>'+toolbar+table+'</section>';
-  }
-
-  function renderStockUsageForm(){
-    if(!state.cart.length)return '';
-    const reason=state.stockUsageReason||'åº—å…§è‡ªç”¨',recordedAmount=sum(state.cart,function(item){return Math.max(1,Number(item.qty||1))*Math.max(0,Number(item.unitPrice||0));}),estimatedCost=estimateCartCost(),estimatedResult=recordedAmount-estimatedCost,reasonOptions=['åº—å…§è‡ªç”¨','æ¶ˆè€—å“','å ±å»¢','å…¶ä»–'];
-    const reasonButtons=reasonOptions.map(function(value){return '<button type="button" class="'+(reason===value?'active':'')+'" data-action="stock-usage-reason" data-value="'+attr(value)+'">'+escapeHtml(value)+'</button>';}).join('');
-    return '<form id="stockUsageForm" class="ops-inline-checkout ops-stock-usage-form"><h3>å…§éƒ¨è€—ç”¨ï¼å ±å»¢</h3><div class="ops-callout"><b>è¨˜éŒ„é‡‘é¡é è¨­ç‚º 0 å…ƒï¼Œä½†å¯ä»¥ä¿®æ”¹ã€‚</b><br>ç„¡è«–é‡‘é¡å¤šå°‘ï¼Œéƒ½æœƒä¾æ•¸é‡æ‰£é™¤ä¸­å¤®åº«å­˜ï¼Œä¸¦åœ¨ä¸‹ä¸€æ¬¡åŒæ­¥æ™‚æ›´æ–°åˆ°å„å¹³å°ã€‚</div><div class="ops-checkout-block"><label>è™•ç†åŽŸå› </label><div class="ops-choice-grid ops-stock-usage-reasons">'+reasonButtons+'</div><input type="hidden" name="usageReason" value="'+attr(reason)+'"></div><div class="ops-field"><label>å‚™è¨»</label><textarea class="ops-textarea" id="stockUsageNote" name="usageNote" placeholder="ä¾‹å¦‚ï¼šé–€å¸‚å±•ç¤ºä½¿ç”¨ã€åŒ…è£è€—æã€æå£žå ±å»¢">'+escapeHtml(state.stockUsageNote)+'</textarea></div><div class="ops-summary-list"><div class="ops-summary-line"><span>è¨˜éŒ„é‡‘é¡</span><b id="stockUsageAmount">'+money(recordedAmount)+'</b></div><div class="ops-summary-line"><span>é ä¼°åº«å­˜æˆæœ¬</span><b>'+money(estimatedCost)+'</b></div><div class="ops-summary-line total"><span>é ä¼°æç›Š</span><b id="stockUsageResult">'+money(estimatedResult)+'</b></div></div><button class="ops-button primary wide" type="submit">ç¢ºèªæ‰£é™¤åº«å­˜</button></form>';
-  }
-  function posSearchResultsHtml(){
-    const term=lower(state.posSearch).trim(),usageMode=state.salesMode==='usage';
-    if(!term)return '<div class="ops-v8-sales-search-empty"><b>è¼¸å…¥å•†å“ç·¨è™Ÿæˆ–åç¨±</b></div>';
-    const choices=catalogRowsInSkuOrder().filter(function(product){return product.initialized&&product.status!=='inactive'&&catalogMatchesSearch(product,term);});
-    if(!choices.length)return '<div class="ops-no-result">æ‰¾ä¸åˆ°å•†å“</div>';
-    return choices.map(function(product){const image=product.imageUrl||'';return '<button class="ops-pos-item ops-v8-pos-item" data-action="cart-add" data-id="'+attr(product.docId)+'">'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="" onerror="this.style.display=&quot;none&quot;">':'<div class="ops-pos-no-image">ç„¡åœ–</div>')+'<div><b>'+escapeHtml(product.originalName||product.name)+'</b><small>ç·¨è™Ÿ '+escapeHtml(product.sku||'æœªè¨­å®š')+'ãƒ»åº«å­˜ '+formatNumber(product.currentStock)+'</small></div><strong>'+(usageMode?'åŠ å…¥':money(product.storePrice))+'</strong></button>';}).join('');
-  }
-
-  function renderSalesV7(){
-    const usageMode=state.salesMode==='usage',cartSubtotal=sum(state.cart,function(item){return item.qty*item.unitPrice;}),todaySales=todayRows(state.sales,function(sale){return sale.soldAt;}),regularSales=todaySales.filter(function(sale){return sale.saleType!=='internalUse';}),usageSales=todaySales.filter(function(sale){return sale.saleType==='internalUse';}),todayIncome=todayRows(state.incomes,function(income){return income.occurredAt;}),repairIncome=todayIncome.filter(function(income){return income.category==='ç¶­ä¿®æ”¶å…¥';}),pianoRentalIncome=todayIncome.filter(function(income){return income.category==='é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥';}),otherIncome=todayIncome.filter(function(income){return income.category!=='ç¶­ä¿®æ”¶å…¥'&&income.category!=='é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥';});
-    let main='';
-    if(state.salesMode==='product'||usageMode){
-      const productHtml=posSearchResultsHtml();
-      const cartHtml=state.cart.length?state.cart.map(function(item,index){const product=catalogById(item.productId);return '<div class="ops-cart-row"><div><b>'+escapeHtml(item.name)+'</b><small>ç·¨è™Ÿ '+escapeHtml(item.sku||'')+'ãƒ»åº«å­˜ '+formatNumber(product?product.currentStock:item.currentStock)+'ãƒ»æœ¬æ¬¡å”®åƒ¹å¯æ”¹</small></div><input class="ops-quantity-spinner" aria-label="æ•¸é‡" title="ä½¿ç”¨ä¸Šä¸‹ç®­é ­èª¿æ•´æ•¸é‡" type="number" inputmode="numeric" min="1" step="1" value="'+item.qty+'" data-cart-qty="'+index+'">'+'<input class="ops-cart-price-editor" aria-label="æœ¬æ¬¡æˆäº¤å–®åƒ¹" title="åªä¿®æ”¹æœ¬æ¬¡äº¤æ˜“ï¼Œä¸æœƒæ”¹è®Šå•†å“ä¸»æª”å”®åƒ¹" type="number" inputmode="decimal" min="0" step="1" value="'+item.unitPrice+'" data-cart-price="'+index+'">'+'<button class="ops-icon-button" data-action="cart-remove" data-index="'+index+'">Ã—</button></div>';}).join(''):'<div class="ops-v8-cart-empty"><b>å°šæœªé¸å•†å“</b></div>';
-      main='<div class="ops-v8-sales-workspace"><section class="ops-card ops-v8-sales-search-card"><div class="ops-v8-section-head"><div><h2>å•†å“æœå°‹</h2></div><span class="ops-tag '+(usageMode?'yellow':'green')+'">'+(usageMode?'æ‰£åº«å­˜':'ä¸»è¦æ“ä½œ')+'</span></div><div class="ops-toolbar ops-v8-sales-searchbar"><input class="ops-input grow ops-pos-search" id="posSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="å•†å“ç·¨è™Ÿï¼åç¨±" value="'+attr(state.posSearch)+'"><button class="ops-button ghost" data-action="pos-clear-search">æ¸…é™¤</button></div><div class="ops-v8-sales-search-grid">'+posNumberPadHtml()+'<div class="ops-pos-products" id="posSearchResults">'+productHtml+'</div></div></section><section class="ops-card ops-v8-sales-cart-card"><div class="ops-v8-section-head"><div><h2>'+(usageMode?'æœ¬æ¬¡å…§éƒ¨è€—ç”¨ï¼å ±å»¢':'æœ¬æ¬¡éŠ·å”®')+'</h2></div><button class="ops-button small ghost" data-action="cart-clear">æ¸…ç©º</button></div><div class="ops-cart">'+cartHtml+'</div>'+(state.cart.length?'<div class="ops-summary-line total ops-v8-cart-subtotal"><span>'+(usageMode?'å¸³é¢æ”¶å…¥':'å•†å“é‡‘é¡')+'</span><b id="cartSubtotal">'+money(cartSubtotal)+'</b></div>':'')+(usageMode?renderStockUsageForm():renderInlineCheckout())+'</section></div>';
-    }else{
-      main='<div class="ops-v8-sales-income-mode">'+renderDirectIncomeV5(state.salesMode)+'</div>';
-    }
-    const productRevenue=sum(regularSales,function(sale){return Math.max(0,Number(sale.total||sale.orderTotal||0));}),usageRevenue=sum(usageSales,function(sale){return sale.total;}),usageCost=sum(usageSales,function(sale){return sale.costTotal;}),repairRevenue=sum(repairIncome,function(income){return income.amount;}),pianoRentalRevenue=sum(pianoRentalIncome,function(income){return income.amount;}),otherRevenue=sum(otherIncome,function(income){return income.amount;}),totalRevenue=productRevenue+usageRevenue+repairRevenue+pianoRentalRevenue+otherRevenue;
-    const customerBlock='<div class="ops-v10-sales-customer-block"><span class="ops-v10-sales-label">é¸æ“‡å®¢æˆ¶</span>'+posCustomerBarV5()+(usageMode?'<small class="ops-v10-usage-note">å…§éƒ¨è€—ç”¨ï¼å ±å»¢ä¸æœƒé€£çµå®¢æˆ¶ï¼Œä¹Ÿä¸æœƒç´¯ç©æœƒå“¡é»žæ•¸ã€‚</small>':'')+'</div>';
-    const modes='<div class="ops-v10-sales-type-block"><span class="ops-v10-sales-label">é¸æ“‡äº¤æ˜“é¡žåž‹</span><div class="ops-sales-modes ops-v8-sales-modes"><button data-action="sales-mode" data-mode="product" class="'+(state.salesMode==='product'?'active':'')+'">å•†å“éŠ·å”®</button><button data-action="sales-mode" data-mode="repair" class="'+(state.salesMode==='repair'?'active':'')+'">ç¶­ä¿®æ”¶å…¥</button><button data-action="sales-mode" data-mode="other" class="'+(state.salesMode==='other'?'active':'')+'">å…¶ä»–æ”¶å…¥</button><button data-action="sales-mode" data-mode="pianoRental" class="'+(state.salesMode==='pianoRental'?'active':'')+'">é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥</button><button data-action="sales-mode" data-mode="usage" class="'+(usageMode?'active':'')+'">å…§éƒ¨è€—ç”¨ï¼å ±å»¢</button></div></div>';
-    const salesTop='<div class="ops-v10-sales-top"><div class="ops-v10-sales-top-grid">'+customerBlock+modes+'</div></div>';
-    const totals='<section class="ops-v8-sales-totals"><div class="ops-kpi-grid">'+kpi('ä»Šæ—¥å•†å“æˆäº¤',money(productRevenue),regularSales.length+' ç­†ï¼ä¸å—æ”¶æ¬¾èˆ‡äº¤è²¨æ—¥å½±éŸ¿','ï¼„')+kpi('ç¶­ä¿®æ”¶å…¥',money(repairRevenue),repairIncome.length+' ç­†','ä¿®')+kpi('å…¶ä»–æ”¶å…¥',money(otherRevenue),otherIncome.length+' ç­†','ï¼‹')+kpi('é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥',money(pianoRentalRevenue),pianoRentalIncome.length+' ç­†','ç§Ÿ')+kpi('å…§éƒ¨è€—ç”¨ï¼å ±å»¢',money(usageRevenue),usageSales.length+' ç­†ï¼æˆæœ¬ '+money(usageCost),'è€—')+kpi('ä»Šæ—¥æˆäº¤èˆ‡æ”¶å…¥',money(totalRevenue),'å•†å“ä¾æˆäº¤æ—¥èªåˆ—','åˆ')+'</div></section>';
-    return '<div class="ops-v8-sales-page"><section class="ops-v10-sales-zone">'+salesTop+'<div class="ops-v10-sales-body">'+main+totals+'</div></section>'+renderOpenPreorderTrackingV1()+renderSalesHistoryV7()+'</div>';
-  }
-  function renderCustomersV4(){
-    const term=lower(state.customerSearch),rows=state.customers.filter(function(x){return !term||lower([x.name,x.phone,x.email,x.memberNo,x.customerType].join(' ')).includes(term);}).sort(function(a,b){return a.name.localeCompare(b.name,'zh-Hant');}),table=rows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>å®¢æˆ¶</th><th>èº«åˆ†</th><th>é›»è©±</th><th class="num">é»žæ•¸</th><th class="num">è³¼è²·</th><th class="num">æœªæ”¶æ¬¾</th><th></th></tr></thead><tbody>'+rows.map(function(x){const sales=state.sales.filter(function(s){return s.customerId===x.id;}),incomes=state.incomes.filter(function(i){return i.customerId===x.id;}),due=sum(state.receivables.filter(function(r){return r.customerId===x.id&&r.status!=='paid';}),function(r){return r.outstandingAmount;});return '<tr><td><b>'+escapeHtml(x.name)+'</b><br><small>'+escapeHtml(x.memberNo||'â€”')+'</small></td><td>'+statusTag(customerTypeName(x.customerType),x.customerType==='teacher'?'yellow':'green')+'</td><td>'+escapeHtml(x.phone||'â€”')+'</td><td class="num">'+formatNumber(x.pointBalance)+'</td><td class="num">'+formatNumber(sales.length+incomes.length)+'</td><td class="num">'+money(due)+'</td><td><div class="ops-card-actions"><button class="ops-button small ghost" data-action="customer-history" data-id="'+attr(x.id)+'">ç´€éŒ„</button><button class="ops-button small ghost" data-action="customer-edit" data-id="'+attr(x.id)+'">ç·¨è¼¯</button></div></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('å°šç„¡å®¢æˆ¶','','<button class="ops-button primary" data-action="customer-new">æ–°å¢žå®¢æˆ¶</button>');
-    return '<div class="ops-kpi-grid">'+kpi('å®¢æˆ¶',formatNumber(state.customers.length),'','äºº')+kpi('æœƒå“¡',formatNumber(state.customers.filter(function(x){return x.customerType==='member';}).length),'','é»ž')+kpi('è€å¸«',formatNumber(state.customers.filter(function(x){return x.customerType==='teacher';}).length),'','å¸«')+kpi('æœªæ”¶æ¬¾',money(sum(state.receivables,function(x){return x.outstandingAmount;})),'','å¸³')+'</div><section class="ops-card"><div class="ops-card-head"><h2>å®¢æˆ¶æœƒå“¡</h2><div class="ops-card-actions"><a class="ops-button ghost" href="course-portal-admin.html?section=bindings">å…¥å£ç¶å®š</a><button class="ops-button ghost" data-action="membership-settings">é»žæ•¸è¨­å®š</button><button class="ops-button primary" data-action="customer-new">æ–°å¢žå®¢æˆ¶</button></div></div><div class="ops-toolbar"><input class="ops-input grow" id="customerSearch" placeholder="å§“åï¼é›»è©±ï¼Emailï¼æœƒå“¡ç·¨è™Ÿ" value="'+attr(state.customerSearch)+'"></div>'+table+'</section>';
-  }
-  function renderCustomersV6(){const rule=membershipRuleForDate(new Date()),year=rule.year||new Date().getFullYear();return renderCustomersV4().replace('>é»žæ•¸è¨­å®š</button>','>'+year+' é»žæ•¸ '+formatNumber(rule.rewardPercent)+'%</button>');}
-  function openCustomerV4(id,returnToSales,defaultType){
-    const row=id?state.customers.find(function(x){return x.id===id;}):null,c=row||{id:'',name:'',phone:'',email:'',customerType:defaultType||'general',memberNo:'',pricingTier:'retail',creditLimit:0,note:''};
-    openDrawer(row?'ç·¨è¼¯å®¢æˆ¶':'æ–°å¢žå®¢æˆ¶','å§“åã€é›»è©±ã€Emailã€æœƒå“¡ç·¨è™Ÿä»»ä¸€é …æœ‰å¡«å³å¯å„²å­˜ã€‚', '<form id="customerFormV4" data-id="'+attr(c.id)+'" data-return-sales="'+(returnToSales?'1':'0')+'"><div class="ops-form-grid"><div class="ops-field"><label>å§“åï¼åç¨±</label><input class="ops-input" name="name" value="'+attr(c.name)+'"></div><div class="ops-field"><label>è¯çµ¡é›»è©±</label><input class="ops-input" name="phone" value="'+attr(c.phone)+'" placeholder="æ‰‹æ©Ÿã€å¸‚è©±æˆ–å…¶ä»–è¯çµ¡è™Ÿç¢¼çš†å¯"></div><div class="ops-field"><label>Email</label><input class="ops-input" type="text" inputmode="email" name="email" value="'+attr(c.email)+'"></div><div class="ops-field"><label>å®¢æˆ¶èº«åˆ†</label><select class="ops-select" name="customerType"><option value="general">ä¸€èˆ¬å®¢æˆ¶</option><option value="member">æœƒå“¡</option><option value="teacher">è€å¸«</option><option value="organization">æ©Ÿæ§‹</option></select></div><div class="ops-field"><label>æœƒå“¡ç·¨è™Ÿ</label><input class="ops-input" name="memberNo" value="'+attr(c.memberNo)+'"></div><div class="ops-field"><label>åƒ¹æ ¼</label><select class="ops-select" name="pricingTier"><option value="retail">ä¸€èˆ¬å”®åƒ¹</option><option value="teacher">è€å¸«åƒ¹</option><option value="custom">è‡ªè¨‚åƒ¹æ ¼</option></select></div><div class="ops-field"><label>ä¿¡ç”¨é¡åº¦</label><input class="ops-input" type="number" min="0" step="1" name="creditLimit" value="'+c.creditLimit+'"></div><div class="ops-field"><label>ç›®å‰é»žæ•¸</label><input class="ops-input" value="'+formatNumber(c.pointBalance||0)+'" readonly></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note">'+escapeHtml(c.note)+'</textarea></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">å„²å­˜</button></div></form>');
-    const phoneInput=query('#customerFormV4 [name="phone"]');if(phoneInput)phoneInput.inputMode='tel';
-    query('#customerFormV4 [name="customerType"]').value=c.customerType;query('#customerFormV4 [name="pricingTier"]').value=c.pricingTier;
-  }
-  async function saveCustomerV4(form){
-    const id=clean(form.dataset.id),data=new FormData(form),type=clean(data.get('customerType')),name=clean(data.get('name')),phone=clean(data.get('phone')),email=clean(data.get('email')),enteredMemberNo=clean(data.get('memberNo'));if(!name&&!phone&&!email&&!enteredMemberNo)throw new Error('å§“åã€é›»è©±ã€Email æˆ–æœƒå“¡ç·¨è™Ÿè‡³å°‘å¡«å¯«ä¸€é …');const memberNo=enteredMemberNo||(type==='member'?uid('MEM'):''),displayLabel=name||phone||email||memberNo,payload={name:name,phone:phone,email:email,customerType:type,memberNo:memberNo,pricingTier:clean(data.get('pricingTier')),creditLimit:numberOrNull(data.get('creditLimit'))||0,note:clean(data.get('note')),enabled:true,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};let ref;if(id){ref=state.db.collection(COLLECTIONS.customers).doc(id);await ref.set(payload,{merge:true});}else{payload.pointBalance=0;payload.createdAt=serverTimestamp();payload.createdBy=userLabel();ref=await state.db.collection(COLLECTIONS.customers).add(payload);}if(form.dataset.returnSales==='1'){state.selectedCustomerId=ref.id;state.posCustomerMode='member';state.posMemberSearch=phone||name||email||memberNo;state.posMemberPickerOpen=false;state.checkoutPoints=0;state.checkoutPointsTouched=false;state.checkoutEarnPoints=true;}await writeAudit(id?'æ›´æ–°å®¢æˆ¶':'æ–°å¢žå®¢æˆ¶','customer',ref.id,displayLabel);closeDrawer();toast('å®¢æˆ¶å·²å„²å­˜',displayLabel,'success');await loadAll(true);
-  }
-  function openCustomerHistory(id){
-    const c=state.customers.find(function(x){return x.id===id;});if(!c)return;const sales=state.sales.filter(function(x){return x.customerId===id;}).sort(function(a,b){return (dateFrom(b.soldAt)||0)-(dateFrom(a.soldAt)||0);}),incomes=state.incomes.filter(function(x){return x.customerId===id;}).sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);}),points=state.pointTransactions.filter(function(x){return x.customerId===id;}).sort(function(a,b){return (dateFrom(b.createdAt)||0)-(dateFrom(a.createdAt)||0);}),dues=state.receivables.filter(function(x){return x.customerId===id&&x.status!=='paid';}),rows=[];
-    sales.forEach(function(x){rows.push({date:x.soldAt,no:x.saleNo,items:x.items.map(function(i){return i.name+' Ã— '+i.qty;}).join('ã€'),amount:x.total});});incomes.forEach(function(x){rows.push({date:x.occurredAt,no:x.incomeNo,items:x.category,amount:x.amount});});rows.sort(function(a,b){return (dateFrom(b.date)||0)-(dateFrom(a.date)||0);});
-    const history=rows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>æ—¥æœŸ</th><th>ç·¨è™Ÿ</th><th>å…§å®¹</th><th class="num">é‡‘é¡</th></tr></thead><tbody>'+rows.map(function(x){return '<tr><td>'+escapeHtml(dateText(x.date))+'</td><td>'+escapeHtml(x.no)+'</td><td>'+escapeHtml(x.items)+'</td><td class="num">'+money(x.amount)+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('å°šç„¡æ¶ˆè²»ç´€éŒ„','');
-    const pointRows=points.length?points.slice(0,30).map(function(x){return '<div class="ops-summary-line"><span>'+escapeHtml(dateText(x.createdAt))+' '+escapeHtml(x.note||x.type)+'</span><b>'+(x.points>0?'+':'')+formatNumber(x.points)+'</b></div>';}).join(''):'<div class="ops-empty">å°šç„¡é»žæ•¸ç´€éŒ„</div>';
-    openDrawer(c.name,'','<div class="ops-customer-stats"><div><span>é»žæ•¸</span><b>'+formatNumber(c.pointBalance)+'</b></div><div><span>æ¶ˆè²»</span><b>'+money(sum(rows,function(x){return x.amount;}))+'</b></div><div><span>æœªæ”¶æ¬¾</span><b>'+money(sum(dues,function(x){return x.outstandingAmount;}))+'</b></div></div><div class="ops-card-actions" style="justify-content:flex-start;margin:14px 0"><button class="ops-button ghost" data-action="point-adjust" data-id="'+attr(c.id)+'">èª¿æ•´é»žæ•¸</button><button class="ops-button ghost" data-action="customer-edit" data-id="'+attr(c.id)+'">ç·¨è¼¯å®¢æˆ¶</button></div><details class="ops-history-block" open><summary>æ¶ˆè²»ç´€éŒ„</summary>'+history+'</details><details class="ops-history-block"><summary>é»žæ•¸ç´€éŒ„</summary><div class="ops-summary-list">'+pointRows+'</div></details>');
-  }
-  function openMembershipSettings(){
-    const s=state.membershipSettings||DEFAULT_MEMBERSHIP_SETTINGS;openDrawer('é»žæ•¸è¨­å®š','', '<form id="membershipSettingsForm"><div class="ops-form-grid"><div class="ops-field full"><label>å•Ÿç”¨é»žæ•¸</label><select class="ops-select" name="enabled"><option value="true">å•Ÿç”¨</option><option value="false">åœç”¨</option></select></div><div class="ops-field"><label>æ¶ˆè²»é‡‘é¡</label><input class="ops-input" type="number" min="1" step="1" name="earnAmount" value="'+Number(s.earnAmount||100)+'"></div><div class="ops-field"><label>ç²å¾—é»žæ•¸</label><input class="ops-input" type="number" min="0" step="1" name="earnPoints" value="'+Number(s.earnPoints||1)+'"></div><div class="ops-field"><label>ä½¿ç”¨é»žæ•¸</label><input class="ops-input" type="number" min="1" step="1" name="redeemPoints" value="'+Number(s.redeemPoints||1)+'"></div><div class="ops-field"><label>æŠ˜æŠµé‡‘é¡</label><input class="ops-input" type="number" min="0" step="1" name="redeemAmount" value="'+Number(s.redeemAmount||1)+'"></div><div class="ops-field"><label>æœ€ä½Žä½¿ç”¨é»žæ•¸</label><input class="ops-input" type="number" min="1" step="1" name="minRedeemPoints" value="'+Number(s.minRedeemPoints||1)+'"></div><div class="ops-field"><label>å–®ç­†æœ€é«˜æŠ˜æŠµï¼…</label><input class="ops-input" type="number" min="0" max="100" step="1" name="maxRedeemPercent" value="'+Number(s.maxRedeemPercent||20)+'"></div><div class="ops-field"><label>é–‹å§‹æ—¥æœŸ</label><input class="ops-input" type="date" name="validFrom" value="'+attr(s.validFrom||'')+'"></div><div class="ops-field"><label>çµæŸæ—¥æœŸ</label><input class="ops-input" type="date" name="validTo" value="'+attr(s.validTo||'')+'"></div><div class="ops-field full"><label>çµå¸³æŠ˜æŠµ</label><select class="ops-select" name="redemptionMode"><option value="ask">çµå¸³æ™‚é¸æ“‡</option><option value="auto">è‡ªå‹•ä½¿ç”¨æœ€å¤šé»žæ•¸</option><option value="earn-only">åªç´¯ç©é»žæ•¸</option></select></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">å„²å­˜</button></div></form>');query('#membershipSettingsForm [name="enabled"]').value=s.enabled===false?'false':'true';query('#membershipSettingsForm [name="redemptionMode"]').value=s.redemptionMode||'ask';
-  }
-  async function saveMembershipSettings(form){const data=new FormData(form),payload={enabled:data.get('enabled')==='true',earnAmount:Math.max(1,Number(data.get('earnAmount')||100)),earnPoints:Math.max(0,Math.floor(Number(data.get('earnPoints')||0))),redeemPoints:Math.max(1,Math.floor(Number(data.get('redeemPoints')||1))),redeemAmount:Math.max(0,Number(data.get('redeemAmount')||0)),minRedeemPoints:Math.max(1,Math.floor(Number(data.get('minRedeemPoints')||1))),maxRedeemPercent:Math.max(0,Math.min(100,Number(data.get('maxRedeemPercent')||0))),validFrom:clean(data.get('validFrom')),validTo:clean(data.get('validTo')),redemptionMode:clean(data.get('redemptionMode'))||'ask',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};if(payload.validFrom&&payload.validTo&&payload.validFrom>payload.validTo)throw new Error('æ—¥æœŸå€é–“ä¸æ­£ç¢º');await state.db.collection(COLLECTIONS.settings).doc('membershipPoints').set(payload,{merge:true});state.membershipSettings=Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS,payload);closeDrawer();toast('é»žæ•¸è¨­å®šå·²å„²å­˜','','success');render();}
-  function openMembershipSettingsV5(){
-    const nowYear=new Date().getFullYear(),active=membershipRuleForDate(new Date()),rules=(state.membershipSettings&&state.membershipSettings.annualRules)||{},rows=Object.keys(rules).sort().reverse().map(function(year){const r=rules[year]||{};return '<div class="ops-rule-row"><b>'+escapeHtml(year)+' å¹´</b><span>'+formatNumber(Number(r.rewardPercent||0))+'%</span><span>æœ€é«˜æŠ˜ '+formatNumber(Number(r.maxRedeemPercent||20))+'%</span><span>'+(r.redemptionMode==='auto'?'è‡ªå‹•æŠ˜æŠµ':'é¸æ“‡æŠ˜æŠµ')+'</span></div>';}).join('');
-    openDrawer('å¹´åº¦é»žæ•¸è¨­å®š','', '<form id="membershipSettingsFormV5"><div class="ops-form-grid"><div class="ops-field"><label>è¨­å®šå¹´åº¦</label><input class="ops-input" type="number" min="2020" max="2100" step="1" name="year" value="'+nowYear+'"></div><div class="ops-field"><label>å…¨åº—å›žé¥‹ï¼…</label><input class="ops-input" type="number" min="0" max="100" step="0.1" name="rewardPercent" value="'+Number(active.rewardPercent||5)+'"></div><div class="ops-field"><label>å–®ç­†æœ€é«˜æŠ˜æŠµï¼…</label><input class="ops-input" type="number" min="0" max="100" step="1" name="maxRedeemPercent" value="'+Number(active.maxRedeemPercent||20)+'"></div><div class="ops-field"><label>é»žæ•¸ä½¿ç”¨</label><select class="ops-select" name="redemptionMode"><option value="auto">è‡ªå‹•ä½¿ç”¨æœ€å¤šé»žæ•¸</option><option value="ask">çµå¸³æ™‚é¸æ“‡</option><option value="earn-only">åªç´¯ç©ä¸æŠ˜æŠµ</option></select></div><div class="ops-field full"><label>å¹´åº¦ç‹€æ…‹</label><div class="ops-choice-grid two"><label class="ops-radio-tile"><input type="radio" name="enabled" value="true" '+(active.enabled!==false?'checked':'')+'><span>å•Ÿç”¨</span></label><label class="ops-radio-tile"><input type="radio" name="enabled" value="false" '+(active.enabled===false?'checked':'')+'><span>åœç”¨</span></label></div></div></div>'+(rows?'<div class="ops-section-title">å·²è¨­å®šå¹´åº¦</div><div class="ops-rule-list">'+rows+'</div>':'')+'<div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">å„²å­˜å¹´åº¦è¨­å®š</button></div></form>');query('#membershipSettingsFormV5 [name="redemptionMode"]').value=active.redemptionMode||'auto';
-  }
-  async function saveMembershipSettingsV5(form){
-    const data=new FormData(form),year=String(Math.floor(Number(data.get('year')||new Date().getFullYear()))),rules=Object.assign({},(state.membershipSettings&&state.membershipSettings.annualRules)||{}),rule={year:Number(year),enabled:data.get('enabled')!=='false',rewardPercent:Math.max(0,Math.min(100,Number(data.get('rewardPercent')||0))),redeemPoints:1,redeemAmount:1,minRedeemPoints:1,maxRedeemPercent:Math.max(0,Math.min(100,Number(data.get('maxRedeemPercent')||0))),redemptionMode:clean(data.get('redemptionMode'))||'auto'};rules[year]=rule;const payload={enabled:true,rewardPercent:rule.rewardPercent,redeemPoints:1,redeemAmount:1,minRedeemPoints:1,maxRedeemPercent:rule.maxRedeemPercent,redemptionMode:rule.redemptionMode,annualRules:rules,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};await state.db.collection(COLLECTIONS.settings).doc('membershipPoints').set(payload,{merge:true});state.membershipSettings=Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS,payload);state.checkoutPointsTouched=false;closeDrawer();toast(year+' å¹´é»žæ•¸è¨­å®šå·²å„²å­˜',formatNumber(rule.rewardPercent)+'%','success');render();
-  }
-  function openPointAdjustment(id){const c=state.customers.find(function(x){return x.id===id;});if(!c)return;openDrawer('èª¿æ•´é»žæ•¸',c.name,'<form id="pointAdjustmentForm" data-id="'+attr(c.id)+'"><div class="ops-form-grid"><div class="ops-field"><label>ç›®å‰é»žæ•¸</label><input class="ops-input" value="'+formatNumber(c.pointBalance)+'" readonly></div><div class="ops-field"><label class="ops-required">å¢žåŠ ï¼æ‰£é™¤</label><input class="ops-input" type="number" step="1" name="points" required></div><div class="ops-field full"><label class="ops-required">åŽŸå› </label><input class="ops-input" name="note" required></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">å„²å­˜</button></div></form>');}
-  async function savePointAdjustment(form){const id=clean(form.dataset.id),c=state.customers.find(function(x){return x.id===id;});if(!c)throw new Error('æ‰¾ä¸åˆ°å®¢æˆ¶');const data=new FormData(form),points=Math.trunc(Number(data.get('points')||0)),note=clean(data.get('note'));if(!points||!note)throw new Error('è«‹å¡«å¯«é»žæ•¸èˆ‡åŽŸå› ');const customerRef=state.db.collection(COLLECTIONS.customers).doc(id),pointRef=state.db.collection(COLLECTIONS.points).doc();await state.db.runTransaction(async function(tx){const snap=await tx.get(customerRef);if(!snap.exists)throw new Error('æ‰¾ä¸åˆ°å®¢æˆ¶');const balance=Math.max(0,Number((snap.data()||{}).pointBalance||0)+points);if(Number((snap.data()||{}).pointBalance||0)+points<0)throw new Error('é»žæ•¸ä¸è¶³');tx.update(customerRef,{pointBalance:balance,updatedAt:serverTimestamp()});tx.set(pointRef,{customerId:id,type:'adjustment',points:points,balanceAfter:balance,note:note,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});closeDrawer();toast('é»žæ•¸å·²èª¿æ•´','','success');await loadAll(true);}
-  function renderReceivables(){
-    const term=lower(state.receivableSearch);const rows=state.receivables.filter(function(x){return !term||lower([x.receivableNo,x.saleNo,x.customerName].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.createdAt)||0)-(dateFrom(a.createdAt)||0);});
-    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>å¸³æ¬¾</th><th>å®¢æˆ¶</th><th class="num">åŽŸé‡‘é¡</th><th class="num">å°šæœªæ”¶</th><th>ç‹€æ…‹</th><th></th></tr></thead><tbody>'+rows.map(function(x){return '<tr><td><b>'+escapeHtml(x.receivableNo)+'</b><br><small>'+escapeHtml(x.sourceType==='income'?'æ”¶å…¥ '+(x.incomeNo||''):'éŠ·å”® '+(x.saleNo||''))+'</small></td><td>'+escapeHtml(x.customerName)+'</td><td class="num">'+money(x.totalAmount)+'</td><td class="num"><b>'+money(x.outstandingAmount)+'</b></td><td>'+statusTag(x.status==='paid'?'å·²æ”¶æ¸…':x.status==='partial'?'éƒ¨åˆ†æ”¶æ¬¾':'æœªæ”¶æ¬¾',x.status==='paid'?'green':'yellow')+'</td><td>'+(x.status!=='paid'?'<button class="ops-button small primary" data-action="receivable-payment" data-id="'+attr(x.id)+'">ç™»è¨˜æ”¶æ¬¾</button>':'')+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('ç›®å‰æ²’æœ‰æœªæ”¶æ¬¾','');
-    return '<div class="ops-kpi-grid">'+kpi('å°šæœªæ”¶æ¬¾',money(sum(state.receivables,function(x){return x.outstandingAmount;})),'å…¨éƒ¨æœªçµæ¸…å¸³æ¬¾','å¸³')+kpi('æœªçµæ¸…ç­†æ•¸',formatNumber(state.receivables.filter(function(x){return x.status!=='paid';}).length),'å«éƒ¨åˆ†æ”¶æ¬¾','ç­†')+kpi('å·²æ”¶å›ž',money(sum(state.receivablePayments,function(x){return x.amount;})),'å¸³æ¬¾æ”¶æ¬¾æµæ°´','æ”¶')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>æ‡‰æ”¶å¸³æ¬¾</h2><p>æ¯ç­†å¸³æ¬¾éƒ½é€£å›žå®¢æˆ¶èˆ‡åŽŸå§‹éŠ·å”®ã€‚</p></div></div><div class="ops-toolbar"><input class="ops-input grow" id="receivableSearch" placeholder="æœå°‹å®¢æˆ¶ã€éŠ·å”®ç·¨è™Ÿæˆ–å¸³æ¬¾ç·¨è™Ÿ" value="'+attr(state.receivableSearch)+'"></div>'+table+'</section>';
-  }
-  function renderReceivablesV5(){
-    const term=lower(state.receivableSearch),enriched=state.receivables.map(function(x){const customer=state.customers.find(function(c){return c.id===x.customerId;})||null,sale=x.saleId?state.sales.find(function(s){return s.id===x.saleId;}):null,income=x.incomeId?state.incomes.find(function(i){return i.id===x.incomeId;}):null,items=sale?(sale.items||[]).map(function(i){return clean(i.name)+' '+clean(i.sku);}).join('ã€'):(income?income.category:'');return {row:x,customer:customer,sale:sale,items:items,search:[x.receivableNo,x.saleNo,x.incomeNo,x.customerName,customer&&customer.phone,customer&&customer.memberNo,items].join(' ')};}).filter(function(x){return !term||lower(x.search).includes(term);}).sort(function(a,b){return (dateFrom(b.row.createdAt)||0)-(dateFrom(a.row.createdAt)||0);});
-    const table=enriched.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>å¸³æ¬¾</th><th>å®¢æˆ¶ï¼è¡Œå‹•é›»è©±</th><th>è³¼è²·å…§å®¹</th><th class="num">åŽŸé‡‘é¡</th><th class="num">å°šæœªæ”¶</th><th></th></tr></thead><tbody>'+enriched.map(function(x){const r=x.row,preorder=x.sale&&x.sale.saleType==='preorder',action=preorder?'<button class="ops-button small primary" data-action="preorder-track" data-id="'+attr(x.sale.id)+'">æŸ¥çœ‹æ•´å¼µè¨‚å–®</button>':(r.status!=='paid'?'<button class="ops-button small primary" data-action="receivable-payment" data-id="'+attr(r.id)+'">æ”¶æ¬¾</button>':'');return '<tr><td><b>'+escapeHtml(r.receivableNo)+'</b><br><small>'+escapeHtml(r.sourceType==='income'?(r.incomeNo||'æ”¶å…¥'):(r.saleNo||'éŠ·å”®'))+'</small></td><td><b>'+escapeHtml(r.customerName)+'</b><br><small>'+escapeHtml((x.customer&&x.customer.phone)||'â€”')+'</small></td><td>'+escapeHtml(x.items||'â€”')+(preorder?'<br><small>æ”¶æ¬¾èˆ‡äº¤è²¨é›†ä¸­è¿½è¹¤</small>':'')+'</td><td class="num">'+money(r.totalAmount)+'</td><td class="num"><b>'+money(r.outstandingAmount)+'</b></td><td><div class="ops-card-actions">'+(r.customerId?'<button class="ops-button small ghost" data-action="customer-history" data-id="'+attr(r.customerId)+'">å®¢æˆ¶</button>':'')+action+'</div></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('æ‰¾ä¸åˆ°æœªæ”¶æ¬¾','');
-    return '<div class="ops-kpi-grid">'+kpi('å°šæœªæ”¶æ¬¾',money(sum(state.receivables,function(x){return x.outstandingAmount;})),'','å¸³')+kpi('æœªçµæ¸…ç­†æ•¸',formatNumber(state.receivables.filter(function(x){return x.status!=='paid';}).length),'','ç­†')+kpi('å·²æ”¶å›ž',money(sum(state.receivablePayments,function(x){return x.amount;})),'','æ”¶')+'</div><section class="ops-card"><div class="ops-card-head"><h2>æ‡‰æ”¶å¸³æ¬¾</h2></div><input class="ops-input" id="receivableSearch" placeholder="å§“åï¼è¡Œå‹•é›»è©±ï¼å–®è™Ÿï¼è²·éŽçš„å•†å“" value="'+attr(state.receivableSearch)+'"><div style="height:10px"></div>'+table+'</section>';
-  }
-
-  function purchaseEntrySeriesTabs(){
-    return '<div class="ops-purchase-series-tabs ops-series-grid-tabs"><button type="button" class="'+(state.purchaseEntrySeries==='all'?'active':'')+'" data-action="purchase-entry-series" data-series="all">å…¨éƒ¨</button>'+PRODUCT_SERIES.map(function(row){return '<button type="button" class="'+(state.purchaseEntrySeries===row[0]?'active':'')+'" data-action="purchase-entry-series" data-series="'+row[0]+'">'+escapeHtml(productSeriesLabel(row))+'</button>';}).join('')+'</div>';
-  }
-  function purchaseEntryFilteredProducts(){
-    const term=lower(state.purchaseEntrySearch).trim();
-    let rows=catalogRowsInSkuOrder().filter(function(product){
-      if(!product.initialized)return false;
-      if(state.purchaseEntrySeries!=='all'&&!clean(product.sku).startsWith(state.purchaseEntrySeries))return false;
-      return !term||catalogMatchesSearch(product,term);
-    });
-    return rows;
-  }
-  function purchaseEntryCost(product){
-    const latest=numberOrNull(product&&product.latestPurchaseCost);
-    if(latest!=null)return latest;
-    const average=numberOrNull(product&&product.averageCost);
-    return average!=null?average:0;
-  }
-  function addPurchaseEntryProduct(productId){
-    const product=catalogById(productId);if(!product||!product.initialized)return;
-    const existing=state.purchaseEntryCart.find(function(item){return item.productId===productId;});
-    if(existing)existing.qty+=1;
-    else state.purchaseEntryCart.push({productId:productId,qty:1,unitCost:purchaseEntryCost(product)});
-  }
-  function purchaseEntryTextRow(product){
-    const name=displayOnlineName(product.onlineName)||displayOnlineName(product.originalName)||'æœªå‘½åå•†å“';
-    const variant=clean(product.variantName);
-    const average=numberOrNull(product.averageCost),storePrice=numberOrNull(product.storePrice),costText=average==null?'æˆæœ¬å¾…è£œ':money(Math.round(average));
-    return '<button type="button" class="ops-purchase-entry-text-row" data-action="purchase-entry-add" data-id="'+attr(product.docId)+'"><span class="ops-purchase-entry-text-sku">'+escapeHtml(product.sku||'æœªè¨­å®š')+'</span><span class="ops-purchase-entry-text-name"><b>'+escapeHtml(name)+'</b>'+(variant?'<small>'+escapeHtml(variant)+'</small>':'')+'</span><span class="ops-purchase-entry-text-value"><small>åº«å­˜</small><b>'+formatNumber(product.currentStock)+'</b></span><span class="ops-purchase-entry-text-value"><small>é–€å¸‚å®šåƒ¹</small><b>'+(storePrice==null?'æœªè¨­å®š':money(storePrice))+'</b></span><span class="ops-purchase-entry-text-value '+(average==null?'is-anomaly':'')+'"><small>ç›®å‰åº«å­˜å¹³å‡æˆæœ¬</small><b>'+escapeHtml(costText)+'</b></span></button>';
-  }
-  function purchaseEntrySearchResult(){
-    const all=purchaseEntryFilteredProducts(),rows=clean(state.purchaseEntrySearch)?all:all.slice(0,240);
-    const html=rows.length?rows.map(function(product){
-      if(state.purchaseEntryDisplayMode==='text')return purchaseEntryTextRow(product);
-      const image=product.imageUrl?'<img loading="lazy" src="'+attr(product.imageUrl)+'" alt="'+attr(product.originalName||product.name)+'">':'<div class="ops-purchase-entry-no-image">ç„¡åœ–</div>';
-      const average=numberOrNull(product.averageCost),storePrice=numberOrNull(product.storePrice);
-      return '<button type="button" class="ops-purchase-entry-product" data-action="purchase-entry-add" data-id="'+attr(product.docId)+'"><div class="ops-purchase-entry-thumb">'+image+'</div><div class="ops-purchase-entry-product-body"><div class="ops-purchase-entry-sku">'+escapeHtml(product.sku||'æœªè¨­å®š')+'</div><b>'+escapeHtml(product.originalName||product.name||'æœªå‘½åå•†å“')+'</b><div class="ops-purchase-entry-product-meta"><span>åº«å­˜ '+formatNumber(product.currentStock)+'</span><span>é–€å¸‚ '+(storePrice==null?'æœªè¨­å®š':money(storePrice))+'</span><span class="'+(average==null?'is-anomaly':'')+'">å¹³å‡æˆæœ¬ '+(average==null?'å¾…è£œ':money(Math.round(average)))+'</span></div></div></button>';
-    }).join(''):emptyHtml('æ‰¾ä¸åˆ°å•†å“','è«‹æ›´æ›å•†å“ç·¨è™Ÿã€åç¨±æˆ–åˆ†é¡žã€‚');
-    return {rows:rows,html:html};
-  }
-  function supplierById(id){return state.suppliers.find(function(row){return row.id===id;})||null;}
-  function supplierSelectOptions(selectedId){
-    return '<option value="">ç›´æŽ¥è¼¸å…¥ä¾›æ‡‰å•†åç¨±</option>'+state.suppliers.map(function(row){return '<option value="'+attr(row.id)+'" '+(row.id===selectedId?'selected':'')+'>'+escapeHtml(row.name)+(row.contactName?'ï½œ'+escapeHtml(row.contactName):'')+'</option>';}).join('');
-  }
-  function resetPurchaseEntry(){
-    state.purchaseEntrySearch='';state.purchaseEntrySeries='all';state.purchaseEntrySort='sku';state.purchaseEntryCart=[];
-    state.purchaseEntryReceivedAt='';state.purchaseEntrySupplier='';state.purchaseEntrySupplierId='';state.purchaseEntryExternalNo='';state.purchaseEntryExtraCost=0;state.purchaseEntryNote='';
-    state.purchaseEntryPaymentStatus='unpaid';state.purchaseEntryPaymentDate='';state.purchaseEntryPaymentMethod='';state.purchaseEditId='';
-  }
-  function openPurchaseWorkspace(preselectedId){
-    resetPurchaseEntry();
-    state.purchaseEntryReceivedAt=inputDateTime(new Date());
-    if(preselectedId)addPurchaseEntryProduct(preselectedId);
-    location.hash='purchase-entry';
-  }
-  function startPurchaseEdit(id){
-    const purchase=state.purchases.find(function(row){return row.id===id;});if(!purchase)return toast('æ‰¾ä¸åˆ°é€²è²¨å–®','è«‹é‡æ–°è®€å–è³‡æ–™ã€‚','error');
-    state.purchaseEditId=purchase.id;
-    state.purchaseEntryCart=(purchase.items||[]).map(function(item){return {productId:clean(item.productId),qty:Math.max(1,Math.round(Number(item.qty||1))),unitCost:Math.max(0,Number(item.unitCost||0))};}).filter(function(item){return item.productId&&catalogById(item.productId);});
-    state.purchaseEntryReceivedAt=inputDateTime(purchase.receivedAt||new Date());
-    state.purchaseEntrySupplierId=purchase.supplierId||((state.suppliers.find(function(row){return row.name===purchase.supplier;})||{}).id||'');
-    state.purchaseEntrySupplier=purchase.supplier||((supplierById(state.purchaseEntrySupplierId)||{}).name||'');
-    state.purchaseEntryExternalNo=purchase.externalNo||'';state.purchaseEntryExtraCost=Number(purchase.extraCost||0);state.purchaseEntryNote=purchase.note||'';
-    state.purchaseEntryPaymentStatus=purchase.paymentStatus||'unpaid';state.purchaseEntryPaymentDate=purchase.paymentDate&&dateText(purchase.paymentDate)!=='â€”'?dateText(purchase.paymentDate):'';state.purchaseEntryPaymentMethod=purchase.paymentMethod||'';
-    state.purchaseEntrySearch='';state.purchaseEntrySeries='all';state.purchaseEntrySort='sku';location.hash='purchase-entry';
-  }
-  function openSupplierManager(id){
-    const row=id?supplierById(id):null,s=row||{id:'',name:'',contactName:'',phone:'',mobile:'',email:'',address:'',taxId:'',paymentInfo:'',note:''};
-    const list=state.suppliers.length?'<div class="ops-supplier-directory">'+state.suppliers.map(function(item){return '<button type="button" class="ops-supplier-directory-row" data-action="supplier-edit" data-id="'+attr(item.id)+'"><div><b>'+escapeHtml(item.name)+'</b><small>'+escapeHtml([item.contactName,item.phone||item.mobile].filter(Boolean).join('ï½œ')||'å°šæœªå¡«è¯çµ¡è³‡æ–™')+'</small></div><span>ç·¨è¼¯</span></button>';}).join('')+'</div>':emptyHtml('å°šç„¡ä¾›æ‡‰å•†','å»ºç«‹å¾Œå¯åœ¨æ¯å¼µé€²è²¨å–®å¿«é€Ÿé¸æ“‡ã€‚');
-    openDrawer(row?'ç·¨è¼¯ä¾›æ‡‰å•†':'ä¾›æ‡‰å•†è³‡æ–™åº«','ä¾›æ‡‰å•†åç¨±å¿…å¡«ï¼Œå…¶é¤˜è¯çµ¡åŠä»˜æ¬¾è³‡è¨Šçš†å¯é¸å¡«ã€‚','<form id="supplierForm" data-id="'+attr(s.id)+'"><div class="ops-form-grid"><div class="ops-field full"><label class="ops-required">ä¾›æ‡‰å•†åç¨±</label><input class="ops-input" name="name" value="'+attr(s.name)+'" required></div><div class="ops-field"><label>è¯çµ¡äºº</label><input class="ops-input" name="contactName" value="'+attr(s.contactName)+'"></div><div class="ops-field"><label>é›»è©±</label><input class="ops-input" name="phone" value="'+attr(s.phone)+'"></div><div class="ops-field"><label>æ‰‹æ©Ÿ</label><input class="ops-input" name="mobile" value="'+attr(s.mobile)+'"></div><div class="ops-field"><label>Email</label><input class="ops-input" type="email" name="email" value="'+attr(s.email)+'"></div><div class="ops-field"><label>çµ±ä¸€ç·¨è™Ÿ</label><input class="ops-input" name="taxId" value="'+attr(s.taxId)+'"></div><div class="ops-field full"><label>åœ°å€</label><input class="ops-input" name="address" value="'+attr(s.address)+'"></div><div class="ops-field full"><label>åŒ¯æ¬¾ï¼ä»˜æ¬¾è³‡è¨Š</label><textarea class="ops-textarea" name="paymentInfo">'+escapeHtml(s.paymentInfo)+'</textarea></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note">'+escapeHtml(s.note)+'</textarea></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">å„²å­˜ä¾›æ‡‰å•†</button></div></form><div class="ops-section-title">æ—¢æœ‰ä¾›æ‡‰å•†</div>'+list);
-  }
-  async function saveSupplier(form){
-    const id=clean(form.dataset.id),data=new FormData(form),payload={name:clean(data.get('name')),contactName:clean(data.get('contactName')),phone:clean(data.get('phone')),mobile:clean(data.get('mobile')),email:clean(data.get('email')),address:clean(data.get('address')),taxId:clean(data.get('taxId')),paymentInfo:clean(data.get('paymentInfo')),note:clean(data.get('note')),enabled:true,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
-    if(!payload.name)throw new Error('è«‹å¡«å¯«ä¾›æ‡‰å•†åç¨±');
-    const duplicate=state.suppliers.find(function(row){return row.id!==id&&row.name===payload.name;});if(duplicate)throw new Error('å·²ç¶“æœ‰ç›¸åŒåç¨±çš„ä¾›æ‡‰å•†');
-    const base=state.db.collection(COLLECTIONS.settings).doc('suppliers').collection('directory');let ref;
-    if(id){ref=base.doc(id);await ref.set(payload,{merge:true});}else{payload.createdAt=serverTimestamp();payload.createdBy=userLabel();ref=await base.add(payload);}
-    state.purchaseEntrySupplierId=ref.id;state.purchaseEntrySupplier=payload.name;await writeAudit(id?'æ›´æ–°ä¾›æ‡‰å•†':'æ–°å¢žä¾›æ‡‰å•†','supplier',ref.id,payload.name);closeDrawer();toast('ä¾›æ‡‰å•†å·²å„²å­˜',payload.name,'success');await loadAll(true);
-  }
-  function purchaseSupplierSummary(){
-    const supplier=supplierById(state.purchaseEntrySupplierId);if(!supplier)return '';
-    const contact=[supplier.contactName,supplier.phone||supplier.mobile,supplier.email].filter(Boolean).join('ï½œ');
-    return '<div class="ops-purchase-supplier-summary"><b>'+escapeHtml(supplier.name)+'</b><span>'+escapeHtml(contact||'å°šæœªå¡«è¯çµ¡è³‡æ–™')+'</span>'+(supplier.paymentInfo?'<small>'+escapeHtml(supplier.paymentInfo)+'</small>':'')+'</div>';
-  }
-  function renderPurchaseEntry(){
-    if(!state.purchaseEntryReceivedAt)state.purchaseEntryReceivedAt=inputDateTime(new Date());
-    const searchResult=purchaseEntrySearchResult(),rows=searchResult.rows,productHtml=searchResult.html,editing=state.purchaseEditId?state.purchases.find(function(row){return row.id===state.purchaseEditId;}):null;
-    let subtotal=0,qtyTotal=0;
-    const cartHtml=state.purchaseEntryCart.length?state.purchaseEntryCart.map(function(item,index){
-      const product=catalogById(item.productId);if(!product)return '';
-      const qty=Math.max(1,Math.round(Number(item.qty||1))),unitCost=Math.max(0,Number(item.unitCost||0));qtyTotal+=qty;subtotal+=qty*unitCost;
-      return '<div class="ops-purchase-entry-cart-row purchase-row" data-index="'+index+'"><input type="hidden" name="productId" value="'+attr(item.productId)+'"><div class="ops-purchase-entry-cart-title"><div><b>'+escapeHtml(product.originalName||product.name)+'</b><small>SKU '+escapeHtml(product.sku||'æœªè¨­å®š')+'ï½œç›®å‰åº«å­˜ '+formatNumber(product.currentStock)+'</small></div><strong>'+money(qty*unitCost)+'</strong></div><div class="ops-purchase-entry-cart-fields"><label><span>æ•¸é‡</span><input class="ops-input" type="number" min="1" step="1" inputmode="numeric" name="qty" value="'+qty+'" data-purchase-entry-qty="'+index+'" required></label><label><span>å–®ä½æˆæœ¬</span><input class="ops-input" type="number" min="0" step="0.01" inputmode="decimal" name="unitCost" value="'+unitCost+'" data-purchase-entry-cost="'+index+'" required></label><button class="ops-icon-button" type="button" data-action="purchase-entry-remove" data-index="'+index+'" aria-label="ç§»é™¤å•†å“">Ã—</button></div></div>';
-    }).join(''):emptyHtml('å°šæœªåŠ å…¥é€²è²¨å•†å“','è«‹å¾žå·¦å´æœå°‹ä¸¦é»žé¸å•†å“ã€‚');
-    const extra=Math.max(0,Number(state.purchaseEntryExtraCost||0)),grand=subtotal+extra;
-    const title=editing?'ä¿®æ”¹é€²è²¨å–® '+escapeHtml(editing.purchaseNo):'é€²è²¨å…¥åº«å·¥ä½œå°';
-    const submitText=editing?'å„²å­˜ä¿®æ”¹ä¸¦åŒæ­¥åº«å­˜':'ç¢ºèªé©—æ”¶å…¥åº«';
-    return '<div class="ops-purchase-entry-top"><button class="ops-button ghost" type="button" data-action="purchase-entry-back">â† è¿”å›žåº«å­˜ä½œæ¥­</button><div><h2>'+title+'</h2><p>'+(editing?'ä¿®æ”¹æ•¸é‡å¾Œï¼Œç³»çµ±æœƒä¾å·®ç•°åŒæ­¥æ›´æ­£åº«å­˜ä¸¦ä¿ç•™ä¿®æ”¹ç´€éŒ„ã€‚':'å·¦å´å¿«é€Ÿæ‰¾å•†å“ï¼Œå³å´æ•´ç†æœ¬æ¬¡é€²è²¨æ•¸é‡èˆ‡æˆæœ¬ã€‚')+'</p></div></div><form id="purchaseWorkspaceForm" data-id="'+attr(state.purchaseEditId)+'"><div class="ops-purchase-entry-layout"><section class="ops-card ops-purchase-entry-products"><div class="ops-v8-section-head"><div><h2>é¸æ“‡é€²è²¨å•†å“</h2><p>å¯è¼¸å…¥ SKUã€åç¨±ã€å“ç‰Œæˆ–åˆ†é¡ž</p></div><span class="ops-tag green" id="purchaseEntrySearchCount">'+formatNumber(rows.length)+' é …</span></div>'+purchaseEntrySeriesTabs()+'<div class="ops-purchase-entry-search-row"><input class="ops-input" id="purchaseEntrySearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="è¼¸å…¥ SKUã€å•†å“åç¨±ã€å“ç‰Œæˆ–åˆ†é¡ž" value="'+attr(state.purchaseEntrySearch)+'"><select class="ops-select" id="purchaseEntrySort"><option value="sku" '+(state.purchaseEntrySort==='sku'?'selected':'')+'>ä¾å•†å“ç·¨è™Ÿ</option><option value="stock" '+(state.purchaseEntrySort==='stock'?'selected':'')+'>åº«å­˜å°‘çš„å„ªå…ˆ</option><option value="name" '+(state.purchaseEntrySort==='name'?'selected':'')+'>ä¾åç¨±</option></select><button class="ops-button soft" type="button" data-action="purchase-entry-new-product">æ–°å¢žå•†å“ä¸»æª”</button></div>'+mobileSearchPadHtml('purchaseEntrySearch')+'<div class="ops-purchase-entry-grid" id="purchaseEntrySearchResults">'+productHtml+'</div></section><section class="ops-card ops-purchase-entry-cart"><div class="ops-v8-section-head"><div><h2>æœ¬æ¬¡é€²è²¨</h2><p>ä¾›æ‡‰å•†ã€ä»˜æ¬¾ç‹€æ…‹èˆ‡å•†å“æˆæœ¬</p></div><button class="ops-button small ghost" type="button" data-action="purchase-entry-clear">æ¸…ç©ºå•†å“</button></div><div class="ops-purchase-entry-info"><div class="ops-field"><label class="ops-required">åˆ°è²¨æ™‚é–“</label><input class="ops-input" type="datetime-local" name="receivedAt" id="purchaseEntryReceivedAt" value="'+attr(state.purchaseEntryReceivedAt)+'" required></div><div class="ops-field"><label>é¸æ“‡æ—¢æœ‰ä¾›æ‡‰å•†</label><div class="ops-inline-control"><select class="ops-select" name="supplierId" id="purchaseEntrySupplierId">'+supplierSelectOptions(state.purchaseEntrySupplierId)+'</select><button class="ops-button soft" type="button" data-action="supplier-manager">ç®¡ç†</button></div></div><div class="ops-field full"><label class="ops-required">ä¾›æ‡‰å•†åç¨±</label><input class="ops-input" name="supplier" id="purchaseEntrySupplier" value="'+attr(state.purchaseEntrySupplier)+'" placeholder="å¯ç›´æŽ¥è¼¸å…¥æ–°ä¾›æ‡‰å•†" required>'+purchaseSupplierSummary()+'</div><div class="ops-field"><label>é€²è²¨å–®è™Ÿï¼å¤–éƒ¨ç·¨è™Ÿ</label><input class="ops-input" name="externalNo" id="purchaseEntryExternalNo" value="'+attr(state.purchaseEntryExternalNo)+'"></div><div class="ops-field"><label>é¡å¤–è²»ç”¨</label><input class="ops-input" type="number" min="0" step="1" inputmode="numeric" name="extraCost" id="purchaseEntryExtraCost" value="'+attr(extra)+'"><small>é‹è²»ã€é—œç¨…æœƒæŒ‰å•†å“é‡‘é¡æ¯”ä¾‹åˆ†æ”¤ã€‚</small></div><div class="ops-field"><label>ä»˜æ¬¾ç‹€æ…‹</label><select class="ops-select" name="paymentStatus" id="purchaseEntryPaymentStatus"><option value="unpaid" '+(state.purchaseEntryPaymentStatus!=='paid'?'selected':'')+'>æœªä»˜æ¬¾</option><option value="paid" '+(state.purchaseEntryPaymentStatus==='paid'?'selected':'')+'>å·²ä»˜æ¬¾</option></select></div><div class="ops-field"><label>ä»˜æ¬¾æ—¥æœŸ</label><input class="ops-input" type="date" name="paymentDate" id="purchaseEntryPaymentDate" value="'+attr(state.purchaseEntryPaymentDate)+'"></div><div class="ops-field"><label>ä»˜æ¬¾æ–¹å¼</label><select class="ops-select" name="paymentMethod" id="purchaseEntryPaymentMethod"><option value="">æœªè¨­å®š</option><option '+(state.purchaseEntryPaymentMethod==='è½‰å¸³'?'selected':'')+'>è½‰å¸³</option><option '+(state.purchaseEntryPaymentMethod==='ç¾é‡‘'?'selected':'')+'>ç¾é‡‘</option><option '+(state.purchaseEntryPaymentMethod==='ä¿¡ç”¨å¡'?'selected':'')+'>ä¿¡ç”¨å¡</option><option '+(state.purchaseEntryPaymentMethod==='å…¶ä»–'?'selected':'')+'>å…¶ä»–</option></select></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note" id="purchaseEntryNote">'+escapeHtml(state.purchaseEntryNote)+'</textarea></div></div><div class="ops-purchase-entry-cart-list">'+cartHtml+'</div><div class="ops-purchase-entry-summary"><div><span>å•†å“ç¨®é¡ž</span><b>'+formatNumber(state.purchaseEntryCart.length)+'</b></div><div><span>é€²è²¨ç¸½ä»¶æ•¸</span><b>'+formatNumber(qtyTotal)+'</b></div><div><span>å•†å“æˆæœ¬å°è¨ˆ</span><b>'+money(subtotal)+'</b></div><div><span>é¡å¤–è²»ç”¨</span><b>'+money(extra)+'</b></div><div class="total"><span>æœ¬æ¬¡é€²è²¨ç¸½æˆæœ¬</span><b>'+money(grand)+'</b></div></div><button class="ops-button primary ops-purchase-entry-submit" type="submit" '+(state.purchaseEntryCart.length?'':'disabled')+'>'+submitText+'</button></section></div></form>';
-  }
-  function revisePurchaseLayers(raw,purchaseNo,oldItem,newItem,effectiveUnit,receivedAt){
-    const oldQty=Math.max(0,Math.round(Number(oldItem&&oldItem.qty||0))),newQty=Math.max(0,Math.round(Number(newItem&&newItem.qty||0)));
-    const oldLayerId=clean(oldItem&&oldItem.layerId),layers=materializeCostLayers(raw),matched=layers.filter(function(layer){return (layer.referenceType==='purchase'&&layer.referenceId===purchaseNo)||(oldLayerId&&layer.layerId===oldLayerId);});
-    const remainingOld=sum(matched,function(layer){return layer.qtyRemaining;}),soldQty=Math.max(0,oldQty-remainingOld);
-    if(newQty<soldQty)throw new Error((clean(raw.internalName)||clean(raw.originalName)||'å•†å“')+' å·²æœ‰ '+soldQty+' ä»¶å¾žæ­¤é€²è²¨æ‰¹æ¬¡å”®å‡ºï¼Œé€²è²¨é‡ä¸å¯æ”¹ä½Žæ–¼å·²å”®æ•¸é‡');
-    const next=layers.filter(function(layer){return !matched.includes(layer);}),remainingNew=Math.max(0,newQty-soldQty);
-    if(remainingNew>0)next.push({layerId:oldLayerId||purchaseNo+'-'+clean(raw.internalSku||newItem.productId),qtyRemaining:remainingNew,originalQty:newQty,unitCost:effectiveUnit,costKnown:effectiveUnit!=null,receivedAt:receivedAt.toISOString(),referenceType:'purchase',referenceId:purchaseNo});
-    const stats=statsFromLayers(next);return {layers:stats.layers,averageCost:stats.averageCost,nextFifoCost:stats.nextFifoCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,soldQty:soldQty};
-  }
-  async function savePurchase(form){
-    const data=new FormData(form),rowEls=queryAll('.purchase-row',form),items=[];rowEls.forEach(function(row){const productId=clean(query('[name="productId"]',row).value),qty=numberOrNull(query('[name="qty"]',row).value),unitCost=numberOrNull(query('[name="unitCost"]',row).value);if(productId&&qty>0&&unitCost!=null)items.push({productId:productId,qty:Math.round(qty),unitCost:unitCost});});
-    if(!items.length)throw new Error('è‡³å°‘éœ€è¦ä¸€å€‹æœ‰æ•ˆé€²è²¨å•†å“');const duplicate=new Set();for(const item of items){if(duplicate.has(item.productId))throw new Error('åŒä¸€å•†å“è«‹åˆä½µæˆä¸€åˆ—');duplicate.add(item.productId);}
-    const extraCost=numberOrNull(data.get('extraCost'))||0,receivedAt=new Date(clean(data.get('receivedAt')));if(Number.isNaN(receivedAt.getTime()))throw new Error('åˆ°è²¨æ™‚é–“ä¸æ­£ç¢º');
-    const supplierId=clean(data.get('supplierId')),selectedSupplier=supplierById(supplierId),supplierName=clean(data.get('supplier'))||(selectedSupplier&&selectedSupplier.name)||'';if(!supplierName)throw new Error('è«‹å¡«å¯«ä¾›æ‡‰å•†');
-    const paymentStatus=clean(data.get('paymentStatus'))==='paid'?'paid':'unpaid',paymentDate=paymentStatus==='paid'?(clean(data.get('paymentDate'))||dateText(new Date())):'',paymentMethod=paymentStatus==='paid'?clean(data.get('paymentMethod')):'';
-    const editingId=clean(form.dataset.id),editing=editingId?state.purchases.find(function(row){return row.id===editingId;}):null;
-    if(!editing){
-      const purchaseNo=uid('PUR'),purchaseRef=state.db.collection(COLLECTIONS.purchases).doc();
-      await state.db.runTransaction(async function(tx){const refs=items.map(function(item){return state.db.collection(COLLECTIONS.products).doc(item.productId);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));const subtotal=sum(items,function(i){return i.qty*i.unitCost;}),prepared=[];snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('å•†å“ä¸»æª”ä¸å­˜åœ¨');const raw=snap.data()||{},item=items[index],before=Number(raw.currentStock||0),base=item.qty*item.unitCost,allocated=subtotal>0?extraCost*(base/subtotal):0,effectiveUnit=item.unitCost+(item.qty?allocated/item.qty:0),after=before+item.qty,added=addFifoLayer(raw,item.qty,effectiveUnit,{layerId:purchaseNo+'-'+index,receivedAt:receivedAt.toISOString(),referenceType:'purchase',referenceId:purchaseNo});prepared.push({ref:refs[index],raw:raw,item:item,before:before,after:after,allocated:allocated,effectiveUnit:effectiveUnit,added:added});});
-        tx.set(purchaseRef,{purchaseNo:purchaseNo,externalNo:clean(data.get('externalNo')),receivedAt:receivedAt,supplierId:supplierId,supplier:supplierName,items:prepared.map(function(x){return {productId:x.item.productId,name:clean(x.raw.internalName||x.raw.originalName||x.raw.onlineName),sku:clean(x.raw.internalSku),qty:x.item.qty,unitCost:x.item.unitCost,allocatedExtraCost:x.allocated,effectiveUnitCost:x.effectiveUnit,lineTotal:x.item.qty*x.item.unitCost,layerId:x.added.layers[x.added.layers.length-1].layerId};}),subtotal:subtotal,extraCost:extraCost,totalCost:subtotal+extraCost,paymentStatus:paymentStatus,paymentDate:paymentDate?new Date(paymentDate+'T12:00:00'):'',paymentMethod:paymentMethod,costMethod:'FIFO',note:clean(data.get('note')),revisionHistory:[],createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
-        prepared.forEach(function(x){tx.update(x.ref,{currentStock:x.after,latestPurchaseCost:x.item.unitCost,costLayers:x.added.layers,averageCost:x.added.averageCost,inventoryValue:x.added.inventoryValue,costIncomplete:x.added.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});queueInventorySyncInTransaction(tx,x.item.productId,clean(x.raw.internalSku),x.after,'purchase');const tRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(tRef,{type:'purchase',productId:x.item.productId,productName:clean(x.raw.internalName||x.raw.originalName||x.raw.onlineName),sku:clean(x.raw.internalSku),qtyChange:x.item.qty,beforeStock:x.before,afterStock:x.after,unitCost:x.effectiveUnit,costMethod:'FIFO',referenceType:'purchase',referenceId:purchaseNo,note:'é€²è²¨å…¥åº«ï½œ'+supplierName,occurredAt:receivedAt,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
-      });await writeAudit('é€²è²¨é©—æ”¶å…¥åº«','purchase',purchaseRef.id,purchaseNo+'ï½œ'+supplierName+'ï½œ'+items.length+'é …ï½œFIFO');resetPurchaseEntry();state.purchaseWorkspaceTab='inbound';location.hash='purchases';toast('é€²è²¨å…¥åº«å®Œæˆ',purchaseNo,'success');await loadAll(true);return;
-    }
-    const purchaseRef=state.db.collection(COLLECTIONS.purchases).doc(editing.id),purchaseNo=editing.purchaseNo;
-    await state.db.runTransaction(async function(tx){
-      const purchaseSnap=await tx.get(purchaseRef);if(!purchaseSnap.exists)throw new Error('é€²è²¨å–®ä¸å­˜åœ¨');const rawPurchase=purchaseSnap.data()||{},oldItems=Array.isArray(rawPurchase.items)?rawPurchase.items:[];
-      const ids=Array.from(new Set(oldItems.map(function(item){return clean(item.productId);}).concat(items.map(function(item){return item.productId;})).filter(Boolean))),refs=ids.map(function(id){return state.db.collection(COLLECTIONS.products).doc(id);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));
-      const rawById=new Map();snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('å•†å“ä¸»æª”ä¸å­˜åœ¨');rawById.set(ids[index],snap.data()||{});});
-      const oldMap=new Map(oldItems.map(function(item){return [clean(item.productId),item];})),newMap=new Map(items.map(function(item){return [item.productId,item];})),subtotal=sum(items,function(item){return item.qty*item.unitCost;}),newStoredItems=[];
-      ids.forEach(function(productId,index){const raw=rawById.get(productId),oldItem=oldMap.get(productId)||{productId:productId,qty:0,unitCost:0},newItem=newMap.get(productId)||{productId:productId,qty:0,unitCost:0},base=newItem.qty*newItem.unitCost,allocated=subtotal>0?extraCost*(base/subtotal):0,effectiveUnit=newItem.qty?newItem.unitCost+allocated/newItem.qty:null,delta=newItem.qty-oldItem.qty,before=Number(raw.currentStock||0),after=before+delta;if(after<0)throw new Error((clean(raw.internalName)||'å•†å“')+' åº«å­˜ä¸è¶³ï¼Œç„¡æ³•å¥—ç”¨æ­¤æ¬¡ä¿®æ”¹');const revised=revisePurchaseLayers(raw,purchaseNo,oldItem,newItem,effectiveUnit,receivedAt),ref=refs[index];
-        tx.update(ref,{currentStock:after,latestPurchaseCost:newItem.qty?newItem.unitCost:(numberOrNull(raw.latestPurchaseCost)),costLayers:revised.layers,averageCost:revised.averageCost,inventoryValue:revised.inventoryValue,costIncomplete:revised.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});queueInventorySyncInTransaction(tx,productId,clean(raw.internalSku),after,'purchaseCorrection');
-        const oldEffective=numberOrNull(oldItem.effectiveUnitCost),costChanged=newItem.qty&&Math.abs(Number(effectiveUnit||0)-Number(oldEffective||0))>.0001;if(delta!==0||costChanged){const tRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(tRef,{type:'purchaseCorrection',productId:productId,productName:clean(raw.internalName||raw.originalName||raw.onlineName),sku:clean(raw.internalSku),qtyChange:delta,beforeStock:before,afterStock:after,unitCost:effectiveUnit,costMethod:'FIFO',referenceType:'purchaseCorrection',referenceId:purchaseNo,note:'ä¿®æ”¹é€²è²¨å–®ï½œ'+supplierName,occurredAt:new Date(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});}
-        if(newItem.qty>0)newStoredItems.push({productId:productId,name:clean(raw.internalName||raw.originalName||raw.onlineName),sku:clean(raw.internalSku),qty:newItem.qty,unitCost:newItem.unitCost,allocatedExtraCost:allocated,effectiveUnitCost:effectiveUnit,lineTotal:newItem.qty*newItem.unitCost,layerId:clean(oldItem.layerId)||purchaseNo+'-'+index});
-      });
-      const history=Array.isArray(rawPurchase.revisionHistory)?rawPurchase.revisionHistory.slice():[];history.push({changedAt:new Date().toISOString(),changedBy:userLabel(),supplier:clean(rawPurchase.supplier),subtotal:Number(rawPurchase.subtotal||0),extraCost:Number(rawPurchase.extraCost||0),totalCost:Number(rawPurchase.totalCost||0),paymentStatus:clean(rawPurchase.paymentStatus)||'unpaid',items:oldItems.map(function(item){return {productId:clean(item.productId),sku:clean(item.sku),qty:Number(item.qty||0),unitCost:Number(item.unitCost||0)};})});
-      tx.update(purchaseRef,{externalNo:clean(data.get('externalNo')),receivedAt:receivedAt,supplierId:supplierId,supplier:supplierName,items:newStoredItems,subtotal:subtotal,extraCost:extraCost,totalCost:subtotal+extraCost,paymentStatus:paymentStatus,paymentDate:paymentDate?new Date(paymentDate+'T12:00:00'):'',paymentMethod:paymentMethod,note:clean(data.get('note')),revisionHistory:history,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION});
-    });await writeAudit('ä¿®æ”¹é€²è²¨å–®','purchase',editing.id,purchaseNo+'ï½œ'+supplierName+'ï½œåŒæ­¥åº«å­˜');resetPurchaseEntry();state.purchaseWorkspaceTab='inbound';location.hash='purchases';toast('é€²è²¨å–®å·²ä¿®æ”¹',purchaseNo,'success');await loadAll(true);
-  }
-  function stocktakeFilteredProducts(){
-    const term=lower(state.stocktakeSearch).trim();let rows=catalogRowsInSkuOrder().filter(function(product){if(!product.initialized)return false;if(state.stocktakeSeries!=='all'&&!clean(product.sku).startsWith(state.stocktakeSeries))return false;return !term||catalogMatchesSearch(product,term);});
-    if(state.stocktakeSort==='stock')rows.sort(function(a,b){return Number(a.currentStock||0)-Number(b.currentStock||0);});
-    else if(state.stocktakeSort==='name')rows.sort(function(a,b){return clean(a.originalName||a.name).localeCompare(clean(b.originalName||b.name),'zh-Hant');});
-    return rows;
-  }
-  function addStocktakeProduct(productId,counted){const product=catalogById(productId);if(!product)return;const existing=state.stocktakeCart.find(function(item){return item.productId===productId;});if(existing){if(counted!==undefined)existing.countedStock=counted;}else state.stocktakeCart.push({productId:productId,countedStock:counted===undefined?'':counted});}
-  function resetStocktake(){state.stocktakeSearch='';state.stocktakeSeries='all';state.stocktakeSort='sku';state.stocktakeCart=[];state.stocktakeOperator='';state.stocktakeNote='';state.stocktakeCorrectionId='';}
-  function openStocktakeWorkspace(preselectedId){resetStocktake();if(preselectedId)addStocktakeProduct(preselectedId);location.hash='stocktake';}
-  function startStocktakeCorrection(id){const row=state.inventory.find(function(item){return item.id===id;});if(!row)return toast('æ‰¾ä¸åˆ°ç›¤é»žç´€éŒ„','','error');resetStocktake();state.stocktakeCorrectionId=row.id;state.stocktakeNote='æ›´æ­£ç›¤é»žï¼š'+(row.note||'');addStocktakeProduct(row.productId,row.afterStock);location.hash='stocktake';}
-  function stocktakeSeriesTabs(){return '<div class="ops-purchase-series-tabs ops-series-grid-tabs"><button type="button" class="'+(state.stocktakeSeries==='all'?'active':'')+'" data-action="stocktake-series" data-series="all">å…¨éƒ¨</button>'+PRODUCT_SERIES.map(function(row){return '<button type="button" class="'+(state.stocktakeSeries===row[0]?'active':'')+'" data-action="stocktake-series" data-series="'+row[0]+'">'+escapeHtml(productSeriesLabel(row))+'</button>';}).join('')+'</div>';}
-  function stocktakeSearchResult(){
-    const all=stocktakeFilteredProducts(),rows=clean(state.stocktakeSearch)?all:all.slice(0,240);
-    const html=rows.length?rows.map(function(product){const image=product.imageUrl?'<img src="'+attr(product.imageUrl)+'" alt="'+attr(product.originalName||product.name)+'">':'<div class="ops-purchase-entry-no-image">ç„¡åœ–</div>';return '<button type="button" class="ops-stocktake-product" data-action="stocktake-add" data-id="'+attr(product.docId)+'"><div class="ops-purchase-entry-thumb">'+image+'</div><div><b>'+escapeHtml(product.sku||'æœªè¨­å®š')+'</b><span>'+escapeHtml(product.originalName||product.name)+'</span><strong>ç›®å‰ '+formatNumber(product.currentStock)+'</strong></div></button>';}).join(''):emptyHtml('æ‰¾ä¸åˆ°å•†å“','è«‹æ›´æ› SKU æˆ–å•†å“åç¨±ã€‚');
-    return {rows:rows,html:html};
-  }
-  function renderStocktakeWorkspace(){
-    const searchResult=stocktakeSearchResult(),rows=searchResult.rows,products=searchResult.html,correction=state.stocktakeCorrectionId?state.inventory.find(function(row){return row.id===state.stocktakeCorrectionId;}):null;
-    let diffCount=0;
-    const cart=state.stocktakeCart.length?state.stocktakeCart.map(function(item,index){const product=catalogById(item.productId);if(!product)return '';const counted=item.countedStock,has=counted!==''&&counted!=null&&!Number.isNaN(Number(counted)),diff=has?Number(counted)-Number(product.currentStock||0):0;if(has&&diff!==0)diffCount+=1;return '<div class="ops-stocktake-cart-row"><div class="ops-stocktake-cart-product"><b>'+escapeHtml(product.originalName||product.name)+'</b><small>SKU '+escapeHtml(product.sku||'æœªè¨­å®š')+'</small></div><div class="ops-stocktake-current"><span>ç³»çµ±æ•¸é‡</span><b>'+formatNumber(product.currentStock)+'</b></div><label><span>å¯¦éš›ç›¤é»ž</span><input class="ops-input" type="number" min="0" step="1" inputmode="numeric" name="countedStock" value="'+attr(counted)+'" data-stocktake-count="'+index+'" placeholder="ç•™ç™½ä¸ä¿®æ”¹"></label><div class="ops-stocktake-diff '+(diff>0?'plus':diff<0?'minus':'')+'"><span>å·®ç•°</span><b>'+(has?(diff>0?'+':'')+formatNumber(diff):'â€”')+'</b></div><button class="ops-icon-button" type="button" data-action="stocktake-remove" data-index="'+index+'">Ã—</button></div>';}).join(''):emptyHtml('å°šæœªåŠ å…¥ç›¤é»žå•†å“','è«‹å¾žå·¦å´æœå°‹ä¸¦é»žé¸å•†å“ã€‚');
-    return '<div class="ops-purchase-entry-top"><button class="ops-button ghost" type="button" data-action="stocktake-back">â† è¿”å›žåº«å­˜ä½œæ¥­</button><div><h2>'+(correction?'æ›´æ­£ç›¤é»žç´€éŒ„':'åº«å­˜ç›¤é»žå·¥ä½œå°')+'</h2><p>'+(correction?'è¼¸å…¥åŽŸç›¤é»žæ‡‰æœ‰çš„æ­£ç¢ºæ•¸é‡ï¼Œç³»çµ±æœƒä»¥å·®é¡è£œæ­£ç›®å‰åº«å­˜ã€‚':'å·¦å´é¸å•†å“ï¼Œå³å´è¼¸å…¥å¯¦éš›ç›¤é»žæ•¸é‡ï¼›ç•™ç™½çš„å•†å“ä¸æœƒç•°å‹•ã€‚')+'</p></div></div><form id="stocktakeForm"><div class="ops-stocktake-layout"><section class="ops-card"><div class="ops-v8-section-head"><div><h2>é¸æ“‡ç›¤é»žå•†å“</h2><p>å¯è¼¸å…¥ SKUã€åç¨±æˆ–å“ç‰Œ</p></div><span class="ops-tag green" id="stocktakeSearchCount">'+formatNumber(rows.length)+' é …</span></div>'+stocktakeSeriesTabs()+'<div class="ops-purchase-entry-search-row"><input class="ops-input" id="stocktakeSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="è¼¸å…¥ SKU æˆ–å•†å“åç¨±" value="'+attr(state.stocktakeSearch)+'"><select class="ops-select" id="stocktakeSort"><option value="sku" '+(state.stocktakeSort==='sku'?'selected':'')+'>ä¾å•†å“ç·¨è™Ÿ</option><option value="stock" '+(state.stocktakeSort==='stock'?'selected':'')+'>åº«å­˜å°‘çš„å„ªå…ˆ</option><option value="name" '+(state.stocktakeSort==='name'?'selected':'')+'>ä¾åç¨±</option></select></div>'+mobileSearchPadHtml('stocktakeSearch')+'<div class="ops-stocktake-product-grid" id="stocktakeSearchResults">'+products+'</div></section><section class="ops-card"><div class="ops-v8-section-head"><div><h2>æœ¬æ¬¡ç›¤é»ž</h2><p>'+formatNumber(state.stocktakeCart.length)+' é …å•†å“ï½œ'+formatNumber(diffCount)+' é …æœ‰å·®ç•°</p></div><button class="ops-button small ghost" type="button" data-action="stocktake-clear">æ¸…ç©º</button></div><div class="ops-callout green"><b>ç›¤é»žäººï¼š'+escapeHtml(userLabel())+'</b><br><span>ç®¡ç†ç«¯æœƒä¾ç›®å‰ç™»å…¥å¸³è™Ÿè‡ªå‹•è¨˜éŒ„ï¼Œä¸éœ€è¦å¦å¤–è¼¸å…¥å§“åã€‚</span></div><div class="ops-form-grid"><div class="ops-field full"><label>ç›¤é»žå‚™è¨»</label><input class="ops-input" name="note" id="stocktakeNote" value="'+attr(state.stocktakeNote)+'"></div></div><div class="ops-stocktake-cart">'+cart+'</div><button class="ops-button primary ops-purchase-entry-submit" type="submit" '+(state.stocktakeCart.length?'':'disabled')+'>'+(correction?'ç¢ºèªç›¤é»žæ›´æ­£':'ç¢ºèªå®Œæˆç›¤é»ž')+'</button></section></div></form>';
-  }
-  async function saveStocktake(form){
-    const operator=userLabel(),note=clean(new FormData(form).get('note'));
-    const entries=state.stocktakeCart.map(function(item){const value=item.countedStock;return {productId:item.productId,countedStock:value===''||value==null?null:Math.max(0,Math.round(Number(value)))};}).filter(function(item){return item.countedStock!=null&&!Number.isNaN(item.countedStock);});if(!entries.length)throw new Error('è‡³å°‘è¼¸å…¥ä¸€é …å¯¦éš›ç›¤é»žæ•¸é‡');
-    const correction=state.stocktakeCorrectionId?state.inventory.find(function(row){return row.id===state.stocktakeCorrectionId;}):null,stocktakeNo=correction?(correction.stocktakeNo||uid('COUNT-CORR')):uid('COUNT');
-    await state.db.runTransaction(async function(tx){const refs=entries.map(function(item){return state.db.collection(COLLECTIONS.products).doc(item.productId);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));
-      snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('å•†å“ä¸»æª”ä¸å­˜åœ¨');const raw=snap.data()||{},entry=entries[index],current=Number(raw.currentStock||0),target=correction&&correction.productId===entry.productId?current+(entry.countedStock-Number(correction.afterStock||0)):entry.countedStock;if(target<0)throw new Error('æ›´æ­£å¾Œåº«å­˜ä¸å¯å°æ–¼ 0');const latest=numberOrNull(firstValue(raw,['latestPurchaseCost','averageCost'])),adjusted=adjustFifoLayers(raw,target,latest,{layerId:uid('COUNT-LAYER'),receivedAt:new Date().toISOString(),referenceType:correction?'stocktakeCorrection':'stocktakeIncrease',referenceId:stocktakeNo}),ref=refs[index];tx.update(ref,{currentStock:target,costLayers:adjusted.layers,averageCost:adjusted.averageCost,inventoryValue:adjusted.inventoryValue,costIncomplete:adjusted.costIncomplete,updatedAt:serverTimestamp(),updatedBy:operator});queueInventorySyncInTransaction(tx,entry.productId,clean(raw.internalSku),target,correction?'stocktakeCorrection':'stocktake');const tRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(tRef,{type:'adjustment',productId:entry.productId,productName:clean(raw.internalName||raw.originalName||raw.onlineName),sku:clean(raw.internalSku),qtyChange:target-current,beforeStock:current,afterStock:target,unitCost:latest,costMethod:'FIFO',referenceType:correction?'stocktakeCorrection':'stocktake',referenceId:stocktakeNo,stocktakeNo:stocktakeNo,counterName:operator,source:'admin',correctionOf:correction?correction.id:'',note:note||'åº«å­˜ç›¤é»ž',occurredAt:new Date(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
-      if(correction){const oldRef=state.db.collection(COLLECTIONS.inventory).doc(correction.id);tx.set(oldRef,{correctedAt:serverTimestamp(),correctedBy:operator,correctedTo:entries[0].countedStock},{merge:true});}
-    });await writeAudit(correction?'æ›´æ­£ç›¤é»žç´€éŒ„':'å®Œæˆåº«å­˜ç›¤é»ž','inventory',stocktakeNo,operator+'ï½œ'+entries.length+' é …');resetStocktake();state.purchaseWorkspaceTab='history';location.hash='purchases';toast(correction?'ç›¤é»žå·²æ›´æ­£':'ç›¤é»žå·²å®Œæˆ',stocktakeNo,'success');await loadAll(true);
-  }
-  async function sha256Text(value){const bytes=new TextEncoder().encode(clean(value)),hash=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(hash)).map(function(byte){return byte.toString(16).padStart(2,'0');}).join('');}
-  function openInventoryCountSettings(){
-    const url=new URL('inventory-count.html',location.href).href;
-    openDrawer('å·¥è®€ç”Ÿæ‰‹æ©Ÿç›¤é»žå…¥å£','åªæœ‰ç¨ç«‹æ‰‹æ©Ÿå…¥å£æœƒè¦æ±‚ç›¤é»žå¯†ç¢¼èˆ‡ç›¤é»žäººå§“åã€‚é è¨­å¯†ç¢¼ç‚º youZIï¼Œå¯åœ¨ä¸‹æ–¹ä¿®æ”¹ã€‚','<form id="inventoryCountSettingsForm"><div class="ops-callout green"><b>ç›¤é»žç¶²å€</b><br><span class="ops-break-url">'+escapeHtml(url)+'</span></div><div class="ops-form-grid"><div class="ops-field full"><label>å…¥å£ç‹€æ…‹</label><select class="ops-select" name="enabled"><option value="true" '+(state.inventoryCountSettings.enabled!==false?'selected':'')+'>å•Ÿç”¨</option><option value="false" '+(state.inventoryCountSettings.enabled===false?'selected':'')+'>åœç”¨</option></select></div><div class="ops-field full"><label>è¨­å®šæ–°å¯†ç¢¼</label><input class="ops-input" type="password" inputmode="text" minlength="4" maxlength="20" autocapitalize="none" spellcheck="false" name="pin" placeholder="ç•™ç™½ä»£è¡¨ä¸è®Šï¼›é è¨­ç‚º youZI"></div></div><div class="ops-card-actions" style="justify-content:flex-start;margin-top:12px"><button class="ops-button ghost" type="button" data-action="inventory-count-copy">è¤‡è£½ç¶²å€</button><button class="ops-button ghost" type="button" data-action="inventory-count-open">é–‹å•Ÿæ‰‹æ©Ÿç›¤é»ž</button></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">å„²å­˜è¨­å®š</button></div></form>');
-  }
-  async function saveInventoryCountSettings(form){const data=new FormData(form),pin=clean(data.get('pin')),payload={enabled:data.get('enabled')!=='false',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};if(pin){if(!/^[A-Za-z0-9]{4,20}$/.test(pin))throw new Error('ç›¤é»žå¯†ç¢¼è«‹è¼¸å…¥ 4 è‡³ 20 ä½è‹±æ–‡å­—æ¯æˆ–æ•¸å­—ï¼Œä¸¦æ³¨æ„å¤§å°å¯«');payload.pinHash=await sha256Text(pin);}else if(!state.inventoryCountSettings.pinHash){payload.pinHash=await sha256Text('youZI');}await state.db.collection(COLLECTIONS.settings).doc('inventoryCount').set(payload,{merge:true});closeDrawer();toast('æ‰‹æ©Ÿç›¤é»žè¨­å®šå·²å„²å­˜','å…¥å£å¯†ç¢¼å·²æ›´æ–°','success');await loadAll(true);}
-
-  function purchaseDateKey(){
-    const value=clean(state.purchaseDate);
-    return /^\d{4}-\d{2}-\d{2}$/.test(value)?value:todayDateKey();
-  }
-  function purchaseRangeBounds(){
-    const now=new Date(),range=state.purchaseRange||'today';
-    if(range==='all')return {start:null,end:null,label:'å…¨éƒ¨'};
-    if(range==='month'){
-      const selected=/^\d{4}-(0[1-9]|1[0-2])$/.test(clean(state.purchaseMonth))?state.purchaseMonth:dateText(now).slice(0,7),parts=selected.split('-').map(Number);
-      return {start:new Date(parts[0],parts[1]-1,1),end:endOfDay(new Date(parts[0],parts[1],0)),label:parts[0]+' å¹´ '+parts[1]+' æœˆ'};
-    }
-    if(range==='custom'){
-      const from=clean(state.purchaseFrom),to=clean(state.purchaseTo);
-      if(/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to)return {start:startOfDay(new Date(from+'T00:00:00')),end:endOfDay(new Date(to+'T00:00:00')),label:from+'ï½ž'+to};
-    }
-    const key=purchaseDateKey(),selected=new Date(key+'T00:00:00');
-    return {start:startOfDay(selected),end:endOfDay(selected),label:key===todayDateKey()?'ä»Šå¤©':key};
-  }
-  function purchaseRangeMatches(value,bounds){
-    const date=dateFrom(value);if(!date)return false;
-    if(bounds.start&&date<bounds.start)return false;
-    if(bounds.end&&date>bounds.end)return false;
-    return true;
-  }
-  function purchaseMetricLabels(){
-    const range=state.purchaseRange||'today',today=purchaseDateKey()===todayDateKey();
-    if(range==='month')return {purchase:'æœ¬æœˆé€²è²¨',movement:'æœ¬æœˆç•°å‹•'};
-    if(range==='all')return {purchase:'å…¨éƒ¨é€²è²¨',movement:'å…¨éƒ¨ç•°å‹•'};
-    if(range==='custom')return {purchase:'å€é–“é€²è²¨',movement:'å€é–“ç•°å‹•'};
-    return {purchase:today?'ä»Šæ—¥é€²è²¨':'ç•¶æ—¥é€²è²¨',movement:today?'ä»Šæ—¥ç•°å‹•':'ç•¶æ—¥ç•°å‹•'};
-  }
-  function purchaseRangeControlsHtml(){
-    const monthValue=/^\d{4}-(0[1-9]|1[0-2])$/.test(clean(state.purchaseMonth))?state.purchaseMonth:dateText(new Date()).slice(0,7),year=Number(monthValue.slice(0,4))||new Date().getFullYear();
-    const monthOptions=Array.from({length:12},function(_,index){const month=index+1,key=year+'-'+String(month).padStart(2,'0');return '<option value="'+attr(key)+'" '+(key===monthValue?'selected':'')+'>'+year+' å¹´ '+month+' æœˆ</option>';}).join('');
-    const tools='<div class="ops-platform-date-tools ops-inventory-date-tools"><button type="button" class="ops-platform-quick-button '+(state.purchaseRange==='today'&&purchaseDateKey()===todayDateKey()?'active':'')+'" data-action="purchase-range" data-range="today">ä»Šå¤©</button><button type="button" class="ops-platform-quick-button" data-action="purchase-day-shift" data-step="-1">å‰ä¸€å¤©</button><label class="ops-platform-date-input '+(state.purchaseRange==='today'?'active':'')+'"><span>æŸ¥è©¢æ—¥æœŸ</span><input id="purchaseDate" type="date" value="'+attr(purchaseDateKey())+'"></label><button type="button" class="ops-platform-quick-button" data-action="purchase-day-shift" data-step="1">å¾Œä¸€å¤©</button><label class="ops-platform-month-select '+(state.purchaseRange==='month'?'active':'')+'"><span>æœˆä»½</span><select id="purchaseMonth">'+monthOptions+'</select></label><button type="button" class="ops-platform-quick-button '+(state.purchaseRange==='all'?'active':'')+'" data-action="purchase-range" data-range="all">å…¨éƒ¨</button><button type="button" class="ops-platform-quick-button '+(state.purchaseRange==='custom'?'active':'')+'" data-action="purchase-range" data-range="custom">è‡ªè¨‚å€é–“</button></div>';
-    const custom=state.purchaseRange==='custom'?'<div class="ops-platform-custom-range"><label>é–‹å§‹æ—¥æœŸ<input class="ops-input" id="purchaseFrom" type="date" value="'+attr(state.purchaseFrom)+'"></label><span>è‡³</span><label>çµæŸæ—¥æœŸ<input class="ops-input" id="purchaseTo" type="date" value="'+attr(state.purchaseTo)+'"></label><button type="button" class="ops-button primary" data-action="purchase-custom-apply">å¥—ç”¨å€é–“</button></div>':'';
-    return '<section class="ops-card ops-inventory-range-card"><div class="ops-inventory-range-title"><h2>åº«å­˜æ—¥æœŸæŸ¥è©¢</h2><p>é€²è²¨é‡‘é¡ã€é€²è²¨å–®èˆ‡åº«å­˜ç•°å‹•ä¾å¯¦éš›ç™¼ç”Ÿæ—¥æœŸè¨ˆç®—ã€‚</p></div>'+tools+custom+'</section>';
-  }
-  function inventoryCostAnomalies(){
-    return state.catalog.filter(function(product){return product.initialized;}).map(function(product){
-      const stock=Number(product.currentStock||0),average=numberOrNull(product.averageCost),issues=[];
-      if(stock<0)issues.push({code:'negative-stock',label:'è² åº«å­˜',detail:'ç›®å‰åº«å­˜ç‚º '+formatNumber(stock)+'ï¼Œéœ€è¦ç›¤é»žç¢ºèªã€‚',level:'red'});
-      if(stock>0){
-        if(average==null)issues.push({code:'missing-cost',label:'ç¼ºå°‘æˆæœ¬',detail:'æœ‰åº«å­˜ä½†æ²’æœ‰å¯ç”¨çš„ FIFOï¼å¹³å‡æˆæœ¬ã€‚',level:'red'});
-        else if(average===0&&product.zeroCostConfirmed!==true)issues.push({code:'zero-cost',label:'é›¶æˆæœ¬å¾…ç¢ºèª',detail:'å¹³å‡æˆæœ¬ç‚º 0ï¼›è‹¥ç¢ºå¯¦ç‚ºè´ˆå“æˆ–é›¶æˆæœ¬ï¼Œå¯ç¢ºèªç‚ºæ­£å¸¸ã€‚',level:'yellow'});
-        if(product.costIncomplete===true)issues.push({code:'incomplete-layer',label:'æˆæœ¬å±¤ä¸å®Œæ•´',detail:'FIFO æˆæœ¬å±¤æ•¸é‡æˆ–å–®åƒ¹å°šæœªå®Œæ•´å°æ‡‰ç›®å‰åº«å­˜ã€‚',level:'yellow'});
-      }
-      return issues.length?{product:product,issues:issues}:null;
-    }).filter(Boolean).sort(function(a,b){
-      const aRed=a.issues.some(function(issue){return issue.level==='red';}),bRed=b.issues.some(function(issue){return issue.level==='red';});
-      return Number(bRed)-Number(aRed)||clean(a.product.sku).localeCompare(clean(b.product.sku),'zh-Hant',{numeric:true});
-    });
-  }
-  async function confirmInventoryZeroCost(productId){
-    const product=catalogById(productId);if(!product)throw new Error('æ‰¾ä¸åˆ°å•†å“');
-    const average=numberOrNull(product.averageCost);if(average!==0)throw new Error('æ­¤å•†å“ç›®å‰å¹³å‡æˆæœ¬å·²ä¸æ˜¯ 0ï¼Œè«‹é‡æ–°æ•´ç†');
-    const confirmed=await confirmAction('ç¢ºèªæ­£å¸¸é›¶æˆæœ¬','ç¢ºèªã€Œ'+(product.originalName||product.name)+'ã€ç¢ºå¯¦ç‚ºé›¶æˆæœ¬å•†å“ï¼Ÿç¢ºèªå¾Œæœƒå¾žç•°å¸¸æ¸…å–®ç§»é™¤ã€‚','ç¢ºèªç‚ºæ­£å¸¸');
-    if(!confirmed)return;
-    await state.db.collection(COLLECTIONS.products).doc(productId).set({zeroCostConfirmed:true,zeroCostConfirmedAt:serverTimestamp(),zeroCostConfirmedBy:userLabel(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
-    await writeAudit('ç¢ºèªé›¶æˆæœ¬å•†å“','product',productId,(product.originalName||product.name)+'ï½œSKU '+(product.sku||''));
-    toast('å·²ç¢ºèªç‚ºæ­£å¸¸é›¶æˆæœ¬',product.originalName||product.name,'success');await loadAll(true);
-  }
-  function lowStockProducts(){
-    return state.catalog.filter(function(product){return product.initialized&&Number(product.currentStock||0)<=Number(product.safetyStock||0);}).sort(function(a,b){return Number(a.currentStock||0)-Number(b.currentStock||0);});
-  }
-  function purchaseLowSearchResult(lowAll){
-    const term=lower(state.purchaseLowSearch).trim(),all=lowAll||lowStockProducts();
-    const filtered=all.filter(function(product){return !term||catalogMatchesSearch(product,term);}),rows=term?filtered:filtered.slice(0,80);
-    const html=rows.length?'<div class="ops-v8-low-stock-list">'+rows.map(function(product){const out=Number(product.currentStock||0)<=0;return '<div class="ops-v8-low-stock-row"><div><b>'+escapeHtml(product.originalName||product.name)+'</b><small>SKU '+escapeHtml(product.sku||'æœªè¨­å®š')+'</small></div><strong class="'+(out?'danger':'warning')+'">'+formatNumber(product.currentStock)+' / å®‰å…¨ '+formatNumber(product.safetyStock)+'</strong><span class="ops-tag '+(out?'red':'yellow')+'">'+(out?'ç¼ºè²¨':'åä½Ž')+'</span><button class="ops-button small primary" data-action="purchase-this" data-id="'+attr(product.docId)+'">é€²è²¨</button></div>';}).join('')+'</div>':emptyHtml('ç›®å‰æ²’æœ‰ä½Žåº«å­˜å•†å“','æ‰€æœ‰å•†å“éƒ½é«˜æ–¼å®‰å…¨åº«å­˜ã€‚');
-    return {rows:rows,html:html};
-  }
-  function inventorySearchResult(periodInventory){
-    const source=periodInventory||state.inventory.filter(function(row){return purchaseRangeMatches(row.occurredAt,purchaseRangeBounds());});
-    const term=lower(state.inventorySearch).trim();
-    const filtered=source.filter(function(row){return !term||lower([row.productName,row.sku,row.referenceId,row.note].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);}),rows=term?filtered:filtered.slice(0,300);
-    const html=rows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>æ™‚é–“</th><th>é¡žåž‹</th><th>å•†å“</th><th class="num">ç•°å‹•</th><th class="num">ç•°å‹•å¾Œ</th><th>ä¾†æºï¼å‚™è¨»</th></tr></thead><tbody>'+rows.map(function(row){return '<tr><td>'+escapeHtml(dateTimeText(row.occurredAt))+'</td><td>'+escapeHtml(row.referenceType||row.type)+'</td><td><b>'+escapeHtml(row.productName)+'</b><br><small>'+escapeHtml(row.sku)+'</small></td><td class="num">'+(row.qtyChange>0?'+':'')+formatNumber(row.qtyChange)+'</td><td class="num">'+formatNumber(row.afterStock)+'</td><td>'+escapeHtml(row.referenceId)+'<br><small>'+escapeHtml(row.note)+'</small></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('æ‰€é¸æœŸé–“æ²’æœ‰åº«å­˜ç•°å‹•','è«‹æ›´æ›æ—¥æœŸæˆ–æŸ¥è©¢å€é–“ã€‚');
-    return {rows:rows,html:html};
-  }
-  function renderPurchases(){
-    const bounds=purchaseRangeBounds(),labels=purchaseMetricLabels();
-    const periodPurchases=state.purchases.filter(function(row){return purchaseRangeMatches(row.receivedAt,bounds);}),periodPurchaseTotal=sum(periodPurchases,function(row){return row.totalCost;});
-    const periodInventory=state.inventory.filter(function(row){return purchaseRangeMatches(row.occurredAt,bounds);});
-    const lowAll=lowStockProducts(),lowResult=purchaseLowSearchResult(lowAll);
-    const inventoryValue=sum(state.catalog,function(product){const explicit=numberOrNull(product.inventoryValue),average=numberOrNull(product.averageCost),stock=Math.max(0,Number(product.currentStock||0));return explicit!=null?explicit:(average==null?0:average*stock);});
-    const recentPurchases=periodPurchases.slice().sort(function(a,b){return (dateFrom(b.receivedAt)||0)-(dateFrom(a.receivedAt)||0);}).slice(0,80),anomalies=inventoryCostAnomalies(),allowedTabs=['low','inbound','history','anomaly'];if(!allowedTabs.includes(state.purchaseWorkspaceTab))state.purchaseWorkspaceTab='inbound';
-    function workTab(tab,label,count){return '<button type="button" class="is-'+attr(tab)+' '+(state.purchaseWorkspaceTab===tab?'active':'')+'" data-action="purchase-worktab" data-tab="'+tab+'">'+escapeHtml(label)+(count!=null?'<span>'+formatNumber(count)+'</span>':'')+'</button>';}
-    function workAction(action,label,count,className){return '<button type="button" class="'+(className||'')+'" data-action="'+action+'">'+escapeHtml(label)+(count!=null?'<span>'+formatNumber(count)+'</span>':'')+'</button>';}
-    let panel='';
-    if(state.purchaseWorkspaceTab==='low'){
-      panel='<div class="ops-v8-purchase-panel"><div class="ops-toolbar"><input class="ops-input grow" id="purchaseLowSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="æœå°‹ä½Žåº«å­˜å•†å“æˆ– SKU" value="'+attr(state.purchaseLowSearch)+'"></div>'+mobileSearchPadHtml('purchaseLowSearch')+'<div id="purchaseLowSearchResults">'+lowResult.html+'</div></div>';
-    }else if(state.purchaseWorkspaceTab==='inbound'){
-      const table=recentPurchases.length?'<div class="ops-purchase-card-list">'+recentPurchases.map(function(row){const qty=sum(row.items||[],function(item){return item.qty;}),paid=row.paymentStatus==='paid';return '<article class="ops-purchase-history-card"><div class="ops-purchase-history-main"><div><b>'+escapeHtml(row.purchaseNo||row.id)+'</b><small>'+escapeHtml(dateTimeText(row.receivedAt))+(row.externalNo?'ï½œå¤–éƒ¨ '+escapeHtml(row.externalNo):'')+'</small></div><div><span>ä¾›æ‡‰å•†</span><strong>'+escapeHtml(row.supplier||'æœªå¡«ä¾›æ‡‰å•†')+'</strong></div><div><span>å“é …ï¼ä»¶æ•¸</span><strong>'+formatNumber((row.items||[]).length)+' é …ï¼'+formatNumber(qty)+' ä»¶</strong></div><div><span>ç¸½æˆæœ¬</span><strong>'+money(row.totalCost)+'</strong></div><div>'+statusTag(paid?'å·²ä»˜æ¬¾':'æœªä»˜æ¬¾',paid?'green':'yellow')+(paid&&row.paymentDate?'<small>'+escapeHtml(dateText(row.paymentDate))+'</small>':'')+'</div><button class="ops-button small primary" data-action="purchase-edit" data-id="'+attr(row.id)+'">ä¿®æ”¹</button></div></article>';}).join('')+'</div>':emptyHtml('æ‰€é¸æœŸé–“æ²’æœ‰é€²è²¨å–®','é»žä¸Šæ–¹ã€Œé€²è²¨å…¥åº«ã€å¯ç›´æŽ¥å»ºç«‹æ–°é€²è²¨å–®ã€‚');panel='<div class="ops-v8-purchase-panel"><div class="ops-v8-inbound-summary"><div><span>'+escapeHtml(labels.purchase)+'</span><b>'+money(periodPurchaseTotal)+'</b><small>'+formatNumber(periodPurchases.length)+' å¼µé€²è²¨å–®</small></div><div><span>ä¾›æ‡‰å•†è³‡æ–™åº«</span><b>'+formatNumber(state.suppliers.length)+' å®¶</b><small>ä¿ç•™è¯çµ¡èˆ‡ä»˜æ¬¾è³‡æ–™</small></div><button class="ops-button ghost" data-action="supplier-manager">ç®¡ç†ä¾›æ‡‰å•†</button></div><div class="ops-v8-subsection-head"><h3>æ‰€é¸æœŸé–“é€²è²¨å–®</h3></div>'+table+'</div>';
-    }else if(state.purchaseWorkspaceTab==='anomaly'){
-      const rows=anomalies.length?'<div class="ops-inventory-anomaly-list">'+anomalies.map(function(entry){const product=entry.product,average=numberOrNull(product.averageCost),zeroIssue=entry.issues.some(function(issue){return issue.code==='zero-cost';}),negative=entry.issues.some(function(issue){return issue.code==='negative-stock';});return '<article class="ops-inventory-anomaly-row"><div class="ops-inventory-anomaly-main"><div><b>'+escapeHtml(product.originalName||product.name)+'</b><small>SKU '+escapeHtml(product.sku||'æœªè¨­å®š')+'</small></div><div class="ops-inventory-anomaly-numbers"><span>åº«å­˜ <b>'+formatNumber(product.currentStock)+'</b></span><span>å¹³å‡æˆæœ¬ <b>'+(average==null?'å¾…è£œ':money(Math.round(average)))+'</b></span></div></div><div class="ops-inventory-anomaly-issues">'+entry.issues.map(function(issue){return '<div class="ops-inventory-anomaly-issue '+issue.level+'">'+statusTag(issue.label,issue.level)+'<span>'+escapeHtml(issue.detail)+'</span></div>';}).join('')+'</div><div class="ops-inventory-anomaly-actions">'+(zeroIssue?'<button class="ops-button small ghost" data-action="inventory-zero-cost-confirm" data-id="'+attr(product.docId)+'">ç¢ºèªç‚ºæ­£å¸¸é›¶æˆæœ¬</button>':'')+(negative?'<button class="ops-button small ghost" data-action="inventory-anomaly-stocktake" data-id="'+attr(product.docId)+'">å‰å¾€ç›¤é»ž</button>':'')+'<button class="ops-button small primary" data-action="inventory-anomaly-product" data-id="'+attr(product.docId)+'" data-sku="'+attr(product.sku)+'">ä¿®æ”¹å•†å“è³‡æ–™</button></div></article>';}).join('')+'</div>':emptyHtml('ç›®å‰æ²’æœ‰åº«å­˜ç•°å¸¸','é›¶æˆæœ¬å·²ç¢ºèªã€æˆæœ¬å±¤å®Œæ•´ä¸”æ²’æœ‰è² åº«å­˜ã€‚');panel='<div class="ops-v8-purchase-panel"><div class="ops-callout yellow"><b>ç•°å¸¸åˆ¤æ–·</b><br><span>æœ‰åº«å­˜å»ç¼ºå°‘æˆæœ¬ã€é›¶æˆæœ¬å°šæœªç¢ºèªã€FIFO æˆæœ¬å±¤ä¸å®Œæ•´æˆ–è² åº«å­˜ï¼Œæœƒé›†ä¸­é¡¯ç¤ºåœ¨é€™è£¡ã€‚</span></div>'+rows+'</div>';
-    }else{
-      const inventoryResult=inventorySearchResult(periodInventory);panel='<div class="ops-v8-purchase-panel"><div class="ops-toolbar"><input class="ops-input grow" id="inventorySearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="æœå°‹å•†å“ã€SKUã€ä¾†æºæˆ–å‚™è¨»" value="'+attr(state.inventorySearch)+'"></div>'+mobileSearchPadHtml('inventorySearch')+'<div id="inventorySearchResults">'+inventoryResult.html+'</div></div>';
-    }
-    const metrics='<div class="ops-kpi-grid ops-v8-purchase-kpis">'+kpi(labels.purchase,money(periodPurchaseTotal),periodPurchases.length+' å¼µé€²è²¨å–®','â‡§')+kpi('ä½Žåº«å­˜å¾…è£œ',formatNumber(lowAll.length),'ç›®å‰å³æ™‚åº«å­˜','!')+kpi('åº«å­˜åƒ¹å€¼',money(inventoryValue),'ç›®å‰ FIFO åº«å­˜æˆæœ¬','ï¼„')+kpi(labels.movement,formatNumber(periodInventory.length),'å…¥åº«ã€éŠ·å”®èˆ‡ç›¤é»ž','â†•')+'</div>';
-    const tabs='<div class="ops-v8-worktabs">'+workAction('open-purchase','é€²è²¨å…¥åº«',null,state.purchaseWorkspaceTab==='inbound'?'active':'')+workAction('open-adjustment','åº«å­˜ç›¤é»ž')+workTab('low','å¾…è£œå¾…è¾¦',lowAll.length)+workTab('history','ç•°å‹•è¨˜éŒ„')+workAction('inventory-count-settings','å·¥è®€ç”Ÿæ‰‹æ©Ÿå…¥å£ï¼å¯†ç¢¼',null,'utility')+workTab('anomaly','ç•°å¸¸',anomalies.length)+'</div>';
-    return purchaseRangeControlsHtml()+metrics+'<section class="ops-card ops-v8-purchase-workbench"><div class="ops-v8-section-head"><div><h2>é€²è²¨èˆ‡åº«å­˜ä½œæ¥­</h2><p>é€²è²¨ã€ç›¤é»žã€å¾…è£œã€ç•°å‹•èˆ‡æˆæœ¬ç•°å¸¸é›†ä¸­ç®¡ç†</p></div></div>'+tabs+panel+'</section>';
-  }
-
-  function replaceLiveSearchHtml(id,html){
-    const node=byId(id);
-    if(!node)return false;
-    const template=document.createElement('template');
-    template.innerHTML=String(html==null?'':html);
-    node.replaceChildren(template.content.cloneNode(true));
-    return true;
-  }
-  function markSearchSeriesAll(action){
-    queryAll('[data-action="'+action+'"]').forEach(function(button){button.classList.toggle('active',button.dataset.series==='all');});
-  }
-  function renderLiveSearchResults(inputId){
-    if(inputId==='posSearch')return replaceLiveSearchHtml('posSearchResults',posSearchResultsHtml());
-    if(inputId==='productSearch'){
-      const updated=replaceLiveSearchHtml('productSearchResults',productSearchResultsHtml());
-      if(updated){markSearchSeriesAll('product-series');const lowButton=query('[data-action="product-low-stock"]');if(lowButton)lowButton.classList.remove('active');}
-      return updated;
-    }
-    if(inputId==='purchaseEntrySearch'){
-      const result=purchaseEntrySearchResult(),updated=replaceLiveSearchHtml('purchaseEntrySearchResults',result.html);
-      if(updated){setText('purchaseEntrySearchCount',formatNumber(result.rows.length)+' é …');markSearchSeriesAll('purchase-entry-series');}
-      return updated;
-    }
-    if(inputId==='stocktakeSearch'){
-      const result=stocktakeSearchResult(),updated=replaceLiveSearchHtml('stocktakeSearchResults',result.html);
-      if(updated){setText('stocktakeSearchCount',formatNumber(result.rows.length)+' é …');markSearchSeriesAll('stocktake-series');}
-      return updated;
-    }
-    if(inputId==='purchaseLowSearch')return replaceLiveSearchHtml('purchaseLowSearchResults',purchaseLowSearchResult().html);
-    if(inputId==='inventorySearch')return replaceLiveSearchHtml('inventorySearchResults',inventorySearchResult().html);
-    return false;
-  }
-
-  function rentalStatusText(rental){
-    const status=clean(rental&&rental.status),days=daysUntil(rental&&rental.endDate);
-    if(days!==null&&days<0)return 'å·²åˆ°æœŸ';
-    if(days!==null&&days<=30&&rentalIsEstablished(rental))return 'å³å°‡åˆ°æœŸ';
-    return status||'æœªè¨­å®š';
-  }
-  function rentalIsCancelled(rental){
-    const text=lower([rental&&rental.status,rental&&rental.raw&&rental.raw.stage].filter(Boolean).join(' '));
-    return ['å·²å–æ¶ˆ','å–æ¶ˆç”³è«‹','ä½œå»¢','å·²å°å­˜','å°å­˜','archived','cancelled','canceled'].some(function(word){return text.includes(word);});
-  }
-  function rentalIsEstablished(rental){
-    if(!rental||rentalIsCancelled(rental))return false;
-    const raw=rental.raw||{};
-    if(rental.incomeRecognizedAt||raw.rentalIncomeReceived===true||raw.officialConfirmedAt||raw.rentalIncomeRecognizedAt||raw.officialContractNoticeQueueCreatedAt||raw.officialContractNoticeSentAt)return true;
-    const text=lower(rental.status);
-    return ['ç§Ÿè³ƒä¸­','ç§Ÿç”¨ä¸­','å·²æˆç«‹','å¾…é…é€ / å¾…å®‰è£','å¾…é…é€','å¾…å®‰è£','åˆ°æœŸæé†’ä¸­','çºŒç´„è©¢å•ä¸­','çºŒç´„å¾…ä»˜æ¬¾','çºŒç´„å¾…ç¢ºèª','é€€ç§Ÿç”³è«‹ä¸­','é€€ç§Ÿå¾…å®‰æŽ’','å·²é€€ç§Ÿ','active','confirmed','completed','returned'].some(function(word){return text.includes(word);});
-  }
-  function rentalIsActive(rental){
-    if(!rentalIsEstablished(rental))return false;
-    const text=lower(rental.status);
-    if(['å·²é€€ç§Ÿ','é€€ç§Ÿå®Œæˆ','cancelled','canceled','completed','returned'].some(function(word){return text.includes(word);}))return false;
-    const end=dateFrom(rental.endDate);
-    return !end||end>=startOfDay(new Date());
-  }
-  function mergedRentals(){
-    const ledgers=new Map(state.rentalLedgers.map(function(x){return [x.rentalContractId,x];}));
-    return state.rentals.map(function(r){const ledger=ledgers.get(r.id)||ledgers.get(r.contractNo)||null;return Object.assign({},r,{ledger:ledger,expectedIncome:Number(r.incomeAmount||0)||Number(r.rentFee||0)+Number(r.shippingFee||0)});});
-  }
-  function renderRentals(){
-    const term=lower(state.rentalSearch);
-    const rows=mergedRentals().filter(function(r){return !rentalIsCancelled(r);}).filter(function(r){return !term||lower([r.contractNo,r.customer,r.equipment,r.brand,r.model,r.assetNo,r.status].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.incomeRecognizedAt||b.raw&&b.raw.updatedAtText||b.startDate)||0)-(dateFrom(a.incomeRecognizedAt||a.raw&&a.raw.updatedAtText||a.startDate)||0);});
-    const established=rows.filter(rentalIsEstablished),totalIncome=sum(established,function(r){return r.expectedIncome;}),active=established.filter(rentalIsActive),due=active.filter(function(r){const d=daysUntil(r.endDate);return d!==null&&d>=0&&d<=30;});
-    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table ops-rental-operations-table"><thead><tr><th>æ—¥æœŸï¼åˆç´„</th><th>å®¢æˆ¶</th><th>è¨­å‚™</th><th>ç§ŸæœŸï¼åˆ°æœŸ</th><th class="num">ç§Ÿè³ƒæ”¶å…¥</th><th>ç‹€æ…‹</th></tr></thead><tbody>'+rows.map(function(r){const isEstablished=rentalIsEstablished(r),d=daysUntil(r.endDate),status=rentalStatusText(r),color=!isEstablished?'gray':d!==null&&d<0?'blue':d!==null&&d<=30?'yellow':'green';return '<tr><td>'+escapeHtml(dateText(r.incomeRecognizedAt||r.raw&&r.raw.updatedAtText||r.startDate))+'<br><small>'+escapeHtml(r.contractNo)+'</small></td><td><b>'+escapeHtml(r.customer)+'</b><br><small>'+escapeHtml(r.phone)+'</small></td><td><b>'+escapeHtml([r.brand,r.model].filter(Boolean).join(' ')||r.equipment)+'</b><br><small>'+escapeHtml(r.assetNo||r.equipment)+'</small></td><td>'+escapeHtml(dateText(r.startDate))+'<br><small>è‡³ '+escapeHtml(dateText(r.endDate))+'</small></td><td class="num">'+(isEstablished?'<b>'+money(r.expectedIncome)+'</b><br><small>ç§Ÿé‡‘ '+money(r.rentFee)+'ï¼‹é‹è²» '+money(r.shippingFee)+'ï¼›æŠ¼é‡‘ä¸è¨ˆ</small>':'<b>â€”</b><br><small>æµç¨‹ä¸­ï¼Œå°šæœªåˆ—å…¥æ”¶å…¥</small>')+'</td><td>'+statusTag(status,color)+(isEstablished?'<small class="ops-rental-income-note">å·²åˆ—å…¥ç§Ÿè³ƒæ”¶å…¥</small>':'<small class="ops-rental-income-note muted">ä¿ç•™é¡¯ç¤ºï¼Œå°šæœªæˆç«‹</small>')+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('å°šç„¡ç§Ÿè³ƒåˆç´„è³‡æ–™','ç›®å‰ rentalContracts æ²’æœ‰å¯é¡¯ç¤ºçš„åˆç´„ï¼›å¯æŒ‰å³ä¸Šè§’é€²å…¥åŽŸç§Ÿè³ƒç®¡ç†ç¢ºèªã€‚');
-    return '<div class="ops-kpi-grid ops-rental-kpis">'+kpi('ç§Ÿè³ƒæ”¶å…¥',money(totalIncome),'å·²æˆç«‹åˆç´„çš„ç§Ÿé‡‘ï¼‹é‹è²»','ï¼„')+kpi('æˆç«‹åˆç´„',formatNumber(established.length),'æŠ¼é‡‘ä¸åˆ—å…¥æ”¶å…¥','ç´„')+kpi('ç§Ÿç”¨ä¸­',formatNumber(active.length),'ç›®å‰ä»åœ¨ç§ŸæœŸå…§','ç§Ÿ')+kpi('30 æ—¥å…§åˆ°æœŸ',formatNumber(due.length),'éœ€è¦å®‰æŽ’çºŒç§Ÿæˆ–é€€ç§Ÿ','!')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>ç§Ÿè³ƒç‡Ÿé‹</h2><p>å·²æˆç«‹åˆç´„æ‰è¨ˆå…¥ç§Ÿè³ƒæ”¶å…¥ï¼›æµç¨‹ä¸­çš„åˆç´„ä»ä¿ç•™åœ¨æ¸…å–®ï¼Œä¸æœƒå†æ•´é é¡¯ç¤ºç©ºç™½ã€‚</p></div><div class="ops-card-actions">'+(due.length?statusTag('30 æ—¥å…§åˆ°æœŸ '+due.length+' ä»¶','yellow'):'')+'<a class="ops-button ghost" href="rental-system-hub.html">åŽŸç§Ÿè³ƒç®¡ç†</a></div></div><div class="ops-toolbar"><input class="ops-input grow" id="rentalSearch" placeholder="æœå°‹åˆç´„ã€å®¢æˆ¶ã€è¨­å‚™ã€å“ç‰Œæˆ–åž‹è™Ÿ" value="'+attr(state.rentalSearch)+'"></div>'+table+'</section>';
-  }
-
-  function renderCases(){
-    const term=lower(state.caseSearch); const rows=state.cases.filter(function(c){return !term||lower([c.caseNo,c.name,c.customer,c.status].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.updatedAt||b.createdAt)||0)-(dateFrom(a.updatedAt||a.createdAt)||0);});
-    const active=rows.filter(function(c){return !['completed','cancelled'].includes(c.status);});
-    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>æ¡ˆä»¶</th><th>å®¢æˆ¶ï¼æœŸé™</th><th>ç‹€æ…‹</th><th class="num">å ±åƒ¹</th><th class="num">å·²æ”¶</th><th class="num">æˆæœ¬</th><th class="num">æç›Šï¼å¾…æ”¶</th><th>æ“ä½œ</th></tr></thead><tbody>'+rows.map(function(c){const statusMap={planning:'è¦åŠƒä¸­',quoted:'å·²å ±åƒ¹',active:'é€²è¡Œä¸­',completed:'å·²å®Œæˆ',cancelled:'å·²å–æ¶ˆ'};return '<tr><td><b>'+escapeHtml(c.caseNo)+'</b><br><small>'+escapeHtml(c.name)+'</small></td><td>'+escapeHtml(c.customer||'æœªå¡«å®¢æˆ¶')+'<br><small>æœŸé™ '+escapeHtml(dateText(c.dueDate))+'</small></td><td>'+statusTag(statusMap[c.status]||c.status,c.status==='completed'?'green':(c.status==='cancelled'?'red':'blue'))+'</td><td class="num">'+money(c.quotedAmount)+'</td><td class="num">'+money(c.receivedAmount)+'</td><td class="num">'+money(c.totalCost)+'</td><td class="num"><b>'+money(c.profit)+'</b><br><small>å¾…æ”¶ '+money(c.outstanding)+'</small></td><td><button class="ops-button small primary" data-action="case-edit" data-id="'+attr(c.id)+'">ç·¨è¼¯</button></td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('å°šç„¡æ¡ˆä»¶','å»ºç«‹æ¡ˆä»¶å¾Œå³å¯è¿½è¹¤å ±åƒ¹ã€æ”¶æ¬¾ã€æˆæœ¬èˆ‡æ¯›åˆ©ã€‚','<button class="ops-button primary" data-action="case-new">å»ºç«‹ç¬¬ä¸€å€‹æ¡ˆä»¶</button>');
-    return '<div class="ops-kpi-grid">'+kpi('å…¨éƒ¨æ¡ˆä»¶',String(rows.length),'åŒ…å«å®Œæˆèˆ‡å–æ¶ˆ','â–£')+kpi('é€²è¡Œä¸­æ¡ˆä»¶',String(active.length),'å°šæœªå®Œæˆæˆ–å–æ¶ˆ','é€²')+kpi('æ¡ˆä»¶å ±åƒ¹ç¸½é¡',money(sum(rows,function(c){return c.quotedAmount;})),'æ‰€æœ‰æ¡ˆä»¶','å ±')+kpi('æ¡ˆä»¶å·²æ”¶æ¬¾',money(sum(rows,function(c){return c.receivedAmount;})),'å¯¦éš›å·²æ”¶','æ”¶')+kpi('æ¡ˆä»¶ç›´æŽ¥æˆæœ¬',money(sum(rows,function(c){return c.totalCost;})),'ææ–™ã€äººå·¥ã€äº¤é€šã€å…¶ä»–','æˆæœ¬')+kpi('æ¡ˆä»¶å¾…æ”¶æ¬¾',money(sum(rows,function(c){return c.outstanding;})),'å ±åƒ¹ï¼å·²æ”¶','!')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>æ¡ˆä»¶æ¸…å–®</h2><p>æ¡ˆä»¶å¯å–®ç¨ç®¡ç†æ”¶å…¥ã€æˆæœ¬ã€é€²åº¦èˆ‡æ‡‰æ”¶æ¬¾ã€‚</p></div><button class="ops-button primary" data-action="case-new">æ–°å¢žæ¡ˆä»¶</button></div><div class="ops-toolbar"><input class="ops-input grow" id="caseSearch" placeholder="æœå°‹æ¡ˆä»¶ç·¨è™Ÿã€åç¨±ã€å®¢æˆ¶æˆ–ç‹€æ…‹" value="'+attr(state.caseSearch)+'"></div>'+table+'</section>';
-  }
-
-  function rangeRows(rows,getDate){
-    const now=new Date(); let start;
-    if(state.financeRange==='today') start=startOfDay(now);
-    else if(state.financeRange==='7d'){ start=startOfDay(now); start.setDate(start.getDate()-6); }
-    else if(state.financeRange==='year') start=new Date(now.getFullYear(),0,1);
-    else start=new Date(now.getFullYear(),now.getMonth(),1);
-    return rows.filter(function(r){const d=dateFrom(getDate(r));return d&&d>=start&&d<=endOfDay(now);});
-  }
-  function renderFinance(){
-    const sales=rangeRows(state.sales,function(x){return x.soldAt;}); const incomes=rangeRows(state.incomes,function(x){return x.occurredAt;}); const expenses=rangeRows(state.expenses,function(x){return x.occurredAt;});
-    const salesRevenue=sum(sales,function(x){return x.total;}); const quick=sum(incomes,function(x){return x.amount;}); const cogs=sum(sales,function(x){return x.costTotal;}); const general=sum(expenses,function(x){return x.amount;}); const profit=salesRevenue+quick-cogs-general;
-    const expenseTable=expenses.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>æ—¥æœŸ</th><th>é¡žåˆ¥</th><th class="num">é‡‘é¡</th><th>ä»˜æ¬¾æ–¹å¼</th><th>å‚™è¨»</th></tr></thead><tbody>'+expenses.sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);}).map(function(x){return '<tr><td>'+escapeHtml(dateText(x.occurredAt))+'</td><td>'+escapeHtml(x.category)+'</td><td class="num">'+money(x.amount)+'</td><td>'+escapeHtml(x.paymentMethod||'â€”')+'</td><td>'+escapeHtml(x.note||'')+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('é€™æ®µæœŸé–“æ²’æœ‰ä¸€èˆ¬æ”¯å‡º','æŒ‰ã€Œæ–°å¢žæ”¯å‡ºã€ç™»éŒ„å»£å‘Šã€ç§Ÿé‡‘ã€è€—ææˆ–å…¶ä»–è²»ç”¨ã€‚');
-    const sourceRows=[['ç¾å ´å•†å“éŠ·å”®',salesRevenue],['å¿«é€Ÿæ”¶å…¥',quick],['å•†å“æˆæœ¬',-cogs],['ä¸€èˆ¬æ”¯å‡º',-general]];
-    return '<div class="ops-toolbar"><select class="ops-select" id="financeRange"><option value="today">ä»Šå¤©</option><option value="7d">æœ€è¿‘ 7 å¤©</option><option value="month">æœ¬æœˆ</option><option value="year">æœ¬å¹´</option></select><button class="ops-button primary" data-action="expense-new">æ–°å¢žæ”¯å‡º</button><button class="ops-button ghost" data-action="export-finance">åŒ¯å‡ºæ”¶æ”¯ CSV</button></div><div class="ops-kpi-grid">'+kpi('å•†å“éŠ·å”®æ”¶å…¥',money(salesRevenue),sales.length+' ç­†ç¾å ´éŠ·å”®','ï¼„')+kpi('å¿«é€Ÿæ”¶å…¥',money(quick),incomes.length+' ç­†éžå•†å“æ”¶å…¥','ï¼‹')+kpi('å•†å“æˆæœ¬',money(cogs),'å”®å‡ºå•†å“æˆæœ¬','æˆæœ¬')+kpi('ä¸€èˆ¬æ”¯å‡º',money(general),expenses.length+' ç­†æ”¯å‡º','ï¼')+kpi('æœŸé–“æš«ä¼°æç›Š',money(profit),'æ”¶å…¥ï¼æˆæœ¬ï¼ä¸€èˆ¬æ”¯å‡º','â†—')+kpi('å•†å“æ¯›åˆ©çŽ‡',percentage(salesRevenue?((salesRevenue-cogs)/salesRevenue*100):0),'ä¸å«å¿«é€Ÿæ”¶å…¥èˆ‡ä¸€èˆ¬æ”¯å‡º','%')+'</div><div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>æœŸé–“æç›Šçµæ§‹</h2></div></div><div class="ops-summary-list">'+sourceRows.map(function(x,i){return '<div class="ops-summary-line '+(i===sourceRows.length-1?'':'')+'"><span>'+escapeHtml(x[0])+'</span><b>'+money(x[1])+'</b></div>';}).join('')+'<div class="ops-summary-line total"><span>æš«ä¼°æç›Š</span><b>'+money(profit)+'</b></div></div></section><section class="ops-card"><div class="ops-card-head"><div><h2>ç§Ÿè³ƒèˆ‡æ¡ˆä»¶æ¦‚æ³</h2></div></div><div class="ops-summary-list"><div class="ops-summary-line"><span>ç§Ÿè³ƒå·²æ”¶æ¬¾</span><b>'+money(sum(state.rentalLedgers,function(x){return x.receivedAmount;}))+'</b></div><div class="ops-summary-line"><span>ç§Ÿè³ƒç›´æŽ¥æˆæœ¬</span><b>'+money(sum(state.rentalLedgers,function(x){return x.deliveryCost+x.maintenanceCost+x.otherCost;}))+'</b></div><div class="ops-summary-line"><span>æ¡ˆä»¶å·²æ”¶æ¬¾</span><b>'+money(sum(state.cases,function(x){return x.receivedAmount;}))+'</b></div><div class="ops-summary-line"><span>æ¡ˆä»¶ç›´æŽ¥æˆæœ¬</span><b>'+money(sum(state.cases,function(x){return x.totalCost;}))+'</b></div></div></section></div><section class="ops-card" style="margin-top:15px"><div class="ops-card-head"><div><h2>ä¸€èˆ¬æ”¯å‡ºæ˜Žç´°</h2></div></div>'+expenseTable+'</section>';
-  }
-
-
-function platformOrderDateKey(){
-  const value=clean(state.platformOrderDate);
-  return /^\d{4}-\d{2}-\d{2}$/.test(value)?value:todayDateKey();
-}
-function platformOrderBounds(){
-  const now=new Date(),range=state.platformOrderRange||'today';let start=null,end=null,label='ä»Šå¤©';
-  if(range==='all')return {start:null,end:null,label:'å…¨éƒ¨'};
-  if(range==='month'){
-    const selected=/^\d{4}-(0[1-9]|1[0-2])$/.test(clean(state.platformOrderMonth))?state.platformOrderMonth:dateText(now).slice(0,7),parts=selected.split('-').map(Number);
-    start=new Date(parts[0],parts[1]-1,1);end=endOfDay(new Date(parts[0],parts[1],0));label=parts[0]+' å¹´ '+parts[1]+' æœˆ';
-    return {start:start,end:end,label:label};
-  }
-  if(range==='custom'){
-    const from=clean(state.platformOrderFrom),to=clean(state.platformOrderTo);
-    if(/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to){
-      start=startOfDay(new Date(from+'T00:00:00'));end=endOfDay(new Date(to+'T00:00:00'));label=from+'ï½ž'+to;
-      return {start:start,end:end,label:label};
-    }
-  }
-  const key=platformOrderDateKey(),selected=new Date(key+'T00:00:00');start=startOfDay(selected);end=endOfDay(selected);label=key===todayDateKey()?'ä»Šå¤©':key;
-  return {start:start,end:end,label:label};
-}
-function platformOrderGross(row){
-  const gross=Math.max(0,Number(row&&row.grossAmount||0));
-  if(gross>0)return gross;
-  return Math.max(0,Number(row&&row.unitPrice||0)*Math.max(0,Number(row&&row.quantity||0)));
-}
-function platformOrderCost(row){return Math.max(0,Number(row&&row.costTotal||0));}
-// æœªä»˜æ¬¾ï¼unpaid å¯èƒ½åªæ˜¯ EasyStore è²¨åˆ°ä»˜æ¬¾çš„æ­£å¸¸ä»˜æ¬¾é€²åº¦ï¼Œä¸èƒ½ç•¶æˆå–æ¶ˆã€‚
-const PLATFORM_CANCEL_KEYWORDS=['å–æ¶ˆ','å®¢æˆ¶å–æ¶ˆ','è²·å®¶å–æ¶ˆ','è³£å®¶å–æ¶ˆ','å·²å–æ¶ˆ','å–æ¶ˆå®Œæˆ','ä½œå»¢','å·²ä½œå»¢','ç„¡æ•ˆ','æœªæˆç«‹','äº¤æ˜“å¤±æ•—','ä»˜æ¬¾å¤±æ•—','ä»˜æ¬¾é€¾æœŸ','é€¾æœŸæœªä»˜','cancel','canceled','cancelled','cancellation','void','voided','failed','failure','expired','payment failed'];
-const PLATFORM_RETURN_KEYWORDS=['é€€è²¨','é€€æ¬¾','æ‹’æ”¶','é€€å›ž','refund','refunded','return','returned'];
-const PLATFORM_FULFILLMENT_KEYWORDS=['å‡ºè²¨ç¢ºèª','å·²å‡ºè²¨','å‡ºè²¨å®Œæˆ','é…é€ä¸­','é…é€çµæŸ','å·²é…é€','é€é”','å·²é€é”','å·²æ”¶è²¨','å·²ç°½æ”¶','shipped','shipping','departure','delivering','delivered','final_delivery','final delivery','delivery completed'];
-function platformOrderStatusText(row){return lower([row&&row.orderStatus,row&&row.paymentStatus,row&&row.note,row&&row.reversalReason,row&&row.cancellationReason].filter(Boolean).join(' '));}
-function platformOrderHasFulfillment(row){
-  if(!row)return false;
-  if(dateFrom(row.shippedAt)||dateFrom(row.completedAt))return true;
-  const text=platformOrderStatusText(row);
-  return PLATFORM_FULFILLMENT_KEYWORDS.some(function(keyword){return text.includes(keyword);});
-}
-function platformOrderHasReturnRequest(row){return !!row&&PLATFORM_RETURN_KEYWORDS.some(function(keyword){return platformOrderStatusText(row).includes(keyword);});}
-function platformOrderIsCancelledState(row){
-  if(!row)return false;
-  if(row.reversalApplied===true||row.inventoryReversed===true)return true;
-  if(['ignored-cancelled','inventory-reversed'].includes(clean(row.processingStatus)))return true;
-  // æœªå‡ºè²¨çš„ã€Œé€€è²¨ï¼é€€æ¬¾ã€å°±æ˜¯å–æ¶ˆè¨‚å–®ï¼Œä¸èƒ½ç•™åœ¨ä»Šå¤©æˆ–é€€è²¨æ¸…å–®ã€‚
-  if(platformOrderHasReturnRequest(row)&&!platformOrderHasFulfillment(row)&&clean(row.returnHandlingStatus)!=='completed')return true;
-  return PLATFORM_CANCEL_KEYWORDS.some(function(keyword){return platformOrderStatusText(row).includes(keyword);});
-}
-function platformOrderHasReliableOrderDate(row){
-  if(!row)return false;
-  const ordered=dateFrom(row.orderedAt);if(!ordered)return false;
-  const source=lower(row.orderDateSource);
-  // å¹³å°æ˜Žç¢ºæä¾›çš„åŽŸå§‹æ™‚é–“ï¼ˆå°¤å…¶ EasyStore created_atï¼‰æœ¬èº«å°±æ˜¯å¯ä¿¡ä¾æ“šï¼›
-  // ä¸å†è®“èˆŠè³‡æ–™çš„ false æ¨™è¨˜è¦†è“‹å®ƒã€‚
-  if(['easystore-created-at','coupang-ordered-at','momo-api-order-date','momo-order-number-inferred','agent-order-time-validated'].includes(source))return true;
-  if(row.hasOriginalOrderDate===false)return false;
-  // èˆŠç‰ˆåªå¯« platform æ™‚ï¼Œåƒ…åœ¨èƒ½è­‰æ˜Žå®ƒä¸æ˜¯åŒæ­¥ç•¶ä¸‹æ™‚é–“æ™‚æš«æ™‚ä¿ç•™ï¼›å…¶é¤˜ä¾†æºä¸€å¾‹ä¸é€²å…¥ã€Œä»Šå¤©ã€ã€‚
-  if(source==='platform'&&row.hasOriginalOrderDate===true){const seen=dateFrom(row.firstSeenAt||row.lastSeenAt);return !!seen&&!platformOrderLooksLikeSyncTime(row,row.orderedAt);}
-  return false;
-}
-function platformOrderPlacedAtText(row){
-  if(!row)return 'â€”';
-  if(row.orderTimeEstimated===true)return dateText(row.orderedAt)+'ï¼ˆMOMO è¨‚å–®ç·¨è™Ÿæ—¥æœŸï¼‰';
-  return dateTimeText(row.orderedAt);
-}
-function platformOrderIsHidden(row){
-  if(!row)return true;
-  const status=clean(row.processingStatus);
-  if(!platformOrderHasReliableOrderDate(row))return true;
-  if(platformOrderIsCancelledState(row))return true;
-  // å–®æ¬¡åŒæ­¥æš«æ™‚æ¼æŠ“æ™‚ä»ä¿ç•™åŽŸæˆäº¤ç´€éŒ„ï¼›åªæœ‰æ˜Žç¢ºå–æ¶ˆï¼Œæˆ–å¾Œç«¯é€£çºŒç¢ºèªä¸å­˜åœ¨ä¸¦å®Œæˆå›žè£œå¾Œæ‰ç§»é™¤ã€‚
-  return ['ignored','ignored-freight','ignored-missing-order-date'].includes(status);
-}
-function platformOrderRevisionTime(row){
-  const value=row&&(row.statusUpdatedAt||row.lastSeenAt||row.updatedAt||row.reversedAt||row.orderedAt),date=dateFrom(value);
-  return date?date.getTime():0;
-}
-function platformOrderDisplayKey(row){
-  const platform=lower(row&&row.platform),order=clean(row&&(row.externalOrderNo||row.externalOrderId||row.id)),sku=lower(row&&(row.sku||row.productName)),variant=lower(row&&row.variantName);
-  return [platform,order,sku,variant].join('|');
-}
-function dedupePlatformOrders(rows){
-  const map=new Map();
-  (rows||[]).forEach(function(row){
-    const key=platformOrderDisplayKey(row),previous=map.get(key);
-    if(!previous){map.set(key,row);return;}
-    const previousCancelled=platformOrderIsCancelledState(previous),currentCancelled=platformOrderIsCancelledState(row);
-    if(currentCancelled&&!previousCancelled){map.set(key,row);return;}
-    if(previousCancelled&&!currentCancelled)return;
-    const previousTime=platformOrderRevisionTime(previous),currentTime=platformOrderRevisionTime(row);
-    if(currentTime>previousTime){map.set(key,row);return;}
-    if(currentTime===previousTime&&row.inventoryApplied===true&&previous.inventoryApplied!==true)map.set(key,row);
-  });
-  return Array.from(map.values());
-}
-function visiblePlatformOrders(rows){return dedupePlatformOrders(rows).filter(function(row){return !platformOrderIsHidden(row);});}
-function platformOrderIsEffective(row){
-  // ä¸€èˆ¬ã€Œä»Šå¤©ã€è¨‚å–®åªä»£è¡¨ç•¶æ—¥ä»æˆç«‹çš„æˆäº¤ï¼›é€€è²¨ã€é€€æ¬¾ã€å–æ¶ˆéƒ½ä¸å†æ··å…¥ã€‚
-  return !!row&&!platformOrderIsHidden(row)&&!platformOrderHasReturn(row)&&row.reversalApplied!==true&&row.inventoryReversed!==true&&!['inventory-reversed','ignored-return'].includes(clean(row.processingStatus));
-}
-function platformOrderNeedsAttention(row){
-  return !platformOrderIsHidden(row)&&['missing-sku','unmatched-sku','duplicate-sku','error','missing-from-platform-review','reversal-error','manual-return-review'].includes(clean(row&&row.processingStatus));
-}
-function platformOrderSkipsInventory(row){
-  return !!row&&(row.historicalImport===true||row.inventorySkipped===true||clean(row.inventoryEffect)==='none');
-}
-function platformOrderProcessingLabel(row){
-  if(platformOrderSkipsInventory(row))return row.historicalImport===true?'æ­·å²è£œç™»ï¼æœªæ‰£åº«å­˜':'æœªæ‰£åº«å­˜';
-  const map={'inventory-applied':'å·²æ‰£ä¸­å¤®åº«å­˜','already-applied':'å·²è™•ç†','dry-run':'æœ‰æ•ˆè¨‚å–®ï¼å°šæœªæ‰£åº«å­˜','unmatched-sku':'SKU æœªé…å°','duplicate-sku':'SKU é‡è¤‡','missing-sku':'ç¼ºå°‘ SKU','ignored':'å·²æŽ’é™¤','ignored-freight':'é‹è²»å·²æŽ’é™¤','ignored-cancelled':'æœªæˆäº¤ï¼å–æ¶ˆï¼Œæœªæ‰£åº«å­˜','ignored-return':'é€€è²¨ç‹€æ…‹ï¼Œæœªæ‰£åº«å­˜','manual-return-review':'é€€è²¨ï¼é€€æ¬¾è«‹æ‰‹å‹•è™•ç†','return-processed':'é€€è²¨å·²å®Œæˆè™•ç†','missing-from-platform-review':'å¹³å°æœ¬æ¬¡æœªå†å‡ºç¾ï¼Œç­‰å¾…è¤‡æ ¸','inventory-reversed':'å–æ¶ˆï¼æœªä»˜æ¬¾ï¼Œåº«å­˜å·²å›žè£œ','reversal-error':'å–æ¶ˆå›žè£œå¤±æ•—','error':'è™•ç†å¤±æ•—'};
-  return map[row.processingStatus]||row.processingStatus||'å¾…è™•ç†';
-}
-function platformOrderHasReturn(row){
-  if(!row)return false;
-  if(clean(row.processingStatus)==='return-processed'||clean(row.returnHandlingStatus)==='completed')return true;
-  return platformOrderHasFulfillment(row)&&platformOrderHasReturnRequest(row);
-}
-function platformReturnRows(rows){
-  // é€€è²¨æ˜¯ç¨ç«‹å¾…è™•ç†å·¥ä½œï¼Œä¸å—ä¸€èˆ¬æˆäº¤æ¸…å–®çš„ã€Œæœ‰æ•ˆè¨‚å–®ã€è¦å‰‡å½±éŸ¿ã€‚
-  return dedupePlatformOrders(rows).filter(function(row){return !platformOrderIsCancelledState(row)&&platformOrderHasReturn(row);});
-}
-function platformReturnDispositionLabel(value){
-  return ({waiting:'å°šæœªæ”¶åˆ°å•†å“',restock:'æ¢å¾©æ­£å¸¸åº«å­˜',defective:'ç‘•ç–µå“ï¼å±•ç¤ºå“',inspect:'å¾…æª¢æŸ¥ï¼é€ä¿®',scrap:'å ±å»¢',supplier:'é€€å›žä¾›æ‡‰å•†'})[clean(value)]||'å°šæœªè™•ç†';
-}
-function platformOrderProcessingColor(row){
-  if(platformOrderSkipsInventory(row))return 'blue';
-  if(row.processingStatus==='return-processed')return 'green';
-  if(row.processingStatus==='inventory-reversed')return 'blue';
-  if(platformOrderNeedsAttention(row))return row.processingStatus==='manual-return-review'||row.processingStatus==='missing-from-platform-review'?'yellow':'red';
-  if(row.processingStatus==='dry-run')return 'yellow';
-  if(platformOrderIsEffective(row))return 'green';
-  if(['ignored','ignored-freight','ignored-cancelled','ignored-return'].includes(row.processingStatus))return 'yellow';
-  return 'blue';
-}
-function nextPlatformSyncText(){
-  const now=new Date(),candidates=[[14,0],[20,30]].map(function(parts){const d=new Date(now);d.setHours(parts[0],parts[1],0,0);return d;});
-  let next=candidates.find(function(d){return d>now;});
-  if(!next){next=new Date(now);next.setDate(next.getDate()+1);next.setHours(14,0,0,0);}
-  return dateTimeText(next);
-}
-
-function normalizePlatformFeeSetting(name,value){
-  const base=DEFAULT_PLATFORM_FEE_SETTINGS[name]||{enabled:true,platformRate:0,invoiceRate:0},raw=value&&typeof value==='object'?value:{},hasPlatformRate=Object.prototype.hasOwnProperty.call(raw,'platformRate'),legacyPlatformRate=Math.max(0,Number(raw.commissionRate||0))+Math.max(0,Number(raw.paymentRate||0));
-  return {enabled:true,platformRate:Math.max(0,Number(hasPlatformRate?raw.platformRate:(Object.keys(raw).length?legacyPlatformRate:base.platformRate))||0),invoiceRate:Math.max(0,Number(raw.invoiceRate!=null?raw.invoiceRate:base.invoiceRate)||0)};
-}
-function platformFeeConfig(name){return normalizePlatformFeeSetting(name,state.platformFeeSettings[name]);}
-function platformOrderGroupKey(row){return clean(row.platform)+'|'+(clean(row.externalOrderNo)||clean(row.externalOrderId)||clean(row.id));}
-function platformFeeMetrics(rows){
-  let gross=0,platformFees=0,invoiceFees=0,cost=0,profit=0;
-  const perRow=new Map();
-  rows.forEach(function(row){
-    const cfg=platformFeeConfig(row.platform),rowGross=platformOrderGross(row),platformFee=rowGross*Math.max(0,Number(cfg.platformRate||0))/100,invoiceFee=rowGross*Math.max(0,Number(cfg.invoiceRate||0))/100,totalFee=platformFee+invoiceFee,rowCost=platformOrderCost(row),net=rowGross-totalFee,p=net-rowCost;
-    perRow.set(row.id,{gross:rowGross,platformFee:platformFee,invoiceFee:invoiceFee,variableFee:totalFee,net:net,cost:rowCost,profit:p});
-    gross+=rowGross;platformFees+=platformFee;invoiceFees+=invoiceFee;cost+=rowCost;profit+=p;
-  });
-  return {gross:gross,platformFees:platformFees,invoiceFees:invoiceFees,variableFees:platformFees+invoiceFees,cost:cost,net:gross-platformFees-invoiceFees,profit:profit,perRow:perRow};
-}
-
-function platformOrderRowsByGroupKey(key){
-  return visiblePlatformOrders(state.platformOrders).filter(function(row){return platformOrderGroupKey(row)===key;}).sort(function(a,b){return clean(a.sku).localeCompare(clean(b.sku),'zh-Hant');});
-}
-function platformOrderFirstDate(rows,field,useLatest){
-  const values=(rows||[]).map(function(row){return dateFrom(row&&row[field]);}).filter(Boolean).sort(function(a,b){return a-b;});
-  if(!values.length)return null;
-  return useLatest?values[values.length-1]:values[0];
-}
-function platformOrderStatusValueLabel(value,kind){
-  const raw=clean(value);if(!raw)return '';
-  if(/[\u3400-\u9fff]/.test(raw))return raw;
-  const key=raw.toLowerCase().replace(/[\s-]+/g,'_'),common={paid:'å·²ä»˜æ¬¾',unpaid:'æœªä»˜æ¬¾',pending:'å¾…è™•ç†',processing:'è™•ç†ä¸­',completed:'å·²å®Œæˆ',complete:'å·²å®Œæˆ',cancelled:'å·²å–æ¶ˆ',canceled:'å·²å–æ¶ˆ',refunded:'å·²é€€æ¬¾',returned:'å·²é€€è²¨',return:'é€€è²¨è™•ç†ä¸­',failed:'è™•ç†å¤±æ•—',expired:'å·²é€¾æœŸ',shipped:'å·²å‡ºè²¨',shipping:'é…é€ä¸­',delivered:'å·²é€é”',fulfilled:'å·²å®Œæˆå‡ºè²¨',unfulfilled:'å°šæœªå‡ºè²¨',partially_fulfilled:'éƒ¨åˆ†å‡ºè²¨',partially_refunded:'éƒ¨åˆ†é€€æ¬¾',partially_paid:'éƒ¨åˆ†ä»˜æ¬¾',authorized:'å·²æŽˆæ¬Š',voided:'å·²ä½œå»¢',accept:'å·²æŽ¥å–®',instruct:'å•†å“æº–å‚™ä¸­',departure:'å·²å‡ºè²¨',delivering:'é…é€ä¸­',final_delivery:'é…é€å®Œæˆ',none_tracking:'ç„¡ç‰©æµè¿½è¹¤',ready:'æº–å‚™ä¸­',success:'å·²å®Œæˆ'};
-  if(common[key])return common[key];
-  if(kind==='payment'&&['y','yes','true','1'].includes(key))return 'å·²ä»˜æ¬¾';
-  if(kind==='payment'&&['n','no','false','0'].includes(key))return 'æœªä»˜æ¬¾';
-  if(/^\d+$/.test(raw))return 'è™•ç†ä¸­ï¼ˆå¹³å°ä»£ç¢¼ '+raw+'ï¼‰';
-  return 'å¹³å°è™•ç†ä¸­';
-}
-function platformOrderStatusLabel(rows){
-  const labels=[];
-  (rows||[]).forEach(function(row){[platformOrderStatusValueLabel(row.paymentStatus,'payment'),platformOrderStatusValueLabel(row.orderStatus,'order')].filter(Boolean).forEach(function(label){if(!labels.includes(label))labels.push(label);});});
-  return labels.join('ï¼')||'å°šç„¡ç‹€æ…‹è³‡æ–™';
-}
-function platformOrderDetailDate(label,value,dateOnly){return '<div class="ops-order-timeline-row"><span>'+escapeHtml(label)+'</span><b>'+(value?escapeHtml(dateOnly?dateText(value)+'ï¼ˆMOMO è¨‚å–®ç·¨è™Ÿæ—¥æœŸï¼‰':dateTimeText(value)):'å°šç„¡è³‡æ–™')+'</b></div>';}
-function openPlatformOrderDetail(groupKey){
-  const rows=platformOrderRowsByGroupKey(groupKey);if(!rows.length)return toast('æ‰¾ä¸åˆ°è¨‚å–®','è«‹é‡æ–°æ•´ç†å¾Œå†è©¦ã€‚','warning');
-  const first=rows[0],effective=rows.filter(platformOrderIsEffective),metrics=platformFeeMetrics(effective),gross=sum(rows,platformOrderGross),estimatedNet=metrics.net,qty=sum(rows,function(row){return row.quantity;});
-  const statusText=platformOrderStatusLabel(rows);
-  const timeline='<div class="ops-order-detail-section"><h3>ä¸‹å–®æ—¥æœŸ</h3><div class="ops-order-timeline">'+platformOrderDetailDate('ä¸‹å–®æ—¥æœŸ',platformOrderFirstDate(rows,'orderedAt',false),rows.some(function(row){return row.orderTimeEstimated===true;}))+'</div></div>';
-  const finance='<div class="ops-order-detail-section"><h3>é‡‘é¡</h3><div class="ops-order-money-grid"><div><span>å•†å“æˆäº¤é‡‘é¡</span><b>'+money(gross)+'</b></div><div><span>é ä¼°å¹³å°è²»</span><b>'+money(metrics.platformFees)+'</b></div><div><span>é ä¼°ç™¼ç¥¨ç¨…</span><b>'+money(metrics.invoiceFees)+'</b></div><div><span>é ä¼°å¯æ”¶é‡‘é¡</span><b>'+money(estimatedNet)+'</b></div><div><span>å•†å“æˆæœ¬</span><b>'+money(metrics.cost)+'</b></div><div><span>é ä¼°æ¯›åˆ©</span><b>'+money(metrics.profit)+'</b></div></div></div>';
-  const itemHtml=rows.map(function(row){
-    const returnState=clean(row.returnHandlingStatus),returnText=returnState?(returnState==='waiting-return'?'ç­‰å¾…å•†å“é€€å›ž':platformReturnDispositionLabel(row.returnDisposition)):(platformOrderHasReturn(row)?'é€€è²¨å¾…è™•ç†':'ç„¡é€€è²¨');
-    const canHandle=platformOrderHasReturn(row)&&returnState!=='completed';
-    return '<article class="ops-order-item-detail"><div class="ops-order-item-main"><div><b>'+escapeHtml(row.productName)+'</b><small>'+escapeHtml((row.sku?'SKU '+row.sku:'ç¼ºå°‘ SKU')+(row.variantName?'ãƒ»'+row.variantName:''))+'</small></div><div class="ops-order-item-numbers"><span>'+formatNumber(row.quantity)+' ä»¶</span><b>'+money(platformOrderGross(row))+'</b></div></div><div class="ops-order-item-status">'+statusTag(platformOrderProcessingLabel(row),platformOrderProcessingColor(row))+(platformOrderHasReturn(row)?statusTag(returnText,returnState==='completed'?'green':'yellow'):'')+'</div>'+(row.returnNote?'<p>'+escapeHtml(row.returnNote)+'</p>':'')+(canHandle?'<button class="ops-button small primary" type="button" data-action="platform-return-open" data-id="'+attr(row.id)+'">è™•ç†é€€è²¨</button>':'')+'</article>';
-  }).join('');
-  const basic='<div class="ops-order-detail-section"><h3>è¨‚å–®åŸºæœ¬è³‡æ–™</h3><div class="ops-order-basic-grid"><div><span>å¹³å°</span><b>'+escapeHtml(first.platform||'â€”')+'</b></div><div><span>è¨‚å–®ç·¨è™Ÿ</span><b>'+escapeHtml(first.externalOrderNo||'â€”')+'</b></div><div><span>å®¢æˆ¶</span><b>'+escapeHtml(first.customerName||'å°šç„¡è³‡æ–™')+'</b></div><div><span>ç›®å‰ç‹€æ…‹</span><b>'+escapeHtml(statusText)+'</b></div><div><span>å•†å“é …ç›®</span><b>'+formatNumber(rows.length)+' é …</b></div><div><span>ç¸½ä»¶æ•¸</span><b>'+formatNumber(qty)+' ä»¶</b></div></div></div>';
-  openDrawer('ç¶²è·¯è¨‚å–®ç´°é …',first.platform+'ï½œ'+(first.externalOrderNo||'æœªæä¾›è¨‚å–®ç·¨è™Ÿ'),basic+timeline+finance+'<div class="ops-order-detail-section"><h3>æˆäº¤å•†å“</h3><div class="ops-order-items">'+itemHtml+'</div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">é—œé–‰</button></div>');
-}
-function openPlatformReturn(rowId){
-  const row=state.platformOrders.find(function(item){return item.id===rowId;});if(!row)return toast('æ‰¾ä¸åˆ°é€€è²¨å•†å“','è«‹é‡æ–°æ•´ç†å¾Œå†è©¦ã€‚','warning');
-  const maxQty=Math.max(1,Math.round(Number(row.quantity||1))),current=clean(row.returnDisposition)||'waiting';
-  const options=[['waiting','å°šæœªæ”¶åˆ°å•†å“'],['restock','æ¢å¾©æ­£å¸¸åº«å­˜'],['defective','ç‘•ç–µå“ï¼å±•ç¤ºå“'],['inspect','å¾…æª¢æŸ¥ï¼é€ä¿®'],['scrap','å ±å»¢'],['supplier','é€€å›žä¾›æ‡‰å•†']].map(function(item){return '<option value="'+item[0]+'"'+(current===item[0]?' selected':'')+'>'+item[1]+'</option>';}).join('');
-  openDrawer('è™•ç†ç¶²è·¯é€€è²¨',row.platform+'ï½œ'+(row.externalOrderNo||'æœªæä¾›è¨‚å–®ç·¨è™Ÿ'),'<form id="platformReturnForm" data-id="'+attr(row.id)+'"><div class="ops-callout"><b>'+escapeHtml(row.productName)+'</b><br><span>'+escapeHtml((row.sku?'SKU '+row.sku:'ç¼ºå°‘ SKU')+'ãƒ»åŽŸè¨‚å–® '+formatNumber(row.quantity)+' ä»¶')+'</span></div><div class="ops-form-grid"><div class="ops-field"><label>é€€è²¨æ•¸é‡</label><input class="ops-input" type="number" min="1" max="'+maxQty+'" step="1" name="quantity" value="'+attr(row.returnQuantity||maxQty)+'" required></div><div class="ops-field"><label>è™•ç†æ–¹å¼</label><select class="ops-select" name="disposition">'+options+'</select></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note" placeholder="å¯ç•™ç©ºï¼›ä¾‹å¦‚å¤–ç›’æå‚·ã€ç­‰å¾…ç‰©æµé€€å›ž">'+escapeHtml(row.returnNote||'')+'</textarea></div></div><div class="ops-callout yellow">é¸ã€Œå°šæœªæ”¶åˆ°å•†å“ã€ä¸æœƒèª¿æ•´ä»»ä½•åº«å­˜ï¼›åªæœ‰ã€Œæ¢å¾©æ­£å¸¸åº«å­˜ã€æœƒå¢žåŠ å¯éŠ·å”®åº«å­˜ã€‚</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="platform-order-detail" data-key="'+attr(platformOrderGroupKey(row))+'">è¿”å›žè¨‚å–®</button><button class="ops-button primary" type="submit">ç¢ºèªè™•ç†</button></div></form>');
-}
-async function savePlatformReturn(form){
-  const id=clean(form.dataset.id),row=state.platformOrders.find(function(item){return item.id===id;});if(!row)throw new Error('æ‰¾ä¸åˆ°åŽŸå§‹å¹³å°è¨‚å–®');
-  const data=new FormData(form),disposition=clean(data.get('disposition'))||'waiting',quantity=Math.max(1,Math.min(Math.max(1,Math.round(Number(row.quantity||1))),Math.round(Number(data.get('quantity')||1)))),note=clean(data.get('note')),orderRef=state.db.collection(COLLECTIONS.platformOrders).doc(id),now=new Date();
-  if(disposition==='waiting'){
-    await orderRef.set({returnHandlingStatus:'waiting-return',returnDisposition:'waiting',returnQuantity:quantity,returnNote:note,returnProcessedAt:serverTimestamp(),processingStatus:'manual-return-review',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
-  }else{
-    if(!row.productId)throw new Error('é€™ç­†è¨‚å–®å°šæœªé…å°ä¸­å¤®å•†å“ï¼Œè«‹å…ˆå®Œæˆ SKU é…å°');
-    const productRef=state.db.collection(COLLECTIONS.products).doc(row.productId),inventoryRef=state.db.collection(COLLECTIONS.inventory).doc();
-    await state.db.runTransaction(async function(tx){
-      const [orderSnap,productSnap]=await Promise.all([tx.get(orderRef),tx.get(productRef)]),existing=orderSnap.exists?orderSnap.data()||{}:{};
-      if(existing.returnHandlingStatus==='completed')throw new Error('é€™ç­†é€€è²¨å·²ç¶“å®Œæˆè™•ç†ï¼Œç‚ºé¿å…é‡è¤‡å…¥åº«ä¸èƒ½å†æ¬¡åŸ·è¡Œ');
-      if(!productSnap.exists)throw new Error('æ‰¾ä¸åˆ°ä¸­å¤®å•†å“ä¸»æª”');
-      const raw=productSnap.data()||{},before=Number(raw.currentStock||0),after=disposition==='restock'?before+quantity:before,unitCost=Number(row.quantity||0)>0&&Number(row.costTotal||0)>0?Number(row.costTotal||0)/Number(row.quantity||1):numberOrNull(firstValue(raw,['averageCost','latestPurchaseCost','purchasePrice']));
-      if(disposition==='restock'){
-        const positiveRestored=Math.max(0,after)-Math.max(0,before),layers=materializeCostLayers(raw);
-        if(positiveRestored>0)layers.push({layerId:uid('WEB-RETURN'),qtyRemaining:positiveRestored,originalQty:positiveRestored,unitCost:unitCost,costKnown:unitCost!=null,receivedAt:now.toISOString(),referenceType:'platformReturn',referenceId:row.externalOrderNo||id});
-        const stats=statsFromLayers(layers);
-        tx.set(productRef,{currentStock:after,costLayers:stats.layers,averageCost:stats.averageCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
-        queueInventorySyncInTransaction(tx,row.productId,row.sku,after,'platformReturn');
-      }else{
-        const fieldMap={defective:'defectiveStock',inspect:'inspectionStock',scrap:'scrapStock',supplier:'supplierReturnStock'},field=fieldMap[disposition],fv=fieldValue(),patch={updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
-        if(field)patch[field]=fv&&fv.increment?fv.increment(quantity):Number(raw[field]||0)+quantity;
-        tx.set(productRef,patch,{merge:true});
-      }
-      tx.set(inventoryRef,{type:disposition==='restock'?'platformReturnRestock':'platformReturnDisposition',platform:row.platform,productId:row.productId,productName:row.productName,sku:row.sku,qtyChange:disposition==='restock'?quantity:0,beforeStock:before,afterStock:after,secondaryQtyChange:disposition==='restock'?0:quantity,secondaryStockType:disposition,referenceType:'platformOrderReturn',referenceId:row.externalOrderNo||id,orderLineId:id,note:platformReturnDispositionLabel(disposition)+(note?'ï½œ'+note:''),occurredAt:serverTimestamp(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
-      tx.set(orderRef,{returnHandlingStatus:'completed',returnDisposition:disposition,returnQuantity:quantity,returnNote:note,returnedReceivedAt:serverTimestamp(),returnProcessedAt:serverTimestamp(),returnInventoryApplied:disposition==='restock',processingStatus:'return-processed',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
-    });
-  }
-  await writeAudit('è™•ç†ç¶²è·¯é€€è²¨','platformOrder',id,(row.externalOrderNo||id)+'ï½œ'+platformReturnDispositionLabel(disposition));
-  closeDrawer();toast('é€€è²¨è™•ç†å·²å„²å­˜',platformReturnDispositionLabel(disposition),'success');await loadAll(true);openPlatformOrderDetail(platformOrderGroupKey(row));
-}
-
-function renderSync(){
-  const bounds=platformOrderBounds(),term=lower(state.platformOrderSearch).trim();
-  // ä¸€èˆ¬æ¸…å–®åªæ”¾æŒ‡å®šæ—¥æœŸã€Œä¸‹å–®ä¸”ä»æœ‰æ•ˆã€çš„æˆäº¤ã€‚é€€è²¨æ”¹ç”±ç¨ç«‹é ç±¤é›†ä¸­è™•ç†ï¼Œ
-  // ä¸æœƒå†å’Œä»Šå¤©çš„æ–°è¨‚å–®æ··åœ¨ä¸€èµ·ã€‚
-  const showingReturns=state.platformOrderIssueFilter==='returns';
-  let rows=(showingReturns?platformReturnRows(state.platformOrders):visiblePlatformOrders(state.platformOrders).filter(platformOrderIsEffective)).filter(function(row){
-    // é€€è²¨é ç±¤ä¿ç•™å¾…è™•ç†é€€è²¨ï¼Œä¸ä»¥åŽŸä¸‹å–®æ—¥éš±è—ï¼›ä¸€èˆ¬åˆ—è¡¨å‰‡åš´æ ¼ä»¥åŽŸä¸‹å–®æ—¥ç¯©é¸ã€‚
-    const date=dateFrom(row.orderedAt);if(!showingReturns&&bounds.start&&(!date||date<bounds.start))return false;if(!showingReturns&&bounds.end&&(!date||date>bounds.end))return false;
-    if(state.platformOrderPlatform!=='all'&&lower(row.platform)!==lower(state.platformOrderPlatform))return false;
-    return !term||lower([row.platform,row.externalOrderNo,row.sku,row.productName,row.variantName,row.customerName,row.orderStatus,row.paymentStatus,row.processingStatus,row.reversalReason,row.returnNote].join(' ')).includes(term);
-  }).sort(function(a,b){return (dateFrom(b.orderedAt)||0)-(dateFrom(a.orderedAt)||0);});
-  const validRows=rows.filter(platformOrderIsEffective),fees=platformFeeMetrics(validRows),qty=sum(validRows,function(row){return row.quantity;}),orderCount=new Set(validRows.map(platformOrderGroupKey)).size;
-  // æ¸…å–®ä»¥ã€Œä¸€å¼µå¹³å°è¨‚å–®ã€ç‚ºå–®ä½ï¼Œè€Œä¸æ˜¯ä»¥å•†å“æ˜Žç´°ç‚ºå–®ä½ã€‚
-  // åŒä¸€å¼µ MOMOï¼EasyStoreï¼Coupang è¨‚å–®è³¼è²·å¤šå€‹å•†å“æ™‚ï¼Œæœƒåˆä½µæˆåŒä¸€åˆ—ï¼ŒæŸ¥çœ‹æ‰å±•é–‹å•†å“ã€‚
-  const groupedOrders=Array.from(rows.reduce(function(map,row){
-    const key=platformOrderGroupKey(row);
-    if(!map.has(key))map.set(key,{key:key,rows:[]});
-    map.get(key).rows.push(row);
-    return map;
-  },new Map()).values()).sort(function(a,b){return (dateFrom(platformOrderFirstDate(b.rows,'orderedAt',false))||0)-(dateFrom(platformOrderFirstDate(a.rows,'orderedAt',false))||0);});
-  const latestRun=state.platformSyncRuns.slice().sort(function(a,b){return (dateFrom(b.startedAt)||0)-(dateFrom(a.startedAt)||0);})[0]||null;
-  const syncErrors=platformSyncAnomalies(),syncErrorGroups=platformSyncAnomalyGroups(syncErrors),errorCounts={};
-  syncErrors.forEach(function(row){errorCounts[row.platform]=Number(errorCounts[row.platform]||0)+1;});
-  const errorDetail=Object.keys(errorCounts).sort().map(function(name){return name+' '+errorCounts[name]+' é …';}).join('ã€');
-  const errorSub=syncErrorGroups.length?formatNumber(syncErrorGroups.length)+' ä»¶å•†å“'+(errorDetail?'ï¼ˆ'+errorDetail+'ï¼‰':''):'ç›®å‰æ²’æœ‰å¾…è™•ç†ç•°å¸¸';
-  const monthValue=/^\d{4}-(0[1-9]|1[0-2])$/.test(clean(state.platformOrderMonth))?state.platformOrderMonth:dateText(new Date()).slice(0,7),monthYear=Number(monthValue.slice(0,4))||new Date().getFullYear();
-  const monthOptions=Array.from({length:12},function(_,index){const month=index+1,key=monthYear+'-'+String(month).padStart(2,'0');return '<option value="'+attr(key)+'" '+(key===monthValue?'selected':'')+'>'+monthYear+' å¹´ '+month+' æœˆ</option>';}).join('');
-  const quickDate='<div class="ops-platform-date-tools"><button type="button" class="ops-platform-quick-button" data-action="platform-order-day-shift" data-step="-1">å‰ä¸€å¤©</button><button type="button" class="ops-platform-quick-button '+(state.platformOrderRange==='today'&&platformOrderDateKey()===todayDateKey()?'active':'')+'" data-action="platform-order-range" data-range="today">ä»Šå¤©</button><button type="button" class="ops-platform-quick-button" data-action="platform-order-day-shift" data-step="1">å¾Œä¸€å¤©</button><label class="ops-platform-date-input '+(state.platformOrderRange==='today'?'active':'')+'"><span>æŸ¥è©¢æ—¥æœŸ</span><input id="platformOrderDate" type="date" value="'+attr(platformOrderDateKey())+'"></label><button type="button" class="ops-platform-quick-button '+(state.platformOrderRange==='month'&&monthValue===todayDateKey().slice(0,7)?'active':'')+'" data-action="platform-order-range" data-range="month">æœ¬æœˆ</button><label class="ops-platform-month-select '+(state.platformOrderRange==='month'?'active':'')+'"><span>æœˆä»½</span><select id="platformOrderMonth">'+monthOptions+'</select></label><button type="button" class="ops-platform-quick-button '+(state.platformOrderRange==='custom'?'active':'')+'" data-action="platform-order-range" data-range="custom">è‡ªè¨‚å€é–“</button></div>';
-  const syncTools='<div class="ops-platform-sync-tools"><span class="ops-platform-last-sync"><span>æœ€å¾Œä¸€æ¬¡åŒæ­¥ <b>'+(latestRun?escapeHtml(dateTimeText(latestRun.startedAt)):'å°šæœªåŸ·è¡Œ')+'</b></span></span><button type="button" class="ops-platform-sync-anomaly '+(syncErrorGroups.length?'has-error':'')+' '+(state.platformSyncPanel==='errors'?'active':'')+'" data-action="platform-sync-panel" data-panel="errors">åŒæ­¥ç•°å¸¸ '+formatNumber(syncErrorGroups.length)+' ä»¶</button><button class="ops-button small ghost" data-action="platform-fee-settings">è²»ç”¨è¨­å®š</button><button class="ops-button small primary" data-action="platform-sync-now">ç«‹å³åŒæ­¥</button></div>';
-  const customPanel=state.platformOrderRange==='custom'?'<div class="ops-platform-custom-range"><label>é–‹å§‹æ—¥æœŸ<input class="ops-input" id="platformOrderFrom" type="date" value="'+attr(state.platformOrderFrom)+'"></label><span>è‡³</span><label>çµæŸæ—¥æœŸ<input class="ops-input" id="platformOrderTo" type="date" value="'+attr(state.platformOrderTo)+'"></label><button class="ops-button primary" data-action="platform-order-custom-apply">å¥—ç”¨å€é–“</button></div>':'';
-  const errorList=syncErrorGroups.length?'<div class="ops-sync-anomaly-list">'+syncErrorGroups.map(function(group){
-    const issueCount=group.issues.length,platformCount=new Set(group.issues.map(function(issue){return issue.platform;})).size;
-    const issuesHtml=group.issues.map(function(row){
-      const platformColor=row.platform==='EasyStore'?'green':row.platform==='MOMO'?'blue':row.platform==='Coupang'?'yellow':'red',isPrice=row.kind==='price',targetText=isPrice?'ç›®æ¨™å”®åƒ¹ '+money(row.targetPrice):'ç›®æ¨™åº«å­˜ '+formatNumber(row.targetStock),actionHtml=isPrice?'<button class="ops-button small primary" data-action="price-anomaly-product" data-id="'+attr(group.productId||row.productId)+'" data-sku="'+attr(group.sku||row.sku)+'">å‰å¾€å•†å“åƒ¹æ ¼</button>':'<button class="ops-button small primary" data-action="inventory-anomaly-product" data-id="'+attr(group.productId||row.productId)+'" data-sku="'+attr(group.sku||row.sku)+'">å‰å¾€å•†å“åº«å­˜</button>';
-      return '<div class="ops-sync-platform-issue"><div class="ops-sync-platform-issue-head"><span>'+statusTag(row.platform,platformColor)+'</span><span class="ops-tag '+(isPrice?'blue':'green')+'">'+(isPrice?'åƒ¹æ ¼':'åº«å­˜')+'</span></div><div class="ops-sync-platform-issue-body"><strong>'+escapeHtml(row.reason)+'</strong><small>'+escapeHtml(targetText)+'ãƒ»æœ€å¾Œå˜—è©¦ '+escapeHtml(dateTimeText(row.lastAttemptAt))+(row.runId?'ãƒ»æ‰¹æ¬¡ '+escapeHtml(row.runId):'')+'</small>'+(row.message?'<p>'+escapeHtml(row.message)+'</p>':'')+'</div><div class="ops-sync-anomaly-actions">'+actionHtml+'</div></div>';
-    }).join('');
-    return '<article class="ops-sync-product-anomaly"><header><div><b>'+escapeHtml(group.productName||'æœªå‘½åå•†å“')+'</b><small>SKUï¼š'+escapeHtml(group.sku||'æœªè¨­å®š')+'</small></div><span class="ops-sync-product-count">'+formatNumber(platformCount)+' å€‹å¹³å°ï¼'+formatNumber(issueCount)+' é …å•é¡Œ</span></header><div class="ops-sync-product-issues">'+issuesHtml+'</div></article>';
-  }).join('')+'</div>':emptyHtml('ç›®å‰æ²’æœ‰å¹³å°åŒæ­¥ç•°å¸¸','ä¸‹ä¸€æ¬¡åŒæ­¥è‹¥æˆåŠŸï¼ŒåŽŸæœ¬çš„åº«å­˜æˆ–åƒ¹æ ¼ç•°å¸¸æœƒè‡ªå‹•å¾žé€™è£¡æ¶ˆå¤±ã€‚');
-  const errorPanel=state.platformSyncPanel==='errors'?'<section class="ops-card ops-platform-expand-panel ops-platform-error-panel"><div class="ops-card-head"><div><h2>åŒæ­¥ç•°å¸¸æ˜Žç´°</h2><p>'+escapeHtml(errorSub)+'ã€‚å®Œæˆå•†å“é…å°ã€æ¬Šé™æˆ–åƒ¹æ ¼ä¿®æ­£å¾Œï¼Œä¸‹ä¸€æ¬¡åŒæ­¥æœƒè‡ªå‹•é‡è©¦ã€‚</p></div><button class="ops-button small ghost" data-action="platform-sync-panel" data-panel="errors">æ”¶åˆ</button></div>'+errorList+'</section>':'';
-  const allReturnRows=platformReturnRows(state.platformOrders).filter(function(row){return clean(row.returnHandlingStatus)!=='completed';}),returnOrderCount=new Set(allReturnRows.map(platformOrderGroupKey)).size;
-  const platformTabs='<div class="ops-platform-tabs ops-platform-tabs-compact"><button class="'+(state.platformOrderPlatform==='all'&&state.platformOrderIssueFilter!=='returns'?'active':'')+'" data-action="platform-order-platform" data-platform="all">å…¨éƒ¨å¹³å°</button><button class="'+(state.platformOrderPlatform==='EasyStore'&&state.platformOrderIssueFilter!=='returns'?'active':'')+'" data-action="platform-order-platform" data-platform="EasyStore">EASY STORE</button><button class="'+(state.platformOrderPlatform==='MOMO'&&state.platformOrderIssueFilter!=='returns'?'active':'')+'" data-action="platform-order-platform" data-platform="MOMO">MOMO</button><button class="'+(state.platformOrderPlatform==='Coupang'&&state.platformOrderIssueFilter!=='returns'?'active':'')+'" data-action="platform-order-platform" data-platform="Coupang">Coupangï¼é…·æ¾Ž</button><button class="ops-platform-return-tab '+(state.platformOrderIssueFilter==='returns'?'active':'')+'" data-action="platform-return-filter">æŸ¥çœ‹é€€è²¨'+(returnOrderCount?' '+formatNumber(returnOrderCount):'')+'</button></div>';
-  const orderTable=groupedOrders.length?'<div class="ops-table-wrap ops-platform-orders-table"><table class="ops-table"><thead><tr><th>å¹³å°ï¼ä¸‹å–®æ™‚é–“</th><th>è¨‚å–®</th><th>å•†å“</th><th class="num">æ•¸é‡</th><th class="num">æˆäº¤</th><th class="num">å¹³å°è²»ï¼‹ç™¼ç¥¨ç¨…</th><th class="num">æˆæœ¬</th><th class="num">é ä¼°æ¯›åˆ©</th><th>ä¸­å¤®åº«å­˜</th><th>ç´°é …</th></tr></thead><tbody>'+groupedOrders.slice(0,500).map(function(group){
-    const groupRows=group.rows,first=groupRows[0],effectiveRows=groupRows.filter(platformOrderIsEffective),effective=effectiveRows.length>0,metrics=groupRows.reduce(function(total,row){const item=fees.perRow.get(row.id)||{gross:platformOrderGross(row),variableFee:0,cost:platformOrderCost(row),profit:0};total.gross+=Number(item.gross||0);total.variableFee+=Number(item.variableFee||0);total.cost+=Number(item.cost||0);total.profit+=Number(item.profit||0);return total;},{gross:0,variableFee:0,cost:0,profit:0}),groupQty=sum(groupRows,function(row){return row.quantity;}),hasEstimatedCost=groupRows.some(function(row){return row.costEstimated;}),costNote=hasEstimatedCost?'<br><small>å«ç›®å‰æˆæœ¬ä¼°ç®—</small>':'',profitHtml=effective?'<b>'+money(metrics.profit)+'</b>':'<small>ä¸åˆ—å…¥æœ‰æ•ˆæˆäº¤</small>',productHtml=groupRows.slice(0,3).map(function(row){return '<small>'+escapeHtml(row.productName)+' Ã— '+formatNumber(row.quantity)+(row.variantName?'ãƒ»'+escapeHtml(row.variantName):'')+'</small>';}).join('<br>')+(groupRows.length>3?'<br><small>å¦æœ‰ '+formatNumber(groupRows.length-3)+' é …å•†å“</small>':''),historicalNoStock=groupRows.every(platformOrderSkipsInventory),allApplied=groupRows.every(function(row){return row.inventoryApplied===true;}),stockHtml=historicalNoStock?statusTag('æ­·å²è£œç™»ï¼æœªæ‰£åº«å­˜','blue'):allApplied?statusTag('å·²æ‰£ä¸­å¤®åº«å­˜','green'):statusTag(platformOrderProcessingLabel(first),platformOrderProcessingColor(first));
-    if(showingReturns)stockHtml+='<br><small class="ops-text-danger">'+escapeHtml(first.returnHandlingStatus==='completed'?'é€€è²¨å·²è™•ç†':'é€€è²¨å¾…è™•ç†')+'</small>';
-    return '<tr><td>'+statusTag(first.platform,first.platform==='EasyStore'?'green':first.platform==='MOMO'?'blue':'yellow')+'<br><small>'+escapeHtml(platformOrderPlacedAtText(first))+'</small></td><td><b>'+escapeHtml(first.externalOrderNo||'â€”')+'</b><br><small>'+escapeHtml(first.customerName||'')+'ãƒ»'+formatNumber(groupRows.length)+' é …å•†å“</small></td><td>'+productHtml+'</td><td class="num">'+formatNumber(groupQty)+'</td><td class="num">'+money(metrics.gross)+'</td><td class="num">'+money(metrics.variableFee)+'</td><td class="num">'+money(metrics.cost)+costNote+'</td><td class="num">'+profitHtml+'</td><td>'+stockHtml+'</td><td><button class="ops-button small ghost" data-action="platform-order-detail" data-key="'+attr(group.key)+'">æŸ¥çœ‹</button></td></tr>';
-  }).join('')+'</tbody></table></div>':emptyHtml('ç›®å‰æ²’æœ‰ç¬¦åˆæ¢ä»¶çš„å¹³å°è¨‚å–®','è«‹æ›´æ›æ—¥æœŸã€å¹³å°æˆ–æœå°‹æ¢ä»¶ã€‚');
-  return '<section class="ops-card ops-platform-control-card"><div class="ops-platform-control-title"><h2>å¹³å°è¨‚å–®</h2></div><div class="ops-platform-control-row">'+quickDate+'<span class="ops-platform-control-divider" aria-hidden="true"></span>'+syncTools+'</div>'+customPanel+'</section>'+errorPanel+'<section class="ops-card ops-platform-order-list ops-platform-order-list-compact">'+platformTabs+'<div class="ops-kpi-grid ops-platform-kpis">'+kpi('æˆäº¤é‡‘é¡',money(fees.gross),orderCount+' ç­†è¨‚å–®','ï¼„')+kpi('å¹³å°è²»ï¼‹ç™¼ç¥¨ç¨…',money(fees.variableFees),'ä¾å„å¹³å°è¨­å®š','è²»')+kpi('å•†å“æˆæœ¬',money(fees.cost),'ä¸­å¤® FIFOï¼ä¼°ç®—æˆæœ¬','æˆæœ¬')+kpi('é ä¼°æ¯›åˆ©',money(fees.profit),'æˆäº¤ï¼å…¨éƒ¨è²»ç”¨ï¼æˆæœ¬','åˆ©')+kpi('éŠ·å”®ä»¶æ•¸',formatNumber(qty),'æœ‰æ•ˆæˆäº¤æ•¸é‡','ä»¶')+'</div><div class="ops-toolbar ops-platform-search"><input class="ops-input grow" id="platformOrderSearch" placeholder="æœå°‹è¨‚å–®ç·¨è™Ÿã€SKUã€å•†å“ã€å®¢æˆ¶æˆ–ç‹€æ…‹" value="'+attr(state.platformOrderSearch)+'"></div>'+orderTable+'</section>';
-}
-
-  function renderConnection(){
-    const diagnostics=state.diagnostics.map(function(d){return '<div class="ops-status-row"><div><b>'+escapeHtml(d.collection)+'</b><small>'+d.count+' ç­†ãƒ»'+d.ms+' ms'+(d.error?'ãƒ»'+escapeHtml(d.error):'')+'</small></div><span class="ops-status-dot '+(d.ok?'':'error')+'">'+(d.ok?'å·²é€£ç·š':'è®€å–å¤±æ•—')+'</span></div>';}).join('');
-    const audit=state.audit.sort(function(a,b){return (dateFrom(b.createdAt)||0)-(dateFrom(a.createdAt)||0);}).slice(0,30);
-    const auditHtml=audit.length?audit.map(function(x){return '<div class="ops-activity"><div class="ops-activity-icon">â€¢</div><div><b>'+escapeHtml(x.action)+'ï½œ'+escapeHtml(x.summary||x.entityId)+'</b><small>'+escapeHtml(x.createdBy||'')+'ãƒ»'+escapeHtml(dateTimeText(x.createdAt))+'</small></div></div>';}).join(''):emptyHtml('å°šç„¡ç‡Ÿé‹æ“ä½œç´€éŒ„','å®Œæˆä¸»æª”ã€éŠ·å”®ã€é€²è²¨æˆ–æ¡ˆä»¶æ“ä½œå¾Œæœƒé¡¯ç¤ºã€‚');
-    return '<div class="ops-grid-2"><section class="ops-card"><div class="ops-card-head"><div><h2>Firebase èˆ‡é›†åˆç‹€æ…‹</h2><p>å°ˆæ¡ˆï¼š'+escapeHtml((global.APP_CONFIG&&APP_CONFIG.FIREBASE_CONFIG&&APP_CONFIG.FIREBASE_CONFIG.projectId)||'æœªè¾¨è­˜')+'ãƒ»ç‰ˆæœ¬ '+VERSION+'</p></div><button class="ops-button ghost" data-action="refresh">é‡æ–°è®€å–</button></div>'+diagnostics+'</section><section class="ops-card"><div class="ops-card-head"><div><h2>å‚™ä»½èˆ‡åŒ¯å…¥</h2><p>å¯å…ˆä¸‹è¼‰ç‡Ÿé‹è³‡æ–™å‚™ä»½ï¼Œå†é€²è¡Œå¤§é‡åŒ¯å…¥æˆ–èª¿æ•´ã€‚</p></div></div><div class="ops-summary-list"><div class="ops-summary-line"><span>ç¶²è·¯å•†å“ä¾†æº</span><b>'+escapeHtml(state.onlineSource||'æœªæ‰¾åˆ°')+'</b></div><div class="ops-summary-line"><span>å…§éƒ¨å•†å“ä¸»æª”</span><b>'+state.internalProducts.length+' ç­†</b></div><div class="ops-summary-line"><span>ç‡Ÿé‹é›†åˆ</span><b>'+Object.keys(COLLECTIONS).length+' å€‹</b></div></div><div class="ops-card-actions" style="margin-top:14px;justify-content:flex-start"><button class="ops-button primary" data-action="export-backup">ä¸‹è¼‰ JSON å‚™ä»½</button><button class="ops-button ghost" data-action="open-import">Excel åŒ¯å…¥å•†å“ä¸»æª”</button><button class="ops-button ghost" data-action="download-product-template">ä¸‹è¼‰ CSV ç¯„æœ¬</button></div></section></div><section class="ops-card" style="margin-top:15px"><div class="ops-card-head"><div><h2>æœ€è¿‘ç‡Ÿé‹æ“ä½œ</h2><p>åªé¡¯ç¤º opsAuditLogsï¼Œä¸æœƒæ··å…¥åŽŸç³»çµ±æ“ä½œã€‚</p></div></div>'+auditHtml+'</section>';
-  }
-
-
-function formatSalesClock(now){
-  const roc=now.getFullYear()-1911,m=now.getMonth()+1,d=now.getDate();
-  const hh=String(now.getHours()).padStart(2,'0'),mm=String(now.getMinutes()).padStart(2,'0'),ss=String(now.getSeconds()).padStart(2,'0');
-  return roc+'å¹´'+m+'æœˆ'+d+'æ—¥ '+hh+':'+mm+':'+ss;
-}
-function updateSalesClock(){
-  const value=formatSalesClock(new Date());
-  const el=byId('opsSalesClock'); if(el) el.textContent=value;
-  const pageEl=byId('opsPageClock'); if(pageEl) pageEl.textContent=value;
-}
-function ensureSalesClock(){
-  if(state.view==='sales'){
-    updateSalesClock();
-    if(!global.__opsSalesClockTimer) global.__opsSalesClockTimer=global.setInterval(updateSalesClock,1000);
-  }else if(global.__opsSalesClockTimer){
-    global.clearInterval(global.__opsSalesClockTimer);
-    global.__opsSalesClockTimer=null;
-  }
-}
-
-  function bindViewSpecific(){
-    const purchaseEntrySort=byId('purchaseEntrySort');
-    if(purchaseEntrySort)purchaseEntrySort.outerHTML=displayModeToggleHtml('purchase-entry-display-mode',state.purchaseEntryDisplayMode,'é€²è²¨å•†å“é¡¯ç¤ºæ–¹å¼');
-    const financeRange=byId('financeRange'); if(financeRange) financeRange.value=state.financeRange;
-    ensureSalesClock();
-  }
-
-  function catalogById(id){ return state.catalog.find(function(p){return p.docId===id;})||null; }
-  function rentalById(id){ return mergedRentals().find(function(r){return r.id===id;})||null; }
-  function caseById(id){ return state.cases.find(function(c){return c.id===id;})||null; }
-
-  function productEditorImages(p){
-    const images=[];
-    ((p&&p.imageUrls)||[]).concat(p&&p.imageUrl?[p.imageUrl]:[]).forEach(function(url){url=safeUrl(url);if(url&&!images.includes(url))images.push(url);});
-    return images.slice(0,4);
-  }
-  function productImagePanelHtml(p){
-    const title=(p&&((p.originalName)||(p.onlineName)||(p.name)))||'å•†å“åœ–ç‰‡';
-    const images=productEditorImages(p);
-    if(!images.length)return '<div class="ops-product-media-panel"><div class="ops-product-media-main is-empty"><div class="ops-detail-no-image">å°šç„¡å•†å“åœ–ç‰‡</div></div></div>';
-    const main=images[0];
-    const thumbs=images.map(function(url,index){return '<button type="button" class="ops-product-media-thumb'+(index===0?' active':'')+'" data-action="product-preview-open" data-index="'+index+'"><img src="'+attr(url)+'" alt="'+attr(title)+'"></button>';}).join('');
-    return '<div class="ops-product-media-panel"><button type="button" class="ops-product-media-main" data-action="product-preview-open" data-index="0"><img src="'+attr(main)+'" alt="'+attr(title)+'"></button><div class="ops-product-media-hint">å•†å“åœ–ç‰‡ï¼ˆå¯é»žæ“Šæ”¾å¤§é è¦½ï¼‰</div><div class="ops-product-media-thumbs">'+thumbs+'</div></div>';
-  }
-  function renderProductPreviewModal(){
-    const images=(state.productPreviewImages||[]).filter(Boolean);
-    if(!images.length)return '';
-    const index=Math.max(0,Math.min(images.length-1,Number(state.productPreviewIndex)||0));
-    const title=state.productPreviewTitle||'å•†å“åœ–ç‰‡';
-    const prev=images.length>1?'<button type="button" class="ops-product-preview-nav prev" data-action="product-preview-prev">â€¹</button>':'';
-    const next=images.length>1?'<button type="button" class="ops-product-preview-nav next" data-action="product-preview-next">â€º</button>':'';
-    const thumbs=images.map(function(url,i){return '<button type="button" class="ops-product-preview-thumb'+(i===index?' active':'')+'" data-action="product-preview-select" data-index="'+i+'"><img src="'+attr(url)+'" alt="'+attr(title)+'"></button>';}).join('');
-    return '<div class="ops-product-preview-overlay"><button type="button" class="ops-product-preview-backdrop" data-action="product-preview-close" aria-label="é—œé–‰åœ–ç‰‡é è¦½"></button><div class="ops-product-preview-dialog"><button type="button" class="ops-product-preview-close" data-action="product-preview-close" aria-label="é—œé–‰">Ã—</button>'+prev+next+'<div class="ops-product-preview-stage"><img src="'+attr(images[index])+'" alt="'+attr(title)+'"></div><div class="ops-product-preview-count">'+(index+1)+' / '+images.length+'</div><div class="ops-product-preview-strip">'+thumbs+'</div></div></div>';
-  }
-  function clearProductEditorState(){
-    state.productEditId='';
-    state.productPreviewImages=[];
-    state.productPreviewIndex=0;
-    state.productPreviewTitle='';
-  }
-  function productEditorHasUnsavedChanges(){
-    const form=byId('productForm');
-    if(!form)return false;
-    return Array.from(form.elements||[]).some(function(field){
-      if(!field||field.disabled||field.readOnly||!field.name)return false;
-      const type=lower(field.type);
-      if(type==='checkbox'||type==='radio')return field.checked!==field.defaultChecked;
-      if(field.tagName==='SELECT')return Array.from(field.options||[]).some(function(option){return option.selected!==option.defaultSelected;});
-      return String(field.value==null?'':field.value)!==String(field.defaultValue==null?'':field.defaultValue);
-    });
-  }
-  function closeProductEditorForListChange(){
-    if(!state.productEditId)return true;
-    if(productEditorHasUnsavedChanges()&&!global.confirm('ç›®å‰å•†å“å°šæœªå„²å­˜ï¼Œæ˜¯å¦æ”¾æ£„ä¿®æ”¹ï¼Ÿ'))return false;
-    clearProductEditorState();
-    const form=byId('productForm');if(form)form.remove();
-    const preview=query('.ops-product-preview-overlay');if(preview)preview.remove();
-    return true;
-  }
-  function shippingDecisionLabel(value){
-    const decision=PRODUCT_SHIPPING_DECISIONS[clean(value)];
-    return decision?decision.label:'å°šæœªåˆ¤æ–·';
-  }
-  function packageResearchStatusOptions(selected){
-    return [
-      ['not-searched','å°šæœªæŸ¥è©¢'],
-      ['found','å·²æŸ¥åˆ°å¯é è³‡æ–™'],
-      ['not-found','ç¶²è·¯æŸ¥ä¸åˆ°ï¼ŒæŽ¡äººå·¥åˆ¤æ–·'],
-      ['manual','å·²äººå·¥å¯¦æ¸¬']
-    ].map(function(row){return '<option value="'+row[0]+'" '+(row[0]===selected?'selected':'')+'>'+row[1]+'</option>';}).join('');
-  }
-  function productShippingChoiceHtml(selected){
-    return Object.keys(PRODUCT_SHIPPING_DECISIONS).map(function(value){
-      const item=PRODUCT_SHIPPING_DECISIONS[value];
-      return '<label class="ops-product-shipping-choice '+(selected===value?'active':'')+'"><input type="radio" name="shippingDecision" value="'+value+'" '+(selected===value?'checked':'')+'><span><b>'+escapeHtml(item.label)+'</b><small>'+escapeHtml(item.description)+'</small></span></label>';
-    }).join('');
-  }
-  function productShippingValues(source){
-    const row=source||{};
-    return {
-      decision:clean(row.shippingDecision),
-      lengthCm:numberOrNull(row.packageLengthCm),
-      widthCm:numberOrNull(row.packageWidthCm),
-      heightCm:numberOrNull(row.packageHeightCm),
-      weightKg:numberOrNull(row.packageWeightKg)
-    };
-  }
-  function productShippingSummaryHtml(values){
-    const row=productShippingValues(values),parts=[row.lengthCm,row.widthCm,row.heightCm],hasAll=parts.every(function(value){return value!=null&&value>0;})&&row.weightKg!=null&&row.weightKg>0;
-    if(!row.decision)return '<div class="ops-callout"><b>å…ˆé¸æ“‡å¯¦éš›å‡ºè²¨æ–¹å¼</b><br><span>é€™æ˜¯äººå·¥æœ€çµ‚åˆ¤å®šï¼›ç¶²è·¯æŸ¥åˆ°çš„å°ºå¯¸åªå”åŠ©æé†’ï¼Œä¸æœƒè‡ªå‹•æ”¹æŽ‰ä½ çš„é¸æ“‡ã€‚</span></div>';
-    if(!hasAll){
-      if(row.decision==='convenience')return '<div class="ops-callout"><b>å¯å¥—ç”¨å°åž‹å•†å“å»ºè­°å€¼</b><br><span>è‹¥æ²’æœ‰å¯é å°ºå¯¸ï¼Œå¯å…ˆç”¨ 40 Ã— 30 Ã— 10 å…¬åˆ†ã€1 å…¬æ–¤å»ºç«‹è‰ç¨¿ï¼Œå†ç”±ä½ ç¢ºèªã€‚</span></div>';
-      return '<div class="ops-callout"><b>'+escapeHtml(shippingDecisionLabel(row.decision))+'ï¼šå°šç¼ºåŒ…è£è³‡æ–™</b><br><span>å•†å“ä¸»æª”å¯ä»¥å…ˆå„²å­˜ï¼Œä½†é€å‡ºå¹³å°è‰ç¨¿å‰ä»è¦è£œé½Šå¤–ç®±é•·ã€å¯¬ã€é«˜èˆ‡é‡é‡ã€‚</span></div>';
-    }
-    const total=row.lengthCm+row.widthCm+row.heightCm,maxSide=Math.max.apply(Math,parts),limits=row.decision==='convenience'?{sum:105,max:45,weight:5}:row.decision==='home'?{sum:150,max:100,weight:15}:{sum:210,max:150,weight:20};
-    const over=total>limits.sum||maxSide>limits.max||row.weightKg>limits.weight;
-    return '<div class="ops-callout '+(over?'red':'green')+'"><b>'+escapeHtml(shippingDecisionLabel(row.decision))+'ï½œ'+formatNumber(row.lengthCm)+' Ã— '+formatNumber(row.widthCm)+' Ã— '+formatNumber(row.heightCm)+' cmï½œ'+formatNumber(row.weightKg)+' kg</b><br><span>'+(over?'ä¾ä¿å®ˆæª¢æŸ¥å€¼å¯èƒ½è¶…éŽæ­¤ç‰©æµç´šè·ï¼Œè«‹äººå·¥ç¢ºèªï¼›ç³»çµ±ä¸æœƒæ”¹æŽ‰ä½ çš„é¸æ“‡ã€‚':'ç›®å‰æœªè¶…éŽä¿å®ˆæª¢æŸ¥å€¼ï¼›æ­£å¼ä¸Šæž¶ä»ä»¥å¹³å°ç•¶ä¸‹é¡¯ç¤ºçš„ç‰©æµè¦å‰‡ç‚ºæº–ã€‚')+'</span></div>';
-  }
-  function productListingSuggestedDefaults(p){
-    const name=clean(p&&((p.originalName)||(p.onlineName)||(p.name)));
-    if(/éŸ³æ¨‚æ›¸åŒ…|æ¨‚å™¨æ›¸åŒ…|è­œæœ¬æ”¶ç´|æ¨‚è­œè¢‹|è­œè¢‹/.test(name))return {shopeeCategoryPath:'æ„›å¥½èˆ‡æ”¶è—å“ > æ¨‚å™¨èˆ‡æ¨‚å™¨é…ä»¶ > æ¨‚å™¨é…ä»¶',shippingDecision:'convenience',packageLengthCm:40,packageWidthCm:30,packageHeightCm:10,packageWeightKg:1,packageMeasurementMode:'estimated'};
-    return {};
-  }
-  function productFormHtml(p){
-    const internal=p&&p.internal,avg=p&&p.averageCost,isNew=!p;
-    const displayName=(p&&((p.originalName)||(p.onlineName)||(p.name)))||'æ–°å¢žå•†å“';
-    const title=isNew?'æ–°å¢žå•†å“':'ç·¨è¼¯å•†å“ï¼š'+displayName;
-    const easyStorePrice=p&&p.easyStorePrice!=null?p.easyStorePrice:(p&&p.onlinePrice!=null?p.onlinePrice:'');
-    const momoPrice=p&&p.momoPrice!=null?p.momoPrice:'';
-    const coupangPrice=p&&p.coupangPrice!=null?p.coupangPrice:'';
-    return '<form id="productForm" data-id="'+attr(p?p.docId:'')+'">'
-      +'<section class="ops-inline-product-editor" id="opsProductEditor">'
-      +'<div class="ops-inline-product-header"><div><h3>'+escapeHtml(title)+'</h3>'+(p?'<div class="ops-inline-product-meta">SKU '+escapeHtml(p.sku||'æœªè¨­å®š')+' ãƒ» åº«å­˜ '+escapeHtml(formatNumber(p.currentStock))+'</div>':'')+'</div>'
-      +'<div class="ops-card-actions">'+(p?'<button class="ops-button soft" type="button" data-action="product-listing-case-open" data-id="'+attr(p.docId)+'">æº–å‚™å•†å“ä¸Šæž¶</button>':'')+'<button class="ops-button ghost" type="button" data-action="product-edit-cancel">å–æ¶ˆç·¨è¼¯</button><button class="ops-button primary" type="submit">'+(isNew?'å„²å­˜å•†å“':'å„²å­˜è®Šæ›´')+'</button></div></div>'
-      +'<div class="ops-inline-product-layout"><div class="ops-inline-product-media">'+productImagePanelHtml(p)+'</div><div class="ops-inline-product-fields">'
-      +'<div class="ops-form-grid cols-3"><div class="ops-field"><label class="ops-required">SKUï¼å•†å“ç·¨è™Ÿ</label><input class="ops-input" name="internalSku" value="'+attr((p&&p.sku)||'')+'" required></div><div class="ops-field full ops-product-name-field"><label class="ops-required">å•†å“åç¨±</label><input class="ops-input" name="internalName" value="'+attr((internal&&internal.internalName)||(p&&p.originalName)||(p&&p.onlineName)||'')+'" required></div></div>'
-      +'<div class="ops-form-grid cols-3"><div class="ops-field"><label>å“ç‰Œ</label><input class="ops-input" name="brand" value="'+attr((p&&p.brand)||'')+'"></div><div class="ops-field"><label>åž‹è™Ÿ</label><input class="ops-input" name="model" value="'+attr((internal&&internal.model)||'')+'"></div><div class="ops-field"><label>åœ‹éš›æ¢ç¢¼ï¼GTIN</label><input class="ops-input" name="barcode" value="'+attr((internal&&internal.barcode)||'')+'"></div><div class="ops-field"><label>åˆ†é¡ž</label><input class="ops-input" name="category" value="'+attr((p&&p.category)||'')+'"></div><div class="ops-field"><label>ç‹€æ…‹</label><select class="ops-select" name="status"><option value="active">æ­£å¸¸éŠ·å”®</option><option value="inactive">åœç”¨</option><option value="discontinued">åœå”®</option></select></div></div>'
-      +'<div class="ops-section-title">æˆæœ¬è³‡è¨Š</div><div class="ops-form-grid cols-2 ops-product-value-fields"><div class="ops-field"><label>é€²è²¨æˆæœ¬</label><input class="ops-input" type="number" min="0" step="0.01" name="latestPurchaseCost" value="'+attr(p&&p.latestPurchaseCost!=null?p.latestPurchaseCost:'')+'"></div><div class="ops-field"><label>å¹³å‡æˆæœ¬</label><input class="ops-input" value="'+attr(avg!=null?avg:'')+'" readonly></div></div>'
-      +'<div class="ops-section-title">å”®åƒ¹è³‡è¨Š</div><div class="ops-form-grid cols-4 ops-product-value-fields"><div class="ops-field"><label>é–€å¸‚å”®åƒ¹</label><input class="ops-input" type="number" min="0" step="1" name="storePrice" value="'+attr(p&&p.storePrice!=null?p.storePrice:'')+'"></div><div class="ops-field"><label>EASY STORE å”®åƒ¹</label><input class="ops-input" type="number" min="0" step="1" name="easyStorePrice" value="'+attr(easyStorePrice)+'"></div><div class="ops-field"><label>MOMO å”®åƒ¹</label><input class="ops-input" type="number" min="0" step="1" name="momoPrice" value="'+attr(momoPrice)+'"></div><div class="ops-field"><label>Coupangï¼é…·æ¾Žå”®åƒ¹</label><input class="ops-input" type="number" min="0" step="1" name="coupangPrice" value="'+attr(coupangPrice)+'"></div><div class="ops-field full"><small>ç¬¬ä¸€æ¬¡åªæœ‰ä¸€å€‹ç¶²è·¯åƒ¹æ™‚æœƒå…ˆå¸¶å…¥ä¸‰å¹³å°ï¼›EasyStore èˆ‡è¦çš®ä»èµ°åŽŸæœ¬åŒæ­¥æµç¨‹ã€‚</small></div></div>'
-      +'<div class="ops-form-grid"><div class="ops-field"><label>ç¾æœ‰åº«å­˜</label><input class="ops-input" type="number" step="1" name="currentStock" value="'+attr(p&&p.currentStock!=null?p.currentStock:0)+'"><small>æ¨™æº–æµç¨‹è«‹ä½¿ç”¨ã€Œåº«å­˜ä½œæ¥­ï¼ç›¤é»žèª¿æ•´ã€ï¼›åœ¨æ­¤ä¿®æ”¹æ™‚æœƒå…ˆè¦æ±‚ç¢ºèªä¸¦ç•™ä¸‹ç›¤é»žç´€éŒ„ã€‚</small></div><div class="ops-field"><label>å®‰å…¨åº«å­˜</label><input class="ops-input" type="number" min="0" step="1" name="safetyStock" value="'+attr(p&&p.safetyStock!=null?p.safetyStock:0)+'"></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note">'+escapeHtml((internal&&internal.note)||'')+'</textarea></div></div>'
-      +'</div></div></section></form>';
-  }
-  function listingCaseValue(raw,legacy,key,fallback){
-    if(raw&&Object.prototype.hasOwnProperty.call(raw,key))return raw[key];
-    if(legacy&&Object.prototype.hasOwnProperty.call(legacy,key))return legacy[key];
-    return fallback;
-  }
-  function normalizeGeneratedListingImages(value){
-    return (Array.isArray(value)?value:[]).map(function(row){
-      const url=safeUrl(row&&row.url);if(!url)return null;
-      return {id:clean(row&&row.id),url:url,status:clean(row&&row.status)||'candidate',mode:clean(row&&row.mode),model:clean(row&&row.model),sourceImageUrl:safeUrl(row&&row.sourceImageUrl),sourceOrder:Math.max(0,Number(row&&row.sourceOrder)||0),instructions:clean(row&&row.instructions),createdAt:row&&row.createdAt||''};
-    }).filter(Boolean).slice(-20);
-  }
-  function normalizeProductShopeeAttributes(value){
-    let rows=value;
-    if(typeof rows==='string'){
-      try{rows=JSON.parse(rows);}catch(error){rows=[];}
-    }
-    return (Array.isArray(rows)?rows:[]).map(function(row){
-      const label=clean(row&&row.label),fieldValue=clean(row&&row.value),confidence=clean(row&&row.confidence);
-      if(!label||!fieldValue)return null;
-      return {label:label.slice(0,120),value:fieldValue.slice(0,300),confidence:['high','medium','low'].includes(confidence)?confidence:'low',note:clean(row&&row.note).slice(0,500)};
-    }).filter(Boolean).slice(0,30);
-  }
-  function normalizeProductListingCase(raw,p){
-    const source=raw&&typeof raw==='object'?raw:{},legacy=p&&p.internal?p.internal:{},suggested=productListingSuggestedDefaults(p);
-    const ai=source.aiResearch&&typeof source.aiResearch==='object'?source.aiResearch:{};
-    const productResearchStatus=clean(listingCaseValue(source,legacy,'productResearchStatus','not-searched'))||'not-searched';
-    const packageResearchStatus=clean(listingCaseValue(source,legacy,'packageResearchStatus','not-searched'))||'not-searched';
-    const identityStatus=clean(source.identityStatus)||'not_found';
-    const legacyShortDescription=clean(listingCaseValue(source,legacy,'shortDescription',''));
-    const legacyFeatureList=clean(listingCaseValue(source,legacy,'featureList',''));
-    const legacySpecificationText=clean(listingCaseValue(source,legacy,'specificationText',''));
-    const legacyCommonDescription=clean(listingCaseValue(source,legacy,'commonProductDescription',''));
-    const productDescription=clean(listingCaseValue(source,legacy,'productDescription',''))||legacyCommonDescription||[legacyShortDescription,legacyFeatureList,legacySpecificationText].filter(Boolean).join('\n\n');
-    return {
-      caseStatus:clean(source.caseStatus)||'draft',
-      sourceProductDescription:clean(source.sourceProductDescription),researchInstructions:clean(source.researchInstructions),referenceUrls:normalizeProductResearchSourceUrls(source.referenceUrls),referenceImageUrls:normalizeProductResearchSourceUrls(source.referenceImageUrls),selectedReferenceImageUrls:Array.isArray(source.selectedReferenceImageUrls)?normalizeProductResearchSourceUrls(source.selectedReferenceImageUrls):normalizeProductResearchSourceUrls(source.referenceImageUrls),listingImageUrls:normalizeProductResearchSourceUrls(source.listingImageUrls),
-      brand:clean(listingCaseValue(source,legacy,'brand',p&&p.brand||'')),shopeeBrand:clean(source.shopeeBrand)||clean(listingCaseValue(source,legacy,'brand',p&&p.brand||'')),shopeeAttributeValues:normalizeProductShopeeAttributes(source.shopeeAttributeValues),model:clean(listingCaseValue(source,legacy,'model',p&&p.model||'')),barcode:clean(listingCaseValue(source,legacy,'barcode',p&&p.barcode||'')),
-      productResearchStatus:['not-searched','partial','researched','manual'].includes(productResearchStatus)?productResearchStatus:'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(listingCaseValue(source,legacy,'productResearchSourceUrls',[])),
-      identityStatus:identityStatus,identityEvidence:clean(source.identityEvidence),identityConflictSummary:clean(source.identityConflictSummary),identityManualConfirmed:source.identityManualConfirmed===true,identityManualConfirmedAt:source.identityManualConfirmedAt||'',identityManualConfirmedBy:clean(source.identityManualConfirmedBy),identityManualConfirmationNote:clean(source.identityManualConfirmationNote),fieldEvidence:Array.isArray(source.fieldEvidence)?source.fieldEvidence:[],sourceConflicts:Array.isArray(source.sourceConflicts)?source.sourceConflicts:[],
-      researchedProductName:clean(listingCaseValue(source,legacy,'researchedProductName','')),alternateNames:clean(listingCaseValue(source,legacy,'alternateNames','')),searchKeywords:clean(listingCaseValue(source,legacy,'searchKeywords','')),sellingPoints:clean(listingCaseValue(source,legacy,'sellingPoints','')),productDescription:productDescription,specificationText:legacySpecificationText,includedItems:clean(listingCaseValue(source,legacy,'includedItems','')),material:clean(listingCaseValue(source,legacy,'material','')),color:clean(listingCaseValue(source,legacy,'color','')),countryOfOrigin:clean(listingCaseValue(source,legacy,'countryOfOrigin','')),warrantyInfo:clean(listingCaseValue(source,legacy,'warrantyInfo','')),shortDescription:legacyShortDescription,commonProductDescription:legacyCommonDescription||productDescription,featureList:legacyFeatureList,faqText:clean(source.faqText),
-      imagePlan:clean(source.imagePlan),imageGenerationInstructions:clean(source.imageGenerationInstructions),generatedListingImages:normalizeGeneratedListingImages(source.generatedListingImages),lastImageGenerationStatus:clean(source.lastImageGeneration&&source.lastImageGeneration.status),lastImageGenerationError:clean(source.lastImageGeneration&&source.lastImageGeneration.error),easyStoreHtml:clean(source.easyStoreHtml),shopeeTitle:clean(source.shopeeTitle),shopeeDescription:clean(source.shopeeDescription),shopeeRequiredNotes:clean(source.shopeeRequiredNotes),momoGoodsName:clean(source.momoGoodsName),momoSlogan:clean(source.momoSlogan),momoHtml:clean(source.momoHtml),momoRequiredNotes:clean(source.momoRequiredNotes),coupangTitle:clean(source.coupangTitle),coupangDescriptionHtml:clean(source.coupangDescriptionHtml),coupangRequiredNotes:clean(source.coupangRequiredNotes),
-      shopeeCategoryPath:clean(listingCaseValue(source,legacy,'shopeeCategoryPath',suggested.shopeeCategoryPath||'')),shopeeListingDecision:['auto','new','existing'].includes(clean(source.shopeeListingDecision))?clean(source.shopeeListingDecision):'auto',momoCategoryCode:clean(listingCaseValue(source,legacy,'momoCategoryCode','')),coupangCategoryCode:clean(listingCaseValue(source,legacy,'coupangCategoryCode','')),
-      identityDecision:clean(source.identityDecision)||'pending',commonContentDecision:clean(source.commonContentDecision)||'pending',mediaDecision:clean(source.mediaDecision)||'pending',easyStoreShopeeDecision:clean(source.easyStoreShopeeDecision)||'pending',momoDecision:clean(source.momoDecision)||'pending',coupangDecision:clean(source.coupangDecision)||'pending',
-      enabledEasyStoreShopee:!source.enabledPlatforms||source.enabledPlatforms.easyStoreShopee!==false,enabledMomo:!source.enabledPlatforms||source.enabledPlatforms.momo!==false,enabledCoupang:!source.enabledPlatforms||source.enabledPlatforms.coupang!==false,
-      shippingDecision:clean(listingCaseValue(source,legacy,'shippingDecision',suggested.shippingDecision||'')),packageLengthCm:numberOrNull(listingCaseValue(source,legacy,'packageLengthCm',suggested.packageLengthCm)),packageWidthCm:numberOrNull(listingCaseValue(source,legacy,'packageWidthCm',suggested.packageWidthCm)),packageHeightCm:numberOrNull(listingCaseValue(source,legacy,'packageHeightCm',suggested.packageHeightCm)),packageWeightKg:numberOrNull(listingCaseValue(source,legacy,'packageWeightKg',suggested.packageWeightKg)),packageMeasurementMode:clean(listingCaseValue(source,legacy,'packageMeasurementMode',suggested.packageMeasurementMode||'')),
-      packageResearchStatus:['not-searched','found','not-found','manual'].includes(packageResearchStatus)?packageResearchStatus:'not-searched',packageResearchSourceUrl:safeUrl(listingCaseValue(source,legacy,'packageResearchSourceUrl','')),packageResearchNote:clean(listingCaseValue(source,legacy,'packageResearchNote','')),caseNote:clean(source.caseNote),updatedAt:source.updatedAt||'',
-      aiResearchStatus:clean(ai.status),aiResearchError:clean(ai.error),aiResearchModel:clean(ai.model),aiResearchConfidence:clean(ai.confidence),aiResearchSummary:clean(ai.researchSummary),aiResearchCompletedAt:ai.completedAt||'',aiResearchFilledFields:Array.isArray(ai.filledFields)?ai.filledFields:[],aiResearchMissingFields:Array.isArray(ai.missingFields)?ai.missingFields:[],aiResearchImageEvidenceUsed:ai.imageEvidenceUsed===true
-    };
-  }
-
-  function productListingSection(title,subtitle,body,open){
-    return '<details class="ops-listing-case-section" '+(open?'open':'')+'><summary><span><b>'+escapeHtml(title)+'</b>'+(subtitle?'<small>'+escapeHtml(subtitle)+'</small>':'')+'</span><i aria-hidden="true">âŒ„</i></summary><div class="ops-listing-case-section-body">'+body+'</div></details>';
-  }
-  function productListingImagePreviewHtml(urls,label){
-    urls=normalizeProductResearchSourceUrls(urls);
-    if(!urls.length)return '<div class="ops-listing-image-empty">'+escapeHtml(label||'å°šç„¡åœ–ç‰‡')+'</div>';
-    return '<div class="ops-listing-image-preview">'+urls.map(function(url,index){return '<a href="'+attr(url)+'" target="_blank" rel="noopener"><img src="'+attr(url)+'" alt="'+attr((label||'å•†å“åœ–ç‰‡')+' '+(index+1))+'"></a>';}).join('')+'</div>';
-  }
-  function productReferenceImageSelectorHtml(urls,selected){
-    urls=normalizeProductResearchSourceUrls(urls);selected=normalizeProductResearchSourceUrls(selected);
-    if(!urls.length)return '<div class="ops-listing-image-empty">å°šç„¡ä¾†æºåœ–ç‰‡ã€‚è«‹å¾žæ‰‹æ©Ÿæˆ–é›»è…¦ä¸Šå‚³ä¾›æ‡‰å•†åŽŸåœ–ã€‚</div>';
-    const active=selected.filter(function(url){return urls.includes(url);}).slice(0,10);
-    return '<div class="ops-listing-source-toolbar"><span>å·²é¸ <b>'+active.filter(function(url){return urls.includes(url);}).length+'</b>ï¼'+urls.length+' å¼µï¼Œæœ€å¤šå¯è™•ç† 10 å¼µ</span><div><button class="ops-button ghost small" type="button" data-action="product-source-images-select-all">å…¨é¸</button><button class="ops-button ghost small" type="button" data-action="product-source-images-clear">æ¸…é™¤</button></div></div><div class="ops-listing-source-images">'+urls.map(function(url,index){const checked=active.includes(url);return '<label class="'+(checked?'selected':'')+'"><input type="checkbox" name="selectedReferenceImageUrls" value="'+attr(url)+'" '+(checked?'checked':'')+'><span class="ops-listing-source-check">'+(checked?'âœ“':'')+'</span><img src="'+attr(url)+'" alt="ä¾†æºå•†å“åœ– '+(index+1)+'"><small>ç¬¬ '+(index+1)+' å¼µ</small></label>';}).join('')+'</div>';
-  }
-  function productGeneratedImageCandidatesHtml(rows){
-    rows=normalizeGeneratedListingImages(rows);
-    if(!rows.length)return '';
-    return '<div class="ops-listing-generated-toolbar"><span>AI å·²å®Œæˆ '+rows.length+' å¼µï¼Œä¸¦è‡ªå‹•åŠ å…¥æº–å‚™ä¸Šæž¶</span></div><div class="ops-listing-generated-images">'+rows.map(function(row,index){return '<article><a href="'+attr(row.url)+'" target="_blank" rel="noopener"><img src="'+attr(row.url)+'" alt="AI ç¹é«”å•†å“ä»‹ç´¹åœ– '+(index+1)+'"></a><div><b>ä¸Šæž¶åœ– '+(index+1)+'</b><small>'+escapeHtml((row.model||'OpenAI')+(row.sourceOrder?'ï½œä¾†æºç¬¬ '+row.sourceOrder+' å¼µ':'')+(row.createdAt?'ï½œ'+dateTimeText(row.createdAt):''))+'</small></div></article>';}).join('')+'</div>';
-  }
-  function productAiResearchStatusHtml(row){
-    const status=clean(row&&row.aiResearchStatus),filled=(row&&row.aiResearchFilledFields||[]).length;
-    if(status==='running')return '<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner" aria-hidden="true"></span><div><b>AI æ­£åœ¨æ•´ç†ä¸Šæž¶è³‡æ–™</b><small>æœƒä¾ç…§å•†å“åç¨±ã€ç¶²å€èˆ‡å‹¾é¸ç…§ç‰‡ï¼Œå¡«å¥½ä¸€ä»½å®Œæ•´å•†å“ä»‹ç´¹ä¸¦è™•ç†åœ–ç‰‡ã€‚</small></div></div>';
-    if(status==='failed')return '<div class="ops-product-ai-status failed"><span>!</span><div><b>AI ä¸Šæž¶è³‡æ–™æœªå®Œæˆ</b><small>'+escapeHtml(row.aiResearchError||'è«‹å†æŒ‰ä¸€æ¬¡ã€ŒAI å®Œæˆæ–‡å­—èˆ‡å‹¾é¸åœ–ç‰‡ã€ã€‚')+'</small></div></div>';
-    if(status==='completed')return '<div class="ops-product-ai-status completed"><span>âœ“</span><div><b>AI å·²å®Œæˆä¸Šæž¶è³‡æ–™</b><small>'+escapeHtml('å·²æ•´ç† '+filled+' å€‹æ¬„ä½ï¼Œè«‹ç›´æŽ¥å¾€ä¸‹æª¢æŸ¥æˆ–ä¿®æ”¹ã€‚')+(row.aiResearchCompletedAt?'ï½œ'+escapeHtml(dateTimeText(row.aiResearchCompletedAt)):'')+'</small></div></div>';
-    return '';
-  }
-  function productIdentityReviewHtml(row){
-    const status=clean(row&&row.identityStatus),manual=row&&row.identityManualConfirmed===true,note=clean(row&&row.identityManualConfirmationNote),by=clean(row&&row.identityManualConfirmedBy),at=row&&row.identityManualConfirmedAt?dateTimeText(row.identityManualConfirmedAt):'';
-    if(manual){
-      return '<div class="ops-callout green"><b>å·²äººå·¥ç¢ºèªç‚ºåŒä¸€å•†å“</b><br><span>'+escapeHtml([by,at,note].filter(Boolean).join('ï½œ')||'äººå·¥ç¢ºèªæœƒå„ªå…ˆæ–¼ AI çš„èº«åˆ†åˆ¤å®šã€‚')+'</span><input type="hidden" name="identityManualConfirmed" value="1"><textarea name="identityManualConfirmationNote" hidden>'+escapeHtml(note)+'</textarea></div>';
-    }
-    if(!['conflict','not_found'].includes(status))return '';
-    return '<div class="ops-callout yellow"><b>AI å°šæœªç¢ºèªé€™æ˜¯åŒä¸€ä»¶å•†å“</b><br><span>è«‹æ ¸å°å“ç‰Œã€åž‹è™Ÿã€é¡è‰²èˆ‡ç…§ç‰‡ï¼›ç¢ºèªç„¡èª¤å¾Œæ‰æœƒäº¤çµ¦è¦çš®åŠ©æ‰‹ã€‚</span><label class="ops-listing-platform-toggle"><input type="checkbox" name="identityManualConfirmed" value="1"><span><b>æˆ‘å·²äººå·¥æ ¸å°ï¼Œç¢ºèªæ˜¯åŒä¸€ä»¶å•†å“</b><small>é€™å€‹äººå·¥æ±ºå®šæœƒç•™ä¸‹ç¢ºèªäººã€æ™‚é–“èˆ‡å‚™è¨»ã€‚</small></span></label><div class="ops-field"><label>äººå·¥ç¢ºèªå‚™è¨»ï¼ˆå¯ä¸å¡«ï¼‰</label><textarea class="ops-textarea compact" name="identityManualConfirmationNote" placeholder="ä¾‹å¦‚ï¼šå·²æ ¸å°åž‹è™Ÿã€é¦¬å¡è—é¡è‰²èˆ‡å•†å“ç…§ç‰‡">'+escapeHtml(note)+'</textarea></div></div>';
-  }
-  function productDescriptionToSafeHtml(value){
-    const lines=clean(value).replace(/\r/g,'').split('\n'),parts=[];let listOpen=false;
-    function closeList(){if(listOpen){parts.push('</ul>');listOpen=false;}}
-    lines.forEach(function(rawLine){
-      const line=clean(rawLine);if(!line){closeList();return;}
-      if(/^(å•†å“ç‰¹è‰²|å•†å“è¦æ ¼|åŒ…è£å…§å®¹|é©ç”¨å°è±¡|ä½¿ç”¨æ–¹å¼|æ³¨æ„äº‹é …)[ï¼š:]?$/.test(line)){
-        closeList();parts.push('<h3>'+escapeHtml(line.replace(/[ï¼š:]$/,''))+'</h3>');return;
-      }
-      const item=line.match(/^(?:\d+[.ã€]|[-â€¢â—])\s*(.+)$/);
-      if(item){if(!listOpen){parts.push('<ul>');listOpen=true;}parts.push('<li>'+escapeHtml(item[1])+'</li>');return;}
-      closeList();parts.push('<p>'+escapeHtml(line)+'</p>');
-    });
-    closeList();return parts.join('');
-  }
-  function productListingCaseFormHtml(p,row,exists){
-    const shipping=productShippingValues(row),listingImages=row.listingImageUrls,image=listingImages[0]||'',updated=row.updatedAt?dateTimeText(row.updatedAt):'å°šæœªå„²å­˜';
-    const hiddenState='<input type="hidden" name="caseStatus" value="'+attr(row.caseStatus)+'"><input type="hidden" name="productResearchStatus" value="'+attr(row.productResearchStatus)+'"><input type="hidden" name="identityStatus" value="'+attr(row.identityStatus)+'"><input type="hidden" name="identityDecision" value="'+attr(row.identityDecision)+'"><input type="hidden" name="commonContentDecision" value="'+attr(row.commonContentDecision)+'"><input type="hidden" name="mediaDecision" value="'+attr(row.mediaDecision)+'"><input type="hidden" name="easyStoreShopeeDecision" value="'+attr(row.easyStoreShopeeDecision)+'"><input type="hidden" name="momoDecision" value="'+attr(row.momoDecision)+'"><input type="hidden" name="coupangDecision" value="'+attr(row.coupangDecision)+'"><input type="hidden" name="identityEvidence" value="'+attr(row.identityEvidence)+'"><input type="hidden" name="identityConflictSummary" value="'+attr(row.identityConflictSummary)+'"><input type="hidden" name="alternateNames" value="'+attr(row.alternateNames)+'"><input type="hidden" name="searchKeywords" value="'+attr(row.searchKeywords)+'"><input type="hidden" name="productResearchSourceUrls" value="'+attr(row.productResearchSourceUrls.join('\n'))+'"><input type="hidden" name="shopeeBrand" value="'+attr(row.shopeeBrand)+'"><textarea name="shopeeAttributeValues" hidden>'+escapeHtml(JSON.stringify(row.shopeeAttributeValues))+'</textarea>';
-    const sourceSection='<div class="ops-form-grid"><div class="ops-field full"><label>ä½ çŸ¥é“çš„å•†å“è³‡æ–™ï¼ˆå¯ä¸å¡«ï¼‰</label><textarea class="ops-textarea compact" name="sourceProductDescription" placeholder="ä¾‹å¦‚ï¼šé€™ä¸€æŠŠæ˜¯é¦¬å¡è—ã€å°ç£å…¬å¸è²¨ã€é™„ç´è¢‹">'+escapeHtml(row.sourceProductDescription)+'</textarea></div><div class="ops-field full"><label>å•†å“ç¶²å€ï¼ˆå¯ä¸å¡«ï¼‰</label><textarea class="ops-textarea compact" name="referenceUrls" placeholder="åŽŸå» ã€ä¾›æ‡‰å•†ã€æ·˜å¯¶ã€1688 æˆ–å…¶ä»–å•†å“é ï¼›ä¸€è¡Œä¸€å€‹ç¶²å€">'+escapeHtml(row.referenceUrls.join('\n'))+'</textarea></div><div class="ops-listing-url-import full"><button class="ops-button soft" type="button" data-action="product-source-images-import">å¾žç¶²å€ï¼åž‹è™Ÿè‡ªå‹•æ‰¾å•†å“åœ–</button></div><div id="productReferenceImageImportStatus" class="full"></div><div class="ops-field full"><label>å¸Œæœ› AI ç‰¹åˆ¥æ³¨æ„ï¼ˆå¯ä¸å¡«ï¼‰</label><textarea class="ops-textarea compact" name="researchInstructions" placeholder="ä¾‹å¦‚ï¼šåªå¯«é€™å€‹é¡è‰²ï¼›ä¸è¦æ··åˆ°å…¶ä»–åž‹è™Ÿ">'+escapeHtml(row.researchInstructions)+'</textarea></div></div>'
-      +'<div class="ops-listing-upload-box"><div><b>ä¾›æ‡‰å•†åŽŸåœ–ï¼å•†å“ç…§ç‰‡</b><small>ä¸€æ¬¡æœ€å¤š 10 å¼µ</small></div><label class="ops-button soft"><input id="productReferenceImageUpload" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>ä¸Šå‚³åŽŸåœ–</label></div><div id="productReferenceImageUploadStatus"></div>'
-      +'<div id="productReferenceImagePreview">'+productReferenceImageSelectorHtml(row.referenceImageUrls,row.selectedReferenceImageUrls)+'</div><details class="ops-listing-image-url-details"><summary>é€²éšŽï¼šç›´æŽ¥è²¼åœ–ç‰‡ç¶²å€</summary><div class="ops-field"><label>åœ–ç‰‡ç¶²å€ï¼ˆä¸€è¡Œä¸€å¼µï¼‰</label><textarea class="ops-textarea compact" name="referenceImageUrls" placeholder="ä¸Šå‚³å¾Œæœƒè‡ªå‹•å¡«å…¥ï¼›è‹¥ä½ æœ‰ç›´æŽ¥åœ–ç‰‡ç¶²å€ä¹Ÿå¯ä»¥è²¼åœ¨é€™è£¡">'+escapeHtml(row.referenceImageUrls.join('\n'))+'</textarea></div></details>'
-      +'<div class="ops-product-ai-actions ops-product-ai-main-action"><button class="ops-button primary" type="button" data-action="product-ai-research-run" '+(row.aiResearchStatus==='running'?'disabled aria-busy="true"':'')+'>'+(row.aiResearchStatus==='completed'||row.aiResearchStatus==='failed'?'é‡æ–°æ•´ç†æ–‡å­—èˆ‡å‹¾é¸åœ–ç‰‡':'AI å®Œæˆæ–‡å­—èˆ‡å‹¾é¸åœ–ç‰‡')+'</button></div><div id="productAiResearchStatus">'+productAiResearchStatusHtml(row)+'</div>';
-    const commonDetails='<div class="ops-form-grid cols-3"><div class="ops-field"><label>å“ç‰Œ</label><input class="ops-input" name="brand" value="'+attr(row.brand)+'"></div><div class="ops-field"><label>åž‹è™Ÿ</label><input class="ops-input" name="model" value="'+attr(row.model)+'"></div><div class="ops-field"><label>åœ‹éš›æ¢ç¢¼ï¼GTIN</label><input class="ops-input" name="barcode" value="'+attr(row.barcode)+'"></div><div class="ops-field"><label>æè³ª</label><input class="ops-input" name="material" value="'+attr(row.material)+'"></div><div class="ops-field"><label>é¡è‰²</label><input class="ops-input" name="color" value="'+attr(row.color)+'"></div><div class="ops-field"><label>ç”¢åœ°</label><input class="ops-input" name="countryOfOrigin" value="'+attr(row.countryOfOrigin)+'"></div><div class="ops-field"><label>ä¿å›º</label><input class="ops-input" name="warrantyInfo" value="'+attr(row.warrantyInfo)+'"></div><div class="ops-field full"><label>åŒ…è£å…§å®¹ç‰©</label><input class="ops-input" name="includedItems" value="'+attr(row.includedItems)+'"></div><div class="ops-field full"><label>å¸¸è¦‹å•é¡Œ FAQ</label><textarea class="ops-textarea compact" name="faqText">'+escapeHtml(row.faqText)+'</textarea></div></div>';
-    const commonSection='<textarea name="sellingPoints" hidden>'+escapeHtml(row.sellingPoints)+'</textarea><textarea name="shortDescription" hidden>'+escapeHtml(row.shortDescription)+'</textarea><textarea name="featureList" hidden>'+escapeHtml(row.featureList)+'</textarea><textarea name="specificationText" hidden>'+escapeHtml(row.specificationText)+'</textarea><textarea name="commonProductDescription" hidden>'+escapeHtml(row.commonProductDescription)+'</textarea>'+productIdentityReviewHtml(row)+'<div class="ops-form-grid"><div class="ops-field full"><label>ä¸Šæž¶å•†å“åç¨±</label><input class="ops-input" name="researchedProductName" value="'+attr(row.researchedProductName)+'" placeholder="AI æœƒå¡«å…¥ï¼Œä½ ä¹Ÿå¯ä»¥è‡ªå·±ä¿®æ”¹"></div><div class="ops-field full"><label>å®Œæ•´å•†å“ä»‹ç´¹</label><textarea class="ops-textarea ops-product-description-textarea" name="productDescription" placeholder="å…ˆç”¨ 2ï½ž4 å¥ä»‹ç´¹å•†å“èˆ‡é©åˆå°è±¡ã€‚\n\nå•†å“ç‰¹è‰²\n1. ç‰¹è‰²ä¸€\n2. ç‰¹è‰²äºŒ\n\nå•†å“è¦æ ¼\nå“ç‰Œï¼š\nåž‹è™Ÿï¼š\né¡è‰²ï¼š">'+escapeHtml(row.productDescription)+'</textarea><small>å•†å“ç°¡ä»‹ã€6ï½ž10 é»žç‰¹è‰²èˆ‡è¦æ ¼éƒ½å¯«åœ¨é€™ä¸€æ ¼ï¼›ç³»çµ±æœƒè‡ªå‹•è½‰æˆå„å¹³å°éœ€è¦çš„ç´”æ–‡å­—æˆ–å®‰å…¨ HTMLã€‚</small></div></div><details class="ops-listing-image-url-details"><summary>å…¶ä»–å•†å“è³‡æ–™</summary><div class="ops-listing-advanced-body">'+commonDetails+'</div></details>';
-    const mediaSection='<textarea name="imagePlan" hidden>'+escapeHtml(row.imagePlan)+'</textarea><textarea name="listingImageUrls" hidden>'+escapeHtml(listingImages.join('\n'))+'</textarea><div class="ops-form-grid"><div class="ops-field full"><label>åœ–ç‰‡ä¿®æ”¹è¦æ±‚ï¼ˆå¯ä¸å¡«ï¼‰</label><textarea class="ops-textarea compact" name="imageGenerationInstructions" placeholder="ä¾‹å¦‚ï¼šåªæŠŠç°¡é«”è½‰ç¹é«”ï¼›ç‰ˆé¢ä¸è¦å¤§æ”¹ï¼›é€™æ‰¹æ˜¯é¦¬å¡è—è‰²">'+escapeHtml(row.imageGenerationInstructions)+'</textarea></div></div><div id="productAiImageGenerationStatus">'+(row.lastImageGenerationStatus==='failed'?'<div class="ops-product-ai-status failed"><span>!</span><div><b>ä¸Šæ¬¡åœ–ç‰‡è½‰æ›æœªå®Œæˆ</b><small>'+escapeHtml(row.lastImageGenerationError||'è«‹é‡æ–°å˜—è©¦ã€‚')+'</small></div></div>':'')+'</div>'+productGeneratedImageCandidatesHtml(row.generatedListingImages)+'<div id="productListingImagePreview">'+(listingImages.length?productListingImagePreviewHtml(listingImages,'æº–å‚™ä¸Šæž¶åœ–ç‰‡'):'<div class="ops-listing-image-empty">å°šæœªç”¢ç”Ÿä¸Šæž¶åœ–ç‰‡ï¼›å‹¾é¸ä¸Šæ–¹ä¾†æºåœ–å¾ŒæŒ‰ã€ŒAI å®Œæˆæ–‡å­—èˆ‡å‹¾é¸åœ–ç‰‡ã€ã€‚</div>')+'</div><details class="ops-listing-image-url-details"><summary>å…¶ä»–åœ–ç‰‡å·¥å…·</summary><div class="ops-listing-advanced-body"><button class="ops-button soft small" type="button" data-action="product-ai-image-generate">åªé‡æ–°è£½ä½œå‹¾é¸åœ–ç‰‡</button></div></details>';
-    const sharedPlatformContent='<div class="ops-callout green"><b>å•†å“ä»‹ç´¹ä¸ç”¨é‡è¤‡å¡«</b><br><span>ä¸Šé¢çš„ã€Œå®Œæ•´å•†å“ä»‹ç´¹ã€æœƒè‡ªå‹•è½‰æˆå¹³å°ç´”æ–‡å­—èˆ‡å®‰å…¨ HTMLã€‚</span></div>';
-    const easySection='<textarea name="shopeeDescription" hidden>'+escapeHtml(row.productDescription)+'</textarea><textarea name="easyStoreHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><label class="ops-listing-platform-toggle"><input type="checkbox" name="enabledEasyStoreShopee" value="1" '+(row.enabledEasyStoreShopee?'checked':'')+'><span><b>EasyStore èˆ‡è¦çš®éƒ½è¦è™•ç†</b><small>EasyStore ä¾å®Œå…¨ç›¸åŒ SKU å»ºç«‹æˆ–æ›´æ–°ï¼›è¦çš®æœƒå…ˆåˆ¤æ–·æ–°å¢žæˆ–æ›´æ–°ã€‚</small></span></label>'+sharedPlatformContent+'<div class="ops-callout yellow"><b>è¦çš®é˜²é‡è¤‡æª¢æŸ¥</b><br><span>è¦çš®å®˜æ–¹ä¸²æŽ¥çš„ã€Œç™¼å¸ƒæ–°å“ã€ä¸€å®šæœƒæ–°å¢žå•†å“ï¼›å·²æœ‰å•†å“è¦å…ˆç”¨ Match product é…å°ï¼Œä¸èƒ½ç›´æŽ¥å†ç™¼å¸ƒä¸€æ¬¡ã€‚</span></div><div class="ops-form-grid"><div class="ops-field full"><label>è¦çš®ç›®å‰æ˜¯å¦å·²æœ‰é€™å€‹ SKU</label><select class="ops-select" name="shopeeListingDecision"><option value="auto" '+(row.shopeeListingDecision==='auto'?'selected':'')+'>ç³»çµ±å…ˆæª¢æŸ¥ï¼›ç„¡æ³•ç¢ºèªå°±åœæ­¢ï¼ˆå»ºè­°ï¼‰</option><option value="existing" '+(row.shopeeListingDecision==='existing'?'selected':'')+'>è¦çš®å·²ç¶“æœ‰ï¼šåªèƒ½é…å°ï¼æ›´æ–°èˆŠå•†å“</option><option value="new" '+(row.shopeeListingDecision==='new'?'selected':'')+'>å·²ç¢ºèªè¦çš®æ²’æœ‰ï¼šå…è¨±å»ºç«‹æ–°å“</option></select><small>ä¸ç¢ºå®šå°±ä¿ç•™ç¬¬ä¸€é …ï¼›ç³»çµ±ä¸æœƒå†’éšªæ–°å¢žã€‚</small></div><div class="ops-field full ops-product-name-field"><label>è¦çš®å•†å“æ¨™é¡Œ</label><input class="ops-input" name="shopeeTitle" value="'+attr(row.shopeeTitle)+'"></div><div class="ops-field full"><label>EasyStore â†’ è¦çš®åˆ†é¡ž</label><input class="ops-input" name="shopeeCategoryPath" value="'+attr(row.shopeeCategoryPath)+'"></div><div class="ops-field full"><label>å¹³å°å¦å¤–éœ€è¦è£œçš„æ¬„ä½ï¼ˆå¦‚æœ‰ï¼‰</label><textarea class="ops-textarea compact" name="shopeeRequiredNotes">'+escapeHtml(row.shopeeRequiredNotes)+'</textarea></div></div>';
-    const momoSection='<textarea name="momoHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><label class="ops-listing-platform-toggle"><input type="checkbox" name="enabledMomo" value="1" '+(row.enabledMomo?'checked':'')+'><span><b>MOMO è¦ä¸Šæž¶</b><small>ä»ä½¿ç”¨åŒä¸€å€‹å•†å“ SKUã€‚</small></span></label>'+sharedPlatformContent+'<div class="ops-form-grid"><div class="ops-field full"><label>MOMO å•†å“åç¨±</label><input class="ops-input" name="momoGoodsName" value="'+attr(row.momoGoodsName)+'"></div><div class="ops-field full"><label>MOMO è¡ŒéŠ·æ¨™èªž</label><input class="ops-input" name="momoSlogan" value="'+attr(row.momoSlogan)+'"></div><div class="ops-field full"><label>MOMO åˆ†é¡ž</label><input class="ops-input" name="momoCategoryCode" value="'+attr(row.momoCategoryCode)+'"></div><div class="ops-field full"><label>å¹³å°å¦å¤–éœ€è¦è£œçš„æ¬„ä½ï¼ˆå¦‚æœ‰ï¼‰</label><textarea class="ops-textarea compact" name="momoRequiredNotes">'+escapeHtml(row.momoRequiredNotes)+'</textarea></div></div>';
-    const coupangSection='<textarea name="coupangDescriptionHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><label class="ops-listing-platform-toggle"><input type="checkbox" name="enabledCoupang" value="1" '+(row.enabledCoupang?'checked':'')+'><span><b>é…·æ¾Žè¦ä¸Šæž¶</b><small>å…§å®¹æœƒåœ¨é€å‡ºæ™‚è½‰æˆé…·æ¾Žéœ€è¦çš„æ ¼å¼ã€‚</small></span></label>'+sharedPlatformContent+'<div class="ops-form-grid"><div class="ops-field full"><label>é…·æ¾Žå•†å“æ¨™é¡Œ</label><input class="ops-input" name="coupangTitle" value="'+attr(row.coupangTitle)+'"></div><div class="ops-field full"><label>é…·æ¾Žåˆ†é¡ž</label><input class="ops-input" name="coupangCategoryCode" value="'+attr(row.coupangCategoryCode)+'"></div><div class="ops-field full"><label>å¹³å°å¦å¤–éœ€è¦è£œçš„æ¬„ä½ï¼ˆå¦‚æœ‰ï¼‰</label><textarea class="ops-textarea compact" name="coupangRequiredNotes">'+escapeHtml(row.coupangRequiredNotes)+'</textarea></div></div>';
-    const shippingSection='<div class="ops-product-shipping-grid">'+productShippingChoiceHtml(shipping.decision)+'</div><div class="ops-form-grid cols-4 ops-product-value-fields"><div class="ops-field"><label>å¤–ç®±é•·ï¼ˆcmï¼‰</label><input class="ops-input" type="number" min="0" step="0.1" name="packageLengthCm" value="'+attr(shipping.lengthCm==null?'':shipping.lengthCm)+'"></div><div class="ops-field"><label>å¤–ç®±å¯¬ï¼ˆcmï¼‰</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWidthCm" value="'+attr(shipping.widthCm==null?'':shipping.widthCm)+'"></div><div class="ops-field"><label>å¤–ç®±é«˜ï¼ˆcmï¼‰</label><input class="ops-input" type="number" min="0" step="0.1" name="packageHeightCm" value="'+attr(shipping.heightCm==null?'':shipping.heightCm)+'"></div><div class="ops-field"><label>åŒ…è£é‡é‡ï¼ˆkgï¼‰</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWeightKg" value="'+attr(shipping.weightKg==null?'':shipping.weightKg)+'"></div></div><div class="ops-product-shipping-actions"><button class="ops-button soft" type="button" data-action="product-shipping-preset">å¥—ç”¨å°åž‹å•†å“å»ºè­°å€¼</button><small>ä½ çš„äººå·¥å‹¾é¸æ˜¯æœ€å¾Œæ±ºå®šï¼›ç¶²è·¯å°ºå¯¸åªæä¾›åƒè€ƒã€‚</small></div><div id="productShippingSummary">'+productShippingSummaryHtml(shipping)+'</div><div class="ops-form-grid cols-3"><div class="ops-field"><label>å°ºå¯¸è³‡æ–™ç‹€æ…‹</label><select class="ops-select" name="packageResearchStatus">'+packageResearchStatusOptions(row.packageResearchStatus)+'</select></div><div class="ops-field full ops-product-name-field"><label>å°ºå¯¸è³‡æ–™ä¾†æºç¶²å€</label><input class="ops-input" type="url" name="packageResearchSourceUrl" value="'+attr(row.packageResearchSourceUrl)+'"></div><div class="ops-field full"><label>å°ºå¯¸åˆ¤æ–·å‚™è¨»</label><textarea class="ops-textarea" name="packageResearchNote">'+escapeHtml(row.packageResearchNote)+'</textarea></div><div class="ops-field full"><label>æ¡ˆä»¶å‚™è¨»</label><textarea class="ops-textarea" name="caseNote">'+escapeHtml(row.caseNote)+'</textarea></div></div>';
-    const platformSection=productListingSection('EasyStore â†’ è¦çš®','å®˜ç¶²å…§å®¹å®Œæˆå¾Œï¼Œå†ç”±æ—¢æœ‰åŒæ­¥æ–¹å¼ç™¼ä½ˆè¦çš®ã€‚',easySection,true)+productListingSection('MOMO','åªé¡¯ç¤º MOMO ç‰¹åˆ¥éœ€è¦çš„æ¬„ä½ã€‚',momoSection,false)+productListingSection('é…·æ¾Ž','åªé¡¯ç¤ºé…·æ¾Žç‰¹åˆ¥éœ€è¦çš„æ¬„ä½ã€‚',coupangSection,false)+productListingSection('ç‰©æµèˆ‡åŒ…è£','AI å¯å…ˆå¡«åƒè€ƒå€¼ï¼Œä½ çš„åˆ¤æ–·ä»æ˜¯æœ€å¾Œçµæžœã€‚',shippingSection,false);
-    return '<form id="productListingCaseForm" data-id="'+attr(p.docId)+'" data-exists="'+(exists?'1':'0')+'" data-identity-manual-confirmed="'+(row.identityManualConfirmed?'1':'0')+'">'
-      +'<section class="ops-listing-case-summary'+(image?'':' no-image')+'">'+(image?'<img src="'+attr(image)+'" alt="'+attr(p.originalName||p.name)+'">':'')+'<div><span>æº–å‚™ä¸Šæž¶</span><h3>'+escapeHtml(p.originalName||p.name)+'</h3><p>SKU '+escapeHtml(p.sku||'æœªè¨­å®š')+'ï½œåº«å­˜ '+escapeHtml(formatNumber(p.currentStock))+'ï½œæœ€å¾Œæ›´æ–° '+escapeHtml(updated)+'</p></div></section>'
-      +'<input type="hidden" name="internalSku" value="'+attr(p.sku||'')+'"><input type="hidden" name="internalName" value="'+attr(p.originalName||p.name||'')+'"><input type="hidden" name="easyStorePrice" value="'+attr(p.easyStorePrice==null?'':p.easyStorePrice)+'"><input type="hidden" name="momoPrice" value="'+attr(p.momoPrice==null?'':p.momoPrice)+'"><input type="hidden" name="coupangPrice" value="'+attr(p.coupangPrice==null?'':p.coupangPrice)+'"><input type="hidden" name="currentStock" value="'+attr(p.currentStock)+'"><input type="hidden" name="packageMeasurementMode" value="'+attr(row.packageMeasurementMode||'')+'">'
-      +hiddenState+productListingSection('1. æä¾›å•†å“è³‡æ–™','',sourceSection,true)
-      +productListingSection('2. å•†å“ä»‹ç´¹èˆ‡åœ–ç‰‡','',commonSection+productListingSection('ä¸Šæž¶åœ–ç‰‡','',mediaSection,false),row.aiResearchStatus==='completed')
-      +productListingSection('3. å„å¹³å°èˆ‡ç‰©æµ','éœ€è¦æ™‚å†å±•é–‹',platformSection,false)
-      +'<div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">é—œé–‰</button><button class="ops-button soft" type="button" data-action="product-listing-case-preview">å„²å­˜ä¸¦æª¢æŸ¥</button><button class="ops-button soft" type="submit">å„²å­˜ä¸Šæž¶è³‡æ–™</button><button class="ops-button primary" type="button" data-action="product-listing-publish-prepare">ç¢ºèªä¸Šæž¶</button></div></form>';
-  }
-  async function openProductListingCase(id,options){
-    const p=catalogById(id);if(!p)return toast('æ‰¾ä¸åˆ°å•†å“','è«‹é‡æ–°è®€å–è³‡æ–™ã€‚','error');
-    try{
-      const snap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),row=normalizeProductListingCase(snap.exists?snap.data():null,p);
-      openDrawer('å•†å“ä¸Šæž¶è³‡æ–™',p.sku+'ï½œ'+(p.originalName||p.name),productListingCaseFormHtml(p,row,snap.exists));
-      byId('opsDrawer').classList.add('ops-listing-case-drawer');updateProductShippingSummary(byId('productListingCaseForm'));lockProductListingCaseForm(byId('productListingCaseForm'),row.aiResearchStatus==='running');
-    }catch(error){toast('ç„¡æ³•é–‹å•Ÿä¸Šæž¶è³‡æ–™',errorMessage(error),'error');}
-  }
-  function validateProductListingHtml(value,label){
-    const html=clean(value),tags=html.match(/<[^>]*>/g)||[];
-    for(const tag of tags){if(!/^<\s*\/?\s*(h2|h3|p|ul|li|strong|br)\s*\/?\s*>$/i.test(tag))throw new Error((label||'å•†å“ HTML')+'åªæ”¯æ´ h2ã€h3ã€pã€ulã€liã€strongã€brï¼Œä¸”ä¸å¯åŠ å…¥å±¬æ€§æˆ–ç¨‹å¼ç¢¼');}
-  }
-  async function saveProductListingCase(form,previewAfter,keepOpen,silent){
-    if(!form)throw new Error('æ‰¾ä¸åˆ°å•†å“ä¸Šæž¶è³‡æ–™');
-    const id=clean(form.dataset.id),p=catalogById(id);if(!p)throw new Error('æ‰¾ä¸åˆ°ä¸­å¤®å•†å“ä¸»æª”');
-    const data=new FormData(form),packageInfo=productPackageFromFormData(data,false),researchSourceRaw=clean(data.get('packageResearchSourceUrl')),researchSourceUrl=safeUrl(researchSourceRaw);
-    function formUrls(name,label){const raw=clean(data.get(name)),rows=raw.split(/[\n|]+/).map(clean).filter(Boolean),urls=normalizeProductResearchSourceUrls(rows);if(rows.some(function(row){return !/^https?:\/\//i.test(row)||!safeUrl(row);}))throw new Error(label+'è«‹ä¸€è¡Œå¡«ä¸€å€‹å®Œæ•´ç¶²å€');return urls;}
-    const productResearchStatus=clean(data.get('productResearchStatus'))||'not-searched',sourceUrls=formUrls('productResearchSourceUrls','å•†å“ç ”ç©¶ä¾†æº'),referenceUrls=formUrls('referenceUrls','åƒè€ƒç¶²å€'),referenceImageUrls=formUrls('referenceImageUrls','åƒè€ƒåœ–ç‰‡ç¶²å€'),listingImageUrls=formUrls('listingImageUrls','ä¸Šæž¶åœ–ç‰‡ç¶²å€'),selectedReferenceImageUrls=normalizeProductResearchSourceUrls(data.getAll('selectedReferenceImageUrls')).filter(function(url){return referenceImageUrls.includes(url);}).slice(0,10),researchComplete=['researched','manual'].includes(productResearchStatus);
-    const legacyShortDescription=clean(data.get('shortDescription')),legacyFeatureList=clean(data.get('featureList')),legacySpecificationText=clean(data.get('specificationText'));
-    const productDescription=clean(data.get('productDescription'))||clean(data.get('commonProductDescription'))||[legacyShortDescription,legacyFeatureList,legacySpecificationText].filter(Boolean).join('\n\n');
-    const sharedProductHtml=productDescriptionToSafeHtml(productDescription),sellingPoints=clean(data.get('sellingPoints'))||clean((productDescription.split(/\n+/).find(function(line){return /^\s*(?:\d+[.ã€]|[-â€¢â—])\s*/.test(line);})||'').replace(/^\s*(?:\d+[.ã€]|[-â€¢â—])\s*/,''))||clean(productDescription.split(/\n\n+/)[0]);
-    const decisions=['identityDecision','commonContentDecision','mediaDecision','easyStoreShopeeDecision','momoDecision','coupangDecision'];
-    decisions.forEach(function(name){if(!['pending','accepted','rejected'].includes(clean(data.get(name))))throw new Error('æŽ¡ç”¨ç‹€æ…‹æ ¼å¼ä¸æ­£ç¢º');});
-    const originalIdentityStatus=clean(data.get('identityStatus'))||'not_found';if(!['confirmed','possible','conflict','not_found'].includes(originalIdentityStatus))throw new Error('å•†å“èº«åˆ†åˆ¤å®šæ ¼å¼ä¸æ­£ç¢º');
-    const shopeeListingDecision=clean(data.get('shopeeListingDecision'))||'auto';if(!['auto','new','existing'].includes(shopeeListingDecision))throw new Error('è¦çš®æ—¢æœ‰å•†å“åˆ¤æ–·æ ¼å¼ä¸æ­£ç¢º');
-    const identityManualConfirmed=data.get('identityManualConfirmed')==='1',identityManualWasConfirmed=form.dataset.identityManualConfirmed==='1',identityStatus=identityManualConfirmed?'confirmed':originalIdentityStatus,identityManualConfirmationNote=identityManualConfirmed?(clean(data.get('identityManualConfirmationNote'))||'å·²äººå·¥æ ¸å°å“ç‰Œã€åž‹è™Ÿã€é¡è‰²èˆ‡å•†å“ç…§ç‰‡ï¼Œç¢ºèªç‚ºåŒä¸€å•†å“ã€‚'):'';
-    validateProductListingHtml(sharedProductHtml,'å•†å“ä»‹ç´¹ HTML');
-    if(packageInfo.decision&&!PRODUCT_SHIPPING_DECISIONS[packageInfo.decision])throw new Error('ç‰©æµåˆ¤æ–·æ ¼å¼ä¸æ­£ç¢º');
-    if([packageInfo.lengthCm,packageInfo.widthCm,packageInfo.heightCm,packageInfo.weightKg].some(function(value){return value!=null&&value<=0;}))throw new Error('åŒ…è£å°ºå¯¸èˆ‡é‡é‡å¿…é ˆå¤§æ–¼ 0');
-    if(researchSourceRaw&&(!/^https?:\/\//i.test(researchSourceRaw)||!researchSourceUrl))throw new Error('å°ºå¯¸è³‡æ–™ä¾†æºç¶²å€æ ¼å¼ä¸æ­£ç¢º');
-    const ref=state.db.collection(COLLECTIONS.listingCases).doc(id),payload={
-      productId:id,productSku:p.sku,productName:p.originalName||p.name,productImageUrl:p.imageUrl||'',caseStatus:clean(data.get('caseStatus'))||'draft',
-      sourceProductDescription:clean(data.get('sourceProductDescription')),researchInstructions:clean(data.get('researchInstructions')),referenceUrls:referenceUrls,referenceImageUrls:referenceImageUrls,selectedReferenceImageUrls:selectedReferenceImageUrls,listingImageUrls:listingImageUrls,
-      brand:clean(data.get('brand')),shopeeBrand:clean(data.get('shopeeBrand'))||clean(data.get('brand')),shopeeAttributeValues:normalizeProductShopeeAttributes(data.get('shopeeAttributeValues')),model:clean(data.get('model')),barcode:clean(data.get('barcode')),identityStatus:identityStatus,identityEvidence:clean(data.get('identityEvidence')),identityConflictSummary:clean(data.get('identityConflictSummary')),identityDecision:identityManualConfirmed?'accepted':clean(data.get('identityDecision')),identityManualConfirmed:identityManualConfirmed,identityManualConfirmedBy:identityManualConfirmed?userLabel():'',identityManualConfirmationNote:identityManualConfirmationNote,
-      productResearchStatus:productResearchStatus,productResearchSourceUrls:sourceUrls,productResearchUpdatedAt:researchComplete?serverTimestamp():'',researchedProductName:clean(data.get('researchedProductName')),alternateNames:clean(data.get('alternateNames')),searchKeywords:clean(data.get('searchKeywords')),
-      sellingPoints:sellingPoints,productDescription:productDescription,specificationText:legacySpecificationText,includedItems:clean(data.get('includedItems')),material:clean(data.get('material')),color:clean(data.get('color')),countryOfOrigin:clean(data.get('countryOfOrigin')),warrantyInfo:clean(data.get('warrantyInfo')),shortDescription:legacyShortDescription,commonProductDescription:productDescription,featureList:legacyFeatureList,faqText:clean(data.get('faqText')),commonContentDecision:clean(data.get('commonContentDecision')),
-      imagePlan:clean(data.get('imagePlan')),imageGenerationInstructions:clean(data.get('imageGenerationInstructions')),mediaDecision:clean(data.get('mediaDecision')),
-      easyStoreHtml:sharedProductHtml,shopeeTitle:clean(data.get('shopeeTitle')),shopeeDescription:productDescription,shopeeRequiredNotes:clean(data.get('shopeeRequiredNotes')),shopeeCategoryPath:clean(data.get('shopeeCategoryPath')),shopeeListingDecision:shopeeListingDecision,easyStoreShopeeDecision:clean(data.get('easyStoreShopeeDecision')),
-      momoGoodsName:clean(data.get('momoGoodsName')),momoSlogan:clean(data.get('momoSlogan')),momoHtml:sharedProductHtml,momoRequiredNotes:clean(data.get('momoRequiredNotes')),momoCategoryCode:clean(data.get('momoCategoryCode')),momoDecision:clean(data.get('momoDecision')),
-      coupangTitle:clean(data.get('coupangTitle')),coupangDescriptionHtml:sharedProductHtml,coupangRequiredNotes:clean(data.get('coupangRequiredNotes')),coupangCategoryCode:clean(data.get('coupangCategoryCode')),coupangDecision:clean(data.get('coupangDecision')),
-      enabledPlatforms:{easyStoreShopee:data.get('enabledEasyStoreShopee')==='1',momo:data.get('enabledMomo')==='1',coupang:data.get('enabledCoupang')==='1'},
-      shippingDecision:packageInfo.decision,packageLengthCm:packageInfo.lengthCm,packageWidthCm:packageInfo.widthCm,packageHeightCm:packageInfo.heightCm,packageWeightKg:packageInfo.weightKg,packageMeasurementMode:packageInfo.decision?(clean(data.get('packageResearchStatus'))==='manual'?'measured':packageInfo.usedPreset||clean(data.get('packageMeasurementMode'))==='estimated'?'estimated':'provided'):'',packageResearchStatus:clean(data.get('packageResearchStatus'))||'not-searched',packageResearchSourceUrl:researchSourceUrl,packageResearchNote:clean(data.get('packageResearchNote')),caseNote:clean(data.get('caseNote')),
-      priceSnapshot:{easyStore:numberOrNull(p.easyStorePrice),momo:numberOrNull(p.momoPrice),coupang:numberOrNull(p.coupangPrice)},stockSnapshot:numberOrNull(p.currentStock)==null?0:numberOrNull(p.currentStock),schemaVersion:8,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION
-    };
-    if(identityManualConfirmed&&!identityManualWasConfirmed)payload.identityManualConfirmedAt=serverTimestamp();
-    else if(!identityManualConfirmed)payload.identityManualConfirmedAt=null;
-    if(form.dataset.exists!=='1'){payload.createdAt=serverTimestamp();payload.createdBy=userLabel();}
-    await ref.set(payload,{merge:true});form.dataset.exists='1';await writeAudit('å„²å­˜å•†å“ä¸Šæž¶è³‡æ–™','productListingCase',id,p.sku+'ï½œ'+(p.originalName||p.name));
-    if(identityManualConfirmed&&!identityManualWasConfirmed)await writeAudit('äººå·¥ç¢ºèªåŒä¸€å•†å“','productListingCase',id,p.sku+'ï½œ'+identityManualConfirmationNote);
-    form.dataset.identityManualConfirmed=identityManualConfirmed?'1':'0';const identityInput=query('[name="identityStatus"]',form);if(identityInput)identityInput.value=identityStatus;
-    form.dataset.dirty='0';if(!silent)toast('ä¸Šæž¶è³‡æ–™å·²å„²å­˜',p.originalName||p.name,'success');if(previewAfter)openProductListingPreview(form);else if(!keepOpen)closeDrawer();
-  }
-  function lockProductListingCaseForm(form,locked){
-    if(!form)return;
-    queryAll('input,textarea,select,button',form).forEach(function(control){
-      if(control.matches('[data-action="drawer-close"]'))return;
-      if(locked){if(!control.disabled)control.dataset.aiLock='1';control.disabled=true;}
-      else if(control.dataset.aiLock==='1'){control.disabled=false;delete control.dataset.aiLock;}
-    });
-    form.classList.toggle('ops-product-ai-locked',!!locked);
-  }
-  function setProductAiResearchUi(form,status,message){
-    if(!form)return;
-    const button=query('[data-action="product-ai-research-run"]',form),box=byId('productAiResearchStatus');
-    lockProductListingCaseForm(form,status==='running');
-    if(button){button.disabled=status==='running';button.setAttribute('aria-busy',status==='running'?'true':'false');button.textContent=status==='running'?'AI è™•ç†ä¸­â€¦':status==='completed'?'é‡æ–°æ•´ç†æ–‡å­—èˆ‡å‹¾é¸åœ–ç‰‡':'AI å®Œæˆæ–‡å­—èˆ‡å‹¾é¸åœ–ç‰‡';}
-    if(box&&status==='running')box.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner" aria-hidden="true"></span><div><b>AI æ­£åœ¨æ•´ç†ä¸Šæž¶è³‡æ–™</b><small>'+escapeHtml(message||'æ­£åœ¨ä¾ç…§å•†å“åç¨±ã€ç¶²å€èˆ‡å‹¾é¸ç…§ç‰‡æ•´ç†å®Œæ•´å•†å“ä»‹ç´¹ã€‚')+'</small></div></div>';
-    if(box&&status==='failed')box.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>AI ä¸Šæž¶è³‡æ–™æœªå®Œæˆ</b><small>'+escapeHtml(message||'è«‹ç¨å¾Œå†è©¦ã€‚')+'</small></div></div>';
-  }
-  async function runProductAiResearch(form,force,automatic){
-    if(!form||form.dataset.aiRunning==='1')return;
-    const id=clean(form.dataset.id),reference=queryAll('[name="selectedReferenceImageUrls"]:checked',form).map(function(input){return safeUrl(input.value);}).filter(Boolean).slice(0,10);if(!id)return;
-    form.dataset.aiRunning='1';
-    try{
-      await saveProductListingCase(form,false,true,true);
-      if(!global.firebase||!global.firebase.functions)throw new Error('AI ä¸Šæž¶æœå‹™å°šæœªè¼‰å…¥ï¼Œè«‹é‡æ–°æ•´ç†é é¢ã€‚');
-      await requireEasyStoreManagerAuth();
-      setProductAiResearchUi(form,'running','å…ˆæ•´ç†å®Œæ•´å•†å“ä»‹ç´¹ï¼›æœ‰å‹¾é¸åœ–ç‰‡æ™‚ï¼ŒæŽ¥è‘—æœƒé€å¼µè½‰æˆç¹é«”ä¸Šæž¶åœ–ã€‚');
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('researchProductListingCase',{timeout:9*60*1000});
-      const response=await callable({productId:id,force:force===true}),result=response&&response.data||{};
-      let imageResult=null,imageError=null;
-      if(reference.length){
-        const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)setProductAiResearchUi(current,'running','æ–‡å­—å·²æ•´ç†å®Œæˆï¼Œæ­£åœ¨è™•ç† '+reference.length+' å¼µå‹¾é¸åœ–ç‰‡ã€‚');
-        try{imageResult=await requestProductListingImageGeneration(id,reference);}catch(error){imageError=error;}
-      }
-      const current=byId('productListingCaseForm');
-      if(current&&clean(current.dataset.id)===id)await openProductListingCase(id,{skipAutoResearch:true});
-      if(imageError)toast('æ–‡å­—å·²å®Œæˆï¼Œéƒ¨åˆ†åœ–ç‰‡æœªå®Œæˆ',errorMessage(imageError),'warning');
-      else toast(result.cached&&!imageResult?'ç›®å‰ä¸Šæž¶è³‡æ–™å·²æ˜¯æœ€æ–°':'AI å·²å®Œæˆä¸Šæž¶è³‡æ–™','å®Œæ•´å•†å“ä»‹ç´¹å·²å¡«å…¥'+(imageResult?'ï¼Œä¸¦å®Œæˆ '+Number(imageResult.completedCount||0)+' å¼µä¸Šæž¶åœ–':'')+'ï¼Œè«‹ç›´æŽ¥å¾€ä¸‹æª¢æŸ¥ã€‚','success');
-    }catch(error){
-      const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)setProductAiResearchUi(current,'failed',errorMessage(error));
-      if(!automatic)toast('AI ä¸Šæž¶è³‡æ–™æœªå®Œæˆ',errorMessage(error),'error');
-    }finally{
-      const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)current.dataset.aiRunning='0';
-    }
-  }
-
-  function refreshProductListingImagePreviews(form){
-    if(!form)return;
-    const reference=normalizeProductResearchSourceUrls(query('[name="referenceImageUrls"]',form)&&query('[name="referenceImageUrls"]',form).value),selected=queryAll('[name="selectedReferenceImageUrls"]:checked',form).map(function(input){return input.value;}),listing=normalizeProductResearchSourceUrls(query('[name="listingImageUrls"]',form)&&query('[name="listingImageUrls"]',form).value);
-    const referenceBox=byId('productReferenceImagePreview'),listingBox=byId('productListingImagePreview');
-    if(referenceBox)referenceBox.innerHTML=productReferenceImageSelectorHtml(reference,selected.filter(function(url){return reference.includes(url);}));
-    if(listingBox)listingBox.innerHTML=productListingImagePreviewHtml(listing,'ä¸Šæž¶åœ–ç‰‡');
-  }
-  async function importProductListingImagesFromUrls(form){
-    if(!form||form.dataset.imageImportRunning==='1')return;
-    if(!global.firebase||!global.firebase.functions)throw new Error('å•†å“åœ–ç‰‡æœå°‹æœå‹™å°šæœªè¼‰å…¥ï¼Œè«‹é‡æ–°æ•´ç†é é¢ã€‚');
-    const id=clean(form.dataset.id);if(!id)throw new Error('æ‰¾ä¸åˆ°å•†å“ä¸Šæž¶è³‡æ–™');
-    const pageUrls=normalizeProductResearchSourceUrls(query('[name="referenceUrls"]',form)&&query('[name="referenceUrls"]',form).value),button=query('[data-action="product-source-images-import"]',form),status=byId('productReferenceImageImportStatus');
-    form.dataset.imageImportRunning='1';
-    if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='æ­£åœ¨æ‰¾å•†å“åœ–â€¦';}
-    if(status)status.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner"></span><div><b>æ­£åœ¨å°‹æ‰¾é€™ä¸€ä»¶å•†å“çš„åœ–ç‰‡</b><small>å…ˆè®€å•†å“ç¶²å€ï¼›è‹¥é é¢è¢«ç™»å…¥æˆ–é©—è­‰æ“‹ä½ï¼Œå†ä¾å“ç‰Œã€åž‹è™Ÿèˆ‡é¡è‰²æ‰¾å…¬é–‹é é¢ã€‚</small></div></div>';
-    try{
-      await saveProductListingCase(form,false,true,true);await requireEasyStoreManagerAuth();
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('importProductListingImages',{timeout:9*60*1000}),response=await callable({productId:id,pageUrls:pageUrls}),result=response&&response.data||{};
-      const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)await openProductListingCase(id,{skipAutoResearch:true});
-      const extra=result.searchedPublicSources?'ï¼›ä¾›æ‡‰å•†é è®€ä¸åˆ°çš„éƒ¨åˆ†å·²æ”¹æ‰¾åŒåž‹è™Ÿå…¬é–‹ä¾†æº':'';
-      toast('å•†å“å€™é¸åœ–å·²åŠ å…¥',Number(result.importedCount||0)+' å¼µå·²æ”¾é€²é€™ä¸€ä»¶å•†å“ä¸¦è‡ªå‹•å‹¾é¸'+extra+'ã€‚','success');return result;
-    }catch(error){
-      const current=byId('productListingCaseForm'),box=byId('productReferenceImageImportStatus');if(current&&clean(current.dataset.id)===id&&box)box.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>è‡ªå‹•æ‰¾åœ–æœªå®Œæˆ</b><small>'+escapeHtml(errorMessage(error))+'</small></div></div>';throw error;
-    }finally{
-      const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id){current.dataset.imageImportRunning='0';const currentButton=query('[data-action="product-source-images-import"]',current);if(currentButton){currentButton.disabled=false;currentButton.removeAttribute('aria-busy');currentButton.textContent='å¾žç¶²å€ï¼åž‹è™Ÿè‡ªå‹•æ‰¾å•†å“åœ–';}}
-    }
-  }
-  async function uploadProductReferenceImages(form,files){
-    if(!form||!files||!files.length)return;
-    if(!global.firebase||!global.firebase.storage)throw new Error('åœ–ç‰‡ä¸Šå‚³æœå‹™å°šæœªè¼‰å…¥ï¼Œè«‹é‡æ–°æ•´ç†é é¢ã€‚');
-    await requireEasyStoreManagerAuth();
-    const id=clean(form.dataset.id);if(!id)throw new Error('æ‰¾ä¸åˆ°å•†å“ä¸Šæž¶è³‡æ–™');
-    const input=query('[name="referenceImageUrls"]',form),existing=normalizeProductResearchSourceUrls(input&&input.value),selected=Array.from(files).slice(0,10);
-    if(existing.length+selected.length>10)throw new Error('æ¯å€‹å•†å“æœ€å¤šä¿ç•™ 10 å¼µä¾†æºåœ–ç‰‡');
-    selected.forEach(function(file){if(!['image/jpeg','image/png','image/webp'].includes(clean(file&&file.type)))throw new Error('åªæ”¯æ´ JPGã€PNG æˆ– WebP åœ–ç‰‡');if(Number(file&&file.size||0)>8*1024*1024)throw new Error('æ¯å¼µåœ–ç‰‡ä¸å¯è¶…éŽ 8 MB');});
-    const status=byId('productReferenceImageUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner"></span><div><b>æ­£åœ¨ä¸Šå‚³å•†å“ç…§ç‰‡</b><small>å®Œæˆå¾Œæœƒè‡ªå‹•ä¿å­˜åœ¨é€™ä¸€ä»¶å•†å“è£¡ã€‚</small></div></div>';
-    const storage=global.firebase.app().storage(),uploaded=[];
-    for(let index=0;index<selected.length;index+=1){
-      const file=selected[index],extension=(file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg'),path='ops-product-listing-cases/'+id+'/references/'+Date.now()+'-'+index+'-'+Math.random().toString(36).slice(2,9)+'.'+extension;
-      const snapshot=await storage.ref().child(path).put(file,{contentType:file.type,customMetadata:{productId:id,uploadedBy:userLabel()}});
-      uploaded.push(await snapshot.ref.getDownloadURL());
-    }
-    const urls=normalizeProductResearchSourceUrls(existing.concat(uploaded));if(input)input.value=urls.join('\n');form.dataset.dirty='1';const referenceBox=byId('productReferenceImagePreview');if(referenceBox)referenceBox.innerHTML=productReferenceImageSelectorHtml(urls,urls);refreshProductListingImagePreviews(form);await saveProductListingCase(form,false,true,true);
-    if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>âœ“</span><div><b>ä¾†æºåœ–ç‰‡å·²ä¸Šå‚³</b><small>'+uploaded.length+' å¼µå·²è‡ªå‹•å‹¾é¸ï¼›å¯ç›´æŽ¥æ‰¹æ¬¡è½‰æˆç¹é«”ç‰ˆã€‚</small></div></div>';
-    toast('ä¾†æºåœ–ç‰‡å·²ä¸Šå‚³',uploaded.length+' å¼µåœ–ç‰‡å·²åŠ å…¥ä¸¦å‹¾é¸ã€‚','success');
-  }
-  function selectProductReferenceImages(form,selected){
-    if(!form)return;
-    queryAll('[name="selectedReferenceImageUrls"]',form).forEach(function(input,index){input.checked=selected&&index<10;const card=input.closest('label');if(card){card.classList.toggle('selected',input.checked);const mark=query('.ops-listing-source-check',card);if(mark)mark.textContent=input.checked?'âœ“':'';}});form.dataset.dirty='1';refreshProductListingImagePreviews(form);
-  }
-  async function requestProductListingImageGeneration(id,reference){
-    if(!global.firebase||!global.firebase.functions)throw new Error('AI è£½åœ–æœå‹™å°šæœªè¼‰å…¥ï¼Œè«‹é‡æ–°æ•´ç†é é¢ã€‚');
-    const callable=global.firebase.app().functions('us-central1').httpsCallable('generateProductListingImage',{timeout:9*60*1000}),response=await callable({productId:id,imageUrls:reference});
-    return response&&response.data||{};
-  }
-  async function generateProductListingImage(form){
-    if(!form||form.dataset.imageRunning==='1')return;
-    const id=clean(form.dataset.id),reference=queryAll('[name="selectedReferenceImageUrls"]:checked',form).map(function(input){return safeUrl(input.value);}).filter(Boolean).slice(0,10);
-    if(!reference.length)throw new Error('è«‹å…ˆä¸Šå‚³ä¸¦å‹¾é¸è‡³å°‘ä¸€å¼µä½ æœ‰æ¬Šä½¿ç”¨çš„ä¾›æ‡‰å•†åŽŸåœ–ã€‚');
-    if(!global.firebase||!global.firebase.functions)throw new Error('AI è£½åœ–æœå‹™å°šæœªè¼‰å…¥ï¼Œè«‹é‡æ–°æ•´ç†é é¢ã€‚');
-    form.dataset.imageRunning='1';
-    const button=query('[data-action="product-ai-image-generate"]',form),status=byId('productAiImageGenerationStatus');
-    if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='æ­£åœ¨è½‰æ› '+reference.length+' å¼µâ€¦';}
-    if(status)status.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner"></span><div><b>æ­£åœ¨æŠŠ '+reference.length+' å¼µåŽŸåœ–è½‰æˆç¹é«”ç‰ˆ</b><small>æ¯å¼µåŽŸåœ–æœƒå„è‡ªç”¢ç”Ÿä¸€å¼µï¼Œä¸¦ç›¡é‡ä¿ç•™å•†å“ã€é¡è‰²ã€æ§‹åœ–èˆ‡ç‰ˆé¢ï¼›å¯èƒ½éœ€è¦æ•¸åˆ†é˜ã€‚</small></div></div>';
-    try{
-      await saveProductListingCase(form,false,true,true);await requireEasyStoreManagerAuth();
-      const result=await requestProductListingImageGeneration(id,reference);
-      const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)await openProductListingCase(id,{skipAutoResearch:true});
-      toast('ç¹é«”ä¸Šæž¶åœ–å·²å®Œæˆ','å®Œæˆ '+Number(result.completedCount||0)+' å¼µä¸¦è‡ªå‹•åŠ å…¥æº–å‚™ä¸Šæž¶'+(Number(result.failedCount||0)?'ï¼Œå¦æœ‰ '+Number(result.failedCount||0)+' å¼µæœªå®Œæˆ':'')+'ã€‚',Number(result.failedCount||0)?'warning':'success');return result;
-    }catch(error){
-      const current=byId('productListingCaseForm'),box=byId('productAiImageGenerationStatus');if(current&&clean(current.dataset.id)===id&&box)box.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>åœ–ç‰‡è½‰æ›æœªå®Œæˆ</b><small>'+escapeHtml(errorMessage(error))+'</small></div></div>';throw error;
-    }finally{
-      const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id){current.dataset.imageRunning='0';const currentButton=query('[data-action="product-ai-image-generate"]',current);if(currentButton){currentButton.disabled=false;currentButton.removeAttribute('aria-busy');currentButton.textContent='AI è½‰æˆç¹é«”ä¸¦åŠ å…¥ä¸Šæž¶åœ–';}}
-    }
-  }
-
-  function imageGalleryHtml(images,alt){images=(images||[]).slice(0,3);if(!images.length)return '<div class="ops-detail-gallery"><div class="ops-detail-no-image">å°šç„¡åœ–ç‰‡</div></div>';return '<div class="ops-detail-gallery">'+images.map(function(url,index){return '<img class="'+(index===0?'main':'')+'" src="'+attr(url)+'" alt="'+attr(alt)+'">';}).join('')+'</div>';}
-  function openProductEdit(id){
-    const targetId=id||'__new__';
-    if(state.productEditId&&state.productEditId!==targetId&&!closeProductEditorForListChange())return;
-    const p=id?catalogById(id):null;
-    if(id&&!p)return toast('æ‰¾ä¸åˆ°å•†å“','è«‹é‡æ–°è®€å–è³‡æ–™ã€‚','error');
-    state.productEditId=targetId;
-    state.productPreviewImages=[];
-    state.productPreviewIndex=0;
-    state.productPreviewTitle=(p&&((p.originalName)||(p.onlineName)||(p.name)))||'å•†å“åœ–ç‰‡';
-    render();
-    setTimeout(function(){
-      const editor=byId('opsProductEditor');
-      if(editor&&typeof editor.scrollIntoView==='function'){
-        try{editor.scrollIntoView({behavior:'smooth',block:'start'});}catch(err){editor.scrollIntoView(true);}
-      }
-      const status=query('#productForm [name="status"]');
-      if(status){
-        status.value=(p&&p.internal&&p.internal.status)||'active';
-        Array.from(status.options||[]).forEach(function(option){option.defaultSelected=option.selected;});
-      }
-    },0);
-  }
-  function openProductDetail(id){
-    const p=catalogById(id);if(!p)return;const tx=state.inventory.filter(function(x){return x.productId===p.docId;}).sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);}).slice(0,10);const layers=(p.internal&&p.internal.costLayers)||[];
-    const txHtml=tx.length?tx.map(function(x){return '<div class="ops-status-row"><div><b>'+escapeHtml(x.type)+'ãƒ»'+(x.qtyChange>0?'+':'')+formatNumber(x.qtyChange)+'</b><small>'+escapeHtml(dateTimeText(x.occurredAt))+' '+escapeHtml(x.referenceId||'')+'</small></div><b>'+formatNumber(x.afterStock)+'</b></div>';}).join(''):emptyHtml('å°šç„¡åº«å­˜ç•°å‹•','é€²è²¨ã€éŠ·å”®æˆ–ç›¤é»žå¾Œæœƒé¡¯ç¤ºã€‚');
-    const layerHtml=layers.length?'<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>æ‰¹æ¬¡</th><th>æ—¥æœŸ</th><th class="num">å‰©é¤˜æ•¸é‡</th><th class="num">å–®ä½æˆæœ¬</th><th>ä¾†æº</th></tr></thead><tbody>'+layers.map(function(l){return '<tr><td>'+escapeHtml(l.layerId)+'</td><td>'+escapeHtml(dateText(l.receivedAt))+'</td><td class="num">'+formatNumber(l.qtyRemaining)+'</td><td class="num">'+money(l.unitCost)+'</td><td>'+escapeHtml(l.referenceType+' '+(l.referenceId||''))+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('å°šç„¡ FIFO æˆæœ¬æ‰¹æ¬¡','åº«å­˜ç‚ºé›¶ã€æˆæœ¬ç¼ºæ¼ï¼Œæˆ–å°šæœªå®ŒæˆåŽŸå§‹ Excel åŒ¯å…¥ã€‚');
-    const body='<div class="ops-detail-hero">'+imageGalleryHtml(p.imageUrls,p.originalName||p.name)+'<div><h3>'+escapeHtml(p.originalName||p.name)+'</h3><p>ç¶²è·¯åç¨±ï¼š'+escapeHtml(p.onlineName||'æœªä¸Šæž¶ï¼æœªé…å°')+'</p><p>SKUï¼š'+escapeHtml(p.sku||'å°šæœªè¨­å®š')+'</p><p>'+escapeHtml([p.brand,p.category,p.variantName].filter(Boolean).join('ãƒ»')||'æœªè¨­å®šå“ç‰Œï¼åˆ†é¡ž')+'</p></div></div><div class="ops-grid-equal"><div class="ops-card"><div class="ops-summary-list"><div class="ops-summary-line"><span>ç¾æœ‰åº«å­˜</span><b>'+formatNumber(p.currentStock)+'</b></div><div class="ops-summary-line"><span>ä¿ç•™åº«å­˜</span><b>'+formatNumber(p.reservedStock)+'</b></div><div class="ops-summary-line"><span>å®‰å…¨åº«å­˜</span><b>'+formatNumber(p.safetyStock)+'</b></div><div class="ops-summary-line total"><span>å¯éŠ·å”®åº«å­˜</span><b>'+formatNumber(p.availableStock)+'</b></div></div></div><div class="ops-card"><div class="ops-summary-list"><div class="ops-summary-line"><span>é–€å¸‚å”®åƒ¹</span><b>'+money(p.storePrice)+'</b></div><div class="ops-summary-line"><span>EASY STORE å”®åƒ¹</span><b>'+money(p.easyStorePrice)+'</b></div><div class="ops-summary-line"><span>MOMO å”®åƒ¹</span><b>'+money(p.momoPrice)+'</b></div><div class="ops-summary-line"><span>Coupangï¼é…·æ¾Žå”®åƒ¹</span><b>'+money(p.coupangPrice)+'</b></div><div class="ops-summary-line"><span>ä¸‹ä¸€ä»¶ FIFO æˆæœ¬</span><b>'+money(p.nextFifoCost)+'</b></div><div class="ops-summary-line"><span>å‰©é¤˜å¹³å‡æˆæœ¬</span><b>'+money(p.averageCost)+'</b></div><div class="ops-summary-line"><span>åº«å­˜ç¸½æˆæœ¬</span><b>'+money(p.inventoryValue)+'</b></div><div class="ops-summary-line total"><span>ä¸‹ä¸€ä»¶é ä¼°æ¯›åˆ©çŽ‡</span><b>'+percentage(p.margin)+'</b></div></div></div></div><div class="ops-section-title">FIFO å‰©é¤˜æˆæœ¬æ‰¹æ¬¡</div>'+layerHtml+'<div class="ops-section-title">æœ€è¿‘åº«å­˜ç•°å‹•</div>'+txHtml+'<div class="ops-drawer-footer"><button class="ops-button ghost" data-action="drawer-close">é—œé–‰</button><button class="ops-button soft" data-action="product-listing-case-open" data-id="'+attr(p.docId)+'">æº–å‚™ä¸Šæž¶</button><button class="ops-button primary" data-action="product-edit" data-id="'+attr(p.docId)+'">ç·¨è¼¯ä¸»æª”</button></div>';openDrawer('å•†å“å®Œæ•´è³‡æ–™','åŽŸå§‹åç¨±ã€ç¶²è·¯åç¨±ã€åœ–ç‰‡ã€åº«å­˜èˆ‡ FIFO æˆæœ¬ã€‚',body);
-  }
-  function productPackageFromFormData(data,applyConvenienceFallback){
-    const decision=clean(data.get('shippingDecision'));
-    const values={
-      decision:decision,
-      lengthCm:numberOrNull(data.get('packageLengthCm')),
-      widthCm:numberOrNull(data.get('packageWidthCm')),
-      heightCm:numberOrNull(data.get('packageHeightCm')),
-      weightKg:numberOrNull(data.get('packageWeightKg')),
-      usedPreset:false
-    };
-    const preset=PRODUCT_PACKAGE_PRESETS[decision];
-    if(applyConvenienceFallback&&preset){
-      if(values.lengthCm==null){values.lengthCm=preset.lengthCm;values.usedPreset=true;}
-      if(values.widthCm==null){values.widthCm=preset.widthCm;values.usedPreset=true;}
-      if(values.heightCm==null){values.heightCm=preset.heightCm;values.usedPreset=true;}
-      if(values.weightKg==null){values.weightKg=preset.weightKg;values.usedPreset=true;}
-    }
-    return values;
-  }
-  function applyProductShippingPreset(form,force){
-    if(!form)return;
-    const decision=clean(new FormData(form).get('shippingDecision'));
-    const preset=PRODUCT_PACKAGE_PRESETS[decision];
-    if(!preset){
-      toast('æ²’æœ‰è‡ªå‹•å¥—ç”¨å°ºå¯¸',decision?'å®…é…æˆ–å¤§åž‹å•†å“è«‹å¡«å¯¦éš›å¤–ç®±è³‡æ–™ã€‚':'è«‹å…ˆé¸æ“‡ã€Œå¯è¶…å•†å¯„ã€ã€‚','warning');
-      updateProductShippingSummary(form);
-      return;
-    }
-    let applied=false;
-    [['packageLengthCm',preset.lengthCm],['packageWidthCm',preset.widthCm],['packageHeightCm',preset.heightCm],['packageWeightKg',preset.weightKg]].forEach(function(pair){
-      const input=query('[name="'+pair[0]+'"]',form);
-      if(input&&(force||clean(input.value)==='')){input.value=String(pair[1]);applied=true;}
-    });
-    const mode=query('[name="packageMeasurementMode"]',form);if(mode&&applied)mode.value='estimated';
-    updateProductShippingSummary(form);
-    if(force)toast('å·²å¥—ç”¨å°åž‹å•†å“å»ºè­°å€¼','40 Ã— 30 Ã— 10 å…¬åˆ†ã€1 å…¬æ–¤ï¼›è«‹ä¾å¯¦éš›åŒ…è£èª¿æ•´ã€‚','success');
-  }
-  function updateProductShippingSummary(form){
-    const target=byId('productShippingSummary');
-    if(!form||!target)return;
-    const values=productPackageFromFormData(new FormData(form),false);
-    target.innerHTML=productShippingSummaryHtml({shippingDecision:values.decision,packageLengthCm:values.lengthCm,packageWidthCm:values.widthCm,packageHeightCm:values.heightCm,packageWeightKg:values.weightKg});
-    queryAll('.ops-product-shipping-choice',form).forEach(function(label){const input=query('input',label);label.classList.toggle('active',!!(input&&input.checked));});
-  }
-  function clearEstimatedProductPackage(form){
-    if(!form)return;
-    const mode=query('[name="packageMeasurementMode"]',form);
-    if(!mode||mode.value!=='estimated')return;
-    ['packageLengthCm','packageWidthCm','packageHeightCm','packageWeightKg'].forEach(function(name){const input=query('[name="'+name+'"]',form);if(input)input.value='';});
-    mode.value='';
-  }
-  function productListingDraftFromForm(form){
-    const data=new FormData(form),id=clean(form.dataset.id),product=id?catalogById(id):null,packageInfo=productPackageFromFormData(data,false);
-    const productDescription=clean(data.get('productDescription'))||clean(data.get('commonProductDescription'))||[clean(data.get('shortDescription')),clean(data.get('featureList')),clean(data.get('specificationText'))].filter(Boolean).join('\n\n'),sharedHtml=productDescriptionToSafeHtml(productDescription);
-    return {
-      id:id,product:product,sku:normalizeCode(data.get('internalSku')),name:clean(data.get('internalName')),researchedName:clean(data.get('researchedProductName')),brand:clean(data.get('brand')),model:clean(data.get('model')),barcode:clean(data.get('barcode')),
-      identityStatus:clean(data.get('identityStatus')),identityDecision:clean(data.get('identityDecision')),productResearchStatus:clean(data.get('productResearchStatus'))||'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(data.get('productResearchSourceUrls')),alternateNames:clean(data.get('alternateNames')),searchKeywords:clean(data.get('searchKeywords')),sellingPoints:clean(data.get('sellingPoints')),productDescription:productDescription,specificationText:clean(data.get('specificationText')),includedItems:clean(data.get('includedItems')),material:clean(data.get('material')),color:clean(data.get('color')),countryOfOrigin:clean(data.get('countryOfOrigin')),warrantyInfo:clean(data.get('warrantyInfo')),shortDescription:clean(data.get('shortDescription')),commonProductDescription:productDescription,featureList:clean(data.get('featureList')),faqText:clean(data.get('faqText')),commonContentDecision:clean(data.get('commonContentDecision')),
-      referenceUrls:normalizeProductResearchSourceUrls(data.get('referenceUrls')),referenceImageUrls:normalizeProductResearchSourceUrls(data.get('referenceImageUrls')),listingImageUrls:normalizeProductResearchSourceUrls(data.get('listingImageUrls')),imagePlan:clean(data.get('imagePlan')),mediaDecision:clean(data.get('mediaDecision')),
-      enabledEasyStoreShopee:data.get('enabledEasyStoreShopee')==='1',easyStoreShopeeDecision:clean(data.get('easyStoreShopeeDecision')),easyStoreHtml:sharedHtml,shopeeTitle:clean(data.get('shopeeTitle')),shopeeDescription:productDescription,shopeeCategoryPath:clean(data.get('shopeeCategoryPath')),shopeeListingDecision:['auto','new','existing'].includes(clean(data.get('shopeeListingDecision')))?clean(data.get('shopeeListingDecision')):'auto',
-      enabledMomo:data.get('enabledMomo')==='1',momoDecision:clean(data.get('momoDecision')),momoGoodsName:clean(data.get('momoGoodsName')),momoSlogan:clean(data.get('momoSlogan')),momoHtml:sharedHtml,momoCategoryCode:clean(data.get('momoCategoryCode')),
-      enabledCoupang:data.get('enabledCoupang')==='1',coupangDecision:clean(data.get('coupangDecision')),coupangTitle:clean(data.get('coupangTitle')),coupangDescriptionHtml:sharedHtml,coupangCategoryCode:clean(data.get('coupangCategoryCode')),
-      easyStorePrice:numberOrNull(data.get('easyStorePrice')),momoPrice:numberOrNull(data.get('momoPrice')),coupangPrice:numberOrNull(data.get('coupangPrice')),stock:numberOrNull(data.get('currentStock')),
-      shippingDecision:packageInfo.decision,packageLengthCm:packageInfo.lengthCm,packageWidthCm:packageInfo.widthCm,packageHeightCm:packageInfo.heightCm,packageWeightKg:packageInfo.weightKg,usedPreset:packageInfo.usedPreset||clean(data.get('packageMeasurementMode'))==='estimated',
-      packageResearchStatus:clean(data.get('packageResearchStatus')),packageResearchSourceUrl:safeUrl(data.get('packageResearchSourceUrl')),packageResearchNote:clean(data.get('packageResearchNote')),
-      imageCount:normalizeProductResearchSourceUrls(data.get('listingImageUrls')).length
-    };
-  }
-  function productListingPackageReady(draft){
-    return !!(draft.shippingDecision&&draft.packageLengthCm>0&&draft.packageWidthCm>0&&draft.packageHeightCm>0&&draft.packageWeightKg>0);
-  }
-  function productListingShopeeLogisticsReady(draft){
-    if(!productListingPackageReady(draft))return false;
-    const dimensions=[draft.packageLengthCm,draft.packageWidthCm,draft.packageHeightCm],longest=Math.max.apply(Math,dimensions),total=dimensions.reduce(function(sum,value){return sum+value;},0),weight=draft.packageWeightKg;
-    if(draft.shippingDecision==='convenience')return longest<=45&&total<=105&&weight<=5;
-    if(draft.shippingDecision==='home')return true;
-    if(draft.shippingDecision==='freight')return longest<=150&&total<=210&&weight<=20;
-    return false;
-  }
-  function productResearchReady(draft){
-    return !!((draft.researchedName||draft.name)&&draft.productDescription);
-  }
-  function productListingReadiness(draft){
-    const common=productResearchReady(draft),media=draft.imageCount>0,packageReady=productListingPackageReady(draft),shopeeLogisticsReady=!draft.enabledEasyStoreShopee||productListingShopeeLogisticsReady(draft),shopeeLogisticsManualConfirmationRequired=!!(draft.enabledEasyStoreShopee&&packageReady&&draft.shippingDecision==='home'),listingName=draft.researchedName||draft.name;
-    const easy=!draft.enabledEasyStoreShopee||!!(draft.sku&&listingName&&common&&media&&draft.easyStoreHtml&&draft.shopeeTitle&&draft.shopeeDescription&&draft.shopeeCategoryPath&&draft.easyStorePrice!=null&&shopeeLogisticsReady);
-    const momo=!draft.enabledMomo||!!(draft.sku&&common&&media&&draft.momoGoodsName&&draft.momoHtml&&draft.momoCategoryCode&&draft.momoPrice!=null&&packageReady);
-    const coupang=!draft.enabledCoupang||!!(draft.sku&&common&&media&&draft.coupangTitle&&draft.coupangDescriptionHtml&&draft.coupangCategoryCode&&draft.coupangPrice!=null&&packageReady);
-    const selected=[draft.enabledEasyStoreShopee?'EasyStore/Shopee':'',draft.enabledMomo?'MOMO':'',draft.enabledCoupang?'Coupang':''].filter(Boolean);
-    return {common:common,media:media,packageReady:packageReady,shopeeLogisticsReady:shopeeLogisticsReady,shopeeLogisticsManualConfirmationRequired:shopeeLogisticsManualConfirmationRequired,easy:easy,momo:momo,coupang:coupang,selected:selected,all:selected.length>0&&easy&&momo&&coupang};
-  }
-  function productListingCheckRow(label,value,ok,note){
-    return '<div class="ops-listing-check-row '+(ok?'ok':'missing')+'"><span>'+(ok?'âœ“':'!')+'</span><div><b>'+escapeHtml(label)+'</b><small>'+escapeHtml(value||note||'å°šæœªå¡«å¯«')+'</small></div></div>';
-  }
-  function productPlatformDraftCard(title,status,rows,note){
-    status=status||{};const statusLabel=clean(status.label)||(status.ok?'è³‡æ–™é½Šå…¨':'å°šæœ‰ç¼ºä»¶'),statusType=clean(status.type)||(status.ok?'green':'yellow');
-    return '<section class="ops-listing-platform-card"><div class="ops-listing-platform-head"><h3>'+escapeHtml(title)+'</h3>'+statusTag(statusLabel,statusType)+'</div><div class="ops-listing-checks">'+rows.join('')+'</div><p>'+escapeHtml(note)+'</p></section>';
-  }
-  function shopeeListingDecisionLabel(value){
-    return {auto:'ç³»çµ±åˆ¤æ–·ï¼›ç„¡æ³•ç¢ºèªå°±åœæ­¢',existing:'å·²æœ‰è¦çš®å•†å“ï¼Œåªé…å°ï¼æ›´æ–°',new:'å·²ç¢ºèªè¦çš®æ²’æœ‰ï¼Œå…è¨±æ–°å¢ž'}[clean(value)]||'ç³»çµ±åˆ¤æ–·ï¼›ç„¡æ³•ç¢ºèªå°±åœæ­¢';
-  }
-  function openProductListingPreview(form){
-    if(!form)return;
-    const draft=productListingDraftFromForm(form),listingName=draft.researchedName||draft.name,readiness=productListingReadiness(draft),packageReady=readiness.packageReady,contentReady=readiness.common,hasImages=draft.imageCount>0,shippingText=draft.shippingDecision?shippingDecisionLabel(draft.shippingDecision):'';
-    const packageText=packageReady?formatNumber(draft.packageLengthCm)+' Ã— '+formatNumber(draft.packageWidthCm)+' Ã— '+formatNumber(draft.packageHeightCm)+' cmï¼'+formatNumber(draft.packageWeightKg)+' kg'+(draft.usedPreset?'ï¼ˆå°åž‹å•†å“å»ºè­°å€¼ï¼‰':''):'';
-    const contentRows=[
-      productListingCheckRow('ä¸Šæž¶å•†å“åç¨±',listingName,!!listingName),productListingCheckRow('å®Œæ•´å•†å“ä»‹ç´¹',draft.productDescription?'å·²å¡« '+draft.productDescription.length+' å­—':'',!!draft.productDescription),productListingCheckRow('ä¸Šæž¶åœ–ç‰‡',draft.imageCount+' å¼µ',hasImages)
-    ];
-    const easyRows=[
-      productListingCheckRow('SKU',draft.sku,!!draft.sku),productListingCheckRow('è¦çš®é˜²é‡è¤‡æ–¹å¼',shopeeListingDecisionLabel(draft.shopeeListingDecision),true),productListingCheckRow('è¦çš®æ¨™é¡Œ',draft.shopeeTitle,!!draft.shopeeTitle),productListingCheckRow('EasyStore å•†å“å…§å®¹',draft.easyStoreHtml?'å·²å¡« '+draft.easyStoreHtml.length+' å­—':'',!!draft.easyStoreHtml),productListingCheckRow('è¦çš®åˆ†é¡ž',draft.shopeeCategoryPath,!!draft.shopeeCategoryPath),productListingCheckRow('EasyStore å”®åƒ¹',money(draft.easyStorePrice),draft.easyStorePrice!=null),productListingCheckRow(readiness.shopeeLogisticsManualConfirmationRequired?'å¤–ç®±è³‡æ–™':'ç‰©æµèˆ‡åŒ…è£',shippingText+(packageText?'ï½œ'+packageText:'')+(readiness.shopeeLogisticsManualConfirmationRequired?'ï½œè¦çš®å¯¦éš›ç‰©æµå°šæœªè‡ªå‹•é¸å¥½':''),readiness.shopeeLogisticsReady,packageReady?'ç›®å‰ç‰©æµé¸æ“‡æˆ–å°ºå¯¸ä»éœ€äººå·¥ç¢ºèª':'è«‹å¡«å¯«å¤–ç®±å°ºå¯¸èˆ‡é‡é‡')
-    ];
-    const momoRows=[
-      productListingCheckRow('å–®ä¸€ SKU',draft.sku,!!draft.sku),productListingCheckRow('MOMO å•†å“åç¨±',draft.momoGoodsName,!!draft.momoGoodsName),productListingCheckRow('MOMO å•†å“å…§å®¹',draft.momoHtml?'å·²å¡« '+draft.momoHtml.length+' å­—':'',!!draft.momoHtml),productListingCheckRow('MOMO åˆ†é¡ž',draft.momoCategoryCode,!!draft.momoCategoryCode),productListingCheckRow('MOMO å”®åƒ¹',money(draft.momoPrice),draft.momoPrice!=null),productListingCheckRow('ç‰©æµèˆ‡åŒ…è£',shippingText+(packageText?'ï½œ'+packageText:''),packageReady)
-    ];
-    const coupangRows=[
-      productListingCheckRow('è³£å®¶ SKU',draft.sku,!!draft.sku),productListingCheckRow('é…·æ¾Žæ¨™é¡Œ',draft.coupangTitle,!!draft.coupangTitle),productListingCheckRow('é…·æ¾Žå•†å“å…§å®¹',draft.coupangDescriptionHtml?'å·²å¡« '+draft.coupangDescriptionHtml.length+' å­—':'',!!draft.coupangDescriptionHtml),productListingCheckRow('é…·æ¾Žåˆ†é¡ž',draft.coupangCategoryCode,!!draft.coupangCategoryCode),productListingCheckRow('é…·æ¾Žå”®åƒ¹',money(draft.coupangPrice),draft.coupangPrice!=null),productListingCheckRow('ç‰©æµèˆ‡åŒ…è£',shippingText+(packageText?'ï½œ'+packageText:''),packageReady)
-    ];
-    const easyOk=readiness.easy,momoOk=readiness.momo,coupangOk=readiness.coupang;
-    const homeLogisticsNotice=readiness.shopeeLogisticsManualConfirmationRequired?'<div class="ops-callout yellow"><b>ä¸€èˆ¬å®…é…å¯ä»¥å…ˆé€å‡º</b><br><span>å¤–ç®±è³‡æ–™å·²é½Šå…¨ï¼Œå¯å»ºç«‹æˆ–æ›´æ–° EasyStore å•†å“ä¸¦äº¤çµ¦è¦çš®åŠ©æ‰‹ï¼›è¦çš®å¯¦éš›ç‰©æµå°šæœªè‡ªå‹•é¸å¥½ï¼Œè«‹åœ¨ EasyStore äººå·¥ç¢ºèªå¾Œå†æŒ‰ã€Œä¸Šæž¶ã€ã€‚</span></div>':'';
-    const body='<div class="ops-callout '+(readiness.all?'green':'')+'"><b>'+(readiness.all?'é€™ä»¶å•†å“çš„ä¸Šæž¶è³‡æ–™å·²é½Šå…¨':'é‚„æœ‰å¹¾å€‹ä¸Šæž¶æ¬„ä½éœ€è¦è£œ')+'</b><br><span>ç´…è‰²é©šå˜†è™Ÿå°±æ˜¯éœ€è¦è£œçš„åœ°æ–¹ï¼›ä¸éœ€è¦å†åšèº«åˆ†ã€ä¾†æºæˆ–æŽ¡ç”¨å¯©æ ¸ã€‚</span></div>'+homeLogisticsNotice
-      +'<section class="ops-listing-draft-summary"><div><span>ä¸Šæž¶å•†å“åç¨±</span><b>'+escapeHtml(listingName||'å°šæœªå‘½å')+'</b></div><div><span>SKU</span><b>'+escapeHtml(draft.sku||'å°šæœªå¡«å¯«')+'</b></div><div><span>ç‰©æµæ–¹å¼</span><b>'+escapeHtml(shippingText||'å°šæœªé¸æ“‡')+'</b></div><div><span>åŒ…è£å°ºå¯¸</span><b>'+escapeHtml(packageText||'å°šæœªå¡«å¯«')+'</b></div></section>'
-      +'<div class="ops-listing-platform-grid">'
-      +productPlatformDraftCard('å•†å“ä»‹ç´¹èˆ‡åœ–ç‰‡',{ok:contentReady&&hasImages},contentRows,'å®Œæ•´ä»‹ç´¹èˆ‡åœ–ç‰‡åªæ•´ç†ä¸€æ¬¡ï¼Œå„å¹³å°æœƒè‡ªå‹•ä½¿ç”¨åŒä¸€ä»½å…§å®¹ã€‚')
-      +(draft.enabledEasyStoreShopee?productPlatformDraftCard('EasyStore â†’ è¦çš®',{ok:easyOk,label:easyOk&&readiness.shopeeLogisticsManualConfirmationRequired?'å¯é€å‡ºãƒ»å¾…é¸ç‰©æµ':'',type:readiness.shopeeLogisticsManualConfirmationRequired?'yellow':''},easyRows,'æ—¢æœ‰è¦çš®å•†å“åªæœƒèµ° Match product é…å°ï¼æ›´æ–°ï¼›ç„¡æ³•ç¢ºèªæ™‚æœƒåœæ­¢ï¼Œä¸æœƒå†’éšªå»ºç«‹ç¬¬äºŒç­†ã€‚'):'')
-      +(draft.enabledMomo?productPlatformDraftCard('MOMO',{ok:momoOk},momoRows,'åªæª¢æŸ¥ MOMO å¦å¤–éœ€è¦çš„åç¨±ã€å…§å®¹ã€åˆ†é¡žèˆ‡å”®åƒ¹ã€‚'):'')
-      +(draft.enabledCoupang?productPlatformDraftCard('é…·æ¾Ž',{ok:coupangOk},coupangRows,'åªæª¢æŸ¥é…·æ¾Žå¦å¤–éœ€è¦çš„æ¨™é¡Œã€å…§å®¹ã€åˆ†é¡žèˆ‡å”®åƒ¹ã€‚'):'')
-      +'</div><div class="ops-drawer-footer"><button class="ops-button soft" type="button" data-action="product-listing-case-open" data-id="'+attr(draft.id)+'">è¿”å›žä¿®æ”¹</button>'+(readiness.all?'<button class="ops-button primary" type="button" data-action="product-listing-publish-saved" data-id="'+attr(draft.id)+'">ç¢ºèªä¸Šæž¶</button>':'<button class="ops-button primary" type="button" disabled>è«‹å…ˆè£œé½Šå†ä¸Šæž¶</button>')+'</div>';
-    openDrawer('ä¸Šæž¶è‰ç¨¿é è¦½',listingName||'å°šæœªå‘½åå•†å“',body);
-  }
-
-  function productListingPublishStatusMeta(status){
-    status=clean(status);
-    const rows={
-      created:{label:'å·²å»ºç«‹',type:'green',ok:true},updated:{label:'å·²æ›´æ–°',type:'green',ok:true},completed:{label:'å·²å®Œæˆ',type:'green',ok:true},
-      'already-completed':{label:'å·²è™•ç†ãƒ»æœªé‡è¤‡',type:'green',ok:true},'already-queued':{label:'å·²åœ¨è™•ç†ãƒ»æœªé‡è¤‡',type:'yellow',ok:true},
-      'waiting-easystore-sync':{label:'å¯å®‰å…¨ç¹¼çºŒ',type:'yellow',ok:true},'awaiting-store-agent':{label:'ç­‰å¾…åº—å…§é›»è…¦',type:'yellow',ok:true},submitted:{label:'å·²é€å‡º',type:'yellow',ok:true},
-      'action-required':{label:'éœ€è¦ç¢ºèª',type:'yellow',ok:false},'missing-fields':{label:'éœ€è¦è£œè³‡æ–™',type:'yellow',ok:false},'waiting-easystore':{label:'ç­‰å¾… EasyStore',type:'yellow',ok:false},
-      failed:{label:'æœªå®Œæˆ',type:'red',ok:false}
-    };
-    return rows[status]||{label:status||'å°šç„¡ç‹€æ…‹',type:'yellow',ok:false};
-  }
-  function productListingPublishPlatformTitle(key){
-    return {easyStore:'EasyStore å®˜ç¶²',shopee:'è¦çš®',momo:'MOMO',coupang:'é…·æ¾Ž'}[key]||key;
-  }
-  function openProductListingPublishResult(result,draft){
-    result=result||{};draft=draft||{};const platforms=result.platforms&&typeof result.platforms==='object'?result.platforms:{},shopeeHomeLogisticsNeedsManualConfirmation=draft.shippingDecision==='home';
-    pendingShopeeAutofillPayload=platforms.shopee&&platforms.shopee.autofillPayload||null;
-    const cards=Object.keys(platforms).map(function(key){
-      const row=platforms[key]||{},meta=productListingPublishStatusMeta(row.status),missing=Array.isArray(row.missingFields)&&row.missingFields.length?'<small>ç¼ºå°‘ï¼š'+escapeHtml(row.missingFields.join('ã€'))+'</small>':'';
-      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">å®‰å…¨é–‹å•Ÿ EasyStoreï¼è¦çš®</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.9.zip" download>ä¸‹è¼‰ï¼æ›´æ–°åŠ©æ‰‹ 0.3.9</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'æœƒå¸¶å…¥åˆ†é¡žã€å“ç‰Œèˆ‡å•†å“å±¬æ€§ï¼›ä¸€èˆ¬å®…é…èˆ‡æ–°å¢žï¼æ›´æ–°ç‹€æ…‹ä»é ˆç¢ºèªï¼ŒåŠ©æ‰‹ä¸æœƒèª¤å»ºé‡è¤‡å•†å“ã€‚':'å·²æœ‰å•†å“åªé…å°ï¼æ›´æ–°ï¼›åªæœ‰æ˜Žç¢ºç¢ºèªè¦çš®æ²’æœ‰ç›¸åŒ SKU æ™‚æ‰å…è¨±å»ºç«‹æ–°å“ã€‚')+'</small>':'';
-      return '<section class="ops-listing-platform-card"><div class="ops-listing-platform-head"><h3>'+escapeHtml(productListingPublishPlatformTitle(key))+'</h3>'+statusTag(meta.label,meta.type)+'</div><div class="ops-listing-check-row '+(meta.ok?'ok':'missing')+'"><span>'+(meta.ok?'âœ“':'!')+'</span><div><b>'+escapeHtml(row.message||meta.label)+'</b>'+missing+helper+'</div></div></section>';
-    }).join('');
-    const needsInput=result.status==='needs-input'||Object.values(platforms).some(function(row){return ['missing-fields','action-required'].includes(clean(row&&row.status));});
-    const hasFailure=result.status==='partial-failed'||Object.values(platforms).some(function(row){return clean(row&&row.status)==='failed';});
-    const headline=hasFailure?'æœ‰å¹³å°å°šæœªå®Œæˆ':needsInput?'è«‹è£œé½Šæ¨™ç¤ºçš„è³‡æ–™':'ä¸Šæž¶å·¥ä½œå·²é€å‡º';
-    const detail=hasFailure?'å·²å®Œæˆæˆ–å·²æŽ’éšŠçš„å¹³å°ä¸æœƒå†å»ºç«‹ç¬¬äºŒç­†ï¼›EasyStore é€¾æ™‚å¾Œæœƒå…ˆä»¥å®Œå…¨ç›¸åŒ SKU å›žæŸ¥ï¼Œå†æ±ºå®šæ˜¯å¦é‡è©¦ã€‚':needsInput?'è£œå®Œè³‡æ–™å¾Œå¯å†æ¬¡ç¢ºèªï¼›å®Œå…¨ç›¸åŒ SKU å”¯ä¸€ä¸€ç­†å°±æ›´æ–°ï¼Œå¤šç­†æˆ–ä¸ç¢ºå®šå°±åœæ­¢ã€‚':'EasyStore å·²ä¾å®Œå…¨ç›¸åŒ SKU å»ºç«‹æˆ–æ›´æ–°ï¼›æ—¢æœ‰è¦çš®å•†å“å¿…é ˆé…å°ï¼æ›´æ–°ï¼Œåªæœ‰æ˜Žç¢ºç¢ºèªä¸å­˜åœ¨æ™‚æ‰æœƒå…è¨±æ–°å“ä¸Šæž¶ã€‚'+(shopeeHomeLogisticsNeedsManualConfirmation?' ä¸€èˆ¬å®…é…çš„è¦çš®å¯¦éš›ç‰©æµä»é ˆåœ¨ EasyStore äººå·¥é¸æ“‡ã€‚':'');
-    const body='<div class="ops-callout '+(!hasFailure&&!needsInput?'green':'yellow')+'"><b>'+escapeHtml(headline)+'</b><br><span>'+escapeHtml(detail)+'</span></div><div class="ops-listing-platform-grid">'+(cards||emptyHtml('æ²’æœ‰å¹³å°çµæžœ','è«‹è¿”å›žå•†å“ä¸Šæž¶è³‡æ–™é‡è©¦ã€‚'))+'</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">é—œé–‰</button><button class="ops-button primary" type="button" data-action="product-listing-case-open" data-id="'+attr(draft.id)+'">'+(needsInput||hasFailure?'è¿”å›žä¿®æ”¹':'æŸ¥çœ‹ä¸Šæž¶è³‡æ–™')+'</button></div>';
-    openDrawer('ä¸Šæž¶çµæžœ',(draft.researchedName||draft.name||draft.sku)+'ï½œå·¥ä½œ '+clean(result.jobId),body);
-  }
-  async function openShopeeAutofillHelper(){
-    if(!pendingShopeeAutofillPayload)throw new Error('æ‰¾ä¸åˆ°é€™ä»¶å•†å“çš„è¦çš®è‡ªå‹•å¡«å¯«è³‡æ–™ï¼Œè«‹é‡æ–°åŸ·è¡Œã€Œç¢ºèªä¸Šæž¶ã€ã€‚');
-    if(!global.YouziShopeeAutofill||typeof global.YouziShopeeAutofill.queueAndOpen!=='function')throw new Error('è¦çš®è‡ªå‹•å¡«å¯«æ©‹æŽ¥ç¨‹å¼å°šæœªè¼‰å…¥ï¼Œè«‹é‡æ–°æ•´ç†é é¢ã€‚');
-    const result=await global.YouziShopeeAutofill.queueAndOpen(pendingShopeeAutofillPayload);
-    if(result&&result.extensionReady)toast('è¦çš®è³‡æ–™å·²äº¤çµ¦åŠ©æ‰‹','EasyStore å·²é–‹å•Ÿï¼›åŠ©æ‰‹æœƒè‡ªå‹•é€²å…¥è¦çš®è¨­å®šã€å¡«å¯«ä¸¦é€å‡ºä¸Šæž¶ã€‚','success');
-    else toast('åŠ©æ‰‹æ²’æœ‰æ”¶åˆ°å•†å“è³‡æ–™',clean(result&&result.error)||'è«‹å®‰è£æˆ–æ›´æ–°åˆ°åŠ©æ‰‹ 0.3.9ï¼Œé‡æ–°æ•´ç†ç‡Ÿé‹ä¸­å¿ƒå¾Œï¼Œå†æŒ‰ä¸€æ¬¡ã€Œå®‰å…¨é–‹å•Ÿ EasyStoreï¼è¦çš®ã€ã€‚','warning');
-    return result;
-  }
-  async function confirmAndPublishProductListingCase(draft){
-    if(!global.firebase||!global.firebase.functions)throw new Error('å•†å“ä¸Šæž¶æœå‹™å°šæœªè¼‰å…¥ï¼Œè«‹é‡æ–°æ•´ç†é é¢ã€‚');
-    await requireEasyStoreManagerAuth();
-    const description=(draft.enabledEasyStoreShopee!==false?'EasyStore æœƒä»¥å®Œå…¨ç›¸åŒ SKU æŸ¥æ‰¾ï¼šä¸€ç­†å°±æ›´æ–°ã€é›¶ç­†æ‰å»ºç«‹ã€å¤šç­†å°±åœæ­¢ã€‚è¦çš®å·²æœ‰å•†å“å¿…é ˆé…å°ï¼æ›´æ–°ï¼›åªæœ‰ä½ æ˜Žç¢ºç¢ºèªã€Œæ²’æœ‰ã€æ‰å…è¨±æ–°å“ä¸Šæž¶ã€‚':'')+(draft.enabledEasyStoreShopee!==false&&draft.shippingDecision==='home'?' ä¸€èˆ¬å®…é…ä¸æœƒè‡ªå‹•é¸æ“‡è¦çš®ç‰©æµï¼Œä»é ˆåœ¨ EasyStore äººå·¥ç¢ºèªã€‚':'')+((draft.enabledMomo!==false||draft.enabledCoupang!==false)?' MOMOï¼é…·æ¾ŽåŒä¸€ SKUã€åŒä¸€å…§å®¹åªæœƒä¿ç•™ä¸€ç­†å¾…è™•ç†å·¥ä½œã€‚':'');
-    const ok=await confirmAction('ç¢ºèªä¸Šæž¶',description+' é€™ä¸æ˜¯é è¦½ï¼Œç¢ºå®šè¦ç¹¼çºŒå—Žï¼Ÿ','ç¢ºå®šä¸Šæž¶');if(!ok)return null;
-    const callable=global.firebase.app().functions('us-central1').httpsCallable('publishProductListingCase',{timeout:9*60*1000}),response=await callable({productId:draft.id}),result=response&&response.data||{};
-    openProductListingPublishResult(result,draft);
-    if(result.status==='partial-failed')toast('æœ‰å¹³å°å°šæœªå®Œæˆ','è«‹æŸ¥çœ‹ä¸Šæž¶çµæžœå¾Œä¿®æ­£å†è©¦ã€‚','warning');
-    else if(result.status==='needs-input')toast('ä¸Šæž¶è³‡æ–™éœ€è¦è£œå……','å·²åˆ—å‡ºå„å¹³å°ç¼ºå°‘çš„æ¬„ä½ã€‚','warning');
-    else toast('ä¸Šæž¶å·¥ä½œå·²é€å‡º','EasyStore å·²å¯¦éš›è™•ç†ï¼›å…¶é¤˜å¹³å°è«‹ä¾çµæžœç‹€æ…‹ç¹¼çºŒã€‚','success');
-    return result;
-  }
-  async function publishSavedProductListingCase(id){
-    id=clean(id);const product=catalogById(id);if(!id||!product)throw new Error('æ‰¾ä¸åˆ°å•†å“ä¸Šæž¶è³‡æ–™');
-    const snap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),raw=snap.exists?snap.data()||{}:{},enabled=raw.enabledPlatforms&&typeof raw.enabledPlatforms==='object'?raw.enabledPlatforms:{};
-    return confirmAndPublishProductListingCase({id:id,sku:product.sku,name:product.originalName||product.name,researchedName:clean(raw.researchedProductName),shippingDecision:clean(raw.shippingDecision),shopeeListingDecision:['auto','new','existing'].includes(clean(raw.shopeeListingDecision))?clean(raw.shopeeListingDecision):'auto',enabledEasyStoreShopee:enabled.easyStoreShopee!==false,enabledMomo:enabled.momo!==false,enabledCoupang:enabled.coupang!==false});
-  }
-
-  async function prepareProductListingPublish(form){
-    if(!form)return;
-    const draft=productListingDraftFromForm(form),readiness=productListingReadiness(draft);
-    if(!readiness.selected.length)throw new Error('è«‹è‡³å°‘å‹¾é¸ä¸€å€‹è¦ä¸Šæž¶çš„å¹³å°');
-    await saveProductListingCase(form,false,true,true);
-    if(!readiness.all){openProductListingPreview(form);toast('å°šæœªé€å‡ºä¸Šæž¶','è«‹å…ˆè£œé½Šé è¦½ä¸­æ¨™ç¤ºçš„æ¬„ä½ï¼›ç‰©æµèˆ‡å¤–ç®±è³‡æ–™æœªç¢ºèªæ™‚ä¸æœƒè‡ªå‹•ä¸Šæž¶ã€‚','warning');return null;}
-    return confirmAndPublishProductListingCase(draft);
-  }
-  async function saveProduct(form){
-    const requestedId=clean(form.dataset.id),p=requestedId?catalogById(requestedId):null;if(requestedId&&(!p||!p.internal))throw new Error('æ‰¾ä¸åˆ°ä¸­å¤®å•†å“ä¸»æª”');
-    const data=new FormData(form),sku=normalizeCode(data.get('internalSku')),name=clean(data.get('internalName'));if(!sku)throw new Error('SKU ä¸å¯ç©ºç™½');if(!name)throw new Error('å•†å“åç¨±ä¸å¯ç©ºç™½');
-    const duplicate=state.internalProducts.find(function(x){return x.internalSku===sku&&x.docId!==requestedId;});if(duplicate)throw new Error('æ­¤ SKU å·²è¢«å…¶ä»–å•†å“ä½¿ç”¨ï¼š'+sku);
-    const ref=requestedId?state.db.collection(COLLECTIONS.products).doc(requestedId):state.db.collection(COLLECTIONS.products).doc(),id=ref.id,oldStock=p?Number(p.currentStock||0):0,requestedStock=numberOrNull(data.get('currentStock'));if(requestedStock==null)throw new Error('ç¾æœ‰åº«å­˜æ ¼å¼ä¸æ­£ç¢º');
-    let finalStock=requestedStock,stockAdjustmentConfirmed=true;
-    if(p&&requestedStock!==oldStock){
-      stockAdjustmentConfirmed=global.confirm('ç¢ºèªèª¿æ•´åº«å­˜ï¼Ÿ\n\nåŽŸåº«å­˜ï¼š'+formatNumber(oldStock)+'\nèª¿æ•´å¾Œï¼š'+formatNumber(requestedStock)+'\n\nç¢ºèªå¾ŒæœƒåŒæ­¥å»ºç«‹ä¸€ç­†ç›¤é»žèª¿æ•´ç´€éŒ„ã€‚');
-      if(!stockAdjustmentConfirmed)finalStock=oldStock;
-    }
-    const latest=numberOrNull(data.get('latestPurchaseCost')),raw=p&&p.internal?p.internal:{currentStock:0,costLayers:[]},layerResult=adjustFifoLayers(raw,finalStock,latest,{referenceType:p?'manualAdjustment':'manualOpening',referenceId:id,receivedAt:new Date().toISOString()});
-    const prices={storePrice:numberOrNull(data.get('storePrice')),easyStorePrice:numberOrNull(data.get('easyStorePrice')),momoPrice:numberOrNull(data.get('momoPrice')),coupangPrice:numberOrNull(data.get('coupangPrice'))};
-    const initializingPlatformPrices=!p||!p.internal||p.internal.platformPricesInitialized!==true;
-    if(initializingPlatformPrices){
-      const seed=[prices.easyStorePrice,prices.momoPrice,prices.coupangPrice,p&&p.onlinePrice].find(function(value){return value!=null;});
-      if(seed!=null){if(prices.easyStorePrice==null)prices.easyStorePrice=seed;if(prices.momoPrice==null)prices.momoPrice=seed;if(prices.coupangPrice==null)prices.coupangPrice=seed;}
-    }
-    // é…·æ¾Žå°ç£ç«™ API åªæŽ¥å— 10 å…ƒå€æ•¸ï¼›åˆå§‹åŒ–å¸¶å…¥çš„å…±ç”¨ç¶²è·¯å”®åƒ¹ä¹Ÿå¿…é ˆå…ˆæª¢æŸ¥ã€‚
-    if(prices.coupangPrice!=null&&(!Number.isInteger(prices.coupangPrice)||prices.coupangPrice%10!==0))throw new Error('é…·æ¾Žå”®åƒ¹å¿…é ˆæ˜¯ 10 å…ƒå€æ•¸ï¼ˆä¾‹å¦‚ 390ã€400ï¼‰ã€‚è«‹ä¿®æ”¹å¾Œå†å„²å­˜ã€‚');
-    const currentPriceSync=p&&p.internal&&p.internal.platformPriceSync&&typeof p.internal.platformPriceSync==='object'?p.internal.platformPriceSync:{},nextPriceSync=Object.assign({},currentPriceSync);let priceChanged=false,needsSyncRequest=false;
-    [['EasyStore','easyStorePrice'],['MOMO','momoPrice'],['Coupang','coupangPrice']].forEach(function(pair){
-      const platform=pair[0],field=pair[1],oldPrice=p&&p[field]!=null?Number(p[field]):null,newPrice=prices[field];
-      const same=(oldPrice==null&&newPrice==null)||(oldPrice!=null&&newPrice!=null&&Number(oldPrice)===Number(newPrice));if(same)return;
-      priceChanged=true;
-      let status='pending',message='ç­‰å¾…å¹³å°åƒ¹æ ¼åŒæ­¥';
-      if(newPrice==null){status='cleared';message='å·²æ¸…é™¤å¹³å°ç›®æ¨™å”®åƒ¹';}
-      else if(platform==='MOMO'){status='manual-required';message='å·²ä¿å­˜ MOMO ç›®æ¨™å”®åƒ¹ï¼›å°šæœªå–å¾—å®˜æ–¹è‡ªå‹•æ”¹åƒ¹ç«¯é»žï¼æ¬Šé™ã€‚';}
-      else if(platform==='Coupang'&&Math.round(newPrice)%10!==0){status='manual-required';message='é…·æ¾Žå°ç£å”®åƒ¹é ˆç‚º 10 å…ƒå€æ•¸ï¼Œè«‹èª¿æ•´å¾Œå†åŒæ­¥ã€‚';}
-      if(status==='pending')needsSyncRequest=true;
-      nextPriceSync[platform]=Object.assign({},currentPriceSync[platform]||{},{targetPrice:newPrice,status:status,message:message,requestedAt:serverTimestamp()});
-    });
-    if(priceChanged)nextPriceSync.lastUpdatedAt=serverTimestamp();
-    const payload={internalSku:sku,internalName:name,originalName:name,barcode:clean(data.get('barcode')),model:clean(data.get('model')),storePrice:prices.storePrice,originalSalePrice:prices.storePrice,easyStorePrice:prices.easyStorePrice,momoPrice:prices.momoPrice,coupangPrice:prices.coupangPrice,platformPricesInitialized:true,latestPurchaseCost:latest,currentStock:finalStock,reservedStock:p?Number(p.reservedStock||0):0,safetyStock:numberOrNull(data.get('safetyStock'))||0,saleRewardPercent:p&&p.internal?p.internal.saleRewardPercent:null,status:clean(data.get('status'))||'active',brand:clean(data.get('brand')),category:clean(data.get('category')),note:clean(data.get('note')),costLayers:layerResult.layers,averageCost:layerResult.averageCost,inventoryValue:layerResult.inventoryValue,costIncomplete:layerResult.costIncomplete,platformPriceSync:nextPriceSync,importInitialized:true,enabled:true,source:p?clean(p.internal.source)||'manual':'manual',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
-    if(!p){payload.createdAt=serverTimestamp();payload.createdBy=userLabel();payload.openingStock=finalStock;payload.openingUnitCost=latest;}
-    const batch=state.db.batch();batch.set(ref,payload,{merge:true});
-    if(needsSyncRequest){const syncRef=state.db.collection(COLLECTIONS.platformSyncRequests).doc();batch.set(syncRef,{requestId:syncRef.id,status:'pending',reason:'platform-price-change',productIds:[id],requestedAt:serverTimestamp(),requestedBy:userLabel(),source:'product-editor',version:VERSION});}
-    if(finalStock!==oldStock){const inventoryRef=state.db.collection(COLLECTIONS.inventory).doc(),queueRef=state.db.collection(COLLECTIONS.platformInventoryQueue).doc(id);batch.set(inventoryRef,{type:p?'adjustment':'opening',productId:id,productName:name,sku:sku,qtyChange:finalStock-oldStock,beforeStock:oldStock,afterStock:finalStock,unitCost:latest,referenceType:'productMaster',referenceId:id,note:p?'å•†å“è³‡è¨Šä¿®æ”¹':'æ–°å¢žå•†å“æœŸåˆåº«å­˜',occurredAt:serverTimestamp(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});batch.set(queueRef,{productId:id,sku:sku,productName:name,targetStock:Math.max(0,finalStock),status:'pending',reason:p?'productEdit':'productCreate',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});}
-    await batch.commit();
-    clearProductEditorState();await writeAudit(p?'å„²å­˜å•†å“ä¸»æª”':'æ–°å¢žå•†å“','product',id,name+'ï½œ'+sku);const stockNote=p&&requestedStock!==oldStock&&!stockAdjustmentConfirmed?'ï¼›åº«å­˜ç¶­æŒ '+formatNumber(oldStock):'';toast(p?'å•†å“å·²å„²å­˜':'å•†å“å·²æ–°å¢ž',name+stockNote,'success');await loadProductsOnly(true);setTimeout(function(){if(!p){openProductListingCase(id);return;}const savedCard=queryAll('[data-action="product-edit"]').find(function(card){return card.dataset.id===id;});if(savedCard&&typeof savedCard.scrollIntoView==='function'){try{savedCard.scrollIntoView({behavior:'smooth',block:'center'});}catch(err){savedCard.scrollIntoView(true);}}},0);
-  }
-  async function autoInitProducts(){ return openImport(); }
-
-  function addCartProduct(id){const p=catalogById(id);if(!p||!p.initialized)return;const usageMode=state.salesMode==='usage',existing=state.cart.find(function(x){return x.productId===id;});if(existing){existing.qty+=1;if(usageMode)existing.unitPrice=0;}else state.cart.push({productId:id,name:p.originalName||p.name,sku:p.sku,imageUrl:p.imageUrl,qty:1,unitPrice:usageMode?0:Number(p.storePrice||0),currentStock:p.currentStock});render();}
-  function openCustomer(id){const row=id?state.customers.find(function(x){return x.id===id;}):null;const c=row||{id:'',name:'',phone:'',email:'',customerType:'general',memberNo:'',pricingTier:'retail',externalTeacherId:'',pointBalance:0,creditLimit:0,note:'',enabled:true};openDrawer(row?'ç·¨è¼¯å®¢æˆ¶':'æ–°å¢žå®¢æˆ¶','å…ˆå»ºç«‹é—œä¿‚ï¼›é»žæ•¸èˆ‡è€å¸«åƒ¹æ ¼å…¬å¼ä¹‹å¾Œå†è¨­å®šã€‚','<form id="customerForm" data-id="'+attr(c.id)+'"><div class="ops-form-grid"><div class="ops-field"><label class="ops-required">å§“åï¼åç¨±</label><input class="ops-input" name="name" value="'+attr(c.name)+'" required></div><div class="ops-field"><label>é›»è©±</label><input class="ops-input" name="phone" value="'+attr(c.phone)+'"></div><div class="ops-field"><label>Email</label><input class="ops-input" type="email" name="email" value="'+attr(c.email)+'"></div><div class="ops-field"><label>å®¢æˆ¶èº«åˆ†</label><select class="ops-select" name="customerType"><option value="general">ä¸€èˆ¬å®¢æˆ¶</option><option value="member">æœƒå“¡</option><option value="teacher">è€å¸«</option><option value="organization">æ©Ÿæ§‹</option></select></div><div class="ops-field"><label>æœƒå“¡ç·¨è™Ÿ</label><input class="ops-input" name="memberNo" value="'+attr(c.memberNo)+'" placeholder="ç•™ç™½æœƒè‡ªå‹•ç”¢ç”Ÿ"></div><div class="ops-field"><label>åƒ¹æ ¼å±¤ç´š</label><select class="ops-select" name="pricingTier"><option value="retail">ä¸€èˆ¬å”®åƒ¹</option><option value="teacher">è€å¸«åƒ¹ï¼ˆè¦å‰‡å¾…è¨­å®šï¼‰</option><option value="custom">è‡ªè¨‚åƒ¹æ ¼ï¼ˆè¦å‰‡å¾…è¨­å®šï¼‰</option></select></div><div class="ops-field"><label>å¤–è˜è€å¸«è³‡æ–™ ID</label><input class="ops-input" name="externalTeacherId" value="'+attr(c.externalTeacherId)+'"></div><div class="ops-field"><label>ä¿¡ç”¨é¡åº¦</label><input class="ops-input" type="number" min="0" step="1" name="creditLimit" value="'+c.creditLimit+'"></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note">'+escapeHtml(c.note)+'</textarea></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">å„²å­˜å®¢æˆ¶</button></div></form>');query('#customerForm [name="customerType"]').value=c.customerType;query('#customerForm [name="pricingTier"]').value=c.pricingTier;}
-  async function saveCustomer(form){const id=clean(form.dataset.id),data=new FormData(form),type=clean(data.get('customerType')),payload={name:clean(data.get('name')),phone:clean(data.get('phone')),email:clean(data.get('email')),customerType:type,memberNo:clean(data.get('memberNo'))||(type==='member'||type==='teacher'?uid('MEM'):''),pricingTier:clean(data.get('pricingTier')),externalTeacherId:clean(data.get('externalTeacherId')),creditLimit:numberOrNull(data.get('creditLimit'))||0,note:clean(data.get('note')),enabled:true,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};if(!payload.name)throw new Error('è«‹å¡«å¯«å§“åæˆ–åç¨±');let ref;if(id){ref=state.db.collection(COLLECTIONS.customers).doc(id);await ref.set(payload,{merge:true});}else{payload.pointBalance=0;payload.createdAt=serverTimestamp();payload.createdBy=userLabel();ref=await state.db.collection(COLLECTIONS.customers).add(payload);}await writeAudit(id?'æ›´æ–°å®¢æˆ¶':'æ–°å¢žå®¢æˆ¶','customer',ref.id,payload.name);closeDrawer();toast('å®¢æˆ¶å·²å„²å­˜',payload.name,'success');await loadAll(true);}
-  function checkoutDrawer(){const subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),options='<option value="">ç¾å ´æ•£å®¢</option>'+state.customers.filter(function(x){return x.enabled;}).map(function(x){return '<option value="'+attr(x.id)+'">'+escapeHtml(x.name)+'ï½œ'+escapeHtml(customerTypeName(x.customerType))+(x.memberNo?'ï½œ'+escapeHtml(x.memberNo):'')+'</option>';}).join('');openDrawer('ç¾å ´éŠ·å”®çµå¸³','','<form id="checkoutForm"><div class="ops-summary-list"><div class="ops-summary-line"><span>å•†å“æ•¸é‡</span><b>'+sum(state.cart,function(x){return x.qty;})+' ä»¶</b></div><div class="ops-summary-line total"><span>æ‡‰æ”¶é‡‘é¡</span><b>'+money(subtotal)+'</b></div></div><div class="ops-form-grid" style="margin-top:15px"><div class="ops-field"><label class="ops-required">æˆäº¤æ™‚é–“</label><input class="ops-input" type="datetime-local" name="soldAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label>å®¢æˆ¶ï¼æœƒå“¡</label><select class="ops-select" name="customerId">'+options+'</select></div><div class="ops-field"><label class="ops-required">ä»˜æ¬¾æ–¹å¼</label><select class="ops-select" name="paymentMethod" required><option>ç¾é‡‘</option><option>ä¿¡ç”¨å¡</option><option>è½‰å¸³</option><option>LINE Pay</option><option>å…¶ä»–</option></select></div><div class="ops-field"><label>æ”¶æ¬¾ç‹€æ…‹</label><select class="ops-select" name="paymentStatus"><option value="paid">å·²æ”¶æ¸…</option><option value="partial">éƒ¨åˆ†æ”¶æ¬¾</option><option value="unpaid">æœªæ”¶æ¬¾</option></select></div><div class="ops-field"><label>æœ¬æ¬¡å·²æ”¶é‡‘é¡</label><input class="ops-input" type="number" min="0" step="1" name="receivedAmount" placeholder="å·²æ”¶æ¸…å¯ç•™ç™½"></div><div class="ops-field"><label>æŠ˜æ‰£</label><input class="ops-input" type="number" min="0" step="1" name="discount" value="0"></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note"></textarea></div></div><div class="ops-callout">é»žæ•¸å…ˆè¨˜éŒ„ç‚º 0ï¼›è€å¸«åƒ¹åªé€£çµåƒ¹æ ¼å±¤ç´šï¼Œå°šæœªè‡ªå‹•æ”¹åƒ¹ã€‚</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">ç¢ºèªéŠ·å”®ä¸¦æ‰£åº«å­˜</button></div></form>');}
-  async function saveCheckout(form){
-    if(!state.cart.length)throw new Error('éŠ·å”®æ¸…å–®æ˜¯ç©ºçš„');const data=new FormData(form),discount=numberOrNull(data.get('discount'))||0,soldAt=new Date(clean(data.get('soldAt'))),customerId=clean(data.get('customerId')),customer=state.customers.find(function(x){return x.id===customerId;})||null,paymentStatus=clean(data.get('paymentStatus'))||'paid';if(Number.isNaN(soldAt.getTime()))throw new Error('æˆäº¤æ™‚é–“æ ¼å¼ä¸æ­£ç¢º');if(paymentStatus!=='paid'&&!customer)throw new Error('æœªæ”¶æ¬¾æˆ–éƒ¨åˆ†æ”¶æ¬¾å¿…é ˆå…ˆé¸æ“‡å®¢æˆ¶');const saleNo=uid('SALE'),saleRef=state.db.collection(COLLECTIONS.sales).doc(),receivableRef=state.db.collection(COLLECTIONS.receivables).doc();
-    await state.db.runTransaction(async function(tx){const refs=state.cart.map(function(item){return state.db.collection(COLLECTIONS.products).doc(item.productId);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));const prepared=[];let subtotal=0,costTotal=0,unknownCostQty=0;
-      snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('å•†å“ä¸»æª”ä¸å­˜åœ¨ï¼š'+state.cart[index].name);const raw=snap.data()||{},item=state.cart[index],current=Number(raw.currentStock||0),qty=Math.max(1,Math.round(Number(item.qty||0)));const unitPrice=Math.max(0,Number(item.unitPrice||0)),fifo=consumeFifo(raw,qty,true);subtotal+=qty*unitPrice;costTotal+=fifo.costTotal;unknownCostQty+=fifo.unknownCostQty;prepared.push({ref:refs[index],raw:raw,item:item,qty:qty,current:current,unitPrice:unitPrice,fifo:fifo});});
-      const total=Math.max(0,subtotal-discount),grossProfit=total-costTotal,enteredReceived=numberOrNull(data.get('receivedAmount')),receivedAmount=paymentStatus==='paid'?total:Math.min(total,Math.max(0,enteredReceived||0)),actualStatus=receivedAmount>=total?'paid':receivedAmount>0?'partial':'unpaid';tx.set(saleRef,{saleNo:saleNo,soldAt:soldAt,items:prepared.map(function(x){return {productId:x.item.productId,name:x.item.name,sku:x.item.sku,imageUrl:x.item.imageUrl||'',qty:x.qty,unitPrice:x.unitPrice,lineTotal:x.qty*x.unitPrice,lineCost:x.fifo.costTotal,fifoBreakdown:x.fifo.breakdown,unknownCostQty:x.fifo.unknownCostQty};}),subtotal:subtotal,discount:discount,total:total,costTotal:costTotal,grossProfit:grossProfit,unknownCostQty:unknownCostQty,costMethod:'FIFO',paymentMethod:clean(data.get('paymentMethod')),paymentStatus:actualStatus,receivedAmount:receivedAmount,customerId:customer?customer.id:'',customerName:customer?customer.name:'',customerType:customer?customer.customerType:'walk_in',memberNo:customer?customer.memberNo:'',pricingTier:customer?customer.pricingTier:'retail',pointsEarned:0,pointsRedeemed:0,note:clean(data.get('note')),status:'completed',createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});if(actualStatus!=='paid')tx.set(receivableRef,{receivableNo:uid('AR'),saleId:saleRef.id,saleNo:saleNo,customerId:customer.id,customerName:customer.name,totalAmount:total,receivedAmount:receivedAmount,outstandingAmount:total-receivedAmount,status:actualStatus,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
-      prepared.forEach(function(x){const after=x.current-x.qty;tx.update(x.ref,{currentStock:after,costLayers:x.fifo.layers,averageCost:x.fifo.averageCost,inventoryValue:x.fifo.inventoryValue,costIncomplete:x.fifo.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});queueInventorySyncInTransaction(tx,x.item.productId,x.item.sku,after,'storeSale');const tRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(tRef,{type:'sale',productId:x.item.productId,productName:x.item.name,sku:x.item.sku,qtyChange:-x.qty,beforeStock:x.current,afterStock:after,unitCost:x.qty?x.fifo.costTotal/x.qty:null,costMethod:'FIFO',fifoBreakdown:x.fifo.breakdown,referenceType:'storeSale',referenceId:saleNo,note:'ç¾å ´éŠ·å”®',occurredAt:soldAt,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
-    });
-    await writeAudit('å®Œæˆç¾å ´éŠ·å”®','storeSale',saleRef.id,saleNo+'ï½œ'+money(sum(state.cart,function(x){return x.qty*x.unitPrice;})-discount)+'ï½œFIFO');state.cart=[];closeDrawer();toast('ç¾å ´éŠ·å”®å®Œæˆ',saleNo,'success');await loadAll(true);
-  }
-  function checkoutDrawerV4(){
-    const subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),c=selectedCustomer(),settings=state.membershipSettings||DEFAULT_MEMBERSHIP_SETTINGS,maxPoints=maxRedeemablePoints(c,subtotal),defaultPoints=c&&settings.redemptionMode==='auto'?maxPoints:0;
-    openDrawer('çµå¸³','', '<form id="checkoutFormV4"><input type="hidden" name="customerId" value="'+attr(c?c.id:'')+'"><input type="hidden" name="maxRedeemPoints" value="'+maxPoints+'"><div class="ops-checkout-person">'+(c?'<b>'+escapeHtml(c.name)+'</b><span>'+escapeHtml(customerTypeName(c.customerType))+'</span>'+(c.customerType==='member'?'<strong>'+formatNumber(c.pointBalance)+' é»ž</strong>':''):'<b>é–€å¸‚æ•£å®¢</b>')+'</div><div class="ops-form-grid"><div class="ops-field"><label class="ops-required">æˆäº¤æ™‚é–“</label><input class="ops-input" type="datetime-local" name="soldAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label>ä»˜æ¬¾æ–¹å¼</label><select class="ops-select" name="paymentMethod"><option>ç¾é‡‘</option><option>ä¿¡ç”¨å¡</option><option>è½‰å¸³</option><option>LINE Pay</option><option>å…¶ä»–</option></select></div><div class="ops-field"><label>æ”¶æ¬¾ç‹€æ…‹</label><select class="ops-select" name="paymentStatus"><option value="paid">å·²æ”¶æ¸…</option><option value="partial">éƒ¨åˆ†æ”¶æ¬¾</option><option value="unpaid">æœªæ”¶æ¬¾</option></select></div><div class="ops-field"><label>æœ¬æ¬¡å·²æ”¶</label><input class="ops-input" type="number" min="0" step="1" name="receivedAmount"></div><div class="ops-field"><label>æŠ˜æ‰£é‡‘é¡</label><input class="ops-input" type="number" min="0" step="1" name="discount" value="0"></div>'+(c&&c.customerType==='member'&&settings.redemptionMode!=='earn-only'?'<div class="ops-field"><label>ä½¿ç”¨é»žæ•¸</label><input class="ops-input" type="number" min="0" max="'+maxPoints+'" step="'+Math.max(1,Math.floor(Number(settings.redeemPoints||1)))+'" name="pointsToRedeem" value="'+defaultPoints+'"></div>':'<input type="hidden" name="pointsToRedeem" value="0">')+'</div><div class="ops-summary-list ops-checkout-summary"><div class="ops-summary-line"><span>å•†å“é‡‘é¡</span><b>'+money(subtotal)+'</b></div><div class="ops-summary-line"><span>é»žæ•¸æŠ˜æŠµ</span><b id="checkoutPointDiscount">'+money(pointDiscount(defaultPoints))+'</b></div><div class="ops-summary-line total"><span>æ‡‰æ”¶é‡‘é¡</span><b id="checkoutTotalPreview">'+money(Math.max(0,subtotal-pointDiscount(defaultPoints)))+'</b></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">ç¢ºèª</button></div></form>');
-  }
-  function updateCheckoutPreview(){const form=byId('checkoutFormV4');if(!form)return;const subtotal=sum(state.cart,function(x){return x.qty*x.unitPrice;}),discount=Math.max(0,Number((query('[name="discount"]',form)||{}).value||0)),pointInput=query('[name="pointsToRedeem"]',form),maxPoints=maxRedeemablePoints(selectedCustomer(),Math.max(0,subtotal-discount));if(pointInput){pointInput.max=String(maxPoints);if(Number(pointInput.value||0)>maxPoints)pointInput.value=String(maxPoints);}const points=Math.max(0,Number((pointInput||{}).value||0)),pointValue=pointDiscount(points);setText('checkoutPointDiscount',money(pointValue));setText('checkoutTotalPreview',money(Math.max(0,subtotal-discount-pointValue)));}
-  async function saveCheckoutV4(form){
-    if(!state.cart.length)throw new Error('éŠ·å”®æ¸…å–®æ˜¯ç©ºçš„');
-    const data=new FormData(form),orderType=clean(data.get('orderType'))||'sale',preorder=orderType==='preorder',discount=Math.max(0,numberOrNull(data.get('discount'))||0),soldAt=new Date(),customerId=clean(data.get('customerId')),paymentChoice=clean(data.get('paymentStatus'))||'paid',requestedPoints=preorder?0:Math.max(0,Math.floor(numberOrNull(data.get('pointsToRedeem'))||0)),earnPointsEnabled=data.get('earnPointsEnabled')==='true';
-    if(preorder&&!customerId)throw new Error('é è³¼ï¼è¨‚é‡‘å¿…é ˆå…ˆé¸æ“‡æˆ–æ–°å¢žæœƒå“¡');
-    if(!preorder&&paymentChoice!=='paid'&&!customerId)throw new Error('æœªæ”¶æ¬¾å¿…é ˆé¸æ“‡æœƒå“¡');
-    if(!preorder&&paymentChoice!=='paid'&&requestedPoints>0)throw new Error('æœªæ”¶æ¬¾ä¸èƒ½ä½¿ç”¨é»žæ•¸');
-    const saleNo=uid(preorder?'PRE':'SALE'),saleRef=state.db.collection(COLLECTIONS.sales).doc(),receivableRef=state.db.collection(COLLECTIONS.receivables).doc(),depositPaymentRef=state.db.collection(COLLECTIONS.receivablePayments).doc(),customerRef=customerId?state.db.collection(COLLECTIONS.customers).doc(customerId):null;
-    await state.db.runTransaction(async function(tx){
-      const refs=state.cart.map(function(item){return state.db.collection(COLLECTIONS.products).doc(item.productId);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));const customerSnap=customerRef?await tx.get(customerRef):null,customerRaw=customerSnap&&customerSnap.exists?(customerSnap.data()||{}):null;if(customerRef&&!customerRaw)throw new Error('æ‰¾ä¸åˆ°å®¢æˆ¶');
-      const prepared=[];let subtotal=0,costTotal=0,unknownCostQty=0;snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('å•†å“ä¸»æª”ä¸å­˜åœ¨ï¼š'+state.cart[index].name);const raw=snap.data()||{},item=state.cart[index],current=Number(raw.currentStock||0),qty=Math.max(1,Math.round(Number(item.qty||0))),unitPrice=Math.max(0,Number(item.unitPrice||0)),fifo=preorder?estimatePreorderCost(raw,qty):consumeFifo(raw,qty,true);if(preorder&&fifo.unknownCostQty>0)throw new Error(item.name+' å°šæœªè¨­å®šæˆæœ¬ï¼Œè«‹å…ˆåœ¨å•†å“ä¸»æª”å¡«å…¥æˆæœ¬å†å»ºç«‹é è³¼');subtotal+=qty*unitPrice;costTotal+=fifo.costTotal;unknownCostQty+=fifo.unknownCostQty;prepared.push({ref:refs[index],raw:raw,item:item,qty:qty,current:current,unitPrice:unitPrice,fifo:fifo});});
-      const customer=customerRaw?normalizeCustomer(Object.assign({__id:customerId},customerRaw)):null,maxPoints=preorder?0:maxRedeemablePoints(customer,Math.max(0,subtotal-discount)),activeRule=membershipRuleForDate(soldAt),redeemStep=Math.max(1,Math.floor(Number(activeRule.redeemPoints||1)));if(requestedPoints>maxPoints)throw new Error('å¯ä½¿ç”¨é»žæ•¸ä¸è¶³');if(requestedPoints%redeemStep!==0)throw new Error('é»žæ•¸è«‹ä¾è¨­å®šå–®ä½ä½¿ç”¨');const pointsRedeemed=requestedPoints,pointValue=pointDiscount(pointsRedeemed,soldAt),orderTotal=Math.max(0,subtotal-discount-pointValue),enteredReceived=numberOrNull(data.get('receivedAmount')),receivedAmount=preorder?Math.min(orderTotal,Math.max(0,enteredReceived||0)):(paymentChoice==='paid'?orderTotal:Math.min(orderTotal,Math.max(0,enteredReceived||0))),actualStatus=receivedAmount>=orderTotal?'paid':receivedAmount>0?'partial':'unpaid',pendingPoints=earnPointsEnabled&&customer&&customer.customerType==='member'?calculatePreparedRewardPoints(prepared,orderTotal,subtotal,soldAt):0,pointsEarned=!preorder&&actualStatus==='paid'?pendingPoints:0,grossProfit=orderTotal-costTotal;
-      tx.set(saleRef,{saleNo:saleNo,soldAt:soldAt,preorderAt:preorder?soldAt:'',deliveredAt:preorder?'':soldAt,saleType:preorder?'preorder':'sale',fulfillmentStatus:preorder?'waiting_stock':'delivered',items:prepared.map(function(x){return {productId:x.item.productId,name:x.item.name,sku:x.item.sku,imageUrl:x.item.imageUrl||'',qty:x.qty,unitPrice:x.unitPrice,lineTotal:x.qty*x.unitPrice,lineCost:x.fifo.costTotal,fifoBreakdown:preorder?[]:x.fifo.breakdown,estimatedCostBreakdown:preorder?x.fifo.breakdown:[],costEstimated:preorder,unknownCostQty:x.fifo.unknownCostQty,rewardPercent:productRewardPercent(x.raw,soldAt)};}),subtotal:subtotal,manualDiscount:discount,pointDiscount:pointValue,discount:discount+pointValue,orderTotal:orderTotal,total:orderTotal,costTotal:costTotal,costEstimated:preorder,costSource:preorder?'preorderEstimate':'fifo',grossProfit:grossProfit,unknownCostQty:unknownCostQty,costMethod:'FIFO',paymentMethod:clean(data.get('paymentMethod')),paymentStatus:actualStatus,receivedAmount:receivedAmount,customerId:customer?customer.id:'',customerName:customer?customer.name:'',customerType:customer?customer.customerType:'walk_in',memberNo:customer?customer.memberNo:'',pricingTier:customer?customer.pricingTier:'retail',pointsRuleYear:activeRule.year,pointsRulePercent:activeRule.rewardPercent,earnPointsEnabled:earnPointsEnabled,pointsEarned:pointsEarned,pendingPointsEarned:preorder?pendingPoints:(actualStatus==='paid'?0:pendingPoints),pointsRedeemed:pointsRedeemed,note:preorder?'é è³¼æˆäº¤å·²æˆç«‹ï¼›æ”¶æ¬¾èˆ‡äº¤è²¨åˆ†é–‹è¿½è¹¤':'',status:preorder?'awaiting_fulfillment':'completed',createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
-      if(customer&&!preorder){let balance=Math.max(0,Number(customerRaw.pointBalance||0));if(pointsRedeemed){balance-=pointsRedeemed;const pointRef=state.db.collection(COLLECTIONS.points).doc();tx.set(pointRef,{customerId:customer.id,saleId:saleRef.id,type:'redeem',points:-pointsRedeemed,balanceAfter:balance,note:saleNo,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});}if(pointsEarned){balance+=pointsEarned;const pointRef=state.db.collection(COLLECTIONS.points).doc();tx.set(pointRef,{customerId:customer.id,saleId:saleRef.id,type:'earn',points:pointsEarned,balanceAfter:balance,note:saleNo,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});}if(pointsRedeemed||pointsEarned)tx.update(customerRef,{pointBalance:balance,updatedAt:serverTimestamp()});}
-      if(actualStatus!=='paid')tx.set(receivableRef,{receivableNo:uid('AR'),sourceType:'sale',saleId:saleRef.id,saleNo:saleNo,customerId:customer.id,customerName:customer.name,totalAmount:orderTotal,receivedAmount:receivedAmount,outstandingAmount:orderTotal-receivedAmount,status:actualStatus,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
-      if(preorder&&receivedAmount>0)tx.set(depositPaymentRef,{receivableId:actualStatus!=='paid'?receivableRef.id:'',sourceType:'sale',saleId:saleRef.id,customerId:customer.id,amount:receivedAmount,paymentMethod:clean(data.get('paymentMethod')),paidAt:soldAt,note:'é è³¼è¨‚é‡‘ï½œ'+saleNo,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
-      if(!preorder)prepared.forEach(function(x){const after=x.current-x.qty;tx.update(x.ref,{currentStock:after,costLayers:x.fifo.layers,averageCost:x.fifo.averageCost,inventoryValue:x.fifo.inventoryValue,costIncomplete:x.fifo.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});queueInventorySyncInTransaction(tx,x.item.productId,x.item.sku,after,'storeSale');const tRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(tRef,{type:'sale',productId:x.item.productId,productName:x.item.name,sku:x.item.sku,qtyChange:-x.qty,beforeStock:x.current,afterStock:after,unitCost:x.qty?x.fifo.costTotal/x.qty:null,costMethod:'FIFO',fifoBreakdown:x.fifo.breakdown,referenceType:'storeSale',referenceId:saleNo,note:'ç¾å ´éŠ·å”®',occurredAt:soldAt,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
-    });
-    await writeAudit(preorder?'å»ºç«‹é è³¼æˆäº¤å–®':'å®Œæˆç¾å ´éŠ·å”®',preorder?'preorder':'storeSale',saleRef.id,saleNo);state.cart=[];state.posSearch='';state.selectedCustomerId='';state.posCustomerMode='walkin';state.posMemberSearch='';state.posMemberPickerOpen=false;state.checkoutPaymentMethod='ç¾é‡‘';state.checkoutPaymentStatus='paid';state.checkoutOrderType='sale';state.checkoutDiscount=0;state.checkoutPoints=0;state.checkoutPointsTouched=false;state.checkoutEarnPoints=true;state.checkoutActualCash='';state.checkoutReceived='';toast(preorder?'é è³¼æˆäº¤å·²è¨˜éŒ„':'ç¾å ´éŠ·å”®å®Œæˆ',preorder?saleNo+'ï½œæ”¶æ¬¾èˆ‡äº¤è²¨åˆ†é–‹è¿½è¹¤':saleNo,'success');await loadAll(true);
-  }
-  async function saveStockUsage(form){
-    if(!state.cart.length)throw new Error('è€—ç”¨æ¸…å–®æ˜¯ç©ºçš„');
-    const data=new FormData(form),usageReason=clean(data.get('usageReason'))||'åº—å…§è‡ªç”¨',usageNote=clean(data.get('usageNote')),occurredAt=new Date(),usageNo=uid('USE'),saleRef=state.db.collection(COLLECTIONS.sales).doc();
-    await state.db.runTransaction(async function(tx){
-      const refs=state.cart.map(function(item){return state.db.collection(COLLECTIONS.products).doc(item.productId);}),snaps=[];for(const ref of refs)snaps.push(await tx.get(ref));
-      const prepared=[];let subtotal=0,costTotal=0,unknownCostQty=0;
-      snaps.forEach(function(snap,index){if(!snap.exists)throw new Error('å•†å“ä¸»æª”ä¸å­˜åœ¨ï¼š'+state.cart[index].name);const raw=snap.data()||{},item=state.cart[index],current=Number(raw.currentStock||0),qty=Math.max(1,Math.round(Number(item.qty||0)));if(current<qty)throw new Error(item.name+' åº«å­˜ä¸è¶³ï¼Œç›®å‰ '+current);const unitPrice=Math.max(0,Number(item.unitPrice||0)),fifo=consumeFifo(raw,qty);subtotal+=qty*unitPrice;costTotal+=fifo.costTotal;unknownCostQty+=fifo.unknownCostQty;prepared.push({ref:refs[index],raw:raw,item:item,qty:qty,current:current,unitPrice:unitPrice,fifo:fifo});});
-      tx.set(saleRef,{saleNo:usageNo,soldAt:occurredAt,saleType:'internalUse',usageReason:usageReason,usageNote:usageNote,items:prepared.map(function(x){return {productId:x.item.productId,name:x.item.name,sku:x.item.sku,imageUrl:x.item.imageUrl||'',qty:x.qty,unitPrice:x.unitPrice,lineTotal:x.qty*x.unitPrice,lineCost:x.fifo.costTotal,fifoBreakdown:x.fifo.breakdown,unknownCostQty:x.fifo.unknownCostQty,rewardPercent:0};}),subtotal:subtotal,manualDiscount:0,pointDiscount:0,discount:0,total:subtotal,costTotal:costTotal,grossProfit:subtotal-costTotal,unknownCostQty:unknownCostQty,costMethod:'FIFO',paymentMethod:'å…§éƒ¨è€—ç”¨',paymentStatus:'paid',receivedAmount:subtotal,customerId:'',customerName:'',customerType:'internal',memberNo:'',pricingTier:'internal',earnPointsEnabled:false,pointsEarned:0,pendingPointsEarned:0,pointsRedeemed:0,note:[usageReason,usageNote].filter(Boolean).join('ï½œ'),status:'completed',createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
-      prepared.forEach(function(x){const after=x.current-x.qty;tx.update(x.ref,{currentStock:after,costLayers:x.fifo.layers,averageCost:x.fifo.averageCost,inventoryValue:x.fifo.inventoryValue,costIncomplete:x.fifo.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});queueInventorySyncInTransaction(tx,x.item.productId,x.item.sku,after,'internalUse');const inventoryRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(inventoryRef,{type:usageReason==='å ±å»¢'?'scrap':'internalUse',productId:x.item.productId,productName:x.item.name,sku:x.item.sku,qtyChange:0-x.qty,beforeStock:x.current,afterStock:after,unitCost:x.qty?x.fifo.costTotal/x.qty:null,costMethod:'FIFO',fifoBreakdown:x.fifo.breakdown,referenceType:'internalUse',referenceId:usageNo,note:'å…§éƒ¨è€—ç”¨ï¼å ±å»¢ï½œ'+usageReason+(usageNote?'ï½œ'+usageNote:''),occurredAt:occurredAt,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
-    });
-    await writeAudit('å…§éƒ¨è€—ç”¨ï¼å ±å»¢','internalUse',saleRef.id,usageNo+'ï½œ'+usageReason+'ï½œ'+money(sum(state.cart,function(item){return item.qty*item.unitPrice;})));state.cart=[];state.posSearch='';state.stockUsageReason='åº—å…§è‡ªç”¨';state.stockUsageNote='';toast('åº«å­˜å·²æ‰£é™¤',usageNo+'ï½œ'+usageReason,'success');await loadAll(true);
-  }
-  function openQuickIncome(category){
-    const preset=clean(category);
-    openDrawer(preset||'æ–°å¢žå…¶ä»–æ”¶å…¥','','<form id="quickIncomeForm"><div class="ops-form-grid"><div class="ops-field"><label class="ops-required">æ”¶å…¥æ—¥æœŸ</label><input class="ops-input" type="datetime-local" name="occurredAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label class="ops-required">æ”¶å…¥é¡žåˆ¥</label><input class="ops-input" name="category" value="'+attr(preset)+'" placeholder="ä¾‹å¦‚ï¼šç¶­ä¿®æ”¶å…¥" required></div><div class="ops-field"><label class="ops-required">é‡‘é¡</label><input class="ops-input" type="number" min="0" step="1" name="amount" required></div><div class="ops-field"><label>ä»˜æ¬¾æ–¹å¼</label><select class="ops-select" name="paymentMethod"><option>ç¾é‡‘</option><option>ä¿¡ç”¨å¡</option><option>è½‰å¸³</option><option>LINE Pay</option><option>å…¶ä»–</option></select></div><div class="ops-field"><label>å®¢æˆ¶å§“å</label><input class="ops-input" name="customerName"></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note"></textarea></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">å„²å­˜æ”¶å…¥</button></div></form>');
-  }
-  async function saveQuickIncome(form){
-    const data=new FormData(form),amount=numberOrNull(data.get('amount')),customerId=clean(data.get('customerId')),customer=state.customers.find(function(x){return x.id===customerId;})||null,paymentChoice=clean(data.get('paymentStatus'))||'paid';if(amount==null||amount<0)throw new Error('è«‹å¡«å¯«æ­£ç¢ºé‡‘é¡');if(paymentChoice!=='paid'&&!customer)throw new Error('æœªæ”¶æ¬¾å¿…é ˆé¸æ“‡å®¢æˆ¶');const entered=numberOrNull(data.get('receivedAmount')),received=paymentChoice==='paid'?amount:Math.min(amount,Math.max(0,entered||0)),status=received>=amount?'paid':received>0?'partial':'unpaid',no=uid('INC'),ref=state.db.collection(COLLECTIONS.incomes).doc(),receivableRef=state.db.collection(COLLECTIONS.receivables).doc(),occurredAt=new Date(clean(data.get('occurredAt')));
-    await state.db.runTransaction(async function(tx){tx.set(ref,{incomeNo:no,occurredAt:occurredAt,category:clean(data.get('category'))||'å…¶ä»–æ”¶å…¥',itemName:clean(data.get('itemName')),amount:amount,paymentMethod:clean(data.get('paymentMethod')),paymentStatus:status,receivedAmount:received,customerId:customer?customer.id:'',customerName:customer?customer.name:'',note:clean(data.get('note')),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});if(status!=='paid')tx.set(receivableRef,{receivableNo:uid('AR'),sourceType:'income',incomeId:ref.id,incomeNo:no,customerId:customer.id,customerName:customer.name,totalAmount:amount,receivedAmount:received,outstandingAmount:amount-received,status:status,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
-    await writeAudit('æ–°å¢žæ”¶å…¥','quickIncome',ref.id,no+'ï½œ'+money(amount));state.salesMode='product';state.selectedCustomerId='';state.posCustomerMode='walkin';state.checkoutPaymentMethod='ç¾é‡‘';state.checkoutPaymentStatus='paid';state.checkoutReceived='';state.directIncomeAmount='';closeDrawer();toast('æ”¶å…¥å·²å„²å­˜',no,'success');await loadAll(true);
-  }
-  function openIncomeEdit(id){
-    const income=state.incomes.find(function(row){return row.id===id;});if(!income)return;
-    const customer=state.customers.find(function(row){return row.id===income.customerId;})||null,walkin=!customer,status=clean(income.paymentStatus)||'paid',category=income.category==='ç¶­ä¿®æ”¶å…¥'?'ç¶­ä¿®æ”¶å…¥':income.category==='é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥'?'é›»é‹¼ç´ç§Ÿç”¨æ”¶å…¥':'å…¶ä»–æ”¶å…¥',options=['ç¾é‡‘','ä¿¡ç”¨å¡','è½‰å¸³','LINE Pay','å…¶ä»–'].map(function(value){return '<option '+(income.paymentMethod===value?'selected':'')+'>'+value+'</option>';}).join(''),statusOptions=(walkin?['paid']:['paid','partial','unpaid']).map(function(value){const label=value==='paid'?'å·²æ”¶æ¸…':value==='partial'?'éƒ¨åˆ†æ”¶æ¬¾':'æœªæ”¶æ¬¾';return '<option value="'+value+'" '+(status===value?'selected':'')+'>'+label+'</option>';}).join('');
-    openDrawer('ä¿®æ”¹'+category,income.incomeNo,'<form id="incomeEditForm" data-id="'+attr(income.id)+'"><div class="ops-form-grid"><div class="ops-field"><label>æ”¶å…¥æ—¥æœŸ</label><input class="ops-input" type="datetime-local" name="occurredAt" value="'+attr(inputDateTime(dateFrom(income.occurredAt)||new Date()))+'" required></div><div class="ops-field"><label>æ”¶å…¥é¡žåž‹</label><input class="ops-input" value="'+attr(category)+'" readonly><input type="hidden" name="category" value="'+attr(category)+'"></div><div class="ops-field full"><label class="ops-required">'+(category==='ç¶­ä¿®æ”¶å…¥'?'ç¶­ä¿®é …ç›®':'æ”¶å…¥é …ç›®')+'</label><input class="ops-input" name="itemName" value="'+attr(income.itemName||'')+'" required></div><div class="ops-field"><label class="ops-required">é‡‘é¡</label><input class="ops-input" type="number" min="0" step="1" name="amount" value="'+attr(income.amount)+'" required></div><div class="ops-field"><label>ä»˜æ¬¾æ–¹å¼</label><select class="ops-select" name="paymentMethod">'+options+'</select></div><div class="ops-field"><label>æ”¶æ¬¾ç‹€æ…‹</label><select class="ops-select" name="paymentStatus">'+statusOptions+'</select></div><div class="ops-field"><label>æœ¬æ¬¡å·²æ”¶</label><input class="ops-input" type="number" min="0" step="1" name="receivedAmount" value="'+attr(income.receivedAmount)+'"></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note">'+escapeHtml(income.note)+'</textarea></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button danger-outline" type="button" data-action="income-void" data-id="'+attr(income.id)+'">åˆªé™¤é€™ç­†æ”¶å…¥</button><button class="ops-button primary" type="submit">å„²å­˜ä¿®æ”¹</button></div></form>');
-  }
-  async function saveIncomeEdit(form){
-    const id=clean(form.dataset.id),income=state.incomes.find(function(row){return row.id===id;});if(!income)throw new Error('æ‰¾ä¸åˆ°æ”¶å…¥ç´€éŒ„');const data=new FormData(form),amount=numberOrNull(data.get('amount'));if(amount==null||amount<0)throw new Error('è«‹å¡«å¯«æ­£ç¢ºé‡‘é¡');const customer=state.customers.find(function(row){return row.id===income.customerId;})||null,choice=clean(data.get('paymentStatus'))||'paid';if(choice!=='paid'&&!customer)throw new Error('æ²’æœ‰å®¢æˆ¶è³‡æ–™çš„ç´€éŒ„åªèƒ½è¨­å®šç‚ºå·²æ”¶æ¸…');const entered=numberOrNull(data.get('receivedAmount')),received=choice==='paid'?amount:Math.min(amount,Math.max(0,entered||0)),status=received>=amount?'paid':received>0?'partial':'unpaid',incomeRef=state.db.collection(COLLECTIONS.incomes).doc(id),existingReceivable=state.receivables.find(function(row){return row.incomeId===id;})||null,receivableRef=existingReceivable?state.db.collection(COLLECTIONS.receivables).doc(existingReceivable.id):state.db.collection(COLLECTIONS.receivables).doc(),occurredAt=new Date(clean(data.get('occurredAt')));if(Number.isNaN(occurredAt.getTime()))throw new Error('æ”¶å…¥æ—¥æœŸä¸æ­£ç¢º');
-    await state.db.runTransaction(async function(tx){const snap=await tx.get(incomeRef);if(!snap.exists)throw new Error('æ”¶å…¥ç´€éŒ„ä¸å­˜åœ¨');tx.update(incomeRef,{occurredAt:occurredAt,category:clean(data.get('category'))||'å…¶ä»–æ”¶å…¥',itemName:clean(data.get('itemName')),amount:amount,paymentMethod:clean(data.get('paymentMethod')),paymentStatus:status,receivedAmount:received,note:clean(data.get('note')),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION});if(status==='paid'){if(existingReceivable)tx.set(receivableRef,{totalAmount:amount,receivedAmount:amount,outstandingAmount:0,status:'paid',updatedAt:serverTimestamp(),updatedBy:userLabel()},{merge:true});}else{const payload={receivableNo:existingReceivable?existingReceivable.receivableNo:uid('AR'),sourceType:'income',incomeId:id,incomeNo:income.incomeNo,customerId:customer.id,customerName:customer.name,totalAmount:amount,receivedAmount:received,outstandingAmount:amount-received,status:status,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};if(!existingReceivable){payload.createdAt=serverTimestamp();payload.createdBy=userLabel();}tx.set(receivableRef,payload,{merge:true});}});
-    await writeAudit('ä¿®æ”¹æ”¶å…¥','quickIncome',id,income.incomeNo+'ï½œ'+money(amount));closeDrawer();toast('æ”¶å…¥ç´€éŒ„å·²ä¿®æ”¹',income.incomeNo,'success');await loadAll(true);
-  }
-  function openReceivablePayment(id){const r=state.receivables.find(function(x){return x.id===id;});if(!r)return;const sale=r.saleId?state.sales.find(function(row){return row.id===r.saleId;}):null;if(sale&&sale.saleType==='preorder')return openPreorderTracking(sale.id);openDrawer('ç™»è¨˜æ”¶æ¬¾',r.customerName+'ï½œ'+r.receivableNo,'<form id="receivablePaymentForm" data-id="'+attr(r.id)+'"><div class="ops-summary-list"><div class="ops-summary-line"><span>ç›®å‰å°šæœªæ”¶</span><b>'+money(r.outstandingAmount)+'</b></div></div><div class="ops-callout"><b>åªç™»è¨˜å·²ç¶“å¯¦éš›æ”¶åˆ°çš„æ¬¾é …</b><br><span>é‡‘é¡ä¸æœƒè‡ªå‹•å¸¶å…¥ï¼Œè«‹ä¾å®¢äººé€™æ¬¡çœŸæ­£ä»˜æ¬¾çš„æ•¸å­—è¼¸å…¥ã€‚</span></div><div class="ops-form-grid" style="margin-top:15px"><div class="ops-field"><label class="ops-required">æ”¶æ¬¾æ—¥æœŸ</label><input class="ops-input" type="datetime-local" name="paidAt" value="'+inputDateTime(new Date())+'" required></div><div class="ops-field"><label class="ops-required">æœ¬æ¬¡å¯¦éš›æ”¶åˆ°</label><input class="ops-input" type="number" min="1" max="'+r.outstandingAmount+'" step="1" name="amount" value="" placeholder="è«‹æ‰‹å‹•è¼¸å…¥" required></div><div class="ops-field"><label>ä»˜æ¬¾æ–¹å¼</label><select class="ops-select" name="paymentMethod"><option>ç¾é‡‘</option><option>ä¿¡ç”¨å¡</option><option>è½‰å¸³</option><option>LINE Pay</option><option>å…¶ä»–</option></select></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="note"></textarea></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button primary" type="submit">ç¢ºèªçœŸçš„æ”¶åˆ°é€™ç­†æ¬¾é …</button></div></form>');}
-  async function saveReceivablePayment(form){
-    const id=clean(form.dataset.id),returnSaleId=clean(form.dataset.saleId),data=new FormData(form),amount=numberOrNull(data.get('amount')),paidAt=new Date(clean(data.get('paidAt'))),ref=state.db.collection(COLLECTIONS.receivables).doc(id),paymentRef=state.db.collection(COLLECTIONS.receivablePayments).doc();if(!amount||amount<=0)throw new Error('æ”¶æ¬¾é‡‘é¡ä¸æ­£ç¢º');if(Number.isNaN(paidAt.getTime()))throw new Error('æ”¶æ¬¾æ—¥æœŸæ ¼å¼ä¸æ­£ç¢º');
-    await state.db.runTransaction(async function(tx){
-      const receivableSnap=await tx.get(ref);if(!receivableSnap.exists)throw new Error('æ‰¾ä¸åˆ°æ‡‰æ”¶å¸³æ¬¾');const raw=receivableSnap.data()||{},r=normalizeReceivable(Object.assign({__id:id},raw));if(amount>r.outstandingAmount)throw new Error('æ”¶æ¬¾é‡‘é¡è¶…éŽæœªæ”¶é‡‘é¡');const sourceRef=r.sourceType==='income'&&r.incomeId?state.db.collection(COLLECTIONS.incomes).doc(r.incomeId):(r.saleId?state.db.collection(COLLECTIONS.sales).doc(r.saleId):null),sourceSnap=sourceRef?await tx.get(sourceRef):null,customerRef=r.customerId?state.db.collection(COLLECTIONS.customers).doc(r.customerId):null,customerSnap=customerRef?await tx.get(customerRef):null,received=r.receivedAmount+amount,outstanding=Math.max(0,r.totalAmount-received),status=outstanding===0?'paid':'partial';
-      tx.update(ref,{receivedAmount:received,outstandingAmount:outstanding,status:status,updatedAt:serverTimestamp(),updatedBy:userLabel()});tx.set(paymentRef,{receivableId:r.id,sourceType:r.sourceType,saleId:r.saleId,incomeId:r.incomeId,customerId:r.customerId,amount:amount,paymentMethod:clean(data.get('paymentMethod')),paidAt:paidAt,note:clean(data.get('note')),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});if(sourceRef){const sourceUpdate={receivedAmount:received,paymentStatus:status,updatedAt:serverTimestamp()};if(r.sourceType==='sale'&&status==='paid'&&sourceSnap&&sourceSnap.exists&&clean((sourceSnap.data()||{}).fulfillmentStatus)==='delivered')sourceUpdate.status='completed';tx.set(sourceRef,sourceUpdate,{merge:true});}
-      if(status==='paid'&&r.sourceType==='sale'&&sourceSnap&&sourceSnap.exists&&customerSnap&&customerSnap.exists&&clean((sourceSnap.data()||{}).fulfillmentStatus)!=='waiting_stock'){const sale=sourceSnap.data()||{},pending=Math.max(0,Math.floor(Number(sale.pendingPointsEarned||0)));if(pending){const balance=Math.max(0,Number((customerSnap.data()||{}).pointBalance||0))+pending,pointRef=state.db.collection(COLLECTIONS.points).doc();tx.update(customerRef,{pointBalance:balance,updatedAt:serverTimestamp()});tx.set(pointRef,{customerId:r.customerId,saleId:r.saleId,type:'earn',points:pending,balanceAfter:balance,note:clean(sale.saleNo),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});tx.set(sourceRef,{pointsEarned:pending,pendingPointsEarned:0},{merge:true});}}
-    });
-    await writeAudit('ç™»è¨˜æ‡‰æ”¶æ¬¾','receivable',id,money(amount));closeDrawer();toast('æ”¶æ¬¾å·²ç™»è¨˜',money(amount)+'ï½œæˆäº¤èˆ‡äº¤è²¨æ—¥æœŸä¸è®Š','success');await loadAll(true);if(returnSaleId)openPreorderTracking(returnSaleId);
-  }
-  function restoreSaleItemToStock(raw,item,qtyOverride){
-    const layers=materializeCostLayers(raw),breakdown=Array.isArray(item.fifoBreakdown)?item.fifoBreakdown:[],fallbackQty=Math.max(0,Math.floor(Number(qtyOverride==null?item.qty:qtyOverride)||0));if(breakdown.length){let remaining=fallbackQty;breakdown.forEach(function(part,index){const qty=Math.min(remaining,Math.max(0,Number(part.qty||0)));if(!qty)return;remaining-=qty;let layer=layers.find(function(x){return x.layerId===clean(part.layerId);});if(layer){layer.qtyRemaining+=qty;layer.originalQty=Math.max(layer.originalQty||0,layer.qtyRemaining);}else layers.push({layerId:clean(part.layerId)||('RESTORE-'+index),qtyRemaining:qty,originalQty:qty,unitCost:numberOrNull(part.unitCost),costKnown:numberOrNull(part.unitCost)!=null,receivedAt:'1970-01-01T00:00:00.000Z',referenceType:'saleRestore',referenceId:clean(item.sku)});});if(remaining>0){const lineCost=numberOrNull(item.lineCost),unit=lineCost==null?null:lineCost/Math.max(1,Number(item.qty||fallbackQty));layers.push({layerId:uid('RESTORE'),qtyRemaining:remaining,originalQty:remaining,unitCost:unit,costKnown:unit!=null,receivedAt:'1970-01-01T00:00:00.000Z',referenceType:'saleRestore',referenceId:clean(item.sku)});}}else if(fallbackQty){const lineCost=numberOrNull(item.lineCost),unit=lineCost==null?null:lineCost/Math.max(1,Number(item.qty||fallbackQty));layers.push({layerId:uid('RESTORE'),qtyRemaining:fallbackQty,originalQty:fallbackQty,unitCost:unit,costKnown:unit!=null,receivedAt:'1970-01-01T00:00:00.000Z',referenceType:'saleRestore',referenceId:clean(item.sku)});}const stats=statsFromLayers(layers),stock=Number(raw.currentStock||0)+fallbackQty;return {raw:Object.assign({},raw,{currentStock:stock,costLayers:stats.layers}),stock:stock};
-  }
-
-  function openPreorderTracking(id){
-    const sale=state.sales.find(function(row){return row.id===id;});if(!sale)return;
-    if(sale.saleType!=='preorder')return openSaleEdit(id);
-    const tracking=preorderTrackingState(sale),payments=preorderPaymentsForSale(sale),itemStates=(sale.items||[]).map(function(item){const product=catalogById(item.productId),stock=Number(product&&product.currentStock||0),qty=Math.max(1,Number(item.qty||1)),enough=stock>=qty;return {item:item,stock:stock,qty:qty,enough:enough};}),allReady=itemStates.every(function(row){return row.enough;}),items=itemStates.map(function(row){return '<div class="ops-sale-edit-row ops-preorder-item-row"><div><b>'+escapeHtml(row.item.name)+'</b><span>'+escapeHtml(row.item.sku||'')+'ï½œéœ€è¦ '+formatNumber(row.qty)+'ï½œç›®å‰åº«å­˜ '+formatNumber(row.stock)+'ï½œæˆæœ¬ '+money(row.item.lineCost)+(row.item.costEstimated===true||sale.costEstimated===true?'ï¼ˆæˆäº¤æ™‚é ä¼°ï¼‰':'')+'</span></div><strong>'+statusTag(tracking.delivered?'å·²äº¤è²¨':row.enough?'å¯äº¤è²¨':'å°šæœªå…¥åº«',tracking.delivered||row.enough?'green':'yellow')+'</strong></div>';}).join(''),paymentRows=payments.length?payments.map(function(payment,index){return '<div class="ops-preorder-payment-row"><span><b>'+(index===0?'è¨‚é‡‘ï¼æ”¶æ¬¾':'å¾ŒçºŒæ”¶æ¬¾')+'</b><small>'+escapeHtml(dateTimeText(payment.paidAt))+'ï½œ'+escapeHtml(payment.paymentMethod||'æœªè¨»æ˜Žæ–¹å¼')+(payment.note?'ï½œ'+escapeHtml(payment.note):'')+'</small></span><strong>'+money(payment.amount)+'</strong></div>';}).join(''):'<div class="ops-preorder-payment-empty">å°šç„¡æ”¶æ¬¾æµæ°´</div>';
-    const paymentSection=tracking.outstanding>0?(tracking.receivable?'<section class="ops-preorder-action-section"><div class="ops-preorder-section-head"><div><h3>ç™»è¨˜æœ¬æ¬¡çœŸçš„æ”¶åˆ°çš„æ¬¾é …</h3><p>åªåœ¨å®¢äººå¯¦éš›ä»˜æ¬¾å¾Œä½¿ç”¨ï¼›ä¸æœƒæ”¹å‹•æˆäº¤æ—¥ã€æˆæœ¬ã€æ¯›åˆ©æˆ–äº¤è²¨ç‹€æ…‹ã€‚</p></div>'+statusTag('æœªæ”¶ '+money(tracking.outstanding),'yellow')+'</div><form id="preorderPaymentForm" data-id="'+attr(tracking.receivable.id)+'" data-sale-id="'+attr(sale.id)+'"><div class="ops-form-grid"><div class="ops-field"><label class="ops-required">æ”¶æ¬¾æ—¥æœŸ</label><input class="ops-input" type="datetime-local" name="paidAt" value="'+attr(inputDateTime(new Date()))+'" required></div><div class="ops-field"><label class="ops-required">æœ¬æ¬¡å¯¦éš›æ”¶åˆ°</label><input class="ops-input ops-number-clean" type="number" inputmode="decimal" min="1" max="'+tracking.outstanding+'" step="1" name="amount" value="" placeholder="è«‹æ‰‹å‹•è¼¸å…¥ï¼Œä¸æœƒè‡ªå‹•å¸¶å…¥å°¾æ¬¾" required></div><div class="ops-field"><label>ä»˜æ¬¾æ–¹å¼</label><select class="ops-select" name="paymentMethod"><option>ç¾é‡‘</option><option>ä¿¡ç”¨å¡</option><option>è½‰å¸³</option><option>LINE Pay</option><option>å…¶ä»–</option></select></div><div class="ops-field full"><label>æ”¶æ¬¾å‚™è¨»</label><textarea class="ops-textarea" name="note" placeholder="ä¾‹å¦‚ï¼š8/5 å®¢äººåˆ°åº—ä»˜æ¸…å°¾æ¬¾"></textarea></div></div><button class="ops-button primary wide" type="submit">ç¢ºèªçœŸçš„æ”¶åˆ°é€™ç­†æ¬¾é …</button></form></section>':'<div class="ops-callout red"><b>é€™å¼µå–®ç¼ºå°‘æ‡‰æ”¶å¸³æ¬¾è³‡æ–™</b><br><span>ç‚ºé¿å…é‡è¤‡å…¥å¸³ï¼Œæš«æ™‚ä¸èƒ½å¾žé€™è£¡æ”¶æ¬¾ï¼Œè«‹å…ˆæŸ¥æ˜ŽåŽŸå§‹ç´€éŒ„ã€‚</span></div>'):'<div class="ops-callout green"><b>æ¬¾é …å·²å…¨éƒ¨æ”¶æ¸…</b><br><span>é€™åªä»£è¡¨æ”¶æ¬¾å®Œæˆï¼›æ˜¯å¦äº¤è²¨è«‹çœ‹ä¸‹æ–¹äº¤è²¨ç‹€æ…‹ã€‚</span></div>';
-    const deliverySection=tracking.delivered?'<section class="ops-preorder-action-section"><div class="ops-preorder-section-head"><div><h3>äº¤è²¨ç‹€æ…‹</h3><p>å·²æ–¼ '+escapeHtml(dateTimeText(sale.deliveredAt))+' å®Œæˆäº¤è²¨ï¼›åŽŸæˆäº¤æ—¥ä»æ˜¯ '+escapeHtml(dateTimeText(sale.soldAt||sale.preorderAt))+'ã€‚</p></div>'+statusTag('å·²äº¤è²¨','green')+'</div></section>':'<section class="ops-preorder-action-section"><div class="ops-preorder-section-head"><div><h3>ç¢ºèªå•†å“å·²äº¤çµ¦å®¢äºº</h3><p>é€™å€‹å‹•ä½œåªè¨˜éŒ„äº¤è²¨ä¸¦æ‰£åº«å­˜ï¼Œä¸æœƒé †ä¾¿æ”¶æ¬¾ï¼Œä¹Ÿä¸æœƒæ¬å‹•æˆäº¤æˆ–æ¯›åˆ©æ—¥æœŸã€‚</p></div>'+statusTag(allReady?'åº«å­˜å¯äº¤è²¨':'å•†å“å°šæœªå…¥åº«',allReady?'green':'yellow')+'</div><form id="preorderFulfillmentForm" data-id="'+attr(sale.id)+'"><div class="ops-form-grid"><div class="ops-field"><label class="ops-required">å¯¦éš›äº¤è²¨æ—¥æœŸ</label><input class="ops-input" type="datetime-local" name="deliveredAt" value="'+attr(inputDateTime(new Date()))+'" required></div><div class="ops-field full"><label>äº¤è²¨å‚™è¨»</label><textarea class="ops-textarea" name="note" placeholder="ä¾‹å¦‚ï¼šé–€å¸‚è‡ªå–ï¼Œå•†å“èˆ‡é…ä»¶å·²å…¨æ•¸å¸¶èµ°"></textarea></div></div><button class="ops-button primary wide" type="submit" '+(allReady?'':'disabled')+'>ç¢ºèªå·²äº¤è²¨ä¸¦æ‰£åº«å­˜</button></form>'+(allReady?'':'<div class="ops-callout"><b>ç›®å‰ä¸èƒ½äº¤è²¨</b><br><span>è«‹å…ˆå®Œæˆå•†å“å…¥åº«ï¼›ç³»çµ±ä¸æœƒå…è¨±è² åº«å­˜ã€‚</span></div>')+'</section>';
-    const costNote=sale.costEstimated===true?'ï¼ˆæˆäº¤æ™‚å…ˆä»¥å•†å“æˆæœ¬é ä¼°ï¼Œäº¤è²¨æ™‚æ ¡æ­£ï¼‰':'';
-    openDrawer('é è³¼è¨‚å–®é›†ä¸­è¿½è¹¤',sale.saleNo,'<div class="ops-preorder-tracking-drawer"><div class="ops-preorder-identity"><div><span>å®¢æˆ¶</span><b>'+escapeHtml(sale.customerName||'æœªæŒ‡å®š')+'</b></div><div><span>åŽŸæˆäº¤æ—¥</span><b>'+escapeHtml(dateTimeText(sale.soldAt||sale.preorderAt))+'</b></div></div><div class="ops-preorder-finance-grid"><div><span>å®Œæ•´æˆäº¤é‡‘é¡</span><b>'+money(tracking.orderTotal)+'</b></div><div><span>å•†å“æˆæœ¬</span><b>'+money(tracking.cost)+'</b><small>'+escapeHtml(costNote)+'</small></div><div><span>æˆäº¤æ¯›åˆ©</span><b>'+money(tracking.profit)+'</b></div><div><span>æ”¶æ¬¾é€²åº¦</span><b>'+money(tracking.received)+'ï¼'+money(tracking.orderTotal)+'</b></div></div><div class="ops-preorder-status-summary"><div><span>æ”¶æ¬¾</span>'+statusTag(tracking.paymentLabel,tracking.paymentStatus==='paid'?'green':'yellow')+'<small>æœªæ”¶ '+money(tracking.outstanding)+'</small></div><div><span>äº¤è²¨</span>'+statusTag(tracking.deliveryLabel,tracking.delivered?'green':'yellow')+'<small>'+(tracking.delivered?escapeHtml(dateTimeText(sale.deliveredAt)):'å°šæœªäº¤çµ¦å®¢äºº')+'</small></div></div><section class="ops-preorder-action-section"><div class="ops-preorder-section-head"><div><h3>å•†å“èˆ‡åº«å­˜</h3><p>æˆäº¤æ—¥å·²å›ºå®šï¼›é€™è£¡åªç¢ºèªå¯¦éš›äº¤è²¨æ¢ä»¶ã€‚</p></div></div><div class="ops-sale-edit-items">'+items+'</div></section><section class="ops-preorder-action-section"><div class="ops-preorder-section-head"><div><h3>æ”¶æ¬¾æµæ°´</h3><p>è¨‚é‡‘èˆ‡æ¯æ¬¡å°¾æ¬¾ä¾å¯¦éš›ä»˜æ¬¾æ—¥é€ç­†ä¿ç•™ã€‚</p></div></div><div class="ops-preorder-payment-list">'+paymentRows+'</div></section>'+paymentSection+deliverySection+'<div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">é—œé–‰</button>'+(!tracking.delivered&&tracking.received===0?'<button class="ops-button danger-outline" type="button" data-action="sale-void" data-id="'+attr(sale.id)+'">åˆªé™¤æœªæ”¶æ¬¾éŒ¯èª¤è¨‚å–®</button>':'')+(tracking.delivered?'<button class="ops-button soft" type="button" data-action="sale-edit" data-id="'+attr(sale.id)+'">ä¿®æ”¹å•†å“å…§å®¹</button>':'')+'</div></div>');
-  }
-  function openPreorderFulfillment(id){return openPreorderTracking(id);}
-  async function savePreorderFulfillment(form){
-    const id=clean(form.dataset.id),data=new FormData(form),deliveredAt=new Date(clean(data.get('deliveredAt'))),saleRef=state.db.collection(COLLECTIONS.sales).doc(id);if(Number.isNaN(deliveredAt.getTime()))throw new Error('äº¤è²¨æ—¥æœŸæ ¼å¼ä¸æ­£ç¢º');
-    await state.db.runTransaction(async function(tx){
-      const saleSnap=await tx.get(saleRef);if(!saleSnap.exists)throw new Error('æ‰¾ä¸åˆ°é è³¼å–®');const rawSale=saleSnap.data()||{},originalSoldAt=dateFrom(rawSale.soldAt||rawSale.preorderAt);if(clean(rawSale.saleType)!=='preorder'||clean(rawSale.fulfillmentStatus)==='delivered')throw new Error('é€™å¼µè¨‚å–®å·²å®Œæˆäº¤è²¨');if(originalSoldAt&&deliveredAt<originalSoldAt)throw new Error('äº¤è²¨æ—¥æœŸä¸èƒ½æ—©æ–¼åŽŸæˆäº¤æ—¥');const items=Array.isArray(rawSale.items)?rawSale.items:[],productRefs=items.map(function(item){return state.db.collection(COLLECTIONS.products).doc(clean(item.productId));}),productSnaps=[];for(const ref of productRefs)productSnaps.push(await tx.get(ref));const customerRef=rawSale.customerId?state.db.collection(COLLECTIONS.customers).doc(clean(rawSale.customerId)):null,customerSnap=customerRef?await tx.get(customerRef):null;
-      const prepared=[];let costTotal=0,unknownCostQty=0;productSnaps.forEach(function(snap,index){const item=items[index];if(!snap.exists)throw new Error('å•†å“ä¸»æª”ä¸å­˜åœ¨ï¼š'+clean(item.name));const raw=snap.data()||{},current=Number(raw.currentStock||0),qty=Math.max(1,Math.round(Number(item.qty||0)));if(current<qty)throw new Error(clean(item.name)+' å°šæœªå…¥åº«ï¼Œç›®å‰ '+current+'ï¼Œéœ€è¦ '+qty);const fifo=consumeFifo(raw,qty,false),after=current-qty;costTotal+=fifo.costTotal;unknownCostQty+=fifo.unknownCostQty;prepared.push({ref:productRefs[index],raw:raw,item:item,qty:qty,current:current,after:after,fifo:fifo});});
-      const orderTotal=Math.max(0,Number(rawSale.orderTotal!=null?rawSale.orderTotal:(rawSale.total!=null?rawSale.total:Number(rawSale.subtotal||0)-Number(rawSale.discount||0)))),paymentStatus=clean(rawSale.paymentStatus)||'unpaid',pendingPoints=Math.max(0,Math.floor(Number(rawSale.pendingPointsEarned||0))),awardPoints=paymentStatus==='paid'?pendingPoints:0,nextItems=prepared.map(function(x){return Object.assign({},x.item,{lineCost:x.fifo.costTotal,fifoBreakdown:x.fifo.breakdown,estimatedCostBreakdown:[],costEstimated:false,unknownCostQty:x.fifo.unknownCostQty});});
-      tx.set(saleRef,{deliveredAt:deliveredAt,fulfillmentStatus:'delivered',status:paymentStatus==='paid'?'completed':'awaiting_payment',items:nextItems,total:orderTotal,costTotal:costTotal,costEstimated:false,costSource:'fifo',costConfirmedAt:deliveredAt,grossProfit:orderTotal-costTotal,unknownCostQty:unknownCostQty,pointsEarned:Number(rawSale.pointsEarned||0)+awardPoints,pendingPointsEarned:awardPoints?0:pendingPoints,note:[clean(rawSale.note),clean(data.get('note'))].filter(Boolean).join('ï½œ'),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
-      prepared.forEach(function(x){tx.update(x.ref,{currentStock:x.after,costLayers:x.fifo.layers,averageCost:x.fifo.averageCost,inventoryValue:x.fifo.inventoryValue,costIncomplete:x.fifo.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});queueInventorySyncInTransaction(tx,clean(x.item.productId),clean(x.item.sku),x.after,'preorderFulfillment');const inventoryRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(inventoryRef,{type:'sale',productId:clean(x.item.productId),productName:clean(x.item.name),sku:clean(x.item.sku),qtyChange:-x.qty,beforeStock:x.current,afterStock:x.after,unitCost:x.qty?x.fifo.costTotal/x.qty:null,costMethod:'FIFO',fifoBreakdown:x.fifo.breakdown,referenceType:'preorderFulfillment',referenceId:clean(rawSale.saleNo),note:'é è³¼äº¤è²¨ï¼ˆä¸å«æ”¶æ¬¾ï¼‰',occurredAt:deliveredAt,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
-      if(awardPoints&&customerRef&&customerSnap&&customerSnap.exists){const balance=Math.max(0,Number((customerSnap.data()||{}).pointBalance||0))+awardPoints,pointRef=state.db.collection(COLLECTIONS.points).doc();tx.update(customerRef,{pointBalance:balance,updatedAt:serverTimestamp()});tx.set(pointRef,{customerId:clean(rawSale.customerId),saleId:id,type:'earn',points:awardPoints,balanceAfter:balance,note:clean(rawSale.saleNo),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});}
-    });
-    await writeAudit('å®Œæˆé è³¼äº¤è²¨','preorder',id,id+'ï½œåªè¨˜éŒ„äº¤è²¨ï¼Œä¸å«æ”¶æ¬¾');closeDrawer();toast('é è³¼å·²å®Œæˆäº¤è²¨','åº«å­˜å·²æ‰£é™¤ï¼›åŽŸæˆäº¤æ—¥ã€æ”¶æ¬¾èˆ‡æ¯›åˆ©æ—¥æœŸéƒ½æ²’æœ‰æ¬å‹•ã€‚','success');await loadAll(true);
-  }
-
-  function openSaleEdit(id){
-    const sale=state.sales.find(function(x){return x.id===id;});if(!sale)return;if(sale.saleType==='preorder'&&sale.fulfillmentStatus!=='delivered')return openPreorderFulfillment(id);if(sale.saleType==='internalUse'){
-      const reasonOptions=['åº—å…§è‡ªç”¨','æ¶ˆè€—å“','å ±å»¢','å…¶ä»–'].map(function(value){return '<option value="'+attr(value)+'" '+((sale.usageReason||'åº—å…§è‡ªç”¨')===value?'selected':'')+'>'+escapeHtml(value)+'</option>';}).join(''),items=(sale.items||[]).map(function(item){return '<div class="ops-sale-edit-row" data-internal-usage-edit-row><input type="hidden" name="productId" value="'+attr(item.productId)+'"><div><b>'+escapeHtml(item.name)+'</b><span>'+escapeHtml(item.sku||'')+'ï½œåŽŸæˆæœ¬ '+money(item.lineCost)+'</span></div><label>æ•¸é‡<input class="ops-input ops-number-clean" type="number" min="1" step="1" name="qty" value="'+Math.max(1,Number(item.qty||1))+'"></label><label>è¨˜éŒ„é‡‘é¡<input class="ops-input ops-number-clean" type="number" min="0" step="1" name="unitPrice" value="'+Math.max(0,Number(item.unitPrice||0))+'"></label></div>';}).join('');
-      openDrawer('ä¿®æ”¹å…§éƒ¨è€—ç”¨ï¼å ±å»¢',sale.saleNo,'<form id="internalUsageEditForm" data-id="'+attr(sale.id)+'"><div class="ops-form-grid"><div class="ops-field"><label>ç´€éŒ„æ™‚é–“</label><input class="ops-input" type="datetime-local" name="soldAt" value="'+attr(inputDateTime(dateFrom(sale.soldAt)||new Date()))+'" required></div><div class="ops-field"><label>è™•ç†åŽŸå› </label><select class="ops-select" name="usageReason">'+reasonOptions+'</select></div><div class="ops-field full"><label>å‚™è¨»</label><textarea class="ops-textarea" name="usageNote">'+escapeHtml(sale.usageNote||'')+'</textarea></div></div><div class="ops-sale-edit-items">'+items+'</div><div class="ops-callout">ä¿®æ”¹æ•¸é‡æ™‚ï¼Œç³»çµ±æœƒä¾å·®é¡æ›´æ­£ä¸­å¤®åº«å­˜ï¼Œä¸¦é‡æ–°æŽ’å…¥ä¸‰å€‹å¹³å°çš„åº«å­˜åŒæ­¥ã€‚</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button danger-outline" type="button" data-action="sale-void" data-id="'+attr(sale.id)+'">åˆªé™¤é€™ç­†ç´€éŒ„</button><button class="ops-button primary" type="submit">å„²å­˜ä¿®æ”¹</button></div></form>');return;
-    }const customer=state.customers.find(function(x){return x.id===sale.customerId;})||null,member=customer&&customer.customerType==='member',walkin=!sale.customerId,items=sale.items.map(function(item){return '<div class="ops-sale-edit-row" data-sale-edit-row><input type="hidden" name="productId" value="'+attr(item.productId)+'"><div><b>'+escapeHtml(item.name)+'</b><span>'+escapeHtml(item.sku||'')+'</span></div><label>æ•¸é‡<input class="ops-input ops-number-clean" type="number" min="1" step="1" name="qty" value="'+Math.max(1,Number(item.qty||1))+'"></label><label>å”®åƒ¹<input class="ops-input ops-number-clean" type="number" min="0" step="1" name="unitPrice" value="'+Math.max(0,Number(item.unitPrice||0))+'"></label></div>';}).join(''),methodTiles=['ç¾é‡‘','ä¿¡ç”¨å¡','è½‰å¸³'].map(function(value){return '<label class="ops-radio-tile"><input type="radio" name="paymentMethod" value="'+value+'" '+(sale.paymentMethod===value?'checked':'')+'><span>'+value+'</span></label>';}).join(''),statusValues=walkin?['paid']:['paid','partial','unpaid'],statusLabels={paid:'å·²æ”¶æ¸…',partial:'éƒ¨åˆ†æ”¶æ¬¾',unpaid:'æœªæ”¶æ¬¾'},statusTiles=statusValues.map(function(value){return '<label class="ops-radio-tile"><input type="radio" name="paymentStatus" value="'+value+'" '+(sale.paymentStatus===value?'checked':'')+'><span>'+statusLabels[value]+'</span></label>';}).join('');
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛvëtèµ©hºÚn¶X§zÍJ[˜Ý[ÛŠÛØ˜[
+^Âˆ	Ý\ÙHÝšXÝ	ÎÂ‚ˆÛÛœÝÓ“S‘WÐÓÓPÕSÓ”ÈH×NÈËÈŒûï&¹í¬º-ëú,áù¥¦ycê¹å,HX\ÞTÝÜ™HTH9£ä9/¦ÂˆÛÛœÝÓÓPÕSÓ”ÈHÂˆ›ÙXÝÎ‰ÛÜÒ[\›˜[›ÙXÝÉËˆ\Ý[™ÐØ\Ù\Î‰ÛÜÔ›ÙXÝ\Ý[™ÐØ\Ù\ÉËˆ[™[ÜžN‰ÛÜÒ[™[ÜžU˜[œØXÝ[ÛœÉËˆØ[\Î‰ÛÜÔÝÜ™TØ[\ÉËˆ[˜ÛÛY\Î‰ÛÜÔ]ZXÚÒ[˜ÛÛY\ÉËˆ\˜Ú\Ù\Î‰ÛÜÔ\˜Ú\Ù\ÉËˆ™[[YÙ\œÎ‰ÛÜÔ™[[YÙ\œÉËˆØ\Ù\Î‰ÛÜÐØ\Ù\ÉËˆ^[œÙ\Î‰ÛÜÑ^[œÙ\ÉËˆÞ[˜Ò›ØœÎ‰ÛÜÔÞ[˜Ò›ØœÉËˆ]Y]‰ÛÜÐ]Y]ÙÜÉËˆ[\ÜÎ‰ÛÜÒ[\›˜[›ÙXÝ[\ÜÉËˆÙ][™ÜÎ‰ÛÜÔÙ][™ÜÉËˆÝ\ÝÛY\œÎ‰ÛÜÐÝ\ÝÛY\œÉËˆÚ[Î‰ÛÜÔÚ[˜[œØXÝ[ÛœÉËˆ™XÙZ]˜X›\Î‰ÛÜÔ™XÙZ]˜X›\ÉËˆ™XÙZ]˜X›T^[Y[Î‰ÛÜÔ™XÙZ]˜X›T^[Y[ÉËˆØ[\Ô™]\›œÎ‰ÛÜÔØ[\Ô™]\›œÉËˆYXØ][Û‘Z[N‰ÛÜÑYXØ][Û‘Z[IËˆ]›Ü›SÜ™\œÎ‰ÛÜÔ]›Ü›SÜ™\œÉËˆ]›Ü›TÞ[˜Ô[œÎ‰ÛÜÔ]›Ü›TÞ[˜Ô[œÉËˆ]›Ü›TÞ[˜Ô™\]Y\ÝÎ‰ÛÜÔ]›Ü›TÞ[˜Ô™\]Y\ÝÉËˆ]›Ü›R[™[ÜžT]Y]YN‰ÛÜÔ]›Ü›R[™[ÜžT]Y]YIËˆ[\ÞYY\Î‰Ù[\ÞYY\ÉËˆ[\ÞYYTØ[\žPÛÛ™šYÜÎ‰Ù[\ÞYYTØ[\žPÛÛ™šYÜÉËˆ[\ÞYYTØ[\žPÛÛ™šYÒ\ÝÜžN‰Ù[\ÞYYTØ[\žPÛÛ™šYÒ\ÝÜžIËˆ\[YT™XÛÜ™Î‰Ü\[YT™XÛÜ™ÉÂˆNÂˆÛÛœÝ‘PQÓSRUHLÂˆÛÛœÝ’T‘TÕÔ‘WÔ‘PQÕSQSÕUÓTÈHH
+ˆLÂˆÛÛœÝUÒÔÒV‘HHÂˆÛÛœÝ“ÑPÕÔQÑWÔÒV‘HHÂˆÛÛœÝ‘T”ÒSÓˆH	ÌŒ‹ŒŒLË\ÚÜYKX]]ÜX›\Ú]ŒL‰ÎÂˆ][™[™ÔÚÜYP]]Ùš[^[ØYH[ÂˆÛÛœÝ“ÑPÕÔÒTS‘×ÑPÒTÒSÓ”ÈHÂˆÛÛ™[šY[˜ÙNžÛX™[‰ùcëú-¡yea¹ká	Ë\ØÜš\[ÛŽ‰ùl#ùg¢ùea¹dà{ï&ùcëùab9/oùå*9k¢yaj9æ¡9/,9ë¥ùc!z(çz,áù¥¦xà ‰ßKˆÛYNžÛX™[‰ù.#ycëú-¡yea»ï#ù. :"+9k¡zacIË\ØÜš\[ÛŽ‰ú-¡z`cº-¡yeaºfd9b-»ï#9/a¹.ãycëùå*9. :"+9k¡zacyká:` xà ‰ßKˆœ™ZYÚžÛX™[‰ùi)ùg¢ùea¹dà{ï#ù¥¬9êîyâjy­`IË\ØÜš\[ÛŽ‰ùi)ùg¢ù¢%º/ úaãyea¹dà{ï&ú` yaî¹nlùcì:#byê/ùbczg :(ç:ob¹i%¹ë¬yl.¹kî8à ‰ßBˆNÂˆÛÛœÝ“ÑPÕÔPÒÐQÑWÔ‘TÑUÈHÂˆÛÛ™[šY[˜ÙNžÛ[™ÝÛNÚYÛNŒÌZYÚÛNŒLÙZYÚÙÎŒ_BˆNÂˆËÈ9o£9êëù§ :emùgíú(cÌ9b!ºd&;ï&ùà#ú)¯yfj9i&¹åfHH9b!ºd&9£©y¥-¹o£9êëùæ¡9§ 9í`¹¢$9b§ûï#ùi,y¥eùfç¹¡âxà ‚ˆÛÛœÝPTÖTÕÔ‘WÐÐUSÑ×ÐÓQS•ÕSQSÕUÓTÈHÌH
+ˆŒ
+ˆLÂˆÛÛœÝTÒ“ÐT‘ÐÐPÒWÒÑVHH	Þ[Ý^šWÛÜ×Ù\Ú›Ø\™ÛÝ™\šY]×ÝŒLÛÜ\˜][™×Ù^[œÙ\ÉÎÂˆÛÛœÝTÒ“ÐT‘ÐÐPÒWÕÓTÈHˆ
+ˆŒ
+ˆŒ
+ˆLÂˆÛÛœÝTÕÔÕUWÑ—ÓSQHH	Þ[Ý^šK[Ü\˜][ÛœËY˜\Ý\Ý\	ÎÂˆÛÛœÝTÕÔÕUWÔÕÔ‘HH	ÜÛ˜\ÚÝÉÎÂˆÛÛœÝTÕÔÕUWÒÑVHH	Û]\Ý	ÎÂˆÛÛœÝTÕÔÕUWÕÓTÈHLˆ
+ˆŒ
+ˆŒ
+ˆLÂˆÛÛœÝQUSÓQSP‘T”ÒTÔÑUS‘ÔÈHÂˆ[˜X›YYKˆ™]Ø\™\˜Ù[Kˆ[›X[[\ÎžßKˆ™YY[TÚ[ÎŒKˆ™YY[P[[Ý[ŒKˆZ[”™YY[TÚ[ÎŒKˆX^™YY[T\˜Ù[ŒŒˆ™Y[\[Û“[ÙN‰Ø]]ÉÂˆNÂ‚˜ÛÛœÝQUSÔU“Ô“WÑ‘QWÔÑUS‘ÔÈHÂˆX\ÞTÝÜ™NžÙ[˜X›YYK]›Ü›T˜]NŒ[›ÚXÙT˜]NŒKˆSÓSÎžÙ[˜X›YYK]›Ü›T˜]NŒLË[›ÚXÙT˜]NŒKˆÛÝ\[™ÎžÙ[˜X›YYK]›Ü›T˜]NŒLË[›ÚXÙT˜]NŒBŸNÂ‚ˆÛÛœÝÔTUS‘×ÑVS”ÑWÑSPÒ×ÐÐUQÓÔ’QTÏVÂˆÚY‰Ü™[	ËX™[‰ù¢/ùlbùéçúaäIËY˜][[ÙN‰Û[ÛIßKÚY‰ÞX[XZKX]]Üš^˜][Û‰ËX™[‰ÖX[XZH9£¢9«"º,®ÉËY˜][[ÙN‰Û[ÛIßKˆÚY‰Ù[XÝšXÚ]IËX™[‰úfîú,®ÉËY˜][[ÙN‰Øš[[ÛIßKÚY‰ÝØ]\‰ËX™[‰ù¬-:,®ÉËY˜][[ÙN‰Û[ÛIßKÚY‰ÜÛ™KZ[\›™]	ËX™[‰úfîú*l{ï#ùí¬º-ëú,®ÉËY˜][[ÙN‰Û[ÛIßKˆÚY‰Ü^\›Û	ËX™[‰ú%ªº,áÉËY˜][[ÙN‰Û[ÛIßKˆÚY‰ÛX›Ü‹Z[œÝ\˜[˜ÙIËX™[‰ùbç¹/çyak9cî:,¨9¤å	ËY˜][[ÙN‰Û[ÛIßKÚY‰ÚX[Z[œÝ\˜[˜ÙIËX™[‰ù`iy/çyak9cî:,¨9¤å	ËY˜][[ÙN‰Û[ÛIßKÚY‰ÛX›Ü‹\[œÚ[Û‰ËX™[‰ùbçº` 9ak9cî9£ä9îlÉËY˜][[ÙN‰Û[ÛIßKˆÚY‰ÛØØÝ\][Û˜[Z[œÝ\˜[˜ÙIËX™[‰ú mùàoy/çzfª‰ËY˜][[ÙN‰Û[ÛIßKÚY‰ØXØÛÝ[[™ÉËX™[‰ù§ ú*";ï#ú*&9n,ú,®ÉËY˜][[ÙN‰Û[ÛIßKÚY‰ÛX\šÙ][™ÉËX™[‰ùnèùdb»ï#ú(c:b­ú,®ÉËY˜][[ÙN‰ØXÝX[	ßKˆÚY‰ÜÛÙØ\™IËX™[‰ú.çújå;ï#úfì¹êëú* ºe¬IËY˜][[ÙN‰Û[ÛIßKÚY‰Ø˜[šËY™YIËX™[‰úb :(c;ï#ùb-ùchy¢bùî£:,®ÉËY˜][[ÙN‰ØXÝX[	ßKÚY‰ØÛX[š[™ÉËX™[‰ù®!y¯e;ï#ùg ùg/º&eyä!º,®ÉËY˜][[ÙN‰ØXÝX[	ßKˆÚY‰ÜÝ\Y\ÉËX™[‰ù¥¡ùamûï#ùcl9b-ûï#ù¥fykn: %ù§d	ËY˜][[ÙN‰ØXÝX[	ßKÚY‰ÛXZ[[˜[˜ÙIËX™[‰ùí«y/ë¹/çzi"º,®ÉËY˜][[ÙN‰ØXÝX[	ßKÚY‰Ý˜[œÜÜ	ËX™[‰ú`bú,®ûï#ù¬®z,áûï#ù`g:.âº,®ÉËY˜][[ÙN‰ØXÝX[	ßKˆÚY‰Ú[œÝ\˜[˜ÙIËX™[‰ùak9aly¡#ùi%»ï#ú*+y`¦y/çzfª‰ËY˜][[ÙN‰Ø[›X[	ßKÚY‰Ý^	ËX™[‰ùê!z,®ÉËY˜][[ÙN‰ØXÝX[	ßKÚY‰ÛÝ\‰ËX™[‰ùam¹.å¹¥+ùaî‰ËY˜][[ÙN‰ØXÝX[	ßBˆNÂˆ[˜Ý[Ûˆ˜[˜XÚÑ^[œÙTÙ][™ÜÊ˜]Ê^ÂˆÛÛœÝÛÝ\˜ÙO\˜]É‰\[Ùˆ˜]ÏOOIÛØš™XÝ	ÏÜ˜]ÎžßK[\ÏP\œ˜^Kš\Ð\œ˜^JÛÝ\˜ÙKœ™XÝ\œš[™Ô[\ÊOÜÛÝ\˜ÙKœ™XÝ\œš[™Ô[\Î–×NÂˆ[˜Ý[Ûˆ[ÙJ˜[YJ^Ü™]\›ˆÉØXÝX[	Ë	Û[ÛIË	Øš[[ÛIË	Ø[›X[	×Kš[˜ÛY\ÊÝš[™Ê˜[Y_	ÉÊJOÔÝš[™Ê˜[YJN‰Û[ÛIÎßBˆ[˜Ý[Ûˆ›Ü›X[^™J›ÝË˜[˜XÚÊ^ØÛÛœÝ›Ý[™\›ÝßßK˜\ÙOY˜[˜XÚßßK[ØØ][Û“[ÙO[[ÙJ›Ý[™˜[ØØ][Û“[Ù_˜\ÙK˜[ØØ][Û“[ÙJNÜ™]\›ˆÚY”Ýš[™Ê›Ý[™šY˜\ÙKšY	ÉÊKØ]YÛÜžN”Ýš[™Ê›Ý[™˜Ø]YÛÜž_˜\ÙK˜Ø]YÛÜž_	ùam¹.å¹¥+ùaî‰ÊK[[Ý[“X]›X^
+X]™›ÛÜŠ[X™\Š›Ý[™˜[[Ý[O[[Ø˜\ÙK˜[[Ý[™›Ý[™˜[[Ý[
+_
+JKÝ\[Û‹×—ÍKWÌŸIË\Ý
+›Ý[™œÝ\[Û	ÉÊOÙ›Ý[™œÝ\[ÛŠ˜\ÙKœÝ\[Û	ÌŒ‹LÉÊK[™[Û‹×—ÍKWÌŸIË\Ý
+›Ý[™™[™[Û	ÉÊOÙ›Ý[™™[™[Û‰ÉËXÝ]™N™›Ý[™˜XÝ]™OO[[Ø˜\ÙK˜XÝ]™HOOY˜[ÙN™›Ý[™˜XÝ]™HOOY˜[ÙK›ÝN”Ýš[™Ê›Ý[™››Ý_	ÉÊK[ØØ][Û“[ÙN˜[ØØ][Û“[ÙK[ÛSÝ™\œšY\ÎŠ\œ˜^Kš\Ð\œ˜^J›Ý[™›[ÛSÝ™\œšY\ÊOÙ›Ý[™›[ÛSÝ™\œšY\Î–×JK™š[\Š[˜Ý[ÛŠ][J^Ü™]\›ˆ×—ÍKWÌŸIË\Ý
+][I‰š][K›[Û	ÉÊNßJK›X\
+[˜Ý[ÛŠ][J^ØÛÛœÝ][S[ÙO[[ÙJ][K›[Ù_][K˜[ØØ][Û“[Ù_[ØØ][Û“[ÙJK\š[ÙÝ\[ÛK×—ÍKWÌŸIË\Ý
+][Kœ\š[ÙÝ\[Û	ÉÊOÚ][Kœ\š[ÙÝ\[Û‰ÉË\š[Ù[™[ÛK×—ÍKWÌŸIË\Ý
+][Kœ\š[Ù[™[Û	ÉÊOÚ][Kœ\š[Ù[™[Û‰ÉÎÜ™]\›ˆÛ[Ûš][K›[Û[[Ý[“X]›X^
+X]™›ÛÜŠ[X™\Š][K˜[[Ý[
+_
+JK[ÙNš][S[ÙK\š[ÙY”Ýš[™Ê][Kœ\š[ÙY	ÉÊK\š[ÙÝ\[Ûœ\š[ÙÝ\[Û\š[Ù[™[Ûœ\š[Ù[™[Û\š[ÙÝ[“X]›X^
+X]™›ÛÜŠ[X™\Š][Kœ\š[ÙÝ[
+_
+JK\š[Ù›ÝN”Ýš[™Ê][Kœ\š[Ù›Ý_	ÉÊ_NßJKœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆK›[Û›ØØ[PÛÛ\\™J‹›[Û
+NßJ_NßBˆÛÛœÝY˜][ÏVÞÚY‰Ü™[	ËØ]YÛÜžN‰ù¢/ùlbùéçúaäIË[[Ý[LÝ\[Û‰ÌŒ‹LÉË[ØØ][Û“[ÙN‰Û[ÛIËXÝ]™NY_KÚY‰ÞX[XZKX]]Üš^˜][Û‰ËØ]YÛÜžN‰ÖX[XZH9£¢9«"º,®ÉË[[Ý[LÝ\[Û‰ÌŒ‹LÉË[ØØ][Û“[ÙN‰Û[ÛIËXÝ]™NY_WK›Ü›X[^™YYY˜][Ë›X\
+[˜Ý[ÛŠ˜\ÙJ^Ü™]\›ˆ›Ü›X[^™J[\Ë™š[™
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝÉ‰œ›ÝËšYOOX˜\ÙKšYßJK˜\ÙJNßJNÂˆ[\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÝÊ^ÚYŠ›ÝÉ‰œ›ÝËšY	‰ˆ[›Ü›X[^™YœÛÛYJ[˜Ý[ÛŠ][J^Ü™]\›ˆ][KšYOO\›ÝËšYßJJ[›Ü›X[^™Yœ\Ú
+›Ü›X[^™J›ÝÊJNßJNÂˆ™]\›ˆÜÝ\[Û‰ÌŒ‹LÉËÛÜÙYÙYZÙ^\Î–ÌWK™XÝ\œš[™Ô[\Î››Ü›X[^™YNÂˆBˆ[˜Ý[Ûˆ˜[˜XÚÑY™™XÝ]™Q^[œÙT[J[K[Û
+^ØÛÛœÝ›ÝÏSØš™XÝ˜\ÜÚYÛŠßK[JK]˜Z[X›OHH\›ÝË˜XÝ]™I‰›[Û\›ÝËœÝ\[Û	‰Š\›ÝË™[™[Û[Û\›ÝË™[™[Û
+NÛ][ØØ][Û“[ÙO\›ÝË˜[ØØ][Û“[Ù_	Û[ÛIË[[Ý[X[ØØ][Û“[ÙOOOIÛ[ÛIß[ÛOO\›ÝËœÝ\[ÛÜ›ÝË˜[[Ý[ŒÛÝ\˜ÙS[Û\›ÝËœÝ\[ÛÚ[™ÙY\Ó[Û[[ÛOO\›ÝËœÝ\[Û\š[ÙYIÉË\š[ÙÝ\[ÛIÉË\š[Ù[™[ÛIÉË\š[ÙÝ[L\š[Ù›ÝOIÉÎÊ›ÝË›[ÛSÝ™\œšY\ß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ][J^ÚYŠ][K›[ÛOO[[Û
+^Ø[[Ý[Z][K˜[[Ý[Ø[ØØ][Û“[ÙOZ][K›[Ù_[ØØ][Û“[ÙNÜÛÝ\˜ÙS[ÛZ][K›[ÛØÚ[™ÙY\Ó[Û]YNÜ\š[ÙYZ][Kœ\š[ÙY	ÉÎÜ\š[ÙÝ\[ÛZ][Kœ\š[ÙÝ\[Û	ÉÎÜ\š[Ù[™[ÛZ][Kœ\š[Ù[™[Û	ÉÎÜ\š[ÙÝ[S[X™\Š][Kœ\š[ÙÝ[
+NÜ\š[Ù›ÝOZ][Kœ\š[Ù›Ý_	ÉÎßY[ÙHYŠ][K›[Û[Û
+^Ø[[Ý[J][K›[Ù_	Û[ÛIÊOOOIÛ[ÛIÏÚ][K˜[[Ý[ŒØ[ØØ][Û“[ÙOZ][K›[Ù_[ØØ][Û“[ÙNÜÛÝ\˜ÙS[ÛZ][K›[ÛØÚ[™ÙY\Ó[ÛY˜[ÙNÜ\š[ÙYIÉÎÜ\š[ÙÝ\[ÛIÉÎÜ\š[Ù[™[ÛIÉÎÜ\š[ÙÝ[LÜ\š[Ù›ÝOIÉÎß_JNÜ™]\›ˆØš™XÝ˜\ÜÚYÛŠ›ÝËØ[[Ý[˜]˜Z[X›OØ[[Ý[Œ[ØØ][Û“[ÙN˜[ØØ][Û“[ÙKÛÝ\˜ÙS[Û˜]˜Z[X›OÜÛÝ\˜ÙS[Û‰ÉËÚ[™ÙY\Ó[Û˜]˜Z[X›I‰˜Ú[™ÙY\Ó[Û\š[ÙYœ\š[ÙY\š[ÙÝ\[Ûœ\š[ÙÝ\[Û\š[Ù[™[Ûœ\š[Ù[™[Û\š[ÙÝ[œ\š[ÙÝ[\š[Ù›ÝNœ\š[Ù›ÝK]˜Z[X›N˜]˜Z[X›_JNßBˆÛÛœÝÔTUS‘×ÑVS”ÑWÑSPÒ×ÑS‘ÒS‘O^ÂˆVS”ÑWÐÐUQÓÔ’QTÎ“ÔTUS‘×ÑVS”ÑWÑSPÒ×ÐÐUQÓÔ’QTËˆ›Ü›X[^™TÙ][™ÜÎ™˜[˜XÚÑ^[œÙTÙ][™ÜËˆY™™XÝ]™T[Q›Ü“[Û™˜[˜XÚÑY™™XÝ]™Q^[œÙT[Kˆ™XÝ\œš[™Ô[\Ñ›Ü“[Û™[˜Ý[ÛŠÙ][™ÜË[Û[˜ÛYV™\›Ê^Ü™]\›ˆ˜[˜XÚÑ^[œÙTÙ][™ÜÊÙ][™ÜÊKœ™XÝ\œš[™Ô[\Ë›X\
+[˜Ý[ÛŠ[J^Ü™]\›ˆ˜[˜XÚÑY™™XÝ]™Q^[œÙT[J[K[Û
+NßJK™š[\Š[˜Ý[ÛŠ[J^Ü™]\›ˆ[K˜]˜Z[X›I‰Š[˜ÛYV™\›ÈOOY˜[Ù_[K˜[[Ý[Œ
+NßJNßKˆ›Ü›X[^™Q^[œÙS[ÙN™[˜Ý[ÛŠ˜[YJ^Ü™]\›ˆÉØXÝX[	Ë	Û[ÛIË	Øš[[ÛIË	Ø[›X[	×Kš[˜ÛY\ÊÝš[™Ê˜[Y_	ÉÊJOÔÝš[™Ê˜[YJN‰ØXÝX[	ÎßKˆZ[YÙ\Ž™[˜Ý[ÛŠ
+^Ü™]\›ˆ×NßKˆÝ[[X\š^™PžPØ]YÛÜžN™[˜Ý[ÛŠ
+^Ü™]\›ˆ×NßKˆ™^[Û™[˜Ý[ÛŠ˜[YKÝ\
+^ÚYŠK×—ÍKWÌŸIË\Ý
+Ýš[™Ê˜[Y_	ÉÊJJ\™]\›ˆ	ÉÎØÛÛœÝ\TÝš[™Ê˜[YJKœÜ]
+	ËIÊK›X\
+[X™\ŠK]O[™]È]J\ÌK\ÌWKLJÊ[X™\ŠÝ\
+_JKJNÜ™]\›ˆ]K™Ù][YX\Š
+JÉËIÊÔÝš[™Ê]K™Ù][Û
+
+JÌJKœYÝ\
+‹	Ì	ÊNßBˆNÂˆ[˜Ý[ÛˆÜ\˜][™Ñ^[œÙQ[™Ú[™J
+^Ü™]\›ˆÛØ˜[–[Ý^šSÜ\˜][™Ñ^[œÙ\ßÔTUS‘×ÑVS”ÑWÑSPÒ×ÑS‘ÒS‘NßBˆ]Ü\˜][™Ñ^[œÙSØY›ÛZ\ÙO[[Âˆ[˜Ý[Ûˆ[œÝ\™SÜ\˜][™Ñ^[œÙQ[™Ú[™SØYY
+
+^ÂˆYŠÛØ˜[–[Ý^šSÜ\˜][™Ñ^[œÙ\Ê\™]\›ˆ›ÛZ\ÙKœ™\ÛÛ™JYJNÂˆYŠÜ\˜][™Ñ^[œÙSØY›ÛZ\ÙJ\™]\›ˆÜ\˜][™Ñ^[œÙSØY›ÛZ\ÙNÂˆÜ\˜][™Ñ^[œÙSØY›ÛZ\ÙO[™]È›ÛZ\ÙJ[˜Ý[ÛŠ™\ÛÛ™J^Âˆ]Ù]YY˜[ÙNÙ[˜Ý[Ûˆš[š\Ú
+ÚÊ^ÚYŠÙ]Y
+\™]\›ŽÜÙ]Y]YNÜ™\ÛÛ™JH[ÚÊNßBˆÛÛœÝØÜš\YØÝ[Y[˜Ü™X]Q[[Y[
+	ÜØÜš\	ÊNÜØÜš\œÜ˜ÏIÛÜ\˜][ÛœËY^[œÙ\ËšœÏÝLŒŒK[Ü\˜][™ËY^[œÙ\Ë]‹\™]žIÎÜØÜš\˜\Þ[˜ÏY˜[ÙNÜØÜš\›Û›ØYY[˜Ý[ÛŠ
+^Ùš[š\Ú
+HYÛØ˜[–[Ý^šSÜ\˜][™Ñ^[œÙ\ÊNßNÜØÜš\›Û™\œ›ÜY[˜Ý[ÛŠ
+^Ùš[š\Ú
+˜[ÙJNßNÙØÝ[Y[šXY˜\[™Ú[
+ØÜš\
+NÜÙ][Y[Ý]
+[˜Ý[ÛŠ
+^Ùš[š\Ú
+HYÛØ˜[–[Ý^šSÜ\˜][™Ñ^[œÙ\ÊNßK
+NÂˆJNÂˆ™]\›ˆÜ\˜][™Ñ^[œÙSØY›ÛZ\ÙNÂˆBˆÛÛœÝÔTUS‘×ÑVS”ÑWÑTT•QS•ÏVÂˆÚY‰ÜÝÜ™IËX™[‰ùl&¹dàyª ¹fj:(c	ËÚÜX™[‰ùáçù©kz`ê:e 	ßKˆÚY‰ØXØY[^IËX™[‰ùaìyêâúgìùª º(ç9ïä¹ãëIËÚÜX™[‰ú(ç9ïäº`ê:e 	ßBˆNÂˆ[˜Ý[Ûˆ™\›ÓÜ\˜][™Ñ^[œÙTÙ][™ÜÊ
+^Âˆ™]\›ˆÜ\˜][™Ñ^[œÙQ[™Ú[™J
+K››Ü›X[^™TÙ][™ÜÊÜ™XÝ\œš[™Ô[\Î–ÂˆÚY‰Ü™[	ËØ]YÛÜžN‰ù¢/ùlbùéçúaäIË[[Ý[ŒÝ\[Û‰ÌŒ‹LÉË[ØØ][Û“[ÙN‰Û[ÛIËXÝ]™NY_KˆÚY‰ÞX[XZKX]]Üš^˜][Û‰ËØ]YÛÜžN‰ÖX[XZH9£¢9«"º,®ÉË[[Ý[ŒÝ\[Û‰ÌŒ‹LÉË[ØØ][Û“[ÙN‰Û[ÛIËXÝ]™NY_Bˆ_JNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™SÜ\˜][™Ñ^[œÙTÙ][™ÜÊ˜]Ê^ÂˆÛÛœÝÛÝ\˜ÙO\˜]É‰\[Ùˆ˜]ÏOOIÛØš™XÝ	ÏÜ˜]ÎžßK\\Y[Ï\ÛÝ\˜ÙK™\\Y[É‰\[ÙˆÛÝ\˜ÙK™\\Y[ÏOOIÛØš™XÝ	ÏÜÛÝ\˜ÙK™\\Y[ÎžßKÝÜ™O[Ü\˜][™Ñ^[œÙQ[™Ú[™J
+K››Ü›X[^™TÙ][™ÜÊ\\Y[ËœÝÜ™_ÛÝ\˜ÙJKXØY[^OY\\Y[Ë˜XØY[^OÛÜ\˜][™Ñ^[œÙQ[™Ú[™J
+K››Ü›X[^™TÙ][™ÜÊ\\Y[Ë˜XØY[^JNž™\›ÓÜ\˜][™Ñ^[œÙTÙ][™ÜÊ
+NÂˆ™]\›ˆØš™XÝ˜\ÜÚYÛŠßKÝÜ™KÜØÚ[XU™\œÚ[ÛŽŒ‹\\Y[ÎžÜÝÜ™NœÝÜ™KXØY[^N˜XØY[^__JNÂˆBˆ[˜Ý[ÛˆY˜][Ü\˜][™Ñ^[œÙTÙ][™ÜÊ
+^Ü™]\›ˆ›Ü›X[^™SÜ\˜][™Ñ^[œÙTÙ][™ÜÊßJNßB‚‚ˆÛÛœÝÝ]HHÂˆ\Ù\Ž›[ˆŽ›[ˆšY]Î‰ÛÝ™\šY]ÉËˆØY[™Î™˜[ÙKˆØYY]›[ˆ[ØYY]›[ˆÛ›[™TÛÝ\˜ÙN‰ÑX\ÞTÝÜ™HTIËˆÛ›[™T›ÙXÝÎ–×KˆX\ÞTÝÜ™TÞ[˜ÎžßKˆX\ÞTÝÜ™TÞ[˜Ô[™[™Î™˜[ÙKˆ[ššX[Þ][ÛÝYÞ[˜ÎžßKˆ[ššX[Þ][ÛÝYÞ[˜ÔÚYÛ˜]\™N‰ÉËˆ[ššX[Þ][ÛÝYÝ]\ÔÚYÛ˜]\™N‰ÉËˆ[ššX[Þ][ÛÝYÞ[˜Õ[œÝXœØÜšX™N›[ˆ[ššX[Þ][ÛÝYÝ]\Õ[Y\Ž›[ˆ[ššX[Þ][“X[X[™\]Y\Ý[™[™Î™˜[ÙKˆÛ›[™SÜœ[œÎ–×KˆX]Ú[™ÔÝ]ÎžØÙ[˜[ŒÛ›[™T›ÝÜÎŒX]ÚYŒ[›X]ÚYÙ[˜[Œ[›X]ÚYÛ›[™NŒKˆ[\›˜[›ÙXÝÎ–×KˆØ][ÙÎ–×Kˆ™[[Î–×Kˆ™[[YÙ\œÎ–×KˆØ[\Î–×Kˆ[˜ÛÛY\Î–×Kˆ\˜Ú\Ù\Î–×Kˆ[™[ÜžN–×KˆÝ\Y\œÎ–×Kˆ[™[ÜžPÛÝ[Ù][™ÜÎžÙ[˜X›YYK[’\Ú‰ÉË\]Y]‰ÉßKˆØ\Ù\Î–×Kˆ^[œÙ\Î–×KˆÞ[˜Ò›ØœÎ–×Kˆ]Y]–×KˆÝ\ÝÛY\œÎ–×KˆÚ[˜[œØXÝ[ÛœÎ–×Kˆ™XÙZ]˜X›\Î–×Kˆ™XÙZ]˜X›T^[Y[Î–×KˆØ[\Ô™]\›œÎ–×KˆYXØ][Û‘Z[N–×Kˆ]›Ü›SÜ™\œÎ–×Kˆ]›Ü›TÞ[˜Ô[œÎ–×Kˆ]›Ü›R[™[ÜžT]Y]YN–×Kˆ[\ÞYY\Î–×Kˆ[\ÞYYTØ[\žPÛÛ™šYÜÎ–×Kˆ[\ÞYYTØ[\žPÛÛ™šYÒ\ÝÜžN–×Kˆ\[YT™XÛÜ™Î–×Kˆ]›Ü›TÞ[˜Ô[™[‰ÉËˆ]›Ü›Q™YTÙ][™ÜÎ’”ÓÓ‹œ\œÙJ”ÓÓ‹œÝš[™ÚYžJQUSÔU“Ô“WÑ‘QWÔÑUS‘ÔÊJKˆÜ\˜][™Ñ^[œÙTÙ][™ÜÎ™Y˜][Ü\˜][™Ñ^[œÙTÙ][™ÜÊ
+KˆÜ\˜][™Ñ^[œÙQ\\Y[‰ÜÝÜ™IËˆ]›Ü›SØØ[YÙ[žßKˆXYÛ›ÜÝXÜÎ–×Kˆ›ÙXÝš\ÚX›N”“ÑPÕÔQÑWÔÒV‘Kˆ›ÙXÝÙX\˜Ú‰ÉËˆ›ÙXÝš[\Ž‰Ø[	Ëˆ›ÙXÝÛÜ‰ÜÚÝIËˆ›ÙXÝ\Ü^S[ÙN‰Ú[XYÙIËˆ›ÙXÝÙ\šY\Î‰Ø[	Ëˆ›ÙXÝY]Y‰ÉËˆ›ÙXÝ™]šY]Ò[XYÙ\Î–×Kˆ›ÙXÝ™]šY]Ò[™^Œˆ›ÙXÝ™]šY]Õ]N‰ÉËˆÜÔÙX\˜Ú‰ÉËˆØ[\Ó[ÙN‰Ü›ÙXÝ	ËˆÙ[XÝYÝ\ÝÛY\’Y‰ÉËˆÜÐÝ\ÝÛY\“[ÙN‰ÝØ[Ú[‰ËˆÜÓY[X™\”ÙX\˜Ú‰ÉËˆÜÓY[X™\”XÚÙ\“Ü[Ž™˜[ÙKˆÚXÚÛÝ]^[Y[Y]Ù‰ùãïºaäIËˆÚXÚÛÝ]^[Y[Ý]\Î‰ÜZY	ËˆÚXÚÛÝ]Ü™\•\N‰ÜØ[IËˆÚXÚÛÝ]\ØÛÝ[ŒˆÚXÚÛÝ]Ú[ÎŒˆÚXÚÛÝ]Ú[ÕÝXÚY™˜[ÙKˆÚXÚÛÝ]X\›”Ú[ÎYKˆÚXÚÛÝ]XÝX[Ø\Ú‰ÉËˆÚXÚÛÝ]™XÙZ]™Y‰ÉËˆ[˜ÛÛYPØ]YÛÜžN‰ùam¹.å¹¥-¹aiIËˆ\™XÝ[˜ÛÛYP[[Ý[‰ÉËˆÝØÚÕ\ØYÙT™X\ÛÛŽ‰ùn¥ùaiú!ê¹å*	ËˆÝØÚÕ\ØYÙS›ÝN‰ÉËˆØ[R[›ÚXÙTÙX\˜Ú‰ÉËˆØ[R[›ÚXÙQœ›ÛN‰ÉËˆØ[R[›ÚXÙUÎ‰ÉËˆØ[\Ò\ÝÜžQ^[™Y™˜[ÙKˆ\˜Ú\ÙUÛÜšÜÜXÙUXŽ‰Ú[˜›Ý[™	Ëˆ\˜Ú\ÙSÝÔÙX\˜Ú‰ÉËˆ\˜Ú\ÙT˜[™ÙN‰ÝÙ^IËˆ\˜Ú\ÙQ]N™]U^
+™]È]J
+JKˆ\˜Ú\ÙS[ÛŠ[˜Ý[ÛŠ
+^ØÛÛœÝ›ÝÏ[™]È]J
+NÜ™]\›ˆ›ÝË™Ù][YX\Š
+JÉËIÊÔÝš[™Ê›ÝË™Ù][Û
+
+JÌJKœYÝ\
+‹	Ì	ÊNßJJ
+Kˆ\˜Ú\ÙQœ›ÛN‰ÉËˆ\˜Ú\ÙUÎ‰ÉËˆ\˜Ú\ÙQ[žTÙX\˜Ú‰ÉËˆ\˜Ú\ÙQ[žTÙ\šY\Î‰Ø[	Ëˆ\˜Ú\ÙQ[žTÛÜ‰ÜÚÝIËˆ\˜Ú\ÙQ[žQ\Ü^S[ÙN‰Ú[XYÙIËˆ\˜Ú\ÙQ[žPØ\–×Kˆ\˜Ú\ÙQ[žT™XÙZ]™Y]‰ÉËˆ\˜Ú\ÙQ[žTÝ\Y\Ž‰ÉËˆ\˜Ú\ÙQ[žTÝ\Y\’Y‰ÉËˆ\˜Ú\ÙQ[žQ^\›˜[›Î‰ÉËˆ\˜Ú\ÙQ[žQ^˜PÛÜÝŒˆ\˜Ú\ÙQ[žS›ÝN‰ÉËˆ\˜Ú\ÙQ[žT^[Y[Ý]\Î‰Ý[œZY	Ëˆ\˜Ú\ÙQ[žT^[Y[]N‰ÉËˆ\˜Ú\ÙQ[žT^[Y[Y]Ù‰ÉËˆ\˜Ú\ÙQY]Y‰ÉËˆÝØÚÝZÙTÙX\˜Ú‰ÉËˆÝØÚÝZÙTÙ\šY\Î‰Ø[	ËˆÝØÚÝZÙTÛÜ‰ÜÚÝIËˆÝØÚÝZÙPØ\–×KˆÝØÚÝZÙSÜ\˜]ÜŽ‰ÉËˆÝØÚÝZÙS›ÝN‰ÉËˆÝØÚÝZÙPÛÜœ™XÝ[Û’Y‰ÉËˆY[X™\œÚ\Ù][™ÜÎ“Øš™XÝ˜\ÜÚYÛŠßKQUSÓQSP‘T”ÒTÔÑUS‘ÔÊKˆØ\–×Kˆš[˜[˜ÙT˜[™ÙN‰Û[Û	Ëˆ]›Ü›SÜ™\”˜[™ÙN‰ÝÙ^IËˆ]›Ü›SÜ™\‘]N™]U^
+™]È]J
+JKˆ]›Ü›SÜ™\“[ÛŠ[˜Ý[ÛŠ
+^ØÛÛœÝ›ÝÏ[™]È]J
+NÜ™]\›ˆ›ÝË™Ù][YX\Š
+JÉËIÊÔÝš[™Ê›ÝË™Ù][Û
+
+JÌJKœYÝ\
+‹	Ì	ÊNßJJ
+Kˆ]›Ü›SÜ™\‘œ›ÛN‰ÉËˆ]›Ü›SÜ™\•Î‰ÉËˆ]›Ü›SÜ™\”]›Ü›N‰Ø[	Ëˆ]›Ü›SÜ™\”ÙX\˜Ú‰ÉËˆ]›Ü›SÜ™\’\ÜÝYQš[\Ž‰Ø[	Ëˆ™[[ÙX\˜Ú‰ÉËˆØ\ÙTÙX\˜Ú‰ÉËˆ[™[ÜžTÙX\˜Ú‰ÉËˆÝ\ÝÛY\”ÙX\˜Ú‰ÉËˆ™XÙZ]˜X›TÙX\˜Ú‰ÉËˆÝ™\šY]Ô˜[™ÙN‰ÝÙ^IËˆÝ™\šY]Ñ]N™]U^
+™]È]J
+JKˆÝ™\šY]ÔÙX\˜Ú‰ÉËˆÝ™\šY]Ñœ›ÛN‰ÉËˆÝ™\šY]ÕÎ‰ÉËˆÝ™\šY]Ó[ÛŠ[˜Ý[ÛŠ
+^ØÛÛœÝ›ÝÏ[™]È]J
+NÜ™]\›ˆ›ÝË™Ù][YX\Š
+JÉËIÊÔÝš[™Ê›ÝË™Ù][Û
+
+JÌJKœYÝ\
+‹	Ì	ÊNßJJ
+KˆÜ\˜][™Ñ^[œÙS[ÛŠ[˜Ý[ÛŠ
+^ØÛÛœÝ›ÝÏ[™]È]J
+K˜[YO[›ÝË™Ù][YX\Š
+JÉËIÊÔÝš[™Ê›ÝË™Ù][Û
+
+JÌJKœYÝ\
+‹	Ì	ÊNÜ™]\›ˆ˜[YO	ÌŒ‹LÉÏÉÌŒ‹LÉÎ˜[YNßJJ
+Kˆ[ššX[Þ][”™\]Y\ÝY‰ÉËˆ[\Ü›ÝÜÎ–×Kˆ[\Üš[S˜[YN‰ÉËˆ[\Ü[ÙN‰Ú[š]X[	Ëˆ[\ÜÝ[[X\žN›[ˆÛÛ™š\›T™\ÛÛ™N›[ˆNÂ‚ˆËÈ9ab:+¤ùà#ú)¯yfj9åjùaî¹/oùå*: !ybfú/.9aiyæ¡9aiùk®{ï#9a£y¦í9¥¬9cëú ïyo¢9i)ùæ¡9k£9¥m9íd9§§9®!ye«¸à ‚ˆÛÛœÝU‘WÔÑPTÒÒS”UÒQWÓTÈHÂˆÛÛœÝ]™TÙX\˜Ú›ØœÈHØš™XÝ˜Ü™X]J[
+NÂ‚ˆÛÛœÝQÑWÓQUHHÂˆÝ™\šY]Î–Éùáçú`bùî/z)¯IË	É×Kˆ	ØÛÝ\œÙKXØ[[™\‰Î–Éú*¬¹ê"ù¥éz(j	Ë	É×Kˆ	ØÛÝ\œÙK\ÝY[ÉÎ–Éùkn9å'ú"!ùkn:,®ÉË	É×Kˆ	ØÛÝ\œÙK]XXÚ\œÉÎ–Éú  yn*ú%ªº,áÉË	É×Kˆ	ØÛÝ\œÙK\Ù][™ÜÉÎ–Éùìîùílz*+yk¦‰Ë	É×Kˆ›ÙXÝÎ–Éùea¹dàz,áú*"‰Ë	É×KˆØ[\Î–Éùãï¹h-:b­ùe+‰Ë	É×KˆÝ\ÝÛY\œÎ–Éùk¨¹¢-¹§ ùdèIË	ù§ ùdèxà z  yn*ú"!ù. :"+9k¨¹¢-¹alyå*9d#9. 9.ïyk¨¹¢-º,áù¥¦xà ‰×Kˆ™XÙZ]˜X›\Î–Éù¡ây¥-¹n,ù«/‰Ë	ù¡ây¥-¹n,ù«/¹§ ú`(ùfç¹k¨¹¢-º"!ùc§ùiâúb­ùe+¸à ‰×Kˆ^[œÙ\Î–Éùáçú`bù¥+ùaî‰Ë	ù£"y§"9ænúc!9¬-:fîøà z%ªº,áøà ybç¹`iy/çz"!ùam¹.åº,®ùå*;ï#9.)¹§éyç"ù«ãù¥éy¥)9£ä8à ‰×Kˆ\˜Ú\Ù\Î–Éùnªùkf9/g9©kIË	É×Kˆ	Ü\˜Ú\ÙKY[žIÎ–Éú`,º,ª9aiynªùméy/g9cì	Ë	É×KˆÝØÚÝZÙN–Éùnªùkf9æé:nç¹méy/g9cì	Ë	É×Kˆ™[[Î–Éùéçú,àùáçú`bÉË	ù«hùo#ùd"9í!:` yaî¹clùb%ùaiyéçú,àù¥-¹ai{ï#9¢¯:aäy.#yb%ùaiyáçù©ky¥-¹aixà ‰×KˆÞ[˜Î–Éùnlùcì:* ¹e«‰Ë	É×KˆÛÛ›™XÝ[ÛŽ–Éú,áù¥¦y`¦y.ïIË	É×BˆNÂˆÛÛœÝÓÕT”ÑWÕÓÔ’ÔÔPÑWÕ’QUÔÈHÂˆ	ØÛÝ\œÙKXØ[[™\‰Î‰ØØ[[™\‰Ëˆ	ØÛÝ\œÙK\ÝY[ÉÎ‰ÜÝY[ÉËˆ	ØÛÝ\œÙK]XXÚ\œÉÎ‰ÝXXÚ\œÉËˆ	ØÛÝ\œÙK\Ù][™ÜÉÎ‰ÜÙ][™ÜÉÂˆNÂˆÛÛœÝÓÕT”ÑWÕÓÔ’ÔÔPÑWÒTÒTÈHÂˆØ[[™\Ž‰ØÛÝ\œÙKXØ[[™\‰ËˆÝY[Î‰ØÛÝ\œÙK\ÝY[ÉËˆXXÚ\œÎ‰ØÛÝ\œÙK]XXÚ\œÉËˆÙ][™ÜÎ‰ØÛÝ\œÙK\Ù][™ÜÉÂˆNÂ‚ˆ[˜Ý[Ûˆ\ÐÛÝ\œÙUÛÜšÜÜXÙUšY]ÊšY]Ê^Âˆ™]\›ˆØš™XÝœ›ÝÝ\Kš\ÓÝÛ”›Ü\K˜Ø[
+ÓÕT”ÑWÕÓÔ’ÔÔPÑWÕ’QUÔËšY]ÊNÂˆBˆ[˜Ý[ÛˆÛÝ\œÙUÛÜšÜÜXÙUšY]ÊšY]Ê^Âˆ™]\›ˆÓÕT”ÑWÕÓÔ’ÔÔPÑWÕ’QUÔÖÝšY]×_	ØØ[[™\‰ÎÂˆB‚ˆ[˜Ý[ÛˆÛX[Š˜[YJ^È™]\›ˆÝš[™Ê˜[YHOH[È	ÉÈˆ˜[YJKš[J
+NÈBˆ[˜Ý[ÛˆÝÙ\Š˜[YJ^È™]\›ˆÛX[Š˜[YJKÓÝÙ\Ø\ÙJ
+NÈBˆ[˜Ý[Ûˆ\Ü^SÛ›[™S˜[YJ˜[YJ^È™]\›ˆÛX[Š˜[YJKœ™\XÙJù§æ¹kd9ª ¹fjÙË	ÉÊKœ™\XÙJ×–×ûïg0­øàîÎ»ï&¸ %WJß×ûïg0­øàîÎ»ï&¸ %WJÉÙË	ÉÊKœ™\XÙJ×ÞÌ‹KÙË	È	ÊKš[J
+NÈBˆ[˜Ý[Ûˆ\ØØ\R[
+˜[YJ^Âˆ™]\›ˆÛX[Š˜[YJKœ™\XÙJÖÉˆ‰×KÙË[˜Ý[ÛŠÚ
+^È™]\›ˆÉÉ‰Î‰É˜[\ÉË	Ï	Î‰É›ÉË	Ï‰Î‰É™ÝÉË	È‰Î‰Éœ][ÝÉË‰ÈŽ‰ÉˆÌÎNÉßVØÚNÈJNÂˆBˆ[˜Ý[Ûˆ]Š˜[YJ^È™]\›ˆ\ØØ\R[
+˜[YJKœ™\XÙJØÙË	ÉˆÎMŽÉÊNÈBˆ[˜Ý[ÛˆÙ]]
+Øš‹]
+^ÂˆYŠ[Øšˆ\]
+H™]\›ˆ[™Yš[™YÂˆYŠØš™XÝœ›ÝÝ\Kš\ÓÝÛ”›Ü\K˜Ø[
+Øš‹]
+JH™]\›ˆØš–Ü]NÂˆ]Ý\œÛÜ[ØšŽÂˆ›ÜŠÛÛœÝ\ÙˆÝš[™Ê]
+KœÜ]
+	Ë‰ÊJ^ÂˆYŠÝ\œÛÜO[[SØš™XÝœ›ÝÝ\Kš\ÓÝÛ”›Ü\K˜Ø[
+Ý\œÛÜ‹\
+JH™]\›ˆ[™Yš[™YÂˆÝ\œÛÜXÝ\œÛÜ–Ü\NÂˆBˆ™]\›ˆÝ\œÛÜŽÂˆBˆ[˜Ý[Ûˆš\œÝ˜[YJØš‹Ù^\Ê^Âˆ›ÜŠÛÛœÝÙ^HÙˆÙ^\Ê^ÂˆÛÛœÝ˜[YOYÙ]]
+Øš‹Ù^JNÂˆYŠ˜[YHOO][™Yš[™Y	‰ˆ˜[YHOO[[	‰ˆÛX[Š˜[YJHOOIÉÊH™]\›ˆ˜[YNÂˆBˆ™]\›ˆ	ÉÎÂˆBˆ[˜Ý[Ûˆ[X™\’[™›Ê˜[YJ^ÂˆYŠ˜[YOOO][™Yš[™Y˜[YOOO[[ÛX[Š˜[YJOOOIÉÊH™]\›ˆÙ›Ý[™™˜[ÙK˜[YNŒNÂˆÛÛœÝS[X™\ŠÝš[™Ê˜[YJKœ™\XÙJËÙË	ÉÊKœ™\XÙJÖ×ŒNK—WKÙË	ÉÊJNÂˆ™]\›ˆ[X™\‹š\Ñš[š]JŠOÞÙ›Ý[™YK˜[YN›ŸNžÙ›Ý[™™˜[ÙK˜[YNŒNÂˆBˆ[˜Ý[Ûˆš\œÝ[X™\ŠØš‹Ù^\Ê^Âˆ›ÜŠÛÛœÝÙ^HÙˆÙ^\Ê^ÈÛÛœÝ™\Ý[[[X™\’[™›ÊÙ]]
+Øš‹Ù^JJNÈYŠ™\Ý[™›Ý[™
+H™]\›ˆ™\Ý[ÈBˆ™]\›ˆÙ›Ý[™™˜[ÙK˜[YNŒNÂˆBˆ[˜Ý[Ûˆ›ÛÛ˜[YJ˜[YKY˜][˜[YJ^ÂˆYŠ\[Ùˆ˜[YOOOIØ›ÛÛX[‰ÊH™]\›ˆ˜[YNÂˆÛÛœÝ^[ÝÙ\Š˜[YJNÂˆYŠÉÌIË	ÝYIË	ÞY\ÉË	ÞIË	ù¦+ÉË	ùegùå*	Ë	ù."¹§­‰Ë	ØXÝ]™IË	Ù[˜X›Y	×Kš[˜ÛY\Ê^
+JH™]\›ˆYNÂˆYŠÉÌ	Ë	Ù˜[ÙIË	Û›ÉË	Û‰Ë	ùd)‰Ë	ù`g9å*	Ë	ù."ù§­‰Ë	Ú[˜XÝ]™IË	Ù\ØX›Y	×Kš[˜ÛY\Ê^
+JH™]\›ˆ˜[ÙNÂˆ™]\›ˆHYY˜][˜[YNÂˆBˆ[˜Ý[ÛˆØY™U\›
+˜[YJ^ÂˆÛÛœÝ˜]ÏXÛX[Š˜[YJNÈYŠ\˜]ÊH™]\›ˆ	ÉÎÂˆž^ÈÛÛœÝ\›[™]ÈT“
+˜]ËÛØ˜[›ØØ][Û‹š™YŠNÈ™]\›ˆÉÚ‰Ë	ÚÎ‰×Kš[˜ÛY\Ê\›œ›ÝØÛÛ
+OÝ\›š™YŽ‰ÉÎÈXØ]Ú
+\œŠ^È™]\›ˆ	ÉÎÈBˆBˆ[˜Ý[Ûˆ[XYÙQœ›ÛJ˜[YJ^ÂˆYŠ]˜[YJH™]\›ˆ	ÉÎÂˆYŠ\[Ùˆ˜[YOOOIÜÝš[™ÉÊH™]\›ˆØY™U\›
+˜[YJNÂˆYŠ\œ˜^Kš\Ð\œ˜^J˜[YJJ^È›ÜŠÛÛœÝ][HÙˆ˜[YJ^ÈÛÛœÝ›Ý[™Z[XYÙQœ›ÛJ][JNÈYŠ›Ý[™
+H™]\›ˆ›Ý[™ÈH™]\›ˆ	ÉÎÈBˆYŠ\[Ùˆ˜[YOOOIÛØš™XÝ	ÊH™]\›ˆØY™U\›
+š\œÝ˜[YJ˜[YKÉÜÜ˜ÉË	Ý\›	Ë	Ú[XYÙU\›	Ë	ÛÜšYÚ[˜[	Ë	Û\™ÙIË	ÛYY][IË	ÜÛX[	Ë	ÜÙXÝ\™WÝ\›	Ë	ÙÝÛ›ØYT“	×JJNÂˆ™]\›ˆ	ÉÎÂˆBˆ[˜Ý[Ûˆ\Ú[š\]YR[XYÙJ\Ý˜[YJ^ÂˆYŠ]˜[YJH™]\›ŽÂˆYŠ\œ˜^Kš\Ð\œ˜^J˜[YJJ^È˜[YK™›Ü‘XXÚ
+[˜Ý[ÛŠ][J^Ü\Ú[š\]YR[XYÙJ\Ý][JNßJNÈ™]\›ŽÈBˆYŠ\[Ùˆ˜[YOOOIÛØš™XÝ	Ê^ÂˆÛÛœÝ\™XÝYš\œÝ˜[YJ˜[YKÉÜÜ˜ÉË	Ý\›	Ë	Ú[XYÙU\›	Ë	ÛÜšYÚ[˜[	Ë	Û\™ÙIË	ÛYY][IË	ÜÛX[	Ë	ÜÙXÝ\™WÝ\›	Ë	ÙÝÛ›ØYT“	×JNÂˆYŠ\™XÝ
+H\Ú[š\]YR[XYÙJ\Ý\™XÝ
+NÂˆÉÚ[XYÙ\ÉË	ÜÝÜÉË	ÛYYXIË	ÙØ[\žI×K™›Ü‘XXÚ
+[˜Ý[ÛŠÙ^J^ÚYŠ˜[YVÚÙ^WJH\Ú[š\]YR[XYÙJ\Ý˜[YVÚÙ^WJNßJNÂˆ™]\›ŽÂˆBˆÛÛœÝ\›\ØY™U\›
+˜[YJNÈYŠ\›	‰ˆ[\Ýš[˜ÛY\Ê\›
+JH\Ýœ\Ú
+\›
+NÂˆBˆ[˜Ý[ÛˆÛÛXÝ[XYÙU\›ÊØšŠ^ÂˆÛÛœÝ\ÝV×NÈØš[ØšŸßNÂˆÉÝ˜\šX[[XYÙU\›	Ë	Ý˜\šX[[XYÙIË	Ú[XYÙU\›	Ë	Ú[XYÙIË	ÜXÝ\™IË	ØÛÝ™\‰Ë	Ù™X]\™Y[XYÙIË	Ù™X]\™YÚ[XYÙIË	ÛXZ[’[XYÙIË	Ý[X›˜Z[	Ë	ÜÝÉË	ùg%¹âaÉ×K™›Ü‘XXÚ
+[˜Ý[ÛŠÙ^J^Ü\Ú[š\]YR[XYÙJ\ÝØš–ÚÙ^WJNßJNÂˆÉÚ[XYÙ\ÉË	ÜÝÜÉË	ÛYYXIË	ÙØ[\žIË	Ú[XYÙU\›ÉË	ØY][Û˜[[XYÙ\É×K™›Ü‘XXÚ
+[˜Ý[ÛŠÙ^J^Ü\Ú[š\]YR[XYÙJ\ÝØš–ÚÙ^WJNßJNÂˆ™]\›ˆ\ÝÂˆBˆ[˜Ý[Ûˆ›ÙXÝ[XYÙJØšŠ^È™]\›ˆÛÛXÝ[XYÙU\›ÊØšŠVÌ_	ÉÎÈBˆ[˜Ý[Ûˆ\œ˜^SZÙJ˜[YJ^ÂˆYŠ\œ˜^Kš\Ð\œ˜^J˜[YJJH™]\›ˆ˜[YNÂˆYŠ]˜[YH\[Ùˆ˜[YHOOIÛØš™XÝ	ÊH™]\›ˆ×NÂˆYŠ\œ˜^Kš\Ð\œ˜^J˜[YK››Ù\ÊJH™]\›ˆ˜[YK››Ù\ÎÂˆYŠ\œ˜^Kš\Ð\œ˜^J˜[YK™YÙ\ÊJH™]\›ˆ˜[YK™YÙ\Ë›X\
+[˜Ý[ÛŠ
+^Ü™]\›ˆ	‰ž››ÙOÞ››ÙNžßJNÂˆ™]\›ˆØš™XÝšÙ^\Ê˜[YJK›X\
+[˜Ý[ÛŠÙ^J^Ü™]\›ˆ˜[YVÚÙ^WNßJK™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆ	‰\[ÙˆOOIÛØš™XÝ	ÎßJNÂˆBˆ[˜Ý[Ûˆ[Ü˜\Û›[™SØš™XÝ
+ØšŠ^ÂˆØš[ØšŸßNÂˆÛÛœÝ™\ÝYVÛØš‹™]KØš‹œ›ÙXÝØš‹š][KØš‹œ^[ØYØš‹œ™\Ý[Øš‹œ˜]Ô›ÙXÝØš‹œ˜]Ñ]WK™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆ	‰\[ÙˆOOIÛØš™XÝ	É‰ˆP\œ˜^Kš\Ð\œ˜^J
+NßJNÂˆYŠ[™\ÝY›[™Ý
+H™]\›ˆØšŽÂˆ]™\Ý[ØšŽÈ]ØÛÜ™OKLNÂˆÛØš—K˜ÛÛ˜Ø]
+™\ÝY
+K™›Ü‘XXÚ
+[˜Ý[ÛŠØ[™Y]J^ÂˆÛÛœÝÏJ\Õ˜[YJš\œÝ˜[YJØ[™Y]KÉÛ˜[YIË	Ý]IË	Ü›ÙXÝ˜[YIË	Ú][S˜[YI×JJOÍNŒ
+JÊ\Õ˜[YJš\œÝ˜[YJØ[™Y]KÉÜÚÝIË	ÔÒÕIË	Ü›ÙXÝÛÙI×JJOÍŒ
+JÊ\œ˜^SZÙJØ[™Y]K˜\šX[ßØ[™Y]K›Ü[ÛœßØ[™Y]KœÚÝ\ßØ[™Y]K˜\šX][ÛœÊK›[™ÝÍŽŒ
+JÊÛÛXÝ[XYÙU\›ÊØ[™Y]JK›[™ÝÌŽŒ
+NÂˆYŠÏœØÛÜ™J^ÜØÛÜ™O\ÎØ™\ÝXØ[™Y]NßBˆJNÂˆ™]\›ˆØš™XÝ˜\ÜÚYÛŠßKØš‹™\Ý
+NÂˆBˆ[˜Ý[ÛˆÛ›[™U˜\šX[\Ý
+ØšŠ^ÂˆÛÛœÝÙ^\ÏVÉÝ˜\šX[ÉË	ÛÜ[ÛœÉË	Ü›ÙXÝ˜\šX[ÉË	ÜÚÝ\ÉË	Ý˜\šX][ÛœÉË	ØÚ[™[‰Ë	Ý˜\šX[\Ý	×NÂˆ›ÜŠÛÛœÝÙ^HÙˆÙ^\Ê^ÈÛÛœÝ\œX\œ˜^SZÙJØš‰‰›Øš–ÚÙ^WJNÈYŠ\œ‹›[™Ý
+H™]\›ˆ\œŽÈBˆ™]\›ˆ×NÂˆBˆ[˜Ý[ÛˆXÛÙT™XYX›J˜[YJ^Âˆ]^XÛX[Š˜[YJNÈYŠ]^
+H™]\›ˆ	ÉÎÂˆ›ÜŠ]OLÚOŽÚJÏLJ^Âˆž^ÈÛÛœÝ™^YXÛÙUT’PÛÛ\Û™[
+^œ™\XÙJ×
+ËÙË	ÉLŒ	ÊJNÈYŠ™^OO]^
+Hœ™XZÎÈ^[™^ÈXØ]Ú
+\œŠ^Èœ™XZÎÈBˆBˆ™]\›ˆ^œ™\XÙJÖ×LWLY—KÙË	ÉÊKš[J
+NÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™PÛÙJ˜[YJ^È™]\›ˆÛX[Š˜[YJKœ™\XÙJ×‰ÊËË	ÉÊKœ™\XÙJ×LLÙË	È	ÊKš[J
+KÕ\\Ø\ÙJ
+NÈBˆ[˜Ý[Ûˆ›Ü›X]X™[ÚÝJ˜[YJ^ÂˆÛÛœÝ˜]ÏXÛX[Š˜[YJKœ™\XÙJ×ÊËÙË	ÉÊNÂˆYŠ\˜]Ê\™]\›ˆ	ÉÎÂˆYŠ×—ÌßKKË\Ý
+˜]ÊJ\™]\›ˆ˜]ÎÂˆÛÛœÝX]Ú\˜]Ë›X]Ú
+×ŠÌßJJÍJJŠŠIÊNÂˆ™]\›ˆX]ÚÛX]ÚÌWJÉËIÊÛX]ÚÌ—JÛX]ÚÌ×Nœ˜]ÎÂˆBˆ[˜Ý[ÛˆÛÛ\XÝÙX\˜ÚÛÙJ˜[YJ^Ü™]\›ˆÝÙ\Š˜[YJKœ™\XÙJÖ×˜K^ŒNWKÙË	ÉÊNßBˆ[˜Ý[ÛˆX]Ú\ÔÙX\˜Ú
+˜[Y\Ë\›J^ÂˆÛÛœÝ^O[ÝÙ\Š
+\œ˜^Kš\Ð\œ˜^J˜[Y\ÊOÝ˜[Y\Î–Ý˜[Y\×JKš›Ú[Š	È	ÊJNÂˆÛÛœÝ™YYO[ÝÙ\Š\›JNÂˆ™]\›ˆ[™YY_^Kš[˜ÛY\Ê™YYJ_
+ÛÛ\XÝÙX\˜ÚÛÙJ™YYJI‰˜ÛÛ\XÝÙX\˜ÚÛÙJ^JKš[˜ÛY\ÊÛÛ\XÝÙX\˜ÚÛÙJ™YYJJJNÂˆBˆ[˜Ý[Ûˆ\Ú^
+˜[YJ^Âˆ]\ÚLŒMŒLÍŒŒNÂˆÛÛœÝ^XÛX[Š˜[YJNÂˆ›ÜŠ]OLÚO^›[™ÝÚJÏLJ^È\Ú]^˜Ú\ÛÙP]
+JNÈ\ÚSX]š[][
+\ÚMÍÍÍŒNJNÈBˆ™]\›ˆ
+\ÚŒ
+KÔÝš[™ÊÍŠNÂˆBˆ[˜Ý[Ûˆ]Qœ›ÛJ˜[YJ^ÂˆYŠ]˜[YJH™]\›ˆ[Âˆž^ÂˆYŠ˜[YH	‰ˆ\[Ùˆ˜[YKÑ]OOOIÙ[˜Ý[Û‰ÊH™]\›ˆ˜[YKÑ]J
+NÂˆYŠ˜[YH[œÝ[˜Ù[Ùˆ]JH™]\›ˆ[X™\‹š\Ó˜SŠ˜[YK™Ù][YJ
+JOÛ[˜[YNÂˆYŠ\[Ùˆ˜[YOOOIÛØš™XÝ	È	‰ˆ[X™\‹š\Ñš[š]J[X™\Š˜[YKœÙXÛÛ™ÊJJH™]\›ˆ™]È]J[X™\Š˜[YKœÙXÛÛ™ÊJŒL
+NÂˆÛÛœÝ^XÛX[Š˜[YJNÈYŠ]^
+H™]\›ˆ[ÂˆÛÛœÝ›Ü›X[^™YK×—ÍKWÌŸKWÌŸWÊ×ÌŸN—ÌŸKË\Ý
+^
+OÝ^œ™\XÙJ×ÊËË	Õ	ÊN^ØÛÛœÝK×—ÍKWÌŸKWÌŸIË\Ý
+›Ü›X[^™Y
+OÛ™]È]J›Ü›X[^™Y
+ÉÕŒŒ	ÊN›™]È]J›Ü›X[^™Y
+NÂˆ™]\›ˆ[X™\‹š\Ó˜SŠ™Ù][YJ
+JOÛ[™ÂˆXØ]Ú
+\œŠ^È™]\›ˆ[ÈBˆBˆ[˜Ý[Ûˆ]U^
+˜[YJ^ÂˆÛÛœÝY]Qœ›ÛJ˜[YJNÈYŠY
+H™]\›ˆÛX[Š˜[YJ_	ø %	ÎÂˆ™]\›ˆ™Ù][YX\Š
+JÉËIÊÔÝš[™Ê™Ù][Û
+
+JÌJKœYÝ\
+‹	Ì	ÊJÉËIÊÔÝš[™Ê™Ù]]J
+JKœYÝ\
+‹	Ì	ÊNÂˆBˆ[˜Ý[Ûˆ]U[YU^
+˜[YJ^ÂˆÛÛœÝY]Qœ›ÛJ˜[YJNÈYŠY
+H™]\›ˆÛX[Š˜[YJ_	ø %	ÎÂˆ™]\›ˆ]U^
+
+JÉÈ	ÊÔÝš[™Ê™Ù]Ý\œÊ
+JKœYÝ\
+‹	Ì	ÊJÉÎ‰ÊÔÝš[™Ê™Ù]Z[]\Ê
+JKœYÝ\
+‹	Ì	ÊNÂˆBˆ[˜Ý[Ûˆ[™™\“[Û[ÓÜ™\‘]Qœ›ÛS[X™\ŠÜ™\“›Ë™Y™\™[˜ÙU˜[YJ^ÂˆËÈSÓSÈ:* ¹e«¹íê:&gùi ˆŒÌMLÌŒLÍÌ»ï#9ë+ûïgˆ9è¯9.èú(jSQ8à ‚ˆËÈ:""¹âb9d#9«iy¦ï¹¢¢¸à#9§+9«(yd#9«iy¦`ºe¤øà#ykêú`,ˆÜ™\™Y];ï&ú`aùb,:`&yê+º,áù¥¦y¦`»ï#9.éyíê:&gùaiùæ¡9¥éy§'ùfç¹oªy«hùè®¹¥éy§'ûï#9íey.#y¬¯ùå*9d#9«iy¦`ºe¤øà ‚ˆÛÛœÝYÚ]ÏXÛX[ŠÜ™\“›ÊKœ™\XÙJ×ÙË	ÉÊKX]ÚYYÚ]Ë›X]Ú
+×—ÌŸJÌŸJJÌŸJWÍ‹IÊNÂˆYŠ[X]Ú
+\™]\›ˆ[ÂˆÛÛœÝ[ÛS[X™\ŠX]ÚÌWJK^OS[X™\ŠX]ÚÌ—JK™Y™\™[˜ÙOY]Qœ›ÛJ™Y™\™[˜ÙU˜[YJ_™]È]J
+NÂˆYŠ[Û_[ÛŒLŸ^O_^OŒÌJ\™]\›ˆ[Âˆ]Ø[™Y]O[™]È]J™Y™\™[˜ÙK™Ù][YX\Š
+K[ÛLK^K
+NÂˆYŠØ[™Y]K™Ù][Û
+
+HOO[[ÛL_Ø[™Y]K™Ù]]J
+HOOY^J\™]\›ˆ[ÂˆYŠØ[™Y]K™Ù][YJ
+Oœ™Y™\™[˜ÙK™Ù][YJ
+JÌŠŒ
+Œ
+Œ
+ŒL
+XØ[™Y]O[™]È]J™Y™\™[˜ÙK™Ù][YX\Š
+KLK[ÛLK^K
+NÂˆ™]\›ˆØ[™Y]NÂˆBˆ[˜Ý[Ûˆ]›Ü›SÜ™\“ÛÚÜÓZÙTÞ[˜Õ[YJØš‹Ü™\™Y]
+^ÂˆÛÛœÝÜ™\™YY]Qœ›ÛJÜ™\™Y]
+KÙY[Y]Qœ›ÛJØš‰‰ŠØš‹™š\œÝÙY[]Øš‹›\ÝÙY[]Øš‹\]Y]Øš‹˜Ü™X]Y]
+JNÂˆ™]\›ˆHJÜ™\™Y	‰œÙY[‰‰“X]˜XœÊÜ™\™Y™Ù][YJ
+K\ÙY[‹™Ù][YJ
+JOLMJŒ
+ŒL
+NÂˆBˆ[˜Ý[Ûˆ[œ]]U[YJ˜[YJ^ÂˆÛÛœÝY]Qœ›ÛJ˜[YJ_™]È]J
+NÂˆ™]\›ˆ™Ù][YX\Š
+JÉËIÊÔÝš[™Ê™Ù][Û
+
+JÌJKœYÝ\
+‹	Ì	ÊJÉËIÊÔÝš[™Ê™Ù]]J
+JKœYÝ\
+‹	Ì	ÊJÉÕ	ÊÔÝš[™Ê™Ù]Ý\œÊ
+JKœYÝ\
+‹	Ì	ÊJÉÎ‰ÊÔÝš[™Ê™Ù]Z[]\Ê
+JKœYÝ\
+‹	Ì	ÊNÂˆBˆ[˜Ý[ÛˆÝ\Ù‘^J˜[YJ^ÈÛÛœÝÛÝ\˜ÙOY]Qœ›ÛJ˜[YJNØÛÛœÝ\ÛÝ\˜ÙOÛ™]È]JÛÝ\˜ÙK™Ù][YJ
+JN›™]È]J
+NÙœÙ]Ý\œÊ
+NÜ™]\›ˆÈBˆ[˜Ý[Ûˆ[™Ù‘^J˜[YJ^ÈÛÛœÝÛÝ\˜ÙOY]Qœ›ÛJ˜[YJNØÛÛœÝ\ÛÝ\˜ÙOÛ™]È]JÛÝ\˜ÙK™Ù][YJ
+JN›™]È]J
+NÙœÙ]Ý\œÊŒËNKNKNNJNÜ™]\›ˆÈBˆ[˜Ý[Ûˆ^\Õ[[
+˜[YJ^ÈÛÛœÝ\Ý\Ù‘^J˜[YJNÈ™]\›ˆX]˜ÙZ[
+
+™Ù][YJ
+K\Ý\Ù‘^J™]È]J
+JK™Ù][YJ
+JKÎ
+NÈBˆ[˜Ý[Ûˆ[Û™^J˜[YJ^ÈÛÛœÝS[X™\Š˜[YJNÈ™]\›ˆ[X™\‹š\Ñš[š]JŠOÉÓ•		ÊÓX]œ›Ý[™
+ŠKÓØØ[TÝš[™Ê	ÞšUÉÊN‰ø %	ÎÈBˆ[˜Ý[ÛˆÛÛ\XÝ[Û™^J˜[YJ^ÈÛÛœÝS[X™\Š˜[YJNÈ™]\›ˆ[X™\‹š\Ñš[š]JŠOÉÉ	ÊÓX]œ›Ý[™
+ŠKÓØØ[TÝš[™Ê	ÞšUÉÊN‰ø %	ÎÈBˆ[˜Ý[Ûˆ›Ü›X][X™\Š˜[YJ^ÈÛÛœÝS[X™\Š˜[YJNÈ™]\›ˆ[X™\‹š\Ñš[š]JŠOÛ‹ÓØØ[TÝš[™Ê	ÞšUÉËÛX^[][Qœ˜XÝ[Û‘YÚ]ÎŒŸJN‰ø %	ÎÈBˆ[˜Ý[Ûˆ\˜Ù[YÙJ˜[YJ^ÈÛÛœÝS[X™\Š˜[YJNÈ™]\›ˆ[X™\‹š\Ñš[š]JŠOÊX]œ›Ý[™
+ŠŒL
+KÌL
+KÑš^Y
+JKœ™\XÙJ	ËŒ	Ë	ÉÊJÉÉIÎ‰ø %	ÎÈBˆ[˜Ý[ÛˆÝ[J›ÝÜË›Š^È™]\›ˆ›ÝÜËœ™YXÙJ[˜Ý[ÛŠÝ[›ÝÊ^ÈÛÛœÝS[X™\Š›Š›ÝÊJNÈ™]\›ˆÝ[
+Ê[X™\‹š\Ñš[š]JŠOÛŽŒ
+NÈK
+NÈBˆ[˜Ý[ÛˆZY
+™Yš^
+^È™]\›ˆ™Yš^
+ÉËIÊÛ™]È]J
+KÒTÓÔÝš[™Ê
+Kœ™\XÙJÖËN•‹—KÙË	ÉÊKœÛXÙJM
+JÉËIÊÓX]œ˜[™ÛJ
+KÔÝš[™ÊÍŠKœÛXÙJ‹ÊKÕ\\Ø\ÙJ
+NÈBˆ[˜Ý[Ûˆ\Ù\“X™[
+
+^È™]\›ˆÛX[ŠÝ]K\Ù\ˆ	‰ˆ
+Ý]K\Ù\‹šYÝ]K\Ù\‹™[\ÞYYRYÝ]K\Ù\‹™[XZ[Ý]K\Ù\‹›˜[Y_Ý]K\Ù\‹™\Ü^S˜[YJJH	ùë¨yä!º !IÎÈBˆ[˜Ý[ÛˆšY[˜[YJ
+^È™]\›ˆÛØ˜[™š\™X˜\ÙH	‰ˆš\™X˜\ÙK™š\™\ÝÜ™H	‰ˆš\™X˜\ÙK™š\™\ÝÜ™K‘šY[˜[YHÈš\™X˜\ÙK™š\™\ÝÜ™K‘šY[˜[YHˆ[ÈBˆ[˜Ý[ÛˆÙ\™\•[Y\Ý[\
+
+^ÈÛÛœÝYšY[˜[YJ
+NÈ™]\›ˆÙ‹œÙ\™\•[Y\Ý[\
+
+N›™]È]J
+KÒTÓÔÝš[™Ê
+NÈBˆ[˜Ý[ÛˆÙ]^
+Y˜[YJ^ÈÛÛœÝ[YØÝ[Y[™Ù][[Y[žRY
+Y
+NÈYŠ[
+H[^ÛÛ[]˜[YNÈBˆ[˜Ý[Ûˆ[
+Y˜[YJ^ÈÛÛœÝ[YØÝ[Y[™Ù][[Y[žRY
+Y
+NÈYŠ[
+H[š[›™\’S]˜[YNÈBˆ[˜Ý[ÛˆžRY
+Y
+^È™]\›ˆØÝ[Y[™Ù][[Y[žRY
+Y
+NÈBˆ[˜Ý[Ûˆ]Y\žJÙ[XÝÜ‹›ÛÝ
+^È™]\›ˆ
+›ÛÝØÝ[Y[
+Kœ]Y\žTÙ[XÝÜŠÙ[XÝÜŠNÈBˆ[˜Ý[Ûˆ]Y\žP[
+Ù[XÝÜ‹›ÛÝ
+^È™]\›ˆ\œ˜^K™œ›ÛJ
+›ÛÝØÝ[Y[
+Kœ]Y\žTÙ[XÝÜ[
+Ù[XÝÜŠJNÈBˆ[˜Ý[Ûˆ\Õ˜[YJ˜[YJ^È™]\›ˆ˜[YHOO][™Yš[™Y	‰ˆ˜[YHOO[[	‰ˆÛX[Š˜[YJHOOIÉÎÈBˆ[˜Ý[Ûˆ[X™\“Ü“[
+˜[YJ^ÈÛÛœÝ[™›Ï[[X™\’[™›Ê˜[YJNÈ™]\›ˆ[™›Ë™›Ý[™Ú[™›Ë˜[YN›[ÈBˆ[˜Ý[ÛˆÝ]\ÕYÊ^\J^È™]\›ˆ	ÏÜ[ˆÛ\ÜÏH›ÜË]YÈ	ÊÊ\_	ÉÊJÉÈ‰ÊÙ\ØØ\R[
+^
+JÉÏÜÜ[‰ÎÈBˆ[˜Ý[Ûˆ\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ^È™]\›ˆÛX[Š\œ›Üˆ	‰ˆ
+\œ›Ü‹›Y\ÜØYÙ_\œ›Ü‹˜ÛÙ_\œ›ÜŠJH	ù§*¹çézc+ú*©	ÎÈB‚ˆ[˜Ý[ÛˆØ\Ý
+]KY\ÜØYÙK\J^ÂˆÛÛœÝÝXÚÏXžRY
+	ÛÜÕØ\ÝÝXÚÉÊNÈYŠ\ÝXÚÊH™]\›ŽÂˆÛÛœÝ[YØÝ[Y[˜Ü™X]Q[[Y[
+	Ù]‰ÊNÈ[˜Û\ÜÓ˜[YOIÛÜË]Ø\Ý	ÊÊ\_	ÉÊNÂˆ[š[›™\’SIÏ‰ÊÙ\ØØ\R[
+]JJÉÏØÜ[‰ÊÙ\ØØ\R[
+Y\ÜØYÙ_	ÉÊJÉÏÜÜ[‰ÎÂˆÝXÚË˜\[™Ú[
+[
+NÂˆÙ][Y[Ý]
+[˜Ý[ÛŠ
+^È[œ™[[Ý™J
+NÈKŒ
+NÂˆBˆ[˜Ý[ÛˆÚÝÐ[\
+Y\ÜØYÙK\J^ÂˆÛÛœÝ[XžRY
+	ÛÜÑÛØ˜[[\	ÊNÈYŠY[
+H™]\›ŽÂˆ[˜Û\ÜÓ˜[YOIÛÜËX[\	ÊÊ\_	ÉÊNÈ[^ÛÛ[[Y\ÜØYÙNÈ[˜Û\ÜÓ\Ýœ™[[Ý™J	ÚY[‰ÊNÂˆBˆ[˜Ý[ÛˆÛX\[\
+
+^ÈÛÛœÝ[XžRY
+	ÛÜÑÛØ˜[[\	ÊNÈYŠ[
+H[˜Û\ÜÓ\Ý˜Y
+	ÚY[‰ÊNÈBˆ[˜Ý[ÛˆØY[™Ò[
+^
+^È™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË[ØY[™È]ˆÛ\ÜÏH›ÜË\Ü[›™\ˆÙ]‰ÊÙ\ØØ\R[
+^	ú,áù¥¦z+ 9cå¹.+x )‰ÊJÉÏÙ]‰ÎÈBˆ[˜Ý[Ûˆ[\R[
+]K^]ÛŠ^Âˆ™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜËY[\HÝ›Û™Ï‰ÊÙ\ØØ\R[
+]JJÉÏÜÝ›Û™Ï‰ÊÙ\ØØ\R[
+^	ÉÊJÉÏÜ‰ÊÊ]ÛŸ	ÉÊJÉÏÙ]‰ÎÂˆB‚ˆ[˜Ý[ÛˆÛÛ™š\›PXÝ[ÛŠ]KY\ÜØYÙKÚÕ^
+^Âˆ™]\›ˆ™]È›ÛZ\ÙJ[˜Ý[ÛŠ™\ÛÛ™J^ÂˆÝ]K˜ÛÛ™š\›T™\ÛÛ™O\™\ÛÛ™NÂˆÙ]^
+	ÛÜÐÛÛ™š\›U]IË]_	ùè®º*£y¤ãy/g	ÊNÂˆÙ]^
+	ÛÜÐÛÛ™š\›SY\ÜØYÙIËY\ÜØYÙ_	ù¦+ùd)¹è®º*£ygíú(c;ï'ÉÊNÂˆÙ]^
+	ÛÜÐÛÛ™š\›SÚÉËÚÕ^	ùè®º*£IÊNÂˆžRY
+	ÛÜÐÛÛ™š\›S[Ù[	ÊK˜Û\ÜÓ\Ý˜Y
+	ÛÜ[‰ÊNÂˆJNÂˆBˆ[˜Ý[ÛˆÛÜÙPÛÛ™š\›J™\Ý[
+^ÂˆÛÛœÝ[Ù[XžRY
+	ÛÜÐÛÛ™š\›S[Ù[	ÊNÈYŠ[Ù[
+H[Ù[˜Û\ÜÓ\Ýœ™[[Ý™J	ÛÜ[‰ÊNÂˆÛÛœÝ™\ÛÛ™\\Ý]K˜ÛÛ™š\›T™\ÛÛ™NÈÝ]K˜ÛÛ™š\›T™\ÛÛ™O[[ÈYŠ™\ÛÛ™\ŠH™\ÛÛ™\ŠH\™\Ý[
+NÂˆBˆ[˜Ý[ÛˆÜ[‘˜]Ù\Š]KÝX]K›ÙJ^ÂˆžRY
+	ÛÜÑ˜]Ù\‰ÊK˜Û\ÜÓ\Ýœ™[[Ý™J	ÛÜË[\Ý[™ËXØ\ÙKY˜]Ù\‰ÊNÂˆÙ]^
+	ÛÜÑ˜]Ù\•]IË]_	ú,áù¥¦yíê:/+ÉÊNÈÙ]^
+	ÛÜÑ˜]Ù\”ÝX]IËÝX]_	ÉÊNÈ[
+	ÛÜÑ˜]Ù\›ÙIË›Ù_	ÉÊNÂˆ[š[˜ÙS[Øš[S[X™\’[œ]ÊžRY
+	ÛÜÑ˜]Ù\›ÙIÊJNÂˆžRY
+	ÛÜÑ˜]Ù\‰ÊK˜Û\ÜÓ\Ý˜Y
+	ÛÜ[‰ÊNÈžRY
+	ÛÜÑ˜]Ù\˜XÚÙ›Ü	ÊK˜Û\ÜÓ\Ý˜Y
+	ÛÜ[‰ÊNÂˆBˆ[˜Ý[ÛˆÛÜÙQ˜]Ù\Š
+^ÈžRY
+	ÛÜÑ˜]Ù\‰ÊK˜Û\ÜÓ\Ýœ™[[Ý™J	ÛÜ[‰ÊNÈžRY
+	ÛÜÑ˜]Ù\˜XÚÙ›Ü	ÊK˜Û\ÜÓ\Ýœ™[[Ý™J	ÛÜ[‰ÊNÈB‚ˆ[˜Ý[Ûˆ™XÝ\œÚ]™U˜[Y\ÐžRÙ^\Ê˜[YKÙ^\Ë\ÙY[Š^Âˆ\Y\O[[Ì™\ÈÙY[\ÙY[Ÿ™]ÈÙ]
+
+NÈYŠ˜[YOO[[\ÊH™]\›ˆ×NÂˆYŠ\[Ùˆ˜[YHOOIÛØš™XÝ	ÊH™]\›ˆ×NÂˆYŠÙY[‹š\Ê˜[YJJH™]\›ˆ×NÈÙY[‹˜Y
+˜[YJNÂˆÛÛœÝØ[Y[™]ÈÙ]
+Ù^\Ë›X\
+[˜Ý[ÛŠÊ^Ü™]\›ˆÝÙ\ŠÊNßJJNÈÛÛœÝ™\Ý[ÏV×NÂˆØš™XÝšÙ^\Ê˜[YJK™›Ü‘XXÚ
+[˜Ý[ÛŠÙ^J^ÂˆÛÛœÝÚ[]˜[YVÚÙ^WNÈYŠØ[Yš\ÊÝÙ\ŠÙ^JJH	‰ˆÚ[OO][™Yš[™Y	‰ˆÚ[OO[[	‰ˆÛX[ŠÚ[
+HOOIÉÊH™\Ý[Ëœ\Ú
+Ú[
+NÂˆYŠÚ[	‰\[ÙˆÚ[OOIÛØš™XÝ	ÊH™\Ý[Ëœ\Ú˜\J™\Ý[Ë™XÝ\œÚ]™U˜[Y\ÐžRÙ^\ÊÚ[Ù^\Ë\
+ÌKÙY[ŠJNÂˆJNÂˆ™]\›ˆ™\Ý[ÎÂˆBˆ[˜Ý[Ûˆ™XÝ\œÚ]™Qš\œÝÛÙJØšŠ^ÂˆÛÛœÝ˜[Ï\™XÝ\œÚ]™U˜[Y\ÐžRÙ^\ÊØš‹ÉÜÚÝIË	ÔÒÕIË	ØÛÙIË	Ü›ÙXÝÛÙIË	Ú][PÛÙIË	Ú[\›˜[ÛÙIË	Ý˜\šX[ÚÝIË	ùea¹dàyíê:&gÉË	ú,ª:&gÉ×K™]ÈÙ]
+
+JNÂˆ›ÜŠÛÛœÝ˜[YHÙˆ˜[Ê^ÈÛÛœÝÛÙO[›Ü›X[^™PÛÙJ˜[YJNÈYŠÛÙH	‰ˆÛÙK›[™ÝN
+H™]\›ˆÛÙNÈBˆ™]\›ˆ	ÉÎÂˆBˆ[˜Ý[Ûˆ™XÝ\œÚ]™U˜\šX[Ø[™Y]\ÊØšŠ^ÂˆÛÛœÝ™\Ý[V×KÙY[[™]ÈÙ]
+
+NÂˆ[˜Ý[ÛˆØ[Ê˜[YK\
+^ÂˆYŠ]˜[Y_\[Ùˆ˜[YHOOIÛØš™XÝ	ß\ßÙY[‹š\Ê˜[YJJH™]\›ŽÈÙY[‹˜Y
+˜[YJNÂˆÛÛœÝÛÙO\™XÝ\œÚ]™Qš\œÝÛÙJ˜[YJK[YÜÏXÛÛXÝ[XYÙU\›Ê˜[YJK˜[YOYXÛÙT™XYX›Jš\œÝ˜[YJ˜[YKÉÛ˜[YIË	Ý]IË	Ý˜\šX[˜[YIË	ÛÜ[Û“˜[YIË	ÜÜXÚYšXØ][Û‰Ë	ú)£ù¨/	×JJNÂˆYŠÛÙH	‰ˆ
+[YÜË›[™Ý˜[Y_š\œÝ[X™\Š˜[YKÉÜšXÙIË	ÜØ[TšXÙIË	Ý˜\šX[šXÙI×JK™›Ý[™
+JH™\Ý[œ\Ú
+˜[YJNÂˆØš™XÝšÙ^\Ê˜[YJK™›Ü‘XXÚ
+[˜Ý[ÛŠÊ^ØÛÛœÝÚ[]˜[YVÚ×NÈYŠÚ[	‰\[ÙˆÚ[OOIÛØš™XÝ	ÊHØ[ÊÚ[\
+ÌJNßJNÂˆBˆØ[ÊØš‹
+NÂˆÛÛœÝ[š\]YOV×KÛÙ\Ï[™]ÈÙ]
+
+NÈ™\Ý[™›Ü‘XXÚ
+[˜Ý[ÛŠŠ^ØÛÛœÝÏ\™XÝ\œÚ]™Qš\œÝÛÙJŠNÈYŠÉ‰ˆXÛÙ\Ëš\ÊÊJ^ØÛÙ\Ë˜Y
+ÊNÝ[š\]YKœ\Ú
+ŠNß_JNÈ™]\›ˆ[š\]YNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™SÛ›[™P˜\ÙJØš‹ÛÛXÝ[Û‹ØÒY
+^ÂˆØš][Ü˜\Û›[™SØš™XÝ
+ØšŸßJNÂˆÛÛœÝšXÙOYš\œÝ[X™\ŠØš‹ÉÜšXÙIË	ÛX\šÙ]šXÙIË	ÜØ[TšXÙIË	ÝÙXœÚ]SÜšYÚ[˜[šXÙIË	Ü™YÝ[\”šXÙIË	Ý˜\šX[šXÙIË	ØÛÛ\\™P]šXÙIË	ùk¦9í¬¹`îy¨/	Ë	ù`îy¨/	×JNÂˆÛÛœÝÝØÚÏYš\œÝ[X™\ŠØš‹ÉØ]˜Z[X›T]X[]IË	Ø]˜Z[X›TÝØÚÉË	Ú[™[ÜžT]X[]IË	ÜÝØÚÔ]X[]IË	Ü]X[]IË	ÜÝØÚÉË	Ú[™[ÜžIË	ùnªùkf	Ë	ùnªùkf9¥n:aãÉ×JNÂˆÛÛœÝ˜[YOYXÛÙT™XYX›Jš\œÝ˜[YJØš‹ÉÛ˜[YIË	Ý]IË	Ú][S˜[YIË	Ü›ÙXÝ˜[YIË	ùea¹dàyd#yê,I×JJ_	ù§*¹doyd#yí¬º-ëùea¹dàIÎÂˆÛÛœÝÚÝO[›Ü›X[^™PÛÙJš\œÝ˜[YJØš‹ÉÜÚÝIË	ÔÒÕIË	Ü›ÙXÝÛÙIË	Ú][PÛÙIË	Ú[\›˜[ÛÙIË	Ý˜\šX[ÚÝIË	ùea¹dàyíê:&gÉË	ØÛÙIË	ú,ª:&gÉ×JJ_™XÝ\œÚ]™Qš\œÝÛÙJØšŠNÂˆÛÛœÝÛÝ\˜ÙRYXÛX[Šš\œÝ˜[YJØš‹ÉÜ›ÙXÝY	Ë	ÝÙXœÚ]T›ÙXÝY	Ë	Ú][RY	Ë	ÚY	Ë	××ÚY	×JJ_ØÒYÂˆÛÛœÝ[XYÙ\ÏXÛÛXÝ[XYÙU\›ÊØšŠNÂˆ™]\›ˆÂˆYœÛÝ\˜ÙRYØÒY™ØÒYÛÝ\˜ÙRÙ^N˜ÛÛXÝ[ÛŠÉÎŽ‰ÊÙØÒYÛÝ\˜ÙPÛÛXÝ[ÛŽ˜ÛÛXÝ[Û‹ÛÝ\˜ÙT›ÙXÝYœÛÝ\˜ÙRYˆÛÝ\˜ÙU˜\šX[Y˜ÛX[Šš\œÝ˜[YJØš‹ÉÝ˜\šX[Y	Ë	Ý˜\šX][Û’Y	Ë	ÛÜ[Û’Y	×JJKÛ›[™S˜[YN›˜[YKÚÝNœÚÝKˆÛ›[™TšXÙNœšXÙK™›Ý[™ÜšXÙK˜[YN›[Û›[™TÝØÚÎœÝØÚË™›Ý[™ÜÝØÚË˜[YN›[[XYÙU\›š[XYÙ\ÖÌ_	ÉË[XYÙU\›Îš[XYÙ\Ëˆ\›œØY™U\›
+š\œÝ˜[YJØš‹ÉÝ\›	Ë	Ü›ÙXÝ\›	Ë	ÝÙXœÚ]T›ÙXÝ\›	Ë	Ü\›X[[šÉË	Û[šÉË	ú`(ùíd	×JJKˆœ˜[™˜ÛX[Šš\œÝ˜[YJØš‹ÉØœ˜[™	Ë	Ý™[™Ü‰Ë	ÛX[Y˜XÝ\™\‰Ë	ùdàyâc	×JJKØ]YÛÜžN˜ÛX[Šš\œÝ˜[YJØš‹ÉØØ]YÛÜžIË	Ü›ÙXÝ\IË	Ý\IË	ùb!ºhg‰×JJKˆ˜\šX[˜[YN™XÛÙT™XYX›Jš\œÝ˜[YJØš‹ÉÝ˜\šX[Ý[[X\žIË	ÛÜ[ÛœÕ^	Ë	Ý˜\šX[˜[YIË	ÜÜXÚYšXØ][Û‰Ë	ú)£ù¨/	×JJK˜]Î›Øš‚ˆNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™SÛ›[™QØÊØš‹ÛÛXÝ[Û‹ØÒY
+^ÂˆÛÛœÝ›ÛÝ][Ü˜\Û›[™SØš™XÝ
+ØšŸßJNÈÛÛœÝ˜\ÙO[›Ü›X[^™SÛ›[™P˜\ÙJ›ÛÝÛÛXÝ[Û‹ØÒY
+NÈ]˜\šX[Ï[Û›[™U˜\šX[\Ý
+›ÛÝ
+NÈYŠ]˜\šX[Ë›[™Ý
+H˜\šX[Ï\™XÝ\œÚ]™U˜\šX[Ø[™Y]\Ê›ÛÝ
+NÂˆYŠ]˜\šX[Ë›[™Ý
+H™]\›ˆØ˜\ÙWNÂˆ™]\›ˆ˜\šX[Ë›X\
+[˜Ý[ÛŠ˜\šX[[™^
+^Âˆ˜\šX[][Ü˜\Û›[™SØš™XÝ
+˜\šX[ßJNÂˆÛÛœÝ›ÝÏ[›Ü›X[^™SÛ›[™P˜\ÙJØš™XÝ˜\ÜÚYÛŠßK›ÛÝ˜\šX[
+KÛÛXÝ[Û‹ØÒY
+ÉÎŽ‰ÊÚ[™^
+NÂˆ›ÝËœÛÝ\˜ÙRÙ^OXÛÛXÝ[ÛŠÉÎŽ‰ÊÙØÒY
+ÉÎŽ‰ÊØÛX[Šš\œÝ˜[YJ˜\šX[ÉÚY	Ë	Ý˜\šX[Y	Ë	Ý˜\šX][Û’Y	Ë	ÜÚÝIË	Û˜[YIË	Ý]I×J_[™^
+NÂˆ›ÝËœÛÝ\˜ÙT›ÙXÝYX˜\ÙKœÛÝ\˜ÙT›ÙXÝYÈ›ÝËœÛÝ\˜ÙU˜\šX[YXÛX[Šš\œÝ˜[YJ˜\šX[ÉÚY	Ë	Ý˜\šX[Y	Ë	Ý˜\šX][Û’Y	Ë	ÛÜ[Û’Y	×JJ_›ÝËœÛÝ\˜ÙU˜\šX[YÂˆ›ÝË›Û›[™S˜[YOX˜\ÙK›Û›[™S˜[YNÈ›ÝËœÚÝO\›ÝËœÚÝ_›Ü›X[^™PÛÙJš\œÝ˜[YJ˜\šX[ÉÜÚÝIË	ÔÒÕIË	ØÛÙIË	Ü›ÙXÝÛÙIË	Ú][PÛÙIË	Ý˜\šX[ÚÝIË	ú,ª:&gÉ×JJ_™XÝ\œÚ]™Qš\œÝÛÙJ˜\šX[
+_˜\ÙKœÚÝNÂˆ›ÝË›Û›[™TšXÙO\›ÝË›Û›[™TšXÙOO[[Ø˜\ÙK›Û›[™TšXÙNœ›ÝË›Û›[™TšXÙNÈ›ÝË›Û›[™TÝØÚÏ\›ÝË›Û›[™TÝØÚÏO[[Ø˜\ÙK›Û›[™TÝØÚÎœ›ÝË›Û›[™TÝØÚÎÂˆÛÛœÝ˜\šX[[XYÙ\ÏXÛÛXÝ[XYÙU\›Ê˜\šX[
+K˜\ÙR[XYÙ\ÏJ˜\ÙKš[XYÙU\›ß×JKœÛXÙJ
+NÂˆ›ÝËœ\™[[XYÙU\›ÏX˜\ÙR[XYÙ\ÎÂˆ›ÝË˜\šX[[XYÙU\›Ï]˜\šX[[XYÙ\ÎÂˆ›ÝËš[XYÙU\›ÏV×NÈ˜\ÙR[XYÙ\Ë˜ÛÛ˜Ø]
+˜\šX[[XYÙ\ÊK™›Ü‘XXÚ
+[˜Ý[ÛŠ\›
+^ÚYŠ\›	‰ˆ\›ÝËš[XYÙU\›Ëš[˜ÛY\Ê\›
+J\›ÝËš[XYÙU\›Ëœ\Ú
+\›
+NßJNÂˆ›ÝËš[XYÙU\›\›ÝËš[XYÙU\›ÖÌ_˜\ÙKš[XYÙU\›È›ÝË\›\›ÝË\›˜\ÙK\›È›ÝË˜œ˜[™\›ÝË˜œ˜[™˜\ÙK˜œ˜[™È›ÝË˜Ø]YÛÜžO\›ÝË˜Ø]YÛÜž_˜\ÙK˜Ø]YÛÜžNÂˆ›ÝË˜\šX[˜[YOYXÛÙT™XYX›Jš\œÝ˜[YJ˜\šX[ÉÛ˜[YIË	Ý]IË	ÛÜ[Û“˜[YIË	Ý˜\šX[˜[YIË	ÜÚÝIË	ÛÜ[ÛœÕ^	×JJ_˜\ÙK˜\šX[˜[YNÂˆ™]\›ˆ›ÝÎÂˆJNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™PÛÜÝ^Y\œÊ˜[YJ^ÂˆÛÛœÝ›ÝÜÏP\œ˜^Kš\Ð\œ˜^J˜[YJOÝ˜[YN–×NÂˆ™]\›ˆ›ÝÜË›X\
+[˜Ý[ÛŠ^Y\‹[™^
+^ÂˆÛÛœÝ]O[[X™\“Ü“[
+š\œÝ˜[YJ^Y\ŸßKÉÜ]T™[XZ[š[™ÉË	Ü™[XZ[š[™Ô]IË	Ü]IË	Ü]X[]I×JJNÂˆÛÛœÝÛÜÝ[[X™\“Ü“[
+š\œÝ˜[YJ^Y\ŸßKÉÝ[š]ÛÜÝ	Ë	ØÛÜÝ	Ë	Ü\˜Ú\ÙTšXÙI×JJNÂˆ™]\›ˆÛ^Y\’Y˜ÛX[Šš\œÝ˜[YJ^Y\ŸßKÉÛ^Y\’Y	Ë	ÚY	×JJ_
+	Ó	ÊÚ[™^
+K]T™[XZ[š[™Îœ]OO[[Ì“X]›X^
+]JKÜšYÚ[˜[]N›[X™\“Ü“[
+š\œÝ˜[YJ^Y\ŸßKÉÛÜšYÚ[˜[]IË	Ü]IË	Ü]X[]I×JJ_X]›X^
+]_
+K[š]ÛÜÝ˜ÛÜÝÛÜÝÛ›ÝÛŽ›^Y\‰‰›^Y\‹˜ÛÜÝÛ›ÝÛˆOOY˜[ÙI‰˜ÛÜÝO[[™XÙZ]™Y]™š\œÝ˜[YJ^Y\ŸßKÉÜ™XÙZ]™Y]	Ë	Ù]IË	ØÜ™X]Y]	×J_	ÉË™Y™\™[˜ÙU\N˜ÛX[Šš\œÝ˜[YJ^Y\ŸßKÉÜ™Y™\™[˜ÙU\IË	ÜÛÝ\˜ÙI×JJ_	Ý[šÛ›ÝÛ‰Ë™Y™\™[˜ÙRY˜ÛX[Šš\œÝ˜[YJ^Y\ŸßKÉÜ™Y™\™[˜ÙRY	Ë	ÜÛÝ\˜ÙRY	×JJ_NÂˆJK™š[\Š[˜Ý[ÛŠ^Y\Š^Ü™]\›ˆ^Y\‹œ]T™[XZ[š[™ÏŒßJKœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ
+]Qœ›ÛJKœ™XÙZ]™Y]
+_
+KJ]Qœ›ÛJ‹œ™XÙZ]™Y]
+_
+NßJNÂˆBˆ[˜Ý[ÛˆÛÜÝ^Y\”Ý]Ê˜]Ê^ÂˆÛÛœÝÝ\œ™[SX]›X^
+[X™\Š˜]É‰œ˜]Ë˜Ý\œ™[ÝØÚß
+JNÈÛÛœÝ^Y\œÏ[›Ü›X[^™PÛÜÝ^Y\œÊ˜]É‰œ˜]Ë˜ÛÜÝ^Y\œÊNÂˆÛÛœÝ˜XÚÙY]O\Ý[J^Y\œË[˜Ý[ÛŠ
+^Ü™]\›ˆœ]T™[XZ[š[™ÎßJNÈÛÛœÝÛ›ÝÛ•˜[YO\Ý[J^Y\œË[˜Ý[ÛŠ
+^Ü™]\›ˆ˜ÛÜÝÛ›ÝÛ‰‰ž[š]ÛÜÝO[[Þœ]T™[XZ[š[™Êž[š]ÛÜÝŒßJNÂˆÛÛœÝÛ›ÝÛ”]O\Ý[J^Y\œË[˜Ý[ÛŠ
+^Ü™]\›ˆ˜ÛÜÝÛ›ÝÛ‰‰ž[š]ÛÜÝO[[Þœ]T™[XZ[š[™ÎŒßJNÂˆÛÛœÝ˜[˜XÚÏ[[X™\“Ü“[
+š\œÝ˜[YJ˜]ßßKÉØ]™\˜YÙPÛÜÝ	Ë	Û]\Ý\˜Ú\ÙPÛÜÝ	Ë	Ü\˜Ú\ÙTšXÙI×JJNÂˆÛÛœÝ]™\˜YÙO]˜XÚÙY]OŒ	‰ˆÛ›ÝÛ”]OOO]˜XÚÙY]HÈÛ›ÝÛ•˜[YKÝ˜XÚÙY]Hˆ˜[˜XÚÎÂˆÛÛœÝš\œÝ[^Y\œË™š[™
+[˜Ý[ÛŠ
+^Ü™]\›ˆœ]T™[XZ[š[™ÏŒßJNÈÛÛœÝ™^Yš\œÝ	‰™š\œÝ[š]ÛÜÝO[[Ùš\œÝ[š]ÛÜÝ™˜[˜XÚÎÂˆ™]\›ˆÛ^Y\œÎ›^Y\œË˜XÚÙY]N˜XÚÙY]K[˜XÚÙY]N“X]›X^
+Ý\œ™[]˜XÚÙY]JK[™[ÜžU˜[YNšÛ›ÝÛ•˜[YJÊX]›X^
+Ý\œ™[]˜XÚÙY]JJŠ˜[˜XÚß
+JK]™\˜YÙPÛÜÝ˜]™\˜YÙK™^šY›ÐÛÜÝ›™^ÛÜÝ[˜ÛÛ\]NŠÝ\œ™[Œ	‰ŠÛ›ÝÛ”]O˜XÚÙY]_˜XÚÙY]OÝ\œ™[™^O[[
+J_NÂˆBˆ[˜Ý[ÛˆX]\šX[^™PÛÜÝ^Y\œÊ˜]Ê^Âˆ˜]Ï\˜]ßßNÈÛÛœÝ\™Ù]SX]›X^
+[X™\Š˜]Ë˜Ý\œ™[ÝØÚß
+JNÈ]^Y\œÏ[›Ü›X[^™PÛÜÝ^Y\œÊ˜]Ë˜ÛÜÝ^Y\œÊNÈ]Ý[\Ý[J^Y\œË[˜Ý[ÛŠ
+^Ü™]\›ˆœ]T™[XZ[š[™ÎßJNÂˆYŠÝ[\™Ù]
+^ÈÛÛœÝ˜[˜XÚÏ[[X™\“Ü“[
+š\œÝ˜[YJ˜]ËÉØ]™\˜YÙPÛÜÝ	Ë	Û]\Ý\˜Ú\ÙPÛÜÝ	Ë	Ü\˜Ú\ÙTšXÙI×JJNÈ^Y\œËœ\Ú
+Û^Y\’Y‰Ù˜[˜XÚ×ÉÊÚ\Ú^
+Ýš[™Ê\™Ù]
+JÉ×ÉÊÔÝš[™Ê˜[˜XÚÊJK]T™[XZ[š[™Î\™Ù]]Ý[ÜšYÚ[˜[]N\™Ù]]Ý[[š]ÛÜÝ™˜[˜XÚËÛÜÝÛ›ÝÛŽ™˜[˜XÚÈO[[™XÙZ]™Y]‰ÌNMÌLKLUŒŒŒ‰Ë™Y™\™[˜ÙU\N‰Ù˜[˜XÚÉË™Y™\™[˜ÙRY‰ÓQÐPÖIßJNÈÝ[]\™Ù]ÈBˆYŠÝ[\™Ù]
+^È]^˜O]Ý[]\™Ù]È›ÜŠ]O[^Y\œË›[™ÝLNÚOL	‰™^˜OŒÚKOLJ^ØÛÛœÝZÙOSX]›Z[Š^˜K^Y\œÖÚWKœ]T™[XZ[š[™ÊNÛ^Y\œÖÚWKœ]T™[XZ[š[™ËO]ZÙNÙ^˜KO]ZÙNßH^Y\œÏ[^Y\œË™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆœ]T™[XZ[š[™ÏŒßJNÈBˆ™]\›ˆ^Y\œÎÂˆBˆ[˜Ý[ÛˆÝ]Ñœ›ÛS^Y\œÊ^Y\œÊ^Âˆ^Y\œÏ[›Ü›X[^™PÛÜÝ^Y\œÊ^Y\œÊNÈÛÛœÝ]O\Ý[J^Y\œË[˜Ý[ÛŠ
+^Ü™]\›ˆœ]T™[XZ[š[™ÎßJNÈÛÛœÝÛ›ÝÛ”]O\Ý[J^Y\œË[˜Ý[ÛŠ
+^Ü™]\›ˆ˜ÛÜÝÛ›ÝÛ‰‰ž[š]ÛÜÝO[[Þœ]T™[XZ[š[™ÎŒßJNÈÛÛœÝ˜[YO\Ý[J^Y\œË[˜Ý[ÛŠ
+^Ü™]\›ˆ˜ÛÜÝÛ›ÝÛ‰‰ž[š]ÛÜÝO[[Þœ]T™[XZ[š[™Êž[š]ÛÜÝŒßJNÂˆ™]\›ˆÛ^Y\œÎ›^Y\œË]Nœ]K[™[ÜžU˜[YN˜[YK]™\˜YÙPÛÜÝœ]OŒ	‰šÛ›ÝÛ”]OOO\]OÝ˜[YKÜ]N›[™^šY›ÐÛÜÝ›^Y\œË›[™ÝÛ^Y\œÖÌK[š]ÛÜÝ›[ÛÜÝ[˜ÛÛ\]Nœ]OšÛ›ÝÛ”]_NÂˆBˆ[˜Ý[ÛˆÛÛœÝ[YQšY›Ê˜]Ë]K[ÝÓ™YØ]]™TÝØÚÊ^Âˆ]OSX]›X^
+X]œ›Ý[™
+[X™\Š]_
+JJNÈÛÛœÝ^Y\œÏ[X]\šX[^™PÛÜÝ^Y\œÊ˜]ÊNÈ]™[XZ[š[™Ï\]KÛÜÝÝ[L[šÛ›ÝÛ”]OLÈÛÛœÝœ™XZÙÝÛV×NÂˆ›ÜŠÛÛœÝ^Y\ˆÙˆ^Y\œÊ^ÈYŠ™[XZ[š[™ÏL
+Hœ™XZÎÈÛÛœÝZÙOSX]›Z[Š™[XZ[š[™Ë^Y\‹œ]T™[XZ[š[™ÊNÈYŠZÙOL
+HÛÛ[YNÈÛÛœÝ[š][^Y\‹[š]ÛÜÝÈYŠ[š]O[[
+^Ý[šÛ›ÝÛ”]JÏ]ZÙNßH[ÙHÛÜÝÝ[
+Ï]ZÙJ[š]Èœ™XZÙÝÛ‹œ\Ú
+Û^Y\’Y›^Y\‹›^Y\’Y]NZÙK[š]ÛÜÝ[š]™Y™\™[˜ÙRY›^Y\‹œ™Y™\™[˜ÙRYJNÈ^Y\‹œ]T™[XZ[š[™ËO]ZÙNÈ™[XZ[š[™ËO]ZÙNÈBˆYŠ™[XZ[š[™ÏŒ
+^ÂˆYŠX[ÝÓ™YØ]]™TÝØÚÊH›ÝÈ™]È\œ›ÜŠ	Ñ’Q“È9¢$9§+9li9¥n:aãù.#z-¬ûï#:*âùab:aãy¥¬9¥m9ä!¹ea¹dàynªùkf	ÊNÂˆÛÛœÝ˜[˜XÚÏ[[X™\“Ü“[
+š\œÝ˜[YJ˜]ßßKÉØ]™\˜YÙPÛÜÝ	Ë	Û]\Ý\˜Ú\ÙPÛÜÝ	Ë	Ü\˜Ú\ÙTšXÙI×JJNÂˆYŠ˜[˜XÚÏO[[
+][šÛ›ÝÛ”]JÏ\™[XZ[š[™ÎÙ[ÙHÛÜÝÝ[
+Ï\™[XZ[š[™Ê™˜[˜XÚÎÂˆœ™XZÙÝÛ‹œ\Ú
+Û^Y\’Y‰Ó‘QÐUU‘WÔÕÐÒÉË]Nœ™[XZ[š[™Ë[š]ÛÜÝ™˜[˜XÚË™Y™\™[˜ÙRY‰Ó‘QÐUU‘WÔÕÐÒÉßJNÂˆ™[XZ[š[™ÏLÂˆBˆÛÛœÝY[^Y\œË™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆœ]T™[XZ[š[™ÏŒßJNÈÛÛœÝÝ]Ï\Ý]Ñœ›ÛS^Y\œÊY
+NÂˆ™]\›ˆØÛÜÝÝ[˜ÛÜÝÝ[[šÛ›ÝÛÛÜÝ]N[šÛ›ÝÛ”]Kœ™XZÙÝÛŽ˜œ™XZÙÝÛ‹^Y\œÎ›Y]™\˜YÙPÛÜÝœÝ]Ë˜]™\˜YÙPÛÜÝ™^šY›ÐÛÜÝœÝ]Ë›™^šY›ÐÛÜÝ[™[ÜžU˜[YNœÝ]Ëš[™[ÜžU˜[YKÛÜÝ[˜ÛÛ\]NœÝ]Ë˜ÛÜÝ[˜ÛÛ\]_[šÛ›ÝÛ”]OŒNÂˆBˆ[˜Ý[Ûˆ\Ý[X]T™[Ü™\ÛÜÝ
+˜]Ë]J^ÂˆÛÛœÝ\Ý[X]OXÛÛœÝ[YQšY›Ê˜]Ë]KYJNÂˆ™]\›ˆØÛÜÝÝ[™\Ý[X]K˜ÛÜÝÝ[[šÛ›ÝÛÛÜÝ]N™\Ý[X]K[šÛ›ÝÛÛÜÝ]Kœ™XZÙÝÛŽ™\Ý[X]K˜œ™XZÙÝÛŸNÂˆBˆ[˜Ý[ÛˆYšY›Ó^Y\Š˜]Ë]K[š]ÛÜÝY]J^ÂˆÛÛœÝ^Y\œÏ[X]\šX[^™PÛÜÝ^Y\œÊ˜]ÊNÈÛÛœÝ™XÙZ]™Y]JY]I‰›Y]Kœ™XÙZ]™Y]
+_™]È]J
+KÒTÓÔÝš[™Ê
+NÂˆ^Y\œËœ\Ú
+Û^Y\’YŠY]I‰›Y]K›^Y\’Y
+_ZY
+	ÓVQT‰ÊK]T™[XZ[š[™Îœ]KÜšYÚ[˜[]Nœ]K[š]ÛÜÝ[š]ÛÜÝÛÜÝÛ›ÝÛŽ[š]ÛÜÝO[[™XÙZ]™Y]œ™XÙZ]™Y]™Y™\™[˜ÙU\NŠY]I‰›Y]Kœ™Y™\™[˜ÙU\J_	Ü\˜Ú\ÙIË™Y™\™[˜ÙRYŠY]I‰›Y]Kœ™Y™\™[˜ÙRY
+_	ÉßJNÂˆÛÛœÝÝ]Ï\Ý]Ñœ›ÛS^Y\œÊ^Y\œÊNÈ™]\›ˆÛ^Y\œÎœÝ]Ë›^Y\œË]™\˜YÙPÛÜÝœÝ]Ë˜]™\˜YÙPÛÜÝ™^šY›ÐÛÜÝœÝ]Ë›™^šY›ÐÛÜÝ[™[ÜžU˜[YNœÝ]Ëš[™[ÜžU˜[YKÛÜÝ[˜ÛÛ\]NœÝ]Ë˜ÛÜÝ[˜ÛÛ\]_NÂˆBˆ[˜Ý[ÛˆY\ÝšY›Ó^Y\œÊ˜]Ë™]ÔÝØÚË[š]ÛÜÝY]J^ÂˆÛÛœÝÛÝØÚÏS[X™\Š˜]É‰œ˜]Ë˜Ý\œ™[ÝØÚß
+NÈ™]ÔÝØÚÏS[X™\Š™]ÔÝØÚß
+NÂˆYŠ™]ÔÝØÚÏOO[ÛÝØÚÊ^ØÛÛœÝÝ]ÏXÛÜÝ^Y\”Ý]Ê˜]ÊNÜ™]\›ˆÛ^Y\œÎœÝ]Ë›^Y\œË]™\˜YÙPÛÜÝœÝ]Ë˜]™\˜YÙPÛÜÝ™^šY›ÐÛÜÝœÝ]Ë›™^šY›ÐÛÜÝ[™[ÜžU˜[YNœÝ]Ëš[™[ÜžU˜[YKÛÜÝ[˜ÛÛ\]NœÝ]Ë˜ÛÜÝ[˜ÛÛ\]KÛÛœÝ[YYÛÜÝŒNßBˆYŠ™]ÔÝØÚÏ›ÛÝØÚÊ^ØÛÛœÝYSX]›X^
+™]ÔÝØÚËSX]›X^
+ÛÝØÚÊJNØÛÛœÝYYXYšY›Ó^Y\Š˜]ËY[š]ÛÜÝY]JNÜ™]\›ˆØš™XÝ˜\ÜÚYÛŠØÛÛœÝ[YYÛÜÝŒKYY
+NßBˆYŠ™]ÔÝØÚÏL
+^Ü™]\›ˆÛ^Y\œÎ–×K]™\˜YÙPÛÜÝ›[™^šY›ÐÛÜÝ›[[™[ÜžU˜[YNŒÛÜÝ[˜ÛÛ\]N™˜[ÙKÛÛœÝ[YYÛÜÝŒNßBˆÛÛœÝÛÛœÝ[YOSX]›X^
+X]›X^
+ÛÝØÚÊK[™]ÔÝØÚÊNÈÛÛœÝ™\Ý[XÛÛœÝ[YQšY›Ê˜]ËÛÛœÝ[YJNÈ™]\›ˆÛ^Y\œÎœ™\Ý[›^Y\œË]™\˜YÙPÛÜÝœ™\Ý[˜]™\˜YÙPÛÜÝ™^šY›ÐÛÜÝœ™\Ý[›™^šY›ÐÛÜÝ[™[ÜžU˜[YNœ™\Ý[š[™[ÜžU˜[YKÛÜÝ[˜ÛÛ\]Nœ™\Ý[˜ÛÜÝ[˜ÛÛ\]KÛÛœÝ[YYÛÜÝœ™\Ý[˜ÛÜÝÝ[NÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™T›ÙXÝ™\ÙX\˜ÚÛÝ\˜ÙU\›Ê˜[YJ^ÂˆÛÛœÝ›ÝÜÏP\œ˜^Kš\Ð\œ˜^J˜[YJOÝ˜[YN˜ÛX[Š˜[YJKœÜ]
+Ö×ŸJËÊNÂˆÛÛœÝ™\Ý[V×NÂˆ›ÝÜË™›Ü‘XXÚ
+[˜Ý[ÛŠ][J^ØÛÛœÝ˜]ÏXÛX[Š][JNÚYŠK×šÏÎ—×ËÚK\Ý
+˜]ÊJ\™]\›ŽØÛÛœÝ\›\ØY™U\›
+˜]ÊNÚYŠ\›	‰ˆ\™\Ý[š[˜ÛY\Ê\›
+J\™\Ý[œ\Ú
+\›
+NßJNÂˆ™]\›ˆ™\Ý[œÛXÙJŒ
+NÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™R[\›˜[
+Øš‹ØÒY
+^ÂˆÛÛœÝ^Y\œÏ[›Ü›X[^™PÛÜÝ^Y\œÊØš‹˜ÛÜÝ^Y\œÊNÈÛÛœÝ˜]ÏSØš™XÝ˜\ÜÚYÛŠßKØš‹ØÛÜÝ^Y\œÎ›^Y\œßJNÈÛÛœÝÝ]ÏXÛÜÝ^Y\”Ý]Ê˜]ÊNÂˆÛÛœÝšXÙ\Ò[š]X[^™Y[Øš‹œ]›Ü›TšXÙ\Ò[š]X[^™YOO]YNÂˆÛÛœÝÚ\™YÛ›[™TšXÙO[[X™\“Ü“[
+š\œÝ˜[YJØš‹ÉÙX\ÞTÝÜ™TšXÙIË	ÛÛ›[™TšXÙIË	Û[Û[ÔšXÙIË	ØÛÝ\[™ÔšXÙI×JJNÂˆ[˜Ý[Ûˆ]›Ü›TšXÙJšY[
+^ÂˆÛÛœÝÝÛSØš™XÝœ›ÝÝ\Kš\ÓÝÛ”›Ü\K˜Ø[
+Øš‹šY[
+K˜[YO[[X™\“Ü“[
+Øš–ÙšY[JNÂˆYŠšXÙ\Ò[š]X[^™Y
+\™]\›ˆÝÛÝ˜[YN›[Âˆ™]\›ˆ˜[YHO[[Ý˜[YNœÚ\™YÛ›[™TšXÙNÂˆBˆ™]\›ˆÂˆØÒY™ØÒYÛÝ\˜ÙRÙ^N˜ÛX[ŠØš‹œÛÝ\˜ÙRÙ^JKÛÝ\˜ÙPÛÛXÝ[ÛŽ˜ÛX[ŠØš‹œÛÝ\˜ÙPÛÛXÝ[ÛŠKÛÝ\˜ÙT›ÙXÝY˜ÛX[ŠØš‹œÛÝ\˜ÙT›ÙXÝY
+KÛÝ\˜ÙU˜\šX[Y˜ÛX[ŠØš‹œÛÝ\˜ÙU˜\šX[Y
+Kˆ[\›˜[ÚÝN››Ü›X[^™PÛÙJš\œÝ˜[YJØš‹ÉÚ[\›˜[ÚÝIË	ÜÚÝIË	ØÛÙIË	Ü›ÙXÝÛÙIË	ùea¹dàyíê:&gÉ×JJK˜\˜ÛÙN˜ÛX[Šš\œÝ˜[YJØš‹ÉØ˜\˜ÛÙIË	ÙX[‰Ë	ù¨§yè¯	×JJK[Ù[˜ÛX[Šš\œÝ˜[YJØš‹ÉÛ[Ù[	Ë	Û[Ù[›ÉË	ùg¢ú&gÉ×JJKˆ[\›˜[˜[YN˜ÛX[Šš\œÝ˜[YJØš‹ÉÚ[\›˜[˜[YIË	ÛÜšYÚ[˜[˜[YIË	Û˜[YIË	ùea¹dàyd#yê,I×JJKÜšYÚ[˜[˜[YN˜ÛX[Šš\œÝ˜[YJØš‹ÉÛÜšYÚ[˜[˜[YIË	Ú[\›˜[˜[YIË	Û˜[YI×JJKÛ›[™S˜[YN˜ÛX[ŠØš‹›Û›[™S˜[YJKˆ[XYÙU\›œØY™U\›
+Øš‹š[XYÙU\›
+K[XYÙU\›Î\œ˜^Kš\Ð\œ˜^JØš‹š[XYÙU\›ÊOÛØš‹š[XYÙU\›Ë›X\
+ØY™U\›
+K™š[\Š›ÛÛX[ŠN–×K\™[[XYÙU\›Î\œ˜^Kš\Ð\œ˜^JØš‹œ\™[[XYÙU\›ÊOÛØš‹œ\™[[XYÙU\›Ë›X\
+ØY™U\›
+K™š[\Š›ÛÛX[ŠN–×K˜\šX[[XYÙU\›Î\œ˜^Kš\Ð\œ˜^JØš‹˜\šX[[XYÙU\›ÊOÛØš‹˜\šX[[XYÙU\›Ë›X\
+ØY™U\›
+K™š[\Š›ÛÛX[ŠN–×KÛ›[™U\›œØY™U\›
+Øš‹›Û›[™U\›
+Kœ˜[™˜ÛX[ŠØš‹˜œ˜[™
+KØ]YÛÜžN˜ÛX[ŠØš‹˜Ø]YÛÜžJK˜\šX[˜[YN˜ÛX[ŠØš‹˜\šX[˜[YJKˆÛ›[™TšXÙN›[X™\“Ü“[
+Øš‹›Û›[™TšXÙJKÝÜ™TšXÙN›[X™\“Ü“[
+š\œÝ˜[YJØš‹ÉÜÝÜ™TšXÙIË	ÛÜšYÚ[˜[Ø[TšXÙIË	ÜØ[TšXÙIË	Ü™]Z[šXÙI×JJKÜšYÚ[˜[Ø[TšXÙN›[X™\“Ü“[
+š\œÝ˜[YJØš‹ÉÛÜšYÚ[˜[Ø[TšXÙIË	ÜÝÜ™TšXÙIË	ÜØ[TšXÙI×JJKˆX\ÞTÝÜ™TšXÙNœ]›Ü›TšXÙJ	ÙX\ÞTÝÜ™TšXÙIÊK[Û[ÔšXÙNœ]›Ü›TšXÙJ	Û[Û[ÔšXÙIÊKÛÝ\[™ÔšXÙNœ]›Ü›TšXÙJ	ØÛÝ\[™ÔšXÙIÊK]›Ü›TšXÙ\Ò[š]X[^™YœšXÙ\Ò[š]X[^™Yˆ]\Ý\˜Ú\ÙPÛÜÝ›[X™\“Ü“[
+š\œÝ˜[YJØš‹ÉÛ]\Ý\˜Ú\ÙPÛÜÝ	Ë	Ü™Y™\™[˜ÙT\˜Ú\ÙPÛÜÝ	Ë	Ü\˜Ú\ÙPÛÜÝ	Ë	Ü\˜Ú\ÙTšXÙI×JJK]™\˜YÙPÛÜÝœÝ]Ë˜]™\˜YÙPÛÜÝO[[ÜÝ]Ë˜]™\˜YÙPÛÜÝ›[X™\“Ü“[
+š\œÝ˜[YJØš‹ÉØ]™\˜YÙPÛÜÝ	Ë	Ø]™ÐÛÜÝ	Ë	Û[Ýš[™Ð]™\˜YÙPÛÜÝ	×JJKˆ™^šY›ÐÛÜÝœÝ]Ë›™^šY›ÐÛÜÝ[™[ÜžU˜[YNœÝ]Ëš[™[ÜžU˜[YKÛÜÝ[˜ÛÛ\]NœÝ]Ë˜ÛÜÝ[˜ÛÛ\]KÛÜÝ^Y\œÎ›^Y\œËˆ]›Ü›TšXÙTÞ[˜Î›Øš‹œ]›Ü›TšXÙTÞ[˜É‰\[ÙˆØš‹œ]›Ü›TšXÙTÞ[˜ÏOOIÛØš™XÝ	ÏÛØš‹œ]›Ü›TšXÙTÞ[˜ÎžßK]›Ü›SX\[™ÜÎ›Øš‹œ]›Ü›SX\[™ÜÉ‰\[ÙˆØš‹œ]›Ü›SX\[™ÜÏOOIÛØš™XÝ	ÏÛØš‹œ]›Ü›SX\[™ÜÎžßKˆÚÜYPØ]YÛÜžT]˜ÛX[ŠØš‹œÚÜYPØ]YÛÜžT]
+K[Û[ÐØ]YÛÜžPÛÙN˜ÛX[ŠØš‹›[Û[ÐØ]YÛÜžPÛÙJKÛÝ\[™ÐØ]YÛÜžPÛÙN˜ÛX[ŠØš‹˜ÛÝ\[™ÐØ]YÛÜžPÛÙJKˆ›ÙXÝ™\ÙX\˜ÚÝ]\Î–ÉÛ›Ý\ÙX\˜ÚY	Ë	Ü\X[	Ë	Ü™\ÙX\˜ÚY	Ë	ÛX[X[	×Kš[˜ÛY\ÊÛX[ŠØš‹œ›ÙXÝ™\ÙX\˜ÚÝ]\ÊJOØÛX[ŠØš‹œ›ÙXÝ™\ÙX\˜ÚÝ]\ÊN‰Û›Ý\ÙX\˜ÚY	Ë›ÙXÝ™\ÙX\˜ÚÛÝ\˜ÙU\›Î››Ü›X[^™T›ÙXÝ™\ÙX\˜ÚÛÝ\˜ÙU\›ÊØš‹œ›ÙXÝ™\ÙX\˜ÚÛÝ\˜ÙU\›ÊK›ÙXÝ™\ÙX\˜Ú\]Y]›Øš‹œ›ÙXÝ™\ÙX\˜Ú\]Y]	ÉËˆ[\›˜]S˜[Y\Î˜ÛX[ŠØš‹˜[\›˜]S˜[Y\ÊKÙX\˜ÚÙ^]ÛÜ™Î˜ÛX[ŠØš‹œÙX\˜ÚÙ^]ÛÜ™ÊKÙ[[™ÔÚ[Î˜ÛX[ŠØš‹œÙ[[™ÔÚ[ÊKÜXÚYšXØ][Û•^˜ÛX[ŠØš‹œÜXÚYšXØ][Û•^
+K[˜ÛYY][\Î˜ÛX[ŠØš‹š[˜ÛYY][\ÊKX]\šX[˜ÛX[ŠØš‹›X]\šX[
+KÛÛÜŽ˜ÛX[ŠØš‹˜ÛÛÜŠKÛÝ[žSÙ“ÜšYÚ[Ž˜ÛX[ŠØš‹˜ÛÝ[žSÙ“ÜšYÚ[ŠKØ\œ˜[R[™›Î˜ÛX[ŠØš‹Ø\œ˜[R[™›ÊKÛÛ[[Û”›ÙXÝ\ØÜš\[ÛŽ˜ÛX[ŠØš‹˜ÛÛ[[Û”›ÙXÝ\ØÜš\[ÛŠKˆÚ\[™ÑXÚ\Ú[ÛŽ”“ÑPÕÔÒTS‘×ÑPÒTÒSÓ”ÖØÛX[ŠØš‹œÚ\[™ÑXÚ\Ú[ÛŠWOØÛX[ŠØš‹œÚ\[™ÑXÚ\Ú[ÛŠN‰ÉËXÚØYÙS[™ÝÛN›[X™\“Ü“[
+Øš‹œXÚØYÙS[™ÝÛJKXÚØYÙUÚYÛN›[X™\“Ü“[
+Øš‹œXÚØYÙUÚYÛJKXÚØYÙRZYÚÛN›[X™\“Ü“[
+Øš‹œXÚØYÙRZYÚÛJKXÚØYÙUÙZYÚÙÎ›[X™\“Ü“[
+Øš‹œXÚØYÙUÙZYÚÙÊKˆXÚØYÙSYX\Ý\™[Y[[ÙN–ÉÙ\Ý[X]Y	Ë	Ü›ÝšYY	Ë	ÛYX\Ý\™Y	×Kš[˜ÛY\ÊÛX[ŠØš‹œXÚØYÙSYX\Ý\™[Y[[ÙJJOØÛX[ŠØš‹œXÚØYÙSYX\Ý\™[Y[[ÙJN‰ÉËXÚØYÙT™\ÙX\˜ÚÝ]\Î–ÉÛ›Ý\ÙX\˜ÚY	Ë	Ù›Ý[™	Ë	Û›ÝY›Ý[™	Ë	ÛX[X[	×Kš[˜ÛY\ÊÛX[ŠØš‹œXÚØYÙT™\ÙX\˜ÚÝ]\ÊJOØÛX[ŠØš‹œXÚØYÙT™\ÙX\˜ÚÝ]\ÊN‰Û›Ý\ÙX\˜ÚY	ËXÚØYÙT™\ÙX\˜ÚÛÝ\˜ÙU\›œØY™U\›
+Øš‹œXÚØYÙT™\ÙX\˜ÚÛÝ\˜ÙU\›
+KXÚØYÙT™\ÙX\˜Ú›ÝN˜ÛX[ŠØš‹œXÚØYÙT™\ÙX\˜Ú›ÝJKˆ™\›ÐÛÜÝÛÛ™š\›YY›Øš‹ž™\›ÐÛÜÝÛÛ™š\›YYOO]YK™\›ÐÛÜÝÛÛ™š\›YY]›Øš‹ž™\›ÐÛÜÝÛÛ™š\›YY]	ÉË™\›ÐÛÜÝÛÛ™š\›YYžN˜ÛX[ŠØš‹ž™\›ÐÛÜÝÛÛ™š\›YYžJKˆÝ\œ™[ÝØÚÎ›[X™\“Ü“[
+š\œÝ˜[YJØš‹ÉØÝ\œ™[ÝØÚÉË	ÛÜ[š[™ÔÝØÚÉË	ÛÛ’[™	Ë	ÜÝØÚÉ×JJ_Ü[š[™ÔÝØÚÎ›[X™\“Ü“[
+Øš‹›Ü[š[™ÔÝØÚÊKÜ[š[™Õ[š]ÛÜÝ›[X™\“Ü“[
+Øš‹›Ü[š[™Õ[š]ÛÜÝ
+K™\Ù\™YÝØÚÎ›[X™\“Ü“[
+š\œÝ˜[YJØš‹ÉÜ™\Ù\™YÝØÚÉË	Ü™\Ù\™Y	×JJ_ØY™]TÝØÚÎ›[X™\“Ü“[
+š\œÝ˜[YJØš‹ÉÜØY™]TÝØÚÉË	ÛZ[”ÝØÚÉ×JJ_ˆØ[T™]Ø\™\˜Ù[›[X™\“Ü“[
+Øš‹œØ[T™]Ø\™\˜Ù[
+KX\ÞTÝÜ™SX]ÚY›Øš‹™X\ÞTÝÜ™SX]ÚYOO]Y_ÛX[ŠØš‹œÛÝ\˜ÙPÛÛXÝ[ÛŠOOOIÙX\ÞTÝÜ™P\IËX\ÞTÝÜ™TÞ[˜ÙY]›Øš‹™X\ÞTÝÜ™TÞ[˜ÙY]	ÉËÝ]\Î˜ÛX[ŠØš‹œÝ]\Ê_	ØXÝ]™IË›ÝN˜ÛX[Šš\œÝ˜[YJØš‹ÉÛ›ÝIË	Ü™[X\šÉË	ù`¦z*.É×JJK[˜X›Y›Øš‹™[˜X›YOOY˜[ÙK]]ÐÜ™X]Y›Øš‹˜]]ÐÜ™X]YOO]YKÛÝ\˜ÙN˜ÛX[ŠØš‹œÛÝ\˜ÙJKÛÝ\˜ÙQš[N˜ÛX[ŠØš‹œÛÝ\˜ÙQš[JK[\Ü[š]X[^™Y›Øš‹š[\Ü[š]X[^™YOO]YKÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉË\]Y]›Øš‹\]Y]	ÉÂˆNÂˆBˆ[˜Ý[ÛˆÛ›[™TØÛÜ™J›ÝÊ^Ü™]\›ˆ
+›ÝÉ‰œ›ÝËœÚÝOÌÌŒ
+JÊ›ÝÉ‰œ›ÝË˜\šX[˜[YOÌLŒ
+JÊ›ÝÉ‰œ›ÝËš[XYÙU\›ÏÜ›ÝËš[XYÙU\›Ë›[™Ý
+Œ
+JÊ›ÝÉ‰œ›ÝË›Û›[™TšXÙHO[[ÌÎŒ
+NßBˆ[˜Ý[ÛˆY\™ÙPØ][ÙÊ
+^ÂˆÛÛœÝXÝ]™O\Ý]Kš[\›˜[›ÙXÝË™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆ™[˜X›YOOY˜[ÙNßJNÂˆÝ]K›Û›[™T›ÙXÝÏV×NÂˆÝ]K›Û›[™SÜœ[œÏV×NÂˆÝ]K˜Ø][ÙÏXXÝ]™K›X\
+[˜Ý[ÛŠ[\›˜[
+^Âˆ™]\›ˆØš™XÝ˜\ÜÚYÛŠÛÛ›[™N›[[\›˜[š[\›˜[ØÒYš[\›˜[™ØÒYKZ[Ø][ÙÕ˜[Y\Ê[[\›˜[
+JNÂˆJNÂˆ™\\™PØ][ÙÔÙX\˜Ú[™^
+
+NÂˆÛÛœÝX]ÚYXXÝ]™K™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆ™X\ÞTÝÜ™SX]ÚYOO]YHH^›Û›[™S˜[YH
+\œ˜^Kš\Ð\œ˜^Jš[XYÙU\›ÊI‰žš[XYÙU\›Ë›[™ÝŒ
+NßJK›[™ÝÂˆÝ]K›X]Ú[™ÔÝ]Ï^ØÙ[˜[˜XÝ]™K›[™ÝÛ›[™T›ÝÜÎ“[X™\ŠÝ]K™X\ÞTÝÜ™TÞ[˜Ë˜\šX[ÛÝ[
+KX]ÚY›X]ÚY[›X]ÚYÙ[˜[“X]›X^
+XÝ]™K›[™Ý[X]ÚY
+K[›X]ÚYÛ›[™N“[X™\ŠÝ]K™X\ÞTÝÜ™TÞ[˜Ë[›X]ÚY\TÚÝPÛÝ[
+_NÂˆBˆ[˜Ý[ÛˆZ[Ø][ÙÕ˜[Y\ÊÛ›[™K[\›˜[
+^ÂˆÛÛœÝÜšYÚ[˜[˜[YOJ[\›˜[	‰š[\›˜[š[\›˜[˜[YJ_	ÉÎÈÛÛœÝÛ›[™S˜[YOJÛ›[™I‰›Û›[™K›Û›[™S˜[YJ_
+[\›˜[	‰š[\›˜[›Û›[™S˜[YJ_	ÉÎÈÛÛœÝ\Ü^O[ÜšYÚ[˜[˜[Y_Û›[™S˜[Y_	ù§*¹doyd#yea¹dàIÎÂˆÛÛœÝÚÝOJ[\›˜[	‰š[\›˜[š[\›˜[ÚÝJ_
+Û›[™I‰›Û›[™KœÚÝJ_	ÉÎÈÛÛœÝ[XYÙ\ÏV×NÂˆÛÛœÝ\™[[XYÙ\ÏJ
+Û›[™I‰›Û›[™Kœ\™[[XYÙU\›Ê_
+[\›˜[	‰š[\›˜[œ\™[[XYÙU\›Ê_×JK›X\
+ØY™U\›
+K™š[\Š›ÛÛX[ŠNÂˆÛÛœÝ˜\šX[[XYÙ\ÏJ
+Û›[™I‰›Û›[™K˜\šX[[XYÙU\›Ê_
+[\›˜[	‰š[\›˜[˜\šX[[XYÙU\›Ê_×JK›X\
+ØY™U\›
+K™š[\Š›ÛÛX[ŠNÂˆ\™[[XYÙ\Ë˜ÛÛ˜Ø]
+˜\šX[[XYÙ\ÊK˜ÛÛ˜Ø]
+
+Û›[™I‰›Û›[™Kš[XYÙU\›Ê_×JK˜ÛÛ˜Ø]
+
+[\›˜[	‰š[\›˜[š[XYÙU\›Ê_×JK˜ÛÛ˜Ø]
+ÊÛ›[™I‰›Û›[™Kš[XYÙU\›
+_
+[\›˜[	‰š[\›˜[š[XYÙU\›
+_	É×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ\›
+^Ý\›\ØY™U\›
+\›
+NÚYŠ\›	‰ˆZ[XYÙ\Ëš[˜ÛY\Ê\›
+JZ[XYÙ\Ëœ\Ú
+\›
+NßJNÂˆÛÛœÝÛ›[™TšXÙO[Û›[™I‰›Û›[™K›Û›[™TšXÙHO[[ÛÛ›[™K›Û›[™TšXÙNŠ[\›˜[	‰š[\›˜[›Û›[™TšXÙHO[[Ú[\›˜[›Û›[™TšXÙN›[
+NÈÛÛœÝÝÜ™TšXÙOZ[\›˜[	‰š[\›˜[œÝÜ™TšXÙHO[[Ú[\›˜[œÝÜ™TšXÙN›[ÂˆÛÛœÝšXÙ\Ò[š]X[^™YHHJ[\›˜[	‰š[\›˜[œ]›Ü›TšXÙ\Ò[š]X[^™YOO]YJNÂˆÛÛœÝÚ\™YÛ›[™TšXÙOVÚ[\›˜[	‰š[\›˜[™X\ÞTÝÜ™TšXÙKÛ›[™TšXÙK[\›˜[	‰š[\›˜[›[Û[ÔšXÙK[\›˜[	‰š[\›˜[˜ÛÝ\[™ÔšXÙWK›X\
+[X™\“Ü“[
+K™š[™
+[˜Ý[ÛŠ˜[YJ^Ü™]\›ˆ˜[YHO[[ßJNÂˆÛÛœÝX\ÞTÝÜ™TšXÙOZ[\›˜[	‰š[\›˜[™X\ÞTÝÜ™TšXÙHO[[Ú[\›˜[™X\ÞTÝÜ™TšXÙNŠ\šXÙ\Ò[š]X[^™YÜÚ\™YÛ›[™TšXÙN›[
+K[Û[ÔšXÙOZ[\›˜[	‰š[\›˜[›[Û[ÔšXÙHO[[Ú[\›˜[›[Û[ÔšXÙNŠ\šXÙ\Ò[š]X[^™YÜÚ\™YÛ›[™TšXÙN›[
+KÛÝ\[™ÔšXÙOZ[\›˜[	‰š[\›˜[˜ÛÝ\[™ÔšXÙHO[[Ú[\›˜[˜ÛÝ\[™ÔšXÙNŠ\šXÙ\Ò[š]X[^™YÜÚ\™YÛ›[™TšXÙN›[
+NÂˆÛÛœÝÝ\œ™[Z[\›˜[Ó[X™\Š[\›˜[˜Ý\œ™[ÝØÚß
+NŒÈÛÛœÝ™\Ù\™YZ[\›˜[Ó[X™\Š[\›˜[œ™\Ù\™YÝØÚß
+NŒÈÛÛœÝØY™]OZ[\›˜[Ó[X™\Š[\›˜[œØY™]TÝØÚß
+NŒÈÛÛœÝ]˜Z[X›OSX]›X^
+Ý\œ™[\™\Ù\™Y\ØY™]JNÂˆÛÛœÝÛÜÝ›Ü“X\™Ú[Z[\›˜[Ê[\›˜[›™^šY›ÐÛÜÝO[[Ú[\›˜[›™^šY›ÐÛÜÝš[\›˜[˜]™\˜YÙPÛÜÝ
+N›[ÈÛÛœÝX\™Ú[JÝÜ™TšXÙHO[[	‰˜ÛÜÝ›Ü“X\™Ú[ˆO[[	‰œÝÜ™TšXÙHOOL
+OÊ
+ÝÜ™TšXÙKXÛÜÝ›Ü“X\™Ú[ŠKÜÝÜ™TšXÙJŒL
+N›[Âˆ™]\›ˆÛ˜[YN™\Ü^KÜšYÚ[˜[˜[YN›ÜšYÚ[˜[˜[YKÛ›[™S˜[YN›Û›[™S˜[YKÚÝNœÚÝK˜\˜ÛÙNš[\›˜[Ú[\›˜[˜˜\˜ÛÙN‰ÉË[Ù[š[\›˜[Ú[\›˜[›[Ù[‰ÉË[XYÙU\›š[XYÙ\ÖÌ_	ÉË[XYÙU\›Îš[XYÙ\Ë\™[[XYÙU\›Îœ\™[[XYÙ\Ë˜\šX[[XYÙU\›Î˜\šX[[XYÙ\ËÛ›[™TšXÙN›Û›[™TšXÙKÝÜ™TšXÙNœÝÜ™TšXÙKX\ÞTÝÜ™TšXÙN™X\ÞTÝÜ™TšXÙK[Û[ÔšXÙN›[Û[ÔšXÙKÛÝ\[™ÔšXÙN˜ÛÝ\[™ÔšXÙK]›Ü›TšXÙ\Ò[š]X[^™YœšXÙ\Ò[š]X[^™YÜšYÚ[˜[Ø[TšXÙNš[\›˜[Ú[\›˜[›ÜšYÚ[˜[Ø[TšXÙN›[]™\˜YÙPÛÜÝš[\›˜[Ú[\›˜[˜]™\˜YÙPÛÜÝ›[™^šY›ÐÛÜÝš[\›˜[Ú[\›˜[›™^šY›ÐÛÜÝ›[]\Ý\˜Ú\ÙPÛÜÝš[\›˜[Ú[\›˜[›]\Ý\˜Ú\ÙPÛÜÝ›[[™[ÜžU˜[YNš[\›˜[Ú[\›˜[š[™[ÜžU˜[YNŒÛÜÝ[˜ÛÛ\]Nš[\›˜[Ú[\›˜[˜ÛÜÝ[˜ÛÛ\]N™˜[ÙK™\›ÐÛÜÝÛÛ™š\›YYˆHJ[\›˜[	‰š[\›˜[ž™\›ÐÛÜÝÛÛ™š\›YYOO]YJK™\›ÐÛÜÝÛÛ™š\›YY]š[\›˜[Ú[\›˜[ž™\›ÐÛÜÝÛÛ™š\›YY]‰ÉË™\›ÐÛÜÝÛÛ™š\›YYžNš[\›˜[Ú[\›˜[ž™\›ÐÛÜÝÛÛ™š\›YYžN‰ÉËÝ\œ™[ÝØÚÎ˜Ý\œ™[™\Ù\™YÝØÚÎœ™\Ù\™YØY™]TÝØÚÎœØY™]K]˜Z[X›TÝØÚÎ˜]˜Z[X›KX\™Ú[Ž›X\™Ú[‹Ý]\Îš[\›˜[Ú[\›˜[œÝ]\Î‰Ü™]šY]ÉË[š]X[^™YˆHZ[\›˜[X]ÚYÛ›[™NˆH[Û›[™_
+[\›˜[	‰š[\›˜[™X\ÞTÝÜ™SX]ÚYOO]YJKÛÝ\˜ÙPÛÛXÝ[ÛŽŠÛ›[™I‰›Û›[™KœÛÝ\˜ÙPÛÛXÝ[ÛŠ_
+[\›˜[	‰š[\›˜[œÛÝ\˜ÙPÛÛXÝ[ÛŠ_	ÉËÛ›[™U\›ŠÛ›[™I‰›Û›[™K\›
+_
+[\›˜[	‰š[\›˜[›Û›[™U\›
+_	ÉËœ˜[™ŠÛ›[™I‰›Û›[™K˜œ˜[™
+_
+[\›˜[	‰š[\›˜[˜œ˜[™
+_	ÉËØ]YÛÜžNŠÛ›[™I‰›Û›[™K˜Ø]YÛÜžJ_
+[\›˜[	‰š[\›˜[˜Ø]YÛÜžJ_	ÉË˜\šX[˜[YNŠÛ›[™I‰›Û›[™K˜\šX[˜[YJ_
+[\›˜[	‰š[\›˜[˜\šX[˜[YJ_	ÉËØ[T™]Ø\™\˜Ù[š[\›˜[Ú[\›˜[œØ[T™]Ø\™\˜Ù[›[]›Ü›TšXÙTÞ[˜Îš[\›˜[Ú[\›˜[œ]›Ü›TšXÙTÞ[˜ßßNžßK™YØ]]™TÝØÚÎ˜Ý\œ™[NÂˆB‚ˆ[˜Ý[ÛˆØ]™Q\Ú›Ø\™ØXÚJ
+^ÂˆÛÛœÝ™]š[Ý\Ô˜[™ÙO\Ý]K›Ý™\šY]Ô˜[™ÙNÂˆž^ÂˆÝ]K›Ý™\šY]Ô˜[™ÙOIÝÙ^IÎÂˆÛÛœÝ^[ØY^ÂˆØ]™Y]‘]K››ÝÊ
+KˆØYY]œÝ]K›ØYY]ÜÝ]K›ØYY]ÒTÓÔÝš[™Ê
+N›™]È]J
+KÒTÓÔÝš[™Ê
+Kˆ[œ™[™\“Ý™\šY]ÕÊ
+BˆNÂˆØØ[ÝÜ˜YÙKœÙ]][JTÒ“ÐT‘ÐÐPÒWÒÑVK”ÓÓ‹œÝš[™ÚYžJ^[ØY
+JNÂˆXØ]Ú
+\œ›ÜŠ^ÈÛÛœÛÛKØ\›Š	Ù\Ú›Ø\™ØXÚHØ]™H˜Z[Y	Ë\œ›ÜŠNÈBˆš[˜[^ÜÝ]K›Ý™\šY]Ô˜[™ÙO\™]š[Ý\Ô˜[™ÙNßBˆBˆ[˜Ý[ÛˆÙ]\Ú›Ø\™ØXÚJ
+^Âˆž^ÂˆÛÛœÝ˜]Ï[ØØ[ÝÜ˜YÙK™Ù]][JTÒ“ÐT‘ÐÐPÒWÒÑVJNÈYŠ\˜]Ê\™]\›ˆ[ÂˆÛÛœÝ]OR”ÓÓ‹œ\œÙJ˜]ÊNÈYŠY]_Y]Kš[Y]KœØ]™Y]
+\™]\›ˆ[ÂˆYŠ]K››ÝÊ
+KS[X™\Š]KœØ]™Y]
+O‘TÒ“ÐT‘ÐÐPÒWÕÓTÊ\™]\›ˆ[Âˆ™]\›ˆ]NÂˆXØ]Ú
+\œ›ÜŠ^Ü™]\›ˆ[ßBˆBˆ[˜Ý[ÛˆÚÝÐØXÚY\Ú›Ø\™
+ØXÚJ^ÂˆÝ]KšY]ÏIÛÝ™\šY]ÉÎÂˆÙ]^
+	ÛÜÔYÙU]IËQÑWÓQUK›Ý™\šY]ÖÌJNÂˆÙ]^
+	ÛÜÔYÙTÝX]IËQÑWÓQUK›Ý™\šY]ÖÌWJNÂˆÙ]^
+	ÛÜÓ\Ý™XY^	Ë	ùoêùcåº,áù¥¦{ï&‰ÊÙ]U[YU^
+ØXÚK›ØYY]ØXÚKœØ]™Y]
+JNÂˆ]Y\žP[
+	ÈÛÜÓ˜]ˆVÙ]K]šY]×IÊK™›Ü‘XXÚ
+[˜Ý[ÛŠJ^ÈK˜Û\ÜÓ\ÝÙÙÛJ	ØXÝ]™IËK™]\Ù]šY]ÏOOIÛÝ™\šY]ÉÊNÈJNÂˆ[
+	ÛÜÐÛÛ[	ËØXÚKš[
+NÂˆš[™šY]ÔÜXÚYšXÊ
+NÂˆBˆ[˜Ý[ÛˆÜ[‘˜\ÝÝ]QŠ
+^Âˆ™]\›ˆ™]È›ÛZ\ÙJ[˜Ý[ÛŠ™\ÛÛ™K™Z™XÝ
+^ÂˆYŠYÛØ˜[š[™^YŠ^Ü™Z™XÝ
+™]È\œ›ÜŠ	Ò[™^Yˆ[˜]˜Z[X›IÊJNÜ™]\›ŽßBˆÛÛœÝ™\]Y\ÝYÛØ˜[š[™^Y‹›Ü[ŠTÕÔÕUWÑ—ÓSQKJNÂˆ™\]Y\Ý›Û\Ü˜Y[™YYYY[˜Ý[ÛŠ
+^ØÛÛœÝ\™\]Y\Ýœ™\Ý[ÚYŠY‹›Øš™XÝÝÜ™S˜[Y\Ë˜ÛÛZ[œÊTÕÔÕUWÔÕÔ‘JJY‹˜Ü™X]SØš™XÝÝÜ™JTÕÔÕUWÔÕÔ‘JNßNÂˆ™\]Y\Ý›ÛœÝXØÙ\ÜÏY[˜Ý[ÛŠ
+^Ü™\ÛÛ™J™\]Y\Ýœ™\Ý[
+NßNÂˆ™\]Y\Ý›Û™\œ›ÜY[˜Ý[ÛŠ
+^Ü™Z™XÝ
+™\]Y\Ý™\œ›ÜŸ™]È\œ›ÜŠ	Ò[™^YˆÜ[ˆ˜Z[Y	ÊJNßNÂˆJNÂˆBˆ\Þ[˜È[˜Ý[ÛˆØ]™Q˜\ÝÝ]PØXÚJ
+^Âˆž^ÂˆÛÛœÝX]ØZ]Ü[‘˜\ÝÝ]QŠ
+NÂˆÛÛœÝ^[ØY^ÜØ]™Y]‘]K››ÝÊ
+KØYY]œÝ]K›ØYY]ÜÝ]K›ØYY]ÒTÓÔÝš[™Ê
+N‰ÉË[ØYY]œÝ]K™[ØYY]ÜÝ]K™[ØYY]ÒTÓÔÝš[™Ê
+N‰ÉË]NžÂˆÛ›[™TÛÝ\˜ÙNœÝ]K›Û›[™TÛÝ\˜ÙKÛ›[™T›ÙXÝÎœÝ]K›Û›[™T›ÙXÝËX\ÞTÝÜ™TÞ[˜ÎœÝ]K™X\ÞTÝÜ™TÞ[˜ËÛ›[™SÜœ[œÎœÝ]K›Û›[™SÜœ[œËX]Ú[™ÔÝ]ÎœÝ]K›X]Ú[™ÔÝ]Ëˆ[\›˜[›ÙXÝÎœÝ]Kš[\›˜[›ÙXÝËØ][ÙÎœÝ]K˜Ø][ÙË™[[ÎœÝ]Kœ™[[Ë™[[YÙ\œÎœÝ]Kœ™[[YÙ\œËØ[\ÎœÝ]KœØ[\Ë[˜ÛÛY\ÎœÝ]Kš[˜ÛÛY\Ë\˜Ú\Ù\ÎœÝ]Kœ\˜Ú\Ù\Ë[™[ÜžNœÝ]Kš[™[ÜžKÝ\Y\œÎœÝ]KœÝ\Y\œËˆ[™[ÜžPÛÝ[Ù][™ÜÎœÝ]Kš[™[ÜžPÛÝ[Ù][™ÜËØ\Ù\ÎœÝ]K˜Ø\Ù\Ë^[œÙ\ÎœÝ]K™^[œÙ\ËÞ[˜Ò›ØœÎœÝ]KœÞ[˜Ò›ØœË]Y]œÝ]K˜]Y]Ý\ÝÛY\œÎœÝ]K˜Ý\ÝÛY\œËÚ[˜[œØXÝ[ÛœÎœÝ]KœÚ[˜[œØXÝ[ÛœËˆ™XÙZ]˜X›\ÎœÝ]Kœ™XÙZ]˜X›\Ë™XÙZ]˜X›T^[Y[ÎœÝ]Kœ™XÙZ]˜X›T^[Y[ËØ[\Ô™]\›œÎœÝ]KœØ[\Ô™]\›œËYXØ][Û‘Z[NœÝ]K™YXØ][Û‘Z[K]›Ü›SÜ™\œÎœÝ]Kœ]›Ü›SÜ™\œË]›Ü›TÞ[˜Ô[œÎœÝ]Kœ]›Ü›TÞ[˜Ô[œËˆ]›Ü›R[™[ÜžT]Y]YNœÝ]Kœ]›Ü›R[™[ÜžT]Y]YK]›Ü›Q™YTÙ][™ÜÎœÝ]Kœ]›Ü›Q™YTÙ][™ÜËÜ\˜][™Ñ^[œÙTÙ][™ÜÎœÝ]K›Ü\˜][™Ñ^[œÙTÙ][™ÜË]›Ü›SØØ[YÙ[œÝ]Kœ]›Ü›SØØ[YÙ[Y[X™\œÚ\Ù][™ÜÎœÝ]K›Y[X™\œÚ\Ù][™ÜË[ššX[Þ][ÛÝYÞ[˜ÎœÝ]Kš[ššX[Þ][ÛÝYÞ[˜Âˆ_NÂˆ]ØZ]™]È›ÛZ\ÙJ[˜Ý[ÛŠ™\ÛÛ™K™Z™XÝ
+^ØÛÛœÝY‹˜[œØXÝ[ÛŠTÕÔÕUWÔÕÔ‘K	Ü™XYÜš]IÊNÝ›Øš™XÝÝÜ™JTÕÔÕUWÔÕÔ‘JKœ]
+^[ØYTÕÔÕUWÒÑVJNÝ›Û˜ÛÛ\]O\™\ÛÛ™NÝ›Û™\œ›ÜY[˜Ý[ÛŠ
+^Ü™Z™XÝ
+™\œ›ÜŸ™]È\œ›ÜŠ	Ò[™^YˆÜš]H˜Z[Y	ÊJNßNßJNÂˆ‹˜ÛÜÙJ
+NÂˆXØ]Ú
+\œ›ÜŠ^ØÛÛœÛÛKØ\›Š	ÛÜ\˜][ÛœÈ˜\Ý\Ý]HØXÚHØ]™H˜Z[Y	Ë\œ›ÜŠNßBˆBˆ\Þ[˜È[˜Ý[Ûˆ™\ÝÜ™Q˜\ÝÝ]PØXÚJ
+^Âˆž^ÂˆÛÛœÝX]ØZ]Ü[‘˜\ÝÝ]QŠ
+NÂˆÛÛœÝ^[ØYX]ØZ]™]È›ÛZ\ÙJ[˜Ý[ÛŠ™\ÛÛ™K™Z™XÝ
+^ØÛÛœÝY‹˜[œØXÝ[ÛŠTÕÔÕUWÔÕÔ‘K	Ü™XYÛ›IÊNØÛÛœÝ™\]Y\Ý]›Øš™XÝÝÜ™JTÕÔÕUWÔÕÔ‘JK™Ù]
+TÕÔÕUWÒÑVJNÜ™\]Y\Ý›ÛœÝXØÙ\ÜÏY[˜Ý[ÛŠ
+^Ü™\ÛÛ™J™\]Y\Ýœ™\Ý[[
+NßNÜ™\]Y\Ý›Û™\œ›ÜY[˜Ý[ÛŠ
+^Ü™Z™XÝ
+™\]Y\Ý™\œ›ÜŸ™]È\œ›ÜŠ	Ò[™^Yˆ™XY˜Z[Y	ÊJNßNßJNÂˆ‹˜ÛÜÙJ
+NÂˆYŠ\^[ØY\^[ØYœØ]™Y]]K››ÝÊ
+KS[X™\Š^[ØYœØ]™Y]
+O‘TÕÔÕUWÕÓTß\^[ØY™]J\™]\›ˆ˜[ÙNÂˆØš™XÝšÙ^\Ê^[ØY™]JK™›Ü‘XXÚ
+[˜Ý[ÛŠÙ^J^ÜÝ]VÚÙ^WO\^[ØY™]VÚÙ^WNßJNÂˆÝ]K›Ü\˜][™Ñ^[œÙTÙ][™ÜÏ[›Ü›X[^™SÜ\˜][™Ñ^[œÙTÙ][™ÜÊÝ]K›Ü\˜][™Ñ^[œÙTÙ][™ÜÊNÂˆÝ]K›Ü\˜][™Ñ^[œÙQ\\Y[\Ý]K›Ü\˜][™Ñ^[œÙQ\\Y[OOIØXØY[^IÏÉØXØY[^IÎ‰ÜÝÜ™IÎÂˆÝ]K›ØYY]\^[ØY›ØYY]Û™]È]J^[ØY›ØYY]
+N›[ÂˆÝ]K™[ØYY]\^[ØY™[ØYY]Û™]È]J^[ØY™[ØYY]
+N›[ÂˆÝ]K™XYÛ›ÜÝXÜÏV×NÂˆ™]\›ˆHJÝ]K›ØYY]Ý]K™[ØYY]
+NÂˆXØ]Ú
+\œ›ÜŠ^ØÛÛœÛÛKØ\›Š	ÛÜ\˜][ÛœÈ˜\Ý\Ý]HØXÚH™\ÝÜ™H˜Z[Y	Ë\œ›ÜŠNÜ™]\›ˆ˜[ÙNßBˆB‚ˆ[˜Ý[Ûˆ[œÝ\™Q]Q›ÜÝ\œ™[šY]Ê
+^ÂˆÛÛœÝšY]ÏJØØ][Û‹š\Ú	ÈÛÝ™\šY]ÉÊKœ™\XÙJ	ÈÉË	ÉÊKœÜ]
+	ÏÉÊVÌ_	ÛÝ™\šY]ÉÎÂˆYŠ\ÐÛÝ\œÙUÛÜšÜÜXÙUšY]ÊšY]ÊJ\™]\›ˆ˜[ÙNÂˆYŠšY]ÏOOIÜ›ÙXÝÉÊ^ÂˆYŠ\Ý]K›ØYY]	‰ˆ\Ý]K›ØY[™Ê^ÈØY›ÙXÝÓÛ›J˜[ÙJNÈ™]\›ˆYNÈBˆ™]\›ˆ˜[ÙNÂˆBˆYŠ\Ý]K™[ØYY]	‰ˆ\Ý]K›ØY[™Ê^ÈØY[
+˜[ÙJNÈ™]\›ˆYNÈBˆ™]\›ˆ˜[ÙNÂˆB‚ˆ[˜Ý[ÛˆÚ]™XY[Y[Ý]
+›ÛZ\ÙKX™[
+^Âˆ™]\›ˆ™]È›ÛZ\ÙJ[˜Ý[ÛŠ™\ÛÛ™K™Z™XÝ
+^Âˆ]Ù]YY˜[ÙNÂˆÛÛœÝ[Y\\Ù][Y[Ý]
+[˜Ý[ÛŠ
+^ÂˆYŠÙ]Y
+\™]\›ŽÂˆÙ]Y]YNÂˆ™Z™XÝ
+™]È\œ›ÜŠ
+X™[	ú,áù¥¦IÊJÉú+ 9cåº-¡z`cˆH9éä»ï#9mì¹/çyåfyc§ù§"z,áù¥¦xà ‰ÊJNÂˆK’T‘TÕÔ‘WÔ‘PQÕSQSÕUÓTÊNÂˆ›ÛZ\ÙKœ™\ÛÛ™J›ÛZ\ÙJK[Š[˜Ý[ÛŠ˜[YJ^ÂˆYŠÙ]Y
+\™]\›ŽÂˆÙ]Y]YNÂˆÛX\•[Y[Ý]
+[Y\ŠNÂˆ™\ÛÛ™J˜[YJNÂˆK[˜Ý[ÛŠ\œ›ÜŠ^ÂˆYŠÙ]Y
+\™]\›ŽÂˆÙ]Y]YNÂˆÛX\•[Y[Ý]
+[Y\ŠNÂˆ™Z™XÝ
+\œ›ÜŠNÂˆJNÂˆJNÂˆB‚ˆ\Þ[˜È[˜Ý[ÛˆÙ]ÛÛXÝ[ÛŠ˜[YK[Z]Ü™\‘šY[Ü™\‘\™XÝ[ÛŠ^ÂˆÛÛœÝÝ\YQ]K››ÝÊ
+NÂˆž^Âˆ]™\]Y\Ý\Ý]K™‹˜ÛÛXÝ[ÛŠ˜[YJNÂˆYŠÜ™\‘šY[
+\™\]Y\Ý\™\]Y\Ý›Ü™\žJÜ™\‘šY[Ü™\‘\™XÝ[ÛŸ	Ù\ØÉÊNÂˆÛÛœÝÛ˜\X]ØZ]Ú]™XY[Y[Ý]
+™\]Y\Ý›[Z]
+[Z]‘PQÓSRU
+K™Ù]
+
+K˜[YJNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ›˜[YKÚÎYKÛÝ[œÛ˜\œÚ^™K\Î‘]K››ÝÊ
+K\Ý\YJNÂˆ™]\›ˆÛ˜\™ØÜË›X\
+[˜Ý[ÛŠØÊ^È™]\›ˆØš™XÝ˜\ÜÚYÛŠ××ÚY™ØËšYKØË™]J
+_ßJNÈJNÂˆXØ]Ú
+\œ›ÜŠ^ÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ›˜[YKÚÎ™˜[ÙKÛÝ[Œ\Î‘]K››ÝÊ
+K\Ý\Y\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNÂˆ›ÝÈ™]È\œ›ÜŠ˜[YJÉÈ:+ 9cå¹i,y¥eûï&‰ÊÙ\œ›Ü“Y\ÜØYÙJ\œ›ÜŠJNÂˆBˆBˆ\Þ[˜È[˜Ý[ÛˆØYÛ›[™T›ÙXÝÊ
+^ÂˆÝ]K›Û›[™TÛÝ\˜ÙOIÑX\ÞTÝÜ™HTIÎÂˆÝ]K›Û›[™T›ÙXÝÏV×NÂˆž^ÂˆÛÛœÝØÏX]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠ	ÛÜÔÙ][™ÜÉÊK™ØÊ	ÙX\ÞTÝÜ™PØ][ÙÔÞ[˜ÉÊK™Ù]
+
+NÂˆÝ]K™X\ÞTÝÜ™TÞ[˜ÏYØË™^\ÝÏÊØË™]J
+_ßJNžßNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÙX\ÞTÝÜ™PØ][ÙÔÞ[˜ÉËÚÎYKÛÝ[™ØË™^\ÝÏÌNŒ\ÎŒJNÂˆXØ]Ú
+\œ›ÜŠ^ÂˆÝ]K™X\ÞTÝÜ™TÞ[˜Ï^ßNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÙX\ÞTÝÜ™PØ][ÙÔÞ[˜ÉËÚÎ™˜[ÙKÛÝ[Œ\ÎŒ\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNÂˆBˆBˆ\Þ[˜È[˜Ý[ÛˆØYY[X™\œÚ\Ù][™ÜÊ
+^Âˆž^ÂˆÛÛœÝØÏX]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÙ][™ÜÊK™ØÊ	ÛY[X™\œÚ\Ú[ÉÊK™Ù]
+
+NÂˆÝ]K›Y[X™\œÚ\Ù][™ÜÏSØš™XÝ˜\ÜÚYÛŠßKQUSÓQSP‘T”ÒTÔÑUS‘ÔËØË™^\ÝÏÊØË™]J
+_ßJNžßJNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽÓÓPÕSÓ”ËœÙ][™ÜÊÉËÛY[X™\œÚ\Ú[ÉËÚÎYKÛÝ[™ØË™^\ÝÏÌNŒ\ÎŒJNÂˆXØ]Ú
+\œ›ÜŠ^ÂˆÝ]K›Y[X™\œÚ\Ù][™ÜÏSØš™XÝ˜\ÜÚYÛŠßKQUSÓQSP‘T”ÒTÔÑUS‘ÔÊNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽÓÓPÕSÓ”ËœÙ][™ÜÊÉËÛY[X™\œÚ\Ú[ÉËÚÎ™˜[ÙKÛÝ[Œ\ÎŒ\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNÂˆBˆBˆ\Þ[˜È[˜Ý[ÛˆØYÜ\˜][™Ñ^[œÙTÙ][™ÜÊ
+^ÂˆÛÛœÝÝ\YQ]K››ÝÊ
+NÂˆž^ÂˆÛÛœÝØÏX]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÙ][™ÜÊK™ØÊ	ÛÜ\˜][™Ñ^[œÙ\ÉÊK™Ù]
+
+NÂˆÝ]K›Ü\˜][™Ñ^[œÙTÙ][™ÜÏ[›Ü›X[^™SÜ\˜][™Ñ^[œÙTÙ][™ÜÊØË™^\ÝÏÊØË™]J
+_ßJNžßJNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽÓÓPÕSÓ”ËœÙ][™ÜÊÉËÛÜ\˜][™Ñ^[œÙ\ÉËÚÎYKÛÝ[™ØË™^\ÝÏÌNŒ\Î‘]K››ÝÊ
+K\Ý\YJNÂˆXØ]Ú
+\œ›ÜŠ^ÂˆÝ]K›Ü\˜][™Ñ^[œÙTÙ][™ÜÏYY˜][Ü\˜][™Ñ^[œÙTÙ][™ÜÊ
+NÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽÓÓPÕSÓ”ËœÙ][™ÜÊÉËÛÜ\˜][™Ñ^[œÙ\ÉËÚÎ™˜[ÙKÛÝ[Œ\Î‘]K››ÝÊ
+K\Ý\Y\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNÂˆBˆBˆ\Þ[˜È[˜Ý[ÛˆØY[ššX[Þ][ÛÝYÞ[˜Ê
+^Âˆž^ÂˆÛÛœÝØÏX]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÙ][™ÜÊK™ØÊ	Ú[ššX[Þ][ÛÝYÞ[˜ÉÊK™Ù]
+
+NÂˆÝ]Kš[ššX[Þ][ÛÝYÞ[˜ÏYØË™^\ÝÏÊØË™]J
+_ßJNžßNÂˆÝ]Kš[ššX[Þ][ÛÝYÞ[˜ÔÚYÛ˜]\™O\Þ[˜Õ[Y\Ý[\ÚYÛ˜]\™JÝ]Kš[ššX[Þ][ÛÝYÞ[˜Ë›\ÝÝXØÙYYY]
+NÂˆÝ]Kš[ššX[Þ][ÛÝYÝ]\ÔÚYÛ˜]\™OZ[ššX[Þ][”Ý]\ÔÚYÛ˜]\™JÝ]Kš[ššX[Þ][ÛÝYÞ[˜ÊNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽÓÓPÕSÓ”ËœÙ][™ÜÊÉËÚ[ššX[Þ][ÛÝYÞ[˜ÉËÚÎYKÛÝ[™ØË™^\ÝÏÌNŒ\ÎŒJNÂˆXØ]Ú
+\œ›ÜŠ^ÂˆÝ]Kš[ššX[Þ][ÛÝYÞ[˜Ï^ßNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽÓÓPÕSÓ”ËœÙ][™ÜÊÉËÚ[ššX[Þ][ÛÝYÞ[˜ÉËÚÎ™˜[ÙKÛÝ[Œ\ÎŒ\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNÂˆBˆBˆ[˜Ý[ÛˆÞ[˜Õ[Y\Ý[\ÚYÛ˜]\™J˜[YJ^ÂˆYŠ]˜[YJ\™]\›ˆ	ÉÎÂˆYŠ\[Ùˆ˜[YKÓZ[\ÏOOIÙ[˜Ý[Û‰Ê\™]\›ˆÝš[™Ê˜[YKÓZ[\Ê
+JNÂˆYŠ˜[YKœÙXÛÛ™ÈO[[
+\™]\›ˆÝš[™Ê˜[YKœÙXÛÛ™ÊJÉÎ‰ÊÔÝš[™Ê˜[YK›˜[›ÜÙXÛÛ™ß
+NÂˆ™]\›ˆÝš[™Ê˜[YJNÂˆBˆ[˜Ý[Ûˆ[ššX[Þ][”Ý]\ÔÚYÛ˜]\™J˜[YJ^ÂˆÛÛœÝ›ÝÏ]˜[Y_ßNÂˆ™]\›ˆØÛX[Š›ÝËœÝ]\ÊKÞ[˜Õ[Y\Ý[\ÚYÛ˜]\™J›ÝË›\ÝÝ\Y]
+KÞ[˜Õ[Y\Ý[\ÚYÛ˜]\™J›ÝË›\ÝÝXØÙYYY]
+KÞ[˜Õ[Y\Ý[\ÚYÛ˜]\™J›ÝË›\Ý˜Z[Y]
+KÛX[Š›ÝË›\Ý\œ›ÜŠKÛX[Š›ÝË›X[X[™\]Y\ÝY
+WKš›Ú[Š	ß	ÊNÂˆBˆ[˜Ý[ÛˆÞ[˜Õ[Y\Ý[\Z[\Ê˜[YJ^ÂˆYŠ]˜[YJ\™]\›ˆÂˆYŠ\[Ùˆ˜[YKÓZ[\ÏOOIÙ[˜Ý[Û‰Ê\™]\›ˆ˜[YKÓZ[\Ê
+NÂˆYŠ˜[YKœÙXÛÛ™ÈO[[
+\™]\›ˆ[X™\Š˜[YKœÙXÛÛ™ÊJŒLÂˆÛÛœÝ]OY]Qœ›ÛJ˜[YJNÂˆ™]\›ˆ]OÙ]K™Ù][YJ
+NŒÂˆBˆ[˜Ý[Ûˆ[ššX[Þ][”Þ[˜Ò\Ð\ÞJ˜[YJ^ÂˆÛÛœÝ›ÝÏ]˜[Y_ßKÝ]\Ï[ÝÙ\Š›ÝËœÝ]\ÊNÂˆYŠÝ]\ÈOOIÜ]Y]YY	É‰œÝ]\ÈOOIÜ[›š[™ÉÊ\™]\›ˆ˜[ÙNÂˆÛÛœÝÝ\Y\Ý]\ÏOOIÜ]Y]YY	ÏÜÞ[˜Õ[Y\Ý[\Z[\Ê›ÝË›X[X[™\]Y\ÝY]
+NœÞ[˜Õ[Y\Ý[\Z[\Ê›ÝË›\ÝÝ\Y]
+NÂˆYŠ\Ý\Y
+\™]\›ˆÝ]Kš[ššX[Þ][“X[X[™\]Y\Ý[™[™ÎÂˆ™]\›ˆ]K››ÝÊ
+K\Ý\Y
+Ý]\ÏOOIÜ]Y]YY	ÏÌMŠŒ
+ŒLŒJŒ
+ŒL
+NÂˆBˆ[˜Ý[ÛˆØÚY[R[ššX[Þ][”Ý]\Ô™Yœ™\Ú
+˜[YJ^ÂˆYŠÝ]Kš[ššX[Þ][ÛÝYÝ]\Õ[Y\Š^ØÛX\•[Y[Ý]
+Ý]Kš[ššX[Þ][ÛÝYÝ]\Õ[Y\ŠNÜÝ]Kš[ššX[Þ][ÛÝYÝ]\Õ[Y\[[ßBˆÛÛœÝ›ÝÏ]˜[Y_ßKÝ]\Ï[ÝÙ\Š›ÝËœÝ]\ÊNÂˆYŠÝ]\ÈOOIÜ]Y]YY	É‰œÝ]\ÈOOIÜ[›š[™ÉÊ\™]\›ŽÂˆÛÛœÝÝ\Y\Ý]\ÏOOIÜ]Y]YY	ÏÜÞ[˜Õ[Y\Ý[\Z[\Ê›ÝË›X[X[™\]Y\ÝY]
+NœÞ[˜Õ[Y\Ý[\Z[\Ê›ÝË›\ÝÝ\Y]
+NÂˆYŠ\Ý\Y
+\™]\›ŽÂˆÛÛœÝ™[XZ[š[™ÏJÝ]\ÏOOIÜ]Y]YY	ÏÌMŠŒ
+ŒLŒJŒ
+ŒL
+KJ]K››ÝÊ
+K\Ý\Y
+JÌLÂˆYŠ™[XZ[š[™ÏL
+\™]\›ŽÂˆÝ]Kš[ššX[Þ][ÛÝYÝ]\Õ[Y\\Ù][Y[Ý]
+[˜Ý[ÛŠ
+^ÜÝ]Kš[ššX[Þ][ÛÝYÝ]\Õ[Y\[[ÚYŠÝ]KšY]ÏOOIÛÝ™\šY]ÉÊ\™[™\’ÙY\[™ÕšY]ÜÜ
+
+NßK™[XZ[š[™ÊNÂˆBˆ[˜Ý[ÛˆØ]Ú[ššX[Þ][ÛÝYÞ[˜Ê
+^ÂˆYŠÝ]Kš[ššX[Þ][ÛÝYÞ[˜Õ[œÝXœØÜšX™J\™]\›ŽÂˆ][š]X[^™YY˜[ÙNÂˆÝ]Kš[ššX[Þ][ÛÝYÞ[˜Õ[œÝXœØÜšX™O\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÙ][™ÜÊK™ØÊ	Ú[ššX[Þ][ÛÝYÞ[˜ÉÊK›Û”Û˜\ÚÝ
+[˜Ý[ÛŠØÊ^ÂˆÛÛœÝ™^YØË™^\ÝÏÊØË™]J
+_ßJNžßNÂˆÛÛœÝÚYÛ˜]\™O\Þ[˜Õ[Y\Ý[\ÚYÛ˜]\™J™^›\ÝÝXØÙYYY]
+NÂˆÛÛœÝÝ]\ÔÚYÛ˜]\™OZ[ššX[Þ][”Ý]\ÔÚYÛ˜]\™J™^
+NÂˆÛÛœÝÝXØÙ\ÜÐÚ[™ÙYZ[š]X[^™Y	‰›™^œÝ]\ÏOOIÜÝXØÙ\ÜÉÉ‰œÚYÛ˜]\™I‰œÚYÛ˜]\™HOO\Ý]Kš[ššX[Þ][ÛÝYÞ[˜ÔÚYÛ˜]\™NÂˆÛÛœÝ˜Z[\™PÚ[™ÙYZ[š]X[^™Y	‰›™^œÝ]\ÏOOIÙ\œ›Ü‰É‰œÝ]\ÔÚYÛ˜]\™HOO\Ý]Kš[ššX[Þ][ÛÝYÝ]\ÔÚYÛ˜]\™NÂˆÛÛœÝÝ]\ÐÚ[™ÙYZ[š]X[^™Y	‰œÝ]\ÔÚYÛ˜]\™HOO\Ý]Kš[ššX[Þ][ÛÝYÝ]\ÔÚYÛ˜]\™NÂˆÝ]Kš[ššX[Þ][ÛÝYÞ[˜Ï[™^ÂˆÝ]Kš[ššX[Þ][ÛÝYÞ[˜ÔÚYÛ˜]\™O\ÚYÛ˜]\™NÂˆÝ]Kš[ššX[Þ][ÛÝYÝ]\ÔÚYÛ˜]\™O\Ý]\ÔÚYÛ˜]\™NÂˆØÚY[R[ššX[Þ][”Ý]\Ô™Yœ™\Ú
+™^
+NÂˆ[š]X[^™Y]YNÂˆYŠÝXØÙ\ÜÐÚ[™ÙY	‰ˆ\Ý]K›ØY[™Ê^Âˆž^ÛØØ[ÝÜ˜YÙKœ™[[Ý™R][JTÒ“ÐT‘ÐÐPÒWÒÑVJNßXØ]Ú
+\œ›ÜŠ^ßBˆØ\Ý
+	úgìù¥fzfì¹d#9«iyk£9¢$	Ë
+ÛX[Š™^›\ÝÝ\]RÙ^JI‰˜ÛX[Š™^›\Ý[™]RÙ^JOØÛX[Š™^›\ÝÝ\]RÙ^JJÉûïg‰ÊØÛX[Š™^›\Ý[™]RÙ^JJÉûïg	Î‰ÉÊJÉùáçú`bú,áù¥¦ymì¹¦í9¥¬	Ë	ÜÝXØÙ\ÜÉÊNÂˆØY[
+YJNÂˆY[ÙHYŠ˜Z[\™PÚ[™ÙY	‰ˆ\Ý]K›ØY[™Ê^ÂˆØ\Ý
+	úgìù¥fzfì¹d#9«iyi,y¥eÉËÛX[Š™^›\Ý\œ›ÜŠ_	ú*âù§éyç"úfì¹êëùd#9«iz*&:c!8à ‰Ë	Ù\œ›Ü‰ÊNÂˆYŠÝ]KšY]ÏOOIÛÝ™\šY]ÉÊ\™[™\’ÙY\[™ÕšY]ÜÜ
+
+NÂˆY[ÙHYŠÝ]\ÐÚ[™ÙY	‰ˆ\Ý]K›ØY[™É‰œÝ]KšY]ÏOOIÛÝ™\šY]ÉÊ^Âˆ™[™\’ÙY\[™ÕšY]ÜÜ
+
+NÂˆBˆK[˜Ý[ÛŠ\œ›ÜŠ^ØÛÛœÛÛKØ\›Š	úgìù¥fzfì¹d#9«iyâà9¡bùæèú oyi,y¥eÉË\œ›ÜŠNßJNÂˆB‚˜\Þ[˜È[˜Ý[ÛˆØY]›Ü›Q™YTÙ][™ÜÊ
+^Âˆž^ÂˆÛÛœÝÛ˜\X]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÙ][™ÜÊK™ØÊ	Ü]›Ü›Q™YTÙ][™ÜÉÊK™Ù]
+
+NÂˆÛÛœÝ˜]Ï\Û˜\™^\ÝÏÊÛ˜\™]J
+_ßJNžßK]›Ü›\Ï\˜]Ëœ]›Ü›\É‰\[Ùˆ˜]Ëœ]›Ü›\ÏOOIÛØš™XÝ	ÏÜ˜]Ëœ]›Ü›\ÎžßNÂˆÛÛœÝY\™ÙY^ßNÂˆÉÑX\ÞTÝÜ™IË	ÓSÓSÉË	ÐÛÝ\[™É×K™›Ü‘XXÚ
+[˜Ý[ÛŠ˜[YJ^ÛY\™ÙYÛ˜[YWO[›Ü›X[^™T]›Ü›Q™YTÙ][™Ê˜[YK]›Ü›\ÖÛ˜[YWJNßJNÂˆÝ]Kœ]›Ü›Q™YTÙ][™ÜÏ[Y\™ÙYÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÜ]›Ü›Q™YTÙ][™ÜÉËÚÎYKÛÝ[œÛ˜\™^\ÝÏÌNŒ\ÎŒJNÂˆXØ]Ú
+\œ›ÜŠ^ÂˆÝ]Kœ]›Ü›Q™YTÙ][™ÜÏR”ÓÓ‹œ\œÙJ”ÓÓ‹œÝš[™ÚYžJQUSÔU“Ô“WÑ‘QWÔÑUS‘ÔÊJNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÜ]›Ü›Q™YTÙ][™ÜÉËÚÎ™˜[ÙKÛÝ[Œ\ÎŒ\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNÂˆBŸB‚‚˜\Þ[˜È[˜Ý[ÛˆØY]›Ü›SØØ[YÙ[
+
+^Âˆž^ÂˆÛÛœÝÛ˜\X]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÙ][™ÜÊK™ØÊ	Ü]›Ü›SØØ[YÙ[	ÊK™Ù]
+
+NÂˆÝ]Kœ]›Ü›SØØ[YÙ[\Û˜\™^\ÝÏÊÛ˜\™]J
+_ßJNžßNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÜ]›Ü›SØØ[YÙ[	ËÚÎYKÛÝ[œÛ˜\™^\ÝÏÌNŒ\ÎŒJNÂˆXØ]Ú
+\œ›ÜŠ^ÂˆÝ]Kœ]›Ü›SØØ[YÙ[^ßNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÜ]›Ü›SØØ[YÙ[	ËÚÎ™˜[ÙKÛÝ[Œ\ÎŒ\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNÂˆBŸB‚ˆ\Þ[˜È[˜Ý[ÛˆØYÝ\Y\‘\™XÝÜžJ
+^ÂˆÛÛœÝÝ\YQ]K››ÝÊ
+NÂˆž^ÂˆÛÛœÝÛ˜\X]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÙ][™ÜÊK™ØÊ	ÜÝ\Y\œÉÊK˜ÛÛXÝ[ÛŠ	Ù\™XÝÜžIÊK›[Z]
+L
+K™Ù]
+
+NÂˆÝ]KœÝ\Y\œÏ\Û˜\™ØÜË›X\
+[˜Ý[ÛŠØÊ^ØÛÛœÝ˜]ÏYØË™]J
+_ßNÜ™]\›ˆÚY™ØËšY˜[YN˜ÛX[Š˜]Ë›˜[YJKÛÛXÝ˜[YN˜ÛX[Š˜]Ë˜ÛÛXÝ˜[YJKÛ™N˜ÛX[Š˜]ËœÛ™JK[Øš[N˜ÛX[Š˜]Ë›[Øš[JK[XZ[˜ÛX[Š˜]Ë™[XZ[
+KY™\ÜÎ˜ÛX[Š˜]Ë˜Y™\ÜÊK^Y˜ÛX[Š˜]Ë^Y
+K^[Y[[™›Î˜ÛX[Š˜]Ëœ^[Y[[™›ÊK›ÝN˜ÛX[Š˜]Ë››ÝJK[˜X›Yœ˜]Ë™[˜X›YOOY˜[ÙKÜ™X]Y]œ˜]Ë˜Ü™X]Y]	ÉË\]Y]œ˜]Ë\]Y]	ÉßNßJK™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË™[˜X›YOOY˜[ÙNßJKœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆK›˜[YK›ØØ[PÛÛ\\™J‹›˜[YK	ÞšR[	ÊNßJNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÜÝ\Y\œËÙ\™XÝÜžIËÚÎYKÛÝ[œÝ]KœÝ\Y\œË›[™Ý\Î‘]K››ÝÊ
+K\Ý\YJNÂˆXØ]Ú
+\œ›ÜŠ^ÜÝ]KœÝ\Y\œÏV×NÜÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÜÝ\Y\œËÙ\™XÝÜžIËÚÎ™˜[ÙKÛÝ[Œ\Î‘]K››ÝÊ
+K\Ý\Y\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNßBˆBˆ\Þ[˜È[˜Ý[ÛˆØY[™[ÜžPÛÝ[Ù][™ÜÊ
+^ÂˆÛÛœÝÝ\YQ]K››ÝÊ
+NÂˆž^ÂˆÛÛœÝÛ˜\X]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÙ][™ÜÊK™ØÊ	Ú[™[ÜžPÛÝ[	ÊK™Ù]
+
+NÂˆÛÛœÝ˜]Ï\Û˜\™^\ÝÏÊÛ˜\™]J
+_ßJNžßNÂˆÝ]Kš[™[ÜžPÛÝ[Ù][™ÜÏ^Ù[˜X›Yœ˜]Ë™[˜X›YOOY˜[ÙK[’\Ú˜ÛX[Š˜]Ëœ[’\Ú
+K\]Y]œ˜]Ë\]Y]	ÉßNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÚ[™[ÜžPÛÝ[	ËÚÎYKÛÝ[œÛ˜\™^\ÝÏÌNŒ\Î‘]K››ÝÊ
+K\Ý\YJNÂˆXØ]Ú
+\œ›ÜŠ^ÜÝ]Kš[™[ÜžPÛÝ[Ù][™ÜÏ^Ù[˜X›YYK[’\Ú‰ÉË\]Y]‰ÉßNÜÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽ‰ÛÜÔÙ][™ÜËÚ[™[ÜžPÛÝ[	ËÚÎ™˜[ÙKÛÝ[Œ\Î‘]K››ÝÊ
+K\Ý\Y\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNßBˆBˆ\Þ[˜È[˜Ý[ÛˆØY]›Ü›R[™[ÜžT]Y]YQ\œ›ÜœÊ
+^ÂˆÛÛœÝÝ\YQ]K››ÝÊ
+NÂˆž^ÂˆÛÛœÝÛ˜\X]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ]›Ü›R[™[ÜžT]Y]YJKÚ\™J	Û\Ý][\Ý]\ÉË	ÏOIË	Ù\œ›Ü‰ÊK›[Z]
+L
+K™Ù]
+
+NÂˆÝ]Kœ]›Ü›R[™[ÜžT]Y]YO\Û˜\™ØÜË›X\
+[˜Ý[ÛŠØÊ^Ü™]\›ˆ›Ü›X[^™T]›Ü›R[™[ÜžT]Y]YJØš™XÝ˜\ÜÚYÛŠ××ÚY™ØËšYKØË™]J
+_ßJJNßJNÂˆÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽÓÓPÕSÓ”Ëœ]›Ü›R[™[ÜžT]Y]YJÉÊ\œ›ÜœÊIËÚÎYKÛÝ[œÝ]Kœ]›Ü›R[™[ÜžT]Y]YK›[™Ý\Î‘]K››ÝÊ
+K\Ý\YJNÂˆXØ]Ú
+\œ›ÜŠ^ÜÝ]Kœ]›Ü›R[™[ÜžT]Y]YOV×NÜÝ]K™XYÛ›ÜÝXÜËœ\Ú
+ØÛÛXÝ[ÛŽÓÓPÕSÓ”Ëœ]›Ü›R[™[ÜžT]Y]YJÉÊ\œ›ÜœÊIËÚÎ™˜[ÙKÛÝ[Œ\Î‘]K››ÝÊ
+K\Ý\Y\œ›ÜŽ™\œ›Ü“Y\ÜØYÙJ\œ›ÜŠ_JNßBˆB‚ˆ\Þ[˜È[˜Ý[ÛˆØY›ÙXÝÓÛ›JÚ[[
+^ÂˆYŠÝ]K›ØY[™ÊH™]\›ŽÂˆÝ]K›ØY[™Ï]YNÈÛX\[\
+
+NÂˆYŠ\Ú[[
+H[
+	ÛÜÐÛÛ[	ËØY[™Ò[
+	ù«hùg*:+ 9cå¹ea¹dàz,áù¥¦x )‰ÊJNÂˆÝ]K™XYÛ›ÜÝXÜÏV×NÂˆž^Âˆ]ØZ]Ú]™XY[Y[Ý]
+ØYÛ›[™T›ÙXÝÊ
+K	ùea¹dàyd#9«iz*+yk¦‰ÊNÂˆÛÛœÝ›ÝÜÏX]ØZ]Ù]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ›ÙXÝËL
+NÂˆÝ]Kš[\›˜[›ÙXÝÏ\›ÝÜË›X\
+[˜Ý[ÛŠ›ÝÊ^È™]\›ˆ›Ü›X[^™R[\›˜[
+›ÝË›ÝË—×ÚY
+NÈJNÂˆY\™ÙPØ][ÙÊ
+NÂˆÝ]K›ØYY][™]È]J
+NÂˆÙ]^
+	ÛÜÓ\Ý™XY^	Ë	ùea¹dày§ 9o£:+ 9cå»ï&‰ÊÙ]U[YU^
+Ý]K›ØYY]
+JNÂˆØ]™Q˜\ÝÝ]PØXÚJ
+NÂˆ™[™\Š
+NÂˆXØ]Ú
+\œ›ÜŠ^ÂˆÚÝÐ[\
+	ùea¹dàz,áù¥¦z+ 9cå¹i,y¥eûï&‰ÊÙ\œ›Ü“Y\ÜØYÙJ\œ›ÜŠK	Ù\œ›Ü‰ÊNÂˆYŠÝ]K›ØYY]	‰ˆÝ]Kš[\›˜[›ÙXÝË›[™Ý
+^Âˆ™[™\Š
+NÂˆY[Ù^Âˆ[
+	ÛÜÐÛÛ[	Ë[\R[
+	ùá(y¬åz/"yaiyea¹dàz,áù¥¦IË	ú*âùè®º*£yí¬º-ëøà Qš\™X˜\Ùz*+yk¦º"!Ñš\™\ÝÜ™z)£ùbaùo£:aãy¥¬:+ 9cå¸à ‰Ë	Ï]ÛˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHˆ]KXXÝ[ÛHœ™Yœ™\Úºaãy¥¬:+ 9cåØ]Û‰ÊJNÂˆBˆYš[˜[^ÈÝ]K›ØY[™ÏY˜[ÙNÈBˆB‚ˆ\Þ[˜È[˜Ý[ÛˆØY[
+Ú[[
+^ÂˆYŠÝ]K›ØY[™ÊH™]\›ŽÂˆÝ]K›ØY[™Ï]YNÈÛX\[\
+
+NÂˆYŠ\Ú[[
+H[
+	ÛÜÐÛÛ[	ËØY[™Ò[
+	ù«hùg*9¥m9ä!¹ea¹dàxà ynªùkf8à zb­ùe+¸à yéçú,àú"!ù¨b9.íº,áù¥¦x )‰ÊJNÂˆÝ]K™XYÛ›ÜÝXÜÏV×NÂˆž^Âˆ]ØZ]Ú]™XY[Y[Ý]
+›ÛZ\ÙK˜[
+ÛØYÛ›[™T›ÙXÝÊ
+KØYY[X™\œÚ\Ù][™ÜÊ
+KØYÜ\˜][™Ñ^[œÙTÙ][™ÜÊ
+KØY[ššX[Þ][ÛÝYÞ[˜Ê
+KØY]›Ü›Q™YTÙ][™ÜÊ
+KØY]›Ü›SØØ[YÙ[
+
+KØYÝ\Y\‘\™XÝÜžJ
+KØY[™[ÜžPÛÝ[Ù][™ÜÊ
+KØY]›Ü›R[™[ÜžT]Y]YQ\œ›ÜœÊ
+WJK	ùáçú`bú*+yk¦‰ÊNÂˆÛÛœÝ™\Ý[ÏX]ØZ]›ÛZ\ÙK˜[
+ÂˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ›ÙXÝËL
+KˆÙ]ÛÛXÝ[ÛŠ	Ü™[[ÛÛ˜XÝÉËL
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ™[[YÙ\œËL
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœØ[\ËL
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëš[˜ÛÛY\ËLŒ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ\˜Ú\Ù\ËLŒ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëš[™[ÜžKL
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë˜Ø\Ù\ËL
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë™^[œÙ\ËLŒ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÞ[˜Ò›ØœËL
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë˜]Y]L
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë˜Ý\ÝÛY\œËÌ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœÚ[ËÌ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ™XÙZ]˜X›\ËÌ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ™XÙZ]˜X›T^[Y[ËÌ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœØ[\Ô™]\›œËÌ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë™YXØ][Û‘Z[KÌ	Ø\Ú[™\ÜÑ]IË	Ù\ØÉÊKˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ]›Ü›SÜ™\œËL	ÛÜ™\™Y]	Ë	Ù\ØÉÊKˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ]›Ü›TÞ[˜Ô[œËL	ÜÝ\Y]	Ë	Ù\ØÉÊKˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë™[\ÞYY\ËÌ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë™[\ÞYYTØ[\žPÛÛ™šYÜËÌ
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë™[\ÞYYTØ[\žPÛÛ™šYÒ\ÝÜžKL
+KˆÙ]ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ\[YT™XÛÜ™ËL
+BˆJNÂˆÝ]Kš[\›˜[›ÙXÝÏ\™\Ý[ÖÌK›X\
+[˜Ý[ÛŠ›ÝÊ^È™]\›ˆ›Ü›X[^™R[\›˜[
+›ÝË›ÝË—×ÚY
+NÈJNÂˆÝ]Kœ™[[Ï\™\Ý[ÖÌWK›X\
+›Ü›X[^™T™[[
+NÂˆÝ]Kœ™[[YÙ\œÏ\™\Ý[ÖÌ—K›X\
+›Ü›X[^™T™[[YÙ\ŠNÂˆÝ]KœØ[\Ï\™\Ý[ÖÌ×K›X\
+›Ü›X[^™TØ[JK™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆÛX[Š›ÝËœÝ]\ÊHOOIÝ›ÚYY	ÎßJNÂˆÝ]Kš[˜ÛÛY\Ï\™\Ý[ÖÍK›X\
+›Ü›X[^™R[˜ÛÛYJK™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆÛX[Š›ÝËœÝ]\ÊHOOIÝ›ÚYY	ÎßJNÂˆÝ]Kœ\˜Ú\Ù\Ï\™\Ý[ÖÍWK›X\
+›Ü›X[^™T\˜Ú\ÙJNÂˆÝ]Kš[™[ÜžO\™\Ý[ÖÍ—K›X\
+›Ü›X[^™R[™[ÜžJNÂˆÝ]K˜Ø\Ù\Ï\™\Ý[ÖÍ×K›X\
+›Ü›X[^™PØ\ÙJNÂˆÝ]K™^[œÙ\Ï\™\Ý[ÖÎK›X\
+›Ü›X[^™Q^[œÙJNÂˆÝ]KœÞ[˜Ò›ØœÏ\™\Ý[ÖÎWK›X\
+›Ü›X[^™TÞ[˜Ò›ØŠNÂˆÝ]K˜]Y]\™\Ý[ÖÌLK›X\
+›Ü›X[^™P]Y]
+NÂˆÝ]K˜Ý\ÝÛY\œÏ\™\Ý[ÖÌLWK›X\
+›Ü›X[^™PÝ\ÝÛY\ŠNÂˆÝ]KœÚ[˜[œØXÝ[ÛœÏ\™\Ý[ÖÌL—K›X\
+›Ü›X[^™TÚ[˜[œØXÝ[ÛŠNÂˆÝ]Kœ™XÙZ]˜X›\Ï\™\Ý[ÖÌL×K›X\
+›Ü›X[^™T™XÙZ]˜X›JNÂˆÝ]Kœ™XÙZ]˜X›T^[Y[Ï\™\Ý[ÖÌMK›X\
+›Ü›X[^™T™XÙZ]˜X›T^[Y[
+NÂˆÝ]KœØ[\Ô™]\›œÏ\™\Ý[ÖÌMWK›X\
+›Ü›X[^™TØ[T™]\›ŠNÂˆÝ]K™YXØ][Û‘Z[O\™\Ý[ÖÌM—K›X\
+›Ü›X[^™QYXØ][Û‘Z[JNÂˆÝ]Kœ]›Ü›SÜ™\œÏ\™\Ý[ÖÌM×K›X\
+›Ü›X[^™T]›Ü›SÜ™\ŠNÂˆÝ]Kœ]›Ü›TÞ[˜Ô[œÏ\™\Ý[ÖÌNK›X\
+›Ü›X[^™T]›Ü›TÞ[˜Ô[ŠNÂˆÝ]K™[\ÞYY\Ï\™\Ý[ÖÌNWNÂˆÝ]K™[\ÞYYTØ[\žPÛÛ™šYÜÏ\™\Ý[ÖÌŒNÂˆÝ]K™[\ÞYYTØ[\žPÛÛ™šYÒ\ÝÜžO\™\Ý[ÖÌŒWNÂˆÝ]Kœ\[YT™XÛÜ™Ï\™\Ý[ÖÌŒ—NÂˆY\™ÙPØ][ÙÊ
+NÂˆÝ]K›ØYY][™]È]J
+NÂˆÝ]K™[ØYY]\Ý]K›ØYY]ÂˆÙ]^
+	ÛÜÓ\Ý™XY^	Ë	ù§ 9o£:+ 9cå»ï&‰ÊÙ]U[YU^
+Ý]K›ØYY]
+JNÂˆØ]™Q\Ú›Ø\™ØXÚJ
+NÂˆØ]™Q˜\ÝÝ]PØXÚJ
+NÂˆ™[™\Š
+NÂˆXØ]Ú
+\œ›ÜŠ^ÂˆÚÝÐ[\
+	ú,áù¥¦z+ 9cå¹i,y¥eûï&‰ÊÙ\œ›Ü“Y\ÜØYÙJ\œ›ÜŠK	Ù\œ›Ü‰ÊNÂˆYŠÝ]K™[ØYY]
+^Âˆ™[™\Š
+NÂˆY[Ù^Âˆ[
+	ÛÜÐÛÛ[	Ë[\R[
+	ùá(y¬åz/"yaiyáçú`bú,áù¥¦IË	ú*âùè®º*£yí¬º-ëøà Qš\™X˜\Ùz*+yk¦º"!Ñš\™\ÝÜ™z)£ùbaùo£:aãy¥¬:+ 9cå¸à ‰Ë	Ï]ÛˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHˆ]KXXÝ[ÛHœ™Yœ™\Úºaãy¥¬:+ 9cåØ]Û‰ÊJNÂˆBˆYš[˜[^ÈÝ]K›ØY[™ÏY˜[ÙNÈBˆB‚ˆ[˜Ý[Ûˆ›Ü›X[^™T™[[
+ØšŠ^ÂˆÛÛœÝÝ\Yš\œÝ˜[YJØš‹ÉÛÙ™šXÚX[Ý\]IË	ÜÝ\]IË	Ü™[[Ý\]IË	ØÛÛ˜XÝÝ\]IË	Ù[]™\žQ]IË	úe¢ùiâù¥éy§'É×JNÂˆÛÛœÝ[™Yš\œÝ˜[YJØš‹ÉÛÙ™šXÚX[[™]IË	Ù[™]IË	Ü™[[[™]IË	ØÛÛ˜XÝ[™]IË	ùb,9§'ù¥éy§'É×JNÂˆÛÛœÝ\]Z\Y[][\ÏP\œ˜^Kš\Ð\œ˜^JØš‹™\]Z\Y[][\ÊOÛØš‹™\]Z\Y[][\Î–×NÂˆÛÛœÝš\œÝ\]Z\Y[Y\]Z\Y[][\Ë›[™ÝÊÛX[Š\]Z\Y[][\ÖÌI‰™\]Z\Y[][\ÖÌK›˜[YJ_ÛX[Š\]Z\Y[][\ÖÌI‰™\]Z\Y[][\ÖÌK]JJN‰ÉÎÂˆÛÛœÝ™[[™›ÏYš\œÝ[X™\ŠØš‹ÉÜ™[[[˜ÛÛYP[[Ý[	Ë	Ü™[™YIË	Ü™[[™YIË	Û[ÛT™[	Ë	ùéçúaäI×JNÂˆÛÛœÝ™[™YOYš\œÝ[X™\ŠØš‹ÉÜ™[™YIË	Ü™[[™YIË	Û[ÛT™[	Ë	ùéçúaäI×JK˜[YNÂˆÛÛœÝÚ\[™Ñ™YOYš\œÝ[X™\ŠØš‹ÉÜÚ\[™Ñ™YIË	Ù[]™\žQ™YIË	Ù›ÛÜ‘^˜Q™YIË	ú`bú,®É×JK˜[YNÂˆ™]\›ˆÂˆY˜ÛX[ŠØš‹—×ÚY
+KˆÛÛ˜XÝ›Î˜ÛX[Šš\œÝ˜[YJØš‹ÉØÛÛ˜XÝ›ÉË	ØÛÛ˜XÝY	Ë	Ü™[[ÛÛ˜XÝ›ÉË	Ø\XØ][Û“›ÉË	ùíê:&gÉ×JJ_ÛX[ŠØš‹—×ÚY
+KˆÝ\ÝÛY\Ž˜ÛX[Šš\œÝ˜[YJØš‹ÉØÝ\ÝÛY\“˜[YIË	Û˜[YIË	Ø\XØ[˜[YIË	ù¢oùéçù.®‰Ë	ùk¨¹¢-‰×JJ_	ù§*¹£ä9/¦ÉËˆÛ™N˜ÛX[Šš\œÝ˜[YJØš‹ÉØÝ\ÝÛY\”Û™IË	ÜÛ™IË	ØÝ\ÝÛY\“[Øš[IË	Û[Øš[IË	úfîú*lI×JJKˆ\]Z\Y[˜ÛX[Šš\œÝ˜[YJØš‹ÉÙ\]Z\Y[˜[YIË	Ü™[[][IË	Ù\]Z\Y[Ø]YÛÜžIË	Ú[œÝ[Y[˜[YIË	Ü›ÙXÝ˜[YIË	Ù]šXÙS˜[YIË	Ù\]Z\Y[\IË	ú*+y`¦I×JJ_š\œÝ\]Z\Y[	ù§*¹£ä9/¦ÉËˆœ˜[™˜ÛX[Šš\œÝ˜[YJØš‹ÉÙ\]Z\Y[œ˜[™	Ë	Øœ˜[™	Ë	ùdàyâc	×JJKˆ[Ù[˜ÛX[Šš\œÝ˜[YJØš‹ÉÙ\]Z\Y[[Ù[	Ë	Û[Ù[˜[YIË	Û[Ù[	Ë	ùg¢ú&gÉ×JJKˆ\ÜÙ]›Î˜ÛX[Šš\œÝ˜[YJØš‹ÉÙ\]Z\Y[›ÉË	Ø\ÜÙ]›ÉË	ÜÙ\šX[›ÉË	ú*+y`¦yíê:&gÉ×JJKˆÝ\]NœÝ\ˆ[™]N™[™ˆ™[™YNœ™[™YKˆÚ\[™Ñ™YNœÚ\[™Ñ™YKˆ\ÜÚ]™YN™š\œÝ[X™\ŠØš‹ÉÙ\ÜÚ]™YIË	Ù\ÜÚ]	Ë	ù¢¯:aäI×JK˜[YKˆ[˜ÛÛYT™XÛÙÛš^™Y]™š\œÝ˜[YJØš‹ÉÜ™[[[˜ÛÛYT™XÛÙÛš^™Y]	Ë	ÛÙ™šXÚX[ÛÛ™š\›YY]	Ë	ÛÙ™šXÚX[ÛÛ˜XÝ›ÝXÙT]Y]YPÜ™X]Y]	Ë	ÛÙ™šXÚX[ÛÛ˜XÝ›ÝXÙTÙ[]	Ë	ØÛÛ™š\›YY]	Ë	ÛÙ™šXÚX[‘Ù[™\˜]Y]	×JKˆ[˜ÛÛYP[[Ý[™š\œÝ[X™\ŠØš‹ÉÜ™[[[˜ÛÛYP[[Ý[	×JK™›Ý[™Ùš\œÝ[X™\ŠØš‹ÉÜ™[[[˜ÛÛYP[[Ý[	×JK˜[YNŠ™[™YJÜÚ\[™Ñ™YJKˆÝ]\Î˜ÛX[Šš\œÝ˜[YJØš‹ÉÜÝ]\ÉË	ØÛÛ˜XÝÝ]\ÉË	Ü™[[Ý]\ÉË	ùâà9¡bÉ×JJ_	ù§*º*+yk¦‰Ëˆ˜]Î›Øš‚ˆNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™T™[[YÙ\ŠØšŠ^Âˆ™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K™[[ÛÛ˜XÝY˜ÛX[Šš\œÝ˜[YJØš‹ÉÜ™[[ÛÛ˜XÝY	Ë	ØÛÛ˜XÝY	×JJ_ÛX[ŠØš‹—×ÚY
+K™XÙZ]™Y[[Ý[™š\œÝ[X™\ŠØš‹ÉÜ™XÙZ]™Y[[Ý[	×JK˜[YK[]™\žPÛÜÝ™š\œÝ[X™\ŠØš‹ÉÙ[]™\žPÛÜÝ	×JK˜[YKXZ[[˜[˜ÙPÛÜÝ™š\œÝ[X™\ŠØš‹ÉÛXZ[[˜[˜ÙPÛÜÝ	×JK˜[YKÝ\ÛÜÝ™š\œÝ[X™\ŠØš‹ÉÛÝ\ÛÜÝ	×JK˜[YK›ÝN˜ÛX[ŠØš‹››ÝJK\]Y]›Øš‹\]Y]	ÉßNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™TØ[JØšŠ^ÂˆÛÛœÝÝ[Yš\œÝ[X™\ŠØš‹ÉÝÝ[	×JK˜[YKÝ]\ÏXÛX[ŠØš‹œ^[Y[Ý]\Ê_	ÜZY	Ë™XÙZ]™YYš\œÝ[X™\ŠØš‹ÉÜ™XÙZ]™Y[[Ý[	×JKÜ™\•˜[YOYš\œÝ[X™\ŠØš‹ÉÛÜ™\•Ý[	×JKØ[U\OXÛX[ŠØš‹œØ[U\J_	ÜØ[IË[š[Y[XÛX[ŠØš‹™[š[Y[Ý]\Ê_
+Ø[U\OOOIÜ™[Ü™\‰É‰˜ÛX[ŠØš‹œÝ]\ÊHOOIØÛÛ\]Y	ÏÉÝØZ][™×ÜÝØÚÉÎ‰Ù[]™\™Y	ÊNÂˆ™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+KØ[S›Î˜ÛX[ŠØš‹œØ[S›Ê_ÛX[ŠØš‹—×ÚY
+KÛÛ]›Øš‹œÛÛ]Øš‹˜Ü™X]Y]	ÉË™[Ü™\]›Øš‹œ™[Ü™\]	ÉË[]™\™Y]›Øš‹™[]™\™Y]	ÉËØ[U\NœØ[U\K[š[Y[Ý]\Î™[š[Y[\ØYÙT™X\ÛÛŽ˜ÛX[ŠØš‹\ØYÙT™X\ÛÛŠK\ØYÙS›ÝN˜ÛX[ŠØš‹\ØYÙS›ÝJK][\Î\œ˜^Kš\Ð\œ˜^JØš‹š][\ÊOÛØš‹š][\Î–×KÝXÝ[™š\œÝ[X™\ŠØš‹ÉÜÝXÝ[	×JK˜[YKX[X[\ØÛÝ[™š\œÝ[X™\ŠØš‹ÉÛX[X[\ØÛÝ[	×JK™›Ý[™Ùš\œÝ[X™\ŠØš‹ÉÛX[X[\ØÛÝ[	×JK˜[YN™š\œÝ[X™\ŠØš‹ÉÙ\ØÛÝ[	×JK˜[YKÚ[\ØÛÝ[™š\œÝ[X™\ŠØš‹ÉÜÚ[\ØÛÝ[	×JK˜[YK\ØÛÝ[™š\œÝ[X™\ŠØš‹ÉÙ\ØÛÝ[	×JK˜[YKÜ™\•Ý[›Ü™\•˜[YK™›Ý[™ÛÜ™\•˜[YK˜[YNÝ[Ý[Ý[ÛÜÝÝ[™š\œÝ[X™\ŠØš‹ÉØÛÜÝÝ[	×JK˜[YKÛÜÝ\Ý[X]Y›Øš‹˜ÛÜÝ\Ý[X]YOO]YKÛÜÝÛÝ\˜ÙN˜ÛX[ŠØš‹˜ÛÜÝÛÝ\˜ÙJKÛÜÝÛÛ™š\›YY]›Øš‹˜ÛÜÝÛÛ™š\›YY]	ÉË[šÛ›ÝÛÛÜÝ]N™š\œÝ[X™\ŠØš‹ÉÝ[šÛ›ÝÛÛÜÝ]I×JK˜[YK™]\›™YÛÜÝ™š\œÝ[X™\ŠØš‹ÉÜ™]\›™YÛÜÝ	×JK˜[YK™]\›”Ý]\Î˜ÛX[ŠØš‹œ™]\›”Ý]\ÊKÜ›ÜÜÔ›Ùš]™š\œÝ[X™\ŠØš‹ÉÙÜ›ÜÜÔ›Ùš]	×JK˜[YK^[Y[Y]Ù˜ÛX[ŠØš‹œ^[Y[Y]Ù
+KÝ\ÝÛY\’Y˜ÛX[ŠØš‹˜Ý\ÝÛY\’Y
+KÝ\ÝÛY\“˜[YN˜ÛX[ŠØš‹˜Ý\ÝÛY\“˜[YJKÝ\ÝÛY\•\N˜ÛX[ŠØš‹˜Ý\ÝÛY\•\JKY[X™\“›Î˜ÛX[ŠØš‹›Y[X™\“›ÊKšXÚ[™ÕY\Ž˜ÛX[ŠØš‹œšXÚ[™ÕY\ŠK^[Y[Ý]\ÎœÝ]\Ë™XÙZ]™Y[[Ý[œ™XÙZ]™Y™›Ý[™Ü™XÙZ]™Y˜[YNŠÝ]\ÏOOIÜZY	ÏÊÜ™\•˜[YK™›Ý[™ÛÜ™\•˜[YK˜[YNÝ[
+NŒ
+KÚ[ÑX\›™Y™š\œÝ[X™\ŠØš‹ÉÜÚ[ÑX\›™Y	×JK˜[YK[™[™ÔÚ[ÑX\›™Y™š\œÝ[X™\ŠØš‹ÉÜ[™[™ÔÚ[ÑX\›™Y	×JK˜[YKÚ[Ô™YY[YY™š\œÝ[X™\ŠØš‹ÉÜÚ[Ô™YY[YY	×JK˜[YKX\›”Ú[Ñ[˜X›Y›Øš‹™X\›”Ú[Ñ[˜X›YOOY˜[ÙK›ÝN˜ÛX[ŠØš‹››ÝJKÝ]\Î˜ÛX[ŠØš‹œÝ]\Ê_	ØÛÛ\]Y	ËÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉßNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™PÝ\ÝÛY\ŠØšŠ^Ü™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K˜[YN˜ÛX[ŠØš‹›˜[YJ_	ù§*¹doyd#yk¨¹¢-‰ËÛ™N˜ÛX[ŠØš‹œÛ™JK[XZ[˜ÛX[ŠØš‹™[XZ[
+KÝ\ÝÛY\•\N˜ÛX[ŠØš‹˜Ý\ÝÛY\•\J_	ÙÙ[™\˜[	ËY[X™\“›Î˜ÛX[ŠØš‹›Y[X™\“›ÊKšXÚ[™ÕY\Ž˜ÛX[ŠØš‹œšXÚ[™ÕY\Š_	Ü™]Z[	Ë^\›˜[XXÚ\’Y˜ÛX[ŠØš‹™^\›˜[XXÚ\’Y
+KÚ[˜[[˜ÙN™š\œÝ[X™\ŠØš‹ÉÜÚ[˜[[˜ÙI×JK˜[YKÜ™Y][Z]™š\œÝ[X™\ŠØš‹ÉØÜ™Y][Z]	×JK˜[YK›ÝN˜ÛX[ŠØš‹››ÝJK[˜X›Y›Øš‹™[˜X›YOOY˜[ÙKÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉË\]Y]›Øš‹\]Y]	ÉßNßBˆ[˜Ý[Ûˆ›Ü›X[^™TÚ[˜[œØXÝ[ÛŠØšŠ^Ü™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+KÝ\ÝÛY\’Y˜ÛX[ŠØš‹˜Ý\ÝÛY\’Y
+KØ[RY˜ÛX[ŠØš‹œØ[RY
+K\N˜ÛX[ŠØš‹\JKÚ[Î™š\œÝ[X™\ŠØš‹ÉÜÚ[É×JK˜[YK˜[[˜ÙPY\Ž™š\œÝ[X™\ŠØš‹ÉØ˜[[˜ÙPY\‰×JK˜[YK›ÝN˜ÛX[ŠØš‹››ÝJKÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉßNßBˆ[˜Ý[Ûˆ›Ü›X[^™T™XÙZ]˜X›JØšŠ^ØÛÛœÝÝ[Yš\œÝ[X™\ŠØš‹ÉÝÝ[[[Ý[	×JK˜[YK™XÙZ]™YYš\œÝ[X™\ŠØš‹ÉÜ™XÙZ]™Y[[Ý[	×JK˜[YNÜ™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K™XÙZ]˜X›S›Î˜ÛX[ŠØš‹œ™XÙZ]˜X›S›Ê_ÛX[ŠØš‹—×ÚY
+KÛÝ\˜ÙU\N˜ÛX[ŠØš‹œÛÝ\˜ÙU\J_
+Øš‹š[˜ÛÛYRYÉÚ[˜ÛÛYIÎ‰ÜØ[IÊKØ[RY˜ÛX[ŠØš‹œØ[RY
+KØ[S›Î˜ÛX[ŠØš‹œØ[S›ÊK[˜ÛÛYRY˜ÛX[ŠØš‹š[˜ÛÛYRY
+K[˜ÛÛYS›Î˜ÛX[ŠØš‹š[˜ÛÛYS›ÊKÝ\ÝÛY\’Y˜ÛX[ŠØš‹˜Ý\ÝÛY\’Y
+KÝ\ÝÛY\“˜[YN˜ÛX[ŠØš‹˜Ý\ÝÛY\“˜[YJ_	ù§*¹£!ùk¦¹k¨¹¢-‰ËÝ[[[Ý[Ý[™XÙZ]™Y[[Ý[œ™XÙZ]™YÝ]Ý[™[™Ð[[Ý[“X]›X^
+š\œÝ[X™\ŠØš‹ÉÛÝ]Ý[™[™Ð[[Ý[	×JK™›Ý[™Ùš\œÝ[X™\ŠØš‹ÉÛÝ]Ý[™[™Ð[[Ý[	×JK˜[YNÝ[\™XÙZ]™Y
+KÝ]\Î˜ÛX[ŠØš‹œÝ]\Ê_	Ý[œZY	ËYQ]N›Øš‹™YQ]_	ÉËÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉßNßBˆ[˜Ý[Ûˆ›Ü›X[^™T™XÙZ]˜X›T^[Y[
+ØšŠ^Ü™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K™XÙZ]˜X›RY˜ÛX[ŠØš‹œ™XÙZ]˜X›RY
+KÛÝ\˜ÙU\N˜ÛX[ŠØš‹œÛÝ\˜ÙU\JKØ[RY˜ÛX[ŠØš‹œØ[RY
+K[˜ÛÛYRY˜ÛX[ŠØš‹š[˜ÛÛYRY
+KÝ\ÝÛY\’Y˜ÛX[ŠØš‹˜Ý\ÝÛY\’Y
+K[[Ý[™š\œÝ[X™\ŠØš‹ÉØ[[Ý[	×JK˜[YK^[Y[Y]Ù˜ÛX[ŠØš‹œ^[Y[Y]Ù
+KZY]›Øš‹œZY]Øš‹˜Ü™X]Y]	ÉË›ÝN˜ÛX[ŠØš‹››ÝJ_NßBˆ[˜Ý[Ûˆ›Ü›X[^™TØ[T™]\›ŠØšŠ^Ü™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K™]\›“›Î˜ÛX[ŠØš‹œ™]\›“›Ê_ÛX[ŠØš‹—×ÚY
+KØ[RY˜ÛX[ŠØš‹œØ[RY
+KØ[S›Î˜ÛX[ŠØš‹œØ[S›ÊKÝ\ÝÛY\’Y˜ÛX[ŠØš‹˜Ý\ÝÛY\’Y
+KÝ\ÝÛY\“˜[YN˜ÛX[ŠØš‹˜Ý\ÝÛY\“˜[YJK][\Î\œ˜^Kš\Ð\œ˜^JØš‹š][\ÊOÛØš‹š][\Î–×K™Y[™[[Ý[™š\œÝ[X™\ŠØš‹ÉÜ™Y[™[[Ý[	×JK˜[YK™\ÝØÚÙYÛÜÝ™š\œÝ[X™\ŠØš‹ÉÜ™\ÝØÚÙYÛÜÝ	×JK˜[YKÚ[Ô™\ÝÜ™Y™š\œÝ[X™\ŠØš‹ÉÜÚ[Ô™\ÝÜ™Y	×JK˜[YKÚ[Ô™]™\œÙY™š\œÝ[X™\ŠØš‹ÉÜÚ[Ô™]™\œÙY	×JK˜[YKÚ[™XÛÝ™\žP[[Ý[™š\œÝ[X™\ŠØš‹ÉÜÚ[™XÛÝ™\žP[[Ý[	×JK˜[YKÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉËÝ]\Î˜ÛX[ŠØš‹œÝ]\Ê_	ØÛÛ\]Y	ßNßBˆ[˜Ý[Ûˆ›Ü›X[^™QYXØ][Û‘Z[JØšŠ^ÂˆÛÛœÝÝ[[X\žO[Øš‰‰\[ÙˆØš‹œÝ[[X\žOOOIÛØš™XÝ	ÏÛØš‹œÝ[[X\žNžßNÂˆ™]\›ˆÂˆY˜ÛX[ŠØš‹—×ÚY
+KˆÛÝ\˜ÙN‰Ú[ššX[Þ][‰ËˆÝY[ÒY˜ÛX[ŠØš‹œÝY[ÒY
+KˆÝY[Ó˜[YN˜ÛX[ŠØš‹œÝY[Ó˜[YJKˆ]RÙ^N˜ÛX[ŠØš‹™]RÙ^JKˆ\Ú[™\ÜÑ]N›Øš‹˜\Ú[™\ÜÑ]_ÛX[ŠØš‹™]RÙ^JKˆ[˜ÛYU[œZY›Øš‹š[˜ÛYU[œZYOO]YKˆÙ\ÜÚ[ÛœÎ\œ˜^Kš\Ð\œ˜^JØš‹œÙ\ÜÚ[ÛœÊOÛØš‹œÙ\ÜÚ[ÛœÎ–×KˆXXÚ\œÎ\œ˜^Kš\Ð\œ˜^JØš‹XXÚ\œÊOÛØš‹XXÚ\œÎ–×KˆZ][Û”™XÙZ\Î\œ˜^Kš\Ð\œ˜^JØš‹Z][Û”™XÙZ\ÊOÛØš‹Z][Û”™XÙZ\Î–×Kˆ›ÛÛT™[[Î\œ˜^Kš\Ð\œ˜^JØš‹œ›ÛÛT™[[ÊOÛØš‹œ›ÛÛT™[[Î–×KˆÝ[[X\žNžÂˆ\ÜÛÛÛÝ[™š\œÝ[X™\ŠÝ[[X\žKÉÛ\ÜÛÛÛÝ[	×JK˜[YKˆ\ÜÛÛ‘Ü›ÜÜÎ™š\œÝ[X™\ŠÝ[[X\žKÉÛ\ÜÛÛ‘Ü›ÜÜÉ×JK˜[YKˆXXÚ\”^XX›N™š\œÝ[X™\ŠÝ[[X\žKÉÝXXÚ\”^XX›I×JK˜[YKˆØÚÛÛÚ\™N™š\œÝ[X™\ŠÝ[[X\žKÉÜØÚÛÛÚ\™I×JK˜[YKˆZ][Û”™XÙZ]™Y™š\œÝ[X™\ŠÝ[[X\žKÉÝZ][Û”™XÙZ]™Y	×JK˜[YKˆ›ÛÛT™[[™XÙZ]™Y™š\œÝ[X™\ŠÝ[[X\žKÉÜ›ÛÛT™[[™XÙZ]™Y	×JK˜[YBˆKˆØ\\™Y]›Øš‹˜Ø\\™Y]	ÉËˆ[\ÜY]›Øš‹š[\ÜY]	ÉÂˆNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™R[˜ÛÛYJØšŠ^Âˆ™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K[˜ÛÛYS›Î˜ÛX[ŠØš‹š[˜ÛÛYS›Ê_ÛX[ŠØš‹—×ÚY
+KØØÝ\œ™Y]›Øš‹›ØØÝ\œ™Y]Øš‹˜Ü™X]Y]	ÉËØ]YÛÜžN˜ÛX[ŠØš‹˜Ø]YÛÜžJ_	ùam¹.å¹¥-¹aiIË][S˜[YN˜ÛX[ŠØš‹š][S˜[Y_Øš‹]_Øš‹™\ØÜš\[ÛŠK[[Ý[™š\œÝ[X™\ŠØš‹ÉØ[[Ý[	×JK˜[YK^[Y[Y]Ù˜ÛX[ŠØš‹œ^[Y[Y]Ù
+K^[Y[Ý]\Î˜ÛX[ŠØš‹œ^[Y[Ý]\Ê_	ÜZY	Ë™XÙZ]™Y[[Ý[™š\œÝ[X™\ŠØš‹ÉÜ™XÙZ]™Y[[Ý[	×JK™›Ý[™Ùš\œÝ[X™\ŠØš‹ÉÜ™XÙZ]™Y[[Ý[	×JK˜[YN™š\œÝ[X™\ŠØš‹ÉØ[[Ý[	×JK˜[YKÝ\ÝÛY\’Y˜ÛX[ŠØš‹˜Ý\ÝÛY\’Y
+KÝ\ÝÛY\“˜[YN˜ÛX[ŠØš‹˜Ý\ÝÛY\“˜[YJK›ÝN˜ÛX[ŠØš‹››ÝJKÝ]\Î˜ÛX[ŠØš‹œÝ]\Ê_	ØÛÛ\]Y	Ë›ÚYY]›Øš‹›ÚYY]	ÉËÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉßNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™T\˜Ú\ÙJØšŠ^Âˆ™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K\˜Ú\ÙS›Î˜ÛX[ŠØš‹œ\˜Ú\ÙS›Ê_ÛX[ŠØš‹—×ÚY
+K^\›˜[›Î˜ÛX[ŠØš‹™^\›˜[›ÊK™XÙZ]™Y]›Øš‹œ™XÙZ]™Y]Øš‹˜Ü™X]Y]	ÉËÝ\Y\’Y˜ÛX[ŠØš‹œÝ\Y\’Y
+KÝ\Y\Ž˜ÛX[ŠØš‹œÝ\Y\ŠK][\Î\œ˜^Kš\Ð\œ˜^JØš‹š][\ÊOÛØš‹š][\Î–×KÝXÝ[™š\œÝ[X™\ŠØš‹ÉÜÝXÝ[	×JK˜[YK^˜PÛÜÝ™š\œÝ[X™\ŠØš‹ÉÙ^˜PÛÜÝ	×JK˜[YKÝ[ÛÜÝ™š\œÝ[X™\ŠØš‹ÉÝÝ[ÛÜÝ	×JK˜[YK^[Y[Ý]\Î˜ÛX[ŠØš‹œ^[Y[Ý]\Ê_	Ý[œZY	Ë^[Y[]N›Øš‹œ^[Y[]_	ÉË^[Y[Y]Ù˜ÛX[ŠØš‹œ^[Y[Y]Ù
+K›ÝN˜ÛX[ŠØš‹››ÝJK™]š\Ú[Û’\ÝÜžN\œ˜^Kš\Ð\œ˜^JØš‹œ™]š\Ú[Û’\ÝÜžJOÛØš‹œ™]š\Ú[Û’\ÝÜžN–×KÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉË\]Y]›Øš‹\]Y]	ÉßNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™R[™[ÜžJØšŠ^Âˆ™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K\N˜ÛX[ŠØš‹\JK›ÙXÝY˜ÛX[ŠØš‹œ›ÙXÝY
+K›ÙXÝ˜[YN˜ÛX[ŠØš‹œ›ÙXÝ˜[YJKÚÝN˜ÛX[ŠØš‹œÚÝJK]PÚ[™ÙN™š\œÝ[X™\ŠØš‹ÉÜ]PÚ[™ÙI×JK˜[YK™Y›Ü™TÝØÚÎ™š\œÝ[X™\ŠØš‹ÉØ™Y›Ü™TÝØÚÉ×JK˜[YKY\”ÝØÚÎ™š\œÝ[X™\ŠØš‹ÉØY\”ÝØÚÉ×JK˜[YK[š]ÛÜÝ›[X™\“Ü“[
+Øš‹[š]ÛÜÝ
+K™Y™\™[˜ÙU\N˜ÛX[ŠØš‹œ™Y™\™[˜ÙU\JK™Y™\™[˜ÙRY˜ÛX[ŠØš‹œ™Y™\™[˜ÙRY
+KÝØÚÝZÙS›Î˜ÛX[ŠØš‹œÝØÚÝZÙS›ÊKÛÝ[\“˜[YN˜ÛX[ŠØš‹˜ÛÝ[\“˜[Y_Øš‹›Ü\˜]Ü“˜[YJKÛÝ\˜ÙN˜ÛX[ŠØš‹œÛÝ\˜ÙJKÛÜœ™XÝ[Û“ÙŽ˜ÛX[ŠØš‹˜ÛÜœ™XÝ[Û“ÙŠK›ÝN˜ÛX[ŠØš‹››ÝJKØØÝ\œ™Y]›Øš‹›ØØÝ\œ™Y]Øš‹˜Ü™X]Y]	ÉËÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉËÛÜœ™XÝY]›Øš‹˜ÛÜœ™XÝY]	ÉËÛÜœ™XÝYÎ™š\œÝ[X™\ŠØš‹ÉØÛÜœ™XÝYÉ×JK™›Ý[™Ùš\œÝ[X™\ŠØš‹ÉØÛÜœ™XÝYÉ×JK˜[YN›[NÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™PØ\ÙJØšŠ^ÂˆÛÛœÝ][ÝYYš\œÝ[X™\ŠØš‹ÉÜ][ÝY[[Ý[	×JK˜[YNÈÛÛœÝ™XÙZ]™YYš\œÝ[X™\ŠØš‹ÉÜ™XÙZ]™Y[[Ý[	×JK˜[YNÂˆÛÛœÝX]\šX[Yš\œÝ[X™\ŠØš‹ÉÛX]\šX[ÛÜÝ	×JK˜[YNÈÛÛœÝX›ÜYš\œÝ[X™\ŠØš‹ÉÛX›ÜÛÜÝ	×JK˜[YNÈÛÛœÝ˜[œÜÜYš\œÝ[X™\ŠØš‹ÉÝ˜[œÜÜÛÜÝ	×JK˜[YNÈÛÛœÝÝ\Yš\œÝ[X™\ŠØš‹ÉÛÝ\ÛÜÝ	×JK˜[YNÂˆ™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+KØ\ÙS›Î˜ÛX[ŠØš‹˜Ø\ÙS›Ê_ÛX[ŠØš‹—×ÚY
+K˜[YN˜ÛX[ŠØš‹›˜[YJ_	ù§*¹doyd#y¨b9.í‰ËÝ\ÝÛY\Ž˜ÛX[ŠØš‹˜Ý\ÝÛY\ŠKÝ]\Î˜ÛX[ŠØš‹œÝ]\Ê_	Ü[›š[™ÉË][ÝY[[Ý[œ][ÝY™XÙZ]™Y[[Ý[œ™XÙZ]™YX]\šX[ÛÜÝ›X]\šX[X›ÜÛÜÝ›X›Ü‹˜[œÜÜÛÜÝ˜[œÜÜÝ\ÛÜÝ›Ý\‹Ý[ÛÜÝ›X]\šX[
+ÛX›ÜŠÝ˜[œÜÜ
+ÛÝ\‹›Ùš]œ™XÙZ]™YJX]\šX[
+ÛX›ÜŠÝ˜[œÜÜ
+ÛÝ\ŠKÝ]Ý[™[™Î“X]›X^
+][ÝY\™XÙZ]™Y
+KÝ\]N›Øš‹œÝ\]_	ÉËYQ]N›Øš‹™YQ]_	ÉË›ÝN˜ÛX[ŠØš‹››ÝJKÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉË\]Y]›Øš‹\]Y]	ÉßNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™Q^[œÙJØšŠ^È™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K^[œÙS›Î˜ÛX[ŠØš‹™^[œÙS›Ê_ÛX[ŠØš‹—×ÚY
+KØØÝ\œ™Y]›Øš‹›ØØÝ\œ™Y]Øš‹˜Ü™X]Y]	ÉËØ]YÛÜžN˜ÛX[ŠØš‹˜Ø]YÛÜžJ_	ùam¹.å¹¥+ùaî‰Ë[[Ý[™š\œÝ[X™\ŠØš‹ÉØ[[Ý[	×JK˜[YK^[Y[Y]Ù˜ÛX[ŠØš‹œ^[Y[Y]Ù
+K[ØØ][Û“[ÙN›Ü\˜][™Ñ^[œÙQ[™Ú[™J
+K››Ü›X[^™Q^[œÙS[ÙJØš‹˜[ØØ][Û“[ÙJK^[œÙS[Û˜ÛX[ŠØš‹™^[œÙS[Û
+K\š[ÙÝ\[Û˜ÛX[ŠØš‹œ\š[ÙÝ\[Û
+K\š[Ù[™[Û˜ÛX[ŠØš‹œ\š[Ù[™[Û
+K™Y™\™[˜ÙU\N˜ÛX[ŠØš‹œ™Y™\™[˜ÙU\JK™Y™\™[˜ÙRY˜ÛX[ŠØš‹œ™Y™\™[˜ÙRY
+K›ÝN˜ÛX[ŠØš‹››ÝJKÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉßNÈBˆ[˜Ý[Ûˆ›Ü›X[^™TÞ[˜Ò›ØŠØšŠ^È™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K›Ø“›Î˜ÛX[ŠØš‹š›Ø“›Ê_ÛX[ŠØš‹—×ÚY
+K\N˜ÛX[ŠØš‹\JKÝ]\Î˜ÛX[ŠØš‹œÝ]\Ê_	Ü™]šY]ÉË]›Ü›\Î\œ˜^Kš\Ð\œ˜^JØš‹œ]›Ü›\ÊOÛØš‹œ]›Ü›\Î–×K›ÙXÝÛÝ[™š\œÝ[X™\ŠØš‹ÉÜ›ÙXÝÛÝ[	×JK˜[YKÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉËÜ™X]YžN˜ÛX[ŠØš‹˜Ü™X]YžJK›ÝN˜ÛX[ŠØš‹››ÝJ_NÈBˆ[˜Ý[Ûˆ›Ü›X[^™T]›Ü›SÜ™\ŠØšŠ^ÂˆÛÛœÝ]X[]OYš\œÝ[X™\ŠØš‹ÉÜ]X[]I×JK˜[YK[š]šXÙOYš\œÝ[X™\ŠØš‹ÉÝ[š]šXÙI×JK˜[YKÜ›ÜÜÐ[[Ý[Yš\œÝ[X™\ŠØš‹ÉÙÜ›ÜÜÐ[[Ý[	×JK˜[YKÛÜÝÝ[Yš\œÝ[X™\ŠØš‹ÉØÛÜÝÝ[	×JK˜[YNÂˆÛÛœÝ]›Ü›OXÛX[ŠØš‹œ]›Ü›JK^\›˜[Ü™\’YXÛX[ŠØš‹™^\›˜[Ü™\’Y
+K^\›˜[Ü™\“›ÏXÛX[ŠØš‹™^\›˜[Ü™\“›Ê_^\›˜[Ü™\’YÝÜ™YÜ™\™Y][Øš‹›Ü™\™Y]	ÉÎÂˆÛÛœÝ[š]X[ÛÝ\˜ÙO[ÝÙ\ŠØš‹›Ü™\‘]TÛÝ\˜ÙJKÛ›ÝÛ”ÛÝ\˜ÙOVÉÙX\Þ\ÝÜ™KXÜ™X]YX]	Ë	ØÛÝ\[™Ë[Ü™\™YX]	Ë	Û[Û[ËX\K[Ü™\‹Y]IË	Û[Û[Ë[Ü™\‹[[X™\‹Z[™™\œ™Y	Ë	ØYÙ[[Ü™\‹][YK]˜[Y]Y	×Kš[˜ÛY\Ê[š]X[ÛÝ\˜ÙJNÂˆËÈ9cëù/èyæ¡9nlùcì9c§ùiâù."ùe«¹¦`ºe¤ùa*¹ab9¥¯:""¹âb9åfy."ùæ¡\ÓÜšYÚ[˜[Ü™\‘]OY˜[Ùxà ‚ˆËÈ:""º,áù¥¦ycëú ïymì¹í¤ù§"HX\ÞTÝÜ™HÜ™X]YØ];ï#9/a¹g*:""¹d#9«iy­`yê"ù.+z(ªùª&y¢$˜[Ù{ï&ÂˆËÈ9.#z ïyfè9«i9¢¢¹ç'ù«hùåm¹i*y."ùe«¹æ¡:* ¹e«¹aj:`ê9o§¹åjúghºf¬z%ãøà ‚ˆ]Ü™\™Y]\ÝÜ™YÜ™\™Y]\ÓÜšYÚ[˜[Ü™\‘]OJÛ›ÝÛ”ÛÝ\˜ÙI‰ˆHY]Qœ›ÛJÝÜ™YÜ™\™Y]
+J_Øš‹š\ÓÜšYÚ[˜[Ü™\‘]OOO]YKÜ™\‘]TÛÝ\˜ÙOXÛX[ŠØš‹›Ü™\‘]TÛÝ\˜ÙJKÜ™\•[YQ\Ý[X]Y[Øš‹›Ü™\•[YQ\Ý[X]YOO]YKÜ™\‘]T™\Z\™Y[Øš‹›Ü™\‘]T™\Z\™YOO]YNÂˆYŠ]›Ü›OOOIÓSÓSÉÊ^ÂˆÛÛœÝ[™™\œ™YZ[™™\“[Û[ÓÜ™\‘]Qœ›ÛS[X™\Š^\›˜[Ü™\“›ß^\›˜[Ü™\’YÝÜ™YÜ™\™Y]Øš‹™š\œÝÙY[]Øš‹›\ÝÙY[]
+KÝÜ™Y]OY]Qœ›ÛJÝÜ™YÜ™\™Y]
+KÛÝ\˜ÙO[ÝÙ\ŠÜ™\‘]TÛÝ\˜ÙJNÂˆÛÛœÝ]SZ\ÛX]ÚHHJ[™™\œ™Y	‰Š\ÝÜ™Y]_]U^
+ÝÜ™Y]JHOOY]U^
+[™™\œ™Y
+JJNÂˆÛÛœÝÞ[˜Õ[YO\]›Ü›SÜ™\“ÛÚÜÓZÙTÞ[˜Õ[YJØš‹ÝÜ™YÜ™\™Y]
+NÂˆÛÛœÝ^XÚ]TÞ[˜Õ[YOVÉÜÞ[˜ÉË	ÜÞ[˜Ë][YIË	ÜÞ[˜Ú›Ûš^™YX]	Ë	ÛYØXÞK\Þ[˜ÉË	ÛZ\ÜÚ[™ÉË	Ý[šÛ›ÝÛ‰×Kš[˜ÛY\ÊÛÝ\˜ÙJNÂˆYŠ[™™\œ™Y	‰Š]SZ\ÛX]ÚÞ[˜Õ[Y_^XÚ]TÞ[˜Õ[YJJ^ÂˆÜ™\™Y]Z[™™\œ™YÂˆ\ÓÜšYÚ[˜[Ü™\‘]O]YNÂˆÜ™\‘]TÛÝ\˜ÙOIÛ[Û[Ë[Ü™\‹[[X™\‹Z[™™\œ™Y	ÎÂˆÜ™\•[YQ\Ý[X]Y]YNÂˆÜ™\‘]T™\Z\™Y]YNÂˆBˆBˆ™]\›ˆÂˆY˜ÛX[ŠØš‹—×ÚY
+K]›Ü›Nœ]›Ü›K^\›˜[Ü™\’Y™^\›˜[Ü™\’Y^\›˜[Ü™\“›Î™^\›˜[Ü™\“›Ë^\›˜[[™RY˜ÛX[ŠØš‹™^\›˜[[™RY
+KÜ™\™Y]›Ü™\™Y]™\ÜYÜ™\™Y]›Ü™\‘]T™\Z\™YÊØš‹œ™\ÜYÜ™\™Y]ÝÜ™YÜ™\™Y]
+NŠØš‹œ™\ÜYÜ™\™Y]	ÉÊK\ÓÜšYÚ[˜[Ü™\‘]Nš\ÓÜšYÚ[˜[Ü™\‘]KÜ™\‘]TÛÝ\˜ÙN›Ü™\‘]TÛÝ\˜ÙKÜ™\•[YQ\Ý[X]Y›Ü™\•[YQ\Ý[X]YÜ™\‘]T™\Z\™Y›Ü™\‘]T™\Z\™YZY]›Øš‹œZY]	ÉËÚ\Y]›Øš‹œÚ\Y]	ÉËÛÛ\]Y]›Øš‹˜ÛÛ\]Y]	ÉËÙ]Y]›Øš‹œÙ]Y]	ÉË™Y[™Y]›Øš‹œ™Y[™Y]	ÉËØ[˜Ù[Y]›Øš‹˜Ø[˜Ù[Y]	ÉËÝ]\Õ\]Y]›Øš‹œÝ]\Õ\]Y]	ÉËÚÝN˜ÛX[ŠØš‹œÚÝJK›ÙXÝ˜[YN˜ÛX[ŠØš‹œ›ÙXÝ˜[YJ_	ù§*¹doyd#yea¹dàIË˜\šX[˜[YN˜ÛX[ŠØš‹˜\šX[˜[YJK]X[]Nœ]X[]K[š]šXÙN[š]šXÙKÜ›ÜÜÐ[[Ý[™Ü›ÜÜÐ[[Ý[\Ý[X]Y™][[Ý[™š\œÝ[X™\ŠØš‹ÉÙ\Ý[X]Y™][[Ý[	×JK˜[YKXÝX[Ù]Y[[Ý[›[X™\“Ü“[
+Øš‹˜XÝX[Ù]Y[[Ý[
+K™Y[™[[Ý[›[X™\“Ü“[
+Øš‹œ™Y[™[[Ý[
+KÛÜÝÝ[˜ÛÜÝÝ[ÛÜÝ\Ý[X]Y›Øš‹˜ÛÜÝ\Ý[X]YOO]YKÛÜÝÛÝ\˜ÙN˜ÛX[ŠØš‹˜ÛÜÝÛÝ\˜ÙJK\Ý[X]Y›Ùš]™š\œÝ[X™\ŠØš‹ÉÙ\Ý[X]Y›Ùš]	×JK˜[YKÜ™\”Ý]\Î˜ÛX[ŠØš‹›Ü™\”Ý]\ÊK^[Y[Ý]\Î˜ÛX[ŠØš‹œ^[Y[Ý]\ÊKÝ\ÝÛY\“˜[YN˜ÛX[ŠØš‹˜Ý\ÝÛY\“˜[YJK›ØÙ\ÜÚ[™ÔÝ]\Î˜ÛX[ŠØš‹œ›ØÙ\ÜÚ[™ÔÝ]\ÊK\ÝÜšXØ[[\Ü›Øš‹š\ÝÜšXØ[[\ÜOO]YK\ÝÜšXØ[[\Ü˜]Ú˜ÛX[ŠØš‹š\ÝÜšXØ[[\Ü˜]Ú
+K[™[ÜžTÚÚ\Y›Øš‹š[™[ÜžTÚÚ\YOO]YK[™[ÜžQY™™XÝ˜ÛX[ŠØš‹š[™[ÜžQY™™XÝ
+K[™[ÜžP\YY›Øš‹š[™[ÜžP\YYOO]YK[™[ÜžT™]™\œÙY›Øš‹š[™[ÜžT™]™\œÙYOO]YK™]™\œØ[\YY›Øš‹œ™]™\œØ[\YYOO]YK™]™\œØ[™X\ÛÛŽ˜ÛX[ŠØš‹œ™]™\œØ[™X\ÛÛŸØš‹˜Ø[˜Ù[][Û”™X\ÛÛŠK™]™\œØ[]X[]N™š\œÝ[X™\ŠØš‹ÉÜ™]™\œØ[]X[]I×JK˜[YK™]™\œØ[ÛÜÝÝ[™š\œÝ[X™\ŠØš‹ÉÜ™]™\œØ[ÛÜÝÝ[	×JK˜[YK[™[ÜžP™Y›Ü™N™š\œÝ[X™\ŠØš‹ÉÚ[™[ÜžP™Y›Ü™I×JK˜[YK[™[ÜžPY\Ž™š\œÝ[X™\ŠØš‹ÉÚ[™[ÜžPY\‰×JK˜[YK[™[ÜžP™Y›Ü™T™]™\œØ[™š\œÝ[X™\ŠØš‹ÉÚ[™[ÜžP™Y›Ü™T™]™\œØ[	×JK˜[YK[™[ÜžPY\”™]™\œØ[™š\œÝ[X™\ŠØš‹ÉÚ[™[ÜžPY\”™]™\œØ[	×JK˜[YKZ\ÜÚ[™Ñœ›ÛT]›Ü›PÛÝ[™š\œÝ[X™\ŠØš‹ÉÛZ\ÜÚ[™Ñœ›ÛT]›Ü›PÛÝ[	×JK˜[YK›ÙXÝY˜ÛX[ŠØš‹œ›ÙXÝY
+K›ØÙ\ÜÚ[™Ñ\œ›ÜŽ˜ÛX[ŠØš‹œ›ØÙ\ÜÚ[™Ñ\œ›ÜŠKš\œÝÙY[]›Øš‹™š\œÝÙY[]	ÉË\ÝÙY[]›Øš‹›\ÝÙY[]	ÉË™]™\œÙY]›Øš‹œ™]™\œÙY]	ÉËÞ[˜Ô[’Y˜ÛX[ŠØš‹œÞ[˜Ô[’Y
+K™]\›’[™[™ÔÝ]\Î˜ÛX[ŠØš‹œ™]\›’[™[™ÔÝ]\ÊK™]\›‘\ÜÜÚ][ÛŽ˜ÛX[ŠØš‹œ™]\›‘\ÜÜÚ][ÛŠK™]\›”]X[]N™š\œÝ[X™\ŠØš‹ÉÜ™]\›”]X[]I×JK˜[YK™]\›“›ÝN˜ÛX[ŠØš‹œ™]\›“›ÝJK™]\›™Y™XÙZ]™Y]›Øš‹œ™]\›™Y™XÙZ]™Y]	ÉË™]\›”›ØÙ\ÜÙY]›Øš‹œ™]\›”›ØÙ\ÜÙY]	ÉË™]\›’[™[ÜžP\YY›Øš‹œ™]\›’[™[ÜžP\YYOO]YBˆNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™T]›Ü›TÞ[˜Ô[ŠØšŠ^Âˆ™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+K[’Y˜ÛX[ŠØš‹œ[’Y
+_ÛX[ŠØš‹—×ÚY
+KšYÙÙ\Ž˜ÛX[ŠØš‹šYÙÙ\ŠKÝ]\Î˜ÛX[ŠØš‹œÝ]\ÊKÝ\Y]›Øš‹œÝ\Y]	ÉËš[š\ÚY]›Øš‹™š[š\ÚY]	ÉËÝ[[X\žN›Øš‹œÝ[[X\žI‰\[ÙˆØš‹œÝ[[X\žOOOIÛØš™XÝ	ÏÛØš‹œÝ[[X\žNžßK\œ›ÜŽ˜ÛX[ŠØš‹™\œ›ÜŠ_NÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™T]›Ü›R[™[ÜžT]Y]YJØšŠ^Âˆ™]\›ˆÂˆY˜ÛX[ŠØš‹—×ÚY
+Kˆ›ÙXÝY˜ÛX[ŠØš‹œ›ÙXÝY
+_ÛX[ŠØš‹—×ÚY
+KˆÚÝN˜ÛX[ŠØš‹œÚÝJKˆ›ÙXÝ˜[YN˜ÛX[ŠØš‹œ›ÙXÝ˜[YJKˆ\™Ù]ÝØÚÎ™š\œÝ[X™\ŠØš‹ÉÝ\™Ù]ÝØÚÉ×JK˜[YKˆÝ]\Î˜ÛX[ŠØš‹œÝ]\Ê_	Ü[™[™ÉËˆ™X\ÛÛŽ˜ÛX[ŠØš‹œ™X\ÛÛŠKˆ\Ý][\Ý]\Î˜ÛX[ŠØš‹›\Ý][\Ý]\ÊKˆ\Ý][\]›Øš‹›\Ý][\]	ÉËˆ\]Y]›Øš‹\]Y]	ÉËˆ[’Y˜ÛX[ŠØš‹œ[’Y
+Kˆ™\Ý[Î›Øš‹œ™\Ý[É‰\[ÙˆØš‹œ™\Ý[ÏOOIÛØš™XÝ	ÏÛØš‹œ™\Ý[ÎžßBˆNÂˆBˆ[˜Ý[Ûˆ[™[ÜžTÞ[˜Ð[›ÛX[T™X\ÛÛŠÝ]\ËY\ÜØYÙJ^ÂˆÛÛœÝ˜]ÏXÛX[ŠY\ÜØYÙJK^[ÝÙ\ŠÜÝ]\Ë˜]×Kš›Ú[Š	È	ÊJNÂˆYŠ^š[˜ÛY\Ê	Ù^\›˜[™[™ÜœÚÝIÊ_^š[˜ÛY\Ê	ÜÙ[\œ›ÙXÝY	Ê_^š[˜ÛY\Ê	Ý™[™Üš][ZY	ÊJ\™]\›ˆ	ù¢o¹.#yb,9nlùcì9ea¹dày¢%º)£ù¨/ÒÕH:acyl#IÎÂˆYŠ^š[˜ÛY\Ê	ùea¹dày.èùè¯	Ê_^š[˜ÛY\Ê	ú)£ù¨/9.èùè¯	Ê_^š[˜ÛY\Ê	ù¢o¹.#yb,	Ê_^š[˜ÛY\Ê	Û›Ý›Ý[™	Ê_^š[˜ÛY\Ê	Û›ÈX]Ú	ÊJ\™]\›ˆ	ù¢o¹.#yb,9nlùcì9ea¹dàzacyl#IÎÂˆYŠ^š[˜ÛY\Ê	Ý[˜]]Üš^™Y	Ê_^š[˜ÛY\Ê	Ù›Ü˜šY[‰Ê_^š[˜ÛY\Ê	ÍIÊ_^š[˜ÛY\Ê	ÍÉÊJ\™]\›ˆ	ùnlùcì9£¢9«"¹¢%¹«"ºfd9ål9n.	ÎÂˆYŠ^š[˜ÛY\Ê	Ý[Y[Ý]	Ê_^š[˜ÛY\Ê	Ý[YYÝ]	Ê_^š[˜ÛY\Ê	ú`/¹¦`‰ÊJ\™]\›ˆ	ùnlùcì:`(ùíæº`/¹¦`‰ÎÂˆYŠ^š[˜ÛY\Ê	Ü˜]H[Z]	Ê_^š[˜ÛY\Ê	ÝÛÈX[žH™\]Y\ÝÉÊ_^š[˜ÛY\Ê	ÍŽIÊJ\™]\›ˆ	ùnlùcì9do9cêù«(y¥n9cåúfd	ÎÂˆYŠÛX[ŠÝ]\ÊOOOIÓ“ÕÔ•S‰Ê\™]\›ˆ	ùnlùcì9nªùkf9¦í9¥¬9§*¹gíú(c	ÎÂˆ™]\›ˆ˜]ßÛX[ŠÝ]\Ê_	ùnlùcì9fç¹`¬ù§*¹¦#ºc+ú*©	ÎÂˆBˆ[˜Ý[Ûˆ[™[ÜžTÞ[˜Ð[›ÛX[Y\Ê
+^ÂˆÛÛœÝ›ÝÜÏV×NÂˆ
+Ý]Kœ]›Ü›R[™[ÜžT]Y]Y_×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ]Y]YJ^ÂˆYŠ]Y]YK›\Ý][\Ý]\ÈOOIÙ\œ›Ü‰Ê\™]\›ŽÂˆÛÛœÝ™\Ý[Ï\]Y]YKœ™\Ý[ßßK]›Ü›S˜[Y\ÏSØš™XÝšÙ^\Ê™\Ý[ÊNÂˆYŠ\]›Ü›S˜[Y\Ë›[™Ý
+^Âˆ›ÝÜËœ\Ú
+Ü]Y]YRYœ]Y]YKšY›ÙXÝYœ]Y]YKœ›ÙXÝYÚÝNœ]Y]YKœÚÝK›ÙXÝ˜[YNœ]Y]YKœ›ÙXÝ˜[YK\™Ù]ÝØÚÎœ]Y]YK\™Ù]ÝØÚË]›Ü›N‰ù§*º/ª:+f9nlùcì	ËÝ]\Î‰ÑT”“Ô‰ËY\ÜØYÙN‰ùd#9«iyê"ùo#ù¬¤¹§"yåfy."ùnlùcì9¦#¹í,	Ë™X\ÛÛŽ‰ùd#9«iyíd9§§9.#yk£9¥m	Ë\Ý][\]œ]Y]YK›\Ý][\]]Y]YK\]Y][’Yœ]Y]YKœ[’YJNÂˆ™]\›ŽÂˆBˆ]›Ü›S˜[Y\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ]›Ü›J^ÂˆÛÛœÝ™\Ý[\™\Ý[ÖÜ]›Ü›WI‰\[Ùˆ™\Ý[ÖÜ]›Ü›WOOOIÛØš™XÝ	ÏÜ™\Ý[ÖÜ]›Ü›WNžßNÂˆYŠ™\Ý[œÝXØÙ\ÜÏOO]YJ\™]\›ŽÂˆ›ÝÜËœ\Ú
+Ü]Y]YRYœ]Y]YKšY›ÙXÝYœ]Y]YKœ›ÙXÝYÚÝNœ]Y]YKœÚÝK›ÙXÝ˜[YNœ]Y]YKœ›ÙXÝ˜[YK\™Ù]ÝØÚÎœ]Y]YK\™Ù]ÝØÚË]›Ü›Nœ]›Ü›KÝ]\Î˜ÛX[Š™\Ý[œÝ]\Ê_	ÑT”“Ô‰ËY\ÜØYÙN˜ÛX[Š™\Ý[›Y\ÜØYÙJK™X\ÛÛŽš[™[ÜžTÞ[˜Ð[›ÛX[T™X\ÛÛŠ™\Ý[œÝ]\Ë™\Ý[›Y\ÜØYÙJK\Ý][\]œ]Y]YK›\Ý][\]]Y]YK\]Y][’Yœ]Y]YKœ[’YJNÂˆJNÂˆJNÂˆ™]\›ˆ›ÝÜËœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ
+]Qœ›ÛJ‹›\Ý][\]
+_
+KJ]Qœ›ÛJK›\Ý][\]
+_
+_Kœ]›Ü›K›ØØ[PÛÛ\\™J‹œ]›Ü›K	ÞšR[	Ê_KœÚÝK›ØØ[PÛÛ\\™J‹œÚÝK	ÞšR[	ÊNßJNÂˆBˆ[˜Ý[ÛˆšXÙTÞ[˜Ð[›ÛX[T™X\ÛÛŠÝ]\ËY\ÜØYÙJ^ÂˆÛÛœÝ˜]ÏXÛX[ŠY\ÜØYÙJK^[ÝÙ\ŠÜÝ]\Ë˜]×Kš›Ú[Š	È	ÊJNÂˆYŠÛX[ŠÝ]\ÊOOOIÝ[œÝ\ÜY	Ê\™]\›ˆ˜]ß	ùæë¹bcyd#9«iyê"ùo#ùl&¹§*¹¥+ù£í9«i9nlùcì9æí9£©y¥.y`îIÎÂˆYŠ^š[˜ÛY\Ê	Ü›ÙXÝY	Ê_^š[˜ÛY\Ê	Ý˜\šX[Y	Ê_^š[˜ÛY\Ê	Ý™[™Üš][ZY	Ê_^š[˜ÛY\Ê	ÜÚÝIÊ_^š[˜ÛY\Ê	ù¢o¹.#yb,	Ê_^š[˜ÛY\Ê	Ý[›X\Y	ÊJ\™]\›ˆ	ù¢o¹.#yb,9nlùcì9ea¹dày¢%º)£ù¨/:acyl#IÎÂˆYŠ^š[˜ÛY\Ê	Ý[˜]]Üš^™Y	Ê_^š[˜ÛY\Ê	Ù›Ü˜šY[‰Ê_^š[˜ÛY\Ê	ÍIÊ_^š[˜ÛY\Ê	ÍÉÊJ\™]\›ˆ	ùnlùcì9£¢9«"¹¢%¹¥.y`îy«"ºfd9ål9n.	ÎÂˆYŠ^š[˜ÛY\Ê	Ý[Y[Ý]	Ê_^š[˜ÛY\Ê	Ý[YYÝ]	Ê_^š[˜ÛY\Ê	ú`/¹¦`‰ÊJ\™]\›ˆ	ùnlùcì9¥.y`îz`(ùíæº`/¹¦`‰ÎÂˆYŠ^š[˜ÛY\Ê	ÜšXÙIÊ_^š[˜ÛY\Ê	ùe+¹`îIÊ_^š[˜ÛY\Ê	ù`îy¨/	ÊJ\™]\›ˆ˜]ß	ùnlùcì9¢ä¹íey`îy¨/9¦í9¥¬	ÎÂˆ™]\›ˆ˜]ßÛX[ŠÝ]\Ê_	ùnlùcì9`îy¨/9d#9«iyi,y¥eÉÎÂˆBˆ[˜Ý[ÛˆšXÙTÞ[˜Ð[›ÛX[Y\Ê
+^ÂˆÛÛœÝ›ÝÜÏV×NÂˆ
+Ý]K˜Ø][Ùß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÙXÝ
+^ÂˆÛÛœÝÞ[˜Ï\›ÙXÝœ]›Ü›TšXÙTÞ[˜É‰\[Ùˆ›ÙXÝœ]›Ü›TšXÙTÞ[˜ÏOOIÛØš™XÝ	ÏÜ›ÙXÝœ]›Ü›TšXÙTÞ[˜ÎžßNÂˆÉÑX\ÞTÝÜ™IË	ÓSÓSÉË	ÐÛÝ\[™É×K™›Ü‘XXÚ
+[˜Ý[ÛŠ]›Ü›J^ÂˆÛÛœÝ›ÝÏ\Þ[˜ÖÜ]›Ü›WI‰\[ÙˆÞ[˜ÖÜ]›Ü›WOOOIÛØš™XÝ	ÏÜÞ[˜ÖÜ]›Ü›WNžßKÝ]\ÏXÛX[Š›ÝËœÝ]\ÊKÓÝÙ\Ø\ÙJ
+NÂˆYŠVÉÙ\œ›Ü‰Ë	Ý[›X\Y	×Kš[˜ÛY\ÊÝ]\ÊJ\™]\›ŽÂˆ›ÝÜËœ\Ú
+ÚÚ[™‰ÜšXÙIË›ÙXÝYœ›ÙXÝ™ØÒYÚÝNœ›ÙXÝœÚÝK›ÙXÝ˜[YNœ›ÙXÝ›ÜšYÚ[˜[˜[Y_›ÙXÝ›˜[YK\™Ù]šXÙN›[X™\“Ü“[
+›ÝË\™Ù]šXÙJK]›Ü›Nœ]›Ü›KÝ]\ÎœÝ]\ËÕ\\Ø\ÙJ
+KY\ÜØYÙN˜ÛX[Š›ÝË›Y\ÜØYÙJK™X\ÛÛŽœšXÙTÞ[˜Ð[›ÛX[T™X\ÛÛŠÝ]\Ë›ÝË›Y\ÜØYÙJK\Ý][\]œ›ÝË›\Ý][\]›ÝËœ™\]Y\ÝY]Þ[˜Ë›\Ý\]Y][’Y˜ÛX[Š›ÝËœ[’Y
+_JNÂˆJNÂˆJNÂˆ™]\›ˆ›ÝÜÎÂˆBˆ[˜Ý[Ûˆ]›Ü›TÞ[˜Ð[›ÛX[Y\Ê
+^ÂˆÛÛœÝ[™[ÜžOZ[™[ÜžTÞ[˜Ð[›ÛX[Y\Ê
+K›X\
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆØš™XÝ˜\ÜÚYÛŠÚÚ[™‰Ú[™[ÜžIßK›ÝÊNßJNÂˆ™]\›ˆ[™[ÜžK˜ÛÛ˜Ø]
+šXÙTÞ[˜Ð[›ÛX[Y\Ê
+JKœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ
+]Qœ›ÛJ‹›\Ý][\]
+_
+KJ]Qœ›ÛJK›\Ý][\]
+_
+_Kœ]›Ü›K›ØØ[PÛÛ\\™J‹œ]›Ü›K	ÞšR[	Ê_ÛX[ŠKœÚÝJK›ØØ[PÛÛ\\™JÛX[Š‹œÚÝJK	ÞšR[	ÊNßJNÂˆBˆ[˜Ý[Ûˆ[›ÛX[S˜[YRÙ^J˜[YJ^Âˆ™]\›ˆÝÙ\ŠÛX[Š˜[YJJKœ™\XÙJ×ÊËÙË	ÉÊKœ™\XÙJÖ×WË×‹;ï#8à ¸àîÎ»ï&Žûï&Ê
+{ï";ï"W×xà$8à$xà#8à#xà#¸à#ÉÈ˜KÙË	ÉÊNÂˆBˆ[˜Ý[Ûˆ]›Ü›TÞ[˜Ð[›ÛX[QÜ›Ý\Ê›ÝÜÊ^ÂˆÛÛœÝØ][ÙÐžQØÏ^ßKØ][ÙÐžTÚÝO^ßKØ][ÙÐžS˜[YO^ßNÂˆ
+Ý]K˜Ø][Ùß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÙXÝ
+^ÂˆÛÛœÝØÒYXÛX[Š›ÙXÝ™ØÒY
+KÚÝO[ÝÙ\ŠÛX[Š›ÙXÝœÚÝJJK˜[YOXÛX[Š›ÙXÝ›ÜšYÚ[˜[˜[Y_›ÙXÝ›Û›[™S˜[Y_›ÙXÝ›˜[YJK˜[YRÙ^OX[›ÛX[S˜[YRÙ^J˜[YJNÂˆYŠØÒY
+XØ][ÙÐžQØÖÙØÒYO\›ÙXÝÂˆYŠÚÝI‰ˆXØ][ÙÐžTÚÝVÜÚÝWJXØ][ÙÐžTÚÝVÜÚÝWO\›ÙXÝÂˆYŠ˜[YRÙ^I‰ˆXØ][ÙÐžS˜[YVÛ˜[YRÙ^WJXØ][ÙÐžS˜[YVÛ˜[YRÙ^WO\›ÙXÝÂˆJNÂˆÛÛœÝÜ›Ý\ÏV×K[X\Ù\Ï^ßNÂˆ
+›ÝÜß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠÛÝ\˜ÙK[™^
+^ÂˆÛÛœÝ›ÝÏSØš™XÝ˜\ÜÚYÛŠßKÛÝ\˜ÙJK˜]ÒYXÛX[Š›ÝËœ›ÙXÝY
+K˜]ÔÚÝOXÛX[Š›ÝËœÚÝJK˜]Ó˜[YOXÛX[Š›ÝËœ›ÙXÝ˜[YJNÂˆÛÛœÝX]ÚYJ˜]ÒY	‰˜Ø][ÙÐžQØÖÜ˜]ÒYJ_
+˜]ÔÚÝI‰˜Ø][ÙÐžTÚÝVÛÝÙ\Š˜]ÔÚÝJWJ_
+˜]Ó˜[YI‰˜Ø][ÙÐžS˜[YVØ[›ÛX[S˜[YRÙ^J˜]Ó˜[YJWJ_[ÂˆÛÛœÝ›ÙXÝY\˜]ÒYÛX[ŠX]ÚY	‰›X]ÚY™ØÒY
+KÚÝO\˜]ÔÚÝ_ÛX[ŠX]ÚY	‰›X]ÚYœÚÝJK›ÙXÝ˜[YO\˜]Ó˜[Y_ÛX[ŠX]ÚY	‰ŠX]ÚY›ÜšYÚ[˜[˜[Y_X]ÚY›Û›[™S˜[Y_X]ÚY›˜[YJJNÂˆ›ÝËœ›ÙXÝY\›ÙXÝYÜ›ÝËœÚÝO\ÚÝNÜ›ÝËœ›ÙXÝ˜[YO\›ÙXÝ˜[YNÂˆÛÛœÝØ[™Y]P[X\Ù\ÏV×NÂˆYŠ›ÙXÝY
+XØ[™Y]P[X\Ù\Ëœ\Ú
+	ÚY‰ÊÜ›ÙXÝY
+NÂˆYŠÚÝJXØ[™Y]P[X\Ù\Ëœ\Ú
+	ÜÚÝN‰ÊÛÝÙ\ŠÚÝJJNÂˆÛÛœÝ˜[YRÙ^OX[›ÛX[S˜[YRÙ^J›ÙXÝ˜[YJNÚYŠ˜[YRÙ^JXØ[™Y]P[X\Ù\Ëœ\Ú
+	Û˜[YN‰ÊÛ˜[YRÙ^JNÂˆ]Ü›Ý\[[ÂˆØ[™Y]P[X\Ù\ËœÛÛYJ[˜Ý[ÛŠ[X\Ê^ÚYŠ[X\Ù\ÖØ[X\×J^ÙÜ›Ý\X[X\Ù\ÖØ[X\×NÜ™]\›ˆYNß\™]\›ˆ˜[ÙNßJNÂˆYŠYÜ›Ý\
+^ÙÜ›Ý\^ÚÙ^N‰Ø[›ÛX[KIÊÙÜ›Ý\Ë›[™Ý›ÙXÝYœ›ÙXÝYÚÝNœÚÝK›ÙXÝ˜[YNœ›ÙXÝ˜[YK\ÜÝY\Î–×K\Ý][\]œ›ÝË›\Ý][\]NÙÜ›Ý\Ëœ\Ú
+Ü›Ý\
+NßBˆYŠYÜ›Ý\œ›ÙXÝY	‰œ›ÙXÝY
+YÜ›Ý\œ›ÙXÝY\›ÙXÝYÂˆYŠYÜ›Ý\œÚÝI‰œÚÝJYÜ›Ý\œÚÝO\ÚÝNÂˆYŠYÜ›Ý\œ›ÙXÝ˜[YI‰œ›ÙXÝ˜[YJYÜ›Ý\œ›ÙXÝ˜[YO\›ÙXÝ˜[YNÂˆØ[™Y]P[X\Ù\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ[X\Ê^Ø[X\Ù\ÖØ[X\×OYÜ›Ý\ßJNÂˆÛÛœÝ\ÜÝYRÙ^OVÜ›ÝËœ]›Ü›K›ÝËšÚ[™›ÝËœ™X\ÛÛ‹›ÝË›Y\ÜØYÙK›ÝË\™Ù]šXÙK›ÝË\™Ù]ÝØÚ×K›X\
+ÛX[ŠKš›Ú[Š	ß	ÊNÂˆYŠYÜ›Ý\š\ÜÝY\ËœÛÛYJ[˜Ý[ÛŠ\ÜÝYJ^Ü™]\›ˆ\ÜÝYK—×Ú\ÜÝYRÙ^OOOZ\ÜÝYRÙ^NßJJ^Ü›ÝË—×Ú\ÜÝYRÙ^OZ\ÜÝYRÙ^NÙÜ›Ý\š\ÜÝY\Ëœ\Ú
+›ÝÊNßBˆYŠ
+]Qœ›ÛJ›ÝË›\Ý][\]
+_
+OŠ]Qœ›ÛJÜ›Ý\›\Ý][\]
+_
+JYÜ›Ý\›\Ý][\]\›ÝË›\Ý][\]ÂˆJNÂˆÜ›Ý\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠÜ›Ý\
+^ÙÜ›Ý\š\ÜÝY\ËœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆKœ]›Ü›K›ØØ[PÛÛ\\™J‹œ]›Ü›K	ÞšR[	Ê_KšÚ[™›ØØ[PÛÛ\\™J‹šÚ[™	ÞšR[	ÊNßJNßJNÂˆ™]\›ˆÜ›Ý\ËœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ
+]Qœ›ÛJ‹›\Ý][\]
+_
+KJ]Qœ›ÛJK›\Ý][\]
+_
+_ÛX[ŠKœ›ÙXÝ˜[YJK›ØØ[PÛÛ\\™JÛX[Š‹œ›ÙXÝ˜[YJK	ÞšR[	Ê_ÛX[ŠKœÚÝJK›ØØ[PÛÛ\\™JÛX[Š‹œÚÝJK	ÞšR[	ÊNßJNÂˆBˆ[˜Ý[Ûˆ›Ü›X[^™P]Y]
+ØšŠ^È™]\›ˆÚY˜ÛX[ŠØš‹—×ÚY
+KXÝ[ÛŽ˜ÛX[ŠØš‹˜XÝ[ÛŠK[]U\N˜ÛX[ŠØš‹™[]U\JK[]RY˜ÛX[ŠØš‹™[]RY
+KÝ[[X\žN˜ÛX[ŠØš‹œÝ[[X\žJKÜ™X]Y]›Øš‹˜Ü™X]Y]	ÉËÜ™X]YžN˜ÛX[ŠØš‹˜Ü™X]YžJ_NÈB‚‚™[˜Ý[Ûˆ]Y]YR[™[ÜžTÞ[˜Ò[•˜[œØXÝ[ÛŠ›ÙXÝYÚÝKÝØÚË™X\ÛÛŠ^ØÛÛœÝ™Y\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ]›Ü›R[™[ÜžT]Y]YJK™ØÊ›ÙXÝY
+NÝœÙ]
+™Y‹Ü›ÙXÝYœ›ÙXÝYÚÝN˜ÛX[ŠÚÝJK\™Ù]ÝØÚÎ“X]›X^
+[X™\ŠÝØÚß
+JKÝ]\Î‰Ü[™[™ÉË™X\ÛÛŽ˜ÛX[Š™X\ÛÛŠK\]Y]œÙ\™\•[Y\Ý[\
+
+K\]YžN\Ù\“X™[
+
+K™\œÚ[ÛŽ•‘T”ÒSÓŸKÛY\™ÙNY_JNßB‚ˆ\Þ[˜È[˜Ý[ÛˆÜš]P]Y]
+XÝ[Û‹[]U\K[]RYÝ[[X\žJ^Âˆž^È]ØZ]Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë˜]Y]
+K˜Y
+ØXÝ[ÛŽ˜XÝ[Û‹[]U\N™[]U\K[]RY™[]RY	ÉËÝ[[X\žNœÝ[[X\ž_	ÉËÜ™X]YžN\Ù\“X™[
+
+KÜ™X]Y]œÙ\™\•[Y\Ý[\
+
+K™\œÚ[ÛŽ•‘T”ÒSÓŸJNÈXØ]Ú
+\œŠ^ßBˆB‚ˆ[˜Ý[Ûˆ^XÝ[Y\Ý[\
+˜[YK\ÛÊ^ÂˆÛÛœÝ]OY]Qœ›ÛJ˜[YJNÂˆ™]\›ˆHJ]I‰™]KÒTÓÔÝš[™Ê
+OOOZ\ÛÊNÂˆBˆ[˜Ý[Ûˆ^XÝ[Y\Ý[\Û™SÙŠ˜[YK\ÛÜÊ^Ü™]\›ˆ\ÛÜËœÛÛYJ[˜Ý[ÛŠ\ÛÊ^Ü™]\›ˆ^XÝ[Y\Ý[\
+˜[YK\ÛÊNßJNßB‚ˆ\Þ[˜È[˜Ý[Ûˆ™\Z\–\ÝŒL™[Ü™\’\ÝÜžSÛ˜ÙJ
+^ÂˆÛÛœÝ™\Z\’YIÖTÕŒLÌNLŒL—ÒTÕ’VÌŒŒIËØ[RYIØ’Œ›ÙY“ZœœÝ˜‘QQ\ŒXIË™XÙZ]˜X›RYIÓZÝL™YTLÝŒLR’YÌIË\ÜÚ]YIÐÑ˜Ð^™M\ÒÖQÕR›‘IËZ[^[Y[YIÒ‘ÐÍ[ÝÜ›Ü’Û™ž›	Ë›ÙXÝYIÛSÐ•TS]•ÜUÚÍÓ˜MY‰ËÝØÚÒ[’YIÒ‘ÝÙÐ•˜ÞMžLRÕž’Ø[ÖIËÝØÚÓÝ]YIÞSŽÚ^^Ù’Ö–˜NÐLP‰ËØ[S›ÏIÔ‘KLŒŒÌMŒMÍM‹US•Õ•‰ËÛÛ]\ÛÏIÌŒ‹LËLM•MÎM‹ŒM‰Ë[]™\™Y]\ÛÏIÌŒ‹LLUNŒŒŒ‰ËÝØÚÔ™XYR\ÛÏIÌŒ‹LLUNŒÎNKŒ‰ËÜšYÚ[˜[[š[Y[\ÛÏIÌŒ‹LLULŽŒŽNŒÌKŽÍÖ‰ËÜšYÚ[˜[ÝØÚÒ[’\ÛÏIÌŒ‹LLULŽŒŽM‹ÍÎ‰ÎÂˆÛÛœÝX\šÙ\”™Y\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ë˜]Y]
+K™ØÊ™\Z\’Y
+KØ[T™Y\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”ËœØ[\ÊK™ØÊØ[RY
+K™XÙZ]˜X›T™Y\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ™XÙZ]˜X›\ÊK™ØÊ™XÙZ]˜X›RY
+K\ÜÚ]™Y\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ™XÙZ]˜X›T^[Y[ÊK™ØÊ\ÜÚ]Y
+KZ[^[Y[™Y\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ™XÙZ]˜X›T^[Y[ÊK™ØÊZ[^[Y[Y
+K›ÙXÝ™Y\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëœ›ÙXÝÊK™ØÊ›ÙXÝY
+KÝØÚÒ[”™Y\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëš[™[ÜžJK™ØÊÝØÚÒ[’Y
+KÝØÚÓÝ]™Y\Ý]K™‹˜ÛÛXÝ[ÛŠÓÓPÕSÓ”Ëš[™[ÜžJK™ØÊÝØÚÓÝ]Y
+NÂˆ™]\›ˆÝ]K™‹œ[•˜[œØXÝ[ÛŠ\Þ[˜È[˜Ý[ÛŠ
+^ÂˆÛÛœÝX\šÙ\”Û˜\X]ØZ]™Ù]
+X\šÙ\”™YŠNÂˆYŠX\šÙ\”Û˜\™^\ÝÊ\™]\›ˆ	Ø[™XYWÜ™\Z\™Y	ÎÂˆÛÛœÝØ[TÛ˜\X]ØZ]™Ù]
+Ø[T™YŠK™XÙZ]˜X›TÛ˜\X]ØZ]™Ù]
+™XÙZ]˜X›T™YŠK\ÜÚ]Û˜\X]ØZ]™Ù]
+\ÜÚ]™YŠKZ[^[Y[Û˜\X]ØZ]™Ù]
+Z[^[Y[™YŠK›ÙXÝÛ˜\X]ØZ]™Ù]
+›ÙXÝ™YŠKÝØÚÒ[”Û˜\X]ØZ]™Ù]
+ÝØÚÒ[”™YŠKÝØÚÓÝ]Û˜\X]ØZ]™Ù]
+ÝØÚÓÝ]™YŠNÂˆ[˜Ý[Ûˆ™\]Z\™T™\Z\ŠÛÛ™][Û‹Y\ÜØYÙJ^ÚYŠXÛÛ™][ÛŠ]›ÝÈ™]È\œ›ÜŠ	ÖTÕ‹LL9«mùcì¹¦í9«hùmì¹`g9«h»ï&‰ÊÛY\ÜØYÙJNßBˆ™\]Z\™T™\Z\ŠØ[TÛ˜\™^\ÝÉ‰œ™XÙZ]˜X›TÛ˜\™^\ÝÉ‰™\ÜÚ]Û˜\™^\ÝÉ‰Z[^[Y[Û˜\™^\ÝÉ‰œ›ÙXÝÛ˜\™^\ÝÉ‰œÝØÚÒ[”Û˜\™^\ÝÉ‰œÝØÚÓÝ]Û˜\™^\ÝË	ù£!ùk¦¹æ¡9c§ùiâù¥¡ù.í¹.#yk£9¥m	ÊNÂˆÛÛœÝØ[O\Ø[TÛ˜\™]J
+_ßK™XÙZ]˜X›O\™XÙZ]˜X›TÛ˜\™]J
+_ßK\ÜÚ]Y\ÜÚ]Û˜\™]J
+_ßKZ[^[Y[]Z[^[Y[Û˜\™]J
+_ßK›ÙXÝ\›ÙXÝÛ˜\™]J
+_ßKÝØÚÒ[\ÝØÚÒ[”Û˜\™]J
+_ßKÝØÚÓÝ]\ÝØÚÓÝ]Û˜\™]J
+_ßNÂˆ™\]Z\™T™\Z\ŠÛX[ŠØ[KœØ[S›ÊOOO\Ø[S›É‰˜ÛX[ŠØ[KœØ[U\JOOOIÜ™[Ü™\‰Ë	úh$:,ï9e«º.ªùb!¹.#yë)‰ÊNÂˆ™\]Z\™T™\Z\Š[X™\ŠØ[KÝ[Ø[K›Ü™\•Ý[
+OOOLŽL	‰“[X™\ŠØ[K˜ÛÜÝÝ[
+OOOLML	‰“[X™\ŠØ[K™Ü›ÜÜÔ›Ùš]
+OOOLLÍL	ù¢$9.©:aäzhcxà y¢$9§+9¢%¹«æùb*y.#yë)‰ÊNÂˆ™\]Z\™T™\Z\Š^XÝ[Y\Ý[\
+Ø[Kœ™[Ü™\]ÛÛ]\ÛÊI‰™^XÝ[Y\Ý[\Û™SÙŠØ[KœÛÛ]ÛÜšYÚ[˜[[š[Y[\ÛËÛÛ]\Û×JI‰™^XÝ[Y\Ý[\Û™SÙŠØ[K™[]™\™Y]ÛÜšYÚ[˜[[š[Y[\ÛË[]™\™Y]\Û×JK	ùc§ù¢$9.©9¥éy¢%¹.©:,ª9¥éymìº(ªùam¹.å¹¤ãy/g9¥.z+¢‰ÊNÂˆ™\]Z\™T™\Z\ŠÛX[Š™XÙZ]˜X›KœØ[RY
+OOO\Ø[RY	‰“[X™\Š™XÙZ]˜X›KÝ[[[Ý[
+OOOLŽL	‰“[X™\Š™XÙZ]˜X›Kœ™XÙZ]™Y[[Ý[
+OOOLŽL	‰“[X™\Š™XÙZ]˜X›K›Ý]Ý[™[™Ð[[Ý[
+OOOL	‰˜ÛX[Š™XÙZ]˜X›KœÝ]\ÊOOOIÜZY	Ë	ù¡ây¥-¹n,ù«/¹.#y¦+ùmì¹¥-¹®!HŽL9a`ÉÊNÂˆ™\]Z\™T™\Z\ŠÛX[Š\ÜÚ]œØ[RY
+OOO\Ø[RY	‰“[X™\Š\ÜÚ]˜[[Ý[
+OOOLL	‰™^XÝ[Y\Ý[\
+\ÜÚ]œZY]ÛÛ]\ÛÊK	ÍËÌMˆ:* ºaäHL9a`ùí :c!9.#yë)‰ÊNÂˆ™\]Z\™T™\Z\ŠÛX[ŠZ[^[Y[œØ[RY
+OOO\Ø[RY	‰“[X™\ŠZ[^[Y[˜[[Ý[
+OOOLNL	‰™^XÝ[Y\Ý[\
+Z[^[Y[œZY][]™\™Y]\ÛÊK	ÎÍH9l/¹«/ˆNL9a`ùí :c!9.#yë)‰ÊNÂˆ™\]Z\™T™\Z\ŠÛX[Š›ÙXÝš[\›˜[ÚÝJOOOIÌNLŒL‰É‰“[X™\Š›ÙXÝ˜Ý\œ™[ÝØÚß
+OOOL	‰“[X™\Š›ÙXÝœ™\Ù\™YÝØÚß
+OOOL	ùea¹dày¢%¹§ 9í`¹nªùkf9.#y¦+È	ÊNÂˆ™\]Z\™T™\Z\ŠÛX[ŠÝØÚÒ[‹œ›ÙXÝY
+OOO\›ÙXÝY	‰“[X™\ŠÝØÚÒ[‹œ]PÚ[™Ù_
+OOOLI‰“[X™\ŠÝØÚÒ[‹˜™Y›Ü™TÝØÚß
+OOOL	‰“[X™\ŠÝØÚÒ[‹˜Y\”ÝØÚß
+OOOLK	ÎÎH:(ç9ænùaiynªùí :c!9.#yë)‰ÊNÂˆ™\]Z\™T™\Z\ŠÛX[ŠÝØÚÓÝ]œ›ÙXÝY
+OOO\›ÙXÝY	‰˜ÛX[ŠÝØÚÓÝ]œ™Y™\™[˜ÙRY
+OOO\Ø[S›É‰“[X™\ŠÝØÚÓÝ]œ]PÚ[™Ù_
+OOOKLI‰“[X™\ŠÝØÚÓÝ]˜™Y›Ü™TÝØÚß
+OOOLI‰“[X™\ŠÝØÚÓÝ]˜Y\”ÝØÚß
+OOOL	ÎÎH:(ç9ænù.©:,ª9¢hùnªùí :c!9.#yë)‰ÊNÂˆ™\]Z\™T™\Z\Š^XÝ[Y\Ý[\Û™SÙŠÝØÚÒ[‹›ØØÝ\œ™Y]ÛÜšYÚ[˜[ÝØÚÒ[’\ÛËÝØÚÔ™XYR\Û×JI‰™^XÝ[Y\Ý[\Û™SÙŠÝØÚÓÝ]›ØØÝ\œ™Y]ÛÜšYÚ[˜[[š[Y[\ÛË[]™\™Y]\Û×JK	ùajyëa¹nªùkf9í :c!9¥éy§'ùmìº(ªùam¹.å¹¤ãy/g9¥.z+¢‰ÊNÂˆÛÛœÝÛÛ][™]È]JÛÛ]\ÛÊK[]™\™Y][™]È]J[]™\™Y]\ÛÊKÝØÚÔ™XYP][™]È]JÝØÚÔ™XYR\ÛÊKXÝÜ]\Ù\“X™[
+
+K›ÝÏ\Ù\™\•[Y\Ý[\
+
+KÜšYÚ[˜[›ÝOXÛX[ŠØ[K››ÝJKÛÜœ™XÝ[Û“›ÝOIù«mùcì¹¦í9«hûï&ŒŒ‹ÎÍHLÎŒ9l/¹«/¹¥-¹®!y.)¹.©:,ª;ï&ÌŒ‹ÎÎH9¤ãy/g9`áz(ç9ænùnªùkf:"!ù.©:,ª;ï#9.#ycéº*"9áçù¥-‰ÎÂˆœÙ]
+Ø[T™Y‹ÜÛÛ]œÛÛ]™[Ü™\]œÛÛ][]™\™Y]™[]™\™Y][š[Y[Ý]\Î‰Ù[]™\™Y	ËÝ]\Î‰ØÛÛ\]Y	Ë^[Y[Ý]\Î‰ÜZY	Ë™XÙZ]™Y[[Ý[ŒŽLÜ™\•Ý[ŒŽLÝ[ŒŽLÛÜÝÝ[ŒMLÜ›ÜÜÔ›Ùš]ŒLÍLÛÜÝ\Ý[X]Y™˜[ÙKÛÜÝÛÝ\˜ÙN‰ÙšY›ÉËÛÜÝÛÛ™š\›YY]™[]™\™Y]›ÝN›ÜšYÚ[˜[›ÝKš[˜ÛY\ÊÛÜœ™XÝ[Û“›ÝJOÛÜšYÚ[˜[›ÝN–ÛÜšYÚ[˜[›ÝKÛÜœ™XÝ[Û“›ÝWK™š[\Š›ÛÛX[ŠKš›Ú[Š	ûïg	ÊK\ÝÜšXØ[ÛÜœ™XÝ[Û’Yœ™\Z\’Y\]Y]››ÝË\]YžN˜XÝÜ‹™\œÚ[ÛŽ•‘T”ÒSÓŸKÛY\™ÙNY_JNÂˆœÙ]
+ÝØÚÒ[”™Y‹ÛØØÝ\œ™Y]œÝØÚÔ™XYP]›ÝN‰ù«mùcì¹¦í9«hûïg9ea¹dày¥¯Œ‹ÎÍH9.©:,ª9bcymì¹cëù.©9.æ;ï&ùc§ùí :c!9¥¯ÎH:(ç9ænÉË\ÝÜšXØ[ÛÜœ™XÝ[Û’Yœ™\Z\’Y\]Y]››ÝË\]YžN˜XÝÜ‹™\œÚ[ÛŽ•‘T”ÒSÓŸKÛY\™ÙNY_JNÂˆœÙ]
+ÝØÚÓÝ]™Y‹ÛØØÝ\œ™Y]™[]™\™Y]›ÝN‰ù«mùcì¹¦í9«hûïgŒ‹ÎÍHLÎŒ9mì¹.©:,ª;ï"9.#yd*ù¥-¹«/»ï"{ï&ùc§ùí :c!9¥¯ÎH:(ç9ænÉË\ÝÜšXØ[ÛÜœ™XÝ[Û’Yœ™\Z\’Y\]Y]››ÝË\]YžN˜XÝÜ‹™\œÚ[ÛŽ•‘T”ÒSÓŸKÛY\™ÙNY_JNÂˆËÈ9¥-¹«/¹¥¡ù.í¸à y¡ây¥-¹n,ù«/º"!ùea¹dày§ 9í`¹nªùkf9cê¹`f¹."¹¥®y¨.9l#{ï#9k£9aj9.#ykêùai{ï#:`oùaczaãz)!ùaiyn,ù¢%¹a£y«(yh§¹®&ùnªùkf8à ‚ˆœÙ]
+X\šÙ\”™Y‹ØXÝ[ÛŽ‰ù«mùcì¹¦í9«hûï&ºh$:,ï9¢$9.©:"!ù.©:,ª9¥éy§'ÉË[]U\N‰Ü™[Ü™\‰Ë[]RYœØ[RYÝ[[X\žNœØ[S›ÊÉûïg9¢$9.©Œ‹ÍËÌM»ïg:* ºaäHL;ïg9l/¹«/º"!ù.©:,ªŒ‹ÎÍ{ïgÎH9`áyà®º(ç9ænûï#9.#y¥¬9h§¹¥-¹«/‰ËØ[RYœØ[RY™XÙZ]˜X›RYœ™XÙZ]˜X›RY^[Y[YÎ–Ù\ÜÚ]YZ[^[Y[YK[™[ÜžU˜[œØXÝ[Û’YÎ–ÜÝØÚÒ[’YÝØÚÓÝ]YKÜ™X]YžN˜XÝÜ‹Ü™X]Y]››ÝË™\œÚ[ÛŽ•‘T”ÒSÓŸJNÂˆ™]\›ˆ	Ü™\Z\™Y	ÎÂˆJNÂˆB‚ˆ[˜Ý[ÛˆÜJ]K˜[YKÝX‹XÛÛŠ^Âˆ™]\›ˆ	Ï\XÛHÛ\ÜÏH›ÜËZÜH]ˆÛ\ÜÏH›ÜËZÜKZXYÜ[‰ÊÙ\ØØ\R[
+]JJÉÏÜÜ[Ü[ˆÛ\ÜÏH›ÜËZÜKZXÛÛˆ‰ÊÙ\ØØ\R[
+XÛÛŸ	ø (‰ÊJÉÏÜÜ[Ù]Ý›Û™Ï‰ÊÙ\ØØ\R[
+˜[YJJÉÏÜÝ›Û™ÏÛX[‰ÊÙ\ØØ\R[
+ÝXŸ	ÉÊJÉÏÜÛX[Ø\XÛO‰ÎÂˆBˆ[˜Ý[ÛˆÜPXÝ[ÛŠ]K˜[YKÝX‹XÛÛ‹XÝ[ÛŠ^Âˆ™]\›ˆ	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËZÜHÜËZÜKXXÝ[Ûˆˆ]KXXÝ[ÛH‰ÊØ]ŠXÝ[ÛŠJÉÈ]ˆÛ\ÜÏH›ÜËZÜKZXYÜ[‰ÊÙ\ØØ\R[
+]JJÉÏÜÜ[Ü[ˆÛ\ÜÏH›ÜËZÜKZXÛÛˆ‰ÊÙ\ØØ\R[
+XÛÛŸ	ø (‰ÊJÉÏÜÜ[Ù]Ý›Û™Ï‰ÊÙ\ØØ\R[
+˜[YJJÉÏÜÝ›Û™ÏÛX[‰ÊÙ\ØØ\R[
+ÝXŸ	ÉÊJÉÏÜÛX[Ø]Û‰ÎÂˆBˆ[˜Ý[Ûˆ™[™\ÛÝ\œÙUÛÜšÜÜXÙJšY]Ê^ÂˆÛÛœÝÛÝ\œÙUšY]ÏXÛÝ\œÙUÛÜšÜÜXÙUšY]ÊšY]ÊNÂˆ™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜËXÛÝ\œÙKZ[›[™K\XÙZÛ\ˆˆ]KXÛÝ\œÙK]šY]ÏH‰ÊØ]ŠÛÝ\œÙUšY]ÊJÉÈ¹«hùg*:e¢ùegùk£9¥m:*¬¹bæyb§ú ïx )Ù]‰ÎÂˆBˆ[˜Ý[ÛˆÙ[™ÛÝ\œÙUÛÜšÜÜXÙUšY]Êœ˜[YKšY]Ê^ÂˆYŠÛØ˜[–[Ý^šSÜ\˜][ÛœÐÛÝ\œÙR[›[™I‰\[ÙˆÛØ˜[–[Ý^šSÜ\˜][ÛœÐÛÝ\œÙR[›[™KœÚÝÏOOIÙ[˜Ý[Û‰ÊYÛØ˜[–[Ý^šSÜ\˜][ÛœÐÛÝ\œÙR[›[™KœÚÝÊšY]ÊNÂˆBˆ[˜Ý[Ûˆ[™PÛÝ\œÙUÛÜšÜÜXÙSY\ÜØYÙJ
+^ßB‚ˆ[˜Ý[Ûˆ™[™\Š
+^ÂˆÝ]KšY]ÏJØØ][Û‹š\Ú	ÈÛÝ™\šY]ÉÊKœ™\XÙJ	ÈÉË	ÉÊKœÜ]
+	ÏÉÊVÌ_	ÛÝ™\šY]ÉÎÂˆYŠTQÑWÓQUVÜÝ]KšY]×JHÝ]KšY]ÏIÛÝ™\šY]ÉÎÂˆÛÛœÝY]OTQÑWÓQUVÜÝ]KšY]×NÈÙ]^
+	ÛÜÔYÙU]IËY]VÌJNÈÙ]^
+	ÛÜÔYÙTÝX]IËY]VÌWJNÂˆÛÛœÝYÙPÛØÚÏXžRY
+	ÛÜÔYÙPÛØÚÉÊNÈYŠYÙPÛØÚÊHYÙPÛØÚË˜Û\ÜÓ\ÝÙÙÛJ	ÚY[‰ËÝ]KšY]ÈOOIÜØ[\ÉÊNÂˆÛÛœÝ˜]•šY]ÏJÝ]KšY]ÏOOIÜ\˜Ú\ÙKY[žIßÝ]KšY]ÏOOIÜÝØÚÝZÙIÊOÉÜ\˜Ú\Ù\ÉÎœÝ]KšY]ÎÂˆ]Y\žP[
+	ÈÛÜÓ˜]ˆVÙ]K]šY]×IÊK™›Ü‘XXÚ
+[˜Ý[ÛŠJ^ÈK˜Û\ÜÓ\ÝÙÙÛJ	ØXÝ]™IËK™]\Ù]šY]ÏOO[˜]•šY]ÊNÈJNÂˆÛÛœÝÛÝ\œÙQÜ›Ý\XžRY
+	ÛÜÐÛÝ\œÙQÜ›Ý\	ÊKÛÝ\œÙUÙÙÛOXžRY
+	ÛÜÐÛÝ\œÙSY[UÙÙÛIÊKÛÝ\œÙUšY]ÐXÝ]™OZ\ÐÛÝ\œÙUÛÜšÜÜXÙUšY]ÊÝ]KšY]ÊNÂˆYŠÛÝ\œÙQÜ›Ý\
+^ÂˆÛÝ\œÙQÜ›Ý\˜Û\ÜÓ\ÝÙÙÛJ	ØXÝ]™IËÛÝ\œÙUšY]ÐXÝ]™JNÂˆYŠÛÝ\œÙUšY]ÐXÝ]™JXÛÝ\œÙQÜ›Ý\˜Û\ÜÓ\Ý˜Y
+	ÛÜ[‰ÊNÂˆBˆYŠÛÝ\œÙUÙÙÛJXÛÝ\œÙUÙÙÛKœÙ]]šX]J	Ø\šXKY^[™Y	ËÛÝ\œÙQÜ›Ý\	‰˜ÛÝ\œÙQÜ›Ý\˜Û\ÜÓ\Ý˜ÛÛZ[œÊ	ÛÜ[‰ÊOÉÝYIÎ‰Ù˜[ÙIÊNÂˆÛÛœÝÛÛ[XžRY
+	ÛÜÐÛÛ[	ÊNÈYŠXÛÛ[
+H™]\›ŽÂˆÛÛ[˜Û\ÜÓ\ÝÙÙÛJ	ÛÜËXÛÝ\œÙKXÛÛ[	ËÛÝ\œÙUšY]ÐXÝ]™JNÂˆYŠÛÝ\œÙUšY]ÐXÝ]™J^ÂˆÛÛœÝÛÝ\œÙUšY]ÏXÛÝ\œÙUÛÜšÜÜXÙUšY]ÊÝ]KšY]ÊNÂˆYŠÛØ˜[–[Ý^šSÜ\˜][ÛœÐÛÝ\œÙR[›[™I‰\[ÙˆÛØ˜[–[Ý^šSÜ\˜][ÛœÐÛÝ\œÙR[›[™K›[Ý[OOIÙ[˜Ý[Û‰Ê^ÂˆÛØ˜[–[Ý^šSÜ\˜][ÛœÐÛÝ\œÙR[›[™K›[Ý[
+ÛÛ[ÛÝ\œÙUšY]ÊNÂˆY[Ù^ÂˆÛÛ[š[›™\’S\™[™\ÛÝ\œÙUÛÜšÜÜXÙJÝ]KšY]ÊNÂˆBˆ™]\›ŽÂˆBˆYŠÛØ˜[–[Ý^šSÜ\˜][ÛœÐÛÝ\œÙR[›[™I‰\[ÙˆÛØ˜[–[Ý^šSÜ\˜][ÛœÐÛÝ\œÙR[›[™K™]XÚOOIÙ[˜Ý[Û‰ÊYÛØ˜[–[Ý^šSÜ\˜][ÛœÐÛÝ\œÙR[›[™K™]XÚ
+
+NÂˆYŠÝ]K›ØY[™È	‰ˆ\Ý]K›ØYY]
+^ÈÛÛ[š[›™\’S[ØY[™Ò[
+
+NÈ™]\›ŽÈBˆÛÛœÝ™[™\™\œÏ^ÛÝ™\šY]Îœ™[™\“Ý™\šY]ÕË›ÙXÝÎœ™[™\”›ÙXÝËØ[\Îœ™[™\”Ø[\ÕËÝ\ÝÛY\œÎœ™[™\Ý\ÝÛY\œÕ‹™XÙZ]˜X›\Îœ™[™\”™XÙZ]˜X›\ÕK^[œÙ\Îœ™[™\“Ü\˜][™Ñ^[œÙ\ÔYÙK\˜Ú\Ù\Îœ™[™\”\˜Ú\Ù\Ë	Ü\˜Ú\ÙKY[žIÎœ™[™\”\˜Ú\ÙQ[žKÝØÚÝZÙNœ™[™\”ÝØÚÝZÙUÛÜšÜÜXÙK™[[Îœ™[™\”™[[ËÞ[˜Îœ™[™\”Þ[˜ËÛÛ›™XÝ[ÛŽœ™[™\ÛÛ›™XÝ[ÛŸNÂˆÛÛ[š[›™\’SJ™[™\™\œÖÜÝ]KšY]×_™[™\“Ý™\šY]ÊJ
+NÂˆ[š[˜ÙS[Øš[S[X™\’[œ]ÊÛÛ[
+NÂˆš[™šY]ÔÜXÚYšXÊ
+NÂˆB‚ˆ[˜Ý[ÛˆÙ^T›ÝÜÊ›ÝÜËÙ]]J^ÈÛÛœÝÝ\\Ý\Ù‘^J™]È]J
+JNÈÛÛœÝ[™Y[™Ù‘^J™]È]J
+JNÈ™]\›ˆ›ÝÜË™š[\Š[˜Ý[ÛŠ›ÝÊ^ÈÛÛœÝY]Qœ›ÛJÙ]]J›ÝÊJNÈ™]\›ˆ	‰™\Ý\	‰™Y[™ÈJNÈBˆ[˜Ý[ÛˆÝ\œ™[[Û›ÝÜÊ›ÝÜËÙ]]J^ÈÛÛœÝ›ÝÏ[™]È]J
+NÈ™]\›ˆ›ÝÜË™š[\Š[˜Ý[ÛŠ›ÝÊ^ÈÛÛœÝY]Qœ›ÛJÙ]]J›ÝÊJNÈ™]\›ˆ	‰™™Ù][YX\Š
+OOO[›ÝË™Ù][YX\Š
+I‰™™Ù][Û
+
+OOO[›ÝË™Ù][Û
+
+NÈJNÈBˆ[˜Ý[Ûˆ\ÐÛÛ\XÝ[Øš[J
+^È™]\›ˆ
+ÛØ˜[š[›™\•ÚY
+OMÎÈBˆ[˜Ý[ÛˆÙ^Q]RÙ^J
+^È™]\›ˆ]U^
+™]È]J
+JNÈBˆ[˜Ý[ÛˆÝ™\šY]Ñ]RÙ^J
+^ÂˆÛÛœÝÙ^O]Ù^Q]RÙ^J
+NÂˆÛÛœÝ˜]ÏXÛX[ŠÝ]K›Ý™\šY]Ñ]JNÂˆÛÛœÝ˜[YK×—ÍKWÌŸKWÌŸIË\Ý
+˜]ÊOÜ˜]ÎÙ^NÂˆÝ]K›Ý™\šY]Ñ]O]˜[YÙ^OÝÙ^N˜[YÂˆ™]\›ˆÝ]K›Ý™\šY]Ñ]NÂˆBˆ[˜Ý[Ûˆ]RÙ^TÚY
+]RÙ^KÝ\
+^ÈÛÛœÝ˜\ÙO[™]È]J]RÙ^JÉÕŒŒ	ÊNÈ˜\ÙKœÙ]]J˜\ÙK™Ù]]J
+JÓ[X™\ŠÝ\
+JNÈ™]\›ˆ]U^
+˜\ÙJNÈBˆ[˜Ý[ÛˆÙYZÙ^U^
+˜[YJ^È™]\›ˆ	ù¥éy. 9.£9."yfæù.¥9akIÖÛ™]È]J˜[YJK™Ù]^J
+W_	ÉÎÈBˆ[˜Ý[ÛˆÝ™\šY]Ñ]SX™[
+]RÙ^J^È™]\›ˆ]RÙ^Kœ™\XÙJËKÙË	ËÉÊJÉûï"	ÊÝÙYZÙ^U^
+]RÙ^JJÉûï"IÎÈBˆ[˜Ý[ÛˆÝ™\šY]Ñ^S˜]šYØ]Ü’[
+
+^ÂˆÛÛœÝÝ\œ™[[Ý™\šY]Ñ]RÙ^J
+KÙ^O]Ù^Q]RÙ^J
+K™^Y]RÙ^TÚY
+Ý\œ™[JK\ØX›S™^[™^Ù^KÙ^T\Ï]Ù^KœÜ]
+	ËIÊNÂˆÛÛœÝ[Øš[OZ\ÐÛÛ\XÝ[Øš[J
+NÂˆ™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË[Ý™\šY]ËY^K[˜]‰ÊÊ[Øš[OÉÈÜË[[Øš[K[Ý™\šY]ËY^K[˜]‰Î‰ÉÊJÉÈ‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]ÛˆÚÜÝˆ]KXXÝ[ÛH›Ý™\šY]ËY^K\ÚYˆ]K\Ý\H‹LH¸¡¤9bcy. 9i*OØ]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]ÛˆÜË[Ý™\šY]Ë]Ù^H	ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÝÙ^IÉ‰˜Ý\œ™[OO]Ù^OÉÜš[X\žIÎ‰ÙÚÜÝ	ÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOHÙ^H¹.â¹i*OØÛX[‰ÊÓ[X™\ŠÙ^T\ÖÌWJJÉËÉÊÓ[X™\ŠÙ^T\ÖÌ—JJÉÏÜÛX[Ø]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]ÛˆÚÜÝˆ]KXXÝ[ÛH›Ý™\šY]ËY^K\ÚYˆ]K\Ý\HŒHˆ	ÊÊ\ØX›S™^ÉÙ\ØX›Y	Î‰ÉÊJÉÏ¹o£9. 9i*H8¡¤Ø]Û‰Âˆ
+Ê[Øš[OÉÉÎ‰ÏX™[Û\ÜÏH›ÜË[Ý™\šY]ËY^K[X™[Ü[¹§éz*h¹¥éy§'ÏÜÜ[[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]Ñ]Hˆ\OH™]HˆX^H‰ÊØ]ŠÙ^JJÉÈˆ˜[YOH‰ÊØ]ŠÝ\œ™[
+JÉÈÛX™[‰ÊBˆ
+ÉÏÙ]‰ÎÂˆBˆ[˜Ý[ÛˆÝ™\šY]Ó[ÛÙ[XÝ[
+
+^ÂˆÛÛœÝ›ÝÏ[™]È]J
+KYX\[›ÝË™Ù][YX\Š
+KÝ\œ™[[Û[›ÝË™Ù][Û
+
+JÌKÝ\œ™[Ù^O^YX\ŠÉËIÊÔÝš[™ÊÝ\œ™[[Û
+KœYÝ\
+‹	Ì	ÊKÙ[XÝYXÛX[ŠÝ]K›Ý™\šY]Ó[Û
+_Ý\œ™[Ù^NÂˆÛÛœÝÜ[ÛœÏV×NÂˆ›ÜŠ][ÛLNÛ[ÛLLŽÛ[Û
+ÏLJ^ØÛÛœÝÙ^O^YX\ŠÉËIÊÔÝš[™Ê[Û
+KœYÝ\
+‹	Ì	ÊNÛÜ[ÛœËœ\Ú
+	ÏÜ[Ûˆ˜[YOH‰ÊØ]ŠÙ^JJÉÈˆ	ÊÊÙ^OOO\Ù[XÝYÉÜÙ[XÝY	Î‰ÉÊJÉÈ	ÊÊ[Û˜Ý\œ™[[ÛÉÙ\ØX›Y	Î‰ÉÊJÉÏ‰ÊÞYX\ŠÉÈ9nm	ÊÛ[Û
+ÉÈ9§"ÛÜ[Û‰ÊNßBˆ™]\›ˆ	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆ	ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÛ[Û	É‰œÙ[XÝYOOXÝ\œ™[Ù^OÉÜš[X\žIÎ‰ÙÚÜÝ	ÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]ËXÝ\œ™[[[Û¹§+9§"Ø]Û‰Âˆ
+ÉÏX™[Û\ÜÏH›ÜË[Ý™\šY]Ë[[Û\Ù[XÝ	ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÛ[Û	ÏÉØXÝ]™IÎ‰ÉÊJÉÈÜ[º`n9¤áù§"9.ïOÜÜ[Ù[XÝÛ\ÜÏH›ÜË\Ù[XÝˆYH›Ý™\šY]Ó[Û‰ÊÛÜ[ÛœËš›Ú[Š	ÉÊJÉÏÜÙ[XÝÛX™[‰ÎÂˆBˆ[˜Ý[ÛˆÝ™\šY]Ô˜[™ÙPÛÛ›ÛÒ[
+
+^ÂˆÛÛœÝÝ\ÝÛSX™[Iú!êº* ¹c`:e¤ÉÎÂˆYŠ\ÐÛÛ\XÝ[Øš[J
+J^Âˆ™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË]Ž[Ý™\šY]Ë\˜[™ÙHÜË[[Øš[K[Ý™\šY]Ë\˜[™ÙH‰Âˆ
+ÛÝ™\šY]Ñ^S˜]šYØ]Ü’[
+
+Bˆ
+ÉÏ]ˆÛ\ÜÏH›ÜË[[Øš[K[Ý™\šY]Ë\\š[ÙÈ‰Âˆ
+ÛÝ™\šY]Ó[ÛÙ[XÝ[
+
+Bˆ
+ÉÏ]Z[ÈÛ\ÜÏH›ÜË[Ý™\šY]ËY›ÜÝÛˆÝ[[X\žHÛ\ÜÏH›ÜËX]Ûˆ	ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIØÝ\ÝÛIÏÉÜš[X\žIÎ‰ÙÚÜÝ	ÊJÉÈ¹¤'9l"ù¥éy§'ÏÜÝ[[X\žO]ˆÛ\ÜÏH›ÜË[Ý™\šY]ËY›ÜÝÛ‹\[™[X™[ºe¢ùiâù¥éy§'Ï[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]Ñœ›ÛHˆ\OH™]Hˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]Ñœ›ÛJJÉÈÛX™[X™[¹íd9§gù¥éy§'Ï[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]ÕÈˆ\OH™]Hˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]ÕÊJÉÈÛX™[]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHÚYHˆ]KXXÝ[ÛH›Ý™\šY]ËXÝ\ÝÛKX\H¹§éz*hØ]ÛÙ]Ù]Z[Ï‰Âˆ
+ÉÏÙ]Ù]‰ÎÂˆBˆ™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË]Ž[Ý™\šY]Ë\˜[™ÙH‰Âˆ
+ÛÝ™\šY]Ñ^S˜]šYØ]Ü’[
+
+Bˆ
+ÛÝ™\šY]Ó[ÛÙ[XÝ[
+
+Bˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆ	ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÞYX\‰ÏÉÜš[X\žIÎ‰ÙÚÜÝ	ÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOHžYX\ˆ¹.â¹nmØ]Û‰Âˆ
+ÉÏ]Z[ÈÛ\ÜÏH›ÜË[Ý™\šY]ËY›ÜÝÛˆÝ[[X\žHÛ\ÜÏH›ÜËX]Ûˆ	ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIØÝ\ÝÛIÏÉÜš[X\žIÎ‰ÙÚÜÝ	ÊJÉÈ‰ÊÙ\ØØ\R[
+Ý\ÝÛSX™[
+JÉÏÜÝ[[X\žO]ˆÛ\ÜÏH›ÜË[Ý™\šY]ËY›ÜÝÛ‹\[™[X™[ºe¢ùiâù¥éy§'Ï[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]Ñœ›ÛHˆ\OH™]Hˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]Ñœ›ÛJJÉÈÛX™[X™[¹íd9§gù¥éy§'Ï[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]ÕÈˆ\OH™]Hˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]ÕÊJÉÈÛX™[]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHÚYHˆ]KXXÝ[ÛH›Ý™\šY]ËXÝ\ÝÛKX\H¹ieùå*9c`:e¤ÏØ]ÛÙ]Ù]Z[Ï‰Âˆ
+ÉÏÙ]‰ÎÂˆBˆ[˜Ý[Ûˆ[Øš[TÙX\˜ÚY[
+\™Ù]Y
+^ÂˆYŠZ\ÐÛÛ\XÝ[Øš[J
+JH™]\›ˆ	ÉÎÂˆ™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË[[Øš[K\ÙX\˜Ú\Yˆ\šXK[X™[H”ÒÕH9¥n9keúcmyæé‰ÊÖÉÌIË	Ì‰Ë	ÌÉË	Í	Ë	ÍIË	Í‰Ë	ÍÉË	Î	Ë	ÎIË	ØÛX\‰Ë	Ì	Ë	Ø˜XÚÉ×K›X\
+[˜Ý[ÛŠÙ^J^ØÛÛœÝX™[ZÙ^OOOIØÛX\‰ÏÉù®!zfi	ÎšÙ^OOOIØ˜XÚÉÏÉø£*ÉÎšÙ^NÜ™]\›ˆ	Ï]Ûˆ\OH˜]Ûˆˆ]KXXÝ[ÛH›[Øš[KZÙ^Hˆ]K]\™Ù]H‰ÊØ]Š\™Ù]Y
+JÉÈˆ]KZÙ^OH‰ÊÚÙ^JÉÈ‰ÊÛX™[
+ÉÏØ]Û‰ÎßJKš›Ú[Š	ÉÊJÉÏÙ]‰ÎÂˆBˆ[˜Ý[ÛˆØ[˜Ù[]™TÙX\˜Ú™[™\Š[œ]Y
+^ÂˆÛÛœÝ™]š[Ý\Ï[]™TÙX\˜Ú›ØœÖÚ[œ]YNÂˆYŠ\™]š[Ý\Ê\™]\›ŽÂˆ™]š[Ý\Ë˜Ø[˜Ù[Y]YNÂˆYŠ™]š[Ý\ËšÚ[™OOIÙœ˜[YIÉ‰\[ÙˆÛØ˜[˜Ø[˜Ù[[š[X][Û‘œ˜[YOOOIÙ[˜Ý[Û‰ÊYÛØ˜[˜Ø[˜Ù[[š[X][Û‘œ˜[YJ™]š[Ý\ËšY
+NÂˆ[ÙHÛØ˜[˜ÛX\•[Y[Ý]
+™]š[Ý\ËšY
+NÂˆ[]H]™TÙX\˜Ú›ØœÖÚ[œ]YNÂˆBˆ[˜Ý[ÛˆØÚY[S]™TÙX\˜Ú™[™\Š[œ]Y˜[YK[[YYX]J^ÂˆØ[˜Ù[]™TÙX\˜Ú™[™\Š[œ]Y
+NÂˆÛÛœÝØ\\™YTÝš[™Ê˜[YOO[[ÉÉÎ˜[YJK›Ø^ÚÚ[™‰Ý[Y\‰ËYŒØ[˜Ù[Y™˜[Ù_NÂˆ]™TÙX\˜Ú›ØœÖÚ[œ]YOZ›ØŽÂˆÛÛœÝ[Y[˜Ý[ÛŠ
+^ÂˆYŠ›Ø‹˜Ø[˜Ù[Y]™TÙX\˜Ú›ØœÖÚ[œ]YHOOZ›ØŠ\™]\›ŽÂˆ[]H]™TÙX\˜Ú›ØœÖÚ[œ]YNÂˆÛÛœÝ[œ]XžRY
+[œ]Y
+NÂˆYŠZ[œ][œ]˜[YHOOXØ\\™Y
+\™]\›ŽÂˆYŠ\™[™\“]™TÙX\˜Ú™\Ý[Ê[œ]Y
+J\™\™[™\’ÙY\[™Ñ›ØÝ\Ê[œ]YØ\\™Y
+NÂˆNÂˆÛÛœÝ]Y]YPY\’[œ]Z[Y[˜Ý[ÛŠ
+^ÂˆYŠ›Ø‹˜Ø[˜Ù[Y]™TÙX\˜Ú›ØœÖÚ[œ]YHOOZ›ØŠ\™]\›ŽÂˆYŠ\[ÙˆÛØ˜[œ™\]Y\Ý[š[X][Û‘œ˜[YOOOIÙ[˜Ý[Û‰Ê^ÂˆÛÛœÝØZ]Û™TZ[Y[˜Ý[ÛŠ
+^ÂˆYŠ›Ø‹˜Ø[˜Ù[Y]™TÙX\˜Ú›ØœÖÚ[œ]YHOOZ›ØŠ\™]\›ŽÂˆ›Ø‹šYYÛØ˜[œ™\]Y\Ý[š[X][Û‘œ˜[YJ[ŠNÂˆNÂˆ›Ø‹šÚ[™IÙœ˜[YIÎÂˆ›Ø‹šYYÛØ˜[œ™\]Y\Ý[š[X][Û‘œ˜[YJØZ]Û™TZ[
+NÂˆY[Ù^Âˆ›Ø‹šÚ[™IÝ[Y\‰ÎÂˆ›Ø‹šYYÛØ˜[œÙ][Y[Ý]
+[‹MŠNÂˆBˆNÂˆYŠ[[YYX]J\™]\›ˆ]Y]YPY\’[œ]Z[
+
+NÂˆ›Ø‹šYYÛØ˜[œÙ][Y[Ý]
+]Y]YPY\’[œ]Z[U‘WÔÑPTÒÒS”UÒQWÓTÊNÂˆBˆ[˜Ý[ÛˆÙX\˜Ú[œ]Ù[XÝ[ÛŠ[œ]
+^ÂˆÛÛœÝ[™ÝTÝš[™Ê[œ]	‰š[œ]˜[Y_	ÉÊK›[™ÝÂˆYŠØÝ[Y[˜XÝ]™Q[[Y[OOZ[œ]
+\™]\›ˆÜÝ\›[™Ý[™›[™ÝNÂˆÛÛœÝÝ\]\[Ùˆ[œ]œÙ[XÝ[Û”Ý\OOIÛ[X™\‰ÏÚ[œ]œÙ[XÝ[Û”Ý\›[™ÝÂˆÛÛœÝ[™]\[Ùˆ[œ]œÙ[XÝ[Û‘[™OOIÛ[X™\‰ÏÚ[œ]œÙ[XÝ[Û‘[™œÝ\Âˆ™]\›ˆÜÝ\“X]›X^
+Ý\
+K[™“X]›X^
+[™
+_NÂˆBˆ[˜Ý[Ûˆ™^ÙX\˜ÚÙ^U˜[YJ[œ]Ù^J^ÂˆÛÛœÝ˜[YOTÝš[™Ê[œ]	‰š[œ]˜[YHO[[Ú[œ]˜[YN‰ÉÊKÙ[XÝ[Û\ÙX\˜Ú[œ]Ù[XÝ[ÛŠ[œ]
+NÂˆYŠÙ^OOOIØÛX\‰Ê\™]\›ˆÝ˜[YN‰ÉËØ\™]ŒNÂˆYŠÙ^OOOIØ˜XÚÉÊ^ÂˆYŠÙ[XÝ[Û‹™[™œÙ[XÝ[Û‹œÝ\
+\™]\›ˆÝ˜[YN˜[YKœÛXÙJÙ[XÝ[Û‹œÝ\
+JÝ˜[YKœÛXÙJÙ[XÝ[Û‹™[™
+KØ\™]œÙ[XÝ[Û‹œÝ\NÂˆYŠÙ[XÝ[Û‹œÝ\L
+\™]\›ˆÝ˜[YN˜[YKØ\™]ŒNÂˆ™]\›ˆÝ˜[YN˜[YKœÛXÙJÙ[XÝ[Û‹œÝ\LJJÝ˜[YKœÛXÙJÙ[XÝ[Û‹™[™
+KØ\™]œÙ[XÝ[Û‹œÝ\L_NÂˆBˆÛÛœÝ^TÝš[™ÊÙ^_	ÉÊNÂˆ™]\›ˆÝ˜[YN˜[YKœÛXÙJÙ[XÝ[Û‹œÝ\
+JÝ^
+Ý˜[YKœÛXÙJÙ[XÝ[Û‹™[™
+KØ\™]œÙ[XÝ[Û‹œÝ\
+Ý^›[™ÝNÂˆBˆ[˜Ý[Ûˆ\TÙX\˜ÚÙ^R[œ]
+\™Ù]YÙ^J^ÂˆÛÛœÝX\^ÜÜÔÙX\˜Ú‰ÜÜÔÙX\˜Ú	Ë›ÙXÝÙX\˜Ú‰Ü›ÙXÝÙX\˜Ú	Ë\˜Ú\ÙSÝÔÙX\˜Ú‰Ü\˜Ú\ÙSÝÔÙX\˜Ú	Ë\˜Ú\ÙQ[žTÙX\˜Ú‰Ü\˜Ú\ÙQ[žTÙX\˜Ú	ËÝØÚÝZÙTÙX\˜Ú‰ÜÝØÚÝZÙTÙX\˜Ú	Ë[™[ÜžTÙX\˜Ú‰Ú[™[ÜžTÙX\˜Ú	ßNÂˆÛÛœÝÝ]RÙ^O[X\Ý\™Ù]YNÂˆYŠ\Ý]RÙ^JH™]\›ŽÂˆYŠ\™Ù]YOOIÜ›ÙXÝÙX\˜Ú	É‰ˆXÛÜÙT›ÙXÝY]Ü‘›Ü“\ÝÚ[™ÙJ
+JH™]\›ŽÂˆÛÛœÝ[œ]XžRY
+\™Ù]Y
+NÂˆYŠZ[œ]
+\™]\›ŽÂˆÛÛœÝ™^[™^ÙX\˜ÚÙ^U˜[YJ[œ]Ù^JNÂˆÝ]VÜÝ]RÙ^WO[™^˜[YNÂˆYŠ\™Ù]YOOIÜ›ÙXÝÙX\˜Ú	Ê^ÈÝ]Kœ›ÙXÝÙ\šY\ÏIØ[	ÎÈÝ]Kœ›ÙXÝš[\IØ[	ÎÈÝ]Kœ›ÙXÝš\ÚX›OT“ÑPÕÔQÑWÔÒV‘NÈBˆYŠ\™Ù]YOOIÜ\˜Ú\ÙQ[žTÙX\˜Ú	ÊHÝ]Kœ\˜Ú\ÙQ[žTÙ\šY\ÏIØ[	ÎÂˆYŠ\™Ù]YOOIÜÝØÚÝZÙTÙX\˜Ú	ÊHÝ]KœÝØÚÝZÙTÙ\šY\ÏIØ[	ÎÂˆ[œ]˜[YO[™^˜[YNÂˆYŠØÝ[Y[˜XÝ]™Q[[Y[OOZ[œ]
+^Ýž^Ú[œ]œÙ]Ù[XÝ[Û”˜[™ÙJ™^˜Ø\™]™^˜Ø\™]
+NßXØ]Ú
+\œ›ÜŠ^ß_BˆØÚY[S]™TÙX\˜Ú™[™\Š\™Ù]Y™^˜[YK˜[ÙJNÂˆBˆ[˜Ý[Ûˆ[š[˜ÙS[Øš[S[X™\’[œ]ÊØÛÜJ^ÂˆYŠZ\ÐÛÛ\XÝ[Øš[J
+JH™]\›ŽÂˆÛÛœÝ›ÛÝ\ØÛÜ_ØÝ[Y[Âˆ]Y\žP[
+	Ú[œ]Ý\OH›[X™\ˆ—IË›ÛÝ
+K™›Ü‘XXÚ
+[˜Ý[ÛŠ[œ]
+^ÂˆÛÛœÝÝ\XÛX[Š[œ]™Ù]]šX]J	ÜÝ\	ÊJNÂˆÛÛœÝXÚ[X[HHJÝ\	‰ˆÝ\OOIÌIÊNÂˆ[œ]œÙ]]šX]J	Ú[œ][ÙIËXÚ[X[ÉÙXÚ[X[	Î‰Û[Y\šXÉÊNÂˆYŠYXÚ[X[
+H[œ]œÙ]]šX]J	Ü]\›‰Ë	ÖÌNWJ‰ÊNÂˆJNÂˆBˆ[˜Ý[Ûˆ™XÙ[XÝ]š]J
+^ÂˆÛÛœÝ›ÝÜÏV×NÂˆÝ]KœØ[\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ
+^È›ÝÜËœ\Ú
+Ù]NžœÛÛ]\N‰ùãï¹h-:b­ùe+‰ËXÛÛŽ‰ûï!	Ë]NžœØ[S›ËÝXŽ›[Û™^JÝ[
+_JNÈJNÂˆÝ]Kš[˜ÛÛY\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ
+^È›ÝÜËœ\Ú
+Ù]Nž›ØØÝ\œ™Y]\N‰ùoêú`'ù¥-¹aiIËXÛÛŽ‰ûï"ÉË]Nž˜Ø]YÛÜžKÝXŽ›[Û™^J˜[[Ý[
+_JNÈJNÂˆÝ]Kœ\˜Ú\Ù\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ
+^È›ÝÜËœ\Ú
+Ù]Nžœ™XÙZ]™Y]\N‰ú`,º,ª9aiynªÉËXÛÛŽ‰ø¡éÉË]Nžœ\˜Ú\ÙS›ËÝXŽ›[Û™^JÝ[ÛÜÝ
+_JNÈJNÂˆÝ]K˜Ø\Ù\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ
+^È›ÝÜËœ\Ú
+Ù]Nž\]Y]˜Ü™X]Y]\N‰ù¨b9.í‰ËXÛÛŽ‰ø¥¨ÉË]Nž›˜[YKÝXŽ‰ùmì¹¥-ˆ	ÊÛ[Û™^Jœ™XÙZ]™Y[[Ý[
+_JNÈJNÂˆ™]\›ˆ›ÝÜËœÛÜ
+[˜Ý[ÛŠKŠ^È™]\›ˆ
+]Qœ›ÛJ‹™]J_
+KJ]Qœ›ÛJK™]J_
+NÈJKœÛXÙJ
+NÂˆBˆ[˜Ý[ÛˆÝ™\šY]Ð›Ý[™Ê
+^ÂˆÛÛœÝ›ÝÏ[™]È]J
+NÛ]Ý\[[[™[[X™[Iù.â¹i*IÎÂˆYŠÝ]K›Ý™\šY]Ô˜[™ÙOOOIÝÙ^IÊ^ØÛÛœÝÙ[XÝY[™]È]JÝ™\šY]Ñ]RÙ^J
+JÉÕŒŒ	ÊNÜÝ\\Ý\Ù‘^JÙ[XÝY
+NÙ[™Y[™Ù‘^JÙ[XÝY
+NÛX™[[Ý™\šY]Ñ]SX™[
+Ý™\šY]Ñ]RÙ^J
+JNßBˆ[ÙHYŠÝ]K›Ý™\šY]Ô˜[™ÙOOOIÛ[Û	Ê^ÂˆÛÛœÝÝ\œ™[Ù^O[›ÝË™Ù][YX\Š
+JÉËIÊÔÝš[™Ê›ÝË™Ù][Û
+
+JÌJKœYÝ\
+‹	Ì	ÊNÂˆÛÛœÝÙ[XÝYK×—ÍKJÌKNW_VÌL—JIË\Ý
+ÛX[ŠÝ]K›Ý™\šY]Ó[Û
+JI‰œÝ]K›Ý™\šY]Ó[ÛXÝ\œ™[Ù^OÜÝ]K›Ý™\šY]Ó[Û˜Ý\œ™[Ù^NÂˆÛÛœÝ\Ï\Ù[XÝYœÜ]
+	ËIÊK›X\
+[X™\ŠNÜÝ]K›Ý™\šY]Ó[Û\Ù[XÝYÂˆÝ\[™]È]J\ÖÌK\ÖÌWKLKJNÙ[™\Ù[XÝYOOXÝ\œ™[Ù^OÙ[™Ù‘^J›ÝÊN™[™Ù‘^J™]È]J\ÖÌK\ÖÌWK
+JNÛX™[\Ù[XÝYOOXÝ\œ™[Ù^OÉù§+9§"	Îœ\ÖÌJÉÈ9nm	ÊÜ\ÖÌWJÉÈ9§"	ÎÂˆBˆ[ÙHYŠÝ]K›Ý™\šY]Ô˜[™ÙOOOIÞYX\‰Ê^ÜÝ\[™]È]J›ÝË™Ù][YX\Š
+KJNÙ[™Y[™Ù‘^J™]È]J›ÝË™Ù][YX\Š
+KLKÌJJNÛX™[Iù.â¹nm	ÎßBˆ[Ù^ÛX™[Iú!êº* ¹c`:e¤ÉÎÚYŠÝ]K›Ý™\šY]Ñœ›ÛJ\Ý\[™]È]JÝ]K›Ý™\šY]Ñœ›ÛJÉÕŒŒ	ÊNÚYŠÝ]K›Ý™\šY]ÕÊY[™[™]È]JÝ]K›Ý™\šY]ÕÊÉÕŒÎNNNIÊNßBˆ™]\›ˆÜÝ\œÝ\[™™[™X™[›X™[NÂˆBˆ[˜Ý[ÛˆÜ\˜][™Ñ^[œÙQ\\Y[Ù^J
+^Ü™]\›ˆÝ]K›Ü\˜][™Ñ^[œÙQ\\Y[OOIØXØY[^IÏÉØXØY[^IÎ‰ÜÝÜ™IÎßBˆ[˜Ý[ÛˆÜ\˜][™Ñ^[œÙQ\\Y[Y]JÙ^J^Ü™]\›ˆÔTUS‘×ÑVS”ÑWÑTT•QS•Ë™š[™
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËšYOOZÙ^NßJ_ÔTUS‘×ÑVS”ÑWÑTT•QS•ÖÌNßBˆ[˜Ý[ÛˆÜ\˜][™Ñ^[œÙTÙ][™ÜÑ›Ü‘\\Y[
+Ù^J^Ü™]\›ˆ›Ü›X[^™SÜ\˜][™Ñ^[œÙTÙ][™ÜÊÝ]K›Ü\˜][™Ñ^[œÙTÙ][™ÜÊK™\\Y[ÖÚÙ^OOOIØXØY[^IÏÉØXØY[^IÎ‰ÜÝÜ™I×NßBˆ[˜Ý[ÛˆÜ\˜][™Ñ^[œÙT™XÛÜ™Ñ›Ü‘\\Y[
+Ù^J^Ü™]\›ˆÝ]K™^[œÙ\Ë™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ
+ÛX[Š›ÝË™\\Y[›ÝË™\\Y[Ù^J_	ÜÝÜ™IÊOOOJÙ^OOOIØXØY[^IÏÉØXØY[^IÎ‰ÜÝÜ™IÊNßJNßBˆ[˜Ý[Ûˆ›Ü›X[^™YÜ\˜][™Ñ^[œÙPØ]YÛÜžJ˜[YJ^ØÛÛœÝØ]YÛÜžOXÛX[Š˜[YJ_	ùam¹.å¹¥+ùaî‰ÎÜ™]\›ˆØ]YÛÜžOOOIùméz+ 9å'ú%ªº,áÉßØ]YÛÜžOOOIùl": mùdèyméz%ªº,áÉÏÉú%ªº,áÉÎ˜Ø]YÛÜžNßBˆ[˜Ý[ÛˆYÓÜ\˜][™Ñ^[œÙT›ÝÜÊ›ÝÜËÙ^J^ØÛÛœÝY]O[Ü\˜][™Ñ^[œÙQ\\Y[Y]JÙ^JNÜ™]\›ˆ
+›ÝÜß×JK›X\
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆØš™XÝ˜\ÜÚYÛŠßK›ÝËØØ]YÛÜžN››Ü›X[^™YÜ\˜][™Ñ^[œÙPØ]YÛÜžJ›ÝË˜Ø]YÛÜžJK\\Y[šÙ^K\\Y[X™[›Y]K›X™[\\Y[ÚÜX™[›Y]KœÚÜX™[JNßJNßBˆ[˜Ý[Ûˆ^\›Û[\ÞYYRY
+›ÝÊ^Ü™]\›ˆÛX[Š›ÝÉ‰Š›ÝË™[\ÞYYRY›ÝË\Ù\’Y›ÝËšY›ÝË—×ÚY
+JNßBˆ[˜Ý[Ûˆ^\›Û[\ÞYYS˜[YJ›ÝÊ^Ü™]\›ˆÛX[Š›ÝÉ‰Š›ÝË›˜[Y_›ÝË™\Ü^S˜[Y_›ÝË™[\ÞYYS˜[Y_›ÝÖÉùiäùd#I×JJ_^\›Û[\ÞYYRY
+›ÝÊ_	ù§*¹doyd#ydèyméIÎßBˆ[˜Ý[Ûˆ^\›Û[\ÞYYU\J›ÝÊ^ØÛÛœÝ˜[YO[ÝÙ\Š›ÝÉ‰Š›ÝËšY[]U\_›ÝË™[\ÞYYU\_›ÝË\_›ÝÖÉú.ªùb!ºhg¹g¢É×JJNÚYŠ˜[YOOOIÙ^\›˜[	ß˜[YKš[˜ÛY\Ê	ùi%º f	ÊJ\™]\›‰Ù^\›˜[	ÎÚYŠ˜[YOOOIÜ\[YIß˜[YKš[˜ÛY\Ê	ùméz+ 	Ê_›ÝÉ‰œ›ÝËš\Ô\[YOOO]YJ\™]\›‰Ü\[YIÎÚYŠ˜[YOOOIÜÝY™‰ß˜[YKš[˜ÛY\Ê	ùl": mÉÊ_˜[YKš[˜ÛY\Ê	ù«hú mÉÊJ\™]\›‰ÜÝY™‰ÎÜ™]\›‰ÉÎßBˆ[˜Ý[Ûˆ^\›Û\\Y[
+›ÝË[\ÞYYJ^Ü™]\›ˆÛX[Š›ÝÉ‰Š›ÝË˜ÛÜÝ\\Y[›ÝË™^[œÙQ\\Y[
+_[\ÞYYI‰Š[\ÞYYK˜ÛÜÝ\\Y[[\ÞYYK™^[œÙQ\\Y[
+JOOOIØXØY[^IÏÉØXØY[^IÎ‰ÜÝÜ™IÎßBˆ[˜Ý[Ûˆ^\›Û]RÙ^J˜[YJ^ØÛÛœÝ[™Ú[™O[Ü\˜][™Ñ^[œÙQ[™Ú[™J
+KÙ^OY[™Ú[™K™]RÙ^Qœ›ÛU˜[YOÙ[™Ú[™K™]RÙ^Qœ›ÛU˜[YJ˜[YJN™]U^
+˜[YJNÜ™]\›ˆ×—ÍKWÌŸKWÌŸIË\Ý
+ÛX[ŠÙ^JJOØÛX[ŠÙ^JN‰ÉÎßBˆ[˜Ý[Ûˆ^\›ÛY™™XÝ]™Q]J›ÝÊ^Ü™]\›ˆ^\›Û]RÙ^J›ÝÉ‰Š›ÝË™Y™™XÝ]™Q]_›ÝËœØ[\žQY™™XÝ]™Q]_›ÝÖÉùå'ù¥b9¥éy§'É×JJ_	ÌŒ‹LËLIÎßBˆ[˜Ý[Ûˆ^\›Û[™R][\ÕÝ[
+˜[YJ^Ü™]\›ˆ
+\œ˜^Kš\Ð\œ˜^J˜[YJOÝ˜[YN–×JKœ™YXÙJ[˜Ý[ÛŠÝ[][J^ØÛÛœÝ˜]Ï]\[Ùˆ][OOOIÛ[X™\‰ÏÚ][NŠ][I‰\[Ùˆ][OOOIÛØš™XÝ	ÏÊ][K˜[[Ý[][K˜[Y_][K›[Û™^_][KÝ[][VÉúaäzhcI×JNŒ
+K[X™\S[X™\ŠÝš[™Ê˜]ÏO[[ÉÉÎœ˜]ÊKœ™\XÙJËÙË	ÉÊJNÜ™]\›ˆÝ[
+Ê[X™\‹š\Ñš[š]J[X™\ŠOÛ[X™\ŽŒ
+NßK
+NßBˆ[˜Ý[Ûˆ^\›Û[[Ý[
+˜[YJ^ØÛÛœÝ[X™\S[X™\ŠÝš[™Ê˜[YOO[[ÉÉÎ˜[YJKœ™\XÙJËÙË	ÉÊJNÜ™]\›ˆ[X™\‹š\Ñš[š]J[X™\ŠOÓX]›X^
+X]œ›Ý[™
+[X™\ŠJNŒßBˆ[˜Ý[Ûˆ^\›ÛÝ]\ÐXÝ]™J˜[YJ^Ü™]\›ˆ˜[YOOO]Y_Éùg*9/çIË	ùmì¹¢¥y/çIË	ù¢¥y/çIË	ùb¨9/çIË	ù§"y¥b	Ë	ù¦+ÉË	ØXÝ]™IË	ÝYIË	ÌIË	Ù[˜X›Y	×Kš[˜ÛY\ÊÛX[Š˜[YJKÓÝÙ\Ø\ÙJ
+JNßBˆ[˜Ý[Ûˆ^\›Ûš\œÝ[[Ý[
+›ÝËÙ^\Ê^Ù›ÜŠ]OLÚOÙ^\Ë›[™ÝÚJÏLJ^ØÛÛœÝ˜[YO\›ÝÉ‰œ›ÝÖÚÙ^\ÖÚWWK[[Ý[\^\›Û[[Ý[
+˜[YJNÚYŠ[[Ý[Œ
+\™]\›ˆ[[Ý[ß\™]\›ˆßBˆ[˜Ý[Ûˆ^\›Û[”Ø[\žJ›ÝË\™XÝÙ^\Ë[’Ù^\Ê^ØÛÛœÝ\™XÝ\^\›Ûš\œÝ[[Ý[
+›ÝË\™XÝÙ^\ÊNÚYŠ\™XÝ
+\™]\›ˆ\™XÝÙ›ÜŠ]OLÚO[’Ù^\Ë›[™ÝÚJÏLJ^ØÛÛœÝ^XÛX[Š›ÝÉ‰œ›ÝÖÜ[’Ù^\ÖÚWWJKœ™\XÙJËÙË	ÉÊKX]Ú\Ï]^›X]Ú
+×
+ÊÎ——
+ÊOËÙÊNÚYŠX]Ú\É‰›X]Ú\Ë›[™Ý
+^ØÛÛœÝ[[Ý[\^\›Û[[Ý[
+X]Ú\ÖÛX]Ú\Ë›[™ÝLWJNÚYŠ[[Ý[
+\™]\›ˆ[[Ý[ß_\™]\›ˆßBˆ[˜Ý[Ûˆ^\›ÛX›Ü’[œÝ\™YØ[\žJ›ÝÊ^Ü™]\›ˆ^\›Û[”Ø[\žJ›ÝËÉÛX›Ü’[œÝ\™YØ[\žIË	ÛX›Ü”Ø[\žIË	ÛX›Ü’[œÝ\˜[˜ÙTØ[\žIË	ùbç¹/çy¢¥y/çz%ªº,áÉ×KÉÛX›Ü”[‰Ë	ÛX›Ü”[ÛÙIË	ÛX›Ü’[œÝ\˜[˜ÙS]™[	Ë	ÛX›Ü“]™[	Ë	ùbç¹/çyí&º-çI×JNßBˆ[˜Ý[Ûˆ^\›ÛX[[œÝ\™YØ[\žJ›ÝÊ^Ü™]\›ˆ^\›Û[”Ø[\žJ›ÝËÉÚX[[œÝ\™YØ[\žIË	ÚX[Ø[\žIË	ÚX[[œÝ\˜[˜ÙTØ[\žIË	ù`iy/çy¢¥y/çz%ªº,áÉ×KÉÚX[[‰Ë	ÚX[[ÛÙIË	ÚX[[œÝ\˜[˜ÙS]™[	Ë	ÚX[]™[	Ë	ù`iy/çyí&º-çI×JNßBˆ[˜Ý[Ûˆ^\›ÛX›Ü‘[\ÞY\”^J›ÝÊ^ØÛÛœÝØ]™Y\^\›Ûš\œÝ[[Ý[
+›ÝËÉÛX›Ü‘[\ÞY\”^IË	ÛX›Ü’[œÝ\˜[˜ÙQ[\ÞY\”^IË	ùbç¹/çyak9cî:,¨9¤å	×JNÚYŠØ]™Y
+\™]\›ˆØ]™YÚYŠ\^\›ÛÝ]\ÐXÝ]™J›ÝÉ‰Š›ÝË›X›Ü”Ý]\ß›ÝË›X›Ü’[œÝ\˜[˜ÙTÝ]\ÊJJ\™]\›ˆØÛÛœÝØ[\žO\^\›ÛX›Ü’[œÝ\™YØ[\žJ›ÝÊNÜ™]\›ˆØ[\žOÜ^\›Û[[Ý[
+Ø[\žJŒŒLMJŒÌ
+JÜ^\›Û[[Ý[
+Ø[\žJŒŒJŒÌ
+NŒßBˆ[˜Ý[Ûˆ^\›ÛX[[\ÞY\”^J›ÝÊ^ØÛÛœÝØ]™Y\^\›Ûš\œÝ[[Ý[
+›ÝËÉÚX[[\ÞY\”^IË	ÚX[[œÝ\˜[˜ÙQ[\ÞY\”^IË	ù`iy/çyak9cî:,¨9¤å	×JNÚYŠØ]™Y
+\™]\›ˆØ]™YÚYŠ\^\›ÛÝ]\ÐXÝ]™J›ÝÉ‰Š›ÝËšX[Ý]\ß›ÝËšX[[œÝ\˜[˜ÙTÝ]\ÊJJ\™]\›ˆØÛÛœÝØ[\žO\^\›ÛX[[œÝ\™YØ[\žJ›ÝÊNÜ™]\›ˆØ[\žOÜ^\›Û[[Ý[
+Ø[\žJŒŒLMÊŒŒ
+ŒKMŠNŒßBˆ[˜Ý[Ûˆ^\›Û™]\™[Y[˜\ÙJ›ÝË\J^ØÛÛœÝØ]™Y\^\›Ûš\œÝ[[Ý[
+›ÝËÉÛX›Ü”™]\™[Y[Ø[\žIË	Ü™]\™[Y[Ø[\žIË	ÛX›Ü”[œÚ[Û”Ø[\žIË	Û[ÛT™]\™[Y[ØYÙIË	ùbçº` 9§"9£ä9îlùméz,áÉ×JNÚYŠØ]™Y
+\™]\›ˆØ]™YÚYŠ\OOOIÜ\[YIÊ\™]\›ˆ^\›Ûš\œÝ[[Ý[
+›ÝËÉØ]™\˜YÙTØ[\žIË	Ü\[YP]™\˜YÙTØ[\žIË	ùæë¹bcyå,ùh,y§"9nlùgaú%ªº,áùî/zhcI×J_^\›ÛX›Ü’[œÝ\™YØ[\žJ›ÝÊNÜ™]\›ˆ^\›Ûš\œÝ[[Ý[
+›ÝËÉØ˜\ÙTØ[\žIË	ÜÝY™˜\ÙTØ[\žIË	Û[ÛTØ[\žIË	ÜØ[\žIË	ù§+:%ª‰×J_^\›ÛX›Ü’[œÝ\™YØ[\žJ›ÝÊNßBˆ[˜Ý[Ûˆ^\›Û™]\™[Y[[\ÞY\”^J›ÝË\J^ØÛÛœÝØ]™Y\^\›Ûš\œÝ[[Ý[
+›ÝËÉÛX›Ü”™]\™[Y[[\ÞY\[[Ý[	Ë	Ü™]\™[Y[[\ÞY\[[Ý[	Ë	úfáù..ù£ä9îlúaäzhcI×JNÚYŠØ]™Y
+\™]\›ˆØ]™YØÛÛœÝ˜\ÙO\^\›Û™]\™[Y[˜\ÙJ›ÝË\JK˜]O\^\›Ûš\œÝ[[Ý[
+›ÝËÉÛX›Ü”™]\™[Y[[\ÞY\”˜]IË	Ü™]\™[Y[[\ÞY\”˜]I×J_ŽÜ™]\›ˆ˜\ÙOÜ^\›Û[[Ý[
+˜\ÙJœ˜]KÌL
+NŒßBˆ[˜Ý[Ûˆ^\›Û[\ÞYYT›ÝÜÊ
+^ÂˆÛÛœÝžRY[™]ÈX\
+
+NÂˆ
+Ý]K™[\ÞYY\ß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÝÊ^ØÛÛœÝY\^\›Û[\ÞYYRY
+›ÝÊNÚYŠY
+XžRYœÙ]
+Y›ÝÊNßJNÂˆ™]\›ˆ\œ˜^K™œ›ÛJžRY™[šY\Ê
+JK›X\
+[˜Ý[ÛŠ[žJ^Ü™]\›ˆÚY™[žVÌK[\ÞYYN™[žVÌW_NßJNÂˆBˆ[˜Ý[ÛˆØ[\žPÛÛ™šYÔ›ÝÜÑ›Ü‘[\ÞYYJY[\ÞYYJ^ÂˆÛÛœÝ[\ÞYYQ[XZ[[ÝÙ\Š[\ÞYYI‰Š[\ÞYYK™[XZ[[\ÞYYK‘[XZ[
+JKX]Ú\ÏY[˜Ý[ÛŠ›ÝÊ^ØÛÛœÝ›ÝÒY\^\›Û[\ÞYYRY
+›ÝÊK›ÝÑ[XZ[[ÝÙ\Š›ÝÉ‰Š›ÝË™[XZ[›ÝË‘[XZ[
+JNÜ™]\›ˆ›ÝÒYOOZY
+\›ÝÒY	‰™[\ÞYYQ[XZ[	‰œ›ÝÑ[XZ[OOY[\ÞYYQ[XZ[
+NßK›ÝÜÏV×NÂˆ
+Ý]K™[\ÞYYTØ[\žPÛÛ™šYÒ\ÝÜž_×JK™š[\ŠX]Ú\ÊK™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÝÊ^Ü›ÝÜËœ\Ú
+Øš™XÝ˜\ÜÚYÛŠ××ÜØ[\žTÛÝ\˜ÙT˜[šÎŒ_K›ÝÊJNßJNÂˆ
+Ý]K™[\ÞYYTØ[\žPÛÛ™šYÜß×JK™š[\ŠX]Ú\ÊK™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÝÊ^Ü›ÝÜËœ\Ú
+Øš™XÝ˜\ÜÚYÛŠ××ÜØ[\žTÛÝ\˜ÙT˜[šÎŒŸK›ÝÊJNßJNÂˆYŠ[\ÞYYI‰–ÉØ˜\ÙTØ[\žIË	ÚÝ\›T˜]IË	ÛX›Ü‘[\ÞY\”^IË	ÚX[[\ÞY\”^IË	ÛX›Ü”™]\™[Y[[\ÞY\[[Ý[	Ë	Ü™]\™[Y[[\ÞY\[[Ý[	×KœÛÛYJ[˜Ý[ÛŠÙ^J^Ü™]\›ˆ[\ÞYYVÚÙ^WHO[[	‰™[\ÞYYVÚÙ^WHOOIÉÎßJJ\›ÝÜËœ\Ú
+Øš™XÝ˜\ÜÚYÛŠ××ÜØ[\žTÛÝ\˜ÙT˜[šÎŒK[\ÞYYJJNÂˆ™]\›ˆ›ÝÜËœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ^\›ÛY™™XÝ]™Q]JJK›ØØ[PÛÛ\\™J^\›ÛY™™XÝ]™Q]JŠJ_[X™\ŠK—×ÜØ[\žTÛÝ\˜ÙT˜[šß
+KS[X™\Š‹—×ÜØ[\žTÛÝ\˜ÙT˜[šß
+NßJNÂˆBˆ[˜Ý[ÛˆY™™XÝ]™TØ[\žPÛÛ™šYÊY[\ÞYYK]RÙ^J^ÂˆÛÛœÝ›ÝÜÏ\Ø[\žPÛÛ™šYÔ›ÝÜÑ›Ü‘[\ÞYYJY[\ÞYYJK™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ^\›ÛY™™XÝ]™Q]J›ÝÊOY]RÙ^NßJNÂˆ™]\›ˆ›ÝÜË›[™ÝÜ›ÝÜÖÜ›ÝÜË›[™ÝLWN›[ÂˆBˆ[˜Ý[Ûˆ[\ÞYYUÛÜšÜÒ[“[Û
+[\ÞYYK[Û
+^ÂˆÛÛœÝÝ]\Ï[ÝÙ\Š[\ÞYYI‰Š[\ÞYYK˜XØÛÝ[Ý]\ß[\ÞYYKœÝ]\ß[\ÞYYVÉùn,ú&gùâà9¡bÉ×JJNÂˆYŠÉÜ™Z™XÝY	Ë	Ù[]Y	Ë	ØØ[˜Ù[Y	Ë	ù/g9nè‰Ë	úiàyfç‰×Kš[˜ÛY\ÊÝ]\ÊJ\™]\›ˆ˜[ÙNÂˆÛÛœÝ\™O\^\›Û]RÙ^J[\ÞYYI‰Š[\ÞYYKš\™Q]_[\ÞYYKœÝ\]_[\ÞYYKš›Ú[‘]_[\ÞYYVÉùb,: mù¥éI×JJKX]™O\^\›Û]RÙ^J[\ÞYYI‰Š[\ÞYYK\›Z[˜][Û‘]_[\ÞYYK›X]™Q]_[\ÞYYK™[™]_[\ÞYYVÉúfèº mù¥éI×JJNÂˆÛÛœÝ\Ý[[Û
+ÉËIÊÔÝš[™Ê™]È]J[X™\Š[ÛœÛXÙJ
+JK[X™\Š[ÛœÛXÙJKÊJK
+K™Ù]]J
+JKœYÝ\
+‹	Ì	ÊNÂˆ™]\›ˆ
+Z\™_\™O[\Ý
+I‰Š[X]™_X]™O[[Û
+ÉËLIÊNÂˆBˆ[˜Ý[Ûˆ[ØØ]T^\›Û[ÛJ›ÝÜËÝ[[ÛØ]YÛÜžKÛÝ\˜ÙRY›ÝK\\Y[
+^ÂˆÛÛœÝ[™Ú[™O[Ü\˜][™Ñ^[œÙQ[™Ú[™J
+NÂˆ
+[™Ú[™K˜[ØØ]S[ÛP[[Ý[Ù[™Ú[™K˜[ØØ]S[ÛP[[Ý[
+^\›Û[[Ý[
+Ý[
+K[ÛÌWJN–×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ^J^Ü›ÝÜËœ\Ú
+Ù]RÙ^N™^K™]RÙ^K[[Ý[™^K˜[[Ý[Ø]YÛÜžN˜Ø]YÛÜžKÛÝ\˜ÙU\N‰Ü^\›Û	ËÛÝ\˜ÙRYœÛÝ\˜ÙRY^[œÙS[Û›[Û[ØØ][Û“[ÙN‰Û[ÛIË^[Y[]RÙ^N‰ÉË›ÝN››ÝK\\Y[™\\Y[JNßJNÂˆBˆ[˜Ý[Ûˆ]]ÛX]XÔ^\›ÛYÙ\ŠÝ\˜[YK[™˜[YJ^ÂˆÛÛœÝ[™Ú[™O[Ü\˜][™Ñ^[œÙQ[™Ú[™J
+KÝ\Ù^O\^\›Û]RÙ^JÝ\˜[YJK[™Ù^O\^\›Û]RÙ^J[™˜[YJK›ÝÜÏV×K[\ÞYYT›ÝÜÏ\^\›Û[\ÞYYT›ÝÜÊ
+K[\ÞYY\ÐžRY[™]ÈX\
+[\ÞYYT›ÝÜË›X\
+[˜Ý[ÛŠ[žJ^Ü™]\›ˆÙ[žKšY[žK™[\ÞYYWNßJJNÂˆYŠ\Ý\Ù^_Y[™Ù^_Ý\Ù^O™[™Ù^_[™Ù^O	ÌŒ‹LËLIÊ\™]\›ˆ›ÝÜÎÂˆÛÛœÝÝ\[Û\Ý\Ù^KœÛXÙJÊO	ÌŒ‹LÉÏÉÌŒ‹LÉÎœÝ\Ù^KœÛXÙJÊK[™[ÛY[™Ù^KœÛXÙJÊK[ÛÏY[™Ú[™K›[ÛÙ^\Ð™]ÙY[Ù[™Ú[™K›[ÛÙ^\Ð™]ÙY[ŠÝ\[Û[™[Û
+N–ÜÝ\[ÛNÂˆ[\ÞYYT›ÝÜË™›Ü‘XXÚ
+[˜Ý[ÛŠ[žJ^ÂˆÛÛœÝYY[žKšY[\ÞYYOY[žK™[\ÞYYK\O\^\›Û[\ÞYYU\J[\ÞYYJK˜[YO\^\›Û[\ÞYYS˜[YJ[\ÞYYJNÂˆYŠVÉÜÝY™‰Ë	Ü\[YI×Kš[˜ÛY\Ê\JJ\™]\›ŽÂˆ[ÛË™›Ü‘XXÚ
+[˜Ý[ÛŠ[Û
+^ÂˆYŠY[\ÞYYUÛÜšÜÒ[“[Û
+[\ÞYYK[Û
+J\™]\›ŽÂˆÛÛœÝ[Û[™[[Û
+ÉËIÊÔÝš[™Ê™]È]J[X™\Š[ÛœÛXÙJ
+JK[X™\Š[ÛœÛXÙJKÊJK
+K™Ù]]J
+JKœYÝ\
+‹	Ì	ÊKÛÛ™šYÏYY™™XÝ]™TØ[\žPÛÛ™šYÊY[\ÞYYK[Û[™
+NÂˆYŠXÛÛ™šYÊ\™]\›ŽÂˆÛÛœÝ\\Y[\^\›Û\\Y[
+ÛÛ™šYË[\ÞYYJKÛÛ™šYÕ\O]\NÂˆYŠÛÛ™šYÕ\OOOIÜÝY™‰Ê^ÂˆÛÛœÝ˜\ÙO\^\›Û[[Ý[
+ÛÛ™šYË˜˜\ÙTØ[\ž_ÛÛ™šYËœÝY™˜\ÙTØ[\ž_ÛÛ™šYË›[ÛTØ[\ž_ÛÛ™šYËœØ[\žJK[ÝØ[˜ÙO\^\›Û[™R][\ÕÝ[
+ÛÛ™šYËš›Ø[ÝØ[˜Ù\ßÛÛ™šYËš›Ø[ÝØ[˜ÙR][\ÊJÜ^\›Û[™R][\ÕÝ[
+ÛÛ™šYË˜[ÝØ[˜Ù\ßÛÛ™šYË˜[ÝØ[˜ÙR][\ÊKØ[\žO\^\›Û[[Ý[
+˜\ÙJØ[ÝØ[˜ÙJNÂˆYŠØ[\žJX[ØØ]T^\›Û[ÛJ›ÝÜËØ[\žK[Û	ú%ªº,áÉË	Ü^\›Û\ÝY™‹IÊÚY
+ÉËIÊÛ[Û˜[YJÉûïg9§+:%ªº"!ùfî¹k¦¹b¨9íi‰Ë\\Y[
+NÂˆBˆÛÛœÝX›Ü”Ø[\žO\^\›ÛX›Ü’[œÝ\™YØ[\žJÛÛ™šYÊKX[Ø[\žO\^\›ÛX[[œÝ\™YØ[\žJÛÛ™šYÊK™]\™[Y[˜\ÙO\^\›Û™]\™[Y[˜\ÙJÛÛ™šYËÛÛ™šYÕ\JNÂˆÛÛœÝÛÜÝÏVÂˆØØ]YÛÜžN‰ùbç¹/çyak9cî:,¨9¤å	Ë[[Ý[œ^\›ÛX›Ü‘[\ÞY\”^JÛÛ™šYÊK›ÝN›X›Ü”Ø[\žOÛ˜[YJÉûïg9¢¥y/çz%ªº,áÈ	ÊÛ[Û™^JX›Ü”Ø[\žJN›˜[YJÉûïg:%ªº,áù¢¥y/çz*+yk¦‰ßKˆØØ]YÛÜžN‰ù`iy/çyak9cî:,¨9¤å	Ë[[Ý[œ^\›ÛX[[\ÞY\”^JÛÛ™šYÊK›ÝNšX[Ø[\žOÛ˜[YJÉûïg9¢¥y/çz%ªº,áÈ	ÊÛ[Û™^JX[Ø[\žJN›˜[YJÉûïg:%ªº,áù¢¥y/çz*+yk¦‰ßKˆØØ]YÛÜžN‰ùbçº` 9ak9cî9£ä9îlÉË[[Ý[œ^\›Û™]\™[Y[[\ÞY\”^JÛÛ™šYËÛÛ™šYÕ\JK›ÝNœ™]\™[Y[˜\ÙOÛ˜[YJÉûïg9§"9£ä9îlùméz,áÈ	ÊÛ[Û™^J™]\™[Y[˜\ÙJJÉÈ0åÈ‰IÎ›˜[YJÉûïg:%ªº,áù¢¥y/çz*+yk¦‰ßKˆØØ]YÛÜžN‰ú mùàoy/çzfª‰Ë[[Ý[˜ÛÛ™šYË›ØØÝ\][Û˜[[œÝ\˜[˜ÙQ[\ÞY\”^_ÛÛ™šYË›ØØÝ\][Û˜[[\ÞY\”^K›ÝN›˜[YJÉûïg:%ªº,áù¢¥y/çz*+yk¦‰ßBˆNÂˆÛÜÝË™›Ü‘XXÚ
+[˜Ý[ÛŠÛÜÝ
+^ØÛÛœÝ[[Ý[\^\›Û[[Ý[
+ÛÜÝ˜[[Ý[
+NÚYŠ[[Ý[
+X[ØØ]T^\›Û[ÛJ›ÝÜË[[Ý[[ÛÛÜÝ˜Ø]YÛÜžK	Ü^\›ÛXÛÜÝIÊÚY
+ÉËIÊÚ\Ú^
+ÛÜÝ˜Ø]YÛÜžJJÉËIÊÛ[ÛÛÜÝ››ÝK\\Y[
+NßJNÂˆJNÂˆJNÂˆ
+Ý]Kœ\[YT™XÛÜ™ß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ™XÛÜ™
+^ÂˆÛÛœÝ]RÙ^O\^\›Û]RÙ^J™XÛÜ™ÛÜšÑ]_™XÛÜ™™]_™XÛÜ™Éù¥éy§'É×JKÝ]\Ï[ÝÙ\Š™XÛÜ™œÝ]\ß™XÛÜ™Éùâà9¡bÉ×JK^XX›O[ÝÙ\Š™XÛÜ™œ^XX›_™XÛÜ™Éù¦+ùd)º*":%ª‰×JNÂˆYŠY]RÙ^_]RÙ^OÝ\Ù^_]RÙ^O™[™Ù^_]RÙ^O	ÌŒ‹LËLIßÉÜ™Z™XÝY	Ë	Ù[]Y	Ë	ØØ[˜Ù[Y	Ë	Ý›ÚYY	Ë	Ü[™[™ÉË	ù/g9nè‰Ë	úiàyfç‰Ë	ùcå¹­¢	Ë	ùo¡ykêy¨.	Ë	ùo¡y..ùë¨ykêy¨.	×Kš[˜ÛY\ÊÝ]\Ê_™XÛÜ™œ^XX›OOOY˜[Ù_ÉÙ˜[ÙIË	Û›ÉË	ùd)‰Ë	ù.#z*":%ª‰Ë	ù.#y¥+ú%ª‰×Kš[˜ÛY\Ê^XX›JJ\™]\›ŽÂˆÛÛœÝY\^\›Û[\ÞYYRY
+™XÛÜ™
+K[\ÞYYOY[\ÞYY\ÐžRY™Ù]
+Y
+KÛÛ™šYÏY[\ÞYYOÊY™™XÝ]™TØ[\žPÛÛ™šYÊY[\ÞYYK]RÙ^J_ßJNžßK˜]O\^\›Û[[Ý[
+™XÛÜ™šÝ\›T˜]_™XÛÜ™Éù¦`º%ª‰×_ÛÛ™šYËšÝ\›T˜]JKÝ\œÏS[X™\Š™XÛÜ™Ý[Ý\œß™XÛÜ™šÝ\œß™XÛÜ™Éùî/y¦`¹¥n	×_™XÛÜ™Éù¦`¹¥n	×_
+JÊ™XÛÜ™š[’Ý\OO]YI‰ˆ\™XÛÜ™Ý[Ý\œÏÌNŒ
+KÜ›ÜÜÏ\^\›Û[[Ý[
+™XÛÜ™™Ü›ÜÜÔ^_™XÛÜ™Éùåm¹ëa¹«æúhcI×_
+[X™\‹š\Ñš[š]JÝ\œÊOÚÝ\œÊœ˜]NŒ
+JNÂˆYŠZYY[\ÞYY_^\›Û[\ÞYYU\J[\ÞYYJHOOIÜ\[YIßYÜ›ÜÜÊ\™]\›ŽÂˆ›ÝÜËœ\Ú
+Ù]RÙ^N™]RÙ^K[[Ý[™Ü›ÜÜËØ]YÛÜžN‰ú%ªº,áÉËÛÝ\˜ÙU\N‰Ü^\›Û	ËÛÝ\˜ÙRY‰Ü^\›Û\\[YKIÊØÛX[Š™XÛÜ™œ™XÛÜ™Y™XÛÜ™—×ÚYY
+ÉËIÊÙ]RÙ^JK^[œÙS[Û™]RÙ^KœÛXÙJÊK[ØØ][Û“[ÙN‰ØXÝX[	Ë^[Y[]RÙ^N™]RÙ^K›ÝNœ^\›Û[\ÞYYS˜[YJ[\ÞYYJJÉûïg9méz+ 9kéºf¦ù¦`¹¥n	Ë\\Y[œ^\›Û\\Y[
+ÛÛ™šYË[\ÞYYJ_JNÂˆJNÂˆ™]\›ˆ›ÝÜË™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË™]RÙ^O\Ý\Ù^I‰œ›ÝË™]RÙ^OY[™Ù^NßJKœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆK™]RÙ^K›ØØ[PÛÛ\\™J‹™]RÙ^J_K˜Ø]YÛÜžK›ØØ[PÛÛ\\™J‹˜Ø]YÛÜžJ_KœÛÝ\˜ÙRY›ØØ[PÛÛ\\™J‹œÛÝ\˜ÙRY
+NßJNÂˆBˆ[˜Ý[Ûˆ]]ÛX]XÔ^\›Û›ÝÜÑ›Ü‘\\Y[
+Ù^K›Ý[™Ê^ÂˆÛÛœÝY]O[Ü\˜][™Ñ^[œÙQ\\Y[Y]JÙ^JNÂˆ™]\›ˆ]]ÛX]XÔ^\›ÛYÙ\Š›Ý[™ËœÝ\›Ý[™Ë™[™
+K™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË™\\Y[OOZÙ^NßJK›X\
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆØš™XÝ˜\ÜÚYÛŠßK›ÝËÙ\\Y[šÙ^K\\Y[X™[›Y]K›X™[\\Y[ÚÜX™[›Y]KœÚÜX™[JNßJNÂˆBˆ[˜Ý[ÛˆÜ\˜][™Ñ^[œÙSYÙ\‘›Ü‘\\Y[›Ý[™ÊÙ^K›Ý[™Ê^ÂˆYŠX›Ý[™ßX›Ý[™ËœÝ\X›Ý[™Ë™[™
+\™]\›ˆ×NÂˆÛÛœÝ›ÝÏY[™Ù‘^J™]È]J
+JK[™X›Ý[™Ëš[˜ÛYQ]\™OØ›Ý[™Ë™[™Š›Ý[™Ë™[™››ÝÏÛ›ÝÎ˜›Ý[™Ë™[™
+NÚYŠ›Ý[™ËœÝ\™[™
+\™]\›ˆ×NÂˆÛÛœÝ˜\ÙO]YÓÜ\˜][™Ñ^[œÙT›ÝÜÊÜ\˜][™Ñ^[œÙQ[™Ú[™J
+K˜Z[YÙ\ŠÜÙ][™ÜÎ›Ü\˜][™Ñ^[œÙTÙ][™ÜÑ›Ü‘\\Y[
+Ù^JK^[œÙ\Î›Ü\˜][™Ñ^[œÙT™XÛÜ™Ñ›Ü‘\\Y[
+Ù^JKÝ\˜›Ý[™ËœÝ\[™™[™JKÙ^JK]]ÛX]XÏX]]ÛX]XÔ^\›Û›ÝÜÑ›Ü‘\\Y[
+Ù^KÜÝ\˜›Ý[™ËœÝ\[™™[™JK]]ÛX]XÒÙ^\Ï[™]ÈÙ]
+]]ÛX]XË›X\
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË˜Ø]YÛÜžJÉß	ÊÜ›ÝË™^[œÙS[ÛßJJKX[˜YÙY[™]ÈÙ]
+Éú%ªº,áÉË	ùbç¹/çyak9cî:,¨9¤å	Ë	ù`iy/çyak9cî:,¨9¤å	Ë	ùbçº` 9ak9cî9£ä9îlÉË	ú mùàoy/çzfª‰×JNÂˆ™]\›ˆ˜\ÙK™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ[X[˜YÙYš\Ê›ÝË˜Ø]YÛÜžJ_X]]ÛX]XÒÙ^\Ëš\Ê›ÝË˜Ø]YÛÜžJÉß	ÊÜ›ÝË™^[œÙS[Û
+NßJK˜ÛÛ˜Ø]
+]]ÛX]XÊKœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆK™]RÙ^K›ØØ[PÛÛ\\™J‹™]RÙ^J_K˜Ø]YÛÜžK›ØØ[PÛÛ\\™J‹˜Ø]YÛÜžJ_KœÛÝ\˜ÙRY›ØØ[PÛÛ\\™J‹œÛÝ\˜ÙRY
+NßJNÂˆBˆ[˜Ý[ÛˆÜ\˜][™Ñ^[œÙSYÙ\‘›Ü›Ý[™Ê›Ý[™Ê^Âˆ™]\›ˆÜ\˜][™Ñ^[œÙSYÙ\‘›Ü‘\\Y[›Ý[™Ê	ÜÝÜ™IË›Ý[™ÊK˜ÛÛ˜Ø]
+Ü\˜][™Ñ^[œÙSYÙ\‘›Ü‘\\Y[›Ý[™Ê	ØXØY[^IË›Ý[™ÊJNÂˆBˆ[˜Ý[Ûˆ™[™\“Ý™\šY]Ê
+^ÂˆÛÛœÝ›Ý[™Ï[Ý™\šY]Ð›Ý[™Ê
+NÂˆÛÛœÝØ[\Ï\Ý]KœØ[\Ë™š[\Š[˜Ý[ÛŠØ[J^ØÛÛœÝ]OY]Qœ›ÛJØ[KœÛÛ]
+NÜ™]\›ˆ]I‰ŠX›Ý[™ËœÝ\]OX›Ý[™ËœÝ\
+I‰ŠX›Ý[™Ë™[™]OX›Ý[™Ë™[™
+NßJNÂˆ]›ÝÜÏV×NÂˆØ[\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠØ[J^ÊØ[Kš][\ß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ][J^Ü›ÝÜËœ\Ú
+Ù]NœØ[KœÛÛ]Ø[S›ÎœØ[KœØ[S›Ë˜[YN˜ÛX[Š][K›˜[YJ_	ù§*¹doyd#yea¹dàIËÚÝN˜ÛX[Š][KœÚÝJK]N“[X™\Š][Kœ]_JK[[Ý[“[X™\Š][K›[™UÝ[O[[Ú][K›[™UÝ[“[X™\Š][Kœ]_JJ“[X™\Š][K[š]šXÙ_
+JKÛÜÝ“[X™\Š][K›[™PÛÜÝ
+_JNßJNßJNÂˆÛÛœÝ\›O[ÝÙ\ŠÝ]K›Ý™\šY]ÔÙX\˜Ú
+Kš[J
+NÂˆYŠ\›J\›ÝÜÏ\›ÝÜË™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆÝÙ\ŠÜ›ÝË›˜[YK›ÝËœÚÝK›ÝËœØ[S›×Kš›Ú[Š	È	ÊJKš[˜ÛY\Ê\›JNßJNÂˆ›ÝÜËœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ
+]Qœ›ÛJ‹™]J_
+KJ]Qœ›ÛJK™]J_
+NßJNÂˆÛÛœÝ™]™[YO]\›OÜÝ[J›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË˜[[Ý[ßJNœÝ[JØ[\Ë[˜Ý[ÛŠØ[J^Ü™]\›ˆØ[KÝ[ßJNÂˆÛÛœÝÛÜÝ]\›OÜÝ[J›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË˜ÛÜÝßJNœÝ[JØ[\Ë[˜Ý[ÛŠØ[J^Ü™]\›ˆØ[K˜ÛÜÝÝ[ßJNÂˆÛÛœÝ›Ùš]\™]™[YKXÛÜÝÂˆÛÛœÝ]O\Ý[J›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœ]NßJNÂˆÛÛœÝXœÏIÏ]ˆÛ\ÜÏH›ÜË\˜[™ÙK]XœÈ]ÛˆÛ\ÜÏH‰ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÝÙ^IÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOHÙ^H¹.â¹i*OØ]Û]ÛˆÛ\ÜÏH‰ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÛ[Û	ÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOH›[Û¹§"9.ïOØ]Û]ÛˆÛ\ÜÏH‰ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÞYX\‰ÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOHžYX\ˆ¹.â¹nmØ]Û]ÛˆÛ\ÜÏH‰ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIØÝ\ÝÛIÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOH˜Ý\ÝÛHº!êº* ¹c`:e¤ÏØ]ÛÙ]‰ÎÂˆÛÛœÝ[ÛXÚÙ\\Ý]K›Ý™\šY]Ô˜[™ÙOOOIÛ[Û	ÏÉÏ]ˆÛ\ÜÏH›ÜË\˜[™ÙKXÝ\ÝÛHX™[¹§éyç"ù§"9.ïO[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]Ó[Ûˆ\OH›[ÛˆX^H‰ÊØ]Š]U^
+™]È]J
+JKœÛXÙJÊJJÉÈˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]Ó[Û
+JÉÈÛX™[Ù]‰Î‰ÉÎÂˆÛÛœÝÝ\ÝÛO\Ý]K›Ý™\šY]Ô˜[™ÙOOOIØÝ\ÝÛIÏÉÏ]ˆÛ\ÜÏH›ÜË\˜[™ÙKXÝ\ÝÛHX™[ºe¢ùiâù¥éy§'Ï[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]Ñœ›ÛHˆ\OH™]Hˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]Ñœ›ÛJJÉÈÛX™[X™[¹íd9§gù¥éy§'Ï[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]ÕÈˆ\OH™]Hˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]ÕÊJÉÈÛX™[Ù]‰Î‰ÉÎÂˆÛÛœÝ\Ý\›ÝÜË›[™ÝÉÏ]ˆÛ\ÜÏH›ÜË]Ù^K[\Ý‰ÊÜ›ÝÜË›X\
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË]Ù^K\›ÝÈ]ˆÛ\ÜÏH››ËZ[XYÙH¹ea¹dàOÙ]]‰ÊÙ\ØØ\R[
+›ÝË›˜[YJJÉÏØÛX[‰ÊÙ\ØØ\R[
+
+›ÝËœÚÝOÉùíê:&gÈ	ÊÜ›ÝËœÚÝJÉøàîÉÎ‰ÉÊJÉù¥n:aãÈ	ÊÜ›ÝËœ]JÉøàîÉÊÙ]U[YU^
+›ÝË™]JJJÉÏÜÛX[Ù]Ý›Û™Ï‰ÊÛ[Û™^J›ÝË˜[[Ý[
+JÉÏÜÝ›Û™ÏÙ]‰ÎßJKš›Ú[Š	ÉÊJÉÏÙ]‰Î™[\R[
+	ú`&y«­y§'úe¤ù¬¤¹§"yea¹dàzb­ùe+‰Ë\›OÉú*âù¦í9£æù¤'9l"ù¥¡ùkeøà ‰Î‰ùk£9¢$9ãï¹h-9ea¹dàzb­ùe+¹o£9§ úhkùé.¸à ‰ÊNÂˆ™]\›ˆXœÊÛ[ÛXÚÙ\ŠØÝ\ÝÛJÉÏ]ˆÛ\ÜÏH›ÜËZÜKYÜšYÜË]Ù^KZÜ\È‰ÊÚÜJ›Ý[™Ë›X™[
+Éúb­ùe+¹¥-¹aiIË[Û™^J™]™[YJK\›OÜ›ÝÜË›[™Ý
+ÉÈ9`"ùë)¹d"9dàzh!IÎœØ[\Ë›[™Ý
+ÉÈ9ëaºb­ùe+‰Ë	ûï!	ÊJÚÜJ	ùea¹dày¢$9§+	Ë[Û™^JÛÜÝ
+K	ùmì¹e+¹ea¹dày¢$9§+	Ë	ù¢$9§+	ÊJÚÜJ›Ý[™Ë›X™[
+Éú,î¹i&¹l$IË[Û™^J›Ùš]
+K	úb­ùe+¹¥-¹ai{ï#yea¹dày¢$9§+	Ë	ø¡¥ÉÊJÚÜJ	ú,èùaî¹¥n:aãÉË›Ü›X][X™\Š]JK\›OÉùë)¹d"9æë¹bcy¤'9l"ÉÎ‰ùaj:`ê:,èùaî¹¥n:aãÉË	ù.í‰ÊJÉÏÙ]ÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™]ˆÛ\ÜÏH›ÜËXØ\™ZXY]‰ÊØ›Ý[™Ë›X™[
+Éú,èù.¡¹.à:n¯ÚÙ]]ÛˆÛ\ÜÏH›ÜËX]ÛˆÛX[š[X\žHˆ]K[˜]HœØ[\È¹bcyo :b­ùe+Ø]ÛÙ][œ]Û\ÜÏH›ÜËZ[œ]ÜË[Ý™\šY]Ë\ÙX\˜ÚˆYH›Ý™\šY]ÔÙX\˜ÚˆXÙZÛ\H¹¤'9l"ùea¹dàyd#yê,xà yíê:&gù¢%ºb­ùe+¹e«º&gÈˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]ÔÙX\˜Ú
+JÉÈ‰ÊÛ\Ý
+ÉÏÜÙXÝ[Û‰ÎÂˆBˆ[˜Ý[Ûˆ™[™\“Ý™\šY]ÕŠ
+^ÂˆÛÛœÝ›Ý[™Ï[Ý™\šY]Ð›Ý[™Ê
+NÂˆ[˜Ý[Ûˆ[”˜[™ÙJ˜[YJ^ØÛÛœÝ]OY]Qœ›ÛJ˜[YJNÜ™]\›ˆ]I‰ŠX›Ý[™ËœÝ\]OX›Ý[™ËœÝ\
+I‰ŠX›Ý[™Ë™[™]OX›Ý[™Ë™[™
+NßBˆÛÛœÝØ[\Ï\Ý]KœØ[\Ë™š[\Š[˜Ý[ÛŠØ[J^Ü™]\›ˆ[”˜[™ÙJØ[KœÛÛ]
+NßJNÂˆÛÛœÝ[˜ÛÛY\Ï\Ý]Kš[˜ÛÛY\Ë™š[\Š[˜Ý[ÛŠ[˜ÛÛYJ^Ü™]\›ˆ[”˜[™ÙJ[˜ÛÛYK›ØØÝ\œ™Y]
+NßJNÂˆÛÛœÝ™[[Ï\Ý]Kœ™[[Ë™š[\Š[˜Ý[ÛŠ™[[
+^Ü™]\›ˆ[”˜[™ÙJ™[[š[˜ÛÛYT™XÛÙÛš^™Y]
+NßJNÂˆÛÛœÝ™]\›œÏ\Ý]KœØ[\Ô™]\›œË™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ[”˜[™ÙJ›ÝË˜Ü™X]Y]
+NßJNÂˆÛÛœÝYXØ][Û”›ÝÜÏ\Ý]K™YXØ][Û‘Z[K™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ[”˜[™ÙJ›ÝË˜\Ú[™\ÜÑ]_›ÝË™]RÙ^JNßJNÂˆ]›ÙXÝ›ÝÜÏV×NÂˆØ[\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠØ[J^ÂˆÛÛœÝØ[TÝXÝ[S[X™\ŠØ[KœÝXÝ[
+_Ý[JØ[Kš][\ß×K[˜Ý[ÛŠ][J^Ü™]\›ˆ[X™\Š][K›[™UÝ[O[[Ú][K›[™UÝ[“[X™\Š][Kœ]_JJ“[X™\Š][K[š]šXÙ_
+JNßJNÂˆÛÛœÝ˜][Ï\Ø[TÝXÝ[ŒÓX]›X^
+[X™\ŠØ[KÝ[
+JKÜØ[TÝXÝ[ŒNÂˆ
+Ø[Kš][\ß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ][J^ÂˆÛÛœÝ[™UÝ[S[X™\Š][K›[™UÝ[O[[Ú][K›[™UÝ[“[X™\Š][Kœ]_JJ“[X™\Š][K[š]šXÙ_
+JNÂˆ›ÙXÝ›ÝÜËœ\Ú
+Ý\N‰Ü›ÙXÝ	Ë]NœØ[KœÛÛ]›ÎœØ[KœØ[S›Ë˜[YN˜ÛX[Š][K›˜[YJ_	ù§*¹doyd#yea¹dàIËÚÝN˜ÛX[Š][KœÚÝJK]N“[X™\Š][Kœ]_JK[[Ý[›[™UÝ[
+œ˜][ËÛÜÝ“[X™\Š][K›[™PÛÜÝ
+_JNÂˆJNÂˆJNÂˆ][˜ÛÛYT›ÝÜÏZ[˜ÛÛY\Ë›X\
+[˜Ý[ÛŠ[˜ÛÛYJ^ØÛÛœÝ™\Z\Z[˜ÛÛYK˜Ø]YÛÜžOOOIùí«y/ë¹¥-¹aiIÎÜ™]\›ˆÝ\Nœ™\Z\ÉÜ™\Z\‰Î‰ÛÝ\‰Ë]Nš[˜ÛÛYK›ØØÝ\œ™Y]›Îš[˜ÛÛYKš[˜ÛÛYS›Ë˜[YN˜ÛX[ŠÚ[˜ÛÛYK˜Ø]YÛÜžK[˜ÛÛYK˜Ý\ÝÛY\“˜[YWK™š[\Š›ÛÛX[ŠKš›Ú[Š	ûïg	ÊJ_	ùam¹.å¹¥-¹aiIËÚÝN‰ÉË]NŒ[[Ý[“[X™\Š[˜ÛÛYK˜[[Ý[
+KÛÜÝŒNßJNÂˆ]™[[›ÝÜÏ\™[[Ë›X\
+[˜Ý[ÛŠ™[[
+^Ü™]\›ˆÝ\N‰Ü™[[	Ë]Nœ™[[š[˜ÛÛYT™XÛÙÛš^™Y]›Îœ™[[˜ÛÛ˜XÝ›Ë˜[YN˜ÛX[ŠÜ™[[˜Ý\ÝÛY\‹™[[™\]Z\Y[K™š[\Š›ÛÛX[ŠKš›Ú[Š	ûïg	ÊJ_	ùéçú,àù¥-¹æâ‰ËÚÝN‰ÉË]NŒ[[Ý[“[X™\Š™[[š[˜ÛÛYP[[Ý[
+KÛÜÝŒNßJNÂˆÛÛœÝ›ÙXÝ™]™[YO\Ý[J›ÙXÝ›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË˜[[Ý[ßJNÂˆÛÛœÝ™\Z\”™]™[YO\Ý[J[˜ÛÛYT›ÝÜË™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË\OOOIÜ™\Z\‰ÎßJK[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË˜[[Ý[ßJNÂˆÛÛœÝÝ\”™]™[YO\Ý[J[˜ÛÛYT›ÝÜË™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË\OOOIÛÝ\‰ÎßJK[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË˜[[Ý[ßJNÂˆÛÛœÝ™[[™]™[YO\Ý[J™[[›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË˜[[Ý[ßJNÂˆÛÛœÝ™]™[YO\›ÙXÝ™]™[YJÜ™\Z\”™]™[YJÛÝ\”™]™[YJÜ™[[™]™[YNÂˆÛÛœÝÛÜÝSX]›X^
+Ý[J›ÙXÝ›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË˜ÛÜÝßJK\Ý[J™]\›œË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœ™\ÝØÚÙYÛÜÝßJJNÂˆÛÛœÝ›Ùš]\™]™[YKXÛÜÝÂˆÛÛœÝ]O\Ý[J›ÙXÝ›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœ]NßJNÂˆÛÛœÝYXØ][Û”Ù\ÜÚ[ÛœÏV×NÂˆYXØ][Û”›ÝÜË™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÝÊ^Ê›ÝËœÙ\ÜÚ[Ûœß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^ÙYXØ][Û”Ù\ÜÚ[ÛœËœ\Ú
+Ù\ÜÚ[ÛŠNßJNßJNÂˆÛÛœÝYXØ][Û”Ý[[X\žO^Âˆ\ÜÛÛÛÝ[™YXØ][Û”Ù\ÜÚ[ÛœË›[™Ýˆ\ÜÛÛ‘Ü›ÜÜÎœÝ[JYXØ][Û”Ù\ÜÚ[ÛœË[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙNßJKˆXXÚ\”^XX›NœÝ[JYXØ][Û”Ù\ÜÚ[ÛœË[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆÙ\ÜÚ[Û‹XXÚ\[[Ý[ßJKˆØÚÛÛÚ\™NœÝ[JYXØ][Û”Ù\ÜÚ[ÛœË[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆ\Õ˜[YJÙ\ÜÚ[Û‹œØÚÛÛÚ\™JOÜÙ\ÜÚ[Û‹œØÚÛÛÚ\™N“[X™\ŠÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙ_
+KS[X™\ŠÙ\ÜÚ[Û‹XXÚ\[[Ý[
+NßJKˆZ][Û”™XÙZ]™YœÝ[JYXØ][Û”›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœÝ[[X\žKZ][Û”™XÙZ]™YßJKˆ›ÛÛT™[[™XÙZ]™YœÝ[JYXØ][Û”›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœÝ[[X\žKœ›ÛÛT™[[™XÙZ]™YßJBˆNÂˆÛÛœÝXXÚ\“X\[™]ÈX\
+
+NÂˆYXØ][Û”Ù\ÜÚ[ÛœË™›Ü‘XXÚ
+[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^ÂˆÛÛœÝÙ^OXÛX[ŠÙ\ÜÚ[Û‹XXÚ\’Y
+_ÛX[ŠÙ\ÜÚ[Û‹XXÚ\“˜[YJ_	ù§*¹doyd#IÎÂˆÛÛœÝÝ\œ™[]XXÚ\“X\™Ù]
+Ù^J_ÚÙ^NšÙ^K˜[YN˜ÛX[ŠÙ\ÜÚ[Û‹XXÚ\“˜[YJ_	ù§*¹doyd#z  yn*ÉË\ÜÛÛÛÝ[Œ[[Ý[ŒNÂˆÝ\œ™[›\ÜÛÛÛÝ[
+ÏLNÂˆÝ\œ™[˜[[Ý[
+ÏS[X™\ŠÙ\ÜÚ[Û‹XXÚ\[[Ý[
+NÂˆXXÚ\“X\œÙ]
+Ù^KÝ\œ™[
+NÂˆJNÂˆÛÛœÝXXÚ\”›ÝÜÏP\œ˜^K™œ›ÛJXXÚ\“X\˜[Y\Ê
+JKœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ‹˜[[Ý[XK˜[[Ý[ßJNÂˆÛÛœÝXœÏIÏ]ˆÛ\ÜÏH›ÜË\˜[™ÙK]XœÈ]ÛˆÛ\ÜÏH‰ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÝÙ^IÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOHÙ^H¹.â¹i*OØ]Û]ÛˆÛ\ÜÏH‰ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÛ[Û	ÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOH›[Û¹§"9.ïOØ]Û]ÛˆÛ\ÜÏH‰ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIÞYX\‰ÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOHžYX\ˆ¹.â¹nmØ]Û]ÛˆÛ\ÜÏH‰ÊÊÝ]K›Ý™\šY]Ô˜[™ÙOOOIØÝ\ÝÛIÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\˜[™ÙHˆ]K\˜[™ÙOH˜Ý\ÝÛHº!êº* ¹c`:e¤ÏØ]ÛÙ]‰ÎÂˆÛÛœÝ[ÛXÚÙ\\Ý]K›Ý™\šY]Ô˜[™ÙOOOIÛ[Û	ÏÉÏ]ˆÛ\ÜÏH›ÜË\˜[™ÙKXÝ\ÝÛHX™[¹§éyç"ù§"9.ïO[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]Ó[Ûˆ\OH›[ÛˆX^H‰ÊØ]Š]U^
+™]È]J
+JKœÛXÙJÊJJÉÈˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]Ó[Û
+JÉÈÛX™[Ù]‰Î‰ÉÎÂˆÛÛœÝÝ\ÝÛO\Ý]K›Ý™\šY]Ô˜[™ÙOOOIØÝ\ÝÛIÏÉÏ]ˆÛ\ÜÏH›ÜË\˜[™ÙKXÝ\ÝÛHX™[ºe¢ùiâù¥éy§'Ï[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]Ñœ›ÛHˆ\OH™]Hˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]Ñœ›ÛJJÉÈÛX™[X™[¹íd9§gù¥éy§'Ï[œ]Û\ÜÏH›ÜËZ[œ]ˆYH›Ý™\šY]ÕÈˆ\OH™]Hˆ˜[YOH‰ÊØ]ŠÝ]K›Ý™\šY]ÕÊJÉÈÛX™[Ù]‰Î‰ÉÎÂˆÛÛœÝYXØ][Û”Þ[˜Ð\ÞO\Ý]Kš[ššX[Þ][“X[X[™\]Y\Ý[™[™ß[ššX[Þ][”Þ[˜Ò\Ð\ÞJÝ]Kš[ššX[Þ][ÛÝYÞ[˜ÊNÂˆÛÛœÝXXÚ\’[]XXÚ\”›ÝÜË›[™ÝÉÏ]ˆÛ\ÜÏH›ÜËYYXØ][Û‹]XXÚ\œÈ‰ÊÝXXÚ\”›ÝÜË›X\
+[˜Ý[ÛŠXXÚ\Š^Ü™]\›ˆ	Ï]Ûˆ\OH˜]Ûˆˆ]KXXÝ[ÛH™YXØ][Û‹]XXÚ\‹Y]Z[ˆ]K]XXÚ\‹ZÙ^OH‰ÊØ]ŠXXÚ\‹šÙ^JJÉÈ‰ÊÙ\ØØ\R[
+XXÚ\‹›˜[YJJÉÏØÜ[‰ÊÙ›Ü›X][X™\ŠXXÚ\‹›\ÜÛÛÛÝ[
+JÉÈ9h ÜÜ[Ý›Û™Ï‰ÊÛ[Û™^JXXÚ\‹˜[[Ý[
+JÉÏÜÝ›Û™ÏØ]Û‰ÎßJKš›Ú[Š	ÉÊJÉÏÙ]‰Î™YXØ][Û”›ÝÜË›[™ÝÙ[\R[
+	ù«i9§'úe¤ù¬¤¹§"y."º*¬º,áù¥¦IË	ÉÊN™[\R[
+	ùl&¹§*¹cå¹o¥ú*¬¹bæz,áù¥¦IË	ú*âù£"y."¹¥®y¢bùbåyd#9«i{ï#9¢%¹ëbyo¡y«ãùi*HŒŽŒ:!ê¹båyd#9«ixà ‰ÊNÂˆÛÛœÝYXØ][Û’[IÏÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™ÜËYYXØ][Û‹\ÙXÝ[Ûˆ]ˆÛ\ÜÏH›ÜËXØ\™ZXY]ºgìù¥fzfìº*¬¹bæOÚÙ]]ÛˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHˆ]KXXÝ[ÛHš[ššX[Þ][‹Z[\Üˆ	ÊÊYXØ][Û”Þ[˜Ð\ÞOÉÙ\ØX›Y	Î‰ÉÊJÉÏ‰ÊÊYXØ][Û”Þ[˜Ð\ÞOÉùd#9«iy.+x )‰Î‰ù¢bùbåyd#9«iIÊJÉÏØ]ÛÙ]]ˆÛ\ÜÏH›ÜËZÜKYÜšYÜËYYXØ][Û‹ZÜ\È‰ÊÚÜJ	ù."º*¬¹h ¹¥n	Ë›Ü›X][X™\ŠYXØ][Û”Ý[[X\žK›\ÜÛÛÛÝ[
+K	ÉË	ùh ‰ÊJÚÜJ	ú*¬¹h ºaäzhcIË[Û™^JYXØ][Û”Ý[[X\žK›\ÜÛÛ‘Ü›ÜÜÊK	ÉË	ú*¬‰ÊJÚÜJ	ú*¬¹h ¹¢á¹n,ÉË[Û™^JYXØ][Û”Ý[[X\žKXXÚ\”^XX›JK	ÉË	ùn*ÉÊJÚÜJ	ù¥fyk©9/çyåfIË[Û™^JYXØ][Û”Ý[[X\žKœØÚÛÛÚ\™JK	ÉË	ùåfIÊJÚÜJ	ùkn:,®ùké¹¥-‰Ë[Û™^JYXØ][Û”Ý[[X\žKZ][Û”™XÙZ]™Y
+K	ÉË	ù¥-‰ÊJÚÜJ	ù¥fyk©9éçùå*	Ë[Û™^JYXØ][Û”Ý[[X\žKœ›ÛÛT™[[™XÙZ]™Y
+K	ÉË	ùéçÉÊJÉÏÙ]‰ÊÝXXÚ\’[
+ÉÏÜÙXÝ[Û‰ÎÂˆ™]\›ˆXœÊÛ[ÛXÚÙ\ŠØÝ\ÝÛJÉÏ]ˆÛ\ÜÏH›ÜËZÜKYÜšYÜË]Ù^KZÜ\È‰ÊÚÜJ	ùea¹dàzb­ùe+‰Ë[Û™^J›ÙXÝ™]™[YJK	ÉË	ûï!	ÊJÚÜJ	ùí«y/ë¹¥-¹aiIË[Û™^J™\Z\”™]™[YJK	ÉË	ù/ë‰ÊJÚÜJ	ùam¹.å¹¥-¹aiIË[Û™^JÝ\”™]™[YJK	ÉË	ûï"ÉÊJÚÜJ	ùéçú,àù¥-¹æâ‰Ë[Û™^J™[[™]™[YJK	ÉË	ùéçÉÊJÚÜJ	ùî/y¥-¹aiIË[Û™^J™]™[YJK	ÉË	ùd"	ÊJÚÜJ	ùea¹dày¢$9§+	Ë[Û™^JÛÜÝ
+K	ÉË	ù¢$9§+	ÊJÚÜJ›Ý[™Ë›X™[
+Éú,î¹i&¹l$IË[Û™^J›Ùš]
+K	ÉË	ø¡¥ÉÊJÚÜJ	ú,èùaî¹¥n:aãÉË›Ü›X][X™\Š]JK	ÉË	ù.í‰ÊJÉÏÙ]‰ÊÙYXØ][Û’[ÂˆB‚™[˜Ý[Ûˆ™[™\“Ý™\šY]ÕÊ
+^ÂˆÛÛœÝ›Ý[™Ï[Ý™\šY]Ð›Ý[™Ê
+NÂˆ[˜Ý[Ûˆ[”˜[™ÙJ˜[YJ^ØÛÛœÝ]OY]Qœ›ÛJ˜[YJNÜ™]\›ˆ]I‰ŠX›Ý[™ËœÝ\]OX›Ý[™ËœÝ\
+I‰ŠX›Ý[™Ë™[™]OX›Ý[™Ë™[™
+NßBˆÛÛœÝØ[\Ï\Ý]KœØ[\Ë™š[\Š[˜Ý[ÛŠØ[J^Ü™]\›ˆ[”˜[™ÙJØ[KœÛÛ]
+NßJNÂˆÛÛœÝ[˜ÛÛY\Ï\Ý]Kš[˜ÛÛY\Ë™š[\Š[˜Ý[ÛŠ[˜ÛÛYJ^Ü™]\›ˆ[”˜[™ÙJ[˜ÛÛYK›ØØÝ\œ™Y]
+NßJNÂˆÛÛœÝ™[[Ï\Ý]Kœ™[[Ë™š[\Š[˜Ý[ÛŠ™[[
+^Ü™]\›ˆ™[[\Ñ\ÝX›\ÚY
+™[[
+I‰š[”˜[™ÙJ™[[š[˜ÛÛYT™XÛÙÛš^™Y]
+NßJNÂˆÛÛœÝ™]\›œÏ\Ý]KœØ[\Ô™]\›œË™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ[”˜[™ÙJ›ÝË˜Ü™X]Y]
+NßJNÂˆÛÛœÝ^[Y[Ò[”˜[™ÙO\Ý]Kœ™XÙZ]˜X›T^[Y[Ë™š[\Š[˜Ý[ÛŠ^[Y[
+^Ü™]\›ˆ[”˜[™ÙJ^[Y[œZY]
+NßJNÂˆÛÛœÝ^[Y[žR[˜ÛÛYO[™]ÈX\
+
+NÂˆÝ]Kœ™XÙZ]˜X›T^[Y[Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ^[Y[
+^ÂˆYŠ^[Y[š[˜ÛÛYRY
+\^[Y[žR[˜ÛÛYKœÙ]
+^[Y[š[˜ÛÛYRY[X™\Š^[Y[žR[˜ÛÛYK™Ù]
+^[Y[š[˜ÛÛYRY
+_
+JÓ[X™\Š^[Y[˜[[Ý[
+JNÂˆJNÂˆÛÛœÝ™XÛÙÛš^™YØ[\Ï\Ø[\Ë™š[\Š[˜Ý[ÛŠØ[J^Ü™]\›ˆØ[KœØ[U\HOOIÚ[\›˜[\ÙIÎßJNÂˆÛÛœÝ›ÙXÝ™]™[YO\Ý[J™XÛÙÛš^™YØ[\Ë[˜Ý[ÛŠØ[J^Ü™]\›ˆX]›X^
+[X™\ŠØ[KÝ[Ø[K›Ü™\•Ý[
+JNßJNÂˆÛÛœÝ[˜ÛÛYPØ\Ú^Ü™\Z\ŽŒÝ\ŽŒX[›Ô™[[Œ™Y[™ŒNÂˆ[˜Ý[Ûˆ[˜ÛÛYRÚ[™
+[˜ÛÛYJ^ØÛÛœÝØ]YÛÜžOXÛX[Š[˜ÛÛYI‰š[˜ÛÛYK˜Ø]YÛÜžJNÚYŠØ]YÛÜžKš[˜ÛY\Ê	ùea¹dàz` :,ª:` 9«/‰ÊJ\™]\›ˆ	Ü™Y[™	ÎÚYŠØ]YÛÜžOOOIúfîúbï9ä-9éçùå*9¥-¹aiIÊ\™]\›ˆ	ÜX[›Ô™[[	ÎÚYŠØ]YÛÜžKš[˜ÛY\Ê	ùí«y/ë‰ÊJ\™]\›ˆ	Ü™\Z\‰ÎÜ™]\›ˆ	ÛÝ\‰ÎßBˆ[˜Ý[ÛˆY[˜ÛÛYPØ\Ú
+[˜ÛÛYK[[Ý[
+^Ú[˜ÛÛYPØ\ÚÚ[˜ÛÛYRÚ[™
+[˜ÛÛYJWJÏS[X™\Š[[Ý[
+NßBˆ[˜ÛÛY\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ[˜ÛÛYJ^ØY[˜ÛÛYPØ\Ú
+[˜ÛÛYK[X™\Š[˜ÛÛYKœ™XÙZ]™Y[[Ý[
+KS[X™\Š^[Y[žR[˜ÛÛYK™Ù]
+[˜ÛÛYKšY
+_
+JNßJNÂˆ^[Y[Ò[”˜[™ÙK™š[\Š[˜Ý[ÛŠ^[Y[
+^Ü™]\›ˆ^[Y[š[˜ÛÛYRY^[Y[œÛÝ\˜ÙU\OOOIÚ[˜ÛÛYIÎßJK™›Ü‘XXÚ
+[˜Ý[ÛŠ^[Y[
+^ØY[˜ÛÛYPØ\Ú
+Ý]Kš[˜ÛÛY\Ë™š[™
+[˜Ý[ÛŠ[˜ÛÛYJ^Ü™]\›ˆ[˜ÛÛYKšYOO\^[Y[š[˜ÛÛYRYßJ_ßK^[Y[˜[[Ý[
+NßJNÂˆÛÛœÝ™\Z\”™]™[YOZ[˜ÛÛYPØ\Úœ™\Z\‹Ý\”™]™[YOZ[˜ÛÛYPØ\Ú›Ý\‹X[›Ô™[[™]™[YOZ[˜ÛÛYPØ\ÚœX[›Ô™[[™]\›”™Y[™SX]›X^
+Z[˜ÛÛYPØ\Úœ™Y[™
+NÂˆÛÛœÝÝÜ™T™]™[YO\›ÙXÝ™]™[YJÜ™\Z\”™]™[YJÛÝ\”™]™[YK\™]\›”™Y[™ÂˆÛÛœÝ›ÙXÝÛÜÝ\Ý[J™XÛÙÛš^™YØ[\Ë[˜Ý[ÛŠØ[J^Ü™]\›ˆØ[K˜ÛÜÝÝ[ßJK\Ý[J™]\›œË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœ™\ÝØÚÙYÛÜÝßJNÂˆÛÛœÝÝÜ™P˜[[˜ÙO\ÝÜ™T™]™[YK\›ÙXÝÛÜÝÂ‚ˆÛÛœÝÛÛ˜XÝ™[[™]™[YO\Ý[J™[[Ë[˜Ý[ÛŠ™[[
+^Ü™]\›ˆ™[[š[˜ÛÛYP[[Ý[ßJNÂˆÛÛœÝ™[[™]™[YOXÛÛ˜XÝ™[[™]™[YJÜX[›Ô™[[™]™[YNÂˆÛÛœÝ™[[ÛÝ[X™[\Ý]K›Ý™\šY]Ô˜[™ÙOOOIÛ[Û	ÏÊ[X™\Š
+Ý]K›Ý™\šY]Ó[Û	ÉÊKœÛXÙJKÊJ_™]È]J
+K™Ù][Û
+
+JÌJJÉÈ9§"9éçú,àù.í¹¥n	ÎœÝ]K›Ý™\šY]Ô˜[™ÙOOOIÝÙ^IÏÉù.â¹¥éyéçú,àù.í¹¥n	ÎœÝ]K›Ý™\šY]Ô˜[™ÙOOOIÞYX\‰ÏÉù.â¹nm9éçú,àù.í¹¥n	Î‰ùc`:e¤ùéçú,àù.í¹¥n	ÎÂ‚ˆÛÛœÝYXØ][Û”›ÝÜÏ\Ý]K™YXØ][Û‘Z[K™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ[”˜[™ÙJ›ÝË˜\Ú[™\ÜÑ]_›ÝË™]RÙ^JNßJKYXØ][Û”Ù\ÜÚ[ÛœÏV×NÂˆYXØ][Û”›ÝÜË™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÝÊ^Ê›ÝËœÙ\ÜÚ[Ûœß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^ÙYXØ][Û”Ù\ÜÚ[ÛœËœ\Ú
+Ù\ÜÚ[ÛŠNßJNßJNÂˆÛÛœÝYXØ][Û”Ý[[X\žO^Âˆ\ÜÛÛÛÝ[™YXØ][Û”Ù\ÜÚ[ÛœË›[™Ýˆ\ÜÛÛ‘Ü›ÜÜÎœÝ[JYXØ][Û”Ù\ÜÚ[ÛœË[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙNßJKˆXXÚ\”^XX›NœÝ[JYXØ][Û”Ù\ÜÚ[ÛœË[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆÙ\ÜÚ[Û‹XXÚ\[[Ý[ßJKˆØÚÛÛÚ\™NœÝ[JYXØ][Û”Ù\ÜÚ[ÛœË[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆ\Õ˜[YJÙ\ÜÚ[Û‹œØÚÛÛÚ\™JOÜÙ\ÜÚ[Û‹œØÚÛÛÚ\™N“[X™\ŠÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙ_
+KS[X™\ŠÙ\ÜÚ[Û‹XXÚ\[[Ý[
+NßJKˆZ][Û”™XÙZ]™YœÝ[JYXØ][Û”›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœÝ[[X\žKZ][Û”™XÙZ]™YßJKˆ›ÛÛT™[[™XÙZ]™YœÝ[JYXØ][Û”›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœÝ[[X\žKœ›ÛÛT™[[™XÙZ]™YßJBˆNÂˆÛÛœÝYXØ][ÛØ\ÚYYXØ][Û”Ý[[X\žKZ][Û”™XÙZ]™Y
+ÙYXØ][Û”Ý[[X\žKœ›ÛÛT™[[™XÙZ]™YÂˆÛÛœÝYXØ][Û”™]Z[™YÚ]™[[YYXØ][Û”Ý[[X\žKœØÚÛÛÚ\™JÙYXØ][Û”Ý[[X\žKœ›ÛÛT™[[™XÙZ]™YÂˆÛÛœÝ™]ÛÜšÔ›ÝÜÏ]š\ÚX›T]›Ü›SÜ™\œÊÝ]Kœ]›Ü›SÜ™\œÊK™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ]›Ü›SÜ™\’\ÑY™™XÝ]™J›ÝÊI‰š[”˜[™ÙJ›ÝË›Ü™\™Y]
+NßJK™]ÛÜšÑ™YSY]šXÜÏ\]›Ü›Q™YSY]šXÜÊ™]ÛÜšÔ›ÝÜÊNÂˆÛÛœÝ™]ÛÜšÑÜ›ÜÜÏ[™]ÛÜšÑ™YSY]šXÜË™Ü›ÜÜË™]ÛÜšÓ™][™]ÛÜšÑ™YSY]šXÜË›™]™]ÛÜšÐÛÜÝ[™]ÛÜšÑ™YSY]šXÜË˜ÛÜÝ™]ÛÜšÔ›Ùš][™]ÛÜšÑ™YSY]šXÜËœ›Ùš]ÂˆÛÛœÝ™]ÛÜšÔ]O\Ý[J™]ÛÜšÔ›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœ]X[]NßJNÂˆÛÛœÝ™]ÛÜšÓÜ™\ÛÝ[[™]ÈÙ]
+™]ÛÜšÔ›ÝÜË›X\
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœ]›Ü›JÉß	ÊÜ›ÝË™^\›˜[Ü™\“›ÎßJJKœÚ^™NÂˆÛÛœÝ™]ÛÜšÑ™Y\Ï[™]ÛÜšÑ™YSY]šXÜË˜\šXX›Q™Y\ÎÂ‚ˆÛÛœÝ˜[™ÙPÛÛ›ÛÏ[Ý™\šY]Ô˜[™ÙPÛÛ›ÛÒ[
+
+NÂˆÛÛœÝÞ[˜Ï\Ý]Kš[ššX[Þ][ÛÝYÞ[˜ßßNÂˆÛÛœÝÞ[˜Ô˜[™ÙOXÛX[ŠÞ[˜Ë›\ÝÝ\]RÙ^JI‰˜ÛX[ŠÞ[˜Ë›\Ý[™]RÙ^JOØÛX[ŠÞ[˜Ë›\ÝÝ\]RÙ^JJÉûïg‰ÊØÛX[ŠÞ[˜Ë›\Ý[™]RÙ^JN‰ÉÎÂˆÛÛœÝÞ[˜ÔÝ]\Ï[ÝÙ\ŠÞ[˜ËœÝ]\ÊKÞ[˜Ð\ÞO\Ý]Kš[ššX[Þ][“X[X[™\]Y\Ý[™[™ß[ššX[Þ][”Þ[˜Ò\Ð\ÞJÞ[˜ÊKÞ[˜ÔÝ[OJÞ[˜ÔÝ]\ÏOOIÜ]Y]YY	ßÞ[˜ÔÝ]\ÏOOIÜ[›š[™ÉÊI‰ˆ\Þ[˜Ð\ÞNÂˆ]Þ[˜Õ^Iùl&¹§*¹cå¹o¥ùd#9«iyí :c!	ÎÂˆYŠÞ[˜ÔÝ[J\Þ[˜Õ^Iù."¹«(yd#9«iycëú ïy.+y¥­ù¢%º`/¹¦`»ï#9cëúaãy¥¬9£"xà#9¢bùbåyd#9«ixà#xà ‰ÎÂˆ[ÙHYŠÞ[˜ÔÝ]\ÏOOIÜ]Y]YY	Ê\Þ[˜Õ^Iù¢bùbåyd#9«iymì¹£¤ºf¢»ï#9«hùg*9ëbyo¡zfì¹êëùméy/g9egùbåx )‰ÎÂˆ[ÙHYŠÞ[˜ÔÝ]\ÏOOIÜ[›š[™ÉÊ\Þ[˜Õ^Iúgìù¥fzfì¹«hùg*9d#9«iy.+IÊÊÛX[ŠÞ[˜Ë˜Ý\œ™[Ý\]RÙ^JI‰˜ÛX[ŠÞ[˜Ë˜Ý\œ™[[™]RÙ^JOÉûïg:,áù¥¦yëá9g#{ï&‰ÊØÛX[ŠÞ[˜Ë˜Ý\œ™[Ý\]RÙ^JJÉûïg‰ÊØÛX[ŠÞ[˜Ë˜Ý\œ™[[™]RÙ^JN‰ÉÊJÉø )‰ÎÂˆ[ÙHYŠÞ[˜ÔÝ]\ÏOOIÙ\œ›Ü‰Ê\Þ[˜Õ^Iùd#9«iyi,y¥eÉÊÊÞ[˜Ë›\Ý˜Z[Y]Éûï"	ÊÙ]U[YU^
+Þ[˜Ë›\Ý˜Z[Y]
+JÉûï"IÎ‰ÉÊJÉûï&‰ÊÊÛX[ŠÞ[˜Ë›\Ý\œ›ÜŠ_	ú*âù§éyç"úfì¹êëùgíú(c:*&:c!8à ‰ÊKœÛXÙJN
+NÂˆ[ÙHYŠÞ[˜ÔÝ]\ÏOOIÜÝXØÙ\ÜÉÉ‰œÞ[˜Ë›\ÝÝXØÙYYY]
+\Þ[˜Õ^Iù§ 9o£9d#9«i{ï&‰ÊÙ]U[YU^
+Þ[˜Ë›\ÝÝXØÙYYY]
+JÊÞ[˜Ô˜[™ÙOÉûïg:,áù¥¦yëá9g#{ï&‰ÊÜÞ[˜Ô˜[™ÙN‰ÉÊJÊÛX[ŠÞ[˜Ë›\ÝšYÙÙ\ŠOOOIÛX[X[	ÏÉûïg9¢bùbåIÎ‰ûïgŒŽŒ:!ê¹båIÊNÂ‚ˆÛÛœÝ[Ü›ÜÜÔ›Ùš]\ÝÜ™P˜[[˜ÙJÛ™]ÛÜšÔ›Ùš]
+Ü™[[™]™[YJÙYXØ][Û”™]Z[™YÚ]™[[ÂˆÛÛœÝÜ\˜][™Ñ^[œÙT›ÝÜÏ[Ü\˜][™Ñ^[œÙSYÙ\‘›Ü›Ý[™Ê›Ý[™ÊNÂˆÛÛœÝÜ\˜][™Ñ^[œÙUÝ[\Ý[JÜ\˜][™Ñ^[œÙT›ÝÜË[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË˜[[Ý[ßJNÂˆÛÛœÝ™]›Ùš]X[Ü›ÜÜÔ›Ùš][Ü\˜][™Ñ^[œÙUÝ[ÂˆÛÛœÝÞ[˜Ð[›ÛX[Y\Ï\]›Ü›TÞ[˜Ð[›ÛX[Y\Ê
+KÞ[˜Ð[›ÛX[QÜ›Ý\Ï\]›Ü›TÞ[˜Ð[›ÛX[QÜ›Ý\ÊÞ[˜Ð[›ÛX[Y\ÊKÞ[˜Ð[›ÛX[PÛÝ[\Þ[˜Ð[›ÛX[QÜ›Ý\Ë›[™ÝÂˆÛÛœÝ[™[™Ô]›Ü›T›ÝÜÏ]š\ÚX›T]›Ü›SÜ™\œÊÝ]Kœ]›Ü›SÜ™\œÊK™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ]›Ü›SÜ™\“™YYÐ][[ÛŠ›ÝÊI‰˜ÛX[Š›ÝËœ›ØÙ\ÜÚ[™ÔÝ]\ÊHOOIÛX[X[\™]\›‹\™]šY]ÉÎßJK[™[™Ô]›Ü›O\[™[™Ô]›Ü›T›ÝÜË›[™ÝÂˆÛÛœÝÜ[”™XÙZ]˜X›\Ï\Ý]Kœ™XÙZ]˜X›\Ë™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝËœÝ]\ÈOOIÜZY	É‰“[X™\Š›ÝË›Ý]Ý[™[™Ð[[Ý[
+OŒßJNÂˆÛÛœÝÝ]Ý[™[™Ï\Ý[JÜ[”™XÙZ]˜X›\Ë[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ›ÝË›Ý]Ý[™[™Ð[[Ý[ßJNÂˆÛÛœÝÝÔÝØÚÏ\Ý]K˜Ø][ÙË™š[\Š[˜Ý[ÛŠ›ÙXÝ
+^Ü™]\›ˆ›ÙXÝš[š]X[^™Y	‰“[X™\Š›ÙXÝ˜Ý\œ™[ÝØÚß
+OS[X™\Š›ÙXÝœØY™]TÝØÚß
+NßJNÂˆÛÛœÝ][[Û’Ú[™ÏJÞ[˜Ð[›ÛX[PÛÝ[ÌNŒ
+JÊ[™[™Ô]›Ü›OÌNŒ
+JÊÜ[”™XÙZ]˜X›\Ë›[™ÝÌNŒ
+JÊÝÔÝØÚË›[™ÝÌNŒ
+NÂˆ[˜Ý[ÛˆÝ[[X\žP›Þ
+X™[˜[YKÚ[™
+^Ü™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË]Ž\Ý[[X\žKX›Þ	ÊÊÚ[™	ÉÊJÉÈÜ[‰ÊÙ\ØØ\R[
+X™[
+JÉÏÜÜ[‰ÊÝ˜[YJÉÏØÙ]‰ÎßBˆ[˜Ý[ÛˆÝ[[X\žPXÝ[ÛŠX™[˜[YKÚ[™XÝ[ÛŠ^Ü™]\›ˆ	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜË]Ž\Ý[[X\žKX›ÞÜË]Ž\Ý[[X\žKXXÝ[Ûˆ	ÊÊÚ[™	ÉÊJÉÈˆ]KXXÝ[ÛH‰ÊØ]ŠXÝ[ÛŠJÉÈÜ[‰ÊÙ\ØØ\R[
+X™[
+JÉÏÜÜ[‰ÊÝ˜[YJÉÏØÛX[ºnç¹¤â¹§éyç"ù¥+ùaîº(j9¨/ÜÛX[Ø]Û‰ÎßBˆ[˜Ý[ÛˆY]šXÔ›ÝÊX™[˜[YJ^Ü™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË]Ž[Y]šXË\›ÝÈÜ[‰ÊÙ\ØØ\R[
+X™[
+JÉÏÜÜ[‰ÊÝ˜[YJÉÏØÙ]‰ÎßBˆ[˜Ý[ÛˆY]šXÐXÝ[ÛŠX™[˜[YKXÝ[ÛŠ^Ü™]\›ˆ	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜË]Ž[Y]šXË\›ÝÈÜË]Ž[Y]šXËXXÝ[Ûˆˆ]KXXÝ[ÛH‰ÊØ]ŠXÝ[ÛŠJÉÈÜ[‰ÊÙ\ØØ\R[
+X™[
+JÉÏÜÜ[‰ÊÝ˜[YJÉÏØØ]Û‰ÎßB‚ˆÛÛœÝ˜[™ÙR[\˜[™ÙPÛÛ›ÛÎÂˆÛÛœÝ\›Ò[IÏÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™ÜË]Ž[Ý™\šY]ËZ\›È]ˆÛ\ÜÏH›ÜË]ŽZ\›Ë\š[X\žHÜ[‰ÊÙ\ØØ\R[
+›Ý[™Ë›X™[
+JÉúh$9/,9­ê9b*OÜÜ[Ý›Û™ÈÛ\ÜÏH‰ÊÊ™]›Ùš]ÉÛ™YØ]]™IÎ‰ÉÊJÉÈ‰ÊÛ[Û™^J™]›Ùš]
+JÉÏÜÝ›Û™ÏÛX[¹fæùi)ùáçú`bù«æùb*{ï#yáçú`bù¥+ùaîÜÛX[Ù]]ˆÛ\ÜÏH›ÜË]ŽZ\›Ë\ÙXÛÛ™\žH‰ÊÜÝ[[X\žP›Þ
+	ùfæùi)ùáçú`bù«æùb*IË[Û™^J[Ü›ÜÜÔ›Ùš]
+K[Ü›ÜÜÔ›Ùš]ÉÝØ\›š[™ÉÎ‰ÜÝXØÙ\ÜÉÊJÜÝ[[X\žPXÝ[ÛŠ	ùáçú`bù¥+ùaî‰Ë[Û™^JÜ\˜][™Ñ^[œÙUÝ[
+KÜ\˜][™Ñ^[œÙUÝ[ÉÝØ\›š[™ÉÎ‰ÉË	ÛÜ\˜][™ËY^[œÙKY]Z[	ÊJÉÏÙ]ÜÙXÝ[Û‰ÎÂˆ[˜Ý[Ûˆ[Øš[T›Ùš]›Þ
+X™[˜[YK˜]‹Ú[™
+^ÂˆÛÛœÝYÏ[˜]ÉØ]Û‰Î‰Ù]‰Ë˜]][˜]ÉÈ\OH˜]Ûˆˆ]K[˜]H‰ÊØ]Š˜]ŠJÉÈ‰Î‰ÉÎÂˆÛÛœÝ˜[YPÛ\ÜÏJ˜[YOÉÈ™YØ]]™IÎ‰ÉÊJÊX]˜XœÊ[X™\Š˜[YJ_
+OLLÉÈ\Ë]ÚYIÎ‰ÉÊNÂˆ™]\›ˆ	Ï	ÊÝYÊÉÈÛ\ÜÏH›ÜË[[Øš[K\›Ùš]X›Þ	ÊØ]ŠÚ[™	ÉÊJÉÈ‰ÊÛ˜]]ŠÉÏÜ[‰ÊÙ\ØØ\R[
+X™[
+JÉÏÜÜ[Ý›Û™ÈÛ\ÜÏH‰ÊÝ˜[YPÛ\ÜËš[J
+JÉÈ‰ÊÛ[Û™^J˜[YJJÉÏÜÝ›Û™ÏÉÊÝYÊÉÏ‰ÎÂˆBˆ[˜Ý[Ûˆ[Øš[Q^[œÙP›Þ
+X™[˜[YJ^Âˆ™]\›ˆ	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜË[[Øš[K\›Ùš]X›Þ\ËY^[œÙHˆ]KXXÝ[ÛH›Ü\˜][™ËY^[œÙKY]Z[Ü[‰ÊÙ\ØØ\R[
+X™[
+JÉÏÜÜ[Ý›Û™Ï‰ÊÛ[Û™^J˜[YJJÉÏÜÝ›Û™ÏØ]Û‰ÎÂˆBˆÛÛœÝ[Øš[T›Ùš][IÏÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™ÜË[[Øš[K\›Ùš]XØ\™]ˆÛ\ÜÏH›ÜËXØ\™ZXY]‰ÊÙ\ØØ\R[
+›Ý[™Ë›X™[
+JÉù«æùb*z"!ù­ê9b*OÚÙ]Ù]]ˆÛ\ÜÏH›ÜË[[Øš[K\›Ùš]YÜšY‰Âˆ
+ÉÏ]ˆÛ\ÜÏH›ÜË[[Øš[K\›Ùš]\ÙXÝ[Û‹[X™[¹..ú) yíd9§§:"!ù¢húfiÙ]]ˆÛ\ÜÏH›ÜË[[Øš[K\›Ùš]\Ý[[X\žH‰Âˆ
+Û[Øš[T›Ùš]›Þ
+	úh$9/,9­ê9b*IË™]›Ùš]	ÉË	Ú\Ë[™]	ÊBˆ
+Û[Øš[T›Ùš]›Þ
+	ùaj:`ê9«æùb*IË[Ü›ÜÜÔ›Ùš]	ÉË	Ú\ËYÜ›ÜÜÉÊBˆ
+Û[Øš[Q^[œÙP›Þ
+	ùáçú`bù¥+ùaî‰ËÜ\˜][™Ñ^[œÙUÝ[
+Bˆ
+ÉÏÙ]]ˆÛ\ÜÏH›ÜË[[Øš[K\›Ùš]\ÙXÝ[Û‹[X™[¹d!9áçú`bù«æùb*OÙ]]ˆÛ\ÜÏH›ÜË[[Øš[K\›Ùš]XÚ[›™[È‰Âˆ
+Û[Øš[T›Ùš]›Þ
+	úe 9n ¹«æùb*IËÝÜ™P˜[[˜ÙK	ÜØ[\ÉË	Ú\Ë\ÝÜ™IÊBˆ
+Û[Øš[T›Ùš]›Þ
+	ùnlùcì9«æùb*IË™]ÛÜšÔ›Ùš]	ÜÞ[˜ÉË	Ú\Ë\]›Ü›IÊBˆ
+Û[Øš[T›Ùš]›Þ
+	ú*¬¹ê"ù«æùb*IËYXØ][Û”™]Z[™YÚ]™[[	ØÛÝ\œÙKXØ[[™\‰Ë	Ú\ËXÛÝ\œÙIÊBˆ
+Û[Øš[T›Ùš]›Þ
+	ùéçùå*9«æùb*IË™[[™]™[YK	Ü™[[ÉË	Ú\Ë\™[[	ÊBˆ
+ÉÏÙ]‰Âˆ
+ÉÏÙ]ÜÙXÝ[Û‰ÎÂˆÛÛœÝ[Øš[T]ZXÚÓ˜]’[IÏÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™ÜË[[Øš[KY\™XÝXØ\™]ˆÛ\ÜÏH›ÜËXØ\™ZXY]¹n.9å*9b§ú ïOÚÙ]Ù]]ˆÛ\ÜÏH›ÜË[[Øš[KY\™XÝ[˜]ˆ‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]H›Ý™\šY]È¹áçú`bùî/z)¯OØ]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]H˜ÛÝ\œÙKXØ[[™\ˆº*¬¹ê"ù¥éz(jØ]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]H˜ÛÝ\œÙK\ÝY[È¹kn9å'ú"!ùkn:,®ÏØ]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]H˜ÛÝ\œÙK]XXÚ\œÈº  yn*ú%ªº,áÏØ]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]H˜ÛÝ\œÙK\Ù][™ÜÈ¹ìîùílz*+yk¦Ø]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]HœØ[\È¹ãï¹h-:b­ùe+Ø]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]HœÞ[˜È¹nlùcì:* ¹e«Ø]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]Hœ›ÙXÝÈ¹ea¹dàz,áú*"Ø]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]Hœ\˜Ú\Ù\È¹nªùkf9/g9©kOØ]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]Hœ™XÙZ]˜X›\È¹¡ây¥-¹n,ù«/Ø]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]H˜Ý\ÝÛY\œÈ¹k¨¹¢-¹§ ùdèOØ]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]Hœ™[[È¹éçú,àùáçú`bÏØ]Û‰Âˆ
+ÉÏ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËX]Ûˆˆ]K[˜]H™^[œÙ\È¹áçú`bù¥+ùaîØ]Û‰Âˆ
+ÉÏHÛ\ÜÏH›ÜËX]ÛˆÜË[[Øš[KXYZ[‹[[šÈˆ™YHœÙ][™ÜËš[º/å9fç¹ë¨yä!ºi¥ºh OØO‰Âˆ
+ÉÏÙ]ÜÙXÝ[Û‰ÎÂ‚ˆÛÛœÝÝÜ™R[IÏÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™ÜË]ŽXÚ[›™[XØ\™ÜË]ŽXÚ[›™[\ÝÜ™H]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[XXØÙ[Ù]]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[ZXY]ºe 9n ¹áçú`bÏÚ¹ea¹dày/§y¢$9.©9¥éz*£yb%ûï&ù¥-¹«/º"!ù.©:,ª9cé¹i%º/ïz.iÜÙ]]ÛˆÛ\ÜÏH›ÜËX]ÛˆÛX[ÜË]ŽXÚ[›™[[[šÈˆ]K[˜]HœØ[\È¹bcyo :b­ùe+Ø]ÛÙ]]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[\Ý[[X\žH‰ÊÜÝ[[X\žP›Þ
+	úe 9n ¹¢$9.©;ï#ù¥-¹aiIË[Û™^JÝÜ™T™]™[YJJJÜÝ[[X\žP›Þ
+	ù¢$9.©9«æùb*IË[Û™^JÝÜ™P˜[[˜ÙJKÝÜ™P˜[[˜ÙOÉÝØ\›š[™ÉÎ‰ÜÝXØÙ\ÜÉÊJÉÏÙ]]ˆÛ\ÜÏH›ÜË]Ž[Y]šXË[\Ý‰ÊÛY]šXÔ›ÝÊ	ùea¹dày¢$9.©	Ë[Û™^J›ÙXÝ™]™[YJJJÛY]šXÔ›ÝÊ	ùí«y/ë»ï#ùam¹.å‰Ë[Û™^J™\Z\”™]™[YJÛÝ\”™]™[YJJJÛY]šXÔ›ÝÊ	ùea¹dày¢$9§+	Ë[Û™^J›ÙXÝÛÜÝ
+JJÛY]šXÔ›ÝÊ	ú` :,ª:` 9«/‰Ë[Û™^J™]\›”™Y[™
+JJÉÏÙ]ÜÙXÝ[Û‰ÎÂˆÛÛœÝ™]ÛÜšÒ[IÏÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™ÜË]ŽXÚ[›™[XØ\™ÜË]ŽXÚ[›™[[™]ÛÜšÈ]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[XXØÙ[Ù]]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[ZXY]¹í¬º-ëùáçú`bÏÚ‘X\ÞTÝÜ™xà SSÓSøà PÛÝ\[™ÏÜÙ]]ÛˆÛ\ÜÏH›ÜËX]ÛˆÛX[ÜË]ŽXÚ[›™[[[šÈˆ]K[˜]HœÞ[˜È¹bcyo :* ¹e«Ø]ÛÙ]]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[\Ý[[X\žH‰ÊÜÝ[[X\žP›Þ
+	úh$9/,9aiyn,ÉË[Û™^J™]ÛÜšÓ™]
+JJÜÝ[[X\žP›Þ
+	úh$9/,9«æùb*IË[Û™^J™]ÛÜšÔ›Ùš]
+K™]ÛÜšÔ›Ùš]ÉÝØ\›š[™ÉÎ‰ÜÝXØÙ\ÜÉÊJÉÏÙ]]ˆÛ\ÜÏH›ÜË]Ž[Y]šXË[\Ý‰ÊÛY]šXÔ›ÝÊ	ù¢$9.©:aäzhcIË[Û™^J™]ÛÜšÑÜ›ÜÜÊJJÛY]šXÔ›ÝÊ	ùnlùcì:,®ûï"ùæo9éj9ê!IË[Û™^J™]ÛÜšÑ™Y\ÊJJÛY]šXÔ›ÝÊ	ùea¹dày¢$9§+	Ë[Û™^J™]ÛÜšÐÛÜÝ
+JJÛY]šXÔ›ÝÊ	ú* ¹e«»ï#ù.í¹¥n	Ë›Ü›X][X™\Š™]ÛÜšÓÜ™\ÛÝ[
+JÉÈ9e«»ï#ÉÊÙ›Ü›X][X™\Š™]ÛÜšÔ]JJÉÈ9.í‰ÊJÉÏÙ]ÜÙXÝ[Û‰ÎÂˆÛÛœÝ™[[[IÏÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™ÜË]ŽXÚ[›™[XØ\™ÜË]ŽXÚ[›™[\™[[]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[XXØÙ[Ù]]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[ZXY]¹éçú,àùáçú`bÏÚ¹/§y."¹¥®z`n9¤áùæ¡9¥éy§'ùc`:e¤ùílz*"ÜÙ]]ÛˆÛ\ÜÏH›ÜËX]ÛˆÛX[ÜË]ŽXÚ[›™[[[šÈˆ]K[˜]Hœ™[[È¹bcyo 9éçú,àÏØ]ÛÙ]]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[\Ý[[X\žH‰ÊÜÝ[[X\žP›Þ
+	ùéçú,àù¥-¹aiIË[Û™^J™[[™]™[YJJJÜÝ[[X\žP›Þ
+™[[ÛÝ[X™[›Ü›X][X™\Š™[[Ë›[™Ý
+JÉÈ9.í‰Ë	ÜÝXØÙ\ÜÉÊJÉÏÙ]]ˆÛ\ÜÏH›ÜË]Ž[Y]šXË[\Ý‰ÊÛY]šXÔ›ÝÊ	ù«hùo#ùd"9í!9¥-¹aiIË[Û™^JÛÛ˜XÝ™[[™]™[YJJJÛY]šXÔ›ÝÊ	úfîúbï9ä-9éçùå*9¥-¹aiIË[Û™^JX[›Ô™[[™]™[YJJJÛY]šXÔ›ÝÊ›Ý[™Ë›X™[
+Éù¢$9êâùd"9í!	Ë›Ü›X][X™\Š™[[Ë›[™Ý
+JÉÈ9.í‰ÊJÉÏÙ]ÜÙXÝ[Û‰ÎÂˆÛÛœÝYXØ][Û’[IÏÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™ÜË]ŽXÚ[›™[XØ\™ÜË]ŽXÚ[›™[\ØÚÛÛ]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[XXØÙ[Ù]]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[ZXY]º(ç9ïä¹ãëyáçú`bÏÚ‰ÊÙ\ØØ\R[
+Þ[˜Õ^
+JÉÏÜÙ]]ÛˆÛ\ÜÏH›ÜËX]ÛˆÛX[ÜË]ŽXÚ[›™[[[šÈˆ]K[˜]H˜ÛÝ\œÙKXØ[[™\ˆ¹bcyo :*¬¹bæOØ]ÛÙ]]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[\Ý[[X\žH‰ÊÜÝ[[X\žP›Þ
+	ú(ç9ïä¹ãëyké¹¥-‰Ë[Û™^JYXØ][ÛØ\Ú
+JJÜÝ[[X\žP›Þ
+	ù¥fyk©9/çyåf{ï"ù¥fyk©9éçùå*	Ë[Û™^JYXØ][Û”™]Z[™YÚ]™[[
+K	ÜÝXØÙ\ÜÉÊJÉÏÙ]]ˆÛ\ÜÏH›ÜË]Ž[Y]šXË[\Ý‰ÊÛY]šXÐXÝ[ÛŠ	ùkn:,®ùké¹¥-‰Ë[Û™^JYXØ][Û”Ý[[X\žKZ][Û”™XÙZ]™Y
+K	ÙYXØ][Û‹]Z][Û‹Y]Z[	ÊJÛY]šXÐXÝ[ÛŠ	ù¥fyk©9éçùå*	Ë[Û™^JYXØ][Û”Ý[[X\žKœ›ÛÛT™[[™XÙZ]™Y
+K	ÙYXØ][Û‹\™[[Y]Z[	ÊJÛY]šXÐXÝ[ÛŠ	ú  yn*ù¢á¹n,ÉË[Û™^JYXØ][Û”Ý[[X\žKXXÚ\”^XX›JK	ÙYXØ][Û‹]XXÚ\‹\Ý[[X\žIÊJÛY]šXÐXÝ[ÛŠ	ù¥fyk©9/çyåfy¦#¹í,	Ë[Û™^JYXØ][Û”Ý[[X\žKœØÚÛÛÚ\™JK	ÙYXØ][Û‹\ØÚÛÛ\Ú\™KY]Z[	ÊJÉÏÙ]ÜÙXÝ[Û‰ÎÂ‚ˆÛÛœÝ[\ÏV×NÂˆYŠÜ[”™XÙZ]˜X›\Ë›[™Ý
+X[\Ëœ\Ú
+	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜË]ŽX][[Û‹\›ÝÈˆ]K[˜]Hœ™XÙZ]˜X›\ÈÜ[ˆÛ\ÜÏH›ÜË]ŽX][[Û‹ZXÛÛˆ[™Ù\ˆ¹n,ÏÜÜ[Ü[ºe 9n ¹¡ây¥-¹n,ù«/ØÛX[‰ÊÙ›Ü›X][X™\ŠÜ[”™XÙZ]˜X›\Ë›[™Ý
+JÉÈ9ëa»ï#9alH	ÊÛ[Û™^JÝ]Ý[™[™ÊJÉÏÜÛX[ÜÜ[[O¹§éyç"ÏÙ[OØ]Û‰ÊNÂˆYŠÞ[˜Ð[›ÛX[PÛÝ[
+^ØÛÛœÝÛÝ[Ï^ßNÜÞ[˜Ð[›ÛX[Y\Ë™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÝÊ^ØÛÝ[ÖÜ›ÝËœ]›Ü›WOS[X™\ŠÛÝ[ÖÜ›ÝËœ]›Ü›W_
+JÌNßJNØÛÛœÝ]Z[SØš™XÝšÙ^\ÊÛÝ[ÊKœÛÜ
+
+K›X\
+[˜Ý[ÛŠ˜[YJ^Ü™]\›ˆ˜[YJÉÈ	ÊØÛÝ[ÖÛ˜[YWJÉÈ:h!IÎßJKš›Ú[Š	øà IÊNØ[\Ëœ\Ú
+	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜË]ŽX][[Û‹\›ÝÈˆ]KXXÝ[ÛH›Ý™\šY]Ë\Þ[˜ËY\œ›ÜœÈÜ[ˆÛ\ÜÏH›ÜË]ŽX][[Û‹ZXÛÛˆ[™Ù\ˆ¹d#ÜÜ[Ü[¹nlùcì9d#9«iyål9n.ØÛX[‰ÊÙ›Ü›X][X™\ŠÞ[˜Ð[›ÛX[PÛÝ[
+JÉÈ9.í¹ea¹dàIÊÊ]Z[Éûï&‰ÊÙ\ØØ\R[
+]Z[
+N‰ÉÊJÉÏÜÛX[ÜÜ[[O¹§éyç"ù¦#¹í,Ù[OØ]Û‰ÊNßBˆYŠ[™[™Ô]›Ü›J^ØÛÛœÝX]ÚÛÝ[\[™[™Ô]›Ü›T›ÝÜË™š[\Š[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆÉÛZ\ÜÚ[™Ë\ÚÝIË	Ý[›X]ÚY\ÚÝIË	Ù\XØ]K\ÚÝI×Kš[˜ÛY\Ê›ÝËœ›ØÙ\ÜÚ[™ÔÝ]\ÊNßJK›[™ÝÝ\ÛÝ[SX]›X^
+[™[™Ô]›Ü›K[X]ÚÛÝ[
+NØ[\Ëœ\Ú
+	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜË]ŽX][[Û‹\›ÝÈˆ]KXXÝ[ÛH›Ý™\šY]Ë[Ü™\‹Y\œ›ÜœÈÜ[ˆÛ\ÜÏH›ÜË]ŽX][[Û‹ZXÛÛˆ¹í¬ÜÜ[Ü[¹nlùcì:* ¹e«º,áù¥¦yo¡yè®º*£OØÛX[‰ÊÙ›Ü›X][X™\Š[™[™Ô]›Ü›JJÉÈ9ëa»ï&”ÒÕH	ÊÙ›Ü›X][X™\ŠX]ÚÛÝ[
+JÉøà yam¹.åˆ	ÊÙ›Ü›X][X™\ŠÝ\ÛÝ[
+JÉÏÜÛX[ÜÜ[[O¹§éyç"ÏÙ[OØ]Û‰ÊNßBˆYŠÝÔÝØÚË›[™Ý
+X[\Ëœ\Ú
+	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜË]ŽX][[Û‹\›ÝÈˆ]KXXÝ[ÛH›Ý™\šY]Ë[ÝË\ÝØÚÈÜ[ˆÛ\ÜÏH›ÜË]ŽX][[Û‹ZXÛÛˆØ\›š[™È¹nªÏÜÜ[Ü[¹/c¹¥¯9k¢yaj9nªùkfØÛX[‰ÊÙ›Ü›X][X™\ŠÝÔÝØÚË›[™Ý
+JÉÈ:h!yea¹dàzg :) yè®º*£z(ç:,ªÜÛX[ÜÜ[[Oº&eyä!Ù[OØ]Û‰ÊNÂˆÛÛœÝ][[Û’[X[\Ë›[™ÝØ[\Ëš›Ú[Š	ÉÊN‰Ï]ˆÛ\ÜÏH›ÜË]ŽX][[Û‹Y[\H¹æë¹bcy¬¤¹§"zg :) yêâùclú&eyä!¹æ¡:h!yæëØÜ[¹..ú) yáçú`bú"!ùd#9«iyâà9¡bù«hùn.8à ÜÜ[Ù]‰ÎÂˆÛÛœÝ›ÝÛR[IÏ]ˆÛ\ÜÏH›ÜË]Ž[Ý™\šY]ËX›ÝÛHÜË]Ž[Ý™\šY]ËX›ÝÛK\Ú[™ÛHÙXÝ[ÛˆÛ\ÜÏH›ÜËXØ\™]ˆÛ\ÜÏH›ÜË]Ž\ÙXÝ[Û‹ZXY]ºg :) y¬ê9¡#ÏÚ¹d#9«iyål9n.8à z* ¹e«¹ål9n.8à y¡ây¥-¹n,ù«/º"!ù/c¹nªùkf9§ úfá¹.+zhkùé.ÜÙ]‰ÊÊ][[Û’Ú[™ÏÉÏÜ[ˆÛ\ÜÏH›ÜË]YÈY[ÝÈ‰ÊÙ›Ü›X][X™\Š][[Û’Ú[™ÊJÉÈ:hgÜÜ[‰Î‰ÏÜ[ˆÛ\ÜÏH›ÜË]YÈÜ™Y[ˆ¹«hùn.ÜÜ[‰ÊJÉÏÙ]]ˆÛ\ÜÏH›ÜË]ŽX][[Û‹[\Ý‰ÊØ][[Û’[
+ÉÏÙ]ÜÙXÝ[ÛÙ]‰ÎÂˆYŠ\ÐÛÛ\XÝ[Øš[J
+J\™]\›ˆ˜[™ÙR[
+Û[Øš[T›Ùš][
+Û[Øš[T]ZXÚÓ˜]’[
+ÉÏ[\]HYH›ÜÓ[Øš[SÝ™\šY]Ô™\Ü[\]H]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[YÜšY‰ÊÜÝÜ™R[
+Û™]ÛÜšÒ[
+Ü™[[[
+ÙYXØ][Û’[
+ÉÏÙ]Ý[\]O‰ÊØ›ÝÛR[Âˆ™]\›ˆ˜[™ÙR[
+Ú\›Ò[
+ÉÏ]ˆÛ\ÜÏH›ÜË]ŽXÚ[›™[YÜšY‰ÊÜÝÜ™R[
+Û™]ÛÜšÒ[
+Ü™[[[
+ÙYXØ][Û’[
+ÉÏÙ]‰ÊØ›ÝÛR[ÂŸB‚ˆ[˜Ý[ÛˆYXØ][Û”Ù\ÜÚ[Û•XXÚ\’Ù^JÙ\ÜÚ[ÛŠ^Ü™]\›ˆÛX[ŠÙ\ÜÚ[Û‰‰œÙ\ÜÚ[Û‹XXÚ\’Y
+_ÛX[ŠÙ\ÜÚ[Û‰‰œÙ\ÜÚ[Û‹XXÚ\“˜[YJ_	ù§*¹doyd#IÎßBˆ[˜Ý[ÛˆYXØ][Û”›ÝÜÒ[“Ý™\šY]Ô˜[™ÙJ
+^ÂˆÛÛœÝ›Ý[™Ï[Ý™\šY]Ð›Ý[™Ê
+NÂˆ™]\›ˆÝ]K™YXØ][Û‘Z[K™š[\Š[˜Ý[ÛŠ^J^ØÛÛœÝ˜[YOY]Qœ›ÛJ^K˜\Ú[™\ÜÑ]_^K™]RÙ^JNÜ™]\›ˆ˜[YI‰ŠX›Ý[™ËœÝ\˜[YOX›Ý[™ËœÝ\
+I‰ŠX›Ý[™Ë™[™˜[YOX›Ý[™Ë™[™
+NßJNÂˆBˆ[˜Ý[ÛˆYXØ][Û”Ù\ÜÚ[ÛœÒ[“Ý™\šY]Ô˜[™ÙJ
+^ÂˆÛÛœÝ›ÝÜÏV×NÙYXØ][Û”›ÝÜÒ[“Ý™\šY]Ô˜[™ÙJ
+K™›Ü‘XXÚ
+[˜Ý[ÛŠ^J^Ê^KœÙ\ÜÚ[Ûœß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü›ÝÜËœ\Ú
+Ù\ÜÚ[ÛŠNßJNßJNÜ™]\›ˆ›ÝÜÎÂˆBˆ[˜Ý[ÛˆYXØ][Û‘˜]Ù\”›ÝÜÊ›ÝÜË[\U]K[\U^
+^Âˆ™]\›ˆ›ÝÜË›[™ÝÜ›ÝÜÎ™[\R[
+[\U]K[\U^	ÉÊNÂˆBˆ[˜Ý[ÛˆÜ[‘YXØ][Û•Z][Û‘]Z[
+
+^ÂˆÛÛœÝ›ÝÜÏV×NÙYXØ][Û”›ÝÜÒ[“Ý™\šY]Ô˜[™ÙJ
+K™›Ü‘XXÚ
+[˜Ý[ÛŠ^J^Ê^KZ][Û”™XÙZ\ß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ][J^ÚYŠ][Kš\Ô™]™[YHOOY˜[ÙJ\›ÝÜËœ\Ú
+][JNßJNßJNÂˆ›ÝÜËœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ
+]Qœ›ÛJ‹œZY]
+_
+KJ]Qœ›ÛJKœZY]
+_
+NßJNÂˆÛÛœÝ›ÙOYYXØ][Û‘˜]Ù\”›ÝÜÊ›ÝÜË›X\
+[˜Ý[ÛŠ][J^Ü™]\›ˆ	Ï\XÛHÛ\ÜÏH›ÜËYYXØ][Û‹\Ù\ÜÚ[Û‹\›ÝÈ]ˆÛ\ÜÏH›ÜËYYXØ][Û‹\Ù\ÜÚ[Û‹[XZ[ˆÜ[‰ÊÙ\ØØ\R[
+]U^
+][KœZY]
+JJÉÏÜÜ[‰ÊÙ\ØØ\R[
+][KœÝY[˜[Y_	ù§*¹doyd#ykn9å'ÉÊJÉÏØ[O‰ÊÙ\ØØ\R[
+][KœÝXš™XÝ	ùkn:,®ù¥-¹«/‰ÊJÉÏÙ[OÙ]]Ü[¹.æ9«/¹¥®yo#ÏÜÜ[‰ÊÙ\ØØ\R[
+][Kœ^[Y[Y]Ù	ù§*¹ª&yé.‰ÊJÉÏØÙ]]Ü[¹ké¹¥-ºaäzhcOÜÜ[‰ÊÛ[Û™^J][K˜[[Ý[
+JÉÏØÙ]Ø\XÛO‰ÎßJKš›Ú[Š	ÉÊK	ù«i9§'úe¤ù¬¤¹§"ykn:,®ùké¹¥-‰Ë	ÉÊNÂˆÜ[‘˜]Ù\Š	ùkn:,®ùké¹¥-‰ËÝ™\šY]Ð›Ý[™Ê
+K›X™[
+Éûïg9kn9å'ùkéºf¦ùîlú,®ù¦#¹í,	Ë›ÙJÉÏ]ˆÛ\ÜÏH›ÜËY˜]Ù\‹Y›ÛÝ\ˆ]ÛˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHˆ\OH˜]Ûˆˆ]KXXÝ[ÛH™˜]Ù\‹XÛÜÙHºeç:e¢OØ]ÛÙ]‰ÊNÂˆBˆ[˜Ý[ÛˆÜ[‘YXØ][Û”™[[]Z[
+
+^ÂˆÛÛœÝ›ÝÜÏV×NÙYXØ][Û”›ÝÜÒ[“Ý™\šY]Ô˜[™ÙJ
+K™›Ü‘XXÚ
+[˜Ý[ÛŠ^J^Ê^Kœ›ÛÛT™[[ß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ][J^Ü›ÝÜËœ\Ú
+][JNßJNßJNÂˆ›ÝÜËœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ
+]Qœ›ÛJ‹œÝ\]
+_
+KJ]Qœ›ÛJKœÝ\]
+_
+NßJNÂˆÛÛœÝ›ÙOYYXØ][Û‘˜]Ù\”›ÝÜÊ›ÝÜË›X\
+[˜Ý[ÛŠ][J^Ü™]\›ˆ	Ï\XÛHÛ\ÜÏH›ÜËYYXØ][Û‹\Ù\ÜÚ[Û‹\›ÝÈ]ˆÛ\ÜÏH›ÜËYYXØ][Û‹\Ù\ÜÚ[Û‹[XZ[ˆÜ[‰ÊÙ\ØØ\R[
+]U^
+][KœÝ\]
+JJÉÏÜÜ[‰ÊÙ\ØØ\R[
+][K˜ÛY[˜[Y_	ù§*¹doyd#yéçùå*9.®‰ÊJÉÏØ[O‰ÊÙ\ØØ\R[
+][Kœ›ÛÛS˜[Y_	ù¥fyk©9éçùå*	ÊJÉÏÙ[OÙ]]Ü[¹éçùå*:aäzhcOÜÜ[‰ÊÛ[Û™^J][K˜[[Ý[
+JÉÏØÙ]Ø\XÛO‰ÎßJKš›Ú[Š	ÉÊK	ù«i9§'úe¤ù¬¤¹§"y¥fyk©9éçùå*9¥-¹aiIË	ÉÊNÂˆÜ[‘˜]Ù\Š	ù¥fyk©9éçùå*	ËÝ™\šY]Ð›Ý[™Ê
+K›X™[
+Éûïg9«ãù¥éy¥fyk©9éçùå*9¦#¹í,	Ë›ÙJÉÏ]ˆÛ\ÜÏH›ÜËY˜]Ù\‹Y›ÛÝ\ˆ]ÛˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHˆ\OH˜]Ûˆˆ]KXXÝ[ÛH™˜]Ù\‹XÛÜÙHºeç:e¢OØ]ÛÙ]‰ÊNÂˆBˆ[˜Ý[ÛˆÜ[‘YXØ][Û•XXÚ\”Ý[[X\žJ
+^ÂˆÛÛœÝXXÚ\œÏ[™]ÈX\
+
+NÙYXØ][Û”Ù\ÜÚ[ÛœÒ[“Ý™\šY]Ô˜[™ÙJ
+K™›Ü‘XXÚ
+[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^ØÛÛœÝÙ^OYYXØ][Û”Ù\ÜÚ[Û•XXÚ\’Ù^JÙ\ÜÚ[ÛŠK›ÝÏ]XXÚ\œË™Ù]
+Ù^J_ÚÙ^NšÙ^K˜[YN˜ÛX[ŠÙ\ÜÚ[Û‹XXÚ\“˜[YJ_	ù§*¹doyd#z  yn*ÉË\ÜÛÛÛÝ[Œ[[Ý[ŒNÜ›ÝË›\ÜÛÛÛÝ[
+ÏLNÜ›ÝË˜[[Ý[
+ÏS[X™\ŠÙ\ÜÚ[Û‹XXÚ\[[Ý[
+NÝXXÚ\œËœÙ]
+Ù^K›ÝÊNßJNÂˆÛÛœÝ›ÝÜÏP\œ˜^K™œ›ÛJXXÚ\œË˜[Y\Ê
+JKœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ‹˜[[Ý[XK˜[[Ý[ßJNÂˆÛÛœÝ›ÙOYYXØ][Û‘˜]Ù\”›ÝÜÊ›ÝÜË›X\
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH›ÜËYYXØ][Û‹]XXÚ\‹\›ÝÈˆ]KXXÝ[ÛH™YXØ][Û‹]XXÚ\‹Y]Z[ˆ]K]XXÚ\‹ZÙ^OH‰ÊØ]Š›ÝËšÙ^JJÉÈ‰ÊÙ\ØØ\R[
+›ÝË›˜[YJJÉÏØÜ[‰ÊÙ›Ü›X][X™\Š›ÝË›\ÜÛÛÛÝ[
+JÉÈ9h ÜÜ[Ý›Û™Ï‰ÊÛ[Û™^J›ÝË˜[[Ý[
+JÉÏÜÝ›Û™ÏØ]Û‰ÎßJKš›Ú[Š	ÉÊK	ù«i9§'úe¤ù¬¤¹§"z  yn*ù¢á¹n,ú,áù¥¦IË	ÉÊNÂˆÜ[‘˜]Ù\Š	ú  yn*ù¢á¹n,ÉËÝ™\šY]Ð›Ý[™Ê
+K›X™[
+Éûïg:nçº`n:  yn*ùcëù§éyç"ù«ãùh º*¬¹æ¡9¢á¹n,ÉË›ÙJÉÏ]ˆÛ\ÜÏH›ÜËY˜]Ù\‹Y›ÛÝ\ˆ]ÛˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHˆ\OH˜]Ûˆˆ]KXXÝ[ÛH™˜]Ù\‹XÛÜÙHºeç:e¢OØ]ÛÙ]‰ÊNÂˆBˆ[˜Ý[ÛˆÜ[‘YXØ][Û”ØÚÛÛÚ\™Q]Z[
+
+^ÂˆÛÛœÝ›ÝÜÏYYXØ][Û”Ù\ÜÚ[ÛœÒ[“Ý™\šY]Ô˜[™ÙJ
+KœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ
+]Qœ›ÛJ‹›ØØÝ\œ™Y]
+_
+KJ]Qœ›ÛJK›ØØÝ\œ™Y]
+_
+NßJNÂˆÛÛœÝ›ÙOYYXØ][Û‘˜]Ù\”›ÝÜÊ›ÝÜË›X\
+[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^ØÛÛœÝ™]Z[™YZ\Õ˜[YJÙ\ÜÚ[Û‹œØÚÛÛÚ\™JOÓ[X™\ŠÙ\ÜÚ[Û‹œØÚÛÛÚ\™JN“[X™\ŠÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙ_
+KS[X™\ŠÙ\ÜÚ[Û‹XXÚ\[[Ý[
+NØÛÛœÝX™[XÛX[ŠÙ\ÜÚ[Û‹œÝXš™XÝ
+_ÛX[ŠÙ\ÜÚ[Û‹˜Ú\™ÙS˜[YJ_	ù§*¹ª&yé.º*¬¹ê"ÉÎÜ™]\›ˆ	Ï\XÛHÛ\ÜÏH›ÜËYYXØ][Û‹\Ù\ÜÚ[Û‹\›ÝÈ]ˆÛ\ÜÏH›ÜËYYXØ][Û‹\Ù\ÜÚ[Û‹[XZ[ˆÜ[‰ÊÙ\ØØ\R[
+]U^
+Ù\ÜÚ[Û‹›ØØÝ\œ™Y]
+JJÉÏÜÜ[‰ÊÙ\ØØ\R[
+Ù\ÜÚ[Û‹œÝY[˜[Y_	ù§*¹doyd#ykn9å'ÉÊJÉÏØ[O‰ÊÙ\ØØ\R[
+X™[
+JÉÏÙ[OÙ]]Ü[¹e«¹h ºaäzhcOÜÜ[‰ÊÛ[Û™^JÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙJJÉÏØÙ]]Ü[º  yn*ù¢á¹n,ÏÜÜ[‰ÊÛ[Û™^JÙ\ÜÚ[Û‹XXÚ\[[Ý[
+JÉÏØÙ]]Ü[¹¥fyk©9/çyåfOÜÜ[‰ÊÛ[Û™^J™]Z[™Y
+JÉÏØÙ]Ø\XÛO‰ÎßJKš›Ú[Š	ÉÊK	ù«i9§'úe¤ù¬¤¹§"z*¬¹ê"ù¢á¹n,ú,áù¥¦IË	ÉÊNÂˆÜ[‘˜]Ù\Š	ù¥fyk©9/çyåfIËÝ™\šY]Ð›Ý[™Ê
+K›X™[
+Éûïg9e«¹h ºaäzhcy¢húfi:  yn*ù¢á¹n,ùo£9æ¡9/çyåfzaäzhcIË›ÙJÉÏ]ˆÛ\ÜÏH›ÜËY˜]Ù\‹Y›ÛÝ\ˆ]ÛˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHˆ\OH˜]Ûˆˆ]KXXÝ[ÛH™˜]Ù\‹XÛÜÙHºeç:e¢OØ]ÛÙ]‰ÊNÂˆBˆ[˜Ý[ÛˆYXØ][Û”Ü]^
+Ù\ÜÚ[ÛŠ^ÂˆÛÛœÝÝ\›OS[X™\ŠÙ\ÜÚ[Û‰‰œÙ\ÜÚ[Û‹šÝ\›Q™Y_
+K˜]OS[X™\ŠÙ\ÜÚ[Û‰‰œÙ\ÜÚ[Û‹˜[Ý˜]_
+NÂˆYŠÝ\›OŒ
+\™]\›ˆ	ùfî¹k¦ˆ	ÊÛ[Û™^JÝ\›JNÂˆYŠ˜]OŒ
+\™]\›ˆ\˜Ù[YÙJ˜]OŒOÜ˜]Nœ˜]JŒL
+NÂˆ™]\›ˆ	ù§*¹ª&yé.‰ÎÂˆBˆ[˜Ý[ÛˆÜ[‘YXØ][Û•XXÚ\‘]Z[
+XXÚ\’Ù^J^ÂˆÛÛœÝ›Ý[™Ï[Ý™\šY]Ð›Ý[™Ê
+KÙ\ÜÚ[ÛœÏV×NÂˆÝ]K™YXØ][Û‘Z[K™›Ü‘XXÚ
+[˜Ý[ÛŠ^J^ÂˆÛÛœÝ\Ú[™\ÜÑ]OY]Qœ›ÛJ^K˜\Ú[™\ÜÑ]_^K™]RÙ^JNÂˆYŠX\Ú[™\ÜÑ]_
+›Ý[™ËœÝ\	‰˜\Ú[™\ÜÑ]O›Ý[™ËœÝ\
+_
+›Ý[™Ë™[™	‰˜\Ú[™\ÜÑ]O˜›Ý[™Ë™[™
+J\™]\›ŽÂˆ
+^KœÙ\ÜÚ[Ûœß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^ÚYŠYXØ][Û”Ù\ÜÚ[Û•XXÚ\’Ù^JÙ\ÜÚ[ÛŠOOO]XXÚ\’Ù^J\Ù\ÜÚ[ÛœËœ\Ú
+Ù\ÜÚ[ÛŠNßJNÂˆJNÂˆÙ\ÜÚ[ÛœËœÛÜ
+[˜Ý[ÛŠKŠ^Ü™]\›ˆ
+]Qœ›ÛJK›ØØÝ\œ™Y]
+_
+KJ]Qœ›ÛJ‹›ØØÝ\œ™Y]
+_
+NßJNÂˆYŠ\Ù\ÜÚ[ÛœË›[™Ý
+\™]\›ˆØ\Ý
+	ù¢o¹.#yb,:*¬¹h º,áù¥¦IË	ú*âúaãy¥¬9¥m9ä!¹o£9a£z*i¸à ‰Ë	ÝØ\›š[™ÉÊNÂˆÛÛœÝXXÚ\“˜[YOXÛX[ŠÙ\ÜÚ[ÛœÖÌKXXÚ\“˜[YJ_	ù§*¹doyd#z  yn*ÉÎÂˆÛÛœÝÝY[Ï[™]ÈÙ]
+Ù\ÜÚ[ÛœË›X\
+[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆÛX[ŠÙ\ÜÚ[Û‹œÝY[Y
+_ÛX[ŠÙ\ÜÚ[Û‹œÝY[˜[YJNßJK™š[\Š›ÛÛX[ŠJNÂˆÛÛœÝ\ÜÛÛ‘Ü›ÜÜÏ\Ý[JÙ\ÜÚ[ÛœË[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙNßJNÂˆÛÛœÝXXÚ\”Ú\™O\Ý[JÙ\ÜÚ[ÛœË[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆÙ\ÜÚ[Û‹XXÚ\[[Ý[ßJNÂˆÛÛœÝØÚÛÛÚ\™O\Ý[JÙ\ÜÚ[ÛœË[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^Ü™]\›ˆ\Õ˜[YJÙ\ÜÚ[Û‹œØÚÛÛÚ\™JOÜÙ\ÜÚ[Û‹œØÚÛÛÚ\™N“[X™\ŠÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙ_
+KS[X™\ŠÙ\ÜÚ[Û‹XXÚ\[[Ý[
+NßJNÂˆÛÛœÝÝ[[X\žOIÏ]ˆÛ\ÜÏH›ÜËYYXØ][Û‹Y]Z[\Ý[[X\žH]Ü[¹h ¹¥nÜÜ[‰ÊÙ›Ü›X][X™\ŠÙ\ÜÚ[ÛœË›[™Ý
+JÉÏØÙ]]Ü[¹kn9å'ÏÜÜ[‰ÊÙ›Ü›X][X™\ŠÝY[ËœÚ^™JJÉÏØÙ]]Ü[º*¬¹h ºaäzhcOÜÜ[‰ÊÛ[Û™^J\ÜÛÛ‘Ü›ÜÜÊJÉÏØÙ]]Ü[º  yn*ù¢á¹n,ÏÜÜ[‰ÊÛ[Û™^JXXÚ\”Ú\™JJÉÏØÙ]]Ü[¹¥fyk©9/çyåfOÜÜ[‰ÊÛ[Û™^JØÚÛÛÚ\™JJÉÏØÙ]Ù]‰ÎÂˆÛÛœÝ›ÝÜÏIÏ]ˆÛ\ÜÏH›ÜËYYXØ][Û‹\Ù\ÜÚ[Û‹[\Ý‰ÊÜÙ\ÜÚ[ÛœË›X\
+[˜Ý[ÛŠÙ\ÜÚ[ÛŠ^ÂˆÛÛœÝX™[ÏV×NÚYŠÛX[ŠÙ\ÜÚ[Û‹œÝXš™XÝ
+J[X™[Ëœ\Ú
+ÛX[ŠÙ\ÜÚ[Û‹œÝXš™XÝ
+JNÚYŠÛX[ŠÙ\ÜÚ[Û‹˜Ú\™ÙS˜[YJI‰ˆ[X™[Ëš[˜ÛY\ÊÛX[ŠÙ\ÜÚ[Û‹˜Ú\™ÙS˜[YJJJ[X™[Ëœ\Ú
+ÛX[ŠÙ\ÜÚ[Û‹˜Ú\™ÙS˜[YJJNÂˆÛÛœÝ™]Z[™YZ\Õ˜[YJÙ\ÜÚ[Û‹œØÚÛÛÚ\™JOÓ[X™\ŠÙ\ÜÚ[Û‹œØÚÛÛÚ\™JN“[X™\ŠÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙ_
+KS[X™\ŠÙ\ÜÚ[Û‹XXÚ\[[Ý[
+NÂˆ™]\›ˆ	Ï\XÛHÛ\ÜÏH›ÜËYYXØ][Û‹\Ù\ÜÚ[Û‹\›ÝÈ]ˆÛ\ÜÏH›ÜËYYXØ][Û‹\Ù\ÜÚ[Û‹[XZ[ˆÜ[‰ÊÙ\ØØ\R[
+]U^
+Ù\ÜÚ[Û‹›ØØÝ\œ™Y]
+JJÉÏÜÜ[‰ÊÙ\ØØ\R[
+Ù\ÜÚ[Û‹œÝY[˜[Y_	ù§*¹doyd#ykn9å'ÉÊJÉÏØ[O‰ÊÙ\ØØ\R[
+X™[Ëš›Ú[Š	ûïg	Ê_	ù§*¹ª&yé.º*¬¹ê"ÉÊJÉÏÙ[OÙ]]Ü[¹e«¹h ¹kn:,®ÏÜÜ[‰ÊÛ[Û™^JÙ\ÜÚ[Û‹›\ÜÛÛ”šXÙJJÉÏØÙ]]Ü[¹¢á¹n,ù¥®yo#ÏÜÜ[‰ÊÙ\ØØ\R[
+YXØ][Û”Ü]^
+Ù\ÜÚ[ÛŠJJÉÏØÙ]]Ü[º  yn*ùb!¹o¥ÏÜÜ[‰ÊÛ[Û™^JÙ\ÜÚ[Û‹XXÚ\[[Ý[
+JÉÏØÙ]]Ü[¹¥fyk©9/çyåfOÜÜ[‰ÊÛ[Û™^J™]Z[™Y
+JÉÏØÙ]Ø\XÛO‰ÎÂˆJKš›Ú[Š	ÉÊJÉÏÙ]‰ÎÂˆÜ[‘˜]Ù\ŠXXÚ\“˜[YK›Ý[™Ë›X™[
+Éú*¬¹h ¹¦#¹í,;ïg9.#yd*ùãc¹bíz"!ù¢hú%ª‰ËÝ[[X\žJÜ›ÝÜÊÉÏ]ˆÛ\ÜÏH›ÜËY˜]Ù\‹Y›ÛÝ\ˆ]ÛˆÛ\ÜÏH›ÜËX]Ûˆš[X\žHˆ\OH˜]Ûˆˆ]KXXÝ[ÛH™˜]Ù\‹XÛÜÙHºeç:e¢OØ]ÛÙ]‰ÊNÂˆBˆ[˜Ý[Ûˆ›ÙXÝÛÛ\][™\ÜÒ[
+
+^ÂˆÛÛœÝÝ[\Ý]K˜Ø][ÙË›[™ÝNÈÛÛœÝ[XYÙO\Ý]K˜Ø][ÙË™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆš[XYÙU\›É‰œš[XYÙU\›Ë›[™ÝßJK›[™ÝÈÛÛœÝÛÜÝ\Ý]K˜Ø][ÙË™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆ˜]™\˜YÙPÛÜÝO[[›™^šY›ÐÛÜÝO[[ßJK›[™ÝÈÛÛœÝX]ÚY\Ý]K˜Ø][ÙË™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆ›X]ÚYÛ›[™NßJK›[™ÝÈÛÛœÝ›Û“™YØ]]™O\Ý]K˜Ø][ÙË™š[\Š[˜Ý[ÛŠ
+^Ü™]\›ˆ˜Ý\œ™[ÝØÚÏLßJK›[™ÝÂˆ[˜Ý[Ûˆ›ÝÊX™[ÛÝ[
+^Ü™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË\Ý]\Ë\›ÝÈ]‰ÊÙ\ØØ\R[
+X™[
+JÉÏØÛX[‰ÊØÛÝ[
+ÉÈÈ	ÊÜÝ]K˜Ø][ÙË›[™Ý
+ÉÏÜÛX[Ù]]ˆÝ[OHÚYÉH]ˆÛ\ÜÏH›ÜË\›ÙÜ™\ÜÈÜ[ˆÝ[OHÚY‰ÊÓX]œ›Ý[™
+ÛÝ[ÝÝ[
+ŒL
+JÉÉHÜÜ[Ù]Ù]Ù]‰ÎßBˆ™]\›ˆ›ÝÊ	ùmìºacyl#HX\ÞTÝÜ™{ï#ùí¬º-ëùea¹dàIËX]ÚY
+JÜ›ÝÊ	ù§"yea¹dàyg%¹âaÉË[XYÙJJÜ›ÝÊ	ùmì¹§"y¢$9§+:,áù¥¦IËÛÜÝ
+JÜ›ÝÊ	úggº,¨9nªùkf:,áù¥¦IË›Û“™YØ]]™JNÂˆB‚ˆÛÛœÝ“ÑPÕÔÑT’QTÏVÂˆÉÌL	Ë	ù§*9d"y.å‰×KÉÌL‰Ë	ùcé9an9d"y.å‰×KÉÌL	Ë	úfîùd"y.å‰×KÉÌL‰Ë	úfîú,§y¥«É×KÉÌL	Ë	ùàãùabún¥ún¥É×KˆÉÌLŒ	Ë	úfîúbï9ä-	×KÉÌLŒ‰Ë	úfîùkd9ä-	×KÉÌLÌ	Ë	ùâ-yhêúo$É×KÉÌLÌ‰Ë	úfîùkd:o$É×KÉÌLÍ	Ë	ù§*9ë¬zo$É×KÉÌLÎ	Ë	ù.%¹åc9¢dù¤â¹ª ‰×KˆÉÌM	Ë	ùcèùä-	×KÉÌM‰Ë	úfm¹ë&É×KÉÌM	Ë	ùchy§¥ùmí	×KÉÌM‰Ë	ùæí9ë&É×KÉÌM	Ë	ùí§9d"9l#ùª ¹fj	×KˆÉÌML	Ë	ù.£: è{ï#ú èyä-	×KÉÌML‰Ë	ù.+yg"ùë&É×KÉÌMM	Ë	ùä-yä-‰×KÉÌMM‰Ë	ù§ìùä-	×KÉÌMN	Ë	úf+ºhg‰×KÉÌMŒ	Ë	ùcé9ë£É×KˆÉÌMŒ‰Ë	ù£æ¹ä-	×KÉÌM	Ë	ùg"ùª ¹ë¨yª ‰×KÉÌM‰Ë	ùam¹.å¹g"ùª ‰×KÉÌN	Ë	úemùë&É×KÉÌN‰Ë	ùl#ú&gÉ×KÉÌN	Ë	úfîùkd9d.yë¨I×KÉÌNL‰Ë	ùl#ù£ä9ä-;ï#ù.+y£ä9ä-	×KˆÉÍIË	úfîùkd:hg‰Ë	Íyìîùb%È:fîùkd:hg‰×KÉÎIË	ù¦î9ìcIË	Îyìîùb%È9¦î9ìcI×BˆNÂˆ[˜Ý[Ûˆ›ÙXÝÙ\šY\ÓX™[
+›ÝÊ^Ü™]\›ˆ›ÝÖÌ—_›ÝÖÌJÉÈ	ÊÜ›ÝÖÌWNßBˆ[˜Ý[Ûˆ›ÙXÝÙ\šY\ÕXœÊ
+^Âˆ™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜË\›ÙXÝ\Ù\šY\Ë]XœÈ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH‰ÊÊÝ]Kœ›ÙXÝÙ\šY\ÏOOIØ[	ÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛHœ›ÙXÝ\Ù\šY\Èˆ]K\Ù\šY\ÏH˜[¹aj:`êØ]Û‰ÊÔ“ÑPÕÔÑT’QTË›X\
+[˜Ý[ÛŠ›ÝÊ^Ü™]\›ˆ	Ï]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH‰ÊÊÝ]Kœ›ÙXÝÙ\šY\ÏOO\›ÝÖÌOÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛHœ›ÙXÝ\Ù\šY\Èˆ]K\Ù\šY\ÏH‰ÊÜ›ÝÖÌJÉÈ‰ÊÙ\ØØ\R[
+›ÙXÝÙ\šY\ÓX™[
+›ÝÊJJÉÏØ]Û‰ÎßJKš›Ú[Š	ÉÊJÉÏÙ]‰ÎÂˆBˆ[˜Ý[ÛˆÛÛ\\™PØ][ÙÔÚÝJKŠ^ÂˆÛÛœÝTÚÝOXÛX[ŠI‰˜KœÚÝJK”ÚÝOXÛX[Š‰‰˜‹œÚÝJNÂˆYŠXTÚÝI‰ˆX”ÚÝJ\™]\›ˆÛX[ŠI‰ŠK›ÜšYÚ[˜[˜[Y_K›˜[YJJK›ØØ[PÛÛ\\™JÛX[Š‰‰Š‹›ÜšYÚ[˜[˜[Y_‹›˜[YJJK	ÞšR[	ËÛ[Y\šXÎYKÙ[œÚ]]š]N‰Ø˜\ÙIßJNÂˆYŠXTÚÝJ\™]\›ˆNÂˆYŠX”ÚÝJ\™]\›ˆLNÂˆÛÛœÝžTÚÝOXTÚÝK›ØØ[PÛÛ\\™J”ÚÝK	ÞšR[	ËÛ[Y\šXÎYKÙ[œÚ]]š]N‰Ø˜\ÙIßJNÂˆYŠžTÚÝJ\™]\›ˆžTÚÝNÂˆ™]\›ˆÛX[ŠI‰ŠK›ÜšYÚ[˜[˜[Y_K›˜[YJJK›ØØ[PÛÛ\\™JÛX[Š‰‰Š‹›ÜšYÚ[˜[˜[Y_‹›˜[YJJK	ÞšR[	ËÛ[Y\šXÎYKÙ[œÚ]]š]N‰Ø˜\ÙIßJNÂˆBˆ]Ø][ÙÔÙX\˜ÚÛÝ\˜ÙO[[Âˆ]Ø][ÙÔÚÝSÜ™\V×NÂˆ[˜Ý[Ûˆ™\\™PØ][ÙÔÙX\˜Ú[™^
+
+^ÂˆØ][ÙÔÙX\˜ÚÛÝ\˜ÙO\Ý]K˜Ø][ÙÎÂˆ
+Ý]K˜Ø][Ùß×JK™›Ü‘XXÚ
+[˜Ý[ÛŠ›ÙXÝ
+^ÂˆÛÛœÝ^[ÝÙ\ŠÂˆ›ÙXÝ›ÜšYÚ[˜[˜[YK›ÙXÝ›Û›[™S˜[YK›ÙXÝ›˜[YK›ÙXÝœÚÝK›Ü›X]X™[ÚÝJ›ÙXÝœÚÝJKˆ›ÙXÝ˜˜\˜ÛÙK›ÙXÝ˜œ˜[™›ÙXÝ˜Ø]YÛÜžK›ÙXÝ˜\šX[˜[YK›ÙXÝ™ØÒYˆKš›Ú[Š	È	ÊJNÂˆ›ÙXÝ—×ÜÙX\˜Ú^]^Âˆ›ÙXÝ—×ÜÙX\˜ÚÛÛ\XÝXÛÛ\XÝÙX\˜ÚÛÙJ^
+NÂˆJNÂˆØ][ÙÔÚÝSÜ™\JÝ]K˜Ø][Ùß×JKœÛXÙJ
+KœÛÜ
+ÛÛ\\™PØ][ÙÔÚÝJNÂˆBˆ[˜Ý[ÛˆØ][ÙÔ›ÝÜÒ[”ÚÝSÜ™\Š
+^ÂˆYŠØ][ÙÔÙX\˜ÚÛÝ\˜ÙHOO\Ý]K˜Ø][ÙÊ\™\\™PØ][ÙÔÙX\˜Ú[™^
+
+NÂˆ™]\›ˆØ][ÙÔÚÝSÜ™\ŽÂˆBˆ[˜Ý[ÛˆØ][ÙÓX]Ú\ÔÙX\˜Ú
+›ÙXÝ\›J^ÂˆÛÛœÝ™YYO[ÝÙ\Š\›JNÂˆYŠ[™YYJ\™]\›ˆYNÂˆYŠØ][ÙÔÙX\˜ÚÛÝ\˜ÙHOO\Ý]K˜Ø][ÙÊ\™\\™PØ][ÙÔÙX\˜Ú[™^
+
+NÂˆÛÛœÝ^O\›ÙXÝ—×ÜÙX\˜Ú^	ÉËÛÛ\XÝ™YYOXÛÛ\XÝÙX\˜ÚÛÙJ™YYJNÂˆ™]\›ˆ^Kš[˜ÛY\Ê™YYJ_
+ÛÛ\XÝ™YYI‰”Ýš[™Ê›ÙXÝ—×ÜÙX\˜ÚÛÛ\XÝ	ÉÊKš[˜ÛY\ÊÛÛ\XÝ™YYJJNÂˆBˆ[˜Ý[Ûˆ\Ü^S[ÙUÙÙÛR[
+XÝ[Û‹Ý\œ™[[ÙKX™[
+^ÂˆÛÛœÝ[ÙOXÝ\œ™[[ÙOOOIÝ^	ÏÉÝ^	Î‰Ú[XYÙIÎÂˆ™]\›ˆ	Ï]ˆÛ\ÜÏH›ÜËY\Ü^K[[ÙK]ÙÙÛHˆ›ÛOH™Ü›Ý\ˆ\šXK[X™[H‰ÊØ]ŠX™[	úhkùé.¹ª(yo#ÉÊJÉÈ]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH‰ÊÊ[ÙOOOIÚ[XYÙIÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH‰ÊØ]ŠXÝ[ÛŠJÉÈˆ]K[[ÙOHš[XYÙHˆ\šXK\™\ÜÙYH‰ÊÊ[ÙOOOIÚ[XYÙIÏÉÝYIÎ‰Ù˜[ÙIÊJÉÈ¹g%¹âaùª(yo#ÏØ]Û]Ûˆ\OH˜]ÛˆˆÛ\ÜÏH‰ÊÊ[ÙOOOIÝ^	ÏÉØXÝ]™IÎ‰ÉÊJÉÈˆ]KXXÝ[ÛH‰ÊØ]ŠXÝ[ÛŠJÉÈˆ]K[[ÙOH^ˆ\šXK\™\ÜÙYH‰ÊÊ[ÙOOOIÝ^	ÏÉÝYIÎ‰Ù˜[ÙIÊJÉÈ¹¥¡ùkeùª(yo#ÏØ]ÛÙ]‰ÎÂˆBˆ[˜Ý[Ûˆ›ÙXÝš[\™Y
+
+^ÂˆÛÛœÝ\›O[ÝÙ\ŠÝ]Kœ›ÙXÝÙX\˜Ú
+NÈ]›ÝÜÏXØ][ÙÔ›ÝÜÒ[”ÚÝSÜ™\Š
+K™š[\Š[˜Ý[ÛŠ
+^ÂˆYŠÝ]Kœ›ÙXÝÙ\šY\ÈOOIØ[	É‰ˆXÛX[ŠœÚÝJKœÝ\ÕÚ]
+Ý]Kœ›ÙXÝÙ\šY\ÊJ\™]\›ˆ˜[ÙNÂˆYŠ\›I‰ˆXØ][ÙÓX]Ú\ÔÙX\˜Ú
+\›JJ\™]\›ˆ˜[ÙNÂˆYŠÝ]Kœ›ÙXÝš[\OOIÛZ\ÜÚ[™ËXÛÜÝ	É‰ˆJ˜]™\˜YÙPÛÜÝO[[	‰œ›™^šY›ÐÛÜÝO[[
+J\™]\›ˆ˜[ÙNÂˆYŠÝ]Kœ›ÙXÝš[\OOIÛÝÉÉ‰ˆJ˜Ý\œ™[ÝØÚÏ\œØY™]TÝØÚÊJ\™]\›ˆ˜[ÙNÂˆYŠÝ]Kœ›ÙXÝš[\OOIÚ[‹\ÝØÚÉÉ‰œ˜Ý\œ™[ÝØÚÏL
+\™]\›ˆ˜[ÙNÂˆYŠÝ]Kœ›ÙXÝš[\OOIÛX]ÚY	É‰ˆ\›X]ÚYÛ›[™J\™]\›ˆ˜[ÙNÂˆYŠÝ]Kœ›ÙXÝš[\OOIÝ[›X]ÚY	É‰œ›X]ÚYÛ›[™J\™]\›ˆ˜[ÙNÂˆYŠÝ]Kœ›ÙXÝš[\OOIÛ›ËZ[XYÙIÉ‰œš[XYÙU\›Ë›[™Ý
+\™]\›ˆ˜[ÙNÂˆYŠÝ]Kœ›ÙXÝš[\OOIÛ™YØ]]™IÉ‰œ˜Ý\œ™[ÝØÚÏL
+\™]\›ˆ˜[ÙNÂˆ™]\›ˆYNÂˆJNÂˆ™]\›ˆ›ÝÜÎÂˆBˆ[˜Ý[ÛˆX˜œ™]šX]YÛ›[™T›ÙXÝ˜[YJ˜[YJ^ÂˆÛÛœÝ˜[YOY\Ü^SÛ›[™S˜[YJ˜[YJNÂˆYŠ[˜[YJ\™]\›ˆ	ÉÎÂˆÛÛœÝÚ\œÏP\œ˜^K™œ›ÛJ˜[YJNÂˆ™]\›ˆÚ\œËœÛXÙJJKš›Ú[Š	ÉÊJÊÚ\œË›[™ÝOÉø )‰Î‰ÉÊNÂˆBˆ[˜Ý[Ûˆ›ÙXÝØ\™
+
+^ÂˆÛÛœÝ[[XYÙ\ÏP\œ˜^K™œ›ÛJ™]ÈÙ]
+
+š[XYÙU\›ß×JK˜ÛÛ˜Ø]
+š[XYÙU\›ÖÜš[XYÙU\›N–×JK™š[\Š›ÛÛX[ŠJJNÂˆÛÛœÝ\™[[XYÙ\ÏP\œ˜^K™œ›ÛJ™]ÈÙ]
+
+œ\™[[XYÙU\›ß×JK™š[\Š›ÛÛX[ŠJJNÂˆÛÛœÝ˜\šX[[XYÙ\ÏP\œ˜^K™œ›ÛJ™]ÈÙ]
+
+˜\šX[[XYÙU\›ß×JK™š[\Š›ÛÛX[ŠJJNÂˆÛÛœÝXZ[’[XYÙO]˜\šX[[XYÙ\ÖÌ_\™[[XYÙ\ÖÌ_[[XYÙ\ÖÌ_	ÉÎÂˆÛÛœÝ˜\šX[[XYÙO]˜\šX[[XYÙ\Ë™š[™
+[˜Ý[ÛŠ\›
+^Ü™]\›ˆ\›OO[XZ[’[XYÙNßJ_\™[[XYÙ\Ë™š[™
+[˜Ý[ÛŠ\›
+^Ü™]\›ˆ\›OO[XZ[’[XYÙNßJ_[[XYÙ\Ë™š[™
+[˜Ý[ÛŠ\›
+^Ü™]\›ˆ\›OO[XZ[’[XYÙNßJ_	ÉÎÂˆÛÛœÝ\›ÏJ\ÐÛÛ\XÝ[Øš[J
+OÖÛXZ[’[XYÙWN–ÛXZ[’[XYÙK˜\šX[[XYÙWJK™š[\Š›ÛÛX[ŠNÂˆÛÛœÝÞ\Ý[S˜[YOXÛX[Š›ÜšYÚ[˜[˜[Y_›˜[Y_›Û›[™S˜[YJ_	ù§*¹doyd#yea¹dàIÎÂˆÛÛœÝÛX[“Û›[™OY\Ü^SÛ›[™S˜[YJ›Û›[™S˜[YJNÂˆÛÛœÝ˜\šX[XÛX[Š˜\šX[˜[YJNÂˆÛÛœÝÛ›[™TÝ[[X\žOXÛX[“Û›[™OÉùí¬º-ëûï&‰ÊØX˜œ™]šX]YÛ›[™T›ÙXÝ˜[YJÛX[“Û›[™JJÊ˜\šX[Éûï"	ÊÝ˜\šX[
+Éûï"IÎ‰ÉÊN‰ÉÎÂˆÛÛœÝ[XYÙR[]\›Ë›[™ÝÝ\›Ë›X\
+[˜Ý[ÛŠ\›[™^
+^Ü™]\›ˆ	Ï[YÈØY[™ÏH›^žHˆÜ˜ÏH‰ÊØ]Š\›
+JÉÈˆ[H‰ÊØ]Š[™^OOLI‰˜\šX[Ý˜\šX[œÞ\Ý[S˜[YJJÉÈˆÛ™\œ›ÜH\ËœÝ[K™\Ü^OW	Û›Û™W	È‰ÎßJKš›Ú[Š	ÉÊN‰Ï]ˆÛ\ÜÏHœXÙZÛ\ˆ¹á(yg%Ù]‰ÎÂˆÛÛœÝXÝ]™O\Ý]Kœ›ÙXÝY]YOO\™ØÒYÉÈXÝ]™IÎ‰ÉÎÂˆ™]\›ˆ	Ï\XÛHÛ\ÜÏH›ÜË\›ÙXÝXØ\™ÜË\›ÙXÝXØ\™Y[	ÊØXÝ]™JÉÈˆ]KXXÝ[ÛHœ›ÙXÝYY]ˆ]KZYH‰ÊØ]Š™ØÒY
+JÉÈˆ›ÛuÛ]ºÞÚ$z{-®éÜj×<label class="ops-radio-tile"><input type="radio" name="paymentStatus" value="'+value+'" '+(sale.paymentStatus===value?'checked':'')+'><span>'+statusLabels[value]+'</span></label>';}).join('');
     const returnedRefund=sum(state.salesReturns.filter(function(row){return row.saleId===sale.id;}),function(row){return row.refundAmount;}),availablePoints=member?Number(customer.pointBalance||0)+Number(sale.pointsRedeemed||0):0,maxPoints=member?maxRedeemablePoints(Object.assign({},customer,{pointBalance:availablePoints}),Math.max(0,Number(sale.subtotal||0)-Number(sale.manualDiscount||0))):0,memberInfo=member?'<div class="ops-member-payment-summary"><div><span>æœƒå“¡</span><b>'+escapeHtml(customer.name)+' '+escapeHtml(customer.memberNo||'')+'</b></div><div><span>ç›®å‰å¯ç”¨</span><b>'+formatNumber(customer.pointBalance)+' é»ž</b></div><div><span>æœ¬å–®æŠ˜æŠµ</span><b>'+formatNumber(sale.pointsRedeemed)+' é»žï¼'+money(sale.pointDiscount)+'</b></div><div><span>æœ¬å–®ç´¯ç©</span><b>'+(sale.earnPointsEnabled===false?'ä¸ç´¯ç©':formatNumber(sale.pointsEarned)+' é»ž')+'</b></div></div>':'',saleSummary='<div class="ops-summary-list"><div class="ops-summary-line"><span>å•†å“é‡‘é¡</span><b>'+money(sale.subtotal)+'</b></div><div class="ops-summary-line"><span>é¡å¤–æŠ˜æ‰£</span><b>'+money(sale.manualDiscount)+'</b></div><div class="ops-summary-line"><span>é»žæ•¸æŠ˜æŠµ</span><b>'+money(sale.pointDiscount)+'</b></div>'+(returnedRefund?'<div class="ops-summary-line"><span>å·²é€€é‡‘é¡</span><b>'+money(returnedRefund)+'</b></div>':'')+'<div class="ops-summary-line total"><span>æœ¬å–®å¯¦æ”¶</span><b>'+money(sale.total)+'</b></div></div>';
     const pointFields=member?'<div class="ops-checkout-block"><label>æœ¬æ¬¡é»žæ•¸</label><div class="ops-choice-grid two"><label class="ops-radio-tile"><input type="radio" name="earnPointsEnabled" value="true" '+(sale.earnPointsEnabled!==false?'checked':'')+'><span>ç´¯ç©é»žæ•¸</span></label><label class="ops-radio-tile"><input type="radio" name="earnPointsEnabled" value="false" '+(sale.earnPointsEnabled===false?'checked':'')+'><span>ä¸ç´¯ç©é»žæ•¸</span></label></div></div><div class="ops-field"><label>é»žæ•¸æŠ˜æŠµ</label><input class="ops-input ops-number-clean" type="number" min="0" max="'+maxPoints+'" step="1" name="pointsToRedeem" value="'+Math.max(0,Number(sale.pointsRedeemed||0))+'"></div>':'<input type="hidden" name="earnPointsEnabled" value="false"><input type="hidden" name="pointsToRedeem" value="0">';
     openDrawer('ä¿®æ”¹å–®æ“š',sale.saleNo,'<form id="saleEditForm" data-id="'+attr(sale.id)+'">'+memberInfo+saleSummary+'<div class="ops-sale-edit-items">'+items+'</div><div class="ops-checkout-block"><label>ä»˜æ¬¾æ–¹å¼</label><div class="ops-choice-grid">'+methodTiles+'</div></div><div class="ops-checkout-block"><label>æ”¶æ¬¾ç‹€æ…‹</label><div class="ops-choice-grid '+(statusValues.length===1?'one':'')+'">'+statusTiles+'</div></div><div class="ops-form-grid"><div class="ops-field"><label>é¡å¤–æŠ˜æ‰£</label><input class="ops-input ops-number-clean" type="number" min="0" step="1" name="discount" value="'+sale.manualDiscount+'"></div>'+pointFields+'<div class="ops-field '+(sale.paymentStatus==='partial'?'':'hidden')+'" id="saleEditReceivedField"><label>æœ¬æ¬¡å·²æ”¶</label><input class="ops-input ops-number-clean" type="number" min="0" step="1" name="receivedAmount" value="'+sale.receivedAmount+'"></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">å–æ¶ˆ</button><button class="ops-button danger-outline" type="button" data-action="sale-void" data-id="'+attr(sale.id)+'">åˆªé™¤é€™ç­†è¨‚å–®</button><button class="ops-button soft" type="button" data-action="sale-return" data-id="'+attr(sale.id)+'">é€€è²¨ï¼å ±å»¢</button><button class="ops-button primary" type="submit">å„²å­˜ä¿®æ”¹</button></div></form>');

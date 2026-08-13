@@ -171,6 +171,211 @@ test("four category levels advance one option at a time before path verification
   assert.equal(helpers.nextCategoryStage(total, total, false, true), "complete");
 });
 
+function categoryOption(text, levelIndex, overrides) {
+  return Object.assign({
+    text,
+    levelIndex,
+    visible: true,
+    inCategoryModal: true,
+    inActiveColumn: true,
+    disabled: false
+  }, overrides);
+}
+
+function categoryColumn(levelIndex, overrides) {
+  return Object.assign({
+    levelIndex,
+    visible: true,
+    inCategoryModal: true,
+    isListColumn: true,
+    active: true,
+    scrollTop: 0,
+    clientHeight: 320,
+    scrollHeight: 1200
+  }, overrides);
+}
+
+test("category option search is exact and restricted to the visible active modal column", () => {
+  const options = [
+    categoryOption("樂器與樂器配件組合", 1),
+    categoryOption("樂器與樂器配件", 0),
+    categoryOption("樂器與樂器配件", 1, { visible: false }),
+    categoryOption("樂器與樂器配件", 1, { inCategoryModal: false }),
+    categoryOption("樂器與樂器配件", 1)
+  ];
+  assert.equal(helpers.exactVisibleCategoryOptionIndex(options, "樂器與樂器配件", 1), 4);
+  assert.equal(helpers.exactVisibleCategoryOptionIndex(options, "樂器與樂器配件組", 1), -1);
+  assert.equal(helpers.exactVisibleCategoryOptionIndex([
+    categoryOption("弦樂器", 2),
+    categoryOption("弦樂器", 2)
+  ], "弦樂器", 2), -1);
+  assert.equal(helpers.exactVisibleCategoryOptionIndex([
+    categoryOption("愛好與收藏品", 0)
+  ], "愛好與收藏品", null), -1);
+});
+
+test("category scrolling selects only one visible active list column inside the modal", () => {
+  const candidates = [
+    categoryColumn(2, { inCategoryModal: false }),
+    categoryColumn(2, { visible: false }),
+    categoryColumn(1),
+    categoryColumn(2),
+    categoryColumn(2, { isListColumn: false })
+  ];
+  assert.equal(helpers.safeCategoryScrollContainerIndex(candidates, 2), 3);
+  assert.equal(helpers.safeCategoryScrollContainerIndex([
+    categoryColumn(2),
+    categoryColumn(2)
+  ], 2), -1);
+  assert.equal(helpers.safeCategoryScrollContainerIndex([
+    categoryColumn(2, { active: false }),
+    categoryColumn(2, { active: true })
+  ], 2), 1);
+  assert.equal(helpers.safeCategoryScrollContainerIndex([
+    categoryColumn(2, { active: false })
+  ], 2), -1);
+});
+
+test("independent vertical category columns do not get confused with the global horizontal rail", () => {
+  const candidates = [
+    categoryColumn(0, { active: false, scrollTop: 300 }),
+    categoryColumn(1, { active: false, scrollTop: 120 }),
+    categoryColumn(2, { active: true, scrollTop: 40 }),
+    categoryColumn(2, {
+      active: true,
+      isListColumn: false,
+      scrollTop: 0,
+      clientHeight: 18,
+      scrollHeight: 18,
+      clientWidth: 700,
+      scrollWidth: 1600
+    })
+  ];
+  assert.equal(helpers.safeCategoryScrollContainerIndex(candidates, 2), 2);
+  assert.equal(helpers.safeCategoryScrollContainerIndex([
+    categoryColumn(2, {
+      active: true,
+      scrollTop: 0,
+      clientHeight: 18,
+      scrollHeight: 18,
+      clientWidth: 700,
+      scrollWidth: 1600
+    })
+  ], 2), -1);
+});
+
+test("category search scrolls downward in overlapping segments and stops at boundaries", () => {
+  const first = helpers.planCategorySearchStep({
+    levelIndex: 0,
+    target: "愛好與收藏品",
+    options: [],
+    containers: [categoryColumn(0)],
+    state: null
+  });
+  assert.equal(first.action, "scroll");
+  assert.equal(first.reason, "scan-next-segment");
+  assert.equal(first.scrollTop, 256);
+  assert.equal(first.state.attempts, 1);
+
+  const last = helpers.planCategorySearchStep({
+    levelIndex: 0,
+    target: "愛好與收藏品",
+    options: [],
+    containers: [categoryColumn(0, { scrollTop: 880 })],
+    state: { levelIndex: 0, initialized: true, attempts: 4, lastObservedTop: 700 }
+  });
+  assert.equal(last.action, "stop");
+  assert.equal(last.reason, "end-of-list");
+});
+
+test("an exact category option is selected before any scrolling is considered", () => {
+  const selected = helpers.planCategorySearchStep({
+    levelIndex: 2,
+    target: "弦樂器",
+    options: [categoryOption("弦樂器", 2)],
+    containers: [],
+    state: null
+  });
+  assert.equal(selected.action, "select");
+  assert.equal(selected.reason, "exact-option");
+  assert.equal(selected.optionIndex, 0);
+
+  const invalid = helpers.planCategorySearchStep({
+    levelIndex: null,
+    target: "愛好與收藏品",
+    options: [categoryOption("愛好與收藏品", 0)],
+    containers: [categoryColumn(0)]
+  });
+  assert.equal(invalid.action, "stop");
+  assert.equal(invalid.reason, "invalid-input");
+});
+
+test("category search stops when scrolling makes no progress or exceeds its bound", () => {
+  const stalled = helpers.planCategorySearchStep({
+    levelIndex: 3,
+    target: "吉他、貝斯",
+    options: [],
+    containers: [categoryColumn(3, { scrollTop: 256 })],
+    state: { levelIndex: 3, initialized: true, attempts: 1, lastObservedTop: 256 }
+  });
+  assert.equal(stalled.action, "stop");
+  assert.equal(stalled.reason, "no-scroll-progress");
+
+  const bounded = helpers.planCategorySearchStep({
+    levelIndex: 3,
+    target: "吉他、貝斯",
+    options: [],
+    containers: [categoryColumn(3, { scrollTop: 256 })],
+    state: { levelIndex: 3, initialized: true, attempts: 3, lastObservedTop: 100 },
+    maxAttempts: 3
+  });
+  assert.equal(bounded.action, "stop");
+  assert.equal(bounded.reason, "attempt-limit");
+});
+
+test("each new category level resets its scroll state and returns to the top", () => {
+  const previous = { levelIndex: 0, initialized: true, attempts: 7, lastObservedTop: 640 };
+  assert.deepEqual(helpers.normalizeCategorySearchState(previous, 1), {
+    levelIndex: 1,
+    initialized: false,
+    attempts: 0,
+    lastObservedTop: null
+  });
+  const reset = helpers.planCategorySearchStep({
+    levelIndex: 1,
+    target: "樂器與樂器配件",
+    options: [],
+    containers: [categoryColumn(1, { scrollTop: 420 })],
+    state: previous
+  });
+  assert.equal(reset.action, "scroll");
+  assert.equal(reset.reason, "reset-level");
+  assert.equal(reset.scrollTop, 0);
+  assert.equal(reset.state.attempts, 0);
+
+  const failedReset = helpers.planCategorySearchStep({
+    levelIndex: 1,
+    target: "樂器與樂器配件",
+    options: [],
+    containers: [categoryColumn(1, { scrollTop: 420 })],
+    state: reset.state
+  });
+  assert.equal(failedReset.action, "stop");
+  assert.equal(failedReset.reason, "no-scroll-progress");
+
+  const afterSuccessfulReset = helpers.planCategorySearchStep({
+    levelIndex: 1,
+    target: "樂器與樂器配件",
+    options: [],
+    containers: [categoryColumn(1, { scrollTop: 0 })],
+    state: reset.state
+  });
+  assert.equal(afterSuccessfulReset.action, "scroll");
+  assert.equal(afterSuccessfulReset.reason, "scan-next-segment");
+  assert.equal(afterSuccessfulReset.scrollTop, 256);
+  assert.equal(afterSuccessfulReset.state.attempts, 1);
+});
+
 test("recognizes exact and compact compound Shopee sales-channel rows", () => {
   const approved = ["連接商品到蝦皮購物", "更新到蝦皮購物", "蝦皮購物"];
   assert.equal(helpers.shopeeEntryTextMatch("蝦皮購物", approved), true);

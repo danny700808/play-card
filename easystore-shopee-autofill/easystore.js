@@ -69,6 +69,10 @@
     "請先選擇分類",
     "No category has been chosen"
   ]);
+  const CATEGORY_DIALOG_TITLES = Object.freeze([
+    "Edit category",
+    "編輯分類"
+  ]);
   const SHOPEE_ENTRY_LABELS = Object.freeze([
     "連接商品到蝦皮購物 Shopee Taiwan",
     "連接商品到蝦皮購物",
@@ -565,14 +569,420 @@
     return fallback;
   }
 
-  async function waitForCategoryStage(segment, timeout, exclude) {
+  function findActiveCategoryDialog() {
+    const titles = findExactTextElements(CATEGORY_DIALOG_TITLES);
+    for (const title of titles) {
+      const semanticDialog = title.closest("[role='dialog'], [aria-modal='true']");
+      if (semanticDialog && isVisible(semanticDialog)) return semanticDialog;
+
+      const horizontalCandidates = [];
+      const fallbackCandidates = [];
+      let container = title.parentElement;
+      for (let depth = 0; container && depth < 9; depth += 1, container = container.parentElement) {
+        const rect = container.getBoundingClientRect();
+        const style = getComputedStyle(container);
+        if (rect.width >= 420
+          && rect.height >= 220
+          && rect.width <= Math.max(window.innerWidth * 1.05, 1400)
+          && rect.height <= Math.max(window.innerHeight * 1.05, 1000)
+          && style.display !== "none"
+          && style.visibility !== "hidden") {
+          const hasVerticalList = Array.from(container.querySelectorAll("*")).some((node) => {
+            if (!(node instanceof HTMLElement)) return false;
+            const nodeRect = node.getBoundingClientRect();
+            const overflowY = getComputedStyle(node).overflowY;
+            return nodeRect.width >= 140
+              && nodeRect.width <= Math.min(560, rect.width * 0.72)
+              && nodeRect.height >= 100
+              && (/auto|scroll|overlay/i.test(overflowY) || node.scrollHeight > node.clientHeight + 4);
+          });
+          const hasHorizontalViewport = Array.from(container.querySelectorAll("*")).some((node) => {
+            if (!(node instanceof HTMLElement)) return false;
+            const nodeRect = node.getBoundingClientRect();
+            return nodeRect.width >= 420
+              && nodeRect.height >= 140
+              && node.scrollWidth > node.clientWidth + 8;
+          });
+          const row = { element: container, area: rect.width * rect.height };
+          if (hasHorizontalViewport) horizontalCandidates.push(row);
+          else if (hasVerticalList) fallbackCandidates.push(row);
+        }
+      }
+      horizontalCandidates.sort((left, right) => left.area - right.area);
+      fallbackCandidates.sort((left, right) => right.area - left.area);
+      // The title and the horizontally expanding columns can be siblings.
+      // Prefer their smallest common modal root. Without a horizontal
+      // viewport, use the largest bounded title ancestor so a later sibling
+      // column cannot escape the search scope.
+      if (horizontalCandidates[0]) return horizontalCandidates[0].element;
+      if (fallbackCandidates[0]) return fallbackCandidates[0].element;
+    }
+    return null;
+  }
+
+  async function waitForCategoryDialog(timeout) {
     const started = Date.now();
     while (Date.now() - started < timeout) {
-      const option = approvedOptionCandidate([segment], helpers.exactApprovedMatch, exclude);
-      if (option) return option;
+      const dialog = findActiveCategoryDialog();
+      if (dialog) return dialog;
       await sleep(120);
     }
     return null;
+  }
+
+  function categoryHorizontalViewport(dialog) {
+    if (!(dialog instanceof Element)) return null;
+    const dialogRect = dialog.getBoundingClientRect();
+    return Array.from(dialog.querySelectorAll("*")).filter((node) => {
+      if (!(node instanceof HTMLElement) || !isVisible(node)) return false;
+      const rect = node.getBoundingClientRect();
+      const overflowX = getComputedStyle(node).overflowX;
+      const horizontalStyle = /auto|scroll|overlay|hidden/i.test(overflowX);
+      const compactRows = Array.from(node.querySelectorAll("*")).filter((child) => {
+        if (!(child instanceof HTMLElement) || !isVisible(child)) return false;
+        const childRect = child.getBoundingClientRect();
+        const text = String(child.textContent || "").trim();
+        return text.length > 0
+          && text.length <= 90
+          && childRect.height >= 14
+          && childRect.height <= 72
+          && !Array.from(child.children).some((grandchild) =>
+            helpers.normalizeText(grandchild.textContent) === helpers.normalizeText(text)
+          );
+      }).length;
+      return rect.width >= Math.min(420, dialogRect.width * 0.55)
+        && rect.height >= 140
+        && (node.scrollWidth > node.clientWidth + 8 || (horizontalStyle && compactRows >= 2));
+    }).map((element) => {
+      const rect = element.getBoundingClientRect();
+      const overflowX = getComputedStyle(element).overflowX;
+      return {
+        element,
+        overflow: element.scrollWidth - element.clientWidth,
+        styled: /auto|scroll|overlay/i.test(overflowX) ? 1 : 0,
+        area: rect.width * rect.height
+      };
+    }).sort((left, right) => right.styled - left.styled || right.overflow - left.overflow || left.area - right.area)[0]?.element || null;
+  }
+
+  function categoryListColumns(dialog) {
+    if (!(dialog instanceof Element)) return [];
+    const dialogRect = dialog.getBoundingClientRect();
+    const horizontalViewport = categoryHorizontalViewport(dialog);
+    const scope = horizontalViewport || dialog;
+    const scopeRect = scope.getBoundingClientRect();
+    const nodes = Array.from(scope.querySelectorAll("*"));
+    const shortRows = nodes.filter((node) => {
+      if (!(node instanceof HTMLElement) || !isVisible(node)) return false;
+      const rect = node.getBoundingClientRect();
+      const text = String(node.textContent || "").trim();
+      if (!text || text.length > 90 || helpers.exactApprovedMatch(text, CATEGORY_DIALOG_TITLES)) return false;
+      const normalized = helpers.normalizeText(text);
+      if (!normalized || Array.from(node.children).some((child) => helpers.normalizeText(child.textContent) === normalized)) {
+        return false;
+      }
+      return rect.height >= 14 && rect.height <= 72 && rect.width > 20 && rect.width <= 520;
+    });
+
+    const candidateSet = new Set();
+    shortRows.forEach((row) => {
+      let container = row.parentElement;
+      for (let depth = 0; container && container !== scope && depth < 6; depth += 1, container = container.parentElement) {
+        const rect = container.getBoundingClientRect();
+        if (rect.width >= 140
+          && rect.width <= Math.min(560, dialogRect.width * 0.72)
+          && rect.height >= 100
+          && rect.height <= dialogRect.height) {
+          candidateSet.add(container);
+        }
+      }
+    });
+    nodes.forEach((node) => {
+      if (!(node instanceof HTMLElement) || !isVisible(node)) return;
+      if (node.scrollHeight > node.clientHeight + 4) candidateSet.add(node);
+    });
+
+    const candidates = Array.from(candidateSet).filter((node) => {
+      if (!(node instanceof HTMLElement) || !isVisible(node) || node === horizontalViewport) return false;
+      const rect = node.getBoundingClientRect();
+      const overflowY = getComputedStyle(node).overflowY;
+      const hasVerticalRange = node.scrollHeight > node.clientHeight + 4;
+      const isHorizontalRoot = node.scrollWidth > node.clientWidth + 8
+        && rect.width >= Math.min(420, scopeRect.width * 0.7);
+      return rect.width >= 140
+        && rect.width <= Math.min(560, dialogRect.width * 0.72)
+        && rect.height >= 100
+        && rect.height <= dialogRect.height
+        && !isHorizontalRoot
+        && (hasVerticalRange || shortRows.filter((row) => node.contains(row)).length >= 2)
+        && (hasVerticalRange || !/hidden/i.test(overflowY));
+    }).map((element) => {
+      const rect = element.getBoundingClientRect();
+      const visibleRowTops = new Set(shortRows.filter((row) => element.contains(row)).map((row) =>
+        Math.round(row.getBoundingClientRect().top / 4) * 4
+      ));
+      const overflowY = getComputedStyle(element).overflowY;
+      const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight);
+      let depth = 0;
+      for (let parent = element.parentElement; parent && parent !== dialog; parent = parent.parentElement) depth += 1;
+      const score = (/auto|scroll|overlay/i.test(overflowY) ? 500 : 0)
+        + Math.min(maxScroll, 1200)
+        + visibleRowTops.size * 35
+        + depth * 3
+        - rect.width / 20;
+      return { element, rect, score };
+    });
+
+    // Group by horizontal band, then keep the most credible owner for that
+    // band. This preserves four sibling columns while collapsing nested
+    // wrappers inside one column.
+    const bands = [];
+    for (const candidate of candidates.sort((left, right) => left.rect.left - right.rect.left)) {
+      let band = bands.find((row) => Math.abs(row.left - candidate.rect.left) <= 28);
+      if (!band) {
+        band = { left: candidate.rect.left, candidates: [] };
+        bands.push(band);
+      }
+      band.candidates.push(candidate);
+    }
+    return bands.sort((left, right) => left.left - right.left).map((band) =>
+      band.candidates.sort((left, right) => right.score - left.score)[0].element
+    );
+  }
+
+  function intersectsCategoryColumn(element, column) {
+    if (!(element instanceof Element) || !(column instanceof Element)) return false;
+    const rowRect = element.getBoundingClientRect();
+    const columnRect = column.getBoundingClientRect();
+    return rowRect.width > 0
+      && rowRect.height > 0
+      && rowRect.bottom > columnRect.top + 1
+      && rowRect.top < columnRect.bottom - 1;
+  }
+
+  function categoryOptionTarget(element, boundary) {
+    if (!(element instanceof Element) || !(boundary instanceof Element)) return null;
+    const semantic = element.closest("[role='option'], li, button, [data-value], [tabindex]");
+    if (semantic && boundary.contains(semantic) && isEnabledClickTarget(semantic)) {
+      const semanticRect = semantic.getBoundingClientRect();
+      if (semanticRect.height <= 84 && semanticRect.width <= 560) return semantic;
+    }
+
+    // EasyStore also renders plain div rows. Walk only within the identified
+    // category column and require a compact row containing exactly this text;
+    // never fall back to clicking an arbitrary page text node.
+    const rows = [];
+    let candidate = element;
+    for (let depth = 0; candidate && candidate !== boundary && depth < 6; depth += 1, candidate = candidate.parentElement) {
+      const rect = candidate.getBoundingClientRect();
+      if (rect.height >= 18
+        && rect.height <= 84
+        && rect.width >= 80
+        && rect.width <= 560
+        && helpers.exactApprovedMatch(candidate.textContent, [element.textContent])
+        && isEnabledClickTarget(candidate)) {
+        rows.push({ element: candidate, width: rect.width });
+      }
+    }
+    return rows.sort((left, right) => right.width - left.width)[0]?.element || null;
+  }
+
+  function verticallyVisibleInDialog(element, dialog) {
+    if (!(element instanceof Element) || !(dialog instanceof Element)) return false;
+    const rowRect = element.getBoundingClientRect();
+    let parent = element.parentElement;
+    while (parent && parent !== dialog) {
+      const overflowY = getComputedStyle(parent).overflowY;
+      if (/auto|scroll|overlay|hidden/i.test(overflowY)) {
+        const parentRect = parent.getBoundingClientRect();
+        if (rowRect.bottom <= parentRect.top + 1 || rowRect.top >= parentRect.bottom - 1) return false;
+      }
+      parent = parent.parentElement;
+    }
+    return true;
+  }
+
+  function exactCategoryOptions(dialog, columns, segment, levelIndex) {
+    if (!(dialog instanceof Element)) return [];
+    const exactElements = findTextElements([segment], dialog, helpers.exactApprovedMatch)
+      .filter((element) => !Array.from(element.children).some((child) =>
+        helpers.exactApprovedMatch(child.textContent, [segment])
+      ))
+      .filter((element) => verticallyVisibleInDialog(element, dialog));
+    const seen = new Set();
+    const records = exactElements.map((element) => {
+      let ownerIndex = columns.findIndex((column) => column.contains(element));
+      if (ownerIndex < 0) {
+        const centerX = element.getBoundingClientRect().left + element.getBoundingClientRect().width / 2;
+        ownerIndex = columns.findIndex((column) => {
+          const rect = column.getBoundingClientRect();
+          return centerX >= rect.left && centerX <= rect.right;
+        });
+      }
+      const owner = ownerIndex >= 0 ? columns[ownerIndex] : null;
+      const boundary = owner || categoryHorizontalViewport(dialog) || dialog;
+      const target = categoryOptionTarget(element, boundary);
+      return target ? { target, ownerIndex } : null;
+    }).filter((record) => {
+        if (!record || seen.has(record.target)) return false;
+        seen.add(record.target);
+        return true;
+      });
+    return records.filter((record) => {
+        return record.ownerIndex === levelIndex;
+      }).map((record) => record.target)
+      .filter((target) => {
+        if (!target || !dialog.contains(target)) return false;
+        seen.add(target);
+        return true;
+      });
+  }
+
+  function categoryColumnDescriptors(columns, levelIndex, dialog) {
+    return columns.map((column, index) => ({
+      visible: isVisible(column),
+      inCategoryModal: dialog.contains(column),
+      isListColumn: true,
+      levelIndex: index,
+      active: index === levelIndex,
+      scrollTop: column.scrollTop,
+      clientHeight: column.clientHeight,
+      scrollHeight: column.scrollHeight
+    }));
+  }
+
+  function categoryColumnHorizontallyVisible(column, viewport) {
+    if (!(column instanceof Element) || !(viewport instanceof Element)) return false;
+    const columnRect = column.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    const visibleWidth = Math.min(columnRect.right, viewportRect.right)
+      - Math.max(columnRect.left, viewportRect.left);
+    return visibleWidth >= Math.min(80, columnRect.width * 0.45);
+  }
+
+  async function ensureCategoryLevelVisible(dialog, levelIndex) {
+    if (!(dialog instanceof Element)) return null;
+    let columns = categoryListColumns(dialog);
+    let column = columns[levelIndex];
+    const viewport = categoryHorizontalViewport(dialog);
+    if (!column || !viewport) return column || null;
+    if (categoryColumnHorizontallyVisible(column, viewport)) return column;
+
+    const columnRect = column.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    const margin = 20;
+    let nextLeft = viewport.scrollLeft;
+    if (columnRect.left < viewportRect.left + margin) {
+      nextLeft += columnRect.left - viewportRect.left - margin;
+    } else if (columnRect.right > viewportRect.right - margin) {
+      nextLeft += columnRect.right - viewportRect.right + margin;
+    }
+    const maxLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+    viewport.scrollLeft = Math.max(0, Math.min(maxLeft, nextLeft));
+    viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await sleep(220);
+
+    const refreshedDialog = findActiveCategoryDialog();
+    if (!refreshedDialog) return null;
+    columns = categoryListColumns(refreshedDialog);
+    column = columns[levelIndex];
+    const refreshedViewport = categoryHorizontalViewport(refreshedDialog);
+    return column && refreshedViewport && categoryColumnHorizontallyVisible(column, refreshedViewport)
+      ? column
+      : null;
+  }
+
+  async function waitForNextCategoryColumn(levelIndex, timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const dialog = findActiveCategoryDialog();
+      if (!dialog) return levelIndex >= 3;
+      const columns = categoryListColumns(dialog);
+      if (columns.length > levelIndex + 1) return true;
+      await sleep(120);
+    }
+    return false;
+  }
+
+  async function waitForCategoryStage(segment, levelIndex, timeout) {
+    const started = Date.now();
+    let state = null;
+    let lastReason = "category-dialog-not-ready";
+    while (Date.now() - started < timeout) {
+      const dialog = findActiveCategoryDialog();
+      if (!dialog) {
+        await sleep(120);
+        continue;
+      }
+      const columns = categoryListColumns(dialog);
+      let column = columns[levelIndex];
+      if (!column) {
+        lastReason = "category-column-not-ready";
+        await sleep(120);
+        continue;
+      }
+      const viewport = categoryHorizontalViewport(dialog);
+      if (viewport && !categoryColumnHorizontallyVisible(column, viewport)) {
+        column = await ensureCategoryLevelVisible(dialog, levelIndex);
+        if (!column) {
+          lastReason = "category-column-not-visible";
+          await sleep(120);
+          continue;
+        }
+        // Horizontal movement may have rebuilt the modal. Re-query everything
+        // on the next iteration before inspecting or scrolling vertically.
+        state = null;
+        continue;
+      }
+      const targets = exactCategoryOptions(dialog, columns, segment, levelIndex);
+      const optionDescriptors = targets.map(() => ({
+        text: segment,
+        visible: true,
+        inCategoryModal: true,
+        inActiveColumn: true,
+        disabled: false,
+        levelIndex
+      }));
+      const plan = helpers.planCategorySearchStep({
+        levelIndex,
+        target: segment,
+        state,
+        options: optionDescriptors,
+        containers: categoryColumnDescriptors(columns, levelIndex, dialog),
+        maxAttempts: 40
+      });
+      state = plan.state;
+      lastReason = plan.reason;
+      if (plan.action === "select") {
+        const target = targets[plan.optionIndex];
+        if (target && dialog.contains(target) && isEnabledClickTarget(target)) {
+          return { option: target, reason: plan.reason };
+        }
+      } else if (plan.action === "scroll") {
+        const targetColumn = columns[plan.containerIndex];
+        if (!targetColumn || !dialog.contains(targetColumn)) {
+          lastReason = "category-column-replaced";
+          state = null;
+          await sleep(120);
+          continue;
+        }
+        targetColumn.scrollTop = plan.scrollTop;
+        targetColumn.dispatchEvent(new Event("scroll", { bubbles: true }));
+        // Give Vue/virtualized lists time to replace their visible rows before
+        // taking the next 80%-overlapped step.
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await sleep(220);
+        continue;
+      } else if (plan.reason === "ambiguous-option") {
+        return { option: null, reason: plan.reason };
+      }
+      // A virtualized list can grow after its first render. Keep observing
+      // until the bounded timeout instead of treating the first bottom as a
+      // permanent failure.
+      await sleep(180);
+    }
+    return { option: null, reason: lastReason };
   }
 
   async function fillCategory(payload, report) {
@@ -597,29 +1007,32 @@
       return;
     }
     const clickTarget = field.editControls[0] || field.controls[0];
-    if (!clickTarget) {
+    let dialog = findActiveCategoryDialog();
+    if (!dialog && !clickTarget) {
       addReport(report, "missing", "分類", `步驟 1/${totalSteps}：找不到分類卡右側的鉛筆按鈕`);
       return;
     }
-    clickTarget.click();
-    const firstSegment = payload.categoryPath[0];
-    let option = await waitForCategoryStage(firstSegment, 6000, clickTarget);
-    if (!option) {
-      clickTarget.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-      option = await waitForCategoryStage(firstSegment, 4000, clickTarget);
+    if (!dialog) {
+      clickTarget.click();
+      dialog = await waitForCategoryDialog(2400);
+      if (!dialog) {
+        clickTarget.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+        dialog = await waitForCategoryDialog(2400);
+      }
     }
-    if (!option) {
-      addReport(report, "missing", "分類", `步驟 1/${totalSteps}：已找到分類卡，但點擊鉛筆後分類選單沒有出現`);
+    if (!dialog) {
+      addReport(report, "missing", "分類", `步驟 1/${totalSteps}：已找到分類卡，但無法開啟分類視窗`);
       return;
     }
+    let option = null;
     for (let index = 0; index < payload.categoryPath.length; index += 1) {
       const segment = payload.categoryPath[index];
-      if (index > 0) {
-        option = await waitForCategoryStage(segment, 6000, clickTarget);
-      }
+      const stageResult = await waitForCategoryStage(segment, index, 9000);
+      option = stageResult.option;
       const stage = helpers.nextCategoryStage(index, payload.categoryPath.length, Boolean(option), false);
       if (stage === "wait-option") {
-        addReport(report, "missing", "分類", `步驟 ${index + 1}/${totalSteps}：找不到「${segment}」`);
+        const detail = stageResult.reason === "ambiguous-option" ? "同一欄出現重複選項" : "已安全捲到底仍未找到";
+        addReport(report, "missing", "分類", `步驟 ${index + 1}/${totalSteps}：${detail}「${segment}」`);
         return;
       }
       if (stage !== "click-option") {
@@ -628,6 +1041,13 @@
       }
       option.click();
       await sleep(300);
+      if (index < payload.categoryPath.length - 1) {
+        const nextColumnReady = await waitForNextCategoryColumn(index, 3500);
+        if (!nextColumnReady) {
+          addReport(report, "missing", "分類", `步驟 ${index + 2}/${totalSteps}：點選「${segment}」後，右側下一欄沒有出現`);
+          return;
+        }
+      }
     }
     const appliedStarted = Date.now();
     let applied = false;
