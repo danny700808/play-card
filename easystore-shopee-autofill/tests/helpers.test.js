@@ -85,8 +85,12 @@ test("category stages require the full approved path in order", () => {
 });
 
 test("legacy music category wording is converted to the exact EasyStore category", () => {
-  const legacyPath = ["愛好與收藏品", "樂器與配件", "弦樂器", "吉他、貝斯"];
+  const legacyPath = ["樂器與配件", "弦樂器", "吉他、貝斯"];
   assert.equal(helpers.canonicalCategorySegment("樂器與配件"), "樂器與樂器配件");
+  assert.deepEqual(
+    helpers.canonicalCategoryPath(legacyPath),
+    ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"]
+  );
   assert.equal(
     helpers.orderedCategoryPathMatch(
       "愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯",
@@ -198,6 +202,10 @@ test("brand gate uses the exact brand or approved NOBRAND aliases", () => {
   assert.equal(helpers.exactApprovedMatch("Ibanez", noBrand), false);
   const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
   assert.match(source, /const approvedBrands = helpers\.approvedBrandOptions\(payload\.brand\)/);
+  assert.match(source, /setSearchInputValue\(control, desiredBrand\)/);
+  assert.match(source, /const visibleBrandSelection = \(\) => Array\.from\(field\.container\.querySelectorAll/);
+  assert.match(source, /appliedValue = selectedBrandValue\(\)/);
+  assert.doesNotMatch(source, /setNativeValue\(control, desiredBrand\)/);
   assert.doesNotMatch(source, /addReport\(report, "skipped", "品牌", "待人工確認"\)/);
 });
 

@@ -136,11 +136,19 @@
     return CATEGORY_SEGMENT_DEFINITIONS[canonical] || [canonical];
   }
 
+  function canonicalCategoryPath(values) {
+    const path = Array.isArray(values)
+      ? values.map(canonicalCategorySegment).filter(Boolean)
+      : [];
+    if (exactApprovedMatch(path[0], ["樂器與樂器配件"])) {
+      path.unshift("愛好與收藏品");
+    }
+    return path;
+  }
+
   function orderedCategoryPathMatch(value, segments) {
     const text = normalizeText(value);
-    const approved = Array.isArray(segments)
-      ? segments.map(canonicalCategorySegment).map(normalizeText).filter(Boolean)
-      : [];
+    const approved = canonicalCategoryPath(segments).map(normalizeText).filter(Boolean);
     if (!text || approved.length === 0) return false;
     let cursor = 0;
     for (const segment of approved) {
@@ -757,6 +765,9 @@
         const segment = validateString(entry, `categoryPath[${index}]`, errors, { max: 120 });
         categoryPath.push(canonicalCategorySegment(segment));
       });
+      const normalizedPath = canonicalCategoryPath(categoryPath);
+      categoryPath.splice(0, categoryPath.length, ...normalizedPath);
+      if (categoryPath.length > 8) errors.push("categoryPath 正規化後不可超過 8 層。");
     }
 
     const attributes = [];
@@ -1136,6 +1147,7 @@
     LOGISTICS_DEFINITIONS,
     normalizeText,
     canonicalCategorySegment,
+    canonicalCategoryPath,
     normalizeShopeeNavigationMode,
     classifyShopeeActionText,
     directSyncNavigationMode,

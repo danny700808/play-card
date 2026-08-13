@@ -84,11 +84,12 @@ function canonicalShopeeCategorySegment(value) {
 }
 
 function shopeeCategorySegments(value) {
-  return clean(value)
+  const segments = clean(value)
     .split(/\s*(?:>|＞|→|\/|｜)\s*/)
     .map(canonicalShopeeCategorySegment)
-    .filter(Boolean)
-    .slice(0, 8);
+    .filter(Boolean);
+  if (segments[0] === '樂器與樂器配件') segments.unshift('愛好與收藏品');
+  return segments.slice(0, 8);
 }
 
 function hsinchuSizeBand(totalCm) {

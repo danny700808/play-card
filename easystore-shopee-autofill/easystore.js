@@ -236,6 +236,18 @@
     control.dispatchEvent(new Event("blur", { bubbles: true }));
   }
 
+  function setSearchInputValue(control, value) {
+    control.focus();
+    control.click();
+    const prototype = control instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+    if (descriptor && descriptor.set) descriptor.set.call(control, String(value));
+    else control.value = String(value);
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   async function waitForExactText(approvedTexts, timeout, exclude) {
     const started = Date.now();
     while (Date.now() - started < timeout) {
@@ -408,17 +420,27 @@
       return;
     }
     const control = field.controls[0];
-    const existing = controlValue(control);
-    if (!isEmptyValue(existing)) {
-      if (helpers.exactApprovedMatch(existing, approvedBrands)) {
-        addReport(report, "preserved", "品牌", existing);
+    const visibleBrandSelection = () => Array.from(field.container.querySelectorAll([
+      ".el-select__selected-item .el-select__placeholder",
+      ".el-select__selected-item"
+    ].join(",")))
+      .map((element) => String(element.textContent || "").trim())
+      .find((value) => !isEmptyValue(value)) || "";
+    const selectedBrandValue = () => {
+      const visible = visibleBrandSelection();
+      return helpers.exactApprovedMatch(visible, approvedBrands) ? visible : "";
+    };
+    const existingSelection = visibleBrandSelection();
+    if (existingSelection) {
+      if (helpers.exactApprovedMatch(existingSelection, approvedBrands)) {
+        addReport(report, "preserved", "品牌", existingSelection);
       } else {
-        addReport(report, "missing", "品牌", `目前品牌「${existing}」與核准品牌「${desiredBrand}」不符`);
+        addReport(report, "missing", "品牌", `目前品牌「${existingSelection}」與核准品牌「${desiredBrand}」不符`);
       }
       return;
     }
     if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
-      setNativeValue(control, desiredBrand);
+      setSearchInputValue(control, desiredBrand);
       const suggestion = await waitForApprovedOption(
         approvedBrands,
         helpers.exactApprovedMatch,
@@ -430,13 +452,17 @@
         return;
       }
       suggestion.click();
-      await sleep(250);
-      const applied = !control.isConnected || helpers.exactApprovedMatch(controlValue(control), approvedBrands);
+      const appliedStarted = Date.now();
+      let appliedValue = "";
+      while (!appliedValue && Date.now() - appliedStarted < 2200) {
+        await sleep(100);
+        appliedValue = selectedBrandValue();
+      }
       addReport(
         report,
-        applied ? "filled" : "missing",
+        appliedValue ? "filled" : "missing",
         "品牌",
-        applied ? desiredBrand : `無法套用「${desiredBrand}」`
+        appliedValue || `無法套用「${desiredBrand}」`
       );
       return;
     }

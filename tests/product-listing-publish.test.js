@@ -154,7 +154,11 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
 
 test('legacy researched category wording is canonicalized before the EasyStore handoff', () => {
   assert.deepEqual(
-    helpers.shopeeCategorySegments('愛好與收藏品 > 樂器與配件 > 弦樂器 > 吉他、貝斯'),
+    helpers.shopeeCategorySegments('樂器與配件 > 弦樂器 > 吉他、貝斯'),
+    ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']
+  );
+  assert.deepEqual(
+    helpers.shopeeCategorySegments('愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯'),
     ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']
   );
 });
