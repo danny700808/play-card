@@ -55,7 +55,16 @@
     Object.values(LOGISTICS_LABELS).flat()
   );
 
-  const EMPTY_MARKERS = ["", "請選擇", "請先選擇", "select", "choose"];
+  const EMPTY_MARKERS = [
+    "",
+    "請選擇",
+    "請先選擇",
+    "請先選擇分類",
+    "選擇品牌",
+    "no category has been chosen",
+    "select",
+    "choose"
+  ];
   const SHOPEE_ENTRY_LABELS = Object.freeze([
     "連接商品到蝦皮購物 Shopee Taiwan",
     "連接商品到蝦皮購物",
@@ -381,45 +390,48 @@
   }
 
   async function fillBrand(payload, report) {
-    if (!payload.brand) {
-      addReport(report, "skipped", "品牌", "待人工確認");
-      return;
-    }
+    const approvedBrands = helpers.approvedBrandOptions(payload.brand);
+    const desiredBrand = payload.brand || "NOBRAND";
     const field = await waitForField(FIELD_LABELS.brand, 8000);
     if (!field || field.controls.length === 0) {
       addReport(report, "missing", "品牌", "找不到欄位");
       return;
     }
     const control = field.controls[0];
-    if (!isEmptyValue(controlValue(control))) {
-      addReport(report, "preserved", "品牌", controlValue(control));
+    const existing = controlValue(control);
+    if (!isEmptyValue(existing)) {
+      if (helpers.exactApprovedMatch(existing, approvedBrands)) {
+        addReport(report, "preserved", "品牌", existing);
+      } else {
+        addReport(report, "missing", "品牌", `目前品牌「${existing}」與核准品牌「${desiredBrand}」不符`);
+      }
       return;
     }
     if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
-      setNativeValue(control, payload.brand);
+      setNativeValue(control, desiredBrand);
       const suggestion = await waitForApprovedOption(
-        [payload.brand],
+        approvedBrands,
         helpers.exactApprovedMatch,
         3500,
         control
       );
       if (!suggestion) {
-        addReport(report, "missing", "品牌", `找不到完全相符的「${payload.brand}」選項`);
+        addReport(report, "missing", "品牌", `找不到完全相符的「${desiredBrand}」選項`);
         return;
       }
       suggestion.click();
       await sleep(250);
-      const applied = !control.isConnected || helpers.exactApprovedMatch(controlValue(control), [payload.brand]);
+      const applied = !control.isConnected || helpers.exactApprovedMatch(controlValue(control), approvedBrands);
       addReport(
         report,
         applied ? "filled" : "missing",
         "品牌",
-        applied ? payload.brand : `無法套用「${payload.brand}」`
+        applied ? desiredBrand : `無法套用「${desiredBrand}」`
       );
       return;
     }
-    const selected = await chooseExactOption(control, [payload.brand]);
-    addReport(report, selected ? "filled" : "missing", "品牌", selected ? payload.brand : "找不到完全相符選項");
+    const selected = await chooseExactOption(control, approvedBrands);
+    addReport(report, selected ? "filled" : "missing", "品牌", selected ? desiredBrand : "找不到完全相符選項");
   }
 
   function categoryCurrentValue(field) {
@@ -435,28 +447,122 @@
     return /請先選擇分類|no category has been chosen/i.test(withoutLabel) ? "" : withoutLabel;
   }
 
+  function elementSemanticText(element) {
+    if (!(element instanceof Element)) return "";
+    return [
+      element.getAttribute("aria-label"),
+      element.getAttribute("title"),
+      element.getAttribute("data-testid"),
+      element.getAttribute("data-cy"),
+      element.className,
+      element.textContent
+    ].filter((value) => typeof value === "string" && value.trim()).join(" ");
+  }
+
+  function compactCategoryContainer(label) {
+    let container = label && label.parentElement;
+    let fallback = null;
+    for (let depth = 0; container && depth < 7; depth += 1, container = container.parentElement) {
+      const rect = container.getBoundingClientRect();
+      const text = String(container.textContent || "");
+      const hasPrompt = /請先選擇分類|no category has been chosen/i.test(text);
+      if (hasPrompt && rect.width > 180 && rect.width <= 1200 && rect.height > 45 && rect.height <= 420) {
+        return container;
+      }
+      const withoutLabel = FIELD_LABELS.category.reduce((result, value) => result.replace(value, ""), text).trim();
+      if (!fallback && withoutLabel.length > 2 && rect.width > 180 && rect.width <= 1200 && rect.height > 45 && rect.height <= 420) {
+        fallback = container;
+      }
+    }
+    return fallback || (label ? label.parentElement : null);
+  }
+
+  function categoryActionCandidates(container) {
+    if (!(container instanceof Element)) return [];
+    const cardRect = container.getBoundingClientRect();
+    const selectors = [
+      "button",
+      "a",
+      "[role='button']",
+      "[tabindex]",
+      "svg",
+      "[class*='edit' i]",
+      "[class*='pencil' i]"
+    ].join(",");
+    const seen = new Set();
+    return Array.from(container.querySelectorAll(selectors)).map((node) => {
+      const target = node.closest("button, a, [role='button'], [tabindex]") || node;
+      if (seen.has(target) || !isEnabledClickTarget(target)) return null;
+      seen.add(target);
+      const rect = target.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const rightRatio = cardRect.width > 0 ? (centerX - cardRect.left) / cardRect.width : 0;
+      const descriptor = {
+        semantic: elementSemanticText(target),
+        tagName: target.tagName,
+        role: target.getAttribute("role") || "",
+        rightRatio,
+        width: rect.width,
+        height: rect.height,
+        hasIcon: Boolean(target.querySelector("svg, img") || target.tagName === "SVG")
+      };
+      return { target, score: helpers.categoryActionScore(descriptor), rightRatio };
+    }).filter((candidate) => candidate && candidate.score >= 200)
+      .sort((left, right) => right.score - left.score || right.rightRatio - left.rightRatio);
+  }
+
+  function categoryPathIsApplied(field, categoryPath) {
+    if (!field) return false;
+    return helpers.orderedCategoryPathMatch(categoryCurrentValue(field), categoryPath)
+      || helpers.orderedCategoryPathMatch(field.container && field.container.textContent, categoryPath);
+  }
+
   function findCategoryField() {
     const label = findExactTextElement(FIELD_LABELS.category);
     if (!label) {
       return null;
     }
-    const labelZone = label.parentElement || label;
-    let container = label.parentElement;
-    for (let depth = 0; container && depth < 6; depth += 1, container = container.parentElement) {
-      const editControls = Array.from(container.querySelectorAll("button, [role='button']")).filter(isVisible);
-      const outsideLabelZone = editControls.filter((button) => {
-        const name = button.getAttribute("aria-label") || button.title || button.textContent || "";
-        return !labelZone.contains(button) || /edit|編輯|修改|鉛筆/i.test(name);
+    const initialContainer = compactCategoryContainer(label);
+    const ancestors = [];
+    let candidateContainer = initialContainer;
+    for (let depth = 0; candidateContainer && depth < 6; depth += 1, candidateContainer = candidateContainer.parentElement) {
+      if (!candidateContainer.contains(label)) break;
+      const rect = candidateContainer.getBoundingClientRect();
+      const text = String(candidateContainer.textContent || "");
+      const actions = categoryActionCandidates(candidateContainer);
+      ancestors.push({
+        element: candidateContainer,
+        actions,
+        hasPrompt: /請先選擇分類|no category has been chosen/i.test(text),
+        width: rect.width,
+        height: rect.height,
+        actionScores: actions.map((row) => row.score)
       });
-      if (outsideLabelZone.length > 0) {
-        return { label, container, controls: fieldControls(container), editControls: outsideLabelZone };
-      }
     }
-    const generic = findField(FIELD_LABELS.category);
-    return generic ? Object.assign({ editControls: [] }, generic) : null;
+    const cardIndex = helpers.smallestCategoryCardIndex(ancestors);
+    const card = cardIndex >= 0 ? ancestors[cardIndex] : null;
+    const resolvedContainer = card ? card.element : initialContainer;
+    const editControls = card ? card.actions.map((row) => row.target) : [];
+    return {
+      label,
+      container: resolvedContainer || label.parentElement || label,
+      controls: fieldControls(resolvedContainer || label.parentElement || label),
+      editControls
+    };
+  }
+
+  async function waitForCategoryStage(segment, timeout, exclude) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const option = approvedOptionCandidate([segment], helpers.exactApprovedMatch, exclude);
+      if (option) return option;
+      await sleep(120);
+    }
+    return null;
   }
 
   async function fillCategory(payload, report) {
+    const totalSteps = payload.categoryPath.length + 1;
     let field = findCategoryField();
     const started = Date.now();
     while (!field && Date.now() - started < 8000) {
@@ -469,41 +575,55 @@
     }
     const existing = categoryCurrentValue(field);
     if (existing) {
-      addReport(report, "preserved", "分類", existing);
+      if (categoryPathIsApplied(field, payload.categoryPath)) {
+        addReport(report, "preserved", "分類", existing);
+      } else {
+        addReport(report, "missing", "分類", `目前分類「${existing}」與核准路徑不符`);
+      }
       return;
     }
-    const buttons = field.editControls;
-    const editButton = buttons.find((button) => /edit|編輯|鉛筆/i.test(button.getAttribute("aria-label") || button.title || button.textContent || "")) || buttons[0];
-    const clickTarget = editButton || field.controls[0];
+    const clickTarget = field.editControls[0] || field.controls[0];
     if (!clickTarget) {
-      addReport(report, "missing", "分類", "找不到編輯按鈕");
+      addReport(report, "missing", "分類", `步驟 1/${totalSteps}：找不到分類卡右側的鉛筆按鈕`);
       return;
     }
     clickTarget.click();
-    await sleep(250);
-    for (const segment of payload.categoryPath) {
-      const option = await waitForApprovedOption(
-        [segment],
-        helpers.exactApprovedMatch,
-        4500,
-        clickTarget
-      );
-      if (!option) {
-        addReport(report, "missing", "分類", `找不到「${segment}」`);
+    const firstSegment = payload.categoryPath[0];
+    let option = await waitForCategoryStage(firstSegment, 6000, clickTarget);
+    if (!option) {
+      clickTarget.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+      option = await waitForCategoryStage(firstSegment, 4000, clickTarget);
+    }
+    if (!option) {
+      addReport(report, "missing", "分類", `步驟 1/${totalSteps}：已找到分類卡，但點擊鉛筆後分類選單沒有出現`);
+      return;
+    }
+    for (let index = 0; index < payload.categoryPath.length; index += 1) {
+      const segment = payload.categoryPath[index];
+      if (index > 0) {
+        option = await waitForCategoryStage(segment, 6000, clickTarget);
+      }
+      const stage = helpers.nextCategoryStage(index, payload.categoryPath.length, Boolean(option), false);
+      if (stage === "wait-option") {
+        addReport(report, "missing", "分類", `步驟 ${index + 1}/${totalSteps}：找不到「${segment}」`);
+        return;
+      }
+      if (stage !== "click-option") {
+        addReport(report, "missing", "分類", `步驟 ${index + 1}/${totalSteps}：分類選擇流程狀態不正確`);
         return;
       }
       option.click();
-      await sleep(420);
+      await sleep(300);
     }
     const appliedStarted = Date.now();
     let applied = false;
     while (!applied && Date.now() - appliedStarted < 8000) {
       await sleep(120);
       const refreshed = findCategoryField();
-      applied = Boolean(refreshed && categoryCurrentValue(refreshed));
+      applied = categoryPathIsApplied(refreshed, payload.categoryPath);
     }
     if (!applied) {
-      addReport(report, "missing", "分類", "選擇後未能確認分類已套用");
+      addReport(report, "missing", "分類", `步驟 ${totalSteps}/${totalSteps}：分類選項都已點選，但頁面沒有顯示完整分類路徑`);
       return;
     }
     await waitForField(FIELD_LABELS.brand, 8000);
@@ -585,6 +705,11 @@
     );
     if (shouldType) {
       setNativeValue(primary, descriptor.value);
+      await sleep(120);
+      if (isEmptyValue(controlValue(primary))) {
+        addReport(report, "missing", displayLabel, "輸入後欄位仍為空白");
+        return;
+      }
     } else {
       const selected = await chooseExactOption(primary, descriptor.approvedOptions);
       if (!selected) {
@@ -605,6 +730,9 @@
           addReport(report, "missing", `${displayLabel}單位`, "找不到完全相符單位");
         }
       }
+    }
+    if (report.missing.some((item) => item.startsWith(`${displayLabel}單位：`))) {
+      return;
     }
     addReport(report, "filled", displayLabel, `${descriptor.value}${descriptor.unit ? ` ${descriptor.unit}` : ""}`);
   }
@@ -1107,18 +1235,43 @@
     }
     const report = createReport();
     await fillCategory(payload, report);
-    if (!report.missing.some((item) => /^分類(?:：|$)/.test(item))) {
-      const categoryIdentity = await waitForVerifiedSellerSku(payload, 5000);
-      if (!categoryIdentity.ok) {
-        throw new Error(categoryIdentity.message);
-      }
+    const categoryProblem = report.missing.find((item) => /^分類(?:：|$)/.test(item));
+    if (categoryProblem) {
+      report.blockedStage = "category";
+      return report;
+    }
+    const categoryIdentity = await waitForVerifiedSellerSku(payload, 5000);
+    if (!categoryIdentity.ok) {
+      throw new Error(categoryIdentity.message);
     }
     await fillBrand(payload, report);
+    const brandProblem = report.missing.find((item) => /^品牌(?:：|$)/.test(item));
+    if (brandProblem) {
+      report.blockedStage = "brand";
+      return report;
+    }
+    const attributeMissingBefore = report.missing.length;
     for (const row of payload.attributes || []) {
       await fillAttribute(row, report);
     }
+    if (report.missing.length > attributeMissingBefore) {
+      report.blockedStage = "attributes";
+      return report;
+    }
     await fillLogistics(payload, report);
+    const logisticsProblem = report.missing.find((item) =>
+      /^(?:黑貓宅急便|蝦皮店到店|7-ELEVEN|7-11|新竹物流|全家|賣家宅配|嘉里快遞|店到家宅配)/.test(item)
+    );
+    if (logisticsProblem) {
+      report.blockedStage = "logistics";
+      return report;
+    }
     await fillPreorder(payload, report);
+    const preorderProblem = report.missing.find((item) => /^預購(?:：|$)/.test(item));
+    if (preorderProblem) {
+      report.blockedStage = "preorder";
+      return report;
+    }
     return report;
   }
 
@@ -1374,15 +1527,24 @@
     const list = document.createElement("ul");
     list.className = "youzi-autofill__report";
     [
+      ["待補", report.missing],
       ["已填", report.filled],
       ["保留", report.preserved],
-      ["略過", report.skipped],
-      ["待補", report.missing]
+      ["略過", report.skipped]
     ].forEach(([bucketLabel, items]) => {
       items.forEach((item) => appendTextElement(list, "li", "", `${bucketLabel}｜${item}`));
     });
     container.appendChild(list);
-    appendTextElement(container, "div", "youzi-autofill__notice", report.missing.length > 0
+    const stageNotices = {
+      category: "分類尚未完成，因此助手已停在第一階段，沒有搜尋或修改後面的品牌、屬性、物流與預購。",
+      brand: "品牌是必填欄位；品牌尚未完成，因此助手已停在第二階段，沒有搜尋或修改後面的屬性、物流與預購。",
+      attributes: "商品屬性尚未完成，因此助手已停在第三階段，沒有修改後面的物流與預購。",
+      logistics: "物流是必填階段；指定物流尚未完成，因此助手已停在第四階段，沒有進入預購與最後發布。",
+      preorder: "預購設定尚未完成，因此助手已停在第五階段，沒有進入最後發布。"
+    };
+    appendTextElement(container, "div", "youzi-autofill__notice", stageNotices[report.blockedStage]
+      ? stageNotices[report.blockedStage]
+      : report.missing.length > 0
       ? "仍有待補欄位，因此不會送出；補齊後可再執行一次。"
       : "資料完整時會接著按 EasyStore 的上架；若 EasyStore 仍顯示錯誤，助手會停下並保留畫面。"
     );
@@ -1440,6 +1602,18 @@
       try {
         const report = await runAutofill(currentRecord.payload);
         renderReport(reportContainer, report);
+        if (report.blockedStage) {
+          status.textContent = report.missing[0] || "分類尚未完成。";
+          start.disabled = false;
+          start.textContent = ({
+            category: "重新嘗試選擇分類",
+            brand: "重新嘗試選擇品牌",
+            attributes: "重新嘗試填寫屬性",
+            logistics: "重新嘗試設定物流",
+            preorder: "重新嘗試設定預購"
+          })[report.blockedStage] || "補齊後重新檢查";
+          return;
+        }
         const navigationMode = helpers.resolveShopeeNavigationMode(
           document.body ? document.body.innerText : "",
           currentRecord.navigationMode

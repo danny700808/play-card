@@ -26,8 +26,8 @@ jobs:
     timeout-minutes: 5
     env:
       EXTENSION_DIR: easystore-shopee-autofill
-      EXTENSION_VERSION: 0.3.7
-      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.7.zip
+      EXTENSION_VERSION: 0.3.8
+      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.8.zip
     steps:
       - uses: actions/checkout@v4
       - name: Check JavaScript syntax
@@ -71,10 +71,10 @@ jobs:
       - name: Verify markup and cache versions
         run: |
           set -euo pipefail
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v9' portal.html
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v9' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260813-shopee-autopublish-v9' portal.html
-          grep -Fq 'operations-phase1.js?v=20260813-shopee-autopublish-v9' operations-hub.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v10' portal.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v10' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260813-shopee-autopublish-v10' portal.html
+          grep -Fq 'operations-phase1.js?v=20260813-shopee-autopublish-v10' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

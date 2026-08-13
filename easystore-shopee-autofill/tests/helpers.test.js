@@ -71,6 +71,93 @@ test("normalizes exact labels without fuzzy substring matching", () => {
   assert.equal(helpers.resolveAttributeKey("Neck"), "");
 });
 
+test("category stages require the full approved path in order", () => {
+  const path = ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"];
+  assert.equal(helpers.orderedCategoryPathMatch(
+    "愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯",
+    path
+  ), true);
+  assert.equal(helpers.orderedCategoryPathMatch("愛好與收藏品 > 弦樂器", path), false);
+  assert.equal(helpers.orderedCategoryPathMatch(
+    "吉他、貝斯 > 弦樂器 > 樂器與樂器配件 > 愛好與收藏品",
+    path
+  ), false);
+});
+
+test("category action scoring picks the right-side pencil instead of help or publish", () => {
+  const pencil = helpers.categoryActionScore({
+    semantic: "mdi-pencil edit",
+    tagName: "BUTTON",
+    role: "button",
+    rightRatio: 0.94,
+    width: 34,
+    height: 34,
+    hasIcon: true
+  });
+  const help = helpers.categoryActionScore({
+    semantic: "help info",
+    tagName: "BUTTON",
+    role: "button",
+    rightRatio: 0.22,
+    width: 24,
+    height: 24,
+    hasIcon: true
+  });
+  const publish = helpers.categoryActionScore({
+    semantic: "上架",
+    tagName: "BUTTON",
+    role: "button",
+    rightRatio: 0.99,
+    width: 58,
+    height: 34,
+    hasIcon: false
+  });
+  assert.ok(pencil > help);
+  assert.ok(pencil > publish);
+});
+
+test("category card discovery climbs past a prompt-only child to the first card with its sibling pencil", () => {
+  const candidates = [
+    { hasPrompt: true, width: 620, height: 70, actionScores: [] },
+    { hasPrompt: true, width: 760, height: 150, actionScores: [720] },
+    { hasPrompt: true, width: 1100, height: 500, actionScores: [720, 400] }
+  ];
+  assert.equal(helpers.smallestCategoryCardIndex(candidates), 1);
+  assert.equal(helpers.smallestCategoryCardIndex([
+    { hasPrompt: true, width: 620, height: 70, actionScores: [] },
+    { hasPrompt: false, width: 760, height: 150, actionScores: [720] }
+  ]), -1);
+});
+
+test("full category prompts remain empty controls", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
+  assert.match(source, /"請先選擇分類"/);
+  assert.match(source, /"選擇品牌"/);
+});
+
+test("brand gate uses the exact brand or approved NOBRAND aliases", () => {
+  assert.deepEqual(helpers.approvedBrandOptions("Ibanez"), ["Ibanez"]);
+  const noBrand = helpers.approvedBrandOptions("");
+  assert.ok(noBrand.includes("NOBRAND"));
+  assert.equal(helpers.exactApprovedMatch("No Brand", noBrand), true);
+  assert.equal(helpers.exactApprovedMatch("Ibanez", noBrand), false);
+  const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
+  assert.match(source, /const approvedBrands = helpers\.approvedBrandOptions\(payload\.brand\)/);
+  assert.doesNotMatch(source, /addReport\(report, "skipped", "品牌", "待人工確認"\)/);
+});
+
+test("four category levels advance one option at a time before path verification", () => {
+  const actions = [];
+  const total = 4;
+  for (let index = 0; index < total; index += 1) {
+    actions.push(helpers.nextCategoryStage(index, total, true, false));
+  }
+  assert.deepEqual(actions, ["click-option", "click-option", "click-option", "click-option"]);
+  assert.equal(helpers.nextCategoryStage(2, total, false, false), "wait-option");
+  assert.equal(helpers.nextCategoryStage(total, total, false, false), "wait-application");
+  assert.equal(helpers.nextCategoryStage(total, total, false, true), "complete");
+});
+
 test("recognizes exact and compact compound Shopee sales-channel rows", () => {
   const approved = ["連接商品到蝦皮購物", "更新到蝦皮購物", "蝦皮購物"];
   assert.equal(helpers.shopeeEntryTextMatch("蝦皮購物", approved), true);
@@ -411,6 +498,14 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
   assert.match(source, /visibleSellerSkuObservation/);
   assert.match(source, /const identity = verifyIdentity\(payload\);[\s\S]*await fillCategory/);
   assert.match(source, /await fillCategory\(payload, report\);[\s\S]*await waitForVerifiedSellerSku\(payload, 5000\)/);
+  assert.match(source, /report\.blockedStage = "category";[\s\S]*return report;/);
+  assert.match(source, /report\.blockedStage = "brand";[\s\S]*return report;/);
+  assert.match(source, /report\.blockedStage = "attributes";[\s\S]*return report;/);
+  assert.match(source, /report\.blockedStage = "logistics";[\s\S]*return report;/);
+  assert.match(source, /report\.blockedStage = "preorder";[\s\S]*return report;/);
+  assert.match(source, /if \(report\.blockedStage\)[\s\S]*重新嘗試選擇分類[\s\S]*重新嘗試選擇品牌[\s\S]*重新嘗試填寫屬性[\s\S]*重新嘗試設定物流[\s\S]*重新嘗試設定預購/);
+  assert.match(source, /helpers\.categoryActionScore/);
+  assert.match(source, /categoryPathIsApplied/);
   assert.match(source, /async function publishToShopee[\s\S]*verifyIdentity\(payload, \{ requireSellerSku: true \}\)/);
   assert.doesNotMatch(source, /textContainsExactToken\(document\.body\.innerText/);
   assert.match(source, /report\.missing\.length > 0/);

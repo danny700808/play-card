@@ -117,6 +117,77 @@
     return approvedValues.some((candidate) => normalizeText(candidate) === normalizedActual);
   }
 
+  function orderedCategoryPathMatch(value, segments) {
+    const text = normalizeText(value);
+    const approved = Array.isArray(segments)
+      ? segments.map(normalizeText).filter(Boolean)
+      : [];
+    if (!text || approved.length === 0) return false;
+    let cursor = 0;
+    for (const segment of approved) {
+      const index = text.indexOf(segment, cursor);
+      if (index < 0) return false;
+      cursor = index + segment.length;
+    }
+    return true;
+  }
+
+  function categoryActionScore(candidate) {
+    if (!isPlainObject(candidate)) return Number.NEGATIVE_INFINITY;
+    const semantic = String(candidate.semantic || "").normalize("NFKC").toLocaleLowerCase("zh-TW");
+    const tagName = String(candidate.tagName || "").toUpperCase();
+    const role = String(candidate.role || "").toLowerCase();
+    const rightRatio = Number(candidate.rightRatio);
+    const width = Number(candidate.width);
+    const height = Number(candidate.height);
+    let score = 0;
+    if (/edit|pencil|修改|編輯|鉛筆/.test(semantic)) score += 420;
+    if (/info|help|提示|說明/.test(semantic)) score -= 260;
+    if (/^上架$|publish|submit|save|儲存/.test(semantic.trim())) score -= 500;
+    if (tagName === "BUTTON" || tagName === "A" || role === "button") score += 120;
+    if (candidate.hasIcon === true || tagName === "SVG") score += 70;
+    if (Number.isFinite(rightRatio)) {
+      if (rightRatio >= 0.72) score += 180;
+      else if (rightRatio >= 0.5) score += 45;
+      else score -= 70;
+    }
+    if (Number.isFinite(width) && Number.isFinite(height)) {
+      if (width > 240 || height > 100) score -= 300;
+      else if (width <= 90 && height <= 70) score += 45;
+    }
+    return score;
+  }
+
+  function smallestCategoryCardIndex(candidates) {
+    if (!Array.isArray(candidates)) return -1;
+    return candidates.findIndex((candidate) => {
+      if (!isPlainObject(candidate)) return false;
+      const width = Number(candidate.width);
+      const height = Number(candidate.height);
+      const actionScores = Array.isArray(candidate.actionScores) ? candidate.actionScores : [];
+      return candidate.hasPrompt === true
+        && Number.isFinite(width)
+        && Number.isFinite(height)
+        && width > 180
+        && width <= 1400
+        && height > 45
+        && height <= 560
+        && actionScores.some((score) => Number(score) >= 200);
+    });
+  }
+
+  function nextCategoryStage(currentIndex, totalSegments, optionFound, fullPathApplied) {
+    const index = Number(currentIndex);
+    const total = Number(totalSegments);
+    if (!Number.isInteger(index) || !Number.isInteger(total) || total < 1 || index < 0 || index > total) {
+      return "invalid";
+    }
+    if (index < total) {
+      return optionFound === true ? "click-option" : "wait-option";
+    }
+    return fullPathApplied === true ? "complete" : "wait-application";
+  }
+
   function shopeeEntryTextMatch(value, approvedTexts) {
     const normalizedValue = normalizeText(value);
     if (!normalizedValue || normalizedValue.length > MAX_SHOPEE_ENTRY_TEXT_LENGTH) {
@@ -286,6 +357,13 @@
       approved.push("HSS");
     }
     return uniqueStrings(approved);
+  }
+
+  function approvedBrandOptions(value) {
+    const brand = String(value == null ? "" : value).normalize("NFKC").trim();
+    return brand
+      ? [brand]
+      : ["NOBRAND", "NO BRAND", "No Brand", "NoBrand", "無品牌", "無廠牌"];
   }
 
   function hsinchuSizeBand(totalCm) {
@@ -860,6 +938,10 @@
     directSyncNavigationMode,
     resolveShopeeNavigationMode,
     exactApprovedMatch,
+    orderedCategoryPathMatch,
+    categoryActionScore,
+    smallestCategoryCardIndex,
+    nextCategoryStage,
     shopeeEntryTextMatch,
     logisticsOptionMatch,
     uniqueStrings,
@@ -870,6 +952,7 @@
     resolveAttributeKey,
     resolveLogisticsKey,
     approvedValueOptions,
+    approvedBrandOptions,
     hsinchuSizeBand,
     logisticsOptionAliases,
     validateQueuePayload,
