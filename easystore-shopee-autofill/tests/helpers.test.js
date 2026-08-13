@@ -84,6 +84,19 @@ test("category stages require the full approved path in order", () => {
   ), false);
 });
 
+test("decorated EasyStore category labels and the empty prompt remain discoverable", () => {
+  assert.equal(helpers.categoryLabelTextMatch("分類"), true);
+  assert.equal(helpers.categoryLabelTextMatch("* 分類 ⓘ"), true);
+  assert.equal(helpers.categoryLabelTextMatch("＊Category info"), true);
+  assert.equal(helpers.categoryLabelTextMatch("分類 請先選擇分類"), false);
+  assert.equal(helpers.categoryLabelTextMatch("商品分類"), false);
+  const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
+  assert.match(source, /const prompts = findExactTextElements\(CATEGORY_EMPTY_PROMPTS\)/);
+  assert.match(source, /const anchors = label \? \[label, \.\.\.prompts\] : prompts/);
+  assert.match(source, /for \(const anchor of anchors\)/);
+  assert.match(source, /if \(card\) return result/);
+});
+
 test("category action scoring picks the right-side pencil instead of help or publish", () => {
   const pencil = helpers.categoryActionScore({
     semantic: "mdi-pencil edit",

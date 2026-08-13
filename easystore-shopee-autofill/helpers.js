@@ -132,6 +132,16 @@
     return true;
   }
 
+  function categoryLabelTextMatch(value) {
+    const text = String(value == null ? "" : value)
+      .replace(/^[\s\u00a0*＊•·]+/, "")
+      .replace(/[\s\u00a0]*(?:ⓘ|ℹ|information|info(?:_outline)?|說明)+[\s\u00a0]*$/gi, "")
+      .normalize("NFKC")
+      .toLocaleLowerCase("zh-TW")
+      .replace(/[\s\u00a0]+/g, "");
+    return text === "分類" || text === "category";
+  }
+
   function categoryActionScore(candidate) {
     if (!isPlainObject(candidate)) return Number.NEGATIVE_INFINITY;
     const semantic = String(candidate.semantic || "").normalize("NFKC").toLocaleLowerCase("zh-TW");
@@ -939,6 +949,7 @@
     resolveShopeeNavigationMode,
     exactApprovedMatch,
     orderedCategoryPathMatch,
+    categoryLabelTextMatch,
     categoryActionScore,
     smallestCategoryCardIndex,
     nextCategoryStage,

@@ -65,6 +65,10 @@
     "select",
     "choose"
   ];
+  const CATEGORY_EMPTY_PROMPTS = Object.freeze([
+    "請先選擇分類",
+    "No category has been chosen"
+  ]);
   const SHOPEE_ENTRY_LABELS = Object.freeze([
     "連接商品到蝦皮購物 Shopee Taiwan",
     "連接商品到蝦皮購物",
@@ -518,37 +522,47 @@
   }
 
   function findCategoryField() {
-    const label = findExactTextElement(FIELD_LABELS.category);
-    if (!label) {
+    // EasyStore's required-field star and information icon can be part of the
+    // same DOM node as「分類」. Prefer that decorated label because the page can
+    // contain a second「請先選擇分類」inside the sales-information card.
+    const label = findTextElements([], document, (value) => helpers.categoryLabelTextMatch(value))[0] || null;
+    const prompts = findExactTextElements(CATEGORY_EMPTY_PROMPTS);
+    const anchors = label ? [label, ...prompts] : prompts;
+    if (anchors.length === 0) {
       return null;
     }
-    const initialContainer = compactCategoryContainer(label);
-    const ancestors = [];
-    let candidateContainer = initialContainer;
-    for (let depth = 0; candidateContainer && depth < 6; depth += 1, candidateContainer = candidateContainer.parentElement) {
-      if (!candidateContainer.contains(label)) break;
-      const rect = candidateContainer.getBoundingClientRect();
-      const text = String(candidateContainer.textContent || "");
-      const actions = categoryActionCandidates(candidateContainer);
-      ancestors.push({
-        element: candidateContainer,
-        actions,
-        hasPrompt: /請先選擇分類|no category has been chosen/i.test(text),
-        width: rect.width,
-        height: rect.height,
-        actionScores: actions.map((row) => row.score)
-      });
+    let fallback = null;
+    for (const anchor of anchors) {
+      const initialContainer = compactCategoryContainer(anchor);
+      const ancestors = [];
+      let candidateContainer = initialContainer;
+      for (let depth = 0; candidateContainer && depth < 6; depth += 1, candidateContainer = candidateContainer.parentElement) {
+        if (!candidateContainer.contains(anchor)) break;
+        const rect = candidateContainer.getBoundingClientRect();
+        const text = String(candidateContainer.textContent || "");
+        const actions = categoryActionCandidates(candidateContainer);
+        ancestors.push({
+          element: candidateContainer,
+          actions,
+          hasPrompt: /請先選擇分類|no category has been chosen/i.test(text),
+          width: rect.width,
+          height: rect.height,
+          actionScores: actions.map((row) => row.score)
+        });
+      }
+      const cardIndex = helpers.smallestCategoryCardIndex(ancestors);
+      const card = cardIndex >= 0 ? ancestors[cardIndex] : null;
+      const resolvedContainer = card ? card.element : initialContainer;
+      const result = {
+        label: label || anchor,
+        container: resolvedContainer || anchor.parentElement || anchor,
+        controls: fieldControls(resolvedContainer || anchor.parentElement || anchor),
+        editControls: card ? card.actions.map((row) => row.target) : []
+      };
+      if (card) return result;
+      if (!fallback) fallback = result;
     }
-    const cardIndex = helpers.smallestCategoryCardIndex(ancestors);
-    const card = cardIndex >= 0 ? ancestors[cardIndex] : null;
-    const resolvedContainer = card ? card.element : initialContainer;
-    const editControls = card ? card.actions.map((row) => row.target) : [];
-    return {
-      label,
-      container: resolvedContainer || label.parentElement || label,
-      controls: fieldControls(resolvedContainer || label.parentElement || label),
-      editControls
-    };
+    return fallback;
   }
 
   async function waitForCategoryStage(segment, timeout, exclude) {
