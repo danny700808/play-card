@@ -385,6 +385,8 @@ test("recognizes exact and compact compound Shopee sales-channel rows", () => {
   );
   assert.equal(helpers.shopeeEntryTextMatch("更新到蝦皮購物｜已連線", approved), true);
   assert.equal(helpers.shopeeEntryTextMatch("蝦皮購物 已連線"), true);
+  assert.equal(helpers.shopeeEntryTextMatch("發布商品到蝦皮購物"), true);
+  assert.equal(helpers.shopeeEntryTextMatch("發佈商品到蝦皮購物｜尚未發布"), true);
 });
 
 test("Shopee entry matching rejects unrelated, reversed and page-sized text", () => {
@@ -694,6 +696,7 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
   assert.match(source, /new Set\(storeIds\)\.size === 1 && storeIds\[0\] === String\(record\.payload\.easyStoreProductId\)/);
   assert.match(source, /正在等待 EasyStore 載入蝦皮銷售管道/);
   assert.match(source, /SHOPEE_REFRESH_LABELS/);
+  assert.match(source, /"發布商品到蝦皮購物"/);
   assert.match(source, /const allowGenericEntry = isShopeeRefreshTarget\(ignoredTarget\)/);
   assert.match(source, /isShopeeFollowupTarget\(record, target, allowGenericEntry\)/);
   assert.match(source, /for \(let step = 0; step < 4 && nextTarget/);

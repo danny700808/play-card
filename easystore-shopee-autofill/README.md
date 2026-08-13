@@ -29,6 +29,17 @@
 - `https://admin.easystore.co/products/*`
 - `https://admin.easystore.co/channels/shopee/taiwan/products/sync*`
 
+## EasyStore 實機檢查
+
+EasyStore 改版或助手找不到入口／欄位時，商品頁與蝦皮設定頁左下角會固定顯示 **「EasyStore 實機檢查」**：
+
+1. 按「開始實機記錄」。
+2. 照平常方式依序開啟「更多操作」、蝦皮入口、分類、品牌、屬性與物流；只需展示選項，不要按最後上架。
+3. 記錄會跨 EasyStore 頁面接續。完成後按「完成並下載檢查檔」。
+4. 將下載的 `youzi-easystore-live-check-*.json` 提供給開發人員，即可依實際 DOM、按鈕、選項與捲動容器修正，不必再從照片猜測。
+
+檢查檔不包含密碼、Cookie、登入權杖、文字輸入框內容或文字輸入值；只包含 EasyStore 畫面中可見的按鈕／選項文字、安全屬性、位置與捲動尺寸。記錄最長保留兩小時，取消或下載後會從擴充功能儲存區刪除。
+
 ## 使用流程
 
 1. 在全通路營運中心完成「確認上架」。

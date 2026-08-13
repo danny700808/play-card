@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "柚子樂器 EasyStore 蝦皮自動填寫",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "description": "可靠接收商品頁交接資料，辨識蝦皮新增或更新狀態，完成 EasyStore 必填欄位後才送出。",
   "permissions": [
     "storage"
@@ -29,6 +29,7 @@
       ],
       "js": [
         "helpers.js",
+        "recorder.js",
         "easystore.js"
       ],
       "css": [

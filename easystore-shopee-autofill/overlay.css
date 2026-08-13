@@ -132,3 +132,86 @@
     width: calc(100vw - 20px);
   }
 }
+
+#youzi-easystore-live-recorder {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  width: min(330px, calc(100vw - 32px));
+  border: 2px solid #15734d;
+  border-radius: 15px;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgba(24, 53, 43, 0.22);
+  color: #18352b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 13px;
+}
+
+#youzi-easystore-live-recorder * {
+  box-sizing: border-box;
+}
+
+#youzi-easystore-live-recorder[data-recording="true"] {
+  border-color: #c57600;
+  background: #fffdf5;
+}
+
+.youzi-recorder__title {
+  display: block;
+  font-size: 16px;
+}
+
+.youzi-recorder__privacy,
+.youzi-recorder__status {
+  margin-top: 6px;
+}
+
+.youzi-recorder__privacy {
+  color: #60756d;
+  font-size: 12px;
+}
+
+.youzi-recorder__status {
+  color: #3d5b50;
+}
+
+.youzi-recorder__actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.youzi-recorder__primary,
+.youzi-recorder__cancel {
+  appearance: none;
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+  padding: 9px 11px;
+}
+
+.youzi-recorder__primary {
+  flex: 1;
+  border: 0;
+  background: #0b7a4b;
+  color: #ffffff;
+}
+
+.youzi-recorder__cancel {
+  border: 1px solid #cfdcd6;
+  background: #ffffff;
+  color: #35574b;
+}
+
+@media (max-width: 540px) {
+  #youzi-easystore-live-recorder {
+    left: 10px;
+    bottom: 10px;
+    width: calc(100vw - 20px);
+  }
+}
