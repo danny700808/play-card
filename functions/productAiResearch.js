@@ -20,6 +20,7 @@ const LOCK_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 480 * 1000;
 const IMAGE_IMPORT_PAGE_LIMIT = 8;
 const IMAGE_IMPORT_CANDIDATE_LIMIT = 40;
+const IMAGE_IMPORT_TARGET_IMAGES = 8;
 const IMAGE_IMPORT_MAX_IMAGES = 10;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 
@@ -441,7 +442,7 @@ function researchPrompt(context) {
     '你是台灣樂器行的商品上架編輯。任務是把「這一件商品」整理成可直接檢查、修改與上架的資料，不是撰寫研究或稽核報告。',
     '先使用商品名稱、使用者貼的網址與圖片判斷商品；使用者指定的型號、顏色與版本就是本次上架對象。內部 SKU 故意不提供，不可拿 SKU 當品牌、型號或搜尋依據。',
     '如果有使用者提供的商品頁，先打開該頁；再以品牌官網、台灣代理商、型錄或可用的零售頁補齊資料。沒有網址時，直接依商品名稱、品牌、型號與圖片搜尋。',
-    '目標是實用且大致正確的完整度，不必為了追求研究等級的完美而阻擋上架。但條碼、認證、產地、保固、包裝尺寸與重量不可憑空猜測；不確定就回傳 null。',
+    '目標是實用且大致正確的完整度，不必為了追求研究等級的完美而阻擋上架。但條碼、認證、產地、包裝尺寸與重量不可憑空猜測；不確定就回傳 null。店家目前的商品保固政策固定為「保固半年」，除非使用者明確指定其他保固，否則 warrantyInfo 請填「保固半年」。',
     '參考網址若是淘寶或供應商頁，可以參考圖片、排版、簡體中文與特色，但請重新寫成自然的台灣繁體中文，不逐字複製。',
     'productDescription 是店家唯一需要檢查與編輯的完整商品介紹。格式固定為：先用 2～4 句自然、活潑的繁體中文介紹商品、適合對象與使用情境；空一行後寫「商品特色」，再列 6～10 點並以「1. 」「2. 」編號；再空一行寫「商品規格」，每項使用「欄位：內容」。必要時可加「包裝內容」。不要寫研究過程、來源比對或身分確認說明。',
     '為了相容既有資料，shortDescription、featureList、specificationText 分別放入 productDescription 的介紹段、特色段與規格段；commonProductDescription 必須與 productDescription 相同。sellingPoints 可取最重要的一項特色。',
@@ -1378,6 +1379,9 @@ function registerProductAiResearch(target) {
     }
     const requestedPageUrls = [];
     pushUrlRows(requestedPageUrls, request && request.data && request.data.pageUrls);
+    if (requestedPageUrls.length > 3) {
+      throw new HttpsError('invalid-argument', '商品網址一次最多提供 3 個。');
+    }
     const db = admin.firestore();
     const productRef = db.collection(PRODUCT_COLLECTION).doc(productId);
     const caseRef = db.collection(LISTING_CASE_COLLECTION).doc(productId);
@@ -1388,8 +1392,11 @@ function registerProductAiResearch(target) {
     const context = buildProductContext(productId, product, listingCase);
     const existingImageUrls = [];
     pushUrlRows(existingImageUrls, listingCase.referenceImageUrls);
-    const availableSlots = Math.max(0, IMAGE_IMPORT_MAX_IMAGES - existingImageUrls.length);
-    if (!availableSlots) throw new HttpsError('failed-precondition', '這件商品已經有 10 張來源圖片，請先移除不需要的圖片再匯入。');
+    const availableSlots = Math.max(0, Math.min(
+      IMAGE_IMPORT_MAX_IMAGES - existingImageUrls.length,
+      IMAGE_IMPORT_TARGET_IMAGES - existingImageUrls.length
+    ));
+    if (!availableSlots) throw new HttpsError('failed-precondition', '這件商品已經有約 8 張來源圖片；如需替換，請先移除不需要的圖片，或直接上傳新圖片。');
 
     const initialPageUrls = [];
     [requestedPageUrls, listingCase.referenceUrls, listingCase.productResearchSourceUrls, context.referenceUrls]
