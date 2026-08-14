@@ -284,15 +284,18 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(caseForm, /已有商品要先用 Match product 配對/);
   assert.match(caseForm, /name="shopeeListingDecision"/);
   assert.match(caseForm, /無法確認就停止/);
-  assert.match(caseForm, /商品網址（可不填）/);
+  assert.match(caseForm, /貼商品網址，自動抓圖/);
+  assert.match(caseForm, /貼 1～3 個/);
   assert.match(caseForm, /productReferenceImageUpload/);
-  assert.match(caseForm, /從網址／型號自動找商品圖/);
+  assert.match(caseForm, /直接上傳自己的圖片/);
+  assert.match(caseForm, /從網址抓圖，挑選約 8 張/);
   assert.match(caseForm, /product-source-images-import/);
   assert.match(caseForm, /productReferenceImageSelectorHtml/);
   assert.match(caseForm, /只重新製作勾選圖片/);
   assert.match(caseForm, /imageGenerationInstructions/);
   assert.match(caseForm, /product-ai-image-generate/);
-  assert.match(caseForm, /AI 完成文字與勾選圖片/);
+  assert.match(caseForm, /送出給 AI：完成文案與圖片/);
+  assert.match(engine, /warrantyInfo:[^\n]+\|\|'保固半年'/);
   assert.match(caseForm, /完整商品介紹/);
   assert.match(caseForm, /6～10 點特色/);
   assert.match(caseForm, /商品規格/);
@@ -322,7 +325,7 @@ test('AI listing completion runs only after the user presses the button and neve
   assert.doesNotMatch(saveProduct, /aiResearch|researchProductListingCase/);
   assert.doesNotMatch(engine, /function shouldAutoResearchProductListingCase/);
   assert.doesNotMatch(openCase, /runProductAiResearch/);
-  assert.match(engine, /AI 完成文字與勾選圖片/);
+  assert.match(engine, /送出給 AI：完成文案與圖片/);
   assert.doesNotMatch(engine, /OPENAI_API_KEY|api\.openai\.com/);
 });
 
