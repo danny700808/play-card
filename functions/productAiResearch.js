@@ -22,6 +22,9 @@ const IMAGE_IMPORT_PAGE_LIMIT = 8;
 const IMAGE_IMPORT_CANDIDATE_LIMIT = 40;
 const IMAGE_IMPORT_TARGET_IMAGES = 8;
 const IMAGE_IMPORT_MAX_IMAGES = 10;
+const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://youzi-c1b74.web.app').replace(/\/$/, '');
+const MAIN_IMAGE_TEMPLATE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-main-template.jpg`;
+const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 
 const RESEARCH_STRING_FIELDS = [
@@ -601,6 +604,24 @@ function buildLocalizedImagePrompt(context, listingCase, position, total) {
   ].join('\n');
 }
 
+function buildMainTemplateImagePrompt(context, listingCase) {
+  const source = listingCase || {};
+  return [
+    '請製作台灣電商商品主圖。第一張輸入圖是柚子樂器固定綠色模板，第二張輸入圖是真實商品來源。',
+    '以第一張圖為唯一版型：保留薄荷綠紋理、頂端紅色標語與右上柚子樂器標誌；移除左下角可愛寶寶與右下角 PIC COLLAGE，並自然補回綠色背景。',
+    '將第二張圖的完整商品去背後放大置中或略帶對角線，絕不可遮住頂端標語或右上標誌；不可改變商品顏色、型號、零件、比例與外觀。',
+    '只加入商品型號與 1～3 個已查證的短賣點，使用自然、正確的台灣繁體中文；不使用簡體字，不新增未證實的贈品、認證、規格或保固。',
+    '賣點框、字體層級、強調色與排列不必每件商品完全相同。請依商品種類、商品本體顏色、留白位置及可讀性，從圓角標籤、色塊、斜角框、線框或大小字組合中選擇一種協調且醒目的變化；同一張圖保持一致，不做雜亂的隨機拼貼。',
+    '配色可從深綠、奶油白、海軍藍、暖黃、磚紅或商品本體的協調色中選擇，但必須與薄荷綠底有足夠對比、不可搶過商品，也不可遮住商品、頂端標語或右上標誌。',
+    '輸出保持第一張模板的直式比例與品牌視覺。',
+    `商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
+    `品牌：${clean(source.brand) || context.brand || '未提供'}`,
+    `型號：${clean(source.model) || context.model || '未提供'}`,
+    `已查證賣點：${clean(source.sellingPoints) || '未提供；只顯示商品名稱與型號'}`,
+    `店家補充：${clean(source.imageGenerationInstructions) || '無'}`
+  ].join('\n');
+}
+
 function imageEditOutputSize(width, height) {
   const sourceWidth = Math.max(1, Number(width) || 1);
   const sourceHeight = Math.max(1, Number(height) || 1);
@@ -844,11 +865,15 @@ async function downloadImageForEdit(value) {
   throw new Error('無法讀取來源圖片。');
 }
 
-async function callOpenAIImageEdit(apiKey, sourceImageUrl, prompt, model) {
-  const source = await downloadImageForEdit(sourceImageUrl);
+async function callOpenAIImageEdit(apiKey, sourceImageUrls, prompt, model) {
+  const urls = (Array.isArray(sourceImageUrls) ? sourceImageUrls : [sourceImageUrls]).map(safeHttpUrl).filter(Boolean).slice(0, 4);
+  if (!urls.length) throw new Error('找不到可編輯的來源圖片。');
+  const sources = [];
+  for (const url of urls) sources.push(await downloadImageForEdit(url));
+  const source = sources[0];
   const form = new FormData();
   form.append('model', model || DEFAULT_IMAGE_EDIT_MODEL);
-  form.append('image[]', new Blob([source.bytes], { type: source.contentType }), `source.${source.extension}`);
+  sources.forEach((item, index) => form.append('image[]', new Blob([item.bytes], { type: item.contentType }), `source-${index + 1}.${item.extension}`));
   form.append('prompt', clean(prompt));
   form.append('quality', 'high');
   form.append('size', imageEditOutputSize(source.width, source.height));
@@ -868,7 +893,7 @@ async function callOpenAIImageEdit(apiKey, sourceImageUrl, prompt, model) {
   const data = Array.isArray(body && body.data) ? body.data : [];
   const imageBase64 = clean(data[0] && data[0].b64_json);
   if (!imageBase64) throw new Error('OpenAI 沒有回傳可使用的繁體化圖片。');
-  return { response: body, imageBase64, sourceFinalUrl: source.finalUrl };
+  return { response: body, imageBase64, sourceFinalUrl: source.finalUrl, sourceFinalUrls: sources.map((item) => item.finalUrl) };
 }
 
 async function mapWithConcurrency(items, limit, worker) {
@@ -1622,17 +1647,21 @@ function registerProductAiResearch(target) {
     const model = clean(process.env.OPENAI_PRODUCT_IMAGE_EDIT_MODEL) || DEFAULT_IMAGE_EDIT_MODEL;
     try {
       const bucket = admin.storage().bucket();
+      const imageJobs = [{ mode: 'main-template', sourceImageUrl: imageUrls[0], sourceImageUrls: [MAIN_IMAGE_TEMPLATE_URL, imageUrls[0]] }]
+        .concat(imageUrls.slice(0, 6).map((sourceImageUrl) => ({ mode: 'localized', sourceImageUrl, sourceImageUrls: [sourceImageUrl] })));
       await caseRef.set({
         lastImageGeneration: {
-          status: 'running', model, requestedCount: imageUrls.length,
+          status: 'running', model, requestedCount: imageJobs.length,
           startedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedBy: 'OpenAI 圖片繁體化'
       }, { merge: true });
-      const batchResults = await mapWithConcurrency(imageUrls, 2, async (sourceImageUrl, index) => {
-        const prompt = buildLocalizedImagePrompt(context, listingCase, index + 1, imageUrls.length);
-        const edited = await callOpenAIImageEdit(apiKey, sourceImageUrl, prompt, model);
+      const batchResults = await mapWithConcurrency(imageJobs, 2, async (job, index) => {
+        const prompt = job.mode === 'main-template'
+          ? buildMainTemplateImagePrompt(context, listingCase)
+          : buildLocalizedImagePrompt(context, listingCase, index, imageJobs.length - 1);
+        const edited = await callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model);
         const imageBytes = Buffer.from(edited.imageBase64, 'base64');
         if (!imageBytes.length || imageBytes.length > 25 * 1024 * 1024) throw new Error('OpenAI 回傳的圖片大小不正確。');
         const downloadToken = crypto.randomUUID();
@@ -1654,9 +1683,9 @@ function registerProductAiResearch(target) {
           id: crypto.randomUUID(),
           url: firebaseDownloadUrl(bucket.name, objectPath, downloadToken),
           status: 'ready',
-          mode: 'localized',
+          mode: job.mode,
           model,
-          sourceImageUrl,
+          sourceImageUrl: job.sourceImageUrl,
           sourceFinalUrl: edited.sourceFinalUrl,
           sourceOrder: index + 1,
           instructions: clean(listingCase.imageGenerationInstructions),
@@ -1666,7 +1695,7 @@ function registerProductAiResearch(target) {
       });
       const completed = batchResults.filter((row) => row.ok).map((row) => row.value);
       const failed = batchResults.map((row, index) => row.ok ? null : {
-        sourceImageUrl: imageUrls[index],
+        sourceImageUrl: imageJobs[index].sourceImageUrl,
         message: (clean(row.error && row.error.message) || '圖片轉換失敗。').slice(0, 300)
       }).filter(Boolean);
       if (!completed.length) throw (batchResults.find((row) => !row.ok) || {}).error || new Error('圖片轉換失敗。');
@@ -1678,15 +1707,17 @@ function registerProductAiResearch(target) {
         .map((row) => safeHttpUrl(row && row.url)).filter(Boolean));
       const existingListingImageUrls = [];
       pushUrlRows(existingListingImageUrls, listingCase.listingImageUrls);
-      const listingImageUrls = [];
-      pushUrlRows(listingImageUrls, candidates.map((row) => row.url));
-      pushUrlRows(listingImageUrls, existingListingImageUrls.filter((url) => !previousGeneratedUrls.has(safeHttpUrl(url))));
+      const preparedListingImageUrls = [];
+      pushUrlRows(preparedListingImageUrls, candidates.map((row) => row.url));
+      pushUrlRows(preparedListingImageUrls, existingListingImageUrls.filter((url) => !previousGeneratedUrls.has(safeHttpUrl(url)) && safeHttpUrl(url) !== STORE_PROMO_IMAGE_URL));
+      const listingImageUrls = preparedListingImageUrls.slice(0, 7);
+      pushUrlRows(listingImageUrls, STORE_PROMO_IMAGE_URL);
       await caseRef.set({
         generatedListingImages: candidates,
-        listingImageUrls: listingImageUrls.slice(0, 10),
+        listingImageUrls: listingImageUrls.slice(0, 8),
         lastImageGeneration: {
           status: failed.length ? 'partial' : 'completed', model,
-          requestedCount: imageUrls.length, completedCount: completed.length, failedCount: failed.length,
+          requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length,
           imageUrls: completed.map((row) => row.url), failures: failed,
           completedAt: admin.firestore.FieldValue.serverTimestamp()
         },
@@ -1705,8 +1736,8 @@ function registerProductAiResearch(target) {
       });
       return {
         ok: true, status: failed.length ? 'partial' : 'completed', productId, model,
-        requestedCount: imageUrls.length, completedCount: completed.length, failedCount: failed.length,
-        imageUrls: completed.map((row) => row.url), listingImageUrls: listingImageUrls.slice(0, 10), failures: failed
+        requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length,
+        imageUrls: completed.map((row) => row.url), listingImageUrls: listingImageUrls.slice(0, 8), failures: failed
       };
     } catch (error) {
       const message = clean(error && error.message) || 'OpenAI 圖片繁體化失敗。';
@@ -1735,6 +1766,7 @@ module.exports = {
   buildProductImageSourceDiscoveryRequest,
   buildOpenAIImageRequest,
   buildLocalizedImagePrompt,
+  buildMainTemplateImagePrompt,
   extractImageCandidatesFromHtml,
   isBlockedCommercePage,
   isPrivateIpAddress,

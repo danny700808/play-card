@@ -29,6 +29,16 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const research = require('../functions/productAiResearch');
 Module._load = originalLoad;
 
+test('main product image prompt enforces the fixed green template and Taiwan wording', () => {
+  const prompt = research.buildMainTemplateImagePrompt({ name: 'Ibanez AZES40', brand: 'Ibanez', model: 'AZES40' }, { sellingPoints: 'HSS 拾音配置' });
+  assert.match(prompt, /第一張輸入圖是柚子樂器固定綠色模板/);
+  assert.match(prompt, /移除左下角可愛寶寶/);
+  assert.match(prompt, /台灣繁體中文/);
+  assert.match(prompt, /不可遮住頂端標語或右上標誌/);
+  assert.match(prompt, /依商品種類、商品本體顏色、留白位置及可讀性/);
+  assert.match(prompt, /圓角標籤、色塊、斜角框、線框或大小字組合/);
+});
+
 function completeResult(overrides = {}) {
   return {
     identityStatus: 'confirmed',
