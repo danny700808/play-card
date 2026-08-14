@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260811-product-listing-publish-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260814-cross-platform-status-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260813-shopee-autopublish-v17/);
+    assert.match(html, /operations-phase1\.js\?v=20260814-cross-platform-status-v1/);
   }
 });
 
@@ -351,7 +351,7 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(generationRequester, /generateProductListingImage/);
   assert.match(generator, /selectedReferenceImageUrls/);
   assert.match(generationRequester, /imageUrls:reference/);
-  assert.match(productAiResearchSource, /listingImageUrls: listingImageUrls\.slice\(0, 10\)/);
+  assert.match(productAiResearchSource, /listingImageUrls: listingImageUrls\.slice\(0, 8\)/);
   assert.match(productAiResearchSource, /status: 'ready'/);
   assert.match(productAiResearchSource, /已加入準備上架/);
   assert.match(uploader, /slice\(0,10\)/);
