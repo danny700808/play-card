@@ -21,6 +21,14 @@ const SHOPEE_AUTOFILL_SCHEMA_VERSION = 4;
 const SELLER_LARGE_HOME_FEE_TWD = 100;
 const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'processing']);
 const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
+const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://youzi-c1b74.web.app').replace(/\/$/, '');
+const DESCRIPTION_PROMO_IMAGE_URLS = [
+  `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`,
+  `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-2.jpg`
+];
+const MOMO_THIRD_PARTY_DELIVERY = {
+  method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流'
+};
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
@@ -235,6 +243,29 @@ function summarizePlatformsForStorage(platforms) {
   return summary;
 }
 
+function platformListingStatusFromPublish(previous, platforms) {
+  const current = previous && typeof previous === 'object' ? previous : {};
+  const next = { ...current };
+  const statusMap = {
+    created: 'active', updated: 'active', completed: 'active', 'already-completed': 'mapped',
+    'waiting-easystore-sync': 'queued', 'awaiting-store-agent': 'queued', 'already-queued': 'queued', submitted: 'queued',
+    'action-required': 'error', 'missing-fields': 'error', 'waiting-easystore': 'error', failed: 'error'
+  };
+  Object.entries(platforms && typeof platforms === 'object' ? platforms : {}).forEach(([platform, raw]) => {
+    if (!raw || typeof raw !== 'object') return;
+    const old = current[platform] && typeof current[platform] === 'object' ? current[platform] : {};
+    next[platform] = {
+      ...old,
+      status: statusMap[clean(raw.status)] || clean(old.status) || 'unknown',
+      listingId: clean(raw.productId || raw.listingId || old.listingId),
+      note: clean(raw.message).slice(0, 800),
+      lastCheckedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastCheckedBy: '商品上架工作'
+    };
+  });
+  return next;
+}
+
 function escapeHtml(value) {
   return clean(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -299,18 +330,27 @@ function listingDescription(listingCase) {
   ].filter(Boolean).join('\n\n');
 }
 
+function appendShopDescriptionPromos(html) {
+  let result = clean(html);
+  DESCRIPTION_PROMO_IMAGE_URLS.forEach((url) => {
+    if (!result.includes(url)) result += `<p><img src="${url}" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>`;
+  });
+  return result;
+}
+
 function buildListingSnapshot(productId, product, listingCase) {
   const enabled = listingCase.enabledPlatforms && typeof listingCase.enabledPlatforms === 'object'
     ? listingCase.enabledPlatforms : { easyStoreShopee: true, momo: true, coupang: true };
   const shopeeExistingListingIds = platformListingIds(product, 'shopee');
   const description = listingDescription(listingCase);
   const images = normalizeUrls(listingCase.listingImageUrls, 9);
+  const descriptionHtml = appendShopDescriptionPromos(productDescriptionToSafeHtml(description));
   const snapshot = {
     productId: clean(productId),
     sku: normalizeSku(product.internalSku || product.sku || listingCase.productSku),
     title: listingName(product, listingCase).slice(0, 255),
     description,
-    bodyHtml: productDescriptionToSafeHtml(description),
+    bodyHtml: descriptionHtml,
     images,
     brand: clean(listingCase.brand || product.brand),
     model: clean(listingCase.model || product.model),
@@ -326,6 +366,10 @@ function buildListingSnapshot(productId, product, listingCase) {
     packageHeightCm: numberOrNull(listingCase.packageHeightCm),
     packageWeightKg: numberOrNull(listingCase.packageWeightKg),
     shippingDecision: clean(listingCase.shippingDecision),
+    momoDelivery: MOMO_THIRD_PARTY_DELIVERY,
+    momoCatalogPolicy: { maximumListings: 1000, targetListings: 990, reservedSlots: 10, zeroStockAction: 'unpublish', violationRecovery: 'republish-only-when-stock-positive' },
+    regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
+    imagePolicy: { galleryTarget: 8, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, localizedTraditionalChinese: true },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
     shopeeDescription: clean(listingCase.shopeeDescription) || description,
     shopeeRequiredNotes: clean(listingCase.shopeeRequiredNotes),
@@ -344,8 +388,10 @@ function buildListingSnapshot(productId, product, listingCase) {
     color: clean(listingCase.color || product.color),
     momoGoodsName: clean(listingCase.momoGoodsName) || listingName(product, listingCase),
     momoSlogan: clean(listingCase.momoSlogan),
+    momoHtml: appendShopDescriptionPromos(clean(listingCase.momoHtml) || descriptionHtml),
     momoCategoryCode: clean(listingCase.momoCategoryCode),
     coupangTitle: clean(listingCase.coupangTitle) || listingName(product, listingCase),
+    coupangDescriptionHtml: appendShopDescriptionPromos(clean(listingCase.coupangDescriptionHtml) || descriptionHtml),
     coupangCategoryCode: clean(listingCase.coupangCategoryCode),
     enabledEasyStoreShopee: enabled.easyStoreShopee !== false,
     enabledMomo: enabled.momo !== false,
@@ -471,8 +517,8 @@ function platformListingIds(product, platform) {
 function platformQueueFingerprint(platform, snapshot) {
   const key = clean(platform).toLowerCase();
   const platformFields = key === 'momo'
-    ? [snapshot.momoGoodsName, snapshot.momoSlogan, snapshot.momoCategoryCode, snapshot.momoPrice]
-    : [snapshot.coupangTitle, snapshot.coupangCategoryCode, snapshot.coupangPrice];
+    ? [snapshot.momoGoodsName, snapshot.momoSlogan, snapshot.momoCategoryCode, snapshot.momoPrice, snapshot.momoHtml]
+    : [snapshot.coupangTitle, snapshot.coupangCategoryCode, snapshot.coupangPrice, snapshot.coupangDescriptionHtml];
   return crypto.createHash('sha256').update(JSON.stringify({
     platform: key,
     productId: snapshot.productId,
@@ -860,6 +906,7 @@ function registerProductListingPublish(target) {
       if (snapshot.enabledCoupang) platforms.coupang = await queueFixedIpPlatform(db, jobId, 'Coupang', snapshot, product, coupangMissingFields(snapshot));
       const status = overallPublishStatus(platforms);
       const platformsForStorage = summarizePlatformsForStorage(platforms);
+      const platformListingStatus = platformListingStatusFromPublish(product.platformListingStatus, platforms);
       await Promise.all([
         jobRef.set({ status, platforms: platformsForStorage, updatedAt: admin.firestore.FieldValue.serverTimestamp(), finishedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
         caseRef.set({
@@ -868,6 +915,11 @@ function registerProductListingPublish(target) {
           shopeeAttributeValues: snapshot.shopeeAttributeValues,
           publishState: { jobId, status, platforms: platformsForStorage, submittedAt: admin.firestore.FieldValue.serverTimestamp(), submittedBy: createdBy },
           updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架', schemaVersion: 8
+        }, { merge: true }),
+        productRef.set({
+          platformListingStatus,
+          platformListingStatusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架工作'
         }, { merge: true }),
         db.collection('opsAuditLogs').add({
           action: '確認商品上架', entityType: 'productListingPublish', entityId: jobId,
@@ -915,6 +967,8 @@ module.exports = {
     buildPlatformQueuePolicy,
     identityAllowsShopeeAutofill,
     summarizePlatformsForStorage,
+    platformListingStatusFromPublish,
+    appendShopDescriptionPromos,
     exactEasyStoreMatches,
     easyStoreMissingFields,
     momoMissingFields,
