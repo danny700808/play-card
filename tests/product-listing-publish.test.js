@@ -31,6 +31,34 @@ test('one canonical product description becomes safe marketplace HTML', () => {
   assert.equal(html, '<p>好用的商品&lt;script&gt;alert(1)&lt;/script&gt;</p><h3>商品特色</h3><ul><li>第一點</li><li>第二點</li></ul><h3>商品規格</h3><p>型號：A&amp;B</p>');
 });
 
+test('listing snapshot applies fixed shop promos, MOMO delivery and compliance policy', () => {
+  const snapshot = helpers.buildListingSnapshot('p-fixed', {
+    internalSku: '1040160', internalName: 'Ibanez AZES40', currentStock: 1,
+    easyStorePrice: 14800, momoPrice: 14800, coupangPrice: 14800
+  }, {
+    productDescription: '台灣繁體商品介紹', listingImageUrls: ['https://example.com/main.jpg'],
+    shippingDecision: 'freight', packageLengthCm: 110, packageWidthCm: 45, packageHeightCm: 12, packageWeightKg: 5,
+    enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
+  });
+  assert.match(snapshot.bodyHtml, /product-listing-description-promo-1\.jpg/);
+  assert.match(snapshot.bodyHtml, /product-listing-description-promo-2\.jpg/);
+  assert.deepEqual(snapshot.momoDelivery, { method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流' });
+  assert.equal(snapshot.momoCatalogPolicy.targetListings, 990);
+  assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
+});
+
+test('publish results become product-level platform status without claiming queued work is live', () => {
+  const status = helpers.platformListingStatusFromPublish({}, {
+    easyStore: { status: 'created', productId: 'es-1', message: '已建立' },
+    momo: { status: 'awaiting-store-agent', message: '等待店內電腦' },
+    coupang: { status: 'failed', message: '需處理' }
+  });
+  assert.equal(status.easyStore.status, 'active');
+  assert.equal(status.easyStore.listingId, 'es-1');
+  assert.equal(status.momo.status, 'queued');
+  assert.equal(status.coupang.status, 'error');
+});
+
 test('EasyStore payload publishes one exact SKU with stock, price, package and at most nine images', () => {
   const listingCase = {
     researchedProductName: 'Ibanez AZES40-MGR 電吉他',
