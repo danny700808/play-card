@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260815-product-images-v2/);
+  assert.match(portal, /operations-phase1\.js\?v=20260815-variants-pricing-pos-v1/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
   assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
@@ -111,6 +111,31 @@ test('course management stays in the operations shell and POS price is editable 
   assert.match(source, /class="ops-cart-price-editor"[^>]+data-cart-price=/);
   assert.doesNotMatch(source, /data-cart-price="[^"]+"[^>]*readonly/);
   assert.match(source, /只修改本次交易，不會改變商品主檔售價/);
+  assert.match(source, /data-cart-line-total=/);
+  assert.match(source, />小計<\/span>/);
+  assert.match(source, /output\.textContent=money/);
+});
+
+test('product editor shares the first online price while preserving platform overrides', () => {
+  const source = read('operations-phase1.js');
+  assert.match(source, /name="sharedOnlinePrice"/);
+  assert.match(source, /data-platform-price="easyStore"/);
+  assert.match(source, /data-platform-price="momo"/);
+  assert.match(source, /data-platform-price="coupang"/);
+  assert.match(source, /function applySharedOnlinePrice/);
+  assert.match(source, /data-price-override/);
+  assert.match(source, /platformPriceOverrides:platformPriceOverrides/);
+});
+
+test('product listing has a safe add-to-existing variant mode', () => {
+  const source = read('operations-phase1.js');
+  assert.match(source, /product-listing-variant-open/);
+  assert.match(source, /value="add-variant"/);
+  assert.match(source, /name="variantParentProductId"/);
+  assert.match(source, /name="variantAttributeName"/);
+  assert.match(source, /name="variantParentAttributeValue"/);
+  assert.match(source, /name="variantAttributeValue"/);
+  assert.match(source, /舊商品有銷售紀錄時，不會覆蓋舊編號/);
 });
 
 test('POS electric piano rental income rolls into rental operations without helper clutter', () => {

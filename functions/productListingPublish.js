@@ -179,6 +179,7 @@ function buildShopeeLogistics(snapshot) {
 function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
   const easyStoreProductId = clean(easyStoreResult && easyStoreResult.productId);
   const now = Date.now();
+  const addVariant = clean(snapshot.listingMode) === 'add-variant';
   return {
     schemaVersion: SHOPEE_AUTOFILL_SCHEMA_VERSION,
     nonce: crypto.randomBytes(16).toString('hex'),
@@ -189,16 +190,24 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
     easyStoreUrl: easyStoreProductId ? `https://admin.easystore.co/products/${encodeURIComponent(easyStoreProductId)}` : 'https://admin.easystore.co/',
     sku: snapshot.sku,
     title: snapshot.shopeeTitle,
-    publishMode: 'auto',
+    publishMode: addVariant ? 'add-variant-to-existing' : 'auto',
+    variantGroup: addVariant ? {
+      parentProductId: snapshot.variantParentProductId,
+      parentSku: snapshot.variantParentSku,
+      parentName: snapshot.variantParentName,
+      attributeName: snapshot.variantAttributeName,
+      parentAttributeValue: snapshot.variantParentAttributeValue,
+      attributeValue: snapshot.variantAttributeValue
+    } : null,
     listingPolicy: {
-      decision: normalizeListingDecision(snapshot.shopeeListingDecision),
+      decision: addVariant ? 'existing' : normalizeListingDecision(snapshot.shopeeListingDecision),
       matchKey: 'sku',
-      allowCreate: normalizeListingDecision(snapshot.shopeeListingDecision) === 'new',
+      allowCreate: !addVariant && normalizeListingDecision(snapshot.shopeeListingDecision) === 'new',
       existingListingIds: Array.isArray(snapshot.shopeeExistingListingIds)
         ? snapshot.shopeeExistingListingIds.map(clean).filter(Boolean).slice(0, 20)
         : [],
-      onZero: 'create-only-if-confirmed',
-      onOne: 'update',
+      onZero: addVariant ? 'block-missing-parent' : 'create-only-if-confirmed',
+      onOne: addVariant ? 'append-variant' : 'update',
       onMultiple: 'block'
     },
     categoryPath: shopeeCategorySegments(snapshot.shopeeCategoryPath, snapshot),
@@ -364,16 +373,33 @@ function appendShopDescriptionImages(html, imageUrls) {
   return appendShopDescriptionPromos(result);
 }
 
-function buildListingSnapshot(productId, product, listingCase) {
+function buildListingSnapshot(productId, product, listingCase, variantParentProduct = null) {
   const enabled = listingCase.enabledPlatforms && typeof listingCase.enabledPlatforms === 'object'
     ? listingCase.enabledPlatforms : { easyStoreShopee: true, momo: true, coupang: true };
-  const shopeeExistingListingIds = platformListingIds(product, 'shopee');
+  const listingMode = clean(listingCase.listingMode) === 'add-variant' ? 'add-variant' : 'independent';
+  const parentProduct = variantParentProduct && typeof variantParentProduct === 'object' ? variantParentProduct : {};
+  const parentPlatformMappings = parentProduct.platformMappings && typeof parentProduct.platformMappings === 'object'
+    ? parentProduct.platformMappings : {};
+  const parentPlatformListingStatus = parentProduct.platformListingStatus && typeof parentProduct.platformListingStatus === 'object'
+    ? parentProduct.platformListingStatus : {};
+  const listingIdentityProduct = listingMode === 'add-variant' ? { platformMappings: parentPlatformMappings, platformListingStatus: parentPlatformListingStatus } : product;
+  const shopeeExistingListingIds = platformListingIds(listingIdentityProduct, 'shopee');
   const description = listingDescription(listingCase);
   const imageAllocation = listingImageAllocation(listingCase.listingImageUrls);
   const images = imageAllocation.galleryImages;
   const descriptionHtml = appendShopDescriptionImages(productDescriptionToSafeHtml(description), imageAllocation.descriptionImages);
   const snapshot = {
     productId: clean(productId),
+    listingMode,
+    variantParentProductId: listingMode === 'add-variant' ? clean(listingCase.variantParentProductId) : '',
+    variantParentSku: listingMode === 'add-variant' ? normalizeSku(parentProduct.internalSku || parentProduct.sku || listingCase.variantParentSku) : '',
+    variantParentName: listingMode === 'add-variant' ? clean(parentProduct.internalName || parentProduct.originalName || parentProduct.name || listingCase.variantParentName) : '',
+    variantAttributeName: listingMode === 'add-variant' ? clean(listingCase.variantAttributeName) : '',
+    variantParentAttributeValue: listingMode === 'add-variant' ? clean(listingCase.variantParentAttributeValue) : '',
+    variantAttributeValue: listingMode === 'add-variant' ? clean(listingCase.variantAttributeValue) : '',
+    variantParentPlatformMappings: listingMode === 'add-variant' ? parentPlatformMappings : {},
+    variantParentPlatformListingStatus: listingMode === 'add-variant' ? parentPlatformListingStatus : {},
+    variantParentEasyStoreProductId: listingMode === 'add-variant' ? clean(platformListingIds(listingIdentityProduct, 'easyStore')[0]) : '',
     sku: normalizeSku(product.internalSku || product.sku || listingCase.productSku),
     title: listingName(product, listingCase).slice(0, 255),
     description,
@@ -517,10 +543,14 @@ function platformListingIds(product, platform) {
   const mappings = product && product.platformMappings && typeof product.platformMappings === 'object'
     ? product.platformMappings : {};
   const key = clean(platform).toLowerCase();
-  const mapping = mappings[key] && typeof mappings[key] === 'object' ? mappings[key] : {};
+  const mappingKey = key === 'easystore' ? 'easyStore' : key;
+  const mapping = mappings[mappingKey] && typeof mappings[mappingKey] === 'object' ? mappings[mappingKey] : {};
+  const statuses = product && product.platformListingStatus && typeof product.platformListingStatus === 'object' ? product.platformListingStatus : {};
+  const status = statuses[mappingKey] && typeof statuses[mappingKey] === 'object' ? statuses[mappingKey] : {};
+  const manualListingId = clean(status.listingId || status.externalId);
   let candidates = [];
   if (key === 'shopee') {
-    candidates = [mapping.itemIds, mapping.itemId, mapping.channelProductIds, mapping.channelProductId, mapping.productIds, mapping.productId];
+    candidates = [mapping.itemIds, mapping.itemId, mapping.channelProductIds, mapping.channelProductId, mapping.productIds, mapping.productId, manualListingId];
   } else if (key === 'momo') {
     const goodsCodes = (Array.isArray(mapping.goodsCodes) ? mapping.goodsCodes : [mapping.goodsCode]).map(clean).filter(Boolean);
     const goodsdtCodes = (Array.isArray(mapping.goodsdtCodes) ? mapping.goodsdtCodes : [mapping.goodsdtCode]).map(clean).filter(Boolean);
@@ -529,8 +559,11 @@ function platformListingIds(product, platform) {
       candidates = goodsCodes.map((goodsCode, index) => `${goodsCode}|${goodsdtCodes[index]}`);
     } else if (entpGoodsNos.length) candidates = entpGoodsNos;
     else candidates = goodsdtCodes.length ? goodsdtCodes : goodsCodes;
+    if (manualListingId) candidates.push(manualListingId);
   } else if (key === 'coupang') {
-    candidates = [mapping.vendorItemIds, mapping.vendorItemId, mapping.sellerProductIds, mapping.sellerProductId];
+    candidates = [mapping.vendorItemIds, mapping.vendorItemId, mapping.sellerProductIds, mapping.sellerProductId, manualListingId];
+  } else if (key === 'easystore') {
+    candidates = [mapping.productId, product && product.sourceProductId, manualListingId];
   }
   const ids = [];
   candidates.forEach((value) => {
@@ -552,6 +585,9 @@ function platformQueueFingerprint(platform, snapshot) {
     platform: key,
     productId: snapshot.productId,
     sku: snapshot.sku,
+    listingMode: snapshot.listingMode,
+    variantGroup: [snapshot.variantParentProductId, snapshot.variantParentSku, snapshot.variantAttributeName, snapshot.variantParentAttributeValue, snapshot.variantAttributeValue],
+    parentPlatformListingIds: platformListingIds({ platformMappings: snapshot.variantParentPlatformMappings, platformListingStatus: snapshot.variantParentPlatformListingStatus }, key),
     title: snapshot.title,
     description: snapshot.description,
     images: snapshot.images,
@@ -562,7 +598,23 @@ function platformQueueFingerprint(platform, snapshot) {
 }
 
 function buildPlatformQueuePolicy(product, platform, snapshot) {
-  const existingListingIds = platformListingIds(product, platform);
+  const addVariant = clean(snapshot && snapshot.listingMode) === 'add-variant';
+  const identityProduct = addVariant
+    ? {
+      platformMappings: snapshot.variantParentPlatformMappings && typeof snapshot.variantParentPlatformMappings === 'object' ? snapshot.variantParentPlatformMappings : {},
+      platformListingStatus: snapshot.variantParentPlatformListingStatus && typeof snapshot.variantParentPlatformListingStatus === 'object' ? snapshot.variantParentPlatformListingStatus : {}
+    }
+    : product;
+  const existingListingIds = platformListingIds(identityProduct, platform);
+  if (addVariant) {
+    return {
+      mode: existingListingIds.length > 1 ? 'block-duplicate-parent' : existingListingIds.length ? 'add-variant-to-existing' : 'block-missing-parent',
+      matchKey: 'parent-listing-id+sku', sku: snapshot.sku, existingListingIds,
+      parentProductId: clean(snapshot.variantParentProductId), parentSku: clean(snapshot.variantParentSku),
+      variantAttributeName: clean(snapshot.variantAttributeName), variantParentAttributeValue: clean(snapshot.variantParentAttributeValue), variantAttributeValue: clean(snapshot.variantAttributeValue),
+      onZero: 'block', onOne: 'append-variant', onMultiple: 'block', onUncertain: 'block'
+    };
+  }
   return {
     mode: existingListingIds.length > 1 ? 'block-duplicate' : existingListingIds.length ? 'update-existing' : 'upsert-by-exact-sku',
     matchKey: 'sku',
@@ -649,7 +701,76 @@ async function findEasyStoreMappingInProduct(snapshot, token, productId) {
   return matches[0] || null;
 }
 
+async function addEasyStoreVariant(snapshot, token) {
+  const productId = clean(snapshot.variantParentEasyStoreProductId);
+  if (!productId) throw new Error('父商品缺少 EasyStore productId；為避免建立重複商品已停止。');
+  if (!clean(snapshot.variantAttributeName) || !clean(snapshot.variantParentAttributeValue) || !clean(snapshot.variantAttributeValue)) throw new Error('請先填寫細項名稱、父商品細項值與新細項值。');
+  const globalMatch = await findEasyStoreMappingBySku(snapshot, token);
+  if (globalMatch && globalMatch.productId !== productId) {
+    throw new Error(`SKU ${snapshot.sku} 已存在於另一個 EasyStore 商品，為避免移錯商品已停止。`);
+  }
+  const variantTemplate = {
+    ...buildEasyStoreProductBody(snapshot, true).product.variants[0],
+    name: snapshot.variantAttributeValue
+  };
+  if (globalMatch) {
+    await easyStoreRequest(`/products/${encodeURIComponent(productId)}/variants.json`, token, {
+      method: 'PUT', body: { variants: [{ id: globalMatch.variantId, ...variantTemplate }] }
+    });
+    return { action: 'variant-updated', productId, variantIds: [globalMatch.variantId] };
+  }
+
+  const beforePayload = await easyStoreRequest(`/products/${encodeURIComponent(productId)}.json`, token);
+  const beforeProduct = extractProducts(beforePayload)[0] || beforePayload.product || beforePayload;
+  const beforeVariants = productVariants(beforeProduct);
+  const beforeIds = new Set(beforeVariants.map(variantIdOf).filter(Boolean));
+  const variantTypes = Array.isArray(beforeProduct.variant_types) ? beforeProduct.variant_types : [];
+  if (variantTypes.length > 1) throw new Error('父商品目前有兩種以上的細項欄位；一個新 SKU 無法安全判定完整組合，請先人工整理父商品。');
+  if (variantTypes.length === 1 && clean(variantTypes[0].name).toLowerCase() !== clean(snapshot.variantAttributeName).toLowerCase()) {
+    throw new Error(`父商品既有細項是「${clean(variantTypes[0].name)}」，與這次的「${snapshot.variantAttributeName}」不同；為避免改壞既有細項已停止。`);
+  }
+  if (!variantTypes.length && beforeVariants.length !== 1) throw new Error('父商品沒有細項名稱，但已有多個規格；無法安全判定舊 SKU，請先人工整理。');
+  const optionValues = variantTypes.length
+    ? [snapshot.variantAttributeValue]
+    : [snapshot.variantParentAttributeValue, snapshot.variantAttributeValue];
+  let optionError = null;
+  try {
+    await easyStoreRequest(`/products/${encodeURIComponent(productId)}/options.json`, token, {
+      method: 'POST', body: { option_type: snapshot.variantAttributeName, option_values: optionValues }
+    });
+  } catch (error) {
+    // POST 回應可能中途斷線；不盲目重送，改用前後 variant id 差異確認是否已建立。
+    optionError = error;
+  }
+  const afterPayload = await easyStoreRequest(`/products/${encodeURIComponent(productId)}.json`, token);
+  const afterProduct = extractProducts(afterPayload)[0] || afterPayload.product || afterPayload;
+  const newVariantIds = productVariants(afterProduct).map(variantIdOf).filter((id) => id && !beforeIds.has(id));
+  const recovered = exactEasyStoreMatches(afterPayload, snapshot.sku)[0] || null;
+  const variantId = recovered && recovered.variantId || (newVariantIds.length === 1 ? newVariantIds[0] : '');
+  if (!variantId) {
+    if (optionError) throw optionError;
+    throw new Error(`EasyStore 已新增「${snapshot.variantAttributeValue}」選項，但產生 ${newVariantIds.length} 個新規格，無法安全判定哪一個屬於 SKU ${snapshot.sku}；請人工確認後再繼續。`);
+  }
+  await easyStoreRequest(`/products/${encodeURIComponent(productId)}/variants.json`, token, {
+    method: 'PUT', body: { variants: [{ id: variantId, ...variantTemplate }] }
+  });
+  let imageWarning = '';
+  const existingImages = Array.isArray(beforeProduct.images) ? beforeProduct.images : [];
+  const existingImageUrls = new Set(existingImages.map((row) => safeHttpUrl(row && (row.url || row.src))).filter(Boolean));
+  const availableImageSlots = Math.max(0, 9 - existingImages.length);
+  const newImages = (snapshot.images || []).filter((url) => !existingImageUrls.has(safeHttpUrl(url))).slice(0, availableImageSlots);
+  if (newImages.length) {
+    try {
+      await easyStoreRequest(`/products/${encodeURIComponent(productId)}/images.json`, token, { method: 'POST', body: { images: newImages } });
+    } catch (error) {
+      imageWarning = `；細項已建立，但圖片未能加入父商品：${clean(error && error.message).slice(0, 240)}`;
+    }
+  }
+  return { action: 'variant-created', productId, variantIds: [variantId], recoveredAfterUncertainResponse: Boolean(optionError), imageWarning };
+}
+
 async function upsertEasyStoreProduct(snapshot, product, token) {
+  if (snapshot.listingMode === 'add-variant') return addEasyStoreVariant(snapshot, token);
   const mappings = product.platformMappings && typeof product.platformMappings === 'object' ? product.platformMappings : {};
   const mapped = mappings.easyStore && typeof mappings.easyStore === 'object' ? mappings.easyStore : {};
   const mappedProductId = clean(mapped.productId || product.sourceProductId);
@@ -703,6 +824,8 @@ async function upsertEasyStoreProduct(snapshot, product, token) {
 
 function easyStoreMissingFields(snapshot) {
   const missing = [];
+  if (snapshot.listingMode === 'add-variant' && !snapshot.variantParentEasyStoreProductId) missing.push('父商品 EasyStore 編號');
+  if (snapshot.listingMode === 'add-variant' && (!snapshot.variantAttributeName || !snapshot.variantParentAttributeValue || !snapshot.variantAttributeValue)) missing.push('細項名稱、父商品細項值與新細項值');
   if (!snapshot.sku) missing.push('SKU');
   if (!snapshot.title) missing.push('商品名稱');
   if (!snapshot.description) missing.push('完整商品介紹');
@@ -746,11 +869,14 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
   }
   const queueRef = db.collection(PLATFORM_QUEUE_COLLECTION).doc(`${snapshot.productId}_${platform.toLowerCase()}`);
   const listingPolicy = buildPlatformQueuePolicy(product, platform, snapshot);
-  if (listingPolicy.mode === 'block-duplicate') {
+  if (listingPolicy.mode === 'block-duplicate' || listingPolicy.mode === 'block-duplicate-parent') {
     return {
       status: 'action-required',
-      message: `${platform} 的相同 SKU 已對到 ${listingPolicy.existingListingIds.length} 個平台商品，為避免更新錯商品已停止。`
+      message: `${platform} 已對到 ${listingPolicy.existingListingIds.length} 個可能的${listingPolicy.mode === 'block-duplicate-parent' ? '父商品' : '相同 SKU 商品'}，為避免更新錯商品已停止。`
     };
+  }
+  if (listingPolicy.mode === 'block-missing-parent') {
+    return { status: 'action-required', message: `${platform} 尚未找到父商品的平台編號；請先確認父商品已上架，再加入新細項。` };
   }
   const fingerprint = platformQueueFingerprint(platform, snapshot);
   let reusedStatus = '';
@@ -791,7 +917,9 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
       queueId: queueRef.id
     };
   }
-  const message = listingPolicy.existingListingIds.length
+  const message = listingPolicy.mode === 'add-variant-to-existing'
+    ? `${platform} 將把 SKU ${snapshot.sku} 加入指定的既有商品，子編號的庫存與價格仍獨立。`
+    : listingPolicy.existingListingIds.length
     ? `${platform} 已找到既有平台編號，將更新原商品，不會建立第二筆。`
     : `${platform} 將先用完全相同 SKU 查詢：唯一一筆就更新、零筆才建立、多筆或不確定就停止。`;
   return {
@@ -861,7 +989,15 @@ function registerProductListingPublish(target) {
     if (!caseSnap.exists) throw new HttpsError('failed-precondition', '請先儲存商品上架資料。');
     const product = productSnap.data() || {};
     const listingCase = caseSnap.data() || {};
-    const snapshot = buildListingSnapshot(productId, product, listingCase);
+    let variantParentProduct = null;
+    if (clean(listingCase.listingMode) === 'add-variant') {
+      const parentId = clean(listingCase.variantParentProductId);
+      if (!parentId || parentId === productId || parentId.includes('/')) throw new HttpsError('failed-precondition', '請選擇另一個有效的父商品。');
+      const parentSnap = await db.collection(PRODUCT_COLLECTION).doc(parentId).get();
+      if (!parentSnap.exists) throw new HttpsError('failed-precondition', '選定的父商品已不存在，請重新選擇。');
+      variantParentProduct = parentSnap.data() || {};
+    }
+    const snapshot = buildListingSnapshot(productId, product, listingCase, variantParentProduct);
     if (!snapshot.enabledEasyStoreShopee && !snapshot.enabledMomo && !snapshot.enabledCoupang) {
       throw new HttpsError('failed-precondition', '請至少勾選一個要上架的平台。');
     }
@@ -899,12 +1035,17 @@ function registerProductListingPublish(target) {
                 ...previousMappings,
                 easyStore: { ...(previousMappings.easyStore || {}), productId: result.productId, variantIds: result.variantIds }
               },
+              variantGroup: snapshot.listingMode === 'add-variant' ? {
+                parentProductId: snapshot.variantParentProductId, parentSku: snapshot.variantParentSku,
+                parentName: snapshot.variantParentName, attributeName: snapshot.variantAttributeName,
+                parentAttributeValue: snapshot.variantParentAttributeValue, attributeValue: snapshot.variantAttributeValue
+              } : null,
               easyStoreSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
               updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架'
             }, { merge: true });
             platforms.easyStore = {
               status: result.action === 'created' ? 'created' : 'updated',
-              message: result.action === 'created' ? 'EasyStore 商品已建立。' : 'EasyStore 商品已更新。',
+              message: (result.action === 'variant-created' ? 'EasyStore 已在既有商品中建立新細項。' : result.action === 'variant-updated' ? 'EasyStore 既有細項已更新。' : result.action === 'created' ? 'EasyStore 商品已建立。' : 'EasyStore 商品已更新。')+(result.imageWarning||''),
               productId: result.productId, variantIds: result.variantIds
             };
             const autofillPayload = buildShopeeAutofillPayload(snapshot, result);

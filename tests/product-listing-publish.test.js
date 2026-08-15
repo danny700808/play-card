@@ -422,3 +422,59 @@ test('listing snapshot keeps the manual identity confirmation audit fields', () 
   assert.equal(snapshot.identityManualConfirmedBy, 'manager@example.com');
   assert.equal(snapshot.identityManualConfirmationNote, '已核對型號、顏色與照片。');
 });
+
+test('new SKU can safely target an existing parent as a platform variant', () => {
+  const parent = {
+    internalSku: 'PARENT-100', internalName: '既有商品', sourceProductId: 'es-parent',
+    platformMappings: {
+      easyStore: { productId: 'es-parent', variantIds: ['es-old'] },
+      shopee: { itemId: 'shopee-parent' },
+      momo: { goodsCode: 'momo-parent', goodsdtCode: 'momo-parent-detail' },
+      coupang: { vendorItemId: 'coupang-parent' }
+    }
+  };
+  const snapshot = helpers.buildListingSnapshot('child-1', {
+    internalSku: 'CHILD-BLUE', internalName: '新顏色', currentStock: 2,
+    easyStorePrice: 26000, momoPrice: 26000, coupangPrice: 26000
+  }, {
+    listingMode: 'add-variant', variantParentProductId: 'parent-1',
+    variantAttributeName: '顏色', variantParentAttributeValue: '黑色', variantAttributeValue: '藍色',
+    productDescription: '商品介紹', listingImageUrls: ['https://example.com/blue.jpg']
+  }, parent);
+
+  assert.equal(snapshot.listingMode, 'add-variant');
+  assert.equal(snapshot.variantParentProductId, 'parent-1');
+  assert.equal(snapshot.variantParentSku, 'PARENT-100');
+  assert.equal(snapshot.variantParentEasyStoreProductId, 'es-parent');
+  assert.deepEqual(snapshot.shopeeExistingListingIds, ['shopee-parent']);
+  assert.deepEqual(helpers.buildPlatformQueuePolicy({}, 'MOMO', snapshot), {
+    mode: 'add-variant-to-existing', matchKey: 'parent-listing-id+sku', sku: 'CHILD-BLUE',
+    existingListingIds: ['momo-parent|momo-parent-detail'], parentProductId: 'parent-1', parentSku: 'PARENT-100',
+    variantAttributeName: '顏色', variantParentAttributeValue: '黑色', variantAttributeValue: '藍色',
+    onZero: 'block', onOne: 'append-variant', onMultiple: 'block', onUncertain: 'block'
+  });
+  const shopee = helpers.buildShopeeAutofillPayload(snapshot, { productId: 'es-parent' });
+  assert.equal(shopee.publishMode, 'add-variant-to-existing');
+  assert.equal(shopee.listingPolicy.allowCreate, false);
+  assert.equal(shopee.listingPolicy.onOne, 'append-variant');
+  assert.deepEqual(shopee.variantGroup, {
+    parentProductId: 'parent-1', parentSku: 'PARENT-100', parentName: '既有商品',
+    attributeName: '顏色', parentAttributeValue: '黑色', attributeValue: '藍色'
+  });
+});
+
+test('variant publishing blocks when a parent platform listing is missing or ambiguous', () => {
+  const missing = helpers.buildPlatformQueuePolicy({}, 'Coupang', {
+    listingMode: 'add-variant', productId: 'child', sku: 'CHILD', variantParentProductId: 'parent',
+    variantParentSku: 'PARENT', variantAttributeName: '尺寸', variantParentAttributeValue: '小', variantAttributeValue: '大', variantParentPlatformMappings: {}
+  });
+  assert.equal(missing.mode, 'block-missing-parent');
+  assert.equal(missing.onZero, 'block');
+
+  const ambiguous = helpers.buildPlatformQueuePolicy({}, 'Coupang', {
+    listingMode: 'add-variant', productId: 'child', sku: 'CHILD', variantParentProductId: 'parent',
+    variantParentSku: 'PARENT', variantAttributeName: '尺寸', variantParentAttributeValue: '小', variantAttributeValue: '大',
+    variantParentPlatformMappings: { coupang: { vendorItemIds: ['1', '2'] } }
+  });
+  assert.equal(ambiguous.mode, 'block-duplicate-parent');
+});
