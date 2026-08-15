@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260815-variants-pricing-pos-v1/);
+  assert.match(portal, /operations-phase1\.js\?v=20260815-listing-variants-ui-v2/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
   assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
@@ -100,6 +100,7 @@ test('mobile profit and expense groups use distinct semantic styling', () => {
 
 test('course management stays in the operations shell and POS price is editable per sale', () => {
   const source = read('operations-phase1.js');
+  const css = read('operations-phase1.css');
   assert.match(source, /const COURSE_WORKSPACE_VIEWS/);
   assert.match(source, /ops-course-inline-placeholder/);
   assert.match(source, /global\.YouziOperationsCourseInline\.mount\(content,courseView\)/);
@@ -114,6 +115,8 @@ test('course management stays in the operations shell and POS price is editable 
   assert.match(source, /data-cart-line-total=/);
   assert.match(source, />小計<\/span>/);
   assert.match(source, /output\.textContent=money/);
+  assert.match(css, /\.ops-cart-product-info>b[^}]*-webkit-line-clamp:2/);
+  assert.match(css, /\.ops-cart-row-detailed\{grid-template-columns:minmax\(210px,1fr\) 62px 88px 96px 34px/);
 });
 
 test('product editor shares the first online price while preserving platform overrides', () => {
@@ -135,7 +138,14 @@ test('product listing has a safe add-to-existing variant mode', () => {
   assert.match(source, /name="variantAttributeName"/);
   assert.match(source, /name="variantParentAttributeValue"/);
   assert.match(source, /name="variantAttributeValue"/);
-  assert.match(source, /舊商品有銷售紀錄時，不會覆蓋舊編號/);
+  assert.match(source, /name="variantParentSearch"/);
+  assert.match(source, /productVariantParentPreviewHtml/);
+  assert.match(source, /name="variantGroupEnabled"/);
+  assert.match(source, /productVariantGroupItemsFromForm/);
+  assert.match(source, /variantGroupItems:variantGroupItems/);
+  assert.match(source, /childImages=normalizeProductResearchSourceUrls/);
+  assert.match(source, /confirmAndPublishProductVariantGroup/);
+  assert.match(source, /imageMatchStatus:(?:productImages|imageUrls)\.length\?'auto':'missing'/);
 });
 
 test('POS electric piano rental income rolls into rental operations without helper clutter', () => {
