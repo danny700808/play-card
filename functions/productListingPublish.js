@@ -22,6 +22,7 @@ const SELLER_LARGE_HOME_FEE_TWD = 100;
 const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'processing']);
 const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
 const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://youzi-c1b74.web.app').replace(/\/$/, '');
+const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const DESCRIPTION_PROMO_IMAGE_URLS = [
   `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`,
   `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-2.jpg`
@@ -338,13 +339,39 @@ function appendShopDescriptionPromos(html) {
   return result;
 }
 
+function listingImageAllocation(value) {
+  const productImages = normalizeUrls(value, 30)
+    .filter((url) => url !== STORE_PROMO_IMAGE_URL && !DESCRIPTION_PROMO_IMAGE_URLS.includes(url))
+    .slice(0, 12);
+  const galleryImages = productImages.slice(0, 6);
+  if (galleryImages.length) galleryImages.push(STORE_PROMO_IMAGE_URL);
+  return {
+    productImages,
+    galleryImages,
+    descriptionImages: productImages.slice(6)
+  };
+}
+
+function appendShopDescriptionImages(html, imageUrls) {
+  let result = clean(html);
+  DESCRIPTION_PROMO_IMAGE_URLS.forEach((url) => {
+    const block = `<p><img src="${url}" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>`;
+    result = result.split(block).join('');
+  });
+  normalizeUrls(imageUrls, 12).forEach((url) => {
+    if (!result.includes(url)) result += `<p><img src="${url}" alt="商品介紹圖片" style="max-width:100%;height:auto"></p>`;
+  });
+  return appendShopDescriptionPromos(result);
+}
+
 function buildListingSnapshot(productId, product, listingCase) {
   const enabled = listingCase.enabledPlatforms && typeof listingCase.enabledPlatforms === 'object'
     ? listingCase.enabledPlatforms : { easyStoreShopee: true, momo: true, coupang: true };
   const shopeeExistingListingIds = platformListingIds(product, 'shopee');
   const description = listingDescription(listingCase);
-  const images = normalizeUrls(listingCase.listingImageUrls, 9);
-  const descriptionHtml = appendShopDescriptionPromos(productDescriptionToSafeHtml(description));
+  const imageAllocation = listingImageAllocation(listingCase.listingImageUrls);
+  const images = imageAllocation.galleryImages;
+  const descriptionHtml = appendShopDescriptionImages(productDescriptionToSafeHtml(description), imageAllocation.descriptionImages);
   const snapshot = {
     productId: clean(productId),
     sku: normalizeSku(product.internalSku || product.sku || listingCase.productSku),
@@ -352,6 +379,8 @@ function buildListingSnapshot(productId, product, listingCase) {
     description,
     bodyHtml: descriptionHtml,
     images,
+    productImageUrls: imageAllocation.productImages,
+    descriptionImageUrls: imageAllocation.descriptionImages,
     brand: clean(listingCase.brand || product.brand),
     model: clean(listingCase.model || product.model),
     barcode: clean(listingCase.barcode || product.barcode),
@@ -369,7 +398,7 @@ function buildListingSnapshot(productId, product, listingCase) {
     momoDelivery: MOMO_THIRD_PARTY_DELIVERY,
     momoCatalogPolicy: { maximumListings: 1000, targetListings: 990, reservedSlots: 10, zeroStockAction: 'unpublish', violationRecovery: 'republish-only-when-stock-positive' },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
-    imagePolicy: { galleryTarget: 8, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, localizedTraditionalChinese: true },
+    imagePolicy: { sourceImageMaximum: 12, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
     shopeeDescription: clean(listingCase.shopeeDescription) || description,
     shopeeRequiredNotes: clean(listingCase.shopeeRequiredNotes),
@@ -388,10 +417,10 @@ function buildListingSnapshot(productId, product, listingCase) {
     color: clean(listingCase.color || product.color),
     momoGoodsName: clean(listingCase.momoGoodsName) || listingName(product, listingCase),
     momoSlogan: clean(listingCase.momoSlogan),
-    momoHtml: appendShopDescriptionPromos(clean(listingCase.momoHtml) || descriptionHtml),
+    momoHtml: appendShopDescriptionImages(clean(listingCase.momoHtml) || productDescriptionToSafeHtml(description), imageAllocation.descriptionImages),
     momoCategoryCode: clean(listingCase.momoCategoryCode),
     coupangTitle: clean(listingCase.coupangTitle) || listingName(product, listingCase),
-    coupangDescriptionHtml: appendShopDescriptionPromos(clean(listingCase.coupangDescriptionHtml) || descriptionHtml),
+    coupangDescriptionHtml: appendShopDescriptionImages(clean(listingCase.coupangDescriptionHtml) || productDescriptionToSafeHtml(description), imageAllocation.descriptionImages),
     coupangCategoryCode: clean(listingCase.coupangCategoryCode),
     enabledEasyStoreShopee: enabled.easyStoreShopee !== false,
     enabledMomo: enabled.momo !== false,
@@ -969,6 +998,8 @@ module.exports = {
     summarizePlatformsForStorage,
     platformListingStatusFromPublish,
     appendShopDescriptionPromos,
+    appendShopDescriptionImages,
+    listingImageAllocation,
     exactEasyStoreMatches,
     easyStoreMissingFields,
     momoMissingFields,

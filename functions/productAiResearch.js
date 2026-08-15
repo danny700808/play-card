@@ -20,8 +20,8 @@ const LOCK_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 480 * 1000;
 const IMAGE_IMPORT_PAGE_LIMIT = 8;
 const IMAGE_IMPORT_CANDIDATE_LIMIT = 40;
-const IMAGE_IMPORT_TARGET_IMAGES = 8;
-const IMAGE_IMPORT_MAX_IMAGES = 10;
+const IMAGE_IMPORT_TARGET_IMAGES = 12;
+const IMAGE_IMPORT_MAX_IMAGES = 12;
 const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://youzi-c1b74.web.app').replace(/\/$/, '');
 const MAIN_IMAGE_TEMPLATE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-main-template.jpg`;
 const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
@@ -238,7 +238,7 @@ function collectProductImages(product) {
     product.imageUrl, product.imageUrls, product.parentImageUrls,
     product.variantImageUrls, product.images, product.photos
   ].forEach((value) => pushUrl(images, value));
-  return images.slice(0, 8);
+  return images.slice(0, 12);
 }
 
 function isAllowedManager(request) {
@@ -293,7 +293,7 @@ function buildProductContext(productId, product, listingCase) {
     referenceUrls: referenceUrls.slice(0, 15),
     sourceProductDescription: clean(source.sourceProductDescription),
     researchInstructions: clean(source.researchInstructions),
-    imageUrls: imageUrls.slice(0, 8)
+    imageUrls: imageUrls.slice(0, 12)
   };
 }
 
@@ -1421,7 +1421,7 @@ function registerProductAiResearch(target) {
       IMAGE_IMPORT_MAX_IMAGES - existingImageUrls.length,
       IMAGE_IMPORT_TARGET_IMAGES - existingImageUrls.length
     ));
-    if (!availableSlots) throw new HttpsError('failed-precondition', '這件商品已經有約 8 張來源圖片；如需替換，請先移除不需要的圖片，或直接上傳新圖片。');
+    if (!availableSlots) throw new HttpsError('failed-precondition', '這件商品已經有 12 張來源圖片；如需替換，請先移除不需要的圖片，或直接上傳新圖片。');
 
     const initialPageUrls = [];
     [requestedPageUrls, listingCase.referenceUrls, listingCase.productResearchSourceUrls, context.referenceUrls]
@@ -1635,7 +1635,7 @@ function registerProductAiResearch(target) {
     const savedSelection = [];
     pushUrlRows(savedSelection, listingCase.selectedReferenceImageUrls);
     const preferredImageUrls = requestedImageUrls.length ? requestedImageUrls : savedSelection.length ? savedSelection : allowedImageUrls;
-    const imageUrls = preferredImageUrls.filter((url) => allowedImageUrls.includes(url)).slice(0, 10);
+    const imageUrls = preferredImageUrls.filter((url) => allowedImageUrls.includes(url)).slice(0, 12);
     if (!imageUrls.length) {
       throw new HttpsError('failed-precondition', '請先上傳至少一張你有權使用的真實商品照片。');
     }
@@ -1648,7 +1648,7 @@ function registerProductAiResearch(target) {
     try {
       const bucket = admin.storage().bucket();
       const imageJobs = [{ mode: 'main-template', sourceImageUrl: imageUrls[0], sourceImageUrls: [MAIN_IMAGE_TEMPLATE_URL, imageUrls[0]] }]
-        .concat(imageUrls.slice(0, 6).map((sourceImageUrl) => ({ mode: 'localized', sourceImageUrl, sourceImageUrls: [sourceImageUrl] })));
+        .concat(imageUrls.slice(1, 12).map((sourceImageUrl) => ({ mode: 'localized', sourceImageUrl, sourceImageUrls: [sourceImageUrl] })));
       await caseRef.set({
         lastImageGeneration: {
           status: 'running', model, requestedCount: imageJobs.length,
@@ -1702,7 +1702,7 @@ function registerProductAiResearch(target) {
       const replacedSources = new Set(completed.map((row) => safeHttpUrl(row.sourceImageUrl)).filter(Boolean));
       const previousCandidates = (Array.isArray(listingCase.generatedListingImages) ? listingCase.generatedListingImages : [])
         .filter((row) => safeHttpUrl(row && row.url) && !replacedSources.has(safeHttpUrl(row && row.sourceImageUrl)));
-      const candidates = completed.concat(previousCandidates).slice(0, 10);
+      const candidates = completed.concat(previousCandidates).slice(0, 12);
       const previousGeneratedUrls = new Set((Array.isArray(listingCase.generatedListingImages) ? listingCase.generatedListingImages : [])
         .map((row) => safeHttpUrl(row && row.url)).filter(Boolean));
       const existingListingImageUrls = [];
@@ -1710,11 +1710,11 @@ function registerProductAiResearch(target) {
       const preparedListingImageUrls = [];
       pushUrlRows(preparedListingImageUrls, candidates.map((row) => row.url));
       pushUrlRows(preparedListingImageUrls, existingListingImageUrls.filter((url) => !previousGeneratedUrls.has(safeHttpUrl(url)) && safeHttpUrl(url) !== STORE_PROMO_IMAGE_URL));
-      const listingImageUrls = preparedListingImageUrls.slice(0, 7);
+      const listingImageUrls = preparedListingImageUrls.slice(0, 12);
       pushUrlRows(listingImageUrls, STORE_PROMO_IMAGE_URL);
       await caseRef.set({
         generatedListingImages: candidates,
-        listingImageUrls: listingImageUrls.slice(0, 8),
+        listingImageUrls: listingImageUrls.slice(0, 13),
         lastImageGeneration: {
           status: failed.length ? 'partial' : 'completed', model,
           requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length,
@@ -1737,7 +1737,7 @@ function registerProductAiResearch(target) {
       return {
         ok: true, status: failed.length ? 'partial' : 'completed', productId, model,
         requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length,
-        imageUrls: completed.map((row) => row.url), listingImageUrls: listingImageUrls.slice(0, 8), failures: failed
+        imageUrls: completed.map((row) => row.url), listingImageUrls: listingImageUrls.slice(0, 13), failures: failed
       };
     } catch (error) {
       const message = clean(error && error.message) || 'OpenAI 圖片繁體化失敗。';
