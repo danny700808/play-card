@@ -47,6 +47,29 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
 });
 
+test('listing snapshot keeps seven gallery slots and moves overflow product images before the two fixed description promos', () => {
+  const productImages = Array.from({ length: 12 }, (_, index) => `https://example.com/product-${index + 1}.jpg`);
+  const snapshot = helpers.buildListingSnapshot('p-images', {
+    internalSku: 'IMG-12', internalName: '十二張圖片商品', currentStock: 1,
+    easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
+  }, {
+    productDescription: '完整商品介紹', listingImageUrls: productImages,
+    enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
+  });
+
+  assert.equal(snapshot.productImageUrls.length, 12);
+  assert.equal(snapshot.images.length, 7);
+  assert.deepEqual(snapshot.images.slice(0, 6), productImages.slice(0, 6));
+  assert.match(snapshot.images[6], /product-listing-store-promo\.png$/);
+  assert.deepEqual(snapshot.descriptionImageUrls, productImages.slice(6));
+  assert.ok(snapshot.bodyHtml.indexOf('product-7.jpg') < snapshot.bodyHtml.indexOf('product-listing-description-promo-1.jpg'));
+  assert.ok(snapshot.bodyHtml.indexOf('product-listing-description-promo-1.jpg') < snapshot.bodyHtml.indexOf('product-listing-description-promo-2.jpg'));
+  assert.ok(snapshot.momoHtml.indexOf('product-7.jpg') < snapshot.momoHtml.indexOf('product-listing-description-promo-1.jpg'));
+  assert.ok(snapshot.coupangDescriptionHtml.indexOf('product-7.jpg') < snapshot.coupangDescriptionHtml.indexOf('product-listing-description-promo-1.jpg'));
+  assert.equal(snapshot.imagePolicy.galleryMaximum, 7);
+  assert.equal(snapshot.imagePolicy.sourceImageMaximum, 12);
+});
+
 test('publish results become product-level platform status without claiming queued work is live', () => {
   const status = helpers.platformListingStatusFromPublish({}, {
     easyStore: { status: 'created', productId: 'es-1', message: '已建立' },
@@ -59,7 +82,7 @@ test('publish results become product-level platform status without claiming queu
   assert.equal(status.coupang.status, 'error');
 });
 
-test('EasyStore payload publishes one exact SKU with stock, price, package and at most nine images', () => {
+test('EasyStore payload publishes one exact SKU with stock, price, package and at most seven gallery images', () => {
   const listingCase = {
     researchedProductName: 'Ibanez AZES40-MGR 電吉他',
     productDescription: '適合入門與日常練習。\n\n商品特色\n1. 輕巧好彈\n\n商品規格\n型號：AZES40-MGR',
@@ -74,9 +97,9 @@ test('EasyStore payload publishes one exact SKU with stock, price, package and a
   const body = helpers.buildEasyStoreProductBody(snapshot, true).product;
 
   assert.equal(snapshot.sku, '1040160-1');
-  assert.equal(snapshot.images.length, 9);
+  assert.equal(snapshot.images.length, 7);
   assert.equal(body.inventory_management, 'easystore');
-  assert.equal(body.images.length, 9);
+  assert.equal(body.images.length, 7);
   assert.equal(body.variants.length, 1);
   assert.deepEqual(body.variants[0], {
     sku: '1040160-1', barcode: '4549763289575', price: 14800, inventory_quantity: 3,
