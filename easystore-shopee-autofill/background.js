@@ -3,6 +3,7 @@
 importScripts("image-collector-helpers.js");
 
 const imageCollector = globalThis.YouziImageCollectorHelpers;
+const SUPPLIER_CROP_MENU_ID = "youzi-supplier-image-crop";
 
 function responseError(code, error) {
   return {
@@ -62,6 +63,27 @@ async function fetchSupplierImage(imageUrl, pageUrl) {
   };
 }
 
+function preparedSupplierImage(value, pageUrl) {
+  const row = value && typeof value === "object" ? value : {};
+  const mimeType = imageCollector.imageMimeType(row.mimeType);
+  const base64 = String(row.base64 || "").replace(/\s+/g, "");
+  if (!mimeType || !base64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+    throw new Error("截圖格式不正確，請重新框選");
+  }
+  const padding = (base64.match(/=*$/) || [""])[0].length;
+  const size = Math.max(0, Math.floor(base64.length * 3 / 4) - padding);
+  if (!size || size > imageCollector.MAX_IMAGE_BYTES) throw new Error("每張截圖不可超過 8 MB");
+  return {
+    sourceUrl: pageUrl,
+    mimeType,
+    fileName: String(row.fileName || `supplier-screenshot-${Date.now()}.${imageCollector.imageFileExtension(mimeType)}`)
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .slice(0, 120),
+    base64,
+    size
+  };
+}
+
 async function deliverToOperations(payload) {
   const tabs = await chrome.tabs.query({
     url: "https://danny700808.github.io/play-card/*"
@@ -100,7 +122,9 @@ async function collectImage(message, sender) {
   }
 
   try {
-    const image = await fetchSupplierImage(payload.imageUrl, pageUrl);
+    const image = message.type === imageCollector.CAPTURE_DATA_MESSAGE
+      ? preparedSupplierImage(payload.image, pageUrl)
+      : await fetchSupplierImage(payload.imageUrl, pageUrl);
     const requestId = crypto.randomUUID();
     const result = await deliverToOperations({
       requestId,
@@ -131,12 +155,70 @@ async function collectImage(message, sender) {
   }
 }
 
+async function captureVisibleSupplierTab(sender) {
+  const pageUrl = String((sender && sender.tab && sender.tab.url) || (sender && sender.url) || "");
+  if (!imageCollector.isSupplierPageUrl(pageUrl)) {
+    return responseError("UNTRUSTED_SUPPLIER_PAGE", "只能在淘寶、天貓、1688 或阿里巴巴頁面框選截圖");
+  }
+  if (!sender.tab || sender.tab.active !== true || !Number.isInteger(sender.tab.windowId)) {
+    return responseError("SUPPLIER_TAB_NOT_ACTIVE", "請先切回要截圖的供應商頁面");
+  }
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" });
+    if (!dataUrl || !dataUrl.startsWith("data:image/png;base64,")) throw new Error("無法取得目前畫面");
+    return { ok: true, dataUrl };
+  } catch (error) {
+    return responseError("CAPTURE_FAILED", error);
+  }
+}
+
+async function startCropInTab(tab) {
+  if (!tab || !Number.isInteger(tab.id) || !imageCollector.isSupplierPageUrl(tab.url || "")) return;
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: imageCollector.START_CROP_MESSAGE });
+  } catch (error) {}
+}
+
 if (imageCollector) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (!message || message.type !== imageCollector.FETCH_MESSAGE) return false;
+    if (!message) return false;
+    if (message.type === imageCollector.CAPTURE_MESSAGE) {
+      captureVisibleSupplierTab(sender).then(sendResponse).catch((error) => sendResponse(responseError("CAPTURE_FAILED", error)));
+      return true;
+    }
+    if (![imageCollector.FETCH_MESSAGE, imageCollector.CAPTURE_DATA_MESSAGE].includes(message.type)) return false;
     collectImage(message, sender)
       .then(sendResponse)
       .catch((error) => sendResponse(responseError("COLLECTION_FAILED", error)));
     return true;
   });
+  if (chrome.action && chrome.action.onClicked) {
+    chrome.action.onClicked.addListener(startCropInTab);
+  }
+  if (chrome.runtime.onInstalled && chrome.contextMenus) {
+    chrome.runtime.onInstalled.addListener(() => {
+      chrome.contextMenus.remove(SUPPLIER_CROP_MENU_ID, () => {
+        void chrome.runtime.lastError;
+        chrome.contextMenus.create({
+          id: SUPPLIER_CROP_MENU_ID,
+          title: "柚子掌櫃：框選截圖",
+          contexts: ["page"],
+          documentUrlPatterns: [
+            "https://*.taobao.com/*", "https://*.tmall.com/*",
+            "https://*.1688.com/*", "https://*.alibaba.com/*"
+          ]
+        });
+      });
+    });
+    chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+      if (info.menuItemId === SUPPLIER_CROP_MENU_ID) await startCropInTab(tab);
+    });
+  }
+  if (chrome.commands && chrome.commands.onCommand) {
+    chrome.commands.onCommand.addListener(async (command) => {
+      if (command !== "start-image-crop") return;
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      await startCropInTab(tabs[0]);
+    });
+  }
 }

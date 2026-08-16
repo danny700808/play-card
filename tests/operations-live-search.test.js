@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260816-supplier-image-collector-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260816-supplier-screenshot-v2/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260816-supplier-image-collector-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260816-supplier-screenshot-v2/);
   }
 });
 
@@ -288,9 +288,10 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(caseForm, /<label>注意事項<\/label>/);
   assert.match(caseForm, /productReferenceImageUpload/);
   assert.match(caseForm, /選擇圖片上傳/);
-  assert.match(caseForm, /從淘寶／阿里巴巴快速收圖/);
+  assert.match(caseForm, /從淘寶／阿里巴巴框選截圖/);
   assert.match(caseForm, /product-image-collection-toggle/);
   assert.match(caseForm, /這一步只收圖，不做簡繁轉換/);
+  assert.match(caseForm, /截錯可在下方直接刪除/);
   assert.match(caseForm, /productReferenceImageSelectorHtml/);
   assert.match(caseForm, /重新製作勾選圖片/);
   assert.match(caseForm, /imageGenerationInstructions/);
