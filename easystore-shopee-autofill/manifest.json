@@ -1,16 +1,28 @@
 {
   "manifest_version": 3,
   "name": "柚子樂器 EasyStore 蝦皮自動填寫",
-  "version": "0.3.15",
-  "description": "可靠接收商品頁交接資料，辨識蝦皮新增或更新狀態，完成 EasyStore 必填欄位後才送出。",
+  "version": "0.3.16",
+  "description": "從淘寶／阿里巴巴直接收圖到指定商品，並可靠完成 EasyStore／蝦皮自動填寫。",
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://danny700808.github.io/play-card/*",
     "https://admin.easystore.co/products/*",
-    "https://admin.easystore.co/channels/shopee/taiwan/products/sync*"
+    "https://admin.easystore.co/channels/shopee/taiwan/products/sync*",
+    "https://*.taobao.com/*",
+    "https://*.tmall.com/*",
+    "https://*.1688.com/*",
+    "https://*.alibaba.com/*",
+    "https://*.alicdn.com/*",
+    "https://*.alicdn.cn/*",
+    "https://*.tbcdn.cn/*",
+    "https://*.alibabausercontent.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -18,6 +30,7 @@
       ],
       "js": [
         "helpers.js",
+        "image-collector-helpers.js",
         "bridge.js"
       ],
       "run_at": "document_start"
@@ -34,6 +47,19 @@
       ],
       "css": [
         "overlay.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.taobao.com/*",
+        "https://*.tmall.com/*",
+        "https://*.1688.com/*",
+        "https://*.alibaba.com/*"
+      ],
+      "js": [
+        "image-collector-helpers.js",
+        "supplier-collector.js"
       ],
       "run_at": "document_idle"
     }

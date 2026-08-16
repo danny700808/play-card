@@ -1,6 +1,6 @@
 # 柚子樂器 EasyStore 蝦皮自動填寫
 
-這是獨立的 Chrome Manifest V3 擴充套件。它會從全通路營運中心接收一次性的蝦皮待填資料，在 EasyStore 蝦皮設定頁核對商品 ID 與 SKU，依欄位名稱填入分類、品牌、商品屬性、物流與預購；資料完整時接著按 EasyStore 的上架送到蝦皮。
+這是獨立的 Chrome Manifest V3 擴充套件。它可以把淘寶、天貓、1688、阿里巴巴圖片直接送進指定的「準備上架」商品，也會從全通路營運中心接收一次性的蝦皮待填資料，在 EasyStore 蝦皮設定頁核對商品 ID 與 SKU，依欄位名稱填入分類、品牌、商品屬性、物流與預購；資料完整時接著按 EasyStore 的上架送到蝦皮。
 
 重要限制：
 
@@ -28,6 +28,15 @@
 - `https://danny700808.github.io/play-card/*`
 - `https://admin.easystore.co/products/*`
 - `https://admin.easystore.co/channels/shopee/taiwan/products/sync*`
+- 淘寶、天貓、1688、阿里巴巴及其官方圖片網域
+
+## 供應商快速收圖
+
+1. 在「準備上架」開啟指定商品，按「開始收圖」。
+2. 保留商品頁，另外開啟淘寶、天貓、1688 或阿里巴巴。
+3. 圖片出現綠框時直接點一下，原圖會送入同一個 SKU／EasyStore 商品 ID 的「上傳圖片」區。
+4. 每件商品最多保留 12 張來源圖片；重複點選同一張時不會重複加入。
+5. 按 `Esc` 或「結束收圖」即可停止。這一步只收原圖，不做簡繁轉換。
 
 ## EasyStore 實機檢查
 

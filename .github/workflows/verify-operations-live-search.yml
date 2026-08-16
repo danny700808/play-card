@@ -17,6 +17,7 @@ on:
       - "tests/shopee-autofill-handoff.test.js"
       - "tests/product-ai-research.test.js"
       - "tests/product-listing-publish.test.js"
+      - "tests/product-image-collector-ui.test.js"
       - "easystore-shopee-autofill/**"
       - "youzi-easystore-shopee-autofill-v*.zip"
       - ".github/workflows/verify-operations-live-search.yml"
@@ -31,8 +32,8 @@ jobs:
     timeout-minutes: 10
     env:
       EXTENSION_DIR: easystore-shopee-autofill
-      EXTENSION_VERSION: 0.3.15
-      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.15.zip
+      EXTENSION_VERSION: 0.3.16
+      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.16.zip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,9 +52,12 @@ jobs:
           node --check functions/productAiResearch.js
           node --check functions/productListingPublish.js
           node --check easystore-shopee-autofill/bridge.js
+          node --check easystore-shopee-autofill/background.js
           node --check easystore-shopee-autofill/easystore.js
           node --check easystore-shopee-autofill/helpers.js
+          node --check easystore-shopee-autofill/image-collector-helpers.js
           node --check easystore-shopee-autofill/recorder.js
+          node --check easystore-shopee-autofill/supplier-collector.js
           node -e "JSON.parse(require('fs').readFileSync('easystore-shopee-autofill/manifest.json', 'utf8'))"
       - name: Verify packaged Chrome extension
         run: |
@@ -85,14 +89,15 @@ jobs:
           tests/shopee-autofill-handoff.test.js
           tests/product-ai-research.test.js
           tests/product-listing-publish.test.js
+          tests/product-image-collector-ui.test.js
           easystore-shopee-autofill/tests/*.test.js
       - name: Verify markup and cache versions
         run: |
           set -euo pipefail
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v17' portal.html
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v17' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260815-listing-variants-ui-v2' portal.html
-          grep -Fq 'operations-phase1.js?v=20260815-listing-variants-ui-v2' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260816-supplier-image-collector-v1' portal.html
+          grep -Fq 'operations-phase1.js?v=20260816-supplier-image-collector-v1' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

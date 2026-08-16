@@ -1,0 +1,142 @@
+"use strict";
+
+importScripts("image-collector-helpers.js");
+
+const imageCollector = globalThis.YouziImageCollectorHelpers;
+
+function responseError(code, error) {
+  return {
+    ok: false,
+    code,
+    error: String(error && error.message ? error.message : error || "圖片收集失敗").slice(0, 300)
+  };
+}
+
+function bytesToBase64(bytes) {
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function currentSession() {
+  const stored = await chrome.storage.local.get(imageCollector.SESSION_STORAGE_KEY);
+  const validation = imageCollector.normalizeSessionPayload(
+    stored && stored[imageCollector.SESSION_STORAGE_KEY],
+    Date.now()
+  );
+  if (!validation.ok) return null;
+  return validation.value;
+}
+
+async function storeSession(session) {
+  await chrome.storage.local.set({
+    [imageCollector.SESSION_STORAGE_KEY]: session
+  });
+}
+
+async function fetchSupplierImage(imageUrl, pageUrl) {
+  const normalized = imageCollector.normalizeImageUrl(imageUrl, pageUrl);
+  if (!normalized) throw new Error("這張圖片不是淘寶、天貓、1688 或阿里巴巴可讀取的圖片");
+  const response = await fetch(normalized, {
+    credentials: "include",
+    cache: "no-store",
+    referrer: imageCollector.isSupplierPageUrl(pageUrl) ? pageUrl : undefined
+  });
+  if (!response.ok) throw new Error(`圖片讀取失敗（${response.status}）`);
+  const length = Number(response.headers.get("content-length") || 0);
+  if (length > imageCollector.MAX_IMAGE_BYTES) throw new Error("每張圖片不可超過 8 MB");
+  const blob = await response.blob();
+  const mimeType = imageCollector.imageMimeType(blob.type || response.headers.get("content-type"));
+  if (!mimeType) throw new Error("只支援 JPG、PNG 或 WebP 圖片");
+  if (!blob.size || blob.size > imageCollector.MAX_IMAGE_BYTES) throw new Error("每張圖片不可超過 8 MB");
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return {
+    sourceUrl: normalized,
+    mimeType,
+    fileName: imageCollector.safeImageFileName(normalized, mimeType),
+    base64: bytesToBase64(bytes),
+    size: blob.size
+  };
+}
+
+async function deliverToOperations(payload) {
+  const tabs = await chrome.tabs.query({
+    url: "https://danny700808.github.io/play-card/*"
+  });
+  if (!tabs.length) throw new Error("請保留「準備上架」商品頁，不要把它關閉");
+  let lastError = null;
+  for (const tab of tabs) {
+    if (!Number.isInteger(tab.id)) continue;
+    try {
+      const result = await chrome.tabs.sendMessage(tab.id, {
+        type: imageCollector.DELIVER_MESSAGE,
+        payload
+      });
+      if (result && result.ok) return result;
+      lastError = new Error(result && result.error ? result.error : "商品上架頁尚未準備好收圖");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("找不到正在收圖的商品上架頁");
+}
+
+async function collectImage(message, sender) {
+  const pageUrl = String((sender && sender.tab && sender.tab.url) || (sender && sender.url) || "");
+  if (!imageCollector.isSupplierPageUrl(pageUrl)) {
+    return responseError("UNTRUSTED_SUPPLIER_PAGE", "只能從淘寶、天貓、1688 或阿里巴巴頁面收圖");
+  }
+  const payload = message && message.payload && typeof message.payload === "object" ? message.payload : {};
+  const session = await currentSession();
+  if (!session || !session.active) return responseError("NO_ACTIVE_SESSION", "請先在準備上架商品按「開始收圖」");
+  if (payload.sessionId !== session.sessionId || payload.productId !== session.productId) {
+    return responseError("SESSION_MISMATCH", "目前收圖商品已經更換，請重新確認商品");
+  }
+  if (session.currentCount >= session.maxImages) {
+    return responseError("IMAGE_LIMIT_REACHED", `這件商品已收滿 ${session.maxImages} 張`);
+  }
+
+  try {
+    const image = await fetchSupplierImage(payload.imageUrl, pageUrl);
+    const requestId = crypto.randomUUID();
+    const result = await deliverToOperations({
+      requestId,
+      sessionId: session.sessionId,
+      productId: session.productId,
+      sku: session.sku,
+      image
+    });
+    const currentCount = Math.min(
+      session.maxImages,
+      Math.max(session.currentCount + 1, Number(result.count || 0))
+    );
+    const next = Object.assign({}, session, {
+      currentCount,
+      active: currentCount < session.maxImages,
+      stoppedReason: currentCount >= session.maxImages ? "full" : ""
+    });
+    await storeSession(next);
+    return {
+      ok: true,
+      code: currentCount >= session.maxImages ? "COLLECTED_AND_FULL" : "COLLECTED",
+      count: currentCount,
+      maxImages: session.maxImages,
+      sourceUrl: image.sourceUrl
+    };
+  } catch (error) {
+    return responseError("COLLECTION_FAILED", error);
+  }
+}
+
+if (imageCollector) {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!message || message.type !== imageCollector.FETCH_MESSAGE) return false;
+    collectImage(message, sender)
+      .then(sendResponse)
+      .catch((error) => sendResponse(responseError("COLLECTION_FAILED", error)));
+    return true;
+  });
+}
