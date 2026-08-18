@@ -48,6 +48,10 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.momoCatalogPolicy.zeroStockAction, 'keep-published-by-default');
   assert.equal(snapshot.momoCatalogPolicy.preserveSoldOutWithSales, true);
   assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
+  assert.equal(snapshot.automationPolicy.duplicateGuard.reuseExistingDraft, true);
+  assert.equal(snapshot.automationPolicy.duplicateGuard.neverCreateNewOnRetry, true);
+  assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, ['platform-list', 'price', 'stock', 'status']);
+  assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
 });
 
 test('listing snapshot keeps seven gallery slots and moves overflow product images before the two fixed description promos', () => {
@@ -220,15 +224,15 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     label: '新竹物流', enabled: true, option: 'S170', feeTwd: null, sellerPays: false
   });
   assert.deepEqual(payload.logistics.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送'), {
-    label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false
+    label: '賣家宅配：大型/超重物品運送', enabled: false, option: '', feeTwd: null, sellerPays: false
   });
   assert.deepEqual(
     payload.logistics.methods.filter((row) => row.enabled).map((row) => row.label),
-    ['新竹物流', '賣家宅配：大型/超重物品運送']
+    ['新竹物流']
   );
   assert.equal(payload.logistics.methods.length, 9);
   assert.ok(payload.logistics.methods
-    .filter((row) => !['新竹物流', '賣家宅配：大型/超重物品運送'].includes(row.label))
+    .filter((row) => row.label !== '新竹物流')
     .every((row) => row.enabled === false));
   assert.deepEqual(payload.preorder, { enabled: false, days: 1 });
   assert.equal(payload.easyStoreUrl, 'https://admin.easystore.co/products/16403950');
@@ -274,7 +278,7 @@ test('Shopee helper leaves Hsinchu Logistics off when package limits are incompl
   const missing = helpers.buildShopeeLogistics({ shippingDecision: 'freight', packageLengthCm: 100, packageWidthCm: 40 });
   assert.equal(missing.methods.find((row) => row.label === '新竹物流').enabled, false);
   assert.deepEqual(missing.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送'), {
-    label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false
+    label: '賣家宅配：大型/超重物品運送', enabled: false, option: '', feeTwd: null, sellerPays: false
   });
   assert.equal(missing.requiresConfirmation, true);
 
@@ -283,10 +287,9 @@ test('Shopee helper leaves Hsinchu Logistics off when package limits are incompl
   });
   assert.equal(tooHeavy.methods.find((row) => row.label === '新竹物流').enabled, false);
   assert.deepEqual(tooHeavy.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送'), {
-    label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false
+    label: '賣家宅配：大型/超重物品運送', enabled: false, option: '', feeTwd: null, sellerPays: false
   });
   assert.ok(tooHeavy.methods
-    .filter((row) => row.label !== '賣家宅配：大型/超重物品運送')
     .every((row) => row.enabled === false));
   assert.equal(tooHeavy.requiresConfirmation, true);
 });
@@ -313,6 +316,11 @@ test('manual shipping choice controls autofill and convenience limits are enforc
   });
   assert.equal(verifiedConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, true);
   assert.equal(verifiedConvenience.methods.find((row) => row.label === '7-ELEVEN').enabled, true);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '新竹物流').enabled, true);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '新竹物流').option, 'S90');
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '黑貓宅急便').enabled, false);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '嘉里快遞').enabled, false);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送').enabled, false);
   assert.equal(verifiedConvenience.requiresConfirmation, false);
 
   const oversizedConvenience = helpers.buildShopeeLogistics({
