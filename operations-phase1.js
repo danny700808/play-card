@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.16-supplier-screenshot-v2';
+  const VERSION = '2026.08.18-codex-one-click-listing-v1';
   let pendingShopeeAutofillPayload = null;
   let pendingShopeeAutofillPayloadQueue = [];
   let productListingSpeechRecognition = null;
@@ -3505,13 +3505,14 @@ function ensureSalesClock(){
     const coupangSection='<textarea name="coupangDescriptionHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><label class="ops-listing-platform-toggle"><input type="checkbox" name="enabledCoupang" value="1" '+(row.enabledCoupang?'checked':'')+'><span><b>酷澎要上架</b><small>內容會在送出時轉成酷澎需要的格式。</small></span></label>'+sharedPlatformContent+'<div class="ops-form-grid"><div class="ops-field full"><label>酷澎商品標題</label><input class="ops-input" name="coupangTitle" value="'+attr(row.coupangTitle)+'"></div><div class="ops-field full"><label>酷澎分類</label><input class="ops-input" name="coupangCategoryCode" value="'+attr(row.coupangCategoryCode)+'"></div><div class="ops-field full"><label>平台另外需要補的欄位（如有）</label><textarea class="ops-textarea compact" name="coupangRequiredNotes">'+escapeHtml(row.coupangRequiredNotes)+'</textarea></div></div>';
     const shippingSection='<div class="ops-product-shipping-grid">'+productShippingChoiceHtml(shipping.decision)+'</div><div class="ops-form-grid cols-4 ops-product-value-fields"><div class="ops-field"><label>外箱長（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageLengthCm" value="'+attr(shipping.lengthCm==null?'':shipping.lengthCm)+'"></div><div class="ops-field"><label>外箱寬（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWidthCm" value="'+attr(shipping.widthCm==null?'':shipping.widthCm)+'"></div><div class="ops-field"><label>外箱高（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageHeightCm" value="'+attr(shipping.heightCm==null?'':shipping.heightCm)+'"></div><div class="ops-field"><label>包裝重量（kg）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWeightKg" value="'+attr(shipping.weightKg==null?'':shipping.weightKg)+'"></div></div><div class="ops-product-shipping-actions"><button class="ops-button soft" type="button" data-action="product-shipping-preset">套用小型商品建議值</button><small>你的人工勾選是最後決定；網路尺寸只提供參考。</small></div><div id="productShippingSummary">'+productShippingSummaryHtml(shipping)+'</div><div class="ops-form-grid cols-3"><div class="ops-field"><label>尺寸資料狀態</label><select class="ops-select" name="packageResearchStatus">'+packageResearchStatusOptions(row.packageResearchStatus)+'</select></div><div class="ops-field full ops-product-name-field"><label>尺寸資料來源網址</label><input class="ops-input" type="url" name="packageResearchSourceUrl" value="'+attr(row.packageResearchSourceUrl)+'"></div><div class="ops-field full"><label>尺寸判斷備註</label><textarea class="ops-textarea" name="packageResearchNote">'+escapeHtml(row.packageResearchNote)+'</textarea></div><div class="ops-field full"><label>案件備註</label><textarea class="ops-textarea" name="caseNote">'+escapeHtml(row.caseNote)+'</textarea></div></div>';
     const platformSection=productListingSection('EasyStore → 蝦皮','官網內容完成後，再由既有同步方式發佈蝦皮。',easySection,true)+productListingSection('MOMO','只顯示 MOMO 特別需要的欄位。',momoSection,false)+productListingSection('酷澎','只顯示酷澎特別需要的欄位。',coupangSection,false)+productListingSection('物流與包裝','AI 可先填參考值，你的判斷仍是最後結果。',shippingSection,false);
-    return '<form id="productListingCaseForm" data-id="'+attr(p.docId)+'" data-exists="'+(exists?'1':'0')+'" data-identity-manual-confirmed="'+(row.identityManualConfirmed?'1':'0')+'">'
+    const codexAction='<section class="ops-listing-codex-action"><div class="ops-listing-codex-heading"><span>✦</span><div><b>接下來交給 Codex</b><small>自動整理文案與平台欄位、完成需要的圖片，接著處理官網、蝦皮、MOMO 與酷澎。</small></div></div><button class="ops-button primary" type="button" data-action="product-listing-codex-complete">交給 Codex 完成四通路上架</button><p>若遇到 OTP、NCC、重複商品或平台拒絕，會停在待處理並列出原因，不會猜測或重複建立商品。</p><div id="productListingCodexStatus"></div></section>';
+    const advancedSection=productListingSection('需要時才修改','商品名稱、介紹、平台分類與物流都由 Codex 自動整理。',commonSection+productListingSection('目前上架圖片','',mediaSection,false)+platformSection,false);
+    return '<form id="productListingCaseForm" data-id="'+attr(p.docId)+'" data-exists="'+(exists?'1':'0')+'" data-identity-manual-confirmed="'+(row.identityManualConfirmed?'1':'0')+'" data-ai-research-status="'+attr(row.aiResearchStatus)+'" data-image-generation-status="'+attr(row.lastImageGenerationStatus)+'">'
       +'<section class="ops-listing-case-summary'+(image?'':' no-image')+'">'+(image?'<img src="'+attr(image)+'" alt="'+attr(p.originalName||p.name)+'">':'')+'<div><span>準備上架</span><h3>'+escapeHtml(p.originalName||p.name)+'</h3><p>SKU '+escapeHtml(p.sku||'未設定')+'｜庫存 '+escapeHtml(formatNumber(p.currentStock))+'｜最後更新 '+escapeHtml(updated)+'</p></div></section>'
       +'<input type="hidden" name="internalSku" value="'+attr(p.sku||'')+'"><input type="hidden" name="internalName" value="'+attr(p.originalName||p.name||'')+'"><input type="hidden" name="easyStorePrice" value="'+attr(p.easyStorePrice==null?'':p.easyStorePrice)+'"><input type="hidden" name="momoPrice" value="'+attr(p.momoPrice==null?'':p.momoPrice)+'"><input type="hidden" name="coupangPrice" value="'+attr(p.coupangPrice==null?'':p.coupangPrice)+'"><input type="hidden" name="currentStock" value="'+attr(p.currentStock)+'"><input type="hidden" name="packageMeasurementMode" value="'+attr(row.packageMeasurementMode||'')+'">'
-      +hiddenState+productListingModeSectionHtml(p,row)+productListingSection('1. 提供商品資料','',sourceSection,true)
-      +productListingSection('2. 商品介紹與圖片','',commonSection+productListingSection('上架圖片','',mediaSection,false),row.aiResearchStatus==='completed')
-      +productListingSection('3. 各平台與物流','需要時再展開',platformSection,false)
-      +'<div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉</button><button class="ops-button soft" type="button" data-action="product-listing-case-preview">儲存並檢查</button><button class="ops-button soft" type="submit">儲存上架資料</button><button class="ops-button primary" type="button" data-action="product-listing-publish-prepare">確認上架</button></div></form>';
+      +hiddenState+productListingModeSectionHtml(p,row)+productListingSection('圖片與注意事項','',sourceSection,true)
+      +codexAction+advancedSection
+      +'<div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉</button><button class="ops-button primary" type="button" data-action="product-listing-codex-complete">交給 Codex 完成上架</button></div></form>';
   }
   async function openProductListingCase(id,options){
     const p=catalogById(id);if(!p)return toast('找不到商品','請重新讀取資料。','error');
@@ -4015,6 +4016,69 @@ function ensureSalesClock(){
     recognition.onerror=function(event){if(event&&event.error!=='aborted')toast('語音輸入中斷',event.error==='not-allowed'?'請允許瀏覽器使用麥克風。':'請再試一次。','warning');};
     recognition.onend=function(){productListingSpeechRecognition=null;button.textContent='🎙 說話輸入';button.classList.remove('active');};
     try{recognition.start();}catch(error){productListingSpeechRecognition=null;button.textContent='🎙 說話輸入';button.classList.remove('active');toast('無法啟動麥克風',errorMessage(error),'error');}
+  }
+  function setProductListingCodexUi(form,status,title,detail){
+    if(!form)return;
+    const box=query('#productListingCodexStatus',form),running=status==='running';
+    lockProductListingCaseForm(form,running);
+    queryAll('[data-action="product-listing-codex-complete"]',form).forEach(function(button){
+      button.disabled=running;button.setAttribute('aria-busy',running?'true':'false');button.textContent=running?'Codex 處理中…':'交給 Codex 完成四通路上架';
+    });
+    if(box)box.innerHTML='<div class="ops-product-ai-status '+(status==='failed'?'failed':status==='completed'?'completed':'running')+'"><span>'+(running?'<i class="ops-product-ai-spinner" aria-hidden="true"></i>':status==='failed'?'!':'✓')+'</span><div><b>'+escapeHtml(title||'Codex 正在處理')+'</b><small>'+escapeHtml(detail||'')+'</small></div></div>';
+  }
+  function productListingCodexResultDraft(product,listingCase){
+    const source=listingCase&&typeof listingCase==='object'?listingCase:{},enabled=source.enabledPlatforms&&typeof source.enabledPlatforms==='object'?source.enabledPlatforms:{};
+    return {id:product.docId,sku:product.sku,name:product.originalName||product.name,researchedName:clean(source.researchedProductName),shippingDecision:clean(source.shippingDecision),enabledEasyStoreShopee:enabled.easyStoreShopee!==false,enabledMomo:enabled.momo!==false,enabledCoupang:enabled.coupang!==false};
+  }
+  async function completeProductListingWithCodex(form){
+    if(!form||form.dataset.codexRunning==='1')return null;
+    if(!global.firebase||!global.firebase.functions)throw new Error('商品上架服務尚未載入，請重新整理頁面。');
+    const id=clean(form.dataset.id),product=catalogById(id);if(!id||!product)throw new Error('找不到商品上架資料');
+    const initialDraft=productListingDraftFromForm(form),selectedImages=queryAll('[name="selectedReferenceImageUrls"]:checked',form).map(function(input){return safeUrl(input.value);}).filter(Boolean).slice(0,12);
+    const groupProducts=initialDraft.variantGroupEnabled?[product].concat(initialDraft.variantGroupItems.map(function(item){return catalogById(item.productId);}).filter(Boolean)):[product];
+    const ok=await confirmAction('交給 Codex 完成四通路上架','將實際建立或更新 EasyStore 官網、啟動蝦皮助手，並把 MOMO、酷澎送入正式處理。遇到 OTP、NCC、重複商品或缺少必要資料時會停止該平台並列出原因。確定開始嗎？','開始處理');if(!ok)return null;
+    form.dataset.codexRunning='1';
+    try{
+      await requireEasyStoreManagerAuth();
+      await saveProductListingCase(form,false,true,true);
+      setProductListingCodexUi(form,'running','商品資料已儲存','已保留你的圖片選擇、修改要求、細項設定與平台價格。');
+      const shouldResearch=clean(form.dataset.aiResearchStatus)!=='completed'||!clean(query('[name="productDescription"]',form)&&query('[name="productDescription"]',form).value);
+      if(shouldResearch){
+        setProductListingCodexUi(form,'running','正在整理商品名稱與文案','Codex 會依商品資料填好官網、蝦皮、MOMO 與酷澎需要的內容。');
+        const researchCallable=global.firebase.app().functions('us-central1').httpsCallable('researchProductListingCase',{timeout:9*60*1000});
+        await researchCallable({productId:id,force:false});
+      }
+      let caseSnap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),listingCase=caseSnap.exists?caseSnap.data()||{}:{};
+      const preparedImages=normalizeProductResearchSourceUrls(listingCase.listingImageUrls);
+      const imagesToProcess=selectedImages.length?selectedImages:normalizeProductResearchSourceUrls(listingCase.selectedReferenceImageUrls).slice(0,12);
+      if(!preparedImages.length&&imagesToProcess.length){
+        setProductListingCodexUi(form,'running','正在完成上架圖片','第一張套用綠色主圖格式，其餘圖片轉成台灣繁體並依平台順序整理。');
+        await requestProductListingImageGeneration(id,imagesToProcess);
+        caseSnap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get();listingCase=caseSnap.exists?caseSnap.data()||{}:{};
+      }
+      setProductListingCodexUi(form,'running','正在送出四通路上架','官網會直接建立或更新；蝦皮交給助手；MOMO 與酷澎送入正式佇列。');
+      if(groupProducts.length>1){
+        const rows=[];
+        for(const rowProduct of groupProducts){
+          try{rows.push({id:rowProduct.docId,sku:rowProduct.sku,name:rowProduct.originalName||rowProduct.name,result:await callProductListingPublish(rowProduct.docId)});}
+          catch(error){rows.push({id:rowProduct.docId,sku:rowProduct.sku,name:rowProduct.originalName||rowProduct.name,error:errorMessage(error)});}
+        }
+        setProductListingCodexUi(form,'completed','已完成可自動執行的步驟','每個商品編號的結果會分開顯示；需要登入或人工判斷的平台會標示待處理。');
+        openProductVariantGroupPublishResult(rows,initialDraft);return rows;
+      }
+      const result=await callProductListingPublish(id),resultDraft=productListingCodexResultDraft(product,listingCase);
+      setProductListingCodexUi(form,'completed','四通路工作已送出','下一頁會逐一顯示官網、蝦皮、MOMO 與酷澎的真實結果。');
+      openProductListingPublishResult(result,resultDraft);
+      if(result&&result.platforms&&result.platforms.shopee&&result.platforms.shopee.autofillPayload){
+        try{await openShopeeAutofillHelper();}catch(error){toast('蝦皮助手需要手動繼續',errorMessage(error),'warning');}
+      }
+      return result;
+    }catch(error){
+      const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)setProductListingCodexUi(current,'failed','Codex 尚未完成',errorMessage(error));
+      throw error;
+    }finally{
+      const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)current.dataset.codexRunning='0';
+    }
   }
   async function callProductListingPublish(productId){
     if(!global.firebase||!global.firebase.functions)throw new Error('商品上架服務尚未載入，請重新整理頁面。');
@@ -5025,6 +5089,9 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
       const form=el.closest('#productListingCaseForm'),items=productVariantGroupItemsFromForm(form).filter(function(item){return item.productId!==el.dataset.id;});renderProductVariantGroupItems(form,items);form.dataset.dirty='1';return;
     }
     if(action==='product-ai-research-run')return runProductAiResearch(byId('productListingCaseForm'),true,false);
+    if(action==='product-listing-codex-complete'){
+      return completeProductListingWithCodex(byId('productListingCaseForm')).catch(function(error){toast('四通路上架尚未完成',errorMessage(error),'error');});
+    }
     if(action==='product-image-collection-toggle'){
       el.disabled=true;
       return startProductImageCollection(byId('productListingCaseForm')).catch(function(error){toast('收圖模式未完成',errorMessage(error),'error');});

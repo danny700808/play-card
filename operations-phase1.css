@@ -1017,6 +1017,14 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-product-ai-main-action{display:grid;gap:7px;margin-top:2px}
 .ops-product-ai-main-action .ops-button{width:100%;min-height:48px;font-size:15px}
 .ops-product-ai-main-action>small{text-align:center;color:#607581;font-size:10px;line-height:1.45}
+.ops-listing-codex-action{display:grid;gap:12px;margin:14px 0;padding:16px;border:2px solid #75bfa0;border-radius:16px;background:linear-gradient(145deg,#f1fbf6,#f8fcfa);box-shadow:0 8px 22px rgba(28,120,89,.08)}
+.ops-listing-codex-heading{display:flex;align-items:flex-start;gap:11px}
+.ops-listing-codex-heading>span{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border-radius:12px;background:#1f765a;color:#fff;font-size:18px;font-weight:900}
+.ops-listing-codex-heading>div{display:grid;gap:4px;min-width:0}
+.ops-listing-codex-heading b{color:#174f3d;font-size:16px}
+.ops-listing-codex-heading small,.ops-listing-codex-action>p{margin:0;color:#587066;font-size:11px;line-height:1.55}
+.ops-listing-codex-action>.ops-button{width:100%;min-height:52px;font-size:15px}
+.ops-listing-codex-action .ops-product-ai-status{margin:0}
 .ops-product-ai-status{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;margin:10px 0 12px;padding:11px 12px;border:1px solid #d5e3dd;border-radius:13px;background:#f6faf8}
 .ops-product-ai-status>span{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#dcefe6;color:#17684e;font-size:11px;font-weight:950}
 .ops-product-ai-status b,.ops-product-ai-status small{display:block}
