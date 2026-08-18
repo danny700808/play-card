@@ -351,6 +351,7 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(storageRules, /ops-product-listing-cases/);
   assert.match(storageRules, /isManagerAuth/);
   assert.match(storageRules, /generated/);
+  assert.match(storageRules, /completed/);
   assert.match(generator, /requireEasyStoreManagerAuth/);
   assert.match(generator, /requestProductListingImageGeneration/);
   assert.match(generationRequester, /generateProductListingImage/);
