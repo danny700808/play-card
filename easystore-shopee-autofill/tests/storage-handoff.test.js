@@ -151,7 +151,7 @@ test("extension package enables the supplier image collector service worker", ()
   const bridge = fs.readFileSync(path.join(extensionRoot, "bridge.js"), "utf8");
   const easystore = fs.readFileSync(path.join(extensionRoot, "easystore.js"), "utf8");
 
-  assert.equal(manifest.version, "0.3.17");
+  assert.equal(manifest.version, "0.3.18");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));

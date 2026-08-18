@@ -156,17 +156,22 @@
     updatePanel();
   }
 
+  async function deliverPreparedImage(image) {
+    const result = await chrome.runtime.sendMessage({
+      type: helpers.CAPTURE_DATA_MESSAGE,
+      payload: { sessionId: session.sessionId, productId: session.productId, image }
+    });
+    if (!result || !result.ok) throw new Error(result && result.error ? result.error : "截圖傳送失敗");
+    applyCollectionResult(result);
+    return result;
+  }
+
   async function sendPreparedImage(image) {
     if (sending || !session || !session.active) return;
     sending = true;
     setStatus("正在送到準備上架商品…");
     try {
-      const result = await chrome.runtime.sendMessage({
-        type: helpers.CAPTURE_DATA_MESSAGE,
-        payload: { sessionId: session.sessionId, productId: session.productId, image }
-      });
-      if (!result || !result.ok) throw new Error(result && result.error ? result.error : "截圖傳送失敗");
-      applyCollectionResult(result);
+      await deliverPreparedImage(image);
     } catch (error) {
       setStatus(String(error && error.message ? error.message : error), true);
     } finally {
@@ -192,9 +197,29 @@
       next.element.classList.add("youzi-image-collector-collected");
       applyCollectionResult(result);
     } catch (error) {
-      queuedUrls.delete(next.url);
-      next.element.classList.remove("youzi-image-collector-hover");
-      setStatus(String(error && error.message ? error.message : error), true);
+      try {
+        setStatus("原圖讀取受限，正在改用畫面截圖…");
+        const rawRect = next.element.getBoundingClientRect();
+        const rect = {
+          left: Math.max(0, rawRect.left),
+          top: Math.max(0, rawRect.top),
+          width: Math.max(0, Math.min(window.innerWidth - Math.max(0, rawRect.left), rawRect.width)),
+          height: Math.max(0, Math.min(window.innerHeight - Math.max(0, rawRect.top), rawRect.height))
+        };
+        if (rect.width < 20 || rect.height < 20) throw error;
+        next.element.classList.remove("youzi-image-collector-hover");
+        panel.hidden = true;
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const capture = await chrome.runtime.sendMessage({ type: helpers.CAPTURE_MESSAGE });
+        if (!capture || !capture.ok) throw new Error(capture && capture.error ? capture.error : "無法截取目前圖片");
+        await deliverPreparedImage(await cropVisibleCapture(capture.dataUrl, rect));
+        collectedUrls.add(next.url);
+        next.element.classList.add("youzi-image-collector-collected");
+      } catch (fallbackError) {
+        queuedUrls.delete(next.url);
+        next.element.classList.remove("youzi-image-collector-hover");
+        setStatus(String(fallbackError && fallbackError.message ? fallbackError.message : fallbackError), true);
+      }
     } finally {
       sending = false;
       if (session && session.active) processQueue();
