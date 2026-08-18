@@ -43,7 +43,10 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.match(snapshot.bodyHtml, /product-listing-description-promo-1\.jpg/);
   assert.match(snapshot.bodyHtml, /product-listing-description-promo-2\.jpg/);
   assert.deepEqual(snapshot.momoDelivery, { method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流' });
-  assert.equal(snapshot.momoCatalogPolicy.targetListings, 990);
+  assert.equal(snapshot.momoCatalogPolicy.targetListings, 1000);
+  assert.equal(snapshot.momoCatalogPolicy.reservedSlots, 0);
+  assert.equal(snapshot.momoCatalogPolicy.zeroStockAction, 'keep-published-by-default');
+  assert.equal(snapshot.momoCatalogPolicy.preserveSoldOutWithSales, true);
   assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
 });
 
@@ -68,6 +71,35 @@ test('listing snapshot keeps seven gallery slots and moves overflow product imag
   assert.ok(snapshot.coupangDescriptionHtml.indexOf('product-7.jpg') < snapshot.coupangDescriptionHtml.indexOf('product-listing-description-promo-1.jpg'));
   assert.equal(snapshot.imagePolicy.galleryMaximum, 7);
   assert.equal(snapshot.imagePolicy.sourceImageMaximum, 12);
+});
+
+test('Coupang uses the second clean product image as main while MOMO keeps the green template first', () => {
+  const productImages = Array.from({ length: 6 }, (_, index) => `https://example.com/product-${index + 1}.jpg`);
+  const snapshot = helpers.buildListingSnapshot('p-platform-images', {
+    internalSku: 'PLATFORM-IMG', internalName: '平台主圖測試', currentStock: 1,
+    easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
+  }, {
+    productDescription: '完整商品介紹', listingImageUrls: productImages,
+    enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
+  });
+
+  const momo = helpers.platformPayloadSnapshot('MOMO', snapshot);
+  const coupang = helpers.platformPayloadSnapshot('Coupang', snapshot);
+  assert.equal(momo.images[0], productImages[0]);
+  assert.equal(coupang.images[0], productImages[1]);
+  assert.equal(coupang.images[1], productImages[0]);
+  assert.equal(coupang.imagePolicy.brandedGreenTemplateAllowedAsMain, false);
+  assert.deepEqual(helpers.coupangMissingFields(snapshot), []);
+});
+
+test('Coupang stops before queueing when no second clean product image exists', () => {
+  const snapshot = helpers.buildListingSnapshot('p-coupang-image-missing', {
+    internalSku: 'COUPANG-ONE-IMG', internalName: '只有綠底主圖', currentStock: 1, coupangPrice: 1200
+  }, {
+    productDescription: '完整商品介紹', listingImageUrls: ['https://example.com/green-template.jpg'],
+    enabledPlatforms: { easyStoreShopee: false, momo: false, coupang: true }
+  });
+  assert.match(helpers.coupangMissingFields(snapshot).join('、'), /酷澎乾淨主圖/);
 });
 
 test('publish results become product-level platform status without claiming queued work is live', () => {

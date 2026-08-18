@@ -21,7 +21,7 @@ const SHOPEE_AUTOFILL_SCHEMA_VERSION = 4;
 const SELLER_LARGE_HOME_FEE_TWD = 100;
 const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'processing']);
 const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
-const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://youzi-c1b74.web.app').replace(/\/$/, '');
+const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
 const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const DESCRIPTION_PROMO_IMAGE_URLS = [
   `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`,
@@ -426,7 +426,15 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     packageWeightKg: numberOrNull(listingCase.packageWeightKg),
     shippingDecision: clean(listingCase.shippingDecision),
     momoDelivery: MOMO_THIRD_PARTY_DELIVERY,
-    momoCatalogPolicy: { maximumListings: 1000, targetListings: 990, reservedSlots: 10, zeroStockAction: 'unpublish', violationRecovery: 'republish-only-when-stock-positive' },
+    momoCatalogPolicy: {
+      maximumListings: 1000,
+      targetListings: 1000,
+      reservedSlots: 0,
+      zeroStockAction: 'keep-published-by-default',
+      preserveSoldOutWithSales: true,
+      requireSalesHistoryBeforeUnpublish: true,
+      violationRecovery: 'republish-when-data-is-valid-and-capacity-allows'
+    },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
     imagePolicy: { sourceImageMaximum: 12, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
@@ -878,8 +886,26 @@ function coupangMissingFields(snapshot) {
   if (!snapshot.coupangTitle) missing.push('酷澎標題');
   if (!snapshot.description) missing.push('完整商品介紹');
   if (!snapshot.images.length) missing.push('上架圖片');
+  if ((snapshot.productImageUrls || []).length < 2) missing.push('酷澎乾淨主圖（需第二張商品圖）');
   if (snapshot.coupangPrice == null) missing.push('酷澎售價');
   return missing;
+}
+
+function platformPayloadSnapshot(platform, snapshot) {
+  if (clean(platform).toLowerCase() !== 'coupang') return snapshot;
+  const productImages = normalizeUrls(snapshot.productImageUrls, 12);
+  const cleanMainImage = productImages[1] || '';
+  if (!cleanMainImage) return snapshot;
+  const images = [cleanMainImage].concat(normalizeUrls(snapshot.images, 7).filter((url) => url !== cleanMainImage)).slice(0, 7);
+  return {
+    ...snapshot,
+    images,
+    imagePolicy: {
+      ...(snapshot.imagePolicy || {}),
+      platformMainImage: 'second-product-image',
+      brandedGreenTemplateAllowedAsMain: false
+    }
+  };
 }
 
 function platformCategoryResolution(platform, snapshot, product) {
@@ -901,9 +927,10 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
   if (missingFields.length) {
     return { status: 'missing-fields', message: `請先補：${missingFields.join('、')}`, missingFields };
   }
+  const platformSnapshot = platformPayloadSnapshot(platform, snapshot);
   const queueRef = db.collection(PLATFORM_QUEUE_COLLECTION).doc(`${snapshot.productId}_${platform.toLowerCase()}`);
-  const listingPolicy = buildPlatformQueuePolicy(product, platform, snapshot);
-  const categoryResolution = platformCategoryResolution(platform, snapshot, product);
+  const listingPolicy = buildPlatformQueuePolicy(product, platform, platformSnapshot);
+  const categoryResolution = platformCategoryResolution(platform, platformSnapshot, product);
   if (listingPolicy.mode === 'block-duplicate' || listingPolicy.mode === 'block-duplicate-parent') {
     return {
       status: 'action-required',
@@ -913,13 +940,13 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
   if (listingPolicy.mode === 'block-missing-parent') {
     return { status: 'action-required', message: `${platform} 尚未找到父商品的平台編號；請先確認父商品已上架，再加入新細項。` };
   }
-  const fingerprint = platformQueueFingerprint(platform, snapshot);
+  const fingerprint = platformQueueFingerprint(platform, platformSnapshot);
   let reusedStatus = '';
   await db.runTransaction(async (transaction) => {
     const existingSnapshot = await transaction.get(queueRef);
     const existing = existingSnapshot.exists ? existingSnapshot.data() || {} : {};
     const sameIdentity = normalizeSku(existing.sku) === snapshot.sku
-      && clean(existing.productId) === snapshot.productId;
+      && clean(existing.productId) === platformSnapshot.productId;
     const sameFingerprint = clean(existing.fingerprint) === fingerprint;
     const existingStatus = clean(existing.status).toLowerCase();
     if (sameIdentity && sameFingerprint && PLATFORM_QUEUE_PENDING_STATUSES.has(existingStatus)) {
@@ -931,8 +958,8 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
       return;
     }
     transaction.set(queueRef, {
-      jobId, productId: snapshot.productId, sku: snapshot.sku, platform,
-      status: 'awaiting-store-agent', payload: { ...snapshot, categoryResolution }, listingPolicy, fingerprint,
+      jobId, productId: platformSnapshot.productId, sku: platformSnapshot.sku, platform,
+      status: 'awaiting-store-agent', payload: { ...platformSnapshot, categoryResolution }, listingPolicy, fingerprint,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: '全通路營運中心', schemaVersion: 2
@@ -954,7 +981,7 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
   }
   const categoryPrefix = categoryResolution.mode === 'auto' ? `${platform} 會先限定在樂器／樂器配件內，依商品名稱、內容與官方類別推薦自動判斷最接近分類；` : '';
   const message = categoryPrefix + (listingPolicy.mode === 'add-variant-to-existing'
-    ? `${platform} 將把 SKU ${snapshot.sku} 加入指定的既有商品，子編號的庫存與價格仍獨立。`
+    ? `${platform} 將把 SKU ${platformSnapshot.sku} 加入指定的既有商品，子編號的庫存與價格仍獨立。`
     : listingPolicy.existingListingIds.length
     ? `${platform} 已找到既有平台編號，將更新原商品，不會建立第二筆。`
     : `${platform} 將先用完全相同 SKU 查詢：唯一一筆就更新、零筆才建立、多筆或不確定就停止。`);
@@ -1177,6 +1204,7 @@ module.exports = {
     appendShopDescriptionPromos,
     appendShopDescriptionImages,
     listingImageAllocation,
+    platformPayloadSnapshot,
     exactEasyStoreMatches,
     easyStoreMissingFields,
     momoMissingFields,
