@@ -18,7 +18,6 @@ const REQUEST_TIMEOUT_MS = 60 * 1000;
 const PUBLISH_LOCK_MS = 15 * 60 * 1000;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const SHOPEE_AUTOFILL_SCHEMA_VERSION = 4;
-const SELLER_LARGE_HOME_FEE_TWD = 100;
 const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'processing']);
 const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
 const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
@@ -135,6 +134,35 @@ function hsinchuSizeBand(totalCm) {
   return 'S210';
 }
 
+function listingAutomationPolicy() {
+  return {
+    version: 1,
+    duplicateGuard: {
+      matchKey: 'exact-sku+existing-platform-id',
+      reuseExistingDraft: true,
+      neverCreateNewOnRetry: true,
+      stopOnMultipleMatches: true
+    },
+    retry: {
+      retryTransientFailureUntilVerified: true,
+      backoffSeconds: [3, 10, 30],
+      waitForAsyncImageProcessing: true,
+      keepFailedStepForResume: true
+    },
+    publishVerification: {
+      successDialogAloneIsInsufficient: true,
+      requiredChecks: ['platform-list', 'price', 'stock', 'status']
+    },
+    browserTabs: {
+      closeCompletedAgentTabs: true,
+      keepOneAuthenticatedAnchorPerPlatform: true,
+      returnAnchorToPlatformHomeOrProductList: true,
+      neverCloseUnrelatedUserTabs: true
+    },
+    humanHandoffOnlyFor: ['otp', 'captcha', 'login-expired', 'persistent-platform-error']
+  };
+}
+
 function buildShopeeLogistics(snapshot) {
   const dimensions = [snapshot.packageLengthCm, snapshot.packageWidthCm, snapshot.packageHeightCm].map(numberOrNull);
   const hasCompletePackage = dimensions.every((value) => value !== null && value > 0);
@@ -149,17 +177,18 @@ function buildShopeeLogistics(snapshot) {
   const convenienceFits = canVerifyConvenience && longestCm <= 45 && totalCm <= 105 && weightKg <= 5;
   const convenience = decision === 'convenience' && convenienceFits;
   const freight = decision === 'freight';
+  const hsinchu = Boolean((convenience || freight) && hsinchuBand);
   const methods = [
     { label: '黑貓宅急便', enabled: false },
     { label: '蝦皮店到店 - 隔日到貨', enabled: false },
     { label: '蝦皮店到店', enabled: convenience },
     { label: '7-ELEVEN', enabled: convenience },
-    { label: '新竹物流', enabled: Boolean(freight && hsinchuBand), option: freight ? hsinchuBand : '' },
+    { label: '新竹物流', enabled: hsinchu, option: hsinchu ? hsinchuBand : '' },
     { label: '全家', enabled: convenience },
     {
       label: '賣家宅配：大型/超重物品運送',
-      enabled: freight,
-      feeTwd: freight ? SELLER_LARGE_HOME_FEE_TWD : null
+      enabled: false,
+      feeTwd: null
     },
     { label: '嘉里快遞', enabled: false },
     { label: '店到家宅配', enabled: false }
@@ -425,6 +454,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     packageHeightCm: numberOrNull(listingCase.packageHeightCm),
     packageWeightKg: numberOrNull(listingCase.packageWeightKg),
     shippingDecision: clean(listingCase.shippingDecision),
+    automationPolicy: listingAutomationPolicy(),
     momoDelivery: MOMO_THIRD_PARTY_DELIVERY,
     momoCatalogPolicy: {
       maximumListings: 1000,
@@ -605,6 +635,9 @@ function platformQueueFingerprint(platform, snapshot) {
     images: snapshot.images,
     stock: snapshot.stock,
     package: [snapshot.packageLengthCm, snapshot.packageWidthCm, snapshot.packageHeightCm, snapshot.packageWeightKg],
+    automationPolicy: snapshot.automationPolicy,
+    momoDelivery: snapshot.momoDelivery,
+    momoCatalogPolicy: snapshot.momoCatalogPolicy,
     platformFields
   })).digest('hex');
 }
