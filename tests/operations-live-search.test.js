@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260818-codex-one-click-listing-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260818-one-click-publish-retry-v2/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260818-codex-one-click-listing-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260818-one-click-publish-retry-v2/);
   }
 });
 
