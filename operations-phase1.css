@@ -982,6 +982,12 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-variant-item-main .ops-input{padding:7px 9px}
 .ops-listing-variant-item-main>span{font-size:9px;font-weight:900}
 .ops-listing-variant-item-main>span.ok{color:#1b7858}.ops-listing-variant-item-main>span.missing{color:#a14a38}
+.ops-listing-variant-primary-list{margin-top:2px}
+.ops-listing-variant-primary-item{border:2px solid #9bcdb7;background:#f5fbf8;grid-template-columns:150px minmax(0,1fr)}
+.ops-listing-variant-image-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:3px}
+.ops-listing-variant-image-actions>span{color:#315d4d;font-size:9px;font-weight:900}
+.ops-listing-variant-image-actions .ops-button{min-height:32px;padding:6px 9px}
+.ops-listing-variant-primary-note{color:#657970;font-size:9px;line-height:1.5}
 .ops-listing-field-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
 .ops-listing-field-heading label{margin:0!important}
 .ops-listing-field-heading .active{background:#8b3f37;color:#fff}

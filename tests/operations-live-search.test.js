@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260818-traditional-image-qa-v2/);
+    assert.match(html, /operations-phase1\.css\?v=20260818-variant-image-target-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260818-traditional-image-qa-v2/);
+    assert.match(html, /operations-phase1\.js\?v=20260818-variant-image-target-v1/);
   }
 });
 
@@ -390,27 +390,23 @@ test('listing case supports manager-only image processing and a truthful actual 
 
 test('listing case offers one Codex action and keeps detailed platform fields collapsed', () => {
   const renderer = functionBody(engine, 'productListingCaseFormHtml');
-  const oneClick = functionBody(engine, 'completeProductListingWithCodex');
+  const oneClick = functionBody(engine, 'handoffProductListingToCodex');
 
-  assert.match(renderer, /交給 Codex 完成四通路上架/);
+  assert.match(renderer, /交給這個 Codex 對話處理/);
   assert.match(renderer, /需要時才修改/);
   assert.doesNotMatch(renderer, /儲存並檢查/);
   assert.match(oneClick, /saveProductListingCase/);
-  assert.match(oneClick, /researchProductListingCase/);
-  assert.match(oneClick, /requestProductListingImageGeneration/);
-  assert.match(oneClick, /waitForProductListingPhase/);
-  assert.match(oneClick, /lastImageGeneration/);
-  assert.match(oneClick, /productListingImageGenerationReady/);
-  assert.match(oneClick, /部分圖片尚未完成台灣繁體化/);
+  assert.match(oneClick, /caseStatus:'waiting-codex'/);
+  assert.match(oneClick, /codexHandoff:\{status:'pending'/);
+  assert.match(oneClick, /PRODUCT_LISTING_CODEX_THREAD_URL/);
+  assert.doesNotMatch(oneClick, /researchProductListingCase/);
+  assert.doesNotMatch(oneClick, /requestProductListingImageGeneration/);
+  assert.doesNotMatch(oneClick, /callProductListingPublish/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /status\)\.toLowerCase\(\)!=='completed'/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /sourceImageUrls/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /failedCount/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /processedCount/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /localizationStatus==='completed'/);
-  assert.match(oneClick, /callProductListingPublish/);
-  assert.match(oneClick, /callProductListingPublishWithTransientRetry/);
-  assert.match(oneClick, /openShopeeAutofillHelper/);
-  assert.match(oneClick, /OTP、NCC、重複商品/);
   assert.doesNotMatch(oneClick, /dryRun/);
   assert.match(productAiResearchSource, /分類必須限定在「樂器／樂器配件」分類樹內/);
   assert.match(productAiResearchSource, /Only outputs created by this localization run may enter the publish list/);

@@ -34,12 +34,26 @@ test("截錯的來源圖片可從目前商品直接刪除", () => {
 
 test("收圖檔案沿用既有 Firebase 圖片上傳並綁定目前商品", () => {
   assert.match(operationsSource, /productId!==productImageCollectionSession\.productId/);
-  assert.match(operationsSource, /uploadProductReferenceImages\(form,\[collectedImageFile\(payload\)\]\)/);
+  assert.match(operationsSource, /uploadProductVariantReferenceImages\(form,productId,\[collectedImageFile\(payload\)\]\)/);
   assert.match(operationsSource, /每個商品最多保留 12 張來源圖片/);
 });
 
+test("同款商品的每一個編號都有獨立上傳與指定收圖入口", () => {
+  assert.match(operationsSource, /function productVariantGroupPrimaryItemHtml/);
+  assert.match(operationsSource, /data-action="product-variant-image-collection"/);
+  assert.match(operationsSource, /data-variant-image-upload/);
+  assert.match(operationsSource, /startProductImageCollection\(byId\('productListingCaseForm'\),el\.dataset\.id\)/);
+  assert.match(operationsSource, /\.ops-listing-variant-item:not\(\[data-variant-primary="1"\]\)/);
+});
+
+test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () => {
+  assert.match(supplierCollector, /原圖讀取受限，正在改用畫面截圖/);
+  assert.match(supplierCollector, /cropVisibleCapture\(capture\.dataUrl, rect\)/);
+  assert.match(supplierCollector, /deliverPreparedImage/);
+});
+
 test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
-  assert.equal(manifest.version, "0.3.17");
+  assert.equal(manifest.version, "0.3.18");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));
