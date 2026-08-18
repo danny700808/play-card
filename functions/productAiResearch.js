@@ -988,7 +988,12 @@ async function callOpenAIImageQa(apiKey, imageBase64, context, mode, model) {
     body: JSON.stringify(buildProductImageQaRequest(imageBase64, context, mode, model))
   }, REQUEST_TIMEOUT_MS);
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(openAIErrorMessage(response.status, body).replace('OpenAI 研究失敗', '圖片繁體文字檢查失敗'));
+  if (!response.ok) {
+    const error = new Error(openAIErrorMessage(response.status, body).replace('OpenAI 研究失敗', '圖片繁體文字檢查失敗'));
+    error.status = response.status;
+    error.rawBody = body;
+    throw error;
+  }
   let result = null;
   try { result = JSON.parse(responseOutputText(body) || '{}'); } catch (_) { result = null; }
   if (!result || typeof result.approved !== 'boolean') throw new Error('圖片繁體文字檢查沒有回傳有效結果。');
@@ -996,6 +1001,28 @@ async function callOpenAIImageQa(apiKey, imageBase64, context, mode, model) {
     [].concat(result.simplifiedFragments || [], result.mainlandFragments || [], result.garbledFragments || []).some((value) => clean(value));
   result.approved = result.approved === true && !hasReportedIssue;
   return result;
+}
+
+function isRetryableOpenAIImageError(error) {
+  const status = Number(error && error.status) || 0;
+  const rawError = error && error.rawBody && error.rawBody.error || {};
+  const code = clean(rawError.code || rawError.type).toLowerCase();
+  if (/insufficient_quota|billing|credit|account_deactivated/.test(code)) return false;
+  return [408, 409, 425, 429, 500, 502, 503, 504].includes(status);
+}
+
+async function withOpenAIImageRetry(work, delays = [8000, 20000]) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return await work(attempt + 1);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableOpenAIImageError(error) || attempt >= delays.length) throw error;
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(delays[attempt]) || 0)));
+    }
+  }
+  throw lastError || new Error('OpenAI 圖片處理失敗。');
 }
 
 async function mapWithConcurrency(items, limit, worker) {
@@ -1762,20 +1789,23 @@ function registerProductAiResearch(target) {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedBy: 'OpenAI 圖片繁體化'
       }, { merge: true });
-      const batchResults = await mapWithConcurrency(imageJobs, 2, async (job, index) => {
+      // Image edit and visual QA are intentionally serialized. A single product may
+      // contain twelve images; parallel edit+QA requests can exceed short OpenAI
+      // rate windows and fail the entire otherwise valid listing batch.
+      const batchResults = await mapWithConcurrency(imageJobs, 1, async (job, index) => {
         const prompt = job.mode === 'main-template'
           ? buildMainTemplateImagePrompt(context, listingCase)
           : buildLocalizedImagePrompt(context, listingCase, index, imageJobs.length - 1);
-        let edited = await callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model);
+        let edited = await withOpenAIImageRetry(() => callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model));
         const originalSourceFinalUrl = edited.sourceFinalUrl;
         let qaAttempts = 1;
-        let qa = await callOpenAIImageQa(apiKey, edited.imageBase64, context, job.mode, qaModel);
+        let qa = await withOpenAIImageRetry(() => callOpenAIImageQa(apiKey, edited.imageBase64, context, job.mode, qaModel));
         if (!qa.approved) {
           const correctionPrompt = buildProductImageCorrectionPrompt(qa);
-          const corrected = await callOpenAIImageEditBytes(apiKey, Buffer.from(edited.imageBase64, 'base64'), correctionPrompt, model);
+          const corrected = await withOpenAIImageRetry(() => callOpenAIImageEditBytes(apiKey, Buffer.from(edited.imageBase64, 'base64'), correctionPrompt, model));
           edited = { ...corrected, sourceFinalUrl: originalSourceFinalUrl };
           qaAttempts = 2;
-          qa = await callOpenAIImageQa(apiKey, edited.imageBase64, context, job.mode, qaModel);
+          qa = await withOpenAIImageRetry(() => callOpenAIImageQa(apiKey, edited.imageBase64, context, job.mode, qaModel));
         }
         if (!qa.approved) {
           const qaIssues = [].concat(qa.simplifiedFragments || [], qa.mainlandFragments || [], qa.garbledFragments || []).map(clean).filter(Boolean);
@@ -1895,6 +1925,8 @@ module.exports = {
   productImageQaSchema,
   buildProductImageQaRequest,
   buildProductImageCorrectionPrompt,
+  isRetryableOpenAIImageError,
+  withOpenAIImageRetry,
   extractImageCandidatesFromHtml,
   isBlockedCommercePage,
   isPrivateIpAddress,
