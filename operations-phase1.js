@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.18-one-click-publish-retry-v2';
+  const VERSION = '2026.08.18-traditional-image-qa-v2';
   let pendingShopeeAutofillPayload = null;
   let pendingShopeeAutofillPayloadQueue = [];
   let productListingSpeechRecognition = null;
@@ -3213,7 +3213,7 @@ function ensureSalesClock(){
   function normalizeGeneratedListingImages(value){
     return (Array.isArray(value)?value:[]).map(function(row){
       const url=safeUrl(row&&row.url);if(!url)return null;
-      return {id:clean(row&&row.id),url:url,status:clean(row&&row.status)||'candidate',mode:clean(row&&row.mode),model:clean(row&&row.model),sourceImageUrl:safeUrl(row&&row.sourceImageUrl),sourceOrder:Math.max(0,Number(row&&row.sourceOrder)||0),instructions:clean(row&&row.instructions),createdAt:row&&row.createdAt||''};
+      return {id:clean(row&&row.id),url:url,status:clean(row&&row.status)||'candidate',mode:clean(row&&row.mode),model:clean(row&&row.model),qaStatus:clean(row&&row.qaStatus),qaModel:clean(row&&row.qaModel),qaAttempts:Math.max(0,Number(row&&row.qaAttempts)||0),sourceImageUrl:safeUrl(row&&row.sourceImageUrl),sourceOrder:Math.max(0,Number(row&&row.sourceOrder)||0),instructions:clean(row&&row.instructions),createdAt:row&&row.createdAt||''};
     }).filter(Boolean).slice(-20);
   }
   function normalizeProductShopeeAttributes(value){
@@ -3775,7 +3775,7 @@ function ensureSalesClock(){
   }
   async function requestProductListingImageGeneration(id,reference){
     if(!global.firebase||!global.firebase.functions)throw new Error('AI 製圖服務尚未載入，請重新整理頁面。');
-    const callable=global.firebase.app().functions('us-central1').httpsCallable('generateProductListingImage',{timeout:9*60*1000}),response=await callable({productId:id,imageUrls:reference});
+    const callable=global.firebase.app().functions('us-central1').httpsCallable('generateProductListingImage',{timeout:20*60*1000}),response=await callable({productId:id,imageUrls:reference});
     return response&&response.data||{};
   }
   async function waitForProductListingPhase(id,field,label,timeoutMs){
@@ -4044,9 +4044,9 @@ function ensureSalesClock(){
   }
   function productListingImageGenerationReady(listingCase,sourceImageUrls,instructions){
     const source=listingCase&&typeof listingCase==='object'?listingCase:{},phase=source.lastImageGeneration&&typeof source.lastImageGeneration==='object'?source.lastImageGeneration:{},expected=normalizeProductResearchSourceUrls(sourceImageUrls).slice(0,12),completedSources=normalizeProductResearchSourceUrls(phase.sourceImageUrls).slice(0,12),generated=normalizeGeneratedListingImages(source.generatedListingImages),listingUrls=normalizeProductResearchSourceUrls(source.listingImageUrls),readyBySource=new Map();
-    generated.forEach(function(row){if(row.status==='ready'&&row.sourceImageUrl&&row.url)readyBySource.set(row.sourceImageUrl,row.url);});
+    generated.forEach(function(row){if(row.status==='ready'&&row.qaStatus==='approved'&&row.sourceImageUrl&&row.url)readyBySource.set(row.sourceImageUrl,row.url);});
     if(!expected.length||clean(phase.status).toLowerCase()!=='completed'||clean(phase.instructions)!==clean(instructions))return false;
-    if(Number(phase.requestedCount||0)!==expected.length||Number(phase.completedCount||0)!==expected.length||Number(phase.failedCount||0)!==0)return false;
+    if(Number(phase.requestedCount||0)!==expected.length||Number(phase.completedCount||0)!==expected.length||Number(phase.verifiedCount||0)!==expected.length||Number(phase.failedCount||0)!==0)return false;
     if(completedSources.length!==expected.length||completedSources.some(function(url,index){return url!==expected[index];}))return false;
     return expected.every(function(url){const generatedUrl=readyBySource.get(url);return !!generatedUrl&&listingUrls.includes(generatedUrl);});
   }
@@ -4075,7 +4075,7 @@ function ensureSalesClock(){
       let caseSnap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),listingCase=caseSnap.exists?caseSnap.data()||{}:{};
       if(clean(listingCase.lastImageGeneration&&listingCase.lastImageGeneration.status).toLowerCase()==='running'){
         setProductListingCodexUi(form,'running','正在等待上架圖片完成','圖片尚在轉換；完成後才會送往四個通路。');
-        listingCase=await waitForProductListingPhase(id,'lastImageGeneration','上架圖片處理',9*60*1000);
+        listingCase=await waitForProductListingPhase(id,'lastImageGeneration','上架圖片處理',20*60*1000);
       }
       const savedSelection=normalizeProductResearchSourceUrls(listingCase.selectedReferenceImageUrls).slice(0,12),savedReferences=normalizeProductResearchSourceUrls(listingCase.referenceImageUrls).slice(0,12),productImages=normalizeProductResearchSourceUrls(productVariantImages(product)).slice(0,12);
       const imagesToProcess=selectedImages.length?selectedImages:savedSelection.length?savedSelection:savedReferences.length?savedReferences:productImages;
@@ -4086,7 +4086,7 @@ function ensureSalesClock(){
         setProductListingCodexUi(form,'running','正在完成上架圖片','第一張套用綠色主圖格式，其餘圖片轉成台灣繁體並依平台順序整理。');
         await requestProductListingImageGeneration(id,imagesToProcess);
         caseSnap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get();listingCase=caseSnap.exists?caseSnap.data()||{}:{};
-        if(clean(listingCase.lastImageGeneration&&listingCase.lastImageGeneration.status).toLowerCase()==='running')listingCase=await waitForProductListingPhase(id,'lastImageGeneration','上架圖片處理',9*60*1000);
+        if(clean(listingCase.lastImageGeneration&&listingCase.lastImageGeneration.status).toLowerCase()==='running')listingCase=await waitForProductListingPhase(id,'lastImageGeneration','上架圖片處理',20*60*1000);
         imageGenerationReady=productListingImageGenerationReady(listingCase,imagesToProcess,imageInstructions);
       }
       if(!imageGenerationReady)throw new Error('部分圖片尚未完成台灣繁體化，已停止正式發布；原圖與工作紀錄都已保留，可稍後安全重試。');

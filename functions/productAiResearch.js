@@ -14,6 +14,7 @@ const REGION = 'us-central1';
 const DEFAULT_MODEL = 'gpt-5.6-sol';
 const DEFAULT_IMAGE_WORKFLOW_MODEL = 'gpt-5.6';
 const DEFAULT_IMAGE_EDIT_MODEL = 'gpt-image-2';
+const DEFAULT_IMAGE_QA_MODEL = 'gpt-5.6-sol';
 const PRODUCT_COLLECTION = 'opsInternalProducts';
 const LISTING_CASE_COLLECTION = 'opsProductListingCases';
 const LOCK_TTL_MS = 10 * 60 * 1000;
@@ -623,6 +624,72 @@ function buildMainTemplateImagePrompt(context, listingCase) {
   ].join('\n');
 }
 
+function productImageQaSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['approved', 'simplifiedChineseFound', 'mainlandWordingFound', 'garbledChineseFound', 'simplifiedFragments', 'mainlandFragments', 'garbledFragments', 'summary'],
+    properties: {
+      approved: { type: 'boolean' },
+      simplifiedChineseFound: { type: 'boolean' },
+      mainlandWordingFound: { type: 'boolean' },
+      garbledChineseFound: { type: 'boolean' },
+      simplifiedFragments: { type: 'array', maxItems: 20, items: { type: 'string' } },
+      mainlandFragments: { type: 'array', maxItems: 20, items: { type: 'string' } },
+      garbledFragments: { type: 'array', maxItems: 20, items: { type: 'string' } },
+      summary: { type: 'string' }
+    }
+  };
+}
+
+function buildProductImageQaRequest(imageBase64, context, mode, model) {
+  return {
+    model: model || DEFAULT_IMAGE_QA_MODEL,
+    store: false,
+    reasoning: { effort: 'medium' },
+    max_output_tokens: 3000,
+    input: [{
+      role: 'user',
+      content: [
+        {
+          type: 'input_text',
+          text: [
+            '你是台灣電商商品圖片的發布前文字品管。請逐一檢查圖片內所有可見中文，不可因為圖片是 AI 產生就假設正確。',
+            '找出仍使用的簡體字、中國大陸用語，以及無法正常閱讀的亂碼、錯字或殘缺中文字。只回報圖片上實際看見的字，不可臆測。',
+            '繁簡字形相同的中文字不算簡體；品牌、型號、英文、數字與單位本身不算問題。',
+            '若任何一項問題存在，approved 必須為 false；只有全部中文均為自然台灣繁體且可正常閱讀時，approved 才能為 true。',
+            `圖片類型：${mode === 'main-template' ? '綠色模板商品主圖' : '商品介紹圖'}`,
+            `商品：${context.name || '未命名商品'}`
+          ].join('\n')
+        },
+        { type: 'input_image', image_url: `data:image/png;base64,${clean(imageBase64)}`, detail: 'high' }
+      ]
+    }],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'taiwan_product_image_text_qa',
+        strict: true,
+        schema: productImageQaSchema()
+      }
+    }
+  };
+}
+
+function buildProductImageCorrectionPrompt(qa) {
+  const source = qa && typeof qa === 'object' ? qa : {};
+  const issues = [];
+  (Array.isArray(source.simplifiedFragments) ? source.simplifiedFragments : []).forEach((text) => issues.push(`簡體：${clean(text)}`));
+  (Array.isArray(source.mainlandFragments) ? source.mainlandFragments : []).forEach((text) => issues.push(`大陸用語：${clean(text)}`));
+  (Array.isArray(source.garbledFragments) ? source.garbledFragments : []).forEach((text) => issues.push(`亂碼／錯字：${clean(text)}`));
+  return [
+    '這張台灣電商圖片未通過文字品管。只修正下列文字問題，其他所有內容保持不變。',
+    '把簡體字改為自然台灣繁體，把中國大陸用語改為台灣常用說法；亂碼或殘缺中文字須改成可正常閱讀的正確繁體中文。',
+    '嚴格保留商品、品牌、型號、顏色、尺寸、數字、單位、構圖、背景、圖示、文字位置與整體風格；不得新增未證實內容。',
+    `已偵測問題：${issues.filter(Boolean).join('；') || clean(source.summary) || '中文文字未通過品管，請逐字檢查修正'}`
+  ].join('\n');
+}
+
 function imageEditOutputSize(width, height) {
   const sourceWidth = Math.max(1, Number(width) || 1);
   const sourceHeight = Math.max(1, Number(height) || 1);
@@ -866,11 +933,8 @@ async function downloadImageForEdit(value) {
   throw new Error('無法讀取來源圖片。');
 }
 
-async function callOpenAIImageEdit(apiKey, sourceImageUrls, prompt, model) {
-  const urls = (Array.isArray(sourceImageUrls) ? sourceImageUrls : [sourceImageUrls]).map(safeHttpUrl).filter(Boolean).slice(0, 4);
-  if (!urls.length) throw new Error('找不到可編輯的來源圖片。');
-  const sources = [];
-  for (const url of urls) sources.push(await downloadImageForEdit(url));
+async function callOpenAIImageEditWithSources(apiKey, sources, prompt, model) {
+  if (!Array.isArray(sources) || !sources.length) throw new Error('找不到可編輯的來源圖片。');
   const source = sources[0];
   const form = new FormData();
   form.append('model', model || DEFAULT_IMAGE_EDIT_MODEL);
@@ -895,6 +959,43 @@ async function callOpenAIImageEdit(apiKey, sourceImageUrls, prompt, model) {
   const imageBase64 = clean(data[0] && data[0].b64_json);
   if (!imageBase64) throw new Error('OpenAI 沒有回傳可使用的繁體化圖片。');
   return { response: body, imageBase64, sourceFinalUrl: source.finalUrl, sourceFinalUrls: sources.map((item) => item.finalUrl) };
+}
+
+async function callOpenAIImageEdit(apiKey, sourceImageUrls, prompt, model) {
+  const urls = (Array.isArray(sourceImageUrls) ? sourceImageUrls : [sourceImageUrls]).map(safeHttpUrl).filter(Boolean).slice(0, 4);
+  if (!urls.length) throw new Error('找不到可編輯的來源圖片。');
+  const sources = [];
+  for (const url of urls) sources.push(await downloadImageForEdit(url));
+  return callOpenAIImageEditWithSources(apiKey, sources, prompt, model);
+}
+
+async function callOpenAIImageEditBytes(apiKey, imageBytes, prompt, model) {
+  const bytes = Buffer.isBuffer(imageBytes) ? imageBytes : Buffer.from(imageBytes || []);
+  if (!bytes.length || bytes.length > 25 * 1024 * 1024) throw new Error('待修正圖片大小不正確。');
+  const metadata = await sharp(bytes, { limitInputPixels: 100000000 }).metadata().catch(() => ({}));
+  const width = Math.max(0, Number(metadata.width) || 0), height = Math.max(0, Number(metadata.height) || 0);
+  if (!width || !height) throw new Error('待修正圖片無法辨識。');
+  return callOpenAIImageEditWithSources(apiKey, [{ bytes, contentType: 'image/png', extension: 'png', finalUrl: '', width, height }], prompt, model);
+}
+
+async function callOpenAIImageQa(apiKey, imageBase64, context, mode, model) {
+  const response = await fetchWithTimeout('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(buildProductImageQaRequest(imageBase64, context, mode, model))
+  }, REQUEST_TIMEOUT_MS);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(openAIErrorMessage(response.status, body).replace('OpenAI 研究失敗', '圖片繁體文字檢查失敗'));
+  let result = null;
+  try { result = JSON.parse(responseOutputText(body) || '{}'); } catch (_) { result = null; }
+  if (!result || typeof result.approved !== 'boolean') throw new Error('圖片繁體文字檢查沒有回傳有效結果。');
+  const hasReportedIssue = result.simplifiedChineseFound === true || result.mainlandWordingFound === true || result.garbledChineseFound === true ||
+    [].concat(result.simplifiedFragments || [], result.mainlandFragments || [], result.garbledFragments || []).some((value) => clean(value));
+  result.approved = result.approved === true && !hasReportedIssue;
+  return result;
 }
 
 async function mapWithConcurrency(items, limit, worker) {
@@ -1612,7 +1713,7 @@ function registerProductAiResearch(target) {
 
   target.generateProductListingImage = onCall({
     region: REGION,
-    timeoutSeconds: 540,
+    timeoutSeconds: 1200,
     memory: '2GiB',
     secrets: [OPENAI_API_KEY],
     enforceAppCheck: false
@@ -1646,13 +1747,14 @@ function registerProductAiResearch(target) {
       throw new HttpsError('failed-precondition', 'OpenAI API 尚未設定，請先設定 Firebase Secret：OPENAI_API_KEY。');
     }
     const model = clean(process.env.OPENAI_PRODUCT_IMAGE_EDIT_MODEL) || DEFAULT_IMAGE_EDIT_MODEL;
+    const qaModel = clean(process.env.OPENAI_PRODUCT_IMAGE_QA_MODEL) || DEFAULT_IMAGE_QA_MODEL;
     try {
       const bucket = admin.storage().bucket();
       const imageJobs = [{ mode: 'main-template', sourceImageUrl: imageUrls[0], sourceImageUrls: [MAIN_IMAGE_TEMPLATE_URL, imageUrls[0]] }]
         .concat(imageUrls.slice(1, 12).map((sourceImageUrl) => ({ mode: 'localized', sourceImageUrl, sourceImageUrls: [sourceImageUrl] })));
       await caseRef.set({
         lastImageGeneration: {
-          status: 'running', model, requestedCount: imageJobs.length,
+          status: 'running', model, qaModel, requestedCount: imageJobs.length, verifiedCount: 0,
           sourceImageUrls: imageUrls,
           instructions: clean(listingCase.imageGenerationInstructions),
           startedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -1664,7 +1766,21 @@ function registerProductAiResearch(target) {
         const prompt = job.mode === 'main-template'
           ? buildMainTemplateImagePrompt(context, listingCase)
           : buildLocalizedImagePrompt(context, listingCase, index, imageJobs.length - 1);
-        const edited = await callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model);
+        let edited = await callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model);
+        const originalSourceFinalUrl = edited.sourceFinalUrl;
+        let qaAttempts = 1;
+        let qa = await callOpenAIImageQa(apiKey, edited.imageBase64, context, job.mode, qaModel);
+        if (!qa.approved) {
+          const correctionPrompt = buildProductImageCorrectionPrompt(qa);
+          const corrected = await callOpenAIImageEditBytes(apiKey, Buffer.from(edited.imageBase64, 'base64'), correctionPrompt, model);
+          edited = { ...corrected, sourceFinalUrl: originalSourceFinalUrl };
+          qaAttempts = 2;
+          qa = await callOpenAIImageQa(apiKey, edited.imageBase64, context, job.mode, qaModel);
+        }
+        if (!qa.approved) {
+          const qaIssues = [].concat(qa.simplifiedFragments || [], qa.mainlandFragments || [], qa.garbledFragments || []).map(clean).filter(Boolean);
+          throw new Error(`第 ${index + 1} 張圖片未通過台灣繁體文字品管：${qaIssues.join('、') || clean(qa.summary) || '仍有簡體、大陸用語或無法閱讀的中文'}`);
+        }
         const imageBytes = Buffer.from(edited.imageBase64, 'base64');
         if (!imageBytes.length || imageBytes.length > 25 * 1024 * 1024) throw new Error('OpenAI 回傳的圖片大小不正確。');
         const downloadToken = crypto.randomUUID();
@@ -1688,6 +1804,11 @@ function registerProductAiResearch(target) {
           status: 'ready',
           mode: job.mode,
           model,
+          qaStatus: 'approved',
+          qaModel,
+          qaAttempts,
+          qaSummary: clean(qa.summary).slice(0, 300),
+          traditionalChineseVerifiedAt: new Date().toISOString(),
           sourceImageUrl: job.sourceImageUrl,
           sourceFinalUrl: edited.sourceFinalUrl,
           sourceOrder: index + 1,
@@ -1715,8 +1836,9 @@ function registerProductAiResearch(target) {
         generatedListingImages: candidates,
         listingImageUrls: listingImageUrls.slice(0, 13),
         lastImageGeneration: {
-          status: failed.length ? 'partial' : 'completed', model,
+          status: failed.length ? 'partial' : 'completed', model, qaModel,
           requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length,
+          verifiedCount: completed.length,
           sourceImageUrls: imageUrls,
           instructions: clean(listingCase.imageGenerationInstructions),
           imageUrls: completed.map((row) => row.url), failures: failed,
@@ -1733,11 +1855,11 @@ function registerProductAiResearch(target) {
         summary: `${context.sku || productId}｜${context.name || '未命名商品'}｜完成 ${completed.length} 張／失敗 ${failed.length} 張｜已加入準備上架`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者',
-        version: '2026.08.11-product-image-localization-v1'
+        version: '2026.08.18-product-image-traditional-qa-v1'
       });
       return {
         ok: true, status: failed.length ? 'partial' : 'completed', productId, model,
-        requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length,
+        requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length, verifiedCount: completed.length,
         imageUrls: completed.map((row) => row.url), listingImageUrls: listingImageUrls.slice(0, 13), failures: failed
       };
     } catch (error) {
@@ -1770,6 +1892,9 @@ module.exports = {
   buildOpenAIImageRequest,
   buildLocalizedImagePrompt,
   buildMainTemplateImagePrompt,
+  productImageQaSchema,
+  buildProductImageQaRequest,
+  buildProductImageCorrectionPrompt,
   extractImageCandidatesFromHtml,
   isBlockedCommercePage,
   isPrivateIpAddress,
@@ -1784,5 +1909,6 @@ module.exports = {
   isAllowedManager,
   DEFAULT_MODEL,
   DEFAULT_IMAGE_WORKFLOW_MODEL,
-  DEFAULT_IMAGE_EDIT_MODEL
+  DEFAULT_IMAGE_EDIT_MODEL,
+  DEFAULT_IMAGE_QA_MODEL
 };

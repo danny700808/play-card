@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260818-traditional-image-gate-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260818-traditional-image-qa-v2/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260818-traditional-image-gate-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260818-traditional-image-qa-v2/);
   }
 });
 
@@ -395,6 +395,8 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /status\)\.toLowerCase\(\)!=='completed'/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /sourceImageUrls/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /failedCount/);
+  assert.match(functionBody(engine, 'productListingImageGenerationReady'), /verifiedCount/);
+  assert.match(functionBody(engine, 'productListingImageGenerationReady'), /qaStatus==='approved'/);
   assert.match(oneClick, /callProductListingPublish/);
   assert.match(oneClick, /callProductListingPublishWithTransientRetry/);
   assert.match(oneClick, /openShopeeAutofillHelper/);
@@ -403,6 +405,9 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   assert.match(productAiResearchSource, /分類必須限定在「樂器／樂器配件」分類樹內/);
   assert.match(productAiResearchSource, /Only outputs created by this localization run may enter the publish list/);
   assert.doesNotMatch(productAiResearchSource, /existingListingImageUrls\.filter/);
+  assert.match(productAiResearchSource, /callOpenAIImageQa/);
+  assert.match(productAiResearchSource, /buildProductImageCorrectionPrompt/);
+  assert.match(productAiResearchSource, /qaStatus: 'approved'/);
 });
 
 test('listing review honors manager identity and brand decisions and gates logistics truthfully', () => {
