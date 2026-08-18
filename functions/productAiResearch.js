@@ -455,6 +455,7 @@ function researchPrompt(context) {
     '電吉他、木吉他與貝斯的完整分類固定為「愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯」；不可寫成「吉他與貝斯」，不可略過「弦樂器」，也不可在後面杜撰「電吉他」等不存在的層級。其他商品必須依商品本身選正確第三層，不能沿用吉他分類。',
     'shopeeCategoryPath 決定後，必須把該分類模板列出的每個適用屬性逐欄研究並放入 shopeeAttributeValues。可由原廠規格確認的材質、弦數、拾音器配置等先找齊；Warranty Duration、Warranty Type、實際店家保固、無可靠來源的重量或尺寸不可猜測，留空並列入 missingFields，讓管理者在確認上架前填寫。',
     '平台分類只能提供實際查到或分類模板允許的路徑／名稱；未查到正式分類代碼時，不可杜撰代碼，並在對應 requiredNotes 說明待人工選擇。',
+    '本店所有商品都屬於樂器、樂器配件、音樂教學或樂器周邊。MOMO 與 Coupang／酷澎分類必須限定在「樂器／樂器配件」分類樹內，再選最接近商品本質的有效葉分類；不可因名稱含弦、袋、架、線材或電子等字樣，誤分到五金、箱包、一般線材或一般消費電子。',
     '另外整理 EasyStore 發佈到蝦皮時可自動填寫的欄位：shopeeBrand 放品牌；shopeeAttributeValues 是陣列，每筆 label 必須盡量使用 EasyStore 畫面顯示的原文欄位名稱，value 使用畫面下拉選單最可能出現的簡短值。',
     '樂器常見 label 包含 Weight、Warranty Duration、Warranty Type、Accessory Type、Length、Neck Material、Traditional Music Instrument、Guitar Shape、Hand Configuration、Quantity、Quantity per Pack、Body Material、Guitar Type、Pickup Configuration、Fretboard Material、Dimension (L x W x H)、Number of Strings、Item condition、Color。只放與此商品有關且有根據的欄位。',
     categoryTemplateGuide,
