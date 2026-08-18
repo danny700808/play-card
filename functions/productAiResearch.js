@@ -715,8 +715,10 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 function openAIErrorMessage(status, body) {
   const source = body && typeof body === 'object' ? body : {};
   const message = clean(source.error && source.error.message) || clean(source.message);
+  const code = clean(source.error && (source.error.code || source.error.type)).toLowerCase();
   if (status === 401 || status === 403) return 'OpenAI API 金鑰無效或沒有使用權限。';
-  if (status === 429) return 'OpenAI 目前已達用量或速率限制，請稍後再試。';
+  if (status === 429 && /insufficient_quota|billing|credit/.test(code)) return 'OpenAI API 圖片額度不足，請先補充 API 額度後再試。';
+  if (status === 429) return 'OpenAI 圖片服務目前速率受限，系統已等待重試；請稍後再試。';
   if (status >= 500) return 'OpenAI 服務暫時無法使用，請稍後再試。';
   return message ? `OpenAI 研究失敗：${message.slice(0, 300)}` : `OpenAI 研究失敗（HTTP ${status}）。`;
 }
@@ -1013,7 +1015,7 @@ function isRetryableOpenAIImageError(error) {
   return [408, 409, 425, 429, 500, 502, 503, 504].includes(status);
 }
 
-async function withOpenAIImageRetry(work, delays = [8000, 20000]) {
+async function withOpenAIImageRetry(work, delays = [30000, 60000, 120000]) {
   let lastError = null;
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
     try {
@@ -1911,6 +1913,7 @@ module.exports = {
   productImageQaSchema,
   buildProductImageQaRequest,
   buildProductImageCorrectionPrompt,
+  openAIErrorMessage,
   isRetryableOpenAIImageError,
   withOpenAIImageRetry,
   extractImageCandidatesFromHtml,

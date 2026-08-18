@@ -178,6 +178,8 @@ test('OpenAI image retry distinguishes temporary rate limits from exhausted quot
   assert.equal(research.isRetryableOpenAIImageError({ status: 429, rawBody: { error: { code: 'rate_limit_exceeded' } } }), true);
   assert.equal(research.isRetryableOpenAIImageError({ status: 503, rawBody: { error: { code: 'service_unavailable' } } }), true);
   assert.equal(research.isRetryableOpenAIImageError({ status: 429, rawBody: { error: { code: 'insufficient_quota' } } }), false);
+  assert.match(research.openAIErrorMessage(429, { error: { code: 'insufficient_quota' } }), /圖片額度不足/);
+  assert.match(research.openAIErrorMessage(429, { error: { code: 'rate_limit_exceeded' } }), /速率受限/);
 
   let attempts = 0;
   const result = await research.withOpenAIImageRetry(async () => {
