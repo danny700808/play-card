@@ -335,6 +335,7 @@ test('AI listing completion runs only after the user presses the button and neve
 
 test('listing case supports manager-only image processing and a truthful actual publish call', () => {
   const uploader = functionBody(engine, 'uploadProductReferenceImages');
+  const completedUploader = functionBody(engine, 'uploadProductCompletedListingImages');
   const urlImporter = functionBody(engine, 'importProductListingImagesFromUrls');
   const generator = functionBody(engine, 'generateProductListingImage');
   const generationRequester = functionBody(engine, 'requestProductListingImageGeneration');
@@ -359,6 +360,14 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(productAiResearchSource, /status: 'ready'/);
   assert.match(productAiResearchSource, /已加入準備上架/);
   assert.match(uploader, /slice\(0,12\)/);
+  assert.match(engine, /productCompletedImageUpload/);
+  assert.match(engine, /上傳 Codex 已完成圖片/);
+  assert.match(completedUploader, /requireEasyStoreManagerAuth/);
+  assert.match(completedUploader, /codex-chat-single-pass/);
+  assert.match(completedUploader, /localizationStatus:'completed'/);
+  assert.match(completedUploader, /qaStatus:'approved'/);
+  assert.match(completedUploader, /listingImageUrls:uploaded/);
+  assert.doesNotMatch(completedUploader, /requestProductListingImageGeneration/);
   assert.doesNotMatch(generator, /identityDecision|identityStatus/);
   assert.match(publisher, /confirmAndPublishProductVariantGroup|confirmAndPublishProductListingCase/);
   assert.doesNotMatch(publisher, /dryRun:true|status:'prepared'/);
