@@ -34,6 +34,16 @@ service firebase.storage {
       allow delete: if isManagerAuth();
     }
 
+    // 已在 Codex 對話完成的單次處理圖：僅管理者能寫入，發布流程可直接採用而不重跑圖片 API。
+    match /ops-product-listing-cases/{productId}/completed/{fileName} {
+      allow read: if true;
+      allow create, update: if isManagerAuth()
+        && request.resource != null
+        && request.resource.size < 8388608
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if isManagerAuth();
+    }
+
     // 租賃契約附件：保留原本租賃系統使用路徑。
     match /rental-contracts/{contractId}/{fileName=**} {
       allow read: if true;
