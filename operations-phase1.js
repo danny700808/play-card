@@ -4042,6 +4042,14 @@ function ensureSalesClock(){
     const source=listingCase&&typeof listingCase==='object'?listingCase:{},enabled=source.enabledPlatforms&&typeof source.enabledPlatforms==='object'?source.enabledPlatforms:{};
     return {id:product.docId,sku:product.sku,name:product.originalName||product.name,researchedName:clean(source.researchedProductName),shippingDecision:clean(source.shippingDecision),enabledEasyStoreShopee:enabled.easyStoreShopee!==false,enabledMomo:enabled.momo!==false,enabledCoupang:enabled.coupang!==false};
   }
+  function productListingImageGenerationReady(listingCase,sourceImageUrls,instructions){
+    const source=listingCase&&typeof listingCase==='object'?listingCase:{},phase=source.lastImageGeneration&&typeof source.lastImageGeneration==='object'?source.lastImageGeneration:{},expected=normalizeProductResearchSourceUrls(sourceImageUrls).slice(0,12),completedSources=normalizeProductResearchSourceUrls(phase.sourceImageUrls).slice(0,12),generated=normalizeGeneratedListingImages(source.generatedListingImages),listingUrls=normalizeProductResearchSourceUrls(source.listingImageUrls),readyBySource=new Map();
+    generated.forEach(function(row){if(row.status==='ready'&&row.sourceImageUrl&&row.url)readyBySource.set(row.sourceImageUrl,row.url);});
+    if(!expected.length||clean(phase.status).toLowerCase()!=='completed'||clean(phase.instructions)!==clean(instructions))return false;
+    if(Number(phase.requestedCount||0)!==expected.length||Number(phase.completedCount||0)!==expected.length||Number(phase.failedCount||0)!==0)return false;
+    if(completedSources.length!==expected.length||completedSources.some(function(url,index){return url!==expected[index];}))return false;
+    return expected.every(function(url){const generatedUrl=readyBySource.get(url);return !!generatedUrl&&listingUrls.includes(generatedUrl);});
+  }
   async function completeProductListingWithCodex(form){
     if(!form||form.dataset.codexRunning==='1')return null;
     if(!global.firebase||!global.firebase.functions)throw new Error('商品上架服務尚未載入，請重新整理頁面。');
@@ -4069,16 +4077,19 @@ function ensureSalesClock(){
         setProductListingCodexUi(form,'running','正在等待上架圖片完成','圖片尚在轉換；完成後才會送往四個通路。');
         listingCase=await waitForProductListingPhase(id,'lastImageGeneration','上架圖片處理',9*60*1000);
       }
-      let preparedImages=normalizeProductResearchSourceUrls(listingCase.listingImageUrls);
-      const imagesToProcess=selectedImages.length?selectedImages:normalizeProductResearchSourceUrls(listingCase.selectedReferenceImageUrls).slice(0,12);
-      if(!preparedImages.length&&imagesToProcess.length){
+      const savedSelection=normalizeProductResearchSourceUrls(listingCase.selectedReferenceImageUrls).slice(0,12),savedReferences=normalizeProductResearchSourceUrls(listingCase.referenceImageUrls).slice(0,12),productImages=normalizeProductResearchSourceUrls(productVariantImages(product)).slice(0,12);
+      const imagesToProcess=selectedImages.length?selectedImages:savedSelection.length?savedSelection:savedReferences.length?savedReferences:productImages;
+      const imageInstructions=clean(listingCase.imageGenerationInstructions);
+      if(!imagesToProcess.length)throw new Error('沒有可供繁體化的來源商品圖片，已停止正式發布；請先加入至少一張商品圖片。');
+      let imageGenerationReady=productListingImageGenerationReady(listingCase,imagesToProcess,imageInstructions);
+      if(!imageGenerationReady){
         setProductListingCodexUi(form,'running','正在完成上架圖片','第一張套用綠色主圖格式，其餘圖片轉成台灣繁體並依平台順序整理。');
         await requestProductListingImageGeneration(id,imagesToProcess);
         caseSnap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get();listingCase=caseSnap.exists?caseSnap.data()||{}:{};
         if(clean(listingCase.lastImageGeneration&&listingCase.lastImageGeneration.status).toLowerCase()==='running')listingCase=await waitForProductListingPhase(id,'lastImageGeneration','上架圖片處理',9*60*1000);
-        preparedImages=normalizeProductResearchSourceUrls(listingCase.listingImageUrls);
+        imageGenerationReady=productListingImageGenerationReady(listingCase,imagesToProcess,imageInstructions);
       }
-      if(imagesToProcess.length&&!preparedImages.length)throw new Error('上架圖片尚未完成，已停止正式發布；原圖與工作紀錄都已保留。');
+      if(!imageGenerationReady)throw new Error('部分圖片尚未完成台灣繁體化，已停止正式發布；原圖與工作紀錄都已保留，可稍後安全重試。');
       setProductListingCodexUi(form,'running','正在送出四通路上架','官網會直接建立或更新；蝦皮交給助手；MOMO 與酷澎送入正式佇列。');
       if(groupProducts.length>1){
         const rows=[];

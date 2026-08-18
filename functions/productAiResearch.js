@@ -1653,6 +1653,8 @@ function registerProductAiResearch(target) {
       await caseRef.set({
         lastImageGeneration: {
           status: 'running', model, requestedCount: imageJobs.length,
+          sourceImageUrls: imageUrls,
+          instructions: clean(listingCase.imageGenerationInstructions),
           startedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1704,14 +1706,10 @@ function registerProductAiResearch(target) {
       const previousCandidates = (Array.isArray(listingCase.generatedListingImages) ? listingCase.generatedListingImages : [])
         .filter((row) => safeHttpUrl(row && row.url) && !replacedSources.has(safeHttpUrl(row && row.sourceImageUrl)));
       const candidates = completed.concat(previousCandidates).slice(0, 12);
-      const previousGeneratedUrls = new Set((Array.isArray(listingCase.generatedListingImages) ? listingCase.generatedListingImages : [])
-        .map((row) => safeHttpUrl(row && row.url)).filter(Boolean));
-      const existingListingImageUrls = [];
-      pushUrlRows(existingListingImageUrls, listingCase.listingImageUrls);
-      const preparedListingImageUrls = [];
-      pushUrlRows(preparedListingImageUrls, candidates.map((row) => row.url));
-      pushUrlRows(preparedListingImageUrls, existingListingImageUrls.filter((url) => !previousGeneratedUrls.has(safeHttpUrl(url)) && safeHttpUrl(url) !== STORE_PROMO_IMAGE_URL));
-      const listingImageUrls = preparedListingImageUrls.slice(0, 12);
+      // Only outputs created by this localization run may enter the publish list.
+      // Original supplier images remain references and must never be silently mixed
+      // back in when one or more localized images fail.
+      const listingImageUrls = completed.map((row) => row.url).slice(0, 12);
       pushUrlRows(listingImageUrls, STORE_PROMO_IMAGE_URL);
       await caseRef.set({
         generatedListingImages: candidates,
@@ -1719,6 +1717,8 @@ function registerProductAiResearch(target) {
         lastImageGeneration: {
           status: failed.length ? 'partial' : 'completed', model,
           requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length,
+          sourceImageUrls: imageUrls,
+          instructions: clean(listingCase.imageGenerationInstructions),
           imageUrls: completed.map((row) => row.url), failures: failed,
           completedAt: admin.firestore.FieldValue.serverTimestamp()
         },
@@ -1746,6 +1746,8 @@ function registerProductAiResearch(target) {
       await caseRef.set({
         lastImageGeneration: {
           status: 'failed', model, error: message.slice(0, 500),
+          sourceImageUrls: imageUrls,
+          instructions: clean(listingCase.imageGenerationInstructions),
           failedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
