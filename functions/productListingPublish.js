@@ -31,6 +31,10 @@ const MOMO_THIRD_PARTY_DELIVERY = {
   method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流'
 };
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function clean(value) {
   return String(value == null ? '' : value).trim();
 }
@@ -701,6 +705,22 @@ async function findEasyStoreMappingInProduct(snapshot, token, productId) {
   return matches[0] || null;
 }
 
+async function recoverEasyStoreCreateBySku(snapshot, token) {
+  let lastError = null;
+  for (const delayMs of [1200, 2500, 5000, 10000]) {
+    await wait(delayMs);
+    try {
+      const recovered = await findEasyStoreMappingBySku(snapshot, token);
+      if (recovered) return recovered;
+    } catch (error) {
+      lastError = error;
+      if (/找到 \d+ 筆相同 SKU/.test(clean(error && error.message))) throw error;
+    }
+  }
+  if (lastError && /找到 \d+ 筆相同 SKU/.test(clean(lastError && lastError.message))) throw lastError;
+  return null;
+}
+
 async function addEasyStoreVariant(snapshot, token) {
   const productId = clean(snapshot.variantParentEasyStoreProductId);
   if (!productId) throw new Error('父商品缺少 EasyStore productId；為避免建立重複商品已停止。');
@@ -789,10 +809,11 @@ async function upsertEasyStoreProduct(snapshot, product, token) {
     try {
       createdPayload = await easyStoreRequest('/products.json', token, { method: 'POST', body: buildEasyStoreProductBody(snapshot, true) });
     } catch (error) {
-      // POST 可能已成功但回應在途中斷線；先以完全相同 SKU 回查，絕不盲目重送造成重複商品。
+      // POST 可能已成功但回應在途中斷線；等待 EasyStore 完成索引，再以完全相同 SKU 回查。
+      // 不在同一個不確定回應後盲目重送 POST，避免建立重複商品。
       let recovered = null;
       try {
-        recovered = await findEasyStoreMappingBySku(snapshot, token);
+        recovered = await recoverEasyStoreCreateBySku(snapshot, token);
       } catch (recoveryError) {
         if (/找到 \d+ 筆相同 SKU/.test(clean(recoveryError && recoveryError.message))) throw recoveryError;
         throw error;
@@ -847,7 +868,6 @@ function momoMissingFields(snapshot) {
   if (!snapshot.momoGoodsName) missing.push('MOMO 商品名稱');
   if (!snapshot.description) missing.push('完整商品介紹');
   if (!snapshot.images.length) missing.push('上架圖片');
-  if (!snapshot.momoCategoryCode) missing.push('MOMO 分類');
   if (snapshot.momoPrice == null) missing.push('MOMO 售價');
   return missing;
 }
@@ -858,9 +878,23 @@ function coupangMissingFields(snapshot) {
   if (!snapshot.coupangTitle) missing.push('酷澎標題');
   if (!snapshot.description) missing.push('完整商品介紹');
   if (!snapshot.images.length) missing.push('上架圖片');
-  if (!snapshot.coupangCategoryCode) missing.push('酷澎分類');
   if (snapshot.coupangPrice == null) missing.push('酷澎售價');
   return missing;
+}
+
+function platformCategoryResolution(platform, snapshot, product) {
+  const key = clean(platform).toLowerCase();
+  const code = key === 'momo' ? clean(snapshot.momoCategoryCode) : clean(snapshot.coupangCategoryCode);
+  const productHint = clean(snapshot.shopeeCategoryPath || product.category || snapshot.title || snapshot.description).slice(0, 420);
+  const hint = `限定根分類：樂器／樂器配件；商品判斷：${productHint}`.slice(0, 500);
+  const constraint = {
+    scope: 'music-instruments-only',
+    allowedRootNames: ['樂器', '樂器配件'],
+    selectionRule: '只可在樂器或樂器配件分類樹內，選擇最接近商品本質的有效葉分類。'
+  };
+  return code
+    ? { mode: 'provided', code, hint, source: 'listing-case', ...constraint }
+    : { mode: 'auto', code: '', hint, source: 'official-platform-recommendation', ...constraint };
 }
 
 async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, missingFields) {
@@ -869,6 +903,7 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
   }
   const queueRef = db.collection(PLATFORM_QUEUE_COLLECTION).doc(`${snapshot.productId}_${platform.toLowerCase()}`);
   const listingPolicy = buildPlatformQueuePolicy(product, platform, snapshot);
+  const categoryResolution = platformCategoryResolution(platform, snapshot, product);
   if (listingPolicy.mode === 'block-duplicate' || listingPolicy.mode === 'block-duplicate-parent') {
     return {
       status: 'action-required',
@@ -897,7 +932,7 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
     }
     transaction.set(queueRef, {
       jobId, productId: snapshot.productId, sku: snapshot.sku, platform,
-      status: 'awaiting-store-agent', payload: snapshot, listingPolicy, fingerprint,
+      status: 'awaiting-store-agent', payload: { ...snapshot, categoryResolution }, listingPolicy, fingerprint,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: '全通路營運中心', schemaVersion: 2
@@ -917,11 +952,12 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
       queueId: queueRef.id
     };
   }
-  const message = listingPolicy.mode === 'add-variant-to-existing'
+  const categoryPrefix = categoryResolution.mode === 'auto' ? `${platform} 會先限定在樂器／樂器配件內，依商品名稱、內容與官方類別推薦自動判斷最接近分類；` : '';
+  const message = categoryPrefix + (listingPolicy.mode === 'add-variant-to-existing'
     ? `${platform} 將把 SKU ${snapshot.sku} 加入指定的既有商品，子編號的庫存與價格仍獨立。`
     : listingPolicy.existingListingIds.length
     ? `${platform} 已找到既有平台編號，將更新原商品，不會建立第二筆。`
-    : `${platform} 將先用完全相同 SKU 查詢：唯一一筆就更新、零筆才建立、多筆或不確定就停止。`;
+    : `${platform} 將先用完全相同 SKU 查詢：唯一一筆就更新、零筆才建立、多筆或不確定就停止。`);
   return {
     status: 'awaiting-store-agent',
     message,
@@ -1145,6 +1181,7 @@ module.exports = {
     easyStoreMissingFields,
     momoMissingFields,
     coupangMissingFields,
+    platformCategoryResolution,
     overallPublishStatus
   }
 };

@@ -140,8 +140,8 @@ test('EasyStore duplicate guard matches only the exact normalized SKU', () => {
 test('each platform reports missing fields instead of pretending to publish', () => {
   const empty = { sku: '', title: '', description: '', images: [], easyStorePrice: null, momoGoodsName: '', momoCategoryCode: '', momoPrice: null, coupangTitle: '', coupangCategoryCode: '', coupangPrice: null };
   assert.deepEqual(helpers.easyStoreMissingFields(empty), ['SKU', '商品名稱', '完整商品介紹', '上架圖片', 'EasyStore 售價']);
-  assert.ok(helpers.momoMissingFields(empty).includes('MOMO 分類'));
-  assert.ok(helpers.coupangMissingFields(empty).includes('酷澎分類'));
+  assert.doesNotMatch(helpers.momoMissingFields(empty).join('、'), /MOMO 分類/);
+  assert.doesNotMatch(helpers.coupangMissingFields(empty).join('、'), /酷澎分類/);
   assert.equal(helpers.overallPublishStatus({ easyStore: { status: 'created' }, momo: { status: 'missing-fields' } }), 'needs-input');
   assert.equal(helpers.overallPublishStatus({ easyStore: { status: 'updated' }, shopee: { status: 'waiting-easystore-sync' } }), 'submitted');
   assert.equal(helpers.overallPublishStatus({ momo: { status: 'already-queued' }, coupang: { status: 'already-completed' } }), 'submitted');
@@ -421,6 +421,19 @@ test('listing snapshot keeps the manual identity confirmation audit fields', () 
   assert.equal(snapshot.identityManualConfirmedAt, confirmedAt);
   assert.equal(snapshot.identityManualConfirmedBy, 'manager@example.com');
   assert.equal(snapshot.identityManualConfirmationNote, '已核對型號、顏色與照片。');
+});
+
+test('MOMO and Coupang categories use official auto recommendation when no code was provided', () => {
+  const snapshot = { title: '敦煌牌 中胡弦套裝', shopeeCategoryPath: '愛好與收藏品 > 樂器與樂器配件 > 樂器配件' };
+  const momo = helpers.platformCategoryResolution('MOMO', snapshot, {});
+  const coupang = helpers.platformCategoryResolution('Coupang', { ...snapshot, coupangCategoryCode: '79995' }, {});
+  assert.equal(momo.mode, 'auto');
+  assert.equal(momo.scope, 'music-instruments-only');
+  assert.deepEqual(momo.allowedRootNames, ['樂器', '樂器配件']);
+  assert.match(momo.hint, /限定根分類：樂器／樂器配件/);
+  assert.equal(coupang.mode, 'provided');
+  assert.equal(coupang.code, '79995');
+  assert.equal(coupang.scope, 'music-instruments-only');
 });
 
 test('new SKU can safely target an existing parent as a platform variant', () => {

@@ -388,10 +388,15 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   assert.match(oneClick, /saveProductListingCase/);
   assert.match(oneClick, /researchProductListingCase/);
   assert.match(oneClick, /requestProductListingImageGeneration/);
+  assert.match(oneClick, /waitForProductListingPhase/);
+  assert.match(oneClick, /lastImageGeneration/);
+  assert.match(oneClick, /上架圖片尚未完成/);
   assert.match(oneClick, /callProductListingPublish/);
+  assert.match(oneClick, /callProductListingPublishWithTransientRetry/);
   assert.match(oneClick, /openShopeeAutofillHelper/);
   assert.match(oneClick, /OTP、NCC、重複商品/);
   assert.doesNotMatch(oneClick, /dryRun/);
+  assert.match(productAiResearchSource, /分類必須限定在「樂器／樂器配件」分類樹內/);
 });
 
 test('listing review honors manager identity and brand decisions and gates logistics truthfully', () => {

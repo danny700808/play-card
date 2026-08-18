@@ -3778,6 +3778,18 @@ function ensureSalesClock(){
     const callable=global.firebase.app().functions('us-central1').httpsCallable('generateProductListingImage',{timeout:9*60*1000}),response=await callable({productId:id,imageUrls:reference});
     return response&&response.data||{};
   }
+  async function waitForProductListingPhase(id,field,label,timeoutMs){
+    const startedAt=Date.now(),limit=Math.max(1000,Number(timeoutMs)||9*60*1000);
+    while(Date.now()-startedAt<limit){
+      const snapshot=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),listingCase=snapshot.exists?snapshot.data()||{}:{},phase=listingCase[field]&&typeof listingCase[field]==='object'?listingCase[field]:{},status=clean(phase.status).toLowerCase();
+      if(status&&status!=='running'){
+        if(status==='failed')throw new Error(clean(phase.error)||label+'未完成');
+        return listingCase;
+      }
+      await new Promise(function(resolve){global.setTimeout(resolve,1500);});
+    }
+    throw new Error(label+'仍在處理中，已停止正式發布；稍後可安全繼續，不會重複建立商品。');
+  }
   async function generateProductListingImage(form){
     if(!form||form.dataset.imageRunning==='1')return;
     const id=clean(form.dataset.id),reference=queryAll('[name="selectedReferenceImageUrls"]:checked',form).map(function(input){return safeUrl(input.value);}).filter(Boolean).slice(0,12);
@@ -4046,27 +4058,38 @@ function ensureSalesClock(){
       if(shouldResearch){
         setProductListingCodexUi(form,'running','正在整理商品名稱與文案','Codex 會依商品資料填好官網、蝦皮、MOMO 與酷澎需要的內容。');
         const researchCallable=global.firebase.app().functions('us-central1').httpsCallable('researchProductListingCase',{timeout:9*60*1000});
-        await researchCallable({productId:id,force:false});
+        const researchResponse=await researchCallable({productId:id,force:false}),researchResult=researchResponse&&researchResponse.data||{};
+        if(clean(researchResult.status).toLowerCase()==='running'){
+          setProductListingCodexUi(form,'running','正在等待商品資料完成','另一個商品整理工作仍在執行；完成後才會繼續做圖與發布。');
+          await waitForProductListingPhase(id,'aiResearch','商品資料整理',9*60*1000);
+        }
       }
       let caseSnap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),listingCase=caseSnap.exists?caseSnap.data()||{}:{};
-      const preparedImages=normalizeProductResearchSourceUrls(listingCase.listingImageUrls);
+      if(clean(listingCase.lastImageGeneration&&listingCase.lastImageGeneration.status).toLowerCase()==='running'){
+        setProductListingCodexUi(form,'running','正在等待上架圖片完成','圖片尚在轉換；完成後才會送往四個通路。');
+        listingCase=await waitForProductListingPhase(id,'lastImageGeneration','上架圖片處理',9*60*1000);
+      }
+      let preparedImages=normalizeProductResearchSourceUrls(listingCase.listingImageUrls);
       const imagesToProcess=selectedImages.length?selectedImages:normalizeProductResearchSourceUrls(listingCase.selectedReferenceImageUrls).slice(0,12);
       if(!preparedImages.length&&imagesToProcess.length){
         setProductListingCodexUi(form,'running','正在完成上架圖片','第一張套用綠色主圖格式，其餘圖片轉成台灣繁體並依平台順序整理。');
         await requestProductListingImageGeneration(id,imagesToProcess);
         caseSnap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get();listingCase=caseSnap.exists?caseSnap.data()||{}:{};
+        if(clean(listingCase.lastImageGeneration&&listingCase.lastImageGeneration.status).toLowerCase()==='running')listingCase=await waitForProductListingPhase(id,'lastImageGeneration','上架圖片處理',9*60*1000);
+        preparedImages=normalizeProductResearchSourceUrls(listingCase.listingImageUrls);
       }
+      if(imagesToProcess.length&&!preparedImages.length)throw new Error('上架圖片尚未完成，已停止正式發布；原圖與工作紀錄都已保留。');
       setProductListingCodexUi(form,'running','正在送出四通路上架','官網會直接建立或更新；蝦皮交給助手；MOMO 與酷澎送入正式佇列。');
       if(groupProducts.length>1){
         const rows=[];
         for(const rowProduct of groupProducts){
-          try{rows.push({id:rowProduct.docId,sku:rowProduct.sku,name:rowProduct.originalName||rowProduct.name,result:await callProductListingPublish(rowProduct.docId)});}
+          try{rows.push({id:rowProduct.docId,sku:rowProduct.sku,name:rowProduct.originalName||rowProduct.name,result:await callProductListingPublishWithTransientRetry(rowProduct.docId,form)});}
           catch(error){rows.push({id:rowProduct.docId,sku:rowProduct.sku,name:rowProduct.originalName||rowProduct.name,error:errorMessage(error)});}
         }
         setProductListingCodexUi(form,'completed','已完成可自動執行的步驟','每個商品編號的結果會分開顯示；需要登入或人工判斷的平台會標示待處理。');
         openProductVariantGroupPublishResult(rows,initialDraft);return rows;
       }
-      const result=await callProductListingPublish(id),resultDraft=productListingCodexResultDraft(product,listingCase);
+      const result=await callProductListingPublishWithTransientRetry(id,form),resultDraft=productListingCodexResultDraft(product,listingCase);
       setProductListingCodexUi(form,'completed','四通路工作已送出','下一頁會逐一顯示官網、蝦皮、MOMO 與酷澎的真實結果。');
       openProductListingPublishResult(result,resultDraft);
       if(result&&result.platforms&&result.platforms.shopee&&result.platforms.shopee.autofillPayload){
@@ -4084,6 +4107,18 @@ function ensureSalesClock(){
     if(!global.firebase||!global.firebase.functions)throw new Error('商品上架服務尚未載入，請重新整理頁面。');
     const callable=global.firebase.app().functions('us-central1').httpsCallable('publishProductListingCase',{timeout:9*60*1000}),response=await callable({productId:productId});
     return response&&response.data||{};
+  }
+  function productListingHasTransientEasyStoreFailure(result){
+    const easyStore=result&&result.platforms&&result.platforms.easyStore||{},message=clean(easyStore.message);
+    return clean(easyStore.status)==='failed'&&/(?:HTTP\s+(?:408|425|429|500|502|503|504)|連線失敗|Gateway Timeout)/i.test(message);
+  }
+  async function callProductListingPublishWithTransientRetry(productId,form){
+    let result=await callProductListingPublish(productId);
+    if(!productListingHasTransientEasyStoreFailure(result))return result;
+    setProductListingCodexUi(form,'running','EasyStore 暫時逾時，正在安全回查','系統會等待商品索引完成，再以完全相同 SKU 重新確認一次；不會盲目建立第二筆。');
+    await new Promise(function(resolve){global.setTimeout(resolve,15000);});
+    result=await callProductListingPublish(productId);
+    return result;
   }
   function openProductVariantGroupPublishResult(rows,draft){
     pendingShopeeAutofillPayloadQueue=rows.map(function(row){return row.result&&row.result.platforms&&row.result.platforms.shopee&&row.result.platforms.shopee.autofillPayload;}).filter(Boolean);
