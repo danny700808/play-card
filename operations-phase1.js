@@ -4044,9 +4044,10 @@ function ensureSalesClock(){
   }
   function productListingImageGenerationReady(listingCase,sourceImageUrls,instructions){
     const source=listingCase&&typeof listingCase==='object'?listingCase:{},phase=source.lastImageGeneration&&typeof source.lastImageGeneration==='object'?source.lastImageGeneration:{},expected=normalizeProductResearchSourceUrls(sourceImageUrls).slice(0,12),completedSources=normalizeProductResearchSourceUrls(phase.sourceImageUrls).slice(0,12),generated=normalizeGeneratedListingImages(source.generatedListingImages),listingUrls=normalizeProductResearchSourceUrls(source.listingImageUrls),readyBySource=new Map();
-    generated.forEach(function(row){if(row.status==='ready'&&row.qaStatus==='approved'&&row.sourceImageUrl&&row.url)readyBySource.set(row.sourceImageUrl,row.url);});
+    generated.forEach(function(row){if(row.status==='ready'&&(row.localizationStatus==='completed'||row.qaStatus==='approved')&&row.sourceImageUrl&&row.url)readyBySource.set(row.sourceImageUrl,row.url);});
     if(!expected.length||clean(phase.status).toLowerCase()!=='completed'||clean(phase.instructions)!==clean(instructions))return false;
-    if(Number(phase.requestedCount||0)!==expected.length||Number(phase.completedCount||0)!==expected.length||Number(phase.verifiedCount||0)!==expected.length||Number(phase.failedCount||0)!==0)return false;
+    const processedCount=Number(phase.processedCount||phase.verifiedCount||0);
+    if(Number(phase.requestedCount||0)!==expected.length||Number(phase.completedCount||0)!==expected.length||processedCount!==expected.length||Number(phase.failedCount||0)!==0)return false;
     if(completedSources.length!==expected.length||completedSources.some(function(url,index){return url!==expected[index];}))return false;
     return expected.every(function(url){const generatedUrl=readyBySource.get(url);return !!generatedUrl&&listingUrls.includes(generatedUrl);});
   }

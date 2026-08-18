@@ -590,7 +590,8 @@ function buildLocalizedImagePrompt(context, listingCase, position, total) {
     '你正在編輯一張已完成排版的供應商商品介紹圖。目標是用於台灣電商上架，只做必要的繁體中文在地化。',
     '這是圖像編輯任務，不是重新設計。輸出必須保持與輸入圖相同的寬高比與構圖。',
     '嚴格保留：商品本體、品牌、型號、顏色、材質、配件數量、拍攝角度、背景、圖示、圖片順序感、文字區塊位置及視覺風格。',
-    '將可清楚辨識的簡體中文改為自然、正確的台灣繁體中文；數字、規格、型號與單位不得改變。',
+    '在同一次圖片編輯內，先逐字掃描圖片中所有可見中文，再完整完成下列處理；只輸出一次最終成品，不產生需要第二次修改的中間版本。',
+    '將所有可清楚辨識的簡體中文改為自然、正確的台灣繁體中文；中國大陸用語改為台灣常用說法；錯字、亂碼或殘缺中文字改為可正常閱讀的正確文字。數字、規格、型號與單位不得改變。',
     '可移除：人民幣價格、折扣、購物平台介面元素、賣家聯絡方式、賣家 QR code。',
     '必須保留：品牌標誌、合法的著作權標示、權利人浮水印。不得仿製、遮蓋或移除這些權利標示。',
     '不得猜測難以辨識的小字，不得新增來源未證實的功能、認證、價格、保固或贈品。',
@@ -612,6 +613,7 @@ function buildMainTemplateImagePrompt(context, listingCase) {
     '請製作台灣電商商品主圖。第一張輸入圖是柚子樂器固定綠色模板，第二張輸入圖是真實商品來源。',
     '以第一張圖為唯一版型：保留薄荷綠紋理、頂端紅色標語與右上柚子樂器標誌；移除左下角可愛寶寶與右下角 PIC COLLAGE，並自然補回綠色背景。',
     '將第二張圖的完整商品去背後放大置中或略帶對角線，絕不可遮住頂端標語或右上標誌；不可改變商品顏色、型號、零件、比例與外觀。',
+    '在同一次圖片編輯內先完整檢查模板與商品來源，只輸出一次最終成品；不得留下需要第二次修改的簡體字、大陸用語、錯字、亂碼或殘缺文字。',
     '只加入商品型號與 1～3 個已查證的短賣點，使用自然、正確的台灣繁體中文；不使用簡體字，不新增未證實的贈品、認證、規格或保固。',
     '賣點框、字體層級、強調色與排列不必每件商品完全相同。請依商品種類、商品本體顏色、留白位置及可讀性，從圓角標籤、色塊、斜角框、線框或大小字組合中選擇一種協調且醒目的變化；同一張圖保持一致，不做雜亂的隨機拼貼。',
     '配色可從深綠、奶油白、海軍藍、暖黃、磚紅或商品本體的協調色中選擇，但必須與薄荷綠底有足夠對比、不可搶過商品，也不可遮住商品、頂端標語或右上標誌。',
@@ -1774,14 +1776,13 @@ function registerProductAiResearch(target) {
       throw new HttpsError('failed-precondition', 'OpenAI API 尚未設定，請先設定 Firebase Secret：OPENAI_API_KEY。');
     }
     const model = clean(process.env.OPENAI_PRODUCT_IMAGE_EDIT_MODEL) || DEFAULT_IMAGE_EDIT_MODEL;
-    const qaModel = clean(process.env.OPENAI_PRODUCT_IMAGE_QA_MODEL) || DEFAULT_IMAGE_QA_MODEL;
     try {
       const bucket = admin.storage().bucket();
       const imageJobs = [{ mode: 'main-template', sourceImageUrl: imageUrls[0], sourceImageUrls: [MAIN_IMAGE_TEMPLATE_URL, imageUrls[0]] }]
         .concat(imageUrls.slice(1, 12).map((sourceImageUrl) => ({ mode: 'localized', sourceImageUrl, sourceImageUrls: [sourceImageUrl] })));
       await caseRef.set({
         lastImageGeneration: {
-          status: 'running', model, qaModel, requestedCount: imageJobs.length, verifiedCount: 0,
+          status: 'running', model, processingMode: 'single-pass', requestedCount: imageJobs.length, processedCount: 0,
           sourceImageUrls: imageUrls,
           instructions: clean(listingCase.imageGenerationInstructions),
           startedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -1789,28 +1790,14 @@ function registerProductAiResearch(target) {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedBy: 'OpenAI 圖片繁體化'
       }, { merge: true });
-      // Image edit and visual QA are intentionally serialized. A single product may
-      // contain twelve images; parallel edit+QA requests can exceed short OpenAI
-      // rate windows and fail the entire otherwise valid listing batch.
+      // Single-pass image edits are intentionally serialized. A single product may
+      // contain twelve images; parallel edits can exceed short OpenAI rate windows
+      // and fail the entire otherwise valid listing batch.
       const batchResults = await mapWithConcurrency(imageJobs, 1, async (job, index) => {
         const prompt = job.mode === 'main-template'
           ? buildMainTemplateImagePrompt(context, listingCase)
           : buildLocalizedImagePrompt(context, listingCase, index, imageJobs.length - 1);
-        let edited = await withOpenAIImageRetry(() => callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model));
-        const originalSourceFinalUrl = edited.sourceFinalUrl;
-        let qaAttempts = 1;
-        let qa = await withOpenAIImageRetry(() => callOpenAIImageQa(apiKey, edited.imageBase64, context, job.mode, qaModel));
-        if (!qa.approved) {
-          const correctionPrompt = buildProductImageCorrectionPrompt(qa);
-          const corrected = await withOpenAIImageRetry(() => callOpenAIImageEditBytes(apiKey, Buffer.from(edited.imageBase64, 'base64'), correctionPrompt, model));
-          edited = { ...corrected, sourceFinalUrl: originalSourceFinalUrl };
-          qaAttempts = 2;
-          qa = await withOpenAIImageRetry(() => callOpenAIImageQa(apiKey, edited.imageBase64, context, job.mode, qaModel));
-        }
-        if (!qa.approved) {
-          const qaIssues = [].concat(qa.simplifiedFragments || [], qa.mainlandFragments || [], qa.garbledFragments || []).map(clean).filter(Boolean);
-          throw new Error(`第 ${index + 1} 張圖片未通過台灣繁體文字品管：${qaIssues.join('、') || clean(qa.summary) || '仍有簡體、大陸用語或無法閱讀的中文'}`);
-        }
+        const edited = await withOpenAIImageRetry(() => callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model));
         const imageBytes = Buffer.from(edited.imageBase64, 'base64');
         if (!imageBytes.length || imageBytes.length > 25 * 1024 * 1024) throw new Error('OpenAI 回傳的圖片大小不正確。');
         const downloadToken = crypto.randomUUID();
@@ -1834,11 +1821,10 @@ function registerProductAiResearch(target) {
           status: 'ready',
           mode: job.mode,
           model,
-          qaStatus: 'approved',
-          qaModel,
-          qaAttempts,
-          qaSummary: clean(qa.summary).slice(0, 300),
-          traditionalChineseVerifiedAt: new Date().toISOString(),
+          processingMode: 'single-pass',
+          processingPasses: 1,
+          localizationStatus: 'completed',
+          localizedAt: new Date().toISOString(),
           sourceImageUrl: job.sourceImageUrl,
           sourceFinalUrl: edited.sourceFinalUrl,
           sourceOrder: index + 1,
@@ -1866,9 +1852,9 @@ function registerProductAiResearch(target) {
         generatedListingImages: candidates,
         listingImageUrls: listingImageUrls.slice(0, 13),
         lastImageGeneration: {
-          status: failed.length ? 'partial' : 'completed', model, qaModel,
+          status: failed.length ? 'partial' : 'completed', model, processingMode: 'single-pass',
           requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length,
-          verifiedCount: completed.length,
+          processedCount: completed.length,
           sourceImageUrls: imageUrls,
           instructions: clean(listingCase.imageGenerationInstructions),
           imageUrls: completed.map((row) => row.url), failures: failed,
@@ -1885,11 +1871,11 @@ function registerProductAiResearch(target) {
         summary: `${context.sku || productId}｜${context.name || '未命名商品'}｜完成 ${completed.length} 張／失敗 ${failed.length} 張｜已加入準備上架`,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者',
-        version: '2026.08.18-product-image-traditional-qa-v1'
+        version: '2026.08.18-product-image-single-pass-v1'
       });
       return {
         ok: true, status: failed.length ? 'partial' : 'completed', productId, model,
-        requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length, verifiedCount: completed.length,
+        requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length, processedCount: completed.length,
         imageUrls: completed.map((row) => row.url), listingImageUrls: listingImageUrls.slice(0, 13), failures: failed
       };
     } catch (error) {
