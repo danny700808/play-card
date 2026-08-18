@@ -136,7 +136,7 @@ function hsinchuSizeBand(totalCm) {
 
 function listingAutomationPolicy() {
   return {
-    version: 1,
+    version: 2,
     duplicateGuard: {
       matchKey: 'exact-sku+existing-platform-id',
       reuseExistingDraft: true,
@@ -151,7 +151,19 @@ function listingAutomationPolicy() {
     },
     publishVerification: {
       successDialogAloneIsInsufficient: true,
-      requiredChecks: ['platform-list', 'price', 'stock', 'status']
+      requiredChecks: ['platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status']
+    },
+    momoPublishRecovery: {
+      failureSignatures: ['still-draft', 'blank-price', 'expected-stock-mismatch', 'missing-from-official-catalog'],
+      compareWithSubmittedSnapshot: ['sku', 'momoPrice', 'stock'],
+      resumeSameDraft: true,
+      neverCreateReplacementDraft: true,
+      reapplyWhenCleared: [
+        'attributes', 'other-information', 'stock', 'sale-price', 'market-price', 'factory-sku',
+        'material-grade', 'weight', 'temperature', 'shipping-methods', 'third-party-location',
+        'rich-description', 'feature-copy', 'warranty'
+      ],
+      verifiedOnlyWhenPlatformListAndOfficialCatalogAgree: true
     },
     browserTabs: {
       closeCompletedAgentTabs: true,
@@ -160,6 +172,35 @@ function listingAutomationPolicy() {
       neverCloseUnrelatedUserTabs: true
     },
     humanHandoffOnlyFor: ['otp', 'captcha', 'login-expired', 'persistent-platform-error']
+  };
+}
+
+function evaluateMomoPublishVerification(expected, observed) {
+  const target = expected && typeof expected === 'object' ? expected : {};
+  const actual = observed && typeof observed === 'object' ? observed : {};
+  const expectedSku = normalizeSku(target.sku);
+  const actualSku = normalizeSku(actual.sku);
+  const expectedPrice = numberOrNull(target.momoPrice);
+  const actualPrice = numberOrNull(actual.price);
+  const expectedStock = numberOrNull(target.stock);
+  const actualStock = numberOrNull(actual.stock);
+  const status = clean(actual.status).toLowerCase();
+  const reasons = [];
+
+  if (!actual.platformListMatched) reasons.push('missing-from-platform-list');
+  if (expectedSku && actualSku !== expectedSku) reasons.push('sku-mismatch');
+  if (status === 'draft' || status === '暫存') reasons.push('still-draft');
+  if (actualPrice === null) reasons.push('blank-price');
+  else if (expectedPrice !== null && actualPrice !== expectedPrice) reasons.push('price-mismatch');
+  if (expectedStock !== null && actualStock !== expectedStock) reasons.push('expected-stock-mismatch');
+  if (actual.officialCatalogMatched !== true) reasons.push('missing-from-official-catalog');
+
+  return {
+    verified: reasons.length === 0,
+    needsRetry: reasons.length > 0,
+    reasons,
+    recoveryAction: reasons.length ? 'resume-same-draft-and-reapply-cleared-fields' : 'none',
+    neverCreateReplacementDraft: true
   };
 }
 
@@ -1231,6 +1272,7 @@ module.exports = {
     platformListingIds,
     platformQueueFingerprint,
     buildPlatformQueuePolicy,
+    evaluateMomoPublishVerification,
     identityAllowsShopeeAutofill,
     summarizePlatformsForStorage,
     platformListingStatusFromPublish,

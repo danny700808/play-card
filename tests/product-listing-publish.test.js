@@ -50,8 +50,39 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
   assert.equal(snapshot.automationPolicy.duplicateGuard.reuseExistingDraft, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.neverCreateNewOnRetry, true);
-  assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, ['platform-list', 'price', 'stock', 'status']);
+  assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, ['platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status']);
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.resumeSameDraft, true);
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverCreateReplacementDraft, true);
+  assert.ok(snapshot.automationPolicy.momoPublishRecovery.reapplyWhenCleared.includes('third-party-location'));
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
+});
+
+test('MOMO publish verification rejects a success dialog when persisted fields were cleared', () => {
+  const result = helpers.evaluateMomoPublishVerification(
+    { sku: '2500118', momoPrice: 350, stock: 4 },
+    {
+      sku: '2500118', status: '暫存', stock: 0, price: null,
+      platformListMatched: true, officialCatalogMatched: false, successDialogShown: true
+    }
+  );
+  assert.equal(result.verified, false);
+  assert.equal(result.needsRetry, true);
+  assert.deepEqual(result.reasons, ['still-draft', 'blank-price', 'expected-stock-mismatch', 'missing-from-official-catalog']);
+  assert.equal(result.recoveryAction, 'resume-same-draft-and-reapply-cleared-fields');
+  assert.equal(result.neverCreateReplacementDraft, true);
+});
+
+test('MOMO publish verification accepts matching list and official catalog data', () => {
+  const result = helpers.evaluateMomoPublishVerification(
+    { sku: '2500118', momoPrice: 350, stock: 4 },
+    {
+      sku: '2500118', status: '上架', stock: 4, price: 350,
+      platformListMatched: true, officialCatalogMatched: true
+    }
+  );
+  assert.equal(result.verified, true);
+  assert.deepEqual(result.reasons, []);
+  assert.equal(result.recoveryAction, 'none');
 });
 
 test('listing snapshot keeps seven gallery slots and moves overflow product images before the two fixed description promos', () => {
