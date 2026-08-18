@@ -24,8 +24,9 @@ const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'upda
 const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
 const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const DESCRIPTION_PROMO_IMAGE_URLS = [
-  `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`,
-  `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-2.jpg`
+  // The requested visible order is 柚子蝦皮照片-2, followed by 柚子蝦皮照片-1.
+  `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-2.jpg`,
+  `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`
 ];
 const MOMO_THIRD_PARTY_DELIVERY = {
   method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流'

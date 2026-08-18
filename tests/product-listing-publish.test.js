@@ -65,10 +65,12 @@ test('listing snapshot keeps seven gallery slots and moves overflow product imag
   assert.deepEqual(snapshot.images.slice(0, 6), productImages.slice(0, 6));
   assert.match(snapshot.images[6], /product-listing-store-promo\.png$/);
   assert.deepEqual(snapshot.descriptionImageUrls, productImages.slice(6));
-  assert.ok(snapshot.bodyHtml.indexOf('product-7.jpg') < snapshot.bodyHtml.indexOf('product-listing-description-promo-1.jpg'));
-  assert.ok(snapshot.bodyHtml.indexOf('product-listing-description-promo-1.jpg') < snapshot.bodyHtml.indexOf('product-listing-description-promo-2.jpg'));
-  assert.ok(snapshot.momoHtml.indexOf('product-7.jpg') < snapshot.momoHtml.indexOf('product-listing-description-promo-1.jpg'));
-  assert.ok(snapshot.coupangDescriptionHtml.indexOf('product-7.jpg') < snapshot.coupangDescriptionHtml.indexOf('product-listing-description-promo-1.jpg'));
+  assert.ok(snapshot.bodyHtml.indexOf('product-7.jpg') < snapshot.bodyHtml.indexOf('product-listing-description-promo-2.jpg'));
+  assert.ok(snapshot.bodyHtml.indexOf('product-listing-description-promo-2.jpg') < snapshot.bodyHtml.indexOf('product-listing-description-promo-1.jpg'));
+  assert.ok(snapshot.momoHtml.indexOf('product-7.jpg') < snapshot.momoHtml.indexOf('product-listing-description-promo-2.jpg'));
+  assert.ok(snapshot.momoHtml.indexOf('product-listing-description-promo-2.jpg') < snapshot.momoHtml.indexOf('product-listing-description-promo-1.jpg'));
+  assert.ok(snapshot.coupangDescriptionHtml.indexOf('product-7.jpg') < snapshot.coupangDescriptionHtml.indexOf('product-listing-description-promo-2.jpg'));
+  assert.ok(snapshot.coupangDescriptionHtml.indexOf('product-listing-description-promo-2.jpg') < snapshot.coupangDescriptionHtml.indexOf('product-listing-description-promo-1.jpg'));
   assert.equal(snapshot.imagePolicy.galleryMaximum, 7);
   assert.equal(snapshot.imagePolicy.sourceImageMaximum, 12);
 });
