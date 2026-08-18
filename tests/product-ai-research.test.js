@@ -188,6 +188,26 @@ test('generated product images require a second Taiwan Traditional Chinese text 
   assert.match(correction, /其他所有內容保持不變/);
 });
 
+test('OpenAI image retry distinguishes temporary rate limits from exhausted quota', async () => {
+  assert.equal(research.isRetryableOpenAIImageError({ status: 429, rawBody: { error: { code: 'rate_limit_exceeded' } } }), true);
+  assert.equal(research.isRetryableOpenAIImageError({ status: 503, rawBody: { error: { code: 'service_unavailable' } } }), true);
+  assert.equal(research.isRetryableOpenAIImageError({ status: 429, rawBody: { error: { code: 'insufficient_quota' } } }), false);
+
+  let attempts = 0;
+  const result = await research.withOpenAIImageRetry(async () => {
+    attempts += 1;
+    if (attempts < 3) {
+      const error = new Error('temporary');
+      error.status = 429;
+      error.rawBody = { error: { code: 'rate_limit_exceeded' } };
+      throw error;
+    }
+    return 'ok';
+  }, [0, 0]);
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 3);
+});
+
 test('remote image safety blocks local and private addresses', () => {
   assert.equal(research.isPrivateIpAddress('127.0.0.1'), true);
   assert.equal(research.isPrivateIpAddress('192.168.1.10'), true);
