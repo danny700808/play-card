@@ -162,30 +162,16 @@ test('AI product image workflow localizes a source image without redesigning it'
   assert.equal(research.DEFAULT_IMAGE_EDIT_MODEL, 'gpt-image-2');
 });
 
-test('generated product images require a second Taiwan Traditional Chinese text review', () => {
-  const request = research.buildProductImageQaRequest('YWJj', { name: '中胡弦' }, 'localized', 'gpt-5.6-sol');
-  const prompt = request.input[0].content[0].text;
-  const image = request.input[0].content[1];
-  const schema = request.text.format.schema;
-
-  assert.match(prompt, /逐一檢查圖片內所有可見中文/);
-  assert.match(prompt, /簡體字/);
-  assert.match(prompt, /中國大陸用語/);
-  assert.match(prompt, /亂碼、錯字或殘缺中文字/);
-  assert.equal(image.image_url, 'data:image/png;base64,YWJj');
-  assert.ok(schema.required.includes('approved'));
-  assert.ok(schema.required.includes('garbledChineseFound'));
-
-  const correction = research.buildProductImageCorrectionPrompt({
-    approved: false,
-    simplifiedFragments: ['乐器'],
-    mainlandFragments: ['包邮'],
-    garbledFragments: ['弦�']
-  });
-  assert.match(correction, /簡體：乐器/);
-  assert.match(correction, /大陸用語：包邮/);
-  assert.match(correction, /亂碼／錯字：弦�/);
-  assert.match(correction, /其他所有內容保持不變/);
+test('generated product images complete text inspection and editing in one pass', () => {
+  const localized = research.buildLocalizedImagePrompt({ name: '中胡弦' }, {}, 1, 1);
+  const main = research.buildMainTemplateImagePrompt({ name: '中胡弦' }, {});
+  assert.match(localized, /同一次圖片編輯內/);
+  assert.match(localized, /先逐字掃描圖片中所有可見中文/);
+  assert.match(localized, /簡體中文/);
+  assert.match(localized, /中國大陸用語改為台灣常用說法/);
+  assert.match(localized, /錯字、亂碼或殘缺中文字/);
+  assert.match(main, /只輸出一次最終成品/);
+  assert.match(main, /1～3 個已查證的短賣點/);
 });
 
 test('OpenAI image retry distinguishes temporary rate limits from exhausted quota', async () => {

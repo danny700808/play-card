@@ -395,8 +395,8 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /status\)\.toLowerCase\(\)!=='completed'/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /sourceImageUrls/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /failedCount/);
-  assert.match(functionBody(engine, 'productListingImageGenerationReady'), /verifiedCount/);
-  assert.match(functionBody(engine, 'productListingImageGenerationReady'), /qaStatus==='approved'/);
+  assert.match(functionBody(engine, 'productListingImageGenerationReady'), /processedCount/);
+  assert.match(functionBody(engine, 'productListingImageGenerationReady'), /localizationStatus==='completed'/);
   assert.match(oneClick, /callProductListingPublish/);
   assert.match(oneClick, /callProductListingPublishWithTransientRetry/);
   assert.match(oneClick, /openShopeeAutofillHelper/);
@@ -405,9 +405,13 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   assert.match(productAiResearchSource, /分類必須限定在「樂器／樂器配件」分類樹內/);
   assert.match(productAiResearchSource, /Only outputs created by this localization run may enter the publish list/);
   assert.doesNotMatch(productAiResearchSource, /existingListingImageUrls\.filter/);
-  assert.match(productAiResearchSource, /callOpenAIImageQa/);
-  assert.match(productAiResearchSource, /buildProductImageCorrectionPrompt/);
-  assert.match(productAiResearchSource, /qaStatus: 'approved'/);
+  const generatorStart = productAiResearchSource.indexOf('target.generateProductListingImage = onCall');
+  assert.notEqual(generatorStart, -1);
+  const generator = productAiResearchSource.slice(generatorStart);
+  assert.match(generator, /processingMode: 'single-pass'/);
+  assert.match(generator, /localizationStatus: 'completed'/);
+  assert.doesNotMatch(generator, /callOpenAIImageQa\(/);
+  assert.doesNotMatch(generator, /buildProductImageCorrectionPrompt\(/);
 });
 
 test('listing review honors manager identity and brand decisions and gates logistics truthfully', () => {
