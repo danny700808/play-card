@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260816-supplier-screenshot-v2/);
+    assert.match(html, /operations-phase1\.css\?v=20260818-codex-one-click-listing-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260816-supplier-screenshot-v2/);
+    assert.match(html, /operations-phase1\.js\?v=20260818-codex-one-click-listing-v1/);
   }
 });
 
@@ -376,6 +376,22 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(productListingPublishSource, /awaiting-store-agent/);
   assert.match(productListingPublishSource, /waiting-easystore-sync/);
   assert.match(firestoreRules, /'opsProductListingQueue'/);
+});
+
+test('listing case offers one Codex action and keeps detailed platform fields collapsed', () => {
+  const renderer = functionBody(engine, 'productListingCaseFormHtml');
+  const oneClick = functionBody(engine, 'completeProductListingWithCodex');
+
+  assert.match(renderer, /交給 Codex 完成四通路上架/);
+  assert.match(renderer, /需要時才修改/);
+  assert.doesNotMatch(renderer, /儲存並檢查/);
+  assert.match(oneClick, /saveProductListingCase/);
+  assert.match(oneClick, /researchProductListingCase/);
+  assert.match(oneClick, /requestProductListingImageGeneration/);
+  assert.match(oneClick, /callProductListingPublish/);
+  assert.match(oneClick, /openShopeeAutofillHelper/);
+  assert.match(oneClick, /OTP、NCC、重複商品/);
+  assert.doesNotMatch(oneClick, /dryRun/);
 });
 
 test('listing review honors manager identity and brand decisions and gates logistics truthfully', () => {
