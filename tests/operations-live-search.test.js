@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260819-product-variant-workflow-v5/);
+    assert.match(html, /operations-phase1\.css\?v=20260819-product-variant-workflow-v6/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260819-product-variant-workflow-v5/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-product-variant-workflow-v6/);
   }
 });
 
@@ -335,6 +335,20 @@ test('listing page does not expose its legacy OpenAI runner and never starts it 
   assert.doesNotMatch(caseForm, /整理文案與圖片/);
   assert.match(engine, /已停用網頁 OpenAI/);
   assert.doesNotMatch(engine, /OPENAI_API_KEY|api\.openai\.com/);
+});
+
+test('Codex handoff repairs legacy decision states instead of blocking the task', () => {
+  const normalizer = functionBody(engine, 'normalizeProductListingDecision');
+  const caseNormalizer = functionBody(engine, 'normalizeProductListingCase');
+  const saver = functionBody(engine, 'saveProductListingCase');
+  const draft = functionBody(engine, 'productListingDraftFromForm');
+
+  assert.match(normalizer, /pending.*accepted.*rejected/);
+  assert.match(normalizer, /:['"]pending['"]/);
+  assert.match(caseNormalizer, /normalizeProductListingDecision\(source\.identityDecision\)/);
+  assert.match(saver, /decisionValues\[name\]=normalizeProductListingDecision/);
+  assert.doesNotMatch(saver, /採用狀態格式不正確/);
+  assert.match(draft, /normalizeProductListingDecision\(data\.get\('identityDecision'\)\)/);
 });
 
 test('listing case supports manager-only image processing and a truthful actual publish call', () => {
