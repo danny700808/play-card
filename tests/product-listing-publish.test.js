@@ -50,6 +50,10 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
   assert.equal(snapshot.automationPolicy.duplicateGuard.reuseExistingDraft, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.neverCreateNewOnRetry, true);
+  assert.equal(snapshot.automationPolicy.version, 3);
+  assert.equal(snapshot.automationPolicy.retry.maximumAttempts, 4);
+  assert.equal(snapshot.automationPolicy.retry.retrySameSkuAndDraftOnly, true);
+  assert.ok(snapshot.automationPolicy.retry.transientFailureSignatures.includes('image-fetch-failed'));
   assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, ['platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status']);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.resumeSameDraft, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverCreateReplacementDraft, true);
@@ -106,6 +110,17 @@ test('listing snapshot keeps seven gallery slots and moves overflow product imag
   assert.ok(snapshot.coupangDescriptionHtml.indexOf('product-7.jpg') < snapshot.coupangDescriptionHtml.indexOf('product-listing-description-promo-1.jpg'));
   assert.equal(snapshot.imagePolicy.galleryMaximum, 7);
   assert.equal(snapshot.imagePolicy.sourceImageMaximum, 20);
+  assert.equal(snapshot.imagePolicy.sharedVariantGalleryMaximum, 12);
+  assert.equal(snapshot.imagePolicy.balanceAcrossVariants, true);
+  assert.equal(snapshot.contentPolicy.featureTarget, 10);
+  assert.equal(snapshot.contentPolicy.usageTarget, 10);
+  assert.equal(snapshot.contentPolicy.warrantyInDescription, false);
+  assert.equal(snapshot.contentPolicy.appendStoreNameWhenSpaceAllows, '柚子樂器');
+  assert.equal(snapshot.contentPolicy.interleaveCompletedImagesWhenSupported, true);
+  assert.match(snapshot.description, /實際內容以收到的實體商品為準/);
+  assert.match(snapshot.shopeeDescription, /實際內容以收到的實體商品為準/);
+  assert.match(snapshot.momoHtml, /實際內容以收到的實體商品為準/);
+  assert.match(snapshot.coupangDescriptionHtml, /實際內容以收到的實體商品為準/);
 });
 
 test('selected source images prioritize their localized completed images without exposing originals', () => {

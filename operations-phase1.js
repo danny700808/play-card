@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.19-all-variant-images-v1';
+  const VERSION = '2026.08.19-four-channel-retry-v1';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   let pendingShopeeAutofillPayload = null;
@@ -43,6 +43,7 @@
   let productListingSpeechRecognition = null;
   const PRODUCT_REFERENCE_IMAGE_MAX = 20;
   const PRODUCT_SELECTED_IMAGE_MAX = 20;
+  const PRODUCT_GROUP_LISTING_IMAGE_MAX = 12;
   const PRODUCT_IMAGE_COLLECTION = {
     source:'youzi-operations-hub',extensionSource:'youzi-image-collector-extension',
     start:'YOUZI_IMAGE_COLLECTION_START',stop:'YOUZI_IMAGE_COLLECTION_STOP',
@@ -3205,11 +3206,11 @@ function ensureSalesClock(){
     const values=[p&&p[platformKey],p&&p.sharedOnlinePrice,p&&p.onlinePrice,p&&p.storePrice].map(numberOrNull);
     return values.find(function(value){return value!=null;});
   }
-  function productListingAutomaticDescription(p,warrantyInfo){
-    const name=clean(p&&((p.originalName)||(p.onlineName)||(p.name)))||'樂器商品',sku=clean(p&&p.sku),warranty=clean(warrantyInfo)||'保固半年';
+  function productListingAutomaticDescription(p){
+    const name=clean(p&&((p.originalName)||(p.onlineName)||(p.name)))||'樂器商品',sku=clean(p&&p.sku);
     const intro=/(?:吉他)?腳踏板|足凳|腳凳/i.test(name)?'木製吉他腳踏板，適合演奏時支撐腳部使用；可依坐姿調整高度，使用後可摺疊收納。':'本商品為柚子樂器販售的樂器或樂器配件，商品內容與規格以頁面圖片及實際出貨品為準。';
     const reminders=/(木製|櫸木|烏金木|實木)/.test(name)?'天然木材的木紋與色澤可能略有差異，屬正常現象。':'螢幕顯示可能造成些微色差，實際顏色以收到商品為準。';
-    return [name,'',intro,'','商品資訊','• 商品編號：'+(sku||'依商品標示'),'• 保固：'+warranty,'','購買提醒','• '+reminders,'• 如需確認尺寸、相容性或包裝內容，歡迎於購買前聯絡客服。'].join('\n');
+    return [name,'',intro,'','商品資訊','• 商品編號：'+(sku||'依商品標示'),'','購買提醒','• '+reminders,'• 如需確認尺寸、相容性或包裝內容，歡迎於購買前聯絡客服。'].join('\n');
   }
   function productFormHtml(p){
     const internal=p&&p.internal,avg=p&&p.averageCost,isNew=!p;
@@ -3570,10 +3571,10 @@ function ensureSalesClock(){
   function productVariantImageProcessingQueueFromForm(form){
     if(!form)return [];const data=new FormData(form),product=catalogById(clean(form.dataset.id)),selections=productVariantGallerySelectionsFromForm(form),items=productVariantGroupItemsFromForm(form).map(function(item){item.gallerySourceImageUrls=selections.get(item.productId)||item.gallerySourceImageUrls||[];return item;}),row={listingMode:clean(data.get('listingMode'))==='add-variant'?'add-variant':'independent',variantParentProductId:clean(data.get('variantParentProductId')),variantParentImageUrl:safeUrl(data.get('variantParentImageUrl')),variantChildImageUrl:safeUrl(data.get('variantChildImageUrl')),variantGroupEnabled:data.get('variantGroupEnabled')==='1',variantGroupPrimaryImageUrl:safeUrl(data.get('variantGroupPrimaryImageUrl')),variantGroupItems:items,referenceImageUrls:normalizeProductResearchSourceUrls(data.get('referenceImageUrls')),completedImageUrls:normalizeProductResearchSourceUrls(data.get('currentCompletedImageUrls')),gallerySourceImageUrls:selections.get(clean(form.dataset.id))||[],generatedListingImages:[],listingImageUrls:[]};return productVariantImageProcessingQueue(product,row);
   }
-  function productVariantGallerySelectionsFromForm(form){const result=new Map();if(!form)return result;queryAll('[name="variantGallerySourceImageUrls"]:checked',form).forEach(function(input){const id=clean(input.dataset.productId),url=safeUrl(input.value);if(!id||!url)return;const rows=result.get(id)||[];if(!rows.includes(url))rows.push(url);result.set(id,rows.slice(0,PRODUCT_REFERENCE_IMAGE_MAX));});return result;}
+  function productVariantGallerySelectionsFromForm(form){const result=new Map();let total=0;if(!form)return result;queryAll('[name="variantGallerySourceImageUrls"]:checked',form).forEach(function(input){const id=clean(input.dataset.productId),url=safeUrl(input.value);if(!id||!url||total>=PRODUCT_GROUP_LISTING_IMAGE_MAX)return;const rows=result.get(id)||[];if(!rows.includes(url)){rows.push(url);total+=1;}result.set(id,rows);});return result;}
   function productVariantImageProcessingQueueHtml(queue){
     queue=Array.isArray(queue)?queue:[];if(queue.length<2)return '';
-    return '<section class="ops-listing-variant-processing"><div class="ops-listing-variant-processing-heading"><b>這組商品要處理的全部圖片</b><small>每個編號的圖片都會先完成繁體化。可勾選想優先上架的圖片；沒有勾選時由系統自動挑選。</small></div><div class="ops-listing-variant-processing-groups">'+queue.map(function(item){const source=item.sourceImageUrls||[],completed=item.completedImageUrls||[],images=source.length?source:completed,status=source.length?'待處理 '+source.length+' 張':completed.length?'已完成 '+completed.length+' 張':'尚未加入圖片',selected=new Set(item.gallerySourceImageUrls||[]);return '<div class="ops-listing-variant-processing-group"><div><b>'+escapeHtml(item.sku||'未設定')+'</b><span>'+escapeHtml(item.name)+'</span><em>'+escapeHtml(status)+'</em></div><div>'+images.map(function(url){const checked=selected.has(url);return '<label class="'+(checked?'selected':'')+'"><input type="checkbox" name="variantGallerySourceImageUrls" data-product-id="'+attr(item.productId)+'" value="'+attr(url)+'" '+(checked?'checked':'')+'><img src="'+attr(url)+'" alt="'+attr(item.sku||'商品')+'"><span>'+(checked?'✓ 優先上架':'選為上架圖')+'</span></label>';}).join('')+'</div></div>';}).join('')+'</div></section>';
+    return '<section class="ops-listing-variant-processing"><div class="ops-listing-variant-processing-heading"><b>這組商品要處理的全部圖片</b><small>每個編號的圖片都會先完成繁體化；整組最多優先選 12 張，沒有勾選時由系統平均挑選各細項適合的完成圖。</small></div><div class="ops-listing-variant-processing-groups">'+queue.map(function(item){const source=item.sourceImageUrls||[],completed=item.completedImageUrls||[],images=source.length?source:completed,status=source.length?'待處理 '+source.length+' 張':completed.length?'已完成 '+completed.length+' 張':'尚未加入圖片',selected=new Set(item.gallerySourceImageUrls||[]);return '<div class="ops-listing-variant-processing-group"><div><b>'+escapeHtml(item.sku||'未設定')+'</b><span>'+escapeHtml(item.name)+'</span><em>'+escapeHtml(status)+'</em></div><div>'+images.map(function(url){const checked=selected.has(url);return '<label class="'+(checked?'selected':'')+'"><input type="checkbox" name="variantGallerySourceImageUrls" data-product-id="'+attr(item.productId)+'" value="'+attr(url)+'" '+(checked?'checked':'')+'><img src="'+attr(url)+'" alt="'+attr(item.sku||'商品')+'"><span>'+(checked?'✓ 優先上架':'選為上架圖')+'</span></label>';}).join('')+'</div></div>';}).join('')+'</div></section>';
   }
   function refreshProductVariantImageProcessingQueue(form){const box=query('#productVariantImageProcessingQueue',form);if(box)box.innerHTML=productVariantImageProcessingQueueHtml(productVariantImageProcessingQueueFromForm(form));}
   function productVariantGroupEditorHtml(p,row){
@@ -3707,7 +3708,7 @@ function ensureSalesClock(){
     if([packageInfo.lengthCm,packageInfo.widthCm,packageInfo.heightCm,packageInfo.weightKg].some(function(value){return value!=null&&value<=0;}))throw new Error('包裝尺寸與重量必須大於 0');
     if(researchSourceRaw&&(!/^https?:\/\//i.test(researchSourceRaw)||!researchSourceUrl))throw new Error('尺寸資料來源網址格式不正確');
     const ref=state.db.collection(COLLECTIONS.listingCases).doc(id),payload={
-      productId:id,productSku:p.sku,productName:p.originalName||p.name,productImageUrl:p.imageUrl||'',caseStatus:clean(data.get('caseStatus'))||'draft',listingMode:listingMode,variantParentProductId:listingMode==='add-variant'?variantParentProductId:'',variantParentSku:listingMode==='add-variant'?clean(variantParent.sku):'',variantParentName:listingMode==='add-variant'?clean(variantParent.originalName||variantParent.name):'',variantAttributeName:listingMode==='add-variant'?variantAttributeName:'',variantParentAttributeValue:listingMode==='add-variant'?variantParentAttributeValue:'',variantAttributeValue:listingMode==='add-variant'?variantAttributeValue:'',variantParentImageUrl:listingMode==='add-variant'?variantParentImageUrl:'',variantChildImageUrl:listingMode==='add-variant'?variantChildImageUrl:'',variantGroupEnabled:variantGroupEnabled,variantGroupAttributeName:variantGroupEnabled?variantGroupAttributeName:'',variantGroupPrimaryValue:variantGroupEnabled?variantGroupPrimaryValue:'',variantGroupPrimaryImageUrl:variantGroupEnabled?variantGroupPrimaryImageUrl:'',variantGroupItems:variantGroupItems,variantImageProcessingQueue:productVariantImageProcessingQueueFromForm(form),
+      productId:id,productSku:p.sku,productName:p.originalName||p.name,productImageUrl:p.imageUrl||'',caseStatus:clean(data.get('caseStatus'))||'draft',listingMode:listingMode,variantParentProductId:listingMode==='add-variant'?variantParentProductId:'',variantParentSku:listingMode==='add-variant'?clean(variantParent.sku):'',variantParentName:listingMode==='add-variant'?clean(variantParent.originalName||variantParent.name):'',variantAttributeName:listingMode==='add-variant'?variantAttributeName:'',variantParentAttributeValue:listingMode==='add-variant'?variantParentAttributeValue:'',variantAttributeValue:listingMode==='add-variant'?variantAttributeValue:'',variantParentImageUrl:listingMode==='add-variant'?variantParentImageUrl:'',variantChildImageUrl:listingMode==='add-variant'?variantChildImageUrl:'',variantGroupEnabled:variantGroupEnabled,variantGroupAttributeName:variantGroupEnabled?variantGroupAttributeName:'',variantGroupPrimaryValue:variantGroupEnabled?variantGroupPrimaryValue:'',variantGroupPrimaryImageUrl:variantGroupEnabled?variantGroupPrimaryImageUrl:'',variantGroupItems:variantGroupItems,variantImageProcessingQueue:productVariantImageProcessingQueueFromForm(form),sharedVariantGalleryMaximum:PRODUCT_GROUP_LISTING_IMAGE_MAX,
       sourceProductDescription:clean(data.get('sourceProductDescription')),researchInstructions:clean(data.get('researchInstructions')),referenceUrls:referenceUrls,referenceImageUrls:referenceImageUrls,selectedReferenceImageUrls:selectedReferenceImageUrls,gallerySourceImageUrls:gallerySourceImageUrls,listingImageUrls:listingImageUrls,
       brand:clean(data.get('brand')),shopeeBrand:clean(data.get('shopeeBrand'))||clean(data.get('brand')),shopeeAttributeValues:productShopeeAttributesFromForm(form),model:clean(data.get('model')),barcode:clean(data.get('barcode')),identityStatus:identityStatus,identityEvidence:clean(data.get('identityEvidence')),identityConflictSummary:clean(data.get('identityConflictSummary')),identityDecision:identityManualConfirmed?'accepted':decisionValues.identityDecision,identityManualConfirmed:identityManualConfirmed,identityManualConfirmedBy:identityManualConfirmed?userLabel():'',identityManualConfirmationNote:identityManualConfirmationNote,
       productResearchStatus:productResearchStatus,productResearchSourceUrls:sourceUrls,productResearchUpdatedAt:researchComplete?serverTimestamp():'',researchedProductName:clean(data.get('researchedProductName')),alternateNames:clean(data.get('alternateNames')),searchKeywords:clean(data.get('searchKeywords')),
@@ -4160,7 +4161,7 @@ function ensureSalesClock(){
       id:id,product:product,sku:normalizeCode(data.get('internalSku')),name:clean(data.get('internalName')),researchedName:clean(data.get('researchedProductName')),brand:clean(data.get('brand')),model:clean(data.get('model')),barcode:clean(data.get('barcode')),
       listingMode:clean(data.get('listingMode'))==='add-variant'?'add-variant':'independent',variantParentProductId:clean(data.get('variantParentProductId')),variantParent:catalogById(clean(data.get('variantParentProductId'))),variantAttributeName:clean(data.get('variantAttributeName')),variantParentAttributeValue:clean(data.get('variantParentAttributeValue')),variantAttributeValue:clean(data.get('variantAttributeValue')),variantParentImageUrl:safeUrl(data.get('variantParentImageUrl')),variantChildImageUrl:safeUrl(data.get('variantChildImageUrl')),variantGroupEnabled:data.get('variantGroupEnabled')==='1',variantGroupAttributeName:clean(data.get('variantGroupAttributeName')),variantGroupPrimaryValue:clean(data.get('variantGroupPrimaryValue')),variantGroupPrimaryImageUrl:safeUrl(data.get('variantGroupPrimaryImageUrl')),variantGroupItems:productVariantGroupItemsFromForm(form),
       identityStatus:clean(data.get('identityStatus')),identityDecision:normalizeProductListingDecision(data.get('identityDecision')),productResearchStatus:clean(data.get('productResearchStatus'))||'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(data.get('productResearchSourceUrls')),alternateNames:clean(data.get('alternateNames')),searchKeywords:clean(data.get('searchKeywords')),sellingPoints:clean(data.get('sellingPoints')),productDescription:productDescription,specificationText:clean(data.get('specificationText')),includedItems:clean(data.get('includedItems')),material:clean(data.get('material')),color:clean(data.get('color')),countryOfOrigin:clean(data.get('countryOfOrigin')),warrantyInfo:clean(data.get('warrantyInfo')),shortDescription:clean(data.get('shortDescription')),commonProductDescription:productDescription,featureList:clean(data.get('featureList')),faqText:clean(data.get('faqText')),commonContentDecision:normalizeProductListingDecision(data.get('commonContentDecision')),
-      referenceUrls:normalizeProductResearchSourceUrls(data.get('referenceUrls')),referenceImageUrls:normalizeProductResearchSourceUrls(data.get('referenceImageUrls')),gallerySourceImageUrls:Array.from(productVariantGallerySelectionsFromForm(form).values()).flat(),variantImageProcessingQueue:productVariantImageProcessingQueueFromForm(form),listingImageUrls:normalizeProductResearchSourceUrls(data.get('listingImageUrls')),imagePlan:clean(data.get('imagePlan')),mediaDecision:normalizeProductListingDecision(data.get('mediaDecision')),
+      referenceUrls:normalizeProductResearchSourceUrls(data.get('referenceUrls')),referenceImageUrls:normalizeProductResearchSourceUrls(data.get('referenceImageUrls')),gallerySourceImageUrls:Array.from(productVariantGallerySelectionsFromForm(form).values()).flat().slice(0,PRODUCT_GROUP_LISTING_IMAGE_MAX),variantImageProcessingQueue:productVariantImageProcessingQueueFromForm(form),sharedVariantGalleryMaximum:PRODUCT_GROUP_LISTING_IMAGE_MAX,listingImageUrls:normalizeProductResearchSourceUrls(data.get('listingImageUrls')).slice(0,PRODUCT_GROUP_LISTING_IMAGE_MAX),imagePlan:clean(data.get('imagePlan')),mediaDecision:normalizeProductListingDecision(data.get('mediaDecision')),
       enabledEasyStoreShopee:true,easyStoreShopeeDecision:normalizeProductListingDecision(data.get('easyStoreShopeeDecision')),easyStoreHtml:sharedHtml,shopeeTitle:clean(data.get('shopeeTitle'))||clean(product&&((product.originalName)||(product.onlineName)||(product.name))),shopeeDescription:productDescription,shopeeCategoryPath:clean(data.get('shopeeCategoryPath')),shopeeAttributeValues:productShopeeAttributesFromForm(form),shopeeListingDecision:['auto','new','existing'].includes(clean(data.get('shopeeListingDecision')))?clean(data.get('shopeeListingDecision')):'auto',
       enabledMomo:true,momoDecision:normalizeProductListingDecision(data.get('momoDecision')),momoGoodsName:clean(data.get('momoGoodsName'))||clean(product&&((product.originalName)||(product.onlineName)||(product.name))),momoSlogan:clean(data.get('momoSlogan')),momoHtml:sharedHtml,momoCategoryCode:clean(data.get('momoCategoryCode')),
       enabledCoupang:true,coupangDecision:normalizeProductListingDecision(data.get('coupangDecision')),coupangTitle:clean(data.get('coupangTitle'))||clean(product&&((product.originalName)||(product.onlineName)||(product.name))),coupangDescriptionHtml:sharedHtml,coupangCategoryCode:clean(data.get('coupangCategoryCode')),
@@ -4312,8 +4313,10 @@ function ensureSalesClock(){
       '本次合併商品案件：',
       caseLines.join('\n'),
       '請先從每一份案件讀取已選圖片、圖片修改要求、商品網址、價格、庫存、物流與細項設定；每個案件的 selectedReferenceImageUrls 全部都要在同一輪完整檢查並台灣繁體化，不得只處理第一個商品。所有簡體字改為繁體字，中國大陸用語改為台灣常用說法。每張完成圖都要以 sourceImageUrl 一對一寫入該案件的 generatedListingImages，並把完成圖同步回該商品編號自己的中央商品圖片。',
-      'gallerySourceImageUrls 只表示使用者希望優先上架的圖片；若保存的是原圖，必須先依 sourceImageUrl 找到繁體完成圖再排序；若保存的是繁體完成圖網址，則可直接排序。若沒有勾選，就從全部完成圖自動挑選適合的上架圖片。不得直接使用簡體原圖，也不得因未勾選優先圖而停止。',
-      '平台售價空白時自動沿用商品資料的共同網路售價、網路售價或門市售價，不要因平台售價欄位空白而停止。分類限定在樂器／樂器配件內自動判斷。細項代表圖欄位保存的是原圖選擇，必須依 generatedListingImages 的 sourceImageUrl 對應到完成圖 url；找不到對應完成圖時要停止。不要重新呼叫網站的 OpenAI 文案或圖片 API。全部案件資料齊全後直接完成四通路發布。'
+      'gallerySourceImageUrls 只表示使用者希望優先上架的圖片；若保存的是原圖，必須先依 sourceImageUrl 找到繁體完成圖再排序；若保存的是繁體完成圖網址，則可直接排序。全部編號的完成圖先合併成一個共用完成圖池，四通路共用的 listingImageUrls 最多 12 張，而且是整組合計 12 張，不是每個編號各 12 張。若沒有勾選，就平均涵蓋各細項並自動挑選清楚、適合的完成圖。不得直接使用簡體原圖，也不得因未勾選優先圖而停止。',
+      '商品標題依「品牌＋型號＋商品種類＋重要規格或材質」組成；品牌與型號有可靠資料時必須優先寫入。共同標題只寫各細項共有的事實，顏色、材質、尺寸等差異寫入細項名稱；平台標題字數仍有空間時，尾端加上「柚子樂器」。商品介紹只能使用案件文字、圖片與可驗證規格：先寫 10 點不重複的具體商品特色，再寫使用方式／適用情境（資料足夠時整理 10 點），最後獨立列出尺寸、材質、段數、重量、內容物等規格與細項差異。若可驗證內容不足 10 點，寧可少寫，不得為湊數重複或編造。保固不要寫入商品介紹，只填各平台原有的保固欄位；看不清楚或無法證實的內容不可猜測。支援 HTML／圖文介紹的平台要用安全的標題、段落、清單與繁體完成圖交錯編排；不支援相同 HTML 的平台改用清楚的純文字分段，並把剩餘完成圖放入平台可用的圖片或圖文介紹位置。每個平台介紹最後固定加入「商品圖片與規格僅供參考，實際內容以收到的實體商品為準。」',
+      '平台售價空白時自動沿用商品資料的共同網路售價、網路售價或門市售價，不要因平台售價欄位空白而停止。分類限定在樂器／樂器配件內自動判斷。細項代表圖欄位保存的是原圖選擇，必須依 generatedListingImages 的 sourceImageUrl 對應到完成圖 url；找不到對應完成圖時要停止。不要重新呼叫網站的 OpenAI 文案或圖片 API。全部案件資料齊全後直接完成 EasyStore 官網與蝦皮、MOMO、酷澎四通路發布。每一通路都必須以平台清單與正式商品資料核對相同 SKU、價格、庫存與狀態；成功提示本身不算完成。',
+      '若圖片網址暫時讀不到、圖片仍在處理、網路逾時、HTTP 408／425／429／500／502／503／504，或平台暫時錯誤，請等待後針對同一案件、同一 SKU、同一平台草稿自動重試並再次核對；需要時只可從 generatedListingImages 或中央商品圖重新取得繁體完成圖網址。不可另建替代商品或造成重複。只有缺少必填資料、平台明確拒絕、OTP／驗證碼或登入失效等永久阻擋才停止，並留下確切原因。'
     ].join('\n');
   }
   function productListingCodexThreadUrl(prompt){
@@ -4387,17 +4390,26 @@ function ensureSalesClock(){
     const callable=global.firebase.app().functions('us-central1').httpsCallable('publishProductListingCase',{timeout:9*60*1000}),response=await callable({productId:productId});
     return response&&response.data||{};
   }
-  function productListingHasTransientEasyStoreFailure(result){
-    const easyStore=result&&result.platforms&&result.platforms.easyStore||{},message=clean(easyStore.message);
-    return clean(easyStore.status)==='failed'&&/(?:HTTP\s+(?:408|425|429|500|502|503|504)|連線失敗|Gateway Timeout)/i.test(message);
+  function productListingTransientFailure(value){
+    let message='';try{message=typeof value==='string'?value:JSON.stringify(value||{});}catch(error){message=clean(value&&value.message);}
+    if(/(?:必填|缺少必要|平台明確拒絕|OTP|驗證碼|captcha|登入(?:已)?失效|細項代表圖尚未完成繁體化)/i.test(message))return false;
+    return /(?:HTTP\s+(?:408|425|429|500|502|503|504)|連線失敗|網路(?:錯誤|異常)|Gateway Timeout|timeout|timed out|temporar(?:y|ily)|圖片[^，。\n]{0,24}(?:暫時|讀取|載入|下載|取得|找不到|處理中|逾時|失敗)|image[^,.;\n]{0,32}(?:fetch|load|download|not found|processing|timeout|failed))/i.test(message);
   }
   async function callProductListingPublishWithTransientRetry(productId,form){
-    let result=await callProductListingPublish(productId);
-    if(!productListingHasTransientEasyStoreFailure(result))return result;
-    setProductListingCodexUi(form,'running','EasyStore 暫時逾時，正在安全回查','系統會等待商品索引完成，再以完全相同 SKU 重新確認一次；不會盲目建立第二筆。');
-    await new Promise(function(resolve){global.setTimeout(resolve,15000);});
-    result=await callProductListingPublish(productId);
-    return result;
+    const delays=[0,3000,10000,30000];let lastResult=null,lastError=null;
+    for(let attempt=0;attempt<delays.length;attempt+=1){
+      if(delays[attempt]){
+        setProductListingCodexUi(form,'running','平台或圖片暫時未完成，正在安全重試','等待後會以完全相同的案件、SKU 與平台草稿重試（第 '+(attempt+1)+'／'+delays.length+' 次）；不會建立重複商品。');
+        await new Promise(function(resolve){global.setTimeout(resolve,delays[attempt]);});
+      }
+      try{
+        lastResult=await callProductListingPublish(productId);lastError=null;
+        if(!productListingTransientFailure(lastResult)||attempt===delays.length-1)return lastResult;
+      }catch(error){
+        lastError=error;if(!productListingTransientFailure(errorMessage(error))||attempt===delays.length-1)throw error;
+      }
+    }
+    if(lastError)throw lastError;return lastResult;
   }
   function openProductVariantGroupPublishResult(rows,draft){
     pendingShopeeAutofillPayloadQueue=rows.map(function(row){return row.result&&row.result.platforms&&row.result.platforms.shopee&&row.result.platforms.shopee.autofillPayload;}).filter(Boolean);
@@ -4412,7 +4424,7 @@ function ensureSalesClock(){
     const ok=await confirmAction('確認整組上架','將依序處理 '+products.length+' 個商品編號；共同主圖一致，每個細項使用自己配對的圖片。這不是預覽，確定要繼續嗎？','確定整組上架');if(!ok)return null;
     const rows=[];
     for(const product of products){
-      try{rows.push({id:product.docId,sku:product.sku,name:product.originalName||product.name,result:await callProductListingPublish(product.docId)});}
+      try{rows.push({id:product.docId,sku:product.sku,name:product.originalName||product.name,result:await callProductListingPublishWithTransientRetry(product.docId,byId('productListingCaseForm'))});}
       catch(error){rows.push({id:product.docId,sku:product.sku,name:product.originalName||product.name,error:errorMessage(error)});}
     }
     openProductVariantGroupPublishResult(rows,draft);return rows;
@@ -4422,7 +4434,7 @@ function ensureSalesClock(){
     await requireEasyStoreManagerAuth();
     const description=(draft.enabledEasyStoreShopee!==false?'EasyStore 會以完全相同 SKU 查找：一筆就更新、零筆才建立、多筆就停止。蝦皮已有商品必須配對／更新；只有你明確確認「沒有」才允許新品上架。':'')+(draft.enabledEasyStoreShopee!==false&&draft.shippingDecision==='home'?' 一般宅配不會自動選擇蝦皮物流，仍須在 EasyStore 人工確認。':'')+((draft.enabledMomo!==false||draft.enabledCoupang!==false)?' MOMO／酷澎同一 SKU、同一內容只會保留一筆待處理工作。':'');
     const ok=await confirmAction('確認上架',description+' 這不是預覽，確定要繼續嗎？','確定上架');if(!ok)return null;
-    const result=await callProductListingPublish(draft.id);
+    const result=await callProductListingPublishWithTransientRetry(draft.id,byId('productListingCaseForm'));
     openProductListingPublishResult(result,draft);
     if(result.status==='partial-failed')toast('有平台尚未完成','請查看上架結果後修正再試。','warning');
     else if(result.status==='needs-input')toast('上架資料需要補充','已列出各平台缺少的欄位。','warning');

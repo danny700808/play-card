@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260819-all-variant-images-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260819-four-channel-retry-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260819-all-variant-images-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-four-channel-retry-v1/);
   }
 });
 
@@ -78,6 +78,16 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(engine, /name="currentCompletedImageUrls"/);
   assert.match(engine, /每個案件的 selectedReferenceImageUrls 全部都要在同一輪完整檢查並台灣繁體化/);
   assert.match(engine, /不得只處理第一個商品/);
+  assert.match(engine, /整組合計 12 張/);
+  assert.match(engine, /平均涵蓋各細項/);
+  assert.match(engine, /10 點不重複的具體商品特色/);
+  assert.match(engine, /保固不要寫入商品介紹/);
+  assert.doesNotMatch(functionBody(engine, 'productListingAutomaticDescription'), /• 保固：/);
+  assert.match(engine, /尾端加上「柚子樂器」/);
+  assert.match(engine, /實際內容以收到的實體商品為準/);
+  assert.match(engine, /同一案件、同一 SKU、同一平台草稿自動重試/);
+  assert.match(functionBody(engine, 'confirmAndPublishProductVariantGroup'), /callProductListingPublishWithTransientRetry/);
+  assert.match(functionBody(engine, 'confirmAndPublishProductListingCase'), /callProductListingPublishWithTransientRetry/);
 });
 
 test('all six searches keep their input and replace only a stable results container', () => {

@@ -26,6 +26,7 @@ const DESCRIPTION_PROMO_IMAGE_URLS = [
   `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`,
   `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-2.jpg`
 ];
+const PHYSICAL_PRODUCT_DISCLAIMER = '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。';
 const MOMO_THIRD_PARTY_DELIVERY = {
   method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流'
 };
@@ -136,7 +137,7 @@ function hsinchuSizeBand(totalCm) {
 
 function listingAutomationPolicy() {
   return {
-    version: 2,
+    version: 3,
     duplicateGuard: {
       matchKey: 'exact-sku+existing-platform-id',
       reuseExistingDraft: true,
@@ -146,8 +147,15 @@ function listingAutomationPolicy() {
     retry: {
       retryTransientFailureUntilVerified: true,
       backoffSeconds: [3, 10, 30],
+      maximumAttempts: 4,
       waitForAsyncImageProcessing: true,
-      keepFailedStepForResume: true
+      keepFailedStepForResume: true,
+      retrySameSkuAndDraftOnly: true,
+      refreshLocalizedImageUrlBeforeRetry: true,
+      transientFailureSignatures: [
+        'http-408', 'http-425', 'http-429', 'http-500', 'http-502', 'http-503', 'http-504',
+        'network-timeout', 'temporary-platform-error', 'image-fetch-failed', 'image-load-timeout', 'image-processing-pending'
+      ]
     },
     publishVerification: {
       successDialogAloneIsInsufficient: true,
@@ -171,7 +179,8 @@ function listingAutomationPolicy() {
       returnAnchorToPlatformHomeOrProductList: true,
       neverCloseUnrelatedUserTabs: true
     },
-    humanHandoffOnlyFor: ['otp', 'captcha', 'login-expired', 'persistent-platform-error']
+    permanentBlockers: ['missing-required-data', 'explicit-platform-rejection', 'otp', 'captcha', 'login-expired'],
+    humanHandoffOnlyFor: ['missing-required-data', 'explicit-platform-rejection', 'otp', 'captcha', 'login-expired', 'persistent-platform-error']
   };
 }
 
@@ -411,9 +420,18 @@ function listingName(product, listingCase) {
 }
 
 function listingDescription(listingCase) {
-  return clean(listingCase.productDescription || listingCase.commonProductDescription) || [
+  const description = clean(listingCase.productDescription || listingCase.commonProductDescription) || [
     clean(listingCase.shortDescription), clean(listingCase.featureList), clean(listingCase.specificationText)
   ].filter(Boolean).join('\n\n');
+  const withoutWarranty = description.split(/\r?\n/).filter((line) => !/(?:保固|保修)/.test(line)).join('\n').trim();
+  if (!withoutWarranty || withoutWarranty.includes(PHYSICAL_PRODUCT_DISCLAIMER)) return withoutWarranty;
+  return `${withoutWarranty}\n\n${PHYSICAL_PRODUCT_DISCLAIMER}`;
+}
+
+function appendPhysicalProductDisclaimerHtml(html) {
+  const result = clean(html);
+  if (!result || result.includes(PHYSICAL_PRODUCT_DISCLAIMER)) return result;
+  return `${result}<p><strong>${PHYSICAL_PRODUCT_DISCLAIMER}</strong></p>`;
 }
 
 function appendShopDescriptionPromos(html) {
@@ -556,6 +574,23 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     packageWeightKg: numberOrNull(listingCase.packageWeightKg),
     shippingDecision: clean(listingCase.shippingDecision),
     automationPolicy: listingAutomationPolicy(),
+    contentPolicy: {
+      titleOrder: ['brand', 'model', 'product-type', 'important-spec-or-material'],
+      requireVerifiedBrandAndModelWhenAvailable: true,
+      appendStoreNameWhenSpaceAllows: '柚子樂器',
+      sharedTitleUsesCommonFactsOnly: true,
+      variantDifferencesBelongInOptionNames: true,
+      featureTarget: 10,
+      usageTarget: 10,
+      neverInventToReachTarget: true,
+      includeVerifiedSpecifications: true,
+      warrantyInDedicatedPlatformFieldOnly: true,
+      warrantyInDescription: false,
+      locale: 'zh-TW',
+      richDescriptionPlatforms: ['easyStore', 'momo', 'coupang'],
+      interleaveCompletedImagesWhenSupported: true,
+      physicalProductDisclaimer: PHYSICAL_PRODUCT_DISCLAIMER
+    },
     momoDelivery: MOMO_THIRD_PARTY_DELIVERY,
     momoCatalogPolicy: {
       maximumListings: 1000,
@@ -567,9 +602,9 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       violationRecovery: 'republish-when-data-is-valid-and-capacity-allows'
     },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
-    imagePolicy: { sourceImageMaximum: 20, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true, localizedVariantRepresentativesRequired: true },
+    imagePolicy: { sourceImageMaximum: 20, sharedVariantGalleryMaximum: 12, balanceAcrossVariants: true, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true, localizedVariantRepresentativesRequired: true },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
-    shopeeDescription: clean(listingCase.shopeeDescription) || description,
+    shopeeDescription: (() => { const value = clean(listingCase.shopeeDescription) || description; return value.includes(PHYSICAL_PRODUCT_DISCLAIMER) ? value : `${value}\n\n${PHYSICAL_PRODUCT_DISCLAIMER}`; })(),
     shopeeRequiredNotes: clean(listingCase.shopeeRequiredNotes),
     shopeeListingDecision: shopeeExistingListingIds.length
       ? 'existing'
@@ -586,10 +621,10 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     color: clean(listingCase.color || product.color),
     momoGoodsName: clean(listingCase.momoGoodsName) || listingName(product, listingCase),
     momoSlogan: clean(listingCase.momoSlogan),
-    momoHtml: appendShopDescriptionImages(clean(listingCase.momoHtml) || productDescriptionToSafeHtml(description), imageAllocation.descriptionImages),
+    momoHtml: appendShopDescriptionImages(appendPhysicalProductDisclaimerHtml(clean(listingCase.momoHtml) || productDescriptionToSafeHtml(description)), imageAllocation.descriptionImages),
     momoCategoryCode: clean(listingCase.momoCategoryCode),
     coupangTitle: clean(listingCase.coupangTitle) || listingName(product, listingCase),
-    coupangDescriptionHtml: appendShopDescriptionImages(clean(listingCase.coupangDescriptionHtml) || productDescriptionToSafeHtml(description), imageAllocation.descriptionImages),
+    coupangDescriptionHtml: appendShopDescriptionImages(appendPhysicalProductDisclaimerHtml(clean(listingCase.coupangDescriptionHtml) || productDescriptionToSafeHtml(description)), imageAllocation.descriptionImages),
     coupangCategoryCode: clean(listingCase.coupangCategoryCode),
     enabledEasyStoreShopee: true,
     enabledMomo: true,
