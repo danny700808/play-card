@@ -9,6 +9,7 @@
   let sending = false;
   let directPickEnabled = false;
   let cropOverlay = null;
+  let captureUiHidden = false;
   let statusMessage = "";
   let statusIsError = false;
   const queue = [];
@@ -79,10 +80,10 @@
     <b>柚子掌櫃收圖中</b>
     <div class="youzi-product" data-youzi-product></div>
     <div class="youzi-progress" data-youzi-progress></div>
-    <div class="youzi-help">用滑鼠框出你真正要的畫面，放開後會自動加入商品。</div>
+    <div class="youzi-help">用滑鼠框出你真正要的畫面；截圖完成後小框會立刻恢復，圖片在背景加入商品。</div>
     <div class="youzi-status" data-youzi-status></div>
     <div class="youzi-actions">
-      <div class="youzi-shortcut">頁面按右鍵 →「柚子掌櫃：框選截圖」<small>也可按 Ctrl＋Shift＋Y；Windows 截圖後可按 Ctrl＋V</small></div>
+      <div class="youzi-shortcut">頁面按右鍵 →「柚子掌櫃：框選截圖」<small>也可按 Ctrl＋Shift＋Y；原圖被網站阻擋時請改用這兩種框選方式</small></div>
       <button type="button" data-youzi-direct>原圖點選：關閉</button>
       <button type="button" data-youzi-stop>結束收圖（Esc）</button>
     </div>
@@ -109,7 +110,7 @@
       setStatus("");
       return;
     }
-    panel.hidden = Boolean(cropOverlay);
+    panel.hidden = Boolean(cropOverlay || captureUiHidden);
     productText.textContent = `${session.sku}｜${session.title || "準備上架商品"}`;
     progressText.textContent = `已加入 ${session.currentCount}／${session.maxImages} 張`;
     directButton.textContent = `原圖點選：${directPickEnabled ? "開啟" : "關閉"}`;
@@ -217,11 +218,8 @@
         };
         if (rect.width < 20 || rect.height < 20) throw error;
         next.element.classList.remove("youzi-image-collector-hover");
-        panel.hidden = true;
-        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        const capture = await chrome.runtime.sendMessage({ type: helpers.CAPTURE_MESSAGE });
-        if (!capture || !capture.ok) throw new Error(capture && capture.error ? capture.error : "無法截取目前圖片");
-        await deliverPreparedImage(await cropVisibleCapture(capture.dataUrl, rect));
+        const dataUrl = await captureVisiblePage();
+        await deliverPreparedImage(await cropVisibleCapture(dataUrl, rect));
         collectedUrls.add(next.url);
         next.element.classList.add("youzi-image-collector-collected");
       } catch (fallbackError) {
@@ -283,12 +281,23 @@
     return blobToImage(blob, "supplier-crop");
   }
 
-  async function captureSelection(rect) {
+  async function captureVisiblePage() {
+    captureUiHidden = true;
+    updatePanel();
     try {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const result = await chrome.runtime.sendMessage({ type: helpers.CAPTURE_MESSAGE });
       if (!result || !result.ok) throw new Error(result && result.error ? result.error : "無法截取目前畫面");
-      await sendPreparedImage(await cropVisibleCapture(result.dataUrl, rect));
+      return result.dataUrl;
+    } finally {
+      captureUiHidden = false;
+      updatePanel();
+    }
+  }
+
+  async function captureSelection(rect) {
+    try {
+      await sendPreparedImage(await cropVisibleCapture(await captureVisiblePage(), rect));
     } catch (error) {
       setStatus(String(error && error.message ? error.message : error), true);
     } finally {
@@ -336,7 +345,6 @@
       };
       cancelCrop();
       if (rect.width < 20 || rect.height < 20) return setStatus("框選範圍太小，請重新框選", true);
-      panel.hidden = true;
       captureSelection(rect);
     });
     updatePanel();
