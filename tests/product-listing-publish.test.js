@@ -137,6 +137,23 @@ test('Coupang stops before queueing when no second clean product image exists', 
   assert.match(helpers.coupangMissingFields(snapshot).join('、'), /酷澎乾淨主圖/);
 });
 
+test('one-click listing always targets all channels and falls back to the product price', () => {
+  const snapshot = helpers.buildListingSnapshot('one-click-all', {
+    internalSku: 'ONE-CLICK-ALL', internalName: '木製吉他腳踏板', currentStock: 2, storePrice: 500
+  }, {
+    productDescription: '木製吉他腳踏板，適合演奏時支撐腳部使用。',
+    listingImageUrls: ['https://example.com/green.jpg', 'https://example.com/clean.jpg'],
+    enabledPlatforms: { easyStoreShopee: false, momo: false, coupang: false }
+  });
+
+  assert.equal(snapshot.enabledEasyStoreShopee, true);
+  assert.equal(snapshot.enabledMomo, true);
+  assert.equal(snapshot.enabledCoupang, true);
+  assert.equal(snapshot.easyStorePrice, 500);
+  assert.equal(snapshot.momoPrice, 500);
+  assert.equal(snapshot.coupangPrice, 500);
+});
+
 test('publish results become product-level platform status without claiming queued work is live', () => {
   const status = helpers.platformListingStatusFromPublish({}, {
     easyStore: { status: 'created', productId: 'es-1', message: '已建立' },
