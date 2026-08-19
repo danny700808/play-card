@@ -65,7 +65,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260819-product-variant-workflow-v8/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260819-product-variant-workflow-v9/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-product-variant-workflow-v10/);
   }
 });
 
