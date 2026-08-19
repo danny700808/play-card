@@ -298,7 +298,7 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.doesNotMatch(caseForm, /product-ai-image-generate/);
   assert.doesNotMatch(caseForm, /整理文案與圖片/);
   assert.match(caseForm, /id="productCompletedImageUpload"/);
-  assert.match(caseForm, /left:0;top:0;width:1px;height:1px;opacity:0;z-index:-1/);
+  assert.match(caseForm, /left:0;top:0;width:1px;height:1px;opacity:\.01;z-index:1/);
   assert.doesNotMatch(caseForm, />上傳 Codex 已完成圖片</);
   assert.match(caseForm, /product-listing-speech/);
   assert.doesNotMatch(caseForm, /圖片來源可選一種|固定圖片格式已套用|商品與抓圖注意事項|進階：直接貼圖片網址/);
@@ -384,7 +384,7 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(uploader, /slice\(0,PRODUCT_REFERENCE_IMAGE_MAX\)/);
   assert.match(completedUploader, /slice\(0,12\)/);
   assert.match(formRenderer, /id="productCompletedImageUpload"/);
-  assert.match(formRenderer, /left:0;top:0;width:1px;height:1px;opacity:0;z-index:-1/);
+  assert.match(formRenderer, /left:0;top:0;width:1px;height:1px;opacity:\.01;z-index:1/);
   assert.doesNotMatch(formRenderer, /上傳 Codex 已完成圖片/);
   assert.match(completedUploader, /requireEasyStoreManagerAuth/);
   assert.match(completedUploader, /codex-chat-single-pass/);
