@@ -523,18 +523,33 @@ test('new SKU can safely target an existing parent as a platform variant', () =>
   }, {
     listingMode: 'add-variant', variantParentProductId: 'parent-1',
     variantAttributeName: '顏色', variantParentAttributeValue: '黑色', variantAttributeValue: '藍色',
-    productDescription: '商品介紹', listingImageUrls: ['https://example.com/blue.jpg']
-  }, parent);
+    variantParentImageUrl: 'https://example.com/parent-source.jpg',
+    variantChildImageUrl: 'https://example.com/blue-source.jpg',
+    generatedListingImages: [{
+      status: 'ready', localizationStatus: 'completed',
+      sourceImageUrl: 'https://example.com/blue-source.jpg', url: 'https://example.com/blue-zh-tw.jpg'
+    }],
+    productDescription: '商品介紹', listingImageUrls: ['https://example.com/other-zh-tw.jpg', 'https://example.com/blue-zh-tw.jpg']
+  }, parent, {
+    generatedListingImages: [{
+      status: 'ready', localizationStatus: 'completed',
+      sourceImageUrl: 'https://example.com/parent-source.jpg', url: 'https://example.com/parent-zh-tw.jpg'
+    }]
+  });
 
   assert.equal(snapshot.listingMode, 'add-variant');
   assert.equal(snapshot.variantParentProductId, 'parent-1');
   assert.equal(snapshot.variantParentSku, 'PARENT-100');
   assert.equal(snapshot.variantParentEasyStoreProductId, 'es-parent');
+  assert.equal(snapshot.variantParentImageUrl, 'https://example.com/parent-zh-tw.jpg');
+  assert.equal(snapshot.variantChildImageUrl, 'https://example.com/blue-zh-tw.jpg');
+  assert.equal(snapshot.images[0], 'https://example.com/other-zh-tw.jpg');
   assert.deepEqual(snapshot.shopeeExistingListingIds, ['shopee-parent']);
   assert.deepEqual(helpers.buildPlatformQueuePolicy({}, 'MOMO', snapshot), {
     mode: 'add-variant-to-existing', matchKey: 'parent-listing-id+sku', sku: 'CHILD-BLUE',
     existingListingIds: ['momo-parent|momo-parent-detail'], parentProductId: 'parent-1', parentSku: 'PARENT-100',
     variantAttributeName: '顏色', variantParentAttributeValue: '黑色', variantAttributeValue: '藍色',
+    variantParentImageUrl: 'https://example.com/parent-zh-tw.jpg', variantImageUrl: 'https://example.com/blue-zh-tw.jpg',
     onZero: 'block', onOne: 'append-variant', onMultiple: 'block', onUncertain: 'block'
   });
   const shopee = helpers.buildShopeeAutofillPayload(snapshot, { productId: 'es-parent' });
@@ -543,8 +558,28 @@ test('new SKU can safely target an existing parent as a platform variant', () =>
   assert.equal(shopee.listingPolicy.onOne, 'append-variant');
   assert.deepEqual(shopee.variantGroup, {
     parentProductId: 'parent-1', parentSku: 'PARENT-100', parentName: '既有商品',
-    attributeName: '顏色', parentAttributeValue: '黑色', attributeValue: '藍色'
+    attributeName: '顏色', parentAttributeValue: '黑色', attributeValue: '藍色',
+    parentImageUrl: 'https://example.com/parent-zh-tw.jpg', imageUrl: 'https://example.com/blue-zh-tw.jpg'
   });
+});
+
+test('variant representative source images never publish before their localized outputs exist', () => {
+  const snapshot = helpers.buildListingSnapshot('child-2', {
+    internalSku: 'CHILD-RED', internalName: '紅色細項', currentStock: 1,
+    easyStorePrice: 1000, momoPrice: 1000, coupangPrice: 1000
+  }, {
+    listingMode: 'add-variant', variantParentProductId: 'parent-2',
+    variantAttributeName: '顏色', variantParentAttributeValue: '黑色', variantAttributeValue: '紅色',
+    variantParentImageUrl: 'https://example.com/parent-source.jpg',
+    variantChildImageUrl: 'https://example.com/red-source.jpg',
+    productDescription: '商品介紹', listingImageUrls: ['https://example.com/gallery.jpg']
+  }, { internalSku: 'PARENT-200', sourceProductId: 'es-parent-2' }, {});
+
+  const missing = helpers.easyStoreMissingFields(snapshot);
+  assert.ok(missing.includes('原商品代表圖的繁體完成版'));
+  assert.ok(missing.includes('新細項代表圖的繁體完成版'));
+  assert.equal(snapshot.variantParentImageUrl, '');
+  assert.equal(snapshot.variantChildImageUrl, '');
 });
 
 test('variant publishing blocks when a parent platform listing is missing or ambiguous', () => {
