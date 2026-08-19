@@ -137,7 +137,7 @@ function hsinchuSizeBand(totalCm) {
 
 function listingAutomationPolicy() {
   return {
-    version: 3,
+    version: 4,
     duplicateGuard: {
       matchKey: 'exact-sku+existing-platform-id',
       reuseExistingDraft: true,
@@ -161,6 +161,21 @@ function listingAutomationPolicy() {
       successDialogAloneIsInsufficient: true,
       requiredChecks: ['platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status']
     },
+    platformExecutionPlan: {
+      preflightAllListingDataBeforePlatformNavigation: true,
+      order: ['easyStore', 'shopee', 'coupang', 'momo'],
+      shopeeDependsOnEasyStore: true,
+      prepareBeforeOpen: ['category', 'brand', 'attributes', 'logistics', 'price', 'stock', 'images', 'variants'],
+      shopeeHandoff: {
+        primary: 'easystore-channel-sync',
+        fallback: 'direct-shopee-seller-editor',
+        fallbackWhen: ['channel-import-unavailable', 'channel-editor-missing-required-capability', 'sync-row-missing'],
+        reusePreparedPayload: true,
+        neverRestartResearchOrImageProcessing: true,
+        neverReturnToPreviousPlatformForRediscovery: true
+      },
+      verification: 'single-final-check-after-submit'
+    },
     momoPublishRecovery: {
       failureSignatures: ['still-draft', 'blank-price', 'expected-stock-mismatch', 'missing-from-official-catalog'],
       compareWithSubmittedSnapshot: ['sku', 'momoPrice', 'stock'],
@@ -172,6 +187,16 @@ function listingAutomationPolicy() {
         'rich-description', 'feature-copy', 'warranty'
       ],
       verifiedOnlyWhenPlatformListAndOfficialCatalogAgree: true
+    },
+    momoSpecialPromotionImage: {
+      source: 'localized-completed-product-image',
+      preferredProductImagePositions: [2, 3],
+      excludeStoreAddressAndServicePromos: true,
+      neverUseGalleryLastStorePromo: true,
+      materialBankInsertRequired: true,
+      directRichEditorUploadIsNotPersistedProof: true,
+      saveReopenAndVerifyImageRequired: true,
+      publishOnlyAfterPersistedImageVerified: true
     },
     browserTabs: {
       closeCompletedAgentTabs: true,
@@ -455,6 +480,12 @@ function listingImageAllocation(value) {
   };
 }
 
+function momoSpecialPromotionImage(productImages) {
+  const images = normalizeUrls(productImages, 12)
+    .filter((url) => url !== STORE_PROMO_IMAGE_URL && !DESCRIPTION_PROMO_IMAGE_URLS.includes(url));
+  return images[1] || images[2] || '';
+}
+
 function appendShopDescriptionImages(html, imageUrls) {
   let result = clean(html);
   DESCRIPTION_PROMO_IMAGE_URLS.forEach((url) => {
@@ -532,6 +563,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     ? localizedRepresentativeImage(listingCase, variantGroupPrimarySourceImageUrl) : '';
   const imageAllocation = listingImageAllocation(prioritizedListingImageUrls(listingCase));
   const images = imageAllocation.galleryImages;
+  const momoSpecialPromotionImageUrl = momoSpecialPromotionImage(imageAllocation.productImages);
   const descriptionHtml = appendShopDescriptionImages(productDescriptionToSafeHtml(description), imageAllocation.descriptionImages);
   const snapshot = {
     productId: clean(productId),
@@ -592,6 +624,15 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       physicalProductDisclaimer: PHYSICAL_PRODUCT_DISCLAIMER
     },
     momoDelivery: MOMO_THIRD_PARTY_DELIVERY,
+    momoSpecialPromotionImageUrl,
+    momoSpecialPromotionImagePolicy: {
+      required: true,
+      source: 'localized-completed-product-image',
+      preferredProductImagePositions: [2, 3],
+      excludedContent: ['store-address', 'store-promo', 'service-promo', 'qr-code', 'contact-information'],
+      insertMethod: 'material-bank-selection',
+      verification: 'save-reopen-confirm-image-before-publish'
+    },
     momoCatalogPolicy: {
       maximumListings: 1000,
       targetListings: 1000,
@@ -757,7 +798,7 @@ function platformListingIds(product, platform) {
 function platformQueueFingerprint(platform, snapshot) {
   const key = clean(platform).toLowerCase();
   const platformFields = key === 'momo'
-    ? [snapshot.momoGoodsName, snapshot.momoSlogan, snapshot.momoCategoryCode, snapshot.momoPrice, snapshot.momoHtml]
+    ? [snapshot.momoGoodsName, snapshot.momoSlogan, snapshot.momoCategoryCode, snapshot.momoPrice, snapshot.momoHtml, snapshot.momoSpecialPromotionImageUrl]
     : [snapshot.coupangTitle, snapshot.coupangCategoryCode, snapshot.coupangPrice, snapshot.coupangDescriptionHtml];
   return crypto.createHash('sha256').update(JSON.stringify({
     platform: key,
@@ -773,6 +814,8 @@ function platformQueueFingerprint(platform, snapshot) {
     package: [snapshot.packageLengthCm, snapshot.packageWidthCm, snapshot.packageHeightCm, snapshot.packageWeightKg],
     automationPolicy: snapshot.automationPolicy,
     momoDelivery: snapshot.momoDelivery,
+    momoSpecialPromotionImageUrl: snapshot.momoSpecialPromotionImageUrl,
+    momoSpecialPromotionImagePolicy: snapshot.momoSpecialPromotionImagePolicy,
     momoCatalogPolicy: snapshot.momoCatalogPolicy,
     platformFields
   })).digest('hex');
@@ -1048,6 +1091,7 @@ function momoMissingFields(snapshot) {
   if (!snapshot.momoGoodsName) missing.push('MOMO 商品名稱');
   if (!snapshot.description) missing.push('完整商品介紹');
   if (!snapshot.images.length) missing.push('上架圖片');
+  if (!snapshot.momoSpecialPromotionImageUrl) missing.push('MOMO 專推圖（商品第 2 或第 3 張繁體完成圖）');
   if (snapshot.momoPrice == null) missing.push('MOMO 售價');
   return missing;
 }
@@ -1387,6 +1431,7 @@ module.exports = {
     appendShopDescriptionPromos,
     appendShopDescriptionImages,
     listingImageAllocation,
+    momoSpecialPromotionImage,
     prioritizedListingImageUrls,
     platformPayloadSnapshot,
     exactEasyStoreMatches,

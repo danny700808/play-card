@@ -50,15 +50,58 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
   assert.equal(snapshot.automationPolicy.duplicateGuard.reuseExistingDraft, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.neverCreateNewOnRetry, true);
-  assert.equal(snapshot.automationPolicy.version, 3);
+  assert.equal(snapshot.automationPolicy.version, 4);
   assert.equal(snapshot.automationPolicy.retry.maximumAttempts, 4);
   assert.equal(snapshot.automationPolicy.retry.retrySameSkuAndDraftOnly, true);
   assert.ok(snapshot.automationPolicy.retry.transientFailureSignatures.includes('image-fetch-failed'));
   assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, ['platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status']);
+  assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.order, ['easyStore', 'shopee', 'coupang', 'momo']);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.preflightAllListingDataBeforePlatformNavigation, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.primary, 'easystore-channel-sync');
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.fallback, 'direct-shopee-seller-editor');
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.reusePreparedPayload, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverRestartResearchOrImageProcessing, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.resumeSameDraft, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverCreateReplacementDraft, true);
   assert.ok(snapshot.automationPolicy.momoPublishRecovery.reapplyWhenCleared.includes('third-party-location'));
+  assert.deepEqual(snapshot.automationPolicy.momoSpecialPromotionImage.preferredProductImagePositions, [2, 3]);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.materialBankInsertRequired, true);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.saveReopenAndVerifyImageRequired, true);
+  assert.equal(snapshot.momoSpecialPromotionImageUrl, '');
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
+});
+
+test('MOMO special promotion image uses product image two or three and never store promotion assets', () => {
+  const productImages = [
+    'https://example.com/green-main.jpg',
+    'https://example.com/product-detail-2.jpg',
+    'https://example.com/product-detail-3.jpg'
+  ];
+  const snapshot = helpers.buildListingSnapshot('p-momo-special-promo', {
+    internalSku: 'MOMO-PROMO', internalName: 'MOMO 專推圖測試', currentStock: 1,
+    easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
+  }, {
+    productDescription: '完整商品介紹', listingImageUrls: productImages,
+    enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
+  });
+
+  assert.equal(snapshot.momoSpecialPromotionImageUrl, productImages[1]);
+  assert.equal(snapshot.momoSpecialPromotionImagePolicy.insertMethod, 'material-bank-selection');
+  assert.equal(snapshot.momoSpecialPromotionImagePolicy.verification, 'save-reopen-confirm-image-before-publish');
+  assert.notEqual(snapshot.momoSpecialPromotionImageUrl, snapshot.images.at(-1));
+  assert.equal(snapshot.momoSpecialPromotionImageUrl.includes('store-promo'), false);
+  assert.deepEqual(helpers.momoMissingFields(snapshot), []);
+});
+
+test('MOMO stops before queueing when only the branded first image exists', () => {
+  const snapshot = helpers.buildListingSnapshot('p-momo-special-promo-missing', {
+    internalSku: 'MOMO-PROMO-MISSING', internalName: '缺少專推商品圖', currentStock: 1, momoPrice: 1200
+  }, {
+    productDescription: '完整商品介紹', listingImageUrls: ['https://example.com/green-main.jpg'],
+    enabledPlatforms: { easyStoreShopee: false, momo: true, coupang: false }
+  });
+  assert.equal(snapshot.momoSpecialPromotionImageUrl, '');
+  assert.match(helpers.momoMissingFields(snapshot).join('、'), /MOMO 專推圖/);
 });
 
 test('MOMO publish verification rejects a success dialog when persisted fields were cleared', () => {
