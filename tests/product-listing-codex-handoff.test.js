@@ -20,5 +20,6 @@ test('主要按鈕不再直接執行 OpenAI 文案與圖片 API 流程', () => {
   assert.doesNotMatch(handler, /completeProductListingWithCodex/);
   assert.doesNotMatch(source, /async function completeProductListingWithCodex/);
   assert.doesNotMatch(handler, /researchProductListingCase|generateProductListingImage/);
-  assert.match(source, /這顆按鈕不會先呼叫 OpenAI 文案或圖片 API/);
+  assert.match(source, /網頁本身不會先啟動 OpenAI/);
+  assert.match(source, /已停用網頁 OpenAI/);
 });

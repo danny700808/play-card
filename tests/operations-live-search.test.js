@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260818-variant-image-target-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260819-codex-only-variant-picker-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260818-variant-image-target-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-codex-only-variant-picker-v1/);
   }
 });
 
@@ -293,10 +293,11 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(caseForm, /這一步只收圖，不做簡繁轉換/);
   assert.match(caseForm, /截錯可在下方直接刪除/);
   assert.match(caseForm, /productReferenceImageSelectorHtml/);
-  assert.match(caseForm, /重新製作勾選圖片/);
+  assert.doesNotMatch(caseForm, /重新製作勾選圖片/);
   assert.match(caseForm, /imageGenerationInstructions/);
-  assert.match(caseForm, /product-ai-image-generate/);
-  assert.match(caseForm, /整理文案與圖片/);
+  assert.doesNotMatch(caseForm, /product-ai-image-generate/);
+  assert.doesNotMatch(caseForm, /整理文案與圖片/);
+  assert.doesNotMatch(caseForm, /productCompletedImageUpload/);
   assert.match(caseForm, /product-listing-speech/);
   assert.doesNotMatch(caseForm, /圖片來源可選一種|固定圖片格式已套用|商品與抓圖注意事項|進階：直接貼圖片網址/);
   assert.match(engine, /warrantyInfo:[^\n]+\|\|'保固半年'/);
@@ -314,12 +315,14 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(functionBody(engine, 'productResearchReady'), /draft\.productDescription/);
 });
 
-test('AI listing completion runs only after the user presses the button and never writes the product master', () => {
+test('listing page does not expose its legacy OpenAI runner and never starts it on open', () => {
   const runner = functionBody(engine, 'runProductAiResearch');
   const saveProduct = functionBody(engine, 'saveProduct');
   const openCase = functionBody(engine, 'openProductListingCase');
+  const caseForm = functionBody(engine, 'productListingCaseFormHtml');
 
-  assert.match(engine, /data-action="product-ai-research-run"/);
+  assert.doesNotMatch(caseForm, /data-action="product-ai-research-run"/);
+  assert.doesNotMatch(caseForm, /data-action="product-ai-image-generate"/);
   assert.match(engine, /researchProductListingCase/);
   assert.match(runner, /productId:id/);
   assert.match(runner, /requestProductListingImageGeneration/);
@@ -329,7 +332,8 @@ test('AI listing completion runs only after the user presses the button and neve
   assert.doesNotMatch(saveProduct, /aiResearch|researchProductListingCase/);
   assert.doesNotMatch(engine, /function shouldAutoResearchProductListingCase/);
   assert.doesNotMatch(openCase, /runProductAiResearch/);
-  assert.match(engine, /整理文案與圖片/);
+  assert.doesNotMatch(caseForm, /整理文案與圖片/);
+  assert.match(engine, /已停用網頁 OpenAI/);
   assert.doesNotMatch(engine, /OPENAI_API_KEY|api\.openai\.com/);
 });
 
@@ -340,6 +344,7 @@ test('listing case supports manager-only image processing and a truthful actual 
   const generator = functionBody(engine, 'generateProductListingImage');
   const generationRequester = functionBody(engine, 'requestProductListingImageGeneration');
   const publisher = functionBody(engine, 'prepareProductListingPublish');
+  const formRenderer = functionBody(engine, 'productListingCaseFormHtml');
   const storageRules = fs.readFileSync('storage.rules', 'utf8');
 
   assert.match(hub, /firebase-storage-compat\.js/);
@@ -361,8 +366,8 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(productAiResearchSource, /status: 'ready'/);
   assert.match(productAiResearchSource, /已加入準備上架/);
   assert.match(uploader, /slice\(0,12\)/);
-  assert.match(engine, /productCompletedImageUpload/);
-  assert.match(engine, /上傳 Codex 已完成圖片/);
+  assert.doesNotMatch(formRenderer, /productCompletedImageUpload/);
+  assert.doesNotMatch(formRenderer, /上傳 Codex 已完成圖片/);
   assert.match(completedUploader, /requireEasyStoreManagerAuth/);
   assert.match(completedUploader, /codex-chat-single-pass/);
   assert.match(completedUploader, /localizationStatus:'completed'/);
@@ -393,6 +398,7 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   const oneClick = functionBody(engine, 'handoffProductListingToCodex');
 
   assert.match(renderer, /交給這個 Codex 對話處理/);
+  assert.equal((renderer.match(/data-action="product-listing-codex-complete"/g) || []).length, 1);
   assert.match(renderer, /需要時才修改/);
   assert.doesNotMatch(renderer, /儲存並檢查/);
   assert.match(oneClick, /saveProductListingCase/);

@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260818-variant-image-target-v1/);
+  assert.match(portal, /operations-phase1\.js\?v=20260819-codex-only-variant-picker-v1/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
   assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
@@ -145,7 +145,9 @@ test('product listing has a safe add-to-existing variant mode', () => {
   assert.match(source, /variantGroupItems:variantGroupItems/);
   assert.match(source, /childImages=normalizeProductResearchSourceUrls/);
   assert.match(source, /confirmAndPublishProductVariantGroup/);
-  assert.match(source, /imageMatchStatus:(?:productImages|imageUrls)\.length\?'auto':'missing'/);
+  assert.match(source, /imageMatchStatus:imageUrls\.length\?'manual':'missing'/);
+  assert.match(source, /data-action="product-variant-image-select"/);
+  assert.match(source, /variantGroupPrimaryImageUrl/);
 });
 
 test('POS electric piano rental income rolls into rental operations without helper clutter', () => {

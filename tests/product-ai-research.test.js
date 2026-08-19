@@ -29,6 +29,10 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const research = require('../functions/productAiResearch');
 Module._load = originalLoad;
 
+test('website OpenAI endpoints are disabled while listings use the Codex conversation', () => {
+  assert.equal(research.CODEX_ONLY_LISTING_MODE, true);
+});
+
 test('main product image prompt enforces the fixed green template and Taiwan wording', () => {
   const prompt = research.buildMainTemplateImagePrompt({ name: 'Ibanez AZES40', brand: 'Ibanez', model: 'AZES40' }, { sellingPoints: 'HSS 拾音配置' });
   assert.match(prompt, /第一張輸入圖是柚子樂器固定綠色模板/);
