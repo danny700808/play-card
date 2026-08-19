@@ -42,7 +42,7 @@ test("收圖檔案沿用既有 Firebase 圖片上傳並綁定目前商品", () =
   assert.match(operationsSource, /uploadProductVariantReferenceImages\(form,productId,\[collectedImageFile\(payload\)\]\)/);
   assert.match(operationsSource, /每個商品最多保留 20 張來源圖片/);
   assert.match(operationsSource, /PRODUCT_REFERENCE_IMAGE_MAX = 20/);
-  assert.match(operationsSource, /PRODUCT_SELECTED_IMAGE_MAX = 12/);
+  assert.match(operationsSource, /PRODUCT_SELECTED_IMAGE_MAX = 20/);
 });
 
 test("營運中心重新整理後會主動恢復既有收圖工作", () => {
@@ -100,7 +100,7 @@ test("同款商品從各自已收圖片中指定一張代表圖", () => {
   assert.match(operationsSource, /imageUrls:imageUrls\.slice\(0,1\)/);
   assert.match(operationsSource, /\.ops-listing-variant-item\[data-variant-role\^="group-child-"\]/);
   assert.match(operationsSource, /sourceImageUrls:sourceImageUrls/);
-  assert.match(operationsSource, /loadProductListingSourceImages\(item\.productId\)/);
+  assert.match(operationsSource, /loadProductListingVariantMedia\(item\.productId\)/);
 });
 
 test("加入同款細項後會恢復原商品既有圖片且不會誤復原人工清空", () => {

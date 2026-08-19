@@ -468,6 +468,16 @@ function localizedRepresentativeImage(listingCase, sourceUrl) {
   return localizedRepresentativeImageMap(listingCase).get(safeHttpUrl(sourceUrl)) || '';
 }
 
+function prioritizedListingImageUrls(listingCase) {
+  const source = listingCase && typeof listingCase === 'object' ? listingCase : {};
+  const listingUrls = normalizeUrls(source.listingImageUrls, 30);
+  const localizedBySource = localizedRepresentativeImageMap(source);
+  const prioritized = normalizeUrls(source.gallerySourceImageUrls, 20)
+    .map((sourceUrl) => localizedBySource.get(sourceUrl) || (listingUrls.includes(sourceUrl) ? sourceUrl : ''))
+    .filter((url) => url && listingUrls.includes(url));
+  return prioritized.concat(listingUrls.filter((url) => !prioritized.includes(url)));
+}
+
 function variantRepresentativeMissingFields(snapshot) {
   const missing = [];
   if (snapshot.listingMode === 'add-variant') {
@@ -502,7 +512,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     ? localizedRepresentativeImage(listingCase, variantChildSourceImageUrl) : '';
   const variantGroupPrimaryImageUrl = variantGroupEnabled
     ? localizedRepresentativeImage(listingCase, variantGroupPrimarySourceImageUrl) : '';
-  const imageAllocation = listingImageAllocation(listingCase.listingImageUrls);
+  const imageAllocation = listingImageAllocation(prioritizedListingImageUrls(listingCase));
   const images = imageAllocation.galleryImages;
   const descriptionHtml = appendShopDescriptionImages(productDescriptionToSafeHtml(description), imageAllocation.descriptionImages);
   const snapshot = {
@@ -557,7 +567,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       violationRecovery: 'republish-when-data-is-valid-and-capacity-allows'
     },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
-    imagePolicy: { sourceImageMaximum: 12, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true, localizedVariantRepresentativesRequired: true },
+    imagePolicy: { sourceImageMaximum: 20, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true, localizedVariantRepresentativesRequired: true },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
     shopeeDescription: clean(listingCase.shopeeDescription) || description,
     shopeeRequiredNotes: clean(listingCase.shopeeRequiredNotes),
@@ -1342,6 +1352,7 @@ module.exports = {
     appendShopDescriptionPromos,
     appendShopDescriptionImages,
     listingImageAllocation,
+    prioritizedListingImageUrls,
     platformPayloadSnapshot,
     exactEasyStoreMatches,
     easyStoreMissingFields,

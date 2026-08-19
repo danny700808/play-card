@@ -63,10 +63,21 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260819-product-variant-workflow-v8/);
+    assert.match(html, /operations-phase1\.css\?v=20260819-all-variant-images-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260819-completed-product-images-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-all-variant-images-v1/);
   }
+});
+
+test('merged variants show every SKU image and persist optional priority selections', () => {
+  assert.match(engine, /這組商品要處理的全部圖片/);
+  assert.match(engine, /每個編號的圖片都會先完成繁體化/);
+  assert.match(engine, /name="variantGallerySourceImageUrls"/);
+  assert.match(engine, /gallerySourceImageUrls:gallerySourceImageUrls/);
+  assert.match(engine, /gallerySourceImageUrls:item\.gallerySourceImageUrls\|\|\[\]/);
+  assert.match(engine, /name="currentCompletedImageUrls"/);
+  assert.match(engine, /每個案件的 selectedReferenceImageUrls 全部都要在同一輪完整檢查並台灣繁體化/);
+  assert.match(engine, /不得只處理第一個商品/);
 });
 
 test('all six searches keep their input and replace only a stable results container', () => {
@@ -390,7 +401,7 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(productAiResearchSource, /status: 'ready'/);
   assert.match(productAiResearchSource, /已加入準備上架/);
   assert.match(uploader, /slice\(0,PRODUCT_REFERENCE_IMAGE_MAX\)/);
-  assert.match(completedUploader, /slice\(0,12\)/);
+  assert.match(completedUploader, /slice\(0,PRODUCT_SELECTED_IMAGE_MAX\)/);
   assert.match(formRenderer, /id="productCompletedImageUpload"/);
   assert.match(formRenderer, /Codex 回填完成圖/);
   assert.doesNotMatch(formRenderer, /上傳 Codex 已完成圖片/);

@@ -105,7 +105,31 @@ test('listing snapshot keeps seven gallery slots and moves overflow product imag
   assert.ok(snapshot.momoHtml.indexOf('product-7.jpg') < snapshot.momoHtml.indexOf('product-listing-description-promo-1.jpg'));
   assert.ok(snapshot.coupangDescriptionHtml.indexOf('product-7.jpg') < snapshot.coupangDescriptionHtml.indexOf('product-listing-description-promo-1.jpg'));
   assert.equal(snapshot.imagePolicy.galleryMaximum, 7);
-  assert.equal(snapshot.imagePolicy.sourceImageMaximum, 12);
+  assert.equal(snapshot.imagePolicy.sourceImageMaximum, 20);
+});
+
+test('selected source images prioritize their localized completed images without exposing originals', () => {
+  const sourceOne = 'https://supplier.example.com/simple-1.jpg';
+  const sourceTwo = 'https://supplier.example.com/simple-2.jpg';
+  const completedOne = 'https://cdn.example.com/traditional-1.jpg';
+  const completedTwo = 'https://cdn.example.com/traditional-2.jpg';
+  const snapshot = helpers.buildListingSnapshot('p-priority', {
+    internalSku: 'PRIORITY-1', internalName: '合併圖片排序', currentStock: 1,
+    easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
+  }, {
+    productDescription: '完整商品介紹',
+    listingImageUrls: [completedOne, completedTwo],
+    gallerySourceImageUrls: [sourceTwo],
+    generatedListingImages: [
+      { sourceImageUrl: sourceOne, url: completedOne, status: 'ready', localizationStatus: 'completed' },
+      { sourceImageUrl: sourceTwo, url: completedTwo, status: 'ready', localizationStatus: 'completed' }
+    ],
+    enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
+  });
+
+  assert.deepEqual(snapshot.productImageUrls.slice(0, 2), [completedTwo, completedOne]);
+  assert.equal(snapshot.productImageUrls.includes(sourceTwo), false);
+  assert.deepEqual(helpers.prioritizedListingImageUrls({ listingImageUrls: [completedOne, completedTwo], gallerySourceImageUrls: [completedTwo] }), [completedTwo, completedOne]);
 });
 
 test('Coupang uses the second clean product image as main while MOMO keeps the green template first', () => {
