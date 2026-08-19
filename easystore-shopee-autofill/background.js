@@ -84,9 +84,19 @@ function preparedSupplierImage(value, pageUrl) {
   };
 }
 
-async function deliverToOperations(payload) {
-  const tabs = await chrome.tabs.query({
-    url: "https://danny700808.github.io/play-card/*"
+async function deliverToOperations(payload, session) {
+  let tabs = [];
+  if (session && Number.isInteger(session.operationsTabId) && session.operationsTabId > 0) {
+    try {
+      const owner = await chrome.tabs.get(session.operationsTabId);
+      if (owner) tabs = [owner];
+    } catch (error) {}
+  }
+  if (!tabs.length) tabs = await chrome.tabs.query({
+    url: [
+      "https://danny700808.github.io/play-card/portal.html*",
+      "https://danny700808.github.io/play-card/operations-hub.html*"
+    ]
   });
   if (!tabs.length) throw new Error("請保留「準備上架」商品頁，不要把它關閉");
   let lastError = null;
@@ -132,7 +142,7 @@ async function collectImage(message, sender) {
       productId: session.productId,
       sku: session.sku,
       image
-    });
+    }, session);
     const currentCount = Math.min(
       session.maxImages,
       Math.max(session.currentCount + 1, Number(result.count || 0))
@@ -179,9 +189,44 @@ async function startCropInTab(tab) {
   } catch (error) {}
 }
 
+async function bindOperationsTab(message, sender) {
+  const pageUrl = String((sender && sender.tab && sender.tab.url) || (sender && sender.url) || "");
+  const payload = message && message.payload && typeof message.payload === "object" ? message.payload : {};
+  if (!pageUrl.startsWith(`${imageCollector.OPERATIONS_ORIGIN}/play-card/`) || !sender.tab || !Number.isInteger(sender.tab.id)) {
+    return responseError("UNTRUSTED_OPERATIONS_PAGE", "只能由全通路營運中心綁定收圖頁面");
+  }
+  const session = await currentSession();
+  if (!session || session.sessionId !== payload.sessionId || session.productId !== payload.productId) {
+    return responseError("SESSION_MISMATCH", "目前收圖商品已經更換");
+  }
+  const next = Object.assign({}, session, { operationsTabId: sender.tab.id });
+  await storeSession(next);
+  return { ok: true, operationsTabId: sender.tab.id };
+}
+
+function ensureContextMenu() {
+  if (!chrome.contextMenus) return;
+  chrome.contextMenus.remove(SUPPLIER_CROP_MENU_ID, () => {
+    void chrome.runtime.lastError;
+    chrome.contextMenus.create({
+      id: SUPPLIER_CROP_MENU_ID,
+      title: "柚子掌櫃：框選截圖",
+      contexts: ["page", "image"],
+      documentUrlPatterns: [
+        "https://*.taobao.com/*", "https://*.tmall.com/*",
+        "https://*.1688.com/*", "https://*.alibaba.com/*"
+      ]
+    }, () => { void chrome.runtime.lastError; });
+  });
+}
+
 if (imageCollector) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message) return false;
+    if (message.type === imageCollector.BIND_OPERATIONS_TAB_MESSAGE) {
+      bindOperationsTab(message, sender).then(sendResponse).catch((error) => sendResponse(responseError("BIND_FAILED", error)));
+      return true;
+    }
     if (message.type === imageCollector.CAPTURE_MESSAGE) {
       captureVisibleSupplierTab(sender).then(sendResponse).catch((error) => sendResponse(responseError("CAPTURE_FAILED", error)));
       return true;
@@ -196,20 +241,12 @@ if (imageCollector) {
     chrome.action.onClicked.addListener(startCropInTab);
   }
   if (chrome.runtime.onInstalled && chrome.contextMenus) {
-    chrome.runtime.onInstalled.addListener(() => {
-      chrome.contextMenus.remove(SUPPLIER_CROP_MENU_ID, () => {
-        void chrome.runtime.lastError;
-        chrome.contextMenus.create({
-          id: SUPPLIER_CROP_MENU_ID,
-          title: "柚子掌櫃：框選截圖",
-          contexts: ["page"],
-          documentUrlPatterns: [
-            "https://*.taobao.com/*", "https://*.tmall.com/*",
-            "https://*.1688.com/*", "https://*.alibaba.com/*"
-          ]
-        });
-      });
-    });
+    chrome.runtime.onInstalled.addListener(ensureContextMenu);
+  }
+  if (chrome.runtime.onStartup && chrome.contextMenus) {
+    chrome.runtime.onStartup.addListener(ensureContextMenu);
+  }
+  if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       if (info.menuItemId === SUPPLIER_CROP_MENU_ID) await startCropInTab(tab);
     });
@@ -221,4 +258,5 @@ if (imageCollector) {
       await startCropInTab(tabs[0]);
     });
   }
+  ensureContextMenu();
 }

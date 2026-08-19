@@ -17,6 +17,8 @@
   const STOP_MESSAGE = "YOUZI_IMAGE_COLLECTION_STOP";
   const SESSION_ACK_MESSAGE = "YOUZI_IMAGE_COLLECTION_SESSION_ACK";
   const SESSION_STATE_MESSAGE = "YOUZI_IMAGE_COLLECTION_SESSION_STATE";
+  const STATE_REQUEST_MESSAGE = "YOUZI_IMAGE_COLLECTION_STATE_REQUEST";
+  const BIND_OPERATIONS_TAB_MESSAGE = "YOUZI_IMAGE_COLLECTION_BIND_OPERATIONS_TAB";
   const FETCH_MESSAGE = "YOUZI_IMAGE_COLLECTION_FETCH";
   const CAPTURE_MESSAGE = "YOUZI_IMAGE_COLLECTION_CAPTURE_VISIBLE";
   const CAPTURE_DATA_MESSAGE = "YOUZI_IMAGE_COLLECTION_CAPTURE_DATA";
@@ -142,6 +144,9 @@
     const startedAt = Number(row.startedAt || timestamp);
     const expiresAt = Number(row.expiresAt || (startedAt + MAX_SESSION_AGE_MS));
     const active = row.active !== false && currentCount < maxImages && expiresAt > timestamp;
+    const operationsTabId = Number.isInteger(Number(row.operationsTabId)) && Number(row.operationsTabId) > 0
+      ? Number(row.operationsTabId)
+      : 0;
     const errors = [];
     if (!/^[A-Za-z0-9_-]{12,120}$/.test(sessionId)) errors.push("收圖工作代碼不正確");
     if (!productId || productId.length > 180) errors.push("找不到準備上架商品");
@@ -166,6 +171,7 @@
         startedAt,
         expiresAt,
         active,
+        operationsTabId,
         stoppedReason: text(row.stoppedReason)
       }
     };
@@ -203,6 +209,8 @@
     STOP_MESSAGE,
     SESSION_ACK_MESSAGE,
     SESSION_STATE_MESSAGE,
+    STATE_REQUEST_MESSAGE,
+    BIND_OPERATIONS_TAB_MESSAGE,
     FETCH_MESSAGE,
     CAPTURE_MESSAGE,
     CAPTURE_DATA_MESSAGE,

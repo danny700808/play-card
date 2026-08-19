@@ -45,6 +45,22 @@
     }, details || {}));
   }
 
+  function postCurrentImageCollectionState() {
+    queueStorage.get(imageCollector.SESSION_STORAGE_KEY, (stored) => {
+      if (chrome.runtime.lastError) {
+        collectorPost(imageCollector.SESSION_STATE_MESSAGE, { session: null });
+        return;
+      }
+      const validation = imageCollector.normalizeSessionPayload(
+        stored && stored[imageCollector.SESSION_STORAGE_KEY],
+        Date.now()
+      );
+      collectorPost(imageCollector.SESSION_STATE_MESSAGE, {
+        session: validation.ok ? validation.value : null
+      });
+    });
+  }
+
   function startImageCollection(payload) {
     const validation = imageCollector.normalizeSessionPayload(payload, Date.now());
     if (!validation.ok) {
@@ -63,6 +79,13 @@
         currentCount: session.currentCount,
         maxImages: session.maxImages
       });
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        const pendingBind = chrome.runtime.sendMessage({
+          type: imageCollector.BIND_OPERATIONS_TAB_MESSAGE,
+          payload: { sessionId: session.sessionId, productId: session.productId }
+        });
+        if (pendingBind && typeof pendingBind.catch === "function") pendingBind.catch(() => {});
+      }
     });
   }
 
@@ -110,6 +133,10 @@
     }
     if (imageCollector && message.type === imageCollector.STOP_MESSAGE) {
       stopImageCollection(message.payload);
+      return;
+    }
+    if (imageCollector && message.type === imageCollector.STATE_REQUEST_MESSAGE) {
+      postCurrentImageCollectionState();
       return;
     }
     if (imageCollector && message.type === imageCollector.FILE_ACK_MESSAGE) {
@@ -163,14 +190,29 @@
         sendResponse({ ok: false, error: "圖片工作代碼不正確" });
         return false;
       }
-      const timer = setTimeout(() => {
-        const pending = pendingImageDeliveries.get(requestId);
-        if (!pending) return;
-        pendingImageDeliveries.delete(requestId);
-        pending.sendResponse({ ok: false, error: "商品上架頁接收圖片逾時" });
-      }, 120_000);
-      pendingImageDeliveries.set(requestId, { sendResponse, timer });
-      collectorPost(imageCollector.DELIVER_MESSAGE, message.payload);
+      queueStorage.get(imageCollector.SESSION_STORAGE_KEY, (stored) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        const validation = imageCollector.normalizeSessionPayload(
+          stored && stored[imageCollector.SESSION_STORAGE_KEY],
+          Date.now()
+        );
+        const current = validation.ok ? validation.value : null;
+        if (!current || !current.active || current.sessionId !== message.payload.sessionId || current.productId !== message.payload.productId) {
+          sendResponse({ ok: false, error: "目前收圖商品已經更換，請重新確認商品" });
+          return;
+        }
+        const timer = setTimeout(() => {
+          const pending = pendingImageDeliveries.get(requestId);
+          if (!pending) return;
+          pendingImageDeliveries.delete(requestId);
+          pending.sendResponse({ ok: false, error: "商品上架頁接收圖片逾時" });
+        }, 120_000);
+        pendingImageDeliveries.set(requestId, { sendResponse, timer });
+        collectorPost(imageCollector.DELIVER_MESSAGE, Object.assign({}, message.payload, { session: current }));
+      });
       return true;
     });
   }

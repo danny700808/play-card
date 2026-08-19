@@ -8,6 +8,7 @@ const operationsSource = fs.readFileSync("operations-phase1.js", "utf8");
 const manifest = JSON.parse(fs.readFileSync("easystore-shopee-autofill/manifest.json", "utf8"));
 const supplierCollector = fs.readFileSync("easystore-shopee-autofill/supplier-collector.js", "utf8");
 const background = fs.readFileSync("easystore-shopee-autofill/background.js", "utf8");
+const bridge = fs.readFileSync("easystore-shopee-autofill/bridge.js", "utf8");
 
 test("準備上架提供指定商品的開始收圖入口", () => {
   assert.match(operationsSource, /data-action="product-image-collection-toggle"/);
@@ -24,6 +25,8 @@ test("供應商頁以框選截圖為主且不會預設攔截商品頁點擊", ()
   assert.match(background, /chrome\.tabs\.captureVisibleTab/);
   assert.match(background, /imageCollector\.CAPTURE_DATA_MESSAGE/);
   assert.match(background, /chrome\.contextMenus\.onClicked/);
+  assert.match(background, /contexts: \["page", "image"\]/);
+  assert.match(background, /chrome\.runtime\.onStartup\.addListener\(ensureContextMenu\)/);
 });
 
 test("截錯的來源圖片可從目前商品直接刪除", () => {
@@ -36,6 +39,21 @@ test("收圖檔案沿用既有 Firebase 圖片上傳並綁定目前商品", () =
   assert.match(operationsSource, /productId!==productImageCollectionSession\.productId/);
   assert.match(operationsSource, /uploadProductVariantReferenceImages\(form,productId,\[collectedImageFile\(payload\)\]\)/);
   assert.match(operationsSource, /每個商品最多保留 12 張來源圖片/);
+});
+
+test("營運中心重新整理後會主動恢復既有收圖工作", () => {
+  assert.match(operationsSource, /YOUZI_IMAGE_COLLECTION_STATE_REQUEST/);
+  assert.match(operationsSource, /requestProductImageCollectionSessionState\(\)/);
+  assert.match(bridge, /imageCollector\.STATE_REQUEST_MESSAGE/);
+  assert.match(bridge, /postCurrentImageCollectionState/);
+  assert.match(bridge, /Object\.assign\(\{\}, message\.payload, \{ session: current \}\)/);
+  assert.match(operationsSource, /payload&&payload\.session/);
+});
+
+test("收圖成功或失敗訊息不會立刻被等待文字覆蓋", () => {
+  assert.match(supplierCollector, /let statusMessage = ""/);
+  assert.match(supplierCollector, /!sending && !statusMessage/);
+  assert.match(supplierCollector, /statusText\.classList\.toggle\("youzi-error", statusIsError\)/);
 });
 
 test("收圖保存不會被尚未選完的細項父商品阻擋", () => {
@@ -76,7 +94,7 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
 });
 
 test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
-  assert.equal(manifest.version, "0.3.18");
+  assert.equal(manifest.version, "0.3.19");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));
