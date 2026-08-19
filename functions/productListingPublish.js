@@ -271,7 +271,9 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
       parentName: snapshot.variantParentName,
       attributeName: snapshot.variantAttributeName,
       parentAttributeValue: snapshot.variantParentAttributeValue,
-      attributeValue: snapshot.variantAttributeValue
+      attributeValue: snapshot.variantAttributeValue,
+      parentImageUrl: snapshot.variantParentImageUrl,
+      imageUrl: snapshot.variantChildImageUrl
     } : null,
     listingPolicy: {
       decision: addVariant ? 'existing' : normalizeListingDecision(snapshot.shopeeListingDecision),
@@ -447,7 +449,40 @@ function appendShopDescriptionImages(html, imageUrls) {
   return appendShopDescriptionPromos(result);
 }
 
-function buildListingSnapshot(productId, product, listingCase, variantParentProduct = null) {
+function localizedRepresentativeImageMap(listingCase) {
+  const rows = listingCase && Array.isArray(listingCase.generatedListingImages)
+    ? listingCase.generatedListingImages : [];
+  const result = new Map();
+  rows.forEach((row) => {
+    const sourceUrl = safeHttpUrl(row && row.sourceImageUrl);
+    const completedUrl = safeHttpUrl(row && row.url);
+    const ready = clean(row && row.status).toLowerCase() === 'ready';
+    const localized = clean(row && row.localizationStatus).toLowerCase() === 'completed'
+      || clean(row && row.qaStatus).toLowerCase() === 'approved';
+    if (sourceUrl && completedUrl && ready && localized) result.set(sourceUrl, completedUrl);
+  });
+  return result;
+}
+
+function localizedRepresentativeImage(listingCase, sourceUrl) {
+  return localizedRepresentativeImageMap(listingCase).get(safeHttpUrl(sourceUrl)) || '';
+}
+
+function variantRepresentativeMissingFields(snapshot) {
+  const missing = [];
+  if (snapshot.listingMode === 'add-variant') {
+    if (!snapshot.variantParentSourceImageUrl) missing.push('原商品代表圖');
+    else if (!snapshot.variantParentImageUrl) missing.push('原商品代表圖的繁體完成版');
+    if (!snapshot.variantChildSourceImageUrl) missing.push('新細項代表圖');
+    else if (!snapshot.variantChildImageUrl) missing.push('新細項代表圖的繁體完成版');
+  } else if (snapshot.variantGroupEnabled) {
+    if (!snapshot.variantGroupPrimarySourceImageUrl) missing.push('目前商品代表圖');
+    else if (!snapshot.variantGroupPrimaryImageUrl) missing.push('目前商品代表圖的繁體完成版');
+  }
+  return missing;
+}
+
+function buildListingSnapshot(productId, product, listingCase, variantParentProduct = null, variantParentListingCase = null) {
   const enabled = listingCase.enabledPlatforms && typeof listingCase.enabledPlatforms === 'object'
     ? listingCase.enabledPlatforms : { easyStoreShopee: true, momo: true, coupang: true };
   const listingMode = clean(listingCase.listingMode) === 'add-variant' ? 'add-variant' : 'independent';
@@ -459,6 +494,16 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
   const listingIdentityProduct = listingMode === 'add-variant' ? { platformMappings: parentPlatformMappings, platformListingStatus: parentPlatformListingStatus } : product;
   const shopeeExistingListingIds = platformListingIds(listingIdentityProduct, 'shopee');
   const description = listingDescription(listingCase);
+  const variantGroupEnabled = listingMode === 'independent' && listingCase.variantGroupEnabled === true;
+  const variantParentSourceImageUrl = listingMode === 'add-variant' ? safeHttpUrl(listingCase.variantParentImageUrl) : '';
+  const variantChildSourceImageUrl = listingMode === 'add-variant' ? safeHttpUrl(listingCase.variantChildImageUrl) : '';
+  const variantGroupPrimarySourceImageUrl = variantGroupEnabled ? safeHttpUrl(listingCase.variantGroupPrimaryImageUrl) : '';
+  const variantParentImageUrl = listingMode === 'add-variant'
+    ? localizedRepresentativeImage(variantParentListingCase, variantParentSourceImageUrl) : '';
+  const variantChildImageUrl = listingMode === 'add-variant'
+    ? localizedRepresentativeImage(listingCase, variantChildSourceImageUrl) : '';
+  const variantGroupPrimaryImageUrl = variantGroupEnabled
+    ? localizedRepresentativeImage(listingCase, variantGroupPrimarySourceImageUrl) : '';
   const imageAllocation = listingImageAllocation(listingCase.listingImageUrls);
   const images = imageAllocation.galleryImages;
   const descriptionHtml = appendShopDescriptionImages(productDescriptionToSafeHtml(description), imageAllocation.descriptionImages);
@@ -471,6 +516,13 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     variantAttributeName: listingMode === 'add-variant' ? clean(listingCase.variantAttributeName) : '',
     variantParentAttributeValue: listingMode === 'add-variant' ? clean(listingCase.variantParentAttributeValue) : '',
     variantAttributeValue: listingMode === 'add-variant' ? clean(listingCase.variantAttributeValue) : '',
+    variantParentSourceImageUrl,
+    variantChildSourceImageUrl,
+    variantParentImageUrl,
+    variantChildImageUrl,
+    variantGroupEnabled,
+    variantGroupPrimarySourceImageUrl,
+    variantGroupPrimaryImageUrl,
     variantParentPlatformMappings: listingMode === 'add-variant' ? parentPlatformMappings : {},
     variantParentPlatformListingStatus: listingMode === 'add-variant' ? parentPlatformListingStatus : {},
     variantParentEasyStoreProductId: listingMode === 'add-variant' ? clean(platformListingIds(listingIdentityProduct, 'easyStore')[0]) : '',
@@ -507,7 +559,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       violationRecovery: 'republish-when-data-is-valid-and-capacity-allows'
     },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
-    imagePolicy: { sourceImageMaximum: 12, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true },
+    imagePolicy: { sourceImageMaximum: 12, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true, localizedVariantRepresentativesRequired: true },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
     shopeeDescription: clean(listingCase.shopeeDescription) || description,
     shopeeRequiredNotes: clean(listingCase.shopeeRequiredNotes),
@@ -669,7 +721,7 @@ function platformQueueFingerprint(platform, snapshot) {
     productId: snapshot.productId,
     sku: snapshot.sku,
     listingMode: snapshot.listingMode,
-    variantGroup: [snapshot.variantParentProductId, snapshot.variantParentSku, snapshot.variantAttributeName, snapshot.variantParentAttributeValue, snapshot.variantAttributeValue],
+    variantGroup: [snapshot.variantParentProductId, snapshot.variantParentSku, snapshot.variantAttributeName, snapshot.variantParentAttributeValue, snapshot.variantAttributeValue, snapshot.variantParentImageUrl, snapshot.variantChildImageUrl],
     parentPlatformListingIds: platformListingIds({ platformMappings: snapshot.variantParentPlatformMappings, platformListingStatus: snapshot.variantParentPlatformListingStatus }, key),
     title: snapshot.title,
     description: snapshot.description,
@@ -698,6 +750,7 @@ function buildPlatformQueuePolicy(product, platform, snapshot) {
       matchKey: 'parent-listing-id+sku', sku: snapshot.sku, existingListingIds,
       parentProductId: clean(snapshot.variantParentProductId), parentSku: clean(snapshot.variantParentSku),
       variantAttributeName: clean(snapshot.variantAttributeName), variantParentAttributeValue: clean(snapshot.variantParentAttributeValue), variantAttributeValue: clean(snapshot.variantAttributeValue),
+      variantParentImageUrl: safeHttpUrl(snapshot.variantParentImageUrl), variantImageUrl: safeHttpUrl(snapshot.variantChildImageUrl),
       onZero: 'block', onOne: 'append-variant', onMultiple: 'block', onUncertain: 'block'
     };
   }
@@ -927,6 +980,7 @@ async function upsertEasyStoreProduct(snapshot, product, token) {
 
 function easyStoreMissingFields(snapshot) {
   const missing = [];
+  missing.push(...variantRepresentativeMissingFields(snapshot));
   if (snapshot.listingMode === 'add-variant' && !snapshot.variantParentEasyStoreProductId) missing.push('父商品 EasyStore 編號');
   if (snapshot.listingMode === 'add-variant' && (!snapshot.variantAttributeName || !snapshot.variantParentAttributeValue || !snapshot.variantAttributeValue)) missing.push('細項名稱、父商品細項值與新細項值');
   if (!snapshot.sku) missing.push('SKU');
@@ -946,6 +1000,7 @@ function easyStoreMissingFields(snapshot) {
 
 function momoMissingFields(snapshot) {
   const missing = [];
+  missing.push(...variantRepresentativeMissingFields(snapshot));
   if (!snapshot.sku) missing.push('SKU');
   if (!snapshot.momoGoodsName) missing.push('MOMO 商品名稱');
   if (!snapshot.description) missing.push('完整商品介紹');
@@ -956,6 +1011,7 @@ function momoMissingFields(snapshot) {
 
 function coupangMissingFields(snapshot) {
   const missing = [];
+  missing.push(...variantRepresentativeMissingFields(snapshot));
   if (!snapshot.sku) missing.push('SKU');
   if (!snapshot.coupangTitle) missing.push('酷澎標題');
   if (!snapshot.description) missing.push('完整商品介紹');
@@ -1127,16 +1183,25 @@ function registerProductListingPublish(target) {
     const product = productSnap.data() || {};
     const listingCase = caseSnap.data() || {};
     let variantParentProduct = null;
+    let variantParentListingCase = null;
     if (clean(listingCase.listingMode) === 'add-variant') {
       const parentId = clean(listingCase.variantParentProductId);
       if (!parentId || parentId === productId || parentId.includes('/')) throw new HttpsError('failed-precondition', '請選擇另一個有效的父商品。');
-      const parentSnap = await db.collection(PRODUCT_COLLECTION).doc(parentId).get();
+      const [parentSnap, parentCaseSnap] = await Promise.all([
+        db.collection(PRODUCT_COLLECTION).doc(parentId).get(),
+        db.collection(LISTING_CASE_COLLECTION).doc(parentId).get()
+      ]);
       if (!parentSnap.exists) throw new HttpsError('failed-precondition', '選定的父商品已不存在，請重新選擇。');
       variantParentProduct = parentSnap.data() || {};
+      variantParentListingCase = parentCaseSnap.exists ? parentCaseSnap.data() || {} : {};
     }
-    const snapshot = buildListingSnapshot(productId, product, listingCase, variantParentProduct);
+    const snapshot = buildListingSnapshot(productId, product, listingCase, variantParentProduct, variantParentListingCase);
     if (!snapshot.enabledEasyStoreShopee && !snapshot.enabledMomo && !snapshot.enabledCoupang) {
       throw new HttpsError('failed-precondition', '請至少勾選一個要上架的平台。');
+    }
+    const representativeMissing = variantRepresentativeMissingFields(snapshot);
+    if (representativeMissing.length) {
+      throw new HttpsError('failed-precondition', `細項代表圖尚未完成繁體化：${representativeMissing.join('、')}。請先完成圖片處理；系統不會直接使用簡體原圖。`);
     }
     const jobRef = db.collection(JOB_COLLECTION).doc();
     const jobId = jobRef.id;

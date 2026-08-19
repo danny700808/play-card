@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.19-product-variant-workflow-v4';
+  const VERSION = '2026.08.19-product-variant-workflow-v5';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   let pendingShopeeAutofillPayload = null;
@@ -3447,7 +3447,7 @@ function ensureSalesClock(){
   }
   function productVariantImagePickerHtml(product,selectedUrl,sourceImages,role){
     const id=clean(product&&product.docId);
-    return '<div class="ops-listing-variant-image-actions"><strong>請選擇這個細項的代表圖（必選）</strong></div><div class="ops-listing-variant-image-picker" data-variant-image-picker data-id="'+attr(id)+'">'+productVariantImagePickerOptionsHtml(id,selectedUrl,sourceImages,role)+'</div>';
+    return '<div class="ops-listing-variant-image-actions"><strong>請從原圖指定代表圖（必選）</strong><small>上架時只會使用這張圖對應的繁體完成版，不會直接使用簡體原圖。</small></div><div class="ops-listing-variant-image-picker" data-variant-image-picker data-id="'+attr(id)+'">'+productVariantImagePickerOptionsHtml(id,selectedUrl,sourceImages,role)+'</div>';
   }
   function productVariantSearchLabel(product){return (product&&product.sku||'未設定')+'｜'+(product&&product.originalName||product&&product.name||'未命名');}
   function productVariantSuggestion(product){
@@ -3605,7 +3605,13 @@ function ensureSalesClock(){
       if(new Set([variantGroupPrimaryValue].concat(variantGroupItems.map(function(item){return item.attributeValue;})).map(function(value){return clean(value).toLowerCase();})).size!==variantGroupItems.length+1)throw new Error('同一組商品的細項名稱不能重複');
     }
     function formUrls(name,label){const raw=clean(data.get(name)),rows=raw.split(/[\n|]+/).map(clean).filter(Boolean),urls=normalizeProductResearchSourceUrls(rows);if(rows.some(function(row){return !/^https?:\/\//i.test(row)||!safeUrl(row);}))throw new Error(label+'請一行填一個完整網址');return urls;}
-    const productResearchStatus=clean(data.get('productResearchStatus'))||'not-searched',sourceUrls=formUrls('productResearchSourceUrls','商品研究來源'),referenceUrls=formUrls('referenceUrls','參考網址'),referenceImageUrls=formUrls('referenceImageUrls','參考圖片網址'),listingImageUrls=formUrls('listingImageUrls','上架圖片網址'),selectedReferenceImageUrls=normalizeProductResearchSourceUrls(data.getAll('selectedReferenceImageUrls')).filter(function(url){return referenceImageUrls.includes(url);}).slice(0,12),researchComplete=['researched','manual'].includes(productResearchStatus);
+    const productResearchStatus=clean(data.get('productResearchStatus'))||'not-searched',sourceUrls=formUrls('productResearchSourceUrls','商品研究來源'),referenceUrls=formUrls('referenceUrls','參考網址'),referenceImageUrls=formUrls('referenceImageUrls','參考圖片網址'),listingImageUrls=formUrls('listingImageUrls','上架圖片網址'),selectedReferenceImageUrls=normalizeProductResearchSourceUrls(data.getAll('selectedReferenceImageUrls')).filter(function(url){return referenceImageUrls.includes(url);}),researchComplete=['researched','manual'].includes(productResearchStatus);
+    const requiredCurrentRepresentativeSource=listingMode==='add-variant'?variantChildImageUrl:variantGroupEnabled?variantGroupPrimaryImageUrl:'';
+    if(requiredCurrentRepresentativeSource&&referenceImageUrls.includes(requiredCurrentRepresentativeSource)&&!selectedReferenceImageUrls.includes(requiredCurrentRepresentativeSource)){
+      if(selectedReferenceImageUrls.length>=12)selectedReferenceImageUrls.pop();
+      selectedReferenceImageUrls.push(requiredCurrentRepresentativeSource);
+    }
+    selectedReferenceImageUrls.splice(12);
     const legacyShortDescription=clean(data.get('shortDescription')),legacyFeatureList=clean(data.get('featureList')),legacySpecificationText=clean(data.get('specificationText'));
     const productDescription=clean(data.get('productDescription'))||clean(data.get('commonProductDescription'))||[legacyShortDescription,legacyFeatureList,legacySpecificationText].filter(Boolean).join('\n\n');
     const sharedProductHtml=productDescriptionToSafeHtml(productDescription),sellingPoints=clean(data.get('sellingPoints'))||clean((productDescription.split(/\n+/).find(function(line){return /^\s*(?:\d+[.、]|[-•●])\s*/.test(line);})||'').replace(/^\s*(?:\d+[.、]|[-•●])\s*/,''))||clean(productDescription.split(/\n\n+/)[0]);
@@ -4217,7 +4223,7 @@ function ensureSalesClock(){
       '商品名稱：'+clean(product.originalName||product.name),
       '案件文件：opsProductListingCases/'+clean(product.docId),
       '目標通路：'+(platforms||'請依案件設定'),
-      '請先從案件讀取已選圖片、圖片修改要求、商品網址、價格、庫存、物流與細項設定；圖片只做一次完整檢查與台灣繁體化，完成後再依既有規則處理四通路上架。不要重新呼叫網站的 OpenAI 文案或圖片 API。'
+      '請先從案件讀取已選圖片、圖片修改要求、商品網址、價格、庫存、物流與細項設定；圖片只做一次完整檢查與台灣繁體化，所有簡體字改為繁體字，中國大陸用語改為台灣常用說法。細項代表圖欄位保存的是原圖選擇，必須依 generatedListingImages 的 sourceImageUrl 對應到完成圖 url，四通路只能使用這張繁體完成圖；找不到對應完成圖時要停止，不可直接上架簡體原圖。不要重新呼叫網站的 OpenAI 文案或圖片 API。'
     ].join('\n');
   }
   async function copyProductListingCodexPrompt(text){
