@@ -38,6 +38,16 @@ test("收圖檔案沿用既有 Firebase 圖片上傳並綁定目前商品", () =
   assert.match(operationsSource, /每個商品最多保留 12 張來源圖片/);
 });
 
+test("收圖保存不會被尚未選完的細項父商品阻擋", () => {
+  assert.match(operationsSource, /async function persistProductVariantReferenceImages/);
+  assert.match(operationsSource, /await persistProductVariantReferenceImages\(form,id,urls,urls\)/);
+  const helperStart = operationsSource.indexOf("async function persistProductVariantReferenceImages");
+  const uploadStart = operationsSource.indexOf("async function uploadProductVariantReferenceImages", helperStart);
+  const completedStart = operationsSource.indexOf("async function uploadProductCompletedListingImages", uploadStart);
+  const intakeBlock = operationsSource.slice(helperStart, completedStart);
+  assert.doesNotMatch(intakeBlock, /saveProductListingCase\(form/);
+});
+
 test("同款商品的每一個編號都有獨立上傳與指定收圖入口", () => {
   assert.match(operationsSource, /function productVariantGroupPrimaryItemHtml/);
   assert.match(operationsSource, /data-action="product-variant-image-collection"/);

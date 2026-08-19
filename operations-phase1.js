@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.18-variant-image-target-v1';
+  const VERSION = '2026.08.19-image-intake-save-v1';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   let pendingShopeeAutofillPayload = null;
@@ -3699,6 +3699,17 @@ function ensureSalesClock(){
       if(hidden)hidden.value=rows.join('\n');if(preview)preview.innerHTML=productVariantImageThumbsHtml(product,rows);if(count)count.textContent=rows.length+'／12 張';if(status){status.className=rows.length?'ok':'missing';status.textContent=rows.length?'已配對這個編號的圖片':'尚未指定圖片；可上傳或指定此細項收圖';}
     });
   }
+  async function persistProductVariantReferenceImages(form,productId,urls,selectedUrls){
+    if(!form)throw new Error('找不到商品上架資料');
+    const id=clean(productId),product=catalogById(id),formProductId=clean(form.dataset.id),rows=normalizeProductResearchSourceUrls(urls).slice(0,12),selected=normalizeProductResearchSourceUrls(selectedUrls==null?rows:selectedUrls).filter(function(url){return rows.includes(url);}).slice(0,12);
+    if(!productVariantImageTargetAllowed(form,id)||!product)throw new Error('找不到要保存圖片的商品');
+    if(!state.db)throw new Error('商品圖片資料庫尚未載入，請重新整理頁面。');
+    const payload={productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),productImageUrl:clean(product.imageUrl||productVariantImages(product)[0]),referenceImageUrls:rows,selectedReferenceImageUrls:selected,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+    if(id===formProductId&&form.dataset.exists!=='1'){payload.createdAt=serverTimestamp();payload.createdBy=userLabel();}
+    await state.db.collection(COLLECTIONS.listingCases).doc(id).set(payload,{merge:true});
+    if(id===formProductId){form.dataset.exists='1';return;}
+    await state.db.collection(COLLECTIONS.listingCases).doc(formProductId).set({variantGroupItems:productVariantGroupItemsFromForm(form),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
+  }
   async function uploadProductVariantReferenceImages(form,productId,files){
     if(!form||!files||!files.length)return;const id=clean(productId),product=catalogById(id);if(!productVariantImageTargetAllowed(form,id)||!product)throw new Error('找不到要加入圖片的細項商品');
     if(id===clean(form.dataset.id)){await uploadProductReferenceImages(form,files);refreshProductVariantImageTarget(form,id);return;}
@@ -3712,7 +3723,7 @@ function ensureSalesClock(){
       const file=selected[index],extension=(file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg'),path='ops-product-listing-cases/'+id+'/references/'+Date.now()+'-'+index+'-'+Math.random().toString(36).slice(2,9)+'.'+extension;
       const snapshot=await storage.ref().child(path).put(file,{contentType:file.type,customMetadata:{productId:id,parentProductId:clean(form.dataset.id),uploadedBy:userLabel()}});uploaded.push(await snapshot.ref.getDownloadURL());
     }
-    const urls=normalizeProductResearchSourceUrls(existing.concat(uploaded)).slice(0,12);refreshProductVariantImageTarget(form,id,urls);form.dataset.dirty='1';await saveProductListingCase(form,false,true,true);
+    const urls=normalizeProductResearchSourceUrls(existing.concat(uploaded)).slice(0,12);refreshProductVariantImageTarget(form,id,urls);form.dataset.dirty='1';await persistProductVariantReferenceImages(form,id,urls,urls);
     if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>此細項圖片已加入</b><small>'+uploaded.length+' 張已指定給 '+escapeHtml(product.sku||'未設定')+'。</small></div></div>';toast('細項圖片已上傳',clean(product.sku)+'｜'+uploaded.length+' 張','success');
   }
   async function uploadProductReferenceImages(form,files){
@@ -3730,7 +3741,7 @@ function ensureSalesClock(){
       const snapshot=await storage.ref().child(path).put(file,{contentType:file.type,customMetadata:{productId:id,uploadedBy:userLabel()}});
       uploaded.push(await snapshot.ref.getDownloadURL());
     }
-    const urls=normalizeProductResearchSourceUrls(existing.concat(uploaded));if(input)input.value=urls.join('\n');form.dataset.dirty='1';const referenceBox=byId('productReferenceImagePreview');if(referenceBox)referenceBox.innerHTML=productReferenceImageSelectorHtml(urls,urls);refreshProductListingImagePreviews(form);refreshProductVariantImageTarget(form,id,urls);await saveProductListingCase(form,false,true,true);
+    const urls=normalizeProductResearchSourceUrls(existing.concat(uploaded));if(input)input.value=urls.join('\n');form.dataset.dirty='1';const referenceBox=byId('productReferenceImagePreview');if(referenceBox)referenceBox.innerHTML=productReferenceImageSelectorHtml(urls,urls);refreshProductListingImagePreviews(form);refreshProductVariantImageTarget(form,id,urls);await persistProductVariantReferenceImages(form,id,urls,urls);
     if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>來源圖片已上傳</b><small>'+uploaded.length+' 張已自動加入這件準備上架商品。</small></div></div>';
     toast('來源圖片已上傳',uploaded.length+' 張圖片已加入並勾選。','success');
   }
@@ -3772,7 +3783,7 @@ function ensureSalesClock(){
     if(countBox)countBox.innerHTML='目前 <b>'+count+'</b>／'+PRODUCT_IMAGE_COLLECTION.maxImages+' 張';
     queryAll('[data-action="product-variant-image-collection"]',form).forEach(function(targetButton){const buttonId=clean(targetButton.dataset.id),buttonActive=!!(productImageCollectionSession&&productImageCollectionSession.active&&buttonId===targetId),buttonCount=productImageCollectionCount(form,buttonId);targetButton.textContent=buttonActive?'停止此細項收圖':'指定此細項收圖';targetButton.classList.toggle('danger',buttonActive);targetButton.classList.toggle('soft',!buttonActive);targetButton.disabled=buttonCount>=PRODUCT_IMAGE_COLLECTION.maxImages&&!buttonActive;});
     if(status){
-      if(isError)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>收圖未啟動</b><small>'+escapeHtml(message||'請確認已安裝最新版柚子掌櫃助手。')+'</small><div class="ops-listing-collector-links"><a href="youzi-easystore-shopee-autofill-v0.3.18.zip" download>下載／更新助手 0.3.18</a></div></div></div>';
+      if(isError)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>'+(productImageCollectionSession&&productImageCollectionSession.active?'圖片尚未加入':'收圖未啟動')+'</b><small>'+escapeHtml(message||'請確認已安裝最新版柚子掌櫃助手。')+'</small><div class="ops-listing-collector-links"><a href="youzi-easystore-shopee-autofill-v0.3.18.zip" download>下載／更新助手 0.3.18</a></div></div></div>';
       else if(active)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>正在收圖</b><small>'+escapeHtml(message||'切到供應商頁按右鍵選「柚子掌櫃：框選截圖」（或按 Ctrl＋Shift＋Y），用滑鼠拉出需要的範圍；也可按 Win＋Shift＋S 後回頁面按 Ctrl＋V。')+'</small><div class="ops-listing-collector-links"><a href="https://www.taobao.com/" target="_blank" rel="noopener">開啟淘寶</a><a href="https://www.1688.com/" target="_blank" rel="noopener">開啟 1688</a><a href="https://www.alibaba.com/" target="_blank" rel="noopener">開啟阿里巴巴</a></div></div></div>';
       else if(message)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>收圖模式已結束</b><small>'+escapeHtml(message)+'</small></div></div>';
       else status.innerHTML='';
@@ -3840,7 +3851,7 @@ function ensureSalesClock(){
     const selected=queryAll('[name="selectedReferenceImageUrls"]:checked',form).map(function(row){return row.value;}).filter(function(value){return value!==url&&urls.includes(value);});
     if(input)input.value=urls.join('\n');
     const box=byId('productReferenceImagePreview');if(box)box.innerHTML=productReferenceImageSelectorHtml(urls,selected);
-    form.dataset.dirty='1';refreshProductListingImagePreviews(form);await saveProductListingCase(form,false,true,true);
+    form.dataset.dirty='1';refreshProductListingImagePreviews(form);refreshProductVariantImageTarget(form,clean(form.dataset.id),urls);await persistProductVariantReferenceImages(form,clean(form.dataset.id),urls,selected);
     if(productImageCollectionSession&&productImageCollectionSession.active&&productImageCollectionSession.productId===clean(form.dataset.id)){
       productImageCollectionSession.currentCount=urls.length;
       global.postMessage({source:PRODUCT_IMAGE_COLLECTION.source,type:PRODUCT_IMAGE_COLLECTION.start,payload:productImageCollectionSession},global.location.origin);
