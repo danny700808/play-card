@@ -167,12 +167,13 @@ function listingAutomationPolicy() {
       shopeeDependsOnEasyStore: true,
       prepareBeforeOpen: ['category', 'brand', 'attributes', 'logistics', 'price', 'stock', 'images', 'variants'],
       shopeeHandoff: {
-        primary: 'easystore-channel-sync',
-        fallback: 'direct-shopee-seller-editor',
-        fallbackWhen: ['channel-import-unavailable', 'channel-editor-missing-required-capability', 'sync-row-missing'],
+        canonicalWorkspace: 'easystore-shopee-channel-sync',
+        singleWorkspaceOnly: true,
+        neverOpenDirectShopeeSellerEditor: true,
         reusePreparedPayload: true,
         neverRestartResearchOrImageProcessing: true,
-        neverReturnToPreviousPlatformForRediscovery: true
+        retrySameChannelProductAndPage: true,
+        verifyIn: 'easystore-shopee-channel-product-list'
       },
       verification: 'single-final-check-after-submit'
     },
