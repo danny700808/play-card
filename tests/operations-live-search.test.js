@@ -65,7 +65,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260819-product-variant-workflow-v8/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260819-product-variant-workflow-v10/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-one-click-auto-publish-v11/);
   }
 });
 
@@ -278,8 +278,14 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(engine, /data-action="product-listing-case-open"/);
   assert.match(saveCase, /COLLECTIONS\.listingCases\)\.doc\(id\)/);
   assert.match(saveCase, /priceSnapshot/);
-  assert.match(saveCase, /easyStore:numberOrNull\(p\.easyStorePrice\)/);
-  assert.doesNotMatch(saveCase, /easyStore:p\.easyStorePrice/);
+  assert.match(saveCase, /easyStore:productListingAutomaticPrice\(p,'easyStorePrice'\)/);
+  assert.match(saveCase, /enabledPlatforms:\{easyStoreShopee:true,momo:true,coupang:true\}/);
+  assert.match(caseForm, /name="enabledEasyStoreShopee" value="1"/);
+  assert.match(caseForm, /name="enabledMomo" value="1"/);
+  assert.match(caseForm, /name="enabledCoupang" value="1"/);
+  assert.doesNotMatch(caseForm, /type="checkbox" name="enabled(?:EasyStoreShopee|Momo|Coupang)"/);
+  assert.match(caseForm, /不需勾選/);
+  assert.match(functionBody(engine, 'productListingAutomaticPrice'), /p&&p\.storePrice/);
   assert.match(caseForm, /蝦皮防重複檢查/);
   assert.match(caseForm, /已有商品要先用 Match product 配對/);
   assert.match(caseForm, /name="shopeeListingDecision"/);
@@ -302,7 +308,8 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.doesNotMatch(caseForm, />上傳 Codex 已完成圖片</);
   assert.match(caseForm, /product-listing-speech/);
   assert.doesNotMatch(caseForm, /圖片來源可選一種|固定圖片格式已套用|商品與抓圖注意事項|進階：直接貼圖片網址/);
-  assert.match(engine, /warrantyInfo:[^\n]+\|\|'保固半年'/);
+  assert.match(engine, /const warrantyInfo=[^\n]+\|\|'保固半年'/);
+  assert.match(engine, /warrantyInfo:warrantyInfo/);
   assert.match(caseForm, /完整商品介紹/);
   assert.match(caseForm, /6～10 點特色/);
   assert.match(caseForm, /商品規格/);

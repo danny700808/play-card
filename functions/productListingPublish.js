@@ -483,8 +483,6 @@ function variantRepresentativeMissingFields(snapshot) {
 }
 
 function buildListingSnapshot(productId, product, listingCase, variantParentProduct = null, variantParentListingCase = null) {
-  const enabled = listingCase.enabledPlatforms && typeof listingCase.enabledPlatforms === 'object'
-    ? listingCase.enabledPlatforms : { easyStoreShopee: true, momo: true, coupang: true };
   const listingMode = clean(listingCase.listingMode) === 'add-variant' ? 'add-variant' : 'independent';
   const parentProduct = variantParentProduct && typeof variantParentProduct === 'object' ? variantParentProduct : {};
   const parentPlatformMappings = parentProduct.platformMappings && typeof parentProduct.platformMappings === 'object'
@@ -539,9 +537,9 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     stock: Math.max(0, Math.round(numberOrNull(product.currentStock) || 0)),
     costPrice: numberOrNull(product.latestPurchaseCost || product.averageCost),
     storePrice: numberOrNull(product.storePrice || product.originalSalePrice),
-    easyStorePrice: numberOrNull(product.easyStorePrice != null ? product.easyStorePrice : listingCase.priceSnapshot && listingCase.priceSnapshot.easyStore),
-    momoPrice: numberOrNull(product.momoPrice != null ? product.momoPrice : listingCase.priceSnapshot && listingCase.priceSnapshot.momo),
-    coupangPrice: numberOrNull(product.coupangPrice != null ? product.coupangPrice : listingCase.priceSnapshot && listingCase.priceSnapshot.coupang),
+    easyStorePrice: numberOrNull(product.easyStorePrice != null ? product.easyStorePrice : listingCase.priceSnapshot && listingCase.priceSnapshot.easyStore) ?? numberOrNull(product.sharedOnlinePrice != null ? product.sharedOnlinePrice : product.onlinePrice != null ? product.onlinePrice : product.storePrice),
+    momoPrice: numberOrNull(product.momoPrice != null ? product.momoPrice : listingCase.priceSnapshot && listingCase.priceSnapshot.momo) ?? numberOrNull(product.sharedOnlinePrice != null ? product.sharedOnlinePrice : product.onlinePrice != null ? product.onlinePrice : product.storePrice),
+    coupangPrice: numberOrNull(product.coupangPrice != null ? product.coupangPrice : listingCase.priceSnapshot && listingCase.priceSnapshot.coupang) ?? numberOrNull(product.sharedOnlinePrice != null ? product.sharedOnlinePrice : product.onlinePrice != null ? product.onlinePrice : product.storePrice),
     packageLengthCm: numberOrNull(listingCase.packageLengthCm),
     packageWidthCm: numberOrNull(listingCase.packageWidthCm),
     packageHeightCm: numberOrNull(listingCase.packageHeightCm),
@@ -583,9 +581,9 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     coupangTitle: clean(listingCase.coupangTitle) || listingName(product, listingCase),
     coupangDescriptionHtml: appendShopDescriptionImages(clean(listingCase.coupangDescriptionHtml) || productDescriptionToSafeHtml(description), imageAllocation.descriptionImages),
     coupangCategoryCode: clean(listingCase.coupangCategoryCode),
-    enabledEasyStoreShopee: enabled.easyStoreShopee !== false,
-    enabledMomo: enabled.momo !== false,
-    enabledCoupang: enabled.coupang !== false
+    enabledEasyStoreShopee: true,
+    enabledMomo: true,
+    enabledCoupang: true
   };
   snapshot.category = clean(listingCase.category || product.category);
   snapshot.shopeeCategoryPath = shopeeTaxonomy.formatCategoryPath(snapshot.shopeeCategoryPath, snapshot);
