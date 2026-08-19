@@ -27,6 +27,7 @@ const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://dann
 const MAIN_IMAGE_TEMPLATE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-main-template.jpg`;
 const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
+const CODEX_ONLY_LISTING_MODE = true;
 
 const RESEARCH_STRING_FIELDS = [
   'brand', 'model', 'barcode', 'alternateNames', 'searchKeywords',
@@ -1394,6 +1395,7 @@ function registerProductAiResearch(target) {
     enforceAppCheck: false
   }, async (request) => {
     if (!isAllowedManager(request)) throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
+    if (CODEX_ONLY_LISTING_MODE) throw new HttpsError('failed-precondition', '目前商品流程已改為只交給指定 Codex 對話處理，不會從網頁啟動 OpenAI。');
     const productId = clean(request && request.data && request.data.productId);
     const force = request && request.data && request.data.force === true;
     if (!productId || productId.length > 200 || productId.includes('/')) {
@@ -1531,6 +1533,7 @@ function registerProductAiResearch(target) {
     enforceAppCheck: false
   }, async (request) => {
     if (!isAllowedManager(request)) throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
+    if (CODEX_ONLY_LISTING_MODE) throw new HttpsError('failed-precondition', '目前商品流程已改為只交給指定 Codex 對話處理，不會從網頁啟動 OpenAI。');
     const productId = clean(request && request.data && request.data.productId);
     if (!productId || productId.length > 200 || productId.includes('/')) {
       throw new HttpsError('invalid-argument', '商品 ID 格式不正確。');
@@ -1750,6 +1753,7 @@ function registerProductAiResearch(target) {
     enforceAppCheck: false
   }, async (request) => {
     if (!isAllowedManager(request)) throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
+    if (CODEX_ONLY_LISTING_MODE) throw new HttpsError('failed-precondition', '目前商品流程已改為只交給指定 Codex 對話處理，不會從網頁啟動 OpenAI。');
     const productId = clean(request && request.data && request.data.productId);
     if (!productId || productId.length > 200 || productId.includes('/')) {
       throw new HttpsError('invalid-argument', '商品 ID 格式不正確。');
@@ -1931,5 +1935,6 @@ module.exports = {
   DEFAULT_MODEL,
   DEFAULT_IMAGE_WORKFLOW_MODEL,
   DEFAULT_IMAGE_EDIT_MODEL,
-  DEFAULT_IMAGE_QA_MODEL
+  DEFAULT_IMAGE_QA_MODEL,
+  CODEX_ONLY_LISTING_MODE
 };

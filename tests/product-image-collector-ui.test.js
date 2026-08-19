@@ -48,12 +48,25 @@ test("收圖保存不會被尚未選完的細項父商品阻擋", () => {
   assert.doesNotMatch(intakeBlock, /saveProductListingCase\(form/);
 });
 
-test("同款商品的每一個編號都有獨立上傳與指定收圖入口", () => {
+test("同款商品從同一批已收圖片中各自指定一張代表圖", () => {
   assert.match(operationsSource, /function productVariantGroupPrimaryItemHtml/);
-  assert.match(operationsSource, /data-action="product-variant-image-collection"/);
-  assert.match(operationsSource, /data-variant-image-upload/);
-  assert.match(operationsSource, /startProductImageCollection\(byId\('productListingCaseForm'\),el\.dataset\.id\)/);
+  assert.match(operationsSource, /function productVariantImagePickerOptionsHtml/);
+  assert.match(operationsSource, /data-action="product-variant-image-select"/);
+  assert.match(operationsSource, /async function selectProductVariantRepresentativeImage/);
+  assert.match(operationsSource, /請從目前已收的圖片中選擇/);
+  assert.match(operationsSource, /imageUrls:imageUrls\.slice\(0,1\)/);
   assert.match(operationsSource, /\.ops-listing-variant-item:not\(\[data-variant-primary="1"\]\)/);
+});
+
+test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製圖按鈕", () => {
+  const start = operationsSource.indexOf("function productListingCaseFormHtml");
+  const end = operationsSource.indexOf("async function openProductListingCase", start);
+  const renderer = operationsSource.slice(start, end);
+  assert.match(renderer, /交給這個 Codex 對話處理/);
+  assert.doesNotMatch(renderer, /data-action="product-ai-research-run"/);
+  assert.doesNotMatch(renderer, /data-action="product-ai-image-generate"/);
+  assert.doesNotMatch(renderer, /productCompletedImageUpload/);
+  assert.equal((renderer.match(/data-action="product-listing-codex-complete"/g) || []).length, 1);
 });
 
 test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () => {

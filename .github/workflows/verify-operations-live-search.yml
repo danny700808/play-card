@@ -96,8 +96,8 @@ jobs:
           set -euo pipefail
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v17' portal.html
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v17' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260819-image-intake-save-v1' portal.html
-          grep -Fq 'operations-phase1.js?v=20260819-image-intake-save-v1' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260819-codex-only-variant-picker-v1' portal.html
+          grep -Fq 'operations-phase1.js?v=20260819-codex-only-variant-picker-v1' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html
