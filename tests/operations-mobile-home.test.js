@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260819-image-collector-fast-capture-v3/);
+  assert.match(portal, /operations-phase1\.js\?v=20260819-product-variant-workflow-v4/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
   assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
@@ -148,6 +148,34 @@ test('product listing has a safe add-to-existing variant mode', () => {
   assert.match(source, /imageMatchStatus:imageUrls\.length\?'manual':'missing'/);
   assert.match(source, /data-action="product-variant-image-select"/);
   assert.match(source, /variantGroupPrimaryImageUrl/);
+});
+
+test('variant workflow searches first and requires each SKU own representative image', () => {
+  const source = read('operations-phase1.js');
+  const css = read('operations-phase1.css');
+  assert.match(source, /class="ops-listing-mode-options"/);
+  assert.match(source, /先搜尋要一起上架的商品/);
+  assert.match(source, /先搜尋要加入的原商品/);
+  assert.match(source, /sourceImageUrls:sourceImageUrls/);
+  assert.match(source, /loadProductListingSourceImages\(item\.productId\)/);
+  assert.match(source, /variantParentImageUrl/);
+  assert.match(source, /variantChildImageUrl/);
+  assert.match(source, /requireProductVariantRepresentativeImages\(form\)/);
+  assert.match(source, /請先替每一個細項選擇 1 張代表圖/);
+  assert.match(css, /\.ops-listing-mode-options>label/);
+  assert.match(css, /\.ops-listing-variant-item\.is-required-missing/);
+});
+
+test('product inventory header is simplified and exposes recent unlisted products', () => {
+  const source = read('operations-phase1.js');
+  assert.match(source, /成本總額：/);
+  assert.match(source, /data-action="product-recent">最近新增未上架/);
+  assert.match(source, /state\.productRecentOnly&&productHasPlatformListing/);
+  assert.match(source, /#productSearch,#productListingCaseForm \[name="variantParentSearch"\]/);
+  const renderStart = source.indexOf('function renderProducts(');
+  const renderEnd = source.indexOf('function estimateFifoCostForProduct', renderStart);
+  const renderProducts = source.slice(renderStart, renderEnd);
+  assert.doesNotMatch(renderProducts, /同步圖片|更新商品資料|低於安全庫存|全通路狀態/);
 });
 
 test('POS electric piano rental income rolls into rental operations without helper clutter', () => {

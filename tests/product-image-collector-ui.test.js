@@ -91,14 +91,16 @@ test("收圖保存不會被尚未選完的細項父商品阻擋", () => {
   assert.doesNotMatch(intakeBlock, /saveProductListingCase\(form/);
 });
 
-test("同款商品從同一批已收圖片中各自指定一張代表圖", () => {
+test("同款商品從各自已收圖片中指定一張代表圖", () => {
   assert.match(operationsSource, /function productVariantGroupPrimaryItemHtml/);
   assert.match(operationsSource, /function productVariantImagePickerOptionsHtml/);
   assert.match(operationsSource, /data-action="product-variant-image-select"/);
   assert.match(operationsSource, /async function selectProductVariantRepresentativeImage/);
   assert.match(operationsSource, /請從目前已收的圖片中選擇/);
   assert.match(operationsSource, /imageUrls:imageUrls\.slice\(0,1\)/);
-  assert.match(operationsSource, /\.ops-listing-variant-item:not\(\[data-variant-primary="1"\]\)/);
+  assert.match(operationsSource, /\.ops-listing-variant-item\[data-variant-role\^="group-child-"\]/);
+  assert.match(operationsSource, /sourceImageUrls:sourceImageUrls/);
+  assert.match(operationsSource, /loadProductListingSourceImages\(item\.productId\)/);
 });
 
 test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製圖按鈕", () => {
