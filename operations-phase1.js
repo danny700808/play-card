@@ -4310,12 +4310,14 @@ function ensureSalesClock(){
       '商品名稱：'+clean(product.originalName||product.name),
       '案件文件：opsProductListingCases/'+clean(product.docId),
       '目標通路：EasyStore 官網與蝦皮、MOMO、酷澎（固定全部發布，不需再勾選）',
+      '開始操作平台前，請先在這個 Codex 對話一次完成分類、品牌、屬性、物流、價格、庫存、圖片角色與細項資料的預檢；資料只準備一次，不要進入平台後再返回營運中心重新研究、重新整理文案或重新修圖。固定執行順序為 EasyStore 官網、蝦皮、酷澎、MOMO；每完成一個通路，簡短回報該通路結果後直接繼續下一個，不要要求使用者重複確認原本已授權的發布動作。',
+      '蝦皮先使用 EasyStore 官方通路同步頁；若能在同一頁完成分類、品牌、屬性、物流、圖片與發布，就在該頁一次完成，不再打開第二條路徑。只有同步入口不可用、缺少完成上架所需功能，或提交後正式清單找不到相同 SKU 時，才直接切換蝦皮賣家編輯頁，沿用同一份已準備資料；不得回頭重做前面的步驟。',
       '本次合併商品案件：',
       caseLines.join('\n'),
       '請先從每一份案件讀取已選圖片、圖片修改要求、商品網址、價格、庫存、物流與細項設定；每個案件的 selectedReferenceImageUrls 全部都要在同一輪完整檢查並台灣繁體化，不得只處理第一個商品。所有簡體字改為繁體字，中國大陸用語改為台灣常用說法。每張完成圖都要以 sourceImageUrl 一對一寫入該案件的 generatedListingImages，並把完成圖同步回該商品編號自己的中央商品圖片。',
       'gallerySourceImageUrls 只表示使用者希望優先上架的圖片；若保存的是原圖，必須先依 sourceImageUrl 找到繁體完成圖再排序；若保存的是繁體完成圖網址，則可直接排序。全部編號的完成圖先合併成一個共用完成圖池，四通路共用的 listingImageUrls 最多 12 張，而且是整組合計 12 張，不是每個編號各 12 張。若沒有勾選，就平均涵蓋各細項並自動挑選清楚、適合的完成圖。不得直接使用簡體原圖，也不得因未勾選優先圖而停止。',
       '商品標題依「品牌＋型號＋商品種類＋重要規格或材質」組成；品牌與型號有可靠資料時必須優先寫入。共同標題只寫各細項共有的事實，顏色、材質、尺寸等差異寫入細項名稱；平台標題字數仍有空間時，尾端加上「柚子樂器」。商品介紹只能使用案件文字、圖片與可驗證規格：先寫 10 點不重複的具體商品特色，再寫使用方式／適用情境（資料足夠時整理 10 點），最後獨立列出尺寸、材質、段數、重量、內容物等規格與細項差異。若可驗證內容不足 10 點，寧可少寫，不得為湊數重複或編造。保固不要寫入商品介紹，只填各平台原有的保固欄位；看不清楚或無法證實的內容不可猜測。支援 HTML／圖文介紹的平台要用安全的標題、段落、清單與繁體完成圖交錯編排；不支援相同 HTML 的平台改用清楚的純文字分段，並把剩餘完成圖放入平台可用的圖片或圖文介紹位置。每個平台介紹最後固定加入「商品圖片與規格僅供參考，實際內容以收到的實體商品為準。」',
-      '平台售價空白時自動沿用商品資料的共同網路售價、網路售價或門市售價，不要因平台售價欄位空白而停止。分類限定在樂器／樂器配件內自動判斷。細項代表圖欄位保存的是原圖選擇，必須依 generatedListingImages 的 sourceImageUrl 對應到完成圖 url；找不到對應完成圖時要停止。不要重新呼叫網站的 OpenAI 文案或圖片 API。全部案件資料齊全後直接完成 EasyStore 官網與蝦皮、MOMO、酷澎四通路發布。每一通路都必須以平台清單與正式商品資料核對相同 SKU、價格、庫存與狀態；成功提示本身不算完成。',
+      '平台售價空白時自動沿用商品資料的共同網路售價、網路售價或門市售價，不要因平台售價欄位空白而停止。分類限定在樂器／樂器配件內自動判斷。細項代表圖欄位保存的是原圖選擇，必須依 generatedListingImages 的 sourceImageUrl 對應到完成圖 url；找不到對應完成圖時要停止。不要重新呼叫網站的 OpenAI 文案或圖片 API。MOMO 專推圖只能從繁體完成商品圖第 2 或第 3 張挑選，不得使用店面地址、客服／服務宣傳、QR Code 或聯絡資訊圖；專推圖要經素材銀行插入，儲存後重新開啟同一草稿確認仍存在才可發布。全部案件資料齊全後直接完成 EasyStore 官網與蝦皮、MOMO、酷澎四通路發布。每一通路送出後只做一次正式清單核對，確認相同 SKU、價格、庫存與狀態；成功提示本身不算完成。',
       '若圖片網址暫時讀不到、圖片仍在處理、網路逾時、HTTP 408／425／429／500／502／503／504，或平台暫時錯誤，請等待後針對同一案件、同一 SKU、同一平台草稿自動重試並再次核對；需要時只可從 generatedListingImages 或中央商品圖重新取得繁體完成圖網址。不可另建替代商品或造成重複。只有缺少必填資料、平台明確拒絕、OTP／驗證碼或登入失效等永久阻擋才停止，並留下確切原因。'
     ].join('\n');
   }
@@ -4362,7 +4364,7 @@ function ensureSalesClock(){
       },{merge:true});
       const copied=await copyProductListingCodexPrompt(prompt);
       await writeAudit('交給 Codex 對話處理','productListingCase',id,clean(product.sku)+'｜'+clean(product.originalName||product.name));
-      setProductListingCodexUi(form,'completed','工作已帶入 Codex','切換後請在輸入框按 Enter 開始；Codex 收到訊息後才會正式執行。'+(copied?' 工作指令也已複製。':''));
+      setProductListingCodexUi(form,'completed','工作已帶入 Codex','切換後請在輸入框按 Enter 開始；Codex 會先一次預檢，再依 EasyStore、蝦皮、酷澎、MOMO 順序完成。'+(copied?' 工作指令也已複製。':''));
       global.setTimeout(function(){global.location.href=threadUrl;},100);
       return {status:'pending',productId:id,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,promptCopied:copied};
     }catch(error){
