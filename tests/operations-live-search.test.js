@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260819-codex-shortest-path-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260819-shopee-single-path-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260819-codex-shortest-path-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-shopee-single-path-v1/);
   }
 });
 
@@ -87,7 +87,10 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(engine, /實際內容以收到的實體商品為準/);
   assert.match(engine, /同一案件、同一 SKU、同一平台草稿自動重試/);
   assert.match(engine, /固定執行順序為 EasyStore 官網、蝦皮、酷澎、MOMO/);
-  assert.match(engine, /若能在同一頁完成分類、品牌、屬性、物流、圖片與發布，就在該頁一次完成/);
+  assert.match(engine, /蝦皮固定只使用 EasyStore 官方蝦皮通路同步／編輯頁/);
+  assert.match(engine, /不要另外進入蝦皮賣家中心/);
+  assert.match(engine, /不要切換第二條路徑/);
+  assert.match(engine, /只到 EasyStore 蝦皮通路商品清單核對一次正式結果/);
   assert.match(engine, /不得回頭重做前面的步驟/);
   assert.match(engine, /每一通路送出後只做一次正式清單核對/);
   assert.match(engine, /MOMO 專推圖只能從繁體完成商品圖第 2 或第 3 張挑選/);

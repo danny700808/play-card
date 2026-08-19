@@ -57,10 +57,13 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, ['platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status']);
   assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.order, ['easyStore', 'shopee', 'coupang', 'momo']);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.preflightAllListingDataBeforePlatformNavigation, true);
-  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.primary, 'easystore-channel-sync');
-  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.fallback, 'direct-shopee-seller-editor');
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.canonicalWorkspace, 'easystore-shopee-channel-sync');
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.singleWorkspaceOnly, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverOpenDirectShopeeSellerEditor, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.reusePreparedPayload, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverRestartResearchOrImageProcessing, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.retrySameChannelProductAndPage, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.verifyIn, 'easystore-shopee-channel-product-list');
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.resumeSameDraft, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverCreateReplacementDraft, true);
   assert.ok(snapshot.automationPolicy.momoPublishRecovery.reapplyWhenCleared.includes('third-party-location'));
