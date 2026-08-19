@@ -22,7 +22,8 @@ const REQUEST_TIMEOUT_MS = 480 * 1000;
 const IMAGE_IMPORT_PAGE_LIMIT = 8;
 const IMAGE_IMPORT_CANDIDATE_LIMIT = 40;
 const IMAGE_IMPORT_TARGET_IMAGES = 12;
-const IMAGE_IMPORT_MAX_IMAGES = 12;
+const IMAGE_IMPORT_MAX_IMAGES = 20;
+const IMAGE_IMPORT_MAX_SELECTED_IMAGES = 12;
 const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
 const MAIN_IMAGE_TEMPLATE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-main-template.jpg`;
 const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
@@ -1691,7 +1692,7 @@ function registerProductAiResearch(target) {
       const existingImported = Array.isArray(listingCase.importedReferenceImages) ? listingCase.importedReferenceImages : [];
       await caseRef.set({
         referenceImageUrls,
-        selectedReferenceImageUrls: selectedImageUrls.filter((url) => referenceImageUrls.includes(url)).slice(0, IMAGE_IMPORT_MAX_IMAGES),
+        selectedReferenceImageUrls: selectedImageUrls.filter((url) => referenceImageUrls.includes(url)).slice(0, IMAGE_IMPORT_MAX_SELECTED_IMAGES),
         importedReferenceImages: existingImported.concat(imported).slice(-30),
         lastImageImport: {
           status: 'completed',

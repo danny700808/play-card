@@ -307,10 +307,11 @@ test('AI research writes the current listing-case schema and audit version', () 
   assert.doesNotMatch(source, /updatedBy: 'OpenAI 上架整理',[\s\S]*schemaVersion: 7/);
 });
 
-test('URL image import targets twelve images and keeps the store warranty default', () => {
+test('URL image import keeps twelve selected images from a twenty-image candidate pool', () => {
   const source = fs.readFileSync('functions/productAiResearch.js', 'utf8');
   assert.match(source, /IMAGE_IMPORT_TARGET_IMAGES = 12/);
-  assert.match(source, /IMAGE_IMPORT_MAX_IMAGES = 12/);
+  assert.match(source, /IMAGE_IMPORT_MAX_IMAGES = 20/);
+  assert.match(source, /IMAGE_IMPORT_MAX_SELECTED_IMAGES = 12/);
   assert.match(source, /requestedPageUrls\.length > 3/);
   assert.match(source, /IMAGE_IMPORT_TARGET_IMAGES - existingImageUrls\.length/);
   assert.match(source, /保固政策固定為「保固半年」/);

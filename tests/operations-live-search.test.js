@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260819-image-collector-panel-return-v2/);
+    assert.match(html, /operations-phase1\.css\?v=20260819-image-collector-fast-capture-v3/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260819-image-collector-panel-return-v2/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-image-collector-fast-capture-v3/);
   }
 });
 
@@ -365,7 +365,8 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(productAiResearchSource, /listingImageUrls: listingImageUrls\.slice\(0, 13\)/);
   assert.match(productAiResearchSource, /status: 'ready'/);
   assert.match(productAiResearchSource, /已加入準備上架/);
-  assert.match(uploader, /slice\(0,12\)/);
+  assert.match(uploader, /slice\(0,PRODUCT_REFERENCE_IMAGE_MAX\)/);
+  assert.match(completedUploader, /slice\(0,12\)/);
   assert.doesNotMatch(formRenderer, /productCompletedImageUpload/);
   assert.doesNotMatch(formRenderer, /上傳 Codex 已完成圖片/);
   assert.match(completedUploader, /requireEasyStoreManagerAuth/);

@@ -101,7 +101,7 @@ test("bridge stores one product-bound image collection session", () => {
     sku: "1040160-1",
     easyStoreProductId: "16965067",
     title: "IBANEZ AZES40",
-    maxImages: 12,
+    maxImages: 20,
     currentCount: 2,
     startedAt: Date.now(),
     expiresAt: Date.now() + 60_000,
@@ -167,7 +167,7 @@ test("extension package enables the supplier image collector service worker", ()
   const bridge = fs.readFileSync(path.join(extensionRoot, "bridge.js"), "utf8");
   const easystore = fs.readFileSync(path.join(extensionRoot, "easystore.js"), "utf8");
 
-  assert.equal(manifest.version, "0.3.20");
+  assert.equal(manifest.version, "0.3.21");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));
@@ -175,6 +175,8 @@ test("extension package enables the supplier image collector service worker", ()
   assert.ok(manifest.permissions.includes("tabs"));
   assert.ok(manifest.host_permissions.includes("https://*.taobao.com/*"));
   assert.ok(manifest.host_permissions.includes("https://*.1688.com/*"));
+  assert.equal(manifest.host_permissions.includes("<all_urls>"), false);
+  assert.ok(manifest.optional_host_permissions.includes("<all_urls>"));
   assert.ok(manifest.content_scripts.some((entry) =>
     entry.js.includes("supplier-collector.js") && entry.js.includes("image-collector-helpers.js")
   ));
