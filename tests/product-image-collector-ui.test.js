@@ -119,7 +119,9 @@ test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製�
   assert.match(renderer, /帶入這個 Codex 對話/);
   assert.doesNotMatch(renderer, /data-action="product-ai-research-run"/);
   assert.doesNotMatch(renderer, /data-action="product-ai-image-generate"/);
-  assert.doesNotMatch(renderer, /productCompletedImageUpload/);
+  assert.match(renderer, /id="productCompletedImageUpload"/);
+  assert.match(renderer, /left:0;top:0;width:1px;height:1px;opacity:0;z-index:-1/);
+  assert.doesNotMatch(renderer, />上傳 Codex 已完成圖片</);
   assert.equal((renderer.match(/data-action="product-listing-codex-complete"/g) || []).length, 1);
 });
 
