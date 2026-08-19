@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.19-one-click-auto-publish-v1';
+  const VERSION = '2026.08.19-completed-product-images-v1';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   let pendingShopeeAutofillPayload = null;
@@ -3248,6 +3248,25 @@ function ensureSalesClock(){
       return {id:clean(row&&row.id),url:url,status:clean(row&&row.status)||'candidate',mode:clean(row&&row.mode),model:clean(row&&row.model),qaStatus:clean(row&&row.qaStatus),localizationStatus:clean(row&&row.localizationStatus),qaModel:clean(row&&row.qaModel),qaAttempts:Math.max(0,Number(row&&row.qaAttempts)||0),sourceImageUrl:safeUrl(row&&row.sourceImageUrl),sourceOrder:Math.max(0,Number(row&&row.sourceOrder)||0),instructions:clean(row&&row.instructions),createdAt:row&&row.createdAt||''};
     }).filter(Boolean).slice(-20);
   }
+  function completedProductImageUrls(listingCase){
+    const source=listingCase&&typeof listingCase==='object'?listingCase:{},listingUrls=normalizeProductResearchSourceUrls(source.listingImageUrls),generated=normalizeGeneratedListingImages(source.generatedListingImages).filter(function(row){return row.status==='ready'&&(row.localizationStatus==='completed'||row.qaStatus==='approved');});
+    if(!generated.length)return [];
+    const readyUrls=new Set(generated.map(function(row){return row.url;})),ordered=listingUrls.filter(function(url){return readyUrls.has(url);});
+    generated.forEach(function(row){if(!ordered.includes(row.url))ordered.push(row.url);});
+    return ordered.slice(0,12);
+  }
+  async function syncCompletedListingImagesToProduct(productId,listingCase,clearSources){
+    const id=clean(productId),product=catalogById(id),images=completedProductImageUrls(listingCase);if(!id||!product||!images.length)return {images:images,changed:false};
+    const current=productVariantImages(product),productChanged=product.imageUrl!==images[0]||JSON.stringify(current)!==JSON.stringify(images),storedReferences=normalizeProductResearchSourceUrls([].concat(listingCase&&listingCase.referenceImageUrls||[],listingCase&&listingCase.selectedReferenceImageUrls||[])),sourcesChanged=clearSources===true&&(storedReferences.length>0||!listingCase||listingCase.referenceImagesCleared!==true);
+    if(!productChanged&&!sourcesChanged)return {images:images,changed:false};
+    const batch=state.db.batch();
+    if(productChanged)batch.set(state.db.collection(COLLECTIONS.products).doc(id),{imageUrl:images[0],imageUrls:images,parentImageUrls:[],variantImageUrls:[],completedListingImageUrls:images,imageSource:'localized-listing-completed',completedListingImagesUpdatedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
+    if(sourcesChanged)batch.set(state.db.collection(COLLECTIONS.listingCases).doc(id),{referenceImageUrls:[],selectedReferenceImageUrls:[],referenceImagesCleared:true,sourceImagesReplacedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
+    await batch.commit();
+    if(productChanged){product.imageUrl=images[0];product.imageUrls=images.slice();product.parentImageUrls=[];product.variantImageUrls=[];if(product.internal){product.internal.imageUrl=images[0];product.internal.imageUrls=images.slice();product.internal.parentImageUrls=[];product.internal.variantImageUrls=[];}}
+    if(sourcesChanged)productListingSourceImageCache.set(id,[]);
+    return {images:images,changed:true};
+  }
   function normalizeProductShopeeAttributes(value){
     let rows=value;
     if(typeof rows==='string'){
@@ -3606,7 +3625,8 @@ function ensureSalesClock(){
     const p=catalogById(id);if(!p)return toast('找不到商品','請重新讀取資料。','error');
     try{
       if(productImageCollectionSession&&productImageCollectionSession.active&&productImageCollectionSession.productId!==id)await stopProductImageCollection(byId('productListingCaseForm'));
-      const snap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),row=normalizeProductListingCase(snap.exists?snap.data():null,p);
+      const snap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),raw=snap.exists?snap.data():null,row=normalizeProductListingCase(raw,p);
+      if(completedProductImageUrls(row).length){await syncCompletedListingImagesToProduct(id,row,true);row.referenceImageUrls=[];row.selectedReferenceImageUrls=[];row.referenceImagesCleared=true;}
       productListingSourceImageCache.set(id,row.referenceImageUrls.slice());
       await Promise.all(row.variantGroupItems.map(async function(item){item.sourceImageUrls=await loadProductListingSourceImages(item.productId);}));
       if(row.variantParentProductId)await loadProductListingSourceImages(row.variantParentProductId);
@@ -3881,10 +3901,13 @@ function ensureSalesClock(){
     if(listingInput)listingInput.value=uploaded.join('\n');
     form.dataset.dirty='1';await saveProductListingCase(form,false,true,true);
     const generated=uploaded.map(function(url,index){return {id:'codex-chat-'+Date.now()+'-'+index,url:url,status:'ready',mode:'codex-chat-single-pass',model:'Codex 對話圖片處理',qaStatus:'approved',localizationStatus:'completed',qaModel:'人工確認後上傳',qaAttempts:0,sourceImageUrl:sourceImages[index],sourceOrder:index+1,instructions:instructions,createdAt:createdAt};});
-    await state.db.collection(COLLECTIONS.listingCases).doc(id).set({generatedListingImages:generated,listingImageUrls:uploaded,lastImageGeneration:{status:'completed',processingMode:'codex-chat-single-pass',processingPasses:1,requestedCount:sourceImages.length,completedCount:uploaded.length,processedCount:uploaded.length,verifiedCount:uploaded.length,failedCount:0,sourceImageUrls:sourceImages,instructions:instructions,completedAt:serverTimestamp()},lastImageGenerationError:'',mediaDecision:'accepted',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
+    const completedCase={generatedListingImages:generated,listingImageUrls:uploaded,referenceImageUrls:sourceImages,selectedReferenceImageUrls:sourceImages,referenceImagesCleared:false,lastImageGeneration:{status:'completed',processingMode:'codex-chat-single-pass',processingPasses:1,requestedCount:sourceImages.length,completedCount:uploaded.length,processedCount:uploaded.length,verifiedCount:uploaded.length,failedCount:0,sourceImageUrls:sourceImages,instructions:instructions,completedAt:serverTimestamp()},lastImageGenerationError:'',mediaDecision:'accepted',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+    await state.db.collection(COLLECTIONS.listingCases).doc(id).set(completedCase,{merge:true});
+    await syncCompletedListingImagesToProduct(id,completedCase,true);
+    const sourceInput=query('[name="referenceImageUrls"]',form),referenceBox=byId('productReferenceImagePreview');if(sourceInput)sourceInput.value='';queryAll('[name="selectedReferenceImageUrls"]',form).forEach(function(input){input.checked=false;});if(referenceBox)referenceBox.innerHTML='<div class="ops-listing-image-empty">來源圖已由繁體完成圖取代</div>';
     const generatedBox=query('#productAiImageGenerationStatus',form),preview=byId('productListingImagePreview');if(generatedBox)generatedBox.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>Codex 完成圖已採用</b><small>'+uploaded.length+' 張已通過單次處理並可直接上架。</small></div></div>';if(preview)preview.innerHTML=productListingImagePreviewHtml(uploaded,'準備上架圖片');
-    form.dataset.dirty='0';if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>正式上架圖已完成</b><small>'+uploaded.length+' 張已儲存；一鍵上架會直接略過圖片 API。</small></div></div>';
-    toast('Codex 完成圖已上傳',uploaded.length+' 張已可直接進入四通路上架。','success');
+    form.dataset.dirty='0';if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>正式上架圖已完成</b><small>'+uploaded.length+' 張繁體完成圖已取代商品原圖；一鍵上架會直接使用完成圖。</small></div></div>';
+    toast('繁體完成圖已同步',uploaded.length+' 張已回寫商品主圖並可直接進入四通路上架。','success');
   }
   function productImageCollectionId(){
     const random=global.crypto&&typeof global.crypto.randomUUID==='function'?global.crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36);

@@ -65,7 +65,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260819-product-variant-workflow-v8/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260819-one-click-auto-publish-v11/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-completed-product-images-v1/);
   }
 });
 
@@ -363,6 +363,7 @@ test('Codex handoff repairs legacy decision states instead of blocking the task'
 test('listing case supports manager-only image processing and a truthful actual publish call', () => {
   const uploader = functionBody(engine, 'uploadProductReferenceImages');
   const completedUploader = functionBody(engine, 'uploadProductCompletedListingImages');
+  const completedImageSync = functionBody(engine, 'syncCompletedListingImagesToProduct');
   const urlImporter = functionBody(engine, 'importProductListingImagesFromUrls');
   const generator = functionBody(engine, 'generateProductListingImage');
   const generationRequester = functionBody(engine, 'requestProductListingImageGeneration');
@@ -398,6 +399,16 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(completedUploader, /localizationStatus:'completed'/);
   assert.match(completedUploader, /qaStatus:'approved'/);
   assert.match(completedUploader, /listingImageUrls:uploaded/);
+  assert.match(completedUploader, /syncCompletedListingImagesToProduct\(id,completedCase,true\)/);
+  assert.match(completedImageSync, /COLLECTIONS\.products/);
+  assert.match(completedImageSync, /imageUrl:images\[0\]/);
+  assert.match(completedImageSync, /imageUrls:images/);
+  assert.match(completedImageSync, /parentImageUrls:\[\]/);
+  assert.match(completedImageSync, /variantImageUrls:\[\]/);
+  assert.match(completedImageSync, /referenceImageUrls:\[\]/);
+  assert.match(completedImageSync, /selectedReferenceImageUrls:\[\]/);
+  assert.match(completedImageSync, /referenceImagesCleared:true/);
+  assert.match(functionBody(engine, 'openProductListingCase'), /syncCompletedListingImagesToProduct\(id,row,true\)/);
   assert.doesNotMatch(completedUploader, /requestProductListingImageGeneration/);
   assert.doesNotMatch(generator, /identityDecision|identityStatus/);
   assert.match(publisher, /confirmAndPublishProductVariantGroup|confirmAndPublishProductListingCase/);
