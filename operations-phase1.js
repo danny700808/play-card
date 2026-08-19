@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.19-product-variant-workflow-v6';
+  const VERSION = '2026.08.19-product-variant-workflow-v7';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   let pendingShopeeAutofillPayload = null;
@@ -3566,7 +3566,7 @@ function ensureSalesClock(){
     const coupangSection='<textarea name="coupangDescriptionHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><label class="ops-listing-platform-toggle"><input type="checkbox" name="enabledCoupang" value="1" '+(row.enabledCoupang?'checked':'')+'><span><b>酷澎要上架</b><small>內容會在送出時轉成酷澎需要的格式。</small></span></label>'+sharedPlatformContent+'<div class="ops-form-grid"><div class="ops-field full"><label>酷澎商品標題</label><input class="ops-input" name="coupangTitle" value="'+attr(row.coupangTitle)+'"></div><div class="ops-field full"><label>酷澎分類</label><input class="ops-input" name="coupangCategoryCode" value="'+attr(row.coupangCategoryCode)+'"></div><div class="ops-field full"><label>平台另外需要補的欄位（如有）</label><textarea class="ops-textarea compact" name="coupangRequiredNotes">'+escapeHtml(row.coupangRequiredNotes)+'</textarea></div></div>';
     const shippingSection='<div class="ops-product-shipping-grid">'+productShippingChoiceHtml(shipping.decision)+'</div><div class="ops-form-grid cols-4 ops-product-value-fields"><div class="ops-field"><label>外箱長（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageLengthCm" value="'+attr(shipping.lengthCm==null?'':shipping.lengthCm)+'"></div><div class="ops-field"><label>外箱寬（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWidthCm" value="'+attr(shipping.widthCm==null?'':shipping.widthCm)+'"></div><div class="ops-field"><label>外箱高（cm）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageHeightCm" value="'+attr(shipping.heightCm==null?'':shipping.heightCm)+'"></div><div class="ops-field"><label>包裝重量（kg）</label><input class="ops-input" type="number" min="0" step="0.1" name="packageWeightKg" value="'+attr(shipping.weightKg==null?'':shipping.weightKg)+'"></div></div><div class="ops-product-shipping-actions"><button class="ops-button soft" type="button" data-action="product-shipping-preset">套用小型商品建議值</button><small>你的人工勾選是最後決定；網路尺寸只提供參考。</small></div><div id="productShippingSummary">'+productShippingSummaryHtml(shipping)+'</div><div class="ops-form-grid cols-3"><div class="ops-field"><label>尺寸資料狀態</label><select class="ops-select" name="packageResearchStatus">'+packageResearchStatusOptions(row.packageResearchStatus)+'</select></div><div class="ops-field full ops-product-name-field"><label>尺寸資料來源網址</label><input class="ops-input" type="url" name="packageResearchSourceUrl" value="'+attr(row.packageResearchSourceUrl)+'"></div><div class="ops-field full"><label>尺寸判斷備註</label><textarea class="ops-textarea" name="packageResearchNote">'+escapeHtml(row.packageResearchNote)+'</textarea></div><div class="ops-field full"><label>案件備註</label><textarea class="ops-textarea" name="caseNote">'+escapeHtml(row.caseNote)+'</textarea></div></div>';
     const platformSection=productListingSection('EasyStore → 蝦皮','官網內容完成後，再由既有同步方式發佈蝦皮。',easySection,true)+productListingSection('MOMO','只顯示 MOMO 特別需要的欄位。',momoSection,false)+productListingSection('酷澎','只顯示酷澎特別需要的欄位。',coupangSection,false)+productListingSection('物流與包裝','AI 可先填參考值，你的判斷仍是最後結果。',shippingSection,false);
-    const codexAction='<section class="ops-listing-codex-action"><div class="ops-listing-codex-heading"><span>✦</span><div><b>交給這個 Codex 對話完成</b><small>按一次後才會由目前這個對話接手圖片、文案與四通路上架；網頁本身不會先啟動 OpenAI。</small></div></div><button class="ops-button primary" type="button" data-action="product-listing-codex-complete">交給這個 Codex 對話處理</button><div id="productListingCodexStatus"></div></section>';
+    const codexAction='<section class="ops-listing-codex-action"><div class="ops-listing-codex-heading"><span>✦</span><div><b>帶入這個 Codex 對話</b><small>按下後會儲存目前資料，並把完整工作帶入這個 Codex 對話的輸入框；切換後請按 Enter 才會正式開始。網頁本身不會先啟動 OpenAI。</small></div></div><button class="ops-button primary" type="button" data-action="product-listing-codex-complete">帶入這個 Codex 對話</button><div id="productListingCodexStatus"></div></section>';
     const advancedSection=productListingSection('需要時才修改','商品名稱、介紹、平台分類與物流都由 Codex 自動整理。',commonSection+productListingSection('目前上架圖片','',mediaSection,false)+platformSection,false);
     return '<form id="productListingCaseForm" data-id="'+attr(p.docId)+'" data-exists="'+(exists?'1':'0')+'" data-identity-manual-confirmed="'+(row.identityManualConfirmed?'1':'0')+'" data-ai-research-status="'+attr(row.aiResearchStatus)+'" data-image-generation-status="'+attr(row.lastImageGenerationStatus)+'">'
       +'<section class="ops-listing-case-summary'+(image?'':' no-image')+'">'+(image?'<img src="'+attr(image)+'" alt="'+attr(p.originalName||p.name)+'">':'')+'<div><span>準備上架</span><h3>'+escapeHtml(p.originalName||p.name)+'</h3><p>SKU '+escapeHtml(p.sku||'未設定')+'｜庫存 '+escapeHtml(formatNumber(p.currentStock))+'｜最後更新 '+escapeHtml(updated)+'</p></div></section>'
@@ -4215,7 +4215,7 @@ function ensureSalesClock(){
     const box=query('#productListingCodexStatus',form),running=status==='running';
     lockProductListingCaseForm(form,running);
     queryAll('[data-action="product-listing-codex-complete"]',form).forEach(function(button){
-      button.disabled=running;button.setAttribute('aria-busy',running?'true':'false');button.textContent=running?'正在建立 Codex 待辦…':'交給這個 Codex 對話處理';
+      button.disabled=running;button.setAttribute('aria-busy',running?'true':'false');button.textContent=running?'正在儲存並帶入…':'帶入這個 Codex 對話';
     });
     if(box)box.innerHTML='<div class="ops-product-ai-status '+(status==='failed'?'failed':status==='completed'?'completed':'running')+'"><span>'+(running?'<i class="ops-product-ai-spinner" aria-hidden="true"></i>':status==='failed'?'!':'✓')+'</span><div><b>'+escapeHtml(title||'Codex 正在處理')+'</b><small>'+escapeHtml(detail||'')+'</small></div></div>';
   }
@@ -4229,6 +4229,10 @@ function ensureSalesClock(){
       '目標通路：'+(platforms||'請依案件設定'),
       '請先從案件讀取已選圖片、圖片修改要求、商品網址、價格、庫存、物流與細項設定；圖片只做一次完整檢查與台灣繁體化，所有簡體字改為繁體字，中國大陸用語改為台灣常用說法。細項代表圖欄位保存的是原圖選擇，必須依 generatedListingImages 的 sourceImageUrl 對應到完成圖 url，四通路只能使用這張繁體完成圖；找不到對應完成圖時要停止，不可直接上架簡體原圖。不要重新呼叫網站的 OpenAI 文案或圖片 API。'
     ].join('\n');
+  }
+  function productListingCodexThreadUrl(prompt){
+    const params=new URLSearchParams();params.set('prompt',clean(prompt));
+    return PRODUCT_LISTING_CODEX_THREAD_URL+'?'+params.toString();
   }
   async function copyProductListingCodexPrompt(text){
     if(navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(text);return true;}catch(error){}}
@@ -4255,23 +4259,23 @@ function ensureSalesClock(){
     if(!form||form.dataset.codexRunning==='1')return null;
     const id=clean(form.dataset.id),product=catalogById(id);if(!id||!product)throw new Error('找不到商品上架資料');
     requireProductVariantRepresentativeImages(form);
-    const ok=await confirmAction('交給這個 Codex 對話處理','系統會先儲存目前商品、圖片與修改要求，建立 Codex 待辦，再切換到指定對話。這一步不會先呼叫 OpenAI 文案或圖片 API。確定繼續嗎？','建立待辦並切換');if(!ok)return null;
+    const ok=await confirmAction('帶入這個 Codex 對話','系統會先儲存目前商品、圖片與修改要求，再把完整工作帶入指定 Codex 對話的輸入框。切換後仍須由你按 Enter 才會正式開始；這一步不會先呼叫 OpenAI 文案或圖片 API。確定繼續嗎？','儲存並帶入');if(!ok)return null;
     form.dataset.codexRunning='1';
     try{
       await requireEasyStoreManagerAuth();
       setProductListingCodexUi(form,'running','正在儲存商品資料','正在保留圖片、修改要求、細項、價格、物流與通路選擇。');
       await saveProductListingCase(form,false,true,true);
-      const draft=productListingDraftFromForm(form),prompt=productListingCodexHandoffPrompt(product,draft),serverTime=serverTimestamp();
+      const draft=productListingDraftFromForm(form),prompt=productListingCodexHandoffPrompt(product,draft),threadUrl=productListingCodexThreadUrl(prompt),serverTime=serverTimestamp();
       await state.db.collection(COLLECTIONS.listingCases).doc(id).set({
         caseStatus:'waiting-codex',
-        codexHandoff:{status:'pending',threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:PRODUCT_LISTING_CODEX_THREAD_URL,prompt:prompt,productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),requestedAt:serverTime,requestedBy:userLabel(),sourcePageUrl:location.href},
+        codexHandoff:{status:'pending',threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,prompt:prompt,productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),requestedAt:serverTime,requestedBy:userLabel(),sourcePageUrl:location.href},
         updatedAt:serverTime,updatedBy:userLabel(),version:VERSION
       },{merge:true});
       const copied=await copyProductListingCodexPrompt(prompt);
       await writeAudit('交給 Codex 對話處理','productListingCase',id,clean(product.sku)+'｜'+clean(product.originalName||product.name));
-      setProductListingCodexUi(form,'completed','Codex 待辦已建立','正在切換到指定對話'+(copied?'；工作指令也已複製。':'。'));
-      global.setTimeout(function(){global.location.href=PRODUCT_LISTING_CODEX_THREAD_URL;},100);
-      return {status:'pending',productId:id,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,promptCopied:copied};
+      setProductListingCodexUi(form,'completed','工作已帶入 Codex','切換後請在輸入框按 Enter 開始；Codex 收到訊息後才會正式執行。'+(copied?' 工作指令也已複製。':''));
+      global.setTimeout(function(){global.location.href=threadUrl;},100);
+      return {status:'pending',productId:id,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,promptCopied:copied};
     }catch(error){
       const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)setProductListingCodexUi(current,'failed','Codex 待辦尚未建立',errorMessage(error));
       throw error;
@@ -5314,7 +5318,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='product-variant-group-remove'){
       const form=el.closest('#productListingCaseForm'),items=productVariantGroupItemsFromForm(form).filter(function(item){return item.productId!==el.dataset.id;});renderProductVariantGroupItems(form,items);form.dataset.dirty='1';return;
     }
-    if(action==='product-ai-research-run'){toast('已停用網頁 OpenAI','請使用「交給這個 Codex 對話處理」。','warning');return;}
+    if(action==='product-ai-research-run'){toast('已停用網頁 OpenAI','請使用「帶入這個 Codex 對話」。','warning');return;}
     if(action==='product-listing-codex-complete'){
       return handoffProductListingToCodex(byId('productListingCaseForm')).catch(function(error){toast('Codex 待辦尚未建立',errorMessage(error),'error');});
     }
@@ -5336,7 +5340,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
       el.disabled=true;
       return removeProductReferenceImage(byId('productListingCaseForm'),el.dataset.url).catch(function(error){toast('圖片刪除未完成',errorMessage(error),'error');}).finally(function(){el.disabled=false;});
     }
-    if(action==='product-ai-image-generate'){toast('已停用網頁 OpenAI','請使用「交給這個 Codex 對話處理」。','warning');return;}
+    if(action==='product-ai-image-generate'){toast('已停用網頁 OpenAI','請使用「帶入這個 Codex 對話」。','warning');return;}
     if(action==='product-shipping-preset'){return applyProductShippingPreset(byId('productListingCaseForm'),true);}
     if(action==='product-listing-case-preview'){
       el.disabled=true;

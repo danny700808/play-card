@@ -63,9 +63,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260819-product-variant-workflow-v6/);
+    assert.match(html, /operations-phase1\.css\?v=20260819-product-variant-workflow-v7/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260813-shopee-autopublish-v17/);
-    assert.match(html, /operations-phase1\.js\?v=20260819-product-variant-workflow-v6/);
+    assert.match(html, /operations-phase1\.js\?v=20260819-product-variant-workflow-v7/);
   }
 });
 
@@ -412,14 +412,14 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   const renderer = functionBody(engine, 'productListingCaseFormHtml');
   const oneClick = functionBody(engine, 'handoffProductListingToCodex');
 
-  assert.match(renderer, /交給這個 Codex 對話處理/);
+  assert.match(renderer, /帶入這個 Codex 對話/);
   assert.equal((renderer.match(/data-action="product-listing-codex-complete"/g) || []).length, 1);
   assert.match(renderer, /需要時才修改/);
   assert.doesNotMatch(renderer, /儲存並檢查/);
   assert.match(oneClick, /saveProductListingCase/);
   assert.match(oneClick, /caseStatus:'waiting-codex'/);
   assert.match(oneClick, /codexHandoff:\{status:'pending'/);
-  assert.match(oneClick, /PRODUCT_LISTING_CODEX_THREAD_URL/);
+  assert.match(oneClick, /productListingCodexThreadUrl/);
   assert.doesNotMatch(oneClick, /researchProductListingCase/);
   assert.doesNotMatch(oneClick, /requestProductListingImageGeneration/);
   assert.doesNotMatch(oneClick, /callProductListingPublish/);
