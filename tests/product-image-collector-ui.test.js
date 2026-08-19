@@ -103,6 +103,15 @@ test("同款商品從各自已收圖片中指定一張代表圖", () => {
   assert.match(operationsSource, /loadProductListingSourceImages\(item\.productId\)/);
 });
 
+test("加入同款細項後會恢復原商品既有圖片且不會誤復原人工清空", () => {
+  assert.match(operationsSource, /function productListingRecoveredMedia/);
+  assert.match(operationsSource, /generatedListingImages\.map\(function\(row\)\{return row\.sourceImageUrl/);
+  assert.match(operationsSource, /productVariantImages\(p\)/);
+  assert.match(operationsSource, /source\.referenceImagesCleared!==true&&!storedReferences\.length/);
+  assert.match(operationsSource, /referenceImagesCleared:rows\.length===0/);
+  assert.match(operationsSource, /productListingSourceImageCache\.set\(id,row\.referenceImageUrls\.slice\(\)\)/);
+});
+
 test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製圖按鈕", () => {
   const start = operationsSource.indexOf("function productListingCaseFormHtml");
   const end = operationsSource.indexOf("async function openProductListingCase", start);

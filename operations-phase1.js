@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.19-product-variant-workflow-v7';
+  const VERSION = '2026.08.19-product-variant-workflow-v8';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   let pendingShopeeAutofillPayload = null;
@@ -3330,9 +3330,19 @@ function ensureSalesClock(){
     const normalized=clean(value).toLowerCase();
     return ['pending','accepted','rejected'].includes(normalized)?normalized:'pending';
   }
+  function productListingRecoveredMedia(source,p){
+    source=source&&typeof source==='object'?source:{};
+    const generatedListingImages=normalizeGeneratedListingImages(source.generatedListingImages),last=source.lastImageGeneration&&typeof source.lastImageGeneration==='object'?source.lastImageGeneration:{};
+    const storedReferences=normalizeProductResearchSourceUrls([].concat(source.referenceImageUrls||[],source.selectedReferenceImageUrls||[])),storedSelected=Array.isArray(source.selectedReferenceImageUrls)?normalizeProductResearchSourceUrls(source.selectedReferenceImageUrls):normalizeProductResearchSourceUrls(source.referenceImageUrls);
+    const completedSources=normalizeProductResearchSourceUrls([].concat(last.sourceImageUrls||[],generatedListingImages.map(function(row){return row.sourceImageUrl||'';}))),mayRecover=source.referenceImagesCleared!==true&&!storedReferences.length;
+    const referenceImageUrls=(mayRecover?normalizeProductResearchSourceUrls([].concat(completedSources,productVariantImages(p))):storedReferences).slice(0,PRODUCT_REFERENCE_IMAGE_MAX);
+    const selectedReferenceImageUrls=(storedSelected.length?storedSelected:mayRecover?completedSources:[]).filter(function(url){return referenceImageUrls.includes(url);}).slice(0,PRODUCT_SELECTED_IMAGE_MAX);
+    return {generatedListingImages:generatedListingImages,referenceImageUrls:referenceImageUrls,selectedReferenceImageUrls:selectedReferenceImageUrls,referenceImagesCleared:source.referenceImagesCleared===true};
+  }
   function normalizeProductListingCase(raw,p){
     const source=raw&&typeof raw==='object'?raw:{},legacy=p&&p.internal?p.internal:{},suggested=productListingSuggestedDefaults(p);
     const ai=source.aiResearch&&typeof source.aiResearch==='object'?source.aiResearch:{};
+    const recoveredMedia=productListingRecoveredMedia(source,p);
     const productResearchStatus=clean(listingCaseValue(source,legacy,'productResearchStatus','not-searched'))||'not-searched';
     const packageResearchStatus=clean(listingCaseValue(source,legacy,'packageResearchStatus','not-searched'))||'not-searched';
     const identityStatus=clean(source.identityStatus)||'not_found';
@@ -3344,12 +3354,12 @@ function ensureSalesClock(){
     const normalized={
       caseStatus:clean(source.caseStatus)||'draft',
       listingMode:clean(source.listingMode)==='add-variant'?'add-variant':'independent',variantParentProductId:clean(source.variantParentProductId),variantParentSku:clean(source.variantParentSku),variantParentName:clean(source.variantParentName),variantAttributeName:clean(source.variantAttributeName)||'款式',variantParentAttributeValue:clean(source.variantParentAttributeValue)||'原款',variantAttributeValue:clean(source.variantAttributeValue),variantParentImageUrl:safeUrl(source.variantParentImageUrl),variantChildImageUrl:safeUrl(source.variantChildImageUrl),variantGroupEnabled:source.variantGroupEnabled===true,variantGroupAttributeName:clean(source.variantGroupAttributeName)||'款式',variantGroupPrimaryValue:clean(source.variantGroupPrimaryValue),variantGroupPrimaryImageUrl:safeUrl(source.variantGroupPrimaryImageUrl),variantGroupItems:normalizeProductVariantGroupItems(source.variantGroupItems,p&&p.docId),
-      sourceProductDescription:clean(source.sourceProductDescription),researchInstructions:clean(source.researchInstructions),referenceUrls:normalizeProductResearchSourceUrls(source.referenceUrls),referenceImageUrls:normalizeProductResearchSourceUrls(source.referenceImageUrls),selectedReferenceImageUrls:Array.isArray(source.selectedReferenceImageUrls)?normalizeProductResearchSourceUrls(source.selectedReferenceImageUrls):normalizeProductResearchSourceUrls(source.referenceImageUrls),listingImageUrls:normalizeProductResearchSourceUrls(source.listingImageUrls),
+      sourceProductDescription:clean(source.sourceProductDescription),researchInstructions:clean(source.researchInstructions),referenceUrls:normalizeProductResearchSourceUrls(source.referenceUrls),referenceImageUrls:recoveredMedia.referenceImageUrls,selectedReferenceImageUrls:recoveredMedia.selectedReferenceImageUrls,referenceImagesCleared:recoveredMedia.referenceImagesCleared,listingImageUrls:normalizeProductResearchSourceUrls(source.listingImageUrls),
       brand:clean(listingCaseValue(source,legacy,'brand',p&&p.brand||'')),shopeeBrand:clean(source.shopeeBrand)||clean(listingCaseValue(source,legacy,'brand',p&&p.brand||'')),shopeeAttributeValues:normalizeProductShopeeAttributes(source.shopeeAttributeValues),model:clean(listingCaseValue(source,legacy,'model',p&&p.model||'')),barcode:clean(listingCaseValue(source,legacy,'barcode',p&&p.barcode||'')),
       productResearchStatus:['not-searched','partial','researched','manual'].includes(productResearchStatus)?productResearchStatus:'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(listingCaseValue(source,legacy,'productResearchSourceUrls',[])),
       identityStatus:identityStatus,identityEvidence:clean(source.identityEvidence),identityConflictSummary:clean(source.identityConflictSummary),identityManualConfirmed:source.identityManualConfirmed===true,identityManualConfirmedAt:source.identityManualConfirmedAt||'',identityManualConfirmedBy:clean(source.identityManualConfirmedBy),identityManualConfirmationNote:clean(source.identityManualConfirmationNote),fieldEvidence:Array.isArray(source.fieldEvidence)?source.fieldEvidence:[],sourceConflicts:Array.isArray(source.sourceConflicts)?source.sourceConflicts:[],
       researchedProductName:clean(listingCaseValue(source,legacy,'researchedProductName','')),alternateNames:clean(listingCaseValue(source,legacy,'alternateNames','')),searchKeywords:clean(listingCaseValue(source,legacy,'searchKeywords','')),sellingPoints:clean(listingCaseValue(source,legacy,'sellingPoints','')),productDescription:productDescription,specificationText:legacySpecificationText,includedItems:clean(listingCaseValue(source,legacy,'includedItems','')),material:clean(listingCaseValue(source,legacy,'material','')),color:clean(listingCaseValue(source,legacy,'color','')),countryOfOrigin:clean(listingCaseValue(source,legacy,'countryOfOrigin','')),warrantyInfo:clean(listingCaseValue(source,legacy,'warrantyInfo',''))||'保固半年',shortDescription:legacyShortDescription,commonProductDescription:legacyCommonDescription||productDescription,featureList:legacyFeatureList,faqText:clean(source.faqText),
-      imagePlan:clean(source.imagePlan),imageGenerationInstructions:clean(source.imageGenerationInstructions),generatedListingImages:normalizeGeneratedListingImages(source.generatedListingImages),lastImageGenerationStatus:clean(source.lastImageGeneration&&source.lastImageGeneration.status),lastImageGenerationError:clean(source.lastImageGeneration&&source.lastImageGeneration.error),easyStoreHtml:clean(source.easyStoreHtml),shopeeTitle:clean(source.shopeeTitle),shopeeDescription:clean(source.shopeeDescription),shopeeRequiredNotes:clean(source.shopeeRequiredNotes),momoGoodsName:clean(source.momoGoodsName),momoSlogan:clean(source.momoSlogan),momoHtml:clean(source.momoHtml),momoRequiredNotes:clean(source.momoRequiredNotes),coupangTitle:clean(source.coupangTitle),coupangDescriptionHtml:clean(source.coupangDescriptionHtml),coupangRequiredNotes:clean(source.coupangRequiredNotes),
+      imagePlan:clean(source.imagePlan),imageGenerationInstructions:clean(source.imageGenerationInstructions),generatedListingImages:recoveredMedia.generatedListingImages,lastImageGenerationStatus:clean(source.lastImageGeneration&&source.lastImageGeneration.status),lastImageGenerationError:clean(source.lastImageGeneration&&source.lastImageGeneration.error),easyStoreHtml:clean(source.easyStoreHtml),shopeeTitle:clean(source.shopeeTitle),shopeeDescription:clean(source.shopeeDescription),shopeeRequiredNotes:clean(source.shopeeRequiredNotes),momoGoodsName:clean(source.momoGoodsName),momoSlogan:clean(source.momoSlogan),momoHtml:clean(source.momoHtml),momoRequiredNotes:clean(source.momoRequiredNotes),coupangTitle:clean(source.coupangTitle),coupangDescriptionHtml:clean(source.coupangDescriptionHtml),coupangRequiredNotes:clean(source.coupangRequiredNotes),
       shopeeCategoryPath:clean(listingCaseValue(source,legacy,'shopeeCategoryPath',suggested.shopeeCategoryPath||'')),shopeeListingDecision:['auto','new','existing'].includes(clean(source.shopeeListingDecision))?clean(source.shopeeListingDecision):'auto',momoCategoryCode:clean(listingCaseValue(source,legacy,'momoCategoryCode','')),coupangCategoryCode:clean(listingCaseValue(source,legacy,'coupangCategoryCode','')),
       identityDecision:normalizeProductListingDecision(source.identityDecision),commonContentDecision:normalizeProductListingDecision(source.commonContentDecision),mediaDecision:normalizeProductListingDecision(source.mediaDecision),easyStoreShopeeDecision:normalizeProductListingDecision(source.easyStoreShopeeDecision),momoDecision:normalizeProductListingDecision(source.momoDecision),coupangDecision:normalizeProductListingDecision(source.coupangDecision),
       enabledEasyStoreShopee:!source.enabledPlatforms||source.enabledPlatforms.easyStoreShopee!==false,enabledMomo:!source.enabledPlatforms||source.enabledPlatforms.momo!==false,enabledCoupang:!source.enabledPlatforms||source.enabledPlatforms.coupang!==false,
@@ -3436,7 +3446,7 @@ function ensureSalesClock(){
     let urls=[];
     try{
       const snap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),raw=snap.exists?snap.data()||{}:{};
-      urls=normalizeProductResearchSourceUrls([].concat(raw.referenceImageUrls||[],raw.selectedReferenceImageUrls||[],productVariantImages(product)));
+      urls=productListingRecoveredMedia(raw,product).referenceImageUrls;
     }catch(error){urls=productVariantImages(product);}
     productListingSourceImageCache.set(id,urls);return urls;
   }
@@ -3580,7 +3590,7 @@ function ensureSalesClock(){
     try{
       if(productImageCollectionSession&&productImageCollectionSession.active&&productImageCollectionSession.productId!==id)await stopProductImageCollection(byId('productListingCaseForm'));
       const snap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),row=normalizeProductListingCase(snap.exists?snap.data():null,p);
-      productListingSourceImageCache.set(id,normalizeProductResearchSourceUrls([].concat(row.referenceImageUrls||[],productVariantImages(p))));
+      productListingSourceImageCache.set(id,row.referenceImageUrls.slice());
       await Promise.all(row.variantGroupItems.map(async function(item){item.sourceImageUrls=await loadProductListingSourceImages(item.productId);}));
       if(row.variantParentProductId)await loadProductListingSourceImages(row.variantParentProductId);
       if(options&&options.listingMode==='add-variant')row.listingMode='add-variant';
@@ -3793,7 +3803,7 @@ function ensureSalesClock(){
     if(!productVariantImageTargetAllowed(form,id)||!product)throw new Error('找不到要保存圖片的商品');
     if(!state.db)throw new Error('商品圖片資料庫尚未載入，請重新整理頁面。');
     productListingSourceImageCache.set(id,rows);
-    const payload={productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),productImageUrl:clean(product.imageUrl||productVariantImages(product)[0]),referenceImageUrls:rows,selectedReferenceImageUrls:selected,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+    const payload={productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),productImageUrl:clean(product.imageUrl||productVariantImages(product)[0]),referenceImageUrls:rows,selectedReferenceImageUrls:selected,referenceImagesCleared:rows.length===0,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
     if(id===formProductId&&form.dataset.exists!=='1'){payload.createdAt=serverTimestamp();payload.createdBy=userLabel();}
     await state.db.collection(COLLECTIONS.listingCases).doc(id).set(payload,{merge:true});
     if(id===formProductId){form.dataset.exists='1';return;}
