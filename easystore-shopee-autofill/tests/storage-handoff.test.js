@@ -144,6 +144,22 @@ test("bridge stores one product-bound image collection session", () => {
   assert.ok(ack);
   assert.equal(ack.message.payload.ok, true);
   assert.equal(ack.message.payload.sku, "1040160-1");
+
+  vm.runInContext(`__listeners.message({
+    source: window,
+    origin: location.origin,
+    data: {
+      source: "youzi-operations-hub",
+      type: "YOUZI_IMAGE_COLLECTION_STATE_REQUEST",
+      payload: {}
+    }
+  })`, context);
+  const restored = acknowledgements.find((entry) =>
+    entry.message.type === "YOUZI_IMAGE_COLLECTION_SESSION_STATE"
+  );
+  assert.ok(restored);
+  assert.equal(restored.message.payload.session.sessionId, session.sessionId);
+  assert.equal(restored.message.payload.session.productId, session.productId);
 });
 
 test("extension package enables the supplier image collector service worker", () => {
@@ -151,7 +167,7 @@ test("extension package enables the supplier image collector service worker", ()
   const bridge = fs.readFileSync(path.join(extensionRoot, "bridge.js"), "utf8");
   const easystore = fs.readFileSync(path.join(extensionRoot, "easystore.js"), "utf8");
 
-  assert.equal(manifest.version, "0.3.18");
+  assert.equal(manifest.version, "0.3.19");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));

@@ -9,6 +9,8 @@
   let sending = false;
   let directPickEnabled = false;
   let cropOverlay = null;
+  let statusMessage = "";
+  let statusIsError = false;
   const queue = [];
   const queuedUrls = new Set();
   const collectedUrls = new Set();
@@ -93,13 +95,17 @@
   const directButton = panel.querySelector("[data-youzi-direct]");
 
   function setStatus(message, isError) {
-    statusText.textContent = message || "";
-    statusText.classList.toggle("youzi-error", Boolean(isError));
+    statusMessage = message || "";
+    statusIsError = Boolean(isError);
+    statusText.textContent = statusMessage;
+    statusText.classList.toggle("youzi-error", statusIsError);
   }
 
   function updatePanel() {
     if (!session) {
       panel.hidden = true;
+      statusMessage = "";
+      statusIsError = false;
       setStatus("");
       return;
     }
@@ -109,8 +115,11 @@
     directButton.textContent = `原圖點選：${directPickEnabled ? "開啟" : "關閉"}`;
     if (!session.active && session.stoppedReason === "full") {
       setStatus(`已收滿 ${session.maxImages} 張，收圖模式已自動結束。`);
-    } else if (!sending) {
+    } else if (!sending && !statusMessage) {
       setStatus(directPickEnabled ? "原圖點選已開啟；綠框出現後再點圖片。" : "等待你框選截圖");
+    } else {
+      statusText.textContent = statusMessage;
+      statusText.classList.toggle("youzi-error", statusIsError);
     }
   }
 
@@ -390,6 +399,7 @@
   panel.querySelector("[data-youzi-direct]").addEventListener("click", () => {
     directPickEnabled = !directPickEnabled;
     if (!directPickEnabled) clearHover();
+    setStatus(directPickEnabled ? "原圖點選已開啟；綠框出現後再點圖片。" : "等待你框選截圖");
     updatePanel();
   });
   panel.querySelector("[data-youzi-stop]").addEventListener("click", stopSession);
