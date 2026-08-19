@@ -21,7 +21,7 @@ test("collector prefers the original Alibaba image and removes resize suffixes",
   assert.equal(selected, "https://img.alicdn.com/imgextra/i1/demo.jpg");
 });
 
-test("collector session is bound to one product and at most 12 images", () => {
+test("collector session is bound to one product and at most 20 images", () => {
   const now = Date.now();
   const validation = helpers.normalizeSessionPayload({
     sessionId: "youzi-img-1234567890",
@@ -37,7 +37,7 @@ test("collector session is bound to one product and at most 12 images", () => {
   }, now);
   assert.equal(validation.ok, true);
   assert.equal(validation.value.productId, "catalog-product-1");
-  assert.equal(validation.value.maxImages, 12);
+  assert.equal(validation.value.maxImages, 20);
   assert.equal(validation.value.currentCount, 3);
   assert.equal(validation.value.active, true);
 });
@@ -48,8 +48,8 @@ test("full collector session stops automatically", () => {
     sessionId: "youzi-img-1234567890",
     productId: "catalog-product-1",
     sku: "1040160-1",
-    maxImages: 12,
-    currentCount: 12,
+    maxImages: 20,
+    currentCount: 20,
     startedAt: now,
     expiresAt: now + 60_000,
     active: true

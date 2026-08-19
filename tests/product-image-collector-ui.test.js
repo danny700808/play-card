@@ -18,8 +18,10 @@ test("準備上架提供指定商品的開始收圖入口", () => {
 });
 
 test("供應商頁以框選截圖為主且不會預設攔截商品頁點擊", () => {
-  assert.match(supplierCollector, /柚子掌櫃：框選截圖/);
   assert.match(supplierCollector, /directPickEnabled = false/);
+  assert.match(supplierCollector, /＋ 快速點圖/);
+  assert.match(supplierCollector, /頁面右鍵 → 柚子掌櫃；也可按 Ctrl＋Shift＋Y/);
+  assert.doesNotMatch(supplierCollector, /youzi-help|原圖點選：(?:開啟|關閉)/);
   assert.match(supplierCollector, /helpers\.CAPTURE_MESSAGE/);
   assert.match(supplierCollector, /document\.addEventListener\("paste"/);
   assert.match(background, /chrome\.tabs\.captureVisibleTab/);
@@ -38,7 +40,9 @@ test("截錯的來源圖片可從目前商品直接刪除", () => {
 test("收圖檔案沿用既有 Firebase 圖片上傳並綁定目前商品", () => {
   assert.match(operationsSource, /productId!==productImageCollectionSession\.productId/);
   assert.match(operationsSource, /uploadProductVariantReferenceImages\(form,productId,\[collectedImageFile\(payload\)\]\)/);
-  assert.match(operationsSource, /每個商品最多保留 12 張來源圖片/);
+  assert.match(operationsSource, /每個商品最多保留 20 張來源圖片/);
+  assert.match(operationsSource, /PRODUCT_REFERENCE_IMAGE_MAX = 20/);
+  assert.match(operationsSource, /PRODUCT_SELECTED_IMAGE_MAX = 12/);
 });
 
 test("營運中心重新整理後會主動恢復既有收圖工作", () => {
@@ -66,8 +70,15 @@ test("框選截圖完成後立即恢復已加入與結束收圖面板", () => {
 
 test("綠框原圖受限時不顯示 Chrome 英文權限錯誤", () => {
   assert.match(background, /CAPTURE_USER_GESTURE_REQUIRED/);
-  assert.match(background, /請按 Ctrl＋Shift＋Y/);
+  assert.match(background, /第一次請在頁面按右鍵/);
   assert.match(background, /柚子掌櫃：框選截圖/);
+});
+
+test("同一張圖完成後可再次收圖且不必重新整理", () => {
+  assert.doesNotMatch(supplierCollector, /collectedUrls/);
+  assert.match(supplierCollector, /queuedElements\.delete\(next\.element\)/);
+  assert.match(supplierCollector, /if \(hoveredElement === next\.element\) hoveredElement = null/);
+  assert.doesNotMatch(supplierCollector, /這張圖片已經選過了/);
 });
 
 test("收圖保存不會被尚未選完的細項父商品阻擋", () => {
@@ -109,7 +120,7 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
 });
 
 test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
-  assert.equal(manifest.version, "0.3.20");
+  assert.equal(manifest.version, "0.3.21");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));
@@ -117,5 +128,8 @@ test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
   assert.ok(manifest.host_permissions.includes("https://*.1688.com/*"));
   assert.ok(manifest.host_permissions.includes("https://*.alibaba.com/*"));
   assert.equal(manifest.host_permissions.includes("<all_urls>"), false);
+  assert.ok(manifest.optional_host_permissions.includes("<all_urls>"));
+  assert.match(background, /chrome\.permissions\.request\(PERSISTENT_CAPTURE_PERMISSION\)/);
+  assert.match(background, /if \(!imageCollector\.isSupplierPageUrl\(pageUrl\)\)/);
   assert.equal(manifest.commands["start-image-crop"].suggested_key.default, "Ctrl+Shift+Y");
 });

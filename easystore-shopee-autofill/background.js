@@ -4,6 +4,7 @@ importScripts("image-collector-helpers.js");
 
 const imageCollector = globalThis.YouziImageCollectorHelpers;
 const SUPPLIER_CROP_MENU_ID = "youzi-supplier-image-crop";
+const PERSISTENT_CAPTURE_PERMISSION = { origins: ["<all_urls>"] };
 
 function responseError(code, error) {
   return {
@@ -16,6 +17,15 @@ function responseError(code, error) {
 function captureNeedsExplicitGesture(error) {
   const message = String(error && error.message ? error.message : error || "");
   return /(?:<all_urls>|activeTab).*permission|permission.*(?:<all_urls>|activeTab)|Either the .* permission is required/i.test(message);
+}
+
+async function requestPersistentCapturePermission() {
+  if (!chrome.permissions || !chrome.permissions.request) return false;
+  try {
+    return await chrome.permissions.request(PERSISTENT_CAPTURE_PERMISSION) === true;
+  } catch (error) {
+    return false;
+  }
 }
 
 function bytesToBase64(bytes) {
@@ -186,7 +196,7 @@ async function captureVisibleSupplierTab(sender) {
     if (captureNeedsExplicitGesture(error)) {
       return responseError(
         "CAPTURE_USER_GESTURE_REQUIRED",
-        "這張原圖被供應商網站阻擋；請按 Ctrl＋Shift＋Y，或在頁面按右鍵選「柚子掌櫃：框選截圖」"
+        "第一次請在頁面按右鍵選「柚子掌櫃：框選截圖」並同意快速截圖；之後可直接點綠框"
       );
     }
     return responseError("CAPTURE_FAILED", error);
@@ -259,7 +269,10 @@ if (imageCollector) {
   }
   if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-      if (info.menuItemId === SUPPLIER_CROP_MENU_ID) await startCropInTab(tab);
+      if (info.menuItemId === SUPPLIER_CROP_MENU_ID) {
+        await requestPersistentCapturePermission();
+        await startCropInTab(tab);
+      }
     });
   }
   if (chrome.commands && chrome.commands.onCommand) {

@@ -13,8 +13,7 @@
   let statusMessage = "";
   let statusIsError = false;
   const queue = [];
-  const queuedUrls = new Set();
-  const collectedUrls = new Set();
+  const queuedElements = new WeakSet();
 
   const style = document.createElement("style");
   style.textContent = `
@@ -22,11 +21,6 @@
       outline: 4px solid #16a36f !important;
       outline-offset: -4px !important;
       cursor: copy !important;
-    }
-    .youzi-image-collector-collected {
-      outline: 4px solid #118755 !important;
-      outline-offset: -4px !important;
-      filter: saturate(.8) brightness(.95);
     }
     #youziImageCollectorPanel {
       position: fixed;
@@ -46,12 +40,10 @@
     #youziImageCollectorPanel b { display: block; font-size: 16px; margin-bottom: 4px; }
     #youziImageCollectorPanel .youzi-product { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #youziImageCollectorPanel .youzi-progress { color: #16845f; font-weight: 800; }
-    #youziImageCollectorPanel .youzi-help { color: #667985; margin-top: 7px; }
     #youziImageCollectorPanel .youzi-status { margin-top: 8px; min-height: 20px; }
     #youziImageCollectorPanel .youzi-error { color: #c9463f; }
     #youziImageCollectorPanel .youzi-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
     #youziImageCollectorPanel .youzi-shortcut { grid-column: 1 / -1; padding: 9px 11px; border-radius: 9px; background: #e9f5ef; color: #17684e; font-weight: 800; }
-    #youziImageCollectorPanel .youzi-shortcut small { display: block; margin-top: 2px; color: #4d6d61; font-weight: 600; }
     #youziImageCollectorPanel button {
       min-height: 40px; padding: 8px 10px; border: 0; border-radius: 9px;
       background: #173247; color: #fff; font-weight: 800; cursor: pointer;
@@ -80,11 +72,10 @@
     <b>柚子掌櫃收圖中</b>
     <div class="youzi-product" data-youzi-product></div>
     <div class="youzi-progress" data-youzi-progress></div>
-    <div class="youzi-help">用滑鼠框出你真正要的畫面；截圖完成後小框會立刻恢復，圖片在背景加入商品。</div>
     <div class="youzi-status" data-youzi-status></div>
     <div class="youzi-actions">
-      <div class="youzi-shortcut">頁面按右鍵 →「柚子掌櫃：框選截圖」<small>也可按 Ctrl＋Shift＋Y；原圖被網站阻擋時請改用這兩種框選方式</small></div>
-      <button type="button" data-youzi-direct>原圖點選：關閉</button>
+      <div class="youzi-shortcut">頁面右鍵 → 柚子掌櫃；也可按 Ctrl＋Shift＋Y</div>
+      <button type="button" data-youzi-direct>＋ 快速點圖</button>
       <button type="button" data-youzi-stop>結束收圖（Esc）</button>
     </div>
   `;
@@ -113,11 +104,11 @@
     panel.hidden = Boolean(cropOverlay || captureUiHidden);
     productText.textContent = `${session.sku}｜${session.title || "準備上架商品"}`;
     progressText.textContent = `已加入 ${session.currentCount}／${session.maxImages} 張`;
-    directButton.textContent = `原圖點選：${directPickEnabled ? "開啟" : "關閉"}`;
+    directButton.classList.toggle("is-active", directPickEnabled);
     if (!session.active && session.stoppedReason === "full") {
       setStatus(`已收滿 ${session.maxImages} 張，收圖模式已自動結束。`);
     } else if (!sending && !statusMessage) {
-      setStatus(directPickEnabled ? "原圖點選已開啟；綠框出現後再點圖片。" : "等待你框選截圖");
+      setStatus(directPickEnabled ? "移到圖片上，綠框出現後點一下。" : "等待收圖");
     } else {
       statusText.textContent = statusMessage;
       statusText.classList.toggle("youzi-error", statusIsError);
@@ -125,18 +116,18 @@
   }
 
   function clearHover() {
-    if (hoveredElement && !hoveredElement.classList.contains("youzi-image-collector-collected")) {
-      hoveredElement.classList.remove("youzi-image-collector-hover");
-    }
+    if (hoveredElement) hoveredElement.classList.remove("youzi-image-collector-hover");
     hoveredElement = null;
   }
 
   function imageCandidateAt(target) {
     if (!(target instanceof Element) || target.closest("#youziImageCollectorPanel")) return null;
     let element = target;
+    let screenshotCandidate = null;
     for (let depth = 0; element && depth < 5; depth += 1, element = element.parentElement) {
       const image = element.tagName === "IMG" ? element : element.querySelector && element.querySelector(":scope > img");
       if (image) {
+        if (!screenshotCandidate) screenshotCandidate = { element: image, url: "" };
         const candidates = [
           image.getAttribute("data-original"), image.getAttribute("data-ks-lazyload"),
           image.getAttribute("data-lazy-src"), image.getAttribute("data-src"),
@@ -151,9 +142,10 @@
       if (match) {
         const url = helpers.normalizeImageUrl(match[1], location.href);
         if (url) return { element, url };
+        if (!screenshotCandidate) screenshotCandidate = { element, url: "" };
       }
     }
-    return null;
+    return screenshotCandidate;
   }
 
   function applyCollectionResult(result) {
@@ -197,14 +189,13 @@
     sending = true;
     setStatus("正在送到準備上架商品…");
     try {
+      if (!next.url) throw new Error("這張圖片改用畫面截圖");
       const result = await chrome.runtime.sendMessage({
         type: helpers.FETCH_MESSAGE,
         payload: { sessionId: session.sessionId, productId: session.productId, imageUrl: next.url }
       });
       if (!result || !result.ok) throw new Error(result && result.error ? result.error : "圖片傳送失敗");
-      collectedUrls.add(next.url);
       next.element.classList.remove("youzi-image-collector-hover");
-      next.element.classList.add("youzi-image-collector-collected");
       applyCollectionResult(result);
     } catch (error) {
       try {
@@ -220,14 +211,14 @@
         next.element.classList.remove("youzi-image-collector-hover");
         const dataUrl = await captureVisiblePage();
         await deliverPreparedImage(await cropVisibleCapture(dataUrl, rect));
-        collectedUrls.add(next.url);
-        next.element.classList.add("youzi-image-collector-collected");
       } catch (fallbackError) {
-        queuedUrls.delete(next.url);
         next.element.classList.remove("youzi-image-collector-hover");
         setStatus(String(fallbackError && fallbackError.message ? fallbackError.message : fallbackError), true);
       }
     } finally {
+      queuedElements.delete(next.element);
+      next.element.classList.remove("youzi-image-collector-hover");
+      if (hoveredElement === next.element) hoveredElement = null;
       sending = false;
       if (session && session.active) processQueue();
     }
@@ -354,14 +345,13 @@
     cancelCrop();
     clearHover();
     queue.splice(0);
-    queuedUrls.clear();
     await chrome.storage.local.remove(helpers.SESSION_STORAGE_KEY);
   }
 
   document.addEventListener("mousemove", (event) => {
     if (!directPickEnabled || !session || !session.active) return clearHover();
     const candidate = imageCandidateAt(event.target);
-    if (!candidate || collectedUrls.has(candidate.url)) return clearHover();
+    if (!candidate) return clearHover();
     if (hoveredElement !== candidate.element) {
       clearHover();
       hoveredElement = candidate.element;
@@ -375,8 +365,8 @@
     if (!candidate) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (queuedUrls.has(candidate.url) || collectedUrls.has(candidate.url)) return setStatus("這張圖片已經選過了");
-    queuedUrls.add(candidate.url);
+    if (queuedElements.has(candidate.element)) return setStatus("這張圖片正在加入，請稍候");
+    queuedElements.add(candidate.element);
     queue.push(candidate);
     candidate.element.classList.add("youzi-image-collector-hover");
     processQueue();
@@ -405,9 +395,8 @@
   }, true);
 
   panel.querySelector("[data-youzi-direct]").addEventListener("click", () => {
-    directPickEnabled = !directPickEnabled;
-    if (!directPickEnabled) clearHover();
-    setStatus(directPickEnabled ? "原圖點選已開啟；綠框出現後再點圖片。" : "等待你框選截圖");
+    directPickEnabled = true;
+    setStatus("移到圖片上，綠框出現後點一下。");
     updatePanel();
   });
   panel.querySelector("[data-youzi-stop]").addEventListener("click", stopSession);
