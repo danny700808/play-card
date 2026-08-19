@@ -56,6 +56,20 @@ test("收圖成功或失敗訊息不會立刻被等待文字覆蓋", () => {
   assert.match(supplierCollector, /statusText\.classList\.toggle\("youzi-error", statusIsError\)/);
 });
 
+test("框選截圖完成後立即恢復已加入與結束收圖面板", () => {
+  assert.match(supplierCollector, /let captureUiHidden = false/);
+  assert.match(supplierCollector, /panel\.hidden = Boolean\(cropOverlay \|\| captureUiHidden\)/);
+  assert.match(supplierCollector, /async function captureVisiblePage/);
+  assert.match(supplierCollector, /finally \{\s*captureUiHidden = false;\s*updatePanel\(\);/);
+  assert.doesNotMatch(supplierCollector, /panel\.hidden = true;\s*captureSelection\(rect\)/);
+});
+
+test("綠框原圖受限時不顯示 Chrome 英文權限錯誤", () => {
+  assert.match(background, /CAPTURE_USER_GESTURE_REQUIRED/);
+  assert.match(background, /請按 Ctrl＋Shift＋Y/);
+  assert.match(background, /柚子掌櫃：框選截圖/);
+});
+
 test("收圖保存不會被尚未選完的細項父商品阻擋", () => {
   assert.match(operationsSource, /async function persistProductVariantReferenceImages/);
   assert.match(operationsSource, /await persistProductVariantReferenceImages\(form,id,urls,urls\)/);
@@ -89,12 +103,13 @@ test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製�
 
 test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () => {
   assert.match(supplierCollector, /原圖讀取受限，正在改用畫面截圖/);
-  assert.match(supplierCollector, /cropVisibleCapture\(capture\.dataUrl, rect\)/);
+  assert.match(supplierCollector, /const dataUrl = await captureVisiblePage\(\)/);
+  assert.match(supplierCollector, /cropVisibleCapture\(dataUrl, rect\)/);
   assert.match(supplierCollector, /deliverPreparedImage/);
 });
 
 test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
-  assert.equal(manifest.version, "0.3.19");
+  assert.equal(manifest.version, "0.3.20");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));

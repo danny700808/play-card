@@ -13,6 +13,11 @@ function responseError(code, error) {
   };
 }
 
+function captureNeedsExplicitGesture(error) {
+  const message = String(error && error.message ? error.message : error || "");
+  return /(?:<all_urls>|activeTab).*permission|permission.*(?:<all_urls>|activeTab)|Either the .* permission is required/i.test(message);
+}
+
 function bytesToBase64(bytes) {
   const chunkSize = 0x8000;
   let binary = "";
@@ -178,6 +183,12 @@ async function captureVisibleSupplierTab(sender) {
     if (!dataUrl || !dataUrl.startsWith("data:image/png;base64,")) throw new Error("無法取得目前畫面");
     return { ok: true, dataUrl };
   } catch (error) {
+    if (captureNeedsExplicitGesture(error)) {
+      return responseError(
+        "CAPTURE_USER_GESTURE_REQUIRED",
+        "這張原圖被供應商網站阻擋；請按 Ctrl＋Shift＋Y，或在頁面按右鍵選「柚子掌櫃：框選截圖」"
+      );
+    }
     return responseError("CAPTURE_FAILED", error);
   }
 }
