@@ -107,7 +107,7 @@ test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製�
   const start = operationsSource.indexOf("function productListingCaseFormHtml");
   const end = operationsSource.indexOf("async function openProductListingCase", start);
   const renderer = operationsSource.slice(start, end);
-  assert.match(renderer, /交給這個 Codex 對話處理/);
+  assert.match(renderer, /帶入這個 Codex 對話/);
   assert.doesNotMatch(renderer, /data-action="product-ai-research-run"/);
   assert.doesNotMatch(renderer, /data-action="product-ai-image-generate"/);
   assert.doesNotMatch(renderer, /productCompletedImageUpload/);
