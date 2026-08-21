@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
 const LISTING_JOB_SCHEMA_VERSION = 2;
-const LISTING_AUTOMATION_POLICY_VERSION = 5;
+const LISTING_AUTOMATION_POLICY_VERSION = 6;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['easyStore', 'shopee', 'coupang', 'momo']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
 const PUBLISH_LOCK_MS = 15 * 60 * 1000;
@@ -147,7 +147,10 @@ function listingAutomationPolicy() {
       matchKey: 'exact-sku+existing-platform-id',
       reuseExistingDraft: true,
       neverCreateNewOnRetry: true,
-      stopOnMultipleMatches: true
+      stopOnMultipleMatches: true,
+      skipPreSubmitCatalogSearchWhenNoPlatformId: true,
+      treatHandoffSkuAsNewWhenNoPlatformId: true,
+      exactLookupOnlyForUncertainSubmitRecovery: true
     },
     retry: {
       retryTransientFailureUntilVerified: true,
@@ -180,6 +183,23 @@ function listingAutomationPolicy() {
     platformExecutionPlan: {
       preflightAllListingDataBeforePlatformNavigation: true,
       order: [...PLATFORM_EXECUTION_ORDER],
+      finalSubmissionAuthorizedByHandoff: true,
+      routineSecondConfirmationForbidden: true,
+      continueAutomaticallyAfterEachVerifiedStage: true,
+      prepareCompleteFieldPlanBeforeFirstPlatform: true,
+      pageContractReuse: {
+        reuseKnownRoutesAndFieldLocations: true,
+        applyFixedFieldsWithoutWholePageRescan: true,
+        inspectOnlyDynamicCategoryAttributesAndErrors: true,
+        rescanCurrentSectionOnlyWhenLayoutSignatureChanges: true
+      },
+      fixedDefaults: {
+        warrantyDays: 180,
+        publishImmediately: true,
+        momoThirdPartyLocationCode: MOMO_THIRD_PARTY_DELIVERY.locationCode,
+        momoThirdPartyLocationRequired: true,
+        momoConvenienceShippingConditionalOnPackage: true
+      },
       shopeeDependsOnEasyStore: true,
       prepareBeforeOpen: ['category', 'brand', 'attributes', 'logistics', 'price', 'stock', 'images', 'variants'],
       shopeeHandoff: {
@@ -211,9 +231,20 @@ function listingAutomationPolicy() {
       excludeStoreAddressAndServicePromos: true,
       neverUseGalleryLastStorePromo: true,
       materialBankInsertRequired: true,
+      materialBankUploadFlow: ['open-material-bank', 'open-upload-material-dialog', 'upload-localized-file', 'search-exact-filename', 'select', 'confirm'],
       directRichEditorUploadIsNotPersistedProof: true,
       saveReopenAndVerifyImageRequired: true,
+      persistedImageEvidence: 'contenteditable-html-img-src',
+      editorElementIdMayChangeAfterReopen: true,
       publishOnlyAfterPersistedImageVerified: true
+    },
+    browserControl: {
+      workspace: 'codex-in-app-browser',
+      neverUsePrimaryChrome: true,
+      reuseExistingAuthenticatedPlatformTabs: true,
+      allowSavedCredentialLoginRetry: true,
+      neverSwitchBrowserWorkspaceMidJob: true,
+      stopForInteractiveAuthenticationOnly: true
     },
     browserTabs: {
       closeCompletedAgentTabs: true,
