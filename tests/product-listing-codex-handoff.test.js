@@ -42,7 +42,7 @@ test('主要按鈕不再直接執行 OpenAI 文案與圖片 API 流程', () => {
   assert.doesNotMatch(handler, /completeProductListingWithCodex/);
   assert.doesNotMatch(source, /async function completeProductListingWithCodex/);
   assert.doesNotMatch(handler, /researchProductListingCase|generateProductListingImage/);
-  assert.match(source, /完成圖資料齊全後會由後端依 EasyStore、蝦皮、酷澎、MOMO 固定順序自動續跑/);
+  assert.match(source, /完成圖資料齊全後會由後端依 MOMO、酷澎、EasyStore、蝦皮固定順序自動續跑/);
   assert.match(source, /不得重新呼叫網站的 OpenAI 文案或圖片 API/);
   assert.match(source, /已停用網頁 OpenAI/);
 });
@@ -93,10 +93,10 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /codexHandoff\.preflightSnapshot 是不可變的 handoff input snapshot/);
   assert.match(prompt, /Codex 完成圖片後，把 generatedListingImages 寫回各商品案件/);
   assert.match(prompt, /第一次進入平台前，後端會重讀全部案件的最新完成輸出/);
-  assert.match(prompt, /EasyStore、蝦皮、酷澎與 MOMO 及所有重試只准沿用該快照/);
+  assert.match(prompt, /MOMO、酷澎、EasyStore 與蝦皮及所有重試只准沿用該快照/);
   assert.match(prompt, /來源圖 .*待繁體化／定案 .*完成圖 .*缺少角色 .*狀態/);
   assert.match(prompt, /流程、角色與核對規則不可漂移/);
-  assert.match(prompt, /EasyStore 官網、蝦皮、酷澎、MOMO/);
+  assert.match(prompt, /MOMO、酷澎、EasyStore 官網、蝦皮/);
   assert.match(prompt, /每站送出後(?:由 verifyProductListingStage )?只核對一次正式清單與正式商品資料/);
   assert.match(prompt, /blocked-by-previous-stage/);
   assert.match(prompt, /appliedImageUrls/);
@@ -106,6 +106,9 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /只有 job schema、目前 automationPolicy、固定 platformOrder/);
   assert.match(prompt, /先保留至少一張 cleanMain 與一張 brandedHero/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
+  assert.match(prompt, /1000×1000 px、1:1、sRGB/);
+  assert.match(prompt, /平台之間只改首圖角色與排序/);
+  assert.match(prompt, /不得進入平台後才重新裁切、縮放或另做一套圖片/);
   assert.match(prompt, /Codex 對話旁邊的內建瀏覽器/);
   assert.match(prompt, /不得操作使用者主要 Chrome/);
   assert.match(prompt, /已同時授權四通路的建立、修改與最後正式發布/);
@@ -115,6 +118,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /contenteditable 的 HTML 確認仍存在素材銀行圖片 img src/);
   assert.match(prompt, /進入第一個平台前先產生四站完整欄位表/);
   assert.match(prompt, /不得每站重新掃描整頁/);
+  assert.match(prompt, /頁面版型未改變時直接套用已準備欄位/);
   assert.match(prompt, /MOMO 第三方 000001/);
   assert.match(prompt, /沒有既有平台 ID 時，視為新商品/);
   assert.match(prompt, /不做上架前平台全站搜尋/);
@@ -278,7 +282,7 @@ test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手'
   assert.match(resume, /YouziShopeeAutofill\.queue\(payload\)/);
 });
 
-test('蝦皮正式狀態儲存後沿用同一 v2 job 自動推進酷澎', () => {
+test('蝦皮正式狀態儲存後沿用同一 v2 job 完成四通路工作', () => {
   const advance = section('async function advanceFixedV2AfterShopeeStatus', 'async function saveProductPlatformStatus');
   assert.match(advance, /clean\(job\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
   assert.match(advance, /clean\(job\.currentStage\)!=='shopee'/);

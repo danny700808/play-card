@@ -125,7 +125,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 6);
+  assert.equal(snapshot.automationPolicy.version, 7);
   assert.equal(snapshot.automationPolicy.workflowId, 'youzi-four-channel-listing-v2');
   assert.equal(snapshot.automationPolicy.immutableWorkflowUntilExplicitRuleChange, true);
   assert.equal(snapshot.automationPolicy.productDataChangesDoNotChangeExecutionOrder, true);
@@ -137,15 +137,23 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
     'applied-image-plan', 'official-image-list', 'no-frozen-source-image'
   ]);
   assert.equal(snapshot.automationPolicy.publishVerification.imageReceiptContract.officialImageUrlsMayUsePlatformCdn, true);
-  assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.order, ['easyStore', 'shopee', 'coupang', 'momo']);
+  assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.order, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.preflightAllListingDataBeforePlatformNavigation, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.finalSubmissionAuthorizedByHandoff, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.routineSecondConfirmationForbidden, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.continueAutomaticallyAfterEachVerifiedStage, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.prepareCompleteFieldPlanBeforeFirstPlatform, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.preparedFieldPlanIsImmutableForWholeJob, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.applyFixedFieldsWithoutWholePageRescan, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.inspectOnlyDynamicCategoryAttributesAndErrors, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.rescanCurrentSectionOnlyWhenLayoutSignatureChanges, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
+  assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
+  assert.equal(snapshot.preparedPlatformFieldPlan.immutableForJob, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.fixedFields.thirdPartyLocationCode, '000001');
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.fixedFields.warrantyDays, 180);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.workspace, 'easystore-shopee-channel-sync');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.warrantyDays, 180);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.momoThirdPartyLocationCode, '000001');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.momoThirdPartyLocationRequired, true);
@@ -175,6 +183,19 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.imagePolicy.mainImageAspectRatio, '1:1');
   assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'low-saturation-light-commercial');
   assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'right-or-center-right');
+  assert.deepEqual(snapshot.imagePolicy.sharedDeliveryAssetStandard, {
+    strategy: 'strictest-common-four-channel-profile',
+    widthPx: 1000,
+    heightPx: 1000,
+    aspectRatio: '1:1',
+    colorSpace: 'sRGB',
+    preferredFormat: 'image/jpeg',
+    maximumFileBytes: 1000000,
+    normalizeOnceBeforePlatformNavigation: true,
+    platformRecropForbiddenUnlessRejectedByPlatform: true,
+    roleDifferenceOnly: true
+  });
+  assert.equal(snapshot.preparedPlatformFieldPlan.sharedImageAssetStandard.widthPx, 1000);
 });
 
 test('正式發布先完成四通路預檢，後續通路只能逐站核對後推進', () => {
@@ -187,17 +208,17 @@ test('正式發布先完成四通路預檢，後續通路只能逐站核對後�
   const finalizedMedia = handler.indexOf('loadFinalPreparedMediaSnapshot');
   const preflight = handler.indexOf('preflightMissing = {');
   const job = handler.indexOf('await jobRef.set', preflight);
-  const easyStore = handler.indexOf('if (snapshot.enabledEasyStoreShopee)', job);
-  const shopee = handler.indexOf('buildShopeeAutofillPayload', easyStore);
-  assert.ok(finalizedMedia >= 0 && preflight > finalizedMedia && job > preflight && easyStore > job && shopee > easyStore);
+  const momo = handler.indexOf("queueFixedIpPlatform(db, jobId, 'MOMO'", job);
+  const easyStore = handler.indexOf('publishEasyStoreStage(db, jobId, snapshot, product)', momo);
+  const shopee = handler.indexOf("currentStage = 'shopee'", easyStore);
+  assert.ok(finalizedMedia >= 0 && preflight > finalizedMedia && job > preflight && momo > job && easyStore > momo && shopee > easyStore);
   assert.match(handler, /platformImagePlanMissingFields\(snapshot\.platformImagePlan, \{ requireFinalized: true \}\)/);
-  assert.doesNotMatch(handler, /queueFixedIpPlatform\(/);
+  assert.match(handler, /queueFixedIpPlatform\(db, jobId, 'MOMO'/);
   assert.match(handler, /blocked-by-previous-stage/);
   assert.match(verifier, /validatePlatformStageVerification/);
-  assert.match(verifier, /currentStage !== requestedStage/);
   assert.match(verifier, /requestedStage !== 'shopee'/);
   assert.doesNotMatch(verifier, /requestedStage === 'coupang'/);
-  assert.match(verifier, /queueFixedIpPlatform\(db, jobId, platform/);
+  assert.match(verifier, /finalizeVerifiedShopeeStage/);
   assert.match(handler, /四通路單次預檢未通過；尚未操作任何平台/);
   assert.match(handler, /identityAllowsShopeeAutofill\(snapshot\.identityStatus, snapshot\.identityManualConfirmed\)/);
   assert.match(handler, /蝦皮商品身分／型號確認/);
@@ -315,7 +336,7 @@ test('queue receipt only advances the matching v2 job, attempt and immutable sna
   assert.ok(oldJob.reasons.includes('workflow-version-mismatch'));
 });
 
-test('verified queue receipts advance only Coupang to MOMO and MOMO to completed on the same v2 job', async () => {
+test('verified queue receipts advance MOMO to Coupang, then EasyStore and Shopee on the same v2 job', async () => {
   const productId = 'state-product';
   const jobId = 'state-job';
   const cleanUrl = 'https://example.com/state-clean.jpg';
@@ -324,17 +345,17 @@ test('verified queue receipts advance only Coupang to MOMO and MOMO to completed
     easyStorePrice: 990, momoPrice: 990, coupangPrice: 990, imageUrl: cleanUrl, imageUrls: [cleanUrl]
   }, withV2ImagePlan({ productDescription: '完整商品介紹' }, { productId, sku: 'STATE-001', clean: cleanUrl }));
   const snapshotFingerprint = helpers.listingSnapshotFingerprint(snapshot);
-  const coupangToken = 'coupang-attempt';
-  const coupangFingerprint = helpers.platformStageFingerprint('Coupang', snapshot);
+  const momoToken = 'momo-attempt';
+  const momoFingerprint = helpers.platformStageFingerprint('MOMO', snapshot);
   const stages = {
-    easyStore: { status: 'verified', receipt: verifiedPlatformReceipt('easyStore', snapshot) },
-    shopee: { status: 'verified', receipt: verifiedPlatformReceipt('shopee', snapshot) },
-    coupang: { status: 'awaiting-verification', attemptToken: coupangToken, fingerprint: coupangFingerprint },
-    momo: { status: 'blocked-by-previous-stage' }
+    momo: { status: 'awaiting-verification', attemptToken: momoToken, fingerprint: momoFingerprint },
+    coupang: { status: 'blocked-by-previous-stage' },
+    easyStore: { status: 'blocked-by-previous-stage' },
+    shopee: { status: 'blocked-by-previous-stage' }
   };
   const db = fakeFirestore({
     [`opsSyncJobs/${jobId}`]: {
-      workflowVersion: 'youzi-four-channel-listing-v2', productId, currentStage: 'coupang', status: 'submitted',
+      workflowVersion: 'youzi-four-channel-listing-v2', productId, currentStage: 'momo', status: 'submitted',
       preparedSnapshot: snapshot, preparedSnapshotFingerprint: snapshotFingerprint, stages, platforms: {}
     },
     [`opsInternalProducts/${productId}`]: {
@@ -344,43 +365,60 @@ test('verified queue receipts advance only Coupang to MOMO and MOMO to completed
       centralImageReferenceVerification: { status: 'verified', cleanMainUrl: cleanUrl, imageUrls: [cleanUrl] }
     }
   });
-  const coupangReceipt = {
-    workflowVersion: 'youzi-four-channel-listing-v2', jobId, productId, platform: 'Coupang',
-    attemptToken: coupangToken, fingerprint: coupangFingerprint, snapshotFingerprint,
+  const momoReceipt = {
+    workflowVersion: 'youzi-four-channel-listing-v2', jobId, productId, platform: 'MOMO',
+    attemptToken: momoToken, fingerprint: momoFingerprint, snapshotFingerprint,
     status: 'completed', verificationReceipt: {
-      stage: 'coupang', listingId: 'coupang-listing', sku: 'STATE-001', price: 990, stock: 3,
-      status: 'published', platformListMatched: true, officialCatalogMatched: true,
-      imageEvidenceComplete: true,
-      appliedImageUrls: snapshot.platformImagePlan.coupang.imageUrls.slice(),
-      officialImageUrls: snapshot.platformImagePlan.coupang.imageUrls.map((_, index) => `https://platform-cdn.example.com/coupang/${index}.jpg`)
-    }
-  };
-  const coupangResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_coupang`, coupangReceipt);
-  assert.equal(coupangResult.status, 'momo-queued');
-  const jobAfterCoupang = db.get(`opsSyncJobs/${jobId}`);
-  assert.equal(jobAfterCoupang.currentStage, 'momo');
-  assert.equal(jobAfterCoupang.stages.coupang.status, 'verified');
-  assert.equal(jobAfterCoupang.stages.momo.status, 'awaiting-verification');
-  assert.equal(db.keys().filter((key) => key.startsWith('opsProductListingQueue/')).length, 1);
-  const momoQueuePath = `opsProductListingQueue/${productId}_momo`;
-  const momoQueue = db.get(momoQueuePath);
-  assert.equal(momoQueue.jobId, jobId);
-  assert.equal(momoQueue.workflowVersion, 'youzi-four-channel-listing-v2');
-  assert.equal(momoQueue.attemptToken, jobAfterCoupang.stages.momo.attemptToken);
-  assert.equal(momoQueue.fingerprint, jobAfterCoupang.stages.momo.fingerprint);
-  assert.equal(momoQueue.verificationRequirements.imageReceiptContract.imageEvidenceCompleteRequired, true);
-  assert.equal(momoQueue.verificationRequirements.imageReceiptContract.officialImageUrlsMayUsePlatformCdn, true);
-  db.set(momoQueuePath, {
-    ...momoQueue, status: 'completed', verificationReceipt: {
       stage: 'momo', listingId: 'momo-listing', sku: 'STATE-001', price: 990, stock: 3,
       status: 'published', platformListMatched: true, officialCatalogMatched: true,
       imageEvidenceComplete: true,
       appliedImageUrls: snapshot.platformImagePlan.momo.imageUrls.slice(),
       officialImageUrls: snapshot.platformImagePlan.momo.imageUrls.map((_, index) => `https://platform-cdn.example.com/momo/${index}.jpg`)
     }
+  };
+  const momoResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_momo`, momoReceipt);
+  assert.equal(momoResult.status, 'coupang-queued');
+  const jobAfterMomo = db.get(`opsSyncJobs/${jobId}`);
+  assert.equal(jobAfterMomo.currentStage, 'coupang');
+  assert.equal(jobAfterMomo.stages.momo.status, 'verified');
+  assert.equal(jobAfterMomo.stages.coupang.status, 'awaiting-verification');
+  assert.equal(db.keys().filter((key) => key.startsWith('opsProductListingQueue/')).length, 1);
+  const coupangQueuePath = `opsProductListingQueue/${productId}_coupang`;
+  const coupangQueue = db.get(coupangQueuePath);
+  assert.equal(coupangQueue.jobId, jobId);
+  assert.equal(coupangQueue.workflowVersion, 'youzi-four-channel-listing-v2');
+  assert.equal(coupangQueue.attemptToken, jobAfterMomo.stages.coupang.attemptToken);
+  assert.equal(coupangQueue.fingerprint, jobAfterMomo.stages.coupang.fingerprint);
+  assert.equal(coupangQueue.verificationRequirements.imageReceiptContract.imageEvidenceCompleteRequired, true);
+  assert.equal(coupangQueue.verificationRequirements.imageReceiptContract.officialImageUrlsMayUsePlatformCdn, true);
+  db.set(coupangQueuePath, {
+    ...coupangQueue, status: 'completed', verificationReceipt: {
+      stage: 'coupang', listingId: 'coupang-listing', sku: 'STATE-001', price: 990, stock: 3,
+      status: 'published', platformListMatched: true, officialCatalogMatched: true,
+      imageEvidenceComplete: true,
+      appliedImageUrls: snapshot.platformImagePlan.coupang.imageUrls.slice(),
+      officialImageUrls: snapshot.platformImagePlan.coupang.imageUrls.map((_, index) => `https://platform-cdn.example.com/coupang/${index}.jpg`)
+    }
   });
-  const momoResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_momo`, db.get(momoQueuePath));
-  assert.equal(momoResult.status, 'completed');
+  const firstCoupangResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_coupang`, db.get(coupangQueuePath), {
+    easyStoreToken: 'test-token', retryDelays: [0],
+    upsertEasyStoreProduct: async () => { throw new Error('temporary EasyStore failure'); },
+    verifyEasyStorePublishedListing: async () => verifiedPlatformReceipt('easyStore', snapshot)
+  });
+  assert.equal(firstCoupangResult.status, 'easyStore-failed');
+  assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'easyStore');
+  const coupangResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_coupang`, db.get(coupangQueuePath), {
+    easyStoreToken: 'test-token', retryDelays: [0],
+    upsertEasyStoreProduct: async () => ({ productId: 'easy-product', variantIds: ['easy-variant'], action: 'created' }),
+    verifyEasyStorePublishedListing: async () => verifiedPlatformReceipt('easyStore', snapshot)
+  });
+  assert.equal(coupangResult.status, 'shopee-ready');
+  assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'shopee');
+  assert.equal(db.get(`opsSyncJobs/${jobId}`).stages.easyStore.status, 'verified');
+  const completion = await helpers.finalizeVerifiedShopeeStage(db, jobId, {
+    receipt: verifiedPlatformReceipt('shopee', snapshot)
+  }, 'test-manager');
+  assert.equal(completion.status, 'completed');
   assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'completed');
   assert.ok(db.get(`opsSyncJobs/${jobId}`).finishedAt);
   assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.cleanupStatus, 'required');
@@ -713,10 +751,15 @@ test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     workflowVersion: 'youzi-four-channel-listing-v2',
     productId,
     currentStage: 'easyStore',
-    platformOrder: ['easyStore', 'shopee', 'coupang', 'momo'],
+    platformOrder: ['momo', 'coupang', 'easyStore', 'shopee'],
     preparedSnapshot: snapshot,
     preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(snapshot),
-    stages: { easyStore: { status: 'processing' } }
+    stages: {
+      momo: { status: 'verified', receipt: verifiedPlatformReceipt('momo', snapshot) },
+      coupang: { status: 'verified', receipt: verifiedPlatformReceipt('coupang', snapshot) },
+      easyStore: { status: 'processing' },
+      shopee: { status: 'blocked-by-previous-stage' }
+    }
   };
   assert.deepEqual(helpers.activeV2JobReuseBlockers(job, productId, listingCase), []);
   const reverseKeys = (value) => {
@@ -742,7 +785,7 @@ test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     ...job, preparedSnapshot: earlySnapshot,
     preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(earlySnapshot)
   }, productId, listingCase).includes('finalized-image-plan-invalid'));
-  assert.ok(helpers.activeV2JobReuseBlockers({ ...job, platformOrder: ['easyStore', 'coupang', 'shopee', 'momo'] }, productId, listingCase).includes('job-platform-order-mismatch'));
+  assert.ok(helpers.activeV2JobReuseBlockers({ ...job, platformOrder: ['momo', 'easyStore', 'coupang', 'shopee'] }, productId, listingCase).includes('job-platform-order-mismatch'));
   const changedFrozenCase = JSON.parse(JSON.stringify(listingCase));
   changedFrozenCase.codexHandoff.preflightSnapshot.cases[0].sourceImageUrls.push('https://supplier.example.com/new-source.jpg');
   assert.ok(helpers.activeV2JobReuseBlockers(job, productId, changedFrozenCase).includes('case-frozen-input-mismatch'));
