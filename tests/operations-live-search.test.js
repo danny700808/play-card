@@ -88,7 +88,9 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(handoffPrompt, /尾端加「柚子樂器」/);
   assert.match(handoffPrompt, /實際內容以收到的實體商品為準/);
   assert.match(handoffPrompt, /同一案件、同一 SKU、同一平台草稿與目前階段/);
-  assert.match(handoffPrompt, /固定順序為 MOMO、酷澎、EasyStore、蝦皮/);
+  assert.match(handoffPrompt, /MOMO、酷澎、EasyStore 是三個獨立根節點/);
+  assert.match(handoffPrompt, /單一操作鎖/);
+  assert.match(handoffPrompt, /蝦皮只依賴 EasyStore/);
   assert.match(handoffPrompt, /蝦皮只使用 EasyStore 官方蝦皮通路同步／編輯頁/);
   assert.match(handoffPrompt, /不得.*切換蝦皮賣家中心或開第二條上架路徑/);
   assert.match(handoffPrompt, /每站送出後只核對一次正式清單/);

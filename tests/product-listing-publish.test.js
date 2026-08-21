@@ -125,7 +125,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 7);
+  assert.equal(snapshot.automationPolicy.version, 8);
   assert.equal(snapshot.automationPolicy.workflowId, 'youzi-four-channel-listing-v2');
   assert.equal(snapshot.automationPolicy.immutableWorkflowUntilExplicitRuleChange, true);
   assert.equal(snapshot.automationPolicy.productDataChangesDoNotChangeExecutionOrder, true);
@@ -138,6 +138,12 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   ]);
   assert.equal(snapshot.automationPolicy.publishVerification.imageReceiptContract.officialImageUrlsMayUsePlatformCdn, true);
   assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.order, ['momo', 'coupang', 'easyStore', 'shopee']);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.mode, 'staggered-parallel');
+  assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.parallelRoots, ['momo', 'coupang', 'easyStore']);
+  assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.dependencies.shopee, ['easyStore']);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.easyStoreStartsOnlyAfterMomoAndCoupangVerified, false);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.browserScheduler.interactionConcurrency, 1);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.browserScheduler.releaseInteractionLockDuringWait, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.preflightAllListingDataBeforePlatformNavigation, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.finalSubmissionAuthorizedByHandoff, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.routineSecondConfirmationForbidden, true);
@@ -150,6 +156,9 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 2);
+  assert.equal(snapshot.preparedPlatformFieldPlan.executionGraph.mode, 'staggered-parallel');
+  assert.deepEqual(snapshot.preparedPlatformFieldPlan.executionGraph.parallelRoots, ['momo', 'coupang', 'easyStore']);
   assert.equal(snapshot.preparedPlatformFieldPlan.immutableForJob, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.fixedFields.thirdPartyLocationCode, '000001');
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.fixedFields.warrantyDays, 180);
@@ -198,7 +207,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.preparedPlatformFieldPlan.sharedImageAssetStandard.widthPx, 1000);
 });
 
-test('正式發布先完成四通路預檢，後續通路只能逐站核對後推進', () => {
+test('正式發布先完成四通路預檢，再交錯啟動三個根平台且蝦皮只依賴 EasyStore', () => {
   const backend = fs.readFileSync('functions/productListingPublish.js', 'utf8');
   const deployWorkflow = fs.readFileSync('.github/workflows/deploy-product-listing.yml', 'utf8');
   const publishStart = backend.indexOf('async function publishProductListingCaseHandler');
@@ -208,13 +217,16 @@ test('正式發布先完成四通路預檢，後續通路只能逐站核對後�
   const finalizedMedia = handler.indexOf('loadFinalPreparedMediaSnapshot');
   const preflight = handler.indexOf('preflightMissing = {');
   const job = handler.indexOf('await jobRef.set', preflight);
-  const momo = handler.indexOf("queueFixedIpPlatform(db, jobId, 'MOMO'", job);
-  const easyStore = handler.indexOf('publishEasyStoreStage(db, jobId, snapshot, product)', momo);
-  const shopee = handler.indexOf("currentStage = 'shopee'", easyStore);
-  assert.ok(finalizedMedia >= 0 && preflight > finalizedMedia && job > preflight && momo > job && easyStore > momo && shopee > easyStore);
+  const roots = handler.indexOf("{ stage: 'momo', platform: 'MOMO'", job);
+  const coupang = handler.indexOf("{ stage: 'coupang', platform: 'Coupang'", roots);
+  const easyStore = handler.indexOf('publishEasyStoreStageWithRetry(db, jobId, snapshot, product)', coupang);
+  const parallel = handler.indexOf('await Promise.all(operations.map', easyStore);
+  assert.ok(finalizedMedia >= 0 && preflight > finalizedMedia && job > preflight && roots > job && coupang > roots && easyStore > coupang && parallel > easyStore);
   assert.match(handler, /platformImagePlanMissingFields\(snapshot\.platformImagePlan, \{ requireFinalized: true \}\)/);
-  assert.match(handler, /queueFixedIpPlatform\(db, jobId, 'MOMO'/);
-  assert.match(handler, /blocked-by-previous-stage/);
+  assert.match(handler, /queueFixedIpPlatform\(db, jobId, entry\.platform/);
+  assert.match(handler, /executionMode: 'staggered-parallel'/);
+  assert.match(handler, /blocked-by-dependency/);
+  assert.doesNotMatch(handler, /blocked-by-previous-stage/);
   assert.match(verifier, /validatePlatformStageVerification/);
   assert.match(verifier, /requestedStage !== 'shopee'/);
   assert.doesNotMatch(verifier, /requestedStage === 'coupang'/);
@@ -336,7 +348,7 @@ test('queue receipt only advances the matching v2 job, attempt and immutable sna
   assert.ok(oldJob.reasons.includes('workflow-version-mismatch'));
 });
 
-test('verified queue receipts advance MOMO to Coupang, then EasyStore and Shopee on the same v2 job', async () => {
+test('MOMO、酷澎與 EasyStore 可獨立完成，蝦皮只依賴 EasyStore，最後一張回條才完成整筆工作', async () => {
   const productId = 'state-product';
   const jobId = 'state-job';
   const cleanUrl = 'https://example.com/state-clean.jpg';
@@ -347,16 +359,19 @@ test('verified queue receipts advance MOMO to Coupang, then EasyStore and Shopee
   const snapshotFingerprint = helpers.listingSnapshotFingerprint(snapshot);
   const momoToken = 'momo-attempt';
   const momoFingerprint = helpers.platformStageFingerprint('MOMO', snapshot);
+  const coupangToken = 'coupang-attempt';
+  const coupangFingerprint = helpers.platformStageFingerprint('Coupang', snapshot);
   const stages = {
     momo: { status: 'awaiting-verification', attemptToken: momoToken, fingerprint: momoFingerprint },
-    coupang: { status: 'blocked-by-previous-stage' },
-    easyStore: { status: 'blocked-by-previous-stage' },
-    shopee: { status: 'blocked-by-previous-stage' }
+    coupang: { status: 'awaiting-verification', attemptToken: coupangToken, fingerprint: coupangFingerprint },
+    easyStore: { status: 'verified', productId: 'easy-product', variantIds: ['easy-variant'], receipt: verifiedPlatformReceipt('easyStore', snapshot) },
+    shopee: { status: 'awaiting-verification', dependsOn: ['easyStore'] }
   };
   const db = fakeFirestore({
     [`opsSyncJobs/${jobId}`]: {
-      workflowVersion: 'youzi-four-channel-listing-v2', productId, currentStage: 'momo', status: 'submitted',
-      preparedSnapshot: snapshot, preparedSnapshotFingerprint: snapshotFingerprint, stages, platforms: {}
+      workflowVersion: 'youzi-four-channel-listing-v2', productId, currentStage: 'shopee', status: 'submitted',
+      preparedSnapshot: snapshot, preparedSnapshotFingerprint: snapshotFingerprint, stages,
+      platforms: { easyStore: { status: 'created' }, shopee: { status: 'waiting-easystore-sync' } }
     },
     [`opsInternalProducts/${productId}`]: {
       internalSku: 'STATE-001', imageUrl: cleanUrl, imageUrls: [cleanUrl], completedListingImageUrls: [cleanUrl]
@@ -365,59 +380,28 @@ test('verified queue receipts advance MOMO to Coupang, then EasyStore and Shopee
       centralImageReferenceVerification: { status: 'verified', cleanMainUrl: cleanUrl, imageUrls: [cleanUrl] }
     }
   });
-  const momoReceipt = {
-    workflowVersion: 'youzi-four-channel-listing-v2', jobId, productId, platform: 'MOMO',
-    attemptToken: momoToken, fingerprint: momoFingerprint, snapshotFingerprint,
+  const queueReceipt = (platform, attemptToken, fingerprint, receipt) => ({
+    workflowVersion: 'youzi-four-channel-listing-v2', jobId, productId, platform,
+    attemptToken, fingerprint, snapshotFingerprint,
     status: 'completed', verificationReceipt: {
-      stage: 'momo', listingId: 'momo-listing', sku: 'STATE-001', price: 990, stock: 3,
-      status: 'published', platformListMatched: true, officialCatalogMatched: true,
-      imageEvidenceComplete: true,
-      appliedImageUrls: snapshot.platformImagePlan.momo.imageUrls.slice(),
-      officialImageUrls: snapshot.platformImagePlan.momo.imageUrls.map((_, index) => `https://platform-cdn.example.com/momo/${index}.jpg`)
-    }
-  };
-  const momoResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_momo`, momoReceipt);
-  assert.equal(momoResult.status, 'coupang-queued');
-  const jobAfterMomo = db.get(`opsSyncJobs/${jobId}`);
-  assert.equal(jobAfterMomo.currentStage, 'coupang');
-  assert.equal(jobAfterMomo.stages.momo.status, 'verified');
-  assert.equal(jobAfterMomo.stages.coupang.status, 'awaiting-verification');
-  assert.equal(db.keys().filter((key) => key.startsWith('opsProductListingQueue/')).length, 1);
-  const coupangQueuePath = `opsProductListingQueue/${productId}_coupang`;
-  const coupangQueue = db.get(coupangQueuePath);
-  assert.equal(coupangQueue.jobId, jobId);
-  assert.equal(coupangQueue.workflowVersion, 'youzi-four-channel-listing-v2');
-  assert.equal(coupangQueue.attemptToken, jobAfterMomo.stages.coupang.attemptToken);
-  assert.equal(coupangQueue.fingerprint, jobAfterMomo.stages.coupang.fingerprint);
-  assert.equal(coupangQueue.verificationRequirements.imageReceiptContract.imageEvidenceCompleteRequired, true);
-  assert.equal(coupangQueue.verificationRequirements.imageReceiptContract.officialImageUrlsMayUsePlatformCdn, true);
-  db.set(coupangQueuePath, {
-    ...coupangQueue, status: 'completed', verificationReceipt: {
-      stage: 'coupang', listingId: 'coupang-listing', sku: 'STATE-001', price: 990, stock: 3,
-      status: 'published', platformListMatched: true, officialCatalogMatched: true,
-      imageEvidenceComplete: true,
-      appliedImageUrls: snapshot.platformImagePlan.coupang.imageUrls.slice(),
-      officialImageUrls: snapshot.platformImagePlan.coupang.imageUrls.map((_, index) => `https://platform-cdn.example.com/coupang/${index}.jpg`)
+      ...receipt
     }
   });
-  const firstCoupangResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_coupang`, db.get(coupangQueuePath), {
-    easyStoreToken: 'test-token', retryDelays: [0],
-    upsertEasyStoreProduct: async () => { throw new Error('temporary EasyStore failure'); },
-    verifyEasyStorePublishedListing: async () => verifiedPlatformReceipt('easyStore', snapshot)
-  });
-  assert.equal(firstCoupangResult.status, 'easyStore-failed');
-  assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'easyStore');
-  const coupangResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_coupang`, db.get(coupangQueuePath), {
-    easyStoreToken: 'test-token', retryDelays: [0],
-    upsertEasyStoreProduct: async () => ({ productId: 'easy-product', variantIds: ['easy-variant'], action: 'created' }),
-    verifyEasyStorePublishedListing: async () => verifiedPlatformReceipt('easyStore', snapshot)
-  });
-  assert.equal(coupangResult.status, 'shopee-ready');
-  assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'shopee');
-  assert.equal(db.get(`opsSyncJobs/${jobId}`).stages.easyStore.status, 'verified');
-  const completion = await helpers.finalizeVerifiedShopeeStage(db, jobId, {
+
+  const shopeeResult = await helpers.finalizeVerifiedShopeeStage(db, jobId, {
     receipt: verifiedPlatformReceipt('shopee', snapshot)
   }, 'test-manager');
+  assert.equal(shopeeResult.status, 'shopee-verified-waiting-other-platforms');
+  assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'parallel-platforms');
+
+  const coupangReceipt = queueReceipt('Coupang', coupangToken, coupangFingerprint, verifiedPlatformReceipt('coupang', snapshot));
+  const coupangResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_coupang`, coupangReceipt);
+  assert.equal(coupangResult.status, 'coupang-verified');
+  assert.equal(db.get(`opsSyncJobs/${jobId}`).stages.coupang.status, 'verified');
+  assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'parallel-platforms');
+
+  const momoReceipt = queueReceipt('MOMO', momoToken, momoFingerprint, verifiedPlatformReceipt('momo', snapshot));
+  const completion = await helpers.applyVerifiedQueueReceipt(db, `${productId}_momo`, momoReceipt);
   assert.equal(completion.status, 'completed');
   assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'completed');
   assert.ok(db.get(`opsSyncJobs/${jobId}`).finishedAt);
@@ -750,15 +734,15 @@ test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     schemaVersion: 2,
     workflowVersion: 'youzi-four-channel-listing-v2',
     productId,
-    currentStage: 'easyStore',
+    currentStage: 'parallel-platforms',
     platformOrder: ['momo', 'coupang', 'easyStore', 'shopee'],
     preparedSnapshot: snapshot,
     preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(snapshot),
     stages: {
       momo: { status: 'verified', receipt: verifiedPlatformReceipt('momo', snapshot) },
-      coupang: { status: 'verified', receipt: verifiedPlatformReceipt('coupang', snapshot) },
+      coupang: { status: 'awaiting-verification' },
       easyStore: { status: 'processing' },
-      shopee: { status: 'blocked-by-previous-stage' }
+      shopee: { status: 'blocked-by-dependency', dependsOn: ['easyStore'] }
     }
   };
   assert.deepEqual(helpers.activeV2JobReuseBlockers(job, productId, listingCase), []);
@@ -1171,8 +1155,8 @@ test('Shopee persistence summary never stores one-time autofill handoff secrets'
   assert.equal(platforms.shopee.autofillPayload.nonce, '0123456789abcdef0123456789abcdef');
 
   const source = fs.readFileSync('functions/productListingPublish.js', 'utf8');
-  assert.match(source, /const platformsForStorage = summarizePlatformsForStorage\(platforms\)/);
-  assert.match(source, /jobRef\.set\(\{ status, platforms: platformsForStorage, currentStage, stages,/);
+  assert.match(source, /let platformsForStorage = summarizePlatformsForStorage\(platforms\)/);
+  assert.match(source, /transaction\.set\(jobRef, \{[\s\S]*status, platforms: platformsForStorage, currentStage, stages,/);
   assert.match(source, /publishState: \{ jobId, status, currentStage, stages, platforms: platformsForStorage,/);
   assert.match(source, /return \{ ok:[\s\S]*status, currentStage, stages, platforms \};/);
   assert.match(source, /updatedBy: '商品上架', schemaVersion: 8/);
