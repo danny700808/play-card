@@ -8,6 +8,7 @@ on:
       - "operations-phase1.js"
       - "functions/productAiResearch.js"
       - "functions/productListingPublish.js"
+      - "functions/productListingSourceCleanup.js"
       - "functions/shopeeMusicTaxonomy.js"
       - "operations-phase1.css"
       - "operations-shopee-autofill-handoff-v1.js"
@@ -15,8 +16,10 @@ on:
       - "portal.html"
       - "tests/operations-live-search.test.js"
       - "tests/shopee-autofill-handoff.test.js"
+      - "tests/shopee-extension-v2-package.test.js"
       - "tests/product-ai-research.test.js"
       - "tests/product-listing-publish.test.js"
+      - "tests/product-listing-source-cleanup.test.js"
       - "tests/product-image-collector-ui.test.js"
       - "easystore-shopee-autofill/**"
       - "youzi-easystore-shopee-autofill-v*.zip"
@@ -32,8 +35,8 @@ jobs:
     timeout-minutes: 10
     env:
       EXTENSION_DIR: easystore-shopee-autofill
-      EXTENSION_VERSION: 0.3.21
-      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.21.zip
+      EXTENSION_VERSION: 0.3.22
+      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.22.zip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,6 +54,7 @@ jobs:
           node --check functions/shopeeMusicTaxonomy.js
           node --check functions/productAiResearch.js
           node --check functions/productListingPublish.js
+          node --check functions/productListingSourceCleanup.js
           node --check easystore-shopee-autofill/bridge.js
           node --check easystore-shopee-autofill/background.js
           node --check easystore-shopee-autofill/easystore.js
@@ -87,17 +91,21 @@ jobs:
           node --test
           tests/operations-live-search.test.js
           tests/shopee-autofill-handoff.test.js
+          tests/shopee-extension-v2-package.test.js
           tests/product-ai-research.test.js
           tests/product-listing-publish.test.js
+          tests/product-listing-source-cleanup.test.js
           tests/product-image-collector-ui.test.js
           easystore-shopee-autofill/tests/*.test.js
       - name: Verify markup and cache versions
         run: |
           set -euo pipefail
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v17' portal.html
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260813-shopee-autopublish-v17' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260819-shopee-single-path-v1' portal.html
-          grep -Fq 'operations-phase1.js?v=20260819-shopee-single-path-v1' operations-hub.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260821-shopee-v2-schema5' portal.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260821-shopee-v2-schema5' operations-hub.html
+          grep -Fq 'operations-phase1.css?v=20260821-four-channel-listing-v2' portal.html
+          grep -Fq 'operations-phase1.css?v=20260821-four-channel-listing-v2' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260821-four-channel-listing-v2' portal.html
+          grep -Fq 'operations-phase1.js?v=20260821-four-channel-listing-v2' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

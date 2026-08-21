@@ -10,7 +10,11 @@ const source = fs.readFileSync('operations-shopee-autofill-handoff-v1.js', 'utf8
 function rawPayload() {
   const now = Date.now();
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
+    workflowVersion: 'youzi-four-channel-listing-v2',
+    jobId: 'job-shopee-v2-1',
+    snapshotId: 'snapshot-shopee-v2-1',
+    snapshotFingerprint: 'a'.repeat(64),
     nonce: '0123456789abcdef0123456789abcdef',
     createdAt: now,
     expiresAt: now + 10 * 60 * 1000,
@@ -20,9 +24,10 @@ function rawPayload() {
     sku: '1040160-1',
     title: 'Ibanez AZES40-PRB 電吉他',
     publishMode: 'auto',
+    variantGroup: null,
     listingPolicy: {
-      decision: 'auto', matchKey: 'sku', allowCreate: false, existingListingIds: [],
-      onZero: 'create-only-if-confirmed', onOne: 'update', onMultiple: 'block'
+      mode: 'create-new', identitySource: 'new-draft', platformListingIds: [],
+      preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only'
     },
     categoryPath: ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯'],
     brand: 'Ibanez',
@@ -73,10 +78,12 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
   const payload = api.sanitizePayload(rawPayload());
   const serialized = JSON.stringify(payload);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 4);
+  assert.equal(payload.schemaVersion, 5);
+  assert.equal(payload.workflowVersion, 'youzi-four-channel-listing-v2');
+  assert.equal(payload.jobId, 'job-shopee-v2-1');
   assert.deepEqual(JSON.parse(JSON.stringify(payload.listingPolicy)), {
-    decision: 'auto', matchKey: 'sku', allowCreate: false, existingListingIds: [],
-    onZero: 'create-only-if-confirmed', onOne: 'update', onMultiple: 'block'
+    mode: 'create-new', identitySource: 'new-draft', platformListingIds: [],
+    preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only'
   });
   assert.equal(payload.attributes[0].value, 'HSS');
   assert.equal(payload.publishMode, 'auto');
@@ -105,15 +112,49 @@ test('handoff refuses incomplete identity data', () => {
   assert.throws(() => api.sanitizePayload(payload), /資料不完整/);
 });
 
-test('handoff refuses an unsafe or contradictory listing policy', () => {
+test('handoff refuses an unsafe or contradictory central platform policy', () => {
   const { api } = loadBridge();
   const payload = rawPayload();
-  payload.listingPolicy.allowCreate = true;
-  assert.throws(() => api.sanitizePayload(payload), /防重規則不完整/);
-  payload.listingPolicy.decision = 'new';
+  payload.listingPolicy.preflightSkuSearch = true;
+  assert.throws(() => api.sanitizePayload(payload), /中央平台 ID 規則不完整/);
+  payload.listingPolicy.preflightSkuSearch = false;
   assert.doesNotThrow(() => api.sanitizePayload(payload));
-  payload.listingPolicy.existingListingIds = ['4116442'];
-  assert.throws(() => api.sanitizePayload(payload), /防重規則不完整/);
+  payload.listingPolicy.platformListingIds = ['4116442'];
+  assert.throws(() => api.sanitizePayload(payload), /中央平台 ID 規則不完整/);
+});
+
+test('handoff rejects schema 4 and never translates its retired listing decision', () => {
+  const { api } = loadBridge();
+  const payload = rawPayload();
+  payload.schemaVersion = 4;
+  payload.listingPolicy = {
+    decision: 'existing', matchKey: 'sku', allowCreate: false,
+    existingListingIds: ['4116442'], onZero: 'create-only-if-confirmed',
+    onOne: 'update', onMultiple: 'block'
+  };
+  assert.throws(() => api.sanitizePayload(payload), /版本不相容/);
+});
+
+test('handoff preserves every localized add-variant field in schema 5', () => {
+  const { api } = loadBridge();
+  const payload = rawPayload();
+  payload.publishMode = 'add-variant-to-existing';
+  payload.listingPolicy = {
+    mode: 'add-variant-to-existing', identitySource: 'central-platform-id',
+    platformListingIds: ['4116442'], preflightSkuSearch: false,
+    uncertainSubmitRecovery: 'exact-sku-only'
+  };
+  payload.variantGroup = {
+    parentProductId: 'parent-1', parentSku: 'PARENT-100', parentName: '原商品',
+    attributeName: '顏色', parentAttributeValue: '原木色', attributeValue: '深木色',
+    parentImageUrl: 'https://example.com/parent-zh-tw.jpg',
+    imageUrl: 'https://example.com/child-zh-tw.jpg'
+  };
+  const sanitized = api.sanitizePayload(payload);
+  assert.deepEqual(JSON.parse(JSON.stringify(sanitized.variantGroup)), payload.variantGroup);
+  assert.deepEqual(JSON.parse(JSON.stringify(sanitized.listingPolicy)), payload.listingPolicy);
+  assert.equal(JSON.stringify(sanitized).includes('onZero'), false);
+  assert.equal(JSON.stringify(sanitized).includes('listingDecision'), false);
 });
 
 test('handoff rejects an expired record and never silently extends its expiry', () => {
@@ -147,11 +188,11 @@ test('handoff accepts only the extension acknowledgement with the matching nonce
   const { api, window, listeners, posted } = loadBridge();
   const pending = api.queue(rawPayload());
   assert.equal(posted.length, 1);
-  assert.equal(posted[0].message.type, 'YOUZI_SHOPEE_AUTOFILL_QUEUE');
+  assert.equal(posted[0].message.type, 'YOUZI_SHOPEE_AUTOFILL_QUEUE_V2');
   listeners.get('message')({
     source: window,
     origin: window.location.origin,
-    data: { type: 'YOUZI_SHOPEE_AUTOFILL_ACK', nonce: rawPayload().nonce, ok: true }
+    data: { type: 'YOUZI_SHOPEE_AUTOFILL_ACK_V2', nonce: rawPayload().nonce, ok: true }
   });
   const result = await pending;
   assert.equal(result.extensionReady, true);

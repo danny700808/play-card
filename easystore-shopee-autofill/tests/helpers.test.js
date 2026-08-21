@@ -8,7 +8,11 @@ const helpers = require("../helpers.js");
 
 function validPayload(now) {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
+    workflowVersion: "youzi-four-channel-listing-v2",
+    jobId: "job-shopee-v2-1",
+    snapshotId: "snapshot-shopee-v2-1",
+    snapshotFingerprint: "a".repeat(64),
     nonce: "azes40-prb-00000001",
     createdAt: now,
     expiresAt: now + 10 * 60 * 1000,
@@ -18,14 +22,13 @@ function validPayload(now) {
     sku: "1040160-1",
     title: "Ibanez AZES40-PRB AZ Essentials 電吉他－馬卡藍",
     publishMode: "auto",
+    variantGroup: null,
     listingPolicy: {
-      decision: "auto",
-      matchKey: "sku",
-      allowCreate: false,
-      existingListingIds: [],
-      onZero: "create-only-if-confirmed",
-      onOne: "update",
-      onMultiple: "block"
+      mode: "update-existing",
+      identitySource: "central-platform-id",
+      platformListingIds: ["4116442"],
+      preflightSkuSearch: false,
+      uncertainSubmitRecovery: "exact-sku-only"
     },
     categoryPath: ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"],
     brand: "Ibanez",
@@ -820,60 +823,101 @@ test("classifies update and create actions conservatively", () => {
   assert.equal(helpers.classifyShopeeActionText("蝦皮購物"), "unknown");
 });
 
-test("a direct sync URL never becomes update solely because an old listing id is stored", () => {
+test("the v2 central platform id determines direct sync mode without a catalog search", () => {
   const existing = validPayload(1_800_000_000_000).listingPolicy;
-  existing.decision = "existing";
-  existing.existingListingIds = ["4116442"];
-  assert.equal(helpers.directSyncNavigationMode(existing), "unknown");
+  assert.equal(helpers.directSyncNavigationMode(existing), "update");
 
-  const confirmedNew = validPayload(1_800_000_000_000).listingPolicy;
-  confirmedNew.decision = "new";
-  confirmedNew.allowCreate = true;
-  assert.equal(helpers.directSyncNavigationMode(confirmedNew), "create");
+  const newDraft = validPayload(1_800_000_000_000).listingPolicy;
+  newDraft.mode = "create-new";
+  newDraft.identitySource = "new-draft";
+  newDraft.platformListingIds = [];
+  assert.equal(helpers.directSyncNavigationMode(newDraft), "create");
 
   assert.equal(helpers.resolveShopeeNavigationMode("發布商品到蝦皮購物", "unknown"), "create");
-  assert.equal(helpers.resolveShopeeNavigationMode("發布商品到蝦皮購物", "update"), "unknown");
+  assert.equal(helpers.resolveShopeeNavigationMode("發布商品到蝦皮購物", "update"), "conflict");
   assert.equal(helpers.resolveShopeeNavigationMode("重新同步到蝦皮", "update"), "update");
 });
 
-test("duplicate guard permits updates but requires explicit confirmation before creation", () => {
-  const auto = validPayload(1_800_000_000_000);
-  assert.deepEqual(helpers.listingSafetyGate(auto, "update"), { ok: true, reasons: [] });
-  assert.equal(helpers.listingSafetyGate(auto, "create").ok, false);
-  assert.match(helpers.listingSafetyGate(auto, "create").reasons.join(" "), /不能建立新品/);
-  assert.equal(helpers.listingSafetyGate(auto, "unknown").ok, false);
-  assert.match(helpers.listingSafetyGate(auto, "unknown").reasons.join(" "), /無法確認/);
-
-  const existing = validPayload(1_800_000_000_000);
-  existing.listingPolicy.decision = "existing";
-  existing.listingPolicy.existingListingIds = ["4116442"];
-  assert.equal(helpers.listingSafetyGate(existing, "create").ok, false);
-  assert.match(helpers.listingSafetyGate(existing, "create").reasons.join(" "), /Match product/);
-  assert.equal(helpers.listingSafetyGate(existing, "update").ok, true);
-
-  existing.listingPolicy.existingListingIds = ["4116442", "4116443"];
-  assert.equal(helpers.listingSafetyGate(existing, "update").ok, false);
-  assert.match(helpers.listingSafetyGate(existing, "update").reasons.join(" "), /2 個蝦皮商品/);
-
-  const newListing = validPayload(1_800_000_000_000);
-  newListing.listingPolicy.decision = "new";
-  newListing.listingPolicy.allowCreate = true;
-  assert.equal(helpers.listingSafetyGate(newListing, "create").ok, true);
-
-  newListing.listingPolicy.existingListingIds = ["4116442"];
-  assert.equal(helpers.listingSafetyGate(newListing, "create").ok, false);
-  assert.match(helpers.listingSafetyGate(newListing, "create").reasons.join(" "), /不能建立新品/);
-});
-
-test("rejects a create decision that also claims an existing Shopee listing", () => {
+test("add-variant-to-existing survives schema validation and remains auto-publishable", () => {
   const now = 1_800_000_000_000;
   const payload = validPayload(now);
-  payload.listingPolicy.decision = "new";
-  payload.listingPolicy.allowCreate = true;
-  payload.listingPolicy.existingListingIds = ["4116442"];
+  payload.publishMode = "add-variant-to-existing";
+  payload.listingPolicy.mode = "add-variant-to-existing";
+  payload.variantGroup = {
+    parentProductId: "parent-1",
+    parentSku: "PARENT-100",
+    parentName: "既有商品",
+    attributeName: "顏色",
+    parentAttributeValue: "黑色",
+    attributeValue: "藍色",
+    parentImageUrl: "https://example.com/parent-zh-tw.jpg",
+    imageUrl: "https://example.com/blue-zh-tw.jpg"
+  };
+  const validated = helpers.validateQueuePayload(payload, now);
+  assert.equal(validated.ok, true, validated.errors.join("\n"));
+  assert.deepEqual(validated.value.variantGroup, payload.variantGroup);
+  assert.equal(JSON.stringify(validated.value).includes("listingDecision"), false);
+  assert.equal(JSON.stringify(validated.value).includes("onZero"), false);
+  assert.deepEqual(helpers.autoPublishGate(validated.value, { missing: [] }, "unknown"), { ok: true, reasons: [] });
+  assert.equal(helpers.autoPublishGate(validated.value, { missing: [] }, "create").ok, false);
+});
+
+test("v2 gate trusts the central id when page wording is unknown and blocks explicit contradictions", () => {
+  const existing = validPayload(1_800_000_000_000);
+  assert.deepEqual(helpers.listingSafetyGate(existing, "update"), { ok: true, reasons: [] });
+  assert.deepEqual(helpers.listingSafetyGate(existing, "unknown"), { ok: true, reasons: [] });
+  assert.deepEqual(helpers.autoPublishGate(existing, { missing: [] }, "unknown"), { ok: true, reasons: [] });
+  assert.equal(helpers.listingSafetyGate(existing, "create").ok, false);
+  assert.equal(helpers.autoPublishGate(existing, { missing: [] }, "create").ok, false);
+  assert.match(helpers.listingSafetyGate(existing, "create").reasons.join(" "), /中央主檔已有/);
+  assert.equal(helpers.listingSafetyGate(existing, "conflict").ok, false);
+
+  existing.listingPolicy.platformListingIds = ["4116442", "4116443"];
+  assert.equal(helpers.listingSafetyGate(existing, "update").ok, false);
+  assert.match(helpers.listingSafetyGate(existing, "update").reasons.join(" "), /2 個蝦皮商品 ID/);
+  const invalidExisting = helpers.validateQueuePayload(existing, 1_800_000_000_000);
+  assert.equal(invalidExisting.ok, false);
+  assert.match(invalidExisting.errors.join(" "), /必須且只能帶入一個/);
+
+  const newListing = validPayload(1_800_000_000_000);
+  newListing.listingPolicy.mode = "create-new";
+  newListing.listingPolicy.identitySource = "new-draft";
+  newListing.listingPolicy.platformListingIds = [];
+  assert.equal(helpers.listingSafetyGate(newListing, "create").ok, true);
+  assert.equal(helpers.listingSafetyGate(newListing, "unknown").ok, true);
+  assert.deepEqual(helpers.autoPublishGate(newListing, { missing: [] }, "unknown"), { ok: true, reasons: [] });
+  assert.equal(helpers.listingSafetyGate(newListing, "update").ok, false);
+  assert.equal(helpers.autoPublishGate(newListing, { missing: [] }, "update").ok, false);
+});
+
+test("schema 4 and its legacy Shopee policy keys cannot enter the v2 queue", () => {
+  const now = 1_800_000_000_000;
+  const legacy = validPayload(now);
+  legacy.schemaVersion = 4;
+  legacy.listingPolicy = {
+    decision: "existing",
+    matchKey: "sku",
+    allowCreate: false,
+    existingListingIds: ["4116442"],
+    onZero: "create-only-if-confirmed",
+    onOne: "update",
+    onMultiple: "block"
+  };
+  const result = helpers.validateQueuePayload(legacy, now);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join(" "), /schemaVersion 必須是 5/);
+  assert.match(result.errors.join(" "), /不支援的欄位：decision/);
+  assert.equal(result.value, null);
+});
+
+test("rejects create-new when a central Shopee platform id is also present", () => {
+  const now = 1_800_000_000_000;
+  const payload = validPayload(now);
+  payload.listingPolicy.mode = "create-new";
+  payload.listingPolicy.identitySource = "new-draft";
   const result = helpers.validateQueuePayload(payload, now);
   assert.equal(result.ok, false);
-  assert.match(result.errors.join(" "), /必須是 existing/);
+  assert.match(result.errors.join(" "), /建立新品時不可帶入/);
 });
 
 test("navigation mode remains attached to the exact queued product and nonce", () => {

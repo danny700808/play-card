@@ -6,12 +6,14 @@ on:
     paths:
       - "functions/productAiResearch.js"
       - "functions/productListingPublish.js"
+      - "functions/productListingSourceCleanup.js"
       - "functions/shopeeMusicTaxonomy.js"
       - "functions/index.js"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "tests/product-ai-research.test.js"
       - "tests/product-listing-publish.test.js"
+      - "tests/product-listing-source-cleanup.test.js"
       - ".github/workflows/deploy-product-listing.yml"
   workflow_dispatch:
 
@@ -39,7 +41,7 @@ jobs:
       - name: Test product listing workflow
         env:
           NODE_PATH: functions/node_modules
-        run: node --test tests/product-ai-research.test.js tests/product-listing-publish.test.js
+        run: node --test tests/product-ai-research.test.js tests/product-listing-publish.test.js tests/product-listing-source-cleanup.test.js
       - name: Validate Firebase service account
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
@@ -54,7 +56,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: >-
           firebase deploy
-          --only functions:researchProductListingCase,functions:importProductListingImages,functions:generateProductListingImage,functions:publishProductListingCase
+          --only functions:researchProductListingCase,functions:importProductListingImages,functions:generateProductListingImage,functions:publishProductListingCase,functions:verifyProductListingStage,functions:applyProductListingQueueReceipt,functions:cleanupProductListingSourceImages
           --project youzi-c1b74
           --non-interactive
           --force

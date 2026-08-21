@@ -9,8 +9,9 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function buildHelpers() {
   "use strict";
 
-  const SCHEMA_VERSION = 4;
-  const QUEUE_STORAGE_KEY = "youziShopeeAutofillQueueV1";
+  const SCHEMA_VERSION = 5;
+  const WORKFLOW_VERSION = "youzi-four-channel-listing-v2";
+  const QUEUE_STORAGE_KEY = "youziShopeeAutofillQueueV2";
   // Content scripts can always share storage.local across the Operations and
   // EasyStore tabs. storage.session requires a service-worker access-level
   // bootstrap and was observed to drop the handoff on store computers.
@@ -83,6 +84,10 @@
 
   const TOP_LEVEL_KEYS = new Set([
     "schemaVersion",
+    "workflowVersion",
+    "jobId",
+    "snapshotId",
+    "snapshotFingerprint",
     "nonce",
     "createdAt",
     "expiresAt",
@@ -92,6 +97,7 @@
     "sku",
     "title",
     "publishMode",
+    "variantGroup",
     "listingPolicy",
     "categoryPath",
     "brand",
@@ -478,7 +484,7 @@
 
   function normalizeShopeeNavigationMode(value) {
     const mode = String(value == null ? "" : value).trim().toLowerCase();
-    return ["create", "update", "unknown"].includes(mode) ? mode : "unknown";
+    return ["create", "update", "unknown", "conflict"].includes(mode) ? mode : "unknown";
   }
 
   function classifyShopeeActionText(value) {
@@ -492,21 +498,22 @@
     return "unknown";
   }
 
-  function directSyncNavigationMode(listingPolicy) {
+  function expectedShopeeNavigationMode(listingPolicy) {
     const policy = isPlainObject(listingPolicy) ? listingPolicy : {};
-    const existingListingIds = Array.isArray(policy.existingListingIds)
-      ? uniqueStrings(policy.existingListingIds)
-      : [];
-    return policy.decision === "new" && policy.allowCreate === true && existingListingIds.length === 0
-      ? "create"
-      : "unknown";
+    if (policy.mode === "create-new") return "create";
+    if (["update-existing", "add-variant-to-existing"].includes(policy.mode)) return "update";
+    return "unknown";
+  }
+
+  function directSyncNavigationMode(listingPolicy) {
+    return expectedShopeeNavigationMode(listingPolicy);
   }
 
   function resolveShopeeNavigationMode(pageText, storedMode) {
     const observedMode = classifyShopeeActionText(pageText);
     const rememberedMode = normalizeShopeeNavigationMode(storedMode);
-    if (observedMode === "unknown") return rememberedMode;
-    if (rememberedMode !== "unknown" && rememberedMode !== observedMode) return "unknown";
+    if (observedMode === "unknown") return rememberedMode === "conflict" ? "conflict" : rememberedMode;
+    if (rememberedMode !== "unknown" && rememberedMode !== observedMode) return "conflict";
     return observedMode;
   }
 
@@ -669,6 +676,16 @@
     if (payload.schemaVersion !== SCHEMA_VERSION) {
       errors.push(`schemaVersion 必須是 ${SCHEMA_VERSION}。`);
     }
+    const workflowVersion = validateString(payload.workflowVersion, "workflowVersion", errors, { max: 80 });
+    if (workflowVersion !== WORKFLOW_VERSION) {
+      errors.push(`workflowVersion 必須是 ${WORKFLOW_VERSION}。`);
+    }
+    const jobId = validateString(payload.jobId, "jobId", errors, { max: 200 });
+    const snapshotId = validateString(payload.snapshotId, "snapshotId", errors, { max: 200 });
+    const snapshotFingerprint = validateString(payload.snapshotFingerprint, "snapshotFingerprint", errors, { max: 128 });
+    if (snapshotFingerprint && !/^[a-f0-9]{64}$/i.test(snapshotFingerprint)) {
+      errors.push("snapshotFingerprint 必須是 64 位十六進位雜湊。");
+    }
     const nonce = validateString(payload.nonce, "nonce", errors, { min: 8, max: 100 });
     if (nonce && !/^[A-Za-z0-9._:-]+$/.test(nonce)) {
       errors.push("nonce 格式不正確。");
@@ -709,9 +726,9 @@
       errors.push("sku 只可使用英數字、點、底線、斜線與連字號。");
     }
     const title = validateString(payload.title, "title", errors, { required: false, max: 255 });
-    const publishMode = validateString(payload.publishMode, "publishMode", errors, { max: 20 });
-    if (publishMode && !["auto", "fill-only"].includes(publishMode)) {
-      errors.push("publishMode 必須是 auto 或 fill-only。");
+    const publishMode = validateString(payload.publishMode, "publishMode", errors, { max: 40 });
+    if (publishMode && !["auto", "fill-only", "add-variant-to-existing"].includes(publishMode)) {
+      errors.push("publishMode 必須是 auto、fill-only 或 add-variant-to-existing。");
     }
     const brand = validateString(payload.brand, "brand", errors, { required: false, max: 120 });
 
@@ -719,51 +736,91 @@
     if (!isPlainObject(payload.listingPolicy)) {
       errors.push("listingPolicy 必須是物件。");
     } else {
-      rejectUnknownKeys(
-        payload.listingPolicy,
-        new Set(["decision", "matchKey", "allowCreate", "existingListingIds", "onZero", "onOne", "onMultiple"]),
-        "listingPolicy",
-        errors
-      );
-      const decision = validateString(payload.listingPolicy.decision, "listingPolicy.decision", errors, { max: 20 });
-      if (!['auto', 'new', 'existing'].includes(decision)) {
-        errors.push("listingPolicy.decision 必須是 auto、new 或 existing。");
+      rejectUnknownKeys(payload.listingPolicy, new Set([
+        "mode", "identitySource", "platformListingIds", "preflightSkuSearch", "uncertainSubmitRecovery"
+      ]), "listingPolicy", errors);
+      const mode = validateString(payload.listingPolicy.mode, "listingPolicy.mode", errors, { max: 40 });
+      if (!["create-new", "update-existing", "add-variant-to-existing"].includes(mode)) {
+        errors.push("listingPolicy.mode 不支援。");
       }
-      const matchKey = validateString(payload.listingPolicy.matchKey, "listingPolicy.matchKey", errors, { max: 20 });
-      if (matchKey !== "sku") errors.push("listingPolicy.matchKey 必須是 sku。");
-      if (typeof payload.listingPolicy.allowCreate !== "boolean") {
-        errors.push("listingPolicy.allowCreate 必須是布林值。");
-      }
-      if (payload.listingPolicy.allowCreate !== (decision === 'new')) {
-        errors.push("只有明確確認蝦皮無既有商品時，listingPolicy.allowCreate 才能為 true。");
-      }
-      const existingListingIds = [];
-      if (!Array.isArray(payload.listingPolicy.existingListingIds) || payload.listingPolicy.existingListingIds.length > 20) {
-        errors.push("listingPolicy.existingListingIds 必須是最多 20 筆的陣列。");
+      const identitySource = validateString(payload.listingPolicy.identitySource, "listingPolicy.identitySource", errors, { max: 40 });
+      const platformListingIds = [];
+      if (!Array.isArray(payload.listingPolicy.platformListingIds) || payload.listingPolicy.platformListingIds.length > 20) {
+        errors.push("listingPolicy.platformListingIds 必須是最多 20 筆的陣列。");
       } else {
-        payload.listingPolicy.existingListingIds.forEach((value, index) => {
-          const id = validateString(value, `listingPolicy.existingListingIds[${index}]`, errors, { max: 100 });
-          if (id && !existingListingIds.includes(id)) existingListingIds.push(id);
+        payload.listingPolicy.platformListingIds.forEach((value, index) => {
+          const id = validateString(value, `listingPolicy.platformListingIds[${index}]`, errors, { max: 100 });
+          if (id && !platformListingIds.includes(id)) platformListingIds.push(id);
         });
       }
-      if (existingListingIds.length > 0 && decision !== "existing") {
-        errors.push("已有蝦皮商品編號時 listingPolicy.decision 必須是 existing。");
+      if (payload.listingPolicy.preflightSkuSearch !== false) {
+        errors.push("listingPolicy.preflightSkuSearch 必須是 false。");
       }
-      const onZero = validateString(payload.listingPolicy.onZero, "listingPolicy.onZero", errors, { max: 40 });
-      const onOne = validateString(payload.listingPolicy.onOne, "listingPolicy.onOne", errors, { max: 20 });
-      const onMultiple = validateString(payload.listingPolicy.onMultiple, "listingPolicy.onMultiple", errors, { max: 20 });
-      if (onZero !== "create-only-if-confirmed") errors.push("listingPolicy.onZero 規則不正確。");
-      if (onOne !== "update") errors.push("listingPolicy.onOne 規則不正確。");
-      if (onMultiple !== "block") errors.push("listingPolicy.onMultiple 規則不正確。");
+      const uncertainSubmitRecovery = validateString(
+        payload.listingPolicy.uncertainSubmitRecovery,
+        "listingPolicy.uncertainSubmitRecovery",
+        errors,
+        { max: 40 }
+      );
+      if (uncertainSubmitRecovery !== "exact-sku-only") {
+        errors.push("listingPolicy.uncertainSubmitRecovery 必須是 exact-sku-only。");
+      }
+      const expectsNewDraft = mode === "create-new";
+      if (identitySource !== (expectsNewDraft ? "new-draft" : "central-platform-id")) {
+        errors.push("listingPolicy.identitySource 與 mode 不一致。");
+      }
+      if (platformListingIds.length !== (expectsNewDraft ? 0 : 1)) {
+        errors.push(expectsNewDraft
+          ? "建立新品時不可帶入中央蝦皮商品 ID。"
+          : "更新或新增細項時必須且只能帶入一個中央蝦皮商品 ID。");
+      }
+      if ((mode === "add-variant-to-existing") !== (publishMode === "add-variant-to-existing")) {
+        errors.push("publishMode 與 listingPolicy.mode 的細項模式不一致。");
+      }
       listingPolicy = {
-        decision,
-        matchKey,
-        allowCreate: payload.listingPolicy.allowCreate === true,
-        existingListingIds,
-        onZero,
-        onOne,
-        onMultiple
+        mode,
+        identitySource,
+        platformListingIds,
+        preflightSkuSearch: false,
+        uncertainSubmitRecovery
       };
+    }
+
+    let variantGroup = null;
+    if (payload.variantGroup != null) {
+      if (!isPlainObject(payload.variantGroup)) {
+        errors.push("variantGroup 必須是物件或 null。");
+      } else {
+        rejectUnknownKeys(payload.variantGroup, new Set([
+          "parentProductId", "parentSku", "parentName", "attributeName", "parentAttributeValue",
+          "attributeValue", "parentImageUrl", "imageUrl"
+        ]), "variantGroup", errors);
+        variantGroup = {
+          parentProductId: validateString(payload.variantGroup.parentProductId, "variantGroup.parentProductId", errors, { max: 200 }),
+          parentSku: validateString(payload.variantGroup.parentSku, "variantGroup.parentSku", errors, { max: 120 }),
+          parentName: validateString(payload.variantGroup.parentName, "variantGroup.parentName", errors, { required: false, max: 255 }),
+          attributeName: validateString(payload.variantGroup.attributeName, "variantGroup.attributeName", errors, { max: 120 }),
+          parentAttributeValue: validateString(payload.variantGroup.parentAttributeValue, "variantGroup.parentAttributeValue", errors, { max: 200 }),
+          attributeValue: validateString(payload.variantGroup.attributeValue, "variantGroup.attributeValue", errors, { max: 200 }),
+          parentImageUrl: validateString(payload.variantGroup.parentImageUrl, "variantGroup.parentImageUrl", errors, { max: 1000 }),
+          imageUrl: validateString(payload.variantGroup.imageUrl, "variantGroup.imageUrl", errors, { max: 1000 })
+        };
+        for (const key of ["parentImageUrl", "imageUrl"]) {
+          try {
+            const url = new URL(variantGroup[key]);
+            if (!["http:", "https:"].includes(url.protocol)) throw new Error("protocol");
+            variantGroup[key] = url.href;
+          } catch (_) {
+            errors.push(`variantGroup.${key} 必須是 http(s) 網址。`);
+          }
+        }
+      }
+    }
+    if (listingPolicy && listingPolicy.mode === "add-variant-to-existing" && !variantGroup) {
+      errors.push("add-variant-to-existing 必須帶入 variantGroup。");
+    }
+    if (listingPolicy && listingPolicy.mode !== "add-variant-to-existing" && variantGroup) {
+      errors.push("非細項模式不可帶入 variantGroup。");
     }
 
     const categoryPath = [];
@@ -962,6 +1019,10 @@
       errors,
       value: errors.length === 0 ? {
         schemaVersion: SCHEMA_VERSION,
+        workflowVersion,
+        jobId,
+        snapshotId,
+        snapshotFingerprint,
         nonce,
         createdAt: payload.createdAt,
         expiresAt: payload.expiresAt,
@@ -971,6 +1032,7 @@
         sku,
         title,
         publishMode,
+        variantGroup,
         listingPolicy,
         categoryPath,
         brand,
@@ -1119,19 +1181,18 @@
     const row = payload && typeof payload === "object" ? payload : {};
     const mode = normalizeShopeeNavigationMode(navigationMode);
     const policy = isPlainObject(row.listingPolicy) ? row.listingPolicy : {};
-    const existingListingIds = Array.isArray(policy.existingListingIds) ? uniqueStrings(policy.existingListingIds) : [];
-    if (existingListingIds.length > 1) {
-      reasons.push(`同一 SKU 已對到 ${existingListingIds.length} 個蝦皮商品，為避免更新錯商品已停止。`);
-    } else if (mode === "unknown") {
-      reasons.push(existingListingIds.length > 0 || policy.decision === "existing"
-        ? "已記錄蝦皮既有商品，但 EasyStore 沒有顯示明確的更新動作；請先用 Match product 配對後再重新同步。"
-        : "無法確認這是更新舊商品還是建立新品，為避免重複已停止。");
-    } else if (mode === "create" && existingListingIds.length > 0) {
-      reasons.push("已記錄蝦皮既有商品；請使用 Match product 配對／更新，不能建立新品。");
-    } else if (mode === "create" && policy.allowCreate !== true) {
-      reasons.push(policy.decision === "existing"
-        ? "你已標示蝦皮有舊商品；請先從蝦皮匯入並使用 Match product 配對，不能直接新增。"
-        : "尚未明確確認蝦皮沒有相同 SKU，不能建立新品。");
+    const platformListingIds = Array.isArray(policy.platformListingIds) ? uniqueStrings(policy.platformListingIds) : [];
+    const expectedMode = expectedShopeeNavigationMode(policy);
+    if (platformListingIds.length > 1) {
+      reasons.push(`中央主檔記錄了 ${platformListingIds.length} 個蝦皮商品 ID，無法安全選定更新目標。`);
+    } else if (expectedMode === "unknown") {
+      reasons.push("無法從 v2 中央平台 ID 規則決定建立或更新動作。");
+    } else if (mode === "conflict") {
+      reasons.push("EasyStore 頁面先後顯示互相矛盾的建立／更新動作，已停止送出。");
+    } else if (mode !== "unknown" && mode !== expectedMode) {
+      reasons.push(expectedMode === "update"
+        ? "中央主檔已有蝦皮商品 ID，但 EasyStore 明確顯示建立新品，已停止送出。"
+        : "中央主檔沒有蝦皮商品 ID，但 EasyStore 明確顯示更新舊商品，已停止送出。");
     }
     return { ok: reasons.length === 0, reasons };
   }
@@ -1140,7 +1201,9 @@
     const row = payload && typeof payload === "object" ? payload : {};
     const result = report && typeof report === "object" ? report : {};
     const reasons = listingSafetyGate(row, navigationMode).reasons.slice();
-    if (row.publishMode !== "auto") reasons.push("這件商品設定為填寫後人工確認。");
+    if (!["auto", "add-variant-to-existing"].includes(row.publishMode)) {
+      reasons.push("這件商品設定為填寫後人工確認。");
+    }
     if (row.logistics && row.logistics.requiresConfirmation === true) reasons.push("物流仍需人工確認。");
     if (Array.isArray(result.missing) && result.missing.length > 0) reasons.push(`仍有 ${result.missing.length} 個待補欄位。`);
     return { ok: reasons.length === 0, reasons };
@@ -1148,6 +1211,7 @@
 
   return Object.freeze({
     SCHEMA_VERSION,
+    WORKFLOW_VERSION,
     QUEUE_STORAGE_KEY,
     QUEUE_STORAGE_AREA,
     MAX_TTL_MS,
@@ -1159,6 +1223,7 @@
     canonicalCategoryPath,
     normalizeShopeeNavigationMode,
     classifyShopeeActionText,
+    expectedShopeeNavigationMode,
     directSyncNavigationMode,
     resolveShopeeNavigationMode,
     exactApprovedMatch,

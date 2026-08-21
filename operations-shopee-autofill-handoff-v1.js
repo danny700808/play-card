@@ -1,10 +1,11 @@
 (function (global) {
   'use strict';
 
-  const QUEUE_TYPE = 'YOUZI_SHOPEE_AUTOFILL_QUEUE';
-  const ACK_TYPE = 'YOUZI_SHOPEE_AUTOFILL_ACK';
+  const QUEUE_TYPE = 'YOUZI_SHOPEE_AUTOFILL_QUEUE_V2';
+  const ACK_TYPE = 'YOUZI_SHOPEE_AUTOFILL_ACK_V2';
   const SOURCE = 'youzi-operations-hub';
-  const SCHEMA_VERSION = 4;
+  const SCHEMA_VERSION = 5;
+  const WORKFLOW_VERSION = 'youzi-four-channel-listing-v2';
   const MAX_TTL_MS = 30 * 60 * 1000;
   const MIN_REMAINING_MS = 1000;
 
@@ -22,6 +23,17 @@
     if (value === null || value === undefined || value === '') return null;
     const parsed = Number(value);
     return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 100000 ? parsed : null;
+  }
+
+  function safeHttpUrl(value) {
+    const raw = clean(value, 1000);
+    if (!raw) return '';
+    try {
+      const url = new URL(raw);
+      return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+    } catch (_) {
+      return '';
+    }
   }
 
   function sanitizePayload(raw) {
@@ -69,8 +81,27 @@
       throw new Error('EasyStore 商品 ID 無效，請重新執行「確認上架」。');
     }
     const canonicalEasyStoreUrl = `https://admin.easystore.co/products/${easyStoreProductId}`;
+    const platformListingIds = (value.listingPolicy && Array.isArray(value.listingPolicy.platformListingIds)
+      ? value.listingPolicy.platformListingIds : [])
+      .map((item) => clean(item, 100)).filter(Boolean)
+      .filter((item, index, rows) => rows.indexOf(item) === index).slice(0, 20);
+    const variantSource = value.variantGroup && typeof value.variantGroup === 'object' ? value.variantGroup : {};
+    const variantGroup = value.variantGroup == null ? null : {
+      parentProductId: clean(variantSource.parentProductId, 200),
+      parentSku: clean(variantSource.parentSku, 120),
+      parentName: clean(variantSource.parentName, 255),
+      attributeName: clean(variantSource.attributeName, 120),
+      parentAttributeValue: clean(variantSource.parentAttributeValue, 200),
+      attributeValue: clean(variantSource.attributeValue, 200),
+      parentImageUrl: safeHttpUrl(variantSource.parentImageUrl),
+      imageUrl: safeHttpUrl(variantSource.imageUrl)
+    };
     const payload = {
       schemaVersion: SCHEMA_VERSION,
+      workflowVersion: clean(value.workflowVersion, 80),
+      jobId: clean(value.jobId, 200),
+      snapshotId: clean(value.snapshotId, 200),
+      snapshotFingerprint: clean(value.snapshotFingerprint, 128),
       nonce: clean(value.nonce, 100),
       createdAt,
       expiresAt,
@@ -79,17 +110,14 @@
       easyStoreUrl: canonicalEasyStoreUrl,
       sku: clean(value.sku, 120),
       title: clean(value.title, 255),
-      publishMode: clean(value.publishMode, 20),
+      publishMode: clean(value.publishMode, 40),
+      variantGroup,
       listingPolicy: {
-        decision: clean(value.listingPolicy && value.listingPolicy.decision, 20),
-        matchKey: clean(value.listingPolicy && value.listingPolicy.matchKey, 20),
-        allowCreate: value.listingPolicy && value.listingPolicy.allowCreate === true,
-        existingListingIds: (value.listingPolicy && Array.isArray(value.listingPolicy.existingListingIds)
-          ? value.listingPolicy.existingListingIds : [])
-          .map((item) => clean(item, 100)).filter(Boolean).slice(0, 20),
-        onZero: clean(value.listingPolicy && value.listingPolicy.onZero, 40),
-        onOne: clean(value.listingPolicy && value.listingPolicy.onOne, 20),
-        onMultiple: clean(value.listingPolicy && value.listingPolicy.onMultiple, 20)
+        mode: clean(value.listingPolicy && value.listingPolicy.mode, 40),
+        identitySource: clean(value.listingPolicy && value.listingPolicy.identitySource, 40),
+        platformListingIds,
+        preflightSkuSearch: value.listingPolicy && value.listingPolicy.preflightSkuSearch === true,
+        uncertainSubmitRecovery: clean(value.listingPolicy && value.listingPolicy.uncertainSubmitRecovery, 40)
       },
       categoryPath,
       brand: clean(value.brand, 120),
@@ -117,19 +145,34 @@
         identityStatus: clean(value.guard && value.guard.identityStatus, 30)
       }
     };
-    if (!payload.nonce || !payload.productId || !payload.sku || !payload.categoryPath.length) {
+    if (payload.workflowVersion !== WORKFLOW_VERSION) {
+      throw new Error('蝦皮自動填寫資料不是目前固定版四通路流程。');
+    }
+    if (!payload.nonce || !payload.jobId || !payload.snapshotId || !payload.snapshotFingerprint
+      || !payload.productId || !payload.sku || !payload.categoryPath.length) {
       throw new Error('蝦皮自動填寫資料不完整，請重新執行「確認上架」。');
     }
+    const mode = payload.listingPolicy.mode;
+    const expectedIdentitySource = mode === 'create-new' ? 'new-draft' : 'central-platform-id';
+    const expectedIdCount = mode === 'create-new' ? 0 : 1;
     if (
-      !['auto', 'new', 'existing'].includes(payload.listingPolicy.decision) ||
-      payload.listingPolicy.matchKey !== 'sku' ||
-      payload.listingPolicy.allowCreate !== (payload.listingPolicy.decision === 'new') ||
-      (payload.listingPolicy.existingListingIds.length > 0 && payload.listingPolicy.decision !== 'existing') ||
-      payload.listingPolicy.onZero !== 'create-only-if-confirmed' ||
-      payload.listingPolicy.onOne !== 'update' ||
-      payload.listingPolicy.onMultiple !== 'block'
+      !['create-new', 'update-existing', 'add-variant-to-existing'].includes(mode) ||
+      payload.listingPolicy.identitySource !== expectedIdentitySource ||
+      payload.listingPolicy.platformListingIds.length !== expectedIdCount ||
+      payload.listingPolicy.preflightSkuSearch !== false ||
+      payload.listingPolicy.uncertainSubmitRecovery !== 'exact-sku-only' ||
+      !['auto', 'add-variant-to-existing'].includes(payload.publishMode) ||
+      (mode === 'add-variant-to-existing') !== (payload.publishMode === 'add-variant-to-existing')
     ) {
-      throw new Error('蝦皮既有商品防重規則不完整，請重新執行「確認上架」。');
+      throw new Error('蝦皮中央平台 ID 規則不完整，請重新執行「確認上架」。');
+    }
+    if (mode === 'add-variant-to-existing' && (!variantGroup || !variantGroup.parentProductId
+      || !variantGroup.parentSku || !variantGroup.attributeName || !variantGroup.parentAttributeValue
+      || !variantGroup.attributeValue || !variantGroup.parentImageUrl || !variantGroup.imageUrl)) {
+      throw new Error('蝦皮細項資料不完整，請重新執行「確認上架」。');
+    }
+    if (mode !== 'add-variant-to-existing' && variantGroup !== null) {
+      throw new Error('非細項商品不可夾帶蝦皮細項資料。');
     }
     return payload;
   }

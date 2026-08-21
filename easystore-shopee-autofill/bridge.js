@@ -5,8 +5,8 @@
   const imageCollector = globalThis.YouziImageCollectorHelpers;
   const TRUSTED_ORIGIN = "https://danny700808.github.io";
   const TRUSTED_SOURCE = "youzi-operations-hub";
-  const QUEUE_MESSAGE = "YOUZI_SHOPEE_AUTOFILL_QUEUE";
-  const ACK_MESSAGE = "YOUZI_SHOPEE_AUTOFILL_ACK";
+  const QUEUE_MESSAGE = "YOUZI_SHOPEE_AUTOFILL_QUEUE_V2";
+  const ACK_MESSAGE = "YOUZI_SHOPEE_AUTOFILL_ACK_V2";
   const pendingImageDeliveries = new Map();
 
   if (!helpers || location.origin !== TRUSTED_ORIGIN) {
