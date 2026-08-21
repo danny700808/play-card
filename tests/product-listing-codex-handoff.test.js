@@ -106,6 +106,18 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /只有 job schema、目前 automationPolicy、固定 platformOrder/);
   assert.match(prompt, /先保留至少一張 cleanMain 與一張 brandedHero/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
+  assert.match(prompt, /Codex 對話旁邊的內建瀏覽器/);
+  assert.match(prompt, /不得操作使用者主要 Chrome/);
+  assert.match(prompt, /已同時授權四通路的建立、修改與最後正式發布/);
+  assert.match(prompt, /不得再詢問「確認上架／確認提交／套用細項」/);
+  assert.match(prompt, /第二層「上傳素材」/);
+  assert.match(prompt, /不得依賴會變動的編輯器 element id/);
+  assert.match(prompt, /contenteditable 的 HTML 確認仍存在素材銀行圖片 img src/);
+  assert.match(prompt, /進入第一個平台前先產生四站完整欄位表/);
+  assert.match(prompt, /不得每站重新掃描整頁/);
+  assert.match(prompt, /MOMO 第三方 000001/);
+  assert.match(prompt, /沒有既有平台 ID 時，視為新商品/);
+  assert.match(prompt, /不做上架前平台全站搜尋/);
 });
 
 test('新細項的父商品會沿用已儲存的來源圖佇列，但不把未驗證完成圖當成繁體圖', () => {
