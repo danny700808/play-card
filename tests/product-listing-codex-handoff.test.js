@@ -37,6 +37,11 @@ test('一鍵上架按鈕把固定 v2 工作帶入指定 Codex 對話並授權後
   assert.match(source, /momoPromotionRequiredBeforeFirstSubmit:true/);
   assert.match(source, /easyStoreImageUrlUploadFallback:true/);
   assert.match(source, /retrySameUrlInFreshInAppWorkTabWhenClaimedTabInputFails:true/);
+  assert.match(source, /batchSessionPreflightBeforeFirstProduct:true/);
+  assert.match(source, /requireAllPlatformSessionsOperableBeforeBatchStart:true/);
+  assert.match(source, /lightweightSessionProbeBeforeEveryProductAndStage:true/);
+  assert.match(source, /autoRecoverSavedCredentialSessions:true/);
+  assert.match(source, /neverAskUserForRecoverableSessionRestart:true/);
   assert.match(source, /shopeeLargeItemHctOnly:true/);
   assert.doesNotMatch(source, /Codex 待辦已建立/);
 });
@@ -118,6 +123,11 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /不得進入平台後才重新裁切、縮放或另做一套圖片/);
   assert.match(prompt, /Codex 對話旁邊的內建瀏覽器/);
   assert.match(prompt, /不得操作使用者主要 Chrome/);
+  assert.match(prompt, /整批商品第一次開始前.*四通路工作階段預檢/);
+  assert.match(prompt, /未通過前不得開始第一件商品/);
+  assert.match(prompt, /酷澎與 EasyStore 若登入失效.*保存帳密重新登入/);
+  assert.match(prompt, /每件商品及每個平台階段開始前只做輕量存活檢查/);
+  assert.match(prompt, /不得因可恢復的頁籤失效詢問是否重開或是否繼續/);
   assert.match(prompt, /同一內建瀏覽器開一個工作頁籤載入完全相同網址/);
   assert.match(prompt, /輸入控制備援，不是第二條上架路徑/);
   assert.match(prompt, /已同時授權四通路的建立、修改與最後正式發布/);
