@@ -2261,14 +2261,81 @@ function activeV2JobReuseBlockers(candidate, productId, listingCase) {
   return Array.from(new Set(reasons));
 }
 
-function registerProductListingPublish(target) {
-  target.publishProductListingCase = onCall({
-    region: REGION,
-    timeoutSeconds: 540,
-    memory: '512MiB',
-    secrets: [EASYSTORE_ACCESS_TOKEN],
-    enforceAppCheck: false
-  }, async (request) => {
+const PRODUCT_LISTING_PUBLISH_OPTIONS = {
+  region: REGION,
+  timeoutSeconds: 540,
+  memory: '512MiB',
+  secrets: [EASYSTORE_ACCESS_TOKEN],
+  enforceAppCheck: false
+};
+
+function codexAutoPublishGrant(listingCase) {
+  const handoff = listingCase && listingCase.codexHandoff && typeof listingCase.codexHandoff === 'object'
+    ? listingCase.codexHandoff : {};
+  const frozen = handoff.preflightSnapshot && typeof handoff.preflightSnapshot === 'object'
+    ? handoff.preflightSnapshot : {};
+  const grant = handoff.autoPublishAuthorization && typeof handoff.autoPublishAuthorization === 'object'
+    ? handoff.autoPublishAuthorization : {};
+  const email = clean(grant.grantedByEmail).toLowerCase();
+  if (clean(handoff.workflowVersion) !== LISTING_WORKFLOW_ID
+    || clean(frozen.workflowVersion) !== LISTING_WORKFLOW_ID
+    || clean(grant.workflowVersion) !== LISTING_WORKFLOW_ID
+    || clean(grant.scope) !== 'fixed-v2-four-channel-publish'
+    || grant.granted !== true
+    || grant.noSecondConfirmation !== true
+    || !clean(frozen.snapshotId)
+    || clean(grant.snapshotId) !== clean(frozen.snapshotId)
+    || !ADMIN_EMAILS.has(email)) return null;
+  return { email, snapshotId: clean(frozen.snapshotId), scope: clean(grant.scope) };
+}
+
+function codexAutoPublishInputFingerprint(listingCase) {
+  const handoff = listingCase && listingCase.codexHandoff && typeof listingCase.codexHandoff === 'object'
+    ? listingCase.codexHandoff : {};
+  const frozen = handoff.preflightSnapshot && typeof handoff.preflightSnapshot === 'object'
+    ? handoff.preflightSnapshot : {};
+  return listingSnapshotFingerprint({
+    workflowVersion: clean(handoff.workflowVersion),
+    snapshotId: clean(frozen.snapshotId),
+    frozenInputFingerprint: frozenInputSnapshotFingerprint(frozen),
+    generatedListingImages: Array.isArray(listingCase && listingCase.generatedListingImages)
+      ? listingCase.generatedListingImages : [],
+    listingImageUrls: normalizeUrls(listingCase && listingCase.listingImageUrls, 20),
+    researchedProductName: clean(listingCase && listingCase.researchedProductName),
+    productDescription: clean(listingCase && listingCase.productDescription),
+    prices: {
+      shared: numberOrNull(listingCase && listingCase.sharedOnlinePrice),
+      easyStore: numberOrNull(listingCase && listingCase.easyStorePrice),
+      shopee: numberOrNull(listingCase && listingCase.shopeePrice),
+      coupang: numberOrNull(listingCase && listingCase.coupangPrice),
+      momo: numberOrNull(listingCase && listingCase.momoPrice)
+    },
+    stock: numberOrNull(listingCase && listingCase.stock),
+    shippingDecision: clean(listingCase && listingCase.shippingDecision),
+    packageLengthCm: numberOrNull(listingCase && listingCase.packageLengthCm),
+    packageWidthCm: numberOrNull(listingCase && listingCase.packageWidthCm),
+    packageHeightCm: numberOrNull(listingCase && listingCase.packageHeightCm),
+    packageWeightKg: numberOrNull(listingCase && listingCase.packageWeightKg),
+    listingMode: clean(listingCase && listingCase.listingMode),
+    variantGroupItems: Array.isArray(listingCase && listingCase.variantGroupItems) ? listingCase.variantGroupItems : []
+  });
+}
+
+function isTransientListingPublishFailure(value) {
+  const message = clean(value && value.message ? value.message : value).toLowerCase();
+  if (!message) return false;
+  if (/otp|驗證碼|captcha|登入失效|login expired|permission-denied|明確拒絕|必填資料/.test(message)) return false;
+  return /\b(408|425|429|500|502|503|504)\b|timeout|timed out|network|temporar|暫時|逾時|圖片.*(讀不到|處理中|失敗)|image.*(fetch|processing|unavailable|failed)/.test(message);
+}
+
+function publishResultFailureMessage(result) {
+  if (!result || result.ok !== false) return '';
+  const rows = result.platforms && typeof result.platforms === 'object' ? Object.values(result.platforms) : [];
+  return rows.map((row) => clean(row && row.message)).filter(Boolean).join('；') || clean(result.status) || '發布未完成';
+}
+
+async function publishProductListingCaseHandler(request) {
+
     if (!isAllowedManager(request)) throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
     const productId = clean(request && request.data && request.data.productId);
     if (!productId || productId.length > 200 || productId.includes('/')) throw new HttpsError('invalid-argument', '商品 ID 格式不正確。');
@@ -2514,6 +2581,89 @@ function registerProductListingPublish(target) {
         console.error('Unable to release product listing publish lock', { productId, jobId, message: clean(error && error.message) });
       }
     }
+}
+
+function registerProductListingPublish(target) {
+  target.publishProductListingCase = onCall(PRODUCT_LISTING_PUBLISH_OPTIONS, publishProductListingCaseHandler);
+
+  target.autoPublishProductListingCase = onDocumentWritten({
+    document: `${LISTING_CASE_COLLECTION}/{productId}`,
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB',
+    secrets: [EASYSTORE_ACCESS_TOKEN]
+  }, async (event) => {
+    const after = event.data && event.data.after;
+    if (!after || !after.exists) return null;
+    const productId = clean(event.params && event.params.productId);
+    const listingCase = after.data() || {};
+    const grant = codexAutoPublishGrant(listingCase);
+    if (!productId || !grant || clean(listingCase.publishState && listingCase.publishState.jobId)) return null;
+
+    const db = admin.firestore();
+    try {
+      await loadFinalPreparedMediaSnapshot(db, productId, listingCase);
+    } catch (_) {
+      return null;
+    }
+    const fingerprint = codexAutoPublishInputFingerprint(listingCase);
+    const attemptToken = crypto.randomBytes(16).toString('hex');
+    const claimed = await db.runTransaction(async (transaction) => {
+      const freshSnap = await transaction.get(after.ref);
+      if (!freshSnap.exists) return false;
+      const fresh = freshSnap.data() || {};
+      const freshGrant = codexAutoPublishGrant(fresh);
+      const current = fresh.codexAutoPublish && typeof fresh.codexAutoPublish === 'object' ? fresh.codexAutoPublish : {};
+      if (!freshGrant || clean(fresh.publishState && fresh.publishState.jobId)) return false;
+      if (clean(current.fingerprint) === fingerprint
+        && ['starting', 'submitted', 'failed'].includes(clean(current.status))) return false;
+      transaction.set(after.ref, {
+        codexAutoPublish: {
+          status: 'starting', workflowVersion: LISTING_WORKFLOW_ID, snapshotId: grant.snapshotId,
+          fingerprint, attemptToken, startedAt: admin.firestore.FieldValue.serverTimestamp(),
+          startedBy: grant.email, backendFirst: true, desktopControlFallbackOnly: true
+        }
+      }, { merge: true });
+      return true;
+    });
+    if (!claimed) return null;
+
+    const delays = [0, 3000, 10000, 30000];
+    let lastError = null;
+    for (let attempt = 0; attempt < delays.length; attempt += 1) {
+      if (delays[attempt]) await wait(delays[attempt]);
+      try {
+        const result = await publishProductListingCaseHandler({
+          data: { productId },
+          auth: { uid: `codex-auto:${productId}`, token: { email: grant.email, manager: true } }
+        });
+        const failureMessage = publishResultFailureMessage(result);
+        if (failureMessage && isTransientListingPublishFailure(failureMessage) && attempt < delays.length - 1) {
+          lastError = new Error(failureMessage);
+          continue;
+        }
+        if (failureMessage) throw new Error(failureMessage);
+        await after.ref.set({
+          codexAutoPublish: {
+            status: 'submitted', workflowVersion: LISTING_WORKFLOW_ID, snapshotId: grant.snapshotId,
+            fingerprint, attemptToken, jobId: clean(result && result.jobId),
+            currentStage: clean(result && result.currentStage), completedAt: admin.firestore.FieldValue.serverTimestamp()
+          }
+        }, { merge: true });
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (!isTransientListingPublishFailure(error) || attempt === delays.length - 1) break;
+      }
+    }
+    await after.ref.set({
+      codexAutoPublish: {
+        status: 'failed', workflowVersion: LISTING_WORKFLOW_ID, snapshotId: grant.snapshotId,
+        fingerprint, attemptToken, error: clean(lastError && lastError.message).slice(0, 800) || '發布未完成',
+        failedAt: admin.firestore.FieldValue.serverTimestamp()
+      }
+    }, { merge: true });
+    return null;
   });
 
   target.verifyProductListingStage = onCall({
@@ -2700,6 +2850,10 @@ module.exports = {
     applyVerifiedQueueReceipt,
     easyStoreVariantPrice,
     easyStoreVariantStock,
-    overallPublishStatus
+    overallPublishStatus,
+    codexAutoPublishGrant,
+    codexAutoPublishInputFingerprint,
+    isTransientListingPublishFailure,
+    publishResultFailureMessage
   }
 };

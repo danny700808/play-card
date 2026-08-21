@@ -7,6 +7,9 @@ on:
       - "functions/productAiResearch.js"
       - "functions/productListingPublish.js"
       - "functions/productListingSourceCleanup.js"
+      - "operations-phase1.js"
+      - "operations-hub.html"
+      - "portal.html"
       - "functions/shopeeMusicTaxonomy.js"
       - "functions/index.js"
       - "functions/package.json"
@@ -56,7 +59,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: >-
           firebase deploy
-          --only functions:researchProductListingCase,functions:importProductListingImages,functions:generateProductListingImage,functions:publishProductListingCase,functions:verifyProductListingStage,functions:applyProductListingQueueReceipt,functions:cleanupProductListingSourceImages
+          --only functions:researchProductListingCase,functions:importProductListingImages,functions:generateProductListingImage,functions:publishProductListingCase,functions:autoPublishProductListingCase,functions:verifyProductListingStage,functions:applyProductListingQueueReceipt,functions:cleanupProductListingSourceImages
           --project youzi-c1b74
           --non-interactive
           --force

@@ -160,7 +160,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
 test('正式發布先完成四通路預檢，後續通路只能逐站核對後推進', () => {
   const backend = fs.readFileSync('functions/productListingPublish.js', 'utf8');
   const deployWorkflow = fs.readFileSync('.github/workflows/deploy-product-listing.yml', 'utf8');
-  const publishStart = backend.indexOf('target.publishProductListingCase = onCall');
+  const publishStart = backend.indexOf('async function publishProductListingCaseHandler');
   const verifyStart = backend.indexOf('target.verifyProductListingStage = onCall');
   const handler = backend.slice(publishStart, verifyStart);
   const verifier = backend.slice(verifyStart, backend.indexOf('\n}', verifyStart));
@@ -184,7 +184,9 @@ test('正式發布先完成四通路預檢，後續通路只能逐站核對後�
   assert.match(handler, /shopeeLogistics\.requiresConfirmation/);
   assert.match(handler, /preparedSnapshot: snapshot/);
   assert.match(handler, /preparedSnapshotFingerprint: listingSnapshotFingerprint\(snapshot\)/);
+  assert.match(deployWorkflow, /functions:autoPublishProductListingCase/);
   assert.match(deployWorkflow, /functions:verifyProductListingStage/);
+  assert.match(backend, /target\.autoPublishProductListingCase = onDocumentWritten/);
   assert.match(deployWorkflow, /functions:applyProductListingQueueReceipt/);
   assert.match(backend, /target\.applyProductListingQueueReceipt = onDocumentWritten/);
 });
@@ -1320,4 +1322,89 @@ test('variant publishing blocks when a parent platform listing is missing or amb
     variantParentPlatformMappings: { coupang: { vendorItemIds: ['1', '2'] } }
   });
   assert.equal(ambiguous.mode, 'block-duplicate-parent');
+});
+test('Codex 單次授權綁定 v2 快照並由後端自動續跑，不接受舊版或第二次確認', () => {
+  const base = {
+    researchedProductName: '桌上型木製譜架', sharedOnlinePrice: 450, stock: 2,
+    shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30,
+    packageHeightCm: 10, packageWeightKg: 1,
+    generatedListingImages: [{
+      sourceImageUrl: 'https://supplier.example.com/2100307-4.jpg',
+      url: 'https://cdn.example.com/2100307-4-clean.jpg', roles: ['cleanMain']
+    }],
+    codexHandoff: {
+      workflowVersion: 'youzi-four-channel-listing-v2',
+      preflightSnapshot: { workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', cases: [] },
+      autoPublishAuthorization: {
+        granted: true, scope: 'fixed-v2-four-channel-publish',
+        workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818',
+        grantedByEmail: 'danny700808@gmail.com', noSecondConfirmation: true
+      }
+    }
+  };
+  assert.deepEqual(helpers.codexAutoPublishGrant(base), {
+    email: 'danny700808@gmail.com', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', scope: 'fixed-v2-four-channel-publish'
+  });
+  assert.equal(helpers.codexAutoPublishGrant({ ...base, codexHandoff: { ...base.codexHandoff, workflowVersion: 'youzi-four-channel-listing-v1' } }), null);
+  assert.equal(helpers.codexAutoPublishGrant({ ...base, codexHandoff: { ...base.codexHandoff, autoPublishAuthorization: { ...base.codexHandoff.autoPublishAuthorization, snapshotId: 'other' } } }), null);
+  assert.equal(helpers.codexAutoPublishInputFingerprint(base), helpers.codexAutoPublishInputFingerprint(JSON.parse(JSON.stringify(base))));
+  assert.notEqual(helpers.codexAutoPublishInputFingerprint(base), helpers.codexAutoPublishInputFingerprint({ ...base, stock: 3 }));
+  assert.equal(helpers.isTransientListingPublishFailure('HTTP 504 暫時錯誤'), true);
+  assert.equal(helpers.isTransientListingPublishFailure('OTP 驗證碼'), false);
+  assert.equal(helpers.publishResultFailureMessage({ ok: false, platforms: { easyStore: { message: 'HTTP 503' } } }), 'HTTP 503');
+});
+
+test('營運中心 v2 交接即授權自動發布，介面不再要求一般二次確認', () => {
+  const frontend = fs.readFileSync('operations-phase1.js', 'utf8');
+  assert.match(frontend, /scope:'fixed-v2-four-channel-publish'/);
+  assert.match(frontend, /noSecondConfirmation:true/);
+  assert.match(frontend, /backendFirst:true/);
+  assert.match(frontend, /desktopControlFallbackOnly:true/);
+  assert.match(frontend, /croppedTextMustBeReflowedReplacedOrRemoved:true/);
+  assert.doesNotMatch(frontend, /confirmAction\('確認上架'/);
+  assert.doesNotMatch(frontend, /confirmAction\('確認整組上架'/);
+});
+test('2100307-4 固定 v2 實際資料可在不送出的模擬通過四通路預檢', () => {
+  const productId = 'Ui7HQyrWtdcfG1r7nKlt';
+  const sources = Array.from({ length: 8 }, (_, index) => `https://supplier.example.com/2100307-4-source-${index + 1}.png`);
+  const cleanFlags = { containsLogo: false, containsText: false, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: false, momoPromotionEligible: false };
+  const completed = [
+    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-clean-main.png', roles: ['cleanMain'], assetFlags: { ...cleanFlags } },
+    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-branded-hero.png', roles: ['brandedHero'], assetFlags: { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
+    { sourceImageUrl: sources[1], url: 'https://cdn.example.com/2100307-4-localized-2.png', roles: ['localizedDetail'], assetFlags: { ...cleanFlags } },
+    { sourceImageUrl: sources[1], url: 'https://cdn.example.com/2100307-4-momo-promo.png', roles: ['specification'], assetFlags: { ...cleanFlags, momoPromotionEligible: true } },
+    { sourceImageUrl: sources[2], url: 'https://cdn.example.com/2100307-4-clean-detail.png', roles: ['cleanMain'], assetFlags: { ...cleanFlags } },
+    ...sources.slice(2).map((sourceImageUrl, index) => ({
+      sourceImageUrl, url: `https://cdn.example.com/2100307-4-localized-${index + 3}.png`,
+      roles: ['localizedDetail'], assetFlags: { ...cleanFlags }
+    }))
+  ].map((row, index) => ({ ...row, sourceOrder: index + 1, status: 'ready', localizationStatus: 'completed' }));
+  assert.equal(completed.length, 11);
+  const frozen = {
+    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', productId,
+    cases: [{ productId, sku: '2100307-4', sourceImageUrls: sources, gallerySourceImageUrls: [] }]
+  };
+  const listingCase = {
+    productSku: '2100307-4', researchedProductName: '桌上型木製閱讀譜架 升降款 原木色 柚子樂器',
+    productDescription: '木製面板搭配鋁合金底座，適合桌上閱讀與樂譜使用。\n\n商品特色\n1. 桌上型設計\n2. 高度可調\n\n商品規格\n面板：30 × 24 公分\n高度：4.4～39 公分\n底座：23.5 × 18.5 公分',
+    sharedOnlinePrice: 450, stock: 2, warrantyMonths: 6,
+    shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30, packageHeightCm: 10, packageWeightKg: 1,
+    shopeeCategoryPath: '愛好與收藏品 > 樂器與樂器配件 > 樂器配件 > 樂譜架',
+    identityStatus: 'confirmed', identityManualConfirmed: true,
+    generatedListingImages: completed,
+    codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v2', preflightSnapshot: frozen }
+  };
+  const finalMedia = helpers.finalizePreparedMediaSnapshot(frozen, new Map([[productId, listingCase]]));
+  const snapshot = helpers.buildListingSnapshot(productId, {
+    internalSku: '2100307-4', internalName: '譜架-升降款 桌上型-原木色', currentStock: 2,
+    storePrice: 450, easyStorePrice: 450, coupangPrice: 450, momoPrice: 450
+  }, listingCase, null, null, finalMedia);
+  assert.deepEqual(helpers.platformImagePlanMissingFields(snapshot.platformImagePlan, { requireFinalized: true }), []);
+  assert.deepEqual(helpers.easyStoreMissingFields(snapshot), []);
+  assert.deepEqual(helpers.coupangMissingFields(snapshot), []);
+  assert.deepEqual(helpers.momoMissingFields(snapshot), []);
+  assert.equal(helpers.buildShopeeLogistics(snapshot).requiresConfirmation, false);
+  assert.equal(snapshot.platformImagePlan.easyStore.imageUrls[0], 'https://cdn.example.com/2100307-4-branded-hero.png');
+  assert.equal(snapshot.platformImagePlan.coupang.imageUrls[0], 'https://cdn.example.com/2100307-4-clean-main.png');
+  assert.equal(snapshot.platformImagePlan.momo.imageUrls[0], 'https://cdn.example.com/2100307-4-clean-main.png');
 });

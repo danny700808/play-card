@@ -182,6 +182,8 @@ test('generated product images complete text inspection and editing in one pass'
   assert.match(localized, /簡體中文/);
   assert.match(localized, /中國大陸用語改為台灣常用說法/);
   assert.match(localized, /錯字、亂碼或殘缺中文字/);
+  assert.match(localized, /被裁切一半/);
+  assert.match(localized, /完整重排、改寫/);
   assert.match(main, /只輸出一次最終成品/);
   assert.match(main, /1～3 個已查證的短賣點/);
 });
