@@ -52,7 +52,7 @@ test('主要按鈕不再直接執行 OpenAI 文案與圖片 API 流程', () => {
   assert.doesNotMatch(handler, /completeProductListingWithCodex/);
   assert.doesNotMatch(source, /async function completeProductListingWithCodex/);
   assert.doesNotMatch(handler, /researchProductListingCase|generateProductListingImage/);
-  assert.match(source, /完成圖資料齊全後會由後端依 MOMO、酷澎、EasyStore、蝦皮固定順序自動續跑/);
+  assert.match(source, /完成圖資料齊全後會由後端交錯處理 MOMO、酷澎與 EasyStore，EasyStore 完成後接蝦皮/);
   assert.match(source, /不得重新呼叫網站的 OpenAI 文案或圖片 API/);
   assert.match(source, /已停用網頁 OpenAI/);
 });
@@ -107,13 +107,14 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /來源圖 .*待繁體化／定案 .*完成圖 .*缺少角色 .*狀態/);
   assert.match(prompt, /流程、角色與核對規則不可漂移/);
   assert.match(prompt, /MOMO、酷澎、EasyStore 官網、蝦皮/);
-  assert.match(prompt, /每站送出後(?:由 verifyProductListingStage )?只核對一次正式清單與正式商品資料/);
-  assert.match(prompt, /blocked-by-previous-stage/);
+  assert.match(prompt, /每站送出後只核對一次正式清單與正式商品資料/);
+  assert.match(prompt, /MOMO、酷澎、EasyStore 是三個獨立根節點/);
+  assert.match(prompt, /blocked-by-dependency/);
   assert.match(prompt, /appliedImageUrls/);
   assert.match(prompt, /officialImageUrls/);
   assert.match(prompt, /可為平台 CDN/);
   assert.match(prompt, /中央或任一細項圖片欄位只要仍等於任一凍結來源 URL 就停止/);
-  assert.match(prompt, /只有 job schema、目前 automationPolicy、固定 platformOrder/);
+  assert.match(prompt, /只有 job schema、目前 automationPolicy、執行圖/);
   assert.match(prompt, /先保留至少一張 cleanMain 與一張 brandedHero/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
   assert.match(prompt, /商品主圖、廣告用圖與圖文編輯器專推圖是三個互相獨立的必填位置/);
@@ -298,7 +299,8 @@ test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手'
   const resume = section('async function resumeExplicitShopeeListingFromQuery', 'function productListingTransientFailure');
   assert.match(resume, /resumeListingJob/);
   assert.match(resume, /result&&result\.jobId\)!==jobId/);
-  assert.match(resume, /result&&result\.currentStage\)!=='shopee'/);
+  assert.match(resume, /clean\(easyStoreStage\.status\)!=='verified'/);
+  assert.match(resume, /clean\(shopeeStage\.status\)==='verified'/);
   assert.match(resume, /payload\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
   assert.match(resume, /YouziShopeeAutofill\.queue\(payload\)/);
 });
@@ -306,7 +308,8 @@ test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手'
 test('蝦皮正式狀態儲存後沿用同一 v2 job 完成四通路工作', () => {
   const advance = section('async function advanceFixedV2AfterShopeeStatus', 'async function saveProductPlatformStatus');
   assert.match(advance, /clean\(job\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
-  assert.match(advance, /clean\(job\.currentStage\)!=='shopee'/);
+  assert.match(advance, /clean\(easyStoreStage\.status\)!=='verified'/);
+  assert.match(advance, /clean\(shopeeStage\.status\)==='verified'/);
   assert.match(advance, /await requireEasyStoreManagerAuth\(\)/);
   assert.match(advance, /httpsCallable\('verifyProductListingStage'/);
   assert.match(advance, /stage:'shopee'/);
