@@ -1,0 +1,37 @@
+name: Resume 2100307-4 v2 listing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resume:
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install Firebase dependencies
+        working-directory: functions
+        run: npm ci
+      - name: Validate Firebase service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+        run: |
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > service-account.json
+          node -e "const row=require('./service-account.json'); if(row.type!=='service_account'||row.project_id!=='youzi-c1b74')throw new Error('Invalid service account')"
+      - name: Resume exact authorized case
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
+        run: node scripts/resume-2100307-4.js
+      - name: Remove service account file
+        if: always()
+        run: rm -f service-account.json
