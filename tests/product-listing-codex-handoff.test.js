@@ -265,3 +265,15 @@ test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手'
   assert.match(resume, /payload\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
   assert.match(resume, /YouziShopeeAutofill\.queue\(payload\)/);
 });
+
+test('蝦皮正式狀態儲存後沿用同一 v2 job 自動推進酷澎', () => {
+  const advance = section('async function advanceFixedV2AfterShopeeStatus', 'async function saveProductPlatformStatus');
+  assert.match(advance, /clean\(job\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
+  assert.match(advance, /clean\(job\.currentStage\)!=='shopee'/);
+  assert.match(advance, /httpsCallable\('verifyProductListingStage'/);
+  assert.match(advance, /stage:'shopee'/);
+  assert.match(advance, /platformListMatched:true,officialCatalogMatched:true,imageEvidenceComplete:true/);
+  assert.match(advance, /appliedImageUrls:appliedImageUrls,officialImageUrls:officialImageUrls/);
+  const save = section('async function saveProductPlatformStatus', 'const LABEL_PRINT_ENDPOINTS');
+  assert.match(save, /advanceFixedV2AfterShopeeStatus\(p,statuses\)/);
+});

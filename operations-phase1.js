@@ -2091,13 +2091,38 @@ function renderOverviewV7(){
     const rows=PRODUCT_LISTING_PLATFORMS.map(function(platform){const status=productPlatformStatus(p,platform.key);return '<section class="ops-platform-status-editor"><div class="ops-platform-status-editor-head"><h3>'+escapeHtml(platform.label)+'</h3>'+statusTag(status.label,status.tone==='active'||status.tone==='mapped'?'green':status.tone==='attention'||status.tone==='missing'?'red':'yellow')+'</div><div class="ops-form-grid cols-2"><div class="ops-field"><label>目前狀態</label><select class="ops-select" name="platformStatus_'+platform.key+'">'+productPlatformStatusOptions(status.status)+'</select></div><div class="ops-field"><label>平台商品編號</label><input class="ops-input" name="platformListingId_'+platform.key+'" value="'+attr(status.listingId)+'" placeholder="沒有就留白"></div><div class="ops-field full"><label>商品頁網址</label><input class="ops-input" type="url" name="platformUrl_'+platform.key+'" value="'+attr(status.url)+'" placeholder="https://..."></div><div class="ops-field full"><label>狀態說明</label><input class="ops-input" name="platformNote_'+platform.key+'" value="'+attr(status.note)+'" placeholder="例如：數量 0 已下架、等待平台審核"></div></div></section>';}).join('');
     openDrawer('各平台上架狀態',(p.sku||'未設定')+'｜'+(p.originalName||p.name||'未命名商品'),'<div class="ops-callout"><b>「未查驗」不等於「未上架」</b><br><span>只有實際確認平台找不到商品時才選「確定未上架」。平台已有編號但銷售狀態不明時，可先保留「已有平台商品／編號」。</span></div><form id="productPlatformStatusForm" data-id="'+attr(p.docId)+'">'+rows+'<div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">取消</button><button class="ops-button primary" type="submit">儲存平台狀態</button></div></form>');
   }
+  async function advanceFixedV2AfterShopeeStatus(product,statuses){
+    const shopee=statuses&&statuses.shopee||{};
+    if(clean(shopee.status)!=='active'||!clean(shopee.listingId))return {skipped:true};
+    if(!global.firebase||!global.firebase.functions)throw new Error('商品上架服務尚未載入，請重新整理頁面。');
+    const caseSnap=await state.db.collection(COLLECTIONS.listingCases).doc(product.docId).get(),listingCase=caseSnap.exists?caseSnap.data()||{}:{},publishState=listingCase.publishState&&typeof listingCase.publishState==='object'?listingCase.publishState:{},jobId=clean(publishState.jobId);
+    if(!jobId)return {skipped:true};
+    const jobSnap=await state.db.collection(COLLECTIONS.syncJobs).doc(jobId).get();
+    if(!jobSnap.exists)return {skipped:true};
+    const job=jobSnap.data()||{},snapshot=job.preparedSnapshot&&typeof job.preparedSnapshot==='object'?job.preparedSnapshot:{},plan=snapshot.platformImagePlan&&snapshot.platformImagePlan.shopee||{};
+    if(clean(job.workflowVersion)!==PRODUCT_LISTING_WORKFLOW_VERSION)throw new Error('這筆工作不是目前固定版 v2 四通路流程，不能沿用舊工作。');
+    if(clean(job.currentStage)!=='shopee')return {skipped:true,currentStage:clean(job.currentStage)};
+    const appliedImageUrls=normalizeProductResearchSourceUrls(plan.imageUrls).slice(0,PRODUCT_GROUP_LISTING_IMAGE_MAX),officialImageUrls=normalizeProductResearchSourceUrls((product.imageUrls||[]).concat(product.imageUrl?[product.imageUrl]:[])).slice(0,PRODUCT_GROUP_LISTING_IMAGE_MAX);
+    if(!appliedImageUrls.length||!officialImageUrls.length)throw new Error('蝦皮正式圖片核對資料不足，已停止推進酷澎。');
+    const callable=global.firebase.app().functions('us-central1').httpsCallable('verifyProductListingStage',{timeout:3*60*1000}),response=await callable({
+      jobId:jobId,
+      stage:'shopee',
+      verification:{
+        listingId:clean(shopee.listingId),sku:clean(snapshot.sku||product.sku),price:Number(snapshot.easyStorePrice),stock:Number(snapshot.stock),status:'published',
+        platformListMatched:true,officialCatalogMatched:true,imageEvidenceComplete:true,
+        appliedImageUrls:appliedImageUrls,officialImageUrls:officialImageUrls
+      }
+    });
+    return response&&response.data||{};
+  }
   async function saveProductPlatformStatus(form){
     const id=clean(form&&form.dataset.id),p=catalogById(id);if(!id||!p)throw new Error('找不到商品資料');
     const data=new FormData(form),now=new Date().toISOString(),statuses={};
     PRODUCT_LISTING_PLATFORMS.forEach(function(platform){const rawUrl=clean(data.get('platformUrl_'+platform.key)),url=safeUrl(rawUrl);if(rawUrl&&!url)throw new Error(platform.label+'商品頁網址格式不正確');statuses[platform.key]={status:clean(data.get('platformStatus_'+platform.key))||'unknown',listingId:clean(data.get('platformListingId_'+platform.key)),url:url,note:clean(data.get('platformNote_'+platform.key)),lastCheckedAt:now,lastCheckedBy:userLabel()};});
     await state.db.collection(COLLECTIONS.products).doc(id).set({platformListingStatus:statuses,platformListingStatusUpdatedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
     await writeAudit('更新商品平台上架狀態','product',id,(p.sku||id)+'｜'+PRODUCT_LISTING_PLATFORMS.map(function(platform){return platform.label+':'+(PRODUCT_PLATFORM_STATUS_META[statuses[platform.key].status]||PRODUCT_PLATFORM_STATUS_META.unknown).label;}).join('、'));
-    closeDrawer();toast('平台狀態已更新',p.sku||p.originalName||p.name,'success');await loadProductsOnly(true);
+    const progression=await advanceFixedV2AfterShopeeStatus(p,statuses);
+    closeDrawer();toast('平台狀態已更新',progression&&!progression.skipped&&clean(progression.currentStage)==='coupang'?'蝦皮已核對，酷澎工作已自動建立。':p.sku||p.originalName||p.name,'success');await loadProductsOnly(true);
   }
 
   const LABEL_PRINT_ENDPOINTS=['http://127.0.0.1:18181','http://localhost:18181'];
