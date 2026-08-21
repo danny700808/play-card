@@ -1,6 +1,7 @@
 'use strict';
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -14,12 +15,18 @@ const PRODUCT_COLLECTION = 'opsInternalProducts';
 const LISTING_CASE_COLLECTION = 'opsProductListingCases';
 const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
+const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
+const LISTING_JOB_SCHEMA_VERSION = 2;
+const LISTING_AUTOMATION_POLICY_VERSION = 5;
+const PLATFORM_EXECUTION_ORDER = Object.freeze(['easyStore', 'shopee', 'coupang', 'momo']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
 const PUBLISH_LOCK_MS = 15 * 60 * 1000;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
-const SHOPEE_AUTOFILL_SCHEMA_VERSION = 4;
+const SHOPEE_AUTOFILL_SCHEMA_VERSION = 5;
 const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'processing']);
 const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
+const PLATFORM_QUEUE_RECEIPT_STATUSES = new Set([...PLATFORM_QUEUE_COMPLETED_STATUSES, 'submitted-to-platform-review', 'under-review']);
+const LISTING_IMAGE_ROLES = new Set(['cleanMain', 'brandedHero', 'localizedDetail', 'specification', 'variantRepresentative']);
 const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
 const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const DESCRIPTION_PROMO_IMAGE_URLS = [
@@ -41,11 +48,6 @@ function clean(value) {
 
 function normalizeSku(value) {
   return clean(value).replace(/^'+/, '').replace(/\u00a0/g, ' ').toUpperCase();
-}
-
-function normalizeListingDecision(value) {
-  const decision = clean(value).toLowerCase();
-  return ['auto', 'new', 'existing'].includes(decision) ? decision : 'auto';
 }
 
 function numberOrNull(value) {
@@ -137,7 +139,10 @@ function hsinchuSizeBand(totalCm) {
 
 function listingAutomationPolicy() {
   return {
-    version: 4,
+    version: LISTING_AUTOMATION_POLICY_VERSION,
+    workflowId: LISTING_WORKFLOW_ID,
+    immutableWorkflowUntilExplicitRuleChange: true,
+    productDataChangesDoNotChangeExecutionOrder: true,
     duplicateGuard: {
       matchKey: 'exact-sku+existing-platform-id',
       reuseExistingDraft: true,
@@ -159,11 +164,22 @@ function listingAutomationPolicy() {
     },
     publishVerification: {
       successDialogAloneIsInsufficient: true,
-      requiredChecks: ['platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status']
+      requiredChecks: [
+        'platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status',
+        'applied-image-plan', 'official-image-list', 'no-frozen-source-image'
+      ],
+      imageReceiptContract: {
+        imageEvidenceCompleteRequired: true,
+        appliedImageUrlsMustMatchFinalPlatformPlan: true,
+        appliedFirstImageMustMatchRequiredRole: true,
+        officialImageUrlsMayUsePlatformCdn: true,
+        officialImageUrlsMustBeCompleteAndNonEmpty: true,
+        frozenSourceUrlsForbiddenInBothLists: true
+      }
     },
     platformExecutionPlan: {
       preflightAllListingDataBeforePlatformNavigation: true,
-      order: ['easyStore', 'shopee', 'coupang', 'momo'],
+      order: [...PLATFORM_EXECUTION_ORDER],
       shopeeDependsOnEasyStore: true,
       prepareBeforeOpen: ['category', 'brand', 'attributes', 'logistics', 'price', 'stock', 'images', 'variants'],
       shopeeHandoff: {
@@ -285,12 +301,22 @@ function buildShopeeLogistics(snapshot) {
   };
 }
 
-function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
+function buildShopeeAutofillPayload(snapshot, easyStoreResult, trace = {}) {
   const easyStoreProductId = clean(easyStoreResult && easyStoreResult.productId);
   const now = Date.now();
   const addVariant = clean(snapshot.listingMode) === 'add-variant';
+  const platformListingIds = Array.isArray(snapshot.shopeeExistingListingIds)
+    ? [...new Set(snapshot.shopeeExistingListingIds.map(clean).filter(Boolean))].slice(0, 20)
+    : [];
+  const listingMode = addVariant
+    ? 'add-variant-to-existing'
+    : platformListingIds.length ? 'update-existing' : 'create-new';
   return {
     schemaVersion: SHOPEE_AUTOFILL_SCHEMA_VERSION,
+    workflowVersion: LISTING_WORKFLOW_ID,
+    jobId: clean(trace.jobId),
+    snapshotId: clean(trace.snapshotId || (snapshot.platformImagePlan && snapshot.platformImagePlan.snapshotId)),
+    snapshotFingerprint: clean(trace.snapshotFingerprint),
     nonce: crypto.randomBytes(16).toString('hex'),
     createdAt: now,
     expiresAt: now + 30 * 60 * 1000,
@@ -311,15 +337,11 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult) {
       imageUrl: snapshot.variantChildImageUrl
     } : null,
     listingPolicy: {
-      decision: addVariant ? 'existing' : normalizeListingDecision(snapshot.shopeeListingDecision),
-      matchKey: 'sku',
-      allowCreate: !addVariant && normalizeListingDecision(snapshot.shopeeListingDecision) === 'new',
-      existingListingIds: Array.isArray(snapshot.shopeeExistingListingIds)
-        ? snapshot.shopeeExistingListingIds.map(clean).filter(Boolean).slice(0, 20)
-        : [],
-      onZero: addVariant ? 'block-missing-parent' : 'create-only-if-confirmed',
-      onOne: addVariant ? 'append-variant' : 'update',
-      onMultiple: 'block'
+      mode: listingMode,
+      identitySource: platformListingIds.length ? 'central-platform-id' : 'new-draft',
+      platformListingIds,
+      preflightSkuSearch: false,
+      uncertainSubmitRecovery: 'exact-sku-only'
     },
     categoryPath: shopeeCategorySegments(snapshot.shopeeCategoryPath, snapshot),
     brand: snapshot.shopeeBrand || snapshot.brand,
@@ -481,12 +503,6 @@ function listingImageAllocation(value) {
   };
 }
 
-function momoSpecialPromotionImage(productImages) {
-  const images = normalizeUrls(productImages, 12)
-    .filter((url) => url !== STORE_PROMO_IMAGE_URL && !DESCRIPTION_PROMO_IMAGE_URLS.includes(url));
-  return images[1] || images[2] || '';
-}
-
 function appendShopDescriptionImages(html, imageUrls) {
   let result = clean(html);
   DESCRIPTION_PROMO_IMAGE_URLS.forEach((url) => {
@@ -499,33 +515,419 @@ function appendShopDescriptionImages(html, imageUrls) {
   return appendShopDescriptionPromos(result);
 }
 
-function localizedRepresentativeImageMap(listingCase) {
+function listingImageRoles(row) {
+  const values = [].concat(row && row.roles || [], row && row.imageRoles || [], row && row.role || []);
+  return Array.from(new Set(values.map(clean).filter((role) => LISTING_IMAGE_ROLES.has(role))));
+}
+
+function listingImageAssetFlags(row) {
+  const source = row && typeof row === 'object' ? row : {};
+  const flags = source.assetFlags && typeof source.assetFlags === 'object' ? source.assetFlags : {};
+  return {
+    containsLogo: source.containsLogo === true || flags.containsLogo === true,
+    containsContactInfo: source.containsContactInfo === true || flags.containsContactInfo === true,
+    containsQrCode: source.containsQrCode === true || flags.containsQrCode === true,
+    containsText: source.containsText === true || flags.containsText === true,
+    greenBrandTemplate: source.greenBrandTemplate === true || flags.greenBrandTemplate === true,
+    momoPromotionEligible: source.momoPromotionEligible === true || flags.momoPromotionEligible === true
+  };
+}
+
+function cleanRepresentativeRoleRow(row) {
+  const roles = listingImageRoles(row);
+  const flags = listingImageAssetFlags(row);
+  return roles.includes('cleanMain')
+    && !flags.containsLogo && !flags.containsContactInfo && !flags.containsQrCode && !flags.containsText && !flags.greenBrandTemplate;
+}
+
+function localizedImageRowsBySource(listingCase) {
   const rows = listingCase && Array.isArray(listingCase.generatedListingImages)
     ? listingCase.generatedListingImages : [];
   const result = new Map();
+  const rolesByUrl = new Map();
   rows.forEach((row) => {
     const sourceUrl = safeHttpUrl(row && row.sourceImageUrl);
     const completedUrl = safeHttpUrl(row && row.url);
     const ready = clean(row && row.status).toLowerCase() === 'ready';
     const localized = clean(row && row.localizationStatus).toLowerCase() === 'completed'
       || clean(row && row.qaStatus).toLowerCase() === 'approved';
-    if (sourceUrl && completedUrl && ready && localized) result.set(sourceUrl, completedUrl);
+    const roles = listingImageRoles(row);
+    if (!sourceUrl || !completedUrl || sourceUrl === completedUrl || !ready || !localized || !roles.length) return;
+    const urlRoles = rolesByUrl.get(completedUrl) || new Set();
+    roles.forEach((role) => urlRoles.add(role));
+    rolesByUrl.set(completedUrl, urlRoles);
+    const values = result.get(sourceUrl) || [];
+    values.push({ sourceImageUrl: sourceUrl, url: completedUrl, roles, assetFlags: listingImageAssetFlags(row) });
+    result.set(sourceUrl, values);
+  });
+  result.forEach((rowsForSource, sourceUrl) => {
+    result.set(sourceUrl, rowsForSource.filter((row) => {
+      const urlRoles = rolesByUrl.get(row.url) || new Set();
+      return !(urlRoles.has('cleanMain') && urlRoles.has('brandedHero'));
+    }));
   });
   return result;
 }
 
 function localizedRepresentativeImage(listingCase, sourceUrl) {
-  return localizedRepresentativeImageMap(listingCase).get(safeHttpUrl(sourceUrl)) || '';
+  const rows = localizedImageRowsBySource(listingCase).get(safeHttpUrl(sourceUrl)) || [];
+  const cleanRows = rows.filter(cleanRepresentativeRoleRow);
+  const representative = cleanRows.find((row) => row.roles.includes('variantRepresentative'))
+    || cleanRows.find((row) => row.roles.includes('cleanMain'));
+  return representative ? representative.url : '';
 }
 
 function prioritizedListingImageUrls(listingCase) {
   const source = listingCase && typeof listingCase === 'object' ? listingCase : {};
   const listingUrls = normalizeUrls(source.listingImageUrls, 30);
-  const localizedBySource = localizedRepresentativeImageMap(source);
   const prioritized = normalizeUrls(source.gallerySourceImageUrls, 20)
-    .map((sourceUrl) => localizedBySource.get(sourceUrl) || (listingUrls.includes(sourceUrl) ? sourceUrl : ''))
+    .map((sourceUrl) => localizedRepresentativeImage(source, sourceUrl) || (listingUrls.includes(sourceUrl) ? sourceUrl : ''))
     .filter((url) => url && listingUrls.includes(url));
   return prioritized.concat(listingUrls.filter((url) => !prioritized.includes(url)));
+}
+
+function finalizedRoleRowsForCase(productId, frozenCase, currentCase) {
+  const frozenSources = normalizeUrls(frozenCase && frozenCase.sourceImageUrls, 20);
+  const allowedSources = new Set(frozenSources);
+  if (!clean(productId) || !frozenSources.length) throw new Error(`${clean(productId) || '未知商品'}的凍結來源圖清單為空。`);
+  const generated = currentCase && Array.isArray(currentCase.generatedListingImages)
+    ? currentCase.generatedListingImages : [];
+  const readyRows = [];
+  const lineageKeys = new Set();
+  generated.forEach((row) => {
+    const status = clean(row && row.status).toLowerCase();
+    const localized = clean(row && row.localizationStatus).toLowerCase() === 'completed'
+      || clean(row && row.qaStatus).toLowerCase() === 'approved';
+    if (status !== 'ready' || !localized) return;
+    const sourceImageUrl = safeHttpUrl(row && row.sourceImageUrl);
+    const url = safeHttpUrl(row && row.url);
+    const roles = listingImageRoles(row);
+    if (!sourceImageUrl || !allowedSources.has(sourceImageUrl)) {
+      throw new Error(`${clean(productId)}的完成圖來源不在凍結輸入清單。`);
+    }
+    if (!url || allowedSources.has(url)) throw new Error(`${clean(productId)}的完成圖仍是凍結來源原圖。`);
+    if (!roles.length) throw new Error(`${clean(productId)}的完成圖缺少圖片角色。`);
+    const flags = row && row.assetFlags && typeof row.assetFlags === 'object' ? row.assetFlags : null;
+    if (!flags || !['containsLogo', 'containsContactInfo', 'containsQrCode', 'containsText', 'greenBrandTemplate', 'momoPromotionEligible']
+      .every((keyName) => typeof flags[keyName] === 'boolean')) {
+      throw new Error(`${clean(productId)}的完成圖缺少完整 assetFlags。`);
+    }
+    roles.forEach((role) => {
+      const lineageKey = `${sourceImageUrl}|${role}`;
+      if (lineageKeys.has(lineageKey)) throw new Error(`${clean(productId)}的同一來源與角色有多個完成輸出。`);
+      lineageKeys.add(lineageKey);
+    });
+    readyRows.push({
+      productId: clean(productId), sourceImageUrl, url, roles,
+      sourceOrder: Math.max(0, Number(row && row.sourceOrder) || frozenSources.indexOf(sourceImageUrl) + 1),
+      assetFlags: listingImageAssetFlags(row)
+    });
+  });
+  const rolesByUrl = new Map();
+  readyRows.forEach((row) => {
+    const roles = rolesByUrl.get(row.url) || new Set();
+    row.roles.forEach((role) => roles.add(role));
+    rolesByUrl.set(row.url, roles);
+  });
+  rolesByUrl.forEach((roles) => {
+    if (roles.has('cleanMain') && roles.has('brandedHero')) throw new Error(`${clean(productId)}的同一完成圖不得同時是 cleanMain 與 brandedHero。`);
+  });
+  frozenSources.forEach((sourceImageUrl) => {
+    const rows = readyRows.filter((row) => row.sourceImageUrl === sourceImageUrl);
+    if (!rows.some((row) => row.roles.some((role) => ['cleanMain', 'localizedDetail', 'specification', 'variantRepresentative'].includes(role)))) {
+      throw new Error(`${clean(productId)}的凍結來源圖尚無可上架的繁體完成圖。`);
+    }
+  });
+  return readyRows;
+}
+
+function buildFinalPlatformImagePlan(caseRows) {
+  const groups = (Array.isArray(caseRows) ? caseRows : []).map((item) => {
+    const preferred = new Set(normalizeUrls(item && item.gallerySourceImageUrls, 12));
+    return (Array.isArray(item && item.roleRows) ? item.roleRows : []).slice().sort((a, b) => {
+      const rank = (row) => row.roles.includes('cleanMain') ? 0 : row.roles.includes('brandedHero') ? 1 : preferred.has(row.sourceImageUrl) ? 2 : 3;
+      return rank(a) - rank(b) || a.sourceOrder - b.sourceOrder;
+    });
+  });
+  const pool = [];
+  const seen = new Set();
+  const coveredGroups = new Set();
+  const pushRow = (row, groupIndex) => {
+    if (!row || seen.has(row.url) || pool.length >= 12) return false;
+    seen.add(row.url);
+    pool.push(row);
+    if (Number.isInteger(groupIndex)) coveredGroups.add(groupIndex);
+    return true;
+  };
+  const findRoleRow = (role, excludedGroup = -1) => {
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+      if (groupIndex === excludedGroup) continue;
+      const row = groups[groupIndex].find((candidate) => candidate.roles.includes(role));
+      if (row) return { row, groupIndex };
+    }
+    return null;
+  };
+
+  // Reserve the two cross-channel roles before the 12-image cap can be consumed by
+  // one role. With multiple variants, put the reserved roles in different groups
+  // when possible so the pool still covers as many variants as the cap permits.
+  const reservedClean = findRoleRow('cleanMain');
+  if (reservedClean) pushRow(reservedClean.row, reservedClean.groupIndex);
+  const reservedBrand = findRoleRow('brandedHero', groups.length > 1 && reservedClean ? reservedClean.groupIndex : -1)
+    || findRoleRow('brandedHero');
+  if (reservedBrand) pushRow(reservedBrand.row, reservedBrand.groupIndex);
+
+  // Give every not-yet-covered variant one representative before adding second
+  // images for already-covered variants. When there are more than 12 variants,
+  // this deterministic pass is the fairest possible bounded allocation.
+  groups.forEach((rows, groupIndex) => {
+    if (coveredGroups.has(groupIndex) || pool.length >= 12) return;
+    const representative = rows.find((row) => row.roles.includes('cleanMain') && cleanRepresentativeRoleRow(row))
+      || rows.find((row) => row.roles.includes('variantRepresentative'))
+      || rows.find((row) => row.roles.some((role) => ['localizedDetail', 'specification'].includes(role)))
+      || rows[0];
+    pushRow(representative, groupIndex);
+  });
+  for (let index = 0; pool.length < 12 && groups.some((rows) => index < rows.length); index += 1) {
+    groups.forEach((rows, groupIndex) => pushRow(rows[index], groupIndex));
+  }
+  const urls = (values) => normalizeUrls(values.map((row) => row.url), 12);
+  const cleanRows = pool.filter((row) => row.roles.includes('cleanMain') && cleanRepresentativeRoleRow(row));
+  const brandedRows = pool.filter((row) => row.roles.includes('brandedHero')
+    && row.assetFlags.containsLogo && row.assetFlags.greenBrandTemplate
+    && !row.assetFlags.containsContactInfo && !row.assetFlags.containsQrCode);
+  const detailRows = pool.filter((row) => row.roles.some((role) => ['localizedDetail', 'specification', 'variantRepresentative'].includes(role)));
+  const safeBrandedRows = brandedRows.filter((row) => !row.assetFlags.containsContactInfo && !row.assetFlags.containsQrCode);
+  const uniqueRows = (values) => {
+    const found = new Set();
+    return values.filter((row) => row && !found.has(row.url) && found.add(row.url));
+  };
+  const easyRows = uniqueRows(brandedRows.concat(cleanRows, pool));
+  const cleanFirst = cleanRows.slice(0, 1);
+  const promoRow = pool.find((row) => (!cleanFirst[0] || row.url !== cleanFirst[0].url)
+    && row.assetFlags.momoPromotionEligible
+    && !row.assetFlags.containsLogo && !row.assetFlags.containsContactInfo && !row.assetFlags.containsQrCode
+    && !row.assetFlags.containsText && !row.assetFlags.greenBrandTemplate
+    && row.roles.some((role) => ['cleanMain', 'localizedDetail', 'specification'].includes(role)));
+  const secondaryBrand = safeBrandedRows.find((row) => !cleanFirst[0] || row.url !== cleanFirst[0].url);
+  const nonBrandedRemainder = pool.filter((row) => !row.roles.includes('brandedHero'));
+  const coupangRows = uniqueRows(cleanFirst.concat(secondaryBrand || [], nonBrandedRemainder, detailRows));
+  // MOMO's promotion material must be visible in position 2 or 3. Put it second,
+  // then allow at most one safe branded secondary image.
+  const momoRows = uniqueRows(cleanFirst.concat(promoRow || [], secondaryBrand || [], nonBrandedRemainder, detailRows));
+  const momoPromoCandidates = momoRows.slice(1, 3);
+  const orderedPromoRow = momoPromoCandidates.find((row) => row.assetFlags.momoPromotionEligible
+    && !row.assetFlags.containsLogo && !row.assetFlags.containsContactInfo && !row.assetFlags.containsQrCode
+    && !row.assetFlags.containsText && !row.assetFlags.greenBrandTemplate
+    && row.roles.some((role) => ['cleanMain', 'localizedDetail', 'specification'].includes(role)));
+  return {
+    sharedCompletedImageUrls: urls(pool),
+    easyStore: { imageUrls: urls(easyRows), requiredFirstRole: 'brandedHero', ready: Boolean(easyRows[0] && easyRows[0].roles.includes('brandedHero')) },
+    shopee: { imageUrls: urls(easyRows), requiredFirstRole: 'brandedHero', ready: Boolean(easyRows[0] && easyRows[0].roles.includes('brandedHero')) },
+    coupang: { imageUrls: urls(coupangRows), requiredFirstRole: 'cleanMain', ready: Boolean(coupangRows[0] && coupangRows[0].roles.includes('cleanMain')), brandedHeroAllowedAsSecondary: true, removeSecondaryBrandedHeroIfPlatformRejectsGalleryLogo: true },
+    momo: { imageUrls: urls(momoRows), requiredFirstRole: 'cleanMain', ready: Boolean(momoRows[0] && momoRows[0].roles.includes('cleanMain')), brandedHeroAllowedAsSecondary: true, promotionImageUrl: orderedPromoRow ? orderedPromoRow.url : '', promotionImageReady: Boolean(orderedPromoRow) }
+  };
+}
+
+function frozenInputSnapshotFingerprint(snapshot) {
+  const source = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  return crypto.createHash('sha256').update(JSON.stringify(compactObject(source))).digest('hex');
+}
+
+function finalizePreparedMediaSnapshot(frozenInputSnapshot, currentCasesById) {
+  const frozen = frozenInputSnapshot && typeof frozenInputSnapshot === 'object' ? frozenInputSnapshot : {};
+  if (clean(frozen.workflowVersion) !== LISTING_WORKFLOW_ID) throw new Error('只能從 v2 凍結輸入快照建立完成圖快照。');
+  const frozenCases = Array.isArray(frozen.cases) ? frozen.cases : [];
+  if (!frozenCases.length) throw new Error('v2 凍結輸入快照沒有商品案件。');
+  const allFrozenSourceUrls = new Set(frozenCases.flatMap((item) => normalizeUrls(item && item.sourceImageUrls, 20)));
+  const currentMap = currentCasesById instanceof Map
+    ? currentCasesById : new Map(Object.entries(currentCasesById && typeof currentCasesById === 'object' ? currentCasesById : {}));
+  const cases = frozenCases.map((frozenCase) => {
+    const productId = clean(frozenCase && frozenCase.productId);
+    const currentCase = currentMap.get(productId);
+    if (!productId || !currentCase) throw new Error(`${productId || '未知商品'}無法重讀最新案件。`);
+    const roleRows = finalizedRoleRowsForCase(productId, frozenCase, currentCase);
+    if (roleRows.some((row) => allFrozenSourceUrls.has(row.url))) {
+      throw new Error(`${productId}的完成圖仍是本組其他商品的凍結來源原圖。`);
+    }
+    const representativeSourceImageUrl = safeHttpUrl(frozenCase && frozenCase.representativeSourceImageUrl);
+    const representativeRow = representativeSourceImageUrl
+      ? roleRows.find((row) => row.sourceImageUrl === representativeSourceImageUrl && cleanRepresentativeRoleRow(row)) : null;
+    return {
+      productId, sku: clean(frozenCase && frozenCase.sku || currentCase.productSku),
+      sourceImageUrls: normalizeUrls(frozenCase && frozenCase.sourceImageUrls, 20),
+      gallerySourceImageUrls: normalizeUrls(frozenCase && frozenCase.gallerySourceImageUrls, 12),
+      representativeSourceImageUrl,
+      representativeCompletedImageUrl: representativeRow ? representativeRow.url : '',
+      roleRows,
+      preparedCase: {
+        imageRoleAssignments: roleRows.map((row) => ({
+          sourceImageUrl: row.sourceImageUrl, url: row.url, roles: row.roles.slice(), assetFlags: { ...row.assetFlags }
+        })),
+        sourceImageRetention: currentCase.sourceImageRetentionPolicy && typeof currentCase.sourceImageRetentionPolicy === 'object'
+          ? currentCase.sourceImageRetentionPolicy : {}
+      }
+    };
+  });
+  return {
+    workflowVersion: LISTING_WORKFLOW_ID,
+    snapshotId: `${clean(frozen.snapshotId) || clean(frozen.productId)}-final`,
+    inputSnapshotId: clean(frozen.snapshotId),
+    inputSnapshotFingerprint: frozenInputSnapshotFingerprint(frozen),
+    finalizedFromFrozenInput: true,
+    cases,
+    platformImagePlan: buildFinalPlatformImagePlan(cases)
+  };
+}
+
+async function loadFinalPreparedMediaSnapshot(db, productId, listingCase) {
+  const frozen = listingCase && listingCase.codexHandoff && listingCase.codexHandoff.preflightSnapshot;
+  if (!frozen || typeof frozen !== 'object') throw new Error('找不到 v2 凍結輸入快照。');
+  const ids = Array.from(new Set((Array.isArray(frozen.cases) ? frozen.cases : []).map((item) => clean(item && item.productId)).filter(Boolean)));
+  if (!ids.includes(clean(productId))) throw new Error('凍結輸入快照與本商品不一致。');
+  const snapshots = await Promise.all(ids.map((id) => db.collection(LISTING_CASE_COLLECTION).doc(id).get()));
+  const currentCases = new Map();
+  snapshots.forEach((snapshot, index) => {
+    if (!snapshot.exists) throw new Error(`${ids[index]}的商品案件已不存在。`);
+    currentCases.set(ids[index], snapshot.data() || {});
+  });
+  return {
+    rootListingCase: currentCases.get(clean(productId)), currentCases,
+    preparedMediaSnapshot: finalizePreparedMediaSnapshot(frozen, currentCases)
+  };
+}
+
+function preparedPlatformImagePlan(listingCase, finalizedMediaSnapshot = null) {
+  const handoff = listingCase && listingCase.codexHandoff && typeof listingCase.codexHandoff === 'object'
+    ? listingCase.codexHandoff : {};
+  const prepared = finalizedMediaSnapshot && typeof finalizedMediaSnapshot === 'object'
+    ? finalizedMediaSnapshot
+    : handoff.preflightSnapshot && typeof handoff.preflightSnapshot === 'object' ? handoff.preflightSnapshot : {};
+  const source = prepared.platformImagePlan && typeof prepared.platformImagePlan === 'object'
+    ? prepared.platformImagePlan : {};
+  const roleRows = [];
+  (Array.isArray(prepared.cases) ? prepared.cases : []).forEach((item) => {
+    const preparedCase = item && item.preparedCase && typeof item.preparedCase === 'object' ? item.preparedCase : {};
+    const assignments = Array.isArray(preparedCase.imageRoleAssignments) ? preparedCase.imageRoleAssignments : [];
+    assignments.forEach((row) => {
+      const url = safeHttpUrl(row && row.url);
+      const sourceImageUrl = safeHttpUrl(row && row.sourceImageUrl);
+      const roles = listingImageRoles(row);
+      if (!url || !sourceImageUrl || url === sourceImageUrl || !roles.length) return;
+      roleRows.push({
+        productId: clean(item && item.productId), sourceImageUrl, url, roles,
+        assetFlags: listingImageAssetFlags(row),
+        assetFlagsDeclared: Boolean(row && row.assetFlags && typeof row.assetFlags === 'object'
+          && ['containsLogo', 'containsContactInfo', 'containsQrCode', 'containsText', 'greenBrandTemplate', 'momoPromotionEligible']
+            .every((keyName) => typeof row.assetFlags[keyName] === 'boolean'))
+      });
+    });
+  });
+  const rolesByUrl = new Map();
+  roleRows.forEach((row) => {
+    const roles = rolesByUrl.get(row.url) || new Set();
+    row.roles.forEach((role) => roles.add(role));
+    rolesByUrl.set(row.url, roles);
+  });
+  const normalizePlatform = (key) => {
+    const row = source[key] && typeof source[key] === 'object' ? source[key] : {};
+    const imageUrls = normalizeUrls(row.imageUrls, 12);
+    const imageRoleAssignments = imageUrls.map((url) => {
+      const matches = roleRows.filter((candidate) => candidate.url === url);
+      const roles = Array.from(rolesByUrl.get(url) || []);
+      const assetFlags = matches.reduce((flags, candidate) => ({
+        containsLogo: flags.containsLogo || candidate.assetFlags.containsLogo,
+        containsContactInfo: flags.containsContactInfo || candidate.assetFlags.containsContactInfo,
+        containsQrCode: flags.containsQrCode || candidate.assetFlags.containsQrCode,
+        containsText: flags.containsText || candidate.assetFlags.containsText,
+        greenBrandTemplate: flags.greenBrandTemplate || candidate.assetFlags.greenBrandTemplate,
+        momoPromotionEligible: flags.momoPromotionEligible || candidate.assetFlags.momoPromotionEligible
+      }), { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false });
+      return {
+        url, sourceImageUrls: Array.from(new Set(matches.map((candidate) => candidate.sourceImageUrl))), roles, assetFlags,
+        metadataVerified: matches.length > 0 && matches.every((candidate) => candidate.assetFlagsDeclared)
+          && !(roles.includes('cleanMain') && roles.includes('brandedHero'))
+      };
+    });
+    const requiredFirstRole = clean(row.requiredFirstRole);
+    const first = imageRoleAssignments[0] || null;
+    const allMetadataVerified = imageRoleAssignments.length > 0 && imageRoleAssignments.every((entry) => entry.metadataVerified);
+    const firstRoleVerified = Boolean(first && first.metadataVerified && first.roles.includes(requiredFirstRole)
+      && (requiredFirstRole === 'cleanMain'
+        ? cleanRepresentativeRoleRow(first)
+        : requiredFirstRole === 'brandedHero'
+          ? first.assetFlags.containsLogo && first.assetFlags.greenBrandTemplate
+            && !first.assetFlags.containsContactInfo && !first.assetFlags.containsQrCode
+          : false));
+    const brandedAfterMain = imageRoleAssignments.slice(1).filter((entry) => entry.roles.includes('brandedHero'));
+    const safeBrandedAfterMain = brandedAfterMain.every((entry) => !entry.assetFlags.containsContactInfo && !entry.assetFlags.containsQrCode)
+      && (key !== 'momo' || brandedAfterMain.length <= 1);
+    const promotionImageUrl = safeHttpUrl(row.promotionImageUrl);
+    const promotionEntry = imageRoleAssignments.find((entry) => entry.url === promotionImageUrl) || null;
+    const promotionImageReady = row.promotionImageReady === true
+      && [imageUrls[1], imageUrls[2]].filter(Boolean).includes(promotionImageUrl)
+      && Boolean(promotionEntry && promotionEntry.metadataVerified
+        && promotionEntry.assetFlags.momoPromotionEligible
+        && !promotionEntry.assetFlags.containsLogo && !promotionEntry.assetFlags.containsContactInfo
+        && !promotionEntry.assetFlags.containsQrCode && !promotionEntry.assetFlags.containsText
+        && !promotionEntry.assetFlags.greenBrandTemplate
+        && promotionEntry.roles.some((role) => ['cleanMain', 'localizedDetail', 'specification'].includes(role)));
+    return {
+      imageUrls,
+      imageRoleAssignments,
+      requiredFirstRole,
+      firstRoleVerified,
+      roleMetadataVerified: allMetadataVerified && firstRoleVerified && safeBrandedAfterMain,
+      ready: row.ready === true && allMetadataVerified && firstRoleVerified && safeBrandedAfterMain,
+      promotionImageUrl,
+      promotionImageReady,
+      brandedHeroAllowedAsSecondary: row.brandedHeroAllowedAsSecondary === true,
+      removeSecondaryBrandedHeroIfPlatformRejectsGalleryLogo: row.removeSecondaryBrandedHeroIfPlatformRejectsGalleryLogo === true
+    };
+  };
+  return {
+    workflowVersion: clean(prepared.workflowVersion || handoff.workflowVersion),
+    snapshotId: clean(prepared.snapshotId),
+    source: prepared.finalizedFromFrozenInput === true
+      ? 'codex-v2-finalized-media-snapshot'
+      : clean(prepared.workflowVersion || handoff.workflowVersion) === LISTING_WORKFLOW_ID ? 'codex-v2-prepared-snapshot' : 'missing-or-legacy',
+    finalizedFromFrozenInput: prepared.finalizedFromFrozenInput === true,
+    inputSnapshotId: clean(prepared.inputSnapshotId),
+    inputSnapshotFingerprint: clean(prepared.inputSnapshotFingerprint),
+    roleAssignments: roleRows,
+    imageReferenceCases: (Array.isArray(prepared.cases) ? prepared.cases : []).map((item) => ({
+      productId: clean(item && item.productId),
+      sku: clean(item && item.sku),
+      sourceImageUrls: normalizeUrls(item && item.sourceImageUrls, 20),
+      representativeSourceImageUrl: safeHttpUrl(item && item.representativeSourceImageUrl),
+      representativeCompletedImageUrl: safeHttpUrl(item && item.representativeCompletedImageUrl),
+      sourceImageRetention: item && item.preparedCase && item.preparedCase.sourceImageRetention && typeof item.preparedCase.sourceImageRetention === 'object'
+        ? item.preparedCase.sourceImageRetention : {}
+    })).filter((item) => item.productId),
+    sharedCompletedImageUrls: normalizeUrls(source.sharedCompletedImageUrls, 12),
+    easyStore: normalizePlatform('easyStore'),
+    shopee: normalizePlatform('shopee'),
+    coupang: normalizePlatform('coupang'),
+    momo: normalizePlatform('momo')
+  };
+}
+
+function platformImagePlanMissingFields(plan, options = {}) {
+  const source = plan && typeof plan === 'object' ? plan : {};
+  const missing = [];
+  const acceptedSource = source.source === 'codex-v2-prepared-snapshot' || source.source === 'codex-v2-finalized-media-snapshot';
+  if (source.workflowVersion !== LISTING_WORKFLOW_ID || !acceptedSource) missing.push('v2 圖片角色預檢快照');
+  if (options.requireFinalized === true && (source.source !== 'codex-v2-finalized-media-snapshot'
+    || source.finalizedFromFrozenInput !== true || !source.inputSnapshotId || !source.inputSnapshotFingerprint)) {
+    missing.push('來源輸入驗證後的最終完成圖快照');
+  }
+  [['easyStore', 'brandedHero'], ['shopee', 'brandedHero'], ['coupang', 'cleanMain'], ['momo', 'cleanMain']].forEach(([platform, role]) => {
+    const row = source[platform] && typeof source[platform] === 'object' ? source[platform] : {};
+    if (!row.ready || !row.roleMetadataVerified || row.requiredFirstRole !== role || !row.imageUrls.length) missing.push(`${platform} 首圖角色 ${role}`);
+  });
+  const momo = source.momo && typeof source.momo === 'object' ? source.momo : {};
+  if (!momo.promotionImageReady || !momo.promotionImageUrl) missing.push('MOMO clean-only 專推圖');
+  return missing;
 }
 
 function variantRepresentativeMissingFields(snapshot) {
@@ -542,7 +944,7 @@ function variantRepresentativeMissingFields(snapshot) {
   return missing;
 }
 
-function buildListingSnapshot(productId, product, listingCase, variantParentProduct = null, variantParentListingCase = null) {
+function buildListingSnapshot(productId, product, listingCase, variantParentProduct = null, variantParentListingCase = null, finalizedMediaSnapshot = null) {
   const listingMode = clean(listingCase.listingMode) === 'add-variant' ? 'add-variant' : 'independent';
   const parentProduct = variantParentProduct && typeof variantParentProduct === 'object' ? variantParentProduct : {};
   const parentPlatformMappings = parentProduct.platformMappings && typeof parentProduct.platformMappings === 'object'
@@ -562,9 +964,14 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     ? localizedRepresentativeImage(listingCase, variantChildSourceImageUrl) : '';
   const variantGroupPrimaryImageUrl = variantGroupEnabled
     ? localizedRepresentativeImage(listingCase, variantGroupPrimarySourceImageUrl) : '';
-  const imageAllocation = listingImageAllocation(prioritizedListingImageUrls(listingCase));
+  const platformImagePlan = preparedPlatformImagePlan(listingCase, finalizedMediaSnapshot);
+  const easyStoreImageSource = platformImagePlan.easyStore.ready
+    ? platformImagePlan.easyStore.imageUrls
+    : prioritizedListingImageUrls(listingCase);
+  const imageAllocation = listingImageAllocation(easyStoreImageSource);
   const images = imageAllocation.galleryImages;
-  const momoSpecialPromotionImageUrl = momoSpecialPromotionImage(imageAllocation.productImages);
+  const momoSpecialPromotionImageUrl = platformImagePlan.momo.promotionImageReady
+    ? platformImagePlan.momo.promotionImageUrl : '';
   const descriptionHtml = appendShopDescriptionImages(productDescriptionToSafeHtml(description), imageAllocation.descriptionImages);
   const snapshot = {
     productId: clean(productId),
@@ -592,6 +999,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     images,
     productImageUrls: imageAllocation.productImages,
     descriptionImageUrls: imageAllocation.descriptionImages,
+    platformImagePlan,
     brand: clean(listingCase.brand || product.brand),
     model: clean(listingCase.model || product.model),
     barcode: clean(listingCase.barcode || product.barcode),
@@ -644,13 +1052,10 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       violationRecovery: 'republish-when-data-is-valid-and-capacity-allows'
     },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
-    imagePolicy: { sourceImageMaximum: 20, sharedVariantGalleryMaximum: 12, balanceAcrossVariants: true, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-green-template', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true, localizedVariantRepresentativesRequired: true },
+    imagePolicy: { sourceImageMaximum: 20, sharedVariantGalleryMaximum: 12, balanceAcrossVariants: true, galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true, mainImageTemplate: 'youzi-light-commercial-template-v2', mainImageAspectRatio: '1:1', mainImageBackdrop: 'low-saturation-light-commercial', mainImageProductPlacement: 'right-or-center-right', fixedStorePromoLast: true, fixedDescriptionPromosLast: true, localizedTraditionalChinese: true, localizedVariantRepresentativesRequired: true },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
     shopeeDescription: (() => { const value = clean(listingCase.shopeeDescription) || description; return value.includes(PHYSICAL_PRODUCT_DISCLAIMER) ? value : `${value}\n\n${PHYSICAL_PRODUCT_DISCLAIMER}`; })(),
     shopeeRequiredNotes: clean(listingCase.shopeeRequiredNotes),
-    shopeeListingDecision: shopeeExistingListingIds.length
-      ? 'existing'
-      : normalizeListingDecision(listingCase.shopeeListingDecision),
     shopeeExistingListingIds,
     shopeeCategoryPath: clean(listingCase.shopeeCategoryPath),
     shopeeBrand: clean(listingCase.shopeeBrand) || clean(listingCase.brand || product.brand),
@@ -686,7 +1091,8 @@ function compactObject(value) {
   if (Array.isArray(value)) return value.map(compactObject);
   if (!value || typeof value !== 'object') return value;
   const result = {};
-  Object.entries(value).forEach(([key, item]) => {
+  Object.keys(value).sort().forEach((key) => {
+    const item = value[key];
     if (item === undefined) return;
     result[key] = compactObject(item);
   });
@@ -801,7 +1207,7 @@ function platformQueueFingerprint(platform, snapshot) {
   const platformFields = key === 'momo'
     ? [snapshot.momoGoodsName, snapshot.momoSlogan, snapshot.momoCategoryCode, snapshot.momoPrice, snapshot.momoHtml, snapshot.momoSpecialPromotionImageUrl]
     : [snapshot.coupangTitle, snapshot.coupangCategoryCode, snapshot.coupangPrice, snapshot.coupangDescriptionHtml];
-  return crypto.createHash('sha256').update(JSON.stringify({
+  return crypto.createHash('sha256').update(JSON.stringify(compactObject({
     platform: key,
     productId: snapshot.productId,
     sku: snapshot.sku,
@@ -819,7 +1225,11 @@ function platformQueueFingerprint(platform, snapshot) {
     momoSpecialPromotionImagePolicy: snapshot.momoSpecialPromotionImagePolicy,
     momoCatalogPolicy: snapshot.momoCatalogPolicy,
     platformFields
-  })).digest('hex');
+  }))).digest('hex');
+}
+
+function listingSnapshotFingerprint(snapshot) {
+  return crypto.createHash('sha256').update(JSON.stringify(compactObject(snapshot || {}))).digest('hex');
 }
 
 function buildPlatformQueuePolicy(product, platform, snapshot) {
@@ -835,6 +1245,7 @@ function buildPlatformQueuePolicy(product, platform, snapshot) {
     return {
       mode: existingListingIds.length > 1 ? 'block-duplicate-parent' : existingListingIds.length ? 'add-variant-to-existing' : 'block-missing-parent',
       matchKey: 'parent-listing-id+sku', sku: snapshot.sku, existingListingIds,
+      identitySource: 'central-platform-id', preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only',
       parentProductId: clean(snapshot.variantParentProductId), parentSku: clean(snapshot.variantParentSku),
       variantAttributeName: clean(snapshot.variantAttributeName), variantParentAttributeValue: clean(snapshot.variantParentAttributeValue), variantAttributeValue: clean(snapshot.variantAttributeValue),
       variantParentImageUrl: safeHttpUrl(snapshot.variantParentImageUrl), variantImageUrl: safeHttpUrl(snapshot.variantChildImageUrl),
@@ -842,14 +1253,17 @@ function buildPlatformQueuePolicy(product, platform, snapshot) {
     };
   }
   return {
-    mode: existingListingIds.length > 1 ? 'block-duplicate' : existingListingIds.length ? 'update-existing' : 'upsert-by-exact-sku',
-    matchKey: 'sku',
+    mode: existingListingIds.length > 1 ? 'block-duplicate' : existingListingIds.length ? 'update-existing' : 'create-new',
+    matchKey: existingListingIds.length ? 'central-platform-id' : 'new-draft',
     sku: snapshot.sku,
     existingListingIds,
+    identitySource: existingListingIds.length ? 'central-platform-id' : 'new-draft',
+    preflightSkuSearch: false,
+    uncertainSubmitRecovery: 'exact-sku-only',
     onZero: 'create',
     onOne: 'update',
     onMultiple: 'block',
-    onUncertain: 'block'
+    onUncertain: 'exact-sku-recovery'
   };
 }
 
@@ -927,6 +1341,51 @@ async function findEasyStoreMappingInProduct(snapshot, token, productId) {
   return matches[0] || null;
 }
 
+function easyStoreVariantPrice(variant) {
+  return numberOrNull(variant && (variant.price ?? variant.sale_price ?? variant.regular_price));
+}
+
+function easyStoreVariantStock(variant) {
+  return numberOrNull(variant && (variant.inventory_quantity ?? variant.quantity ?? variant.stock ?? variant.inventory));
+}
+
+async function verifyEasyStorePublishedListing(snapshot, token, result) {
+  let lastReasons = ['missing-from-official-catalog'];
+  for (const delayMs of [0, 1000, 2500, 5000]) {
+    if (delayMs) await wait(delayMs);
+    let match = await findEasyStoreMappingInProduct(snapshot, token, clean(result && result.productId));
+    if (!match && result && result.recoveredAfterUncertainResponse === true) {
+      match = await findEasyStoreMappingBySku(snapshot, token);
+    }
+    if (!match) continue;
+    const price = easyStoreVariantPrice(match.variant);
+    const stock = easyStoreVariantStock(match.variant);
+    const imageUrls = collectImageUrls(match.product, false).slice(0, 100);
+    const verification = validatePlatformStageVerification('easyStore', snapshot, {
+      listingId: match.productId,
+      sku: snapshot.sku,
+      price,
+      stock,
+      status: 'official-catalog-matched',
+      platformListMatched: true,
+      officialCatalogMatched: true,
+      imageEvidenceComplete: true,
+      appliedImageUrls: normalizeUrls(snapshot.images, 20),
+      officialImageUrls: imageUrls
+    });
+    if (verification.verified) {
+      return {
+        verified: true,
+        productId: match.productId,
+        variantId: match.variantId,
+        ...verification.receipt
+      };
+    }
+    lastReasons = verification.reasons;
+  }
+  throw new Error(`EasyStore 正式商品資料核對未通過：${lastReasons.join('、')}`);
+}
+
 async function recoverEasyStoreCreateBySku(snapshot, token) {
   let lastError = null;
   for (const delayMs of [1200, 2500, 5000, 10000]) {
@@ -943,23 +1402,24 @@ async function recoverEasyStoreCreateBySku(snapshot, token) {
   return null;
 }
 
-async function addEasyStoreVariant(snapshot, token) {
+async function addEasyStoreVariant(snapshot, product, token) {
   const productId = clean(snapshot.variantParentEasyStoreProductId);
   if (!productId) throw new Error('父商品缺少 EasyStore productId；為避免建立重複商品已停止。');
   if (!clean(snapshot.variantAttributeName) || !clean(snapshot.variantParentAttributeValue) || !clean(snapshot.variantAttributeValue)) throw new Error('請先填寫細項名稱、父商品細項值與新細項值。');
-  const globalMatch = await findEasyStoreMappingBySku(snapshot, token);
-  if (globalMatch && globalMatch.productId !== productId) {
-    throw new Error(`SKU ${snapshot.sku} 已存在於另一個 EasyStore 商品，為避免移錯商品已停止。`);
+  const childMappingIds = platformListingIds(product, 'easyStore');
+  if (childMappingIds.length > 1 || (childMappingIds.length === 1 && childMappingIds[0] !== productId)) {
+    throw new Error(`SKU ${snapshot.sku} 的中央 EasyStore 編號與父商品不一致，為避免移錯商品已停止。`);
   }
+  const existingInParent = await findEasyStoreMappingInProduct(snapshot, token, productId);
   const variantTemplate = {
     ...buildEasyStoreProductBody(snapshot, true).product.variants[0],
     name: snapshot.variantAttributeValue
   };
-  if (globalMatch) {
+  if (existingInParent) {
     await easyStoreRequest(`/products/${encodeURIComponent(productId)}/variants.json`, token, {
-      method: 'PUT', body: { variants: [{ id: globalMatch.variantId, ...variantTemplate }] }
+      method: 'PUT', body: { variants: [{ id: existingInParent.variantId, ...variantTemplate }] }
     });
-    return { action: 'variant-updated', productId, variantIds: [globalMatch.variantId] };
+    return { action: 'variant-updated', productId, variantIds: [existingInParent.variantId] };
   }
 
   const beforePayload = await easyStoreRequest(`/products/${encodeURIComponent(productId)}.json`, token);
@@ -1012,14 +1472,16 @@ async function addEasyStoreVariant(snapshot, token) {
 }
 
 async function upsertEasyStoreProduct(snapshot, product, token) {
-  if (snapshot.listingMode === 'add-variant') return addEasyStoreVariant(snapshot, token);
+  if (snapshot.listingMode === 'add-variant') return addEasyStoreVariant(snapshot, product, token);
   const mappings = product.platformMappings && typeof product.platformMappings === 'object' ? product.platformMappings : {};
   const mapped = mappings.easyStore && typeof mappings.easyStore === 'object' ? mappings.easyStore : {};
   const mappedProductId = clean(mapped.productId || product.sourceProductId);
   let productId = '';
   let variantIds = [];
-  let existing = await findEasyStoreMappingInProduct(snapshot, token, mappedProductId);
-  if (!existing) existing = await findEasyStoreMappingBySku(snapshot, token);
+  const existing = await findEasyStoreMappingInProduct(snapshot, token, mappedProductId);
+  if (mappedProductId && !existing) {
+    throw new Error(`中央商品記錄的 EasyStore productId ${mappedProductId} 找不到相同 SKU；已停止，不會改走全站 SKU 搜尋或建立替代商品。`);
+  }
   if (existing) {
     productId = existing.productId;
     variantIds = [existing.variantId];
@@ -1087,43 +1549,51 @@ function easyStoreMissingFields(snapshot) {
 
 function momoMissingFields(snapshot) {
   const missing = [];
+  const imagePlan = snapshot.platformImagePlan && snapshot.platformImagePlan.momo || {};
   missing.push(...variantRepresentativeMissingFields(snapshot));
   if (!snapshot.sku) missing.push('SKU');
   if (!snapshot.momoGoodsName) missing.push('MOMO 商品名稱');
   if (!snapshot.description) missing.push('完整商品介紹');
-  if (!snapshot.images.length) missing.push('上架圖片');
-  if (!snapshot.momoSpecialPromotionImageUrl) missing.push('MOMO 專推圖（商品第 2 或第 3 張繁體完成圖）');
+  if (!imagePlan.ready || imagePlan.requiredFirstRole !== 'cleanMain' || !Array.isArray(imagePlan.imageUrls) || !imagePlan.imageUrls.length) missing.push('MOMO cleanMain 首圖');
+  if (!imagePlan.promotionImageReady || !snapshot.momoSpecialPromotionImageUrl) missing.push('MOMO clean-only 專推圖');
   if (snapshot.momoPrice == null) missing.push('MOMO 售價');
   return missing;
 }
 
 function coupangMissingFields(snapshot) {
   const missing = [];
+  const imagePlan = snapshot.platformImagePlan && snapshot.platformImagePlan.coupang || {};
   missing.push(...variantRepresentativeMissingFields(snapshot));
   if (!snapshot.sku) missing.push('SKU');
   if (!snapshot.coupangTitle) missing.push('酷澎標題');
   if (!snapshot.description) missing.push('完整商品介紹');
-  if (!snapshot.images.length) missing.push('上架圖片');
-  if ((snapshot.productImageUrls || []).length < 2) missing.push('酷澎乾淨主圖（需第二張商品圖）');
+  if (!imagePlan.ready || imagePlan.requiredFirstRole !== 'cleanMain' || !Array.isArray(imagePlan.imageUrls) || !imagePlan.imageUrls.length) missing.push('酷澎 cleanMain 首圖');
   if (snapshot.coupangPrice == null) missing.push('酷澎售價');
   return missing;
 }
 
 function platformPayloadSnapshot(platform, snapshot) {
-  if (clean(platform).toLowerCase() !== 'coupang') return snapshot;
-  const productImages = normalizeUrls(snapshot.productImageUrls, 12);
-  const cleanMainImage = productImages[1] || '';
-  if (!cleanMainImage) return snapshot;
-  const images = [cleanMainImage].concat(normalizeUrls(snapshot.images, 7).filter((url) => url !== cleanMainImage)).slice(0, 7);
+  const key = clean(platform).toLowerCase();
+  if (!['coupang', 'momo'].includes(key)) return snapshot;
+  const plan = snapshot.platformImagePlan && snapshot.platformImagePlan[key] && typeof snapshot.platformImagePlan[key] === 'object'
+    ? snapshot.platformImagePlan[key] : {};
+  const images = normalizeUrls(plan.imageUrls, 7);
   return {
     ...snapshot,
     images,
+    momoSpecialPromotionImageUrl: key === 'momo' ? safeHttpUrl(plan.promotionImageUrl) : snapshot.momoSpecialPromotionImageUrl,
     imagePolicy: {
       ...(snapshot.imagePolicy || {}),
-      platformMainImage: 'second-product-image',
-      brandedGreenTemplateAllowedAsMain: false
+      platformMainImage: key === 'coupang' || key === 'momo' ? 'cleanMain' : 'brandedHero',
+      brandedHeroAllowedAfterMain: plan.brandedHeroAllowedAsSecondary === true,
+      brandedHeroExcluded: false,
+      removeSecondaryBrandedHeroIfPlatformRejectsGalleryLogo: plan.removeSecondaryBrandedHeroIfPlatformRejectsGalleryLogo === true
     }
   };
+}
+
+function platformStageFingerprint(platform, snapshot) {
+  return platformQueueFingerprint(platform, platformPayloadSnapshot(platform, snapshot));
 }
 
 function platformCategoryResolution(platform, snapshot, product) {
@@ -1141,10 +1611,12 @@ function platformCategoryResolution(platform, snapshot, product) {
     : { mode: 'auto', code: '', hint, source: 'official-platform-recommendation', ...constraint };
 }
 
-async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, missingFields) {
+async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, missingFields, attemptToken) {
   if (missingFields.length) {
     return { status: 'missing-fields', message: `請先補：${missingFields.join('、')}`, missingFields };
   }
+  const normalizedAttemptToken = clean(attemptToken);
+  if (!normalizedAttemptToken) throw new Error(`${platform} 缺少本次逐站排程 attemptToken，已停止以避免舊回條混入。`);
   const platformSnapshot = platformPayloadSnapshot(platform, snapshot);
   const queueRef = db.collection(PLATFORM_QUEUE_COLLECTION).doc(`${snapshot.productId}_${platform.toLowerCase()}`);
   const listingPolicy = buildPlatformQueuePolicy(product, platform, platformSnapshot);
@@ -1167,17 +1639,30 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
       && clean(existing.productId) === platformSnapshot.productId;
     const sameFingerprint = clean(existing.fingerprint) === fingerprint;
     const existingStatus = clean(existing.status).toLowerCase();
-    if (sameIdentity && sameFingerprint && PLATFORM_QUEUE_PENDING_STATUSES.has(existingStatus)) {
+    const sameAttempt = clean(existing.workflowVersion) === LISTING_WORKFLOW_ID
+      && clean(existing.jobId) === jobId
+      && clean(existing.attemptToken || existing.stageToken) === normalizedAttemptToken;
+    if (sameIdentity && sameFingerprint && sameAttempt && PLATFORM_QUEUE_PENDING_STATUSES.has(existingStatus)) {
       reusedStatus = 'already-queued';
       return;
     }
-    if (sameIdentity && sameFingerprint && PLATFORM_QUEUE_COMPLETED_STATUSES.has(existingStatus)) {
+    if (sameIdentity && sameFingerprint && !sameAttempt && PLATFORM_QUEUE_PENDING_STATUSES.has(existingStatus)) {
+      reusedStatus = 'conflicting-pending';
+      return;
+    }
+    if (sameIdentity && sameFingerprint && sameAttempt && PLATFORM_QUEUE_RECEIPT_STATUSES.has(existingStatus)) {
       reusedStatus = 'already-completed';
       return;
     }
     transaction.set(queueRef, {
       jobId, productId: platformSnapshot.productId, sku: platformSnapshot.sku, platform,
+      workflowVersion: LISTING_WORKFLOW_ID,
+      attemptToken: normalizedAttemptToken,
+      stageToken: normalizedAttemptToken,
+      snapshotFingerprint: listingSnapshotFingerprint(snapshot),
       status: 'awaiting-store-agent', payload: { ...platformSnapshot, categoryResolution }, listingPolicy, fingerprint,
+      verificationRequirements: snapshot.automationPolicy && snapshot.automationPolicy.publishVerification,
+      verificationReceipt: null, verifiedChecks: null, completedAt: null, error: '',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: '全通路營運中心', schemaVersion: 2
@@ -1187,14 +1672,27 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
     return {
       status: 'already-queued',
       message: `${platform} 相同 SKU 的工作已在處理中，本次不會再排第二筆。`,
-      queueId: queueRef.id
+      queueId: queueRef.id,
+      fingerprint,
+      attemptToken: normalizedAttemptToken
     };
   }
   if (reusedStatus === 'already-completed') {
     return {
       status: 'already-completed',
       message: `${platform} 相同版本已處理完成，本次不會重複建立。`,
-      queueId: queueRef.id
+      queueId: queueRef.id,
+      fingerprint,
+      attemptToken: normalizedAttemptToken
+    };
+  }
+  if (reusedStatus === 'conflicting-pending') {
+    return {
+      status: 'action-required',
+      message: `${platform} 尚有另一筆工作使用同一個 queue；新流程不會接手舊 job／舊回條，請先讓原工作結束或明確停用。`,
+      queueId: queueRef.id,
+      fingerprint,
+      attemptToken: normalizedAttemptToken
     };
   }
   const categoryPrefix = categoryResolution.mode === 'auto' ? `${platform} 會先限定在樂器／樂器配件內，依商品名稱、內容與官方類別推薦自動判斷最接近分類；` : '';
@@ -1202,11 +1700,13 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
     ? `${platform} 將把 SKU ${platformSnapshot.sku} 加入指定的既有商品，子編號的庫存與價格仍獨立。`
     : listingPolicy.existingListingIds.length
     ? `${platform} 已找到既有平台編號，將更新原商品，不會建立第二筆。`
-    : `${platform} 將先用完全相同 SKU 查詢：唯一一筆就更新、零筆才建立、多筆或不確定就停止。`);
+    : `${platform} 沒有中央平台編號，將直接建立同一份草稿；只有送出結果不明時才用完全相同 SKU 回查，不會先掃描全站商品。`);
   return {
     status: 'awaiting-store-agent',
     message,
-    queueId: queueRef.id
+    queueId: queueRef.id,
+    fingerprint,
+    attemptToken: normalizedAttemptToken
   };
 }
 
@@ -1251,6 +1751,516 @@ function overallPublishStatus(platforms) {
   return states.length ? 'completed' : 'no-platform';
 }
 
+function expectedStagePrice(stage, snapshot) {
+  if (stage === 'momo') return numberOrNull(snapshot.momoPrice);
+  if (stage === 'coupang') return numberOrNull(snapshot.coupangPrice);
+  return numberOrNull(snapshot.easyStorePrice);
+}
+
+function collectImageUrls(value, imageContext = false, result = [], visited = new Set()) {
+  if (value === null || value === undefined) return result;
+  if (typeof value === 'string') {
+    if (imageContext) {
+      const url = safeHttpUrl(value);
+      if (url && !result.includes(url)) result.push(url);
+    }
+    return result;
+  }
+  if (typeof value !== 'object' || visited.has(value)) return result;
+  visited.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectImageUrls(entry, imageContext, result, visited));
+    return result;
+  }
+  Object.entries(value).forEach(([key, entry]) => {
+    const nextImageContext = imageContext || /(image|photo|picture|thumbnail|gallery)/i.test(key);
+    if (typeof entry === 'string') {
+      if (nextImageContext || (imageContext && /^(url|src)$/i.test(key))) collectImageUrls(entry, true, result, visited);
+    } else {
+      collectImageUrls(entry, nextImageContext, result, visited);
+    }
+  });
+  return result;
+}
+
+function frozenSourceImageUrls(snapshot) {
+  const plan = snapshot && snapshot.platformImagePlan && typeof snapshot.platformImagePlan === 'object'
+    ? snapshot.platformImagePlan : {};
+  const values = [];
+  (Array.isArray(plan.roleAssignments) ? plan.roleAssignments : []).forEach((row) => values.push(row && row.sourceImageUrl));
+  (Array.isArray(plan.imageReferenceCases) ? plan.imageReferenceCases : []).forEach((row) => {
+    values.push(row && row.representativeSourceImageUrl);
+    (Array.isArray(row && row.sourceImageUrls) ? row.sourceImageUrls : []).forEach((url) => values.push(url));
+  });
+  return new Set(normalizeUrls(values, 1000));
+}
+
+function validatePlatformImageEvidence(stage, snapshot, verification) {
+  const name = clean(stage).toLowerCase();
+  const planKey = name === 'easystore' ? 'easyStore' : name;
+  const observed = verification && typeof verification === 'object' ? verification : {};
+  const plan = snapshot && snapshot.platformImagePlan && typeof snapshot.platformImagePlan === 'object'
+    ? snapshot.platformImagePlan : {};
+  const platformPlan = plan[planKey] && typeof plan[planKey] === 'object' ? plan[planKey] : {};
+  const expected = normalizeUrls(platformPlan.imageUrls, 12);
+  const rawAppliedImageUrls = Array.isArray(observed.appliedImageUrls) ? observed.appliedImageUrls : [];
+  const rawOfficialImageUrls = Array.isArray(observed.officialImageUrls) ? observed.officialImageUrls : [];
+  const appliedImageUrls = normalizeUrls(rawAppliedImageUrls, 100);
+  const officialImageUrls = normalizeUrls(rawOfficialImageUrls, 100);
+  const sourceUrls = frozenSourceImageUrls(snapshot);
+  const allowed = new Set(expected);
+  if (name === 'easystore' || name === 'shopee') {
+    normalizeUrls(snapshot && snapshot.images, 20).forEach((url) => allowed.add(url));
+  }
+  const reasons = [];
+  if (!expected.length) reasons.push('missing-final-platform-image-plan');
+  if (observed.imageEvidenceComplete !== true) reasons.push('incomplete-image-evidence');
+  if (!rawAppliedImageUrls.length || !appliedImageUrls.length || rawAppliedImageUrls.length !== appliedImageUrls.length) reasons.push('missing-or-invalid-applied-image-evidence');
+  if (!rawOfficialImageUrls.length || !officialImageUrls.length || rawOfficialImageUrls.length !== officialImageUrls.length) reasons.push('missing-or-invalid-official-image-evidence');
+  if (appliedImageUrls.some((url) => sourceUrls.has(url))) reasons.push('applied-image-evidence-contains-frozen-source');
+  if (officialImageUrls.some((url) => sourceUrls.has(url))) reasons.push('official-image-evidence-contains-frozen-source');
+  if (appliedImageUrls.some((url) => !allowed.has(url))) reasons.push('applied-image-evidence-outside-final-plan');
+  if (expected[0] && appliedImageUrls[0] !== expected[0]) reasons.push('applied-image-evidence-first-role-mismatch');
+  return {
+    verified: reasons.length === 0,
+    reasons,
+    appliedImageUrls,
+    officialImageUrls,
+    imageEvidenceComplete: observed.imageEvidenceComplete === true
+  };
+}
+
+function validatePlatformStageVerification(stage, snapshot, verification) {
+  const name = clean(stage).toLowerCase();
+  const observed = verification && typeof verification === 'object' ? verification : {};
+  const reasons = [];
+  const expectedSku = normalizeSku(snapshot && snapshot.sku);
+  const observedSku = normalizeSku(observed.sku);
+  const expectedPrice = expectedStagePrice(name, snapshot || {});
+  const observedPrice = numberOrNull(observed.price);
+  const expectedStock = numberOrNull(snapshot && snapshot.stock);
+  const observedStock = numberOrNull(observed.stock);
+  if (!['easystore', 'shopee', 'coupang', 'momo'].includes(name)) reasons.push('unsupported-stage');
+  if (!clean(observed.listingId || observed.productId)) reasons.push('missing-listing-id');
+  if (!expectedSku || observedSku !== expectedSku) reasons.push('sku-mismatch');
+  if (expectedPrice !== null && observedPrice !== expectedPrice) reasons.push('price-mismatch');
+  if (expectedStock !== null && observedStock !== expectedStock) reasons.push('stock-mismatch');
+  if (!clean(observed.status)) reasons.push('missing-status');
+  if (observed.platformListMatched !== true) reasons.push('platform-list-not-matched');
+  if (observed.officialCatalogMatched !== true) reasons.push('official-catalog-not-matched');
+  const imageVerification = validatePlatformImageEvidence(name, snapshot || {}, observed);
+  reasons.push(...imageVerification.reasons);
+  return {
+    verified: reasons.length === 0,
+    reasons,
+    receipt: {
+      stage: name,
+      listingId: clean(observed.listingId || observed.productId),
+      sku: observedSku,
+      price: observedPrice,
+      stock: observedStock,
+      status: clean(observed.status),
+      platformListMatched: observed.platformListMatched === true,
+      officialCatalogMatched: observed.officialCatalogMatched === true,
+      imageEvidenceComplete: imageVerification.imageEvidenceComplete,
+      appliedImageUrls: imageVerification.appliedImageUrls,
+      officialImageUrls: imageVerification.officialImageUrls
+    }
+  };
+}
+
+function initialListingStages() {
+  return {
+    easyStore: { status: 'processing' },
+    shopee: { status: 'blocked-by-previous-stage' },
+    coupang: { status: 'blocked-by-previous-stage' },
+    momo: { status: 'blocked-by-previous-stage' }
+  };
+}
+
+function queueStageFromPlatform(platform) {
+  const key = clean(platform).toLowerCase();
+  if (key === 'coupang' || key === 'momo') return key;
+  return '';
+}
+
+function validateQueuedStageReceipt(job, queueRecord) {
+  const currentJob = job && typeof job === 'object' ? job : {};
+  const record = queueRecord && typeof queueRecord === 'object' ? queueRecord : {};
+  const stage = queueStageFromPlatform(record.platform);
+  const stages = currentJob.stages && typeof currentJob.stages === 'object' ? currentJob.stages : {};
+  const stageState = stage && stages[stage] && typeof stages[stage] === 'object' ? stages[stage] : {};
+  const reasons = [];
+  if (!stage) reasons.push('unsupported-platform');
+  if (clean(currentJob.workflowVersion) !== LISTING_WORKFLOW_ID || clean(record.workflowVersion) !== LISTING_WORKFLOW_ID) reasons.push('workflow-version-mismatch');
+  if (!clean(currentJob.productId) || clean(record.productId) !== clean(currentJob.productId)) reasons.push('product-mismatch');
+  if (!clean(record.jobId) || clean(record.jobId) !== clean(currentJob.id || currentJob.jobId)) reasons.push('job-mismatch');
+  if (!clean(record.attemptToken) || clean(record.attemptToken) !== clean(stageState.attemptToken)) reasons.push('attempt-token-mismatch');
+  if (!clean(record.fingerprint) || clean(record.fingerprint) !== clean(stageState.fingerprint)) reasons.push('fingerprint-mismatch');
+  if (!clean(record.snapshotFingerprint) || clean(record.snapshotFingerprint) !== clean(currentJob.preparedSnapshotFingerprint)) reasons.push('snapshot-fingerprint-mismatch');
+  if (!PLATFORM_QUEUE_RECEIPT_STATUSES.has(clean(record.status).toLowerCase())) reasons.push('queue-status-not-verified');
+  const allowedStages = stage === 'coupang'
+    ? ['coupang', 'coupang-queueing', 'momo-queueing', 'momo', 'completed']
+    : stage === 'momo' ? ['momo', 'momo-queueing', 'completed'] : [];
+  if (stage && !allowedStages.includes(clean(currentJob.currentStage))) reasons.push('stage-order-mismatch');
+  const receipt = record.verificationReceipt && typeof record.verificationReceipt === 'object' ? record.verificationReceipt : {};
+  if (clean(receipt.stage) && clean(receipt.stage).toLowerCase() !== stage) reasons.push('receipt-stage-mismatch');
+  const verification = validatePlatformStageVerification(stage, currentJob.preparedSnapshot || {}, receipt);
+  reasons.push(...verification.reasons);
+  return { verified: reasons.length === 0, reasons: Array.from(new Set(reasons)), stage, receipt: verification.receipt };
+}
+
+function preparedImageReferenceCases(snapshot) {
+  const plan = snapshot && snapshot.platformImagePlan && typeof snapshot.platformImagePlan === 'object'
+    ? snapshot.platformImagePlan : {};
+  return (Array.isArray(plan.imageReferenceCases) ? plan.imageReferenceCases : []).map((row) => ({
+    productId: clean(row && row.productId),
+    sku: clean(row && row.sku),
+    sourceImageUrls: normalizeUrls(row && row.sourceImageUrls, 20),
+    representativeSourceImageUrl: safeHttpUrl(row && row.representativeSourceImageUrl),
+    representativeCompletedImageUrl: safeHttpUrl(row && row.representativeCompletedImageUrl)
+  })).filter((row) => row.productId);
+}
+
+function centralCompletedImageUpdate(snapshot, productId, productRecord = {}) {
+  const plan = snapshot && snapshot.platformImagePlan && typeof snapshot.platformImagePlan === 'object'
+    ? snapshot.platformImagePlan : {};
+  const rows = (Array.isArray(plan.roleAssignments) ? plan.roleAssignments : []).filter((row) => (
+    clean(row && row.productId) === clean(productId)
+    && safeHttpUrl(row && row.url)
+    && safeHttpUrl(row && row.url) !== safeHttpUrl(row && row.sourceImageUrl)
+  ));
+  const completedUrls = normalizeUrls(rows.map((row) => row.url), 100);
+  const references = preparedImageReferenceCases(snapshot);
+  const reference = references.find((row) => row.productId === clean(productId)) || {};
+  const representativeUrl = safeHttpUrl(reference.representativeCompletedImageUrl);
+  const representativeRow = rows.find((row) => safeHttpUrl(row.url) === representativeUrl && cleanRepresentativeRoleRow(row));
+  const cleanRow = rows.find((row) => row.roles.includes('cleanMain') && cleanRepresentativeRoleRow(row))
+    || rows.find((row) => row.roles.includes('variantRepresentative') && cleanRepresentativeRoleRow(row));
+  const existingUrl = safeHttpUrl(productRecord && productRecord.imageUrl);
+  const imageUrl = representativeRow ? representativeRow.url : cleanRow ? cleanRow.url : completedUrls.includes(existingUrl) ? existingUrl : '';
+  if (!imageUrl) return {};
+  return {
+    imageUrl,
+    imageUrls: [imageUrl].concat(completedUrls.filter((url) => url !== imageUrl)),
+    completedListingImageUrls: completedUrls
+  };
+}
+
+function validateAllPlatformImageReceipts(snapshot, stages) {
+  const source = stages && typeof stages === 'object' ? stages : {};
+  const reasons = [];
+  const receipts = {};
+  PLATFORM_EXECUTION_ORDER.forEach((stage) => {
+    const state = source[stage] && typeof source[stage] === 'object' ? source[stage] : {};
+    const receipt = state.receipt && typeof state.receipt === 'object' ? state.receipt : {};
+    if (clean(state.status).toLowerCase() !== 'verified') reasons.push(`${stage}:stage-not-verified`);
+    const verification = validatePlatformStageVerification(stage, snapshot || {}, receipt);
+    receipts[stage] = verification.receipt;
+    verification.reasons.forEach((reason) => reasons.push(`${stage}:${reason}`));
+  });
+  return { verified: reasons.length === 0, reasons: Array.from(new Set(reasons)), receipts };
+}
+
+function validateCompletionImageReferences(snapshot, records, stages = null) {
+  const plan = snapshot && snapshot.platformImagePlan && typeof snapshot.platformImagePlan === 'object'
+    ? snapshot.platformImagePlan : {};
+  const reasons = platformImagePlanMissingFields(plan, { requireFinalized: true }).map((field) => `platform-image-plan:${field}`);
+  const roleRows = Array.isArray(plan.roleAssignments) ? plan.roleAssignments : [];
+  const roleRowsFor = (productId, url, sourceUrl) => roleRows.filter((row) => {
+    if (productId && clean(row && row.productId) !== clean(productId)) return false;
+    if (url && safeHttpUrl(row && row.url) !== safeHttpUrl(url)) return false;
+    if (sourceUrl && safeHttpUrl(row && row.sourceImageUrl) !== safeHttpUrl(sourceUrl)) return false;
+    return true;
+  });
+  const isCleanRole = (row) => cleanRepresentativeRoleRow(row);
+  const references = preparedImageReferenceCases(snapshot);
+  const frozenSources = frozenSourceImageUrls(snapshot);
+  if (!references.length) reasons.push('missing-image-reference-cases');
+  const recordsByProductId = new Map((Array.isArray(records) ? records : []).map((row) => [clean(row && row.productId), row]));
+  references.forEach((reference) => {
+    const record = recordsByProductId.get(reference.productId) || {};
+    const caseRecord = record.caseRecord && typeof record.caseRecord === 'object' ? record.caseRecord : {};
+    const productRecord = record.productRecord && typeof record.productRecord === 'object' ? record.productRecord : {};
+    const central = caseRecord.centralImageReferenceVerification && typeof caseRecord.centralImageReferenceVerification === 'object'
+      ? caseRecord.centralImageReferenceVerification : {};
+    const centralUrl = safeHttpUrl(central.cleanMainUrl);
+    const productImages = collectImageUrls(productRecord, false).slice(0, 1000);
+    if (productImages.some((url) => frozenSources.has(url))) reasons.push(`${reference.productId}:central-or-variant-image-still-frozen-source`);
+    if (centralUrl && frozenSources.has(centralUrl)) reasons.push(`${reference.productId}:central-verification-still-frozen-source`);
+    if (clean(central.status).toLowerCase() !== 'verified') reasons.push(`${reference.productId}:central-image-not-verified`);
+    const centralRows = roleRowsFor(reference.productId, centralUrl, '');
+    if (!centralUrl || !centralRows.some(isCleanRole)) reasons.push(`${reference.productId}:central-image-not-clean-role-output`);
+    if (!centralUrl || safeHttpUrl(productRecord.imageUrl) !== centralUrl || !productImages.includes(centralUrl)) {
+      reasons.push(`${reference.productId}:central-product-image-reference-mismatch`);
+    }
+    if (reference.representativeSourceImageUrl) {
+      const representativeRows = roleRowsFor(reference.productId, reference.representativeCompletedImageUrl, reference.representativeSourceImageUrl);
+      if (!reference.representativeCompletedImageUrl || !representativeRows.some(isCleanRole)) {
+        reasons.push(`${reference.productId}:variant-representative-not-clean-role-output`);
+      } else if (!productImages.includes(reference.representativeCompletedImageUrl)) {
+        reasons.push(`${reference.productId}:variant-representative-not-in-central-images`);
+      }
+    }
+  });
+  if (stages) {
+    const platformVerification = validateAllPlatformImageReceipts(snapshot, stages);
+    reasons.push(...platformVerification.reasons);
+  } else {
+    reasons.push('missing-all-platform-image-receipts');
+  }
+  return { verified: reasons.length === 0, reasons: Array.from(new Set(reasons)), references };
+}
+
+async function applyVerifiedQueueReceipt(db, queueId, queueRecord) {
+  const record = queueRecord && typeof queueRecord === 'object' ? queueRecord : {};
+  const jobId = clean(record.jobId);
+  if (!jobId || clean(record.workflowVersion) !== LISTING_WORKFLOW_ID) return { status: 'ignored-legacy-or-unversioned-queue' };
+  const jobRef = db.collection(JOB_COLLECTION).doc(jobId);
+  const initialJobSnap = await jobRef.get();
+  if (!initialJobSnap.exists) return { status: 'ignored-missing-job' };
+  const initialJob = { ...(initialJobSnap.data() || {}), id: jobId };
+  const initialVerification = validateQueuedStageReceipt(initialJob, record);
+  if (!initialVerification.verified) {
+    console.warn('[applyVerifiedQueueReceipt] ignored receipt', { queueId, jobId, reasons: initialVerification.reasons });
+    return { status: 'ignored-unverified-receipt', reasons: initialVerification.reasons };
+  }
+  const snapshot = initialJob.preparedSnapshot;
+  const productId = clean(initialJob.productId);
+  const productRef = db.collection(PRODUCT_COLLECTION).doc(productId);
+  const caseRef = db.collection(LISTING_CASE_COLLECTION).doc(productId);
+
+  if (initialVerification.stage === 'momo') {
+    let completedStages = null;
+    let alreadyCompleted = false;
+    let imageReferenceBlockers = [];
+    const imageReferenceCases = preparedImageReferenceCases(snapshot);
+    const imageDocumentRefs = imageReferenceCases.map((reference) => ({
+      ...reference,
+      caseRef: db.collection(LISTING_CASE_COLLECTION).doc(reference.productId),
+      productRef: db.collection(PRODUCT_COLLECTION).doc(reference.productId)
+    }));
+    await db.runTransaction(async (transaction) => {
+      const latestSnap = await transaction.get(jobRef);
+      if (!latestSnap.exists) return;
+      const latest = { ...(latestSnap.data() || {}), id: jobId };
+      const verification = validateQueuedStageReceipt(latest, record);
+      if (!verification.verified) return;
+      const imageDocuments = await Promise.all(imageDocumentRefs.map(async (reference) => {
+        const [caseSnap, productSnap] = await Promise.all([
+          transaction.get(reference.caseRef), transaction.get(reference.productRef)
+        ]);
+        return {
+          productId: reference.productId,
+          caseRecord: caseSnap.exists ? caseSnap.data() || {} : {},
+          productRecord: productSnap.exists ? productSnap.data() || {} : {}
+        };
+      }));
+      const stages = latest.stages && typeof latest.stages === 'object' ? { ...latest.stages } : initialListingStages();
+      stages.momo = {
+        ...(stages.momo || {}), status: 'verified', receipt: verification.receipt,
+        queueId: clean(queueId), attemptToken: clean(record.attemptToken), fingerprint: clean(record.fingerprint)
+      };
+      const imageReferenceVerification = validateCompletionImageReferences(snapshot, imageDocuments, stages);
+      if (!imageReferenceVerification.verified) {
+        imageReferenceBlockers = imageReferenceVerification.reasons;
+        return;
+      }
+      completedStages = stages;
+      if (clean(latest.currentStage) === 'completed') {
+        alreadyCompleted = true;
+        return;
+      }
+      transaction.set(jobRef, {
+        status: 'completed', currentStage: 'completed', stages,
+        transitionToken: '', updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        finishedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      imageDocumentRefs.forEach((reference) => {
+        transaction.set(reference.caseRef, {
+          mediaReferencesVerified: true,
+          sourceImageRetentionPolicy: {
+            mode: 'metadata-only-after-required-binary-cleanup',
+            sourceBinaryCleanupRequired: true,
+            cleanupWorkerRequired: true,
+            cleanupStatus: 'required',
+            referencesVerified: true,
+            eligibleForDeletion: true,
+            verifiedJobId: jobId,
+            verifiedAt: admin.firestore.FieldValue.serverTimestamp()
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v2'
+        }, { merge: true });
+      });
+    });
+    if (imageReferenceBlockers.length) {
+      console.warn('[applyVerifiedQueueReceipt] MOMO verified but image references are not safe for cleanup', { jobId, imageReferenceBlockers });
+      return { status: 'blocked-image-reference-verification', jobId, currentStage: 'momo', reasons: imageReferenceBlockers };
+    }
+    if (!completedStages) return { status: 'ignored-stale-momo-receipt' };
+    const productSnap = await productRef.get();
+    const product = productSnap.exists ? productSnap.data() || {} : {};
+    const platforms = initialJob.platforms && typeof initialJob.platforms === 'object' ? { ...initialJob.platforms } : {};
+    platforms.momo = { status: 'completed', message: 'MOMO 已以正式商品清單核對完成。' };
+    const storedPlatforms = summarizePlatformsForStorage(platforms);
+    await Promise.all([
+      caseRef.set({
+        caseStatus: 'published',
+        publishState: {
+          jobId, status: 'completed', currentStage: 'completed', stages: completedStages,
+          platforms: storedPlatforms, verifiedAt: admin.firestore.FieldValue.serverTimestamp()
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v2'
+      }, { merge: true }),
+      productRef.set({
+        platformListingStatus: platformListingStatusFromPublish(product.platformListingStatus, {
+          easyStore: { status: 'completed' }, shopee: { status: 'completed' },
+          coupang: { status: 'completed' }, momo: { status: 'completed' }
+        }),
+        platformListingStatusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v2'
+      }, { merge: true }),
+      db.collection('opsAuditLogs').doc(`${jobId}_four_channel_completed`).set({
+        action: '四通路上架完成', entityType: 'productListingPublish', entityId: jobId,
+        summary: `${clean(snapshot && snapshot.sku)}｜EasyStore、蝦皮、酷澎、MOMO 已逐站核對`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy: '固定四通路 queue receipt',
+        version: LISTING_WORKFLOW_ID
+      }, { merge: true })
+    ]);
+    return { status: alreadyCompleted ? 'already-completed' : 'completed', jobId, currentStage: 'completed' };
+  }
+
+  const momoFingerprint = platformStageFingerprint('MOMO', snapshot);
+  let momoAttemptToken = '';
+  let claimedStages = null;
+  let alreadyAdvanced = false;
+  await db.runTransaction(async (transaction) => {
+    const latestSnap = await transaction.get(jobRef);
+    if (!latestSnap.exists) return;
+    const latest = { ...(latestSnap.data() || {}), id: jobId };
+    const verification = validateQueuedStageReceipt(latest, record);
+    if (!verification.verified) return;
+    const stages = latest.stages && typeof latest.stages === 'object' ? { ...latest.stages } : initialListingStages();
+    stages.coupang = {
+      ...(stages.coupang || {}), status: 'verified', receipt: verification.receipt,
+      queueId: clean(queueId), attemptToken: clean(record.attemptToken), fingerprint: clean(record.fingerprint)
+    };
+    if (['momo', 'completed'].includes(clean(latest.currentStage))) {
+      claimedStages = stages;
+      alreadyAdvanced = true;
+      return;
+    }
+    const resumingMomoQueue = clean(latest.currentStage) === 'momo-queueing';
+    momoAttemptToken = resumingMomoQueue
+      ? clean(stages.momo && stages.momo.attemptToken)
+      : crypto.randomBytes(16).toString('hex');
+    if (!momoAttemptToken) return;
+    stages.momo = {
+      ...(stages.momo || {}), status: 'queueing', attemptToken: momoAttemptToken, fingerprint: momoFingerprint
+    };
+    claimedStages = stages;
+    transaction.set(jobRef, {
+      status: 'running', currentStage: 'momo-queueing', stages,
+      transitionToken: momoAttemptToken,
+      stageRevision: Math.max(1, Number(latest.stageRevision) || 1) + (resumingMomoQueue ? 0 : 1),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+  if (!claimedStages) return { status: 'ignored-stale-coupang-receipt' };
+  if (alreadyAdvanced) return { status: 'already-advanced', jobId, currentStage: clean(initialJob.currentStage) };
+  const productSnap = await productRef.get();
+  if (!productSnap.exists) throw new Error('中央商品主檔已不存在，MOMO 不會建立替代商品。');
+  const product = productSnap.data() || {};
+  const queued = await queueFixedIpPlatform(db, jobId, 'MOMO', snapshot, product, momoMissingFields(snapshot), momoAttemptToken);
+  const queueBlocked = ['missing-fields', 'action-required'].includes(clean(queued && queued.status));
+  claimedStages.momo = {
+    ...(claimedStages.momo || {}),
+    status: queueBlocked ? clean(queued.status) : 'awaiting-verification',
+    queueId: clean(queued && queued.queueId), attemptToken: momoAttemptToken,
+    fingerprint: clean(queued && queued.fingerprint) || momoFingerprint,
+    message: clean(queued && queued.message)
+  };
+  await db.runTransaction(async (transaction) => {
+    const latestSnap = await transaction.get(jobRef);
+    if (!latestSnap.exists) return;
+    const latest = latestSnap.data() || {};
+    const latestMomo = latest.stages && latest.stages.momo || {};
+    if (clean(latest.currentStage) !== 'momo-queueing' || clean(latestMomo.attemptToken) !== momoAttemptToken) return;
+    transaction.set(jobRef, {
+      status: queueBlocked ? 'needs-input' : 'submitted', currentStage: 'momo', stages: claimedStages,
+      platforms: summarizePlatformsForStorage({ ...(latest.platforms || {}), coupang: { status: 'completed' }, momo: queued }),
+      transitionToken: '', updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+  await caseRef.set({
+    caseStatus: 'submitted',
+    publishState: {
+      jobId, status: queueBlocked ? 'needs-input' : 'submitted', currentStage: 'momo', stages: claimedStages,
+      platforms: summarizePlatformsForStorage({ ...(initialJob.platforms || {}), coupang: { status: 'completed' }, momo: queued }),
+      submittedAt: admin.firestore.FieldValue.serverTimestamp(), submittedBy: '固定四通路 queue receipt'
+    },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v2'
+  }, { merge: true });
+  if (clean(queued && queued.status) === 'already-completed') {
+    const momoQueueSnap = await db.collection(PLATFORM_QUEUE_COLLECTION).doc(`${productId}_momo`).get();
+    if (momoQueueSnap.exists) return applyVerifiedQueueReceipt(db, momoQueueSnap.id, momoQueueSnap.data() || {});
+  }
+  return { status: queueBlocked ? 'momo-blocked' : 'momo-queued', jobId, currentStage: 'momo', platform: queued };
+}
+
+function sameOrderedStrings(left, right) {
+  const a = Array.isArray(left) ? left.map(clean) : [];
+  const b = Array.isArray(right) ? right.map(clean) : [];
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function activeV2JobReuseBlockers(candidate, productId, listingCase) {
+  const job = candidate && typeof candidate === 'object' ? candidate : {};
+  const snapshot = job.preparedSnapshot && typeof job.preparedSnapshot === 'object' ? job.preparedSnapshot : {};
+  const policy = snapshot.automationPolicy && typeof snapshot.automationPolicy === 'object' ? snapshot.automationPolicy : {};
+  const frozen = listingCase && listingCase.codexHandoff && listingCase.codexHandoff.preflightSnapshot
+    && typeof listingCase.codexHandoff.preflightSnapshot === 'object'
+    ? listingCase.codexHandoff.preflightSnapshot : {};
+  const reasons = [];
+  if (clean(job.workflowVersion) !== LISTING_WORKFLOW_ID) reasons.push('workflow-version-mismatch');
+  if (Number(job.schemaVersion) !== LISTING_JOB_SCHEMA_VERSION) reasons.push('job-schema-version-mismatch');
+  if (clean(job.productId) !== clean(productId) || clean(snapshot.productId) !== clean(productId)) reasons.push('product-mismatch');
+  if (!sameOrderedStrings(job.platformOrder, PLATFORM_EXECUTION_ORDER)) reasons.push('job-platform-order-mismatch');
+  if (Number(policy.version) !== LISTING_AUTOMATION_POLICY_VERSION
+    || clean(policy.workflowId) !== LISTING_WORKFLOW_ID
+    || !sameOrderedStrings(policy.platformExecutionPlan && policy.platformExecutionPlan.order, PLATFORM_EXECUTION_ORDER)
+    || JSON.stringify(compactObject(policy)) !== JSON.stringify(compactObject(listingAutomationPolicy()))) {
+    reasons.push('automation-policy-mismatch');
+  }
+  if (!snapshot || !Object.keys(snapshot).length) reasons.push('missing-prepared-snapshot');
+  if (!clean(job.preparedSnapshotFingerprint)
+    || clean(job.preparedSnapshotFingerprint) !== listingSnapshotFingerprint(snapshot)) reasons.push('prepared-snapshot-fingerprint-mismatch');
+  const imagePlan = snapshot.platformImagePlan && typeof snapshot.platformImagePlan === 'object' ? snapshot.platformImagePlan : {};
+  if (platformImagePlanMissingFields(imagePlan, { requireFinalized: true }).length) reasons.push('finalized-image-plan-invalid');
+  if (clean(frozen.workflowVersion) !== LISTING_WORKFLOW_ID || !clean(frozen.snapshotId)) reasons.push('case-frozen-input-invalid');
+  if (clean(imagePlan.inputSnapshotId) !== clean(frozen.snapshotId)
+    || clean(imagePlan.inputSnapshotFingerprint) !== frozenInputSnapshotFingerprint(frozen)) reasons.push('case-frozen-input-mismatch');
+  const currentStage = clean(job.currentStage);
+  const allowedStages = ['easyStore', 'shopee', 'coupang-queueing', 'coupang', 'momo-queueing', 'momo'];
+  if (!allowedStages.includes(currentStage)) reasons.push('invalid-active-stage');
+  const stages = job.stages && typeof job.stages === 'object' ? job.stages : {};
+  const completedBefore = currentStage === 'shopee'
+    ? ['easyStore']
+    : ['coupang-queueing', 'coupang'].includes(currentStage)
+      ? ['easyStore', 'shopee']
+      : ['momo-queueing', 'momo'].includes(currentStage) ? ['easyStore', 'shopee', 'coupang'] : [];
+  completedBefore.forEach((stage) => {
+    const state = stages[stage] && typeof stages[stage] === 'object' ? stages[stage] : {};
+    if (clean(state.status).toLowerCase() !== 'verified') {
+      reasons.push(`${stage}-prerequisite-not-verified`);
+      return;
+    }
+    const verification = validatePlatformStageVerification(stage, snapshot, state.receipt);
+    if (!verification.verified) reasons.push(`${stage}-receipt-invalid`);
+  });
+  return Array.from(new Set(reasons));
+}
+
 function registerProductListingPublish(target) {
   target.publishProductListingCase = onCall({
     region: REGION,
@@ -1269,41 +2279,130 @@ function registerProductListingPublish(target) {
     if (!productSnap.exists) throw new HttpsError('not-found', '找不到中央商品主檔。');
     if (!caseSnap.exists) throw new HttpsError('failed-precondition', '請先儲存商品上架資料。');
     const product = productSnap.data() || {};
-    const listingCase = caseSnap.data() || {};
-    let variantParentProduct = null;
-    let variantParentListingCase = null;
-    if (clean(listingCase.listingMode) === 'add-variant') {
-      const parentId = clean(listingCase.variantParentProductId);
-      if (!parentId || parentId === productId || parentId.includes('/')) throw new HttpsError('failed-precondition', '請選擇另一個有效的父商品。');
-      const [parentSnap, parentCaseSnap] = await Promise.all([
-        db.collection(PRODUCT_COLLECTION).doc(parentId).get(),
-        db.collection(LISTING_CASE_COLLECTION).doc(parentId).get()
-      ]);
-      if (!parentSnap.exists) throw new HttpsError('failed-precondition', '選定的父商品已不存在，請重新選擇。');
-      variantParentProduct = parentSnap.data() || {};
-      variantParentListingCase = parentCaseSnap.exists ? parentCaseSnap.data() || {} : {};
+    let listingCase = caseSnap.data() || {};
+    const priorJobId = clean(request && request.data && request.data.jobId)
+      || clean(listingCase.publishState && listingCase.publishState.jobId);
+    let reusableJob = null;
+    let reusableJobRef = null;
+    if (priorJobId && !priorJobId.includes('/')) {
+      const candidateRef = db.collection(JOB_COLLECTION).doc(priorJobId);
+      const candidateSnap = await candidateRef.get();
+      const candidate = candidateSnap.exists ? candidateSnap.data() || {} : {};
+      if (candidateSnap.exists && clean(candidate.workflowVersion) === LISTING_WORKFLOW_ID
+        && clean(candidate.currentStage) !== 'completed') {
+        const reuseBlockers = activeV2JobReuseBlockers(candidate, productId, listingCase);
+        if (reuseBlockers.length) {
+          throw new HttpsError('failed-precondition', `既有 v2 工作不符合目前固定流程，已拒絕復用：${reuseBlockers.join('、')}。請由營運中心重新交接建立新的固定 v2 工作。`);
+        }
+        reusableJob = candidate;
+        reusableJobRef = candidateRef;
+      }
     }
-    const snapshot = buildListingSnapshot(productId, product, listingCase, variantParentProduct, variantParentListingCase);
-    if (!snapshot.enabledEasyStoreShopee && !snapshot.enabledMomo && !snapshot.enabledCoupang) {
-      throw new HttpsError('failed-precondition', '請至少勾選一個要上架的平台。');
+    if (reusableJob && clean(reusableJob.currentStage) !== 'easyStore') {
+      const resumedStages = reusableJob.stages && typeof reusableJob.stages === 'object' ? reusableJob.stages : initialListingStages();
+      const resumedPlatforms = reusableJob.platforms && typeof reusableJob.platforms === 'object' ? { ...reusableJob.platforms } : {};
+      if (clean(reusableJob.currentStage) === 'shopee') {
+        const easyStoreStage = resumedStages.easyStore && typeof resumedStages.easyStore === 'object' ? resumedStages.easyStore : {};
+        resumedPlatforms.shopee = {
+          status: 'waiting-easystore-sync',
+          message: '沿用同一份 immutable 快照與 EasyStore 商品，等待蝦皮正式清單核對。',
+          autofillPayload: buildShopeeAutofillPayload(reusableJob.preparedSnapshot, {
+            productId: clean(easyStoreStage.productId),
+            variantIds: Array.isArray(easyStoreStage.variantIds) ? easyStoreStage.variantIds : []
+          }, {
+            jobId: reusableJobRef.id,
+            snapshotFingerprint: clean(reusableJob.preparedSnapshotFingerprint)
+          })
+        };
+      }
+      return {
+        ok: true, resumed: true, productId, jobId: reusableJobRef.id,
+        status: clean(reusableJob.status) || 'submitted', currentStage: clean(reusableJob.currentStage),
+        stages: resumedStages, platforms: resumedPlatforms
+      };
     }
-    const representativeMissing = variantRepresentativeMissingFields(snapshot);
-    if (representativeMissing.length) {
-      throw new HttpsError('failed-precondition', `細項代表圖尚未完成繁體化：${representativeMissing.join('、')}。請先完成圖片處理；系統不會直接使用簡體原圖。`);
+    let snapshot = reusableJob ? reusableJob.preparedSnapshot : null;
+    let preflightMissing = reusableJob && reusableJob.preflightMissing && typeof reusableJob.preflightMissing === 'object'
+      ? reusableJob.preflightMissing : null;
+    if (!snapshot) {
+      let finalizedMedia;
+      try {
+        finalizedMedia = await loadFinalPreparedMediaSnapshot(db, productId, listingCase);
+      } catch (error) {
+        throw new HttpsError('failed-precondition', `完成圖最終預檢未通過：${clean(error && error.message) || '無法從凍結來源建立完成圖快照。'}`);
+      }
+      listingCase = finalizedMedia.rootListingCase || listingCase;
+      let variantParentProduct = null;
+      let variantParentListingCase = null;
+      if (clean(listingCase.listingMode) === 'add-variant') {
+        const parentId = clean(listingCase.variantParentProductId);
+        if (!parentId || parentId === productId || parentId.includes('/')) throw new HttpsError('failed-precondition', '請選擇另一個有效的父商品。');
+        const [parentSnap, parentCaseSnap] = await Promise.all([
+          db.collection(PRODUCT_COLLECTION).doc(parentId).get(),
+          db.collection(LISTING_CASE_COLLECTION).doc(parentId).get()
+        ]);
+        if (!parentSnap.exists) throw new HttpsError('failed-precondition', '選定的父商品已不存在，請重新選擇。');
+        variantParentProduct = parentSnap.data() || {};
+        variantParentListingCase = finalizedMedia.currentCases.get(parentId)
+          || (parentCaseSnap.exists ? parentCaseSnap.data() || {} : {});
+      }
+      snapshot = buildListingSnapshot(productId, product, listingCase, variantParentProduct, variantParentListingCase, finalizedMedia.preparedMediaSnapshot);
+      if (!snapshot.enabledEasyStoreShopee || !snapshot.enabledMomo || !snapshot.enabledCoupang) {
+        throw new HttpsError('failed-precondition', '固定新版流程必須同時發布 EasyStore、蝦皮、酷澎與 MOMO，不接受舊的通路勾選或第二套路徑。');
+      }
+      const representativeMissing = variantRepresentativeMissingFields(snapshot);
+      if (representativeMissing.length) {
+        throw new HttpsError('failed-precondition', `細項代表圖尚未完成繁體化：${representativeMissing.join('、')}。請先完成圖片處理；系統不會直接使用簡體原圖。`);
+      }
+      const shopeeLogistics = buildShopeeLogistics(snapshot);
+      preflightMissing = {
+        images: platformImagePlanMissingFields(snapshot.platformImagePlan, { requireFinalized: true }),
+        easyStore: easyStoreMissingFields(snapshot),
+        shopee: [].concat(
+          !snapshot.shopeeCategoryPath ? ['蝦皮分類'] : [],
+          identityAllowsShopeeAutofill(snapshot.identityStatus, snapshot.identityManualConfirmed) ? [] : ['蝦皮商品身分／型號確認'],
+          shopeeLogistics.requiresConfirmation ? ['蝦皮物流（包裝尺寸、重量或配送方式尚未能安全判定）'] : []
+        ),
+        coupang: coupangMissingFields(snapshot),
+        momo: momoMissingFields(snapshot)
+      };
+      const missingSummary = Object.entries(preflightMissing)
+        .filter(([, rows]) => rows.length)
+        .map(([platform, rows]) => `${platform}：${rows.join('、')}`);
+      if (missingSummary.length) {
+        throw new HttpsError('failed-precondition', `四通路單次預檢未通過；尚未操作任何平台。${missingSummary.join('；')}`);
+      }
     }
-    const jobRef = db.collection(JOB_COLLECTION).doc();
+    const jobRef = reusableJobRef || db.collection(JOB_COLLECTION).doc();
     const jobId = jobRef.id;
     const createdBy = clean(request.auth && request.auth.token && request.auth.token.email) || '管理者';
-    const platforms = {};
+    const platforms = reusableJob && reusableJob.platforms && typeof reusableJob.platforms === 'object' ? { ...reusableJob.platforms } : {};
+    const stages = reusableJob && reusableJob.stages && typeof reusableJob.stages === 'object' ? { ...reusableJob.stages } : initialListingStages();
+    let currentStage = 'easyStore';
     let lockStatus = 'failed';
     await acquirePublishLock(db, caseRef, jobId, createdBy);
     try {
-      await jobRef.set({
-        jobNo: `PUB-${Date.now()}`, type: 'productListingPublish', status: 'running', dryRun: false,
-        productId, productSku: snapshot.sku, productName: snapshot.title,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(), schemaVersion: 1
-      });
+      if (reusableJob) {
+        await jobRef.set({
+          status: 'running', resumedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } else {
+        await jobRef.set({
+          jobNo: `PUB-${Date.now()}`, type: 'productListingPublish', status: 'running', dryRun: false,
+          productId, productSku: snapshot.sku, productName: snapshot.title,
+          workflowVersion: snapshot.automationPolicy.workflowId,
+          platformOrder: snapshot.automationPolicy.platformExecutionPlan.order,
+          preparedSnapshot: snapshot,
+          preparedSnapshotFingerprint: listingSnapshotFingerprint(snapshot),
+          preflightMissing,
+          currentStage,
+          stages,
+          stageRevision: 1,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(), schemaVersion: LISTING_JOB_SCHEMA_VERSION
+        });
+      }
 
       if (snapshot.enabledEasyStoreShopee) {
         const missing = easyStoreMissingFields(snapshot);
@@ -1315,11 +2414,14 @@ function registerProductListingPublish(target) {
             const token = clean(EASYSTORE_ACCESS_TOKEN.value());
             if (!token) throw new Error('尚未設定 EASYSTORE_ACCESS_TOKEN。');
             const result = await upsertEasyStoreProduct(snapshot, product, token);
+            const easyStoreVerification = await verifyEasyStorePublishedListing(snapshot, token, result);
             const previousMappings = product.platformMappings && typeof product.platformMappings === 'object' ? product.platformMappings : {};
+            const centralImageUpdate = centralCompletedImageUpdate(snapshot, productId, product);
             await productRef.set({
               sourceCollection: 'EasyStore API', sourceProductId: result.productId, sourceVariantId: result.variantIds[0] || '',
               onlineName: snapshot.title, onlinePrice: snapshot.easyStorePrice,
-              imageUrl: snapshot.images[0] || '', imageUrls: snapshot.images,
+              ...centralImageUpdate,
+              easyStoreListingImageUrls: normalizeUrls(snapshot.images, 20),
               easyStoreMatched: true, easyStoreMatchStatus: 'matched',
               platformMappings: {
                 ...previousMappings,
@@ -1336,9 +2438,12 @@ function registerProductListingPublish(target) {
             platforms.easyStore = {
               status: result.action === 'created' ? 'created' : 'updated',
               message: (result.action === 'variant-created' ? 'EasyStore 已在既有商品中建立新細項。' : result.action === 'variant-updated' ? 'EasyStore 既有細項已更新。' : result.action === 'created' ? 'EasyStore 商品已建立。' : 'EasyStore 商品已更新。')+(result.imageWarning||''),
-              productId: result.productId, variantIds: result.variantIds
+              productId: result.productId, variantIds: result.variantIds, verification: easyStoreVerification
             };
-            const autofillPayload = buildShopeeAutofillPayload(snapshot, result);
+            const autofillPayload = buildShopeeAutofillPayload(snapshot, result, {
+              jobId,
+              snapshotFingerprint: listingSnapshotFingerprint(snapshot)
+            });
             const identityAllowsAutofill = identityAllowsShopeeAutofill(
               snapshot.identityStatus,
               snapshot.identityManualConfirmed
@@ -1355,25 +2460,30 @@ function registerProductListingPublish(target) {
                   ? '請先完成蝦皮分類，再啟動自動填寫。'
                   : '商品型號或顏色尚未確認，請先核對後再送到蝦皮。'
               };
+            stages.easyStore = { status: 'verified', productId: result.productId, variantIds: result.variantIds, receipt: easyStoreVerification };
+            stages.shopee = { status: 'awaiting-verification' };
+            currentStage = 'shopee';
           } catch (error) {
             platforms.easyStore = { status: 'failed', message: clean(error && error.message).slice(0, 800) || 'EasyStore 上架失敗。' };
             platforms.shopee = { status: 'waiting-easystore', message: 'EasyStore 尚未完成，因此尚未送往蝦皮。' };
+            stages.easyStore = { status: 'failed', message: platforms.easyStore.message };
+            currentStage = 'easyStore';
           }
         }
       }
 
-      if (snapshot.enabledMomo) platforms.momo = await queueFixedIpPlatform(db, jobId, 'MOMO', snapshot, product, momoMissingFields(snapshot));
-      if (snapshot.enabledCoupang) platforms.coupang = await queueFixedIpPlatform(db, jobId, 'Coupang', snapshot, product, coupangMissingFields(snapshot));
+      if (snapshot.enabledCoupang) platforms.coupang = { status: 'blocked-by-previous-stage', message: '蝦皮尚未以正式清單核對完成，酷澎不會提前排隊。' };
+      if (snapshot.enabledMomo) platforms.momo = { status: 'blocked-by-previous-stage', message: '酷澎尚未以正式清單核對完成，MOMO 不會提前排隊。' };
       const status = overallPublishStatus(platforms);
       const platformsForStorage = summarizePlatformsForStorage(platforms);
       const platformListingStatus = platformListingStatusFromPublish(product.platformListingStatus, platforms);
       await Promise.all([
-        jobRef.set({ status, platforms: platformsForStorage, updatedAt: admin.firestore.FieldValue.serverTimestamp(), finishedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+        jobRef.set({ status, platforms: platformsForStorage, currentStage, stages, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
         caseRef.set({
           caseStatus: status === 'completed' ? 'published' : 'submitted',
           shopeeCategoryPath: snapshot.shopeeCategoryPath,
           shopeeAttributeValues: snapshot.shopeeAttributeValues,
-          publishState: { jobId, status, platforms: platformsForStorage, submittedAt: admin.firestore.FieldValue.serverTimestamp(), submittedBy: createdBy },
+          publishState: { jobId, status, currentStage, stages, platforms: platformsForStorage, submittedAt: admin.firestore.FieldValue.serverTimestamp(), submittedBy: createdBy },
           updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架', schemaVersion: 8
         }, { merge: true }),
         productRef.set({
@@ -1385,16 +2495,16 @@ function registerProductListingPublish(target) {
           action: '確認商品上架', entityType: 'productListingPublish', entityId: jobId,
           summary: `${snapshot.sku || productId}｜${snapshot.title}｜${status}`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy,
-          version: '2026.08.13-shopee-taxonomy-v5'
+          version: LISTING_WORKFLOW_ID
         })
       ]);
       lockStatus = status;
-      return { ok: !Object.values(platforms).some((row) => row.status === 'failed'), productId, jobId, status, platforms };
+      return { ok: !Object.values(platforms).some((row) => row.status === 'failed'), productId, jobId, status, currentStage, stages, platforms };
     } catch (error) {
       lockStatus = 'failed';
       await jobRef.set({
         status: 'failed', error: clean(error && error.message).slice(0, 800) || '商品上架工作未完成。',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(), finishedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(), failedAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true }).catch(() => null);
       throw error;
     } finally {
@@ -1404,6 +2514,139 @@ function registerProductListingPublish(target) {
         console.error('Unable to release product listing publish lock', { productId, jobId, message: clean(error && error.message) });
       }
     }
+  });
+
+  target.verifyProductListingStage = onCall({
+    region: REGION,
+    timeoutSeconds: 180,
+    memory: '512MiB',
+    enforceAppCheck: false
+  }, async (request) => {
+    if (!isAllowedManager(request)) throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
+    const jobId = clean(request && request.data && request.data.jobId);
+    const requestedStage = clean(request && request.data && request.data.stage).toLowerCase();
+    if (!jobId || jobId.length > 200 || jobId.includes('/')) throw new HttpsError('invalid-argument', '上架工作編號格式不正確。');
+    if (requestedStage !== 'shopee') throw new HttpsError('invalid-argument', '只有蝦皮正式清單核對可由這支 callable 送出；酷澎與 MOMO 只接受同一 queue worker 的 verified receipt。');
+    const db = admin.firestore();
+    const jobRef = db.collection(JOB_COLLECTION).doc(jobId);
+    const initialJobSnap = await jobRef.get();
+    if (!initialJobSnap.exists) throw new HttpsError('not-found', '找不到這筆上架工作。');
+    const initialJob = initialJobSnap.data() || {};
+    const snapshot = initialJob.preparedSnapshot && typeof initialJob.preparedSnapshot === 'object' ? initialJob.preparedSnapshot : null;
+    if (!snapshot || clean(initialJob.workflowVersion) !== LISTING_WORKFLOW_ID) throw new HttpsError('failed-precondition', '這筆工作不是目前固定版四通路流程；舊 job 只能查看，不能沿用舊回條繼續。');
+    const verification = validatePlatformStageVerification(requestedStage, snapshot, request && request.data && request.data.verification);
+    if (!verification.verified) throw new HttpsError('failed-precondition', `正式清單核對未通過：${verification.reasons.join('、')}`);
+    const nextStage = 'coupang';
+    const nextFingerprint = platformStageFingerprint('Coupang', snapshot);
+    const newAttemptToken = crypto.randomBytes(16).toString('hex');
+    let transitionToken = '';
+    let claimedStages = null;
+    await db.runTransaction(async (transaction) => {
+      const latestSnap = await transaction.get(jobRef);
+      if (!latestSnap.exists) throw new HttpsError('not-found', '找不到這筆上架工作。');
+      const latest = latestSnap.data() || {};
+      const latestStages = latest.stages && typeof latest.stages === 'object' ? { ...latest.stages } : initialListingStages();
+      const currentStage = clean(latest.currentStage);
+      const mayResumeQueue = nextStage !== 'completed'
+        && currentStage === `${nextStage}-queueing`
+        && latestStages[requestedStage]
+        && latestStages[requestedStage].status === 'verified';
+      if (currentStage !== requestedStage && !mayResumeQueue) {
+        throw new HttpsError('failed-precondition', `目前固定流程停在 ${currentStage || '未知階段'}，不能跳過順序處理 ${requestedStage}。`);
+      }
+      transitionToken = mayResumeQueue
+        ? clean(latestStages[nextStage] && (latestStages[nextStage].attemptToken || latestStages[nextStage].stageToken))
+        : newAttemptToken;
+      if (!transitionToken) throw new HttpsError('failed-precondition', '這筆排程缺少 attemptToken，不能接續舊 queue；請重新建立 v2 工作。');
+      latestStages[requestedStage] = { status: 'verified', receipt: verification.receipt };
+      latestStages[nextStage] = { status: 'queueing', attemptToken: transitionToken, fingerprint: nextFingerprint };
+      claimedStages = latestStages;
+      transaction.set(jobRef, {
+        currentStage: `${nextStage}-queueing`,
+        stages: latestStages,
+        transitionToken,
+        stageRevision: Math.max(1, Number(latest.stageRevision) || 1) + 1,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    });
+
+    const productId = clean(snapshot.productId);
+    const productRef = db.collection(PRODUCT_COLLECTION).doc(productId);
+    const caseRef = db.collection(LISTING_CASE_COLLECTION).doc(productId);
+    const productSnap = await productRef.get();
+    if (!productSnap.exists) throw new HttpsError('not-found', '中央商品主檔已不存在。');
+    const product = productSnap.data() || {};
+    const existingPlatforms = initialJob.platforms && typeof initialJob.platforms === 'object' ? { ...initialJob.platforms } : {};
+    existingPlatforms[requestedStage] = { status: 'verified', receipt: verification.receipt };
+
+    const platform = 'Coupang';
+    const missingFields = coupangMissingFields(snapshot);
+    let queued;
+    try {
+      queued = await queueFixedIpPlatform(db, jobId, platform, snapshot, product, missingFields, transitionToken);
+    } catch (error) {
+      claimedStages[nextStage] = { status: 'queue-retry-required', message: clean(error && error.message).slice(0, 800) };
+      await jobRef.set({ currentStage: `${nextStage}-queueing`, stages: claimedStages, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      throw error;
+    }
+    claimedStages[nextStage] = {
+      status: ['missing-fields', 'action-required'].includes(clean(queued && queued.status)) ? clean(queued.status) : 'awaiting-verification',
+      queueId: clean(queued && queued.queueId),
+      attemptToken: transitionToken,
+      fingerprint: clean(queued && queued.fingerprint) || nextFingerprint,
+      message: clean(queued && queued.message)
+    };
+    existingPlatforms[nextStage] = queued;
+    const updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    const storedPlatforms = summarizePlatformsForStorage(existingPlatforms);
+    let stageCommitted = false;
+    await db.runTransaction(async (transaction) => {
+      const latestSnap = await transaction.get(jobRef);
+      if (!latestSnap.exists) return;
+      const latest = latestSnap.data() || {};
+      const latestNextStage = latest.stages && latest.stages[nextStage] || {};
+      if (clean(latest.currentStage) !== `${nextStage}-queueing` || clean(latestNextStage.attemptToken) !== transitionToken) return;
+      transaction.set(jobRef, { status: 'submitted', currentStage: nextStage, stages: claimedStages, platforms: storedPlatforms, transitionToken: '', updatedAt }, { merge: true });
+      stageCommitted = true;
+    });
+    if (stageCommitted) await Promise.all([
+      caseRef.set({
+        caseStatus: 'submitted',
+        publishState: { jobId, status: 'submitted', currentStage: nextStage, stages: claimedStages, platforms: storedPlatforms, submittedAt: updatedAt, submittedBy: clean(request.auth && request.auth.token && request.auth.token.email) || '管理者' },
+        updatedAt, updatedBy: '固定四通路流程'
+      }, { merge: true }),
+      productRef.set({
+        platformListingStatus: platformListingStatusFromPublish(product.platformListingStatus, { [requestedStage]: { status: 'completed' }, [nextStage]: queued }),
+        platformListingStatusUpdatedAt: updatedAt, updatedAt, updatedBy: '固定四通路流程'
+      }, { merge: true })
+    ]);
+    if (clean(queued && queued.status) === 'already-completed') {
+      const coupangQueueSnap = await db.collection(PLATFORM_QUEUE_COLLECTION).doc(`${productId}_coupang`).get();
+      if (coupangQueueSnap.exists) await applyVerifiedQueueReceipt(db, coupangQueueSnap.id, coupangQueueSnap.data() || {});
+    }
+    const latestJobSnap = await jobRef.get();
+    const latestJob = latestJobSnap.exists ? latestJobSnap.data() || {} : {};
+    return { ok: true, jobId, productId, status: clean(latestJob.status) || 'submitted', verifiedStage: requestedStage, currentStage: clean(latestJob.currentStage) || nextStage, stages: latestJob.stages || claimedStages, platform: queued };
+  });
+
+  target.applyProductListingQueueReceipt = onDocumentWritten({
+    document: `${PLATFORM_QUEUE_COLLECTION}/{queueId}`,
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB'
+  }, async (event) => {
+    const after = event.data && event.data.after;
+    if (!after || !after.exists) return null;
+    const before = event.data && event.data.before;
+    const current = after.data() || {};
+    const previous = before && before.exists ? before.data() || {} : {};
+    const sameReceipt = clean(previous.status) === clean(current.status)
+      && clean(previous.jobId) === clean(current.jobId)
+      && clean(previous.attemptToken) === clean(current.attemptToken)
+      && clean(previous.fingerprint) === clean(current.fingerprint)
+      && JSON.stringify(previous.verificationReceipt || null) === JSON.stringify(current.verificationReceipt || null);
+    if (sameReceipt) return null;
+    return applyVerifiedQueueReceipt(admin.firestore(), clean(event.params && event.params.queueId), current);
   });
 }
 
@@ -1421,9 +2664,10 @@ module.exports = {
     hsinchuSizeBand,
     buildShopeeLogistics,
     buildShopeeAutofillPayload,
-    normalizeListingDecision,
     platformListingIds,
     platformQueueFingerprint,
+    platformStageFingerprint,
+    listingSnapshotFingerprint,
     buildPlatformQueuePolicy,
     evaluateMomoPublishVerification,
     identityAllowsShopeeAutofill,
@@ -1432,14 +2676,30 @@ module.exports = {
     appendShopDescriptionPromos,
     appendShopDescriptionImages,
     listingImageAllocation,
-    momoSpecialPromotionImage,
     prioritizedListingImageUrls,
+    localizedRepresentativeImage,
+    finalizedRoleRowsForCase,
+    buildFinalPlatformImagePlan,
+    finalizePreparedMediaSnapshot,
+    preparedPlatformImagePlan,
+    platformImagePlanMissingFields,
     platformPayloadSnapshot,
     exactEasyStoreMatches,
     easyStoreMissingFields,
     momoMissingFields,
     coupangMissingFields,
     platformCategoryResolution,
+    validatePlatformImageEvidence,
+    validatePlatformStageVerification,
+    validateQueuedStageReceipt,
+    validateAllPlatformImageReceipts,
+    centralCompletedImageUpdate,
+    validateCompletionImageReferences,
+    activeV2JobReuseBlockers,
+    frozenInputSnapshotFingerprint,
+    applyVerifiedQueueReceipt,
+    easyStoreVariantPrice,
+    easyStoreVariantStock,
     overallPublishStatus
   }
 };

@@ -13,6 +13,7 @@ Module._load = function mockFirebase(request, parent, isMain) {
     }
     return { onCall: (_options, handler) => handler, HttpsError };
   }
+  if (request === 'firebase-functions/v2/firestore') return { onDocumentWritten: (_options, handler) => handler };
   if (request === 'firebase-functions/params') return { defineSecret: () => ({ value: () => '' }) };
   if (request === 'firebase-admin') {
     const firestore = () => ({ collection: () => { throw new Error('database not used in helper tests'); } });
@@ -25,6 +26,77 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const publish = require('../functions/productListingPublish');
 Module._load = originalLoad;
 const helpers = publish._test;
+
+function withV2ImagePlan(listingCase, options = {}) {
+  const branded = options.branded || 'https://example.com/branded-hero.jpg';
+  const clean = options.clean || 'https://example.com/clean-main.jpg';
+  const cleanTwo = options.cleanTwo || 'https://example.com/clean-detail.jpg';
+  const detail = Array.isArray(options.detail) ? options.detail : [];
+  const safeFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
+  const imageRoleAssignments = [
+    { sourceImageUrl: 'https://example.com/source-branded.jpg', url: branded, roles: ['brandedHero'], assetFlags: { ...safeFlags, containsLogo: true, greenBrandTemplate: true } },
+    { sourceImageUrl: 'https://example.com/source-clean.jpg', url: clean, roles: ['cleanMain'], assetFlags: { ...safeFlags, momoPromotionEligible: true } },
+    { sourceImageUrl: 'https://example.com/source-clean-two.jpg', url: cleanTwo, roles: ['localizedDetail'], assetFlags: { ...safeFlags, momoPromotionEligible: true } },
+    ...detail.map((url, index) => ({ sourceImageUrl: `https://example.com/source-detail-${index}.jpg`, url, roles: ['localizedDetail'], assetFlags: { ...safeFlags } }))
+  ];
+  return {
+    ...listingCase,
+    codexHandoff: {
+      workflowVersion: 'youzi-four-channel-listing-v2',
+      preflightSnapshot: {
+        workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'snapshot-v2-test',
+        finalizedFromFrozenInput: true, inputSnapshotId: 'input-v2-test', inputSnapshotFingerprint: 'input-fingerprint-v2-test',
+        cases: [{
+          productId: options.productId || 'case-v2-test', sku: options.sku || 'CASE-V2',
+          sourceImageUrls: Array.from(new Set(imageRoleAssignments.map((row) => row.sourceImageUrl))),
+          representativeSourceImageUrl: options.representativeSourceImageUrl || '',
+          representativeCompletedImageUrl: options.representativeCompletedImageUrl || '',
+          preparedCase: { imageRoleAssignments }
+        }],
+        platformImagePlan: {
+          sharedCompletedImageUrls: [branded, clean, cleanTwo, ...detail],
+          easyStore: { imageUrls: [branded, clean, cleanTwo, ...detail], requiredFirstRole: 'brandedHero', ready: true },
+          shopee: { imageUrls: [branded, clean, cleanTwo, ...detail], requiredFirstRole: 'brandedHero', ready: true },
+          coupang: { imageUrls: [clean, cleanTwo, branded, ...detail], requiredFirstRole: 'cleanMain', ready: true, brandedHeroAllowedAsSecondary: true, removeSecondaryBrandedHeroIfPlatformRejectsGalleryLogo: true },
+          momo: { imageUrls: [clean, cleanTwo, branded, ...detail], requiredFirstRole: 'cleanMain', ready: true, brandedHeroAllowedAsSecondary: true, promotionImageUrl: cleanTwo, promotionImageReady: true }
+        }
+      }
+    }
+  };
+}
+
+function fakeFirestore(seed = {}) {
+  const store = new Map(Object.entries(seed));
+  const makeRef = (path) => ({
+    id: path.split('/').at(-1), path,
+    async get() { const value = store.get(path); return { exists: value !== undefined, data: () => value }; },
+    async set(value, options) { store.set(path, options && options.merge ? { ...(store.get(path) || {}), ...value } : value); }
+  });
+  return {
+    collection(name) { return { doc(id) { return makeRef(`${name}/${id}`); } }; },
+    async runTransaction(handler) {
+      return handler({
+        get: (ref) => ref.get(),
+        set: (ref, value, options) => ref.set(value, options)
+      });
+    },
+    get(path) { return store.get(path); },
+    set(path, value) { store.set(path, value); },
+    keys() { return Array.from(store.keys()); }
+  };
+}
+
+function verifiedPlatformReceipt(stage, snapshot, listingId = `${stage}-listing`) {
+  const planKey = stage === 'easyStore' ? 'easyStore' : stage;
+  const price = stage === 'momo' ? snapshot.momoPrice : stage === 'coupang' ? snapshot.coupangPrice : snapshot.easyStorePrice;
+  return {
+    stage, listingId, sku: snapshot.sku, price, stock: snapshot.stock, status: 'published',
+    platformListMatched: true, officialCatalogMatched: true,
+    imageEvidenceComplete: true,
+    appliedImageUrls: snapshot.platformImagePlan[planKey].imageUrls.slice(),
+    officialImageUrls: snapshot.platformImagePlan[planKey].imageUrls.map((_, index) => `https://platform-cdn.example.com/${stage}/${index + 1}.jpg`)
+  };
+}
 
 test('one canonical product description becomes safe marketplace HTML', () => {
   const html = helpers.productDescriptionToSafeHtml('好用的商品<script>alert(1)</script>\n\n商品特色\n1. 第一點\n2. 第二點\n\n商品規格\n型號：A&B');
@@ -50,11 +122,18 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
   assert.equal(snapshot.automationPolicy.duplicateGuard.reuseExistingDraft, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.neverCreateNewOnRetry, true);
-  assert.equal(snapshot.automationPolicy.version, 4);
+  assert.equal(snapshot.automationPolicy.version, 5);
+  assert.equal(snapshot.automationPolicy.workflowId, 'youzi-four-channel-listing-v2');
+  assert.equal(snapshot.automationPolicy.immutableWorkflowUntilExplicitRuleChange, true);
+  assert.equal(snapshot.automationPolicy.productDataChangesDoNotChangeExecutionOrder, true);
   assert.equal(snapshot.automationPolicy.retry.maximumAttempts, 4);
   assert.equal(snapshot.automationPolicy.retry.retrySameSkuAndDraftOnly, true);
   assert.ok(snapshot.automationPolicy.retry.transientFailureSignatures.includes('image-fetch-failed'));
-  assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, ['platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status']);
+  assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, [
+    'platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status',
+    'applied-image-plan', 'official-image-list', 'no-frozen-source-image'
+  ]);
+  assert.equal(snapshot.automationPolicy.publishVerification.imageReceiptContract.officialImageUrlsMayUsePlatformCdn, true);
   assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.order, ['easyStore', 'shopee', 'coupang', 'momo']);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.preflightAllListingDataBeforePlatformNavigation, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.canonicalWorkspace, 'easystore-shopee-channel-sync');
@@ -72,6 +151,218 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.saveReopenAndVerifyImageRequired, true);
   assert.equal(snapshot.momoSpecialPromotionImageUrl, '');
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
+  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-light-commercial-template-v2');
+  assert.equal(snapshot.imagePolicy.mainImageAspectRatio, '1:1');
+  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'low-saturation-light-commercial');
+  assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'right-or-center-right');
+});
+
+test('正式發布先完成四通路預檢，後續通路只能逐站核對後推進', () => {
+  const backend = fs.readFileSync('functions/productListingPublish.js', 'utf8');
+  const deployWorkflow = fs.readFileSync('.github/workflows/deploy-product-listing.yml', 'utf8');
+  const publishStart = backend.indexOf('target.publishProductListingCase = onCall');
+  const verifyStart = backend.indexOf('target.verifyProductListingStage = onCall');
+  const handler = backend.slice(publishStart, verifyStart);
+  const verifier = backend.slice(verifyStart, backend.indexOf('\n}', verifyStart));
+  const finalizedMedia = handler.indexOf('loadFinalPreparedMediaSnapshot');
+  const preflight = handler.indexOf('preflightMissing = {');
+  const job = handler.indexOf('await jobRef.set', preflight);
+  const easyStore = handler.indexOf('if (snapshot.enabledEasyStoreShopee)', job);
+  const shopee = handler.indexOf('buildShopeeAutofillPayload', easyStore);
+  assert.ok(finalizedMedia >= 0 && preflight > finalizedMedia && job > preflight && easyStore > job && shopee > easyStore);
+  assert.match(handler, /platformImagePlanMissingFields\(snapshot\.platformImagePlan, \{ requireFinalized: true \}\)/);
+  assert.doesNotMatch(handler, /queueFixedIpPlatform\(/);
+  assert.match(handler, /blocked-by-previous-stage/);
+  assert.match(verifier, /validatePlatformStageVerification/);
+  assert.match(verifier, /currentStage !== requestedStage/);
+  assert.match(verifier, /requestedStage !== 'shopee'/);
+  assert.doesNotMatch(verifier, /requestedStage === 'coupang'/);
+  assert.match(verifier, /queueFixedIpPlatform\(db, jobId, platform/);
+  assert.match(handler, /四通路單次預檢未通過；尚未操作任何平台/);
+  assert.match(handler, /identityAllowsShopeeAutofill\(snapshot\.identityStatus, snapshot\.identityManualConfirmed\)/);
+  assert.match(handler, /蝦皮商品身分／型號確認/);
+  assert.match(handler, /shopeeLogistics\.requiresConfirmation/);
+  assert.match(handler, /preparedSnapshot: snapshot/);
+  assert.match(handler, /preparedSnapshotFingerprint: listingSnapshotFingerprint\(snapshot\)/);
+  assert.match(deployWorkflow, /functions:verifyProductListingStage/);
+  assert.match(deployWorkflow, /functions:applyProductListingQueueReceipt/);
+  assert.match(backend, /target\.applyProductListingQueueReceipt = onDocumentWritten/);
+});
+
+test('通路正式核對必須同時符合 SKU、價格、庫存、清單與正式商品資料', () => {
+  const sourceUrl = 'https://example.com/source.jpg';
+  const completedUrl = 'https://example.com/completed.jpg';
+  const snapshot = {
+    sku: 'ABC-1', easyStorePrice: 500, coupangPrice: 520, momoPrice: 530, stock: 3,
+    platformImagePlan: {
+      roleAssignments: [{ sourceImageUrl: sourceUrl, url: completedUrl, roles: ['cleanMain'] }],
+      coupang: { imageUrls: [completedUrl] }, momo: { imageUrls: [completedUrl] }
+    }
+  };
+  const ok = helpers.validatePlatformStageVerification('coupang', snapshot, {
+    listingId: 'CP-1', sku: 'abc-1', price: 520, stock: 3, status: 'under-review',
+    platformListMatched: true, officialCatalogMatched: true,
+    imageEvidenceComplete: true, appliedImageUrls: [completedUrl], officialImageUrls: ['https://platform.example.com/cdn/completed.jpg']
+  });
+  assert.equal(ok.verified, true);
+  const bad = helpers.validatePlatformStageVerification('momo', snapshot, {
+    listingId: 'MM-1', sku: 'ABC-1', price: 999, stock: 3, status: 'published',
+    platformListMatched: true, officialCatalogMatched: false,
+    imageEvidenceComplete: true, appliedImageUrls: [sourceUrl], officialImageUrls: [sourceUrl]
+  });
+  assert.equal(bad.verified, false);
+  assert.ok(bad.reasons.includes('price-mismatch'));
+  assert.ok(bad.reasons.includes('official-catalog-not-matched'));
+  assert.ok(bad.reasons.includes('applied-image-evidence-contains-frozen-source'));
+  assert.ok(bad.reasons.includes('official-image-evidence-contains-frozen-source'));
+});
+
+test('正式圖片回條分開驗證 applied plan 與平台 CDN，缺證或任一組含來源圖都拒絕', () => {
+  const source = 'https://supplier.example.com/original.jpg';
+  const completed = 'https://cdn.example.com/final.jpg';
+  const snapshot = {
+    sku: 'IMG-EVIDENCE', coupangPrice: 900, stock: 2,
+    platformImagePlan: {
+      roleAssignments: [{ productId: 'evidence-product', sourceImageUrl: source, url: completed, roles: ['cleanMain'] }],
+      coupang: { imageUrls: [completed] }
+    }
+  };
+  const cdnReceipt = {
+    listingId: 'CP-EVIDENCE', sku: 'IMG-EVIDENCE', price: 900, stock: 2, status: 'published',
+    platformListMatched: true, officialCatalogMatched: true, imageEvidenceComplete: true,
+    appliedImageUrls: [completed],
+    officialImageUrls: ['https://platform-cdn.example.com/resized/final-123.webp']
+  };
+  assert.equal(helpers.validatePlatformStageVerification('coupang', snapshot, cdnReceipt).verified, true);
+
+  const missingOfficial = helpers.validatePlatformStageVerification('coupang', snapshot, {
+    ...cdnReceipt, officialImageUrls: []
+  });
+  assert.equal(missingOfficial.verified, false);
+  assert.ok(missingOfficial.reasons.includes('missing-or-invalid-official-image-evidence'));
+
+  const sourceApplied = helpers.validatePlatformStageVerification('coupang', snapshot, {
+    ...cdnReceipt, appliedImageUrls: [source]
+  });
+  assert.equal(sourceApplied.verified, false);
+  assert.ok(sourceApplied.reasons.includes('applied-image-evidence-contains-frozen-source'));
+
+  const sourceOfficial = helpers.validatePlatformStageVerification('coupang', snapshot, {
+    ...cdnReceipt, officialImageUrls: [source]
+  });
+  assert.equal(sourceOfficial.verified, false);
+  assert.ok(sourceOfficial.reasons.includes('official-image-evidence-contains-frozen-source'));
+});
+
+test('queue receipt only advances the matching v2 job, attempt and immutable snapshot', () => {
+  const snapshot = {
+    productId: 'product-1', sku: 'ABC-1', easyStorePrice: 500, coupangPrice: 520, momoPrice: 530,
+    stock: 3, title: '商品', description: '介紹', images: ['https://example.com/1.jpg'],
+    platformImagePlan: {
+      roleAssignments: [{ sourceImageUrl: 'https://example.com/source-1.jpg', url: 'https://example.com/1.jpg', roles: ['cleanMain'] }],
+      coupang: { imageUrls: ['https://example.com/1.jpg'] }
+    }
+  };
+  const fingerprint = helpers.platformStageFingerprint('Coupang', snapshot);
+  const snapshotFingerprint = helpers.listingSnapshotFingerprint(snapshot);
+  const job = {
+    id: 'job-1', workflowVersion: 'youzi-four-channel-listing-v2', productId: 'product-1', currentStage: 'coupang',
+    preparedSnapshot: snapshot, preparedSnapshotFingerprint: snapshotFingerprint,
+    stages: { coupang: { status: 'awaiting-verification', attemptToken: 'attempt-1', fingerprint } }
+  };
+  const record = {
+    workflowVersion: 'youzi-four-channel-listing-v2', jobId: 'job-1', productId: 'product-1', platform: 'Coupang',
+    status: 'submitted-to-platform-review', attemptToken: 'attempt-1', fingerprint, snapshotFingerprint,
+    verificationReceipt: {
+      stage: 'coupang', listingId: 'CP-1', sku: 'ABC-1', price: 520, stock: 3, status: 'under-review',
+      platformListMatched: true, officialCatalogMatched: true,
+      imageEvidenceComplete: true,
+      appliedImageUrls: ['https://example.com/1.jpg'],
+      officialImageUrls: ['https://platform.example.com/cdn/1.jpg']
+    }
+  };
+  assert.equal(helpers.validateQueuedStageReceipt(job, record).verified, true);
+  const staleAttempt = helpers.validateQueuedStageReceipt(job, { ...record, attemptToken: 'old-attempt' });
+  assert.equal(staleAttempt.verified, false);
+  assert.ok(staleAttempt.reasons.includes('attempt-token-mismatch'));
+  const oldWorkflow = helpers.validateQueuedStageReceipt(job, { ...record, workflowVersion: 'youzi-four-channel-listing-v1' });
+  assert.equal(oldWorkflow.verified, false);
+  assert.ok(oldWorkflow.reasons.includes('workflow-version-mismatch'));
+  const oldJob = helpers.validateQueuedStageReceipt({ ...job, workflowVersion: 'youzi-four-channel-listing-v1' }, record);
+  assert.equal(oldJob.verified, false);
+  assert.ok(oldJob.reasons.includes('workflow-version-mismatch'));
+});
+
+test('verified queue receipts advance only Coupang to MOMO and MOMO to completed on the same v2 job', async () => {
+  const productId = 'state-product';
+  const jobId = 'state-job';
+  const cleanUrl = 'https://example.com/state-clean.jpg';
+  const snapshot = helpers.buildListingSnapshot(productId, {
+    internalSku: 'STATE-001', internalName: '狀態機測試商品', currentStock: 3,
+    easyStorePrice: 990, momoPrice: 990, coupangPrice: 990, imageUrl: cleanUrl, imageUrls: [cleanUrl]
+  }, withV2ImagePlan({ productDescription: '完整商品介紹' }, { productId, sku: 'STATE-001', clean: cleanUrl }));
+  const snapshotFingerprint = helpers.listingSnapshotFingerprint(snapshot);
+  const coupangToken = 'coupang-attempt';
+  const coupangFingerprint = helpers.platformStageFingerprint('Coupang', snapshot);
+  const stages = {
+    easyStore: { status: 'verified', receipt: verifiedPlatformReceipt('easyStore', snapshot) },
+    shopee: { status: 'verified', receipt: verifiedPlatformReceipt('shopee', snapshot) },
+    coupang: { status: 'awaiting-verification', attemptToken: coupangToken, fingerprint: coupangFingerprint },
+    momo: { status: 'blocked-by-previous-stage' }
+  };
+  const db = fakeFirestore({
+    [`opsSyncJobs/${jobId}`]: {
+      workflowVersion: 'youzi-four-channel-listing-v2', productId, currentStage: 'coupang', status: 'submitted',
+      preparedSnapshot: snapshot, preparedSnapshotFingerprint: snapshotFingerprint, stages, platforms: {}
+    },
+    [`opsInternalProducts/${productId}`]: {
+      internalSku: 'STATE-001', imageUrl: cleanUrl, imageUrls: [cleanUrl], completedListingImageUrls: [cleanUrl]
+    },
+    [`opsProductListingCases/${productId}`]: {
+      centralImageReferenceVerification: { status: 'verified', cleanMainUrl: cleanUrl, imageUrls: [cleanUrl] }
+    }
+  });
+  const coupangReceipt = {
+    workflowVersion: 'youzi-four-channel-listing-v2', jobId, productId, platform: 'Coupang',
+    attemptToken: coupangToken, fingerprint: coupangFingerprint, snapshotFingerprint,
+    status: 'completed', verificationReceipt: {
+      stage: 'coupang', listingId: 'coupang-listing', sku: 'STATE-001', price: 990, stock: 3,
+      status: 'published', platformListMatched: true, officialCatalogMatched: true,
+      imageEvidenceComplete: true,
+      appliedImageUrls: snapshot.platformImagePlan.coupang.imageUrls.slice(),
+      officialImageUrls: snapshot.platformImagePlan.coupang.imageUrls.map((_, index) => `https://platform-cdn.example.com/coupang/${index}.jpg`)
+    }
+  };
+  const coupangResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_coupang`, coupangReceipt);
+  assert.equal(coupangResult.status, 'momo-queued');
+  const jobAfterCoupang = db.get(`opsSyncJobs/${jobId}`);
+  assert.equal(jobAfterCoupang.currentStage, 'momo');
+  assert.equal(jobAfterCoupang.stages.coupang.status, 'verified');
+  assert.equal(jobAfterCoupang.stages.momo.status, 'awaiting-verification');
+  assert.equal(db.keys().filter((key) => key.startsWith('opsProductListingQueue/')).length, 1);
+  const momoQueuePath = `opsProductListingQueue/${productId}_momo`;
+  const momoQueue = db.get(momoQueuePath);
+  assert.equal(momoQueue.jobId, jobId);
+  assert.equal(momoQueue.workflowVersion, 'youzi-four-channel-listing-v2');
+  assert.equal(momoQueue.attemptToken, jobAfterCoupang.stages.momo.attemptToken);
+  assert.equal(momoQueue.fingerprint, jobAfterCoupang.stages.momo.fingerprint);
+  assert.equal(momoQueue.verificationRequirements.imageReceiptContract.imageEvidenceCompleteRequired, true);
+  assert.equal(momoQueue.verificationRequirements.imageReceiptContract.officialImageUrlsMayUsePlatformCdn, true);
+  db.set(momoQueuePath, {
+    ...momoQueue, status: 'completed', verificationReceipt: {
+      stage: 'momo', listingId: 'momo-listing', sku: 'STATE-001', price: 990, stock: 3,
+      status: 'published', platformListMatched: true, officialCatalogMatched: true,
+      imageEvidenceComplete: true,
+      appliedImageUrls: snapshot.platformImagePlan.momo.imageUrls.slice(),
+      officialImageUrls: snapshot.platformImagePlan.momo.imageUrls.map((_, index) => `https://platform-cdn.example.com/momo/${index}.jpg`)
+    }
+  });
+  const momoResult = await helpers.applyVerifiedQueueReceipt(db, `${productId}_momo`, db.get(momoQueuePath));
+  assert.equal(momoResult.status, 'completed');
+  assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'completed');
+  assert.ok(db.get(`opsSyncJobs/${jobId}`).finishedAt);
+  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.cleanupStatus, 'required');
+  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.eligibleForDeletion, true);
 });
 
 test('MOMO special promotion image uses product image two or three and never store promotion assets', () => {
@@ -83,12 +374,12 @@ test('MOMO special promotion image uses product image two or three and never sto
   const snapshot = helpers.buildListingSnapshot('p-momo-special-promo', {
     internalSku: 'MOMO-PROMO', internalName: 'MOMO 專推圖測試', currentStock: 1,
     easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
-  }, {
+  }, withV2ImagePlan({
     productDescription: '完整商品介紹', listingImageUrls: productImages,
     enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
-  });
+  }, { branded: productImages[0], clean: productImages[1], cleanTwo: productImages[2] }));
 
-  assert.equal(snapshot.momoSpecialPromotionImageUrl, productImages[1]);
+  assert.equal(snapshot.momoSpecialPromotionImageUrl, productImages[2]);
   assert.equal(snapshot.momoSpecialPromotionImagePolicy.insertMethod, 'material-bank-selection');
   assert.equal(snapshot.momoSpecialPromotionImagePolicy.verification, 'save-reopen-confirm-image-before-publish');
   assert.notEqual(snapshot.momoSpecialPromotionImageUrl, snapshot.images.at(-1));
@@ -104,7 +395,8 @@ test('MOMO stops before queueing when only the branded first image exists', () =
     enabledPlatforms: { easyStoreShopee: false, momo: true, coupang: false }
   });
   assert.equal(snapshot.momoSpecialPromotionImageUrl, '');
-  assert.match(helpers.momoMissingFields(snapshot).join('、'), /MOMO 專推圖/);
+  assert.match(helpers.momoMissingFields(snapshot).join('、'), /MOMO cleanMain 首圖/);
+  assert.match(helpers.momoMissingFields(snapshot).join('、'), /MOMO clean-only 專推圖/);
 });
 
 test('MOMO publish verification rejects a success dialog when persisted fields were cleared', () => {
@@ -182,8 +474,8 @@ test('selected source images prioritize their localized completed images without
     listingImageUrls: [completedOne, completedTwo],
     gallerySourceImageUrls: [sourceTwo],
     generatedListingImages: [
-      { sourceImageUrl: sourceOne, url: completedOne, status: 'ready', localizationStatus: 'completed' },
-      { sourceImageUrl: sourceTwo, url: completedTwo, status: 'ready', localizationStatus: 'completed' }
+      { sourceImageUrl: sourceOne, url: completedOne, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: {} },
+      { sourceImageUrl: sourceTwo, url: completedTwo, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: {} }
     ],
     enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
   });
@@ -193,23 +485,325 @@ test('selected source images prioritize their localized completed images without
   assert.deepEqual(helpers.prioritizedListingImageUrls({ listingImageUrls: [completedOne, completedTwo], gallerySourceImageUrls: [completedTwo] }), [completedTwo, completedOne]);
 });
 
-test('Coupang uses the second clean product image as main while MOMO keeps the green template first', () => {
+test('prepared role plan gives EasyStore a branded hero and Coupang/MOMO a clean main without positional guessing', () => {
   const productImages = Array.from({ length: 6 }, (_, index) => `https://example.com/product-${index + 1}.jpg`);
   const snapshot = helpers.buildListingSnapshot('p-platform-images', {
     internalSku: 'PLATFORM-IMG', internalName: '平台主圖測試', currentStock: 1,
     easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
-  }, {
+  }, withV2ImagePlan({
     productDescription: '完整商品介紹', listingImageUrls: productImages,
     enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
-  });
+  }, { branded: productImages[0], clean: productImages[1], cleanTwo: productImages[2], detail: productImages.slice(3) }));
 
   const momo = helpers.platformPayloadSnapshot('MOMO', snapshot);
   const coupang = helpers.platformPayloadSnapshot('Coupang', snapshot);
-  assert.equal(momo.images[0], productImages[0]);
+  assert.equal(snapshot.images[0], productImages[0]);
+  assert.equal(momo.images[0], productImages[1]);
+  assert.equal(momo.images[2], productImages[0]);
   assert.equal(coupang.images[0], productImages[1]);
-  assert.equal(coupang.images[1], productImages[0]);
-  assert.equal(coupang.imagePolicy.brandedGreenTemplateAllowedAsMain, false);
+  assert.equal(coupang.images.includes(productImages[0]), true);
+  assert.equal(coupang.images.indexOf(productImages[0]) > 0, true);
+  assert.equal(coupang.imagePolicy.brandedHeroAllowedAfterMain, true);
+  assert.equal(coupang.imagePolicy.brandedHeroExcluded, false);
+  assert.equal(coupang.imagePolicy.removeSecondaryBrandedHeroIfPlatformRejectsGalleryLogo, true);
   assert.deepEqual(helpers.coupangMissingFields(snapshot), []);
+});
+
+test('v2 image gates reject source URLs disguised as completed outputs and dirty clean-main roles', () => {
+  const sameUrl = 'https://example.com/not-really-completed.jpg';
+  const sameSourceCase = withV2ImagePlan({ productDescription: '介紹' }, { clean: sameUrl });
+  const sameSourceAssignment = sameSourceCase.codexHandoff.preflightSnapshot.cases[0].preparedCase.imageRoleAssignments
+    .find((row) => row.url === sameUrl);
+  sameSourceAssignment.sourceImageUrl = sameUrl;
+  const sameSourceSnapshot = helpers.buildListingSnapshot('unsafe-same-url', {
+    internalSku: 'UNSAFE-1', internalName: '不安全圖', currentStock: 1,
+    easyStorePrice: 100, momoPrice: 100, coupangPrice: 100
+  }, sameSourceCase);
+  assert.equal(sameSourceSnapshot.platformImagePlan.coupang.ready, false);
+  assert.equal(helpers.localizedRepresentativeImage({ generatedListingImages: [{
+    sourceImageUrl: sameUrl, url: sameUrl, status: 'ready', localizationStatus: 'completed',
+    roles: ['cleanMain'], assetFlags: {}
+  }] }, sameUrl), '');
+
+  const dirtyCase = withV2ImagePlan({ productDescription: '介紹' });
+  const cleanUrl = dirtyCase.codexHandoff.preflightSnapshot.platformImagePlan.coupang.imageUrls[0];
+  const dirtyAssignment = dirtyCase.codexHandoff.preflightSnapshot.cases[0].preparedCase.imageRoleAssignments
+    .find((row) => row.url === cleanUrl);
+  dirtyAssignment.assetFlags.containsText = true;
+  const dirtySnapshot = helpers.buildListingSnapshot('unsafe-clean', {
+    internalSku: 'UNSAFE-2', internalName: '含字乾淨圖', currentStock: 1,
+    easyStorePrice: 100, momoPrice: 100, coupangPrice: 100
+  }, dirtyCase);
+  assert.equal(dirtySnapshot.platformImagePlan.coupang.ready, false);
+  assert.match(helpers.coupangMissingFields(dirtySnapshot).join('、'), /酷澎 cleanMain 首圖/);
+});
+
+test('12 張共用池先保留 cleanMain、brandedHero 並公平涵蓋 13 個細項', () => {
+  const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
+  const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false };
+  const cases = Array.from({ length: 13 }, (_, index) => ({
+    productId: `variant-${index}`,
+    gallerySourceImageUrls: [],
+    roleRows: [
+      { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-clean.jpg`, url: `https://cdn.example.com/variant-${index}-clean.jpg`, roles: ['cleanMain'], sourceOrder: 1, assetFlags: cleanFlags },
+      { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-brand.jpg`, url: `https://cdn.example.com/variant-${index}-brand.jpg`, roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags }
+    ]
+  }));
+  const plan = helpers.buildFinalPlatformImagePlan(cases);
+  assert.equal(plan.sharedCompletedImageUrls.length, 12);
+  assert.equal(plan.easyStore.ready, true);
+  assert.equal(plan.shopee.ready, true);
+  assert.match(plan.easyStore.imageUrls[0], /-brand\.jpg$/);
+  assert.match(plan.coupang.imageUrls[0], /-clean\.jpg$/);
+  const represented = new Set(plan.sharedCompletedImageUrls.map((url) => /variant-(\d+)-/.exec(url)?.[1]).filter(Boolean));
+  assert.equal(represented.size, 12);
+});
+
+test('MOMO 前三張固定含 clean promo，且品牌次圖最多一張', () => {
+  const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
+  const promoFlags = { ...cleanFlags, momoPromotionEligible: true };
+  const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true };
+  const plan = helpers.buildFinalPlatformImagePlan([{
+    productId: 'momo-order', gallerySourceImageUrls: [], roleRows: [
+      { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/main.jpg', url: 'https://cdn.example.com/main-clean.jpg', roles: ['cleanMain'], sourceOrder: 1, assetFlags: cleanFlags },
+      { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/brand-1.jpg', url: 'https://cdn.example.com/brand-1.jpg', roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags },
+      { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/brand-2.jpg', url: 'https://cdn.example.com/brand-2.jpg', roles: ['brandedHero'], sourceOrder: 2, assetFlags: brandFlags },
+      { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/promo.jpg', url: 'https://cdn.example.com/promo-clean.jpg', roles: ['localizedDetail'], sourceOrder: 3, assetFlags: promoFlags }
+    ]
+  }]);
+  assert.equal(plan.momo.promotionImageReady, true);
+  assert.ok([plan.momo.imageUrls[1], plan.momo.imageUrls[2]].includes(plan.momo.promotionImageUrl));
+  assert.equal(plan.momo.imageUrls.filter((url) => /brand-\d/.test(url)).length, 1);
+});
+
+test('中央辨識主圖保持 cleanMain，EasyStore brandedHero 只另存平台圖且不覆寫中央主圖', () => {
+  const productId = 'central-clean-product';
+  const clean = 'https://cdn.example.com/central-clean.jpg';
+  const branded = 'https://cdn.example.com/easystore-branded.jpg';
+  const snapshot = helpers.buildListingSnapshot(productId, {
+    internalSku: 'CENTRAL-CLEAN', internalName: '中央圖測試', currentStock: 1,
+    easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
+  }, withV2ImagePlan({ productDescription: '完整介紹' }, { productId, sku: 'CENTRAL-CLEAN', clean, branded }));
+  assert.equal(snapshot.platformImagePlan.easyStore.imageUrls[0], branded);
+  const update = helpers.centralCompletedImageUpdate(snapshot, productId, {});
+  assert.equal(update.imageUrl, clean);
+  assert.notEqual(update.imageUrl, snapshot.platformImagePlan.easyStore.imageUrls[0]);
+  assert.ok(update.imageUrls.includes(branded));
+  assert.equal(update.imageUrls.some((url) => /source-/.test(url)), false);
+  const backend = fs.readFileSync('functions/productListingPublish.js', 'utf8');
+  assert.doesNotMatch(backend, /imageUrl:\s*snapshot\.images\[0\]/);
+  assert.match(backend, /easyStoreListingImageUrls/);
+});
+
+test('cleanup 前中央或細項仍引用 frozen source 即拒絕，四站完整圖片回條且中央全完成圖才通過', () => {
+  const productId = 'cleanup-image-product';
+  const source = 'https://example.com/source-clean.jpg';
+  const clean = 'https://cdn.example.com/cleanup-clean.jpg';
+  const snapshot = helpers.buildListingSnapshot(productId, {
+    internalSku: 'CLEANUP-IMG', internalName: '清理安全測試', currentStock: 1,
+    easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
+  }, withV2ImagePlan({ productDescription: '完整介紹' }, { productId, sku: 'CLEANUP-IMG', clean }));
+  const stages = Object.fromEntries(['easyStore', 'shopee', 'coupang', 'momo'].map((stage) => [stage, {
+    status: 'verified', receipt: verifiedPlatformReceipt(stage, snapshot)
+  }]));
+  const caseRecord = { centralImageReferenceVerification: { status: 'verified', cleanMainUrl: clean } };
+  const unsafe = helpers.validateCompletionImageReferences(snapshot, [{
+    productId, caseRecord,
+    productRecord: { imageUrl: clean, imageUrls: [clean, source], variants: [{ imageUrl: source }] }
+  }], stages);
+  assert.equal(unsafe.verified, false);
+  assert.ok(unsafe.reasons.includes(`${productId}:central-or-variant-image-still-frozen-source`));
+
+  const safe = helpers.validateCompletionImageReferences(snapshot, [{
+    productId, caseRecord,
+    productRecord: { imageUrl: clean, imageUrls: [clean], completedListingImageUrls: [clean] }
+  }], stages);
+  assert.equal(safe.verified, true, safe.reasons.join(','));
+
+  const missingImageReceipt = helpers.validateCompletionImageReferences(snapshot, [{
+    productId, caseRecord,
+    productRecord: { imageUrl: clean, imageUrls: [clean] }
+  }], { ...stages, momo: { status: 'verified', receipt: { ...stages.momo.receipt, officialImageUrls: [] } } });
+  assert.equal(missingImageReceipt.verified, false);
+  assert.ok(missingImageReceipt.reasons.includes('momo:missing-or-invalid-official-image-evidence'));
+});
+
+test('pending handoff sources can receive later Codex outputs and become one immutable final publish snapshot', () => {
+  const sourceOne = 'https://supplier.example.com/pending-1.jpg';
+  const sourceTwo = 'https://supplier.example.com/pending-2.jpg';
+  const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
+  const frozen = {
+    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'handoff-input-1', productId: 'late-product',
+    cases: [{ productId: 'late-product', sku: 'LATE-1', sourceImageUrls: [sourceOne, sourceTwo], gallerySourceImageUrls: [sourceTwo] }]
+  };
+  const currentCase = {
+    productSku: 'LATE-1', productDescription: '完整商品介紹',
+    generatedListingImages: [
+      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-clean.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: { ...flags, momoPromotionEligible: true } },
+      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-branded.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
+      { sourceImageUrl: sourceTwo, url: 'https://cdn.example.com/late-detail.jpg', sourceOrder: 2, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: { ...flags, momoPromotionEligible: true } }
+    ]
+  };
+  const finalized = helpers.finalizePreparedMediaSnapshot(frozen, new Map([['late-product', currentCase]]));
+  assert.equal(frozen.platformImagePlan, undefined);
+  assert.equal(finalized.finalizedFromFrozenInput, true);
+  assert.equal(finalized.inputSnapshotId, 'handoff-input-1');
+  assert.equal(finalized.platformImagePlan.easyStore.imageUrls[0], 'https://cdn.example.com/late-branded.jpg');
+  assert.equal(finalized.platformImagePlan.coupang.imageUrls[0], 'https://cdn.example.com/late-clean.jpg');
+  assert.equal(finalized.platformImagePlan.coupang.imageUrls[1], 'https://cdn.example.com/late-branded.jpg');
+  assert.equal(finalized.platformImagePlan.momo.imageUrls[1], 'https://cdn.example.com/late-detail.jpg');
+  assert.equal(finalized.platformImagePlan.momo.imageUrls[2], 'https://cdn.example.com/late-branded.jpg');
+  assert.equal(finalized.platformImagePlan.momo.promotionImageUrl, 'https://cdn.example.com/late-detail.jpg');
+  const rootCase = { ...currentCase, codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v2', preflightSnapshot: frozen } };
+  const snapshot = helpers.buildListingSnapshot('late-product', {
+    internalSku: 'LATE-1', internalName: '晚到完成圖商品', currentStock: 2,
+    easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
+  }, rootCase, null, null, finalized);
+  assert.deepEqual(helpers.platformImagePlanMissingFields(snapshot.platformImagePlan, { requireFinalized: true }), []);
+});
+
+test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerprint 且必須符合案件 frozen input', () => {
+  const productId = 'reuse-product';
+  const frozen = {
+    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'reuse-input', productId,
+    cases: [{
+      productId, sku: 'REUSE-1',
+      sourceImageUrls: ['https://supplier.example.com/reuse-a.jpg', 'https://supplier.example.com/reuse-b.jpg']
+    }]
+  };
+  const baseFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
+  const listingCase = {
+    productSku: 'REUSE-1', productDescription: '完整商品介紹',
+    codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v2', preflightSnapshot: frozen },
+    generatedListingImages: [
+      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-clean.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: baseFlags },
+      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-brand.jpg', status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
+      { sourceImageUrl: frozen.cases[0].sourceImageUrls[1], url: 'https://cdn.example.com/reuse-promo.jpg', status: 'ready', localizationStatus: 'completed', roles: ['localizedDetail'], assetFlags: { ...baseFlags, momoPromotionEligible: true } }
+    ]
+  };
+  const finalized = helpers.finalizePreparedMediaSnapshot(frozen, new Map([[productId, listingCase]]));
+  const snapshot = helpers.buildListingSnapshot(productId, {
+    internalSku: 'REUSE-1', internalName: '復用測試', currentStock: 1,
+    easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
+  }, listingCase, null, null, finalized);
+  const job = {
+    schemaVersion: 2,
+    workflowVersion: 'youzi-four-channel-listing-v2',
+    productId,
+    currentStage: 'easyStore',
+    platformOrder: ['easyStore', 'shopee', 'coupang', 'momo'],
+    preparedSnapshot: snapshot,
+    preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(snapshot),
+    stages: { easyStore: { status: 'processing' } }
+  };
+  assert.deepEqual(helpers.activeV2JobReuseBlockers(job, productId, listingCase), []);
+  const reverseKeys = (value) => {
+    if (Array.isArray(value)) return value.map(reverseKeys);
+    if (!value || typeof value !== 'object') return value;
+    return Object.keys(value).reverse().reduce((result, key) => {
+      result[key] = reverseKeys(value[key]);
+      return result;
+    }, {});
+  };
+  const reorderedSnapshot = reverseKeys(snapshot);
+  assert.deepEqual(helpers.activeV2JobReuseBlockers({
+    ...job,
+    preparedSnapshot: reorderedSnapshot,
+    preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(snapshot)
+  }, productId, listingCase), []);
+  assert.ok(helpers.activeV2JobReuseBlockers({ ...job, schemaVersion: 1 }, productId, listingCase).includes('job-schema-version-mismatch'));
+  const earlySnapshot = JSON.parse(JSON.stringify(snapshot));
+  earlySnapshot.platformImagePlan.finalizedFromFrozenInput = false;
+  earlySnapshot.platformImagePlan.source = 'codex-v2-prepared-snapshot';
+  delete earlySnapshot.platformImagePlan.inputSnapshotFingerprint;
+  assert.ok(helpers.activeV2JobReuseBlockers({
+    ...job, preparedSnapshot: earlySnapshot,
+    preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(earlySnapshot)
+  }, productId, listingCase).includes('finalized-image-plan-invalid'));
+  assert.ok(helpers.activeV2JobReuseBlockers({ ...job, platformOrder: ['easyStore', 'coupang', 'shopee', 'momo'] }, productId, listingCase).includes('job-platform-order-mismatch'));
+  const changedFrozenCase = JSON.parse(JSON.stringify(listingCase));
+  changedFrozenCase.codexHandoff.preflightSnapshot.cases[0].sourceImageUrls.push('https://supplier.example.com/new-source.jpg');
+  assert.ok(helpers.activeV2JobReuseBlockers(job, productId, changedFrozenCase).includes('case-frozen-input-mismatch'));
+  const changedFrozenData = JSON.parse(JSON.stringify(listingCase));
+  changedFrozenData.codexHandoff.preflightSnapshot.preparedData = { stockSnapshot: 99 };
+  assert.ok(helpers.activeV2JobReuseBlockers(job, productId, changedFrozenData).includes('case-frozen-input-mismatch'));
+});
+
+test('fingerprint 與 current policy deep compare 不受 Firestore 物件 key insertion order 影響', () => {
+  const reverseKeys = (value) => {
+    if (Array.isArray(value)) return value.map(reverseKeys);
+    if (!value || typeof value !== 'object') return value;
+    return Object.keys(value).reverse().reduce((result, key) => {
+      result[key] = reverseKeys(value[key]);
+      return result;
+    }, {});
+  };
+  const first = { z: 1, a: { second: 2, first: 1 }, rows: [{ b: 2, a: 1 }] };
+  const reordered = reverseKeys(first);
+  assert.equal(helpers.listingSnapshotFingerprint(first), helpers.listingSnapshotFingerprint(reordered));
+  const queueSnapshot = {
+    productId: 'stable-order', sku: 'STABLE-1', listingMode: 'standalone', title: '測試', description: '介紹',
+    images: ['https://cdn.example.com/stable.jpg'], stock: 1,
+    automationPolicy: { z: true, nested: { b: 2, a: 1 } },
+    momoDelivery: { carrier: '新竹物流', method: 'third-party' }, momoCatalogPolicy: { b: 2, a: 1 }
+  };
+  assert.equal(
+    helpers.platformQueueFingerprint('MOMO', queueSnapshot),
+    helpers.platformQueueFingerprint('MOMO', reverseKeys(queueSnapshot))
+  );
+});
+
+test('final publish snapshot rejects completed outputs whose source was not frozen at handoff', () => {
+  const frozen = {
+    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'handoff-input-rogue',
+    cases: [{ productId: 'rogue-product', sku: 'ROGUE-1', sourceImageUrls: ['https://supplier.example.com/allowed.jpg'] }]
+  };
+  const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
+  assert.throws(() => helpers.finalizePreparedMediaSnapshot(frozen, new Map([['rogue-product', {
+    generatedListingImages: [{
+      sourceImageUrl: 'https://supplier.example.com/not-frozen.jpg', url: 'https://cdn.example.com/rogue.jpg',
+      status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: flags
+    }]
+  }]])), /完成圖來源不在凍結輸入清單/);
+});
+
+test('final publish snapshot rejects another frozen source URL disguised as a completed output', () => {
+  const sourceOne = 'https://supplier.example.com/source-a.jpg';
+  const sourceTwo = 'https://supplier.example.com/source-b.jpg';
+  const frozen = {
+    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'handoff-input-cross-source',
+    cases: [{ productId: 'cross-source-product', sku: 'CROSS-1', sourceImageUrls: [sourceOne, sourceTwo] }]
+  };
+  const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
+  assert.throws(() => helpers.finalizePreparedMediaSnapshot(frozen, new Map([['cross-source-product', {
+    generatedListingImages: [
+      {
+        sourceImageUrl: sourceOne, url: sourceTwo,
+        status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: flags
+      },
+      {
+        sourceImageUrl: sourceTwo, url: 'https://cdn.example.com/localized-b.jpg',
+        status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: flags
+      }
+    ]
+  }]])), /完成圖仍是凍結來源原圖/);
+});
+
+test('final publish snapshot rejects a merged sibling source URL disguised as a completed output', () => {
+  const sourceOne = 'https://supplier.example.com/merged-source-a.jpg';
+  const sourceTwo = 'https://supplier.example.com/merged-source-b.jpg';
+  const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
+  const frozen = {
+    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'handoff-input-cross-case-source',
+    cases: [
+      { productId: 'merged-source-a', sku: 'MERGED-A', sourceImageUrls: [sourceOne] },
+      { productId: 'merged-source-b', sku: 'MERGED-B', sourceImageUrls: [sourceTwo] }
+    ]
+  };
+  assert.throws(() => helpers.finalizePreparedMediaSnapshot(frozen, new Map([
+    ['merged-source-a', { generatedListingImages: [{ sourceImageUrl: sourceOne, url: sourceTwo, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: flags }] }],
+    ['merged-source-b', { generatedListingImages: [{ sourceImageUrl: sourceTwo, url: 'https://cdn.example.com/merged-localized-b.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: flags }] }]
+  ])), /本組其他商品的凍結來源原圖/);
 });
 
 test('Coupang stops before queueing when no second clean product image exists', () => {
@@ -219,7 +813,7 @@ test('Coupang stops before queueing when no second clean product image exists', 
     productDescription: '完整商品介紹', listingImageUrls: ['https://example.com/green-template.jpg'],
     enabledPlatforms: { easyStoreShopee: false, momo: false, coupang: true }
   });
-  assert.match(helpers.coupangMissingFields(snapshot).join('、'), /酷澎乾淨主圖/);
+  assert.match(helpers.coupangMissingFields(snapshot).join('、'), /酷澎 cleanMain 首圖/);
 });
 
 test('one-click listing always targets all channels and falls back to the product price', () => {
@@ -336,15 +930,19 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     packageLengthCm: 106.7, packageWidthCm: 45.7, packageHeightCm: 10.2, packageWeightKg: 4.2,
     shippingDecision: 'freight', enabledPlatforms: { easyStoreShopee: true, momo: false, coupang: false }
   });
-  const payload = helpers.buildShopeeAutofillPayload(snapshot, { productId: '16403950' });
+  const payload = helpers.buildShopeeAutofillPayload(snapshot, { productId: '16403950' }, {
+    jobId: 'job-shopee-v2-1', snapshotId: 'snapshot-shopee-v2-1', snapshotFingerprint: 'a'.repeat(64)
+  });
 
   assert.equal(snapshot.stock, 0);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 4);
+  assert.equal(payload.schemaVersion, 5);
+  assert.equal(payload.workflowVersion, 'youzi-four-channel-listing-v2');
+  assert.equal(payload.jobId, 'job-shopee-v2-1');
   assert.equal(payload.publishMode, 'auto');
   assert.deepEqual(payload.listingPolicy, {
-    decision: 'new', matchKey: 'sku', allowCreate: true, existingListingIds: [],
-    onZero: 'create-only-if-confirmed', onOne: 'update', onMultiple: 'block'
+    mode: 'create-new', identitySource: 'new-draft', platformListingIds: [],
+    preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only'
   });
   assert.equal(payload.brand, 'Ibanez');
   assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);
@@ -509,15 +1107,15 @@ test('Shopee persistence summary never stores one-time autofill handoff secrets'
 
   const source = fs.readFileSync('functions/productListingPublish.js', 'utf8');
   assert.match(source, /const platformsForStorage = summarizePlatformsForStorage\(platforms\)/);
-  assert.match(source, /jobRef\.set\(\{ status, platforms: platformsForStorage,/);
-  assert.match(source, /publishState: \{ jobId, status, platforms: platformsForStorage,/);
-  assert.match(source, /return \{ ok:[\s\S]*status, platforms \};/);
+  assert.match(source, /jobRef\.set\(\{ status, platforms: platformsForStorage, currentStage, stages,/);
+  assert.match(source, /publishState: \{ jobId, status, currentStage, stages, platforms: platformsForStorage,/);
+  assert.match(source, /return \{ ok:[\s\S]*status, currentStage, stages, platforms \};/);
   assert.match(source, /updatedBy: '商品上架', schemaVersion: 8/);
-  assert.match(source, /version: '2026\.08\.13-shopee-taxonomy-v5'/);
+  assert.match(source, /version: LISTING_WORKFLOW_ID/);
   assert.doesNotMatch(source, /updatedBy: '商品上架', schemaVersion: 7/);
 });
 
-test('platform listing identity always prefers existing IDs and otherwise requires exact SKU upsert', () => {
+test('platform listing identity uses central IDs and reserves exact SKU lookup for uncertain submit recovery', () => {
   const product = {
     platformMappings: {
       shopee: { itemIds: ['4116442', '4116442'] },
@@ -530,13 +1128,15 @@ test('platform listing identity always prefers existing IDs and otherwise requir
   assert.deepEqual(helpers.platformListingIds(product, 'momo'), ['MOMO-100|MOMO-100-RED']);
   assert.deepEqual(helpers.platformListingIds(product, 'coupang'), ['90001']);
   assert.deepEqual(helpers.buildPlatformQueuePolicy(product, 'MOMO', snapshot), {
-    mode: 'update-existing', matchKey: 'sku', sku: 'SKU-1',
-    existingListingIds: ['MOMO-100|MOMO-100-RED'], onZero: 'create', onOne: 'update',
-    onMultiple: 'block', onUncertain: 'block'
+    mode: 'update-existing', matchKey: 'central-platform-id', sku: 'SKU-1',
+    existingListingIds: ['MOMO-100|MOMO-100-RED'], identitySource: 'central-platform-id',
+    preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only',
+    onZero: 'create', onOne: 'update', onMultiple: 'block', onUncertain: 'exact-sku-recovery'
   });
   assert.deepEqual(helpers.buildPlatformQueuePolicy({}, 'Coupang', snapshot), {
-    mode: 'upsert-by-exact-sku', matchKey: 'sku', sku: 'SKU-1', existingListingIds: [],
-    onZero: 'create', onOne: 'update', onMultiple: 'block', onUncertain: 'block'
+    mode: 'create-new', matchKey: 'new-draft', sku: 'SKU-1', existingListingIds: [],
+    identitySource: 'new-draft', preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only',
+    onZero: 'create', onOne: 'update', onMultiple: 'block', onUncertain: 'exact-sku-recovery'
   });
   assert.equal(helpers.buildPlatformQueuePolicy({
     platformMappings: { coupang: { vendorItemIds: ['90001', '90002'] } }
@@ -563,9 +1163,25 @@ test('known Shopee mapping forces update policy even when the form still says ne
     internalSku: 'SKU-1', platformMappings: { shopee: { itemId: '4116442' } }
   }, { shopeeListingDecision: 'new' });
   const payload = helpers.buildShopeeAutofillPayload(snapshot, { productId: '16965067' });
-  assert.equal(snapshot.shopeeListingDecision, 'existing');
-  assert.deepEqual(payload.listingPolicy.existingListingIds, ['4116442']);
-  assert.equal(payload.listingPolicy.allowCreate, false);
+  assert.equal(Object.prototype.hasOwnProperty.call(snapshot, 'shopeeListingDecision'), false);
+  assert.deepEqual(payload.listingPolicy, {
+    mode: 'update-existing', identitySource: 'central-platform-id', platformListingIds: ['4116442'],
+    preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only'
+  });
+});
+
+test('legacy Shopee decision is ignored when the central product has no platform id', () => {
+  for (const legacyDecision of ['auto', 'existing']) {
+    const snapshot = helpers.buildListingSnapshot(`new-${legacyDecision}`, {
+      internalSku: `NEW-${legacyDecision.toUpperCase()}`
+    }, { shopeeListingDecision: legacyDecision });
+    const payload = helpers.buildShopeeAutofillPayload(snapshot, { productId: '16965067' });
+    assert.equal(Object.prototype.hasOwnProperty.call(snapshot, 'shopeeListingDecision'), false);
+    assert.deepEqual(payload.listingPolicy, {
+      mode: 'create-new', identitySource: 'new-draft', platformListingIds: [],
+      preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only'
+    });
+  }
 });
 
 test('Shopee autofill accepts explicit manual confirmation while unresolved identity stays blocked', () => {
@@ -629,13 +1245,15 @@ test('new SKU can safely target an existing parent as a platform variant', () =>
     variantChildImageUrl: 'https://example.com/blue-source.jpg',
     generatedListingImages: [{
       status: 'ready', localizationStatus: 'completed',
-      sourceImageUrl: 'https://example.com/blue-source.jpg', url: 'https://example.com/blue-zh-tw.jpg'
+      sourceImageUrl: 'https://example.com/blue-source.jpg', url: 'https://example.com/blue-zh-tw.jpg',
+      roles: ['cleanMain'], assetFlags: { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false }
     }],
     productDescription: '商品介紹', listingImageUrls: ['https://example.com/other-zh-tw.jpg', 'https://example.com/blue-zh-tw.jpg']
   }, parent, {
     generatedListingImages: [{
       status: 'ready', localizationStatus: 'completed',
-      sourceImageUrl: 'https://example.com/parent-source.jpg', url: 'https://example.com/parent-zh-tw.jpg'
+      sourceImageUrl: 'https://example.com/parent-source.jpg', url: 'https://example.com/parent-zh-tw.jpg',
+      roles: ['cleanMain'], assetFlags: { containsLogo: false, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: false }
     }]
   });
 
@@ -650,14 +1268,18 @@ test('new SKU can safely target an existing parent as a platform variant', () =>
   assert.deepEqual(helpers.buildPlatformQueuePolicy({}, 'MOMO', snapshot), {
     mode: 'add-variant-to-existing', matchKey: 'parent-listing-id+sku', sku: 'CHILD-BLUE',
     existingListingIds: ['momo-parent|momo-parent-detail'], parentProductId: 'parent-1', parentSku: 'PARENT-100',
+    identitySource: 'central-platform-id', preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only',
     variantAttributeName: '顏色', variantParentAttributeValue: '黑色', variantAttributeValue: '藍色',
     variantParentImageUrl: 'https://example.com/parent-zh-tw.jpg', variantImageUrl: 'https://example.com/blue-zh-tw.jpg',
     onZero: 'block', onOne: 'append-variant', onMultiple: 'block', onUncertain: 'block'
   });
   const shopee = helpers.buildShopeeAutofillPayload(snapshot, { productId: 'es-parent' });
   assert.equal(shopee.publishMode, 'add-variant-to-existing');
-  assert.equal(shopee.listingPolicy.allowCreate, false);
-  assert.equal(shopee.listingPolicy.onOne, 'append-variant');
+  assert.deepEqual(shopee.listingPolicy, {
+    mode: 'add-variant-to-existing', identitySource: 'central-platform-id',
+    platformListingIds: ['shopee-parent'], preflightSkuSearch: false,
+    uncertainSubmitRecovery: 'exact-sku-only'
+  });
   assert.deepEqual(shopee.variantGroup, {
     parentProductId: 'parent-1', parentSku: 'PARENT-100', parentName: '既有商品',
     attributeName: '顏色', parentAttributeValue: '黑色', attributeValue: '藍色',

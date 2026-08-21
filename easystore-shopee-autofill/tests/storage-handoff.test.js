@@ -42,7 +42,7 @@ test("bridge writes the validated queue to shared local storage and acknowledges
     chrome: { storage, runtime: { lastError: null } },
     YouziShopeeAutofillHelpers: {
       QUEUE_STORAGE_AREA: "local",
-      QUEUE_STORAGE_KEY: "youziShopeeAutofillQueueV1",
+      QUEUE_STORAGE_KEY: "youziShopeeAutofillQueueV2",
       validateQueuePayload(value) {
         return { ok: true, errors: [], value };
       },
@@ -72,17 +72,76 @@ test("bridge writes the validated queue to shared local storage and acknowledges
     origin: location.origin,
     data: {
       source: "youzi-operations-hub",
-      type: "YOUZI_SHOPEE_AUTOFILL_QUEUE",
+       type: "YOUZI_SHOPEE_AUTOFILL_QUEUE_V2",
       payload: __payload
     }
   })`, context);
 
   assert.deepEqual(storageCalls.map((row) => row[0]), ["get", "set"]);
-  assert.equal(stored.youziShopeeAutofillQueueV1["16965067"].payload.sku, "1040160-1");
+  assert.equal(stored.youziShopeeAutofillQueueV2["16965067"].payload.sku, "1040160-1");
   assert.equal(acknowledgements.length, 1);
   assert.equal(acknowledgements[0].targetOrigin, origin);
   assert.equal(acknowledgements[0].message.ok, true);
   assert.equal(acknowledgements[0].message.code, "QUEUED");
+});
+
+test("bridge ignores the retired V1 message and never reads or rewrites its queue", () => {
+  const origin = "https://danny700808.github.io";
+  const listeners = {};
+  const acknowledgements = [];
+  const storageCalls = [];
+  const legacyQueue = {
+    "16965067": {
+      payload: {
+        schemaVersion: 4,
+        sku: "1040160-1",
+        listingPolicy: { decision: "existing", onZero: "create-only-if-confirmed" }
+      }
+    }
+  };
+  let stored = { youziShopeeAutofillQueueV1: legacyQueue };
+  const local = {
+    get(key, callback) { storageCalls.push(["get", key]); callback(stored); },
+    set(value, callback) {
+      storageCalls.push(["set", value]);
+      stored = Object.assign({}, stored, value);
+      callback();
+    }
+  };
+  const sandbox = {
+    location: { origin },
+    chrome: { storage: { local }, runtime: { lastError: null } },
+    YouziShopeeAutofillHelpers: {
+      QUEUE_STORAGE_AREA: "local",
+      QUEUE_STORAGE_KEY: "youziShopeeAutofillQueueV2",
+      validateQueuePayload() { throw new Error("V1 message must be ignored before validation"); }
+    },
+    addEventListener(type, listener) { listeners[type] = listener; },
+    postMessage(message, targetOrigin) { acknowledgements.push({ message, targetOrigin }); },
+    __listeners: listeners
+  };
+  sandbox.window = sandbox;
+  const context = vm.createContext(sandbox);
+  vm.runInContext(
+    fs.readFileSync(path.join(extensionRoot, "bridge.js"), "utf8"),
+    context,
+    { filename: "bridge.js" }
+  );
+
+  vm.runInContext(`__listeners.message({
+    source: window,
+    origin: location.origin,
+    data: {
+      source: "youzi-operations-hub",
+      type: "YOUZI_SHOPEE_AUTOFILL_QUEUE",
+      payload: { schemaVersion: 4 }
+    }
+  })`, context);
+
+  assert.deepEqual(storageCalls, []);
+  assert.deepEqual(acknowledgements, []);
+  assert.strictEqual(stored.youziShopeeAutofillQueueV1, legacyQueue);
+  assert.equal(Object.hasOwn(stored, "youziShopeeAutofillQueueV2"), false);
 });
 
 test("bridge stores one product-bound image collection session", () => {
@@ -112,7 +171,7 @@ test("bridge stores one product-bound image collection session", () => {
     chrome: { storage: { local }, runtime: { lastError: null } },
     YouziShopeeAutofillHelpers: {
       QUEUE_STORAGE_AREA: "local",
-      QUEUE_STORAGE_KEY: "youziShopeeAutofillQueueV1"
+      QUEUE_STORAGE_KEY: "youziShopeeAutofillQueueV2"
     },
     YouziImageCollectorHelpers: Object.assign(
       {},
@@ -167,7 +226,7 @@ test("extension package enables the supplier image collector service worker", ()
   const bridge = fs.readFileSync(path.join(extensionRoot, "bridge.js"), "utf8");
   const easystore = fs.readFileSync(path.join(extensionRoot, "easystore.js"), "utf8");
 
-  assert.equal(manifest.version, "0.3.21");
+  assert.equal(manifest.version, "0.3.22");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));

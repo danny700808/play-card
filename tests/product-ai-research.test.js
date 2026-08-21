@@ -33,14 +33,22 @@ test('website OpenAI endpoints are disabled while listings use the Codex convers
   assert.equal(research.CODEX_ONLY_LISTING_MODE, true);
 });
 
-test('main product image prompt enforces the fixed green template and Taiwan wording', () => {
+test('main product image prompt enforces the fixed light commercial template and Taiwan wording', () => {
   const prompt = research.buildMainTemplateImagePrompt({ name: 'Ibanez AZES40', brand: 'Ibanez', model: 'AZES40' }, { sellingPoints: 'HSS 拾音配置' });
-  assert.match(prompt, /第一張輸入圖是柚子樂器固定綠色模板/);
+  assert.match(prompt, /第一張輸入圖是柚子樂器固定綠色品牌模板/);
   assert.match(prompt, /移除左下角可愛寶寶/);
   assert.match(prompt, /台灣繁體中文/);
   assert.match(prompt, /不可遮住頂端標語或右上標誌/);
   assert.match(prompt, /依商品種類、商品本體顏色、留白位置及可讀性/);
-  assert.match(prompt, /圓角標籤、色塊、斜角框、線框或大小字組合/);
+  assert.match(prompt, /淺色商業展示底板，不限定純白/);
+  assert.match(prompt, /奶油白、米色、淺灰、淺藍、淺粉/);
+  assert.match(prompt, /放在右側或中央偏右/);
+  assert.match(prompt, /55～65%/);
+  assert.match(prompt, /最多 2 個輔助視覺/);
+  assert.match(prompt, /固定維持相同的品牌頁首/);
+  assert.match(prompt, /1～3 個已查證的短賣點/);
+  assert.match(prompt, /不得加入價格、地址、電話、QR Code、浮水印或聯絡資訊/);
+  assert.match(prompt, /方形 1:1/);
 });
 
 function completeResult(overrides = {}) {

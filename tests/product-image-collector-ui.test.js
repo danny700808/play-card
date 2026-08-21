@@ -103,13 +103,92 @@ test("同款商品從各自已收圖片中指定一張代表圖", () => {
   assert.match(operationsSource, /loadProductListingVariantMedia\(item\.productId\)/);
 });
 
-test("加入同款細項後會恢復原商品既有圖片且不會誤復原人工清空", () => {
+test("加入同款細項後會從案件來源或完成圖譜系恢復圖片", () => {
   assert.match(operationsSource, /function productListingRecoveredMedia/);
   assert.match(operationsSource, /generatedListingImages\.map\(function\(row\)\{return row\.sourceImageUrl/);
   assert.match(operationsSource, /productVariantImages\(p\)/);
-  assert.match(operationsSource, /source\.referenceImagesCleared!==true&&!storedReferences\.length/);
+  assert.match(operationsSource, /completedSources\.length\?completedSources/);
   assert.match(operationsSource, /referenceImagesCleared:rows\.length===0/);
   assert.match(operationsSource, /productListingSourceImageCache\.set\(id,row\.referenceImageUrls\.slice\(\)\)/);
+});
+
+test("繁體完成圖同步只更換中央商品圖，不刪除案件來源譜系", () => {
+  const syncStart = operationsSource.indexOf("async function syncCompletedListingImagesToProduct");
+  const syncEnd = operationsSource.indexOf("function normalizeProductShopeeAttributes", syncStart);
+  const sync = operationsSource.slice(syncStart, syncEnd);
+  assert.doesNotMatch(sync, /referenceImageUrls:\[\]|selectedReferenceImageUrls:\[\]|referenceImagesCleared:true/);
+
+  const loadStart = operationsSource.indexOf("async function loadProductListingVariantMedia");
+  const loadEnd = operationsSource.indexOf("function productVariantImageThumbsHtml", loadStart);
+  const load = operationsSource.slice(loadStart, loadEnd);
+  assert.doesNotMatch(load, /syncCompletedListingImagesToProduct\([^)]*,true\)|row\.referenceImageUrls=\[\]|row\.selectedReferenceImageUrls=\[\]/);
+
+  const openStart = operationsSource.indexOf("async function openProductListingCase");
+  const openEnd = operationsSource.indexOf("function validateProductListingHtml", openStart);
+  const open = operationsSource.slice(openStart, openEnd);
+  assert.doesNotMatch(open, /syncCompletedListingImagesToProduct\([^)]*,true\)|row\.referenceImageUrls=\[\]|row\.selectedReferenceImageUrls=\[\]/);
+
+  const uploadStart = operationsSource.indexOf("async function uploadProductCompletedListingImages");
+  const uploadEnd = operationsSource.indexOf("function productImageCollectionId", uploadStart);
+  const upload = operationsSource.slice(uploadStart, uploadEnd);
+  assert.match(upload, /referenceImageUrls:sourceImages/);
+  assert.match(upload, /selectedReferenceImageUrls:sourceImages/);
+  assert.match(upload, /referenceImagesCleared:false/);
+  assert.doesNotMatch(upload, /syncCompletedListingImagesToProduct\([^)]*,true\)|sourceInput\.value=''|input\.checked=false/);
+});
+
+test("完成圖會保留來源與多角色譜系，不把同一來源壓成單一 URL", () => {
+  const normalizeStart = operationsSource.indexOf("function normalizeGeneratedListingImages");
+  const normalizeEnd = operationsSource.indexOf("function normalizeProductShopeeAttributes", normalizeStart);
+  const normalize = operationsSource.slice(normalizeStart, normalizeEnd);
+  assert.match(normalize, /roles:normalizeProductListingImageRoles\(row\)/);
+  assert.match(normalize, /assetFlags:normalizeProductListingImageFlags\(row\)/);
+  assert.match(normalize, /sourceImageUrl:safeUrl\(row&&row\.sourceImageUrl\)/);
+  assert.match(normalize, /slice\(-120\)/);
+
+  const snapshotStart = operationsSource.indexOf("function productListingCodexMediaSnapshot");
+  const snapshotEnd = operationsSource.indexOf("function productListingCodexPreparedCase", snapshotStart);
+  const snapshot = operationsSource.slice(snapshotStart, snapshotEnd);
+  assert.match(snapshot, /readyRowsBySource=new Map\(\)/);
+  assert.match(snapshot, /const rows=readyRowsBySource\.get\(row\.sourceImageUrl\)\|\|\[\];rows\.push\(row\)/);
+  assert.doesNotMatch(snapshot, /readyBySource\.set\(row\.sourceImageUrl,row\.url\)/);
+  assert.match(snapshot, /cleanMain\/brandedHero-role-conflict/);
+});
+
+test("中央圖片先寫入並重讀核對，來源 binary 清理在全部引用核對前保持阻擋", () => {
+  const syncStart = operationsSource.indexOf("async function syncCompletedListingImagesToProduct");
+  const syncEnd = operationsSource.indexOf("function normalizeProductShopeeAttributes", syncStart);
+  const sync = operationsSource.slice(syncStart, syncEnd);
+  const persist = sync.indexOf("await productRef.set");
+  const reload = sync.indexOf("await productRef.get");
+  const verify = sync.indexOf("重新讀取不一致");
+  const retain = sync.indexOf("blocked-until-all-central-variant-platform-references-verified");
+  assert.ok(persist >= 0 && reload > persist && verify > reload && retain > verify);
+  assert.match(sync, /sourceBinaryCleanupRequired:true/);
+  assert.match(sync, /cleanupWorkerRequired:true/);
+  assert.match(sync, /eligibleForDeletion:false/);
+  assert.doesNotMatch(sync, /\.delete\(|deleteObject|referenceImageUrls:\[\]/);
+
+  const promptStart = operationsSource.indexOf("function productListingCodexHandoffPrompt");
+  const promptEnd = operationsSource.indexOf("function productListingCodexThreadUrl", promptStart);
+  const prompt = operationsSource.slice(promptStart, promptEnd);
+  assert.match(prompt, /先寫入新完成圖引用並重讀資料庫/);
+  assert.match(prompt, /核對中央、所有細項與四平台已全面換成完成圖/);
+  assert.match(prompt, /cleanupStatus 推進到 required/);
+  assert.match(prompt, /永久只保留來源 URL／hash、順序、角色與輸出譜系 metadata/);
+});
+
+test("一鍵交接會等待最後一張收圖保存完成", () => {
+  assert.match(operationsSource, /let productImageCollectionPendingUploads = 0/);
+  assert.match(operationsSource, /let productImageCollectionDeliverySequence = 0/);
+  assert.match(operationsSource, /let productImageCollectionUploadFailures = \[\]/);
+  assert.match(operationsSource, /function queueProductImageCollectionFile/);
+  assert.match(operationsSource, /productImageCollectionUploadChain=next\.catch[\s\S]*?\.finally/);
+  assert.match(operationsSource, /async function drainProductImageCollectionUploads/);
+  assert.match(operationsSource, /await drainProductImageCollectionUploads\(form\)/);
+  assert.match(operationsSource, /productImageCollectionSession=null/);
+  assert.match(operationsSource, /if\(message\.type===PRODUCT_IMAGE_COLLECTION\.deliver\)queueProductImageCollectionFile\(payload\)\.catch/);
+  assert.match(operationsSource, /index<PRODUCT_SELECTED_IMAGE_MAX/);
 });
 
 test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製圖按鈕", () => {
@@ -120,7 +199,7 @@ test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製�
   assert.doesNotMatch(renderer, /data-action="product-ai-research-run"/);
   assert.doesNotMatch(renderer, /data-action="product-ai-image-generate"/);
   assert.match(renderer, /id="productCompletedImageUpload"/);
-  assert.match(renderer, /Codex 回填完成圖/);
+  assert.match(renderer, /進階回填角色完成圖/);
   assert.doesNotMatch(renderer, />上傳 Codex 已完成圖片</);
   assert.equal((renderer.match(/data-action="product-listing-codex-complete"/g) || []).length, 1);
 });
@@ -133,7 +212,7 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
 });
 
 test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
-  assert.equal(manifest.version, "0.3.21");
+  assert.equal(manifest.version, "0.3.22");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));
