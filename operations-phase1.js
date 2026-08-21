@@ -2104,6 +2104,7 @@ function renderOverviewV7(){
     if(clean(job.currentStage)!=='shopee')return {skipped:true,currentStage:clean(job.currentStage)};
     const appliedImageUrls=normalizeProductResearchSourceUrls(plan.imageUrls).slice(0,PRODUCT_GROUP_LISTING_IMAGE_MAX),officialImageUrls=normalizeProductResearchSourceUrls((product.imageUrls||[]).concat(product.imageUrl?[product.imageUrl]:[])).slice(0,PRODUCT_GROUP_LISTING_IMAGE_MAX);
     if(!appliedImageUrls.length||!officialImageUrls.length)throw new Error('蝦皮正式圖片核對資料不足，已停止推進酷澎。');
+    await requireEasyStoreManagerAuth();
     const callable=global.firebase.app().functions('us-central1').httpsCallable('verifyProductListingStage',{timeout:3*60*1000}),response=await callable({
       jobId:jobId,
       stage:'shopee',

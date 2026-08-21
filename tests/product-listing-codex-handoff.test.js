@@ -270,6 +270,7 @@ test('蝦皮正式狀態儲存後沿用同一 v2 job 自動推進酷澎', () => 
   const advance = section('async function advanceFixedV2AfterShopeeStatus', 'async function saveProductPlatformStatus');
   assert.match(advance, /clean\(job\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
   assert.match(advance, /clean\(job\.currentStage\)!=='shopee'/);
+  assert.match(advance, /await requireEasyStoreManagerAuth\(\)/);
   assert.match(advance, /httpsCallable\('verifyProductListingStage'/);
   assert.match(advance, /stage:'shopee'/);
   assert.match(advance, /platformListMatched:true,officialCatalogMatched:true,imageEvidenceComplete:true/);
