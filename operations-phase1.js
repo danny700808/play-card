@@ -4472,7 +4472,7 @@ function ensureSalesClock(){
       productId:id,sku:clean(product.sku),name:clean(product.originalName||product.name),listingMode:normalized.listingMode,variantGroupEnabled:normalized.variantGroupEnabled,cases:cases,
       preparedData:{brand:normalized.brand,model:normalized.model,shopeeCategoryPath:normalized.shopeeCategoryPath,momoCategoryCode:normalized.momoCategoryCode,coupangCategoryCode:normalized.coupangCategoryCode,shippingDecision:normalized.shippingDecision,packageLengthCm:normalized.packageLengthCm,packageWidthCm:normalized.packageWidthCm,packageHeightCm:normalized.packageHeightCm,packageWeightKg:normalized.packageWeightKg,priceSnapshot:raw.priceSnapshot&&typeof raw.priceSnapshot==='object'?raw.priceSnapshot:{},stockSnapshot:numberOrNull(raw.stockSnapshot)==null?Number(product.currentStock||0):numberOrNull(raw.stockSnapshot)},
       platformImagePlan:platformImagePlan,
-      executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,processIsFixedProductDataMayVary:true,prepareOnce:true,neverReturnToResearchAfterPlatformStart:true,retrySameSkuDraftAndStage:true,verifyOnceAfterEachSubmit:true,verifyExactSkuOnlyWhenOutcomeUnknown:true,neverSearchWholePlatformCatalog:true,neverCreateReplacementOnRetry:true,shopeeWorkspace:'easystore-shopee-channel-sync-only',momoPromotionImage:'clean-product-output-position-2-or-3-no-logo-contact-qr',sourceBinaryCleanupRequired:true,cleanupOnlyAfterAllCentralVariantPlatformReferencesVerified:true,cleanupWorkerRequired:true,retainSourceMetadataHashAndLineage:true}
+      executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,processIsFixedProductDataMayVary:true,prepareOnce:true,singleHandoffAuthorization:true,routineSecondConfirmationForbidden:true,backendFirst:true,desktopControlFallbackOnly:true,croppedTextMustBeReflowedReplacedOrRemoved:true,neverReturnToResearchAfterPlatformStart:true,retrySameSkuDraftAndStage:true,verifyOnceAfterEachSubmit:true,verifyExactSkuOnlyWhenOutcomeUnknown:true,neverSearchWholePlatformCatalog:true,neverCreateReplacementOnRetry:true,shopeeWorkspace:'easystore-shopee-channel-sync-only',momoPromotionImage:'clean-product-output-position-2-or-3-no-logo-contact-qr',sourceBinaryCleanupRequired:true,cleanupOnlyAfterAllCentralVariantPlatformReferencesVerified:true,cleanupWorkerRequired:true,retainSourceMetadataHashAndLineage:true}
     };
     return immutableProductListingSnapshot(snapshot);
   }
@@ -4554,13 +4554,13 @@ function ensureSalesClock(){
       const prompt=productListingCodexHandoffPrompt(product,snapshot),threadUrl=productListingCodexThreadUrl(prompt),serverTime=serverTimestamp(),platforms={easyStore:{status:'pending'},shopee:{status:'blocked-by-previous-stage'},coupang:{status:'blocked-by-previous-stage'},momo:{status:'blocked-by-previous-stage'}};
       await state.db.collection(COLLECTIONS.listingCases).doc(id).set({
         caseStatus:'waiting-codex',
-        codexHandoff:{status:'pending',workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,prompt:prompt,productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),preflightSnapshot:snapshot,requestedAt:serverTime,requestedBy:userLabel(),sourcePageUrl:location.href},
+        codexHandoff:{status:'pending',workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,prompt:prompt,productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),preflightSnapshot:snapshot,autoPublishAuthorization:{granted:true,scope:'fixed-v2-four-channel-publish',workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,grantedAt:serverTime,grantedBy:userLabel(),grantedByEmail:clean(state.user&&state.user.email).toLowerCase(),noSecondConfirmation:true},requestedAt:serverTime,requestedBy:userLabel(),sourcePageUrl:location.href},
         codexExecution:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,currentStage:'codex-preflight',platformOrder:PRODUCT_LISTING_PLATFORM_ORDER.slice(),platforms:platforms,retrySameSkuDraftAndStage:true,neverRebuildPreflightDuringRetry:true,updatedAt:serverTime},
         updatedAt:serverTime,updatedBy:userLabel(),version:VERSION
       },{merge:true});
       const copied=await copyProductListingCodexPrompt(prompt);
       await writeAudit('交給 Codex 對話處理','productListingCase',id,clean(product.sku)+'｜'+clean(product.originalName||product.name));
-      setProductListingCodexUi(form,'completed','工作已帶入 Codex','切換後請在輸入框按 Enter 開始；Codex 會先一次預檢，再依 EasyStore、蝦皮、酷澎、MOMO 順序完成。'+(copied?' 工作指令也已複製。':''));
+      setProductListingCodexUi(form,'completed','已授權固定 v2 自動上架','完成圖資料齊全後會由後端依 EasyStore、蝦皮、酷澎、MOMO 固定順序自動續跑，不再要求第二次確認。'+(copied?' 工作指令也已複製。':''));
       global.setTimeout(function(){global.location.href=threadUrl;},100);
       return {status:'pending',productId:id,workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,promptCopied:copied};
     }catch(error){
@@ -4619,7 +4619,6 @@ function ensureSalesClock(){
   async function confirmAndPublishProductVariantGroup(draft){
     await requireEasyStoreManagerAuth();
     const products=[draft.product].concat(draft.variantGroupItems.map(function(item){return catalogById(item.productId);}).filter(Boolean));
-    const ok=await confirmAction('確認整組上架','將依序處理 '+products.length+' 個商品編號；共同主圖一致，每個細項使用自己配對的圖片。這不是預覽，確定要繼續嗎？','確定整組上架');if(!ok)return null;
     const rows=[];
     for(const product of products){
       try{rows.push({id:product.docId,sku:product.sku,name:product.originalName||product.name,result:await callProductListingPublishWithTransientRetry(product.docId,byId('productListingCaseForm'))});}
@@ -4630,8 +4629,6 @@ function ensureSalesClock(){
   async function confirmAndPublishProductListingCase(draft){
     if(!global.firebase||!global.firebase.functions)throw new Error('商品上架服務尚未載入，請重新整理頁面。');
     await requireEasyStoreManagerAuth();
-    const description=(draft.enabledEasyStoreShopee!==false?'商品身分固定使用中央平台 ID：有 ID 就更新指定商品，沒有 ID 就直接建立本次唯一的新 SKU；送出前不搜尋平台目錄。':'')+(draft.enabledEasyStoreShopee!==false&&draft.shippingDecision==='home'?' 一般宅配不會自動選擇蝦皮物流，仍須在 EasyStore 人工確認。':'')+((draft.enabledMomo!==false||draft.enabledCoupang!==false)?' MOMO／酷澎沿用同一份 v2 快照與工作，不會另建第二筆。':'');
-    const ok=await confirmAction('確認上架',description+' 這不是預覽，確定要繼續嗎？','確定上架');if(!ok)return null;
     const result=await callProductListingPublishWithTransientRetry(draft.id,byId('productListingCaseForm'));
     openProductListingPublishResult(result,draft);
     if(result.status==='partial-failed')toast('有平台尚未完成','請查看上架結果後修正再試。','warning');
