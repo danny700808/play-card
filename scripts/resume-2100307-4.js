@@ -40,7 +40,16 @@ async function main() {
       updatedBy: 'Codex v2 recovery for 2100307-4'
     }, { merge: true });
   });
-  console.log('Authorized exact existing v2 handoff for 2100307-4');
+  for (let attempt = 0; attempt < 48; attempt += 1) {
+    const latest = (await ref.get()).data() || {};
+    const auto = latest.codexAutoPublish && typeof latest.codexAutoPublish === 'object' ? latest.codexAutoPublish : {};
+    const publish = latest.publishState && typeof latest.publishState === 'object' ? latest.publishState : {};
+    console.log(JSON.stringify({ attempt: attempt + 1, autoStatus: auto.status || '', jobId: publish.jobId || auto.jobId || '', currentStage: publish.currentStage || auto.currentStage || '', publishStatus: publish.status || '', error: auto.error || '' }));
+    if (publish.jobId || auto.jobId) return;
+    if (auto.status === 'failed') throw new Error(auto.error || 'Automatic publish failed');
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  throw new Error('Automatic publish job was not created within four minutes');
 }
 
 main().catch((error) => {
