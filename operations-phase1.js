@@ -4588,6 +4588,23 @@ function ensureSalesClock(){
     const callable=global.firebase.app().functions('us-central1').httpsCallable('publishProductListingCase',{timeout:9*60*1000}),response=await callable({productId:productId});
     return response&&response.data||{};
   }
+  async function resumeExplicitShopeeListingFromQuery(){
+    const params=new URLSearchParams(global.location.search||''),jobId=clean(params.get('resumeListingJob')),productId=clean(params.get('productId'));
+    if(!jobId&&!productId)return false;
+    if(!/^[A-Za-z0-9_-]{1,200}$/.test(jobId)||!/^[A-Za-z0-9_-]{1,200}$/.test(productId))throw new Error('指定的 v2 上架工作代碼不正確。');
+    if(!global.YouziShopeeAutofill||typeof global.YouziShopeeAutofill.queue!=='function')throw new Error('蝦皮自動填寫橋接程式尚未載入，請確認已安裝最新版助手。');
+    const result=await callProductListingPublish(productId),shopee=result&&result.platforms&&result.platforms.shopee,payload=shopee&&shopee.autofillPayload;
+    if(clean(result&&result.jobId)!==jobId)throw new Error('後端回傳的工作代碼與指定工作不一致，已停止續跑。');
+    if(clean(result&&result.currentStage)!=='shopee'||!payload)throw new Error('指定工作目前不是可續跑的蝦皮階段。');
+    if(clean(payload.workflowVersion)!==PRODUCT_LISTING_WORKFLOW_VERSION||clean(payload.jobId)!==jobId||clean(payload.productId)!==productId)throw new Error('蝦皮資料不屬於指定的固定 v2 工作，已停止續跑。');
+    const queued=await global.YouziShopeeAutofill.queue(payload);
+    if(!queued||queued.extensionReady!==true)throw new Error(clean(queued&&queued.error)||'助手尚未收到指定工作。');
+    const nextUrl=clean(queued.payload&&queued.payload.easyStoreUrl);
+    if(!/^https:\/\/admin\.easystore\.co\//i.test(nextUrl))throw new Error('EasyStore 正式通路網址不正確，已停止續跑。');
+    try{global.sessionStorage.setItem('youzi_v2_shopee_resume_'+jobId,'queued');}catch(error){}
+    global.location.assign(nextUrl);
+    return true;
+  }
   function productListingTransientFailure(value){
     let message='';try{message=typeof value==='string'?value:JSON.stringify(value||{});}catch(error){message=clean(value&&value.message);}
     if(/(?:必填|缺少必要|平台明確拒絕|OTP|驗證碼|captcha|登入(?:已)?失效|細項代表圖尚未完成繁體化)/i.test(message))return false;
@@ -6052,6 +6069,11 @@ function rerenderKeepingFocus(id,value){
     const restoredFastState=await restoreFastStateCache();
     watchInjiaoyunCloudSync();
     bindEvents();
+    try{
+      if(await resumeExplicitShopeeListingFromQuery())return;
+    }catch(error){
+      showAlert('無法接續指定的蝦皮工作：'+errorMessage(error),'error');
+    }
     if(ysv104RepairResult==='repaired')toast('YSV-104 歷史紀錄已更正','7/16 認列成交；8/5 尾款收清並交貨；沒有新增收款。','success');
     const initialView=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     const cache=initialView==='overview'?getDashboardCache():null;

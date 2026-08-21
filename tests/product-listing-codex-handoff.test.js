@@ -20,7 +20,7 @@ function loadPureFunction(start, end, name, dependencies) {
   return Function(...names, "'use strict';\n" + body + "\nreturn " + name + ";")(...values);
 }
 
-test('一鍵上架按鈕把完整工作帶入指定 Codex 對話並等待使用者送出', () => {
+test('一鍵上架按鈕把固定 v2 工作帶入指定 Codex 對話並授權後端續跑', () => {
   assert.match(source, /const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex:\/\/threads\/'/);
   assert.match(source, /function productListingCodexThreadUrl\(prompt\)/);
   assert.match(source, /params\.set\('prompt',clean\(prompt\)\)/);
@@ -31,7 +31,8 @@ test('一鍵上架按鈕把完整工作帶入指定 Codex 對話並等待使用�
   assert.match(source, /preflightSnapshot:snapshot/);
   assert.match(source, /neverRebuildPreflightDuringRetry:true/);
   assert.match(source, /global\.location\.href=threadUrl/);
-  assert.match(source, /切換後請在輸入框按 Enter 開始/);
+  assert.match(source, /autoPublishAuthorization:\{granted:true/);
+  assert.match(source, /noSecondConfirmation:true/);
   assert.doesNotMatch(source, /Codex 待辦已建立/);
 });
 
@@ -41,7 +42,7 @@ test('主要按鈕不再直接執行 OpenAI 文案與圖片 API 流程', () => {
   assert.doesNotMatch(handler, /completeProductListingWithCodex/);
   assert.doesNotMatch(source, /async function completeProductListingWithCodex/);
   assert.doesNotMatch(handler, /researchProductListingCase|generateProductListingImage/);
-  assert.match(source, /切換後請在輸入框按 Enter 開始/);
+  assert.match(source, /完成圖資料齊全後會由後端依 EasyStore、蝦皮、酷澎、MOMO 固定順序自動續跑/);
   assert.match(source, /不得重新呼叫網站的 OpenAI 文案或圖片 API/);
   assert.match(source, /已停用網頁 OpenAI/);
 });
@@ -254,4 +255,13 @@ test('同一來源可有多個角色輸出，但同一完成圖不可同時當�
     sourceImageUrl: sameSource, url: 'https://cdn.example.com/clean.jpg', roles: ['brandedHero']
   });
   assert.deepEqual(Array.from(conflictingUrls(conflictRows)), ['https://cdn.example.com/clean.jpg']);
+});
+
+test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手', () => {
+  const resume = section('async function resumeExplicitShopeeListingFromQuery', 'function productListingTransientFailure');
+  assert.match(resume, /resumeListingJob/);
+  assert.match(resume, /result&&result\.jobId\)!==jobId/);
+  assert.match(resume, /result&&result\.currentStage\)!=='shopee'/);
+  assert.match(resume, /payload\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
+  assert.match(resume, /YouziShopeeAutofill\.queue\(payload\)/);
 });
