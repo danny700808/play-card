@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
@@ -14,16 +15,23 @@ const version = '0.3.22';
 const zipName = `youzi-easystore-shopee-autofill-v${version}.zip`;
 const zipPath = path.join(root, zipName);
 
-function walkFiles(directory, relative = '') {
-  const rows = [];
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (entry.name === 'node_modules') continue;
-    const childRelative = relative ? `${relative}/${entry.name}` : entry.name;
-    const childPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) rows.push(...walkFiles(childPath, childRelative));
-    else if (entry.isFile()) rows.push(childRelative.replaceAll('\\', '/'));
-  }
-  return rows.sort();
+function gitExtensionFiles() {
+  const output = execFileSync(
+    'git',
+    ['ls-tree', '-r', '--name-only', 'HEAD', '--', extensionName],
+    { cwd: root, encoding: 'utf8' },
+  );
+  return output.trim().split(/\r?\n/)
+    .filter(Boolean)
+    .map((name) => name.slice(`${extensionName}/`.length))
+    .sort();
+}
+
+function gitBlob(entryName) {
+  return execFileSync('git', ['cat-file', 'blob', `HEAD:${entryName}`], {
+    cwd: root,
+    encoding: null,
+  });
 }
 
 function zipFileEntries(buffer) {
@@ -75,12 +83,12 @@ function zipFileEntries(buffer) {
 test('0.3.22 ZIP contains exactly the Git extension files byte for byte', () => {
   assert.equal(fs.existsSync(zipPath), true, `缺少 ${zipName}`);
   const packaged = zipFileEntries(fs.readFileSync(zipPath));
-  const sourceFiles = walkFiles(extensionRoot);
+  const sourceFiles = gitExtensionFiles();
   const expectedEntries = sourceFiles.map((name) => `${extensionName}/${name}`);
   assert.deepEqual([...packaged.keys()].sort(), expectedEntries);
   for (const relative of sourceFiles) {
     const entryName = `${extensionName}/${relative}`;
-    assert.deepEqual(packaged.get(entryName), fs.readFileSync(path.join(extensionRoot, relative)), `ZIP 與 Git 檔案不同：${relative}`);
+    assert.deepEqual(packaged.get(entryName), gitBlob(entryName), `ZIP 與 Git 檔案不同：${relative}`);
   }
 });
 
