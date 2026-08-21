@@ -33,6 +33,11 @@ test('一鍵上架按鈕把固定 v2 工作帶入指定 Codex 對話並授權後
   assert.match(source, /global\.location\.href=threadUrl/);
   assert.match(source, /autoPublishAuthorization:\{granted:true/);
   assert.match(source, /noSecondConfirmation:true/);
+  assert.match(source, /momoMainAdAndPromotionImagesAreSeparate:true/);
+  assert.match(source, /momoPromotionRequiredBeforeFirstSubmit:true/);
+  assert.match(source, /easyStoreImageUrlUploadFallback:true/);
+  assert.match(source, /retrySameUrlInFreshInAppWorkTabWhenClaimedTabInputFails:true/);
+  assert.match(source, /shopeeLargeItemHctOnly:true/);
   assert.doesNotMatch(source, /Codex 待辦已建立/);
 });
 
@@ -106,11 +111,15 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /只有 job schema、目前 automationPolicy、固定 platformOrder/);
   assert.match(prompt, /先保留至少一張 cleanMain 與一張 brandedHero/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
+  assert.match(prompt, /商品主圖、廣告用圖與圖文編輯器專推圖是三個互相獨立的必填位置/);
+  assert.match(prompt, /不得等平台第一次拒絕後才補專推圖或出貨地/);
   assert.match(prompt, /1000×1000 px、1:1、sRGB/);
   assert.match(prompt, /平台之間只改首圖角色與排序/);
   assert.match(prompt, /不得進入平台後才重新裁切、縮放或另做一套圖片/);
   assert.match(prompt, /Codex 對話旁邊的內建瀏覽器/);
   assert.match(prompt, /不得操作使用者主要 Chrome/);
+  assert.match(prompt, /同一內建瀏覽器開一個工作頁籤載入完全相同網址/);
+  assert.match(prompt, /輸入控制備援，不是第二條上架路徑/);
   assert.match(prompt, /已同時授權四通路的建立、修改與最後正式發布/);
   assert.match(prompt, /不得再詢問「確認上架／確認提交／套用細項」/);
   assert.match(prompt, /第二層「上傳素材」/);
@@ -120,6 +129,8 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /不得每站重新掃描整頁/);
   assert.match(prompt, /頁面版型未改變時直接套用已準備欄位/);
   assert.match(prompt, /MOMO 第三方 000001/);
+  assert.match(prompt, /generatedListingImages 的公開完成圖網址批次加入/);
+  assert.match(prompt, /蝦皮大型商品只保留符合材積級距的新竹物流/);
   assert.match(prompt, /沒有既有平台 ID 時，視為新商品/);
   assert.match(prompt, /不做上架前平台全站搜尋/);
 });
