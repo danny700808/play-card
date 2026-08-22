@@ -129,17 +129,18 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /可為平台 CDN/);
   assert.match(prompt, /中央或任一細項圖片欄位只要仍等於任一凍結來源 URL 就停止/);
   assert.match(prompt, /只有 job schema、目前 automationPolicy、執行圖/);
-  assert.match(prompt, /先保留至少一張 cleanMain 與一張 brandedHero/);
+  assert.match(prompt, /先保留至少一張 cleanMain、一張 storefrontPortrait 與一張 brandedHero/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
   assert.match(prompt, /商品主圖、廣告用圖與圖文編輯器專推圖是三個互相獨立的必填位置/);
   assert.match(prompt, /不得等平台第一次拒絕後才補專推圖或出貨地/);
-  assert.match(prompt, /1000×1000 px、1:1、sRGB/);
-  assert.match(prompt, /商品列表的圖片框實測約為 3:4 且以 cover 顯示/);
-  assert.match(prompt, /中央 72% 寬度的安全區/);
-  assert.match(prompt, /左右必須各縮進約 14～16%/);
-  assert.match(prompt, /裁切後仍看得到細綠邊/);
-  assert.match(prompt, /平台之間只改首圖角色與排序/);
-  assert.match(prompt, /不得進入平台後才重新裁切、縮放或另做一套圖片/);
+  assert.match(prompt, /EasyStore storefrontPortrait 為 750×1000 px、3:4/);
+  assert.match(prompt, /蝦皮 brandedHero 為 1000×1000 px、1:1/);
+  assert.match(prompt, /MOMO／酷澎 cleanMain 為 1000×1000 px、1:1/);
+  assert.match(prompt, /淺色內容底板四周保留細綠邊/);
+  assert.match(prompt, /同一輪圖片處理固定產生三個首圖版型/);
+  assert.match(prompt, /不得進平台後才重新裁切或設計/);
+  assert.match(prompt, /preflightSnapshot\.decisionContract 是唯一執行契約/);
+  assert.match(prompt, /只有 judgmentFields 可以由 Codex/);
   assert.match(prompt, /Codex 對話旁邊的內建瀏覽器/);
   assert.match(prompt, /不得操作使用者主要 Chrome/);
   assert.match(prompt, /整批商品第一次開始前.*四通路工作階段預檢/);
@@ -181,10 +182,11 @@ test('新細項的父商品會沿用已儲存的來源圖佇列，但不把未�
   assert.match(snapshot, /mergeProductListingCodexQueuedMedia\(item,queued\)/);
 });
 
-test('Codex 交接指令明確區分乾淨主圖與淺色品牌首圖', () => {
+test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮方形品牌首圖', () => {
   const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
   assert.match(prompt, /cleanMain 是無品牌框、無 Logo、無地址／電話／QR Code/);
-  assert.match(prompt, /brandedHero 才使用方形 1:1「柚子樂器淺色商業展示版」/);
+  assert.match(prompt, /storefrontPortrait 使用 3:4「柚子樂器淺色商業展示版」/);
+  assert.match(prompt, /brandedHero 使用相同品牌語言的 1:1 方形版/);
   assert.match(prompt, /商品去背後約占 55～65%/);
   assert.match(prompt, /最多 2 個有來源依據的輔助視覺/);
   assert.match(prompt, /不得加入價格、聯絡資訊、浮水印或虛構功能／配件/);
@@ -216,6 +218,7 @@ test('四通路圖片實際依完成圖角色排序，不會把來源原圖送�
   const sourceUrl = 'https://supplier.example.com/simplified-source.jpg';
   const secondSourceUrl = 'https://supplier.example.com/second-simplified-source.jpg';
   const heroUrl = 'https://cdn.example.com/branded-hero-zh-tw.jpg';
+  const storefrontUrl = 'https://cdn.example.com/storefront-portrait-zh-tw.jpg';
   const cleanUrl = 'https://cdn.example.com/clean-main-zh-tw.jpg';
   const detailUrl = 'https://cdn.example.com/detail-zh-tw.jpg';
   const emptyFlags = {
@@ -225,12 +228,13 @@ test('四通路圖片實際依完成圖角色排序，不會把來源原圖送�
   const rows = [
     { sourceImageUrl: sourceUrl, url: sourceUrl, roles: ['cleanMain'], assetFlags: emptyFlags },
     { sourceImageUrl: sourceUrl, url: secondSourceUrl, roles: ['localizedDetail'], assetFlags: emptyFlags },
+    { sourceImageUrl: sourceUrl, url: storefrontUrl, roles: ['storefrontPortrait'], assetFlags: { ...emptyFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
     { sourceImageUrl: sourceUrl, url: heroUrl, roles: ['brandedHero'], assetFlags: { ...emptyFlags, containsLogo: true, greenBrandTemplate: true } },
     { sourceImageUrl: sourceUrl, url: cleanUrl, roles: ['cleanMain'], assetFlags: emptyFlags },
     { sourceImageUrl: sourceUrl, url: detailUrl, roles: ['localizedDetail'], assetFlags: { ...emptyFlags, momoPromotionEligible: true } }
   ];
   const plan = planImages(rows, [sourceUrl, secondSourceUrl]);
-  assert.deepEqual(plan.easyStore.imageUrls.slice(0, 2), [heroUrl, cleanUrl]);
+  assert.deepEqual(plan.easyStore.imageUrls.slice(0, 2), [storefrontUrl, cleanUrl]);
   assert.deepEqual(plan.shopee.imageUrls.slice(0, 2), [heroUrl, cleanUrl]);
   assert.deepEqual(plan.coupang.imageUrls.slice(0, 2), [cleanUrl, heroUrl]);
   assert.deepEqual(plan.momo.imageUrls.slice(0, 3), [cleanUrl, detailUrl, heroUrl]);
@@ -260,6 +264,7 @@ test('營運中心 12 張共用池也先保留必要角色並公平涵蓋 13 個
     gallerySourceImageUrls: [],
     preparedCase: { rows: [
       { sourceImageUrl: `https://supplier.example.com/${index}-clean.jpg`, url: `https://cdn.example.com/variant-${index}-clean.jpg`, roles: ['cleanMain'], sourceOrder: 1 },
+      { sourceImageUrl: `https://supplier.example.com/${index}-storefront.jpg`, url: `https://cdn.example.com/variant-${index}-storefront.jpg`, roles: ['storefrontPortrait'], sourceOrder: 1 },
       { sourceImageUrl: `https://supplier.example.com/${index}-brand.jpg`, url: `https://cdn.example.com/variant-${index}-brand.jpg`, roles: ['brandedHero'], sourceOrder: 1 }
     ] }
   }));
@@ -267,6 +272,7 @@ test('營運中心 12 張共用池也先保留必要角色並公平涵蓋 13 個
   assert.equal(result.length, 12);
   assert.equal(result.some((row) => row.roles.includes('cleanMain')), true);
   assert.equal(result.some((row) => row.roles.includes('brandedHero')), true);
+  assert.equal(result.some((row) => row.roles.includes('storefrontPortrait')), true);
   const represented = new Set(result.map((row) => /variant-(\d+)-/.exec(row.url)?.[1]).filter(Boolean));
   assert.equal(represented.size, 12);
 });

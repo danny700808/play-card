@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
 const LISTING_JOB_SCHEMA_VERSION = 2;
-const LISTING_AUTOMATION_POLICY_VERSION = 9;
+const LISTING_AUTOMATION_POLICY_VERSION = 11;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -27,7 +27,7 @@ const SHOPEE_AUTOFILL_SCHEMA_VERSION = 5;
 const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'processing']);
 const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
 const PLATFORM_QUEUE_RECEIPT_STATUSES = new Set([...PLATFORM_QUEUE_COMPLETED_STATUSES, 'submitted-to-platform-review', 'under-review']);
-const LISTING_IMAGE_ROLES = new Set(['cleanMain', 'brandedHero', 'localizedDetail', 'specification', 'variantRepresentative']);
+const LISTING_IMAGE_ROLES = new Set(['cleanMain', 'brandedHero', 'storefrontPortrait', 'localizedDetail', 'specification', 'variantRepresentative']);
 const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
 const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const DESCRIPTION_PROMO_IMAGE_URLS = [
@@ -328,11 +328,12 @@ function buildShopeeLogistics(snapshot) {
   const longestCm = hasCompletePackage ? Math.max(...dimensions) : 0;
   const weightKg = numberOrNull(snapshot.packageWeightKg);
   const hasValidWeight = weightKg !== null && weightKg > 0;
-  const decision = clean(snapshot.shippingDecision);
   const hsinchuBand = hasCompletePackage && longestCm <= 150 && totalCm <= 210
     && hasValidWeight && weightKg <= 20 ? hsinchuSizeBand(totalCm) : '';
   const canVerifyConvenience = hasCompletePackage && hasValidWeight;
   const convenienceFits = canVerifyConvenience && longestCm <= 45 && totalCm <= 105 && weightKg <= 5;
+  const storedDecision = clean(snapshot.shippingDecision);
+  const decision = storedDecision || (canVerifyConvenience ? (convenienceFits ? 'convenience' : hsinchuBand ? 'freight' : 'oversize') : '');
   const convenience = decision === 'convenience' && convenienceFits;
   const freight = decision === 'freight';
   const hsinchu = Boolean((convenience || freight) && hsinchuBand);
@@ -353,6 +354,8 @@ function buildShopeeLogistics(snapshot) {
   ];
   return {
     decision,
+    decisionSource: storedDecision ? 'manager-or-case' : decision ? 'package-dimensions' : 'unresolved',
+    decidedOnceBeforePlatformNavigation: true,
     packageTotalCm: hasCompletePackage ? Math.round(totalCm * 100) / 100 : null,
     methods: methods.map((row) => ({
       label: row.label,
@@ -361,9 +364,10 @@ function buildShopeeLogistics(snapshot) {
       feeTwd: numberOrNull(row.feeTwd),
       sellerPays: false
     })),
-    requiresConfirmation: !hasCompletePackage || !hasValidWeight || !decision || decision === 'home'
+    requiresJudgment: !hasCompletePackage || !hasValidWeight || !decision || decision === 'home' || decision === 'oversize'
       || (decision === 'freight' && !hsinchuBand)
-      || (decision === 'convenience' && !convenienceFits)
+      || (decision === 'convenience' && !convenienceFits),
+    requiresConfirmation: false
   };
 }
 
@@ -606,6 +610,14 @@ function cleanRepresentativeRoleRow(row) {
     && !flags.containsLogo && !flags.containsContactInfo && !flags.containsQrCode && !flags.containsText && !flags.greenBrandTemplate;
 }
 
+function storefrontPortraitRoleRow(row) {
+  const roles = listingImageRoles(row);
+  const flags = listingImageAssetFlags(row);
+  return roles.includes('storefrontPortrait')
+    && flags.containsLogo && flags.containsText && flags.greenBrandTemplate
+    && !flags.containsContactInfo && !flags.containsQrCode;
+}
+
 function localizedImageRowsBySource(listingCase) {
   const rows = listingCase && Array.isArray(listingCase.generatedListingImages)
     ? listingCase.generatedListingImages : [];
@@ -629,7 +641,8 @@ function localizedImageRowsBySource(listingCase) {
   result.forEach((rowsForSource, sourceUrl) => {
     result.set(sourceUrl, rowsForSource.filter((row) => {
       const urlRoles = rolesByUrl.get(row.url) || new Set();
-      return !(urlRoles.has('cleanMain') && urlRoles.has('brandedHero'));
+      const layoutRoles = ['cleanMain', 'brandedHero', 'storefrontPortrait'].filter((role) => urlRoles.has(role));
+      return layoutRoles.length <= 1;
     }));
   });
   return result;
@@ -696,7 +709,8 @@ function finalizedRoleRowsForCase(productId, frozenCase, currentCase) {
     rolesByUrl.set(row.url, roles);
   });
   rolesByUrl.forEach((roles) => {
-    if (roles.has('cleanMain') && roles.has('brandedHero')) throw new Error(`${clean(productId)}的同一完成圖不得同時是 cleanMain 與 brandedHero。`);
+    const layoutRoles = ['cleanMain', 'brandedHero', 'storefrontPortrait'].filter((role) => roles.has(role));
+    if (layoutRoles.length > 1) throw new Error(`${clean(productId)}的同一完成圖不得同時兼任不同尺寸的首圖角色。`);
   });
   frozenSources.forEach((sourceImageUrl) => {
     const rows = readyRows.filter((row) => row.sourceImageUrl === sourceImageUrl);
@@ -713,7 +727,8 @@ function buildFinalPlatformImagePlan(caseRows) {
     return (Array.isArray(item && item.roleRows) ? item.roleRows : [])
       .filter((row) => !allowed.size || allowed.has(row.sourceImageUrl) || allowed.has(row.url))
       .slice().sort((a, b) => {
-      const rank = (row) => row.roles.includes('cleanMain') ? 0 : row.roles.includes('brandedHero') ? 1 : 2;
+      const rank = (row) => row.roles.includes('cleanMain') ? 0
+        : row.roles.includes('storefrontPortrait') ? 1 : row.roles.includes('brandedHero') ? 2 : 3;
       return rank(a) - rank(b) || a.sourceOrder - b.sourceOrder;
     });
   });
@@ -727,23 +742,28 @@ function buildFinalPlatformImagePlan(caseRows) {
     if (Number.isInteger(groupIndex)) coveredGroups.add(groupIndex);
     return true;
   };
-  const findRoleRow = (role, excludedGroup = -1) => {
+  const findRoleRow = (role, excludedGroups = []) => {
+    const excluded = new Set(Array.isArray(excludedGroups) ? excludedGroups : [excludedGroups]);
     for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
-      if (groupIndex === excludedGroup) continue;
+      if (excluded.has(groupIndex)) continue;
       const row = groups[groupIndex].find((candidate) => candidate.roles.includes(role));
       if (row) return { row, groupIndex };
     }
     return null;
   };
 
-  // Reserve the two cross-channel roles before the 12-image cap can be consumed by
+  // Reserve the three channel-specific hero roles before the 12-image cap can be consumed by
   // one role. With multiple variants, put the reserved roles in different groups
   // when possible so the pool still covers as many variants as the cap permits.
   const reservedClean = findRoleRow('cleanMain');
   if (reservedClean) pushRow(reservedClean.row, reservedClean.groupIndex);
-  const reservedBrand = findRoleRow('brandedHero', groups.length > 1 && reservedClean ? reservedClean.groupIndex : -1)
+  const reservedBrand = findRoleRow('brandedHero', groups.length > 1 && reservedClean ? [reservedClean.groupIndex] : [])
     || findRoleRow('brandedHero');
   if (reservedBrand) pushRow(reservedBrand.row, reservedBrand.groupIndex);
+  const occupiedHeroGroups = [reservedClean, reservedBrand].filter(Boolean).map((entry) => entry.groupIndex);
+  const reservedStorefront = findRoleRow('storefrontPortrait', groups.length > occupiedHeroGroups.length ? occupiedHeroGroups : [])
+    || findRoleRow('storefrontPortrait');
+  if (reservedStorefront) pushRow(reservedStorefront.row, reservedStorefront.groupIndex);
 
   // Give every not-yet-covered variant one representative before adding second
   // images for already-covered variants. When there are more than 12 variants,
@@ -764,13 +784,15 @@ function buildFinalPlatformImagePlan(caseRows) {
   const brandedRows = pool.filter((row) => row.roles.includes('brandedHero')
     && row.assetFlags.containsLogo && row.assetFlags.greenBrandTemplate
     && !row.assetFlags.containsContactInfo && !row.assetFlags.containsQrCode);
+  const storefrontRows = pool.filter(storefrontPortraitRoleRow);
   const detailRows = pool.filter((row) => row.roles.some((role) => ['localizedDetail', 'specification', 'variantRepresentative'].includes(role)));
   const safeBrandedRows = brandedRows.filter((row) => !row.assetFlags.containsContactInfo && !row.assetFlags.containsQrCode);
   const uniqueRows = (values) => {
     const found = new Set();
     return values.filter((row) => row && !found.has(row.url) && found.add(row.url));
   };
-  const easyRows = uniqueRows(brandedRows.concat(cleanRows, pool));
+  const easyRows = uniqueRows(storefrontRows.concat(cleanRows, detailRows, brandedRows, pool));
+  const shopeeRows = uniqueRows(brandedRows.concat(cleanRows, detailRows, pool));
   const cleanFirst = cleanRows.slice(0, 1);
   const promoRow = pool.find((row) => (!cleanFirst[0] || row.url !== cleanFirst[0].url)
     && row.assetFlags.momoPromotionEligible
@@ -778,7 +800,7 @@ function buildFinalPlatformImagePlan(caseRows) {
     && !row.assetFlags.containsText && !row.assetFlags.greenBrandTemplate
     && row.roles.some((role) => ['cleanMain', 'localizedDetail', 'specification'].includes(role)));
   const secondaryBrand = safeBrandedRows.find((row) => !cleanFirst[0] || row.url !== cleanFirst[0].url);
-  const nonBrandedRemainder = pool.filter((row) => !row.roles.includes('brandedHero'));
+  const nonBrandedRemainder = pool.filter((row) => !row.roles.includes('brandedHero') && !row.roles.includes('storefrontPortrait'));
   const coupangRows = uniqueRows(cleanFirst.concat(secondaryBrand || [], nonBrandedRemainder, detailRows));
   // MOMO's promotion material must be visible in position 2 or 3. Put it second,
   // then allow at most one safe branded secondary image.
@@ -790,8 +812,8 @@ function buildFinalPlatformImagePlan(caseRows) {
     && row.roles.some((role) => ['cleanMain', 'localizedDetail', 'specification'].includes(role)));
   return {
     sharedCompletedImageUrls: urls(pool),
-    easyStore: { imageUrls: urls(easyRows), requiredFirstRole: 'brandedHero', ready: Boolean(easyRows[0] && easyRows[0].roles.includes('brandedHero')) },
-    shopee: { imageUrls: urls(easyRows), requiredFirstRole: 'brandedHero', ready: Boolean(easyRows[0] && easyRows[0].roles.includes('brandedHero')) },
+    easyStore: { imageUrls: urls(easyRows), requiredFirstRole: 'storefrontPortrait', ready: Boolean(easyRows[0] && easyRows[0].roles.includes('storefrontPortrait')) },
+    shopee: { imageUrls: urls(shopeeRows), requiredFirstRole: 'brandedHero', ready: Boolean(shopeeRows[0] && shopeeRows[0].roles.includes('brandedHero')) },
     coupang: { imageUrls: urls(coupangRows), requiredFirstRole: 'cleanMain', ready: Boolean(coupangRows[0] && coupangRows[0].roles.includes('cleanMain')), brandedHeroAllowedAsSecondary: true, removeSecondaryBrandedHeroIfPlatformRejectsGalleryLogo: true },
     momo: { imageUrls: urls(momoRows), requiredFirstRole: 'cleanMain', ready: Boolean(momoRows[0] && momoRows[0].roles.includes('cleanMain')), brandedHeroAllowedAsSecondary: true, promotionImageUrl: orderedPromoRow ? orderedPromoRow.url : '', promotionImageReady: Boolean(orderedPromoRow) }
   };
@@ -914,7 +936,7 @@ function preparedPlatformImagePlan(listingCase, finalizedMediaSnapshot = null) {
       return {
         url, sourceImageUrls: Array.from(new Set(matches.map((candidate) => candidate.sourceImageUrl))), roles, assetFlags,
         metadataVerified: matches.length > 0 && matches.every((candidate) => candidate.assetFlagsDeclared)
-          && !(roles.includes('cleanMain') && roles.includes('brandedHero'))
+          && ['cleanMain', 'brandedHero', 'storefrontPortrait'].filter((role) => roles.includes(role)).length <= 1
       };
     });
     const requiredFirstRole = clean(row.requiredFirstRole);
@@ -926,7 +948,9 @@ function preparedPlatformImagePlan(listingCase, finalizedMediaSnapshot = null) {
         : requiredFirstRole === 'brandedHero'
           ? first.assetFlags.containsLogo && first.assetFlags.greenBrandTemplate
             && !first.assetFlags.containsContactInfo && !first.assetFlags.containsQrCode
-          : false));
+          : requiredFirstRole === 'storefrontPortrait'
+            ? storefrontPortraitRoleRow(first)
+            : false));
     const brandedAfterMain = imageRoleAssignments.slice(1).filter((entry) => entry.roles.includes('brandedHero'));
     const safeBrandedAfterMain = brandedAfterMain.every((entry) => !entry.assetFlags.containsContactInfo && !entry.assetFlags.containsQrCode)
       && (key !== 'momo' || brandedAfterMain.length <= 1);
@@ -989,7 +1013,7 @@ function platformImagePlanMissingFields(plan, options = {}) {
     || source.finalizedFromFrozenInput !== true || !source.inputSnapshotId || !source.inputSnapshotFingerprint)) {
     missing.push('來源輸入驗證後的最終完成圖快照');
   }
-  [['easyStore', 'brandedHero'], ['shopee', 'brandedHero'], ['coupang', 'cleanMain'], ['momo', 'cleanMain']].forEach(([platform, role]) => {
+  [['easyStore', 'storefrontPortrait'], ['shopee', 'brandedHero'], ['coupang', 'cleanMain'], ['momo', 'cleanMain']].forEach(([platform, role]) => {
     const row = source[platform] && typeof source[platform] === 'object' ? source[platform] : {};
     if (!row.ready || !row.roleMetadataVerified || row.requiredFirstRole !== role || !row.imageUrls.length) missing.push(`${platform} 首圖角色 ${role}`);
   });
@@ -1010,6 +1034,195 @@ function variantRepresentativeMissingFields(snapshot) {
     else if (!snapshot.variantGroupPrimaryImageUrl) missing.push('目前商品代表圖的繁體完成版');
   }
   return missing;
+}
+
+function buildCanonicalCategoryDecision(snapshot) {
+  const evidence = {
+    title: snapshot.title,
+    shopeeTitle: snapshot.shopeeTitle,
+    productName: snapshot.title,
+    category: snapshot.category,
+    model: snapshot.model
+  };
+  const family = shopeeTaxonomy.inferMusicFamily(evidence, snapshot.shopeeCategoryPath);
+  const shopeePath = shopeeTaxonomy.formatCategoryPath(snapshot.shopeeCategoryPath, evidence);
+  const normalizedFamily = clean(family) || '未判定';
+  return {
+    version: 1,
+    decidedOnceBeforePlatformNavigation: true,
+    scope: 'musical-instruments-and-accessories-only',
+    canonicalFamily: normalizedFamily,
+    canonicalKey: normalizedFamily === '未判定' ? '' : `music:${normalizedFamily}`,
+    evidenceSummary: clean([snapshot.category, snapshot.title, snapshot.model].filter(Boolean).join('｜')).slice(0, 500),
+    platformMappings: {
+      easyStore: { value: clean(snapshot.category) || normalizedFamily, status: clean(snapshot.category) || family ? 'resolved' : 'unresolved' },
+      shopee: { value: shopeePath, status: shopeePath ? 'resolved' : 'unresolved' },
+      coupang: { value: clean(snapshot.coupangCategoryCode), status: clean(snapshot.coupangCategoryCode) ? 'resolved' : 'map-once-before-platform' },
+      momo: { value: clean(snapshot.momoCategoryCode), status: clean(snapshot.momoCategoryCode) ? 'resolved' : 'map-once-before-platform' }
+    },
+    forbidPerPlatformReclassification: true,
+    remapOnlyWhenPlatformTaxonomyRejectsStoredMapping: true
+  };
+}
+
+function buildListingDecisionContract(snapshot) {
+  return {
+    version: 1,
+    mode: 'deterministic-workflow-with-structured-judgment',
+    immutableForJob: true,
+    deterministicSteps: [
+      'freeze-case-input', 'validate-completed-image-lineage', 'sync-central-clean-images',
+      'prepare-platform-field-plan-once', 'run-momo-coupang-easystore-roots',
+      'run-shopee-after-easystore', 'verify-each-platform-once', 'cleanup-source-binaries-after-all-verification'
+    ],
+    automaticFields: {
+      priceFallbackOrder: ['platform-price', 'shared-online-price', 'online-price', 'store-price'],
+      warrantyDays: 180,
+      publishImmediately: true,
+      momoThirdPartyLocationCode: MOMO_THIRD_PARTY_DELIVERY.locationCode,
+      centralImageRole: 'cleanMain',
+      easyStoreFirstImageRole: 'storefrontPortrait',
+      shopeeFirstImageRole: 'brandedHero',
+      coupangFirstImageRole: 'cleanMain',
+      momoFirstImageRole: 'cleanMain',
+      retryPolicy: 'same-sku-same-draft-same-stage-only',
+      routineConfirmation: 'already-authorized-by-handoff'
+    },
+    judgmentFields: {
+      imageLocalization: {
+        resolver: 'codex-vision', required: true,
+        output: ['sourceImageUrl', 'url', 'roles', 'assetFlags'],
+        rules: ['zh-TW', 'mainland-terms-to-taiwan', 'remove-or-reflow-cropped-text', 'never-invent-unverified-content']
+      },
+      heroSourceSelection: {
+        resolver: 'codex-vision', required: true,
+        allowedRoles: ['cleanMain', 'brandedHero', 'storefrontPortrait']
+      },
+      verifiedProductContent: {
+        resolver: 'codex-evidence', required: true,
+        output: ['title', 'description', 'brand', 'model', 'verified-features', 'verified-specifications']
+      },
+      categoryAndAttributes: {
+        resolver: 'canonical-category-once-then-platform-mapping', required: true,
+        scope: 'musical-instruments-and-accessories-only',
+        canonicalDecision: { ...(snapshot.canonicalCategoryDecision || {}) },
+        neverReclassifyInsideEachPlatform: true
+      },
+      variantNames: {
+        resolver: 'manager-value-first-then-codex', requiredWhen: 'variant-group',
+        neverOverrideManagerValue: true
+      },
+      shippingByDimensions: {
+        resolver: 'deterministic-once-before-platform-when-dimensions-known',
+        preparedDecision: buildShopeeLogistics(snapshot),
+        mapPreparedDecisionToEveryPlatform: true,
+        neverRejudgeInsideEachPlatform: true,
+        requireEvidenceForOversizeDecision: true
+      }
+    },
+    forbiddenJudgment: [
+      'invent-certification', 'invent-brand-or-model', 'invent-feature-or-accessory',
+      'change-sku-set', 'change-platform-order', 'create-replacement-on-retry', 'request-routine-second-confirmation'
+    ],
+    unresolvedAction: 'stop-before-platform-navigation-with-exact-field-reason',
+    sourceSnapshotId: clean(snapshot && snapshot.platformImagePlan && snapshot.platformImagePlan.snapshotId)
+  };
+}
+
+function buildPlatformPageContracts() {
+  const common = {
+    version: 2,
+    observedAt: '2026-08-22',
+    cacheScope: 'platform-and-layout-signature',
+    selectorStrategy: ['stable-label', 'name', 'data-attribute', 'role', 'relative-section'],
+    forbidVolatileElementIdAsOnlySelector: true,
+    lightweightProbeBeforeFill: true,
+    fullPageInventoryIsOneTimeOnly: true,
+    fillFromPreparedPlatformFieldPlan: true,
+    rescanCurrentSectionOnlyWhenSignatureChanges: true,
+    neverRestartCompletedPlatformStages: true,
+    fieldsPreparedBeforeNavigation: true,
+    loginProbeBeforeProductNavigation: true,
+    resumeSameProductOrDraftAfterLoginRecovery: true
+  };
+  return {
+    momo: {
+      ...common, routeKey: 'momo-product-create-or-same-draft',
+      verifiedFromLivePage: true,
+      authenticatedLandmarks: ['momo 店＋管理系統', '商品', 'B101 新增/管理商品'],
+      pageSignature: {
+        sections: ['基本資料', '銷售資訊', '物流運費', '商品詳細介紹', '其他'],
+        stableLandmarks: ['商品名稱', '平台分類', '銷售規格範本', '甲指(第三方)', '發佈商品']
+      },
+      fieldOrder: [
+        'item-number', 'main-images', 'promotion-image', 'youtube-id', 'brand', 'product-name',
+        'platform-category', 'front-hidden', 'regulatory-certifications', 'category-attributes',
+        'other-product-information', 'variant-template', 'variant-names-and-values',
+        'variant-images', 'variant-stock-price-sku-barcode', 'package-dimensions-and-weight',
+        'temperature', 'delivery-methods', 'free-shipping', 'rich-description',
+        'momo-promotion-consent', 'slogan-and-short-features', 'store-category',
+        'warranty', 'publish-time', 'submit'
+      ],
+      imageConstraints: {
+        main: { aspectRatio: '1:1', minimumFileBytes: 38000, maximumFileBytes: 1000000, minimumCount: 1, maximumCount: 6 },
+        promotion: { minimumFileBytes: 38000, maximumFileBytes: 1000000, forbidOverlayTextFrameAndWatermark: true },
+        promotionMaterialBankRequired: true,
+        promotionMaterialMustSurviveDraftReopen: true
+      },
+      fixedFields: ['warranty-days-180', 'publish-immediately', 'third-party-location-000001'],
+      dynamicFields: ['mapped-leaf-category', 'category-dependent-attributes', 'regulatory-fields-when-verified', 'platform-validation-errors']
+    },
+    coupang: {
+      ...common, routeKey: 'coupang-product-create-or-same-draft',
+      verifiedFromLivePage: false,
+      inventoryStatus: 'login-session-expired-during-live-inventory',
+      authenticatedLandmarks: ['Coupang Wing', '商品管理'],
+      loginProbe: { fields: ['輸入帳號', '輸入密碼'], submitLabel: '登入', interactiveAuthenticationMayBeRequired: true },
+      pageSignature: {
+        sections: ['商品基本資訊', '分類與屬性', '選項與價格庫存', '商品圖片', '配送', '發布'],
+        stableLandmarks: ['商品名稱', '類別', '銷售價格', '庫存', '代表圖片', '提交審核']
+      },
+      fieldOrder: [
+        'product-name', 'category', 'brand', 'required-attributes', 'variants', 'variant-images',
+        'sale-price', 'stock', 'seller-sku', 'main-and-detail-images', 'description',
+        'shipping-template', 'warranty', 'submit-for-review'
+      ],
+      fixedFields: ['warranty-days-180', 'publish-immediately'],
+      dynamicFields: ['mapped-leaf-category', 'category-dependent-attributes', 'platform-validation-errors']
+    },
+    easyStore: {
+      ...common, routeKey: 'easystore-product-create-or-same-product',
+      verifiedFromLivePage: true,
+      authenticatedLandmarks: ['商品管理', '儲存'],
+      pageSignature: {
+        sections: ['商品基本資料', '商品圖片', '商品款式', '庫存與價格', '配送尺寸重量', 'SEO', '銷售通路'],
+        stableLandmarks: ['商品名稱', '商品描述', '上傳圖片', '商品選項', 'SKU', '商品狀態', '儲存']
+      },
+      fieldOrder: [
+        'product-name', 'rich-description', 'gallery-images', 'variant-option-names-and-values',
+        'variant-stock-sku-price-cost-barcode', 'variant-dimensions-and-weight',
+        'tax-and-free-shipping', 'inventory-tracking', 'seo-url-and-meta-description',
+        'publish-state', 'sales-channels', 'category-brand-vendor-tags-notes', 'save'
+      ],
+      fixedFields: ['publish-immediately'],
+      dynamicFields: ['mapped-category', 'platform-validation-errors']
+    },
+    shopee: {
+      ...common, routeKey: 'easystore-shopee-channel-sync',
+      verifiedFromLivePage: true,
+      authenticatedLandmarks: ['Shopee Taiwan', '已連接', '商品'],
+      pageSignature: {
+        sections: ['EasyStore 商品', '蝦皮分類與屬性', '價格與庫存', '圖片與細項', '物流', '發布'],
+        stableLandmarks: ['價格調整', '蝦皮分類', '浮水印標題', '狀態']
+      },
+      fieldOrder: [
+        'channel-product', 'shopee-category', 'category-attributes', 'price-adjustment',
+        'variant-images', 'prepared-package-weight', 'prepared-logistics', 'prepare-publish', 'publish'
+      ],
+      fixedFields: ['warranty-days-180', 'publish-immediately', 'close-embedded-chat'],
+      dynamicFields: ['mapped-leaf-category', 'category-dependent-attributes', 'prepared-size-tier', 'platform-validation-errors']
+    }
+  };
 }
 
 function buildPreparedPlatformFieldPlan(snapshot) {
@@ -1033,7 +1246,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     }
   };
   return {
-    version: 2,
+    version: 3,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1050,6 +1263,11 @@ function buildPreparedPlatformFieldPlan(snapshot) {
       keepAuthenticatedAnchorTabPerPlatform: true
     },
     sharedImageAssetStandard: { ...(snapshot.imagePolicy && snapshot.imagePolicy.sharedDeliveryAssetStandard || {}) },
+    storefrontPortraitAssetStandard: { ...(snapshot.imagePolicy && snapshot.imagePolicy.storefrontPortraitAssetStandard || {}) },
+    decisionContractVersion: Number(snapshot.decisionContract && snapshot.decisionContract.version) || 0,
+    canonicalCategoryDecision: { ...(snapshot.canonicalCategoryDecision || {}) },
+    canonicalShippingDecision: { ...shipping },
+    platformPageContracts: buildPlatformPageContracts(),
     common,
     momo: {
       fixedFields: {
@@ -1236,17 +1454,28 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     imagePolicy: {
       sourceImageMaximum: 20, sharedVariantGalleryMaximum: 12, balanceAcrossVariants: true,
       galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true,
-      mainImageTemplate: 'youzi-light-commercial-template-v2', mainImageAspectRatio: '1:1',
+      mainImageTemplate: 'youzi-light-commercial-template-v3', mainImageAspectRatio: 'channel-specific',
       mainImageBackdrop: 'low-saturation-light-commercial', mainImageProductPlacement: 'right-or-center-right',
-      storefrontCardCrop: {
-        aspectRatio: '3:4', objectFit: 'cover', measuredDisplayPx: { width: 226.875, height: 301.734375 },
-        horizontalCropEachSidePercent: 12.4, safeContentWidthPercent: 72,
-        lightPanelHorizontalInsetPercent: { minimum: 14, maximum: 16 }, preserveVisibleGreenEdge: true
+      outputProfiles: {
+        storefrontPortrait: {
+          role: 'storefrontPortrait', widthPx: 750, heightPx: 1000, aspectRatio: '3:4',
+          firstImageFor: ['easyStore'], commercialInformationDensity: 'rich-but-readable',
+          verifiedFeatureCount: { minimum: 3, maximum: 5 }, verifiedDetailInsetMaximum: 2,
+          preserveGreenOuterEdge: true, removeMascot: true, removePicCollage: true
+        },
+        brandedHero: {
+          role: 'brandedHero', widthPx: 1000, heightPx: 1000, aspectRatio: '1:1',
+          firstImageFor: ['shopee'], verifiedFeatureCount: { minimum: 1, maximum: 3 }
+        },
+        cleanMain: {
+          role: 'cleanMain', widthPx: 1000, heightPx: 1000, aspectRatio: '1:1',
+          firstImageFor: ['momo', 'coupang'], textForbidden: true, logoForbidden: true
+        }
       },
       fixedStorePromoLast: true, fixedDescriptionPromosLast: true,
       localizedTraditionalChinese: true, localizedVariantRepresentativesRequired: true,
       sharedDeliveryAssetStandard: {
-        strategy: 'strictest-common-four-channel-profile',
+        strategy: 'strictest-common-square-marketplace-profile',
         widthPx: 1000,
         heightPx: 1000,
         aspectRatio: '1:1',
@@ -1255,7 +1484,12 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
         maximumFileBytes: 1000000,
         normalizeOnceBeforePlatformNavigation: true,
         platformRecropForbiddenUnlessRejectedByPlatform: true,
-        roleDifferenceOnly: true
+        squareMarketplaceProfilesShareDimensions: true
+      },
+      storefrontPortraitAssetStandard: {
+        role: 'storefrontPortrait', widthPx: 750, heightPx: 1000, aspectRatio: '3:4',
+        colorSpace: 'sRGB', preferredFormat: 'image/jpeg', maximumFileBytes: 1000000,
+        normalizeOnceBeforePlatformNavigation: true, preserveGreenOuterEdge: true
       }
     },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
@@ -1289,6 +1523,8 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     snapshot,
     snapshot.shopeeCategoryPath
   );
+  snapshot.canonicalCategoryDecision = buildCanonicalCategoryDecision(snapshot);
+  snapshot.decisionContract = buildListingDecisionContract(snapshot);
   snapshot.preparedPlatformFieldPlan = buildPreparedPlatformFieldPlan(snapshot);
   return snapshot;
 }
@@ -1826,16 +2062,22 @@ function platformStageFingerprint(platform, snapshot) {
 function platformCategoryResolution(platform, snapshot, product) {
   const key = clean(platform).toLowerCase();
   const code = key === 'momo' ? clean(snapshot.momoCategoryCode) : clean(snapshot.coupangCategoryCode);
-  const productHint = clean(snapshot.shopeeCategoryPath || product.category || snapshot.title || snapshot.description).slice(0, 420);
-  const hint = `限定根分類：樂器／樂器配件；商品判斷：${productHint}`.slice(0, 500);
+  const canonical = snapshot.canonicalCategoryDecision && typeof snapshot.canonicalCategoryDecision === 'object'
+    ? snapshot.canonicalCategoryDecision : buildCanonicalCategoryDecision(snapshot);
+  const productHint = clean(canonical.evidenceSummary || snapshot.shopeeCategoryPath || product.category || snapshot.title).slice(0, 420);
+  const hint = `共同分類已在進站前判定為「${clean(canonical.canonicalFamily) || '未判定'}」；只將它映射至本平台葉分類：${productHint}`.slice(0, 500);
   const constraint = {
     scope: 'music-instruments-only',
     allowedRootNames: ['樂器', '樂器配件'],
-    selectionRule: '只可在樂器或樂器配件分類樹內，選擇最接近商品本質的有效葉分類。'
+    canonicalCategoryKey: clean(canonical.canonicalKey),
+    canonicalFamily: clean(canonical.canonicalFamily),
+    decidedOnceBeforePlatformNavigation: true,
+    forbidProductReclassificationInsidePlatform: true,
+    selectionRule: '沿用進站前的共同商品分類，只在樂器或樂器配件分類樹內映射最接近的有效葉分類。'
   };
   return code
     ? { mode: 'provided', code, hint, source: 'listing-case', ...constraint }
-    : { mode: 'auto', code: '', hint, source: 'official-platform-recommendation', ...constraint };
+    : { mode: 'map-once', code: '', hint, source: 'canonical-category-to-official-platform-taxonomy', ...constraint };
 }
 
 async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, missingFields, attemptToken) {
@@ -1922,7 +2164,7 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
       attemptToken: normalizedAttemptToken
     };
   }
-  const categoryPrefix = categoryResolution.mode === 'auto' ? `${platform} 會先限定在樂器／樂器配件內，依商品名稱、內容與官方類別推薦自動判斷最接近分類；` : '';
+  const categoryPrefix = categoryResolution.mode === 'map-once' ? `${platform} 會沿用進站前已判定的共同分類，只映射一次本平台的樂器／樂器配件葉分類；` : '';
   const message = categoryPrefix + (listingPolicy.mode === 'add-variant-to-existing'
     ? `${platform} 將把 SKU ${platformSnapshot.sku} 加入指定的既有商品，子編號的庫存與價格仍獨立。`
     : listingPolicy.existingListingIds.length
@@ -3273,6 +3515,9 @@ module.exports = {
     validateCompletionImageReferences,
     activeV2JobReuseBlockers,
     frozenInputSnapshotFingerprint,
+    buildCanonicalCategoryDecision,
+    buildListingDecisionContract,
+    buildPlatformPageContracts,
     buildPreparedPlatformFieldPlan,
     publishEasyStoreStage,
     publishEasyStoreStageWithRetry,
