@@ -995,6 +995,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-variant-item-main>b{font-size:13px;line-height:1.4}
 .ops-listing-variant-kind{color:#17684e!important;font-size:10px!important;font-weight:950!important;letter-spacing:.05em}
 .ops-listing-variant-item-main label{display:grid;grid-template-columns:70px minmax(0,1fr);gap:7px;align-items:center;color:var(--ops-muted);font-size:9px;font-weight:900}
+.ops-listing-variant-item-main label.ops-listing-variant-name-field{grid-template-columns:minmax(145px,auto) minmax(0,1fr);color:#245a47;font-size:10px}
 .ops-listing-variant-item-main .ops-input{padding:7px 9px}
 .ops-listing-variant-item-main>span{font-size:9px;font-weight:900}
 .ops-listing-variant-item-main>span.ok{color:#1b7858}.ops-listing-variant-item-main>span.missing{color:#a14a38}
@@ -1052,6 +1053,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 @media(max-width:620px){
   .ops-listing-mode-options,.ops-listing-variant-pair{grid-template-columns:1fr}
   .ops-listing-parent-preview,.ops-listing-variant-item{grid-template-columns:1fr}
+  .ops-listing-variant-item-main label.ops-listing-variant-name-field{grid-template-columns:1fr}
   .ops-listing-variant-processing-group>div:last-child{grid-template-columns:repeat(3,minmax(0,1fr))}
   .ops-listing-variant-item>.ops-icon-button{position:absolute;right:26px}
   .ops-listing-parent-images,.ops-listing-variant-thumbs{overflow:auto}
