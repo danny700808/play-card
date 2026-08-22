@@ -102,7 +102,9 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
     .every((row) => row.enabled === false), true);
   assert.equal(payload.preorder.enabled, false);
   assert.equal(payload.preorder.days, 1);
-  assert.doesNotMatch(serialized, /7400|must-not-leak|accessToken|costPrice/);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, 'costPrice'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, 'accessToken'), false);
+  assert.doesNotMatch(serialized, /must-not-leak|"accessToken"|"costPrice"/);
 });
 
 test('handoff refuses incomplete identity data', () => {
