@@ -146,10 +146,17 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /同一內建瀏覽器開一個工作頁籤載入完全相同網址/);
   assert.match(prompt, /輸入控制備援，不是第二條上架路徑/);
   assert.match(prompt, /已同時授權四通路的建立、修改與最後正式發布/);
-  assert.match(prompt, /不得再詢問「確認上架／確認提交／套用細項」/);
+  assert.match(prompt, /不得再產生「確認正式發布四通路／確認上架／確認提交／套用細項」/);
+  assert.match(prompt, /確認正式發布四通路／確認上架／確認提交／套用細項/);
   assert.match(prompt, /第二層「上傳素材」/);
   assert.match(prompt, /不得依賴會變動的編輯器 element id/);
   assert.match(prompt, /contenteditable 的 HTML 確認仍存在素材銀行圖片 img src/);
+  assert.match(prompt, /此帳號無此功能權限/);
+  assert.match(prompt, /account-permission-denied 永久阻擋/);
+  assert.match(prompt, /先收合內嵌客服聊天/);
+  assert.match(prompt, /已存在的繁體完成圖庫選取/);
+  assert.match(prompt, /不得開啟 Windows 原生選檔視窗/);
+  assert.match(prompt, /包裝重量換算的必填公克數/);
   assert.match(prompt, /進入第一個平台前先產生四站完整欄位表/);
   assert.match(prompt, /不得每站重新掃描整頁/);
   assert.match(prompt, /頁面版型未改變時直接套用已準備欄位/);

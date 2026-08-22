@@ -189,6 +189,8 @@ function listingAutomationPolicy() {
       dependencies: { momo: [], coupang: [], easyStore: [], shopee: ['easyStore'] },
       finalSubmissionAuthorizedByHandoff: true,
       routineSecondConfirmationForbidden: true,
+      applicationConfirmationUiDisabledAfterHandoff: true,
+      authorizationCoversRoutineFinalSubmitOnAllFourPlatforms: true,
       continueAutomaticallyAfterEachVerifiedStage: true,
       prepareCompleteFieldPlanBeforeFirstPlatform: true,
       preparedFieldPlanIsImmutableForWholeJob: true,
@@ -224,9 +226,15 @@ function listingAutomationPolicy() {
         canonicalWorkspace: 'easystore-shopee-channel-sync',
         singleWorkspaceOnly: true,
         neverOpenDirectShopeeSellerEditor: true,
+        closeEmbeddedChatBeforeFormInteraction: true,
         reusePreparedPayload: true,
         neverRestartResearchOrImageProcessing: true,
         retrySameChannelProductAndPage: true,
+        variantImageSource: 'existing-easystore-completed-gallery',
+        selectVariantImageByCompletedAssetMapping: true,
+        neverOpenNativeFilePickerForVariantImages: true,
+        fillRequiredWeightFromPreparedPackageBeforePreparePublish: true,
+        completeVariantImagesBeforePreparePublish: true,
         verifyIn: 'easystore-shopee-channel-product-list'
       },
       verification: 'single-final-check-after-submit'
@@ -241,6 +249,9 @@ function listingAutomationPolicy() {
         'material-grade', 'weight', 'temperature', 'shipping-methods', 'third-party-location',
         'rich-description', 'feature-copy', 'warranty'
       ],
+      permissionDeniedSignatures: ['此帳號無此功能權限', 'account-not-authorized-for-publish'],
+      permissionDeniedIsPermanentBlocker: true,
+      neverRetryPermissionDeniedWithReplacementDraft: true,
       verifiedOnlyWhenPlatformListAndOfficialCatalogAgree: true
     },
     momoSpecialPromotionImage: {
@@ -261,6 +272,7 @@ function listingAutomationPolicy() {
       neverUsePrimaryChrome: true,
       reuseExistingAuthenticatedPlatformTabs: true,
       allowSavedCredentialLoginRetry: true,
+      neverOpenNativeWindowsFilePicker: true,
       neverSwitchBrowserWorkspaceMidJob: true,
       stopForInteractiveAuthenticationOnly: true
     },
@@ -995,6 +1007,9 @@ function variantRepresentativeMissingFields(snapshot) {
 
 function buildPreparedPlatformFieldPlan(snapshot) {
   const shipping = buildShopeeLogistics(snapshot);
+  const packageWeightKg = numberOrNull(snapshot.packageWeightKg);
+  const packageWeightGrams = packageWeightKg !== null && packageWeightKg > 0
+    ? Math.max(1, Math.round(packageWeightKg * 1000)) : null;
   const common = {
     sku: snapshot.sku,
     title: snapshot.title,
@@ -1080,7 +1095,11 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         workspace: 'easystore-shopee-channel-sync',
         publishImmediately: true,
         warrantyDays: 180,
-        neverOpenDirectSellerEditor: true
+        neverOpenDirectSellerEditor: true,
+        closeEmbeddedChatBeforeFormInteraction: true,
+        variantImageSource: 'existing-easystore-completed-gallery',
+        neverOpenNativeFilePickerForVariantImages: true,
+        completeVariantImagesBeforePreparePublish: true
       },
       preparedFields: {
         sku: snapshot.sku,
@@ -1090,6 +1109,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         stock: snapshot.stock,
         categoryPath: snapshot.shopeeCategoryPath,
         attributes: snapshot.shopeeAttributeValues,
+        packageWeightGrams,
         logistics: shipping,
         imageUrls: snapshot.platformImagePlan.shopee.imageUrls
       },
