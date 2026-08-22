@@ -11,7 +11,7 @@ const extensionHelpers = require('../easystore-shopee-autofill/helpers.js');
 const root = path.resolve(__dirname, '..');
 const extensionName = 'easystore-shopee-autofill';
 const extensionRoot = path.join(root, extensionName);
-const version = '0.3.22';
+const version = '0.3.23';
 const zipName = `youzi-easystore-shopee-autofill-v${version}.zip`;
 const zipPath = path.join(root, zipName);
 
@@ -80,7 +80,7 @@ function zipFileEntries(buffer) {
   return files;
 }
 
-test('0.3.22 ZIP contains exactly the Git extension files byte for byte', () => {
+test('0.3.23 ZIP contains exactly the Git extension files byte for byte', () => {
   assert.equal(fs.existsSync(zipPath), true, `缺少 ${zipName}`);
   const packaged = zipFileEntries(fs.readFileSync(zipPath));
   const sourceFiles = gitExtensionFiles();
@@ -100,14 +100,14 @@ test('extension version, download links, cache keys and CI package contract stay
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260821-shopee-v2-schema5';
-  const operationsCache = '20260822-variant-card-collector2';
+  const operationsCache = '20260822-collector-self-heal';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
   const linkedZips = [...operations.matchAll(/youzi-easystore-shopee-autofill-v[0-9.]+\.zip/g)].map((match) => match[0]);
   assert.ok(linkedZips.length > 0);
   assert.deepEqual([...new Set(linkedZips)], [zipName]);
-  assert.doesNotMatch(operations, /youzi-easystore-shopee-autofill-v0\.3\.21\.zip|助手 0\.3\.21/);
+  assert.doesNotMatch(operations, /youzi-easystore-shopee-autofill-v0\.3\.(?:21|22)\.zip|助手 0\.3\.(?:21|22)/);
   for (const markup of [portal, hub]) {
     assert.match(markup, new RegExp(`operations-shopee-autofill-handoff-v1\\.js\\?v=${handoffCache}`));
     assert.match(markup, new RegExp(`operations-phase1\\.css\\?v=${operationsCache}`));

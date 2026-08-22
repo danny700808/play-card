@@ -52,6 +52,26 @@ test("營運中心重新整理後會主動恢復既有收圖工作", () => {
   assert.match(bridge, /postCurrentImageCollectionState/);
   assert.match(bridge, /Object\.assign\(\{\}, message\.payload, \{ session: current \}\)/);
   assert.match(operationsSource, /payload&&payload\.session/);
+  assert.match(operationsSource, /async function resumeProductImageCollectionForm/);
+  assert.match(operationsSource, /openProductListingCase\(productId,\{skipAutoResearch:true\}\)/);
+  assert.match(background, /chrome\.tabs\.create\(\{ url: OPERATIONS_PRODUCTS_URL, active: false \}\)/);
+  assert.match(background, /portal\.html#products/);
+});
+
+test("淘寶與 1688 快速連結固定顯示在單品與每個細項收圖區", () => {
+  const helperStart = operationsSource.indexOf("function productSupplierQuickLinksHtml");
+  const helperEnd = operationsSource.indexOf("function productVariantCollectorHtml", helperStart);
+  const helper = operationsSource.slice(helperStart, helperEnd);
+  const variantStart = helperEnd;
+  const variantEnd = operationsSource.indexOf("function productVariantRepresentativeCardHtml", variantStart);
+  const variantCollector = operationsSource.slice(variantStart, variantEnd);
+  const formStart = operationsSource.indexOf("function productListingCaseFormHtml");
+  const formEnd = operationsSource.indexOf("async function openProductListingCase", formStart);
+  const form = operationsSource.slice(formStart, formEnd);
+  assert.match(helper, /開啟淘寶/);
+  assert.match(helper, /開啟 1688/);
+  assert.match(variantCollector, /productSupplierQuickLinksHtml\(\)/);
+  assert.match(form, /productSupplierQuickLinksHtml\(\)/);
 });
 
 test("收圖成功或失敗訊息不會立刻被等待文字覆蓋", () => {
@@ -240,7 +260,7 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
 });
 
 test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
-  assert.equal(manifest.version, "0.3.22");
+  assert.equal(manifest.version, "0.3.23");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));
