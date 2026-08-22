@@ -147,6 +147,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.preflightAllListingDataBeforePlatformNavigation, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.finalSubmissionAuthorizedByHandoff, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.routineSecondConfirmationForbidden, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.applicationConfirmationUiDisabledAfterHandoff, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.authorizationCoversRoutineFinalSubmitOnAllFourPlatforms, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.continueAutomaticallyAfterEachVerifiedStage, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.prepareCompleteFieldPlanBeforeFirstPlatform, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.preparedFieldPlanIsImmutableForWholeJob, true);
@@ -169,6 +171,11 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.canonicalWorkspace, 'easystore-shopee-channel-sync');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.singleWorkspaceOnly, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverOpenDirectShopeeSellerEditor, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.closeEmbeddedChatBeforeFormInteraction, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.variantImageSource, 'existing-easystore-completed-gallery');
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverOpenNativeFilePickerForVariantImages, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.fillRequiredWeightFromPreparedPackageBeforePreparePublish, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.completeVariantImagesBeforePreparePublish, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.reusePreparedPayload, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverRestartResearchOrImageProcessing, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.retrySameChannelProductAndPage, true);
@@ -176,6 +183,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.resumeSameDraft, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverCreateReplacementDraft, true);
   assert.ok(snapshot.automationPolicy.momoPublishRecovery.reapplyWhenCleared.includes('third-party-location'));
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.permissionDeniedIsPermanentBlocker, true);
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverRetryPermissionDeniedWithReplacementDraft, true);
   assert.deepEqual(snapshot.automationPolicy.momoSpecialPromotionImage.preferredProductImagePositions, [2, 3]);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.materialBankInsertRequired, true);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.saveReopenAndVerifyImageRequired, true);
@@ -186,6 +195,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.browserControl.neverUsePrimaryChrome, true);
   assert.equal(snapshot.automationPolicy.browserControl.reuseExistingAuthenticatedPlatformTabs, true);
   assert.equal(snapshot.automationPolicy.browserControl.allowSavedCredentialLoginRetry, true);
+  assert.equal(snapshot.automationPolicy.browserControl.neverOpenNativeWindowsFilePicker, true);
   assert.equal(snapshot.automationPolicy.browserControl.stopForInteractiveAuthenticationOnly, true);
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
   assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-light-commercial-template-v2');
@@ -205,6 +215,10 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
     roleDifferenceOnly: true
   });
   assert.equal(snapshot.preparedPlatformFieldPlan.sharedImageAssetStandard.widthPx, 1000);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.closeEmbeddedChatBeforeFormInteraction, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.variantImageSource, 'existing-easystore-completed-gallery');
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.neverOpenNativeFilePickerForVariantImages, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.packageWeightGrams, 5000);
 });
 
 test('正式發布先完成四通路預檢，再交錯啟動三個根平台且蝦皮只依賴 EasyStore', () => {
