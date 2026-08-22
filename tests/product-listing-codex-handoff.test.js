@@ -168,6 +168,10 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /MOMO 第三方 000001/);
   assert.match(prompt, /generatedListingImages 的公開完成圖網址批次加入/);
   assert.match(prompt, /蝦皮大型商品只保留符合材積級距的新竹物流/);
+  assert.match(prompt, /酷澎固定走已驗證的「以圖片建立」同一草稿/);
+  assert.match(prompt, /按一次「產生商品資訊」/);
+  assert.match(prompt, /細項欄位若呈唯讀或值無效，只回同一草稿圖片步驟重新產生一次/);
+  assert.match(prompt, /審核中只記為已送審，不得誤報已上架/);
   assert.match(prompt, /沒有既有平台 ID 時，視為新商品/);
   assert.match(prompt, /不做上架前平台全站搜尋/);
 });
