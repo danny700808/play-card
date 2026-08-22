@@ -202,6 +202,15 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.imagePolicy.mainImageAspectRatio, '1:1');
   assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'low-saturation-light-commercial');
   assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'right-or-center-right');
+  assert.deepEqual(snapshot.imagePolicy.storefrontCardCrop, {
+    aspectRatio: '3:4',
+    objectFit: 'cover',
+    measuredDisplayPx: { width: 226.875, height: 301.734375 },
+    horizontalCropEachSidePercent: 12.4,
+    safeContentWidthPercent: 72,
+    lightPanelHorizontalInsetPercent: { minimum: 14, maximum: 16 },
+    preserveVisibleGreenEdge: true
+  });
   assert.deepEqual(snapshot.imagePolicy.sharedDeliveryAssetStandard, {
     strategy: 'strictest-common-four-channel-profile',
     widthPx: 1000,

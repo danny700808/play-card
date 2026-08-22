@@ -49,6 +49,10 @@ test('main product image prompt enforces the fixed light commercial template and
   assert.match(prompt, /1～3 個已查證的短賣點/);
   assert.match(prompt, /不得加入價格、地址、電話、QR Code、浮水印或聯絡資訊/);
   assert.match(prompt, /方形 1:1/);
+  assert.match(prompt, /中央 72% 寬度安全區/);
+  assert.match(prompt, /左右各縮進約 14～16%/);
+  assert.match(prompt, /裁切後仍須看見細綠邊/);
+  assert.match(prompt, /最終圖不得保留殘缺文字/);
 });
 
 function completeResult(overrides = {}) {
