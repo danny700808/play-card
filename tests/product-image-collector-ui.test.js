@@ -123,6 +123,8 @@ test("同款細項可在同一畫面收圖、拖曳共用並清除代表圖", ()
 
 test("同款商品會自動辨識顏色並用白話顯示區分方式", () => {
   assert.match(operationsSource, /function productVariantGroupAttributeSuggestion/);
+  assert.match(operationsSource, /function productVariantResolvedValue/);
+  assert.match(operationsSource, /stored==='編號 '\+sku/);
   assert.match(operationsSource, /return '顏色'/);
   assert.match(operationsSource, /這組商品以什麼區分/);
   assert.match(operationsSource, /例如：顏色、尺寸、規格/);

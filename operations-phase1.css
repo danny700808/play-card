@@ -964,6 +964,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-variant-fields{margin-top:12px;padding-top:12px;border-top:1px solid #cfe9dc}
 .ops-listing-variant-fields.is-hidden{display:none}
 .ops-listing-independent-fields.is-hidden,.ops-listing-group-fields.is-hidden,.ops-listing-variant-selection.is-hidden{display:none}
+.ops-listing-single-image-controls.is-hidden{display:none}
 .ops-listing-group-choice{margin-top:12px;padding-top:12px;border-top:1px solid #cfe9dc}
 .ops-listing-group-fields{display:grid;gap:11px;margin-top:12px}
 .ops-listing-variant-search-step{padding:14px;border:2px solid #bddfce;border-radius:13px;background:#fff}
