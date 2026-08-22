@@ -639,6 +639,37 @@ test('中央辨識主圖保持 cleanMain，EasyStore brandedHero 只另存平台
   assert.match(backend, /easyStoreListingImageUrls/);
 });
 
+test('第一次操作平台前先逐商品回寫中央完成圖，主商品與所有細項共用同一個安全關卡', () => {
+  const backend = fs.readFileSync('functions/productListingPublish.js', 'utf8');
+  const syncStart = backend.indexOf('async function syncPreparedCentralImagesBeforePublish');
+  const syncEnd = backend.indexOf('function validateAllPlatformImageReceipts', syncStart);
+  const sync = backend.slice(syncStart, syncEnd);
+  const handlerStart = backend.indexOf('async function publishProductListingCaseHandler');
+  const handlerEnd = backend.indexOf('function registerProductListingPublish', handlerStart);
+  const handler = backend.slice(handlerStart, handlerEnd);
+  assert.ok(syncStart >= 0 && syncEnd > syncStart);
+  assert.match(sync, /preparedImageReferenceCases\(snapshot\)/);
+  assert.match(sync, /centralCompletedImageUpdate\(snapshot, reference\.productId, productRecord\)/);
+  assert.match(sync, /centralImageReferenceVerification/);
+  assert.match(sync, /await batch\.commit\(\)/);
+  assert.match(sync, /繁體完成圖回寫後重讀不一致/);
+  const build = handler.indexOf('snapshot = buildListingSnapshot');
+  const centralWrite = handler.indexOf('await syncPreparedCentralImagesBeforePublish', build);
+  const platformLaunch = handler.indexOf('const operations = []', centralWrite);
+  assert.ok(build >= 0 && centralWrite > build && platformLaunch > centralWrite);
+});
+
+test('四通路完成後主商品與每個細項都標記已發布，最近未上架不會殘留已完成細項', () => {
+  const backend = fs.readFileSync('functions/productListingPublish.js', 'utf8');
+  const start = backend.indexOf('async function finalizeListingJobIfReady');
+  const end = backend.indexOf('async function finalizeVerifiedShopeeStage', start);
+  const finalize = backend.slice(start, end);
+  assert.match(finalize, /imageDocumentRefs\.map\(async \(reference\)/);
+  assert.match(finalize, /reference\.caseRef\.set\(\{\s*caseStatus: 'published'/);
+  assert.match(finalize, /reference\.productRef\.set\(\{/);
+  assert.match(finalize, /platformListingStatusFromPublish\(reference\.product\.platformListingStatus, platforms\)/);
+});
+
 test('cleanup 前中央或細項仍引用 frozen source 即拒絕，四站完整圖片回條且中央全完成圖才通過', () => {
   const productId = 'cleanup-image-product';
   const source = 'https://example.com/source-clean.jpg';

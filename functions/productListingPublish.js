@@ -2132,6 +2132,96 @@ function centralCompletedImageUpdate(snapshot, productId, productRecord = {}) {
   };
 }
 
+function completedVariantRecords(productRecord, completedBySku, fallbackUpdate, frozenSources) {
+  const variants = Array.isArray(productRecord && productRecord.variants) ? productRecord.variants : null;
+  if (!variants) return null;
+  return variants.map((variant) => {
+    if (!variant || typeof variant !== 'object') return variant;
+    const matched = completedBySku.get(normalizeSku(variant.sku || variant.internalSku || variant.code));
+    const hasFrozenImage = collectImageUrls(variant, false).some((url) => frozenSources.has(url));
+    const update = matched || (hasFrozenImage ? fallbackUpdate : null);
+    if (!update || !safeHttpUrl(update.imageUrl)) return variant;
+    const next = { ...variant };
+    ['imageUrl', 'image', 'picture', 'photo', 'thumbnail'].forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(next, key) || matched || hasFrozenImage) next[key] = update.imageUrl;
+    });
+    ['imageUrls', 'images', 'photos', 'gallery'].forEach((key) => {
+      if (Array.isArray(next[key])) next[key] = update.imageUrls.slice();
+    });
+    return next;
+  });
+}
+
+async function syncPreparedCentralImagesBeforePublish(db, snapshot, actor = '固定四通路流程 v2') {
+  const references = preparedImageReferenceCases(snapshot);
+  if (!references.length) throw new Error('完成圖快照沒有可回寫的中央商品。');
+  const documents = await Promise.all(references.map(async (reference) => {
+    const productRef = db.collection(PRODUCT_COLLECTION).doc(reference.productId);
+    const caseRef = db.collection(LISTING_CASE_COLLECTION).doc(reference.productId);
+    const productSnap = await productRef.get();
+    if (!productSnap.exists) throw new Error(`${reference.sku || reference.productId}的中央商品已不存在。`);
+    const productRecord = productSnap.data() || {};
+    const update = centralCompletedImageUpdate(snapshot, reference.productId, productRecord);
+    if (!safeHttpUrl(update.imageUrl) || !normalizeUrls(update.imageUrls, 100).length) {
+      throw new Error(`${reference.sku || reference.productId}缺少可回寫的 cleanMain／variantRepresentative 完成圖。`);
+    }
+    return { reference, productRef, caseRef, productRecord, update };
+  }));
+  const frozenSources = frozenSourceImageUrls(snapshot);
+  const completedBySku = new Map(documents.map((row) => [normalizeSku(row.reference.sku), row.update]).filter((row) => row[0]));
+  const batch = db.batch();
+  documents.forEach((row) => {
+    const imageUrls = normalizeUrls(row.update.imageUrls, 100);
+    if (imageUrls.some((url) => frozenSources.has(url))) throw new Error(`${row.reference.sku || row.reference.productId}的中央商品完成圖仍包含來源原圖。`);
+    const variants = completedVariantRecords(row.productRecord, completedBySku, row.update, frozenSources);
+    const productUpdate = {
+      imageUrl: row.update.imageUrl,
+      imageUrls,
+      parentImageUrls: [],
+      variantImageUrls: [],
+      completedListingImageUrls: normalizeUrls(row.update.completedListingImageUrls || imageUrls, 100),
+      imageSource: 'localized-clean-main',
+      completedListingImagesUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: actor
+    };
+    if (variants) productUpdate.variants = variants;
+    batch.set(row.productRef, productUpdate, { merge: true });
+    batch.set(row.caseRef, {
+      centralImageReferenceVerification: {
+        status: 'verified', cleanMainUrl: row.update.imageUrl, imageUrls,
+        representativeSourceImageUrl: row.reference.representativeSourceImageUrl || '',
+        representativeCompletedImageUrl: row.reference.representativeCompletedImageUrl || '',
+        verifiedAt: admin.firestore.FieldValue.serverTimestamp()
+      },
+      sourceImageRetentionPolicy: {
+        mode: 'metadata-only-after-required-binary-cleanup', sourceBinaryCleanupRequired: true,
+        cleanupStatus: 'blocked-until-all-central-variant-platform-references-verified',
+        cleanupWorkerRequired: true, eligibleForDeletion: false
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: actor
+    }, { merge: true });
+  });
+  await batch.commit();
+  const verified = await Promise.all(documents.map(async (row) => {
+    const [productSnap, caseSnap] = await Promise.all([row.productRef.get(), row.caseRef.get()]);
+    const productRecord = productSnap.exists ? productSnap.data() || {} : {};
+    const caseRecord = caseSnap.exists ? caseSnap.data() || {} : {};
+    const central = caseRecord.centralImageReferenceVerification && typeof caseRecord.centralImageReferenceVerification === 'object'
+      ? caseRecord.centralImageReferenceVerification : {};
+    const productImages = collectImageUrls(productRecord, false);
+    if (safeHttpUrl(productRecord.imageUrl) !== safeHttpUrl(row.update.imageUrl)
+      || !productImages.includes(safeHttpUrl(row.update.imageUrl))
+      || productImages.some((url) => frozenSources.has(url))
+      || clean(central.status).toLowerCase() !== 'verified'
+      || safeHttpUrl(central.cleanMainUrl) !== safeHttpUrl(row.update.imageUrl)) {
+      throw new Error(`${row.reference.sku || row.reference.productId}的繁體完成圖回寫後重讀不一致，尚未操作任何平台。`);
+    }
+    return { productId: row.reference.productId, sku: row.reference.sku, imageUrl: row.update.imageUrl, imageUrls: normalizeUrls(row.update.imageUrls, 100) };
+  }));
+  return { verified: true, products: verified };
+}
+
 function validateAllPlatformImageReceipts(snapshot, stages) {
   const source = stages && typeof stages === 'object' ? stages : {};
   const reasons = [];
@@ -2548,6 +2638,7 @@ async function publishProductListingCaseHandler(request) {
           || (parentCaseSnap.exists ? parentCaseSnap.data() || {} : {});
       }
       snapshot = buildListingSnapshot(productId, product, listingCase, variantParentProduct, variantParentListingCase, finalizedMedia.preparedMediaSnapshot);
+      await syncPreparedCentralImagesBeforePublish(db, snapshot, '固定四通路流程 v2 圖片回寫');
       if (!snapshot.enabledEasyStoreShopee || !snapshot.enabledMomo || !snapshot.enabledCoupang) {
         throw new HttpsError('failed-precondition', '固定新版流程必須同時發布 EasyStore、蝦皮、酷澎與 MOMO，不接受舊的通路勾選或第二套路徑。');
       }
@@ -2774,8 +2865,6 @@ async function finalizeListingJobIfReady(db, jobId, actor) {
   const initialJob = initialJobSnap.data() || {};
   const snapshot = initialJob.preparedSnapshot && typeof initialJob.preparedSnapshot === 'object' ? initialJob.preparedSnapshot : {};
   const productId = clean(initialJob.productId);
-  const productRef = db.collection(PRODUCT_COLLECTION).doc(productId);
-  const caseRef = db.collection(LISTING_CASE_COLLECTION).doc(productId);
   const imageDocumentRefs = preparedImageReferenceCases(snapshot).map((reference) => ({
     ...reference,
     caseRef: db.collection(LISTING_CASE_COLLECTION).doc(reference.productId),
@@ -2853,32 +2942,36 @@ async function finalizeListingJobIfReady(db, jobId, actor) {
       stages: waitingStages || {}
     };
   }
-  const productSnap = await productRef.get();
-  const product = productSnap.exists ? productSnap.data() || {} : {};
   const platforms = {
     ...(initialJob.platforms || {}),
     momo: { status: 'completed' }, coupang: { status: 'completed' },
     easyStore: { status: 'completed' }, shopee: { status: 'completed' }
   };
   const storedPlatforms = summarizePlatformsForStorage(platforms);
-  await Promise.all([
-    caseRef.set({
+  const finalImageDocuments = await Promise.all(imageDocumentRefs.map(async (reference) => {
+    const productSnap = await reference.productRef.get();
+    return { ...reference, product: productSnap.exists ? productSnap.data() || {} : {} };
+  }));
+  const finalWrites = [];
+  finalImageDocuments.forEach((reference) => {
+    finalWrites.push(reference.caseRef.set({
       caseStatus: 'published',
       publishState: { jobId, status: 'completed', currentStage: 'completed', stages: completedStages, platforms: storedPlatforms, verifiedAt: admin.firestore.FieldValue.serverTimestamp() },
       updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v2'
-    }, { merge: true }),
-    productRef.set({
-      platformListingStatus: platformListingStatusFromPublish(product.platformListingStatus, platforms),
+    }, { merge: true }));
+    finalWrites.push(reference.productRef.set({
+      platformListingStatus: platformListingStatusFromPublish(reference.product.platformListingStatus, platforms),
       platformListingStatusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v2'
-    }, { merge: true }),
-    db.collection('opsAuditLogs').doc(`${jobId}_four_channel_completed`).set({
+    }, { merge: true }));
+  });
+  finalWrites.push(db.collection('opsAuditLogs').doc(`${jobId}_four_channel_completed`).set({
       action: '四通路上架完成', entityType: 'productListingPublish', entityId: jobId,
       summary: `${clean(snapshot.sku)}｜MOMO、酷澎、EasyStore、蝦皮已獨立核對完成`,
       createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy: clean(actor) || '固定四通路流程',
       version: LISTING_WORKFLOW_ID
-    }, { merge: true })
-  ]);
+    }, { merge: true }));
+  await Promise.all(finalWrites);
   return { status: alreadyCompleted ? 'already-completed' : 'completed', jobId, productId, currentStage: 'completed', stages: completedStages };
 }
 
@@ -3122,6 +3215,8 @@ module.exports = {
     deriveListingCurrentStage,
     validateAllPlatformImageReceipts,
     centralCompletedImageUpdate,
+    completedVariantRecords,
+    syncPreparedCentralImagesBeforePublish,
     validateCompletionImageReferences,
     activeV2JobReuseBlockers,
     frozenInputSnapshotFingerprint,

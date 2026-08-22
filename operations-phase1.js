@@ -2029,9 +2029,22 @@ function renderOverviewV7(){
       return ['active','mapped','queued','pending-review','draft'].includes(productPlatformStatus(p,platform.key).status);
     });
   }
+  function productHasCompletedListingImage(p){
+    const images=normalizeProductResearchSourceUrls([].concat(p&&p.imageUrls||[],p&&p.completedListingImageUrls||[],p&&p.imageUrl||''));
+    return images.length>0;
+  }
+  function productHasCompletedFourChannelListing(p){
+    return PRODUCT_LISTING_PLATFORMS.every(function(platform){
+      const status=productPlatformStatus(p,platform.key);
+      return status.status==='active'||(status.status==='mapped'&&!!status.listingId);
+    });
+  }
+  function productNeedsRecentListingWork(p){
+    return !productHasCompletedListingImage(p)||!productHasCompletedFourChannelListing(p);
+  }
   function productFiltered(){
     const term=lower(state.productSearch); let rows=catalogRowsInSkuOrder().filter(function(p){
-      if(state.productRecentOnly&&productHasPlatformListing(p))return false;
+      if(state.productRecentOnly&&!productNeedsRecentListingWork(p))return false;
       if(state.productSeries!=='all'&&!clean(p.sku).startsWith(state.productSeries))return false;
       if(term&&!catalogMatchesSearch(p,term))return false;
       if(state.productFilter==='missing-cost'&&!(p.averageCost==null&&p.nextFifoCost==null))return false;
@@ -2196,7 +2209,7 @@ function renderOverviewV7(){
     const editingProduct=state.productEditId&&state.productEditId!=='__new__'?catalogById(state.productEditId):null;
     const editorHtml=state.productEditId?productFormHtml(editingProduct):'';
     const previewHtml=renderProductPreviewModal();
-    const recentCount=state.catalog.filter(function(p){return p.initialized&&!productHasPlatformListing(p);}).length;
+    const recentCount=state.catalog.filter(function(p){return p.initialized&&productNeedsRecentListingWork(p);}).length;
     return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">成本總額：<b>'+money(inventoryValue)+'</b></div></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft '+(state.productRecentOnly?'active':'')+'" data-action="product-recent">最近新增未上架'+(recentCount?'（'+formatNumber(recentCount)+'）':'')+'</button></div></div>'+productSeriesTabs()+'<div class="ops-product-toolbar"><input class="ops-input" id="productSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'"><select class="ops-select ops-product-platform-filter" id="productPlatformFilter" aria-label="平台上架狀態篩選">'+productPlatformFilterOptions()+'</select>'+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+'<div id="productSearchResults">'+productSearchResultsHtml()+'</div></section>'+previewHtml;
   }
 
@@ -4552,6 +4565,21 @@ function ensureSalesClock(){
       '圖片暫時讀不到、圖片仍在處理、網路逾時、HTTP 408／425／429／500／502／503／504 或平台暫時錯誤時，只針對同一案件、同一 SKU、同一平台草稿與目前階段等待後重試，再做一次精確 SKU 核對；只可從 generatedListingImages 或已驗證中央完成圖重新取得 URL。只有缺少必填資料、平台明確拒絕、OTP／驗證碼或登入失效等永久阻擋才停止，並留下確切原因。',
     ].join('\n');
   }
+  function productListingCodexActivationPrompt(product,snapshot){
+    const cases=Array.isArray(snapshot&&snapshot.cases)?snapshot.cases:[],caseIds=cases.map(function(item){return clean(item&&item.productId);}).filter(Boolean),mode=clean(snapshot&&snapshot.listingMode)==='add-variant'?'加入既有商品成為細項':snapshot&&snapshot.variantGroupEnabled?'獨立商品（同款多細項）':'獨立商品';
+    return [
+      '[固定流程 v2 短交接]',
+      '請接手全通路營運中心待上架商品 '+clean(product.sku)+'｜'+clean(product.originalName||product.name)+'。',
+      'workflowVersion：'+PRODUCT_LISTING_WORKFLOW_VERSION,
+      '根案件：opsProductListingCases/'+clean(product.docId),
+      '不可變預檢快照：'+clean(snapshot&&snapshot.snapshotId),
+      '上架模式：'+mode,
+      '本組案件：'+caseIds.map(function(id){return 'opsProductListingCases/'+id;}).join('、'),
+      '完整固定規則、來源圖、修改要求、細項、價格、庫存與物流資料已保存在根案件 codexHandoff.prompt 與 codexHandoff.preflightSnapshot；請先讀取該案件，不得使用 v1、舊快照或另一路徑。',
+      '先一次完成本組每個商品的繁體完成圖並依 sourceImageUrl 寫回各自 generatedListingImages；後端必須把每個商品與細項的 cleanMain 回寫中央商品並重讀驗證，才可依同一 preparedSnapshot 啟動 MOMO、酷澎、EasyStore 三個根工作，EasyStore verified 後接蝦皮。',
+      '按下帶入按鈕已授權四通路正式發布，不得再要求例行確認。'
+    ].join('\n');
+  }
   function productListingCodexThreadUrl(prompt){
     const params=new URLSearchParams();params.set('prompt',clean(prompt));
     return PRODUCT_LISTING_CODEX_THREAD_URL+'?'+params.toString();
@@ -4589,18 +4617,18 @@ function ensureSalesClock(){
       requireProductVariantRepresentativeImages(form);
       await saveProductListingCase(form,false,true,true);
       const snapshot=await loadProductListingCodexHandoffSnapshot(product);requireProductListingCodexHandoffMedia(snapshot);
-      const prompt=productListingCodexHandoffPrompt(product,snapshot),threadUrl=productListingCodexThreadUrl(prompt),serverTime=serverTimestamp(),platforms={momo:{status:'pending'},coupang:{status:'pending'},easyStore:{status:'pending'},shopee:{status:'blocked-by-dependency',dependsOn:['easyStore']}};
+      const prompt=productListingCodexHandoffPrompt(product,snapshot),activationPrompt=productListingCodexActivationPrompt(product,snapshot),threadUrl=productListingCodexThreadUrl(activationPrompt),serverTime=serverTimestamp(),platforms={momo:{status:'pending'},coupang:{status:'pending'},easyStore:{status:'pending'},shopee:{status:'blocked-by-dependency',dependsOn:['easyStore']}};
       await state.db.collection(COLLECTIONS.listingCases).doc(id).set({
         caseStatus:'waiting-codex',
-        codexHandoff:{status:'pending',workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,prompt:prompt,productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),preflightSnapshot:snapshot,autoPublishAuthorization:{granted:true,scope:'fixed-v2-four-channel-publish',workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,grantedAt:serverTime,grantedBy:userLabel(),grantedByEmail:clean(state.user&&state.user.email).toLowerCase(),noSecondConfirmation:true},requestedAt:serverTime,requestedBy:userLabel(),sourcePageUrl:location.href},
-        codexExecution:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,currentStage:'codex-preflight',platformOrder:PRODUCT_LISTING_PLATFORM_ORDER.slice(),executionGraph:{mode:'staggered-parallel',parallelRoots:['momo','coupang','easyStore'],dependencies:{momo:[],coupang:[],easyStore:[],shopee:['easyStore']}},browserScheduler:{interactionConcurrency:1,releaseInteractionLockDuringWait:true,sessionHeartbeatSeconds:180},platforms:platforms,retrySameSkuDraftAndStage:true,neverRebuildPreflightDuringRetry:true,updatedAt:serverTime},
+        codexHandoff:{status:'pending',workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,activationPrompt:activationPrompt,prompt:prompt,productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),preflightSnapshot:snapshot,autoPublishAuthorization:{granted:true,scope:'fixed-v2-four-channel-publish',workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,grantedAt:serverTime,grantedBy:userLabel(),grantedByEmail:clean(state.user&&state.user.email).toLowerCase(),noSecondConfirmation:true},requestedAt:serverTime,requestedBy:userLabel(),sourcePageUrl:location.href},
+        codexExecution:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,currentStage:'codex-preflight',platformOrder:PRODUCT_LISTING_PLATFORM_ORDER.slice(),executionGraph:{mode:'staggered-parallel',parallelRoots:['momo','coupang','easyStore'],dependencies:{momo:[],coupang:[],easyStore:[],shopee:['easyStore']}},variantFieldExecution:{prepareAllVariantsBeforePlatformNavigation:true,reuseStableVariantFieldSemantics:true,reuseStableVariantSelectorsWhenLayoutSignatureMatches:true,rescanCurrentVariantSectionOnlyWhenLayoutSignatureChanges:true,neverRestartImageOrPreviousPlatformStages:true},browserScheduler:{interactionConcurrency:1,releaseInteractionLockDuringWait:true,sessionHeartbeatSeconds:180},platforms:platforms,retrySameSkuDraftAndStage:true,neverRebuildPreflightDuringRetry:true,updatedAt:serverTime},
         updatedAt:serverTime,updatedBy:userLabel(),version:VERSION
       },{merge:true});
-      const copied=await copyProductListingCodexPrompt(prompt);
+      const copied=await copyProductListingCodexPrompt(activationPrompt);
       await writeAudit('交給 Codex 對話處理','productListingCase',id,clean(product.sku)+'｜'+clean(product.originalName||product.name));
       setProductListingCodexUi(form,'completed','已授權固定 v2 自動上架','完成圖資料齊全後會由後端交錯處理 MOMO、酷澎與 EasyStore，EasyStore 完成後接蝦皮；固定欄位只準備一次，不再要求第二次確認。'+(copied?' 工作指令也已複製。':''));
       global.setTimeout(function(){global.location.href=threadUrl;},100);
-      return {status:'pending',productId:id,workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,promptCopied:copied};
+      return {status:'pending',productId:id,workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,activationPrompt:activationPrompt,promptCopied:copied};
     }catch(error){
       const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)setProductListingCodexUi(current,'failed','Codex 待辦尚未建立',errorMessage(error));
       throw error;

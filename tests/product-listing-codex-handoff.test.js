@@ -69,6 +69,20 @@ test('交接會等待收圖、保存後重讀案件，再從固定快照建立�
   assert.doesNotMatch(handoff, /confirmAction\(/);
 });
 
+test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多細項連結過長', () => {
+  const activation = section('function productListingCodexActivationPrompt', 'function productListingCodexThreadUrl');
+  const handoff = section('async function handoffProductListingToCodex(form)', 'function productListingCodexResultDraft');
+  assert.match(activation, /\[固定流程 v2 短交接\]/);
+  assert.match(activation, /codexHandoff\.prompt 與 codexHandoff\.preflightSnapshot/);
+  assert.match(activation, /本組每個商品的繁體完成圖/);
+  assert.match(activation, /MOMO、酷澎、EasyStore 三個根工作/);
+  assert.match(handoff, /activationPrompt=productListingCodexActivationPrompt\(product,snapshot\)/);
+  assert.match(handoff, /threadUrl=productListingCodexThreadUrl\(activationPrompt\)/);
+  assert.match(handoff, /activationPrompt:activationPrompt,prompt:prompt/);
+  assert.match(handoff, /copyProductListingCodexPrompt\(activationPrompt\)/);
+  assert.doesNotMatch(handoff, /productListingCodexThreadUrl\(prompt\)/);
+});
+
 test('交接中用 inert 鎖住互動，但不會 disabled 表單欄位後再保存空資料', () => {
   const ui = section('function setProductListingCodexUi', 'function productListingCodexMediaSnapshot');
   assert.match(ui, /button\.disabled=running/);

@@ -170,7 +170,9 @@ test('product inventory header is simplified and exposes recent unlisted product
   const source = read('operations-phase1.js');
   assert.match(source, /成本總額：/);
   assert.match(source, /data-action="product-recent">最近新增未上架/);
-  assert.match(source, /state\.productRecentOnly&&productHasPlatformListing/);
+  assert.match(source, /function productNeedsRecentListingWork/);
+  assert.match(source, /!productHasCompletedListingImage\(p\)\|\|!productHasCompletedFourChannelListing\(p\)/);
+  assert.match(source, /state\.productRecentOnly&&!productNeedsRecentListingWork\(p\)/);
   assert.match(source, /#productSearch,#productListingCaseForm \[name="variantParentSearch"\]/);
   const renderStart = source.indexOf('function renderProducts(');
   const renderEnd = source.indexOf('function estimateFifoCostForProduct', renderStart);
