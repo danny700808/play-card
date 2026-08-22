@@ -1031,6 +1031,15 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-variant-quick-actions .ops-button{min-height:32px;padding:6px 10px}
 .ops-listing-variant-quick-actions .is-hidden{display:none}
 .ops-listing-variant-quick-actions small{color:var(--ops-muted);font-size:10px;font-weight:800}
+.ops-listing-variant-collector{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:6px;padding:8px 10px;border:1px solid #c7e1d5;border-radius:10px;background:#f7fcf9}
+.ops-listing-variant-collector .ops-button{min-height:32px;padding:6px 12px}
+.ops-listing-variant-collector>span{color:#315d4d;font-size:11px;font-weight:850}
+.ops-listing-variant-collector-status{margin-top:5px;min-height:0}
+.ops-listing-variant-collector-status:empty{display:none}
+.ops-listing-variant-collector-status>span{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:900}
+.ops-listing-variant-collector-status>span.active{background:#dff3e9;color:#17684e}
+.ops-listing-variant-collector-status>span.done{background:#edf3f0;color:#4f675d}
+.ops-listing-variant-collector-status>span.error{background:#fbe9e5;color:#984735}
 .ops-listing-variant-image-picker{display:grid;grid-template-columns:repeat(5,minmax(58px,1fr));gap:7px;margin-top:7px}
 .ops-listing-variant-picker-option{position:relative;display:grid;place-items:center;min-width:0;padding:3px;border:1px solid #d5e1e6;border-radius:9px;background:#fff;cursor:pointer}
 .ops-listing-variant-picker-option.is-dragging{opacity:.4}
