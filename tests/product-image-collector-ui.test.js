@@ -103,6 +103,18 @@ test("同款商品從各自已收圖片中指定一張代表圖", () => {
   assert.match(operationsSource, /loadProductListingVariantMedia\(item\.productId\)/);
 });
 
+test("同款細項可在同一畫面收圖、拖曳共用並清除代表圖", () => {
+  assert.match(operationsSource, /data-action="product-variant-image-collection"/);
+  assert.match(operationsSource, /data-action="product-variant-image-clear"/);
+  assert.match(operationsSource, /data-variant-image-dropzone="1"/);
+  assert.match(operationsSource, /draggable="true"/);
+  assert.match(operationsSource, /application\/x-youzi-variant-image/);
+  assert.match(operationsSource, /async function copyProductVariantReferenceImage/);
+  assert.match(operationsSource, /await uploadProductVariantReferenceImages\(form,id,\[file\]\)/);
+  assert.match(operationsSource, /await selectProductVariantRepresentativeImage\(form,id,copied,role\)/);
+  assert.match(operationsSource, /startProductImageCollection\(byId\('productListingCaseForm'\),el\.dataset\.id\)/);
+});
+
 test("加入同款細項後會從案件來源或完成圖譜系恢復圖片", () => {
   assert.match(operationsSource, /function productListingRecoveredMedia/);
   assert.match(operationsSource, /generatedListingImages\.map\(function\(row\)\{return row\.sourceImageUrl/);

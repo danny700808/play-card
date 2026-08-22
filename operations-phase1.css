@@ -989,6 +989,8 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-variant-items{display:grid;gap:8px}
 .ops-listing-variant-item{position:relative;display:grid;grid-template-columns:120px minmax(0,1fr) 34px;gap:13px;align-items:start;padding:14px;border:2px solid #dce7e2;border-radius:13px;background:#fff}
 .ops-listing-variant-item.is-required-missing{border-color:#d25845;background:#fff8f6;box-shadow:0 0 0 3px rgba(210,88,69,.11)}
+.ops-listing-variant-item.is-drag-over{border-color:#168866;background:#edf9f4;box-shadow:0 0 0 4px rgba(22,136,102,.16)}
+.ops-listing-variant-item.is-copying-image{opacity:.72;pointer-events:none}
 .ops-listing-variant-item-main{display:grid;gap:5px;min-width:0}
 .ops-listing-variant-item-main>b{font-size:13px;line-height:1.4}
 .ops-listing-variant-kind{color:#17684e!important;font-size:10px!important;font-weight:950!important;letter-spacing:.05em}
@@ -1018,8 +1020,12 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-variant-image-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:3px}
 .ops-listing-variant-image-actions>strong{color:#245a47;font-size:12px;font-weight:950}
 .ops-listing-variant-image-actions .ops-button{min-height:32px;padding:6px 9px}
+.ops-listing-variant-quick-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:4px}
+.ops-listing-variant-quick-actions .ops-button{min-height:32px;padding:6px 10px}
+.ops-listing-variant-quick-actions small{color:var(--ops-muted);font-size:10px;font-weight:800}
 .ops-listing-variant-image-picker{display:grid;grid-template-columns:repeat(5,minmax(58px,1fr));gap:7px;margin-top:7px}
 .ops-listing-variant-picker-option{position:relative;display:grid;place-items:center;min-width:0;padding:3px;border:1px solid #d5e1e6;border-radius:9px;background:#fff;cursor:pointer}
+.ops-listing-variant-picker-option.is-dragging{opacity:.4}
 .ops-listing-variant-picker-option img{display:block;width:100%;height:68px;object-fit:contain;border-radius:6px;background:#f7f9f8}
 .ops-listing-variant-picker-option.selected{border-color:#1f8e6b;background:#eff9f4;box-shadow:0 0 0 2px rgba(31,142,107,.15)}
 .ops-listing-variant-picker-option>span{position:absolute;z-index:1;top:3px;right:3px;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#1f8e6b;color:#fff;font-size:10px;font-weight:900}
