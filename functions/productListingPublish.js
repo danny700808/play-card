@@ -709,9 +709,11 @@ function finalizedRoleRowsForCase(productId, frozenCase, currentCase) {
 
 function buildFinalPlatformImagePlan(caseRows) {
   const groups = (Array.isArray(caseRows) ? caseRows : []).map((item) => {
-    const preferred = new Set(normalizeUrls(item && item.gallerySourceImageUrls, 12));
-    return (Array.isArray(item && item.roleRows) ? item.roleRows : []).slice().sort((a, b) => {
-      const rank = (row) => row.roles.includes('cleanMain') ? 0 : row.roles.includes('brandedHero') ? 1 : preferred.has(row.sourceImageUrl) ? 2 : 3;
+    const allowed = new Set(normalizeUrls(item && item.gallerySourceImageUrls, 12));
+    return (Array.isArray(item && item.roleRows) ? item.roleRows : [])
+      .filter((row) => !allowed.size || allowed.has(row.sourceImageUrl) || allowed.has(row.url))
+      .slice().sort((a, b) => {
+      const rank = (row) => row.roles.includes('cleanMain') ? 0 : row.roles.includes('brandedHero') ? 1 : 2;
       return rank(a) - rank(b) || a.sourceOrder - b.sourceOrder;
     });
   });

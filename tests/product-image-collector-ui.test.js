@@ -12,7 +12,7 @@ const bridge = fs.readFileSync("easystore-shopee-autofill/bridge.js", "utf8");
 
 test("準備上架提供指定商品的開始收圖入口", () => {
   assert.match(operationsSource, /data-action="product-image-collection-toggle"/);
-  assert.match(operationsSource, /從淘寶／阿里巴巴框選截圖/);
+  assert.match(operationsSource, /從淘寶／1688 框選截圖/);
   assert.match(operationsSource, /PRODUCT_IMAGE_COLLECTION\.maxImages/);
   assert.doesNotMatch(operationsSource, /<label>商品網址<\/label>/);
 });
@@ -33,8 +33,17 @@ test("供應商頁以框選截圖為主且不會預設攔截商品頁點擊", ()
 
 test("截錯的來源圖片可從目前商品直接刪除", () => {
   assert.match(operationsSource, /data-action="product-source-image-remove"/);
+  assert.match(operationsSource, /data-action="product-variant-source-image-remove"/);
   assert.match(operationsSource, /async function removeProductReferenceImage/);
+  assert.match(operationsSource, /async function removeProductVariantReferenceImage/);
   assert.match(operationsSource, /已從這件準備上架商品移除/);
+});
+
+test("上架圖片預覽可排除圖片且排除後不會進入平台共用圖池", () => {
+  assert.match(operationsSource, /data-action="product-variant-gallery-toggle"/);
+  assert.match(operationsSource, /不會上架|不上架/);
+  assert.match(operationsSource, /allowed\.has\(row\.sourceImageUrl\)\|\|allowed\.has\(row\.url\)/);
+  assert.match(operationsSource, /至少保留一張上架圖/);
 });
 
 test("收圖檔案沿用既有 Firebase 圖片上傳並綁定目前商品", () => {
@@ -70,6 +79,7 @@ test("淘寶與 1688 快速連結固定顯示在單品與每個細項收圖區",
   const form = operationsSource.slice(formStart, formEnd);
   assert.match(helper, /開啟淘寶/);
   assert.match(helper, /開啟 1688/);
+  assert.doesNotMatch(helper, /開啟阿里巴巴|alibaba\.com/);
   assert.match(variantCollector, /productSupplierQuickLinksHtml\(\)/);
   assert.match(form, /productSupplierQuickLinksHtml\(\)/);
 });
@@ -84,8 +94,27 @@ test("框選截圖完成後立即恢復已加入與結束收圖面板", () => {
   assert.match(supplierCollector, /let captureUiHidden = false/);
   assert.match(supplierCollector, /panel\.hidden = Boolean\(cropOverlay \|\| captureUiHidden\)/);
   assert.match(supplierCollector, /async function captureVisiblePage/);
-  assert.match(supplierCollector, /finally \{\s*captureUiHidden = false;\s*updatePanel\(\);/);
+  assert.match(supplierCollector, /captureUiHidden = false;\s*updatePanel\(\);/);
   assert.doesNotMatch(supplierCollector, /panel\.hidden = true;\s*captureSelection\(rect\)/);
+});
+
+test("框選截圖可在送出前移動縮放並避免供應商放大鏡遮罩", () => {
+  assert.match(supplierCollector, /data-dir="nw"/);
+  assert.match(supplierCollector, /data-dir="se"/);
+  assert.match(supplierCollector, /data-crop-capture/);
+  assert.match(supplierCollector, /截取這個範圍/);
+  assert.match(supplierCollector, /interaction\.mode === "move"/);
+  assert.match(supplierCollector, /const original = interaction\.original, dir = interaction\.dir/);
+  assert.match(supplierCollector, /suppressSupplierHoverArtifacts/);
+  assert.match(supplierCollector, /youzi-image-collector-suppressed-hover-artifact/);
+  assert.match(supplierCollector, /youzi-crop-capture-hidden/);
+});
+
+test("詳情頁的延遲載入與容器內圖片也能顯示綠框", () => {
+  assert.match(supplierCollector, /target\.closest\("img"\)/);
+  assert.match(supplierCollector, /data-large-img/);
+  assert.match(supplierCollector, /element\.querySelectorAll\("img"\)/);
+  assert.match(supplierCollector, /depth < 9/);
 });
 
 test("綠框原圖受限時不顯示 Chrome 英文權限錯誤", () => {
@@ -260,7 +289,7 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
 });
 
 test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
-  assert.equal(manifest.version, "0.3.23");
+  assert.equal(manifest.version, "0.3.24");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));

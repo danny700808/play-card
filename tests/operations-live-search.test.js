@@ -63,8 +63,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260822-collector-self-heal/);
-    assert.match(html, /operations-phase1\.js\?v=20260822-collector-self-heal/);
+    assert.match(html, /operations-phase1\.css\?v=20260822-collector-image-controls/);
+    assert.match(html, /operations-phase1\.js\?v=20260822-collector-image-controls/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260821-shopee-v2-schema5/);
   }
 });
@@ -81,7 +81,7 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(handoffPrompt, /每一張來源只做一輪完整檢查與台灣繁體化/);
   assert.match(handoffPrompt, /全部編號的完成輸出公平合併/);
   assert.match(handoffPrompt, /整組最多 12 個不同完成圖 URL/);
-  assert.match(handoffPrompt, /自動平均涵蓋各細項/);
+  assert.match(handoffPrompt, /未勾選的來源與完成圖不得加入任何平台圖庫/);
   assert.match(handoffPrompt, /最多 10 點不重複具體特色/);
   assert.match(handoffPrompt, /保固只填平台保固欄/);
   assert.doesNotMatch(functionBody(engine, 'productListingAutomaticDescription'), /• 保固：/);
@@ -324,7 +324,7 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(caseForm, /<label>注意事項<\/label>/);
   assert.match(caseForm, /productReferenceImageUpload/);
   assert.match(caseForm, /選擇圖片上傳/);
-  assert.match(caseForm, /從淘寶／阿里巴巴框選截圖/);
+  assert.match(caseForm, /從淘寶／1688 框選截圖/);
   assert.match(caseForm, /product-image-collection-toggle/);
   assert.match(caseForm, /這一步只收圖，不做簡繁轉換/);
   assert.match(caseForm, /截錯可在下方直接刪除/);
