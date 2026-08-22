@@ -630,6 +630,24 @@ test('12 張共用池先保留 cleanMain、brandedHero 並公平涵蓋 13 個細
   assert.equal(represented.size, 12);
 });
 
+test('上架圖片預覽未勾選的來源不會進入任何平台圖庫', () => {
+  const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
+  const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false };
+  const selectedSource = 'https://supplier.example.com/selected.jpg';
+  const excludedSource = 'https://supplier.example.com/excluded.jpg';
+  const plan = helpers.buildFinalPlatformImagePlan([{
+    productId: 'strict-gallery', gallerySourceImageUrls: [selectedSource], roleRows: [
+      { productId: 'strict-gallery', sourceImageUrl: selectedSource, url: 'https://cdn.example.com/selected-clean.jpg', roles: ['cleanMain'], sourceOrder: 1, assetFlags: cleanFlags },
+      { productId: 'strict-gallery', sourceImageUrl: selectedSource, url: 'https://cdn.example.com/selected-brand.jpg', roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags },
+      { productId: 'strict-gallery', sourceImageUrl: excludedSource, url: 'https://cdn.example.com/excluded-detail.jpg', roles: ['localizedDetail'], sourceOrder: 2, assetFlags: cleanFlags }
+    ]
+  }]);
+  assert.equal(plan.sharedCompletedImageUrls.some((url) => url.includes('excluded-detail')), false);
+  assert.equal(plan.easyStore.imageUrls.some((url) => url.includes('excluded-detail')), false);
+  assert.equal(plan.coupang.imageUrls.some((url) => url.includes('excluded-detail')), false);
+  assert.equal(plan.momo.imageUrls.some((url) => url.includes('excluded-detail')), false);
+});
+
 test('MOMO 前三張固定含 clean promo，且品牌次圖最多一張', () => {
   const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
   const promoFlags = { ...cleanFlags, momoPromotionEligible: true };
@@ -736,7 +754,7 @@ test('pending handoff sources can receive later Codex outputs and become one imm
   const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
   const frozen = {
     workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'handoff-input-1', productId: 'late-product',
-    cases: [{ productId: 'late-product', sku: 'LATE-1', sourceImageUrls: [sourceOne, sourceTwo], gallerySourceImageUrls: [sourceTwo] }]
+    cases: [{ productId: 'late-product', sku: 'LATE-1', sourceImageUrls: [sourceOne, sourceTwo], gallerySourceImageUrls: [sourceOne, sourceTwo] }]
   };
   const currentCase = {
     productSku: 'LATE-1', productDescription: '完整商品介紹',
