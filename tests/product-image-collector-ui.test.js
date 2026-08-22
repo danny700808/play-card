@@ -104,7 +104,12 @@ test("同款商品從各自已收圖片中指定一張代表圖", () => {
 });
 
 test("同款細項可在同一畫面收圖、拖曳共用並清除代表圖", () => {
+  assert.match(operationsSource, /function productVariantCollectorHtml/);
   assert.match(operationsSource, /data-action="product-variant-image-collection"/);
+  assert.match(operationsSource, /data-variant-collector-count/);
+  assert.match(operationsSource, /data-variant-collector-status/);
+  assert.match(operationsSource, /targetButton\.closest\('\.ops-listing-variant-item'\)/);
+  assert.match(operationsSource, /if\(status&&!singleMode\)status\.innerHTML=''/);
   assert.match(operationsSource, /data-action="product-variant-image-clear"/);
   assert.match(operationsSource, /data-variant-image-dropzone="1"/);
   assert.match(operationsSource, /draggable="true"/);
@@ -114,6 +119,14 @@ test("同款細項可在同一畫面收圖、拖曳共用並清除代表圖", ()
   assert.match(operationsSource, /await selectProductVariantRepresentativeImage\(form,id,sourceUrl,role\)/);
   assert.doesNotMatch(operationsSource, /shared-variant-/);
   assert.match(operationsSource, /startProductImageCollection\(byId\('productListingCaseForm'\),el\.dataset\.id\)/);
+});
+
+test("同款商品會自動辨識顏色並用白話顯示區分方式", () => {
+  assert.match(operationsSource, /function productVariantGroupAttributeSuggestion/);
+  assert.match(operationsSource, /return '顏色'/);
+  assert.match(operationsSource, /這組商品以什麼區分/);
+  assert.match(operationsSource, /例如：顏色、尺寸、規格/);
+  assert.doesNotMatch(operationsSource, /<label class="ops-required">細項種類<\/label>/);
 });
 
 test("加入同款細項後會從案件來源或完成圖譜系恢復圖片", () => {
