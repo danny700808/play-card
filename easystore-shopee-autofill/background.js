@@ -5,6 +5,11 @@ importScripts("image-collector-helpers.js");
 const imageCollector = globalThis.YouziImageCollectorHelpers;
 const SUPPLIER_CROP_MENU_ID = "youzi-supplier-image-crop";
 const PERSISTENT_CAPTURE_PERMISSION = { origins: ["<all_urls>"] };
+const OPERATIONS_PRODUCTS_URL = `${imageCollector.OPERATIONS_ORIGIN}/play-card/portal.html#products`;
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function responseError(code, error) {
   return {
@@ -113,19 +118,28 @@ async function deliverToOperations(payload, session) {
       "https://danny700808.github.io/play-card/operations-hub.html*"
     ]
   });
-  if (!tabs.length) throw new Error("請保留「準備上架」商品頁，不要把它關閉");
+  if (!tabs.length) {
+    const restored = await chrome.tabs.create({ url: OPERATIONS_PRODUCTS_URL, active: false });
+    if (restored && Number.isInteger(restored.id)) tabs = [restored];
+  }
+  if (!tabs.length) throw new Error("找不到營運中心，請重新開啟商品的「準備上架」頁");
   let lastError = null;
   for (const tab of tabs) {
     if (!Number.isInteger(tab.id)) continue;
-    try {
-      const result = await chrome.tabs.sendMessage(tab.id, {
-        type: imageCollector.DELIVER_MESSAGE,
-        payload
-      });
-      if (result && result.ok) return result;
-      lastError = new Error(result && result.error ? result.error : "商品上架頁尚未準備好收圖");
-    } catch (error) {
-      lastError = error;
+    for (const delay of [0, 500, 1000, 2000, 3000]) {
+      if (delay) await wait(delay);
+      try {
+        const result = await chrome.tabs.sendMessage(tab.id, {
+          type: imageCollector.DELIVER_MESSAGE,
+          payload
+        });
+        if (result && result.ok) return result;
+        const message = String(result && result.error ? result.error : "商品上架頁尚未準備好收圖");
+        lastError = new Error(message);
+        if (!/(?:尚未準備|目前沒有啟動|請保留原本|目前收圖商品已經更換)/.test(message)) break;
+      } catch (error) {
+        lastError = error;
+      }
     }
   }
   throw lastError || new Error("找不到正在收圖的商品上架頁");
