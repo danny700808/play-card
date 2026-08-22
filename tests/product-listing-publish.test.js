@@ -125,7 +125,11 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 8);
+  assert.equal(snapshot.automationPolicy.version, 9);
+  assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
+  assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
+  assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
+  assert.equal(snapshot.automationPolicy.publishVerification.requireEveryVariantGroupSkuOnPublishedStorefront, true);
   assert.equal(snapshot.automationPolicy.workflowId, 'youzi-four-channel-listing-v2');
   assert.equal(snapshot.automationPolicy.immutableWorkflowUntilExplicitRuleChange, true);
   assert.equal(snapshot.automationPolicy.productDataChangesDoNotChangeExecutionOrder, true);
@@ -1001,6 +1005,15 @@ test('EasyStore duplicate guard matches only the exact normalized SKU', () => {
     { id: 2, sku: "'1040160-1" }
   ] }] } };
   assert.deepEqual(helpers.exactEasyStoreMatches(payload, '1040160-1').map((row) => [row.productId, row.variantId]), [['99', '2']]);
+});
+
+test('EasyStore draft is never treated as a published storefront product', () => {
+  assert.equal(helpers.easyStorePublicationState({ published_at: null }), 'draft');
+  assert.equal(helpers.easyStorePublicationState({ published: false }), 'draft');
+  assert.equal(helpers.easyStorePublicationState({ status: '未發佈' }), 'draft');
+  assert.equal(helpers.easyStorePublicationState({ published_at: '2026-08-22 12:00:00' }), 'published');
+  assert.equal(helpers.easyStorePublicationState({ status: 'active' }), 'published');
+  assert.equal(helpers.easyStorePublicationState({ id: 1 }), 'unknown');
 });
 
 test('each platform reports missing fields instead of pretending to publish', () => {
