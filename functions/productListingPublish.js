@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
 const LISTING_JOB_SCHEMA_VERSION = 2;
-const LISTING_AUTOMATION_POLICY_VERSION = 11;
+const LISTING_AUTOMATION_POLICY_VERSION = 12;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -242,6 +242,25 @@ function listingAutomationPolicy() {
         completeVariantImagesBeforePreparePublish: true,
         verifyIn: 'easystore-shopee-channel-product-list'
       },
+      coupangCreateFlow: {
+        route: 'create-via-image',
+        useSameDraftOnly: true,
+        fieldPlanPreparedBeforeNavigation: true,
+        steps: [
+          'upload-clean-main', 'upload-secondary-completed-images', 'select-music-leaf-category',
+          'select-verified-brand-or-no-brand', 'generate-product-information-once',
+          'fill-variants-price-stock-and-seller-sku', 'fill-shipping',
+          'fill-description-and-tw-general-compliance', 'create-product', 'verify-exact-sku-once'
+        ],
+        invalidGeneratedOptionRecovery: {
+          signatures: ['readonly-option-field', 'invalid-generated-option-value'],
+          action: 'return-to-image-step-and-regenerate-once',
+          maximumRegenerations: 1,
+          neverCreateReplacementDraft: true
+        },
+        pendingReviewIsSuccessfulSubmission: true,
+        pendingReviewIsNotActiveListing: true
+      },
       verification: 'single-final-check-after-submit'
     },
     momoPublishRecovery: {
@@ -368,6 +387,33 @@ function buildShopeeLogistics(snapshot) {
       || (decision === 'freight' && !hsinchuBand)
       || (decision === 'convenience' && !convenienceFits),
     requiresConfirmation: false
+  };
+}
+
+function buildCoupangShipping(snapshot) {
+  const dimensions = [snapshot.packageLengthCm, snapshot.packageWidthCm, snapshot.packageHeightCm].map(numberOrNull);
+  const hasCompletePackage = dimensions.every((value) => value !== null && value > 0);
+  const packageTotalCm = hasCompletePackage ? dimensions.reduce((sum, value) => sum + value, 0) : null;
+  const weightKg = numberOrNull(snapshot.packageWeightKg);
+  const hasValidWeight = weightKg !== null && weightKg > 0;
+  const convenienceFits = hasCompletePackage && hasValidWeight && packageTotalCm <= 101 && weightKg <= 10;
+  return {
+    decidedOnceBeforePlatformNavigation: true,
+    packageTotalCm: packageTotalCm === null ? null : Math.round(packageTotalCm * 100) / 100,
+    sellerDelivery: {
+      enabled: true,
+      contract: 'platform-existing-seller-delivery',
+      carriers: ['Kerry', 'HCT']
+    },
+    convenienceStore: {
+      enabled: convenienceFits,
+      stores: convenienceFits ? ['7-ELEVEN', 'FamilyMart'] : [],
+      maximumTotalDimensionsCm: 101,
+      maximumWeightKg: 10
+    },
+    preparationDays: 1,
+    requiresJudgment: !hasCompletePackage || !hasValidWeight,
+    neverEnableConvenienceWhenOversize: true
   };
 }
 
@@ -1173,22 +1219,41 @@ function buildPlatformPageContracts() {
       dynamicFields: ['mapped-leaf-category', 'category-dependent-attributes', 'regulatory-fields-when-verified', 'platform-validation-errors']
     },
     coupang: {
-      ...common, routeKey: 'coupang-product-create-or-same-draft',
-      verifiedFromLivePage: false,
-      inventoryStatus: 'login-session-expired-during-live-inventory',
+      ...common, version: 3, routeKey: 'coupang-create-via-image-or-same-draft',
+      verifiedFromLivePage: true,
+      inventoryStatus: 'verified-from-live-create-flow-2026-08-22',
       authenticatedLandmarks: ['Coupang Wing', '商品管理'],
       loginProbe: { fields: ['輸入帳號', '輸入密碼'], submitLabel: '登入', interactiveAuthenticationMayBeRequired: true },
       pageSignature: {
-        sections: ['商品基本資訊', '分類與屬性', '選項與價格庫存', '商品圖片', '配送', '發布'],
-        stableLandmarks: ['商品名稱', '類別', '銷售價格', '庫存', '代表圖片', '提交審核']
+        sections: ['圖片與類別', '商品資訊產生', '選項與價格庫存', '配送', '商品介紹與合規', '發布'],
+        stableLandmarks: ['以圖片建立', '類別', '品牌', '產生商品資訊', '銷售價格', '庫存', '建立產品']
       },
       fieldOrder: [
-        'product-name', 'category', 'brand', 'required-attributes', 'variants', 'variant-images',
-        'sale-price', 'stock', 'seller-sku', 'main-and-detail-images', 'description',
-        'shipping-template', 'warranty', 'submit-for-review'
+        'clean-main-image', 'secondary-completed-images', 'music-leaf-category', 'verified-brand-or-no-brand',
+        'generate-product-information', 'variant-color', 'variant-quantity', 'variant-size',
+        'sale-price', 'stock', 'seller-sku', 'seller-delivery', 'convenience-store-by-package',
+        'preparation-days', 'manual-rich-description', 'tw-general-compliance', 'responsible-seller',
+        'origin', 'minor-purchase-and-tax', 'create-product', 'exact-sku-verification'
       ],
-      fixedFields: ['warranty-days-180', 'publish-immediately'],
-      dynamicFields: ['mapped-leaf-category', 'category-dependent-attributes', 'platform-validation-errors']
+      imageConstraints: {
+        firstImageRole: 'cleanMain',
+        secondaryRoles: ['cleanMain', 'localizedDetail', 'specification', 'variantRepresentative'],
+        maximumCount: 7,
+        brandedHeroOnlyWhenGalleryAllowsLogoAndText: true
+      },
+      generatedOptionRecovery: {
+        detect: ['readonly-option-field', 'invalid-generated-option-value'],
+        action: 'return-to-image-step-and-regenerate-once-on-same-draft',
+        maximumAttempts: 1
+      },
+      submissionVerification: {
+        successButton: '建立產品',
+        acceptedStatuses: ['審核中', '上架'],
+        exactSkuLookupMaximum: 1,
+        underReviewMeansSubmittedNotActive: true
+      },
+      fixedFields: ['warranty-days-180', 'preparation-days-1', 'tw-general', 'minor-purchase-allowed', 'taxable', 'submit-for-review'],
+      dynamicFields: ['mapped-music-leaf-category', 'category-dependent-attributes', 'verified-brand', 'origin', 'package-shipping', 'platform-validation-errors']
     },
     easyStore: {
       ...common, routeKey: 'easystore-product-create-or-same-product',
@@ -1227,6 +1292,7 @@ function buildPlatformPageContracts() {
 
 function buildPreparedPlatformFieldPlan(snapshot) {
   const shipping = buildShopeeLogistics(snapshot);
+  const coupangShipping = buildCoupangShipping(snapshot);
   const packageWeightKg = numberOrNull(snapshot.packageWeightKg);
   const packageWeightGrams = packageWeightKg !== null && packageWeightKg > 0
     ? Math.max(1, Math.round(packageWeightKg * 1000)) : null;
@@ -1246,7 +1312,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     }
   };
   return {
-    version: 3,
+    version: 4,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1291,7 +1357,16 @@ function buildPreparedPlatformFieldPlan(snapshot) {
       dynamicOnly: ['official-category-recommendation-when-code-is-empty', 'category-dependent-attributes', 'platform-validation-errors']
     },
     coupang: {
-      fixedFields: { publishImmediately: true, warrantyDays: 180 },
+      fixedFields: {
+        publishImmediately: true,
+        submitAction: 'create-product',
+        warrantyDays: 180,
+        preparationDays: 1,
+        complianceModel: 'TW_General',
+        responsibleSeller: '尚品樂器行',
+        minorPurchaseAllowed: true,
+        taxable: true
+      },
       preparedFields: {
         sku: snapshot.sku,
         title: snapshot.coupangTitle,
@@ -1299,9 +1374,34 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         price: snapshot.coupangPrice,
         stock: snapshot.stock,
         categoryCode: snapshot.coupangCategoryCode,
+        categoryResolution: { ...(snapshot.canonicalCategoryDecision || {}) },
+        brand: {
+          value: snapshot.brand,
+          mode: snapshot.brand ? 'verified-brand' : 'no-brand',
+          useNoBrandOnlyWhenUnbrandedOrVerifiedBrandRejected: true,
+          recordPlatformRejectionBeforeFallback: true
+        },
+        model: snapshot.model,
+        variantDefaults: {
+          optionLabel: snapshot.variantAttributeValue || snapshot.color || snapshot.model || '單一規格',
+          color: snapshot.color,
+          quantity: 1,
+          sizePolicy: 'verified-value-else-Free-only-when-required',
+          sellerSku: snapshot.sku,
+          price: snapshot.coupangPrice,
+          stock: snapshot.stock
+        },
+        shipping: coupangShipping,
         imageUrls: snapshot.platformImagePlan.coupang.imageUrls
       },
-      dynamicOnly: ['official-category-recommendation-when-code-is-empty', 'category-dependent-attributes', 'platform-validation-errors']
+      interactionPolicy: {
+        generateProductInformationMaximumAttempts: 2,
+        regenerateOnlyWhenOptionFieldsAreReadonlyOrInvalid: true,
+        resumeSameDraft: true,
+        exactSkuVerificationMaximum: 1,
+        neverSearchByTitle: true
+      },
+      dynamicOnly: ['official-category-recommendation-when-code-is-empty', 'category-dependent-attributes', 'verified-origin', 'platform-validation-errors']
     },
     easyStore: {
       fixedFields: { publishImmediately: true, inventoryManagement: 'easystore', shippingRequired: true },
@@ -3476,6 +3576,7 @@ module.exports = {
     shopeeCategorySegments,
     hsinchuSizeBand,
     buildShopeeLogistics,
+    buildCoupangShipping,
     buildShopeeAutofillPayload,
     platformListingIds,
     platformQueueFingerprint,
