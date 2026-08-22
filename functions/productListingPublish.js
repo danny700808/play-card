@@ -1231,6 +1231,11 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true,
       mainImageTemplate: 'youzi-light-commercial-template-v2', mainImageAspectRatio: '1:1',
       mainImageBackdrop: 'low-saturation-light-commercial', mainImageProductPlacement: 'right-or-center-right',
+      storefrontCardCrop: {
+        aspectRatio: '3:4', objectFit: 'cover', measuredDisplayPx: { width: 226.875, height: 301.734375 },
+        horizontalCropEachSidePercent: 12.4, safeContentWidthPercent: 72,
+        lightPanelHorizontalInsetPercent: { minimum: 14, maximum: 16 }, preserveVisibleGreenEdge: true
+      },
       fixedStorePromoLast: true, fixedDescriptionPromosLast: true,
       localizedTraditionalChinese: true, localizedVariantRepresentativesRequired: true,
       sharedDeliveryAssetStandard: {

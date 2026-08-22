@@ -134,6 +134,10 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /商品主圖、廣告用圖與圖文編輯器專推圖是三個互相獨立的必填位置/);
   assert.match(prompt, /不得等平台第一次拒絕後才補專推圖或出貨地/);
   assert.match(prompt, /1000×1000 px、1:1、sRGB/);
+  assert.match(prompt, /商品列表的圖片框實測約為 3:4 且以 cover 顯示/);
+  assert.match(prompt, /中央 72% 寬度的安全區/);
+  assert.match(prompt, /左右必須各縮進約 14～16%/);
+  assert.match(prompt, /裁切後仍看得到細綠邊/);
   assert.match(prompt, /平台之間只改首圖角色與排序/);
   assert.match(prompt, /不得進入平台後才重新裁切、縮放或另做一套圖片/);
   assert.match(prompt, /Codex 對話旁邊的內建瀏覽器/);
@@ -184,6 +188,7 @@ test('Codex 交接指令明確區分乾淨主圖與淺色品牌首圖', () => {
   assert.match(prompt, /商品去背後約占 55～65%/);
   assert.match(prompt, /最多 2 個有來源依據的輔助視覺/);
   assert.match(prompt, /不得加入價格、聯絡資訊、浮水印或虛構功能／配件/);
+  assert.match(prompt, /被切半的文字或殘缺裝飾/);
 });
 
 test('交接只用 v2 固定流程，不留舊版降級或第二路徑', () => {
