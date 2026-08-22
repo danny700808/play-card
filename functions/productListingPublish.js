@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
 const LISTING_JOB_SCHEMA_VERSION = 2;
-const LISTING_AUTOMATION_POLICY_VERSION = 8;
+const LISTING_AUTOMATION_POLICY_VERSION = 9;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -146,6 +146,9 @@ function listingAutomationPolicy() {
     productDataChangesDoNotChangeExecutionOrder: true,
     duplicateGuard: {
       matchKey: 'exact-sku+existing-platform-id',
+      variantGroupIdentityIsClosedSkuSet: true,
+      forbidBaseSkuAndNameFallbackForVariantGroups: true,
+      neverReuseUnlistedSimilarProduct: true,
       reuseExistingDraft: true,
       neverCreateNewOnRetry: true,
       stopOnMultipleMatches: true,
@@ -168,6 +171,8 @@ function listingAutomationPolicy() {
     },
     publishVerification: {
       successDialogAloneIsInsufficient: true,
+      easyStoreDraftCreationIsNotPublication: true,
+      requireEveryVariantGroupSkuOnPublishedStorefront: true,
       requiredChecks: [
         'platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status',
         'applied-image-plan', 'official-image-list', 'no-frozen-source-image'
@@ -1548,6 +1553,22 @@ function easyStoreVariantStock(variant) {
   return numberOrNull(variant && (variant.inventory_quantity ?? variant.quantity ?? variant.stock ?? variant.inventory));
 }
 
+function easyStorePublicationState(product) {
+  if (!product || typeof product !== 'object') return 'unknown';
+  for (const key of ['published', 'is_published', 'isPublished']) {
+    if (!Object.prototype.hasOwnProperty.call(product, key)) continue;
+    return product[key] === true ? 'published' : 'draft';
+  }
+  for (const key of ['published_at', 'publishedAt']) {
+    if (!Object.prototype.hasOwnProperty.call(product, key)) continue;
+    return clean(product[key]) ? 'published' : 'draft';
+  }
+  const status = clean(product.status || product.publish_status || product.publishStatus).toLowerCase();
+  if (['published', 'active', 'live', '已發佈', '已發布', '已上架'].includes(status)) return 'published';
+  if (['draft', 'unpublished', 'inactive', 'hidden', '未發佈', '未發布', '未上架', '草稿'].includes(status)) return 'draft';
+  return 'unknown';
+}
+
 async function verifyEasyStorePublishedListing(snapshot, token, result) {
   let lastReasons = ['missing-from-official-catalog'];
   for (const delayMs of [0, 1000, 2500, 5000]) {
@@ -1557,6 +1578,11 @@ async function verifyEasyStorePublishedListing(snapshot, token, result) {
       match = await findEasyStoreMappingBySku(snapshot, token);
     }
     if (!match) continue;
+    const publicationState = easyStorePublicationState(match.product);
+    if (publicationState === 'draft') {
+      lastReasons = ['still-draft'];
+      continue;
+    }
     const price = easyStoreVariantPrice(match.variant);
     const stock = easyStoreVariantStock(match.variant);
     const imageUrls = collectImageUrls(match.product, false).slice(0, 100);
@@ -1565,7 +1591,7 @@ async function verifyEasyStorePublishedListing(snapshot, token, result) {
       sku: snapshot.sku,
       price,
       stock,
-      status: 'official-catalog-matched',
+      status: publicationState === 'published' ? 'published' : 'official-catalog-matched',
       platformListMatched: true,
       officialCatalogMatched: true,
       imageEvidenceComplete: true,
@@ -3253,6 +3279,7 @@ module.exports = {
     finalizeVerifiedShopeeStage,
     easyStoreVariantPrice,
     easyStoreVariantStock,
+    easyStorePublicationState,
     overallPublishStatus,
     codexAutoPublishGrant,
     codexAutoPublishInputFingerprint,

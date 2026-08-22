@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260822-storefront-safe-area1/);
+  assert.match(portal, /operations-phase1\.js\?v=20260822-variant-drag1/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
   assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
@@ -160,7 +160,7 @@ test('variant workflow searches first and requires each SKU own representative i
   assert.match(source, /loadProductListingVariantMedia\(item\.productId\)/);
   assert.match(source, /variantParentImageUrl/);
   assert.match(source, /variantChildImageUrl/);
-  assert.match(source, /細項顯示名稱（人工優先）/);
+  assert.match(source, />細項名稱<input/);
   assert.match(source, /valueName:'variantGroupPrimaryValue'/);
   assert.match(source, /\|\|productVariantSuggestion\(product\)/);
   assert.match(source, /variantParentAttributeValue=clean\(data\.get\('variantParentAttributeValue'\)\)\|\|\(variantParent\?productVariantSuggestion\(variantParent\)\|\|'原款':''\)/);
@@ -169,6 +169,11 @@ test('variant workflow searches first and requires each SKU own representative i
   assert.match(source, /請先替每一個細項選擇 1 張代表圖/);
   assert.match(css, /\.ops-listing-mode-options>label/);
   assert.match(css, /\.ops-listing-variant-item\.is-required-missing/);
+  assert.match(source, /copyProductVariantReferenceImage/);
+  assert.match(source, /persistProductVariantReferenceImages\(form,id,copied,copied\)/);
+  assert.doesNotMatch(source, /shared-variant-/);
+  assert.match(source, /上架圖片預覽/);
+  assert.match(css, /\.ops-listing-variant-processing-flat/);
 });
 
 test('product inventory header is simplified and exposes recent unlisted products', () => {

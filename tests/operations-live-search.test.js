@@ -63,16 +63,16 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260822-storefront-safe-area1/);
-    assert.match(html, /operations-phase1\.js\?v=20260822-storefront-safe-area1/);
+    assert.match(html, /operations-phase1\.css\?v=20260822-variant-drag1/);
+    assert.match(html, /operations-phase1\.js\?v=20260822-variant-drag1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260821-shopee-v2-schema5/);
   }
 });
 
 test('merged variants show every SKU image and persist optional priority selections', () => {
   const handoffPrompt = functionBody(engine, 'productListingCodexHandoffPrompt');
-  assert.match(engine, /這組商品要處理的全部圖片/);
-  assert.match(engine, /每個編號的圖片都會先完成繁體化/);
+  assert.match(engine, /上架圖片預覽/);
+  assert.match(engine, /ops-listing-variant-processing-flat/);
   assert.match(engine, /name="variantGallerySourceImageUrls"/);
   assert.match(engine, /gallerySourceImageUrls:gallerySourceImageUrls/);
   assert.match(engine, /gallerySourceImageUrls:item\.gallerySourceImageUrls\|\|\[\]/);

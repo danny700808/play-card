@@ -110,8 +110,9 @@ test("同款細項可在同一畫面收圖、拖曳共用並清除代表圖", ()
   assert.match(operationsSource, /draggable="true"/);
   assert.match(operationsSource, /application\/x-youzi-variant-image/);
   assert.match(operationsSource, /async function copyProductVariantReferenceImage/);
-  assert.match(operationsSource, /await uploadProductVariantReferenceImages\(form,id,\[file\]\)/);
-  assert.match(operationsSource, /await selectProductVariantRepresentativeImage\(form,id,copied,role\)/);
+  assert.match(operationsSource, /await persistProductVariantReferenceImages\(form,id,copied,copied\)/);
+  assert.match(operationsSource, /await selectProductVariantRepresentativeImage\(form,id,sourceUrl,role\)/);
+  assert.doesNotMatch(operationsSource, /shared-variant-/);
   assert.match(operationsSource, /startProductImageCollection\(byId\('productListingCaseForm'\),el\.dataset\.id\)/);
 });
 
