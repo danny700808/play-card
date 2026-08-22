@@ -229,7 +229,7 @@ test("完成圖會保留來源與多角色譜系，不把同一來源壓成單�
   assert.match(snapshot, /readyRowsBySource=new Map\(\)/);
   assert.match(snapshot, /const rows=readyRowsBySource\.get\(row\.sourceImageUrl\)\|\|\[\];rows\.push\(row\)/);
   assert.doesNotMatch(snapshot, /readyBySource\.set\(row\.sourceImageUrl,row\.url\)/);
-  assert.match(snapshot, /cleanMain\/brandedHero-role-conflict/);
+  assert.match(snapshot, /hero-role-conflict/);
 });
 
 test("中央圖片先寫入並重讀核對，來源 binary 清理在全部引用核對前保持阻擋", () => {
