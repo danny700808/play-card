@@ -31,7 +31,9 @@
 12. 圖片轉換必須整批成功才可發布。少一張、部分失敗、來源對不上、角色缺漏或缺少完成紀錄時，一鍵流程必須停止並保留待重試狀態；不得以簡體原圖、供應商原圖或舊成品補位後繼續發布。
 13. 每張來源圖片只進行一次完整檢查。在同一輪圖片編輯中，先逐字掃描所有可見中文，再一次完成簡轉繁、大陸用語改為台灣用語、錯字／亂碼／殘缺文字修正，以及該張圖片需要的各角色輸出；不得另外產生第二次圖片檢查流程。只有記錄為 `single-pass` 完成的成品可進入四通路發布清單。
 14. 中央商品 `imageUrl` 與細項代表圖只使用對應來源的 `cleanMain`；EasyStore／蝦皮使用的 `brandedHero` 平台首圖只能另存為平台圖庫資料，不得覆寫中央辨識主圖。先寫入新完成圖引用、重新讀取資料庫，再確認中央、所有細項與四平台引用都已全面換新；中央或任一細項的任何圖片欄位只要仍等於任一凍結來源 URL，就不得把 cleanup 推進為 `required`。四平台回條都要同時提供 `appliedImageUrls`（實際套用且只能來自該平台最終完成圖計畫）及 `officialImageUrls`（正式頁完整圖片 URL，可為平台 CDN，但不得為來源圖），並設定 `imageEvidenceComplete=true`；缺少任一組證據時不得標記該站 verified 或整筆 completed。全部核對成功後，該上架 job 才把 cleanup 狀態推進為 `required`，由受控清理 worker 移除來源 binary 與可見簡體原圖。永久只保留來源 URL／hash、順序、角色與輸出譜系 metadata。前端交接本身不可在引用核對前提前刪檔。
-15. 清理 worker 只接受後端 service account／system 寫入的 `required` 事件，並只可操作 Firebase 預設 bucket 中該案件自己的 `ops-product-listing-cases/{productId}/references/` 前綴。刪除前須保存 object path、generation、hash、大小與 content type 等 lineage metadata，並使用 generation precondition。外部 URL、其他案件、`completed/`、`generated/` 或任何無法安全判定的路徑都不得刪除；安全條件不符時標記 `blocked`。Storage 暫時錯誤時維持 `cleanupStatus=required`、記錄 `cleanupRuntimeStatus=failed-retryable`，由同一事件自動重試；只有重新列出來源前綴確認為空後才可標記 `completed`。
+
+15. 蝦皮「使用 EasyStore 的產品描述」按鈕被按下不算完成。助手必須在同一頁核對進階商品描述編輯器同時含文字與 `preparedSnapshot` 中的全部介紹圖片；如果 EasyStore 只帶入文字，直接把缺少的繁體完成圖補進同一個編輯器並重新核對一次。仍缺圖片就停止蝦皮發布並保留同一草稿，不能發布純文字版本，也不能回營運中心重做圖片或文案。單一商品、同款多細項與加入既有細項都套用同一規則。
+16. 清理 worker 只接受後端 service account／system 寫入的 `required` 事件，並只可操作 Firebase 預設 bucket 中該案件自己的 `ops-product-listing-cases/{productId}/references/` 前綴。刪除前須保存 object path、generation、hash、大小與 content type 等 lineage metadata，並使用 generation precondition。外部 URL、其他案件、`completed/`、`generated/` 或任何無法安全判定的路徑都不得刪除；安全條件不符時標記 `blocked`。Storage 暫時錯誤時維持 `cleanupStatus=required`、記錄 `cleanupRuntimeStatus=failed-retryable`，由同一事件自動重試；只有重新列出來源前綴確認為空後才可標記 `completed`。
 
 ## 共通商品資料
 
@@ -92,6 +94,7 @@
 - 專推圖必須在進入 MOMO 前就寫入 `preparedPlatformFieldPlan.momo.preparedFields.firstSubmitMediaGate`，內容至少包含完成圖網址、唯一素材檔名、素材指紋、素材銀行上傳目標及圖文編輯器插入目標。進站後只執行既定上傳與插入；不得等第一次送出被退回「至少上傳 1 張專推圖」後才選圖或製圖。
 - 專推圖要先上傳至 MOMO 素材銀行，再從圖文編輯器使用「從素材銀行選擇」插入。插入前先以唯一檔名與素材指紋確認同一素材是否已存在，已存在時直接選用，不得重複插入。直接按「此裝置上傳」後在畫面中看見圖片，不代表資料已保存；儲存後必須重新開啟同一份草稿一次，確認圖文介紹仍包含同一張專推圖，才可按第一次發布。
 - MOMO 的商品主圖、廣告用圖與圖文編輯器專推圖是三個獨立欄位；主圖或廣告用圖顯示成功，不能視為專推圖已完成。廣告用圖預設沿用已準備的合規乾淨主圖。第一次按發布前就要依同一 `firstSubmitMediaGate` 完成三處各自需要的圖片，並在重開同一草稿後同時確認專推圖仍存在、甲指第三方出貨地仍顯示 `000001`。三處未齊全時禁止第一次送出；不得把「至少上傳 1 張專推圖」或「出貨／回收地代碼未填」當成正常的探索流程。
+- 上述 `firstSubmitMediaGate` 同時適用單一商品、同款多細項及加入既有商品成為細項。多細項要先把本組完整 SKU、細項名稱、價格、庫存與各自繁體完成代表圖寫入同一主商品，整筆主商品只共用一張合規專推圖；不得因細項數量增加而改走另一套流程、逐細項重複上傳專推圖，或略過首次送出關卡。
 - MOMO 在資料、專推圖及 `000001` 出貨地都已保存後，若最後送出明確回傳「此帳號無此功能權限」，將同一草稿保留並記錄為 `account-permission-denied` 永久阻擋；不得反覆送出、另建替代商品、回頭重填資料或誤報已完成。只有平台帳號權限調整後才從同一草稿續送。
 - 平台仍會審核商品；送出後狀態先記為已排隊或審核中，不可直接當成已上架。
 - MOMO 曾發生「畫面顯示發佈成功，但草稿中的必填資料沒有保存」：商品列表仍為暫存、庫存變成 0、售價空白，官方商品資料也查不到。每次發佈後必須用提交時的 SKU、售價與庫存逐項比對商品列表，並再以官方商品資料查驗；只有兩處都一致才可記為完成。

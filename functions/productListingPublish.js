@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 19;
+const LISTING_AUTOMATION_POLICY_VERSION = 20;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -213,6 +213,9 @@ function listingAutomationPolicy() {
       shopeeAdvancedDescriptionImagesAreImmutableForJob: true,
       shopeeAdvancedDescriptionCapabilityProbeMaximum: 1,
       shopeePageMayApplyPreparedContentButMustNotReanalyzeIt: true,
+      shopeeAdvancedDescriptionMustVerifyTextAndEveryPreparedImageBeforePublish: true,
+      shopeeAdvancedDescriptionMissingImagesMustBeInsertedIntoSameEditor: true,
+      shopeeAdvancedDescriptionMayNotReportSuccessFromButtonClickAlone: true,
       order: [...PLATFORM_EXECUTION_ORDER],
       mode: 'staggered-parallel',
       parallelRoots: [...PARALLEL_ROOT_PLATFORMS],
@@ -324,6 +327,9 @@ function listingAutomationPolicy() {
     },
     momoSpecialPromotionImage: {
       source: 'localized-completed-product-image',
+      appliesToListingModes: ['independent', 'variant-group', 'add-variant'],
+      onePromotionAssetPerParentListing: true,
+      variantGroupMustBePreparedBeforeFirstSubmit: true,
       preferredProductImagePositions: [2, 3],
       excludeStoreAddressAndServicePromos: true,
       neverUseGalleryLastStorePromo: true,
@@ -1520,7 +1526,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     ? `${normalizeSku(snapshot.sku) || 'product'}-momo-promo-${momoPromotionFingerprint}.jpg` : '';
   const momoMediaReadyBeforeFirstSubmit = Boolean(momoMainImageUrl && momoPromotionImageUrl);
   return {
-    version: 10,
+    version: 11,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1697,6 +1703,9 @@ function buildPreparedPlatformFieldPlan(snapshot) {
           enableWhenAvailable: true,
           useEasyStoreDescription: true,
           capabilityProbeMaximum: 1,
+          requireTextAndEveryPreparedImageBeforePublish: true,
+          insertMissingPreparedImagesIntoSameEditor: true,
+          buttonClickAloneIsNeverSuccess: true,
           neverAnalyzeOrRewriteInsideShopee: true
         }
       },

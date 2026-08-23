@@ -142,7 +142,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 19);
+  assert.equal(snapshot.automationPolicy.version, 20);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -178,13 +178,16 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 10);
-  assert.equal(snapshot.automationPolicy.version, 19);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 11);
+  assert.equal(snapshot.automationPolicy.version, 20);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.prepareShopeeAdvancedDescriptionBeforeNavigation, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeePageMayApplyPreparedContentButMustNotReanalyzeIt, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMustVerifyTextAndEveryPreparedImageBeforePublish, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMissingImagesMustBeInsertedIntoSameEditor, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMayNotReportSuccessFromButtonClickAlone, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.mode, 'section-batch');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateStableSectionAfterBatch, false);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateDynamicSectionOnceAfterBatch, true);
@@ -199,6 +202,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.fixedFields.thirdPartyLocationCode, '000001');
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.fixedFields.warrantyDays, 180);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.workspace, 'easystore-shopee-channel-sync');
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.requireTextAndEveryPreparedImageBeforePublish, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.insertMissingPreparedImagesIntoSameEditor, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.warrantyDays, 180);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.momoThirdPartyLocationCode, '000001');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.momoThirdPartyLocationRequired, true);
@@ -231,6 +236,9 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.deepEqual(snapshot.automationPolicy.momoSpecialPromotionImage.preferredProductImagePositions, [2, 3]);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.materialBankInsertRequired, true);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.prepareAssetBeforeMomoNavigation, true);
+  assert.deepEqual(snapshot.automationPolicy.momoSpecialPromotionImage.appliesToListingModes, ['independent', 'variant-group', 'add-variant']);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.onePromotionAssetPerParentListing, true);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.variantGroupMustBePreparedBeforeFirstSubmit, true);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.allThreeMediaSlotsRequiredBeforeFirstSubmit, true);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.saveReopenAndVerifyImageRequired, true);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.preventDuplicatePromotionInsertion, true);
@@ -1677,6 +1685,25 @@ test('同款兩個細項只建立一筆主商品，並保留各自 SKU、名稱�
   const policy = helpers.buildPlatformQueuePolicy({}, 'MOMO', snapshot);
   assert.equal(policy.mode, 'create-new-variant-group');
   assert.deepEqual(policy.skus, ['GROUP-1', 'GROUP-2']);
+});
+
+test('同款兩個細項與單一商品共用 MOMO 首次送出媒體關卡，專推圖只建立一次', () => {
+  const { snapshot } = groupedListingFixture(2);
+  const clean = 'https://cdn.example.com/group-clean.jpg';
+  const promo = 'https://cdn.example.com/group-promo.jpg';
+  snapshot.platformImagePlan.momo = {
+    imageUrls: [clean, promo], requiredFirstRole: 'cleanMain', ready: true,
+    promotionImageUrl: promo, promotionImageReady: true
+  };
+  snapshot.momoSpecialPromotionImageUrl = promo;
+  const plan = helpers.buildPreparedPlatformFieldPlan(snapshot);
+  const gate = plan.momo.preparedFields.firstSubmitMediaGate;
+  assert.equal(plan.momo.preparedFields.variantGroup.items.length, 2);
+  assert.deepEqual(plan.momo.preparedFields.variantGroup.items.map((row) => row.sku), ['GROUP-1', 'GROUP-2']);
+  assert.equal(gate.ready, true);
+  assert.equal(gate.promotionImage.url, promo);
+  assert.equal(gate.promotionImage.deduplicateBeforeInsert, true);
+  assert.equal(Array.isArray(gate.promotionImage), false);
 });
 
 test('同款群組可擴充為三個或五個細項，仍只有一個封閉主商品工作', () => {

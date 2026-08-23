@@ -4171,7 +4171,7 @@ function ensureSalesClock(){
     });
     if(status&&!singleMode)status.innerHTML='';
     else if(status){
-      if(isError)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>'+(productImageCollectionSession&&productImageCollectionSession.active?'圖片尚未加入':'收圖未啟動')+'</b><small>'+escapeHtml(message||'請確認已安裝最新版柚子掌櫃助手。')+'</small><div class="ops-listing-collector-links"><a href="youzi-easystore-shopee-autofill-v0.3.26.zip" download>下載／更新助手 0.3.26</a></div></div></div>';
+      if(isError)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>'+(productImageCollectionSession&&productImageCollectionSession.active?'圖片尚未加入':'收圖未啟動')+'</b><small>'+escapeHtml(message||'請確認已安裝最新版柚子掌櫃助手。')+'</small><div class="ops-listing-collector-links"><a href="youzi-easystore-shopee-autofill-v0.3.27.zip" download>下載／更新助手 0.3.27</a></div></div></div>';
       else if(active)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>正在收圖</b><small>'+escapeHtml(message||'切到供應商頁按右鍵選「柚子掌櫃：框選截圖」（或按 Ctrl＋Shift＋Y），用滑鼠拉出需要的範圍；也可按 Win＋Shift＋S 後回頁面按 Ctrl＋V。')+'</small></div></div>';
       else if(message)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>收圖模式已結束</b><small>'+escapeHtml(message)+'</small></div></div>';
       else status.innerHTML='';
@@ -4180,7 +4180,7 @@ function ensureSalesClock(){
   function requestProductImageCollection(action,payload){
     if(productImageCollectionPending)throw new Error('收圖模式正在切換，請稍候。');
     return new Promise(function(resolve,reject){
-      const sessionId=clean(payload&&payload.sessionId),timer=global.setTimeout(function(){if(!productImageCollectionPending||productImageCollectionPending.sessionId!==sessionId)return;productImageCollectionPending=null;reject(new Error('找不到收圖助手，請先更新到柚子掌櫃助手 0.3.26 並重新整理頁面。'));},3500);
+      const sessionId=clean(payload&&payload.sessionId),timer=global.setTimeout(function(){if(!productImageCollectionPending||productImageCollectionPending.sessionId!==sessionId)return;productImageCollectionPending=null;reject(new Error('找不到收圖助手，請先更新到柚子掌櫃助手 0.3.27 並重新整理頁面。'));},3500);
       productImageCollectionPending={action:action,sessionId:sessionId,resolve:resolve,reject:reject,timer:timer};
       global.postMessage({source:PRODUCT_IMAGE_COLLECTION.source,type:action==='start'?PRODUCT_IMAGE_COLLECTION.start:PRODUCT_IMAGE_COLLECTION.stop,payload:payload},global.location.origin);
     });
@@ -4538,7 +4538,7 @@ function ensureSalesClock(){
     const orderedKeys=PRODUCT_LISTING_PLATFORM_ORDER.filter(function(key){return Object.prototype.hasOwnProperty.call(platforms,key);}).concat(Object.keys(platforms).filter(function(key){return !PRODUCT_LISTING_PLATFORM_ORDER.includes(key);}));
     const cards=orderedKeys.map(function(key){
       const row=platforms[key]||{},meta=productListingPublishStatusMeta(row.status),missing=Array.isArray(row.missingFields)&&row.missingFields.length?'<small>缺少：'+escapeHtml(row.missingFields.join('、'))+'</small>':'';
-      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">安全開啟 EasyStore／蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.26.zip" download>下載／更新助手 0.3.26</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會先套用 EasyStore 進階圖文介紹，再帶入分類、品牌與商品屬性；一般宅配的實際物流仍須確認。商品身分固定使用中央平台 ID；沒有 ID 就建立本次唯一的新 SKU。':'會先套用 EasyStore 進階圖文介紹；商品身分固定使用中央平台 ID，有 ID 就更新，沒有 ID 就建立本次唯一的新 SKU，不先搜尋平台目錄。')+'</small>':'';
+      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">安全開啟 EasyStore／蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.27.zip" download>下載／更新助手 0.3.27</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會先套用 EasyStore 進階圖文介紹，再帶入分類、品牌與商品屬性；一般宅配的實際物流仍須確認。商品身分固定使用中央平台 ID；沒有 ID 就建立本次唯一的新 SKU。':'會先套用 EasyStore 進階圖文介紹；商品身分固定使用中央平台 ID，有 ID 就更新，沒有 ID 就建立本次唯一的新 SKU，不先搜尋平台目錄。')+'</small>':'';
       return '<section class="ops-listing-platform-card"><div class="ops-listing-platform-head"><h3>'+escapeHtml(productListingPublishPlatformTitle(key))+'</h3>'+statusTag(meta.label,meta.type)+'</div><div class="ops-listing-check-row '+(meta.ok?'ok':'missing')+'"><span>'+(meta.ok?'✓':'!')+'</span><div><b>'+escapeHtml(row.message||meta.label)+'</b>'+missing+helper+'</div></div></section>';
     }).join('');
     const needsInput=result.status==='needs-input'||Object.values(platforms).some(function(row){return ['missing-fields','action-required'].includes(clean(row&&row.status));});
@@ -4553,7 +4553,7 @@ function ensureSalesClock(){
     if(!global.YouziShopeeAutofill||typeof global.YouziShopeeAutofill.queueAndOpen!=='function')throw new Error('蝦皮自動填寫橋接程式尚未載入，請重新整理頁面。');
     const result=await global.YouziShopeeAutofill.queueAndOpen(pendingShopeeAutofillPayload);
     if(result&&result.extensionReady)toast('蝦皮資料已交給助手','EasyStore 已開啟；助手會自動進入蝦皮設定、填寫並送出上架。','success');
-    else toast('助手沒有收到商品資料',clean(result&&result.error)||'請安裝或更新到助手 0.3.26，重新整理營運中心後，再按一次「安全開啟 EasyStore／蝦皮」。','warning');
+    else toast('助手沒有收到商品資料',clean(result&&result.error)||'請安裝或更新到助手 0.3.27，重新整理營運中心後，再按一次「安全開啟 EasyStore／蝦皮」。','warning');
     return result;
   }
   function startProductListingSpeechInput(button){
@@ -4764,10 +4764,10 @@ function ensureSalesClock(){
       '全部編號的完成輸出公平合併為同一個共用池，整組最多 12 個不同完成圖 URL，不是每個編號各 12 張。上架圖片預覽的勾選範圍是唯一允許上架的圖片範圍；未勾選的來源與完成圖不得加入任何平台圖庫。在勾選範圍內先保留至少一張 cleanMain、一張 storefrontPortrait 與一張 brandedHero，再依各細項公平補足。介面第一次會自動勾選最多 12 張且至少保留 1 張；保存原圖時先依 sourceImageUrl 找到完成輸出，保存完成圖 URL 時可直接使用。不得使用簡體原圖。',
       'EasyStore 首圖必須是 storefrontPortrait；蝦皮首圖必須是 brandedHero；酷澎與 MOMO 首圖必須是 cleanMain。storefrontPortrait 不得送到 MOMO 或酷澎；brandedHero 只能在 MOMO／酷澎第 2 張以後且不得含地址、電話或 QR Code。若平台明確回傳整個圖庫禁止 Logo／文字，才移除該平台的 brandedHero 次圖。找不到各平台規定首圖時停止該平台，不得拿另一角色、店面宣傳圖或舊圖補位。',
       'MOMO 第 2 或第 3 張必須先保留專推圖，整個 MOMO 圖庫最多再放一張安全的 brandedHero 次圖。專推圖只可從 MOMO 完成圖順序第 2 或第 3 張中選 roles 包含 cleanMain、localizedDetail 或 specification，且 assetFlags.momoPromotionEligible=true 的乾淨商品完成輸出；必須確認 containsLogo、containsText、containsContactInfo、containsQrCode、greenBrandTemplate 全為 false。進入 MOMO 前就在 preparedPlatformFieldPlan 產生專推圖網址、唯一素材檔名與指紋；不得等平台第一次退回「至少上傳 1 張專推圖」後才準備。',
-      'MOMO 的商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置；主圖或廣告用圖已出現，不能推定專推圖已完成。第一次送出前必須依同一 firstSubmitMediaGate 一次完成三處：主圖批次上傳、廣告用圖使用已準備的乾淨主圖、商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」→以唯一完成圖檔名精確搜尋→選取並確認。儲存同一草稿後只重開一次並確認專推圖仍存在、甲指第三方 000001 仍保存，三處未齊全時禁止第一次發布。插入前先依素材檔名與指紋檢查，已存在就不得重複插入。MOMO 商店分類最多 5 個，只保留與本商品直接相關的分類，送出前先驗證數量。',
+      'MOMO 的商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置；主圖或廣告用圖已出現，不能推定專推圖已完成。單一商品、同款多細項與加入既有商品成為細項都使用同一 firstSubmitMediaGate；多細項必須先把完整 SKU、細項名稱、價格、庫存與各自代表圖寫入同一主商品，再由整筆主商品共用一張專推圖，不得逐細項重複上傳或繞過關卡。第一次送出前必須一次完成三處：主圖批次上傳、廣告用圖使用已準備的乾淨主圖、商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」→以唯一完成圖檔名精確搜尋→選取並確認。儲存同一草稿後只重開一次並確認專推圖仍存在、甲指第三方 000001 仍保存，三處未齊全時禁止第一次發布。插入前先依素材檔名與指紋檢查，已存在就不得重複插入。MOMO 商店分類最多 5 個，只保留與本商品直接相關的分類，送出前先驗證數量。',
       '[商品內容]',
       '商品標題依「品牌＋型號＋商品種類＋重要規格或材質」組成；可靠的品牌與型號優先，共同標題只寫共同事實，差異寫細項名稱；有空間才在尾端加「柚子樂器」。每個案件的 productDescriptionStatus 不是 ready，或 productDescription 只有通用提醒、商品編號、免責文字時，一律視為內容尚未完成；Codex 必須先用案件文字、全部完成圖與可驗證規格整理並寫回每一份案件，後端重讀確認後才可建立 preparedSnapshot。正式介紹依序包含「商品特色」「使用方式／適用情境」「商品規格」三段：先列最多 10 點不重複具體特色，再依資料充足度整理使用方式，最後獨立列出尺寸、材質、段數、重量、內容物與細項差異；可驗證資料不足就少寫，不得猜測、湊數或用通用備援文案代替。保固只填平台保固欄，不寫進介紹。EasyStore、蝦皮、MOMO、酷澎全部沿用同一份已完成介紹並轉成各平台格式；每平台介紹最後固定加入「商品圖片與規格僅供參考，實際內容以收到的實體商品為準。」',
-      '蝦皮的進階商品描述必須在進入平台前完整準備：EasyStore body_html、介紹圖片、固定末端服務圖、圖片順序與內容指紋全部寫入同一份 preparedSnapshot。進入 EasyStore 官方蝦皮通路頁後只做一次輕量功能檢查；帳號有「進階商品描述」時立即開啟並按「使用 EasyStore 的產品描述」，把官網文字與介紹圖片一起帶入。此時禁止重新分析、改寫文案、重排圖片或逐張重驗；只有功能不存在、欄位版型改變或平台明確回報圖片／描述失敗時才停止處理該例外。',
+      '蝦皮的進階商品描述必須在進入平台前完整準備：EasyStore body_html、介紹圖片、固定末端服務圖、圖片順序與內容指紋全部寫入同一份 preparedSnapshot。進入 EasyStore 官方蝦皮通路頁後只做一次輕量功能檢查；帳號有「進階商品描述」時立即開啟並按「使用 EasyStore 的產品描述」，把官網文字與介紹圖片一起帶入。按鈕成功不等於完成：必須核對編輯器已有文字及全部預期圖片；若只帶入文字，立即把同一 preparedSnapshot 的缺漏完成圖補入同一編輯器並再核對一次，仍缺圖才停止蝦皮，不得誤報完成或發布純文字版本。此時禁止重新分析、改寫文案或重排圖片；只有功能不存在、欄位版型改變或平台明確回報圖片／描述失敗時才停止處理該例外。',
       '[固定發布與核對]',
       '整批商品第一次開始前，先在這個 Codex 內建瀏覽器完成四通路工作階段預檢：MOMO、酷澎、EasyStore 與 EasyStore 官方蝦皮通路都必須已登入，且頁面可讀、可點擊、可輸入；未通過前不得開始第一件商品。MOMO 若需要 OTP／驗證碼，必須在整批開始前一次處理；酷澎與 EasyStore 若登入失效，應自動使用內建瀏覽器保存帳密重新登入、重開已知入口並驗證可操作，不得要求使用者處理可自動恢復的登入。',
       '同一批後續每件商品及每個平台階段開始前只做輕量存活檢查，不重新掃描整頁。若頁籤失效，先重新載入一次；仍失效就在同一內建瀏覽器以相同帳號開啟已知入口或完全相同的商品／草稿網址，沿用原 jobId、SKU、草稿 ID、preparedSnapshot 與 currentStage 續做。工作執行中不得因可恢復的頁籤失效詢問是否重開或是否繼續；只有 MOMO OTP、CAPTCHA、平台明確拒絕或保存帳密確實無法恢復時才停止。',
