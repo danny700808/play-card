@@ -105,6 +105,21 @@ test('one canonical product description becomes safe marketplace HTML', () => {
   assert.equal(html, '<p>好用的商品&lt;script&gt;alert(1)&lt;/script&gt;</p><h3>商品特色</h3><ul><li>第一點</li><li>第二點</li></ul><h3>商品規格</h3><p>型號：A&amp;B</p>');
 });
 
+test('generic fallback copy is not accepted as a completed product description', () => {
+  const generic = helpers.listingDescriptionContentStatus({
+    productDescription: '本商品為柚子樂器販售的樂器或樂器配件，商品內容與規格以頁面圖片及實際出貨品為準。\n\n商品編號：TEST-1'
+  });
+  assert.equal(generic.ready, false);
+  assert.equal(generic.genericFallback, true);
+  assert.ok(generic.missing.includes('通用備援文案尚未改寫'));
+
+  const structured = helpers.listingDescriptionContentStatus({
+    productDescription: '商品特色\n1. 5A 規格\n\n使用方式\n1. 適合日常練習\n\n商品規格\n型號：5A'
+  });
+  assert.equal(structured.ready, true);
+  assert.equal(structured.featureCount, 1);
+});
+
 test('listing snapshot applies fixed shop promos, MOMO delivery and compliance policy', () => {
   const snapshot = helpers.buildListingSnapshot('p-fixed', {
     internalSku: '1040160', internalName: 'Ibanez AZES40', currentStock: 1,
@@ -127,7 +142,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 15);
+  assert.equal(snapshot.automationPolicy.version, 16);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -164,8 +179,11 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 7);
-  assert.equal(snapshot.automationPolicy.version, 15);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 8);
+  assert.equal(snapshot.automationPolicy.version, 16);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.mode, 'section-batch');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateSectionOnceAfterBatch, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.batchFieldExecution.stableNativeControlsSinglePass, true);

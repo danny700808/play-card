@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
 const LISTING_JOB_SCHEMA_VERSION = 3;
-const LISTING_AUTOMATION_POLICY_VERSION = 15;
+const LISTING_AUTOMATION_POLICY_VERSION = 16;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -188,6 +188,9 @@ function listingAutomationPolicy() {
     },
     platformExecutionPlan: {
       preflightAllListingDataBeforePlatformNavigation: true,
+      requireStructuredVerifiedDescriptionBeforePreparedSnapshot: true,
+      genericFallbackDescriptionIsIncomplete: true,
+      writeVerifiedDescriptionBackToEveryGroupedCase: true,
       order: [...PLATFORM_EXECUTION_ORDER],
       mode: 'staggered-parallel',
       parallelRoots: [...PARALLEL_ROOT_PLATFORMS],
@@ -620,6 +623,44 @@ function listingDescription(listingCase) {
   const withoutWarranty = description.split(/\r?\n/).filter((line) => !/(?:保固|保修)/.test(line)).join('\n').trim();
   if (!withoutWarranty || withoutWarranty.includes(PHYSICAL_PRODUCT_DISCLAIMER)) return withoutWarranty;
   return `${withoutWarranty}\n\n${PHYSICAL_PRODUCT_DISCLAIMER}`;
+}
+
+function listingDescriptionContentStatus(listingCase) {
+  const description = listingDescription(listingCase);
+  const content = description.replace(PHYSICAL_PRODUCT_DISCLAIMER, '').trim();
+  const lines = content.replace(/\r/g, '').split('\n').map(clean).filter(Boolean);
+  const hasFeatureSection = lines.some((line) => /^商品特色[：:]?$/.test(line));
+  const hasUsageSection = lines.some((line) => /^(?:使用方式|適用情境)[：:]?$/.test(line));
+  const hasSpecificationSection = lines.some((line) => /^商品規格[：:]?$/.test(line));
+  let inFeatureSection = false;
+  let featureCount = 0;
+  lines.forEach((line) => {
+    if (/^商品特色[：:]?$/.test(line)) {
+      inFeatureSection = true;
+      return;
+    }
+    if (/^(?:使用方式|適用情境|商品規格|包裝內容|適用對象|注意事項)[：:]?$/.test(line)) {
+      inFeatureSection = false;
+      return;
+    }
+    if (inFeatureSection && /^(?:\d+[.、]|[-•●])\s*\S+/.test(line)) featureCount += 1;
+  });
+  const genericFallback = /本商品為柚子樂器販售的樂器或樂器配件/.test(content)
+    || (!hasFeatureSection && !hasUsageSection && !hasSpecificationSection
+      && /(?:商品內容與規格以|如需確認尺寸、相容性或包裝內容)/.test(content));
+  const missing = [];
+  if (!content) missing.push('商品介紹');
+  if (!hasFeatureSection || featureCount < 1) missing.push('可驗證商品特色');
+  if (!hasUsageSection) missing.push('使用方式／適用情境');
+  if (!hasSpecificationSection) missing.push('商品規格');
+  if (genericFallback) missing.push('通用備援文案尚未改寫');
+  return {
+    ready: Boolean(content) && !genericFallback && hasFeatureSection && featureCount > 0
+      && hasUsageSection && hasSpecificationSection,
+    genericFallback,
+    featureCount,
+    missing: Array.from(new Set(missing))
+  };
 }
 
 function appendPhysicalProductDisclaimerHtml(html) {
@@ -1189,7 +1230,10 @@ function buildListingDecisionContract(snapshot) {
       },
       verifiedProductContent: {
         resolver: 'codex-evidence', required: true,
-        output: ['title', 'description', 'brand', 'model', 'verified-features', 'verified-specifications']
+        output: ['title', 'description', 'brand', 'model', 'verified-features', 'verified-usage', 'verified-specifications'],
+        requiredDescriptionSections: ['商品特色', '使用方式／適用情境', '商品規格'],
+        genericFallbackIsIncomplete: true,
+        writeBackToEveryCaseBeforePreparedSnapshot: true
       },
       categoryAndAttributes: {
         resolver: 'canonical-category-once-then-platform-mapping', required: true,
@@ -1417,6 +1461,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     sku: snapshot.sku,
     title: snapshot.title,
     description: snapshot.description,
+    descriptionContentStatus: { ...(snapshot.descriptionContentStatus || {}) },
     stock: snapshot.stock,
     warrantyDays: 180,
     publishImmediately: true,
@@ -1430,7 +1475,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     }
   };
   return {
-    version: 7,
+    version: 8,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1687,6 +1732,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
   const listingIdentityProduct = listingMode === 'add-variant' ? { platformMappings: parentPlatformMappings, platformListingStatus: parentPlatformListingStatus } : product;
   const shopeeExistingListingIds = platformListingIds(listingIdentityProduct, 'shopee');
   const description = listingDescription(listingCase);
+  const descriptionContentStatus = listingDescriptionContentStatus(listingCase);
   const variantGroupEnabled = listingMode === 'independent' && listingCase.variantGroupEnabled === true;
   const variantParentSourceImageUrl = listingMode === 'add-variant' ? safeHttpUrl(listingCase.variantParentImageUrl) : '';
   const variantChildSourceImageUrl = listingMode === 'add-variant' ? safeHttpUrl(listingCase.variantChildImageUrl) : '';
@@ -1736,6 +1782,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     sku: normalizeSku(product.internalSku || product.sku || listingCase.productSku),
     title: listingName(product, listingCase).slice(0, 255),
     description,
+    descriptionContentStatus,
     bodyHtml: descriptionHtml,
     images,
     productImageUrls: imageAllocation.productImages,
@@ -1765,6 +1812,10 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       featureTarget: 10,
       usageTarget: 10,
       neverInventToReachTarget: true,
+      requiredSections: ['商品特色', '使用方式／適用情境', '商品規格'],
+      genericFallbackIsIncomplete: true,
+      requireStructuredVerifiedDescriptionBeforePreparedSnapshot: true,
+      descriptionContentStatus,
       includeVerifiedSpecifications: true,
       warrantyInDedicatedPlatformFieldOnly: true,
       warrantyInDescription: false,
@@ -3536,6 +3587,8 @@ async function publishProductListingCaseHandler(request) {
       }
       const shopeeLogistics = buildShopeeLogistics(snapshot);
       preflightMissing = {
+        content: snapshot.descriptionContentStatus && snapshot.descriptionContentStatus.ready
+          ? [] : ['商品介紹（需包含可驗證的商品特色、使用方式／適用情境與商品規格；通用備援文案不算完成）'],
         images: platformImagePlanMissingFields(snapshot.platformImagePlan, { requireFinalized: true }),
         easyStore: easyStoreMissingFields(snapshot),
         shopee: [].concat(
@@ -4061,6 +4114,7 @@ module.exports = {
   _test: {
     normalizeSku,
     productDescriptionToSafeHtml,
+    listingDescriptionContentStatus,
     buildListingSnapshot,
     buildEasyStoreProductBody,
     normalizeShopeeAttributes,

@@ -205,10 +205,30 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /蝦皮大型商品只保留符合材積級距的新竹物流/);
   assert.match(prompt, /酷澎固定走已驗證的「以圖片建立」同一草稿/);
   assert.match(prompt, /按一次「產生商品資訊」/);
+  assert.match(prompt, /每一個細項各自的 cleanMain/);
+  assert.match(prompt, /不得只上傳第一個細項的圖片/);
+  assert.match(prompt, /以每一列為範圍/);
+  assert.match(prompt, /不得用整頁動態 nth 順序跨列填寫/);
+  assert.match(prompt, /立即開啟自動儲存並儲存同一草稿/);
+  assert.match(prompt, /把新細項改回舊值/);
   assert.match(prompt, /細項欄位若呈唯讀或值無效，只能在尚未填寫細項商務、配送或介紹以前/);
   assert.match(prompt, /審核中只記為已送審，不得誤報已上架/);
   assert.match(prompt, /沒有既有平台 ID 時，視為新商品/);
   assert.match(prompt, /不做上架前平台全站搜尋/);
+  assert.match(prompt, /productDescription 只有通用提醒、商品編號、免責文字時，一律視為內容尚未完成/);
+  assert.match(prompt, /「商品特色」「使用方式／適用情境」「商品規格」三段/);
+  assert.match(prompt, /後端重讀確認後才可建立 preparedSnapshot/);
+  assert.match(prompt, /EasyStore、蝦皮、MOMO、酷澎全部沿用同一份已完成介紹/);
+});
+
+test('固定快照會標記通用備援文案未完成，避免非空白文字被誤當正式介紹', () => {
+  const prepared = section('function productListingCodexPreparedCase', 'async function loadProductListingCodexHandoffCase');
+  const contract = section('function productListingDecisionContract', 'async function loadProductListingCodexHandoffSnapshot');
+  assert.match(source, /function productListingDescriptionStatus\(value\)/);
+  assert.match(prepared, /productDescriptionStatus:descriptionStatus/);
+  assert.match(contract, /genericFallbackIsIncomplete:true/);
+  assert.match(contract, /writeBackToEveryCaseBeforePreparedSnapshot:true/);
+  assert.match(source, /requireStructuredVerifiedDescriptionBeforePreparedSnapshot:true/);
 });
 
 test('新細項的父商品會沿用已儲存的來源圖佇列，但不把未驗證完成圖當成繁體圖', () => {
