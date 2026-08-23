@@ -4818,9 +4818,15 @@ function ensureSalesClock(){
       },{merge:true});
       const copied=await copyProductListingCodexPrompt(activationPrompt);
       await writeAudit('交給 Codex 對話處理','productListingCase',id,clean(product.sku)+'｜'+clean(product.originalName||product.name));
-      setProductListingCodexUi(form,'completed','已授權固定 v2 自動上架','完成圖資料齊全後會由後端交錯處理 MOMO、酷澎與 EasyStore，EasyStore 完成後接蝦皮；固定欄位只準備一次，不再要求第二次確認。'+(copied?' 工作指令也已複製。':''));
+      const completedMediaReady=(Array.isArray(snapshot&&snapshot.cases)?snapshot.cases:[]).every(function(item){return clean(item&&item.imageStatus)==='ready'&&!(item&&item.missingRequiredRoles||[]).length;});
+      let publishResult=null;
+      if(completedMediaReady){
+        setProductListingCodexUi(form,'running','完成圖已齊全，正在啟動正式四通路工作','同一份 v2 快照會直接排入 MOMO、酷澎與 EasyStore；EasyStore 核對成功後接著處理蝦皮。');
+        publishResult=await callProductListingPublishWithTransientRetry(id,form);
+      }
+      setProductListingCodexUi(form,'completed','已授權固定 v2 自動上架',completedMediaReady?'正式四通路工作已啟動；MOMO、酷澎與 EasyStore 交錯處理，EasyStore 完成後接蝦皮。':('圖片仍待 Codex 一次定案；完成圖寫回後再按同一按鈕，即會直接啟動正式四通路工作。'+(copied?' 工作指令也已複製。':'')));
       global.setTimeout(function(){global.location.href=threadUrl;},100);
-      return {status:'pending',productId:id,workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,activationPrompt:activationPrompt,promptCopied:copied};
+      return {status:publishResult?clean(publishResult.status)||'submitted':'pending',productId:id,workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,activationPrompt:activationPrompt,promptCopied:copied,publishResult:publishResult};
     }catch(error){
       const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)setProductListingCodexUi(current,'failed','Codex 待辦尚未建立',errorMessage(error));
       throw error;
