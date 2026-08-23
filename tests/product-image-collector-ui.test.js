@@ -46,6 +46,20 @@ test("上架圖片預覽可排除圖片且排除後不會進入平台共用圖�
   assert.match(operationsSource, /至少保留一張上架圖/);
 });
 
+test("同款商品的彙整圖第一次全部預選且只記錄使用者主動排除", () => {
+  assert.match(operationsSource, /variantGallerySelectionInitialized/);
+  assert.match(operationsSource, /if\(!selectionInitialized\)/);
+  assert.match(operationsSource, /defaultSelected\.size<PRODUCT_GROUP_LISTING_IMAGE_MAX/);
+  assert.match(operationsSource, /name="variantGallerySelectionInitialized" value="1"/);
+  assert.match(operationsSource, /variantGallerySelectionInitialized:variantGallerySelectionInitialized/);
+});
+
+test("細項指定照片只保存來源選擇並交由完成圖譜系對應", () => {
+  assert.match(operationsSource, /representativeSourceImageUrl:safeUrl\(representativeSourceImageUrl\)/);
+  assert.match(operationsSource, /variantGroupPrimaryImageUrl/);
+  assert.match(operationsSource, /variantChildImageUrl/);
+});
+
 test("收圖檔案沿用既有 Firebase 圖片上傳並綁定目前商品", () => {
   assert.match(operationsSource, /productId!==productImageCollectionSession\.productId/);
   assert.match(operationsSource, /uploadProductVariantReferenceImages\(form,productId,\[collectedImageFile\(payload\)\]\)/);
