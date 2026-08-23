@@ -127,7 +127,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 13);
+  assert.equal(snapshot.automationPolicy.version, 14);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -164,8 +164,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 5);
-  assert.equal(snapshot.automationPolicy.version, 13);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 6);
+  assert.equal(snapshot.automationPolicy.version, 14);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.mode, 'section-batch');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateSectionOnceAfterBatch, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.batchFieldExecution.stableNativeControlsSinglePass, true);
@@ -185,6 +185,10 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.canonicalWorkspace, 'easystore-shopee-channel-sync');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.singleWorkspaceOnly, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverOpenDirectShopeeSellerEditor, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.startImmediatelyAfterEasyStoreVerified, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.doNotWaitForMomoOrCoupang, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.executionGraph.shopeeStartsImmediatelyAfterEasyStoreVerified, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.executionGraph.shopeeDoesNotWaitForMomoOrCoupang, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.closeEmbeddedChatBeforeFormInteraction, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.variantImageSource, 'existing-easystore-completed-gallery');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverOpenNativeFilePickerForVariantImages, true);
@@ -196,6 +200,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.verifyIn, 'easystore-shopee-channel-product-list');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.route, 'create-via-image');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.invalidGeneratedOptionRecovery.maximumRegenerations, 1);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.invalidGeneratedOptionRecovery.neverRegenerateAfterLaterSectionsCompleted, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.invalidGeneratedOptionRecovery.lateFailureAction, 'repair-current-section-on-same-draft');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.pendingReviewIsNotActiveListing, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.resumeSameDraft, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverCreateReplacementDraft, true);
@@ -207,6 +213,9 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.saveReopenAndVerifyImageRequired, true);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.persistedImageEvidence, 'contenteditable-html-img-src');
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.editorElementIdMayChangeAfterReopen, true);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.insertionTarget, 'rich-description-editor');
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.mainOrAdvertisementImageIsNeverPromotionEvidence, true);
+  assert.equal(snapshot.automationPolicy.momoStoreCategories.maximumCount, 5);
   assert.equal(snapshot.momoSpecialPromotionImageUrl, '');
   assert.equal(snapshot.automationPolicy.browserControl.workspace, 'codex-in-app-browser');
   assert.equal(snapshot.automationPolicy.browserControl.neverUsePrimaryChrome, true);
@@ -223,8 +232,16 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
     role: 'storefrontPortrait', widthPx: 750, heightPx: 1000, aspectRatio: '3:4',
     firstImageFor: ['easyStore'], commercialInformationDensity: 'rich-but-readable',
     verifiedFeatureCount: { minimum: 3, maximum: 5 }, verifiedDetailInsetMaximum: 2,
-    preserveGreenOuterEdge: true, removeMascot: true, removePicCollage: true
+    preserveGreenOuterEdge: true, removeMascot: true, removePicCollage: true,
+    brandHeaderGeometryLockedToOriginalTemplate: true,
+    preserveOriginalBrandHeaderHeightWidthLogoAndSloganPlacement: true,
+    neverCompressStretchOrReflowBrandHeader: true
   });
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.brandHeaderGeometryLockedToOriginalTemplate, true);
+  assert.deepEqual(snapshot.imagePolicy.sourceNormalization.preferredLongEdgeRangePx, { minimum: 1600, maximum: 2000 });
+  assert.equal(snapshot.imagePolicy.sourceNormalization.targetLongEdgePx, 1800);
+  assert.equal(snapshot.imagePolicy.sourceNormalization.neverUpscale, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.sourceImageNormalization.downscaleWhenAbovePx, 2400);
   assert.deepEqual(snapshot.imagePolicy.sharedDeliveryAssetStandard, {
     strategy: 'strictest-common-square-marketplace-profile',
     widthPx: 1000,
@@ -247,12 +264,16 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.variantImageSource, 'existing-easystore-completed-gallery');
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.neverOpenNativeFilePickerForVariantImages, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.packageWeightGrams, 5000);
-  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.version, 2);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.version, 3);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.verifiedFromLivePage, true);
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.pageSignature.stableLandmarks.includes('發佈商品'));
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.imageConstraints.main.maximumCount, 6);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.imageConstraints.main.minimumFileBytes, 38000);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.imageConstraints.main.maximumFileBytes, 1000000);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.promotionInsertFlow.target, 'rich-description-editor');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.promotionInsertFlow.requiredBeforeFirstSubmit, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.storeCategoryConstraints.maximumCount, 5);
+  assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.batchSections.at(-1).fields.includes('promotion-material-bank-image'));
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.easyStore.fieldOrder.includes('seo-url-and-meta-description'));
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.routeKey, 'easystore-shopee-channel-sync');
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.authenticatedLandmarks.includes('已連接'));
@@ -262,7 +283,15 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.routeKey, 'coupang-create-via-image-or-same-draft');
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.fieldOrder.includes('generate-product-information'));
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.generatedOptionRecovery.maximumAttempts, 1);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.generatedOptionRecovery.neverRegenerateAfterLaterSectionsCompleted, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.coupang.interactionPolicy.preserveCompletedSections, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.submissionVerification.exactSkuLookupMaximum, 1);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.newCaseBoundary.resetOncePerDifferentSku, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.newCaseBoundary.keepSameSkuSameDraftOnRetry, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.canonicalEntry.route, 'B101 新增/管理商品');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.canonicalEntry.route, '商品管理/建立商品');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.easyStore.canonicalEntry.route, '商品清單/新增商品');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.canonicalEntry.route, 'EasyStore 官方蝦皮通路商品清單');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.fixedFields.complianceModel, 'TW_General');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.fixedFields.responsibleSeller, '尚品樂器行');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.shipping.convenienceStore.enabled, false);
@@ -1241,7 +1270,7 @@ test('manual shipping choice controls autofill and convenience limits are enforc
     shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30,
     packageHeightCm: 20, packageWeightKg: 4
   });
-  assert.equal(verifiedConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, true);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, false);
   assert.equal(verifiedConvenience.methods.find((row) => row.label === '7-ELEVEN').enabled, true);
   assert.equal(verifiedConvenience.methods.find((row) => row.label === '新竹物流').enabled, true);
   assert.equal(verifiedConvenience.methods.find((row) => row.label === '新竹物流').option, 'S90');

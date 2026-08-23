@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
 const LISTING_JOB_SCHEMA_VERSION = 2;
-const LISTING_AUTOMATION_POLICY_VERSION = 13;
+const LISTING_AUTOMATION_POLICY_VERSION = 14;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -242,6 +242,9 @@ function listingAutomationPolicy() {
         canonicalWorkspace: 'easystore-shopee-channel-sync',
         singleWorkspaceOnly: true,
         neverOpenDirectShopeeSellerEditor: true,
+        startImmediatelyAfterEasyStoreVerified: true,
+        doNotWaitForMomoOrCoupang: true,
+        sameEasyStoreBranchContinuation: true,
         closeEmbeddedChatBeforeFormInteraction: true,
         reusePreparedPayload: true,
         neverRestartResearchOrImageProcessing: true,
@@ -267,7 +270,11 @@ function listingAutomationPolicy() {
           signatures: ['readonly-option-field', 'invalid-generated-option-value'],
           action: 'return-to-image-step-and-regenerate-once',
           maximumRegenerations: 1,
-          neverCreateReplacementDraft: true
+          neverCreateReplacementDraft: true,
+          onlyBeforeVariantCommerceOrContentIsFilled: true,
+          neverRegenerateAfterLaterSectionsCompleted: true,
+          lateFailureAction: 'repair-current-section-on-same-draft',
+          preserveCompletedSections: true
         },
         pendingReviewIsSuccessfulSubmission: true,
         pendingReviewIsNotActiveListing: true
@@ -295,12 +302,20 @@ function listingAutomationPolicy() {
       excludeStoreAddressAndServicePromos: true,
       neverUseGalleryLastStorePromo: true,
       materialBankInsertRequired: true,
-      materialBankUploadFlow: ['open-material-bank', 'open-upload-material-dialog', 'upload-localized-file', 'search-exact-filename', 'select', 'confirm'],
+      insertionTarget: 'rich-description-editor',
+      materialBankUploadFlow: ['open-rich-description-upload', 'choose-material-bank', 'upload-localized-file', 'search-exact-filename', 'select', 'confirm', 'save-draft', 'verify-contenteditable-img-src'],
       directRichEditorUploadIsNotPersistedProof: true,
       saveReopenAndVerifyImageRequired: true,
       persistedImageEvidence: 'contenteditable-html-img-src',
       editorElementIdMayChangeAfterReopen: true,
-      publishOnlyAfterPersistedImageVerified: true
+      publishOnlyAfterPersistedImageVerified: true,
+      mainOrAdvertisementImageIsNeverPromotionEvidence: true
+    },
+    momoStoreCategories: {
+      maximumCount: 5,
+      relevantOnly: true,
+      validateBeforeSave: true,
+      neverSubmitWithMoreThanMaximum: true
     },
     browserControl: {
       workspace: 'codex-in-app-browser',
@@ -370,7 +385,7 @@ function buildShopeeLogistics(snapshot) {
   const methods = [
     { label: '黑貓宅急便', enabled: false },
     { label: '蝦皮店到店 - 隔日到貨', enabled: false },
-    { label: '蝦皮店到店', enabled: convenience },
+    { label: '蝦皮店到店', enabled: false },
     { label: '7-ELEVEN', enabled: convenience },
     { label: '新竹物流', enabled: hsinchu, option: hsinchu ? hsinchuBand : '' },
     { label: '全家', enabled: convenience },
@@ -1209,11 +1224,19 @@ function buildPlatformPageContracts() {
       neverRescanUnchangedSection: true
     },
     loginProbeBeforeProductNavigation: true,
-    resumeSameProductOrDraftAfterLoginRecovery: true
+    resumeSameProductOrDraftAfterLoginRecovery: true,
+    newCaseBoundary: {
+      resetOncePerDifferentSku: true,
+      discardPreviousSearchDrawerAndUnboundDraftState: true,
+      bindStartToCurrentProductIdSkuAndSnapshotId: true,
+      neverTreatPreviousCaseScreenAsCurrentCaseEvidence: true,
+      keepSameSkuSameDraftOnRetry: true
+    }
   };
   return {
     momo: {
-      ...common, routeKey: 'momo-product-create-or-same-draft',
+      ...common, version: 3, routeKey: 'momo-product-create-or-same-draft',
+      canonicalEntry: { route: 'B101 新增/管理商品', purpose: 'new-case-start' },
       verifiedFromLivePage: true,
       authenticatedLandmarks: ['momo 店＋管理系統', '商品', 'B101 新增/管理商品'],
       pageSignature: {
@@ -1221,20 +1244,20 @@ function buildPlatformPageContracts() {
         stableLandmarks: ['商品名稱', '平台分類', '銷售規格範本', '甲指(第三方)', '發佈商品']
       },
       fieldOrder: [
-        'item-number', 'main-images', 'promotion-image', 'youtube-id', 'brand', 'product-name',
+        'item-number', 'main-images', 'youtube-id', 'brand', 'product-name',
         'platform-category', 'front-hidden', 'regulatory-certifications', 'category-attributes',
         'other-product-information', 'variant-template', 'variant-names-and-values',
         'variant-images', 'variant-stock-price-sku-barcode', 'package-dimensions-and-weight',
-        'temperature', 'delivery-methods', 'free-shipping', 'rich-description',
+        'temperature', 'delivery-methods', 'free-shipping', 'rich-description', 'promotion-material-bank-image',
         'momo-promotion-consent', 'slogan-and-short-features', 'store-category',
         'warranty', 'publish-time', 'submit'
       ],
       batchSections: [
-        { key: 'basic-and-media', fields: ['item-number', 'main-images', 'promotion-image', 'youtube-id', 'brand', 'product-name'] },
+        { key: 'basic-and-media', fields: ['item-number', 'main-images', 'youtube-id', 'brand', 'product-name'] },
         { key: 'taxonomy-and-attributes', fields: ['platform-category', 'front-hidden', 'regulatory-certifications', 'category-attributes', 'other-product-information'], dynamic: true },
         { key: 'variants-and-commerce', fields: ['variant-template', 'variant-names-and-values', 'variant-images', 'variant-stock-price-sku-barcode'] },
         { key: 'shipping', fields: ['package-dimensions-and-weight', 'temperature', 'delivery-methods', 'free-shipping'] },
-        { key: 'content-and-publish', fields: ['rich-description', 'momo-promotion-consent', 'slogan-and-short-features', 'store-category', 'warranty', 'publish-time', 'submit'] }
+        { key: 'content-and-publish', fields: ['rich-description', 'promotion-material-bank-image', 'momo-promotion-consent', 'slogan-and-short-features', 'store-category', 'warranty', 'publish-time', 'submit'] }
       ],
       imageConstraints: {
         main: { aspectRatio: '1:1', minimumFileBytes: 38000, maximumFileBytes: 1000000, minimumCount: 1, maximumCount: 6 },
@@ -1242,11 +1265,20 @@ function buildPlatformPageContracts() {
         promotionMaterialBankRequired: true,
         promotionMaterialMustSurviveDraftReopen: true
       },
+      promotionInsertFlow: {
+        target: 'rich-description-editor',
+        steps: ['open-rich-description-upload', 'choose-material-bank', 'search-exact-filename', 'select-and-confirm', 'save-draft', 'verify-contenteditable-img-src', 'submit'],
+        requiredBeforeFirstSubmit: true,
+        mainOrAdvertisementImageIsNotEvidence: true,
+        persistedEvidence: 'contenteditable-html-img-src'
+      },
+      storeCategoryConstraints: { maximumCount: 5, relevantOnly: true, validateBeforeSave: true },
       fixedFields: ['warranty-days-180', 'publish-immediately', 'third-party-location-000001'],
       dynamicFields: ['mapped-leaf-category', 'category-dependent-attributes', 'regulatory-fields-when-verified', 'platform-validation-errors']
     },
     coupang: {
       ...common, version: 3, routeKey: 'coupang-create-via-image-or-same-draft',
+      canonicalEntry: { route: '商品管理/建立商品', purpose: 'new-case-start' },
       verifiedFromLivePage: true,
       inventoryStatus: 'verified-from-live-create-flow-2026-08-22',
       authenticatedLandmarks: ['Coupang Wing', '商品管理'],
@@ -1278,7 +1310,11 @@ function buildPlatformPageContracts() {
       generatedOptionRecovery: {
         detect: ['readonly-option-field', 'invalid-generated-option-value'],
         action: 'return-to-image-step-and-regenerate-once-on-same-draft',
-        maximumAttempts: 1
+        maximumAttempts: 1,
+        onlyBeforeVariantCommerceOrContentIsFilled: true,
+        neverRegenerateAfterLaterSectionsCompleted: true,
+        lateFailureAction: 'repair-current-section-on-same-draft',
+        preserveCompletedSections: true
       },
       submissionVerification: {
         successButton: '建立產品',
@@ -1291,6 +1327,7 @@ function buildPlatformPageContracts() {
     },
     easyStore: {
       ...common, routeKey: 'easystore-product-create-or-same-product',
+      canonicalEntry: { route: '商品清單/新增商品', purpose: 'new-case-start' },
       verifiedFromLivePage: true,
       authenticatedLandmarks: ['商品管理', '儲存'],
       pageSignature: {
@@ -1314,6 +1351,7 @@ function buildPlatformPageContracts() {
     },
     shopee: {
       ...common, routeKey: 'easystore-shopee-channel-sync',
+      canonicalEntry: { route: 'EasyStore 官方蝦皮通路商品清單', purpose: 'new-case-start' },
       verifiedFromLivePage: true,
       authenticatedLandmarks: ['Shopee Taiwan', '已連接', '商品'],
       pageSignature: {
@@ -1358,7 +1396,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     }
   };
   return {
-    version: 5,
+    version: 6,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1366,6 +1404,8 @@ function buildPreparedPlatformFieldPlan(snapshot) {
       mode: 'staggered-parallel',
       parallelRoots: [...PARALLEL_ROOT_PLATFORMS],
       dependencies: { momo: [], coupang: [], easyStore: [], shopee: ['easyStore'] },
+      shopeeStartsImmediatelyAfterEasyStoreVerified: true,
+      shopeeDoesNotWaitForMomoOrCoupang: true,
       completionRequires: [...PLATFORM_EXECUTION_ORDER]
     },
     browserScheduler: {
@@ -1376,6 +1416,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     },
     sharedImageAssetStandard: { ...(snapshot.imagePolicy && snapshot.imagePolicy.sharedDeliveryAssetStandard || {}) },
     storefrontPortraitAssetStandard: { ...(snapshot.imagePolicy && snapshot.imagePolicy.storefrontPortraitAssetStandard || {}) },
+    sourceImageNormalization: { ...(snapshot.imagePolicy && snapshot.imagePolicy.sourceNormalization || {}) },
     decisionContractVersion: Number(snapshot.decisionContract && snapshot.decisionContract.version) || 0,
     canonicalCategoryDecision: { ...(snapshot.canonicalCategoryDecision || {}) },
     canonicalShippingDecision: { ...shipping },
@@ -1396,7 +1437,11 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         warrantyDays: 180,
         deliveryMethod: MOMO_THIRD_PARTY_DELIVERY.method,
         thirdPartyLocationCode: MOMO_THIRD_PARTY_DELIVERY.locationCode,
-        carrier: MOMO_THIRD_PARTY_DELIVERY.carrier
+        carrier: MOMO_THIRD_PARTY_DELIVERY.carrier,
+        promotionImageRequiredBeforeFirstSubmit: true,
+        promotionImageInsertionTarget: 'rich-description-editor',
+        promotionImagePersistenceEvidence: 'contenteditable-html-img-src',
+        storeCategoryMaximumCount: 5
       },
       preparedFields: {
         sku: snapshot.sku,
@@ -1407,7 +1452,9 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         stock: snapshot.stock,
         categoryCode: snapshot.momoCategoryCode,
         imageUrls: snapshot.platformImagePlan.momo.imageUrls,
-        promotionImageUrl: snapshot.momoSpecialPromotionImageUrl
+        promotionImageUrl: snapshot.momoSpecialPromotionImageUrl,
+        promotionImageReady: Boolean(snapshot.momoSpecialPromotionImageUrl),
+        storeCategoryPolicy: { maximumCount: 5, relevantOnly: true }
       },
       dynamicOnly: ['official-category-recommendation-when-code-is-empty', 'category-dependent-attributes', 'platform-validation-errors']
     },
@@ -1452,6 +1499,10 @@ function buildPreparedPlatformFieldPlan(snapshot) {
       interactionPolicy: {
         generateProductInformationMaximumAttempts: 2,
         regenerateOnlyWhenOptionFieldsAreReadonlyOrInvalid: true,
+        regenerateOnlyBeforeVariantCommerceOrContentIsFilled: true,
+        neverRegenerateAfterLaterSectionsCompleted: true,
+        lateFailureAction: 'repair-current-section-on-same-draft',
+        preserveCompletedSections: true,
         resumeSameDraft: true,
         exactSkuVerificationMaximum: 1,
         neverSearchByTitle: true
@@ -1476,6 +1527,8 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         publishImmediately: true,
         warrantyDays: 180,
         neverOpenDirectSellerEditor: true,
+        startImmediatelyAfterEasyStoreVerified: true,
+        doNotWaitForMomoOrCoupang: true,
         closeEmbeddedChatBeforeFormInteraction: true,
         variantImageSource: 'existing-easystore-completed-gallery',
         neverOpenNativeFilePickerForVariantImages: true,
@@ -1608,6 +1661,13 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
     imagePolicy: {
       sourceImageMaximum: 20, sharedVariantGalleryMaximum: 12, balanceAcrossVariants: true,
+      sourceNormalization: {
+        preferredLongEdgeRangePx: { minimum: 1600, maximum: 2000 },
+        targetLongEdgePx: 1800,
+        downscaleWhenAbovePx: 2400,
+        neverUpscale: true,
+        analyzeNormalizedCopyAndRetainSourceLineage: true
+      },
       galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true,
       mainImageTemplate: 'youzi-light-commercial-template-v3', mainImageAspectRatio: 'channel-specific',
       mainImageBackdrop: 'low-saturation-light-commercial', mainImageProductPlacement: 'right-or-center-right',
@@ -1616,11 +1676,17 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
           role: 'storefrontPortrait', widthPx: 750, heightPx: 1000, aspectRatio: '3:4',
           firstImageFor: ['easyStore'], commercialInformationDensity: 'rich-but-readable',
           verifiedFeatureCount: { minimum: 3, maximum: 5 }, verifiedDetailInsetMaximum: 2,
-          preserveGreenOuterEdge: true, removeMascot: true, removePicCollage: true
+          preserveGreenOuterEdge: true, removeMascot: true, removePicCollage: true,
+          brandHeaderGeometryLockedToOriginalTemplate: true,
+          preserveOriginalBrandHeaderHeightWidthLogoAndSloganPlacement: true,
+          neverCompressStretchOrReflowBrandHeader: true
         },
         brandedHero: {
           role: 'brandedHero', widthPx: 1000, heightPx: 1000, aspectRatio: '1:1',
-          firstImageFor: ['shopee'], verifiedFeatureCount: { minimum: 1, maximum: 3 }
+          firstImageFor: ['shopee'], verifiedFeatureCount: { minimum: 1, maximum: 3 },
+          brandHeaderGeometryLockedToOriginalTemplate: true,
+          preserveOriginalBrandHeaderHeightWidthLogoAndSloganPlacement: true,
+          neverCompressStretchOrReflowBrandHeader: true
         },
         cleanMain: {
           role: 'cleanMain', widthPx: 1000, heightPx: 1000, aspectRatio: '1:1',
@@ -1644,7 +1710,9 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       storefrontPortraitAssetStandard: {
         role: 'storefrontPortrait', widthPx: 750, heightPx: 1000, aspectRatio: '3:4',
         colorSpace: 'sRGB', preferredFormat: 'image/jpeg', maximumFileBytes: 1000000,
-        normalizeOnceBeforePlatformNavigation: true, preserveGreenOuterEdge: true
+        normalizeOnceBeforePlatformNavigation: true, preserveGreenOuterEdge: true,
+        brandHeaderGeometryLockedToOriginalTemplate: true,
+        preserveOriginalBrandHeaderHeightWidthLogoAndSloganPlacement: true
       }
     },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),
