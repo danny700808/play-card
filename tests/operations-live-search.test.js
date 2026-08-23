@@ -63,8 +63,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260823-section-batch-listing/);
-    assert.match(html, /operations-phase1\.js\?v=20260823-section-batch-listing/);
+    assert.match(html, /operations-phase1\.css\?v=20260823-average-cost-edit/);
+    assert.match(html, /operations-phase1\.js\?v=20260823-average-cost-edit/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260821-shopee-v2-schema5/);
   }
 });
@@ -200,6 +200,53 @@ test('desktop and mobile keypads share the same caret-aware core action', () => 
   assert.match(valueBuilder, /key==='clear'/);
   assert.match(valueBuilder, /key==='back'/);
   assert.match(action, /scheduleLiveSearchRender\(targetId,next\.value,false\)/);
+});
+
+test('manual average cost correction becomes the new inventory cost baseline after one confirmation', () => {
+  const productForm = functionBody(engine, 'productFormHtml');
+  const saveProduct = functionBody(engine, 'saveProduct');
+  const rebaseBody = functionBody(engine, 'rebaseCostLayersToAverage');
+
+  assert.match(productForm, /name="averageCost"/);
+  assert.doesNotMatch(productForm, /name="averageCost"[^>]*readonly/);
+  assert.match(productForm, /後續進貨會從這個數字繼續計算平均值/);
+  assert.equal((saveProduct.match(/global\.confirm\(/g) || []).length, 1);
+  assert.match(saveProduct, /確定變動/);
+  assert.match(saveProduct, /averageChangeApplied/);
+  assert.match(saveProduct, /rebaseCostLayersToAverage/);
+  assert.match(saveProduct, /type:finalStock!==oldStock\?\(p\?'adjustment':'opening'\):'costAdjustment'/);
+  assert.match(saveProduct, /beforeAverageCost:oldAverage/);
+  assert.match(saveProduct, /afterAverageCost:layerResult\.averageCost/);
+
+  const rebase = Function('numberOrNull', 'uid', 'statsFromLayers', 'newStock', 'averageCost', 'meta', rebaseBody);
+  const statsFromLayers = (layers) => ({
+    layers,
+    averageCost: layers[0].unitCost,
+    nextFifoCost: layers[0].unitCost,
+    inventoryValue: layers[0].qtyRemaining * layers[0].unitCost,
+    costIncomplete: false
+  });
+  const result = rebase((value) => value == null || value === '' ? null : Number(value), () => 'AVG-1', statsFromLayers, 5, 120, { referenceId: 'P-1' });
+  assert.equal(result.layers.length, 1);
+  assert.equal(result.layers[0].qtyRemaining, 5);
+  assert.equal(result.layers[0].unitCost, 120);
+  assert.equal(result.layers[0].referenceType, 'manualAverageAdjustment');
+  assert.equal(result.averageCost, 120);
+  assert.equal(result.inventoryValue, 600);
+});
+
+test('switching product searches skips the old editor prompt and POS clears the previous product text', () => {
+  const keypad = functionBody(engine, 'applySearchKeyInput');
+  const openProduct = functionBody(engine, 'openProductEdit');
+  const bind = functionBody(engine, 'bindEvents');
+  const cart = functionBody(engine, 'addCartProduct');
+
+  assert.match(keypad, /targetId==='productSearch'&&!closeProductEditorForListChange\(true\)/);
+  assert.match(openProduct, /closeProductEditorForListChange\(true\)/);
+  assert.match(bind, /input\.id==='productSearch'[\s\S]*closeProductEditorForListChange\(true\)/);
+  assert.match(cart, /state\.posSearch=''/);
+  assert.match(cart, /byId\('posSearch'\)/);
+  assert.match(cart, /input\.focus\(\)/);
 });
 
 test('keypad value logic handles 1, 12, backspace, clear and a middle caret', () => {
