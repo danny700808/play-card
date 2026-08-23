@@ -3435,10 +3435,18 @@ async function publishProductListingCaseHandler(request) {
         && clean(candidate.currentStage) !== 'completed') {
         const reuseBlockers = activeV2JobReuseBlockers(candidate, productId, listingCase);
         if (reuseBlockers.length) {
-          throw new HttpsError('failed-precondition', `既有 v2 工作不符合目前固定流程，已拒絕復用：${reuseBlockers.join('、')}。請由營運中心重新交接建立新的固定 v2 工作。`);
+          await candidateRef.set({
+            status: 'superseded-by-current-v2-handoff',
+            currentStage: 'superseded',
+            supersededBySnapshotId: clean(listingCase.codexHandoff && listingCase.codexHandoff.preflightSnapshot && listingCase.codexHandoff.preflightSnapshot.snapshotId),
+            supersededReasons: reuseBlockers,
+            supersededAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } else {
+          reusableJob = candidate;
+          reusableJobRef = candidateRef;
         }
-        reusableJob = candidate;
-        reusableJobRef = candidateRef;
       }
     }
     if (reusableJob && clean(reusableJob.currentStage) === 'finalizing') {

@@ -1709,6 +1709,14 @@ test('相同 SKU 與相同不可變資料的新 v2 嘗試會取代舊的未完�
   assert.doesNotMatch(handler, /reusedStatus = 'conflicting-pending'/);
   assert.doesNotMatch(handler, /尚有另一筆工作使用同一個 queue/);
 });
+
+test('目前交接遇到不相容的舊 v2 工作時會留下取代紀錄並建立新工作', () => {
+  const handler = fs.readFileSync('functions/productListingPublish.js', 'utf8');
+  assert.match(handler, /status: 'superseded-by-current-v2-handoff'/);
+  assert.match(handler, /supersededReasons: reuseBlockers/);
+  assert.match(handler, /else \{\s*reusableJob = candidate;\s*reusableJobRef = candidateRef;/);
+  assert.doesNotMatch(handler, /既有 v2 工作不符合目前固定流程，已拒絕復用/);
+});
 test('2100307-4 固定 v2 實際資料可在不送出的模擬通過四通路預檢', () => {
   const productId = 'Ui7HQyrWtdcfG1r7nKlt';
   const sources = Array.from({ length: 8 }, (_, index) => `https://supplier.example.com/2100307-4-source-${index + 1}.png`);
