@@ -4184,11 +4184,16 @@ function ensureSalesClock(){
     catch(error){productImageCollectionSession=null;updateProductImageCollectionUi(form,errorMessage(error),true,id);throw error;}
   }
   async function drainProductImageCollectionUploads(form){
+    if(productImageCollectionPendingUploads===0){
+      productImageCollectionUploadChain=Promise.resolve();
+      if(productImageCollectionUploadFailures.length){const failures=productImageCollectionUploadFailures.slice();productImageCollectionUploadFailures=[];throw new Error('有 '+failures.length+' 張圖片未保存成功：'+failures.map(function(row){return row.requestId||'未知工作';}).join('、'));}
+      return;
+    }
     const deadline=Date.now()+9*60*1000;
     while(true){
       const observedSequence=productImageCollectionDeliverySequence,chain=productImageCollectionUploadChain;
       if(productImageCollectionPendingUploads>0&&form)setProductListingCodexUi(form,'running','正在等候最後一張圖片保存','收圖完成後才會建立固定的上架資料快照。');
-      await chain.catch(function(){return null;});
+      await Promise.race([chain.catch(function(){return null;}),new Promise(function(resolve,reject){const remaining=deadline-Date.now();if(remaining<=0){reject(new Error('收圖上傳超過九分鐘仍未完成；已停止建立快照，未完成的圖片不會被略過'));return;}global.setTimeout(function(){reject(new Error('收圖上傳超過九分鐘仍未完成；已停止建立快照，未完成的圖片不會被略過'));},remaining);})]);
       await new Promise(function(resolve){global.setTimeout(resolve,150);});
       if(productImageCollectionPendingUploads===0&&observedSequence===productImageCollectionDeliverySequence)break;
       if(Date.now()>=deadline)throw new Error('收圖上傳超過九分鐘仍未完成；已停止建立快照，未完成的圖片不會被略過');
@@ -4805,9 +4810,12 @@ function ensureSalesClock(){
       await requireEasyStoreManagerAuth();
       setProductListingCodexUi(form,'running','正在建立來源輸入快照','會先等候收圖保存，再從資料庫重讀並凍結來源圖、修改要求、細項、價格與物流資料。');
       await finishProductImageCollectionBeforeHandoff(form);
+      setProductListingCodexUi(form,'running','收圖已固定，正在重讀完成圖','只會讀取本組商品已保存的來源圖與繁體完成圖，不會重新搜圖或修圖。');
       await refreshProductListingHandoffMediaFromDatabase(form);
       requireProductVariantRepresentativeImages(form);
+      setProductListingCodexUi(form,'running','細項代表圖已確認，正在保存案件','會保留同款多細項設定、名稱、價格、庫存與物流資料。');
       await saveProductListingCase(form,false,true,true);
+      setProductListingCodexUi(form,'running','案件已保存，正在建立不可變快照','建立後四通路及所有安全重試都沿用同一份資料。');
       const snapshot=await loadProductListingCodexHandoffSnapshot(product);requireProductListingCodexHandoffMedia(snapshot);
       setProductListingCodexUi(form,'running','來源快照已建立，正在保存固定 v2 工作','保存完成後會立即啟動正式四通路工作；複製交接文字與稽核紀錄不會阻擋發布。');
       const prompt=productListingCodexHandoffPrompt(product,snapshot),activationPrompt=productListingCodexActivationPrompt(product,snapshot),threadUrl=productListingCodexThreadUrl(activationPrompt),serverTime=serverTimestamp(),platforms={momo:{status:'pending'},coupang:{status:'pending'},easyStore:{status:'pending'},shopee:{status:'blocked-by-dependency',dependsOn:['easyStore']}};
