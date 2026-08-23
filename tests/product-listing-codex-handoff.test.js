@@ -86,6 +86,26 @@ test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多�
   assert.doesNotMatch(handoff, /productListingCodexThreadUrl\(prompt\)/);
 });
 
+test('固定流程鎖定品牌頁首、MOMO 專推圖與 EasyStore 後立即接蝦皮', () => {
+  assert.match(source, /頂端薄荷綠品牌區必須直接沿用原始模板固定幾何/);
+  assert.match(source, /禁止壓窄、拉伸、裁切或重新排版/);
+  assert.match(source, /商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」/);
+  assert.match(source, /MOMO 商店分類最多 5 個/);
+  assert.match(source, /EasyStore 一經正式核對 verified/);
+  assert.match(source, /不得等待 MOMO 或酷澎完成/);
+  assert.match(source, /後續區段已填後禁止返回或重新產生/);
+  assert.match(source, /長邊以 1600～2000 px 為宜/);
+});
+
+test('新 SKU 必須先回正各平台固定入口，且同 SKU 重試保留原草稿', () => {
+  assert.match(source, /newCaseBoundaryResetRequired:true/);
+  assert.match(source, /discardPreviousCaseUiState:true/);
+  assert.match(source, /openCanonicalPlatformEntryBeforeNewCase:true/);
+  assert.match(source, /doNotResetSameSkuRetryDraft:true/);
+  assert.match(source, /新案件邊界規則/);
+  assert.match(source, /不得把上一件畫面當成資料錯誤/);
+});
+
 test('交接中用 inert 鎖住互動，但不會 disabled 表單欄位後再保存空資料', () => {
   const ui = section('function setProductListingCodexUi', 'function productListingCodexMediaSnapshot');
   assert.match(ui, /button\.disabled=running/);
@@ -134,7 +154,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /只有 job schema、目前 automationPolicy、執行圖/);
   assert.match(prompt, /先保留至少一張 cleanMain、一張 storefrontPortrait 與一張 brandedHero/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
-  assert.match(prompt, /商品主圖、廣告用圖與圖文編輯器專推圖是三個互相獨立的必填位置/);
+  assert.match(prompt, /商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置/);
   assert.match(prompt, /不得等平台第一次拒絕後才補專推圖或出貨地/);
   assert.match(prompt, /EasyStore storefrontPortrait 為 750×1000 px、3:4/);
   assert.match(prompt, /蝦皮 brandedHero 為 1000×1000 px、1:1/);
@@ -156,7 +176,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /已同時授權四通路的建立、修改與最後正式發布/);
   assert.match(prompt, /不得再產生「確認正式發布四通路／確認上架／確認提交／套用細項」/);
   assert.match(prompt, /確認正式發布四通路／確認上架／確認提交／套用細項/);
-  assert.match(prompt, /第二層「上傳素材」/);
+  assert.match(prompt, /商品詳細介紹編輯器：按「上傳圖片」→「從素材銀行選擇」/);
   assert.match(prompt, /不得依賴會變動的編輯器 element id/);
   assert.match(prompt, /contenteditable 的 HTML 確認仍存在素材銀行圖片 img src/);
   assert.match(prompt, /此帳號無此功能權限/);
@@ -173,7 +193,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /蝦皮大型商品只保留符合材積級距的新竹物流/);
   assert.match(prompt, /酷澎固定走已驗證的「以圖片建立」同一草稿/);
   assert.match(prompt, /按一次「產生商品資訊」/);
-  assert.match(prompt, /細項欄位若呈唯讀或值無效，只回同一草稿圖片步驟重新產生一次/);
+  assert.match(prompt, /細項欄位若呈唯讀或值無效，只能在尚未填寫細項商務、配送或介紹以前/);
   assert.match(prompt, /審核中只記為已送審，不得誤報已上架/);
   assert.match(prompt, /沒有既有平台 ID 時，視為新商品/);
   assert.match(prompt, /不做上架前平台全站搜尋/);
@@ -193,7 +213,7 @@ test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮�
   const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
   assert.match(prompt, /cleanMain 是無品牌框、無 Logo、無地址／電話／QR Code/);
   assert.match(prompt, /storefrontPortrait 使用 3:4「柚子樂器淺色商業展示版」/);
-  assert.match(prompt, /brandedHero 使用相同品牌語言的 1:1 方形版/);
+  assert.match(prompt, /brandedHero 使用相同固定品牌頁首與品牌語言的 1:1 方形版/);
   assert.match(prompt, /商品去背後約占 55～65%/);
   assert.match(prompt, /最多 2 個有來源依據的輔助視覺/);
   assert.match(prompt, /不得加入價格、聯絡資訊、浮水印或虛構功能／配件/);
