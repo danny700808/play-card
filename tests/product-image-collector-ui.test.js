@@ -246,7 +246,7 @@ test("完成圖會保留來源與多角色譜系，不把同一來源壓成單�
   assert.match(snapshot, /hero-role-conflict/);
 });
 
-test("中央圖片先寫入並重讀核對，來源 binary 清理在全部引用核對前保持阻擋", () => {
+test("中央圖片仍先寫入重讀，快速核對不蒐集平台圖片回條且不啟動來源清理", () => {
   const syncStart = operationsSource.indexOf("async function syncCompletedListingImagesToProduct");
   const syncEnd = operationsSource.indexOf("function normalizeProductShopeeAttributes", syncStart);
   const sync = operationsSource.slice(syncStart, syncEnd);
@@ -263,10 +263,12 @@ test("中央圖片先寫入並重讀核對，來源 binary 清理在全部引用
   const promptStart = operationsSource.indexOf("function productListingCodexHandoffPrompt");
   const promptEnd = operationsSource.indexOf("function productListingCodexThreadUrl", promptStart);
   const prompt = operationsSource.slice(promptStart, promptEnd);
-  assert.match(prompt, /先寫入新完成圖引用並重讀資料庫/);
-  assert.match(prompt, /核對中央、所有細項與四平台已全面換成完成圖/);
-  assert.match(prompt, /cleanupStatus 推進到 required/);
-  assert.match(prompt, /永久只保留來源 URL／hash、順序、角色與輸出譜系 metadata/);
+  assert.match(prompt, /圖片角色、來源譜系與平台圖片計畫只在進站前完整驗證一次/);
+  assert.match(prompt, /送出後不再逐張蒐集平台 CDN 網址/);
+  assert.match(prompt, /只有平台明確回報圖片錯誤/);
+  assert.match(operationsSource, /snapshot\.executionPolicy\.sourceBinaryCleanupRequired=false/);
+  assert.match(operationsSource, /snapshot\.executionPolicy\.cleanupWorkerRequired=false/);
+  assert.match(operationsSource, /snapshot\.executionPolicy\.retainSourceBinaries=true/);
 });
 
 test("一鍵交接會等待最後一張收圖保存完成", () => {
