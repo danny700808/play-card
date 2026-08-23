@@ -544,7 +544,8 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   assert.match(oneClick, /productListingCodexThreadUrl/);
   assert.doesNotMatch(oneClick, /researchProductListingCase/);
   assert.doesNotMatch(oneClick, /requestProductListingImageGeneration/);
-  assert.doesNotMatch(oneClick, /callProductListingPublish/);
+  assert.match(oneClick, /completedMediaReady/);
+  assert.match(oneClick, /callProductListingPublishWithTransientRetry/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /status\)\.toLowerCase\(\)!=='completed'/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /sourceImageUrls/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /failedCount/);

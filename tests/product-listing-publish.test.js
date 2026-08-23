@@ -1696,6 +1696,8 @@ test('營運中心 v2 交接即授權自動發布，介面不再要求一般二�
   assert.match(frontend, /backendFirst:true/);
   assert.match(frontend, /desktopControlFallbackOnly:true/);
   assert.match(frontend, /croppedTextMustBeReflowedReplacedOrRemoved:true/);
+  assert.match(frontend, /completedMediaReady/);
+  assert.match(frontend, /callProductListingPublishWithTransientRetry\(id,form\)/);
   assert.doesNotMatch(frontend, /confirmAction\('確認上架'/);
   assert.doesNotMatch(frontend, /confirmAction\('確認整組上架'/);
 });

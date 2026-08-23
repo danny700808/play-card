@@ -55,7 +55,8 @@ test('主要按鈕不再直接執行 OpenAI 文案與圖片 API 流程', () => {
   assert.doesNotMatch(handler, /completeProductListingWithCodex/);
   assert.doesNotMatch(source, /async function completeProductListingWithCodex/);
   assert.doesNotMatch(handler, /researchProductListingCase|generateProductListingImage/);
-  assert.match(source, /完成圖資料齊全後會由後端交錯處理 MOMO、酷澎與 EasyStore，EasyStore 完成後接蝦皮/);
+  assert.match(source, /完成圖已齊全，正在啟動正式四通路工作/);
+  assert.match(source, /callProductListingPublishWithTransientRetry\(id,form\)/);
   assert.match(source, /不得重新呼叫網站的 OpenAI 文案或圖片 API/);
   assert.match(source, /已停用網頁 OpenAI/);
 });
