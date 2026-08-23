@@ -11,7 +11,7 @@ const extensionHelpers = require('../easystore-shopee-autofill/helpers.js');
 const root = path.resolve(__dirname, '..');
 const extensionName = 'easystore-shopee-autofill';
 const extensionRoot = path.join(root, extensionName);
-const version = '0.3.25';
+const version = '0.3.26';
 const zipName = `youzi-easystore-shopee-autofill-v${version}.zip`;
 const zipPath = path.join(root, zipName);
 
@@ -80,7 +80,7 @@ function zipFileEntries(buffer) {
   return files;
 }
 
-test('0.3.25 ZIP contains exactly the Git extension files byte for byte', () => {
+test('0.3.26 ZIP contains exactly the Git extension files byte for byte', () => {
   assert.equal(fs.existsSync(zipPath), true, `缺少 ${zipName}`);
   const packaged = zipFileEntries(fs.readFileSync(zipPath));
   const sourceFiles = gitExtensionFiles();
@@ -99,8 +99,8 @@ test('extension version, download links, cache keys and CI package contract stay
   const portal = fs.readFileSync(path.join(root, 'portal.html'), 'utf8');
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
-  const handoffCache = '20260821-shopee-v2-schema5';
-  const operationsCache = '20260823-physical-photo-entry';
+  const handoffCache = '20260823-shopee-v3-schema6';
+  const operationsCache = '20260823-advanced-shopee-description-v3';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
@@ -122,11 +122,14 @@ test('extension version, download links, cache keys and CI package contract stay
   const easyStoreExecutor = fs.readFileSync(path.join(extensionRoot, 'easystore.js'), 'utf8');
   assert.match(easyStoreExecutor, /function buildFieldLabelIndex\(/);
   assert.match(easyStoreExecutor, /function fillNativeAttributeBatch\(/);
+  assert.match(easyStoreExecutor, /function fillAdvancedDescription\(/);
+  assert.match(easyStoreExecutor, /使用 EasyStore 的產品描述/);
+  assert.match(easyStoreExecutor, /payload && payload\.advancedDescription/);
   assert.match(easyStoreExecutor, /mode: "section-batch"/);
   assert.match(easyStoreExecutor, /nativeControlsFilledInSinglePass: true/);
 });
 
-test('production v2 Shopee sources contain no retired Match-product decision contract', () => {
+test('production v3 Shopee sources contain no retired Match-product decision contract', () => {
   const productionFiles = [
     'operations-shopee-autofill-handoff-v1.js',
     'operations-phase1.js',
@@ -141,12 +144,12 @@ test('production v2 Shopee sources contain no retired Match-product decision con
   assert.match(source, /youziShopeeAutofillQueueV2/);
 });
 
-test('a schema 4 record already present in storage can never be selected as a v2 job', () => {
+test('a schema 5 record already present in storage can never be selected as a v3 job', () => {
   const legacyQueue = {
     '16403950': {
       receivedAt: 1_800_000_000_000,
       payload: {
-        schemaVersion: 4,
+        schemaVersion: 5,
         easyStoreProductId: '16403950',
         sku: '1040160-1',
         listingPolicy: {

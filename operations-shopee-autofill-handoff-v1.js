@@ -4,8 +4,8 @@
   const QUEUE_TYPE = 'YOUZI_SHOPEE_AUTOFILL_QUEUE_V2';
   const ACK_TYPE = 'YOUZI_SHOPEE_AUTOFILL_ACK_V2';
   const SOURCE = 'youzi-operations-hub';
-  const SCHEMA_VERSION = 5;
-  const WORKFLOW_VERSION = 'youzi-four-channel-listing-v2';
+  const SCHEMA_VERSION = 6;
+  const WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
   const MAX_TTL_MS = 30 * 60 * 1000;
   const MIN_REMAINING_MS = 1000;
 
@@ -96,6 +96,22 @@
       parentImageUrl: safeHttpUrl(variantSource.parentImageUrl),
       imageUrl: safeHttpUrl(variantSource.imageUrl)
     };
+    const advancedSource = value.advancedDescription && typeof value.advancedDescription === 'object'
+      ? value.advancedDescription : {};
+    const advancedImageUrls = (Array.isArray(advancedSource.imageUrls) ? advancedSource.imageUrls : [])
+      .map(safeHttpUrl).filter(Boolean)
+      .filter((url, index, rows) => rows.indexOf(url) === index).slice(0, 20);
+    const advancedDescription = {
+      mode: clean(advancedSource.mode, 80),
+      source: clean(advancedSource.source, 80),
+      preparedBeforeNavigation: advancedSource.preparedBeforeNavigation === true,
+      enableWhenAvailable: advancedSource.enableWhenAvailable === true,
+      useEasyStoreDescription: advancedSource.useEasyStoreDescription === true,
+      capabilityProbe: clean(advancedSource.capabilityProbe, 80),
+      contentFingerprint: clean(advancedSource.contentFingerprint, 128),
+      imageUrls: advancedImageUrls,
+      expectedImageCount: Math.max(0, Math.round(numberOrNull(advancedSource.expectedImageCount) || 0))
+    };
     const payload = {
       schemaVersion: SCHEMA_VERSION,
       workflowVersion: clean(value.workflowVersion, 80),
@@ -121,6 +137,7 @@
       },
       categoryPath,
       brand: clean(value.brand, 120),
+      advancedDescription,
       attributes,
       package: {
         lengthCm: numberOrNull(value.package && value.package.lengthCm),
@@ -149,7 +166,16 @@
       throw new Error('蝦皮自動填寫資料不是目前固定版四通路流程。');
     }
     if (!payload.nonce || !payload.jobId || !payload.snapshotId || !payload.snapshotFingerprint
-      || !payload.productId || !payload.sku || !payload.categoryPath.length) {
+      || !payload.productId || !payload.sku || !payload.categoryPath.length
+      || payload.advancedDescription.mode !== 'use-easystore-rich-description'
+      || payload.advancedDescription.source !== 'easystore-body-html'
+      || payload.advancedDescription.preparedBeforeNavigation !== true
+      || payload.advancedDescription.enableWhenAvailable !== true
+      || payload.advancedDescription.useEasyStoreDescription !== true
+      || payload.advancedDescription.capabilityProbe !== 'single-lightweight-page-probe'
+      || !/^[a-f0-9]{64}$/i.test(payload.advancedDescription.contentFingerprint)
+      || !payload.advancedDescription.imageUrls.length
+      || payload.advancedDescription.expectedImageCount !== payload.advancedDescription.imageUrls.length) {
       throw new Error('蝦皮自動填寫資料不完整，請重新執行「確認上架」。');
     }
     const mode = payload.listingPolicy.mode;

@@ -8,10 +8,10 @@ const helpers = require("../helpers.js");
 
 function validPayload(now) {
   return {
-    schemaVersion: 5,
-    workflowVersion: "youzi-four-channel-listing-v2",
-    jobId: "job-shopee-v2-1",
-    snapshotId: "snapshot-shopee-v2-1",
+    schemaVersion: 6,
+    workflowVersion: "youzi-four-channel-listing-v3",
+    jobId: "job-shopee-v3-1",
+    snapshotId: "snapshot-shopee-v3-1",
     snapshotFingerprint: "a".repeat(64),
     nonce: "azes40-prb-00000001",
     createdAt: now,
@@ -32,6 +32,17 @@ function validPayload(now) {
     },
     categoryPath: ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"],
     brand: "Ibanez",
+    advancedDescription: {
+      mode: "use-easystore-rich-description",
+      source: "easystore-body-html",
+      preparedBeforeNavigation: true,
+      enableWhenAvailable: true,
+      useEasyStoreDescription: true,
+      capabilityProbe: "single-lightweight-page-probe",
+      contentFingerprint: "b".repeat(64),
+      imageUrls: ["https://example.com/detail-1.jpg", "https://example.com/detail-2.jpg"],
+      expectedImageCount: 2
+    },
     attributes: [
       { label: "Neck Material", value: "Maple", confidence: "high", note: "Ibanez 官方規格" },
       { label: "Body Material", value: "Poplar", confidence: "high", note: "Ibanez 官方規格" },
@@ -823,7 +834,7 @@ test("classifies update and create actions conservatively", () => {
   assert.equal(helpers.classifyShopeeActionText("蝦皮購物"), "unknown");
 });
 
-test("the v2 central platform id determines direct sync mode without a catalog search", () => {
+test("the v3 central platform id determines direct sync mode without a catalog search", () => {
   const existing = validPayload(1_800_000_000_000).listingPolicy;
   assert.equal(helpers.directSyncNavigationMode(existing), "update");
 
@@ -890,10 +901,10 @@ test("v2 gate trusts the central id when page wording is unknown and blocks expl
   assert.equal(helpers.autoPublishGate(newListing, { missing: [] }, "update").ok, false);
 });
 
-test("schema 4 and its legacy Shopee policy keys cannot enter the v2 queue", () => {
+test("schema 5 and its legacy Shopee policy keys cannot enter the v3 queue", () => {
   const now = 1_800_000_000_000;
   const legacy = validPayload(now);
-  legacy.schemaVersion = 4;
+  legacy.schemaVersion = 5;
   legacy.listingPolicy = {
     decision: "existing",
     matchKey: "sku",
@@ -905,7 +916,7 @@ test("schema 4 and its legacy Shopee policy keys cannot enter the v2 queue", () 
   };
   const result = helpers.validateQueuePayload(legacy, now);
   assert.equal(result.ok, false);
-  assert.match(result.errors.join(" "), /schemaVersion 必須是 5/);
+  assert.match(result.errors.join(" "), /schemaVersion 必須是 6/);
   assert.match(result.errors.join(" "), /不支援的欄位：decision/);
   assert.equal(result.value, null);
 });
@@ -918,6 +929,26 @@ test("rejects create-new when a central Shopee platform id is also present", () 
   const result = helpers.validateQueuePayload(payload, now);
   assert.equal(result.ok, false);
   assert.match(result.errors.join(" "), /建立新品時不可帶入/);
+});
+
+test("advanced description must be fully prepared before the Shopee page opens", () => {
+  const now = 1_800_000_000_000;
+  const valid = helpers.validateQueuePayload(validPayload(now), now);
+  assert.equal(valid.ok, true, valid.errors.join("；"));
+  assert.equal(valid.value.advancedDescription.expectedImageCount, 2);
+
+  const missingImages = validPayload(now);
+  missingImages.advancedDescription.imageUrls = [];
+  missingImages.advancedDescription.expectedImageCount = 0;
+  const missingResult = helpers.validateQueuePayload(missingImages, now);
+  assert.equal(missingResult.ok, false);
+  assert.match(missingResult.errors.join(" "), /必須有 1 到 20 張已準備圖片/);
+
+  const lateAnalysis = validPayload(now);
+  lateAnalysis.advancedDescription.preparedBeforeNavigation = false;
+  const lateResult = helpers.validateQueuePayload(lateAnalysis, now);
+  assert.equal(lateResult.ok, false);
+  assert.match(lateResult.errors.join(" "), /preparedBeforeNavigation 必須是 true/);
 });
 
 test("navigation mode remains attached to the exact queued product and nonce", () => {

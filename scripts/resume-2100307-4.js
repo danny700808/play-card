@@ -3,7 +3,7 @@
 const admin = require('../functions/node_modules/firebase-admin');
 const PRODUCT_ID = 'Ui7HQyrWtdcfG1r7nKlt';
 const SNAPSHOT_ID = 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818';
-const WORKFLOW_VERSION = 'youzi-four-channel-listing-v2';
+const WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
 
 async function main() {
   admin.initializeApp({ credential: admin.credential.applicationDefault() });
@@ -15,7 +15,7 @@ async function main() {
     const listingCase = snap.data() || {};
     const handoff = listingCase.codexHandoff && typeof listingCase.codexHandoff === 'object' ? listingCase.codexHandoff : {};
     const frozen = handoff.preflightSnapshot && typeof handoff.preflightSnapshot === 'object' ? handoff.preflightSnapshot : {};
-    if (handoff.workflowVersion !== WORKFLOW_VERSION || frozen.workflowVersion !== WORKFLOW_VERSION) throw new Error('Only fixed v2 is allowed');
+    if (handoff.workflowVersion !== WORKFLOW_VERSION || frozen.workflowVersion !== WORKFLOW_VERSION) throw new Error('Only fixed v3 is allowed');
     if (frozen.snapshotId !== SNAPSHOT_ID) throw new Error('Immutable snapshot mismatch');
     if (!Array.isArray(listingCase.generatedListingImages) || listingCase.generatedListingImages.length < 11) throw new Error('Expected completed images are not ready');
     if (listingCase.publishState && listingCase.publishState.jobId) {
@@ -27,7 +27,7 @@ async function main() {
         ...handoff,
         autoPublishAuthorization: {
           granted: true,
-          scope: 'fixed-v2-four-channel-publish',
+          scope: 'fixed-v3-four-channel-publish',
           workflowVersion: WORKFLOW_VERSION,
           snapshotId: SNAPSHOT_ID,
           grantedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -37,7 +37,7 @@ async function main() {
         }
       },
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedBy: 'Codex v2 recovery for 2100307-4'
+      updatedBy: 'Codex v3 recovery for 2100307-4'
     }, { merge: true });
   });
   for (let attempt = 0; attempt < 48; attempt += 1) {

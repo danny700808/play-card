@@ -44,9 +44,9 @@ function withV2ImagePlan(listingCase, options = {}) {
   return {
     ...listingCase,
     codexHandoff: {
-      workflowVersion: 'youzi-four-channel-listing-v2',
+      workflowVersion: 'youzi-four-channel-listing-v3',
       preflightSnapshot: {
-        workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'snapshot-v2-test',
+        workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'snapshot-v3-test',
         finalizedFromFrozenInput: true, inputSnapshotId: 'input-v2-test', inputSnapshotFingerprint: 'input-fingerprint-v2-test',
         cases: [{
           productId: options.productId || 'case-v2-test', sku: options.sku || 'CASE-V2',
@@ -142,22 +142,21 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 16);
+  assert.equal(snapshot.automationPolicy.version, 18);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
   assert.equal(snapshot.automationPolicy.publishVerification.requireEveryVariantGroupSkuOnPublishedStorefront, true);
-  assert.equal(snapshot.automationPolicy.workflowId, 'youzi-four-channel-listing-v2');
+  assert.equal(snapshot.automationPolicy.workflowId, 'youzi-four-channel-listing-v3');
   assert.equal(snapshot.automationPolicy.immutableWorkflowUntilExplicitRuleChange, true);
   assert.equal(snapshot.automationPolicy.productDataChangesDoNotChangeExecutionOrder, true);
   assert.equal(snapshot.automationPolicy.retry.maximumAttempts, 4);
   assert.equal(snapshot.automationPolicy.retry.retrySameSkuAndDraftOnly, true);
   assert.ok(snapshot.automationPolicy.retry.transientFailureSignatures.includes('image-fetch-failed'));
   assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, [
-    'platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status',
-    'applied-image-plan', 'official-image-list', 'no-frozen-source-image'
+    'listing-id', 'exact-sku', 'price', 'status', 'one-official-list-match'
   ]);
-  assert.equal(snapshot.automationPolicy.publishVerification.imageReceiptContract.officialImageUrlsMayUsePlatformCdn, true);
+  assert.equal(snapshot.automationPolicy.publishVerification.imageReceiptContract.postSubmitImageUrlCollectionRequired, false);
   assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.order, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.mode, 'staggered-parallel');
   assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.parallelRoots, ['momo', 'coupang', 'easyStore']);
@@ -179,18 +178,21 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 8);
-  assert.equal(snapshot.automationPolicy.version, 16);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 9);
+  assert.equal(snapshot.automationPolicy.version, 18);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.prepareShopeeAdvancedDescriptionBeforeNavigation, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeePageMayApplyPreparedContentButMustNotReanalyzeIt, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.mode, 'section-batch');
-  assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateSectionOnceAfterBatch, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateStableSectionAfterBatch, false);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateDynamicSectionOnceAfterBatch, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.batchFieldExecution.stableNativeControlsSinglePass, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.batchSections.length, 5);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.batchSections.length, 5);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.easyStore.batchSections.length, 4);
-  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.batchSections.length, 4);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.batchSections.length, 5);
   assert.equal(snapshot.preparedPlatformFieldPlan.executionGraph.mode, 'staggered-parallel');
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.executionGraph.parallelRoots, ['momo', 'coupang', 'easyStore']);
   assert.equal(snapshot.preparedPlatformFieldPlan.immutableForJob, true);
@@ -228,9 +230,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverRetryPermissionDeniedWithReplacementDraft, true);
   assert.deepEqual(snapshot.automationPolicy.momoSpecialPromotionImage.preferredProductImagePositions, [2, 3]);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.materialBankInsertRequired, true);
-  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.saveReopenAndVerifyImageRequired, true);
-  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.persistedImageEvidence, 'contenteditable-html-img-src');
-  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.editorElementIdMayChangeAfterReopen, true);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.saveReopenAndVerifyImageRequired, false);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.visibleInsertionAndSaveConfirmationRequired, true);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.insertionTarget, 'rich-description-editor');
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.mainOrAdvertisementImageIsNeverPromotionEvidence, true);
   assert.equal(snapshot.automationPolicy.momoStoreCategories.maximumCount, 5);
@@ -288,6 +289,13 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.closeEmbeddedChatBeforeFormInteraction, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.variantImageSource, 'existing-easystore-completed-gallery');
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.neverOpenNativeFilePickerForVariantImages, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.neverAnalyzeOrRewriteInsideShopee, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.mode, 'use-easystore-rich-description');
+  assert.equal(snapshot.shopeeAdvancedDescription.expectedImageCount, 2);
+  assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, [
+    'https://danny700808.github.io/play-card/product-listing-description-promo-1.jpg',
+    'https://danny700808.github.io/play-card/product-listing-description-promo-2.jpg'
+  ]);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.packageWeightGrams, 5000);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.version, 3);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.verifiedFromLivePage, true);
@@ -379,7 +387,7 @@ test('正式發布先完成四通路預檢，再交錯啟動三個根平台且�
   assert.match(backend, /target\.applyProductListingQueueReceipt = onDocumentWritten/);
 });
 
-test('通路正式核對必須同時符合 SKU、價格、庫存、清單與正式商品資料', () => {
+test('通路快速核對只要求商品編號、SKU、價格、狀態與任一正式清單', () => {
   const sourceUrl = 'https://example.com/source.jpg';
   const completedUrl = 'https://example.com/completed.jpg';
   const snapshot = {
@@ -402,12 +410,11 @@ test('通路正式核對必須同時符合 SKU、價格、庫存、清單與正�
   });
   assert.equal(bad.verified, false);
   assert.ok(bad.reasons.includes('price-mismatch'));
-  assert.ok(bad.reasons.includes('official-catalog-not-matched'));
   assert.ok(bad.reasons.includes('applied-image-evidence-contains-frozen-source'));
   assert.ok(bad.reasons.includes('official-image-evidence-contains-frozen-source'));
 });
 
-test('正式圖片回條分開驗證 applied plan 與平台 CDN，缺證或任一組含來源圖都拒絕', () => {
+test('送出後不強制蒐集平台圖片網址，但若有回傳來源原圖仍拒絕', () => {
   const source = 'https://supplier.example.com/original.jpg';
   const completed = 'https://cdn.example.com/final.jpg';
   const snapshot = {
@@ -428,8 +435,20 @@ test('正式圖片回條分開驗證 applied plan 與平台 CDN，缺證或任�
   const missingOfficial = helpers.validatePlatformStageVerification('coupang', snapshot, {
     ...cdnReceipt, officialImageUrls: []
   });
-  assert.equal(missingOfficial.verified, false);
-  assert.ok(missingOfficial.reasons.includes('missing-or-invalid-official-image-evidence'));
+  assert.equal(missingOfficial.verified, true);
+
+  const officialOnly = helpers.validatePlatformStageVerification('coupang', snapshot, {
+    listingId: 'CP-EVIDENCE', sku: 'IMG-EVIDENCE', price: 900, status: 'published',
+    platformListMatched: false, officialCatalogMatched: true,
+    officialImageUrls: ['https://platform-cdn.example.com/resized/final-123.webp']
+  });
+  assert.equal(officialOnly.verified, true, officialOnly.reasons.join(','));
+
+  const noImageEvidence = helpers.validatePlatformStageVerification('coupang', snapshot, {
+    listingId: 'CP-EVIDENCE', sku: 'IMG-EVIDENCE', price: 900, status: 'published',
+    platformListMatched: true, officialCatalogMatched: false
+  });
+  assert.equal(noImageEvidence.verified, true);
 
   const sourceApplied = helpers.validatePlatformStageVerification('coupang', snapshot, {
     ...cdnReceipt, appliedImageUrls: [source]
@@ -444,7 +463,7 @@ test('正式圖片回條分開驗證 applied plan 與平台 CDN，缺證或任�
   assert.ok(sourceOfficial.reasons.includes('official-image-evidence-contains-frozen-source'));
 });
 
-test('queue receipt only advances the matching v2 job, attempt and immutable snapshot', () => {
+test('queue receipt only advances the matching v3 job, attempt and immutable snapshot', () => {
   const snapshot = {
     productId: 'product-1', sku: 'ABC-1', easyStorePrice: 500, coupangPrice: 520, momoPrice: 530,
     stock: 3, title: '商品', description: '介紹', images: ['https://example.com/1.jpg'],
@@ -456,12 +475,12 @@ test('queue receipt only advances the matching v2 job, attempt and immutable sna
   const fingerprint = helpers.platformStageFingerprint('Coupang', snapshot);
   const snapshotFingerprint = helpers.listingSnapshotFingerprint(snapshot);
   const job = {
-    id: 'job-1', workflowVersion: 'youzi-four-channel-listing-v2', productId: 'product-1', currentStage: 'coupang',
+    id: 'job-1', workflowVersion: 'youzi-four-channel-listing-v3', productId: 'product-1', currentStage: 'coupang',
     preparedSnapshot: snapshot, preparedSnapshotFingerprint: snapshotFingerprint,
     stages: { coupang: { status: 'awaiting-verification', attemptToken: 'attempt-1', fingerprint } }
   };
   const record = {
-    workflowVersion: 'youzi-four-channel-listing-v2', jobId: 'job-1', productId: 'product-1', platform: 'Coupang',
+    workflowVersion: 'youzi-four-channel-listing-v3', jobId: 'job-1', productId: 'product-1', platform: 'Coupang',
     status: 'submitted-to-platform-review', attemptToken: 'attempt-1', fingerprint, snapshotFingerprint,
     verificationReceipt: {
       stage: 'coupang', listingId: 'CP-1', sku: 'ABC-1', price: 520, stock: 3, status: 'under-review',
@@ -504,7 +523,7 @@ test('MOMO、酷澎與 EasyStore 可獨立完成，蝦皮只依賴 EasyStore，�
   };
   const db = fakeFirestore({
     [`opsSyncJobs/${jobId}`]: {
-      workflowVersion: 'youzi-four-channel-listing-v2', productId, currentStage: 'shopee', status: 'submitted',
+      workflowVersion: 'youzi-four-channel-listing-v3', productId, currentStage: 'shopee', status: 'submitted',
       preparedSnapshot: snapshot, preparedSnapshotFingerprint: snapshotFingerprint, stages,
       platforms: { easyStore: { status: 'created' }, shopee: { status: 'waiting-easystore-sync' } }
     },
@@ -516,7 +535,7 @@ test('MOMO、酷澎與 EasyStore 可獨立完成，蝦皮只依賴 EasyStore，�
     }
   });
   const queueReceipt = (platform, attemptToken, fingerprint, receipt) => ({
-    workflowVersion: 'youzi-four-channel-listing-v2', jobId, productId, platform,
+    workflowVersion: 'youzi-four-channel-listing-v3', jobId, productId, platform,
     attemptToken, fingerprint, snapshotFingerprint,
     status: 'completed', verificationReceipt: {
       ...receipt
@@ -540,8 +559,9 @@ test('MOMO、酷澎與 EasyStore 可獨立完成，蝦皮只依賴 EasyStore，�
   assert.equal(completion.status, 'completed');
   assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'completed');
   assert.ok(db.get(`opsSyncJobs/${jobId}`).finishedAt);
-  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.cleanupStatus, 'required');
-  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.eligibleForDeletion, true);
+  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.cleanupStatus, 'retained');
+  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.sourceBinaryCleanupRequired, false);
+  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.eligibleForDeletion, false);
 });
 
 test('MOMO special promotion image uses product image two or three and never store promotion assets', () => {
@@ -578,7 +598,7 @@ test('MOMO stops before queueing when only the branded first image exists', () =
   assert.match(helpers.momoMissingFields(snapshot).join('、'), /MOMO clean-only 專推圖/);
 });
 
-test('MOMO publish verification rejects a success dialog when persisted fields were cleared', () => {
+test('MOMO 快速核對拒絕草稿與空白售價，但不再等待庫存及第二份清單', () => {
   const result = helpers.evaluateMomoPublishVerification(
     { sku: '2500118', momoPrice: 350, stock: 4 },
     {
@@ -588,7 +608,7 @@ test('MOMO publish verification rejects a success dialog when persisted fields w
   );
   assert.equal(result.verified, false);
   assert.equal(result.needsRetry, true);
-  assert.deepEqual(result.reasons, ['still-draft', 'blank-price', 'expected-stock-mismatch', 'missing-from-official-catalog']);
+  assert.deepEqual(result.reasons, ['still-draft', 'blank-price']);
   assert.equal(result.recoveryAction, 'resume-same-draft-and-reapply-cleared-fields');
   assert.equal(result.neverCreateReplacementDraft, true);
 });
@@ -688,7 +708,7 @@ test('prepared role plan gives EasyStore a portrait hero, Shopee a square brande
   assert.deepEqual(helpers.coupangMissingFields(snapshot), []);
 });
 
-test('v2 image gates reject source URLs disguised as completed outputs and dirty clean-main roles', () => {
+test('v3 image gates reject source URLs disguised as completed outputs and dirty clean-main roles', () => {
   const sameUrl = 'https://example.com/not-really-completed.jpg';
   const sameSourceCase = withV2ImagePlan({ productDescription: '介紹' }, { clean: sameUrl });
   const sameSourceAssignment = sameSourceCase.codexHandoff.preflightSnapshot.cases[0].preparedCase.imageRoleAssignments
@@ -826,7 +846,7 @@ test('四通路完成後主商品與每個細項都標記已發布，最近未�
   assert.match(finalize, /platformListingStatusFromPublish\(reference\.product\.platformListingStatus, platforms\)/);
 });
 
-test('cleanup 前中央或細項仍引用 frozen source 即拒絕，四站完整圖片回條且中央全完成圖才通過', () => {
+test('完成前中央或細項仍引用 frozen source 即拒絕，平台快速回條且中央全完成圖才通過', () => {
   const productId = 'cleanup-image-product';
   const source = 'https://example.com/source-clean.jpg';
   const clean = 'https://cdn.example.com/cleanup-clean.jpg';
@@ -855,8 +875,7 @@ test('cleanup 前中央或細項仍引用 frozen source 即拒絕，四站完整
     productId, caseRecord,
     productRecord: { imageUrl: clean, imageUrls: [clean] }
   }], { ...stages, momo: { status: 'verified', receipt: { ...stages.momo.receipt, officialImageUrls: [] } } });
-  assert.equal(missingImageReceipt.verified, false);
-  assert.ok(missingImageReceipt.reasons.includes('momo:missing-or-invalid-official-image-evidence'));
+  assert.equal(missingImageReceipt.verified, true, missingImageReceipt.reasons.join(','));
 });
 
 test('pending handoff sources can receive later Codex outputs and become one immutable final publish snapshot', () => {
@@ -864,7 +883,7 @@ test('pending handoff sources can receive later Codex outputs and become one imm
   const sourceTwo = 'https://supplier.example.com/pending-2.jpg';
   const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'handoff-input-1', productId: 'late-product',
+    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'handoff-input-1', productId: 'late-product',
     cases: [{ productId: 'late-product', sku: 'LATE-1', sourceImageUrls: [sourceOne, sourceTwo], gallerySourceImageUrls: [sourceOne, sourceTwo] }]
   };
   const currentCase = {
@@ -886,7 +905,7 @@ test('pending handoff sources can receive later Codex outputs and become one imm
   assert.equal(finalized.platformImagePlan.momo.imageUrls[1], 'https://cdn.example.com/late-detail.jpg');
   assert.equal(finalized.platformImagePlan.momo.imageUrls[2], 'https://cdn.example.com/late-branded.jpg');
   assert.equal(finalized.platformImagePlan.momo.promotionImageUrl, 'https://cdn.example.com/late-detail.jpg');
-  const rootCase = { ...currentCase, codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v2', preflightSnapshot: frozen } };
+  const rootCase = { ...currentCase, codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v3', preflightSnapshot: frozen } };
   const snapshot = helpers.buildListingSnapshot('late-product', {
     internalSku: 'LATE-1', internalName: '晚到完成圖商品', currentStock: 2,
     easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
@@ -894,10 +913,10 @@ test('pending handoff sources can receive later Codex outputs and become one imm
   assert.deepEqual(helpers.platformImagePlanMissingFields(snapshot.platformImagePlan, { requireFinalized: true }), []);
 });
 
-test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerprint 且必須符合案件 frozen input', () => {
+test('active v3 job 只復用目前 schema/policy/order/final snapshot/fingerprint 且必須符合案件 frozen input', () => {
   const productId = 'reuse-product';
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'reuse-input', productId,
+    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'reuse-input', productId,
     cases: [{
       productId, sku: 'REUSE-1',
       sourceImageUrls: ['https://supplier.example.com/reuse-a.jpg', 'https://supplier.example.com/reuse-b.jpg']
@@ -906,7 +925,7 @@ test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerpri
   const baseFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
   const listingCase = {
     productSku: 'REUSE-1', productDescription: '完整商品介紹',
-    codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v2', preflightSnapshot: frozen },
+    codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v3', preflightSnapshot: frozen },
     generatedListingImages: [
       { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-clean.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: baseFlags },
       { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-storefront.jpg', status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
@@ -920,8 +939,8 @@ test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
   }, listingCase, null, null, finalized);
   const job = {
-    schemaVersion: 3,
-    workflowVersion: 'youzi-four-channel-listing-v2',
+    schemaVersion: 5,
+    workflowVersion: 'youzi-four-channel-listing-v3',
     productId,
     currentStage: 'parallel-platforms',
     platformOrder: ['momo', 'coupang', 'easyStore', 'shopee'],
@@ -934,7 +953,7 @@ test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerpri
       shopee: { status: 'blocked-by-dependency', dependsOn: ['easyStore'] }
     }
   };
-  assert.deepEqual(helpers.activeV2JobReuseBlockers(job, productId, listingCase), []);
+  assert.deepEqual(helpers.activeV3JobReuseBlockers(job, productId, listingCase), []);
   const reverseKeys = (value) => {
     if (Array.isArray(value)) return value.map(reverseKeys);
     if (!value || typeof value !== 'object') return value;
@@ -944,27 +963,27 @@ test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     }, {});
   };
   const reorderedSnapshot = reverseKeys(snapshot);
-  assert.deepEqual(helpers.activeV2JobReuseBlockers({
+  assert.deepEqual(helpers.activeV3JobReuseBlockers({
     ...job,
     preparedSnapshot: reorderedSnapshot,
     preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(snapshot)
   }, productId, listingCase), []);
-  assert.ok(helpers.activeV2JobReuseBlockers({ ...job, schemaVersion: 1 }, productId, listingCase).includes('job-schema-version-mismatch'));
+  assert.ok(helpers.activeV3JobReuseBlockers({ ...job, schemaVersion: 1 }, productId, listingCase).includes('job-schema-version-mismatch'));
   const earlySnapshot = JSON.parse(JSON.stringify(snapshot));
   earlySnapshot.platformImagePlan.finalizedFromFrozenInput = false;
-  earlySnapshot.platformImagePlan.source = 'codex-v2-prepared-snapshot';
+  earlySnapshot.platformImagePlan.source = 'codex-v3-prepared-snapshot';
   delete earlySnapshot.platformImagePlan.inputSnapshotFingerprint;
-  assert.ok(helpers.activeV2JobReuseBlockers({
+  assert.ok(helpers.activeV3JobReuseBlockers({
     ...job, preparedSnapshot: earlySnapshot,
     preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(earlySnapshot)
   }, productId, listingCase).includes('finalized-image-plan-invalid'));
-  assert.ok(helpers.activeV2JobReuseBlockers({ ...job, platformOrder: ['momo', 'easyStore', 'coupang', 'shopee'] }, productId, listingCase).includes('job-platform-order-mismatch'));
+  assert.ok(helpers.activeV3JobReuseBlockers({ ...job, platformOrder: ['momo', 'easyStore', 'coupang', 'shopee'] }, productId, listingCase).includes('job-platform-order-mismatch'));
   const changedFrozenCase = JSON.parse(JSON.stringify(listingCase));
   changedFrozenCase.codexHandoff.preflightSnapshot.cases[0].sourceImageUrls.push('https://supplier.example.com/new-source.jpg');
-  assert.ok(helpers.activeV2JobReuseBlockers(job, productId, changedFrozenCase).includes('case-frozen-input-mismatch'));
+  assert.ok(helpers.activeV3JobReuseBlockers(job, productId, changedFrozenCase).includes('case-frozen-input-mismatch'));
   const changedFrozenData = JSON.parse(JSON.stringify(listingCase));
   changedFrozenData.codexHandoff.preflightSnapshot.preparedData = { stockSnapshot: 99 };
-  assert.ok(helpers.activeV2JobReuseBlockers(job, productId, changedFrozenData).includes('case-frozen-input-mismatch'));
+  assert.ok(helpers.activeV3JobReuseBlockers(job, productId, changedFrozenData).includes('case-frozen-input-mismatch'));
 });
 
 test('fingerprint 與 current policy deep compare 不受 Firestore 物件 key insertion order 影響', () => {
@@ -993,7 +1012,7 @@ test('fingerprint 與 current policy deep compare 不受 Firestore 物件 key in
 
 test('final publish snapshot rejects completed outputs whose source was not frozen at handoff', () => {
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'handoff-input-rogue',
+    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'handoff-input-rogue',
     cases: [{ productId: 'rogue-product', sku: 'ROGUE-1', sourceImageUrls: ['https://supplier.example.com/allowed.jpg'] }]
   };
   const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
@@ -1009,7 +1028,7 @@ test('final publish snapshot rejects another frozen source URL disguised as a co
   const sourceOne = 'https://supplier.example.com/source-a.jpg';
   const sourceTwo = 'https://supplier.example.com/source-b.jpg';
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'handoff-input-cross-source',
+    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'handoff-input-cross-source',
     cases: [{ productId: 'cross-source-product', sku: 'CROSS-1', sourceImageUrls: [sourceOne, sourceTwo] }]
   };
   const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
@@ -1032,7 +1051,7 @@ test('final publish snapshot rejects a merged sibling source URL disguised as a 
   const sourceTwo = 'https://supplier.example.com/merged-source-b.jpg';
   const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'handoff-input-cross-case-source',
+    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'handoff-input-cross-case-source',
     cases: [
       { productId: 'merged-source-a', sku: 'MERGED-A', sourceImageUrls: [sourceOne] },
       { productId: 'merged-source-b', sku: 'MERGED-B', sourceImageUrls: [sourceTwo] }
@@ -1183,8 +1202,8 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
 
   assert.equal(snapshot.stock, 0);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 5);
-  assert.equal(payload.workflowVersion, 'youzi-four-channel-listing-v2');
+  assert.equal(payload.schemaVersion, 6);
+  assert.equal(payload.workflowVersion, 'youzi-four-channel-listing-v3');
   assert.equal(payload.jobId, 'job-shopee-v2-1');
   assert.equal(payload.publishMode, 'auto');
   assert.deepEqual(payload.listingPolicy, {
@@ -1192,6 +1211,9 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only'
   });
   assert.equal(payload.brand, 'Ibanez');
+  assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description');
+  assert.equal(payload.advancedDescription.preparedBeforeNavigation, true);
+  assert.equal(payload.advancedDescription.expectedImageCount, 2);
   assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);
   assert.deepEqual(payload.attributes.map((row) => [row.label, row.value]), [
     ['Body Material', 'Poplar'], ['Pickup Configuration', 'HSS'],
@@ -1658,7 +1680,7 @@ test('同款群組可擴充為三個或五個細項，仍只有一個封閉主�
   });
 });
 
-test('同款群組正式核對要求完全相同的 SKU 集合及每個細項價格庫存', () => {
+test('同款群組正式核對要求完全相同的 SKU 集合及每個細項價格，不重查庫存', () => {
   const { snapshot } = groupedListingFixture(2);
   const verification = {
     listingId: 'platform-parent', sku: 'GROUP-1', status: 'published',
@@ -1681,9 +1703,14 @@ test('同款群組正式核對要求完全相同的 SKU 集合及每個細項價
     variants: [verification.variants[0], { ...verification.variants[1], price: 999 }]
   });
   assert.equal(wrongPrice.reasons.includes('variant-price-mismatch:GROUP-2'), true);
+  const wrongStock = helpers.validatePlatformStageVerification('easyStore', snapshot, {
+    ...verification,
+    variants: [verification.variants[0], { ...verification.variants[1], stock: 999 }]
+  });
+  assert.equal(wrongStock.verified, true, wrongStock.reasons.join(','));
 });
 
-test('Codex 單次授權綁定 v2 快照並由後端自動續跑，不接受舊版或第二次確認', () => {
+test('Codex 單次授權綁定 v3 快照並由後端自動續跑，不接受舊版或第二次確認', () => {
   const base = {
     researchedProductName: '桌上型木製譜架', sharedOnlinePrice: 450, stock: 2,
     shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30,
@@ -1693,17 +1720,17 @@ test('Codex 單次授權綁定 v2 快照並由後端自動續跑，不接受舊�
       url: 'https://cdn.example.com/2100307-4-clean.jpg', roles: ['cleanMain']
     }],
     codexHandoff: {
-      workflowVersion: 'youzi-four-channel-listing-v2',
-      preflightSnapshot: { workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', cases: [] },
+      workflowVersion: 'youzi-four-channel-listing-v3',
+      preflightSnapshot: { workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', cases: [] },
       autoPublishAuthorization: {
-        granted: true, scope: 'fixed-v2-four-channel-publish',
-        workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818',
+        granted: true, scope: 'fixed-v3-four-channel-publish',
+        workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818',
         grantedByEmail: 'danny700808@gmail.com', noSecondConfirmation: true
       }
     }
   };
   assert.deepEqual(helpers.codexAutoPublishGrant(base), {
-    email: 'danny700808@gmail.com', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', scope: 'fixed-v2-four-channel-publish'
+    email: 'danny700808@gmail.com', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', scope: 'fixed-v3-four-channel-publish'
   });
   assert.equal(helpers.codexAutoPublishGrant({ ...base, codexHandoff: { ...base.codexHandoff, workflowVersion: 'youzi-four-channel-listing-v1' } }), null);
   assert.equal(helpers.codexAutoPublishGrant({ ...base, codexHandoff: { ...base.codexHandoff, autoPublishAuthorization: { ...base.codexHandoff.autoPublishAuthorization, snapshotId: 'other' } } }), null);
@@ -1714,9 +1741,9 @@ test('Codex 單次授權綁定 v2 快照並由後端自動續跑，不接受舊�
   assert.equal(helpers.publishResultFailureMessage({ ok: false, platforms: { easyStore: { message: 'HTTP 503' } } }), 'HTTP 503');
 });
 
-test('營運中心 v2 交接即授權自動發布，介面不再要求一般二次確認', () => {
+test('營運中心 v3 交接即授權自動發布，介面不再要求一般二次確認', () => {
   const frontend = fs.readFileSync('operations-phase1.js', 'utf8');
-  assert.match(frontend, /scope:'fixed-v2-four-channel-publish'/);
+  assert.match(frontend, /scope:'fixed-v3-four-channel-publish'/);
   assert.match(frontend, /noSecondConfirmation:true/);
   assert.match(frontend, /backendFirst:true/);
   assert.match(frontend, /desktopControlFallbackOnly:true/);
@@ -1727,7 +1754,7 @@ test('營運中心 v2 交接即授權自動發布，介面不再要求一般二�
   assert.doesNotMatch(frontend, /confirmAction\('確認整組上架'/);
 });
 
-test('相同 SKU 與相同不可變資料的新 v2 嘗試會取代舊的未完成 queue', () => {
+test('相同 SKU 與相同不可變資料的新 v3 嘗試會取代舊的未完成 queue', () => {
   const handler = fs.readFileSync('functions/productListingPublish.js', 'utf8');
   assert.match(handler, /supersededAttempt:/);
   assert.match(handler, /sameIdentity && sameFingerprint && !sameAttempt/);
@@ -1735,14 +1762,14 @@ test('相同 SKU 與相同不可變資料的新 v2 嘗試會取代舊的未完�
   assert.doesNotMatch(handler, /尚有另一筆工作使用同一個 queue/);
 });
 
-test('目前交接遇到不相容的舊 v2 工作時會留下取代紀錄並建立新工作', () => {
+test('目前交接遇到不相容的舊 v3 工作時會留下取代紀錄並建立新工作', () => {
   const handler = fs.readFileSync('functions/productListingPublish.js', 'utf8');
-  assert.match(handler, /status: 'superseded-by-current-v2-handoff'/);
+  assert.match(handler, /status: 'superseded-by-current-v3-handoff'/);
   assert.match(handler, /supersededReasons: reuseBlockers/);
   assert.match(handler, /else \{\s*reusableJob = candidate;\s*reusableJobRef = candidateRef;/);
-  assert.doesNotMatch(handler, /既有 v2 工作不符合目前固定流程，已拒絕復用/);
+  assert.doesNotMatch(handler, /既有 v3 工作不符合目前固定流程，已拒絕復用/);
 });
-test('2100307-4 固定 v2 實際資料可在不送出的模擬通過四通路預檢', () => {
+test('2100307-4 固定 v3 實際資料可在不送出的模擬通過四通路預檢', () => {
   const productId = 'Ui7HQyrWtdcfG1r7nKlt';
   const sources = Array.from({ length: 8 }, (_, index) => `https://supplier.example.com/2100307-4-source-${index + 1}.png`);
   const cleanFlags = { containsLogo: false, containsText: false, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: false, momoPromotionEligible: false };
@@ -1760,7 +1787,7 @@ test('2100307-4 固定 v2 實際資料可在不送出的模擬通過四通路預
   ].map((row, index) => ({ ...row, sourceOrder: index + 1, status: 'ready', localizationStatus: 'completed' }));
   assert.equal(completed.length, 12);
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v2', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', productId,
+    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', productId,
     cases: [{ productId, sku: '2100307-4', sourceImageUrls: sources, gallerySourceImageUrls: [] }]
   };
   const listingCase = {
@@ -1771,7 +1798,7 @@ test('2100307-4 固定 v2 實際資料可在不送出的模擬通過四通路預
     shopeeCategoryPath: '愛好與收藏品 > 樂器與樂器配件 > 樂器配件 > 樂譜架',
     identityStatus: 'confirmed', identityManualConfirmed: true,
     generatedListingImages: completed,
-    codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v2', preflightSnapshot: frozen }
+    codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v3', preflightSnapshot: frozen }
   };
   const finalMedia = helpers.finalizePreparedMediaSnapshot(frozen, new Map([[productId, listingCase]]));
   const snapshot = helpers.buildListingSnapshot(productId, {

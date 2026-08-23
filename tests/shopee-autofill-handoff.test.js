@@ -10,8 +10,8 @@ const source = fs.readFileSync('operations-shopee-autofill-handoff-v1.js', 'utf8
 function rawPayload() {
   const now = Date.now();
   return {
-    schemaVersion: 5,
-    workflowVersion: 'youzi-four-channel-listing-v2',
+    schemaVersion: 6,
+    workflowVersion: 'youzi-four-channel-listing-v3',
     jobId: 'job-shopee-v2-1',
     snapshotId: 'snapshot-shopee-v2-1',
     snapshotFingerprint: 'a'.repeat(64),
@@ -31,6 +31,13 @@ function rawPayload() {
     },
     categoryPath: ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯'],
     brand: 'Ibanez',
+    advancedDescription: {
+      mode: 'use-easystore-rich-description', source: 'easystore-body-html',
+      preparedBeforeNavigation: true, enableWhenAvailable: true, useEasyStoreDescription: true,
+      capabilityProbe: 'single-lightweight-page-probe', contentFingerprint: 'b'.repeat(64),
+      imageUrls: ['https://example.com/detail-1.jpg', 'https://example.com/detail-2.jpg'],
+      expectedImageCount: 2
+    },
     attributes: [
       { label: 'Pickup Configuration', value: 'HSS', confidence: 'high', note: '官方規格' }
     ],
@@ -78,8 +85,8 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
   const payload = api.sanitizePayload(rawPayload());
   const serialized = JSON.stringify(payload);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 5);
-  assert.equal(payload.workflowVersion, 'youzi-four-channel-listing-v2');
+  assert.equal(payload.schemaVersion, 6);
+  assert.equal(payload.workflowVersion, 'youzi-four-channel-listing-v3');
   assert.equal(payload.jobId, 'job-shopee-v2-1');
   assert.deepEqual(JSON.parse(JSON.stringify(payload.listingPolicy)), {
     mode: 'create-new', identitySource: 'new-draft', platformListingIds: [],
@@ -102,6 +109,11 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
     .every((row) => row.enabled === false), true);
   assert.equal(payload.preorder.enabled, false);
   assert.equal(payload.preorder.days, 1);
+  assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description');
+  assert.equal(payload.advancedDescription.expectedImageCount, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(payload.advancedDescription.imageUrls)), [
+    'https://example.com/detail-1.jpg', 'https://example.com/detail-2.jpg'
+  ]);
   assert.equal(Object.prototype.hasOwnProperty.call(payload, 'costPrice'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(payload, 'accessToken'), false);
   assert.doesNotMatch(serialized, /must-not-leak|"accessToken"|"costPrice"/);
@@ -112,6 +124,15 @@ test('handoff refuses incomplete identity data', () => {
   const payload = rawPayload();
   payload.sku = '';
   assert.throws(() => api.sanitizePayload(payload), /資料不完整/);
+});
+
+test('handoff requires the immutable EasyStore advanced-description plan', () => {
+  const payload = rawPayload();
+  delete payload.advancedDescription;
+  assert.throws(() => loadBridge().api.sanitizePayload(payload), /資料不完整/);
+  const wrongCount = rawPayload();
+  wrongCount.advancedDescription.expectedImageCount = 1;
+  assert.throws(() => loadBridge().api.sanitizePayload(wrongCount), /資料不完整/);
 });
 
 test('handoff refuses an unsafe or contradictory central platform policy', () => {
@@ -125,10 +146,10 @@ test('handoff refuses an unsafe or contradictory central platform policy', () =>
   assert.throws(() => api.sanitizePayload(payload), /中央平台 ID 規則不完整/);
 });
 
-test('handoff rejects schema 4 and never translates its retired listing decision', () => {
+test('handoff rejects schema 5 and never translates its retired listing decision', () => {
   const { api } = loadBridge();
   const payload = rawPayload();
-  payload.schemaVersion = 4;
+  payload.schemaVersion = 5;
   payload.listingPolicy = {
     decision: 'existing', matchKey: 'sku', allowCreate: false,
     existingListingIds: ['4116442'], onZero: 'create-only-if-confirmed',

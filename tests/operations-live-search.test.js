@@ -65,9 +65,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260823-physical-photo-entry/);
-    assert.match(html, /operations-phase1\.js\?v=20260823-physical-photo-entry/);
-    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260821-shopee-v2-schema5/);
+    assert.match(html, /operations-phase1\.css\?v=20260823-advanced-shopee-description-v3/);
+    assert.match(html, /operations-phase1\.js\?v=20260823-advanced-shopee-description-v3/);
+    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260823-shopee-v3-schema6/);
   }
 });
 
@@ -95,7 +95,8 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(handoffPrompt, /蝦皮只依賴 EasyStore/);
   assert.match(handoffPrompt, /蝦皮只使用 EasyStore 官方蝦皮通路同步／編輯頁/);
   assert.match(handoffPrompt, /不得.*切換蝦皮賣家中心或開第二條上架路徑/);
-  assert.match(handoffPrompt, /每站送出後只核對一次正式清單/);
+  assert.match(handoffPrompt, /每站送出後只做一次快速核對/);
+  assert.match(handoffPrompt, /不再核對庫存、不重複查兩種清單/);
   assert.match(handoffPrompt, /專推圖只可從 MOMO 完成圖順序第 2 或第 3 張/);
   const variantPublisher = functionBody(engine, 'confirmAndPublishProductVariantGroup');
   assert.match(variantPublisher, /callProductListingPublishWithTransientRetry\(draft\.id/);

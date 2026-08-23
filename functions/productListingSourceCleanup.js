@@ -6,7 +6,7 @@ const admin = require('firebase-admin');
 const REGION = 'us-central1';
 const LISTING_CASE_COLLECTION = 'opsProductListingCases';
 const JOB_COLLECTION = 'opsSyncJobs';
-const WORKFLOW_VERSION = 'youzi-four-channel-listing-v2';
+const WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
 const MAX_SOURCE_OBJECTS = 100;
 const SAFE_PRODUCT_ID = /^[A-Za-z0-9_-]{1,160}$/;
 
@@ -55,7 +55,7 @@ function cleanupReadinessBlocker(productId, caseRecord, jobId, jobRecord) {
   if (policy.sourceBinaryCleanupRequired !== true || policy.cleanupWorkerRequired !== true) return { code: 'cleanup-contract-missing', message: '案件缺少來源檔清理契約' };
   if (policy.referencesVerified !== true || policy.eligibleForDeletion !== true || caseRecord.mediaReferencesVerified !== true) return { code: 'references-not-verified', message: '中央、細項或平台圖片引用尚未全部核對' };
   if (!jobId || clean(policy.verifiedJobId) !== jobId) return { code: 'verified-job-missing', message: '找不到核對本次圖片引用的完成工作' };
-  if (clean(job.workflowVersion) !== WORKFLOW_VERSION || clean(job.status) !== 'completed' || clean(job.currentStage) !== 'completed') return { code: 'verified-job-incomplete', message: '核對工作不是已完成的 v2 四通路工作' };
+  if (clean(job.workflowVersion) !== WORKFLOW_VERSION || clean(job.status) !== 'completed' || clean(job.currentStage) !== 'completed') return { code: 'verified-job-incomplete', message: '核對工作不是已完成的 v3 四通路工作' };
   if (!jobAuthorizedProductIds(job).includes(clean(productId))) return { code: 'verified-job-product-mismatch', message: '完成工作未包含這一個商品案件' };
   return null;
 }

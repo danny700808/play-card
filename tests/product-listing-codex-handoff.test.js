@@ -20,7 +20,7 @@ function loadPureFunction(start, end, name, dependencies) {
   return Function(...names, "'use strict';\n" + body + "\nreturn " + name + ";")(...values);
 }
 
-test('一鍵上架按鈕把固定 v2 工作帶入指定 Codex 對話並授權後端續跑', () => {
+test('一鍵上架按鈕把固定 v3 工作帶入指定 Codex 對話並授權後端續跑', () => {
   assert.match(source, /const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex:\/\/threads\/'/);
   assert.match(source, /function productListingCodexThreadUrl\(prompt\)/);
   assert.match(source, /params\.set\('prompt',clean\(prompt\)\)/);
@@ -43,7 +43,9 @@ test('一鍵上架按鈕把固定 v2 工作帶入指定 Codex 對話並授權後
   assert.match(source, /autoRecoverSavedCredentialSessions:true/);
   assert.match(source, /neverAskUserForRecoverableSessionRestart:true/);
   assert.match(source, /fillStableControlsInSingleSectionPass:true/);
-  assert.match(source, /validateSectionOnceAfterBatch:true/);
+  assert.match(source, /snapshot\.executionPolicy\.validateSectionOnceAfterBatch=false/);
+  assert.match(source, /snapshot\.executionPolicy\.validateDynamicSectionOnceAfterBatch=true/);
+  assert.match(source, /snapshot\.executionPolicy\.fastEssentialVerification=true/);
   assert.match(source, /dynamicControlsSequentialWithinSection:true/);
   assert.match(source, /shopeeLargeItemHctOnly:true/);
   assert.doesNotMatch(source, /Codex 待辦已建立/);
@@ -87,7 +89,7 @@ test('沒有待存圖片時不等待舊收圖 Promise，交接進度能定位每
 test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多細項連結過長', () => {
   const activation = section('function productListingCodexActivationPrompt', 'function productListingCodexThreadUrl');
   const handoff = section('async function handoffProductListingToCodex(form)', 'function productListingCodexResultDraft');
-  assert.match(activation, /\[固定流程 v2 短交接\]/);
+  assert.match(activation, /\[固定流程 v3 短交接\]/);
   assert.match(activation, /codexHandoff\.prompt 與 codexHandoff\.preflightSnapshot/);
   assert.match(activation, /本組每個商品的繁體完成圖/);
   assert.match(activation, /MOMO、酷澎、EasyStore 三個根工作/);
@@ -157,18 +159,17 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /來源圖 .*待繁體化／定案 .*完成圖 .*缺少角色 .*狀態/);
   assert.match(prompt, /流程、角色與核對規則不可漂移/);
   assert.match(prompt, /MOMO、酷澎、EasyStore 官網、蝦皮/);
-  assert.match(prompt, /每站送出後只核對一次正式清單與正式商品資料/);
+  assert.match(prompt, /每站送出後只做一次快速核對/);
   assert.match(prompt, /MOMO、酷澎、EasyStore 是三個獨立根節點/);
-  assert.match(prompt, /blocked-by-dependency/);
-  assert.match(prompt, /appliedImageUrls/);
-  assert.match(prompt, /officialImageUrls/);
-  assert.match(prompt, /可為平台 CDN/);
-  assert.match(prompt, /中央或任一細項圖片欄位只要仍等於任一凍結來源 URL 就停止/);
-  assert.match(prompt, /只有 job schema、目前 automationPolicy、執行圖/);
+  assert.match(prompt, /蝦皮只依賴 EasyStore/);
+  assert.match(prompt, /不再逐張蒐集平台 CDN 網址/);
+  assert.match(prompt, /平台明確回報圖片錯誤/);
+  assert.match(prompt, /來源不符、原圖冒充完成圖、缺角色或 assetFlags 時必須停止/);
+  assert.match(prompt, /最終 job preparedSnapshot 建立後，一次完成/);
   assert.match(prompt, /先保留至少一張 cleanMain、一張 storefrontPortrait 與一張 brandedHero/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
   assert.match(prompt, /商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置/);
-  assert.match(prompt, /不得等平台第一次拒絕後才補專推圖或出貨地/);
+  assert.match(prompt, /並同時確認甲指第三方 000001/);
   assert.match(prompt, /EasyStore storefrontPortrait 為 750×1000 px、3:4/);
   assert.match(prompt, /蝦皮 brandedHero 為 1000×1000 px、1:1/);
   assert.match(prompt, /MOMO／酷澎 cleanMain 為 1000×1000 px、1:1/);
@@ -190,8 +191,8 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /不得再產生「確認正式發布四通路／確認上架／確認提交／套用細項」/);
   assert.match(prompt, /確認正式發布四通路／確認上架／確認提交／套用細項/);
   assert.match(prompt, /商品詳細介紹編輯器：按「上傳圖片」→「從素材銀行選擇」/);
-  assert.match(prompt, /不得依賴會變動的編輯器 element id/);
-  assert.match(prompt, /contenteditable 的 HTML 確認仍存在素材銀行圖片 img src/);
+  assert.match(prompt, /確認目前編輯器已顯示專推圖並完成儲存後直接發布/);
+  assert.match(prompt, /不再例行重開草稿/);
   assert.match(prompt, /此帳號無此功能權限/);
   assert.match(prompt, /account-permission-denied 永久阻擋/);
   assert.match(prompt, /先收合內嵌客服聊天/);
@@ -254,10 +255,10 @@ test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮�
   assert.match(prompt, /被切半的文字或殘缺裝飾/);
 });
 
-test('交接只用 v2 固定流程，不留舊版降級或第二路徑', () => {
+test('交接只用 v3 固定流程，不留舊版降級或第二路徑', () => {
   const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
-  assert.match(source, /const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v2'/);
-  assert.match(prompt, /v1 或任何其他舊快照一律停止/);
+  assert.match(source, /const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v3'/);
+  assert.match(prompt, /v2 或任何其他舊快照一律停止/);
   assert.match(prompt, /不得沿用、混合或降級/);
   assert.match(prompt, /禁止先全面瀏覽或搜尋任一平台商品清單/);
   assert.match(prompt, /只有送出結果不明[\s\S]*完全相同 SKU 做一次精確查詢/);
@@ -388,7 +389,7 @@ test('同一來源可有多個角色輸出，但同一完成圖不可同時當�
   assert.deepEqual(Array.from(conflictingUrls(conflictRows)), ['https://cdn.example.com/clean.jpg']);
 });
 
-test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手', () => {
+test('指定 v3 job 續跑只接受同一 productId 並直接交給蝦皮助手', () => {
   const resume = section('async function resumeExplicitShopeeListingFromQuery', 'function productListingTransientFailure');
   assert.match(resume, /resumeListingJob/);
   assert.match(resume, /await requireEasyStoreManagerAuth\(\)/);
@@ -399,16 +400,16 @@ test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手'
   assert.match(resume, /YouziShopeeAutofill\.queue\(payload\)/);
 });
 
-test('蝦皮正式狀態儲存後沿用同一 v2 job 完成四通路工作', () => {
-  const advance = section('async function advanceFixedV2AfterShopeeStatus', 'async function saveProductPlatformStatus');
+test('蝦皮正式狀態儲存後沿用同一 v3 job 完成四通路工作', () => {
+  const advance = section('async function advanceFixedV3AfterShopeeStatus', 'async function saveProductPlatformStatus');
   assert.match(advance, /clean\(job\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
   assert.match(advance, /clean\(easyStoreStage\.status\)!=='verified'/);
   assert.match(advance, /clean\(shopeeStage\.status\)==='verified'/);
   assert.match(advance, /await requireEasyStoreManagerAuth\(\)/);
   assert.match(advance, /httpsCallable\('verifyProductListingStage'/);
   assert.match(advance, /stage:'shopee'/);
-  assert.match(advance, /platformListMatched:true,officialCatalogMatched:true,imageEvidenceComplete:true/);
-  assert.match(advance, /appliedImageUrls:appliedImageUrls,officialImageUrls:officialImageUrls/);
+  assert.match(advance, /platformListMatched:true,officialCatalogMatched:false/);
+  assert.doesNotMatch(advance, /imageEvidenceComplete|appliedImageUrls|officialImageUrls/);
   const save = section('async function saveProductPlatformStatus', 'const LABEL_PRINT_ENDPOINTS');
-  assert.match(save, /advanceFixedV2AfterShopeeStatus\(p,statuses\)/);
+  assert.match(save, /advanceFixedV3AfterShopeeStatus\(p,statuses\)/);
 });

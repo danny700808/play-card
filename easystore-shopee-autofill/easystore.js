@@ -100,6 +100,18 @@
     "確定發佈",
     "確認發佈"
   ]);
+  const ADVANCED_DESCRIPTION_LABELS = Object.freeze([
+    "進階商品描述",
+    "進階產品描述",
+    "Advanced Product Description",
+    "Advanced Description"
+  ]);
+  const USE_EASYSTORE_DESCRIPTION_LABELS = Object.freeze([
+    "使用 EasyStore 的產品描述",
+    "使用 EasyStore 的商品描述",
+    "Use EasyStore Product Description",
+    "Use EasyStore Product Description Content"
+  ]);
   let currentRecord = null;
   let overlay = null;
   let retryTimer = null;
@@ -541,6 +553,111 @@
       throw new Error(`EasyStore 未接受上架：${errorText}`);
     }
     return { submitted: true, navigated: location.href !== beforeUrl };
+  }
+
+  function advancedDescriptionToggleCandidates(container) {
+    if (!container) return [];
+    return Array.from(container.querySelectorAll([
+      "[role='switch']",
+      "button[aria-checked]",
+      "input[type='checkbox']",
+      ".el-switch"
+    ].join(","))).filter((control) =>
+      isVisible(control) &&
+      !control.matches(":disabled, [disabled], [aria-disabled='true']")
+    );
+  }
+
+  function advancedDescriptionSection() {
+    for (const label of findExactTextElements(ADVANCED_DESCRIPTION_LABELS)) {
+      let container = label.parentElement;
+      for (let depth = 0; container && depth < 7; depth += 1, container = container.parentElement) {
+        const useButton = findExactTextElements(USE_EASYSTORE_DESCRIPTION_LABELS, container)
+          .map(clickableForExactText)
+          .find(isEnabledClickTarget) || null;
+        const toggles = advancedDescriptionToggleCandidates(container);
+        if (useButton || toggles.length === 1) {
+          return { label, container, toggle: toggles.length === 1 ? toggles[0] : null, useButton };
+        }
+        if (toggles.length > 1) break;
+      }
+    }
+    return null;
+  }
+
+  async function waitForAdvancedDescriptionSection(timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const section = advancedDescriptionSection();
+      if (section) return section;
+      await sleep(120);
+    }
+    return advancedDescriptionSection();
+  }
+
+  async function waitForAdvancedDescriptionButton(timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const section = advancedDescriptionSection();
+      if (section && section.useButton) return section;
+      await sleep(120);
+    }
+    return advancedDescriptionSection();
+  }
+
+  function cleanErrorText(value) {
+    return String(value == null ? "" : value).replace(/[\s\u00a0]+/g, " ").trim().slice(0, 180);
+  }
+
+  async function fillAdvancedDescription(payload, report) {
+    const plan = payload && payload.advancedDescription;
+    if (!plan || plan.mode !== "use-easystore-rich-description") {
+      addReport(report, "missing", "進階商品描述", "進站前沒有準備完整的 EasyStore 圖文介紹");
+      return;
+    }
+    let section = await waitForAdvancedDescriptionSection(4200);
+    if (!section) {
+      addReport(report, "skipped", "進階商品描述", "此帳號頁面未提供此功能，保留 EasyStore 同步的純文字描述");
+      return;
+    }
+    if (section.toggle && !toggleState(section.toggle)) {
+      section.toggle.click();
+      const started = Date.now();
+      let enabled = false;
+      while (!enabled && Date.now() - started < 3000) {
+        await sleep(120);
+        section = advancedDescriptionSection() || section;
+        enabled = !section.toggle || toggleState(section.toggle);
+      }
+      if (!enabled) {
+        addReport(report, "missing", "進階商品描述", "找到功能但無法開啟");
+        return;
+      }
+    }
+    if (!section.useButton) {
+      const expand = clickableForExactText(section.label);
+      if (expand && isEnabledClickTarget(expand)) expand.click();
+      section = await waitForAdvancedDescriptionButton(3000) || section;
+    }
+    if (!section.useButton) {
+      addReport(report, "missing", "進階商品描述", "功能已出現，但找不到「使用 EasyStore 的產品描述」");
+      return;
+    }
+    section.useButton.click();
+    await sleep(900);
+    const errorText = String(section.container && section.container.innerText || "").match(
+      /(?:圖片|描述).{0,24}(?:失敗|錯誤|無法)|(?:failed|error).{0,24}(?:image|description)/i
+    );
+    if (errorText) {
+      addReport(report, "missing", "進階商品描述", cleanErrorText(errorText[0]));
+      return;
+    }
+    addReport(
+      report,
+      "filled",
+      "進階商品描述",
+      `已開啟並套用事先準備的 EasyStore 圖文介紹（${plan.expectedImageCount} 張介紹圖片）`
+    );
   }
 
   async function fillBrand(payload, report) {
@@ -1974,6 +2091,12 @@
     if (!categoryIdentity.ok) {
       throw new Error(categoryIdentity.message);
     }
+    const advancedDescriptionMissingBefore = report.missing.length;
+    await fillAdvancedDescription(payload, report);
+    if (report.missing.length > advancedDescriptionMissingBefore) {
+      report.blockedStage = "advancedDescription";
+      return report;
+    }
     await withFieldLabelIndex([FIELD_LABELS.brand], () => fillBrand(payload, report));
     const brandProblem = report.missing.find((item) => /^品牌(?:：|$)/.test(item));
     if (brandProblem) {
@@ -2275,6 +2398,7 @@
     container.appendChild(list);
     const stageNotices = {
       category: "分類尚未完成，因此助手已停在第一階段，沒有搜尋或修改後面的品牌、屬性、物流與預購。",
+      advancedDescription: "進階商品描述已在進站前準備完成，但頁面無法套用，因此助手沒有繼續發布。",
       brand: "品牌是必填欄位；品牌尚未完成，因此助手已停在第二階段，沒有搜尋或修改後面的屬性、物流與預購。",
       attributes: "商品屬性尚未完成，因此助手已停在第三階段，沒有修改後面的物流與預購。",
       logistics: "物流是必填階段；指定物流尚未完成，因此助手已停在第四階段，沒有進入預購與最後發布。",
@@ -2345,6 +2469,7 @@
           start.disabled = false;
           start.textContent = ({
             category: "重新嘗試選擇分類",
+            advancedDescription: "重新套用進階商品描述",
             brand: "重新嘗試選擇品牌",
             attributes: "重新嘗試填寫屬性",
             logistics: "重新嘗試設定物流",
