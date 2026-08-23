@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 20;
+const LISTING_AUTOMATION_POLICY_VERSION = 21;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -93,6 +93,50 @@ function shopeeAdvancedDescriptionPlan(snapshot) {
     contentFingerprint: crypto.createHash('sha256').update(clean(snapshot && snapshot.bodyHtml)).digest('hex'),
     imageUrls,
     expectedImageCount: imageUrls.length
+  };
+}
+
+function platformDescriptionContentPlan(snapshot) {
+  const preparedImageUrls = normalizeUrls([
+    ...(Array.isArray(snapshot && snapshot.descriptionImageUrls) ? snapshot.descriptionImageUrls : []),
+    ...DESCRIPTION_PROMO_IMAGE_URLS
+  ], 20);
+  return {
+    canonicalSource: 'single-verified-product-description',
+    preparedBeforePlatformNavigation: true,
+    neverRewriteInsidePlatform: true,
+    easyStore: {
+      mode: 'safe-html',
+      html: clean(snapshot && snapshot.bodyHtml),
+      imageUrls: preparedImageUrls,
+      supportsHeadingsParagraphsListsAndImages: true
+    },
+    coupang: {
+      mode: 'safe-html-product-detail',
+      html: clean(snapshot && snapshot.coupangDescriptionHtml),
+      imageUrls: preparedImageUrls,
+      supportsHeadingsParagraphsListsAndImages: true,
+      excludeSellerContactAndUnrelatedPromotionContent: true
+    },
+    momo: {
+      mode: 'momo-rich-description-blocks',
+      preparedHtmlForBlockConversion: clean(snapshot && snapshot.momoHtml),
+      imageUrls: preparedImageUrls,
+      arbitraryRawHtmlPasteIsNotAssumed: true,
+      composeWithNativeTextAndImageBlocks: true,
+      imageMaximum: 20,
+      imageWidthPx: 1000,
+      imageHeightMaximumPx: 1500,
+      imageFileMaximumBytes: 500000,
+      externalEmbedPolicy: 'https-and-iframe-supported-only'
+    },
+    shopee: {
+      mode: 'advanced-rich-description',
+      importFromEasyStore: true,
+      imageUrls: preparedImageUrls,
+      rawHtmlPasteForbidden: true,
+      verifyTextAndEveryPreparedImageBeforePublish: true
+    }
   };
 }
 
@@ -216,6 +260,11 @@ function listingAutomationPolicy() {
       shopeeAdvancedDescriptionMustVerifyTextAndEveryPreparedImageBeforePublish: true,
       shopeeAdvancedDescriptionMissingImagesMustBeInsertedIntoSameEditor: true,
       shopeeAdvancedDescriptionMayNotReportSuccessFromButtonClickAlone: true,
+      prepareOneCanonicalDescriptionAndFourPlatformDeliveryProfiles: true,
+      easyStoreAndCoupangUseSafeHtmlWithPreparedImages: true,
+      momoUsesNativeRichDescriptionBlocksInsteadOfAssumingArbitraryRawHtml: true,
+      momoRichDescriptionSupportsPreparedTextAndUpToTwentyImages: true,
+      shopeeUsesAdvancedRichDescriptionRatherThanRawHtml: true,
       order: [...PLATFORM_EXECUTION_ORDER],
       mode: 'staggered-parallel',
       parallelRoots: [...PARALLEL_ROOT_PLATFORMS],
@@ -1526,7 +1575,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     ? `${normalizeSku(snapshot.sku) || 'product'}-momo-promo-${momoPromotionFingerprint}.jpg` : '';
   const momoMediaReadyBeforeFirstSubmit = Boolean(momoMainImageUrl && momoPromotionImageUrl);
   return {
-    version: 11,
+    version: 12,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1581,6 +1630,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         title: snapshot.momoGoodsName,
         slogan: snapshot.momoSlogan,
         descriptionHtml: snapshot.momoHtml,
+        descriptionDelivery: { ...(snapshot.platformDescriptionContentPlan && snapshot.platformDescriptionContentPlan.momo || {}) },
         price: snapshot.momoPrice,
         stock: snapshot.stock,
         categoryCode: snapshot.momoCategoryCode,
@@ -1629,6 +1679,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         sku: snapshot.sku,
         title: snapshot.coupangTitle,
         descriptionHtml: snapshot.coupangDescriptionHtml,
+        descriptionDelivery: { ...(snapshot.platformDescriptionContentPlan && snapshot.platformDescriptionContentPlan.coupang || {}) },
         price: snapshot.coupangPrice,
         stock: snapshot.stock,
         categoryCode: snapshot.coupangCategoryCode,
@@ -1675,6 +1726,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         sku: snapshot.sku,
         title: snapshot.title,
         descriptionHtml: snapshot.bodyHtml,
+        descriptionDelivery: { ...(snapshot.platformDescriptionContentPlan && snapshot.platformDescriptionContentPlan.easyStore || {}) },
         price: snapshot.easyStorePrice,
         stock: snapshot.stock,
         imageUrls: snapshot.platformImagePlan.easyStore.imageUrls,
@@ -1714,6 +1766,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         title: snapshot.shopeeTitle,
         description: snapshot.shopeeDescription,
         advancedDescription: { ...(snapshot.shopeeAdvancedDescription || {}) },
+        descriptionDelivery: { ...(snapshot.platformDescriptionContentPlan && snapshot.platformDescriptionContentPlan.shopee || {}) },
         price: snapshot.easyStorePrice,
         stock: snapshot.stock,
         categoryPath: snapshot.shopeeCategoryPath,
@@ -2022,6 +2075,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     enabledCoupang: true
   };
   snapshot.shopeeAdvancedDescription = shopeeAdvancedDescriptionPlan(snapshot);
+  snapshot.platformDescriptionContentPlan = platformDescriptionContentPlan(snapshot);
   snapshot.category = clean(listingCase.category || product.category);
   snapshot.shopeeCategoryPath = shopeeTaxonomy.formatCategoryPath(snapshot.shopeeCategoryPath, snapshot);
   snapshot.shopeeAttributeValues = applyShopeeAttributeTemplate(

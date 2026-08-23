@@ -33,7 +33,8 @@
 14. 中央商品 `imageUrl` 與細項代表圖只使用對應來源的 `cleanMain`；EasyStore／蝦皮使用的 `brandedHero` 平台首圖只能另存為平台圖庫資料，不得覆寫中央辨識主圖。先寫入新完成圖引用、重新讀取資料庫，再確認中央、所有細項與四平台引用都已全面換新；中央或任一細項的任何圖片欄位只要仍等於任一凍結來源 URL，就不得把 cleanup 推進為 `required`。四平台回條都要同時提供 `appliedImageUrls`（實際套用且只能來自該平台最終完成圖計畫）及 `officialImageUrls`（正式頁完整圖片 URL，可為平台 CDN，但不得為來源圖），並設定 `imageEvidenceComplete=true`；缺少任一組證據時不得標記該站 verified 或整筆 completed。全部核對成功後，該上架 job 才把 cleanup 狀態推進為 `required`，由受控清理 worker 移除來源 binary 與可見簡體原圖。永久只保留來源 URL／hash、順序、角色與輸出譜系 metadata。前端交接本身不可在引用核對前提前刪檔。
 
 15. 蝦皮「使用 EasyStore 的產品描述」按鈕被按下不算完成。助手必須在同一頁核對進階商品描述編輯器同時含文字與 `preparedSnapshot` 中的全部介紹圖片；如果 EasyStore 只帶入文字，直接把缺少的繁體完成圖補進同一個編輯器並重新核對一次。仍缺圖片就停止蝦皮發布並保留同一草稿，不能發布純文字版本，也不能回營運中心重做圖片或文案。單一商品、同款多細項與加入既有細項都套用同一規則。
-16. 清理 worker 只接受後端 service account／system 寫入的 `required` 事件，並只可操作 Firebase 預設 bucket 中該案件自己的 `ops-product-listing-cases/{productId}/references/` 前綴。刪除前須保存 object path、generation、hash、大小與 content type 等 lineage metadata，並使用 generation precondition。外部 URL、其他案件、`completed/`、`generated/` 或任何無法安全判定的路徑都不得刪除；安全條件不符時標記 `blocked`。Storage 暫時錯誤時維持 `cleanupStatus=required`、記錄 `cleanupRuntimeStatus=failed-retryable`，由同一事件自動重試；只有重新列出來源前綴確認為空後才可標記 `completed`。
+16. 商品介紹只整理一次，再於進入平台前產生四個固定交付格式：EasyStore 與酷澎使用只含安全標題、段落、清單及繁體完成圖的 HTML；蝦皮使用進階圖文描述並核對文字與全部預期圖片；MOMO 不假設可直接貼任意 HTML 原碼，而是把相同內容轉成「商品特色（專推）」原生文字與圖片區塊。MOMO 圖文區最多使用 20 張完成圖，每張寬 1000px、高 1500px 以下且不超過 500KB；外部內容只允許 HTTPS 且平台支援 iframe 的嵌入網址。單一商品、同款多細項及加入既有細項都使用同一份內容計畫，不得進平台後重新寫文案或漏掉圖片。
+17. 清理 worker 只接受後端 service account／system 寫入的 `required` 事件，並只可操作 Firebase 預設 bucket 中該案件自己的 `ops-product-listing-cases/{productId}/references/` 前綴。刪除前須保存 object path、generation、hash、大小與 content type 等 lineage metadata，並使用 generation precondition。外部 URL、其他案件、`completed/`、`generated/` 或任何無法安全判定的路徑都不得刪除；安全條件不符時標記 `blocked`。Storage 暫時錯誤時維持 `cleanupStatus=required`、記錄 `cleanupRuntimeStatus=failed-retryable`，由同一事件自動重試；只有重新列出來源前綴確認為空後才可標記 `completed`。
 
 ## 共通商品資料
 

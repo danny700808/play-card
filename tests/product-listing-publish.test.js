@@ -142,7 +142,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 20);
+  assert.equal(snapshot.automationPolicy.version, 21);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -178,8 +178,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 11);
-  assert.equal(snapshot.automationPolicy.version, 20);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 12);
+  assert.equal(snapshot.automationPolicy.version, 21);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -1685,6 +1685,32 @@ test('同款兩個細項只建立一筆主商品，並保留各自 SKU、名稱�
   const policy = helpers.buildPlatformQueuePolicy({}, 'MOMO', snapshot);
   assert.equal(policy.mode, 'create-new-variant-group');
   assert.deepEqual(policy.skus, ['GROUP-1', 'GROUP-2']);
+});
+
+test('one verified description is prepared once for EasyStore, Coupang, MOMO and Shopee delivery modes', () => {
+  const snapshot = helpers.buildListingSnapshot('p-content', {
+    internalSku: 'CONTENT-1', internalName: '內容測試', currentStock: 1,
+    sharedOnlinePrice: 500
+  }, {
+    productSku: 'CONTENT-1', productName: '內容測試',
+    productDescription: '商品特色\n1. 清楚特色\n\n使用方式\n1. 正常使用\n\n商品規格\n材質：木製'
+  });
+  const plan = snapshot.platformDescriptionContentPlan;
+  assert.equal(plan.preparedBeforePlatformNavigation, true);
+  assert.equal(plan.easyStore.mode, 'safe-html');
+  assert.equal(plan.coupang.mode, 'safe-html-product-detail');
+  assert.equal(plan.momo.mode, 'momo-rich-description-blocks');
+  assert.equal(plan.momo.arbitraryRawHtmlPasteIsNotAssumed, true);
+  assert.equal(plan.momo.imageMaximum, 20);
+  assert.equal(plan.momo.imageWidthPx, 1000);
+  assert.equal(plan.momo.imageHeightMaximumPx, 1500);
+  assert.equal(plan.momo.imageFileMaximumBytes, 500000);
+  assert.equal(plan.shopee.mode, 'advanced-rich-description');
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 12);
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.descriptionDelivery.mode, 'momo-rich-description-blocks');
+  assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.descriptionDelivery.mode, 'safe-html-product-detail');
+  assert.equal(snapshot.preparedPlatformFieldPlan.easyStore.preparedFields.descriptionDelivery.mode, 'safe-html');
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.descriptionDelivery.mode, 'advanced-rich-description');
 });
 
 test('同款兩個細項與單一商品共用 MOMO 首次送出媒體關卡，專推圖只建立一次', () => {
