@@ -2130,21 +2130,18 @@ function renderOverviewV7(){
     if(!jobId)return {skipped:true};
     const jobSnap=await state.db.collection(COLLECTIONS.syncJobs).doc(jobId).get();
     if(!jobSnap.exists)return {skipped:true};
-    const job=jobSnap.data()||{},snapshot=job.preparedSnapshot&&typeof job.preparedSnapshot==='object'?job.preparedSnapshot:{},plan=snapshot.platformImagePlan&&snapshot.platformImagePlan.shopee||{};
+    const job=jobSnap.data()||{},snapshot=job.preparedSnapshot&&typeof job.preparedSnapshot==='object'?job.preparedSnapshot:{};
     if(clean(job.workflowVersion)!==PRODUCT_LISTING_WORKFLOW_VERSION)throw new Error('這筆工作不是目前固定版 v2 四通路流程，不能沿用舊工作。');
     const stages=job.stages&&typeof job.stages==='object'?job.stages:{},easyStoreStage=stages.easyStore&&typeof stages.easyStore==='object'?stages.easyStore:{},shopeeStage=stages.shopee&&typeof stages.shopee==='object'?stages.shopee:{};
     if(clean(easyStoreStage.status)!=='verified'||clean(shopeeStage.status)==='verified')return {skipped:true,currentStage:clean(job.currentStage)};
-    const appliedImageUrls=normalizeProductResearchSourceUrls(plan.imageUrls).slice(0,PRODUCT_GROUP_LISTING_IMAGE_MAX),officialImageUrls=normalizeProductResearchSourceUrls((product.imageUrls||[]).concat(product.imageUrl?[product.imageUrl]:[])).slice(0,PRODUCT_GROUP_LISTING_IMAGE_MAX);
-    if(!appliedImageUrls.length||!officialImageUrls.length)throw new Error('蝦皮正式圖片核對資料不足，已停止完成四通路工作。');
     await requireEasyStoreManagerAuth();
     const callable=global.firebase.app().functions('us-central1').httpsCallable('verifyProductListingStage',{timeout:3*60*1000}),response=await callable({
       jobId:jobId,
       stage:'shopee',
       verification:{
         listingId:clean(shopee.listingId),sku:clean(snapshot.sku||product.sku),price:Number(snapshot.easyStorePrice),stock:Number(snapshot.stock),status:'published',
-        variants:snapshot.variantGroupEnabled?(snapshot.variantGroupVariants||[]).map(function(row){return {sku:clean(row&&row.sku),value:clean(row&&row.attributeValue),price:Number(row&&row.easyStorePrice),stock:Number(row&&row.stock),imageUrl:clean(row&&row.imageUrl)};}):undefined,
-        platformListMatched:true,officialCatalogMatched:true,imageEvidenceComplete:true,
-        appliedImageUrls:appliedImageUrls,officialImageUrls:officialImageUrls
+        variants:snapshot.variantGroupEnabled?(snapshot.variantGroupVariants||[]).map(function(row){return {sku:clean(row&&row.sku),value:clean(row&&row.attributeValue),price:Number(row&&row.easyStorePrice)};}):undefined,
+        platformListMatched:true,officialCatalogMatched:false
       }
     });
     return response&&response.data||{};
@@ -4720,6 +4717,18 @@ function ensureSalesClock(){
       platformImagePlan:platformImagePlan,canonicalCategoryDecision:canonicalCategoryDecision,decisionContract:productListingDecisionContract(canonicalCategoryDecision),
       executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,processIsFixedProductDataMayVary:true,prepareOnce:true,singleHandoffAuthorization:true,finalSubmissionAuthorizedByHandoff:true,routineSecondConfirmationForbidden:true,continueAutomaticallyAfterEachVerifiedStage:true,prepareCompleteFieldPlanBeforeFirstPlatform:true,preparedFieldPlanIsImmutableForWholeJob:true,requireStructuredVerifiedDescriptionBeforePreparedSnapshot:true,genericFallbackDescriptionIsIncomplete:true,writeVerifiedDescriptionBackToEveryGroupedCase:true,reuseKnownRoutesAndFieldLocations:true,persistStableSelectorsAndFieldSemantics:true,applyFixedFieldsWithoutWholePageRescan:true,fillStableControlsInSingleSectionPass:true,validateSectionOnceAfterBatch:true,dynamicControlsSequentialWithinSection:true,inspectOnlyDynamicCategoryAttributesAndErrors:true,rescanCurrentSectionOnlyWhenLayoutSignatureChanges:true,fallbackToSectionRescanWithoutRestartingJob:true,skipPreSubmitCatalogSearchWhenNoPlatformId:true,backendFirst:true,desktopControlFallbackOnly:true,browserWorkspace:'codex-in-app-browser-only',neverUsePrimaryChrome:true,reuseAuthenticatedPlatformTabs:true,batchSessionPreflightBeforeFirstProduct:true,requireAllPlatformSessionsOperableBeforeBatchStart:true,lightweightSessionProbeBeforeEveryProductAndStage:true,autoRecoverSavedCredentialSessions:true,neverAskUserForRecoverableSessionRestart:true,keepMomoOtpAnchorTab:true,retrySameUrlInFreshInAppWorkTabWhenClaimedTabInputFails:true,allowSavedCredentialLoginRetry:true,stopForInteractiveAuthenticationOnly:true,newCaseBoundaryResetRequired:true,discardPreviousCaseUiState:true,openCanonicalPlatformEntryBeforeNewCase:true,bindNavigationToCurrentCaseSku:true,doNotResetSameSkuRetryDraft:true,croppedTextMustBeReflowedReplacedOrRemoved:true,neverReturnToResearchAfterPlatformStart:true,retrySameSkuDraftAndStage:true,verifyOnceAfterEachSubmit:true,verifyExactSkuOnlyWhenOutcomeUnknown:true,neverSearchWholePlatformCatalog:true,neverCreateReplacementOnRetry:true,shopeeWorkspace:'easystore-shopee-channel-sync-only',shopeeLargeItemHctOnly:true,easyStoreImageUrlUploadFallback:true,fixedWarrantyDays:180,momoThirdPartyLocationCode:'000001',momoThirdPartyLocationRequired:true,momoMainAdAndPromotionImagesAreSeparate:true,momoPromotionRequiredBeforeFirstSubmit:true,momoPromotionImage:'clean-product-output-position-2-or-3-no-logo-contact-qr',momoPromotionPersistenceEvidence:'contenteditable-html-img-src-after-save-reopen',momoThirdPartyPersistenceEvidence:'000001-visible-after-save-reopen',sourceBinaryCleanupRequired:true,cleanupOnlyAfterAllCentralVariantPlatformReferencesVerified:true,cleanupWorkerRequired:true,retainSourceMetadataHashAndLineage:true}
     };
+    snapshot.executionPolicy.validateSectionOnceAfterBatch=false;
+    snapshot.executionPolicy.validateStableSectionAfterBatch=false;
+    snapshot.executionPolicy.validateDynamicSectionOnceAfterBatch=true;
+    snapshot.executionPolicy.fastEssentialVerification=true;
+    snapshot.executionPolicy.requiredFinalChecks=['listing-id','exact-sku','price','status','one-official-list-match'];
+    snapshot.executionPolicy.skippedFinalChecks=['stock','duplicate-catalog-check','post-submit-image-url-list','reopen-saved-draft'];
+    snapshot.executionPolicy.momoPromotionPersistenceEvidence='visible-in-editor-and-save-confirmed-before-submit';
+    snapshot.executionPolicy.momoThirdPartyPersistenceEvidence='000001-visible-before-submit';
+    snapshot.executionPolicy.sourceBinaryCleanupRequired=false;
+    snapshot.executionPolicy.cleanupOnlyAfterAllCentralVariantPlatformReferencesVerified=false;
+    snapshot.executionPolicy.cleanupWorkerRequired=false;
+    snapshot.executionPolicy.retainSourceBinaries=true;
     return immutableProductListingSnapshot(snapshot);
   }
   function requireProductListingCodexHandoffMedia(snapshot){
@@ -4749,12 +4758,12 @@ function ensureSalesClock(){
       '每個案件最多 20 張 selectedReferenceImageUrls；每一張來源只做一輪完整檢查與台灣繁體化，同輪完成簡轉繁、大陸用語改成台灣常用說法、錯字／亂碼、被切半的文字或殘缺裝飾的移除或重排及必要版面調整。generatedListingImages 的每一個完成輸出都必須保留 sourceImageUrl、roles 與 assetFlags（至少明列 containsLogo、containsText、containsContactInfo、containsQrCode、greenBrandTemplate、momoPromotionEligible）；同一 sourceImageUrl 可以有多個完成輸出，不得用 Map(source→單一 url) 覆蓋；(sourceImageUrl, role) 必須唯一，而且同一完成圖 URL 不得同時兼任互斥的 cleanMain、storefrontPortrait 與 brandedHero。roles 只准使用 cleanMain、storefrontPortrait、brandedHero、localizedDetail、specification、variantRepresentative；整組至少各有一個獨立 cleanMain、storefrontPortrait 與 brandedHero。',
       '同一輪圖片處理固定產生三個首圖版型，不得進平台後才重新裁切或設計：EasyStore storefrontPortrait 為 750×1000 px、3:4；蝦皮 brandedHero 為 1000×1000 px、1:1；MOMO／酷澎 cleanMain 為 1000×1000 px、1:1。全部使用 sRGB、優先 JPEG、每張不超過 1,000,000 bytes。來源截圖在分析前先建立標準化工作副本：長邊以 1600～2000 px 為宜、目標 1800 px，超過 2400 px 才縮小，較小來源不放大，並保留 sourceImageUrl 與雜湊譜系。只有平台明確拒絕並回傳可識別的圖片規格錯誤時，才可從同一完成圖產生相容輸出，並把新規格回寫固定規則。',
       'cleanMain 是無品牌框、無 Logo、無地址／電話／QR Code、可辨識真實商品的乾淨完成圖，而且不得含任何文字。storefrontPortrait 使用 3:4「柚子樂器淺色商業展示版」：頂端薄荷綠品牌區必須直接沿用原始模板固定幾何，完整保留「有音樂的生活更有風格」標語與右上標誌原本的高度、寬度及位置，禁止壓窄、拉伸、裁切或重新排版；只有下方商品展示區可依商品調整。淺色內容底板四周保留細綠邊，移除左下寶寶及 PIC COLLAGE；用清楚商業層級呈現 3～5 個已查證賣點，最多 2 個有來源依據的輔助視覺。brandedHero 使用相同固定品牌頁首與品牌語言的 1:1 方形版，商品去背後約占 55～65%，只放 1～3 個已查證短賣點。三者都不得加入價格、聯絡資訊、浮水印或虛構功能／配件；不得含殘缺文字。',
-      '中央商品 imageUrl 與細項代表圖只能取對應來源的 cleanMain（variantRepresentative 也必須是同一來源的乾淨完成圖）；EasyStore 的 storefrontPortrait 與蝦皮的 brandedHero 只能另存平台圖庫，不得覆寫中央辨識主圖。先寫入新完成圖引用並重讀資料庫，再核對中央、所有細項與四平台已全面換成完成圖；中央或任一細項圖片欄位只要仍等於任一凍結來源 URL 就停止。四平台回條都必須提供 imageEvidenceComplete=true、appliedImageUrls（只含該平台最終完成圖計畫的實際套用 URL）與 officialImageUrls（正式頁完整圖片 URL，可為平台 CDN，但不得含凍結來源）；缺少任一組證據時不得 verified／completed。全部核對成功後，這一筆 job 才把 sourceImageRetention.cleanupStatus 推進到 required，交由受控 cleanup worker 清除來源 binary 與可見簡體原圖；永久只保留來源 URL／hash、順序、角色與輸出譜系 metadata。本次前端交接不得在引用核對前自行刪檔。',
+      '中央商品 imageUrl 與細項代表圖只能取對應來源的 cleanMain（variantRepresentative 也必須是同一來源的乾淨完成圖）；EasyStore 的 storefrontPortrait 與蝦皮的 brandedHero 只能另存平台圖庫，不得覆寫中央辨識主圖。圖片角色、來源譜系與平台圖片計畫只在進站前完整驗證一次；送出後不再逐張蒐集平台 CDN 網址或重比整個圖庫。只有平台明確回報圖片錯誤、首圖缺失或仍顯示來源原圖時，才針對該平台圖片區重新檢查。',
       '[共用圖片池與平台角色]',
       '全部編號的完成輸出公平合併為同一個共用池，整組最多 12 個不同完成圖 URL，不是每個編號各 12 張。上架圖片預覽的勾選範圍是唯一允許上架的圖片範圍；未勾選的來源與完成圖不得加入任何平台圖庫。在勾選範圍內先保留至少一張 cleanMain、一張 storefrontPortrait 與一張 brandedHero，再依各細項公平補足。介面第一次會自動勾選最多 12 張且至少保留 1 張；保存原圖時先依 sourceImageUrl 找到完成輸出，保存完成圖 URL 時可直接使用。不得使用簡體原圖。',
       'EasyStore 首圖必須是 storefrontPortrait；蝦皮首圖必須是 brandedHero；酷澎與 MOMO 首圖必須是 cleanMain。storefrontPortrait 不得送到 MOMO 或酷澎；brandedHero 只能在 MOMO／酷澎第 2 張以後且不得含地址、電話或 QR Code。若平台明確回傳整個圖庫禁止 Logo／文字，才移除該平台的 brandedHero 次圖。找不到各平台規定首圖時停止該平台，不得拿另一角色、店面宣傳圖或舊圖補位。',
-      'MOMO 第 2 或第 3 張必須先保留專推圖，整個 MOMO 圖庫最多再放一張安全的 brandedHero 次圖。專推圖只可從 MOMO 完成圖順序第 2 或第 3 張中選 roles 包含 cleanMain、localizedDetail 或 specification，且 assetFlags.momoPromotionEligible=true 的乾淨商品完成輸出；必須確認 containsLogo、containsText、containsContactInfo、containsQrCode、greenBrandTemplate 全為 false。素材銀行插入並儲存後，重開同一草稿確認仍存在才可發布。',
-      'MOMO 的商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置；主圖或廣告用圖已出現，不能推定專推圖已完成。第一次送出前必須在商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」→以完成圖檔名精確搜尋→選取並確認，暫存後以目前 contenteditable HTML 的 img src 證明仍存在，並同時確認甲指第三方 000001；不得等平台第一次拒絕後才補專推圖或出貨地。MOMO 商店分類最多 5 個，只保留與本商品直接相關的分類，送出前先驗證數量。',
+      'MOMO 第 2 或第 3 張必須先保留專推圖，整個 MOMO 圖庫最多再放一張安全的 brandedHero 次圖。專推圖只可從 MOMO 完成圖順序第 2 或第 3 張中選 roles 包含 cleanMain、localizedDetail 或 specification，且 assetFlags.momoPromotionEligible=true 的乾淨商品完成輸出；必須確認 containsLogo、containsText、containsContactInfo、containsQrCode、greenBrandTemplate 全為 false。素材銀行插入後確認編輯器已顯示並完成儲存即可繼續，不再例行重開草稿。',
+      'MOMO 的商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置；主圖或廣告用圖已出現，不能推定專推圖已完成。第一次送出前必須在商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」→以完成圖檔名精確搜尋→選取並確認；只確認編輯器畫面已顯示專推圖且儲存成功，不讀取或比對 contenteditable HTML／img src，也不重開草稿，並同時確認甲指第三方 000001。MOMO 商店分類最多 5 個，只保留與本商品直接相關的分類，送出前先驗證數量。',
       '[商品內容]',
       '商品標題依「品牌＋型號＋商品種類＋重要規格或材質」組成；可靠的品牌與型號優先，共同標題只寫共同事實，差異寫細項名稱；有空間才在尾端加「柚子樂器」。每個案件的 productDescriptionStatus 不是 ready，或 productDescription 只有通用提醒、商品編號、免責文字時，一律視為內容尚未完成；Codex 必須先用案件文字、全部完成圖與可驗證規格整理並寫回每一份案件，後端重讀確認後才可建立 preparedSnapshot。正式介紹依序包含「商品特色」「使用方式／適用情境」「商品規格」三段：先列最多 10 點不重複具體特色，再依資料充足度整理使用方式，最後獨立列出尺寸、材質、段數、重量、內容物與細項差異；可驗證資料不足就少寫，不得猜測、湊數或用通用備援文案代替。保固只填平台保固欄，不寫進介紹。EasyStore、蝦皮、MOMO、酷澎全部沿用同一份已完成介紹並轉成各平台格式；每平台介紹最後固定加入「商品圖片與規格僅供參考，實際內容以收到的實體商品為準。」',
       '[固定發布與核對]',
@@ -4765,13 +4774,13 @@ function ensureSalesClock(){
       '按下「帶入這個 Codex 對話」已同時授權四通路的建立、修改與最後正式發布。分類、物流、保固、細項及平台送出都應依 preparedSnapshot 自動完成；營運中心與工作佇列不得再產生「確認正式發布四通路／確認上架／確認提交／套用細項」等第二次例行確認。各站獨立核對，四站全部 verified 才完成整筆工作。',
       '速度規則：進入第一個平台前先產生四站完整欄位表，之後沿用已知網址、頁面區段與欄位位置，不得每站重新掃描整頁或重新思考固定欄位。半年保固、立即上架、MOMO 第三方 000001 與最後送出直接套用；只有商品分類、分類產生的必填屬性、依材積決定的超商選項及平台實際錯誤需要動態判斷。若頁面版型簽章改變，只重新辨識目前區段，不回頭重做前站。',
       '交錯並行規則：MOMO、酷澎、EasyStore 是三個獨立根節點，資料預檢完成後一起啟動；蝦皮只依賴 EasyStore，而且 EasyStore 一經正式核對 verified，就在同一 EasyStore 分支立刻進入官方蝦皮同步／編輯頁，不得等待 MOMO 或酷澎完成。瀏覽器的導航、點擊、輸入、檔案選擇、選圖與最後送出必須共用單一操作鎖，同一時間只操作一個頁面；某平台進入導航等待、圖片上傳、平台處理或審核等待後，立即釋放操作鎖去處理另一平台，不得等待完一整站才開始下一站，也不得三頁同時輸入而搶焦點。',
-      '四平台都必須依 preparedPlatformFieldPlan 的 batchSections 整區批次填寫：每區只辨識一次欄位位置，文字、數字、原生選單及固定開關同批帶入，圖片同批上傳，整區只驗證一次；只有分類連動、分類衍生屬性、特殊彈出選單及平台錯誤在該區內依序處理。頁面簽章未變不得逐欄重掃或重做已完成區段。',
+      '四平台都必須依 preparedPlatformFieldPlan 的 batchSections 整區批次填寫：每區只辨識一次欄位位置，文字、數字、原生選單及固定開關同批帶入，圖片同批上傳。固定欄位寫入後不逐欄回讀；只有分類連動、分類衍生屬性、特殊彈出選單與平台實際錯誤才做區段檢查。頁面簽章未變不得逐欄重掃、重驗或重做已完成區段。',
       'EasyStore 圖片優先使用既有上傳方式；若本機檔案選擇器未把檔案帶入，直接在同一商品頁改用 generatedListingImages 的公開完成圖網址批次加入，不得重做圖片。蝦皮大型商品只保留符合材積級距的新竹物流，關閉全家、7-ELEVEN、蝦皮店到店、店到家、嘉里、黑貓及賣家大型宅配；小型商品才依 preparedPlatformFieldPlan 開啟已核實選項。',
       '酷澎固定走已驗證的「以圖片建立」同一草稿：同款多細項必須在第一次產生前先上傳每一個細項各自的 cleanMain，再補繁體完成副圖；不得只上傳第一個細項的圖片。填好樂器葉分類及可驗證品牌後只按一次「產生商品資訊」。商品選項區必須以每一列為範圍，先寫入並確認唯一細項值，再批次填售價、庫存與賣家 SKU；不得用整頁動態 nth 順序跨列填寫。每列成為可銷售且完整 SKU 集合與 preparedPlatformFieldPlan 相同後，立即開啟自動儲存並儲存同一草稿，才可進入配送、人工繁體介紹與 TW_General 合規資料。細項欄位若呈唯讀或值無效，只能在尚未填寫細項商務、配送或介紹以前停在同一草稿；平台若自動複製前一列、把新細項改回舊值、產生重複唯讀值或失去列資料，同樣不得填商務欄位、不得建立替代商品，只可回同一草稿圖片步驟一次，補齊全部細項 cleanMain 後重新產生，並在選項值穩定後再填商務欄位。後續區段已填後禁止返回或重新產生，晚期錯誤只修正目前區段並保留已完成資料。最後按「建立產品」並以本案完整 SKU 集合在正式清單核對一次；不得整頁重跑、名稱廣搜或另建商品。審核中只記為已送審，不得誤報已上架。',
       '此入口只交接店家確認要新增的 SKU。中央商品沒有既有平台 ID 時，視為新商品直接依 preparedSnapshot 建立，不做上架前平台全站搜尋；已有平台 ID 時沿用該商品更新。只有送出逾時或結果不明時，才以同一 SKU 或平台正式品號精確查詢一次，不得用名稱廣搜。',
       '同款多細項案件以本次案件摘要列出的完整 SKU 集合為封閉身分；只能建立或更新包含這些 SKU 的同一商品。不得拿未列入本案的基礎編號、相似名稱、相同品牌或歷史商品替代，也不得把本案細項加入無關的既有商品。EasyStore 後台建立成功但仍顯示未發佈／草稿時不算完成；必須切成已發佈並完成最後上架，再到公開商品頁核對本組每一個 SKU 都存在，才可標記 EasyStore verified。',
-      '平台售價空白時沿用共同網路售價、網路售價或門市售價；分類限定在樂器／樂器配件。MOMO、酷澎、EasyStore 各自保存狀態並可交錯完成；EasyStore verified 後立刻解除蝦皮依賴並在同一分支續做，不等待 MOMO 或酷澎。全部沿用同一 jobId、最終 preparedSnapshot、preparedPlatformFieldPlan 與各平台 stage。重試不得重新讀取案件或重建快照。只有 job schema、目前 automationPolicy、執行圖、最終完成圖快照、穩定 fingerprint 與案件 handoff input snapshot 完全一致的未完成 v2 工作可復用；任何早期 v2 或舊資料不符都要拒絕。每站送出後只核對一次正式清單與正式商品資料，確認相同 SKU、價格、庫存、圖片角色及狀態；成功提示本身不算完成。單一根平台尚未完成不得阻擋其他根平台，只有蝦皮固定為 blocked-by-dependency，直到 EasyStore verified。',
-      'MOMO 專推圖固定走同一草稿的商品詳細介紹編輯器：按「上傳圖片」→「從素材銀行選擇」→需要時先上傳完成圖→以檔名精確搜尋→選取並確認。主圖或廣告圖不能當成專推圖證據。暫存後重開同一草稿時，不得依賴會變動的編輯器 element id；必須從目前 contenteditable 的 HTML 確認仍存在素材銀行圖片 img src，才可發布。發布後返回「上架」分頁，以 MOMO 品號或原廠編號精確核對一次。',
+      '平台售價空白時沿用共同網路售價、網路售價或門市售價；分類限定在樂器／樂器配件。MOMO、酷澎、EasyStore 各自保存狀態並可交錯完成；EasyStore verified 後立刻解除蝦皮依賴並在同一分支續做，不等待 MOMO 或酷澎。全部沿用同一 jobId、最終 preparedSnapshot、preparedPlatformFieldPlan 與各平台 stage。重試不得重新讀取案件或重建快照。每站送出後只做一次快速核對：平台商品編號、完全相同 SKU、售價、送出／審核狀態，以及任一正式清單已找到；不再核對庫存、不重複查兩種清單、不逐張蒐集平台圖片網址。同款多細項另外核對完整 SKU 集合與各細項售價。平台明確報錯時才檢查錯誤欄位。',
+      'MOMO 專推圖固定走同一草稿的商品詳細介紹編輯器：按「上傳圖片」→「從素材銀行選擇」→需要時先上傳完成圖→以檔名精確搜尋→選取並確認。主圖或廣告圖不能當成專推圖證據。確認目前編輯器已顯示專推圖並完成儲存後直接發布，不再例行重開草稿；只有 MOMO 回報專推圖缺失時才回到同一區段修正。發布後以 MOMO 品號或原廠編號精確核對一次。',
       'MOMO 若在資料、專推圖與 000001 出貨地均已保存後，最後送出明確回傳「此帳號無此功能權限」，應保留同一草稿並記錄為 account-permission-denied 永久阻擋；不得反覆送出、另建替代商品或回頭重做資料。',
       '蝦皮官方通路頁開始操作前先收合內嵌客服聊天，避免遮住欄位或誤攔按鍵。細項代表圖必須從該 EasyStore 商品已存在的繁體完成圖庫選取，依完成圖 URL／素材 ID 對應各細項；不得開啟 Windows 原生選檔視窗。所有細項圖片與由包裝重量換算的必填公克數完成後，才按「準備發布」與「上架」。',
       '禁止先全面瀏覽或搜尋任一平台商品清單。只有送出結果不明、回應逾時或精確狀態無法判定時，才以本案件完全相同 SKU 做一次精確查詢；不得用名稱廣搜、建立替代商品、切換蝦皮賣家中心或開第二條上架路徑。蝦皮只使用 EasyStore 官方蝦皮通路同步／編輯頁完成全部欄位與發布。',

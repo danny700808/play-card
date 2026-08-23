@@ -142,7 +142,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 16);
+  assert.equal(snapshot.automationPolicy.version, 17);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -154,10 +154,9 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.retry.retrySameSkuAndDraftOnly, true);
   assert.ok(snapshot.automationPolicy.retry.transientFailureSignatures.includes('image-fetch-failed'));
   assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, [
-    'platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status',
-    'applied-image-plan', 'official-image-list', 'no-frozen-source-image'
+    'listing-id', 'exact-sku', 'price', 'status', 'one-official-list-match'
   ]);
-  assert.equal(snapshot.automationPolicy.publishVerification.imageReceiptContract.officialImageUrlsMayUsePlatformCdn, true);
+  assert.equal(snapshot.automationPolicy.publishVerification.imageReceiptContract.postSubmitImageUrlCollectionRequired, false);
   assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.order, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.mode, 'staggered-parallel');
   assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.parallelRoots, ['momo', 'coupang', 'easyStore']);
@@ -180,12 +179,13 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.preparedPlatformFieldPlan.version, 8);
-  assert.equal(snapshot.automationPolicy.version, 16);
+  assert.equal(snapshot.automationPolicy.version, 17);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.mode, 'section-batch');
-  assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateSectionOnceAfterBatch, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateStableSectionAfterBatch, false);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateDynamicSectionOnceAfterBatch, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.batchFieldExecution.stableNativeControlsSinglePass, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.batchSections.length, 5);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.batchSections.length, 5);
@@ -228,9 +228,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverRetryPermissionDeniedWithReplacementDraft, true);
   assert.deepEqual(snapshot.automationPolicy.momoSpecialPromotionImage.preferredProductImagePositions, [2, 3]);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.materialBankInsertRequired, true);
-  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.saveReopenAndVerifyImageRequired, true);
-  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.persistedImageEvidence, 'contenteditable-html-img-src');
-  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.editorElementIdMayChangeAfterReopen, true);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.saveReopenAndVerifyImageRequired, false);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.visibleInsertionAndSaveConfirmationRequired, true);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.insertionTarget, 'rich-description-editor');
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.mainOrAdvertisementImageIsNeverPromotionEvidence, true);
   assert.equal(snapshot.automationPolicy.momoStoreCategories.maximumCount, 5);
@@ -372,7 +371,7 @@ test('正式發布先完成四通路預檢，再交錯啟動三個根平台且�
   assert.match(backend, /target\.applyProductListingQueueReceipt = onDocumentWritten/);
 });
 
-test('通路正式核對必須同時符合 SKU、價格、庫存、清單與正式商品資料', () => {
+test('通路快速核對只要求商品編號、SKU、價格、狀態與任一正式清單', () => {
   const sourceUrl = 'https://example.com/source.jpg';
   const completedUrl = 'https://example.com/completed.jpg';
   const snapshot = {
@@ -395,12 +394,11 @@ test('通路正式核對必須同時符合 SKU、價格、庫存、清單與正�
   });
   assert.equal(bad.verified, false);
   assert.ok(bad.reasons.includes('price-mismatch'));
-  assert.ok(bad.reasons.includes('official-catalog-not-matched'));
   assert.ok(bad.reasons.includes('applied-image-evidence-contains-frozen-source'));
   assert.ok(bad.reasons.includes('official-image-evidence-contains-frozen-source'));
 });
 
-test('正式圖片回條分開驗證 applied plan 與平台 CDN，缺證或任一組含來源圖都拒絕', () => {
+test('送出後不強制蒐集平台圖片網址，但若有回傳來源原圖仍拒絕', () => {
   const source = 'https://supplier.example.com/original.jpg';
   const completed = 'https://cdn.example.com/final.jpg';
   const snapshot = {
@@ -421,8 +419,20 @@ test('正式圖片回條分開驗證 applied plan 與平台 CDN，缺證或任�
   const missingOfficial = helpers.validatePlatformStageVerification('coupang', snapshot, {
     ...cdnReceipt, officialImageUrls: []
   });
-  assert.equal(missingOfficial.verified, false);
-  assert.ok(missingOfficial.reasons.includes('missing-or-invalid-official-image-evidence'));
+  assert.equal(missingOfficial.verified, true);
+
+  const officialOnly = helpers.validatePlatformStageVerification('coupang', snapshot, {
+    listingId: 'CP-EVIDENCE', sku: 'IMG-EVIDENCE', price: 900, status: 'published',
+    platformListMatched: false, officialCatalogMatched: true,
+    officialImageUrls: ['https://platform-cdn.example.com/resized/final-123.webp']
+  });
+  assert.equal(officialOnly.verified, true, officialOnly.reasons.join(','));
+
+  const noImageEvidence = helpers.validatePlatformStageVerification('coupang', snapshot, {
+    listingId: 'CP-EVIDENCE', sku: 'IMG-EVIDENCE', price: 900, status: 'published',
+    platformListMatched: true, officialCatalogMatched: false
+  });
+  assert.equal(noImageEvidence.verified, true);
 
   const sourceApplied = helpers.validatePlatformStageVerification('coupang', snapshot, {
     ...cdnReceipt, appliedImageUrls: [source]
@@ -533,8 +543,9 @@ test('MOMO、酷澎與 EasyStore 可獨立完成，蝦皮只依賴 EasyStore，�
   assert.equal(completion.status, 'completed');
   assert.equal(db.get(`opsSyncJobs/${jobId}`).currentStage, 'completed');
   assert.ok(db.get(`opsSyncJobs/${jobId}`).finishedAt);
-  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.cleanupStatus, 'required');
-  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.eligibleForDeletion, true);
+  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.cleanupStatus, 'retained');
+  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.sourceBinaryCleanupRequired, false);
+  assert.equal(db.get(`opsProductListingCases/${productId}`).sourceImageRetentionPolicy.eligibleForDeletion, false);
 });
 
 test('MOMO special promotion image uses product image two or three and never store promotion assets', () => {
@@ -571,7 +582,7 @@ test('MOMO stops before queueing when only the branded first image exists', () =
   assert.match(helpers.momoMissingFields(snapshot).join('、'), /MOMO clean-only 專推圖/);
 });
 
-test('MOMO publish verification rejects a success dialog when persisted fields were cleared', () => {
+test('MOMO 快速核對拒絕草稿與空白售價，但不再等待庫存及第二份清單', () => {
   const result = helpers.evaluateMomoPublishVerification(
     { sku: '2500118', momoPrice: 350, stock: 4 },
     {
@@ -581,7 +592,7 @@ test('MOMO publish verification rejects a success dialog when persisted fields w
   );
   assert.equal(result.verified, false);
   assert.equal(result.needsRetry, true);
-  assert.deepEqual(result.reasons, ['still-draft', 'blank-price', 'expected-stock-mismatch', 'missing-from-official-catalog']);
+  assert.deepEqual(result.reasons, ['still-draft', 'blank-price']);
   assert.equal(result.recoveryAction, 'resume-same-draft-and-reapply-cleared-fields');
   assert.equal(result.neverCreateReplacementDraft, true);
 });
@@ -819,7 +830,7 @@ test('四通路完成後主商品與每個細項都標記已發布，最近未�
   assert.match(finalize, /platformListingStatusFromPublish\(reference\.product\.platformListingStatus, platforms\)/);
 });
 
-test('cleanup 前中央或細項仍引用 frozen source 即拒絕，四站完整圖片回條且中央全完成圖才通過', () => {
+test('完成前中央或細項仍引用 frozen source 即拒絕，平台快速回條且中央全完成圖才通過', () => {
   const productId = 'cleanup-image-product';
   const source = 'https://example.com/source-clean.jpg';
   const clean = 'https://cdn.example.com/cleanup-clean.jpg';
@@ -848,8 +859,7 @@ test('cleanup 前中央或細項仍引用 frozen source 即拒絕，四站完整
     productId, caseRecord,
     productRecord: { imageUrl: clean, imageUrls: [clean] }
   }], { ...stages, momo: { status: 'verified', receipt: { ...stages.momo.receipt, officialImageUrls: [] } } });
-  assert.equal(missingImageReceipt.verified, false);
-  assert.ok(missingImageReceipt.reasons.includes('momo:missing-or-invalid-official-image-evidence'));
+  assert.equal(missingImageReceipt.verified, true, missingImageReceipt.reasons.join(','));
 });
 
 test('pending handoff sources can receive later Codex outputs and become one immutable final publish snapshot', () => {
@@ -913,7 +923,7 @@ test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
   }, listingCase, null, null, finalized);
   const job = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     workflowVersion: 'youzi-four-channel-listing-v2',
     productId,
     currentStage: 'parallel-platforms',
@@ -1651,7 +1661,7 @@ test('同款群組可擴充為三個或五個細項，仍只有一個封閉主�
   });
 });
 
-test('同款群組正式核對要求完全相同的 SKU 集合及每個細項價格庫存', () => {
+test('同款群組正式核對要求完全相同的 SKU 集合及每個細項價格，不重查庫存', () => {
   const { snapshot } = groupedListingFixture(2);
   const verification = {
     listingId: 'platform-parent', sku: 'GROUP-1', status: 'published',
@@ -1674,6 +1684,11 @@ test('同款群組正式核對要求完全相同的 SKU 集合及每個細項價
     variants: [verification.variants[0], { ...verification.variants[1], price: 999 }]
   });
   assert.equal(wrongPrice.reasons.includes('variant-price-mismatch:GROUP-2'), true);
+  const wrongStock = helpers.validatePlatformStageVerification('easyStore', snapshot, {
+    ...verification,
+    variants: [verification.variants[0], { ...verification.variants[1], stock: 999 }]
+  });
+  assert.equal(wrongStock.verified, true, wrongStock.reasons.join(','));
 });
 
 test('Codex 單次授權綁定 v2 快照並由後端自動續跑，不接受舊版或第二次確認', () => {

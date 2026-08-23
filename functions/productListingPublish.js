@@ -16,8 +16,8 @@ const LISTING_CASE_COLLECTION = 'opsProductListingCases';
 const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
-const LISTING_JOB_SCHEMA_VERSION = 3;
-const LISTING_AUTOMATION_POLICY_VERSION = 16;
+const LISTING_JOB_SCHEMA_VERSION = 4;
+const LISTING_AUTOMATION_POLICY_VERSION = 17;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -170,20 +170,19 @@ function listingAutomationPolicy() {
       ]
     },
     publishVerification: {
-      successDialogAloneIsInsufficient: true,
+      mode: 'fast-essential-checks',
+      successDialogRequiresListingIdentity: true,
       easyStoreDraftCreationIsNotPublication: true,
       requireEveryVariantGroupSkuOnPublishedStorefront: true,
-      requiredChecks: [
-        'platform-list', 'official-catalog', 'exact-sku', 'price', 'stock', 'status',
-        'applied-image-plan', 'official-image-list', 'no-frozen-source-image'
+      requiredChecks: ['listing-id', 'exact-sku', 'price', 'status', 'one-official-list-match'],
+      intentionallySkippedAfterSubmit: [
+        'stock', 'duplicate-platform-list-and-official-catalog-check',
+        'applied-image-url-list', 'official-image-url-list', 'reopen-saved-draft'
       ],
       imageReceiptContract: {
-        imageEvidenceCompleteRequired: true,
-        appliedImageUrlsMustMatchFinalPlatformPlan: true,
-        appliedFirstImageMustMatchRequiredRole: true,
-        officialImageUrlsMayUsePlatformCdn: true,
-        officialImageUrlsMustBeCompleteAndNonEmpty: true,
-        frozenSourceUrlsForbiddenInBothLists: true
+        verifiedOnceBeforePlatformNavigation: true,
+        postSubmitImageUrlCollectionRequired: false,
+        platformErrorTriggersTargetedImageCheck: true
       }
     },
     platformExecutionPlan: {
@@ -208,7 +207,8 @@ function listingAutomationPolicy() {
         resolveFieldLocationsOncePerSection: true,
         fillStableNativeControlsInSingleDomPass: true,
         dispatchNativeEventsPerField: true,
-        validateSectionOnceAfterBatch: true,
+        validateStableSectionAfterBatch: false,
+        validateDynamicSectionOnceAfterBatch: true,
         dynamicControlsRemainSequentialWithinSection: true,
         uploadImagesAsSingleBatch: true,
         neverRescanUnchangedSection: true
@@ -285,8 +285,8 @@ function listingAutomationPolicy() {
       verification: 'single-final-check-after-submit'
     },
     momoPublishRecovery: {
-      failureSignatures: ['still-draft', 'blank-price', 'expected-stock-mismatch', 'missing-from-official-catalog'],
-      compareWithSubmittedSnapshot: ['sku', 'momoPrice', 'stock'],
+      failureSignatures: ['still-draft', 'blank-price', 'sku-mismatch', 'price-mismatch', 'missing-from-platform'],
+      compareWithSubmittedSnapshot: ['sku', 'momoPrice', 'status'],
       resumeSameDraft: true,
       neverCreateReplacementDraft: true,
       reapplyWhenCleared: [
@@ -297,7 +297,7 @@ function listingAutomationPolicy() {
       permissionDeniedSignatures: ['此帳號無此功能權限', 'account-not-authorized-for-publish'],
       permissionDeniedIsPermanentBlocker: true,
       neverRetryPermissionDeniedWithReplacementDraft: true,
-      verifiedOnlyWhenPlatformListAndOfficialCatalogAgree: true
+      verifiedWhenEitherOfficialResultContainsExactSku: true
     },
     momoSpecialPromotionImage: {
       source: 'localized-completed-product-image',
@@ -306,12 +306,11 @@ function listingAutomationPolicy() {
       neverUseGalleryLastStorePromo: true,
       materialBankInsertRequired: true,
       insertionTarget: 'rich-description-editor',
-      materialBankUploadFlow: ['open-rich-description-upload', 'choose-material-bank', 'upload-localized-file', 'search-exact-filename', 'select', 'confirm', 'save-draft', 'verify-contenteditable-img-src'],
+      materialBankUploadFlow: ['open-rich-description-upload', 'choose-material-bank', 'upload-localized-file', 'search-exact-filename', 'select', 'confirm', 'save-draft'],
       directRichEditorUploadIsNotPersistedProof: true,
-      saveReopenAndVerifyImageRequired: true,
-      persistedImageEvidence: 'contenteditable-html-img-src',
-      editorElementIdMayChangeAfterReopen: true,
-      publishOnlyAfterPersistedImageVerified: true,
+      saveReopenAndVerifyImageRequired: false,
+      visibleInsertionAndSaveConfirmationRequired: true,
+      platformErrorTriggersTargetedRecheck: true,
       mainOrAdvertisementImageIsNeverPromotionEvidence: true
     },
     momoStoreCategories: {
@@ -347,18 +346,15 @@ function evaluateMomoPublishVerification(expected, observed) {
   const actualSku = normalizeSku(actual.sku);
   const expectedPrice = numberOrNull(target.momoPrice);
   const actualPrice = numberOrNull(actual.price);
-  const expectedStock = numberOrNull(target.stock);
-  const actualStock = numberOrNull(actual.stock);
   const status = clean(actual.status).toLowerCase();
   const reasons = [];
 
-  if (!actual.platformListMatched) reasons.push('missing-from-platform-list');
   if (expectedSku && actualSku !== expectedSku) reasons.push('sku-mismatch');
+  if (!status) reasons.push('missing-status');
   if (status === 'draft' || status === '暫存') reasons.push('still-draft');
   if (actualPrice === null) reasons.push('blank-price');
   else if (expectedPrice !== null && actualPrice !== expectedPrice) reasons.push('price-mismatch');
-  if (expectedStock !== null && actualStock !== expectedStock) reasons.push('expected-stock-mismatch');
-  if (actual.officialCatalogMatched !== true) reasons.push('missing-from-official-catalog');
+  if (actual.platformListMatched !== true && actual.officialCatalogMatched !== true) reasons.push('missing-from-platform');
 
   return {
     verified: reasons.length === 0,
@@ -1279,7 +1275,8 @@ function buildPlatformPageContracts() {
       mode: 'section-batch',
       resolveFieldsOncePerSection: true,
       fillStableControlsInSinglePass: true,
-      validateSectionOnceAfterBatch: true,
+      validateStableSectionAfterBatch: false,
+      validateDynamicSectionOnceAfterBatch: true,
       dynamicControlsSequentialWithinSection: true,
       imageUploadAsSingleBatch: true,
       neverRescanUnchangedSection: true
@@ -1505,7 +1502,8 @@ function buildPreparedPlatformFieldPlan(snapshot) {
       resolveFieldsOncePerSection: true,
       stableNativeControlsSinglePass: true,
       dynamicControlsSequentialWithinSection: true,
-      validateSectionOnceAfterBatch: true,
+      validateStableSectionAfterBatch: false,
+      validateDynamicSectionOnceAfterBatch: true,
       imagesSingleBatchPerPlatform: true,
       unchangedSectionsNeverRescanned: true
     },
@@ -2255,7 +2253,7 @@ function easyStorePublicationState(product) {
 
 async function verifyEasyStorePublishedListing(snapshot, token, result) {
   let lastReasons = ['missing-from-official-catalog'];
-  for (const delayMs of [0, 1000, 2500, 5000]) {
+  for (const delayMs of [0, 1000, 2500]) {
     if (delayMs) await wait(delayMs);
     let match = await findEasyStoreMappingInProduct(snapshot, token, clean(result && result.productId));
     if (!match && result && result.recoveredAfterUncertainResponse === true) {
@@ -2268,27 +2266,19 @@ async function verifyEasyStorePublishedListing(snapshot, token, result) {
       continue;
     }
     const price = easyStoreVariantPrice(match.variant);
-    const stock = easyStoreVariantStock(match.variant);
     const variants = snapshot.variantGroupEnabled === true ? productVariants(match.product).map((variant) => ({
       sku: normalizeSku(variant && (variant.sku || variant.code || variant.product_code)),
       value: clean(variant && (variant.option1 || variant.name || variant.title || variant.option_name)),
-      price: easyStoreVariantPrice(variant),
-      stock: easyStoreVariantStock(variant),
-      imageUrl: collectImageUrls(variant, false)[0] || ''
+      price: easyStoreVariantPrice(variant)
     })) : [];
-    const imageUrls = collectImageUrls(match.product, false).slice(0, 100);
     const verification = validatePlatformStageVerification('easyStore', snapshot, {
       listingId: match.productId,
       sku: snapshot.sku,
       price,
-      stock,
       variants,
       status: publicationState === 'published' ? 'published' : 'official-catalog-matched',
-      platformListMatched: true,
-      officialCatalogMatched: true,
-      imageEvidenceComplete: true,
-      appliedImageUrls: normalizeUrls(snapshot.images, 20),
-      officialImageUrls: imageUrls
+      platformListMatched: false,
+      officialCatalogMatched: true
     });
     if (verification.verified) {
       return {
@@ -2837,14 +2827,21 @@ function validatePlatformImageEvidence(stage, snapshot, verification) {
     normalizeUrls(snapshot && snapshot.images, 20).forEach((url) => allowed.add(url));
   }
   const reasons = [];
-  if (!expected.length) reasons.push('missing-final-platform-image-plan');
-  if (observed.imageEvidenceComplete !== true) reasons.push('incomplete-image-evidence');
-  if (!rawAppliedImageUrls.length || !appliedImageUrls.length || rawAppliedImageUrls.length !== appliedImageUrls.length) reasons.push('missing-or-invalid-applied-image-evidence');
-  if (!rawOfficialImageUrls.length || !officialImageUrls.length || rawOfficialImageUrls.length !== officialImageUrls.length) reasons.push('missing-or-invalid-official-image-evidence');
+  const hasPostSubmitEvidence = rawAppliedImageUrls.length > 0 || rawOfficialImageUrls.length > 0;
+  if (!hasPostSubmitEvidence) {
+    return {
+      verified: true,
+      reasons,
+      appliedImageUrls,
+      officialImageUrls,
+      imageEvidenceComplete: false,
+      skippedAfterPreflight: true
+    };
+  }
   if (appliedImageUrls.some((url) => sourceUrls.has(url))) reasons.push('applied-image-evidence-contains-frozen-source');
   if (officialImageUrls.some((url) => sourceUrls.has(url))) reasons.push('official-image-evidence-contains-frozen-source');
   if (appliedImageUrls.some((url) => !allowed.has(url))) reasons.push('applied-image-evidence-outside-final-plan');
-  if (expected[0] && appliedImageUrls[0] !== expected[0]) reasons.push('applied-image-evidence-first-role-mismatch');
+  if (appliedImageUrls.length && expected[0] && appliedImageUrls[0] !== expected[0]) reasons.push('applied-image-evidence-first-role-mismatch');
   return {
     verified: reasons.length === 0,
     reasons,
@@ -2862,7 +2859,6 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
   const observedSku = normalizeSku(observed.sku);
   const expectedPrice = expectedStagePrice(name, snapshot || {});
   const observedPrice = numberOrNull(observed.price);
-  const expectedStock = numberOrNull(snapshot && snapshot.stock);
   const observedStock = numberOrNull(observed.stock);
   const grouped = snapshot && snapshot.variantGroupEnabled === true;
   const expectedVariants = grouped ? (Array.isArray(snapshot.variantGroupVariants) ? snapshot.variantGroupVariants : []) : [];
@@ -2877,7 +2873,6 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
   if (!clean(observed.listingId || observed.productId)) reasons.push('missing-listing-id');
   if (!expectedSku || observedSku !== expectedSku) reasons.push('sku-mismatch');
   if (!grouped && expectedPrice !== null && observedPrice !== expectedPrice) reasons.push('price-mismatch');
-  if (!grouped && expectedStock !== null && observedStock !== expectedStock) reasons.push('stock-mismatch');
   if (grouped) {
     const expectedBySku = new Map(expectedVariants.map((row) => [normalizeSku(row && row.sku), row]));
     const observedBySku = new Map(observedVariants.map((row) => [normalizeSku(row && row.sku), row]));
@@ -2888,13 +2883,13 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
       const platformPrice = name === 'momo' ? numberOrNull(expected.momoPrice)
         : name === 'coupang' ? numberOrNull(expected.coupangPrice) : numberOrNull(expected.easyStorePrice);
       if (platformPrice !== null && actual.price !== platformPrice) reasons.push(`variant-price-mismatch:${sku}`);
-      if (numberOrNull(expected.stock) !== null && actual.stock !== numberOrNull(expected.stock)) reasons.push(`variant-stock-mismatch:${sku}`);
       if (clean(expected.attributeValue) && actual.value && actual.value !== clean(expected.attributeValue)) reasons.push(`variant-value-mismatch:${sku}`);
     });
   }
-  if (!clean(observed.status)) reasons.push('missing-status');
-  if (observed.platformListMatched !== true) reasons.push('platform-list-not-matched');
-  if (observed.officialCatalogMatched !== true) reasons.push('official-catalog-not-matched');
+  const observedStatus = clean(observed.status);
+  if (!observedStatus) reasons.push('missing-status');
+  else if (['draft', 'unpublished', 'inactive', 'failed', 'rejected', 'error', '暫存', '草稿', '未上架', '未發布', '未發佈'].includes(observedStatus.toLowerCase())) reasons.push('not-submitted-or-published');
+  if (observed.platformListMatched !== true && observed.officialCatalogMatched !== true) reasons.push('no-official-list-match');
   const imageVerification = validatePlatformImageEvidence(name, snapshot || {}, observed);
   reasons.push(...imageVerification.reasons);
   return {
@@ -3069,9 +3064,8 @@ async function syncPreparedCentralImagesBeforePublish(db, snapshot, actor = '固
         verifiedAt: admin.firestore.FieldValue.serverTimestamp()
       },
       sourceImageRetentionPolicy: {
-        mode: 'metadata-only-after-required-binary-cleanup', sourceBinaryCleanupRequired: true,
-        cleanupStatus: 'blocked-until-all-central-variant-platform-references-verified',
-        cleanupWorkerRequired: true, eligibleForDeletion: false
+        mode: 'retain-source-binaries-fast-validation', sourceBinaryCleanupRequired: false,
+        cleanupStatus: 'retained', cleanupWorkerRequired: false, eligibleForDeletion: false
       },
       updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: actor
     }, { merge: true });
@@ -3856,12 +3850,12 @@ async function finalizeListingJobIfReady(db, jobId, actor) {
       transaction.set(reference.caseRef, {
         mediaReferencesVerified: true,
         sourceImageRetentionPolicy: {
-          mode: 'metadata-only-after-required-binary-cleanup',
-          sourceBinaryCleanupRequired: true,
-          cleanupWorkerRequired: true,
-          cleanupStatus: 'required',
+          mode: 'retain-source-binaries-fast-validation',
+          sourceBinaryCleanupRequired: false,
+          cleanupWorkerRequired: false,
+          cleanupStatus: 'retained',
           referencesVerified: true,
-          eligibleForDeletion: true,
+          eligibleForDeletion: false,
           verifiedJobId: jobId,
           verifiedAt: admin.firestore.FieldValue.serverTimestamp()
         },
