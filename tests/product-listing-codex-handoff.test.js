@@ -42,6 +42,9 @@ test('一鍵上架按鈕把固定 v2 工作帶入指定 Codex 對話並授權後
   assert.match(source, /lightweightSessionProbeBeforeEveryProductAndStage:true/);
   assert.match(source, /autoRecoverSavedCredentialSessions:true/);
   assert.match(source, /neverAskUserForRecoverableSessionRestart:true/);
+  assert.match(source, /fillStableControlsInSingleSectionPass:true/);
+  assert.match(source, /validateSectionOnceAfterBatch:true/);
+  assert.match(source, /dynamicControlsSequentialWithinSection:true/);
   assert.match(source, /shopeeLargeItemHctOnly:true/);
   assert.doesNotMatch(source, /Codex 待辦已建立/);
 });

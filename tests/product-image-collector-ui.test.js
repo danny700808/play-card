@@ -289,7 +289,7 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
 });
 
 test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
-  assert.equal(manifest.version, "0.3.24");
+  assert.equal(manifest.version, "0.3.25");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("contextMenus"));

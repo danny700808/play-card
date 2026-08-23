@@ -104,6 +104,7 @@
   let overlay = null;
   let retryTimer = null;
   let observedUrl = location.href;
+  let activeFieldLabelIndex = null;
 
   function sleep(milliseconds) {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -153,6 +154,66 @@
     return findExactTextElements(approvedTexts, root)[0] || null;
   }
 
+  function buildFieldLabelIndex(labelGroups) {
+    const approved = new Set(
+      (labelGroups || []).flat().map((value) => helpers.normalizeText(value)).filter(Boolean)
+    );
+    const index = new Map();
+    if (approved.size === 0) return index;
+    const walker = document.createTreeWalker(document, NodeFilter.SHOW_ELEMENT);
+    let node = walker.currentNode instanceof Element ? walker.currentNode : walker.nextNode();
+    while (node) {
+      if (
+        node.id !== "youzi-shopee-autofill-overlay" &&
+        !node.closest("#youzi-shopee-autofill-overlay") &&
+        isVisible(node)
+      ) {
+        const key = helpers.normalizeText(node.textContent);
+        if (approved.has(key)) {
+          if (!index.has(key)) index.set(key, []);
+          index.get(key).push(node);
+        }
+      }
+      node = walker.nextNode();
+    }
+    index.forEach((elements) => elements.sort((left, right) => {
+      const childDifference = left.children.length - right.children.length;
+      if (childDifference !== 0) return childDifference;
+      return left.getBoundingClientRect().width - right.getBoundingClientRect().width;
+    }));
+    return index;
+  }
+
+  async function withFieldLabelIndex(labelGroups, callback) {
+    const previous = activeFieldLabelIndex;
+    activeFieldLabelIndex = buildFieldLabelIndex(labelGroups);
+    try {
+      return await callback();
+    } finally {
+      activeFieldLabelIndex = previous;
+    }
+  }
+
+  function findIndexedFieldLabel(labelAliases) {
+    if (!activeFieldLabelIndex) return findExactTextElement(labelAliases);
+    const candidates = [];
+    const seen = new Set();
+    helpers.uniqueStrings(labelAliases).forEach((alias) => {
+      const key = helpers.normalizeText(alias);
+      (activeFieldLabelIndex.get(key) || []).forEach((element) => {
+        if (!seen.has(element)) {
+          seen.add(element);
+          candidates.push(element);
+        }
+      });
+    });
+    return candidates.sort((left, right) => {
+      const childDifference = left.children.length - right.children.length;
+      if (childDifference !== 0) return childDifference;
+      return left.getBoundingClientRect().width - right.getBoundingClientRect().width;
+    })[0] || null;
+  }
+
   function fieldControls(container) {
     if (!container) {
       return [];
@@ -168,7 +229,7 @@
   }
 
   function findField(labelAliases) {
-    const label = findExactTextElement(labelAliases);
+    const label = findIndexedFieldLabel(labelAliases);
     if (!label) {
       return null;
     }
@@ -1231,6 +1292,81 @@
     };
   }
 
+  function attributeFieldLabelGroups(rows) {
+    return (rows || []).map((row) => {
+      const key = helpers.resolveAttributeKey(row.label);
+      return key && FIELD_LABELS[key] ? FIELD_LABELS[key] : [];
+    });
+  }
+
+  function setNativeSelectValue(control, option) {
+    control.value = option.value;
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+    control.dispatchEvent(new Event("blur", { bubbles: true }));
+  }
+
+  async function fillNativeAttributeBatch(rows, report) {
+    const pending = [];
+    const verification = [];
+    for (const row of rows || []) {
+      const key = helpers.resolveAttributeKey(row.label);
+      if (!key) {
+        addReport(report, "skipped", row.label, "尚未核准此欄位的自動填寫規則");
+        continue;
+      }
+      const descriptor = attributeDescriptor(row, key);
+      if (descriptor.confidence < 0.7) {
+        addReport(report, "skipped", row.label, "信心為 low");
+        continue;
+      }
+      const field = findField(FIELD_LABELS[key]);
+      const primary = pickPrimaryControl(field, descriptor);
+      if (!field || !primary || descriptor.unit) {
+        pending.push(row);
+        continue;
+      }
+      const existing = controlValue(primary);
+      if (!isEmptyValue(existing)) {
+        addReport(report, "preserved", row.label, existing);
+        continue;
+      }
+      const writableInput = primary instanceof HTMLTextAreaElement ||
+        (primary instanceof HTMLInputElement && !primary.readOnly);
+      const shouldType = descriptor.inputMode === "text" ||
+        (["auto", "composite"].includes(descriptor.inputMode) && writableInput);
+      if (shouldType && writableInput) {
+        setNativeValue(primary, descriptor.value);
+        verification.push({ row, control: primary, descriptor, approvedOptions: [] });
+        continue;
+      }
+      if (primary instanceof HTMLSelectElement) {
+        const option = Array.from(primary.options).find((entry) =>
+          helpers.exactApprovedMatch(entry.textContent, descriptor.approvedOptions)
+        );
+        if (option) {
+          setNativeSelectValue(primary, option);
+          verification.push({ row, control: primary, descriptor, approvedOptions: descriptor.approvedOptions });
+          continue;
+        }
+      }
+      pending.push(row);
+    }
+    if (verification.length) await sleep(140);
+    verification.forEach(({ row, control, descriptor, approvedOptions }) => {
+      const applied = approvedOptions.length
+        ? helpers.exactApprovedMatch(controlDisplayValue(control), approvedOptions)
+        : !isEmptyValue(controlValue(control));
+      addReport(
+        report,
+        applied ? "filled" : "missing",
+        row.label,
+        applied ? `${descriptor.value}（整區批次）` : "批次帶入後欄位仍為空白"
+      );
+    });
+    return pending;
+  }
+
   async function fillAttribute(row, report) {
     const key = helpers.resolveAttributeKey(row.label);
     if (!key) {
@@ -1683,7 +1819,16 @@
   }
 
   function createReport() {
-    return { filled: [], preserved: [], skipped: [], missing: [] };
+    return {
+      filled: [], preserved: [], skipped: [], missing: [],
+      execution: {
+        mode: "section-batch",
+        fieldLabelsIndexedOncePerSection: true,
+        nativeControlsFilledInSinglePass: true,
+        dynamicControlsSequentialWithinSection: true,
+        sectionValidationOnce: true
+      }
+    };
   }
 
   function normalizedSellerSku(value) {
@@ -1829,21 +1974,29 @@
     if (!categoryIdentity.ok) {
       throw new Error(categoryIdentity.message);
     }
-    await fillBrand(payload, report);
+    await withFieldLabelIndex([FIELD_LABELS.brand], () => fillBrand(payload, report));
     const brandProblem = report.missing.find((item) => /^品牌(?:：|$)/.test(item));
     if (brandProblem) {
       report.blockedStage = "brand";
       return report;
     }
     const attributeMissingBefore = report.missing.length;
-    for (const row of payload.attributes || []) {
-      await fillAttribute(row, report);
+    const attributeRows = payload.attributes || [];
+    const labelGroups = attributeFieldLabelGroups(attributeRows);
+    const pendingAttributes = await withFieldLabelIndex(
+      labelGroups,
+      () => fillNativeAttributeBatch(attributeRows, report)
+    );
+    if (pendingAttributes.length) {
+      await withFieldLabelIndex(labelGroups, async () => {
+        for (const row of pendingAttributes) await fillAttribute(row, report);
+      });
     }
     if (report.missing.length > attributeMissingBefore) {
       report.blockedStage = "attributes";
       return report;
     }
-    await fillLogistics(payload, report);
+    await withFieldLabelIndex(Object.values(LOGISTICS_LABELS), () => fillLogistics(payload, report));
     const logisticsProblem = report.missing.find((item) =>
       /^(?:黑貓宅急便|蝦皮店到店|7-ELEVEN|7-11|新竹物流|全家|賣家宅配|嘉里快遞|店到家宅配)/.test(item)
     );
@@ -1851,7 +2004,7 @@
       report.blockedStage = "logistics";
       return report;
     }
-    await fillPreorder(payload, report);
+    await withFieldLabelIndex([FIELD_LABELS.preorder], () => fillPreorder(payload, report));
     const preorderProblem = report.missing.find((item) => /^預購(?:：|$)/.test(item));
     if (preorderProblem) {
       report.blockedStage = "preorder";

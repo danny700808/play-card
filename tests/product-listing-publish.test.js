@@ -127,7 +127,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 12);
+  assert.equal(snapshot.automationPolicy.version, 13);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -164,7 +164,15 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 4);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 5);
+  assert.equal(snapshot.automationPolicy.version, 13);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.mode, 'section-batch');
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateSectionOnceAfterBatch, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.batchFieldExecution.stableNativeControlsSinglePass, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.batchSections.length, 5);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.batchSections.length, 5);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.easyStore.batchSections.length, 4);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.batchSections.length, 4);
   assert.equal(snapshot.preparedPlatformFieldPlan.executionGraph.mode, 'staggered-parallel');
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.executionGraph.parallelRoots, ['momo', 'coupang', 'easyStore']);
   assert.equal(snapshot.preparedPlatformFieldPlan.immutableForJob, true);

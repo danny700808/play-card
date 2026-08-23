@@ -1,6 +1,6 @@
 {
   "name": "youzi-easystore-shopee-autofill",
-  "version": "0.3.24",
+  "version": "0.3.25",
   "private": true,
   "scripts": {
     "test": "node --test"
