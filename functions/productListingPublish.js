@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 18;
+const LISTING_AUTOMATION_POLICY_VERSION = 19;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -331,8 +331,14 @@ function listingAutomationPolicy() {
       insertionTarget: 'rich-description-editor',
       materialBankUploadFlow: ['open-rich-description-upload', 'choose-material-bank', 'upload-localized-file', 'search-exact-filename', 'select', 'confirm', 'save-draft'],
       directRichEditorUploadIsNotPersistedProof: true,
-      saveReopenAndVerifyImageRequired: false,
+      prepareAssetBeforeMomoNavigation: true,
+      uniqueFilenameAndFingerprintRequired: true,
+      advertisementImagePreparedFromCleanMain: true,
+      allThreeMediaSlotsRequiredBeforeFirstSubmit: true,
+      saveReopenAndVerifyImageRequired: true,
       visibleInsertionAndSaveConfirmationRequired: true,
+      preventDuplicatePromotionInsertion: true,
+      missingPromotionErrorIsNeverExpectedControlFlow: true,
       platformErrorTriggersTargetedRecheck: true,
       mainOrAdvertisementImageIsNeverPromotionEvidence: true
     },
@@ -1326,7 +1332,7 @@ function buildPlatformPageContracts() {
         stableLandmarks: ['商品名稱', '平台分類', '銷售規格範本', '甲指(第三方)', '發佈商品']
       },
       fieldOrder: [
-        'item-number', 'main-images', 'youtube-id', 'brand', 'product-name',
+        'item-number', 'main-images', 'advertisement-image', 'youtube-id', 'brand', 'product-name',
         'platform-category', 'front-hidden', 'regulatory-certifications', 'category-attributes',
         'other-product-information', 'variant-template', 'variant-names-and-values',
         'variant-images', 'variant-stock-price-sku-barcode', 'package-dimensions-and-weight',
@@ -1335,7 +1341,7 @@ function buildPlatformPageContracts() {
         'warranty', 'publish-time', 'submit'
       ],
       batchSections: [
-        { key: 'basic-and-media', fields: ['item-number', 'main-images', 'youtube-id', 'brand', 'product-name'] },
+        { key: 'basic-and-media', fields: ['item-number', 'main-images', 'advertisement-image', 'youtube-id', 'brand', 'product-name'] },
         { key: 'taxonomy-and-attributes', fields: ['platform-category', 'front-hidden', 'regulatory-certifications', 'category-attributes', 'other-product-information'], dynamic: true },
         { key: 'variants-and-commerce', fields: ['variant-template', 'variant-names-and-values', 'variant-images', 'variant-stock-price-sku-barcode'] },
         { key: 'shipping', fields: ['package-dimensions-and-weight', 'temperature', 'delivery-methods', 'free-shipping'] },
@@ -1353,6 +1359,13 @@ function buildPlatformPageContracts() {
         requiredBeforeFirstSubmit: true,
         mainOrAdvertisementImageIsNotEvidence: true,
         persistedEvidence: 'contenteditable-html-img-src'
+      },
+      firstSubmissionMediaGate: {
+        requiredSlots: ['main-images', 'advertisement-image', 'promotion-material-bank-image'],
+        prepareAllBeforePlatformSubmit: true,
+        saveAndVerifySameDraftBeforeFirstSubmit: true,
+        missingPromotionErrorIsNeverExpectedControlFlow: true,
+        deduplicatePromotionAssetBeforeInsert: true
       },
       storeCategoryConstraints: { maximumCount: 5, relevantOnly: true, validateBeforeSave: true },
       fixedFields: ['warranty-days-180', 'publish-immediately', 'third-party-location-000001'],
@@ -1497,8 +1510,17 @@ function buildPreparedPlatformFieldPlan(snapshot) {
       shippingDecision: snapshot.shippingDecision
     }
   };
+  const momoMainImageUrl = safeHttpUrl(snapshot.platformImagePlan
+    && snapshot.platformImagePlan.momo && snapshot.platformImagePlan.momo.imageUrls
+    && snapshot.platformImagePlan.momo.imageUrls[0]);
+  const momoPromotionImageUrl = safeHttpUrl(snapshot.momoSpecialPromotionImageUrl);
+  const momoPromotionFingerprint = momoPromotionImageUrl
+    ? crypto.createHash('sha256').update(momoPromotionImageUrl).digest('hex').slice(0, 12) : '';
+  const momoPromotionAssetFilename = momoPromotionFingerprint
+    ? `${normalizeSku(snapshot.sku) || 'product'}-momo-promo-${momoPromotionFingerprint}.jpg` : '';
+  const momoMediaReadyBeforeFirstSubmit = Boolean(momoMainImageUrl && momoPromotionImageUrl);
   return {
-    version: 9,
+    version: 10,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1544,6 +1566,8 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         promotionImageRequiredBeforeFirstSubmit: true,
         promotionImageInsertionTarget: 'rich-description-editor',
         promotionImagePersistenceEvidence: 'contenteditable-html-img-src',
+        advertisementImageRequiredBeforeFirstSubmit: true,
+        firstSubmitBlockedUntilAllMediaSlotsReady: true,
         storeCategoryMaximumCount: 5
       },
       preparedFields: {
@@ -1555,8 +1579,27 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         stock: snapshot.stock,
         categoryCode: snapshot.momoCategoryCode,
         imageUrls: snapshot.platformImagePlan.momo.imageUrls,
-        promotionImageUrl: snapshot.momoSpecialPromotionImageUrl,
-        promotionImageReady: Boolean(snapshot.momoSpecialPromotionImageUrl),
+        advertisementImageUrl: momoMainImageUrl,
+        promotionImageUrl: momoPromotionImageUrl,
+        promotionImageReady: Boolean(momoPromotionImageUrl),
+        firstSubmitMediaGate: {
+          ready: momoMediaReadyBeforeFirstSubmit,
+          requiredSlots: ['main-images', 'advertisement-image', 'rich-description-promotion-image'],
+          mainImageUrls: snapshot.platformImagePlan.momo.imageUrls,
+          advertisementImageUrl: momoMainImageUrl,
+          promotionImage: {
+            url: momoPromotionImageUrl,
+            assetFilename: momoPromotionAssetFilename,
+            assetFingerprint: momoPromotionFingerprint,
+            uploadTarget: 'material-bank',
+            insertTarget: 'rich-description-editor',
+            insertBeforeFirstSubmit: true,
+            saveSameDraftBeforeSubmit: true,
+            verifyPersistedOnceBeforeSubmit: true,
+            neverWaitForPlatformMissingPromotionError: true,
+            deduplicateBeforeInsert: true
+          }
+        },
         storeCategoryPolicy: { maximumCount: 5, relevantOnly: true },
         variantGroup: variantGroup.enabled ? {
           attributeName: variantGroup.attributeName,

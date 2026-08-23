@@ -105,6 +105,9 @@ test('固定流程鎖定品牌頁首、MOMO 專推圖與 EasyStore 後立即接�
   assert.match(source, /圖片模型只准生成下方商品內容區/);
   assert.match(source, /禁止壓窄、拉伸、裁切或重新排版/);
   assert.match(source, /商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」/);
+  assert.match(source, /preparedPlatformFieldPlan 產生專推圖網址、唯一素材檔名與指紋/);
+  assert.match(source, /三處未齊全時禁止第一次發布/);
+  assert.match(source, /已存在就不得重複插入/);
   assert.match(source, /MOMO 商店分類最多 5 個/);
   assert.match(source, /EasyStore 一經正式核對 verified/);
   assert.match(source, /不得等待 MOMO 或酷澎完成/);
@@ -169,7 +172,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /先保留至少一張 cleanMain、一張 storefrontPortrait 與一張 brandedHero/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
   assert.match(prompt, /商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置/);
-  assert.match(prompt, /並同時確認甲指第三方 000001/);
+  assert.match(prompt, /甲指第三方 000001 仍保存/);
   assert.match(prompt, /EasyStore storefrontPortrait 為 750×1000 px、3:4/);
   assert.match(prompt, /蝦皮 brandedHero 為 1000×1000 px、1:1/);
   assert.match(prompt, /MOMO／酷澎 cleanMain 為 1000×1000 px、1:1/);
@@ -190,9 +193,10 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /已同時授權四通路的建立、修改與最後正式發布/);
   assert.match(prompt, /不得再產生「確認正式發布四通路／確認上架／確認提交／套用細項」/);
   assert.match(prompt, /確認正式發布四通路／確認上架／確認提交／套用細項/);
-  assert.match(prompt, /商品詳細介紹編輯器：按「上傳圖片」→「從素材銀行選擇」/);
-  assert.match(prompt, /確認目前編輯器已顯示專推圖並完成儲存後直接發布/);
-  assert.match(prompt, /不再例行重開草稿/);
+  assert.match(prompt, /商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」/);
+  assert.match(prompt, /商品主圖、廣告用圖、編輯器專推圖三處完成並儲存後/);
+  assert.match(prompt, /只重開同一草稿一次確認專推圖仍存在/);
+  assert.match(prompt, /不得先送空缺版本再回頭補/);
   assert.match(prompt, /此帳號無此功能權限/);
   assert.match(prompt, /account-permission-denied 永久阻擋/);
   assert.match(prompt, /先收合內嵌客服聊天/);
