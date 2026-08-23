@@ -1699,6 +1699,14 @@ test('營運中心 v2 交接即授權自動發布，介面不再要求一般二�
   assert.doesNotMatch(frontend, /confirmAction\('確認上架'/);
   assert.doesNotMatch(frontend, /confirmAction\('確認整組上架'/);
 });
+
+test('相同 SKU 與相同不可變資料的新 v2 嘗試會取代舊的未完成 queue', () => {
+  const handler = fs.readFileSync('functions/productListingPublish.js', 'utf8');
+  assert.match(handler, /supersededAttempt:/);
+  assert.match(handler, /sameIdentity && sameFingerprint && !sameAttempt/);
+  assert.doesNotMatch(handler, /reusedStatus = 'conflicting-pending'/);
+  assert.doesNotMatch(handler, /尚有另一筆工作使用同一個 queue/);
+});
 test('2100307-4 固定 v2 實際資料可在不送出的模擬通過四通路預檢', () => {
   const productId = 'Ui7HQyrWtdcfG1r7nKlt';
   const sources = Array.from({ length: 8 }, (_, index) => `https://supplier.example.com/2100307-4-source-${index + 1}.png`);
