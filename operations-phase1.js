@@ -4809,6 +4809,7 @@ function ensureSalesClock(){
       requireProductVariantRepresentativeImages(form);
       await saveProductListingCase(form,false,true,true);
       const snapshot=await loadProductListingCodexHandoffSnapshot(product);requireProductListingCodexHandoffMedia(snapshot);
+      setProductListingCodexUi(form,'running','來源快照已建立，正在保存固定 v2 工作','保存完成後會立即啟動正式四通路工作；複製交接文字與稽核紀錄不會阻擋發布。');
       const prompt=productListingCodexHandoffPrompt(product,snapshot),activationPrompt=productListingCodexActivationPrompt(product,snapshot),threadUrl=productListingCodexThreadUrl(activationPrompt),serverTime=serverTimestamp(),platforms={momo:{status:'pending'},coupang:{status:'pending'},easyStore:{status:'pending'},shopee:{status:'blocked-by-dependency',dependsOn:['easyStore']}};
       await state.db.collection(COLLECTIONS.listingCases).doc(id).set({
         caseStatus:'waiting-codex',
@@ -4816,15 +4817,15 @@ function ensureSalesClock(){
         codexExecution:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,currentStage:'codex-preflight',platformOrder:PRODUCT_LISTING_PLATFORM_ORDER.slice(),executionGraph:{mode:'staggered-parallel',parallelRoots:['momo','coupang','easyStore'],dependencies:{momo:[],coupang:[],easyStore:[],shopee:['easyStore']}},variantFieldExecution:{prepareAllVariantsBeforePlatformNavigation:true,reuseStableVariantFieldSemantics:true,reuseStableVariantSelectorsWhenLayoutSignatureMatches:true,rescanCurrentVariantSectionOnlyWhenLayoutSignatureChanges:true,neverRestartImageOrPreviousPlatformStages:true},browserScheduler:{interactionConcurrency:1,releaseInteractionLockDuringWait:true,sessionHeartbeatSeconds:180},platforms:platforms,retrySameSkuDraftAndStage:true,neverRebuildPreflightDuringRetry:true,updatedAt:serverTime},
         updatedAt:serverTime,updatedBy:userLabel(),version:VERSION
       },{merge:true});
-      const copied=await copyProductListingCodexPrompt(activationPrompt);
-      await writeAudit('交給 Codex 對話處理','productListingCase',id,clean(product.sku)+'｜'+clean(product.originalName||product.name));
       const completedMediaReady=(Array.isArray(snapshot&&snapshot.cases)?snapshot.cases:[]).every(function(item){return clean(item&&item.imageStatus)==='ready'&&!(item&&item.missingRequiredRoles||[]).length;});
       let publishResult=null;
       if(completedMediaReady){
         setProductListingCodexUi(form,'running','完成圖已齊全，正在啟動正式四通路工作','同一份 v2 快照會直接排入 MOMO、酷澎與 EasyStore；EasyStore 核對成功後接著處理蝦皮。');
         publishResult=await callProductListingPublishWithTransientRetry(id,form);
       }
-      setProductListingCodexUi(form,'completed','已授權固定 v2 自動上架',completedMediaReady?'正式四通路工作已啟動；MOMO、酷澎與 EasyStore 交錯處理，EasyStore 完成後接蝦皮。':('圖片仍待 Codex 一次定案；完成圖寫回後再按同一按鈕，即會直接啟動正式四通路工作。'+(copied?' 工作指令也已複製。':'')));
+      const boundedSideEffect=function(task,timeoutMs,fallback){return Promise.race([Promise.resolve().then(task).catch(function(){return fallback;}),new Promise(function(resolve){global.setTimeout(function(){resolve(fallback);},timeoutMs);})]);};
+      const sideEffects=await Promise.all([boundedSideEffect(function(){return copyProductListingCodexPrompt(activationPrompt);},600,false),boundedSideEffect(function(){return writeAudit('交給 Codex 對話處理','productListingCase',id,clean(product.sku)+'｜'+clean(product.originalName||product.name));},900,null)]),copied=!!sideEffects[0];
+      setProductListingCodexUi(form,'completed','已授權固定 v2 自動上架',completedMediaReady?'正式四通路工作已啟動；MOMO、酷澎與 EasyStore 交錯處理，EasyStore 完成後接蝦皮。':'圖片仍待 Codex 一次定案；完成圖寫回後再按同一按鈕，即會直接啟動正式四通路工作。');
       global.setTimeout(function(){global.location.href=threadUrl;},100);
       return {status:publishResult?clean(publishResult.status)||'submitted':'pending',productId:id,workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,snapshotId:snapshot.snapshotId,threadId:PRODUCT_LISTING_CODEX_THREAD_ID,threadUrl:threadUrl,activationPrompt:activationPrompt,promptCopied:copied,publishResult:publishResult};
     }catch(error){
