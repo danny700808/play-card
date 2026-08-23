@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
 const LISTING_JOB_SCHEMA_VERSION = 2;
-const LISTING_AUTOMATION_POLICY_VERSION = 12;
+const LISTING_AUTOMATION_POLICY_VERSION = 13;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -199,6 +199,17 @@ function listingAutomationPolicy() {
       continueAutomaticallyAfterEachVerifiedStage: true,
       prepareCompleteFieldPlanBeforeFirstPlatform: true,
       preparedFieldPlanIsImmutableForWholeJob: true,
+      batchFieldExecution: {
+        version: 1,
+        mode: 'section-batch',
+        resolveFieldLocationsOncePerSection: true,
+        fillStableNativeControlsInSingleDomPass: true,
+        dispatchNativeEventsPerField: true,
+        validateSectionOnceAfterBatch: true,
+        dynamicControlsRemainSequentialWithinSection: true,
+        uploadImagesAsSingleBatch: true,
+        neverRescanUnchangedSection: true
+      },
       pageContractReuse: {
         reuseKnownRoutesAndFieldLocations: true,
         applyFixedFieldsWithoutWholePageRescan: true,
@@ -1188,6 +1199,15 @@ function buildPlatformPageContracts() {
     rescanCurrentSectionOnlyWhenSignatureChanges: true,
     neverRestartCompletedPlatformStages: true,
     fieldsPreparedBeforeNavigation: true,
+    batchExecution: {
+      mode: 'section-batch',
+      resolveFieldsOncePerSection: true,
+      fillStableControlsInSinglePass: true,
+      validateSectionOnceAfterBatch: true,
+      dynamicControlsSequentialWithinSection: true,
+      imageUploadAsSingleBatch: true,
+      neverRescanUnchangedSection: true
+    },
     loginProbeBeforeProductNavigation: true,
     resumeSameProductOrDraftAfterLoginRecovery: true
   };
@@ -1208,6 +1228,13 @@ function buildPlatformPageContracts() {
         'temperature', 'delivery-methods', 'free-shipping', 'rich-description',
         'momo-promotion-consent', 'slogan-and-short-features', 'store-category',
         'warranty', 'publish-time', 'submit'
+      ],
+      batchSections: [
+        { key: 'basic-and-media', fields: ['item-number', 'main-images', 'promotion-image', 'youtube-id', 'brand', 'product-name'] },
+        { key: 'taxonomy-and-attributes', fields: ['platform-category', 'front-hidden', 'regulatory-certifications', 'category-attributes', 'other-product-information'], dynamic: true },
+        { key: 'variants-and-commerce', fields: ['variant-template', 'variant-names-and-values', 'variant-images', 'variant-stock-price-sku-barcode'] },
+        { key: 'shipping', fields: ['package-dimensions-and-weight', 'temperature', 'delivery-methods', 'free-shipping'] },
+        { key: 'content-and-publish', fields: ['rich-description', 'momo-promotion-consent', 'slogan-and-short-features', 'store-category', 'warranty', 'publish-time', 'submit'] }
       ],
       imageConstraints: {
         main: { aspectRatio: '1:1', minimumFileBytes: 38000, maximumFileBytes: 1000000, minimumCount: 1, maximumCount: 6 },
@@ -1234,6 +1261,13 @@ function buildPlatformPageContracts() {
         'sale-price', 'stock', 'seller-sku', 'seller-delivery', 'convenience-store-by-package',
         'preparation-days', 'manual-rich-description', 'tw-general-compliance', 'responsible-seller',
         'origin', 'minor-purchase-and-tax', 'create-product', 'exact-sku-verification'
+      ],
+      batchSections: [
+        { key: 'media-and-taxonomy', fields: ['clean-main-image', 'secondary-completed-images', 'music-leaf-category', 'verified-brand-or-no-brand'], dynamic: true },
+        { key: 'generated-information', fields: ['generate-product-information'], dynamic: true },
+        { key: 'variants-and-commerce', fields: ['variant-color', 'variant-quantity', 'variant-size', 'sale-price', 'stock', 'seller-sku'] },
+        { key: 'shipping', fields: ['seller-delivery', 'convenience-store-by-package', 'preparation-days'] },
+        { key: 'content-compliance-and-publish', fields: ['manual-rich-description', 'tw-general-compliance', 'responsible-seller', 'origin', 'minor-purchase-and-tax', 'create-product', 'exact-sku-verification'] }
       ],
       imageConstraints: {
         firstImageRole: 'cleanMain',
@@ -1269,6 +1303,12 @@ function buildPlatformPageContracts() {
         'tax-and-free-shipping', 'inventory-tracking', 'seo-url-and-meta-description',
         'publish-state', 'sales-channels', 'category-brand-vendor-tags-notes', 'save'
       ],
+      batchSections: [
+        { key: 'core-and-media', fields: ['product-name', 'rich-description', 'gallery-images'] },
+        { key: 'variants-and-inventory', fields: ['variant-option-names-and-values', 'variant-stock-sku-price-cost-barcode'] },
+        { key: 'commerce-and-shipping', fields: ['variant-dimensions-and-weight', 'tax-and-free-shipping', 'inventory-tracking'] },
+        { key: 'metadata-and-publish', fields: ['seo-url-and-meta-description', 'publish-state', 'sales-channels', 'category-brand-vendor-tags-notes', 'save'], dynamic: true }
+      ],
       fixedFields: ['publish-immediately'],
       dynamicFields: ['mapped-category', 'platform-validation-errors']
     },
@@ -1283,6 +1323,12 @@ function buildPlatformPageContracts() {
       fieldOrder: [
         'channel-product', 'shopee-category', 'category-attributes', 'price-adjustment',
         'variant-images', 'prepared-package-weight', 'prepared-logistics', 'prepare-publish', 'publish'
+      ],
+      batchSections: [
+        { key: 'taxonomy-and-attributes', fields: ['channel-product', 'shopee-category', 'category-attributes'], dynamic: true },
+        { key: 'commerce-and-variants', fields: ['price-adjustment', 'variant-images'] },
+        { key: 'shipping', fields: ['prepared-package-weight', 'prepared-logistics'], dynamic: true },
+        { key: 'publish', fields: ['prepare-publish', 'publish'] }
       ],
       fixedFields: ['warranty-days-180', 'publish-immediately', 'close-embedded-chat'],
       dynamicFields: ['mapped-leaf-category', 'category-dependent-attributes', 'prepared-size-tier', 'platform-validation-errors']
@@ -1312,7 +1358,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     }
   };
   return {
-    version: 4,
+    version: 5,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1334,6 +1380,15 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     canonicalCategoryDecision: { ...(snapshot.canonicalCategoryDecision || {}) },
     canonicalShippingDecision: { ...shipping },
     platformPageContracts: buildPlatformPageContracts(),
+    batchFieldExecution: {
+      mode: 'section-batch',
+      resolveFieldsOncePerSection: true,
+      stableNativeControlsSinglePass: true,
+      dynamicControlsSequentialWithinSection: true,
+      validateSectionOnceAfterBatch: true,
+      imagesSingleBatchPerPlatform: true,
+      unchangedSectionsNeverRescanned: true
+    },
     common,
     momo: {
       fixedFields: {

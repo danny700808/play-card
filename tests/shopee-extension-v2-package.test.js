@@ -11,7 +11,7 @@ const extensionHelpers = require('../easystore-shopee-autofill/helpers.js');
 const root = path.resolve(__dirname, '..');
 const extensionName = 'easystore-shopee-autofill';
 const extensionRoot = path.join(root, extensionName);
-const version = '0.3.24';
+const version = '0.3.25';
 const zipName = `youzi-easystore-shopee-autofill-v${version}.zip`;
 const zipPath = path.join(root, zipName);
 
@@ -80,7 +80,7 @@ function zipFileEntries(buffer) {
   return files;
 }
 
-test('0.3.24 ZIP contains exactly the Git extension files byte for byte', () => {
+test('0.3.25 ZIP contains exactly the Git extension files byte for byte', () => {
   assert.equal(fs.existsSync(zipPath), true, `缺少 ${zipName}`);
   const packaged = zipFileEntries(fs.readFileSync(zipPath));
   const sourceFiles = gitExtensionFiles();
@@ -100,7 +100,7 @@ test('extension version, download links, cache keys and CI package contract stay
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260821-shopee-v2-schema5';
-  const operationsCache = '20260822-programmatic-listing-contract';
+  const operationsCache = '20260823-section-batch-listing';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
@@ -119,6 +119,11 @@ test('extension version, download links, cache keys and CI package contract stay
   assert.match(workflow, new RegExp(operationsCache));
   assert.match(workflow, /diff -qr "\$EXTENSION_DIR" "\$package_dir\/\$EXTENSION_DIR"/);
   assert.equal((workflow.match(/tests\/shopee-extension-v2-package\.test\.js/g) || []).length, 2);
+  const easyStoreExecutor = fs.readFileSync(path.join(extensionRoot, 'easystore.js'), 'utf8');
+  assert.match(easyStoreExecutor, /function buildFieldLabelIndex\(/);
+  assert.match(easyStoreExecutor, /function fillNativeAttributeBatch\(/);
+  assert.match(easyStoreExecutor, /mode: "section-batch"/);
+  assert.match(easyStoreExecutor, /nativeControlsFilledInSinglePass: true/);
 });
 
 test('production v2 Shopee sources contain no retired Match-product decision contract', () => {
