@@ -253,9 +253,16 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
     preserveGreenOuterEdge: true, removeMascot: true, removePicCollage: true,
     brandHeaderGeometryLockedToOriginalTemplate: true,
     preserveOriginalBrandHeaderHeightWidthLogoAndSloganPlacement: true,
-    neverCompressStretchOrReflowBrandHeader: true
+    neverCompressStretchOrReflowBrandHeader: true,
+    brandHeaderCompositionMode: 'deterministic-master-overlay',
+    brandHeaderMasterAsset: 'product-listing-main-template.jpg',
+    brandHeaderModelRenderingForbidden: true,
+    exactBrandHeaderPixelCopyRequired: true
   });
   assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.brandHeaderGeometryLockedToOriginalTemplate, true);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.brandHeaderCompositionMode, 'deterministic-master-overlay');
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.brandHeaderModelRenderingForbidden, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.exactBrandHeaderPixelCopyRequired, true);
   assert.deepEqual(snapshot.imagePolicy.sourceNormalization.preferredLongEdgeRangePx, { minimum: 1600, maximum: 2000 });
   assert.equal(snapshot.imagePolicy.sourceNormalization.targetLongEdgePx, 1800);
   assert.equal(snapshot.imagePolicy.sourceNormalization.neverUpscale, true);

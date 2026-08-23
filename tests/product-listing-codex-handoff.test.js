@@ -99,7 +99,8 @@ test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多�
 });
 
 test('固定流程鎖定品牌頁首、MOMO 專推圖與 EasyStore 後立即接蝦皮', () => {
-  assert.match(source, /頂端薄荷綠品牌區必須直接沿用原始模板固定幾何/);
+  assert.match(source, /頂端薄荷綠品牌區必須從 product-listing-main-template\.jpg 以確定性像素覆蓋方式直接合成/);
+  assert.match(source, /圖片模型只准生成下方商品內容區/);
   assert.match(source, /禁止壓窄、拉伸、裁切或重新排版/);
   assert.match(source, /商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」/);
   assert.match(source, /MOMO 商店分類最多 5 個/);
@@ -245,7 +246,8 @@ test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮�
   const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
   assert.match(prompt, /cleanMain 是無品牌框、無 Logo、無地址／電話／QR Code/);
   assert.match(prompt, /storefrontPortrait 使用 3:4「柚子樂器淺色商業展示版」/);
-  assert.match(prompt, /brandedHero 使用相同固定品牌頁首與品牌語言的 1:1 方形版/);
+  assert.match(prompt, /brandedHero 同樣必須以固定母版像素覆蓋品牌頁首/);
+  assert.match(prompt, /禁止重畫、仿畫、換字或另生 Logo/);
   assert.match(prompt, /商品去背後約占 55～65%/);
   assert.match(prompt, /最多 2 個有來源依據的輔助視覺/);
   assert.match(prompt, /不得加入價格、聯絡資訊、浮水印或虛構功能／配件/);

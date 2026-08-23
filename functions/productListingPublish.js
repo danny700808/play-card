@@ -1864,14 +1864,22 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
           preserveGreenOuterEdge: true, removeMascot: true, removePicCollage: true,
           brandHeaderGeometryLockedToOriginalTemplate: true,
           preserveOriginalBrandHeaderHeightWidthLogoAndSloganPlacement: true,
-          neverCompressStretchOrReflowBrandHeader: true
+          neverCompressStretchOrReflowBrandHeader: true,
+          brandHeaderCompositionMode: 'deterministic-master-overlay',
+          brandHeaderMasterAsset: 'product-listing-main-template.jpg',
+          brandHeaderModelRenderingForbidden: true,
+          exactBrandHeaderPixelCopyRequired: true
         },
         brandedHero: {
           role: 'brandedHero', widthPx: 1000, heightPx: 1000, aspectRatio: '1:1',
           firstImageFor: ['shopee'], verifiedFeatureCount: { minimum: 1, maximum: 3 },
           brandHeaderGeometryLockedToOriginalTemplate: true,
           preserveOriginalBrandHeaderHeightWidthLogoAndSloganPlacement: true,
-          neverCompressStretchOrReflowBrandHeader: true
+          neverCompressStretchOrReflowBrandHeader: true,
+          brandHeaderCompositionMode: 'deterministic-master-overlay',
+          brandHeaderMasterAsset: 'product-listing-main-template.jpg',
+          brandHeaderModelRenderingForbidden: true,
+          exactBrandHeaderPixelCopyRequired: true
         },
         cleanMain: {
           role: 'cleanMain', widthPx: 1000, heightPx: 1000, aspectRatio: '1:1',
@@ -1897,7 +1905,11 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
         colorSpace: 'sRGB', preferredFormat: 'image/jpeg', maximumFileBytes: 1000000,
         normalizeOnceBeforePlatformNavigation: true, preserveGreenOuterEdge: true,
         brandHeaderGeometryLockedToOriginalTemplate: true,
-        preserveOriginalBrandHeaderHeightWidthLogoAndSloganPlacement: true
+        preserveOriginalBrandHeaderHeightWidthLogoAndSloganPlacement: true,
+        brandHeaderCompositionMode: 'deterministic-master-overlay',
+        brandHeaderMasterAsset: 'product-listing-main-template.jpg',
+        brandHeaderModelRenderingForbidden: true,
+        exactBrandHeaderPixelCopyRequired: true
       }
     },
     shopeeTitle: clean(listingCase.shopeeTitle) || listingName(product, listingCase),

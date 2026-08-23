@@ -17,13 +17,13 @@
 
 ## 商品圖片固定格式
 
-1. 每個商品案件最多保留 20 張來源圖；所有合併商品的繁體完成圖先合成一個共用池，四通路整組最多使用 12 個不同完成圖 URL，不是每個編號各 12 張。建立共用池時先保留至少一張 `cleanMain` 與一張 `brandedHero`，再以每個細項先一張的輪流方式公平填滿，最後才加入同細項的其他圖片；細項超過 12 個時也不得讓單一細項先占滿容量。固定店面宣傳圖與商品介紹末端的兩張服務圖另計。
-2. 完成圖必須標示一個或多個固定角色：`cleanMain`、`brandedHero`、`localizedDetail`、`specification`、`variantRepresentative`。同一 `sourceImageUrl` 可以產生多個角色輸出；每一列 `generatedListingImages` 都要保存 `sourceImageUrl`、`roles` 與 `assetFlags`（至少包含 `containsLogo`、`containsText`、`containsContactInfo`、`containsQrCode`、`greenBrandTemplate`、`momoPromotionEligible`），不得把同一來源壓成單一完成圖。
-3. `brandedHero` 固定使用方形 1:1 的「柚子樂器淺色商業展示版」：以 `product-listing-main-template.jpg` 為品牌骨架，保留頂端薄荷綠紋理、紅色標語及右上柚子樂器標誌；移除左下寶寶及 `PIC COLLAGE`，不得加入價格、地址、電話、QR Code、浮水印或聯絡資訊。綠色品牌區下方固定設計成淺色商業展示底板，不限定白色；依商品配色選用奶油白、米色、淺灰、淺藍、淺粉或其他低彩度淺色，搭配柔和弧形、展示台、棚拍光影或乾淨景深。
-4. `brandedHero` 的商品精準去背後須成為最大主體，放在右側或中央偏右，約占品牌區下方畫面的 55～65%；左側或實際留白處放商品標題與 1～3 個已查證短賣點。最多加入 2 個輔助視覺，只能取自來源圖可辨識的細節特寫、折疊／展開狀態，或不暗示額外配件的淡化樂器使用情境；資料不足就省略，不得虛構功能、零件、贈品或使用狀態。不同商品可調整淺色底板、點綴色、圓角資訊卡及局部排列，但固定維持相同品牌頁首與「左側資訊、右側／中央商品主視覺」骨架，畫面不得雜亂。
+1. 每個商品案件最多保留 20 張來源圖；所有合併商品的繁體完成圖先合成一個共用池，四通路整組最多使用 12 個不同完成圖 URL，不是每個編號各 12 張。建立共用池時先保留至少一張 `cleanMain`、一張 `storefrontPortrait` 與一張 `brandedHero`，再以每個細項先一張的輪流方式公平填滿，最後才加入同細項的其他圖片；細項超過 12 個時也不得讓單一細項先占滿容量。固定店面宣傳圖與商品介紹末端的兩張服務圖另計。
+2. 完成圖必須標示一個或多個固定角色：`cleanMain`、`storefrontPortrait`、`brandedHero`、`localizedDetail`、`specification`、`variantRepresentative`。同一 `sourceImageUrl` 可以產生多個角色輸出；每一列 `generatedListingImages` 都要保存 `sourceImageUrl`、`roles` 與 `assetFlags`（至少包含 `containsLogo`、`containsText`、`containsContactInfo`、`containsQrCode`、`greenBrandTemplate`、`momoPromotionEligible`），不得把同一來源壓成單一完成圖。
+3. `storefrontPortrait` 固定為 EasyStore 使用的 750×1000、3:4「柚子樂器淺色商業展示版」；`brandedHero` 固定為蝦皮使用的 1000×1000、1:1 方形版。兩者的頂端品牌區都只能從 `product-listing-main-template.jpg` 以確定性像素覆蓋方式合成：圖片模型只能產生下方商品內容區，禁止重畫、仿畫、換字或另生 Logo。必須完整保留薄荷綠紋理、「有音樂的生活更有風格」紅色標語與右上圓形柚子樂器標誌的原始高度、寬度及位置；不可壓窄、拉伸、裁切或重新排版。
+4. 品牌圖移除左下寶寶及 `PIC COLLAGE`，不得加入價格、地址、電話、QR Code、浮水印或聯絡資訊。下方使用淺色商業展示底板並保留細綠邊，可依商品配色選用奶油白、米色、淺灰、淺藍、淺粉或其他低彩度淺色。`storefrontPortrait` 以清楚商業層級呈現 3～5 個已查證賣點及最多 2 個有來源依據的輔助視覺；`brandedHero` 呈現 1～3 個短賣點。商品須為最大主體；資料不足就省略，不得虛構功能、零件、贈品或使用狀態。
 5. 所有來源逐張完整檢查。簡體中文須改為台灣繁體中文；中國大陸用語改為自然台灣用語；型號、數字、尺寸、單位、顏色及商品外觀不可改變。無法辨識的小字不得猜測。
 6. 不得虛構配件、贈品、認證、保固或規格。圖片若寫「含琴盒」但實際沒有，必須移除。
-7. `cleanMain` 必須是無文字、無 Logo、無品牌框、無地址、電話或 QR Code 的乾淨商品圖。EasyStore 與蝦皮首圖固定為 `brandedHero`，第 2 張起才使用 `cleanMain` 與其他繁體完成圖。酷澎與 MOMO 首圖固定為 `cleanMain`；`brandedHero` 在兩者都只能放第 2 張以後且不得含地址、電話或 QR Code。MOMO 第 2 或第 3 張必須先保留一張符合專推圖條件的乾淨完成圖，且整個 MOMO 圖庫最多放一張安全的 `brandedHero` 次圖。若平台明確回傳整個圖庫禁止 Logo／文字，才移除該平台的品牌次圖。缺少指定首圖角色就停止該平台，不得用另一角色、店面宣傳圖或舊圖補位。
+7. `cleanMain` 必須是無文字、無 Logo、無品牌框、無地址、電話或 QR Code 的乾淨商品圖。EasyStore 首圖固定為 `storefrontPortrait`；蝦皮首圖固定為 `brandedHero`；酷澎與 MOMO 首圖固定為 `cleanMain`。`storefrontPortrait` 不得送往 MOMO 或酷澎；`brandedHero` 在兩者都只能放第 2 張以後且不得含地址、電話或 QR Code。MOMO 第 2 或第 3 張必須先保留一張符合專推圖條件的乾淨完成圖，且整個 MOMO 圖庫最多放一張安全的 `brandedHero` 次圖。若平台明確回傳整個圖庫禁止 Logo／文字，才移除該平台的品牌次圖。缺少指定首圖角色就停止該平台，不得用另一角色、店面宣傳圖或舊圖補位。
 8. 超出上方輪播容量的商品照片全部放入下方商品介紹。商品介紹採圖文穿插，最末端固定依序加入 `product-listing-description-promo-1.jpg` 與 `product-listing-description-promo-2.jpg`。
 9. 圖片不足時可以少放；圖片足夠時避免重複。「準備上架」可啟動框選收圖模式，到淘寶、天貓、1688 或阿里巴巴用滑鼠框出需要的畫面，圖片依 SKU／EasyStore 商品 ID 寫回同一件商品；截錯可刪除，也可直接從電腦上傳。收圖步驟不做簡繁轉換，後續圖片流程再統一處理。
 10. 「已有圖片」不等於「已完成圖片處理」。一鍵四通路上架只能使用本次勾選來源產生、已完成台灣繁體化且角色可核對的成品；來源圖片順序、張數或製圖要求有任何改變時必須重新製作。
