@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.23-average-cost-edit';
+  const VERSION = '2026.08.23-physical-photo-entry';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v2';
@@ -214,6 +214,9 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     productPreviewImages:[],
     productPreviewIndex:0,
     productPreviewTitle:'',
+    physicalPhotoSearch:'',
+    physicalPhotoProductId:'',
+    physicalPhotoBusy:false,
     posSearch:'',
     salesMode:'product',
     selectedCustomerId:'',
@@ -308,6 +311,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     'course-teachers':['老師薪資',''],
     'course-settings':['系統設定',''],
     products:['商品資訊',''],
+    'physical-photos':['拍實體圖','搜尋商品後直接用手機拍照，照片會保存到商品後台的「實體圖片」。'],
     sales:['現場銷售',''],
     customers:['客戶會員','會員、老師與一般客戶共用同一份客戶資料。'],
     receivables:['應收帳款','應收帳款會連回客戶與原始銷售。'],
@@ -730,6 +734,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       packageMeasurementMode:['estimated','provided','measured'].includes(clean(obj.packageMeasurementMode))?clean(obj.packageMeasurementMode):'',packageResearchStatus:['not-searched','found','not-found','manual'].includes(clean(obj.packageResearchStatus))?clean(obj.packageResearchStatus):'not-searched',packageResearchSourceUrl:safeUrl(obj.packageResearchSourceUrl),packageResearchNote:clean(obj.packageResearchNote),
       zeroCostConfirmed:obj.zeroCostConfirmed===true,zeroCostConfirmedAt:obj.zeroCostConfirmedAt||'',zeroCostConfirmedBy:clean(obj.zeroCostConfirmedBy),
       currentStock:numberOrNull(firstValue(obj,['currentStock','openingStock','onHand','stock']))||0,openingStock:numberOrNull(obj.openingStock),openingUnitCost:numberOrNull(obj.openingUnitCost),reservedStock:numberOrNull(firstValue(obj,['reservedStock','reserved']))||0,safetyStock:numberOrNull(firstValue(obj,['safetyStock','minStock']))||0,
+      physicalImageUrls:normalizeProductResearchSourceUrls(obj.physicalImageUrls),physicalImages:Array.isArray(obj.physicalImages)?obj.physicalImages:[],physicalImagesUpdatedAt:obj.physicalImagesUpdatedAt||'',
       saleRewardPercent:numberOrNull(obj.saleRewardPercent),easyStoreMatched:obj.easyStoreMatched===true||clean(obj.sourceCollection)==='easyStoreApi',easyStoreSyncedAt:obj.easyStoreSyncedAt||'',status:clean(obj.status)||'active',note:clean(firstValue(obj,['note','remark','備註'])),enabled:obj.enabled!==false,autoCreated:obj.autoCreated===true,source:clean(obj.source),sourceFile:clean(obj.sourceFile),importInitialized:obj.importInitialized===true,createdAt:obj.createdAt||'',updatedAt:obj.updatedAt||''
     };
   }
@@ -757,7 +762,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     const easyStorePrice=internal&&internal.easyStorePrice!=null?internal.easyStorePrice:(!pricesInitialized?sharedOnlinePrice:null),momoPrice=internal&&internal.momoPrice!=null?internal.momoPrice:(!pricesInitialized?sharedOnlinePrice:null),coupangPrice=internal&&internal.coupangPrice!=null?internal.coupangPrice:(!pricesInitialized?sharedOnlinePrice:null);
     const current=internal?Number(internal.currentStock||0):0; const reserved=internal?Number(internal.reservedStock||0):0; const safety=internal?Number(internal.safetyStock||0):0; const available=Math.max(0,current-reserved-safety);
     const costForMargin=internal?(internal.nextFifoCost!=null?internal.nextFifoCost:internal.averageCost):null; const margin=(storePrice!=null&&costForMargin!=null&&storePrice!==0)?((storePrice-costForMargin)/storePrice*100):null;
-    return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,barcode:internal?internal.barcode:'',model:internal?internal.model:'',imageUrl:images[0]||'',imageUrls:images,parentImageUrls:parentImages,variantImageUrls:variantImages,onlinePrice:onlinePrice,storePrice:storePrice,sharedOnlinePrice:sharedOnlinePrice,easyStorePrice:easyStorePrice,momoPrice:momoPrice,coupangPrice:coupangPrice,platformPricesInitialized:pricesInitialized,platformPriceOverrides:internal?internal.platformPriceOverrides||{}:{},originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,zeroCostConfirmed:!!(internal&&internal.zeroCostConfirmed===true),zeroCostConfirmedAt:internal?internal.zeroCostConfirmedAt:'',zeroCostConfirmedBy:internal?internal.zeroCostConfirmedBy:'',currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',sourceProductId:internal?internal.sourceProductId:'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,platformPriceSync:internal?internal.platformPriceSync||{}:{},platformMappings:internal?internal.platformMappings||{}:{},platformListingStatus:internal?internal.platformListingStatus||normalizePlatformListingStatus({}):normalizePlatformListingStatus({}),negativeStock:current<0};
+    return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,barcode:internal?internal.barcode:'',model:internal?internal.model:'',imageUrl:images[0]||'',imageUrls:images,parentImageUrls:parentImages,variantImageUrls:variantImages,physicalImageUrls:internal?internal.physicalImageUrls||[]:[],physicalImages:internal?internal.physicalImages||[]:[],physicalImagesUpdatedAt:internal?internal.physicalImagesUpdatedAt:'',createdAt:internal?internal.createdAt:'',updatedAt:internal?internal.updatedAt:'',onlinePrice:onlinePrice,storePrice:storePrice,sharedOnlinePrice:sharedOnlinePrice,easyStorePrice:easyStorePrice,momoPrice:momoPrice,coupangPrice:coupangPrice,platformPricesInitialized:pricesInitialized,platformPriceOverrides:internal?internal.platformPriceOverrides||{}:{},originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,zeroCostConfirmed:!!(internal&&internal.zeroCostConfirmed===true),zeroCostConfirmedAt:internal?internal.zeroCostConfirmedAt:'',zeroCostConfirmedBy:internal?internal.zeroCostConfirmedBy:'',currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',sourceProductId:internal?internal.sourceProductId:'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,platformPriceSync:internal?internal.platformPriceSync||{}:{},platformMappings:internal?internal.platformMappings||{}:{},platformListingStatus:internal?internal.platformListingStatus||normalizePlatformListingStatus({}):normalizePlatformListingStatus({}),negativeStock:current<0};
   }
 
   function saveDashboardCache(){
@@ -832,7 +837,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   function ensureDataForCurrentView(){
     const view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     if(isCourseWorkspaceView(view))return false;
-    if(view==='products'){
+    if(view==='products'||view==='physical-photos'){
       if(!state.loadedAt&&!state.loading){ loadProductsOnly(false); return true; }
       return false;
     }
@@ -1429,7 +1434,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     }
     if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.detach==='function')global.YouziOperationsCourseInline.detach();
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
-    const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,expenses:renderOperatingExpensesPage,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
+    const renderers={overview:renderOverviewV7,products:renderProducts,'physical-photos':renderPhysicalPhotos,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,expenses:renderOperatingExpensesPage,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
     content.innerHTML=(renderers[state.view]||renderOverview)();
     enhanceMobileNumberInputs(content);
     bindViewSpecific();
@@ -1542,7 +1547,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     return {value:value.slice(0,selection.start)+text+value.slice(selection.end),caret:selection.start+text.length};
   }
   function applySearchKeyInput(targetId,key){
-    const map={posSearch:'posSearch',productSearch:'productSearch',purchaseLowSearch:'purchaseLowSearch',purchaseEntrySearch:'purchaseEntrySearch',stocktakeSearch:'stocktakeSearch',inventorySearch:'inventorySearch'};
+    const map={posSearch:'posSearch',productSearch:'productSearch',physicalPhotoSearch:'physicalPhotoSearch',purchaseLowSearch:'purchaseLowSearch',purchaseEntrySearch:'purchaseEntrySearch',stocktakeSearch:'stocktakeSearch',inventorySearch:'inventorySearch'};
     const stateKey=map[targetId];
     if(!stateKey) return;
     if(targetId==='productSearch'&&!closeProductEditorForListChange(true)) return;
@@ -2212,6 +2217,48 @@ function renderOverviewV7(){
     closeDrawer();toast('條碼已送出',(data.displaySku||data.sku)+'｜'+copies+' 張｜'+clean(result.printerName||'TSC TTP-244 Plus'),'success');
   }
 
+  function physicalPhotoProductRows(){
+    const term=lower(state.physicalPhotoSearch),rows=state.catalog.filter(function(p){return p.initialized&&p.status!=='inactive';});
+    if(term)return rows.filter(function(p){return matchesSearch([p.originalName,p.onlineName,p.name,p.sku,formatLabelSku(p.sku),p.barcode,p.brand,p.model,p.category],term);}).slice(0,80);
+    return rows.slice().sort(function(a,b){return productCreatedTime(b)-productCreatedTime(a)||compareCatalogSku(a,b);}).slice(0,24);
+  }
+  function physicalPhotoSearchResultsHtml(){
+    const rows=physicalPhotoProductRows();
+    if(!rows.length)return emptyHtml(state.physicalPhotoSearch?'找不到商品':'尚未建立商品',state.physicalPhotoSearch?'請換商品名稱或 SKU 再搜尋。':'請先建立商品主檔。');
+    return '<div class="ops-physical-photo-grid">'+rows.map(function(p){const image=p.imageUrl||'',name=clean(p.originalName||p.name||p.onlineName)||'未命名商品';return '<button type="button" class="ops-physical-photo-product" data-action="physical-photo-capture" data-id="'+attr(p.docId)+'" '+(state.physicalPhotoBusy?'disabled':'')+'>'+(image?'<img loading="lazy" src="'+attr(image)+'" alt="" onerror="this.style.display=\'none\'">':'<span class="ops-physical-photo-placeholder">無圖</span>')+'<span class="ops-physical-photo-copy"><b>'+escapeHtml(name)+'</b><small>SKU '+escapeHtml(p.sku||'未設定')+'</small><strong>點一下立即拍照</strong></span><span class="ops-physical-photo-camera" aria-hidden="true">📷</span></button>';}).join('')+'</div>';
+  }
+  function renderPhysicalPhotos(){
+    const heading=state.physicalPhotoSearch?'搜尋結果':'最近上架商品';
+    return '<section class="ops-card ops-physical-photo-page"><div class="ops-physical-photo-intro"><span>📷</span><div><h2>拍實體圖</h2><p>搜尋或點最近商品，手機會立即開啟相機；照片只會加到「實體圖片」，不會取代平台主圖。</p></div></div><div class="ops-physical-photo-search"><input class="ops-input" id="physicalPhotoSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.physicalPhotoSearch)+'"></div>'+mobileSearchPadHtml('physicalPhotoSearch')+'<div class="ops-physical-photo-heading"><h3>'+escapeHtml(heading)+'</h3><small>點商品即可拍照</small></div><div id="physicalPhotoSearchResults">'+physicalPhotoSearchResultsHtml()+'</div><input id="physicalPhotoCameraInput" type="file" accept="image/*" capture="environment" hidden><div id="physicalPhotoUploadStatus" aria-live="polite"></div></section>';
+  }
+  function startPhysicalPhotoCapture(productId){
+    const id=clean(productId),product=catalogById(id),input=byId('physicalPhotoCameraInput');
+    if(!product||!input)return toast('找不到商品','請重新整理後再試。','error');
+    if((product.physicalImageUrls||[]).length>=3)return toast('這件商品已有 3 張實體圖','可到商品後台查看。','warning');
+    state.physicalPhotoProductId=id;input.value='';input.click();
+  }
+  async function uploadPhysicalProductPhoto(productId,file){
+    const id=clean(productId),product=catalogById(id);if(!id||!product||!file)throw new Error('找不到要保存的商品或照片');
+    if(state.physicalPhotoBusy)throw new Error('上一張照片仍在保存中');
+    if(!global.firebase||!global.firebase.storage)throw new Error('圖片上傳服務尚未載入，請重新整理頁面。');
+    if(!['image/jpeg','image/png','image/webp'].includes(clean(file.type)))throw new Error('請直接用手機相機拍攝 JPG、PNG 或 WebP 圖片');
+    if(Number(file.size||0)>15*1024*1024)throw new Error('每張圖片不可超過 15 MB');
+    if((product.physicalImageUrls||[]).length>=3)throw new Error('這件商品已有 3 張實體圖');
+    await requireEasyStoreManagerAuth();state.physicalPhotoBusy=true;
+    const status=byId('physicalPhotoUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner"></span><div><b>正在保存實體圖</b><small>'+escapeHtml(product.sku||product.originalName||product.name)+'</small></div></div>';
+    try{
+      const extension=file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg',createdAt=new Date().toISOString(),storagePath='ops-product-listing-cases/'+id+'/physical/'+Date.now()+'-'+Math.random().toString(36).slice(2,9)+'.'+extension,storage=global.firebase.app().storage(),snapshot=await storage.ref().child(storagePath).put(file,{contentType:file.type,customMetadata:{productId:id,productSku:clean(product.sku),photoType:'physical',uploadedBy:userLabel()}}),url=await snapshot.ref.getDownloadURL(),record={url:url,storagePath:storagePath,createdAt:createdAt,createdBy:userLabel(),source:'mobile-camera'},fv=fieldValue();
+      if(!fv||typeof fv.arrayUnion!=='function')throw new Error('圖片資料庫功能尚未載入');
+      const common={productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),physicalImageUrls:fv.arrayUnion(url),physicalImages:fv.arrayUnion(record),physicalImagesUpdatedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+      await Promise.all([state.db.collection(COLLECTIONS.listingCases).doc(id).set(common,{merge:true}),state.db.collection(COLLECTIONS.products).doc(id).set({physicalImageUrls:fv.arrayUnion(url),physicalImages:fv.arrayUnion(record),physicalImagesUpdatedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true})]);
+      product.physicalImageUrls=normalizeProductResearchSourceUrls((product.physicalImageUrls||[]).concat(url)).slice(0,3);product.physicalImages=(product.physicalImages||[]).concat(record).slice(-3);if(product.internal){product.internal.physicalImageUrls=product.physicalImageUrls.slice();product.internal.physicalImages=product.physicalImages.slice();}
+      await writeAudit('新增商品實體圖片','product',id,(product.sku||id)+'｜實體圖 '+product.physicalImageUrls.length+' 張');
+      if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>實體圖已保存</b><small>'+escapeHtml(product.sku||product.originalName||product.name)+'｜可繼續點商品再拍一張</small></div></div>';
+      toast('實體圖已保存',(product.sku||product.originalName||product.name)+'｜不會取代平台主圖','success');
+      return url;
+    }finally{state.physicalPhotoBusy=false;state.physicalPhotoProductId='';}
+  }
+
   function renderProducts(){
     const inventoryValue=sum(state.catalog,function(p){return p.inventoryValue||0;});
     const editingProduct=state.productEditId&&state.productEditId!=='__new__'?catalogById(state.productEditId):null;
@@ -2763,6 +2810,7 @@ function renderSalesV5(){
   }
   function renderLiveSearchResults(inputId){
     if(inputId==='posSearch')return replaceLiveSearchHtml('posSearchResults',posSearchResultsHtml());
+    if(inputId==='physicalPhotoSearch')return replaceLiveSearchHtml('physicalPhotoSearchResults',physicalPhotoSearchResultsHtml());
     if(inputId==='productSearch'){
       const updated=replaceLiveSearchHtml('productSearchResults',productSearchResultsHtml());
       if(updated){markSearchSeriesAll('product-series');const lowButton=query('[data-action="product-low-stock"]');if(lowButton)lowButton.classList.remove('active');}
@@ -3483,7 +3531,7 @@ function ensureSalesClock(){
     const normalized={
       caseStatus:clean(source.caseStatus)||'draft',
       listingMode:clean(source.listingMode)==='add-variant'?'add-variant':'independent',variantParentProductId:clean(source.variantParentProductId),variantParentSku:clean(source.variantParentSku),variantParentName:clean(source.variantParentName),variantAttributeName:clean(source.variantAttributeName)||'規格',variantParentAttributeValue:clean(source.variantParentAttributeValue)||'原款',variantAttributeValue:clean(source.variantAttributeValue),variantParentImageUrl:safeUrl(source.variantParentImageUrl),variantChildImageUrl:safeUrl(source.variantChildImageUrl),variantGroupEnabled:source.variantGroupEnabled===true,variantGroupAttributeName:clean(source.variantGroupAttributeName)||'規格',variantGroupPrimaryValue:clean(source.variantGroupPrimaryValue),variantGroupPrimaryImageUrl:safeUrl(source.variantGroupPrimaryImageUrl),variantGroupItems:normalizeProductVariantGroupItems(source.variantGroupItems,p&&p.docId),variantGallerySelectionInitialized:source.variantGallerySelectionInitialized===true,
-      sourceProductDescription:clean(source.sourceProductDescription),researchInstructions:clean(source.researchInstructions),referenceUrls:normalizeProductResearchSourceUrls(source.referenceUrls),referenceImageUrls:recoveredMedia.referenceImageUrls,selectedReferenceImageUrls:recoveredMedia.selectedReferenceImageUrls,gallerySourceImageUrls:normalizeProductResearchSourceUrls(source.gallerySourceImageUrls).slice(0,PRODUCT_REFERENCE_IMAGE_MAX),referenceImagesCleared:recoveredMedia.referenceImagesCleared,listingImageUrls:normalizeProductResearchSourceUrls(source.listingImageUrls),
+      sourceProductDescription:clean(source.sourceProductDescription),researchInstructions:clean(source.researchInstructions),referenceUrls:normalizeProductResearchSourceUrls(source.referenceUrls),referenceImageUrls:recoveredMedia.referenceImageUrls,selectedReferenceImageUrls:recoveredMedia.selectedReferenceImageUrls,gallerySourceImageUrls:normalizeProductResearchSourceUrls(source.gallerySourceImageUrls).slice(0,PRODUCT_REFERENCE_IMAGE_MAX),referenceImagesCleared:recoveredMedia.referenceImagesCleared,listingImageUrls:normalizeProductResearchSourceUrls(source.listingImageUrls),physicalImageUrls:normalizeProductResearchSourceUrls([].concat(source.physicalImageUrls||[],legacy.physicalImageUrls||[])).slice(0,3),physicalImages:Array.isArray(source.physicalImages)?source.physicalImages:(Array.isArray(legacy.physicalImages)?legacy.physicalImages:[]),
       brand:clean(listingCaseValue(source,legacy,'brand',p&&p.brand||'')),shopeeBrand:clean(source.shopeeBrand)||clean(listingCaseValue(source,legacy,'brand',p&&p.brand||'')),shopeeAttributeValues:normalizeProductShopeeAttributes(source.shopeeAttributeValues),model:clean(listingCaseValue(source,legacy,'model',p&&p.model||'')),barcode:clean(listingCaseValue(source,legacy,'barcode',p&&p.barcode||'')),
       productResearchStatus:['not-searched','partial','researched','manual'].includes(productResearchStatus)?productResearchStatus:'not-searched',productResearchSourceUrls:normalizeProductResearchSourceUrls(listingCaseValue(source,legacy,'productResearchSourceUrls',[])),
       identityStatus:identityStatus,identityEvidence:clean(source.identityEvidence),identityConflictSummary:clean(source.identityConflictSummary),identityManualConfirmed:source.identityManualConfirmed===true,identityManualConfirmedAt:source.identityManualConfirmedAt||'',identityManualConfirmedBy:clean(source.identityManualConfirmedBy),identityManualConfirmationNote:clean(source.identityManualConfirmationNote),fieldEvidence:Array.isArray(source.fieldEvidence)?source.fieldEvidence:[],sourceConflicts:Array.isArray(source.sourceConflicts)?source.sourceConflicts:[],
@@ -3758,6 +3806,7 @@ function ensureSalesClock(){
     const commonDetails='<div class="ops-form-grid cols-3"><div class="ops-field"><label>品牌</label><input class="ops-input" name="brand" value="'+attr(row.brand)+'"></div><div class="ops-field"><label>型號</label><input class="ops-input" name="model" value="'+attr(row.model)+'"></div><div class="ops-field"><label>國際條碼／GTIN</label><input class="ops-input" name="barcode" value="'+attr(row.barcode)+'"></div><div class="ops-field"><label>材質</label><input class="ops-input" name="material" value="'+attr(row.material)+'"></div><div class="ops-field"><label>顏色</label><input class="ops-input" name="color" value="'+attr(row.color)+'"></div><div class="ops-field"><label>產地</label><input class="ops-input" name="countryOfOrigin" value="'+attr(row.countryOfOrigin)+'"></div><div class="ops-field"><label>保固</label><input class="ops-input" name="warrantyInfo" value="'+attr(row.warrantyInfo)+'"></div><div class="ops-field full"><label>包裝內容物</label><input class="ops-input" name="includedItems" value="'+attr(row.includedItems)+'"></div><div class="ops-field full"><label>常見問題 FAQ</label><textarea class="ops-textarea compact" name="faqText">'+escapeHtml(row.faqText)+'</textarea></div></div>';
     const commonSection='<textarea name="sellingPoints" hidden>'+escapeHtml(row.sellingPoints)+'</textarea><textarea name="shortDescription" hidden>'+escapeHtml(row.shortDescription)+'</textarea><textarea name="featureList" hidden>'+escapeHtml(row.featureList)+'</textarea><textarea name="specificationText" hidden>'+escapeHtml(row.specificationText)+'</textarea><textarea name="commonProductDescription" hidden>'+escapeHtml(row.commonProductDescription)+'</textarea>'+productIdentityReviewHtml(row)+'<div class="ops-form-grid"><div class="ops-field full"><label>上架商品名稱</label><input class="ops-input" name="researchedProductName" value="'+attr(row.researchedProductName)+'" placeholder="AI 會填入，你也可以自己修改"></div><div class="ops-field full"><label>完整商品介紹</label><textarea class="ops-textarea ops-product-description-textarea" name="productDescription" placeholder="先用 2～4 句介紹商品與適合對象。\n\n商品特色\n1. 特色一\n2. 特色二\n\n商品規格\n品牌：\n型號：\n顏色：">'+escapeHtml(row.productDescription)+'</textarea><small>商品簡介、6～10 點特色與規格都寫在這一格；系統會自動轉成各平台需要的純文字或安全 HTML。</small></div></div><details class="ops-listing-image-url-details"><summary>其他商品資料</summary><div class="ops-listing-advanced-body">'+commonDetails+'</div></details>';
     const mediaSection='<textarea name="imagePlan" hidden>'+escapeHtml(row.imagePlan)+'</textarea><textarea name="listingImageUrls" hidden>'+escapeHtml(listingImages.join('\n'))+'</textarea><div class="ops-listing-image-order"><b>淺色商業首圖</b><span>商品圖</span><span>店面宣傳</span></div><div id="productListingImagePreview">'+(listingImages.length?productListingImagePreviewHtml(listingImages,'目前已完成圖片'):'<div class="ops-listing-image-empty">交給 Codex 後會在這裡保存完成圖片</div>')+'</div>';
+    const physicalImageSection='<div class="ops-physical-photo-backend"><div class="ops-listing-field-heading"><div><b>實體圖片</b><small>手機拍攝的真實商品照片；不會取代平台主圖。</small></div><button class="ops-button primary" type="button" data-action="physical-photo-go" data-sku="'+attr(p.sku||'')+'">用手機拍實體圖</button></div>'+(row.physicalImageUrls.length?productListingImagePreviewHtml(row.physicalImageUrls,'實體圖片'):'<div class="ops-listing-image-empty">尚未拍攝實體圖片</div>')+'</div>';
     const sharedPlatformContent='<div class="ops-callout green"><b>商品介紹不用重複填</b><br><span>上面的「完整商品介紹」會自動轉成平台純文字與安全 HTML。</span></div>';
     const easySection='<textarea name="shopeeDescription" hidden>'+escapeHtml(row.productDescription)+'</textarea><textarea name="easyStoreHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><input type="hidden" name="enabledEasyStoreShopee" value="1"><div class="ops-callout green"><b>自動發布 EasyStore 與蝦皮</b><br><span>不需勾選，也不先搜尋平台目錄；系統只使用中央商品保存的平台編號。有編號就更新原商品，沒有編號就以這個唯一 SKU 建立新品。</span></div>'+sharedPlatformContent+'<div class="ops-form-grid"><div class="ops-field full ops-product-name-field"><label>蝦皮商品標題</label><input class="ops-input" name="shopeeTitle" value="'+attr(row.shopeeTitle)+'"></div><div class="ops-field full"><label>EasyStore → 蝦皮分類</label><input class="ops-input" name="shopeeCategoryPath" value="'+attr(row.shopeeCategoryPath)+'" readonly><small>分類由商品類型與蝦皮固定模板產生；吉他不會跳過「弦樂器」。</small></div><div class="ops-field full"><label>平台另外需要補的欄位（如有）</label><textarea class="ops-textarea compact" name="shopeeRequiredNotes">'+escapeHtml(row.shopeeRequiredNotes)+'</textarea></div></div>'+productShopeeAttributeEditorHtml(p,row);
     const momoSection='<textarea name="momoHtml" hidden>'+escapeHtml(productDescriptionToSafeHtml(row.productDescription))+'</textarea><input type="hidden" name="enabledMomo" value="1"><div class="ops-callout green"><b>自動發布 MOMO</b><br><span>不需勾選；沿用同一個商品 SKU、商品售價與完成圖片。</span></div>'+sharedPlatformContent+'<div class="ops-form-grid"><div class="ops-field full"><label>MOMO 商品名稱</label><input class="ops-input" name="momoGoodsName" value="'+attr(row.momoGoodsName)+'"></div><div class="ops-field full"><label>MOMO 行銷標語</label><input class="ops-input" name="momoSlogan" value="'+attr(row.momoSlogan)+'"></div><div class="ops-field full"><label>MOMO 分類</label><input class="ops-input" name="momoCategoryCode" value="'+attr(row.momoCategoryCode)+'" placeholder="留白時自動判斷樂器／樂器配件分類"></div><div class="ops-field full"><label>平台另外需要補的欄位（如有）</label><textarea class="ops-textarea compact" name="momoRequiredNotes">'+escapeHtml(row.momoRequiredNotes)+'</textarea></div></div>';
@@ -3769,7 +3818,7 @@ function ensureSalesClock(){
     return '<form id="productListingCaseForm" data-id="'+attr(p.docId)+'" data-exists="'+(exists?'1':'0')+'" data-identity-manual-confirmed="'+(row.identityManualConfirmed?'1':'0')+'" data-ai-research-status="'+attr(row.aiResearchStatus)+'" data-image-generation-status="'+attr(row.lastImageGenerationStatus)+'">'
       +'<section class="ops-listing-case-summary'+(image?'':' no-image')+'">'+(image?'<img src="'+attr(image)+'" alt="'+attr(p.originalName||p.name)+'">':'')+'<div><span>準備上架</span><h3>'+escapeHtml(p.originalName||p.name)+'</h3><p>SKU '+escapeHtml(p.sku||'未設定')+'｜庫存 '+escapeHtml(formatNumber(p.currentStock))+'｜最後更新 '+escapeHtml(updated)+'</p></div></section>'
       +'<input type="hidden" name="internalSku" value="'+attr(p.sku||'')+'"><input type="hidden" name="internalName" value="'+attr(p.originalName||p.name||'')+'"><input type="hidden" name="easyStorePrice" value="'+attr(productListingAutomaticPrice(p,'easyStorePrice')==null?'':productListingAutomaticPrice(p,'easyStorePrice'))+'"><input type="hidden" name="momoPrice" value="'+attr(productListingAutomaticPrice(p,'momoPrice')==null?'':productListingAutomaticPrice(p,'momoPrice'))+'"><input type="hidden" name="coupangPrice" value="'+attr(productListingAutomaticPrice(p,'coupangPrice')==null?'':productListingAutomaticPrice(p,'coupangPrice'))+'"><input type="hidden" name="currentStock" value="'+attr(p.currentStock)+'"><input type="hidden" name="packageMeasurementMode" value="'+attr(row.packageMeasurementMode||'')+'">'
-      +hiddenState+productListingModeSectionHtml(p,row)+productListingSection('圖片與注意事項','',sourceSection,true)
+      +hiddenState+productListingModeSectionHtml(p,row)+productListingSection('實體圖片','手機拍攝後會獨立保存在這裡，不會取代平台主圖。',physicalImageSection,true)+productListingSection('圖片與注意事項','',sourceSection,true)
       +codexAction+advancedSection
       +'<div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉</button></div></form>';
   }
@@ -5749,7 +5798,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
 
   function handleAction(action,el){
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
-    if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return state.view==='products'?loadProductsOnly(false):loadAll(false); }
+    if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return state.view==='products'||state.view==='physical-photos'?loadProductsOnly(false):loadAll(false); }
     if(action==='platform-sync-now') return syncPlatformOrdersNow();
     if(action==='platform-fee-settings') return openPlatformFeeSettings();
     if(action==='platform-order-range'){const range=el.dataset.range||'today';state.platformOrderRange=range;if(range==='today')state.platformOrderDate=todayDateKey();if(range==='month')state.platformOrderMonth=todayDateKey().slice(0,7);if(range==='custom'){if(!state.platformOrderFrom)state.platformOrderFrom=dateText(new Date(new Date().getFullYear(),new Date().getMonth(),1));if(!state.platformOrderTo)state.platformOrderTo=todayDateKey();}return renderKeepingViewport();}
@@ -5808,6 +5857,8 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
       return;
     }
     if(action==='mobile-key') return applySearchKeyInput(el.dataset.target,el.dataset.key);
+    if(action==='physical-photo-capture')return startPhysicalPhotoCapture(el.dataset.id);
+    if(action==='physical-photo-go'){closeDrawer();state.physicalPhotoSearch=clean(el.dataset.sku);location.hash='physical-photos';return;}
     if(action==='overview-low-stock'){state.productFilter='low';state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;location.hash='products';return;}
     if(action==='sales-mode'){const nextMode=el.dataset.mode||'product';if(nextMode==='usage'){state.cart.forEach(function(item){item.unitPrice=0;});state.checkoutDiscount=0;state.checkoutPoints=0;state.checkoutPointsTouched=false;state.checkoutEarnPoints=false;state.checkoutActualCash='';}else if(state.salesMode==='usage'){state.cart.forEach(function(item){const product=catalogById(item.productId);item.unitPrice=Number(product&&product.storePrice||0);});state.checkoutEarnPoints=true;state.checkoutActualCash='';}state.salesMode=nextMode;return renderKeepingViewport();}
     if(action==='stock-usage-reason'){state.stockUsageReason=el.dataset.value||'店內自用';return renderKeepingViewport();}
@@ -6120,6 +6171,7 @@ function rerenderKeepingFocus(id,value){
     document.addEventListener('submit',function(event){const form=event.target.closest('form'); if(!form)return; event.preventDefault();handleSubmit(form);});
     const opsSearchStateMap={
       productSearch:'productSearch',
+      physicalPhotoSearch:'physicalPhotoSearch',
       posSearch:'posSearch',
       posMemberSearch:'posMemberSearch',
       saleInvoiceSearch:'saleInvoiceSearch',
@@ -6217,6 +6269,11 @@ function rerenderKeepingFocus(id,value){
         const files=Array.from(event.target.files||[]),form=event.target.closest('#productListingCaseForm');event.target.value='';
         return uploadProductReferenceImages(form,files).catch(function(error){const status=byId('productReferenceImageUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>圖片上傳失敗</b><small>'+escapeHtml(errorMessage(error))+'</small></div></div>';toast('參考圖上傳失敗',errorMessage(error),'error');});
       }
+      if(event.target.id==='physicalPhotoCameraInput'){
+        const file=event.target.files&&event.target.files[0],productId=state.physicalPhotoProductId;event.target.value='';
+        if(!file){state.physicalPhotoProductId='';return;}
+        return uploadPhysicalProductPhoto(productId,file).catch(function(error){const status=byId('physicalPhotoUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>實體圖尚未保存</b><small>'+escapeHtml(errorMessage(error))+'</small></div></div>';toast('實體圖上傳失敗',errorMessage(error),'error');state.physicalPhotoBusy=false;state.physicalPhotoProductId='';});
+      }
       if(event.target.matches('[data-variant-image-upload]')){
         const files=Array.from(event.target.files||[]),form=event.target.closest('#productListingCaseForm'),productId=clean(event.target.dataset.id);event.target.value='';
         return uploadProductVariantReferenceImages(form,productId,files).catch(function(error){const card=productVariantImageTargetCard(form,productId),status=card&&query('[data-variant-image-upload-status]',card);if(status)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>細項圖片上傳失敗</b><small>'+escapeHtml(errorMessage(error))+'</small></div></div>';toast('細項圖片上傳失敗',errorMessage(error),'error');});
@@ -6289,7 +6346,7 @@ function rerenderKeepingFocus(id,value){
     global.addEventListener('message',handleInjiaoyunBridgeMessage);
     global.addEventListener('message',handleProductImageCollectionBridgeMessage);
     requestProductImageCollectionSessionState();
-    const refreshBtn=byId('opsRefreshBtn'); if(refreshBtn)refreshBtn.addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} if(state.view==='products')loadProductsOnly(false);else loadAll(false);});
+    const refreshBtn=byId('opsRefreshBtn'); if(refreshBtn)refreshBtn.addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} if(state.view==='products'||state.view==='physical-photos')loadProductsOnly(false);else loadAll(false);});
     const backBtn=byId('opsBackBtn'); if(backBtn)backBtn.addEventListener('click',function(){history.back();});
     const logoutBtn=byId('opsLogoutBtn'); if(logoutBtn)logoutBtn.addEventListener('click',function(){ if(typeof global.logout==='function')global.logout();else location.href='index.html'; });
     byId('opsDrawerClose').addEventListener('click',closeDrawer); byId('opsDrawerBackdrop').addEventListener('click',closeDrawer);
@@ -6334,7 +6391,7 @@ function rerenderKeepingFocus(id,value){
     const cache=initialView==='overview'?getDashboardCache():null;
     if(isCourseWorkspaceView(initialView)){
       render();
-    }else if(initialView==='products'){
+    }else if(initialView==='products'||initialView==='physical-photos'){
       render();
       if(restoredFastState&&state.loadedAt)loadProductsOnly(true);else await loadProductsOnly(false);
     }else if(cache){

@@ -9,12 +9,14 @@ const mobileHistory = fs.readFileSync('operations-mobile-pos-v4.js', 'utf8');
 const portal = fs.readFileSync('portal.html', 'utf8');
 const hub = fs.readFileSync('operations-hub.html', 'utf8');
 const firestoreRules = fs.readFileSync('firestore.rules', 'utf8');
+const storageRules = fs.readFileSync('storage.rules', 'utf8');
 const productAiResearchSource = fs.readFileSync('functions/productAiResearch.js', 'utf8');
 const productListingPublishSource = fs.readFileSync('functions/productListingPublish.js', 'utf8');
 
 const searchFields = [
   ['posSearch', 'posSearchResults'],
   ['productSearch', 'productSearchResults'],
+  ['physicalPhotoSearch', 'physicalPhotoSearchResults'],
   ['purchaseLowSearch', 'purchaseLowSearchResults'],
   ['purchaseEntrySearch', 'purchaseEntrySearchResults'],
   ['stocktakeSearch', 'stocktakeSearchResults'],
@@ -63,8 +65,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260823-average-cost-edit/);
-    assert.match(html, /operations-phase1\.js\?v=20260823-average-cost-edit/);
+    assert.match(html, /operations-phase1\.css\?v=20260823-physical-photo-entry/);
+    assert.match(html, /operations-phase1\.js\?v=20260823-physical-photo-entry/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260821-shopee-v2-schema5/);
   }
 });
@@ -233,6 +235,26 @@ test('manual average cost correction becomes the new inventory cost baseline aft
   assert.equal(result.layers[0].referenceType, 'manualAverageAdjustment');
   assert.equal(result.averageCost, 120);
   assert.equal(result.inventoryValue, 600);
+});
+
+test('mobile physical-photo entry opens the rear camera and stores photos separately from platform images', () => {
+  const page = functionBody(engine, 'renderPhysicalPhotos');
+  const capture = functionBody(engine, 'startPhysicalPhotoCapture');
+  const upload = functionBody(engine, 'uploadPhysicalProductPhoto');
+  const listingForm = functionBody(engine, 'productListingCaseFormHtml');
+
+  assert.match(portal, /href="#physical-photos" data-view="physical-photos"/);
+  assert.match(hub, /href="#physical-photos" data-view="physical-photos"/);
+  assert.match(page, /id=\\?"physicalPhotoCameraInput\\?"/);
+  assert.match(page, /capture=\\?"environment\\?"/);
+  assert.match(page, /最近上架商品/);
+  assert.match(capture, /input\.click\(\)/);
+  assert.match(upload, /\/physical\//);
+  assert.match(upload, /physicalImageUrls/);
+  assert.match(upload, /physicalImages/);
+  assert.doesNotMatch(upload, /listingImageUrls|imageUrls:fv\.arrayUnion/);
+  assert.match(listingForm, /實體圖片/);
+  assert.match(storageRules, /match \/ops-product-listing-cases\/\{productId\}\/physical\/\{fileName\}/);
 });
 
 test('switching product searches skips the old editor prompt and POS clears the previous product text', () => {
