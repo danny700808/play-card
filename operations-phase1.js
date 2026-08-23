@@ -4799,6 +4799,7 @@ function ensureSalesClock(){
     const params=new URLSearchParams(global.location.search||''),jobId=clean(params.get('resumeListingJob')),productId=clean(params.get('productId'));
     if(!jobId&&!productId)return false;
     if(!/^[A-Za-z0-9_-]{1,200}$/.test(jobId)||!/^[A-Za-z0-9_-]{1,200}$/.test(productId))throw new Error('指定的 v2 上架工作代碼不正確。');
+    await requireEasyStoreManagerAuth();
     if(!global.YouziShopeeAutofill||typeof global.YouziShopeeAutofill.queue!=='function')throw new Error('蝦皮自動填寫橋接程式尚未載入，請確認已安裝最新版助手。');
     const result=await callProductListingPublish(productId),shopee=result&&result.platforms&&result.platforms.shopee,payload=shopee&&shopee.autofillPayload;
     if(clean(result&&result.jobId)!==jobId)throw new Error('後端回傳的工作代碼與指定工作不一致，已停止續跑。');

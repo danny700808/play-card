@@ -357,6 +357,7 @@ test('同一來源可有多個角色輸出，但同一完成圖不可同時當�
 test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手', () => {
   const resume = section('async function resumeExplicitShopeeListingFromQuery', 'function productListingTransientFailure');
   assert.match(resume, /resumeListingJob/);
+  assert.match(resume, /await requireEasyStoreManagerAuth\(\)/);
   assert.match(resume, /result&&result\.jobId\)!==jobId/);
   assert.match(resume, /clean\(easyStoreStage\.status\)!=='verified'/);
   assert.match(resume, /clean\(shopeeStage\.status\)==='verified'/);
