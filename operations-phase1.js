@@ -2132,6 +2132,7 @@ function renderOverviewV7(){
       stage:'shopee',
       verification:{
         listingId:clean(shopee.listingId),sku:clean(snapshot.sku||product.sku),price:Number(snapshot.easyStorePrice),stock:Number(snapshot.stock),status:'published',
+        variants:snapshot.variantGroupEnabled?(snapshot.variantGroupVariants||[]).map(function(row){return {sku:clean(row&&row.sku),value:clean(row&&row.attributeValue),price:Number(row&&row.easyStorePrice),stock:Number(row&&row.stock),imageUrl:clean(row&&row.imageUrl)};}):undefined,
         platformListMatched:true,officialCatalogMatched:true,imageEvidenceComplete:true,
         appliedImageUrls:appliedImageUrls,officialImageUrls:officialImageUrls
       }
@@ -4837,19 +4838,20 @@ function ensureSalesClock(){
     if(lastError)throw lastError;return lastResult;
   }
   function openProductVariantGroupPublishResult(rows,draft){
-    pendingShopeeAutofillPayloadQueue=rows.map(function(row){return row.result&&row.result.platforms&&row.result.platforms.shopee&&row.result.platforms.shopee.autofillPayload;}).filter(Boolean);
+    pendingShopeeAutofillPayloadQueue=rows.map(function(row){return row.result&&row.result.platforms&&row.result.platforms.shopee&&row.result.platforms.shopee.autofillPayload;}).filter(function(payload,index,list){return payload&&list.findIndex(function(item){return clean(item&&item.jobId)===clean(payload.jobId);})===index;});
     const success=rows.filter(function(row){return row.result&&['completed','submitted'].includes(row.result.status);}).length,failed=rows.length-success;
     const cards=rows.map(function(row){const ok=row.result&&['completed','submitted'].includes(row.result.status),status=row.error?'未完成':ok?'已送出':'需要確認';return '<div class="ops-listing-check-row '+(ok?'ok':'missing')+'"><span>'+(ok?'✓':'!')+'</span><div><b>'+escapeHtml(row.sku+'｜'+row.name)+'</b><small>'+escapeHtml(row.error||status)+'</small></div></div>';}).join('');
-    const body='<div class="ops-callout '+(failed?'yellow':'green')+'"><b>同款商品已依編號逐一處理</b><br><span>完成 '+success+' 個，需確認 '+failed+' 個；每個編號仍保留自己的庫存、價格及圖片。</span></div><div class="ops-listing-checks">'+cards+'</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉</button>'+(pendingShopeeAutofillPayloadQueue.length?'<button class="ops-button primary" type="button" data-action="product-shopee-autofill-next">處理下一個蝦皮細項（'+pendingShopeeAutofillPayloadQueue.length+'）</button>':'')+'</div>';
+    const body='<div class="ops-callout '+(failed?'yellow':'green')+'"><b>同款商品已建立一筆主商品工作</b><br><span>共 '+rows.length+' 個細項；各編號保留自己的名稱、指定完成圖、庫存與價格，不會拆成多筆平台商品。</span></div><div class="ops-listing-checks">'+cards+'</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉</button>'+(pendingShopeeAutofillPayloadQueue.length?'<button class="ops-button primary" type="button" data-action="product-shopee-autofill-next">處理蝦皮同款商品</button>':'')+'</div>';
     openDrawer('同款商品上架結果',(draft.variantGroupItems.length+1)+' 個商品編號',body);
   }
   async function confirmAndPublishProductVariantGroup(draft){
     await requireEasyStoreManagerAuth();
-    const products=[draft.product].concat(draft.variantGroupItems.map(function(item){return catalogById(item.productId);}).filter(Boolean));
-    const rows=[];
-    for(const product of products){
-      try{rows.push({id:product.docId,sku:product.sku,name:product.originalName||product.name,result:await callProductListingPublishWithTransientRetry(product.docId,byId('productListingCaseForm'))});}
-      catch(error){rows.push({id:product.docId,sku:product.sku,name:product.originalName||product.name,error:errorMessage(error)});}
+    const products=[draft.product].concat(draft.variantGroupItems.map(function(item){return catalogById(item.productId);}).filter(Boolean)),rows=[];
+    try{
+      const result=await callProductListingPublishWithTransientRetry(draft.id,byId('productListingCaseForm'));
+      products.forEach(function(product){rows.push({id:product.docId,sku:product.sku,name:product.originalName||product.name,result:result});});
+    }catch(error){
+      products.forEach(function(product){rows.push({id:product.docId,sku:product.sku,name:product.originalName||product.name,error:errorMessage(error)});});
     }
     openProductVariantGroupPublishResult(rows,draft);return rows;
   }

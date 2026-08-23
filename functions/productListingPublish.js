@@ -16,8 +16,8 @@ const LISTING_CASE_COLLECTION = 'opsProductListingCases';
 const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v2';
-const LISTING_JOB_SCHEMA_VERSION = 2;
-const LISTING_AUTOMATION_POLICY_VERSION = 14;
+const LISTING_JOB_SCHEMA_VERSION = 3;
+const LISTING_AUTOMATION_POLICY_VERSION = 15;
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -467,6 +467,10 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult, trace = {}) {
     easyStoreUrl: easyStoreProductId ? `https://admin.easystore.co/products/${encodeURIComponent(easyStoreProductId)}` : 'https://admin.easystore.co/',
     sku: snapshot.sku,
     title: snapshot.shopeeTitle,
+    // A newly created EasyStore parent already contains the complete closed
+    // variant set.  Shopee must therefore use its normal EasyStore channel
+    // sync path; the extension's special variantGroup contract is reserved
+    // for adding one child to an existing Shopee listing.
     publishMode: addVariant ? 'add-variant-to-existing' : 'auto',
     variantGroup: addVariant ? {
       parentProductId: snapshot.variantParentProductId,
@@ -1104,6 +1108,19 @@ function variantRepresentativeMissingFields(snapshot) {
   } else if (snapshot.variantGroupEnabled) {
     if (!snapshot.variantGroupPrimarySourceImageUrl) missing.push('目前商品代表圖');
     else if (!snapshot.variantGroupPrimaryImageUrl) missing.push('目前商品代表圖的繁體完成版');
+    if (!snapshot.variantGroupAttributeName) missing.push('同款商品細項種類');
+    const variants = Array.isArray(snapshot.variantGroupVariants) ? snapshot.variantGroupVariants : [];
+    if (variants.length < 2) missing.push('同款商品至少兩個細項');
+    variants.forEach((variant, index) => {
+      const label = clean(variant && (variant.sku || variant.attributeValue)) || `第 ${index + 1} 個細項`;
+      if (!clean(variant && variant.sku)) missing.push(`${label} SKU`);
+      if (!clean(variant && variant.attributeValue)) missing.push(`${label} 細項名稱`);
+      if (!safeHttpUrl(variant && variant.sourceImageUrl)) missing.push(`${label} 指定代表圖`);
+      if (!safeHttpUrl(variant && variant.imageUrl)) missing.push(`${label} 指定代表圖的繁體完成版`);
+      if (numberOrNull(variant && variant.easyStorePrice) === null) missing.push(`${label} EasyStore 售價`);
+      if (numberOrNull(variant && variant.momoPrice) === null) missing.push(`${label} MOMO 售價`);
+      if (numberOrNull(variant && variant.coupangPrice) === null) missing.push(`${label} 酷澎售價`);
+    });
   }
   return missing;
 }
@@ -1380,6 +1397,22 @@ function buildPreparedPlatformFieldPlan(snapshot) {
   const packageWeightKg = numberOrNull(snapshot.packageWeightKg);
   const packageWeightGrams = packageWeightKg !== null && packageWeightKg > 0
     ? Math.max(1, Math.round(packageWeightKg * 1000)) : null;
+  const variantGroup = snapshot.variantGroupEnabled ? {
+    enabled: true,
+    attributeName: clean(snapshot.variantGroupAttributeName),
+    items: (Array.isArray(snapshot.variantGroupVariants) ? snapshot.variantGroupVariants : []).map((row) => ({
+      productId: clean(row && row.productId),
+      sku: normalizeSku(row && row.sku),
+      name: clean(row && row.name),
+      value: clean(row && row.attributeValue),
+      imageUrl: safeHttpUrl(row && row.imageUrl),
+      barcode: clean(row && row.barcode),
+      stock: Math.max(0, Math.round(numberOrNull(row && row.stock) || 0)),
+      easyStorePrice: numberOrNull(row && row.easyStorePrice),
+      momoPrice: numberOrNull(row && row.momoPrice),
+      coupangPrice: numberOrNull(row && row.coupangPrice)
+    }))
+  } : { enabled: false, attributeName: '', items: [] };
   const common = {
     sku: snapshot.sku,
     title: snapshot.title,
@@ -1387,6 +1420,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     stock: snapshot.stock,
     warrantyDays: 180,
     publishImmediately: true,
+    variantGroup,
     package: {
       lengthCm: snapshot.packageLengthCm,
       widthCm: snapshot.packageWidthCm,
@@ -1396,7 +1430,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     }
   };
   return {
-    version: 6,
+    version: 7,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1454,7 +1488,11 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         imageUrls: snapshot.platformImagePlan.momo.imageUrls,
         promotionImageUrl: snapshot.momoSpecialPromotionImageUrl,
         promotionImageReady: Boolean(snapshot.momoSpecialPromotionImageUrl),
-        storeCategoryPolicy: { maximumCount: 5, relevantOnly: true }
+        storeCategoryPolicy: { maximumCount: 5, relevantOnly: true },
+        variantGroup: variantGroup.enabled ? {
+          attributeName: variantGroup.attributeName,
+          items: variantGroup.items.map((row) => ({ ...row, price: row.momoPrice }))
+        } : null
       },
       dynamicOnly: ['official-category-recommendation-when-code-is-empty', 'category-dependent-attributes', 'platform-validation-errors']
     },
@@ -1494,7 +1532,11 @@ function buildPreparedPlatformFieldPlan(snapshot) {
           stock: snapshot.stock
         },
         shipping: coupangShipping,
-        imageUrls: snapshot.platformImagePlan.coupang.imageUrls
+        imageUrls: snapshot.platformImagePlan.coupang.imageUrls,
+        variantGroup: variantGroup.enabled ? {
+          attributeName: variantGroup.attributeName,
+          items: variantGroup.items.map((row) => ({ ...row, price: row.coupangPrice }))
+        } : null
       },
       interactionPolicy: {
         generateProductInformationMaximumAttempts: 2,
@@ -1517,7 +1559,11 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         descriptionHtml: snapshot.bodyHtml,
         price: snapshot.easyStorePrice,
         stock: snapshot.stock,
-        imageUrls: snapshot.platformImagePlan.easyStore.imageUrls
+        imageUrls: snapshot.platformImagePlan.easyStore.imageUrls,
+        variantGroup: variantGroup.enabled ? {
+          attributeName: variantGroup.attributeName,
+          items: variantGroup.items.map((row) => ({ ...row, price: row.easyStorePrice }))
+        } : null
       },
       dynamicOnly: ['api-validation-errors']
     },
@@ -1544,14 +1590,94 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         attributes: snapshot.shopeeAttributeValues,
         packageWeightGrams,
         logistics: shipping,
-        imageUrls: snapshot.platformImagePlan.shopee.imageUrls
+        imageUrls: snapshot.platformImagePlan.shopee.imageUrls,
+        variantGroup: variantGroup.enabled ? {
+          attributeName: variantGroup.attributeName,
+          items: variantGroup.items.map((row) => ({ ...row, price: row.easyStorePrice }))
+        } : null
       },
       dynamicOnly: ['category-dependent-attributes', 'platform-validation-errors']
     }
   };
 }
 
-function buildListingSnapshot(productId, product, listingCase, variantParentProduct = null, variantParentListingCase = null, finalizedMediaSnapshot = null) {
+function variantGroupContextEntry(context, productId) {
+  if (!context) return {};
+  if (context instanceof Map) return context.get(clean(productId)) || {};
+  return context[clean(productId)] || {};
+}
+
+function variantPriceForPlatform(product, listingCase, platformKey) {
+  const source = product && typeof product === 'object' ? product : {};
+  const prepared = listingCase && typeof listingCase === 'object' ? listingCase : {};
+  const casePrice = prepared.priceSnapshot && typeof prepared.priceSnapshot === 'object'
+    ? numberOrNull(prepared.priceSnapshot[platformKey]) : null;
+  const directField = platformKey === 'easyStore' ? 'easyStorePrice' : `${platformKey}Price`;
+  const direct = numberOrNull(source[directField]);
+  return direct ?? casePrice
+    ?? numberOrNull(source.sharedOnlinePrice)
+    ?? numberOrNull(source.onlinePrice)
+    ?? numberOrNull(source.storePrice);
+}
+
+function buildVariantGroupRows(productId, product, listingCase, finalizedMediaSnapshot, variantGroupContext) {
+  if (!(clean(listingCase && listingCase.listingMode) !== 'add-variant'
+    && listingCase && listingCase.variantGroupEnabled === true)) return [];
+  const mediaCases = new Map((Array.isArray(finalizedMediaSnapshot && finalizedMediaSnapshot.cases)
+    ? finalizedMediaSnapshot.cases : []).map((row) => [clean(row && row.productId), row || {}]));
+  const configuredItems = Array.isArray(listingCase.variantGroupItems) ? listingCase.variantGroupItems : [];
+  const definitions = [{
+    productId: clean(productId),
+    attributeValue: clean(listingCase.variantGroupPrimaryValue),
+    sourceImageUrl: safeHttpUrl(listingCase.variantGroupPrimaryImageUrl),
+    root: true
+  }].concat(configuredItems.map((item) => ({
+    productId: clean(item && item.productId),
+    attributeValue: clean(item && item.attributeValue),
+    sourceImageUrl: safeHttpUrl(item && Array.isArray(item.imageUrls) && item.imageUrls[0]),
+    root: false
+  })));
+  const seenIds = new Set();
+  const seenSkus = new Set();
+  const seenValues = new Set();
+  return definitions.map((definition) => {
+    if (!definition.productId || seenIds.has(definition.productId)) throw new Error('同款多細項案件含有空白或重複的商品 ID。');
+    seenIds.add(definition.productId);
+    const contextEntry = definition.root
+      ? { product, listingCase }
+      : variantGroupContextEntry(variantGroupContext, definition.productId);
+    const variantProduct = contextEntry.product && typeof contextEntry.product === 'object' ? contextEntry.product : {};
+    const variantCase = contextEntry.listingCase && typeof contextEntry.listingCase === 'object' ? contextEntry.listingCase : {};
+    const media = mediaCases.get(definition.productId) || {};
+    const sourceImageUrl = safeHttpUrl(media.representativeSourceImageUrl) || definition.sourceImageUrl;
+    const imageUrl = safeHttpUrl(media.representativeCompletedImageUrl);
+    const sku = normalizeSku(variantProduct.internalSku || variantProduct.sku || variantCase.productSku || (definition.root && listingCase.productSku));
+    const attributeValue = definition.attributeValue || clean(variantCase.variantAttributeValue);
+    const skuKey = sku.toLowerCase();
+    const valueKey = attributeValue.toLowerCase();
+    if (!sku || seenSkus.has(skuKey)) throw new Error('同款多細項案件含有空白或重複的 SKU。');
+    if (!attributeValue || seenValues.has(valueKey)) throw new Error('同款多細項案件含有空白或重複的細項名稱。');
+    seenSkus.add(skuKey);
+    seenValues.add(valueKey);
+    return {
+      productId: definition.productId,
+      sku,
+      name: clean(variantProduct.internalName || variantProduct.originalName || variantProduct.name || variantCase.productName),
+      attributeValue,
+      sourceImageUrl,
+      imageUrl,
+      barcode: clean(variantProduct.barcode || variantCase.barcode),
+      stock: Math.max(0, Math.round(numberOrNull(variantProduct.currentStock) ?? numberOrNull(variantCase.stockSnapshot) ?? 0)),
+      costPrice: numberOrNull(variantProduct.latestPurchaseCost || variantProduct.averageCost),
+      storePrice: numberOrNull(variantProduct.storePrice || variantProduct.originalSalePrice),
+      easyStorePrice: variantPriceForPlatform(variantProduct, variantCase, 'easyStore'),
+      momoPrice: variantPriceForPlatform(variantProduct, variantCase, 'momo'),
+      coupangPrice: variantPriceForPlatform(variantProduct, variantCase, 'coupang')
+    };
+  });
+}
+
+function buildListingSnapshot(productId, product, listingCase, variantParentProduct = null, variantParentListingCase = null, finalizedMediaSnapshot = null, variantGroupContext = null) {
   const listingMode = clean(listingCase.listingMode) === 'add-variant' ? 'add-variant' : 'independent';
   const parentProduct = variantParentProduct && typeof variantParentProduct === 'object' ? variantParentProduct : {};
   const parentPlatformMappings = parentProduct.platformMappings && typeof parentProduct.platformMappings === 'object'
@@ -1569,8 +1695,14 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     ? localizedRepresentativeImage(variantParentListingCase, variantParentSourceImageUrl) : '';
   const variantChildImageUrl = listingMode === 'add-variant'
     ? localizedRepresentativeImage(listingCase, variantChildSourceImageUrl) : '';
-  const variantGroupPrimaryImageUrl = variantGroupEnabled
+  let variantGroupPrimaryImageUrl = variantGroupEnabled
     ? localizedRepresentativeImage(listingCase, variantGroupPrimarySourceImageUrl) : '';
+  const variantGroupVariants = buildVariantGroupRows(
+    productId, product, listingCase, finalizedMediaSnapshot, variantGroupContext
+  );
+  if (variantGroupEnabled && variantGroupVariants.length) {
+    variantGroupPrimaryImageUrl = safeHttpUrl(variantGroupVariants[0].imageUrl);
+  }
   const platformImagePlan = preparedPlatformImagePlan(listingCase, finalizedMediaSnapshot);
   const easyStoreImageSource = platformImagePlan.easyStore.ready
     ? platformImagePlan.easyStore.imageUrls
@@ -1594,6 +1726,8 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     variantParentImageUrl,
     variantChildImageUrl,
     variantGroupEnabled,
+    variantGroupAttributeName: variantGroupEnabled ? clean(listingCase.variantGroupAttributeName) : '',
+    variantGroupVariants,
     variantGroupPrimarySourceImageUrl,
     variantGroupPrimaryImageUrl,
     variantParentPlatformMappings: listingMode === 'add-variant' ? parentPlatformMappings : {},
@@ -1776,11 +1910,20 @@ function buildEasyStoreProductBody(snapshot, includeVariant = true) {
     images: snapshot.images.map((url) => ({ url }))
   };
   if (includeVariant) {
-    const variant = {
-      sku: snapshot.sku,
-      barcode: snapshot.barcode || null,
-      price: snapshot.easyStorePrice,
-      inventory_quantity: snapshot.stock,
+    const grouped = snapshot.variantGroupEnabled === true
+      ? (Array.isArray(snapshot.variantGroupVariants) ? snapshot.variantGroupVariants : [])
+      : [];
+    const rows = grouped.length ? grouped : [{
+      sku: snapshot.sku, barcode: snapshot.barcode, easyStorePrice: snapshot.easyStorePrice,
+      stock: snapshot.stock, storePrice: snapshot.storePrice, costPrice: snapshot.costPrice,
+      attributeValue: ''
+    }];
+    product.variants = rows.map((row) => {
+      const variant = {
+      sku: normalizeSku(row && row.sku),
+      barcode: clean(row && row.barcode) || null,
+      price: numberOrNull(row && row.easyStorePrice),
+      inventory_quantity: Math.max(0, Math.round(numberOrNull(row && row.stock) || 0)),
       width: snapshot.packageWidthCm,
       height: snapshot.packageHeightCm,
       length: snapshot.packageLengthCm,
@@ -1789,10 +1932,19 @@ function buildEasyStoreProductBody(snapshot, includeVariant = true) {
       inventory_policy: false,
       taxable: true,
       is_enabled: true
-    };
-    if (snapshot.storePrice != null && snapshot.storePrice > snapshot.easyStorePrice) variant.compare_at_price = snapshot.storePrice;
-    if (snapshot.costPrice != null) variant.cost_price = snapshot.costPrice;
-    product.variants = [variant];
+      };
+      const attributeValue = clean(row && row.attributeValue);
+      if (attributeValue) {
+        variant.name = attributeValue;
+        variant.option1 = attributeValue;
+      }
+      const storePrice = numberOrNull(row && row.storePrice);
+      const salePrice = numberOrNull(row && row.easyStorePrice);
+      const costPrice = numberOrNull(row && row.costPrice);
+      if (storePrice != null && salePrice != null && storePrice > salePrice) variant.compare_at_price = storePrice;
+      if (costPrice != null) variant.cost_price = costPrice;
+      return variant;
+    });
   }
   return compactObject({ product });
 }
@@ -1877,7 +2029,10 @@ function platformQueueFingerprint(platform, snapshot) {
     productId: snapshot.productId,
     sku: snapshot.sku,
     listingMode: snapshot.listingMode,
-    variantGroup: [snapshot.variantParentProductId, snapshot.variantParentSku, snapshot.variantAttributeName, snapshot.variantParentAttributeValue, snapshot.variantAttributeValue, snapshot.variantParentImageUrl, snapshot.variantChildImageUrl],
+    variantGroup: snapshot.variantGroupEnabled ? {
+      attributeName: snapshot.variantGroupAttributeName,
+      variants: snapshot.variantGroupVariants
+    } : [snapshot.variantParentProductId, snapshot.variantParentSku, snapshot.variantAttributeName, snapshot.variantParentAttributeValue, snapshot.variantAttributeValue, snapshot.variantParentImageUrl, snapshot.variantChildImageUrl],
     parentPlatformListingIds: platformListingIds({ platformMappings: snapshot.variantParentPlatformMappings, platformListingStatus: snapshot.variantParentPlatformListingStatus }, key),
     title: snapshot.title,
     description: snapshot.description,
@@ -1915,6 +2070,23 @@ function buildPlatformQueuePolicy(product, platform, snapshot) {
       variantAttributeName: clean(snapshot.variantAttributeName), variantParentAttributeValue: clean(snapshot.variantParentAttributeValue), variantAttributeValue: clean(snapshot.variantAttributeValue),
       variantParentImageUrl: safeHttpUrl(snapshot.variantParentImageUrl), variantImageUrl: safeHttpUrl(snapshot.variantChildImageUrl),
       onZero: 'block', onOne: 'append-variant', onMultiple: 'block', onUncertain: 'block'
+    };
+  }
+  if (snapshot && snapshot.variantGroupEnabled === true) {
+    return {
+      mode: existingListingIds.length > 1 ? 'block-duplicate' : existingListingIds.length ? 'update-existing-variant-group' : 'create-new-variant-group',
+      matchKey: existingListingIds.length ? 'central-platform-id+closed-sku-set' : 'new-variant-group',
+      sku: snapshot.sku,
+      skus: (snapshot.variantGroupVariants || []).map((row) => normalizeSku(row && row.sku)).filter(Boolean),
+      attributeName: clean(snapshot.variantGroupAttributeName),
+      existingListingIds,
+      identitySource: existingListingIds.length ? 'central-platform-id' : 'new-draft',
+      preflightSkuSearch: false,
+      uncertainSubmitRecovery: 'exact-root-sku-only',
+      onZero: 'create-one-parent-with-variants',
+      onOne: 'update-one-parent-with-closed-variant-set',
+      onMultiple: 'block',
+      onUncertain: 'exact-root-sku-recovery'
     };
   }
   return {
@@ -2046,12 +2218,20 @@ async function verifyEasyStorePublishedListing(snapshot, token, result) {
     }
     const price = easyStoreVariantPrice(match.variant);
     const stock = easyStoreVariantStock(match.variant);
+    const variants = snapshot.variantGroupEnabled === true ? productVariants(match.product).map((variant) => ({
+      sku: normalizeSku(variant && (variant.sku || variant.code || variant.product_code)),
+      value: clean(variant && (variant.option1 || variant.name || variant.title || variant.option_name)),
+      price: easyStoreVariantPrice(variant),
+      stock: easyStoreVariantStock(variant),
+      imageUrl: collectImageUrls(variant, false)[0] || ''
+    })) : [];
     const imageUrls = collectImageUrls(match.product, false).slice(0, 100);
     const verification = validatePlatformStageVerification('easyStore', snapshot, {
       listingId: match.productId,
       sku: snapshot.sku,
       price,
       stock,
+      variants,
       status: publicationState === 'published' ? 'published' : 'official-catalog-matched',
       platformListMatched: true,
       officialCatalogMatched: true,
@@ -2064,6 +2244,8 @@ async function verifyEasyStorePublishedListing(snapshot, token, result) {
         verified: true,
         productId: match.productId,
         variantId: match.variantId,
+        variantIds: snapshot.variantGroupEnabled === true
+          ? productVariants(match.product).map(variantIdOf).filter(Boolean) : [match.variantId],
         ...verification.receipt
       };
     }
@@ -2157,8 +2339,82 @@ async function addEasyStoreVariant(snapshot, product, token) {
   return { action: 'variant-created', productId, variantIds: [variantId], recoveredAfterUncertainResponse: Boolean(optionError), imageWarning };
 }
 
+function easyStoreVariantValue(variant) {
+  return clean(variant && (variant.option1 || variant.name || variant.title || variant.option_name || variant.optionName));
+}
+
+function easyStoreVariantTemplate(snapshot, row) {
+  const groupedSnapshot = {
+    ...snapshot,
+    variantGroupEnabled: false,
+    sku: normalizeSku(row && row.sku),
+    barcode: clean(row && row.barcode),
+    easyStorePrice: numberOrNull(row && row.easyStorePrice),
+    stock: numberOrNull(row && row.stock),
+    storePrice: numberOrNull(row && row.storePrice),
+    costPrice: numberOrNull(row && row.costPrice)
+  };
+  const template = buildEasyStoreProductBody(groupedSnapshot, true).product.variants[0];
+  const value = clean(row && row.attributeValue);
+  return { ...template, name: value, option1: value };
+}
+
+async function syncEasyStoreVariantGroup(snapshot, productId, token) {
+  const expected = Array.isArray(snapshot.variantGroupVariants) ? snapshot.variantGroupVariants : [];
+  if (expected.length < 2 || !clean(snapshot.variantGroupAttributeName)) {
+    throw new Error('同款多細項缺少完整細項名稱或至少兩個細項。');
+  }
+  let payload = await easyStoreRequest(`/products/${encodeURIComponent(productId)}.json`, token);
+  let remoteProduct = extractProducts(payload)[0] || payload.product || payload;
+  let remoteVariants = productVariants(remoteProduct);
+  const expectedSkus = new Set(expected.map((row) => normalizeSku(row && row.sku)));
+  let missing = expected.filter((row) => !remoteVariants.some((variant) => normalizeSku(variant && variant.sku) === normalizeSku(row && row.sku)));
+  if (missing.length) {
+    const variantTypes = Array.isArray(remoteProduct.variant_types) ? remoteProduct.variant_types : [];
+    if (variantTypes.length > 1) throw new Error('EasyStore 既有主商品含兩種以上細項欄位，無法安全套用本次單一細項群組。');
+    if (variantTypes.length === 1 && clean(variantTypes[0].name).toLowerCase() !== clean(snapshot.variantGroupAttributeName).toLowerCase()) {
+      throw new Error(`EasyStore 既有細項是「${clean(variantTypes[0].name)}」，與本次「${snapshot.variantGroupAttributeName}」不同。`);
+    }
+    const existingValues = new Set(remoteVariants.map(easyStoreVariantValue).map((value) => value.toLowerCase()).filter(Boolean));
+    const requestedValues = expected.map((row) => clean(row.attributeValue)).filter((value) => !existingValues.has(value.toLowerCase()));
+    if (!variantTypes.length) {
+      if (remoteVariants.length !== 1) throw new Error('EasyStore 主商品沒有細項名稱但已有多個規格，無法安全建立群組。');
+      await easyStoreRequest(`/products/${encodeURIComponent(productId)}/options.json`, token, {
+        method: 'POST', body: { option_type: snapshot.variantGroupAttributeName, option_values: expected.map((row) => clean(row.attributeValue)) }
+      });
+    } else if (requestedValues.length) {
+      await easyStoreRequest(`/products/${encodeURIComponent(productId)}/options.json`, token, {
+        method: 'POST', body: { option_type: snapshot.variantGroupAttributeName, option_values: requestedValues }
+      });
+    }
+    payload = await easyStoreRequest(`/products/${encodeURIComponent(productId)}.json`, token);
+    remoteProduct = extractProducts(payload)[0] || payload.product || payload;
+    remoteVariants = productVariants(remoteProduct);
+  }
+
+  const unused = remoteVariants.slice();
+  const updates = expected.map((row) => {
+    const sku = normalizeSku(row && row.sku);
+    const value = clean(row && row.attributeValue).toLowerCase();
+    let index = unused.findIndex((variant) => normalizeSku(variant && variant.sku) === sku);
+    if (index < 0) index = unused.findIndex((variant) => easyStoreVariantValue(variant).toLowerCase() === value);
+    if (index < 0) throw new Error(`EasyStore 未產生細項「${clean(row && row.attributeValue)}」；為避免錯配 SKU 已停止。`);
+    const variant = unused.splice(index, 1)[0];
+    const id = variantIdOf(variant);
+    if (!id) throw new Error(`EasyStore 細項「${clean(row && row.attributeValue)}」缺少規格編號。`);
+    return { id, ...easyStoreVariantTemplate(snapshot, row) };
+  });
+  const unexpectedSkus = remoteVariants.map((variant) => normalizeSku(variant && variant.sku)).filter((sku) => sku && !expectedSkus.has(sku));
+  if (unexpectedSkus.length) throw new Error(`EasyStore 主商品仍含不屬於本組的 SKU：${unexpectedSkus.join('、')}；為避免誤刪既有資料已停止。`);
+  await easyStoreRequest(`/products/${encodeURIComponent(productId)}/variants.json`, token, {
+    method: 'PUT', body: { variants: updates }
+  });
+  return updates.map((row) => clean(row.id));
+}
+
 async function upsertEasyStoreProduct(snapshot, product, token) {
   if (snapshot.listingMode === 'add-variant') return addEasyStoreVariant(snapshot, product, token);
+  const grouped = snapshot.variantGroupEnabled === true;
   const mappings = product.platformMappings && typeof product.platformMappings === 'object' ? product.platformMappings : {};
   const mapped = mappings.easyStore && typeof mappings.easyStore === 'object' ? mappings.easyStore : {};
   const mappedProductId = clean(mapped.productId || product.sourceProductId);
@@ -2189,6 +2445,10 @@ async function upsertEasyStoreProduct(snapshot, product, token) {
         throw error;
       }
       if (!recovered) throw error;
+      if (grouped) {
+        const groupedVariantIds = await syncEasyStoreVariantGroup(snapshot, recovered.productId, token);
+        return { action: 'created', productId: recovered.productId, variantIds: groupedVariantIds, recoveredAfterUncertainResponse: true };
+      }
       return { action: 'created', productId: recovered.productId, variantIds: [recovered.variantId], recoveredAfterUncertainResponse: true };
     }
     const createdProduct = extractProducts(createdPayload)[0] || (createdPayload && createdPayload.product) || createdPayload;
@@ -2204,12 +2464,17 @@ async function upsertEasyStoreProduct(snapshot, product, token) {
     await easyStoreRequest(`/products/${encodeURIComponent(productId)}.json`, token, {
       method: 'PUT', body: buildEasyStoreProductBody(snapshot, false)
     });
+    if (grouped) {
+      variantIds = await syncEasyStoreVariantGroup(snapshot, productId, token);
+      return { action, productId, variantIds };
+    }
     if (!variantIds.length) throw new Error('EasyStore 商品已存在，但缺少規格編號，為避免改錯商品已停止。');
     const variantTemplate = buildEasyStoreProductBody(snapshot, true).product.variants[0];
     await easyStoreRequest(`/products/${encodeURIComponent(productId)}/variants.json`, token, {
       method: 'PUT', body: { variants: variantIds.map((id) => ({ id, ...variantTemplate })) }
     });
   }
+  if (grouped) variantIds = await syncEasyStoreVariantGroup(snapshot, productId, token);
   return { action, productId, variantIds };
 }
 
@@ -2311,6 +2576,22 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
   if (!normalizedAttemptToken) throw new Error(`${platform} 缺少本次逐站排程 attemptToken，已停止以避免舊回條混入。`);
   const platformSnapshot = platformPayloadSnapshot(platform, snapshot);
   const queueRef = db.collection(PLATFORM_QUEUE_COLLECTION).doc(`${snapshot.productId}_${platform.toLowerCase()}`);
+  if (platformSnapshot.variantGroupEnabled === true) {
+    const childQueueRefs = (platformSnapshot.variantGroupVariants || []).slice(1)
+      .map((row) => clean(row && row.productId)).filter(Boolean)
+      .map((childId) => db.collection(PLATFORM_QUEUE_COLLECTION).doc(`${childId}_${platform.toLowerCase()}`));
+    await Promise.all(childQueueRefs.map(async (childRef) => {
+      const childSnap = await childRef.get();
+      if (!childSnap.exists) return;
+      const childQueue = childSnap.data() || {};
+      if (!PLATFORM_QUEUE_PENDING_STATUSES.has(clean(childQueue.status).toLowerCase())) return;
+      await childRef.set({
+        status: 'superseded-by-variant-group', supersededByJobId: jobId,
+        supersededByProductId: platformSnapshot.productId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }));
+  }
   const listingPolicy = buildPlatformQueuePolicy(product, platform, platformSnapshot);
   const categoryResolution = platformCategoryResolution(platform, platformSnapshot, product);
   if (listingPolicy.mode === 'block-duplicate' || listingPolicy.mode === 'block-duplicate-parent') {
@@ -2357,7 +2638,7 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
       verificationReceipt: null, verifiedChecks: null, completedAt: null, error: '',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      createdBy: '全通路營運中心', schemaVersion: 2
+      createdBy: '全通路營運中心', schemaVersion: 3
     }, { merge: true });
   });
   if (reusedStatus === 'already-queued') {
@@ -2532,11 +2813,34 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
   const observedPrice = numberOrNull(observed.price);
   const expectedStock = numberOrNull(snapshot && snapshot.stock);
   const observedStock = numberOrNull(observed.stock);
+  const grouped = snapshot && snapshot.variantGroupEnabled === true;
+  const expectedVariants = grouped ? (Array.isArray(snapshot.variantGroupVariants) ? snapshot.variantGroupVariants : []) : [];
+  const observedVariants = grouped ? (Array.isArray(observed.variants) ? observed.variants : []).map((row) => ({
+    sku: normalizeSku(row && row.sku),
+    value: clean(row && (row.value || row.attributeValue || row.name || row.title)),
+    price: numberOrNull(row && row.price),
+    stock: numberOrNull(row && row.stock),
+    imageUrl: safeHttpUrl(row && row.imageUrl)
+  })) : [];
   if (!['easystore', 'shopee', 'coupang', 'momo'].includes(name)) reasons.push('unsupported-stage');
   if (!clean(observed.listingId || observed.productId)) reasons.push('missing-listing-id');
   if (!expectedSku || observedSku !== expectedSku) reasons.push('sku-mismatch');
-  if (expectedPrice !== null && observedPrice !== expectedPrice) reasons.push('price-mismatch');
-  if (expectedStock !== null && observedStock !== expectedStock) reasons.push('stock-mismatch');
+  if (!grouped && expectedPrice !== null && observedPrice !== expectedPrice) reasons.push('price-mismatch');
+  if (!grouped && expectedStock !== null && observedStock !== expectedStock) reasons.push('stock-mismatch');
+  if (grouped) {
+    const expectedBySku = new Map(expectedVariants.map((row) => [normalizeSku(row && row.sku), row]));
+    const observedBySku = new Map(observedVariants.map((row) => [normalizeSku(row && row.sku), row]));
+    if (expectedBySku.size < 2 || observedVariants.length !== expectedBySku.size || observedBySku.size !== expectedBySku.size) reasons.push('variant-sku-set-mismatch');
+    expectedBySku.forEach((expected, sku) => {
+      const actual = observedBySku.get(sku);
+      if (!actual) return;
+      const platformPrice = name === 'momo' ? numberOrNull(expected.momoPrice)
+        : name === 'coupang' ? numberOrNull(expected.coupangPrice) : numberOrNull(expected.easyStorePrice);
+      if (platformPrice !== null && actual.price !== platformPrice) reasons.push(`variant-price-mismatch:${sku}`);
+      if (numberOrNull(expected.stock) !== null && actual.stock !== numberOrNull(expected.stock)) reasons.push(`variant-stock-mismatch:${sku}`);
+      if (clean(expected.attributeValue) && actual.value && actual.value !== clean(expected.attributeValue)) reasons.push(`variant-value-mismatch:${sku}`);
+    });
+  }
   if (!clean(observed.status)) reasons.push('missing-status');
   if (observed.platformListMatched !== true) reasons.push('platform-list-not-matched');
   if (observed.officialCatalogMatched !== true) reasons.push('official-catalog-not-matched');
@@ -2551,6 +2855,7 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
       sku: observedSku,
       price: observedPrice,
       stock: observedStock,
+      variants: observedVariants,
       status: clean(observed.status),
       platformListMatched: observed.platformListMatched === true,
       officialCatalogMatched: observed.officialCatalogMatched === true,
@@ -2827,7 +3132,14 @@ async function publishEasyStoreStage(db, jobId, snapshot, product, dependencies 
       ...previousMappings,
       easyStore: { ...(previousMappings.easyStore || {}), productId: result.productId, variantIds: result.variantIds }
     },
-    variantGroup: snapshot.listingMode === 'add-variant' ? {
+    variantGroup: snapshot.variantGroupEnabled === true ? {
+      rootProductId: snapshot.productId, rootSku: snapshot.sku,
+      attributeName: snapshot.variantGroupAttributeName,
+      items: (snapshot.variantGroupVariants || []).map((row, index) => ({
+        productId: row.productId, sku: row.sku, attributeValue: row.attributeValue,
+        imageUrl: row.imageUrl, variantId: result.variantIds[index] || ''
+      }))
+    } : snapshot.listingMode === 'add-variant' ? {
       parentProductId: snapshot.variantParentProductId, parentSku: snapshot.variantParentSku,
       parentName: snapshot.variantParentName, attributeName: snapshot.variantAttributeName,
       parentAttributeValue: snapshot.variantParentAttributeValue, attributeValue: snapshot.variantAttributeValue
@@ -2835,6 +3147,36 @@ async function publishEasyStoreStage(db, jobId, snapshot, product, dependencies 
     easyStoreSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架'
   }, { merge: true });
+  if (snapshot.variantGroupEnabled === true) {
+    await Promise.all((snapshot.variantGroupVariants || []).map(async (row, index) => {
+      if (clean(row && row.productId) === productId) return;
+      const variantProductRef = db.collection(PRODUCT_COLLECTION).doc(clean(row && row.productId));
+      const variantProductSnap = await variantProductRef.get();
+      const variantProduct = variantProductSnap.exists ? (variantProductSnap.data() || {}) : {};
+      const variantMappings = variantProduct.platformMappings && typeof variantProduct.platformMappings === 'object'
+        ? variantProduct.platformMappings : {};
+      return variantProductRef.set({
+        sourceCollection: 'EasyStore API', sourceProductId: result.productId,
+        sourceVariantId: result.variantIds[index] || '', onlineName: snapshot.title,
+        onlinePrice: numberOrNull(row && row.easyStorePrice), easyStoreMatched: true,
+        easyStoreMatchStatus: 'matched', easyStoreListingImageUrls: normalizeUrls(snapshot.images, 20),
+        platformMappings: {
+          ...variantMappings,
+          easyStore: {
+            ...(variantMappings.easyStore || {}),
+            productId: result.productId,
+            variantIds: [result.variantIds[index] || ''].filter(Boolean)
+          }
+        },
+        variantGroup: {
+          rootProductId: snapshot.productId, rootSku: snapshot.sku,
+          attributeName: snapshot.variantGroupAttributeName, attributeValue: clean(row && row.attributeValue)
+        },
+        easyStoreSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架'
+      }, { merge: true });
+    }));
+  }
   return {
     result,
     receipt,
@@ -3143,6 +3485,7 @@ async function publishProductListingCaseHandler(request) {
       listingCase = finalizedMedia.rootListingCase || listingCase;
       let variantParentProduct = null;
       let variantParentListingCase = null;
+      let variantGroupContext = null;
       if (clean(listingCase.listingMode) === 'add-variant') {
         const parentId = clean(listingCase.variantParentProductId);
         if (!parentId || parentId === productId || parentId.includes('/')) throw new HttpsError('failed-precondition', '請選擇另一個有效的父商品。');
@@ -3155,7 +3498,26 @@ async function publishProductListingCaseHandler(request) {
         variantParentListingCase = finalizedMedia.currentCases.get(parentId)
           || (parentCaseSnap.exists ? parentCaseSnap.data() || {} : {});
       }
-      snapshot = buildListingSnapshot(productId, product, listingCase, variantParentProduct, variantParentListingCase, finalizedMedia.preparedMediaSnapshot);
+      if (clean(listingCase.listingMode) !== 'add-variant' && listingCase.variantGroupEnabled === true) {
+        const itemIds = (Array.isArray(listingCase.variantGroupItems) ? listingCase.variantGroupItems : [])
+          .map((item) => clean(item && item.productId)).filter(Boolean);
+        if (new Set(itemIds).size !== itemIds.length || itemIds.includes(productId)) {
+          throw new HttpsError('failed-precondition', '同款多細項案件含有重複的商品；尚未操作任何平台。');
+        }
+        const childSnaps = await Promise.all(itemIds.map((id) => db.collection(PRODUCT_COLLECTION).doc(id).get()));
+        variantGroupContext = new Map([[productId, { product, listingCase }]]);
+        childSnaps.forEach((childSnap, index) => {
+          const childId = itemIds[index];
+          if (!childSnap.exists) throw new HttpsError('failed-precondition', `同款細項 ${childId} 的中央商品已不存在；尚未操作任何平台。`);
+          const childCase = finalizedMedia.currentCases.get(childId);
+          if (!childCase) throw new HttpsError('failed-precondition', `同款細項 ${childId} 缺少目前 v2 案件；尚未操作任何平台。`);
+          variantGroupContext.set(childId, { product: childSnap.data() || {}, listingCase: childCase });
+        });
+      }
+      snapshot = buildListingSnapshot(
+        productId, product, listingCase, variantParentProduct, variantParentListingCase,
+        finalizedMedia.preparedMediaSnapshot, variantGroupContext
+      );
       await syncPreparedCentralImagesBeforePublish(db, snapshot, '固定四通路流程 v2 圖片回寫');
       if (!snapshot.enabledEasyStoreShopee || !snapshot.enabledMomo || !snapshot.enabledCoupang) {
         throw new HttpsError('failed-precondition', '固定新版流程必須同時發布 EasyStore、蝦皮、酷澎與 MOMO，不接受舊的通路勾選或第二套路徑。');

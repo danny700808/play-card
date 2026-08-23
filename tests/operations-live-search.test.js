@@ -95,7 +95,9 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(handoffPrompt, /不得.*切換蝦皮賣家中心或開第二條上架路徑/);
   assert.match(handoffPrompt, /每站送出後只核對一次正式清單/);
   assert.match(handoffPrompt, /專推圖只可從 MOMO 完成圖順序第 2 或第 3 張/);
-  assert.match(functionBody(engine, 'confirmAndPublishProductVariantGroup'), /callProductListingPublishWithTransientRetry/);
+  const variantPublisher = functionBody(engine, 'confirmAndPublishProductVariantGroup');
+  assert.match(variantPublisher, /callProductListingPublishWithTransientRetry\(draft\.id/);
+  assert.doesNotMatch(variantPublisher, /for\s*\(const product of products\)/);
   assert.match(functionBody(engine, 'confirmAndPublishProductListingCase'), /callProductListingPublishWithTransientRetry/);
 });
 
