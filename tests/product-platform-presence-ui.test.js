@@ -19,10 +19,13 @@ function functionBody(name) {
   throw new Error(`${name} body was not closed`);
 }
 
-test('商品資訊只顯示 1、5、9 開頭的可上架商品', () => {
-  assert.match(functionBody('isSellableListingSku'), /\^\[159\]/);
-  assert.match(functionBody('productFiltered'), /if\(!isSellableListingSku\(p\.sku\)\)return false/);
-  assert.match(functionBody('openProductListingCase'), /只有 1、5、9 開頭的商品需要上架/);
+test('商品資訊放寬所有 SKU 開頭，只排除沒有商品編號的資料', () => {
+  const skuGuard = functionBody('hasListingSku');
+  assert.match(skuGuard, /!!normalizeCode\(value\)/);
+  assert.doesNotMatch(skuGuard, /\[159\]/);
+  assert.match(functionBody('productFiltered'), /if\(!hasListingSku\(p\.sku\)\)return false/);
+  assert.doesNotMatch(functionBody('openProductListingCase'), /只有 1、5、9 開頭/);
+  assert.match(functionBody('openProductListingCase'), /這筆中央商品沒有 SKU/);
 });
 
 test('四平台狀態只顯示有或沒有，沒有可直接進準備上架', () => {

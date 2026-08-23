@@ -1967,7 +1967,7 @@ function renderOverviewV7(){
     ['5','電子類','5系列 電子類'],['9','書籍','9系列 書籍']
   ];
   function productSeriesLabel(row){return row[2]||row[0]+' '+row[1];}
-  function isSellableListingSku(value){return /^[159]/.test(normalizeCode(value));}
+  function hasListingSku(value){return !!normalizeCode(value);}
   function productSeriesTabs(){
     return '<div class="ops-product-series-tabs"><button type="button" class="'+(state.productSeries==='all'?'active':'')+'" data-action="product-series" data-series="all">全部</button>'+PRODUCT_SERIES.map(function(row){return '<button type="button" class="'+(state.productSeries===row[0]?'active':'')+'" data-action="product-series" data-series="'+row[0]+'">'+escapeHtml(productSeriesLabel(row))+'</button>';}).join('')+'</div>';
   }
@@ -2063,7 +2063,7 @@ function renderOverviewV7(){
   }
   function productFiltered(){
     const term=lower(state.productSearch); let rows=catalogRowsInSkuOrder().filter(function(p){
-      if(!isSellableListingSku(p.sku))return false;
+      if(!hasListingSku(p.sku))return false;
       if(state.productRecentOnly&&!productNeedsRecentListingWork(p))return false;
       if(state.productSeries!=='all'&&!clean(p.sku).startsWith(state.productSeries))return false;
       if(term&&!catalogMatchesSearch(p,term))return false;
@@ -2267,7 +2267,7 @@ function renderOverviewV7(){
     const editingProduct=state.productEditId&&state.productEditId!=='__new__'?catalogById(state.productEditId):null;
     const editorHtml=state.productEditId?productFormHtml(editingProduct):'';
     const previewHtml=renderProductPreviewModal();
-    const recentCount=state.catalog.filter(function(p){return p.initialized&&isSellableListingSku(p.sku)&&productNeedsRecentListingWork(p);}).length;
+    const recentCount=state.catalog.filter(function(p){return p.initialized&&hasListingSku(p.sku)&&productNeedsRecentListingWork(p);}).length;
     return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">成本總額：<b>'+money(inventoryValue)+'</b></div></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft '+(state.productRecentOnly?'active':'')+'" data-action="product-recent">最近新增未上架'+(recentCount?'（'+formatNumber(recentCount)+'）':'')+'</button></div></div>'+productSeriesTabs()+'<div class="ops-product-toolbar"><input class="ops-input" id="productSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'">'+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+'<div id="productSearchResults">'+productSearchResultsHtml()+'</div></section>'+previewHtml;
   }
 
@@ -3837,7 +3837,7 @@ function ensureSalesClock(){
   }
   async function openProductListingCase(id,options){
     const p=catalogById(id);if(!p)return toast('找不到商品','請重新讀取資料。','error');
-    if(!isSellableListingSku(p.sku))return toast('這是內部品項','只有 1、5、9 開頭的商品需要上架。','warning');
+    if(!hasListingSku(p.sku))return toast('缺少商品編號','這筆中央商品沒有 SKU，暫時無法準備上架。','warning');
     try{
       if(productImageCollectionSession&&productImageCollectionSession.active&&productImageCollectionSession.productId!==id)await stopProductImageCollection(byId('productListingCaseForm'));
       const snap=await state.db.collection(COLLECTIONS.listingCases).doc(id).get(),raw=snap.exists?snap.data():null,row=normalizeProductListingCase(raw,p);
