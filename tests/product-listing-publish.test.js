@@ -127,7 +127,7 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 14);
+  assert.equal(snapshot.automationPolicy.version, 15);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -164,8 +164,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 6);
-  assert.equal(snapshot.automationPolicy.version, 14);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 7);
+  assert.equal(snapshot.automationPolicy.version, 15);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.mode, 'section-batch');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateSectionOnceAfterBatch, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.batchFieldExecution.stableNativeControlsSinglePass, true);
@@ -895,7 +895,7 @@ test('active v2 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
   }, listingCase, null, null, finalized);
   const job = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     workflowVersion: 'youzi-four-channel-listing-v2',
     productId,
     currentStage: 'parallel-platforms',
@@ -1552,6 +1552,112 @@ test('variant publishing blocks when a parent platform listing is missing or amb
   });
   assert.equal(ambiguous.mode, 'block-duplicate-parent');
 });
+
+function groupedListingFixture(count) {
+  const rootId = 'group-root';
+  const products = Array.from({ length: count }, (_, index) => ({
+    id: index ? `group-child-${index}` : rootId,
+    sku: `GROUP-${index + 1}`,
+    value: `款式${index + 1}`,
+    source: `https://supplier.example.com/group-${index + 1}.jpg`,
+    completed: `https://cdn.example.com/group-${index + 1}-zh-tw.jpg`,
+    product: {
+      internalSku: `GROUP-${index + 1}`, internalName: `同款商品 ${index + 1}`,
+      currentStock: index + 1, storePrice: 600 + index,
+      easyStorePrice: 500 + index, momoPrice: 510 + index, coupangPrice: 520 + index
+    }
+  }));
+  const rootCase = {
+    productSku: products[0].sku,
+    productName: products[0].product.internalName,
+    variantGroupEnabled: true,
+    variantGroupAttributeName: '顏色',
+    variantGroupPrimaryValue: products[0].value,
+    variantGroupPrimaryImageUrl: products[0].source,
+    variantGroupItems: products.slice(1).map((row) => ({
+      productId: row.id, attributeValue: row.value, imageUrls: [row.source]
+    })),
+    productDescription: '同款商品介紹',
+    listingImageUrls: products.map((row) => row.completed)
+  };
+  const media = {
+    cases: products.map((row) => ({
+      productId: row.id, sku: row.sku,
+      representativeSourceImageUrl: row.source,
+      representativeCompletedImageUrl: row.completed
+    })),
+    platformImagePlan: {}
+  };
+  const context = new Map(products.map((row) => [row.id, {
+    product: row.product,
+    listingCase: row.id === rootId ? rootCase : { productSku: row.sku, productName: row.product.internalName }
+  }]));
+  return {
+    products,
+    snapshot: helpers.buildListingSnapshot(rootId, products[0].product, rootCase, null, null, media, context)
+  };
+}
+
+test('同款兩個細項只建立一筆主商品，並保留各自 SKU、名稱、圖片、價格與庫存', () => {
+  const { snapshot } = groupedListingFixture(2);
+  assert.equal(snapshot.variantGroupEnabled, true);
+  assert.equal(snapshot.variantGroupVariants.length, 2);
+  assert.deepEqual(snapshot.variantGroupVariants.map((row) => row.sku), ['GROUP-1', 'GROUP-2']);
+  assert.deepEqual(snapshot.variantGroupVariants.map((row) => row.imageUrl), [
+    'https://cdn.example.com/group-1-zh-tw.jpg', 'https://cdn.example.com/group-2-zh-tw.jpg'
+  ]);
+  const body = helpers.buildEasyStoreProductBody(snapshot, true);
+  assert.equal(body.product.variants.length, 2);
+  assert.deepEqual(body.product.variants.map((row) => [row.sku, row.name, row.price, row.inventory_quantity]), [
+    ['GROUP-1', '款式1', 500, 1], ['GROUP-2', '款式2', 501, 2]
+  ]);
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.variantGroup.items.length, 2);
+  assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.variantGroup.items[1].price, 521);
+  assert.equal(snapshot.preparedPlatformFieldPlan.easyStore.preparedFields.variantGroup.items[1].price, 501);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.variantGroup.items[1].price, 501);
+  const policy = helpers.buildPlatformQueuePolicy({}, 'MOMO', snapshot);
+  assert.equal(policy.mode, 'create-new-variant-group');
+  assert.deepEqual(policy.skus, ['GROUP-1', 'GROUP-2']);
+});
+
+test('同款群組可擴充為三個或五個細項，仍只有一個封閉主商品工作', () => {
+  [3, 5].forEach((count) => {
+    const { snapshot } = groupedListingFixture(count);
+    assert.equal(snapshot.variantGroupVariants.length, count);
+    assert.equal(new Set(snapshot.variantGroupVariants.map((row) => row.sku)).size, count);
+    assert.equal(helpers.buildEasyStoreProductBody(snapshot, true).product.variants.length, count);
+    assert.equal(snapshot.preparedPlatformFieldPlan.common.variantGroup.items.length, count);
+    const shopeePayload = helpers.buildShopeeAutofillPayload(snapshot, { productId: 'es-group' });
+    assert.equal(shopeePayload.publishMode, 'auto');
+    assert.equal(shopeePayload.variantGroup, null);
+  });
+});
+
+test('同款群組正式核對要求完全相同的 SKU 集合及每個細項價格庫存', () => {
+  const { snapshot } = groupedListingFixture(2);
+  const verification = {
+    listingId: 'platform-parent', sku: 'GROUP-1', status: 'published',
+    platformListMatched: true, officialCatalogMatched: true, imageEvidenceComplete: true,
+    appliedImageUrls: [], officialImageUrls: [],
+    variants: [
+      { sku: 'GROUP-1', value: '款式1', price: 500, stock: 1 },
+      { sku: 'GROUP-2', value: '款式2', price: 501, stock: 2 }
+    ]
+  };
+  const valid = helpers.validatePlatformStageVerification('easyStore', snapshot, verification);
+  assert.equal(valid.reasons.includes('variant-sku-set-mismatch'), false);
+  assert.equal(valid.reasons.some((reason) => reason.startsWith('variant-price-mismatch')), false);
+  const missing = helpers.validatePlatformStageVerification('easyStore', snapshot, {
+    ...verification, variants: verification.variants.slice(0, 1)
+  });
+  assert.equal(missing.reasons.includes('variant-sku-set-mismatch'), true);
+  const wrongPrice = helpers.validatePlatformStageVerification('easyStore', snapshot, {
+    ...verification,
+    variants: [verification.variants[0], { ...verification.variants[1], price: 999 }]
+  });
+  assert.equal(wrongPrice.reasons.includes('variant-price-mismatch:GROUP-2'), true);
+});
+
 test('Codex 單次授權綁定 v2 快照並由後端自動續跑，不接受舊版或第二次確認', () => {
   const base = {
     researchedProductName: '桌上型木製譜架', sharedOnlinePrice: 450, stock: 2,
