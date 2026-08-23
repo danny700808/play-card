@@ -609,6 +609,90 @@
     return String(value == null ? "" : value).replace(/[\s\u00a0]+/g, " ").trim().slice(0, 180);
   }
 
+  function advancedDescriptionEditorDocuments(section) {
+    const documents = [];
+    const frames = Array.from((section && section.container || document).querySelectorAll("iframe.fr-iframe, .fr-wrapper iframe"));
+    frames.forEach((frame) => {
+      try {
+        const editorDocument = frame.contentDocument;
+        if (editorDocument && editorDocument.body && !documents.includes(editorDocument)) documents.push(editorDocument);
+      } catch (_) {
+        // Cross-origin helper frames are never product-description editors.
+      }
+    });
+    return documents;
+  }
+
+  function normalizedImageIdentity(value) {
+    try {
+      const url = new URL(String(value || ""), location.href);
+      const fileName = decodeURIComponent(url.pathname.split("/").pop() || "").toLowerCase();
+      return { href: url.href, fileName };
+    } catch (_) {
+      return { href: "", fileName: "" };
+    }
+  }
+
+  function advancedDescriptionEvidence(plan, section) {
+    const documents = advancedDescriptionEditorDocuments(section);
+    const observedUrls = [];
+    let textLength = 0;
+    documents.forEach((editorDocument) => {
+      textLength += String(editorDocument.body && editorDocument.body.innerText || "").replace(/\s+/g, "").length;
+      Array.from(editorDocument.querySelectorAll("img")).forEach((image) => {
+        const url = normalizedImageIdentity(image.currentSrc || image.src || image.getAttribute("data-src"));
+        if (url.href && !observedUrls.includes(url.href)) observedUrls.push(url.href);
+      });
+    });
+    const observedIdentities = observedUrls.map(normalizedImageIdentity);
+    const missingImageUrls = (Array.isArray(plan && plan.imageUrls) ? plan.imageUrls : []).filter((expected) => {
+      const wanted = normalizedImageIdentity(expected);
+      return !observedIdentities.some((observed) => observed.href === wanted.href
+        || (wanted.fileName && observed.fileName === wanted.fileName));
+    });
+    return {
+      editorFound: documents.length > 0,
+      textPresent: textLength > 0,
+      observedImageCount: observedUrls.length,
+      expectedImageCount: Number(plan && plan.expectedImageCount) || 0,
+      missingImageUrls,
+      complete: documents.length > 0 && textLength > 0 && missingImageUrls.length === 0
+    };
+  }
+
+  async function waitForAdvancedDescriptionEvidence(plan, section, timeout) {
+    const started = Date.now();
+    let evidence = advancedDescriptionEvidence(plan, section);
+    while (!evidence.complete && Date.now() - started < timeout) {
+      await sleep(180);
+      evidence = advancedDescriptionEvidence(plan, advancedDescriptionSection() || section);
+    }
+    return evidence;
+  }
+
+  function insertMissingAdvancedDescriptionImages(plan, section) {
+    const documents = advancedDescriptionEditorDocuments(section);
+    if (!documents.length) return false;
+    const editorDocument = documents[0];
+    const evidence = advancedDescriptionEvidence(plan, section);
+    evidence.missingImageUrls.forEach((url) => {
+      const paragraph = editorDocument.createElement("p");
+      const image = editorDocument.createElement("img");
+      image.src = url;
+      image.alt = "商品介紹圖片";
+      image.style.maxWidth = "100%";
+      image.style.height = "auto";
+      paragraph.appendChild(image);
+      editorDocument.body.appendChild(paragraph);
+    });
+    if (!evidence.missingImageUrls.length) return true;
+    const EditorEvent = editorDocument.defaultView && editorDocument.defaultView.Event || Event;
+    editorDocument.body.dispatchEvent(new EditorEvent("input", { bubbles: true }));
+    editorDocument.body.dispatchEvent(new EditorEvent("change", { bubbles: true }));
+    editorDocument.body.dispatchEvent(new EditorEvent("blur", { bubbles: true }));
+    return true;
+  }
+
   async function fillAdvancedDescription(payload, report) {
     const plan = payload && payload.advancedDescription;
     if (!plan || plan.mode !== "use-easystore-rich-description") {
@@ -644,7 +728,7 @@
       return;
     }
     section.useButton.click();
-    await sleep(900);
+    let evidence = await waitForAdvancedDescriptionEvidence(plan, section, 5000);
     const errorText = String(section.container && section.container.innerText || "").match(
       /(?:圖片|描述).{0,24}(?:失敗|錯誤|無法)|(?:failed|error).{0,24}(?:image|description)/i
     );
@@ -652,11 +736,26 @@
       addReport(report, "missing", "進階商品描述", cleanErrorText(errorText[0]));
       return;
     }
+    if (!evidence.complete && evidence.textPresent && insertMissingAdvancedDescriptionImages(plan, section)) {
+      evidence = await waitForAdvancedDescriptionEvidence(plan, section, 5000);
+    }
+    report.advancedDescriptionEvidence = evidence;
+    if (!evidence.complete) {
+      addReport(
+        report,
+        "missing",
+        "進階商品描述",
+        evidence.editorFound
+          ? `文字已帶入，但介紹圖片只有 ${evidence.observedImageCount}／${evidence.expectedImageCount} 張`
+          : "找不到可核對的進階商品描述編輯器"
+      );
+      return;
+    }
     addReport(
       report,
       "filled",
       "進階商品描述",
-      `已開啟並套用事先準備的 EasyStore 圖文介紹（${plan.expectedImageCount} 張介紹圖片）`
+      `已開啟並核對 EasyStore 圖文介紹（文字＋${evidence.observedImageCount} 張介紹圖片）`
     );
   }
 

@@ -108,6 +108,8 @@ test('固定流程鎖定品牌頁首、MOMO 專推圖與 EasyStore 後立即接�
   assert.match(source, /preparedPlatformFieldPlan 產生專推圖網址、唯一素材檔名與指紋/);
   assert.match(source, /三處未齊全時禁止第一次發布/);
   assert.match(source, /已存在就不得重複插入/);
+  assert.match(source, /單一商品、同款多細項與加入既有商品成為細項都使用同一 firstSubmitMediaGate/);
+  assert.match(source, /整筆主商品共用一張專推圖/);
   assert.match(source, /MOMO 商店分類最多 5 個/);
   assert.match(source, /EasyStore 一經正式核對 verified/);
   assert.match(source, /不得等待 MOMO 或酷澎完成/);
