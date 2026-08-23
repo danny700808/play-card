@@ -55,7 +55,7 @@ EasyStore 改版或助手找不到入口／欄位時，商品頁與蝦皮設定�
 
 1. 在全通路營運中心完成「確認上架」。
 2. 在蝦皮結果按「安全開啟 EasyStore／蝦皮」。
-3. 頁面送出一次性 v2 資料，擴充套件以 `YOUZI_SHOPEE_AUTOFILL_ACK_V2` 回覆相同 `nonce`。
+3. 頁面送出一次性 v3 工作資料，擴充套件以 `YOUZI_SHOPEE_AUTOFILL_ACK_V2` 回覆相同 `nonce`（訊息名稱保留 V2 是傳輸協定名稱，不代表舊工作流程）。
 4. EasyStore 商品頁會顯示助手並自動進入蝦皮設定；助手會等待動態載入的「銷售管道」，辨識蝦皮複合狀態列，展開後繼續尋找「刷新／連接商品」入口。若 EasyStore 超過 10 秒仍未載入，可按畫面上的按鈕重試。
 5. 進入蝦皮設定頁後，擴充套件優先核對網址中唯一的 `store_product_ids`；分類尚未選擇、頁面還沒顯示賣家 SKU 時也能接續。若之後出現明確但不同的賣家 SKU 會立即停止；舊版網址若只有一般 `product_ids`，仍必須再核對賣家 SKU 欄位才顯示填寫面板。
 6. 助手依中央平台 ID 決定建立新品、更新舊商品或新增細項；頁面狀態未知不會阻擋，只有明確矛盾才停止。
@@ -79,8 +79,8 @@ window.postMessage({
 
 ```js
 const payload = {
-  schemaVersion: 5,
-  workflowVersion: "youzi-four-channel-listing-v2",
+  schemaVersion: 6,
+  workflowVersion: "youzi-four-channel-listing-v3",
   jobId: "publish-job-id",
   snapshotId: "media-snapshot-id",
   snapshotFingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -108,6 +108,20 @@ const payload = {
     "吉他、貝斯"
   ],
   brand: "Ibanez",
+  advancedDescription: {
+    mode: "use-easystore-rich-description",
+    source: "easystore-body-html",
+    preparedBeforeNavigation: true,
+    enableWhenAvailable: true,
+    useEasyStoreDescription: true,
+    capabilityProbe: "single-lightweight-page-probe",
+    contentFingerprint: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    imageUrls: [
+      "https://danny700808.github.io/play-card/product-listing-description-promo-1.jpg",
+      "https://danny700808.github.io/play-card/product-listing-description-promo-2.jpg"
+    ],
+    expectedImageCount: 2
+  },
   attributes: [
     { label: "Neck Material", value: "Maple", confidence: "high", note: "官方規格" },
     { label: "Body Material", value: "Poplar", confidence: "high", note: "官方規格" },
@@ -161,7 +175,8 @@ ACK 格式：
 - 助手會把 EasyStore 蝦皮入口分類為 `update`、`create`、`unknown` 或 `conflict`。正式方向由 `listingPolicy.mode` 與中央平台 ID 決定；`unknown` 可繼續，明確相反或 `conflict` 才停止。
 - `create-new` 必須沒有中央蝦皮平台 ID；`update-existing` 與 `add-variant-to-existing` 必須恰有一個中央平台 ID。多個 ID、方向矛盾或缺少細項父商品資料都會停止，不會猜測。
 - 新增細項資料以 `variantGroup` 保存父商品、父／子 SKU、細項名稱和值，以及已完成繁體化的父／子代表圖；通過相同身分與必填驗證後可自動送出。
-- 助手會先單獨完成分類階段：鎖定「請先選擇分類」卡片右側的鉛筆，確認分類選單已出現，再依核准路徑逐層選擇。EasyStore 每選一層會在右側新增獨立欄位；助手只捲動目前欄位的直向清單，必要時只移動分類視窗底部的橫向捲軸以顯示下一欄，並且只點完全相符的分類文字。只有頁面顯示完整分類路徑後，才重新讀取品牌、商品屬性、物流與預購。
+- 助手會先單獨完成分類階段：鎖定「請先選擇分類」卡片右側的鉛筆，確認分類選單已出現，再依核准路徑逐層選擇。EasyStore 每選一層會在右側新增獨立欄位；助手只捲動目前欄位的直向清單，必要時只移動分類視窗底部的橫向捲軸以顯示下一欄，並且只點完全相符的分類文字。只有頁面顯示完整分類路徑並核對賣家 SKU 後，才進入已準備的進階商品描述、品牌、商品屬性、物流與預購。
+- 官網 HTML 介紹、介紹圖片與順序在開啟蝦皮前已寫入不可變快照。蝦皮頁只做一次輕量功能檢查；若帳號出現「進階商品描述」，助手會直接開啟並按「使用 EasyStore 的產品描述」，把文字與介紹圖片一起帶入。蝦皮頁內不重新分析、改寫文案或重排圖片；功能不存在時保留純文字描述，功能存在但無法開啟／套用時才停止送出。
 - 分類任何一步未完成時，助手只回報目前卡住的分類步驟並立即停止，不會把尚未生成的品牌、物流與預購誤列為多個待補欄位。
 - 品牌是分類後的第二個必填關卡；有品牌時只接受完全相符品牌，沒有品牌時只接受蝦皮核准的 `NOBRAND`／無品牌選項，未完成就立即停止。品牌完成後才逐一處理核准屬性；屬性有待補時停在第三階段。接著校正全部物流，指定物流未完成時停在第四階段；預購設定是第五階段，完成後才進入最後發布。
 - 分類、品牌與商品屬性的非空白欄位視為人工資料並保留；物流與預購則依本次上架規則校正為指定狀態。

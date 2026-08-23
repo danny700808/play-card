@@ -20,7 +20,7 @@ function loadPureFunction(start, end, name, dependencies) {
   return Function(...names, "'use strict';\n" + body + "\nreturn " + name + ";")(...values);
 }
 
-test('一鍵上架按鈕把固定 v2 工作帶入指定 Codex 對話並授權後端續跑', () => {
+test('一鍵上架按鈕把固定 v3 工作帶入指定 Codex 對話並授權後端續跑', () => {
   assert.match(source, /const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex:\/\/threads\/'/);
   assert.match(source, /function productListingCodexThreadUrl\(prompt\)/);
   assert.match(source, /params\.set\('prompt',clean\(prompt\)\)/);
@@ -89,7 +89,7 @@ test('沒有待存圖片時不等待舊收圖 Promise，交接進度能定位每
 test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多細項連結過長', () => {
   const activation = section('function productListingCodexActivationPrompt', 'function productListingCodexThreadUrl');
   const handoff = section('async function handoffProductListingToCodex(form)', 'function productListingCodexResultDraft');
-  assert.match(activation, /\[固定流程 v2 短交接\]/);
+  assert.match(activation, /\[固定流程 v3 短交接\]/);
   assert.match(activation, /codexHandoff\.prompt 與 codexHandoff\.preflightSnapshot/);
   assert.match(activation, /本組每個商品的繁體完成圖/);
   assert.match(activation, /MOMO、酷澎、EasyStore 三個根工作/);
@@ -253,10 +253,10 @@ test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮�
   assert.match(prompt, /被切半的文字或殘缺裝飾/);
 });
 
-test('交接只用 v2 固定流程，不留舊版降級或第二路徑', () => {
+test('交接只用 v3 固定流程，不留舊版降級或第二路徑', () => {
   const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
-  assert.match(source, /const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v2'/);
-  assert.match(prompt, /v1 或任何其他舊快照一律停止/);
+  assert.match(source, /const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v3'/);
+  assert.match(prompt, /v2 或任何其他舊快照一律停止/);
   assert.match(prompt, /不得沿用、混合或降級/);
   assert.match(prompt, /禁止先全面瀏覽或搜尋任一平台商品清單/);
   assert.match(prompt, /只有送出結果不明[\s\S]*完全相同 SKU 做一次精確查詢/);
@@ -387,7 +387,7 @@ test('同一來源可有多個角色輸出，但同一完成圖不可同時當�
   assert.deepEqual(Array.from(conflictingUrls(conflictRows)), ['https://cdn.example.com/clean.jpg']);
 });
 
-test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手', () => {
+test('指定 v3 job 續跑只接受同一 productId 並直接交給蝦皮助手', () => {
   const resume = section('async function resumeExplicitShopeeListingFromQuery', 'function productListingTransientFailure');
   assert.match(resume, /resumeListingJob/);
   assert.match(resume, /await requireEasyStoreManagerAuth\(\)/);
@@ -398,8 +398,8 @@ test('指定 v2 job 續跑只接受同一 productId 並直接交給蝦皮助手'
   assert.match(resume, /YouziShopeeAutofill\.queue\(payload\)/);
 });
 
-test('蝦皮正式狀態儲存後沿用同一 v2 job 完成四通路工作', () => {
-  const advance = section('async function advanceFixedV2AfterShopeeStatus', 'async function saveProductPlatformStatus');
+test('蝦皮正式狀態儲存後沿用同一 v3 job 完成四通路工作', () => {
+  const advance = section('async function advanceFixedV3AfterShopeeStatus', 'async function saveProductPlatformStatus');
   assert.match(advance, /clean\(job\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
   assert.match(advance, /clean\(easyStoreStage\.status\)!=='verified'/);
   assert.match(advance, /clean\(shopeeStage\.status\)==='verified'/);
@@ -409,5 +409,5 @@ test('蝦皮正式狀態儲存後沿用同一 v2 job 完成四通路工作', () 
   assert.match(advance, /platformListMatched:true,officialCatalogMatched:false/);
   assert.doesNotMatch(advance, /imageEvidenceComplete|appliedImageUrls|officialImageUrls/);
   const save = section('async function saveProductPlatformStatus', 'const LABEL_PRINT_ENDPOINTS');
-  assert.match(save, /advanceFixedV2AfterShopeeStatus\(p,statuses\)/);
+  assert.match(save, /advanceFixedV3AfterShopeeStatus\(p,statuses\)/);
 });

@@ -9,8 +9,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function buildHelpers() {
   "use strict";
 
-  const SCHEMA_VERSION = 5;
-  const WORKFLOW_VERSION = "youzi-four-channel-listing-v2";
+  const SCHEMA_VERSION = 6;
+  const WORKFLOW_VERSION = "youzi-four-channel-listing-v3";
   const QUEUE_STORAGE_KEY = "youziShopeeAutofillQueueV2";
   // Content scripts can always share storage.local across the Operations and
   // EasyStore tabs. storage.session requires a service-worker access-level
@@ -101,6 +101,7 @@
     "listingPolicy",
     "categoryPath",
     "brand",
+    "advancedDescription",
     "attributes",
     "package",
     "logistics",
@@ -732,6 +733,81 @@
     }
     const brand = validateString(payload.brand, "brand", errors, { required: false, max: 120 });
 
+    let advancedDescription = null;
+    if (!isPlainObject(payload.advancedDescription)) {
+      errors.push("advancedDescription 必須是物件。");
+    } else {
+      rejectUnknownKeys(payload.advancedDescription, new Set([
+        "mode", "source", "preparedBeforeNavigation", "enableWhenAvailable",
+        "useEasyStoreDescription", "capabilityProbe", "contentFingerprint",
+        "imageUrls", "expectedImageCount"
+      ]), "advancedDescription", errors);
+      const mode = validateString(payload.advancedDescription.mode, "advancedDescription.mode", errors, { max: 80 });
+      const source = validateString(payload.advancedDescription.source, "advancedDescription.source", errors, { max: 80 });
+      const capabilityProbe = validateString(
+        payload.advancedDescription.capabilityProbe,
+        "advancedDescription.capabilityProbe",
+        errors,
+        { max: 80 }
+      );
+      const contentFingerprint = validateString(
+        payload.advancedDescription.contentFingerprint,
+        "advancedDescription.contentFingerprint",
+        errors,
+        { max: 128 }
+      );
+      if (mode !== "use-easystore-rich-description") {
+        errors.push("advancedDescription.mode 必須是 use-easystore-rich-description。");
+      }
+      if (source !== "easystore-body-html") {
+        errors.push("advancedDescription.source 必須是 easystore-body-html。");
+      }
+      if (capabilityProbe !== "single-lightweight-page-probe") {
+        errors.push("advancedDescription.capabilityProbe 必須是 single-lightweight-page-probe。");
+      }
+      if (!/^[a-f0-9]{64}$/i.test(contentFingerprint)) {
+        errors.push("advancedDescription.contentFingerprint 必須是 64 位十六進位雜湊。");
+      }
+      ["preparedBeforeNavigation", "enableWhenAvailable", "useEasyStoreDescription"].forEach((key) => {
+        if (payload.advancedDescription[key] !== true) {
+          errors.push(`advancedDescription.${key} 必須是 true。`);
+        }
+      });
+      const imageUrls = [];
+      if (!Array.isArray(payload.advancedDescription.imageUrls)
+        || payload.advancedDescription.imageUrls.length < 1
+        || payload.advancedDescription.imageUrls.length > 20) {
+        errors.push("advancedDescription.imageUrls 必須有 1 到 20 張已準備圖片。");
+      } else {
+        payload.advancedDescription.imageUrls.forEach((value, index) => {
+          const raw = validateString(value, `advancedDescription.imageUrls[${index}]`, errors, { max: 1000 });
+          try {
+            const url = new URL(raw);
+            if (!["http:", "https:"].includes(url.protocol)) throw new Error("protocol");
+            if (imageUrls.includes(url.href)) errors.push(`advancedDescription.imageUrls[${index}] 不可重複。`);
+            else imageUrls.push(url.href);
+          } catch (_) {
+            errors.push(`advancedDescription.imageUrls[${index}] 必須是 http(s) 網址。`);
+          }
+        });
+      }
+      const expectedImageCount = payload.advancedDescription.expectedImageCount;
+      if (!Number.isInteger(expectedImageCount) || expectedImageCount !== imageUrls.length) {
+        errors.push("advancedDescription.expectedImageCount 必須等於已準備圖片數量。");
+      }
+      advancedDescription = {
+        mode,
+        source,
+        preparedBeforeNavigation: payload.advancedDescription.preparedBeforeNavigation === true,
+        enableWhenAvailable: payload.advancedDescription.enableWhenAvailable === true,
+        useEasyStoreDescription: payload.advancedDescription.useEasyStoreDescription === true,
+        capabilityProbe,
+        contentFingerprint,
+        imageUrls,
+        expectedImageCount: Number.isInteger(expectedImageCount) ? expectedImageCount : 0
+      };
+    }
+
     let listingPolicy = null;
     if (!isPlainObject(payload.listingPolicy)) {
       errors.push("listingPolicy 必須是物件。");
@@ -1036,6 +1112,7 @@
         listingPolicy,
         categoryPath,
         brand,
+        advancedDescription,
         attributes,
         package: packageInfo,
         logistics,
@@ -1186,7 +1263,7 @@
     if (platformListingIds.length > 1) {
       reasons.push(`中央主檔記錄了 ${platformListingIds.length} 個蝦皮商品 ID，無法安全選定更新目標。`);
     } else if (expectedMode === "unknown") {
-      reasons.push("無法從 v2 中央平台 ID 規則決定建立或更新動作。");
+      reasons.push("無法從 v3 中央平台 ID 規則決定建立或更新動作。");
     } else if (mode === "conflict") {
       reasons.push("EasyStore 頁面先後顯示互相矛盾的建立／更新動作，已停止送出。");
     } else if (mode !== "unknown" && mode !== expectedMode) {
