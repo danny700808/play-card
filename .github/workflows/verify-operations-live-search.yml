@@ -15,6 +15,7 @@ on:
       - "operations-hub.html"
       - "portal.html"
       - "tests/operations-live-search.test.js"
+      - "tests/product-platform-presence-ui.test.js"
       - "tests/shopee-autofill-handoff.test.js"
       - "tests/shopee-extension-v2-package.test.js"
       - "tests/product-ai-research.test.js"
@@ -90,6 +91,7 @@ jobs:
         run: >-
           node --test
           tests/operations-live-search.test.js
+          tests/product-platform-presence-ui.test.js
           tests/shopee-autofill-handoff.test.js
           tests/shopee-extension-v2-package.test.js
           tests/product-ai-research.test.js
@@ -102,10 +104,10 @@ jobs:
           set -euo pipefail
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260821-shopee-v2-schema5' portal.html
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260821-shopee-v2-schema5' operations-hub.html
-          grep -Fq 'operations-phase1.css?v=20260823-physical-photo-entry' portal.html
-          grep -Fq 'operations-phase1.css?v=20260823-physical-photo-entry' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260823-physical-photo-entry' portal.html
-          grep -Fq 'operations-phase1.js?v=20260823-physical-photo-entry' operations-hub.html
+          grep -Fq 'operations-phase1.css?v=20260823-simple-platform-presence' portal.html
+          grep -Fq 'operations-phase1.css?v=20260823-simple-platform-presence' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260823-simple-platform-presence' portal.html
+          grep -Fq 'operations-phase1.js?v=20260823-simple-platform-presence' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html
