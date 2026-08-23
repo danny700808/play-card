@@ -73,6 +73,17 @@ test('交接會等待收圖、保存後重讀案件，再從固定快照建立�
   assert.doesNotMatch(handoff, /confirmAction\(/);
 });
 
+test('沒有待存圖片時不等待舊收圖 Promise，交接進度能定位每個保存階段', () => {
+  const drain = section('async function drainProductImageCollectionUploads(form)', 'async function stopProductImageCollection(form)');
+  const handoff = section('async function handoffProductListingToCodex(form)', 'function productListingCodexResultDraft');
+  assert.match(drain, /if\(productImageCollectionPendingUploads===0\)/);
+  assert.ok(drain.indexOf('if(productImageCollectionPendingUploads===0)') < drain.indexOf('await Promise.race'));
+  assert.match(drain, /productImageCollectionUploadChain=Promise\.resolve\(\)/);
+  assert.match(handoff, /收圖已固定，正在重讀完成圖/);
+  assert.match(handoff, /細項代表圖已確認，正在保存案件/);
+  assert.match(handoff, /案件已保存，正在建立不可變快照/);
+});
+
 test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多細項連結過長', () => {
   const activation = section('function productListingCodexActivationPrompt', 'function productListingCodexThreadUrl');
   const handoff = section('async function handoffProductListingToCodex(form)', 'function productListingCodexResultDraft');
