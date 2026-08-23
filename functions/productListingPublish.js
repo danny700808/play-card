@@ -2620,8 +2620,17 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
       return;
     }
     if (sameIdentity && sameFingerprint && !sameAttempt && PLATFORM_QUEUE_PENDING_STATUSES.has(existingStatus)) {
-      reusedStatus = 'conflicting-pending';
-      return;
+      // A newer v2 job for the exact same SKU and immutable payload may safely
+      // take over an unfinished queue slot.  Keep the previous attempt in the
+      // audit trail, but never reuse its receipt or stage token.
+      transaction.set(queueRef, {
+        supersededAttempt: {
+          jobId: clean(existing.jobId),
+          attemptToken: clean(existing.attemptToken || existing.stageToken),
+          status: existingStatus,
+          supersededAt: admin.firestore.FieldValue.serverTimestamp()
+        }
+      }, { merge: true });
     }
     if (sameIdentity && sameFingerprint && sameAttempt && PLATFORM_QUEUE_RECEIPT_STATUSES.has(existingStatus)) {
       reusedStatus = 'already-completed';
@@ -2654,15 +2663,6 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
     return {
       status: 'already-completed',
       message: `${platform} 相同版本已處理完成，本次不會重複建立。`,
-      queueId: queueRef.id,
-      fingerprint,
-      attemptToken: normalizedAttemptToken
-    };
-  }
-  if (reusedStatus === 'conflicting-pending') {
-    return {
-      status: 'action-required',
-      message: `${platform} 尚有另一筆工作使用同一個 queue；新流程不會接手舊 job／舊回條，請先讓原工作結束或明確停用。`,
       queueId: queueRef.id,
       fingerprint,
       attemptToken: normalizedAttemptToken
