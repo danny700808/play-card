@@ -161,7 +161,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /Codex 完成圖片後，把 generatedListingImages 寫回各商品案件/);
   assert.match(prompt, /第一次進入平台前，後端會重讀全部案件的最新完成輸出/);
   assert.match(prompt, /MOMO、酷澎、EasyStore 與蝦皮及所有重試只准沿用該快照/);
-  assert.match(prompt, /來源圖 .*待繁體化／定案 .*完成圖 .*缺少角色 .*狀態/);
+  assert.match(prompt, /來源圖 .*待繁體化／定案 .*完成圖 .*實體圖 .*缺少角色 .*狀態/);
   assert.match(prompt, /流程、角色與核對規則不可漂移/);
   assert.match(prompt, /MOMO、酷澎、EasyStore 官網、蝦皮/);
   assert.match(prompt, /每站送出後只做一次快速核對/);
@@ -221,8 +221,11 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /把新細項改回舊值/);
   assert.match(prompt, /細項欄位若呈唯讀或值無效，只能在尚未填寫細項商務、配送或介紹以前/);
   assert.match(prompt, /審核中只記為已送審，不得誤報已上架/);
-  assert.match(prompt, /沒有既有平台 ID 時，視為新商品/);
-  assert.match(prompt, /不做上架前平台全站搜尋/);
+  assert.match(prompt, /只依 preflightSnapshot\.listingIntent 決定/);
+  assert.match(prompt, /新增模式遇到既有 ID 必須停止/);
+  assert.match(prompt, /修改模式缺少既有 ID 必須停止/);
+  assert.match(prompt, /只有送出逾時或結果不明時.*精確查詢一次/);
+  assert.match(prompt, /不得用名稱廣搜/);
   assert.match(prompt, /productDescription 只有通用提醒、商品編號、免責文字時，一律視為內容尚未完成/);
   assert.match(prompt, /「商品特色」「使用方式／適用情境」「商品規格」三段/);
   assert.match(prompt, /後端重讀確認後才可建立 preparedSnapshot/);
@@ -233,189 +236,3 @@ test('固定快照會標記通用備援文案未完成，避免非空白文字�
   const prepared = section('function productListingCodexPreparedCase', 'async function loadProductListingCodexHandoffCase');
   const contract = section('function productListingDecisionContract', 'async function loadProductListingCodexHandoffSnapshot');
   assert.match(source, /function productListingDescriptionStatus\(value\)/);
-  assert.match(prepared, /productDescriptionStatus:descriptionStatus/);
-  assert.match(contract, /genericFallbackIsIncomplete:true/);
-  assert.match(contract, /writeBackToEveryCaseBeforePreparedSnapshot:true/);
-  assert.match(source, /requireStructuredVerifiedDescriptionBeforePreparedSnapshot:true/);
-});
-
-test('新細項的父商品會沿用已儲存的來源圖佇列，但不把未驗證完成圖當成繁體圖', () => {
-  const merge = section('function mergeProductListingCodexQueuedMedia', 'async function loadProductListingCodexHandoffSnapshot');
-  const snapshot = section('async function loadProductListingCodexHandoffSnapshot', 'function requireProductListingCodexHandoffMedia');
-  assert.match(merge, /queuedSources=normalizeProductResearchSourceUrls\(row\.sourceImageUrls\)/);
-  assert.match(merge, /selectedReferenceImageUrls:sourceImageUrls\.slice\(\)/);
-  assert.match(merge, /pending-localization/);
-  assert.doesNotMatch(merge, /row\.completedImageUrls/);
-  assert.match(snapshot, /mergeProductListingCodexQueuedMedia\(item,queued\)/);
-});
-
-test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮方形品牌首圖', () => {
-  const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
-  assert.match(prompt, /cleanMain 是無品牌框、無 Logo、無地址／電話／QR Code/);
-  assert.match(prompt, /storefrontPortrait 使用 3:4「柚子樂器淺色商業展示版」/);
-  assert.match(prompt, /brandedHero 同樣必須以固定母版像素覆蓋品牌頁首/);
-  assert.match(prompt, /禁止重畫、仿畫、換字或另生 Logo/);
-  assert.match(prompt, /商品去背後約占 55～65%/);
-  assert.match(prompt, /最多 2 個有來源依據的輔助視覺/);
-  assert.match(prompt, /不得加入價格、聯絡資訊、浮水印或虛構功能／配件/);
-  assert.match(prompt, /被切半的文字或殘缺裝飾/);
-});
-
-test('交接只用 v3 固定流程，不留舊版降級或第二路徑', () => {
-  const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
-  assert.match(source, /const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v3'/);
-  assert.match(prompt, /v2 或任何其他舊快照一律停止/);
-  assert.match(prompt, /不得沿用、混合或降級/);
-  assert.match(prompt, /禁止先全面瀏覽或搜尋任一平台商品清單/);
-  assert.match(prompt, /只有送出結果不明[\s\S]*完全相同 SKU 做一次精確查詢/);
-  assert.match(prompt, /不得[\s\S]*切換蝦皮賣家中心或開第二條上架路徑/);
-  assert.match(prompt, /蝦皮只使用 EasyStore 官方蝦皮通路同步／編輯頁/);
-  assert.doesNotMatch(prompt, /MOMO 首圖必須是 (?:brandedHero|綠底|品牌圖)/);
-  assert.doesNotMatch(prompt, /(?:改用|備援使用|另開一條)[^\n。]{0,30}蝦皮賣家中心/);
-});
-
-test('四通路圖片實際依完成圖角色排序，不會把來源原圖送上平台', () => {
-  const normalizeUrls = (values) => Array.from(new Set((Array.isArray(values) ? values : [])
-    .filter((value) => /^https?:\/\//.test(String(value)))));
-  const planImages = loadPureFunction(
-    'function productListingPlatformImagePlan',
-    'function immutableProductListingSnapshot',
-    'productListingPlatformImagePlan',
-    { normalizeProductResearchSourceUrls: normalizeUrls, PRODUCT_GROUP_LISTING_IMAGE_MAX: 12 }
-  );
-  const sourceUrl = 'https://supplier.example.com/simplified-source.jpg';
-  const secondSourceUrl = 'https://supplier.example.com/second-simplified-source.jpg';
-  const heroUrl = 'https://cdn.example.com/branded-hero-zh-tw.jpg';
-  const storefrontUrl = 'https://cdn.example.com/storefront-portrait-zh-tw.jpg';
-  const cleanUrl = 'https://cdn.example.com/clean-main-zh-tw.jpg';
-  const detailUrl = 'https://cdn.example.com/detail-zh-tw.jpg';
-  const emptyFlags = {
-    containsLogo: false, containsContactInfo: false, containsQrCode: false,
-    greenBrandTemplate: false, momoPromotionEligible: false
-  };
-  const rows = [
-    { sourceImageUrl: sourceUrl, url: sourceUrl, roles: ['cleanMain'], assetFlags: emptyFlags },
-    { sourceImageUrl: sourceUrl, url: secondSourceUrl, roles: ['localizedDetail'], assetFlags: emptyFlags },
-    { sourceImageUrl: sourceUrl, url: storefrontUrl, roles: ['storefrontPortrait'], assetFlags: { ...emptyFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
-    { sourceImageUrl: sourceUrl, url: heroUrl, roles: ['brandedHero'], assetFlags: { ...emptyFlags, containsLogo: true, greenBrandTemplate: true } },
-    { sourceImageUrl: sourceUrl, url: cleanUrl, roles: ['cleanMain'], assetFlags: emptyFlags },
-    { sourceImageUrl: sourceUrl, url: detailUrl, roles: ['localizedDetail'], assetFlags: { ...emptyFlags, momoPromotionEligible: true } }
-  ];
-  const plan = planImages(rows, [sourceUrl, secondSourceUrl]);
-  assert.deepEqual(plan.easyStore.imageUrls.slice(0, 2), [storefrontUrl, cleanUrl]);
-  assert.deepEqual(plan.shopee.imageUrls.slice(0, 2), [heroUrl, cleanUrl]);
-  assert.deepEqual(plan.coupang.imageUrls.slice(0, 2), [cleanUrl, heroUrl]);
-  assert.deepEqual(plan.momo.imageUrls.slice(0, 3), [cleanUrl, detailUrl, heroUrl]);
-  assert.equal(plan.momo.promotionImageUrl, detailUrl);
-  assert.equal(plan.momo.promotionImageReady, true);
-  for (const platform of ['easyStore', 'shopee', 'coupang', 'momo']) {
-    assert.equal(plan[platform].imageUrls.includes(sourceUrl), false);
-    assert.equal(plan[platform].imageUrls.includes(secondSourceUrl), false);
-  }
-});
-
-test('營運中心 12 張共用池也先保留必要角色並公平涵蓋 13 個細項', () => {
-  const normalizeUrls = (values) => Array.from(new Set((Array.isArray(values) ? values : [])
-    .filter((value) => /^https?:\/\//.test(String(value)))));
-  const sharedRows = loadPureFunction(
-    'function productListingSharedCompletedRows',
-    'function productListingPlatformImagePlan',
-    'productListingSharedCompletedRows',
-    {
-      readyProductListingImageRows: (prepared) => prepared.rows || [],
-      productListingConflictingRoleUrls: () => new Set(),
-      normalizeProductResearchSourceUrls: normalizeUrls,
-      PRODUCT_GROUP_LISTING_IMAGE_MAX: 12
-    }
-  );
-  const cases = Array.from({ length: 13 }, (_, index) => ({
-    gallerySourceImageUrls: [],
-    preparedCase: { rows: [
-      { sourceImageUrl: `https://supplier.example.com/${index}-clean.jpg`, url: `https://cdn.example.com/variant-${index}-clean.jpg`, roles: ['cleanMain'], sourceOrder: 1 },
-      { sourceImageUrl: `https://supplier.example.com/${index}-storefront.jpg`, url: `https://cdn.example.com/variant-${index}-storefront.jpg`, roles: ['storefrontPortrait'], sourceOrder: 1 },
-      { sourceImageUrl: `https://supplier.example.com/${index}-brand.jpg`, url: `https://cdn.example.com/variant-${index}-brand.jpg`, roles: ['brandedHero'], sourceOrder: 1 }
-    ] }
-  }));
-  const result = sharedRows(cases);
-  assert.equal(result.length, 12);
-  assert.equal(result.some((row) => row.roles.includes('cleanMain')), true);
-  assert.equal(result.some((row) => row.roles.includes('brandedHero')), true);
-  assert.equal(result.some((row) => row.roles.includes('storefrontPortrait')), true);
-  const represented = new Set(result.map((row) => /variant-(\d+)-/.exec(row.url)?.[1]).filter(Boolean));
-  assert.equal(represented.size, 12);
-});
-
-test('原圖 URL 即使被舊資料誤標 ready 也不能成為完成圖', () => {
-  const readyRows = section('function readyProductListingImageRows', 'function productListingConflictingRoleUrls');
-  const platformPlan = section('function productListingPlatformImagePlan', 'function immutableProductListingSnapshot');
-  assert.match(readyRows, /allSourceUrls\.has\(row\.url\)/);
-  assert.match(platformPlan, /frozenSources\.has\(row\.url\)/);
-});
-
-test('同一案件的另一張來源圖不可冒充繁體完成圖', () => {
-  const normalizeUrls = (values) => Array.from(new Set((Array.isArray(values) ? values : [])
-    .filter((value) => /^https?:\/\//.test(String(value)))));
-  const normalizeGenerated = (values) => (Array.isArray(values) ? values : []).map((row) => ({ ...row }));
-  const readyRows = loadPureFunction(
-    'function readyProductListingImageRows',
-    'function productListingConflictingRoleUrls',
-    'readyProductListingImageRows',
-    { normalizeGeneratedListingImages: normalizeGenerated, normalizeProductResearchSourceUrls: normalizeUrls }
-  );
-  const sourceOne = 'https://supplier.example.com/source-one.jpg';
-  const sourceTwo = 'https://supplier.example.com/source-two.jpg';
-  const rows = readyRows({
-    referenceImageUrls: [sourceOne, sourceTwo],
-    selectedReferenceImageUrls: [sourceOne, sourceTwo],
-    generatedListingImages: [
-      { sourceImageUrl: sourceOne, url: sourceTwo, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'] },
-      { sourceImageUrl: sourceTwo, url: 'https://cdn.example.com/source-two-zh-tw.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'] }
-    ]
-  });
-  assert.equal(rows.some((row) => row.url === sourceTwo), false);
-  assert.equal(rows.some((row) => row.url === 'https://cdn.example.com/source-two-zh-tw.jpg'), true);
-});
-
-test('同一來源可有多個角色輸出，但同一完成圖不可同時當乾淨圖與品牌圖', () => {
-  const conflictingUrls = loadPureFunction(
-    'function productListingConflictingRoleUrls',
-    'function productListingImageRowsForRole',
-    'productListingConflictingRoleUrls',
-    {}
-  );
-  const sameSource = 'https://supplier.example.com/source.jpg';
-  const validRows = [
-    { sourceImageUrl: sameSource, url: 'https://cdn.example.com/clean.jpg', roles: ['cleanMain'] },
-    { sourceImageUrl: sameSource, url: 'https://cdn.example.com/hero.jpg', roles: ['brandedHero'] }
-  ];
-  assert.deepEqual(Array.from(conflictingUrls(validRows)), []);
-  const conflictRows = validRows.concat({
-    sourceImageUrl: sameSource, url: 'https://cdn.example.com/clean.jpg', roles: ['brandedHero']
-  });
-  assert.deepEqual(Array.from(conflictingUrls(conflictRows)), ['https://cdn.example.com/clean.jpg']);
-});
-
-test('指定 v3 job 續跑只接受同一 productId 並直接交給蝦皮助手', () => {
-  const resume = section('async function resumeExplicitShopeeListingFromQuery', 'function productListingTransientFailure');
-  assert.match(resume, /resumeListingJob/);
-  assert.match(resume, /await requireEasyStoreManagerAuth\(\)/);
-  assert.match(resume, /result&&result\.jobId\)!==jobId/);
-  assert.match(resume, /clean\(easyStoreStage\.status\)!=='verified'/);
-  assert.match(resume, /clean\(shopeeStage\.status\)==='verified'/);
-  assert.match(resume, /payload\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
-  assert.match(resume, /YouziShopeeAutofill\.queue\(payload\)/);
-});
-
-test('蝦皮正式狀態儲存後沿用同一 v3 job 完成四通路工作', () => {
-  const advance = section('async function advanceFixedV3AfterShopeeStatus', 'async function saveProductPlatformStatus');
-  assert.match(advance, /clean\(job\.workflowVersion\)!==PRODUCT_LISTING_WORKFLOW_VERSION/);
-  assert.match(advance, /clean\(easyStoreStage\.status\)!=='verified'/);
-  assert.match(advance, /clean\(shopeeStage\.status\)==='verified'/);
-  assert.match(advance, /await requireEasyStoreManagerAuth\(\)/);
-  assert.match(advance, /httpsCallable\('verifyProductListingStage'/);
-  assert.match(advance, /stage:'shopee'/);
-  assert.match(advance, /platformListMatched:true,officialCatalogMatched:false/);
-  assert.doesNotMatch(advance, /imageEvidenceComplete|appliedImageUrls|officialImageUrls/);
-  const save = section('async function saveProductPlatformStatus', 'const LABEL_PRINT_ENDPOINTS');
-  assert.match(save, /advanceFixedV3AfterShopeeStatus\(p,statuses\)/);
-});

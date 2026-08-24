@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260823-all-sku-search/);
+  assert.match(portal, /operations-phase1\.js\?v=20260824-listing-intents-physical/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
   assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
@@ -133,7 +133,9 @@ test('product editor shares the first online price while preserving platform ove
 test('product listing has a safe add-to-existing variant mode', () => {
   const source = read('operations-phase1.js');
   assert.doesNotMatch(source, /product-listing-variant-open/);
-  assert.match(source, /value="add-variant"/);
+  for (const value of ['create-single', 'create-group', 'add-variant', 'update-existing']) {
+    assert.match(source, new RegExp("choice\\('" + value + "'"));
+  }
   assert.match(source, /name="variantParentProductId"/);
   assert.match(source, /name="variantAttributeName"/);
   assert.match(source, /name="variantParentAttributeValue"/);
