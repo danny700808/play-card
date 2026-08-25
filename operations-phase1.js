@@ -2135,6 +2135,14 @@ function renderOverviewV7(){
   function productAppearsInRecentListing(p){
     return !!(p&&p.initialized&&hasListingSku(p.sku)&&!clean(p.sku).startsWith('0')&&productNeedsRecentListingWork(p));
   }
+  function productHasNoListingButHasStock(p){
+    return Number(p&&p.currentStock||0)>0&&!productHasPlatformListing(p);
+  }
+  function productPriceForSort(p){
+    const onlinePrice=numberOrNull(p&&p.onlinePrice);
+    if(onlinePrice!=null) return onlinePrice;
+    return numberOrNull(p&&p.storePrice);
+  }
   function productFiltered(){
     const term=lower(state.productSearch); let rows=catalogRowsInSkuOrder().filter(function(p){
       if(!hasListingSku(p.sku))return false;
@@ -2150,7 +2158,29 @@ function renderOverviewV7(){
       if(state.productFilter==='negative'&&p.currentStock>=0)return false;
       return true;
     });
-    if(state.productRecentOnly)rows=rows.slice().sort(function(a,b){return productCreatedTime(b)-productCreatedTime(a)||compareCatalogSku(a,b);});
+    if(state.productRecentOnly){
+      rows=rows.slice().sort(function(a,b){return productCreatedTime(b)-productCreatedTime(a)||compareCatalogSku(a,b);});
+      return rows;
+    }
+    if(state.productSort==='price'){
+      rows=rows.slice().sort(function(a,b){
+        const aPrice=productPriceForSort(a),bPrice=productPriceForSort(b);
+        return (aPrice==null?Number.MAX_SAFE_INTEGER:aPrice)-(bPrice==null?Number.MAX_SAFE_INTEGER:bPrice)||compareCatalogSku(a,b);
+      });
+    }else if(state.productSort==='stock'){
+      rows=rows.slice().sort(function(a,b){
+        const aStock=numberOrNull(a&&a.currentStock)||Number.MIN_SAFE_INTEGER,bStock=numberOrNull(b&&b.currentStock)||Number.MIN_SAFE_INTEGER;
+        return bStock-aStock||compareCatalogSku(a,b);
+      });
+    }else if(state.productSort==='ready-to-list'){
+      rows=rows.slice().sort(function(a,b){
+        const aPriority=productHasNoListingButHasStock(a)?0:1,bPriority=productHasNoListingButHasStock(b)?0:1;
+        if(aPriority!==bPriority) return aPriority-bPriority;
+        return compareCatalogSku(a,b);
+      });
+    }else{
+      rows=rows.slice().sort(compareCatalogSku);
+    }
     return rows;
   }
   function productCard(p){
@@ -2427,7 +2457,8 @@ function renderOverviewV7(){
     const editorHtml=state.productEditId?productFormHtml(editingProduct):'';
     const previewHtml=renderProductPreviewModal();
     const recentCount=state.catalog.filter(productAppearsInRecentListing).length,queueCount=productListingQueueRows().length;
-    return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">成本總額：<b>'+money(inventoryValue)+'</b></div></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft" data-action="product-listing-queue-open">待網路上架商品'+(queueCount?'（'+formatNumber(queueCount)+'）':'')+'</button><button class="ops-button soft '+(state.productRecentOnly?'active':'')+'" data-action="product-recent">新增未上架'+(recentCount?'（'+formatNumber(recentCount)+'）':'')+'</button><button class="ops-button soft" data-action="product-platform-audit">檢測網路商品狀態</button></div></div>'+productSeriesTabs()+'<div class="ops-product-platform-guide"><b>通路上架檢測</b><span>四個通路固定顯示「有／沒有」；有效平台商品即使缺貨、庫存 0 或正常下架仍顯示「有」，補庫存後可恢復。違規、受限制、未通過或已刪除一律顯示「沒有」，必須重新上架。</span></div><div class="ops-product-toolbar"><input class="ops-input" id="productSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'">'+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+'<div id="productSearchResults">'+productSearchResultsHtml()+'</div></section>'+previewHtml;
+    const productSortHtml='<select class="ops-select ops-product-sort-select" id="productSort"><option value="sku">排序：SKU 預設</option><option value="price"'+(state.productSort==='price'?' selected':'')+'>依價格</option><option value="stock"'+(state.productSort==='stock'?' selected':'')+'>依數量</option><option value="ready-to-list"'+(state.productSort==='ready-to-list'?' selected':'')+'>有庫存未上架</option></select>';
+    return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">成本總額：<b>'+money(inventoryValue)+'</b></div></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft" data-action="product-listing-queue-open">待網路上架商品'+(queueCount?'（'+formatNumber(queueCount)+'）':'')+'</button><button class="ops-button soft '+(state.productRecentOnly?'active':'')+'" data-action="product-recent">新增未上架'+(recentCount?'（'+formatNumber(recentCount)+'）':'')+'</button><button class="ops-button soft" data-action="product-platform-audit">檢測網路商品狀態</button></div></div>'+productSeriesTabs()+'<div class="ops-product-platform-guide"><b>通路上架檢測</b><span>四個通路固定顯示「有／沒有」；有效平台商品即使缺貨、庫存 0 或正常下架仍顯示「有」，補庫存後可恢復。違規、受限制、未通過或已刪除一律顯示「沒有」，必須重新上架。</span></div><div class="ops-product-toolbar"><input class="ops-input" id="productSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'">'+productSortHtml+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+'<div id="productSearchResults">'+productSearchResultsHtml()+'</div></section>'+previewHtml;
   }
 
   function estimateFifoCostForProduct(p,qty){if(!p||!p.internal)return 0;try{return consumeFifo(p.internal,qty).costTotal;}catch(err){return qty*Number(p.nextFifoCost||p.averageCost||0);}}

@@ -1238,8 +1238,10 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-product-series-tabs button.active{border-color:var(--ops-green);background:var(--ops-green);color:#fff}
 .ops-product-platform-guide{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:9px 11px;border:1px solid #d6e2e7;border-radius:11px;background:#f8fbfc;color:#5b707b;font-size:11px;line-height:1.45}
 .ops-product-platform-guide b{color:#1c4f3f;white-space:nowrap}
-.ops-product-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;margin-bottom:14px;align-items:center}
+.ops-product-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;margin-bottom:14px;align-items:center}
 .ops-product-toolbar>.ops-input{min-width:0}
+.ops-product-toolbar>.ops-select{min-width:0}
+.ops-product-sort-select{width:100%;max-width:198px}
 .ops-display-mode-toggle{display:inline-flex;align-items:stretch;gap:0;border:1px solid #c9d8df;border-radius:10px;background:#f5f8fa;overflow:hidden;white-space:nowrap}
 .ops-display-mode-toggle button{border:0;border-right:1px solid #c9d8df;background:transparent;color:#526a77;padding:9px 12px;font:inherit;font-size:12px;font-weight:850;cursor:pointer}
 .ops-display-mode-toggle button:last-child{border-right:0}
@@ -1276,12 +1278,14 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-product-title-group{gap:10px 14px}
   .ops-product-title-row>.ops-card-actions{justify-content:flex-start}
   .ops-product-series-tabs{flex-wrap:nowrap;overflow-x:auto;padding:9px}
-  .ops-product-toolbar{grid-template-columns:minmax(0,1fr) auto}
+  .ops-product-toolbar{grid-template-columns:minmax(0,1fr) minmax(180px,auto)}
   .ops-product-text-row{grid-template-columns:110px minmax(240px,1.7fr) 72px repeat(3,100px) 280px repeat(2,90px);gap:8px;padding:10px}
 }
 @media(max-width:620px){
-  .ops-product-toolbar>.ops-input{grid-column:1/-1}
-  .ops-product-toolbar{grid-template-columns:minmax(0,1fr) auto}
+  .ops-product-toolbar{grid-template-columns:minmax(0,1fr)}
+  .ops-product-toolbar>.ops-input,
+  .ops-product-toolbar>.ops-select,
+  .ops-product-toolbar>.ops-display-mode-toggle{grid-column:1/-1}
   .ops-display-mode-toggle{justify-self:start}
   .ops-product-text-list{overflow-x:visible}
   .ops-product-text-row{min-width:0;grid-template-columns:96px minmax(0,1fr);gap:7px 10px}
