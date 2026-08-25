@@ -2104,6 +2104,7 @@ function renderOverviewV7(){
     return {exists:false,listingId:'',inferredFrom:''};
   }
   function productPlatformStatusHtml(p,compact){
+    if(clean(p&&p.sku).startsWith('0'))return '';
     return '<div class="ops-product-platform-status '+(compact?'compact':'')+'">'+PRODUCT_LISTING_PLATFORMS.map(function(platform){
       const row=productPlatformPresence(p,platform.key),title=[platform.label,row.exists?'有':'沒有',row.listingId?'編號 '+row.listingId:'',row.inferredFrom,row.exists?'':'點一下準備補上架'].filter(Boolean).join('｜');
       if(row.exists)return '<span class="is-present" title="'+attr(title)+'"><b>'+escapeHtml(platform.label)+'</b><i>有</i></span>';

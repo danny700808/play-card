@@ -30,6 +30,7 @@ test('商品資訊放寬所有 SKU 開頭，只排除沒有商品編號的資料
 
 test('四平台狀態只顯示有或沒有，沒有可直接進準備上架', () => {
   const body = functionBody('productPlatformStatusHtml');
+  assert.match(body, /clean\(p&&p\.sku\)\.startsWith\('0'\).*return ''/s);
   assert.match(body, />有<\/i>/);
   assert.match(body, />沒有<\/i>/);
   assert.match(body, /data-action="product-platform-missing"/);
