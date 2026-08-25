@@ -284,17 +284,20 @@ test("一鍵交接會等待最後一張收圖保存完成", () => {
   assert.match(operationsSource, /index<PRODUCT_SELECTED_IMAGE_MAX/);
 });
 
-test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製圖按鈕", () => {
+test("準備上架直接顯示八個處理方塊，不提供網頁 OpenAI 文案或製圖按鈕", () => {
   const start = operationsSource.indexOf("function productListingCaseFormHtml");
   const end = operationsSource.indexOf("async function openProductListingCase", start);
   const renderer = operationsSource.slice(start, end);
-  assert.match(renderer, /帶入 Codex 對話/);
+  assert.match(renderer, /網路上架處理/);
+  assert.match(renderer, /productListingActionGridHtml\(row\)/);
   assert.doesNotMatch(renderer, /data-action="product-ai-research-run"/);
   assert.doesNotMatch(renderer, /data-action="product-ai-image-generate"/);
   assert.match(renderer, /id="productCompletedImageUpload"/);
   assert.match(renderer, /進階回填完成圖/);
   assert.doesNotMatch(renderer, />上傳 Codex 已完成圖片</);
-  assert.equal((renderer.match(/data-action="product-listing-codex-complete"/g) || []).length, 1);
+  assert.match(operationsSource, /const scopes=\['all','momo','coupang','website'\]/);
+  assert.match(operationsSource, /data-action="product-listing-queue-add"/);
+  assert.match(operationsSource, /data-action="product-listing-codex-complete"/);
 });
 
 test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () => {

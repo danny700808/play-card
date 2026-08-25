@@ -1120,6 +1120,17 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-codex-heading small,.ops-listing-codex-action>p{margin:0;color:#587066;font-size:11px;line-height:1.55}
 .ops-listing-codex-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .ops-listing-codex-buttons>.ops-button{width:100%;min-height:50px;font-size:14px}
+.ops-listing-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.ops-listing-action-tile{display:grid;align-content:center;justify-items:start;gap:4px;min-height:72px;padding:12px 14px;border:1px solid #9bcbb6;border-radius:14px;background:#fff;color:#174f3d;text-align:left;cursor:pointer;box-shadow:0 3px 10px rgba(24,89,67,.06);transition:border-color .16s ease,background .16s ease,transform .16s ease,box-shadow .16s ease}
+.ops-listing-action-tile span{font-size:11px;font-weight:850;color:#5f776d}
+.ops-listing-action-tile b{font-size:15px;line-height:1.25;font-weight:950}
+.ops-listing-action-tile.immediate{border-color:#1f765a;background:#1f765a;color:#fff}
+.ops-listing-action-tile.immediate span{color:#dff4ea}
+.ops-listing-action-tile.queue:hover:not(:disabled){border-color:#1f765a;background:#edf8f2;transform:translateY(-1px)}
+.ops-listing-action-tile.immediate:hover:not(:disabled){background:#175e48;box-shadow:0 7px 16px rgba(23,94,72,.18);transform:translateY(-1px)}
+.ops-listing-action-tile.selected{border-color:#1f765a;background:#dff2e8;box-shadow:inset 0 0 0 1px #1f765a}
+.ops-listing-action-tile:disabled{cursor:default;opacity:.68;transform:none;box-shadow:none}
+.ops-listing-action-tile.is-busy{opacity:.82}
 .ops-listing-completed-upload{border-top:1px solid #cfe2d8;padding-top:8px}
 .ops-listing-completed-upload summary{cursor:pointer;color:#587066;font-size:11px;font-weight:800}
 .ops-listing-completed-upload .ops-listing-upload-button{margin-top:8px}
@@ -2551,6 +2562,9 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 
 @media(max-width:700px){
   .ops-listing-codex-buttons{grid-template-columns:1fr}
+  .ops-listing-action-grid{gap:7px}
+  .ops-listing-action-tile{min-height:66px;padding:10px 11px}
+  .ops-listing-action-tile b{font-size:13px}
   .ops-listing-queue-summary{display:grid}.ops-listing-queue-summary>.ops-button{width:100%}
   .ops-listing-queue-item{grid-template-columns:30px 54px minmax(0,1fr)}
   .ops-listing-queue-item>img,.ops-listing-queue-no-image{width:54px;height:54px}

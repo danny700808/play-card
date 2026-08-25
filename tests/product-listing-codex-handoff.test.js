@@ -20,11 +20,13 @@ function loadPureFunction(start, end, name, dependencies) {
   return Function(...names, "'use strict';\n" + body + "\nreturn " + name + ";")(...values);
 }
 
-test('一鍵上架按鈕把固定 v3 工作帶入指定 Codex 對話並授權後端續跑', () => {
+test('八個直接處理方塊把選定範圍帶入指定 Codex 對話並授權後端續跑', () => {
   assert.match(source, /const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex:\/\/threads\/'/);
   assert.match(source, /function productListingCodexThreadUrl\(prompt\)/);
   assert.match(source, /params\.set\('prompt',clean\(prompt\)\)/);
-  assert.match(source, /async function handoffProductListingToCodex\(form\)/);
+  assert.match(source, /async function handoffProductListingToCodex\(form,targetScope\)/);
+  assert.match(source, /listingTargetScope:listingTargetScope/);
+  assert.match(source, /listingTargetPlatforms:listingTargetPlatforms/);
   assert.match(source, /caseStatus:'waiting-codex'/);
   assert.match(source, /codexHandoff:\{status:'pending'/);
   assert.match(source, /workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION/);
@@ -51,20 +53,21 @@ test('一鍵上架按鈕把固定 v3 工作帶入指定 Codex 對話並授權後
   assert.doesNotMatch(source, /Codex 待辦已建立/);
 });
 
-test('主要按鈕不再直接執行 OpenAI 文案與圖片 API 流程', () => {
+test('立即處理方塊不再直接執行 OpenAI 文案與圖片 API 流程', () => {
   const handler = source.match(/if\(action==='product-listing-codex-complete'\)\{[\s\S]*?\n\s*\}/)[0];
   assert.match(handler, /handoffProductListingToCodex/);
   assert.doesNotMatch(handler, /completeProductListingWithCodex/);
   assert.doesNotMatch(source, /async function completeProductListingWithCodex/);
   assert.doesNotMatch(handler, /researchProductListingCase|generateProductListingImage/);
-  assert.match(source, /完成圖已齊全，正在啟動正式四通路工作/);
+  assert.match(source, /完成圖已齊全，正在啟動/);
+  assert.match(source, /同一份 v3 快照只會處理本次選擇的通路/);
   assert.match(source, /callProductListingPublishWithTransientRetry\(id,form\)/);
   assert.match(source, /不得重新呼叫網站的 OpenAI 文案或圖片 API/);
   assert.match(source, /已停用網頁 OpenAI/);
 });
 
 test('交接會等待收圖、保存後重讀案件，再從固定快照建立指令', () => {
-  const handoff = section('async function handoffProductListingToCodex(form)', 'function productListingCodexResultDraft');
+  const handoff = section('async function handoffProductListingToCodex(form,targetScope)', 'function productListingCodexResultDraft');
   const wait = handoff.indexOf('await finishProductImageCollectionBeforeHandoff(form)');
   const refresh = handoff.indexOf('await refreshProductListingHandoffMediaFromDatabase(form)');
   const save = handoff.indexOf('await saveProductListingCase(form,false,true,true)');
@@ -77,7 +80,7 @@ test('交接會等待收圖、保存後重讀案件，再從固定快照建立�
 
 test('沒有待存圖片時不等待舊收圖 Promise，交接進度能定位每個保存階段', () => {
   const drain = section('async function drainProductImageCollectionUploads(form)', 'async function stopProductImageCollection(form)');
-  const handoff = section('async function handoffProductListingToCodex(form)', 'function productListingCodexResultDraft');
+  const handoff = section('async function handoffProductListingToCodex(form,targetScope)', 'function productListingCodexResultDraft');
   assert.match(drain, /if\(productImageCollectionPendingUploads===0\)/);
   assert.ok(drain.indexOf('if(productImageCollectionPendingUploads===0)') < drain.indexOf('await Promise.race'));
   assert.match(drain, /productImageCollectionUploadChain=Promise\.resolve\(\)/);
@@ -88,11 +91,12 @@ test('沒有待存圖片時不等待舊收圖 Promise，交接進度能定位每
 
 test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多細項連結過長', () => {
   const activation = section('function productListingCodexActivationPrompt', 'function productListingCodexThreadUrl');
-  const handoff = section('async function handoffProductListingToCodex(form)', 'function productListingCodexResultDraft');
+  const handoff = section('async function handoffProductListingToCodex(form,targetScope)', 'function productListingCodexResultDraft');
   assert.match(activation, /\[固定流程 v3 短交接\]/);
   assert.match(activation, /codexHandoff\.prompt 與 codexHandoff\.preflightSnapshot/);
   assert.match(activation, /本組每個商品的繁體完成圖/);
-  assert.match(activation, /MOMO、酷澎、EasyStore 三個根工作/);
+  assert.match(activation, /只准處理 .*未選通路禁止操作/);
+  assert.match(activation, /啟動本次已選通路/);
   assert.match(handoff, /activationPrompt=productListingCodexActivationPrompt\(product,snapshot\)/);
   assert.match(handoff, /threadUrl=productListingCodexThreadUrl\(activationPrompt\)/);
   assert.match(handoff, /activationPrompt:activationPrompt,prompt:prompt/);
@@ -112,7 +116,7 @@ test('固定流程鎖定品牌頁首、MOMO 專推圖與 EasyStore 後立即接�
   assert.match(source, /整筆主商品共用一張專推圖/);
   assert.match(source, /MOMO 商店分類最多 5 個/);
   assert.match(source, /EasyStore 一經正式核對 verified/);
-  assert.match(source, /不得等待 MOMO 或酷澎完成/);
+  assert.match(source, /EasyStore verified 後立刻解除蝦皮依賴/);
   assert.match(source, /後續區段已填後禁止返回或重新產生/);
   assert.match(source, /長邊以 1600～2000 px 為宜/);
 });
@@ -136,7 +140,7 @@ test('交接中用 inert 鎖住互動，但不會 disabled 表單欄位後再保
 
 test('獨立商品真正沒有來源圖與完成圖時不建立零圖工作', () => {
   const validator = section('function requireProductListingCodexHandoffMedia', 'function productListingCodexHandoffPrompt');
-  const handoff = section('async function handoffProductListingToCodex(form)', 'function productListingCodexResultDraft');
+  const handoff = section('async function handoffProductListingToCodex(form,targetScope)', 'function productListingCodexResultDraft');
   assert.match(validator, /item\.imageStatus==='missing-source'/);
   assert.match(validator, /item\.imageStatus==='missing-lineage'/);
   assert.match(validator, /圖片尚未完整保存到商品案件/);
@@ -160,41 +164,42 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /codexHandoff\.preflightSnapshot 是不可變的 handoff input snapshot/);
   assert.match(prompt, /Codex 完成圖片後，把 generatedListingImages 寫回各商品案件/);
   assert.match(prompt, /第一次進入平台前，後端會重讀全部案件的最新完成輸出/);
-  assert.match(prompt, /MOMO、酷澎、EasyStore 與蝦皮及所有重試只准沿用該快照/);
+  assert.match(prompt, /目標通路.*及所有重試只准沿用該快照/);
   assert.match(prompt, /來源圖 .*待繁體化／定案 .*完成圖 .*實體圖 .*缺少角色 .*狀態/);
-  assert.match(prompt, /流程、角色與核對規則不可漂移/);
-  assert.match(prompt, /MOMO、酷澎、EasyStore 官網、蝦皮/);
+  assert.match(prompt, /這是唯一標準流程/);
+  assert.match(prompt, /目標範圍：/);
+  assert.match(prompt, /不得擴大到其他通路/);
   assert.match(prompt, /每站送出後只做一次快速核對/);
-  assert.match(prompt, /MOMO、酷澎、EasyStore 是三個獨立根節點/);
-  assert.match(prompt, /蝦皮只依賴 EasyStore/);
+  assert.match(prompt, /本次根節點為/);
+  assert.match(prompt, /蝦皮.*只依賴 EasyStore/);
   assert.match(prompt, /不再逐張蒐集平台 CDN 網址/);
   assert.match(prompt, /平台明確回報圖片錯誤/);
   assert.match(prompt, /來源不符、原圖冒充完成圖、缺角色或 assetFlags 時必須停止/);
   assert.match(prompt, /最終 job preparedSnapshot 建立後，一次完成/);
-  assert.match(prompt, /先保留至少一張 cleanMain、一張 storefrontPortrait 與一張 brandedHero/);
+  assert.match(prompt, /只優先保留本次需要的/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
   assert.match(prompt, /商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置/);
   assert.match(prompt, /甲指第三方 000001 仍保存/);
-  assert.match(prompt, /EasyStore storefrontPortrait 為 750×1000 px、3:4/);
-  assert.match(prompt, /蝦皮 brandedHero 為 1000×1000 px、1:1/);
-  assert.match(prompt, /MOMO／酷澎 cleanMain 為 1000×1000 px、1:1/);
+  assert.match(prompt, /storefrontPortrait 為 750×1000 px、3:4/);
+  assert.match(prompt, /brandedHero 為 1000×1000 px、1:1/);
+  assert.match(prompt, /cleanMain 為 1000×1000 px、1:1/);
   assert.match(prompt, /淺色內容底板四周保留細綠邊/);
-  assert.match(prompt, /同一輪圖片處理固定產生三個首圖版型/);
+  assert.match(prompt, /同一輪圖片處理只產生本次目標通路需要的首圖版型/);
   assert.match(prompt, /不得進平台後才重新裁切或設計/);
   assert.match(prompt, /preflightSnapshot\.decisionContract 是唯一執行契約/);
   assert.match(prompt, /只有 judgmentFields 可以由 Codex/);
   assert.match(prompt, /Codex 對話旁邊的內建瀏覽器/);
   assert.match(prompt, /不得操作使用者主要 Chrome/);
-  assert.match(prompt, /整批商品第一次開始前.*四通路工作階段預檢/);
+  assert.match(prompt, /整批商品第一次開始前.*只完成本次目標通路的工作階段預檢/);
   assert.match(prompt, /未通過前不得開始第一件商品/);
   assert.match(prompt, /酷澎與 EasyStore 若登入失效.*保存帳密重新登入/);
   assert.match(prompt, /每件商品及每個平台階段開始前只做輕量存活檢查/);
   assert.match(prompt, /不得因可恢復的頁籤失效詢問是否重開或是否繼續/);
   assert.match(prompt, /同一內建瀏覽器開一個工作頁籤載入完全相同網址/);
   assert.match(prompt, /輸入控制備援，不是第二條上架路徑/);
-  assert.match(prompt, /已同時授權四通路的建立、修改與最後正式發布/);
-  assert.match(prompt, /不得再產生「確認正式發布四通路／確認上架／確認提交／套用細項」/);
-  assert.match(prompt, /確認正式發布四通路／確認上架／確認提交／套用細項/);
+  assert.match(prompt, /按下「立即處理」已授權/);
+  assert.match(prompt, /listingTargetPlatforms 全部 verified/);
+  assert.match(prompt, /不得再產生「確認上架／確認提交／套用細項」/);
   assert.match(prompt, /商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」/);
   assert.match(prompt, /商品主圖、廣告用圖、編輯器專推圖三處完成並儲存後/);
   assert.match(prompt, /只重開同一草稿一次確認專推圖仍存在/);
@@ -205,7 +210,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /已存在的繁體完成圖庫選取/);
   assert.match(prompt, /不得開啟 Windows 原生選檔視窗/);
   assert.match(prompt, /包裝重量換算的必填公克數/);
-  assert.match(prompt, /進入第一個平台前先產生四站完整欄位表/);
+  assert.match(prompt, /進入第一個平台前先產生本次目標通路完整欄位表/);
   assert.match(prompt, /不得每站重新掃描整頁/);
   assert.match(prompt, /頁面版型未改變時直接套用已準備欄位/);
   assert.match(prompt, /MOMO 第三方 000001/);
@@ -229,7 +234,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /productDescription 只有通用提醒、商品編號、免責文字時，一律視為內容尚未完成/);
   assert.match(prompt, /「商品特色」「使用方式／適用情境」「商品規格」三段/);
   assert.match(prompt, /後端重讀確認後才可建立 preparedSnapshot/);
-  assert.match(prompt, /EasyStore、蝦皮、MOMO、酷澎全部沿用同一份已完成介紹/);
+  assert.match(prompt, /本次 .*沿用同一份已完成介紹/);
 });
 
 test('固定快照會標記通用備援文案未完成，避免非空白文字被誤當正式介紹', () => {
@@ -249,7 +254,7 @@ test('新細項的父商品會沿用已儲存的來源圖佇列，但不把未�
   assert.match(merge, /selectedReferenceImageUrls:sourceImageUrls\.slice\(\)/);
   assert.match(merge, /pending-localization/);
   assert.doesNotMatch(merge, /row\.completedImageUrls/);
-  assert.match(snapshot, /mergeProductListingCodexQueuedMedia\(item,queued\)/);
+  assert.match(snapshot, /mergeProductListingCodexQueuedMedia\(item,queued,normalized\.listingTargetScope\)/);
 });
 
 test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮方形品牌首圖', () => {
