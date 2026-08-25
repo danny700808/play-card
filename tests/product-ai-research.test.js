@@ -33,25 +33,22 @@ test('website OpenAI endpoints are disabled while listings use the Codex convers
   assert.equal(research.CODEX_ONLY_LISTING_MODE, true);
 });
 
-test('main product image prompt enforces the fixed light commercial template and Taiwan wording', () => {
+test('main product image prompt enforces a neutral light commercial layout and Taiwan wording', () => {
   const prompt = research.buildMainTemplateImagePrompt({ name: 'Ibanez AZES40', brand: 'Ibanez', model: 'AZES40' }, { sellingPoints: 'HSS 拾音配置' });
-  assert.match(prompt, /第一張輸入圖是柚子樂器固定綠色品牌模板/);
-  assert.match(prompt, /移除左下角可愛寶寶/);
+  assert.match(prompt, /第一張真實商品來源圖/);
+  assert.match(prompt, /不得套用店家品牌模板/);
   assert.match(prompt, /台灣繁體中文/);
-  assert.match(prompt, /不可遮住頂端標語或右上標誌/);
   assert.match(prompt, /依商品種類、商品本體顏色、留白位置及可讀性/);
   assert.match(prompt, /淺色商業展示底板，不限定純白/);
   assert.match(prompt, /奶油白、米色、淺灰、淺藍、淺粉/);
   assert.match(prompt, /放在右側或中央偏右/);
   assert.match(prompt, /55～65%/);
   assert.match(prompt, /最多 2 個輔助視覺/);
-  assert.match(prompt, /固定維持相同的品牌頁首/);
   assert.match(prompt, /1～3 個已查證的短賣點/);
-  assert.match(prompt, /不得加入價格、地址、電話、QR Code、浮水印或聯絡資訊/);
+  assert.match(prompt, /不得加入店名、店家標誌、標語、地址、電話、QR Code/);
   assert.match(prompt, /方形 1:1/);
   assert.match(prompt, /中央 72% 寬度安全區/);
-  assert.match(prompt, /左右各縮進約 14～16%/);
-  assert.match(prompt, /裁切後仍須看見細綠邊/);
+  assert.match(prompt, /不得出現店家品牌頁首或宣傳資訊/);
   assert.match(prompt, /最終圖不得保留殘缺文字/);
 });
 
@@ -137,7 +134,12 @@ test('OpenAI request uses web search, product images and strict structured outpu
   assert.match(request.input[0].content[0].text, /任務是把「這一件商品」整理成可直接檢查、修改與上架的資料/);
   assert.match(request.input[0].content[0].text, /productDescription 是店家唯一需要檢查與編輯的完整商品介紹/);
   assert.match(request.input[0].content[0].text, /先用 2～4 句自然、活潑的繁體中文介紹商品/);
-  assert.match(request.input[0].content[0].text, /再列 6～10 點/);
+  assert.match(request.input[0].content[0].text, /整理約 10 點/);
+  assert.match(request.input[0].content[0].text, /使用方式／適用情境/);
+  assert.match(request.input[0].content[0].text, /整理約 8 點/);
+  assert.match(request.input[0].content[0].text, /每一項特色、使用重點與規格都必須在 fieldEvidence 留下對應依據/);
+  assert.match(request.input[0].content[0].text, /商品圖片與規格僅供參考，實際內容以收到的實體商品為準。/);
+  assert.match(request.input[0].content[0].text, /都不得加入店名「柚子樂器」/);
   assert.match(request.input[0].content[0].text, /第三層只能從「鍵盤樂器、打擊樂器、管樂器、樂器配件、其他、弦樂器」選一個/);
   assert.match(request.input[0].content[0].text, /弦樂器 > 吉他、貝斯/);
   assert.match(request.input[0].content[0].text, /Warranty Duration/);

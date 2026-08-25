@@ -120,11 +120,9 @@ const payload = {
     useEasyStoreDescription: true,
     capabilityProbe: "single-lightweight-page-probe",
     contentFingerprint: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    imageUrls: [
-      "https://danny700808.github.io/play-card/product-listing-description-promo-1.jpg",
-      "https://danny700808.github.io/play-card/product-listing-description-promo-2.jpg"
-    ],
-    expectedImageCount: 2
+    imageUrls: [],
+    expectedImageCount: 0,
+    fixedFinalDisclaimer: "商品圖片與規格僅供參考，實際內容以收到的實體商品為準。"
   },
   attributes: [
     { label: "Neck Material", value: "Maple", confidence: "high", note: "官方規格" },

@@ -24,9 +24,6 @@ const IMAGE_IMPORT_CANDIDATE_LIMIT = 40;
 const IMAGE_IMPORT_TARGET_IMAGES = 12;
 const IMAGE_IMPORT_MAX_IMAGES = 20;
 const IMAGE_IMPORT_MAX_SELECTED_IMAGES = 12;
-const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
-const MAIN_IMAGE_TEMPLATE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-main-template.jpg`;
-const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const CODEX_ONLY_LISTING_MODE = true;
 
@@ -450,8 +447,11 @@ function researchPrompt(context) {
     '如果有使用者提供的商品頁，先打開該頁；再以品牌官網、台灣代理商、型錄或可用的零售頁補齊資料。沒有網址時，直接依商品名稱、品牌、型號與圖片搜尋。',
     '目標是實用且大致正確的完整度，不必為了追求研究等級的完美而阻擋上架。但條碼、認證、產地、包裝尺寸與重量不可憑空猜測；不確定就回傳 null。店家目前的商品保固政策固定為「保固半年」，除非使用者明確指定其他保固，否則 warrantyInfo 請填「保固半年」。',
     '參考網址若是淘寶或供應商頁，可以參考圖片、排版、簡體中文與特色，但請重新寫成自然的台灣繁體中文，不逐字複製。',
-    'productDescription 是店家唯一需要檢查與編輯的完整商品介紹。格式固定為：先用 2～4 句自然、活潑的繁體中文介紹商品、適合對象與使用情境；空一行後寫「商品特色」，再列 6～10 點並以「1. 」「2. 」編號；再空一行寫「商品規格」，每項使用「欄位：內容」。必要時可加「包裝內容」。不要寫研究過程、來源比對或身分確認說明。',
-    '為了相容既有資料，shortDescription、featureList、specificationText 分別放入 productDescription 的介紹段、特色段與規格段；commonProductDescription 必須與 productDescription 相同。sellingPoints 可取最重要的一項特色。',
+    'productDescription 是店家唯一需要檢查與編輯的完整商品介紹。格式固定為：先用 2～4 句自然、活潑的繁體中文介紹商品、適合對象與使用情境；空一行後寫「商品特色」，以可查證內容為原則整理約 10 點並用「1. 」「2. 」編號；再空一行寫「使用方式／適用情境」，以可查證的常見使用方法、注意事項或使用心得整理約 8 點；再空一行寫「商品規格」，把可查到的適用屬性逐欄列出，每項使用「欄位：內容」。必要時可加「包裝內容」。證據不足時可以少於目標點數，不可湊數或猜測。不要寫研究過程、來源比對或身分確認說明。',
+    '每一項特色、使用重點與規格都必須在 fieldEvidence 留下對應依據；先核對精確型號或條碼，再依序採用原廠／原廠說明書、台灣代理商或經銷商，以及多個可信的使用指南或實際使用經驗。來源互相衝突時不要自行選一個，請記錄在 sourceConflicts。',
+    '為了相容既有資料，shortDescription、featureList、specificationText 分別放入 productDescription 的介紹段、特色段與規格段；faqText 放入使用方式／適用情境段；commonProductDescription 必須與 productDescription 相同。sellingPoints 可取最重要的一項特色。',
+    '所有對外商品標題、介紹、平台 HTML 與商品圖卡都不得加入店名「柚子樂器」、店家標語、聯絡方式、QR Code、導流文字或與商品無關的宣傳。品牌名稱僅限商品本身已查證的原廠品牌。',
+    '所有平台的完整介紹都必須以「商品圖片與規格僅供參考，實際內容以收到的實體商品為準。」作為唯一的最後一句；前面若已有相同句子要先移除，最後一句之後不得再放任何文字、圖片或宣傳內容。',
     '根據同一份商品事實產生 EasyStore、蝦皮、MOMO 與 Coupang／酷澎內容；相同事實不重複發明，只調整各平台的標題、格式、分類與特殊必填欄位。',
     'EasyStore、MOMO 的 HTML，以及作為 Coupang 轉接來源的格式化內容，都只使用安全的 h2、h3、p、ul、li、strong、br 標籤，不放屬性、script、style、iframe 或外部追蹤碼。蝦皮描述請純文字，不用 HTML。',
     '柚子樂器的蝦皮樂器分類固定先走「愛好與收藏品 > 樂器與樂器配件」，第三層只能從「鍵盤樂器、打擊樂器、管樂器、樂器配件、其他、弦樂器」選一個，不可跳層，也不可自行改寫分類名稱。',
@@ -613,16 +613,16 @@ function buildLocalizedImagePrompt(context, listingCase, position, total) {
 function buildMainTemplateImagePrompt(context, listingCase) {
   const source = listingCase || {};
   return [
-    '請製作台灣電商商品首圖，固定採用「柚子樂器淺色商業展示版」方形 1:1 模板。第一張輸入圖是柚子樂器固定綠色品牌模板，第二張輸入圖是真實商品來源。',
-    '固定品牌骨架：保留頂端薄荷綠紋理品牌區、紅色標語與右上柚子樂器標誌；移除左下角可愛寶寶與右下角 PIC COLLAGE，不得加入價格、地址、電話、QR Code、浮水印或聯絡資訊。EasyStore 官網商品卡約以 3:4 的框、cover 方式顯示方形圖片，左右各會裁掉約 12.4%；Logo、完整商品、標題與賣點都必須放在中央 72% 寬度安全區內。',
-    '綠色品牌區下方必須重新設計成有層次的淺色商業展示底板，不限定純白。依商品配色選用奶油白、米色、淺灰、淺藍、淺粉或其他低彩度淺色，搭配柔和弧形、展示台、棚拍光影或乾淨景深；底板要明亮、協調、可讀，不能搶過商品。淺色底板左右各縮進約 14～16%，官網裁切後仍須看見細綠邊，不可把淺色底板鋪滿整個寬度。',
-    '將第二張圖的完整商品精準去背後，作為畫面最大主體放在右側或中央偏右，約占品牌區下方可用畫面的 55～65%；補上自然棚拍陰影與立體層次，但絕不可改變商品顏色、型號、零件、比例、材質紋理與外觀，也不可遮住頂端標語或右上標誌。',
+    '請以第一張真實商品來源圖製作台灣電商用的中性淺色商業首圖，輸出方形 1:1。不得套用店家品牌模板，也不得加入店名、店家標誌、標語、地址、電話、QR Code、導流文字、價格或無關浮水印。商品本身已查證的原廠品牌標誌可以保留。',
+    'EasyStore 官網商品卡約以 3:4 的框、cover 方式顯示方形圖片，左右各會裁掉約 12.4%；完整商品、標題與賣點都必須放在中央 72% 寬度安全區內。',
+    '背景必須設計成有層次的淺色商業展示底板，不限定純白。依商品配色選用奶油白、米色、淺灰、淺藍、淺粉或其他低彩度淺色，搭配柔和弧形、展示台、棚拍光影或乾淨景深；底板要明亮、協調、可讀，不能搶過商品。',
+    '將來源圖的完整商品精準去背後，作為畫面最大主體放在右側或中央偏右，約占可用畫面的 55～65%；補上自然棚拍陰影與立體層次，但絕不可改變商品顏色、型號、零件、比例、材質紋理與外觀。',
     '標題與 1～3 個已查證的短賣點排列在左側或實際留白處，使用一致的粗體標題、圓角資訊卡或膠囊標籤。可加入最多 2 個輔助視覺，只能使用來源圖可辨識的細節特寫、折疊／展開狀態，或不暗示額外配件的淡化樂器使用情境；資料不足就不要加入，絕不可虛構功能、零件、贈品或使用狀態。',
-    '整體要像專業商品型錄封面：主商品最醒目、資訊層級清楚、留白充足，不做滿版文字、雜亂拼貼或過多裝飾。不同商品可以更換淺色底板、點綴色與局部排列，但固定維持相同的品牌頁首與「左側資訊、右側／中央商品主視覺」骨架。任何來源中被截斷、只剩一半或不合語意的文字都必須完整移除或改寫成可驗證的完整台灣用語，最終圖不得保留殘缺文字。',
-    '在同一次圖片編輯內先完整檢查模板與商品來源，只輸出一次最終成品；不得留下需要第二次修改的簡體字、大陸用語、錯字、亂碼或殘缺文字。',
+    '整體要像專業商品型錄封面：主商品最醒目、資訊層級清楚、留白充足，不做滿版文字、雜亂拼貼或過多裝飾。不同商品可以更換淺色底板、點綴色與局部排列，維持「左側資訊、右側／中央商品主視覺」骨架。任何來源中被截斷、只剩一半或不合語意的文字都必須完整移除或改寫成可驗證的完整台灣用語，最終圖不得保留殘缺文字。',
+    '在同一次圖片編輯內先完整檢查商品來源，只輸出一次最終成品；不得留下需要第二次修改的簡體字、大陸用語、錯字、亂碼或殘缺文字。',
     '只加入商品型號與 1～3 個已查證的短賣點，使用自然、正確的台灣繁體中文；不使用簡體字，不新增未證實的贈品、認證、規格或保固。',
     '賣點框、字體層級與點綴色依商品種類、商品本體顏色、留白位置及可讀性做協調變化；同一張圖維持一致，不使用無意義亂數造成難讀。',
-    '輸出保持方形 1:1、固定綠色品牌頁首與上述商業主視覺版型。',
+    '輸出保持方形 1:1 與上述中性商業主視覺版型，不得出現店家品牌頁首或宣傳資訊。',
     `商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
     `品牌：${clean(source.brand) || context.brand || '未提供'}`,
     `型號：${clean(source.model) || context.model || '未提供'}`,
@@ -666,7 +666,7 @@ function buildProductImageQaRequest(imageBase64, context, mode, model) {
             '圖片邊緣若有被截斷一半或排版不完整的文字，也必須列為問題；不得因仍能猜出原意就通過。',
             '繁簡字形相同的中文字不算簡體；品牌、型號、英文、數字與單位本身不算問題。',
             '若任何一項問題存在，approved 必須為 false；只有全部中文均為自然台灣繁體且可正常閱讀時，approved 才能為 true。',
-            `圖片類型：${mode === 'main-template' ? '綠色模板商品主圖' : '商品介紹圖'}`,
+            `圖片類型：${mode === 'main-template' ? '中性淺色商業商品主圖' : '商品介紹圖'}`,
             `商品：${context.name || '未命名商品'}`
           ].join('\n')
         },
@@ -1789,7 +1789,7 @@ function registerProductAiResearch(target) {
     const model = clean(process.env.OPENAI_PRODUCT_IMAGE_EDIT_MODEL) || DEFAULT_IMAGE_EDIT_MODEL;
     try {
       const bucket = admin.storage().bucket();
-      const imageJobs = [{ mode: 'main-template', sourceImageUrl: imageUrls[0], sourceImageUrls: [MAIN_IMAGE_TEMPLATE_URL, imageUrls[0]] }]
+      const imageJobs = [{ mode: 'main-template', sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0]] }]
         .concat(imageUrls.slice(1, 12).map((sourceImageUrl) => ({ mode: 'localized', sourceImageUrl, sourceImageUrls: [sourceImageUrl] })));
       await caseRef.set({
         lastImageGeneration: {
@@ -1858,10 +1858,9 @@ function registerProductAiResearch(target) {
       // Original supplier images remain references and must never be silently mixed
       // back in when one or more localized images fail.
       const listingImageUrls = completed.map((row) => row.url).slice(0, 12);
-      pushUrlRows(listingImageUrls, STORE_PROMO_IMAGE_URL);
       await caseRef.set({
         generatedListingImages: candidates,
-        listingImageUrls: listingImageUrls.slice(0, 13),
+        listingImageUrls: listingImageUrls.slice(0, 12),
         lastImageGeneration: {
           status: failed.length ? 'partial' : 'completed', model, processingMode: 'single-pass',
           requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length,
@@ -1887,7 +1886,7 @@ function registerProductAiResearch(target) {
       return {
         ok: true, status: failed.length ? 'partial' : 'completed', productId, model,
         requestedCount: imageJobs.length, completedCount: completed.length, failedCount: failed.length, processedCount: completed.length,
-        imageUrls: completed.map((row) => row.url), listingImageUrls: listingImageUrls.slice(0, 13), failures: failed
+        imageUrls: completed.map((row) => row.url), listingImageUrls: listingImageUrls.slice(0, 12), failures: failed
       };
     } catch (error) {
       const message = clean(error && error.message) || 'OpenAI 圖片繁體化失敗。';

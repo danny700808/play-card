@@ -64,8 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260825-image-collector-0329/);
-    assert.match(html, /operations-phase1\.js\?v=20260825-image-collector-0329/);
+    assert.match(html, /operations-phase1\.css\?v=20260825-rich-content-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260825-rich-content-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260823-shopee-v3-schema6/);
   }
 });
@@ -83,10 +83,11 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(handoffPrompt, /全部編號的完成輸出公平合併/);
   assert.match(handoffPrompt, /整組最多 12 個不同完成圖 URL/);
   assert.match(handoffPrompt, /未勾選的來源與完成圖不得加入任何平台圖庫/);
-  assert.match(handoffPrompt, /最多 10 點不重複具體特色/);
+  assert.match(handoffPrompt, /目標 10 點不重複、具體且可驗證特色/);
+  assert.match(handoffPrompt, /目標 8 點有來源的使用方式／使用心得/);
   assert.match(handoffPrompt, /保固只填平台保固欄/);
   assert.doesNotMatch(functionBody(engine, 'productListingAutomaticDescription'), /• 保固：/);
-  assert.match(handoffPrompt, /尾端加「柚子樂器」/);
+  assert.match(handoffPrompt, /標題、內文、圖卡都不得加入「柚子樂器」/);
   assert.match(handoffPrompt, /實際內容以收到的實體商品為準/);
   assert.match(handoffPrompt, /同一案件、同一 SKU、同一平台草稿與目前階段/);
   assert.match(handoffPrompt, /本次根節點為/);
@@ -471,7 +472,8 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(engine, /const warrantyInfo=[^\n]+\|\|'保固半年'/);
   assert.match(engine, /warrantyInfo:warrantyInfo/);
   assert.match(caseForm, /完整商品介紹/);
-  assert.match(caseForm, /6～10 點特色/);
+  assert.match(caseForm, /固定目標為 10 個可驗證特色、8 個使用重點/);
+  assert.match(caseForm, /實體商品免責句固定放在最後/);
   assert.match(caseForm, /商品規格/);
   assert.match(caseForm, /name="productDescription"/);
   assert.match(caseForm, /<textarea name="sellingPoints" hidden>/);
@@ -546,7 +548,8 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(generationRequester, /generateProductListingImage/);
   assert.match(generator, /selectedReferenceImageUrls/);
   assert.match(generationRequester, /imageUrls:reference/);
-  assert.match(productAiResearchSource, /listingImageUrls: listingImageUrls\.slice\(0, 13\)/);
+  assert.match(productAiResearchSource, /listingImageUrls: listingImageUrls\.slice\(0, 12\)/);
+  assert.doesNotMatch(productAiResearchSource, /STORE_PROMO_IMAGE_URL/);
   assert.match(productAiResearchSource, /status: 'ready'/);
   assert.match(productAiResearchSource, /已加入準備上架/);
   assert.match(uploader, /slice\(0,PRODUCT_REFERENCE_IMAGE_MAX\)/);

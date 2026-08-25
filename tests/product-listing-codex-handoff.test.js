@@ -104,10 +104,10 @@ test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多�
   assert.doesNotMatch(handoff, /productListingCodexThreadUrl\(prompt\)/);
 });
 
-test('固定流程鎖定品牌頁首、MOMO 專推圖與 EasyStore 後立即接蝦皮', () => {
-  assert.match(source, /頂端薄荷綠品牌區必須從 product-listing-main-template\.jpg 以確定性像素覆蓋方式直接合成/);
-  assert.match(source, /圖片模型只准生成下方商品內容區/);
-  assert.match(source, /禁止壓窄、拉伸、裁切或重新排版/);
+test('固定流程鎖定中性圖卡、MOMO 專推圖與 EasyStore 後立即接蝦皮', () => {
+  assert.match(source, /storefrontPortrait 為 3:4 中性淺色商業展示版/);
+  assert.match(source, /storefrontPortrait 與 brandedHero 都不得加入店名、店鋪 Logo/);
+  assert.match(source, /只有官方來源可驗證的製造商品牌標誌/);
   assert.match(source, /商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」/);
   assert.match(source, /preparedPlatformFieldPlan 產生專推圖網址、唯一素材檔名與指紋/);
   assert.match(source, /三處未齊全時禁止第一次發布/);
@@ -183,7 +183,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /storefrontPortrait 為 750×1000 px、3:4/);
   assert.match(prompt, /brandedHero 為 1000×1000 px、1:1/);
   assert.match(prompt, /cleanMain 為 1000×1000 px、1:1/);
-  assert.match(prompt, /淺色內容底板四周保留細綠邊/);
+  assert.match(prompt, /storefrontPortrait 為 3:4 中性淺色商業展示版/);
   assert.match(prompt, /同一輪圖片處理只產生本次目標通路需要的首圖版型/);
   assert.match(prompt, /不得進平台後才重新裁切或設計/);
   assert.match(prompt, /preflightSnapshot\.decisionContract 是唯一執行契約/);
@@ -233,6 +233,11 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /不得用名稱廣搜/);
   assert.match(prompt, /productDescription 只有通用提醒、商品編號、免責文字時，一律視為內容尚未完成/);
   assert.match(prompt, /「商品特色」「使用方式／適用情境」「商品規格」三段/);
+  assert.match(prompt, /目標 10 點不重複/);
+  assert.match(prompt, /目標 8 點有來源的使用方式／使用心得/);
+  assert.match(prompt, /每個特色、使用重點與規格屬性都必須在 fieldEvidence 指向來源/);
+  assert.match(prompt, /標題、內文、圖卡都不得加入「柚子樂器」/);
+  assert.match(prompt, /作為唯一且固定的最後一句/);
   assert.match(prompt, /後端重讀確認後才可建立 preparedSnapshot/);
   assert.match(prompt, /本次 .*沿用同一份已完成介紹/);
 });
@@ -257,15 +262,15 @@ test('新細項的父商品會沿用已儲存的來源圖佇列，但不把未�
   assert.match(snapshot, /mergeProductListingCodexQueuedMedia\(item,queued,normalized\.listingTargetScope\)/);
 });
 
-test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮方形品牌首圖', () => {
+test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮方形中性首圖', () => {
   const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
   assert.match(prompt, /cleanMain 是無品牌框、無 Logo、無地址／電話／QR Code/);
-  assert.match(prompt, /storefrontPortrait 使用 3:4「柚子樂器淺色商業展示版」/);
-  assert.match(prompt, /brandedHero 同樣必須以固定母版像素覆蓋品牌頁首/);
-  assert.match(prompt, /禁止重畫、仿畫、換字或另生 Logo/);
-  assert.match(prompt, /商品去背後約占 55～65%/);
+  assert.match(prompt, /storefrontPortrait 為 3:4 中性淺色商業展示版/);
+  assert.match(prompt, /brandedHero 為 1:1 中性商業首圖/);
+  assert.match(prompt, /商品約占 55～65%/);
   assert.match(prompt, /最多 2 個有來源依據的輔助視覺/);
-  assert.match(prompt, /不得加入價格、聯絡資訊、浮水印或虛構功能／配件/);
+  assert.match(prompt, /不得加入店名、店鋪 Logo、店鋪標語/);
+  assert.match(prompt, /不得加入價格、浮水印或虛構功能／配件/);
   assert.match(prompt, /被切半的文字或殘缺裝飾/);
 });
 
