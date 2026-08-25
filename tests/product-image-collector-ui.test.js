@@ -121,9 +121,9 @@ test("框選截圖拉框後確認送出，並避免網站放大鏡遮罩", () =>
 });
 
 test("詳情頁的延遲載入與容器內圖片也能顯示綠框", () => {
-  assert.match(supplierCollector, /target\.closest\("img"\)/);
+  assert.match(supplierCollector, /target\.closest\("img,video,canvas,svg image"\)/);
   assert.match(supplierCollector, /data-large-img/);
-  assert.match(supplierCollector, /element\.querySelectorAll\("img"\)/);
+  assert.match(supplierCollector, /element\.querySelectorAll\("img,video\[poster\],canvas,svg image"\)/);
   assert.match(supplierCollector, /depth < 9/);
 });
 
@@ -135,7 +135,7 @@ test("商品主圖上方的促銷 badge 或放大遮罩不會被當成商品圖"
 });
 
 test("截圖權限由新版安裝一次取得，不再要求右鍵操作", () => {
-  assert.ok(manifest.host_permissions.includes("https://*/*"));
+  assert.ok(manifest.host_permissions.includes("<all_urls>"), "網頁面板呼叫 captureVisibleTab 必須宣告 <all_urls>");
   assert.doesNotMatch(background, /CAPTURE_USER_GESTURE_REQUIRED|右鍵|contextMenus/);
 });
 
@@ -304,13 +304,13 @@ test("準備上架直接顯示八個處理方塊，不提供網頁 OpenAI 文案
 
 test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () => {
   assert.match(supplierCollector, /原圖讀取受限，正在改用畫面截圖/);
-  assert.match(supplierCollector, /const dataUrl = await captureVisiblePage\(\)/);
-  assert.match(supplierCollector, /cropVisibleCapture\(dataUrl, rect\)/);
+  assert.match(supplierCollector, /const captured = await captureVisiblePage\(next\.element\)/);
+  assert.match(supplierCollector, /cropVisibleCapture\(captured\.dataUrl, captured\.rect\)/);
   assert.match(supplierCollector, /deliverPreparedImage/);
 });
 
 test("Chrome 助手在一般商品網頁提供點圖與確認式框選截圖", () => {
-  assert.equal(manifest.version, "0.3.28");
+  assert.equal(manifest.version, "0.3.29");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.equal(manifest.permissions.includes("contextMenus"), false);
@@ -318,7 +318,7 @@ test("Chrome 助手在一般商品網頁提供點圖與確認式框選截圖", (
   assert.ok(manifest.host_permissions.includes("https://*.1688.com/*"));
   assert.ok(manifest.host_permissions.includes("https://*.alibaba.com/*"));
   assert.ok(manifest.host_permissions.includes("http://*/*"));
-  assert.ok(manifest.host_permissions.includes("https://*/*"));
+  assert.ok(manifest.host_permissions.includes("<all_urls>"), "網頁面板呼叫 captureVisibleTab 必須宣告 <all_urls>");
   const collectorEntry = manifest.content_scripts.find((entry) => entry.js.includes("supplier-collector.js"));
   assert.ok(collectorEntry.matches.includes("http://*/*"));
   assert.ok(collectorEntry.matches.includes("https://*/*"));
@@ -328,4 +328,43 @@ test("Chrome 助手在一般商品網頁提供點圖與確認式框選截圖", (
   assert.doesNotMatch(supplierCollector, /youzi-crop-handle|mode: "resize"|mode: "move"/);
   assert.doesNotMatch(background, /contextMenus|右鍵/);
   assert.equal(manifest.commands["start-image-crop"].suggested_key.default, "Ctrl+Shift+Y");
+});
+
+test("0.3.29 具備網頁面板截圖權限並能替已開分頁補載入", () => {
+  assert.ok(manifest.host_permissions.includes("<all_urls>"));
+  assert.ok(manifest.permissions.includes("scripting"));
+  assert.match(background, /chrome\.scripting\.executeScript/);
+  assert.match(background, /installCollectorsInOpenTabs/);
+  assert.match(background, /imageCollector\.COLLECTOR_PING_MESSAGE/);
+  assert.match(supplierCollector, /helpers\.COLLECTOR_PING_MESSAGE/);
+});
+
+test("截圖會核對作用中分頁、阻止連點並翻成中文錯誤", () => {
+  assert.match(background, /activeTabs\.some\(\(tab\) => tab\.id === sender\.tab\.id\)/);
+  assert.match(background, /capturingWindowIds\.has/);
+  assert.match(background, /CAPTURE_PERMISSION_MISSING/);
+  assert.match(background, /Chrome 尚未啟用完整截圖權限/);
+  assert.match(supplierCollector, /let cropCaptureInFlight = false/);
+  assert.match(supplierCollector, /cropCaptureInFlight = true/);
+});
+
+test("原圖回退會先解除放大、重新量座標並排除覆蓋物", () => {
+  const captureStart = supplierCollector.indexOf("async function captureVisiblePage");
+  const dismissAt = supplierCollector.indexOf("dismissSupplierHoverPreview()", captureStart);
+  const settleAt = supplierCollector.indexOf("requestAnimationFrame(() => requestAnimationFrame(resolve))", dismissAt);
+  const measureAt = supplierCollector.indexOf("elementRectInViewport(targetElement)", settleAt);
+  const sendAt = supplierCollector.indexOf("chrome.runtime.sendMessage({ type: helpers.CAPTURE_MESSAGE })", measureAt);
+  assert.ok(captureStart >= 0 && dismissAt > captureStart && settleAt > dismissAt && measureAt > settleAt && sendAt > measureAt);
+  assert.match(supplierCollector, /\.product-badge-img/);
+  assert.match(supplierCollector, /right - left/);
+  assert.match(supplierCollector, /result\.code !== "IMAGE_READ_FAILED"/);
+});
+
+test("高解析截圖會自動壓縮，營運中心只接受 0.3.29 以上助手", () => {
+  assert.match(supplierCollector, /async function canvasBlobWithinLimit/);
+  assert.match(supplierCollector, /Math\.sqrt\(helpers\.MAX_IMAGE_BYTES \/ blob\.size\)/);
+  assert.match(operationsSource, /minimumVersion:'0\.3\.29'/);
+  assert.match(operationsSource, /productImageCollectionVersionAtLeast/);
+  assert.match(bridge, /extensionVersion: EXTENSION_VERSION/);
+  assert.match(operationsSource, /目前收圖助手版本過舊/);
 });

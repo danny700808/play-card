@@ -203,6 +203,7 @@ test("bridge stores one product-bound image collection session", () => {
   assert.ok(ack);
   assert.equal(ack.message.payload.ok, true);
   assert.equal(ack.message.payload.sku, "1040160-1");
+  assert.equal(ack.message.payload.extensionVersion, "0.3.29");
 
   vm.runInContext(`__listeners.message({
     source: window,
@@ -226,16 +227,17 @@ test("extension package enables the supplier image collector service worker", ()
   const bridge = fs.readFileSync(path.join(extensionRoot, "bridge.js"), "utf8");
   const easystore = fs.readFileSync(path.join(extensionRoot, "easystore.js"), "utf8");
 
-  assert.equal(manifest.version, "0.3.28");
+  assert.equal(manifest.version, "0.3.29");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
+  assert.ok(manifest.permissions.includes("scripting"));
   assert.equal(manifest.permissions.includes("contextMenus"), false);
   assert.ok(manifest.permissions.includes("storage"));
   assert.ok(manifest.permissions.includes("tabs"));
   assert.ok(manifest.host_permissions.includes("https://*.taobao.com/*"));
   assert.ok(manifest.host_permissions.includes("https://*.1688.com/*"));
   assert.ok(manifest.host_permissions.includes("http://*/*"));
-  assert.ok(manifest.host_permissions.includes("https://*/*"));
+  assert.ok(manifest.host_permissions.includes("<all_urls>"), "網頁面板呼叫 captureVisibleTab 必須宣告 <all_urls>");
   assert.ok(manifest.content_scripts.some((entry) =>
     entry.matches.includes("https://*/*")
       && entry.js.includes("supplier-collector.js")

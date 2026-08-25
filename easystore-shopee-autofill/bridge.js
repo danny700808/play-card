@@ -8,6 +8,7 @@
   const QUEUE_MESSAGE = "YOUZI_SHOPEE_AUTOFILL_QUEUE_V2";
   const ACK_MESSAGE = "YOUZI_SHOPEE_AUTOFILL_ACK_V2";
   const pendingImageDeliveries = new Map();
+  const EXTENSION_VERSION = chrome.runtime && typeof chrome.runtime.getManifest === "function" ? chrome.runtime.getManifest().version : "0.3.29";
 
   if (!helpers || location.origin !== TRUSTED_ORIGIN) {
     return;
@@ -41,6 +42,7 @@
       action,
       sessionId: typeof sessionId === "string" ? sessionId : "",
       ok,
+      extensionVersion: EXTENSION_VERSION,
       error: typeof error === "string" ? error.slice(0, 300) : ""
     }, details || {}));
   }

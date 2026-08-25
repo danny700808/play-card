@@ -36,8 +36,8 @@ jobs:
     timeout-minutes: 10
     env:
       EXTENSION_DIR: easystore-shopee-autofill
-      EXTENSION_VERSION: 0.3.28
-      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.28.zip
+      EXTENSION_VERSION: 0.3.29
+      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.29.zip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -85,6 +85,7 @@ jobs:
             exit 1
           fi
           node -e "const fs=require('fs');const row=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(row.manifest_version!==3||row.version!==process.env.EXTENSION_VERSION)throw new Error('Packaged manifest version mismatch');" "$package_dir/$EXTENSION_DIR/manifest.json"
+          node -e "const fs=require('fs');const row=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(!row.host_permissions.includes('<all_urls>')||!row.permissions.includes('scripting'))throw new Error('Packaged capture permissions missing');" "$package_dir/$EXTENSION_DIR/manifest.json"
           node -e "const fs=require('fs');const row=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(row.version!==process.env.EXTENSION_VERSION)throw new Error('Packaged package version mismatch');" "$package_dir/$EXTENSION_DIR/package.json"
           diff -qr "$EXTENSION_DIR" "$package_dir/$EXTENSION_DIR"
       - name: Run operations, bridge and extension tests
@@ -104,10 +105,10 @@ jobs:
           set -euo pipefail
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260823-shopee-v3-schema6' portal.html
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260823-shopee-v3-schema6' operations-hub.html
-          grep -Fq 'operations-phase1.css?v=20260825-image-collector-0328' portal.html
-          grep -Fq 'operations-phase1.css?v=20260825-image-collector-0328' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260825-image-collector-0328' portal.html
-          grep -Fq 'operations-phase1.js?v=20260825-image-collector-0328' operations-hub.html
+          grep -Fq 'operations-phase1.css?v=20260825-image-collector-0329' portal.html
+          grep -Fq 'operations-phase1.css?v=20260825-image-collector-0329' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260825-image-collector-0329' portal.html
+          grep -Fq 'operations-phase1.js?v=20260825-image-collector-0329' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260806-operations-manager-auth-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

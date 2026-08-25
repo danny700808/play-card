@@ -3,6 +3,13 @@
 
   const helpers = globalThis.YouziImageCollectorHelpers;
   if (!helpers || !helpers.isCollectablePageUrl(location.href)) return;
+  const collectorRuntimeVersion = chrome.runtime.getManifest().version;
+  if (globalThis.__youziSupplierImageCollectorInstalled === collectorRuntimeVersion) return;
+  globalThis.__youziSupplierImageCollectorInstalled = collectorRuntimeVersion;
+  document.getElementById("youziImageCollectorPanel")?.remove();
+  document.getElementById("youziImageCropOverlay")?.remove();
+  document.getElementById("youziImageCollectorStyle")?.remove();
+
 
   let session = null;
   let hoveredElement = null;
@@ -11,12 +18,14 @@
   let cropOverlay = null;
   let confirmCropSelection = null;
   let captureUiHidden = false;
+  let cropCaptureInFlight = false;
   let statusMessage = "";
   let statusIsError = false;
   const queue = [];
   const queuedElements = new WeakSet();
 
   const style = document.createElement("style");
+  style.id = "youziImageCollectorStyle";
   style.textContent = `
     .youzi-image-collector-hover {
       outline: 4px solid #16a36f !important;
@@ -136,9 +145,9 @@
     hoveredElement = null;
   }
 
-  function visibleImageElement(image) {
-    if (!(image instanceof HTMLImageElement)) return false;
-    const rect = image.getBoundingClientRect(), style = getComputedStyle(image);
+  function visibleImageElement(element) {
+    if (!(element instanceof Element)) return false;
+    const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
     return rect.width >= 20 && rect.height >= 20 && style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
   }
 
@@ -149,54 +158,81 @@
   }
 
   function candidateFromImage(image) {
-    if (!visibleImageElement(image) || decorativeOverlayImage(image)) return null;
+    if (!(image instanceof HTMLImageElement) || !visibleImageElement(image) || decorativeOverlayImage(image)) return null;
     const candidates = [
-      image.getAttribute("data-original"), image.getAttribute("data-ks-lazyload"),
-      image.getAttribute("data-lazy-src"), image.getAttribute("data-src"),
+      image.getAttribute("data-original"), image.getAttribute("data-original-src"),
+      image.getAttribute("data-ks-lazyload"), image.getAttribute("data-lazy-src"),
+      image.getAttribute("data-src"), image.getAttribute("data-hi-res-src"),
       image.getAttribute("data-zoom-image"), image.getAttribute("data-large"),
-      image.getAttribute("data-large-img"), image.getAttribute("data-image"),
+      image.getAttribute("data-large-img"), image.getAttribute("data-full"),
+      image.getAttribute("data-master"), image.getAttribute("data-image"),
+      image.getAttribute("data-srcset"), image.getAttribute("data-lazy-srcset"),
       image.getAttribute("srcset"), image.currentSrc, image.getAttribute("src")
     ];
     return { element: image, url: helpers.chooseImageUrl(candidates, location.href) || "" };
   }
 
+  function backgroundImageUrl(element) {
+    const candidates = [];
+    ["", "::before", "::after"].forEach((pseudo) => {
+      let background = "";
+      try { background = getComputedStyle(element, pseudo || null).backgroundImage || ""; } catch (error) {}
+      for (const match of background.matchAll(/url\((["']?)(.*?)\1\)/gi)) candidates.push(match[2]);
+    });
+    return helpers.chooseImageUrl(candidates, location.href) || "";
+  }
+
+  function candidateFromElement(element) {
+    if (!visibleImageElement(element)) return null;
+    if (element instanceof HTMLImageElement) return candidateFromImage(element);
+    if (element instanceof HTMLVideoElement) {
+      const poster = helpers.normalizeImageUrl(element.poster || element.getAttribute("poster"), location.href);
+      return { element, url: poster || "" };
+    }
+    if (element instanceof HTMLCanvasElement) return { element, url: "" };
+    if (String(element.localName || "").toLowerCase() === "image") {
+      const href = element.href && element.href.baseVal ? element.href.baseVal : element.getAttribute("href") || element.getAttribute("xlink:href");
+      return { element, url: helpers.normalizeImageUrl(href, location.href) || "" };
+    }
+    const background = backgroundImageUrl(element);
+    return background ? { element, url: background } : null;
+  }
+
   function imageCandidateAt(target) {
-    if (!(target instanceof Element) || target.closest("#youziImageCollectorPanel")) return null;
-    const directImage = target.closest("img");
-    if (directImage) {
-      const directCandidate = candidateFromImage(directImage);
+    if (!(target instanceof Element) || target.closest("#youziImageCollectorPanel,#youziImageCropOverlay")) return null;
+    const direct = target.closest("img,video,canvas,svg image");
+    if (direct) {
+      const directCandidate = candidateFromElement(direct);
       if (directCandidate) return directCandidate;
     }
     let element = target;
     let screenshotCandidate = null;
     for (let depth = 0; element && depth < 9; depth += 1, element = element.parentElement) {
-      const direct = element.querySelector && (element.querySelector(":scope > img") || element.querySelector(":scope > picture img"));
-      const directCandidate = candidateFromImage(direct);
-      if (directCandidate) {
-        if (directCandidate.url) return directCandidate;
-        if (!screenshotCandidate) screenshotCandidate = directCandidate;
+      const ownCandidate = candidateFromElement(element);
+      if (ownCandidate) {
+        if (ownCandidate.url) return ownCandidate;
+        if (!screenshotCandidate) screenshotCandidate = ownCandidate;
       }
       if (depth <= 5 && element.querySelectorAll) {
-        const descendants = Array.from(element.querySelectorAll("img")).filter(visibleImageElement).sort((a, b) => {
+        const descendants = Array.from(element.querySelectorAll("img,video[poster],canvas,svg image")).filter(visibleImageElement).sort((a, b) => {
           const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
           return br.width * br.height - ar.width * ar.height;
-        }).slice(0, 16);
-        for (const image of descendants) {
-          const candidate = candidateFromImage(image);
+        }).slice(0, 20);
+        for (const descendant of descendants) {
+          const candidate = candidateFromElement(descendant);
           if (!candidate) continue;
           if (candidate.url) return candidate;
           if (!screenshotCandidate) screenshotCandidate = candidate;
         }
       }
-      const background = getComputedStyle(element).backgroundImage || "";
-      const match = background.match(/url\(["']?([^"')]+)["']?\)/i);
-      if (match) {
-        const url = helpers.normalizeImageUrl(match[1], location.href);
-        if (url) return { element, url };
-        if (!screenshotCandidate) screenshotCandidate = { element, url: "" };
-      }
     }
     return screenshotCandidate;
+  }
+
+  function eventImageCandidate(event) {
+    const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+    const target = path.find((node) => node instanceof Element) || event.target;
+    return imageCandidateAt(target);
   }
 
   function applyCollectionResult(result) {
@@ -240,32 +276,31 @@
     sending = true;
     setStatus("正在送到準備上架商品…");
     try {
-      if (!next.url) throw new Error("這張圖片改用畫面截圖");
-      const result = await chrome.runtime.sendMessage({
-        type: helpers.FETCH_MESSAGE,
-        payload: { sessionId: session.sessionId, productId: session.productId, imageUrl: next.url }
-      });
-      if (!result || !result.ok) throw new Error(result && result.error ? result.error : "圖片傳送失敗");
-      next.element.classList.remove("youzi-image-collector-hover");
-      applyCollectionResult(result);
-    } catch (error) {
-      try {
-        setStatus("原圖讀取受限，正在改用畫面截圖…");
-        const rawRect = next.element.getBoundingClientRect();
-        const rect = {
-          left: Math.max(0, rawRect.left),
-          top: Math.max(0, rawRect.top),
-          width: Math.max(0, Math.min(window.innerWidth - Math.max(0, rawRect.left), rawRect.width)),
-          height: Math.max(0, Math.min(window.innerHeight - Math.max(0, rawRect.top), rawRect.height))
-        };
-        if (rect.width < 20 || rect.height < 20) throw error;
-        next.element.classList.remove("youzi-image-collector-hover");
-        const dataUrl = await captureVisiblePage();
-        await deliverPreparedImage(await cropVisibleCapture(dataUrl, rect));
-      } catch (fallbackError) {
-        next.element.classList.remove("youzi-image-collector-hover");
-        setStatus(String(fallbackError && fallbackError.message ? fallbackError.message : fallbackError), true);
+      let result = null;
+      if (next.url) {
+        result = await chrome.runtime.sendMessage({
+          type: helpers.FETCH_MESSAGE,
+          payload: { sessionId: session.sessionId, productId: session.productId, imageUrl: next.url }
+        });
       }
+      if (result && result.ok) {
+        next.element.classList.remove("youzi-image-collector-hover");
+        applyCollectionResult(result);
+      } else {
+        if (result && result.code !== "IMAGE_READ_FAILED") {
+          throw new Error(result.error || "圖片傳送失敗");
+        }
+        setStatus("原圖讀取受限，正在改用畫面截圖…");
+        next.element.classList.remove("youzi-image-collector-hover");
+        const captured = await captureVisiblePage(next.element);
+        if (!captured.rect || captured.rect.width < 20 || captured.rect.height < 20) {
+          throw new Error("圖片目前不在可見範圍，請把圖片捲到畫面中再點一次。");
+        }
+        await deliverPreparedImage(await cropVisibleCapture(captured.dataUrl, captured.rect));
+      }
+    } catch (error) {
+      next.element.classList.remove("youzi-image-collector-hover");
+      setStatus(String(error && error.message ? error.message : error), true);
     } finally {
       queuedElements.delete(next.element);
       next.element.classList.remove("youzi-image-collector-hover");
@@ -300,6 +335,36 @@
     return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
   }
 
+  function resizeCanvas(source, scale) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(source.width * scale));
+    canvas.height = Math.max(1, Math.round(source.height * scale));
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("瀏覽器無法建立截圖畫布");
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
+
+  async function canvasBlobWithinLimit(source) {
+    let working = source;
+    let blob = await canvasBlob(working, "image/png");
+    if (!blob) throw new Error("瀏覽器無法產生截圖");
+    if (blob.size <= helpers.MAX_IMAGE_BYTES) return blob;
+    for (const quality of [.94, .86, .76, .66]) {
+      blob = await canvasBlob(working, "image/jpeg", quality);
+      if (blob && blob.size <= helpers.MAX_IMAGE_BYTES) return blob;
+    }
+    for (let attempt = 0; attempt < 3 && blob && blob.size > helpers.MAX_IMAGE_BYTES; attempt += 1) {
+      const scale = Math.max(.5, Math.min(.85, Math.sqrt(helpers.MAX_IMAGE_BYTES / blob.size) * .9));
+      working = resizeCanvas(working, scale);
+      blob = await canvasBlob(working, "image/jpeg", .84);
+    }
+    if (!blob || !blob.size || blob.size > helpers.MAX_IMAGE_BYTES) throw new Error("截圖太大，請縮小框選範圍後再試一次");
+    return blob;
+  }
+
   async function cropVisibleCapture(dataUrl, rect) {
     const image = new Image();
     await new Promise((resolve, reject) => {
@@ -313,34 +378,59 @@
     canvas.width = Math.max(1, Math.round(rect.width * scaleX));
     canvas.height = Math.max(1, Math.round(rect.height * scaleY));
     const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("瀏覽器無法建立截圖畫布");
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(
       image,
       Math.round(rect.left * scaleX), Math.round(rect.top * scaleY), canvas.width, canvas.height,
       0, 0, canvas.width, canvas.height
     );
-    let blob = await canvasBlob(canvas, "image/png");
-    if (blob && blob.size > helpers.MAX_IMAGE_BYTES) blob = await canvasBlob(canvas, "image/jpeg", .94);
-    return blobToImage(blob, "supplier-crop");
+    return blobToImage(await canvasBlobWithinLimit(canvas), "supplier-crop");
   }
 
-  function suppressSupplierHoverArtifacts() {
+  function elementRectInViewport(element) {
+    if (!(element instanceof Element) || !element.isConnected) return null;
+    const raw = element.getBoundingClientRect();
+    const left = Math.max(0, raw.left), top = Math.max(0, raw.top);
+    const right = Math.min(window.innerWidth, raw.right), bottom = Math.min(window.innerHeight, raw.bottom);
+    const width = Math.max(0, right - left), height = Math.max(0, bottom - top);
+    return width >= 20 && height >= 20 ? { left, top, width, height } : null;
+  }
+
+  function rectanglesOverlap(a, b) {
+    return Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+  }
+
+  function suppressSupplierHoverArtifacts(targetElement) {
     const selectors = [
-      ".ks-imagezoom-lens", ".detail-gallery-turn-lens", ".detail-gallery-turn-mask", "[class*='imagezoom'][class*='lens']",
-      "[class*='magnifier'][class*='lens']", "[class*='zoom'][class*='lens']",
-      "[class*='zoom'][class*='mask']", "[class*='preview'][class*='mask']",
-      "[class*='gallery'][class*='mask']", "[class*='lens-mask']",
-      "[class*='magnify-mask']", "[class*='magnifier-mask']"
+      ".ks-imagezoom-lens", ".detail-gallery-turn-lens", ".detail-gallery-turn-mask", ".product-badge-img",
+      "[class*='imagezoom'][class*='lens']", "[class*='magnifier'][class*='lens']",
+      "[class*='zoom'][class*='lens']", "[class*='zoom'][class*='mask']",
+      "[class*='preview'][class*='mask']", "[class*='gallery'][class*='mask']",
+      "[class*='lens-mask']", "[class*='magnify-mask']", "[class*='magnifier-mask']"
     ];
-    const hidden = [];
+    const hidden = new Set();
+    const hide = (node) => {
+      if (!(node instanceof Element) || node === targetElement || node.closest("#youziImageCollectorPanel,#youziImageCropOverlay")) return;
+      if (node.classList.contains("youzi-image-collector-suppressed-hover-artifact")) return;
+      node.classList.add("youzi-image-collector-suppressed-hover-artifact");
+      hidden.add(node);
+    };
     selectors.forEach((selector) => {
-      try {
-        document.querySelectorAll(selector).forEach((node) => {
-          if (node.closest("#youziImageCollectorPanel,#youziImageCropOverlay") || node.classList.contains("youzi-image-collector-suppressed-hover-artifact")) return;
-          node.classList.add("youzi-image-collector-suppressed-hover-artifact");
-          hidden.push(node);
-        });
-      } catch (error) { /* Ignore supplier-specific invalid selectors. */ }
+      try { document.querySelectorAll(selector).forEach(hide); } catch (error) { /* Ignore supplier-specific invalid selectors. */ }
     });
+    if (targetElement instanceof Element) {
+      const targetRect = targetElement.getBoundingClientRect();
+      document.querySelectorAll("[class],[id]").forEach((node) => {
+        if (node === targetElement || node.contains(targetElement) || targetElement.contains(node)) return;
+        const marker = `${node.id || ""} ${String(node.className || "")}`;
+        if (!/(?:badge|watermark|mask|lens|overlay|sprite|zoom|magnifier)/i.test(marker)) return;
+        const position = getComputedStyle(node).position;
+        if (!["absolute", "fixed", "sticky"].includes(position)) return;
+        if (rectanglesOverlap(node.getBoundingClientRect(), targetRect)) hide(node);
+      });
+    }
     return () => hidden.forEach((node) => node.classList.remove("youzi-image-collector-suppressed-hover-artifact"));
   }
 
@@ -352,19 +442,20 @@
     });
   }
 
-  async function captureVisiblePage() {
+  async function captureVisiblePage(targetElement) {
     dismissSupplierHoverPreview();
-    const restoreArtifacts = suppressSupplierHoverArtifacts();
+    const restoreArtifacts = suppressSupplierHoverArtifacts(targetElement);
     captureUiHidden = true;
     updatePanel();
     try {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const restoreLateArtifacts = suppressSupplierHoverArtifacts();
+      const restoreLateArtifacts = suppressSupplierHoverArtifacts(targetElement);
+      const rect = targetElement ? elementRectInViewport(targetElement) : null;
       let result;
       try { result = await chrome.runtime.sendMessage({ type: helpers.CAPTURE_MESSAGE }); }
       finally { restoreLateArtifacts(); }
       if (!result || !result.ok) throw new Error(result && result.error ? result.error : "無法截取目前畫面");
-      return result.dataUrl;
+      return { dataUrl: result.dataUrl, rect };
     } finally {
       restoreArtifacts();
       captureUiHidden = false;
@@ -374,7 +465,8 @@
 
   async function captureSelection(rect) {
     try {
-      await sendPreparedImage(await cropVisibleCapture(await captureVisiblePage(), rect));
+      const captured = await captureVisiblePage();
+      await sendPreparedImage(await cropVisibleCapture(captured.dataUrl, rect));
     } catch (error) {
       setStatus(String(error && error.message ? error.message : error), true);
     } finally {
@@ -390,7 +482,7 @@
   }
 
   function beginCrop() {
-    if (!session || !session.active || sending || cropOverlay) return;
+    if (!session || !session.active || sending || cropCaptureInFlight || cropOverlay) return;
     clearHover();
     cropOverlay = document.createElement("div");
     cropOverlay.id = "youziImageCropOverlay";
@@ -433,10 +525,15 @@
       help.textContent = "範圍正確就按「確認截圖」；不正確可直接重拉一次";
     };
     confirmCropSelection = async () => {
-      if (!rect || rect.width < 20 || rect.height < 20 || sending) return;
+      if (!rect || rect.width < 20 || rect.height < 20 || sending || cropCaptureInFlight) return;
+      cropCaptureInFlight = true;
       cropOverlay.classList.add("youzi-crop-capture-hidden");
+      cropOverlay.querySelectorAll("button").forEach((button) => { button.disabled = true; });
       try { await captureSelection(Object.assign({}, rect)); }
-      finally { cancelCrop(); }
+      finally {
+        cropCaptureInFlight = false;
+        cancelCrop();
+      }
     };
     cropOverlay.addEventListener("pointerdown", (event) => {
       if (event.button !== 0 || event.target.closest(".youzi-crop-toolbar")) return;
@@ -469,7 +566,7 @@
 
   document.addEventListener("mousemove", (event) => {
     if (!directPickEnabled || !session || !session.active) return clearHover();
-    const candidate = imageCandidateAt(event.target);
+    const candidate = eventImageCandidate(event);
     if (!candidate) return clearHover();
     if (hoveredElement !== candidate.element) {
       clearHover();
@@ -480,7 +577,7 @@
 
   document.addEventListener("click", (event) => {
     if (!directPickEnabled || !session || !session.active) return;
-    const candidate = imageCandidateAt(event.target);
+    const candidate = eventImageCandidate(event);
     if (!candidate) return;
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -527,9 +624,15 @@
   panel.querySelector("[data-youzi-crop]").addEventListener("click", beginCrop);
   panel.querySelector("[data-youzi-stop]").addEventListener("click", stopSession);
 
-  chrome.runtime.onMessage.addListener((message) => {
-    if (!message || message.type !== helpers.START_CROP_MESSAGE) return false;
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!message) return false;
+    if (message.type === helpers.COLLECTOR_PING_MESSAGE) {
+      sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
+      return false;
+    }
+    if (message.type !== helpers.START_CROP_MESSAGE) return false;
     beginCrop();
+    sendResponse({ ok: true });
     return false;
   });
 

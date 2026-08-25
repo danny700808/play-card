@@ -11,7 +11,7 @@ const extensionHelpers = require('../easystore-shopee-autofill/helpers.js');
 const root = path.resolve(__dirname, '..');
 const extensionName = 'easystore-shopee-autofill';
 const extensionRoot = path.join(root, extensionName);
-const version = '0.3.28';
+const version = '0.3.29';
 const zipName = `youzi-easystore-shopee-autofill-v${version}.zip`;
 const zipPath = path.join(root, zipName);
 
@@ -80,7 +80,7 @@ function zipFileEntries(buffer) {
   return files;
 }
 
-test('0.3.28 ZIP contains exactly the Git extension files byte for byte', () => {
+test('0.3.29 ZIP contains exactly the Git extension files byte for byte', () => {
   assert.equal(fs.existsSync(zipPath), true, `缺少 ${zipName}`);
   const packaged = zipFileEntries(fs.readFileSync(zipPath));
   const sourceFiles = gitExtensionFiles();
@@ -90,6 +90,9 @@ test('0.3.28 ZIP contains exactly the Git extension files byte for byte', () => 
     const entryName = `${extensionName}/${relative}`;
     assert.deepEqual(packaged.get(entryName), gitBlob(entryName), `ZIP 與 Git 檔案不同：${relative}`);
   }
+  const packagedManifest = JSON.parse(packaged.get(extensionName + '/manifest.json').toString('utf8'));
+  assert.ok(packagedManifest.host_permissions.includes('<all_urls>'));
+  assert.ok(packagedManifest.permissions.includes('scripting'));
 });
 
 test('extension version, download links, cache keys and CI package contract stay aligned', () => {
@@ -100,10 +103,12 @@ test('extension version, download links, cache keys and CI package contract stay
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260823-shopee-v3-schema6';
-  const operationsCache = '20260825-image-collector-0328';
+  const operationsCache = '20260825-image-collector-0329';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
+  assert.ok(manifest.host_permissions.includes('<all_urls>'));
+  assert.ok(manifest.permissions.includes('scripting'));
   const linkedZips = [...operations.matchAll(/youzi-easystore-shopee-autofill-v[0-9.]+\.zip/g)].map((match) => match[0]);
   assert.ok(linkedZips.length > 0);
   assert.deepEqual([...new Set(linkedZips)], [zipName]);
