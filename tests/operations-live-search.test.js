@@ -16,7 +16,6 @@ const productListingPublishSource = fs.readFileSync('functions/productListingPub
 const searchFields = [
   ['posSearch', 'posSearchResults'],
   ['productSearch', 'productSearchResults'],
-  ['physicalPhotoSearch', 'physicalPhotoSearchResults'],
   ['purchaseLowSearch', 'purchaseLowSearchResults'],
   ['purchaseEntrySearch', 'purchaseEntrySearchResults'],
   ['stocktakeSearch', 'stocktakeSearchResults'],
@@ -65,8 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260825-listing-supplier-links/);
-    assert.match(html, /operations-phase1\.js\?v=20260825-listing-supplier-links/);
+    assert.match(html, /operations-phase1\.css\?v=20260825-listing-batch-queue/);
+    assert.match(html, /operations-phase1\.js\?v=20260825-listing-batch-queue/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260823-shopee-v3-schema6/);
   }
 });
@@ -240,20 +239,15 @@ test('manual average cost correction becomes the new inventory cost baseline aft
   assert.equal(result.inventoryValue, 600);
 });
 
-test('mobile physical-photo entry opens the rear camera and stores photos separately from platform images', () => {
-  const page = functionBody(engine, 'renderPhysicalPhotos');
-  const capture = functionBody(engine, 'startPhysicalPhotoCapture');
+test('standalone physical-photo entry is removed while inline listing photos stay separate from platform images', () => {
   const upload = functionBody(engine, 'uploadPhysicalProductPhoto');
   const labeler = functionBody(engine, 'physicalPhotoLabeledBlob');
   const tray = functionBody(engine, 'physicalProductImageTrayHtml');
   const listingForm = functionBody(engine, 'productListingCaseFormHtml');
 
-  assert.match(portal, /href="#physical-photos" data-view="physical-photos"/);
-  assert.match(hub, /href="#physical-photos" data-view="physical-photos"/);
-  assert.match(page, /id=\\?"physicalPhotoCameraInput\\?"/);
-  assert.match(page, /capture=\\?"environment\\?"/);
-  assert.match(page, /最近上架商品/);
-  assert.match(capture, /input\.click\(\)/);
+  assert.doesNotMatch(portal, /href="#physical-photos"|拍實體圖/);
+  assert.doesNotMatch(hub, /href="#physical-photos"|拍實體圖/);
+  assert.doesNotMatch(engine, /function renderPhysicalPhotos|function startPhysicalPhotoCapture|physicalPhotoCameraInput/);
   assert.match(upload, /\/physical\//);
   assert.match(upload, /physicalImageUrls/);
   assert.match(upload, /physicalOriginalImageUrls/);
@@ -269,6 +263,24 @@ test('mobile physical-photo entry opens the rear camera and stores photos separa
   assert.match(listingForm, /physicalProductImageTrayHtml\(row\.physicalImageUrls,p\.docId\)/);
   assert.doesNotMatch(listingForm, /productListingSection\('實體圖片'/);
   assert.match(storageRules, /match \/ops-product-listing-cases\/\{productId\}\/physical\/\{fileName\}/);
+});
+
+test('product header owns the saved listing queue and starts it sequentially in Codex', () => {
+  const products = functionBody(engine, 'renderProducts');
+  const queue = functionBody(engine, 'productListingQueueDrawerHtml');
+  const start = functionBody(engine, 'startProductListingQueue');
+  const prompt = functionBody(engine, 'productListingBatchActivationPrompt');
+  const listingForm = functionBody(engine, 'productListingCaseFormHtml');
+
+  assert.match(products, /product-new[\s\S]*product-listing-queue-open[\s\S]*product-recent/);
+  assert.match(products, /待處理商品/);
+  assert.match(queue, /開始處理全部/);
+  assert.match(listingForm, /data-action="product-listing-queue-add"/);
+  assert.match(start, /batchQueueStatus:'processing'/);
+  assert.match(start, /batchPosition:index\+1/);
+  assert.match(start, /productListingCodexThreadUrl/);
+  assert.match(prompt, /一件完成後才處理下一件/);
+  assert.match(prompt, /batchQueueStatus 設為 completed/);
 });
 
 test('listing form freezes one of four explicit product intents and never infers a different action inside a platform', () => {
@@ -577,7 +589,7 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   const renderer = functionBody(engine, 'productListingCaseFormHtml');
   const oneClick = functionBody(engine, 'handoffProductListingToCodex');
 
-  assert.match(renderer, /帶入這個 Codex 對話/);
+  assert.match(renderer, /帶入 Codex 對話/);
   assert.equal((renderer.match(/data-action="product-listing-codex-complete"/g) || []).length, 1);
   assert.match(renderer, /需要時才修改/);
   assert.doesNotMatch(renderer, /儲存並檢查/);

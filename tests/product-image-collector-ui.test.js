@@ -288,11 +288,11 @@ test("準備上架只顯示 Codex 入口，不提供網頁 OpenAI 文案或製�
   const start = operationsSource.indexOf("function productListingCaseFormHtml");
   const end = operationsSource.indexOf("async function openProductListingCase", start);
   const renderer = operationsSource.slice(start, end);
-  assert.match(renderer, /帶入這個 Codex 對話/);
+  assert.match(renderer, /帶入 Codex 對話/);
   assert.doesNotMatch(renderer, /data-action="product-ai-research-run"/);
   assert.doesNotMatch(renderer, /data-action="product-ai-image-generate"/);
   assert.match(renderer, /id="productCompletedImageUpload"/);
-  assert.match(renderer, /進階回填角色完成圖/);
+  assert.match(renderer, /進階回填完成圖/);
   assert.doesNotMatch(renderer, />上傳 Codex 已完成圖片</);
   assert.equal((renderer.match(/data-action="product-listing-codex-complete"/g) || []).length, 1);
 });
