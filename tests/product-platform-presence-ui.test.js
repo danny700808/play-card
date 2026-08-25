@@ -36,6 +36,25 @@ test('四平台狀態只顯示有或沒有，沒有可直接進準備上架', ()
   assert.match(functionBody('handleAction'), /product-platform-missing.*openProductListingCase/);
 });
 
+test('通路檢測以明確最新狀態優先，蝦皮只在沒有待處理狀態時跟隨官網', () => {
+  const statusBody = functionBody('productPlatformStatus');
+  const presenceBody = functionBody('productPlatformPresence');
+  assert.match(statusBody, /mappingId&&status==='unknown'/);
+  assert.doesNotMatch(statusBody, /\['unknown','queued','pending-review','draft'\]/);
+  assert.match(presenceBody, /\['queued','pending-review','draft','missing','inactive','restricted','rejected','error'\]\.includes\(savedStatus\)/);
+  assert.ok(presenceBody.indexOf("includes(savedStatus)") < presenceBody.indexOf("row.listingId||['active','mapped']"));
+  assert.match(presenceBody, /key==='shopee'/);
+  assert.match(presenceBody, /inferredFrom:'官網同步'/);
+});
+
+test('圖片模式商品卡只顯示原始品名，不顯示網路名稱摘要', () => {
+  const body = functionBody('productCard');
+  assert.match(body, /originalName\|\|p\.name\|\|p\.onlineName/);
+  assert.doesNotMatch(body, /網路：/);
+  assert.doesNotMatch(body, /onlineSummary/);
+  assert.equal(source.includes('function abbreviatedOnlineProductName('), false);
+});
+
 test('商品卡只保留列印條碼與準備上架操作', () => {
   for (const name of ['productCard', 'productTextRow']) {
     const body = functionBody(name);
