@@ -36,15 +36,34 @@ test('四平台狀態只顯示有或沒有，沒有可直接進準備上架', ()
   assert.match(functionBody('handleAction'), /product-platform-missing.*openProductListingCase/);
 });
 
-test('通路檢測以明確最新狀態優先，蝦皮只在沒有待處理狀態時跟隨官網', () => {
+test('通路檢測保留缺貨與一般下架，違規與未通過仍判定沒有', () => {
   const statusBody = functionBody('productPlatformStatus');
   const presenceBody = functionBody('productPlatformPresence');
+  const invalidBody = functionBody('productPlatformStatusIsInvalid');
   assert.match(statusBody, /mappingId&&status==='unknown'/);
   assert.doesNotMatch(statusBody, /\['unknown','queued','pending-review','draft'\]/);
-  assert.match(presenceBody, /\['queued','pending-review','draft','missing','inactive','restricted','rejected','error'\]\.includes\(savedStatus\)/);
-  assert.ok(presenceBody.indexOf("includes(savedStatus)") < presenceBody.indexOf("row.listingId||['active','mapped']"));
+  assert.match(invalidBody, /\['missing','restricted','rejected','error'\]/);
+  assert.match(invalidBody, /違規/);
+  assert.match(presenceBody, /productPlatformStatusIsInvalid\(row\)/);
+  assert.match(presenceBody, /'pending-review','draft','inactive'/);
+  assert.match(presenceBody, /缺貨或正常下架仍保留/);
   assert.match(presenceBody, /key==='shopee'/);
   assert.match(presenceBody, /inferredFrom:'官網同步'/);
+});
+
+test('商品資訊提供完整四平台檢測按鈕與一次授權的 Codex 交接', () => {
+  const render = functionBody('renderProducts');
+  const prompt = functionBody('productPlatformAuditPrompt');
+  const start = functionBody('startProductPlatformAudit');
+  assert.match(render, /data-action="product-platform-audit">檢測網路商品狀態/);
+  assert.match(prompt, /EasyStore 官網、EasyStore 官方蝦皮通路、MOMO 店\+商品管理、Coupang Wing/);
+  assert.match(prompt, /缺貨、庫存 0/);
+  assert.match(prompt, /違規、受限制、審核未通過/);
+  assert.match(prompt, /合併商品必須展開規格確認每個原廠 SKU/);
+  assert.match(start, /同意並開始檢測/);
+  assert.match(start, /noSecondConfirmation:true/);
+  assert.match(start, /productListingCodexThreadUrl\(prompt\)/);
+  assert.match(functionBody('handleAction'), /product-platform-audit.*startProductPlatformAudit/);
 });
 
 test('圖片模式商品卡只顯示原始品名，不顯示網路名稱摘要', () => {
