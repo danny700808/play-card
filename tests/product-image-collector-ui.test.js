@@ -20,18 +20,16 @@ test("準備上架提供指定商品的開始收圖入口", () => {
   assert.doesNotMatch(operationsSource, /<label>商品網址<\/label>/);
 });
 
-test("供應商頁以框選截圖為主且不會預設攔截商品頁點擊", () => {
-  assert.match(supplierCollector, /directPickEnabled = false/);
-  assert.match(supplierCollector, /＋ 快速點圖/);
-  assert.match(supplierCollector, /頁面右鍵 → 柚子掌櫃；也可按 Ctrl＋Shift＋Y/);
+test("一般商品頁預設可點圖，並提供單一步驟的框選截圖按鈕", () => {
+  assert.match(supplierCollector, /directPickEnabled = true/);
+  assert.match(supplierCollector, /✓ 點圖片加入/);
+  assert.match(supplierCollector, /data-youzi-crop>框選截圖/);
   assert.doesNotMatch(supplierCollector, /youzi-help|原圖點選：(?:開啟|關閉)/);
   assert.match(supplierCollector, /helpers\.CAPTURE_MESSAGE/);
   assert.match(supplierCollector, /document\.addEventListener\("paste"/);
   assert.match(background, /chrome\.tabs\.captureVisibleTab/);
   assert.match(background, /imageCollector\.CAPTURE_DATA_MESSAGE/);
-  assert.match(background, /chrome\.contextMenus\.onClicked/);
-  assert.match(background, /contexts: \["page", "image"\]/);
-  assert.match(background, /chrome\.runtime\.onStartup\.addListener\(ensureContextMenu\)/);
+  assert.doesNotMatch(background, /chrome\.contextMenus|ensureContextMenu/);
 });
 
 test("截錯的來源圖片可從目前商品直接刪除", () => {
@@ -112,13 +110,11 @@ test("框選截圖完成後立即恢復已加入與結束收圖面板", () => {
   assert.doesNotMatch(supplierCollector, /panel\.hidden = true;\s*captureSelection\(rect\)/);
 });
 
-test("框選截圖可在送出前移動縮放並避免供應商放大鏡遮罩", () => {
-  assert.match(supplierCollector, /data-dir="nw"/);
-  assert.match(supplierCollector, /data-dir="se"/);
+test("框選截圖拉框後確認送出，並避免網站放大鏡遮罩", () => {
   assert.match(supplierCollector, /data-crop-capture/);
-  assert.match(supplierCollector, /截取這個範圍/);
-  assert.match(supplierCollector, /interaction\.mode === "move"/);
-  assert.match(supplierCollector, /const original = interaction\.original, dir = interaction\.dir/);
+  assert.match(supplierCollector, /確認截圖/);
+  assert.match(supplierCollector, /範圍正確就按/);
+  assert.doesNotMatch(supplierCollector, /data-dir=|interaction\.mode|interaction\.original/);
   assert.match(supplierCollector, /suppressSupplierHoverArtifacts/);
   assert.match(supplierCollector, /youzi-image-collector-suppressed-hover-artifact/);
   assert.match(supplierCollector, /youzi-crop-capture-hidden/);
@@ -131,10 +127,16 @@ test("詳情頁的延遲載入與容器內圖片也能顯示綠框", () => {
   assert.match(supplierCollector, /depth < 9/);
 });
 
-test("綠框原圖受限時不顯示 Chrome 英文權限錯誤", () => {
-  assert.match(background, /CAPTURE_USER_GESTURE_REQUIRED/);
-  assert.match(background, /第一次請在頁面按右鍵/);
-  assert.match(background, /柚子掌櫃：框選截圖/);
+test("商品主圖上方的促銷 badge 或放大遮罩不會被當成商品圖", () => {
+  assert.match(supplierCollector, /function decorativeOverlayImage/);
+  assert.match(supplierCollector, /badge\|watermark\|mask\|lens\|overlay\|sprite/);
+  assert.match(supplierCollector, /decorativeOverlayImage\(image\)/);
+  assert.match(supplierCollector, /return br\.width \* br\.height - ar\.width \* ar\.height/);
+});
+
+test("截圖權限由新版安裝一次取得，不再要求右鍵操作", () => {
+  assert.ok(manifest.host_permissions.includes("https://*/*"));
+  assert.doesNotMatch(background, /CAPTURE_USER_GESTURE_REQUIRED|右鍵|contextMenus/);
 });
 
 test("同一張圖完成後可再次收圖且不必重新整理", () => {
@@ -307,17 +309,23 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
   assert.match(supplierCollector, /deliverPreparedImage/);
 });
 
-test("Chrome 助手只在核准的供應商與圖片網域執行", () => {
-  assert.equal(manifest.version, "0.3.27");
+test("Chrome 助手在一般商品網頁提供點圖與確認式框選截圖", () => {
+  assert.equal(manifest.version, "0.3.28");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
-  assert.ok(manifest.permissions.includes("contextMenus"));
+  assert.equal(manifest.permissions.includes("contextMenus"), false);
   assert.ok(manifest.host_permissions.includes("https://*.taobao.com/*"));
   assert.ok(manifest.host_permissions.includes("https://*.1688.com/*"));
   assert.ok(manifest.host_permissions.includes("https://*.alibaba.com/*"));
-  assert.equal(manifest.host_permissions.includes("<all_urls>"), false);
-  assert.ok(manifest.optional_host_permissions.includes("<all_urls>"));
-  assert.match(background, /chrome\.permissions\.request\(PERSISTENT_CAPTURE_PERMISSION\)/);
-  assert.match(background, /if \(!imageCollector\.isSupplierPageUrl\(pageUrl\)\)/);
+  assert.ok(manifest.host_permissions.includes("http://*/*"));
+  assert.ok(manifest.host_permissions.includes("https://*/*"));
+  const collectorEntry = manifest.content_scripts.find((entry) => entry.js.includes("supplier-collector.js"));
+  assert.ok(collectorEntry.matches.includes("http://*/*"));
+  assert.ok(collectorEntry.matches.includes("https://*/*"));
+  assert.match(background, /if \(!imageCollector\.isCollectablePageUrl\(pageUrl\)\)/);
+  assert.match(supplierCollector, /data-youzi-crop>框選截圖/);
+  assert.match(supplierCollector, /data-crop-capture>確認截圖/);
+  assert.doesNotMatch(supplierCollector, /youzi-crop-handle|mode: "resize"|mode: "move"/);
+  assert.doesNotMatch(background, /contextMenus|右鍵/);
   assert.equal(manifest.commands["start-image-crop"].suggested_key.default, "Ctrl+Shift+Y");
 });

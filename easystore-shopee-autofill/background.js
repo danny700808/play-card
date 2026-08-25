@@ -3,8 +3,6 @@
 importScripts("image-collector-helpers.js");
 
 const imageCollector = globalThis.YouziImageCollectorHelpers;
-const SUPPLIER_CROP_MENU_ID = "youzi-supplier-image-crop";
-const PERSISTENT_CAPTURE_PERMISSION = { origins: ["<all_urls>"] };
 const OPERATIONS_PRODUCTS_URL = `${imageCollector.OPERATIONS_ORIGIN}/play-card/portal.html#products`;
 
 function wait(ms) {
@@ -17,20 +15,6 @@ function responseError(code, error) {
     code,
     error: String(error && error.message ? error.message : error || "圖片收集失敗").slice(0, 300)
   };
-}
-
-function captureNeedsExplicitGesture(error) {
-  const message = String(error && error.message ? error.message : error || "");
-  return /(?:<all_urls>|activeTab).*permission|permission.*(?:<all_urls>|activeTab)|Either the .* permission is required/i.test(message);
-}
-
-async function requestPersistentCapturePermission() {
-  if (!chrome.permissions || !chrome.permissions.request) return false;
-  try {
-    return await chrome.permissions.request(PERSISTENT_CAPTURE_PERMISSION) === true;
-  } catch (error) {
-    return false;
-  }
 }
 
 function bytesToBase64(bytes) {
@@ -58,9 +42,9 @@ async function storeSession(session) {
   });
 }
 
-async function fetchSupplierImage(imageUrl, pageUrl) {
+async function fetchPageImage(imageUrl, pageUrl) {
   const normalized = imageCollector.normalizeImageUrl(imageUrl, pageUrl);
-  if (!normalized) throw new Error("這張圖片不是淘寶、天貓、1688 或阿里巴巴可讀取的圖片");
+  if (!normalized) throw new Error("這張網頁圖片無法直接讀取，將改用畫面截圖");
   const response = await fetch(normalized, {
     credentials: "include",
     cache: "no-store",
@@ -147,8 +131,8 @@ async function deliverToOperations(payload, session) {
 
 async function collectImage(message, sender) {
   const pageUrl = String((sender && sender.tab && sender.tab.url) || (sender && sender.url) || "");
-  if (!imageCollector.isSupplierPageUrl(pageUrl)) {
-    return responseError("UNTRUSTED_SUPPLIER_PAGE", "只能從淘寶、天貓、1688 或阿里巴巴頁面收圖");
+  if (!imageCollector.isCollectablePageUrl(pageUrl)) {
+    return responseError("UNSUPPORTED_IMAGE_PAGE", "只能從一般網頁收圖");
   }
   const payload = message && message.payload && typeof message.payload === "object" ? message.payload : {};
   const session = await currentSession();
@@ -163,7 +147,7 @@ async function collectImage(message, sender) {
   try {
     const image = message.type === imageCollector.CAPTURE_DATA_MESSAGE
       ? preparedSupplierImage(payload.image, pageUrl)
-      : await fetchSupplierImage(payload.imageUrl, pageUrl);
+      : await fetchPageImage(payload.imageUrl, pageUrl);
     const requestId = crypto.randomUUID();
     const result = await deliverToOperations({
       requestId,
@@ -194,31 +178,25 @@ async function collectImage(message, sender) {
   }
 }
 
-async function captureVisibleSupplierTab(sender) {
+async function captureVisiblePageTab(sender) {
   const pageUrl = String((sender && sender.tab && sender.tab.url) || (sender && sender.url) || "");
-  if (!imageCollector.isSupplierPageUrl(pageUrl)) {
-    return responseError("UNTRUSTED_SUPPLIER_PAGE", "只能在淘寶、天貓、1688 或阿里巴巴頁面框選截圖");
+  if (!imageCollector.isCollectablePageUrl(pageUrl)) {
+    return responseError("UNSUPPORTED_IMAGE_PAGE", "這個頁面不支援框選截圖");
   }
   if (!sender.tab || sender.tab.active !== true || !Number.isInteger(sender.tab.windowId)) {
-    return responseError("SUPPLIER_TAB_NOT_ACTIVE", "請先切回要截圖的供應商頁面");
+    return responseError("IMAGE_PAGE_NOT_ACTIVE", "請先切回要截圖的網頁");
   }
   try {
     const dataUrl = await chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" });
     if (!dataUrl || !dataUrl.startsWith("data:image/png;base64,")) throw new Error("無法取得目前畫面");
     return { ok: true, dataUrl };
   } catch (error) {
-    if (captureNeedsExplicitGesture(error)) {
-      return responseError(
-        "CAPTURE_USER_GESTURE_REQUIRED",
-        "第一次請在頁面按右鍵選「柚子掌櫃：框選截圖」並同意快速截圖；之後可直接點綠框"
-      );
-    }
     return responseError("CAPTURE_FAILED", error);
   }
 }
 
 async function startCropInTab(tab) {
-  if (!tab || !Number.isInteger(tab.id) || !imageCollector.isSupplierPageUrl(tab.url || "")) return;
+  if (!tab || !Number.isInteger(tab.id) || !imageCollector.isCollectablePageUrl(tab.url || "")) return;
   try {
     await chrome.tabs.sendMessage(tab.id, { type: imageCollector.START_CROP_MESSAGE });
   } catch (error) {}
@@ -239,22 +217,6 @@ async function bindOperationsTab(message, sender) {
   return { ok: true, operationsTabId: sender.tab.id };
 }
 
-function ensureContextMenu() {
-  if (!chrome.contextMenus) return;
-  chrome.contextMenus.remove(SUPPLIER_CROP_MENU_ID, () => {
-    void chrome.runtime.lastError;
-    chrome.contextMenus.create({
-      id: SUPPLIER_CROP_MENU_ID,
-      title: "柚子掌櫃：框選截圖",
-      contexts: ["page", "image"],
-      documentUrlPatterns: [
-        "https://*.taobao.com/*", "https://*.tmall.com/*",
-        "https://*.1688.com/*", "https://*.alibaba.com/*"
-      ]
-    }, () => { void chrome.runtime.lastError; });
-  });
-}
-
 if (imageCollector) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message) return false;
@@ -263,7 +225,7 @@ if (imageCollector) {
       return true;
     }
     if (message.type === imageCollector.CAPTURE_MESSAGE) {
-      captureVisibleSupplierTab(sender).then(sendResponse).catch((error) => sendResponse(responseError("CAPTURE_FAILED", error)));
+      captureVisiblePageTab(sender).then(sendResponse).catch((error) => sendResponse(responseError("CAPTURE_FAILED", error)));
       return true;
     }
     if (![imageCollector.FETCH_MESSAGE, imageCollector.CAPTURE_DATA_MESSAGE].includes(message.type)) return false;
@@ -275,20 +237,6 @@ if (imageCollector) {
   if (chrome.action && chrome.action.onClicked) {
     chrome.action.onClicked.addListener(startCropInTab);
   }
-  if (chrome.runtime.onInstalled && chrome.contextMenus) {
-    chrome.runtime.onInstalled.addListener(ensureContextMenu);
-  }
-  if (chrome.runtime.onStartup && chrome.contextMenus) {
-    chrome.runtime.onStartup.addListener(ensureContextMenu);
-  }
-  if (chrome.contextMenus && chrome.contextMenus.onClicked) {
-    chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-      if (info.menuItemId === SUPPLIER_CROP_MENU_ID) {
-        await requestPersistentCapturePermission();
-        await startCropInTab(tab);
-      }
-    });
-  }
   if (chrome.commands && chrome.commands.onCommand) {
     chrome.commands.onCommand.addListener(async (command) => {
       if (command !== "start-image-crop") return;
@@ -296,5 +244,4 @@ if (imageCollector) {
       await startCropInTab(tabs[0]);
     });
   }
-  ensureContextMenu();
 }

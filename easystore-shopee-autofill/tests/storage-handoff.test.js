@@ -226,18 +226,20 @@ test("extension package enables the supplier image collector service worker", ()
   const bridge = fs.readFileSync(path.join(extensionRoot, "bridge.js"), "utf8");
   const easystore = fs.readFileSync(path.join(extensionRoot, "easystore.js"), "utf8");
 
-  assert.equal(manifest.version, "0.3.27");
+  assert.equal(manifest.version, "0.3.28");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
-  assert.ok(manifest.permissions.includes("contextMenus"));
+  assert.equal(manifest.permissions.includes("contextMenus"), false);
   assert.ok(manifest.permissions.includes("storage"));
   assert.ok(manifest.permissions.includes("tabs"));
   assert.ok(manifest.host_permissions.includes("https://*.taobao.com/*"));
   assert.ok(manifest.host_permissions.includes("https://*.1688.com/*"));
-  assert.equal(manifest.host_permissions.includes("<all_urls>"), false);
-  assert.ok(manifest.optional_host_permissions.includes("<all_urls>"));
+  assert.ok(manifest.host_permissions.includes("http://*/*"));
+  assert.ok(manifest.host_permissions.includes("https://*/*"));
   assert.ok(manifest.content_scripts.some((entry) =>
-    entry.js.includes("supplier-collector.js") && entry.js.includes("image-collector-helpers.js")
+    entry.matches.includes("https://*/*")
+      && entry.js.includes("supplier-collector.js")
+      && entry.js.includes("image-collector-helpers.js")
   ));
   assert.match(bridge, /chrome\.storage\[helpers\.QUEUE_STORAGE_AREA\]/);
   assert.match(easystore, /chrome\.storage\[helpers\.QUEUE_STORAGE_AREA\]/);

@@ -2,12 +2,12 @@
   "use strict";
 
   const helpers = globalThis.YouziImageCollectorHelpers;
-  if (!helpers || !helpers.isSupplierPageUrl(location.href)) return;
+  if (!helpers || !helpers.isCollectablePageUrl(location.href)) return;
 
   let session = null;
   let hoveredElement = null;
   let sending = false;
-  let directPickEnabled = false;
+  let directPickEnabled = true;
   let cropOverlay = null;
   let confirmCropSelection = null;
   let captureUiHidden = false;
@@ -45,12 +45,12 @@
     #youziImageCollectorPanel .youzi-status { margin-top: 8px; min-height: 20px; }
     #youziImageCollectorPanel .youzi-error { color: #c9463f; }
     #youziImageCollectorPanel .youzi-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
-    #youziImageCollectorPanel .youzi-shortcut { grid-column: 1 / -1; padding: 9px 11px; border-radius: 9px; background: #e9f5ef; color: #17684e; font-weight: 800; }
     #youziImageCollectorPanel button {
       min-height: 40px; padding: 8px 10px; border: 0; border-radius: 9px;
       background: #173247; color: #fff; font-weight: 800; cursor: pointer;
     }
     #youziImageCollectorPanel button[data-youzi-direct] { background: #e9f5ef; color: #17684e; }
+    #youziImageCollectorPanel button[data-youzi-stop] { grid-column: 1 / -1; background: #647681; }
     #youziImageCropOverlay {
       position: fixed; z-index: 2147483647; inset: 0; cursor: crosshair;
       background: rgba(8,26,38,.12); user-select: none; touch-action: none;
@@ -65,15 +65,6 @@
       background: rgba(18,166,109,.12); box-shadow: 0 0 0 9999px rgba(8,26,38,.34);
     }
     #youziImageCropOverlay.youzi-crop-capture-hidden { opacity: 0 !important; }
-    #youziImageCropOverlay .youzi-crop-selection.is-ready { cursor: move; }
-    #youziImageCropOverlay .youzi-crop-handle {
-      position: absolute; width: 15px; height: 15px; border: 2px solid #fff;
-      border-radius: 50%; background: #12a66d; box-shadow: 0 2px 6px rgba(0,0,0,.28);
-    }
-    #youziImageCropOverlay .youzi-crop-handle[data-dir="nw"] { left: -9px; top: -9px; cursor: nwse-resize; }
-    #youziImageCropOverlay .youzi-crop-handle[data-dir="ne"] { right: -9px; top: -9px; cursor: nesw-resize; }
-    #youziImageCropOverlay .youzi-crop-handle[data-dir="sw"] { left: -9px; bottom: -9px; cursor: nesw-resize; }
-    #youziImageCropOverlay .youzi-crop-handle[data-dir="se"] { right: -9px; bottom: -9px; cursor: nwse-resize; }
     #youziImageCropOverlay .youzi-crop-toolbar {
       position: absolute; top: calc(100% + 10px); right: -3px; display: none; gap: 7px;
       padding: 6px; border-radius: 10px; background: #173247; box-shadow: 0 8px 20px rgba(0,0,0,.3);
@@ -98,9 +89,9 @@
     <div class="youzi-progress" data-youzi-progress></div>
     <div class="youzi-status" data-youzi-status></div>
     <div class="youzi-actions">
-      <div class="youzi-shortcut">頁面右鍵 → 柚子掌櫃；也可按 Ctrl＋Shift＋Y</div>
-      <button type="button" data-youzi-direct>＋ 快速點圖</button>
-      <button type="button" data-youzi-stop>結束收圖（Esc）</button>
+      <button type="button" data-youzi-direct>✓ 點圖片加入</button>
+      <button type="button" data-youzi-crop>框選截圖</button>
+      <button type="button" data-youzi-stop>結束搜圖（Esc）</button>
     </div>
   `;
   (document.body || document.documentElement).appendChild(panel);
@@ -129,10 +120,11 @@
     productText.textContent = `${session.sku}｜${session.title || "準備上架商品"}`;
     progressText.textContent = `已加入 ${session.currentCount}／${session.maxImages} 張`;
     directButton.classList.toggle("is-active", directPickEnabled);
+    directButton.textContent = directPickEnabled ? "✓ 點圖片加入" : "點圖片加入";
     if (!session.active && session.stoppedReason === "full") {
       setStatus(`已收滿 ${session.maxImages} 張，收圖模式已自動結束。`);
     } else if (!sending && !statusMessage) {
-      setStatus(directPickEnabled ? "移到圖片上，綠框出現後點一下。" : "等待收圖");
+      setStatus(directPickEnabled ? "移到圖片上，出現綠框後點一下；也可直接按「框選截圖」。" : "按「點圖片加入」即可繼續搜圖");
     } else {
       statusText.textContent = statusMessage;
       statusText.classList.toggle("youzi-error", statusIsError);
@@ -147,11 +139,17 @@
   function visibleImageElement(image) {
     if (!(image instanceof HTMLImageElement)) return false;
     const rect = image.getBoundingClientRect(), style = getComputedStyle(image);
-    return rect.width >= 20 && rect.height >= 20 && style.display !== "none" && style.visibility !== "hidden";
+    return rect.width >= 20 && rect.height >= 20 && style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+  }
+
+  function decorativeOverlayImage(image) {
+    if (!(image instanceof HTMLImageElement)) return false;
+    const marker = `${image.id || ""} ${String(image.className || "")}`;
+    return !String(image.alt || "").trim() && /(?:badge|watermark|mask|lens|overlay|sprite)/i.test(marker);
   }
 
   function candidateFromImage(image) {
-    if (!visibleImageElement(image)) return null;
+    if (!visibleImageElement(image) || decorativeOverlayImage(image)) return null;
     const candidates = [
       image.getAttribute("data-original"), image.getAttribute("data-ks-lazyload"),
       image.getAttribute("data-lazy-src"), image.getAttribute("data-src"),
@@ -165,7 +163,10 @@
   function imageCandidateAt(target) {
     if (!(target instanceof Element) || target.closest("#youziImageCollectorPanel")) return null;
     const directImage = target.closest("img");
-    if (directImage) return candidateFromImage(directImage);
+    if (directImage) {
+      const directCandidate = candidateFromImage(directImage);
+      if (directCandidate) return directCandidate;
+    }
     let element = target;
     let screenshotCandidate = null;
     for (let depth = 0; element && depth < 9; depth += 1, element = element.parentElement) {
@@ -178,7 +179,7 @@
       if (depth <= 5 && element.querySelectorAll) {
         const descendants = Array.from(element.querySelectorAll("img")).filter(visibleImageElement).sort((a, b) => {
           const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
-          return ar.width * ar.height - br.width * br.height;
+          return br.width * br.height - ar.width * ar.height;
         }).slice(0, 16);
         for (const image of descendants) {
           const candidate = candidateFromImage(image);
@@ -393,7 +394,7 @@
     clearHover();
     cropOverlay = document.createElement("div");
     cropOverlay.id = "youziImageCropOverlay";
-    cropOverlay.innerHTML = '<div class="youzi-crop-help">拉出綠框後可移動或縮放；確認後才截取</div><div class="youzi-crop-selection"><i class="youzi-crop-handle" data-dir="nw"></i><i class="youzi-crop-handle" data-dir="ne"></i><i class="youzi-crop-handle" data-dir="sw"></i><i class="youzi-crop-handle" data-dir="se"></i><div class="youzi-crop-toolbar"><button type="button" data-crop-capture>截取這個範圍</button><button type="button" data-crop-reset>重新框選</button></div></div>';
+    cropOverlay.innerHTML = '<div class="youzi-crop-help">按住滑鼠拉出範圍，放開後按「確認截圖」</div><div class="youzi-crop-selection"><div class="youzi-crop-toolbar"><button type="button" data-crop-capture>確認截圖</button><button type="button" data-crop-reset>重新框選</button></div></div>';
     document.documentElement.appendChild(cropOverlay);
     const selection = cropOverlay.querySelector(".youzi-crop-selection");
     const help = cropOverlay.querySelector(".youzi-crop-help");
@@ -429,7 +430,7 @@
         return;
       }
       selection.classList.add("is-ready");
-      help.textContent = "可拖動綠框或拉四角調整，完成後按「截取這個範圍」";
+      help.textContent = "範圍正確就按「確認截圖」；不正確可直接重拉一次";
     };
     confirmCropSelection = async () => {
       if (!rect || rect.width < 20 || rect.height < 20 || sending) return;
@@ -439,33 +440,17 @@
     };
     cropOverlay.addEventListener("pointerdown", (event) => {
       if (event.button !== 0 || event.target.closest(".youzi-crop-toolbar")) return;
-      const handle = event.target.closest(".youzi-crop-handle"), inside = event.target.closest(".youzi-crop-selection");
-      interaction = { mode: handle ? "resize" : inside && rect ? "move" : "draw", dir: handle && handle.dataset.dir || "", startX: event.clientX, startY: event.clientY, original: rect && Object.assign({}, rect) };
-      if (interaction.mode === "draw") {
-        selection.classList.remove("is-ready");
-        rect = { left: event.clientX, top: event.clientY, width: 20, height: 20 };
-        drawSelection(rect);
-      }
+      interaction = { startX: event.clientX, startY: event.clientY };
+      selection.classList.remove("is-ready");
+      rect = { left: event.clientX, top: event.clientY, width: 20, height: 20 };
+      drawSelection(rect);
       cropOverlay.setPointerCapture(event.pointerId);
       event.preventDefault();
     });
     cropOverlay.addEventListener("pointermove", (event) => {
       if (!interaction) return;
-      if (interaction.mode === "draw") {
-        const left = Math.min(interaction.startX, event.clientX), top = Math.min(interaction.startY, event.clientY);
-        drawSelection({ left, top, width: Math.abs(event.clientX - interaction.startX), height: Math.abs(event.clientY - interaction.startY) });
-      } else if (interaction.mode === "move") {
-        const original = interaction.original;
-        drawSelection({ left: clamp(original.left + event.clientX - interaction.startX, 0, window.innerWidth - original.width), top: clamp(original.top + event.clientY - interaction.startY, 0, window.innerHeight - original.height), width: original.width, height: original.height });
-      } else {
-        const original = interaction.original, dir = interaction.dir;
-        let left = original.left, top = original.top, right = original.left + original.width, bottom = original.top + original.height;
-        if (dir.includes("w")) left = clamp(event.clientX, 0, right - 20);
-        if (dir.includes("e")) right = clamp(event.clientX, left + 20, window.innerWidth);
-        if (dir.includes("n")) top = clamp(event.clientY, 0, bottom - 20);
-        if (dir.includes("s")) bottom = clamp(event.clientY, top + 20, window.innerHeight);
-        drawSelection({ left, top, width: right - left, height: bottom - top });
-      }
+      const left = Math.min(interaction.startX, event.clientX), top = Math.min(interaction.startY, event.clientY);
+      drawSelection({ left, top, width: Math.abs(event.clientX - interaction.startX), height: Math.abs(event.clientY - interaction.startY) });
       event.preventDefault();
     });
     cropOverlay.addEventListener("pointerup", finishInteraction);
@@ -539,6 +524,7 @@
     setStatus("移到圖片上，綠框出現後點一下。");
     updatePanel();
   });
+  panel.querySelector("[data-youzi-crop]").addEventListener("click", beginCrop);
   panel.querySelector("[data-youzi-stop]").addEventListener("click", stopSession);
 
   chrome.runtime.onMessage.addListener((message) => {
@@ -552,6 +538,7 @@
     const next = changes[helpers.SESSION_STORAGE_KEY].newValue;
     const validation = helpers.normalizeSessionPayload(next, Date.now());
     session = validation.ok ? validation.value : null;
+    if (session && session.active) directPickEnabled = true;
     if (!session || !session.active) {
       cancelCrop();
       clearHover();
@@ -562,6 +549,7 @@
   chrome.storage.local.get(helpers.SESSION_STORAGE_KEY).then((stored) => {
     const validation = helpers.normalizeSessionPayload(stored[helpers.SESSION_STORAGE_KEY], Date.now());
     session = validation.ok ? validation.value : null;
+    if (session && session.active) directPickEnabled = true;
     updatePanel();
   });
 })();

@@ -5,12 +5,23 @@ const assert = require("node:assert/strict");
 
 const helpers = require("../image-collector-helpers.js");
 
-test("supplier and image URLs are restricted to approved Alibaba domains", () => {
+test("collector supports ordinary web pages while retaining supplier URL recognition", () => {
   assert.equal(helpers.isSupplierPageUrl("https://item.taobao.com/item.htm?id=1"), true);
   assert.equal(helpers.isSupplierPageUrl("https://detail.1688.com/offer/1.html"), true);
   assert.equal(helpers.isSupplierPageUrl("https://example.com/item/1"), false);
+  assert.equal(helpers.isCollectablePageUrl("https://shop.example.com/item/1"), true);
+  assert.equal(helpers.isCollectablePageUrl("http://shop.example.com/item/1"), true);
+  assert.equal(helpers.isCollectablePageUrl("chrome://extensions/"), false);
   assert.equal(helpers.isAllowedImageUrl("https://img.alicdn.com/imgextra/a.jpg"), true);
-  assert.equal(helpers.isAllowedImageUrl("https://evil-example.com/a.jpg"), false);
+  assert.equal(helpers.isAllowedImageUrl("https://images.example.com/a.jpg"), true);
+  assert.equal(helpers.isAllowedImageUrl("data:image/png;base64,AAAA"), false);
+});
+
+test("collector keeps ordinary image URLs and still removes Alibaba resize suffixes", () => {
+  assert.equal(
+    helpers.chooseImageUrl(["https://img.91app.com/webapi/imagesV3/SalePage/8690331/0?v=1"], "https://shop.example.com/item/1"),
+    "https://img.91app.com/webapi/imagesV3/SalePage/8690331/0?v=1"
+  );
 });
 
 test("collector prefers the original Alibaba image and removes resize suffixes", () => {

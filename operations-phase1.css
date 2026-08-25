@@ -1067,6 +1067,7 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-listing-media-action.physical{border-color:#425b70;background:#f3f6f8;color:#243c50}
 .ops-listing-media-action.disabled{border-color:#d5dedb;background:#f3f5f4;color:#8b9993;cursor:not-allowed}
 .ops-listing-supplier-shortcuts{display:flex;gap:7px;align-items:center;margin-top:-4px}
+.ops-listing-supplier-shortcuts span{color:#526a77;font-size:12px;font-weight:800}
 .ops-listing-supplier-shortcuts a{display:inline-flex;align-items:center;justify-content:center;min-height:34px;min-width:76px;padding:6px 12px;border:1px solid #9fcbb7;border-radius:9px;background:#fff;color:#17684e;font-size:12px;font-weight:900;text-decoration:none}
 .ops-listing-supplier-shortcuts a:hover{border-color:#1f8e6b;background:#e9f7f0}
 .ops-listing-media-status:empty,#productReferenceImageUploadStatus:empty,#productPhysicalImageUploadStatus:empty{display:none}

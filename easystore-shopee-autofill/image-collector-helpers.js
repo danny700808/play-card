@@ -35,13 +35,6 @@
     "1688.com",
     "alibaba.com"
   ];
-  const IMAGE_HOST_SUFFIXES = SUPPLIER_HOST_SUFFIXES.concat([
-    "alicdn.com",
-    "alicdn.cn",
-    "tbcdn.cn",
-    "alibabausercontent.com"
-  ]);
-
   function text(value) {
     return String(value == null ? "" : value).trim();
   }
@@ -57,15 +50,24 @@
     return suffixes.some((suffix) => normalized === suffix || normalized.endsWith(`.${suffix}`));
   }
 
-  function parsedHttpsUrl(value, baseUrl) {
+  function parsedWebUrl(value, baseUrl) {
     try {
       const url = new URL(text(value), text(baseUrl) || undefined);
-      if (url.protocol !== "https:") return null;
+      if (url.protocol !== "https:" && url.protocol !== "http:") return null;
       url.hash = "";
       return url;
     } catch (error) {
       return null;
     }
+  }
+
+  function parsedHttpsUrl(value, baseUrl) {
+    const url = parsedWebUrl(value, baseUrl);
+    return url && url.protocol === "https:" ? url : null;
+  }
+
+  function isCollectablePageUrl(value) {
+    return Boolean(parsedWebUrl(value));
   }
 
   function isSupplierPageUrl(value) {
@@ -74,8 +76,7 @@
   }
 
   function isAllowedImageUrl(value) {
-    const url = parsedHttpsUrl(value);
-    return Boolean(url && hostnameMatches(url.hostname, IMAGE_HOST_SUFFIXES));
+    return Boolean(parsedWebUrl(value));
   }
 
   function stripAlibabaResizeSuffix(value) {
@@ -91,8 +92,8 @@
   }
 
   function normalizeImageUrl(value, baseUrl) {
-    const url = parsedHttpsUrl(value, baseUrl);
-    if (!url || !hostnameMatches(url.hostname, IMAGE_HOST_SUFFIXES)) return "";
+    const url = parsedWebUrl(value, baseUrl);
+    if (!url) return "";
     return stripAlibabaResizeSuffix(url.href);
   }
 
@@ -221,6 +222,7 @@
     MAX_IMAGE_BYTES,
     MAX_SESSION_AGE_MS,
     isSupplierPageUrl,
+    isCollectablePageUrl,
     isAllowedImageUrl,
     normalizeImageUrl,
     srcsetUrls,
