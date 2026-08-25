@@ -64,8 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260825-product-presence-and-name/);
-    assert.match(html, /operations-phase1\.js\?v=20260825-product-presence-and-name/);
+    assert.match(html, /operations-phase1\.css\?v=20260825-listing-action-grid/);
+    assert.match(html, /operations-phase1\.js\?v=20260825-listing-action-grid/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260823-shopee-v3-schema6/);
   }
 });
@@ -89,9 +89,10 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(handoffPrompt, /尾端加「柚子樂器」/);
   assert.match(handoffPrompt, /實際內容以收到的實體商品為準/);
   assert.match(handoffPrompt, /同一案件、同一 SKU、同一平台草稿與目前階段/);
-  assert.match(handoffPrompt, /MOMO、酷澎、EasyStore 是三個獨立根節點/);
+  assert.match(handoffPrompt, /本次根節點為/);
+  assert.match(handoffPrompt, /未選通路不得建立、修改、排隊或送出/);
   assert.match(handoffPrompt, /單一操作鎖/);
-  assert.match(handoffPrompt, /蝦皮只依賴 EasyStore/);
+  assert.match(handoffPrompt, /蝦皮.*只依賴 EasyStore/);
   assert.match(handoffPrompt, /蝦皮只使用 EasyStore 官方蝦皮通路同步／編輯頁/);
   assert.match(handoffPrompt, /不得.*切換蝦皮賣家中心或開第二條上架路徑/);
   assert.match(handoffPrompt, /每站送出後只做一次快速核對/);
@@ -271,11 +272,14 @@ test('product header owns the saved listing queue and starts it sequentially in 
   const start = functionBody(engine, 'startProductListingQueue');
   const prompt = functionBody(engine, 'productListingBatchActivationPrompt');
   const listingForm = functionBody(engine, 'productListingCaseFormHtml');
+  const actionGrid = functionBody(engine, 'productListingActionGridHtml');
 
   assert.match(products, /product-new[\s\S]*product-listing-queue-open[\s\S]*product-recent/);
-  assert.match(products, /待處理商品/);
+  assert.match(products, /待網路上架商品/);
+  assert.match(products, /新增未上架/);
   assert.match(queue, /開始處理全部/);
-  assert.match(listingForm, /data-action="product-listing-queue-add"/);
+  assert.match(listingForm, /productListingActionGridHtml\(row\)/);
+  assert.match(actionGrid, /data-action="product-listing-queue-add"/);
   assert.match(start, /batchQueueStatus:'processing'/);
   assert.match(start, /batchPosition:index\+1/);
   assert.match(start, /productListingCodexThreadUrl/);
@@ -585,12 +589,19 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(firestoreRules, /'opsProductListingQueue'/);
 });
 
-test('listing case offers one Codex action and keeps detailed platform fields collapsed', () => {
+test('listing case offers eight direct platform actions and keeps detailed fields collapsed', () => {
   const renderer = functionBody(engine, 'productListingCaseFormHtml');
+  const actionGrid = functionBody(engine, 'productListingActionGridHtml');
   const oneClick = functionBody(engine, 'handoffProductListingToCodex');
 
-  assert.match(renderer, /帶入 Codex 對話/);
-  assert.equal((renderer.match(/data-action="product-listing-codex-complete"/g) || []).length, 1);
+  assert.match(renderer, /網路上架處理/);
+  assert.match(renderer, /直接點一個方塊/);
+  assert.match(renderer, /productListingActionGridHtml\(row\)/);
+  assert.match(actionGrid, /\['all','momo','coupang','website'\]/);
+  assert.match(actionGrid, /data-action="product-listing-queue-add"/);
+  assert.match(actionGrid, /data-action="product-listing-codex-complete"/);
+  assert.match(actionGrid, /加入待處理/);
+  assert.match(actionGrid, /立即處理/);
   assert.match(renderer, /需要時才修改/);
   assert.doesNotMatch(renderer, /儲存並檢查/);
   assert.match(oneClick, /saveProductListingCase/);
@@ -600,6 +611,8 @@ test('listing case offers one Codex action and keeps detailed platform fields co
   assert.doesNotMatch(oneClick, /researchProductListingCase/);
   assert.doesNotMatch(oneClick, /requestProductListingImageGeneration/);
   assert.match(oneClick, /completedMediaReady/);
+  assert.match(oneClick, /listingTargetScope:listingTargetScope/);
+  assert.match(oneClick, /listingTargetPlatforms:listingTargetPlatforms/);
   assert.match(oneClick, /callProductListingPublishWithTransientRetry/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /status\)\.toLowerCase\(\)!=='completed'/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /sourceImageUrls/);

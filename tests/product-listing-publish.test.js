@@ -364,7 +364,7 @@ test('Coupang shipping is decided once and enables convenience stores only withi
   assert.deepEqual(oversize.convenienceStore.stores, []);
 });
 
-test('正式發布先完成四通路預檢，再交錯啟動三個根平台且蝦皮只依賴 EasyStore', () => {
+test('正式發布先完成所選通路預檢，並讓蝦皮只依賴 EasyStore', () => {
   const backend = fs.readFileSync('functions/productListingPublish.js', 'utf8');
   const deployWorkflow = fs.readFileSync('.github/workflows/deploy-product-listing.yml', 'utf8');
   const publishStart = backend.indexOf('async function publishProductListingCaseHandler');
@@ -379,7 +379,7 @@ test('正式發布先完成四通路預檢，再交錯啟動三個根平台且�
   const easyStore = handler.indexOf('publishEasyStoreStageWithRetry(db, jobId, snapshot, product)', coupang);
   const parallel = handler.indexOf('await Promise.all(operations.map', easyStore);
   assert.ok(finalizedMedia >= 0 && preflight > finalizedMedia && job > preflight && roots > job && coupang > roots && easyStore > coupang && parallel > easyStore);
-  assert.match(handler, /platformImagePlanMissingFields\(snapshot\.platformImagePlan, \{ requireFinalized: true \}\)/);
+  assert.match(handler, /platformImagePlanMissingFields\(snapshot\.platformImagePlan, \{ requireFinalized: true, targetPlatforms: listingTargetPlatforms\(snapshot\) \}\)/);
   assert.match(handler, /queueFixedIpPlatform\(db, jobId, entry\.platform/);
   assert.match(handler, /executionMode: 'staggered-parallel'/);
   assert.match(handler, /blocked-by-dependency/);
@@ -388,7 +388,9 @@ test('正式發布先完成四通路預檢，再交錯啟動三個根平台且�
   assert.match(verifier, /requestedStage !== 'shopee'/);
   assert.doesNotMatch(verifier, /requestedStage === 'coupang'/);
   assert.match(verifier, /finalizeVerifiedShopeeStage/);
-  assert.match(handler, /四通路單次預檢未通過；尚未操作任何平台/);
+  assert.match(handler, /本次所選通路預檢未通過；尚未操作任何平台/);
+  assert.match(handler, /if \(!listingStageSelected\(snapshot, entry\.stage\)\) return/);
+  assert.match(handler, /listingStageSelected\(snapshot, 'easyStore'\)/);
   assert.match(handler, /identityAllowsShopeeAutofill\(snapshot\.identityStatus, snapshot\.identityManualConfirmed\)/);
   assert.match(handler, /蝦皮商品身分／型號確認/);
   assert.match(handler, /shopeeLogistics\.requiresConfirmation/);
@@ -514,6 +516,36 @@ test('queue receipt only advances the matching v3 job, attempt and immutable sna
   const oldJob = helpers.validateQueuedStageReceipt({ ...job, workflowVersion: 'youzi-four-channel-listing-v1' }, record);
   assert.equal(oldJob.verified, false);
   assert.ok(oldJob.reasons.includes('workflow-version-mismatch'));
+});
+
+test('backend ignores receipts and Shopee verification outside the selected scope', async () => {
+  const snapshot = {
+    productId: 'scope-product', sku: 'SCOPE-1', listingTargetScope: 'momo',
+    momoPrice: 500, coupangPrice: 500, stock: 1,
+    platformImagePlan: { coupang: { imageUrls: ['https://example.com/clean.jpg'] } }
+  };
+  const fingerprint = helpers.platformStageFingerprint('Coupang', snapshot);
+  const snapshotFingerprint = helpers.listingSnapshotFingerprint(snapshot);
+  const db = fakeFirestore({
+    'opsSyncJobs/scope-job': {
+      workflowVersion: 'youzi-four-channel-listing-v3', productId: 'scope-product',
+      preparedSnapshot: snapshot, preparedSnapshotFingerprint: snapshotFingerprint,
+      stages: { coupang: { status: 'awaiting-verification', attemptToken: 'scope-attempt', fingerprint } }
+    }
+  });
+  const result = await helpers.applyVerifiedQueueReceipt(db, 'scope-queue', {
+    workflowVersion: 'youzi-four-channel-listing-v3', jobId: 'scope-job', productId: 'scope-product',
+    platform: 'Coupang', status: 'completed', attemptToken: 'scope-attempt', fingerprint, snapshotFingerprint,
+    verificationReceipt: {
+      stage: 'coupang', listingId: 'CP-SCOPE', sku: 'SCOPE-1', price: 500, status: 'published',
+      platformListMatched: true, officialCatalogMatched: true
+    }
+  });
+  assert.deepEqual(result, { status: 'ignored-unselected-stage', stage: 'coupang' });
+  await assert.rejects(
+    helpers.finalizeVerifiedShopeeStage(db, 'scope-job', { receipt: {} }, 'manager'),
+    /蝦皮不在本次所選通路內/
+  );
 });
 
 test('MOMO、酷澎與 EasyStore 可獨立完成，蝦皮只依賴 EasyStore，最後一張回條才完成整筆工作', async () => {
@@ -1093,7 +1125,7 @@ test('Coupang stops before queueing when no second clean product image exists', 
   assert.match(helpers.coupangMissingFields(snapshot).join('、'), /酷澎 cleanMain 首圖/);
 });
 
-test('one-click listing always targets all channels and falls back to the product price', () => {
+test('listing defaults to all channels, and explicit scopes enable only their selected stages', () => {
   const snapshot = helpers.buildListingSnapshot('one-click-all', {
     internalSku: 'ONE-CLICK-ALL', internalName: '木製吉他腳踏板', currentStock: 2, storePrice: 500
   }, {
@@ -1108,6 +1140,30 @@ test('one-click listing always targets all channels and falls back to the produc
   assert.equal(snapshot.easyStorePrice, 500);
   assert.equal(snapshot.momoPrice, 500);
   assert.equal(snapshot.coupangPrice, 500);
+
+  const momo = helpers.buildListingSnapshot('momo-only', {
+    internalSku: 'MOMO-ONLY', internalName: 'MOMO 單獨上架', currentStock: 1, storePrice: 600
+  }, { listingTargetScope: 'momo', productDescription: 'MOMO 商品介紹' });
+  assert.deepEqual(momo.listingTargetPlatforms, ['momo']);
+  assert.equal(momo.enabledMomo, true);
+  assert.equal(momo.enabledCoupang, false);
+  assert.equal(momo.enabledEasyStoreShopee, false);
+  assert.deepEqual(helpers.initialListingStages(momo), {
+    momo: { status: 'ready' }, coupang: { status: 'skipped' },
+    easyStore: { status: 'skipped' }, shopee: { status: 'skipped' }
+  });
+
+  const website = helpers.buildListingSnapshot('website-only', {
+    internalSku: 'WEB-ONLY', internalName: '官網單獨上架', currentStock: 1, storePrice: 700
+  }, { listingTargetScope: 'website', productDescription: '官網商品介紹' });
+  assert.deepEqual(website.listingTargetPlatforms, ['easyStore', 'shopee']);
+  assert.equal(website.enabledMomo, false);
+  assert.equal(website.enabledCoupang, false);
+  assert.equal(website.enabledEasyStoreShopee, true);
+  assert.deepEqual(helpers.initialListingStages(website), {
+    momo: { status: 'skipped' }, coupang: { status: 'skipped' },
+    easyStore: { status: 'ready' }, shopee: { status: 'blocked-by-dependency', dependsOn: ['easyStore'] }
+  });
 });
 
 test('publish results become product-level platform status without claiming queued work is live', () => {
@@ -1887,8 +1943,39 @@ test('Codex 單次授權綁定 v3 快照並由後端自動續跑，不接受舊�
     }
   };
   assert.deepEqual(helpers.codexAutoPublishGrant(base), {
-    email: 'danny700808@gmail.com', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', scope: 'fixed-v3-four-channel-publish'
+    email: 'danny700808@gmail.com', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', scope: 'fixed-v3-four-channel-publish',
+    listingTargetScope: 'all', listingTargetPlatforms: ['momo', 'coupang', 'easyStore', 'shopee']
   });
+  const website = {
+    ...base,
+    codexHandoff: {
+      ...base.codexHandoff,
+      preflightSnapshot: {
+        ...base.codexHandoff.preflightSnapshot,
+        listingTargetScope: 'website', listingTargetPlatforms: ['easyStore', 'shopee']
+      },
+      autoPublishAuthorization: {
+        ...base.codexHandoff.autoPublishAuthorization,
+        scope: 'fixed-v3-selected-channel-publish', listingTargetScope: 'website',
+        listingTargetPlatforms: ['easyStore', 'shopee']
+      }
+    }
+  };
+  assert.deepEqual(helpers.codexAutoPublishGrant(website), {
+    email: 'danny700808@gmail.com', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818',
+    scope: 'fixed-v3-selected-channel-publish', listingTargetScope: 'website',
+    listingTargetPlatforms: ['easyStore', 'shopee']
+  });
+  assert.equal(helpers.codexAutoPublishGrant({
+    ...website,
+    codexHandoff: {
+      ...website.codexHandoff,
+      autoPublishAuthorization: {
+        ...website.codexHandoff.autoPublishAuthorization,
+        listingTargetPlatforms: ['momo', 'coupang', 'easyStore', 'shopee']
+      }
+    }
+  }), null);
   assert.equal(helpers.codexAutoPublishGrant({ ...base, codexHandoff: { ...base.codexHandoff, workflowVersion: 'youzi-four-channel-listing-v1' } }), null);
   assert.equal(helpers.codexAutoPublishGrant({ ...base, codexHandoff: { ...base.codexHandoff, autoPublishAuthorization: { ...base.codexHandoff.autoPublishAuthorization, snapshotId: 'other' } } }), null);
   assert.equal(helpers.codexAutoPublishInputFingerprint(base), helpers.codexAutoPublishInputFingerprint(JSON.parse(JSON.stringify(base))));
@@ -1898,9 +1985,11 @@ test('Codex 單次授權綁定 v3 快照並由後端自動續跑，不接受舊�
   assert.equal(helpers.publishResultFailureMessage({ ok: false, platforms: { easyStore: { message: 'HTTP 503' } } }), 'HTTP 503');
 });
 
-test('營運中心 v3 交接即授權自動發布，介面不再要求一般二次確認', () => {
+test('營運中心 v3 交接即授權所選通路自動發布，介面不再要求一般二次確認', () => {
   const frontend = fs.readFileSync('operations-phase1.js', 'utf8');
-  assert.match(frontend, /scope:'fixed-v3-four-channel-publish'/);
+  assert.match(frontend, /scope:'fixed-v3-selected-channel-publish'/);
+  assert.match(frontend, /listingTargetScope:listingTargetScope/);
+  assert.match(frontend, /listingTargetPlatforms:listingTargetPlatforms/);
   assert.match(frontend, /noSecondConfirmation:true/);
   assert.match(frontend, /backendFirst:true/);
   assert.match(frontend, /desktopControlFallbackOnly:true/);

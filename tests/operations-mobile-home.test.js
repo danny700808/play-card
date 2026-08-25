@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260825-product-presence-and-name/);
+  assert.match(portal, /operations-phase1\.js\?v=20260825-listing-action-grid/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
   assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
@@ -179,13 +179,16 @@ test('variant workflow searches first and requires each SKU own representative i
   assert.match(css, /\.ops-listing-variant-processing-flat/);
 });
 
-test('product inventory header is simplified and exposes recent unlisted products', () => {
+test('product inventory header exposes newest unlisted products without internal zero SKUs', () => {
   const source = read('operations-phase1.js');
   assert.match(source, /成本總額：/);
-  assert.match(source, /data-action="product-recent">最近新增未上架/);
+  assert.match(source, /data-action="product-recent">新增未上架/);
   assert.match(source, /function productNeedsRecentListingWork/);
-  assert.match(source, /!productHasCompletedListingImage\(p\)\|\|!productHasCompletedFourChannelListing\(p\)/);
-  assert.match(source, /state\.productRecentOnly&&!productNeedsRecentListingWork\(p\)/);
+  assert.match(source, /return !productHasCompletedFourChannelListing\(p\)/);
+  assert.match(source, /function productAppearsInRecentListing/);
+  assert.match(source, /!clean\(p\.sku\)\.startsWith\('0'\)/);
+  assert.match(source, /state\.productRecentOnly&&!productAppearsInRecentListing\(p\)/);
+  assert.match(source, /productCreatedTime\(b\)-productCreatedTime\(a\)/);
   assert.match(source, /#productSearch,#productListingCaseForm \[name="variantParentSearch"\]/);
   const renderStart = source.indexOf('function renderProducts(');
   const renderEnd = source.indexOf('function estimateFifoCostForProduct', renderStart);

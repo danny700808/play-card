@@ -73,7 +73,7 @@ test('preorder tracker is mobile friendly and cache versions are bumped', () => 
   assert.match(css, /\.ops-preorder-tracking-drawer/);
   assert.match(css, /@media\(max-width:620px\)[\s\S]*\.ops-preorder-identity,\.ops-preorder-finance-grid,\.ops-preorder-status-summary\{grid-template-columns:1fr\}/);
   for (const html of [portal, hub]) {
-    assert.match(html, /operations-phase1\.css\?v=20260825-product-presence-and-name/);
-    assert.match(html, /operations-phase1\.js\?v=20260825-product-presence-and-name/);
+    assert.match(html, /operations-phase1\.css\?v=20260825-listing-action-grid/);
+    assert.match(html, /operations-phase1\.js\?v=20260825-listing-action-grid/);
   }
 });
