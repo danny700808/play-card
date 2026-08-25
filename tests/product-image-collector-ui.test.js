@@ -12,7 +12,8 @@ const bridge = fs.readFileSync("easystore-shopee-autofill/bridge.js", "utf8");
 
 test("準備上架提供指定商品的開始收圖入口", () => {
   assert.match(operationsSource, /data-action="product-image-collection-toggle"/);
-  assert.match(operationsSource, /從淘寶／1688 框選截圖/);
+  assert.match(operationsSource, /開始搜圖/);
+  assert.doesNotMatch(operationsSource, /從淘寶／1688 框選截圖/);
   assert.match(operationsSource, /PRODUCT_IMAGE_COLLECTION\.maxImages/);
   assert.doesNotMatch(operationsSource, /<label>商品網址<\/label>/);
 });
@@ -81,21 +82,16 @@ test("營運中心重新整理後會主動恢復既有收圖工作", () => {
   assert.match(background, /portal\.html#products/);
 });
 
-test("淘寶與 1688 快速連結固定顯示在單品與每個細項收圖區", () => {
-  const helperStart = operationsSource.indexOf("function productSupplierQuickLinksHtml");
-  const helperEnd = operationsSource.indexOf("function productVariantCollectorHtml", helperStart);
-  const helper = operationsSource.slice(helperStart, helperEnd);
-  const variantStart = helperEnd;
+test("準備上架與細項收圖都不再顯示供應商快速連結", () => {
+  const variantStart = operationsSource.indexOf("function productVariantCollectorHtml");
   const variantEnd = operationsSource.indexOf("function productVariantRepresentativeCardHtml", variantStart);
   const variantCollector = operationsSource.slice(variantStart, variantEnd);
   const formStart = operationsSource.indexOf("function productListingCaseFormHtml");
   const formEnd = operationsSource.indexOf("async function openProductListingCase", formStart);
   const form = operationsSource.slice(formStart, formEnd);
-  assert.match(helper, /開啟淘寶/);
-  assert.match(helper, /開啟 1688/);
-  assert.doesNotMatch(helper, /開啟阿里巴巴|alibaba\.com/);
-  assert.match(variantCollector, /productSupplierQuickLinksHtml\(\)/);
-  assert.match(form, /productSupplierQuickLinksHtml\(\)/);
+  assert.doesNotMatch(operationsSource, /function productSupplierQuickLinksHtml|開啟淘寶|開啟 1688/);
+  assert.doesNotMatch(variantCollector, /productSupplierQuickLinksHtml/);
+  assert.doesNotMatch(form, /productSupplierQuickLinksHtml/);
 });
 
 test("收圖成功或失敗訊息不會立刻被等待文字覆蓋", () => {

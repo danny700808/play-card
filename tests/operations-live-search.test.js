@@ -65,8 +65,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260824-listing-intents-physical/);
-    assert.match(html, /operations-phase1\.js\?v=20260824-listing-intents-physical/);
+    assert.match(html, /operations-phase1\.css\?v=20260825-listing-workspace-simple/);
+    assert.match(html, /operations-phase1\.js\?v=20260825-listing-workspace-simple/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260823-shopee-v3-schema6/);
   }
 });
@@ -262,10 +262,10 @@ test('mobile physical-photo entry opens the rear camera and stores photos separa
   assert.match(upload, /-labeled\.jpg/);
   assert.doesNotMatch(upload, /listingImageUrls|imageUrls:fv\.arrayUnion/);
   assert.match(labeler, /fillText\('實體圖'/);
-  assert.match(tray, /productPhysicalImageUpload/);
-  assert.match(tray, /＋ 實體圖/);
   assert.match(tray, /<strong>實體圖<\/strong>/);
+  assert.doesNotMatch(tray, /＋ 實體圖|ops-listing-physical-add/);
   assert.doesNotMatch(tray, /ops-listing-physical-copy/);
+  assert.match(listingForm, /productPhysicalImageUpload/);
   assert.match(listingForm, /physicalProductImageTrayHtml\(row\.physicalImageUrls,p\.docId\)/);
   assert.doesNotMatch(listingForm, /productListingSection\('實體圖片'/);
   assert.match(storageRules, /match \/ops-product-listing-cases\/\{productId\}\/physical\/\{fileName\}/);
@@ -281,6 +281,7 @@ test('listing form freezes one of four explicit product intents and never infers
   for (const value of ['create-single', 'create-group', 'add-variant', 'update-existing']) {
     assert.match(mode, new RegExp("choice\\('" + value + "'"));
   }
+  assert.doesNotMatch(mode, /<small>|一個 SKU 建立一個全新商品|只修改同一件商品|listingChangeInstructions/);
   assert.match(intent, /PRODUCT_LISTING_INTENTS\.includes\(explicit\)/);
   assert.match(policy, /preserveUnmentionedContent/);
   assert.match(saver, /listingIntent:listingIntent/);
@@ -425,16 +426,22 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.doesNotMatch(caseForm, /shopeeListingDecision/);
   assert.doesNotMatch(caseForm, /蝦皮防重複檢查|Match product|系統先檢查/);
   assert.doesNotMatch(caseForm, /<label>商品網址<\/label>/);
-  assert.match(caseForm, /<label>注意事項<\/label>/);
+  assert.doesNotMatch(caseForm, /<label>注意事項<\/label>|商品資料、抓圖範圍或不能出現的內容/);
+  assert.match(caseForm, /ops-listing-media-actions/);
+  assert.match(caseForm, /開始搜圖/);
   assert.match(caseForm, /productReferenceImageUpload/);
   assert.match(caseForm, /選擇圖片上傳/);
-  assert.match(caseForm, /從淘寶／1688 框選截圖/);
+  assert.match(caseForm, /productPhysicalImageUpload/);
+  assert.doesNotMatch(caseForm, /從淘寶／1688 框選截圖/);
   assert.match(caseForm, /product-image-collection-toggle/);
-  assert.match(caseForm, /這一步只收圖，不做簡繁轉換/);
-  assert.match(caseForm, /截錯可在下方直接刪除/);
+  assert.doesNotMatch(caseForm, /這一步只收圖，不做簡繁轉換|截錯可在下方直接刪除|Ctrl＋Shift＋Y/);
   assert.match(caseForm, /productReferenceImageSelectorHtml/);
   assert.doesNotMatch(caseForm, /重新製作勾選圖片/);
   assert.match(caseForm, /imageGenerationInstructions/);
+  assert.match(caseForm, /name="listingChangeInstructions"/);
+  assert.match(caseForm, /ops-listing-instruction-grid/);
+  assert.ok(caseForm.indexOf('productReferenceImagePreview') < caseForm.indexOf('name="listingChangeInstructions"'));
+  assert.equal((caseForm.match(/data-action="product-listing-speech"/g) || []).length, 2);
   assert.doesNotMatch(caseForm, /product-ai-image-generate/);
   assert.doesNotMatch(caseForm, /整理文案與圖片/);
   assert.match(caseForm, /id="productCompletedImageUpload"/);
