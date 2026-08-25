@@ -65,8 +65,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260825-listing-workspace-simple/);
-    assert.match(html, /operations-phase1\.js\?v=20260825-listing-workspace-simple/);
+    assert.match(html, /operations-phase1\.css\?v=20260825-listing-supplier-links/);
+    assert.match(html, /operations-phase1\.js\?v=20260825-listing-supplier-links/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260823-shopee-v3-schema6/);
   }
 });
@@ -429,6 +429,9 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.doesNotMatch(caseForm, /<label>注意事項<\/label>|商品資料、抓圖範圍或不能出現的內容/);
   assert.match(caseForm, /ops-listing-media-actions/);
   assert.match(caseForm, /開始搜圖/);
+  assert.match(caseForm, /href="https:\/\/www\.taobao\.com\/"/);
+  assert.match(caseForm, /href="https:\/\/www\.1688\.com\/"/);
+  assert.match(caseForm, /ops-listing-supplier-shortcuts/);
   assert.match(caseForm, /productReferenceImageUpload/);
   assert.match(caseForm, /選擇圖片上傳/);
   assert.match(caseForm, /productPhysicalImageUpload/);

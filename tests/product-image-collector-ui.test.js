@@ -13,6 +13,8 @@ const bridge = fs.readFileSync("easystore-shopee-autofill/bridge.js", "utf8");
 test("準備上架提供指定商品的開始收圖入口", () => {
   assert.match(operationsSource, /data-action="product-image-collection-toggle"/);
   assert.match(operationsSource, /開始搜圖/);
+  assert.match(operationsSource, /href="https:\/\/www\.taobao\.com\/"/);
+  assert.match(operationsSource, /href="https:\/\/www\.1688\.com\/"/);
   assert.doesNotMatch(operationsSource, /從淘寶／1688 框選截圖/);
   assert.match(operationsSource, /PRODUCT_IMAGE_COLLECTION\.maxImages/);
   assert.doesNotMatch(operationsSource, /<label>商品網址<\/label>/);
@@ -82,16 +84,18 @@ test("營運中心重新整理後會主動恢復既有收圖工作", () => {
   assert.match(background, /portal\.html#products/);
 });
 
-test("準備上架與細項收圖都不再顯示供應商快速連結", () => {
+test("準備上架保留供應商快速連結但細項區不重複顯示", () => {
   const variantStart = operationsSource.indexOf("function productVariantCollectorHtml");
   const variantEnd = operationsSource.indexOf("function productVariantRepresentativeCardHtml", variantStart);
   const variantCollector = operationsSource.slice(variantStart, variantEnd);
   const formStart = operationsSource.indexOf("function productListingCaseFormHtml");
   const formEnd = operationsSource.indexOf("async function openProductListingCase", formStart);
   const form = operationsSource.slice(formStart, formEnd);
-  assert.doesNotMatch(operationsSource, /function productSupplierQuickLinksHtml|開啟淘寶|開啟 1688/);
+  assert.match(form, /ops-listing-supplier-shortcuts/);
+  assert.match(form, />淘寶網<\/a>/);
+  assert.match(form, />1688<\/a>/);
   assert.doesNotMatch(variantCollector, /productSupplierQuickLinksHtml/);
-  assert.doesNotMatch(form, /productSupplierQuickLinksHtml/);
+  assert.doesNotMatch(variantCollector, /taobao\.com|1688\.com/);
 });
 
 test("收圖成功或失敗訊息不會立刻被等待文字覆蓋", () => {
