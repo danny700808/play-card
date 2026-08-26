@@ -14,7 +14,7 @@
   let session = null;
   let hoveredElement = null;
   let sending = false;
-  let directPickEnabled = true;
+  let directPickEnabled = false;
   let cropOverlay = null;
   let confirmCropSelection = null;
   let captureUiHidden = false;
@@ -58,7 +58,10 @@
       min-height: 40px; padding: 8px 10px; border: 0; border-radius: 9px;
       background: #173247; color: #fff; font-weight: 800; cursor: pointer;
     }
-    #youziImageCollectorPanel button[data-youzi-direct] { background: #e9f5ef; color: #17684e; }
+    #youziImageCollectorPanel button[data-youzi-direct] { background: #e9eef1; color: #455a64; }
+    #youziImageCollectorPanel button[data-youzi-direct].is-active {
+      background: #16a36f; color: #fff; box-shadow: 0 0 0 3px rgba(22,163,111,.18);
+    }
     #youziImageCollectorPanel button[data-youzi-stop] { grid-column: 1 / -1; background: #647681; }
     #youziImageCropOverlay {
       position: fixed; z-index: 2147483647; inset: 0; cursor: crosshair;
@@ -86,6 +89,7 @@
       background: #12a66d; color: #fff; font: 800 13px/1.2 "Microsoft JhengHei", sans-serif; cursor: pointer;
     }
     #youziImageCropOverlay .youzi-crop-toolbar button[data-crop-reset] { background: #fff; color: #173247; }
+    #youziImageCropOverlay .youzi-crop-toolbar button[data-crop-cancel] { background: #647681; color: #fff; }
   `;
   (document.head || document.documentElement).appendChild(style);
 
@@ -98,7 +102,7 @@
     <div class="youzi-progress" data-youzi-progress></div>
     <div class="youzi-status" data-youzi-status></div>
     <div class="youzi-actions">
-      <button type="button" data-youzi-direct>✓ 點圖片加入</button>
+      <button type="button" data-youzi-direct aria-pressed="false">點圖片加入：關閉</button>
       <button type="button" data-youzi-crop>框選截圖</button>
       <button type="button" data-youzi-stop>結束搜圖（Esc）</button>
     </div>
@@ -129,11 +133,12 @@
     productText.textContent = `${session.sku}｜${session.title || "準備上架商品"}`;
     progressText.textContent = `已加入 ${session.currentCount}／${session.maxImages} 張`;
     directButton.classList.toggle("is-active", directPickEnabled);
-    directButton.textContent = directPickEnabled ? "✓ 點圖片加入" : "點圖片加入";
+    directButton.setAttribute("aria-pressed", directPickEnabled ? "true" : "false");
+    directButton.textContent = directPickEnabled ? "✓ 點圖片加入：開啟" : "點圖片加入：關閉";
     if (!session.active && session.stoppedReason === "full") {
       setStatus(`已收滿 ${session.maxImages} 張，收圖模式已自動結束。`);
     } else if (!sending && !statusMessage) {
-      setStatus(directPickEnabled ? "移到圖片上，出現綠框後點一下；也可直接按「框選截圖」。" : "按「點圖片加入」即可繼續搜圖");
+      setStatus(directPickEnabled ? "移到圖片上，出現綠框後點一下；不用時可再按一次關閉。" : "點圖功能目前關閉；需要時按「點圖片加入」開啟，或使用「框選截圖」。");
     } else {
       statusText.textContent = statusMessage;
       statusText.classList.toggle("youzi-error", statusIsError);
@@ -474,10 +479,11 @@
     }
   }
 
-  function cancelCrop() {
+  function cancelCrop(showStatus = true) {
     if (cropOverlay) cropOverlay.remove();
     cropOverlay = null;
     confirmCropSelection = null;
+    if (showStatus) setStatus("已取消框選，可繼續操作原網頁。");
     updatePanel();
   }
 
@@ -486,7 +492,7 @@
     clearHover();
     cropOverlay = document.createElement("div");
     cropOverlay.id = "youziImageCropOverlay";
-    cropOverlay.innerHTML = '<div class="youzi-crop-help">按住滑鼠拉出範圍，放開後按「確認截圖」</div><div class="youzi-crop-selection"><div class="youzi-crop-toolbar"><button type="button" data-crop-capture>確認截圖</button><button type="button" data-crop-reset>重新框選</button></div></div>';
+    cropOverlay.innerHTML = '<div class="youzi-crop-help">按住滑鼠拉出範圍；不需要時按「取消框選」回到網頁</div><div class="youzi-crop-selection"><div class="youzi-crop-toolbar"><button type="button" data-crop-capture>確認截圖</button><button type="button" data-crop-reset>重新框選</button><button type="button" data-crop-cancel>取消框選</button></div></div>';
     document.documentElement.appendChild(cropOverlay);
     const selection = cropOverlay.querySelector(".youzi-crop-selection");
     const help = cropOverlay.querySelector(".youzi-crop-help");
@@ -522,7 +528,7 @@
         return;
       }
       selection.classList.add("is-ready");
-      help.textContent = "範圍正確就按「確認截圖」；不正確可直接重拉一次";
+      help.textContent = "範圍正確就按「確認截圖」；不需要可按「取消框選」回到網頁";
     };
     confirmCropSelection = async () => {
       if (!rect || rect.width < 20 || rect.height < 20 || sending || cropCaptureInFlight) return;
@@ -532,7 +538,7 @@
       try { await captureSelection(Object.assign({}, rect)); }
       finally {
         cropCaptureInFlight = false;
-        cancelCrop();
+        cancelCrop(false);
       }
     };
     cropOverlay.addEventListener("pointerdown", (event) => {
@@ -554,11 +560,13 @@
     cropOverlay.addEventListener("pointercancel", finishInteraction);
     cropOverlay.querySelector("[data-crop-capture]").addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); confirmCropSelection(); });
     cropOverlay.querySelector("[data-crop-reset]").addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); interaction = null; drawSelection(null); });
+    cropOverlay.querySelector("[data-crop-cancel]").addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); cancelCrop(); });
     updatePanel();
   }
 
   async function stopSession() {
     cancelCrop();
+    directPickEnabled = false;
     clearHover();
     queue.splice(0);
     await chrome.storage.local.remove(helpers.SESSION_STORAGE_KEY);
@@ -617,8 +625,9 @@
   }, true);
 
   panel.querySelector("[data-youzi-direct]").addEventListener("click", () => {
-    directPickEnabled = true;
-    setStatus("移到圖片上，綠框出現後點一下。");
+    directPickEnabled = !directPickEnabled;
+    if (!directPickEnabled) clearHover();
+    setStatus(directPickEnabled ? "點圖功能已開啟；移到圖片上，綠框出現後點一下。" : "點圖功能已關閉；現在可正常點擊網頁連結。");
     updatePanel();
   });
   panel.querySelector("[data-youzi-crop]").addEventListener("click", beginCrop);
@@ -638,11 +647,17 @@
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local" || !changes[helpers.SESSION_STORAGE_KEY]) return;
+    const previousSessionId = session && session.sessionId;
     const next = changes[helpers.SESSION_STORAGE_KEY].newValue;
     const validation = helpers.normalizeSessionPayload(next, Date.now());
     session = validation.ok ? validation.value : null;
-    if (session && session.active) directPickEnabled = true;
+    if (session && session.active && session.sessionId !== previousSessionId) {
+      directPickEnabled = false;
+      clearHover();
+      setStatus("");
+    }
     if (!session || !session.active) {
+      directPickEnabled = false;
       cancelCrop();
       clearHover();
     }
@@ -652,7 +667,7 @@
   chrome.storage.local.get(helpers.SESSION_STORAGE_KEY).then((stored) => {
     const validation = helpers.normalizeSessionPayload(stored[helpers.SESSION_STORAGE_KEY], Date.now());
     session = validation.ok ? validation.value : null;
-    if (session && session.active) directPickEnabled = true;
+    directPickEnabled = false;
     updatePanel();
   });
 })();
