@@ -161,7 +161,8 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
     shippingDecision: 'freight', packageLengthCm: 110, packageWidthCm: 45, packageHeightCm: 12, packageWeightKg: 5,
     enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
   });
-  assert.doesNotMatch(snapshot.bodyHtml, /product-listing-description-promo-[12]\.jpg/);
+  assert.match(snapshot.bodyHtml, /product-listing-description-promo-1\.jpg/);
+  assert.match(snapshot.bodyHtml, /product-listing-description-promo-2\.jpg/);
   assert.ok(snapshot.bodyHtml.endsWith('<p><strong>商品圖片與規格僅供參考，實際內容以收到的實體商品為準。</strong></p>'));
   assert.deepEqual(snapshot.momoDelivery, { method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流' });
   assert.equal(snapshot.momoCatalogPolicy.targetListings, 1000);
@@ -174,7 +175,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 23);
+  assert.equal(snapshot.automationPolicy.version, 24);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -210,8 +211,8 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 12);
-  assert.equal(snapshot.automationPolicy.version, 23);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 13);
+  assert.equal(snapshot.automationPolicy.version, 24);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -328,8 +329,8 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.neverOpenNativeFilePickerForVariantImages, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.neverAnalyzeOrRewriteInsideShopee, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.mode, 'use-easystore-rich-description');
-  assert.equal(snapshot.shopeeAdvancedDescription.expectedImageCount, 0);
-  assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, []);
+  assert.equal(snapshot.shopeeAdvancedDescription.expectedImageCount, 1);
+  assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, ['https://example.com/main.jpg']);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.packageWeightGrams, 5000);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.version, 3);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.verifiedFromLivePage, true);
@@ -643,7 +644,7 @@ test('MOMO special promotion image uses product image two or three and never sto
     internalSku: 'MOMO-PROMO', internalName: 'MOMO 專推圖測試', currentStock: 1,
     easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
   }, withV2ImagePlan({
-    productDescription: '完整商品介紹', listingImageUrls: productImages,
+    productDescription: '完整商品介紹\n\n商品特色\n1. 已驗證特色\n\n商品規格\n型號：MOMO-PROMO\n\n使用方式／適用情境\n1. 依商品說明使用', listingImageUrls: productImages,
     enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
   }, { branded: productImages[0], clean: productImages[1], cleanTwo: productImages[2] }));
 
@@ -701,23 +702,24 @@ test('MOMO publish verification accepts matching list and official catalog data'
   assert.equal(result.recoveryAction, 'none');
 });
 
-test('listing snapshot keeps six product gallery slots and puts overflow before the fixed final disclaimer', () => {
+test('listing snapshot caps product images at ten, appends the address gallery image, and interleaves the fixed detail images', () => {
   const productImages = Array.from({ length: 12 }, (_, index) => `https://example.com/product-${index + 1}.jpg`);
   const snapshot = helpers.buildListingSnapshot('p-images', {
     internalSku: 'IMG-12', internalName: '十二張圖片商品', currentStock: 1,
     easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
   }, {
-    productDescription: '完整商品介紹', listingImageUrls: productImages,
+    productDescription: '完整商品介紹\n\n商品特色\n1. 已驗證特色\n\n商品規格\n型號：IMG-12\n\n使用方式／適用情境\n1. 依商品說明使用', listingImageUrls: productImages,
     enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
   });
 
-  assert.equal(snapshot.productImageUrls.length, 12);
-  assert.equal(snapshot.images.length, 6);
+  assert.equal(snapshot.productImageUrls.length, 10);
+  assert.equal(snapshot.images.length, 7);
   assert.deepEqual(snapshot.images.slice(0, 6), productImages.slice(0, 6));
-  assert.deepEqual(snapshot.descriptionImageUrls, productImages.slice(6));
+  assert.match(snapshot.images.at(-1), /product-listing-store-promo\.png$/);
+  assert.deepEqual(snapshot.descriptionImageUrls, productImages.slice(0, 10));
   for (const html of [snapshot.bodyHtml, snapshot.momoHtml, snapshot.coupangDescriptionHtml]) {
-    assert.ok(html.indexOf('product-7.jpg') < html.lastIndexOf('商品圖片與規格僅供參考'));
-    assert.doesNotMatch(html, /product-listing-description-promo-[12]\.jpg/);
+    assert.ok(html.indexOf('product-10.jpg') < html.indexOf('product-listing-description-promo-1.jpg'));
+    assert.ok(html.indexOf('product-listing-description-promo-1.jpg') < html.indexOf('product-listing-description-promo-2.jpg'));
     assert.ok(html.endsWith('<p><strong>商品圖片與規格僅供參考，實際內容以收到的實體商品為準。</strong></p>'));
   }
   assert.equal(snapshot.imagePolicy.galleryMaximum, 7);
@@ -766,7 +768,7 @@ test('prepared role plan gives EasyStore a portrait hero, Shopee a square brande
     internalSku: 'PLATFORM-IMG', internalName: '平台主圖測試', currentStock: 1,
     easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
   }, withV2ImagePlan({
-    productDescription: '完整商品介紹', listingImageUrls: productImages,
+    productDescription: '完整商品介紹\n\n商品特色\n1. 已驗證特色\n\n商品規格\n型號：PLATFORM-IMG\n\n使用方式／適用情境\n1. 依商品說明使用', listingImageUrls: productImages,
     enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
   }, { storefront: productImages[0], branded: productImages[1], clean: productImages[2], cleanTwo: productImages[3], detail: productImages.slice(4) }));
 
@@ -1205,7 +1207,7 @@ test('publish results become product-level platform status without claiming queu
 test('EasyStore payload publishes one exact SKU with stock, price, package and at most seven gallery images', () => {
   const listingCase = {
     researchedProductName: 'Ibanez AZES40-MGR 電吉他',
-    productDescription: '適合入門與日常練習。\n\n商品特色\n1. 輕巧好彈\n\n商品規格\n型號：AZES40-MGR',
+    productDescription: '適合入門與日常練習。\n\n商品特色\n1. 輕巧好彈\n\n商品規格\n型號：AZES40-MGR\n\n使用方式／適用情境\n1. 演奏前先完成調音',
     listingImageUrls: Array.from({ length: 12 }, (_, index) => `https://example.com/${index}.jpg`),
     packageLengthCm: 106.7, packageWidthCm: 45.7, packageHeightCm: 10.2, packageWeightKg: 4.2,
     enabledPlatforms: { easyStoreShopee: true, momo: false, coupang: false }
@@ -1217,9 +1219,10 @@ test('EasyStore payload publishes one exact SKU with stock, price, package and a
   const body = helpers.buildEasyStoreProductBody(snapshot, true).product;
 
   assert.equal(snapshot.sku, '1040160-1');
-  assert.equal(snapshot.images.length, 6);
+  assert.equal(snapshot.images.length, 7);
   assert.equal(body.inventory_management, 'easystore');
-  assert.equal(body.images.length, 6);
+  assert.equal(body.images.length, 7);
+  assert.match(body.images.at(-1).url, /product-listing-store-promo\.png$/);
   assert.equal(body.variants.length, 1);
   assert.deepEqual(body.variants[0], {
     sku: '1040160-1', barcode: '4549763289575', price: 14800, inventory_quantity: 3,
@@ -1235,8 +1238,8 @@ test('zero stock remains published as out of stock and does not fail the EasySto
     internalSku: 'OUT-OF-STOCK-1', currentStock: 0, easyStorePrice: 9800
   }, {
     researchedProductName: '缺貨但仍需上架的商品',
-    productDescription: '商品資料完整，庫存稍後由既有庫存同步流程更新。',
-    listingImageUrls: ['https://example.com/out-of-stock.jpg'],
+    productDescription: '商品資料完整，庫存稍後由既有庫存同步流程更新。\n\n商品特色\n1. 已驗證特色\n\n商品規格\n型號：OUT-OF-STOCK-1\n\n使用方式／適用情境\n1. 補貨後由庫存流程恢復銷售',
+    listingImageUrls: ['https://example.com/out-of-stock-1.jpg', 'https://example.com/out-of-stock-2.jpg', 'https://example.com/out-of-stock-3.jpg'],
     enabledPlatforms: { easyStoreShopee: true, momo: false, coupang: false }
   });
   const body = helpers.buildEasyStoreProductBody(snapshot, true).product;
@@ -1283,8 +1286,8 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     model: 'AZES40-PRB', barcode: '4549763289575'
   }, {
     researchedProductName: 'Ibanez AZES40-PRB 電吉他',
-    productDescription: '完整商品介紹',
-    listingImageUrls: ['https://example.com/guitar.jpg'],
+    productDescription: '完整商品介紹\n\n商品特色\n1. 已驗證特色\n\n商品規格\n型號：AZES40-PRB\n\n使用方式／適用情境\n1. 演奏前先完成調音',
+    listingImageUrls: ['https://example.com/guitar-1.jpg', 'https://example.com/guitar-2.jpg', 'https://example.com/guitar-3.jpg'],
     brand: '舊資料品牌', shopeeBrand: 'Ibanez', model: 'AZES40-PRB', color: 'Purist Blue', identityStatus: 'confirmed',
     shopeeTitle: 'Ibanez AZES40-PRB 電吉他',
     shopeeListingDecision: 'new',
@@ -1313,7 +1316,7 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
   assert.equal(payload.brand, 'Ibanez');
   assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description');
   assert.equal(payload.advancedDescription.preparedBeforeNavigation, true);
-  assert.equal(payload.advancedDescription.expectedImageCount, 0);
+  assert.equal(payload.advancedDescription.expectedImageCount, 3);
   assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);
   assert.deepEqual(payload.attributes.map((row) => [row.label, row.value]), [
     ['Body Material', 'Poplar'], ['Pickup Configuration', 'HSS'],
@@ -1568,7 +1571,8 @@ test('physical photos stay out of every gallery and are appended before the fixe
 
   assert.deepEqual(snapshot.images.slice(0, 6), normalImages.slice(0, 6));
   assert.equal(snapshot.images.some((url) => physicalImages.includes(url)), false);
-  assert.deepEqual(snapshot.descriptionImageUrls, [...normalImages.slice(6), ...physicalImages]);
+  assert.match(snapshot.images.at(-1), /product-listing-store-promo\.png$/);
+  assert.deepEqual(snapshot.descriptionImageUrls, [...normalImages, ...physicalImages]);
   assert.equal(snapshot.platformImagePlan.easyStore.imageUrls.some((url) => physicalImages.includes(url)), false);
   assert.equal(snapshot.platformImagePlan.shopee.imageUrls.some((url) => physicalImages.includes(url)), false);
   assert.equal(snapshot.platformImagePlan.momo.imageUrls.some((url) => physicalImages.includes(url)), false);
@@ -1578,7 +1582,7 @@ test('physical photos stay out of every gallery and are appended before the fixe
     assert.ok(html.indexOf(physicalImages[1]) < html.lastIndexOf('商品圖片與規格僅供參考'));
     assert.ok(html.endsWith('<p><strong>商品圖片與規格僅供參考，實際內容以收到的實體商品為準。</strong></p>'));
   }
-  assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, [...normalImages.slice(6), ...physicalImages]);
+  assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, [...normalImages, ...physicalImages]);
   assert.equal(snapshot.physicalImagePolicy.customerFacingDerivative, 'label-only');
   assert.equal(snapshot.physicalImagePolicy.neverUseAsMainImage, true);
 });
@@ -1877,7 +1881,7 @@ test('one verified description is prepared once for EasyStore, Coupang, MOMO and
   assert.equal(plan.momo.imageHeightMaximumPx, 1500);
   assert.equal(plan.momo.imageFileMaximumBytes, 500000);
   assert.equal(plan.shopee.mode, 'advanced-rich-description');
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 12);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 13);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.descriptionDelivery.mode, 'momo-rich-description-blocks');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.descriptionDelivery.mode, 'safe-html-product-detail');
   assert.equal(snapshot.preparedPlatformFieldPlan.easyStore.preparedFields.descriptionDelivery.mode, 'safe-html');
@@ -2061,7 +2065,7 @@ test('2100307-4 固定 v3 實際資料可在不送出的模擬通過四通路預
   };
   const listingCase = {
     productSku: '2100307-4', researchedProductName: '桌上型木製閱讀譜架 升降款 原木色 柚子樂器',
-    productDescription: '木製面板搭配鋁合金底座，適合桌上閱讀與樂譜使用。\n\n商品特色\n1. 桌上型設計\n2. 高度可調\n\n商品規格\n面板：30 × 24 公分\n高度：4.4～39 公分\n底座：23.5 × 18.5 公分',
+    productDescription: '木製面板搭配鋁合金底座，適合桌上閱讀與樂譜使用。\n\n商品特色\n1. 桌上型設計\n2. 高度可調\n\n商品規格\n面板：30 × 24 公分\n高度：4.4～39 公分\n底座：23.5 × 18.5 公分\n\n使用方式／適用情境\n1. 依桌面高度調整到合適閱讀角度',
     sharedOnlinePrice: 450, stock: 2, warrantyMonths: 6,
     shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30, packageHeightCm: 10, packageWeightKg: 1,
     shopeeCategoryPath: '愛好與收藏品 > 樂器與樂器配件 > 樂器配件 > 樂譜架',

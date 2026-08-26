@@ -64,8 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260825-rich-content-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260825-rich-content-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260826-interleaved-description-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260826-interleaved-description-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260823-shopee-v3-schema6/);
   }
 });
@@ -592,7 +592,7 @@ test('listing case supports manager-only image processing and a truthful actual 
   assert.match(firestoreRules, /'opsProductListingQueue'/);
 });
 
-test('listing case offers eight direct platform actions and keeps detailed fields collapsed', () => {
+test('listing case offers the standard platform actions plus one fixed description-and-image refresh action', () => {
   const renderer = functionBody(engine, 'productListingCaseFormHtml');
   const actionGrid = functionBody(engine, 'productListingActionGridHtml');
   const oneClick = functionBody(engine, 'handoffProductListingToCodex');
@@ -605,6 +605,10 @@ test('listing case offers eight direct platform actions and keeps detailed field
   assert.match(actionGrid, /data-action="product-listing-codex-complete"/);
   assert.match(actionGrid, /加入待處理/);
   assert.match(actionGrid, /立即處理/);
+  assert.match(actionGrid, /修改圖片及網路介紹/);
+  assert.match(actionGrid, /data-purpose="'\+PRODUCT_DESCRIPTION_MEDIA_REFRESH_PURPOSE\+'"/);
+  assert.match(functionBody(engine, 'applyProductListingWorkflowPurpose'), /update-existing/);
+  assert.match(functionBody(engine, 'applyProductListingWorkflowPurpose'), /PRODUCT_DESCRIPTION_MEDIA_REFRESH_INSTRUCTIONS/);
   assert.match(renderer, /需要時才修改/);
   assert.doesNotMatch(renderer, /儲存並檢查/);
   assert.match(oneClick, /saveProductListingCase/);
@@ -616,6 +620,7 @@ test('listing case offers eight direct platform actions and keeps detailed field
   assert.match(oneClick, /completedMediaReady/);
   assert.match(oneClick, /listingTargetScope:listingTargetScope/);
   assert.match(oneClick, /listingTargetPlatforms:listingTargetPlatforms/);
+  assert.match(engine, /applyProductListingWorkflowPurpose\(form,el\.dataset\.purpose\)/);
   assert.match(oneClick, /callProductListingPublishWithTransientRetry/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /status\)\.toLowerCase\(\)!=='completed'/);
   assert.match(functionBody(engine, 'productListingImageGenerationReady'), /sourceImageUrls/);
