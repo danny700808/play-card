@@ -20,9 +20,13 @@ test("準備上架提供指定商品的開始收圖入口", () => {
   assert.doesNotMatch(operationsSource, /<label>商品網址<\/label>/);
 });
 
-test("一般商品頁預設可點圖，並提供單一步驟的框選截圖按鈕", () => {
-  assert.match(supplierCollector, /directPickEnabled = true/);
-  assert.match(supplierCollector, /✓ 點圖片加入/);
+test("一般商品頁預設關閉點圖，明確開啟後才攔截圖片點擊", () => {
+  assert.match(supplierCollector, /directPickEnabled = false/);
+  assert.match(supplierCollector, /點圖片加入：關閉/);
+  assert.match(supplierCollector, /點圖片加入：開啟/);
+  assert.match(supplierCollector, /directPickEnabled = !directPickEnabled/);
+  assert.match(supplierCollector, /if \(!directPickEnabled\) clearHover\(\)/);
+  assert.match(supplierCollector, /aria-pressed/);
   assert.match(supplierCollector, /data-youzi-crop>框選截圖/);
   assert.doesNotMatch(supplierCollector, /youzi-help|原圖點選：(?:開啟|關閉)/);
   assert.match(supplierCollector, /helpers\.CAPTURE_MESSAGE/);
@@ -113,6 +117,10 @@ test("框選截圖完成後立即恢復已加入與結束收圖面板", () => {
 test("框選截圖拉框後確認送出，並避免網站放大鏡遮罩", () => {
   assert.match(supplierCollector, /data-crop-capture/);
   assert.match(supplierCollector, /確認截圖/);
+  assert.match(supplierCollector, /data-crop-reset>重新框選/);
+  assert.match(supplierCollector, /data-crop-cancel>取消框選/);
+  assert.match(supplierCollector, /querySelector\("\[data-crop-cancel\]"\).*cancelCrop\(\)/);
+  assert.match(supplierCollector, /已取消框選，可繼續操作原網頁/);
   assert.match(supplierCollector, /範圍正確就按/);
   assert.doesNotMatch(supplierCollector, /data-dir=|interaction\.mode|interaction\.original/);
   assert.match(supplierCollector, /suppressSupplierHoverArtifacts/);
@@ -309,8 +317,8 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
   assert.match(supplierCollector, /deliverPreparedImage/);
 });
 
-test("Chrome 助手在一般商品網頁提供點圖與確認式框選截圖", () => {
-  assert.equal(manifest.version, "0.3.29");
+test("Chrome 助手在一般商品網頁提供點圖開關與可取消的框選截圖", () => {
+  assert.equal(manifest.version, "0.3.30");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.equal(manifest.permissions.includes("contextMenus"), false);
@@ -325,12 +333,13 @@ test("Chrome 助手在一般商品網頁提供點圖與確認式框選截圖", (
   assert.match(background, /if \(!imageCollector\.isCollectablePageUrl\(pageUrl\)\)/);
   assert.match(supplierCollector, /data-youzi-crop>框選截圖/);
   assert.match(supplierCollector, /data-crop-capture>確認截圖/);
+  assert.match(supplierCollector, /data-crop-cancel>取消框選/);
   assert.doesNotMatch(supplierCollector, /youzi-crop-handle|mode: "resize"|mode: "move"/);
   assert.doesNotMatch(background, /contextMenus|右鍵/);
   assert.equal(manifest.commands["start-image-crop"].suggested_key.default, "Ctrl+Shift+Y");
 });
 
-test("0.3.29 具備網頁面板截圖權限並能替已開分頁補載入", () => {
+test("0.3.30 具備網頁面板截圖權限並能替已開分頁補載入", () => {
   assert.ok(manifest.host_permissions.includes("<all_urls>"));
   assert.ok(manifest.permissions.includes("scripting"));
   assert.match(background, /chrome\.scripting\.executeScript/);
@@ -360,10 +369,10 @@ test("原圖回退會先解除放大、重新量座標並排除覆蓋物", () =>
   assert.match(supplierCollector, /result\.code !== "IMAGE_READ_FAILED"/);
 });
 
-test("高解析截圖會自動壓縮，營運中心只接受 0.3.29 以上助手", () => {
+test("高解析截圖會自動壓縮，營運中心只接受 0.3.30 以上助手", () => {
   assert.match(supplierCollector, /async function canvasBlobWithinLimit/);
   assert.match(supplierCollector, /Math\.sqrt\(helpers\.MAX_IMAGE_BYTES \/ blob\.size\)/);
-  assert.match(operationsSource, /minimumVersion:'0\.3\.29'/);
+  assert.match(operationsSource, /minimumVersion:'0\.3\.30'/);
   assert.match(operationsSource, /productImageCollectionVersionAtLeast/);
   assert.match(bridge, /extensionVersion: EXTENSION_VERSION/);
   assert.match(operationsSource, /目前收圖助手版本過舊/);
