@@ -83,7 +83,7 @@ test("Chrome permission error is translated to an actionable Chinese response", 
   const result = await harness.capture();
   assert.equal(result.ok, false);
   assert.equal(result.code, "CAPTURE_PERMISSION_MISSING");
-  assert.match(result.error, /0\.3\.29/);
+  assert.match(result.error, /0\.3\.30/);
   assert.doesNotMatch(result.error, /Either the/);
 });
 
