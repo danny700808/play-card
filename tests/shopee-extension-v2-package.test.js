@@ -11,7 +11,7 @@ const extensionHelpers = require('../easystore-shopee-autofill/helpers.js');
 const root = path.resolve(__dirname, '..');
 const extensionName = 'easystore-shopee-autofill';
 const extensionRoot = path.join(root, extensionName);
-const version = '0.3.29';
+const version = '0.3.30';
 const zipName = `youzi-easystore-shopee-autofill-v${version}.zip`;
 const zipPath = path.join(root, zipName);
 
@@ -80,7 +80,7 @@ function zipFileEntries(buffer) {
   return files;
 }
 
-test('0.3.29 ZIP contains exactly the Git extension files byte for byte', () => {
+test('0.3.30 ZIP contains exactly the Git extension files byte for byte', () => {
   assert.equal(fs.existsSync(zipPath), true, `缺少 ${zipName}`);
   const packaged = zipFileEntries(fs.readFileSync(zipPath));
   const sourceFiles = gitExtensionFiles();
@@ -103,7 +103,7 @@ test('extension version, download links, cache keys and CI package contract stay
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260823-shopee-v3-schema6';
-  const operationsCache = '20260826-interleaved-description-v1';
+  const operationsCache = '20260826-image-capture-toggle';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
