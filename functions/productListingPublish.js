@@ -1641,6 +1641,20 @@ function buildPlatformPageContracts() {
     },
     loginProbeBeforeProductNavigation: true,
     resumeSameProductOrDraftAfterLoginRecovery: true,
+    loginRecoveryPolicy: {
+      automatic: true,
+      browserWorkspace: 'codex-in-app-browser-only',
+      sourcePriority: [
+        'current-authenticated-tab',
+        'saved-credentials-in-current-browser',
+        'known-platform-entry-from-current-job',
+        'previous-successful-route-from-project-context'
+      ],
+      submitSavedCredentialsWithoutRoutineConfirmation: true,
+      resumeSameJobSkuDraftAndStage: true,
+      neverSwitchToPrimaryChrome: true,
+      userActionOnlyFor: ['otp', 'captcha', 'saved-credentials-rejected', 'platform-account-disabled']
+    },
     newCaseBoundary: {
       resetOncePerDifferentSku: true,
       discardPreviousSearchDrawerAndUnboundDraftState: true,
@@ -1694,6 +1708,31 @@ function buildPlatformPageContracts() {
         saveAndVerifySameDraftBeforeFirstSubmit: true,
         missingPromotionErrorIsNeverExpectedControlFlow: true,
         deduplicatePromotionAssetBeforeInsert: true
+      },
+      draftReopenPersistenceGate: {
+        verifyBeforeSubmit: [
+          'rich-description-editor-image', 'advertisement-image', 'package-dimensions',
+          'package-weight', 'temperature', 'delivery-methods', 'third-party-location-000001'
+        ],
+        reapplyOnlyMissingFieldsOnSameDraft: true,
+        neverCreateReplacementDraft: true
+      },
+      listingQuotaRecovery: {
+        maximumListings: 1000,
+        triggerOnlyOnExplicitQuotaError: true,
+        releaseExactlyOneSlotAtATime: true,
+        candidateOrder: ['zero-stock-no-sales', 'zero-stock-low-sales'],
+        preserveZeroStockHighSales: true,
+        unknownSalesMeansPreserve: true,
+        action: 'temporarily-downlist-never-delete',
+        verifyCountDecrementBeforeRetry: true,
+        retrySameDraftAfterSlotReleased: true
+      },
+      exactListSearch: {
+        queryBy: ['seller-sku', 'momo-product-number'],
+        trigger: 'search-append-control',
+        enterKeyAloneIsNotVerification: true,
+        maximumQueriesAfterSubmit: 1
       },
       storeCategoryConstraints: { maximumCount: 5, relevantOnly: true, validateBeforeSave: true },
       fixedFields: ['warranty-days-180', 'publish-immediately', 'third-party-location-000001'],
@@ -1871,7 +1910,14 @@ function buildPreparedPlatformFieldPlan(snapshot) {
       interactionConcurrency: 1,
       releaseInteractionLockDuringWait: true,
       sessionHeartbeatSeconds: 180,
-      keepAuthenticatedAnchorTabPerPlatform: true
+      keepAuthenticatedAnchorTabPerPlatform: true,
+      loginRecovery: {
+        automatic: true,
+        consultKnownRoutesAndPriorSuccessfulProjectContext: true,
+        useSavedCredentialsBeforeRequestingUser: true,
+        resumeSameJobAndDraft: true,
+        stopOnlyForOtpCaptchaOrRejectedCredentials: true
+      }
     },
     sharedImageAssetStandard: { ...(snapshot.imagePolicy && snapshot.imagePolicy.sharedDeliveryAssetStandard || {}) },
     storefrontPortraitAssetStandard: { ...(snapshot.imagePolicy && snapshot.imagePolicy.storefrontPortraitAssetStandard || {}) },
