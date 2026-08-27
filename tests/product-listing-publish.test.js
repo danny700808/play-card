@@ -318,6 +318,11 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.promotionInsertFlow.requiredBeforeFirstSubmit, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.firstSubmissionMediaGate.prepareAllBeforePlatformSubmit, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.firstSubmissionMediaGate.deduplicatePromotionAssetBeforeInsert, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.draftReopenPersistenceGate.reapplyOnlyMissingFieldsOnSameDraft, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.listingQuotaRecovery.action, 'temporarily-downlist-never-delete');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.listingQuotaRecovery.preserveZeroStockHighSales, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.exactListSearch.trigger, 'search-append-control');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.loginRecoveryPolicy.sourcePriority.at(-1), 'previous-successful-route-from-project-context');
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.batchSections[0].fields.includes('advertisement-image'));
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.storeCategoryConstraints.maximumCount, 5);
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.batchSections.at(-1).fields.includes('promotion-material-bank-image'));
@@ -339,6 +344,8 @@ test('listing snapshot applies fixed shop promos, MOMO delivery and compliance p
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.canonicalEntry.route, '商品管理/建立商品');
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.easyStore.canonicalEntry.route, '商品清單/新增商品');
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.canonicalEntry.route, 'EasyStore 官方蝦皮通路商品清單');
+  assert.equal(snapshot.preparedPlatformFieldPlan.browserScheduler.loginRecovery.consultKnownRoutesAndPriorSuccessfulProjectContext, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.browserScheduler.loginRecovery.stopOnlyForOtpCaptchaOrRejectedCredentials, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.fixedFields.complianceModel, 'TW_General');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.fixedFields.responsibleSeller, '尚品樂器行');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.shipping.convenienceStore.enabled, false);
