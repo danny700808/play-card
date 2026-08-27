@@ -86,18 +86,27 @@ test("營運中心重新整理後會主動恢復既有收圖工作", () => {
   assert.match(background, /portal\.html#products/);
 });
 
-test("準備上架保留供應商快速連結但細項區不重複顯示", () => {
+test("準備上架的主商品與每個細項都顯示供應商快速連結", () => {
   const variantStart = operationsSource.indexOf("function productVariantCollectorHtml");
   const variantEnd = operationsSource.indexOf("function productVariantRepresentativeCardHtml", variantStart);
   const variantCollector = operationsSource.slice(variantStart, variantEnd);
   const formStart = operationsSource.indexOf("function productListingCaseFormHtml");
   const formEnd = operationsSource.indexOf("async function openProductListingCase", formStart);
   const form = operationsSource.slice(formStart, formEnd);
-  assert.match(form, /ops-listing-supplier-shortcuts/);
-  assert.match(form, />淘寶網<\/a>/);
-  assert.match(form, />1688<\/a>/);
+  assert.match(form, /productSupplierShortcutsHtml\('ops-listing-single-image-controls'\)/);
+  assert.match(operationsSource, />淘寶網<\/a>/);
+  assert.match(operationsSource, />1688<\/a>/);
   assert.doesNotMatch(variantCollector, /productSupplierQuickLinksHtml/);
-  assert.doesNotMatch(variantCollector, /taobao\.com|1688\.com/);
+  assert.match(variantCollector, /productSupplierShortcutsHtml\('ops-listing-variant-supplier-shortcuts'\)/);
+});
+
+test("新增未上架可多選商品並自動以已有平台編號者作為合併主商品", () => {
+  assert.match(operationsSource, /data-action="product-merge-select"/);
+  assert.match(operationsSource, /data-action="product-merge-open"/);
+  assert.match(operationsSource, /selected\.filter\(productHasPlatformMapping\)/);
+  assert.match(operationsSource, /listingIntent:listed\.length\?'merge-existing':'create-group'/);
+  assert.match(operationsSource, /合併／加入既有商品/);
+  assert.match(operationsSource, /已有平台商品編號的商品放在第一筆並作為主商品/);
 });
 
 test("收圖成功或失敗訊息不會立刻被等待文字覆蓋", () => {

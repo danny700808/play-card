@@ -64,8 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260826-image-capture-toggle/);
-    assert.match(html, /operations-phase1\.js\?v=20260826-image-capture-toggle/);
+    assert.match(html, /operations-phase1\.css\?v=20260827-merge-existing-products/);
+    assert.match(html, /operations-phase1\.js\?v=20260827-merge-existing-products/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260823-shopee-v3-schema6/);
   }
 });
@@ -288,14 +288,14 @@ test('product header owns the saved listing queue and starts it sequentially in 
   assert.match(prompt, /batchQueueStatus 設為 completed/);
 });
 
-test('listing form freezes one of four explicit product intents and never infers a different action inside a platform', () => {
+test('listing form freezes one of five explicit product intents and never infers a different action inside a platform', () => {
   const intent = functionBody(engine, 'normalizeProductListingIntent');
   const policy = functionBody(engine, 'productListingIntentPolicy');
   const mode = functionBody(engine, 'productListingModeSectionHtml');
   const saver = functionBody(engine, 'saveProductListingCase');
   const prompt = functionBody(engine, 'productListingCodexHandoffPrompt');
 
-  for (const value of ['create-single', 'create-group', 'add-variant', 'update-existing']) {
+  for (const value of ['create-single', 'create-group', 'merge-existing', 'add-variant', 'update-existing']) {
     assert.match(mode, new RegExp("choice\\('" + value + "'"));
   }
   assert.doesNotMatch(mode, /<small>|一個 SKU 建立一個全新商品|只修改同一件商品|listingChangeInstructions/);
@@ -446,9 +446,10 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.doesNotMatch(caseForm, /<label>注意事項<\/label>|商品資料、抓圖範圍或不能出現的內容/);
   assert.match(caseForm, /ops-listing-media-actions/);
   assert.match(caseForm, /開始搜圖/);
-  assert.match(caseForm, /href="https:\/\/www\.taobao\.com\/"/);
-  assert.match(caseForm, /href="https:\/\/www\.1688\.com\/"/);
-  assert.match(caseForm, /ops-listing-supplier-shortcuts/);
+  assert.match(caseForm, /productSupplierShortcutsHtml\('ops-listing-single-image-controls'\)/);
+  assert.match(engine, /href="https:\/\/www\.taobao\.com\/"/);
+  assert.match(engine, /href="https:\/\/www\.1688\.com\/"/);
+  assert.match(engine, /ops-listing-supplier-shortcuts/);
   assert.match(caseForm, /productReferenceImageUpload/);
   assert.match(caseForm, /選擇圖片上傳/);
   assert.match(caseForm, /productPhysicalImageUpload/);

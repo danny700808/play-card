@@ -103,7 +103,7 @@ test('extension version, download links, cache keys and CI package contract stay
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260823-shopee-v3-schema6';
-  const operationsCache = '20260826-image-capture-toggle';
+  const operationsCache = '20260827-merge-existing-products';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);

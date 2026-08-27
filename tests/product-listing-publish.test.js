@@ -175,7 +175,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 24);
+  assert.equal(snapshot.automationPolicy.version, 25);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -212,7 +212,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.preparedPlatformFieldPlan.version, 13);
-  assert.equal(snapshot.automationPolicy.version, 24);
+  assert.equal(snapshot.automationPolicy.version, 25);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -1548,6 +1548,23 @@ test('explicit listing intent blocks unsafe create and update fallbacks instead 
   });
   assert.equal(grouped.listingIntent, 'create-group');
   assert.equal(grouped.mode, 'block-existing-target-for-create');
+
+  const mergeExisting = helpers.buildPlatformQueuePolicy(mapped, 'MOMO', {
+    productId: 'intent-merge', sku: 'INTENT-3', listingIntent: 'merge-existing',
+    variantGroupAttributeName: '顏色', variantGroupVariants: [{ sku: 'INTENT-3' }, { sku: 'INTENT-4' }]
+  });
+  assert.equal(mergeExisting.listingIntent, 'merge-existing');
+  assert.equal(mergeExisting.mode, 'merge-variant-group-into-existing');
+  assert.equal(mergeExisting.onOne, 'merge-selected-variants-into-exact-target');
+  assert.equal(mergeExisting.preserveUnmentionedContent, true);
+
+  const mergeMissingPlatform = helpers.buildPlatformQueuePolicy({}, 'Coupang', {
+    productId: 'intent-merge', sku: 'INTENT-3', listingIntent: 'merge-existing',
+    variantGroupAttributeName: '顏色', variantGroupVariants: [{ sku: 'INTENT-3' }, { sku: 'INTENT-4' }]
+  });
+  assert.equal(mergeMissingPlatform.mode, 'create-new-variant-group');
+  assert.equal(mergeMissingPlatform.onZero, 'create-one-parent-with-variants');
+  assert.equal(mergeMissingPlatform.preserveUnmentionedContent, false);
 
   assert.ok(helpers.listingIntentIdentityMissingFields({
     listingIntent: 'add-variant', existingPlatformListingIds: { momo: [] }
