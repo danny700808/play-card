@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 24;
+const LISTING_AUTOMATION_POLICY_VERSION = 25;
 const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v1';
 const RICH_CONTENT_FEATURE_TARGET = 10;
 const RICH_CONTENT_USAGE_TARGET = 8;
@@ -39,7 +39,7 @@ const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'proces
 const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
 const PLATFORM_QUEUE_RECEIPT_STATUSES = new Set([...PLATFORM_QUEUE_COMPLETED_STATUSES, 'submitted-to-platform-review', 'under-review']);
 const LISTING_IMAGE_ROLES = new Set(['cleanMain', 'brandedHero', 'storefrontPortrait', 'localizedDetail', 'specification', 'variantRepresentative']);
-const LISTING_INTENTS = new Set(['create-single', 'create-group', 'add-variant', 'update-existing']);
+const LISTING_INTENTS = new Set(['create-single', 'create-group', 'merge-existing', 'add-variant', 'update-existing']);
 const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
 const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const DESCRIPTION_PROMO_IMAGE_URLS = [
@@ -114,6 +114,7 @@ function normalizeListingIntent(listingCase, product = null) {
   const explicit = clean(source.listingIntent);
   if (LISTING_INTENTS.has(explicit)) return explicit;
   if (clean(source.listingMode) === 'add-variant') return 'add-variant';
+  if (clean(source.listingMode) === 'merge-existing') return 'merge-existing';
   if (source.variantGroupEnabled === true) return 'create-group';
   const central = product && typeof product === 'object' ? product : {};
   const hasExistingTarget = ['easyStore', 'shopee', 'momo', 'coupang']
@@ -126,13 +127,14 @@ function listingIntentPolicy(intent) {
   const policies = {
     'create-single': { label: '新增獨立商品', contentAction: 'create-complete-content', identityAction: 'create-one-new-product' },
     'create-group': { label: '新增多細項商品', contentAction: 'create-shared-content-with-variant-differences', identityAction: 'create-one-parent-with-closed-variant-set' },
+    'merge-existing': { label: '合併／加入既有商品', contentAction: 'merge-variant-group-into-existing-content', identityAction: 'reuse-existing-primary-and-attach-selected-variants' },
     'add-variant': { label: '加入既有商品細項', contentAction: 'merge-new-variant-into-existing-content', identityAction: 'append-one-variant-to-exact-parent' },
     'update-existing': { label: '修改既有商品', contentAction: 'replace-outdated-content-in-place', identityAction: 'update-exact-sku-and-platform-id' }
   };
   return {
     intent: normalized,
     ...policies[normalized],
-    preserveUnmentionedContent: ['add-variant', 'update-existing'].includes(normalized),
+    preserveUnmentionedContent: ['merge-existing', 'add-variant', 'update-existing'].includes(normalized),
     neverCreateDuplicate: true
   };
 }
@@ -322,6 +324,7 @@ function listingAutomationPolicy() {
       selectedIntentIsAuthoritative: true,
       createRequiresNoExistingTargetId: true,
       updateRequiresExactExistingTargetId: true,
+      mergeExistingReusesMappedPrimaryAndCreatesOnlyWhereMissing: true,
       addVariantPreservesExistingContentAndMergesNewSection: true,
       updateExistingReplacesOnlyRequestedOutdatedContent: true,
       neverInferCreateOrUpdateFromPlatformIdAfterHandoff: true
@@ -660,7 +663,8 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult, trace = {}) {
     ? [...new Set(snapshot.shopeeExistingListingIds.map(clean).filter(Boolean))].slice(0, 20)
     : [];
   const listingMode = addVariant ? 'add-variant-to-existing'
-    : listingIntent === 'update-existing' ? 'update-existing' : 'create-new';
+    : listingIntent === 'merge-existing' ? 'merge-variant-group-into-existing'
+      : listingIntent === 'update-existing' ? 'update-existing' : 'create-new';
   return {
     schemaVersion: SHOPEE_AUTOFILL_SCHEMA_VERSION,
     workflowVersion: LISTING_WORKFLOW_ID,
@@ -2141,7 +2145,8 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
   const intentPolicy = listingIntentPolicy(listingIntent);
   const listingTargetScope = normalizeListingTargetScope(listingCase && listingCase.listingTargetScope);
   const selectedPlatforms = listingTargetPlatforms(listingTargetScope);
-  const listingMode = listingIntent === 'add-variant' ? 'add-variant' : 'independent';
+  const listingMode = listingIntent === 'add-variant' ? 'add-variant'
+    : listingIntent === 'merge-existing' ? 'merge-existing' : 'independent';
   const parentProduct = variantParentProduct && typeof variantParentProduct === 'object' ? variantParentProduct : {};
   const parentPlatformMappings = parentProduct.platformMappings && typeof parentProduct.platformMappings === 'object'
     ? parentProduct.platformMappings : {};
@@ -2159,7 +2164,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     ? mergedVariantListingDescription(variantParentListingCase, listingCase)
     : listingDescription(listingCase);
   const descriptionContentStatus = listingDescriptionContentStatus({ productDescription: description });
-  const variantGroupEnabled = listingIntent === 'create-group';
+  const variantGroupEnabled = ['create-group', 'merge-existing'].includes(listingIntent);
   const variantParentSourceImageUrl = listingMode === 'add-variant' ? safeHttpUrl(listingCase.variantParentImageUrl) : '';
   const variantChildSourceImageUrl = listingMode === 'add-variant' ? safeHttpUrl(listingCase.variantChildImageUrl) : '';
   const variantGroupPrimarySourceImageUrl = variantGroupEnabled ? safeHttpUrl(listingCase.variantGroupPrimaryImageUrl) : '';
@@ -2295,6 +2300,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       platformCompletionRequiresSavedTextAndImages: true,
       physicalProductDisclaimer: PHYSICAL_PRODUCT_DISCLAIMER,
       listingIntent: intentPolicy,
+      mergeExistingContentRule: 'reuse-mapped-primary-preserve-unmentioned-content-and-attach-selected-independent-stock-variants',
       addVariantContentRule: 'preserve-existing-content-and-merge-new-variant-images-and-description',
       updateExistingContentRule: 'replace-only-requested-outdated-content-in-place-and-preserve-unmentioned-content',
       physicalImages: {
@@ -2658,6 +2664,28 @@ function buildPlatformQueuePolicy(product, platform, snapshot) {
       onOne: 'block-existing-target-for-create',
       onMultiple: 'block',
       onUncertain: 'exact-root-sku-recovery'
+    };
+  }
+  if (listingIntent === 'merge-existing') {
+    const mode = existingListingIds.length > 1 ? 'block-duplicate'
+      : existingListingIds.length ? 'merge-variant-group-into-existing' : 'create-new-variant-group';
+    return {
+      mode,
+      listingIntent,
+      matchKey: existingListingIds.length ? 'exact-primary-platform-id+closed-selected-sku-set' : 'new-variant-group',
+      sku: snapshot.sku,
+      skus: (snapshot.variantGroupVariants || []).map((row) => normalizeSku(row && row.sku)).filter(Boolean),
+      attributeName: clean(snapshot.variantGroupAttributeName),
+      existingListingIds,
+      identitySource: existingListingIds.length ? 'central-platform-id' : 'new-draft',
+      preflightSkuSearch: false,
+      uncertainSubmitRecovery: 'exact-root-sku-only',
+      contentAction: existingListingIds.length ? 'preserve-existing-and-merge-selected-variants' : 'create-complete-variant-group',
+      preserveUnmentionedContent: existingListingIds.length > 0,
+      onZero: 'create-one-parent-with-variants',
+      onOne: 'merge-selected-variants-into-exact-target',
+      onMultiple: 'block',
+      onUncertain: existingListingIds.length ? 'block' : 'exact-root-sku-recovery'
     };
   }
   if (listingIntent === 'update-existing') {
@@ -3336,6 +3364,8 @@ async function queueFixedIpPlatform(db, jobId, platform, snapshot, product, miss
   const categoryPrefix = categoryResolution.mode === 'map-once' ? `${platform} 會沿用進站前已判定的共同分類，只映射一次本平台的樂器／樂器配件葉分類；` : '';
   const message = categoryPrefix + (listingPolicy.mode === 'add-variant-to-existing'
     ? `${platform} 將把 SKU ${platformSnapshot.sku} 加入指定的既有商品，子編號的庫存與價格仍獨立。`
+    : listingPolicy.mode === 'merge-variant-group-into-existing'
+      ? `${platform} 將以既有平台商品編號為主商品，把所選 SKU 合併成同一組細項；各編號的庫存與價格仍獨立。`
     : listingPolicy.existingListingIds.length
     ? `${platform} 已找到既有平台編號，將更新原商品，不會建立第二筆。`
     : `${platform} 沒有中央平台編號，將直接建立同一份草稿；只有送出結果不明時才用完全相同 SKU 回查，不會先掃描全站商品。`);
