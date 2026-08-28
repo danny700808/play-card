@@ -26,11 +26,13 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const covers = require('../functions/bookCoverEnrichment');
 Module._load = originalLoad;
 
-test('extracts and validates ISBN-13 embedded in a 9-series SKU', () => {
-  assert.equal(covers.isValidIsbn13('9789866581816'), true);
-  assert.equal(covers.isValidIsbn13('9789866581815'), false);
-  assert.equal(covers.extractIsbn13('900卡林巴9789866581816'), '9789866581816');
-  assert.equal(covers.extractIsbn13('900-978-986-6581-816'), '9789866581816');
+test('cover lookup strips ISBN-like digits and searches by the product name only', () => {
+  assert.equal(covers.bookSearchTitle('吉他奏法大圖鑑 ISBN 9789866581304'), '吉他奏法大圖鑑');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'functions', 'bookCoverEnrichment.js'), 'utf8');
+  assert.doesNotMatch(source, /`isbn:\$\{/i);
+  assert.doesNotMatch(source, /openlibrary\.org\/api\/books/i);
 });
 
 test('9-series selection excludes explicit test products', () => {
@@ -45,7 +47,7 @@ test('book-title matching accepts roughly 80 percent identity after normalizatio
   assert.ok(covers.titleSimilarity('吉他奏法大圖鑑', '電子琴入門教程') < 0.8);
 });
 
-test('Google Books candidate requires exact ISBN for an ISBN query', () => {
+test('Google Books candidate uses title similarity only', () => {
   const base = {
     id: 'book-1',
     volumeInfo: {
@@ -54,12 +56,12 @@ test('Google Books candidate requires exact ISBN for an ISBN query', () => {
       imageLinks: { large: 'http://books.google.com/cover.jpg&zoom=1' }
     }
   };
-  const exact = covers.googleCandidate(base, '典弦教材-吉他奏法大圖鑑', '9789866581304', true);
-  assert.equal(exact.matchMethod, 'isbn');
-  assert.equal(exact.matchScore, 1);
-  assert.match(exact.imageUrl, /^https:/);
-  assert.match(exact.imageUrl, /zoom=3/);
-  assert.equal(covers.googleCandidate(base, '吉他奏法大圖鑑', '9789866581816', true), null);
+  const match = covers.googleCandidate(base, '典弦教材-吉他奏法大圖鑑');
+  assert.equal(match.matchMethod, 'title-only');
+  assert.ok(match.matchScore >= 0.8);
+  assert.match(match.imageUrl, /^https:/);
+  assert.match(match.imageUrl, /zoom=3/);
+  assert.equal(covers.googleCandidate(base, '電子琴入門教程'), null);
 });
 
 test('commerce fallback includes the approved music-book sources', () => {
@@ -80,7 +82,7 @@ test('book covers must be clear, complete portrait images', () => {
   assert.equal(covers.coverDimensionsAreAcceptable(500, 1200), false);
 });
 
-test('image-search candidates require exact ISBN or strong title similarity', () => {
+test('image-search candidates require strong title similarity without ISBN matching', () => {
   const good = JSON.stringify({
     murl: 'https://cdn.example.com/full-cover.jpg',
     purl: 'https://shop.example.com/books/9789866581366',
@@ -92,7 +94,8 @@ test('image-search candidates require exact ISBN or strong title similarity', ()
     t: '可愛貓咪海報'
   }).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   const html = `<a class="iusc" m="${good}"></a><a class="iusc" m="${wrong}"></a>`;
-  const rows = covers.bingImageCandidates(html, '典絃教材-節奏吉他完全解析', '9789866581366');
+  const rows = covers.bingImageCandidates(html, '典絃教材-節奏吉他完全解析');
   assert.equal(rows.length, 1);
   assert.equal(rows[0].imageUrl, 'https://cdn.example.com/full-cover.jpg');
+  assert.equal(rows[0].matchMethod, 'title-only');
 });

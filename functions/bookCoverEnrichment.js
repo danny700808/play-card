@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const REGION = 'us-central1';
 const PRODUCT_COLLECTION = 'opsInternalProducts';
 const JOB_COLLECTION = 'opsBookCoverEnrichmentJobs';
-const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v3';
+const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v4-name-only';
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_CHUNK_SIZE = 6;
 const MAX_CHUNK_SIZE = 10;
@@ -59,32 +59,21 @@ function isNineSeriesBook(product) {
   return true;
 }
 
-function isValidIsbn13(value) {
-  const digits = clean(value).replace(/[^0-9]/g, '');
-  if (!/^(?:978|979)\d{10}$/.test(digits)) return false;
-  const sum = digits.slice(0, 12).split('').reduce((total, digit, index) => {
-    return total + Number(digit) * (index % 2 ? 3 : 1);
-  }, 0);
-  return (10 - (sum % 10)) % 10 === Number(digits[12]);
-}
-
-function extractIsbn13(...values) {
-  for (const value of values) {
-    const text = clean(value).replace(/[\s-]+/g, '');
-    const matches = text.match(/(?:978|979)\d{10}/g) || [];
-    const valid = matches.find(isValidIsbn13);
-    if (valid) return valid;
-  }
-  return '';
-}
-
 function normalizeBookTitle(value) {
   return clean(value)
     .normalize('NFKC')
-    .replace(/^(?:典弦|卓著|麥書|大陸|美樂)教材\s*[-－:：|]*/i, '')
+    .replace(/^(?:典[弦絃]|卓著|麥書|大陸|美樂)教材\s*[-－:：|]*/i, '')
     .replace(/(?:ISBN)?\s*(?:978|979)[\d\s-]{10,}/gi, '')
     .replace(/[\s\p{P}\p{S}_]+/gu, '')
     .toLowerCase();
+}
+
+function bookSearchTitle(value) {
+  return clean(value)
+    .normalize('NFKC')
+    .replace(/(?:ISBN)?\s*(?:978|979)[\d\s-]{10,}/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function decodeHtml(value) {
@@ -139,12 +128,6 @@ function titleSimilarity(left, right) {
   return (2 * shared) / (a.length + b.length);
 }
 
-function googleIdentifiers(volume) {
-  const rows = volume && volume.volumeInfo && Array.isArray(volume.volumeInfo.industryIdentifiers)
-    ? volume.volumeInfo.industryIdentifiers : [];
-  return rows.map((row) => clean(row && row.identifier).replace(/[^0-9X]/gi, '')).filter(Boolean);
-}
-
 function googleCoverUrl(volume) {
   const links = volume && volume.volumeInfo && volume.volumeInfo.imageLinks;
   if (!links || typeof links !== 'object') return '';
@@ -153,24 +136,21 @@ function googleCoverUrl(volume) {
   return clean(raw).replace(/^http:/i, 'https:').replace(/&zoom=\d+/i, '&zoom=3').replace(/&edge=curl/ig, '');
 }
 
-function googleCandidate(volume, requestedTitle, requestedIsbn, exactIsbnQuery) {
+function googleCandidate(volume, requestedTitle) {
   const info = volume && volume.volumeInfo ? volume.volumeInfo : {};
   const title = [clean(info.title), clean(info.subtitle)].filter(Boolean).join(' ');
-  const identifiers = googleIdentifiers(volume);
-  const exactIsbn = !!requestedIsbn && identifiers.includes(requestedIsbn);
   const similarity = titleSimilarity(requestedTitle, title);
   const imageUrl = googleCoverUrl(volume);
   if (!imageUrl) return null;
-  if (requestedIsbn && !exactIsbn && exactIsbnQuery) return null;
-  if (!exactIsbn && similarity < 0.8) return null;
+  if (similarity < 0.8) return null;
   return {
     source: 'google-books',
     sourceRecordUrl: volume && volume.id ? `https://books.google.com/books?id=${encodeURIComponent(volume.id)}` : '',
     imageUrl,
     matchedTitle: title,
-    matchedIsbn: exactIsbn ? requestedIsbn : (identifiers.find(isValidIsbn13) || ''),
-    matchMethod: exactIsbn ? 'isbn' : 'fuzzy-title',
-    matchScore: exactIsbn ? 1 : similarity
+    matchedIsbn: '',
+    matchMethod: 'title-only',
+    matchScore: similarity
   };
 }
 
@@ -231,7 +211,7 @@ function bingResultUrls(html) {
   return urls;
 }
 
-function bingImageCandidates(html, requestedTitle, requestedIsbn) {
+function bingImageCandidates(html, requestedTitle) {
   const candidates = [];
   const expression = /<a\b[^>]*class=["'][^"']*\biusc\b[^"']*["'][^>]*\bm=["']([^"']+)["'][^>]*>/gi;
   let match;
@@ -241,17 +221,16 @@ function bingImageCandidates(html, requestedTitle, requestedIsbn) {
     const imageUrl = resolveHttpUrl(payload && payload.murl, 'https://www.bing.com/');
     const sourceRecordUrl = resolveHttpUrl(payload && payload.purl, 'https://www.bing.com/');
     const matchedTitle = stripHtml(payload && (payload.t || payload.desc));
-    const exactIsbn = !!requestedIsbn && clean([matchedTitle, sourceRecordUrl, imageUrl].join(' ')).replace(/[\s-]+/g, '').includes(requestedIsbn);
     const similarity = titleSimilarity(requestedTitle, matchedTitle);
-    if (!imageUrl || (!exactIsbn && similarity < 0.8)) continue;
+    if (!imageUrl || similarity < 0.8) continue;
     candidates.push({
       source: 'image-search-original',
       sourceRecordUrl,
       imageUrl,
       matchedTitle: matchedTitle || requestedTitle,
-      matchedIsbn: exactIsbn ? requestedIsbn : '',
-      matchMethod: exactIsbn ? 'isbn' : 'fuzzy-title',
-      matchScore: exactIsbn ? 1.01 : similarity
+      matchedIsbn: '',
+      matchMethod: 'title-only',
+      matchScore: similarity
     });
   }
   return uniqueCoverCandidates(candidates);
@@ -295,14 +274,12 @@ function pageImageRows(html, pageUrl, requestedTitle) {
   return rows.sort((left, right) => right.score - left.score);
 }
 
-async function candidateFromCommercePage(pageUrl, requestedTitle, requestedIsbn) {
+async function candidateFromCommercePage(pageUrl, requestedTitle) {
   if (/\b(?:shopee|amazon|facebook|instagram)\./i.test(pageUrl)) return null;
   const page = await fetchText(pageUrl);
-  const flatDigits = page.text.replace(/[\s-]+/g, '');
   const title = pageTitle(page.text);
-  const exactIsbn = !!requestedIsbn && flatDigits.includes(requestedIsbn);
   const similarity = titleSimilarity(requestedTitle, title);
-  if (requestedIsbn ? !exactIsbn : similarity < 0.8) return null;
+  if (similarity < 0.8) return null;
   const images = pageImageRows(page.text, page.finalUrl, requestedTitle).filter((row) => row.score >= 1);
   if (!images.length) return null;
   return images.slice(0, 6).map((image) => ({
@@ -310,42 +287,36 @@ async function candidateFromCommercePage(pageUrl, requestedTitle, requestedIsbn)
     sourceRecordUrl: page.finalUrl,
     imageUrl: image.url,
     matchedTitle: title || requestedTitle,
-    matchedIsbn: exactIsbn ? requestedIsbn : '',
-    matchMethod: exactIsbn ? 'isbn' : 'fuzzy-title',
-    matchScore: (exactIsbn ? 1 : similarity) + Math.max(-0.02, Math.min(0.02, Number(image.score || 0) / 1000))
+    matchedIsbn: '',
+    matchMethod: 'title-only',
+    matchScore: similarity + Math.max(-0.02, Math.min(0.02, Number(image.score || 0) / 1000))
   }));
 }
 
-async function discoverCommerceCoverCandidates(title, isbn) {
-  if (!clean(isbn || title)) return [];
-  // ISBN 只做精準加分；內部 ISBN 不正確或書商未刊 ISBN 時，仍以中文書名 80% 相似度找封面。
-  const domainQueries = (baseQuery, requiredIsbn) => [
-    `${baseQuery} 封面 site:talubook.com`,
-    `${baseQuery} 封面 site:musikershop.com`,
-    `${baseQuery} 封面 site:musicmusic.com.tw`,
-    `${baseQuery} 封面 site:books.com.tw`,
-    `${baseQuery} 樂譜 教材 正面封面`
-  ].map((query) => ({ query, requiredIsbn }));
+async function discoverCommerceCoverCandidates(title) {
+  if (!clean(title)) return [];
   const queries = [
-    ...(isbn ? domainQueries(isbn, isbn) : []),
-    ...domainQueries(title, '')
+    `${title} 封面 site:talubook.com`,
+    `${title} 封面 site:musikershop.com`,
+    `${title} 封面 site:musicmusic.com.tw`,
+    `${title} 封面 site:books.com.tw`,
+    `${title} 樂譜 教材 正面封面`
   ];
   let candidates = [];
-  for (const searchSpec of queries) {
-    const query = searchSpec.query;
+  for (const query of queries) {
     let urls = [];
     try {
       const search = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
       urls = duckDuckGoResultUrls(search.text).slice(0, 8);
     } catch (_) {}
-    let settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, searchSpec.requiredIsbn)));
+    let settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title)));
     candidates.push(...settled
       .filter((row) => row.status === 'fulfilled' && Array.isArray(row.value))
       .flatMap((row) => row.value));
     try {
       const search = await fetchText(`https://www.bing.com/search?q=${encodeURIComponent(query)}&count=10&setlang=zh-Hant`);
       urls = bingResultUrls(search.text).slice(0, 8);
-      settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, searchSpec.requiredIsbn)));
+      settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title)));
       candidates.push(...settled
         .filter((row) => row.status === 'fulfilled' && Array.isArray(row.value))
         .flatMap((row) => row.value));
@@ -357,11 +328,11 @@ async function discoverCommerceCoverCandidates(title, isbn) {
   return uniqueCoverCandidates(candidates);
 }
 
-async function discoverImageSearchCandidates(title, isbn) {
+async function discoverImageSearchCandidates(title) {
   const queryTitle = clean(title);
   if (!queryTitle) return [];
   const queries = [
-    ...(isbn ? [`${isbn} ${queryTitle} 封面`] : []),
+    `${queryTitle} 封面`,
     `"${queryTitle}" 書 封面`,
     `${queryTitle} 樂譜 教材 封面`
   ];
@@ -369,38 +340,18 @@ async function discoverImageSearchCandidates(title, isbn) {
   for (const query of queries) {
     try {
       const search = await fetchText(`https://www.bing.com/images/search?q=${encodeURIComponent(query)}&cc=TW&setlang=zh-TW`);
-      candidates.push(...bingImageCandidates(search.text, title, isbn));
+      candidates.push(...bingImageCandidates(search.text, title));
     } catch (_) {}
     if (uniqueCoverCandidates(candidates).length >= 24) break;
   }
   return uniqueCoverCandidates(candidates);
 }
 
-async function googleBooksCandidates(query, title, isbn, exactIsbnQuery) {
+async function googleBooksCandidates(query, title) {
   const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=20&printType=books`;
   const payload = await fetchJson(url);
   const items = Array.isArray(payload && payload.items) ? payload.items : [];
-  return items.map((item) => googleCandidate(item, title, isbn, exactIsbnQuery)).filter(Boolean);
-}
-
-async function openLibraryIsbnCandidate(isbn, title) {
-  if (!isbn) return null;
-  const key = `ISBN:${isbn}`;
-  const url = `https://openlibrary.org/api/books?bibkeys=${encodeURIComponent(key)}&format=json&jscmd=data`;
-  const payload = await fetchJson(url);
-  const row = payload && payload[key];
-  if (!row || !row.cover) return null;
-  const imageUrl = clean(row.cover.large || row.cover.medium || row.cover.small);
-  if (!imageUrl) return null;
-  return {
-    source: 'open-library',
-    sourceRecordUrl: clean(row.url),
-    imageUrl: imageUrl.replace(/^http:/i, 'https:'),
-    matchedTitle: clean(row.title) || title,
-    matchedIsbn: isbn,
-    matchMethod: 'isbn',
-    matchScore: 1
-  };
+  return items.map((item) => googleCandidate(item, title)).filter(Boolean);
 }
 
 function uniqueCoverCandidates(candidates) {
@@ -414,41 +365,24 @@ function uniqueCoverCandidates(candidates) {
 }
 
 async function findBookCoverCandidates(product) {
-  const sku = productSku(product);
   const name = productName(product);
-  const isbn = extractIsbn13(sku, product && product.barcode, product && product.isbn, name);
+  const searchTitle = bookSearchTitle(name);
   const candidates = [];
-  if (isbn) {
-    const settled = await Promise.allSettled([
-      googleBooksCandidates(`isbn:${isbn}`, name, isbn, true),
-      openLibraryIsbnCandidate(isbn, name)
-    ]);
-    settled.forEach((result) => {
-      if (result.status !== 'fulfilled') return;
-      if (Array.isArray(result.value)) candidates.push(...result.value);
-      else if (result.value) candidates.push(result.value);
-    });
-  }
-  if (!candidates.length) {
-    const queryTitle = normalizeBookTitle(name).slice(0, 80);
-    if (queryTitle.length >= 2) {
-      try {
-        candidates.push(...await googleBooksCandidates(`intitle:${queryTitle}`, name, isbn, false));
-      } catch (_) {}
-    }
+  const queryTitle = normalizeBookTitle(searchTitle).slice(0, 80);
+  if (queryTitle.length >= 2) {
+    try {
+      candidates.push(...await googleBooksCandidates(`intitle:${queryTitle}`, searchTitle));
+    } catch (_) {}
   }
   try {
-    candidates.push(...await discoverCommerceCoverCandidates(name, isbn));
+    candidates.push(...await discoverCommerceCoverCandidates(searchTitle));
   } catch (_) {}
   try {
-    candidates.push(...await discoverImageSearchCandidates(name, isbn));
+    candidates.push(...await discoverImageSearchCandidates(searchTitle));
   } catch (_) {}
   const uniqueCandidates = uniqueCoverCandidates(candidates);
-  uniqueCandidates.sort((left, right) => {
-    if (left.matchMethod !== right.matchMethod) return left.matchMethod === 'isbn' ? -1 : 1;
-    return Number(right.matchScore || 0) - Number(left.matchScore || 0);
-  });
-  return { candidates: uniqueCandidates, isbn };
+  uniqueCandidates.sort((left, right) => Number(right.matchScore || 0) - Number(left.matchScore || 0));
+  return { candidates: uniqueCandidates, isbn: '' };
 }
 
 async function findBookCoverCandidate(product) {
@@ -722,7 +656,7 @@ function registerBookCoverEnrichment(target) {
 
 module.exports = {
   COVER_RULE_VERSION,
-  extractIsbn13,
+  bookSearchTitle,
   coverDimensionsAreAcceptable,
   findBookCoverCandidate,
   googleCandidate,
@@ -731,7 +665,6 @@ module.exports = {
   bingImageCandidates,
   pageImageRows,
   isNineSeriesBook,
-  isValidIsbn13,
   normalizeBookTitle,
   productName,
   productSku,
