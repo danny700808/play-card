@@ -175,7 +175,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 25);
+  assert.equal(snapshot.automationPolicy.version, 26);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -186,9 +186,12 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.retry.maximumAttempts, 4);
   assert.equal(snapshot.automationPolicy.retry.retrySameSkuAndDraftOnly, true);
   assert.ok(snapshot.automationPolicy.retry.transientFailureSignatures.includes('image-fetch-failed'));
+  assert.ok(snapshot.automationPolicy.retry.transientFailureSignatures.includes('platform-session-expired'));
   assert.deepEqual(snapshot.automationPolicy.publishVerification.requiredChecks, [
-    'listing-id', 'exact-sku', 'price', 'status', 'one-official-list-match'
+    'listing-id', 'exact-sku', 'price', 'stock', 'status', 'one-official-list-match',
+    'complete-variant-sku-set', 'variant-name', 'variant-price', 'variant-stock', 'variant-image'
   ]);
+  assert.equal(snapshot.automationPolicy.publishVerification.repairLoop.resubmitSameListingAfterRepair, true);
   assert.equal(snapshot.automationPolicy.publishVerification.imageReceiptContract.postSubmitImageUrlCollectionRequired, false);
   assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.order, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.mode, 'staggered-parallel');
@@ -211,8 +214,8 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 13);
-  assert.equal(snapshot.automationPolicy.version, 25);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 14);
+  assert.equal(snapshot.automationPolicy.version, 26);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -284,6 +287,12 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.browserControl.neverUsePrimaryChrome, true);
   assert.equal(snapshot.automationPolicy.browserControl.reuseExistingAuthenticatedPlatformTabs, true);
   assert.equal(snapshot.automationPolicy.browserControl.allowSavedCredentialLoginRetry, true);
+  assert.equal(snapshot.automationPolicy.browserControl.authenticatedTabIsPrimarySessionEvidence, true);
+  assert.equal(snapshot.automationPolicy.browserControl.deepLinkFailureAloneDoesNotMeanLoggedOut, true);
+  assert.equal(snapshot.automationPolicy.browserControl.retryCanonicalEntryBeforeLogin, true);
+  assert.equal(snapshot.automationPolicy.browserControl.submitSavedCredentialsWithoutRoutineConfirmation, true);
+  assert.ok(snapshot.automationPolicy.recoverableAuthenticationStates.includes('login-expired'));
+  assert.equal(snapshot.automationPolicy.permanentBlockers.includes('login-expired'), false);
   assert.equal(snapshot.automationPolicy.browserControl.neverOpenNativeWindowsFilePicker, true);
   assert.equal(snapshot.automationPolicy.browserControl.stopForInteractiveAuthenticationOnly, true);
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
@@ -434,7 +443,7 @@ test('正式發布先完成所選通路預檢，並讓蝦皮只依賴 EasyStore'
   assert.match(backend, /target\.applyProductListingQueueReceipt = onDocumentWritten/);
 });
 
-test('通路快速核對只要求商品編號、SKU、價格、狀態與任一正式清單', () => {
+test('通路正式核對要求商品編號、SKU、價格、庫存、狀態與任一正式清單', () => {
   const sourceUrl = 'https://example.com/source.jpg';
   const completedUrl = 'https://example.com/completed.jpg';
   const snapshot = {
@@ -485,14 +494,14 @@ test('送出後不強制蒐集平台圖片網址，但若有回傳來源原圖�
   assert.equal(missingOfficial.verified, true);
 
   const officialOnly = helpers.validatePlatformStageVerification('coupang', snapshot, {
-    listingId: 'CP-EVIDENCE', sku: 'IMG-EVIDENCE', price: 900, status: 'published',
+    listingId: 'CP-EVIDENCE', sku: 'IMG-EVIDENCE', price: 900, stock: 2, status: 'published',
     platformListMatched: false, officialCatalogMatched: true,
     officialImageUrls: ['https://platform-cdn.example.com/resized/final-123.webp']
   });
   assert.equal(officialOnly.verified, true, officialOnly.reasons.join(','));
 
   const noImageEvidence = helpers.validatePlatformStageVerification('coupang', snapshot, {
-    listingId: 'CP-EVIDENCE', sku: 'IMG-EVIDENCE', price: 900, status: 'published',
+    listingId: 'CP-EVIDENCE', sku: 'IMG-EVIDENCE', price: 900, stock: 2, status: 'published',
     platformListMatched: true, officialCatalogMatched: false
   });
   assert.equal(noImageEvidence.verified, true);
@@ -681,7 +690,7 @@ test('MOMO stops before queueing when only the branded first image exists', () =
   assert.match(helpers.momoMissingFields(snapshot).join('、'), /MOMO clean-only 專推圖/);
 });
 
-test('MOMO 快速核對拒絕草稿與空白售價，但不再等待庫存及第二份清單', () => {
+test('MOMO 核對拒絕草稿、空白售價與庫存不符', () => {
   const result = helpers.evaluateMomoPublishVerification(
     { sku: '2500118', momoPrice: 350, stock: 4 },
     {
@@ -691,7 +700,7 @@ test('MOMO 快速核對拒絕草稿與空白售價，但不再等待庫存及第
   );
   assert.equal(result.verified, false);
   assert.equal(result.needsRetry, true);
-  assert.deepEqual(result.reasons, ['still-draft', 'blank-price']);
+  assert.deepEqual(result.reasons, ['still-draft', 'blank-price', 'stock-mismatch']);
   assert.equal(result.recoveryAction, 'resume-same-draft-and-reapply-cleared-fields');
   assert.equal(result.neverCreateReplacementDraft, true);
 });
@@ -707,6 +716,13 @@ test('MOMO publish verification accepts matching list and official catalog data'
   assert.equal(result.verified, true);
   assert.deepEqual(result.reasons, []);
   assert.equal(result.recoveryAction, 'none');
+});
+
+test('登入與頁籤失效必須自動恢復，只有互動驗證或帳密被拒才停止', () => {
+  assert.equal(helpers.isTransientListingPublishFailure('登入已失效，已跳回登入頁'), true);
+  assert.equal(helpers.isTransientListingPublishFailure('authenticated tab control lost'), true);
+  assert.equal(helpers.isTransientListingPublishFailure('saved credentials rejected'), false);
+  assert.equal(helpers.isTransientListingPublishFailure('MOMO OTP 驗證碼'), false);
 });
 
 test('listing snapshot caps product images at ten, appends the address gallery image, and interleaves the fixed detail images', () => {
@@ -1905,7 +1921,7 @@ test('one verified description is prepared once for EasyStore, Coupang, MOMO and
   assert.equal(plan.momo.imageHeightMaximumPx, 1500);
   assert.equal(plan.momo.imageFileMaximumBytes, 500000);
   assert.equal(plan.shopee.mode, 'advanced-rich-description');
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 13);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 14);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.descriptionDelivery.mode, 'momo-rich-description-blocks');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.descriptionDelivery.mode, 'safe-html-product-detail');
   assert.equal(snapshot.preparedPlatformFieldPlan.easyStore.preparedFields.descriptionDelivery.mode, 'safe-html');
@@ -1944,7 +1960,7 @@ test('同款群組可擴充為三個或五個細項，仍只有一個封閉主�
   });
 });
 
-test('同款群組正式核對要求完全相同的 SKU 集合、價格及細項小圖，不重查庫存', () => {
+test('同款群組正式核對要求完全相同的 SKU 集合、價格、庫存及細項小圖', () => {
   const { snapshot, products } = groupedListingFixture(2);
   const verification = {
     listingId: 'platform-parent', sku: 'GROUP-1', status: 'published',
@@ -1971,7 +1987,7 @@ test('同款群組正式核對要求完全相同的 SKU 集合、價格及細項
     ...verification,
     variants: [verification.variants[0], { ...verification.variants[1], stock: 999 }]
   });
-  assert.equal(wrongStock.verified, true, wrongStock.reasons.join(','));
+  assert.equal(wrongStock.reasons.includes('variant-stock-mismatch:GROUP-2'), true);
   const missingVariantImage = helpers.validatePlatformStageVerification('easyStore', snapshot, {
     ...verification,
     variants: [verification.variants[0], { ...verification.variants[1], imageUrl: '' }]
