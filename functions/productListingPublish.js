@@ -792,24 +792,35 @@ function summarizePlatformsForStorage(platforms) {
   return summary;
 }
 
-function platformListingStatusFromPublish(previous, platforms) {
+function platformListingStatusFromPublish(previous, platforms, stages) {
   const current = previous && typeof previous === 'object' ? previous : {};
+  const stageRows = stages && typeof stages === 'object' ? stages : {};
   const next = { ...current };
   const statusMap = {
     created: 'active', updated: 'active', completed: 'active', 'already-completed': 'mapped',
     'waiting-easystore-sync': 'queued', 'awaiting-store-agent': 'queued', 'already-queued': 'queued', submitted: 'queued',
+    'submitted-to-platform-review': 'pending-review', 'under-review': 'pending-review',
     'action-required': 'error', 'missing-fields': 'error', 'waiting-easystore': 'error', failed: 'error'
   };
   Object.entries(platforms && typeof platforms === 'object' ? platforms : {}).forEach(([platform, raw]) => {
     if (!raw || typeof raw !== 'object') return;
     const old = current[platform] && typeof current[platform] === 'object' ? current[platform] : {};
+    const stage = stageRows[platform] && typeof stageRows[platform] === 'object' ? stageRows[platform] : {};
+    const receipt = stage.receipt && typeof stage.receipt === 'object' ? stage.receipt : {};
+    const receiptStatus = clean(receipt.status).toLowerCase();
+    const rawStatus = clean(raw.status).toLowerCase();
+    const pendingReview = platform === 'coupang' && [receiptStatus, rawStatus].some((value) => ['under-review', 'submitted-to-platform-review', 'pending-review', '審核中'].includes(value));
+    const resolvedStatus = pendingReview ? 'pending-review' : (statusMap[clean(raw.status)] || clean(old.status) || 'unknown');
     next[platform] = {
       ...old,
-      status: statusMap[clean(raw.status)] || clean(old.status) || 'unknown',
-      listingId: clean(raw.productId || raw.listingId || old.listingId),
-      note: clean(raw.message).slice(0, 800),
+      status: resolvedStatus,
+      listingId: clean(receipt.listingId || raw.productId || raw.listingId || old.listingId),
+      note: clean(pendingReview ? '酷澎已送審，等待正式核准；請於 24 小時及 48 小時後重查。' : raw.message).slice(0, 800),
       lastCheckedAt: admin.firestore.FieldValue.serverTimestamp(),
-      lastCheckedBy: '商品上架工作'
+      lastCheckedBy: '商品上架工作',
+      reviewSubmittedAt: pendingReview ? (old.reviewSubmittedAt || admin.firestore.FieldValue.serverTimestamp()) : (old.reviewSubmittedAt || null),
+      nextReviewCheckAt: pendingReview ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null,
+      finalReviewCheckAt: pendingReview ? new Date(Date.now() + 48 * 60 * 60 * 1000) : null
     };
   });
   return next;
@@ -4127,7 +4138,7 @@ async function applyVerifiedQueueReceipt(db, queueId, queueRecord, dependencies 
     updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v3'
   }, { merge: true });
   await productRef.set({
-    platformListingStatus: platformListingStatusFromPublish(product.platformListingStatus, updatedJob.platforms),
+    platformListingStatus: platformListingStatusFromPublish(product.platformListingStatus, updatedJob.platforms, updatedJob.stages),
     platformListingStatusUpdatedAt: updatedAt, updatedAt, updatedBy: '固定四通路流程 v3'
   }, { merge: true });
   const finalized = await finalizeListingJobIfReady(
@@ -4576,7 +4587,7 @@ async function publishProductListingCaseHandler(request) {
         lockStatus = 'completed';
         return { ok: true, productId, jobId, status, currentStage, stages, platforms: platformsForStorage };
       }
-      const platformListingStatus = platformListingStatusFromPublish(product.platformListingStatus, platforms);
+      const platformListingStatus = platformListingStatusFromPublish(product.platformListingStatus, platforms, stages);
       await Promise.all([
         caseRef.set({
           caseStatus: status === 'completed' ? 'published' : 'submitted',
@@ -4714,7 +4725,7 @@ async function finalizeListingJobIfReady(db, jobId, actor) {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v3'
     }, { merge: true }));
     finalWrites.push(reference.productRef.set({
-      platformListingStatus: platformListingStatusFromPublish(reference.product.platformListingStatus, platforms),
+      platformListingStatus: platformListingStatusFromPublish(reference.product.platformListingStatus, platforms, completedStages),
       platformListingStatusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v3'
     }, { merge: true }));

@@ -28,13 +28,16 @@ test('商品資訊放寬所有 SKU 開頭，只排除沒有商品編號的資料
   assert.match(functionBody('openProductListingCase'), /這筆中央商品沒有 SKU/);
 });
 
-test('四平台狀態只顯示有或沒有，沒有可直接進準備上架', () => {
+test('四平台狀態顯示有、沒有或審核中，並提供對應處理', () => {
   const body = functionBody('productPlatformStatusHtml');
   assert.match(body, /clean\(p&&p\.sku\)\.startsWith\('0'\).*return ''/s);
   assert.match(body, />有<\/i>/);
   assert.match(body, />沒有<\/i>/);
+  assert.match(body, /pendingLabel=status\.status==='pending-review'\?'審核中'/);
+  assert.match(body, /data-action="product-platform-recheck"/);
   assert.match(body, /data-action="product-platform-missing"/);
   assert.match(functionBody('handleAction'), /product-platform-missing.*openProductListingCase/);
+  assert.match(functionBody('handleAction'), /product-platform-recheck.*startProductPlatformAudit/);
 });
 
 test('通路檢測保留缺貨與一般下架，違規與未通過仍判定沒有', () => {
@@ -56,15 +59,34 @@ test('商品資訊提供完整四平台檢測按鈕與一次授權的 Codex 交�
   const render = functionBody('renderProducts');
   const prompt = functionBody('productPlatformAuditPrompt');
   const start = functionBody('startProductPlatformAudit');
-  assert.match(render, /data-action="product-platform-audit">檢測網路商品狀態/);
+  assert.match(render, /data-action="product-platform-audit">檢測全部網路商品/);
+  assert.match(render, /data-action="product-platform-published-audit">重查已送出／審核中/);
   assert.match(prompt, /EasyStore 官網、EasyStore 官方蝦皮通路、MOMO 店\+商品管理、Coupang Wing/);
   assert.match(prompt, /缺貨、庫存 0/);
   assert.match(prompt, /違規、受限制、審核未通過/);
   assert.match(prompt, /合併商品必須展開規格確認每個原廠 SKU/);
+  assert.match(prompt, /送審後 24 小時/);
+  assert.match(prompt, /第二次重查時間為送審後 48 小時/);
   assert.match(start, /同意並開始檢測/);
   assert.match(start, /noSecondConfirmation:true/);
   assert.match(start, /productListingCodexThreadUrl\(prompt\)/);
   assert.match(functionBody('handleAction'), /product-platform-audit.*startProductPlatformAudit/);
+  assert.match(functionBody('handleAction'), /product-platform-published-audit.*publishedOnly:true/);
+});
+
+test('已完成上架案件再次開啟時只保留目前 SKU，不延續舊合併清單', () => {
+  const completed = functionBody('productListingCaseIsCompleted');
+  const reset = functionBody('resetCompletedProductListingCase');
+  const open = functionBody('openProductListingCase');
+  const form = functionBody('productListingCaseFormHtml');
+  assert.match(completed, /caseStatus\)==='published'/);
+  assert.match(completed, /publishState\.currentStage\)==='completed'/);
+  assert.match(reset, /listingIntent='update-existing'/);
+  assert.match(reset, /variantGroupEnabled=false/);
+  assert.match(reset, /variantGroupItems=\[\]/);
+  assert.match(reset, /variantParentProductId=''/);
+  assert.match(open, /productListingCaseIsCompleted\(raw\).*resetCompletedProductListingCase\(row\)/s);
+  assert.match(form, /本次已回到單一商品修改狀態/);
 });
 
 test('圖片模式商品卡只顯示原始品名，不顯示網路名稱摘要', () => {
