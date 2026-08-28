@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const REGION = 'us-central1';
 const PRODUCT_COLLECTION = 'opsInternalProducts';
 const JOB_COLLECTION = 'opsBookCoverEnrichmentJobs';
-const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v2';
+const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v3';
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_CHUNK_SIZE = 6;
 const MAX_CHUNK_SIZE = 10;
@@ -231,6 +231,32 @@ function bingResultUrls(html) {
   return urls;
 }
 
+function bingImageCandidates(html, requestedTitle, requestedIsbn) {
+  const candidates = [];
+  const expression = /<a\b[^>]*class=["'][^"']*\biusc\b[^"']*["'][^>]*\bm=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = expression.exec(clean(html))) && candidates.length < 30) {
+    let payload;
+    try { payload = JSON.parse(decodeHtml(match[1])); } catch (_) { continue; }
+    const imageUrl = resolveHttpUrl(payload && payload.murl, 'https://www.bing.com/');
+    const sourceRecordUrl = resolveHttpUrl(payload && payload.purl, 'https://www.bing.com/');
+    const matchedTitle = stripHtml(payload && (payload.t || payload.desc));
+    const exactIsbn = !!requestedIsbn && clean([matchedTitle, sourceRecordUrl, imageUrl].join(' ')).replace(/[\s-]+/g, '').includes(requestedIsbn);
+    const similarity = titleSimilarity(requestedTitle, matchedTitle);
+    if (!imageUrl || (!exactIsbn && similarity < 0.8)) continue;
+    candidates.push({
+      source: 'image-search-original',
+      sourceRecordUrl,
+      imageUrl,
+      matchedTitle: matchedTitle || requestedTitle,
+      matchedIsbn: exactIsbn ? requestedIsbn : '',
+      matchMethod: exactIsbn ? 'isbn' : 'fuzzy-title',
+      matchScore: exactIsbn ? 1.01 : similarity
+    });
+  }
+  return uniqueCoverCandidates(candidates);
+}
+
 function pageTitle(html) {
   const title = clean((clean(html).match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || [])[1]);
   const heading = clean((clean(html).match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i) || [])[1]);
@@ -313,21 +339,40 @@ async function discoverCommerceCoverCandidates(title, isbn) {
       urls = duckDuckGoResultUrls(search.text).slice(0, 8);
     } catch (_) {}
     let settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, searchSpec.requiredIsbn)));
-    candidates = settled
+    candidates.push(...settled
       .filter((row) => row.status === 'fulfilled' && Array.isArray(row.value))
-      .flatMap((row) => row.value);
-    if (candidates.length) break;
+      .flatMap((row) => row.value));
     try {
       const search = await fetchText(`https://www.bing.com/search?q=${encodeURIComponent(query)}&count=10&setlang=zh-Hant`);
       urls = bingResultUrls(search.text).slice(0, 8);
       settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, searchSpec.requiredIsbn)));
-      candidates = settled
+      candidates.push(...settled
         .filter((row) => row.status === 'fulfilled' && Array.isArray(row.value))
-        .flatMap((row) => row.value);
+        .flatMap((row) => row.value));
     } catch (_) {}
-    if (candidates.length) break;
+    candidates = uniqueCoverCandidates(candidates);
+    if (candidates.length >= 36) break;
   }
   candidates.sort((left, right) => Number(right.matchScore || 0) - Number(left.matchScore || 0));
+  return uniqueCoverCandidates(candidates);
+}
+
+async function discoverImageSearchCandidates(title, isbn) {
+  const queryTitle = clean(title);
+  if (!queryTitle) return [];
+  const queries = [
+    ...(isbn ? [`${isbn} ${queryTitle} 封面`] : []),
+    `"${queryTitle}" 書 封面`,
+    `${queryTitle} 樂譜 教材 封面`
+  ];
+  const candidates = [];
+  for (const query of queries) {
+    try {
+      const search = await fetchText(`https://www.bing.com/images/search?q=${encodeURIComponent(query)}&cc=TW&setlang=zh-TW`);
+      candidates.push(...bingImageCandidates(search.text, title, isbn));
+    } catch (_) {}
+    if (uniqueCoverCandidates(candidates).length >= 24) break;
+  }
   return uniqueCoverCandidates(candidates);
 }
 
@@ -394,6 +439,9 @@ async function findBookCoverCandidates(product) {
   }
   try {
     candidates.push(...await discoverCommerceCoverCandidates(name, isbn));
+  } catch (_) {}
+  try {
+    candidates.push(...await discoverImageSearchCandidates(name, isbn));
   } catch (_) {}
   const uniqueCandidates = uniqueCoverCandidates(candidates);
   uniqueCandidates.sort((left, right) => {
@@ -503,7 +551,7 @@ async function enrichOneProduct(db, item, actor) {
   let acceptedCandidate = null;
   let image = null;
   const rejectedCandidates = [];
-  for (const candidate of found.candidates.slice(0, 12)) {
+  for (const candidate of found.candidates.slice(0, 30)) {
     try {
       const remote = await fetchImageBuffer(candidate.imageUrl);
       image = await normalizeCoverImage(remote);
@@ -680,6 +728,7 @@ module.exports = {
   googleCandidate,
   duckDuckGoResultUrls,
   bingResultUrls,
+  bingImageCandidates,
   pageImageRows,
   isNineSeriesBook,
   isValidIsbn13,
