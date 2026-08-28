@@ -169,7 +169,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /這是唯一標準流程/);
   assert.match(prompt, /目標範圍：/);
   assert.match(prompt, /不得擴大到其他通路/);
-  assert.match(prompt, /每站送出後只做一次快速核對/);
+  assert.match(prompt, /每站送出後只以本案完全相同 SKU 做一次正式資料核對/);
   assert.match(prompt, /本次根節點為/);
   assert.match(prompt, /蝦皮.*只依賴 EasyStore/);
   assert.match(prompt, /不再逐張蒐集平台 CDN 網址/);
@@ -194,7 +194,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /未通過前不得開始第一件商品/);
   assert.match(prompt, /酷澎與 EasyStore 若登入失效.*保存帳密重新登入/);
   assert.match(prompt, /每件商品及每個平台階段開始前只做輕量存活檢查/);
-  assert.match(prompt, /不得因可恢復的頁籤失效詢問是否重開或是否繼續/);
+  assert.match(prompt, /不得因可恢復的頁籤或登入失效詢問是否重開、是否登入或是否繼續/);
   assert.match(prompt, /同一內建瀏覽器開一個工作頁籤載入完全相同網址/);
   assert.match(prompt, /輸入控制備援，不是第二條上架路徑/);
   assert.match(prompt, /按下「立即處理」已授權/);
