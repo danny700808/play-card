@@ -89,6 +89,16 @@ test('Taaze title search finds product pages and promotes the product image inst
   );
 });
 
+test('the portal resumes the current cover job instead of restarting completed chunks', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const functionSource = fs.readFileSync(path.join(__dirname, '..', 'functions', 'bookCoverEnrichment.js'), 'utf8');
+  const portalSource = fs.readFileSync(path.join(__dirname, '..', 'operations-phase1.js'), 'utf8');
+  assert.match(functionSource, /action === 'resume-or-start'/);
+  assert.match(portalSource, /callable\(\{action:'resume-or-start'\}\)/);
+  assert.doesNotMatch(portalSource, /callable\(\{action:'start'\}\)/);
+});
+
 test('book covers must be clear, complete portrait images', () => {
   assert.equal(covers.coverDimensionsAreAcceptable(800, 1200), true);
   assert.equal(covers.coverDimensionsAreAcceptable(1000, 1000), false);
