@@ -1751,7 +1751,7 @@ function buildPlatformPageContracts() {
       },
       fieldOrder: [
         'clean-main-image', 'secondary-completed-images', 'music-leaf-category', 'verified-brand-or-no-brand',
-        'generate-product-information', 'variant-color', 'variant-quantity', 'variant-size',
+        'generate-product-information', 'variant-color', 'variant-quantity', 'variant-size', 'variant-images',
         'sale-price', 'stock', 'seller-sku', 'seller-delivery', 'convenience-store-by-package',
         'preparation-days', 'manual-rich-description', 'tw-general-compliance', 'responsible-seller',
         'origin', 'minor-purchase-and-tax', 'create-product', 'exact-sku-verification'
@@ -1759,7 +1759,7 @@ function buildPlatformPageContracts() {
       batchSections: [
         { key: 'media-and-taxonomy', fields: ['clean-main-image', 'secondary-completed-images', 'music-leaf-category', 'verified-brand-or-no-brand'], dynamic: true },
         { key: 'generated-information', fields: ['generate-product-information'], dynamic: true },
-        { key: 'variants-and-commerce', fields: ['variant-color', 'variant-quantity', 'variant-size', 'sale-price', 'stock', 'seller-sku'] },
+        { key: 'variants-and-commerce', fields: ['variant-color', 'variant-quantity', 'variant-size', 'variant-images', 'sale-price', 'stock', 'seller-sku'] },
         { key: 'shipping', fields: ['seller-delivery', 'convenience-store-by-package', 'preparation-days'] },
         { key: 'content-compliance-and-publish', fields: ['manual-rich-description', 'tw-general-compliance', 'responsible-seller', 'origin', 'minor-purchase-and-tax', 'create-product', 'exact-sku-verification'] }
       ],
@@ -1798,13 +1798,13 @@ function buildPlatformPageContracts() {
       },
       fieldOrder: [
         'product-name', 'rich-description', 'gallery-images', 'variant-option-names-and-values',
-        'variant-stock-sku-price-cost-barcode', 'variant-dimensions-and-weight',
+        'variant-images', 'variant-stock-sku-price-cost-barcode', 'variant-dimensions-and-weight',
         'tax-and-free-shipping', 'inventory-tracking', 'seo-url-and-meta-description',
         'publish-state', 'sales-channels', 'category-brand-vendor-tags-notes', 'save'
       ],
       batchSections: [
         { key: 'core-and-media', fields: ['product-name', 'rich-description', 'gallery-images'] },
-        { key: 'variants-and-inventory', fields: ['variant-option-names-and-values', 'variant-stock-sku-price-cost-barcode'] },
+        { key: 'variants-and-inventory', fields: ['variant-option-names-and-values', 'variant-images', 'variant-stock-sku-price-cost-barcode'] },
         { key: 'commerce-and-shipping', fields: ['variant-dimensions-and-weight', 'tax-and-free-shipping', 'inventory-tracking'] },
         { key: 'metadata-and-publish', fields: ['seo-url-and-meta-description', 'publish-state', 'sales-channels', 'category-brand-vendor-tags-notes', 'save'], dynamic: true }
       ],
@@ -3561,8 +3561,13 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
   const observedPrice = numberOrNull(observed.price);
   const observedStock = numberOrNull(observed.stock);
   const grouped = snapshot && snapshot.variantGroupEnabled === true;
+  const addVariant = clean(snapshot && snapshot.listingMode) === 'add-variant' || clean(snapshot && snapshot.listingIntent) === 'add-variant';
   const expectedVariants = grouped ? (Array.isArray(snapshot.variantGroupVariants) ? snapshot.variantGroupVariants : []) : [];
-  const observedVariants = grouped ? (Array.isArray(observed.variants) ? observed.variants : []).map((row) => ({
+  const expectedVariantImages = grouped ? expectedVariants : addVariant ? [{
+    sku: normalizeSku(snapshot && snapshot.sku),
+    imageUrl: safeHttpUrl(snapshot && snapshot.variantChildImageUrl)
+  }] : [];
+  const observedVariants = (grouped || addVariant) ? (Array.isArray(observed.variants) ? observed.variants : []).map((row) => ({
     sku: normalizeSku(row && row.sku),
     value: clean(row && (row.value || row.attributeValue || row.name || row.title)),
     price: numberOrNull(row && row.price),
@@ -3573,12 +3578,12 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
   if (!clean(observed.listingId || observed.productId)) reasons.push('missing-listing-id');
   if (!expectedSku || observedSku !== expectedSku) reasons.push('sku-mismatch');
   if (!grouped && expectedPrice !== null && observedPrice !== expectedPrice) reasons.push('price-mismatch');
+  const observedByVariantSku = new Map(observedVariants.map((row) => [normalizeSku(row && row.sku), row]));
   if (grouped) {
     const expectedBySku = new Map(expectedVariants.map((row) => [normalizeSku(row && row.sku), row]));
-    const observedBySku = new Map(observedVariants.map((row) => [normalizeSku(row && row.sku), row]));
-    if (expectedBySku.size < 2 || observedVariants.length !== expectedBySku.size || observedBySku.size !== expectedBySku.size) reasons.push('variant-sku-set-mismatch');
+    if (expectedBySku.size < 2 || observedVariants.length !== expectedBySku.size || observedByVariantSku.size !== expectedBySku.size) reasons.push('variant-sku-set-mismatch');
     expectedBySku.forEach((expected, sku) => {
-      const actual = observedBySku.get(sku);
+      const actual = observedByVariantSku.get(sku);
       if (!actual) return;
       const platformPrice = name === 'momo' ? numberOrNull(expected.momoPrice)
         : name === 'coupang' ? numberOrNull(expected.coupangPrice) : numberOrNull(expected.easyStorePrice);
@@ -3586,6 +3591,19 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
       if (clean(expected.attributeValue) && actual.value && actual.value !== clean(expected.attributeValue)) reasons.push(`variant-value-mismatch:${sku}`);
     });
   }
+  const sourceUrls = frozenSourceImageUrls(snapshot || {});
+  expectedVariantImages.forEach((expected) => {
+    const sku = normalizeSku(expected && expected.sku);
+    const plannedImageUrl = safeHttpUrl(expected && expected.imageUrl);
+    const actual = observedByVariantSku.get(sku);
+    if (!plannedImageUrl) reasons.push(`variant-image-plan-missing:${sku}`);
+    if (!actual) {
+      if (addVariant) reasons.push(`variant-sku-missing:${sku}`);
+      return;
+    }
+    if (!actual.imageUrl) reasons.push(`variant-image-missing:${sku}`);
+    else if (sourceUrls.has(actual.imageUrl)) reasons.push(`variant-image-frozen-source:${sku}`);
+  });
   const observedStatus = clean(observed.status);
   if (!observedStatus) reasons.push('missing-status');
   else if (['draft', 'unpublished', 'inactive', 'failed', 'rejected', 'error', '暫存', '草稿', '未上架', '未發布', '未發佈'].includes(observedStatus.toLowerCase())) reasons.push('not-submitted-or-published');

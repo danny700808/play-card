@@ -186,6 +186,11 @@ test("同款商品從各自已收圖片中指定一張代表圖", () => {
 });
 
 test("同款細項可在同一畫面收圖、拖曳共用並清除代表圖", () => {
+  assert.match(operationsSource, /function productVariantRepresentativePreviewHtml/);
+  assert.match(operationsSource, /class="ops-listing-variant-key-fields"/);
+  assert.match(operationsSource, /class="ops-listing-variant-representative/);
+  assert.match(operationsSource, /data-variant-image-preview/);
+  assert.match(operationsSource, /class="ops-listing-variant-key-copy"/);
   assert.match(operationsSource, /function productVariantCollectorHtml/);
   assert.match(operationsSource, /data-action="product-variant-image-collection"/);
   assert.match(operationsSource, /data-variant-collector-count/);

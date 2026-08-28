@@ -1944,15 +1944,15 @@ test('同款群組可擴充為三個或五個細項，仍只有一個封閉主�
   });
 });
 
-test('同款群組正式核對要求完全相同的 SKU 集合及每個細項價格，不重查庫存', () => {
-  const { snapshot } = groupedListingFixture(2);
+test('同款群組正式核對要求完全相同的 SKU 集合、價格及細項小圖，不重查庫存', () => {
+  const { snapshot, products } = groupedListingFixture(2);
   const verification = {
     listingId: 'platform-parent', sku: 'GROUP-1', status: 'published',
     platformListMatched: true, officialCatalogMatched: true, imageEvidenceComplete: true,
     appliedImageUrls: [], officialImageUrls: [],
     variants: [
-      { sku: 'GROUP-1', value: '款式1', price: 500, stock: 1 },
-      { sku: 'GROUP-2', value: '款式2', price: 501, stock: 2 }
+      { sku: 'GROUP-1', value: '款式1', price: 500, stock: 1, imageUrl: 'https://platform-cdn.example.com/variant/group-1.jpg' },
+      { sku: 'GROUP-2', value: '款式2', price: 501, stock: 2, imageUrl: 'https://platform-cdn.example.com/variant/group-2.jpg' }
     ]
   };
   const valid = helpers.validatePlatformStageVerification('easyStore', snapshot, verification);
@@ -1972,6 +1972,43 @@ test('同款群組正式核對要求完全相同的 SKU 集合及每個細項價
     variants: [verification.variants[0], { ...verification.variants[1], stock: 999 }]
   });
   assert.equal(wrongStock.verified, true, wrongStock.reasons.join(','));
+  const missingVariantImage = helpers.validatePlatformStageVerification('easyStore', snapshot, {
+    ...verification,
+    variants: [verification.variants[0], { ...verification.variants[1], imageUrl: '' }]
+  });
+  assert.equal(missingVariantImage.reasons.includes('variant-image-missing:GROUP-2'), true);
+  const sourceVariantImage = helpers.validatePlatformStageVerification('easyStore', snapshot, {
+    ...verification,
+    variants: [verification.variants[0], { ...verification.variants[1], imageUrl: products[1].source }]
+  });
+  assert.equal(sourceVariantImage.reasons.includes('variant-image-frozen-source:GROUP-2'), true);
+});
+
+test('加入既有商品細項也必須核對新細項的小圖', () => {
+  const source = 'https://supplier.example.com/add-child.jpg';
+  const completed = 'https://cdn.example.com/add-child-clean.jpg';
+  const snapshot = {
+    sku: 'ADD-CHILD', listingMode: 'add-variant', listingIntent: 'add-variant',
+    easyStorePrice: 600, stock: 2, variantChildImageUrl: completed,
+    platformImagePlan: {
+      imageReferenceCases: [{ sourceImageUrls: [source], representativeSourceImageUrl: source }],
+      easyStore: { imageUrls: [completed] }
+    }
+  };
+  const base = {
+    listingId: 'ES-PARENT', sku: 'ADD-CHILD', price: 600, stock: 2, status: 'published',
+    platformListMatched: true, officialCatalogMatched: true,
+    variants: [{ sku: 'ADD-CHILD', imageUrl: 'https://platform-cdn.example.com/add-child.jpg' }]
+  };
+  assert.equal(helpers.validatePlatformStageVerification('easyStore', snapshot, base).verified, true);
+  const missing = helpers.validatePlatformStageVerification('easyStore', snapshot, {
+    ...base, variants: [{ sku: 'ADD-CHILD', imageUrl: '' }]
+  });
+  assert.equal(missing.reasons.includes('variant-image-missing:ADD-CHILD'), true);
+  const frozen = helpers.validatePlatformStageVerification('easyStore', snapshot, {
+    ...base, variants: [{ sku: 'ADD-CHILD', imageUrl: source }]
+  });
+  assert.equal(frozen.reasons.includes('variant-image-frozen-source:ADD-CHILD'), true);
 });
 
 test('Codex 單次授權綁定 v3 快照並由後端自動續跑，不接受舊版或第二次確認', () => {
