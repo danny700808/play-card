@@ -291,29 +291,33 @@ async function candidateFromCommercePage(pageUrl, requestedTitle, requestedIsbn)
 }
 
 async function discoverCommerceCoverCandidate(title, isbn) {
-  const baseQuery = isbn || title;
-  if (!clean(baseQuery)) return null;
-  // 全音、天音教材優先查音樂書籍專門站；找不到才回到一般搜尋。
-  const queries = [
+  if (!clean(isbn || title)) return null;
+  // ISBN 只做精準加分；內部 ISBN 不正確或書商未刊 ISBN 時，仍以中文書名 80% 相似度找封面。
+  const domainQueries = (baseQuery, requiredIsbn) => [
     `${baseQuery} site:talubook.com`,
     `${baseQuery} site:musikershop.com`,
     `${baseQuery} site:musicmusic.com.tw`,
     baseQuery
+  ].map((query) => ({ query, requiredIsbn }));
+  const queries = [
+    ...(isbn ? domainQueries(isbn, isbn) : []),
+    ...domainQueries(title, '')
   ];
   let candidates = [];
-  for (const query of queries) {
+  for (const searchSpec of queries) {
+    const query = searchSpec.query;
     let urls = [];
     try {
       const search = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
       urls = duckDuckGoResultUrls(search.text).slice(0, 8);
     } catch (_) {}
-    let settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, isbn)));
+    let settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, searchSpec.requiredIsbn)));
     candidates = settled.filter((row) => row.status === 'fulfilled' && row.value).map((row) => row.value);
     if (candidates.length) break;
     try {
       const search = await fetchText(`https://www.bing.com/search?q=${encodeURIComponent(query)}&count=10&setlang=zh-Hant`);
       urls = bingResultUrls(search.text).slice(0, 8);
-      settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, isbn)));
+      settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, searchSpec.requiredIsbn)));
       candidates = settled.filter((row) => row.status === 'fulfilled' && row.value).map((row) => row.value);
     } catch (_) {}
     if (candidates.length) break;
