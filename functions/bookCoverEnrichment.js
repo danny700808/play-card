@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const REGION = 'us-central1';
 const PRODUCT_COLLECTION = 'opsInternalProducts';
 const JOB_COLLECTION = 'opsBookCoverEnrichmentJobs';
-const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v5-name-only';
+const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v6-name-only-source-pages';
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_CHUNK_SIZE = 6;
 const MAX_CHUNK_SIZE = 10;
@@ -71,6 +71,7 @@ function normalizeBookTitle(value) {
 function bookSearchTitle(value) {
   return clean(value)
     .normalize('NFKC')
+    .replace(/^(?:典[弦絃]|卓著|麥書|大陸|美樂)教材\s*[-－:：|]*/i, '')
     .replace(/(?:ISBN)?\s*(?:978|979)[\d\s-]{10,}/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -235,6 +236,36 @@ function bingResultUrls(html) {
   return urls;
 }
 
+function taazeResultUrls(html, requestedTitle) {
+  const urls = [];
+  const expression = /<a\b[^>]*href=["'][^"']*(?:products\/|prod_cat_id=)(\d{11})(?:\.html)?[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = expression.exec(clean(html))) && urls.length < 24) {
+    const label = stripHtml(match[2]);
+    if (titleMatchScore(requestedTitle, label) < 0.8) continue;
+    const url = `http://www.taaze.tw/products/${match[1]}.html`;
+    if (!urls.includes(url)) urls.push(url);
+  }
+  return urls;
+}
+
+function promoteTrustedCoverImageUrl(value, pageUrl) {
+  const resolved = resolveHttpUrl(value, pageUrl);
+  if (!resolved) return '';
+  try {
+    const parsed = new URL(resolved);
+    if (parsed.hostname.toLowerCase() === 'media.taaze.tw' &&
+        /^\/show(?:ProdImage|Thumbnail)\.html$/i.test(parsed.pathname) &&
+        /^\d{11}$/.test(clean(parsed.searchParams.get('sc')))) {
+      parsed.pathname = '/showProdImage.html';
+      parsed.searchParams.set('width', '1000');
+      parsed.searchParams.set('height', '1400');
+      return parsed.href;
+    }
+  } catch (_) {}
+  return resolved;
+}
+
 function bingImageCandidates(html, requestedTitle) {
   const candidates = [];
   const expression = /<a\b[^>]*class=["'][^"']*\biusc\b[^"']*["'][^>]*\bm=["']([^"']+)["'][^>]*>/gi;
@@ -269,7 +300,7 @@ function pageTitle(html) {
 function pageImageRows(html, pageUrl, requestedTitle) {
   const rows = [];
   function add(rawUrl, alt, baseScore) {
-    const url = resolveHttpUrl(rawUrl, pageUrl);
+    const url = promoteTrustedCoverImageUrl(rawUrl, pageUrl);
     if (!url || rows.some((row) => row.url === url)) return;
     const lower = url.toLowerCase();
     if (/\.(?:svg|gif)(?:$|[?#])/.test(lower)) return;
@@ -296,6 +327,22 @@ function pageImageRows(html, pageUrl, requestedTitle) {
     add(source, alt, 1);
   }
   return rows.sort((left, right) => right.score - left.score);
+}
+
+async function discoverTaazeCoverCandidates(title) {
+  const queryTitle = clean(title);
+  if (!queryTitle) return [];
+  try {
+    const searchUrl = `http://www.taaze.tw/rwd_searchResult.html?keyType%5B%5D=0&keyword%5B%5D=${encodeURIComponent(queryTitle)}`;
+    const search = await fetchText(searchUrl);
+    const urls = taazeResultUrls(search.text, queryTitle);
+    const settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, queryTitle)));
+    return uniqueCoverCandidates(settled
+      .filter((row) => row.status === 'fulfilled' && Array.isArray(row.value))
+      .flatMap((row) => row.value));
+  } catch (_) {
+    return [];
+  }
 }
 
 async function candidateFromCommercePage(pageUrl, requestedTitle) {
@@ -400,6 +447,9 @@ async function findBookCoverCandidates(product) {
   }
   try {
     candidates.push(...await discoverCommerceCoverCandidates(searchTitle));
+  } catch (_) {}
+  try {
+    candidates.push(...await discoverTaazeCoverCandidates(searchTitle));
   } catch (_) {}
   try {
     candidates.push(...await discoverImageSearchCandidates(searchTitle));
@@ -682,12 +732,16 @@ module.exports = {
   COVER_RULE_VERSION,
   bookSearchTitle,
   coverDimensionsAreAcceptable,
+  discoverTaazeCoverCandidates,
+  findBookCoverCandidates,
   findBookCoverCandidate,
   googleCandidate,
   duckDuckGoResultUrls,
   bingResultUrls,
   bingImageCandidates,
+  promoteTrustedCoverImageUrl,
   pageImageRows,
+  taazeResultUrls,
   isNineSeriesBook,
   normalizeBookTitle,
   productName,
