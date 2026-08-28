@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.28-listing-status-recheck-reset-v1';
+  const VERSION = '2026.08.28-product-master-image-upload-recheck-v1';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
@@ -3441,15 +3441,14 @@ function ensureSalesClock(){
   function productEditorImages(p){
     const images=[];
     ((p&&p.imageUrls)||[]).concat(p&&p.imageUrl?[p.imageUrl]:[]).forEach(function(url){url=safeUrl(url);if(url&&!images.includes(url))images.push(url);});
-    return images.slice(0,4);
+    return images.slice(0,PRODUCT_REFERENCE_IMAGE_MAX);
   }
   function productImagePanelHtml(p){
     const title=(p&&((p.originalName)||(p.onlineName)||(p.name)))||'商品圖片';
     const images=productEditorImages(p);
-    if(!images.length)return '<div class="ops-product-media-panel"><div class="ops-product-media-main is-empty"><div class="ops-detail-no-image">尚無商品圖片</div></div></div>';
-    const main=images[0];
-    const thumbs=images.map(function(url,index){return '<button type="button" class="ops-product-media-thumb'+(index===0?' active':'')+'" data-action="product-preview-open" data-index="'+index+'"><img src="'+attr(url)+'" alt="'+attr(title)+'"></button>';}).join('');
-    return '<div class="ops-product-media-panel"><button type="button" class="ops-product-media-main" data-action="product-preview-open" data-index="0"><img src="'+attr(main)+'" alt="'+attr(title)+'"></button><div class="ops-product-media-hint">商品圖片（可點擊放大預覽）</div><div class="ops-product-media-thumbs">'+thumbs+'</div></div>';
+    const main=images[0]||'',preview=main?'<button type="button" class="ops-product-media-main" data-action="product-preview-open" data-index="0"><img src="'+attr(main)+'" alt="'+attr(title)+'"></button>':'<div class="ops-product-media-main is-empty"><div class="ops-detail-no-image">尚無商品圖片</div></div>',thumbs=images.map(function(url,index){return '<button type="button" class="ops-product-media-thumb'+(index===0?' active':'')+'" data-action="product-preview-open" data-index="'+index+'"><img src="'+attr(url)+'" alt="'+attr(title)+'"></button>';}).join('');
+    const uploader=p&&p.docId?'<label class="ops-button soft wide ops-product-master-image-upload"><input id="productMasterImageUpload" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>＋ 加入商品圖片</label><div id="productMasterImageUploadStatus" class="ops-product-master-image-status" aria-live="polite"></div>':'<div class="ops-product-media-hint">請先儲存商品，再加入商品圖片。</div>';
+    return '<div class="ops-product-media-panel">'+preview+'<div class="ops-product-media-hint">商品圖片'+(images.length?'（可點擊放大預覽）':'')+'</div>'+(thumbs?'<div class="ops-product-media-thumbs">'+thumbs+'</div>':'')+uploader+'</div>';
   }
   function renderProductPreviewModal(){
     const images=(state.productPreviewImages||[]).filter(Boolean);
@@ -4434,6 +4433,28 @@ function ensureSalesClock(){
     const urls=normalizeProductResearchSourceUrls(existing.concat(uploaded));if(input)input.value=urls.join('\n');form.dataset.dirty='1';const referenceBox=byId('productReferenceImagePreview');if(referenceBox)referenceBox.innerHTML=productReferenceImageSelectorHtml(urls,urls);refreshProductListingImagePreviews(form);refreshProductVariantImageTarget(form,id,urls);await persistProductVariantReferenceImages(form,id,urls,urls);
     if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>來源圖片已上傳</b><small>'+uploaded.length+' 張已自動加入這件準備上架商品。</small></div></div>';
     toast('來源圖片已上傳',uploaded.length+' 張圖片已加入並勾選。','success');return uploaded;
+  }
+  async function uploadProductMasterImages(form,files){
+    if(!form||!files||!files.length)return;
+    if(!global.firebase||!global.firebase.storage)throw new Error('圖片上傳服務尚未載入，請重新整理頁面。');
+    await requireEasyStoreManagerAuth();
+    const id=clean(form.dataset.id),product=catalogById(id);if(!id||!product||!product.internal)throw new Error('請先儲存商品，再加入商品圖片');
+    const existing=productEditorImages(product),selected=Array.from(files).slice(0,PRODUCT_REFERENCE_IMAGE_MAX);
+    if(existing.length+selected.length>PRODUCT_REFERENCE_IMAGE_MAX)throw new Error('每個商品最多保留 20 張商品圖片');
+    selected.forEach(function(file){if(!['image/jpeg','image/png','image/webp'].includes(clean(file&&file.type)))throw new Error('只支援 JPG、PNG 或 WebP 圖片');if(Number(file&&file.size||0)>8*1024*1024)throw new Error('每張圖片不可超過 8 MB');});
+    const status=byId('productMasterImageUploadStatus');if(status)status.innerHTML='<span class="running">正在上傳 '+selected.length+' 張商品圖片…</span>';
+    const storage=global.firebase.app().storage(),uploaded=[];
+    for(let index=0;index<selected.length;index+=1){
+      const file=selected[index],extension=file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg',path='ops-internal-products/'+id+'/images/'+Date.now()+'-'+index+'-'+Math.random().toString(36).slice(2,9)+'.'+extension;
+      const snapshot=await storage.ref().child(path).put(file,{contentType:file.type,customMetadata:{productId:id,uploadedBy:userLabel(),imagePurpose:'central-product'}});uploaded.push(await snapshot.ref.getDownloadURL());
+    }
+    const images=normalizeProductResearchSourceUrls(existing.concat(uploaded)).slice(0,PRODUCT_REFERENCE_IMAGE_MAX),payload={imageUrl:images[0],imageUrls:images,imageSource:'central-product-manual-upload',productImagesUpdatedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+    await state.db.collection(COLLECTIONS.products).doc(id).set(payload,{merge:true});
+    product.imageUrl=images[0];product.imageUrls=images.slice();product.imageSource=payload.imageSource;
+    product.internal.imageUrl=images[0];product.internal.imageUrls=images.slice();product.internal.imageSource=payload.imageSource;
+    const media=query('.ops-inline-product-media',form);if(media)media.innerHTML=productImagePanelHtml(product);
+    await writeAudit('加入商品圖片','product',id,(product.sku||id)+'｜新增 '+uploaded.length+' 張｜共 '+images.length+' 張');
+    toast('商品圖片已加入',uploaded.length+' 張圖片已直接寫入這件商品','success');return uploaded;
   }
   async function uploadProductCompletedListingImages(form,files){
     if(!form||!files||!files.length)return;
@@ -6747,6 +6768,10 @@ function rerenderKeepingFocus(id,value){
       if(event.target.id==='productReferenceImageUpload'){
         const files=Array.from(event.target.files||[]),form=event.target.closest('#productListingCaseForm');event.target.value='';
         return uploadProductReferenceImages(form,files).catch(function(error){const status=byId('productReferenceImageUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>圖片上傳失敗</b><small>'+escapeHtml(errorMessage(error))+'</small></div></div>';toast('參考圖上傳失敗',errorMessage(error),'error');});
+      }
+      if(event.target.id==='productMasterImageUpload'){
+        const files=Array.from(event.target.files||[]),form=event.target.closest('#productForm');event.target.value='';
+        return uploadProductMasterImages(form,files).catch(function(error){const status=byId('productMasterImageUploadStatus');if(status)status.innerHTML='<span class="failed">'+escapeHtml(errorMessage(error))+'</span>';toast('商品圖片上傳失敗',errorMessage(error),'error');});
       }
       if(event.target.id==='productPhysicalImageUpload'){
         const files=Array.from(event.target.files||[]),form=event.target.closest('#productListingCaseForm'),productId=clean(form&&form.dataset.id);event.target.value='';
