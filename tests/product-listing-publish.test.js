@@ -950,7 +950,7 @@ test('四通路完成後主商品與每個細項都標記已發布，最近未�
   assert.match(finalize, /imageDocumentRefs\.map\(async \(reference\)/);
   assert.match(finalize, /reference\.caseRef\.set\(\{\s*caseStatus: 'published'/);
   assert.match(finalize, /reference\.productRef\.set\(\{/);
-  assert.match(finalize, /platformListingStatusFromPublish\(reference\.product\.platformListingStatus, platforms\)/);
+  assert.match(finalize, /platformListingStatusFromPublish\(reference\.product\.platformListingStatus, platforms, completedStages\)/);
 });
 
 test('完成前中央或細項仍引用 frozen source 即拒絕，平台快速回條且中央全完成圖才通過', () => {
@@ -1231,6 +1231,20 @@ test('publish results become product-level platform status without claiming queu
   assert.equal(status.easyStore.listingId, 'es-1');
   assert.equal(status.momo.status, 'queued');
   assert.equal(status.coupang.status, 'error');
+});
+
+test('Coupang verified submission remains pending review and receives 24/48 hour recheck times', () => {
+  const before = Date.now();
+  const status = helpers.platformListingStatusFromPublish({}, {
+    coupang: { status: 'completed', message: '酷澎已由正式清單核對完成。' }
+  }, {
+    coupang: { status: 'verified', receipt: { listingId: 'CP-REVIEW-1', status: 'under-review' } }
+  });
+  assert.equal(status.coupang.status, 'pending-review');
+  assert.equal(status.coupang.listingId, 'CP-REVIEW-1');
+  assert.match(status.coupang.note, /24 小時及 48 小時後重查/);
+  assert.ok(status.coupang.nextReviewCheckAt.getTime() >= before + 24 * 60 * 60 * 1000);
+  assert.ok(status.coupang.finalReviewCheckAt.getTime() >= before + 48 * 60 * 60 * 1000);
 });
 
 test('EasyStore payload publishes one exact SKU with stock, price, package and at most seven gallery images', () => {
