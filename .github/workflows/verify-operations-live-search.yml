@@ -9,6 +9,7 @@ on:
       - "functions/productAiResearch.js"
       - "functions/productListingPublish.js"
       - "functions/productListingSourceCleanup.js"
+      - "functions/easystoreCatalogSync.js"
       - "functions/shopeeMusicTaxonomy.js"
       - "operations-phase1.css"
       - "operations-shopee-autofill-handoff-v1.js"
@@ -21,6 +22,7 @@ on:
       - "tests/product-ai-research.test.js"
       - "tests/product-listing-publish.test.js"
       - "tests/product-listing-source-cleanup.test.js"
+      - "tests/easystore-variant-image-sync.test.js"
       - "tests/product-image-collector-ui.test.js"
       - "easystore-shopee-autofill/**"
       - "youzi-easystore-shopee-autofill-v*.zip"
@@ -56,6 +58,7 @@ jobs:
           node --check functions/productAiResearch.js
           node --check functions/productListingPublish.js
           node --check functions/productListingSourceCleanup.js
+          node --check functions/easystoreCatalogSync.js
           node --check easystore-shopee-autofill/bridge.js
           node --check easystore-shopee-autofill/background.js
           node --check easystore-shopee-autofill/easystore.js
@@ -98,6 +101,7 @@ jobs:
           tests/product-ai-research.test.js
           tests/product-listing-publish.test.js
           tests/product-listing-source-cleanup.test.js
+          tests/easystore-variant-image-sync.test.js
           tests/product-image-collector-ui.test.js
           easystore-shopee-autofill/tests/*.test.js
       - name: Verify markup and cache versions
@@ -107,8 +111,8 @@ jobs:
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260823-shopee-v3-schema6' operations-hub.html
           grep -Fq 'operations-phase1.css?v=20260828-product-master-image-upload-recheck-v1' portal.html
           grep -Fq 'operations-phase1.css?v=20260828-product-master-image-upload-recheck-v1' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260828-product-master-image-upload-recheck-v1' portal.html
-          grep -Fq 'operations-phase1.js?v=20260828-product-master-image-upload-recheck-v1' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260829-easystore-variant-image-autofill-v1' portal.html
+          grep -Fq 'operations-phase1.js?v=20260829-easystore-variant-image-autofill-v1' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260828-product-image-auth-preflight-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260828-product-image-auth-preflight-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

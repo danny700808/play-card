@@ -7,6 +7,7 @@ on:
       - "functions/productAiResearch.js"
       - "functions/productListingPublish.js"
       - "functions/productListingSourceCleanup.js"
+      - "functions/easystoreCatalogSync.js"
       - "functions/bookCoverEnrichment.js"
       - "operations-phase1.js"
       - "operations-hub.html"
@@ -18,6 +19,7 @@ on:
       - "tests/product-ai-research.test.js"
       - "tests/product-listing-publish.test.js"
       - "tests/product-listing-source-cleanup.test.js"
+      - "tests/easystore-variant-image-sync.test.js"
       - "tests/book-cover-enrichment.test.js"
       - ".github/workflows/deploy-product-listing.yml"
   workflow_dispatch:
@@ -46,7 +48,7 @@ jobs:
       - name: Test product listing workflow
         env:
           NODE_PATH: functions/node_modules
-        run: node --test tests/product-ai-research.test.js tests/product-listing-publish.test.js tests/product-listing-source-cleanup.test.js tests/book-cover-enrichment.test.js
+        run: node --test tests/product-ai-research.test.js tests/product-listing-publish.test.js tests/product-listing-source-cleanup.test.js tests/easystore-variant-image-sync.test.js tests/book-cover-enrichment.test.js
       - name: Validate Firebase service account
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
@@ -56,16 +58,15 @@ jobs:
           node -e "const row=require('./service-account.json'); if(row.type!=='service_account'||row.project_id!=='youzi-c1b74')throw new Error('Invalid service account')"
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@15.24.0
-      - name: Deploy product listing functions
+      - name: Deploy product listing functions and hosting
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: >-
           firebase deploy
-          --only functions:researchProductListingCase,functions:importProductListingImages,functions:generateProductListingImage,functions:publishProductListingCase,functions:autoPublishProductListingCase,functions:verifyProductListingStage,functions:applyProductListingQueueReceipt,functions:cleanupProductListingSourceImages,functions:runNineSeriesBookCoverBatch
+          --only hosting,functions:researchProductListingCase,functions:importProductListingImages,functions:generateProductListingImage,functions:publishProductListingCase,functions:autoPublishProductListingCase,functions:verifyProductListingStage,functions:applyProductListingQueueReceipt,functions:cleanupProductListingSourceImages,functions:runNineSeriesBookCoverBatch,functions:syncEasyStoreCatalog
           --project youzi-c1b74
           --non-interactive
           --force
       - name: Remove service account file
         if: always()
         run: rm -f service-account.json
-

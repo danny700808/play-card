@@ -68,6 +68,7 @@ function pushImage(list, value) {
     });
     return;
   }
+  if (typeof value !== 'string') return;
   const url = absoluteUrl(value);
   if (url && !list.includes(url)) list.push(url);
 }
@@ -75,6 +76,7 @@ function pushImage(list, value) {
 function collectImages(object) {
   const images = [];
   if (!object || typeof object !== 'object') return images;
+  pushImage(images, object);
   [
     'image', 'imageUrl', 'image_url', 'featuredImage', 'featured_image',
     'mainImage', 'main_image', 'thumbnail', 'picture', 'photo', 'images',
@@ -82,6 +84,88 @@ function collectImages(object) {
     'additionalImages', 'additional_images'
   ].forEach((key) => pushImage(images, object[key]));
   return images;
+}
+
+function imageRecordId(value) {
+  if (!value || typeof value !== 'object') return '';
+  const id = clean(
+    value.id || value.image_id || value.imageId || value.product_image_id ||
+    value.productImageId || value.file_id || value.fileId || value._id
+  );
+  return id === '0' ? '' : id;
+}
+
+function productImageLookup(product) {
+  const lookup = new Map();
+  const seen = new Set();
+
+  function visit(value) {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value !== 'object' || seen.has(value)) return;
+    seen.add(value);
+
+    const id = imageRecordId(value);
+    const urls = collectImages(value);
+    if (id && urls.length) {
+      const current = lookup.get(id) || [];
+      urls.forEach((url) => {
+        if (url && !current.includes(url)) current.push(url);
+      });
+      lookup.set(id, current);
+    }
+
+    [
+      'images', 'photos', 'media', 'gallery', 'imageUrls', 'image_urls',
+      'additionalImages', 'additional_images'
+    ].forEach((key) => visit(value[key]));
+  }
+
+  [
+    product && product.image,
+    product && product.featuredImage,
+    product && product.featured_image,
+    product && product.mainImage,
+    product && product.main_image,
+    product && product.images,
+    product && product.photos,
+    product && product.media,
+    product && product.gallery,
+    product && product.imageUrls,
+    product && product.image_urls,
+    product && product.additionalImages,
+    product && product.additional_images
+  ].forEach(visit);
+
+  return lookup;
+}
+
+function variantImageReferenceId(variant) {
+  if (!variant || typeof variant !== 'object') return '';
+  const imageObject = variant.image && typeof variant.image === 'object'
+    ? variant.image
+    : null;
+  const id = clean(
+    variant.image_id || variant.imageId || variant.product_image_id ||
+    variant.productImageId || variant.featured_image_id ||
+    variant.featuredImageId || imageRecordId(imageObject)
+  );
+  return id === '0' ? '' : id;
+}
+
+function variantBoundImages(variant, imageLookup) {
+  const images = [];
+  const imageId = variantImageReferenceId(variant);
+  const bound = imageId && imageLookup instanceof Map
+    ? imageLookup.get(imageId) || []
+    : [];
+  [...bound, ...collectImages(variant)].forEach((url) => {
+    if (url && !images.includes(url)) images.push(url);
+  });
+  return { imageId, images };
 }
 
 function extractProducts(payload) {
@@ -154,7 +238,9 @@ function buildCatalog(products) {
 
   products.forEach((product) => {
     const parentImages = collectImages(product);
+    const imageLookup = productImageLookup(product);
     const variants = productVariants(product);
+    const productVariantCount = variants.length;
     const pName = productName(product);
     const pId = clean(product.id || product.product_id || product.productId || product._id);
     const pUrl = productLink(product);
@@ -162,7 +248,16 @@ function buildCatalog(products) {
     variants.forEach((variant) => {
       const sku = rowSku(variant, product);
       if (!sku) return;
-      const variantImages = collectImages(variant);
+      const boundVariantImages = variantBoundImages(variant, imageLookup);
+      const variantImages = boundVariantImages.images;
+      const automaticVariantImageUrl = variantImages[0] || (
+        productVariantCount === 1 ? parentImages[0] || '' : ''
+      );
+      const variantImageStatus = variantImages.length
+        ? 'available'
+        : automaticVariantImageUrl
+          ? 'single-main'
+          : 'missing';
       const imageUrls = [];
       [...parentImages, ...variantImages].forEach((url) => {
         if (url && !imageUrls.includes(url)) imageUrls.push(url);
@@ -172,8 +267,14 @@ function buildCatalog(products) {
         sku,
         productId: pId,
         variantId: clean(variant.id || variant.variant_id || variant.variantId || variant._id),
+        variantImageId: boundVariantImages.imageId,
         productName: pName,
         variantName: rowVariantName(variant),
+        productVariantCount,
+        hasMultipleVariants: productVariantCount > 1,
+        hasVariantImage: variantImages.length > 0,
+        automaticVariantImageUrl,
+        variantImageStatus,
         price: rowPrice(variant, product),
         productUrl: pUrl,
         parentImageUrls: parentImages.slice(0, 8),
@@ -386,6 +487,8 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
   const operations = [];
   let matchedCount = 0;
   let imageMatchedCount = 0;
+  let variantImageMatchedCount = 0;
+  let variantImageMissingCount = 0;
   let duplicateMatchCount = 0;
   let unmatchedCount = 0;
 
@@ -403,6 +506,8 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
       const row = rows[0];
       matchedCount += 1;
       if (row.imageUrls.length) imageMatchedCount += 1;
+      if (row.automaticVariantImageUrl) variantImageMatchedCount += 1;
+      else variantImageMissingCount += 1;
       const existingMappings = existing.platformMappings && typeof existing.platformMappings === 'object'
         ? existing.platformMappings
         : {};
@@ -419,6 +524,11 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
         sourceCollection: 'EasyStore API',
         sourceProductId: row.productId,
         sourceVariantId: row.variantId,
+        easyStoreVariantImageId: row.variantImageId || '',
+        easyStoreProductVariantCount: Math.max(1, Number(row.productVariantCount) || 1),
+        easyStoreHasMultipleVariants: row.hasMultipleVariants === true,
+        easyStoreHasVariantImage: row.hasVariantImage === true,
+        easyStoreVariantImageStatus: row.variantImageStatus || 'missing',
         onlineName: row.productName,
         variantName: row.variantName,
         onlinePrice: row.price,
@@ -462,6 +572,11 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
           sourceCollection: admin.firestore.FieldValue.delete(),
           sourceProductId: admin.firestore.FieldValue.delete(),
           sourceVariantId: admin.firestore.FieldValue.delete(),
+          easyStoreVariantImageId: admin.firestore.FieldValue.delete(),
+          easyStoreProductVariantCount: admin.firestore.FieldValue.delete(),
+          easyStoreHasMultipleVariants: admin.firestore.FieldValue.delete(),
+          easyStoreHasVariantImage: admin.firestore.FieldValue.delete(),
+          easyStoreVariantImageStatus: admin.firestore.FieldValue.delete(),
           onlineName: admin.firestore.FieldValue.delete(),
           variantName: admin.firestore.FieldValue.delete(),
           onlinePrice: admin.firestore.FieldValue.delete(),
@@ -488,6 +603,8 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
     centralCount: centralSnapshot.size,
     matchedCount,
     imageMatchedCount,
+    variantImageMatchedCount,
+    variantImageMissingCount,
     duplicateMatchCount,
     unmatchedCount,
     centralWritten: written
@@ -534,6 +651,13 @@ function registerEasyStoreCatalogSync(exportsObject) {
         source: 'EasyStore API',
         productCount: fetched.products.length,
         variantCount: built.rows.length,
+        productWithMultipleVariantsCount: new Set(
+          built.rows.filter((row) => row.hasMultipleVariants).map((row) => row.productId)
+        ).size,
+        variantWithImageCount: built.rows.filter((row) => row.hasVariantImage).length,
+        variantWithoutImageCount: built.rows.filter((row) => !row.hasVariantImage).length,
+        automaticVariantImageCount: built.rows.filter((row) => row.automaticVariantImageUrl).length,
+        variantNeedingImageCount: built.rows.filter((row) => !row.automaticVariantImageUrl).length,
         uniqueSkuCount: new Set(built.rows.map((row) => row.sku)).size,
         duplicateApiSkuCount: built.duplicateSkus.size,
         catalogWritten,
@@ -594,4 +718,13 @@ function registerEasyStoreCatalogSync(exportsObject) {
   });
 }
 
-module.exports = { registerEasyStoreCatalogSync, managerClaimsAllowed, isAllowedCaller };
+module.exports = {
+  registerEasyStoreCatalogSync,
+  managerClaimsAllowed,
+  isAllowedCaller,
+  buildCatalog,
+  collectImages,
+  productImageLookup,
+  variantImageReferenceId,
+  variantBoundImages
+};

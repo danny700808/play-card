@@ -185,6 +185,22 @@ test("同款商品從各自已收圖片中指定一張代表圖", () => {
   assert.match(operationsSource, /loadProductListingVariantMedia\(item\.productId\)/);
 });
 
+test("EasyStore 官網既有細項圖會自動出現在細項小框", () => {
+  assert.match(operationsSource, /function productAutomaticVariantRepresentative/);
+  assert.match(operationsSource, /product\.variantImageUrls/);
+  assert.match(operationsSource, /source:'easystore-variant'/);
+  assert.match(operationsSource, /easyStoreProductVariantCount/);
+  assert.match(operationsSource, /source:'easystore-single-main'/);
+  assert.match(operationsSource, /selected=explicit\|\|automatic\.url/);
+  assert.match(operationsSource, /data-variant-image-origin=/);
+  assert.match(operationsSource, /官網細項圖已自動帶入/);
+  assert.match(operationsSource, /automaticUrls,source\.referenceImageUrls/);
+  assert.match(operationsSource, /imageUrls:automatic\.url\?\[automatic\.url\]:\[\]/);
+  assert.match(operationsSource, /function productNeedsEasyStoreVariantImage/);
+  assert.match(operationsSource, /官網缺細項圖優先/);
+  assert.match(operationsSource, /官網細項圖待補/);
+});
+
 test("同款細項可在同一畫面收圖、拖曳共用並清除代表圖", () => {
   assert.match(operationsSource, /function productVariantRepresentativePreviewHtml/);
   assert.match(operationsSource, /class="ops-listing-variant-key-fields"/);
