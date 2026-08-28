@@ -61,3 +61,13 @@ test('Google Books candidate requires exact ISBN for an ISBN query', () => {
   assert.match(exact.imageUrl, /zoom=3/);
   assert.equal(covers.googleCandidate(base, '吉他奏法大圖鑑', '9789866581816', true), null);
 });
+
+test('commerce fallback includes the approved music-book sources', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'functions', 'bookCoverEnrichment.js'), 'utf8');
+  for (const domain of ['talubook.com', 'musikershop.com', 'musicmusic.com.tw', 'books.com.tw']) {
+    assert.match(source, new RegExp(`site:${domain.replace(/\./g, '\\.')}`));
+  }
+  assert.doesNotMatch(source, /site:overtop-music\.com/);
+});

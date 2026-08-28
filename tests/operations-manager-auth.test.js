@@ -132,6 +132,15 @@ test('EasyStore sync refreshes manager auth before opening the callable', () => 
   assert.match(authSource, /getIdTokenResult\(true\)/);
 });
 
+test('9-series cover batch refreshes manager auth before opening the callable', () => {
+  const source = fs.readFileSync(path.join(root, 'operations-phase1.js'), 'utf8');
+  const start = source.indexOf('async function startNineSeriesBookCoverBatch()');
+  const end = source.indexOf('async function copyProductListingCodexPrompt', start);
+  const body = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.ok(body.indexOf('await requireEasyStoreManagerAuth()') < body.indexOf("httpsCallable('runNineSeriesBookCoverBatch'"));
+});
+
 test('Product AI refreshes manager auth before opening the callable', () => {
   const source = fs.readFileSync(path.join(root, 'operations-phase1.js'), 'utf8');
   const start = source.indexOf('async function runProductAiResearch(');
