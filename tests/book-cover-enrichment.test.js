@@ -28,6 +28,7 @@ Module._load = originalLoad;
 
 test('cover lookup strips ISBN-like digits and searches by the product name only', () => {
   assert.equal(covers.bookSearchTitle('吉他奏法大圖鑑 ISBN 9789866581304'), '吉他奏法大圖鑑');
+  assert.equal(covers.bookSearchTitle('典弦教材-MELODY寫一首簡單的歌'), 'MELODY寫一首簡單的歌');
   const fs = require('node:fs');
   const path = require('node:path');
   const source = fs.readFileSync(path.join(__dirname, '..', 'functions', 'bookCoverEnrichment.js'), 'utf8');
@@ -74,6 +75,18 @@ test('commerce fallback includes the approved music-book sources', () => {
     assert.match(source, new RegExp(`site:${domain.replace(/\./g, '\\.')}`));
   }
   assert.doesNotMatch(source, /site:overtop-music\.com/);
+});
+
+test('Taaze title search finds product pages and promotes the product image instead of a thumbnail', () => {
+  const html = '<a href="/products/11100161819.html">Melody：寫一首簡單的歌</a>';
+  assert.deepEqual(covers.taazeResultUrls(html, 'MELODY寫一首簡單的歌'), ['http://www.taaze.tw/products/11100161819.html']);
+  assert.equal(
+    covers.promoteTrustedCoverImageUrl(
+      'https://media.taaze.tw/showThumbnail.html?sc=11100161819&height=400&width=310',
+      'http://www.taaze.tw/products/11100161819.html'
+    ),
+    'https://media.taaze.tw/showProdImage.html?sc=11100161819&height=1400&width=1000'
+  );
 });
 
 test('book covers must be clear, complete portrait images', () => {
