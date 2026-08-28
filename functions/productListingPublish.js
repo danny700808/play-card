@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 26;
+const LISTING_AUTOMATION_POLICY_VERSION = 27;
 const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v1';
 const RICH_CONTENT_FEATURE_TARGET = 10;
 const RICH_CONTENT_USAGE_TARGET = 8;
@@ -515,7 +515,28 @@ function listingAutomationPolicy() {
         'rich-description', 'feature-copy', 'warranty'
       ],
       permissionDeniedSignatures: ['此帳號無此功能權限', 'account-not-authorized-for-publish'],
-      permissionDeniedIsPermanentBlocker: true,
+      permissionDeniedIsPermanentBlocker: false,
+      classifyPermissionDeniedByCurrentAction: true,
+      permissionDeniedRecovery: {
+        materialBankSameNameSelection: {
+          classification: 'asset-route-conflict',
+          action: 'upload-directly-with-unique-filename',
+          filenameMustContain: ['sku', 'variant-sku-or-value', 'content-fingerprint'],
+          neverRetrySameNameMaterialBankSelection: true,
+          neverTreatAsAccountWidePermissionFailure: true
+        },
+        publishedVariantImageSubmit: {
+          classification: 'published-listing-edit-route-restricted',
+          action: 'resume-same-listing-through-specification-change-route',
+          reuseUploadedVariantAssets: true,
+          preserveExactGoodsCodeAndSkuSet: true,
+          neverReuploadCompletedAssets: true,
+          neverReloginForThisSignature: true,
+          neverCreateReplacementDraft: true,
+          maximumRouteFallbackAttempts: 1
+        },
+        permanentOnlyAfterFallbackAlsoDenied: true
+      },
       neverRetryPermissionDeniedWithReplacementDraft: true,
       verifiedWhenEitherOfficialResultContainsExactSku: true
     },

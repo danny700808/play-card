@@ -205,7 +205,10 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /只重開同一草稿一次確認專推圖仍存在/);
   assert.match(prompt, /不得先送空缺版本再回頭補/);
   assert.match(prompt, /此帳號無此功能權限/);
-  assert.match(prompt, /account-permission-denied 永久阻擋/);
+  assert.match(prompt, /不得直接判定整個帳號無權限/);
+  assert.match(prompt, /唯一檔名/);
+  assert.match(prompt, /規格異動流程/);
+  assert.match(prompt, /只有規格異動流程也明確拒絕一次後/);
   assert.match(prompt, /先收合內嵌客服聊天/);
   assert.match(prompt, /已存在的繁體完成圖庫選取/);
   assert.match(prompt, /不得開啟 Windows 原生選檔視窗/);
