@@ -71,3 +71,11 @@ test('commerce fallback includes the approved music-book sources', () => {
   }
   assert.doesNotMatch(source, /site:overtop-music\.com/);
 });
+
+test('book covers must be clear, complete portrait images', () => {
+  assert.equal(covers.coverDimensionsAreAcceptable(800, 1200), true);
+  assert.equal(covers.coverDimensionsAreAcceptable(1000, 1000), false);
+  assert.equal(covers.coverDimensionsAreAcceptable(1200, 700), false);
+  assert.equal(covers.coverDimensionsAreAcceptable(240, 360), false);
+  assert.equal(covers.coverDimensionsAreAcceptable(500, 1200), false);
+});

@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const REGION = 'us-central1';
 const PRODUCT_COLLECTION = 'opsInternalProducts';
 const JOB_COLLECTION = 'opsBookCoverEnrichmentJobs';
-const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v1';
+const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v2';
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_CHUNK_SIZE = 6;
 const MAX_CHUNK_SIZE = 10;
@@ -354,7 +354,17 @@ async function openLibraryIsbnCandidate(isbn, title) {
   };
 }
 
-async function findBookCoverCandidate(product) {
+function uniqueCoverCandidates(candidates) {
+  const seen = new Set();
+  return (Array.isArray(candidates) ? candidates : []).filter((candidate) => {
+    const url = clean(candidate && candidate.imageUrl);
+    if (!url || seen.has(url)) return false;
+    seen.add(url);
+    return true;
+  });
+}
+
+async function findBookCoverCandidates(product) {
   const sku = productSku(product);
   const name = productName(product);
   const isbn = extractIsbn13(sku, product && product.barcode, product && product.isbn, name);
@@ -384,11 +394,17 @@ async function findBookCoverCandidate(product) {
       if (commerce) candidates.push(commerce);
     } catch (_) {}
   }
-  candidates.sort((left, right) => {
+  const uniqueCandidates = uniqueCoverCandidates(candidates);
+  uniqueCandidates.sort((left, right) => {
     if (left.matchMethod !== right.matchMethod) return left.matchMethod === 'isbn' ? -1 : 1;
     return Number(right.matchScore || 0) - Number(left.matchScore || 0);
   });
-  return { candidate: candidates[0] || null, isbn };
+  return { candidates: uniqueCandidates, isbn };
+}
+
+async function findBookCoverCandidate(product) {
+  const found = await findBookCoverCandidates(product);
+  return { candidate: found.candidates[0] || null, isbn: found.isbn };
 }
 
 async function fetchImageBuffer(url) {
@@ -408,11 +424,19 @@ async function fetchImageBuffer(url) {
   return buffer;
 }
 
+function coverDimensionsAreAcceptable(width, height) {
+  const safeWidth = Number(width || 0);
+  const safeHeight = Number(height || 0);
+  if (safeWidth < 500 || safeHeight < 650) return false;
+  const portraitRatio = safeHeight / safeWidth;
+  return portraitRatio >= 1.15 && portraitRatio <= 2.2;
+}
+
 async function normalizeCoverImage(buffer) {
   const pipeline = sharp(buffer, { failOn: 'error', limitInputPixels: 40_000_000 }).rotate();
   const metadata = await pipeline.metadata();
-  if (!metadata.width || !metadata.height || metadata.width < 120 || metadata.height < 160) {
-    throw new Error('封面圖片解析度不足');
+  if (!coverDimensionsAreAcceptable(metadata.width, metadata.height)) {
+    throw new Error('封面必須是清楚、完整的直式正面圖（至少 500×650）');
   }
   const output = await pipeline
     .resize({ width: 1200, height: 1600, fit: 'inside', withoutEnlargement: true })
@@ -474,34 +498,57 @@ async function enrichOneProduct(db, item, actor) {
   if (!snapshot.exists) return { status: 'skipped', productId: item.productId, sku: item.sku, reason: '中央商品不存在' };
   const product = snapshot.data() || {};
   if (!isNineSeriesBook(product)) return { status: 'skipped', productId: item.productId, sku: item.sku, reason: '非 9 系列正式課本' };
-  const found = await findBookCoverCandidate(product);
-  if (!found.candidate) {
-    await ref.set({
+  const found = await findBookCoverCandidates(product);
+  let acceptedCandidate = null;
+  let image = null;
+  const rejectedCandidates = [];
+  for (const candidate of found.candidates.slice(0, 12)) {
+    try {
+      const remote = await fetchImageBuffer(candidate.imageUrl);
+      image = await normalizeCoverImage(remote);
+      acceptedCandidate = candidate;
+      break;
+    } catch (error) {
+      rejectedCandidates.push({
+        imageUrl: candidate.imageUrl,
+        reason: clean(error && error.message) || '封面圖片不合格'
+      });
+    }
+  }
+  if (!acceptedCandidate || !image) {
+    const priorManagedUrl = clean(product && product.bookCoverEnrichment && product.bookCoverEnrichment.storedImageUrl);
+    const remainingImages = existingProductImages(product).filter((url) => url !== priorManagedUrl);
+    const unresolvedUpdate = {
       bookCoverEnrichment: {
         status: 'unresolved', ruleVersion: COVER_RULE_VERSION, isbn: found.isbn,
+        rejectedCandidates: rejectedCandidates.slice(0, 12),
         attemptedAt: admin.firestore.FieldValue.serverTimestamp(), attemptedBy: actor
       },
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    };
+    if (priorManagedUrl) {
+      unresolvedUpdate.imageUrls = remainingImages;
+      unresolvedUpdate.imageUrl = remainingImages[0] || admin.firestore.FieldValue.delete();
+    }
+    await ref.set(unresolvedUpdate, { merge: true });
     return { status: 'unresolved', productId: item.productId, sku: productSku(product), name: productName(product), isbn: found.isbn, reason: '找不到可靠的正面封面' };
   }
-  const remote = await fetchImageBuffer(found.candidate.imageUrl);
-  const image = await normalizeCoverImage(remote);
-  const stored = await saveCoverToStorage(item.productId, productSku(product), found.candidate, image);
-  const previousImages = existingProductImages(product).filter((url) => url !== stored.url);
+  const stored = await saveCoverToStorage(item.productId, productSku(product), acceptedCandidate, image);
+  const priorManagedUrl = clean(product && product.bookCoverEnrichment && product.bookCoverEnrichment.storedImageUrl);
+  const previousImages = existingProductImages(product).filter((url) => url !== stored.url && url !== priorManagedUrl);
   const imageUrls = [stored.url, ...previousImages].slice(0, 20);
   const update = {
     imageUrl: stored.url,
     imageUrls,
     bookCoverEnrichment: {
       status: 'matched', ruleVersion: COVER_RULE_VERSION,
-      isbn: found.isbn || found.candidate.matchedIsbn || '',
-      matchMethod: found.candidate.matchMethod,
-      matchScore: found.candidate.matchScore,
-      matchedTitle: found.candidate.matchedTitle,
-      source: found.candidate.source,
-      sourceRecordUrl: found.candidate.sourceRecordUrl,
-      sourceImageUrl: found.candidate.imageUrl,
+      isbn: found.isbn || acceptedCandidate.matchedIsbn || '',
+      matchMethod: acceptedCandidate.matchMethod,
+      matchScore: acceptedCandidate.matchScore,
+      matchedTitle: acceptedCandidate.matchedTitle,
+      source: acceptedCandidate.source,
+      sourceRecordUrl: acceptedCandidate.sourceRecordUrl,
+      sourceImageUrl: acceptedCandidate.imageUrl,
       storedImageUrl: stored.url,
       storageObjectPath: stored.objectPath,
       sha256: stored.sha256,
@@ -522,8 +569,8 @@ async function enrichOneProduct(db, item, actor) {
   }
   return {
     status: 'matched', productId: item.productId, sku: productSku(product), name: productName(product),
-    isbn: update.bookCoverEnrichment.isbn, matchMethod: found.candidate.matchMethod,
-    matchScore: found.candidate.matchScore, matchedTitle: found.candidate.matchedTitle,
+    isbn: update.bookCoverEnrichment.isbn, matchMethod: acceptedCandidate.matchMethod,
+    matchScore: acceptedCandidate.matchScore, matchedTitle: acceptedCandidate.matchedTitle,
     imageUrl: stored.url
   };
 }
@@ -627,6 +674,7 @@ function registerBookCoverEnrichment(target) {
 module.exports = {
   COVER_RULE_VERSION,
   extractIsbn13,
+  coverDimensionsAreAcceptable,
   findBookCoverCandidate,
   googleCandidate,
   duckDuckGoResultUrls,
