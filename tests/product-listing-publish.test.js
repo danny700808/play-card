@@ -175,7 +175,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 26);
+  assert.equal(snapshot.automationPolicy.version, 27);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -215,7 +215,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.preparedPlatformFieldPlan.version, 14);
-  assert.equal(snapshot.automationPolicy.version, 26);
+  assert.equal(snapshot.automationPolicy.version, 27);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -267,7 +267,13 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.resumeSameDraft, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverCreateReplacementDraft, true);
   assert.ok(snapshot.automationPolicy.momoPublishRecovery.reapplyWhenCleared.includes('third-party-location'));
-  assert.equal(snapshot.automationPolicy.momoPublishRecovery.permissionDeniedIsPermanentBlocker, true);
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.permissionDeniedIsPermanentBlocker, false);
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.classifyPermissionDeniedByCurrentAction, true);
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.permissionDeniedRecovery.materialBankSameNameSelection.action, 'upload-directly-with-unique-filename');
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.permissionDeniedRecovery.materialBankSameNameSelection.neverTreatAsAccountWidePermissionFailure, true);
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.permissionDeniedRecovery.publishedVariantImageSubmit.action, 'resume-same-listing-through-specification-change-route');
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.permissionDeniedRecovery.publishedVariantImageSubmit.maximumRouteFallbackAttempts, 1);
+  assert.equal(snapshot.automationPolicy.momoPublishRecovery.permissionDeniedRecovery.permanentOnlyAfterFallbackAlsoDenied, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverRetryPermissionDeniedWithReplacementDraft, true);
   assert.deepEqual(snapshot.automationPolicy.momoSpecialPromotionImage.preferredProductImagePositions, [2, 3]);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.materialBankInsertRequired, true);
