@@ -103,8 +103,8 @@ test('extension version, download links, cache keys and CI package contract stay
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260823-shopee-v3-schema6';
-  const operationsCssCache = '20260828-listing-status-recheck-reset-v1';
-  const operationsJsCache = '20260828-listing-status-recheck-reset-v1';
+  const operationsCssCache = '20260828-product-master-image-upload-recheck-v1';
+  const operationsJsCache = '20260828-product-master-image-upload-recheck-v1';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
