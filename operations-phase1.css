@@ -1297,6 +1297,8 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-product-platform-status b,.ops-product-platform-status i{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:normal}
 .ops-product-platform-status b{font-size:8px}.ops-product-platform-status i{font-size:8px;font-weight:850}
 .ops-product-platform-status>.is-present{border-color:#b9dfcf;background:#e9f8f1;color:#176b50}
+.ops-product-platform-status>.is-pending{border-color:#ead99f;background:#fff8df;color:#7c6109}
+.ops-product-platform-status>.is-pending:hover{border-color:#d5bc65;background:#fff2bf}
 .ops-product-platform-status>.is-missing{border-color:#edc1bd;background:#fff0ee;color:#a33d34}
 .ops-product-platform-status>.is-missing:hover{border-color:#d98178;background:#ffe3df}
 .ops-product-platform-status>span.queued{border-color:#ead99f;background:#fff8df;color:#7c6109}
