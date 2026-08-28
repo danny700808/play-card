@@ -72,6 +72,34 @@ test('operations auth waits for Firebase restore and force-refreshes claims', as
   assert.equal(forced, true);
 });
 
+test('a verified manager session is reused while collecting multiple images', async () => {
+  let tokenChecks = 0;
+  const firebaseUser = {
+    email: 'collector-admin@example.com',
+    async getIdTokenResult() {
+      tokenChecks += 1;
+      return { claims: { email: 'collector-admin@example.com', manager: true, employeeId: 'ADMIN-COLLECTOR' } };
+    }
+  };
+  const auth = {
+    currentUser: firebaseUser,
+    onAuthStateChanged(callback) {
+      queueMicrotask(() => callback(firebaseUser));
+      return () => {};
+    }
+  };
+  const runtime = { firebase: { auth: () => auth }, setTimeout, clearTimeout };
+  const manager = { employeeId: 'ADMIN-COLLECTOR', email: 'collector-admin@example.com', role: 'admin', showSettingsZone: true };
+
+  const first = await Auth.ensureManagerAuth(runtime, manager, { timeoutMs: 1000 });
+  const second = await Auth.ensureManagerAuth(runtime, manager, { timeoutMs: 1000 });
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(second.cached, true);
+  assert.equal(tokenChecks, 1);
+});
+
 test('missing Firebase session requests one safe login redirect back to products', async () => {
   const localStorage = memoryStorage({
     employeeUser: '{"role":"admin"}',
@@ -148,4 +176,14 @@ test('Product AI refreshes manager auth before opening the callable', () => {
   const body = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.ok(body.indexOf('await requireEasyStoreManagerAuth()') < body.indexOf("httpsCallable('researchProductListingCase'"));
+});
+
+test('image collection verifies manager auth before activating the browser collector', () => {
+  const source = fs.readFileSync(path.join(root, 'operations-phase1.js'), 'utf8');
+  const start = source.indexOf('async function startProductImageCollection(');
+  const end = source.indexOf('async function drainProductImageCollectionUploads', start);
+  const body = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.ok(body.indexOf('await requireEasyStoreManagerAuth()') < body.indexOf("requestProductImageCollection('start',session)"));
+  assert.match(body, /淘寶／1688 若要求登入，是供應商網站自己的帳號/);
 });

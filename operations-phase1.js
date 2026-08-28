@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.28-nine-series-book-covers-v1';
+  const VERSION = '2026.08.28-variant-image-bidirectional-v1';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
@@ -4320,7 +4320,12 @@ function ensureSalesClock(){
     return productVariantCardSourceImages(form,productVariantImageTargetCard(form,id));
   }
   function refreshProductVariantImageTarget(form,productId,urls){
-    if(!form)return;const id=clean(productId);if(id===clean(form.dataset.id)){productListingSourceImageCache.set(id,normalizeProductResearchSourceUrls(urls==null?productVariantImageTargetUrls(form,id):urls));refreshProductVariantImagePickers(form);refreshProductVariantImageProcessingQueue(form);return;}const rows=normalizeProductResearchSourceUrls(urls==null?productVariantImageTargetUrls(form,id):urls).slice(0,PRODUCT_REFERENCE_IMAGE_MAX),cards=queryAll('[data-product-id]',form).filter(function(card){return clean(card.dataset.productId)===id;});productListingSourceImageCache.set(id,rows);
+    if(!form)return;const id=clean(productId),rows=normalizeProductResearchSourceUrls(urls==null?productVariantImageTargetUrls(form,id):urls).slice(0,PRODUCT_REFERENCE_IMAGE_MAX);
+    if(id===clean(form.dataset.id)){
+      const source=query('[name="referenceImageUrls"]',form);if(source)source.value=rows.join('\n');
+      productListingSourceImageCache.set(id,rows);refreshProductVariantImagePickers(form);refreshProductVariantImageProcessingQueue(form);return;
+    }
+    const cards=queryAll('[data-product-id]',form).filter(function(card){return clean(card.dataset.productId)===id;});productListingSourceImageCache.set(id,rows);
     cards.forEach(function(card){
       const source=query('[data-variant-source-images]',card);if(source)source.value=rows.join('\n');
     });
@@ -4361,7 +4366,9 @@ function ensureSalesClock(){
     if(existing.length>=PRODUCT_REFERENCE_IMAGE_MAX)throw new Error('這個細項已經有 20 張來源圖片');
     const card=productVariantImageTargetCard(form,id,role),status=card&&query('[data-variant-image-match-status]',card);if(status){status.className='missing';status.textContent='正在複製圖片到此細項…';}card&&card.classList.add('is-copying-image');
     try{
-      const copied=existing.concat(sourceUrl).slice(0,PRODUCT_REFERENCE_IMAGE_MAX);refreshProductVariantImageTarget(form,id,copied);await persistProductVariantReferenceImages(form,id,copied,copied);await selectProductVariantRepresentativeImage(form,id,sourceUrl,role);toast('圖片已加入細項',clean(catalogById(id)&&catalogById(id).sku)+'｜已設為代表圖','success');
+      const copied=existing.concat(sourceUrl).slice(0,PRODUCT_REFERENCE_IMAGE_MAX);refreshProductVariantImageTarget(form,id,copied);
+      if(id===clean(form.dataset.id)){const referenceBox=byId('productReferenceImagePreview');if(referenceBox)referenceBox.innerHTML=productReferenceImageSelectorHtml(copied,copied);}
+      await persistProductVariantReferenceImages(form,id,copied,copied);await selectProductVariantRepresentativeImage(form,id,sourceUrl,role);toast('圖片已加入細項',clean(catalogById(id)&&catalogById(id).sku)+'｜已設為代表圖','success');
     }finally{card&&card.classList.remove('is-copying-image');}
   }
   async function persistProductVariantReferenceImages(form,productId,urls,selectedUrls){
@@ -4490,8 +4497,8 @@ function ensureSalesClock(){
     const count=productImageCollectionCount(form,id);if(count>=PRODUCT_IMAGE_COLLECTION.maxImages)throw new Error('這個細項已經有 20 張來源圖片');
     const now=Date.now(),session={sessionId:productImageCollectionId(),productId:id,sku:clean(product.sku),easyStoreProductId:clean(product.sourceProductId),title:clean(product.originalName||product.name),maxImages:PRODUCT_IMAGE_COLLECTION.maxImages,currentCount:count,startedAt:now,expiresAt:now+4*60*60*1000,active:true};
     if(!session.sku)throw new Error('這件商品尚未設定 SKU，不能開始收圖');
-    const button=query('[data-action="product-image-collection-toggle"]',form);if(button){button.disabled=true;button.textContent='正在啟動…';}
-    try{await requestProductImageCollection('start',session);productImageCollectionUploadFailures=[];productImageCollectionSession=session;updateProductImageCollectionUi(form,'正在搜圖；切到任何商品網頁即可點圖或框選截圖',false,id);toast('搜圖已啟動',session.sku+'｜任何商品網頁都能使用｜最多 '+session.maxImages+' 張','success');}
+    const button=query('[data-action="product-image-collection-toggle"]',form);if(button){button.disabled=true;button.textContent='正在確認登入…';}
+    try{await requireEasyStoreManagerAuth();if(button)button.textContent='正在啟動…';await requestProductImageCollection('start',session);productImageCollectionUploadFailures=[];productImageCollectionSession=session;updateProductImageCollectionUi(form,'正在搜圖；營運中心登入已確認。淘寶／1688 若要求登入，是供應商網站自己的帳號。',false,id);toast('搜圖已啟動',session.sku+'｜營運中心登入已確認｜最多 '+session.maxImages+' 張','success');}
     catch(error){productImageCollectionSession=null;updateProductImageCollectionUi(form,errorMessage(error),true,id);throw error;}
   }
   async function drainProductImageCollectionUploads(form){

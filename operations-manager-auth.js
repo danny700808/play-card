@@ -9,6 +9,8 @@
   const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
   const REDIRECT_KEY = 'youzi.operations.managerAuthRedirect.v1';
   const REDIRECT_WINDOW_MS = 10 * 60 * 1000;
+  const AUTH_CACHE_MS = 10 * 60 * 1000;
+  let managerAuthCache = null;
 
   function clean(value) {
     return String(value == null ? '' : value).trim();
@@ -101,6 +103,7 @@
   async function ensureManagerAuth(runtime, manager, options) {
     const global = runtime || {};
     if (!localManagerAllowed(manager)) {
+      managerAuthCache = null;
       return { ok: false, reauth: true, reason: 'local-manager-missing', message: '請先使用管理者帳號登入。' };
     }
     if (!global.firebase || typeof global.firebase.auth !== 'function') {
@@ -121,16 +124,23 @@
       return { ok: false, reauth: false, reason: 'auth-restore-failed', message: error.message || '無法恢復登入狀態。' };
     }
     if (!user) {
+      managerAuthCache = null;
       return { ok: false, reauth: true, auth, reason: 'firebase-session-missing', message: '管理者安全登入已失效，需要重新登入。' };
     }
     if (typeof user.getIdTokenResult !== 'function') {
       return { ok: false, reauth: false, auth, reason: 'token-api-missing', message: '無法確認管理者權限，請重新整理後再試。' };
     }
 
+    const now = Date.now();
+    if (managerAuthCache && managerAuthCache.auth === auth && managerAuthCache.user === user && now - managerAuthCache.verifiedAt < AUTH_CACHE_MS && claimsAllowManager(managerAuthCache.claims, user) && sameManagerIdentity(manager, user, managerAuthCache.claims)) {
+      return { ok: true, auth, user, claims: managerAuthCache.claims, cached: true };
+    }
+
     let tokenResult;
     try {
       tokenResult = await user.getIdTokenResult(true);
     } catch (error) {
+      managerAuthCache = null;
       const reauth = tokenFailureNeedsLogin(error);
       return {
         ok: false,
@@ -145,8 +155,10 @@
 
     const claims = tokenResult && tokenResult.claims || {};
     if (!claimsAllowManager(claims, user) || !sameManagerIdentity(manager, user, claims)) {
+      managerAuthCache = null;
       return { ok: false, reauth: true, auth, reason: 'manager-claim-mismatch', message: '目前的安全登入與管理者身分不一致，請重新登入。' };
     }
+    managerAuthCache = { auth, user, claims, verifiedAt: now };
     return { ok: true, auth, user, claims };
   }
 
@@ -195,6 +207,7 @@
 
   async function redirectToLoginOnce(runtime, auth, now) {
     const global = runtime || {};
+    managerAuthCache = null;
     if (hasRecentRedirect(global, now)) return false;
     const value = String(Number(now || Date.now()));
     let markerSaved = false;
