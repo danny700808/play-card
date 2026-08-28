@@ -5179,7 +5179,7 @@ function ensureSalesClock(){
       await requireEasyStoreManagerAuth();
       const callable=global.firebase.app().functions('us-central1').httpsCallable('runNineSeriesBookCoverBatch',{timeout:10*60*1000});
       let result=(await callable({action:'start'})).data||{};updateNineSeriesBookCoverProgress(result,[]);
-      while(!result.done){result=(await callable({action:'process',jobId:result.jobId,limit:10})).data||{};updateNineSeriesBookCoverProgress(result,result.results||[]);}
+      while(!result.done){result=(await callable({action:'process',jobId:result.jobId,limit:3})).data||{};updateNineSeriesBookCoverProgress(result,result.results||[]);}
       toast('9 系列封面處理完成','已補齊 '+formatNumber(result.matchedCount||0)+' 本；待人工確認 '+formatNumber(result.unresolvedCount||0)+' 本。','success');
       await loadProductsOnly(false);
     }catch(error){toast('9 系列封面批次中斷',errorMessage(error),'error');throw error;}
