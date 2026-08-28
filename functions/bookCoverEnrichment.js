@@ -279,26 +279,26 @@ async function candidateFromCommercePage(pageUrl, requestedTitle, requestedIsbn)
   if (requestedIsbn ? !exactIsbn : similarity < 0.8) return null;
   const images = pageImageRows(page.text, page.finalUrl, requestedTitle).filter((row) => row.score >= 1);
   if (!images.length) return null;
-  return {
+  return images.slice(0, 6).map((image) => ({
     source: 'verified-commerce-page',
     sourceRecordUrl: page.finalUrl,
-    imageUrl: images[0].url,
+    imageUrl: image.url,
     matchedTitle: title || requestedTitle,
     matchedIsbn: exactIsbn ? requestedIsbn : '',
     matchMethod: exactIsbn ? 'isbn' : 'fuzzy-title',
-    matchScore: exactIsbn ? 1 : similarity
-  };
+    matchScore: (exactIsbn ? 1 : similarity) + Math.max(-0.02, Math.min(0.02, Number(image.score || 0) / 1000))
+  }));
 }
 
-async function discoverCommerceCoverCandidate(title, isbn) {
-  if (!clean(isbn || title)) return null;
+async function discoverCommerceCoverCandidates(title, isbn) {
+  if (!clean(isbn || title)) return [];
   // ISBN 只做精準加分；內部 ISBN 不正確或書商未刊 ISBN 時，仍以中文書名 80% 相似度找封面。
   const domainQueries = (baseQuery, requiredIsbn) => [
-    `${baseQuery} site:talubook.com`,
-    `${baseQuery} site:musikershop.com`,
-    `${baseQuery} site:musicmusic.com.tw`,
-    `${baseQuery} site:books.com.tw`,
-    baseQuery
+    `${baseQuery} 封面 site:talubook.com`,
+    `${baseQuery} 封面 site:musikershop.com`,
+    `${baseQuery} 封面 site:musicmusic.com.tw`,
+    `${baseQuery} 封面 site:books.com.tw`,
+    `${baseQuery} 樂譜 教材 正面封面`
   ].map((query) => ({ query, requiredIsbn }));
   const queries = [
     ...(isbn ? domainQueries(isbn, isbn) : []),
@@ -313,18 +313,22 @@ async function discoverCommerceCoverCandidate(title, isbn) {
       urls = duckDuckGoResultUrls(search.text).slice(0, 8);
     } catch (_) {}
     let settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, searchSpec.requiredIsbn)));
-    candidates = settled.filter((row) => row.status === 'fulfilled' && row.value).map((row) => row.value);
+    candidates = settled
+      .filter((row) => row.status === 'fulfilled' && Array.isArray(row.value))
+      .flatMap((row) => row.value);
     if (candidates.length) break;
     try {
       const search = await fetchText(`https://www.bing.com/search?q=${encodeURIComponent(query)}&count=10&setlang=zh-Hant`);
       urls = bingResultUrls(search.text).slice(0, 8);
       settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, searchSpec.requiredIsbn)));
-      candidates = settled.filter((row) => row.status === 'fulfilled' && row.value).map((row) => row.value);
+      candidates = settled
+        .filter((row) => row.status === 'fulfilled' && Array.isArray(row.value))
+        .flatMap((row) => row.value);
     } catch (_) {}
     if (candidates.length) break;
   }
   candidates.sort((left, right) => Number(right.matchScore || 0) - Number(left.matchScore || 0));
-  return candidates[0] || null;
+  return uniqueCoverCandidates(candidates);
 }
 
 async function googleBooksCandidates(query, title, isbn, exactIsbnQuery) {
@@ -388,12 +392,9 @@ async function findBookCoverCandidates(product) {
       } catch (_) {}
     }
   }
-  if (!candidates.length) {
-    try {
-      const commerce = await discoverCommerceCoverCandidate(name, isbn);
-      if (commerce) candidates.push(commerce);
-    } catch (_) {}
-  }
+  try {
+    candidates.push(...await discoverCommerceCoverCandidates(name, isbn));
+  } catch (_) {}
   const uniqueCandidates = uniqueCoverCandidates(candidates);
   uniqueCandidates.sort((left, right) => {
     if (left.matchMethod !== right.matchMethod) return left.matchMethod === 'isbn' ? -1 : 1;
