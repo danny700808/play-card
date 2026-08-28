@@ -8,7 +8,7 @@ const sharp = require('sharp');
 const REGION = 'us-central1';
 const PRODUCT_COLLECTION = 'opsInternalProducts';
 const JOB_COLLECTION = 'opsBookCoverEnrichmentJobs';
-const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v4-name-only';
+const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v5-name-only';
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_CHUNK_SIZE = 6;
 const MAX_CHUNK_SIZE = 10;
@@ -128,6 +128,30 @@ function titleSimilarity(left, right) {
   return (2 * shared) / (a.length + b.length);
 }
 
+function titleCoverage(requestedTitle, candidateTitle) {
+  const requested = titleBigrams(requestedTitle);
+  const candidate = titleBigrams(candidateTitle);
+  if (!requested.length || !candidate.length) return 0;
+  const counts = new Map();
+  candidate.forEach((token) => counts.set(token, (counts.get(token) || 0) + 1));
+  let covered = 0;
+  requested.forEach((token) => {
+    const available = counts.get(token) || 0;
+    if (available > 0) {
+      covered += 1;
+      counts.set(token, available - 1);
+    }
+  });
+  return covered / requested.length;
+}
+
+function titleMatchScore(requestedTitle, candidateTitle) {
+  return Math.max(
+    titleSimilarity(requestedTitle, candidateTitle),
+    titleCoverage(requestedTitle, candidateTitle)
+  );
+}
+
 function googleCoverUrl(volume) {
   const links = volume && volume.volumeInfo && volume.volumeInfo.imageLinks;
   if (!links || typeof links !== 'object') return '';
@@ -139,7 +163,7 @@ function googleCoverUrl(volume) {
 function googleCandidate(volume, requestedTitle) {
   const info = volume && volume.volumeInfo ? volume.volumeInfo : {};
   const title = [clean(info.title), clean(info.subtitle)].filter(Boolean).join(' ');
-  const similarity = titleSimilarity(requestedTitle, title);
+  const similarity = titleMatchScore(requestedTitle, title);
   const imageUrl = googleCoverUrl(volume);
   if (!imageUrl) return null;
   if (similarity < 0.8) return null;
@@ -221,7 +245,7 @@ function bingImageCandidates(html, requestedTitle) {
     const imageUrl = resolveHttpUrl(payload && payload.murl, 'https://www.bing.com/');
     const sourceRecordUrl = resolveHttpUrl(payload && payload.purl, 'https://www.bing.com/');
     const matchedTitle = stripHtml(payload && (payload.t || payload.desc));
-    const similarity = titleSimilarity(requestedTitle, matchedTitle);
+    const similarity = titleMatchScore(requestedTitle, matchedTitle);
     if (!imageUrl || similarity < 0.8) continue;
     candidates.push({
       source: 'image-search-original',
@@ -254,7 +278,7 @@ function pageImageRows(html, pageUrl, requestedTitle) {
     if (/(?:goods_img|bookpic|product_image|cover_image)/i.test(lower)) score += 4;
     if (/(?:thumb|small)/i.test(lower)) score -= 1;
     if (/(?:logo|icon|sprite|avatar|banner|header|footer|qr|qrcode|loading|placeholder)/i.test(lower)) score -= 12;
-    const similarity = titleSimilarity(requestedTitle, alt);
+    const similarity = titleMatchScore(requestedTitle, alt);
     if (similarity >= 0.8) score += 5;
     else if (similarity >= 0.45) score += 2;
     rows.push({ url, score, alt: stripHtml(alt) });
@@ -278,7 +302,7 @@ async function candidateFromCommercePage(pageUrl, requestedTitle) {
   if (/\b(?:shopee|amazon|facebook|instagram)\./i.test(pageUrl)) return null;
   const page = await fetchText(pageUrl);
   const title = pageTitle(page.text);
-  const similarity = titleSimilarity(requestedTitle, title);
+  const similarity = titleMatchScore(requestedTitle, title);
   if (similarity < 0.8) return null;
   const images = pageImageRows(page.text, page.finalUrl, requestedTitle).filter((row) => row.score >= 1);
   if (!images.length) return null;
@@ -669,5 +693,7 @@ module.exports = {
   productName,
   productSku,
   registerBookCoverEnrichment,
+  titleCoverage,
+  titleMatchScore,
   titleSimilarity
 };

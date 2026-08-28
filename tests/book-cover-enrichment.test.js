@@ -45,6 +45,8 @@ test('book-title matching accepts roughly 80 percent identity after normalizatio
   assert.equal(covers.normalizeBookTitle('典弦教材-新琴點撥 2024版 橘色'), '新琴點撥2024版橘色');
   assert.ok(covers.titleSimilarity('典弦教材-新琴點撥 2024版 橘色', '新琴點撥 2024版（橘色）') >= 0.8);
   assert.ok(covers.titleSimilarity('吉他奏法大圖鑑', '電子琴入門教程') < 0.8);
+  assert.equal(covers.titleCoverage('吉客開始 客家歌謠吉他入門', '吉客開始 客家歌謠吉他入門｜網路書店商品頁'), 1);
+  assert.ok(covers.titleMatchScore('吉客開始 客家歌謠吉他入門', '吉客開始 客家歌謠吉他入門｜網路書店商品頁') >= 0.8);
 });
 
 test('Google Books candidate uses title similarity only', () => {
