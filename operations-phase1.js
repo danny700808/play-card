@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.08.27-merge-existing-products-v1';
+  const VERSION = '2026.08.28-nine-series-book-covers-v1';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
@@ -76,6 +76,7 @@
   let productImageCollectionUploadChain = Promise.resolve();
   let productImageCollectionDeliverySequence = 0;
   let productImageCollectionUploadFailures = [];
+  let nineSeriesBookCoverBatchBusy = false;
   const productListingSourceImageCache = new Map();
   const PRODUCT_SHIPPING_DECISIONS = {
     convenience:{label:'可超商寄',description:'小型商品；可先使用安全的估算包裝資料。'},
@@ -2489,7 +2490,7 @@ function renderOverviewV7(){
     const previewHtml=renderProductPreviewModal();
     const recentCount=state.catalog.filter(productAppearsInRecentListing).length,queueCount=productListingQueueRows().length;
     const productSortHtml='<select class="ops-select ops-product-sort-select" id="productSort"><option value="sku">排序：SKU 預設</option><option value="price"'+(state.productSort==='price'?' selected':'')+'>依價格</option><option value="stock"'+(state.productSort==='stock'?' selected':'')+'>依數量</option><option value="ready-to-list"'+(state.productSort==='ready-to-list'?' selected':'')+'>有庫存未上架</option></select>';
-    return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">成本總額：<b>'+money(inventoryValue)+'</b></div></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft" data-action="product-listing-queue-open">待網路上架商品'+(queueCount?'（'+formatNumber(queueCount)+'）':'')+'</button><button class="ops-button soft '+(state.productRecentOnly?'active':'')+'" data-action="product-recent">新增未上架'+(recentCount?'（'+formatNumber(recentCount)+'）':'')+'</button><button class="ops-button soft" data-action="product-platform-audit">檢測網路商品狀態</button></div></div>'+productSeriesTabs()+'<div class="ops-product-platform-guide"><b>通路上架檢測</b><span>四個通路固定顯示「有／沒有」；有效平台商品即使缺貨、庫存 0 或正常下架仍顯示「有」，補庫存後可恢復。違規、受限制、未通過或已刪除一律顯示「沒有」，必須重新上架。</span></div>'+productMergeToolbarHtml()+'<div class="ops-product-toolbar"><input class="ops-input" id="productSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'">'+productSortHtml+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+'<div id="productSearchResults">'+productSearchResultsHtml()+'</div></section>'+previewHtml;
+    return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">成本總額：<b>'+money(inventoryValue)+'</b></div></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft" data-action="product-listing-queue-open">待網路上架商品'+(queueCount?'（'+formatNumber(queueCount)+'）':'')+'</button><button class="ops-button soft '+(state.productRecentOnly?'active':'')+'" data-action="product-recent">新增未上架'+(recentCount?'（'+formatNumber(recentCount)+'）':'')+'</button><button class="ops-button soft" data-action="product-nine-series-covers" '+(nineSeriesBookCoverBatchBusy?'disabled':'')+'>'+(nineSeriesBookCoverBatchBusy?'補齊封面中…':'補齊 9 系列封面')+'</button><button class="ops-button soft" data-action="product-platform-audit">檢測網路商品狀態</button></div></div>'+productSeriesTabs()+'<div class="ops-product-platform-guide"><b>通路上架檢測</b><span>四個通路固定顯示「有／沒有」；有效平台商品即使缺貨、庫存 0 或正常下架仍顯示「有」，補庫存後可恢復。違規、受限制、未通過或已刪除一律顯示「沒有」，必須重新上架。</span></div>'+productMergeToolbarHtml()+'<div class="ops-product-toolbar"><input class="ops-input" id="productSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'">'+productSortHtml+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+'<div id="productSearchResults">'+productSearchResultsHtml()+'</div></section>'+previewHtml;
   }
 
   function estimateFifoCostForProduct(p,qty){if(!p||!p.internal)return 0;try{return consumeFifo(p.internal,qty).costTotal;}catch(err){return qty*Number(p.nextFifoCost||p.averageCost||0);}}
@@ -5162,6 +5163,27 @@ function ensureSalesClock(){
     toast('網路商品狀態檢測已啟動','即將帶入 Codex 完整檢查四平台'+(copied?'；檢測指令也已複製':'')+'。','success');
     global.setTimeout(function(){global.location.href=threadUrl;},100);
   }
+  function updateNineSeriesBookCoverProgress(result,latestRows){
+    const target=byId('nineSeriesBookCoverProgress');if(!target)return;
+    const total=Math.max(0,Number(result&&result.total||0)),cursor=Math.max(0,Number(result&&result.cursor||0));
+    const matched=Math.max(0,Number(result&&result.matchedCount||0)),unresolved=Math.max(0,Number(result&&result.unresolvedCount||0)),failed=Math.max(0,Number(result&&result.failedCount||0));
+    const percent=total?Math.min(100,Math.round(cursor*100/total)):100;
+    const rows=(latestRows||[]).map(function(row){const label=row.status==='matched'?'已補齊':row.status==='unresolved'?'待確認':'處理失敗';return '<li><b>'+escapeHtml(row.sku||'未設定')+'</b><span>'+escapeHtml(label)+(row.matchedTitle?'｜'+row.matchedTitle:row.reason?'｜'+row.reason:'')+'</span></li>';}).join('');
+    target.innerHTML='<div class="ops-callout green"><b>進度 '+formatNumber(cursor)+' / '+formatNumber(total)+'（'+percent+'%）</b><br><span>已補齊 '+formatNumber(matched)+' 本｜待確認 '+formatNumber(unresolved)+' 本｜失敗 '+formatNumber(failed)+' 本</span></div>'+(rows?'<ul class="ops-summary-list">'+rows+'</ul>':'');
+  }
+  async function startNineSeriesBookCoverBatch(){
+    if(nineSeriesBookCoverBatchBusy)return;
+    nineSeriesBookCoverBatchBusy=true;renderKeepingViewport();
+    openDrawer('補齊 9 系列課本封面','ISBN 優先精確比對；沒有可靠 ISBN 時，才使用書名約 80% 相似度。原有圖片會保留，新找到的正面封面會成為主圖。','<div id="nineSeriesBookCoverProgress"><div class="ops-callout">正在整理 9 系列書籍清單…</div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉視窗（後台繼續）</button></div>');
+    const callable=global.firebase.app().functions('us-central1').httpsCallable('runNineSeriesBookCoverBatch',{timeout:10*60*1000});
+    try{
+      let result=(await callable({action:'start'})).data||{};updateNineSeriesBookCoverProgress(result,[]);
+      while(!result.done){result=(await callable({action:'process',jobId:result.jobId,limit:10})).data||{};updateNineSeriesBookCoverProgress(result,result.results||[]);}
+      toast('9 系列封面處理完成','已補齊 '+formatNumber(result.matchedCount||0)+' 本；待人工確認 '+formatNumber(result.unresolvedCount||0)+' 本。','success');
+      await loadProductsOnly(false);
+    }catch(error){toast('9 系列封面批次中斷',errorMessage(error),'error');throw error;}
+    finally{nineSeriesBookCoverBatchBusy=false;renderKeepingViewport();}
+  }
   async function copyProductListingCodexPrompt(text){
     if(navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(text);return true;}catch(error){}}
     try{const input=document.createElement('textarea');input.value=text;input.setAttribute('readonly','');input.style.position='fixed';input.style.opacity='0';document.body.appendChild(input);input.select();const copied=document.execCommand('copy');input.remove();return copied;}catch(error){return false;}
@@ -6272,6 +6294,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='pos-key')return applySearchKeyInput('posSearch',el.dataset.key);
     if(action==='auto-init-products') return autoInitProducts();
     if(action==='product-new') return openProductEdit('');
+    if(action==='product-nine-series-covers')return startNineSeriesBookCoverBatch().catch(function(){});
     if(action==='product-platform-audit')return startProductPlatformAudit().catch(function(error){toast('網路商品狀態檢測尚未啟動',errorMessage(error),'error');});
     if(action==='product-listing-queue-open')return openProductListingQueue();
     if(action==='product-listing-queue-add')return addProductListingToQueue(byId('productListingCaseForm'),el.dataset.scope,el.dataset.purpose).catch(function(error){toast('尚未加入待處理',errorMessage(error),'error');});
