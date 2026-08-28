@@ -14,6 +14,16 @@ service firebase.storage {
       );
     }
 
+    // 中央商品主檔圖片：在商品編輯頁直接加入，與上架案件來源圖分開保存。
+    match /ops-internal-products/{productId}/images/{fileName} {
+      allow read: if true;
+      allow create, update: if isManagerAuth()
+        && request.resource != null
+        && request.resource.size < 8388608
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if isManagerAuth();
+    }
+
     // 商品上架案件參考圖：只有管理者可上傳；下載網址供 AI 研究與案件預覽使用。
     match /ops-product-listing-cases/{productId}/references/{fileName} {
       allow read: if true;
