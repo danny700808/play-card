@@ -297,6 +297,7 @@ async function discoverCommerceCoverCandidate(title, isbn) {
     `${baseQuery} site:talubook.com`,
     `${baseQuery} site:musikershop.com`,
     `${baseQuery} site:musicmusic.com.tw`,
+    `${baseQuery} site:books.com.tw`,
     baseQuery
   ].map((query) => ({ query, requiredIsbn }));
   const queries = [
