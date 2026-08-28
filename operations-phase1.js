@@ -5174,7 +5174,7 @@ function ensureSalesClock(){
   async function startNineSeriesBookCoverBatch(){
     if(nineSeriesBookCoverBatchBusy)return;
     nineSeriesBookCoverBatchBusy=true;renderKeepingViewport();
-    openDrawer('補齊 9 系列課本封面','ISBN 優先精確比對；沒有可靠 ISBN 時，才使用書名約 80% 相似度。原有圖片會保留，新找到的正面封面會成為主圖。','<div id="nineSeriesBookCoverProgress"><div class="ops-callout">正在整理 9 系列書籍清單…</div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉視窗（後台繼續）</button></div>');
+    openDrawer('補齊 9 系列課本封面','只使用商品中文名稱搜尋；僅採用清晰、完整的正面封面。半張、拼圖或太小的圖片會直接跳過。','<div id="nineSeriesBookCoverProgress"><div class="ops-callout">正在整理 9 系列書籍清單…</div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉視窗（後台繼續）</button></div>');
     try{
       await requireEasyStoreManagerAuth();
       const callable=global.firebase.app().functions('us-central1').httpsCallable('runNineSeriesBookCoverBatch',{timeout:10*60*1000});
