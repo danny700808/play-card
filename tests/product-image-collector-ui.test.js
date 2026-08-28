@@ -208,6 +208,22 @@ test("同款細項可在同一畫面收圖、拖曳共用並清除代表圖", ()
   assert.match(operationsSource, /startProductImageCollection\(byId\('productListingCaseForm'\),el\.dataset\.id\)/);
 });
 
+test("同款細項圖片可由下方既有商品往上拖回目前商品", () => {
+  const refreshStart = operationsSource.indexOf("function refreshProductVariantImageTarget");
+  const copyStart = operationsSource.indexOf("async function copyProductVariantReferenceImage", refreshStart);
+  const persistStart = operationsSource.indexOf("async function persistProductVariantReferenceImages", copyStart);
+  const refresh = operationsSource.slice(refreshStart, copyStart);
+  const copy = operationsSource.slice(copyStart, persistStart);
+
+  assert.match(refresh, /query\('\[name="referenceImageUrls"\]',form\)/, "目前商品的來源圖欄位也要同步更新");
+  assert.match(refresh, /source\.value=rows\.join\('\\n'\)/, "拖到目前商品後，後續代表圖檢查必須讀得到新圖片");
+  assert.match(copy, /productReferenceImageSelectorHtml\(copied,copied\)/, "目前商品的圖片選擇畫面也要立即同步");
+  assert.ok(
+    copy.indexOf("refreshProductVariantImageTarget(form,id,copied)") < copy.lastIndexOf("selectProductVariantRepresentativeImage(form,id,sourceUrl,role)"),
+    "必須先同步目前商品來源圖，再指定代表圖"
+  );
+});
+
 test("同款商品會自動辨識顏色並用白話顯示區分方式", () => {
   assert.match(operationsSource, /function productVariantGroupAttributeSuggestion/);
   assert.match(operationsSource, /function productVariantResolvedValue/);
