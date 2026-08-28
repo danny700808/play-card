@@ -79,3 +79,20 @@ test('book covers must be clear, complete portrait images', () => {
   assert.equal(covers.coverDimensionsAreAcceptable(240, 360), false);
   assert.equal(covers.coverDimensionsAreAcceptable(500, 1200), false);
 });
+
+test('image-search candidates require exact ISBN or strong title similarity', () => {
+  const good = JSON.stringify({
+    murl: 'https://cdn.example.com/full-cover.jpg',
+    purl: 'https://shop.example.com/books/9789866581366',
+    t: '節奏吉他完全解析 附 CD'
+  }).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const wrong = JSON.stringify({
+    murl: 'https://cdn.example.com/cat.jpg',
+    purl: 'https://example.com/cat',
+    t: '可愛貓咪海報'
+  }).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const html = `<a class="iusc" m="${good}"></a><a class="iusc" m="${wrong}"></a>`;
+  const rows = covers.bingImageCandidates(html, '典絃教材-節奏吉他完全解析', '9789866581366');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].imageUrl, 'https://cdn.example.com/full-cover.jpg');
+});
