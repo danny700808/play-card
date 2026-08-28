@@ -661,6 +661,35 @@ async function startJob(request) {
   return { ok: true, action: 'start', jobId: jobRef.id, total: items.length, cursor: 0, done: !items.length };
 }
 
+async function resumeOrStartJob(request) {
+  const db = admin.firestore();
+  const actor = normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || clean(request.auth && request.auth.uid);
+  const recent = await db.collection(JOB_COLLECTION).orderBy('requestedAt', 'desc').limit(20).get();
+  let active = null;
+  recent.forEach((snapshot) => {
+    if (active) return;
+    const row = snapshot.data() || {};
+    if (clean(row.status) !== 'running') return;
+    if (clean(row.ruleVersion) !== COVER_RULE_VERSION) return;
+    if (normalizeEmail(row.requestedBy) !== normalizeEmail(actor)) return;
+    active = { id: snapshot.id, ...row };
+  });
+  if (!active) return startJob(request);
+  const total = Math.max(0, Number(active.total || 0));
+  const cursor = Math.max(0, Number(active.cursor || 0));
+  return {
+    ok: true,
+    action: 'resume',
+    jobId: active.id,
+    total,
+    cursor,
+    done: cursor >= total,
+    matchedCount: Math.max(0, Number(active.matchedCount || 0)),
+    unresolvedCount: Math.max(0, Number(active.unresolvedCount || 0)),
+    failedCount: Math.max(0, Number(active.failedCount || 0))
+  };
+}
+
 async function processJob(request) {
   const db = admin.firestore();
   const jobId = clean(request && request.data && request.data.jobId);
@@ -723,6 +752,7 @@ function registerBookCoverEnrichment(target) {
     if (!isAllowedManager(request)) throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
     const action = clean(request && request.data && request.data.action) || 'start';
     if (action === 'start') return startJob(request);
+    if (action === 'resume-or-start') return resumeOrStartJob(request);
     if (action === 'process') return processJob(request);
     throw new HttpsError('invalid-argument', '不支援的批次動作。');
   });
