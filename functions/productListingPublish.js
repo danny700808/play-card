@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 25;
+const LISTING_AUTOMATION_POLICY_VERSION = 26;
 const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v1';
 const RICH_CONTENT_FEATURE_TARGET = 10;
 const RICH_CONTENT_USAGE_TARGET = 8;
@@ -351,23 +351,35 @@ function listingAutomationPolicy() {
       refreshLocalizedImageUrlBeforeRetry: true,
       transientFailureSignatures: [
         'http-408', 'http-425', 'http-429', 'http-500', 'http-502', 'http-503', 'http-504',
-        'network-timeout', 'temporary-platform-error', 'image-fetch-failed', 'image-load-timeout', 'image-processing-pending'
+        'network-timeout', 'temporary-platform-error', 'image-fetch-failed', 'image-load-timeout', 'image-processing-pending',
+        'platform-session-expired', 'redirected-to-login', 'authenticated-tab-control-lost'
       ]
     },
     publishVerification: {
-      mode: 'fast-essential-checks',
+      mode: 'required-field-check-and-same-listing-repair',
       successDialogRequiresListingIdentity: true,
       easyStoreDraftCreationIsNotPublication: true,
       requireEveryVariantGroupSkuOnPublishedStorefront: true,
-      requiredChecks: ['listing-id', 'exact-sku', 'price', 'status', 'one-official-list-match'],
+      requiredChecks: [
+        'listing-id', 'exact-sku', 'price', 'stock', 'status', 'one-official-list-match',
+        'complete-variant-sku-set', 'variant-name', 'variant-price', 'variant-stock', 'variant-image'
+      ],
       intentionallySkippedAfterSubmit: [
-        'stock', 'duplicate-platform-list-and-official-catalog-check',
-        'applied-image-url-list', 'official-image-url-list', 'reopen-saved-draft'
+        'duplicate-platform-list-and-official-catalog-check', 'reopen-saved-draft'
       ],
       imageReceiptContract: {
         verifiedOnceBeforePlatformNavigation: true,
         postSubmitImageUrlCollectionRequired: false,
-        platformErrorTriggersTargetedImageCheck: true
+        platformErrorTriggersTargetedImageCheck: true,
+        groupedAndAddVariantRequireEveryVariantImage: true
+      },
+      repairLoop: {
+        missingOrMismatchedRequiredFieldIsNotCompleted: true,
+        action: 'resume-same-listing-or-draft-and-reapply-only-missing-fields',
+        resubmitSameListingAfterRepair: true,
+        verifyExactSkuAgainAfterRepair: true,
+        neverCreateReplacementListing: true,
+        preserveAlreadyVerifiedFields: true
       }
     },
     platformExecutionPlan: {
@@ -488,13 +500,18 @@ function listingAutomationPolicy() {
       verification: 'single-final-check-after-submit'
     },
     momoPublishRecovery: {
-      failureSignatures: ['still-draft', 'blank-price', 'sku-mismatch', 'price-mismatch', 'missing-from-platform'],
-      compareWithSubmittedSnapshot: ['sku', 'momoPrice', 'status'],
+      failureSignatures: [
+        'still-draft', 'blank-price', 'sku-mismatch', 'price-mismatch', 'stock-mismatch',
+        'variant-sku-set-mismatch', 'variant-price-mismatch', 'variant-stock-mismatch',
+        'variant-image-missing', 'missing-from-platform'
+      ],
+      compareWithSubmittedSnapshot: ['sku', 'momoPrice', 'stock', 'variant-sku-set', 'variant-price', 'variant-stock', 'variant-image', 'status'],
       resumeSameDraft: true,
       neverCreateReplacementDraft: true,
       reapplyWhenCleared: [
         'attributes', 'other-information', 'stock', 'sale-price', 'market-price', 'factory-sku',
         'material-grade', 'weight', 'temperature', 'shipping-methods', 'third-party-location',
+        'main-images', 'advertisement-image', 'promotion-material-bank-image', 'variant-images',
         'rich-description', 'feature-copy', 'warranty'
       ],
       permissionDeniedSignatures: ['此帳號無此功能權限', 'account-not-authorized-for-publish'],
@@ -536,6 +553,11 @@ function listingAutomationPolicy() {
       neverUsePrimaryChrome: true,
       reuseExistingAuthenticatedPlatformTabs: true,
       allowSavedCredentialLoginRetry: true,
+      authenticatedTabIsPrimarySessionEvidence: true,
+      deepLinkFailureAloneDoesNotMeanLoggedOut: true,
+      retryCanonicalEntryBeforeLogin: true,
+      submitSavedCredentialsWithoutRoutineConfirmation: true,
+      resumeSameJobSkuDraftAndStageAfterLogin: true,
       neverOpenNativeWindowsFilePicker: true,
       neverSwitchBrowserWorkspaceMidJob: true,
       stopForInteractiveAuthenticationOnly: true
@@ -546,8 +568,9 @@ function listingAutomationPolicy() {
       returnAnchorToPlatformHomeOrProductList: true,
       neverCloseUnrelatedUserTabs: true
     },
-    permanentBlockers: ['missing-required-data', 'explicit-platform-rejection', 'otp', 'captcha', 'login-expired'],
-    humanHandoffOnlyFor: ['missing-required-data', 'explicit-platform-rejection', 'otp', 'captcha', 'login-expired', 'persistent-platform-error']
+    recoverableAuthenticationStates: ['login-expired', 'redirected-to-login', 'authenticated-tab-control-lost'],
+    permanentBlockers: ['missing-required-data', 'explicit-platform-rejection', 'otp', 'captcha', 'saved-credentials-rejected', 'platform-account-disabled'],
+    humanHandoffOnlyFor: ['missing-required-data', 'explicit-platform-rejection', 'otp', 'captcha', 'saved-credentials-rejected', 'platform-account-disabled', 'persistent-platform-error']
   };
 }
 
@@ -557,7 +580,9 @@ function evaluateMomoPublishVerification(expected, observed) {
   const expectedSku = normalizeSku(target.sku);
   const actualSku = normalizeSku(actual.sku);
   const expectedPrice = numberOrNull(target.momoPrice);
+  const expectedStock = numberOrNull(target.stock);
   const actualPrice = numberOrNull(actual.price);
+  const actualStock = numberOrNull(actual.stock);
   const status = clean(actual.status).toLowerCase();
   const reasons = [];
 
@@ -566,6 +591,7 @@ function evaluateMomoPublishVerification(expected, observed) {
   if (status === 'draft' || status === '暫存') reasons.push('still-draft');
   if (actualPrice === null) reasons.push('blank-price');
   else if (expectedPrice !== null && actualPrice !== expectedPrice) reasons.push('price-mismatch');
+  if (expectedStock !== null && actualStock !== expectedStock) reasons.push('stock-mismatch');
   if (actual.platformListMatched !== true && actual.officialCatalogMatched !== true) reasons.push('missing-from-platform');
 
   return {
@@ -1618,7 +1644,7 @@ function buildListingDecisionContract(snapshot) {
 
 function buildPlatformPageContracts() {
   const common = {
-    version: 2,
+    version: 3,
     observedAt: '2026-08-22',
     cacheScope: 'platform-and-layout-signature',
     selectorStrategy: ['stable-label', 'name', 'data-attribute', 'role', 'relative-section'],
@@ -1651,6 +1677,9 @@ function buildPlatformPageContracts() {
         'previous-successful-route-from-project-context'
       ],
       submitSavedCredentialsWithoutRoutineConfirmation: true,
+      deepLinkFailureAloneDoesNotProveLogout: true,
+      retryCanonicalEntryBeforeCredentialLogin: true,
+      verifyAuthenticatedLandmarkAfterRecovery: true,
       resumeSameJobSkuDraftAndStage: true,
       neverSwitchToPrimaryChrome: true,
       userActionOnlyFor: ['otp', 'captcha', 'saved-credentials-rejected', 'platform-account-disabled']
@@ -1894,7 +1923,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     ? `${normalizeSku(snapshot.sku) || 'product'}-momo-promo-${momoPromotionFingerprint}.jpg` : '';
   const momoMediaReadyBeforeFirstSubmit = Boolean(momoMainImageUrl && momoPromotionImageUrl);
   return {
-    version: 13,
+    version: 14,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -1915,8 +1944,18 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         automatic: true,
         consultKnownRoutesAndPriorSuccessfulProjectContext: true,
         useSavedCredentialsBeforeRequestingUser: true,
+        currentAuthenticatedTabHasPriority: true,
+        deepLinkFailureAloneDoesNotProveLogout: true,
+        retryCanonicalEntryBeforeCredentialLogin: true,
+        verifyAuthenticatedLandmarkAfterRecovery: true,
         resumeSameJobAndDraft: true,
         stopOnlyForOtpCaptchaOrRejectedCredentials: true
+      },
+      postSubmitRepair: {
+        verifyRequiredFieldsOnExactSku: true,
+        reapplyOnlyMissingFieldsToSameListing: true,
+        resubmitAndVerifyAgain: true,
+        neverCreateReplacementListing: true
       }
     },
     sharedImageAssetStandard: { ...(snapshot.imagePolicy && snapshot.imagePolicy.sharedDeliveryAssetStandard || {}) },
@@ -2850,6 +2889,15 @@ function easyStoreVariantStock(variant) {
   return numberOrNull(variant && (variant.inventory_quantity ?? variant.quantity ?? variant.stock ?? variant.inventory));
 }
 
+function easyStoreVariantImageUrl(variant) {
+  if (!variant || typeof variant !== 'object') return '';
+  for (const key of ['image_url', 'imageUrl', 'photo_url', 'photoUrl', 'thumbnail_url', 'thumbnailUrl']) {
+    const url = safeHttpUrl(variant[key]);
+    if (url) return url;
+  }
+  return collectImageUrls(variant, true)[0] || '';
+}
+
 function easyStorePublicationState(product) {
   if (!product || typeof product !== 'object') return 'unknown';
   for (const key of ['published', 'is_published', 'isPublished']) {
@@ -2881,15 +2929,19 @@ async function verifyEasyStorePublishedListing(snapshot, token, result) {
       continue;
     }
     const price = easyStoreVariantPrice(match.variant);
+    const stock = easyStoreVariantStock(match.variant);
     const variants = snapshot.variantGroupEnabled === true ? productVariants(match.product).map((variant) => ({
       sku: normalizeSku(variant && (variant.sku || variant.code || variant.product_code)),
       value: clean(variant && (variant.option1 || variant.name || variant.title || variant.option_name)),
-      price: easyStoreVariantPrice(variant)
+      price: easyStoreVariantPrice(variant),
+      stock: easyStoreVariantStock(variant),
+      imageUrl: easyStoreVariantImageUrl(variant)
     })) : [];
     const verification = validatePlatformStageVerification('easyStore', snapshot, {
       listingId: match.productId,
       sku: snapshot.sku,
       price,
+      stock,
       variants,
       status: publicationState === 'published' ? 'published' : 'official-catalog-matched',
       platformListMatched: false,
@@ -3558,6 +3610,7 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
   const expectedSku = normalizeSku(snapshot && snapshot.sku);
   const observedSku = normalizeSku(observed.sku);
   const expectedPrice = expectedStagePrice(name, snapshot || {});
+  const expectedStock = numberOrNull(snapshot && snapshot.stock);
   const observedPrice = numberOrNull(observed.price);
   const observedStock = numberOrNull(observed.stock);
   const grouped = snapshot && snapshot.variantGroupEnabled === true;
@@ -3578,6 +3631,7 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
   if (!clean(observed.listingId || observed.productId)) reasons.push('missing-listing-id');
   if (!expectedSku || observedSku !== expectedSku) reasons.push('sku-mismatch');
   if (!grouped && expectedPrice !== null && observedPrice !== expectedPrice) reasons.push('price-mismatch');
+  if (!grouped && expectedStock !== null && observedStock !== expectedStock) reasons.push('stock-mismatch');
   const observedByVariantSku = new Map(observedVariants.map((row) => [normalizeSku(row && row.sku), row]));
   if (grouped) {
     const expectedBySku = new Map(expectedVariants.map((row) => [normalizeSku(row && row.sku), row]));
@@ -3588,6 +3642,8 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
       const platformPrice = name === 'momo' ? numberOrNull(expected.momoPrice)
         : name === 'coupang' ? numberOrNull(expected.coupangPrice) : numberOrNull(expected.easyStorePrice);
       if (platformPrice !== null && actual.price !== platformPrice) reasons.push(`variant-price-mismatch:${sku}`);
+      const platformStock = numberOrNull(expected && expected.stock);
+      if (platformStock !== null && actual.stock !== platformStock) reasons.push(`variant-stock-mismatch:${sku}`);
       if (clean(expected.attributeValue) && actual.value && actual.value !== clean(expected.attributeValue)) reasons.push(`variant-value-mismatch:${sku}`);
     });
   }
@@ -3989,13 +4045,14 @@ async function applyVerifiedQueueReceipt(db, queueId, queueRecord, dependencies 
   const initialJob = { ...(initialJobSnap.data() || {}), id: jobId };
   const snapshot = initialJob.preparedSnapshot && typeof initialJob.preparedSnapshot === 'object'
     ? initialJob.preparedSnapshot : {};
+  const requestedStage = queueStageFromPlatform(record.platform);
+  if (requestedStage && !listingStageSelected(snapshot, requestedStage)) {
+    return { status: 'ignored-unselected-stage', stage: requestedStage };
+  }
   const initialVerification = validateQueuedStageReceipt(initialJob, record);
   if (!initialVerification.verified) {
     console.warn('[applyVerifiedQueueReceipt] ignored receipt', { queueId, jobId, reasons: initialVerification.reasons });
     return { status: 'ignored-unverified-receipt', reasons: initialVerification.reasons };
-  }
-  if (!listingStageSelected(snapshot, initialVerification.stage)) {
-    return { status: 'ignored-unselected-stage', stage: initialVerification.stage };
   }
   const productId = clean(initialJob.productId);
   const productRef = db.collection(PRODUCT_COLLECTION).doc(productId);
@@ -4186,8 +4243,8 @@ function codexAutoPublishInputFingerprint(listingCase) {
 function isTransientListingPublishFailure(value) {
   const message = clean(value && value.message ? value.message : value).toLowerCase();
   if (!message) return false;
-  if (/otp|驗證碼|captcha|登入失效|login expired|permission-denied|明確拒絕|必填資料/.test(message)) return false;
-  return /\b(408|425|429|500|502|503|504)\b|timeout|timed out|network|temporar|暫時|逾時|圖片.*(讀不到|處理中|失敗)|image.*(fetch|processing|unavailable|failed)/.test(message);
+  if (/otp|驗證碼|captcha|saved.credentials.rejected|保存帳密.*(?:拒絕|錯誤)|platform.account.disabled|帳號.*停用|permission-denied|明確拒絕|必填資料/.test(message)) return false;
+  return /\b(408|425|429|500|502|503|504)\b|timeout|timed out|network|temporar|暫時|逾時|登入(?:已)?失效|login expired|session expired|redirected.to.login|跳回登入|authenticated.tab.control.lost|圖片.*(讀不到|處理中|失敗)|image.*(fetch|processing|unavailable|failed)/.test(message);
 }
 
 function publishResultFailureMessage(result) {
