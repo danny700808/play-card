@@ -291,22 +291,32 @@ async function candidateFromCommercePage(pageUrl, requestedTitle, requestedIsbn)
 }
 
 async function discoverCommerceCoverCandidate(title, isbn) {
-  const query = isbn || title;
-  if (!clean(query)) return null;
-  let urls = [];
-  try {
-    const search = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
-    urls = duckDuckGoResultUrls(search.text).slice(0, 8);
-  } catch (_) {}
-  let settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, isbn)));
-  let candidates = settled.filter((row) => row.status === 'fulfilled' && row.value).map((row) => row.value);
-  if (!candidates.length) {
+  const baseQuery = isbn || title;
+  if (!clean(baseQuery)) return null;
+  // 全音、天音教材優先查音樂書籍專門站；找不到才回到一般搜尋。
+  const queries = [
+    `${baseQuery} site:talubook.com`,
+    `${baseQuery} site:musikershop.com`,
+    `${baseQuery} site:musicmusic.com.tw`,
+    baseQuery
+  ];
+  let candidates = [];
+  for (const query of queries) {
+    let urls = [];
+    try {
+      const search = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
+      urls = duckDuckGoResultUrls(search.text).slice(0, 8);
+    } catch (_) {}
+    let settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, isbn)));
+    candidates = settled.filter((row) => row.status === 'fulfilled' && row.value).map((row) => row.value);
+    if (candidates.length) break;
     try {
       const search = await fetchText(`https://www.bing.com/search?q=${encodeURIComponent(query)}&count=10&setlang=zh-Hant`);
       urls = bingResultUrls(search.text).slice(0, 8);
       settled = await Promise.allSettled(urls.map((url) => candidateFromCommercePage(url, title, isbn)));
       candidates = settled.filter((row) => row.status === 'fulfilled' && row.value).map((row) => row.value);
     } catch (_) {}
+    if (candidates.length) break;
   }
   candidates.sort((left, right) => Number(right.matchScore || 0) - Number(left.matchScore || 0));
   return candidates[0] || null;
