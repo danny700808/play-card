@@ -252,6 +252,10 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.workspace, 'easystore-shopee-channel-sync');
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.requireTextAndEveryPreparedImageBeforePublish, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.insertMissingPreparedImagesIntoSameEditor, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.replaceAllEditorImagesWithPreparedSet, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.rejectDataAndBlobImagesBeforePublish, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.requireExactPreparedImageCountAndOrder, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.placement, 'interleaved-fixed-layout-v1');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.warrantyDays, 180);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.momoThirdPartyLocationCode, '000001');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.momoThirdPartyLocationRequired, true);

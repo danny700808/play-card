@@ -364,7 +364,7 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
 });
 
 test("Chrome 助手在一般商品網頁提供點圖開關與可取消的框選截圖", () => {
-  assert.equal(manifest.version, "0.3.32");
+  assert.equal(manifest.version, "0.3.33");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.equal(manifest.permissions.includes("contextMenus"), false);
@@ -385,7 +385,7 @@ test("Chrome 助手在一般商品網頁提供點圖開關與可取消的框選�
   assert.equal(manifest.commands["start-image-crop"].suggested_key.default, "Ctrl+Shift+Y");
 });
 
-test("0.3.32 具備網頁面板截圖權限並能替已開分頁補載入", () => {
+test("0.3.33 具備網頁面板截圖權限並能替已開分頁補載入", () => {
   assert.ok(manifest.host_permissions.includes("<all_urls>"));
   assert.ok(manifest.permissions.includes("scripting"));
   assert.match(background, /chrome\.scripting\.executeScript/);
@@ -415,10 +415,10 @@ test("原圖回退會先解除放大、重新量座標並排除覆蓋物", () =>
   assert.match(supplierCollector, /result\.code !== "IMAGE_READ_FAILED"/);
 });
 
-test("高解析截圖會自動壓縮，營運中心只接受 0.3.32 以上助手", () => {
+test("高解析截圖會自動壓縮，營運中心只接受 0.3.33 以上助手", () => {
   assert.match(supplierCollector, /async function canvasBlobWithinLimit/);
   assert.match(supplierCollector, /Math\.sqrt\(helpers\.MAX_IMAGE_BYTES \/ blob\.size\)/);
-  assert.match(operationsSource, /minimumVersion:'0\.3\.32'/);
+  assert.match(operationsSource, /minimumVersion:'0\.3\.33'/);
   assert.match(operationsSource, /productImageCollectionVersionAtLeast/);
   assert.match(bridge, /extensionVersion: EXTENSION_VERSION/);
   assert.match(operationsSource, /目前收圖助手版本過舊/);

@@ -11,7 +11,7 @@ const extensionHelpers = require('../easystore-shopee-autofill/helpers.js');
 const root = path.resolve(__dirname, '..');
 const extensionName = 'easystore-shopee-autofill';
 const extensionRoot = path.join(root, extensionName);
-const version = '0.3.32';
+const version = '0.3.33';
 const zipName = `youzi-easystore-shopee-autofill-v${version}.zip`;
 const zipPath = path.join(root, zipName);
 
@@ -80,7 +80,7 @@ function zipFileEntries(buffer) {
   return files;
 }
 
-test('0.3.32 ZIP contains exactly the Git extension files byte for byte', () => {
+test('0.3.33 ZIP contains exactly the Git extension files byte for byte', () => {
   assert.equal(fs.existsSync(zipPath), true, `缺少 ${zipName}`);
   const packaged = zipFileEntries(fs.readFileSync(zipPath));
   const sourceFiles = gitExtensionFiles();
@@ -104,7 +104,7 @@ test('extension version, download links, cache keys and CI package contract stay
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260829-shopee-description-images-v1';
   const operationsCssCache = '20260828-product-master-image-upload-recheck-v1';
-  const operationsJsCache = '20260829-shopee-description-images-v1';
+  const operationsJsCache = '20260829-shopee-description-images-v2';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
@@ -137,8 +137,13 @@ test('extension version, download links, cache keys and CI package contract stay
   assert.match(easyStoreExecutor, /fixedLastTwoComplete/);
   assert.match(easyStoreExecutor, /禁止以純文字描述發布/);
   assert.match(easyStoreExecutor, /function insertMissingAdvancedDescriptionImages\(/);
+  assert.match(easyStoreExecutor, /function enforceAdvancedDescriptionImageOrder\(/);
+  assert.match(easyStoreExecutor, /querySelectorAll\("img"\)/);
+  assert.match(easyStoreExecutor, /nonHttpImageUrls\.length === 0/);
+  assert.match(easyStoreExecutor, /unexpectedImageUrls\.length === 0/);
+  assert.match(easyStoreExecutor, /imageOrderComplete/);
   assert.match(easyStoreExecutor, /report\.advancedDescriptionEvidence = evidence/);
-  assert.match(easyStoreExecutor, /文字已帶入，但介紹圖片只有/);
+  assert.match(easyStoreExecutor, /介紹圖片核對失敗/);
   assert.match(easyStoreExecutor, /mode: "section-batch"/);
   assert.match(easyStoreExecutor, /nativeControlsFilledInSinglePass: true/);
 });
