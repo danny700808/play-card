@@ -114,17 +114,18 @@ test('generic fallback copy is not accepted as a completed product description',
   assert.ok(generic.missing.includes('通用備援文案尚未改寫'));
 
   const structured = helpers.listingDescriptionContentStatus({
-    productDescription: '商品特色\n1. 5A 規格\n\n使用方式\n1. 適合日常練習\n\n商品規格\n型號：5A'
+    productDescription: '商品特色\n1. 5A 經典規格適合日常練習與一般演奏使用。\n2. 已確認的棒身尺寸方便使用者辨識選購規格。\n3. 成對配置可直接用於課堂練習與樂團排練。\n\n使用方式\n1. 適合搭配爵士鼓或練習鼓墊進行基本功練習。\n2. 使用前先確認棒身沒有裂痕或其他明顯損傷。\n3. 使用後放置於乾燥環境並避免高溫長時間曝曬。\n\n商品規格\n型號：5A'
   });
   assert.equal(structured.ready, true);
-  assert.equal(structured.featureCount, 1);
+  assert.equal(structured.featureCount, 3);
+  assert.equal(structured.consumerReady, true);
 });
 
 test('rich content lifecycle blocks new products and upgrades existing products in place', () => {
   const incomplete = { ready: false, featureCount: 0, usageCount: 0, specificationCount: 0 };
   const newProduct = helpers.richContentLifecycle('create-single', incomplete);
   const existingProduct = helpers.richContentLifecycle('update-existing', incomplete);
-  assert.equal(newProduct.standardVersion, 'youzi-rich-product-content-v1');
+  assert.equal(newProduct.standardVersion, 'youzi-rich-product-content-v2');
   assert.equal(newProduct.status, 'required-before-first-publish');
   assert.equal(newProduct.blockFirstPublishUntilReady, true);
   assert.equal(existingProduct.status, 'needs-upgrade');
@@ -175,7 +176,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 27);
+  assert.equal(snapshot.automationPolicy.version, 28);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -215,7 +216,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.preparedPlatformFieldPlan.version, 14);
-  assert.equal(snapshot.automationPolicy.version, 27);
+  assert.equal(snapshot.automationPolicy.version, 28);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -343,7 +344,9 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.variantImageSource, 'existing-easystore-completed-gallery');
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.neverOpenNativeFilePickerForVariantImages, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.neverAnalyzeOrRewriteInsideShopee, true);
-  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.mode, 'use-easystore-rich-description');
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.mode, 'use-easystore-rich-description-with-native-image-transfer');
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.directExternalImageUrlPasteForbidden, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMustWaitUntilImageTransferOverlayCloses, true);
   assert.equal(snapshot.shopeeAdvancedDescription.expectedImageCount, 1);
   assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, ['https://example.com/main.jpg']);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.packageWeightGrams, 5000);
@@ -1357,7 +1360,7 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only'
   });
   assert.equal(payload.brand, 'Ibanez');
-  assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description');
+  assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description-with-native-image-transfer');
   assert.equal(payload.advancedDescription.preparedBeforeNavigation, true);
   assert.equal(payload.advancedDescription.expectedImageCount, 3);
   assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);

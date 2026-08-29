@@ -17,10 +17,13 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 27;
-const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v1';
+const LISTING_AUTOMATION_POLICY_VERSION = 28;
+const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v2';
 const RICH_CONTENT_FEATURE_TARGET = 10;
 const RICH_CONTENT_USAGE_TARGET = 8;
+const RICH_CONTENT_MINIMUM_FEATURES = 3;
+const RICH_CONTENT_MINIMUM_USAGE_POINTS = 3;
+const RICH_CONTENT_MINIMUM_POINT_CHARACTERS = 16;
 const DESCRIPTION_LAYOUT_VERSION = 'youzi-interleaved-description-v1';
 const DESCRIPTION_MEDIA_REFRESH_PURPOSE = 'refresh-description-media';
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
@@ -41,10 +44,11 @@ const PLATFORM_QUEUE_RECEIPT_STATUSES = new Set([...PLATFORM_QUEUE_COMPLETED_STA
 const LISTING_IMAGE_ROLES = new Set(['cleanMain', 'brandedHero', 'storefrontPortrait', 'localizedDetail', 'specification', 'variantRepresentative']);
 const LISTING_INTENTS = new Set(['create-single', 'create-group', 'merge-existing', 'add-variant', 'update-existing']);
 const SHOP_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
+const DESCRIPTION_PROMO_ASSET_BASE_URL = clean(process.env.YOUZI_DESCRIPTION_ASSET_URL || 'https://youzi-c1b74.web.app').replace(/\/$/, '');
 const STORE_PROMO_IMAGE_URL = `${SHOP_ASSET_BASE_URL}/product-listing-store-promo.png`;
 const DESCRIPTION_PROMO_IMAGE_URLS = [
-  `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`,
-  `${SHOP_ASSET_BASE_URL}/product-listing-description-promo-2.jpg`
+  `${DESCRIPTION_PROMO_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`,
+  `${DESCRIPTION_PROMO_ASSET_BASE_URL}/product-listing-description-promo-2.jpg`
 ];
 const PHYSICAL_PRODUCT_DISCLAIMER = '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。';
 const MOMO_THIRD_PARTY_DELIVERY = {
@@ -186,11 +190,15 @@ function shopeeAdvancedDescriptionPlan(snapshot) {
   const imageUrls = normalizeUrls(Array.isArray(snapshot && snapshot.descriptionImageUrls)
     ? snapshot.descriptionImageUrls : [], 20);
   return {
-    mode: 'use-easystore-rich-description',
+    mode: 'use-easystore-rich-description-with-native-image-transfer',
     source: 'easystore-body-html',
     preparedBeforeNavigation: true,
     enableWhenAvailable: true,
     useEasyStoreDescription: true,
+    transferImagesThroughEasyStoreShopeeEditor: true,
+    directExternalImageUrlPasteForbidden: true,
+    waitForEveryImageTransferBeforePreparePublish: true,
+    verifyTransferredImageCountAndFixedLastTwoBeforePublish: true,
     capabilityProbe: 'single-lightweight-page-probe',
     contentFingerprint: crypto.createHash('sha256').update(clean(snapshot && snapshot.bodyHtml)).digest('hex'),
     imageUrls,
@@ -248,7 +256,10 @@ function platformDescriptionContentPlan(snapshot) {
       importFromEasyStore: true,
       imageUrls: preparedImageUrls,
       rawHtmlPasteForbidden: true,
-      verifyTextAndEveryPreparedImageBeforePublish: true
+      directExternalImageUrlPasteForbidden: true,
+      requireNativeImageTransferCompletion: true,
+      verifyTextAndEveryPreparedImageBeforePublish: true,
+      verifyFixedLastTwoDescriptionImagesAfterTransfer: true
     }
   };
 }
@@ -394,6 +405,9 @@ function listingAutomationPolicy() {
       shopeePageMayApplyPreparedContentButMustNotReanalyzeIt: true,
       shopeeAdvancedDescriptionMustVerifyTextAndEveryPreparedImageBeforePublish: true,
       shopeeAdvancedDescriptionMissingImagesMustBeInsertedIntoSameEditor: true,
+      shopeeAdvancedDescriptionMustUseNativeImageTransferInsteadOfExternalUrlPaste: true,
+      shopeeAdvancedDescriptionMustWaitUntilImageTransferOverlayCloses: true,
+      shopeeAdvancedDescriptionMustVerifyFixedLastTwoImagesAfterTransfer: true,
       shopeeAdvancedDescriptionMayNotReportSuccessFromButtonClickAlone: true,
       fixedInterleavedDescriptionLayoutVersion: DESCRIPTION_LAYOUT_VERSION,
       fixedStorePromoMustBeLastGalleryImage: true,
@@ -916,6 +930,8 @@ function listingDescriptionContentStatus(listingCase) {
   let featureCount = 0;
   let usageCount = 0;
   let specificationCount = 0;
+  const featurePoints = [];
+  const usagePoints = [];
   lines.forEach((line) => {
     if (/^商品特色[：:]?$/.test(line)) {
       activeSection = 'features';
@@ -934,8 +950,14 @@ function listingDescriptionContentStatus(listingCase) {
       return;
     }
     const listItem = /^(?:\d+[.、]|[-•●])\s*\S+/.test(line);
-    if (activeSection === 'features' && listItem) featureCount += 1;
-    if (activeSection === 'usage' && listItem) usageCount += 1;
+    if (activeSection === 'features' && listItem) {
+      featureCount += 1;
+      featurePoints.push(line.replace(/^(?:\d+[.、]|[-•●])\s*/, ''));
+    }
+    if (activeSection === 'usage' && listItem) {
+      usageCount += 1;
+      usagePoints.push(line.replace(/^(?:\d+[.、]|[-•●])\s*/, ''));
+    }
     if (activeSection === 'specifications' && (listItem || /[：:]/.test(line))) specificationCount += 1;
   });
   const genericFallback = /(?:本商品為柚子樂器販售的樂器或樂器配件|此商品尚待依精確型號、條碼、案件圖片與可驗證網路資料完成正式商品介紹)/.test(content)
@@ -946,13 +968,24 @@ function listingDescriptionContentStatus(listingCase) {
   if (!hasFeatureSection || featureCount < 1) missing.push('可驗證商品特色');
   if (!hasUsageSection || usageCount < 1) missing.push('使用方式／適用情境');
   if (!hasSpecificationSection || specificationCount < 1) missing.push('可驗證商品規格');
+  const featureDetailCount = featurePoints.filter((point) => point.length >= RICH_CONTENT_MINIMUM_POINT_CHARACTERS).length;
+  const usageDetailCount = usagePoints.filter((point) => point.length >= RICH_CONTENT_MINIMUM_POINT_CHARACTERS).length;
+  const consumerReady = featureCount >= RICH_CONTENT_MINIMUM_FEATURES
+    && usageCount >= RICH_CONTENT_MINIMUM_USAGE_POINTS
+    && featureDetailCount === featureCount
+    && usageDetailCount === usageCount;
+  if (!consumerReady) missing.push('商品特色與使用方式須以完整、自然且對消費者有意義的句子撰寫');
   if (genericFallback) missing.push('通用備援文案尚未改寫');
   return {
     ready: Boolean(content) && !genericFallback && hasFeatureSection && featureCount > 0
-      && hasUsageSection && usageCount > 0 && hasSpecificationSection && specificationCount > 0,
+      && hasUsageSection && usageCount > 0 && hasSpecificationSection && specificationCount > 0 && consumerReady,
     genericFallback,
     featureCount,
     usageCount,
+    featureDetailCount,
+    usageDetailCount,
+    minimumPointCharacters: RICH_CONTENT_MINIMUM_POINT_CHARACTERS,
+    consumerReady,
     specificationCount,
     featureTarget: RICH_CONTENT_FEATURE_TARGET,
     usageTarget: RICH_CONTENT_USAGE_TARGET,
