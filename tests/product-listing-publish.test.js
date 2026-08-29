@@ -1253,10 +1253,22 @@ test('publish results become product-level platform status without claiming queu
     momo: { status: 'awaiting-store-agent', message: '等待店內電腦' },
     coupang: { status: 'failed', message: '需處理' }
   });
-  assert.equal(status.easyStore.status, 'active');
+  assert.equal(status.easyStore.status, 'queued');
   assert.equal(status.easyStore.listingId, 'es-1');
+  assert.equal(status.easyStore.lastCheckedAt, null);
   assert.equal(status.momo.status, 'queued');
   assert.equal(status.coupang.status, 'error');
+});
+
+test('a submitted platform becomes active only after its exact official-list stage is verified', () => {
+  const status = helpers.platformListingStatusFromPublish({}, {
+    easyStore: { status: 'created', productId: 'es-verified', message: '已建立' }
+  }, {
+    easyStore: { status: 'verified', receipt: { listingId: 'es-verified', officialCatalogMatched: true } }
+  });
+  assert.equal(status.easyStore.status, 'active');
+  assert.equal(status.easyStore.listingId, 'es-verified');
+  assert.ok(status.easyStore.lastCheckedAt);
 });
 
 test('Coupang verified submission remains pending review and receives 24/48 hour recheck times', () => {

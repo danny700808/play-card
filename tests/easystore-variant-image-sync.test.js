@@ -64,6 +64,21 @@ test('a single-variant product safely uses its official main image without enter
   assert.equal(built.rows[0].variantImageStatus, 'single-main');
 });
 
+test('EasyStore publish state is normalized for exact-SKU central reconciliation', () => {
+  assert.equal(EasyStoreSync.productListingStatus({ status: 'published' }), 'active');
+  assert.equal(EasyStoreSync.productListingStatus({ published: false }), 'draft');
+  assert.equal(EasyStoreSync.productListingStatus({ status: 'unpublished' }), 'inactive');
+  assert.equal(EasyStoreSync.productListingStatus({}), 'mapped');
+
+  const built = EasyStoreSync.buildCatalog([{
+    id: 9004,
+    title: 'Published product',
+    status: 'published',
+    variants: [{ id: 701, sku: 'LIVE-001', title: 'Default' }]
+  }]);
+  assert.equal(built.rows[0].listingStatus, 'active');
+});
+
 test('numeric image identifiers are not mistaken for website image URLs', () => {
   assert.deepEqual(EasyStoreSync.collectImages({ image: 12345 }), []);
   assert.equal(EasyStoreSync.variantImageReferenceId({ image_id: 0 }), '');
@@ -74,4 +89,7 @@ test('product inventory exposes the EasyStore API sync action and pending state'
   assert.match(source, /data-action="sync-easystore-api"/);
   assert.match(source, /EasyStore API 同步/);
   assert.match(source, /EasyStore 同步中…/);
+  assert.doesNotMatch(source, /inferredFrom:'官網同步'/);
+  assert.match(source, /data-action="product-platform-status-edit"/);
+  assert.match(source, /openProductPlatformStatus\(el\.dataset\.id\)/);
 });

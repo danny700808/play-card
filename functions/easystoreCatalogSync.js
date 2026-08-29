@@ -232,6 +232,28 @@ function rowVariantName(variant) {
   );
 }
 
+function productListingStatus(product) {
+  const raw = clean(
+    product && (product.status || product.publish_status || product.publishStatus ||
+      product.state || product.product_status || product.productStatus)
+  ).toLowerCase();
+  if (['active', 'published', 'publish', 'online', 'available', 'on_sale', 'on-sale', '已上架', '上架'].includes(raw)) {
+    return 'active';
+  }
+  if (['draft', 'unpublished', 'offline', 'inactive', 'hidden', 'archived', '草稿', '未上架', '已下架', '下架'].includes(raw)) {
+    return raw === 'draft' || raw === '草稿' ? 'draft' : 'inactive';
+  }
+  if (product && (product.published === true || product.is_published === true ||
+    product.isPublished === true || product.published_at || product.publishedAt)) {
+    return 'active';
+  }
+  if (product && (product.published === false || product.is_published === false ||
+    product.isPublished === false)) {
+    return 'draft';
+  }
+  return 'mapped';
+}
+
 function buildCatalog(products) {
   const rows = [];
   const countsBySku = new Map();
@@ -244,6 +266,7 @@ function buildCatalog(products) {
     const pName = productName(product);
     const pId = clean(product.id || product.product_id || product.productId || product._id);
     const pUrl = productLink(product);
+    const pListingStatus = productListingStatus(product);
 
     variants.forEach((variant) => {
       const sku = rowSku(variant, product);
@@ -277,6 +300,7 @@ function buildCatalog(products) {
         variantImageStatus,
         price: rowPrice(variant, product),
         productUrl: pUrl,
+        listingStatus: pListingStatus,
         parentImageUrls: parentImages.slice(0, 8),
         variantImageUrls: variantImages.slice(0, 8),
         imageUrls: imageUrls.slice(0, 8)
@@ -514,6 +538,12 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
       const previousEasyStoreMapping = existingMappings.easyStore && typeof existingMappings.easyStore === 'object'
         ? existingMappings.easyStore
         : {};
+      const existingPlatformStatus = existing.platformListingStatus && typeof existing.platformListingStatus === 'object'
+        ? existing.platformListingStatus
+        : {};
+      const previousEasyStoreStatus = existingPlatformStatus.easyStore && typeof existingPlatformStatus.easyStore === 'object'
+        ? existingPlatformStatus.easyStore
+        : {};
       const variantIds = [...new Set([
         ...(Array.isArray(previousEasyStoreMapping.variantIds) ? previousEasyStoreMapping.variantIds : []),
         row.variantId
@@ -545,6 +575,19 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
             variantIds
           }
         },
+        platformListingStatus: {
+          ...existingPlatformStatus,
+          easyStore: {
+            ...previousEasyStoreStatus,
+            status: row.listingStatus || 'mapped',
+            listingId: row.productId,
+            url: row.productUrl || clean(previousEasyStoreStatus.url),
+            note: `EasyStore API 已以完全相同 SKU ${sku} 核對正式商品。`,
+            lastCheckedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastCheckedBy: 'EasyStore API 同步'
+          }
+        },
+        platformListingStatusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
         easyStoreSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
@@ -726,5 +769,6 @@ module.exports = {
   collectImages,
   productImageLookup,
   variantImageReferenceId,
-  variantBoundImages
+  variantBoundImages,
+  productListingStatus
 };
