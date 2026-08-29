@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 30;
+const LISTING_AUTOMATION_POLICY_VERSION = 31;
 const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v2';
 const RICH_CONTENT_FEATURE_TARGET = 10;
 const RICH_CONTENT_USAGE_TARGET = 8;
@@ -210,8 +210,16 @@ function listingCaseDetailImageUrls(listingCase, finalizedMediaSnapshot, product
 }
 
 function shopeeAdvancedDescriptionPlan(snapshot) {
-  const imageUrls = normalizeUrls(Array.isArray(snapshot && snapshot.descriptionImageUrls)
-    ? snapshot.descriptionImageUrls : [], 20);
+  const preparedProductImageUrls = normalizeUrls(Array.isArray(snapshot && snapshot.descriptionImageUrls)
+    ? snapshot.descriptionImageUrls : [], 10)
+    .filter((url) => !DESCRIPTION_PROMO_IMAGE_URLS.includes(url));
+  const requiredFirstImageUrl = safeHttpUrl(snapshot && snapshot.descriptionHeroImageUrl)
+    || preparedProductImageUrls[0] || '';
+  const imageUrls = normalizeUrls([
+    requiredFirstImageUrl,
+    ...preparedProductImageUrls.filter((url) => url !== requiredFirstImageUrl),
+    ...DESCRIPTION_PROMO_IMAGE_URLS
+  ], 12);
   return {
     mode: 'use-easystore-rich-description-with-native-image-transfer',
     source: 'easystore-body-html',
@@ -222,8 +230,11 @@ function shopeeAdvancedDescriptionPlan(snapshot) {
     directExternalImageUrlPasteForbidden: true,
     waitForEveryImageTransferBeforePreparePublish: true,
     verifyTransferredImageCountAndFixedLastTwoBeforePublish: true,
+    rejectZeroImageDescriptionBeforePublish: true,
     capabilityProbe: 'single-lightweight-page-probe',
     contentFingerprint: crypto.createHash('sha256').update(clean(snapshot && snapshot.bodyHtml)).digest('hex'),
+    requiredFirstImageUrl,
+    fixedLastTwoImageUrls: [...DESCRIPTION_PROMO_IMAGE_URLS],
     imageUrls,
     expectedImageCount: imageUrls.length
   };
@@ -2263,11 +2274,15 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         neverOpenNativeFilePickerForVariantImages: true,
         completeVariantImagesBeforePreparePublish: true,
         advancedDescription: {
-          mode: 'use-easystore-rich-description',
+          mode: 'use-easystore-rich-description-with-native-image-transfer',
           preparedBeforeNavigation: true,
           enableWhenAvailable: true,
           useEasyStoreDescription: true,
           capabilityProbeMaximum: 1,
+          rejectZeroImageDescriptionBeforePublish: true,
+          requiredFirstImageRole: 'brandedHero',
+          fixedLastTwoImageCount: 2,
+          platformMaximumImageCount: 12,
           requireTextAndEveryPreparedImageBeforePublish: true,
           insertMissingPreparedImagesIntoSameEditor: true,
           buttonClickAloneIsNeverSuccess: true,
@@ -2431,7 +2446,16 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       ...listingCaseDetailImageUrls(listingCase, finalizedMediaSnapshot, productId)
     ], 18)
     : imageAllocation.descriptionImages;
-  const descriptionImageUrls = normalizeUrls([...normalDescriptionImageUrls, ...physicalImageUrls], 10);
+  const descriptionHeroImageUrl = safeHttpUrl(
+    platformImagePlan.shopee && platformImagePlan.shopee.imageUrls && platformImagePlan.shopee.imageUrls[0]
+  ) || safeHttpUrl(
+    platformImagePlan.easyStore && platformImagePlan.easyStore.imageUrls && platformImagePlan.easyStore.imageUrls[0]
+  ) || safeHttpUrl(normalDescriptionImageUrls[0]);
+  const descriptionImageUrls = normalizeUrls([
+    descriptionHeroImageUrl,
+    ...normalDescriptionImageUrls.filter((url) => url !== descriptionHeroImageUrl),
+    ...physicalImageUrls
+  ], 10);
   const momoSpecialPromotionImageUrl = platformImagePlan.momo.promotionImageReady
     ? platformImagePlan.momo.promotionImageUrl : '';
   const descriptionHtml = appendShopDescriptionImages(productDescriptionToSafeHtml(description), descriptionImageUrls);
@@ -2468,6 +2492,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     richContentStandard: richContentLifecycle(listingIntent, descriptionContentStatus),
     images,
     productImageUrls: imageAllocation.productImages,
+    descriptionHeroImageUrl,
     descriptionImageUrls,
     physicalImageUrls,
     physicalImagePolicy: {

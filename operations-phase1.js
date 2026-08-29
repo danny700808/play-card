@@ -75,7 +75,7 @@
     start:'YOUZI_IMAGE_COLLECTION_START',stop:'YOUZI_IMAGE_COLLECTION_STOP',
     sessionAck:'YOUZI_IMAGE_COLLECTION_SESSION_ACK',sessionState:'YOUZI_IMAGE_COLLECTION_SESSION_STATE',stateRequest:'YOUZI_IMAGE_COLLECTION_STATE_REQUEST',
     deliver:'YOUZI_IMAGE_COLLECTION_DELIVER',fileAck:'YOUZI_IMAGE_COLLECTION_FILE_ACK',maxImages:PRODUCT_REFERENCE_IMAGE_MAX,
-    minimumVersion:'0.3.31'
+    minimumVersion:'0.3.32'
   };
   let productImageCollectionSession = null;
   let productImageCollectionPending = null;
@@ -4566,7 +4566,7 @@ function ensureSalesClock(){
   function requestProductImageCollection(action,payload){
     if(productImageCollectionPending)throw new Error('收圖模式正在切換，請稍候。');
     return new Promise(function(resolve,reject){
-      const sessionId=clean(payload&&payload.sessionId),timer=global.setTimeout(function(){if(!productImageCollectionPending||productImageCollectionPending.sessionId!==sessionId)return;productImageCollectionPending=null;reject(new Error('找不到收圖助手，請先更新到柚子掌櫃助手 0.3.31 並重新整理頁面。'));},3500);
+      const sessionId=clean(payload&&payload.sessionId),timer=global.setTimeout(function(){if(!productImageCollectionPending||productImageCollectionPending.sessionId!==sessionId)return;productImageCollectionPending=null;reject(new Error('找不到收圖助手，請先更新到柚子掌櫃助手 0.3.32 並重新整理頁面。'));},3500);
       productImageCollectionPending={action:action,sessionId:sessionId,resolve:resolve,reject:reject,timer:timer};
       global.postMessage({source:PRODUCT_IMAGE_COLLECTION.source,type:action==='start'?PRODUCT_IMAGE_COLLECTION.start:PRODUCT_IMAGE_COLLECTION.stop,payload:payload},global.location.origin);
     });
@@ -4649,7 +4649,7 @@ function ensureSalesClock(){
       if(payload.ok===true){
         if(pending.action==='start'&&!productImageCollectionVersionAtLeast(payload.extensionVersion,PRODUCT_IMAGE_COLLECTION.minimumVersion)){
           global.postMessage({source:PRODUCT_IMAGE_COLLECTION.source,type:PRODUCT_IMAGE_COLLECTION.stop,payload:{sessionId:pending.sessionId}},global.location.origin);
-          pending.reject(new Error('目前收圖助手版本過舊，請更新到 0.3.31，重新載入後再開始搜圖。'));
+          pending.reject(new Error('目前收圖助手版本過舊，請更新到 0.3.32，重新載入後再開始搜圖。'));
         }else pending.resolve(payload);
       }else pending.reject(new Error(clean(payload.error)||'收圖助手沒有完成設定'));
       return;
@@ -4937,7 +4937,7 @@ function ensureSalesClock(){
     const orderedKeys=PRODUCT_LISTING_PLATFORM_ORDER.filter(function(key){return Object.prototype.hasOwnProperty.call(platforms,key);}).concat(Object.keys(platforms).filter(function(key){return !PRODUCT_LISTING_PLATFORM_ORDER.includes(key);}));
     const cards=orderedKeys.map(function(key){
       const row=platforms[key]||{},meta=productListingPublishStatusMeta(row.status),missing=Array.isArray(row.missingFields)&&row.missingFields.length?'<small>缺少：'+escapeHtml(row.missingFields.join('、'))+'</small>':'';
-      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">安全開啟 EasyStore／蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.31.zip" download>下載／更新助手 0.3.31</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會先套用 EasyStore 進階圖文介紹，再帶入分類、品牌與商品屬性；一般宅配的實際物流仍須確認。商品身分依本案已凍結的處理方式與中央平台 ID 執行，不會自行改成新增或修改。':'會先套用 EasyStore 進階圖文介紹；商品身分依本案已凍結的處理方式與中央平台 ID 執行，不先搜尋平台目錄，也不會自行改成新增或修改。')+'</small>':'';
+      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">安全開啟 EasyStore／蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.32.zip" download>下載／更新助手 0.3.32</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'會先套用 EasyStore 進階圖文介紹，再帶入分類、品牌與商品屬性；一般宅配的實際物流仍須確認。商品身分依本案已凍結的處理方式與中央平台 ID 執行，不會自行改成新增或修改。':'會先套用 EasyStore 進階圖文介紹；商品身分依本案已凍結的處理方式與中央平台 ID 執行，不先搜尋平台目錄，也不會自行改成新增或修改。')+'</small>':'';
       return '<section class="ops-listing-platform-card"><div class="ops-listing-platform-head"><h3>'+escapeHtml(productListingPublishPlatformTitle(key))+'</h3>'+statusTag(meta.label,meta.type)+'</div><div class="ops-listing-check-row '+(meta.ok?'ok':'missing')+'"><span>'+(meta.ok?'✓':'!')+'</span><div><b>'+escapeHtml(row.message||meta.label)+'</b>'+missing+helper+'</div></div></section>';
     }).join('');
     const needsInput=result.status==='needs-input'||Object.values(platforms).some(function(row){return ['missing-fields','action-required'].includes(clean(row&&row.status));});
@@ -4952,7 +4952,7 @@ function ensureSalesClock(){
     if(!global.YouziShopeeAutofill||typeof global.YouziShopeeAutofill.queueAndOpen!=='function')throw new Error('蝦皮自動填寫橋接程式尚未載入，請重新整理頁面。');
     const result=await global.YouziShopeeAutofill.queueAndOpen(pendingShopeeAutofillPayload);
     if(result&&result.extensionReady)toast('蝦皮資料已交給助手','EasyStore 已開啟；助手會自動進入蝦皮設定、填寫並送出上架。','success');
-    else toast('助手沒有收到商品資料',clean(result&&result.error)||'請安裝或更新到助手 0.3.31，重新整理營運中心後，再按一次「安全開啟 EasyStore／蝦皮」。','warning');
+    else toast('助手沒有收到商品資料',clean(result&&result.error)||'請安裝或更新到助手 0.3.32，重新整理營運中心後，再按一次「安全開啟 EasyStore／蝦皮」。','warning');
     return result;
   }
   function startProductListingSpeechInput(button){

@@ -32,11 +32,21 @@ function rawPayload() {
     categoryPath: ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯'],
     brand: 'Ibanez',
     advancedDescription: {
-      mode: 'use-easystore-rich-description', source: 'easystore-body-html',
+      mode: 'use-easystore-rich-description-with-native-image-transfer', source: 'easystore-body-html',
       preparedBeforeNavigation: true, enableWhenAvailable: true, useEasyStoreDescription: true,
+      transferImagesThroughEasyStoreShopeeEditor: true, directExternalImageUrlPasteForbidden: true,
+      waitForEveryImageTransferBeforePreparePublish: true,
+      verifyTransferredImageCountAndFixedLastTwoBeforePublish: true,
+      rejectZeroImageDescriptionBeforePublish: true,
       capabilityProbe: 'single-lightweight-page-probe', contentFingerprint: 'b'.repeat(64),
-      imageUrls: ['https://example.com/detail-1.jpg', 'https://example.com/detail-2.jpg'],
-      expectedImageCount: 2
+      requiredFirstImageUrl: 'https://example.com/green-hero.jpg',
+      fixedLastTwoImageUrls: ['https://example.com/promo-1.jpg', 'https://example.com/promo-2.jpg'],
+      imageUrls: [
+        'https://example.com/green-hero.jpg',
+        'https://example.com/promo-1.jpg',
+        'https://example.com/promo-2.jpg'
+      ],
+      expectedImageCount: 3
     },
     attributes: [
       { label: 'Pickup Configuration', value: 'HSS', confidence: 'high', note: '官方規格' }
@@ -109,10 +119,12 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
     .every((row) => row.enabled === false), true);
   assert.equal(payload.preorder.enabled, false);
   assert.equal(payload.preorder.days, 1);
-  assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description');
-  assert.equal(payload.advancedDescription.expectedImageCount, 2);
+  assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description-with-native-image-transfer');
+  assert.equal(payload.advancedDescription.expectedImageCount, 3);
   assert.deepEqual(JSON.parse(JSON.stringify(payload.advancedDescription.imageUrls)), [
-    'https://example.com/detail-1.jpg', 'https://example.com/detail-2.jpg'
+    'https://example.com/green-hero.jpg',
+    'https://example.com/promo-1.jpg',
+    'https://example.com/promo-2.jpg'
   ]);
   assert.equal(Object.prototype.hasOwnProperty.call(payload, 'costPrice'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(payload, 'accessToken'), false);
