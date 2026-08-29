@@ -26,6 +26,29 @@ const IMAGE_IMPORT_MAX_IMAGES = 20;
 const IMAGE_IMPORT_MAX_SELECTED_IMAGES = 12;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const CODEX_ONLY_LISTING_MODE = true;
+const BRAND_TEMPLATE_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
+const BRAND_TEMPLATE_VERSION = 'youzi-locked-green-brand-template-v1';
+const BRAND_TEMPLATE_COMPOSITION = 'locked-template-pixels-with-product-and-verified-copy-layers-only';
+const BRAND_TEMPLATE_PROFILES = Object.freeze({
+  storefrontPortrait: Object.freeze({
+    url: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-portrait.png`,
+    sha256: 'e3fe984de916395accec67a9bf251429e271c908e45608d2d45781759be5cb90',
+    overlayUrl: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-portrait-overlay.png`,
+    overlaySha256: '9706b5985061efac729fa1b8b813213c57c04681aa26acb3e28cdc5a7cf2150a',
+    widthPx: 750, heightPx: 1000, aspectRatio: '3:4', headerHeightPx: 208,
+    panel: Object.freeze({ left: 16, top: 224, width: 718, height: 760 }),
+    featureMinimum: 3, featureMaximum: 5
+  }),
+  brandedHero: Object.freeze({
+    url: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-square.png`,
+    sha256: '9cb2f59fd4d4d9b28257c2527c804cb7b135451953de65dd567198ec11cb9145',
+    overlayUrl: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-square-overlay.png`,
+    overlaySha256: 'ce0f5d4890bf8ce75578afa1d6a5092dd2511424924001a8b19a0487d69b0a9d',
+    widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 278,
+    panel: Object.freeze({ left: 21, top: 299, width: 958, height: 680 }),
+    featureMinimum: 1, featureMaximum: 3
+  })
+});
 
 const RESEARCH_STRING_FIELDS = [
   'brand', 'model', 'barcode', 'alternateNames', 'searchKeywords',
@@ -610,25 +633,40 @@ function buildLocalizedImagePrompt(context, listingCase, position, total) {
   ].join('\n');
 }
 
-function buildMainTemplateImagePrompt(context, listingCase) {
+function buildCleanMainImagePrompt(context, listingCase) {
   const source = listingCase || {};
   return [
-    '請以第一張真實商品來源圖製作台灣電商用的中性淺色商業首圖，輸出方形 1:1。不得套用店家品牌模板，也不得加入店名、店家標誌、標語、地址、電話、QR Code、導流文字、價格或無關浮水印。商品本身已查證的原廠品牌標誌可以保留。',
-    'EasyStore 官網商品卡約以 3:4 的框、cover 方式顯示方形圖片，左右各會裁掉約 12.4%；完整商品、標題與賣點都必須放在中央 72% 寬度安全區內。',
-    '背景必須設計成有層次的淺色商業展示底板，不限定純白。依商品配色選用奶油白、米色、淺灰、淺藍、淺粉或其他低彩度淺色，搭配柔和弧形、展示台、棚拍光影或乾淨景深；底板要明亮、協調、可讀，不能搶過商品。',
-    '將來源圖的完整商品精準去背後，作為畫面最大主體放在右側或中央偏右，約占可用畫面的 55～65%；補上自然棚拍陰影與立體層次，但絕不可改變商品顏色、型號、零件、比例、材質紋理與外觀。',
-    '標題與 1～3 個已查證的短賣點排列在左側或實際留白處，使用一致的粗體標題、圓角資訊卡或膠囊標籤。可加入最多 2 個輔助視覺，只能使用來源圖可辨識的細節特寫、折疊／展開狀態，或不暗示額外配件的淡化樂器使用情境；資料不足就不要加入，絕不可虛構功能、零件、贈品或使用狀態。',
-    '整體要像專業商品型錄封面：主商品最醒目、資訊層級清楚、留白充足，不做滿版文字、雜亂拼貼或過多裝飾。不同商品可以更換淺色底板、點綴色與局部排列，維持「左側資訊、右側／中央商品主視覺」骨架。任何來源中被截斷、只剩一半或不合語意的文字都必須完整移除或改寫成可驗證的完整台灣用語，最終圖不得保留殘缺文字。',
-    '在同一次圖片編輯內先完整檢查商品來源，只輸出一次最終成品；不得留下需要第二次修改的簡體字、大陸用語、錯字、亂碼或殘缺文字。',
-    '只加入商品型號與 1～3 個已查證的短賣點，使用自然、正確的台灣繁體中文；不使用簡體字，不新增未證實的贈品、認證、規格或保固。',
-    '賣點框、字體層級與點綴色依商品種類、商品本體顏色、留白位置及可讀性做協調變化；同一張圖維持一致，不使用無意義亂數造成難讀。',
-    '輸出保持方形 1:1 與上述中性商業主視覺版型，不得出現店家品牌頁首或宣傳資訊。',
+    '請以第一張真實商品來源圖製作 1000×1000 的乾淨商品主圖。',
+    '背景為純白；商品完整去背、置中並放大，最長邊至少占畫面 80%，在不裁切商品的前提下以 90～95% 為目標。',
+    '不得加入任何文字、店家 Logo、品牌框、標語、地址、電話、QR Code、浮水印、贈品、情境道具或未包含配件。商品本體原有且不可分離的印字與原廠標誌必須保留。',
+    '不得改變商品顏色、型號、零件、比例、材質紋理、外觀或配件數量。',
+    `商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
+    `品牌：${clean(source.brand) || context.brand || '未提供'}`,
+    `型號：${clean(source.model) || context.model || '未提供'}`
+  ].join('\n');
+}
+
+function buildBrandTemplateImagePrompt(context, listingCase, role) {
+  const source = listingCase || {};
+  const profile = BRAND_TEMPLATE_PROFILES[role] || BRAND_TEMPLATE_PROFILES.storefrontPortrait;
+  const featureCount = `${profile.featureMinimum}～${profile.featureMaximum}`;
+  return [
+    `第一張是商品來源圖，第二張是不可變品牌母版 ${BRAND_TEMPLATE_VERSION} 的版面參考。最終角色為 ${role}，尺寸 ${profile.widthPx}×${profile.heightPx}（${profile.aspectRatio}）。`,
+    '你只需要生成下方淺色內容面板的素材；不得在輸出裡重畫、複製或加入綠色頁首、紅色標語「有音樂的生活更有風格」、右上圓形柚子樂器 Logo 或外框。程式會在生成後把內容面板嵌入固定母版，再逐像素覆蓋原始頁首與細綠邊。',
+    '內容面板只可加入商品、標題、已查證賣點與最多 2 個有來源依據的細節小圖；四周保留安全留白，不得模仿或重複母版頁首。',
+    `用清楚的台灣繁體中文呈現 ${featureCount} 個不重複且已查證的商品特色；資料不足就少放，不得虛構。`,
+    '商品必須是內容區最大主體，外觀、顏色、型號、零件、比例、材質與配件數量不得改變。',
+    '不得加入價格、地址、電話、QR Code、導流文字、額外浮水印、左下娃娃或 PIC COLLAGE。不得保留簡體字、大陸用語、亂碼、錯字或被裁掉一半的文字。',
     `商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
     `品牌：${clean(source.brand) || context.brand || '未提供'}`,
     `型號：${clean(source.model) || context.model || '未提供'}`,
-    `已查證賣點：${clean(source.sellingPoints) || '未提供；只顯示商品名稱與型號'}`,
+    `已查證賣點：${clean(source.sellingPoints) || '未提供；只使用商品名稱、品牌與型號'}`,
     `店家補充：${clean(source.imageGenerationInstructions) || '無'}`
   ].join('\n');
+}
+
+function buildMainTemplateImagePrompt(context, listingCase) {
+  return buildBrandTemplateImagePrompt(context, listingCase, 'storefrontPortrait');
 }
 
 function productImageQaSchema() {
@@ -986,6 +1024,53 @@ async function callOpenAIImageEditBytes(apiKey, imageBytes, prompt, model) {
   const width = Math.max(0, Number(metadata.width) || 0), height = Math.max(0, Number(metadata.height) || 0);
   if (!width || !height) throw new Error('待修正圖片無法辨識。');
   return callOpenAIImageEditWithSources(apiKey, [{ bytes, contentType: 'image/png', extension: 'png', finalUrl: '', width, height }], prompt, model);
+}
+
+async function composeLockedBrandTemplate(imageBytes, role) {
+  const profile = BRAND_TEMPLATE_PROFILES[role];
+  if (!profile) return Buffer.from(imageBytes);
+  const [template, overlay] = await Promise.all([
+    downloadImageForEdit(profile.url),
+    downloadImageForEdit(profile.overlayUrl)
+  ]);
+  const content = await sharp(Buffer.from(imageBytes))
+    .resize(profile.panel.width, profile.panel.height, {
+      fit: 'contain', background: { r: 255, g: 250, b: 240, alpha: 1 }, withoutEnlargement: false
+    })
+    .png()
+    .toBuffer();
+  return sharp(template.bytes)
+    .resize(profile.widthPx, profile.heightPx, { fit: 'fill' })
+    .composite([
+      { input: content, left: profile.panel.left, top: profile.panel.top },
+      { input: overlay.bytes, left: 0, top: 0 }
+    ])
+    .png({ compressionLevel: 9, adaptiveFiltering: true })
+    .toBuffer();
+}
+
+async function normalizeGeneratedListingImage(imageBytes, role) {
+  if (BRAND_TEMPLATE_PROFILES[role]) return composeLockedBrandTemplate(imageBytes, role);
+  if (role === 'cleanMain') {
+    return sharp(Buffer.from(imageBytes))
+      .resize(1000, 1000, { fit: 'contain', background: '#ffffff', withoutEnlargement: false })
+      .flatten({ background: '#ffffff' })
+      .png({ compressionLevel: 9, adaptiveFiltering: true })
+      .toBuffer();
+  }
+  return Buffer.from(imageBytes);
+}
+
+async function encodePlatformListingImage(imageBytes) {
+  const input = Buffer.from(imageBytes);
+  for (const quality of [92, 88, 84, 80, 76, 72, 68]) {
+    const output = await sharp(input)
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality, chromaSubsampling: '4:4:4', mozjpeg: true })
+      .toBuffer();
+    if (output.length <= 1_000_000) return output;
+  }
+  throw new Error('完成圖壓縮後仍超過 1,000,000 bytes。');
 }
 
 async function callOpenAIImageQa(apiKey, imageBase64, context, mode, model) {
@@ -1789,8 +1874,14 @@ function registerProductAiResearch(target) {
     const model = clean(process.env.OPENAI_PRODUCT_IMAGE_EDIT_MODEL) || DEFAULT_IMAGE_EDIT_MODEL;
     try {
       const bucket = admin.storage().bucket();
-      const imageJobs = [{ mode: 'main-template', sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0]] }]
-        .concat(imageUrls.slice(1, 12).map((sourceImageUrl) => ({ mode: 'localized', sourceImageUrl, sourceImageUrls: [sourceImageUrl] })));
+      const imageJobs = [
+        { mode: 'clean-main', role: 'cleanMain', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0]] },
+        { mode: 'storefront-template', role: 'storefrontPortrait', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0], BRAND_TEMPLATE_PROFILES.storefrontPortrait.url] },
+        { mode: 'square-brand-template', role: 'brandedHero', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0], BRAND_TEMPLATE_PROFILES.brandedHero.url] }
+      ].concat(imageUrls.slice(0, 12).map((sourceImageUrl, sourceIndex) => ({
+        mode: 'localized', role: 'localizedDetail', sourceOrder: sourceIndex + 1,
+        sourceImageUrl, sourceImageUrls: [sourceImageUrl]
+      })));
       await caseRef.set({
         lastImageGeneration: {
           status: 'running', model, processingMode: 'single-pass', requestedCount: imageJobs.length, processedCount: 0,
@@ -1805,18 +1896,21 @@ function registerProductAiResearch(target) {
       // contain twelve images; parallel edits can exceed short OpenAI rate windows
       // and fail the entire otherwise valid listing batch.
       const batchResults = await mapWithConcurrency(imageJobs, 1, async (job, index) => {
-        const prompt = job.mode === 'main-template'
-          ? buildMainTemplateImagePrompt(context, listingCase)
-          : buildLocalizedImagePrompt(context, listingCase, index, imageJobs.length - 1);
+        const prompt = job.role === 'cleanMain'
+          ? buildCleanMainImagePrompt(context, listingCase)
+          : BRAND_TEMPLATE_PROFILES[job.role]
+            ? buildBrandTemplateImagePrompt(context, listingCase, job.role)
+            : buildLocalizedImagePrompt(context, listingCase, job.sourceOrder, imageUrls.length);
         const edited = await withOpenAIImageRetry(() => callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model));
-        const imageBytes = Buffer.from(edited.imageBase64, 'base64');
+        const normalizedBytes = await normalizeGeneratedListingImage(Buffer.from(edited.imageBase64, 'base64'), job.role);
+        const imageBytes = await encodePlatformListingImage(normalizedBytes);
         if (!imageBytes.length || imageBytes.length > 25 * 1024 * 1024) throw new Error('OpenAI 回傳的圖片大小不正確。');
         const downloadToken = crypto.randomUUID();
-        const objectPath = `ops-product-listing-cases/${productId}/generated/${Date.now()}-${String(index + 1).padStart(2, '0')}-${crypto.randomBytes(4).toString('hex')}.png`;
+        const objectPath = `ops-product-listing-cases/${productId}/generated/${Date.now()}-${String(index + 1).padStart(2, '0')}-${job.role}-${crypto.randomBytes(4).toString('hex')}.jpg`;
         await bucket.file(objectPath).save(imageBytes, {
           resumable: false,
           metadata: {
-            contentType: 'image/png',
+            contentType: 'image/jpeg',
             cacheControl: 'public,max-age=31536000,immutable',
             metadata: {
               firebaseStorageDownloadTokens: downloadToken,
@@ -1838,7 +1932,16 @@ function registerProductAiResearch(target) {
           localizedAt: new Date().toISOString(),
           sourceImageUrl: job.sourceImageUrl,
           sourceFinalUrl: edited.sourceFinalUrl,
-          sourceOrder: index + 1,
+          sourceOrder: job.sourceOrder,
+          roles: [job.role],
+          assetFlags: job.role === 'cleanMain'
+            ? { containsLogo: false, containsText: false, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: false, momoPromotionEligible: true }
+            : BRAND_TEMPLATE_PROFILES[job.role]
+              ? { containsLogo: true, containsText: true, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: true, momoPromotionEligible: false }
+              : { containsLogo: false, containsText: true, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: false, momoPromotionEligible: false },
+          templateVersion: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_VERSION : '',
+          templateAssetSha256: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_PROFILES[job.role].sha256 : '',
+          templateComposition: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_COMPOSITION : '',
           instructions: clean(listingCase.imageGenerationInstructions),
           createdAt: new Date().toISOString(),
           createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者'
@@ -1853,7 +1956,7 @@ function registerProductAiResearch(target) {
       const replacedSources = new Set(completed.map((row) => safeHttpUrl(row.sourceImageUrl)).filter(Boolean));
       const previousCandidates = (Array.isArray(listingCase.generatedListingImages) ? listingCase.generatedListingImages : [])
         .filter((row) => safeHttpUrl(row && row.url) && !replacedSources.has(safeHttpUrl(row && row.sourceImageUrl)));
-      const candidates = completed.concat(previousCandidates).slice(0, 12);
+      const candidates = completed.concat(previousCandidates).slice(0, 72);
       // Only outputs created by this localization run may enter the publish list.
       // Original supplier images remain references and must never be silently mixed
       // back in when one or more localized images fail.
@@ -1917,6 +2020,8 @@ module.exports = {
   buildProductImageSourceDiscoveryRequest,
   buildOpenAIImageRequest,
   buildLocalizedImagePrompt,
+  buildCleanMainImagePrompt,
+  buildBrandTemplateImagePrompt,
   buildMainTemplateImagePrompt,
   productImageQaSchema,
   buildProductImageQaRequest,
@@ -1940,5 +2045,9 @@ module.exports = {
   DEFAULT_IMAGE_WORKFLOW_MODEL,
   DEFAULT_IMAGE_EDIT_MODEL,
   DEFAULT_IMAGE_QA_MODEL,
-  CODEX_ONLY_LISTING_MODE
+  CODEX_ONLY_LISTING_MODE,
+  BRAND_TEMPLATE_VERSION,
+  BRAND_TEMPLATE_PROFILES,
+  BRAND_TEMPLATE_COMPOSITION,
+  encodePlatformListingImage
 };

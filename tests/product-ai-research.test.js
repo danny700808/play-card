@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 const fs = require('node:fs');
+const path = require('node:path');
 
 const originalLoad = Module._load;
 const serverTimestamp = Object.freeze({ __serverTimestamp: true });
@@ -33,23 +34,29 @@ test('website OpenAI endpoints are disabled while listings use the Codex convers
   assert.equal(research.CODEX_ONLY_LISTING_MODE, true);
 });
 
-test('main product image prompt enforces a neutral light commercial layout and Taiwan wording', () => {
+test('main product image prompt locks the approved green brand template and Taiwan wording', () => {
   const prompt = research.buildMainTemplateImagePrompt({ name: 'Ibanez AZES40', brand: 'Ibanez', model: 'AZES40' }, { sellingPoints: 'HSS 拾音配置' });
-  assert.match(prompt, /第一張真實商品來源圖/);
-  assert.match(prompt, /不得套用店家品牌模板/);
+  assert.match(prompt, /第一張是商品來源圖/);
+  assert.match(prompt, /不可變品牌母版/);
   assert.match(prompt, /台灣繁體中文/);
-  assert.match(prompt, /依商品種類、商品本體顏色、留白位置及可讀性/);
-  assert.match(prompt, /淺色商業展示底板，不限定純白/);
-  assert.match(prompt, /奶油白、米色、淺灰、淺藍、淺粉/);
-  assert.match(prompt, /放在右側或中央偏右/);
-  assert.match(prompt, /55～65%/);
-  assert.match(prompt, /最多 2 個輔助視覺/);
-  assert.match(prompt, /1～3 個已查證的短賣點/);
-  assert.match(prompt, /不得加入店名、店家標誌、標語、地址、電話、QR Code/);
-  assert.match(prompt, /方形 1:1/);
-  assert.match(prompt, /中央 72% 寬度安全區/);
-  assert.match(prompt, /不得出現店家品牌頁首或宣傳資訊/);
-  assert.match(prompt, /最終圖不得保留殘缺文字/);
+  assert.match(prompt, /有音樂的生活更有風格/);
+  assert.match(prompt, /圓形柚子樂器 Logo/);
+  assert.match(prompt, /程式會在生成後把內容面板嵌入固定母版，再逐像素覆蓋原始頁首與細綠邊/);
+  assert.match(prompt, /最多 2 個有來源依據的細節小圖/);
+  assert.match(prompt, /3～5 個不重複且已查證的商品特色/);
+  assert.match(prompt, /左下娃娃或 PIC COLLAGE/);
+  assert.match(prompt, /750×1000（3:4）/);
+  assert.doesNotMatch(prompt, /不得套用店家品牌模板/);
+  assert.match(prompt, /不得在輸出裡重畫、複製或加入綠色頁首/);
+  assert.match(prompt, /不得保留簡體字、大陸用語、亂碼、錯字或被裁掉一半的文字/);
+});
+
+test('platform image encoder always returns a JPEG below the shared one-megabyte limit', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'product-listing-brand-template-square.png'));
+  const output = await research.encodePlatformListingImage(source);
+  assert.equal(output[0], 0xff);
+  assert.equal(output[1], 0xd8);
+  assert.ok(output.length <= 1_000_000);
 });
 
 function completeResult(overrides = {}) {
@@ -190,8 +197,8 @@ test('generated product images complete text inspection and editing in one pass'
   assert.match(localized, /錯字、亂碼或殘缺中文字/);
   assert.match(localized, /被裁切一半/);
   assert.match(localized, /完整重排、改寫/);
-  assert.match(main, /只輸出一次最終成品/);
-  assert.match(main, /1～3 個已查證的短賣點/);
+  assert.match(main, /不可變品牌母版/);
+  assert.match(main, /3～5 個不重複且已查證的商品特色/);
 });
 
 test('OpenAI image retry distinguishes temporary rate limits from exhausted quota', async () => {
