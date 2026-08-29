@@ -80,6 +80,8 @@ assert(runtime.includes('window.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__'), 'inli
 assert(runtime.includes('refreshPortalRentals();'), 'inline runtime 沒有更新入口租用異動');
 assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), '開頁仍重複還原正式資料');
 assert(runtime.includes('function syncInjiaoyun()'), '完整課表缺少使用者主動同步功能');
+assert(runtime.includes('function eventStudentNames(event)'), 'inline 課表未提供舊姓名顯示備援');
+assert(runtime.includes("eventStudentNames(event).join('、')"), 'inline 課程卡片未使用舊姓名顯示備援');
 assert(runtime.includes('YouziCoursePreviewData.sync'), '主動同步沒有呼叫音教雲同步元件');
 assert(runtime.includes('function refreshTeacherPayrollMonth(monthKey)'), '老師薪資沒有依月份自動更新');
 assert(runtime.includes('YouziCoursePreviewData.loadTeacherPayrollMonth'), '老師薪資沒有使用月份專用雲端讀取');
@@ -91,6 +93,41 @@ assert(schedulerData.includes("scope:'teacher-payroll-month'"), '薪資月份仍
 assert(schedulerData.includes('await ensureTeacherPayrollManagerAuth();'), '月份薪資沒有先等待管理者 Firebase 登入恢復');
 assert(schedulerData.indexOf('await ensureTeacherPayrollManagerAuth();') < schedulerData.indexOf("payload=await call(AUTO_LOAD_FUNCTION_NAME"), '月份薪資在管理者登入恢復前就讀取雲端');
 assert(schedulerData.includes('if(usesManagerAuth||!pin)throw error;'), '管理頁薪資更新失敗時仍可能靜默退回舊整包資料');
+
+const dataWindow = {};
+new vm.Script(schedulerData, { filename: 'course-scheduler-data.js' }).runInNewContext({
+  window: dataWindow,
+  console,
+  Date,
+  Intl,
+  Map,
+  Set,
+  Promise
+});
+const legacyNameState = dataWindow.YouziCoursePreviewData.buildState({
+  rooms: [{ id: 'room-1', name: '吉他教室' }],
+  subjects: [{ id: 'subject-1', name: '木吉他' }],
+  teachers: [{ id: 'teacher-1', name: '王虹婕' }],
+  events: [{
+    id: 'audit_adjusted-course_test_2026-08-29',
+    date: '2026-08-29',
+    start: '16:00',
+    duration: 60,
+    roomId: 'room-1',
+    subjectId: 'subject-1',
+    teacherId: 'teacher-1',
+    studentIds: [],
+    studentNames: ['黃郁喬'],
+    type: 'single',
+    status: 'attended'
+  }],
+  dataQuality: { auditCoveredDates: ['2026-08-29'] }
+}, '2026-08-29');
+assert.strictEqual(
+  JSON.stringify(legacyNameState.events[0].studentNames),
+  JSON.stringify(['黃郁喬']),
+  '新版資料轉換不得丟失尚未綁定學生檔的舊姓名'
+);
 
 assert(scheduler.includes('function bindEvents()'), '互動課表缺少事件綁定');
 assert(scheduler.includes("$('scheduleGrid').addEventListener('click'"), '課表格線無法點擊新增或查看課程');

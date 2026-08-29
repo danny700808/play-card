@@ -11,6 +11,7 @@
   function numberOf(value){var parsed=Number(value);return Number.isFinite(parsed)?parsed:0;}
   function array(value){return Array.isArray(value)?value:[];}
   function unique(values){return Array.from(new Set(array(values).map(clean).filter(Boolean)));}
+  function studentNamesFor(row){row=row||{};var names=Array.isArray(row.studentNames)?row.studentNames:(row.studentNames==null?[]:[row.studentNames]);return unique(names.concat([row.studentName]));}
   function sharedResourceIdsFor(row){
     row=row||{};
     var ids=unique(array(row.resourceIds).concat(array(row.sharedResourceIds)));
@@ -186,7 +187,7 @@
 
   function courseEvent(course,date,status,resolvePeriod){
     var action=clean(course.portalAction),special=course.specialLesson===true||action==='teacher_gift'||clean(course.type)==='teacher_gift',type=portalVisualType(course);
-    return {id:safeId('course',course.id,0)+'@'+date,sourceCourseId:clean(course.id),seriesId:clean(course.seriesId||course.fixedCourseId||course.id),date:date,roomId:clean(course.roomId),start:clean(course.start||course.startTime),duration:Math.max(30,numberOf(course.duration||course.durationMinutes)||60),type:type,portalAction:action,specialLesson:special,specialLessonPrice:numberOf(course.specialLessonPrice),specialTeacherPay:numberOf(course.specialTeacherPay),frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),subjectName:clean(course.subjectName),resourceIds:sharedResourceIdsFor(course),tuitionPeriodId:resolvePeriod(course),clientName:'',rentalFee:0,status:clean(status)||'scheduled',note:clean(course.note),readOnly:true,source:'injiaoyun-migration'};
+    return {id:safeId('course',course.id,0)+'@'+date,sourceCourseId:clean(course.id),seriesId:clean(course.seriesId||course.fixedCourseId||course.id),date:date,roomId:clean(course.roomId),start:clean(course.start||course.startTime),duration:Math.max(30,numberOf(course.duration||course.durationMinutes)||60),type:type,portalAction:action,specialLesson:special,specialLessonPrice:numberOf(course.specialLessonPrice),specialTeacherPay:numberOf(course.specialTeacherPay),frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),studentNames:studentNamesFor(course),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),subjectName:clean(course.subjectName),resourceIds:sharedResourceIdsFor(course),tuitionPeriodId:resolvePeriod(course),clientName:'',rentalFee:0,status:clean(status)||'scheduled',note:clean(course.note),readOnly:true,source:'injiaoyun-migration'};
   }
 
   // 請假要保留成半透明藍色固定課；只有真正取消／停課才不顯示。
@@ -268,7 +269,7 @@
     array(payload.temporaryCourses).filter(function(row){return row.active!==false;}).forEach(function(row){var date=dateKey(row.date);if(date&&clean(row.start||row.startTime)&&clean(row.roomId)&&date>=rangeStart&&date<=rangeEnd)events.push(courseEvent(row,date,scheduleStatusValue(row.statusByDate&&row.statusByDate[date]||row.status),resolvePeriod));});
     array(payload.roomRentals).forEach(function(row,index){var event=normalizeRentalEvent(row,index,rangeStart,rangeEnd);if(event)events.push(event);});
     var auditedEvents=array(payload.events).map(function(row,index){
-      var normalized=Object.assign({id:safeId('event',row.id,index),seriesId:'',date:'',roomId:'',start:'',duration:60,type:'fixed',frequency:'once',studentIds:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:'',rentalFee:0,note:'',status:'scheduled',readOnly:true},row,{date:dateKey(row.date),start:clean(row.start||row.startTime),studentIds:unique(row.studentIds),tuitionPeriodId:clean(row.tuitionPeriodId)});
+      var normalized=Object.assign({id:safeId('event',row.id,index),seriesId:'',date:'',roomId:'',start:'',duration:60,type:'fixed',frequency:'once',studentIds:[],studentNames:[],teacherId:'',subjectId:'',tuitionPeriodId:'',clientName:'',rentalFee:0,note:'',status:'scheduled',readOnly:true},row,{date:dateKey(row.date),start:clean(row.start||row.startTime),studentIds:unique(row.studentIds),studentNames:studentNamesFor(row),tuitionPeriodId:clean(row.tuitionPeriodId)});
       normalized.portalAction=clean(row.portalAction);
       normalized.specialLesson=row.specialLesson===true||normalized.portalAction==='teacher_gift'||clean(row.type)==='teacher_gift';
       normalized.type=portalVisualType(row);

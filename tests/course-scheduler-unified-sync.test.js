@@ -50,6 +50,8 @@ assert(client.includes('會由舊音教雲最新資料覆蓋'), '同步前未提
 assert(client.includes("loadingMigration=true;operationRunning=true"), '同步缺少連點鎖定');
 assert(dataClient.includes('var usedByPeriod=attendance.reduce'), '扣堂統計未使用一次掃描，資料量大時可能卡頓');
 assert(!dataClient.includes('period.usedCount=attendance.filter'), '不可逐期重掃全部簽到資料');
+assert(client.includes('function eventStudentNames(event)'), '獨立課表未提供舊姓名顯示備援');
+assert(client.includes("eventStudentNames(event).join('、')"), '課程卡片未使用舊姓名顯示備援');
 
 assert(mirror.includes('Promise.all(['), '課表核對與營運同步未平行執行');
 assert(mirror.includes('ensureInjiaoyunOperationsSync(refreshDate)'), '未整合營運資料同步');
@@ -172,6 +174,7 @@ assert(mirror.includes('readEducationDaily(coveredDates)'), '近期同步仍讀�
 assert(mirror.includes('resolveAuditForRange(before, refreshRange.startDate, refreshRange.endDate)'), '相同日期範圍仍會重複啟動核對工作');
 assert(mirror.includes('auditIsRecent(previousAudit)'), '同步未檢查可沿用的近期核對結果');
 assert(preview.includes('mergeEducationDailyReceipts'), '學生實際付款未併入學費期別');
+assert(preview.includes('auditedCourseStudents(row, raw)'), '核對課表沒有保留老師增課的舊學生資料');
 assert(preview.includes('reconcileAuditedAttendance') || mirror.includes('reconcileAuditedAttendance'), '最新簽到未重新核對');
 assert(manual.includes("'course-scheduler'"), '營運同步未允許課程日表呼叫');
 assert(manual.includes("'INJIAOYUN_STUDIO_ID'"), '雲端同步未帶入既有音教雲機構編號');

@@ -2,8 +2,10 @@
 
 const assert = require('assert');
 const {
+  auditedCourseStudents,
   buildTeacherPayroll,
   buildTuitionPeriods,
+  courseStudentNames,
   mergeEducationDailyReceipts,
   mergeEducationDailyRentals,
   resolveTuitionSplitSnapshot
@@ -35,6 +37,25 @@ const {
 const {
   validStudioId
 } = require('../functions/injiaoyunManualSync');
+
+assert.deepStrictEqual(
+  courseStudentNames({ students: { id: 'legacy-student-1', name: '黃郁喬' } }),
+  ['黃郁喬'],
+  '老師增課只有舊資料內嵌學生時，仍須保留姓名'
+);
+assert.deepStrictEqual(
+  courseStudentNames({ studentNames: '黃郁喬' }),
+  ['黃郁喬'],
+  '日表核對直接提供學生姓名時，仍須保留姓名'
+);
+assert.deepStrictEqual(
+  auditedCourseStudents(
+    { studentIds: '6a7ad7b718881f00b3a4d487', studentNames: '黃郁喬' },
+    { students: { _id: '6a7ad7b718881f00b3a4d487', name: '黃郁喬' } }
+  ),
+  { studentIds: ['6a7ad7b718881f00b3a4d487'], studentNames: ['黃郁喬'] },
+  '實際老師增課的單筆學生欄位須同時保留編號與姓名'
+);
 
 const registeredMirrorFunctions = {};
 registerInjiaoyunEducationMirror(registeredMirrorFunctions);

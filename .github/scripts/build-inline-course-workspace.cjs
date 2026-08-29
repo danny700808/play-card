@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260809-subject-fee-separate-v3';
+const VERSION = '20260829-legacy-student-name-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
@@ -47,6 +47,7 @@ function buildRuntime() {
       'function studentPageIndex()',
       'function teacherListMonthKey()',
       'function refreshTeacherPayrollMonth(monthKey)',
+      'function eventStudentNames(event)',
       'function periodNetExpectedAmount(period)',
       'money(periodNetExpectedAmount(period))',
       'refreshPortalRentals();'

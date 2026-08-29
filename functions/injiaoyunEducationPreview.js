@@ -12,7 +12,7 @@ const db = admin.firestore();
 const FUNCTION_REGION = 'us-central1';
 const COLLECTION_PREFIX = 'opsInjiaoyunTest';
 const AUDIT_RUNS_COLLECTION = 'opsInjiaoyunCourseAuditV3Runs';
-const VERSION = '2026.08.01-v14-payment-snapshot-safe-daily';
+const VERSION = '2026.08.29-v15-legacy-student-name';
 const MANUAL_SYNC_PIN = defineSecret('INJIAOYUN_MANUAL_SYNC_PIN');
 const ALLOWED_ORIGINS = new Set([
   'https://danny700808.github.io',
@@ -544,6 +544,7 @@ async function latestAuditSchedule(preferredRunId) {
     if (!sourceCourseId || !date || !start || !roomId) return;
     if (sourceType === 'fixed-course') candidateFixedKeys.add(`${sourceCourseId}|${date}`);
     const raw = rawBySourceId.get(sourceCourseId) || {};
+    const courseStudents = auditedCourseStudents(row, raw);
     const linkedStatus = statusByCourseDate.get(`${sourceCourseId}|${date}`);
     const type = sourceType === 'fixed-course' ? 'fixed' : sourceType === 'rental' ? 'rental' : 'single';
     const status = linkedStatus || (row.alreadyCheckin === true || raw.alreadyCheckin === true ? 'attended' : 'scheduled');
@@ -569,7 +570,8 @@ async function latestAuditSchedule(preferredRunId) {
       durationSource: rentalDuration ? rentalDuration.source : 'course-duration',
       type,
       frequency: 'once',
-      studentIds: unique(row.studentIds),
+      studentIds: courseStudents.studentIds,
+      studentNames: courseStudents.studentNames,
       teacherId: clean(row.teacherId),
       subjectId: clean(row.subjectId),
       tuitionPeriodId: '',
@@ -1252,7 +1254,33 @@ function buildTuitionPeriods(data, subjects, feePlans, courses = []) {
 }
 
 function courseStudentValues(row) {
-  return array(row.students).concat(referenceIds(row.student));
+  const source = row && typeof row === 'object' ? row : {};
+  const values = (value) => Array.isArray(value)
+    ? value
+    : value !== undefined && value !== null ? [value] : [];
+  return values(source.students).concat(values(source.student));
+}
+
+function courseStudentNames(row, lookup = new Map()) {
+  const source = row && typeof row === 'object' ? row : {};
+  const values = courseStudentValues(source);
+  const explicit = (Array.isArray(source.studentNames)
+    ? source.studentNames
+    : source.studentNames !== undefined && source.studentNames !== null ? [source.studentNames] : [])
+    .concat([source.studentName]);
+  return [...new Set(explicit.concat(values.map((value) => referenceName(value, lookup, '')))
+    .map((value) => nameOf(value) || (typeof value === 'string' ? clean(value) : ''))
+    .filter(Boolean))];
+}
+
+function auditedCourseStudents(candidate, raw) {
+  const rawStudentValues = courseStudentValues(raw);
+  return {
+    studentIds: unique(referenceIds(candidate && candidate.studentIds).concat(rawStudentValues)),
+    studentNames: [...new Set(
+      courseStudentNames(candidate).concat(courseStudentNames(raw))
+    )]
+  };
 }
 
 function coursePaymentValues(row) {
@@ -1277,7 +1305,7 @@ function courseStatusMap(row, leaveRows) {
 function courseRow(row, type, lookups, leavesByCourse) {
   const studentValues = courseStudentValues(row);
   const studentIds = unique(studentValues);
-  const studentNames = studentValues.map((value) => referenceName(value, lookups.students, '')).filter(Boolean);
+  const studentNames = courseStudentNames(row, lookups.students);
   const teacherId = idOf(row.teacher);
   const subject = lookups.subjectInfo.add(row.subject, nameOf(row.subject));
   const subjectId = subject && subject.id || idOf(row.subject);
@@ -2092,6 +2120,8 @@ module.exports = {
   buildFeePlans,
   buildTeacherPayroll,
   buildTuitionPeriods,
+  auditedCourseStudents,
+  courseStudentNames,
   courseRow,
   dateKey,
   durationMinutes,

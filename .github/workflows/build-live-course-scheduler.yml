@@ -74,7 +74,7 @@ jobs:
             for (const [href, view] of links) {
               if (!source.includes(`href="${href}" data-view="${view}"`)) throw new Error(`In-place course navigation is missing: ${view}`);
             }
-            if (!source.includes('operations-course-inline.js?v=20260809-subject-fee-separate-v3')) throw new Error('Unified course controller is missing');
+            if (!source.includes('operations-course-inline.js?v=20260829-legacy-student-name-v1')) throw new Error('Unified course controller is missing');
             if (source.includes("location.replace('course-scheduler.html")) throw new Error('Course navigation still leaves the operations center');
             if (source.includes('course-scheduler.html?view=')) throw new Error('Standalone course links are still enabled');
             if (source.includes('operations-mobile-course-fix-v1.js')) throw new Error('Duplicate mobile course JavaScript is still enabled');
@@ -126,7 +126,8 @@ jobs:
           const requiredFunctions = [
             'function bindRoomReorder','function bindFeeReorder','function setAttendance',
             'function eventAction','function openTeacherPayroll','function openPolicy',
-            'function syncInjiaoyun','function submitSchedule','function submitTuition','function submitTransaction'
+            'function syncInjiaoyun','function submitSchedule','function submitTuition','function submitTransaction',
+            'function eventStudentNames(event)'
           ];
           for (const marker of requiredFunctions) {
             if (!scheduler.includes(marker) || !runtime.includes(marker)) throw new Error(`Full scheduler function is missing: ${marker}`);
