@@ -11,7 +11,7 @@ const extensionHelpers = require('../easystore-shopee-autofill/helpers.js');
 const root = path.resolve(__dirname, '..');
 const extensionName = 'easystore-shopee-autofill';
 const extensionRoot = path.join(root, extensionName);
-const version = '0.3.30';
+const version = '0.3.31';
 const zipName = `youzi-easystore-shopee-autofill-v${version}.zip`;
 const zipPath = path.join(root, zipName);
 
@@ -80,7 +80,7 @@ function zipFileEntries(buffer) {
   return files;
 }
 
-test('0.3.30 ZIP contains exactly the Git extension files byte for byte', () => {
+test('0.3.31 ZIP contains exactly the Git extension files byte for byte', () => {
   assert.equal(fs.existsSync(zipPath), true, `缺少 ${zipName}`);
   const packaged = zipFileEntries(fs.readFileSync(zipPath));
   const sourceFiles = gitExtensionFiles();
@@ -133,6 +133,9 @@ test('extension version, download links, cache keys and CI package contract stay
   assert.match(easyStoreExecutor, /使用 EasyStore 的產品描述/);
   assert.match(easyStoreExecutor, /payload && payload\.advancedDescription/);
   assert.match(easyStoreExecutor, /function advancedDescriptionEvidence\(/);
+  assert.match(easyStoreExecutor, /use-easystore-rich-description-with-native-image-transfer/);
+  assert.match(easyStoreExecutor, /fixedLastTwoComplete/);
+  assert.match(easyStoreExecutor, /禁止以純文字描述發布/);
   assert.match(easyStoreExecutor, /function insertMissingAdvancedDescriptionImages\(/);
   assert.match(easyStoreExecutor, /report\.advancedDescriptionEvidence = evidence/);
   assert.match(easyStoreExecutor, /文字已帶入，但介紹圖片只有/);
