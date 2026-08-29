@@ -104,10 +104,10 @@ test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多�
   assert.doesNotMatch(handoff, /productListingCodexThreadUrl\(prompt\)/);
 });
 
-test('固定流程鎖定中性圖卡、MOMO 專推圖與 EasyStore 後立即接蝦皮', () => {
-  assert.match(source, /storefrontPortrait 為 3:4 中性淺色商業展示版/);
-  assert.match(source, /storefrontPortrait 與 brandedHero 都不得加入店名、店鋪 Logo/);
-  assert.match(source, /只有官方來源可驗證的製造商品牌標誌/);
+test('固定流程鎖定綠底品牌母版、MOMO 專推圖與 EasyStore 後立即接蝦皮', () => {
+  assert.match(source, /product-listing-brand-template-portrait\.png/);
+  assert.match(source, /綠色頁首背景、頁首高度、紅色標語/);
+  assert.match(source, /右上圓形柚子樂器 Logo/);
   assert.match(source, /商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」/);
   assert.match(source, /preparedPlatformFieldPlan 產生專推圖網址、唯一素材檔名與指紋/);
   assert.match(source, /三處未齊全時禁止第一次發布/);
@@ -180,10 +180,10 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
   assert.match(prompt, /商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置/);
   assert.match(prompt, /甲指第三方 000001 仍保存/);
-  assert.match(prompt, /storefrontPortrait 為 750×1000 px、3:4/);
-  assert.match(prompt, /brandedHero 為 1000×1000 px、1:1/);
+  assert.match(prompt, /storefrontPortrait 固定使用 product-listing-brand-template-portrait\.png，尺寸 750×1000 px、3:4/);
+  assert.match(prompt, /brandedHero 固定使用 product-listing-brand-template-square\.png，尺寸 1000×1000 px、1:1/);
   assert.match(prompt, /cleanMain 為 1000×1000 px、1:1/);
-  assert.match(prompt, /storefrontPortrait 為 3:4 中性淺色商業展示版/);
+  assert.match(prompt, /storefrontPortrait 與 brandedHero 必須從上述不可變母版合成/);
   assert.match(prompt, /同一輪圖片處理只產生本次目標通路需要的首圖版型/);
   assert.match(prompt, /不得進平台後才重新裁切或設計/);
   assert.match(prompt, /preflightSnapshot\.decisionContract 是唯一執行契約/);
@@ -265,15 +265,15 @@ test('新細項的父商品會沿用已儲存的來源圖佇列，但不把未�
   assert.match(snapshot, /mergeProductListingCodexQueuedMedia\(item,queued,normalized\.listingTargetScope\)/);
 });
 
-test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮方形中性首圖', () => {
+test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮方形品牌首圖', () => {
   const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
-  assert.match(prompt, /cleanMain 是無品牌框、無 Logo、無地址／電話／QR Code/);
-  assert.match(prompt, /storefrontPortrait 為 3:4 中性淺色商業展示版/);
-  assert.match(prompt, /brandedHero 為 1:1 中性商業首圖/);
-  assert.match(prompt, /商品約占 55～65%/);
-  assert.match(prompt, /最多 2 個有來源依據的輔助視覺/);
-  assert.match(prompt, /不得加入店名、店鋪 Logo、店鋪標語/);
-  assert.match(prompt, /不得加入價格、浮水印或虛構功能／配件/);
+  assert.match(prompt, /cleanMain 是純白底、無品牌框、無新增 Logo/);
+  assert.match(prompt, /storefrontPortrait 與 brandedHero 必須從上述不可變母版合成/);
+  assert.match(prompt, /brandedHero 用 1～3 個已查證短賣點/);
+  assert.match(prompt, /商品本體原有且不可分離的印字必須保留/);
+  assert.match(prompt, /最多 2 個有來源依據的細節小圖/);
+  assert.match(prompt, /不得改色、縮窄、移位、換字或重畫/);
+  assert.match(prompt, /不得加入地址、電話、QR Code、價格、導外訊息、左下娃娃、PIC COLLAGE 或虛構功能／配件/);
   assert.match(prompt, /被切半的文字或殘缺裝飾/);
 });
 

@@ -26,6 +26,15 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const publish = require('../functions/productListingPublish');
 Module._load = originalLoad;
 const helpers = publish._test;
+const BRAND_TEMPLATE = helpers.brandTemplateContract();
+
+function brandTemplateFields(role) {
+  return {
+    templateVersion: BRAND_TEMPLATE.version,
+    templateAssetSha256: BRAND_TEMPLATE[role].sha256,
+    templateComposition: BRAND_TEMPLATE.composition
+  };
+}
 
 function withV2ImagePlan(listingCase, options = {}) {
   const branded = options.branded || 'https://example.com/branded-hero.jpg';
@@ -35,8 +44,8 @@ function withV2ImagePlan(listingCase, options = {}) {
   const detail = Array.isArray(options.detail) ? options.detail : [];
   const safeFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
   const imageRoleAssignments = [
-    { sourceImageUrl: 'https://example.com/source-branded.jpg', url: branded, roles: ['brandedHero'], assetFlags: { ...safeFlags, containsLogo: true, greenBrandTemplate: true } },
-    { sourceImageUrl: 'https://example.com/source-branded.jpg', url: storefront, roles: ['storefrontPortrait'], assetFlags: { ...safeFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
+    { sourceImageUrl: 'https://example.com/source-branded.jpg', url: branded, roles: ['brandedHero'], assetFlags: { ...safeFlags, containsLogo: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero') },
+    { sourceImageUrl: 'https://example.com/source-branded.jpg', url: storefront, roles: ['storefrontPortrait'], assetFlags: { ...safeFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait') },
     { sourceImageUrl: 'https://example.com/source-clean.jpg', url: clean, roles: ['cleanMain'], assetFlags: { ...safeFlags, momoPromotionEligible: true } },
     { sourceImageUrl: 'https://example.com/source-clean-two.jpg', url: cleanTwo, roles: ['localizedDetail'], assetFlags: { ...safeFlags, momoPromotionEligible: true } },
     ...detail.map((url, index) => ({ sourceImageUrl: `https://example.com/source-detail-${index}.jpg`, url, roles: ['localizedDetail'], assetFlags: { ...safeFlags } }))
@@ -178,7 +187,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 29);
+  assert.equal(snapshot.automationPolicy.version, 30);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -218,7 +227,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.preparedPlatformFieldPlan.version, 15);
-  assert.equal(snapshot.automationPolicy.version, 29);
+  assert.equal(snapshot.automationPolicy.version, 30);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -305,21 +314,16 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.browserControl.neverOpenNativeWindowsFilePicker, true);
   assert.equal(snapshot.automationPolicy.browserControl.stopForInteractiveAuthenticationOnly, true);
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
-  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'neutral-light-commercial-template-v1');
+  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-locked-green-brand-template-v1');
   assert.equal(snapshot.imagePolicy.mainImageAspectRatio, 'channel-specific');
-  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'low-saturation-light-commercial');
-  assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'right-or-center-right');
-  assert.deepEqual(snapshot.imagePolicy.outputProfiles.storefrontPortrait, {
-    role: 'storefrontPortrait', widthPx: 750, heightPx: 1000, aspectRatio: '3:4',
-    firstImageFor: ['easyStore'], commercialInformationDensity: 'rich-but-readable',
-    verifiedFeatureCount: { minimum: 3, maximum: 5 }, verifiedDetailInsetMaximum: 2,
-    storeNameForbidden: true, storeLogoForbidden: true, storeSloganForbidden: true,
-    contactInformationForbidden: true, outboundMessagingForbidden: true,
-    manufacturerLogoAllowedOnlyWhenOfficiallyVerifiedAndPlatformPermitted: true
-  });
-  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.storeNameForbidden, true);
-  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.storeLogoForbidden, true);
-  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.storeBrandingForbidden, true);
+  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'locked-youzi-green-header-and-light-panel');
+  assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'within-locked-content-panel');
+  assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateVersion, BRAND_TEMPLATE.version);
+  assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateAssetSha256, BRAND_TEMPLATE.storefrontPortrait.sha256);
+  assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.fixedStoreSlogan, '有音樂的生活更有風格');
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.fixedStoreLogoRequired, true);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.templateAssetSha256, BRAND_TEMPLATE.brandedHero.sha256);
+  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.fixedHeaderPixelsRequired, true);
   assert.deepEqual(snapshot.imagePolicy.sourceNormalization.preferredLongEdgeRangePx, { minimum: 1600, maximum: 2000 });
   assert.equal(snapshot.imagePolicy.sourceNormalization.targetLongEdgePx, 1800);
   assert.equal(snapshot.imagePolicy.sourceNormalization.neverUpscale, true);
@@ -849,6 +853,23 @@ test('v3 image gates reject source URLs disguised as completed outputs and dirty
   assert.match(helpers.coupangMissingFields(dirtySnapshot).join('、'), /酷澎 cleanMain 首圖/);
 });
 
+test('v3 image gates reject branded images whose locked template hash changed', () => {
+  const sourceImageUrl = 'https://supplier.example.com/locked-template-source.jpg';
+  const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
+  assert.throws(() => helpers.finalizedRoleRowsForCase('locked-template-product', {
+    sourceImageUrls: [sourceImageUrl]
+  }, {
+    generatedListingImages: [
+      { sourceImageUrl, url: 'https://cdn.example.com/locked-clean.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: flags },
+      {
+        sourceImageUrl, url: 'https://cdn.example.com/changed-brand.jpg', status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'],
+        assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false },
+        ...brandTemplateFields('brandedHero'), templateAssetSha256: '0'.repeat(64)
+      }
+    ]
+  }), /未使用固定綠底品牌母版/);
+});
+
 test('12 張共用池先保留三種首圖角色並公平涵蓋 13 個細項', () => {
   const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
   const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false };
@@ -857,8 +878,8 @@ test('12 張共用池先保留三種首圖角色並公平涵蓋 13 個細項', (
     gallerySourceImageUrls: [],
     roleRows: [
       { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-clean.jpg`, url: `https://cdn.example.com/variant-${index}-clean.jpg`, roles: ['cleanMain'], sourceOrder: 1, assetFlags: cleanFlags },
-      { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-storefront.jpg`, url: `https://cdn.example.com/variant-${index}-storefront.jpg`, roles: ['storefrontPortrait'], sourceOrder: 1, assetFlags: brandFlags },
-      { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-brand.jpg`, url: `https://cdn.example.com/variant-${index}-brand.jpg`, roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags }
+      { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-storefront.jpg`, url: `https://cdn.example.com/variant-${index}-storefront.jpg`, roles: ['storefrontPortrait'], sourceOrder: 1, assetFlags: brandFlags, ...brandTemplateFields('storefrontPortrait') },
+      { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-brand.jpg`, url: `https://cdn.example.com/variant-${index}-brand.jpg`, roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags, ...brandTemplateFields('brandedHero') }
     ]
   }));
   const plan = helpers.buildFinalPlatformImagePlan(cases);
@@ -879,8 +900,8 @@ test('上架圖片預覽未勾選的來源不會進入任何平台圖庫', () =>
   const plan = helpers.buildFinalPlatformImagePlan([{
     productId: 'strict-gallery', gallerySourceImageUrls: [selectedSource], roleRows: [
       { productId: 'strict-gallery', sourceImageUrl: selectedSource, url: 'https://cdn.example.com/selected-clean.jpg', roles: ['cleanMain'], sourceOrder: 1, assetFlags: cleanFlags },
-      { productId: 'strict-gallery', sourceImageUrl: selectedSource, url: 'https://cdn.example.com/selected-storefront.jpg', roles: ['storefrontPortrait'], sourceOrder: 1, assetFlags: brandFlags },
-      { productId: 'strict-gallery', sourceImageUrl: selectedSource, url: 'https://cdn.example.com/selected-brand.jpg', roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags },
+      { productId: 'strict-gallery', sourceImageUrl: selectedSource, url: 'https://cdn.example.com/selected-storefront.jpg', roles: ['storefrontPortrait'], sourceOrder: 1, assetFlags: brandFlags, ...brandTemplateFields('storefrontPortrait') },
+      { productId: 'strict-gallery', sourceImageUrl: selectedSource, url: 'https://cdn.example.com/selected-brand.jpg', roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags, ...brandTemplateFields('brandedHero') },
       { productId: 'strict-gallery', sourceImageUrl: excludedSource, url: 'https://cdn.example.com/excluded-detail.jpg', roles: ['localizedDetail'], sourceOrder: 2, assetFlags: cleanFlags }
     ]
   }]);
@@ -897,8 +918,8 @@ test('MOMO 前三張固定含 clean promo，且品牌次圖最多一張', () => 
   const plan = helpers.buildFinalPlatformImagePlan([{
     productId: 'momo-order', gallerySourceImageUrls: [], roleRows: [
       { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/main.jpg', url: 'https://cdn.example.com/main-clean.jpg', roles: ['cleanMain'], sourceOrder: 1, assetFlags: cleanFlags },
-      { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/brand-1.jpg', url: 'https://cdn.example.com/brand-1.jpg', roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags },
-      { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/brand-2.jpg', url: 'https://cdn.example.com/brand-2.jpg', roles: ['brandedHero'], sourceOrder: 2, assetFlags: brandFlags },
+      { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/brand-1.jpg', url: 'https://cdn.example.com/brand-1.jpg', roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags, ...brandTemplateFields('brandedHero') },
+      { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/brand-2.jpg', url: 'https://cdn.example.com/brand-2.jpg', roles: ['brandedHero'], sourceOrder: 2, assetFlags: brandFlags, ...brandTemplateFields('brandedHero') },
       { productId: 'momo-order', sourceImageUrl: 'https://supplier.example.com/promo.jpg', url: 'https://cdn.example.com/promo-clean.jpg', roles: ['localizedDetail'], sourceOrder: 3, assetFlags: promoFlags }
     ]
   }]);
@@ -1002,8 +1023,8 @@ test('pending handoff sources can receive later Codex outputs and become one imm
     productSku: 'LATE-1', productDescription: '完整商品介紹',
     generatedListingImages: [
       { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-clean.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: { ...flags, momoPromotionEligible: true } },
-      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-storefront.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
-      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-branded.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
+      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-storefront.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait') },
+      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-branded.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero') },
       { sourceImageUrl: sourceTwo, url: 'https://cdn.example.com/late-detail.jpg', sourceOrder: 2, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: { ...flags, momoPromotionEligible: true } }
     ]
   };
@@ -1040,8 +1061,8 @@ test('active v3 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v3', preflightSnapshot: frozen },
     generatedListingImages: [
       { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-clean.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: baseFlags },
-      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-storefront.jpg', status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
-      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-brand.jpg', status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
+      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-storefront.jpg', status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait') },
+      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-brand.jpg', status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero') },
       { sourceImageUrl: frozen.cases[0].sourceImageUrls[1], url: 'https://cdn.example.com/reuse-promo.jpg', status: 'ready', localizationStatus: 'completed', roles: ['localizedDetail'], assetFlags: { ...baseFlags, momoPromotionEligible: true } }
     ]
   };
@@ -2151,8 +2172,8 @@ test('2100307-4 固定 v3 實際資料可在不送出的模擬通過四通路預
   const cleanFlags = { containsLogo: false, containsText: false, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: false, momoPromotionEligible: false };
   const completed = [
     { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-clean-main.png', roles: ['cleanMain'], assetFlags: { ...cleanFlags } },
-    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-storefront-portrait.png', roles: ['storefrontPortrait'], assetFlags: { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
-    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-branded-hero.png', roles: ['brandedHero'], assetFlags: { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true } },
+    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-storefront-portrait.png', roles: ['storefrontPortrait'], assetFlags: { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait') },
+    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-branded-hero.png', roles: ['brandedHero'], assetFlags: { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero') },
     { sourceImageUrl: sources[1], url: 'https://cdn.example.com/2100307-4-localized-2.png', roles: ['localizedDetail'], assetFlags: { ...cleanFlags } },
     { sourceImageUrl: sources[1], url: 'https://cdn.example.com/2100307-4-momo-promo.png', roles: ['specification'], assetFlags: { ...cleanFlags, momoPromotionEligible: true } },
     { sourceImageUrl: sources[2], url: 'https://cdn.example.com/2100307-4-clean-detail.png', roles: ['cleanMain'], assetFlags: { ...cleanFlags } },

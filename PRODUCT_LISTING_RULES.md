@@ -61,8 +61,8 @@ EasyStore 同步必須以完全相同 SKU 找到官網細項，並用該細項�
 
 1. 每個商品案件最多保留 20 張來源圖；所有合併商品的繁體完成圖先合成一個共用池，四通路整組最多使用 12 個不同完成圖 URL，不是每個編號各 12 張。建立共用池時先保留至少一張 `cleanMain`、一張 `storefrontPortrait` 與一張 `brandedHero`，再以每個細項先一張的輪流方式公平填滿，最後才加入同細項的其他圖片；細項超過 12 個時也不得讓單一細項先占滿容量。不再自動加入店面宣傳圖或服務圖。
 2. 完成圖必須標示一個或多個固定角色：`cleanMain`、`storefrontPortrait`、`brandedHero`、`localizedDetail`、`specification`、`variantRepresentative`。同一 `sourceImageUrl` 可以產生多個角色輸出；每一列 `generatedListingImages` 都要保存 `sourceImageUrl`、`roles` 與 `assetFlags`（至少包含 `containsLogo`、`containsText`、`containsContactInfo`、`containsQrCode`、`greenBrandTemplate`、`momoPromotionEligible`），不得把同一來源壓成單一完成圖。
-3. `storefrontPortrait` 固定為 EasyStore 使用的 750×1000、3:4 中性淺色商業展示版；`brandedHero` 固定為蝦皮使用的 1000×1000、1:1 中性商業首圖。兩者都不得加入店名、店鋪 Logo、店鋪標語、地址、電話、QR Code、聯絡資訊或導外訊息。官方可驗證的製造商 Logo 只在平台規則允許時使用。
-4. 圖卡採低彩度淺色商業底板。`storefrontPortrait` 以清楚層級呈現 3～5 個已查證賣點及最多 2 個有來源依據的輔助視覺；`brandedHero` 呈現 1～3 個短賣點。商品須為最大主體；資料不足就省略，不得虛構功能、零件、贈品或使用狀態。
+3. `storefrontPortrait` 固定使用 `product-listing-brand-template-portrait.png`（750×1000、3:4）；`brandedHero` 固定使用 `product-listing-brand-template-square.png`（1000×1000、1:1）。兩張母版版本固定為 `youzi-locked-green-brand-template-v1`，完成圖必須保存母版版本、SHA-256 與合成方式；缺少或不符時不得進入平台。
+4. 品牌母版的綠色頁首背景、頁首高度、紅色標語「有音樂的生活更有風格」、右上圓形柚子樂器 Logo、下方淺色內容面板與細綠邊均為不可變區域；不得換色、縮窄、移位、換 Logo、改字或讓 AI 重畫。只准在內容面板內更換商品、已查證文字及最多 2 個有來源依據的輔助視覺。不得加入地址、電話、QR Code、價格、導外訊息、左下娃娃或 PIC COLLAGE。
 5. 圖片完成並寫回案件後，Codex 必須把本案所有完成圖依上架順序排成一張聯絡表／總覽圖，並在目前對話一次顯示；不得逐張分散發送，也不得只顯示 EasyStore 主圖。總覽圖只是進度回報，不是人工審核關卡；顯示後直接繼續建立最終快照與發布，不得要求使用者再次確認或等待回覆。
 6. 所有來源逐張完整檢查。簡體中文須改為台灣繁體中文；中國大陸用語改為自然台灣用語；型號、數字、尺寸、單位、顏色及商品外觀不可改變。無法辨識的小字不得猜測。
 7. 不得虛構配件、贈品、認證、保固或規格。圖片若寫「含琴盒」但實際沒有，必須移除。
