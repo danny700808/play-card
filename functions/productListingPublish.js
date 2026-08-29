@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 31;
+const LISTING_AUTOMATION_POLICY_VERSION = 32;
 const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v2';
 const RICH_CONTENT_FEATURE_TARGET = 10;
 const RICH_CONTENT_USAGE_TARGET = 8;
@@ -591,6 +591,28 @@ function listingAutomationPolicy() {
       neverRetryPermissionDeniedWithReplacementDraft: true,
       verifiedWhenEitherOfficialResultContainsExactSku: true
     },
+    momoCapacityRecovery: {
+      enabled: true,
+      trigger: 'positive-stock-new-listing-and-active-count-at-capacity',
+      maximumListings: 1000,
+      slotsPerParentListing: 1,
+      checkBeforeFirstPublish: true,
+      candidateMustBeActive: true,
+      candidateMustHaveZeroStock: true,
+      excludeCurrentSkuAndListing: true,
+      excludeCurrentBatch: true,
+      excludeProtectedOrPinnedListings: true,
+      excludePendingOrders: true,
+      preserveSoldOutListingsWithSales: true,
+      preferExplicitLowPriorityThenZeroSalesThenOldestUpdate: true,
+      action: 'temporarily-downlist-one-safe-zero-stock-item',
+      neverDelete: true,
+      verifyCandidateDownlistedAndSlotAvailableBeforePublish: true,
+      resumeSamePreparedDraftAfterSlotRecovery: true,
+      createReplacementDraftForbidden: true,
+      routineConfirmationForbiddenAfterAuthorizedHandoff: true,
+      noSafeCandidateAction: 'stop-with-exact-reason'
+    },
     momoSpecialPromotionImage: {
       source: 'localized-completed-product-image',
       appliesToListingModes: ['independent', 'variant-group', 'add-variant'],
@@ -672,6 +694,72 @@ function evaluateMomoPublishVerification(expected, observed) {
     reasons,
     recoveryAction: reasons.length ? 'resume-same-draft-and-reapply-cleared-fields' : 'none',
     neverCreateReplacementDraft: true
+  };
+}
+
+function selectMomoCapacityRecoveryCandidate(listings, target, options = {}) {
+  const rows = Array.isArray(listings) ? listings : [];
+  const expected = target && typeof target === 'object' ? target : {};
+  const maximumListings = Math.max(1, Math.round(numberOrNull(options.maximumListings) || 1000));
+  const activeStatuses = new Set(['active', 'published', 'on-sale', 'onsale', '上架', '銷售中']);
+  const targetStock = Math.max(0, Math.round(numberOrNull(expected.stock) || 0));
+  const targetSku = normalizeSku(expected.sku);
+  const targetListingIds = new Set([
+    expected.listingId, expected.platformListingId, expected.goodsCode, expected.goodsId
+  ].map(clean).filter(Boolean));
+  const activeRows = rows.filter((row) => activeStatuses.has(clean(row && row.status).toLowerCase()));
+  const explicitCount = numberOrNull(options.currentActiveCount);
+  const currentActiveCount = explicitCount === null ? activeRows.length : Math.max(0, Math.round(explicitCount));
+  const isNewListing = expected.isNewListing !== false && !targetListingIds.size;
+  const required = targetStock > 0 && isNewListing && currentActiveCount >= maximumListings;
+  if (!required) {
+    return {
+      required: false,
+      currentActiveCount,
+      maximumListings,
+      candidate: null,
+      action: 'none',
+      reason: targetStock <= 0 ? 'target-has-no-stock'
+        : !isNewListing ? 'existing-listing-does-not-require-new-slot' : 'capacity-available'
+    };
+  }
+
+  const candidates = activeRows.map((row, index) => {
+    const source = row && typeof row === 'object' ? row : {};
+    const listingId = clean(source.listingId || source.goodsCode || source.goodsId || source.productId);
+    const sku = normalizeSku(source.sku || source.factorySku || source.vendorSku);
+    const stock = numberOrNull(source.stock != null ? source.stock : source.currentStock);
+    const salesCount = numberOrNull(source.salesCount != null ? source.salesCount : source.recentSalesCount);
+    const pendingOrders = numberOrNull(source.pendingOrderCount != null ? source.pendingOrderCount : source.pendingOrders);
+    const protectedListing = source.protected === true || source.pinned === true || source.keepListed === true
+      || source.quotaRecoveryEligible === false || ['high', 'protected'].includes(clean(source.priority).toLowerCase());
+    const currentBatch = source.inCurrentBatch === true || source.currentBatch === true;
+    const sameTarget = Boolean((targetSku && sku === targetSku) || (listingId && targetListingIds.has(listingId)));
+    const explicitLowPriority = source.quotaRecoveryEligible === true
+      || ['low', 'unimportant'].includes(clean(source.priority).toLowerCase());
+    const updatedAt = Date.parse(clean(source.updatedAt || source.lastUpdatedAt || source.publishedAt)) || Number.MAX_SAFE_INTEGER;
+    return {
+      index, listingId, sku, stock, salesCount, pendingOrders, protectedListing, currentBatch, sameTarget,
+      explicitLowPriority, updatedAt,
+      rank: (explicitLowPriority ? 100 : 0) + (salesCount === 0 ? 40 : salesCount === null ? 0 : -100)
+        + (numberOrNull(source.viewCount) === 0 ? 10 : 0)
+    };
+  }).filter((row) => row.stock === 0 && !row.protectedListing && !row.currentBatch && !row.sameTarget
+    && (row.pendingOrders === null || row.pendingOrders === 0) && row.salesCount === 0);
+
+  candidates.sort((left, right) => right.rank - left.rank || left.updatedAt - right.updatedAt
+    || left.listingId.localeCompare(right.listingId) || left.index - right.index);
+  const candidate = candidates[0] || null;
+  return {
+    required: true,
+    currentActiveCount,
+    maximumListings,
+    candidate,
+    action: candidate ? 'temporarily-downlist-one-safe-zero-stock-item' : 'stop-no-safe-candidate',
+    reason: candidate ? 'safe-zero-stock-candidate-selected' : 'no-safe-zero-stock-candidate',
+    neverDelete: true,
+    verifyBeforePublish: ['candidate-status-is-downlisted', 'active-count-below-maximum'],
+    resumeSamePreparedDraft: true
   };
 }
 
@@ -2084,7 +2172,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     ? `${normalizeSku(snapshot.sku) || 'product'}-momo-promo-${momoPromotionFingerprint}.jpg` : '';
   const momoMediaReadyBeforeFirstSubmit = Boolean(momoMainImageUrl && momoPromotionImageUrl);
   return {
-    version: 15,
+    version: 16,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -2182,6 +2270,26 @@ function buildPreparedPlatformFieldPlan(snapshot) {
             neverWaitForPlatformMissingPromotionError: true,
             deduplicateBeforeInsert: true
           }
+        },
+        capacityGate: {
+          enabled: true,
+          maximumListings: Number(snapshot.momoCatalogPolicy && snapshot.momoCatalogPolicy.maximumListings) || 1000,
+          targetStock: Math.max(0, Math.round(numberOrNull(snapshot.stock) || 0)),
+          checkBeforeFirstPublish: true,
+          trigger: 'positive-stock-new-listing-and-active-count-at-capacity',
+          action: 'temporarily-downlist-one-safe-zero-stock-item',
+          candidatePolicy: {
+            activeAndZeroStockOnly: true,
+            excludeCurrentSkuListingAndBatch: true,
+            excludeProtectedPinnedAndPendingOrderListings: true,
+            preserveListingsWithSales: true,
+            preferExplicitLowPriorityThenZeroSalesThenOldestUpdate: true
+          },
+          verification: ['candidate-status-is-downlisted', 'active-count-below-maximum'],
+          resumeSamePreparedDraft: true,
+          neverDelete: true,
+          neverCreateReplacementDraft: true,
+          noSafeCandidateAction: 'stop-with-exact-reason'
         },
         storeCategoryPolicy: { maximumCount: 5, relevantOnly: true },
         variantGroup: variantGroup.enabled ? {
@@ -2591,12 +2699,20 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       maximumListings: 1000,
       targetListings: 1000,
       reservedSlots: 0,
-      zeroStockAction: 'temporarily-downlist-one-low-usage-item-only-on-explicit-quota-error',
+      targetMustHavePositiveStock: true,
+      capacityCheckBeforeFirstPublish: true,
+      zeroStockAction: 'temporarily-downlist-one-safe-zero-stock-item-before-publish-when-at-capacity',
+      candidateMustBeActiveAndZeroStock: true,
+      excludeCurrentSkuListingAndBatch: true,
+      excludeProtectedPinnedAndPendingOrderListings: true,
+      preferExplicitLowPriorityThenZeroSalesThenOldestUpdate: true,
       preserveSoldOutWithSales: true,
       requireSalesHistoryBeforeUnpublish: true,
       neverDeleteForQuotaRecovery: true,
       verifyDownlistedListingIdAndCountBeforeRetry: true,
-      retrySameNewProductDraftExactlyOnce: true,
+      resumeSamePreparedDraftAfterSlotRecovery: true,
+      neverCreateReplacementDraft: true,
+      noSafeCandidateAction: 'stop-with-exact-reason',
       violationRecovery: 'republish-when-data-is-valid-and-capacity-allows'
     },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
@@ -5130,6 +5246,7 @@ module.exports = {
     listingSnapshotFingerprint,
     buildPlatformQueuePolicy,
     evaluateMomoPublishVerification,
+    selectMomoCapacityRecoveryCandidate,
     identityAllowsShopeeAutofill,
     summarizePlatformsForStorage,
     platformListingStatusFromPublish,

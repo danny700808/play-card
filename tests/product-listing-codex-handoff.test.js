@@ -115,6 +115,11 @@ test('固定流程鎖定綠底品牌母版、MOMO 專推圖與 EasyStore 後立�
   assert.match(source, /單一商品、同款多細項與加入既有商品成為細項都使用同一 firstSubmitMediaGate/);
   assert.match(source, /整筆主商品共用一張專推圖/);
   assert.match(source, /MOMO 商店分類最多 5 個/);
+  assert.match(source, /preparedPlatformFieldPlan\.momo\.preparedFields\.capacityGate/);
+  assert.match(source, /目標庫存大於 0/);
+  assert.match(source, /正式上架數已達 1000 件/);
+  assert.match(source, /永遠不得刪除、不得動有庫存商品/);
+  assert.match(source, /按下立即處理已涵蓋這項例行名額回收，不得再次詢問確認/);
   assert.match(source, /EasyStore 一經正式核對 verified/);
   assert.match(source, /EasyStore verified 後立刻解除蝦皮依賴/);
   assert.match(source, /後續區段已填後禁止返回或重新產生/);

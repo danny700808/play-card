@@ -177,17 +177,22 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.deepEqual(snapshot.momoDelivery, { method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流' });
   assert.equal(snapshot.momoCatalogPolicy.targetListings, 1000);
   assert.equal(snapshot.momoCatalogPolicy.reservedSlots, 0);
-  assert.equal(snapshot.momoCatalogPolicy.zeroStockAction, 'temporarily-downlist-one-low-usage-item-only-on-explicit-quota-error');
+  assert.equal(snapshot.momoCatalogPolicy.zeroStockAction, 'temporarily-downlist-one-safe-zero-stock-item-before-publish-when-at-capacity');
+  assert.equal(snapshot.momoCatalogPolicy.targetMustHavePositiveStock, true);
+  assert.equal(snapshot.momoCatalogPolicy.capacityCheckBeforeFirstPublish, true);
   assert.equal(snapshot.momoCatalogPolicy.preserveSoldOutWithSales, true);
   assert.equal(snapshot.momoCatalogPolicy.neverDeleteForQuotaRecovery, true);
-  assert.equal(snapshot.momoCatalogPolicy.retrySameNewProductDraftExactlyOnce, true);
+  assert.equal(snapshot.momoCatalogPolicy.resumeSamePreparedDraftAfterSlotRecovery, true);
+  assert.equal(snapshot.momoCatalogPolicy.neverCreateReplacementDraft, true);
+  assert.equal(snapshot.automationPolicy.momoCapacityRecovery.neverDelete, true);
+  assert.equal(snapshot.automationPolicy.momoCapacityRecovery.routineConfirmationForbiddenAfterAuthorizedHandoff, true);
   assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
   assert.equal(snapshot.automationPolicy.duplicateGuard.reuseExistingDraft, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.neverCreateNewOnRetry, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 31);
+  assert.equal(snapshot.automationPolicy.version, 32);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -226,8 +231,11 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 15);
-  assert.equal(snapshot.automationPolicy.version, 31);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 16);
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.targetStock, 1);
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.maximumListings, 1000);
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.neverDelete, true);
+  assert.equal(snapshot.automationPolicy.version, 32);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -409,6 +417,48 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.fixedFields.responsibleSeller, '尚品樂器行');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.shipping.convenienceStore.enabled, false);
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.interactionPolicy.neverSearchByTitle, true);
+});
+
+test('MOMO 名額回收只選安全零庫存舊品並沿用同一新品草稿', () => {
+  const result = helpers.selectMomoCapacityRecoveryCandidate([
+    { listingId: 'TARGET', sku: 'NEW-1', status: '上架', stock: 0, salesCount: 0 },
+    { listingId: 'HAS-STOCK', sku: 'OLD-1', status: '上架', stock: 2, salesCount: 0 },
+    { listingId: 'PROTECTED', sku: 'OLD-2', status: '上架', stock: 0, salesCount: 0, protected: true },
+    { listingId: 'ORDERED', sku: 'OLD-3', status: '上架', stock: 0, salesCount: 0, pendingOrderCount: 1 },
+    { listingId: 'SOLD', sku: 'OLD-4', status: '上架', stock: 0, salesCount: 3 },
+    { listingId: 'SAFE-OLD', sku: 'OLD-5', status: '上架', stock: 0, salesCount: 0, updatedAt: '2024-01-01' },
+    { listingId: 'SAFE-LOW', sku: 'OLD-6', status: '上架', stock: 0, salesCount: 0, priority: 'low', updatedAt: '2026-01-01' }
+  ], { sku: 'NEW-1', stock: 1 }, { currentActiveCount: 1000, maximumListings: 1000 });
+  assert.equal(result.required, true);
+  assert.equal(result.action, 'temporarily-downlist-one-safe-zero-stock-item');
+  assert.equal(result.candidate.listingId, 'SAFE-LOW');
+  assert.equal(result.candidate.stock, 0);
+  assert.equal(result.neverDelete, true);
+  assert.equal(result.resumeSamePreparedDraft, true);
+  assert.deepEqual(result.verifyBeforePublish, ['candidate-status-is-downlisted', 'active-count-below-maximum']);
+});
+
+test('MOMO 未滿額、零庫存目標或更新既有商品不下架舊品', () => {
+  const listings = [{ listingId: 'SAFE', sku: 'OLD', status: '上架', stock: 0, salesCount: 0 }];
+  assert.equal(helpers.selectMomoCapacityRecoveryCandidate(listings,
+    { sku: 'NEW', stock: 1 }, { currentActiveCount: 999 }).reason, 'capacity-available');
+  assert.equal(helpers.selectMomoCapacityRecoveryCandidate(listings,
+    { sku: 'NEW', stock: 0 }, { currentActiveCount: 1000 }).reason, 'target-has-no-stock');
+  assert.equal(helpers.selectMomoCapacityRecoveryCandidate(listings,
+    { sku: 'EXISTING', stock: 1, listingId: 'EXISTING-ID' }, { currentActiveCount: 1000 }).reason,
+  'existing-listing-does-not-require-new-slot');
+});
+
+test('MOMO 名額回收要求已核實零銷售，中央 productId 不會誤判為既有平台商品', () => {
+  const result = helpers.selectMomoCapacityRecoveryCandidate([
+    { listingId: 'UNKNOWN-SALES', sku: 'OLD-1', status: '上架', stock: 0 },
+    { listingId: 'VERIFIED-ZERO', sku: 'OLD-2', status: '上架', stock: 0, salesCount: 0 }
+  ], { productId: 'CENTRAL-PRODUCT-ID', sku: 'NEW', stock: 1 }, {
+    currentActiveCount: 1000,
+    maximumListings: 1000
+  });
+  assert.equal(result.required, true);
+  assert.equal(result.candidate.listingId, 'VERIFIED-ZERO');
 });
 
 test('Coupang shipping is decided once and enables convenience stores only within 101 cm and 10 kg', () => {
@@ -2000,7 +2050,7 @@ test('one verified description is prepared once for EasyStore, Coupang, MOMO and
   assert.equal(plan.momo.imageHeightMaximumPx, 1500);
   assert.equal(plan.momo.imageFileMaximumBytes, 500000);
   assert.equal(plan.shopee.mode, 'advanced-rich-description');
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 15);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 16);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.descriptionDelivery.mode, 'momo-rich-description-blocks');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.descriptionDelivery.mode, 'safe-html-product-detail');
   assert.equal(snapshot.preparedPlatformFieldPlan.easyStore.preparedFields.descriptionDelivery.mode, 'safe-html');
