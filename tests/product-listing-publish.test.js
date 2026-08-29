@@ -227,7 +227,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.preparedPlatformFieldPlan.version, 15);
-  assert.equal(snapshot.automationPolicy.version, 30);
+  assert.equal(snapshot.automationPolicy.version, 31);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
