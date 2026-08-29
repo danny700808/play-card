@@ -65,7 +65,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260828-product-master-image-upload-recheck-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260829-easystore-variant-image-autofill-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260829-verified-nine-series-cover-import-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260823-shopee-v3-schema6/);
   }
 });
