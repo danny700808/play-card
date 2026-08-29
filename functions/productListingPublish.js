@@ -439,6 +439,9 @@ function listingAutomationPolicy() {
       shopeePageMayApplyPreparedContentButMustNotReanalyzeIt: true,
       shopeeAdvancedDescriptionMustVerifyTextAndEveryPreparedImageBeforePublish: true,
       shopeeAdvancedDescriptionMissingImagesMustBeInsertedIntoSameEditor: true,
+      shopeeAdvancedDescriptionMustReplaceAllEditorImagesWithPreparedSet: true,
+      shopeeAdvancedDescriptionMustRejectDataAndBlobImages: true,
+      shopeeAdvancedDescriptionMustPreserveInterleavedPreparedOrder: true,
       shopeeAdvancedDescriptionMustUseNativeImageTransferInsteadOfExternalUrlPaste: true,
       shopeeAdvancedDescriptionMustWaitUntilImageTransferOverlayCloses: true,
       shopeeAdvancedDescriptionMustVerifyFixedLastTwoImagesAfterTransfer: true,
@@ -2285,6 +2288,10 @@ function buildPreparedPlatformFieldPlan(snapshot) {
           platformMaximumImageCount: 12,
           requireTextAndEveryPreparedImageBeforePublish: true,
           insertMissingPreparedImagesIntoSameEditor: true,
+          replaceAllEditorImagesWithPreparedSet: true,
+          rejectDataAndBlobImagesBeforePublish: true,
+          requireExactPreparedImageCountAndOrder: true,
+          placement: 'interleaved-fixed-layout-v1',
           buttonClickAloneIsNeverSuccess: true,
           neverAnalyzeOrRewriteInsideShopee: true
         }

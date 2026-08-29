@@ -627,10 +627,15 @@
     try {
       const url = new URL(String(value || ""), location.href);
       const fileName = decodeURIComponent(url.pathname.split("/").pop() || "").toLowerCase();
-      return { href: url.href, fileName };
+      return { href: url.href, fileName, protocol: url.protocol };
     } catch (_) {
-      return { href: "", fileName: "" };
+      return { href: "", fileName: "", protocol: "" };
     }
+  }
+
+  function imageIdentitiesMatch(observed, expected) {
+    return observed.href === expected.href
+      || (expected.fileName && observed.fileName === expected.fileName);
   }
 
   function advancedDescriptionEvidence(plan, section) {
@@ -641,22 +646,34 @@
       textLength += String(editorDocument.body && editorDocument.body.innerText || "").replace(/\s+/g, "").length;
       Array.from(editorDocument.querySelectorAll("img")).forEach((image) => {
         const url = normalizedImageIdentity(image.currentSrc || image.src || image.getAttribute("data-src"));
-        if (url.href && !observedUrls.includes(url.href)) observedUrls.push(url.href);
+        if (url.href) observedUrls.push(url.href);
       });
     });
     const observedIdentities = observedUrls.map(normalizedImageIdentity);
-    const missingImageUrls = (Array.isArray(plan && plan.imageUrls) ? plan.imageUrls : []).filter((expected) => {
-      const wanted = normalizedImageIdentity(expected);
-      return !observedIdentities.some((observed) => observed.href === wanted.href
-        || (wanted.fileName && observed.fileName === wanted.fileName));
-    });
     const expectedUrls = Array.isArray(plan && plan.imageUrls) ? plan.imageUrls : [];
+    const expectedIdentities = expectedUrls.map(normalizedImageIdentity);
+    const matchedObservedIndexes = new Set();
+    const missingImageUrls = expectedUrls.filter((expected, expectedIndex) => {
+      const wanted = expectedIdentities[expectedIndex];
+      const observedIndex = observedIdentities.findIndex((observed, index) =>
+        !matchedObservedIndexes.has(index) && imageIdentitiesMatch(observed, wanted));
+      if (observedIndex < 0) return true;
+      matchedObservedIndexes.add(observedIndex);
+      return false;
+    });
+    const unexpectedImageUrls = observedUrls.filter((_, index) => !matchedObservedIndexes.has(index));
+    const nonHttpImageUrls = observedIdentities
+      .filter((image) => image.protocol !== "http:" && image.protocol !== "https:")
+      .map((image) => image.href);
+    const exactImageCount = observedUrls.length === expectedUrls.length;
+    const imageOrderComplete = exactImageCount && expectedIdentities.every((wanted, index) =>
+      imageIdentitiesMatch(observedIdentities[index] || {}, wanted));
     const expectedLastTwo = plan && plan.verifyTransferredImageCountAndFixedLastTwoBeforePublish
-      ? expectedUrls.slice(-2).map(normalizedImageIdentity) : [];
+      ? expectedIdentities.slice(-2) : [];
     const observedLastTwo = observedUrls.slice(-2).map(normalizedImageIdentity);
     const fixedLastTwoComplete = expectedLastTwo.length < 2 || expectedLastTwo.every((wanted, index) => {
       const observed = observedLastTwo[index] || {};
-      return observed.href === wanted.href || (wanted.fileName && observed.fileName === wanted.fileName);
+      return imageIdentitiesMatch(observed, wanted);
     });
     return {
       editorFound: documents.length > 0,
@@ -664,8 +681,20 @@
       observedImageCount: observedUrls.length,
       expectedImageCount: Number(plan && plan.expectedImageCount) || 0,
       missingImageUrls,
+      unexpectedImageUrls,
+      nonHttpImageUrls,
+      exactImageCount,
+      imageOrderComplete,
       fixedLastTwoComplete,
-      complete: documents.length > 0 && textLength > 0 && missingImageUrls.length === 0 && fixedLastTwoComplete
+      complete: documents.length > 0
+        && textLength > 0
+        && expectedUrls.length > 0
+        && missingImageUrls.length === 0
+        && unexpectedImageUrls.length === 0
+        && nonHttpImageUrls.length === 0
+        && exactImageCount
+        && imageOrderComplete
+        && fixedLastTwoComplete
     };
   }
 
@@ -680,53 +709,47 @@
   }
 
   function insertMissingAdvancedDescriptionImages(plan, section) {
-    const documents = advancedDescriptionEditorDocuments(section);
-    if (!documents.length) return false;
-    const editorDocument = documents[0];
-    const evidence = advancedDescriptionEvidence(plan, section);
-    evidence.missingImageUrls.forEach((url) => {
-      const paragraph = editorDocument.createElement("p");
-      const image = editorDocument.createElement("img");
-      image.src = url;
-      image.alt = "商品介紹圖片";
-      image.style.maxWidth = "100%";
-      image.style.height = "auto";
-      paragraph.appendChild(image);
-      editorDocument.body.appendChild(paragraph);
-    });
-    if (!evidence.missingImageUrls.length) return true;
-    const EditorEvent = editorDocument.defaultView && editorDocument.defaultView.Event || Event;
-    editorDocument.body.dispatchEvent(new EditorEvent("input", { bubbles: true }));
-    editorDocument.body.dispatchEvent(new EditorEvent("change", { bubbles: true }));
-    editorDocument.body.dispatchEvent(new EditorEvent("blur", { bubbles: true }));
-    return true;
+    return enforceAdvancedDescriptionImageOrder(plan, section);
+  }
+
+  function descriptionBlockForText(editorDocument, pattern) {
+    const candidates = Array.from(editorDocument.body.querySelectorAll("h1,h2,h3,h4,h5,h6,p,li,strong"));
+    const match = candidates.find((element) => pattern.test(String(element.innerText || element.textContent || "")
+      .replace(/[\s\u00a0]+/g, "").trim()));
+    if (!match) return null;
+    let block = match;
+    while (block.parentElement && block.parentElement !== editorDocument.body) block = block.parentElement;
+    return block.parentElement === editorDocument.body ? block : null;
+  }
+
+  function createAdvancedDescriptionImageBlock(editorDocument, url) {
+    const paragraph = editorDocument.createElement("p");
+    const image = editorDocument.createElement("img");
+    image.src = url;
+    image.alt = "商品介紹圖片";
+    image.style.maxWidth = "100%";
+    image.style.height = "auto";
+    paragraph.appendChild(image);
+    return paragraph;
   }
 
   function enforceAdvancedDescriptionImageOrder(plan, section) {
     const documents = advancedDescriptionEditorDocuments(section);
     if (!documents.length || !Array.isArray(plan && plan.imageUrls) || !plan.imageUrls.length) return false;
     const editorDocument = documents[0];
-    const expected = plan.imageUrls.map(normalizedImageIdentity);
-    const expectedNames = new Set(expected.map((item) => item.fileName).filter(Boolean));
-    const expectedHrefs = new Set(expected.map((item) => item.href).filter(Boolean));
     Array.from(editorDocument.querySelectorAll("img")).forEach((image) => {
-      const identity = normalizedImageIdentity(image.currentSrc || image.src || image.getAttribute("data-src"));
-      if (expectedHrefs.has(identity.href) || (identity.fileName && expectedNames.has(identity.fileName))) {
-        const wrapper = image.closest("p");
-        if (wrapper && wrapper.querySelectorAll("img").length === 1 && !String(wrapper.innerText || "").trim()) wrapper.remove();
-        else image.remove();
-      }
+      const wrapper = image.closest("p");
+      if (wrapper && wrapper.querySelectorAll("img").length === 1 && !String(wrapper.innerText || "").trim()) wrapper.remove();
+      else image.remove();
     });
-    plan.imageUrls.forEach((url) => {
-      const paragraph = editorDocument.createElement("p");
-      const image = editorDocument.createElement("img");
-      image.src = url;
-      image.alt = "商品介紹圖片";
-      image.style.maxWidth = "100%";
-      image.style.height = "auto";
-      paragraph.appendChild(image);
-      editorDocument.body.appendChild(paragraph);
-    });
+    const specificationBlock = descriptionBlockForText(editorDocument, /^(?:商品)?規格(?:說明)?[：:]?$/);
+    const usageBlock = descriptionBlockForText(editorDocument, /^(?:使用方式|使用建議|適用情境|使用方式[／/]適用情境)[：:]?$/);
+    const disclaimerBlock = descriptionBlockForText(editorDocument, /^商品圖片與規格僅供參考，實際內容以收到的實體商品為準。?$/);
+    const insert = (url, before) => editorDocument.body.insertBefore(
+      createAdvancedDescriptionImageBlock(editorDocument, url), before || null);
+    insert(plan.imageUrls[0], specificationBlock || usageBlock || disclaimerBlock);
+    if (plan.imageUrls[1]) insert(plan.imageUrls[1], usageBlock || disclaimerBlock);
+    plan.imageUrls.slice(2).forEach((url) => insert(url, disclaimerBlock));
     const EditorEvent = editorDocument.defaultView && editorDocument.defaultView.Event || Event;
     editorDocument.body.dispatchEvent(new EditorEvent("input", { bubbles: true }));
     editorDocument.body.dispatchEvent(new EditorEvent("change", { bubbles: true }));
@@ -769,7 +792,7 @@
       return;
     }
     section.useButton.click();
-    let evidence = await waitForAdvancedDescriptionEvidence(plan, section, 5000);
+    let evidence = await waitForAdvancedDescriptionEvidence(plan, section, 2200);
     const errorText = String(section.container && section.container.innerText || "").match(
       /(?:圖片|描述).{0,24}(?:失敗|錯誤|無法)|(?:failed|error).{0,24}(?:image|description)/i
     );
@@ -777,12 +800,9 @@
       addReport(report, "missing", "進階商品描述", cleanErrorText(errorText[0]));
       return;
     }
-    if (!evidence.complete && evidence.textPresent && insertMissingAdvancedDescriptionImages(plan, section)) {
-      evidence = await waitForAdvancedDescriptionEvidence(plan, section, 5000);
-    }
     if (evidence.textPresent && (!evidence.complete || evidence.fixedLastTwoComplete === false)
       && enforceAdvancedDescriptionImageOrder(plan, section)) {
-      evidence = await waitForAdvancedDescriptionEvidence(plan, section, 5000);
+      evidence = await waitForAdvancedDescriptionEvidence(plan, section, 2200);
     }
     report.advancedDescriptionEvidence = evidence;
     if (!evidence.complete) {
@@ -791,9 +811,11 @@
         "missing",
         "進階商品描述",
         evidence.editorFound
-          ? evidence.fixedLastTwoComplete === false
+          ? evidence.nonHttpImageUrls.length > 0
+            ? "介紹中仍有暫存圖片，已禁止送出"
+            : evidence.fixedLastTwoComplete === false
             ? "介紹圖片已帶入，但最後兩張不是固定宣傳圖"
-            : `文字已帶入，但介紹圖片只有 ${evidence.observedImageCount}／${evidence.expectedImageCount} 張`
+            : `介紹圖片核對失敗（目前 ${evidence.observedImageCount}／應有 ${evidence.expectedImageCount} 張）`
           : "找不到可核對的進階商品描述編輯器"
       );
       return;
