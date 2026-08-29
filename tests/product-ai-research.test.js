@@ -141,9 +141,9 @@ test('OpenAI request uses web search, product images and strict structured outpu
   assert.match(request.input[0].content[0].text, /任務是把「這一件商品」整理成可直接檢查、修改與上架的資料/);
   assert.match(request.input[0].content[0].text, /productDescription 是店家唯一需要檢查與編輯的完整商品介紹/);
   assert.match(request.input[0].content[0].text, /先用 2～4 句自然、活潑的繁體中文介紹商品/);
-  assert.match(request.input[0].content[0].text, /整理約 10 點/);
+  assert.match(request.input[0].content[0].text, /固定整理 10 個/);
   assert.match(request.input[0].content[0].text, /使用方式／適用情境/);
-  assert.match(request.input[0].content[0].text, /整理約 8 點/);
+  assert.match(request.input[0].content[0].text, /固定整理 10 個有來源/);
   assert.match(request.input[0].content[0].text, /每一項特色、使用重點與規格都必須在 fieldEvidence 留下對應依據/);
   assert.match(request.input[0].content[0].text, /商品圖片與規格僅供參考，實際內容以收到的實體商品為準。/);
   assert.match(request.input[0].content[0].text, /都不得加入店名「柚子樂器」/);

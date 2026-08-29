@@ -65,8 +65,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260828-product-master-image-upload-recheck-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260829-shopee-description-images-v2/);
-    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260829-shopee-description-images-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260829-v3-fixed-content-v1/);
+    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260829-v3-fixed-content-v1/);
   }
 });
 
@@ -83,8 +83,8 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(handoffPrompt, /全部編號的完成輸出公平合併/);
   assert.match(handoffPrompt, /整組最多 12 個不同完成圖 URL/);
   assert.match(handoffPrompt, /未勾選的來源與完成圖不得加入任何平台圖庫/);
-  assert.match(handoffPrompt, /目標 10 點不重複、具體且可驗證特色/);
-  assert.match(handoffPrompt, /目標 8 點有來源的使用方式／使用心得/);
+  assert.match(handoffPrompt, /固定 10 點不重複、具體且可驗證的商品介紹／特色/);
+  assert.match(handoffPrompt, /固定 10 點有來源的使用方法、適用情境或使用心得/);
   assert.match(handoffPrompt, /保固只填平台保固欄/);
   assert.doesNotMatch(functionBody(engine, 'productListingAutomaticDescription'), /• 保固：/);
   assert.match(handoffPrompt, /標題、內文、圖卡都不得加入「柚子樂器」/);
@@ -474,8 +474,8 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(engine, /const warrantyInfo=[^\n]+\|\|'保固半年'/);
   assert.match(engine, /warrantyInfo:warrantyInfo/);
   assert.match(caseForm, /完整商品介紹/);
-  assert.match(caseForm, /固定目標為 10 個可驗證特色、8 個使用重點/);
-  assert.match(caseForm, /實體商品免責句固定放在最後/);
+  assert.match(caseForm, /固定完成 10 個可驗證特色、10 個使用重點/);
+  assert.match(caseForm, /免責句放在最後兩張指定介紹圖之前/);
   assert.match(caseForm, /商品規格/);
   assert.match(caseForm, /name="productDescription"/);
   assert.match(caseForm, /<textarea name="sellingPoints" hidden>/);

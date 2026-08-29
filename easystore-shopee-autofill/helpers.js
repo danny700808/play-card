@@ -20,7 +20,6 @@
   const MAX_TTL_MS = 30 * 60 * 1000;
   const MIN_TTL_MS = 1000;
   const MAX_PAYLOAD_BYTES = 64 * 1024;
-  const SELLER_LARGE_HOME_FEE_TWD = 100;
   const DEFAULT_SHOPEE_ENTRY_LABELS = Object.freeze([
     "連接商品到蝦皮購物 Shopee Taiwan",
     "連接商品到蝦皮購物",
@@ -744,6 +743,7 @@
         "waitForEveryImageTransferBeforePreparePublish",
         "verifyTransferredImageCountAndFixedLastTwoBeforePublish",
         "rejectZeroImageDescriptionBeforePublish", "requiredFirstImageUrl",
+        "fixedDisclaimer", "fixedDisclaimerImmediatelyBeforeLastTwoImages",
         "fixedLastTwoImageUrls", "imageUrls", "expectedImageCount"
       ]), "advancedDescription", errors);
       const mode = validateString(payload.advancedDescription.mode, "advancedDescription.mode", errors, { max: 80 });
@@ -777,7 +777,8 @@
         "transferImagesThroughEasyStoreShopeeEditor", "directExternalImageUrlPasteForbidden",
         "waitForEveryImageTransferBeforePreparePublish",
         "verifyTransferredImageCountAndFixedLastTwoBeforePublish",
-        "rejectZeroImageDescriptionBeforePublish"
+        "rejectZeroImageDescriptionBeforePublish",
+        "fixedDisclaimerImmediatelyBeforeLastTwoImages"
       ].forEach((key) => {
         if (payload.advancedDescription[key] !== true) {
           errors.push(`advancedDescription.${key} 必須是 true。`);
@@ -794,8 +795,7 @@
           try {
             const url = new URL(raw);
             if (!["http:", "https:"].includes(url.protocol)) throw new Error("protocol");
-            if (imageUrls.includes(url.href)) errors.push(`advancedDescription.imageUrls[${index}] 不可重複。`);
-            else imageUrls.push(url.href);
+            imageUrls.push(url.href);
           } catch (_) {
             errors.push(`advancedDescription.imageUrls[${index}] 必須是 http(s) 網址。`);
           }
@@ -810,6 +810,12 @@
         "advancedDescription.requiredFirstImageUrl",
         errors,
         { max: 1000 }
+      );
+      const fixedDisclaimer = validateString(
+        payload.advancedDescription.fixedDisclaimer,
+        "advancedDescription.fixedDisclaimer",
+        errors,
+        { max: 500 }
       );
       const fixedLastTwoImageUrls = [];
       if (!Array.isArray(payload.advancedDescription.fixedLastTwoImageUrls)
@@ -848,6 +854,8 @@
         capabilityProbe,
         contentFingerprint,
         requiredFirstImageUrl,
+        fixedDisclaimer,
+        fixedDisclaimerImmediatelyBeforeLastTwoImages: payload.advancedDescription.fixedDisclaimerImmediatelyBeforeLastTwoImages === true,
         fixedLastTwoImageUrls,
         imageUrls,
         expectedImageCount: Number.isInteger(expectedImageCount) ? expectedImageCount : 0
@@ -1117,20 +1125,14 @@
       }
       const sellerLargeHome = logistics.methods.find((method) => resolveLogisticsKey(method.label) === "sellerLargeHome");
       if (logistics.decision === "freight") {
-        if (
-          !sellerLargeHome ||
-          !sellerLargeHome.enabled ||
-          sellerLargeHome.feeTwd !== SELLER_LARGE_HOME_FEE_TWD ||
-          sellerLargeHome.sellerPays
-        ) {
-          errors.push(`大型商品必須開啟賣家宅配，並固定收取 NT$${SELLER_LARGE_HOME_FEE_TWD}。`);
-        }
         logistics.methods.forEach((method) => {
           const key = resolveLogisticsKey(method.label);
-          if (!['hct', 'sellerLargeHome'].includes(key) && method.enabled) {
+          if (key !== 'hct' && method.enabled) {
             errors.push(`大型商品不應開啟「${method.label}」。`);
           }
         });
+      } else if (logistics.decision === "oversize") {
+        errors.push("包裝超出已確認的新竹物流級距，必須先補正配送方案，不能改開其他承運商。");
       } else if (sellerLargeHome && sellerLargeHome.enabled) {
         errors.push("非大型商品不應開啟大型／超重賣家宅配。");
       }
@@ -1338,7 +1340,6 @@
     QUEUE_STORAGE_KEY,
     QUEUE_STORAGE_AREA,
     MAX_TTL_MS,
-    SELLER_LARGE_HOME_FEE_TWD,
     ATTRIBUTE_DEFINITIONS,
     LOGISTICS_DEFINITIONS,
     normalizeText,

@@ -189,7 +189,7 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /brandedHero 固定使用 product-listing-brand-template-square\.png，尺寸 1000×1000 px、1:1/);
   assert.match(prompt, /cleanMain 為 1000×1000 px、1:1/);
   assert.match(prompt, /storefrontPortrait 與 brandedHero 必須從上述不可變母版合成/);
-  assert.match(prompt, /同一輪圖片處理只產生本次目標通路需要的首圖版型/);
+  assert.match(prompt, /同一輪圖片處理必須自動製作本次目標通路需要的全部平台成品/);
   assert.match(prompt, /不得進平台後才重新裁切或設計/);
   assert.match(prompt, /preflightSnapshot\.decisionContract 是唯一執行契約/);
   assert.match(prompt, /只有 judgmentFields 可以由 Codex/);
@@ -241,11 +241,11 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /不得用名稱廣搜/);
   assert.match(prompt, /productDescription 只有通用提醒、商品編號、免責文字時，一律視為內容尚未完成/);
   assert.match(prompt, /「商品特色」「使用方式／適用情境」「商品規格」三段/);
-  assert.match(prompt, /目標 10 點不重複/);
-  assert.match(prompt, /目標 8 點有來源的使用方式／使用心得/);
+  assert.match(prompt, /固定 10 點不重複/);
+  assert.match(prompt, /固定 10 點有來源的使用方法、適用情境或使用心得/);
   assert.match(prompt, /每個特色、使用重點與規格屬性都必須在 fieldEvidence 指向來源/);
   assert.match(prompt, /標題、內文、圖卡都不得加入「柚子樂器」/);
-  assert.match(prompt, /作為唯一且固定的最後一句/);
+  assert.match(prompt, /免責句固定放在兩張指定介紹圖之前/);
   assert.match(prompt, /後端重讀確認後才可建立 preparedSnapshot/);
   assert.match(prompt, /本次 .*沿用同一份已完成介紹/);
 });

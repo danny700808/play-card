@@ -675,6 +675,22 @@
       const observed = observedLastTwo[index] || {};
       return imageIdentitiesMatch(observed, wanted);
     });
+    const fixedDisclaimerBeforePromosComplete = documents.some((editorDocument) => {
+      if (!plan || !plan.fixedDisclaimerImmediatelyBeforeLastTwoImages || !plan.fixedDisclaimer) return false;
+      const meaningfulBlocks = Array.from(editorDocument.body.children).filter((element) =>
+        String(element.innerText || element.textContent || "").trim() || element.querySelector("img"));
+      if (meaningfulBlocks.length < 3) return false;
+      const tail = meaningfulBlocks.slice(-3);
+      const disclaimerText = String(tail[0].innerText || tail[0].textContent || "").replace(/[\s\u00a0]+/g, "").trim();
+      const expectedDisclaimer = String(plan.fixedDisclaimer).replace(/[\s\u00a0]+/g, "").trim();
+      const tailImageIdentities = tail.slice(1).map((block) => {
+        const image = block.querySelector("img");
+        return normalizedImageIdentity(image && (image.currentSrc || image.src || image.getAttribute("data-src")));
+      });
+      return disclaimerText === expectedDisclaimer
+        && expectedLastTwo.length === 2
+        && expectedLastTwo.every((wanted, index) => imageIdentitiesMatch(tailImageIdentities[index] || {}, wanted));
+    });
     return {
       editorFound: documents.length > 0,
       textPresent: textLength > 0,
@@ -686,6 +702,7 @@
       exactImageCount,
       imageOrderComplete,
       fixedLastTwoComplete,
+      fixedDisclaimerBeforePromosComplete,
       complete: documents.length > 0
         && textLength > 0
         && expectedUrls.length > 0
@@ -695,6 +712,7 @@
         && exactImageCount
         && imageOrderComplete
         && fixedLastTwoComplete
+        && fixedDisclaimerBeforePromosComplete
     };
   }
 
@@ -744,12 +762,20 @@
     });
     const specificationBlock = descriptionBlockForText(editorDocument, /^(?:商品)?規格(?:說明)?[：:]?$/);
     const usageBlock = descriptionBlockForText(editorDocument, /^(?:使用方式|使用建議|適用情境|使用方式[／/]適用情境)[：:]?$/);
-    const disclaimerBlock = descriptionBlockForText(editorDocument, /^商品圖片與規格僅供參考，實際內容以收到的實體商品為準。?$/);
+    let disclaimerBlock = descriptionBlockForText(editorDocument, /^商品圖片與規格僅供參考，實際內容以收到的實體商品為準。?$/);
+    if (!disclaimerBlock) {
+      disclaimerBlock = editorDocument.createElement("p");
+      disclaimerBlock.textContent = String(plan.fixedDisclaimer || "商品圖片與規格僅供參考，實際內容以收到的實體商品為準。");
+    }
+    editorDocument.body.appendChild(disclaimerBlock);
     const insert = (url, before) => editorDocument.body.insertBefore(
       createAdvancedDescriptionImageBlock(editorDocument, url), before || null);
-    insert(plan.imageUrls[0], specificationBlock || usageBlock || disclaimerBlock);
-    if (plan.imageUrls[1]) insert(plan.imageUrls[1], usageBlock || disclaimerBlock);
-    plan.imageUrls.slice(2).forEach((url) => insert(url, disclaimerBlock));
+    const fixedLastTwoUrls = Array.isArray(plan.fixedLastTwoImageUrls) ? plan.fixedLastTwoImageUrls : plan.imageUrls.slice(-2);
+    const productImageUrls = plan.imageUrls.slice(0, Math.max(0, plan.imageUrls.length - fixedLastTwoUrls.length));
+    insert(productImageUrls[0], specificationBlock || usageBlock || disclaimerBlock);
+    if (productImageUrls[1]) insert(productImageUrls[1], usageBlock || disclaimerBlock);
+    productImageUrls.slice(2).forEach((url) => insert(url, disclaimerBlock));
+    fixedLastTwoUrls.forEach((url) => insert(url, null));
     const EditorEvent = editorDocument.defaultView && editorDocument.defaultView.Event || Event;
     editorDocument.body.dispatchEvent(new EditorEvent("input", { bubbles: true }));
     editorDocument.body.dispatchEvent(new EditorEvent("change", { bubbles: true }));
@@ -800,7 +826,8 @@
       addReport(report, "missing", "進階商品描述", cleanErrorText(errorText[0]));
       return;
     }
-    if (evidence.textPresent && (!evidence.complete || evidence.fixedLastTwoComplete === false)
+    if (evidence.textPresent && (!evidence.complete || evidence.fixedLastTwoComplete === false
+      || evidence.fixedDisclaimerBeforePromosComplete === false)
       && enforceAdvancedDescriptionImageOrder(plan, section)) {
       evidence = await waitForAdvancedDescriptionEvidence(plan, section, 2200);
     }
@@ -814,7 +841,9 @@
           ? evidence.nonHttpImageUrls.length > 0
             ? "介紹中仍有暫存圖片，已禁止送出"
             : evidence.fixedLastTwoComplete === false
-            ? "介紹圖片已帶入，但最後兩張不是固定宣傳圖"
+            ? "介紹圖片已帶入，但最後兩張不是固定介紹圖"
+            : evidence.fixedDisclaimerBeforePromosComplete === false
+            ? "免責句與最後兩張固定介紹圖順序不正確"
             : `介紹圖片核對失敗（目前 ${evidence.observedImageCount}／應有 ${evidence.expectedImageCount} 張）`
           : "找不到可核對的進階商品描述編輯器"
       );

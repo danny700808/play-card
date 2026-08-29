@@ -74,6 +74,25 @@ function normalizeSku(value) {
   return clean(value).replace(/^'+/, '').replace(/\u00a0/g, ' ').toUpperCase();
 }
 
+function richDescriptionTargetStatus(value) {
+  const lines = clean(value).replace(/\r/g, '').split('\n').map(clean).filter(Boolean);
+  let section = '';
+  let featureCount = 0;
+  let usageCount = 0;
+  let specificationCount = 0;
+  lines.forEach((line) => {
+    if (/^商品特色[：:]?$/.test(line)) { section = 'features'; return; }
+    if (/^(?:使用方式(?:／適用情境)?|適用情境|使用重點|使用建議)[：:]?$/.test(line)) { section = 'usage'; return; }
+    if (/^商品規格[：:]?$/.test(line)) { section = 'specifications'; return; }
+    if (/^(?:包裝內容|適用對象|注意事項)[：:]?$/.test(line)) { section = ''; return; }
+    const listItem = /^(?:\d+[.、]|[-•●])\s*\S+/.test(line);
+    if (section === 'features' && listItem) featureCount += 1;
+    if (section === 'usage' && listItem) usageCount += 1;
+    if (section === 'specifications' && (listItem || /[：:]/.test(line))) specificationCount += 1;
+  });
+  return { featureCount, usageCount, specificationCount, ready: featureCount >= 10 && usageCount >= 10 && specificationCount > 0 };
+}
+
 function numberOrNull(value) {
   if (value === null || value === undefined || clean(value) === '') return null;
   const parsed = Number(String(value).replace(/,/g, '').replace(/[^0-9.\-]/g, ''));
@@ -466,17 +485,17 @@ function researchPrompt(context) {
     : '目前沒有命中已建檔的葉分類模板；仍須完整保留「愛好與收藏品 > 樂器與樂器配件 > 正確第三層」且不可跳層。';
   return [
     '你是台灣樂器行的商品上架編輯。任務是把「這一件商品」整理成可直接檢查、修改與上架的資料，不是撰寫研究或稽核報告。',
-    '先使用商品名稱、使用者貼的網址與圖片判斷商品；使用者指定的型號、顏色與版本就是本次上架對象。內部 SKU 故意不提供，不可拿 SKU 當品牌、型號或搜尋依據。',
-    '如果有使用者提供的商品頁，先打開該頁；再以品牌官網、台灣代理商、型錄或可用的零售頁補齊資料。沒有網址時，直接依商品名稱、品牌、型號與圖片搜尋。',
-    '目標是實用且大致正確的完整度，不必為了追求研究等級的完美而阻擋上架。但條碼、認證、產地、包裝尺寸與重量不可憑空猜測；不確定就回傳 null。店家目前的商品保固政策固定為「保固半年」，除非使用者明確指定其他保固，否則 warrantyInfo 請填「保固半年」。',
+    '第一步必須逐張分析使用者提供的原始商品圖片與圖片內可辨識文字（OCR），並讀完既有商品說明；再用商品名稱、使用者網址、精確型號或條碼確認商品。使用者指定的型號、顏色與版本就是本次上架對象。內部 SKU 故意不提供，不可拿 SKU 當品牌、型號或搜尋依據。',
+    '如果有使用者提供的商品頁，先打開該頁；再以品牌官網、台灣代理商、型錄或可用的零售頁補齊資料。沒有網址時，直接依商品名稱、品牌、型號與圖片搜尋。圖片、OCR、既有文字與外部來源的事實都要互相比對，不可跳過案件資料直接生成文案。',
+    '條碼、認證、產地、包裝尺寸與重量不可憑空猜測；不確定就回傳 null。若固定內容數量仍缺乏可驗證事實，繼續查證；查證後仍不足則列入 missingFields 並讓發布門檻停止，絕不能用推測湊數。店家目前的商品保固政策固定為「保固半年」，除非使用者明確指定其他保固，否則 warrantyInfo 請填「保固半年」。',
     '參考網址若是淘寶或供應商頁，可以參考圖片、排版、簡體中文與特色，但請重新寫成自然的台灣繁體中文，不逐字複製。',
-    'productDescription 是店家唯一需要檢查與編輯的完整商品介紹。格式固定為：先用 2～4 句自然、活潑的繁體中文介紹商品、適合對象與使用情境；空一行後寫「商品特色」，以可查證內容為原則整理約 10 點並用「1. 」「2. 」編號；再空一行寫「使用方式／適用情境」，以可查證的常見使用方法、注意事項或使用心得整理約 8 點；再空一行寫「商品規格」，把可查到的適用屬性逐欄列出，每項使用「欄位：內容」。必要時可加「包裝內容」。證據不足時可以少於目標點數，不可湊數或猜測。不要寫研究過程、來源比對或身分確認說明。',
+    'productDescription 是店家唯一需要檢查與編輯的完整商品介紹。格式固定為：先用 2～4 句自然、活潑的繁體中文介紹商品、適合對象與使用情境；空一行後寫「商品特色」，固定整理 10 個不重複且可驗證的重點並用「1. 」「2. 」編號；再空一行寫「使用方式／適用情境」，固定整理 10 個有來源的使用方法、注意事項、適用情境或使用心得；每一點以約 20 個中文字為原則；再空一行寫「商品規格」，把所有可查到的適用屬性逐欄列出，每項使用「欄位：內容」。必要時可加「包裝內容」。不得湊數、猜測或虛構心得；無法查證到 10＋10 時列入 missingFields，交由發布門檻停止。不要在對外文案寫研究過程、來源比對或身分確認說明。',
     '每一項特色、使用重點與規格都必須在 fieldEvidence 留下對應依據；先核對精確型號或條碼，再依序採用原廠／原廠說明書、台灣代理商或經銷商，以及多個可信的使用指南或實際使用經驗。來源互相衝突時不要自行選一個，請記錄在 sourceConflicts。',
     '為了相容既有資料，shortDescription、featureList、specificationText 分別放入 productDescription 的介紹段、特色段與規格段；faqText 放入使用方式／適用情境段；commonProductDescription 必須與 productDescription 相同。sellingPoints 可取最重要的一項特色。',
     '所有對外商品標題、介紹、平台 HTML 與商品圖卡都不得加入店名「柚子樂器」、店家標語、聯絡方式、QR Code、導流文字或與商品無關的宣傳。品牌名稱僅限商品本身已查證的原廠品牌。',
-    '所有平台的完整介紹都必須以「商品圖片與規格僅供參考，實際內容以收到的實體商品為準。」作為唯一的最後一句；前面若已有相同句子要先移除，最後一句之後不得再放任何文字、圖片或宣傳內容。',
+    '母文字內容只保留一次「商品圖片與規格僅供參考，實際內容以收到的實體商品為準。」免責文字；平台轉換器固定把它放在兩張指定固定介紹圖之前，再把兩張固定介紹圖放成詳細介紹的絕對最後兩個內容區塊。固定圖之後不得再放任何文字或圖片。',
     '根據同一份商品事實產生 EasyStore、蝦皮、MOMO 與 Coupang／酷澎內容；相同事實不重複發明，只調整各平台的標題、格式、分類與特殊必填欄位。',
-    'EasyStore、MOMO 的 HTML，以及作為 Coupang 轉接來源的格式化內容，都只使用安全的 h2、h3、p、ul、li、strong、br 標籤，不放屬性、script、style、iframe 或外部追蹤碼。蝦皮描述請純文字，不用 HTML。',
+    'EasyStore 使用安全 HTML；MOMO 轉成原生文字／圖片區塊；Coupang 使用安全 HTML 或等價的 IMAGE／TEXT contentDetails；蝦皮必須使用 EasyStore 通路的進階商品描述，把文字與全部圖片一起帶入，禁止只發布純文字。所有格式都不得放 script、外部追蹤碼或不受控嵌入內容。',
     '柚子樂器的蝦皮樂器分類固定先走「愛好與收藏品 > 樂器與樂器配件」，第三層只能從「鍵盤樂器、打擊樂器、管樂器、樂器配件、其他、弦樂器」選一個，不可跳層，也不可自行改寫分類名稱。',
     '電吉他、木吉他與貝斯的完整分類固定為「愛好與收藏品 > 樂器與樂器配件 > 弦樂器 > 吉他、貝斯」；不可寫成「吉他與貝斯」，不可略過「弦樂器」，也不可在後面杜撰「電吉他」等不存在的層級。其他商品必須依商品本身選正確第三層，不能沿用吉他分類。',
     'shopeeCategoryPath 決定後，必須把該分類模板列出的每個適用屬性逐欄研究並放入 shopeeAttributeValues。可由原廠規格確認的材質、弦數、拾音器配置等先找齊；Warranty Duration、Warranty Type、實際店家保固、無可靠來源的重量或尺寸不可猜測，留空並列入 missingFields，讓管理者在確認上架前填寫。',
@@ -486,7 +505,7 @@ function researchPrompt(context) {
     '樂器常見 label 包含 Weight、Warranty Duration、Warranty Type、Accessory Type、Length、Neck Material、Traditional Music Instrument、Guitar Shape、Hand Configuration、Quantity、Quantity per Pack、Body Material、Guitar Type、Pickup Configuration、Fretboard Material、Dimension (L x W x H)、Number of Strings、Item condition、Color。只放與此商品有關且有根據的欄位。',
     categoryTemplateGuide,
     'NCC、BSMI、保固、產地等不可推測；不適用或不確定時不要加入 shopeeAttributeValues。Quantity 與 Quantity per Pack 若為單件商品可填 1；Item condition 只有明確為新品時才填 New。每筆標示 high、medium 或 low，並用 note 簡短寫依據。',
-    'imagePlan 是圖片製作與編排指示（主圖、規格圖、特色圖、內容物圖等），不是聲稱圖片已經生成；不得假設使用者有未提供的授權素材。',
+    'imagePlan 是進站前必須執行的圖片製作與編排指示，不是可略過的建議：要包含 EasyStore 750×1000 storefrontPortrait 首圖、蝦皮 1000×1000 brandedHero 首圖、MOMO／酷澎乾淨 1000×1000 cleanMain 首圖，以及依事實製作的繁體特色圖、規格圖、細項圖與 MOMO 專推圖。不得假設使用者有未提供的授權素材，也不得把來源原圖當成平台完成圖。',
     '包裝尺寸必須優先尋找外箱／包裝長寬高與毛重，不要把商品本體尺寸冒充包裝尺寸。',
     '若是明顯可超商寄送的小型商品，但找不到官方包裝尺寸，可用保守估算並將 packageMeasurementMode 設為 estimated；大型樂器不可估成小包裹。',
     '判斷 convenience 時，請查詢蝦皮台灣目前可用物流的材積與重量限制，並在 packageResearchNote 簡述判斷依據；若無法確認就不要把大型商品判成可超商。',
@@ -1422,7 +1441,9 @@ function buildResearchUpdate(existingCase, result, meta) {
   }
 
   const merged = { ...existing, ...update };
-  const coreReady = !!((clean(merged.researchedProductName) || clean(merged.productName)) && clean(merged.productDescription || merged.commonProductDescription));
+  const richDescriptionStatus = richDescriptionTargetStatus(merged.productDescription || merged.commonProductDescription);
+  const coreReady = !!((clean(merged.researchedProductName) || clean(merged.productName))
+    && clean(merged.productDescription || merged.commonProductDescription) && richDescriptionStatus.ready);
   const platformReady = !!(
     clean(merged.shopeeTitle) && clean(merged.shopeeDescription) &&
     clean(merged.momoGoodsName) && clean(merged.momoHtml) &&
@@ -1432,6 +1453,8 @@ function buildResearchUpdate(existingCase, result, meta) {
   update.productResearchStatus = ready ? 'researched' : 'partial';
   if (!['published', 'archived'].includes(clean(existing.caseStatus))) update.caseStatus = ready ? 'ready' : 'draft';
   update.productResearchUpdatedAt = admin.firestore.FieldValue.serverTimestamp();
+  const researchMissingFields = (Array.isArray(result.missingFields) ? result.missingFields : []).map(clean).filter(Boolean).slice(0, 30);
+  if (!richDescriptionStatus.ready) researchMissingFields.push('商品特色 10 點、使用方式／適用情境 10 點與完整商品規格');
   update.aiResearch = {
     status: 'completed',
     requestId: meta.requestId,
@@ -1445,7 +1468,8 @@ function buildResearchUpdate(existingCase, result, meta) {
     identityStatus: update.identityStatus,
     evidenceCount: update.fieldEvidence.length,
     conflictCount: update.sourceConflicts.length,
-    missingFields: (Array.isArray(result.missingFields) ? result.missingFields : []).map(clean).filter(Boolean).slice(0, 30),
+    richDescriptionStatus,
+    missingFields: Array.from(new Set(researchMissingFields)).slice(0, 30),
     filledFields: Array.from(new Set(filledFields)),
     preservedManualFields: Array.from(new Set(preservedFields)),
     completedAt: admin.firestore.FieldValue.serverTimestamp()

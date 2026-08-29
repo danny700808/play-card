@@ -100,7 +100,7 @@
       ? value.advancedDescription : {};
     const advancedImageUrls = (Array.isArray(advancedSource.imageUrls) ? advancedSource.imageUrls : [])
       .map(safeHttpUrl).filter(Boolean)
-      .filter((url, index, rows) => rows.indexOf(url) === index).slice(0, 12);
+      .slice(0, 12);
     const fixedLastTwoImageUrls = (Array.isArray(advancedSource.fixedLastTwoImageUrls)
       ? advancedSource.fixedLastTwoImageUrls : [])
       .map(safeHttpUrl).filter(Boolean)
@@ -119,6 +119,8 @@
       capabilityProbe: clean(advancedSource.capabilityProbe, 80),
       contentFingerprint: clean(advancedSource.contentFingerprint, 128),
       requiredFirstImageUrl: safeHttpUrl(advancedSource.requiredFirstImageUrl),
+      fixedDisclaimer: clean(advancedSource.fixedDisclaimer, 500),
+      fixedDisclaimerImmediatelyBeforeLastTwoImages: advancedSource.fixedDisclaimerImmediatelyBeforeLastTwoImages === true,
       fixedLastTwoImageUrls,
       imageUrls: advancedImageUrls,
       expectedImageCount: Math.max(0, Math.round(numberOrNull(advancedSource.expectedImageCount) || 0))
@@ -188,6 +190,8 @@
       || payload.advancedDescription.waitForEveryImageTransferBeforePreparePublish !== true
       || payload.advancedDescription.verifyTransferredImageCountAndFixedLastTwoBeforePublish !== true
       || payload.advancedDescription.rejectZeroImageDescriptionBeforePublish !== true
+      || payload.advancedDescription.fixedDisclaimerImmediatelyBeforeLastTwoImages !== true
+      || !payload.advancedDescription.fixedDisclaimer
       || payload.advancedDescription.capabilityProbe !== 'single-lightweight-page-probe'
       || !/^[a-f0-9]{64}$/i.test(payload.advancedDescription.contentFingerprint)
       || payload.advancedDescription.imageUrls.length < 3

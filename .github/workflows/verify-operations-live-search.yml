@@ -38,8 +38,8 @@ jobs:
     timeout-minutes: 10
     env:
       EXTENSION_DIR: easystore-shopee-autofill
-      EXTENSION_VERSION: 0.3.33
-      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.33.zip
+      EXTENSION_VERSION: 0.3.34
+      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.34.zip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -107,12 +107,12 @@ jobs:
       - name: Verify markup and cache versions
         run: |
           set -euo pipefail
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260829-shopee-description-images-v1' portal.html
-          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260829-shopee-description-images-v1' operations-hub.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260829-v3-fixed-content-v1' portal.html
+          grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260829-v3-fixed-content-v1' operations-hub.html
           grep -Fq 'operations-phase1.css?v=20260828-product-master-image-upload-recheck-v1' portal.html
           grep -Fq 'operations-phase1.css?v=20260828-product-master-image-upload-recheck-v1' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260829-shopee-description-images-v2' portal.html
-          grep -Fq 'operations-phase1.js?v=20260829-shopee-description-images-v2' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260829-v3-fixed-content-v1' portal.html
+          grep -Fq 'operations-phase1.js?v=20260829-v3-fixed-content-v1' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260828-product-image-auth-preflight-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260828-product-image-auth-preflight-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

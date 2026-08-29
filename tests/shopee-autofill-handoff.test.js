@@ -40,13 +40,17 @@ function rawPayload() {
       rejectZeroImageDescriptionBeforePublish: true,
       capabilityProbe: 'single-lightweight-page-probe', contentFingerprint: 'b'.repeat(64),
       requiredFirstImageUrl: 'https://example.com/green-hero.jpg',
+      fixedDisclaimer: '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。',
+      fixedDisclaimerImmediatelyBeforeLastTwoImages: true,
       fixedLastTwoImageUrls: ['https://example.com/promo-1.jpg', 'https://example.com/promo-2.jpg'],
       imageUrls: [
+        'https://example.com/green-hero.jpg',
+        'https://example.com/green-hero.jpg',
         'https://example.com/green-hero.jpg',
         'https://example.com/promo-1.jpg',
         'https://example.com/promo-2.jpg'
       ],
-      expectedImageCount: 3
+      expectedImageCount: 5
     },
     attributes: [
       { label: 'Pickup Configuration', value: 'HSS', confidence: 'high', note: '官方規格' }
@@ -61,7 +65,7 @@ function rawPayload() {
         { label: '7-ELEVEN', enabled: false, option: '', feeTwd: null, sellerPays: false },
         { label: '新竹物流', enabled: true, option: 'S170', feeTwd: null, sellerPays: false },
         { label: '全家', enabled: false, option: '', feeTwd: null, sellerPays: false },
-        { label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false },
+        { label: '賣家宅配：大型/超重物品運送', enabled: false, option: '', feeTwd: null, sellerPays: false },
         { label: '嘉里快遞', enabled: false, option: '', feeTwd: null, sellerPays: false },
         { label: '店到家宅配', enabled: false, option: '', feeTwd: null, sellerPays: false }
       ]
@@ -109,19 +113,21 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
   assert.equal(hct.enabled, true);
   assert.equal(hct.option, 'S170');
   assert.equal(hct.feeTwd, null);
-  assert.equal(sellerLargeHome.enabled, true);
-  assert.equal(sellerLargeHome.feeTwd, 100);
+  assert.equal(sellerLargeHome.enabled, false);
+  assert.equal(sellerLargeHome.feeTwd, null);
   assert.equal(sellerLargeHome.sellerPays, false);
   assert.equal(payload.logistics.methods.length, 9);
-  assert.equal(payload.logistics.methods.filter((row) => row.enabled).length, 2);
+  assert.equal(payload.logistics.methods.filter((row) => row.enabled).length, 1);
   assert.equal(payload.logistics.methods
-    .filter((row) => !['新竹物流', '賣家宅配：大型/超重物品運送'].includes(row.label))
+    .filter((row) => row.label !== '新竹物流')
     .every((row) => row.enabled === false), true);
   assert.equal(payload.preorder.enabled, false);
   assert.equal(payload.preorder.days, 1);
   assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description-with-native-image-transfer');
-  assert.equal(payload.advancedDescription.expectedImageCount, 3);
+  assert.equal(payload.advancedDescription.expectedImageCount, 5);
   assert.deepEqual(JSON.parse(JSON.stringify(payload.advancedDescription.imageUrls)), [
+    'https://example.com/green-hero.jpg',
+    'https://example.com/green-hero.jpg',
     'https://example.com/green-hero.jpg',
     'https://example.com/promo-1.jpg',
     'https://example.com/promo-2.jpg'

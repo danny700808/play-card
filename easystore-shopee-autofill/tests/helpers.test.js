@@ -46,13 +46,17 @@ function validPayload(now) {
       capabilityProbe: "single-lightweight-page-probe",
       contentFingerprint: "b".repeat(64),
       requiredFirstImageUrl: "https://example.com/green-hero.jpg",
+      fixedDisclaimer: "商品圖片與規格僅供參考，實際內容以收到的實體商品為準。",
+      fixedDisclaimerImmediatelyBeforeLastTwoImages: true,
       fixedLastTwoImageUrls: ["https://example.com/promo-1.jpg", "https://example.com/promo-2.jpg"],
       imageUrls: [
+        "https://example.com/green-hero.jpg",
+        "https://example.com/green-hero.jpg",
         "https://example.com/green-hero.jpg",
         "https://example.com/promo-1.jpg",
         "https://example.com/promo-2.jpg"
       ],
-      expectedImageCount: 3
+      expectedImageCount: 5
     },
     attributes: [
       { label: "Neck Material", value: "Maple", confidence: "high", note: "Ibanez 官方規格" },
@@ -77,7 +81,7 @@ function validPayload(now) {
         { label: "7-ELEVEN", enabled: false, option: "", feeTwd: null, sellerPays: false },
         { label: "新竹物流", enabled: true, option: "S170", feeTwd: null, sellerPays: false },
         { label: "全家", enabled: false, option: "", feeTwd: null, sellerPays: false },
-        { label: "賣家宅配：大型/超重物品運送", enabled: true, option: "", feeTwd: 100, sellerPays: false },
+        { label: "賣家宅配：大型/超重物品運送", enabled: false, option: "", feeTwd: null, sellerPays: false },
         { label: "嘉里快遞", enabled: false, option: "", feeTwd: null, sellerPays: false },
         { label: "店到家宅配", enabled: false, option: "", feeTwd: null, sellerPays: false }
       ],
@@ -551,17 +555,25 @@ test("requires a complete and authoritative freight policy", () => {
   assert.equal(missingResult.ok, false);
   assert.match(missingResult.errors.join(" "), /缺少「全家」設定/);
 
-  const wrongSellerFee = validPayload(now);
-  wrongSellerFee.logistics.methods.find((row) => row.label.startsWith("賣家宅配")).feeTwd = 99;
-  const wrongFeeResult = helpers.validateQueuePayload(wrongSellerFee, now);
-  assert.equal(wrongFeeResult.ok, false);
-  assert.match(wrongFeeResult.errors.join(" "), /固定收取 NT\$100/);
+  const forbiddenSellerLarge = validPayload(now);
+  forbiddenSellerLarge.logistics.methods.find((row) => row.label.startsWith("賣家宅配")).enabled = true;
+  const forbiddenSellerLargeResult = helpers.validateQueuePayload(forbiddenSellerLarge, now);
+  assert.equal(forbiddenSellerLargeResult.ok, false);
+  assert.match(forbiddenSellerLargeResult.errors.join(" "), /不應開啟「賣家宅配/);
 
   const extraMethod = validPayload(now);
   extraMethod.logistics.methods.find((row) => row.label === "7-ELEVEN").enabled = true;
   const extraResult = helpers.validateQueuePayload(extraMethod, now);
   assert.equal(extraResult.ok, false);
   assert.match(extraResult.errors.join(" "), /不應開啟「7-ELEVEN」/);
+
+  const oversize = validPayload(now);
+  oversize.logistics.decision = "oversize";
+  oversize.logistics.methods.find((row) => row.label === "新竹物流").enabled = false;
+  oversize.logistics.methods.find((row) => row.label === "新竹物流").option = "";
+  const oversizeResult = helpers.validateQueuePayload(oversize, now);
+  assert.equal(oversizeResult.ok, false);
+  assert.match(oversizeResult.errors.join(" "), /不能改開其他承運商/);
 });
 
 test("requires the canonical EasyStore product URL and never trusts query or fragment variants", () => {
@@ -946,7 +958,7 @@ test("advanced description must be fully prepared before the Shopee page opens",
   const now = 1_800_000_000_000;
   const valid = helpers.validateQueuePayload(validPayload(now), now);
   assert.equal(valid.ok, true, valid.errors.join("；"));
-  assert.equal(valid.value.advancedDescription.expectedImageCount, 3);
+  assert.equal(valid.value.advancedDescription.expectedImageCount, 5);
 
   const missingImages = validPayload(now);
   missingImages.advancedDescription.imageUrls = [];
