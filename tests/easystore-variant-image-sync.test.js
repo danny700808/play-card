@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const EasyStoreSync = require('../functions/easystoreCatalogSync.js');
 
@@ -65,4 +67,11 @@ test('a single-variant product safely uses its official main image without enter
 test('numeric image identifiers are not mistaken for website image URLs', () => {
   assert.deepEqual(EasyStoreSync.collectImages({ image: 12345 }), []);
   assert.equal(EasyStoreSync.variantImageReferenceId({ image_id: 0 }), '');
+});
+
+test('product inventory exposes the EasyStore API sync action and pending state', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'operations-phase1.js'), 'utf8');
+  assert.match(source, /data-action="sync-easystore-api"/);
+  assert.match(source, /EasyStore API 同步/);
+  assert.match(source, /EasyStore 同步中…/);
 });
