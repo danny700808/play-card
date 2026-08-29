@@ -36,6 +36,7 @@ test('四平台狀態顯示有、沒有或審核中，並提供對應處理', ()
   assert.match(body, /pendingLabel=status\.status==='pending-review'\?'審核中'/);
   assert.match(body, /data-action="product-platform-recheck"/);
   assert.match(body, /data-action="product-platform-missing"/);
+  assert.match(body, /data-action="product-platform-status-edit"/);
   assert.match(functionBody('handleAction'), /product-platform-missing.*openProductListingCase/);
   assert.match(functionBody('handleAction'), /product-platform-recheck.*startProductPlatformAudit/);
 });
@@ -51,8 +52,8 @@ test('通路檢測保留缺貨與一般下架，違規與未通過仍判定沒�
   assert.match(presenceBody, /productPlatformStatusIsInvalid\(row\)/);
   assert.match(presenceBody, /'pending-review','draft','inactive'/);
   assert.match(presenceBody, /缺貨或正常下架仍保留/);
-  assert.match(presenceBody, /key==='shopee'/);
-  assert.match(presenceBody, /inferredFrom:'官網同步'/);
+  assert.doesNotMatch(presenceBody, /key==='shopee'/);
+  assert.doesNotMatch(presenceBody, /inferredFrom:'官網同步'/);
 });
 
 test('商品資訊提供完整四平台檢測按鈕與一次授權的 Codex 交接', () => {

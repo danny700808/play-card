@@ -2117,10 +2117,6 @@ function renderOverviewV7(){
     if(productPlatformStatusIsInvalid(row))return {exists:false,listingId:row.listingId||'',inferredFrom:row.label};
     if(row.listingId||['active','mapped','pending-review','draft','inactive'].includes(row.status))return {exists:true,listingId:row.listingId||'',inferredFrom:row.status==='inactive'?'缺貨或正常下架仍保留':''};
     if(key==='easyStore'&&p&&p.matchedOnline)return {exists:true,listingId:row.listingId||clean(p.sourceProductId),inferredFrom:''};
-    if(key==='shopee'){
-      const easyStore=productPlatformPresence(p,'easyStore');
-      if(easyStore.exists)return {exists:true,listingId:row.listingId||'',inferredFrom:'官網同步'};
-    }
     return {exists:false,listingId:'',inferredFrom:''};
   }
   function productPlatformStatusHtml(p,compact){
@@ -2130,7 +2126,7 @@ function renderOverviewV7(){
       if(pending)return '<button type="button" class="is-pending" data-action="product-platform-recheck" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(title)+'"><b>'+escapeHtml(platform.label)+'</b><i>'+escapeHtml(pendingLabel)+'</i></button>';
       if(row.exists)return '<span class="is-present" title="'+attr(title)+'"><b>'+escapeHtml(platform.label)+'</b><i>有</i></span>';
       return '<button type="button" class="is-missing" data-action="product-platform-missing" data-id="'+attr(p.docId)+'" data-platform="'+attr(platform.key)+'" title="'+attr(title)+'"><b>'+escapeHtml(platform.label)+'</b><i>沒有</i></button>';
-    }).join('')+'</div>';
+    }).join('')+'<button type="button" class="ops-platform-status-review" data-action="product-platform-status-edit" data-id="'+attr(p.docId)+'" title="以正式清單結果編輯四平台狀態">核對</button></div>';
   }
   function productCreatedTime(p){
     const source=p&&p.internal||{},date=dateFrom(source.createdAt||source.updatedAt);
@@ -6480,6 +6476,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='product-platform-audit')return startProductPlatformAudit({}).catch(function(error){toast('網路商品狀態檢測尚未啟動',errorMessage(error),'error');});
     if(action==='product-platform-published-audit')return startProductPlatformAudit({publishedOnly:true}).catch(function(error){toast('已送出商品重查尚未啟動',errorMessage(error),'error');});
     if(action==='product-platform-recheck')return startProductPlatformAudit({productId:el.dataset.id}).catch(function(error){toast('商品狀態重查尚未啟動',errorMessage(error),'error');});
+    if(action==='product-platform-status-edit')return openProductPlatformStatus(el.dataset.id);
     if(action==='product-listing-queue-open')return openProductListingQueue();
     if(action==='product-listing-queue-add')return addProductListingToQueue(byId('productListingCaseForm'),el.dataset.scope,el.dataset.purpose).catch(function(error){toast('尚未加入待處理',errorMessage(error),'error');});
     if(action==='product-listing-queue-remove')return removeProductListingFromQueue(el.dataset.id).catch(function(error){toast('尚未從待處理移除',errorMessage(error),'error');});

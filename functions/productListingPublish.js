@@ -845,7 +845,6 @@ function platformListingStatusFromPublish(previous, platforms, stages) {
   const stageRows = stages && typeof stages === 'object' ? stages : {};
   const next = { ...current };
   const statusMap = {
-    created: 'active', updated: 'active', completed: 'active', 'already-completed': 'mapped',
     'waiting-easystore-sync': 'queued', 'awaiting-store-agent': 'queued', 'already-queued': 'queued', submitted: 'queued',
     'submitted-to-platform-review': 'pending-review', 'under-review': 'pending-review',
     'action-required': 'error', 'missing-fields': 'error', 'waiting-easystore': 'error', failed: 'error'
@@ -857,15 +856,26 @@ function platformListingStatusFromPublish(previous, platforms, stages) {
     const receipt = stage.receipt && typeof stage.receipt === 'object' ? stage.receipt : {};
     const receiptStatus = clean(receipt.status).toLowerCase();
     const rawStatus = clean(raw.status).toLowerCase();
+    const stageVerified = clean(stage.status).toLowerCase() === 'verified';
     const pendingReview = platform === 'coupang' && [receiptStatus, rawStatus].some((value) => ['under-review', 'submitted-to-platform-review', 'pending-review', '審核中'].includes(value));
-    const resolvedStatus = pendingReview ? 'pending-review' : (statusMap[clean(raw.status)] || clean(old.status) || 'unknown');
+    const successSubmitted = ['created', 'updated', 'completed', 'already-completed'].includes(rawStatus);
+    const preservedLiveStatus = ['active', 'mapped', 'inactive'].includes(clean(old.status)) ? clean(old.status) : '';
+    const resolvedStatus = pendingReview
+      ? 'pending-review'
+      : stageVerified && successSubmitted
+        ? 'active'
+        : successSubmitted
+          ? (preservedLiveStatus || 'queued')
+          : (statusMap[rawStatus] || clean(old.status) || 'unknown');
+    const checkedAt = stageVerified ? admin.firestore.FieldValue.serverTimestamp() : (old.lastCheckedAt || null);
     next[platform] = {
       ...old,
       status: resolvedStatus,
       listingId: clean(receipt.listingId || raw.productId || raw.listingId || old.listingId),
       note: clean(pendingReview ? '酷澎已送審，等待正式核准；請於 24 小時及 48 小時後重查。' : raw.message).slice(0, 800),
-      lastCheckedAt: admin.firestore.FieldValue.serverTimestamp(),
-      lastCheckedBy: '商品上架工作',
+      lastCheckedAt: checkedAt,
+      lastCheckedBy: stageVerified ? '商品上架正式清單核對' : (old.lastCheckedBy || ''),
+      lastAttemptedAt: admin.firestore.FieldValue.serverTimestamp(),
       reviewSubmittedAt: pendingReview ? (old.reviewSubmittedAt || admin.firestore.FieldValue.serverTimestamp()) : (old.reviewSubmittedAt || null),
       nextReviewCheckAt: pendingReview ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null,
       finalReviewCheckAt: pendingReview ? new Date(Date.now() + 48 * 60 * 60 * 1000) : null

@@ -1305,6 +1305,8 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 .ops-product-platform-status>.is-pending:hover{border-color:#d5bc65;background:#fff2bf}
 .ops-product-platform-status>.is-missing{border-color:#edc1bd;background:#fff0ee;color:#a33d34}
 .ops-product-platform-status>.is-missing:hover{border-color:#d98178;background:#ffe3df}
+.ops-product-platform-status>.ops-platform-status-review{grid-column:1/-1;display:block;padding:3px 6px;border-color:#cbd8df;background:#f7fafb;color:#526873;text-align:center;font-size:8px;font-weight:800}
+.ops-product-platform-status>.ops-platform-status-review:hover{border-color:#8fb0be;background:#eef6f8}
 .ops-product-platform-status>span.queued{border-color:#ead99f;background:#fff8df;color:#7c6109}
 .ops-product-platform-status>span.inactive,.ops-product-platform-status>span.attention,.ops-product-platform-status>span.missing{border-color:#edc1bd;background:#fff0ee;color:#a33d34}
 .ops-product-platform-status.compact>span,.ops-product-platform-status.compact>button{padding:5px 6px}
