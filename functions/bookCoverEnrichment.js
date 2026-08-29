@@ -8,12 +8,47 @@ const sharp = require('sharp');
 const REGION = 'us-central1';
 const PRODUCT_COLLECTION = 'opsInternalProducts';
 const JOB_COLLECTION = 'opsBookCoverEnrichmentJobs';
-const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v6-name-only-source-pages';
+const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v7-chinese-title-edition-aware';
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_CHUNK_SIZE = 6;
 const MAX_CHUNK_SIZE = 10;
 const FETCH_TIMEOUT_MS = 20 * 1000;
 const MAX_REMOTE_IMAGE_BYTES = 12 * 1024 * 1024;
+
+// These covers were checked against the Chinese product title first, then the
+// subtitle/volume/edition printed on the front cover.  Keep this list keyed by
+// the normalized product name rather than SKU/ISBN because the store's 9-series
+// codes may contain locally-added prefixes or suffixes.
+const CURATED_COVERS_BY_TITLE = new Map([
+  ['新琴點撥2024版橘色', {
+    sourceRecordUrl: 'https://www.musicth.com.tw/item.php?PART_NO=IA001',
+    imageUrl: 'https://www.musicth.com.tw/Uploads/2024-09-25_IA001_0.jpg'
+  }],
+  ['超絕吉他地獄訓練所20年精華篇', {
+    sourceRecordUrl: 'https://www.musicth.com.tw/item.php?PART_NO=IA02614',
+    imageUrl: 'https://www.musicth.com.tw/Uploads/2025-02-14_IA02614_0.jpg'
+  }],
+  ['爵士鼓過門大事典413', {
+    sourceRecordUrl: 'https://www.musicth.com.tw/item.php?PART_NO=IA00308',
+    imageUrl: 'https://www.musicth.com.tw/Uploads/2024-03-06_IA00308_0.jpg'
+  }],
+  ['完整一冊鼓踏技巧百科', {
+    sourceRecordUrl: 'https://www.musicth.com.tw/item.php?PART_NO=IA00309',
+    imageUrl: 'https://www.musicth.com.tw/Uploads/2024-05-16_IA00309_0.jpg'
+  }],
+  ['yamahac調鋼琴獨奏迪士尼曲集', {
+    sourceRecordUrl: 'https://www.tomleemusic.com.hk/en/products/disney-songs-in-c-major-for-piano-solo-easy-level',
+    imageUrl: 'https://www.tomleemusic.com.hk/cdn/shop/products/ec1758158_1200x1602.jpg?v=1633940509'
+  }],
+  ['動漫歌曲女神曲集jewel鋼琴樂譜集', {
+    sourceRecordUrl: 'https://www.musicth.com.tw/item.php?PART_NO=MD096281',
+    imageUrl: 'https://www.musicth.com.tw/Uploads/2019-07-17_MD096281_0.jpg'
+  }],
+  ['yamaha吉卜力鋼琴獨奏暢銷曲入門版', {
+    sourceRecordUrl: 'https://www.musicth.com.tw/item.php?PART_NO=YA096568',
+    imageUrl: 'https://www.musicth.com.tw/Uploads/2020-04-15_YA096568_0.jpg'
+  }]
+]);
 
 function clean(value) {
   return String(value == null ? '' : value).trim();
@@ -153,6 +188,47 @@ function titleMatchScore(requestedTitle, candidateTitle) {
   );
 }
 
+function titleQualifierTokens(value) {
+  const text = bookSearchTitle(value).normalize('NFKC');
+  const tokens = new Set();
+  const patterns = [
+    /第\s*[0-9一二三四五六七八九十百]+\s*(?:冊|集|篇|級|版|卷|部)/giu,
+    /[0-9]+\s*(?:年|冊|集|篇|級|版|卷|部)/giu,
+    /[0-9]+/gu,
+    /(?:入門|簡易|初級|中階|中級|進階|高級|先修)(?:版|本|級)?/giu,
+    /(?:上|中|下)(?:冊|集|篇|卷|部)/gu,
+    /(?:二|三|四|五|六|七|八|九|十)版/gu,
+    /\bvol(?:ume)?\.?\s*[0-9]+\b/giu
+  ];
+  patterns.forEach((pattern) => {
+    for (const match of text.matchAll(pattern)) {
+      tokens.add(clean(match[0]).replace(/\s+/g, '').toLowerCase());
+    }
+  });
+  const standaloneLevel = text.match(/(?:^|[\s()（）\[\]【】_-])([A-Z])(?=$|[\s()（）\[\]【】_-])/i);
+  if (standaloneLevel) tokens.add(standaloneLevel[1].toLowerCase());
+  const trailingPart = normalizeBookTitle(text).match(/([上中下])$/u);
+  if (trailingPart) tokens.add(trailingPart[1]);
+  const trailingOrdinal = normalizeBookTitle(text).match(/([0-9]+|[一二三四五六七八九十]+)$/u);
+  if (trailingOrdinal) tokens.add(trailingOrdinal[1]);
+  return [...tokens];
+}
+
+function requestedSubtitle(value) {
+  const text = bookSearchTitle(value);
+  const separator = text.search(/[：:]/u);
+  return separator >= 0 ? clean(text.slice(separator + 1)) : '';
+}
+
+function titleMatchesRequested(requestedTitle, candidateTitle, minimumScore = 0.8) {
+  if (titleMatchScore(requestedTitle, candidateTitle) < minimumScore) return false;
+  const candidateQualifiers = new Set(titleQualifierTokens(candidateTitle));
+  if (titleQualifierTokens(requestedTitle).some((token) => !candidateQualifiers.has(token))) return false;
+  const subtitle = requestedSubtitle(requestedTitle);
+  if (normalizeBookTitle(subtitle).length >= 4 && titleCoverage(subtitle, candidateTitle) < 0.7) return false;
+  return true;
+}
+
 function googleCoverUrl(volume) {
   const links = volume && volume.volumeInfo && volume.volumeInfo.imageLinks;
   if (!links || typeof links !== 'object') return '';
@@ -167,7 +243,7 @@ function googleCandidate(volume, requestedTitle) {
   const similarity = titleMatchScore(requestedTitle, title);
   const imageUrl = googleCoverUrl(volume);
   if (!imageUrl) return null;
-  if (similarity < 0.8) return null;
+  if (!titleMatchesRequested(requestedTitle, title)) return null;
   return {
     source: 'google-books',
     sourceRecordUrl: volume && volume.id ? `https://books.google.com/books?id=${encodeURIComponent(volume.id)}` : '',
@@ -242,7 +318,7 @@ function taazeResultUrls(html, requestedTitle) {
   let match;
   while ((match = expression.exec(clean(html))) && urls.length < 24) {
     const label = stripHtml(match[2]);
-    if (titleMatchScore(requestedTitle, label) < 0.8) continue;
+    if (!titleMatchesRequested(requestedTitle, label)) continue;
     const url = `http://www.taaze.tw/products/${match[1]}.html`;
     if (!urls.includes(url)) urls.push(url);
   }
@@ -277,7 +353,7 @@ function bingImageCandidates(html, requestedTitle) {
     const sourceRecordUrl = resolveHttpUrl(payload && payload.purl, 'https://www.bing.com/');
     const matchedTitle = stripHtml(payload && (payload.t || payload.desc));
     const similarity = titleMatchScore(requestedTitle, matchedTitle);
-    if (!imageUrl || similarity < 0.8) continue;
+    if (!imageUrl || !titleMatchesRequested(requestedTitle, matchedTitle)) continue;
     candidates.push({
       source: 'image-search-original',
       sourceRecordUrl,
@@ -350,7 +426,7 @@ async function candidateFromCommercePage(pageUrl, requestedTitle) {
   const page = await fetchText(pageUrl);
   const title = pageTitle(page.text);
   const similarity = titleMatchScore(requestedTitle, title);
-  if (similarity < 0.8) return null;
+  if (!titleMatchesRequested(requestedTitle, title)) return null;
   const images = pageImageRows(page.text, page.finalUrl, requestedTitle).filter((row) => row.score >= 1);
   if (!images.length) return null;
   return images.slice(0, 6).map((image) => ({
@@ -367,6 +443,10 @@ async function candidateFromCommercePage(pageUrl, requestedTitle) {
 async function discoverCommerceCoverCandidates(title) {
   if (!clean(title)) return [];
   const queries = [
+    `${title} 封面 site:musicth.com.tw`,
+    `${title} 封面 site:goodin.com.tw`,
+    `${title} 封面 site:kaiyimusic.com.tw`,
+    `${title} 封面 site:mingtinghuang.com`,
     `${title} 封面 site:talubook.com`,
     `${title} 封面 site:musikershop.com`,
     `${title} 封面 site:musicmusic.com.tw`,
@@ -435,10 +515,27 @@ function uniqueCoverCandidates(candidates) {
   });
 }
 
+function curatedCoverCandidate(product) {
+  const title = bookSearchTitle(productName(product));
+  const entry = CURATED_COVERS_BY_TITLE.get(normalizeBookTitle(title));
+  if (!entry) return null;
+  return {
+    source: 'curated-chinese-title',
+    sourceRecordUrl: entry.sourceRecordUrl,
+    imageUrl: entry.imageUrl,
+    matchedTitle: title,
+    matchedIsbn: '',
+    matchMethod: 'chinese-title-edition-verified',
+    matchScore: 1.1
+  };
+}
+
 async function findBookCoverCandidates(product) {
   const name = productName(product);
   const searchTitle = bookSearchTitle(name);
   const candidates = [];
+  const curated = curatedCoverCandidate(product);
+  if (curated) candidates.push(curated);
   const queryTitle = normalizeBookTitle(searchTitle).slice(0, 80);
   if (queryTitle.length >= 2) {
     try {
@@ -769,6 +866,7 @@ module.exports = {
   duckDuckGoResultUrls,
   bingResultUrls,
   bingImageCandidates,
+  curatedCoverCandidate,
   promoteTrustedCoverImageUrl,
   pageImageRows,
   taazeResultUrls,
@@ -778,6 +876,8 @@ module.exports = {
   productSku,
   registerBookCoverEnrichment,
   titleCoverage,
+  titleMatchesRequested,
   titleMatchScore,
+  titleQualifierTokens,
   titleSimilarity
 };

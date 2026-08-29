@@ -50,6 +50,40 @@ test('book-title matching accepts roughly 80 percent identity after normalizatio
   assert.ok(covers.titleMatchScore('吉客開始 客家歌謠吉他入門', '吉客開始 客家歌謠吉他入門｜網路書店商品頁') >= 0.8);
 });
 
+test('same-series books must also match subtitle, volume, and level', () => {
+  assert.equal(
+    covers.titleMatchesRequested(
+      '超絕吉他地獄訓練所：20年精華篇',
+      '超絕吉他地獄訓練所1（線上影音版）'
+    ),
+    false
+  );
+  assert.equal(covers.titleMatchesRequested('快樂學鋼琴2', '快樂學鋼琴1'), false);
+  assert.equal(
+    covers.titleMatchesRequested(
+      'Yamaha 吉卜力鋼琴獨奏暢銷曲入門版',
+      'Yamaha 吉卜力鋼琴獨奏暢銷曲簡易版'
+    ),
+    false
+  );
+  assert.equal(
+    covers.titleMatchesRequested(
+      '超絕吉他地獄訓練所：20年精華篇',
+      '超絕吉他地獄訓練所：20年斯巴達訓練・精華篇（線上影音示範）'
+    ),
+    true
+  );
+});
+
+test('verified covers are keyed by Chinese product title instead of SKU', () => {
+  const candidate = covers.curatedCoverCandidate({
+    internalSku: '900EG-this-local-code-is-not-an-isbn',
+    internalName: '典弦教材-超絕吉他地獄訓練所：20年精華篇'
+  });
+  assert.equal(candidate.matchMethod, 'chinese-title-edition-verified');
+  assert.match(candidate.imageUrl, /2025-02-14_IA02614_0\.jpg$/);
+});
+
 test('Google Books candidate uses title similarity only', () => {
   const base = {
     id: 'book-1',
@@ -72,6 +106,9 @@ test('commerce fallback includes the approved music-book sources', () => {
   const path = require('node:path');
   const source = fs.readFileSync(path.join(__dirname, '..', 'functions', 'bookCoverEnrichment.js'), 'utf8');
   for (const domain of ['talubook.com', 'musikershop.com', 'musicmusic.com.tw', 'books.com.tw']) {
+    assert.match(source, new RegExp(`site:${domain.replace(/\./g, '\\.')}`));
+  }
+  for (const domain of ['musicth.com.tw', 'goodin.com.tw', 'kaiyimusic.com.tw', 'mingtinghuang.com']) {
     assert.match(source, new RegExp(`site:${domain.replace(/\./g, '\\.')}`));
   }
   assert.doesNotMatch(source, /site:overtop-music\.com/);
