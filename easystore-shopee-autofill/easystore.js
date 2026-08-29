@@ -650,13 +650,22 @@
       return !observedIdentities.some((observed) => observed.href === wanted.href
         || (wanted.fileName && observed.fileName === wanted.fileName));
     });
+    const expectedUrls = Array.isArray(plan && plan.imageUrls) ? plan.imageUrls : [];
+    const expectedLastTwo = plan && plan.verifyTransferredImageCountAndFixedLastTwoBeforePublish
+      ? expectedUrls.slice(-2).map(normalizedImageIdentity) : [];
+    const observedLastTwo = observedUrls.slice(-2).map(normalizedImageIdentity);
+    const fixedLastTwoComplete = expectedLastTwo.length < 2 || expectedLastTwo.every((wanted, index) => {
+      const observed = observedLastTwo[index] || {};
+      return observed.href === wanted.href || (wanted.fileName && observed.fileName === wanted.fileName);
+    });
     return {
       editorFound: documents.length > 0,
       textPresent: textLength > 0,
       observedImageCount: observedUrls.length,
       expectedImageCount: Number(plan && plan.expectedImageCount) || 0,
       missingImageUrls,
-      complete: documents.length > 0 && textLength > 0 && missingImageUrls.length === 0
+      fixedLastTwoComplete,
+      complete: documents.length > 0 && textLength > 0 && missingImageUrls.length === 0 && fixedLastTwoComplete
     };
   }
 
@@ -695,13 +704,16 @@
 
   async function fillAdvancedDescription(payload, report) {
     const plan = payload && payload.advancedDescription;
-    if (!plan || plan.mode !== "use-easystore-rich-description") {
+    if (!plan || ![
+      "use-easystore-rich-description",
+      "use-easystore-rich-description-with-native-image-transfer"
+    ].includes(plan.mode)) {
       addReport(report, "missing", "進階商品描述", "進站前沒有準備完整的 EasyStore 圖文介紹");
       return;
     }
     let section = await waitForAdvancedDescriptionSection(4200);
     if (!section) {
-      addReport(report, "skipped", "進階商品描述", "此帳號頁面未提供此功能，保留 EasyStore 同步的純文字描述");
+      addReport(report, "missing", "進階商品描述", "此頁面沒有可核對的圖文編輯器，禁止以純文字描述發布");
       return;
     }
     if (section.toggle && !toggleState(section.toggle)) {
@@ -746,7 +758,9 @@
         "missing",
         "進階商品描述",
         evidence.editorFound
-          ? `文字已帶入，但介紹圖片只有 ${evidence.observedImageCount}／${evidence.expectedImageCount} 張`
+          ? evidence.fixedLastTwoComplete === false
+            ? "介紹圖片已帶入，但最後兩張不是固定宣傳圖"
+            : `文字已帶入，但介紹圖片只有 ${evidence.observedImageCount}／${evidence.expectedImageCount} 張`
           : "找不到可核對的進階商品描述編輯器"
       );
       return;

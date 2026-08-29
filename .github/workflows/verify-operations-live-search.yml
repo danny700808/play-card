@@ -38,8 +38,8 @@ jobs:
     timeout-minutes: 10
     env:
       EXTENSION_DIR: easystore-shopee-autofill
-      EXTENSION_VERSION: 0.3.30
-      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.30.zip
+      EXTENSION_VERSION: 0.3.31
+      EXTENSION_ZIP: youzi-easystore-shopee-autofill-v0.3.31.zip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

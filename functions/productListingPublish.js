@@ -17,7 +17,7 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 28;
+const LISTING_AUTOMATION_POLICY_VERSION = 29;
 const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v2';
 const RICH_CONTENT_FEATURE_TARGET = 10;
 const RICH_CONTENT_USAGE_TARGET = 8;
@@ -650,10 +650,22 @@ function buildShopeeLogistics(snapshot) {
   const canVerifyConvenience = hasCompletePackage && hasValidWeight;
   const convenienceFits = canVerifyConvenience && longestCm <= 45 && totalCm <= 105 && weightKg <= 5;
   const storedDecision = clean(snapshot.shippingDecision);
-  const decision = storedDecision || (canVerifyConvenience ? (convenienceFits ? 'convenience' : hsinchuBand ? 'freight' : 'oversize') : '');
+  const normalizedStoredDecision = ['convenience', 'home', 'freight', 'oversize'].includes(storedDecision)
+    ? storedDecision
+    : /大型|超重|不啟用超商|不可超商/.test(storedDecision)
+      ? 'oversize'
+      : /新竹物流/.test(storedDecision)
+        ? 'freight'
+        : /宅配|自訂物流/.test(storedDecision)
+          ? 'home'
+      : '';
+  const decision = normalizedStoredDecision
+    || (canVerifyConvenience ? (convenienceFits ? 'convenience' : hsinchuBand ? 'freight' : 'oversize') : '');
   const convenience = decision === 'convenience' && convenienceFits;
   const freight = decision === 'freight';
   const hsinchu = Boolean((convenience || freight) && hsinchuBand);
+  const sellerLargeDelivery = Boolean(canVerifyConvenience && !convenience
+    && (decision === 'home' || decision === 'oversize' || (decision === 'freight' && !hsinchuBand)));
   const methods = [
     { label: '黑貓宅急便', enabled: false },
     { label: '蝦皮店到店 - 隔日到貨', enabled: false },
@@ -663,15 +675,15 @@ function buildShopeeLogistics(snapshot) {
     { label: '全家', enabled: convenience },
     {
       label: '賣家宅配：大型/超重物品運送',
-      enabled: false,
-      feeTwd: null
+      enabled: sellerLargeDelivery,
+      feeTwd: sellerLargeDelivery ? 0 : null
     },
     { label: '嘉里快遞', enabled: false },
     { label: '店到家宅配', enabled: false }
   ];
   return {
     decision,
-    decisionSource: storedDecision ? 'manager-or-case' : decision ? 'package-dimensions' : 'unresolved',
+    decisionSource: normalizedStoredDecision ? 'manager-or-case' : decision ? 'package-dimensions' : 'unresolved',
     decidedOnceBeforePlatformNavigation: true,
     packageTotalCm: hasCompletePackage ? Math.round(totalCm * 100) / 100 : null,
     methods: methods.map((row) => ({
@@ -681,8 +693,7 @@ function buildShopeeLogistics(snapshot) {
       feeTwd: numberOrNull(row.feeTwd),
       sellerPays: false
     })),
-    requiresJudgment: !hasCompletePackage || !hasValidWeight || !decision || decision === 'home' || decision === 'oversize'
-      || (decision === 'freight' && !hsinchuBand)
+    requiresJudgment: !hasCompletePackage || !hasValidWeight || !decision
       || (decision === 'convenience' && !convenienceFits),
     requiresConfirmation: false
   };
@@ -1988,7 +1999,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     ? `${normalizeSku(snapshot.sku) || 'product'}-momo-promo-${momoPromotionFingerprint}.jpg` : '';
   const momoMediaReadyBeforeFirstSubmit = Boolean(momoMainImageUrl && momoPromotionImageUrl);
   return {
-    version: 14,
+    version: 15,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -2476,9 +2487,12 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       maximumListings: 1000,
       targetListings: 1000,
       reservedSlots: 0,
-      zeroStockAction: 'keep-published-by-default',
+      zeroStockAction: 'temporarily-downlist-one-low-usage-item-only-on-explicit-quota-error',
       preserveSoldOutWithSales: true,
       requireSalesHistoryBeforeUnpublish: true,
+      neverDeleteForQuotaRecovery: true,
+      verifyDownlistedListingIdAndCountBeforeRetry: true,
+      retrySameNewProductDraftExactlyOnce: true,
       violationRecovery: 'republish-when-data-is-valid-and-capacity-allows'
     },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },

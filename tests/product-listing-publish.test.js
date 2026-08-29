@@ -168,15 +168,17 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.deepEqual(snapshot.momoDelivery, { method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流' });
   assert.equal(snapshot.momoCatalogPolicy.targetListings, 1000);
   assert.equal(snapshot.momoCatalogPolicy.reservedSlots, 0);
-  assert.equal(snapshot.momoCatalogPolicy.zeroStockAction, 'keep-published-by-default');
+  assert.equal(snapshot.momoCatalogPolicy.zeroStockAction, 'temporarily-downlist-one-low-usage-item-only-on-explicit-quota-error');
   assert.equal(snapshot.momoCatalogPolicy.preserveSoldOutWithSales, true);
+  assert.equal(snapshot.momoCatalogPolicy.neverDeleteForQuotaRecovery, true);
+  assert.equal(snapshot.momoCatalogPolicy.retrySameNewProductDraftExactlyOnce, true);
   assert.equal(snapshot.regulatoryPolicy.ncc, 'fill-only-when-verified');
   assert.equal(snapshot.automationPolicy.duplicateGuard.reuseExistingDraft, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.neverCreateNewOnRetry, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 28);
+  assert.equal(snapshot.automationPolicy.version, 29);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -215,8 +217,8 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 14);
-  assert.equal(snapshot.automationPolicy.version, 28);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 15);
+  assert.equal(snapshot.automationPolicy.version, 29);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -1437,12 +1439,12 @@ test('Shopee helper leaves Hsinchu Logistics off when package limits are incompl
   });
   assert.equal(tooHeavy.methods.find((row) => row.label === '新竹物流').enabled, false);
   assert.deepEqual(tooHeavy.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送'), {
-    label: '賣家宅配：大型/超重物品運送', enabled: false, option: '', feeTwd: null, sellerPays: false
+    label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 0, sellerPays: false
   });
-  assert.ok(tooHeavy.methods
-    .every((row) => row.enabled === false));
+  assert.deepEqual(tooHeavy.methods.filter((row) => row.enabled).map((row) => row.label),
+    ['賣家宅配：大型/超重物品運送']);
   assert.equal(tooHeavy.requiresConfirmation, false);
-  assert.equal(tooHeavy.requiresJudgment, true);
+  assert.equal(tooHeavy.requiresJudgment, false);
 });
 
 test('backend Hsinchu tariff boundaries stay aligned with the extension contract', () => {
@@ -1497,8 +1499,9 @@ test('manual shipping choice controls autofill and convenience limits are enforc
     packageHeightCm: 10.2, packageWeightKg: 4.2
   });
   assert.equal(manualHome.methods.find((row) => row.label === '新竹物流').enabled, false);
+  assert.equal(manualHome.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送').enabled, true);
   assert.equal(manualHome.requiresConfirmation, false);
-  assert.equal(manualHome.requiresJudgment, true);
+  assert.equal(manualHome.requiresJudgment, false);
 });
 
 test('Shopee persistence summary never stores one-time autofill handoff secrets', () => {
@@ -1944,7 +1947,7 @@ test('one verified description is prepared once for EasyStore, Coupang, MOMO and
   assert.equal(plan.momo.imageHeightMaximumPx, 1500);
   assert.equal(plan.momo.imageFileMaximumBytes, 500000);
   assert.equal(plan.shopee.mode, 'advanced-rich-description');
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 14);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 15);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.descriptionDelivery.mode, 'momo-rich-description-blocks');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.descriptionDelivery.mode, 'safe-html-product-detail');
   assert.equal(snapshot.preparedPlatformFieldPlan.easyStore.preparedFields.descriptionDelivery.mode, 'safe-html');
