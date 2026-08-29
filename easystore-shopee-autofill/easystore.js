@@ -702,12 +702,41 @@
     return true;
   }
 
+  function enforceAdvancedDescriptionImageOrder(plan, section) {
+    const documents = advancedDescriptionEditorDocuments(section);
+    if (!documents.length || !Array.isArray(plan && plan.imageUrls) || !plan.imageUrls.length) return false;
+    const editorDocument = documents[0];
+    const expected = plan.imageUrls.map(normalizedImageIdentity);
+    const expectedNames = new Set(expected.map((item) => item.fileName).filter(Boolean));
+    const expectedHrefs = new Set(expected.map((item) => item.href).filter(Boolean));
+    Array.from(editorDocument.querySelectorAll("img")).forEach((image) => {
+      const identity = normalizedImageIdentity(image.currentSrc || image.src || image.getAttribute("data-src"));
+      if (expectedHrefs.has(identity.href) || (identity.fileName && expectedNames.has(identity.fileName))) {
+        const wrapper = image.closest("p");
+        if (wrapper && wrapper.querySelectorAll("img").length === 1 && !String(wrapper.innerText || "").trim()) wrapper.remove();
+        else image.remove();
+      }
+    });
+    plan.imageUrls.forEach((url) => {
+      const paragraph = editorDocument.createElement("p");
+      const image = editorDocument.createElement("img");
+      image.src = url;
+      image.alt = "商品介紹圖片";
+      image.style.maxWidth = "100%";
+      image.style.height = "auto";
+      paragraph.appendChild(image);
+      editorDocument.body.appendChild(paragraph);
+    });
+    const EditorEvent = editorDocument.defaultView && editorDocument.defaultView.Event || Event;
+    editorDocument.body.dispatchEvent(new EditorEvent("input", { bubbles: true }));
+    editorDocument.body.dispatchEvent(new EditorEvent("change", { bubbles: true }));
+    editorDocument.body.dispatchEvent(new EditorEvent("blur", { bubbles: true }));
+    return true;
+  }
+
   async function fillAdvancedDescription(payload, report) {
     const plan = payload && payload.advancedDescription;
-    if (!plan || ![
-      "use-easystore-rich-description",
-      "use-easystore-rich-description-with-native-image-transfer"
-    ].includes(plan.mode)) {
+    if (!plan || plan.mode !== "use-easystore-rich-description-with-native-image-transfer") {
       addReport(report, "missing", "進階商品描述", "進站前沒有準備完整的 EasyStore 圖文介紹");
       return;
     }
@@ -749,6 +778,10 @@
       return;
     }
     if (!evidence.complete && evidence.textPresent && insertMissingAdvancedDescriptionImages(plan, section)) {
+      evidence = await waitForAdvancedDescriptionEvidence(plan, section, 5000);
+    }
+    if (evidence.textPresent && (!evidence.complete || evidence.fixedLastTwoComplete === false)
+      && enforceAdvancedDescriptionImageOrder(plan, section)) {
       evidence = await waitForAdvancedDescriptionEvidence(plan, section, 5000);
     }
     report.advancedDescriptionEvidence = evidence;

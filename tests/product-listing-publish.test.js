@@ -187,7 +187,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 30);
+  assert.equal(snapshot.automationPolicy.version, 31);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -227,7 +227,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.preparedPlatformFieldPlan.version, 15);
-  assert.equal(snapshot.automationPolicy.version, 30);
+  assert.equal(snapshot.automationPolicy.version, 31);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -353,8 +353,15 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.mode, 'use-easystore-rich-description-with-native-image-transfer');
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.directExternalImageUrlPasteForbidden, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMustWaitUntilImageTransferOverlayCloses, true);
-  assert.equal(snapshot.shopeeAdvancedDescription.expectedImageCount, 1);
-  assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, ['https://example.com/main.jpg']);
+  assert.equal(snapshot.shopeeAdvancedDescription.expectedImageCount, 3);
+  assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, [
+    'https://example.com/main.jpg',
+    'https://youzi-c1b74.web.app/product-listing-description-promo-1.jpg',
+    'https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg'
+  ]);
+  assert.equal(snapshot.shopeeAdvancedDescription.requiredFirstImageUrl, 'https://example.com/main.jpg');
+  assert.deepEqual(snapshot.shopeeAdvancedDescription.fixedLastTwoImageUrls,
+    snapshot.shopeeAdvancedDescription.imageUrls.slice(-2));
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.packageWeightGrams, 5000);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.version, 3);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.verifiedFromLivePage, true);
@@ -1397,7 +1404,12 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
   assert.equal(payload.brand, 'Ibanez');
   assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description-with-native-image-transfer');
   assert.equal(payload.advancedDescription.preparedBeforeNavigation, true);
-  assert.equal(payload.advancedDescription.expectedImageCount, 3);
+  assert.equal(payload.advancedDescription.expectedImageCount, 5);
+  assert.equal(payload.advancedDescription.rejectZeroImageDescriptionBeforePublish, true);
+  assert.deepEqual(payload.advancedDescription.imageUrls.slice(-2), [
+    'https://youzi-c1b74.web.app/product-listing-description-promo-1.jpg',
+    'https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg'
+  ]);
   assert.deepEqual(payload.categoryPath, ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯']);
   assert.deepEqual(payload.attributes.map((row) => [row.label, row.value]), [
     ['Body Material', 'Poplar'], ['Pickup Configuration', 'HSS'],
@@ -1681,7 +1693,11 @@ test('physical photos stay out of every gallery and are appended before the fixe
     assert.ok(html.indexOf(physicalImages[1]) < html.lastIndexOf('商品圖片與規格僅供參考'));
     assert.ok(html.endsWith('<p><strong>商品圖片與規格僅供參考，實際內容以收到的實體商品為準。</strong></p>'));
   }
-  assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, [...normalImages, ...physicalImages]);
+  assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, [
+    ...normalImages, ...physicalImages,
+    'https://youzi-c1b74.web.app/product-listing-description-promo-1.jpg',
+    'https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg'
+  ]);
   assert.equal(snapshot.physicalImagePolicy.customerFacingDerivative, 'label-only');
   assert.equal(snapshot.physicalImagePolicy.neverUseAsMainImage, true);
 });

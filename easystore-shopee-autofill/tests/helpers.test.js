@@ -33,15 +33,26 @@ function validPayload(now) {
     categoryPath: ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"],
     brand: "Ibanez",
     advancedDescription: {
-      mode: "use-easystore-rich-description",
+      mode: "use-easystore-rich-description-with-native-image-transfer",
       source: "easystore-body-html",
       preparedBeforeNavigation: true,
       enableWhenAvailable: true,
       useEasyStoreDescription: true,
+      transferImagesThroughEasyStoreShopeeEditor: true,
+      directExternalImageUrlPasteForbidden: true,
+      waitForEveryImageTransferBeforePreparePublish: true,
+      verifyTransferredImageCountAndFixedLastTwoBeforePublish: true,
+      rejectZeroImageDescriptionBeforePublish: true,
       capabilityProbe: "single-lightweight-page-probe",
       contentFingerprint: "b".repeat(64),
-      imageUrls: ["https://example.com/detail-1.jpg", "https://example.com/detail-2.jpg"],
-      expectedImageCount: 2
+      requiredFirstImageUrl: "https://example.com/green-hero.jpg",
+      fixedLastTwoImageUrls: ["https://example.com/promo-1.jpg", "https://example.com/promo-2.jpg"],
+      imageUrls: [
+        "https://example.com/green-hero.jpg",
+        "https://example.com/promo-1.jpg",
+        "https://example.com/promo-2.jpg"
+      ],
+      expectedImageCount: 3
     },
     attributes: [
       { label: "Neck Material", value: "Maple", confidence: "high", note: "Ibanez 官方規格" },
@@ -935,20 +946,32 @@ test("advanced description must be fully prepared before the Shopee page opens",
   const now = 1_800_000_000_000;
   const valid = helpers.validateQueuePayload(validPayload(now), now);
   assert.equal(valid.ok, true, valid.errors.join("；"));
-  assert.equal(valid.value.advancedDescription.expectedImageCount, 2);
+  assert.equal(valid.value.advancedDescription.expectedImageCount, 3);
 
   const missingImages = validPayload(now);
   missingImages.advancedDescription.imageUrls = [];
   missingImages.advancedDescription.expectedImageCount = 0;
   const missingResult = helpers.validateQueuePayload(missingImages, now);
   assert.equal(missingResult.ok, false);
-  assert.match(missingResult.errors.join(" "), /必須有 1 到 20 張已準備圖片/);
+  assert.match(missingResult.errors.join(" "), /必須有 3 到 12 張已準備圖片/);
 
   const lateAnalysis = validPayload(now);
   lateAnalysis.advancedDescription.preparedBeforeNavigation = false;
   const lateResult = helpers.validateQueuePayload(lateAnalysis, now);
   assert.equal(lateResult.ok, false);
   assert.match(lateResult.errors.join(" "), /preparedBeforeNavigation 必須是 true/);
+
+  const wrongFirst = validPayload(now);
+  wrongFirst.advancedDescription.imageUrls[0] = "https://example.com/wrong.jpg";
+  const wrongFirstResult = helpers.validateQueuePayload(wrongFirst, now);
+  assert.equal(wrongFirstResult.ok, false);
+  assert.match(wrongFirstResult.errors.join(" "), /第一張必須是已準備的商品介紹主圖/);
+
+  const wrongEnding = validPayload(now);
+  wrongEnding.advancedDescription.imageUrls.reverse();
+  const wrongEndingResult = helpers.validateQueuePayload(wrongEnding, now);
+  assert.equal(wrongEndingResult.ok, false);
+  assert.match(wrongEndingResult.errors.join(" "), /最後兩張必須是固定介紹圖/);
 });
 
 test("navigation mode remains attached to the exact queued product and nonce", () => {

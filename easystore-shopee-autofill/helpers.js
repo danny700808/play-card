@@ -740,7 +740,11 @@
       rejectUnknownKeys(payload.advancedDescription, new Set([
         "mode", "source", "preparedBeforeNavigation", "enableWhenAvailable",
         "useEasyStoreDescription", "capabilityProbe", "contentFingerprint",
-        "imageUrls", "expectedImageCount"
+        "transferImagesThroughEasyStoreShopeeEditor", "directExternalImageUrlPasteForbidden",
+        "waitForEveryImageTransferBeforePreparePublish",
+        "verifyTransferredImageCountAndFixedLastTwoBeforePublish",
+        "rejectZeroImageDescriptionBeforePublish", "requiredFirstImageUrl",
+        "fixedLastTwoImageUrls", "imageUrls", "expectedImageCount"
       ]), "advancedDescription", errors);
       const mode = validateString(payload.advancedDescription.mode, "advancedDescription.mode", errors, { max: 80 });
       const source = validateString(payload.advancedDescription.source, "advancedDescription.source", errors, { max: 80 });
@@ -756,8 +760,8 @@
         errors,
         { max: 128 }
       );
-      if (mode !== "use-easystore-rich-description") {
-        errors.push("advancedDescription.mode 必須是 use-easystore-rich-description。");
+      if (mode !== "use-easystore-rich-description-with-native-image-transfer") {
+        errors.push("advancedDescription.mode 必須是 use-easystore-rich-description-with-native-image-transfer。");
       }
       if (source !== "easystore-body-html") {
         errors.push("advancedDescription.source 必須是 easystore-body-html。");
@@ -768,16 +772,22 @@
       if (!/^[a-f0-9]{64}$/i.test(contentFingerprint)) {
         errors.push("advancedDescription.contentFingerprint 必須是 64 位十六進位雜湊。");
       }
-      ["preparedBeforeNavigation", "enableWhenAvailable", "useEasyStoreDescription"].forEach((key) => {
+      [
+        "preparedBeforeNavigation", "enableWhenAvailable", "useEasyStoreDescription",
+        "transferImagesThroughEasyStoreShopeeEditor", "directExternalImageUrlPasteForbidden",
+        "waitForEveryImageTransferBeforePreparePublish",
+        "verifyTransferredImageCountAndFixedLastTwoBeforePublish",
+        "rejectZeroImageDescriptionBeforePublish"
+      ].forEach((key) => {
         if (payload.advancedDescription[key] !== true) {
           errors.push(`advancedDescription.${key} 必須是 true。`);
         }
       });
       const imageUrls = [];
       if (!Array.isArray(payload.advancedDescription.imageUrls)
-        || payload.advancedDescription.imageUrls.length < 1
-        || payload.advancedDescription.imageUrls.length > 20) {
-        errors.push("advancedDescription.imageUrls 必須有 1 到 20 張已準備圖片。");
+        || payload.advancedDescription.imageUrls.length < 3
+        || payload.advancedDescription.imageUrls.length > 12) {
+        errors.push("advancedDescription.imageUrls 必須有 3 到 12 張已準備圖片（首張商品介紹圖＋最後兩張固定介紹圖）。");
       } else {
         payload.advancedDescription.imageUrls.forEach((value, index) => {
           const raw = validateString(value, `advancedDescription.imageUrls[${index}]`, errors, { max: 1000 });
@@ -795,14 +805,50 @@
       if (!Number.isInteger(expectedImageCount) || expectedImageCount !== imageUrls.length) {
         errors.push("advancedDescription.expectedImageCount 必須等於已準備圖片數量。");
       }
+      const requiredFirstImageUrl = validateString(
+        payload.advancedDescription.requiredFirstImageUrl,
+        "advancedDescription.requiredFirstImageUrl",
+        errors,
+        { max: 1000 }
+      );
+      const fixedLastTwoImageUrls = [];
+      if (!Array.isArray(payload.advancedDescription.fixedLastTwoImageUrls)
+        || payload.advancedDescription.fixedLastTwoImageUrls.length !== 2) {
+        errors.push("advancedDescription.fixedLastTwoImageUrls 必須正好有 2 張固定介紹圖。");
+      } else {
+        payload.advancedDescription.fixedLastTwoImageUrls.forEach((value, index) => {
+          const raw = validateString(value, `advancedDescription.fixedLastTwoImageUrls[${index}]`, errors, { max: 1000 });
+          try {
+            const url = new URL(raw);
+            if (!["http:", "https:"].includes(url.protocol)) throw new Error("protocol");
+            fixedLastTwoImageUrls.push(url.href);
+          } catch (_) {
+            errors.push(`advancedDescription.fixedLastTwoImageUrls[${index}] 必須是 http(s) 網址。`);
+          }
+        });
+      }
+      if (!requiredFirstImageUrl || imageUrls[0] !== requiredFirstImageUrl) {
+        errors.push("advancedDescription 第一張必須是已準備的商品介紹主圖。");
+      }
+      if (fixedLastTwoImageUrls.length === 2
+        && imageUrls.slice(-2).join("|") !== fixedLastTwoImageUrls.join("|")) {
+        errors.push("advancedDescription 最後兩張必須是固定介紹圖。");
+      }
       advancedDescription = {
         mode,
         source,
         preparedBeforeNavigation: payload.advancedDescription.preparedBeforeNavigation === true,
         enableWhenAvailable: payload.advancedDescription.enableWhenAvailable === true,
         useEasyStoreDescription: payload.advancedDescription.useEasyStoreDescription === true,
+        transferImagesThroughEasyStoreShopeeEditor: payload.advancedDescription.transferImagesThroughEasyStoreShopeeEditor === true,
+        directExternalImageUrlPasteForbidden: payload.advancedDescription.directExternalImageUrlPasteForbidden === true,
+        waitForEveryImageTransferBeforePreparePublish: payload.advancedDescription.waitForEveryImageTransferBeforePreparePublish === true,
+        verifyTransferredImageCountAndFixedLastTwoBeforePublish: payload.advancedDescription.verifyTransferredImageCountAndFixedLastTwoBeforePublish === true,
+        rejectZeroImageDescriptionBeforePublish: payload.advancedDescription.rejectZeroImageDescriptionBeforePublish === true,
         capabilityProbe,
         contentFingerprint,
+        requiredFirstImageUrl,
+        fixedLastTwoImageUrls,
         imageUrls,
         expectedImageCount: Number.isInteger(expectedImageCount) ? expectedImageCount : 0
       };

@@ -100,15 +100,26 @@
       ? value.advancedDescription : {};
     const advancedImageUrls = (Array.isArray(advancedSource.imageUrls) ? advancedSource.imageUrls : [])
       .map(safeHttpUrl).filter(Boolean)
-      .filter((url, index, rows) => rows.indexOf(url) === index).slice(0, 20);
+      .filter((url, index, rows) => rows.indexOf(url) === index).slice(0, 12);
+    const fixedLastTwoImageUrls = (Array.isArray(advancedSource.fixedLastTwoImageUrls)
+      ? advancedSource.fixedLastTwoImageUrls : [])
+      .map(safeHttpUrl).filter(Boolean)
+      .filter((url, index, rows) => rows.indexOf(url) === index).slice(0, 2);
     const advancedDescription = {
       mode: clean(advancedSource.mode, 80),
       source: clean(advancedSource.source, 80),
       preparedBeforeNavigation: advancedSource.preparedBeforeNavigation === true,
       enableWhenAvailable: advancedSource.enableWhenAvailable === true,
       useEasyStoreDescription: advancedSource.useEasyStoreDescription === true,
+      transferImagesThroughEasyStoreShopeeEditor: advancedSource.transferImagesThroughEasyStoreShopeeEditor === true,
+      directExternalImageUrlPasteForbidden: advancedSource.directExternalImageUrlPasteForbidden === true,
+      waitForEveryImageTransferBeforePreparePublish: advancedSource.waitForEveryImageTransferBeforePreparePublish === true,
+      verifyTransferredImageCountAndFixedLastTwoBeforePublish: advancedSource.verifyTransferredImageCountAndFixedLastTwoBeforePublish === true,
+      rejectZeroImageDescriptionBeforePublish: advancedSource.rejectZeroImageDescriptionBeforePublish === true,
       capabilityProbe: clean(advancedSource.capabilityProbe, 80),
       contentFingerprint: clean(advancedSource.contentFingerprint, 128),
+      requiredFirstImageUrl: safeHttpUrl(advancedSource.requiredFirstImageUrl),
+      fixedLastTwoImageUrls,
       imageUrls: advancedImageUrls,
       expectedImageCount: Math.max(0, Math.round(numberOrNull(advancedSource.expectedImageCount) || 0))
     };
@@ -167,14 +178,23 @@
     }
     if (!payload.nonce || !payload.jobId || !payload.snapshotId || !payload.snapshotFingerprint
       || !payload.productId || !payload.sku || !payload.categoryPath.length
-      || payload.advancedDescription.mode !== 'use-easystore-rich-description'
+      || payload.advancedDescription.mode !== 'use-easystore-rich-description-with-native-image-transfer'
       || payload.advancedDescription.source !== 'easystore-body-html'
       || payload.advancedDescription.preparedBeforeNavigation !== true
       || payload.advancedDescription.enableWhenAvailable !== true
       || payload.advancedDescription.useEasyStoreDescription !== true
+      || payload.advancedDescription.transferImagesThroughEasyStoreShopeeEditor !== true
+      || payload.advancedDescription.directExternalImageUrlPasteForbidden !== true
+      || payload.advancedDescription.waitForEveryImageTransferBeforePreparePublish !== true
+      || payload.advancedDescription.verifyTransferredImageCountAndFixedLastTwoBeforePublish !== true
+      || payload.advancedDescription.rejectZeroImageDescriptionBeforePublish !== true
       || payload.advancedDescription.capabilityProbe !== 'single-lightweight-page-probe'
       || !/^[a-f0-9]{64}$/i.test(payload.advancedDescription.contentFingerprint)
-      || !payload.advancedDescription.imageUrls.length
+      || payload.advancedDescription.imageUrls.length < 3
+      || payload.advancedDescription.imageUrls.length > 12
+      || payload.advancedDescription.imageUrls[0] !== payload.advancedDescription.requiredFirstImageUrl
+      || payload.advancedDescription.fixedLastTwoImageUrls.length !== 2
+      || payload.advancedDescription.imageUrls.slice(-2).join('|') !== payload.advancedDescription.fixedLastTwoImageUrls.join('|')
       || payload.advancedDescription.expectedImageCount !== payload.advancedDescription.imageUrls.length) {
       throw new Error('蝦皮自動填寫資料不完整，請重新執行「確認上架」。');
     }
