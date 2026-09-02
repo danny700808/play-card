@@ -61,7 +61,7 @@ test('商品資訊提供完整四平台檢測按鈕與一次授權的 Codex 交�
   const prompt = functionBody('productPlatformAuditPrompt');
   const start = functionBody('startProductPlatformAudit');
   assert.match(render, /data-action="product-platform-audit">檢測全部網路商品/);
-  assert.match(render, /data-action="product-platform-published-audit">重查已送出／審核中/);
+  assert.doesNotMatch(render, /product-platform-published-audit|重查已送出／審核中/);
   assert.match(prompt, /EasyStore 官網、EasyStore 官方蝦皮通路、MOMO 店\+商品管理、Coupang Wing/);
   assert.match(prompt, /缺貨、庫存 0/);
   assert.match(prompt, /違規、受限制、審核未通過/);

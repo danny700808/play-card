@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260829-v3-fixed-content-v1/);
+  assert.match(portal, /operations-phase1\.js\?v=20260902-product-toolbar-cleanup-v2/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
   assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
@@ -196,6 +196,9 @@ test('product inventory header exposes newest unlisted products without internal
   const renderStart = source.indexOf('function renderProducts(');
   const renderEnd = source.indexOf('function estimateFifoCostForProduct', renderStart);
   const renderProducts = source.slice(renderStart, renderEnd);
+  assert.doesNotMatch(renderProducts, /data-action="sync-easystore-api"|EasyStore API 同步|EasyStore 同步中…/);
+  assert.doesNotMatch(renderProducts, /data-action="product-platform-published-audit"|重查已送出／審核中/);
+  assert.doesNotMatch(renderProducts, /匯入已核對封面|補齊 9 系列封面|ops-product-platform-guide|productMergeToolbarHtml/);
   assert.doesNotMatch(renderProducts, /同步圖片|更新商品資料|低於安全庫存|全通路狀態/);
 });
 

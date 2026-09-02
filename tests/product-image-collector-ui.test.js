@@ -100,9 +100,11 @@ test("準備上架的主商品與每個細項都顯示供應商快速連結", ()
   assert.match(variantCollector, /productSupplierShortcutsHtml\('ops-listing-variant-supplier-shortcuts'\)/);
 });
 
-test("新增未上架可多選商品並自動以已有平台編號者作為合併主商品", () => {
-  assert.match(operationsSource, /data-action="product-merge-select"/);
-  assert.match(operationsSource, /data-action="product-merge-open"/);
+test("商品列表不顯示快捷合併控制，但準備上架仍保留既有商品合併規則", () => {
+  const renderStart = operationsSource.indexOf('function renderProducts');
+  const renderEnd = operationsSource.indexOf('function estimateFifoCostForProduct', renderStart);
+  const render = operationsSource.slice(renderStart, renderEnd);
+  assert.doesNotMatch(render, /product-merge-select|product-merge-open|合併／加入既有商品/);
   assert.match(operationsSource, /selected\.filter\(productHasPlatformMapping\)/);
   assert.match(operationsSource, /listingIntent:listed\.length\?'merge-existing':'create-group'/);
   assert.match(operationsSource, /合併／加入既有商品/);

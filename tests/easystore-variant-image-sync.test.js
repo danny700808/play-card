@@ -84,11 +84,15 @@ test('numeric image identifiers are not mistaken for website image URLs', () => 
   assert.equal(EasyStoreSync.variantImageReferenceId({ image_id: 0 }), '');
 });
 
-test('product inventory exposes the EasyStore API sync action and pending state', () => {
+test('product inventory no longer exposes the completed EasyStore API sync action', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'operations-phase1.js'), 'utf8');
-  assert.match(source, /data-action="sync-easystore-api"/);
-  assert.match(source, /EasyStore API 同步/);
-  assert.match(source, /EasyStore 同步中…/);
+  const renderStart = source.indexOf('function renderProducts(');
+  const renderEnd = source.indexOf('function estimateFifoCostForProduct', renderStart);
+  const render = source.slice(renderStart, renderEnd);
+  assert.doesNotMatch(render, /data-action="sync-easystore-api"/);
+  assert.doesNotMatch(render, /EasyStore API 同步/);
+  assert.doesNotMatch(render, /EasyStore 同步中…/);
+  assert.match(source, /async function syncEasyStoreApi/);
   assert.doesNotMatch(source, /inferredFrom:'官網同步'/);
   assert.match(source, /data-action="product-platform-status-edit"/);
   assert.match(source, /openProductPlatformStatus\(el\.dataset\.id\)/);
