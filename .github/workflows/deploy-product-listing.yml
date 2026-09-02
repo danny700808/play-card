@@ -21,6 +21,7 @@ on:
       - "tests/product-listing-source-cleanup.test.js"
       - "tests/easystore-variant-image-sync.test.js"
       - "tests/book-cover-enrichment.test.js"
+      - "scripts/easystore-api-product-tool.mjs"
       - ".github/workflows/deploy-product-listing.yml"
   workflow_dispatch:
 
