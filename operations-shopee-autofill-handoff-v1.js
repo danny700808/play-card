@@ -4,7 +4,7 @@
   const QUEUE_TYPE = 'YOUZI_SHOPEE_AUTOFILL_QUEUE_V2';
   const ACK_TYPE = 'YOUZI_SHOPEE_AUTOFILL_ACK_V2';
   const SOURCE = 'youzi-operations-hub';
-  const SCHEMA_VERSION = 6;
+  const SCHEMA_VERSION = 7;
   const WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
   const MAX_TTL_MS = 30 * 60 * 1000;
   const MIN_REMAINING_MS = 1000;
@@ -100,30 +100,46 @@
       ? value.advancedDescription : {};
     const advancedImageUrls = (Array.isArray(advancedSource.imageUrls) ? advancedSource.imageUrls : [])
       .map(safeHttpUrl).filter(Boolean)
-      .slice(0, 12);
+      .filter((url, index, rows) => rows.indexOf(url) === index).slice(0, 12);
     const fixedLastTwoImageUrls = (Array.isArray(advancedSource.fixedLastTwoImageUrls)
       ? advancedSource.fixedLastTwoImageUrls : [])
       .map(safeHttpUrl).filter(Boolean)
       .filter((url, index, rows) => rows.indexOf(url) === index).slice(0, 2);
+    const advancedTextBlocks = (Array.isArray(advancedSource.textBlocks) ? advancedSource.textBlocks : [])
+      .map((row) => ({ key: clean(row && row.key, 80), text: clean(row && row.text, 5000) }))
+      .filter((row) => row.key && row.text).slice(0, 8);
+    const advancedBlockPlan = (Array.isArray(advancedSource.blockPlan) ? advancedSource.blockPlan : [])
+      .map((row) => ({
+        type: clean(row && row.type, 20),
+        key: clean(row && row.key, 80),
+        imageUrl: safeHttpUrl(row && row.imageUrl)
+      }))
+      .filter((row) => row.key && ['text', 'image'].includes(row.type))
+      .slice(0, 24);
     const advancedDescription = {
       mode: clean(advancedSource.mode, 80),
       source: clean(advancedSource.source, 80),
       preparedBeforeNavigation: advancedSource.preparedBeforeNavigation === true,
-      enableWhenAvailable: advancedSource.enableWhenAvailable === true,
-      useEasyStoreDescription: advancedSource.useEasyStoreDescription === true,
-      transferImagesThroughEasyStoreShopeeEditor: advancedSource.transferImagesThroughEasyStoreShopeeEditor === true,
+      skipEasyStoreDescriptionImport: advancedSource.skipEasyStoreDescriptionImport === true,
+      transferImagesThroughShopeeNativeUploader: advancedSource.transferImagesThroughShopeeNativeUploader === true,
+      memoryOnlyImageStaging: advancedSource.memoryOnlyImageStaging === true,
+      desktopDownloadRequired: advancedSource.desktopDownloadRequired === true,
+      dedicatedLocalStagingDirectoryRequired: advancedSource.dedicatedLocalStagingDirectoryRequired === true,
+      uploadEntry: clean(advancedSource.uploadEntry, 120),
+      deleteLocalStagingOnlyAfterReloadVerification: advancedSource.deleteLocalStagingOnlyAfterReloadVerification === true,
+      neverDeleteUntrackedUserFiles: advancedSource.neverDeleteUntrackedUserFiles === true,
       directExternalImageUrlPasteForbidden: advancedSource.directExternalImageUrlPasteForbidden === true,
-      waitForEveryImageTransferBeforePreparePublish: advancedSource.waitForEveryImageTransferBeforePreparePublish === true,
-      verifyTransferredImageCountAndFixedLastTwoBeforePublish: advancedSource.verifyTransferredImageCountAndFixedLastTwoBeforePublish === true,
+      waitForEveryNativeImageUploadBeforeUpdate: advancedSource.waitForEveryNativeImageUploadBeforeUpdate === true,
+      verifyNativeImageCountAndInterleavedOrderBeforeUpdate: advancedSource.verifyNativeImageCountAndInterleavedOrderBeforeUpdate === true,
       rejectZeroImageDescriptionBeforePublish: advancedSource.rejectZeroImageDescriptionBeforePublish === true,
       capabilityProbe: clean(advancedSource.capabilityProbe, 80),
       contentFingerprint: clean(advancedSource.contentFingerprint, 128),
       requiredFirstImageUrl: safeHttpUrl(advancedSource.requiredFirstImageUrl),
-      fixedDisclaimer: clean(advancedSource.fixedDisclaimer, 500),
-      fixedDisclaimerImmediatelyBeforeLastTwoImages: advancedSource.fixedDisclaimerImmediatelyBeforeLastTwoImages === true,
       fixedLastTwoImageUrls,
       imageUrls: advancedImageUrls,
-      expectedImageCount: Math.max(0, Math.round(numberOrNull(advancedSource.expectedImageCount) || 0))
+      expectedImageCount: Math.max(0, Math.round(numberOrNull(advancedSource.expectedImageCount) || 0)),
+      textBlocks: advancedTextBlocks,
+      blockPlan: advancedBlockPlan
     };
     const payload = {
       schemaVersion: SCHEMA_VERSION,
@@ -151,6 +167,10 @@
       categoryPath,
       brand: clean(value.brand, 120),
       advancedDescription,
+      priceAdjustment: {
+        enabled: value.priceAdjustment && value.priceAdjustment.enabled === true,
+        synchronizeWithEasyStorePrice: value.priceAdjustment && value.priceAdjustment.synchronizeWithEasyStorePrice === true
+      },
       attributes,
       package: {
         lengthCm: numberOrNull(value.package && value.package.lengthCm),
@@ -175,32 +195,62 @@
         identityStatus: clean(value.guard && value.guard.identityStatus, 30)
       }
     };
+    const expectedTextBlockKeys = [
+      'features', 'specifications', 'usage', 'actual-product-notice', 'warranty-support-notice'
+    ];
+    const plannedTextKeys = payload.advancedDescription.blockPlan
+      .filter((row) => row.type === 'text').map((row) => row.key);
+    const plannedImageUrls = payload.advancedDescription.blockPlan
+      .filter((row) => row.type === 'image').map((row) => row.imageUrl);
+    const imageBoundaryKeys = [];
+    let currentTextKey = '';
+    payload.advancedDescription.blockPlan.forEach((row) => {
+      if (row.type === 'text') currentTextKey = row.key;
+      else if (row.type === 'image') imageBoundaryKeys.push(currentTextKey);
+    });
     if (payload.workflowVersion !== WORKFLOW_VERSION) {
       throw new Error('蝦皮自動填寫資料不是目前固定版四通路流程。');
     }
     if (!payload.nonce || !payload.jobId || !payload.snapshotId || !payload.snapshotFingerprint
       || !payload.productId || !payload.sku || !payload.categoryPath.length
-      || payload.advancedDescription.mode !== 'use-easystore-rich-description-with-native-image-transfer'
-      || payload.advancedDescription.source !== 'easystore-body-html'
+      || payload.advancedDescription.mode !== 'seller-center-native-file-upload-interleaved'
+      || payload.advancedDescription.source !== 'prepared-text-blocks-and-downloaded-local-image-files'
       || payload.advancedDescription.preparedBeforeNavigation !== true
-      || payload.advancedDescription.enableWhenAvailable !== true
-      || payload.advancedDescription.useEasyStoreDescription !== true
-      || payload.advancedDescription.transferImagesThroughEasyStoreShopeeEditor !== true
+      || payload.advancedDescription.skipEasyStoreDescriptionImport !== true
+      || payload.advancedDescription.transferImagesThroughShopeeNativeUploader !== true
+      || payload.advancedDescription.memoryOnlyImageStaging !== false
+      || payload.advancedDescription.desktopDownloadRequired !== true
+      || payload.advancedDescription.dedicatedLocalStagingDirectoryRequired !== true
+      || payload.advancedDescription.uploadEntry !== '商品描述/新增圖片/從電腦裝置上傳'
+      || payload.advancedDescription.deleteLocalStagingOnlyAfterReloadVerification !== true
+      || payload.advancedDescription.neverDeleteUntrackedUserFiles !== true
       || payload.advancedDescription.directExternalImageUrlPasteForbidden !== true
-      || payload.advancedDescription.waitForEveryImageTransferBeforePreparePublish !== true
-      || payload.advancedDescription.verifyTransferredImageCountAndFixedLastTwoBeforePublish !== true
+      || payload.advancedDescription.waitForEveryNativeImageUploadBeforeUpdate !== true
+      || payload.advancedDescription.verifyNativeImageCountAndInterleavedOrderBeforeUpdate !== true
       || payload.advancedDescription.rejectZeroImageDescriptionBeforePublish !== true
-      || payload.advancedDescription.fixedDisclaimerImmediatelyBeforeLastTwoImages !== true
-      || !payload.advancedDescription.fixedDisclaimer
-      || payload.advancedDescription.capabilityProbe !== 'single-lightweight-page-probe'
+      || payload.advancedDescription.capabilityProbe !== 'seller-center-rich-editor-and-file-input'
       || !/^[a-f0-9]{64}$/i.test(payload.advancedDescription.contentFingerprint)
-      || payload.advancedDescription.imageUrls.length < 3
+      || payload.advancedDescription.imageUrls.length < 5
       || payload.advancedDescription.imageUrls.length > 12
       || payload.advancedDescription.imageUrls[0] !== payload.advancedDescription.requiredFirstImageUrl
       || payload.advancedDescription.fixedLastTwoImageUrls.length !== 2
       || payload.advancedDescription.imageUrls.slice(-2).join('|') !== payload.advancedDescription.fixedLastTwoImageUrls.join('|')
-      || payload.advancedDescription.expectedImageCount !== payload.advancedDescription.imageUrls.length) {
+      || payload.advancedDescription.expectedImageCount !== payload.advancedDescription.imageUrls.length
+      || payload.advancedDescription.textBlocks.length !== 5
+      || payload.advancedDescription.textBlocks.map((row) => row.key).join('|') !== expectedTextBlockKeys.join('|')
+      || payload.advancedDescription.blockPlan.length !== payload.advancedDescription.textBlocks.length + payload.advancedDescription.imageUrls.length
+      || plannedTextKeys.join('|') !== expectedTextBlockKeys.join('|')
+      || plannedImageUrls.join('|') !== payload.advancedDescription.imageUrls.join('|')
+      || imageBoundaryKeys.slice(0, 3).join('|') !== 'features|specifications|usage'
+      || imageBoundaryKeys.slice(3, -2).some((key) => key !== 'usage')
+      || imageBoundaryKeys.slice(-2).join('|') !== 'warranty-support-notice|warranty-support-notice'
+      || payload.advancedDescription.blockPlan.slice(-3).map((row) => row.key).join('|')
+        !== 'warranty-support-notice|description-promo-1|description-promo-2') {
       throw new Error('蝦皮自動填寫資料不完整，請重新執行「確認上架」。');
+    }
+    if (payload.priceAdjustment.enabled !== true
+      || payload.priceAdjustment.synchronizeWithEasyStorePrice !== true) {
+      throw new Error('蝦皮價格同步設定不完整，請重新執行「確認上架」。');
     }
     const mode = payload.listingPolicy.mode;
     const expectedIdentitySource = mode === 'create-new' ? 'new-draft' : 'central-platform-id';

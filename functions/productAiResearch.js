@@ -8,6 +8,7 @@ const dns = require('dns').promises;
 const net = require('net');
 const sharp = require('sharp');
 const shopeeTaxonomy = require('./shopeeMusicTaxonomy');
+const listingBrandCreative = require('./listingBrandCreative');
 
 const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
 const REGION = 'us-central1';
@@ -27,26 +28,26 @@ const IMAGE_IMPORT_MAX_SELECTED_IMAGES = 12;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const CODEX_ONLY_LISTING_MODE = true;
 const BRAND_TEMPLATE_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
-const BRAND_TEMPLATE_VERSION = 'youzi-locked-green-brand-template-v1';
-const BRAND_TEMPLATE_COMPOSITION = 'locked-template-pixels-with-product-and-verified-copy-layers-only';
+const BRAND_TEMPLATE_VERSION = 'youzi-adaptive-light-brand-template-v2';
+const BRAND_TEMPLATE_COMPOSITION = 'locked-one-ninth-brand-header-and-overlapping-logo-with-light-style-panel-v2';
 const BRAND_TEMPLATE_PROFILES = Object.freeze({
   storefrontPortrait: Object.freeze({
     url: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-portrait.png`,
     sha256: 'e3fe984de916395accec67a9bf251429e271c908e45608d2d45781759be5cb90',
     overlayUrl: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-portrait-overlay.png`,
     overlaySha256: '9706b5985061efac729fa1b8b813213c57c04681aa26acb3e28cdc5a7cf2150a',
-    widthPx: 750, heightPx: 1000, aspectRatio: '3:4', headerHeightPx: 208,
-    panel: Object.freeze({ left: 16, top: 224, width: 718, height: 760 }),
-    featureMinimum: 3, featureMaximum: 5
+    widthPx: 1000, heightPx: 750, aspectRatio: '4:3', headerHeightPx: 83,
+    panel: Object.freeze({ left: 18, top: 92, width: 964, height: 640 }),
+    featureMinimum: 3, featureMaximum: 3
   }),
   brandedHero: Object.freeze({
     url: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-square.png`,
     sha256: '9cb2f59fd4d4d9b28257c2527c804cb7b135451953de65dd567198ec11cb9145',
     overlayUrl: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-square-overlay.png`,
     overlaySha256: 'ce0f5d4890bf8ce75578afa1d6a5092dd2511424924001a8b19a0487d69b0a9d',
-    widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 278,
-    panel: Object.freeze({ left: 21, top: 299, width: 958, height: 680 }),
-    featureMinimum: 1, featureMaximum: 3
+    widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 111,
+    panel: Object.freeze({ left: 18, top: 122, width: 964, height: 860 }),
+    featureMinimum: 3, featureMaximum: 3
   })
 });
 
@@ -608,9 +609,9 @@ function buildOpenAIImageRequest(context, listingCase, imageUrls, model) {
     text: [
       '這是一張已排版的供應商商品介紹圖，請做「最小幅度的台灣繁體中文在地化」。',
       '必須保留原圖的商品外觀、顏色、型號、材質、配件數量、拍攝角度、裁切、背景、圖示、視覺層級與整體版面；不重新設計、不改成正方形。',
-      '將圖中的簡體中文改為自然的台灣繁體中文，尺寸、數字、型號、單位與已確認商品事實不變。',
-      '可清除人民幣價格、折扣、購物平台介面標記、賣家聯絡方式與 QR code；但不可移除品牌標誌、著作權標示或權利人浮水印。',
-      '若原文太小而無法準確辨識，保留原圖而不猜測；不新增未經確認的規格、認證、保固或贈品。',
+      '先用 OCR 逐字辨識可讀文字，乾淨移除原簡體字，再用真實可讀的繁體中文字型重新排回原位置；禁止用筆畫塗改、描字或生成像手畫的假字。尺寸、數字、型號、單位與已確認商品事實不變。',
+      '可清除人民幣價格、折扣、購物平台介面標記、第三方店家名稱、賣家聯絡方式與賣家 QR code；商品本體或原廠包裝上的品牌、型號及原生印刷必須保留。',
+      '若原文太小、模糊、被裁切或無法準確辨識，不可放大假清晰：改找同商品更清楚完整的來源，找不到就跳過該圖。截斷文字整塊移除，或只依已驗證資料重打完整句子；不新增行銷賣點、規格、認證、保固或贈品。',
       `確認商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
       `已確認完整介紹：${clean(source.productDescription) || clean(source.commonProductDescription) || '未提供'}`,
       `圖片規劃：${clean(source.imagePlan) || '白底或簡潔情境的商品介紹圖'}`,
@@ -634,14 +635,13 @@ function buildLocalizedImagePrompt(context, listingCase, position, total) {
     '你正在編輯一張已完成排版的供應商商品介紹圖。目標是用於台灣電商上架，只做必要的繁體中文在地化。',
     '這是圖像編輯任務，不是重新設計。輸出必須保持與輸入圖相同的寬高比與構圖。',
     '嚴格保留：商品本體、品牌、型號、顏色、材質、配件數量、拍攝角度、背景、圖示、圖片順序感、文字區塊位置及視覺風格。',
-    '在同一次圖片編輯內，先逐字掃描圖片中所有可見中文，再完整完成下列處理；只輸出一次最終成品，不產生需要第二次修改的中間版本。',
-    '將所有可清楚辨識的簡體中文改為自然、正確的台灣繁體中文；中國大陸用語改為台灣常用說法；錯字、亂碼或殘缺中文字改為可正常閱讀的正確文字。數字、規格、型號與單位不得改變。',
-    '截圖邊緣若出現被裁切一半、不完整或無法正常閱讀的文字，必須在同一次編輯中完整重排、改寫為適合該圖的正確繁體文字，或直接移除；不得保留半截文字。',
-    '可移除：人民幣價格、折扣、購物平台介面元素、賣家聯絡方式、賣家 QR code。',
-    '必須保留：品牌標誌、合法的著作權標示、權利人浮水印。不得仿製、遮蓋或移除這些權利標示。',
-    '不得猜測難以辨識的小字，不得新增來源未證實的功能、認證、價格、保固或贈品。',
-    '若原圖本來就有清楚的賣點區塊或足夠留白，可從下方「已查證重點」挑選 1～3 點，以簡短台灣繁體中文補入；沒有合適空間就只轉換原文，不要硬塞文字或大幅改版。',
-    '新增重點不可重複原圖已經表達的內容，每點以一句短語呈現，文字必須清楚可讀。',
+    '在同一次圖片編輯內，先用 OCR 逐字辨識圖片中所有可讀中文，乾淨移除原簡體文字，再以真實可讀的繁體中文字型重新排回原文字區塊；禁止用筆畫塗改、描字或生成像手畫的假字。',
+    '將所有可清楚辨識的簡體中文改為自然、正確的台灣繁體中文；中國大陸用語改為台灣常用說法。數字、規格、型號與單位不得改變。',
+    '截圖邊緣若出現被裁切一半、不完整或無法正常閱讀的文字，整個殘缺文字區塊直接移除；只有案件內存在已驗證完整內容時，才可在原位置重打完整繁體文字，不得猜測補字。',
+    '可移除：人民幣價格、折扣、購物平台介面元素、第三方店家名稱、賣家聯絡方式、賣家 QR code。',
+    '必須保留：商品本體與原廠包裝上的品牌、型號、原生印刷及合法著作權標示；第三方商家浮水印不得誤當成原廠品牌保留。',
+    '若來源太小、模糊、不完整或無法正常辨識，不得放大假清晰或憑印象重畫；改找同商品更清楚完整來源，找不到就跳過該圖。',
+    '不得新增來源沒有的行銷賣點、規格、功能、認證、價格、保固或贈品；即使有留白，也只做原有文字的繁體化，不新增文案。',
     `本批第 ${Math.max(1, Number(position) || 1)} 張／共 ${Math.max(1, Number(total) || 1)} 張。`,
     `商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
     `品牌：${clean(source.brand) || context.brand || '未提供'}`,
@@ -668,13 +668,22 @@ function buildCleanMainImagePrompt(context, listingCase) {
 function buildBrandTemplateImagePrompt(context, listingCase, role) {
   const source = listingCase || {};
   const profile = BRAND_TEMPLATE_PROFILES[role] || BRAND_TEMPLATE_PROFILES.storefrontPortrait;
-  const featureCount = `${profile.featureMinimum}～${profile.featureMaximum}`;
+  const style = listingBrandCreative.assignment(
+    source.brandCreativeStyleAssignment,
+    `${clean(context && (context.productId || context.sku || context.name))}|${clean(source.researchedProductName)}`
+  );
+  const featureCount = profile.featureMinimum === profile.featureMaximum
+    ? String(profile.featureMinimum)
+    : `${profile.featureMinimum}～${profile.featureMaximum}`;
   return [
     `第一張是商品來源圖，第二張是不可變品牌母版 ${BRAND_TEMPLATE_VERSION} 的版面參考。最終角色為 ${role}，尺寸 ${profile.widthPx}×${profile.heightPx}（${profile.aspectRatio}）。`,
-    '你只需要生成下方淺色內容面板的素材；不得在輸出裡重畫、複製或加入綠色頁首、紅色標語「有音樂的生活更有風格」、右上圓形柚子樂器 Logo 或外框。程式會在生成後把內容面板嵌入固定母版，再逐像素覆蓋原始頁首與細綠邊。',
-    '內容面板只可加入商品、標題、已查證賣點與最多 2 個有來源依據的細節小圖；四周保留安全留白，不得模仿或重複母版頁首。',
-    `用清楚的台灣繁體中文呈現 ${featureCount} 個不重複且已查證的商品特色；資料不足就少放，不得虛構。`,
-    '商品必須是內容區最大主體，外觀、顏色、型號、零件、比例、材質與配件數量不得改變。',
+    '固定品牌區必須完全照核准版本：綠色頁首固定占整張高度 1/9，紅色標語「有音樂的生活更有風格」與圓形柚子樂器 Logo 的圖樣、文字、顏色都不可改。Logo 使用已核准的大型跨界版本，固定在右上並向下壓入內容區；只有 Logo 可跨越頁首邊界，而且不可遮住商品本體或主要文字。',
+    '下方內容區四周固定保留一條連續、清楚可見的細綠色圓角框線；照片、色塊、文字與裝飾全部停在框線內，不得蓋滿或吃掉框線。',
+    `本商品固定風格為 ${style.styleName}（${style.styleId}／${style.family}）：底色 ${style.background}，重點色 ${style.accents.join('、')}，版型 ${style.layout}。同一商品的 1:1 與 4:3、以及同組所有細項必須沿用完全相同風格，只做比例重排。`,
+    '內容區至少 65% 保持奶油白、白、淺灰或明亮照片；深色只可用於文字與小面積重點，禁止整片深色、黑底或厚重滿版。',
+    '內容面板只可加入商品、標題、已查證賣點與最多 2 個有來源依據的細節小圖；四周保留安全留白。商品必須清楚完整，不可被 Logo、標題、色塊或裝飾遮住。',
+    `用清楚的台灣繁體中文呈現正好 ${featureCount} 個不重複且已查證的商品特色；若不足 ${featureCount} 個，必須先停止主圖製作並補齊證據，不得少放或虛構。`,
+    '文字可依風格使用不同但真正可讀的商業字體、大小、粗細與編排，不限定微軟正黑體；不可產生手畫假字。商品必須是內容區最大主體，外觀、顏色、型號、零件、比例、材質與配件數量不得改變。',
     '不得加入價格、地址、電話、QR Code、導流文字、額外浮水印、左下娃娃或 PIC COLLAGE。不得保留簡體字、大陸用語、亂碼、錯字或被裁掉一半的文字。',
     `商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
     `品牌：${clean(source.brand) || context.brand || '未提供'}`,

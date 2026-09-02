@@ -10,7 +10,7 @@ const source = fs.readFileSync('operations-shopee-autofill-handoff-v1.js', 'utf8
 function rawPayload() {
   const now = Date.now();
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     workflowVersion: 'youzi-four-channel-listing-v3',
     jobId: 'job-shopee-v2-1',
     snapshotId: 'snapshot-shopee-v2-1',
@@ -32,25 +32,49 @@ function rawPayload() {
     categoryPath: ['愛好與收藏品', '樂器與樂器配件', '弦樂器', '吉他、貝斯'],
     brand: 'Ibanez',
     advancedDescription: {
-      mode: 'use-easystore-rich-description-with-native-image-transfer', source: 'easystore-body-html',
-      preparedBeforeNavigation: true, enableWhenAvailable: true, useEasyStoreDescription: true,
-      transferImagesThroughEasyStoreShopeeEditor: true, directExternalImageUrlPasteForbidden: true,
-      waitForEveryImageTransferBeforePreparePublish: true,
-      verifyTransferredImageCountAndFixedLastTwoBeforePublish: true,
+      mode: 'seller-center-native-file-upload-interleaved', source: 'prepared-text-blocks-and-downloaded-local-image-files',
+      preparedBeforeNavigation: true, skipEasyStoreDescriptionImport: true,
+      transferImagesThroughShopeeNativeUploader: true, memoryOnlyImageStaging: false,
+      desktopDownloadRequired: true, dedicatedLocalStagingDirectoryRequired: true,
+      uploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
+      deleteLocalStagingOnlyAfterReloadVerification: true, neverDeleteUntrackedUserFiles: true,
+      directExternalImageUrlPasteForbidden: true,
+      waitForEveryNativeImageUploadBeforeUpdate: true,
+      verifyNativeImageCountAndInterleavedOrderBeforeUpdate: true,
       rejectZeroImageDescriptionBeforePublish: true,
-      capabilityProbe: 'single-lightweight-page-probe', contentFingerprint: 'b'.repeat(64),
+      capabilityProbe: 'seller-center-rich-editor-and-file-input', contentFingerprint: 'b'.repeat(64),
       requiredFirstImageUrl: 'https://example.com/green-hero.jpg',
-      fixedDisclaimer: '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。',
-      fixedDisclaimerImmediatelyBeforeLastTwoImages: true,
       fixedLastTwoImageUrls: ['https://example.com/promo-1.jpg', 'https://example.com/promo-2.jpg'],
       imageUrls: [
         'https://example.com/green-hero.jpg',
-        'https://example.com/green-hero.jpg',
-        'https://example.com/green-hero.jpg',
+        'https://example.com/spec.jpg',
+        'https://example.com/usage.jpg',
         'https://example.com/promo-1.jpg',
         'https://example.com/promo-2.jpg'
       ],
-      expectedImageCount: 5
+      expectedImageCount: 5,
+      textBlocks: [
+        { key: 'features', text: '商品特色\n1. 已驗證特色' },
+        { key: 'specifications', text: '商品規格\n型號：AZES40-PRB' },
+        { key: 'usage', text: '使用方式／適用情境\n1. 演奏前先調音' },
+        { key: 'actual-product-notice', text: '商品圖片與文字說明僅供參考。' },
+        { key: 'warranty-support-notice', text: '出貨與保固依商品類型辦理。' }
+      ],
+      blockPlan: [
+        { type: 'text', key: 'features' },
+        { type: 'image', key: 'product-image-1', imageUrl: 'https://example.com/green-hero.jpg' },
+        { type: 'text', key: 'specifications' },
+        { type: 'image', key: 'product-image-2', imageUrl: 'https://example.com/spec.jpg' },
+        { type: 'text', key: 'usage' },
+        { type: 'image', key: 'product-image-3', imageUrl: 'https://example.com/usage.jpg' },
+        { type: 'text', key: 'actual-product-notice' },
+        { type: 'text', key: 'warranty-support-notice' },
+        { type: 'image', key: 'description-promo-1', imageUrl: 'https://example.com/promo-1.jpg' },
+        { type: 'image', key: 'description-promo-2', imageUrl: 'https://example.com/promo-2.jpg' }
+      ]
+    },
+    priceAdjustment: {
+      enabled: true, synchronizeWithEasyStorePrice: true
     },
     attributes: [
       { label: 'Pickup Configuration', value: 'HSS', confidence: 'high', note: '官方規格' }
@@ -65,7 +89,7 @@ function rawPayload() {
         { label: '7-ELEVEN', enabled: false, option: '', feeTwd: null, sellerPays: false },
         { label: '新竹物流', enabled: true, option: 'S170', feeTwd: null, sellerPays: false },
         { label: '全家', enabled: false, option: '', feeTwd: null, sellerPays: false },
-        { label: '賣家宅配：大型/超重物品運送', enabled: false, option: '', feeTwd: null, sellerPays: false },
+        { label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false },
         { label: '嘉里快遞', enabled: false, option: '', feeTwd: null, sellerPays: false },
         { label: '店到家宅配', enabled: false, option: '', feeTwd: null, sellerPays: false }
       ]
@@ -99,7 +123,7 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
   const payload = api.sanitizePayload(rawPayload());
   const serialized = JSON.stringify(payload);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 6);
+  assert.equal(payload.schemaVersion, 7);
   assert.equal(payload.workflowVersion, 'youzi-four-channel-listing-v3');
   assert.equal(payload.jobId, 'job-shopee-v2-1');
   assert.deepEqual(JSON.parse(JSON.stringify(payload.listingPolicy)), {
@@ -113,25 +137,31 @@ test('handoff keeps only approved Shopee fields and never exposes costs or crede
   assert.equal(hct.enabled, true);
   assert.equal(hct.option, 'S170');
   assert.equal(hct.feeTwd, null);
-  assert.equal(sellerLargeHome.enabled, false);
-  assert.equal(sellerLargeHome.feeTwd, null);
+  assert.equal(sellerLargeHome.enabled, true);
+  assert.equal(sellerLargeHome.feeTwd, 100);
   assert.equal(sellerLargeHome.sellerPays, false);
   assert.equal(payload.logistics.methods.length, 9);
-  assert.equal(payload.logistics.methods.filter((row) => row.enabled).length, 1);
+  assert.equal(payload.logistics.methods.filter((row) => row.enabled).length, 2);
   assert.equal(payload.logistics.methods
-    .filter((row) => row.label !== '新竹物流')
+    .filter((row) => !['新竹物流', '賣家宅配：大型/超重物品運送'].includes(row.label))
     .every((row) => row.enabled === false), true);
   assert.equal(payload.preorder.enabled, false);
   assert.equal(payload.preorder.days, 1);
-  assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description-with-native-image-transfer');
+  assert.equal(payload.advancedDescription.mode, 'seller-center-native-file-upload-interleaved');
+  assert.equal(payload.advancedDescription.skipEasyStoreDescriptionImport, true);
+  assert.equal(payload.advancedDescription.memoryOnlyImageStaging, false);
+  assert.equal(payload.advancedDescription.desktopDownloadRequired, true);
   assert.equal(payload.advancedDescription.expectedImageCount, 5);
   assert.deepEqual(JSON.parse(JSON.stringify(payload.advancedDescription.imageUrls)), [
     'https://example.com/green-hero.jpg',
-    'https://example.com/green-hero.jpg',
-    'https://example.com/green-hero.jpg',
+    'https://example.com/spec.jpg',
+    'https://example.com/usage.jpg',
     'https://example.com/promo-1.jpg',
     'https://example.com/promo-2.jpg'
   ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(payload.priceAdjustment)), {
+    enabled: true, synchronizeWithEasyStorePrice: true
+  });
   assert.equal(Object.prototype.hasOwnProperty.call(payload, 'costPrice'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(payload, 'accessToken'), false);
   assert.doesNotMatch(serialized, /must-not-leak|"accessToken"|"costPrice"/);
@@ -176,7 +206,7 @@ test('handoff rejects schema 5 and never translates its retired listing decision
   assert.throws(() => api.sanitizePayload(payload), /版本不相容/);
 });
 
-test('handoff preserves every localized add-variant field in schema 5', () => {
+test('handoff preserves every localized add-variant field in schema 7', () => {
   const { api } = loadBridge();
   const payload = rawPayload();
   payload.publishMode = 'add-variant-to-existing';

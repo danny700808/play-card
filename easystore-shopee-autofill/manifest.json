@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "柚子樂器 EasyStore 蝦皮自動填寫",
-  "version": "0.3.34",
+  "version": "0.3.37",
   "description": "從任何商品網頁點圖或框選截圖到指定商品，並可靠完成 EasyStore／蝦皮自動填寫。",
   "permissions": [
     "activeTab",
@@ -16,6 +16,7 @@
     "https://danny700808.github.io/play-card/*",
     "https://admin.easystore.co/products/*",
     "https://admin.easystore.co/channels/shopee/taiwan/products/sync*",
+    "https://seller.shopee.tw/portal/product/*",
     "https://*.taobao.com/*",
     "https://*.tmall.com/*",
     "https://*.1688.com/*",
@@ -68,12 +69,23 @@
     },
     {
       "matches": [
+        "https://seller.shopee.tw/portal/product/*"
+      ],
+      "js": [
+        "helpers.js",
+        "shopee.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "http://*/*",
         "https://*/*"
       ],
       "exclude_matches": [
         "https://danny700808.github.io/play-card/*",
-        "https://admin.easystore.co/*"
+        "https://admin.easystore.co/*",
+        "https://seller.shopee.tw/*"
       ],
       "js": [
         "image-collector-helpers.js",

@@ -6,6 +6,7 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const shopeeTaxonomy = require('./shopeeMusicTaxonomy');
+const listingBrandCreative = require('./listingBrandCreative');
 
 const EASYSTORE_ACCESS_TOKEN = defineSecret('EASYSTORE_ACCESS_TOKEN');
 const REGION = 'us-central1';
@@ -17,17 +18,56 @@ const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
 const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 33;
-const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v3';
+const LISTING_AUTOMATION_POLICY_VERSION = 39;
+const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v2';
 const RICH_CONTENT_FEATURE_TARGET = 10;
-const RICH_CONTENT_USAGE_TARGET = 10;
-const RICH_CONTENT_MINIMUM_FEATURES = 10;
-const RICH_CONTENT_MINIMUM_USAGE_POINTS = 10;
+const RICH_CONTENT_USAGE_TARGET = 8;
+const RICH_CONTENT_MINIMUM_FEATURES = 3;
+const RICH_CONTENT_MINIMUM_USAGE_POINTS = 3;
 const RICH_CONTENT_MINIMUM_POINT_CHARACTERS = 16;
-const RICH_CONTENT_RECOMMENDED_POINT_CHARACTERS = 20;
-const DESCRIPTION_LAYOUT_VERSION = 'youzi-interleaved-description-v2';
+const DESCRIPTION_LAYOUT_VERSION = 'youzi-interleaved-description-v3';
 const DESCRIPTION_MEDIA_REFRESH_PURPOSE = 'refresh-description-media';
 const PLATFORM_EXECUTION_ORDER = Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']);
+const EASYSTORE_COLLECTION_CATALOG = Object.freeze([
+  '彈撥樂器', '民謠吉他&週邊商品', '電吉他&效果器&週邊', '古典吉他&週邊商品', '貝士&週邊',
+  '烏克麗麗&週邊', '電鋼琴&MIDI鍵盤&鋼琴譜', '卡林巴&拇指琴', '琵琶/柳琴&週邊',
+  '大中小阮/月琴&週邊', '古箏&週邊', '精選商品', '打擊樂器', '爵士鼓&電子鼓&週邊',
+  '木箱鼓&非洲鼓', '空靈鼓&手碟', '鼓棒&中國鼓鼓棒&揚琴棒', '兒童啟蒙樂具&鈴鼓&響板其他',
+  '拉弦樂器', '二胡&高胡&京胡', '提琴類&週邊商品', '吹奏樂器', '薩克斯風&週邊商品',
+  '長笛&週邊商品', '豎笛&週邊商品', '電音管&週邊商品', '中國笛&蕭&週邊商品',
+  '直笛&口風琴&口琴&其他', '嗩吶&其他國樂吹奏', '錄音&電子', '錄音設備&麥克風& 耳機週邊',
+  '電子效果器&週邊', '音箱&週邊', '鍵盤&MIDI&週邊', '調音器&節拍器'
+]);
+const EASYSTORE_COLLECTION_RULES = Object.freeze([
+  { keywords: ['中胡', '二胡', '高胡', '京胡', '胡琴弦', '胡琴'], collections: ['拉弦樂器', '二胡&高胡&京胡'] },
+  { keywords: ['小提琴', '中提琴', '大提琴', '低音提琴', '提琴'], collections: ['拉弦樂器', '提琴類&週邊商品'] },
+  { keywords: ['電吉他'], collections: ['彈撥樂器', '電吉他&效果器&週邊'] },
+  { keywords: ['古典吉他'], collections: ['彈撥樂器', '古典吉他&週邊商品'] },
+  { keywords: ['木吉他', '民謠吉他', 'acoustic guitar'], collections: ['彈撥樂器', '民謠吉他&週邊商品'] },
+  { keywords: ['bass', '貝士', '貝斯'], collections: ['彈撥樂器', '貝士&週邊'] },
+  { keywords: ['烏克麗麗', 'ukulele'], collections: ['彈撥樂器', '烏克麗麗&週邊'] },
+  { keywords: ['卡林巴', '拇指琴'], collections: ['彈撥樂器', '卡林巴&拇指琴'] },
+  { keywords: ['琵琶', '柳琴'], collections: ['彈撥樂器', '琵琶/柳琴&週邊'] },
+  { keywords: ['阮', '月琴'], collections: ['彈撥樂器', '大中小阮/月琴&週邊'] },
+  { keywords: ['古箏'], collections: ['彈撥樂器', '古箏&週邊'] },
+  { keywords: ['鼓棒', '揚琴棒'], collections: ['打擊樂器', '鼓棒&中國鼓鼓棒&揚琴棒'] },
+  { keywords: ['爵士鼓', '電子鼓', '鼓椅', '鼓凳'], collections: ['打擊樂器', '爵士鼓&電子鼓&週邊'] },
+  { keywords: ['木箱鼓', '非洲鼓'], collections: ['打擊樂器', '木箱鼓&非洲鼓'] },
+  { keywords: ['空靈鼓', '手碟'], collections: ['打擊樂器', '空靈鼓&手碟'] },
+  { keywords: ['鈴鼓', '響板', '兒童啟蒙樂具'], collections: ['打擊樂器', '兒童啟蒙樂具&鈴鼓&響板其他'] },
+  { keywords: ['薩克斯風', '薩克斯'], collections: ['吹奏樂器', '薩克斯風&週邊商品'] },
+  { keywords: ['長笛'], collections: ['吹奏樂器', '長笛&週邊商品'] },
+  { keywords: ['豎笛', '單簧管'], collections: ['吹奏樂器', '豎笛&週邊商品'] },
+  { keywords: ['電音管'], collections: ['吹奏樂器', '電音管&週邊商品'] },
+  { keywords: ['中國笛', '笛袋', '竹笛', '洞簫', '洞箫', '蕭'], collections: ['吹奏樂器', '中國笛&蕭&週邊商品'] },
+  { keywords: ['直笛', '口風琴', '口琴'], collections: ['吹奏樂器', '直笛&口風琴&口琴&其他'] },
+  { keywords: ['嗩吶'], collections: ['吹奏樂器', '嗩吶&其他國樂吹奏'] },
+  { keywords: ['麥克風', '耳機', '錄音', 'di box', 'di-box'], collections: ['錄音&電子', '錄音設備&麥克風& 耳機週邊'] },
+  { keywords: ['效果器'], collections: ['錄音&電子', '電子效果器&週邊'] },
+  { keywords: ['音箱', '擴大機'], collections: ['錄音&電子', '音箱&週邊'] },
+  { keywords: ['電子琴', '電鋼琴', 'midi', '鍵盤'], collections: ['錄音&電子', '鍵盤&MIDI&週邊'] },
+  { keywords: ['調音器', '節拍器'], collections: ['錄音&電子', '調音器&節拍器'] }
+]);
 const PARALLEL_ROOT_PLATFORMS = Object.freeze(['momo', 'coupang', 'easyStore']);
 const LISTING_TARGET_SCOPES = Object.freeze({
   all: Object.freeze(['momo', 'coupang', 'easyStore', 'shopee']),
@@ -38,7 +78,7 @@ const LISTING_TARGET_SCOPES = Object.freeze({
 const REQUEST_TIMEOUT_MS = 60 * 1000;
 const PUBLISH_LOCK_MS = 15 * 60 * 1000;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
-const SHOPEE_AUTOFILL_SCHEMA_VERSION = 6;
+const SHOPEE_AUTOFILL_SCHEMA_VERSION = 7;
 const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'processing']);
 const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
 const PLATFORM_QUEUE_RECEIPT_STATUSES = new Set([...PLATFORM_QUEUE_COMPLETED_STATUSES, 'submitted-to-platform-review', 'under-review']);
@@ -51,30 +91,61 @@ const DESCRIPTION_PROMO_IMAGE_URLS = [
   `${DESCRIPTION_PROMO_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`,
   `${DESCRIPTION_PROMO_ASSET_BASE_URL}/product-listing-description-promo-2.jpg`
 ];
+const SHOPEE_IMPORTED_DESCRIPTION_IMAGE_STANDARD = Object.freeze({
+  preparedBeforeEasyStorePublish: true,
+  sourceFilesMustExistLocallyBeforeSellerCenterUpload: true,
+  uploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
+  minimumSourceShortEdgePx: 700,
+  preferredSquareSizePx: 1000,
+  storefrontPortraitWidthPx: 1000,
+  storefrontPortraitHeightPx: 750,
+  maximumImageCount: 12,
+  responsiveHtmlStyle: 'max-width:100%;height:auto',
+  verifyPlatformAcceptanceAfterPreparePublish: true,
+  doNotResizeAgainInsideShopee: true
+});
 const BRAND_TEMPLATE_CONTRACT = Object.freeze({
-  version: 'youzi-locked-green-brand-template-v1',
+  version: 'youzi-adaptive-light-brand-template-v2',
   sourceAsset: Object.freeze({
     url: `${SHOP_ASSET_BASE_URL}/product-listing-main-template.jpg`,
     sha256: 'e62ded7e4cd4d740d60f8aace2aaa62577973244ee3a0f7545b4c513ec608d12'
   }),
   slogan: '有音樂的生活更有風格',
   logoIdentity: 'youzi-round-green-logo',
-  immutableRegions: Object.freeze(['green-header-background', 'slogan', 'round-logo', 'header-height']),
+  immutableRegions: Object.freeze(['green-header-background', 'slogan', 'round-logo-artwork', 'header-height-ratio', 'logo-overlap-geometry', 'outer-green-border']),
   forbiddenLegacyElements: Object.freeze(['bottom-left-mascot', 'pic-collage-mark']),
   storefrontPortrait: Object.freeze({
     url: `${SHOP_ASSET_BASE_URL}/product-listing-brand-template-portrait.png`,
     sha256: 'e3fe984de916395accec67a9bf251429e271c908e45608d2d45781759be5cb90',
-    widthPx: 750, heightPx: 1000, aspectRatio: '3:4', headerHeightPx: 208
+    widthPx: 1000, heightPx: 750, aspectRatio: '4:3', headerHeightPx: 83
   }),
   brandedHero: Object.freeze({
     url: `${SHOP_ASSET_BASE_URL}/product-listing-brand-template-square.png`,
     sha256: '9cb2f59fd4d4d9b28257c2527c804cb7b135451953de65dd567198ec11cb9145',
-    widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 278
+    widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 111
   }),
-  contentPanel: Object.freeze({ background: '#fffaf0', narrowGreenBorderRequired: true }),
-  composition: 'locked-template-pixels-with-product-and-verified-copy-layers-only'
+  header: Object.freeze({ heightRatio: 1 / 9, background: 'approved-youzi-green', sloganAndLogoArtworkMustRemainUnchanged: true }),
+  logo: Object.freeze({
+    anchor: 'upper-right', diameterRatioOfCanvasHeight: 0.28,
+    overlapHeaderAndContent: true, selectedReference: 'approved-large-overlap-version',
+    onlyElementAllowedToCrossHeaderBoundary: true, mayNotCoverProductOrPrimaryCopy: true
+  }),
+  contentPanel: Object.freeze({
+    background: '#fffaf0', narrowGreenBorderRequired: true,
+    borderStyle: 'continuous-thin-rounded-green-outline', borderWidthPx: Object.freeze({ minimum: 3, maximum: 6 }),
+    allCreativeLayersMustStayInsideBorder: true, minimumLightAreaRatio: 0.65,
+    maximumDarkAreaRatio: 0.35, darkFullBleedForbidden: true
+  }),
+  creativeStyleSystem: Object.freeze({
+    ...listingBrandCreative.STYLE_SELECTION_POLICY,
+    styles: listingBrandCreative.STYLE_CATALOG
+  }),
+  composition: 'locked-one-ninth-brand-header-and-overlapping-logo-with-light-style-panel-v2'
 });
-const PHYSICAL_PRODUCT_DISCLAIMER = '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。';
+const LEGACY_PHYSICAL_PRODUCT_DISCLAIMER = '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。';
+const PHYSICAL_PRODUCT_DISCLAIMER = '商品圖片與文字說明僅供參考；不同批次的包裝、印刷、配色或細節可能略有差異，實際內容以收到的商品為準。';
+const WARRANTY_SUPPORT_NOTICE = '保固會依商品類型而有所不同。耗材及正常使用產生的自然耗損不在一般保固範圍；若商品附有原廠保固，則以原廠提供的保固時間與方式為主。收到商品若發現新品本身有異常，歡迎聯絡我們協助確認與處理。';
+const FIXED_DESCRIPTION_NOTICES = Object.freeze([PHYSICAL_PRODUCT_DISCLAIMER, WARRANTY_SUPPORT_NOTICE]);
 const MOMO_THIRD_PARTY_DELIVERY = {
   method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流'
 };
@@ -137,25 +208,20 @@ function normalizeUrls(value, limit = 9) {
   return result.slice(0, limit);
 }
 
-// Description layouts intentionally allow the same completed product image to
-// appear in more than one section when fewer than three distinct images exist.
-// Gallery and identity lists must remain deduplicated, so this helper is only
-// used for ordered rich-description image slots.
-function normalizeUrlSlots(value, limit = 20) {
-  const rows = Array.isArray(value) ? value : clean(value).split(/[\n|]+/);
-  return rows.map(safeHttpUrl).filter(Boolean).slice(0, limit);
-}
-
-function ensureDescriptionProductImageSlots(value, fallbackValue, minimum = 3, maximum = 10) {
-  const blocked = new Set([STORE_PROMO_IMAGE_URL, ...DESCRIPTION_PROMO_IMAGE_URLS]);
-  const primary = normalizeUrls(value, maximum).filter((url) => !blocked.has(url));
-  const fallback = normalizeUrls(fallbackValue, maximum).filter((url) => !blocked.has(url));
-  const candidates = primary.length ? primary : fallback;
-  const result = candidates.slice(0, maximum);
-  for (let index = 0; result.length > 0 && result.length < minimum; index += 1) {
-    result.push(candidates[index % candidates.length]);
-  }
-  return result.slice(0, maximum);
+function resolveEasyStoreCollectionNames(snapshot) {
+  const source = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  const explicitSource = source.easyStoreCollectionNames || source.easyStoreCategories || source.easyStoreCollections;
+  const explicit = (Array.isArray(explicitSource) ? explicitSource : clean(explicitSource).split(/[|,，\n]+/))
+    .map(clean).filter((name) => EASYSTORE_COLLECTION_CATALOG.includes(name));
+  if (explicit.length) return Array.from(new Set(explicit));
+  const haystack = [
+    source.category, source.title, source.productName, source.commonProductName,
+    source.model, source.description, source.shopeeCategoryPath
+  ].map(clean).filter(Boolean).join(' ').normalize('NFKC').toLowerCase();
+  const matched = EASYSTORE_COLLECTION_RULES.find((rule) => (
+    rule.keywords.some((keyword) => haystack.includes(clean(keyword).normalize('NFKC').toLowerCase()))
+  ));
+  return matched ? [...matched.collections] : [];
 }
 
 function normalizeListingIntent(listingCase, product = null) {
@@ -231,55 +297,164 @@ function listingCaseDetailImageUrls(listingCase, finalizedMediaSnapshot, product
     .filter((url) => url !== STORE_PROMO_IMAGE_URL && !DESCRIPTION_PROMO_IMAGE_URLS.includes(url));
 }
 
+function shopeeDescriptionTextBlocks(value) {
+  const text = stripFixedDescriptionNoticesText(clean(value)).replace(/\r\n?/g, '\n').trim();
+  const headingIndex = (pattern) => {
+    const match = pattern.exec(text);
+    return match ? match.index + (match[1] ? match[1].length : 0) : -1;
+  };
+  const specificationIndex = headingIndex(/(^|\n)商品規格(?=\s*(?:\n|$))/m);
+  const usageIndex = headingIndex(/(^|\n)(?:使用方式(?:／|\/)適用情境|使用方式|使用建議|適用情境)(?=\s*(?:\n|$))/m);
+  const firstStructuredIndex = [specificationIndex, usageIndex]
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0];
+  const features = Number.isInteger(firstStructuredIndex) ? text.slice(0, firstStructuredIndex).trim() : '';
+  const specifications = specificationIndex >= 0
+    ? text.slice(specificationIndex, usageIndex > specificationIndex ? usageIndex : text.length).trim() : '';
+  const usage = usageIndex >= 0
+    ? text.slice(usageIndex, specificationIndex > usageIndex ? specificationIndex : text.length).trim() : '';
+  return [
+    { key: 'features', text: features },
+    { key: 'specifications', text: specifications },
+    { key: 'usage', text: usage },
+    { key: 'actual-product-notice', text: PHYSICAL_PRODUCT_DISCLAIMER },
+    { key: 'warranty-support-notice', text: WARRANTY_SUPPORT_NOTICE }
+  ];
+}
+
+function momoProductName(value, brand) {
+  const original = clean(value).replace(/\s+/g, ' ');
+  const exactBrand = clean(brand).replace(/\s+/g, ' ');
+  if (!original) return '';
+  if (!exactBrand) return original.slice(0, 60);
+  const escapedBrand = exactBrand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const withoutRepeatedBrand = original
+    .replace(new RegExp(`^${escapedBrand}(?:\\s+|[-–—_／/｜|：:]+\\s*)`, 'i'), '')
+    .trim();
+  return (withoutRepeatedBrand || original).slice(0, 60);
+}
+
+function momoShortFeaturePlan(description, explicitSlogan) {
+  const text = stripFixedDescriptionNoticesText(clean(description)).replace(/\r\n?/g, '\n');
+  const featureSection = (text.match(/(?:^|\n)商品特色\s*\n([\s\S]*?)(?=\n(?:商品規格|使用方式(?:／|\/)?適用情境|使用方式|使用建議|適用情境)\s*(?:\n|$)|$)/) || [])[1] || '';
+  const verifiedLines = featureSection.split('\n').map((line) => line
+    .replace(/^\s*(?:[-•●▪◦]|\d+[.)、．]|[（(]?\d+[）)])\s*/, '')
+    .replace(/[。；;，,：:]\s*$/, '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const snippets = verifiedLines.map((line) => {
+    const clauses = line.split(/[，,；;。]/).map(clean).filter(Boolean);
+    const conciseClause = clauses.find((clause) => {
+      const length = Array.from(clause).length;
+      return length >= 4 && length <= 15;
+    });
+    return Array.from(conciseClause || line).slice(0, 15).join('');
+  });
+  const unique = Array.from(new Set(snippets)).slice(0, 3);
+  const explicit = Array.from(clean(explicitSlogan).replace(/\s+/g, ' ')).slice(0, 15).join('');
+  return {
+    slogan: explicit || unique[0] || '',
+    featureTexts: unique,
+    maximumCharactersPerField: 15,
+    source: explicit ? 'explicit-slogan-and-verified-description-features' : 'verified-description-features',
+    neverInventToFillEmptySlot: true
+  };
+}
+
+function normalizeMomoAttributes(value) {
+  const rows = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return rows.map((row) => {
+    const label = clean(row && (row.label || row.name)).slice(0, 120);
+    const fieldValue = clean(row && row.value).slice(0, 300);
+    const confidence = ['high', 'medium', 'low'].includes(clean(row && row.confidence))
+      ? clean(row.confidence) : 'low';
+    if (!label || !fieldValue) return null;
+    const key = label.toLowerCase();
+    if (seen.has(key)) return null;
+    seen.add(key);
+    return { label, value: fieldValue, confidence, note: clean(row && row.note).slice(0, 500) };
+  }).filter(Boolean).slice(0, 40);
+}
+
+function momoMarketPrice(snapshot) {
+  const explicit = numberOrNull(snapshot && snapshot.momoMarketPrice);
+  const sale = numberOrNull(snapshot && snapshot.momoPrice);
+  if (explicit !== null && (sale === null || explicit > sale)) return Math.ceil(explicit);
+  return sale !== null && sale > 0 ? Math.ceil(sale * 1.35) : null;
+}
+
 function shopeeAdvancedDescriptionPlan(snapshot) {
-  const preparedProductImageUrls = normalizeUrlSlots(Array.isArray(snapshot && snapshot.descriptionImageUrls)
+  const preparedProductImageUrls = normalizeUrls(Array.isArray(snapshot && snapshot.descriptionImageUrls)
     ? snapshot.descriptionImageUrls : [], 10)
     .filter((url) => !DESCRIPTION_PROMO_IMAGE_URLS.includes(url));
   const requiredFirstImageUrl = safeHttpUrl(snapshot && snapshot.descriptionHeroImageUrl)
     || preparedProductImageUrls[0] || '';
-  const orderedProductImageUrls = preparedProductImageUrls.slice();
-  const existingFirstIndex = orderedProductImageUrls.indexOf(requiredFirstImageUrl);
-  if (existingFirstIndex >= 0) orderedProductImageUrls.splice(existingFirstIndex, 1);
-  if (requiredFirstImageUrl) orderedProductImageUrls.unshift(requiredFirstImageUrl);
-  const imageUrls = normalizeUrlSlots([
-    ...orderedProductImageUrls,
+  const imageUrls = normalizeUrls([
+    requiredFirstImageUrl,
+    ...preparedProductImageUrls.filter((url) => url !== requiredFirstImageUrl),
     ...DESCRIPTION_PROMO_IMAGE_URLS
   ], 12);
+  const textBlocks = shopeeDescriptionTextBlocks(snapshot && snapshot.shopeeDescription);
+  const productImageUrls = imageUrls.slice(0, Math.max(0, imageUrls.length - 2));
+  const fixedPromoUrls = imageUrls.slice(-2);
+  const blockPlan = [
+    { type: 'text', key: 'features' },
+    ...(productImageUrls[0] ? [{ type: 'image', key: 'product-image-1', imageUrl: productImageUrls[0] }] : []),
+    { type: 'text', key: 'specifications' },
+    ...(productImageUrls[1] ? [{ type: 'image', key: 'product-image-2', imageUrl: productImageUrls[1] }] : []),
+    { type: 'text', key: 'usage' },
+    ...(productImageUrls[2] ? [{ type: 'image', key: 'product-image-3', imageUrl: productImageUrls[2] }] : []),
+    ...productImageUrls.slice(3).map((imageUrl, index) => ({
+      type: 'image', key: `remaining-product-image-${index + 1}`, imageUrl
+    })),
+    { type: 'text', key: 'actual-product-notice' },
+    { type: 'text', key: 'warranty-support-notice' },
+    { type: 'image', key: 'description-promo-1', imageUrl: fixedPromoUrls[0] || '' },
+    { type: 'image', key: 'description-promo-2', imageUrl: fixedPromoUrls[1] || '' }
+  ];
+  const contentFingerprint = crypto.createHash('sha256').update(JSON.stringify({
+    textBlocks,
+    blockPlan,
+    imageUrls
+  })).digest('hex');
   return {
-    mode: 'use-easystore-rich-description-with-native-image-transfer',
-    source: 'easystore-body-html',
+    mode: 'seller-center-native-file-upload-interleaved',
+    source: 'prepared-text-blocks-and-downloaded-local-image-files',
     preparedBeforeNavigation: true,
-    enableWhenAvailable: true,
-    useEasyStoreDescription: true,
-    transferImagesThroughEasyStoreShopeeEditor: true,
+    skipEasyStoreDescriptionImport: true,
+    transferImagesThroughShopeeNativeUploader: true,
+    memoryOnlyImageStaging: false,
+    desktopDownloadRequired: true,
+    dedicatedLocalStagingDirectoryRequired: true,
+    uploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
+    deleteLocalStagingOnlyAfterReloadVerification: true,
+    neverDeleteUntrackedUserFiles: true,
     directExternalImageUrlPasteForbidden: true,
-    waitForEveryImageTransferBeforePreparePublish: true,
-    verifyTransferredImageCountAndFixedLastTwoBeforePublish: true,
+    waitForEveryNativeImageUploadBeforeUpdate: true,
+    verifyNativeImageCountAndInterleavedOrderBeforeUpdate: true,
     rejectZeroImageDescriptionBeforePublish: true,
-    capabilityProbe: 'single-lightweight-page-probe',
-    contentFingerprint: crypto.createHash('sha256').update(clean(snapshot && snapshot.bodyHtml)).digest('hex'),
+    capabilityProbe: 'seller-center-rich-editor-and-file-input',
+    imagePreflight: { ...SHOPEE_IMPORTED_DESCRIPTION_IMAGE_STANDARD },
+    contentFingerprint,
     requiredFirstImageUrl,
-    fixedDisclaimer: PHYSICAL_PRODUCT_DISCLAIMER,
-    fixedDisclaimerImmediatelyBeforeLastTwoImages: true,
     fixedLastTwoImageUrls: [...DESCRIPTION_PROMO_IMAGE_URLS],
     imageUrls,
-    expectedImageCount: imageUrls.length
+    expectedImageCount: imageUrls.length,
+    textBlocks,
+    blockPlan
   };
 }
 
 function platformDescriptionContentPlan(snapshot) {
-  const preparedImageUrls = normalizeUrlSlots(Array.isArray(snapshot && snapshot.descriptionImageUrls)
+  const preparedImageUrls = normalizeUrls(Array.isArray(snapshot && snapshot.descriptionImageUrls)
     ? snapshot.descriptionImageUrls : [], 20);
   const fixedLayout = {
     version: DESCRIPTION_LAYOUT_VERSION,
-    order: ['introduction-and-features', 'product-image-1', 'specifications', 'product-image-2', 'usage-advice', 'product-image-3', 'remaining-product-images', 'physical-product-disclaimer', 'description-promo-1', 'description-promo-2'],
+    order: ['introduction-and-features', 'product-image-1', 'specifications', 'product-image-2', 'usage-advice', 'product-image-3', 'remaining-product-images', 'actual-product-notice', 'warranty-support-notice', 'description-promo-1', 'description-promo-2'],
     storePromoGalleryImageUrl: STORE_PROMO_IMAGE_URL,
     storePromoMustBeLastGalleryImage: true,
     descriptionPromoImageUrls: [...DESCRIPTION_PROMO_IMAGE_URLS],
     descriptionPromosMustBeLastImages: true,
-    descriptionPromosMustBeAbsoluteFinalBlocks: true,
-    physicalProductDisclaimerImmediatelyBeforePromos: PHYSICAL_PRODUCT_DISCLAIMER,
-    repeatedCompletedProductImagesAllowedWhenFewerThanThreeDistinct: true,
     missingPreparedImageBlocksCompletion: true
   };
   return {
@@ -297,20 +472,25 @@ function platformDescriptionContentPlan(snapshot) {
     },
     coupang: {
       mode: 'safe-html-product-detail',
-      fallbackMode: 'ordered-image-text-content-details',
       html: clean(snapshot && snapshot.coupangDescriptionHtml),
-      contents: coupangContentsFromDescriptionHtml(snapshot && snapshot.coupangDescriptionHtml),
       imageUrls: preparedImageUrls,
       supportsHeadingsParagraphsListsAndImages: true,
-      preserveFixedDescriptionPromosAsAbsoluteFinalBlocks: true,
+      preserveFixedStoreServicePromosAtEnd: true,
       verifyAfterSaveAndReopen: true
     },
     momo: {
       mode: 'momo-rich-description-blocks',
       preparedHtmlForBlockConversion: clean(snapshot && snapshot.momoHtml),
       imageUrls: preparedImageUrls,
+      textBlocks: Array.isArray(snapshot && snapshot.shopeeAdvancedDescription && snapshot.shopeeAdvancedDescription.textBlocks)
+        ? snapshot.shopeeAdvancedDescription.textBlocks.map((row) => ({ ...row })) : [],
+      blockPlan: Array.isArray(snapshot && snapshot.shopeeAdvancedDescription && snapshot.shopeeAdvancedDescription.blockPlan)
+        ? snapshot.shopeeAdvancedDescription.blockPlan.map((row) => ({ ...row })) : [],
       arbitraryRawHtmlPasteIsNotAssumed: true,
       composeWithNativeTextAndImageBlocks: true,
+      preserveInterleavedTextAndImageOrder: true,
+      warrantyNoticeImmediatelyBeforeFixedLastTwoImages: true,
+      verifySavedTextImagesAndOrderAfterDraftReopen: true,
       imageMaximum: 20,
       imageWidthPx: 1000,
       imageHeightMaximumPx: 1500,
@@ -318,14 +498,9 @@ function platformDescriptionContentPlan(snapshot) {
       externalEmbedPolicy: 'https-and-iframe-supported-only'
     },
     shopee: {
-      mode: 'advanced-rich-description',
-      importFromEasyStore: true,
-      imageUrls: preparedImageUrls,
-      rawHtmlPasteForbidden: true,
-      directExternalImageUrlPasteForbidden: true,
-      requireNativeImageTransferCompletion: true,
-      verifyTextAndEveryPreparedImageBeforePublish: true,
-      verifyFixedLastTwoDescriptionImagesAfterTransfer: true
+      ...(snapshot && snapshot.shopeeAdvancedDescription || {}),
+      importFromEasyStore: false,
+      rawHtmlPasteForbidden: true
     }
   };
 }
@@ -434,8 +609,6 @@ function listingAutomationPolicy() {
     },
     publishVerification: {
       mode: 'required-field-check-and-same-listing-repair',
-      allSelectedPlatformsMustBeIndividuallyVerifiedBeforeJobCompletion: true,
-      ordinaryNavigationOrTabFailureMayNeverBeReportedAsPlatformCompletion: true,
       successDialogRequiresListingIdentity: true,
       easyStoreDraftCreationIsNotPublication: true,
       requireEveryVariantGroupSkuOnPublishedStorefront: true,
@@ -467,12 +640,19 @@ function listingAutomationPolicy() {
       genericFallbackDescriptionIsIncomplete: true,
       writeVerifiedDescriptionBackToEveryGroupedCase: true,
       prepareShopeeAdvancedDescriptionBeforeNavigation: true,
-      shopeeAdvancedDescriptionSource: 'easystore-body-html',
+      shopeeAdvancedDescriptionSource: 'prepared-text-blocks-and-downloaded-local-image-files',
       shopeeAdvancedDescriptionImagesAreImmutableForJob: true,
       shopeeAdvancedDescriptionCapabilityProbeMaximum: 1,
-      shopeePageMayApplyPreparedContentButMustNotReanalyzeIt: true,
+      skipEasyStoreAdvancedDescriptionImport: true,
+      shopeeSellerCenterAppliesPreparedContentButMustNotReanalyzeIt: true,
       shopeeAdvancedDescriptionMustVerifyTextAndEveryPreparedImageBeforePublish: true,
-      shopeeAdvancedDescriptionMissingImagesMustBeInsertedIntoSameEditor: true,
+      shopeeAdvancedDescriptionMissingImagesMustUseNativeFileUpload: true,
+      shopeeAdvancedDescriptionMustDownloadPreparedImagesBeforeNativeFileUpload: true,
+      shopeeAdvancedDescriptionLocalStorageScope: 'job-specific-temporary-directory',
+      shopeeAdvancedDescriptionRemoteUrlOrMemoryBlobAloneIsInsufficient: true,
+      shopeeAdvancedDescriptionUserDesktopFolderForbidden: true,
+      shopeeAdvancedDescriptionUploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
+      shopeeAdvancedDescriptionOfficialZeroOfTwelveIsIncomplete: true,
       shopeeAdvancedDescriptionMustReplaceAllEditorImagesWithPreparedSet: true,
       shopeeAdvancedDescriptionMustRejectDataAndBlobImages: true,
       shopeeAdvancedDescriptionMustPreserveInterleavedPreparedOrder: true,
@@ -483,9 +663,6 @@ function listingAutomationPolicy() {
       fixedInterleavedDescriptionLayoutVersion: DESCRIPTION_LAYOUT_VERSION,
       fixedStorePromoMustBeLastGalleryImage: true,
       fixedDescriptionPromosMustBeLastTwoDescriptionImages: true,
-      fixedDescriptionPromosMustBeAbsoluteFinalBlocks: true,
-      physicalProductDisclaimerMustImmediatelyPrecedeFixedPromos: true,
-      repeatCompletedUpperGalleryImagesWhenNeededForThreeDescriptionSlots: true,
       everySelectedIntentUsesFixedDescriptionLayout: true,
       missingDescriptionImageBlocksCompletionOnEveryPlatform: true,
       prepareOneCanonicalDescriptionAndFourPlatformDeliveryProfiles: true,
@@ -547,10 +724,12 @@ function listingAutomationPolicy() {
       shopeeHandoff: {
         canonicalWorkspace: 'easystore-shopee-channel-sync',
         singleWorkspaceOnly: true,
-        neverOpenDirectShopeeSellerEditor: true,
+        neverOpenDirectShopeeSellerEditor: false,
+        sellerCenterDescriptionStageRequired: true,
+        sellerCenterDescriptionUsesSameListingIdentity: true,
         startImmediatelyAfterEasyStoreVerified: true,
         doNotWaitForMomoOrCoupang: true,
-        sameEasyStoreBranchContinuation: true,
+        sameProductCrossSurfaceContinuation: true,
         closeEmbeddedChatBeforeFormInteraction: true,
         reusePreparedPayload: true,
         neverRestartResearchOrImageProcessing: true,
@@ -560,7 +739,7 @@ function listingAutomationPolicy() {
         neverOpenNativeFilePickerForVariantImages: true,
         fillRequiredWeightFromPreparedPackageBeforePreparePublish: true,
         completeVariantImagesBeforePreparePublish: true,
-        verifyIn: 'easystore-shopee-channel-product-list'
+        verifyIn: 'shopee-seller-center-same-product-after-reload'
       },
       coupangCreateFlow: {
         route: 'create-via-image',
@@ -583,6 +762,44 @@ function listingAutomationPolicy() {
           preserveCompletedSections: true
         },
         pendingReviewIsSuccessfulSubmission: true,
+        pendingReviewIsNotActiveListing: true
+      },
+      coupangExistingListingEditFlow: {
+        route: 'exact-sku-existing-listing-edit',
+        requireUniqueVendorInventoryId: true,
+        stayOnSameListingId: true,
+        fillOnlyVerifiedAttributes: true,
+        neverGuessAttributes: ['原聲吉他型態', '琴弦材質', '慣用手方向', '產地', '認證'],
+        verifiedSixStringMapping: {
+          field: '吉他琴橋線(弦)數', unit: '弦', value: 6,
+          requiredScopes: ['product-basic-information', 'each-option-attribute-dialog'],
+          saveOptionAttributeBeforeSubmit: true,
+          recheckProductValueAfterOptionSave: true
+        },
+        validationRecovery: {
+          optionCheckField: '開啟該選項的編輯屬性，補齊同一組已驗證產品屬性後儲存',
+          productBasicInformationCheckField: '重新讀取並補齊商品層級的同一已驗證屬性',
+          neverInventGtinsOrUnknownAttributes: true,
+          remainOnSameVendorInventoryId: true
+        },
+        gallery: {
+          maximumCount: 7,
+          maximumProductImagesBeforeStorePromo: 6,
+          preserveExistingProductImageOrder: true,
+          storePromoMustBeFinalSupplementImage: true
+        },
+        htmlDescription: {
+          existingRowLandmark: '已寫入HTML',
+          editAction: '修改',
+          previewAction: 'PC 預覽',
+          saveAction: '儲存',
+          fixedNoticesBeforeFinalPromos: true,
+          fixedPromoImagesAtTail: 2,
+          noContentAfterSecondFixedImage: true,
+          previewAndReopenBeforeSubmit: true
+        },
+        submitAction: '申請修改',
+        reviewMayPauseSales: true,
         pendingReviewIsNotActiveListing: true
       },
       verification: 'single-final-check-after-submit'
@@ -658,10 +875,14 @@ function listingAutomationPolicy() {
       preferredProductImagePositions: [2, 3],
       excludeStoreAddressAndServicePromos: true,
       neverUseGalleryLastStorePromo: true,
-      materialBankInsertRequired: true,
+      materialBankInsertRequired: false,
       insertionTarget: 'rich-description-editor',
-      materialBankUploadFlow: ['open-rich-description-upload', 'choose-material-bank', 'upload-localized-file', 'search-exact-filename', 'select', 'confirm', 'save-draft'],
-      directRichEditorUploadIsNotPersistedProof: true,
+      deviceUploadFlow: ['prepare-unique-filename', 'focus-exact-text-boundary', 'open-rich-description-upload', 'choose-device-upload', 'set-files', 'wait-cdn-insert', 'save-draft', 'reopen-same-product', 'verify-text-image-order-and-src'],
+      sameNameMaterialBankConflictReuseForbidden: true,
+      finalTwoImagesInsertAtDocumentEnd: true,
+      finalTwoImagesUploadTogetherInFixedOrder: true,
+      noContentAfterSecondFixedImage: true,
+      directDeviceUploadRequiresSaveReopenProof: true,
       prepareAssetBeforeMomoNavigation: true,
       uniqueFilenameAndFingerprintRequired: true,
       advertisementImagePreparedFromCleanMain: true,
@@ -687,17 +908,11 @@ function listingAutomationPolicy() {
       authenticatedTabIsPrimarySessionEvidence: true,
       deepLinkFailureAloneDoesNotMeanLoggedOut: true,
       retryCanonicalEntryBeforeLogin: true,
-      ordinaryPageOrTabFailureIsRecoverable: true,
-      alternateOfficialEntryRoutesRequiredBeforeBlocking: true,
-      recoveryRoutePriority: [
-        'current-authenticated-tab', 'same-official-url-in-fresh-work-tab',
-        'canonical-platform-entry', 'saved-draft-url', 'desktop-shortcut-or-browser-history',
-        'prior-successful-project-context', 'saved-credential-login'
-      ],
       submitSavedCredentialsWithoutRoutineConfirmation: true,
       resumeSameJobSkuDraftAndStageAfterLogin: true,
-      preserveExistingListingAndPreventDuplicateDuringEveryRecoveryRoute: true,
       neverOpenNativeWindowsFilePicker: true,
+      nativeFileUploadUsesJobSpecificLocalPathsDirectly: true,
+      userDesktopFolderForbiddenForTemporaryUploads: true,
       neverSwitchBrowserWorkspaceMidJob: true,
       stopForInteractiveAuthenticationOnly: true
     },
@@ -709,7 +924,7 @@ function listingAutomationPolicy() {
     },
     recoverableAuthenticationStates: ['login-expired', 'redirected-to-login', 'authenticated-tab-control-lost'],
     permanentBlockers: ['missing-required-data', 'explicit-platform-rejection', 'otp', 'captcha', 'saved-credentials-rejected', 'platform-account-disabled'],
-    humanHandoffOnlyFor: ['missing-required-data', 'explicit-platform-rejection', 'otp', 'captcha', 'saved-credentials-rejected', 'platform-account-disabled']
+    humanHandoffOnlyFor: ['missing-required-data', 'explicit-platform-rejection', 'otp', 'captcha', 'saved-credentials-rejected', 'platform-account-disabled', 'persistent-platform-error']
   };
 }
 
@@ -813,12 +1028,19 @@ function buildShopeeLogistics(snapshot) {
   const hasCompletePackage = dimensions.every((value) => value !== null && value > 0);
   const totalCm = hasCompletePackage ? dimensions.reduce((sum, value) => sum + value, 0) : 0;
   const longestCm = hasCompletePackage ? Math.max(...dimensions) : 0;
+  const sortedDimensions = hasCompletePackage ? dimensions.slice().sort((left, right) => right - left) : [];
+  const secondLongestCm = sortedDimensions[1] || 0;
   const weightKg = numberOrNull(snapshot.packageWeightKg);
   const hasValidWeight = weightKg !== null && weightKg > 0;
   const hsinchuBand = hasCompletePackage && longestCm <= 150 && totalCm <= 210
     && hasValidWeight && weightKg <= 20 ? hsinchuSizeBand(totalCm) : '';
   const canVerifyConvenience = hasCompletePackage && hasValidWeight;
-  const convenienceFits = canVerifyConvenience && longestCm <= 45 && totalCm <= 105 && weightKg <= 5;
+  const shopeeStoreFits = canVerifyConvenience && longestCm <= 45 && totalCm <= 105 && weightKg <= 5;
+  const sevenElevenFits = canVerifyConvenience && longestCm <= 45 && totalCm <= 105 && weightKg <= 10;
+  const familyMartFits = canVerifyConvenience && longestCm <= 45 && secondLongestCm <= 30
+    && totalCm <= 105 && weightKg < 10;
+  const homeDeliveryFits = canVerifyConvenience && longestCm <= 100 && totalCm <= 150 && weightKg <= 15;
+  const convenienceFits = shopeeStoreFits || sevenElevenFits || familyMartFits;
   const storedDecision = clean(snapshot.shippingDecision);
   const normalizedStoredDecision = ['convenience', 'home', 'freight', 'oversize'].includes(storedDecision)
     ? storedDecision
@@ -833,22 +1055,23 @@ function buildShopeeLogistics(snapshot) {
     || (canVerifyConvenience ? (convenienceFits ? 'convenience' : hsinchuBand ? 'freight' : 'oversize') : '');
   const convenience = decision === 'convenience' && convenienceFits;
   const freight = decision === 'freight';
-  const hsinchu = Boolean(['convenience', 'home', 'freight'].includes(decision) && hsinchuBand);
-  const sellerLargeDelivery = false;
+  const hsinchu = Boolean((convenience || freight) && hsinchuBand);
+  const sellerLargeDelivery = Boolean(canVerifyConvenience && !convenience
+    && (decision === 'home' || decision === 'oversize' || decision === 'freight'));
   const methods = [
     { label: '黑貓宅急便', enabled: false },
-    { label: '蝦皮店到店 - 隔日到貨', enabled: false },
-    { label: '蝦皮店到店', enabled: false },
-    { label: '7-ELEVEN', enabled: convenience },
+    { label: '蝦皮店到店 - 隔日到貨', enabled: convenience && shopeeStoreFits },
+    { label: '蝦皮店到店', enabled: convenience && shopeeStoreFits },
+    { label: '7-ELEVEN', enabled: convenience && sevenElevenFits },
     { label: '新竹物流', enabled: hsinchu, option: hsinchu ? hsinchuBand : '' },
-    { label: '全家', enabled: convenience },
+    { label: '全家', enabled: convenience && familyMartFits },
     {
       label: '賣家宅配：大型/超重物品運送',
       enabled: sellerLargeDelivery,
-      feeTwd: sellerLargeDelivery ? 0 : null
+      feeTwd: sellerLargeDelivery ? 100 : null
     },
     { label: '嘉里快遞', enabled: false },
-    { label: '店到家宅配', enabled: false }
+    { label: '店到家宅配', enabled: homeDeliveryFits }
   ];
   return {
     decision,
@@ -863,9 +1086,7 @@ function buildShopeeLogistics(snapshot) {
       sellerPays: false
     })),
     requiresJudgment: !hasCompletePackage || !hasValidWeight || !decision
-      || (decision === 'convenience' && !convenienceFits)
-      || (['home', 'freight'].includes(decision) && !hsinchu)
-      || decision === 'oversize',
+      || (decision === 'convenience' && !convenienceFits),
     requiresConfirmation: false
   };
 }
@@ -882,22 +1103,58 @@ function buildCoupangShipping(snapshot) {
     packageTotalCm: packageTotalCm === null ? null : Math.round(packageTotalCm * 100) / 100,
     sellerDelivery: {
       enabled: true,
-      contract: 'confirmed-hct-seller-delivery',
+      contract: 'platform-existing-seller-delivery',
+      carrier: 'HCT',
       carriers: ['HCT'],
-      carrierLabel: '新竹物流／新竹貨運',
-      forbiddenCarriers: ['Kerry', 'Black Cat', '嘉里大榮', '黑貓宅急便']
+      convenienceCarriersForbiddenWhenOversize: true
     },
     convenienceStore: {
-      enabled: convenienceFits,
-      stores: convenienceFits ? ['7-ELEVEN', 'FamilyMart'] : [],
+      enabled: false,
+      stores: [],
+      packageWouldFit: convenienceFits,
+      disabledByFixedCarrierPolicy: true,
       maximumTotalDimensionsCm: 101,
       maximumWeightKg: 10
     },
     preparationDays: 1,
     requiresJudgment: !hasCompletePackage || !hasValidWeight,
-    neverEnableConvenienceWhenOversize: true,
-    requireConfirmedHctMappingBeforeSubmit: true,
-    neverSubstituteUncontractedCarrier: true
+    neverEnableConvenienceWhenOversize: true
+  };
+}
+
+function buildMomoShipping(snapshot) {
+  const dimensions = [snapshot.packageLengthCm, snapshot.packageWidthCm, snapshot.packageHeightCm].map(numberOrNull);
+  const hasCompletePackage = dimensions.every((value) => value !== null && value > 0);
+  const packageTotalCm = hasCompletePackage ? dimensions.reduce((sum, value) => sum + value, 0) : null;
+  const weightKg = numberOrNull(snapshot.packageWeightKg);
+  const hasValidWeight = weightKg !== null && weightKg > 0;
+  const storedDecision = clean(snapshot.shippingDecision);
+  const explicitlyOversize = /大型|超重|不啟用超商|不可超商|oversize|freight/i.test(storedDecision);
+  const convenienceFitsConservativeLimit = hasCompletePackage && hasValidWeight
+    && packageTotalCm <= 101 && weightKg <= 10 && !explicitlyOversize;
+  return {
+    decidedOnceBeforePlatformNavigation: true,
+    temperature: 'ambient',
+    packageTotalCm: packageTotalCm === null ? null : Math.round(packageTotalCm * 100) / 100,
+    thirdParty: {
+      enabled: true,
+      method: MOMO_THIRD_PARTY_DELIVERY.method,
+      locationCode: MOMO_THIRD_PARTY_DELIVERY.locationCode,
+      locationLabel: MOMO_THIRD_PARTY_DELIVERY.locationLabel,
+      carrier: MOMO_THIRD_PARTY_DELIVERY.carrier
+    },
+    convenienceStore: {
+      enabled: convenienceFitsConservativeLimit,
+      packageWouldFit: convenienceFitsConservativeLimit,
+      conservativePreparedMaximumTotalDimensionsCm: 101,
+      conservativePreparedMaximumWeightKg: 10,
+      finalAvailabilityMustMatchCurrentMomoForm: true
+    },
+    oversizeMeansThirdPartyOnly: true,
+    requiresJudgment: !hasCompletePackage || !hasValidWeight,
+    source: explicitlyOversize ? 'manager-or-case-oversize' : convenienceFitsConservativeLimit
+      ? 'package-dimensions-conservative-limit' : hasCompletePackage && hasValidWeight
+        ? 'package-dimensions-third-party-only' : 'unresolved-package-measurements'
   };
 }
 
@@ -951,6 +1208,11 @@ function buildShopeeAutofillPayload(snapshot, easyStoreResult, trace = {}) {
     categoryPath: shopeeCategorySegments(snapshot.shopeeCategoryPath, snapshot),
     brand: snapshot.shopeeBrand || snapshot.brand,
     advancedDescription: snapshot.shopeeAdvancedDescription,
+    priceAdjustment: {
+      enabled: true,
+      synchronizeWithEasyStorePrice: true,
+      doNotSetAdjustmentModeOrValue: true
+    },
     attributes: normalizeShopeeAttributes(snapshot.shopeeAttributeValues),
     package: {
       lengthCm: snapshot.packageLengthCm,
@@ -1094,17 +1356,23 @@ function listingName(product, listingCase) {
   return clean(listingCase.researchedProductName || listingCase.productName || product.internalName || product.originalName || product.onlineName || product.name);
 }
 
+function stripFixedDescriptionNoticesText(value) {
+  return [LEGACY_PHYSICAL_PRODUCT_DISCLAIMER, ...FIXED_DESCRIPTION_NOTICES]
+    .reduce((result, notice) => result.split(notice).join(''), clean(value))
+    .trim();
+}
+
 function listingDescription(listingCase) {
   const description = clean(listingCase.productDescription || listingCase.commonProductDescription) || [
     clean(listingCase.shortDescription), clean(listingCase.featureList), clean(listingCase.specificationText)
   ].filter(Boolean).join('\n\n');
   const withoutWarranty = description.split(/\r?\n/).filter((line) => !/(?:保固|保修)/.test(line)).join('\n').trim();
-  const content = withoutWarranty.split(PHYSICAL_PRODUCT_DISCLAIMER).join('').trim();
-  return content ? `${content}\n\n${PHYSICAL_PRODUCT_DISCLAIMER}` : '';
+  const content = stripFixedDescriptionNoticesText(withoutWarranty);
+  return content ? `${content}\n\n${FIXED_DESCRIPTION_NOTICES.join('\n\n')}` : '';
 }
 
 function mergedVariantListingDescription(parentListingCase, childListingCase) {
-  const stripDisclaimer = (value) => clean(value).split(PHYSICAL_PRODUCT_DISCLAIMER).join('').trim();
+  const stripDisclaimer = (value) => stripFixedDescriptionNoticesText(value);
   const parent = stripDisclaimer(listingDescription(parentListingCase || {}));
   const child = stripDisclaimer(listingDescription(childListingCase || {}));
   let merged = child;
@@ -1112,12 +1380,12 @@ function mergedVariantListingDescription(parentListingCase, childListingCase) {
     merged = parent.includes(child) ? parent : `${parent}\n\n新增細項｜${clean(childListingCase && childListingCase.variantAttributeName) || '規格'}：${clean(childListingCase && childListingCase.variantAttributeValue) || '新細項'}\n${child}`;
   } else if (parent && !child) merged = parent;
   if (!merged) return '';
-  return `${merged}\n\n${PHYSICAL_PRODUCT_DISCLAIMER}`;
+  return `${merged}\n\n${FIXED_DESCRIPTION_NOTICES.join('\n\n')}`;
 }
 
 function listingDescriptionContentStatus(listingCase) {
   const description = listingDescription(listingCase);
-  const content = description.replace(PHYSICAL_PRODUCT_DISCLAIMER, '').trim();
+  const content = stripFixedDescriptionNoticesText(description);
   const lines = content.replace(/\r/g, '').split('\n').map(clean).filter(Boolean);
   const hasFeatureSection = lines.some((line) => /^商品特色[：:]?$/.test(line));
   const hasUsageSection = lines.some((line) => /^(?:使用方式(?:／適用情境)?|適用情境|使用重點|使用建議)[：:]?$/.test(line));
@@ -1161,8 +1429,8 @@ function listingDescriptionContentStatus(listingCase) {
       && /(?:商品內容與規格以|如需確認尺寸、相容性或包裝內容)/.test(content));
   const missing = [];
   if (!content) missing.push('商品介紹');
-  if (!hasFeatureSection || featureCount < RICH_CONTENT_FEATURE_TARGET) missing.push(`可驗證商品特色 ${RICH_CONTENT_FEATURE_TARGET} 點`);
-  if (!hasUsageSection || usageCount < RICH_CONTENT_USAGE_TARGET) missing.push(`使用方式／適用情境 ${RICH_CONTENT_USAGE_TARGET} 點`);
+  if (!hasFeatureSection || featureCount < 1) missing.push('可驗證商品特色');
+  if (!hasUsageSection || usageCount < 1) missing.push('使用方式／適用情境');
   if (!hasSpecificationSection || specificationCount < 1) missing.push('可驗證商品規格');
   const featureDetailCount = featurePoints.filter((point) => point.length >= RICH_CONTENT_MINIMUM_POINT_CHARACTERS).length;
   const usageDetailCount = usagePoints.filter((point) => point.length >= RICH_CONTENT_MINIMUM_POINT_CHARACTERS).length;
@@ -1170,7 +1438,7 @@ function listingDescriptionContentStatus(listingCase) {
     && usageCount >= RICH_CONTENT_MINIMUM_USAGE_POINTS
     && featureDetailCount === featureCount
     && usageDetailCount === usageCount;
-  if (!consumerReady) missing.push(`商品特色與使用方式各 ${RICH_CONTENT_FEATURE_TARGET} 點，每點約 ${RICH_CONTENT_RECOMMENDED_POINT_CHARACTERS} 個中文字`);
+  if (!consumerReady) missing.push('商品特色與使用方式須以完整、自然且對消費者有意義的句子撰寫');
   if (genericFallback) missing.push('通用備援文案尚未改寫');
   return {
     ready: Boolean(content) && !genericFallback && hasFeatureSection && featureCount > 0
@@ -1181,7 +1449,6 @@ function listingDescriptionContentStatus(listingCase) {
     featureDetailCount,
     usageDetailCount,
     minimumPointCharacters: RICH_CONTENT_MINIMUM_POINT_CHARACTERS,
-    recommendedPointCharacters: RICH_CONTENT_RECOMMENDED_POINT_CHARACTERS,
     consumerReady,
     specificationCount,
     featureTarget: RICH_CONTENT_FEATURE_TARGET,
@@ -1212,12 +1479,15 @@ function richContentLifecycle(listingIntent, descriptionStatus) {
 
 function appendPhysicalProductDisclaimerHtml(html) {
   let result = clean(html);
-  const blocks = [
-    `<p><strong>${PHYSICAL_PRODUCT_DISCLAIMER}</strong></p>`,
-    `<p>${PHYSICAL_PRODUCT_DISCLAIMER}</p>`
-  ];
+  ['實體商品說明', '出貨與保固說明', '保固協助說明'].forEach((heading) => {
+    result = result.replace(new RegExp(`<h[23]>\\s*${heading}\\s*<\\/h[23]>`, 'gi'), '');
+  });
+  const blocks = [LEGACY_PHYSICAL_PRODUCT_DISCLAIMER, ...FIXED_DESCRIPTION_NOTICES]
+    .flatMap((notice) => [`<p><strong>${notice}</strong></p>`, `<p>${notice}</p>`]);
   blocks.forEach((block) => { result = result.split(block).join(''); });
-  return `${result}<p><strong>${PHYSICAL_PRODUCT_DISCLAIMER}</strong></p>`;
+  result += `<h3>實體商品說明</h3><p>${PHYSICAL_PRODUCT_DISCLAIMER}</p>`;
+  result += `<h3>出貨與保固說明</h3><p>${WARRANTY_SUPPORT_NOTICE}</p>`;
+  return result;
 }
 
 function appendShopDescriptionPromos(html) {
@@ -1254,11 +1524,46 @@ function galleryImagesWithStorePromo(value, maximumCount = 7) {
   return productImages.length ? [...productImages, STORE_PROMO_IMAGE_URL] : [];
 }
 
+function easyStoreGalleryImages(snapshot) {
+  const plan = snapshot && snapshot.platformImagePlan && snapshot.platformImagePlan.easyStore
+    && typeof snapshot.platformImagePlan.easyStore === 'object'
+    ? snapshot.platformImagePlan.easyStore : {};
+  const baseImages = normalizeUrls([
+    ...(Array.isArray(plan.imageUrls) ? plan.imageUrls : []),
+    ...(Array.isArray(snapshot && snapshot.images) ? snapshot.images : [])
+  ], 30).filter((url) => url !== STORE_PROMO_IMAGE_URL && !DESCRIPTION_PROMO_IMAGE_URLS.includes(url));
+  const variants = snapshot && snapshot.variantGroupEnabled === true
+    ? (Array.isArray(snapshot.variantGroupVariants) ? snapshot.variantGroupVariants : []) : [];
+  if (!variants.length) return galleryImagesWithStorePromo(baseImages, 7);
+
+  // EasyStore 官方商品圖上限為 9 張，細項 image_id 又只能指向同一父商品圖片。
+  // 群組商品固定保留 1 張官網首圖、最多 7 張不同細項代表圖與最後 1 張店址圖；
+  // 有剩餘名額時才加入其他介紹圖。超過容量不得靜默漏掉細項圖。
+  const representativeImages = normalizeUrls(variants.map((row) => row && row.imageUrl), 30);
+  const marketingImages = baseImages.filter((url) => !representativeImages.includes(url));
+  if (!marketingImages[0] || representativeImages.length > 7) return [];
+  const productImages = normalizeUrls([
+    marketingImages[0],
+    ...representativeImages,
+    ...marketingImages.slice(1)
+  ], 8);
+  if (representativeImages.some((url) => !productImages.includes(url))) {
+    return [];
+  }
+  return productImages.length ? [...productImages, STORE_PROMO_IMAGE_URL] : [];
+}
+
 function fixedDescriptionSections(html) {
-  let source = clean(html)
-    .replace(new RegExp(`<p><strong>${PHYSICAL_PRODUCT_DISCLAIMER}</strong></p>`, 'g'), '')
-    .replace(new RegExp(`<p>${PHYSICAL_PRODUCT_DISCLAIMER}</p>`, 'g'), '')
-    .replace(/<p[^>]*>\s*<img\b[^>]*>\s*<\/p>/gi, '');
+  let source = clean(html);
+  ['實體商品說明', '出貨與保固說明', '保固協助說明'].forEach((heading) => {
+    source = source.replace(new RegExp(`<h[23]>\\s*${heading}\\s*<\\/h[23]>`, 'gi'), '');
+  });
+  [LEGACY_PHYSICAL_PRODUCT_DISCLAIMER, ...FIXED_DESCRIPTION_NOTICES].forEach((notice) => {
+    source = source
+      .split(`<p><strong>${notice}</strong></p>`).join('')
+      .split(`<p>${notice}</p>`).join('');
+  });
+  source = source.replace(/<p[^>]*>\s*<img\b[^>]*>\s*<\/p>/gi, '');
   const matches = [];
   const pattern = /<h[23]>\s*(商品特色|商品規格|使用方式(?:／適用情境)?|適用情境|使用重點|使用建議)\s*<\/h[23]>[\s\S]*?(?=<h[23]>|$)/gi;
   let match;
@@ -1280,40 +1585,9 @@ function descriptionImageBlock(url, alt = '商品介紹圖片') {
   return `<p><img src="${url}" alt="${alt}" style="max-width:100%;height:auto"></p>`;
 }
 
-function safeDescriptionHtmlToText(value) {
-  return clean(value)
-    .replace(/<\/(?:p|h[1-6]|li|ul|ol)>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '• ')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .split('\n').map(clean).filter(Boolean).join('\n');
-}
-
-function coupangContentsFromDescriptionHtml(html) {
-  const source = clean(html);
-  const contents = [];
-  const imagePattern = /<p[^>]*>\s*<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>\s*<\/p>/gi;
-  let cursor = 0;
-  let match;
-  const pushText = (fragment) => {
-    const content = safeDescriptionHtmlToText(fragment);
-    if (content) contents.push({ contentsType: 'TEXT', contentDetails: [{ content, detailType: 'TEXT' }] });
-  };
-  while ((match = imagePattern.exec(source))) {
-    pushText(source.slice(cursor, match.index));
-    const url = safeHttpUrl(match[1]);
-    if (url) contents.push({ contentsType: 'IMAGE', contentDetails: [{ content: url, detailType: 'IMAGE' }] });
-    cursor = match.index + match[0].length;
-  }
-  pushText(source.slice(cursor));
-  return contents;
-}
-
 function appendShopDescriptionImages(html, imageUrls) {
   const sections = fixedDescriptionSections(html);
-  const images = normalizeUrlSlots(imageUrls, 10)
+  const images = normalizeUrls(imageUrls, 10)
     .filter((url) => url !== STORE_PROMO_IMAGE_URL && !DESCRIPTION_PROMO_IMAGE_URLS.includes(url));
   let result = sections.introduction;
   if (images[0]) result += descriptionImageBlock(images[0]);
@@ -1505,50 +1779,35 @@ function buildFinalPlatformImagePlan(caseRows) {
   });
   const pool = [];
   const seen = new Set();
-  const coveredGroups = new Set();
   const pushRow = (row, groupIndex) => {
     if (!row || seen.has(row.url) || pool.length >= 12) return false;
     seen.add(row.url);
     pool.push(row);
-    if (Number.isInteger(groupIndex)) coveredGroups.add(groupIndex);
     return true;
   };
-  const findRoleRow = (role, excludedGroups = []) => {
-    const excluded = new Set(Array.isArray(excludedGroups) ? excludedGroups : [excludedGroups]);
-    for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
-      if (excluded.has(groupIndex)) continue;
-      const row = groups[groupIndex].find((candidate) => candidate.roles.includes(role));
-      if (row) return { row, groupIndex };
-    }
-    return null;
-  };
+  const rootRows = groups[0] || [];
 
-  // Reserve the three channel-specific hero roles before the 12-image cap can be consumed by
-  // one role. With multiple variants, put the reserved roles in different groups
-  // when possible so the pool still covers as many variants as the cap permits.
-  const reservedClean = findRoleRow('cleanMain');
-  if (reservedClean) pushRow(reservedClean.row, reservedClean.groupIndex);
-  const reservedBrand = findRoleRow('brandedHero', groups.length > 1 && reservedClean ? [reservedClean.groupIndex] : [])
-    || findRoleRow('brandedHero');
-  if (reservedBrand) pushRow(reservedBrand.row, reservedBrand.groupIndex);
-  const occupiedHeroGroups = [reservedClean, reservedBrand].filter(Boolean).map((entry) => entry.groupIndex);
-  const reservedStorefront = findRoleRow('storefrontPortrait', groups.length > occupiedHeroGroups.length ? occupiedHeroGroups : [])
-    || findRoleRow('storefrontPortrait');
-  if (reservedStorefront) pushRow(reservedStorefront.row, reservedStorefront.groupIndex);
+  // storefrontPortrait and brandedHero describe the whole parent listing. They are
+  // singleton group assets and must come from the root case; child variants only
+  // contribute their clean representative and genuinely distinct detail images.
+  pushRow(rootRows.find(storefrontPortraitRoleRow), 0);
+  pushRow(rootRows.find((row) => row.roles.includes('brandedHero')), 0);
 
-  // Give every not-yet-covered variant one representative before adding second
-  // images for already-covered variants. When there are more than 12 variants,
-  // this deterministic pass is the fairest possible bounded allocation.
+  // Give every variant one clean representative before adding any additional detail.
+  // The two group-level heroes consume two of the twelve shared slots, so at most ten
+  // variant representatives can fit when a group has more than ten variants.
   groups.forEach((rows, groupIndex) => {
-    if (coveredGroups.has(groupIndex) || pool.length >= 12) return;
+    if (pool.length >= 12) return;
     const representative = rows.find((row) => row.roles.includes('cleanMain') && cleanRepresentativeRoleRow(row))
       || rows.find((row) => row.roles.includes('variantRepresentative'))
-      || rows.find((row) => row.roles.some((role) => ['localizedDetail', 'specification'].includes(role)))
-      || rows[0];
+      || rows.find((row) => row.roles.some((role) => ['localizedDetail', 'specification'].includes(role)));
     pushRow(representative, groupIndex);
   });
-  for (let index = 0; pool.length < 12 && groups.some((rows) => index < rows.length); index += 1) {
-    groups.forEach((rows, groupIndex) => pushRow(rows[index], groupIndex));
+  const additionalRows = groups.map((rows) => rows.filter((row) => (
+    !row.roles.includes('storefrontPortrait') && !row.roles.includes('brandedHero')
+  )));
+  for (let index = 0; pool.length < 12 && additionalRows.some((rows) => index < rows.length); index += 1) {
+    additionalRows.forEach((rows, groupIndex) => pushRow(rows[index], groupIndex));
   }
   const urls = (values) => normalizeUrls(values.map((row) => row.url), 12);
   const cleanRows = pool.filter((row) => row.roles.includes('cleanMain') && cleanRepresentativeRoleRow(row));
@@ -1562,8 +1821,12 @@ function buildFinalPlatformImagePlan(caseRows) {
     const found = new Set();
     return values.filter((row) => row && !found.has(row.url) && found.add(row.url));
   };
-  const easyRows = uniqueRows(storefrontRows.concat(cleanRows, detailRows, brandedRows, pool));
-  const shopeeRows = uniqueRows(brandedRows.concat(cleanRows, detailRows, pool));
+  const nonHeroRows = pool.filter((row) => !row.roles.includes('brandedHero') && !row.roles.includes('storefrontPortrait'));
+  // Each platform gallery may contain only one green Youzi template. EasyStore
+  // uses the locked 4:3 storefront output, so the square branded hero must not
+  // be appended again later in the same gallery.
+  const easyRows = uniqueRows(storefrontRows.concat(cleanRows, detailRows, nonHeroRows));
+  const shopeeRows = uniqueRows(brandedRows.concat(cleanRows, detailRows, nonHeroRows));
   const cleanFirst = cleanRows.slice(0, 1);
   const promoRow = pool.find((row) => (!cleanFirst[0] || row.url !== cleanFirst[0].url)
     && row.assetFlags.momoPromotionEligible
@@ -1571,11 +1834,10 @@ function buildFinalPlatformImagePlan(caseRows) {
     && !row.assetFlags.containsText && !row.assetFlags.greenBrandTemplate
     && row.roles.some((role) => ['cleanMain', 'localizedDetail', 'specification'].includes(role)));
   const secondaryBrand = safeBrandedRows.find((row) => !cleanFirst[0] || row.url !== cleanFirst[0].url);
-  const nonBrandedRemainder = pool.filter((row) => !row.roles.includes('brandedHero') && !row.roles.includes('storefrontPortrait'));
-  const coupangRows = uniqueRows(cleanFirst.concat(secondaryBrand || [], nonBrandedRemainder, detailRows));
+  const coupangRows = uniqueRows(cleanFirst.concat(secondaryBrand || [], nonHeroRows, detailRows));
   // MOMO's promotion material must be visible in position 2 or 3. Put it second,
   // then allow at most one safe branded secondary image.
-  const momoRows = uniqueRows(cleanFirst.concat(promoRow || [], secondaryBrand || [], nonBrandedRemainder, detailRows));
+  const momoRows = uniqueRows(cleanFirst.concat(promoRow || [], secondaryBrand || [], nonHeroRows, detailRows));
   const momoPromoCandidates = momoRows.slice(1, 3);
   const orderedPromoRow = momoPromoCandidates.find((row) => row.assetFlags.momoPromotionEligible
     && !row.assetFlags.containsLogo && !row.assetFlags.containsContactInfo && !row.assetFlags.containsQrCode
@@ -1643,7 +1905,7 @@ function finalizePreparedMediaSnapshot(frozenInputSnapshot, currentCasesById) {
           customerFacingDerivative: 'label-only',
           labelText: '實體圖',
           aiEditingForbidden: true,
-          placement: 'description-only-after-completed-images-before-final-disclaimer',
+          placement: 'description-only-after-completed-images-before-fixed-notices-and-final-promos',
           neverUseAsMainImage: true
         },
         sourceImageRetention: currentCase.sourceImageRetentionPolicy && typeof currentCase.sourceImageRetentionPolicy === 'object'
@@ -1883,7 +2145,7 @@ function buildCanonicalCategoryDecision(snapshot) {
 
 function buildListingDecisionContract(snapshot) {
   return {
-    version: 1,
+    version: 2,
     mode: 'deterministic-workflow-with-structured-judgment',
     immutableForJob: true,
     deterministicSteps: [
@@ -1901,8 +2163,22 @@ function buildListingDecisionContract(snapshot) {
       shopeeFirstImageRole: 'brandedHero',
       coupangFirstImageRole: 'cleanMain',
       momoFirstImageRole: 'cleanMain',
+      singleGreenBrandTemplatePerPlatformGallery: true,
+      easyStoreTaxable: false,
+      easyStoreCompareAtMarkupPercent: 35,
+      easyStoreBarcodeOptional: true,
+      easyStoreFeatureBulletMinChars: 24,
+      easyStoreFeatureBulletMaxChars: 30,
+      easyStoreSeoTitleMaxChars: 70,
+      easyStoreSeoDescriptionMaxChars: 180,
+      easyStoreSeoUiFallbackWhenPublicApiIgnoresFields: true,
+      coupangAttributeNameMaxChars: 25,
+      coupangExcludedRedundantAttributes: ['Parent Manufacturer Part Number', 'Manufacturer Part Number'],
+      coupangContentType: 'HTML',
+      coupangContentDetailType: 'TEXT',
+      coupangContentDetailMustRemainNonEmpty: true,
       physicalImageTransform: 'label-only-with-original-retained',
-      physicalImagePlacement: 'description-only-after-completed-images-before-disclaimer-and-fixed-promos',
+      physicalImagePlacement: 'description-only-after-completed-images-before-fixed-notices-and-final-promos',
       galleryLastImage: STORE_PROMO_IMAGE_URL,
       descriptionLayoutVersion: DESCRIPTION_LAYOUT_VERSION,
       descriptionLastImageUrls: [...DESCRIPTION_PROMO_IMAGE_URLS],
@@ -1923,7 +2199,32 @@ function buildListingDecisionContract(snapshot) {
       imageLocalization: {
         resolver: 'codex-vision', required: true,
         output: ['sourceImageUrl', 'url', 'roles', 'assetFlags'],
-        rules: ['zh-TW', 'mainland-terms-to-taiwan', 'remove-or-reflow-cropped-text', 'never-invent-unverified-content']
+        rules: ['zh-TW', 'mainland-terms-to-taiwan', 'remove-or-reflow-cropped-text', 'never-invent-unverified-content'],
+        ordinaryDetailMode: 'text-localization-only',
+        appliesToRoles: ['localizedDetail', 'specification', 'variantRepresentative'],
+        excludesRoles: ['cleanMain', 'brandedHero', 'storefrontPortrait'],
+        preserveExactly: [
+          'product', 'layout', 'composition', 'background', 'crop', 'aspect-ratio',
+          'colors', 'icons', 'information-hierarchy', 'text-position', 'typography-style'
+        ],
+        allowedMutations: [
+          'simplified-to-traditional-chinese',
+          'remove-third-party-watermark-or-outbound-seller-information',
+          'remove-entire-truncated-text-block-or-retype-only-verified-complete-copy',
+          'format-normalization-without-recomposition'
+        ],
+        forbiddenMutations: [
+          'redesign', 'recompose', 'change-background', 'change-product',
+          'add-marketing-copy', 'invent-feature', 'reorder-information', 'crop-product'
+        ],
+        textReplacementMethod: 'ocr-recognize-erase-original-text-and-retype-with-real-traditional-chinese-font',
+        handDrawnOrPaintedGlyphsForbidden: true,
+        preserveOriginalTypographyCharacterWhenPossible: true,
+        blurryTinyOrIncompleteSourceAction: 'find-clearer-complete-source-or-skip',
+        blurrySourceUpscalingForbidden: true,
+        newMarketingCopyForbidden: true,
+        unchangedWhenNoSimplifiedTextOrForbiddenMarks: true,
+        failClosedWhenPixelPreservationCannotBeVerified: true
       },
       heroSourceSelection: {
         resolver: 'codex-vision', required: true,
@@ -1935,16 +2236,12 @@ function buildListingDecisionContract(snapshot) {
         standardVersion: RICH_CONTENT_STANDARD_VERSION,
         featureTarget: RICH_CONTENT_FEATURE_TARGET,
         usageTarget: RICH_CONTENT_USAGE_TARGET,
-        recommendedPointCharacters: RICH_CONTENT_RECOMMENDED_POINT_CHARACTERS,
         requiredDescriptionSections: ['商品特色', '使用方式／適用情境', '商品規格'],
-        sourcePriority: ['case-original-images-and-ocr', 'existing-product-copy', 'verified-model-or-barcode', 'official-manufacturer-material', 'trusted-supplementary-sources'],
-        originalImagesAndExistingCopyMustBeAnalyzedBeforeGeneration: true,
         fillEveryVerifiableAttribute: true,
         requireExactModelOrBarcodeEvidence: true,
         neverInventToReachTarget: true,
         forbidStoreNameInTitleAndCopy: true,
-        physicalProductDisclaimerImmediatelyBeforeFixedPromos: PHYSICAL_PRODUCT_DISCLAIMER,
-        fixedDescriptionPromosAreAbsoluteFinalBlocks: [...DESCRIPTION_PROMO_IMAGE_URLS],
+        fixedDescriptionNoticesBeforeFinalPromos: [...FIXED_DESCRIPTION_NOTICES],
         newProductRule: 'complete-before-first-publish',
         existingProductRule: 'upgrade-in-place-and-preserve-listing-identity',
         genericFallbackIsIncomplete: true,
@@ -1979,8 +2276,8 @@ function buildListingDecisionContract(snapshot) {
 
 function buildPlatformPageContracts() {
   const common = {
-    version: 3,
-    observedAt: '2026-08-22',
+    version: 4,
+    observedAt: '2026-08-30',
     cacheScope: 'platform-and-layout-signature',
     selectorStrategy: ['stable-label', 'name', 'data-attribute', 'role', 'relative-section'],
     forbidVolatileElementIdAsOnlySelector: true,
@@ -2029,7 +2326,7 @@ function buildPlatformPageContracts() {
   };
   return {
     momo: {
-      ...common, version: 3, routeKey: 'momo-product-create-or-same-draft',
+      ...common, version: 5, routeKey: 'momo-product-create-or-same-draft',
       canonicalEntry: { route: 'B101 新增/管理商品', purpose: 'new-case-start' },
       verifiedFromLivePage: true,
       authenticatedLandmarks: ['momo 店＋管理系統', '商品', 'B101 新增/管理商品'],
@@ -2054,20 +2351,33 @@ function buildPlatformPageContracts() {
         { key: 'content-and-publish', fields: ['rich-description', 'promotion-material-bank-image', 'momo-promotion-consent', 'slogan-and-short-features', 'store-category', 'warranty', 'publish-time', 'submit'] }
       ],
       imageConstraints: {
-        main: { aspectRatio: '1:1', minimumFileBytes: 38000, maximumFileBytes: 1000000, minimumCount: 1, maximumCount: 6 },
-        promotion: { minimumFileBytes: 38000, maximumFileBytes: 1000000, forbidOverlayTextFrameAndWatermark: true },
-        promotionMaterialBankRequired: true,
+        main: { aspectRatio: '1:1', widthPx: 1000, heightPx: 1000, minimumFileBytes: 38000, maximumFileBytes: 1000000, minimumCount: 1, maximumCount: 6 },
+        advertisement: { aspectRatio: '1:1', widthPx: 1000, heightPx: 1000, minimumFileBytes: 38000, maximumFileBytes: 1000000, forbidOverlayTextFrameAndWatermark: true },
+        richDescription: { widthPx: 1000, maximumHeightPx: 1500, maximumFileBytes: 500000, maximumCount: 20 },
+        promotionMaterialBankRequired: false,
+        uniqueDeviceFilenameRequired: true,
+        sameNameMaterialBankConflictReuseForbidden: true,
         promotionMaterialMustSurviveDraftReopen: true
+      },
+      titleConstraints: { maximumCharacters: 60, displayedBrandIsPrependedByPlatform: true, repeatBrandInProductName: false },
+      shortFeatureConstraints: { sloganMaximumCharacters: 15, featureMaximumCharacters: 15, featureMaximumCount: 3 },
+      otherProductInformationPolicy: {
+        purpose: 'category-dependent-facts-and-compliance-not-marketing-copy',
+        fillOnlyFromVerifiedEvidence: true,
+        neverInventCertificationOriginMaterialOrAccessory: true
       },
       promotionInsertFlow: {
         target: 'rich-description-editor',
-        steps: ['open-rich-description-upload', 'choose-material-bank', 'search-exact-filename', 'select-and-confirm', 'save-draft', 'verify-contenteditable-img-src', 'submit'],
+        steps: ['prepare-unique-filename', 'focus-exact-text-boundary', 'open-rich-description-upload', 'choose-device-upload', 'set-files', 'wait-cdn-insert', 'save-draft', 'reopen-same-product', 'verify-text-image-order-and-src', 'submit'],
+        finalTwoImagesCursorPlacement: 'document-end',
+        finalTwoImagesBatchOrder: ['description-promo-1', 'description-promo-2'],
+        noTextOrImageAfterSecondFixedImage: true,
         requiredBeforeFirstSubmit: true,
         mainOrAdvertisementImageIsNotEvidence: true,
         persistedEvidence: 'contenteditable-html-img-src'
       },
       firstSubmissionMediaGate: {
-        requiredSlots: ['main-images', 'advertisement-image', 'promotion-material-bank-image'],
+        requiredSlots: ['main-images', 'advertisement-image', 'rich-description-images'],
         prepareAllBeforePlatformSubmit: true,
         saveAndVerifySameDraftBeforeFirstSubmit: true,
         missingPromotionErrorIsNeverExpectedControlFlow: true,
@@ -2103,15 +2413,20 @@ function buildPlatformPageContracts() {
       dynamicFields: ['mapped-leaf-category', 'category-dependent-attributes', 'regulatory-fields-when-verified', 'platform-validation-errors']
     },
     coupang: {
-      ...common, version: 3, routeKey: 'coupang-create-via-image-or-same-draft',
+      ...common, version: 4, routeKey: 'coupang-create-via-image-or-exact-existing-listing',
       canonicalEntry: { route: '商品管理/建立商品', purpose: 'new-case-start' },
       verifiedFromLivePage: true,
-      inventoryStatus: 'verified-from-live-create-flow-2026-08-22',
+      inventoryStatus: 'verified-from-live-create-and-existing-edit-flow-2026-08-30',
       authenticatedLandmarks: ['Coupang Wing', '商品管理'],
       loginProbe: { fields: ['輸入帳號', '輸入密碼'], submitLabel: '登入', interactiveAuthenticationMayBeRequired: true },
       pageSignature: {
         sections: ['圖片與類別', '商品資訊產生', '選項與價格庫存', '配送', '商品介紹與合規', '發布'],
         stableLandmarks: ['以圖片建立', '類別', '品牌', '產生商品資訊', '銷售價格', '庫存', '建立產品']
+      },
+      existingListingEditSignature: {
+        sections: ['顯示商品名稱', '產品基本資訊', '產品屬性', '選項', '商品圖片', '詳細說明', '重要商品資訊', '出貨資訊', '退貨資訊'],
+        stableLandmarks: ['商品已審核通過', '已寫入HTML', 'PC 預覽', '申請修改'],
+        exactIdentityFields: ['Vendor Inventory ID', '賣家商品編號', '型號']
       },
       fieldOrder: [
         'clean-main-image', 'secondary-completed-images', 'music-leaf-category', 'verified-brand-or-no-brand',
@@ -2148,6 +2463,22 @@ function buildPlatformPageContracts() {
         exactSkuLookupMaximum: 1,
         underReviewMeansSubmittedNotActive: true
       },
+      existingListingEditFlow: {
+        exactSkuAndVendorInventoryIdRequired: true,
+        expandAvailableProductAttributesOnce: true,
+        fillOnlyVerifiedAttributes: true,
+        leaveUnknownAttributesBlank: true,
+        verifiedSixStringMapping: {
+          unit: '弦', value: 6,
+          requiredScopes: ['product-basic-information', 'each-option-attribute-dialog'],
+          recheckBothScopesBeforeSubmit: true
+        },
+        galleryFinalSlot: 'product-listing-store-promo.png',
+        htmlEditSequence: ['修改', '寫入固定內容', 'PC 預覽', '儲存', '重開核對', '申請修改'],
+        fixedNoticeHeadings: ['實體商品說明', '出貨與保固說明'],
+        secondFixedImageMustEndDescription: true,
+        submitMayTriggerReviewAndPauseSales: true
+      },
       fixedFields: ['warranty-days-180', 'preparation-days-1', 'tw-general', 'minor-purchase-allowed', 'taxable', 'submit-for-review'],
       dynamicFields: ['mapped-music-leaf-category', 'category-dependent-attributes', 'verified-brand', 'origin', 'package-shipping', 'platform-validation-errors']
     },
@@ -2172,8 +2503,11 @@ function buildPlatformPageContracts() {
         { key: 'commerce-and-shipping', fields: ['variant-dimensions-and-weight', 'tax-and-free-shipping', 'inventory-tracking'] },
         { key: 'metadata-and-publish', fields: ['seo-url-and-meta-description', 'publish-state', 'sales-channels', 'category-brand-vendor-tags-notes', 'save'], dynamic: true }
       ],
-      fixedFields: ['publish-immediately'],
-      dynamicFields: ['mapped-category', 'platform-validation-errors']
+      fixedFields: [
+        'publish-immediately', 'taxable-off', 'inventory-tracking-on', 'seo-title-max-70', 'seo-description-max-180',
+        'pre-resolved-existing-store-collections', 'exact-brand-only'
+      ],
+      dynamicFields: ['unmapped-category-exception', 'brand-not-found-exception', 'platform-validation-errors']
     },
     shopee: {
       ...common, routeKey: 'easystore-shopee-channel-sync',
@@ -2205,6 +2539,18 @@ function buildPlatformPageContracts() {
 function buildPreparedPlatformFieldPlan(snapshot) {
   const shipping = buildShopeeLogistics(snapshot);
   const coupangShipping = buildCoupangShipping(snapshot);
+  const momoShipping = buildMomoShipping(snapshot);
+  const momoFeatures = snapshot.momoShortFeatures && typeof snapshot.momoShortFeatures === 'object'
+    ? {
+      ...snapshot.momoShortFeatures,
+      slogan: Array.from(clean(snapshot.momoShortFeatures.slogan)).slice(0, 15).join(''),
+      featureTexts: (Array.isArray(snapshot.momoShortFeatures.featureTexts)
+        ? snapshot.momoShortFeatures.featureTexts : [])
+        .map((value) => Array.from(clean(value)).slice(0, 15).join('')).filter(Boolean).slice(0, 3)
+    }
+    : momoShortFeaturePlan(snapshot.description, snapshot.momoSlogan);
+  const preparedMomoMarketPrice = momoMarketPrice(snapshot);
+  const easyStoreCollections = resolveEasyStoreCollectionNames(snapshot);
   const packageWeightKg = numberOrNull(snapshot.packageWeightKg);
   const packageWeightGrams = packageWeightKg !== null && packageWeightKg > 0
     ? Math.max(1, Math.round(packageWeightKg * 1000)) : null;
@@ -2258,7 +2604,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     ? `${normalizeSku(snapshot.sku) || 'product'}-momo-promo-${momoPromotionFingerprint}.jpg` : '';
   const momoMediaReadyBeforeFirstSubmit = Boolean(momoMainImageUrl && momoPromotionImageUrl);
   return {
-    version: 16,
+    version: 21,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -2297,6 +2643,10 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     storefrontPortraitAssetStandard: { ...(snapshot.imagePolicy && snapshot.imagePolicy.storefrontPortraitAssetStandard || {}) },
     brandTemplateContract: JSON.parse(JSON.stringify(snapshot.imagePolicy && snapshot.imagePolicy.brandTemplateContract || BRAND_TEMPLATE_CONTRACT)),
     sourceImageNormalization: { ...(snapshot.imagePolicy && snapshot.imagePolicy.sourceNormalization || {}) },
+    ordinaryDetailImageLocalization: { ...(
+      snapshot.decisionContract && snapshot.decisionContract.judgmentFields
+      && snapshot.decisionContract.judgmentFields.imageLocalization || {}
+    ) },
     decisionContractVersion: Number(snapshot.decisionContract && snapshot.decisionContract.version) || 0,
     canonicalCategoryDecision: { ...(snapshot.canonicalCategoryDecision || {}) },
     canonicalShippingDecision: { ...shipping },
@@ -2315,6 +2665,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     momo: {
       fixedFields: {
         publishImmediately: true,
+        warrantyEnabled: true,
         warrantyDays: 180,
         deliveryMethod: MOMO_THIRD_PARTY_DELIVERY.method,
         thirdPartyLocationCode: MOMO_THIRD_PARTY_DELIVERY.locationCode,
@@ -2328,13 +2679,44 @@ function buildPreparedPlatformFieldPlan(snapshot) {
       },
       preparedFields: {
         sku: snapshot.sku,
-        title: snapshot.momoGoodsName,
-        slogan: snapshot.momoSlogan,
+        itemNumber: snapshot.sku,
+        manufacturerProductNumber: clean(snapshot.model) || snapshot.sku,
+        barcode: clean(snapshot.barcode),
+        brand: {
+          value: clean(snapshot.brand),
+          mode: 'exact-verified-brand',
+          neverApproximate: true,
+          missingExactBrandAction: 'stop-for-brand-resolution'
+        },
+        title: momoProductName(snapshot.momoGoodsName, snapshot.brand),
+        titlePolicy: {
+          maximumCharacters: 60,
+          platformDisplaysSelectedBrandBeforeName: true,
+          repeatBrandInsideName: false
+        },
+        slogan: momoFeatures.slogan,
+        shortFeatures: momoFeatures,
         descriptionHtml: snapshot.momoHtml,
         descriptionDelivery: { ...(snapshot.platformDescriptionContentPlan && snapshot.platformDescriptionContentPlan.momo || {}) },
         price: snapshot.momoPrice,
+        marketPrice: preparedMomoMarketPrice,
+        marketPricePolicy: {
+          explicitVerifiedValueHasPriority: true,
+          fallbackMarkupRate: 0.35,
+          allowedManagerRange: { minimum: 0.30, maximum: 0.40 },
+          mustExceedSalePrice: true
+        },
         stock: snapshot.stock,
         categoryCode: snapshot.momoCategoryCode,
+        categoryAttributes: normalizeMomoAttributes(snapshot.momoAttributeValues),
+        otherProductInformation: {
+          values: normalizeMomoAttributes(snapshot.momoOtherProductInformation),
+          purpose: 'category-dependent-product-facts-and-compliance',
+          marketingCopyForbidden: true,
+          fillOnlyFromVerifiedEvidence: true,
+          neverGuess: ['NCC', 'BSMI', '產地', '材質', '配件', '認證字號'],
+          unresolvedRequiredFieldAction: 'stop-before-submit-with-exact-label'
+        },
         imageUrls: galleryImagesWithStorePromo(snapshot.platformImagePlan.momo.imageUrls, 6),
         advertisementImageUrl: momoMainImageUrl,
         promotionImageUrl: momoPromotionImageUrl,
@@ -2357,6 +2739,10 @@ function buildPreparedPlatformFieldPlan(snapshot) {
             deduplicateBeforeInsert: true
           }
         },
+        shipping: momoShipping,
+        storeCategoryNames: Array.isArray(snapshot.momoStoreCategoryNames)
+          ? snapshot.momoStoreCategoryNames.slice(0, 5) : [],
+        warranty: { enabled: true, days: 180 },
         capacityGate: {
           enabled: true,
           maximumListings: Number(snapshot.momoCatalogPolicy && snapshot.momoCatalogPolicy.maximumListings) || 1000,
@@ -2377,13 +2763,24 @@ function buildPreparedPlatformFieldPlan(snapshot) {
           neverCreateReplacementDraft: true,
           noSafeCandidateAction: 'stop-with-exact-reason'
         },
-        storeCategoryPolicy: { maximumCount: 5, relevantOnly: true },
+        storeCategoryPolicy: {
+          maximumCount: 5,
+          relevantOnly: true,
+          resolveFromAuthenticatedAccountOptionsOnce: true,
+          matchUsing: ['canonical-category', 'verified-product-type', 'title'],
+          userSpecificAndNotInferableBeforeLogin: true
+        },
         variantGroup: variantGroup.enabled ? {
           attributeName: variantGroup.attributeName,
           items: variantGroup.items.map((row) => ({ ...row, price: row.momoPrice }))
         } : null
       },
-      dynamicOnly: ['official-category-recommendation-when-code-is-empty', 'category-dependent-attributes', 'platform-validation-errors']
+      dynamicOnly: [
+        'official-category-recommendation-when-code-is-empty',
+        'category-dependent-attributes',
+        'authenticated-account-store-category-options',
+        'platform-validation-errors'
+      ]
     },
     coupang: {
       fixedFields: {
@@ -2400,6 +2797,11 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         sku: snapshot.sku,
         title: snapshot.coupangTitle,
         descriptionHtml: snapshot.coupangDescriptionHtml,
+        contentPayload: {
+          contentsType: 'HTML',
+          detailType: 'TEXT',
+          preserveNonEmptyContentWhenRemovingImages: true
+        },
         descriptionDelivery: { ...(snapshot.platformDescriptionContentPlan && snapshot.platformDescriptionContentPlan.coupang || {}) },
         price: snapshot.coupangPrice,
         stock: snapshot.stock,
@@ -2421,6 +2823,30 @@ function buildPreparedPlatformFieldPlan(snapshot) {
           price: snapshot.coupangPrice,
           stock: snapshot.stock
         },
+        attributePolicy: {
+          maximumNameCharacters: 25,
+          excludeRedundantNames: ['Parent Manufacturer Part Number', 'Manufacturer Part Number'],
+          retainModelAndSkuFields: true,
+          fillOnlyVerifiedFacts: true,
+          leaveUnknownFactsBlank: true,
+          verifiedSixStringMapping: {
+            field: '吉他琴橋線(弦)數', unit: '弦', value: 6,
+            requiredScopes: ['product-basic-information', 'each-option-attribute-dialog']
+          }
+        },
+        existingListingEdit: {
+          preserveVendorInventoryId: true,
+          galleryStorePromoMustBeLast: true,
+          htmlEditorRowLandmark: '已寫入HTML',
+          htmlPreviewAction: 'PC 預覽',
+          fixedNoticeHeadings: ['實體商品說明', '出貨與保固說明'],
+          noContentAfterSecondFixedImage: true,
+          submitAction: '申請修改',
+          optionAttributeEditAction: '編輯',
+          saveEachOptionAttributeBeforeSubmit: true,
+          recheckProductAndOptionAttributesBeforeSubmit: true,
+          successLandmark: '修改申請完成'
+        },
         shipping: coupangShipping,
         imageUrls: galleryImagesWithStorePromo(snapshot.platformImagePlan.coupang.imageUrls),
         variantGroup: variantGroup.enabled ? {
@@ -2437,12 +2863,23 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         preserveCompletedSections: true,
         resumeSameDraft: true,
         exactSkuVerificationMaximum: 1,
-        neverSearchByTitle: true
+        neverSearchByTitle: true,
+        existingListingEditMustRemainOnSameVendorInventoryId: true,
+        previewSaveAndReopenHtmlBeforeSubmit: true,
+        optionValidationRecoveryStaysOnSameListing: true,
+        finalExactSkuVerificationRequiresSameVendorInventoryId: true
       },
       dynamicOnly: ['official-category-recommendation-when-code-is-empty', 'category-dependent-attributes', 'verified-origin', 'platform-validation-errors']
     },
     easyStore: {
-      fixedFields: { publishImmediately: true, inventoryManagement: 'easystore', shippingRequired: true },
+      fixedFields: {
+        publishImmediately: true,
+        inventoryManagement: 'easystore',
+        shippingRequired: true,
+        categoryAndBrandPreparedBeforeNavigation: true,
+        exactBrandOnly: true,
+        neverUseApproximateBrand: true
+      },
       preparedFields: {
         sku: snapshot.sku,
         title: snapshot.title,
@@ -2450,20 +2887,36 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         descriptionDelivery: { ...(snapshot.platformDescriptionContentPlan && snapshot.platformDescriptionContentPlan.easyStore || {}) },
         price: snapshot.easyStorePrice,
         stock: snapshot.stock,
+        collectionNames: easyStoreCollections,
+        categoryResolution: {
+          source: snapshot.easyStoreCollectionNames && snapshot.easyStoreCollectionNames.length ? 'explicit-case-selection' : 'fixed-catalog-keyword-map',
+          resolvedBeforeNavigation: easyStoreCollections.length > 0,
+          availableCollectionNames: [...EASYSTORE_COLLECTION_CATALOG]
+        },
+        brand: {
+          value: snapshot.brand,
+          mode: snapshot.brand ? 'exact-brand' : 'blank-until-verified',
+          createOnlyExactVerifiedBrand: true,
+          neverUseApproximateBrand: true
+        },
         imageUrls: galleryImagesWithStorePromo(snapshot.platformImagePlan.easyStore.imageUrls),
         variantGroup: variantGroup.enabled ? {
           attributeName: variantGroup.attributeName,
           items: variantGroup.items.map((row) => ({ ...row, price: row.easyStorePrice }))
         } : null
       },
-      dynamicOnly: ['api-validation-errors']
+      dynamicOnly: ['unmapped-category-exception', 'brand-not-found-exception', 'api-validation-errors']
     },
     shopee: {
       fixedFields: {
         workspace: 'easystore-shopee-channel-sync',
         publishImmediately: true,
         warrantyDays: 180,
-        neverOpenDirectSellerEditor: true,
+        neverOpenDirectSellerEditor: false,
+        verifyInShopeeSellerCenterAfterEasyStoreSync: true,
+        directSellerEditorFallbackWhenDescriptionImagesMissing: true,
+        sellerCenterDescriptionImageCountMustPersistAfterReload: true,
+        easyStorePreviewIsNotFinalShopeeEvidence: true,
         startImmediatelyAfterEasyStoreVerified: true,
         doNotWaitForMomoOrCoupang: true,
         closeEmbeddedChatBeforeFormInteraction: true,
@@ -2471,22 +2924,30 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         neverOpenNativeFilePickerForVariantImages: true,
         completeVariantImagesBeforePreparePublish: true,
         advancedDescription: {
-          mode: 'use-easystore-rich-description-with-native-image-transfer',
+          mode: 'seller-center-native-file-upload-interleaved',
           preparedBeforeNavigation: true,
-          enableWhenAvailable: true,
-          useEasyStoreDescription: true,
-          capabilityProbeMaximum: 1,
+          skipEasyStoreDescriptionImport: true,
+          transferImagesThroughShopeeNativeUploader: true,
+          memoryOnlyImageStaging: false,
+          desktopDownloadRequired: true,
+          dedicatedLocalStagingDirectoryRequired: true,
+          uploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
+          deleteLocalStagingOnlyAfterReloadVerification: true,
+          neverDeleteUntrackedUserFiles: true,
+          expectedEditorImageCountSource: 'prepared-description-images',
           rejectZeroImageDescriptionBeforePublish: true,
           requiredFirstImageRole: 'brandedHero',
           fixedLastTwoImageCount: 2,
           platformMaximumImageCount: 12,
+          imagePreflight: { ...SHOPEE_IMPORTED_DESCRIPTION_IMAGE_STANDARD },
           requireTextAndEveryPreparedImageBeforePublish: true,
-          insertMissingPreparedImagesIntoSameEditor: true,
-          replaceAllEditorImagesWithPreparedSet: true,
+          replaceSellerEditorWithPreparedTextBlocks: true,
+          uploadPreparedImagesAtPlannedTextBoundaries: true,
           rejectDataAndBlobImagesBeforePublish: true,
           requireExactPreparedImageCountAndOrder: true,
           placement: 'interleaved-fixed-layout-v1',
           buttonClickAloneIsNeverSuccess: true,
+          requireShopeeSellerCenterReloadEvidence: true,
           neverAnalyzeOrRewriteInsideShopee: true
         }
       },
@@ -2495,6 +2956,11 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         title: snapshot.shopeeTitle,
         description: snapshot.shopeeDescription,
         advancedDescription: { ...(snapshot.shopeeAdvancedDescription || {}) },
+        priceAdjustment: {
+          enabled: true,
+          synchronizeWithEasyStorePrice: true,
+          doNotSetAdjustmentModeOrValue: true
+        },
         descriptionDelivery: { ...(snapshot.platformDescriptionContentPlan && snapshot.platformDescriptionContentPlan.shopee || {}) },
         price: snapshot.easyStorePrice,
         stock: snapshot.stock,
@@ -2645,30 +3111,25 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     ? normalizeUrls([
       ...listingCaseDetailImageUrls(variantParentListingCase, finalizedMediaSnapshot, listingCase.variantParentProductId),
       ...listingCaseDetailImageUrls(listingCase, finalizedMediaSnapshot, productId)
-    ], 18)
+    ], 19)
     : imageAllocation.descriptionImages;
   const descriptionHeroImageUrl = safeHttpUrl(
     platformImagePlan.shopee && platformImagePlan.shopee.imageUrls && platformImagePlan.shopee.imageUrls[0]
   ) || safeHttpUrl(
     platformImagePlan.easyStore && platformImagePlan.easyStore.imageUrls && platformImagePlan.easyStore.imageUrls[0]
   ) || safeHttpUrl(normalDescriptionImageUrls[0]);
-  const orderedDescriptionCandidates = normalizeUrls([
+  const descriptionImageUrls = normalizeUrls([
     descriptionHeroImageUrl,
-    ...normalDescriptionImageUrls.filter((url) => url !== descriptionHeroImageUrl)
-  ], 10);
-  const descriptionProductImageSlots = ensureDescriptionProductImageSlots(
-    orderedDescriptionCandidates,
-    imageAllocation.galleryProductImages,
-    3,
-    Math.max(3, 10 - physicalImageUrls.length)
-  );
-  const descriptionImageUrls = normalizeUrlSlots([
-    ...descriptionProductImageSlots,
+    ...normalDescriptionImageUrls.filter((url) => url !== descriptionHeroImageUrl),
     ...physicalImageUrls
   ], 10);
   const momoSpecialPromotionImageUrl = platformImagePlan.momo.promotionImageReady
     ? platformImagePlan.momo.promotionImageUrl : '';
   const descriptionHtml = appendShopDescriptionImages(productDescriptionToSafeHtml(description), descriptionImageUrls);
+  const brandCreativeStyleAssignment = listingBrandCreative.assignment(
+    listingCase && listingCase.brandCreativeStyleAssignment,
+    `${clean(productId)}|${normalizeSku(product.internalSku || product.sku || listingCase.productSku)}`
+  );
   const snapshot = {
     productId: clean(productId),
     workflowPurpose: clean(listingCase.workflowPurpose) === DESCRIPTION_MEDIA_REFRESH_PURPOSE ? DESCRIPTION_MEDIA_REFRESH_PURPOSE : 'standard-listing',
@@ -2676,6 +3137,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     listingIntentPolicy: intentPolicy,
     listingChangeInstructions: clean(listingCase.listingChangeInstructions),
     listingMode,
+    brandCreativeStyleAssignment,
     variantParentProductId: listingMode === 'add-variant' ? clean(listingCase.variantParentProductId) : '',
     variantParentSku: listingMode === 'add-variant' ? normalizeSku(parentProduct.internalSku || parentProduct.sku || listingCase.variantParentSku) : '',
     variantParentName: listingMode === 'add-variant' ? clean(parentProduct.internalName || parentProduct.originalName || parentProduct.name || listingCase.variantParentName) : '',
@@ -2703,7 +3165,6 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     images,
     productImageUrls: imageAllocation.productImages,
     descriptionHeroImageUrl,
-    descriptionProductImageSlots,
     descriptionImageUrls,
     physicalImageUrls,
     physicalImagePolicy: {
@@ -2711,13 +3172,17 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       customerFacingDerivative: 'label-only',
       labelText: '實體圖',
       aiEditingForbidden: true,
-      placement: 'description-only-after-completed-images-before-disclaimer-and-fixed-promos',
+      placement: 'description-only-after-completed-images-before-fixed-notices-and-final-promos',
       neverUseAsMainImage: true,
       includedCount: descriptionImageUrls.filter((url) => physicalImageUrls.includes(url)).length,
       storedCount: physicalImageUrls.length
     },
     existingPlatformListingIds,
     platformImagePlan,
+    category: clean(listingCase.category || product.category),
+    easyStoreCollectionNames: (Array.isArray(listingCase.easyStoreCollectionNames)
+      ? listingCase.easyStoreCollectionNames : [])
+      .map(clean).filter((name) => EASYSTORE_COLLECTION_CATALOG.includes(name)),
     brand: clean(listingCase.brand || product.brand),
     model: clean(listingCase.model || product.model),
     barcode: clean(listingCase.barcode || product.barcode),
@@ -2754,23 +3219,21 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       requireStructuredVerifiedDescriptionBeforePreparedSnapshot: true,
       descriptionContentStatus,
       includeVerifiedSpecifications: true,
-      warrantyInDedicatedPlatformFieldOnly: true,
-      warrantyInDescription: false,
+      warrantyInDedicatedPlatformField: true,
+      warrantySupportNoticeInDescription: WARRANTY_SUPPORT_NOTICE,
       locale: 'zh-TW',
       richDescriptionPlatforms: ['easyStore', 'shopee-when-account-supported', 'momo', 'coupang'],
       interleaveCompletedImagesWhenSupported: true,
       fixedDescriptionLayoutVersion: DESCRIPTION_LAYOUT_VERSION,
-      fixedDescriptionOrder: ['商品介紹與特色', '商品圖一', '商品規格', '商品圖二', '使用建議', '商品圖三', '其餘商品圖', '實體商品免責句', '固定介紹圖一', '固定介紹圖二'],
+      fixedDescriptionOrder: ['商品介紹與特色', '商品圖一', '商品規格', '商品圖二', '使用建議', '商品圖三', '其餘商品圖', '實體商品說明', '出貨與保固說明', '固定介紹圖一', '固定介紹圖二'],
       storePromoGalleryImageUrl: STORE_PROMO_IMAGE_URL,
       storePromoMustBeLastGalleryImage: true,
       descriptionPromoImageUrls: [...DESCRIPTION_PROMO_IMAGE_URLS],
       descriptionPromosMustBeLastTwoImages: true,
-      descriptionPromosMustBeAbsoluteFinalBlocks: true,
-      physicalProductDisclaimerImmediatelyBeforeDescriptionPromos: true,
-      repeatedCompletedProductImagesAllowedWhenFewerThanThreeDistinct: true,
       appliesToListingIntents: Array.from(LISTING_INTENTS),
       platformCompletionRequiresSavedTextAndImages: true,
       physicalProductDisclaimer: PHYSICAL_PRODUCT_DISCLAIMER,
+      warrantySupportNotice: WARRANTY_SUPPORT_NOTICE,
       listingIntent: intentPolicy,
       mergeExistingContentRule: 'reuse-mapped-primary-preserve-unmentioned-content-and-attach-selected-independent-stock-variants',
       addVariantContentRule: 'preserve-existing-content-and-merge-new-variant-images-and-description',
@@ -2781,7 +3244,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
         labelText: '實體圖',
         aiEditingForbidden: true,
         neverUseAsMainOrGalleryImage: true,
-        appendAfterCompletedDescriptionImagesBeforeDisclaimerAndFixedPromos: true
+        appendAfterCompletedDescriptionImagesBeforeFixedNoticesAndFinalPromos: true
       }
     },
     momoDelivery: MOMO_THIRD_PARTY_DELIVERY,
@@ -2816,9 +3279,6 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
     imagePolicy: {
-      automaticPlatformImageProductionRequired: true,
-      sourceImagesMayNotBeUploadedAsFinishedPlatformAssets: true,
-      requiredOutputsBeforeNavigation: ['storefrontPortrait', 'brandedHero', 'cleanMain', 'localizedDetail', 'specification', 'momoPromotion'],
       sourceImageMaximum: 20, sharedVariantGalleryMaximum: 12, balanceAcrossVariants: true,
       sourceNormalization: {
         preferredLongEdgeRangePx: { minimum: 1600, maximum: 2000 },
@@ -2828,30 +3288,42 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
         analyzeNormalizedCopyAndRetainSourceLineage: true
       },
       galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true,
-      mainImageTemplate: BRAND_TEMPLATE_CONTRACT.version, mainImageAspectRatio: 'channel-specific',
-      mainImageBackdrop: 'locked-youzi-green-header-and-light-panel', mainImageProductPlacement: 'within-locked-content-panel',
+      mainImageTemplate: BRAND_TEMPLATE_CONTRACT.version, mainImageAspectRatio: '1:1-and-4:3-matched-pair',
+      mainImageBackdrop: 'locked-one-ninth-youzi-green-header-and-light-panel',
+      mainImageProductPlacement: 'within-thin-green-border-and-never-under-logo',
+      brandCreativeStyleAssignment,
       brandTemplateContract: JSON.parse(JSON.stringify(BRAND_TEMPLATE_CONTRACT)),
       outputProfiles: {
         storefrontPortrait: {
-          role: 'storefrontPortrait', widthPx: 750, heightPx: 1000, aspectRatio: '3:4',
+          role: 'storefrontPortrait', widthPx: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.widthPx,
+          heightPx: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.heightPx,
+          aspectRatio: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.aspectRatio,
           firstImageFor: ['easyStore'], commercialInformationDensity: 'rich-but-readable',
-          verifiedFeatureCount: { minimum: 3, maximum: 5 }, verifiedDetailInsetMaximum: 2,
+          verifiedFeatureCount: { minimum: 3, maximum: 3 }, verifiedDetailInsetMaximum: 2,
           templateVersion: BRAND_TEMPLATE_CONTRACT.version,
           templateAssetUrl: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.url,
           templateAssetSha256: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.sha256,
           fixedStoreSlogan: BRAND_TEMPLATE_CONTRACT.slogan,
           fixedStoreLogoRequired: true, fixedHeaderPixelsRequired: true,
+          fixedHeaderHeightRatio: BRAND_TEMPLATE_CONTRACT.header.heightRatio,
+          selectedLargeLogoOverlapRequired: true, thinOuterGreenBorderRequired: true,
+          creativeStyleAssignment: brandCreativeStyleAssignment,
           contactInformationForbidden: true, outboundMessagingForbidden: true,
           manufacturerLogoAllowedOnlyWhenOfficiallyVerifiedAndPlatformPermitted: true
         },
         brandedHero: {
-          role: 'brandedHero', widthPx: 1000, heightPx: 1000, aspectRatio: '1:1',
-          firstImageFor: ['shopee'], verifiedFeatureCount: { minimum: 1, maximum: 3 },
+          role: 'brandedHero', widthPx: BRAND_TEMPLATE_CONTRACT.brandedHero.widthPx,
+          heightPx: BRAND_TEMPLATE_CONTRACT.brandedHero.heightPx,
+          aspectRatio: BRAND_TEMPLATE_CONTRACT.brandedHero.aspectRatio,
+          firstImageFor: ['shopee'], verifiedFeatureCount: { minimum: 3, maximum: 3 },
           templateVersion: BRAND_TEMPLATE_CONTRACT.version,
           templateAssetUrl: BRAND_TEMPLATE_CONTRACT.brandedHero.url,
           templateAssetSha256: BRAND_TEMPLATE_CONTRACT.brandedHero.sha256,
           fixedStoreSlogan: BRAND_TEMPLATE_CONTRACT.slogan,
           fixedStoreLogoRequired: true, fixedHeaderPixelsRequired: true,
+          fixedHeaderHeightRatio: BRAND_TEMPLATE_CONTRACT.header.heightRatio,
+          selectedLargeLogoOverlapRequired: true, thinOuterGreenBorderRequired: true,
+          creativeStyleAssignment: brandCreativeStyleAssignment,
           contactInformationForbidden: true, outboundMessagingForbidden: true,
           manufacturerLogoAllowedOnlyWhenOfficiallyVerifiedAndPlatformPermitted: true
         },
@@ -2876,13 +3348,19 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
         squareMarketplaceProfilesShareDimensions: true
       },
       storefrontPortraitAssetStandard: {
-        role: 'storefrontPortrait', widthPx: 750, heightPx: 1000, aspectRatio: '3:4',
+        role: 'storefrontPortrait', widthPx: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.widthPx,
+        heightPx: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.heightPx,
+        aspectRatio: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.aspectRatio,
         colorSpace: 'sRGB', preferredFormat: 'image/jpeg', maximumFileBytes: 1000000,
         normalizeOnceBeforePlatformNavigation: true,
         templateVersion: BRAND_TEMPLATE_CONTRACT.version,
         templateAssetUrl: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.url,
         templateAssetSha256: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.sha256,
         fixedHeaderPixelsRequired: true,
+        fixedHeaderHeightRatio: BRAND_TEMPLATE_CONTRACT.header.heightRatio,
+        selectedLargeLogoOverlapRequired: true,
+        thinOuterGreenBorderRequired: true,
+        creativeStyleAssignment: brandCreativeStyleAssignment,
         contactInformationForbidden: true,
         outboundMessagingForbidden: true,
         manufacturerLogoAllowedOnlyWhenOfficiallyVerifiedAndPlatformPermitted: true
@@ -2891,7 +3369,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     shopeeTitle: listingMode === 'add-variant'
       ? clean(variantParentListingCase && variantParentListingCase.shopeeTitle) || listingName(parentProduct, variantParentListingCase || {})
       : clean(listingCase.shopeeTitle) || listingName(product, listingCase),
-    shopeeDescription: (() => { const value = listingMode === 'add-variant' ? description : clean(listingCase.shopeeDescription) || description; const content = value.split(PHYSICAL_PRODUCT_DISCLAIMER).join('').trim(); return content ? `${content}\n\n${PHYSICAL_PRODUCT_DISCLAIMER}` : ''; })(),
+    shopeeDescription: (() => { const value = listingMode === 'add-variant' ? description : clean(listingCase.shopeeDescription) || description; const content = stripFixedDescriptionNoticesText(value); return content ? `${content}\n\n${FIXED_DESCRIPTION_NOTICES.join('\n\n')}` : ''; })(),
     shopeeRequiredNotes: clean(listingCase.shopeeRequiredNotes),
     shopeeExistingListingIds,
     shopeeCategoryPath: listingMode === 'add-variant'
@@ -2917,6 +3395,21 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     momoCategoryCode: listingMode === 'add-variant'
       ? clean(variantParentListingCase && variantParentListingCase.momoCategoryCode) || clean(listingCase.momoCategoryCode)
       : clean(listingCase.momoCategoryCode),
+    momoMarketPrice: numberOrNull(listingCase.momoMarketPrice != null
+      ? listingCase.momoMarketPrice : listingCase.priceSnapshot && listingCase.priceSnapshot.momoMarket),
+    momoAttributeValues: normalizeMomoAttributes(listingMode === 'add-variant'
+      ? (variantParentListingCase && variantParentListingCase.momoAttributeValues) || listingCase.momoAttributeValues
+      : listingCase.momoAttributeValues),
+    momoOtherProductInformation: normalizeMomoAttributes(listingMode === 'add-variant'
+      ? (variantParentListingCase && variantParentListingCase.momoOtherProductInformation) || listingCase.momoOtherProductInformation
+      : listingCase.momoOtherProductInformation),
+    momoStoreCategoryNames: Array.from(new Set((Array.isArray(listingMode === 'add-variant'
+      ? (variantParentListingCase && variantParentListingCase.momoStoreCategoryNames) || listingCase.momoStoreCategoryNames
+      : listingCase.momoStoreCategoryNames)
+      ? (listingMode === 'add-variant'
+        ? (variantParentListingCase && variantParentListingCase.momoStoreCategoryNames) || listingCase.momoStoreCategoryNames
+        : listingCase.momoStoreCategoryNames)
+      : []).map(clean).filter(Boolean))).slice(0, 5),
     coupangTitle: listingMode === 'add-variant'
       ? clean(variantParentListingCase && variantParentListingCase.coupangTitle) || listingName(parentProduct, variantParentListingCase || {})
       : clean(listingCase.coupangTitle) || listingName(product, listingCase),
@@ -2930,6 +3423,10 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     enabledMomo: selectedPlatforms.includes('momo'),
     enabledCoupang: selectedPlatforms.includes('coupang')
   };
+  snapshot.momoGoodsName = momoProductName(snapshot.momoGoodsName, snapshot.brand);
+  snapshot.momoMarketPrice = momoMarketPrice(snapshot);
+  snapshot.momoShortFeatures = momoShortFeaturePlan(snapshot.description, snapshot.momoSlogan);
+  snapshot.momoSlogan = snapshot.momoShortFeatures.slogan;
   snapshot.shopeeAdvancedDescription = shopeeAdvancedDescriptionPlan(snapshot);
   snapshot.platformDescriptionContentPlan = platformDescriptionContentPlan(snapshot);
   snapshot.category = clean(listingCase.category || product.category);
@@ -2957,16 +3454,40 @@ function compactObject(value) {
   return result;
 }
 
+function easyStoreSeoDescription(snapshot) {
+  const title = clean(snapshot && snapshot.title);
+  const lines = clean(snapshot && snapshot.description).split(/\r?\n/).map(clean).filter(Boolean);
+  const features = [];
+  let inFeatures = false;
+  for (const line of lines) {
+    if (line === '商品特色') { inFeatures = true; continue; }
+    if (inFeatures && /^(?:使用方式|適用情境|商品規格)/.test(line)) break;
+    if (!inFeatures) continue;
+    features.push(line.replace(/^(?:\d+[.、]|[-•●])\s*/, ''));
+  }
+  const candidates = [title, ...(features.length ? features : lines.filter((line) => !/^(?:商品特色|使用方式|適用情境|商品規格)/.test(line)))];
+  const parts = [];
+  for (const candidate of candidates) {
+    const next = [...parts, candidate].filter(Boolean).join('｜');
+    if (Array.from(next).length > 180) break;
+    if (candidate && !parts.includes(candidate)) parts.push(candidate);
+  }
+  return parts.join('｜') || Array.from(title).slice(0, 180).join('');
+}
+
 function buildEasyStoreProductBody(snapshot, includeVariant = true) {
+  const galleryImages = easyStoreGalleryImages(snapshot);
   const product = {
     title: snapshot.title,
     description: snapshot.description,
     body_html: snapshot.bodyHtml,
     inventory_management: 'easystore',
-    taxable: true,
+    taxable: false,
     shipping_required: true,
+    metafields_global_title_tag: Array.from(clean(snapshot.title)).slice(0, 70).join(''),
+    metafields_global_description_tag: easyStoreSeoDescription(snapshot),
     published_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
-    images: snapshot.images.map((url) => ({ url }))
+    images: galleryImages.map((url) => ({ url }))
   };
   if (includeVariant) {
     const grouped = snapshot.variantGroupEnabled === true
@@ -2989,7 +3510,7 @@ function buildEasyStoreProductBody(snapshot, includeVariant = true) {
       weight: snapshot.packageWeightKg,
       weight_unit: 'kg',
       inventory_policy: false,
-      taxable: true,
+      taxable: false,
       is_enabled: true
       };
       const attributeValue = clean(row && row.attributeValue);
@@ -3000,7 +3521,14 @@ function buildEasyStoreProductBody(snapshot, includeVariant = true) {
       const storePrice = numberOrNull(row && row.storePrice);
       const salePrice = numberOrNull(row && row.easyStorePrice);
       const costPrice = numberOrNull(row && row.costPrice);
-      if (storePrice != null && salePrice != null && storePrice > salePrice) variant.compare_at_price = storePrice;
+      if (salePrice != null) {
+        // The storefront compare-at price is a deterministic 35% reference-price
+        // uplift when no verified higher original price was saved. Round upward to
+        // a clean NT$10 boundary so the same product never changes between runs.
+        variant.compare_at_price = storePrice != null && storePrice > salePrice
+          ? storePrice
+          : Math.ceil((salePrice * 1.35) / 10) * 10;
+      }
       if (costPrice != null) variant.cost_price = costPrice;
       return variant;
     });
@@ -3081,7 +3609,12 @@ function platformListingIds(product, platform) {
 function platformQueueFingerprint(platform, snapshot) {
   const key = clean(platform).toLowerCase();
   const platformFields = key === 'momo'
-    ? [snapshot.momoGoodsName, snapshot.momoSlogan, snapshot.momoCategoryCode, snapshot.momoPrice, snapshot.momoHtml, snapshot.momoSpecialPromotionImageUrl]
+    ? [
+      snapshot.momoGoodsName, snapshot.momoSlogan, snapshot.momoShortFeatures,
+      snapshot.momoCategoryCode, snapshot.momoAttributeValues, snapshot.momoOtherProductInformation,
+      snapshot.momoStoreCategoryNames, snapshot.momoPrice, snapshot.momoMarketPrice,
+      snapshot.momoHtml, snapshot.momoSpecialPromotionImageUrl
+    ]
     : [snapshot.coupangTitle, snapshot.coupangCategoryCode, snapshot.coupangPrice, snapshot.coupangDescriptionHtml];
   return crypto.createHash('sha256').update(JSON.stringify(compactObject({
     platform: key,
@@ -3302,13 +3835,67 @@ function easyStoreVariantStock(variant) {
   return numberOrNull(variant && (variant.inventory_quantity ?? variant.quantity ?? variant.stock ?? variant.inventory));
 }
 
-function easyStoreVariantImageUrl(variant) {
+function easyStoreProductImages(product) {
+  if (!product || typeof product !== 'object') return [];
+  for (const key of ['images', 'product_images', 'productImages']) {
+    if (Array.isArray(product[key])) return product[key];
+  }
+  return [];
+}
+
+function easyStoreImageId(row) {
+  return clean(row && (row.id || row.image_id || row.imageId));
+}
+
+function easyStoreImageUrl(row) {
+  if (!row || typeof row !== 'object') return '';
+  for (const key of ['url', 'src', 'source_url', 'sourceUrl', 'original_url', 'originalUrl']) {
+    const url = safeHttpUrl(row[key]);
+    if (url) return url;
+  }
+  return collectImageUrls(row, true)[0] || '';
+}
+
+function imageFileStem(value) {
+  const url = safeHttpUrl(value);
+  if (!url) return '';
+  try {
+    const path = decodeURIComponent(new URL(url).pathname).replace(/\\/g, '/');
+    return clean(path.split('/').filter(Boolean).pop()).replace(/\.(?:jpe?g|png|webp)$/i, '').toLowerCase();
+  } catch (_) {
+    return '';
+  }
+}
+
+function easyStoreImageIdForPlannedUrl(product, plannedUrl, plannedGallery = []) {
+  const target = safeHttpUrl(plannedUrl);
+  if (!target) return '';
+  const rows = easyStoreProductImages(product);
+  const direct = rows.find((row) => collectImageUrls(row, true).some((url) => safeHttpUrl(url) === target));
+  if (direct && easyStoreImageId(direct)) return easyStoreImageId(direct);
+  const targetStem = imageFileStem(target);
+  const byName = rows.find((row) => {
+    const title = clean(row && (row.title || row.name || row.filename || row.file_name))
+      .replace(/\.(?:jpe?g|png|webp)$/i, '').toLowerCase();
+    return Boolean(targetStem && (title === targetStem || imageFileStem(easyStoreImageUrl(row)) === targetStem));
+  });
+  if (byName && easyStoreImageId(byName)) return easyStoreImageId(byName);
+  const index = normalizeUrls(plannedGallery, 30).indexOf(target);
+  return index >= 0 ? easyStoreImageId(rows[index]) : '';
+}
+
+function easyStoreVariantImageUrl(variant, product = null) {
   if (!variant || typeof variant !== 'object') return '';
   for (const key of ['image_url', 'imageUrl', 'photo_url', 'photoUrl', 'thumbnail_url', 'thumbnailUrl']) {
     const url = safeHttpUrl(variant[key]);
     if (url) return url;
   }
-  return collectImageUrls(variant, true)[0] || '';
+  const direct = collectImageUrls(variant, true)[0] || '';
+  if (direct) return direct;
+  const variantImageId = clean(variant.image_id || variant.imageId);
+  if (!variantImageId || !product) return '';
+  const image = easyStoreProductImages(product).find((row) => easyStoreImageId(row) === variantImageId);
+  return easyStoreImageUrl(image);
 }
 
 function easyStorePublicationState(product) {
@@ -3348,7 +3935,7 @@ async function verifyEasyStorePublishedListing(snapshot, token, result) {
       value: clean(variant && (variant.option1 || variant.name || variant.title || variant.option_name)),
       price: easyStoreVariantPrice(variant),
       stock: easyStoreVariantStock(variant),
-      imageUrl: easyStoreVariantImageUrl(variant)
+      imageUrl: easyStoreVariantImageUrl(variant, match.product)
     })) : [];
     const verification = validatePlatformStageVerification('easyStore', snapshot, {
       listingId: match.productId,
@@ -3494,6 +4081,55 @@ function easyStoreVariantTemplate(snapshot, row) {
   return { ...template, name: value, option1: value };
 }
 
+function easyStoreVariantCoreMatches(remote, planned) {
+  if (!remote || !planned) return false;
+  if (normalizeSku(remote.sku) !== normalizeSku(planned.sku)) return false;
+  if (easyStoreVariantValue(remote) !== clean(planned.name || planned.option1)) return false;
+  const remoteBarcode = clean(remote.barcode);
+  const plannedBarcode = clean(planned.barcode);
+  if (remoteBarcode !== plannedBarcode) return false;
+  const pairs = [
+    [remote.price, planned.price],
+    [remote.inventory_quantity ?? remote.stock, planned.inventory_quantity],
+    [remote.width, planned.width],
+    [remote.height, planned.height],
+    [remote.length, planned.length],
+    [remote.weight, planned.weight]
+  ];
+  return pairs.every(([actual, expected]) => numberOrNull(actual) === numberOrNull(expected));
+}
+
+async function bindAndVerifyEasyStoreVariantImages(snapshot, productId, token, expectedRows) {
+  const expected = (Array.isArray(expectedRows) ? expectedRows : [])
+    .map((row) => ({ sku: normalizeSku(row && row.sku), imageUrl: safeHttpUrl(row && row.imageUrl) }))
+    .filter((row) => row.sku && row.imageUrl);
+  if (!expected.length) throw new Error('EasyStore 細項圖片計畫為空，不能完成細項同步。');
+  const plannedGallery = easyStoreGalleryImages(snapshot);
+  if (!plannedGallery.length || plannedGallery[plannedGallery.length - 1] !== STORE_PROMO_IMAGE_URL) {
+    throw new Error('EasyStore 圖片計畫不完整：最後一張不是固定店址圖。');
+  }
+  const missingFromGallery = expected.filter((row) => !plannedGallery.includes(row.imageUrl));
+  if (missingFromGallery.length) {
+    throw new Error(`EasyStore 細項代表圖未納入父商品圖片：${missingFromGallery.map((row) => row.sku).join('、')}`);
+  }
+
+  let payload = await easyStoreRequest(`/products/${encodeURIComponent(productId)}.json`, token);
+  let product = extractProducts(payload)[0] || payload.product || payload;
+  const finalBySku = new Map(productVariants(product).map((variant) => [
+    normalizeSku(variant && (variant.sku || variant.code || variant.product_code)), variant
+  ]));
+  const failures = expected.filter((row) => {
+    const variant = finalBySku.get(row.sku);
+    const expectedImageId = easyStoreImageIdForPlannedUrl(product, row.imageUrl, plannedGallery);
+    const actualImageId = clean(variant && (variant.image_id || variant.imageId));
+    return !expectedImageId || !actualImageId || expectedImageId !== actualImageId;
+  });
+  if (failures.length) {
+    throw new Error(`EASYSTORE_VARIANT_IMAGE_UI_REQUIRED：請在 Codex 內建瀏覽器的 EasyStore 商品後台，依 SKU 從父商品圖庫選入指定完成圖並儲存；再由 API 回讀 image_id。未完成：${failures.map((row) => row.sku).join('、')}`);
+  }
+  return product;
+}
+
 async function syncEasyStoreVariantGroup(snapshot, productId, token) {
   const expected = Array.isArray(snapshot.variantGroupVariants) ? snapshot.variantGroupVariants : [];
   if (expected.length < 2 || !clean(snapshot.variantGroupAttributeName)) {
@@ -3541,9 +4177,14 @@ async function syncEasyStoreVariantGroup(snapshot, productId, token) {
   });
   const unexpectedSkus = remoteVariants.map((variant) => normalizeSku(variant && variant.sku)).filter((sku) => sku && !expectedSkus.has(sku));
   if (unexpectedSkus.length) throw new Error(`EasyStore 主商品仍含不屬於本組的 SKU：${unexpectedSkus.join('、')}；為避免誤刪既有資料已停止。`);
-  await easyStoreRequest(`/products/${encodeURIComponent(productId)}/variants.json`, token, {
-    method: 'PUT', body: { variants: updates }
-  });
+  const currentById = new Map(remoteVariants.map((variant) => [variantIdOf(variant), variant]));
+  const coreAlreadyMatches = updates.every((update) => easyStoreVariantCoreMatches(currentById.get(clean(update.id)), update));
+  if (!coreAlreadyMatches) {
+    await easyStoreRequest(`/products/${encodeURIComponent(productId)}/variants.json`, token, {
+      method: 'PUT', body: { variants: updates }
+    });
+  }
+  await bindAndVerifyEasyStoreVariantImages(snapshot, productId, token, expected);
   return updates.map((row) => clean(row.id));
 }
 
@@ -3638,18 +4279,11 @@ function listingIntentIdentityMissingFields(snapshot, platform) {
 
 function fixedDescriptionMediaMissingFields(snapshot, platform, html, galleryImages) {
   const missing = [];
-  const detailImages = normalizeUrlSlots(snapshot && snapshot.descriptionImageUrls, 10)
-    .filter((url) => url !== STORE_PROMO_IMAGE_URL && !DESCRIPTION_PROMO_IMAGE_URLS.includes(url));
-  const productImageSlots = normalizeUrlSlots(
-    snapshot && Array.isArray(snapshot.descriptionProductImageSlots)
-      ? snapshot.descriptionProductImageSlots
-      : detailImages.filter((url) => !(snapshot && Array.isArray(snapshot.physicalImageUrls) && snapshot.physicalImageUrls.includes(url))),
-    10
-  ).filter((url) => url !== STORE_PROMO_IMAGE_URL && !DESCRIPTION_PROMO_IMAGE_URLS.includes(url));
+  const detailImages = normalizeUrls(snapshot && snapshot.descriptionImageUrls, 10);
   const gallery = normalizeUrls(galleryImages, 20);
   const source = clean(html);
   if (!source && !detailImages.length && !gallery.length) return missing;
-  if (productImageSlots.length < 3) missing.push(`${platform} 詳細介紹至少三個商品圖片區塊`);
+  if (detailImages.length < 3) missing.push(`${platform} 詳細介紹至少三張商品圖片`);
   if (!gallery.length || gallery[gallery.length - 1] !== STORE_PROMO_IMAGE_URL) missing.push(`${platform} 橫向圖片最後一張店址圖`);
   const renderedImageUrls = [];
   source.replace(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi, (_, url) => {
@@ -3657,33 +4291,37 @@ function fixedDescriptionMediaMissingFields(snapshot, platform, html, galleryIma
     if (normalized) renderedImageUrls.push(normalized);
     return _;
   });
-  let renderedCursor = 0;
   detailImages.forEach((url) => {
-    const matchedIndex = renderedImageUrls.indexOf(url, renderedCursor);
-    if (matchedIndex < 0) missing.push(`${platform} 詳細介紹商品圖片`);
-    else renderedCursor = matchedIndex + 1;
+    if (!renderedImageUrls.includes(url)) missing.push(`${platform} 詳細介紹商品圖片`);
   });
   if (renderedImageUrls.slice(-2).join('|') !== DESCRIPTION_PROMO_IMAGE_URLS.join('|')) missing.push(`${platform} 詳細介紹最後兩張固定介紹圖`);
   const featureIndex = source.search(/<h[23]>\s*商品特色\s*<\/h[23]>/i);
   const specificationIndex = source.search(/<h[23]>\s*商品規格\s*<\/h[23]>/i);
   const usageIndex = source.search(/<h[23]>\s*(?:使用方式(?:／適用情境)?|適用情境|使用重點|使用建議)\s*<\/h[23]>/i);
-  const productImageIndices = [];
-  let sourceCursor = 0;
-  productImageSlots.slice(0, 3).forEach((url) => {
-    const matchedIndex = source.indexOf(url, sourceCursor);
-    productImageIndices.push(matchedIndex);
-    if (matchedIndex >= 0) sourceCursor = matchedIndex + url.length;
-  });
-  const firstImageIndex = productImageIndices[0] ?? -1;
-  const secondImageIndex = productImageIndices[1] ?? -1;
-  const thirdImageIndex = productImageIndices[2] ?? -1;
+  const firstImageIndex = detailImages[0] ? source.indexOf(detailImages[0]) : -1;
+  const secondImageIndex = detailImages[1] ? source.indexOf(detailImages[1]) : -1;
+  const thirdImageIndex = detailImages[2] ? source.indexOf(detailImages[2]) : -1;
   if (!(featureIndex >= 0 && firstImageIndex > featureIndex && specificationIndex > firstImageIndex
     && secondImageIndex > specificationIndex && usageIndex > secondImageIndex && thirdImageIndex > usageIndex)) {
     missing.push(`${platform} 固定圖文穿插順序`);
   }
-  const disclaimerBlock = `<p><strong>${PHYSICAL_PRODUCT_DISCLAIMER}</strong></p>`;
-  const promoTail = DESCRIPTION_PROMO_IMAGE_URLS.map((url) => descriptionImageBlock(url, '柚子樂器門市與服務資訊')).join('');
-  if (!source.endsWith(`${disclaimerBlock}${promoTail}`)) missing.push(`${platform} 免責句後接兩張固定介紹圖且第二張為絕對最後內容`);
+  const actualProductHeadingBlock = '<h3>實體商品說明</h3>';
+  const actualProductNoticeBlock = `<p>${PHYSICAL_PRODUCT_DISCLAIMER}</p>`;
+  const warrantyHeadingBlock = '<h3>出貨與保固說明</h3>';
+  const warrantyNoticeBlock = `<p>${WARRANTY_SUPPORT_NOTICE}</p>`;
+  const actualProductHeadingIndex = source.indexOf(actualProductHeadingBlock);
+  const actualProductNoticeIndex = source.indexOf(actualProductNoticeBlock);
+  const warrantyHeadingIndex = source.indexOf(warrantyHeadingBlock);
+  const warrantyNoticeIndex = source.indexOf(warrantyNoticeBlock);
+  const firstPromoIndex = source.indexOf(DESCRIPTION_PROMO_IMAGE_URLS[0]);
+  const secondPromoIndex = source.indexOf(DESCRIPTION_PROMO_IMAGE_URLS[1]);
+  if (!(actualProductHeadingIndex >= 0 && actualProductNoticeIndex > actualProductHeadingIndex
+    && warrantyHeadingIndex > actualProductNoticeIndex && warrantyNoticeIndex > warrantyHeadingIndex
+    && firstPromoIndex > warrantyNoticeIndex && secondPromoIndex > firstPromoIndex)) {
+    missing.push(`${platform} 實體商品與保固說明須位於最後兩張固定介紹圖之前`);
+  }
+  const finalPromoBlock = `<p><img src="${DESCRIPTION_PROMO_IMAGE_URLS[1]}" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>`;
+  if (!source.endsWith(finalPromoBlock)) missing.push(`${platform} 詳細介紹須以第二張固定介紹圖結尾`);
   return Array.from(new Set(missing));
 }
 
@@ -3697,7 +4335,6 @@ function easyStoreMissingFields(snapshot) {
   if (!snapshot.sku) missing.push('SKU');
   if (!snapshot.title) missing.push('商品名稱');
   if (!snapshot.description) missing.push('完整商品介紹');
-  if (!snapshot.descriptionContentStatus || snapshot.descriptionContentStatus.ready !== true) missing.push('商品特色 10 點、使用建議 10 點與完整可驗證規格');
   if (!snapshot.images.length) missing.push('上架圖片');
   missing.push(...fixedDescriptionMediaMissingFields(snapshot, '官網／蝦皮', snapshot.bodyHtml, snapshot.images));
   if (snapshot.easyStorePrice == null) missing.push('EasyStore 售價');
@@ -3719,11 +4356,14 @@ function momoMissingFields(snapshot) {
   if (!snapshot.sku) missing.push('SKU');
   if (!snapshot.momoGoodsName) missing.push('MOMO 商品名稱');
   if (!snapshot.description) missing.push('完整商品介紹');
-  if (!snapshot.descriptionContentStatus || snapshot.descriptionContentStatus.ready !== true) missing.push('商品特色 10 點、使用建議 10 點與完整可驗證規格');
   missing.push(...fixedDescriptionMediaMissingFields(snapshot, 'MOMO', snapshot.momoHtml, galleryImagesWithStorePromo(imagePlan.imageUrls, 6)));
   if (!imagePlan.ready || imagePlan.requiredFirstRole !== 'cleanMain' || !Array.isArray(imagePlan.imageUrls) || !imagePlan.imageUrls.length) missing.push('MOMO cleanMain 首圖');
   if (!imagePlan.promotionImageReady || !snapshot.momoSpecialPromotionImageUrl) missing.push('MOMO clean-only 專推圖');
   if (snapshot.momoPrice == null) missing.push('MOMO 售價');
+  const salePrice = numberOrNull(snapshot.momoPrice);
+  const marketPrice = momoMarketPrice(snapshot);
+  if (salePrice !== null && (marketPrice === null || marketPrice <= salePrice)) missing.push('MOMO 市價（須高於售價）');
+  if (buildMomoShipping(snapshot).requiresJudgment) missing.push('MOMO 外箱長寬高與重量');
   return missing;
 }
 
@@ -3735,7 +4375,6 @@ function coupangMissingFields(snapshot) {
   if (!snapshot.sku) missing.push('SKU');
   if (!snapshot.coupangTitle) missing.push('酷澎標題');
   if (!snapshot.description) missing.push('完整商品介紹');
-  if (!snapshot.descriptionContentStatus || snapshot.descriptionContentStatus.ready !== true) missing.push('商品特色 10 點、使用建議 10 點與完整可驗證規格');
   missing.push(...fixedDescriptionMediaMissingFields(snapshot, '酷澎', snapshot.coupangDescriptionHtml, galleryImagesWithStorePromo(imagePlan.imageUrls)));
   if (!imagePlan.ready || imagePlan.requiredFirstRole !== 'cleanMain' || !Array.isArray(imagePlan.imageUrls) || !imagePlan.imageUrls.length) missing.push('酷澎 cleanMain 首圖');
   if (snapshot.coupangPrice == null) missing.push('酷澎售價');
@@ -4094,6 +4733,30 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
     if (!actual.imageUrl) reasons.push(`variant-image-missing:${sku}`);
     else if (sourceUrls.has(actual.imageUrl)) reasons.push(`variant-image-frozen-source:${sku}`);
   });
+  if (name === 'shopee' && snapshot && snapshot.shopeeAdvancedDescription) {
+    const advancedEvidence = observed.advancedDescriptionEvidence && typeof observed.advancedDescriptionEvidence === 'object'
+      ? observed.advancedDescriptionEvidence : {};
+    const expectedDescriptionImageCount = Number(snapshot.shopeeAdvancedDescription.expectedImageCount) || 0;
+    if (advancedEvidence.complete !== true) reasons.push('shopee-advanced-description-not-verified');
+    if (advancedEvidence.verificationSurface !== 'shopee-seller-center') {
+      reasons.push('shopee-advanced-description-not-verified-in-seller-center');
+    }
+    if (advancedEvidence.persistedAfterReload !== true) {
+      reasons.push('shopee-advanced-description-not-persisted-after-reload');
+    }
+    if (advancedEvidence.exactImageCount !== true
+      || Number(advancedEvidence.observedImageCount) !== expectedDescriptionImageCount) {
+      reasons.push('shopee-advanced-description-image-count-mismatch');
+    }
+    if (advancedEvidence.imageOrderComplete !== true) reasons.push('shopee-advanced-description-image-order-mismatch');
+    if (advancedEvidence.fixedLastTwoComplete !== true) reasons.push('shopee-advanced-description-final-promos-mismatch');
+    if (advancedEvidence.fixedNoticesBeforePromos !== true) reasons.push('shopee-advanced-description-fixed-notices-mismatch');
+    const priceEvidence = observed.priceAdjustmentEvidence && typeof observed.priceAdjustmentEvidence === 'object'
+      ? observed.priceAdjustmentEvidence : {};
+    if (priceEvidence.enabled !== true || priceEvidence.synchronizeWithEasyStorePrice !== true) {
+      reasons.push('shopee-price-sync-not-verified');
+    }
+  }
   const observedStatus = clean(observed.status);
   if (!observedStatus) reasons.push('missing-status');
   else if (['draft', 'unpublished', 'inactive', 'failed', 'rejected', 'error', '暫存', '草稿', '未上架', '未發布', '未發佈'].includes(observedStatus.toLowerCase())) reasons.push('not-submitted-or-published');
@@ -4115,7 +4778,9 @@ function validatePlatformStageVerification(stage, snapshot, verification) {
       officialCatalogMatched: observed.officialCatalogMatched === true,
       imageEvidenceComplete: imageVerification.imageEvidenceComplete,
       appliedImageUrls: imageVerification.appliedImageUrls,
-      officialImageUrls: imageVerification.officialImageUrls
+      officialImageUrls: imageVerification.officialImageUrls,
+      advancedDescriptionEvidence: observed.advancedDescriptionEvidence || null,
+      priceAdjustmentEvidence: observed.priceAdjustmentEvidence || null
     }
   };
 }
@@ -4150,13 +4815,84 @@ function deriveListingCurrentStage(stages) {
   return 'parallel-platforms';
 }
 
+const LISTING_BATCH_FAILURE_STATUSES = new Set([
+  'failed', 'error', 'missing-fields', 'action-required', 'blocked', 'rejected',
+  'rate-limited', 'limit-reached', 'permission-denied', 'unavailable'
+]);
+
+function listingBatchPlatformLabel(stage) {
+  return ({ easyStore: 'EasyStore 官網', shopee: '官方蝦皮', momo: 'MOMO', coupang: '酷澎' })[stage] || stage;
+}
+
+function listingRetryAtMillis(value) {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value.toMillis === 'function') return Number(value.toMillis()) || 0;
+  if (typeof value === 'number') return value < 100000000000 ? value * 1000 : value;
+  const parsed = Date.parse(clean(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function listingBatchFailurePayload(snapshot, stages, platforms, fallbackMessage = '') {
+  const currentStages = stages && typeof stages === 'object' ? stages : {};
+  const currentPlatforms = platforms && typeof platforms === 'object' ? platforms : {};
+  const selected = listingTargetPlatforms(snapshot);
+  const failures = {};
+  const retryPlatforms = [];
+  const retryTimes = [];
+  selected.forEach((stage) => {
+    const stageState = currentStages[stage] && typeof currentStages[stage] === 'object' ? currentStages[stage] : {};
+    const platformState = currentPlatforms[stage] && typeof currentPlatforms[stage] === 'object' ? currentPlatforms[stage] : {};
+    const stageStatus = clean(stageState.status).toLowerCase();
+    const platformStatus = clean(platformState.status).toLowerCase();
+    const failed = LISTING_BATCH_FAILURE_STATUSES.has(stageStatus)
+      || LISTING_BATCH_FAILURE_STATUSES.has(platformStatus)
+      || (stageStatus === 'blocked-by-dependency' && clean(fallbackMessage));
+    if (!failed && !clean(fallbackMessage)) return;
+    if (!failed && listingStageVerified(currentStages, stage)) return;
+    const reason = clean(stageState.message || platformState.message || platformState.error || fallbackMessage)
+      || `${listingBatchPlatformLabel(stage)}尚未完成。`;
+    const retryAt = stageState.retryAt || stageState.nextRetryAt || platformState.retryAt
+      || platformState.nextRetryAt || platformState.availableAt || null;
+    const retryable = stageState.retryable !== false && platformState.retryable !== false;
+    failures[stage] = {
+      status: stageStatus || platformStatus || 'failed', reason: reason.slice(0, 800), retryable,
+      lastAttemptAt: new Date()
+    };
+    if (retryAt) {
+      failures[stage].retryAt = retryAt;
+      const retryMillis = listingRetryAtMillis(retryAt);
+      if (retryMillis) retryTimes.push({ millis: retryMillis, value: retryAt });
+    }
+    retryPlatforms.push(stage);
+  });
+  if (!retryPlatforms.length) return null;
+  retryTimes.sort((left, right) => right.millis - left.millis);
+  return {
+    batchQueueStatus: 'failed',
+    batchQueueError: retryPlatforms.map((stage) => `${listingBatchPlatformLabel(stage)}：${failures[stage].reason}`).join('；').slice(0, 1600),
+    batchPlatformFailures: failures,
+    batchRetryPlatforms: retryPlatforms,
+    batchNextRetryAt: retryTimes.length ? retryTimes[0].value : null,
+    batchQueueUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+}
+
+function listingRootStageNeedsResume(snapshot, stages) {
+  return ['momo', 'coupang'].some((stage) => {
+    if (!listingStageSelected(snapshot, stage)) return false;
+    const state = stages && stages[stage] && typeof stages[stage] === 'object' ? stages[stage] : {};
+    return !['awaiting-verification', 'verified', 'skipped'].includes(clean(state.status).toLowerCase());
+  });
+}
+
 function queueStageFromPlatform(platform) {
   const key = clean(platform).toLowerCase();
   if (key === 'coupang' || key === 'momo') return key;
   return '';
 }
 
-function validateQueuedStageReceipt(job, queueRecord) {
+function validateQueuedStageReceiptIdentity(job, queueRecord) {
   const currentJob = job && typeof job === 'object' ? job : {};
   const record = queueRecord && typeof queueRecord === 'object' ? queueRecord : {};
   const stage = queueStageFromPlatform(record.platform);
@@ -4170,6 +4906,15 @@ function validateQueuedStageReceipt(job, queueRecord) {
   if (!clean(record.attemptToken) || clean(record.attemptToken) !== clean(stageState.attemptToken)) reasons.push('attempt-token-mismatch');
   if (!clean(record.fingerprint) || clean(record.fingerprint) !== clean(stageState.fingerprint)) reasons.push('fingerprint-mismatch');
   if (!clean(record.snapshotFingerprint) || clean(record.snapshotFingerprint) !== clean(currentJob.preparedSnapshotFingerprint)) reasons.push('snapshot-fingerprint-mismatch');
+  return { verified: reasons.length === 0, reasons: Array.from(new Set(reasons)), stage };
+}
+
+function validateQueuedStageReceipt(job, queueRecord) {
+  const currentJob = job && typeof job === 'object' ? job : {};
+  const record = queueRecord && typeof queueRecord === 'object' ? queueRecord : {};
+  const identity = validateQueuedStageReceiptIdentity(currentJob, record);
+  const stage = identity.stage;
+  const reasons = identity.reasons.slice();
   if (!PLATFORM_QUEUE_RECEIPT_STATUSES.has(clean(record.status).toLowerCase())) reasons.push('queue-status-not-verified');
   const receipt = record.verificationReceipt && typeof record.verificationReceipt === 'object' ? record.verificationReceipt : {};
   if (clean(receipt.stage) && clean(receipt.stage).toLowerCase() !== stage) reasons.push('receipt-stage-mismatch');
@@ -4483,6 +5228,70 @@ async function applyVerifiedQueueReceipt(db, queueId, queueRecord, dependencies 
   if (requestedStage && !listingStageSelected(snapshot, requestedStage)) {
     return { status: 'ignored-unselected-stage', stage: requestedStage };
   }
+  const queueStatus = clean(record.status).toLowerCase();
+  if (LISTING_BATCH_FAILURE_STATUSES.has(queueStatus)) {
+    const identity = validateQueuedStageReceiptIdentity(initialJob, record);
+    if (!identity.verified) {
+      console.warn('[applyVerifiedQueueReceipt] ignored failed receipt', { queueId, jobId, reasons: identity.reasons });
+      return { status: 'ignored-unverified-failed-receipt', reasons: identity.reasons };
+    }
+    const productId = clean(initialJob.productId);
+    const productRef = db.collection(PRODUCT_COLLECTION).doc(productId);
+    const caseRef = db.collection(LISTING_CASE_COLLECTION).doc(productId);
+    const reason = clean(record.error || record.message || record.failureReason || record.lastError).slice(0, 800)
+      || `${listingBatchPlatformLabel(identity.stage)}尚未完成。`;
+    const retryAt = record.retryAt || record.nextRetryAt || record.availableAt || null;
+    let failedJob = null;
+    await db.runTransaction(async (transaction) => {
+      const latestSnap = await transaction.get(jobRef);
+      if (!latestSnap.exists) return;
+      const latest = { ...(latestSnap.data() || {}), id: jobId };
+      if (clean(latest.currentStage) === 'completed') return;
+      const latestIdentity = validateQueuedStageReceiptIdentity(latest, record);
+      if (!latestIdentity.verified) return;
+      const stages = latest.stages && typeof latest.stages === 'object' ? { ...latest.stages } : initialListingStages(snapshot);
+      const stageState = {
+        ...(stages[identity.stage] || {}), status: 'failed', failureStatus: queueStatus,
+        message: reason, retryable: record.retryable !== false, queueId: clean(queueId),
+        attemptToken: clean(record.attemptToken), fingerprint: clean(record.fingerprint)
+      };
+      if (retryAt) stageState.retryAt = retryAt;
+      stages[identity.stage] = stageState;
+      const platforms = {
+        ...(latest.platforms || {}),
+        [identity.stage]: { status: 'failed', failureStatus: queueStatus, message: reason, retryable: record.retryable !== false, ...(retryAt ? { retryAt } : {}) }
+      };
+      const batchFailure = listingBatchFailurePayload(snapshot, stages, platforms, reason);
+      failedJob = { ...latest, status: 'failed', currentStage: deriveListingCurrentStage(stages), stages, platforms: summarizePlatformsForStorage(platforms) };
+      transaction.set(jobRef, {
+        status: 'failed', currentStage: failedJob.currentStage, stages, platforms: failedJob.platforms,
+        error: reason, transitionToken: '',
+        stageRevision: Math.max(1, Number(latest.stageRevision) || 1) + 1,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(), failedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      transaction.set(caseRef, {
+        caseStatus: 'submitted',
+        publishState: {
+          jobId, status: 'failed', currentStage: failedJob.currentStage, stages,
+          platforms: failedJob.platforms, submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+          submittedBy: '固定四通路 queue receipt'
+        },
+        ...(batchFailure || {}),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v3'
+      }, { merge: true });
+    });
+    if (!failedJob) return { status: 'ignored-stale-failed-receipt' };
+    const productSnap = await productRef.get();
+    if (productSnap.exists) {
+      const product = productSnap.data() || {};
+      await productRef.set({
+        platformListingStatus: platformListingStatusFromPublish(product.platformListingStatus, failedJob.platforms, failedJob.stages),
+        platformListingStatusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v3'
+      }, { merge: true });
+    }
+    return { status: 'failed-recorded-for-retry', stage: identity.stage, jobId, reason, retryAt };
+  }
   const initialVerification = validateQueuedStageReceipt(initialJob, record);
   if (!initialVerification.verified) {
     console.warn('[applyVerifiedQueueReceipt] ignored receipt', { queueId, jobId, reasons: initialVerification.reasons });
@@ -4734,7 +5543,8 @@ async function publishProductListingCaseHandler(request) {
       );
       return { ok: finalizing.status !== 'blocked-image-reference-verification', resumed: true, ...finalizing };
     }
-    if (reusableJob && listingStageVerified(reusableJob.stages || {}, 'easyStore')) {
+    if (reusableJob && listingStageVerified(reusableJob.stages || {}, 'easyStore')
+      && !listingRootStageNeedsResume(reusableJob.preparedSnapshot || {}, reusableJob.stages || {})) {
       const resumedStages = reusableJob.stages && typeof reusableJob.stages === 'object'
         ? reusableJob.stages : initialListingStages(reusableJob.preparedSnapshot);
       const resumedPlatforms = reusableJob.platforms && typeof reusableJob.platforms === 'object' ? { ...reusableJob.platforms } : {};
@@ -4990,12 +5800,14 @@ async function publishProductListingCaseHandler(request) {
         return { ok: true, productId, jobId, status, currentStage, stages, platforms: platformsForStorage };
       }
       const platformListingStatus = platformListingStatusFromPublish(product.platformListingStatus, platforms, stages);
+      const batchFailure = listingBatchFailurePayload(snapshot, stages, platforms);
       await Promise.all([
         caseRef.set({
           caseStatus: status === 'completed' ? 'published' : 'submitted',
           shopeeCategoryPath: snapshot.shopeeCategoryPath,
           shopeeAttributeValues: snapshot.shopeeAttributeValues,
           publishState: { jobId, status, currentStage, stages, platforms: platformsForStorage, submittedAt: admin.firestore.FieldValue.serverTimestamp(), submittedBy: createdBy },
+          ...(batchFailure || {}),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架', schemaVersion: 8
         }, { merge: true }),
         productRef.set({
@@ -5014,10 +5826,18 @@ async function publishProductListingCaseHandler(request) {
       return { ok: !Object.values(platforms).some((row) => row.status === 'failed'), productId, jobId, status, currentStage, stages, platforms };
     } catch (error) {
       lockStatus = 'failed';
-      await jobRef.set({
-        status: 'failed', error: clean(error && error.message).slice(0, 800) || '商品上架工作未完成。',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(), failedAt: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true }).catch(() => null);
+      const failureMessage = clean(error && error.message).slice(0, 800) || '商品上架工作未完成。';
+      const batchFailure = listingBatchFailurePayload(snapshot, stages, platforms, failureMessage);
+      await Promise.all([
+        jobRef.set({
+          status: 'failed', error: failureMessage,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(), failedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true }),
+        caseRef.set({
+          ...(batchFailure || { batchQueueStatus: 'failed', batchQueueError: failureMessage, batchRetryPlatforms: listingTargetPlatforms(snapshot), batchNextRetryAt: null, batchQueueUpdatedAt: admin.firestore.FieldValue.serverTimestamp() }),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '商品上架'
+        }, { merge: true })
+      ]).catch(() => null);
       throw error;
     } finally {
       try {
@@ -5124,6 +5944,9 @@ async function finalizeListingJobIfReady(db, jobId, actor) {
     finalWrites.push(reference.caseRef.set({
       caseStatus: 'published',
       publishState: { jobId, status: 'completed', currentStage: 'completed', stages: completedStages, platforms: storedPlatforms, verifiedAt: admin.firestore.FieldValue.serverTimestamp() },
+      batchQueueStatus: 'completed', batchCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+      batchQueueError: '', batchPlatformFailures: {}, batchRetryPlatforms: [], batchNextRetryAt: null,
+      batchQueueUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: '固定四通路流程 v3'
     }, { merge: true }));
     finalWrites.push(reference.productRef.set({
@@ -5275,12 +6098,22 @@ function registerProductListingPublish(target) {
         if (!isTransientListingPublishFailure(error) || attempt === delays.length - 1) break;
       }
     }
+    const failureMessage = clean(lastError && lastError.message).slice(0, 800) || '發布未完成';
+    const batchPlatformFailures = {};
+    grant.listingTargetPlatforms.forEach((platform) => {
+      batchPlatformFailures[platform] = {
+        status: 'failed', reason: failureMessage, retryable: true, lastAttemptAt: new Date()
+      };
+    });
     await after.ref.set({
       codexAutoPublish: {
         status: 'failed', workflowVersion: LISTING_WORKFLOW_ID, snapshotId: grant.snapshotId,
-        fingerprint, attemptToken, error: clean(lastError && lastError.message).slice(0, 800) || '發布未完成',
+        fingerprint, attemptToken, error: failureMessage,
         failedAt: admin.firestore.FieldValue.serverTimestamp()
-      }
+      },
+      batchQueueStatus: 'failed', batchQueueError: failureMessage,
+      batchPlatformFailures, batchRetryPlatforms: grant.listingTargetPlatforms,
+      batchNextRetryAt: null, batchQueueUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
     return null;
   });
@@ -5347,6 +6180,8 @@ module.exports = {
     normalizeListingTargetScope,
     listingTargetPlatforms,
     listingTargetLabel,
+    resolveEasyStoreCollectionNames,
+    easyStoreCollectionCatalog: () => [...EASYSTORE_COLLECTION_CATALOG],
     normalizeListingIntent,
     listingIntentPolicy,
     listingPhysicalImageUrls,
@@ -5355,12 +6190,17 @@ module.exports = {
     richContentLifecycle,
     buildListingSnapshot,
     buildEasyStoreProductBody,
+    momoProductName,
+    momoShortFeaturePlan,
+    normalizeMomoAttributes,
+    momoMarketPrice,
     normalizeShopeeAttributes,
     applyShopeeAttributeTemplate,
     canonicalShopeeCategorySegment,
     shopeeCategorySegments,
     hsinchuSizeBand,
     buildShopeeLogistics,
+    buildMomoShipping,
     buildCoupangShipping,
     buildShopeeAutofillPayload,
     platformListingIds,
@@ -5376,6 +6216,9 @@ module.exports = {
     appendShopDescriptionPromos,
     appendShopDescriptionImages,
     listingImageAllocation,
+    easyStoreGalleryImages,
+    easyStoreVariantImageUrl,
+    easyStoreImageIdForPlannedUrl,
     prioritizedListingImageUrls,
     localizedRepresentativeImage,
     finalizedRoleRowsForCase,
@@ -5392,12 +6235,15 @@ module.exports = {
     platformCategoryResolution,
     validatePlatformImageEvidence,
     validatePlatformStageVerification,
+    validateQueuedStageReceiptIdentity,
     validateQueuedStageReceipt,
     listingStageVerified,
     listingStageExplicitlyVerified,
     initialListingStages,
     allListingStagesVerified,
     deriveListingCurrentStage,
+    listingBatchFailurePayload,
+    listingRootStageNeedsResume,
     validateAllPlatformImageReceipts,
     centralCompletedImageUpdate,
     completedVariantRecords,
@@ -5408,6 +6254,8 @@ module.exports = {
     buildCanonicalCategoryDecision,
     buildListingDecisionContract,
     brandTemplateContract: () => JSON.parse(JSON.stringify(BRAND_TEMPLATE_CONTRACT)),
+    brandCreativeStyleCatalog: () => JSON.parse(JSON.stringify(listingBrandCreative.STYLE_CATALOG)),
+    brandCreativeStyleAssignment: listingBrandCreative.assignment,
     buildPlatformPageContracts,
     buildPreparedPlatformFieldPlan,
     publishEasyStoreStage,

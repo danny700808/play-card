@@ -23,8 +23,8 @@
 4. 點「載入未封裝項目」。
 5. 選擇解壓縮後的 `easystore-shopee-autofill/` 資料夾。
 6. 程式更新後，回到擴充功能頁按「重新載入」。
-7. 0.3.34 會要求「所有網站」與腳本執行權限；這兩項用於頁內框選截圖，以及替更新前已開啟的普通網頁補載入收圖面板。
-8. 同一台電腦不要同時保留舊版與 0.3.34；更新後重新整理營運中心，再重新開始搜圖。
+7. 0.3.37 會要求「所有網站」與腳本執行權限；這兩項用於頁內框選截圖、替更新前已開啟的普通網頁補載入收圖面板，以及在 Seller Center 讀取已準備圖片後交給蝦皮原生上傳器。
+8. 同一台電腦不要同時保留舊版與 0.3.37；更新後重新整理營運中心，再重新開始搜圖。
 
 擴充套件只在以下頁面執行：
 
@@ -37,7 +37,7 @@
 
 1. 在「準備上架」開啟指定商品，按「開始搜圖」。
 2. 保留商品頁，另外開啟任何一般商品網頁；右上角會自動出現「柚子掌櫃收圖中」。
-   - 開始搜圖時，0.3.34 也會替更新前已開著的普通網頁自動補載入；新開或重新整理的商品頁會照常自動出現。
+   - 開始搜圖時，0.3.37 也會替更新前已開著的普通網頁自動補載入；新開或重新整理的商品頁會照常自動出現。
 3. 「點圖片加入」預設關閉，讓商品頁連結維持正常可點。要抓單張圖片時先按一下開啟，再把滑鼠移到圖片上；出現綠框後點一下，圖片會自動加入同一個 SKU／EasyStore 商品 ID。不使用時再按一次即可關閉綠框。助手會優先讀取乾淨原圖，網站阻擋時才自動改用可見畫面截圖。
 4. 要截取畫面的一部分時，直接按右上角的「框選截圖」，按住滑鼠拉出範圍，放開後可選擇「確認截圖」、「重新框選」或「取消框選」；取消後會立即恢復商品頁正常操作。
 5. 仍可用 `Ctrl+Shift+Y` 直接開始框選；若使用 Windows 的 `Win+Shift+S`，截完後回商品頁按 `Ctrl+V`，截圖也會送入目前商品。
@@ -83,7 +83,7 @@ window.postMessage({
 
 ```js
 const payload = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   workflowVersion: "youzi-four-channel-listing-v3",
   jobId: "publish-job-id",
   snapshotId: "media-snapshot-id",
@@ -113,30 +113,52 @@ const payload = {
   ],
   brand: "Ibanez",
   advancedDescription: {
-    mode: "use-easystore-rich-description-with-native-image-transfer",
-    source: "easystore-body-html",
+    mode: "seller-center-native-file-upload-interleaved",
+    source: "prepared-text-blocks-and-downloaded-local-image-files",
     preparedBeforeNavigation: true,
-    enableWhenAvailable: true,
-    useEasyStoreDescription: true,
-    transferImagesThroughEasyStoreShopeeEditor: true,
+    skipEasyStoreDescriptionImport: true,
+    transferImagesThroughShopeeNativeUploader: true,
+    memoryOnlyImageStaging: false,
+    desktopDownloadRequired: true,
+    dedicatedLocalStagingDirectoryRequired: true,
+    uploadEntry: "商品描述/新增圖片/從電腦裝置上傳",
+    deleteLocalStagingOnlyAfterReloadVerification: true,
+    neverDeleteUntrackedUserFiles: true,
     directExternalImageUrlPasteForbidden: true,
-    waitForEveryImageTransferBeforePreparePublish: true,
-    verifyTransferredImageCountAndFixedLastTwoBeforePublish: true,
+    waitForEveryNativeImageUploadBeforeUpdate: true,
+    verifyNativeImageCountAndInterleavedOrderBeforeUpdate: true,
     rejectZeroImageDescriptionBeforePublish: true,
-    capabilityProbe: "single-lightweight-page-probe",
+    capabilityProbe: "seller-center-rich-editor-and-file-input",
     contentFingerprint: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     requiredFirstImageUrl: "https://example.com/green-hero.jpg",
-    fixedDisclaimer: "商品圖片與規格僅供參考，實際內容以收到的實體商品為準。",
-    fixedDisclaimerImmediatelyBeforeLastTwoImages: true,
     fixedLastTwoImageUrls: ["https://example.com/promo-1.jpg", "https://example.com/promo-2.jpg"],
     imageUrls: [
       "https://example.com/green-hero.jpg",
-      "https://example.com/green-hero.jpg",
-      "https://example.com/green-hero.jpg",
+      "https://example.com/spec.jpg",
+      "https://example.com/usage.jpg",
       "https://example.com/promo-1.jpg",
       "https://example.com/promo-2.jpg"
     ],
-    expectedImageCount: 5
+    expectedImageCount: 5,
+    textBlocks: [
+      { key: "features", text: "商品特色\n1. …" },
+      { key: "specifications", text: "商品規格\n型號：…" },
+      { key: "usage", text: "使用方式／適用情境\n1. …" },
+      { key: "actual-product-notice", text: "商品圖片與文字說明僅供參考；…" },
+      { key: "warranty-support-notice", text: "保固會依商品類型而有所不同。…" }
+    ],
+    blockPlan: [
+      { type: "text", key: "features" },
+      { type: "image", key: "product-image-1", imageUrl: "https://example.com/green-hero.jpg" },
+      { type: "text", key: "specifications" },
+      { type: "image", key: "product-image-2", imageUrl: "https://example.com/spec.jpg" },
+      { type: "text", key: "usage" },
+      { type: "image", key: "product-image-3", imageUrl: "https://example.com/usage.jpg" },
+      { type: "text", key: "actual-product-notice" },
+      { type: "text", key: "warranty-support-notice" },
+      { type: "image", key: "description-promo-1", imageUrl: "https://example.com/promo-1.jpg" },
+      { type: "image", key: "description-promo-2", imageUrl: "https://example.com/promo-2.jpg" }
+    ]
   },
   attributes: [
     { label: "Neck Material", value: "Maple", confidence: "high", note: "官方規格" },
@@ -161,7 +183,7 @@ const payload = {
       { label: "7-ELEVEN", enabled: false, option: "", feeTwd: null, sellerPays: false },
       { label: "新竹物流", enabled: true, option: "S170", feeTwd: null, sellerPays: false },
       { label: "全家", enabled: false, option: "", feeTwd: null, sellerPays: false },
-      { label: "賣家宅配：大型/超重物品運送", enabled: false, option: "", feeTwd: null, sellerPays: false },
+      { label: "賣家宅配：大型/超重物品運送", enabled: true, option: "", feeTwd: 100, sellerPays: false },
       { label: "嘉里快遞", enabled: false, option: "", feeTwd: null, sellerPays: false },
       { label: "店到家宅配", enabled: false, option: "", feeTwd: null, sellerPays: false }
     ],
@@ -192,14 +214,14 @@ ACK 格式：
 - `create-new` 必須沒有中央蝦皮平台 ID；`update-existing` 與 `add-variant-to-existing` 必須恰有一個中央平台 ID。多個 ID、方向矛盾或缺少細項父商品資料都會停止，不會猜測。
 - 新增細項資料以 `variantGroup` 保存父商品、父／子 SKU、細項名稱和值，以及已完成繁體化的父／子代表圖；通過相同身分與必填驗證後可自動送出。
 - 助手會先單獨完成分類階段：鎖定「請先選擇分類」卡片右側的鉛筆，確認分類選單已出現，再依核准路徑逐層選擇。EasyStore 每選一層會在右側新增獨立欄位；助手只捲動目前欄位的直向清單，必要時只移動分類視窗底部的橫向捲軸以顯示下一欄，並且只點完全相符的分類文字。只有頁面顯示完整分類路徑並核對賣家 SKU 後，才進入已準備的進階商品描述、品牌、商品屬性、物流與預購。
-- 官網 HTML 介紹、介紹圖片與順序在開啟蝦皮前已寫入不可變快照。蝦皮頁會開啟「進階商品描述」並按「使用 EasyStore 的產品描述」，把文字與介紹圖片一起帶入；若漏圖就補進同一編輯器，再核對免責句緊接在最後兩張固定介紹圖之前，且第二張固定介紹圖是絕對最後內容。任何情況都不得發布純文字版本。
+- EasyStore 只同步蝦皮基本資料，助手明確略過「使用 EasyStore 的產品描述」。送出後接續 Seller Center 同一商品，將不可變快照中的圖片讀入擴充功能記憶體，轉成 `File` 後交給蝦皮「從電腦裝置上傳」原生欄位，按固定圖文順序插入；不下載到桌面、不顯示下載確認，也不刪除使用者檔案。只有全部圖片成為蝦皮原生 CDN、圖文順序與固定結尾核對成功後才按更新。
 - 分類任何一步未完成時，助手只回報目前卡住的分類步驟並立即停止，不會把尚未生成的品牌、物流與預購誤列為多個待補欄位。
 - 品牌是分類後的第二個必填關卡；有品牌時只接受完全相符品牌，沒有品牌時只接受蝦皮核准的 `NOBRAND`／無品牌選項，未完成就立即停止。品牌完成後才逐一處理核准屬性；屬性有待補時停在第三階段。接著校正全部物流，指定物流未完成時停在第四階段；預購設定是第五階段，完成後才進入最後發布。
 - 分類、品牌與商品屬性的非空白欄位視為人工資料並保留；物流與預購則依本次上架規則校正為指定狀態。
 - 下拉選單只選完全相符值或程式內明列的核准同義詞，不做模糊猜測。
 - `confidence: "low"` 的屬性不自動填。
 - 物流會依後端已確認的商品尺寸與配送決策套用成一致狀態；未核准的物流會關閉，避免沿用上一件商品或人工測試留下的錯誤選項。
-- 大型商品（`freight`）在符合新竹物流限制時只開啟「新竹物流」；「賣家宅配：大型/超重物品運送」、嘉里與黑貓一律關閉。
+- 大型商品（`freight`）在符合新竹物流限制時，會同時開啟「新竹物流」與「賣家宅配：大型/超重物品運送」；賣家宅配固定向買家收取 **NT$100**，不勾選「我將承擔運費」。
 - 新竹物流會用包裝最長邊、三邊總和及重量交叉檢查。AZES40 的 `106.7 + 45.7 + 10.2 = 162.6 cm`，因此對應 **S170**。
 - S170 僅核准 `S170`、`161–170 cm`、`170cm（含）以下`、`≤170cm` 等同義顯示；不接受舊的 `151–180cm`。
 - 找不到完全相符的新竹級距時，會關閉新竹物流並列入「待補」，不會保留錯誤級距後送出。

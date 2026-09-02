@@ -12,7 +12,7 @@ const COVER_RULE_VERSION = 'youzi-nine-series-book-cover-v7-chinese-title-editio
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const DEFAULT_CHUNK_SIZE = 6;
 const MAX_CHUNK_SIZE = 10;
-const FETCH_TIMEOUT_MS = 20 * 1000;
+const FETCH_TIMEOUT_MS = 8 * 1000;
 const MAX_REMOTE_IMAGE_BYTES = 12 * 1024 * 1024;
 
 // These covers were checked against the Chinese product title first, then the
@@ -84,6 +84,32 @@ function productSku(product) {
 function productName(product) {
   const source = product || {};
   return clean(source.internalName || source.originalName || source.name || source.onlineName);
+}
+
+function productIsbn(product) {
+  const source = [productSku(product), productName(product)].join(' ');
+  const match = source.match(/(?:97[89])\d{10}/);
+  return match ? match[0] : '';
+}
+
+// Product codes in the central catalogue often contain a locally assigned
+// prefix before the publisher's ISBN/JAN number.  Keep the trailing portions as
+// search hints, but never treat a short suffix as a verified ISBN by itself.
+// Candidate acceptance is still controlled by the Chinese title, subtitle,
+// volume and edition checks below.
+function productCodeSuffixes(product) {
+  const source = [productSku(product), productName(product)].join(' ');
+  const suffixes = new Set();
+  for (const match of source.matchAll(/\d{7,}/g)) {
+    const digits = match[0];
+    if (digits.length <= 16) suffixes.add(digits);
+    [13, 10, 8, 7].forEach((length) => {
+      if (digits.length >= length) suffixes.add(digits.slice(-length));
+    });
+  }
+  const exactIsbn = productIsbn(product);
+  if (exactIsbn) suffixes.delete(exactIsbn);
+  return [...suffixes].slice(0, 8);
 }
 
 function isNineSeriesBook(product) {
@@ -237,21 +263,24 @@ function googleCoverUrl(volume) {
   return clean(raw).replace(/^http:/i, 'https:').replace(/&zoom=\d+/i, '&zoom=3').replace(/&edge=curl/ig, '');
 }
 
-function googleCandidate(volume, requestedTitle) {
+function googleCandidate(volume, requestedTitle, expectedIsbn = '') {
   const info = volume && volume.volumeInfo ? volume.volumeInfo : {};
   const title = [clean(info.title), clean(info.subtitle)].filter(Boolean).join(' ');
   const similarity = titleMatchScore(requestedTitle, title);
   const imageUrl = googleCoverUrl(volume);
   if (!imageUrl) return null;
-  if (!titleMatchesRequested(requestedTitle, title)) return null;
+  const identifiers = (Array.isArray(info.industryIdentifiers) ? info.industryIdentifiers : [])
+    .map((row) => clean(row && row.identifier).replace(/[^0-9X]/gi, ''));
+  const exactIsbn = !!expectedIsbn && identifiers.includes(expectedIsbn);
+  if (!exactIsbn && !titleMatchesRequested(requestedTitle, title)) return null;
   return {
     source: 'google-books',
     sourceRecordUrl: volume && volume.id ? `https://books.google.com/books?id=${encodeURIComponent(volume.id)}` : '',
     imageUrl,
     matchedTitle: title,
-    matchedIsbn: '',
-    matchMethod: 'title-only',
-    matchScore: similarity
+    matchedIsbn: exactIsbn ? expectedIsbn : '',
+    matchMethod: exactIsbn ? 'isbn-exact' : 'title-only',
+    matchScore: exactIsbn ? 1.2 : similarity
   };
 }
 
@@ -440,16 +469,17 @@ async function candidateFromCommercePage(pageUrl, requestedTitle) {
   }));
 }
 
-async function discoverCommerceCoverCandidates(title) {
+async function discoverCommerceCoverCandidates(title, codeSuffixes = []) {
   if (!clean(title)) return [];
   const queries = [
+    ...codeSuffixes.slice(0, 4).map((suffix) => `"${title}" ${suffix} 樂譜 封面`),
+    `${title} 封面 site:talubook.com`,
+    `${title} 封面 site:musikershop.com`,
+    `${title} 封面 site:musicmusic.com.tw`,
     `${title} 封面 site:musicth.com.tw`,
     `${title} 封面 site:goodin.com.tw`,
     `${title} 封面 site:kaiyimusic.com.tw`,
     `${title} 封面 site:mingtinghuang.com`,
-    `${title} 封面 site:talubook.com`,
-    `${title} 封面 site:musikershop.com`,
-    `${title} 封面 site:musicmusic.com.tw`,
     `${title} 封面 site:books.com.tw`,
     `${title} 樂譜 教材 正面封面`
   ];
@@ -479,13 +509,13 @@ async function discoverCommerceCoverCandidates(title) {
   return uniqueCoverCandidates(candidates);
 }
 
-async function discoverImageSearchCandidates(title) {
+async function discoverImageSearchCandidates(title, codeSuffixes = []) {
   const queryTitle = clean(title);
   if (!queryTitle) return [];
   const queries = [
+    ...codeSuffixes.slice(0, 4).map((suffix) => `"${queryTitle}" ${suffix} 封面`),
     `${queryTitle} 封面`,
-    `"${queryTitle}" 書 封面`,
-    `${queryTitle} 樂譜 教材 封面`
+    `"${queryTitle}" 樂譜 教材 封面`
   ];
   const candidates = [];
   for (const query of queries) {
@@ -498,11 +528,11 @@ async function discoverImageSearchCandidates(title) {
   return uniqueCoverCandidates(candidates);
 }
 
-async function googleBooksCandidates(query, title) {
+async function googleBooksCandidates(query, title, expectedIsbn = '') {
   const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=20&printType=books`;
   const payload = await fetchJson(url);
   const items = Array.isArray(payload && payload.items) ? payload.items : [];
-  return items.map((item) => googleCandidate(item, title)).filter(Boolean);
+  return items.map((item) => googleCandidate(item, title, expectedIsbn)).filter(Boolean);
 }
 
 function uniqueCoverCandidates(candidates) {
@@ -534,26 +564,37 @@ async function findBookCoverCandidates(product) {
   const name = productName(product);
   const searchTitle = bookSearchTitle(name);
   const candidates = [];
+  const isbn = productIsbn(product);
+  const codeSuffixes = productCodeSuffixes(product);
   const curated = curatedCoverCandidate(product);
-  if (curated) candidates.push(curated);
+  if (curated) return { candidates: [curated], isbn };
+  if (isbn) {
+    try {
+      candidates.push(...await googleBooksCandidates(`isbn:${isbn}`, searchTitle, isbn));
+    } catch (_) {}
+    if (candidates.length) return { candidates: uniqueCoverCandidates(candidates), isbn };
+  }
   const queryTitle = normalizeBookTitle(searchTitle).slice(0, 80);
   if (queryTitle.length >= 2) {
     try {
       candidates.push(...await googleBooksCandidates(`intitle:${queryTitle}`, searchTitle));
     } catch (_) {}
   }
-  try {
-    candidates.push(...await discoverCommerceCoverCandidates(searchTitle));
-  } catch (_) {}
+  if (candidates.length) return { candidates: uniqueCoverCandidates(candidates), isbn };
   try {
     candidates.push(...await discoverTaazeCoverCandidates(searchTitle));
   } catch (_) {}
+  if (candidates.length) return { candidates: uniqueCoverCandidates(candidates), isbn };
   try {
-    candidates.push(...await discoverImageSearchCandidates(searchTitle));
+    candidates.push(...await discoverImageSearchCandidates(searchTitle, codeSuffixes));
+  } catch (_) {}
+  if (candidates.length) return { candidates: uniqueCoverCandidates(candidates), isbn };
+  try {
+    candidates.push(...await discoverCommerceCoverCandidates(searchTitle, codeSuffixes));
   } catch (_) {}
   const uniqueCandidates = uniqueCoverCandidates(candidates);
   uniqueCandidates.sort((left, right) => Number(right.matchScore || 0) - Number(left.matchScore || 0));
-  return { candidates: uniqueCandidates, isbn: '' };
+  return { candidates: uniqueCandidates, isbn };
 }
 
 async function findBookCoverCandidate(product) {
@@ -652,6 +693,12 @@ async function enrichOneProduct(db, item, actor) {
   if (!snapshot.exists) return { status: 'skipped', productId: item.productId, sku: item.sku, reason: '中央商品不存在' };
   const product = snapshot.data() || {};
   if (!isNineSeriesBook(product)) return { status: 'skipped', productId: item.productId, sku: item.sku, reason: '非 9 系列正式課本' };
+  if (existingProductImages(product).length) {
+    return {
+      status: 'skipped', productId: item.productId, sku: productSku(product),
+      name: productName(product), reason: '已有商品圖片，保留原圖並跳過搜尋'
+    };
+  }
   const found = await findBookCoverCandidates(product);
   let acceptedCandidate = null;
   let image = null;
@@ -736,6 +783,7 @@ async function startJob(request) {
   snapshot.forEach((doc) => {
     const product = doc.data() || {};
     if (!isNineSeriesBook(product)) return;
+    if (existingProductImages(product).length) return;
     items.push({ productId: doc.id, sku: productSku(product), name: productName(product) });
   });
   items.sort((left, right) => left.sku.localeCompare(right.sku, 'zh-Hant', { numeric: true }));
@@ -802,15 +850,21 @@ async function processJob(request) {
   const limit = Math.min(MAX_CHUNK_SIZE, Math.max(1, Number.isFinite(requested) ? Math.floor(requested) : DEFAULT_CHUNK_SIZE));
   const batch = items.slice(cursor, cursor + limit);
   const actor = normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || clean(request.auth && request.auth.uid);
-  const results = [];
-  for (const item of batch) {
-    try {
-      results.push(await enrichOneProduct(db, item, actor));
-    } catch (error) {
-      console.error('Nine-series book cover enrichment failed.', { productId: item.productId, sku: item.sku, error: error && error.message });
-      results.push({ status: 'failed', productId: item.productId, sku: item.sku, name: item.name, reason: clean(error && error.message) || '未知錯誤' });
+  const results = new Array(batch.length);
+  let workIndex = 0;
+  async function worker() {
+    while (workIndex < batch.length) {
+      const index = workIndex++;
+      const item = batch[index];
+      try {
+        results[index] = await enrichOneProduct(db, item, actor);
+      } catch (error) {
+        console.error('Nine-series book cover enrichment failed.', { productId: item.productId, sku: item.sku, error: error && error.message });
+        results[index] = { status: 'failed', productId: item.productId, sku: item.sku, name: item.name, reason: clean(error && error.message) || '未知錯誤' };
+      }
     }
   }
+  await Promise.all(Array.from({ length: Math.min(10, batch.length) }, () => worker()));
   const nextCursor = cursor + batch.length;
   const done = nextCursor >= items.length;
   const increments = results.reduce((counts, row) => {
@@ -873,6 +927,7 @@ module.exports = {
   isNineSeriesBook,
   normalizeBookTitle,
   productName,
+  productCodeSuffixes,
   productSku,
   registerBookCoverEnrichment,
   titleCoverage,

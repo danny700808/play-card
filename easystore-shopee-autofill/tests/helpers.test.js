@@ -8,7 +8,7 @@ const helpers = require("../helpers.js");
 
 function validPayload(now) {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     workflowVersion: "youzi-four-channel-listing-v3",
     jobId: "job-shopee-v3-1",
     snapshotId: "snapshot-shopee-v3-1",
@@ -33,30 +33,67 @@ function validPayload(now) {
     categoryPath: ["愛好與收藏品", "樂器與樂器配件", "弦樂器", "吉他、貝斯"],
     brand: "Ibanez",
     advancedDescription: {
-      mode: "use-easystore-rich-description-with-native-image-transfer",
-      source: "easystore-body-html",
+      mode: "seller-center-native-file-upload-interleaved",
+      source: "prepared-text-blocks-and-downloaded-local-image-files",
       preparedBeforeNavigation: true,
-      enableWhenAvailable: true,
-      useEasyStoreDescription: true,
-      transferImagesThroughEasyStoreShopeeEditor: true,
+      skipEasyStoreDescriptionImport: true,
+      transferImagesThroughShopeeNativeUploader: true,
+      memoryOnlyImageStaging: false,
+      desktopDownloadRequired: true,
+      dedicatedLocalStagingDirectoryRequired: true,
+      uploadEntry: "商品描述/新增圖片/從電腦裝置上傳",
+      deleteLocalStagingOnlyAfterReloadVerification: true,
+      neverDeleteUntrackedUserFiles: true,
       directExternalImageUrlPasteForbidden: true,
-      waitForEveryImageTransferBeforePreparePublish: true,
-      verifyTransferredImageCountAndFixedLastTwoBeforePublish: true,
+      waitForEveryNativeImageUploadBeforeUpdate: true,
+      verifyNativeImageCountAndInterleavedOrderBeforeUpdate: true,
       rejectZeroImageDescriptionBeforePublish: true,
-      capabilityProbe: "single-lightweight-page-probe",
+      capabilityProbe: "seller-center-rich-editor-and-file-input",
+      imagePreflight: {
+        preparedBeforeEasyStorePublish: true,
+        minimumSourceShortEdgePx: 640,
+        preferredSquareSizePx: 1000,
+        storefrontPortraitWidthPx: 750,
+        storefrontPortraitHeightPx: 1000,
+        maximumImageCount: 12,
+        responsiveHtmlStyle: "max-width:100%;height:auto",
+        verifyPlatformAcceptanceAfterPreparePublish: true,
+        doNotResizeAgainInsideShopee: true
+      },
       contentFingerprint: "b".repeat(64),
       requiredFirstImageUrl: "https://example.com/green-hero.jpg",
-      fixedDisclaimer: "商品圖片與規格僅供參考，實際內容以收到的實體商品為準。",
-      fixedDisclaimerImmediatelyBeforeLastTwoImages: true,
       fixedLastTwoImageUrls: ["https://example.com/promo-1.jpg", "https://example.com/promo-2.jpg"],
       imageUrls: [
         "https://example.com/green-hero.jpg",
-        "https://example.com/green-hero.jpg",
-        "https://example.com/green-hero.jpg",
+        "https://example.com/spec.jpg",
+        "https://example.com/usage.jpg",
         "https://example.com/promo-1.jpg",
         "https://example.com/promo-2.jpg"
       ],
-      expectedImageCount: 5
+      expectedImageCount: 5,
+      textBlocks: [
+        { key: "features", text: "商品特色\n1. 已驗證特色" },
+        { key: "specifications", text: "商品規格\n型號：AZES40-PRB" },
+        { key: "usage", text: "使用方式／適用情境\n1. 演奏前先調音" },
+        { key: "actual-product-notice", text: "商品圖片與文字說明僅供參考。" },
+        { key: "warranty-support-notice", text: "出貨與保固依商品類型辦理。" }
+      ],
+      blockPlan: [
+        { type: "text", key: "features" },
+        { type: "image", key: "product-image-1", imageUrl: "https://example.com/green-hero.jpg" },
+        { type: "text", key: "specifications" },
+        { type: "image", key: "product-image-2", imageUrl: "https://example.com/spec.jpg" },
+        { type: "text", key: "usage" },
+        { type: "image", key: "product-image-3", imageUrl: "https://example.com/usage.jpg" },
+        { type: "text", key: "actual-product-notice" },
+        { type: "text", key: "warranty-support-notice" },
+        { type: "image", key: "description-promo-1", imageUrl: "https://example.com/promo-1.jpg" },
+        { type: "image", key: "description-promo-2", imageUrl: "https://example.com/promo-2.jpg" }
+      ]
+    },
+    priceAdjustment: {
+      enabled: true,
+      synchronizeWithEasyStorePrice: true
     },
     attributes: [
       { label: "Neck Material", value: "Maple", confidence: "high", note: "Ibanez 官方規格" },
@@ -81,7 +118,7 @@ function validPayload(now) {
         { label: "7-ELEVEN", enabled: false, option: "", feeTwd: null, sellerPays: false },
         { label: "新竹物流", enabled: true, option: "S170", feeTwd: null, sellerPays: false },
         { label: "全家", enabled: false, option: "", feeTwd: null, sellerPays: false },
-        { label: "賣家宅配：大型/超重物品運送", enabled: false, option: "", feeTwd: null, sellerPays: false },
+        { label: "賣家宅配：大型/超重物品運送", enabled: true, option: "", feeTwd: 100, sellerPays: false },
         { label: "嘉里快遞", enabled: false, option: "", feeTwd: null, sellerPays: false },
         { label: "店到家宅配", enabled: false, option: "", feeTwd: null, sellerPays: false }
       ],
@@ -90,6 +127,22 @@ function validPayload(now) {
     preorder: { enabled: false, days: 1 },
     guard: { brand: "Ibanez", model: "AZES40-PRB", color: "Purist Blue", identityStatus: "confirmed" }
   };
+}
+
+function verifiedAutofillReport(overrides) {
+  return Object.assign({
+    missing: [],
+    advancedDescriptionEvidence: {
+      deferredToSellerCenter: true,
+      easyStoreDescriptionImportSkipped: true,
+      preparedBlockPlanComplete: true
+    },
+    priceAdjustmentEvidence: {
+      enabled: true,
+      synchronizeWithEasyStorePrice: true,
+      arithmeticFieldsPreserved: true
+    }
+  }, overrides || {});
 }
 
 test("normalizes exact labels without fuzzy substring matching", () => {
@@ -555,25 +608,17 @@ test("requires a complete and authoritative freight policy", () => {
   assert.equal(missingResult.ok, false);
   assert.match(missingResult.errors.join(" "), /缺少「全家」設定/);
 
-  const forbiddenSellerLarge = validPayload(now);
-  forbiddenSellerLarge.logistics.methods.find((row) => row.label.startsWith("賣家宅配")).enabled = true;
-  const forbiddenSellerLargeResult = helpers.validateQueuePayload(forbiddenSellerLarge, now);
-  assert.equal(forbiddenSellerLargeResult.ok, false);
-  assert.match(forbiddenSellerLargeResult.errors.join(" "), /不應開啟「賣家宅配/);
+  const wrongSellerFee = validPayload(now);
+  wrongSellerFee.logistics.methods.find((row) => row.label.startsWith("賣家宅配")).feeTwd = 99;
+  const wrongFeeResult = helpers.validateQueuePayload(wrongSellerFee, now);
+  assert.equal(wrongFeeResult.ok, false);
+  assert.match(wrongFeeResult.errors.join(" "), /固定收取 NT\$100/);
 
   const extraMethod = validPayload(now);
   extraMethod.logistics.methods.find((row) => row.label === "7-ELEVEN").enabled = true;
   const extraResult = helpers.validateQueuePayload(extraMethod, now);
   assert.equal(extraResult.ok, false);
   assert.match(extraResult.errors.join(" "), /不應開啟「7-ELEVEN」/);
-
-  const oversize = validPayload(now);
-  oversize.logistics.decision = "oversize";
-  oversize.logistics.methods.find((row) => row.label === "新竹物流").enabled = false;
-  oversize.logistics.methods.find((row) => row.label === "新竹物流").option = "";
-  const oversizeResult = helpers.validateQueuePayload(oversize, now);
-  assert.equal(oversizeResult.ok, false);
-  assert.match(oversizeResult.errors.join(" "), /不能改開其他承運商/);
 });
 
 test("requires the canonical EasyStore product URL and never trusts query or fragment variants", () => {
@@ -828,21 +873,31 @@ test("product-page handoff survives EasyStore SPA navigation and final publish s
   assert.match(source, /setNativeValue\(feeControl, method\.feeTwd\)/);
   assert.match(source, /await reconcileSellerPays\(labels, method\.sellerPays === true/);
   assert.match(source, /if \(helpers\.exactApprovedMatch\(checkedText, approvedOptions\)\)[\s\S]*desiredRadio\.click\(\)/);
+  assert.match(source, /easyStoreDescriptionImportSkipped: true/);
+  assert.match(source, /YOUZI_SHOPEE_OPEN_SELLER_EDITOR_V1/);
+  const sellerSource = fs.readFileSync(path.join(__dirname, "..", "shopee.js"), "utf8");
+  assert.match(sellerSource, /new DataTransfer\(\)/);
+  assert.match(sellerSource, /verifyInterleavedEditor/);
+  assert.match(sellerSource, /preparedImages\.length = 0/);
 });
 
 test("automatic publish is allowed only when the report and logistics are complete", () => {
   const payload = validPayload(1_800_000_000_000);
-  assert.deepEqual(helpers.autoPublishGate(payload, { missing: [] }, "update"), { ok: true, reasons: [] });
+  assert.deepEqual(helpers.autoPublishGate(payload, verifiedAutofillReport(), "update"), { ok: true, reasons: [] });
+  const noEvidence = helpers.autoPublishGate(payload, { missing: [] }, "update");
+  assert.equal(noEvidence.ok, false);
+  assert.match(noEvidence.reasons.join(" "), /蝦皮原生圖文計畫/);
+  assert.match(noEvidence.reasons.join(" "), /價格同步/);
   const missing = helpers.autoPublishGate(payload, { missing: ["分類"] }, "update");
   assert.equal(missing.ok, false);
   assert.match(missing.reasons.join(" "), /待補/);
   payload.logistics.requiresConfirmation = true;
-  const logistics = helpers.autoPublishGate(payload, { missing: [] }, "update");
+  const logistics = helpers.autoPublishGate(payload, verifiedAutofillReport(), "update");
   assert.equal(logistics.ok, false);
   assert.match(logistics.reasons.join(" "), /物流/);
   payload.logistics.requiresConfirmation = false;
   payload.publishMode = "fill-only";
-  const manual = helpers.autoPublishGate(payload, { missing: [] }, "update");
+  const manual = helpers.autoPublishGate(payload, verifiedAutofillReport(), "update");
   assert.equal(manual.ok, false);
   assert.match(manual.reasons.join(" "), /人工確認/);
 });
@@ -892,15 +947,15 @@ test("add-variant-to-existing survives schema validation and remains auto-publis
   assert.deepEqual(validated.value.variantGroup, payload.variantGroup);
   assert.equal(JSON.stringify(validated.value).includes("listingDecision"), false);
   assert.equal(JSON.stringify(validated.value).includes("onZero"), false);
-  assert.deepEqual(helpers.autoPublishGate(validated.value, { missing: [] }, "unknown"), { ok: true, reasons: [] });
-  assert.equal(helpers.autoPublishGate(validated.value, { missing: [] }, "create").ok, false);
+  assert.deepEqual(helpers.autoPublishGate(validated.value, verifiedAutofillReport(), "unknown"), { ok: true, reasons: [] });
+  assert.equal(helpers.autoPublishGate(validated.value, verifiedAutofillReport(), "create").ok, false);
 });
 
 test("v2 gate trusts the central id when page wording is unknown and blocks explicit contradictions", () => {
   const existing = validPayload(1_800_000_000_000);
   assert.deepEqual(helpers.listingSafetyGate(existing, "update"), { ok: true, reasons: [] });
   assert.deepEqual(helpers.listingSafetyGate(existing, "unknown"), { ok: true, reasons: [] });
-  assert.deepEqual(helpers.autoPublishGate(existing, { missing: [] }, "unknown"), { ok: true, reasons: [] });
+  assert.deepEqual(helpers.autoPublishGate(existing, verifiedAutofillReport(), "unknown"), { ok: true, reasons: [] });
   assert.equal(helpers.listingSafetyGate(existing, "create").ok, false);
   assert.equal(helpers.autoPublishGate(existing, { missing: [] }, "create").ok, false);
   assert.match(helpers.listingSafetyGate(existing, "create").reasons.join(" "), /中央主檔已有/);
@@ -919,7 +974,7 @@ test("v2 gate trusts the central id when page wording is unknown and blocks expl
   newListing.listingPolicy.platformListingIds = [];
   assert.equal(helpers.listingSafetyGate(newListing, "create").ok, true);
   assert.equal(helpers.listingSafetyGate(newListing, "unknown").ok, true);
-  assert.deepEqual(helpers.autoPublishGate(newListing, { missing: [] }, "unknown"), { ok: true, reasons: [] });
+  assert.deepEqual(helpers.autoPublishGate(newListing, verifiedAutofillReport(), "unknown"), { ok: true, reasons: [] });
   assert.equal(helpers.listingSafetyGate(newListing, "update").ok, false);
   assert.equal(helpers.autoPublishGate(newListing, { missing: [] }, "update").ok, false);
 });
@@ -939,7 +994,7 @@ test("schema 5 and its legacy Shopee policy keys cannot enter the v3 queue", () 
   };
   const result = helpers.validateQueuePayload(legacy, now);
   assert.equal(result.ok, false);
-  assert.match(result.errors.join(" "), /schemaVersion 必須是 6/);
+  assert.match(result.errors.join(" "), /schemaVersion 必須是 7/);
   assert.match(result.errors.join(" "), /不支援的欄位：decision/);
   assert.equal(result.value, null);
 });
@@ -965,7 +1020,7 @@ test("advanced description must be fully prepared before the Shopee page opens",
   missingImages.advancedDescription.expectedImageCount = 0;
   const missingResult = helpers.validateQueuePayload(missingImages, now);
   assert.equal(missingResult.ok, false);
-  assert.match(missingResult.errors.join(" "), /必須有 3 到 12 張已準備圖片/);
+  assert.match(missingResult.errors.join(" "), /必須有 5 到 12 張已準備圖片/);
 
   const lateAnalysis = validPayload(now);
   lateAnalysis.advancedDescription.preparedBeforeNavigation = false;
@@ -984,6 +1039,34 @@ test("advanced description must be fully prepared before the Shopee page opens",
   const wrongEndingResult = helpers.validateQueuePayload(wrongEnding, now);
   assert.equal(wrongEndingResult.ok, false);
   assert.match(wrongEndingResult.errors.join(" "), /最後兩張必須是固定介紹圖/);
+
+  const importNotSkipped = validPayload(now);
+  importNotSkipped.advancedDescription.skipEasyStoreDescriptionImport = false;
+  const importNotSkippedResult = helpers.validateQueuePayload(importNotSkipped, now);
+  assert.equal(importNotSkippedResult.ok, false);
+  assert.match(importNotSkippedResult.errors.join(" "), /skipEasyStoreDescriptionImport 必須是 true/);
+});
+
+test("EasyStore skips description import and defers the immutable native plan to Seller Center", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "easystore.js"), "utf8");
+  const start = source.indexOf("async function fillAdvancedDescription");
+  const end = source.indexOf("async function fillBrand", start);
+  const advancedDescriptionExecutor = source.slice(start, end);
+  assert.match(advancedDescriptionExecutor, /easyStoreDescriptionImportSkipped: true/);
+  assert.match(advancedDescriptionExecutor, /deferredToSellerCenter: true/);
+  assert.match(advancedDescriptionExecutor, /preparedBlockPlanComplete/);
+  assert.doesNotMatch(advancedDescriptionExecutor, /useButton\.click\(\)/);
+  assert.match(source, /async function fillPriceAdjustment/);
+  assert.match(source, /plan\.synchronizeWithEasyStorePrice !== true/);
+  assert.doesNotMatch(source, /setNativeValue\(section\.amountControl/);
+  assert.match(source, /report\.blockedStage = "priceAdjustment"/);
+
+  const now = 1_800_000_000_000;
+  const wrongAdjustment = validPayload(now);
+  wrongAdjustment.priceAdjustment.synchronizeWithEasyStorePrice = false;
+  const wrongResult = helpers.validateQueuePayload(wrongAdjustment, now);
+  assert.equal(wrongResult.ok, false);
+  assert.match(wrongResult.errors.join(" "), /synchronizeWithEasyStorePrice 必須是 true/);
 });
 
 test("navigation mode remains attached to the exact queued product and nonce", () => {

@@ -26,14 +26,17 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const covers = require('../functions/bookCoverEnrichment');
 Module._load = originalLoad;
 
-test('cover lookup strips ISBN-like digits and searches by the product name only', () => {
+test('cover lookup strips ISBN-like digits from the title and can use catalogue-code suffixes as search hints', () => {
   assert.equal(covers.bookSearchTitle('吉他奏法大圖鑑 ISBN 9789866581304'), '吉他奏法大圖鑑');
   assert.equal(covers.bookSearchTitle('典弦教材-MELODY寫一首簡單的歌'), 'MELODY寫一首簡單的歌');
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const source = fs.readFileSync(path.join(__dirname, '..', 'functions', 'bookCoverEnrichment.js'), 'utf8');
-  assert.doesNotMatch(source, /`isbn:\$\{/i);
-  assert.doesNotMatch(source, /openlibrary\.org\/api\/books/i);
+  assert.deepEqual(
+    covers.productCodeSuffixes({ internalSku: '907自編前綴1234569789573068426', internalName: '長笛視奏－晉級檢定範例本' }),
+    ['9573068426', '73068426', '3068426']
+  );
+  assert.deepEqual(
+    covers.productCodeSuffixes({ internalSku: '907BS03808123394', internalName: "Girl's Bass Method" }),
+    ['03808123394', '3808123394', '08123394', '8123394']
+  );
 });
 
 test('9-series selection excludes explicit test products', () => {

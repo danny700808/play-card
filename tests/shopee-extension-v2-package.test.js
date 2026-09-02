@@ -2,7 +2,6 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
@@ -11,27 +10,16 @@ const extensionHelpers = require('../easystore-shopee-autofill/helpers.js');
 const root = path.resolve(__dirname, '..');
 const extensionName = 'easystore-shopee-autofill';
 const extensionRoot = path.join(root, extensionName);
-const version = '0.3.34';
+const version = '0.3.37';
 const zipName = `youzi-easystore-shopee-autofill-v${version}.zip`;
 const zipPath = path.join(root, zipName);
 
-function gitExtensionFiles() {
-  const output = execFileSync(
-    'git',
-    ['ls-tree', '-r', '--name-only', 'HEAD', '--', extensionName],
-    { cwd: root, encoding: 'utf8' },
-  );
-  return output.trim().split(/\r?\n/)
-    .filter(Boolean)
-    .map((name) => name.slice(`${extensionName}/`.length))
-    .sort();
-}
-
-function gitBlob(entryName) {
-  return execFileSync('git', ['cat-file', 'blob', `HEAD:${entryName}`], {
-    cwd: root,
-    encoding: null,
-  });
+function workingTreeExtensionFiles(directory = extensionRoot, prefix = '') {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const absolute = path.join(directory, entry.name);
+    return entry.isDirectory() ? workingTreeExtensionFiles(absolute, relative) : [relative];
+  }).sort();
 }
 
 function zipFileEntries(buffer) {
@@ -80,15 +68,15 @@ function zipFileEntries(buffer) {
   return files;
 }
 
-test('0.3.34 ZIP contains exactly the Git extension files byte for byte', () => {
+test('0.3.37 ZIP contains exactly the working-tree extension files byte for byte', () => {
   assert.equal(fs.existsSync(zipPath), true, `缺少 ${zipName}`);
   const packaged = zipFileEntries(fs.readFileSync(zipPath));
-  const sourceFiles = gitExtensionFiles();
+  const sourceFiles = workingTreeExtensionFiles();
   const expectedEntries = sourceFiles.map((name) => `${extensionName}/${name}`);
   assert.deepEqual([...packaged.keys()].sort(), expectedEntries);
   for (const relative of sourceFiles) {
     const entryName = `${extensionName}/${relative}`;
-    assert.deepEqual(packaged.get(entryName), gitBlob(entryName), `ZIP 與 Git 檔案不同：${relative}`);
+    assert.deepEqual(packaged.get(entryName), fs.readFileSync(path.join(extensionRoot, relative)), `ZIP 與工作目錄檔案不同：${relative}`);
   }
   const packagedManifest = JSON.parse(packaged.get(extensionName + '/manifest.json').toString('utf8'));
   assert.ok(packagedManifest.host_permissions.includes('<all_urls>'));
@@ -102,9 +90,9 @@ test('extension version, download links, cache keys and CI package contract stay
   const portal = fs.readFileSync(path.join(root, 'portal.html'), 'utf8');
   const hub = fs.readFileSync(path.join(root, 'operations-hub.html'), 'utf8');
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
-  const handoffCache = '20260829-v3-fixed-content-v1';
-  const operationsCssCache = '20260828-product-master-image-upload-recheck-v1';
-  const operationsJsCache = '20260829-v3-fixed-content-v1';
+  const handoffCache = '20260830-shopee-native-description-v2';
+  const operationsCssCache = '20260902-listing-retry-queue-v1';
+  const operationsJsCache = '20260902-listing-retry-queue-v1';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
@@ -127,25 +115,21 @@ test('extension version, download links, cache keys and CI package contract stay
   assert.match(workflow, /diff -qr "\$EXTENSION_DIR" "\$package_dir\/\$EXTENSION_DIR"/);
   assert.equal((workflow.match(/tests\/shopee-extension-v2-package\.test\.js/g) || []).length, 2);
   const easyStoreExecutor = fs.readFileSync(path.join(extensionRoot, 'easystore.js'), 'utf8');
+  const shopeeExecutor = fs.readFileSync(path.join(extensionRoot, 'shopee.js'), 'utf8');
   assert.match(easyStoreExecutor, /function buildFieldLabelIndex\(/);
   assert.match(easyStoreExecutor, /function fillNativeAttributeBatch\(/);
   assert.match(easyStoreExecutor, /function fillAdvancedDescription\(/);
-  assert.match(easyStoreExecutor, /使用 EasyStore 的產品描述/);
   assert.match(easyStoreExecutor, /payload && payload\.advancedDescription/);
-  assert.match(easyStoreExecutor, /function advancedDescriptionEvidence\(/);
-  assert.match(easyStoreExecutor, /use-easystore-rich-description-with-native-image-transfer/);
-  assert.match(easyStoreExecutor, /fixedLastTwoComplete/);
-  assert.match(easyStoreExecutor, /fixedDisclaimerBeforePromosComplete/);
-  assert.match(easyStoreExecutor, /meaningfulBlocks\.slice\(-3\)/);
-  assert.match(easyStoreExecutor, /禁止以純文字描述發布/);
-  assert.match(easyStoreExecutor, /function insertMissingAdvancedDescriptionImages\(/);
-  assert.match(easyStoreExecutor, /function enforceAdvancedDescriptionImageOrder\(/);
-  assert.match(easyStoreExecutor, /querySelectorAll\("img"\)/);
-  assert.match(easyStoreExecutor, /nonHttpImageUrls\.length === 0/);
-  assert.match(easyStoreExecutor, /unexpectedImageUrls\.length === 0/);
-  assert.match(easyStoreExecutor, /imageOrderComplete/);
-  assert.match(easyStoreExecutor, /report\.advancedDescriptionEvidence = evidence/);
-  assert.match(easyStoreExecutor, /介紹圖片核對失敗/);
+  assert.match(easyStoreExecutor, /seller-center-native-file-upload-interleaved/);
+  assert.match(easyStoreExecutor, /easyStoreDescriptionImportSkipped: true/);
+  assert.match(easyStoreExecutor, /deferredToSellerCenter: true/);
+  assert.match(shopeeExecutor, /new DataTransfer\(\)/);
+  assert.match(shopeeExecutor, /new File\(/);
+  assert.match(shopeeExecutor, /YOUZI_SHOPEE_FETCH_DESCRIPTION_IMAGES_V1/);
+  assert.match(shopeeExecutor, /data-upload-status/);
+  assert.match(shopeeExecutor, /蝦皮編輯器的實際圖文交錯順序/);
+  assert.match(shopeeExecutor, /preparedImages\.length = 0/);
+  assert.doesNotMatch(shopeeExecutor, /chrome\.downloads|showOpenFilePicker|removeEntry|unlink|rmSync/);
   assert.match(easyStoreExecutor, /mode: "section-batch"/);
   assert.match(easyStoreExecutor, /nativeControlsFilledInSinglePass: true/);
 });
@@ -157,6 +141,7 @@ test('production v3 Shopee sources contain no retired Match-product decision con
     'easystore-shopee-autofill/helpers.js',
     'easystore-shopee-autofill/bridge.js',
     'easystore-shopee-autofill/easystore.js',
+    'easystore-shopee-autofill/shopee.js',
     'easystore-shopee-autofill/README.md'
   ];
   const source = productionFiles.map((name) => fs.readFileSync(path.join(root, name), 'utf8')).join('\n');

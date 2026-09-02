@@ -64,9 +64,9 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260828-product-master-image-upload-recheck-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260829-v3-fixed-content-v1/);
-    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260829-v3-fixed-content-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260902-listing-retry-queue-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260902-listing-retry-queue-v1/);
+    assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
 
@@ -79,23 +79,23 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(engine, /gallerySourceImageUrls:item\.gallerySourceImageUrls\|\|\[\]/);
   assert.match(engine, /name="currentCompletedImageUrls"/);
   assert.match(handoffPrompt, /每個案件最多 20 張 selectedReferenceImageUrls/);
-  assert.match(handoffPrompt, /每一張來源只做一輪完整檢查與台灣繁體化/);
+  assert.match(handoffPrompt, /一般來源截圖、localizedDetail、specification 與 variantRepresentative 只能做最小幅度繁體化/);
   assert.match(handoffPrompt, /全部編號的完成輸出公平合併/);
   assert.match(handoffPrompt, /整組最多 12 個不同完成圖 URL/);
-  assert.match(handoffPrompt, /未勾選的來源與完成圖不得加入任何平台圖庫/);
-  assert.match(handoffPrompt, /固定 10 點不重複、具體且可驗證的商品介紹／特色/);
-  assert.match(handoffPrompt, /固定 10 點有來源的使用方法、適用情境或使用心得/);
-  assert.match(handoffPrompt, /保固只填平台保固欄/);
+  assert.match(handoffPrompt, /未勾選圖片不得加入平台圖庫/);
+  assert.match(handoffPrompt, /目標 10 點不重複、具體且可驗證特色/);
+  assert.match(handoffPrompt, /目標 8 點有來源的使用方式／使用心得/);
+  assert.match(handoffPrompt, /平台保固欄仍依商品類型填寫/);
   assert.doesNotMatch(functionBody(engine, 'productListingAutomaticDescription'), /• 保固：/);
   assert.match(handoffPrompt, /標題、內文、圖卡都不得加入「柚子樂器」/);
-  assert.match(handoffPrompt, /實際內容以收到的實體商品為準/);
+  assert.match(handoffPrompt, /PRODUCT_PHYSICAL_PRODUCT_DISCLAIMER/);
   assert.match(handoffPrompt, /同一案件、同一 SKU、同一平台草稿與目前階段/);
   assert.match(handoffPrompt, /本次根節點為/);
   assert.match(handoffPrompt, /未選通路不得建立、修改、排隊或送出/);
   assert.match(handoffPrompt, /單一操作鎖/);
   assert.match(handoffPrompt, /蝦皮.*只依賴 EasyStore/);
-  assert.match(handoffPrompt, /蝦皮只使用 EasyStore 官方蝦皮通路同步／編輯頁/);
-  assert.match(handoffPrompt, /不得.*切換蝦皮賣家中心或開第二條上架路徑/);
+  assert.match(handoffPrompt, /蝦皮基本欄位與發布先使用 EasyStore 官方通路頁/);
+  assert.match(handoffPrompt, /詳細介紹固定接續 Seller Center 同一商品/);
   assert.match(handoffPrompt, /每站送出後只以本案完全相同 SKU 做一次正式資料核對/);
   assert.match(handoffPrompt, /SKU、售價、庫存、送出／審核狀態及正式清單存在/);
   assert.match(handoffPrompt, /只補缺漏欄位後再次送出/);
@@ -280,6 +280,9 @@ test('product header owns the saved listing queue and starts it sequentially in 
   assert.match(products, /待網路上架商品/);
   assert.match(products, /新增未上架/);
   assert.match(queue, /開始處理全部/);
+  assert.match(queue, /第一次待處理/);
+  assert.match(queue, /上次未完成，可再次處理/);
+  assert.match(queue, /productListingQueueRetryReady/);
   assert.match(listingForm, /productListingActionGridHtml\(row\)/);
   assert.match(actionGrid, /data-action="product-listing-queue-add"/);
   assert.match(start, /batchQueueStatus:'processing'/);
@@ -287,6 +290,9 @@ test('product header owns the saved listing queue and starts it sequentially in 
   assert.match(start, /productListingCodexThreadUrl/);
   assert.match(prompt, /一件完成後才處理下一件/);
   assert.match(prompt, /batchQueueStatus 設為 completed/);
+  assert.match(prompt, /batchPlatformFailures/);
+  assert.match(prompt, /batchRetryPlatforms/);
+  assert.match(prompt, /已 verified 通路禁止重做/);
 });
 
 test('listing form freezes one of five explicit product intents and never infers a different action inside a platform', () => {
@@ -474,8 +480,8 @@ test('listing preparation is a simple per-product workspace and no longer part o
   assert.match(engine, /const warrantyInfo=[^\n]+\|\|'保固半年'/);
   assert.match(engine, /warrantyInfo:warrantyInfo/);
   assert.match(caseForm, /完整商品介紹/);
-  assert.match(caseForm, /固定完成 10 個可驗證特色、10 個使用重點/);
-  assert.match(caseForm, /免責句放在最後兩張指定介紹圖之前/);
+  assert.match(caseForm, /固定目標為 10 個可驗證特色、8 個使用重點/);
+  assert.match(caseForm, /實體商品免責句固定放在最後/);
   assert.match(caseForm, /商品規格/);
   assert.match(caseForm, /name="productDescription"/);
   assert.match(caseForm, /<textarea name="sellingPoints" hidden>/);
@@ -683,8 +689,8 @@ test('listing review honors manager identity and brand decisions and gates logis
   assert.doesNotMatch(preview, /Match product|防重複方式/);
   assert.match(resultRenderer, /一般宅配的實際物流仍須確認/);
   assert.match(resultRenderer, /已凍結的處理方式與中央平台 ID/);
-  assert.match(resultRenderer, /不會自行改成新增或修改/);
-  assert.match(resultRenderer, /不先搜尋平台目錄/);
+  assert.match(resultRenderer, /沒有擅自改成新增或修改/);
+  assert.match(resultRenderer, /只有送出結果不明時才精確查同 SKU/);
   assert.doesNotMatch(resultRenderer, /新增／更新狀態仍須確認|多筆或不確定就停止/);
   assert.match(savedPublisher, /shippingDecision:clean\(raw\.shippingDecision\)/);
   assert.doesNotMatch(savedPublisher, /shopeeListingDecision/);

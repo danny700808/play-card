@@ -8,6 +8,10 @@
       ".github/**",
       ".firebase/**",
       "**/node_modules/**",
+      "outputs/**",
+      "scripts/**",
+      "youzi-easystore-shopee-autofill-v0.3.34.zip",
+      "youzi-easystore-shopee-autofill-v0.3.35.zip",
       "firebase-debug.log",
       "firebase-debug.*.log",
       "functions/**"

@@ -41,14 +41,27 @@ test('main product image prompt locks the approved green brand template and Taiw
   assert.match(prompt, /台灣繁體中文/);
   assert.match(prompt, /有音樂的生活更有風格/);
   assert.match(prompt, /圓形柚子樂器 Logo/);
-  assert.match(prompt, /程式會在生成後把內容面板嵌入固定母版，再逐像素覆蓋原始頁首與細綠邊/);
+  assert.match(prompt, /綠色頁首固定占整張高度 1\/9/);
+  assert.match(prompt, /大型跨界版本/);
+  assert.match(prompt, /連續、清楚可見的細綠色圓角框線/);
+  assert.match(prompt, /至少 65%/);
   assert.match(prompt, /最多 2 個有來源依據的細節小圖/);
-  assert.match(prompt, /3～5 個不重複且已查證的商品特色/);
+  assert.match(prompt, /正好 3 個不重複且已查證的商品特色/);
   assert.match(prompt, /左下娃娃或 PIC COLLAGE/);
-  assert.match(prompt, /750×1000（3:4）/);
+  assert.match(prompt, /1000×750（4:3）/);
+  assert.match(prompt, /同一商品的 1:1 與 4:3/);
   assert.doesNotMatch(prompt, /不得套用店家品牌模板/);
-  assert.match(prompt, /不得在輸出裡重畫、複製或加入綠色頁首/);
   assert.match(prompt, /不得保留簡體字、大陸用語、亂碼、錯字或被裁掉一半的文字/);
+});
+
+test('ordinary detail prompt uses OCR retyping and never redesigns or upscales blurry sources', () => {
+  const prompt = research.buildLocalizedImagePrompt({ name: '商品' }, {}, 1, 1);
+  assert.match(prompt, /先用 OCR 逐字辨識/);
+  assert.match(prompt, /真實可讀的繁體中文字型/);
+  assert.match(prompt, /禁止用筆畫塗改、描字/);
+  assert.match(prompt, /只做必要的繁體中文在地化/);
+  assert.match(prompt, /改找同商品更清楚完整來源，找不到就跳過/);
+  assert.match(prompt, /不得新增來源沒有的行銷賣點/);
 });
 
 test('platform image encoder always returns a JPEG below the shared one-megabyte limit', async () => {
@@ -183,7 +196,7 @@ test('AI product image workflow localizes a source image without redesigning it'
   }, 2, 10);
   assert.match(prompt, /這是圖像編輯任務，不是重新設計/);
   assert.match(prompt, /第 2 張／共 10 張/);
-  assert.match(prompt, /必須保留：品牌標誌/);
+  assert.match(prompt, /必須保留：商品本體與原廠包裝上的品牌、型號/);
   assert.equal(research.DEFAULT_IMAGE_EDIT_MODEL, 'gpt-image-2');
 });
 
@@ -191,14 +204,14 @@ test('generated product images complete text inspection and editing in one pass'
   const localized = research.buildLocalizedImagePrompt({ name: '中胡弦' }, {}, 1, 1);
   const main = research.buildMainTemplateImagePrompt({ name: '中胡弦' }, {});
   assert.match(localized, /同一次圖片編輯內/);
-  assert.match(localized, /先逐字掃描圖片中所有可見中文/);
+  assert.match(localized, /先用 OCR 逐字辨識圖片中所有可讀中文/);
   assert.match(localized, /簡體中文/);
   assert.match(localized, /中國大陸用語改為台灣常用說法/);
-  assert.match(localized, /錯字、亂碼或殘缺中文字/);
+  assert.match(localized, /禁止用筆畫塗改、描字或生成像手畫的假字/);
   assert.match(localized, /被裁切一半/);
-  assert.match(localized, /完整重排、改寫/);
-  assert.match(main, /不可變品牌母版/);
-  assert.match(main, /3～5 個不重複且已查證的商品特色/);
+  assert.match(localized, /只有案件內存在已驗證完整內容時，才可在原位置重打完整繁體文字/);
+  assert.match(main, /固定品牌區必須完全照核准版本/);
+  assert.match(main, /正好 3 個不重複且已查證的商品特色/);
 });
 
 test('OpenAI image retry distinguishes temporary rate limits from exhausted quota', async () => {

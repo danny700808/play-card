@@ -108,7 +108,6 @@ test("商品列表不顯示快捷合併控制，但準備上架仍保留既有�
   assert.match(operationsSource, /selected\.filter\(productHasPlatformMapping\)/);
   assert.match(operationsSource, /listingIntent:listed\.length\?'merge-existing':'create-group'/);
   assert.match(operationsSource, /合併／加入既有商品/);
-  assert.match(operationsSource, /已有平台商品編號的商品放在第一筆並作為主商品/);
 });
 
 test("收圖成功或失敗訊息不會立刻被等待文字覆蓋", () => {
@@ -366,7 +365,7 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
 });
 
 test("Chrome 助手在一般商品網頁提供點圖開關與可取消的框選截圖", () => {
-  assert.equal(manifest.version, "0.3.34");
+  assert.equal(manifest.version, "0.3.37");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.equal(manifest.permissions.includes("contextMenus"), false);
@@ -387,7 +386,7 @@ test("Chrome 助手在一般商品網頁提供點圖開關與可取消的框選�
   assert.equal(manifest.commands["start-image-crop"].suggested_key.default, "Ctrl+Shift+Y");
 });
 
-test("0.3.34 具備網頁面板截圖權限並能替已開分頁補載入", () => {
+test("0.3.37 具備網頁面板截圖權限並能替已開分頁補載入", () => {
   assert.ok(manifest.host_permissions.includes("<all_urls>"));
   assert.ok(manifest.permissions.includes("scripting"));
   assert.match(background, /chrome\.scripting\.executeScript/);
@@ -417,10 +416,10 @@ test("原圖回退會先解除放大、重新量座標並排除覆蓋物", () =>
   assert.match(supplierCollector, /result\.code !== "IMAGE_READ_FAILED"/);
 });
 
-test("高解析截圖會自動壓縮，營運中心只接受 0.3.34 以上助手", () => {
+test("高解析截圖會自動壓縮，營運中心只接受 0.3.37 以上助手", () => {
   assert.match(supplierCollector, /async function canvasBlobWithinLimit/);
   assert.match(supplierCollector, /Math\.sqrt\(helpers\.MAX_IMAGE_BYTES \/ blob\.size\)/);
-  assert.match(operationsSource, /minimumVersion:'0\.3\.34'/);
+  assert.match(operationsSource, /minimumVersion:'0\.3\.37'/);
   assert.match(operationsSource, /productImageCollectionVersionAtLeast/);
   assert.match(bridge, /extensionVersion: EXTENSION_VERSION/);
   assert.match(operationsSource, /目前收圖助手版本過舊/);

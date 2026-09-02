@@ -49,7 +49,9 @@ test('八個直接處理方塊把選定範圍帶入指定 Codex 對話並授權�
   assert.match(source, /snapshot\.executionPolicy\.validateDynamicSectionOnceAfterBatch=true/);
   assert.match(source, /snapshot\.executionPolicy\.fastEssentialVerification=true/);
   assert.match(source, /dynamicControlsSequentialWithinSection:true/);
-  assert.match(source, /shopeeLargeItemHctOnly:true/);
+  assert.match(source, /shopeeLargeItemHctAndSellerDelivery:true/);
+  assert.match(source, /easyStoreGroupedGalleryOfficialMaximum:9/);
+  assert.match(source, /easyStoreVariantImageBindingMode:'in-app-browser-admin-selector'/);
   assert.doesNotMatch(source, /Codex 待辦已建立/);
 });
 
@@ -106,12 +108,12 @@ test('Codex deep link 只帶短交接，完整規則仍保存在案件避免多�
 
 test('固定流程鎖定綠底品牌母版、MOMO 專推圖與 EasyStore 後立即接蝦皮', () => {
   assert.match(source, /product-listing-brand-template-portrait\.png/);
-  assert.match(source, /綠色頁首背景、頁首高度、紅色標語/);
-  assert.match(source, /右上圓形柚子樂器 Logo/);
-  assert.match(source, /商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」/);
+  assert.match(source, /綠色頁首固定占整張高度 1\/9/);
+  assert.match(source, /Logo 固定採管理者選定的大型跨界版本/);
+  assert.match(source, /商品詳細介紹的每張圖先建立含 SKU、內容指紋與順序的唯一檔名，再使用「上傳圖片」→「此裝置上傳」/);
   assert.match(source, /preparedPlatformFieldPlan 產生專推圖網址、唯一素材檔名與指紋/);
   assert.match(source, /三處未齊全時禁止第一次發布/);
-  assert.match(source, /已存在就不得重複插入/);
+  assert.match(source, /禁止沿用同名素材銀行舊圖/);
   assert.match(source, /單一商品、同款多細項與加入既有商品成為細項都使用同一 firstSubmitMediaGate/);
   assert.match(source, /整筆主商品共用一張專推圖/);
   assert.match(source, /MOMO 商店分類最多 5 個/);
@@ -181,16 +183,25 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /平台明確回報圖片錯誤/);
   assert.match(prompt, /來源不符、原圖冒充完成圖、缺角色或 assetFlags 時必須停止/);
   assert.match(prompt, /最終 job preparedSnapshot 建立後，一次完成/);
-  assert.match(prompt, /只優先保留本次需要的/);
+  assert.match(prompt, /共用池內 storefrontPortrait 最多一張、brandedHero 最多一張/);
   assert.match(prompt, /MOMO 第 2 或第 3 張必須先保留專推圖/);
   assert.match(prompt, /商品主圖、廣告用圖與商品詳細介紹編輯器內的專推圖是三個互相獨立的必填位置/);
   assert.match(prompt, /甲指第三方 000001 仍保存/);
-  assert.match(prompt, /storefrontPortrait 固定使用 product-listing-brand-template-portrait\.png，尺寸 750×1000 px、3:4/);
-  assert.match(prompt, /brandedHero 固定使用 product-listing-brand-template-square\.png，尺寸 1000×1000 px、1:1/);
+  assert.match(prompt, /storefrontPortrait 使用 1000×750 px、4:3/);
+  assert.match(prompt, /brandedHero 使用 1000×1000 px、1:1/);
   assert.match(prompt, /cleanMain 為 1000×1000 px、1:1/);
-  assert.match(prompt, /storefrontPortrait 與 brandedHero 必須從上述不可變母版合成/);
-  assert.match(prompt, /同一輪圖片處理必須自動製作本次目標通路需要的全部平台成品/);
+  assert.match(prompt, /綠色頁首固定占整張高度 1\/9/);
+  assert.match(prompt, /大型跨界版本/);
+  assert.match(prompt, /細綠色圓角框/);
+  assert.match(prompt, /50 種未用完不得重複/);
+  assert.match(prompt, /同一商品的 1:1 與 4:3/);
+  assert.match(prompt, /OCR 逐字辨識/);
+  assert.match(prompt, /禁止用筆畫塗改、描字/);
+  assert.match(prompt, /找不到就跳過，不得放大假清晰/);
+  assert.match(prompt, /同一輪圖片處理只產生本次目標通路需要的首圖版型/);
   assert.match(prompt, /不得進平台後才重新裁切或設計/);
+  assert.match(prompt, /第三方商家浮水印並完整移除/);
+  assert.match(prompt, /半截文字整塊刪除/);
   assert.match(prompt, /preflightSnapshot\.decisionContract 是唯一執行契約/);
   assert.match(prompt, /只有 judgmentFields 可以由 Codex/);
   assert.match(prompt, /Codex 對話旁邊的內建瀏覽器/);
@@ -205,9 +216,10 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /按下「立即處理」已授權/);
   assert.match(prompt, /listingTargetPlatforms 全部 verified/);
   assert.match(prompt, /不得再產生「確認上架／確認提交／套用細項」/);
-  assert.match(prompt, /商品詳細介紹使用「上傳圖片」→「從素材銀行選擇」/);
+  assert.match(prompt, /本案專用本機暫存目錄/);
+  assert.match(prompt, /「商品描述 → 新增圖片 → 從電腦裝置上傳」原生欄位/);
   assert.match(prompt, /商品主圖、廣告用圖、編輯器專推圖三處完成並儲存後/);
-  assert.match(prompt, /只重開同一草稿一次確認專推圖仍存在/);
+  assert.match(prompt, /只重開同一商品一次確認兩段固定原文各一次、全部 CDN 圖片、完整順序/);
   assert.match(prompt, /不得先送空缺版本再回頭補/);
   assert.match(prompt, /此帳號無此功能權限/);
   assert.match(prompt, /不得直接判定整個帳號無權限/);
@@ -223,8 +235,16 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /頁面版型未改變時直接套用已準備欄位/);
   assert.match(prompt, /MOMO 第三方 000001/);
   assert.match(prompt, /generatedListingImages 的公開完成圖網址批次加入/);
-  assert.match(prompt, /蝦皮大型商品只保留符合材積級距的新竹物流/);
-  assert.match(prompt, /酷澎固定走已驗證的「以圖片建立」同一草稿/);
+  assert.match(prompt, /蝦皮大型商品必須同時開啟符合材積級距的新竹物流與「賣家宅配：大型\/超重物品運送」/);
+  assert.match(prompt, /「商品描述 → 新增圖片 → 從電腦裝置上傳」原生欄位/);
+  assert.match(prompt, /價格同步只固定勾選「套用價格調整」/);
+  assert.match(prompt, /酷澎新增固定走已驗證的「以圖片建立」同一草稿/);
+  assert.match(prompt, /修改既有商品固定以精確賣家 SKU 與唯一 Vendor Inventory ID 開啟原商品/);
+  assert.match(prompt, /同時在商品基本資訊與每一個細項列的「編輯選項屬性」/);
+  assert.match(prompt, /修改選項後必須重讀兩層/);
+  assert.match(prompt, /不得虛構 GTIN 或未知屬性/);
+  assert.match(prompt, /product-listing-store-promo\.png 放在最後補充圖/);
+  assert.match(prompt, /PC 預覽確認實體商品說明與出貨及保固說明位於最後兩張固定介紹圖之前/);
   assert.match(prompt, /按一次「產生商品資訊」/);
   assert.match(prompt, /每一個細項各自的 cleanMain/);
   assert.match(prompt, /不得只上傳第一個細項的圖片/);
@@ -241,11 +261,12 @@ test('交接逐案件列出來源、待繁體化、完成圖與圖片狀態', ()
   assert.match(prompt, /不得用名稱廣搜/);
   assert.match(prompt, /productDescription 只有通用提醒、商品編號、免責文字時，一律視為內容尚未完成/);
   assert.match(prompt, /「商品特色」「使用方式／適用情境」「商品規格」三段/);
-  assert.match(prompt, /固定 10 點不重複/);
-  assert.match(prompt, /固定 10 點有來源的使用方法、適用情境或使用心得/);
+  assert.match(prompt, /目標 10 點不重複/);
+  assert.match(prompt, /目標 8 點有來源的使用方式／使用心得/);
   assert.match(prompt, /每個特色、使用重點與規格屬性都必須在 fieldEvidence 指向來源/);
   assert.match(prompt, /標題、內文、圖卡都不得加入「柚子樂器」/);
-  assert.match(prompt, /免責句固定放在兩張指定介紹圖之前/);
+  assert.match(prompt, /兩段固定說明/);
+  assert.match(prompt, /最後兩張固定介紹圖之前/);
   assert.match(prompt, /後端重讀確認後才可建立 preparedSnapshot/);
   assert.match(prompt, /本次 .*沿用同一份已完成介紹/);
 });
@@ -267,19 +288,21 @@ test('新細項的父商品會沿用已儲存的來源圖佇列，但不把未�
   assert.match(merge, /selectedReferenceImageUrls:sourceImageUrls\.slice\(\)/);
   assert.match(merge, /pending-localization/);
   assert.doesNotMatch(merge, /row\.completedImageUrls/);
-  assert.match(snapshot, /mergeProductListingCodexQueuedMedia\(item,queued,normalized\.listingTargetScope\)/);
+  assert.match(snapshot, /mergeProductListingCodexQueuedMedia\(item,queued,normalized\.listingTargetScope,isRoot\)/);
 });
 
 test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮方形品牌首圖', () => {
   const prompt = section('function productListingCodexHandoffPrompt', 'function productListingCodexThreadUrl');
   assert.match(prompt, /cleanMain 是純白底、無品牌框、無新增 Logo/);
-  assert.match(prompt, /storefrontPortrait 與 brandedHero 必須從上述不可變母版合成/);
-  assert.match(prompt, /brandedHero 用 1～3 個已查證短賣點/);
+  assert.match(prompt, /storefrontPortrait 與 brandedHero 均固定使用 3 個已查證特色/);
+  assert.match(prompt, /綠色頁首固定占整張高度 1\/9/);
+  assert.match(prompt, /Logo 固定採管理者選定的大型跨界版本/);
+  assert.match(prompt, /50 種淺色商業風格以 random-without-replacement 抽一種/);
   assert.match(prompt, /商品本體原有且不可分離的印字必須保留/);
-  assert.match(prompt, /最多 2 個有來源依據的細節小圖/);
-  assert.match(prompt, /不得改色、縮窄、移位、換字或重畫/);
-  assert.match(prompt, /不得加入地址、電話、QR Code、價格、導外訊息、左下娃娃、PIC COLLAGE 或虛構功能／配件/);
-  assert.match(prompt, /被切半的文字或殘缺裝飾/);
+  assert.match(prompt, /同一商品的 1:1 與 4:3、同組所有細項都沿用/);
+  assert.match(prompt, /商品本體不得被 Logo、標題、色塊或裝飾遮住/);
+  assert.match(prompt, /不得加入地址、電話、QR Code、價格、導外訊息、左下娃娃、PIC COLLAGE 或殘缺文字/);
+  assert.match(prompt, /半截文字整塊刪除/);
 });
 
 test('交接只用 v3 固定流程，不留舊版降級或第二路徑', () => {
@@ -289,8 +312,8 @@ test('交接只用 v3 固定流程，不留舊版降級或第二路徑', () => {
   assert.match(prompt, /不得沿用、混合或降級/);
   assert.match(prompt, /禁止先全面瀏覽或搜尋任一平台商品清單/);
   assert.match(prompt, /只有送出結果不明[\s\S]*完全相同 SKU 做一次精確查詢/);
-  assert.match(prompt, /不得[\s\S]*切換蝦皮賣家中心或開第二條上架路徑/);
-  assert.match(prompt, /蝦皮只使用 EasyStore 官方蝦皮通路同步／編輯頁/);
+  assert.match(prompt, /蝦皮基本欄位與發布先使用 EasyStore 官方通路頁/);
+  assert.match(prompt, /詳細介紹固定接續 Seller Center 同一商品/);
   assert.doesNotMatch(prompt, /MOMO 首圖必須是 (?:brandedHero|綠底|品牌圖)/);
   assert.doesNotMatch(prompt, /(?:改用|備援使用|另開一條)[^\n。]{0,30}蝦皮賣家中心/);
 });
@@ -335,7 +358,7 @@ test('四通路圖片實際依完成圖角色排序，不會把來源原圖送�
   }
 });
 
-test('營運中心 12 張共用池也先保留必要角色並公平涵蓋 13 個細項', () => {
+test('營運中心 12 張共用池只保留根案件品牌首圖並公平涵蓋細項乾淨圖', () => {
   const normalizeUrls = (values) => Array.from(new Set((Array.isArray(values) ? values : [])
     .filter((value) => /^https?:\/\//.test(String(value)))));
   const sharedRows = loadPureFunction(
@@ -362,8 +385,10 @@ test('營運中心 12 張共用池也先保留必要角色並公平涵蓋 13 個
   assert.equal(result.some((row) => row.roles.includes('cleanMain')), true);
   assert.equal(result.some((row) => row.roles.includes('brandedHero')), true);
   assert.equal(result.some((row) => row.roles.includes('storefrontPortrait')), true);
+  assert.equal(result.filter((row) => row.roles.includes('brandedHero')).length, 1);
+  assert.equal(result.filter((row) => row.roles.includes('storefrontPortrait')).length, 1);
   const represented = new Set(result.map((row) => /variant-(\d+)-/.exec(row.url)?.[1]).filter(Boolean));
-  assert.equal(represented.size, 12);
+  assert.equal(represented.size, 10);
 });
 
 test('原圖 URL 即使被舊資料誤標 ready 也不能成為完成圖', () => {

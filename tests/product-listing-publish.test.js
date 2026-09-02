@@ -36,36 +36,6 @@ function brandTemplateFields(role) {
   };
 }
 
-function fixedRichDescription(model = 'TEST-MODEL', intro = '此商品資料已依案件圖片、既有文字與可驗證來源完成整理。') {
-  const features = [
-    '精確型號已依商品圖片與既有資料完成交叉確認。',
-    '完整商品外觀保留原有顏色與所有可見結構。',
-    '主要用途依產品定位整理成清楚易讀的選購資訊。',
-    '關鍵規格採用已核對資料並避免加入推測內容。',
-    '商品細節以繁體中文呈現並保留原始數值單位。',
-    '圖片與文字內容使用相同型號資料避免版本混用。',
-    '包裝內容只列出來源中可以明確確認的實際項目。',
-    '適用對象依產品功能與可驗證使用情境清楚說明。',
-    '材質與尺寸資訊均以現有規格或案件證據為依據。',
-    '平台內容維持一致且不加入未經確認的功能配件。'
-  ];
-  const usage = [
-    '使用前先依商品說明確認安裝方向與適用條件。',
-    '第一次使用時逐項檢查商品外觀與零件是否完整。',
-    '操作過程依原廠建議方式進行避免不當施力損壞。',
-    '搭配其他設備前先核對尺寸規格與相容性資料。',
-    '日常使用後以柔軟乾布清潔並保持表面乾燥。',
-    '收納時避免高溫潮濕與陽光長時間直接照射。',
-    '搬動商品時握持穩固位置避免拉扯活動零件。',
-    '兒童使用時建議由成人在旁協助並確認安全。',
-    '發現異常鬆動或破損時先停止使用並進行檢查。',
-    '長期保存前完成清潔並放置於通風乾燥環境。'
-  ];
-  return [intro, '', '商品特色', ...features.map((point, index) => `${index + 1}. ${point}`), '',
-    '使用方式／適用情境', ...usage.map((point, index) => `${index + 1}. ${point}`), '',
-    '商品規格', `型號：${model}`].join('\n');
-}
-
 function withV2ImagePlan(listingCase, options = {}) {
   const branded = options.branded || 'https://example.com/branded-hero.jpg';
   const storefront = options.storefront || 'https://example.com/storefront-portrait.jpg';
@@ -130,13 +100,31 @@ function fakeFirestore(seed = {}) {
 function verifiedPlatformReceipt(stage, snapshot, listingId = `${stage}-listing`) {
   const planKey = stage === 'easyStore' ? 'easyStore' : stage;
   const price = stage === 'momo' ? snapshot.momoPrice : stage === 'coupang' ? snapshot.coupangPrice : snapshot.easyStorePrice;
-  return {
+  const receipt = {
     stage, listingId, sku: snapshot.sku, price, stock: snapshot.stock, status: 'published',
     platformListMatched: true, officialCatalogMatched: true,
     imageEvidenceComplete: true,
     appliedImageUrls: snapshot.platformImagePlan[planKey].imageUrls.slice(),
     officialImageUrls: snapshot.platformImagePlan[planKey].imageUrls.map((_, index) => `https://platform-cdn.example.com/${stage}/${index + 1}.jpg`)
   };
+  if (stage === 'shopee') {
+    receipt.advancedDescriptionEvidence = {
+      complete: true,
+      verificationSurface: 'shopee-seller-center',
+      persistedAfterReload: true,
+      observedImageCount: snapshot.shopeeAdvancedDescription.expectedImageCount,
+      exactImageCount: true,
+      imageOrderComplete: true,
+      fixedLastTwoComplete: true,
+      fixedNoticesBeforePromos: true
+    };
+    receipt.priceAdjustmentEvidence = {
+      enabled: true,
+      synchronizeWithEasyStorePrice: true,
+      arithmeticFieldsPreserved: true
+    };
+  }
+  return receipt;
 }
 
 test('one canonical product description becomes safe marketplace HTML', () => {
@@ -153,11 +141,10 @@ test('generic fallback copy is not accepted as a completed product description',
   assert.ok(generic.missing.includes('通用備援文案尚未改寫'));
 
   const structured = helpers.listingDescriptionContentStatus({
-    productDescription: fixedRichDescription('5A')
+    productDescription: '商品特色\n1. 5A 經典規格適合日常練習與一般演奏使用。\n2. 已確認的棒身尺寸方便使用者辨識選購規格。\n3. 成對配置可直接用於課堂練習與樂團排練。\n\n使用方式\n1. 適合搭配爵士鼓或練習鼓墊進行基本功練習。\n2. 使用前先確認棒身沒有裂痕或其他明顯損傷。\n3. 使用後放置於乾燥環境並避免高溫長時間曝曬。\n\n商品規格\n型號：5A'
   });
   assert.equal(structured.ready, true);
-  assert.equal(structured.featureCount, 10);
-  assert.equal(structured.usageCount, 10);
+  assert.equal(structured.featureCount, 3);
   assert.equal(structured.consumerReady, true);
 });
 
@@ -165,43 +152,41 @@ test('rich content lifecycle blocks new products and upgrades existing products 
   const incomplete = { ready: false, featureCount: 0, usageCount: 0, specificationCount: 0 };
   const newProduct = helpers.richContentLifecycle('create-single', incomplete);
   const existingProduct = helpers.richContentLifecycle('update-existing', incomplete);
-  assert.equal(newProduct.standardVersion, 'youzi-rich-product-content-v3');
+  assert.equal(newProduct.standardVersion, 'youzi-rich-product-content-v2');
   assert.equal(newProduct.status, 'required-before-first-publish');
   assert.equal(newProduct.blockFirstPublishUntilReady, true);
   assert.equal(existingProduct.status, 'needs-upgrade');
   assert.equal(existingProduct.preserveExistingListingIdentity, true);
   assert.equal(existingProduct.blockFirstPublishUntilReady, false);
   assert.equal(existingProduct.featureTarget, 10);
-  assert.equal(existingProduct.usageTarget, 10);
+  assert.equal(existingProduct.usageTarget, 8);
 });
 
-test('all platform descriptions deduplicate the disclaimer and keep fixed promos as the absolute final blocks', () => {
-  const disclaimer = '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。';
+test('all platform descriptions replace the legacy disclaimer and keep fixed notices before final promos', () => {
+  const legacyDisclaimer = '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。';
+  const actualProductNotice = '商品圖片與文字說明僅供參考；不同批次的包裝、印刷、配色或細節可能略有差異，實際內容以收到的商品為準。';
+  const warrantyNotice = '保固會依商品類型而有所不同。耗材及正常使用產生的自然耗損不在一般保固範圍；若商品附有原廠保固，則以原廠提供的保固時間與方式為主。收到商品若發現新品本身有異常，歡迎聯絡我們協助確認與處理。';
   const snapshot = helpers.buildListingSnapshot('disclaimer-last', {
     internalSku: 'DISCLAIMER-1', internalName: '免責句測試', currentStock: 1, sharedOnlinePrice: 500
   }, {
-    productDescription: `商品特色\n1. 真實特色\n\n${disclaimer}\n\n使用方式\n1. 正確使用\n\n商品規格\n型號：D1`,
+    productDescription: `商品特色\n1. 真實特色\n\n${legacyDisclaimer}\n\n使用方式\n1. 正確使用\n\n商品規格\n型號：D1`,
     listingImageUrls: Array.from({ length: 8 }, (_, index) => `https://example.com/disclaimer-${index}.jpg`)
   });
-  assert.equal(snapshot.description.split(disclaimer).length - 1, 1);
-  assert.ok(snapshot.description.endsWith(disclaimer));
-  assert.equal(snapshot.shopeeDescription.split(disclaimer).length - 1, 1);
-  assert.ok(snapshot.shopeeDescription.endsWith(disclaimer));
+  assert.equal(snapshot.description.includes(legacyDisclaimer), false);
+  assert.equal(snapshot.description.split(actualProductNotice).length - 1, 1);
+  assert.equal(snapshot.description.split(warrantyNotice).length - 1, 1);
+  assert.ok(snapshot.description.indexOf(actualProductNotice) < snapshot.description.indexOf(warrantyNotice));
+  assert.equal(snapshot.shopeeDescription.includes(legacyDisclaimer), false);
   for (const html of [snapshot.bodyHtml, snapshot.momoHtml, snapshot.coupangDescriptionHtml]) {
-    assert.equal(html.split(disclaimer).length - 1, 1);
+    assert.equal(html.includes(legacyDisclaimer), false);
+    assert.equal(html.split('<h3>實體商品說明</h3>').length - 1, 1);
+    assert.equal(html.split('<h3>出貨與保固說明</h3>').length - 1, 1);
+    assert.equal(html.split(actualProductNotice).length - 1, 1);
+    assert.equal(html.split(warrantyNotice).length - 1, 1);
+    assert.ok(html.indexOf(actualProductNotice) < html.indexOf(warrantyNotice));
+    assert.ok(html.indexOf(warrantyNotice) < html.indexOf('product-listing-description-promo-1.jpg'));
     assert.ok(html.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>'));
-    assert.ok(html.indexOf(disclaimer) < html.indexOf('product-listing-description-promo-1.jpg'));
   }
-  const coupangTail = snapshot.platformDescriptionContentPlan.coupang.contents.slice(-3);
-  assert.deepEqual(coupangTail, [
-    { contentsType: 'TEXT', contentDetails: [{ content: disclaimer, detailType: 'TEXT' }] },
-    { contentsType: 'IMAGE', contentDetails: [{
-      content: 'https://youzi-c1b74.web.app/product-listing-description-promo-1.jpg', detailType: 'IMAGE'
-    }] },
-    { contentsType: 'IMAGE', contentDetails: [{
-      content: 'https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg', detailType: 'IMAGE'
-    }] }
-  ]);
 });
 
 test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and compliance policy', () => {
@@ -215,6 +200,8 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   });
   assert.match(snapshot.bodyHtml, /product-listing-description-promo-1\.jpg/);
   assert.match(snapshot.bodyHtml, /product-listing-description-promo-2\.jpg/);
+  assert.match(snapshot.bodyHtml, /商品圖片與文字說明僅供參考/);
+  assert.match(snapshot.bodyHtml, /保固會依商品類型而有所不同/);
   assert.ok(snapshot.bodyHtml.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>'));
   assert.deepEqual(snapshot.momoDelivery, { method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流' });
   assert.equal(snapshot.momoCatalogPolicy.targetListings, 1000);
@@ -234,7 +221,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 33);
+  assert.equal(snapshot.automationPolicy.version, 39);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -273,18 +260,20 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 16);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 21);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.targetStock, 1);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.maximumListings, 1000);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.neverDelete, true);
-  assert.equal(snapshot.automationPolicy.version, 33);
+  assert.equal(snapshot.automationPolicy.version, 39);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.prepareShopeeAdvancedDescriptionBeforeNavigation, true);
-  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeePageMayApplyPreparedContentButMustNotReanalyzeIt, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeSellerCenterAppliesPreparedContentButMustNotReanalyzeIt, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMustVerifyTextAndEveryPreparedImageBeforePublish, true);
-  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMissingImagesMustBeInsertedIntoSameEditor, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMissingImagesMustUseNativeFileUpload, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMustDownloadPreparedImagesBeforeNativeFileUpload, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionOfficialZeroOfTwelveIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMayNotReportSuccessFromButtonClickAlone, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.mode, 'section-batch');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.batchFieldExecution.validateStableSectionAfterBatch, false);
@@ -301,17 +290,24 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.fixedFields.warrantyDays, 180);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.workspace, 'easystore-shopee-channel-sync');
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.requireTextAndEveryPreparedImageBeforePublish, true);
-  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.insertMissingPreparedImagesIntoSameEditor, true);
-  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.replaceAllEditorImagesWithPreparedSet, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.skipEasyStoreDescriptionImport, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.transferImagesThroughShopeeNativeUploader, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.memoryOnlyImageStaging, false);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.desktopDownloadRequired, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.dedicatedLocalStagingDirectoryRequired, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.uploadEntry, '商品描述/新增圖片/從電腦裝置上傳');
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.rejectDataAndBlobImagesBeforePublish, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.requireExactPreparedImageCountAndOrder, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.uploadPreparedImagesAtPlannedTextBoundaries, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.requireShopeeSellerCenterReloadEvidence, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.placement, 'interleaved-fixed-layout-v1');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.warrantyDays, 180);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.momoThirdPartyLocationCode, '000001');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.fixedDefaults.momoThirdPartyLocationRequired, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.canonicalWorkspace, 'easystore-shopee-channel-sync');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.singleWorkspaceOnly, true);
-  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverOpenDirectShopeeSellerEditor, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverOpenDirectShopeeSellerEditor, false);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.sellerCenterDescriptionStageRequired, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.startImmediatelyAfterEasyStoreVerified, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.doNotWaitForMomoOrCoupang, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.executionGraph.shopeeStartsImmediatelyAfterEasyStoreVerified, true);
@@ -324,12 +320,19 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.reusePreparedPayload, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.neverRestartResearchOrImageProcessing, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.retrySameChannelProductAndPage, true);
-  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.verifyIn, 'easystore-shopee-channel-product-list');
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeHandoff.verifyIn, 'shopee-seller-center-same-product-after-reload');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.route, 'create-via-image');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.invalidGeneratedOptionRecovery.maximumRegenerations, 1);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.invalidGeneratedOptionRecovery.neverRegenerateAfterLaterSectionsCompleted, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.invalidGeneratedOptionRecovery.lateFailureAction, 'repair-current-section-on-same-draft');
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangCreateFlow.pendingReviewIsNotActiveListing, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangExistingListingEditFlow.stayOnSameListingId, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangExistingListingEditFlow.verifiedSixStringMapping.unit, '弦');
+  assert.deepEqual(snapshot.automationPolicy.platformExecutionPlan.coupangExistingListingEditFlow.verifiedSixStringMapping.requiredScopes, ['product-basic-information', 'each-option-attribute-dialog']);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangExistingListingEditFlow.verifiedSixStringMapping.recheckProductValueAfterOptionSave, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangExistingListingEditFlow.validationRecovery.neverInventGtinsOrUnknownAttributes, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangExistingListingEditFlow.gallery.storePromoMustBeFinalSupplementImage, true);
+  assert.equal(snapshot.automationPolicy.platformExecutionPlan.coupangExistingListingEditFlow.htmlDescription.noContentAfterSecondFixedImage, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.resumeSameDraft, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverCreateReplacementDraft, true);
   assert.ok(snapshot.automationPolicy.momoPublishRecovery.reapplyWhenCleared.includes('third-party-location'));
@@ -342,7 +345,10 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.permissionDeniedRecovery.permanentOnlyAfterFallbackAlsoDenied, true);
   assert.equal(snapshot.automationPolicy.momoPublishRecovery.neverRetryPermissionDeniedWithReplacementDraft, true);
   assert.deepEqual(snapshot.automationPolicy.momoSpecialPromotionImage.preferredProductImagePositions, [2, 3]);
-  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.materialBankInsertRequired, true);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.materialBankInsertRequired, false);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.sameNameMaterialBankConflictReuseForbidden, true);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.finalTwoImagesInsertAtDocumentEnd, true);
+  assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.noContentAfterSecondFixedImage, true);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.prepareAssetBeforeMomoNavigation, true);
   assert.deepEqual(snapshot.automationPolicy.momoSpecialPromotionImage.appliesToListingModes, ['independent', 'variant-group', 'add-variant']);
   assert.equal(snapshot.automationPolicy.momoSpecialPromotionImage.onePromotionAssetPerParentListing, true);
@@ -368,16 +374,25 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.browserControl.neverOpenNativeWindowsFilePicker, true);
   assert.equal(snapshot.automationPolicy.browserControl.stopForInteractiveAuthenticationOnly, true);
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
-  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-locked-green-brand-template-v1');
-  assert.equal(snapshot.imagePolicy.mainImageAspectRatio, 'channel-specific');
-  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'locked-youzi-green-header-and-light-panel');
-  assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'within-locked-content-panel');
+  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-adaptive-light-brand-template-v2');
+  assert.equal(snapshot.imagePolicy.mainImageAspectRatio, '1:1-and-4:3-matched-pair');
+  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'locked-one-ninth-youzi-green-header-and-light-panel');
+  assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'within-thin-green-border-and-never-under-logo');
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateVersion, BRAND_TEMPLATE.version);
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateAssetSha256, BRAND_TEMPLATE.storefrontPortrait.sha256);
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.fixedStoreSlogan, '有音樂的生活更有風格');
   assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.fixedStoreLogoRequired, true);
   assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.templateAssetSha256, BRAND_TEMPLATE.brandedHero.sha256);
   assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.fixedHeaderPixelsRequired, true);
+  assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.fixedHeaderHeightRatio, 1 / 9);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.selectedLargeLogoOverlapRequired, true);
+  assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.thinOuterGreenBorderRequired, true);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.catalogSize, 50);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.selectionMode, 'random-without-replacement');
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.minimumLightAreaRatio, 0.65);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.forbidDarkFullBleedBackground, true);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.darkFullBleedForbidden, true);
+  assert.equal(snapshot.imagePolicy.brandCreativeStyleAssignment.sameStyleAcrossAspectRatios, true);
   assert.deepEqual(snapshot.imagePolicy.sourceNormalization.preferredLongEdgeRangePx, { minimum: 1600, maximum: 2000 });
   assert.equal(snapshot.imagePolicy.sourceNormalization.targetLongEdgePx, 1800);
   assert.equal(snapshot.imagePolicy.sourceNormalization.neverUpscale, true);
@@ -394,9 +409,34 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
     platformRecropForbiddenUnlessRejectedByPlatform: true,
     squareMarketplaceProfilesShareDimensions: true
   });
-  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.aspectRatio, '3:4');
-  assert.equal(snapshot.preparedPlatformFieldPlan.decisionContractVersion, 1);
+  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.aspectRatio, '4:3');
+  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.widthPx, 1000);
+  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.heightPx, 750);
+  assert.equal(snapshot.preparedPlatformFieldPlan.decisionContractVersion, 2);
+  assert.equal(snapshot.decisionContract.judgmentFields.imageLocalization.ordinaryDetailMode, 'text-localization-only');
+  assert.deepEqual(snapshot.decisionContract.judgmentFields.imageLocalization.excludesRoles, ['cleanMain', 'brandedHero', 'storefrontPortrait']);
+  assert.ok(snapshot.decisionContract.judgmentFields.imageLocalization.preserveExactly.includes('composition'));
+  assert.ok(snapshot.decisionContract.judgmentFields.imageLocalization.forbiddenMutations.includes('redesign'));
+  assert.equal(snapshot.decisionContract.judgmentFields.imageLocalization.textReplacementMethod, 'ocr-recognize-erase-original-text-and-retype-with-real-traditional-chinese-font');
+  assert.equal(snapshot.decisionContract.judgmentFields.imageLocalization.handDrawnOrPaintedGlyphsForbidden, true);
+  assert.equal(snapshot.decisionContract.judgmentFields.imageLocalization.blurryTinyOrIncompleteSourceAction, 'find-clearer-complete-source-or-skip');
+  assert.equal(snapshot.decisionContract.judgmentFields.imageLocalization.unchangedWhenNoSimplifiedTextOrForbiddenMarks, true);
   assert.equal(snapshot.decisionContract.automaticFields.easyStoreFirstImageRole, 'storefrontPortrait');
+  assert.equal(snapshot.decisionContract.automaticFields.singleGreenBrandTemplatePerPlatformGallery, true);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreTaxable, false);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreCompareAtMarkupPercent, 35);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreFeatureBulletMinChars, 24);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreFeatureBulletMaxChars, 30);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoTitleMaxChars, 70);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoDescriptionMaxChars, 180);
+  assert.equal(snapshot.decisionContract.automaticFields.coupangAttributeNameMaxChars, 25);
+  assert.deepEqual(snapshot.decisionContract.automaticFields.coupangExcludedRedundantAttributes, ['Parent Manufacturer Part Number', 'Manufacturer Part Number']);
+  assert.equal(snapshot.decisionContract.automaticFields.coupangContentType, 'HTML');
+  assert.equal(snapshot.decisionContract.automaticFields.coupangContentDetailType, 'TEXT');
+  assert.equal(snapshot.decisionContract.automaticFields.coupangContentDetailMustRemainNonEmpty, true);
+  assert.deepEqual(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.contentPayload, {
+    contentsType: 'HTML', detailType: 'TEXT', preserveNonEmptyContentWhenRemovingImages: true
+  });
   assert.equal(snapshot.decisionContract.judgmentFields.categoryAndAttributes.neverReclassifyInsideEachPlatform, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.canonicalShippingDecision.decidedOnceBeforePlatformNavigation, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.sharedImageAssetStandard.widthPx, 1000);
@@ -404,31 +444,31 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.variantImageSource, 'existing-easystore-completed-gallery');
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.neverOpenNativeFilePickerForVariantImages, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.fixedFields.advancedDescription.neverAnalyzeOrRewriteInsideShopee, true);
-  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.mode, 'use-easystore-rich-description-with-native-image-transfer');
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.mode, 'seller-center-native-file-upload-interleaved');
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.advancedDescription.directExternalImageUrlPasteForbidden, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.shopeeAdvancedDescriptionMustWaitUntilImageTransferOverlayCloses, true);
-  assert.equal(snapshot.shopeeAdvancedDescription.expectedImageCount, 5);
+  assert.equal(snapshot.shopeeAdvancedDescription.expectedImageCount, 3);
   assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, [
-    'https://example.com/main.jpg',
-    'https://example.com/main.jpg',
     'https://example.com/main.jpg',
     'https://youzi-c1b74.web.app/product-listing-description-promo-1.jpg',
     'https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg'
   ]);
-  assert.equal(snapshot.shopeeAdvancedDescription.fixedDisclaimer,
-    '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。');
-  assert.equal(snapshot.shopeeAdvancedDescription.fixedDisclaimerImmediatelyBeforeLastTwoImages, true);
   assert.equal(snapshot.shopeeAdvancedDescription.requiredFirstImageUrl, 'https://example.com/main.jpg');
   assert.deepEqual(snapshot.shopeeAdvancedDescription.fixedLastTwoImageUrls,
     snapshot.shopeeAdvancedDescription.imageUrls.slice(-2));
   assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.packageWeightGrams, 5000);
-  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.version, 3);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.version, 5);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.verifiedFromLivePage, true);
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.pageSignature.stableLandmarks.includes('發佈商品'));
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.imageConstraints.main.maximumCount, 6);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.imageConstraints.main.minimumFileBytes, 38000);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.imageConstraints.main.maximumFileBytes, 1000000);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.imageConstraints.promotionMaterialBankRequired, false);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.imageConstraints.uniqueDeviceFilenameRequired, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.promotionInsertFlow.target, 'rich-description-editor');
+  assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.promotionInsertFlow.steps.includes('choose-device-upload'));
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.promotionInsertFlow.finalTwoImagesCursorPlacement, 'document-end');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.promotionInsertFlow.noTextOrImageAfterSecondFixedImage, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.promotionInsertFlow.requiredBeforeFirstSubmit, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.firstSubmissionMediaGate.prepareAllBeforePlatformSubmit, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.firstSubmissionMediaGate.deduplicatePromotionAssetBeforeInsert, true);
@@ -437,6 +477,11 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.listingQuotaRecovery.preserveZeroStockHighSales, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.exactListSearch.trigger, 'search-append-control');
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.loginRecoveryPolicy.sourcePriority.at(-1), 'previous-successful-route-from-project-context');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.version, 4);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.existingListingEditFlow.galleryFinalSlot, 'product-listing-store-promo.png');
+  assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.existingListingEditFlow.fixedNoticeHeadings, ['實體商品說明', '出貨與保固說明']);
+  assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.existingListingEdit.noContentAfterSecondFixedImage, true);
+  assert.equal(snapshot.preparedPlatformFieldPlan.coupang.interactionPolicy.previewSaveAndReopenHtmlBeforeSubmit, true);
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.batchSections[0].fields.includes('advertisement-image'));
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.storeCategoryConstraints.maximumCount, 5);
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.batchSections.at(-1).fields.includes('promotion-material-bank-image'));
@@ -444,9 +489,9 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.routeKey, 'easystore-shopee-channel-sync');
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.authenticatedLandmarks.includes('已連接'));
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.loginProbe.submitLabel, '登入');
-  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.version, 3);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.version, 4);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.verifiedFromLivePage, true);
-  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.routeKey, 'coupang-create-via-image-or-same-draft');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.routeKey, 'coupang-create-via-image-or-exact-existing-listing');
   assert.ok(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.fieldOrder.includes('generate-product-information'));
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.generatedOptionRecovery.maximumAttempts, 1);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.generatedOptionRecovery.neverRegenerateAfterLaterSectionsCompleted, true);
@@ -464,6 +509,32 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.fixedFields.responsibleSeller, '尚品樂器行');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.shipping.convenienceStore.enabled, false);
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.interactionPolicy.neverSearchByTitle, true);
+});
+
+test('EasyStore 分類與品牌在進頁前依固定商店分類表完成精確決策', () => {
+  assert.deepEqual(helpers.resolveEasyStoreCollectionNames({
+    category: '樂器配件／胡琴弦',
+    title: 'FL-ZHU 朱鳳良 No.9808 中胡弦 內弦＋外弦套裝'
+  }), ['拉弦樂器', '二胡&高胡&京胡']);
+  assert.deepEqual(helpers.resolveEasyStoreCollectionNames({
+    title: 'EASTUN EG-S413N 41 吋木吉他'
+  }), ['彈撥樂器', '民謠吉他&週邊商品']);
+  assert.deepEqual(helpers.resolveEasyStoreCollectionNames({
+    easyStoreCollectionNames: ['吹奏樂器', '中國笛&蕭&週邊商品'],
+    title: 'YUEDONG M53 中國笛袋'
+  }), ['吹奏樂器', '中國笛&蕭&週邊商品']);
+  assert.ok(helpers.easyStoreCollectionCatalog().includes('錄音設備&麥克風& 耳機週邊'));
+
+  const plan = helpers.buildPreparedPlatformFieldPlan({
+    sku: '2500117', title: 'FL-ZHU 朱鳳良 No.9808 中胡弦 內弦＋外弦套裝',
+    category: '樂器配件／胡琴弦', brand: 'FL-ZHU', stock: 2, easyStorePrice: 500,
+    platformImagePlan: { easyStore: { imageUrls: [] }, shopee: { imageUrls: [] }, momo: { imageUrls: [] }, coupang: { imageUrls: [] } }
+  });
+  assert.equal(plan.version, 21);
+  assert.deepEqual(plan.easyStore.preparedFields.collectionNames, ['拉弦樂器', '二胡&高胡&京胡']);
+  assert.equal(plan.easyStore.preparedFields.brand.value, 'FL-ZHU');
+  assert.equal(plan.easyStore.fixedFields.categoryAndBrandPreparedBeforeNavigation, true);
+  assert.equal(plan.easyStore.fixedFields.neverUseApproximateBrand, true);
 });
 
 test('MOMO 名額回收只選安全零庫存舊品並沿用同一新品草稿', () => {
@@ -508,14 +579,18 @@ test('MOMO 名額回收要求已核實零銷售，中央 productId 不會誤判�
   assert.equal(result.candidate.listingId, 'VERIFIED-ZERO');
 });
 
-test('Coupang shipping is decided once and enables convenience stores only within 101 cm and 10 kg', () => {
+test('Coupang shipping is decided once and always uses HCT instead of convenience stores', () => {
   const compact = helpers.buildCoupangShipping({
     packageLengthCm: 45, packageWidthCm: 35, packageHeightCm: 15, packageWeightKg: 3
   });
   assert.equal(compact.packageTotalCm, 95);
   assert.equal(compact.sellerDelivery.enabled, true);
-  assert.equal(compact.convenienceStore.enabled, true);
-  assert.deepEqual(compact.convenienceStore.stores, ['7-ELEVEN', 'FamilyMart']);
+  assert.equal(compact.sellerDelivery.carrier, 'HCT');
+  assert.deepEqual(compact.sellerDelivery.carriers, ['HCT']);
+  assert.equal(compact.convenienceStore.enabled, false);
+  assert.deepEqual(compact.convenienceStore.stores, []);
+  assert.equal(compact.convenienceStore.packageWouldFit, true);
+  assert.equal(compact.convenienceStore.disabledByFixedCarrierPolicy, true);
   assert.equal(compact.requiresJudgment, false);
 
   const oversize = helpers.buildCoupangShipping({
@@ -523,6 +598,7 @@ test('Coupang shipping is decided once and enables convenience stores only withi
   });
   assert.equal(oversize.packageTotalCm, 110);
   assert.equal(oversize.sellerDelivery.enabled, true);
+  assert.deepEqual(oversize.sellerDelivery.carriers, ['HCT']);
   assert.equal(oversize.convenienceStore.enabled, false);
   assert.deepEqual(oversize.convenienceStore.stores, []);
 });
@@ -681,6 +757,55 @@ test('queue receipt only advances the matching v3 job, attempt and immutable sna
   assert.ok(oldJob.reasons.includes('workflow-version-mismatch'));
 });
 
+test('failed platform work stays in the listing queue with platform reason and resumes only unfinished roots', () => {
+  const snapshot = { listingTargetScope: 'all' };
+  const retryAt = '2026-09-03T04:00:00.000Z';
+  const stages = {
+    easyStore: { status: 'verified' },
+    shopee: { status: 'verified' },
+    momo: { status: 'failed', message: '商品上限限制中', retryAt },
+    coupang: { status: 'verified' }
+  };
+  const payload = helpers.listingBatchFailurePayload(snapshot, stages, {
+    momo: { status: 'failed', message: '商品上限限制中' }
+  });
+  assert.equal(payload.batchQueueStatus, 'failed');
+  assert.deepEqual(payload.batchRetryPlatforms, ['momo']);
+  assert.equal(payload.batchPlatformFailures.momo.reason, '商品上限限制中');
+  assert.equal(payload.batchNextRetryAt, retryAt);
+  assert.equal(helpers.listingRootStageNeedsResume(snapshot, stages), true);
+  assert.equal(helpers.listingRootStageNeedsResume(snapshot, { ...stages, momo: { status: 'awaiting-verification' } }), false);
+});
+
+test('verified queue identity records a platform failure for later retry without creating another job', async () => {
+  const snapshot = { productId: 'retry-product', sku: 'RETRY-1', listingTargetScope: 'all' };
+  const fingerprint = helpers.platformStageFingerprint('MOMO', snapshot);
+  const snapshotFingerprint = helpers.listingSnapshotFingerprint(snapshot);
+  const db = fakeFirestore({
+    'opsSyncJobs/retry-job': {
+      workflowVersion: 'youzi-four-channel-listing-v3', productId: 'retry-product', currentStage: 'parallel-platforms',
+      preparedSnapshot: snapshot, preparedSnapshotFingerprint: snapshotFingerprint,
+      stages: {
+        momo: { status: 'awaiting-verification', attemptToken: 'retry-attempt', fingerprint },
+        coupang: { status: 'verified' }, easyStore: { status: 'verified' }, shopee: { status: 'verified' }
+      }
+    }
+  });
+  const retryAt = '2026-09-03T04:00:00.000Z';
+  const result = await helpers.applyVerifiedQueueReceipt(db, 'momo-retry-queue', {
+    workflowVersion: 'youzi-four-channel-listing-v3', jobId: 'retry-job', productId: 'retry-product',
+    platform: 'MOMO', status: 'failed', attemptToken: 'retry-attempt', fingerprint, snapshotFingerprint,
+    error: 'MOMO 商品數量限制', retryAt
+  });
+  assert.equal(result.status, 'failed-recorded-for-retry');
+  assert.equal(result.stage, 'momo');
+  const listingCase = db.get('opsProductListingCases/retry-product');
+  assert.equal(listingCase.batchQueueStatus, 'failed');
+  assert.deepEqual(listingCase.batchRetryPlatforms, ['momo']);
+  assert.equal(listingCase.batchPlatformFailures.momo.retryAt, retryAt);
+  assert.equal(db.get('opsSyncJobs/retry-job').stages.momo.status, 'failed');
+});
+
 test('backend ignores receipts and Shopee verification outside the selected scope', async () => {
   const snapshot = {
     productId: 'scope-product', sku: 'SCOPE-1', listingTargetScope: 'momo',
@@ -783,8 +908,9 @@ test('MOMO special promotion image uses product image two or three and never sto
     internalSku: 'MOMO-PROMO', internalName: 'MOMO 專推圖測試', currentStock: 1,
     easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
   }, withV2ImagePlan({
-    productDescription: fixedRichDescription('MOMO-PROMO'), listingImageUrls: productImages,
-    enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
+    productDescription: '完整商品介紹\n\n商品特色\n1. 已驗證特色\n\n商品規格\n型號：MOMO-PROMO\n\n使用方式／適用情境\n1. 依商品說明使用', listingImageUrls: productImages,
+    enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true },
+    packageLengthCm: 40, packageWidthCm: 30, packageHeightCm: 10, packageWeightKg: 2
   }, { branded: productImages[0], clean: productImages[1], cleanTwo: productImages[2] }));
 
   assert.equal(snapshot.momoSpecialPromotionImageUrl, productImages[2]);
@@ -798,6 +924,11 @@ test('MOMO special promotion image uses product image two or three and never sto
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.firstSubmitMediaGate.promotionImage.insertBeforeFirstSubmit, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.firstSubmitMediaGate.promotionImage.deduplicateBeforeInsert, true);
   assert.match(snapshot.preparedPlatformFieldPlan.momo.preparedFields.firstSubmitMediaGate.promotionImage.assetFilename, /^MOMO-PROMO-momo-promo-[a-f0-9]{12}\.jpg$/);
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.marketPrice, 1620);
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.shipping.thirdParty.locationCode, '000001');
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.shipping.convenienceStore.enabled, true);
+  assert.deepEqual(snapshot.preparedPlatformFieldPlan.momo.preparedFields.warranty, { enabled: true, days: 180 });
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.descriptionDelivery.warrantyNoticeImmediatelyBeforeFixedLastTwoImages, true);
   assert.deepEqual(helpers.momoMissingFields(snapshot), []);
 });
 
@@ -811,6 +942,33 @@ test('MOMO stops before queueing when only the branded first image exists', () =
   assert.equal(snapshot.momoSpecialPromotionImageUrl, '');
   assert.match(helpers.momoMissingFields(snapshot).join('、'), /MOMO cleanMain 首圖/);
   assert.match(helpers.momoMissingFields(snapshot).join('、'), /MOMO clean-only 專推圖/);
+});
+
+test('MOMO V3 prepares non-repeated brand title, 15-character features, 35-percent market price and shipping', () => {
+  assert.equal(helpers.momoProductName('EASTUN EJF-S413CBK 41 吋黑色缺角單板木吉他', 'EASTUN'),
+    'EJF-S413CBK 41 吋黑色缺角單板木吉他');
+  const features = helpers.momoShortFeaturePlan([
+    '商品特色',
+    '1. 41 吋缺角桶身設計',
+    '2. 適合自彈自唱與舞台演出',
+    '3. 黑色外觀俐落有型',
+    '',
+    '商品規格',
+    '型號：EJF-S413CBK',
+    '',
+    '使用方式／適用情境',
+    '依原廠說明使用'
+  ].join('\n'), '');
+  assert.equal(features.slogan, '41 吋缺角桶身設計');
+  assert.equal(features.featureTexts.length, 3);
+  assert.equal(features.featureTexts.every((value) => Array.from(value).length <= 15), true);
+  assert.equal(helpers.momoMarketPrice({ momoPrice: 1000 }), 1350);
+  assert.deepEqual(helpers.buildMomoShipping({
+    packageLengthCm: 40, packageWidthCm: 30, packageHeightCm: 10, packageWeightKg: 2
+  }).convenienceStore.enabled, true);
+  assert.deepEqual(helpers.buildMomoShipping({
+    packageLengthCm: 110, packageWidthCm: 45, packageHeightCm: 20, packageWeightKg: 8
+  }).convenienceStore.enabled, false);
 });
 
 test('MOMO 核對拒絕草稿、空白售價與庫存不符', () => {
@@ -854,7 +1012,7 @@ test('listing snapshot caps product images at ten, appends the address gallery i
     internalSku: 'IMG-12', internalName: '十二張圖片商品', currentStock: 1,
     easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
   }, {
-    productDescription: fixedRichDescription('IMG-12'), listingImageUrls: productImages,
+    productDescription: '完整商品介紹\n\n商品特色\n1. 已驗證特色\n\n商品規格\n型號：IMG-12\n\n使用方式／適用情境\n1. 依商品說明使用', listingImageUrls: productImages,
     enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
   });
 
@@ -865,24 +1023,28 @@ test('listing snapshot caps product images at ten, appends the address gallery i
   assert.deepEqual(snapshot.descriptionImageUrls, productImages.slice(0, 10));
   for (const html of [snapshot.bodyHtml, snapshot.momoHtml, snapshot.coupangDescriptionHtml]) {
     assert.ok(html.indexOf('product-10.jpg') < html.indexOf('product-listing-description-promo-1.jpg'));
+    assert.ok(html.indexOf('<h3>實體商品說明</h3>') < html.indexOf('商品圖片與文字說明僅供參考'));
+    assert.ok(html.indexOf('<h3>出貨與保固說明</h3>') < html.indexOf('保固會依商品類型而有所不同'));
+    assert.ok(html.indexOf('商品圖片與文字說明僅供參考') < html.indexOf('保固會依商品類型而有所不同'));
+    assert.ok(html.indexOf('保固會依商品類型而有所不同') < html.indexOf('product-listing-description-promo-1.jpg'));
     assert.ok(html.indexOf('product-listing-description-promo-1.jpg') < html.indexOf('product-listing-description-promo-2.jpg'));
     assert.ok(html.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>'));
-    assert.ok(html.indexOf('實際內容以收到的實體商品為準') < html.indexOf('product-listing-description-promo-1.jpg'));
   }
   assert.equal(snapshot.imagePolicy.galleryMaximum, 7);
   assert.equal(snapshot.imagePolicy.sourceImageMaximum, 20);
   assert.equal(snapshot.imagePolicy.sharedVariantGalleryMaximum, 12);
   assert.equal(snapshot.imagePolicy.balanceAcrossVariants, true);
   assert.equal(snapshot.contentPolicy.featureTarget, 10);
-  assert.equal(snapshot.contentPolicy.usageTarget, 10);
-  assert.equal(snapshot.contentPolicy.warrantyInDescription, false);
+  assert.equal(snapshot.contentPolicy.usageTarget, 8);
+  assert.match(snapshot.contentPolicy.warrantySupportNoticeInDescription, /保固會依商品類型而有所不同/);
   assert.equal(snapshot.contentPolicy.appendStoreNameToTitleOrCopy, false);
   assert.equal(snapshot.contentPolicy.storePromotionContentInProductDescription, 'forbidden');
   assert.equal(snapshot.contentPolicy.interleaveCompletedImagesWhenSupported, true);
-  assert.match(snapshot.description, /實際內容以收到的實體商品為準/);
-  assert.match(snapshot.shopeeDescription, /實際內容以收到的實體商品為準/);
-  assert.match(snapshot.momoHtml, /實際內容以收到的實體商品為準/);
-  assert.match(snapshot.coupangDescriptionHtml, /實際內容以收到的實體商品為準/);
+  assert.match(snapshot.description, /實際內容以收到的商品為準/);
+  assert.match(snapshot.description, /保固會依商品類型而有所不同/);
+  assert.match(snapshot.shopeeDescription, /實際內容以收到的商品為準/);
+  assert.match(snapshot.momoHtml, /實際內容以收到的商品為準/);
+  assert.match(snapshot.coupangDescriptionHtml, /實際內容以收到的商品為準/);
 });
 
 test('selected source images prioritize their localized completed images without exposing originals', () => {
@@ -915,7 +1077,7 @@ test('prepared role plan gives EasyStore a portrait hero, Shopee a square brande
     internalSku: 'PLATFORM-IMG', internalName: '平台主圖測試', currentStock: 1,
     easyStorePrice: 1200, momoPrice: 1200, coupangPrice: 1200
   }, withV2ImagePlan({
-    productDescription: fixedRichDescription('PLATFORM-IMG'), listingImageUrls: productImages,
+    productDescription: '完整商品介紹\n\n商品特色\n1. 已驗證特色\n\n商品規格\n型號：PLATFORM-IMG\n\n使用方式／適用情境\n1. 依商品說明使用', listingImageUrls: productImages,
     enabledPlatforms: { easyStoreShopee: true, momo: true, coupang: true }
   }, { storefront: productImages[0], branded: productImages[1], clean: productImages[2], cleanTwo: productImages[3], detail: productImages.slice(4) }));
 
@@ -979,7 +1141,7 @@ test('v3 image gates reject branded images whose locked template hash changed', 
   }), /未使用固定綠底品牌母版/);
 });
 
-test('12 張共用池先保留三種首圖角色並公平涵蓋 13 個細項', () => {
+test('12 張共用池只保留整組唯一品牌首圖並公平涵蓋細項乾淨圖', () => {
   const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
   const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false };
   const cases = Array.from({ length: 13 }, (_, index) => ({
@@ -997,8 +1159,39 @@ test('12 張共用池先保留三種首圖角色並公平涵蓋 13 個細項', (
   assert.equal(plan.shopee.ready, true);
   assert.match(plan.easyStore.imageUrls[0], /-storefront\.jpg$/);
   assert.match(plan.coupang.imageUrls[0], /-clean\.jpg$/);
+  assert.equal(plan.sharedCompletedImageUrls.filter((url) => /-storefront\.jpg$/.test(url)).length, 1);
+  assert.equal(plan.sharedCompletedImageUrls.filter((url) => /-brand\.jpg$/.test(url)).length, 1);
+  assert.equal(plan.easyStore.imageUrls.filter((url) => /-storefront\.jpg$/.test(url)).length, 1);
+  assert.equal(plan.shopee.imageUrls.filter((url) => /-brand\.jpg$/.test(url)).length, 1);
   const represented = new Set(plan.sharedCompletedImageUrls.map((url) => /variant-(\d+)-/.exec(url)?.[1]).filter(Boolean));
-  assert.equal(represented.size, 12);
+  assert.equal(represented.size, 10);
+});
+
+test('四細項商品只建立一張官網首圖、一張蝦皮品牌首圖與四張細項乾淨圖', () => {
+  const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
+  const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false };
+  const cases = Array.from({ length: 4 }, (_, index) => ({
+    productId: `variant-${index}`,
+    gallerySourceImageUrls: [],
+    roleRows: [
+      { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-clean.jpg`, url: `https://cdn.example.com/variant-${index}-clean.jpg`, roles: ['cleanMain', 'variantRepresentative'], sourceOrder: 1, assetFlags: cleanFlags },
+      { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-storefront.jpg`, url: `https://cdn.example.com/variant-${index}-storefront.jpg`, roles: ['storefrontPortrait'], sourceOrder: 1, assetFlags: brandFlags, ...brandTemplateFields('storefrontPortrait') },
+      { productId: `variant-${index}`, sourceImageUrl: `https://supplier.example.com/${index}-brand.jpg`, url: `https://cdn.example.com/variant-${index}-brand.jpg`, roles: ['brandedHero'], sourceOrder: 1, assetFlags: brandFlags, ...brandTemplateFields('brandedHero') }
+    ]
+  }));
+  const plan = helpers.buildFinalPlatformImagePlan(cases);
+  assert.equal(plan.sharedCompletedImageUrls.length, 6);
+  assert.equal(plan.sharedCompletedImageUrls.filter((url) => /-clean\.jpg$/.test(url)).length, 4);
+  assert.deepEqual(plan.easyStore.imageUrls, [
+    'https://cdn.example.com/variant-0-storefront.jpg',
+    'https://cdn.example.com/variant-0-clean.jpg',
+    'https://cdn.example.com/variant-1-clean.jpg',
+    'https://cdn.example.com/variant-2-clean.jpg',
+    'https://cdn.example.com/variant-3-clean.jpg'
+  ]);
+  assert.equal(plan.easyStore.imageUrls.filter((url) => /(?:storefront|brand)/.test(url)).length, 1);
+  assert.equal(plan.shopee.imageUrls.includes('https://cdn.example.com/variant-1-brand.jpg'), false);
+  assert.equal(plan.coupang.imageUrls.some((url) => /storefront/.test(url)), false);
 });
 
 test('上架圖片預覽未勾選的來源不會進入任何平台圖庫', () => {
@@ -1086,6 +1279,8 @@ test('四通路完成後主商品與每個細項都標記已發布，最近未�
   assert.match(finalize, /reference\.caseRef\.set\(\{\s*caseStatus: 'published'/);
   assert.match(finalize, /reference\.productRef\.set\(\{/);
   assert.match(finalize, /platformListingStatusFromPublish\(reference\.product\.platformListingStatus, platforms, completedStages\)/);
+  assert.match(finalize, /batchQueueStatus: 'completed'/);
+  assert.match(finalize, /batchPlatformFailures: \{\}/);
 });
 
 test('完成前中央或細項仍引用 frozen source 即拒絕，平台快速回條且中央全完成圖才通過', () => {
@@ -1411,13 +1606,16 @@ test('EasyStore payload publishes one exact SKU with stock, price, package and a
   assert.equal(snapshot.sku, '1040160-1');
   assert.equal(snapshot.images.length, 7);
   assert.equal(body.inventory_management, 'easystore');
+  assert.equal(body.taxable, false);
+  assert.equal(body.metafields_global_title_tag, snapshot.title);
+  assert.ok(Array.from(body.metafields_global_description_tag).length <= 180);
   assert.equal(body.images.length, 7);
   assert.match(body.images.at(-1).url, /product-listing-store-promo\.png$/);
   assert.equal(body.variants.length, 1);
   assert.deepEqual(body.variants[0], {
     sku: '1040160-1', barcode: '4549763289575', price: 14800, inventory_quantity: 3,
     width: 45.7, height: 10.2, length: 106.7, weight: 4.2, weight_unit: 'kg',
-    inventory_policy: false, taxable: true, is_enabled: true, compare_at_price: 15900, cost_price: 7400
+    inventory_policy: false, taxable: false, is_enabled: true, compare_at_price: 15900, cost_price: 7400
   });
   assert.match(body.body_html, /<h3>商品特色<\/h3>/);
   assert.match(body.published_at, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
@@ -1428,7 +1626,7 @@ test('zero stock remains published as out of stock and does not fail the EasySto
     internalSku: 'OUT-OF-STOCK-1', currentStock: 0, easyStorePrice: 9800
   }, {
     researchedProductName: '缺貨但仍需上架的商品',
-    productDescription: fixedRichDescription('OUT-OF-STOCK-1', '商品資料完整，庫存稍後由既有庫存同步流程更新。'),
+    productDescription: '商品資料完整，庫存稍後由既有庫存同步流程更新。\n\n商品特色\n1. 已驗證特色\n\n商品規格\n型號：OUT-OF-STOCK-1\n\n使用方式／適用情境\n1. 補貨後由庫存流程恢復銷售',
     listingImageUrls: ['https://example.com/out-of-stock-1.jpg', 'https://example.com/out-of-stock-2.jpg', 'https://example.com/out-of-stock-3.jpg'],
     enabledPlatforms: { easyStoreShopee: true, momo: false, coupang: false }
   });
@@ -1438,6 +1636,8 @@ test('zero stock remains published as out of stock and does not fail the EasySto
   assert.equal(body.variants[0].inventory_quantity, 0);
   assert.equal(body.variants[0].inventory_policy, false);
   assert.equal(body.variants[0].is_enabled, true);
+  assert.equal(body.variants[0].taxable, false);
+  assert.equal(body.variants[0].compare_at_price, 13230);
   assert.match(body.published_at, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   assert.deepEqual(helpers.easyStoreMissingFields(snapshot), []);
 });
@@ -1461,7 +1661,7 @@ test('EasyStore draft is never treated as a published storefront product', () =>
 
 test('each platform reports missing fields instead of pretending to publish', () => {
   const empty = { sku: '', title: '', description: '', images: [], easyStorePrice: null, momoGoodsName: '', momoCategoryCode: '', momoPrice: null, coupangTitle: '', coupangCategoryCode: '', coupangPrice: null };
-  assert.deepEqual(helpers.easyStoreMissingFields(empty), ['SKU', '商品名稱', '完整商品介紹', '商品特色 10 點、使用建議 10 點與完整可驗證規格', '上架圖片', 'EasyStore 售價']);
+  assert.deepEqual(helpers.easyStoreMissingFields(empty), ['SKU', '商品名稱', '完整商品介紹', '上架圖片', 'EasyStore 售價']);
   assert.doesNotMatch(helpers.momoMissingFields(empty).join('、'), /MOMO 分類/);
   assert.doesNotMatch(helpers.coupangMissingFields(empty).join('、'), /酷澎分類/);
   assert.equal(helpers.overallPublishStatus({ easyStore: { status: 'created' }, momo: { status: 'missing-fields' } }), 'needs-input');
@@ -1495,7 +1695,7 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
 
   assert.equal(snapshot.stock, 0);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 6);
+  assert.equal(payload.schemaVersion, 7);
   assert.equal(payload.workflowVersion, 'youzi-four-channel-listing-v3');
   assert.equal(payload.jobId, 'job-shopee-v2-1');
   assert.equal(payload.publishMode, 'auto');
@@ -1504,8 +1704,27 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     preflightSkuSearch: false, uncertainSubmitRecovery: 'exact-sku-only'
   });
   assert.equal(payload.brand, 'Ibanez');
-  assert.equal(payload.advancedDescription.mode, 'use-easystore-rich-description-with-native-image-transfer');
+  assert.equal(payload.advancedDescription.mode, 'seller-center-native-file-upload-interleaved');
   assert.equal(payload.advancedDescription.preparedBeforeNavigation, true);
+  assert.equal(payload.advancedDescription.skipEasyStoreDescriptionImport, true);
+  assert.equal(payload.advancedDescription.transferImagesThroughShopeeNativeUploader, true);
+  assert.equal(payload.advancedDescription.memoryOnlyImageStaging, false);
+  assert.equal(payload.advancedDescription.desktopDownloadRequired, true);
+  assert.equal(payload.advancedDescription.dedicatedLocalStagingDirectoryRequired, true);
+  assert.equal(payload.advancedDescription.deleteLocalStagingOnlyAfterReloadVerification, true);
+  assert.deepEqual(payload.advancedDescription.imagePreflight, {
+    preparedBeforeEasyStorePublish: true,
+    sourceFilesMustExistLocallyBeforeSellerCenterUpload: true,
+    uploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
+    minimumSourceShortEdgePx: 700,
+    preferredSquareSizePx: 1000,
+    storefrontPortraitWidthPx: 1000,
+    storefrontPortraitHeightPx: 750,
+    maximumImageCount: 12,
+    responsiveHtmlStyle: 'max-width:100%;height:auto',
+    verifyPlatformAcceptanceAfterPreparePublish: true,
+    doNotResizeAgainInsideShopee: true
+  });
   assert.equal(payload.advancedDescription.expectedImageCount, 5);
   assert.equal(payload.advancedDescription.rejectZeroImageDescriptionBeforePublish, true);
   assert.deepEqual(payload.advancedDescription.imageUrls.slice(-2), [
@@ -1522,17 +1741,21 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     label: '新竹物流', enabled: true, option: 'S170', feeTwd: null, sellerPays: false
   });
   assert.deepEqual(payload.logistics.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送'), {
-    label: '賣家宅配：大型/超重物品運送', enabled: false, option: '', feeTwd: null, sellerPays: false
+    label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false
   });
   assert.deepEqual(
     payload.logistics.methods.filter((row) => row.enabled).map((row) => row.label),
-    ['新竹物流']
+    ['新竹物流', '賣家宅配：大型/超重物品運送']
   );
   assert.equal(payload.logistics.methods.length, 9);
   assert.ok(payload.logistics.methods
-    .filter((row) => row.label !== '新竹物流')
+    .filter((row) => !['新竹物流', '賣家宅配：大型/超重物品運送'].includes(row.label))
     .every((row) => row.enabled === false));
   assert.deepEqual(payload.preorder, { enabled: false, days: 1 });
+  assert.deepEqual(payload.priceAdjustment, {
+    enabled: true, synchronizeWithEasyStorePrice: true,
+    doNotSetAdjustmentModeOrValue: true
+  });
   assert.equal(payload.easyStoreUrl, 'https://admin.easystore.co/products/16403950');
   assert.match(payload.nonce, /^[a-f0-9]{32}$/);
   assert.equal(Object.hasOwn(payload, 'costPrice'), false);
@@ -1586,17 +1809,12 @@ test('Shopee helper leaves Hsinchu Logistics off when package limits are incompl
   });
   assert.equal(tooHeavy.methods.find((row) => row.label === '新竹物流').enabled, false);
   assert.deepEqual(tooHeavy.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送'), {
-    label: '賣家宅配：大型/超重物品運送', enabled: false, option: '', feeTwd: null, sellerPays: false
+    label: '賣家宅配：大型/超重物品運送', enabled: true, option: '', feeTwd: 100, sellerPays: false
   });
-  assert.deepEqual(tooHeavy.methods.filter((row) => row.enabled).map((row) => row.label), []);
+  assert.deepEqual(tooHeavy.methods.filter((row) => row.enabled).map((row) => row.label),
+    ['賣家宅配：大型/超重物品運送']);
   assert.equal(tooHeavy.requiresConfirmation, false);
-  assert.equal(tooHeavy.requiresJudgment, true);
-
-  const explicitOversize = helpers.buildShopeeLogistics({
-    shippingDecision: 'oversize', packageLengthCm: 160, packageWidthCm: 50, packageHeightCm: 30, packageWeightKg: 21
-  });
-  assert.deepEqual(explicitOversize.methods.filter((row) => row.enabled), []);
-  assert.equal(explicitOversize.requiresJudgment, true);
+  assert.equal(tooHeavy.requiresJudgment, false);
 });
 
 test('backend Hsinchu tariff boundaries stay aligned with the extension contract', () => {
@@ -1620,8 +1838,11 @@ test('manual shipping choice controls autofill and convenience limits are enforc
     shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30,
     packageHeightCm: 20, packageWeightKg: 4
   });
-  assert.equal(verifiedConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, false);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '蝦皮店到店 - 隔日到貨').enabled, true);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, true);
   assert.equal(verifiedConvenience.methods.find((row) => row.label === '7-ELEVEN').enabled, true);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '全家').enabled, true);
+  assert.equal(verifiedConvenience.methods.find((row) => row.label === '店到家宅配').enabled, true);
   assert.equal(verifiedConvenience.methods.find((row) => row.label === '新竹物流').enabled, true);
   assert.equal(verifiedConvenience.methods.find((row) => row.label === '新竹物流').option, 'S90');
   assert.equal(verifiedConvenience.methods.find((row) => row.label === '黑貓宅急便').enabled, false);
@@ -1635,6 +1856,7 @@ test('manual shipping choice controls autofill and convenience limits are enforc
     packageHeightCm: 20, packageWeightKg: 4
   });
   assert.equal(oversizedConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, false);
+  assert.equal(oversizedConvenience.methods.find((row) => row.label === '店到家宅配').enabled, true);
   assert.equal(oversizedConvenience.requiresConfirmation, false);
   assert.equal(oversizedConvenience.requiresJudgment, true);
 
@@ -1642,17 +1864,19 @@ test('manual shipping choice controls autofill and convenience limits are enforc
     shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30,
     packageHeightCm: 20, packageWeightKg: 5.1
   });
-  assert.equal(overweightConvenience.methods.find((row) => row.label === '7-ELEVEN').enabled, false);
+  assert.equal(overweightConvenience.methods.find((row) => row.label === '蝦皮店到店').enabled, false);
+  assert.equal(overweightConvenience.methods.find((row) => row.label === '7-ELEVEN').enabled, true);
+  assert.equal(overweightConvenience.methods.find((row) => row.label === '全家').enabled, true);
+  assert.equal(overweightConvenience.methods.find((row) => row.label === '店到家宅配').enabled, true);
   assert.equal(overweightConvenience.requiresConfirmation, false);
-  assert.equal(overweightConvenience.requiresJudgment, true);
+  assert.equal(overweightConvenience.requiresJudgment, false);
 
   const manualHome = helpers.buildShopeeLogistics({
     shippingDecision: 'home', packageLengthCm: 106.7, packageWidthCm: 45.7,
     packageHeightCm: 10.2, packageWeightKg: 4.2
   });
-  assert.equal(manualHome.methods.find((row) => row.label === '新竹物流').enabled, true);
-  assert.equal(manualHome.methods.find((row) => row.label === '新竹物流').option, 'S170');
-  assert.equal(manualHome.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送').enabled, false);
+  assert.equal(manualHome.methods.find((row) => row.label === '新竹物流').enabled, false);
+  assert.equal(manualHome.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送').enabled, true);
   assert.equal(manualHome.requiresConfirmation, false);
   assert.equal(manualHome.requiresJudgment, false);
 });
@@ -1776,7 +2000,7 @@ test('explicit listing intent blocks unsafe create and update fallbacks instead 
   }, 'momo'), []);
 });
 
-test('physical photos stay out of every gallery and precede the disclaimer and absolute-final promo pair', () => {
+test('physical photos stay out of every gallery and are appended before fixed notices and final promos', () => {
   const normalImages = Array.from({ length: 8 }, (_, index) => `https://example.com/normal-${index + 1}.jpg`);
   const physicalImages = ['https://example.com/physical-1.jpg', 'https://example.com/physical-2.jpg'];
   const snapshot = helpers.buildListingSnapshot('physical-1', {
@@ -1798,9 +2022,10 @@ test('physical photos stay out of every gallery and precede the disclaimer and a
   assert.equal(snapshot.platformImagePlan.coupang.imageUrls.some((url) => physicalImages.includes(url)), false);
   for (const html of [snapshot.bodyHtml, snapshot.momoHtml, snapshot.coupangDescriptionHtml]) {
     assert.ok(html.indexOf(normalImages[7]) < html.indexOf(physicalImages[0]));
-    assert.ok(html.indexOf(physicalImages[1]) < html.lastIndexOf('商品圖片與規格僅供參考'));
+    assert.ok(html.indexOf(physicalImages[1]) < html.lastIndexOf('商品圖片與文字說明僅供參考'));
+    assert.ok(html.indexOf('商品圖片與文字說明僅供參考') < html.indexOf('保固會依商品類型而有所不同'));
+    assert.ok(html.indexOf('保固會依商品類型而有所不同') < html.indexOf('product-listing-description-promo-1.jpg'));
     assert.ok(html.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>'));
-    assert.ok(html.indexOf('商品圖片與規格僅供參考') < html.indexOf('product-listing-description-promo-1.jpg'));
   }
   assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, [
     ...normalImages, ...physicalImages,
@@ -1811,7 +2036,7 @@ test('physical photos stay out of every gallery and precede the disclaimer and a
   assert.equal(snapshot.physicalImagePolicy.neverUseAsMainImage, true);
 });
 
-test('add variant merges the parent and new variant description without duplicating the disclaimer', () => {
+test('add variant merges the parent and new variant description without duplicating fixed notices', () => {
   const snapshot = helpers.buildListingSnapshot('variant-child-content', {
     internalSku: 'VARIANT-BLUE', internalName: '藍色新細項', currentStock: 1, sharedOnlinePrice: 500
   }, {
@@ -1829,12 +2054,9 @@ test('add variant merges the parent and new variant description without duplicat
   assert.match(snapshot.description, /原商品內容/);
   assert.match(snapshot.description, /新增細項｜顏色：藍色/);
   assert.match(snapshot.description, /藍色新版本/);
-  assert.equal(snapshot.description.split('商品圖片與規格僅供參考').length - 1, 1);
-  assert.deepEqual(snapshot.descriptionImageUrls, [
-    'https://example.com/blue.jpg',
-    'https://example.com/blue.jpg',
-    'https://example.com/blue.jpg'
-  ]);
+  assert.equal(snapshot.description.split('商品圖片與文字說明僅供參考').length - 1, 1);
+  assert.equal(snapshot.description.split('保固會依商品類型而有所不同').length - 1, 1);
+  assert.deepEqual(snapshot.descriptionImageUrls, ['https://example.com/blue.jpg']);
   assert.match(snapshot.bodyHtml, /https:\/\/example\.com\/blue\.jpg/);
   assert.match(snapshot.momoHtml, /原商品內容/);
   assert.match(snapshot.momoHtml, /藍色新版本/);
@@ -2090,6 +2312,62 @@ test('同款兩個細項只建立一筆主商品，並保留各自 SKU、名稱�
   assert.deepEqual(policy.skus, ['GROUP-1', 'GROUP-2']);
 });
 
+test('EasyStore 多細項圖片計畫保留每個 SKU 代表圖且店址圖永遠最後', () => {
+  const variantImages = Array.from({ length: 7 }, (_, index) => `https://cdn.example.com/variant-${index + 1}.jpg`);
+  const snapshot = {
+    variantGroupEnabled: true,
+    variantGroupVariants: variantImages.map((imageUrl, index) => ({ sku: `GROUP-${index + 1}`, imageUrl })),
+    images: [],
+    platformImagePlan: {
+      easyStore: {
+        imageUrls: [
+          'https://cdn.example.com/storefront-portrait.jpg',
+          ...variantImages,
+          'https://cdn.example.com/specification.jpg'
+        ]
+      }
+    }
+  };
+  const images = helpers.easyStoreGalleryImages(snapshot);
+  assert.equal(images[0], 'https://cdn.example.com/storefront-portrait.jpg');
+  variantImages.forEach((url) => assert.equal(images.includes(url), true));
+  assert.match(images.at(-1), /product-listing-store-promo\.png$/);
+  assert.equal(new Set(images).size, images.length);
+  assert.equal(images.length, 9);
+  assert.equal(images.includes('https://cdn.example.com/specification.jpg'), false);
+});
+
+test('EasyStore 多細項超過官方 9 張容量時不會靜默漏掉細項圖', () => {
+  const variantImages = Array.from({ length: 8 }, (_, index) => `https://cdn.example.com/variant-${index + 1}.jpg`);
+  const images = helpers.easyStoreGalleryImages({
+    variantGroupEnabled: true,
+    variantGroupVariants: variantImages.map((imageUrl, index) => ({ sku: `GROUP-${index + 1}`, imageUrl })),
+    platformImagePlan: { easyStore: { imageUrls: ['https://cdn.example.com/storefront-portrait.jpg', ...variantImages] } }
+  });
+  assert.deepEqual(images, []);
+});
+
+test('EasyStore 正式回讀可由 variant image_id 找回父商品圖片，不把 image_id=0 當成有圖', () => {
+  const planned = 'https://cdn.example.com/group-1-zh-tw.jpg';
+  const product = {
+    images: [{ id: 901, title: 'group-1-zh-tw', url: 'https://cdn.easystore.example.com/group-1.jpg' }]
+  };
+  assert.equal(helpers.easyStoreImageIdForPlannedUrl(product, planned, [planned]), '901');
+  assert.equal(
+    helpers.easyStoreVariantImageUrl({ sku: 'GROUP-1', image_id: 901 }, product),
+    'https://cdn.easystore.example.com/group-1.jpg'
+  );
+  assert.equal(helpers.easyStoreVariantImageUrl({ sku: 'GROUP-1', image_id: 0 }, product), '');
+});
+
+test('EasyStore 群組修復工具要求後台選圖並阻擋漏圖完成', () => {
+  const source = fs.readFileSync('scripts/easystore-api-product-tool.mjs', 'utf8');
+  assert.match(source, /easyStoreGroupGallery\(snapshot, expected\)/);
+  assert.doesNotMatch(source, /variants\/\$\{encodeURIComponent\(update\.id\)\}\.json/);
+  assert.match(source, /EASYSTORE_VARIANT_IMAGE_UI_REQUIRED/);
+  assert.match(source, /storePromoImageUrl/);
+});
+
 test('one verified description is prepared once for EasyStore, Coupang, MOMO and Shopee delivery modes', () => {
   const snapshot = helpers.buildListingSnapshot('p-content', {
     internalSku: 'CONTENT-1', internalName: '內容測試', currentStock: 1,
@@ -2108,12 +2386,12 @@ test('one verified description is prepared once for EasyStore, Coupang, MOMO and
   assert.equal(plan.momo.imageWidthPx, 1000);
   assert.equal(plan.momo.imageHeightMaximumPx, 1500);
   assert.equal(plan.momo.imageFileMaximumBytes, 500000);
-  assert.equal(plan.shopee.mode, 'advanced-rich-description');
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 16);
+  assert.equal(plan.shopee.mode, 'seller-center-native-file-upload-interleaved');
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 21);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.descriptionDelivery.mode, 'momo-rich-description-blocks');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.descriptionDelivery.mode, 'safe-html-product-detail');
   assert.equal(snapshot.preparedPlatformFieldPlan.easyStore.preparedFields.descriptionDelivery.mode, 'safe-html');
-  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.descriptionDelivery.mode, 'advanced-rich-description');
+  assert.equal(snapshot.preparedPlatformFieldPlan.shopee.preparedFields.descriptionDelivery.mode, 'seller-center-native-file-upload-interleaved');
 });
 
 test('同款兩個細項與單一商品共用 MOMO 首次送出媒體關卡，專推圖只建立一次', () => {
@@ -2330,7 +2608,7 @@ test('2100307-4 固定 v3 實際資料可在不送出的模擬通過四通路預
   };
   const listingCase = {
     productSku: '2100307-4', researchedProductName: '桌上型木製閱讀譜架 升降款 原木色 柚子樂器',
-    productDescription: fixedRichDescription('2100307-4', '木製面板搭配鋁合金底座，適合桌上閱讀與樂譜使用。'),
+    productDescription: '木製面板搭配鋁合金底座，適合桌上閱讀與樂譜使用。\n\n商品特色\n1. 桌上型設計\n2. 高度可調\n\n商品規格\n面板：30 × 24 公分\n高度：4.4～39 公分\n底座：23.5 × 18.5 公分\n\n使用方式／適用情境\n1. 依桌面高度調整到合適閱讀角度',
     sharedOnlinePrice: 450, stock: 2, warrantyMonths: 6,
     shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30, packageHeightCm: 10, packageWeightKg: 1,
     shopeeCategoryPath: '愛好與收藏品 > 樂器與樂器配件 > 樂器配件 > 樂譜架',

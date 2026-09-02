@@ -16,6 +16,7 @@
     brand: ["品牌", "Brand"],
     sku: ["賣家 SKU", "賣家SKU", "Seller SKU"],
     preorder: ["預購", "Pre-order", "Preorder"],
+    priceAdjustment: ["套用價格調整", "Apply price adjustment"],
     ncc: ["NCC"],
     weight: ["Weight", "重量"],
     warrantyDuration: ["Warranty Duration", "保固期間"],
@@ -111,6 +112,11 @@
     "使用 EasyStore 的商品描述",
     "Use EasyStore Product Description",
     "Use EasyStore Product Description Content"
+  ]);
+  const EASYSTORE_DESCRIPTION_IMPORT_CONFIRM_LABELS = Object.freeze([
+    "確認",
+    "確定",
+    "Confirm"
   ]);
   let currentRecord = null;
   let overlay = null;
@@ -642,8 +648,10 @@
     const documents = advancedDescriptionEditorDocuments(section);
     const observedUrls = [];
     let textLength = 0;
+    let editorHtml = "";
     documents.forEach((editorDocument) => {
       textLength += String(editorDocument.body && editorDocument.body.innerText || "").replace(/\s+/g, "").length;
+      editorHtml += String(editorDocument.body && editorDocument.body.innerHTML || "");
       Array.from(editorDocument.querySelectorAll("img")).forEach((image) => {
         const url = normalizedImageIdentity(image.currentSrc || image.src || image.getAttribute("data-src"));
         if (url.href) observedUrls.push(url.href);
@@ -675,22 +683,16 @@
       const observed = observedLastTwo[index] || {};
       return imageIdentitiesMatch(observed, wanted);
     });
-    const fixedDisclaimerBeforePromosComplete = documents.some((editorDocument) => {
-      if (!plan || !plan.fixedDisclaimerImmediatelyBeforeLastTwoImages || !plan.fixedDisclaimer) return false;
-      const meaningfulBlocks = Array.from(editorDocument.body.children).filter((element) =>
-        String(element.innerText || element.textContent || "").trim() || element.querySelector("img"));
-      if (meaningfulBlocks.length < 3) return false;
-      const tail = meaningfulBlocks.slice(-3);
-      const disclaimerText = String(tail[0].innerText || tail[0].textContent || "").replace(/[\s\u00a0]+/g, "").trim();
-      const expectedDisclaimer = String(plan.fixedDisclaimer).replace(/[\s\u00a0]+/g, "").trim();
-      const tailImageIdentities = tail.slice(1).map((block) => {
-        const image = block.querySelector("img");
-        return normalizedImageIdentity(image && (image.currentSrc || image.src || image.getAttribute("data-src")));
-      });
-      return disclaimerText === expectedDisclaimer
-        && expectedLastTwo.length === 2
-        && expectedLastTwo.every((wanted, index) => imageIdentitiesMatch(tailImageIdentities[index] || {}, wanted));
-    });
+    const actualProductNoticeIndex = editorHtml.indexOf("商品圖片與文字說明僅供參考");
+    const warrantyNoticeIndex = editorHtml.indexOf("保固會依商品類型而有所不同");
+    const firstFixedPromoFile = expectedLastTwo[0] && expectedLastTwo[0].fileName || "";
+    const secondFixedPromoFile = expectedLastTwo[1] && expectedLastTwo[1].fileName || "";
+    const firstFixedPromoIndex = firstFixedPromoFile ? editorHtml.toLowerCase().indexOf(firstFixedPromoFile) : -1;
+    const secondFixedPromoIndex = secondFixedPromoFile ? editorHtml.toLowerCase().indexOf(secondFixedPromoFile) : -1;
+    const fixedNoticesBeforePromos = actualProductNoticeIndex >= 0
+      && warrantyNoticeIndex > actualProductNoticeIndex
+      && firstFixedPromoIndex > warrantyNoticeIndex
+      && secondFixedPromoIndex > firstFixedPromoIndex;
     return {
       editorFound: documents.length > 0,
       textPresent: textLength > 0,
@@ -702,7 +704,7 @@
       exactImageCount,
       imageOrderComplete,
       fixedLastTwoComplete,
-      fixedDisclaimerBeforePromosComplete,
+      fixedNoticesBeforePromos,
       complete: documents.length > 0
         && textLength > 0
         && expectedUrls.length > 0
@@ -712,7 +714,7 @@
         && exactImageCount
         && imageOrderComplete
         && fixedLastTwoComplete
-        && fixedDisclaimerBeforePromosComplete
+        && fixedNoticesBeforePromos
     };
   }
 
@@ -762,20 +764,23 @@
     });
     const specificationBlock = descriptionBlockForText(editorDocument, /^(?:商品)?規格(?:說明)?[：:]?$/);
     const usageBlock = descriptionBlockForText(editorDocument, /^(?:使用方式|使用建議|適用情境|使用方式[／/]適用情境)[：:]?$/);
-    let disclaimerBlock = descriptionBlockForText(editorDocument, /^商品圖片與規格僅供參考，實際內容以收到的實體商品為準。?$/);
-    if (!disclaimerBlock) {
-      disclaimerBlock = editorDocument.createElement("p");
-      disclaimerBlock.textContent = String(plan.fixedDisclaimer || "商品圖片與規格僅供參考，實際內容以收到的實體商品為準。");
-    }
-    editorDocument.body.appendChild(disclaimerBlock);
+    const actualProductNoticeBlock = descriptionBlockForText(
+      editorDocument,
+      /^商品圖片與(?:文字說明|規格)僅供參考[；，,]?[\s\S]*實際內容以收到的(?:實體)?商品為準。?$/
+    );
+    const warrantyNoticeBlock = descriptionBlockForText(
+      editorDocument,
+      /^保固會依商品類型而有所不同。[\s\S]*歡迎聯絡我們協助確認與處理。?$/
+    );
+    const productImageUrls = plan.imageUrls.slice(0, Math.max(0, plan.imageUrls.length - 2));
+    const fixedPromoUrls = plan.imageUrls.slice(-2);
+    const noticeBoundary = actualProductNoticeBlock || warrantyNoticeBlock;
     const insert = (url, before) => editorDocument.body.insertBefore(
       createAdvancedDescriptionImageBlock(editorDocument, url), before || null);
-    const fixedLastTwoUrls = Array.isArray(plan.fixedLastTwoImageUrls) ? plan.fixedLastTwoImageUrls : plan.imageUrls.slice(-2);
-    const productImageUrls = plan.imageUrls.slice(0, Math.max(0, plan.imageUrls.length - fixedLastTwoUrls.length));
-    insert(productImageUrls[0], specificationBlock || usageBlock || disclaimerBlock);
-    if (productImageUrls[1]) insert(productImageUrls[1], usageBlock || disclaimerBlock);
-    productImageUrls.slice(2).forEach((url) => insert(url, disclaimerBlock));
-    fixedLastTwoUrls.forEach((url) => insert(url, null));
+    if (productImageUrls[0]) insert(productImageUrls[0], specificationBlock || usageBlock || noticeBoundary);
+    if (productImageUrls[1]) insert(productImageUrls[1], usageBlock || noticeBoundary);
+    productImageUrls.slice(2).forEach((url) => insert(url, noticeBoundary));
+    fixedPromoUrls.forEach((url) => insert(url, null));
     const EditorEvent = editorDocument.defaultView && editorDocument.defaultView.Event || Event;
     editorDocument.body.dispatchEvent(new EditorEvent("input", { bubbles: true }));
     editorDocument.body.dispatchEvent(new EditorEvent("change", { bubbles: true }));
@@ -785,75 +790,39 @@
 
   async function fillAdvancedDescription(payload, report) {
     const plan = payload && payload.advancedDescription;
-    if (!plan || plan.mode !== "use-easystore-rich-description-with-native-image-transfer") {
-      addReport(report, "missing", "進階商品描述", "進站前沒有準備完整的 EasyStore 圖文介紹");
+    if (!plan || plan.mode !== "seller-center-native-file-upload-interleaved") {
+      addReport(report, "missing", "蝦皮原生圖文", "進站前沒有準備完整的文字區塊與圖片順序");
       return;
     }
-    let section = await waitForAdvancedDescriptionSection(4200);
-    if (!section) {
-      addReport(report, "missing", "進階商品描述", "此頁面沒有可核對的圖文編輯器，禁止以純文字描述發布");
-      return;
-    }
-    if (section.toggle && !toggleState(section.toggle)) {
-      section.toggle.click();
-      const started = Date.now();
-      let enabled = false;
-      while (!enabled && Date.now() - started < 3000) {
-        await sleep(120);
-        section = advancedDescriptionSection() || section;
-        enabled = !section.toggle || toggleState(section.toggle);
-      }
-      if (!enabled) {
-        addReport(report, "missing", "進階商品描述", "找到功能但無法開啟");
-        return;
-      }
-    }
-    if (!section.useButton) {
-      const expand = clickableForExactText(section.label);
-      if (expand && isEnabledClickTarget(expand)) expand.click();
-      section = await waitForAdvancedDescriptionButton(3000) || section;
-    }
-    if (!section.useButton) {
-      addReport(report, "missing", "進階商品描述", "功能已出現，但找不到「使用 EasyStore 的產品描述」");
-      return;
-    }
-    section.useButton.click();
-    let evidence = await waitForAdvancedDescriptionEvidence(plan, section, 2200);
-    const errorText = String(section.container && section.container.innerText || "").match(
-      /(?:圖片|描述).{0,24}(?:失敗|錯誤|無法)|(?:failed|error).{0,24}(?:image|description)/i
-    );
-    if (errorText) {
-      addReport(report, "missing", "進階商品描述", cleanErrorText(errorText[0]));
-      return;
-    }
-    if (evidence.textPresent && (!evidence.complete || evidence.fixedLastTwoComplete === false
-      || evidence.fixedDisclaimerBeforePromosComplete === false)
-      && enforceAdvancedDescriptionImageOrder(plan, section)) {
-      evidence = await waitForAdvancedDescriptionEvidence(plan, section, 2200);
-    }
-    report.advancedDescriptionEvidence = evidence;
-    if (!evidence.complete) {
-      addReport(
-        report,
-        "missing",
-        "進階商品描述",
-        evidence.editorFound
-          ? evidence.nonHttpImageUrls.length > 0
-            ? "介紹中仍有暫存圖片，已禁止送出"
-            : evidence.fixedLastTwoComplete === false
-            ? "介紹圖片已帶入，但最後兩張不是固定介紹圖"
-            : evidence.fixedDisclaimerBeforePromosComplete === false
-            ? "免責句與最後兩張固定介紹圖順序不正確"
-            : `介紹圖片核對失敗（目前 ${evidence.observedImageCount}／應有 ${evidence.expectedImageCount} 張）`
-          : "找不到可核對的進階商品描述編輯器"
-      );
+    const textBlocks = Array.isArray(plan.textBlocks) ? plan.textBlocks : [];
+    const blockPlan = Array.isArray(plan.blockPlan) ? plan.blockPlan : [];
+    const imageUrls = Array.isArray(plan.imageUrls) ? plan.imageUrls : [];
+    const preparedBlockPlanComplete = textBlocks.length === 5
+      && blockPlan.length === textBlocks.length + imageUrls.length
+      && blockPlan.slice(-3).map((row) => row && row.key).join("|")
+        === "warranty-support-notice|description-promo-1|description-promo-2";
+    report.advancedDescriptionImportConfirmation = {
+      found: false,
+      confirmed: false,
+      skippedByPolicy: true
+    };
+    report.advancedDescriptionEvidence = {
+      deferredToSellerCenter: true,
+      easyStoreDescriptionImportSkipped: true,
+      preparedBlockPlanComplete,
+      expectedImageCount: imageUrls.length,
+      memoryOnlyImageStaging: plan.memoryOnlyImageStaging === true,
+      desktopDownloadRequired: plan.desktopDownloadRequired === true
+    };
+    if (!preparedBlockPlanComplete) {
+      addReport(report, "missing", "蝦皮原生圖文", "文字區塊、圖片順序或固定結尾不完整");
       return;
     }
     addReport(
       report,
       "filled",
-      "進階商品描述",
-      `已開啟並核對 EasyStore 圖文介紹（文字＋${evidence.observedImageCount} 張介紹圖片）`
+      "蝦皮原生圖文",
+      `已略過 EasyStore 描述匯入；${imageUrls.length} 張圖片將在 Seller Center 由原生上傳器依圖文順序套用`
     );
   }
 
@@ -2132,9 +2101,108 @@
     addReport(report, "missing", "預購", "找不到選項");
   }
 
+  function activeEasyStoreDescriptionImportDialog() {
+    return Array.from(document.querySelectorAll(
+      "[role='dialog'], [aria-modal='true'], .el-message-box, .el-dialog, .ant-modal, [class*='modal' i]"
+    )).find((element) => {
+      if (!isVisible(element) || element.closest("#youzi-shopee-autofill-overlay")) return false;
+      const text = String(element.textContent || "").replace(/\s+/g, " ").trim();
+      return /EasyStore/i.test(text)
+        && /(?:商品|產品|Product).{0,12}(?:描述|Description)/i.test(text)
+        && /(?:覆蓋|overwrite)/i.test(text);
+    }) || null;
+  }
+
+  async function confirmEasyStoreDescriptionImport(timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const dialog = activeEasyStoreDescriptionImportDialog();
+      if (dialog) {
+        const confirm = findExactTextElements(EASYSTORE_DESCRIPTION_IMPORT_CONFIRM_LABELS, dialog)
+          .map(clickableForExactText)
+          .find(isEnabledClickTarget);
+        if (!confirm) return { found: true, confirmed: false };
+        confirm.click();
+        await sleep(180);
+        return { found: true, confirmed: true };
+      }
+      await sleep(120);
+    }
+    return { found: false, confirmed: false };
+  }
+
+  function priceAdjustmentSection() {
+    for (const label of findExactTextElements(FIELD_LABELS.priceAdjustment)) {
+      let container = label.parentElement;
+      for (let depth = 0; container && depth < 7; depth += 1, container = container.parentElement) {
+        const toggles = Array.from(container.querySelectorAll([
+          "input[type='checkbox']",
+          "[role='checkbox']",
+          ".el-checkbox__input"
+        ].join(","))).filter((control) =>
+          isVisible(control) && !control.matches(":disabled, [disabled], [aria-disabled='true']")
+        );
+        if (toggles.length === 1) {
+          return { label, container, toggle: toggles[0] };
+        }
+        const otherLabel = findExactTextElements([
+          ...FIELD_LABELS.preorder,
+          ...FIELD_LABELS.sku
+        ], container).find((candidate) => candidate !== label);
+        if (otherLabel) break;
+      }
+    }
+    return null;
+  }
+
+  async function waitForPriceAdjustmentSection(timeout) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const section = priceAdjustmentSection();
+      if (section) return section;
+      await sleep(120);
+    }
+    return priceAdjustmentSection();
+  }
+
+  async function fillPriceAdjustment(payload, report) {
+    const plan = payload && payload.priceAdjustment;
+    if (!plan || plan.enabled !== true || plan.synchronizeWithEasyStorePrice !== true) {
+      addReport(report, "missing", "價格調整", "進站前沒有準備固定的價格同步設定");
+      return;
+    }
+    let section = await waitForPriceAdjustmentSection(5000);
+    if (!section) {
+      addReport(report, "missing", "價格調整", "找不到「套用價格調整」欄位");
+      return;
+    }
+    if (!toggleState(section.toggle)) {
+      clickableForExactText(section.toggle)?.click();
+      const started = Date.now();
+      while (Date.now() - started < 2200) {
+        await sleep(120);
+        section = priceAdjustmentSection() || section;
+        if (toggleState(section.toggle)) break;
+      }
+    }
+    if (!toggleState(section.toggle)) {
+      addReport(report, "missing", "價格調整", "無法開啟價格同步");
+      return;
+    }
+    report.priceAdjustmentEvidence = {
+      enabled: true,
+      synchronizeWithEasyStorePrice: true,
+      arithmeticFieldsPreserved: true
+    };
+    addReport(report, "filled", "價格調整", "已勾選套用價格調整並啟用價格同步");
+  }
+
   function createReport() {
     return {
       filled: [], preserved: [], skipped: [], missing: [],
+      advancedDescriptionEvidence: null,
+      advancedDescriptionImportConfirmation: null,
+      priceAdjustmentEvidence: null,
       execution: {
         mode: "section-batch",
         fieldLabelsIndexedOncePerSection: true,
@@ -2328,6 +2396,12 @@
     const preorderProblem = report.missing.find((item) => /^預購(?:：|$)/.test(item));
     if (preorderProblem) {
       report.blockedStage = "preorder";
+      return report;
+    }
+    await withFieldLabelIndex([FIELD_LABELS.priceAdjustment], () => fillPriceAdjustment(payload, report));
+    const priceAdjustmentProblem = report.missing.find((item) => /^價格調整(?:：|$)/.test(item));
+    if (priceAdjustmentProblem) {
+      report.blockedStage = "priceAdjustment";
       return report;
     }
     return report;
@@ -2666,7 +2740,7 @@
           start.disabled = false;
           start.textContent = ({
             category: "重新嘗試選擇分類",
-            advancedDescription: "重新套用進階商品描述",
+            advancedDescription: "重新檢查蝦皮原生圖文計畫",
             brand: "重新嘗試選擇品牌",
             attributes: "重新嘗試填寫屬性",
             logistics: "重新嘗試設定物流",
@@ -2687,9 +2761,21 @@
         }
         status.textContent = "欄位已完成，正在送到蝦皮……";
         await publishToShopee(currentRecord.payload, report, navigationMode);
-        await consumeQueueRecord(currentRecord.payload);
-        status.textContent = "已送出 EasyStore → 蝦皮上架；請等待 EasyStore／蝦皮處理結果。";
-        start.textContent = "已送出蝦皮上架";
+        const itemIds = currentRecord.payload.listingPolicy
+          && Array.isArray(currentRecord.payload.listingPolicy.platformListingIds)
+          ? currentRecord.payload.listingPolicy.platformListingIds : [];
+        if (itemIds.length === 1 && chrome.runtime && chrome.runtime.sendMessage) {
+          const pendingOpen = chrome.runtime.sendMessage({
+            type: "YOUZI_SHOPEE_OPEN_SELLER_EDITOR_V1",
+            itemId: itemIds[0],
+            nonce: currentRecord.payload.nonce
+          });
+          if (pendingOpen && typeof pendingOpen.catch === "function") pendingOpen.catch(() => {});
+        }
+        status.textContent = itemIds.length === 1
+          ? "已送出 EasyStore → 蝦皮；正在開啟 Seller Center 套用原生圖文。"
+          : "已送出 EasyStore → 蝦皮；新商品產生蝦皮編號後，請開啟該商品讓助手套用原生圖文。";
+        start.textContent = "已送出，等待蝦皮原生圖文";
       } catch (error) {
         status.textContent = `已停止：${error.message}`;
         start.disabled = false;

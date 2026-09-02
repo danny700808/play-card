@@ -6,6 +6,8 @@ const imageCollector = globalThis.YouziImageCollectorHelpers;
 const OPERATIONS_PRODUCTS_URL = `${imageCollector.OPERATIONS_ORIGIN}/play-card/portal.html#products`;
 const COLLECTOR_FILES = ["image-collector-helpers.js", "supplier-collector.js"];
 const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+const SHOPEE_FETCH_DESCRIPTION_IMAGES = "YOUZI_SHOPEE_FETCH_DESCRIPTION_IMAGES_V1";
+const SHOPEE_OPEN_SELLER_EDITOR = "YOUZI_SHOPEE_OPEN_SELLER_EDITOR_V1";
 const capturingWindowIds = new Set();
 
 function wait(ms) {
@@ -87,6 +89,72 @@ async function fetchPageImage(imageUrl, pageUrl) {
     base64: bytesToBase64(bytes),
     size: blob.size
   };
+}
+
+function senderPageUrl(sender) {
+  return String((sender && sender.tab && sender.tab.url) || (sender && sender.url) || "");
+}
+
+function trustedSellerCenterUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && url.hostname === "seller.shopee.tw";
+  } catch (_) {
+    return false;
+  }
+}
+
+function trustedEasyStoreAdminUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && url.hostname === "admin.easystore.co";
+  } catch (_) {
+    return false;
+  }
+}
+
+async function fetchShopeeDescriptionImages(message, sender) {
+  const pageUrl = senderPageUrl(sender);
+  if (!trustedSellerCenterUrl(pageUrl)) {
+    return responseError("UNTRUSTED_SHOPEE_PAGE", "只能由蝦皮 Seller Center 取得本次詳細介紹圖片");
+  }
+  const urls = Array.isArray(message && message.urls) ? message.urls : [];
+  if (urls.length < 5 || urls.length > 12) {
+    return responseError("INVALID_DESCRIPTION_IMAGE_COUNT", "詳細介紹必須有至少三張商品圖與最後兩張固定圖（合計 5 到 12 張）");
+  }
+  const unique = [];
+  for (const value of urls) {
+    const normalized = imageCollector.normalizeImageUrl(value, pageUrl);
+    if (!normalized || unique.includes(normalized)) {
+      return responseError("INVALID_DESCRIPTION_IMAGE_URL", "詳細介紹圖片網址無效或重複");
+    }
+    unique.push(normalized);
+  }
+  try {
+    const images = [];
+    for (const url of unique) images.push(await fetchPageImage(url, pageUrl));
+    return { ok: true, images };
+  } catch (error) {
+    return responseError("DESCRIPTION_IMAGE_FETCH_FAILED", error);
+  }
+}
+
+async function openShopeeSellerEditor(message, sender) {
+  if (!trustedEasyStoreAdminUrl(senderPageUrl(sender))) {
+    return responseError("UNTRUSTED_EASYSTORE_PAGE", "只能由 EasyStore 上架流程開啟蝦皮商品頁");
+  }
+  const itemId = String(message && message.itemId || "").trim();
+  if (!/^[1-9]\d{5,29}$/.test(itemId)) {
+    return responseError("INVALID_SHOPEE_ITEM_ID", "蝦皮商品編號無效");
+  }
+  const targetUrl = `https://seller.shopee.tw/portal/product/${itemId}`;
+  const existing = await chrome.tabs.query({ url: `${targetUrl}*` });
+  if (existing.length && Number.isInteger(existing[0].id)) {
+    await chrome.tabs.update(existing[0].id, { active: true });
+    return { ok: true, tabId: existing[0].id, reused: true };
+  }
+  const created = await chrome.tabs.create({ url: targetUrl, active: true });
+  return { ok: true, tabId: created && created.id, reused: false };
 }
 
 function preparedSupplierImage(value, pageUrl) {
@@ -210,7 +278,7 @@ async function collectImage(message, sender) {
 function captureFailure(error) {
   const message = String(error && error.message ? error.message : error || "");
   if (/(?:<all_urls>|activeTab).*permission|required.*permission/i.test(message)) {
-    return responseError("CAPTURE_PERMISSION_MISSING", "Chrome 尚未啟用完整截圖權限；請更新到助手 0.3.34，在擴充功能頁重新載入並允許存取所有網站。");
+    return responseError("CAPTURE_PERMISSION_MISSING", "Chrome 尚未啟用完整截圖權限；請更新到助手 0.3.37，在擴充功能頁重新載入並允許存取所有網站。");
   }
   if (/(?:cannot access|restricted|chrome:\/\/|chrome web store|extensions gallery)/i.test(message)) {
     return responseError("CAPTURE_PAGE_RESTRICTED", "這是 Chrome 限制的特殊頁面，無法顯示頁內框選；請改在一般商品網頁，或用 Win+Shift+S 截圖後回商品頁貼上。");
@@ -315,6 +383,16 @@ async function bindOperationsTab(message, sender) {
 if (imageCollector) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message) return false;
+    if (message.type === SHOPEE_FETCH_DESCRIPTION_IMAGES) {
+      fetchShopeeDescriptionImages(message, sender).then(sendResponse)
+        .catch((error) => sendResponse(responseError("DESCRIPTION_IMAGE_FETCH_FAILED", error)));
+      return true;
+    }
+    if (message.type === SHOPEE_OPEN_SELLER_EDITOR) {
+      openShopeeSellerEditor(message, sender).then(sendResponse)
+        .catch((error) => sendResponse(responseError("OPEN_SELLER_EDITOR_FAILED", error)));
+      return true;
+    }
     if (message.type === imageCollector.BIND_OPERATIONS_TAB_MESSAGE) {
       bindOperationsTab(message, sender).then(sendResponse).catch((error) => sendResponse(responseError("BIND_FAILED", error)));
       return true;

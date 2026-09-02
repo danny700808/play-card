@@ -117,7 +117,7 @@ assert.match(operationsHubSource,/href="#expenses" data-view="expenses"/,'左側
 assert.match(operationsHubSource,/>營運支出</,'左側選單必須明確標示營運支出');
 assert.match(formalPortalSource,/href="#expenses" data-view="expenses"/,'正式入口的左側選單也必須有營運支出');
 assert.match(formalPortalSource,/operations-expenses\.js\?v=20260801-operating-expenses-v6/,'正式入口必須先載入支出期間分攤新版程式');
-assert.match(formalPortalSource,/operations-phase1\.js\?v=20260829-v3-fixed-content-v1/,'正式入口必須使用目前商品平台上架與固定內容流程主程式快取號');
+assert.match(formalPortalSource,/operations-phase1\.js\?v=20260902-listing-retry-queue-v1/,'正式入口必須使用目前商品平台上架與固定內容流程主程式快取號');
 assert.match(operationsSource,/expenses:renderOperatingExpensesPage/,'營運支出入口必須顯示獨立右側頁面');
 assert.match(operationsSource,/id="operatingExpenseMonth"/,'營運支出頁必須可以選擇查詢月份');
 assert.match(operationsSource,/data-action="expense-month-shift"/,'營運支出頁必須可以切換前後月份');
@@ -162,7 +162,9 @@ assert.match(operationsSource,/data-nav="sync">前往訂單/,'網路營運必須
 assert.match(operationsSource,/data-nav="rentals">前往租賃/,'租賃營運必須導向租賃頁');
 assert.match(operationsSource,/data-nav="course-calendar">前往課務/,'補習班營運必須導向主要課程日表');
 assert.doesNotMatch(operationsSource,/summaryBox\('固定支出規則','星期一不分攤'/,'總覽不得再顯示固定支出規則方塊');
-assert.ok(operationsSource.indexOf('<b>門市應收帳款</b>')<operationsSource.indexOf('<b>平台同步異常</b>'),'需要注意區的門市應收帳款必須排第一');
+assert.doesNotMatch(operationsSource,/<b>平台同步異常<\/b>/,'營運總覽不得再顯示平台同步異常');
+assert.doesNotMatch(operationsSource,/class="ops-platform-sync-anomaly/,'平台訂單不得再顯示同步異常入口');
+assert.doesNotMatch(operationsSource,/同步異常明細/,'平台訂單不得再顯示同步異常清單');
 assert.ok(formalPortalSource.indexOf('href="#expenses" data-view="expenses"')>formalPortalSource.indexOf('href="#rentals" data-view="rentals"'),'營運支出必須放在左側選單最下面');
 assert.doesNotMatch(formalPortalSource,/<b>營運支出<\/b><small>/,'營運支出選單不得再顯示小字');
 
