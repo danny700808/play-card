@@ -1,7 +1,8 @@
 'use strict';
 
-const STYLE_CATALOG_VERSION = 'youzi-light-commercial-style-catalog-v1';
-const RENDER_PROOF_VERSION = 'youzi-brand-creative-render-v1';
+const STYLE_CATALOG_VERSION = 'youzi-full-commercial-poster-style-catalog-v2';
+const COMMERCIAL_POSTER_STANDARD_VERSION = 'youzi-full-commercial-poster-v1';
+const RENDER_PROOF_VERSION = 'youzi-brand-creative-render-v2';
 
 const STYLE_CATALOG = Object.freeze([
   ['bold-coral-impact', '珊瑚撞色', '海報撞色', '#FFF8F1', '#F05A47|#19A974', '大標題＋斜角重點帶'],
@@ -62,6 +63,7 @@ const STYLE_IDS = Object.freeze(STYLE_CATALOG.map((style) => style.id));
 
 const STYLE_SELECTION_POLICY = Object.freeze({
   version: STYLE_CATALOG_VERSION,
+  commercialPosterStandardVersion: COMMERCIAL_POSTER_STANDARD_VERSION,
   catalogSize: STYLE_CATALOG.length,
   selectionMode: 'random-without-replacement',
   resetOnlyAfterAllStylesUsed: true,
@@ -72,7 +74,32 @@ const STYLE_SELECTION_POLICY = Object.freeze({
   allowedAspectRatios: Object.freeze(['1:1', '4:3']),
   minimumLightAreaRatio: 0.65,
   maximumDarkAreaRatio: 0.35,
-  forbidDarkFullBleedBackground: true
+  forbidDarkFullBleedBackground: true,
+  fullCommercialPosterStageRequired: true,
+  approvedReferenceStandard: 'approved-commercial-poster-pair-2026-09-02',
+  styleMustControlWholeComposition: true,
+  requiredCreativeStages: Object.freeze([
+    'art-direction-and-scene-concept',
+    'integrated-product-hero-composition',
+    'commercial-headline-typography',
+    'three-feature-visual-story',
+    'locked-brand-header-logo-and-border-composite',
+    'commercial-poster-visual-qa'
+  ]),
+  requiredVisualQualities: Object.freeze([
+    'designed-commercial-poster-not-information-card',
+    'product-integrated-with-scene-or-graphic-system',
+    'strong-first-glance-hierarchy',
+    'style-specific-typography-texture-and-accents',
+    'three-features-integrated-into-one-poster-composition'
+  ]),
+  forbiddenFallbacks: Object.freeze([
+    'generic-three-box-layout',
+    'flat-information-card',
+    'plain-canvas-with-labels',
+    'style-name-or-color-swap-only',
+    'reused-identical-layout-across-style-ids'
+  ])
 });
 
 function styleById(value) {
@@ -107,8 +134,9 @@ function assignment(existing, seed) {
   };
 }
 
-function renderProof(existing, seed) {
+function renderProof(existing, seed, verification) {
   const style = assignment(existing, seed);
+  const checked = verification && typeof verification === 'object' ? verification : {};
   return {
     version: RENDER_PROOF_VERSION,
     styleCatalogVersion: STYLE_CATALOG_VERSION,
@@ -118,7 +146,16 @@ function renderProof(existing, seed) {
     background: style.background,
     accents: [...style.accents],
     layout: style.layout,
-    styleApplied: true,
+    commercialPosterStandardVersion: COMMERCIAL_POSTER_STANDARD_VERSION,
+    fullCommercialPosterStageCompleted: checked.fullCommercialPosterStageCompleted === true,
+    commercialPosterQaApproved: checked.commercialPosterQaApproved === true,
+    genericInformationCardFallbackDetected: checked.genericInformationCardFallbackDetected === true,
+    styleControlsWholeComposition: checked.styleControlsWholeComposition === true,
+    productIntegratedAsHero: checked.productIntegratedAsHero === true,
+    strongCommercialHierarchy: checked.strongCommercialHierarchy === true,
+    threeFeaturesIntegrated: checked.threeFeaturesIntegrated === true,
+    verificationSource: String(checked.verificationSource || '').trim(),
+    styleApplied: checked.styleControlsWholeComposition === true,
     sameStyleAcrossAspectRatios: true,
     sameStyleAcrossVariants: true,
     logoLayer: 'topmost',
@@ -140,6 +177,15 @@ function renderProofMatches(value, expected, seed) {
     && proof.accents.length === style.accents.length
     && proof.accents.every((accent, index) => String(accent || '').toUpperCase() === style.accents[index].toUpperCase())
     && proof.layout === style.layout
+    && proof.commercialPosterStandardVersion === COMMERCIAL_POSTER_STANDARD_VERSION
+    && proof.fullCommercialPosterStageCompleted === true
+    && proof.commercialPosterQaApproved === true
+    && proof.genericInformationCardFallbackDetected === false
+    && proof.styleControlsWholeComposition === true
+    && proof.productIntegratedAsHero === true
+    && proof.strongCommercialHierarchy === true
+    && proof.threeFeaturesIntegrated === true
+    && Boolean(String(proof.verificationSource || '').trim())
     && proof.styleApplied === true
     && proof.sameStyleAcrossAspectRatios === true
     && proof.sameStyleAcrossVariants === true
@@ -150,6 +196,7 @@ function renderProofMatches(value, expected, seed) {
 
 module.exports = {
   STYLE_CATALOG_VERSION,
+  COMMERCIAL_POSTER_STANDARD_VERSION,
   RENDER_PROOF_VERSION,
   STYLE_CATALOG,
   STYLE_IDS,

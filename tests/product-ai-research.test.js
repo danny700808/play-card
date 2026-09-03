@@ -48,6 +48,13 @@ test('main product image prompt locks the approved green brand template and Taiw
   assert.match(prompt, /框線必須在 Logo 下層/);
   assert.match(prompt, /Logo 必須是最上層/);
   assert.match(prompt, /不可只記錄風格名稱/);
+  assert.match(prompt, /真正可刊登的商業商品海報/);
+  assert.match(prompt, /不得跳過完整海報創作階段/);
+  assert.match(prompt, /明亮工業商業海報/);
+  assert.match(prompt, /明亮生活風格海報/);
+  assert.match(prompt, /普通矩形框/);
+  assert.match(prompt, /制式資訊卡/);
+  assert.match(prompt, /場景或圖像系統、商品融入方式、標題字體/);
   assert.match(prompt, /至少 65%/);
   assert.match(prompt, /最多 2 個有來源依據的細節小圖/);
   assert.match(prompt, /正好 3 個不重複且已查證的商品特色/);
@@ -56,6 +63,45 @@ test('main product image prompt locks the approved green brand template and Taiw
   assert.match(prompt, /同一商品的 1:1 與 4:3/);
   assert.doesNotMatch(prompt, /不得套用店家品牌模板/);
   assert.match(prompt, /不得保留簡體字、大陸用語、亂碼、錯字或被裁掉一半的文字/);
+});
+
+test('commercial poster QA rejects generic information cards and requires the full approved design stage', () => {
+  const style = {
+    catalogVersion: 'youzi-full-commercial-poster-style-catalog-v2',
+    styleId: 'light-industrial'
+  };
+  const request = research.buildBrandCommercialPosterQaRequest('YWJj', { name: 'YAMAHA C70 古典吉他', sku: '1020108' }, 'brandedHero', style);
+  const instructions = request.input[0].content[0].text;
+  assert.match(instructions, /真正完成商業海報設計/);
+  assert.match(instructions, /三個普通矩形或膠囊標籤/);
+  assert.match(instructions, /approved 必須為 false/);
+  assert.equal(request.text.format.name, 'youzi_commercial_poster_visual_qa');
+  assert.equal(research.brandCommercialPosterQaPasses({
+    approved: true,
+    fullCommercialPosterDesign: true,
+    genericInformationCardLayoutFound: false,
+    assignedStyleControlsWholeComposition: true,
+    productIntegratedAsHero: true,
+    strongCommercialHierarchy: true,
+    threeFeaturesIntegrated: true,
+    productUnobscured: true,
+    fixedHeaderAndLogoIntact: true,
+    borderDoesNotCrossLogo: true,
+    issues: []
+  }), true);
+  assert.equal(research.brandCommercialPosterQaPasses({
+    approved: true,
+    fullCommercialPosterDesign: true,
+    genericInformationCardLayoutFound: true,
+    assignedStyleControlsWholeComposition: true,
+    productIntegratedAsHero: true,
+    strongCommercialHierarchy: true,
+    threeFeaturesIntegrated: true,
+    productUnobscured: true,
+    fixedHeaderAndLogoIntact: true,
+    borderDoesNotCrossLogo: true,
+    issues: []
+  }), false);
 });
 
 test('ordinary detail prompt uses OCR retyping and never redesigns or upscales blurry sources', () => {

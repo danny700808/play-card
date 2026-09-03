@@ -28,8 +28,8 @@ const IMAGE_IMPORT_MAX_SELECTED_IMAGES = 12;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const CODEX_ONLY_LISTING_MODE = true;
 const BRAND_TEMPLATE_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
-const BRAND_TEMPLATE_VERSION = 'youzi-adaptive-light-brand-template-v3';
-const BRAND_TEMPLATE_COMPOSITION = 'locked-one-ninth-brand-header-logo-above-border-light-style-panel-v3';
+const BRAND_TEMPLATE_VERSION = 'youzi-commercial-poster-brand-template-v4';
+const BRAND_TEMPLATE_COMPOSITION = 'locked-one-ninth-brand-header-full-commercial-poster-v4';
 const BRAND_TEMPLATE_PROFILES = Object.freeze({
   storefrontPortrait: Object.freeze({
     url: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-portrait.png`,
@@ -677,13 +677,18 @@ function buildBrandTemplateImagePrompt(context, listingCase, role) {
     : `${profile.featureMinimum}～${profile.featureMaximum}`;
   return [
     `第一張是商品來源圖，第二張是不可變品牌母版 ${BRAND_TEMPLATE_VERSION} 的版面參考。最終角色為 ${role}，尺寸 ${profile.widthPx}×${profile.heightPx}（${profile.aspectRatio}）。`,
+    `這不是資訊卡排版任務。必須先依 ${listingBrandCreative.COMMERCIAL_POSTER_STANDARD_VERSION} 完成一張真正可刊登的商業商品海報，再於最後合成固定品牌頁首、Logo 與框線；不得跳過完整海報創作階段。`,
     '固定品牌區必須完全照核准版本：綠色頁首固定占整張高度 1/9，紅色標語「有音樂的生活更有風格」與圓形柚子樂器 Logo 的圖樣、文字、顏色都不可改。Logo 使用已核准的大型跨界版本，固定在右上並向下壓入內容區；只有 Logo 可跨越頁首邊界，而且不可遮住商品本體或主要文字。',
     '下方內容區四周固定保留一條連續、清楚可見的細綠色圓角框線；框線必須在 Logo 下層，Logo 必須是最上層，兩者重疊處由 Logo 完整蓋住框線，圓形 Logo 內絕不可看見穿過的框線。照片、色塊、文字與裝飾全部停在框線內，不得蓋滿或吃掉框線。',
-    `本商品固定風格為 ${style.styleName}（${style.styleId}／${style.family}）：底色 ${style.background}，重點色 ${style.accents.join('、')}，版型 ${style.layout}。這些底色、重點色與版型必須實際控制內容區排版，不可只記錄風格名稱，也不可退回每件相同的通用三色塊模板；同一商品的 1:1 與 4:3、以及同組所有細項必須沿用完全相同風格，只做比例重排。`,
+    '核准視覺基準有兩類：其一為明亮工業商業海報，商品與場景、超大標題、技術線條、材質紋理及圖示特色整合成一張完整作品；其二為明亮生活風格海報，以情境照片、雜誌式大標與編號特色形成完整敘事。可創作其他風格，但完成度、整體性、視覺層級與商業感不得低於這兩類基準。',
+    `本商品固定風格為 ${style.styleName}（${style.styleId}／${style.family}）：底色 ${style.background}，重點色 ${style.accents.join('、')}，版型 ${style.layout}。這些設定必須控制整個內容區的場景或圖像系統、商品融入方式、標題字體、三項特色的視覺敘事、材質、圖示與裝飾；不可只記錄風格名稱，也不可只換底色或色塊。`,
+    '明確禁止：白底或淺底上排三個普通矩形框、三個同款膠囊標籤、資料卡、表格式規格卡、只有商品去背圖加幾行文字、或不同風格仍沿用同一骨架。只要看起來像制式資訊卡而不是商業海報，就必須整張重做。',
+    '先建立符合風格的完整藝術指導與畫面概念，再把真實商品整合為海報主角，接著用商業字體、照片／質感背景、圖示或風格化圖形建立第一眼層級，並把三項特色融入同一視覺故事；完成後才套固定品牌圖層。',
+    '同一商品的 1:1 與 4:3、以及同組所有細項必須沿用完全相同的藝術方向與視覺語言，但要針對比例重新構圖，不可把一張圖生硬縮放、裁切，也不可退回簡單資訊卡。',
     '內容區至少 65% 保持奶油白、白、淺灰或明亮照片；深色只可用於文字與小面積重點，禁止整片深色、黑底或厚重滿版。',
-    '內容面板只可加入商品、標題、已查證賣點與最多 2 個有來源依據的細節小圖；四周保留安全留白。商品必須清楚完整，不可被 Logo、標題、色塊或裝飾遮住。',
+    '內容區只可加入商品、標題、已查證賣點與最多 2 個有來源依據的細節小圖；四周保留安全留白。商品必須清楚完整、比例正確並成為主視覺，不可被 Logo、標題、色塊或裝飾遮住。',
     `用清楚的台灣繁體中文呈現正好 ${featureCount} 個不重複且已查證的商品特色；若不足 ${featureCount} 個，必須先停止主圖製作並補齊證據，不得少放或虛構。`,
-    '文字可依風格使用不同但真正可讀的商業字體、大小、粗細與編排，不限定微軟正黑體；不可產生手畫假字。商品必須是內容區最大主體，外觀、顏色、型號、零件、比例、材質與配件數量不得改變。',
+    '文字可依風格使用不同但真正可讀的商業字體、大小、粗細與編排，不限定微軟正黑體；標題必須具有明確的商業海報層級，不能全部使用相同字級、字重或普通系統字。不可產生手畫假字。商品外觀、顏色、型號、零件、比例、材質與配件數量不得改變。',
     '不得加入價格、地址、電話、QR Code、導流文字、額外浮水印、左下娃娃或 PIC COLLAGE。不得保留簡體字、大陸用語、亂碼、錯字或被裁掉一半的文字。',
     `商品：${clean(source.researchedProductName) || context.name || '未命名商品'}`,
     `品牌：${clean(source.brand) || context.brand || '未提供'}`,
@@ -691,6 +696,85 @@ function buildBrandTemplateImagePrompt(context, listingCase, role) {
     `已查證賣點：${clean(source.sellingPoints) || '未提供；只使用商品名稱、品牌與型號'}`,
     `店家補充：${clean(source.imageGenerationInstructions) || '無'}`
   ].join('\n');
+}
+
+function brandCommercialPosterQaSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'approved', 'fullCommercialPosterDesign', 'genericInformationCardLayoutFound',
+      'assignedStyleControlsWholeComposition', 'productIntegratedAsHero',
+      'strongCommercialHierarchy', 'threeFeaturesIntegrated', 'productUnobscured',
+      'fixedHeaderAndLogoIntact', 'borderDoesNotCrossLogo', 'issues', 'summary'
+    ],
+    properties: {
+      approved: { type: 'boolean' },
+      fullCommercialPosterDesign: { type: 'boolean' },
+      genericInformationCardLayoutFound: { type: 'boolean' },
+      assignedStyleControlsWholeComposition: { type: 'boolean' },
+      productIntegratedAsHero: { type: 'boolean' },
+      strongCommercialHierarchy: { type: 'boolean' },
+      threeFeaturesIntegrated: { type: 'boolean' },
+      productUnobscured: { type: 'boolean' },
+      fixedHeaderAndLogoIntact: { type: 'boolean' },
+      borderDoesNotCrossLogo: { type: 'boolean' },
+      issues: { type: 'array', maxItems: 12, items: { type: 'string' } },
+      summary: { type: 'string' }
+    }
+  };
+}
+
+function buildBrandCommercialPosterQaRequest(imageBase64, context, role, styleAssignment, model) {
+  const style = listingBrandCreative.assignment(styleAssignment, clean(context && (context.productId || context.sku || context.name)));
+  return {
+    model: model || DEFAULT_IMAGE_QA_MODEL,
+    store: false,
+    reasoning: { effort: 'high' },
+    max_output_tokens: 3200,
+    input: [{
+      role: 'user',
+      content: [
+        {
+          type: 'input_text',
+          text: [
+            '你是台灣電商商業海報的嚴格視覺總監。請檢查這張商品主視覺是否真正完成商業海報設計，不可因為有商品、三段文字、品牌頁首或指定配色就通過。',
+            '合格作品必須像完整廣告海報：有明確藝術指導，商品與情境照片或圖像系統整合，標題具有第一眼層級，三項特色以圖示、編號、節奏或其他符合風格的方法融入同一敘事，並有風格專屬的字體、材質、背景與裝飾。',
+            '若只是淺色畫布、商品去背圖、三個普通矩形或膠囊標籤、表格式資訊卡、幾行同字級文字，或只換配色卻沿用通用骨架，genericInformationCardLayoutFound 必須為 true，approved 必須為 false。',
+            '視覺完成度應達到明亮工業海報或生活雜誌海報的水準；不要求複製固定版型，但不可比這些基準簡陋。',
+            `指定風格：${style.styleName}（${style.family}），版型方向：${style.layout}，底色：${style.background}，重點色：${style.accents.join('、')}。指定風格必須控制整張內容區，不是只出現在小色塊。`,
+            '固定品牌規則也必須同時成立：綠色頁首約 1/9、紅色標語與圓形 Logo 完整、Logo 位於框線上層且框線不可穿過 Logo、商品不可被遮住。',
+            `圖片角色：${role}；商品：${clean(context && context.name) || '未命名商品'}。`,
+            '只有所有布林條件均符合、沒有制式資訊卡退化，而且 issues 為空時，approved 才可為 true。'
+          ].join('\n')
+        },
+        { type: 'input_image', image_url: `data:image/png;base64,${clean(imageBase64)}`, detail: 'high' }
+      ]
+    }],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'youzi_commercial_poster_visual_qa',
+        strict: true,
+        schema: brandCommercialPosterQaSchema()
+      }
+    }
+  };
+}
+
+function brandCommercialPosterQaPasses(value) {
+  const qa = value && typeof value === 'object' ? value : {};
+  return qa.approved === true
+    && qa.fullCommercialPosterDesign === true
+    && qa.genericInformationCardLayoutFound === false
+    && qa.assignedStyleControlsWholeComposition === true
+    && qa.productIntegratedAsHero === true
+    && qa.strongCommercialHierarchy === true
+    && qa.threeFeaturesIntegrated === true
+    && qa.productUnobscured === true
+    && qa.fixedHeaderAndLogoIntact === true
+    && qa.borderDoesNotCrossLogo === true
+    && !(Array.isArray(qa.issues) && qa.issues.some((value) => clean(value)));
 }
 
 function buildMainTemplateImagePrompt(context, listingCase) {
@@ -1128,6 +1212,29 @@ async function callOpenAIImageQa(apiKey, imageBase64, context, mode, model) {
   const hasReportedIssue = result.simplifiedChineseFound === true || result.mainlandWordingFound === true || result.garbledChineseFound === true ||
     [].concat(result.simplifiedFragments || [], result.mainlandFragments || [], result.garbledFragments || []).some((value) => clean(value));
   result.approved = result.approved === true && !hasReportedIssue;
+  return result;
+}
+
+async function callOpenAIBrandCommercialPosterQa(apiKey, imageBase64, context, role, styleAssignment, model) {
+  const response = await fetchWithTimeout('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(buildBrandCommercialPosterQaRequest(imageBase64, context, role, styleAssignment, model))
+  }, REQUEST_TIMEOUT_MS);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(openAIErrorMessage(response.status, body).replace('OpenAI 研究失敗', '商業海報視覺檢查失敗'));
+    error.status = response.status;
+    error.rawBody = body;
+    throw error;
+  }
+  let result = null;
+  try { result = JSON.parse(responseOutputText(body) || '{}'); } catch (_) { result = null; }
+  if (!result || typeof result.approved !== 'boolean') throw new Error('商業海報視覺檢查沒有回傳有效結果。');
+  result.approved = brandCommercialPosterQaPasses(result);
   return result;
 }
 
@@ -1916,10 +2023,6 @@ function registerProductAiResearch(target) {
         listingCase.brandCreativeStyleAssignment,
         `${clean(context && (context.productId || context.sku || context.name))}|${clean(listingCase.researchedProductName)}`
       );
-      const brandRenderProof = listingBrandCreative.renderProof(
-        brandCreativeStyleAssignment,
-        `${clean(context && (context.productId || context.sku || context.name))}|${clean(listingCase.researchedProductName)}`
-      );
       const imageJobs = [
         { mode: 'clean-main', role: 'cleanMain', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0]] },
         { mode: 'storefront-template', role: 'storefrontPortrait', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0], BRAND_TEMPLATE_PROFILES.storefrontPortrait.url] },
@@ -1942,13 +2045,55 @@ function registerProductAiResearch(target) {
       // contain twelve images; parallel edits can exceed short OpenAI rate windows
       // and fail the entire otherwise valid listing batch.
       const batchResults = await mapWithConcurrency(imageJobs, 1, async (job, index) => {
-        const prompt = job.role === 'cleanMain'
+        const basePrompt = job.role === 'cleanMain'
           ? buildCleanMainImagePrompt(context, listingCase)
           : BRAND_TEMPLATE_PROFILES[job.role]
             ? buildBrandTemplateImagePrompt(context, listingCase, job.role)
             : buildLocalizedImagePrompt(context, listingCase, job.sourceOrder, imageUrls.length);
-        const edited = await withOpenAIImageRetry(() => callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model));
-        const normalizedBytes = await normalizeGeneratedListingImage(Buffer.from(edited.imageBase64, 'base64'), job.role);
+        const brandProfile = BRAND_TEMPLATE_PROFILES[job.role] || null;
+        let prompt = basePrompt;
+        let edited = null;
+        let normalizedBytes = null;
+        let brandCommercialPosterQa = null;
+        const maximumCreativeAttempts = brandProfile ? 3 : 1;
+        for (let creativeAttempt = 1; creativeAttempt <= maximumCreativeAttempts; creativeAttempt += 1) {
+          edited = await withOpenAIImageRetry(() => callOpenAIImageEdit(apiKey, job.sourceImageUrls, prompt, model));
+          normalizedBytes = await normalizeGeneratedListingImage(Buffer.from(edited.imageBase64, 'base64'), job.role);
+          if (!brandProfile) break;
+          brandCommercialPosterQa = await withOpenAIImageRetry(() => callOpenAIBrandCommercialPosterQa(
+            apiKey,
+            Buffer.from(normalizedBytes).toString('base64'),
+            context,
+            job.role,
+            brandCreativeStyleAssignment,
+            DEFAULT_IMAGE_QA_MODEL
+          ));
+          if (brandCommercialPosterQaPasses(brandCommercialPosterQa)) break;
+          if (creativeAttempt < maximumCreativeAttempts) {
+            const issues = (Array.isArray(brandCommercialPosterQa.issues) ? brandCommercialPosterQa.issues : [])
+              .map(clean).filter(Boolean).slice(0, 8).join('；');
+            prompt = `${basePrompt}\n前一版未通過商業海報視覺驗收，必須重新創作整張內容區，不能只局部修補。未通過原因：${issues || clean(brandCommercialPosterQa.summary) || '畫面仍像制式資訊卡，缺少完整商業海報設計。'}`;
+          }
+        }
+        if (brandProfile && !brandCommercialPosterQaPasses(brandCommercialPosterQa)) {
+          const issues = (Array.isArray(brandCommercialPosterQa && brandCommercialPosterQa.issues) ? brandCommercialPosterQa.issues : [])
+            .map(clean).filter(Boolean).slice(0, 8).join('；');
+          throw new Error(`商業海報設計未通過 V3 視覺驗收：${issues || clean(brandCommercialPosterQa && brandCommercialPosterQa.summary) || '仍為制式資訊卡版型。'}`);
+        }
+        const brandRenderProof = brandProfile ? listingBrandCreative.renderProof(
+          brandCreativeStyleAssignment,
+          `${clean(context && (context.productId || context.sku || context.name))}|${clean(listingCase.researchedProductName)}`,
+          {
+            fullCommercialPosterStageCompleted: true,
+            commercialPosterQaApproved: true,
+            genericInformationCardFallbackDetected: false,
+            styleControlsWholeComposition: brandCommercialPosterQa.assignedStyleControlsWholeComposition === true,
+            productIntegratedAsHero: brandCommercialPosterQa.productIntegratedAsHero === true,
+            strongCommercialHierarchy: brandCommercialPosterQa.strongCommercialHierarchy === true,
+            threeFeaturesIntegrated: brandCommercialPosterQa.threeFeaturesIntegrated === true,
+            verificationSource: 'openai-commercial-poster-visual-qa'
+          }
+        ) : null;
         const imageBytes = await encodePlatformListingImage(normalizedBytes);
         if (!imageBytes.length || imageBytes.length > 25 * 1024 * 1024) throw new Error('OpenAI 回傳的圖片大小不正確。');
         const downloadToken = crypto.randomUUID();
@@ -1990,6 +2135,7 @@ function registerProductAiResearch(target) {
           templateComposition: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_COMPOSITION : '',
           creativeStyleAssignment: BRAND_TEMPLATE_PROFILES[job.role] ? brandCreativeStyleAssignment : null,
           brandRenderProof: BRAND_TEMPLATE_PROFILES[job.role] ? brandRenderProof : null,
+          brandCommercialPosterQa: BRAND_TEMPLATE_PROFILES[job.role] ? brandCommercialPosterQa : null,
           instructions: clean(listingCase.imageGenerationInstructions),
           createdAt: new Date().toISOString(),
           createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者'
@@ -2071,6 +2217,9 @@ module.exports = {
   buildCleanMainImagePrompt,
   buildBrandTemplateImagePrompt,
   buildMainTemplateImagePrompt,
+  brandCommercialPosterQaSchema,
+  buildBrandCommercialPosterQaRequest,
+  brandCommercialPosterQaPasses,
   productImageQaSchema,
   buildProductImageQaRequest,
   buildProductImageCorrectionPrompt,

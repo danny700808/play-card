@@ -105,7 +105,7 @@ const SHOPEE_IMPORTED_DESCRIPTION_IMAGE_STANDARD = Object.freeze({
   doNotResizeAgainInsideShopee: true
 });
 const BRAND_TEMPLATE_CONTRACT = Object.freeze({
-  version: 'youzi-adaptive-light-brand-template-v3',
+  version: 'youzi-commercial-poster-brand-template-v4',
   sourceAsset: Object.freeze({
     url: `${SHOP_ASSET_BASE_URL}/product-listing-main-template.jpg`,
     sha256: 'e62ded7e4cd4d740d60f8aace2aaa62577973244ee3a0f7545b4c513ec608d12'
@@ -142,9 +142,17 @@ const BRAND_TEMPLATE_CONTRACT = Object.freeze({
     ...listingBrandCreative.STYLE_SELECTION_POLICY,
     renderProofVersion: listingBrandCreative.RENDER_PROOF_VERSION,
     renderedStyleMustMatchAssignment: true,
+    commercialPosterVisualQaRequired: true,
+    oldInformationCardDesignsAccepted: false,
     styles: listingBrandCreative.STYLE_CATALOG
   }),
-  composition: 'locked-one-ninth-brand-header-logo-above-border-light-style-panel-v3'
+  approvedVisualReference: Object.freeze({
+    id: 'approved-commercial-poster-pair-2026-09-02',
+    minimumQuality: 'complete-commercial-poster',
+    archetypes: Object.freeze(['bright-industrial-integrated-poster', 'bright-lifestyle-editorial-poster']),
+    doNotCopyLayoutLiterally: true
+  }),
+  composition: 'locked-one-ninth-brand-header-full-commercial-poster-v4'
 });
 const LEGACY_PHYSICAL_PRODUCT_DISCLAIMER = '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。';
 const PHYSICAL_PRODUCT_DISCLAIMER = '商品圖片與文字說明僅供參考；不同批次的包裝、印刷、配色或細節可能略有差異，實際內容以收到的商品為準。';
@@ -1637,7 +1645,11 @@ function listingImageTemplateMetadata(row) {
     brandRenderProof: source.brandRenderProof && typeof source.brandRenderProof === 'object'
       ? { ...source.brandRenderProof }
       : metadata.brandRenderProof && typeof metadata.brandRenderProof === 'object'
-        ? { ...metadata.brandRenderProof } : null
+        ? { ...metadata.brandRenderProof } : null,
+    brandCommercialPosterQa: source.brandCommercialPosterQa && typeof source.brandCommercialPosterQa === 'object'
+      ? { ...source.brandCommercialPosterQa }
+      : metadata.brandCommercialPosterQa && typeof metadata.brandCommercialPosterQa === 'object'
+        ? { ...metadata.brandCommercialPosterQa } : null
   };
 }
 
@@ -1768,7 +1780,8 @@ function finalizedRoleRowsForCase(productId, frozenCase, currentCase) {
       assetFlags: listingImageAssetFlags(row),
       templateContract: listingImageTemplateMetadata(row),
       creativeStyleAssignment: listingImageTemplateMetadata(row).creativeStyleAssignment,
-      brandRenderProof: listingImageTemplateMetadata(row).brandRenderProof
+      brandRenderProof: listingImageTemplateMetadata(row).brandRenderProof,
+      brandCommercialPosterQa: listingImageTemplateMetadata(row).brandCommercialPosterQa
     });
   });
   const rolesByUrl = new Map();
@@ -1936,7 +1949,8 @@ function finalizePreparedMediaSnapshot(frozenInputSnapshot, currentCasesById) {
           sourceImageUrl: row.sourceImageUrl, url: row.url, roles: row.roles.slice(), assetFlags: { ...row.assetFlags },
           templateContract: row.templateContract && row.templateContract.version ? { ...row.templateContract } : null,
           creativeStyleAssignment: row.creativeStyleAssignment ? { ...row.creativeStyleAssignment } : null,
-          brandRenderProof: row.brandRenderProof ? { ...row.brandRenderProof } : null
+          brandRenderProof: row.brandRenderProof ? { ...row.brandRenderProof } : null,
+          brandCommercialPosterQa: row.brandCommercialPosterQa ? { ...row.brandCommercialPosterQa } : null
         })),
         physicalImageUrls,
         physicalOriginalImageUrls,
@@ -3329,8 +3343,11 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       },
       galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true,
       mainImageTemplate: BRAND_TEMPLATE_CONTRACT.version, mainImageAspectRatio: '1:1-and-4:3-matched-pair',
-      mainImageBackdrop: 'locked-one-ninth-youzi-green-header-logo-above-border-and-light-panel',
+      mainImageBackdrop: 'locked-one-ninth-youzi-green-header-logo-above-border-and-full-commercial-poster',
       mainImageProductPlacement: 'within-thin-green-border-and-never-under-logo',
+      fullCommercialPosterStageRequired: true,
+      genericInformationCardFallbackForbidden: true,
+      approvedVisualReference: { ...BRAND_TEMPLATE_CONTRACT.approvedVisualReference },
       brandCreativeStyleAssignment,
       brandTemplateContract: JSON.parse(JSON.stringify(BRAND_TEMPLATE_CONTRACT)),
       outputProfiles: {
@@ -3351,6 +3368,8 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
           borderLayer: BRAND_TEMPLATE_CONTRACT.contentPanel.borderLayer,
           borderMayNotCrossLogoArtwork: BRAND_TEMPLATE_CONTRACT.contentPanel.borderMayNotCrossLogoArtwork,
           brandRenderProofRequired: true,
+          commercialPosterVisualQaRequired: true,
+          genericInformationCardFallbackForbidden: true,
           creativeStyleAssignment: brandCreativeStyleAssignment,
           contactInformationForbidden: true, outboundMessagingForbidden: true,
           manufacturerLogoAllowedOnlyWhenOfficiallyVerifiedAndPlatformPermitted: true
@@ -3371,6 +3390,8 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
           borderLayer: BRAND_TEMPLATE_CONTRACT.contentPanel.borderLayer,
           borderMayNotCrossLogoArtwork: BRAND_TEMPLATE_CONTRACT.contentPanel.borderMayNotCrossLogoArtwork,
           brandRenderProofRequired: true,
+          commercialPosterVisualQaRequired: true,
+          genericInformationCardFallbackForbidden: true,
           creativeStyleAssignment: brandCreativeStyleAssignment,
           contactInformationForbidden: true, outboundMessagingForbidden: true,
           manufacturerLogoAllowedOnlyWhenOfficiallyVerifiedAndPlatformPermitted: true
@@ -3411,6 +3432,8 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
         borderLayer: BRAND_TEMPLATE_CONTRACT.contentPanel.borderLayer,
         borderMayNotCrossLogoArtwork: BRAND_TEMPLATE_CONTRACT.contentPanel.borderMayNotCrossLogoArtwork,
         brandRenderProofRequired: true,
+        commercialPosterVisualQaRequired: true,
+        genericInformationCardFallbackForbidden: true,
         thinOuterGreenBorderRequired: true,
         creativeStyleAssignment: brandCreativeStyleAssignment,
         contactInformationForbidden: true,

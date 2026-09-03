@@ -28,6 +28,16 @@ Module._load = originalLoad;
 const helpers = publish._test;
 const BRAND_TEMPLATE = helpers.brandTemplateContract();
 const TEST_BRAND_STYLE = helpers.brandCreativeStyleAssignment(null, 'product-listing-test-style');
+const VALID_COMMERCIAL_POSTER_PROOF = Object.freeze({
+  fullCommercialPosterStageCompleted: true,
+  commercialPosterQaApproved: true,
+  genericInformationCardFallbackDetected: false,
+  styleControlsWholeComposition: true,
+  productIntegratedAsHero: true,
+  strongCommercialHierarchy: true,
+  threeFeaturesIntegrated: true,
+  verificationSource: 'test-commercial-poster-visual-qa'
+});
 
 function brandTemplateFields(role, styleAssignment = TEST_BRAND_STYLE) {
   return {
@@ -35,7 +45,7 @@ function brandTemplateFields(role, styleAssignment = TEST_BRAND_STYLE) {
     templateAssetSha256: BRAND_TEMPLATE[role].sha256,
     templateComposition: BRAND_TEMPLATE.composition,
     creativeStyleAssignment: styleAssignment,
-    brandRenderProof: helpers.brandCreativeStyleRenderProof(styleAssignment, 'product-listing-test-style')
+    brandRenderProof: helpers.brandCreativeStyleRenderProof(styleAssignment, 'product-listing-test-style', VALID_COMMERCIAL_POSTER_PROOF)
   };
 }
 
@@ -378,9 +388,9 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.browserControl.neverOpenNativeWindowsFilePicker, true);
   assert.equal(snapshot.automationPolicy.browserControl.stopForInteractiveAuthenticationOnly, true);
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
-  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-adaptive-light-brand-template-v3');
+  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-commercial-poster-brand-template-v4');
   assert.equal(snapshot.imagePolicy.mainImageAspectRatio, '1:1-and-4:3-matched-pair');
-  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'locked-one-ninth-youzi-green-header-logo-above-border-and-light-panel');
+  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'locked-one-ninth-youzi-green-header-logo-above-border-and-full-commercial-poster');
   assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'within-thin-green-border-and-never-under-logo');
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateVersion, BRAND_TEMPLATE.version);
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateAssetSha256, BRAND_TEMPLATE.storefrontPortrait.sha256);
@@ -401,6 +411,12 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.borderLayer, 'below-logo');
   assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.borderMayNotCrossLogoArtwork, true);
   assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.renderedStyleMustMatchAssignment, true);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.fullCommercialPosterStageRequired, true);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.commercialPosterVisualQaRequired, true);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.oldInformationCardDesignsAccepted, false);
+  assert.ok(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.forbiddenFallbacks.includes('flat-information-card'));
+  assert.equal(snapshot.imagePolicy.fullCommercialPosterStageRequired, true);
+  assert.equal(snapshot.imagePolicy.genericInformationCardFallbackForbidden, true);
   assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.brandRenderProofRequired, true);
   assert.equal(snapshot.imagePolicy.brandCreativeStyleAssignment.sameStyleAcrossAspectRatios, true);
   assert.deepEqual(snapshot.imagePolicy.sourceNormalization.preferredLongEdgeRangePx, { minimum: 1600, maximum: 2000 });
@@ -1168,6 +1184,12 @@ test('v3 image gates require the approved logo-over-border layer proof and exact
   assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {
     productSku: 'RENDER-1', brandCreativeStyleAssignment: TEST_BRAND_STYLE,
     generatedListingImages: [cleanRow, wrongLayer]
+  }), /實際風格／圖層證明/);
+
+  const genericInformationCard = { ...approvedBrand, brandRenderProof: { ...approvedBrand.brandRenderProof, genericInformationCardFallbackDetected: true } };
+  assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {
+    productSku: 'RENDER-1', brandCreativeStyleAssignment: TEST_BRAND_STYLE,
+    generatedListingImages: [cleanRow, genericInformationCard]
   }), /實際風格／圖層證明/);
 
   const rows = helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {

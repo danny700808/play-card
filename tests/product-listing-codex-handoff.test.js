@@ -297,7 +297,11 @@ test('Codex 交接指令明確區分乾淨主圖、官網直式首圖與蝦皮�
   assert.match(prompt, /storefrontPortrait 與 brandedHero 均固定使用 3 個已查證特色/);
   assert.match(prompt, /綠色頁首固定占整張高度 1\/9/);
   assert.match(prompt, /Logo 固定採管理者選定的大型跨界版本/);
-  assert.match(prompt, /50 種淺色商業風格以 random-without-replacement 抽一種/);
+  assert.match(prompt, /50 種完整商業海報藝術方向以 random-without-replacement 抽一種/);
+  assert.match(prompt, /不得跳過完整海報創作階段/);
+  assert.match(prompt, /明亮工業商業海報與明亮生活雜誌海報/);
+  assert.match(prompt, /舊的柔和綠色資訊排版/);
+  assert.match(prompt, /獨立商業海報視覺 QA/);
   assert.match(prompt, /商品本體原有且不可分離的印字必須保留/);
   assert.match(prompt, /同一商品的 1:1 與 4:3、同組所有細項都沿用/);
   assert.match(prompt, /商品本體不得被 Logo、標題、色塊或裝飾遮住/);
