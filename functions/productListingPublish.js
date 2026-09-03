@@ -1803,6 +1803,20 @@ function buildFinalPlatformImagePlan(caseRows) {
       || rows.find((row) => row.roles.some((role) => ['localizedDetail', 'specification'].includes(role)));
     pushRow(representative, groupIndex);
   });
+  // Reserve MOMO's clean promotion image before the shared twelve-image pool
+  // fills with ordinary detail images. The promotion gate requires this image
+  // to occupy position 2 or 3, so discovering it only after truncation can
+  // incorrectly reject an otherwise complete case.
+  const representativeClean = pool.find((row) => row.roles.includes('cleanMain') && cleanRepresentativeRoleRow(row));
+  const reservedPromotion = groups.flat().find((row) => (
+    (!representativeClean || row.url !== representativeClean.url)
+    && row.assetFlags.momoPromotionEligible
+    && !row.assetFlags.containsLogo && !row.assetFlags.containsText
+    && !row.assetFlags.containsContactInfo && !row.assetFlags.containsQrCode
+    && !row.assetFlags.greenBrandTemplate
+    && row.roles.some((role) => ['cleanMain', 'localizedDetail', 'specification'].includes(role))
+  ));
+  pushRow(reservedPromotion, 0);
   const additionalRows = groups.map((rows) => rows.filter((row) => (
     !row.roles.includes('storefrontPortrait') && !row.roles.includes('brandedHero')
   )));

@@ -5107,6 +5107,9 @@ function ensureSalesClock(){
     push(root.find(function(row){return row.roles.includes('storefrontPortrait');}));
     push(root.find(function(row){return row.roles.includes('brandedHero');}));
     groups.forEach(function(rows){if(result.length>=PRODUCT_GROUP_LISTING_IMAGE_MAX)return;push(rows.find(function(row){return row.roles.includes('cleanMain');})||rows.find(function(row){return row.roles.includes('variantRepresentative');})||rows.find(function(row){return row.roles.includes('localizedDetail')||row.roles.includes('specification');}));});
+    const representativeClean=result.find(function(row){return row.roles.includes('cleanMain')&&!row.assetFlags.containsLogo&&!row.assetFlags.containsText&&!row.assetFlags.containsContactInfo&&!row.assetFlags.containsQrCode&&!row.assetFlags.greenBrandTemplate;});
+    const reservedPromotion=groups.reduce(function(found,rows){return found||rows.find(function(row){return (!representativeClean||row.url!==representativeClean.url)&&row.assetFlags.momoPromotionEligible===true&&!row.assetFlags.containsLogo&&!row.assetFlags.containsText&&!row.assetFlags.containsContactInfo&&!row.assetFlags.containsQrCode&&!row.assetFlags.greenBrandTemplate&&(row.roles.includes('cleanMain')||row.roles.includes('localizedDetail')||row.roles.includes('specification'));});},null);
+    push(reservedPromotion);
     const additional=groups.map(function(rows){return rows.filter(function(row){return !row.roles.includes('storefrontPortrait')&&!row.roles.includes('brandedHero');});});
     let index=0;while(result.length<PRODUCT_GROUP_LISTING_IMAGE_MAX&&additional.some(function(rows){return index<rows.length;})){additional.forEach(function(rows){push(rows[index]);});index+=1;}
     return result;
