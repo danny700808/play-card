@@ -92,7 +92,7 @@
     start:'YOUZI_IMAGE_COLLECTION_START',stop:'YOUZI_IMAGE_COLLECTION_STOP',
     sessionAck:'YOUZI_IMAGE_COLLECTION_SESSION_ACK',sessionState:'YOUZI_IMAGE_COLLECTION_SESSION_STATE',stateRequest:'YOUZI_IMAGE_COLLECTION_STATE_REQUEST',
     deliver:'YOUZI_IMAGE_COLLECTION_DELIVER',fileAck:'YOUZI_IMAGE_COLLECTION_FILE_ACK',maxImages:PRODUCT_REFERENCE_IMAGE_MAX,
-    minimumVersion:'0.3.37'
+    minimumVersion:'0.3.38'
   };
   let productImageCollectionSession = null;
   let productImageCollectionPending = null;
@@ -3832,7 +3832,7 @@ function ensureSalesClock(){
   function productListingRecoveredMedia(source,p){
     source=source&&typeof source==='object'?source:{};
     const generatedListingImages=normalizeGeneratedListingImages(source.generatedListingImages),last=source.lastImageGeneration&&typeof source.lastImageGeneration==='object'?source.lastImageGeneration:{};
-    const automatic=source.referenceImagesCleared===true?{url:'',source:'missing'}:productAutomaticVariantRepresentative(p),automaticUrls=automatic.url?[automatic.url]:[];
+    const automatic=source.referenceImagesCleared===true?{url:'',source:'missing'}:productAutomaticVariantRepresentative(p),automaticUrls=automatic.url&&automatic.source!=='localized-clean-main'?[automatic.url]:[];
     const storedReferences=normalizeProductResearchSourceUrls([].concat(automaticUrls,source.referenceImageUrls||[],source.selectedReferenceImageUrls||[])),storedSelected=normalizeProductResearchSourceUrls([].concat(automaticUrls,Array.isArray(source.selectedReferenceImageUrls)?source.selectedReferenceImageUrls:source.referenceImageUrls||[]));
     const completedSources=normalizeProductResearchSourceUrls([].concat(last.sourceImageUrls||[],generatedListingImages.map(function(row){return row.sourceImageUrl||'';}))),recoverableFallback=completedSources.length?completedSources:(source.referenceImagesCleared===true?[]:productVariantImages(p));
     const referenceImageUrls=(storedReferences.length?storedReferences:recoverableFallback).slice(0,PRODUCT_REFERENCE_IMAGE_MAX);
@@ -4616,7 +4616,7 @@ function ensureSalesClock(){
   function requestProductImageCollection(action,payload){
     if(productImageCollectionPending)throw new Error('收圖模式正在切換，請稍候。');
     return new Promise(function(resolve,reject){
-      const sessionId=clean(payload&&payload.sessionId),timer=global.setTimeout(function(){if(!productImageCollectionPending||productImageCollectionPending.sessionId!==sessionId)return;productImageCollectionPending=null;reject(new Error('找不到收圖助手，請先更新到柚子掌櫃助手 0.3.37 並重新整理頁面。'));},3500);
+      const sessionId=clean(payload&&payload.sessionId),timer=global.setTimeout(function(){if(!productImageCollectionPending||productImageCollectionPending.sessionId!==sessionId)return;productImageCollectionPending=null;reject(new Error('找不到收圖助手，請先更新到柚子掌櫃助手 0.3.38 並重新整理頁面。'));},3500);
       productImageCollectionPending={action:action,sessionId:sessionId,resolve:resolve,reject:reject,timer:timer};
       global.postMessage({source:PRODUCT_IMAGE_COLLECTION.source,type:action==='start'?PRODUCT_IMAGE_COLLECTION.start:PRODUCT_IMAGE_COLLECTION.stop,payload:payload},global.location.origin);
     });
@@ -4699,7 +4699,7 @@ function ensureSalesClock(){
       if(payload.ok===true){
         if(pending.action==='start'&&!productImageCollectionVersionAtLeast(payload.extensionVersion,PRODUCT_IMAGE_COLLECTION.minimumVersion)){
           global.postMessage({source:PRODUCT_IMAGE_COLLECTION.source,type:PRODUCT_IMAGE_COLLECTION.stop,payload:{sessionId:pending.sessionId}},global.location.origin);
-          pending.reject(new Error('目前收圖助手版本過舊，請更新到 0.3.37，重新載入後再開始搜圖。'));
+          pending.reject(new Error('目前收圖助手版本過舊，請更新到 0.3.38，重新載入後再開始搜圖。'));
         }else pending.resolve(payload);
       }else pending.reject(new Error(clean(payload.error)||'收圖助手沒有完成設定'));
       return;
@@ -4987,7 +4987,7 @@ function ensureSalesClock(){
     const orderedKeys=PRODUCT_LISTING_PLATFORM_ORDER.filter(function(key){return Object.prototype.hasOwnProperty.call(platforms,key);}).concat(Object.keys(platforms).filter(function(key){return !PRODUCT_LISTING_PLATFORM_ORDER.includes(key);}));
     const cards=orderedKeys.map(function(key){
       const row=platforms[key]||{},meta=productListingPublishStatusMeta(row.status),missing=Array.isArray(row.missingFields)&&row.missingFields.length?'<small>缺少：'+escapeHtml(row.missingFields.join('、'))+'</small>':'';
-      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">安全開啟 EasyStore／蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.37.zip" download>下載／更新助手 0.3.37</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'EasyStore 只同步基本資料；詳細介紹會在 Seller Center 由蝦皮原生上傳器套用圖文交錯內容，一般宅配的實際物流仍須確認。商品身分依本案已凍結的處理方式與中央平台 ID 執行。':'EasyStore 只同步基本資料；詳細介紹會在 Seller Center 由蝦皮原生上傳器套用圖文交錯內容，不使用 EasyStore 描述匯入。')+'</small>':'';
+      const helper=key==='shopee'&&row.autofillPayload?'<div class="ops-card-actions"><button class="ops-button primary" type="button" data-action="product-shopee-autofill-open">安全開啟 EasyStore／蝦皮</button><a class="ops-button soft" href="youzi-easystore-shopee-autofill-v0.3.38.zip" download>下載／更新助手 0.3.38</a></div><small>'+(shopeeHomeLogisticsNeedsManualConfirmation?'EasyStore 只同步基本資料；詳細介紹會在 Seller Center 由蝦皮原生上傳器套用圖文交錯內容，一般宅配的實際物流仍須確認。商品身分依本案已凍結的處理方式與中央平台 ID 執行。':'EasyStore 只同步基本資料；詳細介紹會在 Seller Center 由蝦皮原生上傳器套用圖文交錯內容，不使用 EasyStore 描述匯入。')+'</small>':'';
       return '<section class="ops-listing-platform-card"><div class="ops-listing-platform-head"><h3>'+escapeHtml(productListingPublishPlatformTitle(key))+'</h3>'+statusTag(meta.label,meta.type)+'</div><div class="ops-listing-check-row '+(meta.ok?'ok':'missing')+'"><span>'+(meta.ok?'✓':'!')+'</span><div><b>'+escapeHtml(row.message||meta.label)+'</b>'+missing+helper+'</div></div></section>';
     }).join('');
     const needsInput=result.status==='needs-input'||Object.values(platforms).some(function(row){return ['missing-fields','action-required'].includes(clean(row&&row.status));});
@@ -5002,7 +5002,7 @@ function ensureSalesClock(){
     if(!global.YouziShopeeAutofill||typeof global.YouziShopeeAutofill.queueAndOpen!=='function')throw new Error('蝦皮自動填寫橋接程式尚未載入，請重新整理頁面。');
     const result=await global.YouziShopeeAutofill.queueAndOpen(pendingShopeeAutofillPayload);
     if(result&&result.extensionReady)toast('蝦皮資料已交給助手','EasyStore 已開啟；助手會自動進入蝦皮設定、填寫並送出上架。','success');
-    else toast('助手沒有收到商品資料',clean(result&&result.error)||'請安裝或更新到助手 0.3.37，重新整理營運中心後，再按一次「安全開啟 EasyStore／蝦皮」。','warning');
+    else toast('助手沒有收到商品資料',clean(result&&result.error)||'請安裝或更新到助手 0.3.38，重新整理營運中心後，再按一次「安全開啟 EasyStore／蝦皮」。','warning');
     return result;
   }
   function startProductListingSpeechInput(button){
@@ -5224,7 +5224,7 @@ function ensureSalesClock(){
       '本案工作用途：'+(clean(snapshot&&snapshot.workflowPurpose)===PRODUCT_DESCRIPTION_MEDIA_REFRESH_PURPOSE?'修改圖片及網路介紹':'標準商品上架')+'。不論本案選擇新增獨立商品、新增多細項商品、合併／加入既有商品、加入既有商品細項或修改既有商品，全部必須套用 '+PRODUCT_DESCRIPTION_LAYOUT_VERSION+'，不得因新舊商品或平台不同改用舊版純文字模式。',
       '橫向商品圖片固定保留最多 6 張商品圖，最後一張固定加入 product-listing-store-promo.png 店址圖；店址圖只能是橫向圖庫最後一張，不得拿來當商品首圖、MOMO 廣告圖或專推圖。EasyStore 多細項商品依官方 9 張上限固定排列為：1 張官網首圖→最多 7 張不同細項代表圖→剩餘名額才放介紹圖→店址圖永遠最後；超過 7 張不同細項代表圖時必須在平台外停止並重新分組，禁止擴充到 10～12 張或靜默漏圖。',
       'EasyStore 公開 API 不支援可靠寫入細項 image_id。群組商品圖庫與細項資料批次保存後，必須自動接到同一 Codex 內建瀏覽器的 EasyStore 後台，依 SKU 逐列開啟「新增商品規格圖片」、從父商品圖庫選入指定完成圖並儲存；再以 API 重讀同一父商品。任何 SKU 的 image_id 為 0、空白、錯圖，或最後店址圖被覆蓋，都不得算官網／蝦皮完成，也不得要求使用者代為點選。',
-      '[適用範圍：共用內容｜狀態：已確認] 詳細介紹固定依序為：商品介紹與商品特色→第 1 張商品圖→商品規格→第 2 張商品圖→使用方式／適用情境與使用建議→第 3 張商品圖→其餘商品圖→實體商品說明→出貨與保固說明→product-listing-description-promo-1.jpg→product-listing-description-promo-2.jpg。兩張固定介紹圖必須是最後兩張圖片，而且第二張是最後一個區塊。商品圖不足三張時先從本案已保存來源、官網既有圖或精確商品來源補齊並完成繁體化，禁止發布缺圖版本，也不得把店址圖或兩張固定介紹圖拿來補三張商品圖。',
+      '[適用範圍：共用內容｜狀態：已確認] 詳細介紹固定依序為：商品介紹與商品特色→第 1 張商品圖→商品規格→第 2 張商品圖→使用方式／適用情境與使用建議→第 3 張商品圖→其餘商品圖→實體商品說明→出貨與保固說明→product-listing-description-promo-1.jpg→product-listing-description-promo-2.jpg。兩張固定介紹圖必須是最後兩張圖片，而且第二張是最後一個區塊。蝦皮原生上傳器必須依 blockPlan 逐張上傳並逐張核對圖片身分，不得把同一區段多張圖片一次批次送入；更新前必須確認最後兩張依序正是 description-promo-1、description-promo-2，兩張之後不得再有任何文字或圖片。商品圖不足三張時先從本案已保存來源、官網既有圖或精確商品來源補齊並完成繁體化，禁止發布缺圖版本，也不得把店址圖或兩張固定介紹圖拿來補三張商品圖。',
       '[適用範圍：EasyStore／蝦皮｜狀態：已實頁驗證] EasyStore 官網保存自己的安全 HTML 圖文，但同步蝦皮時只帶基本商品資料與文字，不按「使用 EasyStore 的產品描述」。蝦皮詳細介紹由同一份 preparedSnapshot 的五個文字區塊與圖片順序組成；要上傳的整組完成圖（上限 12 張）必須先下載到本案專用本機暫存目錄，再開啟同一個 Seller Center 商品，交給「商品描述 → 新增圖片 → 從電腦裝置上傳」原生欄位，依特色、規格、使用說明交錯插入至少三張商品圖，再放實體商品說明、出貨與保固說明及最後兩張固定介紹圖。不得只使用遠端網址或記憶體 Blob，不得開啟原生檔案選擇器，不得使用桌面資料夾，也不得刪除使用者原有檔案；必須核對實際圖文順序、精確圖片數量、全部圖片上傳成功及重新載入仍存在，才可標記 verified。',
       '[案件摘要]',
       caseLines.join('\n'),
