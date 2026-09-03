@@ -1,6 +1,7 @@
 'use strict';
 
 const STYLE_CATALOG_VERSION = 'youzi-light-commercial-style-catalog-v1';
+const RENDER_PROOF_VERSION = 'youzi-brand-creative-render-v1';
 
 const STYLE_CATALOG = Object.freeze([
   ['bold-coral-impact', '珊瑚撞色', '海報撞色', '#FFF8F1', '#F05A47|#19A974', '大標題＋斜角重點帶'],
@@ -106,12 +107,56 @@ function assignment(existing, seed) {
   };
 }
 
+function renderProof(existing, seed) {
+  const style = assignment(existing, seed);
+  return {
+    version: RENDER_PROOF_VERSION,
+    styleCatalogVersion: STYLE_CATALOG_VERSION,
+    styleId: style.styleId,
+    styleName: style.styleName,
+    family: style.family,
+    background: style.background,
+    accents: [...style.accents],
+    layout: style.layout,
+    styleApplied: true,
+    sameStyleAcrossAspectRatios: true,
+    sameStyleAcrossVariants: true,
+    logoLayer: 'topmost',
+    borderLayer: 'below-logo',
+    borderIntersectsLogo: false
+  };
+}
+
+function renderProofMatches(value, expected, seed) {
+  const proof = value && typeof value === 'object' ? value : {};
+  const style = assignment(expected, seed);
+  return proof.version === RENDER_PROOF_VERSION
+    && proof.styleCatalogVersion === STYLE_CATALOG_VERSION
+    && proof.styleId === style.styleId
+    && proof.styleName === style.styleName
+    && proof.family === style.family
+    && String(proof.background || '').toUpperCase() === style.background.toUpperCase()
+    && Array.isArray(proof.accents)
+    && proof.accents.length === style.accents.length
+    && proof.accents.every((accent, index) => String(accent || '').toUpperCase() === style.accents[index].toUpperCase())
+    && proof.layout === style.layout
+    && proof.styleApplied === true
+    && proof.sameStyleAcrossAspectRatios === true
+    && proof.sameStyleAcrossVariants === true
+    && proof.logoLayer === 'topmost'
+    && proof.borderLayer === 'below-logo'
+    && proof.borderIntersectsLogo === false;
+}
+
 module.exports = {
   STYLE_CATALOG_VERSION,
+  RENDER_PROOF_VERSION,
   STYLE_CATALOG,
   STYLE_IDS,
   STYLE_SELECTION_POLICY,
   styleById,
   deterministicStyle,
-  assignment
+  assignment,
+  renderProof,
+  renderProofMatches
 };

@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const originalLoad = Module._load;
 const serverTimestamp = Object.freeze({ __serverTimestamp: true });
@@ -44,6 +45,9 @@ test('main product image prompt locks the approved green brand template and Taiw
   assert.match(prompt, /綠色頁首固定占整張高度 1\/9/);
   assert.match(prompt, /大型跨界版本/);
   assert.match(prompt, /連續、清楚可見的細綠色圓角框線/);
+  assert.match(prompt, /框線必須在 Logo 下層/);
+  assert.match(prompt, /Logo 必須是最上層/);
+  assert.match(prompt, /不可只記錄風格名稱/);
   assert.match(prompt, /至少 65%/);
   assert.match(prompt, /最多 2 個有來源依據的細節小圖/);
   assert.match(prompt, /正好 3 個不重複且已查證的商品特色/);
@@ -70,6 +74,19 @@ test('platform image encoder always returns a JPEG below the shared one-megabyte
   assert.equal(output[0], 0xff);
   assert.equal(output[1], 0xd8);
   assert.ok(output.length <= 1_000_000);
+});
+
+test('approved v3 brand assets match the hashes enforced by the renderer', () => {
+  const pairs = [
+    ['storefrontPortrait', 'product-listing-brand-template-portrait.png', 'product-listing-brand-template-portrait-overlay.png'],
+    ['brandedHero', 'product-listing-brand-template-square.png', 'product-listing-brand-template-square-overlay.png']
+  ];
+  pairs.forEach(([role, templateName, overlayName]) => {
+    const profile = research.BRAND_TEMPLATE_PROFILES[role];
+    const digest = (name) => crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', name))).digest('hex');
+    assert.equal(digest(templateName), profile.sha256);
+    assert.equal(digest(overlayName), profile.overlaySha256);
+  });
 });
 
 function completeResult(overrides = {}) {

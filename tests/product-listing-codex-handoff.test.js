@@ -372,12 +372,13 @@ test('營運中心 12 張共用池只保留根案件品牌首圖並公平涵蓋�
       PRODUCT_GROUP_LISTING_IMAGE_MAX: 12
     }
   );
+  const safeFlags = { containsLogo: false, containsText: false, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: false, momoPromotionEligible: true };
   const cases = Array.from({ length: 13 }, (_, index) => ({
     gallerySourceImageUrls: [],
     preparedCase: { rows: [
-      { sourceImageUrl: `https://supplier.example.com/${index}-clean.jpg`, url: `https://cdn.example.com/variant-${index}-clean.jpg`, roles: ['cleanMain'], sourceOrder: 1 },
-      { sourceImageUrl: `https://supplier.example.com/${index}-storefront.jpg`, url: `https://cdn.example.com/variant-${index}-storefront.jpg`, roles: ['storefrontPortrait'], sourceOrder: 1 },
-      { sourceImageUrl: `https://supplier.example.com/${index}-brand.jpg`, url: `https://cdn.example.com/variant-${index}-brand.jpg`, roles: ['brandedHero'], sourceOrder: 1 }
+      { sourceImageUrl: `https://supplier.example.com/${index}-clean.jpg`, url: `https://cdn.example.com/variant-${index}-clean.jpg`, roles: ['cleanMain'], sourceOrder: 1, assetFlags: safeFlags },
+      { sourceImageUrl: `https://supplier.example.com/${index}-storefront.jpg`, url: `https://cdn.example.com/variant-${index}-storefront.jpg`, roles: ['storefrontPortrait'], sourceOrder: 1, assetFlags: { ...safeFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false } },
+      { sourceImageUrl: `https://supplier.example.com/${index}-brand.jpg`, url: `https://cdn.example.com/variant-${index}-brand.jpg`, roles: ['brandedHero'], sourceOrder: 1, assetFlags: { ...safeFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false } }
     ] }
   }));
   const result = sharedRows(cases);
@@ -406,7 +407,13 @@ test('同一案件的另一張來源圖不可冒充繁體完成圖', () => {
     'function readyProductListingImageRows',
     'function productListingConflictingRoleUrls',
     'readyProductListingImageRows',
-    { normalizeGeneratedListingImages: normalizeGenerated, normalizeProductResearchSourceUrls: normalizeUrls }
+    {
+      normalizeGeneratedListingImages: normalizeGenerated,
+      normalizeProductResearchSourceUrls: normalizeUrls,
+      normalizedProductBrandCreativeStyleAssignment: () => null,
+      productBrandCreativeRenderProofMatches: () => false,
+      PRODUCT_BRAND_TEMPLATE_CONTRACT: {}
+    }
   );
   const sourceOne = 'https://supplier.example.com/source-one.jpg';
   const sourceTwo = 'https://supplier.example.com/source-two.jpg';

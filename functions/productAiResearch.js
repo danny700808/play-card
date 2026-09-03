@@ -28,23 +28,23 @@ const IMAGE_IMPORT_MAX_SELECTED_IMAGES = 12;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const CODEX_ONLY_LISTING_MODE = true;
 const BRAND_TEMPLATE_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
-const BRAND_TEMPLATE_VERSION = 'youzi-adaptive-light-brand-template-v2';
-const BRAND_TEMPLATE_COMPOSITION = 'locked-one-ninth-brand-header-and-overlapping-logo-with-light-style-panel-v2';
+const BRAND_TEMPLATE_VERSION = 'youzi-adaptive-light-brand-template-v3';
+const BRAND_TEMPLATE_COMPOSITION = 'locked-one-ninth-brand-header-logo-above-border-light-style-panel-v3';
 const BRAND_TEMPLATE_PROFILES = Object.freeze({
   storefrontPortrait: Object.freeze({
     url: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-portrait.png`,
-    sha256: 'e3fe984de916395accec67a9bf251429e271c908e45608d2d45781759be5cb90',
+    sha256: 'dff948f29b8374897a08f1ee78c15fcdf3db4c0caf6eff60e0d40eeb8fbda9ce',
     overlayUrl: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-portrait-overlay.png`,
-    overlaySha256: '9706b5985061efac729fa1b8b813213c57c04681aa26acb3e28cdc5a7cf2150a',
+    overlaySha256: 'ac3007c35c48cbe930af73f3200cfc85f70e33570feb6ad2669ba68ea1d4661f',
     widthPx: 1000, heightPx: 750, aspectRatio: '4:3', headerHeightPx: 83,
     panel: Object.freeze({ left: 18, top: 92, width: 964, height: 640 }),
     featureMinimum: 3, featureMaximum: 3
   }),
   brandedHero: Object.freeze({
     url: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-square.png`,
-    sha256: '9cb2f59fd4d4d9b28257c2527c804cb7b135451953de65dd567198ec11cb9145',
+    sha256: '5f0e7743102c00b97befef0c240ec67d76686c1ed0e69dd8aa741cad4a73a1fe',
     overlayUrl: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-square-overlay.png`,
-    overlaySha256: 'ce0f5d4890bf8ce75578afa1d6a5092dd2511424924001a8b19a0487d69b0a9d',
+    overlaySha256: '7c4ea0b425c7c7b258f4f0a1ed0897ddb514b2a0f50b147bf582a982245ff8a8',
     widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 111,
     panel: Object.freeze({ left: 18, top: 122, width: 964, height: 860 }),
     featureMinimum: 3, featureMaximum: 3
@@ -678,8 +678,8 @@ function buildBrandTemplateImagePrompt(context, listingCase, role) {
   return [
     `第一張是商品來源圖，第二張是不可變品牌母版 ${BRAND_TEMPLATE_VERSION} 的版面參考。最終角色為 ${role}，尺寸 ${profile.widthPx}×${profile.heightPx}（${profile.aspectRatio}）。`,
     '固定品牌區必須完全照核准版本：綠色頁首固定占整張高度 1/9，紅色標語「有音樂的生活更有風格」與圓形柚子樂器 Logo 的圖樣、文字、顏色都不可改。Logo 使用已核准的大型跨界版本，固定在右上並向下壓入內容區；只有 Logo 可跨越頁首邊界，而且不可遮住商品本體或主要文字。',
-    '下方內容區四周固定保留一條連續、清楚可見的細綠色圓角框線；照片、色塊、文字與裝飾全部停在框線內，不得蓋滿或吃掉框線。',
-    `本商品固定風格為 ${style.styleName}（${style.styleId}／${style.family}）：底色 ${style.background}，重點色 ${style.accents.join('、')}，版型 ${style.layout}。同一商品的 1:1 與 4:3、以及同組所有細項必須沿用完全相同風格，只做比例重排。`,
+    '下方內容區四周固定保留一條連續、清楚可見的細綠色圓角框線；框線必須在 Logo 下層，Logo 必須是最上層，兩者重疊處由 Logo 完整蓋住框線，圓形 Logo 內絕不可看見穿過的框線。照片、色塊、文字與裝飾全部停在框線內，不得蓋滿或吃掉框線。',
+    `本商品固定風格為 ${style.styleName}（${style.styleId}／${style.family}）：底色 ${style.background}，重點色 ${style.accents.join('、')}，版型 ${style.layout}。這些底色、重點色與版型必須實際控制內容區排版，不可只記錄風格名稱，也不可退回每件相同的通用三色塊模板；同一商品的 1:1 與 4:3、以及同組所有細項必須沿用完全相同風格，只做比例重排。`,
     '內容區至少 65% 保持奶油白、白、淺灰或明亮照片；深色只可用於文字與小面積重點，禁止整片深色、黑底或厚重滿版。',
     '內容面板只可加入商品、標題、已查證賣點與最多 2 個有來源依據的細節小圖；四周保留安全留白。商品必須清楚完整，不可被 Logo、標題、色塊或裝飾遮住。',
     `用清楚的台灣繁體中文呈現正好 ${featureCount} 個不重複且已查證的商品特色；若不足 ${featureCount} 個，必須先停止主圖製作並補齊證據，不得少放或虛構。`,
@@ -1061,6 +1061,11 @@ async function composeLockedBrandTemplate(imageBytes, role) {
     downloadImageForEdit(profile.url),
     downloadImageForEdit(profile.overlayUrl)
   ]);
+  const templateHash = crypto.createHash('sha256').update(template.bytes).digest('hex');
+  const overlayHash = crypto.createHash('sha256').update(overlay.bytes).digest('hex');
+  if (templateHash !== profile.sha256 || overlayHash !== profile.overlaySha256) {
+    throw new Error(`品牌母版 ${BRAND_TEMPLATE_VERSION} 尚未同步完成，已停止產圖以避免使用舊版 Logo／框線圖層。`);
+  }
   const content = await sharp(Buffer.from(imageBytes))
     .resize(profile.panel.width, profile.panel.height, {
       fit: 'contain', background: { r: 255, g: 250, b: 240, alpha: 1 }, withoutEnlargement: false
@@ -1907,6 +1912,14 @@ function registerProductAiResearch(target) {
     const model = clean(process.env.OPENAI_PRODUCT_IMAGE_EDIT_MODEL) || DEFAULT_IMAGE_EDIT_MODEL;
     try {
       const bucket = admin.storage().bucket();
+      const brandCreativeStyleAssignment = listingBrandCreative.assignment(
+        listingCase.brandCreativeStyleAssignment,
+        `${clean(context && (context.productId || context.sku || context.name))}|${clean(listingCase.researchedProductName)}`
+      );
+      const brandRenderProof = listingBrandCreative.renderProof(
+        brandCreativeStyleAssignment,
+        `${clean(context && (context.productId || context.sku || context.name))}|${clean(listingCase.researchedProductName)}`
+      );
       const imageJobs = [
         { mode: 'clean-main', role: 'cleanMain', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0]] },
         { mode: 'storefront-template', role: 'storefrontPortrait', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0], BRAND_TEMPLATE_PROFILES.storefrontPortrait.url] },
@@ -1975,6 +1988,8 @@ function registerProductAiResearch(target) {
           templateVersion: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_VERSION : '',
           templateAssetSha256: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_PROFILES[job.role].sha256 : '',
           templateComposition: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_COMPOSITION : '',
+          creativeStyleAssignment: BRAND_TEMPLATE_PROFILES[job.role] ? brandCreativeStyleAssignment : null,
+          brandRenderProof: BRAND_TEMPLATE_PROFILES[job.role] ? brandRenderProof : null,
           instructions: clean(listingCase.imageGenerationInstructions),
           createdAt: new Date().toISOString(),
           createdBy: normalizeEmail(request.auth && request.auth.token && request.auth.token.email) || '管理者'

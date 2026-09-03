@@ -27,12 +27,15 @@ const publish = require('../functions/productListingPublish');
 Module._load = originalLoad;
 const helpers = publish._test;
 const BRAND_TEMPLATE = helpers.brandTemplateContract();
+const TEST_BRAND_STYLE = helpers.brandCreativeStyleAssignment(null, 'product-listing-test-style');
 
-function brandTemplateFields(role) {
+function brandTemplateFields(role, styleAssignment = TEST_BRAND_STYLE) {
   return {
     templateVersion: BRAND_TEMPLATE.version,
     templateAssetSha256: BRAND_TEMPLATE[role].sha256,
-    templateComposition: BRAND_TEMPLATE.composition
+    templateComposition: BRAND_TEMPLATE.composition,
+    creativeStyleAssignment: styleAssignment,
+    brandRenderProof: helpers.brandCreativeStyleRenderProof(styleAssignment, 'product-listing-test-style')
   };
 }
 
@@ -52,6 +55,7 @@ function withV2ImagePlan(listingCase, options = {}) {
   ];
   return {
     ...listingCase,
+    brandCreativeStyleAssignment: TEST_BRAND_STYLE,
     codexHandoff: {
       workflowVersion: 'youzi-four-channel-listing-v3',
       preflightSnapshot: {
@@ -374,9 +378,9 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.browserControl.neverOpenNativeWindowsFilePicker, true);
   assert.equal(snapshot.automationPolicy.browserControl.stopForInteractiveAuthenticationOnly, true);
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
-  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-adaptive-light-brand-template-v2');
+  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-adaptive-light-brand-template-v3');
   assert.equal(snapshot.imagePolicy.mainImageAspectRatio, '1:1-and-4:3-matched-pair');
-  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'locked-one-ninth-youzi-green-header-and-light-panel');
+  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'locked-one-ninth-youzi-green-header-logo-above-border-and-light-panel');
   assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'within-thin-green-border-and-never-under-logo');
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateVersion, BRAND_TEMPLATE.version);
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateAssetSha256, BRAND_TEMPLATE.storefrontPortrait.sha256);
@@ -392,6 +396,12 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.minimumLightAreaRatio, 0.65);
   assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.forbidDarkFullBleedBackground, true);
   assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.darkFullBleedForbidden, true);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.logo.layer, 'topmost');
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.logo.mustCoverBorderAtOverlap, true);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.borderLayer, 'below-logo');
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.borderMayNotCrossLogoArtwork, true);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.renderedStyleMustMatchAssignment, true);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.brandRenderProofRequired, true);
   assert.equal(snapshot.imagePolicy.brandCreativeStyleAssignment.sameStyleAcrossAspectRatios, true);
   assert.deepEqual(snapshot.imagePolicy.sourceNormalization.preferredLongEdgeRangePx, { minimum: 1600, maximum: 2000 });
   assert.equal(snapshot.imagePolicy.sourceNormalization.targetLongEdgePx, 1800);
@@ -1141,6 +1151,32 @@ test('v3 image gates reject branded images whose locked template hash changed', 
   }), /未使用固定綠底品牌母版/);
 });
 
+test('v3 image gates require the approved logo-over-border layer proof and exact assigned style', () => {
+  const sourceImageUrl = 'https://supplier.example.com/render-proof-source.jpg';
+  const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
+  const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false };
+  const cleanRow = { sourceImageUrl, url: 'https://cdn.example.com/render-proof-clean.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: cleanFlags };
+  const approvedBrand = { sourceImageUrl, url: 'https://cdn.example.com/render-proof-brand.jpg', status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: brandFlags, ...brandTemplateFields('brandedHero') };
+  const withoutProof = { ...approvedBrand };
+  delete withoutProof.brandRenderProof;
+  assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {
+    productSku: 'RENDER-1', brandCreativeStyleAssignment: TEST_BRAND_STYLE,
+    generatedListingImages: [cleanRow, withoutProof]
+  }), /實際風格／圖層證明/);
+
+  const wrongLayer = { ...approvedBrand, brandRenderProof: { ...approvedBrand.brandRenderProof, borderIntersectsLogo: true } };
+  assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {
+    productSku: 'RENDER-1', brandCreativeStyleAssignment: TEST_BRAND_STYLE,
+    generatedListingImages: [cleanRow, wrongLayer]
+  }), /實際風格／圖層證明/);
+
+  const rows = helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {
+    productSku: 'RENDER-1', brandCreativeStyleAssignment: TEST_BRAND_STYLE,
+    generatedListingImages: [cleanRow, approvedBrand]
+  });
+  assert.equal(rows.some((row) => row.roles.includes('brandedHero')), true);
+});
+
 test('12 張共用池只保留整組唯一品牌首圖並公平涵蓋細項乾淨圖', () => {
   const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
   const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false };
@@ -1325,6 +1361,7 @@ test('pending handoff sources can receive later Codex outputs and become one imm
   };
   const currentCase = {
     productSku: 'LATE-1', productDescription: '完整商品介紹',
+    brandCreativeStyleAssignment: TEST_BRAND_STYLE,
     generatedListingImages: [
       { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-clean.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: { ...flags, momoPromotionEligible: true } },
       { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-storefront.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait') },
@@ -1362,6 +1399,7 @@ test('active v3 job 只復用目前 schema/policy/order/final snapshot/fingerpri
   const baseFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
   const listingCase = {
     productSku: 'REUSE-1', productDescription: '完整商品介紹',
+    brandCreativeStyleAssignment: TEST_BRAND_STYLE,
     codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v3', preflightSnapshot: frozen },
     generatedListingImages: [
       { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-clean.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: baseFlags },
@@ -2608,6 +2646,7 @@ test('2100307-4 固定 v3 實際資料可在不送出的模擬通過四通路預
   };
   const listingCase = {
     productSku: '2100307-4', researchedProductName: '桌上型木製閱讀譜架 升降款 原木色 柚子樂器',
+    brandCreativeStyleAssignment: TEST_BRAND_STYLE,
     productDescription: '木製面板搭配鋁合金底座，適合桌上閱讀與樂譜使用。\n\n商品特色\n1. 桌上型設計\n2. 高度可調\n\n商品規格\n面板：30 × 24 公分\n高度：4.4～39 公分\n底座：23.5 × 18.5 公分\n\n使用方式／適用情境\n1. 依桌面高度調整到合適閱讀角度',
     sharedOnlinePrice: 450, stock: 2, warrantyMonths: 6,
     shippingDecision: 'convenience', packageLengthCm: 40, packageWidthCm: 30, packageHeightCm: 10, packageWeightKg: 1,
