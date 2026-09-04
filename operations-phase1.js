@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.09.04-product-media-mobile-v2';
+  const VERSION = '2026.09.04-product-media-mobile-v3';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
@@ -1743,7 +1743,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     return {value:value.slice(0,selection.start)+text+value.slice(selection.end),caret:selection.start+text.length};
   }
   function applySearchKeyInput(targetId,key){
-    const map={posSearch:'posSearch',productSearch:'productSearch',purchaseLowSearch:'purchaseLowSearch',purchaseEntrySearch:'purchaseEntrySearch',stocktakeSearch:'stocktakeSearch',inventorySearch:'inventorySearch'};
+    const map={posSearch:'posSearch',productSearch:'productSearch',mediaSearch:'mediaSearch',purchaseLowSearch:'purchaseLowSearch',purchaseEntrySearch:'purchaseEntrySearch',stocktakeSearch:'stocktakeSearch',inventorySearch:'inventorySearch'};
     const stateKey=map[targetId];
     if(!stateKey) return;
     if(targetId==='productSearch'&&!closeProductEditorForListChange(true)) return;
@@ -2688,7 +2688,7 @@ function renderOverviewV7(){
       '請在同一個 Codex 對話中依下列順序處理：',
       rows.map(function(row,index){return (index+1)+'. opsProductListingCases/'+row.productId+'｜'+clean(row.productSku)+'｜'+clean(row.productName)+'｜內容：'+(row.mediaQueueKinds||[]).map(productMediaKindLabel).join('＋');}).join('\n'),
       '固定流程：先讀取案件中所有 physicalImageUrls 與 productVideos。實體圖不得再修圖、裁切、去背或換背景；使用已加上「柚子樂器｜實體圖」浮水印的顧客版，有幾張就上幾張，固定插在一般商品介紹圖之後、兩段固定說明與最後兩張固定介紹圖之前，不得當主圖或輪播圖。',
-      '每段原始影片先上傳至已登入的「柚子樂器-附設Yamaha音樂教室」YouTube 頻道。使用完整原片，不限制 59 秒；不得重複上傳相同原片。沿用案件保存的 youtubeTitle、youtubeDescription、youtubeTags 與 youtubeHashtags，標題不得超過 100 字、說明不得超過 5000 字。',
+      '每段原始影片先上傳至已登入的「柚子樂器-附設Yamaha音樂教室」YouTube 頻道。YouTube 使用完整原片，不限制 59 秒；不得重複上傳相同原片。沿用案件保存的 youtubeTitle、youtubeDescription、youtubeTags 與 youtubeHashtags，標題不得超過 100 字、說明不得超過 5000 字。',
       'YouTube 欄位完整設定：youtubeVisibility=public、youtubeAudience=not-made-for-kids、youtubeLanguage 與 youtubeAudioLanguage=zh-TW、youtubeCategoryId=10（音樂）、youtubeLicense=youtube、youtubeEmbeddable=true。舊紀錄若缺少標題、說明、標籤或雜湊標籤，先依商品名稱、品牌、型號與 SKU 補齊同一標準。加入 youtubePlaylistName 指定的播放清單；有清楚可用且平台允許的商品圖時設定自訂縮圖，否則將 youtubeThumbnailStatus 記為 skipped-unavailable，不得因此中止。影片有口語時保留自動字幕並核對語言，不得憑空製作逐字稿。',
       'YouTube 發布完成後，把 youtubeVideoId、youtubeUrl、youtubeUploadedAt、youtubeStatus=published、youtubePlaylistStatus、youtubeThumbnailStatus 寫回同一筆 productVideos 紀錄。取得分享網址後，貼入同一商品的 EasyStore 官網、MOMO 與酷澎影片欄位，並在 platformVideoResults 分別記錄 URL、狀態與時間。',
       '蝦皮使用直接上傳的 MP4。原片不超過 59 秒就使用完整影片；超過 59 秒時先理解影片內容，挑選最完整、清楚、連貫的 59 秒片段，輸出 H.264/AAC MP4 且不超過 30 MB，再上傳至同一商品。不得為了長度修改 YouTube 完整版。',

@@ -109,10 +109,10 @@ jobs:
           set -euo pipefail
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260830-shopee-native-description-v2' portal.html
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260830-shopee-native-description-v2' operations-hub.html
-          grep -Fq 'operations-phase1.css?v=20260904-product-media-mobile-v2' portal.html
-          grep -Fq 'operations-phase1.css?v=20260904-product-media-mobile-v2' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260904-product-media-mobile-v2' portal.html
-          grep -Fq 'operations-phase1.js?v=20260904-product-media-mobile-v2' operations-hub.html
+          grep -Fq 'operations-phase1.css?v=20260904-product-media-mobile-v3' portal.html
+          grep -Fq 'operations-phase1.css?v=20260904-product-media-mobile-v3' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260904-product-media-mobile-v3' portal.html
+          grep -Fq 'operations-phase1.js?v=20260904-product-media-mobile-v3' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260828-product-image-auth-preflight-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260828-product-image-auth-preflight-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

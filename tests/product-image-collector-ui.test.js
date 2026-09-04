@@ -365,7 +365,7 @@ test("原圖被供應商網站阻擋時會自動改用可見圖片截圖", () =>
 });
 
 test("Chrome 助手在一般商品網頁提供點圖開關與可取消的框選截圖", () => {
-  assert.equal(manifest.version, "0.3.37");
+  assert.equal(manifest.version, "0.3.38");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.equal(manifest.permissions.includes("contextMenus"), false);
@@ -386,7 +386,7 @@ test("Chrome 助手在一般商品網頁提供點圖開關與可取消的框選�
   assert.equal(manifest.commands["start-image-crop"].suggested_key.default, "Ctrl+Shift+Y");
 });
 
-test("0.3.37 具備網頁面板截圖權限並能替已開分頁補載入", () => {
+test("0.3.38 具備網頁面板截圖權限並能替已開分頁補載入", () => {
   assert.ok(manifest.host_permissions.includes("<all_urls>"));
   assert.ok(manifest.permissions.includes("scripting"));
   assert.match(background, /chrome\.scripting\.executeScript/);
