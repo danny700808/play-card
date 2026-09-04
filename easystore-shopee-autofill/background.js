@@ -278,7 +278,7 @@ async function collectImage(message, sender) {
 function captureFailure(error) {
   const message = String(error && error.message ? error.message : error || "");
   if (/(?:<all_urls>|activeTab).*permission|required.*permission/i.test(message)) {
-    return responseError("CAPTURE_PERMISSION_MISSING", "Chrome 尚未啟用完整截圖權限；請更新到助手 0.3.37，在擴充功能頁重新載入並允許存取所有網站。");
+    return responseError("CAPTURE_PERMISSION_MISSING", "Chrome 尚未啟用完整截圖權限；請更新到助手 0.3.38，在擴充功能頁重新載入並允許存取所有網站。");
   }
   if (/(?:cannot access|restricted|chrome:\/\/|chrome web store|extensions gallery)/i.test(message)) {
     return responseError("CAPTURE_PAGE_RESTRICTED", "這是 Chrome 限制的特殊頁面，無法顯示頁內框選；請改在一般商品網頁，或用 Win+Shift+S 截圖後回商品頁貼上。");

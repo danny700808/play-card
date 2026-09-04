@@ -203,7 +203,7 @@ test("bridge stores one product-bound image collection session", () => {
   assert.ok(ack);
   assert.equal(ack.message.payload.ok, true);
   assert.equal(ack.message.payload.sku, "1040160-1");
-  assert.equal(ack.message.payload.extensionVersion, "0.3.37");
+  assert.equal(ack.message.payload.extensionVersion, "0.3.38");
 
   vm.runInContext(`__listeners.message({
     source: window,
@@ -227,7 +227,7 @@ test("extension package enables the supplier image collector service worker", ()
   const bridge = fs.readFileSync(path.join(extensionRoot, "bridge.js"), "utf8");
   const easystore = fs.readFileSync(path.join(extensionRoot, "easystore.js"), "utf8");
 
-  assert.equal(manifest.version, "0.3.37");
+  assert.equal(manifest.version, "0.3.38");
   assert.equal(manifest.background.service_worker, "background.js");
   assert.ok(manifest.permissions.includes("activeTab"));
   assert.ok(manifest.permissions.includes("scripting"));
