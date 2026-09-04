@@ -2092,7 +2092,8 @@ test('physical photos stay out of every gallery and are appended before fixed no
     'https://youzi-c1b74.web.app/product-listing-description-promo-1.jpg',
     'https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg'
   ]);
-  assert.equal(snapshot.physicalImagePolicy.customerFacingDerivative, 'label-only');
+  assert.equal(snapshot.physicalImagePolicy.customerFacingDerivative, 'watermark-only');
+  assert.equal(snapshot.physicalImagePolicy.labelText, '柚子樂器｜實體圖');
   assert.equal(snapshot.physicalImagePolicy.neverUseAsMainImage, true);
 });
 

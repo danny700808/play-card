@@ -18,7 +18,7 @@ test('portal URL opens the operations application directly', () => {
   assert.match(portal, /href="#course-settings" data-view="course-settings"/);
   assert.match(portal, /href="#expenses" data-view="expenses"/);
   assert.match(portal, /operations-expenses\.js\?v=20260801-operating-expenses-v6/);
-  assert.match(portal, /operations-phase1\.js\?v=20260902-listing-retry-queue-v1/);
+  assert.match(portal, /operations-phase1\.js\?v=20260904-product-media-queue-v1/);
   assert.match(portal, /operations-mobile-home-v1\.js\?v=20260803-mobile-overview-day-v1/);
   assert.match(portal, /operations-mobile-home-v1\.css\?v=20260809-mobile-quick-nav-v1/);
   assert.doesNotMatch(portal, /href="operations-hub\.html"/);
@@ -192,7 +192,7 @@ test('product inventory header exposes newest unlisted products without internal
   assert.match(source, /!clean\(p\.sku\)\.startsWith\('0'\)/);
   assert.match(source, /state\.productRecentOnly&&!productAppearsInRecentListing\(p\)/);
   assert.match(source, /productCreatedTime\(b\)-productCreatedTime\(a\)/);
-  assert.match(source, /#productSearch,#productListingCaseForm \[name="variantParentSearch"\]/);
+  assert.match(source, /#productSearch,#mediaSearch,#productListingCaseForm \[name="variantParentSearch"\]/);
   const renderStart = source.indexOf('function renderProducts(');
   const renderEnd = source.indexOf('function estimateFifoCostForProduct', renderStart);
   const renderProducts = source.slice(renderStart, renderEnd);

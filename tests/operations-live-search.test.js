@@ -64,8 +64,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260902-listing-retry-queue-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260902-listing-retry-queue-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260904-product-media-queue-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260904-product-media-queue-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
@@ -242,30 +242,40 @@ test('manual average cost correction becomes the new inventory cost baseline aft
   assert.equal(result.inventoryValue, 600);
 });
 
-test('standalone physical-photo entry is removed while inline listing photos stay separate from platform images', () => {
+test('physical photos keep their inline control and also have one searchable media workflow beside inventory', () => {
   const upload = functionBody(engine, 'uploadPhysicalProductPhoto');
   const labeler = functionBody(engine, 'physicalPhotoLabeledBlob');
   const tray = functionBody(engine, 'physicalProductImageTrayHtml');
   const listingForm = functionBody(engine, 'productListingCaseFormHtml');
+  const mediaPage = functionBody(engine, 'renderProductMediaWorkspace');
+  const selectedMedia = functionBody(engine, 'selectedProductMediaHtml');
+  const videoUpload = functionBody(engine, 'uploadProductVideo');
+  const mediaPrompt = functionBody(engine, 'productMediaBatchPrompt');
 
-  assert.doesNotMatch(portal, /href="#physical-photos"|拍實體圖/);
-  assert.doesNotMatch(hub, /href="#physical-photos"|拍實體圖/);
-  assert.doesNotMatch(engine, /function renderPhysicalPhotos|function startPhysicalPhotoCapture|physicalPhotoCameraInput/);
+  for (const html of [portal, hub]) assert.match(html, /href="#media"[\s\S]*實體圖與影片/);
+  assert.match(mediaPage, /mediaSearch/);
+  assert.match(mediaPage, /productMediaQueueHtml/);
+  assert.match(selectedMedia, /mediaPhysicalCamera[\s\S]*capture="environment"/);
+  assert.match(selectedMedia, /mediaVideoCamera[\s\S]*capture="environment"/);
   assert.match(upload, /\/physical\//);
   assert.match(upload, /physicalImageUrls/);
   assert.match(upload, /physicalOriginalImageUrls/);
   assert.match(upload, /physicalImages/);
+  assert.match(upload, /mediaQueueStatus:'queued'/);
   assert.match(upload, /-original\./);
   assert.match(upload, /-labeled\.jpg/);
   assert.doesNotMatch(upload, /listingImageUrls|imageUrls:fv\.arrayUnion/);
-  assert.match(labeler, /fillText\('實體圖'/);
+  assert.match(labeler, /watermark='柚子樂器｜實體圖'/);
   assert.match(tray, /<strong>實體圖<\/strong>/);
-  assert.doesNotMatch(tray, /＋ 實體圖|ops-listing-physical-add/);
-  assert.doesNotMatch(tray, /ops-listing-physical-copy/);
   assert.match(listingForm, /productPhysicalImageUpload/);
   assert.match(listingForm, /physicalProductImageTrayHtml\(row\.physicalImageUrls,p\.docId\)/);
   assert.doesNotMatch(listingForm, /productListingSection\('實體圖片'/);
+  assert.match(videoUpload, /\/video\//);
+  assert.match(videoUpload, /shopeeClipDurationSeconds/);
+  assert.match(mediaPrompt, /YouTube 使用完整原片/);
+  assert.match(mediaPrompt, /59 秒片段/);
   assert.match(storageRules, /match \/ops-product-listing-cases\/\{productId\}\/physical\/\{fileName\}/);
+  assert.match(storageRules, /match \/ops-product-listing-cases\/\{productId\}\/video\/\{fileName\}/);
 });
 
 test('product header owns the saved listing queue and starts it sequentially in Codex', () => {

@@ -44,6 +44,16 @@ service firebase.storage {
       allow delete: if isManagerAuth();
     }
 
+    // 商品實拍介紹影片：保留原始檔，之後由待上架流程製作 YouTube 完整版與蝦皮 59 秒版。
+    match /ops-product-listing-cases/{productId}/video/{fileName} {
+      allow read: if true;
+      allow create, update: if isManagerAuth()
+        && request.resource != null
+        && request.resource.size < 536870912
+        && request.resource.contentType.matches('video/.*');
+      allow delete: if isManagerAuth();
+    }
+
     // OpenAI 產生的商品圖只先作為候選圖；後端建立後，管理者可在案件中預覽與採用。
     match /ops-product-listing-cases/{productId}/generated/{fileName} {
       allow read: if true;

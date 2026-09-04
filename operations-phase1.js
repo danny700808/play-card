@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.09.03-full-commercial-poster-v1';
+  const VERSION = '2026.09.04-product-media-queue-v1';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
@@ -46,7 +46,7 @@
   const PRODUCT_WARRANTY_SUPPORT_NOTICE = '保固會依商品類型而有所不同。耗材及正常使用產生的自然耗損不在一般保固範圍；若商品附有原廠保固，則以原廠提供的保固時間與方式為主。收到商品若發現新品本身有異常，歡迎聯絡我們協助確認與處理。';
   const PRODUCT_DESCRIPTION_LAYOUT_VERSION = 'youzi-interleaved-description-v3';
   const PRODUCT_DESCRIPTION_MEDIA_REFRESH_PURPOSE = 'refresh-description-media';
-  const PRODUCT_DESCRIPTION_MEDIA_REFRESH_INSTRUCTIONS = '[適用範圍：共用｜狀態：已確認] 原地修改同一 SKU 與既有平台商品：重新整理並驗證所選通路的商品介紹與圖片。固定圖文順序為商品介紹與特色→商品圖一→商品規格→商品圖二→使用建議→商品圖三→其餘商品圖→實體商品說明→出貨與保固說明→兩張固定介紹圖；橫向商品圖最後一張固定為店址圖。[適用範圍：EasyStore／蝦皮｜狀態：已實頁驗證] 蝦皮必須實際確認文字、全部圖片、固定說明與最後兩張介紹圖均已保存；缺圖不得判定完成。';
+  const PRODUCT_DESCRIPTION_MEDIA_REFRESH_INSTRUCTIONS = '[適用範圍：共用｜狀態：已確認] 原地修改同一 SKU 與既有平台商品：重新整理並驗證所選通路的商品介紹與圖片。固定圖文順序為商品介紹與特色→商品圖一→商品規格→商品圖二→使用建議→商品圖三→其餘商品圖→全部實體圖→實體商品說明→出貨與保固說明→兩張固定介紹圖；實體圖有幾張就依保存順序放幾張，只能加上「柚子樂器｜實體圖」浮水印，橫向商品圖最後一張固定為店址圖。[適用範圍：EasyStore／蝦皮｜狀態：已實頁驗證] 蝦皮必須實際確認文字、全部圖片、固定說明與最後兩張介紹圖均已保存；缺圖不得判定完成。';
   const PRODUCT_LISTING_PLATFORM_ORDER = ['momo','coupang','easyStore','shopee'];
   const PRODUCT_LISTING_TARGET_SCOPES = {
     all:{label:'全部平台',platforms:['momo','coupang','easyStore','shopee']},
@@ -126,6 +126,9 @@
   const PRODUCT_SELECTED_IMAGE_MAX = 20;
   const PRODUCT_GROUP_LISTING_IMAGE_MAX = 12;
   const PRODUCT_PHYSICAL_IMAGE_MAX = 20;
+  const PRODUCT_VIDEO_MAX = 3;
+  const PRODUCT_VIDEO_MAX_BYTES = 512 * 1024 * 1024;
+  const PRODUCT_MEDIA_QUEUE_STATUSES = ['queued','processing','failed','waiting-listing'];
   const PRODUCT_LISTING_INTENTS = ['create-single','create-group','merge-existing','add-variant','update-existing'];
   const PRODUCT_LISTING_QUEUE_STATUSES = ['queued','processing','failed'];
   const PRODUCT_IMAGE_COLLECTION = {
@@ -298,7 +301,11 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     productPreviewIndex:0,
     productPreviewTitle:'',
     physicalPhotoBusy:false,
+    productVideoBusy:false,
     productListingQueue:[],
+    productMediaQueue:[],
+    mediaSearch:'',
+    mediaSelectedProductId:'',
     productMergeSelection:[],
     posSearch:'',
     salesMode:'product',
@@ -394,6 +401,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     'course-teachers':['老師薪資',''],
     'course-settings':['系統設定',''],
     products:['商品資訊',''],
+    media:['實體圖與影片','搜尋商品後直接拍照、錄影或選檔；保存完成會自動排入待上架。'],
     sales:['現場銷售',''],
     customers:['客戶會員','會員、老師與一般客戶共用同一份客戶資料。'],
     receivables:['應收帳款','應收帳款會連回客戶與原始銷售。'],
@@ -811,6 +819,12 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     rows.forEach(function(item){const raw=clean(item);if(!/^https?:\/\//i.test(raw))return;const url=safeUrl(raw);if(url&&!result.includes(url))result.push(url);});
     return result.slice(0,20);
   }
+  function normalizeProductVideoRecords(value){
+    return (Array.isArray(value)?value:[]).map(function(row){
+      const source=row&&typeof row==='object'?row:{},url=safeUrl(source.url||source.originalUrl);
+      return {url:url,originalUrl:safeUrl(source.originalUrl||url),storagePath:clean(source.storagePath),fileName:clean(source.fileName),contentType:clean(source.contentType),sizeBytes:Math.max(0,Number(source.sizeBytes||0)),durationSeconds:Math.max(0,Number(source.durationSeconds||0)),youtubeTitle:clean(source.youtubeTitle),youtubeDescription:clean(source.youtubeDescription),youtubeVisibility:clean(source.youtubeVisibility)||'public',youtubeAudience:clean(source.youtubeAudience)||'not-made-for-kids',youtubeLanguage:clean(source.youtubeLanguage)||'zh-TW',youtubeTags:Array.isArray(source.youtubeTags)?source.youtubeTags.map(clean).filter(Boolean).slice(0,12):[],youtubeStatus:clean(source.youtubeStatus)||'pending',youtubeUrl:safeUrl(source.youtubeUrl),shopeeClipSelectionMode:clean(source.shopeeClipSelectionMode)||'auto-best-segment',shopeeClipStartSeconds:Math.max(0,Number(source.shopeeClipStartSeconds||0)),shopeeClipDurationSeconds:Math.min(59,Math.max(1,Number(source.shopeeClipDurationSeconds||59))),shopeeVideoStatus:clean(source.shopeeVideoStatus)||'pending',createdAt:source.createdAt||'',createdBy:clean(source.createdBy)};
+    }).filter(function(row){return !!row.url;}).slice(-PRODUCT_VIDEO_MAX);
+  }
   const PRODUCT_LISTING_PLATFORMS=[
     {key:'easyStore',label:'官網'},{key:'shopee',label:'蝦皮'},{key:'momo',label:'MOMO'},{key:'coupang',label:'酷澎'}
   ];
@@ -852,6 +866,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       zeroCostConfirmed:obj.zeroCostConfirmed===true,zeroCostConfirmedAt:obj.zeroCostConfirmedAt||'',zeroCostConfirmedBy:clean(obj.zeroCostConfirmedBy),
       currentStock:numberOrNull(firstValue(obj,['currentStock','openingStock','onHand','stock']))||0,openingStock:numberOrNull(obj.openingStock),openingUnitCost:numberOrNull(obj.openingUnitCost),reservedStock:numberOrNull(firstValue(obj,['reservedStock','reserved']))||0,safetyStock:numberOrNull(firstValue(obj,['safetyStock','minStock']))||0,
       physicalImageUrls:normalizeProductResearchSourceUrls(obj.physicalImageUrls),physicalOriginalImageUrls:normalizeProductResearchSourceUrls(obj.physicalOriginalImageUrls),physicalImages:Array.isArray(obj.physicalImages)?obj.physicalImages:[],physicalImagesUpdatedAt:obj.physicalImagesUpdatedAt||'',
+      productVideoUrls:normalizeProductResearchSourceUrls(obj.productVideoUrls).slice(0,PRODUCT_VIDEO_MAX),productVideos:normalizeProductVideoRecords(obj.productVideos),productVideosUpdatedAt:obj.productVideosUpdatedAt||'',
       saleRewardPercent:numberOrNull(obj.saleRewardPercent),easyStoreMatched:obj.easyStoreMatched===true||clean(obj.sourceCollection)==='easyStoreApi',easyStoreSyncedAt:obj.easyStoreSyncedAt||'',status:clean(obj.status)||'active',note:clean(firstValue(obj,['note','remark','備註'])),enabled:obj.enabled!==false,autoCreated:obj.autoCreated===true,source:clean(obj.source),sourceFile:clean(obj.sourceFile),importInitialized:obj.importInitialized===true,createdAt:obj.createdAt||'',updatedAt:obj.updatedAt||''
     };
   }
@@ -879,7 +894,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     const easyStorePrice=internal&&internal.easyStorePrice!=null?internal.easyStorePrice:(!pricesInitialized?sharedOnlinePrice:null),momoPrice=internal&&internal.momoPrice!=null?internal.momoPrice:(!pricesInitialized?sharedOnlinePrice:null),coupangPrice=internal&&internal.coupangPrice!=null?internal.coupangPrice:(!pricesInitialized?sharedOnlinePrice:null);
     const current=internal?Number(internal.currentStock||0):0; const reserved=internal?Number(internal.reservedStock||0):0; const safety=internal?Number(internal.safetyStock||0):0; const available=Math.max(0,current-reserved-safety);
     const costForMargin=internal?(internal.nextFifoCost!=null?internal.nextFifoCost:internal.averageCost):null; const margin=(storePrice!=null&&costForMargin!=null&&storePrice!==0)?((storePrice-costForMargin)/storePrice*100):null;
-    return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,barcode:internal?internal.barcode:'',model:internal?internal.model:'',imageUrl:images[0]||'',imageUrls:images,parentImageUrls:parentImages,variantImageUrls:variantImages,completedListingImageUrls:internal?internal.completedListingImageUrls||[]:[],imageSource:internal?internal.imageSource:'',easyStoreVariantImageId:internal?internal.easyStoreVariantImageId:'',easyStoreProductVariantCount:internal?internal.easyStoreProductVariantCount:0,easyStoreHasMultipleVariants:!!(internal&&internal.easyStoreHasMultipleVariants),easyStoreHasVariantImage:!!(internal&&internal.easyStoreHasVariantImage),easyStoreVariantImageStatus:internal?internal.easyStoreVariantImageStatus:'',physicalImageUrls:internal?internal.physicalImageUrls||[]:[],physicalOriginalImageUrls:internal?internal.physicalOriginalImageUrls||[]:[],physicalImages:internal?internal.physicalImages||[]:[],physicalImagesUpdatedAt:internal?internal.physicalImagesUpdatedAt:'',createdAt:internal?internal.createdAt:'',updatedAt:internal?internal.updatedAt:'',onlinePrice:onlinePrice,storePrice:storePrice,sharedOnlinePrice:sharedOnlinePrice,easyStorePrice:easyStorePrice,momoPrice:momoPrice,coupangPrice:coupangPrice,platformPricesInitialized:pricesInitialized,platformPriceOverrides:internal?internal.platformPriceOverrides||{}:{},originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,zeroCostConfirmed:!!(internal&&internal.zeroCostConfirmed===true),zeroCostConfirmedAt:internal?internal.zeroCostConfirmedAt:'',zeroCostConfirmedBy:internal?internal.zeroCostConfirmedBy:'',currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',sourceProductId:internal?internal.sourceProductId:'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,platformPriceSync:internal?internal.platformPriceSync||{}:{},platformMappings:internal?internal.platformMappings||{}:{},platformListingStatus:internal?internal.platformListingStatus||normalizePlatformListingStatus({}):normalizePlatformListingStatus({}),negativeStock:current<0};
+    return {name:display,originalName:originalName,onlineName:onlineName,sku:sku,barcode:internal?internal.barcode:'',model:internal?internal.model:'',imageUrl:images[0]||'',imageUrls:images,parentImageUrls:parentImages,variantImageUrls:variantImages,completedListingImageUrls:internal?internal.completedListingImageUrls||[]:[],imageSource:internal?internal.imageSource:'',easyStoreVariantImageId:internal?internal.easyStoreVariantImageId:'',easyStoreProductVariantCount:internal?internal.easyStoreProductVariantCount:0,easyStoreHasMultipleVariants:!!(internal&&internal.easyStoreHasMultipleVariants),easyStoreHasVariantImage:!!(internal&&internal.easyStoreHasVariantImage),easyStoreVariantImageStatus:internal?internal.easyStoreVariantImageStatus:'',physicalImageUrls:internal?internal.physicalImageUrls||[]:[],physicalOriginalImageUrls:internal?internal.physicalOriginalImageUrls||[]:[],physicalImages:internal?internal.physicalImages||[]:[],physicalImagesUpdatedAt:internal?internal.physicalImagesUpdatedAt:'',productVideoUrls:internal?internal.productVideoUrls||[]:[],productVideos:internal?internal.productVideos||[]:[],productVideosUpdatedAt:internal?internal.productVideosUpdatedAt:'',createdAt:internal?internal.createdAt:'',updatedAt:internal?internal.updatedAt:'',onlinePrice:onlinePrice,storePrice:storePrice,sharedOnlinePrice:sharedOnlinePrice,easyStorePrice:easyStorePrice,momoPrice:momoPrice,coupangPrice:coupangPrice,platformPricesInitialized:pricesInitialized,platformPriceOverrides:internal?internal.platformPriceOverrides||{}:{},originalSalePrice:internal?internal.originalSalePrice:null,averageCost:internal?internal.averageCost:null,nextFifoCost:internal?internal.nextFifoCost:null,latestPurchaseCost:internal?internal.latestPurchaseCost:null,inventoryValue:internal?internal.inventoryValue:0,costIncomplete:internal?internal.costIncomplete:false,zeroCostConfirmed:!!(internal&&internal.zeroCostConfirmed===true),zeroCostConfirmedAt:internal?internal.zeroCostConfirmedAt:'',zeroCostConfirmedBy:internal?internal.zeroCostConfirmedBy:'',currentStock:current,reservedStock:reserved,safetyStock:safety,availableStock:available,margin:margin,status:internal?internal.status:'preview',initialized:!!internal,matchedOnline:!!online||(internal&&internal.easyStoreMatched===true),sourceCollection:(online&&online.sourceCollection)||(internal&&internal.sourceCollection)||'',sourceProductId:internal?internal.sourceProductId:'',onlineUrl:(online&&online.url)||(internal&&internal.onlineUrl)||'',brand:(online&&online.brand)||(internal&&internal.brand)||'',category:(online&&online.category)||(internal&&internal.category)||'',variantName:(online&&online.variantName)||(internal&&internal.variantName)||'',saleRewardPercent:internal?internal.saleRewardPercent:null,platformPriceSync:internal?internal.platformPriceSync||{}:{},platformMappings:internal?internal.platformMappings||{}:{},platformListingStatus:internal?internal.platformListingStatus||normalizePlatformListingStatus({}):normalizePlatformListingStatus({}),negativeStock:current<0};
   }
 
   function saveDashboardCache(){
@@ -926,7 +941,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       const db=await openFastStateDb();
       const payload={savedAt:Date.now(),loadedAt:state.loadedAt?state.loadedAt.toISOString():'',fullLoadedAt:state.fullLoadedAt?state.fullLoadedAt.toISOString():'',data:{
         onlineSource:state.onlineSource,onlineProducts:state.onlineProducts,easyStoreSync:state.easyStoreSync,onlineOrphans:state.onlineOrphans,matchingStats:state.matchingStats,
-        internalProducts:state.internalProducts,catalog:state.catalog,productListingQueue:state.productListingQueue,rentals:state.rentals,rentalLedgers:state.rentalLedgers,sales:state.sales,incomes:state.incomes,purchases:state.purchases,inventory:state.inventory,suppliers:state.suppliers,
+        internalProducts:state.internalProducts,catalog:state.catalog,productListingQueue:state.productListingQueue,productMediaQueue:state.productMediaQueue,rentals:state.rentals,rentalLedgers:state.rentalLedgers,sales:state.sales,incomes:state.incomes,purchases:state.purchases,inventory:state.inventory,suppliers:state.suppliers,
         inventoryCountSettings:state.inventoryCountSettings,cases:state.cases,expenses:state.expenses,syncJobs:state.syncJobs,audit:state.audit,customers:state.customers,pointTransactions:state.pointTransactions,
         receivables:state.receivables,receivablePayments:state.receivablePayments,salesReturns:state.salesReturns,educationDaily:state.educationDaily,platformOrders:state.platformOrders,platformSyncRuns:state.platformSyncRuns,
         platformInventoryQueue:state.platformInventoryQueue,platformFeeSettings:state.platformFeeSettings,operatingExpenseSettings:state.operatingExpenseSettings,platformLocalAgent:state.platformLocalAgent,membershipSettings:state.membershipSettings,injiaoyunCloudSync:state.injiaoyunCloudSync
@@ -954,7 +969,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   function ensureDataForCurrentView(){
     const view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     if(isCourseWorkspaceView(view))return false;
-    if(view==='products'){
+    if(view==='products'||view==='media'){
       if(!state.loadedAt&&!state.loading){ loadProductsOnly(false); return true; }
       return false;
     }
@@ -1190,17 +1205,29 @@ async function loadPlatformLocalAgent(){
     const source=raw&&typeof raw==='object'?raw:{},status=clean(source.batchQueueStatus),listingTargetScope=normalizeProductListingTargetScope(source.listingTargetScope),failureRows=productListingFailureRows(source),targetPlatforms=productListingTargetPlatforms(listingTargetScope),retryPlatforms=(Array.isArray(source.batchRetryPlatforms)?source.batchRetryPlatforms:failureRows.map(function(row){return row.platform;})).map(clean).filter(function(platform,index,rows){return targetPlatforms.includes(platform)&&rows.indexOf(platform)===index;});
     return {productId:clean(source.productId||docId),productSku:clean(source.productSku),productName:clean(source.productName),productImageUrl:safeUrl(source.productImageUrl),workflowPurpose:clean(source.workflowPurpose)===PRODUCT_DESCRIPTION_MEDIA_REFRESH_PURPOSE?PRODUCT_DESCRIPTION_MEDIA_REFRESH_PURPOSE:'',listingTargetScope:listingTargetScope,listingTargetPlatforms:targetPlatforms,batchQueueStatus:PRODUCT_LISTING_QUEUE_STATUSES.includes(status)?status:'',batchQueuedAt:source.batchQueuedAt||'',batchQueueUpdatedAt:source.batchQueueUpdatedAt||'',batchQueueError:clean(source.batchQueueError),batchRunId:clean(source.batchRunId),batchPosition:Number(source.batchPosition||0),batchPlatformFailures:failureRows,batchRetryPlatforms:retryPlatforms,batchNextRetryAt:source.batchNextRetryAt||'',batchLastAttemptAt:source.batchLastAttemptAt||'',batchAttemptCount:Math.max(0,Number(source.batchAttemptCount||0))};
   }
+  function normalizeProductMediaQueueRow(raw,docId){
+    const source=raw&&typeof raw==='object'?raw:{},status=clean(source.mediaQueueStatus),kinds=Array.isArray(source.mediaQueueKinds)?source.mediaQueueKinds.map(clean).filter(Boolean):[];
+    return {productId:clean(source.productId||docId),productSku:clean(source.productSku),productName:clean(source.productName),productImageUrl:safeUrl(source.productImageUrl),mediaQueueStatus:PRODUCT_MEDIA_QUEUE_STATUSES.includes(status)?status:'',mediaQueueKinds:Array.from(new Set(kinds)),mediaQueuedAt:source.mediaQueuedAt||'',mediaQueueUpdatedAt:source.mediaQueueUpdatedAt||'',mediaQueueError:clean(source.mediaQueueError),mediaQueueRunId:clean(source.mediaQueueRunId),mediaBatchPosition:Number(source.mediaBatchPosition||0)};
+  }
+  function sortProductMediaQueue(rows){
+    return (rows||[]).slice().sort(function(a,b){const aTime=dateFrom(a.mediaQueuedAt),bTime=dateFrom(b.mediaQueuedAt);return Number(a.mediaBatchPosition||0)-Number(b.mediaBatchPosition||0)||(aTime?aTime.getTime():0)-(bTime?bTime.getTime():0)||clean(a.productSku).localeCompare(clean(b.productSku),'zh-Hant');});
+  }
   function sortProductListingQueue(rows){
     return (rows||[]).slice().sort(function(a,b){const aTime=dateFrom(a.batchQueuedAt),bTime=dateFrom(b.batchQueuedAt);return Number(a.batchPosition||0)-Number(b.batchPosition||0)||(aTime?aTime.getTime():0)-(bTime?bTime.getTime():0)||clean(a.productSku).localeCompare(clean(b.productSku),'zh-Hant');});
   }
   async function loadProductListingQueue(){
     const started=Date.now();
     try{
-      const snapshots=await Promise.all(PRODUCT_LISTING_QUEUE_STATUSES.map(function(status){return state.db.collection(COLLECTIONS.listingCases).where('batchQueueStatus','==',status).limit(1000).get();})),seen=new Map();
+      const results=await Promise.all([
+        Promise.all(PRODUCT_LISTING_QUEUE_STATUSES.map(function(status){return state.db.collection(COLLECTIONS.listingCases).where('batchQueueStatus','==',status).limit(1000).get();})),
+        Promise.all(PRODUCT_MEDIA_QUEUE_STATUSES.map(function(status){return state.db.collection(COLLECTIONS.listingCases).where('mediaQueueStatus','==',status).limit(1000).get();}))
+      ]),snapshots=results[0],mediaSnapshots=results[1],seen=new Map(),mediaSeen=new Map();
       snapshots.forEach(function(snapshot){snapshot.docs.forEach(function(doc){seen.set(doc.id,normalizeProductListingQueueRow(doc.data()||{},doc.id));});});
+      mediaSnapshots.forEach(function(snapshot){snapshot.docs.forEach(function(doc){mediaSeen.set(doc.id,normalizeProductMediaQueueRow(doc.data()||{},doc.id));});});
       state.productListingQueue=sortProductListingQueue(Array.from(seen.values()).filter(function(row){return row.productId&&row.batchQueueStatus;}));
-      state.diagnostics.push({collection:COLLECTIONS.listingCases+'(batch-queue)',ok:true,count:state.productListingQueue.length,ms:Date.now()-started});
-    }catch(error){state.productListingQueue=[];state.diagnostics.push({collection:COLLECTIONS.listingCases+'(batch-queue)',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
+      state.productMediaQueue=sortProductMediaQueue(Array.from(mediaSeen.values()).filter(function(row){return row.productId&&row.mediaQueueStatus;}));
+      state.diagnostics.push({collection:COLLECTIONS.listingCases+'(batch-queue)',ok:true,count:state.productListingQueue.length+state.productMediaQueue.length,ms:Date.now()-started});
+    }catch(error){state.productListingQueue=[];state.productMediaQueue=[];state.diagnostics.push({collection:COLLECTIONS.listingCases+'(batch-queue)',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
   }
 
   async function loadProductsOnly(silent){
@@ -1598,7 +1625,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     }
     if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.detach==='function')global.YouziOperationsCourseInline.detach();
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
-    const renderers={overview:renderOverviewV7,products:renderProducts,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,expenses:renderOperatingExpensesPage,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
+    const renderers={overview:renderOverviewV7,products:renderProducts,media:renderProductMediaWorkspace,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,expenses:renderOperatingExpensesPage,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
     content.innerHTML=(renderers[state.view]||renderOverview)();
     enhanceMobileNumberInputs(content);
     bindViewSpecific();
@@ -2471,8 +2498,9 @@ function renderOverviewV7(){
     const width=Math.max(1,Math.round(sourceWidth)),height=Math.max(1,Math.round(sourceHeight)),canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
     const context=canvas.getContext('2d');if(!context){if(image.close)image.close();throw new Error('瀏覽器無法建立實體圖標示');}
     context.fillStyle='#fff';context.fillRect(0,0,width,height);context.drawImage(image,0,0,width,height);if(image.close)image.close();
-    const labelHeight=Math.max(72,Math.min(Math.round(height*0.13),Math.round(width*0.22))),fontSize=Math.max(34,Math.round(labelHeight*0.5));
-    context.fillStyle='rgba(16,24,40,.78)';context.fillRect(0,height-labelHeight,width,labelHeight);context.fillStyle='#fff';context.textAlign='center';context.textBaseline='middle';context.font='700 '+fontSize+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif';context.fillText('實體圖',width/2,height-labelHeight/2);
+    const watermark='柚子樂器｜實體圖',labelHeight=Math.max(72,Math.min(Math.round(height*0.13),Math.round(width*0.22))),fontSize=Math.max(30,Math.round(labelHeight*0.43)),centerSize=Math.max(34,Math.min(Math.round(width*0.075),Math.round(height*0.075)));
+    context.save();context.translate(width/2,height/2);context.rotate(-Math.PI/12);context.textAlign='center';context.textBaseline='middle';context.font='800 '+centerSize+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif';context.lineWidth=Math.max(3,Math.round(centerSize*0.09));context.strokeStyle='rgba(15,23,42,.86)';context.fillStyle='rgba(255,255,255,.82)';context.strokeText(watermark,0,0);context.fillText(watermark,0,0);context.restore();
+    context.fillStyle='rgba(16,24,40,.84)';context.fillRect(0,height-labelHeight,width,labelHeight);context.fillStyle='#fff';context.textAlign='center';context.textBaseline='middle';context.font='800 '+fontSize+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif';context.fillText(watermark,width/2,height-labelHeight/2);
     return new Promise(function(resolve,reject){canvas.toBlob(function(blob){if(blob)resolve(blob);else reject(new Error('無法產生已標示的實體圖'));},'image/jpeg',0.94);});
   }
   async function uploadPhysicalProductPhoto(productId,file,options){
@@ -2484,19 +2512,20 @@ function renderOverviewV7(){
     if(Number(file.size||0)>15*1024*1024)throw new Error('每張圖片不可超過 15 MB');
     if((product.physicalImageUrls||[]).length>=PRODUCT_PHYSICAL_IMAGE_MAX)throw new Error('這件商品的實體圖已達上限');
     await requireEasyStoreManagerAuth();state.physicalPhotoBusy=true;
-    const status=byId(clean(options.statusElementId)||'physicalPhotoUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner"></span><div><b>正在保存原照並加上「實體圖」標示</b><small>'+escapeHtml(product.sku||product.originalName||product.name)+'</small></div></div>';
+    const status=byId(clean(options.statusElementId)||'physicalPhotoUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner"></span><div><b>正在保存原照並加上「柚子樂器｜實體圖」浮水印</b><small>'+escapeHtml(product.sku||product.originalName||product.name)+'</small></div></div>';
     try{
       const extension=file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg',createdAt=new Date().toISOString(),baseName=Date.now()+'-'+Math.random().toString(36).slice(2,9),originalStoragePath='ops-product-listing-cases/'+id+'/physical/'+baseName+'-original.'+extension,labeledStoragePath='ops-product-listing-cases/'+id+'/physical/'+baseName+'-labeled.jpg',storage=global.firebase.app().storage(),labeledBlob=await physicalPhotoLabeledBlob(file);
       const originalRef=storage.ref().child(originalStoragePath),labeledRef=storage.ref().child(labeledStoragePath);
       const originalSnapshot=await originalRef.put(file,{contentType:file.type,customMetadata:{productId:id,productSku:clean(product.sku),photoType:'physical-original',uploadedBy:userLabel()}}),originalUrl=await originalSnapshot.ref.getDownloadURL();
-      const labeledSnapshot=await labeledRef.put(labeledBlob,{contentType:'image/jpeg',customMetadata:{productId:id,productSku:clean(product.sku),photoType:'physical-labeled',labelText:'實體圖',uploadedBy:userLabel()}}),url=await labeledSnapshot.ref.getDownloadURL(),record={url:url,labeledUrl:url,originalUrl:originalUrl,storagePath:labeledStoragePath,labeledStoragePath:labeledStoragePath,originalStoragePath:originalStoragePath,labelApplied:true,labelText:'實體圖',createdAt:createdAt,createdBy:userLabel(),source:clean(options.source)||'mobile-camera'},fv=fieldValue();
+      const labeledSnapshot=await labeledRef.put(labeledBlob,{contentType:'image/jpeg',customMetadata:{productId:id,productSku:clean(product.sku),photoType:'physical-labeled',labelText:'柚子樂器｜實體圖',uploadedBy:userLabel()}}),url=await labeledSnapshot.ref.getDownloadURL(),record={url:url,labeledUrl:url,originalUrl:originalUrl,storagePath:labeledStoragePath,labeledStoragePath:labeledStoragePath,originalStoragePath:originalStoragePath,labelApplied:true,labelText:'柚子樂器｜實體圖',createdAt:createdAt,createdBy:userLabel(),source:clean(options.source)||'mobile-camera'},fv=fieldValue();
       if(!fv||typeof fv.arrayUnion!=='function')throw new Error('圖片資料庫功能尚未載入');
-      const common={productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),physicalImageUrls:fv.arrayUnion(url),physicalOriginalImageUrls:fv.arrayUnion(originalUrl),physicalImages:fv.arrayUnion(record),physicalImagesUpdatedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
+      const common={productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),productImageUrl:safeUrl(product.imageUrl),physicalImageUrls:fv.arrayUnion(url),physicalOriginalImageUrls:fv.arrayUnion(originalUrl),physicalImages:fv.arrayUnion(record),physicalImagesUpdatedAt:serverTimestamp(),mediaQueueStatus:'queued',mediaQueueKinds:fv.arrayUnion('physical-images'),mediaQueuedAt:serverTimestamp(),mediaQueueUpdatedAt:serverTimestamp(),mediaQueueError:'',mediaQueueRunId:'',mediaBatchPosition:0,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};
       await Promise.all([state.db.collection(COLLECTIONS.listingCases).doc(id).set(common,{merge:true}),state.db.collection(COLLECTIONS.products).doc(id).set({physicalImageUrls:fv.arrayUnion(url),physicalOriginalImageUrls:fv.arrayUnion(originalUrl),physicalImages:fv.arrayUnion(record),physicalImagesUpdatedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true})]);
       product.physicalImageUrls=normalizeProductResearchSourceUrls((product.physicalImageUrls||[]).concat(url)).slice(0,PRODUCT_PHYSICAL_IMAGE_MAX);product.physicalOriginalImageUrls=normalizeProductResearchSourceUrls((product.physicalOriginalImageUrls||[]).concat(originalUrl)).slice(0,PRODUCT_PHYSICAL_IMAGE_MAX);product.physicalImages=(product.physicalImages||[]).concat(record).slice(-PRODUCT_PHYSICAL_IMAGE_MAX);if(product.internal){product.internal.physicalImageUrls=product.physicalImageUrls.slice();product.internal.physicalOriginalImageUrls=product.physicalOriginalImageUrls.slice();product.internal.physicalImages=product.physicalImages.slice();}
+      upsertProductMediaQueueState({productId:id,productSku:product.sku,productName:product.originalName||product.name,productImageUrl:product.imageUrl,mediaQueueStatus:'queued',mediaQueueKinds:['physical-images'],mediaQueuedAt:new Date(),mediaQueueUpdatedAt:new Date()});
       await writeAudit('新增商品實體圖片','product',id,(product.sku||id)+'｜實體圖 '+product.physicalImageUrls.length+' 張');
-      refreshPhysicalProductImageTray(id);const currentStatus=byId(clean(options.statusElementId)||'physicalPhotoUploadStatus');if(currentStatus)currentStatus.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>實體圖已保存</b><small>'+escapeHtml(product.sku||product.originalName||product.name)+'｜原照已保留，顧客版已清楚標示</small></div></div>';
-      toast('實體圖已保存',(product.sku||product.originalName||product.name)+'｜會放在商品詳情，不會取代主圖','success');
+      refreshPhysicalProductImageTray(id);const currentStatus=byId(clean(options.statusElementId)||'physicalPhotoUploadStatus');if(currentStatus)currentStatus.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>實體圖已保存並排入待上架</b><small>'+escapeHtml(product.sku||product.originalName||product.name)+'｜原照已保留，只新增浮水印</small></div></div>';
+      toast('實體圖已保存並排入待上架',(product.sku||product.originalName||product.name)+'｜會放在兩張固定介紹圖之前','success');
       return url;
     }catch(error){throw error;
     }finally{state.physicalPhotoBusy=false;}
@@ -2507,7 +2536,121 @@ function renderOverviewV7(){
     function filteredPayload(snapshot){const raw=snapshot.exists?snapshot.data()||{}:{},records=(Array.isArray(raw.physicalImages)?raw.physicalImages:[]),removed=records.filter(function(row){return safeUrl(row&&[row.url,row.labeledUrl].find(Boolean))===target;}),remaining=records.filter(function(row){return safeUrl(row&&[row.url,row.labeledUrl].find(Boolean))!==target;}),originalsToRemove=removed.map(function(row){return safeUrl(row&&row.originalUrl);}).filter(Boolean);return {payload:{physicalImageUrls:normalizeProductResearchSourceUrls(raw.physicalImageUrls).filter(function(item){return item!==target;}),physicalOriginalImageUrls:normalizeProductResearchSourceUrls(raw.physicalOriginalImageUrls).filter(function(item){return !originalsToRemove.includes(item);}),physicalImages:remaining,physicalImagesUpdatedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},originalsToRemove:originalsToRemove};}
     const caseData=filteredPayload(snapshots[0]),productData=filteredPayload(snapshots[1]);await Promise.all([caseRef.set(caseData.payload,{merge:true}),productRef.set(productData.payload,{merge:true})]);
     product.physicalImageUrls=productData.payload.physicalImageUrls.slice(0,PRODUCT_PHYSICAL_IMAGE_MAX);product.physicalOriginalImageUrls=productData.payload.physicalOriginalImageUrls.slice(0,PRODUCT_PHYSICAL_IMAGE_MAX);product.physicalImages=productData.payload.physicalImages.slice(-PRODUCT_PHYSICAL_IMAGE_MAX);if(product.internal){product.internal.physicalImageUrls=product.physicalImageUrls.slice();product.internal.physicalOriginalImageUrls=product.physicalOriginalImageUrls.slice();product.internal.physicalImages=product.physicalImages.slice();}
-    refreshPhysicalProductImageTray(id);await writeAudit('移除商品實體圖片','product',id,(product.sku||id)+'｜剩餘 '+product.physicalImageUrls.length+' 張');toast('實體圖已移出商品',product.sku||product.originalName||product.name,'success');
+    await queueProductMediaForPublishing(id,['physical-images'],'實體圖已變更');refreshPhysicalProductImageTray(id);await writeAudit('移除商品實體圖片','product',id,(product.sku||id)+'｜剩餘 '+product.physicalImageUrls.length+' 張');toast('實體圖已移出商品',product.sku||product.originalName||product.name,'success');if(state.view==='media')renderKeepingViewport();
+  }
+
+  function productMediaQueueRows(){
+    return sortProductMediaQueue((state.productMediaQueue||[]).filter(function(row){return PRODUCT_MEDIA_QUEUE_STATUSES.includes(clean(row.mediaQueueStatus));}));
+  }
+  function upsertProductMediaQueueState(row){
+    const normalized=normalizeProductMediaQueueRow(row,row&&row.productId),existing=(state.productMediaQueue||[]).find(function(item){return clean(item.productId)===normalized.productId;}),rows=(state.productMediaQueue||[]).filter(function(item){return clean(item.productId)!==normalized.productId;});
+    if(existing)normalized.mediaQueueKinds=Array.from(new Set([].concat(existing.mediaQueueKinds||[],normalized.mediaQueueKinds||[])));
+    if(normalized.mediaQueueStatus)rows.push(normalized);
+    state.productMediaQueue=sortProductMediaQueue(rows);
+  }
+  async function queueProductMediaForPublishing(productId,kinds,reason){
+    const id=clean(productId),product=catalogById(id),validKinds=Array.from(new Set((kinds||[]).map(clean).filter(function(kind){return ['physical-images','product-video'].includes(kind);})));if(!id||!product||!validKinds.length)return;
+    const fv=fieldValue();if(!fv||typeof fv.arrayUnion!=='function')throw new Error('待上架資料庫功能尚未載入');
+    const now=serverTimestamp(),payload={productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),productImageUrl:safeUrl(product.imageUrl),mediaQueueStatus:'queued',mediaQueueKinds:fv.arrayUnion.apply(fv,validKinds),mediaQueuedAt:now,mediaQueueUpdatedAt:now,mediaQueueReason:clean(reason),mediaQueueError:'',mediaQueueRunId:'',mediaBatchPosition:0,updatedAt:now,updatedBy:userLabel(),version:VERSION};
+    await state.db.collection(COLLECTIONS.listingCases).doc(id).set(payload,{merge:true});
+    upsertProductMediaQueueState({productId:id,productSku:product.sku,productName:product.originalName||product.name,productImageUrl:product.imageUrl,mediaQueueStatus:'queued',mediaQueueKinds:validKinds,mediaQueuedAt:new Date(),mediaQueueUpdatedAt:new Date()});
+  }
+  function videoDurationText(seconds){
+    const total=Math.max(0,Math.round(Number(seconds||0))),minutes=Math.floor(total/60),rest=String(total%60).padStart(2,'0');return minutes+':'+rest;
+  }
+  function productVideoYoutubeTitle(product){
+    const name=clean(product&&product.onlineName)||clean(product&&product.originalName)||clean(product&&product.name)||'商品介紹',sku=clean(product&&product.sku),suffix=(sku?'｜商品編號：'+sku:'')+'｜柚子樂器',maximum=Math.max(12,100-suffix.length);return name.slice(0,maximum)+suffix;
+  }
+  function productVideoYoutubeDescription(product){
+    const name=clean(product&&product.onlineName)||clean(product&&product.originalName)||clean(product&&product.name)||'商品介紹',sku=clean(product&&product.sku);return name+'\n'+(sku?'商品編號：'+sku+'\n':'')+'柚子樂器商品實體介紹影片。';
+  }
+  function productVideoTags(product){
+    return Array.from(new Set([clean(product&&product.brand),clean(product&&product.model),clean(product&&product.sku),'柚子樂器','樂器介紹'].filter(Boolean))).slice(0,12);
+  }
+  function readProductVideoMetadata(file){
+    return new Promise(function(resolve){
+      const url=URL.createObjectURL(file),video=document.createElement('video'),finish=function(duration){URL.revokeObjectURL(url);resolve({durationSeconds:Number.isFinite(duration)?Math.max(0,duration):0});};let settled=false;
+      const done=function(duration){if(settled)return;settled=true;finish(duration);};video.preload='metadata';video.onloadedmetadata=function(){done(Number(video.duration||0));};video.onerror=function(){done(0);};video.src=url;setTimeout(function(){done(0);},12000);
+    });
+  }
+  function uploadProductVideoFile(storageRef,file,metadata,statusElement,product){
+    return new Promise(function(resolve,reject){
+      const task=storageRef.put(file,metadata);task.on('state_changed',function(snapshot){if(!statusElement)return;const total=Math.max(1,Number(snapshot.totalBytes||file.size||1)),percent=Math.max(1,Math.min(99,Math.round(Number(snapshot.bytesTransferred||0)/total*100)));statusElement.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner"></span><div><b>影片上傳中 '+percent+'%</b><small>'+escapeHtml(product.sku||product.originalName||product.name)+'</small></div></div>';},reject,function(){resolve(task.snapshot);});
+    });
+  }
+  async function uploadProductVideo(productId,file,options){
+    options=options||{};
+    const id=clean(productId),product=catalogById(id);if(!id||!product||!file)throw new Error('找不到要保存的商品或影片');
+    if(state.productVideoBusy)throw new Error('上一段影片仍在上傳中');
+    if(!global.firebase||!global.firebase.storage)throw new Error('影片上傳服務尚未載入，請重新整理頁面。');
+    const contentType=clean(file.type)||'video/mp4';if(!/^video\//i.test(contentType))throw new Error('請選擇 MP4、MOV 或 WebM 影片');
+    if(Number(file.size||0)>PRODUCT_VIDEO_MAX_BYTES)throw new Error('每段原始影片不可超過 512 MB');
+    if((product.productVideos||[]).length>=PRODUCT_VIDEO_MAX)throw new Error('這件商品已保留 '+PRODUCT_VIDEO_MAX+' 段影片，請先移除不用的影片');
+    await requireEasyStoreManagerAuth();state.productVideoBusy=true;
+    const status=byId(clean(options.statusElementId)||'productVideoUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner"></span><div><b>正在讀取影片並準備保存</b><small>'+escapeHtml(product.sku||product.originalName||product.name)+'</small></div></div>';
+    try{
+      const metadata=await readProductVideoMetadata(file),nameExtension=(clean(file.name).match(/\.([a-z0-9]{2,5})$/i)||[])[1],extension=lower(nameExtension)||(contentType==='video/quicktime'?'mov':contentType==='video/webm'?'webm':'mp4'),baseName=Date.now()+'-'+Math.random().toString(36).slice(2,9),storagePath='ops-product-listing-cases/'+id+'/video/'+baseName+'-original.'+extension,storage=global.firebase.app().storage(),storageRef=storage.ref().child(storagePath),snapshot=await uploadProductVideoFile(storageRef,file,{contentType:contentType,customMetadata:{productId:id,productSku:clean(product.sku),videoType:'product-original',uploadedBy:userLabel()}},status,product),url=await snapshot.ref.getDownloadURL(),duration=Math.max(0,Number(metadata.durationSeconds||0)),createdAt=new Date().toISOString(),record={url:url,originalUrl:url,storagePath:storagePath,fileName:clean(file.name),contentType:contentType,sizeBytes:Number(file.size||0),durationSeconds:duration,youtubeTitle:productVideoYoutubeTitle(product),youtubeDescription:productVideoYoutubeDescription(product),youtubeVisibility:'public',youtubeAudience:'not-made-for-kids',youtubeLanguage:'zh-TW',youtubeTags:productVideoTags(product),youtubeStatus:'pending',youtubeUrl:'',shopeeClipSelectionMode:duration>59?'auto-best-segment':'full',shopeeClipStartSeconds:0,shopeeClipDurationSeconds:duration?Math.min(59,Math.max(1,Math.floor(duration))):59,shopeeVideoStatus:'pending',createdAt:createdAt,createdBy:userLabel()},fv=fieldValue();
+      if(!fv||typeof fv.arrayUnion!=='function')throw new Error('影片資料庫功能尚未載入');
+      const now=serverTimestamp(),casePayload={productId:id,productSku:clean(product.sku),productName:clean(product.originalName||product.name),productImageUrl:safeUrl(product.imageUrl),productVideoUrls:fv.arrayUnion(url),productVideos:fv.arrayUnion(record),productVideosUpdatedAt:now,mediaQueueStatus:'queued',mediaQueueKinds:fv.arrayUnion('product-video'),mediaQueuedAt:now,mediaQueueUpdatedAt:now,mediaQueueError:'',mediaQueueRunId:'',mediaBatchPosition:0,updatedAt:now,updatedBy:userLabel(),version:VERSION},productPayload={productVideoUrls:fv.arrayUnion(url),productVideos:fv.arrayUnion(record),productVideosUpdatedAt:now,updatedAt:now,updatedBy:userLabel(),version:VERSION};
+      await Promise.all([state.db.collection(COLLECTIONS.listingCases).doc(id).set(casePayload,{merge:true}),state.db.collection(COLLECTIONS.products).doc(id).set(productPayload,{merge:true})]);
+      product.productVideoUrls=normalizeProductResearchSourceUrls((product.productVideoUrls||[]).concat(url)).slice(0,PRODUCT_VIDEO_MAX);product.productVideos=normalizeProductVideoRecords((product.productVideos||[]).concat(record));if(product.internal){product.internal.productVideoUrls=product.productVideoUrls.slice();product.internal.productVideos=product.productVideos.slice();}
+      upsertProductMediaQueueState({productId:id,productSku:product.sku,productName:product.originalName||product.name,productImageUrl:product.imageUrl,mediaQueueStatus:'queued',mediaQueueKinds:['product-video'],mediaQueuedAt:new Date(),mediaQueueUpdatedAt:new Date()});
+      await writeAudit('新增商品介紹影片','product',id,(product.sku||id)+'｜'+videoDurationText(duration)+'｜原始影片已保存');
+      const currentStatus=byId(clean(options.statusElementId)||'productVideoUploadStatus');if(currentStatus)currentStatus.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>影片已保存並排入待上架</b><small>YouTube 使用完整影片；蝦皮會自動製作最多 59 秒版本。</small></div></div>';
+      toast('影片已保存並排入待上架',(product.sku||product.originalName||product.name)+'｜YouTube 完整版＋蝦皮 59 秒版','success');return url;
+    }finally{state.productVideoBusy=false;}
+  }
+  async function removeProductVideo(productId,url){
+    const id=clean(productId),target=safeUrl(url),product=catalogById(id);if(!id||!target||!product)throw new Error('找不到要移除的影片');
+    await requireEasyStoreManagerAuth();const caseRef=state.db.collection(COLLECTIONS.listingCases).doc(id),productRef=state.db.collection(COLLECTIONS.products).doc(id),snapshots=await Promise.all([caseRef.get(),productRef.get()]);
+    function filtered(snapshot){const raw=snapshot.exists?snapshot.data()||{}:{},videos=normalizeProductVideoRecords(raw.productVideos).filter(function(row){return row.url!==target;});return {productVideoUrls:normalizeProductResearchSourceUrls(raw.productVideoUrls).filter(function(item){return item!==target;}).slice(0,PRODUCT_VIDEO_MAX),productVideos:videos,productVideosUpdatedAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION};}
+    const casePayload=filtered(snapshots[0]),productPayload=filtered(snapshots[1]);await Promise.all([caseRef.set(casePayload,{merge:true}),productRef.set(productPayload,{merge:true})]);
+    product.productVideoUrls=productPayload.productVideoUrls.slice();product.productVideos=productPayload.productVideos.slice();if(product.internal){product.internal.productVideoUrls=product.productVideoUrls.slice();product.internal.productVideos=product.productVideos.slice();}
+    await queueProductMediaForPublishing(id,['product-video'],'影片已變更');await writeAudit('移除商品介紹影片','product',id,product.sku||id);toast('影片已移出商品',product.sku||product.originalName||product.name,'success');if(state.view==='media')renderKeepingViewport();
+  }
+  function productHasAnyPlatformListing(product){
+    return !!(product&&PRODUCT_LISTING_PLATFORMS.some(function(platform){const row=product.platformListingStatus&&product.platformListingStatus[platform.key]||{},mapping=product.platformMappings&&product.platformMappings[platform.key];return ['active','mapped','draft','pending-review','inactive'].includes(clean(row.status))||clean(row.listingId)||clean(mapping&&typeof mapping==='object'?(mapping.listingId||mapping.id||mapping.externalId):mapping);}));
+  }
+  function productMediaKindLabel(kind){return kind==='product-video'?'介紹影片':'實體圖';}
+  function productMediaQueueStatusLabel(row,product){
+    if(row.mediaQueueStatus==='processing')return '已帶入 Codex';
+    if(row.mediaQueueStatus==='failed')return '需要重試';
+    if(row.mediaQueueStatus==='waiting-listing'||!productHasAnyPlatformListing(product))return '等商品上架';
+    return '等待處理';
+  }
+  function productVideoTrayHtml(product){
+    const rows=normalizeProductVideoRecords(product&&product.productVideos);if(!rows.length)return '<div class="ops-media-empty-mini">尚未加入影片</div>';
+    return '<div class="ops-media-video-grid">'+rows.map(function(row,index){return '<article class="ops-media-video-card"><video controls preload="metadata" src="'+attr(row.url)+'"></video><div><b>介紹影片 '+(index+1)+'</b><small>'+(row.durationSeconds?videoDurationText(row.durationSeconds):'長度待讀取')+'｜YouTube 完整版｜蝦皮 '+(row.durationSeconds&&row.durationSeconds<=59?'使用原片':'自動挑選 59 秒')+'</small><strong>'+escapeHtml(row.youtubeTitle||productVideoYoutubeTitle(product))+'</strong></div><button type="button" data-action="product-video-remove" data-id="'+attr(product.docId)+'" data-url="'+attr(row.url)+'" aria-label="移除影片">×</button></article>';}).join('')+'</div>';
+  }
+  function productMediaSearchResultsHtml(){
+    const term=lower(state.mediaSearch);if(!term)return '<div class="ops-media-search-hint">輸入商品編號或名稱，例如型號、品牌或內部 SKU。</div>';
+    const rows=state.catalog.filter(function(product){return matchesSearch([product.sku,formatLabelSku(product.sku),product.originalName,product.onlineName,product.name,product.brand,product.model],term);}).slice(0,12);
+    if(!rows.length)return '<div class="ops-media-search-hint warning">找不到商品，請確認編號或改用名稱搜尋。</div>';
+    return '<div class="ops-media-search-results">'+rows.map(function(product){return '<button type="button" data-action="product-media-select" data-id="'+attr(product.docId)+'">'+(product.imageUrl?'<img src="'+attr(product.imageUrl)+'" alt="">':'<span class="ops-media-search-no-image">無圖</span>')+'<span><b>'+escapeHtml(product.originalName||product.name)+'</b><small>商品編號 '+escapeHtml(product.sku||'未設定')+(product.onlineName?'｜網路：'+escapeHtml(product.onlineName):'')+'</small></span><i>選擇</i></button>';}).join('')+'</div>';
+  }
+  function selectedProductMediaHtml(product){
+    if(!product)return '<div class="ops-media-select-empty"><span>1</span><div><b>先搜尋並選擇商品</b><small>選好後，就可以直接拍實體圖、錄影或從手機相簿選檔。</small></div></div>';
+    const photoCount=(product.physicalImageUrls||[]).length,videoCount=(product.productVideos||[]).length,photoFull=photoCount>=PRODUCT_PHYSICAL_IMAGE_MAX,videoFull=videoCount>=PRODUCT_VIDEO_MAX,listingReady=productHasAnyPlatformListing(product);
+    return '<section class="ops-media-selected"><header>'+(product.imageUrl?'<img src="'+attr(product.imageUrl)+'" alt="">':'<span class="ops-media-product-no-image">無圖</span>')+'<div><span class="ops-media-selected-label">已選商品</span><h2>'+escapeHtml(product.originalName||product.name)+'</h2><p>商品編號 '+escapeHtml(product.sku||'未設定')+'｜實體圖 '+photoCount+' 張｜影片 '+videoCount+' 段</p></div><button type="button" class="ops-button ghost small" data-action="product-media-clear">更換商品</button></header><div class="ops-media-listing-state '+(listingReady?'ready':'waiting')+'"><b>'+(listingReady?'可更新既有平台商品':'商品尚未完成通路上架')+'</b><span>'+(listingReady?'上傳後會直接排入實體圖與影片待上架。':'仍會先排入待上架；YouTube 可先處理，各通路連結等商品上架後補入。')+'</span></div>'
+      +'<div class="ops-media-upload-grid"><article class="ops-media-upload-card"><div class="ops-media-upload-heading"><span>1</span><div><h3>實體圖</h3><p>原照保留，只加「柚子樂器｜實體圖」浮水印；拍幾張就上幾張。</p></div></div><div class="ops-media-upload-actions"><label class="ops-button primary '+(photoFull?'disabled':'')+'">'+(photoFull?'實體圖已滿':'<input id="mediaPhysicalCamera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>直接拍照')+'</label><label class="ops-button soft '+(photoFull?'disabled':'')+'">'+(photoFull?'最多 '+PRODUCT_PHYSICAL_IMAGE_MAX+' 張':'<input id="mediaPhysicalImageUpload" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>從相簿選照片')+'</label></div><div id="mediaPhysicalUploadStatus" aria-live="polite"></div>'+physicalProductImageTrayHtml(product.physicalImageUrls,product.docId)+'</article>'
+      +'<article class="ops-media-upload-card"><div class="ops-media-upload-heading"><span>2</span><div><h3>介紹影片</h3><p>YouTube 使用完整影片；蝦皮超過 59 秒時，自動挑選完整好懂的一段。</p></div></div><div class="ops-media-upload-actions"><label class="ops-button primary '+(videoFull?'disabled':'')+'">'+(videoFull?'影片已滿':'<input id="mediaVideoCamera" type="file" accept="video/mp4,video/quicktime,video/webm" capture="environment" hidden>直接錄影')+'</label><label class="ops-button soft '+(videoFull?'disabled':'')+'">'+(videoFull?'最多 '+PRODUCT_VIDEO_MAX+' 段':'<input id="mediaVideoUpload" type="file" accept="video/mp4,video/quicktime,video/webm" hidden>選擇影片')+'</label></div><div id="productVideoUploadStatus" aria-live="polite"></div>'+productVideoTrayHtml(product)+'</article></div>'
+      +'<div class="ops-media-placement-rule"><b>固定上架位置</b><span>一般商品介紹圖 → 全部實體圖 → 實體商品說明 → 出貨與保固說明 → 固定介紹圖一 → 固定介紹圖二。實體圖不會取代主圖。</span></div></section>';
+  }
+  function productMediaQueueHtml(){
+    const rows=productMediaQueueRows();if(!rows.length)return '<section class="ops-card ops-media-queue-card"><div class="ops-media-queue-head"><div><span>待上架</span><h2>目前沒有待處理商品</h2><p>照片或影片保存成功後，會自動出現在這裡。</p></div></div></section>';
+    return '<section class="ops-card ops-media-queue-card"><div class="ops-media-queue-head"><div><span>待上架</span><h2>'+rows.length+' 件實體圖與影片</h2><p>按一次後會依序處理 YouTube、官網、MOMO、酷澎與蝦皮。</p></div><button type="button" class="ops-button primary" data-action="product-media-queue-start">一鍵執行全部</button></div><div class="ops-media-queue-list">'+rows.map(function(row,index){const product=catalogById(row.productId),image=safeUrl(row.productImageUrl||(product&&product.imageUrl)),name=clean(row.productName||(product&&(product.originalName||product.name)))||'未命名商品',sku=clean(row.productSku||(product&&product.sku))||'未設定',kinds=(row.mediaQueueKinds||[]).map(productMediaKindLabel),status=productMediaQueueStatusLabel(row,product);return '<article><span class="ops-media-queue-index">'+(index+1)+'</span>'+(image?'<img src="'+attr(image)+'" alt="">':'<span class="ops-media-queue-no-image">無圖</span>')+'<div class="ops-media-queue-copy"><b>'+escapeHtml(name)+'</b><small>商品編號 '+escapeHtml(sku)+'｜'+escapeHtml(kinds.join('＋')||'媒體更新')+'</small>'+(row.mediaQueueError?'<em>'+escapeHtml(row.mediaQueueError)+'</em>':'')+'</div><span class="ops-media-queue-status '+attr(row.mediaQueueStatus)+'">'+escapeHtml(status)+'</span><div class="ops-media-queue-actions"><button type="button" class="ops-button ghost small" data-action="product-media-select" data-id="'+attr(row.productId)+'">查看</button><button type="button" class="ops-button soft small" data-action="product-media-queue-start" data-id="'+attr(row.productId)+'">執行這件</button><button type="button" class="ops-button ghost small" data-action="product-media-queue-remove" data-id="'+attr(row.productId)+'">移除</button></div></article>';}).join('')+'</div><div id="productMediaQueueStatus" aria-live="polite"></div></section>';
+  }
+  function renderProductMediaWorkspace(){
+    const product=catalogById(state.mediaSelectedProductId);return '<div class="ops-media-workspace"><section class="ops-card ops-media-entry"><div class="ops-media-hero"><div><span class="ops-media-eyebrow">快速補上商品實拍內容</span><h2>實體圖與影片上傳</h2><p>用商品編號或名稱找到商品，直接拍攝或選檔；保存後自動進入右邊的待上架清單。</p></div><div class="ops-media-flow"><span><b>1</b>找商品</span><i>→</i><span><b>2</b>拍照／錄影</span><i>→</i><span><b>3</b>一鍵上架</span></div></div><div class="ops-media-search"><label for="mediaSearch">商品編號或商品名稱</label><div><input class="ops-input" id="mediaSearch" type="search" inputmode="search" autocomplete="off" enterkeyhint="search" placeholder="輸入 SKU、型號、品牌或商品名稱" value="'+attr(state.mediaSearch)+'">'+(product?'<button type="button" class="ops-button ghost" data-action="product-media-clear">清除</button>':'')+'</div>'+productMediaSearchResultsHtml()+'</div>'+selectedProductMediaHtml(product)+'</section>'+productMediaQueueHtml()+'</div>';
+  }
+  async function removeProductMediaFromQueue(productId){
+    const id=clean(productId),row=productMediaQueueRows().find(function(item){return item.productId===id;});if(!id||!row)return;await requireEasyStoreManagerAuth();await state.db.collection(COLLECTIONS.listingCases).doc(id).set({mediaQueueStatus:'',mediaQueueKinds:[],mediaQueueUpdatedAt:serverTimestamp(),mediaQueueError:'',mediaQueueRunId:'',mediaBatchPosition:0,updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});state.productMediaQueue=(state.productMediaQueue||[]).filter(function(item){return item.productId!==id;});renderKeepingViewport();toast('已從實體圖與影片待上架移除',row.productSku||row.productName,'success');
+  }
+  function productMediaBatchPrompt(rows,runId){
+    return ['[商品實體圖與影片待上架]','批次編號：'+runId,'請在同一個 Codex 對話中依下列順序處理：',rows.map(function(row,index){return (index+1)+'. opsProductListingCases/'+row.productId+'｜'+clean(row.productSku)+'｜'+clean(row.productName)+'｜內容：'+(row.mediaQueueKinds||[]).map(productMediaKindLabel).join('＋');}).join('\n'),'固定流程：先讀取案件中所有 physicalImageUrls 與 productVideos。實體圖不得再修圖、裁切、去背或換背景；使用已加上「柚子樂器｜實體圖」浮水印的顧客版，有幾張就上幾張，固定插在一般商品介紹圖之後、兩段固定說明與最後兩張固定介紹圖之前，不得當主圖或輪播圖。','每段原始影片先上傳至已登入的「柚子樂器-附設Yamaha音樂教室」YouTube 頻道並設為公開；沿用案件保存的 youtubeTitle、youtubeDescription、youtubeTags、zh-TW 與非兒童內容設定。YouTube 使用完整原片，不限制 59 秒。取得分享網址後填回案件，並貼入同一商品的 EasyStore 官網、MOMO 與酷澎影片欄位。','蝦皮使用直接上傳的 MP4。原片不超過 59 秒就使用完整影片；超過 59 秒時先理解影片內容，挑選最完整、清楚、連貫的 59 秒片段，輸出 H.264/AAC MP4 且不超過 30 MB，再上傳至同一商品。不得為了長度修改 YouTube 完整版。','如果某通路商品尚未建立，不得建立重複商品：YouTube 可先完成，缺少商品的通路保留 mediaQueueStatus=waiting-listing，待商品上架後再補連結。每件全部可處理項目完成後設 mediaQueueStatus=completed 並記錄 YouTube URL、各平台結果與完成時間；失敗時設 failed 並寫清楚平台與原因，繼續下一件。','按下「一鍵執行」已授權依序執行這份批次，不需再詢問例行確認。'].join('\n');
+  }
+  async function startProductMediaQueue(productId){
+    let rows=productMediaQueueRows().filter(function(row){return row.mediaQueueStatus!=='processing'&&(!productId||row.productId===clean(productId));});if(!rows.length)throw new Error('目前沒有可執行的實體圖或影片');if(rows.length>30)throw new Error('一次最多處理 30 件，請分批執行');await requireEasyStoreManagerAuth();const runId='media-batch-'+Date.now().toString(36),batch=state.db.batch(),serverTime=serverTimestamp();rows.forEach(function(row,index){batch.set(state.db.collection(COLLECTIONS.listingCases).doc(row.productId),{mediaQueueStatus:'processing',mediaQueueRunId:runId,mediaBatchPosition:index+1,mediaQueueError:'',mediaQueueUpdatedAt:serverTime,updatedAt:serverTime,updatedBy:userLabel(),version:VERSION},{merge:true});});await batch.commit();rows=rows.map(function(row,index){return Object.assign({},row,{mediaQueueStatus:'processing',mediaQueueRunId:runId,mediaBatchPosition:index+1,mediaQueueUpdatedAt:new Date()});});rows.forEach(upsertProductMediaQueueState);const prompt=productMediaBatchPrompt(rows,runId),threadUrl=productListingCodexThreadUrl(prompt),copied=await copyProductListingCodexPrompt(prompt),status=byId('productMediaQueueStatus');if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>已帶入 '+rows.length+' 件商品</b><small>Codex 會依順序處理'+(copied?'；批次內容也已複製':'')+'。</small></div></div>';await writeAudit('實體圖與影片批次交給 Codex','productMediaBatch',runId,rows.map(function(row){return row.productSku||row.productId;}).join('、'));global.setTimeout(function(){global.location.href=threadUrl;},100);
   }
 
   function productListingQueueRows(){
@@ -5123,7 +5266,7 @@ function ensureSalesClock(){
     return {
       productId:clean(product&&product.docId),sku:clean(source.productSku||product&&product.sku),name:clean(source.productName||product&&product.originalName||product&&product.name),
       sourceProductDescription:clean(source.sourceProductDescription),researchInstructions:clean(source.researchInstructions),productResearchSourceUrls:normalizeProductResearchSourceUrls(source.productResearchSourceUrls),referenceUrls:normalizeProductResearchSourceUrls(source.referenceUrls),imageGenerationInstructions:clean(source.imageGenerationInstructions),
-      referenceImageUrls:media.sourceLineageImageUrls.slice(0,PRODUCT_REFERENCE_IMAGE_MAX),selectedReferenceImageUrls:media.sourceImageUrls.slice(),gallerySourceImageUrls:media.gallerySourceImageUrls.slice(),generatedListingImages:normalizeGeneratedListingImages(source.generatedListingImages),listingImageUrls:media.completedImageUrls.slice(),physicalImageUrls:normalized.physicalImageUrls.slice(),physicalOriginalImageUrls:normalized.physicalOriginalImageUrls.slice(),physicalImages:normalized.physicalImages.slice(-PRODUCT_PHYSICAL_IMAGE_MAX),physicalImagePolicy:{preserveOriginal:true,customerFacingDerivative:'label-only',labelText:'實體圖',aiEditingForbidden:true,placement:'description-only-after-completed-images-before-final-disclaimer',neverUseAsMainImage:true},imageRoleAssignments:media.readyImageRows.map(function(row){return {sourceImageUrl:row.sourceImageUrl,url:row.url,roles:row.roles.slice(),assetFlags:Object.assign({},row.assetFlags)};}),sourceImageRetention:media.sourceImageRetention,
+      referenceImageUrls:media.sourceLineageImageUrls.slice(0,PRODUCT_REFERENCE_IMAGE_MAX),selectedReferenceImageUrls:media.sourceImageUrls.slice(),gallerySourceImageUrls:media.gallerySourceImageUrls.slice(),generatedListingImages:normalizeGeneratedListingImages(source.generatedListingImages),listingImageUrls:media.completedImageUrls.slice(),physicalImageUrls:normalized.physicalImageUrls.slice(),physicalOriginalImageUrls:normalized.physicalOriginalImageUrls.slice(),physicalImages:normalized.physicalImages.slice(-PRODUCT_PHYSICAL_IMAGE_MAX),physicalImagePolicy:{preserveOriginal:true,customerFacingDerivative:'watermark-only',labelText:'柚子樂器｜實體圖',aiEditingForbidden:true,placement:'description-after-completed-images-before-fixed-notices-and-final-promos',neverUseAsMainImage:true},imageRoleAssignments:media.readyImageRows.map(function(row){return {sourceImageUrl:row.sourceImageUrl,url:row.url,roles:row.roles.slice(),assetFlags:Object.assign({},row.assetFlags)};}),sourceImageRetention:media.sourceImageRetention,
       brand:normalized.brand,model:normalized.model,barcode:normalized.barcode,material:normalized.material,color:normalized.color,countryOfOrigin:normalized.countryOfOrigin,productDescription:normalized.productDescription,productDescriptionStatus:descriptionStatus,richContentStandard:productRichContentLifecycle(normalized.listingIntent,normalized.productDescription),specificationText:normalized.specificationText,includedItems:normalized.includedItems,
       listingIntent:normalized.listingIntent,listingIntentPolicy:normalized.listingIntentPolicy,listingChangeInstructions:normalized.listingChangeInstructions,listingMode:normalized.listingMode,variantParentProductId:normalized.variantParentProductId,variantAttributeName:normalized.variantAttributeName,variantParentAttributeValue:normalized.variantParentAttributeValue,variantAttributeValue:normalized.variantAttributeValue,variantGroupEnabled:normalized.variantGroupEnabled,variantGroupAttributeName:normalized.variantGroupAttributeName,variantGroupPrimaryValue:normalized.variantGroupPrimaryValue,
       shopeeCategoryPath:normalized.shopeeCategoryPath,shopeeAttributeValues:normalized.shopeeAttributeValues,momoCategoryCode:normalized.momoCategoryCode,coupangCategoryCode:normalized.coupangCategoryCode,
@@ -5202,7 +5345,7 @@ function ensureSalesClock(){
     return {
       version:2,mode:'deterministic-workflow-with-structured-judgment',immutableForJob:true,
       deterministicSteps:['freeze-case-input','validate-completed-image-lineage','sync-central-clean-images','prepare-platform-field-plan-once','run-momo-coupang-easystore-roots','run-shopee-after-easystore','verify-each-platform-once','cleanup-source-binaries-after-all-verification'],
-      automaticFields:{priceFallbackOrder:['platform-price','shared-online-price','online-price','store-price'],warrantyDays:180,publishImmediately:true,momoThirdPartyLocationCode:'000001',centralImageRole:'cleanMain',easyStoreFirstImageRole:'storefrontPortrait',shopeeFirstImageRole:'brandedHero',coupangFirstImageRole:'cleanMain',momoFirstImageRole:'cleanMain',singleGreenBrandTemplatePerPlatformGallery:true,brandHeaderHeightRatio:1/9,brandLogoOverlap:'approved-large-overlap-version',brandLogoLayer:'topmost',brandBorderLayer:'below-logo',brandBorderMayNotCrossLogo:true,brandOuterBorder:'continuous-thin-rounded-green-outline',brandStyleCatalogVersion:PRODUCT_BRAND_TEMPLATE_CONTRACT.creativeStyleSystem.version,brandStyleRenderProofRequired:true,brandStyleSelection:'random-without-replacement-until-all-50-used',sameBrandStyleAcrossAspectRatiosAndVariants:true,easyStoreTaxable:false,easyStoreCompareAtMarkupPercent:35,easyStoreBarcodeOptional:true,easyStoreFeatureBulletMinChars:24,easyStoreFeatureBulletMaxChars:30,coupangAttributeNameMaxChars:25,coupangExcludedRedundantAttributes:['Parent Manufacturer Part Number','Manufacturer Part Number'],coupangContentType:'HTML',coupangContentDetailType:'TEXT',coupangContentDetailMustRemainNonEmpty:true,physicalImageTransform:'label-only-with-original-retained',physicalImagePlacement:'description-only-after-completed-images-before-fixed-notices-and-final-promos',descriptionRuleScope:'shared-content',easyStoreShopeeRuleScope:'EasyStore/Shopee',retryPolicy:'same-sku-same-draft-same-stage-only',routineConfirmation:'already-authorized-by-handoff'},
+      automaticFields:{priceFallbackOrder:['platform-price','shared-online-price','online-price','store-price'],warrantyDays:180,publishImmediately:true,momoThirdPartyLocationCode:'000001',centralImageRole:'cleanMain',easyStoreFirstImageRole:'storefrontPortrait',shopeeFirstImageRole:'brandedHero',coupangFirstImageRole:'cleanMain',momoFirstImageRole:'cleanMain',singleGreenBrandTemplatePerPlatformGallery:true,brandHeaderHeightRatio:1/9,brandLogoOverlap:'approved-large-overlap-version',brandLogoLayer:'topmost',brandBorderLayer:'below-logo',brandBorderMayNotCrossLogo:true,brandOuterBorder:'continuous-thin-rounded-green-outline',brandStyleCatalogVersion:PRODUCT_BRAND_TEMPLATE_CONTRACT.creativeStyleSystem.version,brandStyleRenderProofRequired:true,brandStyleSelection:'random-without-replacement-until-all-50-used',sameBrandStyleAcrossAspectRatiosAndVariants:true,easyStoreTaxable:false,easyStoreCompareAtMarkupPercent:35,easyStoreBarcodeOptional:true,easyStoreFeatureBulletMinChars:24,easyStoreFeatureBulletMaxChars:30,coupangAttributeNameMaxChars:25,coupangExcludedRedundantAttributes:['Parent Manufacturer Part Number','Manufacturer Part Number'],coupangContentType:'HTML',coupangContentDetailType:'TEXT',coupangContentDetailMustRemainNonEmpty:true,physicalImageTransform:'watermark-only-with-original-retained',physicalImageWatermark:'柚子樂器｜實體圖',physicalImagePlacement:'description-only-after-completed-images-before-fixed-notices-and-final-promos',descriptionRuleScope:'shared-content',easyStoreShopeeRuleScope:'EasyStore/Shopee',retryPolicy:'same-sku-same-draft-same-stage-only',routineConfirmation:'already-authorized-by-handoff'},
       judgmentFields:{listingContentMutation:{resolver:'selected-listing-intent',required:true,intents:['create-single','create-group','merge-existing','add-variant','update-existing'],mergeExistingRule:'reuse-listed-primary-and-attach-selected-variants-with-independent-stock',addVariantRule:'preserve-existing-and-merge-new-variant-content',updateExistingRule:'replace-only-requested-outdated-content-on-exact-sku-and-platform-id',neverCreateDuplicate:true},imageLocalization:{resolver:'codex-vision',required:true,output:['sourceImageUrl','url','roles','assetFlags'],ordinaryDetailMode:'text-localization-only',appliesToRoles:['localizedDetail','specification','variantRepresentative'],excludesRoles:['cleanMain','brandedHero','storefrontPortrait'],preserveExactly:['product','layout','composition','background','crop','aspect-ratio','colors','icons','information-hierarchy','text-position','typography-style'],allowedMutations:['simplified-to-traditional-chinese','remove-third-party-watermark-or-outbound-seller-information','remove-entire-truncated-text-block-or-retype-only-verified-complete-copy','format-normalization-without-recomposition'],forbiddenMutations:['redesign','recompose','change-background','change-product','add-marketing-copy','invent-feature','reorder-information','crop-product'],textReplacementMethod:'ocr-recognize-erase-original-text-and-retype-with-real-traditional-chinese-font',handDrawnOrPaintedGlyphsForbidden:true,preserveOriginalTypographyCharacterWhenPossible:true,blurryTinyOrIncompleteSourceAction:'find-clearer-complete-source-or-skip',blurrySourceUpscalingForbidden:true,newMarketingCopyForbidden:true,unchangedWhenNoSimplifiedTextOrForbiddenMarks:true,failClosedWhenPixelPreservationCannotBeVerified:true},heroSourceSelection:{resolver:'codex-vision',required:true,allowedRoles:['cleanMain','brandedHero','storefrontPortrait']},verifiedProductContent:{resolver:'codex-evidence',required:true,standardVersion:PRODUCT_RICH_CONTENT_STANDARD_VERSION,output:['title','description','brand','model','verified-features','verified-usage','verified-specifications','fieldEvidence'],requiredDescriptionSections:['商品特色','使用方式／適用情境','商品規格'],featureTarget:PRODUCT_RICH_CONTENT_FEATURE_TARGET,usageTarget:PRODUCT_RICH_CONTENT_USAGE_TARGET,requireExactModelOrBarcodeEvidence:true,fillEveryVerifiableAttribute:true,neverInventToReachTarget:true,forbidStoreNameInTitleAndCopy:true,fixedDescriptionNoticesBeforeFinalPromos:[PRODUCT_PHYSICAL_PRODUCT_DISCLAIMER,PRODUCT_WARRANTY_SUPPORT_NOTICE],newProductRule:'complete-before-first-publish',existingProductRule:'upgrade-in-place-and-preserve-listing-identity',genericFallbackIsIncomplete:true,writeBackToEveryCaseBeforePreparedSnapshot:true},categoryAndAttributes:{resolver:'canonical-category-once-then-platform-mapping',required:true,scope:'musical-instruments-and-accessories-only',canonicalDecision:canonicalCategoryDecision||{},neverReclassifyInsideEachPlatform:true},variantNames:{resolver:'manager-value-first-then-codex',requiredWhen:'variant-group',neverOverrideManagerValue:true},shippingByDimensions:{resolver:'deterministic-once-before-platform-when-dimensions-known',mapPreparedDecisionToEveryPlatform:true,neverRejudgeInsideEachPlatform:true,requireEvidenceForOversizeDecision:true}},
       forbiddenJudgment:['invent-certification','invent-brand-or-model','invent-feature-or-accessory','change-sku-set','change-platform-order','create-replacement-on-retry','request-routine-second-confirmation'],
       unresolvedAction:'stop-before-platform-navigation-with-exact-field-reason'
@@ -5287,7 +5430,7 @@ function ensureSalesClock(){
       '[程式化與判斷邊界]',
       'preflightSnapshot.decisionContract 是唯一執行契約。deterministicSteps 與 automaticFields 全部由程式直接完成，不得在每一件商品重新思考；只有 judgmentFields 可以由 Codex 依案件證據判斷，且必須輸出契約指定的結構化欄位。管理者已填的細項名稱優先，不得覆寫。任何 judgmentFields 無法可靠判定時，必須在進入平台前以精確欄位與原因停止，不得猜測、不得改走舊流程。',
       '[實體圖固定規則]',
-      'preparedCase.physicalOriginalImageUrls 是永遠保留的原始照片；physicalImageUrls 是系統只加上清楚「實體圖」三字的顧客版。實體圖不得交給圖片模型、不得去背、美化、換背景、改色、修字或加入其他文案，也不得計入來源圖、完成圖角色、首圖或平台商品輪播圖。',
+      'preparedCase.physicalOriginalImageUrls 是永遠保留的原始照片；physicalImageUrls 是系統只加上清楚「柚子樂器｜實體圖」浮水印的顧客版。實體圖不得交給圖片模型、不得去背、美化、換背景、改色、修字或加入其他文案，也不得計入來源圖、完成圖角色、首圖或平台商品輪播圖。',
       '有幾張 physicalImageUrls 就在平台圖文介紹容量內使用幾張，固定接在一般繁體完成介紹圖之後、兩段固定說明與最後兩張固定介紹圖之前；EasyStore、蝦皮進階描述、MOMO 圖文介紹與酷澎詳情都沿用同一順序。實體圖永遠不得成為平台第 1 張主圖。',
       '[圖片一次定案]',
       '每個案件最多 20 張 selectedReferenceImageUrls；一般來源截圖、localizedDetail、specification 與 variantRepresentative 只能做最小幅度繁體化，不得重新設計。先以 OCR 逐字辨識可讀簡體，乾淨移除原字，再用真實可讀且接近原風格的繁體中文字型重打回原位置；禁止用筆畫塗改、描字或生成像手畫的假字。商品、背景、構圖、裁切、比例、配色、圖示、資訊層級、文字位置與字體性格全部保持。來源包裝、商品圖或角落出現非商品品牌的「○○樂器」、店名、電話、網址、QR Code、店章或重複商家字樣，一律視為第三方商家浮水印並完整移除；商品本體的原廠品牌、型號與包裝原生印刷不得誤刪。半截文字整塊刪除，只有案件有已驗證完整內容時才可重打完整句；來源過小、模糊或不完整時改找同商品較清楚完整來源，找不到就跳過，不得放大假清晰。不得新增任何原圖沒有的行銷賣點。generatedListingImages 的每一個完成輸出都必須保留 sourceImageUrl、roles 與 assetFlags（至少明列 containsLogo、containsText、containsContactInfo、containsQrCode、greenBrandTemplate、momoPromotionEligible）；同一 sourceImageUrl 可以有多個完成輸出，不得用 Map(source→單一 url) 覆蓋；(sourceImageUrl, role) 必須唯一，而且同一完成圖 URL 不得同時兼任互斥的 cleanMain、storefrontPortrait 與 brandedHero。roles 只准使用 cleanMain、storefrontPortrait、brandedHero、localizedDetail、specification、variantRepresentative。本組只由根案件各產生一張 storefrontPortrait 與一張 brandedHero；所有細項案件不得重複產生這兩種整組品牌首圖，只需各自完成對應來源的 cleanMain／variantRepresentative。',
@@ -6525,7 +6668,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
 
   function handleAction(action,el){
     if(action==='sync-easystore-api'){ syncEasyStoreApi(); return; }
-    if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return state.view==='products'?loadProductsOnly(false):loadAll(false); }
+    if(action==='refresh'){ try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} return (state.view==='products'||state.view==='media')?loadProductsOnly(false):loadAll(false); }
     if(action==='platform-sync-now') return syncPlatformOrdersNow();
     if(action==='platform-fee-settings') return openPlatformFeeSettings();
     if(action==='platform-order-range'){const range=el.dataset.range||'today';state.platformOrderRange=range;if(range==='today')state.platformOrderDate=todayDateKey();if(range==='month')state.platformOrderMonth=todayDateKey().slice(0,7);if(range==='custom'){if(!state.platformOrderFrom)state.platformOrderFrom=dateText(new Date(new Date().getFullYear(),new Date().getMonth(),1));if(!state.platformOrderTo)state.platformOrderTo=todayDateKey();}return renderKeepingViewport();}
@@ -6585,6 +6728,15 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     }
     if(action==='mobile-key') return applySearchKeyInput(el.dataset.target,el.dataset.key);
     if(action==='product-physical-image-remove')return removePhysicalProductPhoto(el.dataset.id,el.dataset.url).catch(function(error){toast('實體圖尚未移除',errorMessage(error),'error');});
+    if(action==='product-video-remove')return removeProductVideo(el.dataset.id,el.dataset.url).catch(function(error){toast('影片尚未移除',errorMessage(error),'error');});
+    if(action==='product-media-select'){
+      state.mediaSelectedProductId=clean(el.dataset.id);state.mediaSearch='';if(state.view!=='media')location.hash='media';else renderKeepingViewport();return;
+    }
+    if(action==='product-media-clear'){state.mediaSelectedProductId='';state.mediaSearch='';return renderKeepingViewport();}
+    if(action==='product-media-queue-remove')return removeProductMediaFromQueue(el.dataset.id).catch(function(error){toast('尚未從待上架移除',errorMessage(error),'error');});
+    if(action==='product-media-queue-start'){
+      el.disabled=true;const original=el.textContent;el.textContent='正在帶入…';return startProductMediaQueue(el.dataset.id).catch(function(error){toast('媒體上架批次尚未開始',errorMessage(error),'error');el.disabled=false;el.textContent=original;});
+    }
     if(action==='overview-low-stock'){state.productFilter='low';state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;location.hash='products';return;}
     if(action==='sales-mode'){const nextMode=el.dataset.mode||'product';if(nextMode==='usage'){state.cart.forEach(function(item){item.unitPrice=0;});state.checkoutDiscount=0;state.checkoutPoints=0;state.checkoutPointsTouched=false;state.checkoutEarnPoints=false;state.checkoutActualCash='';}else if(state.salesMode==='usage'){state.cart.forEach(function(item){const product=catalogById(item.productId);item.unitPrice=Number(product&&product.storePrice||0);});state.checkoutEarnPoints=true;state.checkoutActualCash='';}state.salesMode=nextMode;return renderKeepingViewport();}
     if(action==='stock-usage-reason'){state.stockUsageReason=el.dataset.value||'店內自用';return renderKeepingViewport();}
@@ -6885,7 +7037,7 @@ function rerenderKeepingFocus(id,value){
     document.addEventListener('pointerdown',preserveSearchKeyFocus,true);
     if(!global.PointerEvent)document.addEventListener('touchstart',preserveSearchKeyFocus,{capture:true,passive:false});
     function selectReusableProductSearch(event){
-      const input=event.target&&event.target.matches&&event.target.matches('#productSearch,#productListingCaseForm [name="variantParentSearch"],#productListingCaseForm [name="variantGroupSearch"]')?event.target:null;
+      const input=event.target&&event.target.matches&&event.target.matches('#productSearch,#mediaSearch,#productListingCaseForm [name="variantParentSearch"],#productListingCaseForm [name="variantGroupSearch"]')?event.target:null;
       if(!input||!input.value)return;
       if(event.type==='mouseup')event.preventDefault();
       global.setTimeout(function(){if(document.activeElement===input)input.select();},0);
@@ -6918,6 +7070,7 @@ function rerenderKeepingFocus(id,value){
     document.addEventListener('submit',function(event){const form=event.target.closest('form'); if(!form)return; event.preventDefault();handleSubmit(form);});
     const opsSearchStateMap={
       productSearch:'productSearch',
+      mediaSearch:'mediaSearch',
       posSearch:'posSearch',
       posMemberSearch:'posMemberSearch',
       saleInvoiceSearch:'saleInvoiceSearch',
@@ -7022,6 +7175,14 @@ function rerenderKeepingFocus(id,value){
         const files=Array.from(event.target.files||[]);event.target.value='';
         return importVerifiedNineSeriesCovers(files).catch(function(error){toast('核對封面批次中斷',errorMessage(error),'error');const result={selected:files.length,completed:0,imported:0,skipped:[],failed:[{reason:errorMessage(error)}]};updateVerifiedNineSeriesCoverImportProgress(result);});
       }
+      if(event.target.id==='mediaPhysicalImageUpload'||event.target.id==='mediaPhysicalCamera'){
+        const files=Array.from(event.target.files||[]),productId=clean(state.mediaSelectedProductId);event.target.value='';
+        return (async function(){for(const file of files)await uploadPhysicalProductPhoto(productId,file,{source:event.target.id==='mediaPhysicalCamera'?'media-page-camera':'media-page-library',statusElementId:'mediaPhysicalUploadStatus'});renderKeepingViewport();})().catch(function(error){const status=byId('mediaPhysicalUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>實體圖尚未保存</b><small>'+escapeHtml(errorMessage(error))+'</small></div></div>';toast('實體圖上傳失敗',errorMessage(error),'error');state.physicalPhotoBusy=false;});
+      }
+      if(event.target.id==='mediaVideoUpload'||event.target.id==='mediaVideoCamera'){
+        const file=event.target.files&&event.target.files[0],productId=clean(state.mediaSelectedProductId);event.target.value='';if(!file)return;
+        return uploadProductVideo(productId,file,{source:event.target.id==='mediaVideoCamera'?'media-page-camera':'media-page-library',statusElementId:'productVideoUploadStatus'}).then(function(){renderKeepingViewport();}).catch(function(error){const status=byId('productVideoUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>影片尚未保存</b><small>'+escapeHtml(errorMessage(error))+'</small></div></div>';toast('影片上傳失敗',errorMessage(error),'error');state.productVideoBusy=false;});
+      }
       if(event.target.id==='productPhysicalImageUpload'){
         const files=Array.from(event.target.files||[]),form=event.target.closest('#productListingCaseForm'),productId=clean(form&&form.dataset.id);event.target.value='';
         return (async function(){for(const file of files)await uploadPhysicalProductPhoto(productId,file,{source:'listing-case-camera-or-library',statusElementId:'productPhysicalImageUploadStatus'});})().catch(function(error){const status=byId('productPhysicalImageUploadStatus');if(status)status.innerHTML='<div class="ops-product-ai-status failed"><span>!</span><div><b>實體圖尚未保存</b><small>'+escapeHtml(errorMessage(error))+'</small></div></div>';toast('實體圖上傳失敗',errorMessage(error),'error');state.physicalPhotoBusy=false;});
@@ -7094,7 +7255,7 @@ function rerenderKeepingFocus(id,value){
     global.addEventListener('message',handleInjiaoyunBridgeMessage);
     global.addEventListener('message',handleProductImageCollectionBridgeMessage);
     requestProductImageCollectionSessionState();
-    const refreshBtn=byId('opsRefreshBtn'); if(refreshBtn)refreshBtn.addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} if(state.view==='products')loadProductsOnly(false);else loadAll(false);});
+    const refreshBtn=byId('opsRefreshBtn'); if(refreshBtn)refreshBtn.addEventListener('click',function(){try{localStorage.removeItem(DASHBOARD_CACHE_KEY);}catch(err){} if(state.view==='products'||state.view==='media')loadProductsOnly(false);else loadAll(false);});
     const backBtn=byId('opsBackBtn'); if(backBtn)backBtn.addEventListener('click',function(){history.back();});
     const logoutBtn=byId('opsLogoutBtn'); if(logoutBtn)logoutBtn.addEventListener('click',function(){ if(typeof global.logout==='function')global.logout();else location.href='index.html'; });
     byId('opsDrawerClose').addEventListener('click',closeDrawer); byId('opsDrawerBackdrop').addEventListener('click',closeDrawer);
@@ -7139,7 +7300,7 @@ function rerenderKeepingFocus(id,value){
     const cache=initialView==='overview'?getDashboardCache():null;
     if(isCourseWorkspaceView(initialView)){
       render();
-    }else if(initialView==='products'){
+    }else if(initialView==='products'||initialView==='media'){
       render();
       if(restoredFastState&&state.loadedAt)loadProductsOnly(true);else await loadProductsOnly(false);
     }else if(cache){

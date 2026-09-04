@@ -416,10 +416,10 @@ test("原圖回退會先解除放大、重新量座標並排除覆蓋物", () =>
   assert.match(supplierCollector, /result\.code !== "IMAGE_READ_FAILED"/);
 });
 
-test("高解析截圖會自動壓縮，營運中心只接受 0.3.37 以上助手", () => {
+test("高解析截圖會自動壓縮，營運中心只接受 0.3.38 以上助手", () => {
   assert.match(supplierCollector, /async function canvasBlobWithinLimit/);
   assert.match(supplierCollector, /Math\.sqrt\(helpers\.MAX_IMAGE_BYTES \/ blob\.size\)/);
-  assert.match(operationsSource, /minimumVersion:'0\.3\.37'/);
+  assert.match(operationsSource, /minimumVersion:'0\.3\.38'/);
   assert.match(operationsSource, /productImageCollectionVersionAtLeast/);
   assert.match(bridge, /extensionVersion: EXTENSION_VERSION/);
   assert.match(operationsSource, /目前收圖助手版本過舊/);

@@ -3223,8 +3223,8 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     physicalImageUrls,
     physicalImagePolicy: {
       preserveOriginal: true,
-      customerFacingDerivative: 'label-only',
-      labelText: '實體圖',
+      customerFacingDerivative: 'watermark-only',
+      labelText: '柚子樂器｜實體圖',
       aiEditingForbidden: true,
       placement: 'description-only-after-completed-images-before-fixed-notices-and-final-promos',
       neverUseAsMainImage: true,
@@ -3294,8 +3294,8 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       updateExistingContentRule: 'replace-only-requested-outdated-content-in-place-and-preserve-unmentioned-content',
       physicalImages: {
         originalRetained: true,
-        customerFacingChange: 'label-only',
-        labelText: '實體圖',
+        customerFacingChange: 'watermark-only',
+        labelText: '柚子樂器｜實體圖',
         aiEditingForbidden: true,
         neverUseAsMainOrGalleryImage: true,
         appendAfterCompletedDescriptionImagesBeforeFixedNoticesAndFinalPromos: true
