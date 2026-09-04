@@ -16,6 +16,7 @@ const productListingPublishSource = fs.readFileSync('functions/productListingPub
 const searchFields = [
   ['posSearch', 'posSearchResults'],
   ['productSearch', 'productSearchResults'],
+  ['mediaSearch', 'mediaSearchResults'],
   ['purchaseLowSearch', 'purchaseLowSearchResults'],
   ['purchaseEntrySearch', 'purchaseEntrySearchResults'],
   ['stocktakeSearch', 'stocktakeSearchResults'],
@@ -64,8 +65,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260904-product-media-queue-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260904-product-media-queue-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260904-product-media-mobile-v2/);
+    assert.match(html, /operations-phase1\.js\?v=20260904-product-media-mobile-v2/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
@@ -106,7 +107,7 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(functionBody(engine, 'confirmAndPublishProductListingCase'), /callProductListingPublishWithTransientRetry/);
 });
 
-test('all six searches keep their input and replace only a stable results container', () => {
+test('all seven searches keep their input and replace only a stable results container', () => {
   const updater = functionBody(engine, 'renderLiveSearchResults');
 
   for (const [inputId, resultsId] of searchFields) {
@@ -254,6 +255,9 @@ test('physical photos keep their inline control and also have one searchable med
 
   for (const html of [portal, hub]) assert.match(html, /href="#media"[\s\S]*實體圖與影片/);
   assert.match(mediaPage, /mediaSearch/);
+  assert.match(mediaPage, /id="mediaSearchResults"/);
+  assert.match(mediaPage, /renderProductPreviewModal/);
+  assert.match(mediaPage, /autocorrect="off"[\s\S]*spellcheck="false"/);
   assert.match(mediaPage, /productMediaQueueHtml/);
   assert.match(selectedMedia, /mediaPhysicalCamera[\s\S]*capture="environment"/);
   assert.match(selectedMedia, /mediaVideoCamera[\s\S]*capture="environment"/);
@@ -267,13 +271,21 @@ test('physical photos keep their inline control and also have one searchable med
   assert.doesNotMatch(upload, /listingImageUrls|imageUrls:fv\.arrayUnion/);
   assert.match(labeler, /watermark='柚子樂器｜實體圖'/);
   assert.match(tray, /<strong>實體圖<\/strong>/);
+  assert.match(tray, /product-physical-image-preview/);
+  assert.doesNotMatch(tray, /target="_blank"/);
   assert.match(listingForm, /productPhysicalImageUpload/);
   assert.match(listingForm, /physicalProductImageTrayHtml\(row\.physicalImageUrls,p\.docId\)/);
   assert.doesNotMatch(listingForm, /productListingSection\('實體圖片'/);
   assert.match(videoUpload, /\/video\//);
   assert.match(videoUpload, /shopeeClipDurationSeconds/);
+  assert.match(videoUpload, /youtubeCategoryId:'10'/);
+  assert.match(videoUpload, /youtubePlaylistName:'柚子樂器｜商品實拍與介紹'/);
+  assert.match(videoUpload, /youtubeThumbnailStatus:'pending'/);
   assert.match(mediaPrompt, /YouTube 使用完整原片/);
   assert.match(mediaPrompt, /59 秒片段/);
+  assert.match(mediaPrompt, /youtubeVideoId/);
+  assert.match(mediaPrompt, /youtubePlaylistStatus/);
+  assert.match(mediaPrompt, /platformVideoResults/);
   assert.match(storageRules, /match \/ops-product-listing-cases\/\{productId\}\/physical\/\{fileName\}/);
   assert.match(storageRules, /match \/ops-product-listing-cases\/\{productId\}\/video\/\{fileName\}/);
 });
