@@ -1,6 +1,14 @@
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const vm=require('node:vm');const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../operations-phase1.js'),'utf8');
 const context={productEditorImages:()=>['sample.jpg'],clean:x=>String(x||''),attr:x=>String(x||'').replaceAll('"','&quot;'),escapeHtml:x=>String(x||'').replaceAll('<','&lt;'),URL,normalizeProductVideoRecords:x=>x||[],physicalProductImageTrayHtml:()=>'<div>photo-tray</div>',productPlatformStatusHtml:()=>'<div>listing-status</div>',PRODUCT_LISTING_PLATFORMS:[{key:'momo',label:'MOMO'},{key:'shopee',label:'蝦皮'}]};
+test('mobile queues without dispatch; desktop retains per-item handling',()=>{
+ const queue=source.slice(source.indexOf('  function productMediaQueueHtml('),source.indexOf('  function productMediaQueueContentHtml('));
+ assert.ok(queue.includes('加入處理'));assert.ok(!queue.includes('product-media-queue-start'));
+ const handler=source.slice(source.indexOf("    if(action==='product-media-add-waiting')"),source.indexOf("    if(action==='product-media-queue-remove')"));
+ assert.ok(handler.includes('queueProductMediaForPublishing'));assert.ok(handler.includes('openProductListingQueue'));assert.ok(!handler.includes('startProductMediaQueue'));
+ const media=source.slice(source.indexOf('  function productMediaQueueContentHtml('),source.indexOf('  function renderProductMediaWorkspace('));assert.ok(media.includes('只處理這件'));assert.ok(media.includes('data-id='));
+ const thumbs=source.slice(source.indexOf('  function productInlineMediaHtml('),source.indexOf('  function refreshProductInlineMedia('));assert.ok(thumbs.includes('draggable="true"'));assert.ok(!thumbs.includes('設為實體圖'));assert.ok(thumbs.includes('data-physical-dropzone'));
+});
 vm.createContext(context);vm.runInContext(source.slice(source.indexOf('  function productYoutubeId('),source.indexOf('  function refreshProductInlineMedia(')),context);
 test('YouTube player uses validated ID, supports fullscreen and keeps originals untouched',()=>{
  const p={docId:'one',productVideos:[{url:'original.mp4',youtubeVideoId:'tO2AXQxknes',platformVideoResults:{shopee:{status:'completed'}}}],mediaReceipt:{physicalImagePlatformResults:{momo:{status:'waiting-listing'}}},physicalImageUrls:['photo']};

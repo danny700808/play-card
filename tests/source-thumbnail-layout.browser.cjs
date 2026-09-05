@@ -23,6 +23,7 @@ const css=['operations-phase1.css','operations-catalog-layout-a.css'].map(f=>fs.
    assert.equal(await page.locator('.ops-queue-expanded').isVisible(),false);
    assert.ok((await page.locator('.ops-queue-compact-item').boundingBox()).height<95);
    await page.locator('.ops-queue-compact-item>summary').click();assert.equal(await page.locator('.ops-queue-expanded').isVisible(),true);
+   const expandedPhoto=await page.locator('.ops-queue-expanded article>img').boundingBox();assert.equal(expandedPhoto.width,48);assert.equal(expandedPhoto.height,48);
    console.log('PASS queue categories and expand',width);
   }
   for(const width of [360,768,1458])for(const count of [1,9]){
