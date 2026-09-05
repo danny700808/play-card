@@ -66,7 +66,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260904-product-media-mobile-v3/);
-    assert.match(html, /operations-phase1\.js\?v=20260905-inline-media-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260905-editor-a-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
@@ -217,7 +217,7 @@ test('manual average cost correction becomes the new inventory cost baseline aft
 
   assert.match(productForm, /name="averageCost"/);
   assert.doesNotMatch(productForm, /name="averageCost"[^>]*readonly/);
-  assert.match(productForm, /後續進貨會從這個數字繼續計算平均值/);
+  assert.doesNotMatch(productForm, /後續進貨會從這個數字繼續計算平均值/);
   assert.equal((saveProduct.match(/global\.confirm\(/g) || []).length, 1);
   assert.match(saveProduct, /確定變動/);
   assert.match(saveProduct, /averageChangeApplied/);
@@ -346,7 +346,7 @@ test('switching product searches skips the old editor prompt and POS clears the 
   const cart = functionBody(engine, 'addCartProduct');
 
   assert.match(keypad, /targetId==='productSearch'&&!closeProductEditorForListChange\(true\)/);
-  assert.match(openProduct, /closeProductEditorForListChange\(true\)/);
+  assert.match(openProduct, /closeProductEditorForListChange\(\)/);
   assert.match(bind, /input\.id==='productSearch'[\s\S]*closeProductEditorForListChange\(true\)/);
   assert.match(cart, /state\.posSearch=''/);
   assert.match(cart, /byId\('posSearch'\)/);

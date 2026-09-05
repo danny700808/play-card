@@ -4,7 +4,7 @@ const context={clean:x=>String(x||''),attr:x=>String(x||'').replaceAll('"','&quo
 vm.createContext(context);vm.runInContext(source.slice(source.indexOf('  function productYoutubeId('),source.indexOf('  function refreshProductInlineMedia(')),context);
 test('YouTube player uses validated ID, supports fullscreen and keeps originals untouched',()=>{
  const p={docId:'one',productVideos:[{url:'original.mp4',youtubeVideoId:'tO2AXQxknes',platformVideoResults:{shopee:{status:'completed'}}}],mediaReceipt:{physicalImagePlatformResults:{momo:{status:'waiting-listing'}}},physicalImageUrls:['photo']};
- const html=context.productInlineMediaHtml(p);assert.ok(html.includes('youtube.com/embed/tO2AXQxknes'));assert.ok(html.includes('allowfullscreen'));assert.ok(!html.includes('<video'));assert.equal(p.productVideos[0].url,'original.mp4');assert.ok(html.includes('待商品上架'));assert.ok(html.includes('① 商品上架'));assert.ok(html.includes('② 補實體圖與影片'));
+ const html=context.productInlineMediaHtml(p);assert.ok(html.includes('youtube.com/embed/tO2AXQxknes'));assert.ok(html.includes('allowfullscreen'));assert.ok(!html.includes('<video'));assert.equal(p.productVideos[0].url,'original.mp4');assert.ok(html.includes('待商品上架'));assert.ok(!html.includes('① 商品上架'));assert.ok(!html.includes('② 補實體圖與影片'));assert.ok(html.includes('媒體通路進度'));
  assert.ok(html.indexOf('photo-tray')<html.indexOf('youtube.com/embed'));
 });
 test('unpublished clip remains local preview; invalid video ID cannot inject frame',()=>{const html=context.productInlineMediaHtml({docId:'two',productVideos:[{url:'test.mp4',youtubeVideoId:'" onload="bad'}]});assert.ok(html.includes('<video'));assert.ok(!html.includes('<iframe'));});
