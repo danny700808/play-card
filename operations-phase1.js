@@ -2277,6 +2277,11 @@ function renderOverviewV7(){
       return '<button type="button" class="'+kind+'" data-action="product-edit" data-id="'+attr(p.docId)+'" title="'+attr(label+'｜'+reason)+'" aria-label="'+attr(label+'：'+reason)+'"><b>'+label+'</b></button>';
     }).join('');
   }
+  async function loadVisibleProductMediaPresence(){
+    if(state.view!=='products'||!state.db)return;
+    const products=queryAll('.ops-product-card-layout-a').map(function(card){return catalogById(card.dataset.id);}).filter(function(p){return p&&!p.mediaReceipt&&!p.mediaPresenceLoading&&!p.mediaReceiptError;});
+    for(let i=0;i<products.length;i+=4){await Promise.all(products.slice(i,i+4).map(async function(p){p.mediaPresenceLoading=true;try{await loadProductMediaReceipt(p);}finally{p.mediaPresenceLoading=false;}}));}
+  }
   function productCreatedTime(p){
     const source=p&&p.internal||{},date=dateFrom(source.createdAt||source.updatedAt);
     return date?date.getTime():0;
@@ -3766,6 +3771,7 @@ function ensureSalesClock(){
 
   function bindViewSpecific(){
     ensureInlineProductListing();
+    loadVisibleProductMediaPresence();
     const purchaseEntrySort=byId('purchaseEntrySort');
     if(purchaseEntrySort)purchaseEntrySort.outerHTML=displayModeToggleHtml('purchase-entry-display-mode',state.purchaseEntryDisplayMode,'進貨商品顯示方式');
     const financeRange=byId('financeRange'); if(financeRange) financeRange.value=state.financeRange;
