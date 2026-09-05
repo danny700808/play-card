@@ -121,7 +121,43 @@
 .ops-compact-setting-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:start}
 .ops-compact-setting-grid>details{min-width:0;margin:0;background:white}
 .ops-compact-setting-grid>details[open]{grid-column:1/-1}
+.ops-final-submit-step{border-top:2px solid #d5e0eb;padding-top:12px;margin-top:16px}
+.ops-compact-source{background:#fff;border:1px solid #d5e0eb;border-radius:7px;padding:10px}
+.ops-compact-source .ops-listing-media-actions{display:flex;gap:6px;flex-wrap:wrap}
+.ops-compact-source .ops-listing-media-action{padding:6px 10px;min-height:32px;font-size:13px}
+.ops-compact-source .ops-listing-supplier-shortcuts{display:flex;gap:8px;margin:5px 0}
+.ops-compact-source .ops-listing-supplier-shortcuts>span,.ops-product-inline-listing [data-variant-collector-count]{display:none}
+.ops-product-inline-listing .ops-listing-variant-search-step input[type=search]{max-width:260px}
+.ops-product-inline-listing .ops-inline-control{justify-content:flex-start}
+.ops-product-inline-listing .ops-listing-variant-search-results{max-width:520px}
+.ops-product-inline-listing .ops-listing-variant-search-results small{display:block!important;font-size:12px}
+.ops-product-inline-listing .ops-listing-variant-pair,.ops-product-inline-listing .ops-listing-variant-items{display:grid;grid-template-columns:1fr;gap:8px}
+.ops-product-inline-listing .ops-listing-variant-item{padding:10px;border-radius:6px;margin:0;min-width:0}
+.ops-product-inline-listing .ops-listing-variant-item-main{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:8px;align-items:start}
+.ops-product-inline-listing .ops-listing-variant-key-fields{display:flex;gap:10px;align-items:center}
+.ops-product-inline-listing .ops-listing-variant-representative{width:68px;height:68px;min-width:68px}
+.ops-product-inline-listing .ops-listing-variant-representative img{width:100%;height:100%;object-fit:contain}
+.ops-product-inline-listing .ops-listing-variant-name-field input{max-width:160px}
+.ops-product-inline-listing .ops-listing-variant-item-main>.ops-listing-supplier-shortcuts,.ops-product-inline-listing .ops-variant-picker-details{grid-column:1/-1}
+.ops-variant-picker-details{border-top:1px solid #d5e0eb;padding-top:6px}
+.ops-variant-picker-details summary,.ops-optional-image-instructions summary{cursor:pointer;font-size:13px}
+.ops-product-inline-listing .ops-listing-variant-image-picker,.ops-product-inline-listing .ops-listing-variant-processing-flat,#productReferenceImagePreview{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.ops-product-inline-listing .ops-listing-variant-picker-option{width:100%;height:92px;padding:4px}
+.ops-product-inline-listing .ops-listing-variant-picker-option img,.ops-product-inline-listing .ops-listing-variant-processing-flat img,#productReferenceImagePreview img{width:100%;height:92px;object-fit:contain}
+.ops-product-inline-listing .ops-listing-variant-processing-flat article,#productReferenceImagePreview>*{min-width:0;margin:0;padding:5px}
+.ops-optional-image-instructions{margin-top:10px;border-top:1px solid #d5e0eb;padding-top:8px}
+.ops-merge-row-controls{grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.ops-product-inline-listing .ops-listing-variant-item-main{grid-column:1}
+.ops-product-inline-listing .ops-listing-variant-primary-item .ops-listing-variant-item-main{grid-column:1/-1}
+.ops-merge-row-controls b{font-size:12px;color:#167152;flex:1}
+.ops-merge-row-controls button{border:1px solid #d5e0eb;border-radius:4px;background:#fff;padding:3px 8px;cursor:pointer}
+.ops-merge-row-controls [draggable]{cursor:grab}
+.ops-gallery-order-controls{display:flex;justify-content:center;gap:5px;margin-top:4px}
+.ops-gallery-order-controls button{padding:2px 9px;background:white;border:1px solid #d5e0eb;border-radius:4px;cursor:pointer}
+#productMergeOutcome details{margin-top:10px;padding:8px;background:#fff;border:1px solid #d5e0eb;border-radius:6px}
+#productMergeOutcome summary{cursor:pointer}
 @media(max-width:760px){
+ .ops-product-inline-listing .ops-listing-variant-item-main{grid-template-columns:1fr}
  .ops-product-editor-a .ops-media-three-columns,.ops-compact-setting-grid{grid-template-columns:1fr}
  .ops-product-inline-listing .ops-listing-mode-options{grid-template-columns:repeat(2,minmax(0,1fr))}
  .ops-product-editor-a .ops-inline-product-layout{grid-template-columns:1fr}
