@@ -144,6 +144,10 @@
 .ops-product-inline-listing .ops-listing-variant-image-picker,.ops-product-inline-listing .ops-listing-variant-processing-flat{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
 #productReferenceImagePreview{display:block;min-width:0}
 .ops-unified-publish-queue{display:grid;gap:16px}
+.ops-physical-source{display:grid;gap:4px;min-width:0}
+.ops-physical-source .ops-product-media-thumb{width:100%;cursor:grab}
+.ops-physical-assign{border:1px solid #d2e3d9;border-radius:4px;background:#edf7f0;color:#1b7154;font-size:11px;padding:4px;cursor:pointer}
+.ops-physical-drop-hint{border:1px dashed #83ad99;border-radius:5px;padding:8px;margin-bottom:8px;color:#376b55;font-size:12px;text-align:center}
 .ops-queue-category-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .ops-queue-category{display:grid;gap:8px;align-content:center;min-height:86px;border:1px solid #cfded7;border-radius:8px;background:#f8fbfa;color:#23463b;padding:12px;cursor:pointer}
 .ops-queue-category b{font-size:16px}.ops-queue-category span{font-size:13px}
