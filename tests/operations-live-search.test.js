@@ -66,7 +66,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260904-product-media-mobile-v3/);
-    assert.match(html, /operations-phase1\.js\?v=20260905-editor-a-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260905-editor-media-v2/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
@@ -254,7 +254,7 @@ test('physical photos and video live inside products while old media deep links 
   const mediaPrompt = functionBody(engine, 'productMediaBatchPrompt');
 
   for (const html of [portal, hub]) assert.doesNotMatch(html, /href="#media"/);
-  assert.match(functionBody(engine, 'productImagePanelHtml'), /productInlineMediaHtml/);
+  assert.match(functionBody(engine, 'productFormHtml'), /productInlineMediaHtml/);
   assert.match(mediaPage, /mediaSearch/);
   assert.match(mediaPage, /id="mediaSearchResults"/);
   assert.match(mediaPage, /renderProductPreviewModal/);

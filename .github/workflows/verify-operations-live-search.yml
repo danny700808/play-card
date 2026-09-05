@@ -111,8 +111,8 @@ jobs:
           grep -Fq 'operations-shopee-autofill-handoff-v1.js?v=20260830-shopee-native-description-v2' operations-hub.html
           grep -Fq 'operations-phase1.css?v=20260904-product-media-mobile-v3' portal.html
           grep -Fq 'operations-phase1.css?v=20260904-product-media-mobile-v3' operations-hub.html
-          grep -Fq 'operations-phase1.js?v=20260905-editor-a-v1' portal.html
-          grep -Fq 'operations-phase1.js?v=20260905-editor-a-v1' operations-hub.html
+          grep -Fq 'operations-phase1.js?v=20260905-editor-media-v2' portal.html
+          grep -Fq 'operations-phase1.js?v=20260905-editor-media-v2' operations-hub.html
           grep -Fq 'operations-manager-auth.js?v=20260905-direct-media-return-v1' portal.html
           grep -Fq 'operations-manager-auth.js?v=20260905-direct-media-return-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html

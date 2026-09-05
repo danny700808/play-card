@@ -27,7 +27,7 @@ test('compact desktop catalogue uses five columns without changing mobile rules'
  assert.match(desktop,/white-space:normal;overflow:visible;text-overflow:clip/);
  for(const entry of ['portal.html','operations-hub.html']){
   const html=fs.readFileSync(require('node:path').join(__dirname,'../',entry),'utf8');
-  assert.ok(html.includes('operations-catalog-layout-a.css?v=20260905-editor-a-v1'));
+  assert.ok(html.includes('operations-catalog-layout-a.css?v=20260905-editor-media-v2'));
  }
 });
 test('desktop SKU, barcode action and stock all occupy the same row',()=>{
@@ -39,7 +39,7 @@ test('desktop SKU, barcode action and stock all occupy the same row',()=>{
  assert.match(desktop,/\.ops-product-inline-stock\{grid-column:3;grid-row:1;/);
 });
 const formSource=source.slice(source.indexOf('  function productFormHtml('),source.indexOf('  function listingCaseValue('));
-const formContext={attr:v=>String(v==null?'':v).replaceAll('&','&amp;').replaceAll('"','&quot;'),escapeHtml:v=>String(v||''),formatNumber:v=>v,productImagePanelHtml:()=>'<div>images</div>'};
+const formContext={attr:v=>String(v==null?'':v).replaceAll('&','&amp;').replaceAll('"','&quot;'),escapeHtml:v=>String(v||''),formatNumber:v=>v,productImagePanelHtml:()=>'<div>images</div>',productInlineMediaHtml:()=>'<div>three media columns</div>'};
 const renderForm=vm.runInNewContext(formSource+'\nproductFormHtml',formContext);
 test('editor A hides unwanted fields without losing their saved values',()=>{
  const html=renderForm({docId:'x',sku:'2040934',originalName:'音箱',storePrice:1500,easyStorePrice:1580,momoPrice:1680,coupangPrice:1600,internal:{brand:'M-VAVE',model:'Combo',barcode:'01234',category:'音箱',status:'inactive',note:'原備註'}});
