@@ -27,7 +27,7 @@ test('compact desktop catalogue uses five columns without changing mobile rules'
  assert.match(desktop,/white-space:normal;overflow:visible;text-overflow:clip/);
  for(const entry of ['portal.html','operations-hub.html']){
   const html=fs.readFileSync(require('node:path').join(__dirname,'../',entry),'utf8');
-  assert.ok(html.includes('operations-catalog-layout-a.css?v=20260905-unified-media-queue-v5'));
+  assert.ok(html.includes('operations-catalog-layout-a.css?v=20260905-queue-folders-v6'));
  }
 });
 test('desktop SKU, barcode action and stock all occupy the same row',()=>{
