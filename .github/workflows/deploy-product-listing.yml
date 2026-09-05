@@ -38,6 +38,22 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select deployment scope
+        id: scope
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          scope=hosting
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ -z "$BEFORE_SHA" ] || [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+            scope=full
+          elif git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" -- functions/ | grep -q .; then
+            scope=full
+          fi
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -60,6 +76,7 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@15.24.0
       - name: Deploy product listing functions and hosting
+        if: steps.scope.outputs.scope == 'full'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: >-
@@ -68,6 +85,11 @@ jobs:
           --project youzi-c1b74
           --non-interactive
           --force
+      - name: Deploy frontend only
+        if: steps.scope.outputs.scope == 'hosting'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
+        run: firebase deploy --only hosting --project youzi-c1b74 --non-interactive
       - name: Remove service account file
         if: always()
         run: rm -f service-account.json
