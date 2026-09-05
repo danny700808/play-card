@@ -27,6 +27,14 @@ test('compact desktop catalogue uses five columns without changing mobile rules'
  assert.match(desktop,/white-space:normal;overflow:visible;text-overflow:clip/);
  for(const entry of ['portal.html','operations-hub.html']){
   const html=fs.readFileSync(require('node:path').join(__dirname,'../',entry),'utf8');
-  assert.ok(html.includes('operations-catalog-layout-a.css?v=20260905-compact-five-v1'));
+  assert.ok(html.includes('operations-catalog-layout-a.css?v=20260905-compact-five-v2'));
  }
+});
+test('desktop stock sits right of barcode printing on the same row below SKU',()=>{
+ const css=fs.readFileSync(require('node:path').join(__dirname,'../operations-catalog-layout-a.css'),'utf8');
+ const desktop=css.slice(css.indexOf('@media(min-width:1024px)'));
+ assert.match(desktop,/\.ops-product-sku-main\{display:contents\}/);
+ assert.match(desktop,/\.ops-product-sku-main>b\{grid-column:1\/-1;grid-row:1;/);
+ assert.match(desktop,/\.ops-label-print-button\{grid-column:1;grid-row:2;/);
+ assert.match(desktop,/\.ops-product-inline-stock\{grid-column:2;grid-row:2;/);
 });
