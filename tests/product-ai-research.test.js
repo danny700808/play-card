@@ -37,16 +37,18 @@ test('website OpenAI endpoints are disabled while listings use the Codex convers
 
 test('main product image prompt locks the approved green brand template and Taiwan wording', () => {
   const prompt = research.buildMainTemplateImagePrompt({ name: 'Ibanez AZES40', brand: 'Ibanez', model: 'AZES40' }, { sellingPoints: 'HSS 拾音配置' });
-  assert.match(prompt, /第一張是商品來源圖/);
+  assert.match(prompt, /第一張是主商品來源圖/);
+  assert.match(prompt, /第二、三張是兩張不同來源的細節圖/);
+  assert.match(prompt, /第四張是不可變品牌母版/);
   assert.match(prompt, /不可變品牌母版/);
   assert.match(prompt, /台灣繁體中文/);
   assert.match(prompt, /有音樂的生活更有風格/);
   assert.match(prompt, /圓形柚子樂器 Logo/);
-  assert.match(prompt, /綠色頁首固定占整張高度 1\/9/);
-  assert.match(prompt, /大型跨界版本/);
-  assert.match(prompt, /連續、清楚可見的細綠色圓角框線/);
-  assert.match(prompt, /框線必須在 Logo 下層/);
-  assert.match(prompt, /Logo 必須是最上層/);
+  assert.match(prompt, /精確占整張高度 20%（200 px）/);
+  assert.match(prompt, /#95C3A2/);
+  assert.match(prompt, /直接使用核准原始素材/);
+  assert.match(prompt, /右側安全距離至少為整張寬度 5%/);
+  assert.match(prompt, /#4F775F 連續細綠色圓角框/);
   assert.match(prompt, /不可只記錄風格名稱/);
   assert.match(prompt, /真正可刊登的商業商品海報/);
   assert.match(prompt, /不得跳過完整海報創作階段/);
@@ -56,11 +58,14 @@ test('main product image prompt locks the approved green brand template and Taiw
   assert.match(prompt, /制式資訊卡/);
   assert.match(prompt, /場景或圖像系統、商品融入方式、標題字體/);
   assert.match(prompt, /至少 65%/);
-  assert.match(prompt, /最多 2 個有來源依據的細節小圖/);
+  assert.match(prompt, /正好兩個有框線的細節小圖/);
+  assert.match(prompt, /分別取自第二、第三張來源圖/);
+  assert.match(prompt, /特色文字必須直接對應該圖可見內容/);
   assert.match(prompt, /正好 3 個不重複且已查證的商品特色/);
   assert.match(prompt, /左下娃娃或 PIC COLLAGE/);
-  assert.match(prompt, /1000×750（4:3）/);
-  assert.match(prompt, /同一商品的 1:1 與 4:3/);
+  assert.match(prompt, /700×1000（7:10）/);
+  assert.match(prompt, /同一商品的 1:1 與 7:10/);
+  assert.match(prompt, /針對比例獨立重新構圖/);
   assert.doesNotMatch(prompt, /不得套用店家品牌模板/);
   assert.match(prompt, /不得保留簡體字、大陸用語、亂碼、錯字或被裁掉一半的文字/);
 });
@@ -84,6 +89,14 @@ test('commercial poster QA rejects generic information cards and requires the fu
     productIntegratedAsHero: true,
     strongCommercialHierarchy: true,
     threeFeaturesIntegrated: true,
+    exactlyTwoDistinctDetailInsets: true,
+    detailInsetsUseOtherSourceImages: true,
+    detailInsetsMatchFeatureCopy: true,
+    independentAspectRatioReflow: true,
+    headerHeightExactly20Percent: true,
+    brandGreenAndOriginalArtworkIntact: true,
+    logoSafeMarginIntact: true,
+    thinOuterFrameIntact: true,
     productUnobscured: true,
     fixedHeaderAndLogoIntact: true,
     borderDoesNotCrossLogo: true,
@@ -97,6 +110,14 @@ test('commercial poster QA rejects generic information cards and requires the fu
     productIntegratedAsHero: true,
     strongCommercialHierarchy: true,
     threeFeaturesIntegrated: true,
+    exactlyTwoDistinctDetailInsets: true,
+    detailInsetsUseOtherSourceImages: true,
+    detailInsetsMatchFeatureCopy: true,
+    independentAspectRatioReflow: true,
+    headerHeightExactly20Percent: true,
+    brandGreenAndOriginalArtworkIntact: true,
+    logoSafeMarginIntact: true,
+    thinOuterFrameIntact: true,
     productUnobscured: true,
     fixedHeaderAndLogoIntact: true,
     borderDoesNotCrossLogo: true,

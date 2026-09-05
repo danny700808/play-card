@@ -36,15 +36,28 @@ const VALID_COMMERCIAL_POSTER_PROOF = Object.freeze({
   productIntegratedAsHero: true,
   strongCommercialHierarchy: true,
   threeFeaturesIntegrated: true,
+  exactlyTwoDistinctDetailInsets: true,
+  detailInsetsUseOtherSourceImages: true,
+  detailInsetsMatchFeatureCopy: true,
+  independentAspectRatioReflow: true,
+  headerHeightExactly20Percent: true,
+  logoSafeMarginIntact: true,
+  thinOuterFrameIntact: true,
   verificationSource: 'test-commercial-poster-visual-qa'
 });
 
-function brandTemplateFields(role, styleAssignment = TEST_BRAND_STYLE) {
+function brandTemplateFields(role, styleAssignment = TEST_BRAND_STYLE, detailSourceImageUrls = [
+  'https://example.com/source-clean.jpg', 'https://example.com/source-clean-two.jpg'
+]) {
   return {
+    imageStandardVersion: BRAND_TEMPLATE.imageStandardVersion,
     templateVersion: BRAND_TEMPLATE.version,
     templateAssetSha256: BRAND_TEMPLATE[role].sha256,
     templateComposition: BRAND_TEMPLATE.composition,
     creativeStyleAssignment: styleAssignment,
+    detailSourceImageUrls,
+    detailFeatureMappingsVerified: true,
+    independentAspectRatioReflowVerified: true,
     brandRenderProof: helpers.brandCreativeStyleRenderProof(styleAssignment, 'product-listing-test-style', VALID_COMMERCIAL_POSTER_PROOF)
   };
 }
@@ -69,7 +82,7 @@ function withV2ImagePlan(listingCase, options = {}) {
     codexHandoff: {
       workflowVersion: 'youzi-four-channel-listing-v3',
       preflightSnapshot: {
-        workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'snapshot-v3-test',
+        workflowVersion: 'youzi-four-channel-listing-v3', imageStandardVersion: BRAND_TEMPLATE.imageStandardVersion, snapshotId: 'snapshot-v3-test',
         finalizedFromFrozenInput: true, inputSnapshotId: 'input-v2-test', inputSnapshotFingerprint: 'input-fingerprint-v2-test',
         cases: [{
           productId: options.productId || 'case-v2-test', sku: options.sku || 'CASE-V2',
@@ -235,7 +248,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.duplicateGuard.skipPreSubmitCatalogSearchWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.treatHandoffSkuAsNewWhenNoPlatformId, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.exactLookupOnlyForUncertainSubmitRecovery, true);
-  assert.equal(snapshot.automationPolicy.version, 39);
+  assert.equal(snapshot.automationPolicy.version, 41);
   assert.equal(snapshot.automationPolicy.duplicateGuard.variantGroupIdentityIsClosedSkuSet, true);
   assert.equal(snapshot.automationPolicy.duplicateGuard.forbidBaseSkuAndNameFallbackForVariantGroups, true);
   assert.equal(snapshot.automationPolicy.publishVerification.easyStoreDraftCreationIsNotPublication, true);
@@ -274,11 +287,11 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.persistStableSelectorsAndFieldSemantics, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.pageContractReuse.fallbackToSectionRescanWithoutRestartingJob, true);
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 21);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 22);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.targetStock, 1);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.maximumListings, 1000);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.neverDelete, true);
-  assert.equal(snapshot.automationPolicy.version, 39);
+  assert.equal(snapshot.automationPolicy.version, 41);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.genericFallbackDescriptionIsIncomplete, true);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.writeVerifiedDescriptionBackToEveryGroupedCase, true);
@@ -388,18 +401,24 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.automationPolicy.browserControl.neverOpenNativeWindowsFilePicker, true);
   assert.equal(snapshot.automationPolicy.browserControl.stopForInteractiveAuthenticationOnly, true);
   assert.equal(snapshot.automationPolicy.browserTabs.keepOneAuthenticatedAnchorPerPlatform, true);
-  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-commercial-poster-brand-template-v4');
-  assert.equal(snapshot.imagePolicy.mainImageAspectRatio, '1:1-and-4:3-matched-pair');
-  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'locked-one-ninth-youzi-green-header-logo-above-border-and-full-commercial-poster');
-  assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'within-thin-green-border-and-never-under-logo');
+  assert.equal(snapshot.imagePolicy.imageStandardVersion, 'youzi-v3-brand-image-standard-2026-09-04');
+  assert.equal(snapshot.imagePolicy.mainImageTemplate, 'youzi-commercial-poster-brand-template-v5');
+  assert.equal(snapshot.imagePolicy.mainImageAspectRatio, '1:1-and-7:10-independently-reflowed-pair');
+  assert.equal(snapshot.imagePolicy.mainImageBackdrop, 'locked-20pct-youzi-green-header-safe-logo-two-detail-commercial-poster');
+  assert.equal(snapshot.imagePolicy.mainImageProductPlacement, 'one-dominant-product-with-two-distinct-source-detail-insets-within-thin-green-border');
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateVersion, BRAND_TEMPLATE.version);
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.templateAssetSha256, BRAND_TEMPLATE.storefrontPortrait.sha256);
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.fixedStoreSlogan, '有音樂的生活更有風格');
   assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.fixedStoreLogoRequired, true);
   assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.templateAssetSha256, BRAND_TEMPLATE.brandedHero.sha256);
   assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.fixedHeaderPixelsRequired, true);
-  assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.fixedHeaderHeightRatio, 1 / 9);
-  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.selectedLargeLogoOverlapRequired, true);
+  assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.fixedHeaderHeightRatio, 0.20);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.logoRightSafeMarginRatio, 0.05);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.logoMustRemainInsideHeader, true);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.verifiedDetailInsetCount, 2);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.detailSourcesMustDifferFromMainAndEachOther, true);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.detailImagesMustMatchFeatureCopy, true);
+  assert.equal(snapshot.imagePolicy.outputProfiles.brandedHero.independentAspectRatioReflowRequired, true);
   assert.equal(snapshot.imagePolicy.outputProfiles.storefrontPortrait.thinOuterGreenBorderRequired, true);
   assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.catalogSize, 50);
   assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.selectionMode, 'random-without-replacement');
@@ -407,8 +426,9 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.forbidDarkFullBleedBackground, true);
   assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.darkFullBleedForbidden, true);
   assert.equal(snapshot.imagePolicy.brandTemplateContract.logo.layer, 'topmost');
-  assert.equal(snapshot.imagePolicy.brandTemplateContract.logo.mustCoverBorderAtOverlap, true);
-  assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.borderLayer, 'below-logo');
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.logo.mustRemainInsideHeader, true);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.logo.rightSafeMarginRatio, 0.05);
+  assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.borderLayer, 'below-brand-header');
   assert.equal(snapshot.imagePolicy.brandTemplateContract.contentPanel.borderMayNotCrossLogoArtwork, true);
   assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.renderedStyleMustMatchAssignment, true);
   assert.equal(snapshot.imagePolicy.brandTemplateContract.creativeStyleSystem.fullCommercialPosterStageRequired, true);
@@ -435,10 +455,10 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
     platformRecropForbiddenUnlessRejectedByPlatform: true,
     squareMarketplaceProfilesShareDimensions: true
   });
-  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.aspectRatio, '4:3');
-  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.widthPx, 1000);
-  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.heightPx, 750);
-  assert.equal(snapshot.preparedPlatformFieldPlan.decisionContractVersion, 2);
+  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.aspectRatio, '7:10');
+  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.widthPx, 700);
+  assert.equal(snapshot.preparedPlatformFieldPlan.storefrontPortraitAssetStandard.heightPx, 1000);
+  assert.equal(snapshot.preparedPlatformFieldPlan.decisionContractVersion, 3);
   assert.equal(snapshot.decisionContract.judgmentFields.imageLocalization.ordinaryDetailMode, 'text-localization-only');
   assert.deepEqual(snapshot.decisionContract.judgmentFields.imageLocalization.excludesRoles, ['cleanMain', 'brandedHero', 'storefrontPortrait']);
   assert.ok(snapshot.decisionContract.judgmentFields.imageLocalization.preserveExactly.includes('composition'));
@@ -454,7 +474,12 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.decisionContract.automaticFields.easyStoreFeatureBulletMinChars, 24);
   assert.equal(snapshot.decisionContract.automaticFields.easyStoreFeatureBulletMaxChars, 30);
   assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoTitleMaxChars, 70);
-  assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoDescriptionMaxChars, 180);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoDescriptionMaxChars, 155);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoDescriptionRecommendedMaxChars, 155);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoDescriptionLegacyHelpMaxChars, 255);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoDescriptionUiHardMaxChars, 450);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoDescriptionPrepareBeforePageEntry, true);
+  assert.equal(snapshot.decisionContract.automaticFields.easyStoreSeoDescriptionRejectBeforeSaveWhenOverHardLimit, true);
   assert.equal(snapshot.decisionContract.automaticFields.coupangAttributeNameMaxChars, 25);
   assert.deepEqual(snapshot.decisionContract.automaticFields.coupangExcludedRedundantAttributes, ['Parent Manufacturer Part Number', 'Manufacturer Part Number']);
   assert.equal(snapshot.decisionContract.automaticFields.coupangContentType, 'HTML');
@@ -556,7 +581,7 @@ test('EasyStore 分類與品牌在進頁前依固定商店分類表完成精確�
     category: '樂器配件／胡琴弦', brand: 'FL-ZHU', stock: 2, easyStorePrice: 500,
     platformImagePlan: { easyStore: { imageUrls: [] }, shopee: { imageUrls: [] }, momo: { imageUrls: [] }, coupang: { imageUrls: [] } }
   });
-  assert.equal(plan.version, 21);
+  assert.equal(plan.version, 22);
   assert.deepEqual(plan.easyStore.preparedFields.collectionNames, ['拉弦樂器', '二胡&高胡&京胡']);
   assert.equal(plan.easyStore.preparedFields.brand.value, 'FL-ZHU');
   assert.equal(plan.easyStore.fixedFields.categoryAndBrandPreparedBeforeNavigation, true);
@@ -1167,34 +1192,39 @@ test('v3 image gates reject branded images whose locked template hash changed', 
   }), /未使用固定綠底品牌母版/);
 });
 
-test('v3 image gates require the approved logo-over-border layer proof and exact assigned style', () => {
+test('v3 image gates require the approved safe-logo layer proof, two distinct detail sources and exact assigned style', () => {
   const sourceImageUrl = 'https://supplier.example.com/render-proof-source.jpg';
   const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
   const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false };
   const cleanRow = { sourceImageUrl, url: 'https://cdn.example.com/render-proof-clean.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: cleanFlags };
   const approvedBrand = { sourceImageUrl, url: 'https://cdn.example.com/render-proof-brand.jpg', status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: brandFlags, ...brandTemplateFields('brandedHero') };
+  const detailRows = [
+    { sourceImageUrl: 'https://example.com/source-clean.jpg', url: 'https://cdn.example.com/render-proof-detail-one.jpg', status: 'ready', localizationStatus: 'completed', roles: ['localizedDetail'], assetFlags: cleanFlags },
+    { sourceImageUrl: 'https://example.com/source-clean-two.jpg', url: 'https://cdn.example.com/render-proof-detail-two.jpg', status: 'ready', localizationStatus: 'completed', roles: ['localizedDetail'], assetFlags: cleanFlags }
+  ];
   const withoutProof = { ...approvedBrand };
   delete withoutProof.brandRenderProof;
-  assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {
+  const frozenSourceImageUrls = [sourceImageUrl, 'https://example.com/source-clean.jpg', 'https://example.com/source-clean-two.jpg'];
+  assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: frozenSourceImageUrls, sku: 'RENDER-1' }, {
     productSku: 'RENDER-1', brandCreativeStyleAssignment: TEST_BRAND_STYLE,
-    generatedListingImages: [cleanRow, withoutProof]
+    generatedListingImages: [cleanRow, withoutProof, ...detailRows]
   }), /實際風格／圖層證明/);
 
   const wrongLayer = { ...approvedBrand, brandRenderProof: { ...approvedBrand.brandRenderProof, borderIntersectsLogo: true } };
-  assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {
+  assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: frozenSourceImageUrls, sku: 'RENDER-1' }, {
     productSku: 'RENDER-1', brandCreativeStyleAssignment: TEST_BRAND_STYLE,
-    generatedListingImages: [cleanRow, wrongLayer]
+    generatedListingImages: [cleanRow, wrongLayer, ...detailRows]
   }), /實際風格／圖層證明/);
 
   const genericInformationCard = { ...approvedBrand, brandRenderProof: { ...approvedBrand.brandRenderProof, genericInformationCardFallbackDetected: true } };
-  assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {
+  assert.throws(() => helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: frozenSourceImageUrls, sku: 'RENDER-1' }, {
     productSku: 'RENDER-1', brandCreativeStyleAssignment: TEST_BRAND_STYLE,
-    generatedListingImages: [cleanRow, genericInformationCard]
+    generatedListingImages: [cleanRow, genericInformationCard, ...detailRows]
   }), /實際風格／圖層證明/);
 
-  const rows = helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: [sourceImageUrl], sku: 'RENDER-1' }, {
+  const rows = helpers.finalizedRoleRowsForCase('render-proof-product', { sourceImageUrls: frozenSourceImageUrls, sku: 'RENDER-1' }, {
     productSku: 'RENDER-1', brandCreativeStyleAssignment: TEST_BRAND_STYLE,
-    generatedListingImages: [cleanRow, approvedBrand]
+    generatedListingImages: [cleanRow, approvedBrand, ...detailRows]
   });
   assert.equal(rows.some((row) => row.roles.includes('brandedHero')), true);
 });
@@ -1376,19 +1406,21 @@ test('完成前中央或細項仍引用 frozen source 即拒絕，平台快速�
 test('pending handoff sources can receive later Codex outputs and become one immutable final publish snapshot', () => {
   const sourceOne = 'https://supplier.example.com/pending-1.jpg';
   const sourceTwo = 'https://supplier.example.com/pending-2.jpg';
+  const sourceThree = 'https://supplier.example.com/pending-3.jpg';
   const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'handoff-input-1', productId: 'late-product',
-    cases: [{ productId: 'late-product', sku: 'LATE-1', sourceImageUrls: [sourceOne, sourceTwo], gallerySourceImageUrls: [sourceOne, sourceTwo] }]
+    workflowVersion: 'youzi-four-channel-listing-v3', imageStandardVersion: BRAND_TEMPLATE.imageStandardVersion, snapshotId: 'handoff-input-1', productId: 'late-product',
+    cases: [{ productId: 'late-product', sku: 'LATE-1', sourceImageUrls: [sourceOne, sourceTwo, sourceThree], gallerySourceImageUrls: [sourceOne, sourceTwo, sourceThree] }]
   };
   const currentCase = {
     productSku: 'LATE-1', productDescription: '完整商品介紹',
     brandCreativeStyleAssignment: TEST_BRAND_STYLE,
     generatedListingImages: [
       { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-clean.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: { ...flags, momoPromotionEligible: true } },
-      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-storefront.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait') },
-      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-branded.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero') },
-      { sourceImageUrl: sourceTwo, url: 'https://cdn.example.com/late-detail.jpg', sourceOrder: 2, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: { ...flags, momoPromotionEligible: true } }
+      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-storefront.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait', TEST_BRAND_STYLE, [sourceTwo, sourceThree]) },
+      { sourceImageUrl: sourceOne, url: 'https://cdn.example.com/late-branded.jpg', sourceOrder: 1, status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...flags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero', TEST_BRAND_STYLE, [sourceTwo, sourceThree]) },
+      { sourceImageUrl: sourceTwo, url: 'https://cdn.example.com/late-detail.jpg', sourceOrder: 2, status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: { ...flags, momoPromotionEligible: true } },
+      { sourceImageUrl: sourceThree, url: 'https://cdn.example.com/late-detail-2.jpg', sourceOrder: 3, status: 'ready', localizationStatus: 'completed', roles: ['localizedDetail'], assetFlags: flags }
     ]
   };
   const finalized = helpers.finalizePreparedMediaSnapshot(frozen, new Map([['late-product', currentCase]]));
@@ -1409,13 +1441,24 @@ test('pending handoff sources can receive later Codex outputs and become one imm
   assert.deepEqual(helpers.platformImagePlanMissingFields(snapshot.platformImagePlan, { requireFinalized: true }), []);
 });
 
+test('an old snapshot named v3 cannot bypass the current image-standard gate', () => {
+  const frozen = {
+    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'legacy-v3-image-input',
+    cases: [{ productId: 'legacy-v3-image-product', sourceImageUrls: ['https://supplier.example.com/legacy-v3.jpg'] }]
+  };
+  assert.throws(
+    () => helpers.finalizePreparedMediaSnapshot(frozen, new Map()),
+    /舊版 V3 圖片規格/
+  );
+});
+
 test('active v3 job 只復用目前 schema/policy/order/final snapshot/fingerprint 且必須符合案件 frozen input', () => {
   const productId = 'reuse-product';
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'reuse-input', productId,
+    workflowVersion: 'youzi-four-channel-listing-v3', imageStandardVersion: BRAND_TEMPLATE.imageStandardVersion, snapshotId: 'reuse-input', productId,
     cases: [{
       productId, sku: 'REUSE-1',
-      sourceImageUrls: ['https://supplier.example.com/reuse-a.jpg', 'https://supplier.example.com/reuse-b.jpg']
+      sourceImageUrls: ['https://supplier.example.com/reuse-a.jpg', 'https://supplier.example.com/reuse-b.jpg', 'https://supplier.example.com/reuse-c.jpg']
     }]
   };
   const baseFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: false };
@@ -1425,9 +1468,10 @@ test('active v3 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     codexHandoff: { workflowVersion: 'youzi-four-channel-listing-v3', preflightSnapshot: frozen },
     generatedListingImages: [
       { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-clean.jpg', status: 'ready', localizationStatus: 'completed', roles: ['cleanMain'], assetFlags: baseFlags },
-      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-storefront.jpg', status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait') },
-      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-brand.jpg', status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero') },
-      { sourceImageUrl: frozen.cases[0].sourceImageUrls[1], url: 'https://cdn.example.com/reuse-promo.jpg', status: 'ready', localizationStatus: 'completed', roles: ['localizedDetail'], assetFlags: { ...baseFlags, momoPromotionEligible: true } }
+      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-storefront.jpg', status: 'ready', localizationStatus: 'completed', roles: ['storefrontPortrait'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait', TEST_BRAND_STYLE, frozen.cases[0].sourceImageUrls.slice(1)) },
+      { sourceImageUrl: frozen.cases[0].sourceImageUrls[0], url: 'https://cdn.example.com/reuse-brand.jpg', status: 'ready', localizationStatus: 'completed', roles: ['brandedHero'], assetFlags: { ...baseFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero', TEST_BRAND_STYLE, frozen.cases[0].sourceImageUrls.slice(1)) },
+      { sourceImageUrl: frozen.cases[0].sourceImageUrls[1], url: 'https://cdn.example.com/reuse-promo.jpg', status: 'ready', localizationStatus: 'completed', roles: ['localizedDetail'], assetFlags: { ...baseFlags, momoPromotionEligible: true } },
+      { sourceImageUrl: frozen.cases[0].sourceImageUrls[2], url: 'https://cdn.example.com/reuse-detail.jpg', status: 'ready', localizationStatus: 'completed', roles: ['localizedDetail'], assetFlags: baseFlags }
     ]
   };
   const finalized = helpers.finalizePreparedMediaSnapshot(frozen, new Map([[productId, listingCase]]));
@@ -1436,7 +1480,7 @@ test('active v3 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
   }, listingCase, null, null, finalized);
   const job = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     workflowVersion: 'youzi-four-channel-listing-v3',
     productId,
     currentStage: 'parallel-platforms',
@@ -1466,6 +1510,12 @@ test('active v3 job 只復用目前 schema/policy/order/final snapshot/fingerpri
     preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(snapshot)
   }, productId, listingCase), []);
   assert.ok(helpers.activeV3JobReuseBlockers({ ...job, schemaVersion: 1 }, productId, listingCase).includes('job-schema-version-mismatch'));
+  const oldImageSnapshot = JSON.parse(JSON.stringify(snapshot));
+  oldImageSnapshot.imagePolicy.imageStandardVersion = 'youzi-v3-brand-image-standard-legacy';
+  assert.ok(helpers.activeV3JobReuseBlockers({
+    ...job, preparedSnapshot: oldImageSnapshot,
+    preparedSnapshotFingerprint: helpers.listingSnapshotFingerprint(oldImageSnapshot)
+  }, productId, listingCase).includes('brand-image-standard-mismatch'));
   const earlySnapshot = JSON.parse(JSON.stringify(snapshot));
   earlySnapshot.platformImagePlan.finalizedFromFrozenInput = false;
   earlySnapshot.platformImagePlan.source = 'codex-v3-prepared-snapshot';
@@ -1509,7 +1559,7 @@ test('fingerprint 與 current policy deep compare 不受 Firestore 物件 key in
 
 test('final publish snapshot rejects completed outputs whose source was not frozen at handoff', () => {
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'handoff-input-rogue',
+    workflowVersion: 'youzi-four-channel-listing-v3', imageStandardVersion: BRAND_TEMPLATE.imageStandardVersion, snapshotId: 'handoff-input-rogue',
     cases: [{ productId: 'rogue-product', sku: 'ROGUE-1', sourceImageUrls: ['https://supplier.example.com/allowed.jpg'] }]
   };
   const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
@@ -1525,7 +1575,7 @@ test('final publish snapshot rejects another frozen source URL disguised as a co
   const sourceOne = 'https://supplier.example.com/source-a.jpg';
   const sourceTwo = 'https://supplier.example.com/source-b.jpg';
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'handoff-input-cross-source',
+    workflowVersion: 'youzi-four-channel-listing-v3', imageStandardVersion: BRAND_TEMPLATE.imageStandardVersion, snapshotId: 'handoff-input-cross-source',
     cases: [{ productId: 'cross-source-product', sku: 'CROSS-1', sourceImageUrls: [sourceOne, sourceTwo] }]
   };
   const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
@@ -1548,7 +1598,7 @@ test('final publish snapshot rejects a merged sibling source URL disguised as a 
   const sourceTwo = 'https://supplier.example.com/merged-source-b.jpg';
   const flags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'handoff-input-cross-case-source',
+    workflowVersion: 'youzi-four-channel-listing-v3', imageStandardVersion: BRAND_TEMPLATE.imageStandardVersion, snapshotId: 'handoff-input-cross-case-source',
     cases: [
       { productId: 'merged-source-a', sku: 'MERGED-A', sourceImageUrls: [sourceOne] },
       { productId: 'merged-source-b', sku: 'MERGED-B', sourceImageUrls: [sourceTwo] }
@@ -1668,7 +1718,7 @@ test('EasyStore payload publishes one exact SKU with stock, price, package and a
   assert.equal(body.inventory_management, 'easystore');
   assert.equal(body.taxable, false);
   assert.equal(body.metafields_global_title_tag, snapshot.title);
-  assert.ok(Array.from(body.metafields_global_description_tag).length <= 180);
+  assert.ok(Array.from(body.metafields_global_description_tag).length <= 155);
   assert.equal(body.images.length, 7);
   assert.match(body.images.at(-1).url, /product-listing-store-promo\.png$/);
   assert.equal(body.variants.length, 1);
@@ -1755,7 +1805,7 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
 
   assert.equal(snapshot.stock, 0);
   assert.equal(payload.sku, '1040160-1');
-  assert.equal(payload.schemaVersion, 7);
+  assert.equal(payload.schemaVersion, 8);
   assert.equal(payload.workflowVersion, 'youzi-four-channel-listing-v3');
   assert.equal(payload.jobId, 'job-shopee-v2-1');
   assert.equal(payload.publishMode, 'auto');
@@ -1773,13 +1823,22 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
   assert.equal(payload.advancedDescription.dedicatedLocalStagingDirectoryRequired, true);
   assert.equal(payload.advancedDescription.deleteLocalStagingOnlyAfterReloadVerification, true);
   assert.deepEqual(payload.advancedDescription.imagePreflight, {
+    imageStandardVersion: 'youzi-v3-brand-image-standard-2026-09-04',
     preparedBeforeEasyStorePublish: true,
     sourceFilesMustExistLocallyBeforeSellerCenterUpload: true,
     uploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
     minimumSourceShortEdgePx: 700,
     preferredSquareSizePx: 1000,
-    storefrontPortraitWidthPx: 1000,
-    storefrontPortraitHeightPx: 750,
+    storefrontPortraitWidthPx: 700,
+    storefrontPortraitHeightPx: 1000,
+    brandHeaderHeightRatio: 0.20,
+    brandHeaderHeightPx: 200,
+    brandGreenHex: '#95C3A2',
+    logoRightSafeMarginRatio: 0.05,
+    requiredDetailInsetCount: 2,
+    detailSourcesMustDifferFromMainAndEachOther: true,
+    detailImagesMustMatchFeatureCopy: true,
+    independentAspectRatioReflowRequired: true,
     maximumImageCount: 12,
     responsiveHtmlStyle: 'max-width:100%;height:auto',
     verifyPlatformAcceptanceAfterPreparePublish: true,
@@ -2093,7 +2152,6 @@ test('physical photos stay out of every gallery and are appended before fixed no
     'https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg'
   ]);
   assert.equal(snapshot.physicalImagePolicy.customerFacingDerivative, 'watermark-only');
-  assert.equal(snapshot.physicalImagePolicy.labelText, '柚子樂器｜實體圖');
   assert.equal(snapshot.physicalImagePolicy.neverUseAsMainImage, true);
 });
 
@@ -2448,7 +2506,7 @@ test('one verified description is prepared once for EasyStore, Coupang, MOMO and
   assert.equal(plan.momo.imageHeightMaximumPx, 1500);
   assert.equal(plan.momo.imageFileMaximumBytes, 500000);
   assert.equal(plan.shopee.mode, 'seller-center-native-file-upload-interleaved');
-  assert.equal(snapshot.preparedPlatformFieldPlan.version, 21);
+  assert.equal(snapshot.preparedPlatformFieldPlan.version, 22);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.descriptionDelivery.mode, 'momo-rich-description-blocks');
   assert.equal(snapshot.preparedPlatformFieldPlan.coupang.preparedFields.descriptionDelivery.mode, 'safe-html-product-detail');
   assert.equal(snapshot.preparedPlatformFieldPlan.easyStore.preparedFields.descriptionDelivery.mode, 'safe-html');
@@ -2652,8 +2710,8 @@ test('2100307-4 固定 v3 實際資料可在不送出的模擬通過四通路預
   const cleanFlags = { containsLogo: false, containsText: false, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: false, momoPromotionEligible: false };
   const completed = [
     { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-clean-main.png', roles: ['cleanMain'], assetFlags: { ...cleanFlags } },
-    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-storefront-portrait.png', roles: ['storefrontPortrait'], assetFlags: { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait') },
-    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-branded-hero.png', roles: ['brandedHero'], assetFlags: { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero') },
+    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-storefront-portrait.png', roles: ['storefrontPortrait'], assetFlags: { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('storefrontPortrait', TEST_BRAND_STYLE, [sources[1], sources[2]]) },
+    { sourceImageUrl: sources[0], url: 'https://cdn.example.com/2100307-4-branded-hero.png', roles: ['brandedHero'], assetFlags: { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true }, ...brandTemplateFields('brandedHero', TEST_BRAND_STYLE, [sources[1], sources[2]]) },
     { sourceImageUrl: sources[1], url: 'https://cdn.example.com/2100307-4-localized-2.png', roles: ['localizedDetail'], assetFlags: { ...cleanFlags } },
     { sourceImageUrl: sources[1], url: 'https://cdn.example.com/2100307-4-momo-promo.png', roles: ['specification'], assetFlags: { ...cleanFlags, momoPromotionEligible: true } },
     { sourceImageUrl: sources[2], url: 'https://cdn.example.com/2100307-4-clean-detail.png', roles: ['cleanMain'], assetFlags: { ...cleanFlags } },
@@ -2664,7 +2722,7 @@ test('2100307-4 固定 v3 實際資料可在不送出的模擬通過四通路預
   ].map((row, index) => ({ ...row, sourceOrder: index + 1, status: 'ready', localizationStatus: 'completed' }));
   assert.equal(completed.length, 12);
   const frozen = {
-    workflowVersion: 'youzi-four-channel-listing-v3', snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', productId,
+    workflowVersion: 'youzi-four-channel-listing-v3', imageStandardVersion: BRAND_TEMPLATE.imageStandardVersion, snapshotId: 'Ui7HQyrWtdcfG1r7nKlt-mt2l5818', productId,
     cases: [{ productId, sku: '2100307-4', sourceImageUrls: sources, gallerySourceImageUrls: [] }]
   };
   const listingCase = {

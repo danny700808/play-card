@@ -1,4 +1,16 @@
 /* Product catalogue layout A; does not affect listing image production. */
+.ops-product-inline-media{display:grid;gap:18px;margin-top:20px;min-width:0}
+.ops-product-inline-media>section{border-top:1px solid var(--ops-line);padding-top:16px;min-width:0}
+.ops-product-inline-media h3{font-size:18px;margin:0 0 10px}
+.ops-inline-media-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.ops-inline-video{display:grid;gap:8px;margin:12px 0;min-width:0}
+.ops-inline-video iframe,.ops-inline-video video{width:100%;aspect-ratio:16/9;height:auto;border:0;border-radius:10px;background:#111}
+.ops-inline-video b{overflow-wrap:anywhere}
+.ops-media-status-table{overflow-x:auto;margin:12px 0}
+.ops-media-status-table table{width:100%;border-collapse:collapse;font-size:13px}
+.ops-media-status-table td,.ops-media-status-table th{padding:8px 5px;border-bottom:1px solid var(--ops-line);text-align:left;overflow-wrap:anywhere}
+.ops-product-inline-media .ops-platform-status-review{display:none}
+.ops-product-inline-media .ops-listing-physical-thumb strong{display:none}
 .ops-product-card-full.ops-product-card-layout-a{display:grid;grid-template-columns:minmax(100px,30%) minmax(0,1fr);grid-template-rows:1fr auto;min-height:280px}
 .ops-product-card-layout-a .ops-product-image-grid{height:auto;min-height:180px;grid-template-rows:1fr;padding:10px}
 .ops-product-card-layout-a .ops-product-body{padding:16px;gap:12px;min-width:0}

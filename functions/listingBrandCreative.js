@@ -1,8 +1,8 @@
 'use strict';
 
 const STYLE_CATALOG_VERSION = 'youzi-full-commercial-poster-style-catalog-v2';
-const COMMERCIAL_POSTER_STANDARD_VERSION = 'youzi-full-commercial-poster-v1';
-const RENDER_PROOF_VERSION = 'youzi-brand-creative-render-v2';
+const COMMERCIAL_POSTER_STANDARD_VERSION = 'youzi-full-commercial-poster-v2';
+const RENDER_PROOF_VERSION = 'youzi-brand-creative-render-v3';
 
 const STYLE_CATALOG = Object.freeze([
   ['bold-coral-impact', '珊瑚撞色', '海報撞色', '#FFF8F1', '#F05A47|#19A974', '大標題＋斜角重點帶'],
@@ -71,7 +71,7 @@ const STYLE_SELECTION_POLICY = Object.freeze({
   assignmentScope: 'root-product-group',
   sameStyleAcrossAspectRatios: true,
   sameStyleAcrossVariants: true,
-  allowedAspectRatios: Object.freeze(['1:1', '4:3']),
+  allowedAspectRatios: Object.freeze(['1:1', '7:10']),
   minimumLightAreaRatio: 0.65,
   maximumDarkAreaRatio: 0.35,
   forbidDarkFullBleedBackground: true,
@@ -83,7 +83,8 @@ const STYLE_SELECTION_POLICY = Object.freeze({
     'integrated-product-hero-composition',
     'commercial-headline-typography',
     'three-feature-visual-story',
-    'locked-brand-header-logo-and-border-composite',
+    'two-distinct-source-detail-insets-mapped-to-feature-copy',
+    'locked-20-percent-brand-header-safe-logo-and-border-composite',
     'commercial-poster-visual-qa'
   ]),
   requiredVisualQualities: Object.freeze([
@@ -91,7 +92,10 @@ const STYLE_SELECTION_POLICY = Object.freeze({
     'product-integrated-with-scene-or-graphic-system',
     'strong-first-glance-hierarchy',
     'style-specific-typography-texture-and-accents',
-    'three-features-integrated-into-one-poster-composition'
+    'three-features-integrated-into-one-poster-composition',
+    'two-detail-insets-from-distinct-non-main-sources',
+    'detail-insets-visually-match-their-feature-copy',
+    'independent-layout-reflow-for-each-output-ratio'
   ]),
   forbiddenFallbacks: Object.freeze([
     'generic-three-box-layout',
@@ -154,6 +158,13 @@ function renderProof(existing, seed, verification) {
     productIntegratedAsHero: checked.productIntegratedAsHero === true,
     strongCommercialHierarchy: checked.strongCommercialHierarchy === true,
     threeFeaturesIntegrated: checked.threeFeaturesIntegrated === true,
+    exactlyTwoDistinctDetailInsets: checked.exactlyTwoDistinctDetailInsets === true,
+    detailInsetsUseOtherSourceImages: checked.detailInsetsUseOtherSourceImages === true,
+    detailInsetsMatchFeatureCopy: checked.detailInsetsMatchFeatureCopy === true,
+    independentAspectRatioReflow: checked.independentAspectRatioReflow === true,
+    headerHeightExactly20Percent: checked.headerHeightExactly20Percent === true,
+    logoSafeMarginIntact: checked.logoSafeMarginIntact === true,
+    thinOuterFrameIntact: checked.thinOuterFrameIntact === true,
     verificationSource: String(checked.verificationSource || '').trim(),
     styleApplied: checked.styleControlsWholeComposition === true,
     sameStyleAcrossAspectRatios: true,
@@ -185,6 +196,13 @@ function renderProofMatches(value, expected, seed) {
     && proof.productIntegratedAsHero === true
     && proof.strongCommercialHierarchy === true
     && proof.threeFeaturesIntegrated === true
+    && proof.exactlyTwoDistinctDetailInsets === true
+    && proof.detailInsetsUseOtherSourceImages === true
+    && proof.detailInsetsMatchFeatureCopy === true
+    && proof.independentAspectRatioReflow === true
+    && proof.headerHeightExactly20Percent === true
+    && proof.logoSafeMarginIntact === true
+    && proof.thinOuterFrameIntact === true
     && Boolean(String(proof.verificationSource || '').trim())
     && proof.styleApplied === true
     && proof.sameStyleAcrossAspectRatios === true

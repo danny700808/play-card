@@ -28,25 +28,26 @@ const IMAGE_IMPORT_MAX_SELECTED_IMAGES = 12;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
 const CODEX_ONLY_LISTING_MODE = true;
 const BRAND_TEMPLATE_ASSET_BASE_URL = clean(process.env.YOUZI_HOSTING_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
-const BRAND_TEMPLATE_VERSION = 'youzi-commercial-poster-brand-template-v4';
-const BRAND_TEMPLATE_COMPOSITION = 'locked-one-ninth-brand-header-full-commercial-poster-v4';
+const BRAND_IMAGE_STANDARD_VERSION = 'youzi-v3-brand-image-standard-2026-09-04';
+const BRAND_TEMPLATE_VERSION = 'youzi-commercial-poster-brand-template-v5';
+const BRAND_TEMPLATE_COMPOSITION = 'locked-20pct-brand-header-safe-logo-two-detail-commercial-poster-v5';
 const BRAND_TEMPLATE_PROFILES = Object.freeze({
   storefrontPortrait: Object.freeze({
     url: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-portrait.png`,
-    sha256: 'dff948f29b8374897a08f1ee78c15fcdf3db4c0caf6eff60e0d40eeb8fbda9ce',
+    sha256: 'ed402eeacebddaf86397f00b7e9998fac2c3b3c5a302de773b783bcabb364e99',
     overlayUrl: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-portrait-overlay.png`,
-    overlaySha256: 'ac3007c35c48cbe930af73f3200cfc85f70e33570feb6ad2669ba68ea1d4661f',
-    widthPx: 1000, heightPx: 750, aspectRatio: '4:3', headerHeightPx: 83,
-    panel: Object.freeze({ left: 18, top: 92, width: 964, height: 640 }),
+    overlaySha256: '3fd54e8c59d3b6876753455a0a62cc1e371004d5a98d7546d17fd3a91d3a9518',
+    widthPx: 700, heightPx: 1000, aspectRatio: '7:10', headerHeightPx: 200,
+    panel: Object.freeze({ left: 10, top: 210, width: 680, height: 780 }),
     featureMinimum: 3, featureMaximum: 3
   }),
   brandedHero: Object.freeze({
     url: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-square.png`,
-    sha256: '5f0e7743102c00b97befef0c240ec67d76686c1ed0e69dd8aa741cad4a73a1fe',
+    sha256: '1e26c4a673279b5d22f3eb7aea729fb9d79efeb3e53700447057296a253691b1',
     overlayUrl: `${BRAND_TEMPLATE_ASSET_BASE_URL}/product-listing-brand-template-square-overlay.png`,
-    overlaySha256: '7c4ea0b425c7c7b258f4f0a1ed0897ddb514b2a0f50b147bf582a982245ff8a8',
-    widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 111,
-    panel: Object.freeze({ left: 18, top: 122, width: 964, height: 860 }),
+    overlaySha256: '9db471d5b1fc1ec5af657eb17d6d3fffd9ee9ab95efe13c9d497fb89a67750ce',
+    widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 200,
+    panel: Object.freeze({ left: 11, top: 211, width: 978, height: 778 }),
     featureMinimum: 3, featureMaximum: 3
   })
 });
@@ -506,7 +507,7 @@ function researchPrompt(context) {
     '樂器常見 label 包含 Weight、Warranty Duration、Warranty Type、Accessory Type、Length、Neck Material、Traditional Music Instrument、Guitar Shape、Hand Configuration、Quantity、Quantity per Pack、Body Material、Guitar Type、Pickup Configuration、Fretboard Material、Dimension (L x W x H)、Number of Strings、Item condition、Color。只放與此商品有關且有根據的欄位。',
     categoryTemplateGuide,
     'NCC、BSMI、保固、產地等不可推測；不適用或不確定時不要加入 shopeeAttributeValues。Quantity 與 Quantity per Pack 若為單件商品可填 1；Item condition 只有明確為新品時才填 New。每筆標示 high、medium 或 low，並用 note 簡短寫依據。',
-    'imagePlan 是進站前必須執行的圖片製作與編排指示，不是可略過的建議：要包含 EasyStore 750×1000 storefrontPortrait 首圖、蝦皮 1000×1000 brandedHero 首圖、MOMO／酷澎乾淨 1000×1000 cleanMain 首圖，以及依事實製作的繁體特色圖、規格圖、細項圖與 MOMO 專推圖。不得假設使用者有未提供的授權素材，也不得把來源原圖當成平台完成圖。',
+    'imagePlan 是進站前必須執行的圖片製作與編排指示，不是可略過的建議：要包含 EasyStore 700×1000（7:10）storefrontPortrait 首圖、蝦皮 1000×1000（1:1）brandedHero 首圖、MOMO／酷澎乾淨 1000×1000 cleanMain 首圖，以及依事實製作的繁體特色圖、規格圖、細項圖與 MOMO 專推圖。兩張品牌首圖的 #95C3A2 頁首均精確占高度 20%（200 px），使用未重畫的原始紅色標語及 Logo、5% 右側安全距離與 #4F775F 細框；下方必須有一張主圖、三項特色及兩張來自不同且非主圖來源、直接對應特色的細節圖，1:1 與 7:10 必須獨立重新構圖。不得假設使用者有未提供的授權素材，也不得把來源原圖當成平台完成圖。',
     '包裝尺寸必須優先尋找外箱／包裝長寬高與毛重，不要把商品本體尺寸冒充包裝尺寸。',
     '若是明顯可超商寄送的小型商品，但找不到官方包裝尺寸，可用保守估算並將 packageMeasurementMode 設為 estimated；大型樂器不可估成小包裹。',
     '判斷 convenience 時，請查詢蝦皮台灣目前可用物流的材積與重量限制，並在 packageResearchNote 簡述判斷依據；若無法確認就不要把大型商品判成可超商。',
@@ -676,17 +677,17 @@ function buildBrandTemplateImagePrompt(context, listingCase, role) {
     ? String(profile.featureMinimum)
     : `${profile.featureMinimum}～${profile.featureMaximum}`;
   return [
-    `第一張是商品來源圖，第二張是不可變品牌母版 ${BRAND_TEMPLATE_VERSION} 的版面參考。最終角色為 ${role}，尺寸 ${profile.widthPx}×${profile.heightPx}（${profile.aspectRatio}）。`,
+    `第一張是主商品來源圖，第二、三張是兩張不同來源的細節圖，第四張是不可變品牌母版 ${BRAND_TEMPLATE_VERSION} 的版面參考。最終角色為 ${role}，尺寸 ${profile.widthPx}×${profile.heightPx}（${profile.aspectRatio}）。`,
     `這不是資訊卡排版任務。必須先依 ${listingBrandCreative.COMMERCIAL_POSTER_STANDARD_VERSION} 完成一張真正可刊登的商業商品海報，再於最後合成固定品牌頁首、Logo 與框線；不得跳過完整海報創作階段。`,
-    '固定品牌區必須完全照核准版本：綠色頁首固定占整張高度 1/9，紅色標語「有音樂的生活更有風格」與圓形柚子樂器 Logo 的圖樣、文字、顏色都不可改。Logo 使用已核准的大型跨界版本，固定在右上並向下壓入內容區；只有 Logo 可跨越頁首邊界，而且不可遮住商品本體或主要文字。',
-    '下方內容區四周固定保留一條連續、清楚可見的細綠色圓角框線；框線必須在 Logo 下層，Logo 必須是最上層，兩者重疊處由 Logo 完整蓋住框線，圓形 Logo 內絕不可看見穿過的框線。照片、色塊、文字與裝飾全部停在框線內，不得蓋滿或吃掉框線。',
+    '固定品牌區必須完全照核准版本：綠色頁首固定為 #95C3A2，精確占整張高度 20%（200 px）；紅色標語「有音樂的生活更有風格」與圓形柚子樂器 Logo 必須直接使用核准原始素材，不得由 AI 重畫、改字、改色或變形。Logo 置於頁首中間偏右、完整留在頁首內，直徑為頁首高度 70%～78%，右側安全距離至少為整張寬度 5%，不得貼邊或被平台裁切。',
+    '下方 80% 商業設計區四周固定保留一條 #4F775F 連續細綠色圓角框：1000 寬版線寬 4 px、700 寬版線寬 3 px，外框內縮約 7 px。照片、色塊、文字與裝飾全部停在框線內，不得蓋滿、吃掉或省略框線。',
     '核准視覺基準有兩類：其一為明亮工業商業海報，商品與場景、超大標題、技術線條、材質紋理及圖示特色整合成一張完整作品；其二為明亮生活風格海報，以情境照片、雜誌式大標與編號特色形成完整敘事。可創作其他風格，但完成度、整體性、視覺層級與商業感不得低於這兩類基準。',
     `本商品固定風格為 ${style.styleName}（${style.styleId}／${style.family}）：底色 ${style.background}，重點色 ${style.accents.join('、')}，版型 ${style.layout}。這些設定必須控制整個內容區的場景或圖像系統、商品融入方式、標題字體、三項特色的視覺敘事、材質、圖示與裝飾；不可只記錄風格名稱，也不可只換底色或色塊。`,
     '明確禁止：白底或淺底上排三個普通矩形框、三個同款膠囊標籤、資料卡、表格式規格卡、只有商品去背圖加幾行文字、或不同風格仍沿用同一骨架。只要看起來像制式資訊卡而不是商業海報，就必須整張重做。',
     '先建立符合風格的完整藝術指導與畫面概念，再把真實商品整合為海報主角，接著用商業字體、照片／質感背景、圖示或風格化圖形建立第一眼層級，並把三項特色融入同一視覺故事；完成後才套固定品牌圖層。',
-    '同一商品的 1:1 與 4:3、以及同組所有細項必須沿用完全相同的藝術方向與視覺語言，但要針對比例重新構圖，不可把一張圖生硬縮放、裁切，也不可退回簡單資訊卡。',
+    '同一商品的 1:1 與 7:10、以及同組所有細項必須沿用完全相同的藝術方向與視覺語言，但要針對比例獨立重新構圖，不可把一張圖生硬縮放、拉伸、裁切，也不可退回簡單資訊卡。',
     '內容區至少 65% 保持奶油白、白、淺灰或明亮照片；深色只可用於文字與小面積重點，禁止整片深色、黑底或厚重滿版。',
-    '內容區只可加入商品、標題、已查證賣點與最多 2 個有來源依據的細節小圖；四周保留安全留白。商品必須清楚完整、比例正確並成為主視覺，不可被 Logo、標題、色塊或裝飾遮住。',
+    '內容區固定包含一張清楚完整的主商品圖，以及正好兩個有框線的細節小圖。兩張細節圖必須分別取自第二、第三張來源圖，彼此不同，也都不得是主圖的重複裁切；請挑選最能支持賣點的細節，不得無邏輯隨機取圖。每張細節圖旁的特色文字必須直接對應該圖可見內容，例如拾音器特色配拾音器近照、琴橋特色配琴橋近照。來源不足三張或無法找到兩張可對應賣點的不同細節圖時立即停止，不得複製主圖或虛構細節。商品必須清楚完整、比例正確並成為主視覺。',
     `用清楚的台灣繁體中文呈現正好 ${featureCount} 個不重複且已查證的商品特色；若不足 ${featureCount} 個，必須先停止主圖製作並補齊證據，不得少放或虛構。`,
     '文字可依風格使用不同但真正可讀的商業字體、大小、粗細與編排，不限定微軟正黑體；標題必須具有明確的商業海報層級，不能全部使用相同字級、字重或普通系統字。不可產生手畫假字。商品外觀、顏色、型號、零件、比例、材質與配件數量不得改變。',
     '不得加入價格、地址、電話、QR Code、導流文字、額外浮水印、左下娃娃或 PIC COLLAGE。不得保留簡體字、大陸用語、亂碼、錯字或被裁掉一半的文字。',
@@ -705,8 +706,11 @@ function brandCommercialPosterQaSchema() {
     required: [
       'approved', 'fullCommercialPosterDesign', 'genericInformationCardLayoutFound',
       'assignedStyleControlsWholeComposition', 'productIntegratedAsHero',
-      'strongCommercialHierarchy', 'threeFeaturesIntegrated', 'productUnobscured',
-      'fixedHeaderAndLogoIntact', 'borderDoesNotCrossLogo', 'issues', 'summary'
+      'strongCommercialHierarchy', 'threeFeaturesIntegrated', 'exactlyTwoDistinctDetailInsets',
+      'detailInsetsUseOtherSourceImages', 'detailInsetsMatchFeatureCopy', 'independentAspectRatioReflow',
+      'headerHeightExactly20Percent', 'brandGreenAndOriginalArtworkIntact', 'logoSafeMarginIntact',
+      'thinOuterFrameIntact', 'productUnobscured', 'fixedHeaderAndLogoIntact', 'borderDoesNotCrossLogo',
+      'issues', 'summary'
     ],
     properties: {
       approved: { type: 'boolean' },
@@ -716,6 +720,14 @@ function brandCommercialPosterQaSchema() {
       productIntegratedAsHero: { type: 'boolean' },
       strongCommercialHierarchy: { type: 'boolean' },
       threeFeaturesIntegrated: { type: 'boolean' },
+      exactlyTwoDistinctDetailInsets: { type: 'boolean' },
+      detailInsetsUseOtherSourceImages: { type: 'boolean' },
+      detailInsetsMatchFeatureCopy: { type: 'boolean' },
+      independentAspectRatioReflow: { type: 'boolean' },
+      headerHeightExactly20Percent: { type: 'boolean' },
+      brandGreenAndOriginalArtworkIntact: { type: 'boolean' },
+      logoSafeMarginIntact: { type: 'boolean' },
+      thinOuterFrameIntact: { type: 'boolean' },
       productUnobscured: { type: 'boolean' },
       fixedHeaderAndLogoIntact: { type: 'boolean' },
       borderDoesNotCrossLogo: { type: 'boolean' },
@@ -743,7 +755,8 @@ function buildBrandCommercialPosterQaRequest(imageBase64, context, role, styleAs
             '若只是淺色畫布、商品去背圖、三個普通矩形或膠囊標籤、表格式資訊卡、幾行同字級文字，或只換配色卻沿用通用骨架，genericInformationCardLayoutFound 必須為 true，approved 必須為 false。',
             '視覺完成度應達到明亮工業海報或生活雜誌海報的水準；不要求複製固定版型，但不可比這些基準簡陋。',
             `指定風格：${style.styleName}（${style.family}），版型方向：${style.layout}，底色：${style.background}，重點色：${style.accents.join('、')}。指定風格必須控制整張內容區，不是只出現在小色塊。`,
-            '固定品牌規則也必須同時成立：綠色頁首約 1/9、紅色標語與圓形 Logo 完整、Logo 位於框線上層且框線不可穿過 Logo、商品不可被遮住。',
+            '固定品牌規則也必須同時成立：#95C3A2 綠色頁首精確為 200 px／20%，紅色標語與圓形 Logo 都是未重畫的原始素材，Logo 在頁首中間偏右且右側至少保留 5% 安全距離，#4F775F 細圓角外框完整。',
+            '內容區必須有一張主商品圖與正好兩張有框線的小細節圖；兩張小圖來自兩個不同且不是主圖的來源，並各自與旁邊特色文字直接相關。若是另一比例版本，必須獨立重新編排，不能拉伸或直接裁切。',
             `圖片角色：${role}；商品：${clean(context && context.name) || '未命名商品'}。`,
             '只有所有布林條件均符合、沒有制式資訊卡退化，而且 issues 為空時，approved 才可為 true。'
           ].join('\n')
@@ -771,6 +784,14 @@ function brandCommercialPosterQaPasses(value) {
     && qa.productIntegratedAsHero === true
     && qa.strongCommercialHierarchy === true
     && qa.threeFeaturesIntegrated === true
+    && qa.exactlyTwoDistinctDetailInsets === true
+    && qa.detailInsetsUseOtherSourceImages === true
+    && qa.detailInsetsMatchFeatureCopy === true
+    && qa.independentAspectRatioReflow === true
+    && qa.headerHeightExactly20Percent === true
+    && qa.brandGreenAndOriginalArtworkIntact === true
+    && qa.logoSafeMarginIntact === true
+    && qa.thinOuterFrameIntact === true
     && qa.productUnobscured === true
     && qa.fixedHeaderAndLogoIntact === true
     && qa.borderDoesNotCrossLogo === true
@@ -2011,6 +2032,9 @@ function registerProductAiResearch(target) {
     if (!imageUrls.length) {
       throw new HttpsError('failed-precondition', '請先上傳至少一張你有權使用的真實商品照片。');
     }
+    if (imageUrls.length < 3) {
+      throw new HttpsError('failed-precondition', 'V3 品牌首圖需要一張主圖與兩張不同來源的細節圖，請先準備至少三張真實商品照片。');
+    }
     let apiKey = '';
     try { apiKey = clean(OPENAI_API_KEY.value()); } catch (_) { apiKey = clean(process.env.OPENAI_API_KEY); }
     if (!apiKey || apiKey === 'OPENAI_API_KEY_NOT_CONFIGURED') {
@@ -2023,10 +2047,11 @@ function registerProductAiResearch(target) {
         listingCase.brandCreativeStyleAssignment,
         `${clean(context && (context.productId || context.sku || context.name))}|${clean(listingCase.researchedProductName)}`
       );
+      const detailSourceImageUrls = imageUrls.slice(1, 3);
       const imageJobs = [
         { mode: 'clean-main', role: 'cleanMain', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0]] },
-        { mode: 'storefront-template', role: 'storefrontPortrait', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0], BRAND_TEMPLATE_PROFILES.storefrontPortrait.url] },
-        { mode: 'square-brand-template', role: 'brandedHero', sourceOrder: 1, sourceImageUrl: imageUrls[0], sourceImageUrls: [imageUrls[0], BRAND_TEMPLATE_PROFILES.brandedHero.url] }
+        { mode: 'storefront-template', role: 'storefrontPortrait', sourceOrder: 1, sourceImageUrl: imageUrls[0], detailSourceImageUrls, sourceImageUrls: [imageUrls[0], ...detailSourceImageUrls, BRAND_TEMPLATE_PROFILES.storefrontPortrait.url] },
+        { mode: 'square-brand-template', role: 'brandedHero', sourceOrder: 1, sourceImageUrl: imageUrls[0], detailSourceImageUrls, sourceImageUrls: [imageUrls[0], ...detailSourceImageUrls, BRAND_TEMPLATE_PROFILES.brandedHero.url] }
       ].concat(imageUrls.slice(0, 12).map((sourceImageUrl, sourceIndex) => ({
         mode: 'localized', role: 'localizedDetail', sourceOrder: sourceIndex + 1,
         sourceImageUrl, sourceImageUrls: [sourceImageUrl]
@@ -2091,6 +2116,13 @@ function registerProductAiResearch(target) {
             productIntegratedAsHero: brandCommercialPosterQa.productIntegratedAsHero === true,
             strongCommercialHierarchy: brandCommercialPosterQa.strongCommercialHierarchy === true,
             threeFeaturesIntegrated: brandCommercialPosterQa.threeFeaturesIntegrated === true,
+            exactlyTwoDistinctDetailInsets: brandCommercialPosterQa.exactlyTwoDistinctDetailInsets === true,
+            detailInsetsUseOtherSourceImages: brandCommercialPosterQa.detailInsetsUseOtherSourceImages === true,
+            detailInsetsMatchFeatureCopy: brandCommercialPosterQa.detailInsetsMatchFeatureCopy === true,
+            independentAspectRatioReflow: brandCommercialPosterQa.independentAspectRatioReflow === true,
+            headerHeightExactly20Percent: brandCommercialPosterQa.headerHeightExactly20Percent === true,
+            logoSafeMarginIntact: brandCommercialPosterQa.logoSafeMarginIntact === true,
+            thinOuterFrameIntact: brandCommercialPosterQa.thinOuterFrameIntact === true,
             verificationSource: 'openai-commercial-poster-visual-qa'
           }
         ) : null;
@@ -2130,9 +2162,13 @@ function registerProductAiResearch(target) {
             : BRAND_TEMPLATE_PROFILES[job.role]
               ? { containsLogo: true, containsText: true, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: true, momoPromotionEligible: false }
               : { containsLogo: false, containsText: true, containsContactInfo: false, containsQrCode: false, greenBrandTemplate: false, momoPromotionEligible: false },
+          imageStandardVersion: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_IMAGE_STANDARD_VERSION : '',
           templateVersion: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_VERSION : '',
           templateAssetSha256: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_PROFILES[job.role].sha256 : '',
           templateComposition: BRAND_TEMPLATE_PROFILES[job.role] ? BRAND_TEMPLATE_COMPOSITION : '',
+          detailSourceImageUrls: BRAND_TEMPLATE_PROFILES[job.role] ? job.detailSourceImageUrls.slice() : [],
+          detailFeatureMappingsVerified: BRAND_TEMPLATE_PROFILES[job.role] ? brandCommercialPosterQa.detailInsetsMatchFeatureCopy === true : false,
+          independentAspectRatioReflowVerified: BRAND_TEMPLATE_PROFILES[job.role] ? brandCommercialPosterQa.independentAspectRatioReflow === true : false,
           creativeStyleAssignment: BRAND_TEMPLATE_PROFILES[job.role] ? brandCreativeStyleAssignment : null,
           brandRenderProof: BRAND_TEMPLATE_PROFILES[job.role] ? brandRenderProof : null,
           brandCommercialPosterQa: BRAND_TEMPLATE_PROFILES[job.role] ? brandCommercialPosterQa : null,

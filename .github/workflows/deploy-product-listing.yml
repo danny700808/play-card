@@ -65,7 +65,7 @@ jobs:
       - name: Test product listing workflow
         env:
           NODE_PATH: functions/node_modules
-        run: node --test tests/product-ai-research.test.js tests/product-listing-publish.test.js tests/product-listing-source-cleanup.test.js tests/easystore-variant-image-sync.test.js tests/book-cover-enrichment.test.js
+        run: node --test tests/product-ai-research.test.js tests/product-listing-publish.test.js tests/product-listing-source-cleanup.test.js tests/easystore-variant-image-sync.test.js tests/book-cover-enrichment.test.js tests/product-inline-media.test.js tests/product-media-policy.test.js tests/product-card-layout-a.test.js
       - name: Validate Firebase service account
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}

@@ -17,8 +17,12 @@ const LISTING_CASE_COLLECTION = 'opsProductListingCases';
 const JOB_COLLECTION = 'opsSyncJobs';
 const PLATFORM_QUEUE_COLLECTION = 'opsProductListingQueue';
 const LISTING_WORKFLOW_ID = 'youzi-four-channel-listing-v3';
-const LISTING_JOB_SCHEMA_VERSION = 5;
-const LISTING_AUTOMATION_POLICY_VERSION = 39;
+const LISTING_JOB_SCHEMA_VERSION = 6;
+const LISTING_AUTOMATION_POLICY_VERSION = 41;
+const EASYSTORE_SEO_TITLE_RECOMMENDED_MAX_CHARS = 70;
+const EASYSTORE_SEO_DESCRIPTION_RECOMMENDED_MAX_CHARS = 155;
+const EASYSTORE_SEO_DESCRIPTION_LEGACY_HELP_MAX_CHARS = 255;
+const EASYSTORE_SEO_DESCRIPTION_UI_HARD_MAX_CHARS = 450;
 const RICH_CONTENT_STANDARD_VERSION = 'youzi-rich-product-content-v2';
 const RICH_CONTENT_FEATURE_TARGET = 10;
 const RICH_CONTENT_USAGE_TARGET = 8;
@@ -78,7 +82,7 @@ const LISTING_TARGET_SCOPES = Object.freeze({
 const REQUEST_TIMEOUT_MS = 60 * 1000;
 const PUBLISH_LOCK_MS = 15 * 60 * 1000;
 const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
-const SHOPEE_AUTOFILL_SCHEMA_VERSION = 7;
+const SHOPEE_AUTOFILL_SCHEMA_VERSION = 8;
 const PLATFORM_QUEUE_PENDING_STATUSES = new Set(['awaiting-store-agent', 'processing']);
 const PLATFORM_QUEUE_COMPLETED_STATUSES = new Set(['completed', 'created', 'updated', 'published', 'success']);
 const PLATFORM_QUEUE_RECEIPT_STATUSES = new Set([...PLATFORM_QUEUE_COMPLETED_STATUSES, 'submitted-to-platform-review', 'under-review']);
@@ -91,53 +95,70 @@ const DESCRIPTION_PROMO_IMAGE_URLS = [
   `${DESCRIPTION_PROMO_ASSET_BASE_URL}/product-listing-description-promo-1.jpg`,
   `${DESCRIPTION_PROMO_ASSET_BASE_URL}/product-listing-description-promo-2.jpg`
 ];
+const BRAND_IMAGE_STANDARD_VERSION = 'youzi-v3-brand-image-standard-2026-09-04';
 const SHOPEE_IMPORTED_DESCRIPTION_IMAGE_STANDARD = Object.freeze({
+  imageStandardVersion: BRAND_IMAGE_STANDARD_VERSION,
   preparedBeforeEasyStorePublish: true,
   sourceFilesMustExistLocallyBeforeSellerCenterUpload: true,
   uploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
   minimumSourceShortEdgePx: 700,
   preferredSquareSizePx: 1000,
-  storefrontPortraitWidthPx: 1000,
-  storefrontPortraitHeightPx: 750,
+  storefrontPortraitWidthPx: 700,
+  storefrontPortraitHeightPx: 1000,
+  brandHeaderHeightRatio: 0.20,
+  brandHeaderHeightPx: 200,
+  brandGreenHex: '#95C3A2',
+  logoRightSafeMarginRatio: 0.05,
+  requiredDetailInsetCount: 2,
+  detailSourcesMustDifferFromMainAndEachOther: true,
+  detailImagesMustMatchFeatureCopy: true,
+  independentAspectRatioReflowRequired: true,
   maximumImageCount: 12,
   responsiveHtmlStyle: 'max-width:100%;height:auto',
   verifyPlatformAcceptanceAfterPreparePublish: true,
   doNotResizeAgainInsideShopee: true
 });
 const BRAND_TEMPLATE_CONTRACT = Object.freeze({
-  version: 'youzi-commercial-poster-brand-template-v4',
+  version: 'youzi-commercial-poster-brand-template-v5',
+  imageStandardVersion: BRAND_IMAGE_STANDARD_VERSION,
   sourceAsset: Object.freeze({
     url: `${SHOP_ASSET_BASE_URL}/product-listing-main-template.jpg`,
     sha256: 'e62ded7e4cd4d740d60f8aace2aaa62577973244ee3a0f7545b4c513ec608d12'
   }),
   slogan: '有音樂的生活更有風格',
   logoIdentity: 'youzi-round-green-logo',
-  immutableRegions: Object.freeze(['green-header-background', 'slogan', 'round-logo-artwork', 'header-height-ratio', 'logo-overlap-geometry', 'outer-green-border']),
+  immutableRegions: Object.freeze(['green-header-background', 'slogan', 'round-logo-artwork', 'header-height-ratio', 'logo-safe-margin', 'outer-green-border']),
   forbiddenLegacyElements: Object.freeze(['bottom-left-mascot', 'pic-collage-mark']),
   storefrontPortrait: Object.freeze({
     url: `${SHOP_ASSET_BASE_URL}/product-listing-brand-template-portrait.png`,
-    sha256: 'dff948f29b8374897a08f1ee78c15fcdf3db4c0caf6eff60e0d40eeb8fbda9ce',
-    widthPx: 1000, heightPx: 750, aspectRatio: '4:3', headerHeightPx: 83
+    sha256: 'ed402eeacebddaf86397f00b7e9998fac2c3b3c5a302de773b783bcabb364e99',
+    widthPx: 700, heightPx: 1000, aspectRatio: '7:10', headerHeightPx: 200
   }),
   brandedHero: Object.freeze({
     url: `${SHOP_ASSET_BASE_URL}/product-listing-brand-template-square.png`,
-    sha256: '5f0e7743102c00b97befef0c240ec67d76686c1ed0e69dd8aa741cad4a73a1fe',
-    widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 111
+    sha256: '1e26c4a673279b5d22f3eb7aea729fb9d79efeb3e53700447057296a253691b1',
+    widthPx: 1000, heightPx: 1000, aspectRatio: '1:1', headerHeightPx: 200
   }),
-  header: Object.freeze({ heightRatio: 1 / 9, background: 'approved-youzi-green', sloganAndLogoArtworkMustRemainUnchanged: true }),
+  header: Object.freeze({ heightRatio: 0.20, heightPx: 200, background: '#95C3A2', sloganAndLogoArtworkMustRemainUnchanged: true }),
   logo: Object.freeze({
-    anchor: 'upper-right', diameterRatioOfCanvasHeight: 0.28,
-    overlapHeaderAndContent: true, selectedReference: 'approved-large-overlap-version',
-    onlyElementAllowedToCrossHeaderBoundary: true, mayNotCoverProductOrPrimaryCopy: true,
-    layer: 'topmost', mustCoverBorderAtOverlap: true
+    anchor: 'header-center-right', diameterRatioOfHeaderHeight: Object.freeze({ minimum: 0.70, maximum: 0.78 }),
+    rightSafeMarginRatio: 0.05, overlapHeaderAndContent: false, mustRemainInsideHeader: true,
+    mayNotCoverProductOrPrimaryCopy: true, layer: 'topmost'
   }),
   contentPanel: Object.freeze({
     background: '#fffaf0', narrowGreenBorderRequired: true,
-    borderStyle: 'continuous-thin-rounded-green-outline', borderWidthPx: Object.freeze({ minimum: 3, maximum: 6 }),
-    borderLayer: 'below-logo', borderMayNotCrossLogoArtwork: true,
+    borderColor: '#4F775F', borderStyle: 'continuous-thin-rounded-green-outline',
+    borderInsetPx: 7, borderWidthPx: Object.freeze({ square: 4, portrait: 3 }),
+    borderLayer: 'below-brand-header', borderMayNotCrossLogoArtwork: true,
     allCreativeLayersMustStayInsideBorder: true, minimumLightAreaRatio: 0.65,
     maximumDarkAreaRatio: 0.35, darkFullBleedForbidden: true
   }),
+  detailInsets: Object.freeze({
+    requiredCount: 2, framed: true, sourcesMustBeDistinctFromMain: true,
+    sourcesMustBeDistinctFromEachOther: true, mustMapDirectlyToFeatureCopy: true,
+    insufficientValidSourcesAction: 'stop-before-render'
+  }),
+  ratioLayout: Object.freeze({ independentlyReflowEachAspectRatio: true, stretchingForbidden: true, directRecropForbidden: true }),
   creativeStyleSystem: Object.freeze({
     ...listingBrandCreative.STYLE_SELECTION_POLICY,
     renderProofVersion: listingBrandCreative.RENDER_PROOF_VERSION,
@@ -152,7 +173,7 @@ const BRAND_TEMPLATE_CONTRACT = Object.freeze({
     archetypes: Object.freeze(['bright-industrial-integrated-poster', 'bright-lifestyle-editorial-poster']),
     doNotCopyLayoutLiterally: true
   }),
-  composition: 'locked-one-ninth-brand-header-full-commercial-poster-v4'
+  composition: 'locked-20pct-brand-header-safe-logo-two-detail-commercial-poster-v5'
 });
 const LEGACY_PHYSICAL_PRODUCT_DISCLAIMER = '商品圖片與規格僅供參考，實際內容以收到的實體商品為準。';
 const PHYSICAL_PRODUCT_DISCLAIMER = '商品圖片與文字說明僅供參考；不同批次的包裝、印刷、配色或細節可能略有差異，實際內容以收到的商品為準。';
@@ -1635,6 +1656,7 @@ function listingImageTemplateMetadata(row) {
   const metadata = source.templateContract && typeof source.templateContract === 'object'
     ? source.templateContract : {};
   return {
+    imageStandardVersion: clean(source.imageStandardVersion || metadata.imageStandardVersion),
     version: clean(source.templateVersion || metadata.version),
     assetSha256: clean(source.templateAssetSha256 || metadata.assetSha256).toLowerCase(),
     composition: clean(source.templateComposition || metadata.composition),
@@ -1649,7 +1671,10 @@ function listingImageTemplateMetadata(row) {
     brandCommercialPosterQa: source.brandCommercialPosterQa && typeof source.brandCommercialPosterQa === 'object'
       ? { ...source.brandCommercialPosterQa }
       : metadata.brandCommercialPosterQa && typeof metadata.brandCommercialPosterQa === 'object'
-        ? { ...metadata.brandCommercialPosterQa } : null
+        ? { ...metadata.brandCommercialPosterQa } : null,
+    detailSourceImageUrls: normalizeUrls(source.detailSourceImageUrls || metadata.detailSourceImageUrls, 2),
+    detailFeatureMappingsVerified: source.detailFeatureMappingsVerified === true || metadata.detailFeatureMappingsVerified === true,
+    independentAspectRatioReflowVerified: source.independentAspectRatioReflowVerified === true || metadata.independentAspectRatioReflowVerified === true
   };
 }
 
@@ -1657,9 +1682,17 @@ function brandTemplateMetadataMatches(row, role, expectedAssignment, seed) {
   const profile = BRAND_TEMPLATE_CONTRACT[role];
   if (!profile) return true;
   const metadata = listingImageTemplateMetadata(row);
-  return metadata.version === BRAND_TEMPLATE_CONTRACT.version
+  const mainSourceImageUrl = safeHttpUrl(row && row.sourceImageUrl);
+  const detailSources = metadata.detailSourceImageUrls;
+  return metadata.imageStandardVersion === BRAND_TEMPLATE_CONTRACT.imageStandardVersion
+    && metadata.version === BRAND_TEMPLATE_CONTRACT.version
     && metadata.assetSha256 === profile.sha256
     && metadata.composition === BRAND_TEMPLATE_CONTRACT.composition
+    && detailSources.length === BRAND_TEMPLATE_CONTRACT.detailInsets.requiredCount
+    && new Set(detailSources).size === BRAND_TEMPLATE_CONTRACT.detailInsets.requiredCount
+    && !detailSources.includes(mainSourceImageUrl)
+    && metadata.detailFeatureMappingsVerified === true
+    && metadata.independentAspectRatioReflowVerified === true
     && metadata.creativeStyleAssignment
     && listingBrandCreative.renderProofMatches(
       metadata.brandRenderProof,
@@ -1768,6 +1801,12 @@ function finalizedRoleRowsForCase(productId, frozenCase, currentCase) {
       if (roles.includes(role) && !brandTemplateMetadataMatches(row, role, expectedBrandStyle, clean(productId))) {
         throw new Error(`${clean(productId)}的 ${role} 未使用固定綠底品牌母版 ${BRAND_TEMPLATE_CONTRACT.version}，或實際風格／圖層證明與本商品指派不符。`);
       }
+      if (roles.includes(role)) {
+        const detailSources = listingImageTemplateMetadata(row).detailSourceImageUrls;
+        if (!detailSources.every((sourceUrl) => allowedSources.has(sourceUrl))) {
+          throw new Error(`${clean(productId)}的 ${role} 細節小圖來源不在本次凍結來源圖清單。`);
+        }
+      }
     });
     roles.forEach((role) => {
       const lineageKey = `${sourceImageUrl}|${role}`;
@@ -1874,7 +1913,7 @@ function buildFinalPlatformImagePlan(caseRows) {
   };
   const nonHeroRows = pool.filter((row) => !row.roles.includes('brandedHero') && !row.roles.includes('storefrontPortrait'));
   // Each platform gallery may contain only one green Youzi template. EasyStore
-  // uses the locked 4:3 storefront output, so the square branded hero must not
+  // uses the locked 7:10 storefront output, so the square branded hero must not
   // be appended again later in the same gallery.
   const easyRows = uniqueRows(storefrontRows.concat(cleanRows, detailRows, nonHeroRows));
   const shopeeRows = uniqueRows(brandedRows.concat(cleanRows, detailRows, nonHeroRows));
@@ -1911,6 +1950,9 @@ function frozenInputSnapshotFingerprint(snapshot) {
 function finalizePreparedMediaSnapshot(frozenInputSnapshot, currentCasesById) {
   const frozen = frozenInputSnapshot && typeof frozenInputSnapshot === 'object' ? frozenInputSnapshot : {};
   if (clean(frozen.workflowVersion) !== LISTING_WORKFLOW_ID) throw new Error('只能從 v3 凍結輸入快照建立完成圖快照。');
+  if (clean(frozen.imageStandardVersion) !== BRAND_IMAGE_STANDARD_VERSION) {
+    throw new Error('這筆凍結輸入是舊版 V3 圖片規格；請回營運中心重新建立目前 V3 快照。');
+  }
   const frozenCases = Array.isArray(frozen.cases) ? frozen.cases : [];
   if (!frozenCases.length) throw new Error('v3 凍結輸入快照沒有商品案件。');
   const allFrozenSourceUrls = new Set(frozenCases.flatMap((item) => normalizeUrls(item && item.sourceImageUrls, 20)));
@@ -1969,6 +2011,7 @@ function finalizePreparedMediaSnapshot(frozenInputSnapshot, currentCasesById) {
   });
   return {
     workflowVersion: LISTING_WORKFLOW_ID,
+    imageStandardVersion: BRAND_IMAGE_STANDARD_VERSION,
     snapshotId: `${clean(frozen.snapshotId) || clean(frozen.productId)}-final`,
     inputSnapshotId: clean(frozen.snapshotId),
     inputSnapshotFingerprint: frozenInputSnapshotFingerprint(frozen),
@@ -2199,7 +2242,7 @@ function buildCanonicalCategoryDecision(snapshot) {
 
 function buildListingDecisionContract(snapshot) {
   return {
-    version: 2,
+    version: 3,
     mode: 'deterministic-workflow-with-structured-judgment',
     immutableForJob: true,
     deterministicSteps: [
@@ -2218,13 +2261,27 @@ function buildListingDecisionContract(snapshot) {
       coupangFirstImageRole: 'cleanMain',
       momoFirstImageRole: 'cleanMain',
       singleGreenBrandTemplatePerPlatformGallery: true,
+      brandImageStandardVersion: BRAND_IMAGE_STANDARD_VERSION,
+      brandHeaderHeightRatio: 0.20,
+      brandHeaderHeightPx: 200,
+      brandGreenHex: '#95C3A2',
+      brandLogoRightSafeMarginRatio: 0.05,
+      brandDetailInsetCount: 2,
+      brandDetailSourcesMustDifferFromMainAndEachOther: true,
+      brandDetailImagesMustMatchFeatureCopy: true,
+      brandAspectRatiosMustBeIndependentlyReflowed: true,
       easyStoreTaxable: false,
       easyStoreCompareAtMarkupPercent: 35,
       easyStoreBarcodeOptional: true,
       easyStoreFeatureBulletMinChars: 24,
       easyStoreFeatureBulletMaxChars: 30,
-      easyStoreSeoTitleMaxChars: 70,
-      easyStoreSeoDescriptionMaxChars: 180,
+      easyStoreSeoTitleMaxChars: EASYSTORE_SEO_TITLE_RECOMMENDED_MAX_CHARS,
+      easyStoreSeoDescriptionMaxChars: EASYSTORE_SEO_DESCRIPTION_RECOMMENDED_MAX_CHARS,
+      easyStoreSeoDescriptionRecommendedMaxChars: EASYSTORE_SEO_DESCRIPTION_RECOMMENDED_MAX_CHARS,
+      easyStoreSeoDescriptionLegacyHelpMaxChars: EASYSTORE_SEO_DESCRIPTION_LEGACY_HELP_MAX_CHARS,
+      easyStoreSeoDescriptionUiHardMaxChars: EASYSTORE_SEO_DESCRIPTION_UI_HARD_MAX_CHARS,
+      easyStoreSeoDescriptionPrepareBeforePageEntry: true,
+      easyStoreSeoDescriptionRejectBeforeSaveWhenOverHardLimit: true,
       easyStoreSeoUiFallbackWhenPublicApiIgnoresFields: true,
       coupangAttributeNameMaxChars: 25,
       coupangExcludedRedundantAttributes: ['Parent Manufacturer Part Number', 'Manufacturer Part Number'],
@@ -2558,7 +2615,9 @@ function buildPlatformPageContracts() {
         { key: 'metadata-and-publish', fields: ['seo-url-and-meta-description', 'publish-state', 'sales-channels', 'category-brand-vendor-tags-notes', 'save'], dynamic: true }
       ],
       fixedFields: [
-        'publish-immediately', 'taxable-off', 'inventory-tracking-on', 'seo-title-max-70', 'seo-description-max-180',
+        'publish-immediately', 'taxable-off', 'inventory-tracking-on', 'seo-title-recommended-max-70',
+        'seo-description-recommended-max-155', 'seo-description-ui-hard-max-450',
+        'seo-description-prepare-and-count-before-page-entry',
         'pre-resolved-existing-store-collections', 'exact-brand-only'
       ],
       dynamicFields: ['unmapped-category-exception', 'brand-not-found-exception', 'platform-validation-errors']
@@ -2658,7 +2717,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
     ? `${normalizeSku(snapshot.sku) || 'product'}-momo-promo-${momoPromotionFingerprint}.jpg` : '';
   const momoMediaReadyBeforeFirstSubmit = Boolean(momoMainImageUrl && momoPromotionImageUrl);
   return {
-    version: 21,
+    version: 22,
     immutableForJob: true,
     preparedBeforePlatformNavigation: true,
     platformOrder: [...PLATFORM_EXECUTION_ORDER],
@@ -3342,9 +3401,10 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
         analyzeNormalizedCopyAndRetainSourceLineage: true
       },
       galleryMaximum: 7, galleryProductMaximum: 6, overflowToDescription: true,
-      mainImageTemplate: BRAND_TEMPLATE_CONTRACT.version, mainImageAspectRatio: '1:1-and-4:3-matched-pair',
-      mainImageBackdrop: 'locked-one-ninth-youzi-green-header-logo-above-border-and-full-commercial-poster',
-      mainImageProductPlacement: 'within-thin-green-border-and-never-under-logo',
+      imageStandardVersion: BRAND_IMAGE_STANDARD_VERSION,
+      mainImageTemplate: BRAND_TEMPLATE_CONTRACT.version, mainImageAspectRatio: '1:1-and-7:10-independently-reflowed-pair',
+      mainImageBackdrop: 'locked-20pct-youzi-green-header-safe-logo-two-detail-commercial-poster',
+      mainImageProductPlacement: 'one-dominant-product-with-two-distinct-source-detail-insets-within-thin-green-border',
       fullCommercialPosterStageRequired: true,
       genericInformationCardFallbackForbidden: true,
       approvedVisualReference: { ...BRAND_TEMPLATE_CONTRACT.approvedVisualReference },
@@ -3356,14 +3416,18 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
           heightPx: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.heightPx,
           aspectRatio: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.aspectRatio,
           firstImageFor: ['easyStore'], commercialInformationDensity: 'rich-but-readable',
-          verifiedFeatureCount: { minimum: 3, maximum: 3 }, verifiedDetailInsetMaximum: 2,
+          verifiedFeatureCount: { minimum: 3, maximum: 3 }, verifiedDetailInsetCount: 2,
+          detailSourcesMustDifferFromMainAndEachOther: true,
+          detailImagesMustMatchFeatureCopy: true,
+          independentAspectRatioReflowRequired: true,
           templateVersion: BRAND_TEMPLATE_CONTRACT.version,
           templateAssetUrl: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.url,
           templateAssetSha256: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.sha256,
           fixedStoreSlogan: BRAND_TEMPLATE_CONTRACT.slogan,
           fixedStoreLogoRequired: true, fixedHeaderPixelsRequired: true,
           fixedHeaderHeightRatio: BRAND_TEMPLATE_CONTRACT.header.heightRatio,
-          selectedLargeLogoOverlapRequired: true, thinOuterGreenBorderRequired: true,
+          logoRightSafeMarginRatio: BRAND_TEMPLATE_CONTRACT.logo.rightSafeMarginRatio,
+          logoMustRemainInsideHeader: true, thinOuterGreenBorderRequired: true,
           logoLayer: BRAND_TEMPLATE_CONTRACT.logo.layer,
           borderLayer: BRAND_TEMPLATE_CONTRACT.contentPanel.borderLayer,
           borderMayNotCrossLogoArtwork: BRAND_TEMPLATE_CONTRACT.contentPanel.borderMayNotCrossLogoArtwork,
@@ -3379,13 +3443,18 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
           heightPx: BRAND_TEMPLATE_CONTRACT.brandedHero.heightPx,
           aspectRatio: BRAND_TEMPLATE_CONTRACT.brandedHero.aspectRatio,
           firstImageFor: ['shopee'], verifiedFeatureCount: { minimum: 3, maximum: 3 },
+          verifiedDetailInsetCount: 2,
+          detailSourcesMustDifferFromMainAndEachOther: true,
+          detailImagesMustMatchFeatureCopy: true,
+          independentAspectRatioReflowRequired: true,
           templateVersion: BRAND_TEMPLATE_CONTRACT.version,
           templateAssetUrl: BRAND_TEMPLATE_CONTRACT.brandedHero.url,
           templateAssetSha256: BRAND_TEMPLATE_CONTRACT.brandedHero.sha256,
           fixedStoreSlogan: BRAND_TEMPLATE_CONTRACT.slogan,
           fixedStoreLogoRequired: true, fixedHeaderPixelsRequired: true,
           fixedHeaderHeightRatio: BRAND_TEMPLATE_CONTRACT.header.heightRatio,
-          selectedLargeLogoOverlapRequired: true, thinOuterGreenBorderRequired: true,
+          logoRightSafeMarginRatio: BRAND_TEMPLATE_CONTRACT.logo.rightSafeMarginRatio,
+          logoMustRemainInsideHeader: true, thinOuterGreenBorderRequired: true,
           logoLayer: BRAND_TEMPLATE_CONTRACT.logo.layer,
           borderLayer: BRAND_TEMPLATE_CONTRACT.contentPanel.borderLayer,
           borderMayNotCrossLogoArtwork: BRAND_TEMPLATE_CONTRACT.contentPanel.borderMayNotCrossLogoArtwork,
@@ -3427,7 +3496,12 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
         templateAssetSha256: BRAND_TEMPLATE_CONTRACT.storefrontPortrait.sha256,
         fixedHeaderPixelsRequired: true,
         fixedHeaderHeightRatio: BRAND_TEMPLATE_CONTRACT.header.heightRatio,
-        selectedLargeLogoOverlapRequired: true,
+        logoRightSafeMarginRatio: BRAND_TEMPLATE_CONTRACT.logo.rightSafeMarginRatio,
+        logoMustRemainInsideHeader: true,
+        verifiedDetailInsetCount: 2,
+        detailSourcesMustDifferFromMainAndEachOther: true,
+        detailImagesMustMatchFeatureCopy: true,
+        independentAspectRatioReflowRequired: true,
         logoLayer: BRAND_TEMPLATE_CONTRACT.logo.layer,
         borderLayer: BRAND_TEMPLATE_CONTRACT.contentPanel.borderLayer,
         borderMayNotCrossLogoArtwork: BRAND_TEMPLATE_CONTRACT.contentPanel.borderMayNotCrossLogoArtwork,
@@ -3544,10 +3618,15 @@ function easyStoreSeoDescription(snapshot) {
   const parts = [];
   for (const candidate of candidates) {
     const next = [...parts, candidate].filter(Boolean).join('｜');
-    if (Array.from(next).length > 180) break;
+    if (Array.from(next).length > EASYSTORE_SEO_DESCRIPTION_RECOMMENDED_MAX_CHARS) break;
     if (candidate && !parts.includes(candidate)) parts.push(candidate);
   }
-  return parts.join('｜') || Array.from(title).slice(0, 180).join('');
+  const description = parts.join('｜')
+    || Array.from(title).slice(0, EASYSTORE_SEO_DESCRIPTION_RECOMMENDED_MAX_CHARS).join('');
+  if (Array.from(description).length > EASYSTORE_SEO_DESCRIPTION_UI_HARD_MAX_CHARS) {
+    throw new Error(`EasyStore SEO description exceeds the ${EASYSTORE_SEO_DESCRIPTION_UI_HARD_MAX_CHARS}-character UI limit.`);
+  }
+  return description;
 }
 
 function buildEasyStoreProductBody(snapshot, includeVariant = true) {
@@ -3559,7 +3638,7 @@ function buildEasyStoreProductBody(snapshot, includeVariant = true) {
     inventory_management: 'easystore',
     taxable: false,
     shipping_required: true,
-    metafields_global_title_tag: Array.from(clean(snapshot.title)).slice(0, 70).join(''),
+    metafields_global_title_tag: Array.from(clean(snapshot.title)).slice(0, EASYSTORE_SEO_TITLE_RECOMMENDED_MAX_CHARS).join(''),
     metafields_global_description_tag: easyStoreSeoDescription(snapshot),
     published_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
     images: galleryImages.map((url) => ({ url }))
@@ -5464,11 +5543,17 @@ function activeV3JobReuseBlockers(candidate, productId, listingCase) {
     reasons.push('automation-policy-mismatch');
   }
   if (!snapshot || !Object.keys(snapshot).length) reasons.push('missing-prepared-snapshot');
+  if (clean(snapshot.imagePolicy && snapshot.imagePolicy.imageStandardVersion) !== BRAND_IMAGE_STANDARD_VERSION
+    || clean(snapshot.imagePolicy && snapshot.imagePolicy.mainImageTemplate) !== BRAND_TEMPLATE_CONTRACT.version) {
+    reasons.push('brand-image-standard-mismatch');
+  }
   if (!clean(job.preparedSnapshotFingerprint)
     || clean(job.preparedSnapshotFingerprint) !== listingSnapshotFingerprint(snapshot)) reasons.push('prepared-snapshot-fingerprint-mismatch');
   const imagePlan = snapshot.platformImagePlan && typeof snapshot.platformImagePlan === 'object' ? snapshot.platformImagePlan : {};
   if (platformImagePlanMissingFields(imagePlan, { requireFinalized: true, targetPlatforms: listingTargetPlatforms(snapshot) }).length) reasons.push('finalized-image-plan-invalid');
-  if (clean(frozen.workflowVersion) !== LISTING_WORKFLOW_ID || !clean(frozen.snapshotId)) reasons.push('case-frozen-input-invalid');
+  if (clean(frozen.workflowVersion) !== LISTING_WORKFLOW_ID
+    || clean(frozen.imageStandardVersion) !== BRAND_IMAGE_STANDARD_VERSION
+    || !clean(frozen.snapshotId)) reasons.push('case-frozen-input-invalid');
   if (clean(imagePlan.inputSnapshotId) !== clean(frozen.snapshotId)
     || clean(imagePlan.inputSnapshotFingerprint) !== frozenInputSnapshotFingerprint(frozen)) reasons.push('case-frozen-input-mismatch');
   const currentStage = clean(job.currentStage);
@@ -6115,12 +6200,26 @@ function registerProductListingPublish(target) {
     const productId = clean(event.params && event.params.productId);
     const listingCase = after.data() || {};
     const grant = codexAutoPublishGrant(listingCase);
-    if (!productId || !grant || clean(listingCase.publishState && listingCase.publishState.jobId)) return null;
+    if (!productId || !grant || clean(listingCase.publishState && listingCase.publishState.jobId)) {
+      if (productId && listingCase.codexHandoff?.autoPublishAuthorization?.granted === true && !grant) {
+        console.warn('V3 auto-publish authorization rejected the saved grant.', {
+          productId,
+          snapshotId: clean(listingCase.codexHandoff?.preflightSnapshot?.snapshotId),
+          workflowVersion: clean(listingCase.codexHandoff?.workflowVersion)
+        });
+      }
+      return null;
+    }
 
     const db = admin.firestore();
     try {
       await loadFinalPreparedMediaSnapshot(db, productId, listingCase);
-    } catch (_) {
+    } catch (error) {
+      console.warn('V3 auto-publish media preflight rejected the case.', {
+        productId,
+        snapshotId: grant.snapshotId,
+        message: clean(error && error.message) || 'unknown-media-preflight-error'
+      });
       return null;
     }
     const fingerprint = codexAutoPublishInputFingerprint(listingCase);
