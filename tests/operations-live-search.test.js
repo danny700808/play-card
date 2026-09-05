@@ -66,7 +66,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260904-product-media-mobile-v3/);
-    assert.match(html, /operations-phase1\.js\?v=20260904-product-media-mobile-v3/);
+    assert.match(html, /operations-phase1\.js\?v=20260905-inline-media-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
@@ -243,7 +243,7 @@ test('manual average cost correction becomes the new inventory cost baseline aft
   assert.equal(result.inventoryValue, 600);
 });
 
-test('physical photos keep their inline control and also have one searchable media workflow beside inventory', () => {
+test('physical photos and video live inside products while old media deep links remain compatible', () => {
   const upload = functionBody(engine, 'uploadPhysicalProductPhoto');
   const labeler = functionBody(engine, 'physicalPhotoLabeledBlob');
   const tray = functionBody(engine, 'physicalProductImageTrayHtml');
@@ -253,7 +253,8 @@ test('physical photos keep their inline control and also have one searchable med
   const videoUpload = functionBody(engine, 'uploadProductVideo');
   const mediaPrompt = functionBody(engine, 'productMediaBatchPrompt');
 
-  for (const html of [portal, hub]) assert.match(html, /href="#media"[\s\S]*實體圖與影片/);
+  for (const html of [portal, hub]) assert.doesNotMatch(html, /href="#media"/);
+  assert.match(functionBody(engine, 'productImagePanelHtml'), /productInlineMediaHtml/);
   assert.match(mediaPage, /mediaSearch/);
   assert.match(mediaPage, /id="mediaSearchResults"/);
   assert.match(mediaPage, /renderProductPreviewModal/);

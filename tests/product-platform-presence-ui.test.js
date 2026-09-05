@@ -98,11 +98,12 @@ test('圖片模式商品卡只顯示原始品名，不顯示網路名稱摘要',
   assert.equal(source.includes('function abbreviatedOnlineProductName('), false);
 });
 
-test('商品卡只保留列印條碼與準備上架操作', () => {
+test('A商品卡保留條碼並移除準備上架；文字模式保留原入口', () => {
   for (const name of ['productCard', 'productTextRow']) {
     const body = functionBody(name);
     assert.match(body, /product-print-label/);
-    assert.match(body, /product-listing-case-open/);
+    if(name==='productCard')assert.doesNotMatch(body, /product-listing-case-open/);
+    else assert.match(body, /product-listing-case-open/);
     assert.doesNotMatch(body, /product-platform-status-open/);
     assert.doesNotMatch(body, /product-listing-variant-open/);
   }
