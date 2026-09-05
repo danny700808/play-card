@@ -141,10 +141,14 @@
 .ops-product-inline-listing .ops-listing-variant-item-main>.ops-listing-supplier-shortcuts,.ops-product-inline-listing .ops-variant-picker-details{grid-column:1/-1}
 .ops-variant-picker-details{border-top:1px solid #d5e0eb;padding-top:6px}
 .ops-variant-picker-details summary,.ops-optional-image-instructions summary{cursor:pointer;font-size:13px}
-.ops-product-inline-listing .ops-listing-variant-image-picker,.ops-product-inline-listing .ops-listing-variant-processing-flat,#productReferenceImagePreview{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.ops-product-inline-listing .ops-listing-variant-image-picker,.ops-product-inline-listing .ops-listing-variant-processing-flat{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+#productReferenceImagePreview{display:block;min-width:0}
+#productReferenceImagePreview>.ops-listing-source-toolbar{width:100%;margin:0 0 9px;padding:0}
+#productReferenceImagePreview>.ops-listing-source-images{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(112px,100%),128px));gap:8px;margin:0;padding:0}
+#productReferenceImagePreview .ops-listing-source-images article{min-width:0;margin:0}
 .ops-product-inline-listing .ops-listing-variant-picker-option{width:100%;height:92px;padding:4px}
 .ops-product-inline-listing .ops-listing-variant-picker-option img,.ops-product-inline-listing .ops-listing-variant-processing-flat img,#productReferenceImagePreview img{width:100%;height:92px;object-fit:contain}
-.ops-product-inline-listing .ops-listing-variant-processing-flat article,#productReferenceImagePreview>*{min-width:0;margin:0;padding:5px}
+.ops-product-inline-listing .ops-listing-variant-processing-flat article{min-width:0;margin:0;padding:5px}
 .ops-optional-image-instructions{margin-top:10px;border-top:1px solid #d5e0eb;padding-top:8px}
 .ops-merge-row-controls{grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .ops-product-inline-listing .ops-listing-variant-item-main{grid-column:1}
