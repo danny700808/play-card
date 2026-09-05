@@ -18,3 +18,15 @@ test('A leaves missing images empty rather than inventing a cover',()=>{
  assert.ok(html.includes('無圖'));
  assert.ok(!html.includes('<img '));
 });
+test('compact desktop catalogue uses five columns without changing mobile rules',()=>{
+ const css=fs.readFileSync(require('node:path').join(__dirname,'../operations-catalog-layout-a.css'),'utf8');
+ const desktop=css.slice(css.indexOf('@media(min-width:1024px)'));
+ assert.ok(desktop.startsWith('@media(min-width:1024px)'));
+ assert.match(desktop,/\.ops-products-grid\{grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+ assert.match(desktop,/grid-template-rows:116px 1fr auto/);
+ assert.match(desktop,/white-space:normal;overflow:visible;text-overflow:clip/);
+ for(const entry of ['portal.html','operations-hub.html']){
+  const html=fs.readFileSync(require('node:path').join(__dirname,'../',entry),'utf8');
+  assert.ok(html.includes('operations-catalog-layout-a.css?v=20260905-compact-five-v1'));
+ }
+});
