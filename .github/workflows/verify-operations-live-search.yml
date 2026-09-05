@@ -113,7 +113,7 @@ jobs:
           grep -Fq 'operations-phase1.css?v=20260904-product-media-mobile-v3' operations-hub.html
           grep -Fq 'operations-phase1.js?v=20260905-inline-media-v1' portal.html
           grep -Fq 'operations-phase1.js?v=20260905-inline-media-v1' operations-hub.html
-          grep -Fq 'operations-manager-auth.js?v=20260828-product-image-auth-preflight-v1' portal.html
-          grep -Fq 'operations-manager-auth.js?v=20260828-product-image-auth-preflight-v1' operations-hub.html
+          grep -Fq 'operations-manager-auth.js?v=20260905-direct-media-return-v1' portal.html
+          grep -Fq 'operations-manager-auth.js?v=20260905-direct-media-return-v1' operations-hub.html
           ! grep -Fq 'operations-search-product-ux-v1' portal.html
           ! grep -Fq 'operations-search-product-ux-v1' operations-hub.html
