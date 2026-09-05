@@ -1,5 +1,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../operations-phase1.js'),'utf8');
+test('unified waiting drawer keeps listing and media queues independently reachable',()=>{
+ const render=vm.runInNewContext(part('productListingQueueDrawerHtml','productListingOnlyQueueHtml')+';productListingQueueDrawerHtml',{productListingOnlyQueueHtml:()=>'<div>listing queue</div>',productMediaQueueContentHtml:()=>'<div>media queue</div>'});
+ const html=render();assert.ok(html.includes('商品上架'));assert.ok(html.includes('實體圖與影片'));assert.ok(html.includes('listing queue'));assert.ok(html.includes('media queue'));
+ assert.ok(source.includes('queueCount=productListingQueueRows().length+productMediaQueueRows().length'));
+ const savePhoto=source.slice(source.indexOf('physicalImageUrls:fv.arrayUnion(url)'),source.indexOf('physicalImageUrls:fv.arrayUnion(url)')+550);
+ assert.ok(savePhoto.includes("mediaQueueStatus:'queued'"));
+ const saveVideo=source.slice(source.indexOf('productVideos:fv.arrayUnion(record)'),source.indexOf('productVideos:fv.arrayUnion(record)')+450);
+ assert.ok(saveVideo.includes("mediaQueueStatus:'queued'"));
+});
 function part(a,b){return source.slice(source.indexOf('  function '+a+'('),source.indexOf('  function '+b+'('));}
 test('merge retirement plan never retires keeper and only includes selected platforms',()=>{
  const products={a:{docId:'a',sku:'A',ids:{momo:'keep',shopee:'s1'}},b:{docId:'b',sku:'B',ids:{momo:'old',shopee:'s2'}},c:{docId:'c',sku:'C',ids:{momo:'keep'}}};

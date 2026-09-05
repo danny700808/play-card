@@ -66,7 +66,7 @@ test('obsolete waiting and input-stability search layers are completely removed'
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
     assert.match(html, /operations-phase1\.css\?v=20260904-product-media-mobile-v3/);
-    assert.match(html, /operations-phase1\.js\?v=20260905-compact-merge-v3/);
+    assert.match(html, /operations-phase1\.js\?v=20260905-unified-media-queue-v5/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
@@ -293,7 +293,7 @@ test('physical photos and video live inside products while old media deep links 
 
 test('product header owns the saved listing queue and starts it sequentially in Codex', () => {
   const products = functionBody(engine, 'renderProducts');
-  const queue = functionBody(engine, 'productListingQueueDrawerHtml');
+  const queue = functionBody(engine, 'productListingQueueDrawerHtml') + functionBody(engine, 'productListingOnlyQueueHtml');
   const start = functionBody(engine, 'startProductListingQueue');
   const prompt = functionBody(engine, 'productListingBatchActivationPrompt');
   const listingForm = functionBody(engine, 'productListingCaseFormHtml');
