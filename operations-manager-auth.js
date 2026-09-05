@@ -165,7 +165,10 @@
   function returnTarget(runtime) {
     const pathname = clean(runtime && runtime.location && runtime.location.pathname);
     const page = lower(pathname.split('/').pop());
-    return `${page === 'operations-hub.html' ? 'operations-hub.html' : 'portal.html'}#products`;
+    const entry = page === 'operations-hub.html' ? 'operations-hub.html' : 'portal.html';
+    const currentHash = clean(runtime && runtime.location && runtime.location.hash);
+    const safeHash = /^#[a-z0-9-]+$/i.test(currentHash) ? currentHash : '#products';
+    return `${entry}${safeHash}`;
   }
 
   function loginUrl(runtime) {

@@ -223,7 +223,8 @@ test('teacher utility and external-manager pages keep inline scripts valid and s
 
 test('outer login presents LINE first and keeps manager password login available', () => {
   const app = read('app.js');
-  assert.match(app, /function requireLogin\(\).*location\.href='index\.html'/);
+  assert.match(app, /function protectedLoginUrl\(\).*return 'index\.html'/);
+  assert.match(app, /function requireLogin\(\).*location\.href=protectedLoginUrl\(\)/);
   assert.match(app, /function logout\(\).*location\.href='index\.html'/);
 
   const gateway = read('index.html');

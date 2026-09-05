@@ -133,6 +133,22 @@ test('missing Firebase session requests one safe login redirect back to products
   assert.equal(await Auth.redirectToLoginOnce(runtime, auth, 2000), false);
 });
 
+test('media direct entry keeps its page through the password login round trip', () => {
+  const runtime = {
+    location: {
+      pathname: '/play-card/operations-hub.html',
+      hash: '#media'
+    }
+  };
+  assert.equal(Auth.returnTarget(runtime), 'operations-hub.html#media');
+  assert.equal(Auth.loginUrl(runtime), 'login.html?next=operations-hub.html%23media');
+
+  const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  assert.match(appSource, /function protectedLoginUrl\(\)/);
+  assert.match(appSource, /page!==['"]portal\.html['"]&&page!==['"]operations-hub\.html['"]/);
+  assert.match(appSource, /location\.href=protectedLoginUrl\(\)/);
+});
+
 test('both operations entries load auth before the protected sync code', () => {
   for (const file of ['portal.html', 'operations-hub.html']) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
