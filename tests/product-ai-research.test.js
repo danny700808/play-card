@@ -128,6 +128,10 @@ test('commercial poster QA rejects generic information cards and requires the fu
 test('ordinary detail prompt uses OCR retyping and never redesigns or upscales blurry sources', () => {
   const prompt = research.buildLocalizedImagePrompt({ name: '商品' }, {}, 1, 1);
   assert.match(prompt, /先用 OCR 逐字辨識/);
+  assert.match(prompt, /已授權依平台規格等比例調整尺寸/);
+  assert.match(prompt, /不必再次詢問/);
+  assert.match(prompt, /不得裁切、改構圖、重畫商品/);
+  assert.match(prompt, /視覺可讀性/);
   assert.match(prompt, /真實可讀的繁體中文字型/);
   assert.match(prompt, /禁止用筆畫塗改、描字/);
   assert.match(prompt, /只做必要的繁體中文在地化/);
