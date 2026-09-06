@@ -7,6 +7,7 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const shopeeTaxonomy = require('./shopeeMusicTaxonomy');
 const listingBrandCreative = require('./listingBrandCreative');
+const { verifyShopeeDescriptionImages } = require('./listingImagePreflight');
 
 const EASYSTORE_ACCESS_TOKEN = defineSecret('EASYSTORE_ACCESS_TOKEN');
 const REGION = 'us-central1';
@@ -5789,6 +5790,11 @@ async function publishProductListingCaseHandler(request) {
         productId, product, listingCase, variantParentProduct, variantParentListingCase,
         finalizedMedia.preparedMediaSnapshot, variantGroupContext
       );
+      try {
+        snapshot.nativeDescriptionImagePreflight = await verifyShopeeDescriptionImages(snapshot);
+      } catch (error) {
+        throw new HttpsError('failed-precondition', `完成圖像素預檢未通過：${clean(error && error.message)}`);
+      }
       await syncPreparedCentralImagesBeforePublish(db, snapshot, '固定四通路流程 v3 圖片回寫');
       if (!listingTargetPlatforms(snapshot).length) {
         throw new HttpsError('failed-precondition', '這次沒有指定要處理的上架通路。');
