@@ -101,6 +101,11 @@ const SHOPEE_IMPORTED_DESCRIPTION_IMAGE_STANDARD = Object.freeze({
   preparedBeforeEasyStorePublish: true,
   sourceFilesMustExistLocallyBeforeSellerCenterUpload: true,
   uploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
+  visibleUploadMenuRequired: true,
+  armFileChooserBeforeVisibleMenuClick: true,
+  hiddenInputClickAloneIsNotUploadEvidence: true,
+  verifyDescriptionCountAndFinalTwoImagesAfterReload: true,
+  verifySquareGalleryHeroAfterEasyStoreImport: true,
   minimumSourceShortEdgePx: 700,
   preferredSquareSizePx: 1000,
   storefrontPortraitWidthPx: 700,
@@ -1088,7 +1093,8 @@ function buildShopeeLogistics(snapshot) {
     || (canVerifyConvenience ? (convenienceFits ? 'convenience' : hsinchuBand ? 'freight' : 'oversize') : '');
   const convenience = decision === 'convenience' && convenienceFits;
   const freight = decision === 'freight';
-  const hsinchu = Boolean((convenience || freight) && hsinchuBand);
+  // Oversize is relative to convenience delivery, not an HCT ban.
+  const hsinchu = Boolean(hsinchuBand);
   const sellerLargeDelivery = Boolean(canVerifyConvenience && !convenience
     && (decision === 'home' || decision === 'oversize' || decision === 'freight'));
   const methods = [

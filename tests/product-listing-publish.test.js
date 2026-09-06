@@ -1841,6 +1841,11 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     preparedBeforeEasyStorePublish: true,
     sourceFilesMustExistLocallyBeforeSellerCenterUpload: true,
     uploadEntry: '商品描述/新增圖片/從電腦裝置上傳',
+    visibleUploadMenuRequired: true,
+    armFileChooserBeforeVisibleMenuClick: true,
+    hiddenInputClickAloneIsNotUploadEvidence: true,
+    verifyDescriptionCountAndFinalTwoImagesAfterReload: true,
+    verifySquareGalleryHeroAfterEasyStoreImport: true,
     minimumSourceShortEdgePx: 700,
     preferredSquareSizePx: 1000,
     storefrontPortraitWidthPx: 700,
@@ -1928,6 +1933,13 @@ test('music products choose one controlled Shopee family instead of inheriting t
   );
 });
 
+test('oversize convenience parcels retain HCT when measured dimensions still qualify', () => {
+  const plan = helpers.buildShopeeLogistics({shippingDecision:'oversize',packageLengthCm:114,packageWidthCm:48,packageHeightCm:19,packageWeightKg:2.6});
+  assert.equal(plan.methods.find(row=>row.label==='新竹物流').enabled,true);
+  assert.equal(plan.methods.find(row=>row.label==='新竹物流').option,'S190');
+  assert.deepEqual(plan.methods.filter(row=>row.enabled).map(row=>row.label),['新竹物流','賣家宅配：大型/超重物品運送']);
+});
+
 test('Shopee helper leaves Hsinchu Logistics off when package limits are incomplete or exceeded', () => {
   const missing = helpers.buildShopeeLogistics({ shippingDecision: 'freight', packageLengthCm: 100, packageWidthCm: 40 });
   assert.equal(missing.methods.find((row) => row.label === '新竹物流').enabled, false);
@@ -2008,7 +2020,7 @@ test('manual shipping choice controls autofill and convenience limits are enforc
     shippingDecision: 'home', packageLengthCm: 106.7, packageWidthCm: 45.7,
     packageHeightCm: 10.2, packageWeightKg: 4.2
   });
-  assert.equal(manualHome.methods.find((row) => row.label === '新竹物流').enabled, false);
+  assert.equal(manualHome.methods.find((row) => row.label === '新竹物流').enabled, true);
   assert.equal(manualHome.methods.find((row) => row.label === '賣家宅配：大型/超重物品運送').enabled, true);
   assert.equal(manualHome.requiresConfirmation, false);
   assert.equal(manualHome.requiresJudgment, false);
