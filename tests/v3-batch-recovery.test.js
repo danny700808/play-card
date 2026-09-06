@@ -1,5 +1,12 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../operations-phase1.js'),'utf8');
+test('platform login blockers are isolated and complete brand previews are required',()=>{
+ assert.ok(source.includes('requireAllPlatformSessionsOperableBeforeBatchStart:false'));
+ assert.ok(source.includes('platformSessionBlockersAreIsolated:true'));
+ assert.ok(!source.includes('已選通路未通過前不得開始第一件商品'));
+ assert.ok(source.includes('每件完成圖片後，清楚顯示本件官網'));
+ assert.ok(source.includes('Warranty Duration=6 Months、Warranty Type=Supplier Warranty'));
+});
 test('recovery keeps frozen v3 input and refuses a missing snapshot on an existing job',async()=>{
  let raw={codexHandoff:{preflightSnapshot:{workflowVersion:'v3',productId:'one',snapshotId:'frozen'}}};let created=0;
  const ctx={clean:x=>x,catalogById:()=>({docId:'one'}),COLLECTIONS:{listingCases:'cases'},PRODUCT_LISTING_WORKFLOW_VERSION:'v3',loadProductListingCodexHandoffSnapshot:async()=>{created++;throw Error('must not rebuild');},state:{db:{collection:()=>({doc:()=>({get:async()=>({exists:true,data:()=>raw})})})}}};

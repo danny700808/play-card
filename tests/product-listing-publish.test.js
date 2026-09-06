@@ -26,6 +26,20 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const publish = require('../functions/productListingPublish');
 Module._load = originalLoad;
 const helpers = publish._test;
+test('instrument bags stay accessories rather than inheriting guitar attributes',()=>{
+ const taxonomy=require('../functions/shopeeMusicTaxonomy');
+ for(const title of ['TUKAY 28mm PU皮革木吉他袋 40／41吋 黑色','電吉他袋-RUIZ 28MM','吉他防護袋','guitar gig bag']) {
+  assert.equal(taxonomy.inferMusicFamily({title},'弦樂器'),'樂器配件');
+ }
+ assert.equal(taxonomy.inferMusicFamily({title:'YAMAHA C70 古典吉他'},''),'弦樂器');
+});
+test('V3 retry fingerprint changes when required preflight attributes are repaired', () => {
+  const input={codexHandoff:{workflowVersion:'youzi-four-channel-listing-v3',preflightSnapshot:{snapshotId:'same-frozen-input'}}};
+  const before=helpers.codexAutoPublishInputFingerprint(input);
+  const repaired={...input,shopeeAttributeValues:[{label:'Warranty Duration',value:'6 Months',confidence:'high'}]};
+  assert.notEqual(helpers.codexAutoPublishInputFingerprint(repaired),before);
+  assert.equal(helpers.codexAutoPublishInputFingerprint({...repaired,updatedAt:'later'}),helpers.codexAutoPublishInputFingerprint(repaired));
+});
 const BRAND_TEMPLATE = helpers.brandTemplateContract();
 const TEST_BRAND_STYLE = helpers.brandCreativeStyleAssignment(null, 'product-listing-test-style');
 const VALID_COMMERCIAL_POSTER_PROOF = Object.freeze({

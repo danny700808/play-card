@@ -87,6 +87,7 @@ function inferMusicFamilyFromText(text) {
 
   // Accessory nouns take precedence so that a guitar string or keyboard stand
   // is not mistaken for the instrument it is used with.
+  if (/(?:(?:吉他|貝斯|烏克麗麗)(?:防護|專用|收納)?(?:袋|包|盒)|(?:guitar|bass|ukulele)(?:gig)?(?:bag|case)|gigbag)/i.test(compact)) return '樂器配件';
   if (/(琴弦|吉他弦|貝斯弦|烏克麗麗弦|弦組|撥片|pick|背帶|琴袋|琴盒|琴架|鍵盤架|鼓棒|鼓皮|鼓鎖|調音器|節拍器|移調夾|capo|導線|訊號線|連接線|轉接頭|變壓器|電源供應器|效果器|踏板|簧片|吹嘴|束圈|清潔布|譜架|樂譜袋|譜袋|音樂書包|樂器書包|保養油|弱音器)/i.test(compact)) {
     return '樂器配件';
   }

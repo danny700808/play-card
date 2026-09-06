@@ -5632,6 +5632,13 @@ function codexAutoPublishInputFingerprint(listingCase) {
     },
     stock: numberOrNull(listingCase && listingCase.stock),
     shippingDecision: clean(listingCase && listingCase.shippingDecision),
+    // Preflight repairs must change the retry fingerprint; otherwise a failed
+    // attempt is permanently suppressed even after required attributes are fixed.
+    shopeeAttributeValues: normalizeShopeeAttributes(listingCase && listingCase.shopeeAttributeValues),
+    shopeeCategoryPath: clean(listingCase && listingCase.shopeeCategoryPath),
+    momoCategoryCode: clean(listingCase && listingCase.momoCategoryCode),
+    coupangCategoryCode: clean(listingCase && listingCase.coupangCategoryCode),
+    identityStatus: clean(listingCase && listingCase.identityStatus),
     packageLengthCm: numberOrNull(listingCase && listingCase.packageLengthCm),
     packageWidthCm: numberOrNull(listingCase && listingCase.packageWidthCm),
     packageHeightCm: numberOrNull(listingCase && listingCase.packageHeightCm),
