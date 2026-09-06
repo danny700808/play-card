@@ -1,0 +1,45 @@
+{
+  "version": "youzi-product-video-brand-v1-2026-09-06",
+  "output": {
+    "width": 1280,
+    "height": 720,
+    "frameRate": 30,
+    "videoCodec": "h264",
+    "pixelFormat": "yuv420p",
+    "audioCodec": "aac-lc",
+    "audioSampleRate": 48000,
+    "fastStart": true
+  },
+  "intro": {
+    "asset": "youzi-intro-v1-3s-16x9.mp4",
+    "sha256": "f9a23587872a78c5fb8d567720f16b7c96f3145acab2c3e024bef942760dda1d",
+    "durationSeconds": 3
+  },
+  "watermark": {
+    "asset": "youzi-watermark-green-v1.png",
+    "sha256": "5ddc8c44937790157ada43eedd37d84847ddff086cfe3e5a65ca387e46879589",
+    "opacity": 0.13,
+    "widthRatio": 0.17,
+    "placement": "top-right",
+    "marginRatio": 0.025,
+    "appliesTo": "main-content-only"
+  },
+  "outro": {
+    "asset": "youzi-outro-v1-1.2s-16x9.mp4",
+    "sha256": "5df1d15a31998e2b1dba4a96de2655ca5edb522c8a9b0f3ff9c4e7ce0f5ea757",
+    "durationSeconds": 1.2,
+    "audio": "silence"
+  },
+  "youtube": {
+    "composition": "intro + full-main-with-watermark + outro",
+    "sourceLengthLimitSeconds": null
+  },
+  "shopee": {
+    "composition": "intro + selected-main-with-watermark + outro",
+    "maximumDurationSeconds": 59,
+    "targetDurationSeconds": 58.9,
+    "maximumBytes": 30000000,
+    "targetMaximumBytes": 29000000,
+    "maximumMainContentSeconds": 54.7
+  }
+}

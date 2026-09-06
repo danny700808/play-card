@@ -65,8 +65,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260904-product-media-mobile-v3/);
-    assert.match(html, /operations-phase1\.js\?v=20260906-v3-r3-cache-v11/);
+    assert.match(html, /operations-phase1\.css\?v=20260906-product-video-brand-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260906-product-video-brand-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
@@ -282,8 +282,8 @@ test('physical photos and video live inside products while old media deep links 
   assert.match(videoUpload, /youtubeCategoryId:'10'/);
   assert.match(videoUpload, /youtubePlaylistName:'柚子樂器｜商品實拍與介紹'/);
   assert.match(videoUpload, /youtubeThumbnailStatus:'pending'/);
-  assert.match(mediaPrompt, /YouTube 使用完整原片/);
-  assert.match(mediaPrompt, /59 秒片段/);
+  assert.match(mediaPrompt, /YouTube 必須先製作並上傳品牌完整版，不得上傳原片/);
+  assert.match(mediaPrompt, /最多 54\.7 秒主片/);
   assert.match(mediaPrompt, /youtubeVideoId/);
   assert.match(mediaPrompt, /youtubePlaylistStatus/);
   assert.match(mediaPrompt, /platformVideoResults/);
