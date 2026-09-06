@@ -2863,14 +2863,37 @@ function renderOverviewV7(){
       '按下「開始處理全部」已授權依序執行這份批次。'
     ].join('\n');
   }
+  async function prepareSavedV3Handoff(productId){
+    const product=catalogById(productId);if(!product)throw new Error('找不到指定商品');
+    const ref=state.db.collection(COLLECTIONS.listingCases).doc(productId),doc=await ref.get();if(!doc.exists)throw new Error('案件不存在');
+    const raw=doc.data()||{},handoff=raw.codexHandoff||{},frozen=handoff.preflightSnapshot;
+    if(frozen){if(frozen.workflowVersion!==PRODUCT_LISTING_WORKFLOW_VERSION||frozen.productId!==productId)throw new Error('既有快照版本或商品不符，停止覆蓋');return {product:product,raw:raw,snapshot:frozen};}
+    if(raw.publishState&&raw.publishState.jobId||raw.preparedSnapshot)throw new Error('已有工作但缺少來源快照，必須先核對原工作，禁止另建');
+    const candidate=await loadProductListingCodexHandoffSnapshot(product);requireProductListingCodexHandoffMedia(candidate);
+    const prompt=productListingCodexHandoffPrompt(product,candidate);
+    await state.db.runTransaction(async function(tx){const fresh=await tx.get(ref),data=fresh.data()||{};if(data.codexHandoff&&data.codexHandoff.preflightSnapshot)return;if(data.publishState&&data.publishState.jobId||data.preparedSnapshot)throw new Error('工作狀態已變動，停止建立快照');tx.set(ref,{codexHandoff:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,productId:productId,preflightSnapshot:candidate,prompt:prompt,status:'pending'},caseStatus:'waiting-codex',batchHandoffStatus:'awaiting-codex',updatedAt:serverTimestamp(),updatedBy:userLabel()},{merge:true});});
+    const reread=(await ref.get()).data()||{},snapshot=reread.codexHandoff&&reread.codexHandoff.preflightSnapshot;if(!snapshot||snapshot.workflowVersion!==PRODUCT_LISTING_WORKFLOW_VERSION||snapshot.productId!==productId)throw new Error('來源快照重讀未通過');
+    return {product:product,raw:reread,snapshot:snapshot};
+  }
+  async function resumeSavedV3Listing(productId){
+    await requireEasyStoreManagerAuth();
+    const saved=await prepareSavedV3Handoff(productId),form=byId('productListingCaseForm');
+    const current=await Promise.all((saved.snapshot.cases||[]).map(function(item){return loadProductListingCodexHandoffCase(item.productId,saved.snapshot.listingTargetScope,item.productId===productId);}));
+    const ready=current.length>0&&current.every(function(item){return item.imageStatus==='ready';});
+    let result=null;
+    if(ready)result=await callProductListingPublishWithTransientRetry(productId,form);
+    const latest=(await state.db.collection(COLLECTIONS.listingCases).doc(productId).get()).data()||{};
+    openDrawer('V3 續跑資料',ready?'沿用原快照與既有工作':'等待完成圖；尚未送出任何平台','<textarea class="ops-textarea" id="v3ResumeData" readonly style="height:65vh">'+escapeHtml(JSON.stringify({productId:productId,sku:saved.product.sku,snapshot:saved.snapshot,caseData:latest,currentCases:current,publishResult:result},null,2))+'</textarea>');
+  }
   async function startProductListingQueue(){
     let rows=productListingQueueRows().filter(function(row){return row.batchQueueStatus!=='processing'&&productListingQueueRetryReady(row);});if(!rows.length){const waiting=productListingQueueRows().map(productListingQueueRetryTime).filter(Boolean).sort(function(a,b){return a-b;})[0];throw new Error(waiting?'目前商品仍在平台限制等待期；最早可於 '+dateTimeText(waiting)+' 再次處理。':'目前沒有等待處理的商品');}
     if(rows.length>50)throw new Error('一次最多處理 50 件，請先移除這次不處理的商品');
     await requireEasyStoreManagerAuth();
+    for(const row of rows)await prepareSavedV3Handoff(row.productId);
     const runId='listing-batch-'+Date.now().toString(36),batch=state.db.batch(),serverTime=serverTimestamp();
-    rows.forEach(function(row,index){batch.set(state.db.collection(COLLECTIONS.listingCases).doc(row.productId),{batchQueueStatus:'processing',batchRunId:runId,batchPosition:index+1,batchLastAttemptAt:serverTime,batchAttemptCount:Number(row.batchAttemptCount||0)+1,batchQueueUpdatedAt:serverTime,caseStatus:'waiting-codex',updatedAt:serverTime,updatedBy:userLabel(),version:VERSION},{merge:true});});
+    rows.forEach(function(row,index){batch.set(state.db.collection(COLLECTIONS.listingCases).doc(row.productId),{batchQueueStatus:'queued',batchHandoffStatus:'awaiting-codex',batchRunId:runId,batchPosition:index+1,batchLastAttemptAt:serverTime,batchAttemptCount:Number(row.batchAttemptCount||0)+1,batchQueueUpdatedAt:serverTime,caseStatus:'waiting-codex',updatedAt:serverTime,updatedBy:userLabel(),version:VERSION},{merge:true});});
     await batch.commit();
-    rows=rows.map(function(row,index){return Object.assign({},row,{batchQueueStatus:'processing',batchRunId:runId,batchPosition:index+1,batchQueueUpdatedAt:new Date()});});rows.forEach(upsertProductListingQueueState);
+    rows=rows.map(function(row,index){return Object.assign({},row,{batchQueueStatus:'queued',batchRunId:runId,batchPosition:index+1,batchQueueUpdatedAt:new Date()});});rows.forEach(upsertProductListingQueueState);
     const prompt=productListingBatchActivationPrompt(rows,runId),threadUrl=productListingCodexThreadUrl(prompt),copied=await copyProductListingCodexPrompt(prompt),status=byId('productListingQueueStatus');
     if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>已帶入 '+rows.length+' 件商品</b><small>Codex 會照清單順序逐件處理'+(copied?'；批次文字也已複製':'')+'。</small></div></div>';
     await writeAudit('批次交給 Codex 對話處理','productListingBatch',runId,rows.map(function(row){return row.productSku||row.productId;}).join('、'));
@@ -4607,7 +4630,7 @@ function ensureSalesClock(){
   }
   function productCompactListingActions(row){
     const scope=normalizeProductListingTargetScope(row.listingTargetScope),disabled=row.batchQueueStatus==='processing'?'disabled':'';
-    return '<div class="ops-compact-actions"><select class="ops-select" data-compact-scope aria-label="上架通路" '+disabled+'>'+[['all','全部平台'],['website','官網＋蝦皮'],['momo','MOMO'],['coupang','酷澎']].map(function(x){return '<option value="'+x[0]+'" '+(scope===x[0]?'selected':'')+'>'+x[1]+'</option>';}).join('')+'</select><button type="button" class="ops-button soft" data-action="product-listing-queue-add" data-scope="'+scope+'" data-purpose="'+attr(row.workflowPurpose||'')+'" '+disabled+'>加入待處理</button><button type="button" class="ops-button primary" data-action="product-listing-codex-complete" data-scope="'+scope+'" data-purpose="'+attr(row.workflowPurpose||'')+'" '+disabled+'>立即處理</button></div>';
+    return '<div class="ops-compact-actions"><select class="ops-select" data-compact-scope aria-label="上架通路" '+disabled+'>'+[['all','全部平台'],['website','官網＋蝦皮'],['momo','MOMO'],['coupang','酷澎']].map(function(x){return '<option value="'+x[0]+'" '+(scope===x[0]?'selected':'')+'>'+x[1]+'</option>';}).join('')+'</select><button type="button" class="ops-button soft" data-action="product-listing-queue-add" data-scope="'+scope+'" data-purpose="'+attr(row.workflowPurpose||'')+'" '+disabled+'>加入待處理</button><button type="button" class="ops-button primary" data-action="product-listing-codex-complete" data-scope="'+scope+'" data-purpose="'+attr(row.workflowPurpose||'')+'" '+disabled+'>立即處理</button><button type="button" class="ops-button soft" data-action="product-v3-resume">V3 續跑</button></div>';
   }
   function productMergeSelectionProducts(){
     return productMergeSelectedIds().map(catalogById).filter(Boolean);
@@ -7025,6 +7048,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='product-platform-recheck')return startProductPlatformAudit({productId:el.dataset.id}).catch(function(error){toast('商品狀態重查尚未啟動',errorMessage(error),'error');});
     if(action==='product-platform-status-edit')return openProductPlatformStatus(el.dataset.id);
     if(action==='product-listing-queue-open'){state.publishQueueTab='';return openProductListingQueue();}
+    if(action==='product-v3-resume'){el.disabled=true;return resumeSavedV3Listing(el.closest('form').dataset.id).catch(function(error){toast('V3 尚未續跑',errorMessage(error),'error');}).finally(function(){el.disabled=false;});}
     if(action==='product-publish-queue-tab'){state.publishQueueTab=el.dataset.tab==='media'?'media':'listing';html('opsDrawerBody',productListingQueueDrawerHtml());return;}
     if(action==='product-merge-move'){const form=byId('productListingCaseForm'),ids=queryAll('.ops-listing-group-wrapper .ops-listing-variant-item',form).map(function(card){return card.dataset.productId;}),index=ids.indexOf(el.dataset.id),target=ids[index+Number(el.dataset.direction)];if(target)return moveMergeProduct(form,el.dataset.id,target).catch(function(error){toast('尚未變更順序',errorMessage(error),'error');});return;}
     if(action==='product-listing-queue-add')return addProductListingToQueue(byId('productListingCaseForm'),el.dataset.scope,el.dataset.purpose).catch(function(error){toast('尚未加入待處理',errorMessage(error),'error');});
