@@ -147,6 +147,14 @@ test('platform image encoder always returns a JPEG below the shared one-megabyte
   assert.ok(output.length <= 1_000_000);
 });
 
+test('commercial poster prompt keeps graphic textures off products and rejects wrong-material seeds',()=>{
+ const prompt=research.buildBrandTemplateImagePrompt({sku:'3000114',name:'木吉他袋'},{},'storefrontPortrait');
+ assert.match(prompt,/風格紋理只能用在海報背景/);
+ assert.match(prompt,/不能沿用錯圖反覆修補/);
+ assert.match(prompt,/保留同一 styleId 重建/);
+ assert.match(prompt,/image-qa-failed/);
+});
+
 test('approved v3 brand assets match the hashes enforced by the renderer', () => {
   const pairs = [
     ['storefrontPortrait', 'product-listing-brand-template-portrait.png', 'product-listing-brand-template-portrait-overlay.png'],
