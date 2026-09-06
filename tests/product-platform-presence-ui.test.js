@@ -66,8 +66,11 @@ test('商品資訊提供完整四平台檢測按鈕與一次授權的 Codex 交�
   assert.match(prompt, /缺貨、庫存 0/);
   assert.match(prompt, /違規、受限制、審核未通過/);
   assert.match(prompt, /合併商品必須展開規格確認每個原廠 SKU/);
-  assert.match(prompt, /送審後 24 小時/);
-  assert.match(prompt, /第二次重查時間為送審後 48 小時/);
+  assert.match(prompt, /審核中時寫成 pending-review，不可寫 active，也不可寫 missing/);
+  assert.match(prompt, /本次不安排自動回查，後續由管理者另啟狀態檢測/);
+  assert.doesNotMatch(prompt, /送審後 (?:24|48) 小時/);
+  assert.match(start, /pending-review-independent-audit-no-auto-recheck/);
+  assert.doesNotMatch(start, /pending-review-recheck-24h-48h/);
   assert.match(start, /同意並開始檢測/);
   assert.match(start, /noSecondConfirmation:true/);
   assert.match(start, /productListingCodexThreadUrl\(prompt\)/);
