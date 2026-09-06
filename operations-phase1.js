@@ -5664,6 +5664,8 @@ function ensureSalesClock(){
     const caseLines=cases.map(function(item){return '- '+clean(item.sku||item.productId)+'｜'+clean(item.name)+'｜案件 opsProductListingCases/'+clean(item.productId)+'｜來源圖 '+normalizeProductResearchSourceUrls(item.sourceImageUrls).length+' 張｜待繁體化／定案 '+normalizeProductResearchSourceUrls(item.pendingSourceImageUrls).length+' 張｜繁體完成圖 '+normalizeProductResearchSourceUrls(item.completedImageUrls).length+' 張｜實體圖 '+normalizeProductResearchSourceUrls(item.preparedCase&&item.preparedCase.physicalImageUrls).length+' 張｜缺少角色 '+((item.missingRequiredRoles||[]).join('、')||'無')+'｜圖片狀態 '+(statusLabels[item.imageStatus]||item.imageStatus);});
     return [
       '[固定流程]',
+      '[適用範圍：V3 批次交接與續跑｜2026-09-06 實測] 交接等待與平台執行必須分開：按下批次交接不代表圖片已完成或平台工作已啟動。先保存不可變輸入快照；續跑重讀同一快照、目前完成圖與既有 job/stages，只補未完成階段，不重建或重送 verified 通路。若已有工作卻缺少來源快照，禁止自動覆蓋。操作頁顯示處理中時，先查明是交接等待、圖片準備還是平台回應，禁止直接宣稱整頁或整個帳號被鎖。',
+      '[適用範圍：內建瀏覽器登入｜2026-09-06 實測] 可及性文字未顯示帳密不代表沒有保存帳密；先檢查登入畫面是否已有自動填入，直接使用保存帳密登入，再確認賣家首頁地標。不得讀出或記錄密碼。MOMO 保存帳密與 OTP 為不同項目；只有實際需要 OTP 的步驟才請使用者完成驗證，不要求再次授權一般登入。',
       '請接手全通路營運中心的待上架商品。這是唯一標準流程，workflowVersion 必須等於 '+PRODUCT_LISTING_WORKFLOW_VERSION+'，imageStandardVersion 必須等於 '+PRODUCT_BRAND_IMAGE_STANDARD_VERSION+'；缺少這個圖片規格識別碼的舊 V3、v2 或任何其他舊快照一律停止並要求從營運中心建立新的 V3 快照，不得沿用、混合或降級。商品資料可以不同，但只准執行 listingTargetPlatforms 指定的通路；未選通路不得建立、修改、排隊或送出。',
       '商品編號：'+clean(product.sku),
       '商品名稱：'+clean(product.originalName||product.name),
