@@ -1733,6 +1733,8 @@ test('EasyStore payload publishes one exact SKU with stock, price, package and a
   assert.equal(body.taxable, false);
   assert.equal(body.metafields_global_title_tag, snapshot.title);
   assert.ok(Array.from(body.metafields_global_description_tag).length <= 155);
+  assert.equal(body.description, body.metafields_global_description_tag);
+  assert.equal(body.body_html, snapshot.bodyHtml);
   assert.equal(body.images.length, 7);
   assert.match(body.images.at(-1).url, /product-listing-store-promo\.png$/);
   assert.equal(body.variants.length, 1);

@@ -3637,15 +3637,17 @@ function easyStoreSeoDescription(snapshot) {
 
 function buildEasyStoreProductBody(snapshot, includeVariant = true) {
   const galleryImages = easyStoreGalleryImages(snapshot);
+  const seoDescription = easyStoreSeoDescription(snapshot);
   const product = {
     title: snapshot.title,
-    description: snapshot.description,
+    // EasyStore aliases description to the SEO summary; rich content belongs in body_html.
+    description: seoDescription,
     body_html: snapshot.bodyHtml,
     inventory_management: 'easystore',
     taxable: false,
     shipping_required: true,
     metafields_global_title_tag: Array.from(clean(snapshot.title)).slice(0, EASYSTORE_SEO_TITLE_RECOMMENDED_MAX_CHARS).join(''),
-    metafields_global_description_tag: easyStoreSeoDescription(snapshot),
+    metafields_global_description_tag: seoDescription,
     published_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
     images: galleryImages.map((url) => ({ url }))
   };
