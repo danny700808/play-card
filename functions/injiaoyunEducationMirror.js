@@ -5,6 +5,7 @@ const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { GoogleAuth } = require('google-auth-library');
 const {
   buildTeacherPayroll,
@@ -714,6 +715,10 @@ function sourceHash(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
 }
 
+function sourceMatches(prior, source, hash) {
+  return prior && prior.sourceHash === hash && isDeepStrictEqual(jsonValue(prior.source), source);
+}
+
 function syncOwnershipError() {
   const error = new Error('這批同步已由較新的工作接手，停止寫入舊資料。');
   error.code = 'sync-owner-changed';
@@ -742,7 +747,9 @@ async function commitOperations(operations, syncContext) {
         throw syncOwnershipError();
       }
       chunk.forEach((operation) => {
-        transaction.set(operation.ref, operation.data, { merge: true });
+        // Replace each owned top-level field, especially the entire source map.
+        // Recursive merge leaves removed legacy fields visible after overwrite.
+        transaction.set(operation.ref, operation.data, { mergeFields: Object.keys(operation.data) });
       });
     });
     if (chunk.length) commits += 1;
@@ -786,7 +793,7 @@ async function syncType(type, collectionName, rows, runId, syncContext) {
     }
     const hash = sourceHash(source);
     seen.add(id);
-    if (prior && prior.data.sourceHash === hash && Number(prior.data.missingCount || 0) === 0 && prior.data.sourceActive !== false) {
+    if (prior && sourceMatches(prior.data, source, hash) && Number(prior.data.missingCount || 0) === 0 && prior.data.sourceActive !== false) {
       unchanged += 1;
       return;
     }
@@ -857,7 +864,7 @@ async function syncScopedEvents(collectionName, rows, auditRunId, coveredDates, 
     const hash = sourceHash(source);
     const prior = existing.get(id);
     seen.add(id);
-    if (prior && prior.data.sourceHash === hash && prior.data.sourceActive !== false) {
+    if (prior && sourceMatches(prior.data, source, hash) && prior.data.sourceActive !== false) {
       unchanged += 1;
       return;
     }
@@ -1037,7 +1044,7 @@ async function syncRowsFromSnapshot(type, collectionName, rows, runId, snapshot,
     }
     const hash = sourceHash(source);
     seen.add(id);
-    if (prior && prior.data.sourceHash === hash && prior.data.sourceActive !== false) {
+    if (prior && sourceMatches(prior.data, source, hash) && prior.data.sourceActive !== false) {
       unchanged += 1;
       return;
     }
@@ -1346,7 +1353,7 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       auditRunId: audit.runId,
       auditRangeStart: selectedStartDate,
       auditRangeEnd: selectedEndDate,
-      auditCoveredDates,
+      auditCoveredDates: [...new Set(auditCoveredDates.concat(previousQuality.futureScheduleCoveredDates || []))].sort(),
       auditEventCount: recentEvents.length,
       auditAttendanceCount: recentAttendance.length,
       auditCountsByDate: audit.countsByDate || {},
@@ -2436,6 +2443,7 @@ module.exports = {
   registerInjiaoyunEducationMirror,
   runAuditForRange,
   sourceHash,
+  sourceMatches,
   syncReservationDirective,
   syncOwnerMatches,
   syncOperationsTeacherPayrollRange,
