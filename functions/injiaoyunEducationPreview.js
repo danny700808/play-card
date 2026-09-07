@@ -766,6 +766,54 @@ function buildRecentMasterAdditions(rawRows, existingStudents, existingPeriods, 
   return { students, periods };
 }
 
+// Normalize the complete ledger before applying the activity cutoff: filtering raw
+// payments first changes inferred period numbers and drops older periods paid later.
+function buildRecentMasterRefresh(rawRows, startDate, endDate) {
+  if (!dateKey(startDate) || !dateKey(endDate) || startDate > endDate) throw new Error('Invalid master refresh range');
+  const data = Object.fromEntries(Object.keys(EDUCATION_COLLECTIONS).map(key => [key, []]));
+  const types = { student: 'students', charge: 'charges', subject: 'subjects', teacher: 'teachers',
+    'student-payments-all': 'studentPaymentsAll', 'student-payment-details': 'studentPaymentDetails',
+    'fixed-course': 'fixedCourses', 'adjusted-course': 'temporaryCourses' };
+  rawRows.forEach(row => { if (types[row.sourceType] && row.raw) data[types[row.sourceType]].push(row.raw); });
+  // An open-only capture is never sufficient evidence for replacing a ledger.
+  if (!rawRows.some(row => row.sourceType === 'student-payments-all')) throw new Error('Complete payment source is required');
+  for (const key of ['studentPaymentsAll', 'studentPaymentDetails', 'fixedCourses', 'temporaryCourses']) {
+    data[key] = data[key].map(row => ({ ...row, checkins: nestedCheckins(row).filter(checkin => checkin.cancel !== true) }));
+  }
+  const subjects = buildSubjects(data);
+  const plans = buildFeePlans(data, subjects);
+  const courses = data.fixedCourses.concat(data.temporaryCourses).map(row => ({
+    id: idOf(row), studentPaymentIds: referenceIds(row.studentPayments),
+    studentIds: referenceIds(row.students), teacherId: idOf(row.teacher), subjectId: idOf(row.subject), active: row.end !== false
+  }));
+  const periods = buildTuitionPeriods(data, subjects, plans, courses);
+  const attendance = buildAttendance(data, courses, periods).filter(row => row.date <= endDate);
+  const sourceById = new Map(paymentPriorityRows(data).map(row => [idOf(row), row]));
+  const inRange = value => { const date = dateKey(value); return date && date >= startDate && date <= endDate; };
+  const recent = periods.filter(period => {
+    const source = sourceById.get(period.sourcePaymentId) || {};
+    return [source.created, source.updated, source.startDate, period.startDate,
+      ...period.transactions.flatMap(row => [row.date, row.operatedAt]),
+      ...nestedCheckins(source).map(row => firstValue(row.date, row.startDate, row.created))].some(inRange);
+  });
+  const incompleteAttendancePeriodIds = [];
+  const incompleteRefundPeriodIds = recent.filter(period => { const raw = sourceById.get(period.sourcePaymentId); return raw && raw.refund && typeof raw.refund !== 'object'; }).map(period => period.id);
+  recent.forEach(period => {
+    const checkins = nestedCheckins(sourceById.get(period.sourcePaymentId));
+    if (checkins.some(row => !row || typeof row !== 'object' || !dateKey(firstValue(row.date, row.startDate, row.created)))) {
+      delete period.usedCount;
+      incompleteAttendancePeriodIds.push(period.id);
+      return;
+    }
+    period.usedCount = attendance.filter(row => row.periodId === period.id && row.deducted).length;
+    if (period.usedCount >= period.lessonCount) period.status = 'completed';
+  });
+  const studentIds = new Set(recent.map(row => row.studentId));
+  return { periods: recent, students: buildStudents(data).filter(row => studentIds.has(row.id)),
+    attendance: attendance.filter(row => recent.some(period => period.id === row.periodId)),
+    sourcePeriodCount: periods.length, incompleteAttendancePeriodIds, incompleteRefundPeriodIds };
+}
+
 async function readCollection(config, runId) {
   const name = `${COLLECTION_PREFIX}${config.suffix}`;
   const snapshot = await db.collection(name).where('migrationRunId', '==', runId).limit(config.limit).get();
@@ -820,9 +868,11 @@ function transactionRows(payment, periodId, expectedAmount) {
   const rows = [];
   const usedIds = new Set();
   const add = (source, type, method, index) => {
-    if (source == null) return;
+    if (source == null || typeof source === 'boolean') return;
     const row = typeof source === 'object' ? source : { money: source };
-    const amount = Math.abs(numberOf(firstValue(row.amount, row.money, row.value, row.pay, row.total)));
+    const rawAmount = firstValue(row.amount, row.money, row.value, row.pay, row.total);
+    if (typeof rawAmount === 'boolean') return;
+    const amount = Math.abs(numberOf(rawAmount));
     if (!amount) return;
     const id = idOf(row) || `${periodId}_${type}_${method}_${index}`;
     if (usedIds.has(id)) return;
@@ -835,7 +885,8 @@ function transactionRows(payment, periodId, expectedAmount) {
         payment.operatedAt, payment.operationTime, payment.createdAt, payment.created
       )),
       amount,
-      method: clean(firstValue(row.method, row.payType, row.paymentMethod, method, '未註明')),
+      method: clean(firstValue(row.method, row.payType, row.paymentMethod,
+        row.cash === true ? '現金' : row.transfer === true ? '轉帳' : row.card === true ? '刷卡' : row.online === true ? '線上繳費' : '', method, '未註明')),
       operator: nameOf(firstValue(row.operator, row.manager, row.user, payment.operator, payment.manager)),
       note: clean(firstValue(row.note, row.remark, row.reason))
     });
@@ -844,6 +895,7 @@ function transactionRows(payment, periodId, expectedAmount) {
   const payList = array(firstValue(payment.payList, payment.payList_Model, payment.payments, payment.transactions));
   payList.forEach((row, index) => add(row, 'payment', '', index));
   array(payment.refunds).forEach((row, index) => add(row, 'refund', '退款', index));
+  if (payment.refund && typeof payment.refund === 'object') add(payment.refund, 'refund', '退款', 0);
 
   if (!rows.some((row) => row.type === 'payment')) {
     [
@@ -1252,7 +1304,7 @@ function buildTuitionPeriods(data, subjects, feePlans, courses = []) {
         ? 'amount'
         : (rawDiscount > 0 && rawDiscount <= 1 ? 'ratio' : 'amount')
     );
-    const payByDiscountValue = firstValue(row.payByDiscount, charge.payByDiscount);
+    const payByDiscountValue = firstValue(row.payByDiscount, row.payByDis, charge.payByDiscount, charge.payByDis);
     const payByDiscountKnown = payByDiscountValue !== undefined && payByDiscountValue !== null;
     const payByDiscount = payByDiscountValue === true;
     const paid = transactions.reduce((total, item) => total + (item.type === 'refund' ? -item.amount : item.amount), 0);
@@ -2181,6 +2233,7 @@ module.exports = {
   buildTeacherPayroll,
   buildTuitionPeriods,
   buildRecentMasterAdditions,
+  buildRecentMasterRefresh,
   auditedCourseStudents,
   courseStudentNames,
   courseRow,

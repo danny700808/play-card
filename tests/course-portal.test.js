@@ -1562,7 +1562,7 @@ async function runBackendScheduleRegressionTests() {
     }));
     assert.strictEqual(grossDiscountPay.outputs.teacherAmount, 420, '不按折扣計薪時仍須用原價 700 × 60%');
     assert.strictEqual(netDiscountPay.outputs.teacherAmount, 210, '按五折計薪時須用 350 × 60%');
-    assert.strictEqual(grossDiscountPay.outputs.collectedAmount, 350, '老師按原價計薪時，本堂實收仍只能是折扣後 NT$350');
+    assert.strictEqual(grossDiscountPay.outputs.collectedAmount, 0, '簽到不可產生實收；收款由付款交易記錄');
     assert.strictEqual(grossDiscountPay.outputs.lessonPrice, 350, '對外課堂金額不可誤顯示折扣前原價');
     assert.strictEqual(grossDiscountPay.outputs.teacherPayLessonPrice, 700, '老師原價計薪基準需另存，不能冒充實收');
     assert.strictEqual(grossDiscountPay.outputs.schoolShare, -70, '實收低於老師薪資時必須顯示負分潤，不能造出正數假利潤');
@@ -1577,10 +1577,10 @@ async function runBackendScheduleRegressionTests() {
       }) }],
       event.date
     );
-    assert.strictEqual(grossDiscountCalculation.collectedAmount, 350);
+    assert.strictEqual(grossDiscountCalculation.collectedAmount, 0);
     assert.strictEqual(grossDiscountCalculation.teacherAmount, 420);
     assert.strictEqual(grossDiscountCalculation.schoolShare, -70);
-    assert.strictEqual(grossDiscountCalculation.payrollCalculation.outputs.collectedAmount, 350);
+    assert.strictEqual(grossDiscountCalculation.payrollCalculation.outputs.collectedAmount, 0);
     const mixedGroupCalculation = duplicatePermanentBackend.__testAttendancePayrollCalculation(
       Object.assign({}, event, { studentIds: ['student-1', 'student-2'] }),
       [
@@ -1599,7 +1599,7 @@ async function runBackendScheduleRegressionTests() {
       ],
       event.date
     );
-    assert.strictEqual(mixedGroupCalculation.collectedAmount, 1050, '團體課實收須加總每位學生的折扣後金額');
+    assert.strictEqual(mixedGroupCalculation.collectedAmount, 0, '團體簽到不產生實收');
     assert.strictEqual(mixedGroupCalculation.teacherAmount, 1020, '團體課老師薪資須加總各方案的計薪基準');
     assert.strictEqual(mixedGroupCalculation.schoolShare, 30, 'mixed/group 分潤須以總實收減總老師薪資');
     assert.strictEqual(mixedGroupCalculation.splitType, 'mixed');

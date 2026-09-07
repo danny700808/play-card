@@ -150,7 +150,7 @@
     }
     return source.map(function(row,index){
       var id=safeId('period',row.id,index),snapshot=planSnapshot(row,feeById),lessons=numberOf(row.lessonCount)||numberOf(snapshot.lessonCount)||4;
-      return {id:id,sourcePaymentId:clean(row.sourcePaymentId||row.paymentId||row.id),studentId:clean(row.studentId),subjectId:clean(row.subjectId),teacherId:clean(row.teacherId),planId:clean(row.planId),periodNo:numberOf(row.periodNo)||index+1,startDate:dateKey(row.startDate||row.created),expiryDate:dateKey(row.expiryDate),lessonCount:lessons,usedCount:numberOf(row.usedCount),expectedAmount:numberOf(row.expectedAmount||row.amount||snapshot.amount),discount:numberOf(row.discount),status:clean(row.status)||'active',note:clean(row.note),transactions:normalizeTransactions(row.transactions,id),planSnapshot:snapshot};
+      return {id:id,sourcePaymentId:clean(row.sourcePaymentId||row.paymentId||row.id),studentId:clean(row.studentId),subjectId:clean(row.subjectId),teacherId:clean(row.teacherId),planId:clean(row.planId),periodNo:numberOf(row.periodNo)||index+1,startDate:dateKey(row.startDate||row.created),expiryDate:dateKey(row.expiryDate),lessonCount:lessons,usedCount:numberOf(row.usedCount),voidedLessonCount:numberOf(row.voidedLessonCount),lessonAdjustments:clone(array(row.lessonAdjustments)),expectedAmount:numberOf(row.expectedAmount||row.amount||snapshot.amount),discount:numberOf(row.discount),status:clean(row.status)||'active',note:clean(row.note),transactions:normalizeTransactions(row.transactions,id),planSnapshot:snapshot};
     });
   }
 
@@ -179,6 +179,7 @@
 
   function portalVisualType(course){
     var action=clean(course&&course.portalAction),type=clean(course&&course.type);
+    if(type==='rental'||type==='trial')return type;
     if(action==='permanent_move'||action==='permanent_room_exception')return 'fixed';
     if(['single_move','extra_lesson','teacher_gift'].indexOf(action)>=0)return 'single';
     if(type==='teacher_gift'||type==='temporary')return 'single';
@@ -187,7 +188,7 @@
 
   function courseEvent(course,date,status,resolvePeriod){
     var action=clean(course.portalAction),special=course.specialLesson===true||action==='teacher_gift'||clean(course.type)==='teacher_gift',type=portalVisualType(course);
-    return {id:safeId('course',course.id,0)+'@'+date,sourceCourseId:clean(course.id),seriesId:clean(course.seriesId||course.fixedCourseId||course.id),date:date,roomId:clean(course.roomId),start:clean(course.start||course.startTime),duration:Math.max(30,numberOf(course.duration||course.durationMinutes)||60),type:type,portalAction:action,specialLesson:special,specialLessonPrice:numberOf(course.specialLessonPrice),specialTeacherPay:numberOf(course.specialTeacherPay),frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),studentNames:studentNamesFor(course),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),subjectName:clean(course.subjectName),resourceIds:sharedResourceIdsFor(course),tuitionPeriodId:resolvePeriod(course),clientName:'',rentalFee:0,status:clean(status)||'scheduled',note:clean(course.note),readOnly:true,source:'injiaoyun-migration'};
+    return {id:safeId('course',course.id,0)+'@'+date,sourceId:clean(course.sourceId||course.id),portalChangeId:clean(course.portalChangeId),sourceCourseId:clean(course.fixedCourseId||course.id),seriesId:clean(course.seriesId||course.fixedCourseId||course.id),date:date,roomId:clean(course.roomId),start:clean(course.start||course.startTime),duration:Math.max(30,numberOf(course.duration||course.durationMinutes)||60),type:type,portalAction:action,specialLesson:special,specialLessonPrice:numberOf(course.specialLessonPrice),specialTeacherPay:numberOf(course.specialTeacherPay),teacherPayAdjustment:numberOf(course.teacherPayAdjustment),teacherPayAdjustmentReason:clean(course.teacherPayAdjustmentReason),frequency:numberOf(course.frequencyWeeks)>=2?'biweekly':type==='fixed'?'weekly':'once',studentIds:unique(course.studentIds),studentNames:studentNamesFor(course),teacherId:clean(course.teacherId),subjectId:clean(course.subjectId),subjectName:clean(course.subjectName),resourceIds:sharedResourceIdsFor(course),tuitionPeriodId:clean(course.tuitionPeriodId)||resolvePeriod(course),clientName:clean(course.clientName),clientPhone:clean(course.clientPhone),rentalFee:numberOf(course.rentalFee),rentalPaymentStatus:clean(course.rentalPaymentStatus),trialName:clean(course.trialName),trialPhone:clean(course.trialPhone),trialFee:numberOf(course.trialFee),status:clean(status)||'scheduled',note:clean(course.note),readOnly:true,source:clean(course.source)||'injiaoyun-migration'};
   }
 
   // 請假要保留成半透明藍色固定課；只有真正取消／停課才不顯示。
@@ -280,7 +281,7 @@
     if(!coveredDates.length&&auditedEvents.length)coveredDates=unique(auditedEvents.map(function(row){return row.date;}));
     if(coveredDates.length){
       var coveredSet=new Set(coveredDates);
-      events=events.filter(function(row){return !coveredSet.has(row.date)||clean(row.source)==='course-portal';}).concat(auditedEvents);
+      events=events.filter(function(row){return !coveredSet.has(row.date)||['course-portal','manager-cloud'].includes(clean(row.source));}).concat(auditedEvents);
     }
     events=events.filter(function(row){return row.date&&row.roomId&&row.start&&row.date>=rangeStart&&row.date<=rangeEnd&&!cancelledCourseStatus(row.status);});
     // 有效固定課即使被請假、單堂或租用覆蓋仍保留；只在畫面上重疊，不可從資料刪除。
@@ -314,6 +315,7 @@
     });
     var earliest=events.reduce(function(value,row){return Math.min(value,timeToMin(row.start));},10*60),latest=events.reduce(function(value,row){return Math.max(value,timeToMin(row.start)+numberOf(row.duration));},22*60);
     var visibleWeekdays=events.reduce(function(counts,row){var date=new Date(row.date+'T12:00:00'),day=['sun','mon','tue','wed','thu','fri','sat'][date.getDay()];counts[day]=(counts[day]||0)+1;return counts;},{sun:0,mon:0,tue:0,wed:0,thu:0,fri:0,sat:0});
+    events=events.map(function(event){var matches=array(payload.lessonSettings).filter(function(setting){return setting.date===event.date&&(!setting.teacherId||setting.teacherId===event.teacherId)&&[event.id,event.sourceId,event.sourceCourseId,event.seriesId,event.portalChangeId,event.portalBookingId].some(function(id){return array(setting.eventIds).indexOf(id)>=0;});});return Object.assign.apply(Object,[{},event].concat(matches.map(function(setting){return setting.fields||{};})));});
     return {version:3,currentDate:anchor,settings:{startHour:Math.max(6,Math.min(10,Math.floor(earliest/60))),endHour:Math.min(24,Math.max(22,Math.ceil(latest/60))),interval:30,defaultLessons:4},rooms:rooms,subjects:subjects.rows,teachers:teachers,feePlans:feePlans,students:students,tuitionPeriods:periods,events:events,attendance:attendance,leaveReasons:normalizeLeaveReasons(payload),teacherPayroll:normalizeTeacherPayroll(payload),teacherAdjustments:normalizeTeacherAdjustments(payload),clipboard:null,readOnly:true,dataMode:'migration',dataMeta:{runId:clean(payload.runId),loadedAt:clean(payload.loadedAt),version:clean(payload.version),counts:payload.counts||{},dataQuality:Object.assign({},payload.dataQuality||{},{visibleEventWeekdays:visibleWeekdays}),rangeStart:rangeStart,rangeEnd:rangeEnd}};
   }
 
@@ -424,6 +426,22 @@
   async function saveTuitionPeriods(options){
     var result=await courseAdminMutation('coursePortalAdminSaveTuitionPeriods',options||{},options&&options.manualSyncPin);
     if(!result||result.ok!==true)throw new Error('學費期別尚未保存到雲端。');
+    return result;
+  }
+
+  async function voidLessonSlot(options){return courseAdminMutation('coursePortalAdminVoidLessonSlot',options||{},options&&options.manualSyncPin);}
+  async function saveLessonSettings(options){return courseAdminMutation('coursePortalAdminSaveLessonSettings',options||{},options&&options.manualSyncPin);}
+  async function saveLeaveReason(options){return courseAdminMutation('coursePortalAdminSaveLeaveReason',options||{},options&&options.manualSyncPin);}
+
+  async function saveSchedule(options){
+    var result=await courseAdminMutation('coursePortalAdminSaveSchedule',options||{},options&&options.manualSyncPin);
+    if(!result||result.ok!==true)throw new Error('排課尚未保存到雲端。');
+    return result;
+  }
+
+  async function setAttendance(options){
+    var result=await courseAdminMutation('coursePortalAdminSetAttendance',options||{},options&&options.manualSyncPin);
+    if(!result||result.ok!==true)throw new Error('簽到尚未保存到雲端。');
     return result;
   }
 
@@ -568,5 +586,5 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={load:load,loadPublished:loadPublished,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,recordTuitionTransaction:recordTuitionTransaction,saveTuitionPeriods:saveTuitionPeriods,saveStudent:saveStudent,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
+  global.YouziCoursePreviewData={load:load,loadPublished:loadPublished,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,voidLessonSlot:voidLessonSlot,saveLessonSettings:saveLessonSettings,saveLeaveReason:saveLeaveReason,saveSchedule:saveSchedule,setAttendance:setAttendance,recordTuitionTransaction:recordTuitionTransaction,saveTuitionPeriods:saveTuitionPeriods,saveStudent:saveStudent,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);

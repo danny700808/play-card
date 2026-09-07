@@ -47,7 +47,7 @@ function fixture() {
     }
   };
   const context = {
-    db, cents, validateTransaction, Map, Set, Date, Object, Array, Number, Math,
+    db, cents, validateTransaction, Map, Set, Date, Object, Array, Number, Math, readCourseGroups: async () => [],
     clean: value => String(value ?? '').trim(), dateKey: value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : '',
     sourceId: row => row && (row.id || row.__id) || '', jsonValue: value => value,
     HttpsError: class extends Error { constructor(code, message) { super(message); this.code = code; } },

@@ -17,6 +17,7 @@ const VERSION = '2026.09.07-v5-validated-calendar';
 const RUNS = db.collection('opsInjiaoyunCourseAuditV3Runs');
 
 const SOURCES = [
+  { key: 'student-payments-all', path: '/students/payments/all' },
   { key: 'student-payments-open', path: '/students/payments/not/finish' },
   { key: 'fixed-course', path: '/fixCourses/', calendar: true },
   { key: 'adjusted-course', path: '/tempCourses/', calendar: true },
