@@ -1165,9 +1165,19 @@ async function sendEmailOtp(data, helpers = {}) {
   }
   const ref = db.collection('coursePortalEmailOtps').doc(hash(challenge));
   await ref.set(payload);
+  let recoveryRef = null;
+  let recoveryUrl = '';
+  if (identity && purpose === 'line-registration') {
+    const recoveryToken = randomToken(36);
+    recoveryRef = db.collection('coursePortalOtpRecovery').doc(hash(recoveryToken));
+    await recoveryRef.set({ kind: 'email-link', challengeToken: challenge, type,
+      lineUserId: payload.lineUserId, expiresAt, createdAt: FieldValue.serverTimestamp() });
+    recoveryUrl = `${centralPortalUrl({ role: type })}#resume=${encodeURIComponent(recoveryToken)}`;
+  }
 
   if (identity && typeof helpers.sendEmail !== 'function') {
     await ref.delete().catch(() => {});
+    if (recoveryRef) await recoveryRef.delete().catch(() => {});
     throw new HttpsError('internal', '驗證信服務尚未啟用，請使用 LINE 快速登入或聯絡管理者。');
   }
   if (identity) {
@@ -1180,11 +1190,14 @@ async function sendEmailOtp(data, helpers = {}) {
           `您的四碼驗證碼是：${code}`,
           '',
           '驗證碼 300 秒內有效，最多可輸入 5 次。',
+          ...(recoveryUrl ? ['', '返回驗證頁面：', recoveryUrl,
+            '若原畫面已關閉，請由此返回並確認同一個 LINE 帳號。有效期限不會重新計算。', ''] : []),
           '若不是您本人操作，請忽略這封信，也不要把驗證碼告訴任何人。'
         ].join('\n')
       });
     } catch (error) {
       await ref.delete().catch(() => {});
+      if (recoveryRef) await recoveryRef.delete().catch(() => {});
       console.error('[course portal email otp failed]', error);
       throw new HttpsError('internal', '驗證信暫時無法寄出，請稍後再試或使用 LINE 快速登入。');
     }
@@ -1573,16 +1586,65 @@ function lineAuthorizationUrl(state) {
   return `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
 }
 
+// The email link is not an OTP challenge. Only a matching LINE OAuth identity
+// can exchange it for a short-lived continuation of the original challenge.
+async function readOtpRecovery(token, kind) {
+  if (!clean(token) || clean(token).length > 200) throw new HttpsError('invalid-argument', '返回連結不完整，請重新申請驗證碼。');
+  const snapshot = await db.collection('coursePortalOtpRecovery').doc(hash(clean(token))).get();
+  const recovery = snapshot.exists ? snapshot.data() : null;
+  if (!recovery || recovery.kind !== kind || asMillis(recovery.expiresAt) <= Date.now()) {
+    throw new HttpsError('deadline-exceeded', '返回連結已失效，請重新申請驗證碼。');
+  }
+  const otpSnapshot = await db.collection('coursePortalEmailOtps').doc(hash(recovery.challengeToken)).get();
+  const otp = otpSnapshot.exists ? otpSnapshot.data() : null;
+  if (!otp || otp.status !== 'pending' || otp.purpose !== 'line-registration' ||
+      asMillis(otp.expiresAt) <= Date.now() || Number(otp.attempts || 0) >= EMAIL_OTP_MAX_ATTEMPTS ||
+      otp.type !== recovery.type || !otp.lineUserId || otp.lineUserId !== recovery.lineUserId) {
+    throw new HttpsError('deadline-exceeded', '驗證碼已失效，請重新申請。');
+  }
+  const setupSnapshot = await db.collection('coursePortalLineSetupTokens').doc(clean(otp.lineSetupId)).get();
+  const setup = setupSnapshot.exists ? setupSnapshot.data() : null;
+  if (!setup || setup.status !== 'pending' || setup.lineUserId !== otp.lineUserId ||
+      setup.type !== otp.type || asMillis(setup.expiresAt) <= Date.now()) {
+    throw new HttpsError('permission-denied', 'LINE 綁定已失效，請重新登入。');
+  }
+  return { recovery, otp };
+}
+
+async function completeOtpRecovery(recoveryToken, profile) {
+  const { recovery, otp } = await readOtpRecovery(recoveryToken, 'email-link');
+  if (!profile || profile.lineUserId !== otp.lineUserId) {
+    throw new HttpsError('permission-denied', '請使用最初申請綁定的同一個 LINE 帳號，再從信件返回。');
+  }
+  const verifiedToken = randomToken(36);
+  await db.collection('coursePortalOtpRecovery').doc(hash(verifiedToken)).set({
+    kind: 'line-verified', challengeToken: recovery.challengeToken,
+    type: otp.type, lineUserId: otp.lineUserId, expiresAt: otp.expiresAt,
+    createdAt: FieldValue.serverTimestamp()
+  });
+  return { type: otp.type, verifiedToken };
+}
+
+async function resumeEmailOtp(data) {
+  const { recovery, otp } = await readOtpRecovery(data.resumeToken, 'line-verified');
+  return { ok: true, type: otp.type, challengeToken: recovery.challengeToken,
+    maskedEmail: maskedEmail(otp.email),
+    expiresInSeconds: Math.max(0, Math.floor((asMillis(otp.expiresAt) - Date.now()) / 1000)) };
+}
+
 async function startLineLogin(data) {
   const type = clean(data.type).toLowerCase();
   if (!['teacher', 'student', 'renter'].includes(type)) {
     throw new HttpsError('invalid-argument', '不支援的入口類型。');
   }
+  const recovery = data.resumeLink ? await readOtpRecovery(data.resumeLink, 'email-link') : null;
+  if (recovery && recovery.otp.type !== type) throw new HttpsError('permission-denied', '返回連結的身分不符。');
   const state = randomToken(32);
-  const expiresAt = Timestamp.fromMillis(Date.now() + LINE_OAUTH_STATE_TTL_MS);
+  const expiresAt = recovery ? recovery.otp.expiresAt : Timestamp.fromMillis(Date.now() + LINE_OAUTH_STATE_TTL_MS);
   await db.collection('coursePortalLineOAuthStates').doc(hash(state)).set({
     type,
     linkAnother: type === 'student' && data.linkAnother === true,
+    ...(recovery ? { otpRecoveryToken: clean(data.resumeLink) } : {}),
     stateHint: state.slice(-6),
     status: 'pending',
     createdAt: FieldValue.serverTimestamp(),
@@ -1769,6 +1831,12 @@ async function lineLoginCallback(req, res) {
 
     const token = await exchangeLineAuthorizationCode(code);
     const profile = await lineLoginProfile(token.access_token);
+    if (stateRow.otpRecoveryToken) {
+      const resumed = await completeOtpRecovery(stateRow.otpRecoveryToken, profile);
+      await stateRef.set({ status: 'used', completedAt: FieldValue.serverTimestamp() }, { merge: true });
+      res.redirect(302, `${centralPortalUrl({ role: resumed.type })}#resumeVerified=${encodeURIComponent(resumed.verifiedToken)}`);
+      return;
+    }
     const allBindings = await bindingsForLine(type, profile.lineUserId);
     await refreshLineBindingProfile(allBindings, profile, type);
     const decision = decideLineLoginBinding(type, allBindings);
@@ -11712,6 +11780,7 @@ async function adminBindingAction(data) {
       'coursePortalSessions',
       'coursePortalAccessTokens',
       'coursePortalEmailOtps',
+      'coursePortalOtpRecovery',
       'coursePortalBindCodes',
       'coursePortalLineLoginCodes',
       'coursePortalLineOAuthStates',
@@ -12328,6 +12397,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     sendEmail: helpers.sendEmail
   }));
   exportsObject.coursePortalVerifyEmailOtp = callable(verifyEmailOtp);
+  exportsObject.coursePortalResumeEmailOtp = callable(resumeEmailOtp);
   exportsObject.coursePortalStartLineLogin = callable(startLineLogin);
   exportsObject.coursePortalCompleteLineRegistration = callable(completeLineRegistration);
   exportsObject.coursePortalLineLoginCallback = onRequest({

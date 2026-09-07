@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#102b3a">
   <title>柚子樂器｜老師登入</title>
   <link rel="stylesheet" href="course-portal.css?v=20260803-login-stability-v3">
@@ -92,6 +93,7 @@
     .entry-otp-meta{font-size:14px;margin:0 0 8px}
     .entry-secondary{border:0;background:transparent;color:#237a66;font-size:16px;font-weight:700;padding:10px;cursor:pointer}
     .entry-toolbar button{font-size:16px}
+    #resumeView:not(.hidden){display:flex;flex-direction:column;gap:12px}
     .entry-notice{font-size:15px;text-align:center}
     @media(max-width:360px){.entry-card{padding:24px 16px}.entry-method{padding-right:34px;padding-left:34px}.entry-method strong{font-size:19px}}
   </style>
@@ -166,6 +168,11 @@
       <div class="hidden" id="loadingView">
         <div class="entry-loading-view"><span aria-hidden="true"></span><div><strong id="loadingTitle">正在開啟 LINE</strong><small id="loadingText">完成後會自動返回，不需要關閉再重開。</small></div></div>
       </div>
+      <div class="hidden" id="resumeView">
+        <h2 class="entry-form-title">返回驗證</h2>
+        <button class="btn primary" type="button" id="confirmResumeLine">使用 LINE 繼續</button>
+        <button class="entry-secondary" type="button" id="cancelResume">返回登入</button>
+      </div>
     </section>
   </main>
 
@@ -185,7 +192,8 @@
       const emailView = document.getElementById('emailView');
       const otpView = document.getElementById('otpView');
       const loadingView = document.getElementById('loadingView');
-      const allViews = [methodView, roleView, setupView, emailView, otpView, loadingView];
+      const resumeView = document.getElementById('resumeView');
+      const allViews = [methodView, roleView, setupView, emailView, otpView, loadingView, resumeView];
       const roleList = document.getElementById('roleList');
       const roleIntro = document.getElementById('roleIntro');
       const notice = document.getElementById('entryNotice');
@@ -199,6 +207,14 @@
       }
       otpForm.elements.code.addEventListener('input', renderCode);
       const params = new URLSearchParams(location.search);
+      const recoveryParams = new URLSearchParams(location.hash.slice(1));
+      const resumeLink = recoveryParams.get('resume') || '';
+      const resumeVerified = recoveryParams.get('resumeVerified') || '';
+      window.addEventListener('hashchange', function () {
+        const next = new URLSearchParams(location.hash.slice(1));
+        if (next.has('resume') || next.has('resumeVerified')) location.reload();
+      });
+      let recoveredOtp = false;
       const roles = [
         { id:'teacher', icon:'師', title:'老師', detail:'查看課表、學生、薪資與教室租用', page:'teacher-course-portal.html' },
         { id:'student', icon:'生', title:'學生／家長', detail:'查看課程、繳費、請假與教室租用', page:'student-course-portal.html' },
@@ -329,6 +345,8 @@
       }
 
       function openRegularEmail(role) {
+        recoveredOtp = false;
+        document.getElementById('resendOtp').textContent = '重新寄送';
         selectedRole = role;
         pendingFlow = 'regular';
         document.getElementById('emailFormTitle').textContent = 'Email 登入';
@@ -340,6 +358,8 @@
       }
 
       function openLineSetup(role, token) {
+        recoveredOtp = false;
+        document.getElementById('resendOtp').textContent = '重新寄送';
         selectedRole = role;
         method = 'line';
         pendingFlow = 'line-registration';
@@ -471,6 +491,10 @@
       }
 
       document.getElementById('resendOtp').addEventListener('click', function () {
+        if (recoveredOtp) {
+          location.replace('course-portal.html?role=' + encodeURIComponent(entryRole));
+          return;
+        }
         const form = pendingFlow === 'line-registration' ? setupForm : emailForm;
         if (form.reportValidity()) requestOtp(form, pendingFlow, this);
       });
@@ -552,7 +576,7 @@
       document.getElementById('backToIdentity').addEventListener('click', function () {
         clearInterval(otpTimer);
         pendingChallenge = '';
-        showOnly(pendingFlow === 'line-registration' ? setupView : emailView);
+        showOnly(recoveredOtp ? methodView : (pendingFlow === 'line-registration' ? setupView : emailView));
       });
       document.getElementById('restartLineSetup').addEventListener('click', function () {
         const role = selectedRole;
@@ -569,6 +593,49 @@
       const reason = String(params.get('reason') || '').trim();
       const lineError = String(params.get('lineError') || '').trim();
       const accessToken = String(params.get('access') || '').trim();
+
+      document.getElementById('confirmResumeLine').addEventListener('click', async function () {
+        if (starting) return;
+        starting = true;
+        P.loading(this, true, '確認中…');
+        try {
+          const result = await P.call('coursePortalStartLineLogin', { type: entryRole, resumeLink });
+          if (!result.authorizationUrl) throw new Error('無法開啟 LINE，請稍後再試。');
+          location.assign(normalizeLineUrl(result.authorizationUrl));
+        } catch (error) {
+          showNotice(error.message || '返回連結已失效，請重新申請。', true);
+          starting = false;
+          P.loading(this, false);
+        }
+      });
+      document.getElementById('cancelResume').addEventListener('click', function () {
+        location.replace('course-portal.html?role=' + encodeURIComponent(entryRole));
+      });
+      if (resumeLink || resumeVerified) {
+        setUrl({ role: entryRole });
+        if (resumeLink) {
+          showOnly(resumeView);
+        } else {
+          showLoading('正在返回驗證', '');
+          try {
+            const result = await P.call('coursePortalResumeEmailOtp', { resumeToken: resumeVerified });
+            if (result.type !== entryRole || !result.challengeToken || result.expiresInSeconds <= 0) throw new Error('返回連結已失效，請重新申請。');
+            selectedRole = roleById(result.type);
+            pendingFlow = 'line-registration';
+            pendingChallenge = result.challengeToken;
+            recoveredOtp = true;
+            document.getElementById('resendOtp').textContent = '重新申請';
+            document.getElementById('otpDestination').textContent = result.maskedEmail || '';
+            showOnly(otpView);
+            startOtpCountdown(result.expiresInSeconds);
+            otpForm.elements.code.focus();
+          } catch (error) {
+            showOnly(methodView);
+            showNotice(error.message || '返回連結已失效，請重新申請。', true);
+          }
+        }
+        return;
+      }
 
       if (accessToken) {
         const role = roleById(requestedRole);
