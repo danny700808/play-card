@@ -99,3 +99,8 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
   .teacher-course-app .teacher-roster-row,.teacher-course-app .payroll-row{grid-template-columns:1fr}.teacher-roster-actions{justify-content:flex-start}
   .teacher-more-grid{grid-template-columns:1fr 1fr}
 }
+
+/* Keep return controls in document flow and leave room for panel anchors. */
+.teacher-course-app .yz-global-nav.yz-teacher-nav{position:relative;top:auto}
+.teacher-course-app [data-panel]{scroll-margin-top:12px}
+.teacher-login-notice{padding:10px 12px;margin:10px 0;border:1px solid #cee0d7;border-radius:10px;background:#f3faf6;text-align:center;font-size:13px}

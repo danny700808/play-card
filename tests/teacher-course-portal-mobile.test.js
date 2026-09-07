@@ -22,7 +22,7 @@ assert(!source.includes('老師課務｜歡迎'), '老師程式不應再動態�
 assert(!html.includes('id="weekPicker"'), '手機課表不應顯示日期／星期選擇器');
 assert(!source.includes("getElementById('weekPicker')"), '老師課表仍保留日期跳轉邏輯');
 assert(html.includes('id="prevWeek"') && html.includes('id="nextWeek"'), '老師課表需保留上一週／下一週');
-assert(source.includes('addDays(weekStart, -7)') && source.includes('addDays(weekStart, 7)'), '前後週按鈕未以整週切換');
+assert(source.includes('addDays(weekStart, direction * 7)') && source.includes('navigateTeacherWeek(-1, false)') && source.includes('navigateTeacherWeek(1, false)'), '前後週按鈕未以整週切換');
 
 assert(html.includes('data-two-day-viewport'), '手機課表缺少兩日檢視容器');
 assert(source.includes('scroll.clientWidth - stickyWidth') && source.includes('/ 2'), '手機課表未依可視寬度配置兩日欄');
@@ -86,8 +86,8 @@ assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') 
 assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.css?v=20260808-four-row-visible-v2'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260808-same-day-attendance-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260908-teacher-cutover-v1'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260908-teacher-cutover-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');

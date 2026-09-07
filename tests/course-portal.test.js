@@ -2822,7 +2822,7 @@ const permanentHorizonCoversSeries = !backend.includes(
     '      ? recurrenceEndDate\n' +
     '      : addDays(date, 364);'
 );
-assert(teacherSource.includes('row.recurring === true'), '老師入口仍從一般來源 ID 猜測固定課');
+assert(backend.includes('replaceMatchingCourse: action ==='), '永久調課必須記錄課程範圍與生效日');
 assert(schedulerDataSource.includes('rentalUseTypes:unique(options.rentalUseTypes)'), '桌面教室用途未同步到入口設定');
 assert(schedulerDataSource.includes('room.roomRulesVersion===1||Array.isArray(room.rentalUseTypes)'), '舊教室空用途清單仍會被誤認為管理者刻意關閉');
 assert(schedulerSource.includes("if(!explicitRules||typeof room.rentable!=='boolean')"), '載入伺服器教室設定時會覆寫明確的可租用狀態');

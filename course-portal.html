@@ -613,12 +613,10 @@
       });
       if (resumeLink || resumeVerified) {
         setUrl({ role: entryRole });
-        if (resumeLink) {
-          showOnly(resumeView);
-        } else {
+        {
           showLoading('正在返回驗證', '');
           try {
-            const result = await P.call('coursePortalResumeEmailOtp', { resumeToken: resumeVerified });
+            const result = await P.call('coursePortalResumeEmailOtp', { resumeToken: resumeLink || resumeVerified });
             if (result.type !== entryRole || !result.challengeToken || result.expiresInSeconds <= 0) throw new Error('返回連結已失效，請重新申請。');
             selectedRole = roleById(result.type);
             pendingFlow = 'line-registration';

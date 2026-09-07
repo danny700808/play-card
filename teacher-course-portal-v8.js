@@ -771,9 +771,9 @@
       const rowTeacherName = clean(student && student.teacherName || teacherName);
       const detail = [
         rowTeacherName ? `授課老師 ${rowTeacherName}` : '',
-        `手機末四碼 ${clean(student.phoneLast4) || '未提供'}`
+        clean(student.phone) ? `電話 ${clean(student.phone)}` : '電話未提供'
       ].filter(Boolean).join('・');
-      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>${escapeHtml(detail)}</span><span class="teacher-roster-actions"><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
+      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>${escapeHtml(detail)}${clean(student.phone) ? ` <a href="tel:${escapeHtml(clean(student.phone).replace(/[^+0-9]/g, ''))}" aria-label="撥打${escapeHtml(student.name)}的電話">撥打</a>` : ''}</span><span class="teacher-roster-actions"><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
     }).join('');
   }
 
@@ -851,6 +851,11 @@
   }
 
   function renderAll() {
+    if (data.loginNotice && data.loginNotice.loginAtText) {
+      let notice = document.getElementById('teacherLoginNotice');
+      if (!notice) { notice = document.createElement('p'); notice.id = 'teacherLoginNotice'; notice.className = 'teacher-login-notice'; document.querySelector('.yz-teacher-nav').after(notice); }
+      notice.textContent = data.loginNotice.previousLoginAtText ? '上次登入：' + data.loginNotice.previousLoginAtText + '。若不是本人操作，請聯絡管理者。' : '這是首次記錄的登入。';
+    }
     renderWeek();
     renderRoster();
     renderPayroll();
@@ -1059,7 +1064,7 @@
     const cancelAddedAction = !pastDate && row.portalChangeId && ['extra_lesson', 'teacher_gift'].includes(clean(row.portalAction))
       ? '<button type="button" data-quick-state="cancel_change">取消此次新增</button>'
       : '';
-    const permanentMoveAction = cancelAddedAction || (movable && row.recurring === true
+    const permanentMoveAction = cancelAddedAction || (movable
       ? '<button type="button" data-quick-action="permanent_move">之後固定改到新時段</button>'
       : unavailableQuickAction('之後固定改到新時段'));
     const extraLessonAction = canAddFromLesson
@@ -1696,14 +1701,45 @@
     closeMore();
     closeQuick();
     activateTab('schedule');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
-  document.getElementById('prevWeek').addEventListener('click', () => { weekStart = addDays(weekStart, -7); load(true); });
-  document.getElementById('nextWeek').addEventListener('click', () => { weekStart = addDays(weekStart, 7); load(true); });
+  document.getElementById('prevWeek').addEventListener('click', () => navigateTeacherWeek(-1, false));
+  document.getElementById('nextWeek').addEventListener('click', () => navigateTeacherWeek(1, false));
   document.getElementById('rosterSearch').addEventListener('input', (event) => {
     rosterQuery = clean(event.target.value);
     renderRoster();
   });
   const weekViewport = document.querySelector('[data-two-day-viewport]');
+  let edgeGesture = null;
+  let changingWeek = false;
+  async function navigateTeacherWeek(direction, edge) {
+    if (changingWeek) return;
+    changingWeek = true;
+    const top = weekViewport.scrollTop;
+    try {
+      weekStart = addDays(weekStart, direction * 7);
+      const moving = planner && planner.mode === 'move' ? { source: planner.source, action: planner.action } : null;
+      await load(true);
+      if (moving) await startSourceMove(moving.source, moving.action);
+      weekViewport.scrollLeft = edge && direction < 0 ? weekViewport.scrollWidth - weekViewport.clientWidth : 0;
+      weekViewport.scrollTop = top;
+    } finally { changingWeek = false; }
+  }
+  weekViewport.addEventListener('touchstart', event => {
+    if (event.touches.length !== 1 || changingWeek) { edgeGesture = null; return; }
+    const point = event.touches[0];
+    edgeGesture = { x: point.clientX, y: point.clientY, left: weekViewport.scrollLeft <= 2,
+      right: weekViewport.scrollLeft >= weekViewport.scrollWidth - weekViewport.clientWidth - 2 };
+  }, { passive: true });
+  weekViewport.addEventListener('touchend', async event => {
+    const gesture = edgeGesture; edgeGesture = null;
+    if (!gesture || changingWeek || !event.changedTouches.length) return;
+    const point = event.changedTouches[0], dx = point.clientX - gesture.x, dy = point.clientY - gesture.y;
+    if (Math.abs(dx) < 65 || Math.abs(dx) <= Math.abs(dy) * 1.4) return;
+    const direction = gesture.right && dx < 0 ? 1 : gesture.left && dx > 0 ? -1 : 0;
+    if (!direction) return;
+    await navigateTeacherWeek(direction, true);
+  }, { passive: true });
   weekViewport.addEventListener('scroll', scheduleWeekGroupSnap, { passive: true });
   weekViewport.addEventListener('scrollend', snapWeekScrollToGroup);
   global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));

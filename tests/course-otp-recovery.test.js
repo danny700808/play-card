@@ -13,11 +13,10 @@ function fixture(){
  vm.createContext(context);vm.runInContext(source.slice(source.indexOf('async function readOtpRecovery('),source.indexOf('async function startLineLogin(')),context);
  return {api:context,rows,hash,setNow:value=>{now=value;}};
 }
-test('email return requires matching LINE identity and preserves remaining time',async()=>{
- const f=fixture();await assert.rejects(f.api.resumeEmailOtp({resumeToken:'email-link'}));
- await assert.rejects(f.api.completeOtpRecovery('email-link',{lineUserId:'other'}),e=>e.code==='permission-denied');
- f.setNow(1090000);const proof=await f.api.completeOtpRecovery('email-link',{lineUserId:'owner'});const result=await f.api.resumeEmailOtp({resumeToken:proof.verifiedToken});assert.equal(result.expiresInSeconds,210);assert.equal(result.challengeToken,'challenge');
- f.setNow(1300000);await assert.rejects(f.api.resumeEmailOtp({resumeToken:proof.verifiedToken}));await assert.rejects(f.api.completeOtpRecovery('email-link',{lineUserId:'owner'}));
+test('email return restores four-code entry directly and preserves remaining time',async()=>{
+ const f=fixture();await assert.rejects(f.api.resumeEmailOtp({resumeToken:'invalid-link'}));
+ f.setNow(1090000);const result=await f.api.resumeEmailOtp({resumeToken:'email-link'});assert.equal(result.expiresInSeconds,210);assert.equal(result.challengeToken,'challenge');assert.equal(result.sessionToken,undefined);
+ f.setNow(1300000);await assert.rejects(f.api.resumeEmailOtp({resumeToken:'email-link'}));
 });
 test('used, locked or removed registration cannot be recovered',async()=>{
  for(const state of ['used','locked','missing-setup']){const f=fixture();const otp=f.rows.get('coursePortalEmailOtps/'+f.hash('challenge'));if(state==='missing-setup')f.rows.delete('coursePortalLineSetupTokens/setup');else otp.status=state;await assert.rejects(f.api.completeOtpRecovery('email-link',{lineUserId:'owner'}));}

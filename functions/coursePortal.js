@@ -1191,7 +1191,7 @@ async function sendEmailOtp(data, helpers = {}) {
           '',
           '驗證碼 300 秒內有效，最多可輸入 5 次。',
           ...(recoveryUrl ? ['', '返回驗證頁面：', recoveryUrl,
-            '若原畫面已關閉，請由此返回並確認同一個 LINE 帳號。有效期限不會重新計算。', ''] : []),
+            '若原畫面已關閉，請由此返回輸入四碼。有效期限不會重新計算，請勿轉寄驗證信。', ''] : []),
           '若不是您本人操作，請忽略這封信，也不要把驗證碼告訴任何人。'
         ].join('\n')
       });
@@ -1351,6 +1351,14 @@ async function issueSession({ type, lineUserId, authAccountId, targetId, renterI
   if (!(await touchAuthorizedBindings(sessionPayload))) {
     await sessionRef.delete().catch(() => {});
     throw new HttpsError('permission-denied', '這個登入權限已停用或尚未核准，請聯絡柚子樂器。');
+  }
+  if (type === 'teacher') {
+    const historyRef = db.collection('coursePortalTeacherLoginHistory').doc(clean(targetId));
+    await db.runTransaction(async tx => {
+      const previous = await tx.get(historyRef);
+      tx.set(sessionRef, { previousLoginAtText: clean(previous.exists && previous.data().lastLoginAtText), loginAtText: nowText() }, { merge: true });
+      tx.set(historyRef, { lastLoginAtText: nowText(), lastLoginAt: FieldValue.serverTimestamp() }, { merge: true });
+    });
   }
   await queueSessionSecurityNotice(hash(session), sessionPayload);
   return { sessionToken: session, expiresAt };
@@ -1586,8 +1594,8 @@ function lineAuthorizationUrl(state) {
   return `https://access.line.me/oauth2/v2.1/authorize?${params.toString()}`;
 }
 
-// The email link is not an OTP challenge. Only a matching LINE OAuth identity
-// can exchange it for a short-lived continuation of the original challenge.
+// The email link resumes the original challenge without creating a session.
+// The original four-digit code and deadline still apply.
 async function readOtpRecovery(token, kind) {
   if (!clean(token) || clean(token).length > 200) throw new HttpsError('invalid-argument', '返回連結不完整，請重新申請驗證碼。');
   const snapshot = await db.collection('coursePortalOtpRecovery').doc(hash(clean(token))).get();
@@ -1626,7 +1634,7 @@ async function completeOtpRecovery(recoveryToken, profile) {
 }
 
 async function resumeEmailOtp(data) {
-  const { recovery, otp } = await readOtpRecovery(data.resumeToken, 'line-verified');
+  const { recovery, otp } = await readOtpRecovery(data.resumeToken, 'email-link');
   return { ok: true, type: otp.type, challengeToken: recovery.challengeToken,
     maskedEmail: maskedEmail(otp.email),
     expiresInSeconds: Math.max(0, Math.floor((asMillis(otp.expiresAt) - Date.now()) / 1000)) };
@@ -4155,6 +4163,19 @@ function changeOrderValue(row) {
   );
 }
 
+function sameTeachingCourse(left, right) {
+  if (!left || !right || isRoomRentalEvent(left) || isRoomRentalEvent(right)) return false;
+  const ids = row => [...new Set(eventStudentIds(row))].sort().join('|');
+  return Boolean(ids(left)) && ids(left) === ids(right) && eventTeacherId(left) === eventTeacherId(right) && eventSubjectId(left) === eventSubjectId(right);
+}
+function replacedTeachingOccurrence(row, changes, overlay) {
+  const winner = changes.filter(change => change.replaceMatchingCourse === true && eventDate(row) >= permanentCutover(change) && sameTeachingCourse(row, change.event))
+    .sort((a,b) => permanentCutover(b).localeCompare(permanentCutover(a)) || changeOrderValue(b)-changeOrderValue(a))[0];
+  if (!winner || clean(row.portalChangeId) === clean(winner.__id || winner.id)) return false;
+  const owner = overlay.find(change => clean(change.__id || change.id) === clean(row.portalChangeId));
+  return !owner || changeOrderValue(owner) <= changeOrderValue(winner);
+}
+
 function effectivePermanentChanges(rows) {
   const latest = new Map();
   (rows || []).filter((row) => clean(row && row.action) === 'permanent_move' && row.event).forEach((row) => {
@@ -4758,7 +4779,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
   const permanent = effectivePermanentChanges(overlay).filter((row) => {
     if (row.action !== 'permanent_move' || !row.event) return false;
     const lineage = permanentLineage(row);
-    return activeFixedByLineage.has(lineage);
+    return row.replaceMatchingCourse === true || activeFixedByLineage.has(lineage);
   });
   const effectivePermanentIds = new Set(permanent.map((row) => clean(row.__id || row.id)));
   const recurringLineages = new Set(
@@ -4813,6 +4834,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
   };
   const removedOccurrence = (row, key) => occurrenceIds(row).some((id) => removed.has(`${id}|${key}`));
   const base = [...exact, ...expanded].filter((row) =>
+    !replacedTeachingOccurrence(row, permanent, overlay) &&
     !removedOccurrence(row, eventDate(row)) &&
     !permanent.some((change) =>
       permanentMatchesOccurrence(change, row) &&
@@ -4861,6 +4883,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
         const storedPending = (row.pendingDates || []).includes(key);
         const stepDays = intervalWeeks * 7;
         const matchingException = overlay.find((change) => {
+          if (row.replaceMatchingCourse && changeOrderValue(change) <= changeOrderValue(row)) return false;
           if (!['single_move', 'lesson_status', 'cancel'].includes(clean(change.action))) return false;
           const changeLineage = clean(change.sourceCourseId || change.event && (change.event.fixedCourseId || change.event.seriesId));
           const exceptionDate = dateKey(change.sourceDate);
@@ -4885,7 +4908,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
           date: key,
           portalChangeId: row.__id
         });
-        const inheritedStatus = normalizeScheduleStatus(
+        const inheritedStatus = row.replaceMatchingCourse ? 'scheduled' : normalizeScheduleStatus(
           (permanentStatusById.get(clean(row.__id || row.id)) || {})[key]
         );
         if (inheritedStatus === 'cancelled') continue;
@@ -4907,6 +4930,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
         });
         const candidateResources = eventSharedResourceIds(candidate, maps);
         const dynamicConflict = !storedPending && eventBlocksResource(candidate) && base.find((other) =>
+          !replacedTeachingOccurrence(other, permanent, overlay) &&
           eventDate(other) === key &&
           eventBlocksResource(other) &&
           overlaps(eventStart(candidate), eventEnd(candidate), eventStart(other), eventEnd(other)) &&
@@ -4951,7 +4975,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     }
   });
   const lessonSettings = await db.collection('coursePortalLessonSettings').get();
-  const configuredBase = applyLessonSettings(base, lessonSettings.docs.map(doc => doc.data()));
+  const configuredBase = applyLessonSettings(base.filter(row => !replacedTeachingOccurrence(row, permanent, overlay)), lessonSettings.docs.map(doc => doc.data()));
   const validBase = configuredBase.map((row) => applyStudentSuspensions(row, suspensions)).filter((row) =>
     row &&
     eventDate(row) >= startDate &&
@@ -5047,6 +5071,7 @@ async function teacherPortalData(data) {
     .map((doc) => Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {}));
   const result = {
     ok: true,
+    loginNotice: { previousLoginAtText: clean(session.previousLoginAtText), loginAtText: clean(session.loginAtText) },
     teacher: {
       id: session.teacherId,
       name: clean(teacher.name),
@@ -5323,42 +5348,7 @@ async function teacherAvailability(data) {
   const slots = [];
   let permanentMinimumDate = '';
   let permanentMaximumDate = '';
-  if (source && clean(data.action) === 'permanent_move') {
-    const sourceSeries = bundle.fixedCourses.find((row) =>
-      sourceId(row) === clean(source.fixedCourseId || source.seriesId || sourceCourseId)
-    ) || null;
-    if (!source.recurring || !sourceSeries || !sourceActive(sourceSeries)) {
-      throw new HttpsError('failed-precondition', '這堂不是仍有效的固定課，不能永久調課。');
-    }
-    if (clean(source.portalAction) === 'single_move') {
-      throw new HttpsError('failed-precondition', '這堂已是單次調課結果，只能再做單次調課。');
-    }
-    const lineage = clean(source.fixedCourseId || source.seriesId || sourceCourseId);
-    const activeChanges = await db.collection('coursePortalScheduleChanges').where('active', '==', true).get();
-    const futureException = activeChanges.docs.some((doc) => {
-      const row = doc.data() || {};
-      if (
-        clean(row.action) === 'permanent_move' &&
-        permanentLineage(row) === lineage &&
-        permanentCutover(row) === sourceDate
-      ) return false;
-      if (doc.id === clean(source.portalChangeId) && permanentCutover(row) < sourceDate) return false;
-      return permanentLineage(row) === lineage &&
-        permanentCutover(row) >= sourceDate &&
-        ['single_move', 'lesson_status', 'cancel', 'permanent_move'].includes(clean(row.action));
-    });
-    if (futureException) {
-      throw new HttpsError(
-        'failed-precondition',
-        '這門固定課之後已有調課、請假或其他變更，目前不能永久調課。'
-      );
-    }
-    permanentMinimumDate = sourceDate;
-    permanentMaximumDate = addDays(
-      sourceDate,
-      safeFrequencyWeeks(sourceSeries.frequencyWeeks || sourceSeries.intervalWeeks) * 7 - 1
-    );
-  }
+  if (source && clean(data.action) === 'permanent_move') permanentMinimumDate = currentTaipeiDay();
   const dates = (exactTarget
     ? [exactDate]
     : Array.from(
@@ -5384,7 +5374,7 @@ async function teacherAvailability(data) {
       const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
       if (publicRentalSlotIsPast(date, slotStart)) continue;
       const blockers = bundle.resourceEvents.filter((event) => {
-        const sourceMatch = event.date === sourceDate && (
+        const sourceMatch = (clean(data.action) === 'permanent_move' && sameTeachingCourse(event, source)) || event.date === sourceDate && (
           event.id === sourceEventId || event.sourceId === sourceEventId ||
           event.fixedCourseId === sourceCourseId || event.seriesId === sourceCourseId
         );
@@ -5524,11 +5514,7 @@ async function teacherSlotOptions(data) {
         permanentCutover(row) >= source.date &&
         ['single_move', 'lesson_status', 'cancel', 'permanent_move'].includes(clean(row.action));
     });
-    const permanentMoveAllowed = source.recurring === true &&
-      clean(source.portalAction) !== 'single_move' &&
-      targetDate >= source.date &&
-      targetDate <= permanentMaximumDate &&
-      !futureException;
+    const permanentMoveAllowed = true;
     return Object.assign(publicSource, {
       durationMinutes: duration,
       targetEndTime,
@@ -8610,12 +8596,6 @@ async function teacherAction(data) {
       clean(row.__id) === clean(source.portalChangeId) ||
       clean(row.sourceCourseId) === clean(source.fixedCourseId || source.seriesId)
     ) || {}).event || null;
-    if (action === 'permanent_move' && (!source.recurring || !sourceSeries || !sourceActive(sourceSeries))) {
-      throw new HttpsError('failed-precondition', '這堂不是仍有效的固定課，不能套用「之後固定調課」；請改用只調這一次。');
-    }
-    if (action === 'permanent_move' && clean(source.portalAction) === 'single_move') {
-      throw new HttpsError('failed-precondition', '這堂已是單次調課結果；請從尚未調整的固定課堂次開始設定之後固定調課。');
-    }
     assertTeacherMoveDuration(targetDuration, source);
   } else if (data.durationMinutes != null) {
     const declaredDuration = Number(data.durationMinutes);
@@ -8682,11 +8662,11 @@ async function teacherAction(data) {
   const lineage = moving
     ? clean(source.fixedCourseId || source.seriesId || requestedSourceCourseId || source.id)
     : '';
-  const ignoredSource = (event) => Boolean(source) && event.date === source.date && (
+  const ignoredSource = (event) => Boolean(source) && ((action === 'permanent_move' && event.date >= date && sameTeachingCourse(event, source)) || event.date === source.date && (
     event.id === source.id ||
     event.sourceId === source.sourceId ||
     (lineage && (event.fixedCourseId === lineage || event.seriesId === lineage))
-  );
+  ));
   const requestedResourceIds = requestedSubjectResourceIds(subjectId, bundle);
   const conflict = bundle.resourceEvents.find((event) =>
     event.date === date &&
@@ -8753,35 +8733,8 @@ async function teacherAction(data) {
       const row = doc.data() || {};
       return clean(row.action) === 'permanent_move' &&
         permanentLineage(row) === lineage &&
-        permanentCutover(row) === sourceDate;
+        permanentCutover(row) === date;
     }).map((doc) => doc.ref);
-    const futureException = activeChangeSnapshot.docs.find((doc) => {
-      const row = doc.data() || {};
-      const rowLineage = permanentLineage(row);
-      const rowCutover = permanentCutover(row);
-      if (
-        clean(row.action) === 'permanent_move' &&
-        rowLineage === lineage &&
-        rowCutover === sourceDate
-      ) return false;
-      if (doc.id === clean(source.portalChangeId) && rowCutover < sourceDate) return false;
-      return rowLineage === lineage &&
-        rowCutover >= sourceDate &&
-        ['single_move', 'lesson_status', 'cancel', 'permanent_move'].includes(clean(row.action));
-    });
-    if (futureException) {
-      throw new HttpsError(
-        'failed-precondition',
-        '這門固定課在之後已有單次調課、請假／曠課或其他固定變更；為避免同一週重複上課，請先由管理者整理未來例外。'
-      );
-    }
-    const latestAnchorDate = addDays(sourceDate, frequencyWeeks * 7 - 1);
-    if (date < sourceDate || date > latestAnchorDate) {
-      throw new HttpsError(
-        'failed-precondition',
-        `新的固定時段必須落在原堂 ${sourceDate} 到 ${latestAnchorDate} 之間，避免中間課程重複或漏排。`
-      );
-    }
     if (recurrenceEndDate && date > recurrenceEndDate) {
       throw new HttpsError('failed-precondition', '新的固定時段已超過這門固定課的結束日期。');
     }
@@ -8793,9 +8746,7 @@ async function teacherAction(data) {
     const future = await scheduleBundle(date, horizonEnd, session.teacherId);
     for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, frequencyWeeks * 7)) {
       const blockers = future.resourceEvents.filter((row) => {
-        const sourceMatch = lineage &&
-          (row.fixedCourseId === lineage || row.seriesId === lineage) &&
-          !['single_move', 'extra_lesson', 'teacher_gift', 'lesson_status'].includes(clean(row.portalAction));
+        const sourceMatch = sameTeachingCourse(row, source);
         return eventBlocksResource(row) &&
           !sourceMatch &&
           row.date === occurrence &&
@@ -8876,9 +8827,10 @@ async function teacherAction(data) {
     sourceEventId: source ? source.id : '',
     sourceDate,
     sourceCourseId: lineage,
-    effectiveDate: action === 'permanent_move' ? sourceDate : '',
-    cutoverDate: action === 'permanent_move' ? sourceDate : '',
+    effectiveDate: action === 'permanent_move' ? date : '',
+    cutoverDate: action === 'permanent_move' ? date : '',
     anchorDate: action === 'permanent_move' ? date : '',
+    replaceMatchingCourse: action === 'permanent_move',
     frequencyWeeks,
     recurrenceEndDate,
     validatedThrough,
@@ -12267,6 +12219,7 @@ async function appendCoursePortalData(payload) {
   payload.temporaryCourses = Array.isArray(payload.temporaryCourses) ? payload.temporaryCourses : [];
   const permanentGroups = new Map();
   effectivePermanentChanges(changeRows).forEach((row) => {
+    if (row.replaceMatchingCourse === true) return;
     const lineage = permanentLineage(row);
     if (!lineage) return;
     if (!permanentGroups.has(lineage)) permanentGroups.set(lineage, []);
@@ -12360,6 +12313,35 @@ async function appendCoursePortalData(payload) {
       source: 'course-portal'
     }));
   });
+  const replacements = effectivePermanentChanges(changeRows).filter(row => row.replaceMatchingCourse === true);
+  replacements.forEach(row => {
+    const statusByDate = {};
+    (row.pendingDates || []).forEach(day => { statusByDate[day] = { status: 'pending_conflict' }; });
+    Object.keys(row.roomOverrides || {}).forEach(day => {
+      statusByDate[day] = { status: 'cancelled' };
+      payload.temporaryCourses.push(Object.assign({}, row.event, { id: `${row.id}-room-${day}`, portalChangeId: row.id,
+        date: day, roomId: row.roomOverrides[day], start: eventStart(row.event), type: 'single',
+        duration: timeMinutes(eventEnd(row.event)) - timeMinutes(eventStart(row.event)), source: 'course-portal' }));
+    });
+    payload.fixedCourses.push(Object.assign({}, row.event, { id: row.id, portalChangeId: row.id,
+      date: permanentAnchor(row), startDate: permanentAnchor(row), start: eventStart(row.event),
+      duration: timeMinutes(eventEnd(row.event)) - timeMinutes(eventStart(row.event)),
+      frequencyWeeks: safeFrequencyWeeks(row.frequencyWeeks), type: 'fixed', recurring: true,
+      recurrenceEndDate: row.recurrenceEndDate || '', endDate: row.recurrenceEndDate || '', statusByDate,
+      source: 'course-portal', portalAction: 'permanent_move' }));
+  });
+  payload.events = (payload.events || []).filter(row => !replacedTeachingOccurrence(row, replacements, changeRows));
+  payload.temporaryCourses = payload.temporaryCourses.filter(row => !replacedTeachingOccurrence(row, replacements, changeRows));
+  payload.fixedCourses = payload.fixedCourses.map(course => {
+    const cutoff = replacements.filter(row => sameTeachingCourse(course, row.event) &&
+      replacedTeachingOccurrence(Object.assign({}, course, { date: permanentCutover(row) }), [row], changeRows))
+      .map(permanentCutover).sort()[0];
+    if (!cutoff) return course;
+    const stop = addDays(cutoff, -1), existing = dateKey(course.recurrenceEndDate || course.endDate);
+    const end = existing && existing < stop ? existing : stop;
+    if (dateKey(course.startDate || course.date) > end) return null;
+    return Object.assign({}, course, { recurrenceEndDate: end, endDate: end });
+  }).filter(Boolean);
   payload.roomRentals = Array.isArray(payload.roomRentals) ? payload.roomRentals : [];
   bookings.docs.forEach((doc) => {
     const row = jsonValue(doc.data()) || {};
