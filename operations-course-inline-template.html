@@ -9,9 +9,16 @@
         <div class="data-mode-actions">
           <span class="tag" id="dataModeChip">自動儲存</span>
           <button class="btn primary" type="button" id="syncInjiaoyunBtn">更新音教雲最新資料</button>
+          <button class="btn soft" type="button" id="loadPublishedBtn">載入已同步資料</button>
         </div>
       </section>
 
+      <div class="modal-backdrop" id="loadPublishedModal" role="dialog" aria-modal="true" aria-labelledby="loadPublishedTitle">
+        <div class="modal"><div class="modal-head"><h2 id="loadPublishedTitle">載入已同步資料</h2><button type="button" class="modal-close" data-close-modal="loadPublishedModal" aria-label="關閉">×</button></div>
+          <div class="modal-body"><p>將雲端已完成同步的課表、學生與學費載入這台電腦，覆蓋本機課務副本。教室排列與新版系統設定會保留。</p><p>這個步驟直接讀取已同步結果，不會重新執行音教雲擷取。</p></div>
+          <div class="modal-foot"><button type="button" class="btn soft" data-close-modal="loadPublishedModal">取消</button><button type="button" class="btn primary" id="confirmLoadPublishedBtn">確認覆蓋並載入</button></div>
+        </div>
+      </div>
       <section class="view active" id="calendarPage">
         <div class="calendar-toolbar card">
           <div class="date-actions">

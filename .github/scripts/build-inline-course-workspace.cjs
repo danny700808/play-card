@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260829-legacy-student-name-v1';
+const VERSION = '20260907-published-cloud-refresh-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';

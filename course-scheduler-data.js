@@ -338,6 +338,15 @@
     if(!payload.ok)throw new Error('課務資料讀取未完成。');return buildState(payload,options.anchorDate);
   }
 
+  async function loadPublished(options){
+    options=options||{};
+    await ensureTeacherPayrollManagerAuth();
+    var payload=await call(AUTO_LOAD_FUNCTION_NAME,{source:'course-scheduler-published-refresh'},{timeout:180000});
+    if(!payload||payload.ok!==true)throw new Error('已同步課務資料讀取未完成。');
+    if(!payload.mirrorMeta||payload.mirrorMeta.status!=='success')throw new Error('雲端同步尚未完成，請完成後再載入。');
+    return buildState(payload,options.anchorDate);
+  }
+
   async function loadTeacherPayrollMonth(options){
     options=options||{};
     var month=clean(options.month),pin=clean(options.manualSyncPin),payload;
@@ -535,5 +544,5 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={load:load,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
+  global.YouziCoursePreviewData={load:load,loadPublished:loadPublished,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);

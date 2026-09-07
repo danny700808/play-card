@@ -1248,6 +1248,25 @@
     }finally{loadingMigration=false;operationRunning=false;$('operationProgress').classList.add('hidden');$('syncInjiaoyunBtn').disabled=false;updateModeUI();}
   }
 
+  async function loadPublishedWorkspace(){
+    if(loadingMigration||operationRunning)return;
+    closeModal('loadPublishedModal');
+    loadingMigration=true;operationRunning=true;updateModeUI();
+    $('loadPublishedBtn').disabled=true;
+    $('operationProgressText').textContent='正在載入雲端已同步課務資料…';
+    $('operationProgress').classList.remove('hidden');
+    try{
+      var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:state.currentDate||todayKey()});
+      await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});
+      toast('已載入最新同步資料','這台電腦的課表、學生與學費已更新。');
+    }catch(error){
+      toast('資料載入失敗',clean(error&&error.message).slice(0,220),'error');
+    }finally{
+      loadingMigration=false;operationRunning=false;$('loadPublishedBtn').disabled=false;
+      $('operationProgress').classList.add('hidden');updateModeUI();
+    }
+  }
+
   function bindEvents(){
     bindRoomReorder();
     bindFeeReorder();
@@ -1271,6 +1290,8 @@
   }
 
   function init(){
+    $('loadPublishedBtn').addEventListener('click',function(){if(!loadingMigration&&!operationRunning)openModal('loadPublishedModal');});
+    $('confirmLoadPublishedBtn').addEventListener('click',loadPublishedWorkspace);
     try{localStorage.removeItem('youzi.courseScheduler.sandbox.v1');localStorage.removeItem('youzi.courseScheduler.sandboxUndo.v1');localStorage.removeItem('youzi.courseScheduler.lastMode.v1');}catch(_){}
     embeddedMode=window.__YOUZI_COURSE_INLINE_MODE__===true||urlOption('embed')==='1';document.body.classList.toggle('embedded-in-operations',embeddedMode);requestPersistentStorage();
     state=loadInitialState();if(!formalState&&state.readOnly&&state.dataMode!=='empty')formalState=clone(state);bindEvents();refreshFormOptions();updateModeUI();switchView(requestedView());
