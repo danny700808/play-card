@@ -10,6 +10,10 @@ on:
       - "teacher-daily-reminder.js"
       - "teacher-course-session-v8.js"
       - "teacher-course-portal-v8.css"
+      - "course-history-view.js"
+      - "course-history-view.css"
+      - "functions/courseHistory.js"
+      - "tests/course-history-rental.test.js"
       - "teacher-home.html"
       - "profile.html"
       - "teacher-profile.html"
@@ -52,6 +56,8 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check teacher-course-portal-v8.js
+          node --check course-history-view.js
+          node --test tests/course-history-rental.test.js
           node --check teacher-profile.js
           node --check teacher-contract.js
           node --check teacher-daily-reminder.js
@@ -75,7 +81,7 @@ jobs:
           const redirect = fs.readFileSync('teacher-home.html', 'utf8');
           const internalWorkflow = fs.readFileSync('.github/workflows/build-live-course-scheduler.yml', 'utf8');
 
-          const requiredTabs = ['課表','學生','薪資','租用','其他'];
+          const requiredTabs = ['課表','課程紀錄','薪資','租用','其他'];
           for (const label of requiredTabs) {
             const tabPattern = new RegExp(`<(button|a)\\b[^>]*>\\s*${label}(?:<span\\b[^>]*>.*?<\\/span>)?\\s*<\\/\\1>`);
             if (!tabPattern.test(html)) throw new Error(`Teacher tab is missing: ${label}`);
