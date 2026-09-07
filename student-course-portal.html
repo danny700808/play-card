@@ -7,6 +7,7 @@
   <title>學生與家長入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
+<link rel="stylesheet" href="course-history-view.css?v=20260908-history-rental-v1">
 </head>
 <body class="clean-portal-ui">
   <main class="portal-shell">
@@ -84,9 +85,9 @@
       </nav>
 
       <section class="card tab-panel student-sensitive" data-panel="courses">
-        <div class="section-title"><div><h2>課程與學費</h2><p class="muted">新系統僅顯示最新兩期資料；更早資料請查閱紙本上課證。</p></div></div>
+        <div class="section-title"><div><h2>課程與學費</h2><p class="muted">欠費全部顯示；已繳清先顯示最近兩期。歷史查詢自 2026/7/21 起。</p></div></div>
         <div class="upcoming-course-list" id="upcomingCourseList"></div>
-        <div class="list" id="periodList"></div>
+        <div id="studentCourseHistory"></div><div class="list" id="periodList"></div>
       </section>
       <section class="card tab-panel hidden student-sensitive" data-panel="contact">
         <div class="section-title"><div><h2>課堂聯絡簿</h2><p class="muted">老師上課後留下的內容與照片，僅供已綁定家長查看。</p></div></div>
@@ -153,6 +154,7 @@
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+  <script src="course-history-view.js?v=20260908-history-rental-v1"></script>
   <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
   <script>
   (function () {
@@ -436,8 +438,11 @@
       const unmatchedCards = requests.filter((row) => !matchedRequestIds.has(row.id)).map((request) =>
         `<article class="period-card payment-only-period"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${newSystemPeriodNumber(request)} 期 · ${P.escapeHtml(request.subjectName || '課程')}</strong><small>下一期學費</small></div>${paymentBlock({ expectedAmount: request.expectedAmount, paidAmount: request.confirmedAmount }, request)}</div></article>`
       );
-      document.getElementById('periodList').innerHTML = periodCards.concat(unmatchedCards).join('') ||
-        '<p class="muted">目前沒有學費期別資料。</p>';
+      document.getElementById('periodList').innerHTML = periods.map(row => {
+        const request = requests.find(item => item.targetPeriodId === row.id);
+        return request ? `<article class="period-card"><strong>${P.escapeHtml(row.subjectName || '課程')} · 繳費辦理</strong>${paymentBlock(row, request)}</article>` : '';
+      }).concat(unmatchedCards).join('');
+      CourseHistoryView.mount(document.getElementById('studentCourseHistory'), {studentId, name:'課程紀錄', token, call:P.call});
       renderContactBook();
       const binding = data.bindings.find((row) => row.studentId === studentId) || {};
       document.querySelector('[name="reminderLastLesson"]').checked = binding.reminderLastLesson !== false;

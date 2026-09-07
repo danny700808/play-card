@@ -536,7 +536,8 @@
 
   function renderRateChoice() {
     const recording = selectedUse === 'recording';
-    const student = role === 'student' && studentDiscountEligible;
+    const student = role === 'teacher' || role === 'student' && studentDiscountEligible;
+    document.getElementById('discountRateText').textContent = role === 'teacher' ? '老師本人租用・半價' : '柚子學生半價';
     if (!student) {
       const generalRate = document.querySelector('input[name="rentalRate"][value="general"]');
       if (generalRate) generalRate.checked = true;
@@ -546,7 +547,7 @@
     document.getElementById('rentalRateHeading').textContent =
       recording ? '學生折扣（選填）' : '租用價格';
     document.getElementById('generalRateText').textContent =
-      recording ? '不使用學生折扣' : '一般租用';
+      role === 'teacher' ? '代他人租用・原價' : (recording ? '不使用學生折扣' : '一般租用');
   }
 
   function selectedRecordingUsage() {
@@ -581,7 +582,7 @@
       ? Number(recordingUsageRates[recordingUsage] || 0)
       : Number(selectedRoom.unitFee || 0);
     const rate = rateIsStudent()
-      ? Number(roomData && roomData.studentDiscountRate || 0.5)
+      ? (role === 'teacher' ? 0.5 : Number(roomData && roomData.studentDiscountRate || 0.5))
       : 1;
     return Math.round(unitFee * durationMinutes / 60 * rate);
   }
@@ -590,8 +591,9 @@
     if (!selectedRoom) return;
     const use = (boardData && boardData.useOptions || []).find((row) => row.id === selectedUse) || {};
     const student = selectedStudent();
+    document.getElementById('teacherGuestField').classList.toggle('hidden', role !== 'teacher' || rateIsStudent());
     document.getElementById('confirmRenter').textContent =
-      clean(student && student.name) ||
+      (role === 'teacher' && !rateIsStudent() ? clean(document.getElementById('teacherGuestName').value) || '請填寫實際租用人' : '') || clean(student && student.name) ||
       (role === 'student' && studentOptions.length > 1 ? '請選擇學生' : clean(boardData && boardData.displayName)) ||
       '租用人';
     document.getElementById('confirmUse').textContent = use.name || selectedUse;
@@ -608,7 +610,8 @@
 
   function openConfirm(room) {
     selectedRoom = room;
-    document.querySelector('input[name="rentalRate"][value="general"]').checked = true;
+    document.querySelector(`input[name="rentalRate"][value="${role === 'teacher' ? 'student' : 'general'}"]`).checked = true;
+    document.getElementById('teacherGuestName').value = '';
     document.querySelectorAll('input[name="recordingUsage"]').forEach((node) => {
       node.checked = false;
     });
@@ -657,6 +660,8 @@
   async function openBooking(nextRole, nextToken) {
     role = nextRole;
     token = nextToken;
+    document.getElementById('teacherRentalNav').classList.toggle('hidden', role !== 'teacher');
+    document.body.classList.toggle('teacher-rental-mode', role === 'teacher');
     renderUses(immediateRentalUseOptions);
     showBooking(true);
     renderDurations();
@@ -762,6 +767,7 @@
     else if (event.key === 'ArrowRight') moveRoomPhoto(1);
   });
 
+  document.getElementById('teacherGuestName').addEventListener('input', updateConfirm);
   document.querySelectorAll('input[name="rentalRate"]').forEach((node) => {
     node.addEventListener('change', updateConfirm);
   });
@@ -803,7 +809,9 @@
         useType: selectedUse,
         recordingUsage,
         studentId: selectedStudentId,
-        studentDiscountRequested: rateIsStudent(),
+        studentDiscountRequested: role === 'student' && rateIsStudent(),
+        rentalMode: role === 'teacher' ? (rateIsStudent() ? 'teacher' : 'general') : '',
+        clientName: role === 'teacher' && !rateIsStudent() ? clean(document.getElementById('teacherGuestName').value) : '',
         purpose: clean(document.getElementById('bookingNote').value)
       }, preferencePayload()));
       closeConfirm();

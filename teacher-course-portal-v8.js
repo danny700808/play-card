@@ -773,7 +773,7 @@
         rowTeacherName ? `授課老師 ${rowTeacherName}` : '',
         clean(student.phone) ? `電話 ${clean(student.phone)}` : '電話未提供'
       ].filter(Boolean).join('・');
-      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>${escapeHtml(detail)}${clean(student.phone) ? ` <a href="tel:${escapeHtml(clean(student.phone).replace(/[^+0-9]/g, ''))}" aria-label="撥打${escapeHtml(student.name)}的電話">撥打</a>` : ''}</span><span class="teacher-roster-actions"><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
+      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>${escapeHtml(detail)}${clean(student.phone) ? ` <a href="tel:${escapeHtml(clean(student.phone).replace(/[^+0-9]/g, ''))}" aria-label="撥打${escapeHtml(student.name)}的電話">撥打</a>` : ''}</span><span class="teacher-roster-actions"><button class="btn primary" type="button" data-view-history="${escapeHtml(student.id)}">查看課程紀錄</button><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
     }).join('');
   }
 
@@ -1974,7 +1974,20 @@
     }
   });
 
+  document.getElementById('closeTeacherHistory').addEventListener('click', () => {
+    document.getElementById('teacherHistoryPanel').hidden = true;
+    document.getElementById('rosterList').hidden = false;
+  });
   document.getElementById('rosterList').addEventListener('click', (event) => {
+    const historyButton = event.target.closest('[data-view-history]');
+    if (historyButton) {
+      const student = rosterStudent(historyButton.dataset.viewHistory);
+      if (!student) return;
+      document.getElementById('rosterList').hidden = true;
+      document.getElementById('teacherHistoryPanel').hidden = false;
+      global.CourseHistoryView.mount(document.getElementById('teacherHistoryContent'), {studentId:student.id, name:student.name, token, call:invoke});
+      return;
+    }
     const button = event.target.closest('[data-student-action]');
     if (button) beginAddFlow('extra_lesson', { studentIds: [button.dataset.studentAction] });
     const edit = event.target.closest('[data-edit-student]');
@@ -2049,7 +2062,12 @@
     prefillEmployee();
     try {
       token = await exchangeAccess();
-      if (token) await load(false);
+      if (token) {
+        await load(false);
+        const targetTab = new URLSearchParams(location.search).get('tab');
+        if (targetTab === 'students' || targetTab === 'payroll') activateTab(targetTab);
+        if (targetTab === 'other') document.getElementById('teacherMoreBtn').click();
+      }
       else if (PortalAuth && typeof PortalAuth.invalidateSession === 'function') {
         PortalAuth.invalidateSession('teacher', new Error('請先登入老師入口。'));
       } else showBound(false);

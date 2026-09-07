@@ -2,6 +2,7 @@ const { applyLessonSettings } = require('./courseLessonSettings');
 'use strict';
 
 const { canonicalStudentId, projectCourseGroups } = require('./courseGroups');
+const { MIN_DATE: COURSE_HISTORY_MIN_DATE, selectHistoryPeriods, rentalRateForRole } = require('./courseHistory');
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
@@ -7173,7 +7174,7 @@ function mergePortalAttendanceRows(mirrorAttendance, portalAttendance) {
     !cancellations.some((cancelled) => attendanceRowsMatch(row, cancelled))
   );
   const activePortal = (portalAttendance || []).filter((row) =>
-    row.active !== false && normalizeScheduleStatus(row.status) === 'attended'
+    row.active !== false && ['attended', 'absent'].includes(normalizeScheduleStatus(row.status))
   );
   const merged = retainedMirror.slice();
   activePortal.forEach((row) => {
@@ -7445,7 +7446,7 @@ function applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttenda
   const rows = (periods || []).map((row) => Object.assign({}, row));
   const activePortal = (portalAttendance || []).filter((row) =>
     row.active !== false &&
-    normalizeScheduleStatus(row.status) === 'attended' &&
+    ['attended', 'absent'].includes(normalizeScheduleStatus(row.status)) &&
     row.deducted !== false &&
     clean(row.periodId) &&
     !(mirrorAttendance || []).some((existing) => attendanceRowsMatch(existing, row))
@@ -7491,6 +7492,78 @@ function applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttenda
       portalExtraLessonCreditCount: extraLessonCredit
     });
   });
+}
+
+async function courseLessonHistory(data) {
+  const session = await requireSession(data, ['teacher', 'student']);
+  const studentId = canonicalStudentId(clean(data.studentId), await readCourseGroups());
+  if (!studentId) throw new HttpsError('invalid-argument', '請選擇學生。');
+  if (session.role === 'teacher') {
+    const ownedPeriods = await mirrorRowsByField('tuitionPeriods', 'studentId', studentId);
+    if (!(await teacherOwnsStudent(session.teacherId, studentId)) && !ownedPeriods.some(row => eventTeacherId(row) === session.teacherId)) {
+      throw new HttpsError('permission-denied', '只能查看自己授課的學生。');
+    }
+  } else if (!(await activeStudentIdsForSession(session)).includes(studentId)) {
+    const bindings = await activeStudentBindingsForSession(session);
+    if (!bindings.some(row => clean(row.studentId) === studentId)) throw new HttpsError('permission-denied', '沒有這位學生的查看權限。');
+  }
+  const fromDate = dateKey(data.fromDate);
+  if (data.fromDate && (!fromDate || fromDate < COURSE_HISTORY_MIN_DATE)) {
+    throw new HttpsError('failed-precondition', '新系統未承接此日期之前的資料，請至實體上課證查詢。');
+  }
+  const today = currentTaipeiDay();
+  if (fromDate > today) throw new HttpsError('invalid-argument', '請選擇今天或之前的日期。');
+  const [rawPeriods, mirrorAttendance, portalAttendance, subjects, teachers, bundle] = await Promise.all([
+    mirrorRowsByField('tuitionPeriods', 'studentId', studentId),
+    mirrorRowsByField('attendance', 'studentId', studentId),
+    portalAttendanceForStudents([studentId]), mirrorRows('subjects'), mirrorRows('teachers'),
+    scheduleBundle(COURSE_HISTORY_MIN_DATE, today, session.role === 'teacher' ? session.teacherId : '')
+  ]);
+  const courses = [...bundle.fixedCourses, ...bundle.temporaryCourses];
+  const allAttendance = mergePortalAttendanceRows(mirrorAttendance, portalAttendance);
+  const numberedHistoryPeriods = await assignNewSystemPeriodNumbers(applyPortalAttendanceToPeriods(rawPeriods, mirrorAttendance, portalAttendance));
+  const periods = numberedHistoryPeriods.map(row => {
+    const id = sourceId(row);
+    const linked = allAttendance.filter(item => clean(item.periodId || item.studentPayment) === id);
+    const course = courses.find(item => courseSourceIds(item).includes(clean(row.sourceCourseId || row.courseId || row.fixedCourseId))) || {};
+    const teacherId = eventTeacherId(row) || eventTeacherId(linked[0] || {}) || eventTeacherId(course);
+    const subjectId = eventSubjectId(row) || eventSubjectId(linked[0] || {}) || eventSubjectId(course);
+    const dates = linked.map(eventDate).filter(Boolean).sort();
+    const startDate = dateKey(row.startDate || row.beginDate) || dates[0] || '';
+    return { id, studentId, teacherId, subjectId, startDate,
+      endDate: dateKey(row.expiryDate || row.endDate) || dates[dates.length - 1] || '',
+      periodNo: Number(row.periodNo || row.period || 0), systemPeriodNo: Number(row.systemPeriodNo || 0),
+      subjectName: clean((subjects.find(item => sourceId(item) === subjectId) || {}).name) || '課程',
+      teacherName: clean((teachers.find(item => sourceId(item) === teacherId) || {}).name),
+      lessonCount: Number(row.lessonCount || row.totalLessons || 4), usedCount: Number(row.usedCount || row.attendedCount || 0),
+      expectedAmount: tuitionNetExpectedAmount(row), paidAmount: Number(row.paidAmount ?? row.receivedAmount ?? 0),
+      outstandingAmount: tuitionOutstandingAmount(row),
+      partialHistory: Boolean(startDate && startDate < COURSE_HISTORY_MIN_DATE),
+      transactions: (Array.isArray(row.transactions) ? row.transactions : []).filter(item => item.active !== false).map(item => ({
+        date: dateKey(item.paidAtText || item.confirmedAtText || item.date || item.receivedAtText || item.paymentDate || item.createdAtText), type: clean(item.type), amount: Number(item.amount || 0)
+      }))
+    };
+  }).filter(row => (session.role !== 'teacher' || row.teacherId === session.teacherId) &&
+    (row.outstandingAmount > 0 || !row.endDate || row.endDate >= COURSE_HISTORY_MIN_DATE));
+  const lessons = allAttendance.filter(row => eventDate(row) >= COURSE_HISTORY_MIN_DATE && eventDate(row) <= today).map(row => ({
+    id: sourceId(row), periodId: clean(row.periodId || row.studentPayment), date: eventDate(row), startTime: eventStart(row),
+    subjectId: eventSubjectId(row), teacherId: eventTeacherId(row), status: normalizeScheduleStatus(row.status || row.type), late: row.late === true,
+    deducted: row.deducted !== false && !['leave','cancelled'].includes(normalizeScheduleStatus(row.status || row.type))
+  }));
+  for (const event of bundle.events.filter(row => eventStudentIds(row).includes(studentId))) {
+    const status = normalizeScheduleStatus(event.status);
+    if (!['leave', 'absent'].includes(status)) continue;
+    if (lessons.some(row => row.date === event.date && row.teacherId === event.teacherId && row.subjectId === event.subjectId && (!row.startTime || row.startTime === event.startTime))) continue;
+    const matching = periods.filter(row => row.teacherId === event.teacherId && row.subjectId === event.subjectId && row.startDate && row.startDate <= event.date)
+      .sort((a, b) => b.startDate.localeCompare(a.startDate) || b.periodNo - a.periodNo);
+    const periodId = clean(event.tuitionPeriodId) || (matching[0] || {}).id || '';
+    lessons.push({ id: event.id, periodId, date: event.date, startTime: event.startTime, teacherId: event.teacherId, subjectId: event.subjectId, status, deducted: status === 'absent' });
+  }
+  const selected = selectHistoryPeriods(periods, fromDate);
+  return { ok: true, minDate: COURSE_HISTORY_MIN_DATE, fromDate, periods: selected,
+    subjects: [...new Map(periods.map(row => [row.subjectId, { id: row.subjectId, name: row.subjectName }])).values()],
+    lessons: lessons.filter(row => selected.some(period => period.id === row.periodId))
+      .sort((a, b) => `${a.date}|${a.startTime}`.localeCompare(`${b.date}|${b.startTime}`)) };
 }
 
 async function studentPortalData(data) {
@@ -7592,10 +7665,11 @@ async function studentPortalData(data) {
   periods.filter((row) => allowed.has(clean(row.studentId))).sort((left, right) =>
     Number(right.periodNo || right.period || 0) - Number(left.periodNo || left.period || 0)
   ).forEach((row) => {
-    const id = clean(row.studentId);
+    const id = `${clean(row.studentId)}|${clean(row.subjectId)}`;
     const count = periodCounts.get(id) || 0;
-    if (count < 2) publicPeriods.push(row);
-    periodCounts.set(id, count + 1);
+    const unpaid = tuitionOutstandingAmount(row) > 0;
+    if (unpaid || count < 2) publicPeriods.push(row);
+    if (!unpaid) periodCounts.set(id, count + 1);
   });
   return {
     ok: true,
@@ -7608,7 +7682,7 @@ async function studentPortalData(data) {
         reminderPayment: row.reminderPayment !== false
       };
     }),
-    // 新系統只公開每位學生最新兩期；更早帳務請以紙本上課證為準。
+    // 每科目保留全部欠費及最近兩期已繳清；完整期別查詢由共用課程紀錄提供。
     periods: publicPeriods.map((row) => {
       const course = courseById.get(clean(row.sourceCourseId || row.courseId || row.fixedCourseId)) ||
         [...fixedCourses, ...temporaryCourses].filter((candidate) =>
@@ -7785,6 +7859,7 @@ async function rentalAvailability(data) {
   const studentRate = discountRequested &&
     session.role === 'student' &&
     (await activeStudentIdsForSession(session)).length > 0;
+  const rentalRate = rentalRateForRole(session.role, clean(data.rentalMode), discountRequested, studentRate, policy.studentDiscountRate);
   const overlappingEvents = bundle.resourceEvents.filter((event) =>
     eventBlocksResource(event) && event.date === date &&
     overlaps(startTime, endTime, event.startTime, event.endTime)
@@ -7825,9 +7900,9 @@ async function rentalAvailability(data) {
       unitFee: baseFee,
       price: baseFee == null
         ? null
-        : rentalAmount(baseFee, duration, studentRate ? policy.studentDiscountRate : 1),
+        : rentalAmount(baseFee, duration, rentalRate.rate),
       priceRangeText: selectedUse.id === 'recording' ? 'NT$100–300／小時' : '',
-      priceType: studentRate ? '柚子學生半價' : '一般價格'
+      priceType: rentalRate.label
     };
   });
   return {
@@ -8014,6 +8089,10 @@ async function createRoomBooking(data) {
   if (!room || !room.available) throw new HttpsError('failed-precondition', room && room.reason || '這間教室目前不能預約。');
   const id = db.collection('coursePortalRoomBookings').doc().id;
   const identity = await identityPromise;
+  if (session.role === 'teacher' && clean(data.rentalMode) === 'general') {
+    identity.clientName = clean(data.clientName).slice(0, 100);
+    if (!identity.clientName) throw new HttpsError('invalid-argument', '請填寫實際租用人姓名。');
+  }
   if (!identity.clientName) {
     throw new HttpsError(
       'invalid-argument',
@@ -8058,6 +8137,7 @@ async function createRoomBooking(data) {
     clientName: identity.clientName,
     clientPhone: identity.clientPhone,
     studentDiscountRequested: room.priceType === '柚子學生半價',
+    rentalMode: session.role === 'teacher' ? (clean(data.rentalMode) === 'teacher' ? 'teacher' : 'general') : session.role,
     ownerKey,
     lineUserId: clean(session.lineUserId),
     authAccountId: clean(session.authAccountId),
@@ -8297,7 +8377,9 @@ function teacherEventMatchesRequest(event, teacherId, sourceDate, sourceEventId,
   ) return false;
   if (
     wantedCourseId &&
-    ![event && event.fixedCourseId, event && event.seriesId].map(clean).includes(wantedCourseId)
+    ![event && event.fixedCourseId, event && event.seriesId,
+      !clean(event && (event.fixedCourseId || event.seriesId)) && event && event.sourceId,
+      !clean(event && (event.fixedCourseId || event.seriesId)) && event && event.id].map(clean).includes(wantedCourseId)
   ) return false;
   if (wantedPortalChangeId && clean(event && event.portalChangeId) !== wantedPortalChangeId) return false;
   return true;
@@ -8387,7 +8469,7 @@ async function teacherLessonState(data) {
   }
   const expectedVersion = await readScheduleVersion();
   const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
-  const source = bundle.events.find((event) => teacherEventMatchesRequest(
+  let source = bundle.events.find((event) => teacherEventMatchesRequest(
     event,
     session.teacherId,
     sourceDate,
@@ -8395,6 +8477,7 @@ async function teacherLessonState(data) {
     sourceCourseId,
     portalChangeId
   ));
+  if (!source) source = (await teacherAttendanceEvent(session, data)).event;
   if (!source) throw new HttpsError('not-found', '找不到這堂課，請重新整理後再試。');
   if (isRoomRentalEvent(source)) {
     throw new HttpsError('failed-precondition', '教室租用不是學生課程，不能標示請假或曠課。');
@@ -8470,6 +8553,19 @@ async function teacherLessonState(data) {
     createdAt: FieldValue.serverTimestamp(),
     createdAtText: nowText()
   };
+  const absenceOperationId = attendanceOperationId(session.teacherId, sourceDate, source, { sourceEventId, sourceCourseId });
+  const absenceRef = db.collection(ATTENDANCE_RECORDS).doc(hash([absenceOperationId, source.studentIds[0]].join('|')));
+  const existingAbsence = await absenceRef.get();
+  if (state === 'absent' && existingAbsence.exists && existingAbsence.data().active !== false && existingAbsence.data().status === 'absent') {
+    return { ok:true, id, state, message:'已標示曠課，未重複扣堂。' };
+  }
+  const absencePeriods = state === 'absent' ? await attendancePeriodsForEvent(source, sourceDate, { allowRollover:true }) : { rows:[], rollovers:[] };
+  const absencePeriod = absencePeriods.rows[0] && absencePeriods.rows[0].period;
+  if (absencePeriod) {
+    changePayload.event.tuitionPeriodId = sourceId(absencePeriod);
+    changePayload.event.studentLessonDeducted = true;
+  }
+  const absenceRolloverRefs = absencePeriods.rollovers.flatMap(row => [db.collection(TUITION_PERIODS).doc(row.period.id), db.collection(TUITION_PAYMENT_REQUESTS).doc(row.paymentRequest.id)]);
   const versionRef = scheduleVersionRef();
   await db.runTransaction(async (tx) => {
     const [versionSnapshot, changeSnapshot, ...priorSnapshots] = await Promise.all([
@@ -8477,11 +8573,30 @@ async function teacherLessonState(data) {
       tx.get(changeRef),
       ...priorStatusRefs.map((ref) => tx.get(ref))
     ]);
+    const absenceSnapshot = await tx.get(absenceRef);
+    const rolloverSnapshots = await Promise.all(absenceRolloverRefs.map(ref => tx.get(ref)));
     assertScheduleWritable(versionSnapshot);
     const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
     if (currentVersion !== expectedVersion) {
       throw new HttpsError('aborted', '課表剛剛有更新，已停止這次操作；請重新整理後再確認。');
     }
+    if (absenceSnapshot.exists && absenceSnapshot.data().status === 'attended' && absenceSnapshot.data().active !== false) {
+      throw new HttpsError('already-exists', '這堂課已完成簽到，請重新整理。');
+    }
+    absencePeriods.rollovers.forEach((row, index) => {
+      if (rolloverSnapshots[index * 2].exists) assertAttendanceRolloverPeriod(rolloverSnapshots[index * 2].data(), row.period);
+      else tx.set(absenceRolloverRefs[index * 2], { ...row.period, createdAt:FieldValue.serverTimestamp() });
+      if (rolloverSnapshots[index * 2 + 1].exists) assertAttendanceRolloverPaymentRequest(rolloverSnapshots[index * 2 + 1].data(), row.paymentRequest, row.period.id);
+      else tx.set(absenceRolloverRefs[index * 2 + 1], { ...row.paymentRequest, createdAt:FieldValue.serverTimestamp() });
+    });
+    if (state === 'absent') tx.set(absenceRef, {
+      id:absenceRef.id, operationId:absenceOperationId, active:true, status:'absent', source:'teacher-absence',
+      teacherId:session.teacherId, studentId:source.studentIds[0], studentIds:source.studentIds, subjectId:source.subjectId,
+      periodId:sourceId(absencePeriod), eventId:clean(source.sourceId || sourceEventId || source.id),
+      courseId:clean(source.fixedCourseId || sourceCourseId), date:sourceDate, startTime:source.startTime,
+      deducted:true, teacherPayable:false, createdAt:FieldValue.serverTimestamp(), createdAtText:nowText()
+    });
+    else if (absenceSnapshot.exists && absenceSnapshot.data().status === 'absent') tx.set(absenceRef, { active:false, deducted:false, updatedAt:FieldValue.serverTimestamp() }, { merge:true });
     priorSnapshots.forEach((snapshot) => {
       if (snapshot.exists && snapshot.data().active !== false) {
         tx.set(snapshot.ref, {
@@ -8507,7 +8622,7 @@ async function teacherLessonState(data) {
     ok: true,
     id,
     state,
-    message: state === 'absent' ? '已標示曠課；本堂未完成簽到，不列入老師薪資。' : '已標示請假，該教室時段已釋出。'
+    message: state === 'absent' ? '已標示曠課並扣一堂；未完成簽到，不列入老師薪資。' : '已標示請假，不扣堂，該教室時段已釋出。'
   };
 }
 
@@ -9034,7 +9149,10 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
         options.allowRollover
       )
       : null;
-    return { studentId, mirrorAttendance, effectivePeriods, historicalSplitSource };
+    const priorAbsence = portalAttendance.find(row => row.active !== false && row.status === 'absent' &&
+      eventDate(row) === sourceDate && eventTeacherId(row) === eventTeacherId(event) &&
+      eventSubjectId(row) === eventSubjectId(event) && clean(row.courseId) === clean(event.fixedCourseId || event.sourceId));
+    return { studentId, mirrorAttendance, effectivePeriods, historicalSplitSource, priorAbsence };
   }));
   const needsHistoricalPayroll = baseGroups.some((group) => Boolean(group.historicalSplitSource));
   const teacherId = eventTeacherId(event || {});
@@ -9051,7 +9169,8 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     studentId,
     mirrorAttendance,
     effectivePeriods,
-    historicalSplitSource
+    historicalSplitSource,
+    priorAbsence
   }) => {
     const historicalPayroll = teacherPayrollSplitRows(
       enrichTeacherPayrollRows(mirrorTeacherPayroll, mirrorAttendance).concat(portalTeacherPayroll)
@@ -9064,7 +9183,8 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
           : period
       ))
       : effectivePeriods;
-    const existingPeriod = attendancePeriodCandidate(payrollReadyPeriods, event, studentId, sourceDate);
+    const existingPeriod = (priorAbsence && payrollReadyPeriods.find(row => sourceId(row) === clean(priorAbsence.periodId))) ||
+      attendancePeriodCandidate(payrollReadyPeriods, event, studentId, sourceDate);
     const rollover = !existingPeriod && options.allowRollover === true
       ? buildAttendanceTuitionRollover({
         periods: payrollReadyPeriods,
@@ -12398,6 +12518,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalLessonHistory = callable(courseLessonHistory, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentContactBookImage = callable(studentContactBookImage, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentSubmitTuitionPayment = callable(studentSubmitTuitionPayment, {
     timeoutSeconds: 180,

@@ -653,7 +653,7 @@
         if (requestedRole) clearRoleSession(requestedRole);
         showNotice(
           reason === 'session-expired'
-            ? '這台裝置原本保存的登入已失效，系統已自動清除。請重新使用 LINE 登入；不需要換手機碼。'
+            ? '這台裝置原本保存的登入已失效，系統已自動清除。請重新使用 LINE 或 Email 登入。若 LINE 要求驗證，請依 LINE 畫面操作。'
             : '請先使用 LINE 或 Email 登入。',
           reason === 'session-expired'
         );
