@@ -14,6 +14,7 @@ on:
       - "course-history-view.css"
       - "functions/courseHistory.js"
       - "tests/course-history-rental.test.js"
+      - "tests/course-subject-payment.test.js"
       - "teacher-home.html"
       - "profile.html"
       - "teacher-profile.html"
@@ -57,7 +58,7 @@ jobs:
         run: |
           node --check teacher-course-portal-v8.js
           node --check course-history-view.js
-          node --test tests/course-history-rental.test.js
+          node --test tests/course-history-rental.test.js tests/course-subject-payment.test.js
           node --check teacher-profile.js
           node --check teacher-contract.js
           node --check teacher-daily-reminder.js

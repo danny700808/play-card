@@ -154,7 +154,7 @@
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-history-view.js?v=20260908-history-rental-v1"></script>
+  <script src="course-history-view.js?v=20260908-subject-payment-v1"></script>
   <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
   <script>
   (function () {
@@ -163,6 +163,7 @@
     let data = null;
     let studentId = '';
     let activeTuitionPaymentId = '';
+    let selectedPaymentSubjectId = '';
     let tuitionReceiptDataUrl = '';
     const bindView = document.getElementById('bindView');
     const appView = document.getElementById('appView');
@@ -247,6 +248,19 @@
         .sort((left, right) => Number(left.nextPeriodNo || 0) - Number(right.nextPeriodNo || 0));
     }
 
+    function tuitionPaymentMatchesSelection(row) {
+      return Boolean(row && row.studentId === studentId && row.subjectId === selectedPaymentSubjectId);
+    }
+
+    function renderSubjectPayments(subjectId) {
+      selectedPaymentSubjectId = subjectId;
+      document.getElementById('periodList').innerHTML = activeTuitionPayments()
+        .filter(tuitionPaymentMatchesSelection).map(request => {
+          const period = data.periods.find(row => row.id === request.targetPeriodId && row.studentId === studentId && row.subjectId === subjectId);
+          return `<article class="period-card payment-only-period"><div class="period-card-head"><div class="period-card-title"><strong>${P.escapeHtml(request.subjectName || '課程')} · 繳費辦理</strong><small>新系統第 ${newSystemPeriodNumber(request)} 期</small></div>${paymentBlock(period || {expectedAmount:request.expectedAmount, paidAmount:request.confirmedAmount}, request)}</div></article>`;
+        }).join('');
+    }
+
     function paymentDate(period) {
       const rows = Array.isArray(period.transactions) ? period.transactions : [];
       const last = rows.slice().reverse().find((row) => row && (row.paidAtText || row.confirmedAtText || row.date || row.receivedAtText)) || {};
@@ -322,6 +336,11 @@
       tuitionReceiptDataUrl = '';
       const row = selectedTuitionPayment();
       if (!row.id) return;
+      if (!tuitionPaymentMatchesSelection(row)) {
+        activeTuitionPaymentId = '';
+        P.toast('請先選擇此筆繳費所屬的學生與科目。', 'error');
+        return;
+      }
       const bank = ((data || {}).tuitionPayment || {}).bank || {};
       document.getElementById('tuitionPaymentModalSubtitle').textContent =
         `${row.studentName || ''}｜${row.subjectName || '課程'}`;
@@ -427,22 +446,14 @@
       document.getElementById('upcomingCourseList').innerHTML = upcoming.length
         ? `<div class="upcoming-course-title">接下來的課程</div>${upcoming.slice(0, 4).map((row) => `<div class="upcoming-course-row"><strong>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong><span>${P.escapeHtml(row.subjectName || '課程')}｜${P.escapeHtml(row.teacherName || '老師')}</span></div>`).join('')}`
         : '';
-      const matchedRequestIds = new Set();
-      const periodCards = periods.map((row) => {
-        const request = requests.find((item) => item.targetPeriodId && item.targetPeriodId === row.id);
-        if (request) matchedRequestIds.add(request.id);
-        const restored = Number(row.restoredCreditCount || 0);
-        return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${Number(row.systemPeriodNo || 1)} 期 · ${P.escapeHtml(row.subjectName || '課程')}</strong><small>已上 ${row.usedCount} / ${row.lessonCount} 堂</small>${restored ? `<span class="period-restored-note">主管核准取消簽到，已補回堂數 ${restored} 堂</span>` : ''}</div>${paymentBlock(row, request)}</div>
-          <div class="lesson-slot-grid">${lessonSlots(row, attendance, Number(row.paidAmount || 0) < Number(row.expectedAmount || 0) || Boolean(request))}</div></article>`;
+      selectedPaymentSubjectId = '';
+      document.getElementById('periodList').innerHTML = '';
+      const historyStudentId = studentId;
+      CourseHistoryView.mount(document.getElementById('studentCourseHistory'), {
+        studentId, name:'課程紀錄', token, call:P.call,
+        additionalSubjects:requests.map(row => ({id:row.subjectId, name:row.subjectName || '課程'})),
+        onSubjectChange:subject => { if (studentId === historyStudentId) renderSubjectPayments(subject); }
       });
-      const unmatchedCards = requests.filter((row) => !matchedRequestIds.has(row.id)).map((request) =>
-        `<article class="period-card payment-only-period"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${newSystemPeriodNumber(request)} 期 · ${P.escapeHtml(request.subjectName || '課程')}</strong><small>下一期學費</small></div>${paymentBlock({ expectedAmount: request.expectedAmount, paidAmount: request.confirmedAmount }, request)}</div></article>`
-      );
-      document.getElementById('periodList').innerHTML = periods.map(row => {
-        const request = requests.find(item => item.targetPeriodId === row.id);
-        return request ? `<article class="period-card"><strong>${P.escapeHtml(row.subjectName || '課程')} · 繳費辦理</strong>${paymentBlock(row, request)}</article>` : '';
-      }).concat(unmatchedCards).join('');
-      CourseHistoryView.mount(document.getElementById('studentCourseHistory'), {studentId, name:'課程紀錄', token, call:P.call});
       renderContactBook();
       const binding = data.bindings.find((row) => row.studentId === studentId) || {};
       document.querySelector('[name="reminderLastLesson"]').checked = binding.reminderLastLesson !== false;

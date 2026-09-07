@@ -25,6 +25,7 @@
       const rows = payload.periods.filter(row => row.subjectId === subject);
       const due = rows.filter(row => row.outstandingAmount > 0), paid = rows.filter(row => row.outstandingAmount <= 0);
       cards.innerHTML = `${due.length ? '<h3>尚未繳清 · 全部顯示</h3>' + due.map((row, i) => card(row, i === 0)).join('') : ''}${paid.length ? `<h3>${payload.fromDate ? '歷史已繳清紀錄' : '最近已繳清 · 最多兩期'}</h3>` + paid.map((row, i) => card(row, i === 0)).join('') : ''}` || '<p>此科目目前沒有期別紀錄。</p>';
+      if (typeof options.onSubjectChange === 'function') options.onSubjectChange(subject);
     }
     async function load(fromDate) {
       const id = ++request;
@@ -33,6 +34,7 @@
         const result = await options.call('coursePortalLessonHistory', { sessionToken:options.token, studentId:options.studentId, fromDate:fromDate || '' });
         if (id !== request || !host.isConnected) return;
         payload = result;
+        result.subjects = [...new Map([...(result.subjects || []), ...(options.additionalSubjects || [])].map(row => [row.id, row])).values()];
         if (!result.subjects.some(row => row.id === subject)) subject = (result.subjects[0] || {}).id || '';
         select.innerHTML = result.subjects.map(row => `<option value="${esc(row.id)}">${esc(row.name)}</option>`).join('');
         select.value = subject;

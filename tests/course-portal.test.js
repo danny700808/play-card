@@ -206,7 +206,7 @@ assert(studentPortal.includes('id="inactiveStudentView"'), '停課學生缺少�
 assert(studentPortal.includes('id="inactiveHistoryList"'), '停課學生無法查看自己的過去課表');
 assert(studentLineSetupForm.includes('寄送四碼驗證碼'), '學生 LINE 首次註冊未要求 Email 四碼');
 assert(teacherPortal.includes('寄送四碼驗證碼'), '老師 LINE 首次註冊未要求 Email 四碼');
-assert(studentPortal.includes('paymentBlock(row, request)') && studentPortal.includes('period-payment'), '學生入口沒有把繳費整合到期別卡');
+assert(studentPortal.includes('renderSubjectPayments') && studentPortal.includes('paymentBlock(period ||') && studentPortal.includes('period-payment'), '學生入口沒有把繳費整合到期別卡');
 assert(studentPortal.includes('id="tuitionPaymentModal"'), '學生入口缺少繳費方式視窗');
 assert(studentPortal.includes('name="paymentMethod" value="bank_transfer"'), '學生入口缺少轉帳繳費選項');
 assert(studentPortal.includes('name="paymentMethod" value="onsite"'), '學生入口缺少現場繳費選項');
@@ -216,14 +216,14 @@ assert(studentPortal.includes('coursePortalStudentSubmitTuitionPayment'), '學�
 assert(studentPortal.includes('data-tab="contact"'), '學生入口缺少課堂聯絡簿入口');
 assert(studentPortal.includes('課程與學費') && studentPortal.includes('租用教室') && studentPortal.includes('LINE 提醒'), '學生底部入口不完整');
 assert(studentPortal.includes('欠費全部顯示') && studentPortal.includes('歷史查詢自 2026/7/21 起'), '學生入口未清楚說明欠費與歷史查詢範圍');
-assert(studentPortal.includes('lesson-slot-grid') && studentPortal.includes('未使用'), '學生期別卡缺少堂次小格與未使用標示');
+assert(fs.readFileSync(path.join(root, 'course-history-view.js'), 'utf8').includes('lesson-slot-grid') && studentPortal.includes('未使用'), '學生期別卡缺少堂次小格與未使用標示');
 assert(studentPortal.includes('studentSwitcher') && studentPortal.includes('data.students.length <= 1'), '只有一位學生時仍顯示不必要的學生切換');
 assert(studentPortal.includes('student-bottom-tabs') && studentPortal.includes('payment-due'), '學生入口缺少固定底部導航或末堂未繳提醒');
 assert(studentPortal.includes('coursePortalStudentContactBookImage'), '學生入口無法安全查看聯絡簿照片');
 assert(studentPortal.includes('newSystemPeriodNumber(row)'), '學生繳費視窗沒有換算新系統期數');
 assert(!studentPortal.includes('第 ${Number(row.nextPeriodNo || 0)} 期'), '學生繳費視窗仍直接顯示舊系統原始期數');
-assert(studentPortal.includes('row.systemPeriodNo'), '學生期別卡未使用持久的新系統期數');
-assert(studentPortal.includes('item.targetPeriodId === row.id'), '學費申請沒有唯一綁定目標期別');
+assert(fs.readFileSync(path.join(root, 'course-history-view.js'), 'utf8').includes('period.systemPeriodNo'), '學生期別卡未使用持久的新系統期數');
+assert(studentPortal.includes('row.id === request.targetPeriodId'), '學費申請沒有唯一綁定目標期別');
 assert(studentPortal.includes('id="upcomingCourseList"'), '學生入口沒有顯示接下來的課程');
 assert(studentPortal.includes('period-payment-amount') && studentPortal.includes('period-payment-state'), '學生學費資訊沒有整理成卡片內的獨立圖框');
 assert(!studentPortal.includes('未指定老師') && !studentPortal.includes('尚未指定'), '學生老師聯絡區仍顯示多餘的未登記提示');
