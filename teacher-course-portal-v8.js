@@ -908,6 +908,10 @@
 
   function activateTab(tab) {
     activeTab = ['schedule','students','payroll'].includes(tab) ? tab : 'schedule';
+    if (activeTab === 'students') {
+      document.getElementById('teacherHistoryPanel').hidden = true;
+      document.getElementById('rosterList').hidden = false;
+    }
     document.querySelectorAll('[data-tab]').forEach((node) => node.classList.toggle('active', node.dataset.tab === activeTab));
     document.querySelectorAll('[data-panel]').forEach((node) => node.classList.toggle('hidden', node.dataset.panel !== activeTab));
     const panel = document.querySelector(`[data-panel="${activeTab}"]`);
