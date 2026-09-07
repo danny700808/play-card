@@ -10,7 +10,7 @@
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v4';
-  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.';
+  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.overlap1.';
   const CACHE_TTL = 90 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
@@ -604,6 +604,23 @@
     return groups;
   }
 
+  function courseDisplayRank(event) {
+    const status = clean(event.status).toLowerCase();
+    if (['attended', 'checked_in', 'present'].includes(status)) return 0;
+    if (status === 'leave' || status === 'cancelled') return 3;
+    return 1;
+  }
+
+  function futureOverlapCount(rows, now) {
+    const active = rows.filter(event => eventBlocksPlannerGap(event) &&
+      new Date(`${event.date}T${event.endTime}:00+08:00`).getTime() > now);
+    let maximum = 0;
+    active.forEach(event => {
+      maximum = Math.max(maximum, active.filter(other => other.startTime <= event.startTime && other.endTime > event.startTime).length);
+    });
+    return maximum;
+  }
+
   function lessonDurationMinutes(row, fallback) {
     const duration = timeMinutes(row && row.endTime) - timeMinutes(row && row.startTime);
     return duration >= 30 && duration <= 300 && duration % 30 === 0
@@ -715,8 +732,10 @@
         const placement = `grid-column:${dayIndex + 2};grid-row:${rowStart}/span ${rowSpan}`;
         if (group.events.length === 1) html += `<div class="lesson-placement" style="${placement}">${lessonCard(group.events[0], false)}</div>`;
         else {
-          html += `<div class="lesson-placement lesson-overlap-placement" style="${placement}"><div class="overlap-note">⚠ 同時${group.events.length}堂</div><div class="lesson-cluster conflict">`;
-          group.events.forEach((event) => { html += lessonCard(event, true); });
+          const count = futureOverlapCount(group.events, Date.now());
+          const conflict = count > 1;
+          html += `<div class="lesson-placement lesson-overlap-placement${conflict ? ' has-conflict' : ''}" style="${placement}">${conflict ? `<div class="overlap-note">⚠ 同時${count}堂</div>` : ''}<div class="lesson-cluster${conflict ? ' conflict' : ''}">`;
+          group.events.slice().sort((a, b) => courseDisplayRank(a) - courseDisplayRank(b)).forEach((event) => { html += lessonCard(event, conflict && eventBlocksPlannerGap(event)); });
           html += '</div></div>';
         }
       });
@@ -1719,6 +1738,11 @@
   async function navigateTeacherWeek(direction, edge) {
     if (changingWeek) return;
     changingWeek = true;
+    const buttons = ['prevWeek', 'nextWeek'].map(id => document.getElementById(id));
+    buttons.forEach(button => { button.disabled = true; });
+    const indicator = buttons[direction < 0 ? 0 : 1];
+    indicator.classList.add('week-loading');
+    indicator.setAttribute('aria-busy', 'true');
     const top = weekViewport.scrollTop;
     try {
       weekStart = addDays(weekStart, direction * 7);
@@ -1727,7 +1751,12 @@
       if (moving) await startSourceMove(moving.source, moving.action);
       weekViewport.scrollLeft = edge && direction < 0 ? weekViewport.scrollWidth - weekViewport.clientWidth : 0;
       weekViewport.scrollTop = top;
-    } finally { changingWeek = false; }
+    } finally {
+      changingWeek = false;
+      buttons.forEach(button => { button.disabled = false; });
+      indicator.classList.remove('week-loading');
+      indicator.removeAttribute('aria-busy');
+    }
   }
   weekViewport.addEventListener('touchstart', event => {
     if (event.touches.length !== 1 || changingWeek) { edgeGesture = null; return; }

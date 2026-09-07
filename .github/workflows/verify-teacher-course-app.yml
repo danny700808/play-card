@@ -58,7 +58,7 @@ jobs:
         run: |
           node --check teacher-course-portal-v8.js
           node --check course-history-view.js
-          node --test tests/course-history-rental.test.js tests/course-subject-payment.test.js
+          node --test tests/course-history-rental.test.js tests/course-subject-payment.test.js tests/course-overlap-regression.test.js
           node --check teacher-profile.js
           node --check teacher-contract.js
           node --check teacher-daily-reminder.js

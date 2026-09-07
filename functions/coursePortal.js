@@ -4655,8 +4655,14 @@ function applyStudentSuspensions(row, suspensions) {
   });
 }
 
+function verifiedScheduleDates(settings) {
+  const quality = settings.dataQuality || {};
+  return new Set([settings.auditCoveredDates, quality.auditCoveredDates, quality.futureScheduleCoveredDates]
+    .flatMap(value => Array.isArray(value) ? value : []).map(dateKey).filter(Boolean));
+}
+
 async function scheduleBundle(startDate, endDate, ownTeacherId) {
-  const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions] = await Promise.all([
+  const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions, mirrorSettingsSnapshot] = await Promise.all([
     mirrorRows('rooms'),
     mirrorRows('subjects'),
     mirrorRows('students'),
@@ -4666,7 +4672,8 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     mirrorRowsByDateRange('temporaryCourses', startDate, endDate),
     mirrorRowsByDateRange('roomRentals', startDate, endDate),
     scheduleChangeDocsByDateRange(startDate, endDate),
-    activeStudentSuspensions()
+    activeStudentSuspensions(),
+    db.collection('opsSettings').doc('injiaoyunEducationMirror').get()
   ]);
   const maps = {
     rooms: indexById(rooms),
@@ -4741,6 +4748,10 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
   exactSourceRows.forEach((row) => {
     courseSourceIds(row).forEach((id) => exactKeys.add(`${id}|${eventDate(row)}`));
   });
+  // A verified day (including an empty day) is authoritative. Old master
+  // recurrence must not invent extra occurrences after the daily import.
+  const mirrorSettings = mirrorSettingsSnapshot.exists ? mirrorSettingsSnapshot.data() || {} : {};
+  const coveredDates = verifiedScheduleDates(mirrorSettings);
   const expanded = [];
   fixed.filter((row) => !livePortalSource(row)).forEach((row) => {
     const start = eventDate(row);
@@ -4757,6 +4768,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     ));
     let key = elapsedDays ? addDays(start, Math.ceil(elapsedDays / stepDays) * stepDays) : start;
     for (; key <= endDate && key <= finalDate; key = addDays(key, stepDays)) {
+      if (coveredDates.has(key)) continue;
       const statusByDate = row.statusByDate || row.exceptions || {};
       const status = normalizeScheduleStatus(statusByDate[key]);
       if (status === 'cancelled') continue;

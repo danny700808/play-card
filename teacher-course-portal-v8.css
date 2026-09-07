@@ -106,3 +106,12 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-login-notice{padding:10px 12px;margin:10px 0;border:1px solid #cee0d7;border-radius:10px;background:#f3faf6;text-align:center;font-size:13px}
 
 .teacher-course-app .teacher-payroll-toolbar{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;width:100%;margin-bottom:18px}.teacher-payroll-toolbar .field,.teacher-payroll-toolbar input,.teacher-payroll-toolbar button{box-sizing:border-box;min-width:0;width:100%;max-width:100%}.teacher-payroll-toolbar input{min-height:46px}.teacher-course-app [hidden]{display:none!important}
+
+#prevWeek.week-loading, #nextWeek.week-loading { color:#fff; background:linear-gradient(100deg,#176c55 20%,#42b88d 50%,#176c55 80%); background-size:220% 100%; animation:week-progress 1.1s linear infinite; opacity:1; }
+@keyframes week-progress { from { background-position:220% 0; } to { background-position:0 0; } }
+@media (prefers-reduced-motion:reduce) { #prevWeek.week-loading, #nextWeek.week-loading { animation:none; } }
+.lesson-cluster:not(.conflict) { background:transparent; border-color:transparent; }
+
+.lesson-overlap-placement:not(.has-conflict) { border:0; background:transparent; }
+.lesson-overlap-placement:not(.has-conflict) .lesson-cluster { display:flex; height:100%; gap:5px; overflow-x:auto; }
+.lesson-overlap-placement:not(.has-conflict) .lesson { flex:1 0 124px; }
