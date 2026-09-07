@@ -2654,7 +2654,7 @@ assert(deployWorkflow.includes('functions:coursePortalTeacherSlotOptions'), '部
 ].forEach((name) => assert(deployWorkflow.includes(name), `Firebase 部署清單漏掉 ${name}`));
 assert(backend.includes("where('ownerKey', '==', sessionOwnerKey(session))"), '租用紀錄未限制為目前登入帳號');
 assert(backend.includes('只能取消自己預約的教室'), '取消租用缺少本人權限檢查');
-assert(backend.includes('const EMAIL_OTP_TTL_MS = 180 * 1000'), 'Email 四碼驗證碼不是 180 秒');
+assert(backend.includes('const EMAIL_OTP_TTL_MS = 300 * 1000'), 'Email 四碼驗證碼不是 300 秒');
 assert(backend.includes('EMAIL_OTP_MAX_ATTEMPTS = 5'), 'Email 驗證碼缺少五次輸入限制');
 assert(backend.includes("source.purpose === 'account'"), '一般註冊／登入驗證後未直接建立工作階段');
 assert(backend.includes("source.purpose === 'line-registration'"), 'LINE 首次註冊驗證後未建立工作階段');

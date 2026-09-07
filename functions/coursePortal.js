@@ -51,7 +51,7 @@ const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET');
 const LINE_LOGIN_CHANNEL_ID = String(process.env.LINE_LOGIN_CHANNEL_ID || '2010902226').trim();
 const LINE_LOGIN_CALLBACK_URL = String(process.env.LINE_LOGIN_CALLBACK_URL || 'https://us-central1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback').trim();
 const PORTAL_BASE = String(process.env.PUBLIC_WEB_BASE_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
-const EMAIL_OTP_TTL_MS = 180 * 1000;
+const EMAIL_OTP_TTL_MS = 300 * 1000;
 const EMAIL_OTP_MAX_ATTEMPTS = 5;
 const LINE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const LINE_SETUP_TTL_MS = 20 * 60 * 1000;
@@ -1179,7 +1179,7 @@ async function sendEmailOtp(data, helpers = {}) {
         body: [
           `您的四碼驗證碼是：${code}`,
           '',
-          '驗證碼 180 秒內有效，最多可輸入 5 次。',
+          '驗證碼 300 秒內有效，最多可輸入 5 次。',
           '若不是您本人操作，請忽略這封信，也不要把驗證碼告訴任何人。'
         ].join('\n')
       });
@@ -1458,7 +1458,7 @@ async function verifyEmailOtp(data) {
   await db.runTransaction(async (tx) => {
     const snapshot = await tx.get(ref);
     const row = snapshot.exists ? snapshot.data() || {} : null;
-    if (!row || row.status !== 'pending' || asMillis(row.expiresAt) < Date.now()) {
+    if (!row || row.status !== 'pending' || asMillis(row.expiresAt) <= Date.now()) {
       throw new HttpsError('deadline-exceeded', '驗證碼已失效，請重新寄送。');
     }
     const attempts = Number(row.attempts || 0);

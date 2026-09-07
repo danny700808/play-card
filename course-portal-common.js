@@ -302,7 +302,7 @@
       if (!otpPanel) return;
       pendingOtpFlow = flow === 'line-registration' ? 'line-registration' : 'regular';
       pendingChallenge = clean(result.challengeToken);
-      let seconds = Number(result.expiresInSeconds || 180);
+      let seconds = Number(result.expiresInSeconds || 300);
       if (pendingOtpFlow === 'line-registration' && lineSetupPanel) lineSetupPanel.classList.add('hidden');
       otpPanel.classList.remove('hidden');
       otpPanel.innerHTML = [
@@ -310,7 +310,7 @@
         '<div class="auth-otp-heading"><strong>請查看您的 Email</strong><span>輸入四碼後就會直接進入，不會再要求其他步驟。</span></div>',
         `<div class="field"><label>寄到 ${escapeHtml(result.maskedEmail || '您的 Email')} 的四碼驗證碼</label>`,
         '<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" maxlength="4" placeholder="0000" required></div>',
-        '<div class="auth-otp-meta">有效時間：<strong data-otp-countdown>180 秒</strong></div>',
+        '<div class="auth-otp-meta">有效時間：<strong data-otp-countdown>300 秒</strong></div>',
         '<div class="grid two"><button class="btn primary" type="submit">確認並登入</button>',
         '<button class="btn soft" type="button" data-otp-back>返回修改資料</button></div>',
         '</form>'
