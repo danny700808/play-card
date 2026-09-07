@@ -45,7 +45,14 @@ function courseSourceIds(row) {
   ].map(clean).filter(Boolean))];
 }
 
+// The verified migration begins here. Keep older records for accounting,
+// but do not expose unverified lesson history in the student portal.
+function isStudentHistoryDateVisible(date) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) && date >= '2026-07-21';
+}
+
 module.exports = {
+  isStudentHistoryDateVisible,
   normalizePhone,
   phoneMatches,
   normalizeScheduleStatus,

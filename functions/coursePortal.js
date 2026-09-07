@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const path = require('path');
 const sharp = require('sharp');
 const {
+  isStudentHistoryDateVisible,
   normalizePhone,
   phoneMatches,
   normalizeScheduleStatus,
@@ -7575,7 +7576,7 @@ async function studentPortalData(data) {
     attendance: attendance
       .filter((row) =>
         studentIds.includes(clean(row.studentId)) &&
-        eventDate(row) &&
+        isStudentHistoryDateVisible(eventDate(row)) &&
         eventDate(row) <= today
       )
       .sort((left, right) => eventDate(left).localeCompare(eventDate(right)))
@@ -7605,6 +7606,7 @@ async function studentPortalData(data) {
         };
       }),
     attendanceCancellations: activePortalAttendance.filter((row) =>
+      isStudentHistoryDateVisible(eventDate(row)) &&
       clean(row.source) === 'attendance-cancellation-approved' &&
       (clean(row.status) === 'cancelled' || row.active === false)
     ).map((row) => ({
@@ -7616,7 +7618,7 @@ async function studentPortalData(data) {
       cancelledAtText: clean(row.cancelledAtText),
       note: '主管核准取消簽到，堂數已補回目前期別'
     })),
-    contactBook: publicContactPosts,
+    contactBook: publicContactPosts.filter((row) => isStudentHistoryDateVisible(row.date)),
     upcoming: events.filter((row) =>
       eventDate(row) >= today &&
       eventStudentIds(row).some((id) => allowed.has(id)) &&
