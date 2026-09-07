@@ -1,0 +1,16 @@
+{
+  "name": "injiaoyun-course-audit-0723-0724-v4",
+  "version": "4.0.0",
+  "private": true,
+  "description": "Read-only Injiaoyun refresh audit for 2026-07-23 through 2026-07-24.",
+  "main": "index.js",
+  "engines": { "node": "20" },
+  "scripts": {
+    "check": "node --check index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "firebase-admin": "12.7.0",
+    "playwright": "1.61.0"
+  }
+}

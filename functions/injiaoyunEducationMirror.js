@@ -9,6 +9,7 @@ const { GoogleAuth } = require('google-auth-library');
 const {
   buildTeacherPayroll,
   buildPreview,
+  buildRecentMasterAdditions,
   EDUCATION_PREVIEW_VERSION,
   latestAuditRunInfo,
   latestAuditSchedule,
@@ -1206,7 +1207,8 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       roomSnapshot,
       payrollSnapshot,
       rentalSnapshot,
-      eventSnapshot
+      eventSnapshot,
+      studentSnapshot
     ] = await Promise.all([
       dailyRowsPromise,
       db.collection(MIRROR_TYPES.tuitionPeriods).get(),
@@ -1214,7 +1216,8 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       db.collection(MIRROR_TYPES.rooms).get(),
       snapshotForDateChunks(MIRROR_TYPES.teacherPayroll, payrollDates),
       snapshotForDateChunks(MIRROR_TYPES.roomRentals, coveredDates),
-      snapshotForDateChunks(MIRROR_TYPES.events, coveredDates)
+      snapshotForDateChunks(MIRROR_TYPES.events, coveredDates),
+      db.collection(MIRROR_TYPES.students).get()
     ]);
     const covered = new Set(coveredDates);
     const payrollCovered = new Set(payrollDates);
@@ -1227,6 +1230,11 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       return day && payrollCovered.has(day);
     });
     const periods = snapshotSources(periodSnapshot);
+    const students = snapshotSources(studentSnapshot);
+    const creationFloor = [selectedStartDate, ...(Array.isArray(mirrorSettings.auditCoveredDates) ? mirrorSettings.auditCoveredDates : [])].filter(Boolean).sort()[0];
+    const masterAdditions = buildRecentMasterAdditions(audit.masterRawRows || [], students, periods, selectedStartDate, selectedEndDate, creationFloor);
+    students.push(...masterAdditions.students);
+    periods.push(...masterAdditions.periods);
     const currentAttendance = snapshotSources(attendanceSnapshot);
     const rooms = snapshotSources(roomSnapshot);
     const receiptResult = mergeEducationDailyReceipts(periods, scopedDaily);
@@ -1285,6 +1293,7 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
     const recentPayroll = payrollSync.rows;
 
     const results = {
+      students: await syncRowsFromSnapshot('students', MIRROR_TYPES.students, students, audit.runId, studentSnapshot, {}, syncContext),
       tuitionPeriods: await syncRowsFromSnapshot(
         'tuitionPeriods',
         MIRROR_TYPES.tuitionPeriods,
@@ -1346,6 +1355,8 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       teacherPayrollSyncEnd: payrollDates[payrollDates.length - 1] || '',
       teacherPayrollSyncCount: recentPayroll.length,
       teacherPayrollRepairApplied: Boolean(payrollRepair),
+      recentStudentCreatedCount: masterAdditions.students.length,
+      recentOpenPeriodCreatedCount: masterAdditions.periods.length,
       recentReceiptCount: receiptResult.total,
       recentReceiptLinkedCount: receiptResult.linked,
       recentReceiptUpdatedCount: receiptResult.updated,
@@ -1365,6 +1376,7 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
     });
     const typeResults = Object.assign({}, reservation.current && reservation.current.typeResults || {}, results);
     const sourceCounts = Object.assign({}, previousCounts, {
+      students: students.length,
       events: recentEvents.length,
       tuitionPeriods: periods.length,
       teacherPayrollRecent: recentPayroll.length,

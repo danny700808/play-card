@@ -5,6 +5,8 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const zlib = require('node:zlib');
+const { assertAuditCoverage } = require('./injiaoyunAuditCoverage');
+const { mergeAuditPageRecords } = require('./injiaoyunAuditPageRecords');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -182,6 +184,10 @@ function timeKey(value) {
     .replace(/\s+/g, ' ')
     .trim();
   if (!text) return '';
+  // 音教雲日表以字串小數小時表示半點／刻鐘，例如 "14.5"。
+  if (/^(?:[01]?\d|2[0-3])\.(?:0|5|25|75)$/.test(text)) {
+    return timeKey(Number(text));
+  }
 
   // 只有日期、沒有時間時視為未辨識；否則 Date 會自行補成午夜，造成另一種假課表。
   if (/^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}$/.test(text) || /^\d{8}$/.test(text)) return '';
@@ -279,7 +285,7 @@ function rentalDurationResult(startsAt, endsAt, explicit) {
 
 function frequencyWeeks(value) {
   const text = clean(value).toLowerCase();
-  if (/隔週|雙週|biweekly|every\s*2|^2$/.test(text)) return 2;
+  if (/隔週|雙週|biweekly|^twoweek$|every\s*2|^2$/.test(text)) return 2;
   return 1;
 }
 
@@ -429,11 +435,12 @@ async function latestAuditRunInfo() {
 // 有明確 endDate 時，該日期起不再推算；歷史當天若有簽到／請假／缺席證據則仍可補回。
 function fixedCourseFallbackAllowed(raw, date, linkedStatus) {
   if (linkedStatus) return true;
-  if (!raw || raw.end === false || raw.active === false || raw.off === true ||
+  if (!raw || raw.active === false || raw.off === true ||
       raw.stop === true || raw.stopped === true || raw.cancel === true || raw.cancelled === true) {
     return false;
   }
   const stopped = dateKey(firstValue(raw.endDate, raw.stoppedAt, raw.cancelledAt));
+  if (raw.end === false) return Boolean(stopped && date < stopped);
   return !stopped || date < stopped;
 }
 
@@ -449,10 +456,18 @@ async function latestAuditSchedule(preferredRunId) {
     return { runId: '', startDate: '', endDate: '', coveredDates: [], events: [], attendance: [] };
   }
   const run = runDoc.data() || {};
-  const [candidateSnapshot, rawSnapshot] = await Promise.all([
+  assertAuditCoverage(run, auditDateKeys(run.startDate, run.endDate));
+  const [candidateSnapshot, rawSnapshot, pageSnapshot] = await Promise.all([
     runDoc.ref.collection('calendarCandidates').get(),
-    runDoc.ref.collection('rawRecords').get()
+    runDoc.ref.collection('rawRecords').get(),
+    runDoc.ref.collection('pageRawRecords').get()
   ]);
+  const { rawRows, candidateRows } = mergeAuditPageRecords(
+    rawSnapshot.docs.map(doc => doc.data() || {}),
+    candidateSnapshot.docs.map(doc => doc.data() || {}),
+    pageSnapshot.docs.map(doc => doc.data() || {}),
+    run, { dateKey, timeKey }
+  );
   const rawBySourceId = new Map();
   const rawFixedCourses = [];
   const candidateFixedKeys = new Set();
@@ -492,8 +507,7 @@ async function latestAuditSchedule(preferredRunId) {
     const key = `${courseId}|${day}`;
     if (status === 'absent' || !statusByCourseDate.has(key)) statusByCourseDate.set(key, status);
   };
-  rawSnapshot.docs.forEach((doc) => {
-    const envelope = doc.data() || {};
+  rawRows.forEach((envelope) => {
     const raw = envelope.raw && typeof envelope.raw === 'object' ? envelope.raw : {};
     const sourceId = clean(envelope.sourceId) || idOf(raw);
     if (sourceId) rawBySourceId.set(sourceId, raw);
@@ -531,8 +545,7 @@ async function latestAuditSchedule(preferredRunId) {
   const endDate = dateKey(run.endDate);
   const coveredDates = auditDateKeys(startDate, endDate);
   const events = [];
-  candidateSnapshot.docs.forEach((doc, index) => {
-    const row = doc.data() || {};
+  candidateRows.forEach((row, index) => {
     const sourceType = clean(row.sourceType).toLowerCase();
     // 舊日表核對程式已確認當天實際出現的固定課、調課與租用；
     // 這份日期候選必須優先於學生／課程目前是否已結束的主檔狀態。
@@ -542,8 +555,15 @@ async function latestAuditSchedule(preferredRunId) {
     const start = timeKey(row.startsAt);
     const roomId = clean(row.roomId);
     if (!sourceCourseId || !date || !start || !roomId) return;
-    if (sourceType === 'fixed-course') candidateFixedKeys.add(`${sourceCourseId}|${date}`);
     const raw = rawBySourceId.get(sourceCourseId) || {};
+    if (sourceType === 'fixed-course') {
+      const seed = dateKey(raw.startDate);
+      const stopped = dateKey(raw.endDate);
+      if (!seed || date < seed || (stopped && date >= stopped)) return;
+      const elapsed = Math.round((new Date(`${date}T12:00:00+08:00`) - new Date(`${seed}T12:00:00+08:00`)) / 86400000);
+      if (elapsed % (7 * frequencyWeeks(raw.frequency)) !== 0) return;
+      candidateFixedKeys.add(`${sourceCourseId}|${date}`);
+    }
     const courseStudents = auditedCourseStudents(row, raw);
     const linkedStatus = statusByCourseDate.get(`${sourceCourseId}|${date}`);
     const type = sourceType === 'fixed-course' ? 'fixed' : sourceType === 'rental' ? 'rental' : 'single';
@@ -634,7 +654,7 @@ async function latestAuditSchedule(preferredRunId) {
         readOnly: true,
         source: 'injiaoyun-audit',
         sourceAuditRunId: runDoc.id,
-        sortIndex: candidateSnapshot.size + rawIndex * coveredDates.length + dateIndex
+        sortIndex: candidateRows.length + rawIndex * coveredDates.length + dateIndex
       });
     });
   });
@@ -660,13 +680,17 @@ async function latestAuditSchedule(preferredRunId) {
     if (Object.prototype.hasOwnProperty.call(countsByDate[row.date], row.type)) {
       countsByDate[row.date][row.type] += 1;
     }
-    if (row.type !== 'rental') countsByDate[row.date].students += 1;
+    const participants = Math.max(1, unique(row.studentIds).length);
+    if (row.type !== 'rental') countsByDate[row.date].students += participants;
+    if (row.type === 'fixed') countsByDate[row.date].fixedStudents = (countsByDate[row.date].fixedStudents || 0) + participants;
     if (row.status === 'leave') countsByDate[row.date].leaveEvents += 1;
     if (row.status === 'absent') countsByDate[row.date].absent += 1;
   });
   coveredDates.forEach((date) => {
     const daily = run.daily && run.daily[date];
-    countsByDate[date].leave = daily && daily.leave != null
+    countsByDate[date].leave = daily && daily.displayedHeader?.leaves != null
+      ? Math.max(0, numberOf(daily.displayedHeader.leaves))
+      : daily && daily.leave != null
       ? Math.max(0, numberOf(daily.leave))
       : countsByDate[date].leaveEvents;
   });
@@ -688,8 +712,8 @@ async function latestAuditSchedule(preferredRunId) {
     if (expectedStudents != null && actual.students !== expectedStudents) {
       countMismatches.push(`${date} 學生 ${actual.students}/${expectedStudents}`);
     }
-    if (expectedFixed != null && actual.fixed !== expectedFixed) {
-      countMismatches.push(`${date} 固定課 ${actual.fixed}/${expectedFixed}`);
+    if (expectedFixed != null && (actual.fixedStudents || 0) !== expectedFixed) {
+      countMismatches.push(`${date} 固定課人次 ${actual.fixedStudents || 0}/${expectedFixed}`);
     }
   });
   if (countMismatches.length) {
@@ -702,8 +726,44 @@ async function latestAuditSchedule(preferredRunId) {
     coveredDates,
     countsByDate,
     events,
-    attendance: attendanceEvidence.filter((row) => coveredDates.includes(row.date))
+    attendance: attendanceEvidence.filter((row) => coveredDates.includes(row.date)),
+    masterRawRows: rawRows
   };
+}
+
+function buildRecentMasterAdditions(rawRows, existingStudents, existingPeriods, startDate, endDate, creationFloor = startDate) {
+  const data = Object.fromEntries(Object.keys(EDUCATION_COLLECTIONS).map(key => [key, []]));
+  const types = { student: 'students', charge: 'charges', subject: 'subjects', teacher: 'teachers', 'student-payments-open': 'studentPaymentsOpen', 'fixed-course': 'fixedCourses', 'adjusted-course': 'temporaryCourses' };
+  rawRows.forEach(row => { if (types[row.sourceType] && row.raw) data[types[row.sourceType]].push(row.raw); });
+  const inScope = row => {
+    const created = dateKey(firstValue(row.created, row.startDate));
+    return Boolean(created && created >= creationFloor && created <= endDate);
+  };
+  const existingStudentIds = new Set(existingStudents.map(row => row.id));
+  const students = buildStudents({ ...data, studentDetails: [], students: data.students.filter(row => inScope(row) && !existingStudentIds.has(idOf(row))) });
+  const sourceIds = new Set(existingPeriods.map(row => row.sourcePaymentId));
+  data.studentPaymentsOpen = data.studentPaymentsOpen.filter(row => inScope(row) && !sourceIds.has(idOf(row)));
+  // Canceled source check-ins do not consume tuition, including the baseline
+  // before this batch's first date.
+  for (const key of ['studentPaymentsOpen', 'fixedCourses', 'temporaryCourses']) {
+    data[key] = data[key].map(row => ({ ...row, checkins: nestedCheckins(row).filter(checkin => checkin.cancel !== true) }));
+  }
+  const subjects = buildSubjects(data);
+  const plans = buildFeePlans(data, subjects);
+  const courses = data.fixedCourses.concat(data.temporaryCourses).map(row => ({
+    id: idOf(row), studentPaymentIds: referenceIds(row.studentPayments),
+    studentIds: referenceIds(row.students), teacherId: idOf(row.teacher), subjectId: idOf(row.subject), active: row.end !== false
+  }));
+  const periods = buildTuitionPeriods(data, subjects, plans, courses);
+  const baseline = buildAttendance(data, courses, periods).filter(row => row.deducted && row.date < startDate);
+  const allPeriods = existingPeriods.slice();
+  periods.sort((a, b) => a.startDate.localeCompare(b.startDate)).forEach(period => {
+    const prior = allPeriods.filter(row => row.studentId === period.studentId && row.subjectId === period.subjectId && row.startDate <= period.startDate);
+    period.periodNo = Math.max(period.periodNo || 1, ...prior.map(row => (Number(row.periodNo) || 0) + 1));
+    period.usedCount = baseline.filter(row => row.periodId === period.id).length;
+    allPeriods.push(period);
+  });
+  return { students, periods };
 }
 
 async function readCollection(config, runId) {
@@ -2120,6 +2180,7 @@ module.exports = {
   buildFeePlans,
   buildTeacherPayroll,
   buildTuitionPeriods,
+  buildRecentMasterAdditions,
   auditedCourseStudents,
   courseStudentNames,
   courseRow,
