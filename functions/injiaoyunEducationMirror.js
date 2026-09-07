@@ -11,6 +11,7 @@ const {
   buildTeacherPayroll,
   buildPreview,
   buildRecentMasterAdditions,
+  buildRecentMasterRefresh,
   EDUCATION_PREVIEW_VERSION,
   latestAuditRunInfo,
   latestAuditSchedule,
@@ -1242,6 +1243,19 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
     const masterAdditions = buildRecentMasterAdditions(audit.masterRawRows || [], students, periods, selectedStartDate, selectedEndDate, creationFloor);
     students.push(...masterAdditions.students);
     periods.push(...masterAdditions.periods);
+    const completeMaster = (audit.masterRawRows || []).some(row => row.sourceType === 'student-payment-details')
+      ? buildRecentMasterRefresh(audit.masterRawRows, creationFloor, selectedEndDate) : null;
+    if (completeMaster) {
+      if (completeMaster.incompleteAttendancePeriodIds.length || completeMaster.incompleteRefundPeriodIds.length) throw new Error('Complete tuition detail capture is required before replacing recent periods.');
+      for (const row of completeMaster.periods) {
+        const prior = periods.find(period => period.id === row.id);
+        if (prior) {
+          const teacherId = row.teacherId || prior.teacherId, sourceCourseId = row.sourceCourseId || prior.sourceCourseId;
+          Object.assign(prior, row, {teacherId, sourceCourseId});
+        } else periods.push(row);
+      }
+      for (const row of completeMaster.students) if (!students.some(student => student.id === row.id)) students.push(row);
+    }
     const currentAttendance = snapshotSources(attendanceSnapshot);
     const rooms = snapshotSources(roomSnapshot);
     const receiptResult = mergeEducationDailyReceipts(periods, scopedDaily);
@@ -1259,7 +1273,10 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
     refreshTuitionUsage(periods, [], initialUsedByPeriod);
     const reconciledAttendance = reconcileAuditedAttendance(
       currentAttendance,
-      Array.isArray(audit.attendance) ? audit.attendance : [],
+      (Array.isArray(audit.attendance) ? audit.attendance : []).map(row => {
+        const detail = completeMaster && completeMaster.attendance.find(item => item.id === row.id);
+        return detail ? Object.assign({},row,{periodId:detail.periodId,sourcePaymentId:detail.sourcePaymentId,deducted:detail.deducted}) : row;
+      }),
       periods,
       coveredDates,
       { initialUsedByPeriod, auditRunId: audit.runId }
@@ -1364,6 +1381,7 @@ async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger
       teacherPayrollRepairApplied: Boolean(payrollRepair),
       recentStudentCreatedCount: masterAdditions.students.length,
       recentOpenPeriodCreatedCount: masterAdditions.periods.length,
+      recentCompletePeriodRefreshedCount: completeMaster ? completeMaster.periods.length : 0,
       recentReceiptCount: receiptResult.total,
       recentReceiptLinkedCount: receiptResult.linked,
       recentReceiptUpdatedCount: receiptResult.updated,

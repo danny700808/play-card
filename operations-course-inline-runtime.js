@@ -632,7 +632,8 @@
   }
   async function persistScheduleChange(row,options){
     options=options||{};
-    await window.YouziCoursePreviewData.saveSchedule({manualSyncPin:storedMigrationPin(),operationId:options.operationId||uid('schedule'),mode:options.mode||'save',event:row,sourceEventId:options.source&&(options.source.portalBookingId||options.source.sourceId||options.source.id)||'',sourceCourseId:options.source&&options.source.sourceCourseId||'',sourceDate:options.source&&options.source.date||'',repeatUntil:options.repeatUntil||''});
+    if(options.source&&options.source.portalBookingId&&options.mode!=='delete')await window.YouziCoursePreviewData.saveLessonSettings({manualSyncPin:storedMigrationPin(),kind:'rentalDetails',date:options.source.date,sourceEventId:options.source.portalBookingId,bookingId:options.source.portalBookingId,event:row});
+    else await window.YouziCoursePreviewData.saveSchedule({manualSyncPin:storedMigrationPin(),operationId:options.operationId||uid('schedule'),mode:options.mode||'save',event:row,sourceEventId:options.source&&(options.source.portalBookingId||options.source.sourceId||options.source.id)||'',sourceCourseId:options.source&&options.source.sourceCourseId||'',sourceDate:options.source&&options.source.date||'',repeatUntil:options.repeatUntil||''});
     var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:state.currentDate||todayKey()});
     await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});
     renderCalendar();

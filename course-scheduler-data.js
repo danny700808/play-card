@@ -150,7 +150,7 @@
     }
     return source.map(function(row,index){
       var id=safeId('period',row.id,index),snapshot=planSnapshot(row,feeById),lessons=numberOf(row.lessonCount)||numberOf(snapshot.lessonCount)||4;
-      return {id:id,sourcePaymentId:clean(row.sourcePaymentId||row.paymentId||row.id),studentId:clean(row.studentId),subjectId:clean(row.subjectId),teacherId:clean(row.teacherId),planId:clean(row.planId),periodNo:numberOf(row.periodNo)||index+1,startDate:dateKey(row.startDate||row.created),expiryDate:dateKey(row.expiryDate),lessonCount:lessons,usedCount:numberOf(row.usedCount),voidedLessonCount:numberOf(row.voidedLessonCount),lessonAdjustments:clone(array(row.lessonAdjustments)),expectedAmount:numberOf(row.expectedAmount||row.amount||snapshot.amount),discount:numberOf(row.discount),status:clean(row.status)||'active',note:clean(row.note),transactions:normalizeTransactions(row.transactions,id),planSnapshot:snapshot};
+      return {id:id,sourcePaymentId:clean(row.sourcePaymentId||row.paymentId||row.id),studentId:clean(row.studentId),subjectId:clean(row.subjectId),teacherId:clean(row.teacherId),planId:clean(row.planId),periodNo:numberOf(row.periodNo)||index+1,startDate:dateKey(row.startDate||row.created),expiryDate:dateKey(row.expiryDate),lessonCount:lessons,usedCount:numberOf(row.usedCount),voidedLessonCount:numberOf(row.voidedLessonCount),lessonAdjustments:clone(array(row.lessonAdjustments)),expectedAmount:numberOf(row.expectedAmount!=null&&row.expectedAmount!==''?row.expectedAmount:row.amount!=null?row.amount:snapshot.amount),discount:numberOf(row.discount),status:clean(row.status)||'active',note:clean(row.note),transactions:normalizeTransactions(row.transactions,id),planSnapshot:snapshot};
     });
   }
 

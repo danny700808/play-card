@@ -586,7 +586,7 @@ async function mergeStudentProfileOverrides(rows) {
     const next = Object.assign({}, row);
     const name = clean(override.name);
     const phone = normalizePhone(override.phone);
-    if (name) next.name = name;
+    if (name) { next.identityName = row.identityName || row.name; next.name = name; }
     if (phone || override.managerCreated === true) next.phone = phone;
     if (typeof override.studentActive === 'boolean') next.active = override.studentActive;
     if (typeof override.managerNote === 'string') next.note = override.managerNote;
@@ -899,7 +899,7 @@ async function findPerson(type, name, phone) {
   const wantedName = normalizeName(name);
   const matches = rows.filter((row) =>
     sourceActive(row) &&
-    normalizeName(row.identityName || row.name || row.teacherName || row.studentName) === wantedName &&
+    [row.identityName, row.name || row.teacherName || row.studentName].some(value => normalizeName(value) === wantedName) &&
     phoneMatches(sourcePhone(row), phone)
   );
   if (!matches.length) throw new HttpsError('not-found', '姓名與電話找不到相符資料，請確認輸入內容或請管理者協助。');
@@ -9426,7 +9426,7 @@ async function adminSaveLessonSettings(data) {
   const eventIds = [...new Set([event.id, event.sourceId, event.fixedCourseId, event.seriesId, event.portalChangeId, clean(data.sourceEventId)].filter(Boolean))];
   const id = hash([date, event.fixedCourseId || event.sourceId || event.id].join('|'));
   const ref = db.collection('coursePortalLessonSettings').doc(id), fields = {};
-  let payroll = null;
+  let payroll = null, rentalUpdate = null;
   if (data.kind === 'teacherPay') {
     if (!event.teacherId || event.type === 'rental') throw new HttpsError('invalid-argument', '這不是老師課程。');
     const amount = Number(data.amount), reason = clean(data.reason).slice(0, 200);
@@ -9439,6 +9439,15 @@ async function adminSaveLessonSettings(data) {
       const prior = matches[0], base = Number(prior.baseTeacherAmount ?? (Number(prior.teacherAmount || 0) - Number(prior.teacherPayAdjustment || 0)));
       payroll = { ...prior, id: sourceId(prior), status: 'attended', payrollCalculation: { ...(prior.payrollCalculation || {}), version: 'manager-lesson-adjustment-v1' }, baseTeacherAmount: base, teacherPayAdjustment: amount, teacherPayAdjustmentReason: reason, teacherAmount: Math.max(0, base + amount), updatedAt: FieldValue.serverTimestamp() };
     }
+  } else if (data.kind === 'rentalDetails') {
+    if (event.type !== 'rental' && event.portalAction !== 'room_booking') throw new HttpsError('invalid-argument', '這不是租用紀錄。');
+    const raw = data.event || {};
+    if (dateKey(raw.date) !== date || clean(raw.start || raw.startTime) !== event.startTime || clean(raw.roomId) !== event.roomId || Number(raw.duration || raw.durationMinutes) !== timeMinutes(event.endTime)-timeMinutes(event.startTime)) throw new HttpsError('failed-precondition', '線上租用在此只能修改金額與聯絡資料；變更時段請至租用管理。');
+    try { cents(raw.rentalFee); } catch(error) { throw new HttpsError('invalid-argument',error.message); }
+    fields.clientName = clean(raw.clientName); fields.clientPhone = clean(raw.clientPhone); fields.rentalFee = Number(raw.rentalFee); fields.rentalPaymentStatus = clean(raw.rentalPaymentStatus); fields.note = clean(raw.note).slice(0,2000);
+    if (!fields.clientName) throw new HttpsError('invalid-argument','請填寫租用者。');
+    rentalUpdate = {bookingId:clean(data.bookingId),amount:fields.rentalFee,paymentStatus:fields.rentalPaymentStatus,clientName:fields.clientName,clientPhone:fields.clientPhone,note:fields.note};
+    if (!rentalUpdate.bookingId) throw new HttpsError('invalid-argument','缺少線上租用識別碼。');
   } else if (data.kind === 'rentalStatus') {
     if (event.type !== 'rental' && event.portalAction !== 'room_booking') throw new HttpsError('invalid-argument', '這不是租用紀錄。');
     if (!['attended','scheduled'].includes(clean(data.status))) throw new HttpsError('invalid-argument', '租用簽退狀態無效。');
@@ -9447,9 +9456,16 @@ async function adminSaveLessonSettings(data) {
   } else throw new HttpsError('invalid-argument', '不支援的設定。');
   await db.runTransaction(async tx => {
     const version = await tx.get(scheduleVersionRef()), prior = await tx.get(ref);
+    const bookingRef = rentalUpdate ? db.collection('coursePortalRoomBookings').doc(rentalUpdate.bookingId) : null;
+    const booking = bookingRef ? await tx.get(bookingRef) : null;
+    if (booking && (!booking.exists || booking.data().active === false || !eventIds.includes(rentalUpdate.bookingId) && !eventIds.includes('rental-'+rentalUpdate.bookingId))) throw new HttpsError('failed-precondition','租用資料已變更，請重新載入。');
     assertScheduleWritable(version);
     if (Number(version.data()?.version || 0) !== expectedVersion) throw new HttpsError('aborted', '資料剛剛已更新，請重新載入後再試。');
     tx.set(ref, { id, date, teacherId: event.teacherId, eventIds: [...new Set([...(prior.data()?.eventIds || []), ...eventIds])], fields: { ...(prior.data()?.fields || {}), ...fields }, updatedAt: FieldValue.serverTimestamp() });
+    if (bookingRef) {
+      const update = {...rentalUpdate,updatedAt:FieldValue.serverTimestamp()};delete update.bookingId;tx.set(bookingRef,update,{merge:true});
+      tx.set(db.collection('coursePortalScheduleChanges').doc('rental-'+rentalUpdate.bookingId),{event:{clientName:fields.clientName,clientPhone:fields.clientPhone,rentalFee:fields.rentalFee,paymentStatus:fields.rentalPaymentStatus,note:fields.note},updatedAt:FieldValue.serverTimestamp()},{merge:true});
+    }
     if (payroll) tx.set(db.collection(ATTENDANCE_PAYROLL).doc(payroll.id), payroll, { merge: true });
     tx.set(scheduleVersionRef(), { version: expectedVersion + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-lesson-settings' }, { merge: true });
   });

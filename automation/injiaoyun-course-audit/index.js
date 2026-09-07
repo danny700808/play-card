@@ -17,6 +17,7 @@ const VERSION = '2026.09.07-v5-validated-calendar';
 const RUNS = db.collection('opsInjiaoyunCourseAuditV3Runs');
 
 const SOURCES = [
+  { key: 'student-payment-details', path: '' },
   { key: 'student-payments-all', path: '/students/payments/all' },
   { key: 'student-payments-open', path: '/students/payments/not/finish' },
   { key: 'fixed-course', path: '/fixCourses/', calendar: true },
@@ -693,11 +694,24 @@ async function main() {
     browser = session.browser;
     const sourceResults = {};
 
-    for (const source of SOURCES) {
+    for (const source of SOURCES.filter(source => source.path)) {
       console.log(`讀取 ${source.key} ...`);
       const payload = await apiGet(session.studioId, session.token, source.path, source.key);
       sourceResults[source.key] = recordsFrom(payload);
       console.log(`${source.key}: ${sourceResults[source.key].length}`);
+    }
+
+    const affectedStudents = new Set();
+    const masterFloor = process.env.AUDIT_MASTER_START_DATE || '2026-07-21';
+    for (const row of sourceResults['student-payments-all'] || []) {
+      const dates = [row.created, row.updated, row.startDate, ...(row.payList || []).map(payment => payment.date)];
+      if (dates.some(value => String(value || '').slice(0,10) >= masterFloor)) affectedStudents.add(idOf(row.student));
+    }
+    sourceResults['student-payment-details'] = [];
+    for (const studentId of affectedStudents) {
+      if (!studentId) continue;
+      const payload = await apiGet(session.studioId, session.token, `/students/${encodeURIComponent(studentId)}/payments`, 'student-payment-details');
+      sourceResults['student-payment-details'].push(...recordsFrom(payload).map(row => ({ ...row, student: row.student || studentId })));
     }
 
     console.log('逐日讀取課程日表畫面與實際課務回應 ...');
