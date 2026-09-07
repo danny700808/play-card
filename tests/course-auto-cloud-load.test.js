@@ -81,7 +81,7 @@ assert(runtime.includes('refreshPortalRentals();'), 'inline runtime 沒有更新
 assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), '開頁仍重複還原正式資料');
 assert(runtime.includes('function syncInjiaoyun()'), '完整課表缺少使用者主動同步功能');
 assert(runtime.includes('function eventStudentNames(event)'), 'inline 課表未提供舊姓名顯示備援');
-assert(runtime.includes("eventStudentNames(event).join('、')"), 'inline 課程卡片未使用舊姓名顯示備援');
+assert(runtime.includes("eventStudentNames(event).join('－')"), 'inline 課程卡片未使用舊姓名顯示備援');
 assert(runtime.includes('YouziCoursePreviewData.sync'), '主動同步沒有呼叫音教雲同步元件');
 assert(runtime.includes('function refreshTeacherPayrollMonth(monthKey)'), '老師薪資沒有依月份自動更新');
 assert(runtime.includes('YouziCoursePreviewData.loadTeacherPayrollMonth'), '老師薪資沒有使用月份專用雲端讀取');

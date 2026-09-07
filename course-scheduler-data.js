@@ -408,9 +408,28 @@
     if(!teacherId)throw new Error('缺少老師資料。');
     var result=await courseAdminMutation('coursePortalAdminSaveTeacherSubjects',{
       teacherId:teacherId,
-      subjectIds:unique(options.subjectIds)
+      subjectIds:unique(options.subjectIds),
+      profile:options.profile || null
     },options.manualSyncPin);
     if(!result||result.ok!==true)throw new Error('老師授課科目尚未同步完成。');
+    return result;
+  }
+
+  async function saveStudent(options){
+    var result=await courseAdminMutation('coursePortalAdminSaveStudent',options||{},options&&options.manualSyncPin);
+    if(!result||result.ok!==true)throw new Error('學生資料尚未保存到雲端。');
+    return result;
+  }
+
+  async function saveTuitionPeriods(options){
+    var result=await courseAdminMutation('coursePortalAdminSaveTuitionPeriods',options||{},options&&options.manualSyncPin);
+    if(!result||result.ok!==true)throw new Error('學費期別尚未保存到雲端。');
+    return result;
+  }
+
+  async function recordTuitionTransaction(options){
+    var result=await courseAdminMutation('coursePortalAdminRecordTuitionTransaction',options||{},options&&options.manualSyncPin);
+    if(!result||result.ok!==true)throw new Error('收退款尚未保存到雲端。');
     return result;
   }
 
@@ -549,5 +568,5 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={load:load,loadPublished:loadPublished,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
+  global.YouziCoursePreviewData={load:load,loadPublished:loadPublished,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,recordTuitionTransaction:recordTuitionTransaction,saveTuitionPeriods:saveTuitionPeriods,saveStudent:saveStudent,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);

@@ -232,21 +232,22 @@
           ? { name:'老師姓名', phone:'手機號碼' }
           : (role.id === 'student' ? { name:'學生姓名', phone:'登記電話' } : { name:'姓名', phone:'手機號碼' });
         const relationship = role.id === 'student'
-          ? '<div class="field"><label>與學生的關係</label><select name="relationship"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></div>'
+          ? '<div class="field"><label>與學生的關係<select name="relationship" aria-label="與學生的關係"><option value="本人">本人</option><option value="父親">父親</option><option value="母親">母親</option><option value="其他監護人">其他監護人</option></select></label></div>'
           : '';
         const cancel = cancelAttribute
           ? '<button class="btn soft" type="button" ' + cancelAttribute + '>取消</button>'
           : '';
         return [
-          '<div class="field"><label>', labels.name, '</label><input name="name" autocomplete="name" required></div>',
-          '<div class="field"><label>', labels.phone, '</label><input name="phone" inputmode="tel" autocomplete="tel" required></div>',
-          '<div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>',
+          '<div class="field"><label>', labels.name, '<input aria-label="'+labels.name+'" name="name"  autocomplete="name" required></label></div>',
+          '<div class="field"><label>', labels.phone, '<input aria-label="'+labels.phone+'" name="phone"  inputmode="tel" autocomplete="tel" required></label></div>',
+          '<div class="field"><label>Email<input name="email" type="email" autocomplete="email" required></label></div>',
           relationship,
           '<div class="entry-form-actions"><button class="btn primary" type="submit">', submitLabel, '</button>', cancel, '</div>'
         ].join('');
       }
 
       function renderRoles() {
+        document.getElementById('roleHelp').textContent = method === 'email' ? '換裝置時，使用同一個 Email 接收驗證碼登入。' : '換手機時，使用同一個 LINE 帳號登入即可。';
         const last = lastRole();
         roleIntro.textContent = method === 'email'
           ? '請選擇身分，接著使用 Email 四碼驗證。'

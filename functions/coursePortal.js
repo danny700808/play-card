@@ -7,6 +7,7 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const path = require('path');
 const sharp = require('sharp');
+const { cents, validateTransaction } = require('./courseTuitionLedger');
 const {
   isStudentHistoryDateVisible,
   normalizePhone,
@@ -571,14 +572,21 @@ function sourceActive(row) {
 async function mergeStudentProfileOverrides(rows) {
   const snapshot = await db.collection('coursePortalStudentProfiles').get();
   const overrides = new Map(snapshot.docs.map((doc) => [doc.id, doc.data() || {}]));
-  return rows.map((row) => {
+  const allRows = rows.slice();
+  const known = new Set(rows.map(sourceId));
+  overrides.forEach((profile, id) => {
+    if (!known.has(id) && profile.managerCreated === true && clean(profile.name)) allRows.push({ id });
+  });
+  return allRows.map((row) => {
     const override = overrides.get(sourceId(row));
     if (!override || override.active === false) return row;
     const next = Object.assign({}, row);
     const name = clean(override.name);
     const phone = normalizePhone(override.phone);
     if (name) next.name = name;
-    if (phone) next.phone = phone;
+    if (phone || override.managerCreated === true) next.phone = phone;
+    if (typeof override.studentActive === 'boolean') next.active = override.studentActive;
+    if (typeof override.managerNote === 'string') next.note = override.managerNote;
     return next;
   });
 }
@@ -622,7 +630,7 @@ function mergePortalTuitionRows(rows, portalDocs, transactionDocs, receiptDocs =
     const existing = Array.isArray(period.transactions) ? period.transactions.slice() : [];
     const existingIds = new Set(existing.map((row) => clean(row && row.id)).filter(Boolean));
     const additions = transactions.filter((row) => !existingIds.has(clean(row.id)));
-    const paidAmount = tuitionBasePaidAmount(period) + additions.reduce((sum, row) => sum + transactionAmount(row), 0);
+    const paidAmount = tuitionBasePaidAmount(period) + additions.reduce((sum, row) => sum + (row.type === 'refund' ? 0 : transactionAmount(row)), 0);
     merged.set(periodId, Object.assign({}, period, {
       paidAmount,
       receivedAmount: paidAmount,
@@ -9692,6 +9700,112 @@ async function adminSaveTeacherAdjustment(data) {
   };
 }
 
+async function adminSaveStudent(data) {
+  const id = clean(data.id), name = clean(data.name);
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(id) || !name || name.length > 100) throw new HttpsError('invalid-argument', '請填寫有效的學生資料。');
+  const row = { id, name, phone: normalizePhone(data.phone), studentActive: data.active !== false, managerNote: clean(data.note).slice(0, 2000), managerCreated: true, active: true };
+  await db.runTransaction(async tx => {
+    const versionRef = scheduleVersionRef(), version = await tx.get(versionRef);
+    assertScheduleWritable(version);
+    tx.set(db.collection('coursePortalStudentProfiles').doc(id), Object.assign({}, row, { updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager' }), { merge: true });
+    tx.set(versionRef, { version: Number(version.exists && version.data().version || 0) + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-student' }, { merge: true });
+  });
+  return { ok: true, student: { id, name, phone: row.phone, active: row.studentActive, note: row.managerNote } };
+}
+
+async function adminSaveTuitionPeriods(data) {
+  const input = Array.isArray(data.periods) ? data.periods : [];
+  const operationId = clean(data.operationId);
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(operationId) || !input.length || input.length > 24) throw new HttpsError('invalid-argument', '期別儲存資料不完整。');
+  const students = new Set((await mirrorRows('students')).map(sourceId));
+  const ids = new Set();
+  const rows = input.map(raw => {
+    const id = clean(raw.id);
+    if (!/^[A-Za-z0-9_-]{1,180}$/.test(id) || ids.has(id) || !students.has(clean(raw.studentId))) throw new HttpsError('invalid-argument', '學生或期別識別碼無效。');
+    ids.add(id);
+    const lessonCount = Number(raw.lessonCount);
+    if (!Number.isInteger(lessonCount) || lessonCount < 1 || lessonCount > 1000 || !Number.isInteger(Number(raw.periodNo)) || Number(raw.periodNo) < 1 || !dateKey(raw.startDate)) throw new HttpsError('invalid-argument', '請填寫有效的期數、堂數及開始日期。');
+    try { cents(raw.expectedAmount); cents(raw.discount || 0); } catch(error) { throw new HttpsError('invalid-argument', error.message); }
+    const plan = raw.planSnapshot || {};
+    if (!['ratio', 'fixed', 'none'].includes(clean(plan.splitType)) || !Number.isFinite(Number(plan.splitValue || 0)) || Number(plan.splitValue || 0) < 0) throw new HttpsError('invalid-argument', '請設定老師拆帳方式。');
+    const snapshot = {
+      id: clean(plan.id || raw.planId), name: clean(plan.name), amount: Number(raw.expectedAmount), lessonCount,
+      splitType: clean(plan.splitType), splitValue: Number(plan.splitValue || 0),
+      leaveNoDeduct: plan.leaveNoDeduct !== false, expiryDays: Number(plan.expiryDays || 0), discountType: clean(plan.discountType)
+    };
+    const row = { id, studentId: clean(raw.studentId), teacherId: clean(raw.teacherId), subjectId: clean(raw.subjectId), planId: clean(raw.planId), periodNo: Number(raw.periodNo), startDate: dateKey(raw.startDate), expiryDate: dateKey(raw.expiryDate), lessonCount, expectedAmount: Number(raw.expectedAmount), discount: Number(raw.discount || 0), discountType: clean(raw.discountType || plan.discountType), note: clean(raw.note).slice(0, 2000), planSnapshot: snapshot, active: true };
+    const payments = data.edit === true ? [] : (Array.isArray(raw.transactions) ? raw.transactions : []).map(item => ({ id: clean(item.id), type: 'payment', amount: Number(item.amount), date: dateKey(item.date), method: clean(item.method), note: clean(item.note) }));
+    if (payments.length > 1) throw new HttpsError('invalid-argument', '每一期只能分配一筆本次收款。');
+    payments.forEach(payment => { try { validateTransaction({ transactions: [] }, payment); } catch(error) { throw new HttpsError('invalid-argument', error.message); } });
+    return { row, payments };
+  });
+  const versionRef = scheduleVersionRef();
+  return db.runTransaction(async tx => {
+    const refs = rows.map(item => db.collection(TUITION_PERIODS).doc(item.row.id));
+    const studentIds = [...new Set(rows.map(item => item.row.studentId))];
+    const [version, mirror, portalPeers, ...existing] = await Promise.all([
+      tx.get(versionRef), tx.get(db.collection(MIRROR.tuitionPeriods).where('source.studentId', 'in', studentIds)),
+      tx.get(db.collection(TUITION_PERIODS).where('studentId', 'in', studentIds)),
+      ...refs.map(ref => tx.get(ref))
+    ]);
+    assertScheduleWritable(version);
+    const bases = new Map(mirror.docs.map(doc => [sourceId(doc.data().source), doc.data().source]));
+    const peers = [...bases.values(), ...portalPeers.docs.map(doc => doc.data())];
+    const result = rows.map((item, index) => {
+      const prior = existing[index].exists ? existing[index].data() : bases.get(item.row.id);
+      if (data.edit !== true && prior) {
+        if (prior.creationOperationId !== operationId) throw new HttpsError('already-exists', '期別已存在，請重新載入。');
+        return { id: item.row.id, duplicate: true };
+      }
+      if (data.edit === true && (!prior || clean(prior.studentId) !== item.row.studentId)) throw new HttpsError('failed-precondition', '原期別不存在或學生已變更。');
+      if (data.edit === true) item.row.periodNo = Number(prior.periodNo);
+      else if (peers.some(peer => clean(peer.studentId) === item.row.studentId && Number(peer.periodNo) === item.row.periodNo)) throw new HttpsError('aborted', '其他裝置已建立這一期，請重新載入後再操作。');
+      peers.push(item.row);
+      const record = Object.assign({}, item.row, prior ? {} : { usedCount: 0, status: 'active', transactions: [], paidAmount: 0, creationOperationId: operationId });
+      tx.set(refs[index], Object.assign(record, { updatedAt: FieldValue.serverTimestamp() }), { merge: true });
+      item.payments.forEach(payment => tx.create(db.collection(TUITION_TRANSACTIONS).doc(payment.id), Object.assign({}, payment, { periodId: item.row.id, studentId: item.row.studentId, active: true, status: 'confirmed', source: 'manager-ledger', createdAt: FieldValue.serverTimestamp() })));
+      return { id: item.row.id, duplicate: false };
+    });
+    tx.set(versionRef, { version: Number(version.exists && version.data().version || 0) + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-tuition' }, { merge: true });
+    return { ok: true, periods: result };
+  });
+}
+
+async function adminRecordTuitionTransaction(data) {
+  const periodId = clean(data.periodId);
+  const incoming = {
+    id: clean(data.id), type: clean(data.type), amount: Number(data.amount),
+    date: dateKey(data.date), method: clean(data.method).slice(0, 80), note: clean(data.note).slice(0, 2000)
+  };
+  if (!periodId || periodId.includes('/') || periodId.length > 180 || !incoming.date) throw new HttpsError('invalid-argument', '缺少有效的期別或日期。');
+  try { validateTransaction({ transactions: [{ ...incoming }] }, incoming); } catch (error) { throw new HttpsError('invalid-argument', error.message); }
+  const periodRef = db.collection(TUITION_PERIODS).doc(periodId);
+  const transactionRef = db.collection(TUITION_TRANSACTIONS).doc(incoming.id);
+  const lockRef = db.collection('coursePortalTuitionLedgerLocks').doc(periodId);
+  const versionRef = scheduleVersionRef();
+  return db.runTransaction(async tx => {
+    const [mirror, portal, transactions, lock, version, existing] = await Promise.all([
+      tx.get(db.collection(MIRROR.tuitionPeriods).where('source.id', '==', periodId)),
+      tx.get(periodRef),
+      tx.get(db.collection(TUITION_TRANSACTIONS).where('periodId', '==', periodId)),
+      tx.get(lockRef), tx.get(versionRef), tx.get(transactionRef)
+    ]);
+    assertScheduleWritable(version);
+    if (existing.exists && clean(existing.data().periodId) !== periodId) throw new HttpsError('already-exists', '交易識別碼已存在。');
+    const bases = mirror.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {});
+    const period = mergePortalTuitionRows(bases, portal.exists ? [portal] : [], transactions.docs).find(row => sourceId(row) === periodId);
+    if (!period || period.active === false) throw new HttpsError('not-found', '找不到有效的學費期別。');
+    let checked;
+    try { checked = validateTransaction(period, incoming); } catch (error) { throw new HttpsError('failed-precondition', error.message); }
+    if (checked.duplicate) return { ok: true, duplicate: true, transaction: existing.exists ? jsonValue(existing.data()) : incoming };
+    const record = Object.assign({}, incoming, { periodId, studentId: clean(period.studentId), status: 'confirmed', active: true, source: 'manager-ledger' });
+    tx.create(transactionRef, Object.assign({}, record, { createdAt: FieldValue.serverTimestamp() }));
+    tx.set(lockRef, { revision: Number(lock.exists && lock.data().revision || 0) + 1, updatedAt: FieldValue.serverTimestamp() });
+    tx.set(versionRef, { version: Number(version.exists && version.data().version || 0) + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-ledger' }, { merge: true });
+    return { ok: true, transaction: record };
+  });
+}
+
 async function adminSaveTeacherSubjects(data) {
   const teacherId = clean(data && data.teacherId);
   const selectedSubjectIds = [...new Set(
@@ -9703,7 +9817,15 @@ async function adminSaveTeacherSubjects(data) {
     mirrorRows('subjects')
   ]);
   const teacher = teachers.find((row) => sourceId(row) === teacherId);
-  if (!teacher) throw new HttpsError('not-found', '找不到指定的老師。');
+  const profile = data && data.profile;
+  if (!teacher && !profile) throw new HttpsError('not-found', '找不到指定的老師。');
+  if (teacherId.includes('/') || teacherId.length > 160) throw new HttpsError('invalid-argument', '老師識別碼格式錯誤。');
+  let managerProfile;
+  if (profile) {
+    const name = clean(profile.name);
+    if (!name || name.length > 80) throw new HttpsError('invalid-argument', '請填寫有效的老師姓名。');
+    managerProfile = { name, phone: normalizePhone(profile.phone), active: profile.active !== false, note: clean(profile.note).slice(0, 2000) };
+  }
   const activeSubjectIds = new Set(subjects.filter((row) => row.active !== false)
     .map(sourceId).filter(Boolean));
   const unknown = selectedSubjectIds.filter((id) => !activeSubjectIds.has(id));
@@ -9721,10 +9843,10 @@ async function adminSaveTeacherSubjects(data) {
     const existing = assignmentSnapshot.exists ? assignmentSnapshot.data() || {} : {};
     savedPatch = managerAssignmentPatch(existing, selectedSubjectIds, {
       teacherId,
-      employeeId: clean(teacher.employeeId || teacher.personMasterId),
+      employeeId: clean(teacher && (teacher.employeeId || teacher.personMasterId)),
       nowText: nowText()
     }, FieldValue);
-    tx.set(assignmentRef, Object.assign({}, savedPatch, {
+    tx.set(assignmentRef, Object.assign({}, savedPatch, managerProfile ? { managerProfile } : {}, {
       updatedBy: 'course-scheduler-manager'
     }), { merge: true });
     tx.set(versionRef, {
@@ -9737,6 +9859,7 @@ async function adminSaveTeacherSubjects(data) {
     ok: true,
     teacherId,
     subjectIds: savedPatch.effectiveSubjectIds,
+    teacher: Object.assign({}, teacher || { id: teacherId }, managerProfile || {}, { subjectIds: savedPatch.effectiveSubjectIds }),
     message: '老師可教授科目已同步。'
   };
 }
@@ -11705,6 +11828,7 @@ async function appendCoursePortalData(payload) {
       return merged;
     });
   }
+  if (Array.isArray(payload.students)) payload.students = await mergeStudentProfileOverrides(payload.students);
   const mirrorAttendance = Array.isArray(payload.attendance) ? payload.attendance : [];
   const portalAttendanceRows = portalAttendanceSnapshot.docs.map((doc) =>
     Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
@@ -11974,6 +12098,9 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalAdminSaveRentalSettings = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRentalSettings(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveRoomEquipment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRoomEquipment(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminRecordTuitionTransaction = callable(async (data,request)=>{assertAdminPin(request);return adminRecordTuitionTransaction(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminSaveStudent = callable(async (data,request)=>{assertAdminPin(request);return adminSaveStudent(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalAdminSaveTuitionPeriods = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTuitionPeriods(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveTeacherSubjects = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTeacherSubjects(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveSubjectCatalog = callable(async (data,request)=>{assertAdminPin(request);return adminSaveSubjectCatalog(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveFeePlan = callable(async (data,request)=>{assertAdminPin(request);return adminSaveFeePlan(data);},{secrets:[ADMIN_PIN]});

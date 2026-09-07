@@ -170,11 +170,18 @@ function mergeTeacherRows(baseRows, assignmentDocuments) {
     const teacherId = clean(row && (row.teacherId || row.__id));
     if (teacherId) assignments.set(teacherId, row);
   });
-  return (Array.isArray(baseRows) ? baseRows : []).map((teacher, index) => {
+  const teachers = (Array.isArray(baseRows) ? baseRows : []).slice();
+  const known = new Set(teachers.map((teacher, index) => rowId(teacher, `teacher_${index + 1}`)));
+  assignments.forEach((assignment, id) => {
+    if (!known.has(id) && assignment.managerProfile && clean(assignment.managerProfile.name)) {
+      teachers.push({ id });
+    }
+  });
+  return teachers.map((teacher, index) => {
     const id = rowId(teacher, `teacher_${index + 1}`);
     const assignment = assignments.get(id);
     if (!assignment) return Object.assign({}, teacher, { id });
-    return Object.assign({}, teacher, {
+    return Object.assign({}, teacher, assignment.managerProfile || {}, {
       id,
       subjectIds: effectiveTeacherSubjectIds(assignment),
       subjectAssignmentSource: clean(assignment.source) || 'course-portal-subject-assignment'

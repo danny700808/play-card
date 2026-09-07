@@ -51,7 +51,7 @@ assert(client.includes("loadingMigration=true;operationRunning=true"), '同步�
 assert(dataClient.includes('var usedByPeriod=attendance.reduce'), '扣堂統計未使用一次掃描，資料量大時可能卡頓');
 assert(!dataClient.includes('period.usedCount=attendance.filter'), '不可逐期重掃全部簽到資料');
 assert(client.includes('function eventStudentNames(event)'), '獨立課表未提供舊姓名顯示備援');
-assert(client.includes("eventStudentNames(event).join('、')"), '課程卡片未使用舊姓名顯示備援');
+assert(client.includes("eventStudentNames(event).join('－')"), '課程卡片未使用舊姓名顯示備援');
 
 assert(mirror.includes('Promise.all(['), '課表核對與營運同步未平行執行');
 assert(mirror.includes('ensureInjiaoyunOperationsSync(refreshDate)'), '未整合營運資料同步');

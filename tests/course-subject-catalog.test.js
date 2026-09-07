@@ -193,3 +193,19 @@ test('profile reapproval keeps deliberate manager additions and exclusions', () 
   assert.deepEqual(managerPatch.managerExcludedSubjectIds, ['piano']);
   assert.deepEqual(managerPatch.effectiveSubjectIds, ['guitar', 'vocal']);
 });
+
+
+test('manager-created teachers remain readable without any legacy teacher record', () => {
+  const rows = mergeTeacherRows([], [{ teacherId: 'new-teacher', managerProfile: { name: '新老師', phone: '0912345678', active: true, note: '新增' }, effectiveSubjectIds: ['guitar'] }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'new-teacher');
+  assert.equal(rows[0].name, '新老師');
+  assert.equal(rows[0].phone, '0912345678');
+  assert.deepEqual(rows[0].subjectIds, ['guitar']);
+});
+test('manager updates preserve teacher identity links and explicit inactive status', () => {
+  const rows = mergeTeacherRows([{ id: 'teacher1', name: '舊姓名', employeeId: 'person1' }], [{ teacherId: 'teacher1', managerProfile: { name: '新姓名', phone: '0987654321', active: false } }]);
+  assert.equal(rows[0].name, '新姓名');
+  assert.equal(rows[0].employeeId, 'person1');
+  assert.equal(rows[0].active, false);
+});
