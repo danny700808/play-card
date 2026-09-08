@@ -515,7 +515,7 @@
       return;
     }
     const stickyWidth = global.matchMedia('(max-width: 520px)').matches ? 48 : 58;
-    const dayWidth = Math.max(1, scroll.clientWidth - stickyWidth) / 2;
+    const dayWidth = Math.max(1, scroll.clientWidth - stickyWidth);
     const nav = document.querySelector('.teacher-bottom-tabs');
     const navTop = nav ? nav.getBoundingClientRect().top : global.innerHeight;
     scroll.style.maxHeight = `${Math.max(160, navTop - scroll.getBoundingClientRect().top - 12)}px`;
@@ -530,7 +530,7 @@
     const max = Math.max(0, axis === 'x' ? scroll.scrollWidth-scroll.clientWidth : scroll.scrollHeight-scroll.clientHeight);
     if (axis === 'x') {
       const width = parseFloat(grid.style.getPropertyValue('--teacher-day-width')) || 0;
-      return [...new Set([0, width*2, width*4, max].map(n=>Math.min(max,Math.max(0,n))))];
+      return [...new Set([...Array.from({length:7},(_,i)=>i*width), max].map(n=>Math.min(max,Math.max(0,n))))];
     }
     const row = parseFloat(getComputedStyle(grid).gridAutoRows) || 30;
     const header = grid.querySelector('.week-day-head')?.offsetHeight || row;
@@ -713,8 +713,8 @@
     let html = '<div class="week-cell head week-corner" style="grid-column:1;grid-row:1"></div>';
 
     days.forEach((day, dayIndex) => {
-      const groupStart = dayIndex % 2 === 0 ? ' week-day-group-start' : '';
-      html += `<div class="week-cell head week-day-head${groupStart}" data-today="${day === todayKey()}" data-day-head="${escapeHtml(day)}" data-day-group="${Math.floor(dayIndex / 2)}" style="grid-column:${dayIndex + 2};grid-row:1">${escapeHtml(dayLabel(day))}</div>`;
+      const groupStart = ' week-day-group-start';
+      html += `<div class="week-cell head week-day-head${groupStart}" data-today="${day === todayKey()}" data-day-head="${escapeHtml(day)}" data-day-group="${dayIndex}" style="grid-column:${dayIndex + 2};grid-row:1">${escapeHtml(dayLabel(day))}</div>`;
     });
 
     for (let minute = startHour * 60, slotIndex = 0; minute < endHour * 60; minute += 30, slotIndex += 1) {
@@ -777,7 +777,7 @@
       }
       const todayIndex = days.indexOf(todayKey());
       if (!priorWeek && todayIndex >= 0) {
-        const groupIndex = Math.floor(todayIndex / 2);
+        const groupIndex = todayIndex;
         const groupHead = grid.querySelector(`.week-day-head[data-day-group="${groupIndex}"]`);
         const timeColumn = grid.querySelector('.week-corner');
         const target = groupHead
@@ -1772,7 +1772,7 @@
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       updateWeekViewport();
       const width = Number.parseFloat(document.getElementById('weekGrid').style.getPropertyValue('--teacher-day-width')) || 0;
-      weekViewport.scrollLeft = Math.min(Math.floor(weekday / 2) * 2 * width, Math.max(0, weekViewport.scrollWidth - weekViewport.clientWidth));
+      weekViewport.scrollLeft = Math.min(weekday * width, Math.max(0, weekViewport.scrollWidth - weekViewport.clientWidth));
       const nowParts = new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date()).split(':');
       const minute = Number(nowParts[0])*60+Number(nowParts[1]);
       const rowHeight = parseFloat(getComputedStyle(document.getElementById('weekGrid')).gridAutoRows) || 30;
@@ -1912,6 +1912,9 @@
     const id = add ? add.dataset.irregularAdd : resume && resume.dataset.irregularResume;
     const row = (data.irregularCourses || []).find(item => item.id === id);
     if (!row) return;
+    document.getElementById('irregularCourses').hidden = true;
+    document.getElementById('irregularToggle').setAttribute('aria-expanded', 'false');
+    updateWeekViewport();
     if (add) beginAddFlow('extra_lesson', {studentIds:row.studentIds,subjectId:row.subjectId});
     else await startSourceMove({...row.source, studentNames:studentNamesByIds(row.studentIds),date:todayKey(),status:'scheduled',irregularId:row.id}, 'permanent_move');
   });
