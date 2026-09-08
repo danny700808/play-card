@@ -25,7 +25,7 @@ assert(source.includes('addDays(weekStart, direction * 7)') && source.includes('
 assert(html.includes('data-two-day-viewport'), '手機課表缺少兩日檢視容器');
 assert(source.includes('scroll.clientWidth - stickyWidth') && source.includes('/ 2'), '手機課表未依可視寬度配置兩日欄');
 assert(source.includes("dayIndex % 2 === 0 ? ' week-day-group-start'"), '課表未標示兩日群組起點');
-assert(source.includes('const targets = [0, dayWidth * 2, dayWidth * 4, maxScroll]'), '課表滑動未限制於兩日群組邊界');
+assert(source.includes('[0, width*2, width*4, max]'), '課表滑動未限制於兩日群組邊界');
 assert(source.includes("addEventListener('scrollend', snapWeekScrollToGroup)"), '課表滑動結束後未校正至兩日群組');
 assert(source.includes('Math.floor(todayIndex / 2)'), '第一次載入未聚焦今天所在的兩日群組');
 assert(source.includes('if (!priorWeek && todayIndex >= 0)'), '只有第一次載入才能自動聚焦今天');
@@ -83,8 +83,8 @@ assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') 
 assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop','teacherAnnouncementBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.css?v=20260908-login-notice-fix-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260908-login-notice-fix-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260908-swipe-pages-v1'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260908-swipe-pages-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');
@@ -130,4 +130,19 @@ console.log('teacher course portal mobile tests passed');
   assert(notice.textContent.includes(previousLoginAtText || '首次'));
   assert.equal(rendered,8);assert.equal(bound,true);
  }
+}
+
+{
+ const start=source.indexOf('  let weekGesture = null;'),end=source.indexOf('  function uniqueEvents',start);
+ const viewport={scrollWidth:1100,clientWidth:350,scrollHeight:850,clientHeight:400};
+ const grid={parentElement:viewport,style:{getPropertyValue:()=>150},querySelector:()=>({offsetHeight:40})};
+ const ctx={document:{getElementById:()=>grid},getComputedStyle:()=>({gridAutoRows:'30px'})};
+ vm.createContext(ctx);vm.runInContext(source.slice(start,end),ctx);
+ assert.deepEqual(Array.from(ctx.weekPageTargets('x')),[0,300,600,750]);
+ const y=Array.from(ctx.weekPageTargets('y'));assert.deepEqual(y,[0,300,450]);
+ assert.equal(ctx.nextWeekPage(y,0,-90),300);
+ assert.equal(ctx.nextWeekPage(y,300,90),0);
+ assert.equal(ctx.nextWeekPage(y,0,-15),0);
+ assert.equal(ctx.nextWeekPage(y,450,-100),450);
+ assert.equal(ctx.nextWeekPage([0,300,600,750],750,-100),750);
 }

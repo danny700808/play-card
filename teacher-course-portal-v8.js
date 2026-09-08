@@ -523,27 +523,41 @@
     grid.style.setProperty('--teacher-day-width', `${dayWidth}px`);
   }
 
-  function snapWeekScrollToGroup() {
-    const grid = document.getElementById('weekGrid');
-    const scroll = grid && grid.parentElement;
-    const mobile = global.matchMedia && global.matchMedia('(max-width: 760px)').matches;
-    const dayWidth = Number.parseFloat(grid && grid.style.getPropertyValue('--teacher-day-width'));
-    if (!grid || !scroll || !mobile || !Number.isFinite(dayWidth) || dayWidth <= 0) return;
-    const maxScroll = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-    const targets = [0, dayWidth * 2, dayWidth * 4, maxScroll]
-      .map((value) => Math.min(maxScroll, Math.max(0, value)))
-      .filter((value, index, rows) => index === 0 || Math.abs(value - rows[index - 1]) > 1);
-    const target = targets.reduce((nearest, value) => (
-      Math.abs(value - scroll.scrollLeft) < Math.abs(nearest - scroll.scrollLeft) ? value : nearest
-    ), targets[0] || 0);
-    if (Math.abs(target - scroll.scrollLeft) > 1) {
-      scroll.scrollTo({ left: target, behavior: 'smooth' });
+  let weekGesture = null;
+  let suppressWeekClickUntil = 0;
+  function weekPageTargets(axis) {
+    const grid = document.getElementById('weekGrid'), scroll = grid.parentElement;
+    const max = Math.max(0, axis === 'x' ? scroll.scrollWidth-scroll.clientWidth : scroll.scrollHeight-scroll.clientHeight);
+    if (axis === 'x') {
+      const width = parseFloat(grid.style.getPropertyValue('--teacher-day-width')) || 0;
+      return [...new Set([0, width*2, width*4, max].map(n=>Math.min(max,Math.max(0,n))))];
     }
+    const row = parseFloat(getComputedStyle(grid).gridAutoRows) || 30;
+    const header = grid.querySelector('.week-day-head')?.offsetHeight || row;
+    const step = Math.max(row*2, Math.floor((scroll.clientHeight-header-row*2)/(row*2))*row*2);
+    const targets = [0];
+    for(let n=step;n<max;n+=step) targets.push(n);
+    if(max) targets.push(max);
+    return targets;
   }
-
+  function nearestWeekPage(targets, position) {
+    return targets.reduce((best,n)=>Math.abs(n-position)<Math.abs(best-position)?n:best,0);
+  }
+  function nextWeekPage(targets, position, delta) {
+    const current = nearestWeekPage(targets,position), index = targets.indexOf(current);
+    if(Math.abs(delta)<35) return current;
+    return targets[Math.max(0,Math.min(targets.length-1,index+(delta<0?1:-1)))];
+  }
+  function snapWeekScrollToGroup() {
+    if (weekGesture || !global.matchMedia('(max-width: 760px)').matches) return;
+    const scroll = document.getElementById('weekGrid').parentElement;
+    const left = nearestWeekPage(weekPageTargets('x'),scroll.scrollLeft);
+    const top = nearestWeekPage(weekPageTargets('y'),scroll.scrollTop);
+    if(Math.abs(left-scroll.scrollLeft)>1 || Math.abs(top-scroll.scrollTop)>1) scroll.scrollTo({left,top,behavior:global.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+  }
   function scheduleWeekGroupSnap() {
     global.clearTimeout(weekSnapTimer);
-    weekSnapTimer = global.setTimeout(snapWeekScrollToGroup, 140);
+    if(!weekGesture) weekSnapTimer = global.setTimeout(snapWeekScrollToGroup, 180);
   }
 
   function uniqueEvents(rows) {
@@ -1786,6 +1800,33 @@
       indicator.removeAttribute('aria-busy');
     }
   }
+  weekViewport.addEventListener('touchstart', event => {
+    if(!global.matchMedia('(max-width: 760px)').matches || event.touches.length!==1) {weekGesture=null;return;}
+    global.clearTimeout(weekSnapTimer);
+    const point=event.touches[0];
+    weekGesture={x:point.clientX,y:point.clientY,left:weekViewport.scrollLeft,top:weekViewport.scrollTop,axis:null,delta:0};
+  },{passive:true});
+  weekViewport.addEventListener('touchmove', event => {
+    if(!weekGesture || event.touches.length!==1) {weekGesture=null;return;}
+    const dx=event.touches[0].clientX-weekGesture.x,dy=event.touches[0].clientY-weekGesture.y;
+    if(!weekGesture.axis && Math.max(Math.abs(dx),Math.abs(dy))<10) return;
+    if(!weekGesture.axis) weekGesture.axis=Math.abs(dx)>Math.abs(dy)?'x':'y';
+    event.preventDefault();
+    weekGesture.delta=weekGesture.axis==='x'?dx:dy;
+    weekViewport.scrollLeft=weekGesture.left-(weekGesture.axis==='x'?dx:0);
+    weekViewport.scrollTop=weekGesture.top-(weekGesture.axis==='y'?dy:0);
+  },{passive:false});
+  function finishWeekGesture(cancelled) {
+    const gesture=weekGesture;weekGesture=null;
+    if(!gesture || !gesture.axis) return;
+    suppressWeekClickUntil=Date.now()+400;
+    const axis=gesture.axis, position=axis==='x'?gesture.left:gesture.top;
+    const target=nextWeekPage(weekPageTargets(axis),position,cancelled?0:gesture.delta);
+    weekViewport.scrollTo({left:axis==='x'?target:gesture.left,top:axis==='y'?target:gesture.top,behavior:global.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+  }
+  weekViewport.addEventListener('touchend',()=>finishWeekGesture(false));
+  weekViewport.addEventListener('touchcancel',()=>finishWeekGesture(true));
+  weekViewport.addEventListener('click',event=>{if(Date.now()<suppressWeekClickUntil){event.preventDefault();event.stopImmediatePropagation();}},{capture:true});
   weekViewport.addEventListener('scroll', scheduleWeekGroupSnap, { passive: true });
   weekViewport.addEventListener('scrollend', snapWeekScrollToGroup);
   global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));
