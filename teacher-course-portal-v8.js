@@ -830,6 +830,14 @@
     document.getElementById('studentStopModal').classList.add('hidden');
   }
 
+  function payrollShareLabel(row) {
+    if (row.splitType === 'fixed' || Number(row.hourlyFee) > 0) return `${money(row.hourlyFee || row.splitValue || 0)}/堂`;
+    const raw = [row.rate, row.shareRate, row.allotRate, row.percentage, row.splitType === 'ratio' ? row.splitValue : null].find(value => value !== undefined && value !== null && value !== '');
+    if (raw === undefined) return '—';
+    const number = Number(raw);
+    return Number.isFinite(number) ? `${Math.round((Math.abs(number) <= 1 ? number * 100 : number) * 100) / 100}%` : clean(raw);
+  }
+
   function renderPayroll() {
     const rows = data.payroll || [];
     const adjustments = data.adjustments || [];
@@ -842,8 +850,8 @@
       date: valueOf(row, ['date','courseDate','lessonDate'], payrollMonth),
       name: valueOf(row, ['studentName','subjectName'], '課堂'),
       subject: valueOf(row, ['subjectName','courseName']),
-      collected: Number(valueOf(row, ['tuitionAmount','courseAmount','feeAmount','receivedAmount','expectedAmount'], 0)),
-      rate: valueOf(row, ['rate','shareRate','allotRate','percentage'], '依方案'),
+      collected: valueOf(row, ['lessonPrice','tuitionAmount','courseAmount','feeAmount'], null),
+      rate: payrollShareLabel(row),
       amount: Number(valueOf(row, ['teacherAmount','amount','payAmount'], 0))
     })).concat(adjustments.map((row) => {
       const type = clean(valueOf(row, ['type'], 'adjustment')).toLowerCase();
@@ -866,7 +874,7 @@
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(item);
     });
-    document.getElementById('payrollList').innerHTML = [...groups.entries()].map(([date, dayRows]) => `<section class="payroll-day"><h3>${escapeHtml(date)}</h3>${dayRows.map((row) => `<article class="list-row payroll-row"><strong>${escapeHtml(row.name)}</strong><span>${escapeHtml(row.subject || (row.kind === 'lesson' ? '課堂' : '調整'))}</span><span>${row.kind === 'lesson' ? `收費 ${money(row.collected)}・分成 ${escapeHtml(row.rate)}` : '獎勵／扣款'}</span><strong>老師所得 ${money(row.amount)}</strong><span class="badge ${row.kind === 'adjustment' ? 'warn' : ''}">${row.kind === 'lesson' ? '課堂' : '調整'}</span></article>`).join('')}</section>`).join('') || '<p class="muted">這個月份目前沒有薪資資料。</p>';
+    document.getElementById('payrollList').innerHTML = [...groups.entries()].map(([date, dayRows]) => `<section class="payroll-day"><h3>${escapeHtml(date)}</h3><table class="payroll-lines"><thead><tr><th scope="col">姓名</th><th scope="col">收費</th><th scope="col">分成</th><th scope="col">所得</th></tr></thead><tbody>${dayRows.map((row) => `<tr><th scope="row">${escapeHtml(row.name)}${row.kind === 'adjustment' ? `<small>${escapeHtml(row.subject)}</small>` : ''}</th><td>${row.kind === 'lesson' && row.collected !== null ? money(row.collected) : '—'}</td><td>${escapeHtml(row.rate)}</td><td class="payroll-income">${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>`).join('') || '<p class="muted">這個月份目前沒有薪資資料。</p>';
   }
 
   function renderAll() {
