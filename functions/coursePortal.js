@@ -7844,7 +7844,8 @@ async function studentPortalData(data) {
         studentId: clean(row.studentId),
         relationship: clean(row.relationship),
         reminderLastLesson: row.reminderLastLesson !== false,
-        reminderPayment: row.reminderPayment !== false
+        reminderPayment: row.reminderPayment !== false,
+        reminderContactBook: row.reminderContactBook !== false
       };
     }),
     // 每科目保留全部欠費及最近兩期已繳清；完整期別查詢由共用課程紀錄提供。
@@ -7969,6 +7970,7 @@ async function updateStudentReminder(data) {
   targets.forEach((row) => batch.set(row.__ref, {
     reminderLastLesson: data.reminderLastLesson !== false,
     reminderPayment: data.reminderPayment !== false,
+    ...(Object.hasOwn(data, 'reminderContactBook') ? {reminderContactBook:data.reminderContactBook !== false} : {}),
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true }));
   await batch.commit();
@@ -12800,6 +12802,24 @@ function parseContactBookImages(values) {
   });
 }
 
+async function queueStudentContactBookNotices(studentIds, postId) {
+  for (const studentId of [...new Set(studentIds)]) {
+    const snapshot = await db.collection('coursePortalStudentBindings').where('studentId', '==', studentId).get();
+    const targets = new Map();
+    snapshot.docs.forEach(doc => {
+      const row = doc.data() || {};
+      if (clean(row.status) === 'active' && clean(row.lineUserId) && row.reminderContactBook !== false) targets.set(clean(row.lineUserId), row);
+    });
+    await Promise.all([...targets].map(([lineUserId, binding]) => queueCoursePortalNotice(
+      `course-contact-book-${postId}-${studentId}-${hash(lineUserId)}`,
+      { eventCode:'contact_book_posted', targetLineUserId:lineUserId, studentId,
+        targetName:clean(binding.name) || '學生／家長', title:'課堂聯絡簿有新內容',
+        body:'老師已新增課堂聯絡簿內容或照片，請登入學生／家長入口查看。',
+        text:'老師已新增課堂聯絡簿內容或照片，請登入學生／家長入口查看。' }
+    )));
+  }
+}
+
 async function teacherSubmitContactBookPost(data) {
   const session = await requireSession(data, ['teacher']);
   const text = clean(data.text);
@@ -12833,12 +12853,8 @@ async function teacherSubmitContactBookPost(data) {
     });
     return ref.id;
   }));
-  await Promise.all(studentIds.map((studentId) => queueCoursePortalNotice(
-    `course-contact-book-${postId}-${studentId}`,
-    { eventCode: 'contact_book_posted', target: 'student', targetRole: 'student', studentId,
-      title: '課堂聯絡簿有新內容', body: '老師已新增課堂聯絡簿，請登入學生入口查看。', text: '老師已新增課堂聯絡簿，請登入學生入口查看。' }
-  )));
-  return { ok: true, ids: rows, message: '課堂聯絡簿已送出給家長。' };
+  await queueStudentContactBookNotices(studentIds, postId);
+  return { ok: true, ids: rows, message: '課堂聯絡簿已儲存，將依家長的提醒設定發送通知。' };
 }
 
 async function studentContactBookImage(data) {
