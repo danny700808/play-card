@@ -29,6 +29,7 @@
 
   let token = '';
   let weekStart = monday();
+  let payrollQueryVersion = 0;
   let payrollMonth = monthKey() < PAYROLL_MIN_MONTH ? PAYROLL_MIN_MONTH : monthKey();
   let activeTab = 'schedule';
   let data = emptyData();
@@ -890,6 +891,14 @@
   }
 
   async function fetchData(force) {
+    if (activeTab === 'payroll') {
+      const queryVersion = ++payrollQueryVersion;
+      const result = await invoke('coursePortalTeacherData', {sessionToken:token, weekStart, month:payrollMonth, includePayroll:true, payrollOnly:true});
+      if (queryVersion !== payrollQueryVersion) return;
+      mergeData(result);
+      renderPayroll();
+      return;
+    }
     const request = {
       sessionToken: token,
       weekStart,
@@ -944,6 +953,7 @@
     const panel = document.querySelector(`[data-panel="${activeTab}"]`);
     if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (activeTab === 'schedule') requestAnimationFrame(updateWeekViewport);
+    if (activeTab === 'payroll') load(false);
   }
 
   function openMore() {

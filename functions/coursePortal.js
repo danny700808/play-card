@@ -4666,16 +4666,36 @@ function verifiedScheduleDates(settings) {
     .flatMap(value => Array.isArray(value) ? value : []).map(dateKey).filter(Boolean));
 }
 
-async function scheduleBundle(startDate, endDate, ownTeacherId) {
+async function historyStudentEvents(studentId, startDate, endDate) {
+  const groups = await readCourseGroups();
+  const group = groups.find(row => row.active !== false && row.id === studentId);
+  const ids = [...new Set([studentId, ...(group && group.memberIds || [])])];
+  const snapshots = await Promise.all(ids.flatMap(id => [
+    db.collection(MIRROR.events).where('source.studentIds', 'array-contains', id).get(),
+    db.collection(MIRROR.events).where('source.studentId', '==', id).get()
+  ]));
+  const rows = new Map();
+  for (const snapshot of snapshots) for (const doc of snapshot.docs) {
+    const envelope = doc.data(), source = jsonValue(envelope.source) || {};
+    if (eventDate(source) < startDate || eventDate(source) > endDate) continue;
+    rows.set(doc.id, {...source, __id:doc.id, __mirrorActive:envelope.sourceActive !== false,
+      __mirrorUpdatedAt:asMillis(envelope.sourceUpdatedAt || envelope.updatedAt)});
+  }
+  return projectCourseGroups('events', [...rows.values()], groups);
+}
+
+async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
+  const historyStudentId = clean(options.historyStudentId);
+  const historyCourses = rows => historyStudentId ? rows.filter(row => eventStudentIds(row).includes(historyStudentId)) : rows;
   const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions, mirrorSettingsSnapshot] = await Promise.all([
     mirrorRows('rooms'),
     mirrorRows('subjects'),
     mirrorRows('students'),
     mirrorRows('teachers'),
-    mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true }),
-    mirrorRows('fixedCourses'),
-    mirrorRowsByDateRange('temporaryCourses', startDate, endDate),
-    mirrorRowsByDateRange('roomRentals', startDate, endDate),
+    historyStudentId ? historyStudentEvents(historyStudentId, startDate, endDate) : mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true }),
+    mirrorRows('fixedCourses').then(historyCourses),
+    mirrorRowsByDateRange('temporaryCourses', startDate, endDate).then(historyCourses),
+    historyStudentId ? Promise.resolve([]) : mirrorRowsByDateRange('roomRentals', startDate, endDate),
     scheduleChangeDocsByDateRange(startDate, endDate),
     activeStudentSuspensions(),
     db.collection('opsSettings').doc('injiaoyunEducationMirror').get()
@@ -5025,8 +5045,13 @@ async function teacherPortalData(data) {
   if (!start) throw new HttpsError('invalid-argument', '週起始日期格式錯誤。');
   const end = addDays(start, 6);
   const month = clean(data.month).match(/^\d{4}-\d{2}$/) ? clean(data.month) : start.slice(0, 7);
-  if (data.includePayroll === true && month < TEACHER_PAYROLL_MIN_MONTH) {
+  if ((data.includePayroll === true || data.payrollOnly === true) && month < TEACHER_PAYROLL_MIN_MONTH) {
     throw new HttpsError('failed-precondition', '老師薪資查詢僅開放民國 115 年 7 月起的資料。');
+  }
+  if (data.payrollOnly === true) {
+    const monthly = await teacherPayrollMonthData(month);
+    return {ok:true, payroll:monthly.teacherPayroll.filter(row => eventTeacherId(row) === session.teacherId),
+      adjustments:monthly.teacherAdjustments.filter(row => eventTeacherId(row) === session.teacherId)};
   }
   const [bundle, roomSettingsSnapshot, attendanceCancellationSnapshot] = await Promise.all([
     scheduleBundle(start, end, session.teacherId),
@@ -7528,7 +7553,7 @@ async function courseLessonHistory(data) {
     mirrorRowsByField('tuitionPeriods', 'studentId', studentId),
     mirrorRowsByField('attendance', 'studentId', studentId),
     portalAttendanceForStudents([studentId]), mirrorRows('subjects'), mirrorRows('teachers'),
-    scheduleBundle(COURSE_HISTORY_MIN_DATE, today, session.role === 'teacher' ? session.teacherId : ''),
+    scheduleBundle(COURSE_HISTORY_MIN_DATE, today, session.role === 'teacher' ? session.teacherId : '', {historyStudentId:studentId}),
     mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')
   ]);
   const courses = [...historyFixedCourses, ...historyTemporaryCourses, ...bundle.fixedCourses, ...bundle.temporaryCourses];

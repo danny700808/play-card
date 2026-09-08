@@ -18,12 +18,12 @@
       const paid = period.outstandingAmount <= 0;
       const payments = period.transactions.filter(row => row.type !== 'refund');
       const lastPayment = payments.slice().reverse().find(row => row.date);
-      return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${period.systemPeriodNo || period.periodNo} 期 · ${esc(period.subjectName || '課程')}</strong><small>已用 ${period.usedCount} / ${period.lessonCount} 堂</small></div><div class="period-payment ${paid ? 'paid' : 'unpaid'}"><div class="period-payment-amount"><span>本期學費</span><strong>${Number(period.expectedAmount).toLocaleString('zh-TW')}</strong><small>實收 ${money(period.paidAmount)}</small></div><div class="period-payment-state"><span class="badge ${paid ? '' : 'danger'}">${paid ? '已繳費' : period.paidAmount > 0 ? '部分繳費' : '尚未繳費'}</span>${!paid ? `<small>尚欠 ${money(period.outstandingAmount)}</small>` : ''}${lastPayment ? `<small>繳費日期：${esc(lastPayment.date)}</small>` : ''}</div></div></div>${period.partialHistory ? '<p class="history-warning">本期 7/21 之前紀錄未完整承接，請至實體上課證查詢。</p>' : ''}<div class="lesson-slot-grid">${slots}</div></article>`;
+      return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>第 ${period.systemPeriodNo || period.periodNo} 期 · ${esc(period.subjectName || '課程')}</strong><small>已用 ${period.usedCount} / ${period.lessonCount} 堂</small></div><div class="period-payment ${paid ? 'paid' : 'unpaid'}"><div class="period-payment-amount"><span>本期學費</span><strong>${Number(period.expectedAmount).toLocaleString('zh-TW')}</strong><small>實收 ${money(period.paidAmount)}</small></div><div class="period-payment-state"><span class="badge ${paid ? '' : 'danger'}">${paid ? '已繳費' : period.paidAmount > 0 ? '部分繳費' : '尚未繳費'}</span>${!paid ? `<small>尚欠 ${money(period.outstandingAmount)}</small>` : ''}${lastPayment ? `<small>繳費日期：${esc(lastPayment.date)}</small>` : ''}</div></div></div>${period.partialHistory ? '<p class="history-warning">本期 7/21 之前紀錄未完整承接，請至實體上課證查詢。</p>' : ''}<div class="lesson-slot-grid">${slots}</div></article>`;
     }
     function render() {
       const rows = payload.periods.filter(row => row.subjectId === subject);
-      const due = rows.filter(row => row.outstandingAmount > 0), paid = rows.filter(row => row.outstandingAmount <= 0);
-      cards.innerHTML = `${due.length ? '<h3>尚未繳清 · 全部顯示</h3>' + due.map((row, i) => card(row, i === 0)).join('') : ''}${paid.length ? `<h3>${payload.fromDate ? '歷史已繳清紀錄' : '最近已繳清 · 最多兩期'}</h3>` + paid.map((row, i) => card(row, i === 0)).join('') : ''}` || '<p>此科目目前沒有期別紀錄。</p>';
+      rows.sort((a,b) => String(b.startDate || '').localeCompare(String(a.startDate || '')) || Number(b.systemPeriodNo || b.periodNo) - Number(a.systemPeriodNo || a.periodNo));
+      cards.innerHTML = rows.map(card).join('') || '<p>此科目目前沒有期別紀錄。</p>';
       if (typeof options.onSubjectChange === 'function') options.onSubjectChange(subject);
     }
     async function load(fromDate) {

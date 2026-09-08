@@ -133,3 +133,10 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-course-app .payroll-lines .payroll-income{font-weight:700;color:#205a49}
 .teacher-course-app .payroll-day{margin-top:16px}
 .teacher-course-app .payroll-day h3{margin:0 0 5px;font-size:14px}
+
+/* Keep scrolling inside the app so iOS browser chrome cannot strand the tab bar mid-page. */
+@media(max-width:760px){
+ html:has(body.teacher-course-app){height:100%;overflow:hidden}
+ body.teacher-course-app{height:100dvh;overflow:hidden;padding-bottom:0}
+ .teacher-course-app .portal-shell{box-sizing:border-box;height:100%;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:calc(90px + env(safe-area-inset-bottom))}
+}
