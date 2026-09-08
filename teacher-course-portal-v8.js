@@ -1764,16 +1764,15 @@
     activateTab('schedule');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
-  document.getElementById('prevWeek').addEventListener('click', () => navigateTeacherWeek(-1, false));
-  document.getElementById('nextWeek').addEventListener('click', () => navigateTeacherWeek(1, false));
+  document.getElementById('prevWeek').addEventListener('click', () => navigateTeacherWeek(-1));
+  document.getElementById('nextWeek').addEventListener('click', () => navigateTeacherWeek(1));
   document.getElementById('rosterSearch').addEventListener('input', (event) => {
     rosterQuery = clean(event.target.value);
     renderRoster();
   });
   const weekViewport = document.querySelector('[data-two-day-viewport]');
-  let edgeGesture = null;
   let changingWeek = false;
-  async function navigateTeacherWeek(direction, edge) {
+  async function navigateTeacherWeek(direction) {
     if (changingWeek) return;
     changingWeek = true;
     const buttons = ['prevWeek', 'nextWeek'].map(id => document.getElementById(id));
@@ -1787,7 +1786,7 @@
       const moving = planner && planner.mode === 'move' ? { source: planner.source, action: planner.action } : null;
       await load(true);
       if (moving) await startSourceMove(moving.source, moving.action);
-      weekViewport.scrollLeft = edge && direction < 0 ? weekViewport.scrollWidth - weekViewport.clientWidth : 0;
+      weekViewport.scrollLeft = 0;
       weekViewport.scrollTop = top;
     } finally {
       changingWeek = false;
@@ -1796,21 +1795,6 @@
       indicator.removeAttribute('aria-busy');
     }
   }
-  weekViewport.addEventListener('touchstart', event => {
-    if (event.touches.length !== 1 || changingWeek) { edgeGesture = null; return; }
-    const point = event.touches[0];
-    edgeGesture = { x: point.clientX, y: point.clientY, left: weekViewport.scrollLeft <= 2,
-      right: weekViewport.scrollLeft >= weekViewport.scrollWidth - weekViewport.clientWidth - 2 };
-  }, { passive: true });
-  weekViewport.addEventListener('touchend', async event => {
-    const gesture = edgeGesture; edgeGesture = null;
-    if (!gesture || changingWeek || !event.changedTouches.length) return;
-    const point = event.changedTouches[0], dx = point.clientX - gesture.x, dy = point.clientY - gesture.y;
-    if (Math.abs(dx) < 65 || Math.abs(dx) <= Math.abs(dy) * 1.4) return;
-    const direction = gesture.right && dx < 0 ? 1 : gesture.left && dx > 0 ? -1 : 0;
-    if (!direction) return;
-    await navigateTeacherWeek(direction, true);
-  }, { passive: true });
   weekViewport.addEventListener('scroll', scheduleWeekGroupSnap, { passive: true });
   weekViewport.addEventListener('scrollend', snapWeekScrollToGroup);
   global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));
