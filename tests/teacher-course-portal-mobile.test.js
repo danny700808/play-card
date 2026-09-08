@@ -83,8 +83,8 @@ assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') 
 assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop','teacherAnnouncementBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.css?v=20260908-swipe-pages-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260908-swipe-pages-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260908-compact-controls-v1'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260908-compact-controls-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');
@@ -121,14 +121,14 @@ console.log('teacher course portal mobile tests passed');
 
 // Login notices must render without the removed navigation, for both login paths.
 {
- const start = source.indexOf('  function renderAll() {');
+ const start = source.indexOf("  let shownLoginNotice = '';");
  const end = source.indexOf('  let dataRequestVersion', start);
  for (const previousLoginAtText of ['', '2026/09/08 09:05']) {
-  let notice, rendered = 0, bound = false;
-  const ctx = {data:{loginNotice:{loginAtText:'2026/09/08 10:00',previousLoginAtText}},document:{getElementById:id=>id==='appView'?{prepend:node=>{notice=node;}}:notice,createElement:()=>({})},renderWeek:()=>rendered++,renderRoster:()=>rendered++,renderIrregularCourses:()=>rendered++,renderPayroll:()=>rendered++,showBound:value=>bound=value};
+  let notice, rendered = 0, bound = false, inserted=0; const timers=[];
+  const ctx = {global:{setTimeout:(fn,ms)=>timers.push({fn,ms})},data:{loginNotice:{loginAtText:'2026/09/08 10:00',previousLoginAtText}},document:{body:{appendChild:node=>{notice=node;inserted++;}},getElementById:()=>notice,createElement:()=>({setAttribute(){},classList:{add(){}},remove(){}})},renderWeek:()=>rendered++,renderRoster:()=>rendered++,renderIrregularCourses:()=>rendered++,renderPayroll:()=>rendered++,showBound:value=>bound=value};
   vm.createContext(ctx);vm.runInContext(source.slice(start,end)+';renderAll();renderAll();',ctx);
   assert(notice.textContent.includes(previousLoginAtText || '首次'));
-  assert.equal(rendered,8);assert.equal(bound,true);
+  assert.equal(rendered,8);assert.equal(bound,true);assert.equal(inserted,1);assert.deepEqual(timers.map(t=>t.ms),[2000,2400]);
  }
 }
 
@@ -145,4 +145,18 @@ console.log('teacher course portal mobile tests passed');
  assert.equal(ctx.nextWeekPage(y,0,-15),0);
  assert.equal(ctx.nextWeekPage(y,450,-100),450);
  assert.equal(ctx.nextWeekPage([0,300,600,750],750,-100),750);
+}
+
+{
+ const handlers={},viewport={scrollLeft:0,scrollTop:0,addEventListener:(name,fn)=>handlers[name]=fn,scrollTo:()=>{}};
+ const ctx={weekViewport:viewport,weekGesture:null,weekSnapTimer:0,suppressWeekClickUntil:0,Date,global:{matchMedia:()=>({matches:true}),clearTimeout(){}},weekPageTargets:()=>[0,300],nextWeekPage:()=>300};
+ vm.createContext(ctx);
+ vm.runInContext(source.slice(source.indexOf("  weekViewport.addEventListener('touchstart'"),source.indexOf("  weekViewport.addEventListener('scroll',")),ctx);
+ handlers.touchstart({touches:[{clientX:200,clientY:200}]});
+ let prevented=0;
+ handlers.touchmove({touches:[{clientX:120,clientY:205}],preventDefault:()=>prevented++});
+ assert.equal(viewport.scrollLeft,80);assert.equal(viewport.scrollTop,0);
+ handlers.touchend({cancelable:true,preventDefault:()=>prevented++});
+ let stopped=0;handlers.click({preventDefault:()=>prevented++,stopImmediatePropagation:()=>stopped++});
+ assert.equal(prevented,3);assert.equal(stopped,1);
 }

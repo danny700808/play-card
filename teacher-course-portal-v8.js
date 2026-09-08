@@ -895,16 +895,25 @@
 
   function renderIrregularCourses() {
     const rows = data.irregularCourses || [];
-    document.getElementById('irregularCourses').hidden = !rows.length;
+    document.getElementById('irregularToggle').disabled = !rows.length;
+    if (!rows.length) {document.getElementById('irregularCourses').hidden=true;document.getElementById('irregularToggle').setAttribute('aria-expanded','false');}
     document.getElementById('irregularCount').textContent = `（${rows.length}）`;
     document.getElementById('irregularList').innerHTML = rows.map(row => `<div class="teacher-irregular-row"><span>${escapeHtml(studentNamesByIds(row.studentIds).join('－'))} · ${escapeHtml(subjectNameById(row.subjectId))}${row.resumedFrom ? ` · ${escapeHtml(row.resumedFrom)} 起恢復固定` : ''}</span><button class="btn" data-irregular-add="${escapeHtml(row.id)}">安排一堂</button>${row.resumedFrom ? '' : `<button class="btn" data-irregular-resume="${escapeHtml(row.id)}">恢復固定排課</button>`}</div>`).join('');
   }
 
+  let shownLoginNotice = '';
   function renderAll() {
-    if (data.loginNotice && data.loginNotice.loginAtText) {
-      let notice = document.getElementById('teacherLoginNotice');
-      if (!notice) { notice = document.createElement('p'); notice.id = 'teacherLoginNotice'; notice.className = 'teacher-login-notice'; document.getElementById('appView').prepend(notice); }
+    if (data.loginNotice && data.loginNotice.loginAtText && shownLoginNotice !== data.loginNotice.loginAtText) {
+      shownLoginNotice = data.loginNotice.loginAtText;
+      const prior = document.getElementById('teacherLoginNotice');
+      if (prior) prior.remove();
+      const notice = document.createElement('p');
+      notice.id='teacherLoginNotice';notice.className='teacher-login-notice teacher-login-toast';
+      notice.setAttribute('role','status');
       notice.textContent = data.loginNotice.previousLoginAtText ? '上次登入：' + data.loginNotice.previousLoginAtText + '。若不是本人操作，請聯絡管理者。' : '這是首次記錄的登入。';
+      document.body.appendChild(notice);
+      global.setTimeout(()=>notice.classList.add('is-leaving'),2000);
+      global.setTimeout(()=>notice.remove(),2400);
     }
     renderWeek();
     renderRoster();
@@ -1812,6 +1821,7 @@
     if(!weekGesture.axis && Math.max(Math.abs(dx),Math.abs(dy))<10) return;
     if(!weekGesture.axis) weekGesture.axis=Math.abs(dx)>Math.abs(dy)?'x':'y';
     event.preventDefault();
+    suppressWeekClickUntil=Date.now()+800;
     weekGesture.delta=weekGesture.axis==='x'?dx:dy;
     weekViewport.scrollLeft=weekGesture.left-(weekGesture.axis==='x'?dx:0);
     weekViewport.scrollTop=weekGesture.top-(weekGesture.axis==='y'?dy:0);
@@ -1819,18 +1829,25 @@
   function finishWeekGesture(cancelled) {
     const gesture=weekGesture;weekGesture=null;
     if(!gesture || !gesture.axis) return;
-    suppressWeekClickUntil=Date.now()+400;
+    suppressWeekClickUntil=Date.now()+800;
     const axis=gesture.axis, position=axis==='x'?gesture.left:gesture.top;
     const target=nextWeekPage(weekPageTargets(axis),position,cancelled?0:gesture.delta);
     weekViewport.scrollTo({left:axis==='x'?target:gesture.left,top:axis==='y'?target:gesture.top,behavior:global.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
   }
-  weekViewport.addEventListener('touchend',()=>finishWeekGesture(false));
+  weekViewport.addEventListener('touchend',event=>{
+    if(weekGesture && weekGesture.axis && event.cancelable) event.preventDefault();
+    finishWeekGesture(false);
+  },{passive:false});
   weekViewport.addEventListener('touchcancel',()=>finishWeekGesture(true));
   weekViewport.addEventListener('click',event=>{if(Date.now()<suppressWeekClickUntil){event.preventDefault();event.stopImmediatePropagation();}},{capture:true});
   weekViewport.addEventListener('scroll', scheduleWeekGroupSnap, { passive: true });
   weekViewport.addEventListener('scrollend', snapWeekScrollToGroup);
   global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));
-  document.getElementById('irregularCourses').addEventListener('toggle', () => requestAnimationFrame(updateWeekViewport));
+  document.getElementById('irregularToggle').addEventListener('click', () => {
+    const panel=document.getElementById('irregularCourses');panel.hidden=!panel.hidden;
+    document.getElementById('irregularToggle').setAttribute('aria-expanded',String(!panel.hidden));
+    requestAnimationFrame(updateWeekViewport);
+  });
   document.getElementById('loadPayroll').addEventListener('click', () => {
     const selected = document.getElementById('payrollMonth').value || monthKey();
     if (selected < PAYROLL_MIN_MONTH) {
@@ -1864,6 +1881,7 @@
   });
 
   document.getElementById('weekGrid').addEventListener('click', (event) => {
+    if ((weekGesture && weekGesture.axis) || Date.now()<suppressWeekClickUntil) {event.preventDefault();return;}
     const target = event.target.closest('[data-flow-target]');
     const unavailableTarget = event.target.closest('[data-unavailable-target]');
     const empty = event.target.closest('[data-empty]');
