@@ -16,6 +16,7 @@ test('history retains only cutoff-containing period and later periods, even with
  const rows=[row('old','2026-05-01','2026-05-31',3000),row('boundary','2026-07-10','2026-08-01',1000),row('new','2026-08-02','',0)];
  assert.deepEqual(selectHistoryPeriods(rows,'2026-07-21').map(r=>r.id),['new','boundary']);
  assert.deepEqual(selectHistoryPeriods([row('completed','2026-05-01','2026-05-31',3000)]),[]);
+ assert.deepEqual(selectHistoryPeriods([{...row('old-unknown','2026-05-01','',3000),usedCount:4,lessonCount:4}]),[]);
 });
 test('teacher actions allow earlier time today, reject yesterday; rentals retain minute validation',()=>{
  const x=vm.createContext({dateKey:v=>v,currentTaipeiDay:()=> '2026-09-08'});
