@@ -767,32 +767,22 @@
 
   function renderRoster() {
     const query = clean(rosterQuery).toLocaleLowerCase('zh-Hant');
-    const teacherName = teacherRawName();
     const rows = data.roster.filter((student) => {
       if (!query) return true;
       const studentName = clean(student && student.name).toLocaleLowerCase('zh-Hant');
-      const rowTeacherName = clean(student && student.teacherName || teacherName).toLocaleLowerCase('zh-Hant');
-      const normalizedTeacherName = rowTeacherName.replace(/老師$/, '');
-      return studentName.includes(query)
-        || rowTeacherName.includes(query)
-        || normalizedTeacherName.includes(query);
+      return studentName.includes(query);
     });
     document.getElementById('rosterBadge').textContent = query
       ? `${rows.length}/${data.roster.length} 位`
       : `${data.roster.length} 位`;
     if (!rows.length) {
       document.getElementById('rosterList').innerHTML = query
-        ? `<p class="muted teacher-roster-empty">找不到符合「${escapeHtml(rosterQuery)}」的學生或老師。</p>`
+        ? `<p class="muted teacher-roster-empty">找不到符合「${escapeHtml(rosterQuery)}」的學生。</p>`
         : '<p class="muted teacher-roster-empty">目前沒有可顯示的學生。</p>';
       return;
     }
     document.getElementById('rosterList').innerHTML = rows.map((student) => {
-      const rowTeacherName = clean(student && student.teacherName || teacherName);
-      const detail = [
-        rowTeacherName ? `授課老師 ${rowTeacherName}` : '',
-        clean(student.phone) ? `電話 ${clean(student.phone)}` : '電話未提供'
-      ].filter(Boolean).join('・');
-      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span>${escapeHtml(detail)}${clean(student.phone) ? ` <a href="tel:${escapeHtml(clean(student.phone).replace(/[^+0-9]/g, ''))}" aria-label="撥打${escapeHtml(student.name)}的電話">撥打</a>` : ''}</span><span class="teacher-roster-actions"><button class="btn primary" type="button" data-view-history="${escapeHtml(student.id)}">查看課程紀錄</button><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
+      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span class="teacher-roster-actions"><button class="btn primary" type="button" data-view-history="${escapeHtml(student.id)}">查看課程紀錄</button><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
     }).join('');
   }
 

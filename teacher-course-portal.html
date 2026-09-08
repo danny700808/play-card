@@ -6,10 +6,10 @@
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260908-overlap-v1">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260908-roster-clean-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
   <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
-<link rel="stylesheet" href="course-history-view.css?v=20260908-overlap-v1">
+<link rel="stylesheet" href="course-history-view.css?v=20260908-roster-clean-v1">
 </head>
 <body class="teacher-course-app clean-portal-ui">
   <main class="portal-shell">
@@ -95,7 +95,7 @@
       <section class="card tab-panel hidden" data-panel="students">
         <div class="section-title"><h2>課程紀錄</h2><span class="badge" id="rosterBadge">0 位</span></div>
         <div class="teacher-roster-search">
-          <input id="rosterSearch" type="search" inputmode="search" autocomplete="off" aria-label="搜尋學生或老師姓名" placeholder="搜尋學生或老師姓名">
+          <input id="rosterSearch" type="search" inputmode="search" autocomplete="off" aria-label="搜尋學生姓名" placeholder="搜尋學生姓名">
         </div>
         <div class="list" id="rosterList"></div><section id="teacherHistoryPanel" hidden><button class="btn" id="closeTeacherHistory" type="button">返回學生列表</button><div id="teacherHistoryContent"></div></section>
       </section>
@@ -179,6 +179,6 @@
   <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-daily-reminder.js?v=20260806-daily-reminder-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260908-overlap-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260908-roster-clean-v1"></script>
 </body>
 </html>

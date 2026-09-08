@@ -44,11 +44,10 @@ assert(source.includes('可調入</span><small>${requiredMinutes} 分鐘'), '可
 assert(css.includes('.empty-slot.unavailable-target'), '時段不足位置缺少紅色提示樣式');
 
 assert(html.includes('id="rosterSearch"'), '學生頁缺少搜尋欄');
-assert(html.includes('placeholder="搜尋學生或老師姓名"'), '學生搜尋提示不清楚');
+assert(html.includes('placeholder="搜尋學生姓名"'), '學生搜尋提示不清楚');
 assert(source.includes('function teacherRawName()'), '老師原始姓名未與頁首稱謂格式分離');
-assert(source.includes("const normalizedTeacherName = rowTeacherName.replace(/老師$/, '')"), '老師姓名搜尋未兼容有無「老師」稱謂');
-assert(source.includes('studentName.includes(query)') && source.includes('rowTeacherName.includes(query)'), '搜尋未同時比對學生與老師姓名');
-assert(source.includes('找不到符合「${escapeHtml(rosterQuery)}」的學生或老師。'), '搜尋無結果時缺少清楚提示');
+assert(source.includes('studentName.includes(query)') && html.includes('搜尋學生姓名'), '學生姓名搜尋提示不一致');
+assert(source.includes('找不到符合「${escapeHtml(rosterQuery)}」的學生。'), '搜尋無結果時缺少清楚提示');
 assert(html.includes('id="studentEditModal"'), '學生頁缺少姓名電話修改視窗');
 assert(source.includes('coursePortalTeacherUpdateStudent'), '學生姓名電話修改沒有送到後端');
 assert(html.includes('id="studentStopModal"') && html.includes('再次確認停課'), '學生停課缺少二次確認視窗');
@@ -86,8 +85,8 @@ assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') 
 assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.css?v=20260908-overlap-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260908-overlap-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260908-roster-clean-v1'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260908-roster-clean-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');

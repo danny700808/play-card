@@ -436,11 +436,11 @@
           .map((row) => [row.teacherId || row.teacherName, row])
       ).values()];
       const teacherContactHtml = teacherContacts.map((row) =>
-        `${P.escapeHtml(row.teacherName)}${row.teacherPhone ? `｜${P.escapeHtml(row.teacherPhone)}` : ''}`
+        P.escapeHtml(row.teacherName)
       ).join('<br>');
       document.getElementById('studentTeacherContact').innerHTML = `<div class="student-contact-row">
         <span>學生</span><strong>${P.escapeHtml(student.name || '—')}</strong>
-        ${teacherContactHtml ? `<span>老師聯絡</span><strong>${teacherContactHtml}</strong>` : ''}
+        ${teacherContactHtml ? `<span>授課老師</span><strong>${teacherContactHtml}</strong>` : ''}
       </div>`;
       const requests = activeTuitionPayments();
       document.getElementById('upcomingCourseList').innerHTML = upcoming.length
