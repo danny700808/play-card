@@ -503,6 +503,14 @@
     }
   }
 
+  function balancedDayWidths(weights, pairWidth) {
+    const scores = weights.map(n=>Math.max(1,Number(n)||1));
+    // Friday/Sunday share the same width so both Fri/Sat and Sat/Sun fit a full screen.
+    scores[4]=scores[6]=Math.max(scores[4],scores[6]);
+    const widths=[];
+    for(let i=0;i<6;i+=2){const sum=scores[i]+scores[i+1];widths.push(pairWidth*scores[i]/sum,pairWidth*scores[i+1]/sum);}
+    widths.push(widths[4]);return widths;
+  }
   function updateWeekViewport() {
     const grid = document.getElementById('weekGrid');
     const scroll = grid && grid.parentElement;
@@ -511,6 +519,7 @@
       if (grid) {
         grid.style.removeProperty('--teacher-day-width');
         grid.style.removeProperty('--teacher-time-column');
+        grid.style.removeProperty('grid-template-columns');
       }
       return;
     }
@@ -521,6 +530,8 @@
     scroll.style.maxHeight = `${Math.max(160, navTop - scroll.getBoundingClientRect().top - 12)}px`;
     grid.style.setProperty('--teacher-time-column', `${stickyWidth}px`);
     grid.style.setProperty('--teacher-day-width', `${dayWidth}px`);
+    const weights = JSON.parse(grid.dataset.dayWeights || '[1,1,1,1,1,1,1]');
+    grid.style.gridTemplateColumns = `${stickyWidth}px ${balancedDayWidths(weights, dayWidth*2).map(width=>`${width}px`).join(' ')}`;
   }
 
   let weekGesture = null;
@@ -701,6 +712,7 @@
     const priorScrollLeft = scroll.scrollLeft;
     const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
     const events = uniqueEvents((data.events || []).filter((event) => event.own));
+    grid.dataset.dayWeights = JSON.stringify(days.map(day=>Math.max(1,...overlapGroups(events.filter(event=>event.date===day)).map(group=>group.events.length))));
     const startHour = Number(data.hours.start || 10);
     const endHour = Number(data.hours.end || 21);
     const scheduleStart = startHour * 60;

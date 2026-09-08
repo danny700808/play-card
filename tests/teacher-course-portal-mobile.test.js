@@ -83,8 +83,8 @@ assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') 
 assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop','teacherAnnouncementBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.css?v=20260908-swipe-intent-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260908-swipe-intent-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260908-balanced-days-v1'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260908-balanced-days-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');
@@ -159,4 +159,12 @@ console.log('teacher course portal mobile tests passed');
  handlers.touchend({cancelable:true,preventDefault:()=>prevented++});
  let stopped=0;handlers.click({preventDefault:()=>prevented++,stopImmediatePropagation:()=>stopped++});
  assert.equal(prevented,3);assert.equal(stopped,1);
+}
+
+{
+ const ctx={};vm.createContext(ctx);const begin=source.indexOf('  function balancedDayWidths'),end=source.indexOf('  function updateWeekViewport',begin);vm.runInContext(source.slice(begin,end),ctx);
+ const widths=Array.from(ctx.balancedDayWidths([1,2,2,1,1,2,1],300));
+ assert.deepEqual(widths,[100,200,200,100,100,200,100]);
+ assert.equal(widths[5]+widths[6],300);
+ assert.deepEqual(Array.from(ctx.balancedDayWidths([1,1,1,1,1,1,1],300)),[150,150,150,150,150,150,150]);
 }
