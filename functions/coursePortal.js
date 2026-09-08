@@ -7524,25 +7524,30 @@ async function courseLessonHistory(data) {
   }
   const today = currentTaipeiDay();
   if (fromDate > today) throw new HttpsError('invalid-argument', '請選擇今天或之前的日期。');
-  const [rawPeriods, mirrorAttendance, portalAttendance, subjects, teachers, bundle] = await Promise.all([
+  const [rawPeriods, mirrorAttendance, portalAttendance, subjects, teachers, bundle, historyFixedCourses, historyTemporaryCourses] = await Promise.all([
     mirrorRowsByField('tuitionPeriods', 'studentId', studentId),
     mirrorRowsByField('attendance', 'studentId', studentId),
     portalAttendanceForStudents([studentId]), mirrorRows('subjects'), mirrorRows('teachers'),
-    scheduleBundle(COURSE_HISTORY_MIN_DATE, today, session.role === 'teacher' ? session.teacherId : '')
+    scheduleBundle(COURSE_HISTORY_MIN_DATE, today, session.role === 'teacher' ? session.teacherId : ''),
+    mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')
   ]);
-  const courses = [...bundle.fixedCourses, ...bundle.temporaryCourses];
+  const courses = [...historyFixedCourses, ...historyTemporaryCourses, ...bundle.fixedCourses, ...bundle.temporaryCourses];
   const allAttendance = mergePortalAttendanceRows(mirrorAttendance, portalAttendance);
+  const historyRelatedRows = [...courses, ...bundle.resourceEvents, ...allAttendance].filter(item => eventStudentIds(item).includes(studentId));
   const numberedHistoryPeriods = await assignNewSystemPeriodNumbers(applyPortalAttendanceToPeriods(rawPeriods, mirrorAttendance, portalAttendance));
   const periods = numberedHistoryPeriods.map(row => {
     const id = sourceId(row);
     const periodAliases = new Set([id, clean(row.sourcePaymentId), id.replace(/^period_/, '')].filter(Boolean));
     const linked = allAttendance.filter(item => periodAliases.has(clean(item.periodId || item.studentPayment)));
     const course = courses.find(item => courseSourceIds(item).includes(clean(row.sourceCourseId || row.courseId || row.fixedCourseId))) || courses.find(item => firstArray(item, ['studentPaymentIds', 'tuitionPeriodIds', 'paymentIds']).some(payment => periodAliases.has(clean(payment)))) || {};
-    const teacherId = eventTeacherId(row) || eventTeacherId(linked[0] || {}) || eventTeacherId(course);
     const subjectId = eventSubjectId(row) || eventSubjectId(linked[0] || {}) || eventSubjectId(course);
+    const related = historyRelatedRows.filter(item => eventSubjectId(item) === subjectId);
+    const teacherCandidates = [...new Set(related.map(eventTeacherId).filter(Boolean))];
+    const teacherId = eventTeacherId(row) || eventTeacherId(linked[0] || {}) || eventTeacherId(course) || (teacherCandidates.length === 1 ? teacherCandidates[0] : '');
     const dates = linked.map(eventDate).filter(Boolean).sort();
     const startDate = dateKey(row.startDate || row.beginDate) || dates[0] || '';
     return { id, studentId, teacherId, subjectId, startDate,
+      hasCutoffEvidence: linked.some(item => eventDate(item) >= COURSE_HISTORY_MIN_DATE) || related.some(item => eventDate(item) >= COURSE_HISTORY_MIN_DATE && (!teacherId || eventTeacherId(item) === teacherId)),
       endDate: dateKey(row.expiryDate || row.endDate) || (Number(row.usedCount || row.attendedCount || 0) >= Number(row.lessonCount || row.totalLessons || 4) ? dates[dates.length - 1] || '' : ''),
       periodNo: Number(row.periodNo || row.period || 0), systemPeriodNo: Number(row.systemPeriodNo || 0),
       subjectName: clean((subjects.find(item => sourceId(item) === subjectId) || {}).name) || '課程',
@@ -7561,7 +7566,7 @@ async function courseLessonHistory(data) {
     subjectId: eventSubjectId(row), teacherId: eventTeacherId(row), status: normalizeScheduleStatus(row.status || row.type), late: row.late === true,
     deducted: row.deducted !== false && !['leave','cancelled'].includes(normalizeScheduleStatus(row.status || row.type))
   }));
-  for (const event of bundle.events.filter(row => eventStudentIds(row).includes(studentId))) {
+  for (const event of bundle.resourceEvents.filter(row => eventStudentIds(row).includes(studentId))) {
     const status = normalizeScheduleStatus(event.status);
     if (!['leave', 'absent'].includes(status)) continue;
     if (lessons.some(row => row.date === event.date && row.teacherId === event.teacherId && row.subjectId === event.subjectId && (!row.startTime || row.startTime === event.startTime))) continue;

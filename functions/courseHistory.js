@@ -13,7 +13,7 @@ function selectHistoryPeriods(periods, fromDate) {
     rows.sort((a, b) => date(a.startDate).localeCompare(date(b.startDate)) || a.periodNo - b.periodNo);
     const boundary = rows.reduce((last, row, index) => date(row.startDate) && date(row.startDate) <= MIN_DATE ? index : last, -1);
     rows = rows.filter((row, index) => date(row.startDate) >= MIN_DATE ||
-      (index === boundary && (date(row.endDate) >= MIN_DATE || (!date(row.endDate) && Number(row.usedCount || 0) < Number(row.lessonCount || 4)))));
+      (index === boundary && (date(row.endDate) >= MIN_DATE || (!date(row.endDate) && row.hasCutoffEvidence !== false && Number(row.usedCount || 0) < Number(row.lessonCount || 4)))));
     if (!rows.length) continue;
     if (fromDate) {
       // Include the period containing the selected day, then every later period.
