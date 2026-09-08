@@ -961,8 +961,8 @@
       notice.setAttribute('role','status');
       notice.textContent = data.loginNotice.previousLoginAtText ? '上次登入：' + data.loginNotice.previousLoginAtText + '。若不是本人操作，請聯絡管理者。' : '這是首次記錄的登入。';
       document.body.appendChild(notice);
-      global.setTimeout(()=>notice.classList.add('is-leaving'),2000);
-      global.setTimeout(()=>notice.remove(),2400);
+      global.setTimeout(()=>notice.classList.add('is-leaving'),3000);
+      global.setTimeout(()=>notice.remove(),3400);
     }
     renderWeek();
     renderRoster();
