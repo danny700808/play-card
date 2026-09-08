@@ -12534,7 +12534,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalLessonHistory = callable(courseLessonHistory, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalLessonHistory = callable(courseLessonHistory, { timeoutSeconds: 180, memory: '1GiB', concurrency: 1 });
   exportsObject.coursePortalStudentContactBookImage = callable(studentContactBookImage, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentSubmitTuitionPayment = callable(studentSubmitTuitionPayment, {
     timeoutSeconds: 180,
