@@ -12,6 +12,7 @@ on:
       - "operations-phase1.js"
       - "operations-hub.html"
       - "portal.html"
+      - "rental-admin.html"
       - "functions/shopeeMusicTaxonomy.js"
       - "functions/index.js"
       - "functions/package.json"
