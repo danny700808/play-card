@@ -85,8 +85,8 @@ assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') 
 assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop','teacherAnnouncementBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.css?v=20260908-irregular-today-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260908-irregular-today-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260908-irregular-align-v1'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260908-irregular-align-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');

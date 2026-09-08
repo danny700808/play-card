@@ -1911,7 +1911,7 @@
     const cancelFlow = event.target.closest('[data-cancel-flow]');
     if (!context) return;
     if (event.target.closest('[data-set-irregular]') && context.type === 'lesson') {
-      showQuick('設為不定時', (context.row.studentNames || []).join('－'), '<p>停止之後自動排固定課。已簽到紀錄、學費與另外約好的單堂課保留。</p><button type="button" data-cancel-flow>取消</button><button type="button" data-confirm-irregular>確定設為不定時</button>', {type:'irregular-confirm',row:context.row});
+      showQuick('設為不定時', (context.row.studentNames || []).join('－'), '<p class="teacher-quick-description">停止之後自動排固定課。已簽到紀錄、學費與另外約好的單堂課保留。</p><button type="button" data-cancel-flow>取消</button><button type="button" data-confirm-irregular>確定設為不定時</button>', {type:'irregular-confirm',row:context.row});
       return;
     }
     const irregularButton = event.target.closest('[data-confirm-irregular]');
