@@ -8563,8 +8563,8 @@ async function teacherLessonState(data) {
           '為避免原教室已被租用或排入其他課程，調課、請假與固定變更不能直接復原；請重新安排，或由管理者確認後處理。'
         );
       }
-      if (row.event && publicRentalSlotIsPast(row.event.date, row.event.startTime)) {
-        throw new HttpsError('failed-precondition', '已經開始或結束的課程不能再取消安排。');
+      if (!dateKey(row.event && row.event.date) || dateKey(row.event.date) < currentTaipeiDay()) {
+        throw new HttpsError('failed-precondition', '不可取消今天以前的課程安排。');
       }
       const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
       if (currentVersion !== expectedVersion) {
