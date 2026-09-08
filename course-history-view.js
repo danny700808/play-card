@@ -3,8 +3,8 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const money = value => '$' + Number(value || 0).toLocaleString('zh-TW');
   global.CourseHistoryView = { mount(host, options) {
-    let subject = '', payload = null, request = 0;
-    host.innerHTML = `<section class="course-history"><h2>${esc(options.name || '課程紀錄')}</h2><div class="history-controls"><label>學習科目<select data-history-subject aria-label="選擇學習科目"></select></label><button type="button" data-history-toggle>查詢歷史課程</button></div><form data-history-form hidden><p class="history-query-help">歷史課程可查詢自 2026/7/21 起；更早資料請至實體上課證查詢。</p><label>查詢日期<input type="date" min="2026-07-21" required aria-label="歷史查詢日期"></label><button type="submit">查詢</button><button type="button" data-history-reset>最近紀錄</button></form><p data-history-notice role="status"></p><div data-history-cards></div></section>`;
+    let subject = '', payload = null, request = 0, activeFromDate = '';
+    host.innerHTML = `<section class="course-history"><h2>${esc(options.name || '課程紀錄')}</h2><div class="history-controls"><label>學習科目<select data-history-subject aria-label="選擇學習科目"></select><span class="history-single-subject" data-history-single hidden></span></label><button type="button" data-history-toggle>查詢歷史課程</button></div><form data-history-form hidden><p class="history-query-help">歷史課程可查詢自 2026/7/21 起；更早資料請至實體上課證查詢。</p><label>查詢日期<input type="date" min="2026-07-21" required aria-label="歷史查詢日期"></label><button type="submit">查詢</button></form><p data-history-notice role="status"></p><div data-history-cards></div></section>`;
     const cards = host.querySelector('[data-history-cards]'), notice = host.querySelector('[data-history-notice]');
     const select = host.querySelector('select'), form = host.querySelector('form');
     function card(period) {
@@ -37,6 +37,11 @@
         if (!result.subjects.some(row => row.id === subject)) subject = (result.subjects[0] || {}).id || '';
         select.innerHTML = result.subjects.map(row => `<option value="${esc(row.id)}">${esc(row.name)}</option>`).join('');
         select.value = subject;
+        const single = host.querySelector('[data-history-single]');
+        const onlyOne = result.subjects.length === 1;
+        select.hidden = onlyOne; single.hidden = !onlyOne;
+        single.textContent = onlyOne ? result.subjects[0].name : '';
+        activeFromDate = fromDate || '';
         notice.textContent = fromDate ? `從包含 ${fromDate} 的期別顯示到最新一期` : '';
         render();
       } catch(error) {
@@ -44,11 +49,10 @@
       }
     }
     select.addEventListener('change', () => { subject = select.value; render(); });
-    host.querySelector('[data-history-toggle]').addEventListener('click', () => { form.hidden = !form.hidden; });
-    form.addEventListener('submit', event => { event.preventDefault(); const day = form.querySelector('input').value; if (!day || day < '2026-07-21') { notice.textContent = '新系統未承接此日期之前的資料，請至實體上課證查詢。'; return; } load(day); });
+    host.querySelector('[data-history-toggle]').addEventListener('click', () => { form.hidden = !form.hidden; if (form.hidden && activeFromDate) load(''); });
+    form.addEventListener('submit', event => { event.preventDefault(); const day = form.querySelector('input').value; if (!day) {notice.textContent = '請先選擇查詢日期。';return;} if (day < '2026-07-21') { notice.textContent = '新系統未承接此日期之前的資料，請至實體上課證查詢。'; return; } load(day); });
     // Use our explicit message instead of the browser's generic minimum-date error.
     form.noValidate = true;
-    host.querySelector('[data-history-reset]').addEventListener('click', () => { form.hidden = true; load(''); });
     load('');
   } };
 })(window);
