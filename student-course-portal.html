@@ -7,7 +7,7 @@
   <title>學生與家長入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
-<link rel="stylesheet" href="course-history-view.css?v=20260908-history-date-mobile-v2">
+<link rel="stylesheet" href="course-history-view.css?v=20260909-parent-payment-v1">
 </head>
 <body class="clean-portal-ui">
   <main class="portal-shell">
@@ -75,7 +75,6 @@
       </section>
       <div class="summary-grid student-sensitive">
         <article class="summary"><span>學生</span><strong id="studentName">—</strong></article>
-        <article class="summary"><span>課程期數</span><strong id="periodCount">0</strong></article>
       </div>
       <section class="card student-teacher-contact student-sensitive" id="studentTeacherContact"></section>
       <nav class="tabs student-sensitive student-bottom-tabs">
@@ -155,7 +154,7 @@
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-history-view.js?v=20260908-history-date-mobile-v2"></script>
+  <script src="course-history-view.js?v=20260909-parent-payment-v1"></script>
   <script src="course-portal-common.js?v=20260909-parent-loading-v1"></script>
   <script>
   (function () {
@@ -165,6 +164,7 @@
     let studentId = '';
     let activeTuitionPaymentId = '';
     let selectedPaymentSubjectId = '';
+    let displayedHistoryPeriodIds = new Set();
     let tuitionReceiptDataUrl = '';
     const bindView = document.getElementById('bindView');
     const appView = document.getElementById('appView');
@@ -256,7 +256,7 @@
     function renderSubjectPayments(subjectId) {
       selectedPaymentSubjectId = subjectId;
       document.getElementById('periodList').innerHTML = activeTuitionPayments()
-        .filter(tuitionPaymentMatchesSelection).map(request => {
+        .filter(tuitionPaymentMatchesSelection).filter(request => !displayedHistoryPeriodIds.has(request.targetPeriodId)).map(request => {
           const period = data.periods.find(row => row.id === request.targetPeriodId && row.studentId === studentId && row.subjectId === subjectId);
           return `<article class="period-card payment-only-period"><div class="period-card-head"><div class="period-card-title"><strong>${P.escapeHtml(request.subjectName || '課程')} · 繳費辦理</strong><small>新系統第 ${newSystemPeriodNumber(request)} 期</small></div>${paymentBlock(period || {expectedAmount:request.expectedAmount, paidAmount:request.confirmedAmount}, request)}</div></article>`;
         }).join('');
@@ -428,7 +428,6 @@
       const periods = data.periods.filter((row) => row.studentId === studentId)
         .sort((a, b) => Number(a.systemPeriodNo || 0) - Number(b.systemPeriodNo || 0));
       document.getElementById('studentName').textContent = student.name || '—';
-      document.getElementById('periodCount').textContent = periods.length;
       const upcoming = (data.upcoming || []).filter((row) =>
         (row.studentIds || []).includes(studentId)
       );
@@ -444,15 +443,34 @@
         ${teacherContactHtml ? `<span>授課老師</span><strong>${teacherContactHtml}</strong>` : ''}
       </div>`;
       const requests = activeTuitionPayments();
-      document.getElementById('upcomingCourseList').innerHTML = upcoming.length
-        ? `<div class="upcoming-course-title">接下來的課程</div>${upcoming.slice(0, 4).map((row) => `<div class="upcoming-course-row"><strong>${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong><span>${P.escapeHtml(row.subjectName || '課程')}｜${P.escapeHtml(row.teacherName || '老師')}</span></div>`).join('')}`
-        : '';
+      const byCourse = new Map();
+      upcoming.slice().sort((a,b) => `${a.date}|${a.startTime}`.localeCompare(`${b.date}|${b.startTime}`)).forEach(row => {
+        const key = `${row.subjectName}|${row.teacherId || row.teacherName}`;
+        if (!byCourse.has(key)) byCourse.set(key, []);
+        const rows = byCourse.get(key);
+        const firstDate = rows[0]?.date || row.date;
+        if (Date.parse(row.date + 'T00:00:00+08:00') - Date.parse(firstDate + 'T00:00:00+08:00') < 7 * 86400000) rows.push(row);
+      });
+      const scheduleRows = [...byCourse.values()].flat();
+      document.getElementById('upcomingCourseList').innerHTML = scheduleRows.length
+        ? `<div class="upcoming-course-title">目前上課時段</div>${scheduleRows.map(row => {
+          const day = new Intl.DateTimeFormat('zh-TW', {weekday:'long', timeZone:'Asia/Taipei'}).format(new Date(row.date + 'T12:00:00+08:00'));
+          return `<div class="upcoming-course-row"><strong>${P.escapeHtml(day)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong><span>${P.escapeHtml(row.subjectName || '課程')}｜${P.escapeHtml(row.teacherName || '老師')}</span></div>`;
+        }).join('')}` : '<p class="muted">目前尚未安排上課時段。</p>';
       selectedPaymentSubjectId = '';
       document.getElementById('periodList').innerHTML = '';
       const historyStudentId = studentId;
+      displayedHistoryPeriodIds = new Set();
       CourseHistoryView.mount(document.getElementById('studentCourseHistory'), {
         studentId, name:'課程紀錄', token, call:P.call,
         additionalSubjects:requests.map(row => ({id:row.subjectId, name:row.subjectName || '課程'})),
+        renderPaymentAction:period => {
+          const request = activeTuitionPayments().find(row => row.targetPeriodId === period.id && row.subjectId === period.subjectId);
+          if (!request || Number(period.outstandingAmount) <= 0) return '';
+          const canSubmit = ['payment_due', 'needs_resubmission'].includes(request.status);
+          return canSubmit ? `<button class="btn primary" type="button" data-pay-tuition="${P.escapeHtml(request.id)}">${request.status === 'needs_resubmission' ? '重新繳費' : '前往繳費'}</button>` : tuitionPaymentStatus(request);
+        },
+        onPeriodsRendered:rows => { if (studentId === historyStudentId) displayedHistoryPeriodIds = new Set(rows.map(row => row.id)); },
         onSubjectChange:subject => { if (studentId === historyStudentId) renderSubjectPayments(subject); }
       });
       renderContactBook();
@@ -512,7 +530,7 @@
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     });
-    document.getElementById('periodList').addEventListener('click', (event) => {
+    document.getElementById('appView').addEventListener('click', (event) => {
       const button = event.target.closest('[data-pay-tuition]');
       if (button) openTuitionPayment(button.dataset.payTuition);
     });
