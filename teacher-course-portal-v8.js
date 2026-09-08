@@ -938,7 +938,7 @@
     const deductionItems = items.filter(row => row.kind === 'adjustment' && row.amount < 0);
     const sum = rows => rows.reduce((total, row) => total + row.amount, 0);
     const lessonTotal = sum(lessonItems), bonusTotal = sum(bonusItems), deductionTotal = -sum(deductionItems);
-    const summary = `<div class="payroll-summary" aria-label="本月薪資合計"><div><span>課堂收入</span><strong>${money(lessonTotal)}</strong></div><div><span>額外獎金</span><strong>${money(bonusTotal)}</strong></div><div><span>扣款</span><strong>${money(deductionTotal)}</strong></div><div class="payroll-summary-total"><span>合計</span><strong>${money(lessonTotal + bonusTotal - deductionTotal)}</strong></div></div>`;
+    const summary = `<div class="payroll-summary" aria-label="本月薪資合計"><div><span>課堂收入</span><strong>${money(lessonTotal)}</strong></div><button type="button" data-payroll-jump="payrollBonusDetails" aria-label="查看額外獎金明細"><span>額外獎金</span><strong>${money(bonusTotal)}</strong><small>查看明細 ↓</small></button><button type="button" data-payroll-jump="payrollDeductionDetails" aria-label="查看扣款明細"><span>扣款</span><strong>${money(deductionTotal)}</strong><small>查看明細 ↓</small></button><div class="payroll-summary-total"><span>合計</span><strong>${money(lessonTotal + bonusTotal - deductionTotal)}</strong></div></div>`;
     const groups = new Map();
     lessonItems.forEach((item) => {
       const key = item.date || '日期未提供';
@@ -946,8 +946,8 @@
       groups.get(key).push(item);
     });
     const lessons = [...groups.entries()].map(([date, dayRows]) => `<section class="payroll-day"><h3>${escapeHtml(date)}</h3><table class="payroll-lines"><thead><tr><th scope="col">姓名</th><th scope="col">收費</th><th scope="col">分成</th><th scope="col">所得</th></tr></thead><tbody>${dayRows.map((row) => `<tr><th scope="row">${escapeHtml(row.name)}</th><td>${row.collected !== null ? money(row.collected) : '—'}</td><td>${escapeHtml(row.rate)}</td><td class="payroll-income">${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>`).join('');
-    const adjustmentSection = (title, rows) => rows.length ? `<section class="payroll-extra"><h3>${title}</h3><table><thead><tr><th>日期</th><th>項目／原因</th><th>金額</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.date)}</td><td>${escapeHtml(row.name)}</td><td>${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>` : '';
-    document.getElementById('payrollList').innerHTML = summary + (items.length ? lessons + adjustmentSection('額外獎金', bonusItems) + adjustmentSection('扣款', deductionItems) : '<p class="muted">這個月份目前沒有薪資資料。</p>');
+    const adjustmentSection = (title, rows, id) => rows.length ? `<section class="payroll-extra" id="${id}" tabindex="-1"><h3>${title}</h3><table><thead><tr><th>日期</th><th>項目／原因</th><th>金額</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.date)}</td><td>${escapeHtml(row.name)}</td><td>${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>` : '';
+    document.getElementById('payrollList').innerHTML = summary + (items.length ? lessons + adjustmentSection('額外獎金', bonusItems, 'payrollBonusDetails') + adjustmentSection('扣款', deductionItems, 'payrollDeductionDetails') : '<p class="muted">這個月份目前沒有薪資資料。</p>');
   }
 
   function renderIrregularCourses() {
@@ -1910,6 +1910,14 @@
     const panel=document.getElementById('irregularCourses');panel.hidden=!panel.hidden;
     document.getElementById('irregularToggle').setAttribute('aria-expanded',String(!panel.hidden));
     requestAnimationFrame(updateWeekViewport);
+  });
+  document.getElementById('payrollList').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-payroll-jump]');
+    if (!button) return;
+    const target = document.getElementById(button.dataset.payrollJump);
+    if (!target) { toast(button.dataset.payrollJump === 'payrollBonusDetails' ? '本月沒有額外獎金。' : '本月沒有扣款。'); return; }
+    target.focus({preventScroll:true});
+    target.scrollIntoView({behavior:global.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start'});
   });
   document.getElementById('loadPayroll').addEventListener('click', () => {
     const selected = document.getElementById('payrollMonth').value || monthKey();
