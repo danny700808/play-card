@@ -358,7 +358,7 @@
         deleteWholeCase();
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
-      if(isActive){
+      if(isActive || isPendingRenewal){
         b('','sendRenewalReturnLink()','傳送續約 / 退租連結給客人');
         if(isPendingRenewal) b('','confirmRenewal()','確認續約成立');
         b('secondary','printRentalContract()','預覽 / 列印');
