@@ -931,3 +931,13 @@ assert.ok(
 );
 
 console.log('injiaoyun unified sync model tests passed');
+
+{
+ const original={id:'period-original',sourcePaymentId:'original',studentId:'s',subjectId:'piano',subjectName:'鋼琴',periodNo:1,startDate:'2026-07-26',lessonCount:4,usedCount:4,expectedAmount:3000,transactions:[{id:'original-payment',type:'payment',amount:3000,operatedAt:'2026-09-06T03:48:55.681Z'}]};
+ const rows=[JSON.parse(JSON.stringify(original))];
+ const receipts=['daily-one','daily-two'].map(sourceId=>({sourceId,studentId:'s',subject:'鋼琴',amount:3000,isRevenue:true,paidAt:'2026-09-06',operatedAt:'2026-09-06T03:48:55.681Z'}));
+ const result=mergeEducationDailyReceipts(rows,[{tuitionReceipts:receipts}]);
+ assert.equal(result.createdPeriods,0);assert.equal(rows.length,1);assert.deepEqual(rows[0],original);
+ const newResult=mergeEducationDailyReceipts(rows,[{tuitionReceipts:[{...receipts[0],sourceId:'different-real-payment',operatedAt:'2026-09-06T04:48:55.681Z'}]}]);
+ assert.equal(newResult.createdPeriods,1,'same amount/date with a different timestamp remains a distinct receipt');
+}

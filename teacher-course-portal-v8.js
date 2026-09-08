@@ -1232,6 +1232,7 @@
       ${quickActionRow(extraLessonAction, giftLessonAction)}
       ${quickActionRow(contactBookAction, absentAction)}
       <button type="button" data-set-irregular>設為不定時</button>
+      <button type="button" data-quick-stop>停課</button>
     `,
       { type: 'lesson', row }
     );
@@ -1970,6 +1971,14 @@
   });
   document.getElementById('teacherQuickActions').addEventListener('click', async (event) => {
     const context = quickContext;
+    if (event.target.closest('[data-quick-stop]') && context && context.row) {
+      const ids=context.row.studentIds || [];
+      if(ids.length===1){closeQuick();openStudentStop(ids[0]);}
+      else showQuick('選擇停課學生','請選擇要辦理停課的學生',ids.map(id=>`<button type="button" data-stop-selected="${escapeHtml(id)}">${escapeHtml(studentNamesByIds([id]).join(''))}</button>`).join(''),{type:'stop-student-selection'});
+      return;
+    }
+    const stopSelected=event.target.closest('[data-stop-selected]');
+    if(stopSelected && context && context.type==='stop-student-selection'){closeQuick();openStudentStop(stopSelected.dataset.stopSelected);return;}
     const durationButton = event.target.closest('[data-room-duration]');
     const weeklyButton = event.target.closest('[data-room-weekly]');
     if (context && (durationButton || weeklyButton)) {
@@ -2162,10 +2171,6 @@
     }
   });
 
-  document.getElementById('closeTeacherHistory').addEventListener('click', () => {
-    document.getElementById('teacherHistoryPanel').hidden = true;
-    document.getElementById('rosterList').hidden = false;
-  });
   document.getElementById('rosterList').addEventListener('click', (event) => {
     const historyButton = event.target.closest('[data-view-history]');
     if (historyButton) {

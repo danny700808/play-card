@@ -4,7 +4,7 @@
   const money = value => '$' + Number(value || 0).toLocaleString('zh-TW');
   global.CourseHistoryView = { mount(host, options) {
     let subject = '', payload = null, request = 0;
-    host.innerHTML = `<section class="course-history"><h2>${esc(options.name || '課程紀錄')}</h2><div class="history-controls"><label>科目<select data-history-subject aria-label="選擇科目"></select></label><button type="button" data-history-toggle>歷史課程查詢</button></div><form data-history-form hidden><p class="history-query-help">歷史課程可查詢自 2026/7/21 起；更早資料請至實體上課證查詢。</p><label>查詢日期<input type="date" min="2026-07-21" required aria-label="歷史查詢日期"></label><button type="submit">查詢</button><button type="button" data-history-reset>最近紀錄</button></form><p data-history-notice role="status"></p><div data-history-cards></div></section>`;
+    host.innerHTML = `<section class="course-history"><h2>${esc(options.name || '課程紀錄')}</h2><div class="history-controls"><label>學習科目<select data-history-subject aria-label="選擇學習科目"></select></label><button type="button" data-history-toggle>查詢歷史課程</button></div><form data-history-form hidden><p class="history-query-help">歷史課程可查詢自 2026/7/21 起；更早資料請至實體上課證查詢。</p><label>查詢日期<input type="date" min="2026-07-21" required aria-label="歷史查詢日期"></label><button type="submit">查詢</button><button type="button" data-history-reset>最近紀錄</button></form><p data-history-notice role="status"></p><div data-history-cards></div></section>`;
     const cards = host.querySelector('[data-history-cards]'), notice = host.querySelector('[data-history-notice]');
     const select = host.querySelector('select'), form = host.querySelector('form');
     function card(period) {

@@ -1716,6 +1716,20 @@ function mergeEducationDailyReceipts(periods, dailyRows) {
     if (!amount) return;
     const date = dateKey(firstValue(receipt.paidAt, receipt.date, day.dateKey));
     const transactionType = receipt.isRevenue === false ? 'refund' : 'payment';
+    // Daily summary IDs may differ from the original period's payment ID.
+    // Only deduplicate against an original receipt with an exact timestamp, student,
+    // subject and amount; a matching date/amount alone is not sufficient.
+    const receiptTime = clean(receipt.operatedAt || receipt.paidAt);
+    const receiptStudent = idOf(receipt.studentId || receipt.student);
+    const receiptSubject = clean(receipt.subject).toLowerCase();
+    const originalMatches = /T.*:/ .test(receiptTime) ? periods.filter(period =>
+      !period.inferredFromDailyReceipt && period.studentId === receiptStudent &&
+      receiptSubject && clean(period.subjectName).toLowerCase() === receiptSubject
+    ).flatMap(period => array(period.transactions).filter(transaction =>
+      transaction.type === transactionType && numberOf(transaction.amount) === amount &&
+      clean(transaction.operatedAt) === receiptTime
+    )) : [];
+    if (!periodByTransaction.has(sourceId) && originalMatches.length === 1) { linked += 1; return; }
     const directTransaction = periodByTransaction.get(sourceId);
     if (directTransaction) {
       Object.assign(directTransaction.transaction, {
