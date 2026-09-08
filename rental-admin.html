@@ -358,11 +358,15 @@
         deleteWholeCase();
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
-      if(isActive || isPendingRenewal){
-        b('','sendRenewalReturnLink()','傳送續約 / 退租連結給客人');
-        if(isPendingRenewal) b('','confirmRenewal()','確認續約成立');
+      if(isPendingRenewal){
+        b('','confirmRenewal()','確認續約成立');
         b('secondary','printRentalContract()','預覽 / 列印');
-        b('danger','completeReturn()','確認退租完成');
+        deleteWholeCase();
+        return `<div class="btn-row">${parts.join('')}</div>`;
+      }
+      if(isActive){
+        b('','sendRenewalReturnLink()','傳送續約 / 退租連結給客人');
+        b('secondary','printRentalContract()','預覽 / 列印');
         deleteWholeCase();
         return `<div class="btn-row">${parts.join('')}</div>`;
       }
@@ -1197,8 +1201,13 @@ ${url}
         const renewalAdd=positivePeriodCount(p.periods||1);
         const countBeforeRenewal=countSnap.current;
         const countAfterRenewal=countBeforeRenewal+renewalAdd;
-        const entry={renewalNo, method:`第 ${renewalNo} 次續約`, periods:renewalAdd, startDate:R.clean(p.startDate), endDate:R.clean(p.endDate), days:days ? days+' 天' : '', rentFee:R.num(p.rentFee)||'', note:`續約 ${renewalAdd} 期`, internalRentalCountBefore:countBeforeRenewal, internalRentalCountAdd:renewalAdd, internalRentalCountAfter:countAfterRenewal, confirmedAt:R.nowText()};
+        const confirmedAt=R.nowText();
+        const renewalIncomeAmount=Math.max(0,R.num(p.rentFee));
+        const entry={renewalNo, method:`第 ${renewalNo} 次續約`, periods:renewalAdd, startDate:R.clean(p.startDate), endDate:R.clean(p.endDate), days:days ? days+' 天' : '', rentFee:renewalIncomeAmount, incomeAmount:renewalIncomeAmount, incomeRecognizedAt:confirmedAt, receivedAt:confirmedAt, incomeReceived:true, incomeSource:'renewal-confirmation', paymentMethod:R.clean(p.paymentMethod)||'匯款', note:`續約 ${renewalAdd} 期`, internalRentalCountBefore:countBeforeRenewal, internalRentalCountAdd:renewalAdd, internalRentalCountAfter:countAfterRenewal, confirmedAt};
         entries.push(entry);
+        const renewalIncomeAmountTotal=entries.reduce((sum,item)=>sum+Math.max(0,R.num(item&&((item.incomeAmount!==undefined&&item.incomeAmount!==null&&item.incomeAmount!=='')?item.incomeAmount:item.rentFee))),0);
+        const hasInitialIncome=c.rentalIncomeAmount!==undefined && c.rentalIncomeAmount!==null && R.clean(c.rentalIncomeAmount)!=='';
+        const initialRentalIncomeAmount=hasInitialIncome?Math.max(0,R.num(c.rentalIncomeAmount)):Math.max(0,R.num(c.rentFee)+R.num(c.shippingFee));
         const del=firebase.firestore.FieldValue.delete();
         const officialUrl=R.officialContractUrl(Object.assign({}, c, {contractId:id}));
         await R.db().collection('rentalContracts').doc(id).set({
@@ -1209,15 +1218,21 @@ ${url}
           officialEndDate:entry.endDate,
           currentEndDate:entry.endDate,
           renewalEntries:entries,
+          renewalIncomeAmountTotal,
+          rentalIncomeTotalAmount:initialRentalIncomeAmount+renewalIncomeAmountTotal,
+          latestRenewalIncomeAmount:renewalIncomeAmount,
+          latestRenewalIncomeRecognizedAt:confirmedAt,
+          latestRenewalIncomeReceived:true,
+          latestRenewalIncomeSource:'renewal-confirmation',
           internalRentalCountRenewalPeriods:confirmedRenewalPeriodTotal({renewalEntries:entries}),
           internalRentalCountCurrent:countAfterRenewal,
           internalRentalCountAfter:countAfterRenewal,
           internalRentalCountFormula:`${countSnap.before} + ${countSnap.initial}${confirmedRenewalPeriodTotal({renewalEntries:entries})?` + ${confirmedRenewalPeriodTotal({renewalEntries:entries})}`:''} = ${countAfterRenewal}`,
-          internalRentalCountUpdatedAt:R.nowText(),
+          internalRentalCountUpdatedAt:confirmedAt,
           pendingRenewal:del,
-          latestRenewalConfirmedAt:R.nowText(),
+          latestRenewalConfirmedAt:confirmedAt,
           officialContractUrl:officialUrl,
-          updatedAtText:R.nowText()
+          updatedAtText:confirmedAt
         },{merge:true});
         const body=`您的續約已確認成立。\n\n續約期間：${entry.startDate} 至 ${entry.endDate}\n\n請點選以下連結查看更新後正式契約：\n${officialUrl}\n\n合約內容會直接顯示在頁面中，請自行截圖保存。\n\n感謝您的租用，有任何問題也可以直接在官方 LINE 詢問。`;
         const result=await queueCustomerNotice(Object.assign({}, c, {contractId:id, officialContractUrl:officialUrl}), {title:'續約已確認成立', body, source:'rental-renewal-confirmed', contractId:id, officialContractUrl:officialUrl});

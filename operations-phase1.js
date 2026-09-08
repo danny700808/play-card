@@ -35,7 +35,7 @@
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
   const PRODUCT_PAGE_SIZE = 24;
-  const VERSION = '2026.09.06-product-video-brand-v1';
+  const VERSION = '2026.09.08-rental-renewal-income-v1';
   const PRODUCT_LISTING_CODEX_THREAD_ID = '019ffef6-51ed-79c3-9fb1-d73586a48e61';
   const PRODUCT_LISTING_CODEX_THREAD_URL = 'codex://threads/' + PRODUCT_LISTING_CODEX_THREAD_ID;
   const PRODUCT_LISTING_WORKFLOW_VERSION = 'youzi-four-channel-listing-v3';
@@ -1372,6 +1372,26 @@ async function loadPlatformLocalAgent(){
       raw:obj
     };
   }
+  function rentalIncomeNumber(value){
+    if(value===undefined || value===null || String(value).trim()==='')return 0;
+    const amount=Number(String(value).replace(/,/g,'').replace(/[^0-9.\-]/g,''));
+    return Number.isFinite(amount)?Math.max(0,amount):0;
+  }
+  function rentalIncomeEvents(rental){
+    if(!rental)return [];
+    const rows=[];
+    const initialAmount=rentalIncomeNumber(rental.incomeAmount);
+    if(initialAmount>0)rows.push({kind:'initial',amount:initialAmount,occurredAt:rental.incomeRecognizedAt||'',renewalNo:0});
+    const raw=rental.raw||{};
+    const entries=Array.isArray(raw.renewalEntries)?raw.renewalEntries:[];
+    entries.forEach(function(entry,index){
+      entry=entry||{};
+      const amount=rentalIncomeNumber(entry.incomeAmount!==undefined&&entry.incomeAmount!==null&&String(entry.incomeAmount).trim()!==''?entry.incomeAmount:entry.rentFee);
+      if(amount<=0)return;
+      rows.push({kind:'renewal',amount:amount,occurredAt:entry.incomeRecognizedAt||entry.receivedAt||entry.confirmedAt||'',renewalNo:Number(entry.renewalNo||index+1)});
+    });
+    return rows;
+  }
   function normalizeRentalLedger(obj){
     return {id:clean(obj.__id),rentalContractId:clean(firstValue(obj,['rentalContractId','contractId']))||clean(obj.__id),receivedAmount:firstNumber(obj,['receivedAmount']).value,deliveryCost:firstNumber(obj,['deliveryCost']).value,maintenanceCost:firstNumber(obj,['maintenanceCost']).value,otherCost:firstNumber(obj,['otherCost']).value,note:clean(obj.note),updatedAt:obj.updatedAt||''};
   }
@@ -1981,7 +2001,9 @@ function renderOverviewV7(){
   function inRange(value){const date=dateFrom(value);return date&&(!bounds.start||date>=bounds.start)&&(!bounds.end||date<=bounds.end);}
   const sales=state.sales.filter(function(sale){return inRange(sale.soldAt);});
   const incomes=state.incomes.filter(function(income){return inRange(income.occurredAt);});
-  const rentals=state.rentals.filter(function(rental){return rentalIsEstablished(rental)&&inRange(rental.incomeRecognizedAt);});
+  const rentalContracts=state.rentals.filter(rentalIsEstablished);
+  const rentalIncomeRows=[];
+  rentalContracts.forEach(function(rental){rentalIncomeEvents(rental).forEach(function(entry){if(inRange(entry.occurredAt))rentalIncomeRows.push(entry);});});
   const returns=state.salesReturns.filter(function(row){return inRange(row.createdAt);});
   const paymentsInRange=state.receivablePayments.filter(function(payment){return inRange(payment.paidAt);});
   const paymentByIncome=new Map();
@@ -2000,9 +2022,11 @@ function renderOverviewV7(){
   const productCost=sum(recognizedSales,function(sale){return sale.costTotal;})-sum(returns,function(row){return row.restockedCost||0;});
   const storeBalance=storeRevenue-productCost;
 
-  const contractRentalRevenue=sum(rentals,function(rental){return rental.incomeAmount;});
+  const initialRentalRevenue=sum(rentalIncomeRows.filter(function(entry){return entry.kind==='initial';}),function(entry){return entry.amount;});
+  const renewalRentalRevenue=sum(rentalIncomeRows.filter(function(entry){return entry.kind==='renewal';}),function(entry){return entry.amount;});
+  const contractRentalRevenue=initialRentalRevenue+renewalRentalRevenue;
   const rentalRevenue=contractRentalRevenue+pianoRentalRevenue;
-  const rentalCountLabel=state.overviewRange==='month'?(Number((state.overviewMonth||'').slice(5,7))||new Date().getMonth()+1)+' 月租賃件數':state.overviewRange==='today'?'今日租賃件數':state.overviewRange==='year'?'今年租賃件數':'區間租賃件數';
+  const rentalCountLabel=state.overviewRange==='month'?(Number((state.overviewMonth||'').slice(5,7))||new Date().getMonth()+1)+' 月租賃收入筆數':state.overviewRange==='today'?'今日租賃收入筆數':state.overviewRange==='year'?'今年租賃收入筆數':'區間租賃收入筆數';
 
   const educationRows=state.educationDaily.filter(function(row){return inRange(row.businessDate||row.dateKey);}),educationSessions=[];
   educationRows.forEach(function(row){(row.sessions||[]).forEach(function(session){educationSessions.push(session);});});
@@ -2088,7 +2112,7 @@ function renderOverviewV7(){
 
   const storeHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-store"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>門市營運</h2><p>商品依成交日認列；收款與交貨另外追蹤</p></div><button class="ops-button small ops-v8-channel-link" data-nav="sales">前往銷售</button></div><div class="ops-v8-channel-summary">'+summaryBox('門市成交／收入',money(storeRevenue))+summaryBox('成交毛利',money(storeBalance),storeBalance<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('商品成交',money(productRevenue))+metricRow('維修／其他',money(repairRevenue+otherRevenue))+metricRow('商品成本',money(productCost))+metricRow('退貨退款',money(returnRefund))+'</div></section>';
   const networkHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-network"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>網路營運</h2><p>EasyStore、MOMO、Coupang</p></div><button class="ops-button small ops-v8-channel-link" data-nav="sync">前往訂單</button></div><div class="ops-v8-channel-summary">'+summaryBox('預估入帳',money(networkNet))+summaryBox('預估毛利',money(networkProfit),networkProfit<0?'warning':'success')+'</div><div class="ops-v8-metric-list">'+metricRow('成交金額',money(networkGross))+metricRow('平台費＋發票稅',money(networkFees))+metricRow('商品成本',money(networkCost))+metricRow('訂單／件數',formatNumber(networkOrderCount)+' 單／'+formatNumber(networkQty)+' 件')+'</div></section>';
-  const rentalHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-rental"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>租賃營運</h2><p>依上方選擇的日期區間統計</p></div><button class="ops-button small ops-v8-channel-link" data-nav="rentals">前往租賃</button></div><div class="ops-v8-channel-summary">'+summaryBox('租賃收入',money(rentalRevenue))+summaryBox(rentalCountLabel,formatNumber(rentals.length)+' 件','success')+'</div><div class="ops-v8-metric-list">'+metricRow('正式合約收入',money(contractRentalRevenue))+metricRow('電鋼琴租用收入',money(pianoRentalRevenue))+metricRow(bounds.label+'成立合約',formatNumber(rentals.length)+' 件')+'</div></section>';
+  const rentalHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-rental"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>租賃營運</h2><p>初約依成立日、續約依收款確認日統計</p></div><button class="ops-button small ops-v8-channel-link" data-nav="rentals">前往租賃</button></div><div class="ops-v8-channel-summary">'+summaryBox('租賃收入',money(rentalRevenue))+summaryBox(rentalCountLabel,formatNumber(rentalIncomeRows.length)+' 筆','success')+'</div><div class="ops-v8-metric-list">'+metricRow('初次租約收入',money(initialRentalRevenue))+metricRow('續約收入',money(renewalRentalRevenue))+metricRow('電鋼琴租用收入',money(pianoRentalRevenue))+'</div></section>';
   const educationHtml='<section class="ops-card ops-v8-channel-card ops-v8-channel-school"><div class="ops-v8-channel-accent"></div><div class="ops-v8-channel-head"><div><h2>補習班營運</h2><p>'+escapeHtml(syncText)+'</p></div><button class="ops-button small ops-v8-channel-link" data-nav="course-calendar">前往課務</button></div><div class="ops-v8-channel-summary">'+summaryBox('補習班實收',money(educationCash))+summaryBox('教室保留＋教室租用',money(educationRetainedWithRental),'success')+'</div><div class="ops-v8-metric-list">'+metricAction('學費實收',money(educationSummary.tuitionReceived),'education-tuition-detail')+metricAction('教室租用',money(educationSummary.roomRentalReceived),'education-rental-detail')+metricAction('老師拆帳',money(educationSummary.teacherPayable),'education-teacher-summary')+metricAction('教室保留明細',money(educationSummary.schoolShare),'education-school-share-detail')+'</div></section>';
 
   const alerts=[];
@@ -3525,14 +3549,21 @@ function renderSalesV5(){
   }
   function mergedRentals(){
     const ledgers=new Map(state.rentalLedgers.map(function(x){return [x.rentalContractId,x];}));
-    return state.rentals.map(function(r){const ledger=ledgers.get(r.id)||ledgers.get(r.contractNo)||null;return Object.assign({},r,{ledger:ledger,expectedIncome:Number(r.incomeAmount||0)||Number(r.rentFee||0)+Number(r.shippingFee||0)});});
+    return state.rentals.map(function(r){
+      const ledger=ledgers.get(r.id)||ledgers.get(r.contractNo)||null;
+      const incomeEvents=rentalIncomeEvents(r);
+      const initialIncome=sum(incomeEvents.filter(function(entry){return entry.kind==='initial';}),function(entry){return entry.amount;});
+      const renewalIncome=sum(incomeEvents.filter(function(entry){return entry.kind==='renewal';}),function(entry){return entry.amount;});
+      const datedIncomeEvents=incomeEvents.filter(function(entry){return dateFrom(entry.occurredAt);}).sort(function(a,b){return (dateFrom(b.occurredAt)||0)-(dateFrom(a.occurredAt)||0);});
+      return Object.assign({},r,{ledger:ledger,initialIncome:initialIncome,renewalIncome:renewalIncome,expectedIncome:initialIncome+renewalIncome,latestIncomeAt:datedIncomeEvents.length?datedIncomeEvents[0].occurredAt:(r.incomeRecognizedAt||'')});
+    });
   }
   function renderRentals(){
     const term=lower(state.rentalSearch);
-    const rows=mergedRentals().filter(function(r){return !rentalIsCancelled(r);}).filter(function(r){return !term||lower([r.contractNo,r.customer,r.equipment,r.brand,r.model,r.assetNo,r.status].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.incomeRecognizedAt||b.raw&&b.raw.updatedAtText||b.startDate)||0)-(dateFrom(a.incomeRecognizedAt||a.raw&&a.raw.updatedAtText||a.startDate)||0);});
+    const rows=mergedRentals().filter(function(r){return !rentalIsCancelled(r);}).filter(function(r){return !term||lower([r.contractNo,r.customer,r.equipment,r.brand,r.model,r.assetNo,r.status].join(' ')).includes(term);}).sort(function(a,b){return (dateFrom(b.latestIncomeAt||b.raw&&b.raw.updatedAtText||b.startDate)||0)-(dateFrom(a.latestIncomeAt||a.raw&&a.raw.updatedAtText||a.startDate)||0);});
     const established=rows.filter(rentalIsEstablished),totalIncome=sum(established,function(r){return r.expectedIncome;}),active=established.filter(rentalIsActive),due=active.filter(function(r){const d=daysUntil(r.endDate);return d!==null&&d>=0&&d<=30;});
-    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table ops-rental-operations-table"><thead><tr><th>日期／合約</th><th>客戶</th><th>設備</th><th>租期／到期</th><th class="num">租賃收入</th><th>狀態</th></tr></thead><tbody>'+rows.map(function(r){const isEstablished=rentalIsEstablished(r),d=daysUntil(r.endDate),status=rentalStatusText(r),color=!isEstablished?'gray':d!==null&&d<0?'blue':d!==null&&d<=30?'yellow':'green';return '<tr><td>'+escapeHtml(dateText(r.incomeRecognizedAt||r.raw&&r.raw.updatedAtText||r.startDate))+'<br><small>'+escapeHtml(r.contractNo)+'</small></td><td><b>'+escapeHtml(r.customer)+'</b><br><small>'+escapeHtml(r.phone)+'</small></td><td><b>'+escapeHtml([r.brand,r.model].filter(Boolean).join(' ')||r.equipment)+'</b><br><small>'+escapeHtml(r.assetNo||r.equipment)+'</small></td><td>'+escapeHtml(dateText(r.startDate))+'<br><small>至 '+escapeHtml(dateText(r.endDate))+'</small></td><td class="num">'+(isEstablished?'<b>'+money(r.expectedIncome)+'</b><br><small>租金 '+money(r.rentFee)+'＋運費 '+money(r.shippingFee)+'；押金不計</small>':'<b>—</b><br><small>流程中，尚未列入收入</small>')+'</td><td>'+statusTag(status,color)+(isEstablished?'<small class="ops-rental-income-note">已列入租賃收入</small>':'<small class="ops-rental-income-note muted">保留顯示，尚未成立</small>')+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無租賃合約資料','目前 rentalContracts 沒有可顯示的合約；可按右上角進入原租賃管理確認。');
-    return '<div class="ops-kpi-grid ops-rental-kpis">'+kpi('租賃收入',money(totalIncome),'已成立合約的租金＋運費','＄')+kpi('成立合約',formatNumber(established.length),'押金不列入收入','約')+kpi('租用中',formatNumber(active.length),'目前仍在租期內','租')+kpi('30 日內到期',formatNumber(due.length),'需要安排續租或退租','!')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>租賃營運</h2><p>已成立合約才計入租賃收入；流程中的合約仍保留在清單，不會再整頁顯示空白。</p></div><div class="ops-card-actions">'+(due.length?statusTag('30 日內到期 '+due.length+' 件','yellow'):'')+'<a class="ops-button ghost" href="rental-system-hub.html">原租賃管理</a></div></div><div class="ops-toolbar"><input class="ops-input grow" id="rentalSearch" placeholder="搜尋合約、客戶、設備、品牌或型號" value="'+attr(state.rentalSearch)+'"></div>'+table+'</section>';
+    const table=rows.length?'<div class="ops-table-wrap"><table class="ops-table ops-rental-operations-table"><thead><tr><th>最近入帳／合約</th><th>客戶</th><th>設備</th><th>租期／到期</th><th class="num">累計租賃收入</th><th>狀態</th></tr></thead><tbody>'+rows.map(function(r){const isEstablished=rentalIsEstablished(r),d=daysUntil(r.endDate),status=rentalStatusText(r),color=!isEstablished?'gray':d!==null&&d<0?'blue':d!==null&&d<=30?'yellow':'green';return '<tr><td>'+escapeHtml(dateText(r.latestIncomeAt||r.raw&&r.raw.updatedAtText||r.startDate))+'<br><small>'+escapeHtml(r.contractNo)+'</small></td><td><b>'+escapeHtml(r.customer)+'</b><br><small>'+escapeHtml(r.phone)+'</small></td><td><b>'+escapeHtml([r.brand,r.model].filter(Boolean).join(' ')||r.equipment)+'</b><br><small>'+escapeHtml(r.assetNo||r.equipment)+'</small></td><td>'+escapeHtml(dateText(r.startDate))+'<br><small>至 '+escapeHtml(dateText(r.endDate))+'</small></td><td class="num">'+(isEstablished?'<b>'+money(r.expectedIncome)+'</b><br><small>初約（含運）'+money(r.initialIncome)+'；續約 '+money(r.renewalIncome)+'；押金不計</small>':'<b>—</b><br><small>流程中，尚未列入收入</small>')+'</td><td>'+statusTag(status,color)+(isEstablished?'<small class="ops-rental-income-note">已列入租賃收入</small>':'<small class="ops-rental-income-note muted">保留顯示，尚未成立</small>')+'</td></tr>';}).join('')+'</tbody></table></div>':emptyHtml('尚無租賃合約資料','目前 rentalContracts 沒有可顯示的合約；可按右上角進入原租賃管理確認。');
+    return '<div class="ops-kpi-grid ops-rental-kpis">'+kpi('租賃收入',money(totalIncome),'已成立初約＋已確認續約；押金不計','＄')+kpi('成立合約',formatNumber(established.length),'同一合約續約不重複算件數','約')+kpi('租用中',formatNumber(active.length),'目前仍在租期內','租')+kpi('30 日內到期',formatNumber(due.length),'需要安排續租或退租','!')+'</div><section class="ops-card"><div class="ops-card-head"><div><h2>租賃營運</h2><p>續約確認後會以收款確認日列入收入；流程中的合約仍保留顯示但不入帳。</p></div><div class="ops-card-actions">'+(due.length?statusTag('30 日內到期 '+due.length+' 件','yellow'):'')+'<a class="ops-button ghost" href="rental-system-hub.html">原租賃管理</a></div></div><div class="ops-toolbar"><input class="ops-input grow" id="rentalSearch" placeholder="搜尋合約、客戶、設備、品牌或型號" value="'+attr(state.rentalSearch)+'"></div>'+table+'</section>';
   }
 
   function renderCases(){
