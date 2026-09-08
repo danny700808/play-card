@@ -853,7 +853,7 @@
       return;
     }
     document.getElementById('rosterList').innerHTML = rows.map((student) => {
-      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span class="teacher-roster-actions"><button class="btn primary" type="button" data-view-history="${escapeHtml(student.id)}">查看課程紀錄</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
+      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span class="teacher-roster-actions"><button class="btn primary" type="button" data-view-history="${escapeHtml(student.id)}">課程紀錄</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">編輯資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button></span></article>`;
     }).join('');
   }
 
@@ -876,11 +876,14 @@
     document.getElementById('studentEditModal').classList.add('hidden');
   }
 
-  function openStudentStop(studentId) {
+  function openStudentStop(studentId, effectiveDate) {
     const student = rosterStudent(studentId);
     if (!student) return;
     const button = document.getElementById('confirmStudentStop');
+    if (!effectiveDate || effectiveDate < todayKey()) {toast('請從今天或未來的課堂選擇停課起點。','error');return;}
     button.dataset.studentId = student.id;
+    button.dataset.effectiveDate = effectiveDate;
+    document.getElementById('stopEffectiveDate').textContent = effectiveDate;
     document.getElementById('stopStudentName').textContent = student.name || '這位學生';
     document.getElementById('studentStopModal').classList.remove('hidden');
   }
@@ -888,6 +891,7 @@
   function closeStudentStop() {
     const button = document.getElementById('confirmStudentStop');
     delete button.dataset.studentId;
+    delete button.dataset.effectiveDate;
     document.getElementById('studentStopModal').classList.add('hidden');
   }
 
@@ -1973,12 +1977,12 @@
     const context = quickContext;
     if (event.target.closest('[data-quick-stop]') && context && context.row) {
       const ids=context.row.studentIds || [];
-      if(ids.length===1){closeQuick();openStudentStop(ids[0]);}
-      else showQuick('選擇停課學生','請選擇要辦理停課的學生',ids.map(id=>`<button type="button" data-stop-selected="${escapeHtml(id)}">${escapeHtml(studentNamesByIds([id]).join(''))}</button>`).join(''),{type:'stop-student-selection'});
+      if(ids.length===1){closeQuick();openStudentStop(ids[0],context.row.date);}
+      else showQuick('選擇停課學生','請選擇要辦理停課的學生',ids.map(id=>`<button type="button" data-stop-selected="${escapeHtml(id)}">${escapeHtml(studentNamesByIds([id]).join(''))}</button>`).join(''),{type:'stop-student-selection',effectiveDate:context.row.date});
       return;
     }
     const stopSelected=event.target.closest('[data-stop-selected]');
-    if(stopSelected && context && context.type==='stop-student-selection'){closeQuick();openStudentStop(stopSelected.dataset.stopSelected);return;}
+    if(stopSelected && context && context.type==='stop-student-selection'){closeQuick();openStudentStop(stopSelected.dataset.stopSelected,context.effectiveDate);return;}
     const durationButton = event.target.closest('[data-room-duration]');
     const weeklyButton = event.target.closest('[data-room-weekly]');
     if (context && (durationButton || weeklyButton)) {
@@ -2185,8 +2189,6 @@
     if (button) beginAddFlow('extra_lesson', { studentIds: [button.dataset.studentAction] });
     const edit = event.target.closest('[data-edit-student]');
     if (edit) openStudentEdit(edit.dataset.editStudent);
-    const stop = event.target.closest('[data-stop-student]');
-    if (stop) openStudentStop(stop.dataset.stopStudent);
     const bonus=event.target.closest('[data-bonus-student]');
     if(bonus){const form=document.getElementById('bonusRequestForm');form.elements.studentId.value=bonus.dataset.bonusStudent;form.elements.studentName.value=bonus.dataset.bonusName;document.getElementById('bonusStudentName').value=bonus.dataset.bonusName;document.getElementById('bonusRequestModal').classList.remove('hidden');}
   });
@@ -2229,7 +2231,8 @@
       const result = await invoke('coursePortalTeacherStopStudent', {
         sessionToken: token,
         studentId,
-        confirmed: true
+        confirmed: true,
+        effectiveDate: button.dataset.effectiveDate
       });
       clearCache();
       closeStudentStop();

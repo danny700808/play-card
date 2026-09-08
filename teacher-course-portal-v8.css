@@ -159,3 +159,5 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 @media(max-width:760px){.teacher-course-app .lesson-overlap-placement .lesson-cluster{display:flex;gap:4px;overflow:visible;min-width:0}.teacher-course-app .lesson-overlap-placement .lesson-cluster .lesson{flex:1 1 0;min-width:0;max-width:100%;box-sizing:border-box;overflow:hidden}.teacher-course-app .lesson-overlap-placement .lesson strong,.teacher-course-app .lesson-overlap-placement .lesson small{white-space:normal;overflow-wrap:anywhere}.teacher-course-app .week-cell.head{min-width:0}}
 
 .teacher-course-app [data-panel="students"]:has(#teacherHistoryPanel:not([hidden])) .teacher-roster-search{display:none}
+
+.teacher-course-app .teacher-roster-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:12px 8px}.teacher-course-app .teacher-roster-row>strong{font-size:17px;line-height:1.4;font-weight:850;min-width:0;overflow-wrap:anywhere}.teacher-course-app .teacher-roster-actions{display:flex;flex-wrap:nowrap;gap:4px}.teacher-course-app .teacher-roster-actions .btn{font-size:10px;padding:6px 5px;min-height:36px;white-space:nowrap}

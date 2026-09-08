@@ -5272,6 +5272,9 @@ async function teacherUpdateStudent(data) {
 
 async function teacherStopStudent(data) {
   const session = await requireSession(data, ['teacher']);
+  const effectiveDate = dateKey(data.effectiveDate);
+  if (!effectiveDate || effectiveDate < currentTaipeiDay()) throw new HttpsError('invalid-argument', '請從今天或未來的課堂選擇停課起點。');
+  assertPortalAdvanceDate(effectiveDate, '停課日期');
   const studentId = clean(data.studentId);
   assertInput(studentId, '學生');
   if (data.confirmed !== true) {
@@ -5323,7 +5326,7 @@ async function teacherStopStudent(data) {
     studentName: clean(student.name),
     teacherId: session.teacherId,
     teacherName: clean(teacher.name),
-    effectiveDate: currentTaipeiDay(),
+    effectiveDate,
     courseIdsAtStop,
     unpaidAmountAtStop: unpaidAmount,
     requestedBy: 'teacher',

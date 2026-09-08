@@ -6,10 +6,10 @@
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260908-history-stop-v1">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260908-roster-rows-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
   <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
-<link rel="stylesheet" href="course-history-view.css?v=20260908-history-stop-v1">
+<link rel="stylesheet" href="course-history-view.css?v=20260908-roster-rows-v1">
 </head>
 <body class="teacher-course-app clean-portal-ui">
   <main class="portal-shell">
@@ -163,7 +163,7 @@
 
   <div class="modal hidden" id="studentStopModal">
     <section class="card modal-panel">
-      <div class="section-title"><div><h2>再次確認停課</h2><p class="muted">確定從今天起停止您與這位學生的所有後續課程？既有簽到、學費與歷史紀錄保留。</p></div><button class="btn" id="closeStudentStop" type="button">取消</button></div>
+      <div class="section-title"><div><h2>再次確認停課</h2><p class="muted">確定從 <strong id="stopEffectiveDate"></strong> 起停止您與這位學生的所有後續課程？該日期之前的課程照舊，既有簽到、學費與歷史紀錄保留。</p></div><button class="btn" id="closeStudentStop" type="button">取消</button></div>
       <div class="teacher-stop-warning">
         <strong id="stopStudentName">—</strong>
         <p>若仍有未繳學費，系統會自動送到管理者專用的「停課學費未繳清」區塊。</p>
@@ -176,11 +176,11 @@
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-history-view.js?v=20260908-history-stop-v1"></script>
+  <script src="course-history-view.js?v=20260908-roster-rows-v1"></script>
   <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-daily-reminder.js?v=20260806-daily-reminder-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260908-history-stop-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260908-roster-rows-v1"></script>
 
 </body>
 </html>
