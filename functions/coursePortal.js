@@ -4666,6 +4666,52 @@ function verifiedScheduleDates(settings) {
     .flatMap(value => Array.isArray(value) ? value : []).map(dateKey).filter(Boolean));
 }
 
+function irregularPlaceholder(row, modes) {
+  if (['attended','absent'].includes(normalizeScheduleStatus(row.status))) return false;
+  if (['single_move','extra_lesson','teacher_gift'].includes(clean(row.portalAction || row.action))) return false;
+  if (!['fixed','permanent_move'].includes(clean(row.type)) && clean(row.portalAction) !== 'permanent_move') return false;
+  const ids = eventStudentIds(row).slice().sort().join('|');
+  return modes.some(mode => mode.enabled !== false && eventTeacherId(row) === mode.teacherId &&
+    eventSubjectId(row) === mode.subjectId && ids === mode.studentIds.slice().sort().join('|') &&
+    [...(mode.intervals || []), mode].some(interval => eventDate(row) >= interval.effectiveDate && (!interval.resumedFrom || eventDate(row) < interval.resumedFrom)));
+}
+async function irregularRestoreMode(data, session) {
+  if (!clean(data.irregularId)) return null;
+  if (clean(data.action) !== 'permanent_move') throw new HttpsError('invalid-argument','請使用恢復固定排課。');
+  const doc = await db.collection('coursePortalIrregularCourses').doc(clean(data.irregularId)).get();
+  const mode = doc.exists && doc.data();
+  if (!mode || mode.teacherId !== session.teacherId || mode.enabled === false || mode.resumedFrom) throw new HttpsError('permission-denied','這筆不定時課程已變更或不屬於您。');
+  return {...jsonValue(mode), id:doc.id};
+}
+function irregularSource(mode, day) {
+  return {...mode.source, date:day, status:'scheduled', irregularId:mode.id};
+}
+async function teacherSetIrregular(data) {
+  const session = await requireSession(data,['teacher']);
+  const day = dateKey(data.sourceDate);
+  if (!day) throw new HttpsError('invalid-argument','請選擇課程。');
+  const version = await readScheduleVersion();
+  const bundle = await scheduleBundle(day,day,session.teacherId);
+  const source = bundle.resourceEvents.find(row => row.teacherId === session.teacherId &&
+    [row.id,row.sourceId].includes(clean(data.sourceEventId)));
+  if (!source || isRoomRentalEvent(source) || !source.studentIds.length) throw new HttpsError('permission-denied','找不到您授課的課程。');
+  const key = hash([session.teacherId,source.subjectId,...source.studentIds.slice().sort()].join('|'));
+  const ref = db.collection('coursePortalIrregularCourses').doc(key);
+  await db.runTransaction(async tx => {
+    const [state, previous] = await Promise.all([tx.get(scheduleVersionRef()), tx.get(ref)]);
+    const prior = previous.exists ? previous.data() : {};
+    if (prior.enabled && !prior.resumedFrom) return;
+    const intervals = [...(prior.intervals || []), ...(prior.resumedFrom ? [{effectiveDate:prior.effectiveDate,resumedFrom:prior.resumedFrom}] : [])];
+    assertScheduleWritable(state);
+    if (Number(state.data().version || 0) !== version) throw new HttpsError('aborted','課表剛更新，請重新操作。');
+    tx.set(ref,{teacherId:session.teacherId,subjectId:source.subjectId,studentIds:source.studentIds,
+      source:jsonValue(source),effectiveDate:currentTaipeiDay(),resumedFrom:'',enabled:true,intervals,
+      updatedAt:FieldValue.serverTimestamp()},{merge:true});
+    tx.set(scheduleVersionRef(),{version:version+1,updatedAt:FieldValue.serverTimestamp(),updatedBy:session.teacherId},{merge:true});
+  });
+  return {ok:true,message:'已設為不定時，已約定的單堂課與過去紀錄保留。'};
+}
+
 async function historyStudentEvents(studentId, startDate, endDate) {
   const groups = await readCourseGroups();
   const group = groups.find(row => row.active !== false && row.id === studentId);
@@ -4685,6 +4731,8 @@ async function historyStudentEvents(studentId, startDate, endDate) {
 }
 
 async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
+  const irregularSnapshot = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
+  const irregularModes = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const historyStudentId = clean(options.historyStudentId);
   const historyCourses = rows => historyStudentId ? rows.filter(row => eventStudentIds(row).includes(historyStudentId)) : rows;
   const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions, mirrorSettingsSnapshot] = await Promise.all([
@@ -4872,6 +4920,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
   };
   const removedOccurrence = (row, key) => occurrenceIds(row).some((id) => removed.has(`${id}|${key}`));
   const base = [...exact, ...expanded].filter((row) =>
+    !irregularPlaceholder(row, irregularModes) &&
     !replacedTeachingOccurrence(row, permanent, overlay) &&
     !removedOccurrence(row, eventDate(row)) &&
     !permanent.some((change) =>
@@ -4966,6 +5015,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
           portalAction: row.action,
           __id: occurrenceId
         });
+        if (irregularPlaceholder(candidate, irregularModes)) continue;
         const candidateResources = eventSharedResourceIds(candidate, maps);
         const dynamicConflict = !storedPending && eventBlocksResource(candidate) && base.find((other) =>
           !replacedTeachingOccurrence(other, permanent, overlay) &&
@@ -5014,7 +5064,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
   });
   const lessonSettings = await db.collection('coursePortalLessonSettings').get();
   const configuredBase = applyLessonSettings(base.filter(row => !replacedTeachingOccurrence(row, permanent, overlay)), lessonSettings.docs.map(doc => doc.data()));
-  const validBase = configuredBase.map((row) => applyStudentSuspensions(row, suspensions)).filter((row) =>
+  const validBase = configuredBase.filter(row => !irregularPlaceholder(row, irregularModes)).map((row) => applyStudentSuspensions(row, suspensions)).filter((row) =>
     row &&
     eventDate(row) >= startDate &&
     eventDate(row) <= endDate &&
@@ -5034,6 +5084,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
     suspensions,
     maps,
     resourceEvents,
+    irregularModes,
     resourceConflicts: scheduleResourceConflicts(resourceEvents),
     events: validBase.map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
   };
@@ -5137,6 +5188,7 @@ async function teacherPortalData(data) {
         ? (ownEvents.find((item) => item.id === row.id) || row)
         : row
     ),
+    irregularCourses: bundle.irregularModes.filter(row => row.teacherId === session.teacherId && (!row.resumedFrom || row.resumedFrom > currentTaipeiDay())),
     roster
   };
   if (includePayroll) {
@@ -5322,7 +5374,8 @@ async function teacherAvailability(data) {
   ]);
   const roomSettingsMap = {};
   roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
-  let source = bundle.resourceEvents.find((event) =>
+  const restoreMode = await irregularRestoreMode(data, session);
+  let source = restoreMode ? irregularSource(restoreMode, sourceDate) : bundle.resourceEvents.find((event) =>
     event.teacherId === session.teacherId &&
     event.date === sourceDate &&
     (
@@ -7530,13 +7583,46 @@ function applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttenda
   });
 }
 
+async function historyEventsForStudent(studentId, startDate, endDate) {
+  const [events, changeDocs, groups] = await Promise.all([
+    historyStudentEvents(studentId,startDate,endDate),scheduleChangeDocsByDateRange(startDate,endDate),readCourseGroups()
+  ]);
+  const changes = changeDocs.map(doc => ({...jsonValue(doc.data()),id:doc.id})).filter(row => row.active !== false && row.event);
+  const changedEvents = projectCourseGroups('events',changes.map(row => ({...row.event,
+    id:row.id,teacherId:eventTeacherId(row.event) || row.createdByTeacherId,
+    date:eventDate(row.event) || row.sourceDate})),groups)
+    .filter(row => eventStudentIds(row).includes(studentId) && eventDate(row)>=startDate && eventDate(row)<=endDate);
+  return {fixedCourses:[],temporaryCourses:[],resourceEvents:[...events.filter(row => row.__mirrorActive !== false),...changedEvents]
+    .map(row => ({...row,startTime:eventStart(row)}))};
+}
+
+async function historyAttendanceForPeriods(periods, studentId, fromDate) {
+  const candidates = selectHistoryPeriods(periods.map(row => ({...row,
+    studentId,subjectId:eventSubjectId(row),teacherId:eventTeacherId(row),
+    outstandingAmount:tuitionOutstandingAmount(row),
+    // Read the boundary period before deciding whether its last lesson reaches the cutoff.
+    endDate:dateKey(row.expiryDate || row.endDate) || (dateKey(row.startDate) <= COURSE_HISTORY_MIN_DATE ? COURSE_HISTORY_MIN_DATE : '')
+  })), fromDate);
+  const ids = [...new Set(candidates.flatMap(row => [sourceId(row),clean(row.sourcePaymentId),sourceId(row).replace(/^period_/, '')]).filter(Boolean))];
+  const requests = [];
+  for (let i=0;i<ids.length;i+=30) for (const field of ['periodId','sourcePaymentId','studentPayment']) requests.push(
+    db.collection(MIRROR.attendance).where('source.'+field,'in',ids.slice(i,i+30)).get());
+  const snapshots = await Promise.all(requests), rows = new Map();
+  for (const snap of snapshots) for (const doc of snap.docs) {
+    const envelope = doc.data(), source = jsonValue(envelope.source) || {};
+    if (envelope.sourceActive === false || source.studentId !== studentId) continue;
+    rows.set(doc.id,{__id:doc.id,...source});
+  }
+  return projectCourseGroups('attendance',[...rows.values()],await readCourseGroups());
+}
+
 async function courseLessonHistory(data) {
   const session = await requireSession(data, ['teacher', 'student']);
   const studentId = canonicalStudentId(clean(data.studentId), await readCourseGroups());
   if (!studentId) throw new HttpsError('invalid-argument', '請選擇學生。');
+  const ownedPeriods = await mirrorRowsByField('tuitionPeriods', 'studentId', studentId);
   if (session.role === 'teacher') {
-    const ownedPeriods = await mirrorRowsByField('tuitionPeriods', 'studentId', studentId);
-    if (!(await teacherOwnsStudent(session.teacherId, studentId)) && !ownedPeriods.some(row => eventTeacherId(row) === session.teacherId)) {
+    if (!ownedPeriods.some(row => eventTeacherId(row) === session.teacherId) && !(await teacherOwnsStudent(session.teacherId, studentId))) {
       throw new HttpsError('permission-denied', '只能查看自己授課的學生。');
     }
   } else if (!(await activeStudentIdsForSession(session)).includes(studentId)) {
@@ -7550,10 +7636,10 @@ async function courseLessonHistory(data) {
   const today = currentTaipeiDay();
   if (fromDate > today) throw new HttpsError('invalid-argument', '請選擇今天或之前的日期。');
   const [rawPeriods, mirrorAttendance, portalAttendance, subjects, teachers, bundle, historyFixedCourses, historyTemporaryCourses] = await Promise.all([
-    mirrorRowsByField('tuitionPeriods', 'studentId', studentId),
-    mirrorRowsByField('attendance', 'studentId', studentId),
+    Promise.resolve(ownedPeriods),
+    historyAttendanceForPeriods(ownedPeriods, studentId, fromDate),
     portalAttendanceForStudents([studentId]), mirrorRows('subjects'), mirrorRows('teachers'),
-    scheduleBundle(COURSE_HISTORY_MIN_DATE, today, session.role === 'teacher' ? session.teacherId : '', {historyStudentId:studentId}),
+    historyEventsForStudent(studentId, COURSE_HISTORY_MIN_DATE, today),
     mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')
   ]);
   const courses = [...historyFixedCourses, ...historyTemporaryCourses, ...bundle.fixedCourses, ...bundle.temporaryCourses];
@@ -8702,6 +8788,7 @@ async function teacherAction(data) {
     };
   }
 
+  const restoreMode = await irregularRestoreMode(data, session);
   const [policy, bundle, roomSettingsSnapshot] = await Promise.all([
     rentalPolicySettings(),
     scheduleBundle(date, date, session.teacherId),
@@ -8726,7 +8813,7 @@ async function teacherAction(data) {
       throw new HttpsError('invalid-argument', '缺少要調動的原課程。');
     }
     sourceBundle = sourceDate === date ? bundle : await scheduleBundle(sourceDate, sourceDate, session.teacherId);
-    source = sourceBundle.resourceEvents.find((event) =>
+    source = restoreMode ? irregularSource(restoreMode, sourceDate) : sourceBundle.resourceEvents.find((event) =>
       event.teacherId === session.teacherId &&
       event.date === sourceDate &&
       (
@@ -9054,6 +9141,7 @@ async function teacherAction(data) {
         supersededAt: FieldValue.serverTimestamp()
       }, { merge: true });
     });
+    if (restoreMode) tx.update(db.collection('coursePortalIrregularCourses').doc(restoreMode.id), {resumedFrom:date,resumeChangeId:id,updatedAt:FieldValue.serverTimestamp()});
     tx.set(changeRef, changePayload);
     tx.set(versionRef, {
       version: currentVersion + 1,
@@ -12571,6 +12659,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalCreateRoomBooking = callable(createRoomBooking, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalMyBookings = callable(rentalMyBookings);
   exportsObject.coursePortalCancelRoomBooking = callable(cancelRoomBooking);
+  exportsObject.coursePortalTeacherSetIrregular = callable(teacherSetIrregular, {timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLessonState = callable(teacherLessonState, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherAttendance = callable(teacherAttendance, { timeoutSeconds: 180, memory: '1GiB' });

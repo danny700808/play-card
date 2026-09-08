@@ -140,3 +140,6 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
  body.teacher-course-app{height:100dvh;overflow:hidden;padding-bottom:0}
  .teacher-course-app .portal-shell{box-sizing:border-box;height:100%;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 }
+
+.teacher-course-app .teacher-week-toolbar{grid-template-columns:1fr .7fr 1fr}
+.teacher-irregular-list{margin:8px 0 12px;padding:10px;border:1px solid var(--line);border-radius:12px;background:#f4f7f5}.teacher-irregular-list summary{cursor:pointer;font-weight:700}.teacher-irregular-row{display:flex;flex-wrap:wrap;align-items:center;gap:7px;padding:10px 0;border-top:1px solid var(--line)}.teacher-irregular-row span{flex:1 1 100%;font-size:13px}

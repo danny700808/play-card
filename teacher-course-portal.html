@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260908-week-buttons-v1">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260908-irregular-today-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
   <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
 <link rel="stylesheet" href="course-history-view.css?v=20260908-pending-fixes-v1">
@@ -77,8 +77,10 @@
 
       <section class="card tab-panel" data-panel="schedule">
         <div class="section-title"><h2>課表</h2></div>
+        <details id="irregularCourses" class="teacher-irregular-list" hidden><summary>不定時課程 <span id="irregularCount"></span></summary><div id="irregularList"></div></details>
         <div class="toolbar teacher-week-toolbar" aria-label="週次切換">
           <button class="btn" id="prevWeek" type="button">上一週</button>
+          <button class="btn" id="todayWeek" type="button">今天</button>
           <button class="btn" id="nextWeek" type="button">下一週</button>
         </div>
         <div class="teacher-flow-banner hidden" id="teacherFlowBanner" aria-live="polite">
@@ -180,7 +182,7 @@
   <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-daily-reminder.js?v=20260806-daily-reminder-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260908-week-buttons-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260908-irregular-today-v1"></script>
 
 </body>
 </html>

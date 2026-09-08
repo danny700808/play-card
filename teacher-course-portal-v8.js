@@ -878,6 +878,13 @@
     document.getElementById('payrollList').innerHTML = [...groups.entries()].map(([date, dayRows]) => `<section class="payroll-day"><h3>${escapeHtml(date)}</h3><table class="payroll-lines"><thead><tr><th scope="col">姓名</th><th scope="col">收費</th><th scope="col">分成</th><th scope="col">所得</th></tr></thead><tbody>${dayRows.map((row) => `<tr><th scope="row">${escapeHtml(row.name)}${row.kind === 'adjustment' ? `<small>${escapeHtml(row.subject)}</small>` : ''}</th><td>${row.kind === 'lesson' && row.collected !== null ? money(row.collected) : '—'}</td><td>${escapeHtml(row.rate)}</td><td class="payroll-income">${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>`).join('') || '<p class="muted">這個月份目前沒有薪資資料。</p>';
   }
 
+  function renderIrregularCourses() {
+    const rows = data.irregularCourses || [];
+    document.getElementById('irregularCourses').hidden = !rows.length;
+    document.getElementById('irregularCount').textContent = `（${rows.length}）`;
+    document.getElementById('irregularList').innerHTML = rows.map(row => `<div class="teacher-irregular-row"><span>${escapeHtml(studentNamesByIds(row.studentIds).join('－'))} · ${escapeHtml(subjectNameById(row.subjectId))}${row.resumedFrom ? ` · ${escapeHtml(row.resumedFrom)} 起恢復固定` : ''}</span><button class="btn" data-irregular-add="${escapeHtml(row.id)}">安排一堂</button>${row.resumedFrom ? '' : `<button class="btn" data-irregular-resume="${escapeHtml(row.id)}">恢復固定排課</button>`}</div>`).join('');
+  }
+
   function renderAll() {
     if (data.loginNotice && data.loginNotice.loginAtText) {
       let notice = document.getElementById('teacherLoginNotice');
@@ -886,6 +893,7 @@
     }
     renderWeek();
     renderRoster();
+    renderIrregularCourses();
     renderPayroll();
     showBound(true);
   }
@@ -1035,6 +1043,7 @@
   function lessonActionDefaults(row, action) {
     return {
       action,
+      irregularId: row.irregularId || '',
       sourceEventId: row.sourceId || row.id,
       sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
       sourceDate: row.date,
@@ -1149,6 +1158,7 @@
       ${quickActionRow(singleMoveAction, permanentMoveAction)}
       ${quickActionRow(extraLessonAction, giftLessonAction)}
       ${quickActionRow(contactBookAction, absentAction)}
+      <button type="button" data-set-irregular>設為不定時</button>
     `,
       { type: 'lesson', row }
     );
@@ -1766,6 +1776,20 @@
   });
   document.getElementById('prevWeek').addEventListener('click', () => navigateTeacherWeek(-1));
   document.getElementById('nextWeek').addEventListener('click', () => navigateTeacherWeek(1));
+  document.getElementById('todayWeek').addEventListener('click', async () => {
+    if (changingWeek) return;
+    changingWeek = true;
+    const button = document.getElementById('todayWeek');
+    loading(button, true);
+    try {
+      const today = todayKey(), weekday = (new Date(today + 'T12:00:00').getDay() + 6) % 7;
+      weekStart = addDays(today, -weekday);
+      await load(true);
+      updateWeekViewport();
+      const width = Number.parseFloat(document.getElementById('weekGrid').style.getPropertyValue('--teacher-day-width')) || 0;
+      weekViewport.scrollLeft = Math.min(Math.floor(weekday / 2) * 2 * width, Math.max(0, weekViewport.scrollWidth - weekViewport.clientWidth));
+    } finally { changingWeek = false; loading(button, false); }
+  });
   document.getElementById('rosterSearch').addEventListener('input', (event) => {
     rosterQuery = clean(event.target.value);
     renderRoster();
@@ -1856,6 +1880,14 @@
     }
   });
 
+  document.getElementById('irregularList').addEventListener('click', async event => {
+    const add = event.target.closest('[data-irregular-add]'), resume = event.target.closest('[data-irregular-resume]');
+    const id = add ? add.dataset.irregularAdd : resume && resume.dataset.irregularResume;
+    const row = (data.irregularCourses || []).find(item => item.id === id);
+    if (!row) return;
+    if (add) beginAddFlow('extra_lesson', {studentIds:row.studentIds,subjectId:row.subjectId});
+    else await startSourceMove({...row.source, studentNames:studentNamesByIds(row.studentIds),date:todayKey(),status:'scheduled',irregularId:row.id}, 'permanent_move');
+  });
   document.getElementById('teacherQuickActions').addEventListener('click', async (event) => {
     const context = quickContext;
     const actionButton = event.target.closest('[data-quick-action]');
@@ -1878,6 +1910,21 @@
     const confirmPermanent = event.target.closest('[data-confirm-permanent]');
     const cancelFlow = event.target.closest('[data-cancel-flow]');
     if (!context) return;
+    if (event.target.closest('[data-set-irregular]') && context.type === 'lesson') {
+      showQuick('設為不定時', (context.row.studentNames || []).join('－'), '<p>停止之後自動排固定課。已簽到紀錄、學費與另外約好的單堂課保留。</p><button type="button" data-cancel-flow>取消</button><button type="button" data-confirm-irregular>確定設為不定時</button>', {type:'irregular-confirm',row:context.row});
+      return;
+    }
+    const irregularButton = event.target.closest('[data-confirm-irregular]');
+    if (irregularButton && context.type === 'irregular-confirm') {
+      loading(irregularButton,true);
+      try {
+        const result = await invoke('coursePortalTeacherSetIrregular',{sessionToken:token,sourceDate:context.row.date,sourceEventId:context.row.sourceId || context.row.id});
+        closeQuick(); clearCache(); await load(true); toast(result.message);
+      } catch(error) { toast(error.message,'error'); }
+      finally { loading(irregularButton,false); }
+      return;
+    }
+
     if (contactBookButton && context.type === 'lesson') {
       openContactBook(context.row);
       return;
