@@ -443,20 +443,12 @@
         ${teacherContactHtml ? `<span>授課老師</span><strong>${teacherContactHtml}</strong>` : ''}
       </div>`;
       const requests = activeTuitionPayments();
-      const byCourse = new Map();
-      upcoming.slice().sort((a,b) => `${a.date}|${a.startTime}`.localeCompare(`${b.date}|${b.startTime}`)).forEach(row => {
-        const key = `${row.subjectName}|${row.teacherId || row.teacherName}`;
-        if (!byCourse.has(key)) byCourse.set(key, []);
-        const rows = byCourse.get(key);
-        const firstDate = rows[0]?.date || row.date;
-        if (Date.parse(row.date + 'T00:00:00+08:00') - Date.parse(firstDate + 'T00:00:00+08:00') < 7 * 86400000) rows.push(row);
-      });
-      const scheduleRows = [...byCourse.values()].flat();
+      const scheduleRows = upcoming.slice().sort((a,b) => `${a.date}|${a.startTime}`.localeCompare(`${b.date}|${b.startTime}`)).slice(0, 2);
       document.getElementById('upcomingCourseList').innerHTML = scheduleRows.length
-        ? `<div class="upcoming-course-title">目前上課時段</div>${scheduleRows.map(row => {
+        ? scheduleRows.map((row, index) => {
           const day = new Intl.DateTimeFormat('zh-TW', {weekday:'long', timeZone:'Asia/Taipei'}).format(new Date(row.date + 'T12:00:00+08:00'));
-          return `<div class="upcoming-course-row"><strong>${P.escapeHtml(day)} ${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong><span>${P.escapeHtml(row.subjectName || '課程')}｜${P.escapeHtml(row.teacherName || '老師')}</span></div>`;
-        }).join('')}` : '<p class="muted">目前尚未安排上課時段。</p>';
+          return `<div class="upcoming-course-row"><span>${index === 0 ? '下一次上課' : '下下次上課'}</span><strong>${P.escapeHtml(row.date)}（${P.escapeHtml(day)}）${P.escapeHtml(row.startTime)}～${P.escapeHtml(row.endTime)}</strong><span>${P.escapeHtml(row.subjectName || '課程')}｜${P.escapeHtml(row.teacherName || '老師')}</span></div>`;
+        }).join('') : '<p class="muted">目前尚未安排上課時段。</p>';
       selectedPaymentSubjectId = '';
       document.getElementById('periodList').innerHTML = '';
       const historyStudentId = studentId;

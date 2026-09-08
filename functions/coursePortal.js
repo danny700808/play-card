@@ -7716,6 +7716,21 @@ async function courseLessonHistory(data) {
       .sort((a, b) => `${a.date}|${a.startTime}`.localeCompare(`${b.date}|${b.startTime}`)) };
 }
 
+function nextStudentLessons(events, allowed, now = Date.now()) {
+  const counts = new Map();
+  return events.filter(row =>
+    eventStudentIds(row).some(id => allowed.has(id)) &&
+    !['cancelled', 'leave', 'absent', 'attended', 'checked_in', 'present'].includes(normalizeScheduleStatus(row.status)) &&
+    taipeiDateTimeMillis(eventDate(row), eventStart(row)) >= now
+  ).sort((a,b) => `${eventDate(a)}|${eventStart(a)}`.localeCompare(`${eventDate(b)}|${eventStart(b)}`))
+    .filter(row => {
+      const ids = eventStudentIds(row).filter(id => allowed.has(id));
+      const include = ids.some(id => (counts.get(id) || 0) < 2);
+      if (include) ids.forEach(id => counts.set(id, (counts.get(id) || 0) + 1));
+      return include;
+    });
+}
+
 async function studentPortalData(data) {
   const session = await requireSession(data, ['student']);
   const sessionBindings = await activeStudentBindingsForSession(session);
@@ -7924,11 +7939,7 @@ async function studentPortalData(data) {
       note: '主管核准取消簽到，堂數已補回目前期別'
     })),
     contactBook: publicContactPosts.filter((row) => isStudentHistoryDateVisible(row.date)),
-    upcoming: events.filter((row) =>
-      eventDate(row) >= today &&
-      eventStudentIds(row).some((id) => allowed.has(id)) &&
-      !['cancelled', 'leave', 'absent'].includes(normalizeScheduleStatus(row.status))
-    ).slice(0, 30).map((row) => ({
+    upcoming: nextStudentLessons(events, allowed).map((row) => ({
       id: sourceId(row),
       date: eventDate(row),
       startTime: eventStart(row),
