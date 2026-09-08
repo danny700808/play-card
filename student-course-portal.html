@@ -62,6 +62,7 @@
       <div><strong>正在確認登入</strong><p>確認這台裝置的登入狀態。</p></div>
     </section>
 
+    <section class="card hidden" id="studentLoadError" role="alert"><h2>暫時無法讀取學生資料</h2><p id="studentLoadErrorMessage"></p><button class="btn primary" type="button" id="retryStudentLoad">重新讀取</button></section>
     <section class="hidden" id="appView" data-app-view>
       <div class="toolbar" id="studentSwitcher">
         <div class="field" id="studentSelectField"><label>查看學生</label><select id="studentSelect"></select></div>
@@ -155,7 +156,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-history-view.js?v=20260908-history-date-mobile-v2"></script>
-  <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
+  <script src="course-portal-common.js?v=20260909-parent-loading-v1"></script>
   <script>
   (function () {
     const P = window.CoursePortal;
@@ -461,6 +462,11 @@
     }
 
     async function load(requested) {
+      document.getElementById('studentLoadError').classList.add('hidden');
+      if (appView.classList.contains('hidden')) {
+        document.getElementById('sessionLoading').classList.remove('hidden');
+        document.querySelector('#sessionLoading strong').textContent = '正在讀取學生資料';
+      }
       try {
         data = await P.call('coursePortalStudentData', { sessionToken: token, studentId: requested || '' });
         if (!data.students.length) throw new Error('目前沒有可查看的學生資料。');
@@ -483,10 +489,14 @@
           await load('');
           return;
         }
-        P.toast(error.message, 'error');
+        document.getElementById('sessionLoading').classList.add('hidden');
+        document.body.classList.remove('portal-session-resolving');
+        document.getElementById('studentLoadErrorMessage').textContent = error.message || '資料讀取失敗，請重新讀取。';
+        document.getElementById('studentLoadError').classList.remove('hidden');
       }
     }
 
+    document.getElementById('retryStudentLoad').addEventListener('click', () => load(studentId));
     P.installAuth({ role: 'student', authViewId: 'bindView' });
     document.getElementById('studentSelect').addEventListener('change', (event) => {
       studentId = event.target.value;

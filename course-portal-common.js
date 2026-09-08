@@ -240,7 +240,11 @@
     });
     observer.observe(bindView, { attributes: true, attributeFilter: ['class'] });
     observer.observe(appView, { attributes: true, attributeFilter: ['class'] });
-    setTimeout(() => { observer.disconnect(); finishSessionResolution(); }, 15000);
+    setTimeout(() => {
+      if (!document.body.classList.contains('portal-session-resolving')) return;
+      const message = (loadingView || overlay)?.querySelector('p');
+      if (message) message.textContent = '資料仍在讀取中，請稍候；若讀取失敗，畫面會提供重試。';
+    }, 15000);
   }
 
   async function exchangeAccess(role) {

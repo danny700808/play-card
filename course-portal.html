@@ -179,7 +179,7 @@
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-portal-common.js?v=20260907-teacher-login-300-v1"></script>
+  <script src="course-portal-common.js?v=20260909-parent-loading-v1"></script>
   <script>
     (async function () {
       'use strict';
@@ -654,7 +654,7 @@
         showNotice(
           reason === 'session-expired'
             ? '這台裝置原本保存的登入已失效，系統已自動清除。請重新使用 LINE 或 Email 登入。若 LINE 要求驗證，請依 LINE 畫面操作。'
-            : '請先使用 LINE 或 Email 登入。',
+            : '使用 LINE 或 Email 登入。',
           reason === 'session-expired'
         );
       }
