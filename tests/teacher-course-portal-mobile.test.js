@@ -22,7 +22,7 @@ assert(!source.includes('老師課務｜歡迎'), '老師程式不應再動態�
 assert(!html.includes('id="weekPicker"'), '手機課表不應顯示日期／星期選擇器');
 assert(!source.includes("getElementById('weekPicker')"), '老師課表仍保留日期跳轉邏輯');
 assert(html.includes('id="prevWeek"') && html.includes('id="nextWeek"'), '老師課表需保留上一週／下一週');
-assert(source.includes('addDays(weekStart, direction * 7)') && source.includes('navigateTeacherWeek(-1, false)') && source.includes('navigateTeacherWeek(1, false)'), '前後週按鈕未以整週切換');
+assert(source.includes('addDays(weekStart, direction * 7)') && source.includes('navigateTeacherWeek(-1)') && source.includes('navigateTeacherWeek(1)'), '前後週按鈕未以整週切換');
 
 assert(html.includes('data-two-day-viewport'), '手機課表缺少兩日檢視容器');
 assert(source.includes('scroll.clientWidth - stickyWidth') && source.includes('/ 2'), '手機課表未依可視寬度配置兩日欄');
