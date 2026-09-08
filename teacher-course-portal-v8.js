@@ -545,7 +545,7 @@
   }
   function nextWeekPage(targets, position, delta) {
     const current = nearestWeekPage(targets,position), index = targets.indexOf(current);
-    if(Math.abs(delta)<35) return current;
+    if(Math.abs(delta)<6) return current;
     return targets[Math.max(0,Math.min(targets.length-1,index+(delta<0?1:-1)))];
   }
   function snapWeekScrollToGroup() {
@@ -1812,13 +1812,14 @@
   weekViewport.addEventListener('touchstart', event => {
     if(!global.matchMedia('(max-width: 760px)').matches || event.touches.length!==1) {weekGesture=null;return;}
     global.clearTimeout(weekSnapTimer);
+    suppressWeekClickUntil=0;
     const point=event.touches[0];
     weekGesture={x:point.clientX,y:point.clientY,left:weekViewport.scrollLeft,top:weekViewport.scrollTop,axis:null,delta:0};
   },{passive:true});
   weekViewport.addEventListener('touchmove', event => {
     if(!weekGesture || event.touches.length!==1) {weekGesture=null;return;}
     const dx=event.touches[0].clientX-weekGesture.x,dy=event.touches[0].clientY-weekGesture.y;
-    if(!weekGesture.axis && Math.max(Math.abs(dx),Math.abs(dy))<10) return;
+    if(!weekGesture.axis && Math.max(Math.abs(dx),Math.abs(dy))<6) return;
     if(!weekGesture.axis) weekGesture.axis=Math.abs(dx)>Math.abs(dy)?'x':'y';
     event.preventDefault();
     suppressWeekClickUntil=Date.now()+800;
