@@ -889,7 +889,7 @@
   function renderAll() {
     if (data.loginNotice && data.loginNotice.loginAtText) {
       let notice = document.getElementById('teacherLoginNotice');
-      if (!notice) { notice = document.createElement('p'); notice.id = 'teacherLoginNotice'; notice.className = 'teacher-login-notice'; document.querySelector('.yz-teacher-nav').after(notice); }
+      if (!notice) { notice = document.createElement('p'); notice.id = 'teacherLoginNotice'; notice.className = 'teacher-login-notice'; document.getElementById('appView').prepend(notice); }
       notice.textContent = data.loginNotice.previousLoginAtText ? '上次登入：' + data.loginNotice.previousLoginAtText + '。若不是本人操作，請聯絡管理者。' : '這是首次記錄的登入。';
     }
     renderWeek();
