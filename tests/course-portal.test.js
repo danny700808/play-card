@@ -143,7 +143,7 @@ assert(teacherSource.includes('data-planner-room'), '老師入口缺少在課表
 assert(teacherSource.includes('data-unavailable-target'), '老師課表未標示不夠完整課程長度的半小時空檔');
 assert(teacherSource.includes('時段不足') && teacherSource.includes('需要連續'), '老師課表未清楚說明完整課程長度');
 assert(teacherSource.includes('durationMinutes: planner.durationMinutes'), '老師加課未把完整課程長度送到後端再驗證');
-assert(teacherSource.includes('defaultAddFits') && teacherSource.includes('直接新增的課程需要'), '老師直接點半小時空檔時仍可誤按一小時加課');
+assert(teacherSource.includes('roomsOnly:true') && teacherSource.includes('data-room-duration'), '空白時段應只查詢教室並可調整長度');
 assert(teacherCss.includes('.empty-slot.unavailable-target'), '老師課表缺少時段不足的醒目樣式');
 assert(teacherSource.includes('data-confirm-permanent'), '永久調課缺少衝突日期確認');
 assert(teacherSource.includes('includePayroll: activeTab === \'payroll\''), '薪資資料沒有延後到薪資頁查詢');

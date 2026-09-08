@@ -518,6 +518,9 @@
     }
     const stickyWidth = global.matchMedia('(max-width: 520px)').matches ? 48 : 58;
     const dayWidth = Math.max(1, scroll.clientWidth - stickyWidth) / 2;
+    const nav = document.querySelector('.teacher-bottom-tabs');
+    const navTop = nav ? nav.getBoundingClientRect().top : global.innerHeight;
+    scroll.style.maxHeight = `${Math.max(160, navTop - scroll.getBoundingClientRect().top - 12)}px`;
     grid.style.setProperty('--teacher-time-column', `${stickyWidth}px`);
     grid.style.setProperty('--teacher-day-width', `${dayWidth}px`);
   }
@@ -699,7 +702,7 @@
 
     days.forEach((day, dayIndex) => {
       const groupStart = dayIndex % 2 === 0 ? ' week-day-group-start' : '';
-      html += `<div class="week-cell head week-day-head${groupStart}" data-day-head="${escapeHtml(day)}" data-day-group="${Math.floor(dayIndex / 2)}" style="grid-column:${dayIndex + 2};grid-row:1">${escapeHtml(dayLabel(day))}</div>`;
+      html += `<div class="week-cell head week-day-head${groupStart}" data-today="${day === todayKey()}" data-day-head="${escapeHtml(day)}" data-day-group="${Math.floor(dayIndex / 2)}" style="grid-column:${dayIndex + 2};grid-row:1">${escapeHtml(dayLabel(day))}</div>`;
     });
 
     for (let minute = startHour * 60, slotIndex = 0; minute < endHour * 60; minute += 30, slotIndex += 1) {
@@ -898,7 +901,9 @@
     showBound(true);
   }
 
+  let dataRequestVersion = 0;
   async function fetchData(force) {
+    const requestVersion = ++dataRequestVersion;
     if (activeTab === 'payroll') {
       const queryVersion = ++payrollQueryVersion;
       const result = await invoke('coursePortalTeacherData', {sessionToken:token, weekStart, month:payrollMonth, includePayroll:true, payrollOnly:true});
@@ -918,6 +923,7 @@
       mergeData(cached);
       renderAll();
       invoke('coursePortalTeacherData', request).then((fresh) => {
+        if (requestVersion !== dataRequestVersion) return;
         mergeData(fresh);
         writeCache(weekStart, payrollMonth, data);
         renderAll();
@@ -929,6 +935,7 @@
       return;
     }
     const result = await invoke('coursePortalTeacherData', request);
+    if (requestVersion !== dataRequestVersion) return;
     mergeData(result);
     writeCache(weekStart, payrollMonth, data);
     renderAll();
@@ -1211,61 +1218,24 @@
     } finally { loading(button, false); }
   }
 
-  async function openQuickForEmpty(date, startTime) {
-    const endTime = timeText(timeMinutes(startTime) + 60);
-    const defaultAddDuration = 60;
-    const teacherGapMinutes = continuousTeacherGapMinutes(
-      uniqueEvents((data.events || []).filter((event) => event.own)),
-      date,
-      startTime,
-      Number(data.hours.end || 21) * 60
-    );
-    const defaultAddFits = teacherGapMinutes >= defaultAddDuration;
-    if (courseSlotIsPast(date, startTime)) {
-      toast('不可選擇今天以前的日期。', 'error');
-      return;
-    }
+  async function openQuickForEmpty(date, startTime, durationMinutes = 60, weekly = false) {
+    if (courseSlotIsPast(date, startTime)) { toast('不可選擇今天以前的日期。', 'error'); return; }
     const requestId = ++availabilityRequestId;
-    showQuick(
-      '正在確認這個時段',
-      `${dayLabel(date)} ${startTime}～${endTime}`,
-      choiceSummary('搜尋可用教室', '正在排除既有課程、租用、老師與學生衝突…', '這裡不會把老師沒有課直接當成教室有空。'),
-      { type: 'target-search', date, startTime, endTime, requestId }
-    );
+    const context = {type:'target-search',date,startTime,durationMinutes,weekly};
+    showQuick('查詢空教室', `${dayLabel(date)} ${startTime}`, choiceSummary('查詢中…', weekly ? '正在確認每週同時段。' : '正在確認這個時段。'), context);
     try {
-      const result = await invoke('coursePortalTeacherSlotOptions', {
-        sessionToken: token,
-        date,
-        startTime
-      });
+      const result = await invoke('coursePortalTeacherSlotOptions', {sessionToken:token,date,startTime,durationMinutes,weekly,roomsOnly:true});
       if (requestId !== availabilityRequestId) return;
-      const context = { type: 'target-home', date, startTime, endTime, result };
-      const candidateCount = (result.candidateLessons || []).length;
-      const shortGap = teacherGapMinutes >= 30 && !defaultAddFits;
-      showQuick(
-        '安排這個時段',
-        `${dayLabel(date)} ${startTime} 開始`,
-        `${choiceSummary(
-          shortGap ? `只有 ${teacherGapMinutes} 分鐘空檔` : '即時空位已確認',
-          shortGap
-            ? `直接新增的課程需要 ${defaultAddDuration} 分鐘，這裡不能加課。`
-            : (candidateCount ? `有 ${candidateCount} 堂未來課程符合這個開始時間。` : '目前沒有可直接調入的既有課程。'),
-          shortGap ? '若有符合這段長度的既有課程，仍可從下方選擇調課。' : '選擇後，儲存前仍會再檢查一次。'
-        )}
-        ${candidateCount ? '<button class="primary" type="button" data-target-browse>把現有課調到這裡</button>' : ''}
-        ${defaultAddFits ? '<button type="button" data-target-add="extra_lesson">在這裡增加一堂課</button>' : ''}
-        ${defaultAddFits ? '<button type="button" data-target-add="teacher_gift">在這裡免費贈送一堂</button>' : ''}
-        <a href="room-booking.html?from=teacher&amp;use=other&amp;date=${encodeURIComponent(date)}&amp;start=${encodeURIComponent(startTime)}&amp;duration=${teacherGapMinutes >= 60 ? 60 : 30}">租用這個時段的教室</a>`,
-        context
-      );
-    } catch (error) {
+      const controls = `<div class="teacher-room-durations">${[30,60,90].map(n=>`<button type="button" data-room-duration="${n}" aria-pressed="${n===durationMinutes}">${n} 分鐘</button>`).join('')}</div>`;
+      const rows = result.rooms.map(room => {
+        const unavailable = room.checks.filter(check=>!check.available);
+        const detail = weekly ? (unavailable.length ? `不可用：${unavailable.map(check=>dayLabel(check.date)).join('、')}` : `連續 ${result.dates.length} 週可使用`) : (room.checks[0].available ? '可使用' : '不可使用');
+        return `<div class="teacher-room-result"><strong>${escapeHtml(room.name)}</strong><span>${escapeHtml(detail)}</span></div>`;
+      }).join('');
+      showQuick('查詢空教室', `${dayLabel(date)} ${startTime}～${result.endTime}`, `${controls}<div class="teacher-choice-list">${rows || '<p>沒有可查詢的教室</p>'}</div>${weekly ? `<p class="teacher-quick-description">查詢至 ${escapeHtml(result.dates[result.dates.length-1])}</p>` : '<button class="teacher-room-weekly" type="button" data-room-weekly>查每週同時段</button>'}<p class="teacher-quick-description">僅查詢教室空位；實際排課時會再確認科目與人員衝突。</p>`, context);
+    } catch(error) {
       if (requestId !== availabilityRequestId) return;
-      showQuick(
-        '目前無法查詢',
-        `${dayLabel(date)} ${startTime}～${endTime}`,
-        `${choiceSummary('沒有完成空位確認', error.message || '請稍後再試。', '沒有確認成功前不會建立課程。')}<button type="button" data-retry-target>重新查詢</button>`,
-        { type: 'target-error', date, startTime, endTime }
-      );
+      showQuick('查詢空教室', `${dayLabel(date)} ${startTime}`, `${choiceSummary('查詢未完成',error.message || '請稍後再試。')}<button type="button" data-retry-target>重新查詢</button>`,context);
     }
   }
 
@@ -1785,9 +1755,15 @@
       const today = todayKey(), weekday = (new Date(today + 'T12:00:00').getDay() + 6) % 7;
       weekStart = addDays(today, -weekday);
       await load(true);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       updateWeekViewport();
       const width = Number.parseFloat(document.getElementById('weekGrid').style.getPropertyValue('--teacher-day-width')) || 0;
       weekViewport.scrollLeft = Math.min(Math.floor(weekday / 2) * 2 * width, Math.max(0, weekViewport.scrollWidth - weekViewport.clientWidth));
+      const nowParts = new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date()).split(':');
+      const minute = Number(nowParts[0])*60+Number(nowParts[1]);
+      const rowHeight = parseFloat(getComputedStyle(document.getElementById('weekGrid')).gridAutoRows) || 30;
+      weekViewport.scrollTop = Math.max(0,(minute-Number(data.hours.start || 9)*60)/30*rowHeight-rowHeight);
+
     } finally { changingWeek = false; loading(button, false); }
   });
   document.getElementById('rosterSearch').addEventListener('input', (event) => {
@@ -1822,6 +1798,7 @@
   weekViewport.addEventListener('scroll', scheduleWeekGroupSnap, { passive: true });
   weekViewport.addEventListener('scrollend', snapWeekScrollToGroup);
   global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));
+  document.getElementById('irregularCourses').addEventListener('toggle', () => requestAnimationFrame(updateWeekViewport));
   document.getElementById('loadPayroll').addEventListener('click', () => {
     const selected = document.getElementById('payrollMonth').value || monthKey();
     if (selected < PAYROLL_MIN_MONTH) {
@@ -1890,6 +1867,12 @@
   });
   document.getElementById('teacherQuickActions').addEventListener('click', async (event) => {
     const context = quickContext;
+    const durationButton = event.target.closest('[data-room-duration]');
+    const weeklyButton = event.target.closest('[data-room-weekly]');
+    if (context && (durationButton || weeklyButton)) {
+      await openQuickForEmpty(context.date, context.startTime, durationButton ? Number(durationButton.dataset.roomDuration) : context.durationMinutes, Boolean(weeklyButton) || context.weekly);
+      return;
+    }
     const actionButton = event.target.closest('[data-quick-action]');
     const stateButton = event.target.closest('[data-quick-state]');
     const attendanceButton = event.target.closest('[data-quick-attendance]');

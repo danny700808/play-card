@@ -5521,6 +5521,26 @@ async function teacherSlotOptions(data) {
     throw new HttpsError('failed-precondition', '不可選擇今天以前的日期。');
   }
   assertPortalAdvanceDate(targetDate, '調課日期');
+  if (data.roomsOnly === true) {
+    const duration = Number(data.durationMinutes || 60);
+    if (![30, 60, 90].includes(duration) || timeMinutes(targetStartTime) + duration > 1440) throw new HttpsError('invalid-argument', '請選擇有效的上課長度。');
+    const endMinute = timeMinutes(targetStartTime) + duration;
+    const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
+    const dates = Array.from({length:data.weekly === true ? 8 : 1}, (_, i) => addDays(targetDate, i * 7)).filter(day => day <= portalMaximumAdvanceDate());
+    const [bundle, policy, settings] = await Promise.all([scheduleBundle(targetDate, dates[dates.length - 1], session.teacherId), rentalPolicySettings(), db.collection('coursePortalRoomSettings').get()]);
+    const settingMap = Object.fromEntries(settings.docs.map(doc => [doc.id, doc.data() || {}]));
+    const rooms = bundle.rooms.filter(sourceActive).filter(room => roomKind(room, settingMap[sourceId(room)] || {}) === 'normal' && roomTeacherSchedulable(room, settingMap[sourceId(room)] || {})).map(room => {
+      const id = sourceId(room), setting = settingMap[id] || {};
+      const checks = dates.map(date => {
+        const window = businessWindow(policy, date);
+        const allowed = bundle.subjects.filter(sourceActive).some(subject => roomSupportsSubject(room, sourceId(subject), bundle, setting) && roomAllowsInterval(room, setting, date, targetStartTime, endTime, sourceId(subject), 'schedule'));
+        const available = !window.closed && timeMinutes(targetStartTime) >= window.startMinutes && endMinute <= window.endMinutes && allowed && !bundle.resourceEvents.some(event => event.date === date && event.roomId === id && eventBlocksResource(event) && overlaps(targetStartTime, endTime, event.startTime, event.endTime));
+        return {date, available};
+      });
+      return {id, name:rentalRoomProfile(room, setting).publicName, checks};
+    }).sort((a,b) => Number(b.checks[0].available)-Number(a.checks[0].available) || a.name.localeCompare(b.name,'zh-Hant'));
+    return {ok:true, targetDate, targetStartTime, endTime, dates, rooms};
+  }
   const today = currentTaipeiDay();
   const candidateEnd = portalMaximumAdvanceDate();
   const [candidateBundle, policy, roomSettingsSnapshot, activeChangeSnapshot] = await Promise.all([
