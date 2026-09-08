@@ -12,10 +12,8 @@ const css = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.css'), 'ut
 
 new vm.Script(source, { filename: 'teacher-course-portal-v8.js' });
 
-const teacherNav = html.slice(html.indexOf('id="teacherPortalNav"'), html.indexOf('</nav>', html.indexOf('id="teacherPortalNav"')));
-assert(teacherNav.includes('id="teacherHomeBtn"') && teacherNav.includes('回老師課務'), '老師頁首缺少固定的回老師課務按鈕');
-assert(teacherNav.includes('id="logoutBtn"') && teacherNav.includes('>登出<'), '老師頁首缺少精簡登出按鈕');
-assert.strictEqual((teacherNav.match(/yz-nav-btn/g) || []).length, 2, '老師頁首必須只有兩個同格式按鈕');
+assert(!html.includes('id="teacherPortalNav"'), '老師頁首不應再有多餘操作列');
+assert(html.indexOf('id="logoutBtn"') > html.indexOf('id="teacherMoreTitle"'), '登出應位於其他選單');
 assert(!html.includes('teacherWelcomeTitle'), '老師登入後不應再顯示重複的歡迎姓名標題');
 assert(!source.includes('老師課務｜歡迎'), '老師程式不應再動態加入歡迎姓名');
 
@@ -85,8 +83,8 @@ assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') 
 assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop','teacherAnnouncementBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.css?v=20260908-room-query-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260908-room-query-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260908-clean-headings-v1'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260908-clean-headings-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');

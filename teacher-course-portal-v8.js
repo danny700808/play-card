@@ -24,7 +24,6 @@
   const bindView = document.getElementById('bindView');
   const appView = document.getElementById('appView');
   const logoutBtn = document.getElementById('logoutBtn');
-  const teacherPortalNav = document.getElementById('teacherPortalNav');
   const teacherLoginHeader = document.getElementById('teacherLoginHeader');
 
   let token = '';
@@ -271,7 +270,6 @@
     bindView.classList.toggle('hidden', active);
     appView.classList.toggle('hidden', !active);
     document.getElementById('sessionLoading').classList.add('hidden');
-    teacherPortalNav.classList.toggle('hidden', !active);
     teacherLoginHeader.classList.toggle('hidden', active);
   }
 
@@ -1737,13 +1735,6 @@
   if (global.CoursePortal) global.CoursePortal.installAuth({ role: 'teacher', authViewId: 'bindView' });
 
   document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
-  document.getElementById('teacherHomeBtn').addEventListener('click', () => {
-    closeDailyReminder();
-    closeMore();
-    closeQuick();
-    activateTab('schedule');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
   document.getElementById('prevWeek').addEventListener('click', () => navigateTeacherWeek(-1));
   document.getElementById('nextWeek').addEventListener('click', () => navigateTeacherWeek(1));
   document.getElementById('todayWeek').addEventListener('click', async () => {

@@ -187,7 +187,7 @@
       /[\p{Cc}\p{Cf}]/u.test(name) ||
       digits.length >= 8;
     document.getElementById('rentalHeaderTitle').textContent =
-      name && !sensitive ? `教室租用｜歡迎 ${name}` : '教室租用';
+      role === 'teacher' ? '租用' : (name && !sensitive ? `教室租用｜歡迎 ${name}` : '教室租用');
   }
 
   function photosForRoom(room) {

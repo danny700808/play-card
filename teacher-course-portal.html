@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#24735c">
   <title>老師課務入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
-  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260908-room-query-v1">
+  <link rel="stylesheet" href="teacher-course-portal-v8.css?v=20260908-clean-headings-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
   <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
 <link rel="stylesheet" href="course-history-view.css?v=20260908-pending-fixes-v1">
@@ -17,10 +17,7 @@
       <div class="head-title"><span class="brand-mark">師</span><div><h1>老師課務</h1></div></div>
     </header>
 
-    <nav class="yz-global-nav yz-teacher-nav hidden" id="teacherPortalNav" aria-label="老師課務頁面操作">
-      <button class="yz-nav-btn yz-nav-back" id="teacherHomeBtn" type="button">回老師課務</button>
-      <button class="yz-nav-btn yz-nav-logout" id="logoutBtn" type="button">登出</button>
-    </nav>
+
 
     <section class="card bind-box hidden" id="bindView" data-auth-view>
       <div class="section-title auth-title">
@@ -103,7 +100,7 @@
       </section>
 
       <section class="card tab-panel hidden" data-panel="payroll">
-        <div class="section-title"><div><h2>薪資查詢</h2><p class="muted">選擇月份後才更新該月份；不會重新讀取其他頁面。</p></div></div>
+        <div class="section-title"><h2>薪資</h2></div>
         <div class="toolbar teacher-payroll-toolbar"><div class="field"><label for="payrollMonth">月份</label><input id="payrollMonth" type="month" min="2026-07"></div><button class="btn primary" id="loadPayroll" type="button">查詢</button></div>
         <div class="list" id="payrollList"></div>
       </section>
@@ -125,7 +122,7 @@
   <div class="teacher-more-backdrop hidden" id="teacherMoreBackdrop" aria-hidden="true">
     <section class="teacher-more-sheet" role="dialog" aria-modal="true" aria-labelledby="teacherMoreTitle">
       <div class="teacher-more-handle" aria-hidden="true"></div>
-      <div class="section-title"><div><h2 id="teacherMoreTitle">其他功能</h2><p class="muted">較少使用的老師功能集中在這裡。</p></div><button class="btn" id="closeTeacherMore" type="button">關閉</button></div>
+      <div class="section-title"><div><h2 id="teacherMoreTitle">其他</h2><p class="muted">較少使用的老師功能集中在這裡。</p></div><button class="btn" id="closeTeacherMore" type="button">關閉</button></div>
       <div class="teacher-more-grid">
         <a href="announcements.html" id="teacherAnnouncementLink" data-teacher-seen-kind="announcements"><span class="teacher-more-icon">告</span><b>公告</b><small>最新公告與通知</small><em class="teacher-item-badge hidden" id="teacherAnnouncementBadge" aria-label="有公告可查看">!</em></a>
         <a href="task.html" id="teacherTaskLink"><span class="teacher-more-icon">辦</span><b>協助事項</b><small>待處理與回報</small><em class="teacher-item-badge hidden" id="teacherTaskBadge" aria-label="有待處理事項">!</em></a>
@@ -134,7 +131,7 @@
         <a href="teacher-profile.html" id="teacherProfileLink"><span class="teacher-more-icon">人</span><b>我的資料</b><small id="teacherProfileLinkHint">基本資料</small><em class="teacher-item-badge hidden" id="teacherProfileBadge" aria-label="資料尚未完成">!</em></a>
         <a href="contract.html" id="teacherContractLink"><span class="teacher-more-icon">約</span><b>合約</b><small>查看與簽署合約</small><em class="teacher-item-badge hidden" id="teacherContractBadge" aria-label="有待簽合約">!</em></a>
       </div>
-      <p class="teacher-more-note">這些功能使用原本的老師帳號，不會重新載入或覆蓋課表資料。</p>
+      <button class="btn teacher-more-logout" id="logoutBtn" type="button">登出</button>
     </section>
   </div>
 
@@ -182,7 +179,7 @@
   <script src="course-portal-common.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-daily-reminder.js?v=20260806-daily-reminder-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260908-room-query-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260908-clean-headings-v1"></script>
 
 </body>
 </html>

@@ -149,3 +149,5 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-room-durations{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.teacher-room-durations [aria-pressed="true"]{background:var(--green-soft);border-color:var(--green)}.teacher-room-result{padding:12px;border-bottom:1px solid var(--line);display:grid;gap:6px;text-align:center}.teacher-room-result span{font-size:12px;line-height:1.6}.teacher-room-weekly{grid-column:1/-1}
 
 .teacher-course-app .week-scroll{padding-bottom:24px;scroll-padding-bottom:24px;overscroll-behavior-y:auto;box-sizing:border-box}.teacher-course-app .week-day-head[data-today="true"]{background:#d8eee4;color:#145d47;font-weight:900}
+
+.teacher-course-app .tab-panel>.section-title{min-height:24px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between}.teacher-course-app .tab-panel>.section-title h2,.teacher-course-app #teacherMoreTitle{margin:0;font-size:16px;font-weight:800;line-height:24px}.teacher-more-logout{display:block;width:100%;min-height:44px;margin-top:14px;text-align:center}
