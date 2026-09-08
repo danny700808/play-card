@@ -8,8 +8,9 @@
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 <link rel="stylesheet" href="course-history-view.css?v=20260909-parent-payment-v1">
+<link rel="stylesheet" href="student-parent-layout.css?v=20260909-parent-layout-v1">
 </head>
-<body class="clean-portal-ui">
+<body class="clean-portal-ui student-parent-app">
   <main class="portal-shell">
     <header class="portal-head">
       <div class="head-title"><span class="brand-mark">生</span><div><h1>學生入口</h1></div></div>
@@ -64,8 +65,11 @@
 
     <section class="card hidden" id="studentLoadError" role="alert"><h2>暫時無法讀取學生資料</h2><p id="studentLoadErrorMessage"></p><button class="btn primary" type="button" id="retryStudentLoad">重新讀取</button></section>
     <section class="hidden" id="appView" data-app-view>
-      <div class="toolbar" id="studentSwitcher">
-        <div class="field" id="studentSelectField"><label>查看學生</label><select id="studentSelect"></select></div>
+      <div id="studentSwitcher" class="student-identity-bar">
+        <div class="student-identity-main">
+          <div id="studentIdentityField"><span class="student-identity-label">學生</span><strong id="studentName">—</strong></div>
+          <div class="field" id="studentSelectField"><label>查看學生</label><select id="studentSelect"></select></div>
+        </div>
         <button class="btn soft" id="addStudentBinding" type="button">＋ 增加另一位學生</button>
       </div>
       <section class="card hidden" id="inactiveStudentView">
@@ -73,9 +77,6 @@
         <div class="list" id="inactiveHistoryList"></div>
         <a class="btn primary" href="room-booking.html?from=student">前往教室租用</a>
       </section>
-      <div class="summary-grid student-sensitive">
-        <article class="summary"><span>學生</span><strong id="studentName">—</strong></article>
-      </div>
       <section class="card student-teacher-contact student-sensitive" id="studentTeacherContact"></section>
       <nav class="tabs student-sensitive student-bottom-tabs">
         <button class="btn active" type="button" data-tab="courses">課程與學費</button>
@@ -439,7 +440,6 @@
         P.escapeHtml(row.teacherName)
       ).join('<br>');
       document.getElementById('studentTeacherContact').innerHTML = `<div class="student-contact-row">
-        <span>學生</span><strong>${P.escapeHtml(student.name || '—')}</strong>
         ${teacherContactHtml ? `<span>授課老師</span><strong>${teacherContactHtml}</strong>` : ''}
       </div>`;
       const requests = activeTuitionPayments();
@@ -484,6 +484,7 @@
         document.getElementById('studentSelect').innerHTML = data.students.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
         document.getElementById('studentSelect').value = studentId;
         document.getElementById('studentSelectField').classList.toggle('hidden', data.students.length <= 1);
+        document.getElementById('studentIdentityField').classList.toggle('hidden', data.students.length > 1);
         render();
         showBound(true);
       } catch (error) {
