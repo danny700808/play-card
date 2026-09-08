@@ -14,3 +14,4 @@ console.log('Payroll summary: approved and manual bonuses, deductions, empty mon
 const listener=source.slice(source.indexOf("  document.getElementById('payrollList').addEventListener('click'"),source.indexOf("  document.getElementById('loadPayroll').addEventListener('click'"));
 for(const exists of [true,false]){let click,scroll,focused,message;const target={focus:o=>focused=o,scrollIntoView:o=>scroll=o};vm.runInNewContext(listener,{document:{getElementById:id=>id==='payrollList'?{addEventListener:(_,fn)=>click=fn}:exists?target:null},global:{matchMedia:()=>({matches:false})},toast:m=>message=m});for(const id of ['payrollBonusDetails','payrollDeductionDetails']){click({target:{closest:()=>({dataset:{payrollJump:id}})}});if(exists){assert.equal(scroll.block,'start');assert.equal(scroll.behavior,'smooth');assert.equal(focused.preventScroll,true)}else assert(message.includes('本月沒有'));}
 console.log('Payroll shortcuts: jump and empty-state paths passed');
+}
