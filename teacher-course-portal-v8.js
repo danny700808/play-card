@@ -535,6 +535,39 @@
   }
 
   let weekGesture = null;
+  let weekMotionId = 0;
+  let weekAnimating = false;
+  function animateWeekPosition(left, top) {
+    const scroll=document.getElementById('weekGrid').parentElement;
+    const id=++weekMotionId,fromLeft=scroll.scrollLeft,fromTop=scroll.scrollTop;
+    global.clearTimeout(weekSnapTimer);
+    if(global.matchMedia('(prefers-reduced-motion: reduce)').matches){scroll.scrollTo({left,top,behavior:'instant'});weekAnimating=false;return;}
+    weekAnimating=true;
+    let started;
+    function frame(now){
+      if(id!==weekMotionId)return;
+      if(started===undefined)started=now;
+      const progress=Math.min(1,(now-started)/140),ease=1-Math.pow(1-progress,3);
+      scroll.scrollLeft=fromLeft+(left-fromLeft)*ease;
+      scroll.scrollTop=fromTop+(top-fromTop)*ease;
+      if(progress<1)requestAnimationFrame(frame);else weekAnimating=false;
+    }
+    requestAnimationFrame(frame);
+  }
+  function swipeWeekDirection(targets, position, delta) {
+    if(delta<=-35 && Math.abs(position-targets[targets.length-1])<2)return 1;
+    if(delta>=35 && position<2)return -1;
+    return 0;
+  }
+  async function continueWeekSwipe(direction) {
+    await navigateTeacherWeek(direction);
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    const scroll=document.getElementById('weekGrid').parentElement;
+    const target=direction>0?0:Math.max(0,scroll.scrollWidth-scroll.clientWidth);
+    scroll.scrollLeft=Math.max(0,Math.min(scroll.scrollWidth-scroll.clientWidth,target+direction*40));
+    animateWeekPosition(target,scroll.scrollTop);
+  }
+
   let suppressWeekClickUntil = 0;
   function weekPageTargets(axis) {
     const grid = document.getElementById('weekGrid'), scroll = grid.parentElement;
@@ -560,7 +593,7 @@
     return targets[Math.max(0,Math.min(targets.length-1,index+(delta<0?1:-1)))];
   }
   function snapWeekScrollToGroup() {
-    if (weekGesture || !global.matchMedia('(max-width: 760px)').matches) return;
+    if (weekGesture || weekAnimating || !global.matchMedia('(max-width: 760px)').matches) return;
     const scroll = document.getElementById('weekGrid').parentElement;
     const left = nearestWeekPage(weekPageTargets('x'),scroll.scrollLeft);
     const top = nearestWeekPage(weekPageTargets('y'),scroll.scrollTop);
@@ -568,7 +601,7 @@
   }
   function scheduleWeekGroupSnap() {
     global.clearTimeout(weekSnapTimer);
-    if(!weekGesture) weekSnapTimer = global.setTimeout(snapWeekScrollToGroup, 180);
+    if(!weekGesture && !weekAnimating) weekSnapTimer = global.setTimeout(snapWeekScrollToGroup, 180);
   }
 
   function uniqueEvents(rows) {
@@ -1822,9 +1855,10 @@
     }
   }
   weekViewport.addEventListener('touchstart', event => {
-    if(!global.matchMedia('(max-width: 760px)').matches || event.touches.length!==1) {weekGesture=null;return;}
+    if(changingWeek || !global.matchMedia('(max-width: 760px)').matches || event.touches.length!==1) {weekGesture=null;return;}
     global.clearTimeout(weekSnapTimer);
     suppressWeekClickUntil=0;
+    weekMotionId++;weekAnimating=false;
     const point=event.touches[0];
     weekGesture={x:point.clientX,y:point.clientY,left:weekViewport.scrollLeft,top:weekViewport.scrollTop,axis:null,delta:0};
   },{passive:true});
@@ -1844,8 +1878,11 @@
     if(!gesture || !gesture.axis) return;
     suppressWeekClickUntil=Date.now()+800;
     const axis=gesture.axis, position=axis==='x'?gesture.left:gesture.top;
-    const target=nextWeekPage(weekPageTargets(axis),position,cancelled?0:gesture.delta);
-    weekViewport.scrollTo({left:axis==='x'?target:gesture.left,top:axis==='y'?target:gesture.top,behavior:'instant'});
+    const targets=weekPageTargets(axis);
+    const direction=!cancelled && axis==='x'?swipeWeekDirection(targets,nearestWeekPage(targets,position),gesture.delta):0;
+    if(direction){continueWeekSwipe(direction).catch(error=>toast(error.message || '切換週次失敗，請再試一次。','error'));return;}
+    const target=nextWeekPage(targets,position,cancelled?0:gesture.delta);
+    animateWeekPosition(axis==='x'?target:gesture.left,axis==='y'?target:gesture.top);
   }
   weekViewport.addEventListener('touchend',event=>{
     if(weekGesture && weekGesture.axis && event.cancelable) event.preventDefault();
