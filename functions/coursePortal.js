@@ -600,14 +600,16 @@ function transactionAmount(row) {
 }
 
 function tuitionBasePaidAmount(row) {
-  return Math.max(0, Number(
-    row && (
-      row.paidAmount ||
-      row.receivedAmount ||
-      row.paid ||
-      row.received
-    ) || 0
-  ));
+  const explicit = firstFiniteNumber(row, ['paidAmount', 'receivedAmount', 'paid', 'received']);
+  if (explicit !== null) return Math.max(0, explicit);
+  const seen = new Set();
+  return Math.max(0, (Array.isArray(row && row.transactions) ? row.transactions : []).reduce((sum, tx) => {
+    if (!tx || tx.active === false || (tx.status && tx.status !== 'confirmed')) return sum;
+    const id = clean(tx.id);
+    if (id && seen.has(id)) return sum;
+    if (id) seen.add(id);
+    return sum + (tx.type === 'refund' ? -1 : 1) * transactionAmount(tx);
+  }, 0));
 }
 
 function mergePortalTuitionRows(rows, portalDocs, transactionDocs, receiptDocs = []) {
@@ -4170,6 +4172,7 @@ function sameTeachingCourse(left, right) {
   return Boolean(ids(left)) && ids(left) === ids(right) && eventTeacherId(left) === eventTeacherId(right) && eventSubjectId(left) === eventSubjectId(right);
 }
 function replacedTeachingOccurrence(row, changes, overlay) {
+  if (normalizeScheduleStatus(row.status) === 'attended') return false;
   const winner = changes.filter(change => change.replaceMatchingCourse === true && eventDate(row) >= permanentCutover(change) && sameTeachingCourse(row, change.event))
     .sort((a,b) => permanentCutover(b).localeCompare(permanentCutover(a)) || changeOrderValue(b)-changeOrderValue(a))[0];
   if (!winner || clean(row.portalChangeId) === clean(winner.__id || winner.id)) return false;
@@ -4276,6 +4279,8 @@ function isRoomRentalEvent(event) {
   return ['rental', 'room_rental'].includes(type) ||
     ['rental', 'room_booking'].includes(action);
 }
+
+function courseDateIsPast(date) { return !dateKey(date) || dateKey(date) < currentTaipeiDay(); }
 
 function publicRentalSlotIsPast(date, startTime) {
   return taipeiDateTimeMillis(date, startTime) <= Date.now();
@@ -4850,7 +4855,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId) {
     !replacedTeachingOccurrence(row, permanent, overlay) &&
     !removedOccurrence(row, eventDate(row)) &&
     !permanent.some((change) =>
-      permanentMatchesOccurrence(change, row) &&
+      normalizeScheduleStatus(row.status) !== 'attended' && permanentMatchesOccurrence(change, row) &&
       eventDate(row) >= dateKey(change.cutoverDate || change.sourceDate || change.effectiveDate)
     )
   );
@@ -5136,13 +5141,7 @@ async function teacherOwnsStudent(teacherId, studentId) {
 
 function tuitionOutstandingAmount(row) {
   const expected = tuitionNetExpectedAmount(row);
-  const paid = Number(
-    row.paidAmount ||
-    row.receivedAmount ||
-    row.paid ||
-    row.received ||
-    0
-  );
+  const paid = tuitionBasePaidAmount(row);
   return Math.max(0, expected - paid);
 }
 
@@ -5280,8 +5279,8 @@ async function teacherAvailability(data) {
   const exactTarget = data.exactTarget === true;
   const exactDate = exactTarget ? dateKey(data.date || data.startDate) : '';
   const exactStartTime = exactTarget ? clean(data.startTime).slice(0, 5) : '';
-  if (exactTarget && (!exactDate || !validPortalTime(exactStartTime, true) || publicRentalSlotIsPast(exactDate, exactStartTime))) {
-    throw new HttpsError('invalid-argument', '請選擇尚未開始的 30 分鐘時段。');
+  if (exactTarget && (!exactDate || !validPortalTime(exactStartTime, true) || courseDateIsPast(exactDate))) {
+    throw new HttpsError('invalid-argument', '請選擇今天或之後的 30 分鐘時段。');
   }
   if (exactTarget) assertPortalAdvanceDate(exactDate, '課程日期');
   const days = exactTarget ? 1 : Math.min(28, Math.max(7, Number(data.days || 14)));
@@ -5329,8 +5328,8 @@ async function teacherAvailability(data) {
   if (source && normalizeScheduleStatus(source.status) !== 'scheduled') {
     throw new HttpsError('failed-precondition', '請假、曠課或已取消的課程不能再調動。');
   }
-  if (source && publicRentalSlotIsPast(source.date, source.startTime)) {
-    throw new HttpsError('failed-precondition', '已開始或已結束的課程不能再調課。');
+  if (source && courseDateIsPast(source.date)) {
+    throw new HttpsError('failed-precondition', '今天以前的課程不能再調課。');
   }
   const sourceStartTime = source ? source.startTime : clean(data.sourceStartTime || data.startTime).slice(0, 5);
   const sourceEndTime = source ? source.endTime : clean(data.sourceEndTime || data.endTime).slice(0, 5);
@@ -5385,9 +5384,9 @@ async function teacherAvailability(data) {
       const slotStart = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
       const slotEndMinute = minute + duration;
       const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
-      if (publicRentalSlotIsPast(date, slotStart)) continue;
+      if (courseDateIsPast(date)) continue;
       const blockers = bundle.resourceEvents.filter((event) => {
-        const sourceMatch = (clean(data.action) === 'permanent_move' && sameTeachingCourse(event, source)) || event.date === sourceDate && (
+        const sourceMatch = (clean(data.action) === 'permanent_move' && normalizeScheduleStatus(event.status) !== 'attended' && sameTeachingCourse(event, source)) || event.date === sourceDate && (
           event.id === sourceEventId || event.sourceId === sourceEventId ||
           event.fixedCourseId === sourceCourseId || event.seriesId === sourceCourseId
         );
@@ -5440,8 +5439,8 @@ async function teacherSlotOptions(data) {
   if (!targetDate || !validPortalTime(targetStartTime, true)) {
     throw new HttpsError('invalid-argument', '請選擇有效的日期與 30 分鐘時段。');
   }
-  if (publicRentalSlotIsPast(targetDate, targetStartTime)) {
-    throw new HttpsError('failed-precondition', '不能把課程調到已經過去的時間。');
+  if (courseDateIsPast(targetDate)) {
+    throw new HttpsError('failed-precondition', '不可選擇今天以前的日期。');
   }
   assertPortalAdvanceDate(targetDate, '調課日期');
   const today = currentTaipeiDay();
@@ -5469,7 +5468,7 @@ async function teacherSlotOptions(data) {
       !isRoomRentalEvent(event) &&
       event.studentIds.length > 0 &&
       Boolean(event.subjectId) &&
-      !publicRentalSlotIsPast(event.date, event.startTime);
+      !courseDateIsPast(event.date);
   }).map((source) => {
     const duration = timeMinutes(source.endTime) - timeMinutes(source.startTime);
     if (duration < 30 || duration > 300 || duration % 30 !== 0) return null;
@@ -7536,29 +7535,29 @@ async function courseLessonHistory(data) {
   const numberedHistoryPeriods = await assignNewSystemPeriodNumbers(applyPortalAttendanceToPeriods(rawPeriods, mirrorAttendance, portalAttendance));
   const periods = numberedHistoryPeriods.map(row => {
     const id = sourceId(row);
-    const linked = allAttendance.filter(item => clean(item.periodId || item.studentPayment) === id);
-    const course = courses.find(item => courseSourceIds(item).includes(clean(row.sourceCourseId || row.courseId || row.fixedCourseId))) || {};
+    const periodAliases = new Set([id, clean(row.sourcePaymentId), id.replace(/^period_/, '')].filter(Boolean));
+    const linked = allAttendance.filter(item => periodAliases.has(clean(item.periodId || item.studentPayment)));
+    const course = courses.find(item => courseSourceIds(item).includes(clean(row.sourceCourseId || row.courseId || row.fixedCourseId))) || courses.find(item => firstArray(item, ['studentPaymentIds', 'tuitionPeriodIds', 'paymentIds']).some(payment => periodAliases.has(clean(payment)))) || {};
     const teacherId = eventTeacherId(row) || eventTeacherId(linked[0] || {}) || eventTeacherId(course);
     const subjectId = eventSubjectId(row) || eventSubjectId(linked[0] || {}) || eventSubjectId(course);
     const dates = linked.map(eventDate).filter(Boolean).sort();
     const startDate = dateKey(row.startDate || row.beginDate) || dates[0] || '';
     return { id, studentId, teacherId, subjectId, startDate,
-      endDate: dateKey(row.expiryDate || row.endDate) || dates[dates.length - 1] || '',
+      endDate: dateKey(row.expiryDate || row.endDate) || (Number(row.usedCount || row.attendedCount || 0) >= Number(row.lessonCount || row.totalLessons || 4) ? dates[dates.length - 1] || '' : ''),
       periodNo: Number(row.periodNo || row.period || 0), systemPeriodNo: Number(row.systemPeriodNo || 0),
       subjectName: clean((subjects.find(item => sourceId(item) === subjectId) || {}).name) || '課程',
       teacherName: clean((teachers.find(item => sourceId(item) === teacherId) || {}).name),
       lessonCount: Number(row.lessonCount || row.totalLessons || 4), usedCount: Number(row.usedCount || row.attendedCount || 0),
-      expectedAmount: tuitionNetExpectedAmount(row), paidAmount: Number(row.paidAmount ?? row.receivedAmount ?? 0),
+      expectedAmount: tuitionNetExpectedAmount(row), paidAmount: tuitionBasePaidAmount(row),
       outstandingAmount: tuitionOutstandingAmount(row),
-      partialHistory: Boolean(startDate && startDate < COURSE_HISTORY_MIN_DATE),
-      transactions: (Array.isArray(row.transactions) ? row.transactions : []).filter(item => item.active !== false).map(item => ({
+      partialHistory: Boolean(startDate && startDate < COURSE_HISTORY_MIN_DATE && linked.filter(item => normalizeScheduleStatus(item.status || item.type) === 'attended').length < Number(row.usedCount || row.attendedCount || 0)),
+      transactions: (Array.isArray(row.transactions) ? row.transactions : []).filter(item => item.active !== false && (!item.status || item.status === 'confirmed')).map(item => ({
         date: dateKey(item.paidAtText || item.confirmedAtText || item.date || item.receivedAtText || item.paymentDate || item.createdAtText), type: clean(item.type), amount: Number(item.amount || 0)
       }))
     };
-  }).filter(row => (session.role !== 'teacher' || row.teacherId === session.teacherId) &&
-    (row.outstandingAmount > 0 || !row.endDate || row.endDate >= COURSE_HISTORY_MIN_DATE));
-  const lessons = allAttendance.filter(row => eventDate(row) >= COURSE_HISTORY_MIN_DATE && eventDate(row) <= today).map(row => ({
-    id: sourceId(row), periodId: clean(row.periodId || row.studentPayment), date: eventDate(row), startTime: eventStart(row),
+  }).filter(row => session.role !== 'teacher' || row.teacherId === session.teacherId);
+  const lessons = allAttendance.filter(row => eventDate(row) && eventDate(row) <= today).map(row => ({
+    id: sourceId(row), periodId: (periods.find(period => period.id === clean(row.periodId || row.studentPayment) || period.id.replace(/^period_/, '') === clean(row.periodId || row.studentPayment)) || {}).id || clean(row.periodId || row.studentPayment), date: eventDate(row), startTime: eventStart(row),
     subjectId: eventSubjectId(row), teacherId: eventTeacherId(row), status: normalizeScheduleStatus(row.status || row.type), late: row.late === true,
     deducted: row.deducted !== false && !['leave','cancelled'].includes(normalizeScheduleStatus(row.status || row.type))
   }));
@@ -7725,7 +7724,7 @@ async function studentPortalData(data) {
         restoredCreditCount: Number(row.portalRestoredCreditCount || 0),
         extraLessonCreditCount: Number(row.portalExtraLessonCreditCount || 0),
         expectedAmount: Number(row.expectedAmount || row.amount || 0),
-        paidAmount: Number(row.paidAmount || row.receivedAmount || 0),
+        paidAmount: tuitionBasePaidAmount(row),
         status: clean(row.status),
         transactions: jsonValue(row.transactions || [])
       };
@@ -8652,8 +8651,8 @@ async function teacherAction(data) {
     throw new HttpsError('invalid-argument', '請完整選擇日期、時間與教室。');
   }
   const targetDuration = assertPortalInterval(startTime, endTime);
-  if (publicRentalSlotIsPast(date, startTime)) {
-    throw new HttpsError('failed-precondition', '不能新增或調課到已經過去的時間。');
+  if (courseDateIsPast(date)) {
+    throw new HttpsError('failed-precondition', '不可選擇今天以前的日期。');
   }
   assertPortalAdvanceDate(date, '課程日期');
   const expectedVersion = await readScheduleVersion();
@@ -8714,8 +8713,8 @@ async function teacherAction(data) {
     if (normalizeScheduleStatus(source.status) !== 'scheduled') {
       throw new HttpsError('failed-precondition', '請假、曠課或已取消的課程不能再調動。');
     }
-    if (publicRentalSlotIsPast(source.date, source.startTime)) {
-      throw new HttpsError('failed-precondition', '已經開始或結束的課程不能再調動。');
+    if (courseDateIsPast(source.date)) {
+      throw new HttpsError('failed-precondition', '今天以前的課程不能再調動。');
     }
     sourceSeries = sourceBundle.fixedCourses.find((row) =>
       sourceId(row) === clean(source.fixedCourseId || source.seriesId || requestedSourceCourseId)
@@ -8789,7 +8788,7 @@ async function teacherAction(data) {
   const lineage = moving
     ? clean(source.fixedCourseId || source.seriesId || requestedSourceCourseId || source.id)
     : '';
-  const ignoredSource = (event) => Boolean(source) && ((action === 'permanent_move' && event.date >= date && sameTeachingCourse(event, source)) || event.date === source.date && (
+  const ignoredSource = (event) => Boolean(source) && ((action === 'permanent_move' && event.date >= date && normalizeScheduleStatus(event.status) !== 'attended' && sameTeachingCourse(event, source)) || event.date === source.date && (
     event.id === source.id ||
     event.sourceId === source.sourceId ||
     (lineage && (event.fixedCourseId === lineage || event.seriesId === lineage))
@@ -8974,8 +8973,8 @@ async function teacherAction(data) {
     .concat(sharedEquipmentLockRows(date, requestedResourceIds, startTime, endTime));
   const versionRef = scheduleVersionRef();
   const transactionResult = await db.runTransaction(async (tx) => {
-    if (publicRentalSlotIsPast(date, startTime)) {
-      throw new HttpsError('failed-precondition', '這個時段已經開始，請重新選擇。');
+    if (courseDateIsPast(date)) {
+      throw new HttpsError('failed-precondition', '不可選擇今天以前的日期。');
     }
     const snapshots = await Promise.all([
       tx.get(versionRef),

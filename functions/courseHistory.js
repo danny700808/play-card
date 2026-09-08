@@ -9,8 +9,12 @@ function selectHistoryPeriods(periods, fromDate) {
     groups.get(key).push(row);
   }
   const result = [];
-  for (const rows of groups.values()) {
+  for (let rows of groups.values()) {
     rows.sort((a, b) => date(a.startDate).localeCompare(date(b.startDate)) || a.periodNo - b.periodNo);
+    const boundary = rows.reduce((last, row, index) => date(row.startDate) && date(row.startDate) <= MIN_DATE ? index : last, -1);
+    rows = rows.filter((row, index) => date(row.startDate) >= MIN_DATE ||
+      (index === boundary && (!date(row.endDate) || date(row.endDate) >= MIN_DATE)));
+    if (!rows.length) continue;
     if (fromDate) {
       // Include the period containing the selected day, then every later period.
       let first = rows.findIndex(row => date(row.startDate) > fromDate);

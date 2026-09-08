@@ -9,17 +9,16 @@
     const select = host.querySelector('select'), form = host.querySelector('form');
     function card(period) {
       const rows = payload.lessons.filter(row => row.periodId === period.id);
-      const lessons = rows.filter(row => row.status !== 'leave' && row.status !== 'cancelled');
-      const leave = rows.filter(row => row.status === 'leave');
+      const lessons = rows.filter(row => ['attended', 'checked_in', 'present', 'normal'].includes(row.status));
       const labels = {attended:'已上課', checked_in:'已上課', present:'已上課', normal:'已上課', absent:'曠課', leave:'請假'};
       const slots = Array.from({length:Math.max(Number(period.lessonCount || 0),lessons.length)},(_,index)=>{
         const row = lessons[index];
-        return row ? `<div class="lesson-slot used"><strong>第 ${index+1} 堂</strong><span>${esc(row.date)} ${esc(row.startTime || '')}</span><small>${esc(row.late ? '老師補簽到' : labels[row.status] || row.status || '上課紀錄')}${row.status === 'absent' ? '・扣一堂' : ''}</small></div>` : `<div class="lesson-slot${index < period.usedCount ? ' used' : ''}"><strong>第 ${index+1} 堂</strong><span>${index < period.usedCount ? '已使用・日期未承接' : '未使用'}</span></div>`;
+        return row ? `<div class="lesson-slot used"><strong>第 ${index+1} 堂</strong><span>${esc(row.date)} ${esc(row.startTime || '')}</span><small>${esc(row.late ? '老師補簽到' : labels[row.status] || row.status || '上課紀錄')}${row.status === 'absent' ? '・扣一堂' : ''}</small></div>` : `<div class="lesson-slot${index < period.usedCount ? ' used' : ''}"><strong>第 ${index+1} 堂</strong><span>${index < period.usedCount ? '無簽到紀錄' : '未使用'}</span></div>`;
       }).join('');
       const paid = period.outstandingAmount <= 0;
       const payments = period.transactions.filter(row => row.type !== 'refund');
       const lastPayment = payments.slice().reverse().find(row => row.date);
-      return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${period.systemPeriodNo || period.periodNo} 期 · ${esc(period.subjectName || '課程')}</strong><small>已用 ${period.usedCount} / ${period.lessonCount} 堂</small></div><div class="period-payment ${paid ? 'paid' : 'unpaid'}"><div class="period-payment-amount"><span>本期學費</span><strong>${Number(period.expectedAmount).toLocaleString('zh-TW')}</strong><small>實收 ${money(period.paidAmount)}</small></div><div class="period-payment-state"><span class="badge ${paid ? '' : 'danger'}">${paid ? '已繳費' : period.paidAmount > 0 ? '部分繳費' : '尚未繳費'}</span>${!paid ? `<small>尚欠 ${money(period.outstandingAmount)}</small>` : ''}${lastPayment ? `<small>繳費日期：${esc(lastPayment.date)}</small>` : ''}</div></div></div>${period.partialHistory ? '<p class="history-warning">本期 7/21 之前紀錄未完整承接，請至實體上課證查詢。</p>' : ''}<div class="lesson-slot-grid">${slots}</div>${leave.length ? '<p>請假紀錄（不扣堂）</p><div class="lesson-slot-grid">' + leave.map(row => `<div class="lesson-slot"><strong>請假</strong><span>${esc(row.date)} ${esc(row.startTime || '')}</span><small>不扣堂</small></div>`).join('') + '</div>' : ''}</article>`;
+      return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>新系統第 ${period.systemPeriodNo || period.periodNo} 期 · ${esc(period.subjectName || '課程')}</strong><small>已用 ${period.usedCount} / ${period.lessonCount} 堂</small></div><div class="period-payment ${paid ? 'paid' : 'unpaid'}"><div class="period-payment-amount"><span>本期學費</span><strong>${Number(period.expectedAmount).toLocaleString('zh-TW')}</strong><small>實收 ${money(period.paidAmount)}</small></div><div class="period-payment-state"><span class="badge ${paid ? '' : 'danger'}">${paid ? '已繳費' : period.paidAmount > 0 ? '部分繳費' : '尚未繳費'}</span>${!paid ? `<small>尚欠 ${money(period.outstandingAmount)}</small>` : ''}${lastPayment ? `<small>繳費日期：${esc(lastPayment.date)}</small>` : ''}</div></div></div>${period.partialHistory ? '<p class="history-warning">本期 7/21 之前紀錄未完整承接，請至實體上課證查詢。</p>' : ''}<div class="lesson-slot-grid">${slots}</div></article>`;
     }
     function render() {
       const rows = payload.periods.filter(row => row.subjectId === subject);

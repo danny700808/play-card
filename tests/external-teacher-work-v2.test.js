@@ -35,7 +35,7 @@ test('teacher announcement list keeps the latest 14 calendar days visible', () =
   const listStart = source.indexOf('async function teacherAnnouncementList');
   const listEnd = source.indexOf('async function submitAnnouncementReply', listStart);
   const listFlow = source.slice(listStart, listEnd);
-  assert.match(listFlow, /history \? !isRecentAnnouncement\(row\) : isRecentAnnouncement\(row\)/);
+  assert.match(listFlow, /history \? !isRecentAnnouncement\(row\) : \(isRecentAnnouncement\(row\) \|\| !row\.isRead \|\| \(row\.requireReply && !row\.myReply\)\)/);
   assert.doesNotMatch(listFlow, /row\.isRead\s*&&/);
 });
 

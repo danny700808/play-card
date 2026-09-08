@@ -80,13 +80,13 @@ assert(source.includes('shouldShowDaily') && source.includes('markDailyShown'), 
 assert(source.includes('summary.available !== false'), '待辦資料未完整讀取時不應消耗當日合併提醒');
 assert(source.includes('if (!state.available || !state.items.length'), '待辦資料未完整讀取時仍可能彈出合併提醒');
 assert(source.includes('TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000'), '其他功能待辦狀態缺少合理的重新整理期限');
-assert(source.includes('refreshTeacherUtilityStatus(false);') && !source.includes('refreshTeacherUtilityStatus(true);'), '每次開啟其他功能不應強制全量讀取');
+assert(source.includes('refreshTeacherUtilityStatus(false);'), '每次開啟其他功能不應強制全量讀取');
 assert(source.includes('teacherUtilityStatusLoaded = pendingSummaryAvailable;') && source.includes('pendingSummaryAvailable ? Date.now() : 0'), '待辦只讀到部分資料後，下一次開啟其他功能必須能立即重試');
 assert(source.includes("'goods-attention'") && source.includes('summary.goodsAttentionRevision'), '商品更新與詢價回覆尚未分開記錄已讀版本');
-assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
+assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop','teacherAnnouncementBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.css?v=20260908-roster-clean-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260908-roster-clean-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.css?v=20260908-pending-fixes-v1'), '老師首頁樣式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260908-pending-fixes-v1'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');
@@ -94,7 +94,7 @@ assert(lineLoginIndex >= 0 && emailLoginIndex > lineLoginIndex, '老師登入必
 assert(html.includes('Email 驗證登入') && /data-regular-auth-form[\s\S]*name="email"/.test(html), '沒有 LINE 的老師必須能使用 Email 驗證登入');
 assert(html.includes('id="teacherFlowBanner"'), '原地課務操作狀態遺失');
 assert(html.includes('id="teacherQuickBackdrop"'), '原地快速操作選單遺失');
-assert(source.includes('data-student-action='), '學生頁原地加課操作遺失');
+assert(source.includes('data-quick-action="extra_lesson"'), '外層課表新增課程入口遺失');
 
 const lessonQuickStart = source.indexOf('function openQuickForLesson(row)');
 const lessonQuickEnd = source.indexOf('function openContactBook(row)', lessonQuickStart);

@@ -137,6 +137,10 @@
     return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
   }
 
+  function courseSlotIsPast(date, startTime) {
+    return !/^\d{4}-\d{2}-\d{2}$/.test(clean(date)) || clean(date) < todayKey();
+  }
+
   function isPastSlot(date, startTime) {
     const value = Date.parse(`${clean(date)}T${clean(startTime).slice(0, 5)}:00+08:00`);
     return !Number.isFinite(value) || value <= Date.now();
@@ -380,7 +384,7 @@
   }
 
   function syncTeacherOverlayScrollLock() {
-    const locked = ['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop']
+    const locked = ['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop','teacherAnnouncementBackdrop']
       .some(overlayIsOpen);
     document.body.classList.toggle('teacher-more-open', locked);
   }
@@ -471,9 +475,12 @@
     renderTeacherUtilityStatus(teacherUtilityResult, null, { suppressDaily: true });
   }
 
+  let teacherUtilityRefreshQueued = false;
   async function refreshTeacherUtilityStatus(force) {
     const fresh = teacherUtilityStatusLoaded && Date.now() - teacherUtilityStatusLoadedAt < TEACHER_UTILITY_STATUS_TTL;
-    if (!token || teacherUtilityStatusLoading || (fresh && !force)) return;
+    if (!token) return;
+    if (teacherUtilityStatusLoading) { if (force) teacherUtilityRefreshQueued = true; return; }
+    if (fresh && !force) return;
     teacherUtilityStatusLoading = true;
     const requestId = ++teacherUtilityRequestId;
     try {
@@ -490,7 +497,10 @@
       teacherUtilityStatusLoadedAt = 0;
       renderTeacherUtilityStatus(null, error);
     } finally {
-      if (requestId === teacherUtilityRequestId) teacherUtilityStatusLoading = false;
+      if (requestId === teacherUtilityRequestId) {
+        teacherUtilityStatusLoading = false;
+        if (teacherUtilityRefreshQueued) { teacherUtilityRefreshQueued = false; refreshTeacherUtilityStatus(true); }
+      }
     }
   }
 
@@ -572,7 +582,7 @@
         ? 'gift'
         : (portalAction === 'extra_lesson' || eventType === 'temporary' || eventType === 'extra'
           ? 'extra'
-          : (portalAction === 'single_move' || portalAction === 'permanent_move' || eventType === 'single'
+          : (portalAction === 'single_move' || eventType === 'single'
             ? 'single'
             : (eventType === 'trial' || eventType === 'trial_lesson' ? 'trial' : 'fixed'))))
     );
@@ -699,7 +709,7 @@
       days.forEach((day, dayIndex) => {
         const rows = uniqueEvents(events.filter((event) => event.date === day && event.startTime < slotEnd && slotStart < event.endTime));
         const available = plannerSlots.get(`${day}|${slotStart}`);
-        const past = isPastSlot(day, slotStart);
+        const past = courseSlotIsPast(day, slotStart);
         html += `<div class="week-cell" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
         if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 1 && !past) {
           if (available) {
@@ -782,7 +792,7 @@
       return;
     }
     document.getElementById('rosterList').innerHTML = rows.map((student) => {
-      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span class="teacher-roster-actions"><button class="btn primary" type="button" data-view-history="${escapeHtml(student.id)}">查看課程紀錄</button><button class="btn soft" type="button" data-student-action="${escapeHtml(student.id)}">增加課程</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
+      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span class="teacher-roster-actions"><button class="btn primary" type="button" data-view-history="${escapeHtml(student.id)}">查看課程紀錄</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">修改資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button><button class="btn danger" type="button" data-stop-student="${escapeHtml(student.id)}">停課</button></span></article>`;
     }).join('');
   }
 
@@ -936,6 +946,26 @@
     syncTeacherOverlayScrollLock();
   }
 
+  function closeAnnouncements() {
+    document.getElementById('teacherAnnouncementBackdrop').classList.add('hidden');
+    document.getElementById('teacherAnnouncementFrame').src = 'about:blank';
+    syncTeacherOverlayScrollLock();
+    refreshTeacherUtilityStatus(true);
+  }
+  document.getElementById('teacherAnnouncementClose').addEventListener('click', closeAnnouncements);
+  document.getElementById('teacherAnnouncementLink').addEventListener('click', event => {
+    event.preventDefault();
+    closeMore();
+    document.getElementById('teacherAnnouncementBackdrop').classList.remove('hidden');
+    document.getElementById('teacherAnnouncementFrame').src = 'announcements.html?embedded=teacher&v=20260908-pending-fixes-v1';
+    document.getElementById('teacherAnnouncementClose').focus();
+    syncTeacherOverlayScrollLock();
+  });
+  global.addEventListener('message', event => {
+    const frame = document.getElementById('teacherAnnouncementFrame');
+    if (event.origin === global.location.origin && event.source === frame.contentWindow && event.data && event.data.type === 'teacher-announcements-read') refreshTeacherUtilityStatus(true);
+  });
+
   function closeMore() {
     const node = document.getElementById('teacherMoreBackdrop');
     node.classList.add('hidden');
@@ -1043,7 +1073,7 @@
     const started = sameDay && isPastSlot(row.date, row.startTime);
     const futureOrToday = row.date >= today;
     const singleStudent = (row.studentIds || []).length <= 1;
-    const movable = !isPastSlot(row.date, row.startTime) && status === 'scheduled';
+    const movable = !courseSlotIsPast(row.date, row.startTime) && status === 'scheduled';
     const attended = ['attended', 'checked_in', 'present'].includes(status);
     const canNormalAttendance = sameDay && status === 'scheduled';
     const canLateAttendance = pastDate && ['scheduled', 'absent'].includes(status);
@@ -1163,8 +1193,8 @@
       Number(data.hours.end || 21) * 60
     );
     const defaultAddFits = teacherGapMinutes >= defaultAddDuration;
-    if (isPastSlot(date, startTime)) {
-      toast('不能安排到已經過去的時間。', 'error');
+    if (courseSlotIsPast(date, startTime)) {
+      toast('不可選擇今天以前的日期。', 'error');
       return;
     }
     const requestId = ++availabilityRequestId;
@@ -1393,8 +1423,8 @@
   }
 
   async function startSourceMove(row, action) {
-    if (!row || isPastSlot(row.date, row.startTime)) {
-      toast('已開始或已結束的課程不能再調課。', 'error');
+    if (!row || courseSlotIsPast(row.date, row.startTime)) {
+      toast('不可選擇今天以前的日期。', 'error');
       return;
     }
     const requestId = ++availabilityRequestId;
@@ -1427,7 +1457,7 @@
       if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
       planner.durationMinutes = Number(result.durationMinutes) || planner.durationMinutes;
       planner.slots = (result.slots || []).filter((slot) =>
-        !isPastSlot(slot.date, slot.startTime) && Array.isArray(slot.rooms) && slot.rooms.length
+        !courseSlotIsPast(slot.date, slot.startTime) && Array.isArray(slot.rooms) && slot.rooms.length
       );
       setProgress(false);
       setFlowBanner(
@@ -1524,7 +1554,7 @@
       if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
       planner.durationMinutes = Number(result.durationMinutes) || durationMinutes;
       planner.slots = (result.slots || []).filter((slot) =>
-        !isPastSlot(slot.date, slot.startTime) && Array.isArray(slot.rooms) && slot.rooms.length
+        !courseSlotIsPast(slot.date, slot.startTime) && Array.isArray(slot.rooms) && slot.rooms.length
       );
       setProgress(false);
       if (target) {
@@ -1652,7 +1682,7 @@
     showQuick(
       '最後確認',
       '送出前會再檢查一次所有衝突',
-      `${choiceSummary(summary.title, summary.details, summary.note || '若有人剛剛占用同一資源，系統會停止並請您重新選擇。')}${moveConfirmation}<button class="primary" type="button" data-save-action>確認並儲存</button><button type="button" data-cancel-flow>取消</button>`,
+      `${choiceSummary(summary.title, summary.details, payload.action === 'permanent_move' ? '自選定日期起，本課程尚未上課的固定排課與單次調課將統一由新時段取代，顯示為藍色固定課。生效日前及已簽到紀錄保留。' : summary.note || '送出前會再檢查時段。')}${moveConfirmation}<button type="button" data-cancel-flow>取消</button><button class="primary" type="button" data-save-action>${payload.action === 'permanent_move' ? '確定永久調課' : '確認並儲存'}</button>`,
       { type: 'confirm-action', payload, requiresGuzhengMove: Boolean(summary.requiresGuzhengMove) }
     );
   }
@@ -1680,7 +1710,7 @@
         showQuick(
           '固定課後續日期有衝突',
           result.message || '請確認如何處理',
-          `<div class="teacher-choice-list">${rows}</div>${moveConfirmation}<button class="primary" type="button" data-confirm-permanent>套用已選教室，其餘日期待補排</button><button type="button" data-cancel-flow>返回課表</button>`,
+          `<div class="teacher-choice-list">${rows}</div>${moveConfirmation}<button type="button" data-cancel-flow>取消</button><button class="primary" type="button" data-confirm-permanent>確定永久調課</button>`,
           { type: 'permanent-conflicts', payload }
         );
         return;

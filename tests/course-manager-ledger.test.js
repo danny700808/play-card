@@ -58,7 +58,7 @@ function fixture() {
     mirrorRows: async () => [{ id: 'student1' }]
   };
   vm.createContext(context);
-  for (const name of ['transactionAmount','tuitionBasePaidAmount','mergePortalTuitionRows','adminSaveTuitionPeriods','adminRecordTuitionTransaction']) vm.runInContext(extract(name), context);
+  for (const name of ['firstFiniteNumber','transactionAmount','tuitionBasePaidAmount','mergePortalTuitionRows','adminSaveTuitionPeriods','adminRecordTuitionTransaction']) vm.runInContext(extract(name), context);
   return { context, put: (key, value) => records.set(key, value), get: key => records.get(key), rows: prefix => [...records].filter(([key]) => key.startsWith(prefix+'/')), fail: () => { failCreate = true; } };
 }
 function request() {

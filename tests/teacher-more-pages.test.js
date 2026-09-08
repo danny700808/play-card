@@ -256,7 +256,7 @@ test('media and inquiry regressions stay fixed', () => {
   const announcements = read('announcements.html');
   assert.match(announcements, /function usableAssets/);
   assert.match(announcements, /function linkifyText/);
-  assert.match(announcements, /最近 14 天公告/);
+  assert.match(announcements, /最新與待辦公告/);
   assert.match(announcements, /兩週前的歷史公告/);
   assert.match(announcements, /grid-template-columns:minmax\(0,1fr\)!important/);
   assert.match(announcements, /object-fit:cover/);

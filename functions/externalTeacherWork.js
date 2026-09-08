@@ -509,7 +509,7 @@ async function teacherAnnouncementList(data, identity) {
   }
   let rows = docs.map((doc) => announcementJson(doc.id, doc.data(), viewMap.get(doc.id), 0));
   const history = bool(data.historyMode) || clean(data.historyMode) === '是';
-  rows = rows.filter((row) => history ? !isRecentAnnouncement(row) : isRecentAnnouncement(row));
+  rows = rows.filter((row) => history ? !isRecentAnnouncement(row) : (isRecentAnnouncement(row) || !row.isRead || (row.requireReply && !row.myReply)));
   const start = dateKey(data.startDate || data.historyStart);
   const end = dateKey(data.endDate || data.historyEnd);
   if (history && start) rows = rows.filter((row) => row.publishDate >= start);
