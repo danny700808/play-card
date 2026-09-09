@@ -12163,6 +12163,7 @@ async function teacherDailyWorkIdentity(teacherId, binding = {}) {
 async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCounts) {
   if (typeof pushLineMessage !== 'function') return;
   const today = currentTaipeiDay();
+  if (weekday(today) === 1) return;
   const yesterday = addDays(today, -1);
   const [bindings, bundle] = await Promise.all([
     db.collection('coursePortalTeacherBindings').where('status', '==', 'active').get(),
@@ -12770,7 +12771,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     memory: '512MiB'
   }, async () => dailyStudentReminders(helpers.pushLineMessage));
   exportsObject.coursePortalTeacherDailyReminder = onSchedule({
-    schedule: '0 9 * * *',
+    schedule: '0 9 * * 0,2-6',
     timeZone: TAIPEI,
     region: REGION,
     timeoutSeconds: 180,
