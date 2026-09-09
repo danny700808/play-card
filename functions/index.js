@@ -1,3 +1,5 @@
+const { queueBlockReason, deletedPersonMatches } = require('./notificationDeliveryGuard');
+const { registerGoodsInquiryNotifications } = require('./goodsInquiryNotifications');
 const { fallbackEmail } = require('./portalNotificationPolicy');
 const { onRequest, onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
@@ -28,6 +30,7 @@ const { registerExternalTeacherWork, pendingCountsForIdentity } = require('./ext
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const LINE_CHANNEL_SECRET = defineSecret('LINE_CHANNEL_SECRET');
+registerGoodsInquiryNotifications(exports, { db, admin, managerRecipient: getPrimaryManagerLineRecipient });
 
 registerExternalTeacherOnboarding(exports);
 registerEasyStoreCatalogSync(exports);
@@ -1131,6 +1134,7 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
       channel: 'line',
       targetLineUserId: lineId,
       targetEmail: email,
+      emailFallbackEnabled: !!email,
     }));
     results.line = true;
     results.count += 1;
@@ -1140,7 +1144,7 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
       ? '客人 LINE 配對資料格式不正確，請重新配對 LINE。'
       : '客人尚未完成 LINE 配對，契約內沒有 LINE User ID。';
   }
-  if (wantsEmailByPreference(pref) && email) {
+  if (!results.line && email) {
     const queueId = `${baseId}-email`;
     await createNotificationQueue(Object.assign({}, common, {
       queueId,
@@ -1275,6 +1279,17 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
     await markQueue(docRef, { status: '已取消', lastError: '此通知已依設定取消。' });
     return { ok: true, skipped: true };
   }
+  const guardReason = queueBlockReason(row);
+  if (guardReason) {
+    if (!/^(已發送|sent|已取消|cancelled|canceled|已略過|已轉寄Email)$/i.test(queueStatus(row)))
+      await markQueue(docRef, {status:'已取消', cancelReason:guardReason});
+    return {ok:true, skipped:true, reason:guardReason};
+  }
+  const deletedPeople = await db.collection('personDeletionTombstones').get();
+  if (deletedPeople.docs.some(doc => deletedPersonMatches(row, doc.data()))) {
+    await markQueue(docRef, {status:'已取消', cancelReason:'對應人員已刪除，停止通知。'});
+    return {ok:true, skipped:true, reason:'deleted-person'};
+  }
   const queueId = clean(row.queueId || docRef.id);
   const currentStatus = queueStatus(row);
   const attemptCount = Number(row.attemptCount || 0) || 0;
@@ -1353,7 +1368,7 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
     const snapshot = await tx.get(docRef);
     if (!snapshot.exists) return false;
     const fresh = snapshot.data() || {};
-    if (['已發送', '已轉寄Email', '已取消', '已略過', '發送中'].includes(queueStatus(fresh))) return false;
+    if (queueBlockReason(fresh) || ['已發送', '已轉寄Email', '已取消', '已略過', '發送中', 'cancelled', 'canceled', 'sent'].includes(queueStatus(fresh))) return false;
     tx.set(docRef, {
     queueId,
     status: '發送中',
@@ -1440,6 +1455,9 @@ async function queueManagerNotification({ title, body, source, contractId, appli
       channel: 'line',
       targetLineUserId: managerLineUserId,
       targetName: '柚子樂器主管',
+      targetRole: 'manager',
+      targetEmail: 'danny700808@gmail.com',
+      emailFallbackEnabled: true,
       title,
       body,
       message: body,
