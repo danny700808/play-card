@@ -11596,8 +11596,16 @@ async function attendanceCorrectionSlots(requestRow) {
     const reserved = existing.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(row => row.periodId === sourceId(period));
     const reused = reserved.find(slot => slot.replacementAttendanceId === sourceId(original));
     const index = ordered.indexOf(original);
-    let slotNo = reused ? reused.slotNo : Number(original.slotNo || original.lessonNo || index + 1);
-    for (const prior of reserved.sort((a,b) => a.slotNo - b.slotNo)) if (!reused && prior.status === 'pending' && prior.slotNo <= slotNo) slotNo++;
+    const occupied = new Set(reserved.map(slot => slot.slotNo));
+    let cursor = 1;
+    let inferredSlot = 0;
+    for (const record of ordered) {
+      if (reserved.some(slot => slot.replacementAttendanceId === sourceId(record))) continue;
+      while (occupied.has(cursor)) cursor++;
+      if (record === original) inferredSlot = cursor;
+      occupied.add(cursor++);
+    }
+    const slotNo = reused ? reused.slotNo : Number(original.slotNo || original.lessonNo || inferredSlot);
     if (index < 0 || slotNo < 1 || slotNo > Number(period.lessonCount || 4)) throw new HttpsError('failed-precondition', '原格位資料不足，請先核對實體上課證。');
     slots.push({ id: reused ? reused.id : `${requestRow.id}-${studentId}`, cancellationId: requestRow.id, studentId,
       studentName: clean((requestRow.studentNames || [])[(requestRow.studentIds || []).indexOf(studentId)]),

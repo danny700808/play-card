@@ -53,4 +53,8 @@ test('historical correction reserves the original grid position rather than a ne
   vm.runInNewContext(extract('attendanceCorrectionSlots'),context);
   const slots=await context.attendanceCorrectionSlots({id:'cancel',studentIds:['s'],studentNames:['測試'],teacherId:'t',subjectId:'p',date:'2026-08-01'});
   assert.equal(slots[0].periodId,'term');assert.equal(slots[0].slotNo,1);assert.equal(slots[0].originalDate,'2026-08-01');
+  records[0].date='2026-09-02';
+  context.db.collection=()=>({where(){return this},get:async()=>({docs:[{id:'prior',data:()=>({periodId:'term',slotNo:1,status:'filled',replacementAttendanceId:'a0'})}]})});
+  const second=await context.attendanceCorrectionSlots({id:'cancel2',studentIds:['s'],studentNames:['測試'],teacherId:'t',subjectId:'p',date:'2026-08-08'});
+  assert.equal(second[0].slotNo,2,'a previous replacement in slot one must not shift the next correction');
 });

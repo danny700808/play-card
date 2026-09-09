@@ -9,7 +9,7 @@
     const select = host.querySelector('select'), form = host.querySelector('form');
     function card(period) {
       const rows = payload.lessons.filter(row => row.periodId === period.id);
-      const ordinary = rows.filter(row => !row.correction && ['attended', 'checked_in', 'present', 'normal'].includes(row.status));
+      const ordinary = rows.filter(row => !row.correction && ['attended', 'checked_in', 'present', 'normal', 'absent'].includes(row.status));
       const lessons = [];
       rows.filter(row => row.correction).forEach(row => { lessons[row.slotNo - 1] = row; });
       let cursor = 0; ordinary.forEach(row => { while (lessons[cursor]) cursor++; lessons[cursor++] = row; });
