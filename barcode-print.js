@@ -18,7 +18,15 @@
   function number(v){const n=Number(String(v==null?'':v).replace(/,/g,'').replace(/[^0-9.\-]/g,''));return Number.isFinite(n)?n:null;}
   function first(obj,keys){for(const k of keys){if(obj&&obj[k]!==undefined&&obj[k]!==null&&clean(obj[k])!=='')return obj[k];}return '';}
   function safeUrl(v){const s=clean(v);return /^https?:\/\//i.test(s)?s:'';}
-  function imageList(raw){const out=[];function add(v){const u=safeUrl(typeof v==='object'&&v?v.url||v.src||v.imageUrl:v);if(u&&!out.includes(u))out.push(u);}['variantImageUrl','imageUrl','image','picture','cover','thumbnail'].forEach(function(k){add(raw[k]);});['variantImageUrls','parentImageUrls','imageUrls','images','photos'].forEach(function(k){const arr=raw[k];if(Array.isArray(arr))arr.forEach(add);});return out;}
+  function imageList(raw){
+    const out=[];function add(v){const u=safeUrl(typeof v==='object'&&v?v.url||v.src||v.imageUrl:v);if(u&&!out.includes(u))out.push(u);}
+    // Match the product card: variant first, then shared photos, then general images.
+    if(Array.isArray(raw.variantImageUrls))raw.variantImageUrls.forEach(add);add(raw.variantImageUrl);
+    ['parentImageUrls','imageUrls'].forEach(function(k){if(Array.isArray(raw[k]))raw[k].forEach(add);});
+    ['variantImageUrl','imageUrl','image','picture','cover','thumbnail'].forEach(function(k){add(raw[k]);});
+    ['images','photos'].forEach(function(k){if(Array.isArray(raw[k]))raw[k].forEach(add);});return out;
+  }
+
   function normalize(doc){
     const raw=doc.data()||{};
     const sku=clean(first(raw,['internalSku','sku','code','productCode','商品編號']));
