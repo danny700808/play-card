@@ -7064,7 +7064,7 @@ async function queueBindingDecisionNotice(binding, approved) {
 
 async function queueSessionSecurityNotice(sessionId, session) {
   const role = clean(session && session.role);
-  if (!['teacher', 'student'].includes(role)) return;
+  if (role !== 'teacher') return;
   const bindings = await authorizedBindingsForSession(session);
   const targets = [...new Map(bindings.filter((row) => clean(row.lineUserId)).map((row) => [
     clean(row.lineUserId),
