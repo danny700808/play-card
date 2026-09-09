@@ -287,7 +287,7 @@ async function writeBatches(rows) {
 
 async function queuePublishedNotice(kind, row, employeeIds) {
   const recipients = await notificationRecipients(employeeIds);
-  const title = kind === 'announcement' ? '外聘老師新公告' : '外聘老師協助事項';
+  const title = kind === 'announcement' ? '老師新公告' : '老師協助事項';
   const body = [clean(row.title), clean(row.summary || row.content).slice(0, 260), '', `前往老師課務：${publicBaseUrl()}teacher-course-portal.html`]
     .filter((value, index) => value || index === 2).join('\n');
   const writes = [];
@@ -298,14 +298,14 @@ async function queuePublishedNotice(kind, row, employeeIds) {
         ref: db.collection('notificationQueue').doc(id),
         data: {
           queueId: id, channel: 'line', eventCode: `${kind}.published`, targetRole: 'externalTeacher',
-          targetEmployeeId: recipient.employeeId, targetName: recipient.name, targetLineUserId: recipient.lineUserId,
+          targetEmployeeId: recipient.employeeId, targetName: recipient.name, targetLineUserId: recipient.lineUserId, targetEmail: recipient.email || '', emailFallbackEnabled: true,
           title, body, message: body, status: '待發送', source: VERSION,
           sourceCollection: kind === 'announcement' ? COLLECTIONS.announcements : COLLECTIONS.tasks,
           sourceId: row.id, lineBindingSource: recipient.lineBindingSource, createdAt: FieldValue.serverTimestamp()
         }
       });
     }
-    if (row.sendEmail === true && recipient.email) {
+    if ((row.sendEmail === true || row.sendLine === true) && recipient.email && !(row.sendLine === true && recipient.lineUserId)) {
       const id = `ext-work-${hash(`${kind}|${row.id}|${row.revision}|${recipient.employeeId}|email`).slice(0, 40)}`;
       writes.push({
         ref: db.collection('notificationQueue').doc(id),

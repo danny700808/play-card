@@ -440,6 +440,7 @@ async function pushAdminMessage(text, options = {}) {
     targetEmployeeId: clean((manager && manager.employeeId) || options.targetEmployeeId || 'PRIMARY_MANAGER_LINE'),
     targetName: clean((manager && manager.name) || options.targetName || '柚子樂器主管'),
     channel: 'line',
+    emailFallbackEnabled: true,
     title: clean(options.title || '外聘老師通知'),
     body: text,
     text,
@@ -1095,22 +1096,7 @@ function shouldKeepExternalTeacherStatus(profile = {}) {
   ].some((key) => status === key || status.includes(key)) || /已送出|待主管|已確認|生效|完成|補件|封存|逾期|已簽/.test(status);
 }
 
-async function handleExternalTeacherLineEvent(event) {
-  const text = event && event.message && event.message.type === 'text' ? clean(event.message.text) : '';
-  const legacyMatch = text.match(/^外聘老師綁定\s+([A-Z0-9-]+)$/i);
-  const personnelMatch = text.match(/^柚子人員綁定\s+([A-Z0-9-]+)$/i);
-  // 新版「柚子人員綁定 EMP-...」一律交給員工主檔流程處理；舊 EXT 綁定只保留查核，
-  // 不再自動修復索引或把外聘舊資料回寫到 employees。
-  if (personnelMatch) return false;
-  if (legacyMatch) {
-    await replyLineMessage(
-      event.replyToken,
-      '這是舊版外聘老師綁定碼，已停止自動回寫。請從新版老師課務入口以 LINE／Email 登入；如需保留舊紀錄，請聯絡管理者核對。'
-    );
-    return true;
-  }
-  return false;
-}
+async function handleExternalTeacherLineEvent() { return false; }
 
 function buildExternalTeacherEmailBody({ name, url, bindText, bindingMethod, contractRocYear, contractStartDate, contractEndDate }) {
   const lines = [
@@ -1772,14 +1758,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
     }, { merge: true });
 
     const completeBody = `外聘老師資料與契約簽署已完成 ✅\n\n柚子樂器已收到您的資料與簽名，目前等待管理端確認契約生效。\n\n合約年度：民國 ${dates.contractRocYear} 年\n契約期間：${dates.contractStartDate} 至 ${dates.contractEndDate}`;
-    if (wantsLine(profile.bindingMethod) && profile.lineUserId) await pushLineMessage(profile.lineUserId, completeBody);
-    if (wantsEmail(profile.bindingMethod) && profile.email) {
-      await queueTeacherEmail({ teacherId, email: profile.email, title: `柚子樂器外聘老師 ${dates.contractRocYear} 年契約簽署完成`, body: `${completeBody}\n\n契約檔案：${contractHtmlFile.downloadUrl}`, source: 'external-teacher-contract-completed' });
-    }
-    if (clean(profile.payrollInfoStatus || 'pending') === 'pending' && profile.lineUserId) {
-      await pushLineMessage(profile.lineUserId, `提醒您：您的薪資／匯款資料目前尚未補填。\n\n這不影響本次資料送出；待管理端確認後，為方便後續鐘點費結算，請之後點選連結補填銀行帳戶資料。\n\n${payrollUrl(teacherId, token || profile.onboardingToken)}`);
-    }
-
+    // Submission confirmation is shown in the portal; notify the manager only.
     await pushAdminMessage(`外聘老師已送出契約，等待確認
 
 姓名：${clean(profile.name || '')}
@@ -1817,7 +1796,6 @@ ${externalTeacherApprovalUrl(contractId)}`, {
       updatedAt: nowTs()
     }, { merge: true });
 
-    if (profile.lineUserId) await pushLineMessage(profile.lineUserId, '薪資／匯款資料已補填完成 ✅\n\n柚子樂器已收到您的銀行帳戶資料。');
     return { ok: true };
   });
 
@@ -1918,54 +1896,8 @@ ${externalTeacherApprovalUrl(contractId)}`, {
     timeoutSeconds: 300,
     memory: '512MiB'
   }, async () => {
-    const today = taipeiYmd();
-    const targetYear = renewalTargetYearForYmd(today);
-    const openDate = renewalOpenDateForTargetYear(targetYear);
-    if (daysBetweenYmd(openDate, today) < 0) {
-      logger.info('externalTeacherAnnualRenewalReminderEveryDay not open yet', { today, targetYear, openDate });
-      return { sent: 0, skipped: 0, targetYear, today };
-    }
-
-    const snap = await db().collection('externalTeacherProfiles').limit(500).get();
-    let sent = 0;
-    let skipped = 0;
-    for (const doc of snap.docs) {
-      const profile = { id: doc.id, teacherId: doc.id, ...(doc.data() || {}) };
-      try {
-        if (profile.isRenewalContractDraft === true || clean(profile.baseTeacherProfileId)) { skipped++; continue; }
-        const employee = await getLinkedEmployee(profile);
-        if (isInactiveExternalTeacher(profile, employee)) { skipped++; continue; }
-        if (await hasSignedContractForYear(doc.id, profile, targetYear)) { skipped++; continue; }
-        if (!shouldSendRenewalReminder(profile, targetYear, today)) { skipped++; continue; }
-        const link = await ensureRenewalContractDraft(doc.id, profile, targetYear);
-        await markRenewalOverdueIfNeeded({ contractId: link.contractId, profileId: doc.id, employeeId: clean(profile.employeeId || profile.externalTeacherEmployeeId || ''), targetYear, today });
-        const channels = await queueExternalTeacherRenewalNotice({ profileId: doc.id, profile, targetYear, link });
-        if (!channels.length) { skipped++; continue; }
-        const state = (profile.renewalReminderState && profile.renewalReminderState[String(targetYear)]) || {};
-        const count = Number(state.count || 0) || 0;
-        await doc.ref.set({
-          renewalReminderState: {
-            [String(targetYear)]: {
-              count: count + 1,
-              lastReminderDate: today,
-              lastReminderAt: nowTs(),
-              lastReminderChannels: channels,
-              renewalContractId: link.contractId,
-              updatedAt: nowTs()
-            }
-          },
-          lastRenewalReminderAt: nowTs(),
-          lastRenewalReminderDate: today,
-          updatedAt: nowTs()
-        }, { merge: true });
-        sent++;
-      } catch (err) {
-        skipped++;
-        logger.warn('externalTeacherAnnualRenewalReminder profile skipped by error', { teacherId: doc.id, error: err && err.message ? err.message : String(err) });
-      }
-    }
-    logger.info('externalTeacherAnnualRenewalReminderEveryDay completed', { sent, skipped, targetYear, today });
-    return { sent, skipped, targetYear, today };
+    // Annual assignments are now generated in portalAnnualContractAssignments, without messages.
+    return;
   });
 
   exportsObj.externalTeacherPayrollReminderEveryDay = onSchedule({
@@ -1975,40 +1907,8 @@ ${externalTeacherApprovalUrl(contractId)}`, {
     timeoutSeconds: 180,
     memory: '512MiB'
   }, async () => {
-    const snap = await db().collection('externalTeacherProfiles')
-      .where('status', '==', 'active')
-      .where('payrollInfoStatus', '==', 'pending')
-      .get();
-
-    const now = Date.now();
-    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-    let sent = 0;
-    for (const doc of snap.docs) {
-      const profile = doc.data() || {};
-      if (profile.payrollReminderPaused === true) continue;
-      const lineUserId = clean(profile.lineUserId || '');
-      if (!lineUserId) continue;
-      const last = profile.lastPayrollReminderAt && profile.lastPayrollReminderAt.toMillis ? profile.lastPayrollReminderAt.toMillis() : 0;
-      if (last && now - last < threeDaysMs) continue;
-      const msg = `柚子樂器提醒您：\n\n您的外聘教師薪資／匯款資料尚未補填。\n為了方便後續鐘點費結算，請點選下方連結補填銀行帳戶資料。\n\n補填連結：\n${payrollUrl(doc.id, profile.onboardingToken || '')}`;
-      await pushLineMessage(lineUserId, msg);
-      await doc.ref.set({ lastPayrollReminderAt: nowTs(), payrollReminderCount: Number(profile.payrollReminderCount || 0) + 1, updatedAt: nowTs() }, { merge: true });
-      await db().collection('notificationQueue').add({
-        eventCode: 'external_teacher_payroll_reminder',
-        teacherId: doc.id,
-        lineUserId,
-        channel: 'line',
-        title: '外聘老師薪資資料待補',
-        body: msg,
-        message: msg,
-        status: '已發送',
-        sentAt: nowTs(),
-        createdAt: nowTs(),
-        source: 'external-teacher-payroll-reminder'
-      });
-      sent++;
-    }
-    logger.info('externalTeacherPayrollReminderEveryDay completed', { sent });
+    // Bank details are handled by the portal daily pending notice only.
+    return;
   });
 }
 

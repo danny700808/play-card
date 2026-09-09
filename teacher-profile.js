@@ -235,6 +235,8 @@
     setBirthDateValue(profile.birthDate);
     $('profileHouseholdAddress').value = clean(profile.householdAddress);
     $('profileMailingAddress').value = clean(profile.mailingAddress);
+    $('profileBankAccountName').value = clean(profile.bankAccountName);
+    $('profileBankAccountNumber').value = clean(profile.bankAccountNumber);
     $('profileEmergencyContact').value = clean(profile.emergencyContact);
     $('profileEmergencyPhone').value = clean(profile.emergencyPhone);
     $('profileIdNumber').value = '';
@@ -356,6 +358,8 @@
   }
   async function payload() {
     const value = {
+      bankAccountName: clean($('profileBankAccountName').value),
+      bankAccountNumber: $('profileBankAccountNumber').value,
       name: clean($('profileName').value),
       mobilePhone: clean($('profileMobile').value),
       email: clean($('profileEmail').value),
@@ -389,6 +393,13 @@
     message('正在安全儲存…', false);
     try {
       const data = await payload();
+      if (data.bankAccountNumber && !/^[0-9]+$/.test(data.bankAccountNumber)) throw new Error('銀行帳號只能包含數字，請勿使用空格或符號。');
+      if (submitForReview && (!data.bankAccountName || !data.bankAccountNumber)) throw new Error('請填寫台新國際商業銀行戶名及帳號。');
+      const old = profileOf(currentResult);
+      if ((data.bankAccountName || data.bankAccountNumber) && (submitForReview || old.bankAccountName !== data.bankAccountName || old.bankAccountNumber !== data.bankAccountNumber)) {
+        if (!global.confirm(`請再次核對匯款資料\n銀行：台新國際商業銀行\n戶名：${data.bankAccountName}\n帳號：${data.bankAccountNumber}\n\n請對照存摺，確認戶名及帳號完全一致。按確定表示核對無誤並送出；按取消返回修改。`)) return;
+        data.bankConfirmed = true;
+      }
       data.submitForReview = submitForReview === true;
       const result = await call('coursePortalTeacherSaveProfileDraft', data);
       pendingIdentityFiles = [];
@@ -421,6 +432,7 @@
   $('profileBirthYear').addEventListener('change', function () { refreshBirthDays(); updateBirthDateValue(); });
   $('profileBirthMonth').addEventListener('change', function () { refreshBirthDays(); updateBirthDateValue(); });
   $('profileBirthDay').addEventListener('change', updateBirthDateValue);
+  $('profileBankAccountNumber').addEventListener('input', function () { this.value = this.value.replace(/[^0-9]/g, ''); });
   $('teacherProfileForm').addEventListener('submit', function (event) { event.preventDefault(); save(false); });
   $('profileSubmitBtn').addEventListener('click', function () { save(true); });
   fillBirthOptions();

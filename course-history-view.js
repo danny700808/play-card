@@ -9,11 +9,14 @@
     const select = host.querySelector('select'), form = host.querySelector('form');
     function card(period) {
       const rows = payload.lessons.filter(row => row.periodId === period.id);
-      const lessons = rows.filter(row => ['attended', 'checked_in', 'present', 'normal'].includes(row.status));
+      const ordinary = rows.filter(row => !row.correction && ['attended', 'checked_in', 'present', 'normal'].includes(row.status));
+      const lessons = [];
+      rows.filter(row => row.correction).forEach(row => { lessons[row.slotNo - 1] = row; });
+      let cursor = 0; ordinary.forEach(row => { while (lessons[cursor]) cursor++; lessons[cursor++] = row; });
       const labels = {attended:'已上課', checked_in:'已上課', present:'已上課', normal:'已上課', absent:'曠課', leave:'請假'};
       const slots = Array.from({length:Math.max(Number(period.lessonCount || 0),lessons.length)},(_,index)=>{
         const row = lessons[index];
-        return row ? `<div class="lesson-slot used"><strong>第 ${index+1} 堂</strong><span>${esc(row.date)} ${esc(row.startTime || '')}</span><small>${esc(row.late ? '老師補簽到' : labels[row.status] || row.status || '上課紀錄')}${row.status === 'absent' ? '・扣一堂' : ''}</small></div>` : `<div class="lesson-slot${index < period.usedCount ? ' used' : ''}"><strong>第 ${index+1} 堂</strong><span>${index < period.usedCount ? '無簽到紀錄' : '未使用'}</span></div>`;
+        return row ? `<div class="lesson-slot used"><strong>第 ${index+1} 堂</strong><span>${esc(row.date)} ${esc(row.startTime || '')}</span><small>${esc(row.correction ? (row.status === 'correction_pending' ? `原 ${row.originalDate} 簽到作廢・待補登` : `原 ${row.originalDate} 簽到作廢・已補回`) : row.late ? '老師補簽到' : labels[row.status] || row.status || '上課紀錄')}${row.status === 'absent' ? '・扣一堂' : ''}</small></div>` : `<div class="lesson-slot${index < period.usedCount ? ' used' : ''}"><strong>第 ${index+1} 堂</strong><span>${index < period.usedCount ? '無簽到紀錄' : '未使用'}</span></div>`;
       }).join('');
       const paid = period.outstandingAmount <= 0;
       const payments = period.transactions.filter(row => row.type !== 'refund');

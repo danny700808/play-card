@@ -1092,6 +1092,9 @@ function submittedProfilePrivatePatch(source, profileId, employeeId, teacherId) 
     profileId,
     employeeId,
     coursePortalTeacherId: teacherId,
+    bankName: '台新國際商業銀行',
+    bankAccountName: clean(row.bankAccountName),
+    bankAccountNumber: clean(row.bankAccountNumber),
     idNumber: clean(row.idNumber || row.identityNumber),
     identityFiles: Array.isArray(row.identityFiles) ? row.identityFiles : [],
     updatedAt: FV.serverTimestamp()

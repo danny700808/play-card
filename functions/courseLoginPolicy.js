@@ -44,6 +44,7 @@ function isPendingBinding(row) {
 // current rows use unbound/unbound. Explicit administrator rejection remains blocked.
 function isRecoverableUnboundBinding(row) {
   if (!row) return false;
+  if (row.revokedReason === 'peer-unbound') return true;
   const status = lower(row.status);
   const approval = lower(row.approvalStatus);
   if (status === 'rejected' || approval === 'rejected') return false;
@@ -107,7 +108,7 @@ function decideLineLoginBinding(type, bindings) {
   const blocked = rows.filter(isBlockedBinding);
 
   if (!active.length) {
-    if (pending.length) return { action: 'pending', active: [], pending, blocked };
+    if (pending.length) return { action: ['teacher', 'student'].includes(type) ? 'setup' : 'pending', active: [], pending, blocked };
     if (blocked.length) return { action: 'blocked', active: [], pending, blocked };
     return { action: 'setup', active: [], pending, blocked };
   }

@@ -1,3 +1,4 @@
+const { fallbackEmail } = require('./portalNotificationPolicy');
 const { onRequest, onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
@@ -1198,7 +1199,9 @@ async function sendLinePush(row) {
   });
   const responseText = await response.text();
   if (!response.ok) {
-    throw new Error(`LINE API ${response.status}：${responseText.slice(0, 500)}`);
+    const error = new Error(`LINE API ${response.status}：${responseText.slice(0, 500)}`);
+    error.lineRejected = true;
+    throw error;
   }
   return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
 }
@@ -1225,7 +1228,9 @@ async function sendEmailViaGmail(row) {
 
   const subject = queueTitle(row) || '柚子樂器通知';
   const body = queueBody(row) || '';
-  const html = clean(row.html || row.htmlBody || '') || body.replace(/\n/g, '<br>');
+  const safeBody = body.replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+  const receipt = lineImageUrlFromQueue(row);
+  const html = clean(row.html || row.htmlBody || '') || safeBody.replace(/\n/g, '<br>') + (receipt ? `<p><img src="${receipt.replace(/"/g, '%22')}" alt="收據" style="max-width:100%"></p>` : '');
 
   const info = await transporter.sendMail({
     from,
@@ -1264,6 +1269,12 @@ async function appendNotificationLog(queueId, data) {
 
 async function processNotificationQueueDoc(docRef, row, options = {}) {
   row = row || {};
+  const disabledEvents = new Set(['course_portal_new_session', 'course_portal_binding_pending', 'course_portal_binding_approved', 'course_portal_binding_rejected', 'external_teacher_payroll_reminder']);
+  const disabledSources = new Set(['external-teacher-payroll-reminder', 'external-teacher-annual-renewal-reminder']);
+  if (disabledEvents.has(row.eventCode) || disabledSources.has(row.source)) {
+    await markQueue(docRef, { status: '已取消', lastError: '此通知已依設定取消。' });
+    return { ok: true, skipped: true };
+  }
   const queueId = clean(row.queueId || docRef.id);
   const currentStatus = queueStatus(row);
   const attemptCount = Number(row.attemptCount || 0) || 0;
@@ -1338,14 +1349,22 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
     return { ok: true, skipped: true, reason: 'admin-manager-clock-reminder-suppressed', queueId, channel };
   }
 
-  await markQueue(docRef, {
+  const claimed = await db.runTransaction(async tx => {
+    const snapshot = await tx.get(docRef);
+    if (!snapshot.exists) return false;
+    const fresh = snapshot.data() || {};
+    if (['已發送', '已轉寄Email', '已取消', '已略過', '發送中'].includes(queueStatus(fresh))) return false;
+    tx.set(docRef, {
     queueId,
     status: '發送中',
     sendStartedAt: admin.firestore.FieldValue.serverTimestamp(),
     sendStartedAtText: nowText(),
     attemptCount: admin.firestore.FieldValue.increment(1),
     processor: options.processor || 'cloud-function',
+    }, { merge: true });
+    return true;
   });
+  if (!claimed) return { ok: true, skipped: true, queueId };
 
   try {
     const result = channel === 'line' ? await sendLinePush(row) : await sendEmailViaSendGrid(row);
@@ -1371,6 +1390,15 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
     });
     return { ok: true, sent: true, channel, queueId };
   } catch (err) {
+    const emailFallback = channel === 'line' ? fallbackEmail(row, err) : null;
+    if (emailFallback) {
+      const fallbackRef = db.collection(QUEUE_COLLECTION).doc(`${queueId}-email-fallback`);
+      try { await fallbackRef.create({ ...emailFallback, queueId: fallbackRef.id,
+        fallbackOf: queueId, createdAt: admin.firestore.FieldValue.serverTimestamp() }); }
+      catch (error) { if (String(error.code) !== '6' && !/already.exists/i.test(String(error.code))) throw error; }
+      await markQueue(docRef, { status: '已轉寄Email', lastError: String(err.message), fallbackQueueId: fallbackRef.id });
+      return { ok: true, fallbackQueued: true, queueId };
+    }
     const msg = err && err.message ? err.message : String(err);
     await markQueue(docRef, {
       status: '發送失敗',
@@ -2274,3 +2302,5 @@ exports.sendGmailTestEmail = onCall({ region: 'us-central1' }, async (request) =
     throw new HttpsError('internal', msg);
   }
 });
+
+require('./portalContractNotices').registerPortalContractNotices(exports);

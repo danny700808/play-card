@@ -1381,7 +1381,15 @@
     if (!confirm('確定完成這堂課的當日簽到？今天晚上 12 點前可直接取消，也可以取消後重新簽到；隔天後則需主管處理。')) return;
     loading(button, true, '簽到中…');
     try {
+      const source = { sourceEventId: row.sourceId || row.id, sourceCourseId: row.fixedCourseId || row.sourceId || row.id, sourceDate: row.date, portalChangeId: row.portalChangeId };
+      const options = await invoke('coursePortalTeacherAttendanceCorrectionOptions', { sessionToken: token, ...source });
+      const correctionIds = {};
+      for (const slot of options.corrections || []) {
+        if (correctionIds[slot.studentId]) continue;
+        if (confirm(`${slot.studentName || '學生'}有一格待補回：第 ${slot.periodNo} 期第 ${slot.slotNo} 格（原 ${slot.originalDate}）。\n今天這堂是否補回這一格？\n確定：填回原格，並請老師同步更正實體上課證。\n取消：照常登記於目前期別。`)) correctionIds[slot.studentId] = slot.id;
+      }
       const result = await invoke('coursePortalTeacherAttendance', {
+        correctionIds,
         sessionToken: token,
         sourceEventId: row.sourceId || row.id,
         sourceCourseId: row.fixedCourseId || row.sourceId || row.id,

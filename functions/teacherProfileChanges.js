@@ -10,7 +10,9 @@ const PROFILE_TEXT_FIELDS = Object.freeze([
   ['householdAddress', '戶籍地址'],
   ['mailingAddress', '通訊地址'],
   ['emergencyContact', '緊急聯絡人'],
-  ['emergencyPhone', '緊急聯絡人電話']
+  ['emergencyPhone', '緊急聯絡人電話'],
+  ['bankAccountName', '台新國際商業銀行戶名'],
+  ['bankAccountNumber', '台新國際商業銀行帳號']
 ]);
 
 function normalizeAbility(value) {
@@ -45,7 +47,7 @@ function profileDraftSnapshot(profile, privateProfile) {
   const source = profile || {};
   const privateRow = privateProfile || {};
   const out = {};
-  PROFILE_TEXT_FIELDS.forEach(([key]) => { out[key] = clean(source[key]); });
+  PROFILE_TEXT_FIELDS.forEach(([key]) => { out[key] = clean(key.startsWith('bank') ? privateRow[key] : source[key]); });
   out.teachingAbilities = normalizeAbilities(source.teachingAbilities);
   out.idNumberMasked = clean(source.idNumberMasked || privateRow.idNumberMasked);
   out.identityFileCount = identityFileCount(Object.assign({}, source, privateRow));

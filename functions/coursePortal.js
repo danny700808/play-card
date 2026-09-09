@@ -1,3 +1,4 @@
+const { recipientFields, notificationRecipientKey } = require('./portalNotificationPolicy');
 const { applyLessonSettings } = require('./courseLessonSettings');
 'use strict';
 
@@ -1048,7 +1049,7 @@ async function resolveRegularIdentity(identity) {
       normalizeEmail(row.emailNormalized || row.email) === normalizeEmail(identity.email)
     )
   );
-  if (sameAccount.some((row) => clean(row.status) === 'revoked')) {
+  if (sameAccount.some((row) => clean(row.status) === 'revoked' && row.revokedReason !== 'peer-unbound')) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
   const active = sameAccount.find((row) =>
@@ -1248,7 +1249,7 @@ async function activeStudentBindingsForSession(session) {
     Object.assign({ __id: doc.id, __ref: doc.ref }, doc.data() || {})
   ])).values()];
   const groups = await readCourseGroups();
-  return bindings.map(row => ({ ...row, legacyStudentId: row.studentId, studentId: canonicalStudentId(clean(row.studentId), groups) }));
+  return bindings.filter(row => !(session.revokedStudentIds || []).includes(clean(row.studentId))).map(row => ({ ...row, legacyStudentId: row.studentId, studentId: canonicalStudentId(clean(row.studentId), groups) }));
 }
 
 async function activeStudentIdsForSession(session) {
@@ -1383,10 +1384,10 @@ async function completeRegularAccount(source) {
   const bindingRef = collection.doc(bindingId);
   const existing = await bindingRef.get();
   const previous = existing.exists ? existing.data() || {} : {};
-  if (['revoked', 'rejected'].includes(clean(previous.status))) {
+  if (['revoked', 'rejected'].includes(clean(previous.status)) && !(type === 'student' && previous.revokedReason === 'peer-unbound')) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
-  const approved = type === 'renter' || clean(previous.status) === 'active';
+  const approved = true; // Existing identity was matched and Email OTP verified.
   const nextStatus = approved ? 'active' : 'pending';
 
   const payload = {
@@ -1445,6 +1446,7 @@ async function completeRegularAccount(source) {
     };
   }
 
+  if (type === 'student' && clean(previous.status) !== 'active') await queueDirectLineBindingNotice({ ...previous, ...payload, id: bindingId });
   const issued = await issueSession({
     type,
     lineUserId: clean(previous.lineUserId || source.lineUserId),
@@ -1983,7 +1985,7 @@ async function completeVerifiedLineRegistration(data) {
   const previous = previousBinding.exists ? previousBinding.data() || {} : {};
   if (
     ['revoked', 'rejected'].includes(clean(previous.status)) &&
-    !isRecoverableUnboundBinding(previous)
+    !isRecoverableUnboundBinding(previous) && previous.revokedReason !== 'peer-unbound'
   ) {
     throw new HttpsError('permission-denied', '這個入口帳號目前已停用，請聯絡柚子樂器協助恢復。');
   }
@@ -2016,7 +2018,7 @@ async function completeVerifiedLineRegistration(data) {
     approvalSource: 'line-self-service',
     updatedAt: FieldValue.serverTimestamp(),
     boundAt: previous.boundAt || FieldValue.serverTimestamp(),
-    reminderLastLesson: true,
+    reminderLastLesson: false,
     reminderPayment: true
   };
   payload.email = normalizeEmail(identity.email);
@@ -2204,7 +2206,7 @@ async function handleCoursePortalLineEvent(event, helpers = {}) {
     approvalSource: 'line-self-service',
     updatedAt: FieldValue.serverTimestamp(),
     boundAt: FieldValue.serverTimestamp(),
-    reminderLastLesson: true,
+    reminderLastLesson: false,
     reminderPayment: true
   };
   if (type === 'teacher') payload.teacherId = clean(row.targetId);
@@ -2346,7 +2348,9 @@ function externalTeacherProfileMissingFields(row) {
     ['emergencyContact', '緊急聯絡人', clean(source.emergencyContact)],
     ['emergencyPhone', '緊急聯絡人電話', normalizePhone(source.emergencyPhone || source.emergencyContactPhone)],
     ['teachingAbilities', '授課項目', teaching],
-    ['identityDocument', '身分證明文件', identityDocument]
+    ['identityDocument', '身分證明文件', identityDocument],
+    ['bankAccountName', '台新國際商業銀行戶名', clean(source.bankAccountName)],
+    ['bankAccountNumber', '台新國際商業銀行帳號', /^[0-9]+$/.test(clean(source.bankAccountNumber))]
   ].filter((item) => !item[2]).map((item) => ({ key: item[0], label: item[1] }));
 }
 
@@ -2474,6 +2478,9 @@ function teacherUtilityProfileBundle(options) {
     mobilePhone: normalizePhone(teacherUtilityFirstText(personalSources, [
       'mobilePhone', 'mobile', 'phone', 'tel', 'telephone', 'contactPhone'
     ])),
+    bankName: '台新國際商業銀行',
+    bankAccountName: teacherUtilityFirstText(personalSources, ['bankAccountName']),
+    bankAccountNumber: teacherUtilityFirstText(personalSources, ['bankAccountNumber']),
     birthDate: teacherUtilityFirstText(personalSources, ['birthDate']),
     idNumberMasked: teacherUtilityMaskedId(rawIdNumber || storedMaskedId),
     householdAddress: teacherUtilityFirstText(personalSources, ['householdAddress']),
@@ -3194,6 +3201,9 @@ function teacherUtilityPublicProfile(source) {
 function teacherUtilityPrivateProfile(source) {
   const row = source || {};
   return {
+    bankName: '台新國際商業銀行',
+    bankAccountName: clean(row.bankAccountName),
+    bankAccountNumber: clean(row.bankAccountNumber),
     idNumber: clean(row.idNumber || row.identityNumber),
     identityFiles: Array.isArray(row.identityFiles) ? row.identityFiles : []
   };
@@ -3207,6 +3217,8 @@ function teacherUtilityDraftProfileForDisplay(resolved, draftRow) {
   const proposed = draft.publicProfile || {};
   const privateDraft = draft.privateProfile || {};
   result.profile = Object.assign({}, official, proposed, {
+    bankAccountName: clean(privateDraft.bankAccountName || official.bankAccountName),
+    bankAccountNumber: clean(privateDraft.bankAccountNumber || official.bankAccountNumber),
     idNumberMasked: clean(proposed.idNumberMasked || official.idNumberMasked),
     identityFileCount: Math.max(
       Number(official.identityFileCount || 0),
@@ -3290,6 +3302,15 @@ async function teacherUtilitySaveProfileDraft(data) {
     if (value === undefined) return;
     publicDraft[key] = key === 'email' ? normalizeEmail(value) : value;
   });
+  if (Object.hasOwn(data, 'bankAccountNumber') || Object.hasOwn(data, 'bankAccountName')) {
+    const account = String(data.bankAccountNumber == null ? privateDraft.bankAccountNumber || '' : data.bankAccountNumber);
+    const name = clean(data.bankAccountName == null ? privateDraft.bankAccountName : data.bankAccountName);
+    if (account && !/^[0-9]{1,30}$/.test(account)) throw new HttpsError('invalid-argument', '銀行帳號只接受數字，不可含空格或符號。');
+    if ((account || name) && (account !== privateDraft.bankAccountNumber || name !== privateDraft.bankAccountName) && data.bankConfirmed !== true) throw new HttpsError('failed-precondition', '請再次核對戶名及帳號。');
+    privateDraft.bankName = '台新國際商業銀行';
+    privateDraft.bankAccountName = name;
+    privateDraft.bankAccountNumber = account;
+  }
   publicDraft.mobilePhone = normalizePhone(publicDraft.mobilePhone);
   publicDraft.emergencyPhone = normalizePhone(publicDraft.emergencyPhone);
   if (Object.prototype.hasOwnProperty.call(data || {}, 'idNumber')) {
@@ -6918,6 +6939,12 @@ function parseTuitionReceipt(dataUrl) {
   return { contentType: match[1].toLowerCase(), buffer };
 }
 
+async function portalRecipientForSession(session) {
+  const rows = await authorizedBindingsForSession(session);
+  const binding = rows.find(row => session.lineUserId && row.lineUserId === session.lineUserId) || rows[0] || {};
+  return recipientFields({ ...binding, lineUserId: clean(session.lineUserId || binding.lineUserId) });
+}
+
 async function queueCoursePortalNotice(id, payload) {
   const ref = db.collection('notificationQueue').doc(clean(id) || randomToken(16));
   try {
@@ -6927,7 +6954,8 @@ async function queueCoursePortalNotice(id, payload) {
       status: '待發送',
       createdAt: FieldValue.serverTimestamp(),
       createdAtText: nowText(),
-      source: 'course-portal'
+      source: 'course-portal',
+      emailFallbackEnabled: true
     }, payload || {}));
   } catch (error) {
     const code = clean(error && error.code).toLowerCase();
@@ -6936,168 +6964,46 @@ async function queueCoursePortalNotice(id, payload) {
   return ref.id;
 }
 
-async function queueBindingApprovalNotices(binding) {
-  const type = clean(binding && binding.type);
-  const bindingId = clean(binding && binding.id);
-  if (!bindingId || !bindingNeedsManagerApproval(type)) return;
-  const targetName = clean(binding.name) || (type === 'teacher' ? '老師' : '學生');
-  const relationship = type === 'student'
-    ? (clean(binding.relationship) || '家長／監護人')
-    : '老師本人';
-  const lineName = clean(binding.lineDisplayName) || '未提供';
-  const body = [
-    '有新的課務入口綁定申請等待確認。',
-    '',
-    `身分：${type === 'teacher' ? '老師' : '學生／家長'}`,
-    `姓名：${targetName}`,
-    type === 'student' ? `關係：${relationship}` : '',
-    `LINE 顯示名稱：${lineName}`,
-    '',
-    '核准前不會開放課表、學費、簽到或薪資資料。',
-    `${PORTAL_BASE}/course-portal-admin.html`
-  ].filter(Boolean).join('\n');
-  await queueCoursePortalNotice(`course-binding-manager-${type}-${bindingId}`, {
-    eventCode: 'course_portal_binding_pending',
-    target: 'admin',
-    targetRole: 'admin',
-    targetEmployeeId: 'PRIMARY_MANAGER_LINE',
-    targetName: '柚子樂器主管',
-    title: '登入綁定待確認',
-    body,
-    text: body,
-    message: body,
-    bindingId,
-    bindingType: type
-  });
-  if (type !== 'student' || !clean(binding.studentId)) return;
-  const existing = await db.collection('coursePortalStudentBindings')
-    .where('studentId', '==', clean(binding.studentId))
-    .get();
-  const guardianBody = [
-    `有人申請新增 ${targetName} 的家長 LINE。`,
-    `申請關係：${relationship}`,
-    `LINE 顯示名稱：${lineName}`,
-    '目前仍在等待主管確認，尚未開放任何學生資料。',
-    '若不是您的家人操作，請立即聯絡柚子樂器。'
-  ].join('\n');
-  await Promise.all(existing.docs.filter((doc) => {
-    const row = doc.data() || {};
-    return doc.id !== bindingId &&
-      clean(row.status) === 'active' &&
-      clean(row.lineUserId);
-  }).map((doc) => queueCoursePortalNotice(
-    `course-binding-guardian-${bindingId}-${doc.id}`,
-    {
-      eventCode: 'course_portal_family_binding_requested',
-      targetLineUserId: clean(doc.data().lineUserId),
-      targetName,
-      title: '新的家長綁定申請',
-      body: guardianBody,
-      text: guardianBody,
-      message: guardianBody,
-      studentId: clean(binding.studentId),
-      bindingId
-    }
-  )));
-}
+async function queueBindingApprovalNotices() { /* Notifications disabled by owner, 2026-09-09. */ }
 
 async function queueDirectLineBindingNotice(binding) {
-  if (clean(binding && binding.type) !== 'student' || !clean(binding.studentId)) return;
-  const bindingId = clean(binding.id);
-  const studentName = clean(binding.name) || '學生';
-  const relationship = clean(binding.relationship) || '家長／監護人';
-  const lineName = clean(binding.lineDisplayName) || '未提供';
-  const existing = await db.collection('coursePortalStudentBindings')
-    .where('studentId', '==', clean(binding.studentId))
-    .get();
-  const body = [
-    `${studentName}剛剛新增了一個家長 LINE 綁定。`,
-    `關係：${relationship}`,
-    `LINE 顯示名稱：${lineName}`,
-    '綁定者已使用學生姓名與登記電話完成確認。',
-    '若不是您的家人操作，請立即聯絡柚子樂器；主管可以停用綁定並強制登出。'
-  ].join('\n');
-  await Promise.all(existing.docs.filter((doc) => {
+  if (binding.type !== 'student' || !clean(binding.studentId)) return;
+  const existing = await db.collection('coursePortalStudentBindings').where('studentId', '==', clean(binding.studentId)).get();
+  const seen = new Set();
+  for (const doc of existing.docs) {
     const row = doc.data() || {};
-    return doc.id !== bindingId &&
-      clean(row.status) === 'active' &&
-      clean(row.lineUserId);
-  }).map((doc) => queueCoursePortalNotice(
-    `course-binding-guardian-active-${bindingId}-${doc.id}`,
-    {
-      eventCode: 'course_portal_family_binding_added',
-      targetLineUserId: clean(doc.data().lineUserId),
-      targetName: studentName,
-      title: '新的家長 LINE 綁定',
-      body,
-      text: body,
-      message: body,
-      studentId: clean(binding.studentId),
-      bindingId
-    }
-  )));
+    const key = notificationRecipientKey(row);
+    if (doc.id === binding.id || row.status !== 'active' || !key || seen.has(key) || key === notificationRecipientKey(binding)) continue;
+    seen.add(key);
+    await queueCoursePortalNotice(`course-binding-added-${binding.id}-${hash(String(binding.boundAt && binding.boundAt.seconds || Date.now()))}-${hash(key)}`, {
+      ...recipientFields(row), eventCode: 'course_portal_family_binding_added', studentId: binding.studentId,
+      title: '新增綁定帳號通知', body: [
+        `${clean(binding.name) || '學生'}的學生資料新增了一個綁定帳號。`,
+        `與學生關係：${clean(binding.relationship) || '本人'}`,
+        binding.lineDisplayName ? `LINE 顯示名稱：${clean(binding.lineDisplayName)}` : '登入方式：Email',
+        '若您不認識此使用者，請至入口的「綁定帳號管理」查看及處理。若有疑問，請聯絡柚子樂器官方 LINE。',
+        `${PORTAL_BASE}/student-course-portal.html`
+      ].join('\n')
+    });
+  }
 }
 
-async function queueBindingDecisionNotice(binding, approved) {
-  const lineUserId = clean(binding && binding.lineUserId);
-  if (!lineUserId) return;
-  const type = clean(binding.type);
-  const targetName = clean(binding.name) || (type === 'teacher' ? '老師' : '學生／家長');
-  const body = approved
-    ? `${targetName}的${type === 'teacher' ? '老師' : '學生／家長'}入口綁定已由主管核准，現在可以重新使用 LINE 登入。`
-    : `${targetName}的入口綁定申請未通過。若您認為有誤，請聯絡柚子樂器確認身分。`;
-  await queueCoursePortalNotice(
-    `course-binding-decision-${clean(binding.id)}-${approved ? 'approved' : 'rejected'}`,
-    {
-      eventCode: approved ? 'course_portal_binding_approved' : 'course_portal_binding_rejected',
-      targetLineUserId: lineUserId,
-      targetName,
-      title: approved ? '登入綁定已核准' : '登入綁定未通過',
-      body,
-      text: body,
-      message: body,
-      bindingId: clean(binding.id),
-      bindingType: type
-    }
-  );
-}
+async function queueBindingDecisionNotice() { /* Notifications disabled by owner, 2026-09-09. */ }
 
-async function queueSessionSecurityNotice(sessionId, session) {
-  const role = clean(session && session.role);
-  if (role !== 'teacher') return;
-  const bindings = await authorizedBindingsForSession(session);
-  const targets = [...new Map(bindings.filter((row) => clean(row.lineUserId)).map((row) => [
-    clean(row.lineUserId),
-    row
-  ])).values()];
-  const body = [
-    `${role === 'teacher' ? '老師' : '學生／家長'}入口剛剛在新的瀏覽器建立登入。`,
-    `時間：${nowText()}`,
-    '若是您本人操作可忽略；若不是，請立即聯絡柚子樂器，主管可以強制登出所有裝置。'
-  ].join('\n');
-  await Promise.all(targets.map((binding) => queueCoursePortalNotice(
-    `course-session-security-${clean(sessionId)}-${hash(clean(binding.lineUserId)).slice(0, 12)}`,
-    {
-      eventCode: 'course_portal_new_session',
-      targetLineUserId: clean(binding.lineUserId),
-      targetName: clean(binding.name || binding.lineDisplayName) || '使用者',
-      title: '新的入口登入',
-      body,
-      text: body,
-      message: body,
-      bindingType: role
-    }
-  )));
-}
+async function queueSessionSecurityNotice() { /* Notifications disabled by owner, 2026-09-09. */ }
 
 async function queueStudentTuitionNotice(requestRow, title, body, eventCode, options = {}) {
   const snapshot = await db.collection('coursePortalStudentBindings')
     .where('studentId', '==', clean(requestRow.studentId))
     .get();
+  const recipientSeen = new Set();
   const targets = snapshot.docs.filter((doc) => {
     const row = doc.data() || {};
+    const key = notificationRecipientKey(row);
+    if (recipientSeen.has(key)) return false;
+    if (clean(row.status) === 'active') recipientSeen.add(key);
     return clean(row.status) === 'active' &&
-      clean(row.lineUserId) &&
+      notificationRecipientKey(row) &&
       (options.forceBoundDelivery === true || row.reminderPayment !== false);
   });
   await Promise.all(targets.map((doc) => {
@@ -7106,7 +7012,7 @@ async function queueStudentTuitionNotice(requestRow, title, body, eventCode, opt
       `course-tuition-${clean(requestRow.id)}-${clean(eventCode)}-${doc.id}`,
       {
         eventCode: clean(eventCode),
-        targetLineUserId: clean(row.lineUserId),
+        ...recipientFields(row),
         targetName: clean(requestRow.studentName) || '學生／家長',
         title,
         body,
@@ -7709,7 +7615,20 @@ async function courseLessonHistory(data) {
     const periodId = clean(event.tuitionPeriodId) || (matching[0] || {}).id || '';
     lessons.push({ id: event.id, periodId, date: event.date, startTime: event.startTime, teacherId: event.teacherId, subjectId: event.subjectId, status, deducted: status === 'absent' });
   }
+  const correctionSnapshot = await db.collection('coursePortalAttendanceCorrections').where('studentId', '==', studentId).get();
+  const corrections = correctionSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  for (const slot of corrections) {
+    for (let i = lessons.length - 1; i >= 0; i--) if (lessons[i].id === slot.originalAttendanceId || lessons[i].id === slot.replacementAttendanceId) lessons.splice(i, 1);
+    lessons.push({ id: slot.id, periodId: slot.periodId, slotNo: slot.slotNo,
+      date: slot.status === 'filled' ? slot.replacementDate : slot.originalDate,
+      originalDate: slot.originalDate, correction: true, status: slot.status === 'filled' ? 'attended' : 'correction_pending',
+      deducted: slot.status === 'filled' });
+  }
   const selected = selectHistoryPeriods(periods, fromDate);
+  for (const slot of corrections.filter(row => row.status === 'pending')) {
+    const period = periods.find(row => row.id === slot.periodId);
+    if (period && !selected.includes(period)) selected.push(period);
+  }
   return { ok: true, minDate: COURSE_HISTORY_MIN_DATE, fromDate, periods: selected,
     subjects: [...new Map(periods.map(row => [row.subjectId, { id: row.subjectId, name: row.subjectName }])).values()],
     lessons: lessons.filter(row => selected.some(period => period.id === row.periodId))
@@ -7937,7 +7856,7 @@ async function studentPortalData(data) {
       subjectId: clean(row.subjectId),
       teacherId: clean(row.teacherId),
       cancelledAtText: clean(row.cancelledAtText),
-      note: '主管核准取消簽到，堂數已補回目前期別'
+      note: '原格簽到已更正，保留待補登，後續格位不變'
     })),
     contactBook: publicContactPosts.filter((row) => isStudentHistoryDateVisible(row.date)),
     upcoming: nextStudentLessons(events, allowed).map((row) => ({
@@ -7955,6 +7874,47 @@ async function studentPortalData(data) {
   };
 }
 
+
+async function studentBindingAccounts(data) {
+  const session = await requireSession(data, ['student']);
+  const owned = await activeStudentBindingsForSession(session);
+  const studentId = clean(data.studentId);
+  const owners = owned.filter(row => row.studentId === studentId);
+  if (!owners.length) throw new HttpsError('permission-denied', '沒有這位學生的綁定管理權限。');
+  const snapshot = await db.collection('coursePortalStudentBindings').where('studentId', '==', studentId).where('status', '==', 'active').get();
+  if (data.action !== 'remove') return { accounts: snapshot.docs.map(doc => {
+    const row = doc.data();
+    return { id: doc.id, name: clean(row.lineDisplayName) || (row.email ? maskedEmail(row.email) : '已綁定使用者'),
+      relationship: clean(row.relationship) || '本人', mine: owners.some(own => own.__id === doc.id) };
+  }) };
+  const target = snapshot.docs.find(doc => doc.id === clean(data.bindingId));
+  if (!target || owners.some(row => row.__id === target.id)) throw new HttpsError('invalid-argument', '請選擇其他有效的綁定帳號。');
+  if (data.confirmed !== true) throw new HttpsError('failed-precondition', '請再次確認解除綁定。');
+  const row = target.data();
+  const peers = snapshot.docs.filter(doc => doc.id === target.id ||
+    (row.lineUserId && doc.data().lineUserId === row.lineUserId) ||
+    (row.authAccountId && doc.data().authAccountId === row.authAccountId));
+  await db.runTransaction(async tx => {
+    const checks = await Promise.all([...owners.map(own => tx.get(own.__ref)), ...peers.map(peer => tx.get(peer.ref))]);
+    if (!checks.slice(0, owners.length).some(doc => doc.exists && doc.data().status === 'active')) throw new HttpsError('permission-denied', '您的權限已異動，請重新登入。');
+    peers.forEach(peer => tx.set(peer.ref, { status: 'revoked', approvalStatus: 'revoked', revokedReason: 'peer-unbound',
+      revokedByBindingId: owners[0].__id, revokedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }));
+  });
+  // Existing sessions cannot regain this student merely because a fresh binding is later created.
+  const sessionQueries = [];
+  if (row.lineUserId) sessionQueries.push(db.collection('coursePortalSessions').where('lineUserId', '==', row.lineUserId).get());
+  if (row.authAccountId) sessionQueries.push(db.collection('coursePortalSessions').where('authAccountId', '==', row.authAccountId).get());
+  const sessions = await Promise.all(sessionQueries);
+  for (const old of new Map(sessions.flatMap(result => result.docs).map(doc => [doc.id, doc])).values()) {
+    if (old.data().role === 'student') await old.ref.set({ revokedStudentIds: FieldValue.arrayUnion(studentId) }, { merge: true });
+  }
+  await queueCoursePortalNotice(`binding-removed-${target.id}-${randomToken(8)}`, { ...recipientFields(row),
+    title: '學生資料存取權限異動', eventCode: 'student_binding_removed', studentId,
+    body: `您與${clean(row.name) || '學生'}的帳號綁定已由另一位已綁定使用者解除，目前無法查看該學生的資料。\n若有疑問，請聯絡柚子樂器官方 LINE，我們會協助確認。`
+  });
+  return { ok: true };
+}
+
 async function updateStudentReminder(data) {
   const session = await requireSession(data, ['student']);
   const studentId = clean(data.studentId);
@@ -7968,7 +7928,7 @@ async function updateStudentReminder(data) {
   if (!targets.length) throw new HttpsError('not-found', '找不到這位學生的有效登入帳號。');
   const batch = db.batch();
   targets.forEach((row) => batch.set(row.__ref, {
-    reminderLastLesson: data.reminderLastLesson !== false,
+    reminderLastLesson: false,
     reminderPayment: data.reminderPayment !== false,
     ...(Object.hasOwn(data, 'reminderContactBook') ? {reminderContactBook:data.reminderContactBook !== false} : {}),
     updatedAt: FieldValue.serverTimestamp()
@@ -8377,12 +8337,13 @@ async function createRoomBooking(data) {
       updatedBy: sessionOwnerKey(session)
     }, { merge: true });
   });
+  const rentalRecipient = await portalRecipientForSession(session);
+  await db.collection('coursePortalRoomBookings').doc(id).set({ notificationEmail: rentalRecipient.targetEmail }, { merge: true });
   const reminderAt = Math.max(Date.now(), taipeiDateTimeMillis(booking.date, booking.startTime) - 60 * 60 * 1000);
-  if (clean(session.lineUserId)) {
+  if (notificationRecipientKey(rentalRecipient)) {
     await db.collection('notificationQueue').doc(`course-portal-booking-${id}-reminder`).set({
       queueId: `course-portal-booking-${id}-reminder`,
-      channel: 'line',
-      targetLineUserId: session.lineUserId,
+      ...rentalRecipient,
       title: '教室租用提醒',
       body: [
         `您預約的「${booking.roomName}」將於 ${booking.date} ${booking.startTime} 開始。`,
@@ -9300,7 +9261,13 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     const portalAttendance = portalAttendanceSnapshot.docs.map((doc) =>
       Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
     );
-    const adjustedPeriods = applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttendance);
+    const correctionsSnapshot = await db.collection('coursePortalAttendanceCorrections').where('studentId', '==', studentId).get();
+    const pendingSlots = correctionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(row => row.status === 'pending');
+    const selectedId = clean((options.correctionIds || {})[studentId]);
+    const correction = pendingSlots.find(row => row.id === selectedId && row.teacherId === eventTeacherId(event) && row.subjectId === eventSubjectId(event));
+    if (selectedId && !correction) throw new HttpsError('failed-precondition', '補回格位已使用或不屬於這堂課，請重新整理。');
+    const adjustedPeriods = applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttendance).map(period => ({ ...period,
+      usedCount: Number(period.usedCount || 0) + pendingSlots.filter(slot => slot.periodId === sourceId(period) && slot.id !== selectedId).length }));
     // mirror 舊期別不會內嵌新系統期數；先讀取／建立持久 mapping，不可每次都假設上期是第 1 期。
     const effectivePeriods = options.allowRollover === true
       ? await assignNewSystemPeriodNumbers(adjustedPeriods)
@@ -9317,7 +9284,7 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     const priorAbsence = portalAttendance.find(row => row.active !== false && row.status === 'absent' &&
       eventDate(row) === sourceDate && eventTeacherId(row) === eventTeacherId(event) &&
       eventSubjectId(row) === eventSubjectId(event) && clean(row.courseId) === clean(event.fixedCourseId || event.sourceId));
-    return { studentId, mirrorAttendance, effectivePeriods, historicalSplitSource, priorAbsence };
+    return { studentId, mirrorAttendance, effectivePeriods, historicalSplitSource, priorAbsence, correction };
   }));
   const needsHistoricalPayroll = baseGroups.some((group) => Boolean(group.historicalSplitSource));
   const teacherId = eventTeacherId(event || {});
@@ -9335,7 +9302,7 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     mirrorAttendance,
     effectivePeriods,
     historicalSplitSource,
-    priorAbsence
+    priorAbsence, correction
   }) => {
     const historicalPayroll = teacherPayrollSplitRows(
       enrichTeacherPayrollRows(mirrorTeacherPayroll, mirrorAttendance).concat(portalTeacherPayroll)
@@ -9348,7 +9315,7 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
           : period
       ))
       : effectivePeriods;
-    const existingPeriod = (priorAbsence && payrollReadyPeriods.find(row => sourceId(row) === clean(priorAbsence.periodId))) ||
+    const existingPeriod = (correction && payrollReadyPeriods.find(row => sourceId(row) === correction.periodId)) || (priorAbsence && payrollReadyPeriods.find(row => sourceId(row) === clean(priorAbsence.periodId))) ||
       attendancePeriodCandidate(payrollReadyPeriods, event, studentId, sourceDate);
     const rollover = !existingPeriod && options.allowRollover === true
       ? buildAttendanceTuitionRollover({
@@ -9427,6 +9394,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
   const resolved = await teacherAttendanceEvent(session, data);
   const { sourceDate, sourceEventId, sourceCourseId, event } = resolved;
   const today = currentTaipeiDay();
+  if (!managerSession && sourceDate < today) throw new HttpsError('failed-precondition', '已超過當天晚上 12 點，請聯絡管理者協助更正紀錄。');
   if (!managerSession && late && sourceDate >= today) {
     throw new HttpsError('failed-precondition', '當日課程請在晚上 12 點前使用正常簽到；隔日後才會顯示補簽到。');
   }
@@ -9461,8 +9429,10 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
   const versionRef = scheduleVersionRef();
   const periodResolution = await attendancePeriodsForEvent(event, sourceDate, {
     allowMissing: giftLesson,
+    correctionIds: data.correctionIds || {},
     allowRollover: !giftLesson
   });
+  const correctionRefs = Object.entries(data.correctionIds || {}).map(([studentId, id]) => ({ studentId, ref: db.collection('coursePortalAttendanceCorrections').doc(clean(id)) }));
   const payrollCalculation = attendancePayrollCalculation(event, periodResolution.rows, sourceDate);
   const periodIds = Object.keys(periodResolution.byStudent).reduce((map, studentId) => {
     map[studentId] = sourceId(periodResolution.byStudent[studentId]);
@@ -9502,8 +9472,14 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
       tx.get(lessonLockRef),
       ...attendanceRefs.map((ref) => tx.get(ref)),
       ...rolloverPeriodRefs.map((ref) => tx.get(ref)),
-      ...rolloverPaymentRefs.map((ref) => tx.get(ref))
+      ...rolloverPaymentRefs.map((ref) => tx.get(ref)),
+      ...correctionRefs.map(item => tx.get(item.ref))
     ]);
+    const correctionSnapshots = correctionRefs.length ? snapshots.slice(-correctionRefs.length) : [];
+    correctionRefs.forEach((item, index) => {
+      const slot = correctionSnapshots[index].exists ? correctionSnapshots[index].data() : null;
+      if (!slot || slot.status !== 'pending' || slot.studentId !== item.studentId || slot.teacherId !== session.teacherId || slot.subjectId !== eventSubjectId(event) || !eventStudentIds(event).includes(item.studentId) || slot.periodId !== periodIds[item.studentId]) throw new HttpsError('failed-precondition', '補回格位已異動，請重新整理。');
+    });
     const attendanceOffset = 6;
     const rolloverPeriodOffset = attendanceOffset + attendanceRefs.length;
     const rolloverPaymentOffset = rolloverPeriodOffset + rolloverPeriodRefs.length;
@@ -9586,6 +9562,9 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
         }));
       }
     });
+    correctionRefs.forEach(item => tx.set(item.ref, { status: 'filled', replacementDate: sourceDate,
+      replacementOperationId: operationId, replacementAttendanceId: hash([operationId, item.studentId].join('|')),
+      filledAt: FieldValue.serverTimestamp() }, { merge: true }));
     attendanceRows.forEach((row, index) => tx.set(attendanceRefs[index], Object.assign({
       id: row.id,
       operationId,
@@ -9600,6 +9579,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
       eventId: clean(event.sourceId || sourceEventId || event.id),
       courseId: clean(event.fixedCourseId || sourceCourseId),
       date: sourceDate,
+      correctionId: clean((data.correctionIds || {})[row.studentId]),
       deducted: !giftLesson,
       late: late === true,
       earlyAttendance,
@@ -9978,6 +9958,7 @@ async function cancelTeacherAttendanceSameDay(session, resolved, reason) {
     .doc(attendanceLessonLockId(sourceDate, event, { sourceEventId, sourceCourseId }));
   const versionRef = scheduleVersionRef();
   const expectedVersion = await readScheduleVersion();
+  const filledSlots = await db.collection('coursePortalAttendanceCorrections').where('replacementOperationId', '==', operationId).get();
   await db.runTransaction(async (tx) => {
     const snapshots = await Promise.all([
       tx.get(versionRef),
@@ -9985,7 +9966,8 @@ async function cancelTeacherAttendanceSameDay(session, resolved, reason) {
       tx.get(statusRef),
       tx.get(payrollRef),
       tx.get(lessonLockRef),
-      ...attendanceRefs.map((ref) => tx.get(ref))
+      ...attendanceRefs.map((ref) => tx.get(ref)),
+      ...filledSlots.docs.map(doc => tx.get(doc.ref))
     ]);
     const versionSnapshot = snapshots[0];
     assertScheduleWritable(versionSnapshot);
@@ -10002,6 +9984,7 @@ async function cancelTeacherAttendanceSameDay(session, resolved, reason) {
     if (normalizeScheduleStatus(currentStatus.event && currentStatus.event.status) !== 'attended') {
       throw new HttpsError('failed-precondition', '這堂課目前不是已簽到狀態，請重新整理。');
     }
+    filledSlots.docs.forEach(slot => tx.set(slot.ref, { status: 'pending', replacementDate: '', replacementOperationId: '', replacementAttendanceId: '' }, { merge: true }));
     attendanceRefs.forEach((ref, index) => {
       const prior = snapshots[5 + index].exists ? snapshots[5 + index].data() || {} : {};
       tx.set(ref, {
@@ -11041,17 +11024,20 @@ async function adminCancelRoomBooking(data) {
   }, { merge: true }).catch((error) => {
     console.error('[course portal admin rental reminder cancellation failed]', bookingId, error);
   });
-  if (clean(cancelledBooking && cancelledBooking.lineUserId)) {
+  if (cancelledBooking && (clean(cancelledBooking.lineUserId) || clean(cancelledBooking.notificationEmail))) {
     const cancellationText = [
-      '教室租用已由管理者取消。',
+      '很抱歉，因以下原因，需取消您的教室預約。',
       `教室：${clean(cancelledBooking.roomName) || '教室'}`,
       `時間：${dateKey(cancelledBooking.date)} ${eventStart(cancelledBooking)}～${eventEnd(cancelledBooking)}`,
-      reason ? `原因：${reason}` : ''
+      reason ? `原因：${reason}` : '原因：特殊情況調整',
+      '此筆預約已取消。若您仍有租用需求，請至租用頁面選擇其他適合的時段，重新填寫預約。',
+      `${PORTAL_BASE}/room-booking.html`,
+      '造成不便，敬請見諒。如需協助，歡迎聯絡柚子樂器。'
     ].filter(Boolean).join('\n');
     await db.collection('notificationQueue').doc(`course-portal-booking-${bookingId}-admin-cancel`).set({
       queueId: `course-portal-booking-${bookingId}-admin-cancel`,
       channel: 'line',
-      targetLineUserId: clean(cancelledBooking.lineUserId),
+      ...recipientFields({ ...cancelledBooking, email: cancelledBooking.notificationEmail }),
       title: '教室租用取消通知',
       body: cancellationText,
       message: cancellationText,
@@ -11328,7 +11314,7 @@ async function adminTuitionPaymentAction(data) {
       `原因：${reviewNote}`,
       `請重新進入學生入口上傳：${PORTAL_BASE}/student-course-portal.html?studentId=${encodeURIComponent(clean(previewRow.studentId))}`
     ].join('\n');
-    await queueStudentTuitionNotice(previewRow, '學費資料請重新上傳', body, `rejected-${Number(previewRow.submissionRevision || 0)}`);
+    await queueStudentTuitionNotice(previewRow, '學費資料請重新上傳', body, `rejected-${Number(previewRow.submissionRevision || 0)}`, { forceBoundDelivery: true });
     return { ok: true, id, status: 'needs_resubmission', message: '已退回學生重新上傳。' };
   }
 
@@ -11559,7 +11545,11 @@ async function queueTeacherAttendanceDecision(requestRow, approved, reviewNote) 
     ? [
       `您在 ${clean(requestRow.date)} 的取消簽到申請已核准。`,
       `學生：${clean((requestRow.studentNames || []).join('、')) || '未提供'}`,
-      `行政處理費：NT$${ATTENDANCE_ADMIN_FEE}，已列入薪資扣款。`
+      ...(requestRow.correctionSlots || []).map(slot => `${slot.studentName}：第 ${slot.periodNo} 期第 ${slot.slotNo} 格，原日期 ${slot.originalDate}`),
+      '請將實體上課證原格內錯誤的日期及章記更正清除，保留該格供補登使用，後面的格子不要移動。',
+      '例如後來於 9/2 補上這堂課，請將 9/2 填在原本錯誤日期的同一格並簽章。電腦簽到時請選擇補回原格，勿在其他格重複登記。',
+      `行政處理費：NT$${ATTENDANCE_ADMIN_FEE}，已列入薪資扣款。`,
+      '若更正操作遇到問題，請聯絡柚子樂器。'
     ].join('\n')
     : [
       `您在 ${clean(requestRow.date)} 的取消簽到申請未通過，原簽到紀錄維持不變。`,
@@ -11567,12 +11557,12 @@ async function queueTeacherAttendanceDecision(requestRow, approved, reviewNote) 
     ].filter(Boolean).join('\n');
   await Promise.all(snapshot.docs.filter((doc) => {
     const row = doc.data() || {};
-    return clean(row.status) === 'active' && clean(row.lineUserId);
+    return clean(row.status) === 'active' && notificationRecipientKey(row);
   }).map((doc) => queueCoursePortalNotice(
     `attendance-cancel-teacher-${clean(requestRow.id)}-${approved ? 'approved' : 'rejected'}-${doc.id}`,
     {
       eventCode: approved ? 'attendance_cancellation_approved' : 'attendance_cancellation_rejected',
-      targetLineUserId: clean(doc.data().lineUserId),
+      ...recipientFields(doc.data()),
       targetName: clean(requestRow.teacherName) || '老師',
       title: approved ? '取消簽到已核准' : '取消簽到未通過',
       body,
@@ -11581,6 +11571,49 @@ async function queueTeacherAttendanceDecision(requestRow, approved, reviewNote) 
       attendanceCancellationId: clean(requestRow.id)
     }
   )));
+}
+
+
+async function attendanceCorrectionSlots(requestRow) {
+  const slots = [];
+  for (const studentId of requestRow.studentIds || []) {
+    const [mirrorAttendance, portalAttendance, rawPeriods] = await Promise.all([
+      mirrorRowsByField('attendance', 'studentId', studentId), portalAttendanceForStudents([studentId]),
+      mirrorRowsByField('tuitionPeriods', 'studentId', studentId)
+    ]);
+    const records = mergePortalAttendanceRows(mirrorAttendance, portalAttendance);
+    const original = records.find(row => eventDate(row) === requestRow.date &&
+      eventTeacherId(row) === requestRow.teacherId && eventSubjectId(row) === requestRow.subjectId &&
+      (!eventStart(row) || eventStart(row) === requestRow.startTime));
+    const periodId = clean(original && (original.periodId || original.studentPayment));
+    const periods = await assignNewSystemPeriodNumbers(rawPeriods);
+    const period = periods.find(row => sourceId(row) === periodId || sourceId(row).replace(/^period_/, '') === periodId);
+    if (!original || !period) throw new HttpsError('failed-precondition', '找不到原簽到對應的期別與格位，請先核對原始課程紀錄。');
+    const ordered = records.filter(row => clean(row.periodId || row.studentPayment) === periodId &&
+      ['attended', 'absent'].includes(normalizeScheduleStatus(row.status || row.type)))
+      .sort((a,b) => `${eventDate(a)}|${eventStart(a)}`.localeCompare(`${eventDate(b)}|${eventStart(b)}`));
+    const existing = await db.collection('coursePortalAttendanceCorrections').where('studentId', '==', studentId).get();
+    const reserved = existing.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(row => row.periodId === sourceId(period));
+    const reused = reserved.find(slot => slot.replacementAttendanceId === sourceId(original));
+    const index = ordered.indexOf(original);
+    let slotNo = reused ? reused.slotNo : Number(original.slotNo || original.lessonNo || index + 1);
+    for (const prior of reserved.sort((a,b) => a.slotNo - b.slotNo)) if (!reused && prior.status === 'pending' && prior.slotNo <= slotNo) slotNo++;
+    if (index < 0 || slotNo < 1 || slotNo > Number(period.lessonCount || 4)) throw new HttpsError('failed-precondition', '原格位資料不足，請先核對實體上課證。');
+    slots.push({ id: reused ? reused.id : `${requestRow.id}-${studentId}`, cancellationId: requestRow.id, studentId,
+      studentName: clean((requestRow.studentNames || [])[(requestRow.studentIds || []).indexOf(studentId)]),
+      teacherId: requestRow.teacherId, subjectId: requestRow.subjectId, periodId: sourceId(period),
+      periodNo: Number(period.systemPeriodNo || period.periodNo || 0), slotNo, originalDate: requestRow.date,
+      originalStartTime: requestRow.startTime, originalAttendanceId: sourceId(original), replacementDate: '', replacementOperationId: '', replacementAttendanceId: '', status: 'pending' });
+  }
+  return slots;
+}
+
+async function teacherAttendanceCorrectionOptions(data) {
+  const session = await requireSession(data, ['teacher']);
+  const { event } = await teacherAttendanceEvent(session, data);
+  const snapshot = await db.collection('coursePortalAttendanceCorrections').where('teacherId', '==', session.teacherId).get();
+  return { corrections: snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(row =>
+    row.status === 'pending' && row.subjectId === eventSubjectId(event) && eventStudentIds(event).includes(row.studentId)) };
 }
 
 async function adminAttendanceCancellationAction(data) {
@@ -11622,6 +11655,7 @@ async function adminAttendanceCancellationAction(data) {
     return { ok: true, id, status: 'rejected', message: '已拒絕取消簽到，原紀錄維持不變。' };
   }
 
+  const correctionSlots = await attendanceCorrectionSlots({ ...requestRow, id });
   const lineage = clean(requestRow.courseId || requestRow.eventId);
   const statusRef = db.collection('coursePortalScheduleChanges')
     .doc(`lesson-status-${hash([requestRow.teacherId, lineage, requestRow.date].join('|'))}`);
@@ -11663,6 +11697,7 @@ async function adminAttendanceCancellationAction(data) {
     }
     const versionSnapshot = snapshots[1];
     assertScheduleWritable(versionSnapshot);
+    correctionSlots.forEach(slot => tx.set(db.collection('coursePortalAttendanceCorrections').doc(slot.id), { ...slot, createdAt: FieldValue.serverTimestamp() }));
     attendanceRefs.forEach((ref, index) => {
       const studentId = clean((requestRow.studentIds || []).find((candidate) =>
         hash([clean(requestRow.operationId), clean(candidate)].join('|')) === ref.id
@@ -11675,6 +11710,7 @@ async function adminAttendanceCancellationAction(data) {
         source: 'attendance-cancellation-approved',
         teacherId: clean(requestRow.teacherId),
         studentId,
+        periodId: clean((correctionSlots.find(slot => slot.studentId === studentId) || {}).periodId),
         studentIds: requestRow.studentIds || [],
         subjectId: clean(requestRow.subjectId),
         eventId: clean(requestRow.eventId),
@@ -11763,7 +11799,18 @@ async function adminAttendanceCancellationAction(data) {
       updatedBy: 'attendance-cancellation-approved'
     }, { merge: true });
   });
-  await queueTeacherAttendanceDecision(requestRow, true, reviewNote);
+  await queueTeacherAttendanceDecision({ ...requestRow, correctionSlots }, true, reviewNote);
+  for (const slot of correctionSlots) {
+    const bindings = await db.collection('coursePortalStudentBindings').where('studentId', '==', slot.studentId).where('status', '==', 'active').get();
+    const seen = new Set();
+    for (const doc of bindings.docs) {
+      const binding = doc.data(); const key = notificationRecipientKey(binding);
+      if (!key || seen.has(key)) continue; seen.add(key);
+      await queueCoursePortalNotice(`attendance-corrected-${slot.id}-${hash(key)}`, { ...recipientFields(binding), title: '課程紀錄更正通知',
+        body: `您好，${slot.studentName || binding.name || '學生'}的${clean(requestRow.subjectName) || '課程'}第 ${slot.periodNo} 期第 ${slot.slotNo} 格，原登記「${slot.originalDate}」的上課紀錄經確認需要更正，該堂課的上課權益不受影響，請您放心。\n\n老師會協助更正實體上課證，並於實際補上課程後，將正確日期填回原格，讓上課證與系統紀錄一致。後續格位維持不變，也不會重複扣除堂數。\n\n這部分由老師處理即可，您無需自行修改。若有任何疑問，歡迎聯絡柚子樂器官方 LINE，我們會協助確認，謝謝您的理解。\n${PORTAL_BASE}/student-course-portal.html`
+      });
+    }
+  }
   return {
     ok: true,
     id,
@@ -12161,7 +12208,6 @@ async function teacherDailyWorkIdentity(teacherId, binding = {}) {
 }
 
 async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCounts) {
-  if (typeof pushLineMessage !== 'function') return;
   const today = currentTaipeiDay();
   if (weekday(today) === 1) return;
   const yesterday = addDays(today, -1);
@@ -12171,10 +12217,10 @@ async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCo
   ]);
   const targets = [...new Map(bindings.docs.map((doc) => {
     const row = doc.data() || {};
-    const key = `${clean(row.teacherId)}|${clean(row.lineUserId)}`;
+    const key = `${clean(row.teacherId)}|${notificationRecipientKey(row)}`;
     return [key, Object.assign({ id: doc.id }, row)];
   }).filter(([key, row]) =>
-    key !== '|' && clean(row.teacherId) && clean(row.lineUserId)
+    key !== '|' && clean(row.teacherId) && notificationRecipientKey(row)
   )).values()];
   for (const binding of targets) {
     const teacherId = clean(binding.teacherId);
@@ -12188,20 +12234,18 @@ async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCo
       eventDate(row) === yesterday &&
       normalizeScheduleStatus(row.status) === 'scheduled'
     ).sort((left, right) => eventStart(left).localeCompare(eventStart(right)));
-    const parts = [
+    const parts = todayRows.length ? [
       '【今日課程】',
-      todayRows.length
-        ? todayRows.map((row) => teacherReminderLessonLine(row, bundle.maps)).join('\n')
-        : '今日無課程'
-    ];
+      todayRows.map((row) => teacherReminderLessonLine(row, bundle.maps)).join('\n')
+    ] : [];
     if (unfinished.length) {
       parts.push(
         '',
         '【昨日未完成紀錄】',
         unfinished.map((row) => teacherReminderLessonLine(row, bundle.maps)).join('\n'),
         unfinished.length === 1
-          ? '此課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請老師進入課表完成補簽到。'
-          : '以上課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請老師進入課表完成補簽到。'
+          ? '此課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請聯絡管理者協助核對及補登。'
+          : '以上課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請聯絡管理者協助核對及補登。'
       );
     }
     if (typeof teacherWorkPendingCounts === 'function') {
@@ -12218,117 +12262,43 @@ async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCo
         console.warn('[teacher daily work reminder unavailable]', teacherId, clean(error && error.message));
       }
     }
-    const body = parts.join('\n');
-    const logRef = db.collection('coursePortalReminderLogs').doc(
-      hash(`teacher-daily|${today}|${teacherId}|${clean(binding.lineUserId)}`)
-    );
-    if ((await logRef.get()).exists) continue;
-    await pushLineMessage(clean(binding.lineUserId), body);
-    await logRef.set({
-      day: today,
-      teacherId,
-      lineUserId: clean(binding.lineUserId),
-      type: 'teacher_daily_courses',
-      messages: [body],
-      sentAt: FieldValue.serverTimestamp()
+    if (!parts.length) continue;
+    const body = parts.join('\n').trim();
+    await queueCoursePortalNotice(`teacher-daily-${hash(`${today}|${teacherId}|${notificationRecipientKey(binding)}`)}`, {
+      ...recipientFields(binding), teacherId, eventCode: 'teacher_daily_courses', body
     });
   }
 }
 
-async function dailyStudentReminders(pushLineMessage) {
-  if (typeof pushLineMessage !== 'function') return;
+async function dailyStudentReminders() {
   const today = currentTaipeiDay();
-  const [bindings, periods, students, subjects, teachers, fixedCourses, temporaryCourses, events, suspensionSnapshot] = await Promise.all([
+  const [bindings, bundle] = await Promise.all([
     db.collection('coursePortalStudentBindings').where('status', '==', 'active').get(),
-    mirrorRows('tuitionPeriods'),
-    mirrorRows('students'),
-    mirrorRows('subjects'),
-    mirrorRows('teachers'),
-    mirrorRows('fixedCourses'),
-    mirrorRows('temporaryCourses'),
-    mirrorRowsByDateRange('events', today, addDays(today, 120)),
-    db.collection('coursePortalStudentSuspensions').where('status', '==', 'active').get()
+    scheduleBundle(today, today, '')
   ]);
-  const learningIds = activeLearningStudentIds(
-    students,
-    [...fixedCourses, ...temporaryCourses],
-    events,
-    suspensionSnapshot.docs.map((doc) => doc.data() || {})
-  );
-  const studentMap = indexById(students);
-  const numberedPeriods = await assignNewSystemPeriodNumbers(periods);
-  await ensureTuitionPaymentRequests({
-    periods: numberedPeriods,
-    students,
-    subjects,
-    teachers,
-    studentIds: students.map(sourceId).filter((studentId) => learningIds.has(studentId))
-  });
-  const paymentSnapshot = await db.collection(TUITION_PAYMENT_REQUESTS)
-    .where('status', '==', 'payment_due')
-    .get();
-  const paymentRequests = paymentSnapshot.docs.map((doc) => Object.assign({
-    id: doc.id
-  }, doc.data() || {})).filter((row) => row.active !== false);
-  const day = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TAIPEI, year: 'numeric', month: '2-digit', day: '2-digit'
-  }).format(new Date());
+  const lessons = (bundle.resourceEvents || []).filter(row => eventDate(row) === today &&
+    !['cancelled', 'leave', 'absent'].includes(normalizeScheduleStatus(row.status)) && row.active !== false);
+  const studentIds = [...new Set(lessons.flatMap(eventStudentIds))];
+  if (!studentIds.length) return;
+  const periods = await assignNewSystemPeriodNumbers(await mirrorRows('tuitionPeriods'));
+  await ensureTuitionPaymentRequests({ periods, studentIds,
+    students: Object.values(bundle.maps.students), subjects: Object.values(bundle.maps.subjects), teachers: Object.values(bundle.maps.teachers) });
+  const paymentSnapshot = await db.collection(TUITION_PAYMENT_REQUESTS).where('status', '==', 'payment_due').get();
+  const due = paymentSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(row => row.active !== false);
   for (const doc of bindings.docs) {
     const binding = doc.data() || {};
-    if (!clean(binding.lineUserId)) continue;
+    if (binding.reminderPayment === false || !notificationRecipientKey(binding)) continue;
     const studentId = clean(binding.studentId);
-    if (!learningIds.has(studentId)) continue;
-    const studentPeriods = numberedPeriods.filter((row) => clean(row.studentId) === studentId && !['closed', 'completed'].includes(clean(row.status).toLowerCase()));
-    const lastLesson = studentPeriods.find((row) => Number(row.lessonCount || 4) - Number(row.usedCount || 0) === 1);
-    const name = clean(studentMap[studentId] && studentMap[studentId].name) || '學生';
-    if (binding.reminderLastLesson !== false && lastLesson) {
-      const message = '目前課程剩最後一堂，請留意續課安排。';
-      const logRef = db.collection('coursePortalReminderLogs').doc(
-        hash(`${day}|${studentId}|${binding.lineUserId}|${message}`)
-      );
-      if (!(await logRef.get()).exists) {
-        await pushLineMessage(binding.lineUserId, `${name}課務提醒\n${message}`);
-        await logRef.set({
-          day,
-          studentId,
-          lineUserId: binding.lineUserId,
-          messages: [message],
-          sentAt: FieldValue.serverTimestamp()
-        });
-      }
-    }
-    if (binding.reminderPayment === false) continue;
-    const dueRequests = paymentRequests.filter((row) =>
-      clean(row.studentId) === studentId &&
-      clean(row.status) === 'payment_due'
-    );
-    for (const requestRow of dueRequests) {
-      const logRef = db.collection('coursePortalReminderLogs').doc(
-        hash(`tuition-due|${clean(requestRow.id)}|${clean(binding.lineUserId)}`)
-      );
-      if ((await logRef.get()).exists) continue;
-      const amount = Number(requestRow.expectedAmount || 0).toLocaleString('zh-TW');
-      const body = [
-        `您好，${name}的${newSystemTuitionPeriodLabel(requestRow, 'current')}課程已完成第 ${Number(requestRow.triggerLessonCount || 4)} 堂。`,
-        '',
-        `下一期：${newSystemTuitionPeriodLabel(requestRow, 'next')}`,
-        `課程：${clean(requestRow.subjectName) || '課程'}`,
-        `學費：NT$${amount}`,
-        '',
-        '可選擇轉帳繳費或現場繳費，請點擊下方連結查看繳費資料。',
-        '款項需經柚子樂器確認後，才會正式顯示為繳費完成。',
-        `${PORTAL_BASE}/student-course-portal.html?studentId=${encodeURIComponent(studentId)}`
-      ].join('\n');
-      await pushLineMessage(binding.lineUserId, body);
-      await logRef.set({
-        day,
-        studentId,
-        lineUserId: binding.lineUserId,
-        tuitionPaymentRequestId: clean(requestRow.id),
-        messages: [body],
-        sentAt: FieldValue.serverTimestamp()
-      });
-    }
+    const requests = due.filter(row => clean(row.studentId) === studentId && lessons.some(lesson =>
+      eventStudentIds(lesson).includes(studentId) && (!row.subjectId || eventSubjectId(lesson) === row.subjectId)));
+    const amount = requests.reduce((sum, row) => sum + Math.max(0, Number(row.remainingAmount == null
+      ? Number(row.expectedAmount || 0) - Number(row.confirmedAmount || 0) : row.remainingAmount)), 0);
+    if (!amount) continue;
+    const name = clean(requests[0].studentName) || '學生';
+    await queueCoursePortalNotice(`tuition-day-${hash(`${today}|${studentId}|${notificationRecipientKey(binding)}`)}`, {
+      ...recipientFields(binding), studentId, eventCode: 'tuition_due_on_lesson_day', title: '學費溫馨提醒',
+      body: `${name}本期尚有學費 NT$${amount.toLocaleString('zh-TW')} 未繳。\n您可以利用網路轉帳或於現場繳費，詳細資訊請至學生／家長入口查看，謝謝您。\n${PORTAL_BASE}/student-course-portal.html?studentId=${encodeURIComponent(studentId)}`
+    });
   }
 }
 
@@ -12699,6 +12669,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherSetIrregular = callable(teacherSetIrregular, {timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLessonState = callable(teacherLessonState, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherAttendanceCorrectionOptions = callable(teacherAttendanceCorrectionOptions);
   exportsObject.coursePortalTeacherAttendance = callable(teacherAttendance, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLateAttendance = callable(teacherLateAttendance, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherAttendanceCancellationRequest = callable(teacherAttendanceCancellationRequest, { timeoutSeconds: 180, memory: '1GiB' });
@@ -12734,6 +12705,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalAdminCancelRoomBooking = callable(async (data,request)=>{assertAdminPin(request);return adminCancelRoomBooking(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminBonusRequests = callable(async (data,request)=>{assertAdminPin(request);return adminBonusRequests();},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminApproveBonus = callable(async (data,request)=>{assertAdminPin(request);return adminApproveBonus(data);},{secrets:[ADMIN_PIN]});
+  exportsObject.coursePortalStudentBindingAccounts = callable(studentBindingAccounts);
   exportsObject.coursePortalUpdateStudentReminder = callable(updateStudentReminder);
   exportsObject.coursePortalAdminData = callable(async (data, request) => {
     assertAdminPin(request);
@@ -12764,7 +12736,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     return adminTuitionPaymentScreenshot(data);
   }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentReminderDaily = onSchedule({
-    schedule: '0 * * * *',
+    schedule: '0 9 * * *',
     timeZone: TAIPEI,
     region: REGION,
     timeoutSeconds: 180,
@@ -12809,15 +12781,12 @@ async function queueStudentContactBookNotices(studentIds, postId) {
     const targets = new Map();
     snapshot.docs.forEach(doc => {
       const row = doc.data() || {};
-      if (clean(row.status) === 'active' && clean(row.lineUserId) && row.reminderContactBook !== false) targets.set(clean(row.lineUserId), row);
+      if (row.status === 'active' && notificationRecipientKey(row) && row.reminderContactBook !== false) targets.set(notificationRecipientKey(row), row);
     });
-    await Promise.all([...targets].map(([lineUserId, binding]) => queueCoursePortalNotice(
-      `course-contact-book-${postId}-${studentId}-${hash(lineUserId)}`,
-      { eventCode:'contact_book_posted', targetLineUserId:lineUserId, studentId,
-        targetName:clean(binding.name) || '學生／家長', title:'課堂聯絡簿有新內容',
-        body:'老師已新增課堂聯絡簿內容或照片，請登入學生／家長入口查看。',
-        text:'老師已新增課堂聯絡簿內容或照片，請登入學生／家長入口查看。' }
-    )));
+    for (const [key, binding] of targets) await queueCoursePortalNotice(`course-contact-book-${postId}-${studentId}-${hash(key)}`, {
+      ...recipientFields(binding), eventCode: 'contact_book_posted', studentId,
+      title: '課堂聯絡簿更新', body: `老師已更新${clean(binding.name) || '學生'}的課堂聯絡簿，請至學生／家長入口查看。\n${PORTAL_BASE}/student-course-portal.html`
+    });
   }
 }
 

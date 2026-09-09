@@ -96,10 +96,10 @@
       </section>
       <section class="card tab-panel hidden student-sensitive" data-panel="reminders">
         <div class="section-title"><div><h2>LINE 提醒</h2><p class="muted">每位家長可各自決定是否接收，不會影響其他家長。</p></div></div>
+        <button class="btn" type="button" id="manageBindings">綁定帳號管理</button><div id="bindingAccounts" class="stack hidden"></div>
         <form class="stack" id="reminderForm">
-          <label class="switch-row"><span><strong>當期最後一堂提醒</strong><small class="muted">目前這一期剩最後一堂時提醒</small></span><input type="checkbox" name="reminderLastLesson"></label>
-          <label class="switch-row"><span><strong>老師更新課堂聯絡簿提醒</strong><small class="muted">老師新增內容或照片時通知我</small></span><input type="checkbox" name="reminderContactBook"></label>
-          <label class="switch-row"><span><strong>學費提醒</strong><small class="muted">有尚未繳清的期別時提醒</small></span><input type="checkbox" name="reminderPayment"></label>
+          <label class="switch-row"><span><strong>不接收聯絡簿提醒</strong><small class="muted">勾選後不接收通知，請自行至課堂聯絡簿查看</small></span><input type="checkbox" name="reminderContactBook"></label>
+          <label class="switch-row"><span><strong>未繳費提醒</strong><small class="muted">當天有課且本期尚未繳清時，早上 9 點提醒</small></span><input type="checkbox" name="reminderPayment"></label>
           <button class="btn primary" type="submit">儲存我的提醒設定</button>
         </form>
       </section>
@@ -156,7 +156,7 @@
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-history-view.js?v=20260909-parent-payment-v1"></script>
+  <script src="course-history-view.js?v=20260909-notification-wave1"></script>
   <script src="course-portal-common.js?v=20260909-parent-loading-v1"></script>
   <script>
   (function () {
@@ -468,12 +468,33 @@
       });
       renderContactBook();
       const binding = data.bindings.find((row) => row.studentId === studentId) || {};
-      document.querySelector('[name="reminderLastLesson"]').checked = binding.reminderLastLesson !== false;
       document.querySelector('[name="reminderPayment"]').checked = binding.reminderPayment !== false;
-      document.querySelector('[name="reminderContactBook"]').checked = binding.reminderContactBook !== false;
+      document.querySelector('[name="reminderContactBook"]').checked = binding.reminderContactBook === false;
     }
 
+    async function showBindingAccounts() {
+      const host = document.getElementById('bindingAccounts');
+      host.classList.remove('hidden'); host.textContent = '讀取中…';
+      try {
+        const owner = studentId;
+        const result = await P.call('coursePortalStudentBindingAccounts', { sessionToken: token, studentId: owner });
+        if (owner !== studentId) return;
+        host.innerHTML = result.accounts.map(row => `<div class="card"><strong>${P.escapeHtml(row.name)}</strong> · ${P.escapeHtml(row.relationship)} ${row.mine ? '（您目前的帳號）' : `<button type="button" class="btn danger" data-remove-binding="${P.escapeHtml(row.id)}">解除綁定</button>`}</div>`).join('');
+      } catch (error) { host.textContent = error.message; }
+    }
+    document.getElementById('manageBindings').addEventListener('click', showBindingAccounts);
+    document.getElementById('bindingAccounts').addEventListener('click', async event => {
+      const button = event.target.closest('[data-remove-binding]');
+      if (!button || !confirm('確定解除此帳號對目前學生的綁定？對方將無法查看此學生資料，並會收到通知；仍可重新驗證加入。')) return;
+      button.disabled = true;
+      try {
+        await P.call('coursePortalStudentBindingAccounts', { sessionToken: token, studentId, bindingId: button.dataset.removeBinding, action: 'remove', confirmed: true });
+        await showBindingAccounts();
+      } catch (error) { P.toast(error.message, 'error'); button.disabled = false; }
+    });
+
     async function load(requested) {
+      document.getElementById('bindingAccounts').classList.add('hidden');
       document.getElementById('studentLoadError').classList.add('hidden');
       if (appView.classList.contains('hidden')) {
         document.getElementById('sessionLoading').classList.remove('hidden');
@@ -603,9 +624,8 @@
         await P.call('coursePortalUpdateStudentReminder', {
           sessionToken: token,
           studentId,
-          reminderLastLesson: event.currentTarget.elements.reminderLastLesson.checked,
           reminderPayment: event.currentTarget.elements.reminderPayment.checked,
-          reminderContactBook: event.currentTarget.elements.reminderContactBook.checked
+          reminderContactBook: !event.currentTarget.elements.reminderContactBook.checked
         });
         P.toast('提醒設定已儲存。');
         await load(studentId);

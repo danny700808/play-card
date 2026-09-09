@@ -47,7 +47,7 @@ test('teacher profile is a stable standalone page, not a profile-and-contract wi
   assert.match(runtime, /請選擇程度/);
   assert.match(runtime, /source\.proficiency\) \|\| '普通'/);
   assert.doesNotMatch(runtime, /level\.placeholder\s*=|例如：初階～進階/);
-  assert.match(page, /teacher-profile\.js\?v=20260809-profile-change-review-v1/);
+  assert.match(page, /teacher-profile\.js\?v=20260909-notification-wave1/);
   assert.match(page, /LINE/);
   assert.match(page, /Email/);
   assert.match(page, /profile-title-row[\s\S]*profileLineStatus[\s\S]*profileEmailStatus/);

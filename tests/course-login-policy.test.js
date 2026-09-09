@@ -12,7 +12,7 @@ const {
   isRecoverableUnboundBinding
 } = require('../functions/courseLoginPolicy');
 
-test('pending LINE bindings stay pending and cannot log in', () => {
+test('pending teacher bindings must verify identity again, without manager approval', () => {
   const row = {
     __id: 'pending-teacher',
     teacherId: 'T001',
@@ -20,7 +20,7 @@ test('pending LINE bindings stay pending and cannot log in', () => {
     approvalStatus: 'pending'
   };
   assert.equal(isApprovedActiveBinding(row), false);
-  assert.equal(decideLineLoginBinding('teacher', [row]).action, 'pending');
+  assert.equal(decideLineLoginBinding('teacher', [row]).action, 'setup');
 });
 
 test('teacher and renter roles stop when one LINE maps to different active identities', () => {
