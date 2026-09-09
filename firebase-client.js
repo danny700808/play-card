@@ -4892,7 +4892,9 @@
     await docSet('manualMessages', batchId, Object.assign({}, base, {targets:targets.map(t => ({employeeId:clean(t.employeeId), name:clean(t.name), email:lower(t.email), lineUserId:clean(t.lineUserId)}))}));
     let count = 0;
     for(const t of targets){
-      for(const ch of channels){
+      const preferred=payload.singlePreferredChannel===true;
+      const deliveryChannels=preferred?(channels.includes('line')&&clean(t.lineUserId)?['line']:(lower(t.email)?['email']:[])):channels;
+      for(const ch of deliveryChannels){
         const id = batchId + '_' + clean(t.employeeId) + '_' + ch;
         await docSet('notificationQueue', id, Object.assign({}, base, {
           queueId:id,
@@ -4901,6 +4903,8 @@
           targetName:clean(t.name),
           targetEmail:lower(t.email),
           targetLineUserId:clean(t.lineUserId),
+          targetRole:clean(payload.targetRole),
+          emailFallbackEnabled:preferred&&ch==='line'&&!!lower(t.email),
           status:'待發送'
         }));
         count++;
@@ -4989,7 +4993,7 @@
       if(!targets.length || !channels.length) return null;
       const user = currentUser();
       const msg = compactAutoMessage(featureCode, direction, payload || {}, result || {});
-      return await queueManualNotification({targets, channels, message:msg, page:'auto:' + featureCode, senderId:clean(user.id || user.employeeId)});
+      return await queueManualNotification({targets, channels, message:msg, page:'auto:' + featureCode, singlePreferredChannel:featureCode==='leave'&&direction==='manager', targetRole:direction==='manager'?'manager':'employee', senderId:clean(user.id || user.employeeId)});
     }catch(e){ console.warn('[notify queue skipped]', featureCode, direction, e); return null; }
   }
   async function maybeQueueAfterAction(action, payload, result){

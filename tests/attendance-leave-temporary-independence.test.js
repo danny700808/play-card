@@ -57,6 +57,6 @@ test('manager and audit screens explain and display the independent records', ()
   assert.match(auditPage, /rejectedLeaves/);
   assert.match(auditPage, /獨立臨時出勤紀錄/);
   for (const page of [employeePage, adminPage, auditPage, fs.readFileSync('leave.html', 'utf8'), fs.readFileSync('clock.html', 'utf8')]) {
-    assert.match(page, /firebase-client\.js\?v=20260805-attendance-independent-v2/);
+    assert.match(page, /firebase-client\.js\?v=(?:20260805-attendance-independent-v2|20260909-manager-leave-line-v1)/);
   }
 });
