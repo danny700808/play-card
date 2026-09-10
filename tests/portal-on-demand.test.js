@@ -73,3 +73,17 @@ test('unchanged tuition requests are not rewritten; changed subject updates once
   subject='Violin';await ensure({studentIds:['a'],periods:[]});assert.equal(writes.length,1);
   assert.equal(writes[0].createdAtText,'old');
 });
+test('temporary-only students retain future course metadata without reading other students', async()=>{
+  const filters=[];
+  const read=context('studentTemporaryCourses',{
+    readCourseGroups:async()=>[],MIRROR:{temporaryCourses:'temporary'},jsonValue:x=>x,
+    projectCourseGroups:(type,rows)=>rows,
+    db:{collection:()=>({where(field,op,id){filters.push([field,op,id]);return this;},async get(){return {docs:[
+      {id:'future',data:()=>({sourceActive:true,source:{studentId:'a',date:'2026-12-01'}})},
+      {id:'inactive',data:()=>({sourceActive:false,source:{studentId:'a'}})}
+    ]};}})}
+  });
+  const rows=await read('a');
+  assert.equal(rows.length,1);assert.equal(rows[0].date,'2026-12-01');
+  assert.equal(filters.length,2);assert(filters.every(row=>row[2]==='a'));
+});

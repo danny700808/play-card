@@ -7539,6 +7539,23 @@ function applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttenda
   });
 }
 
+async function studentTemporaryCourses(studentId) {
+  const groups = await readCourseGroups();
+  const group = groups.find(row => row.active !== false && row.id === studentId);
+  const ids = [...new Set([studentId, ...(group && group.memberIds || [])])];
+  const snapshots = await Promise.all(ids.flatMap(id => [
+    db.collection(MIRROR.temporaryCourses).where('source.studentIds', 'array-contains', id).get(),
+    db.collection(MIRROR.temporaryCourses).where('source.studentId', '==', id).get()
+  ]));
+  const rows = new Map();
+  for (const snapshot of snapshots) for (const doc of snapshot.docs) {
+    const envelope = doc.data() || {};
+    if (envelope.sourceActive !== true) continue;
+    rows.set(doc.id, { __id: doc.id, ...jsonValue(envelope.source || {}) });
+  }
+  return projectCourseGroups('temporaryCourses', [...rows.values()], groups);
+}
+
 async function historyEventsForStudent(studentId, startDate, endDate) {
   const [events, changeDocs, groups] = await Promise.all([
     historyStudentEvents(studentId,startDate,endDate),scheduleChangeDocsByDateRange(startDate,endDate),readCourseGroups()
@@ -7599,7 +7616,7 @@ async function courseLessonHistory(data) {
     historyAttendanceForPeriods(ownedPeriods, studentId, fromDate),
     portalAttendanceForStudents([studentId]), mirrorRows('subjects'), mirrorRows('teachers'),
     historyEventsForStudent(studentId, eventFrom, today),
-    mirrorRows('fixedCourses'), mirrorRowsByDateRange('temporaryCourses', eventFrom, today)
+    mirrorRows('fixedCourses'), studentTemporaryCourses(studentId)
   ]);
   const courses = [...historyFixedCourses, ...historyTemporaryCourses, ...bundle.fixedCourses, ...bundle.temporaryCourses];
   const allAttendance = mergePortalAttendanceRows(mirrorAttendance, portalAttendance);
