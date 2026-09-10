@@ -1,0 +1,11 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('fs'),vm=require('vm');
+function fixture(ok){const calls=[];const win={APP_CONFIG:{FIREBASE_CONFIG:{projectId:'test'}},getUser:()=>({role:'manager'}),YouziOperationsManagerAuth:{ensureManagerAuth:async()=>{calls.push('auth');return {ok,message:'請重新登入',reauth:!ok}}},firebase:{apps:[{}],initializeApp(){},app:()=>({functions:()=>({httpsCallable:name=>async payload=>{calls.push({name,payload});return {data:{ok:true,receiptImageUrl:'https://example.com/receipt.png'}}}})})}};vm.runInNewContext(fs.readFileSync('course-scheduler-data.js','utf8'),{window:win});return {api:win.YouziCoursePreviewData,calls};}
+test('receipt uses verified manager login without requiring migration PIN',async()=>{const {api,calls}=fixture(true);const result=await api.ensureTuitionReceipt({periodId:'p1',transactionId:'tx1'});assert.equal(calls[0],'auth');assert.equal(calls[1].name,'coursePortalAdminEnsureTuitionReceipt');assert.equal(calls[1].payload.periodId,'p1');assert.equal(result.ok,true)});
+test('expired manager login stops receipt request',async()=>{const {api,calls}=fixture(false);await assert.rejects(api.ensureTuitionReceipt({periodId:'p1'}),/請重新登入/);assert.deepEqual(calls,['auth'])});
+// Exercise the actual week-option selection against calendar fixtures.
+test('week teacher options exclude empty teachers but retain irregular students',()=>{
+ const source=fs.readFileSync('operations-course-inline-runtime.js','utf8');
+ const start=source.indexOf('    for(var day=0;day<7;day++)');const end=source.indexOf("    fillSelect($('weekTeacher')",start);
+ const ctx={start:'2026-09-07',weekTeacherIds:new Set(),state:{teachers:[{id:'empty',active:true},{id:'scheduled',active:true},{id:'rental',active:true},{id:'irregular',active:true},{id:'inactive',active:false}],irregularCourses:[]},shiftDate:(_,n)=>String(n),effectiveEventsForDate:()=>[{teacherId:'scheduled',type:'fixed'},{teacherId:'rental',type:'rental'},{teacherId:'inactive',type:'fixed'}],isHiddenEvent:()=>false,window:{YouziCoursePreviewData:{isIrregularPlaceholder:()=>false}},irregularRows:id=>id==='irregular'?[{}]:[],teacherSort:()=>0};
+ vm.runInNewContext(source.slice(start,end),ctx);assert.deepEqual(Array.from(ctx.teachers,x=>x.id),['scheduled','irregular']);
+});

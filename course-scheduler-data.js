@@ -585,7 +585,7 @@
   async function ensureTuitionReceipt(options){
     options=options||{};
     var pin=clean(options.manualSyncPin),periodId=clean(options.periodId);
-    if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
+    if(!pin)await ensureTeacherPayrollManagerAuth();
     if(!periodId)throw new Error('缺少學費期別資料。');
     var result=await call('coursePortalAdminEnsureTuitionReceipt',{
       adminPin:pin,

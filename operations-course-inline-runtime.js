@@ -543,7 +543,9 @@
     return '<button type="button" class="week-event '+esc(event.type)+' '+esc(statusClass)+(event.specialLesson?' special':'')+(conflict?' week-conflict-event':'')+'" data-week-event-id="'+esc(event.id)+'" data-week-event-date="'+date+'"><time>'+esc(event.start)+'–'+esc(end)+'</time><b>'+esc(eventDisplayName(event))+'</b><span>'+(groupLabel?'<em>'+groupLabel+'</em>':'')+(event.specialLesson?'贈送／特殊加課・':'')+esc(subjectById(event.subjectId).name||typeName(event.type))+'・'+esc(roomById(event.roomId).name||'未設定教室')+'</span></button>';
   }
   function renderWeekSchedule(){
-    if(!weekMode)return;var start=weekStartKey(weekAnchor||state.currentDate),end=shiftDate(start,6),selected=$('weekTeacher').value,teachers=state.teachers.filter(function(row){return row.active!==false;}).sort(teacherSort);
+    if(!weekMode)return;var start=weekStartKey(weekAnchor||state.currentDate),end=shiftDate(start,6),selected=$('weekTeacher').value,weekTeacherIds=new Set();
+    for(var day=0;day<7;day++)effectiveEventsForDate(shiftDate(start,day)).forEach(function(event){if(event.type!=='rental'&&!isHiddenEvent(event)&&!window.YouziCoursePreviewData.isIrregularPlaceholder(event,state.irregularCourses))weekTeacherIds.add(event.teacherId);});
+    var teachers=state.teachers.filter(function(row){return row.active!==false&&(weekTeacherIds.has(row.id)||irregularRows(row.id).length>0);}).sort(teacherSort);
     fillSelect($('weekTeacher'),teachers,function(row){return row.name;},function(row){return row.id;},'請選擇老師');
     if(selected&&teachers.some(function(row){return row.id===selected;}))$('weekTeacher').value=selected;else if(teachers.length)$('weekTeacher').value=teachers[0].id;
     var teacherId=$('weekTeacher').value;$('weekRange').textContent=start.replace(/-/g,'/')+' ～ '+end.replace(/-/g,'/');
@@ -831,18 +833,17 @@
     var imageUrl=clean(button&&button.dataset.tuitionReceiptUrl);
     if(imageUrl){openTuitionReceipt(imageUrl);return;}
     var viewer=openTuitionReceiptPlaceholder();if(!viewer)return;
-    var pin=migrationPin();if(!pin){if(!viewer.closed)viewer.close();return;}
     var period=periodById(button.dataset.tuitionReceiptPeriod),index=numberOf(button.dataset.tuitionReceiptIndex),transaction=(period.transactions||[])[index];
     if(!period.id||!transaction){if(!viewer.closed)viewer.close();toast('找不到收費紀錄','請重新整理資料後再試。','error');return;}
     var originalText=button.textContent;button.disabled=true;button.textContent='建立收據中…';
     try{
-      var result=await window.YouziCoursePreviewData.ensureTuitionReceipt({manualSyncPin:pin,periodId:period.id,transactionId:transaction.id,transactionIndex:index,paymentDate:transaction.date,amount:transaction.amount,method:transaction.method});
+      var result=await window.YouziCoursePreviewData.ensureTuitionReceipt({periodId:period.id,transactionId:transaction.id,transactionIndex:index,paymentDate:transaction.date,amount:transaction.amount,method:transaction.method});
       transaction.receiptId=clean(result.receiptId);transaction.receiptNo=clean(result.receiptNo);transaction.receiptImageUrl=clean(result.receiptImageUrl);
       button.dataset.tuitionReceiptUrl=transaction.receiptImageUrl;button.textContent='收據';
       openTuitionReceipt(transaction.receiptImageUrl,viewer);
     }catch(error){
-      if(!viewer.closed)viewer.close();
       var message=clean(error&&error.message||'收據建立失敗');
+      if(viewer&&!viewer.closed){viewer.document.title='收據尚未開啟';viewer.document.body.textContent='收據尚未開啟：'+message+'。請返回課表重新登入或稍後再試。';}
       if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();
       button.textContent=originalText;toast('無法建立收據',message.slice(0,220),'error');
     }finally{button.disabled=false;}
