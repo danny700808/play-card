@@ -167,3 +167,14 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
  .teacher-course-app .payroll-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 20px}.teacher-course-app .payroll-summary>div,.teacher-course-app .payroll-summary>button{padding:12px;background:#eef6f2;border-radius:10px;min-width:0}.payroll-summary span,.payroll-summary strong{display:block}.payroll-summary span{font-size:13px}.payroll-summary strong{font-size:22px;margin-top:4px;overflow-wrap:anywhere}.teacher-course-app .payroll-summary>.payroll-summary-total{background:#194c3e;color:#fff}.payroll-extra{margin-top:22px}.payroll-extra h3{font-size:16px;margin:0 0 8px}.payroll-extra table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px}.payroll-extra th,.payroll-extra td{text-align:left;border-bottom:1px solid #e1e9e5;padding:10px 4px;overflow-wrap:anywhere}.payroll-extra th:first-child{width:25%}.payroll-extra th:last-child{width:23%}.payroll-extra th:last-child,.payroll-extra td:last-child{text-align:right}.payroll-extra th{color:#637a71;font-weight:500}
 
 .teacher-course-app .payroll-summary>button{appearance:none;border:1px solid #b9d5c8;color:var(--ink);font:inherit;text-align:left;cursor:pointer}.payroll-summary>button small{display:block;font-size:11px;margin-top:5px;color:#346b58}.payroll-summary>button:focus-visible{outline:2px solid #24735c;outline-offset:2px}.payroll-extra{scroll-margin-top:16px}.payroll-extra:focus{outline:2px solid #24735c;outline-offset:4px}
+
+/* Keep Safari native month controls inside the payroll card. */
+.teacher-course-app .teacher-payroll-toolbar,.teacher-course-app .teacher-payroll-toolbar .field{min-inline-size:0;max-inline-size:100%;box-sizing:border-box}
+.teacher-course-app #payrollMonth{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;inline-size:100%;min-inline-size:0;max-inline-size:100%;-webkit-appearance:none;appearance:none}
+.teacher-course-app #payrollMonth::-webkit-date-and-time-value{min-width:0;text-align:center}
+.teacher-course-app #payrollMonth::-webkit-datetime-edit{min-width:0;padding:0}
+.teacher-payroll-loading{display:flex;align-items:center;gap:12px;min-height:100px;padding:20px 12px;color:#276b5b}
+.teacher-payroll-loading p{margin:5px 0 0;font-size:14px;color:#6b7e77}
+.teacher-payroll-spinner{width:26px;height:26px;flex:0 0 26px;box-sizing:border-box;border:3px solid #d9e9e2;border-top-color:#257762;border-radius:50%;animation:teacher-payroll-spin .9s linear infinite}
+@keyframes teacher-payroll-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.teacher-payroll-spinner{animation:none}}

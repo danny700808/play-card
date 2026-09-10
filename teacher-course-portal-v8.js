@@ -29,6 +29,7 @@
   let token = '';
   let weekStart = monday();
   let payrollQueryVersion = 0;
+  let payrollStatus = 'idle';
   let payrollMonth = monthKey() < PAYROLL_MIN_MONTH ? PAYROLL_MIN_MONTH : monthKey();
   let activeTab = 'schedule';
   let data = emptyData();
@@ -905,6 +906,12 @@
   }
 
   function renderPayroll() {
+    const list = document.getElementById('payrollList');
+    const waiting = payrollStatus === 'idle' || payrollStatus === 'loading';
+    list.setAttribute('aria-busy', String(waiting));
+    if (waiting) {list.innerHTML = '<div class="teacher-payroll-loading" role="status"><span class="teacher-payroll-spinner" aria-hidden="true"></span><div><strong>請稍等，正在查詢薪資…</strong><p>資料讀取完成後會顯示在這裡。</p></div></div>';return;}
+    if (payrollStatus === 'error') {list.innerHTML = '<div class="teacher-payroll-loading" role="alert">薪資讀取失敗，請按「查詢」重試。</div>';return;}
+
     const rows = data.payroll || [];
     const adjustments = data.adjustments || [];
     const valueOf = (row, keys, fallback = '') => {
@@ -985,10 +992,15 @@
     const requestVersion = ++dataRequestVersion;
     if (activeTab === 'payroll') {
       const queryVersion = ++payrollQueryVersion;
-      const result = await invoke('coursePortalTeacherData', {sessionToken:token, weekStart, month:payrollMonth, includePayroll:true, payrollOnly:true});
-      if (queryVersion !== payrollQueryVersion) return;
-      mergeData(result);
-      renderPayroll();
+      payrollStatus = 'loading';renderPayroll();
+      try {
+        const result = await invoke('coursePortalTeacherData', {sessionToken:token, weekStart, month:payrollMonth, includePayroll:true, payrollOnly:true});
+        if (queryVersion !== payrollQueryVersion) return;
+        mergeData(result);payrollStatus = 'ready';renderPayroll();
+      } catch (error) {
+        if (queryVersion !== payrollQueryVersion) return;
+        payrollStatus = 'error';renderPayroll();throw error;
+      }
       return;
     }
     const request = {
