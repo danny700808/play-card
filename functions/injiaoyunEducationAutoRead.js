@@ -146,6 +146,10 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
   }, async (request) => {
     assertAllowedRead(request);
     try {
+      if (clean(request && request.data && request.data.scope) === 'calendar-irregular') {
+        const rows = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
+        return {ok:true,irregularCourses:rows.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}))};
+      }
       if (clean(request && request.data && request.data.scope) === 'teacher-payroll-month') {
         const { teacherPayrollMonthData } = require('./coursePortal');
         const result = await teacherPayrollMonthData(request && request.data && request.data.month);

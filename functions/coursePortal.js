@@ -12447,6 +12447,8 @@ async function dailyStudentReminders() {
 
 async function appendCoursePortalData(payload) {
   if (!payload || typeof payload !== 'object') return payload;
+  const irregularSnapshot = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
+  payload.irregularCourses = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const groups = await readCourseGroups();
   const lessonSettings = await db.collection('coursePortalLessonSettings').get();
   payload.lessonSettings = lessonSettings.docs.map(doc => jsonValue(doc.data()));

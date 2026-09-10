@@ -35,7 +35,7 @@
         </div>
 
         <section class="week-schedule card hidden" id="weekSchedulePanel">
-          <div class="week-toolbar"><div><strong>老師週課表</strong><span id="weekRange"></span></div><div class="week-controls"><select class="control" id="weekTeacher"></select><button class="btn outline" type="button" data-week-step="-1">上一週</button><button class="btn soft" type="button" id="thisWeekBtn">本週</button><button class="btn outline" type="button" data-week-step="1">下一週</button><button class="btn dark" type="button" id="closeWeekBtn">返回日表</button></div></div>
+          <div class="week-toolbar"><div><strong>老師週課表</strong><span id="weekRange"></span></div><div class="week-controls"><select class="control" id="weekTeacher"></select><button class="btn outline" type="button" data-week-step="-1">上一週</button><button class="btn soft" type="button" id="thisWeekBtn">本週</button><button class="btn outline" type="button" data-week-step="1">下一週</button><button class="btn outline desktop-followup" type="button" id="weekIrregularBtn">不定時學生 <strong id="weekIrregularCount">0</strong></button><button class="btn dark" type="button" id="closeWeekBtn">返回日表</button></div></div>
           <div class="week-days" id="weekScheduleDays"></div>
         </section>
 
@@ -44,6 +44,8 @@
           <article class="card kpi"><span>已簽到</span><strong id="kpiAttended">0</strong><small>完成堂數勾稽</small></article>
           <article class="card kpi"><span>教室使用</span><strong id="kpiRooms">0 / 0</strong><small>有安排／啟用</small></article>
           <button class="card kpi kpi-action" type="button" id="calendarIssuesBtn"><span>待處理</span><strong id="kpiWarnings">0</strong><small>點擊查看人員、課程與原因</small></button>
+          <button class="card kpi kpi-action desktop-followup" type="button" id="completedUnpaidBtn"><span>課程結束未收款</span><strong id="completedUnpaidCount">0</strong><small>查看學生及未收款</small></button>
+          <button class="card kpi kpi-action desktop-followup" type="button" id="dayIrregularBtn"><span>不定時學生</span><strong id="dayIrregularCount">0</strong><small>查看目前名單</small></button>
         </div>
 
         <div class="legend card" id="dailyLegend">
