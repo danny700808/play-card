@@ -4605,7 +4605,7 @@ async function reconcileStudentSuspensionsForNewSchedules(studentIds) {
     const atStop = new Set((suspension.courseIdsAtStop || []).map(clean).filter(Boolean));
     const stoppedAt = asMillis(suspension.requestedAt);
     const hasNewMirrorCourse = [...fixedCourses, ...temporaryCourses].some((course) => {
-      if (eventTeacherId(course) !== teacherId || !eventStudentIds(course).includes(studentId)) return false;
+      if (eventTeacherId(course) !== teacherId || !eventStudentIds(course).includes(studentId) || (suspension.subjectId && eventSubjectId(course) !== suspension.subjectId)) return false;
       const courseIds = courseSourceIds(course).concat(sourceId(course)).map(clean).filter(Boolean);
       if (atStop.size) return courseIds.some((id) => !atStop.has(id));
       const courseUpdatedAt = asMillis(
@@ -4616,6 +4616,7 @@ async function reconcileStudentSuspensionsForNewSchedules(studentIds) {
     const hasNewPortalCourse = changes.some((change) =>
       ['extra_lesson', 'teacher_gift'].includes(clean(change.action)) &&
       eventTeacherId(change.event || change) === teacherId &&
+      (!suspension.subjectId || eventSubjectId(change.event || change) === suspension.subjectId) &&
       eventStudentIds(change.event || change).includes(studentId) &&
       (!stoppedAt || Number(change.__createdAtMillis || 0) > stoppedAt)
     );
@@ -4657,7 +4658,8 @@ function activeLearningStudentIds(studentRows, courseRows, eventRows, suspension
       if (!activeStudents.has(studentId)) return;
       const blocked = (suspensions || []).some((suspension) =>
         clean(suspension.studentId) === studentId &&
-        clean(suspension.teacherId) === teacherId
+        clean(suspension.teacherId) === teacherId &&
+        (!suspension.subjectId || clean(suspension.subjectId) === eventSubjectId(course))
       );
       if (!blocked) available.add(studentId);
     });
@@ -4671,7 +4673,7 @@ function suspensionAppliesToEvent(suspension, row) {
     suspension.stopDate ||
     suspension.requestedAtText
   );
-  return clean(suspension.teacherId) === eventTeacherId(row) &&
+  return (!clean(suspension.subjectId) || clean(suspension.subjectId) === eventSubjectId(row)) && clean(suspension.teacherId) === eventTeacherId(row) &&
     eventStudentIds(row).includes(clean(suspension.studentId)) &&
     (!effectiveDate || eventDate(row) >= effectiveDate);
 }
@@ -5182,7 +5184,7 @@ async function teacherPortalData(data) {
       .filter((row) => eventTeacherId(row) === session.teacherId)
       .flatMap(eventStudentIds)
       .concat(ownEvents.flatMap((row) => row.studentIds))
-  )].filter((studentId) => !stoppedStudentIds.has(studentId));
+  )].filter((studentId) => !stoppedStudentIds.has(studentId) || [...bundle.fixedCourses,...bundle.temporaryCourses].some(course => eventTeacherId(course) === session.teacherId && eventStudentIds(course).includes(studentId) && !(bundle.suspensions||[]).some(stop => stop.studentId===studentId && stop.teacherId===session.teacherId && (!stop.subjectId || stop.subjectId===eventSubjectId(course)))));
   const roster = studentIds.map((id) => {
     const student = bundle.maps.students[id] || {};
     const phone = normalizePhone(sourcePhone(student));
@@ -5337,21 +5339,23 @@ async function teacherStopStudent(data) {
   const student = students.find((row) => sourceId(row) === studentId) || {};
   const teacher = teachers.find((row) => sourceId(row) === session.teacherId) || {};
   if (!sourceId(student)) throw new HttpsError('not-found', '找不到這位學生。');
-  const relatedPeriods = periods.filter((row) =>
-    !eventTeacherId(row) || eventTeacherId(row) === session.teacherId
-  );
+  const ownCourses = [...fixedCourses, ...temporaryCourses].filter(row => eventTeacherId(row) === session.teacherId && eventStudentIds(row).includes(studentId));
+  const subjects = [...new Set(ownCourses.map(eventSubjectId).filter(Boolean))];
+  const subjectId = clean(data.subjectId) || (subjects.length === 1 ? subjects[0] : '');
+  if (!subjectId || !subjects.includes(subjectId)) throw new HttpsError('invalid-argument','請從要停課的科目重新選擇課堂，再辦理停課。');
+  const relatedPeriods = periods.filter(row => eventSubjectId(row) === subjectId && (!eventTeacherId(row) || eventTeacherId(row) === session.teacherId));
   const unpaidAmount = relatedPeriods.reduce((sum, row) => sum + tuitionOutstandingAmount(row), 0);
   const courseIdsAtStop = [...new Set(
     [...fixedCourses, ...temporaryCourses]
       .filter((row) =>
-        eventTeacherId(row) === session.teacherId &&
+        eventTeacherId(row) === session.teacherId && eventSubjectId(row) === subjectId &&
         eventStudentIds(row).includes(studentId)
       )
       .flatMap((row) => courseSourceIds(row).concat(sourceId(row)))
       .map(clean)
       .filter(Boolean)
   )];
-  const suspensionId = hash(`teacher-stop|${session.teacherId}|${studentId}`);
+  const suspensionId = hash(`teacher-stop|${session.teacherId}|${studentId}|${subjectId}`);
   const suspensionRef = db.collection('coursePortalStudentSuspensions').doc(suspensionId);
   const existing = await suspensionRef.get();
   if (existing.exists && clean(existing.data().status) === 'active') {
@@ -5365,6 +5369,10 @@ async function teacherStopStudent(data) {
   const batch = db.batch();
   batch.set(suspensionRef, {
     suspensionId,
+    subjectId,
+    receivableTrackingVersion: 'teacher-stop-v1',
+    receivablePeriodsAtStop: [...new Map([...(existing.exists && existing.data().receivablePeriodsAtStop || []), ...relatedPeriods.filter(row => tuitionOutstandingAmount(row) > 0).map(row => ({id:sourceId(row),subjectId:eventSubjectId(row),teacherId:eventTeacherId(row),periodNo:Number(row.periodNo||0),outstandingAmount:tuitionOutstandingAmount(row)}))].map(row=>[row.id,row])).values()],
+    paymentStatus: 'pending',
     status: 'active',
     studentId,
     studentName: clean(student.name),
@@ -12448,6 +12456,8 @@ async function dailyStudentReminders() {
 async function appendCoursePortalData(payload) {
   if (!payload || typeof payload !== 'object') return payload;
   const irregularSnapshot = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
+  const trackedStops = await db.collection('coursePortalStudentSuspensions').where('receivableTrackingVersion','==','teacher-stop-v1').get();
+  payload.stoppedCourseReceivables = trackedStops.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   payload.irregularCourses = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const groups = await readCourseGroups();
   const lessonSettings = await db.collection('coursePortalLessonSettings').get();

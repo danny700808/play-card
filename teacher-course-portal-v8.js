@@ -876,15 +876,16 @@
     document.getElementById('studentEditModal').classList.add('hidden');
   }
 
-  function openStudentStop(studentId, effectiveDate) {
+  function openStudentStop(studentId, effectiveDate, subjectId) {
     const student = rosterStudent(studentId);
     if (!student) return;
     const button = document.getElementById('confirmStudentStop');
     if (!effectiveDate || effectiveDate < todayKey()) {toast('請從今天或未來的課堂選擇停課起點。','error');return;}
     button.dataset.studentId = student.id;
+    button.dataset.subjectId = subjectId || "";
     button.dataset.effectiveDate = effectiveDate;
     document.getElementById('stopEffectiveDate').textContent = effectiveDate;
-    document.getElementById('stopStudentName').textContent = student.name || '這位學生';
+    document.getElementById('stopStudentName').textContent = (student.name || '這位學生') + '・' + subjectNameById(subjectId);
     document.getElementById('studentStopModal').classList.remove('hidden');
   }
 
@@ -2001,12 +2002,12 @@
     const context = quickContext;
     if (event.target.closest('[data-quick-stop]') && context && context.row) {
       const ids=context.row.studentIds || [];
-      if(ids.length===1){closeQuick();openStudentStop(ids[0],context.row.date);}
-      else showQuick('選擇停課學生','請選擇要辦理停課的學生',ids.map(id=>`<button type="button" data-stop-selected="${escapeHtml(id)}">${escapeHtml(studentNamesByIds([id]).join(''))}</button>`).join(''),{type:'stop-student-selection',effectiveDate:context.row.date});
+      if(ids.length===1){closeQuick();openStudentStop(ids[0],context.row.date,context.row.subjectId);}
+      else showQuick('選擇停課學生','請選擇要辦理停課的學生',ids.map(id=>`<button type="button" data-stop-selected="${escapeHtml(id)}">${escapeHtml(studentNamesByIds([id]).join(''))}</button>`).join(''),{type:'stop-student-selection',effectiveDate:context.row.date,subjectId:context.row.subjectId});
       return;
     }
     const stopSelected=event.target.closest('[data-stop-selected]');
-    if(stopSelected && context && context.type==='stop-student-selection'){closeQuick();openStudentStop(stopSelected.dataset.stopSelected,context.effectiveDate);return;}
+    if(stopSelected && context && context.type==='stop-student-selection'){closeQuick();openStudentStop(stopSelected.dataset.stopSelected,context.effectiveDate,context.subjectId);return;}
     const durationButton = event.target.closest('[data-room-duration]');
     const weeklyButton = event.target.closest('[data-room-weekly]');
     if (context && (durationButton || weeklyButton)) {
@@ -2256,7 +2257,8 @@
         sessionToken: token,
         studentId,
         confirmed: true,
-        effectiveDate: button.dataset.effectiveDate
+        effectiveDate: button.dataset.effectiveDate,
+        subjectId: button.dataset.subjectId
       });
       clearCache();
       closeStudentStop();
