@@ -3,7 +3,7 @@
 
   if (global.YouziOperationsCourseInline) return;
 
-  var VERSION = '20260910-desktop-fit-v1';
+  var VERSION = '20260910-calendar-toolbar-v2';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=' + VERSION;
   var RUNTIME_URL = 'operations-course-inline-runtime.js?v=' + VERSION;
   var STYLE_URL = 'course-scheduler.css?v=' + VERSION;
@@ -176,6 +176,7 @@
       '.course-inline-body .sidebar-foot{display:none!important}',
       '.course-inline-body .schedule-scroll{max-height:calc(100dvh - 300px)}',
       '@media(min-width:1100px){.course-inline-body #calendarPage{font-family:"PMingLiU","新細明體","Noto Serif TC",serif;font-size:13px;line-height:1.2}.course-inline-body #calendarPage button,.course-inline-body #calendarPage input{font-family:inherit}.course-inline-body:has(#calendarPage.active) .cloud-refresh-bar{display:none!important}.course-inline-body .calendar-toolbar{padding:5px 8px;margin-bottom:5px}.course-inline-body .date-actions{gap:5px}.course-inline-body .date-heading strong{font-size:15px}.course-inline-body .date-heading span{font-size:11px}.course-inline-body #calendarPage .btn,.course-inline-body #calendarPage .control{padding:4px 8px;min-height:28px;font-size:13px}.course-inline-body .icon-btn{width:28px;height:28px;font-size:18px}.course-inline-body .kpi-grid{gap:6px;margin-bottom:5px}.course-inline-body .kpi{display:flex;align-items:baseline;gap:6px;padding:6px 8px;min-height:0}.course-inline-body .kpi span,.course-inline-body .kpi small{font-size:12px}.course-inline-body .kpi strong{font-size:16px;display:inline}.course-inline-body .legend{padding:5px 8px;margin-bottom:5px;gap:8px;font-size:11px}.course-inline-body .schedule-scroll{max-height:none;min-height:0}.course-inline-body .room-head,.course-inline-body .grid-corner{min-height:0;padding:3px;font-size:12px}.course-inline-body .room-head small{font-size:10px}.course-inline-body .time-label{min-height:0;padding:2px 4px;font-size:11px}.course-inline-body .time-label.hour{font-size:12px}.course-inline-body .event{min-height:0;padding:2px 4px;margin:1px 2px}.course-inline-body .event-top{font-size:10px;line-height:1.1}.course-inline-body .event-main{font-size:13px;line-height:1.1}.course-inline-body .event-sub{font-size:11px;line-height:1.1}.course-inline-body .schedule-card{margin-bottom:0}.course-inline-body .main-content{padding-bottom:8px}}',
+      '@media(min-width:1100px){#calendarPage .calendar-toolbar{justify-content:flex-start;gap:8px;flex-wrap:nowrap}#calendarPage .date-actions{flex-wrap:nowrap;gap:4px;flex-shrink:0}#calendarPage .date-heading{min-width:0;margin-right:5px}#calendarPage #dailyKpis{display:flex;flex:1;gap:8px;margin:0;align-items:center;justify-content:flex-start}#calendarPage #dailyKpis.hidden{display:none}#calendarPage .kpi{border:0;box-shadow:none;background:transparent;padding:2px;gap:4px;flex-wrap:wrap;justify-content:flex-start}#calendarPage .kpi small{flex-basis:100%;font-size:11px}#calendarPage .kpi strong{font-size:15px}#calendarPage .legend{font-size:13px;font-weight:400;gap:10px;padding:6px 8px}#calendarPage .legend b,#calendarPage .legend span{font-weight:400;font-size:13px}#calendarPage .schedule-grid{width:100%;min-width:0}#calendarPage .schedule-grid>*{min-width:0}#calendarPage .room-head{overflow:hidden;overflow-wrap:anywhere}#calendarPage .week-toolbar{justify-content:flex-start;padding:7px 9px}#calendarPage .week-controls{justify-content:flex-start}#calendarPage #closeWeekBtn{display:none}#calendarPage .teacher-week-grid{min-width:0;grid-template-columns:48px repeat(7,minmax(0,1fr))}}',
       '@media(max-width:860px){.course-inline-body{font-size:11px}.course-inline-body .main-content{padding:0 4px 20px}}'
     ].join('');
   }
@@ -226,12 +227,15 @@
         if(compactRefresh)compactRefresh.hidden=!desktop||!calendar;
         if(!inlineBody)return;
         var grid=shadow.querySelector('#scheduleGrid'),scroll=shadow.querySelector('#scheduleScroll');
+        var kpis=shadow.querySelector('#dailyKpis'),toolbar=shadow.querySelector('.calendar-toolbar'),legend=shadow.querySelector('#dailyLegend');
+        if(kpis&&toolbar&&legend){if(desktop){if(kpis.parentNode!==toolbar)toolbar.appendChild(kpis);}else if(kpis.parentNode===toolbar){legend.parentNode.insertBefore(kpis,legend);}}
+        var weekButton=shadow.querySelector('#weekScheduleBtn');if(weekButton)weekButton.textContent=desktop&&weekButton.classList.contains('active')?'返回日表':'週課表';
         if(!grid||!scroll)return;
         if(!desktop||!calendar){['--slot','--room-head-height','--room-col','--time-col'].forEach(function(key){grid.style.removeProperty(key);});return;}
         var count=Number(grid.dataset.slotCount)||17;
         var available=global.innerHeight-scroll.getBoundingClientRect().top-16;
         grid.style.setProperty('--slot',Math.max(22,Math.floor((available-36)/count))+'px');
-        grid.style.setProperty('--room-head-height','36px');grid.style.setProperty('--time-col','48px');grid.style.setProperty('--room-col','minmax(100px,1fr)');
+        grid.style.setProperty('--room-head-height','36px');grid.style.setProperty('--time-col','48px');grid.style.setProperty('--room-col','minmax(0,1fr)');
       }
       global.addEventListener('resize',fitDesktopCalendar);global.addEventListener('hashchange',fitDesktopCalendar);
       global.addEventListener('youzi-calendar-layout',function(){global.requestAnimationFrame(fitDesktopCalendar);});

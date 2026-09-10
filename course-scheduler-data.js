@@ -331,7 +331,7 @@
     var manager=typeof global.getUser==='function'?global.getUser():null;
     var result=await bridge.ensureManagerAuth(global,manager,{timeoutMs:20000});
     if(result&&result.ok)return result;
-    throw new Error(result&&result.message||'管理者安全登入尚未恢復，請重新開啟頁面後再試。');
+    var error=new Error(result&&result.message||'管理者安全登入尚未恢復，請重新開啟頁面後再試。');error.reauth=Boolean(result&&result.reauth);throw error;
   }
 
   async function call(name,data,options){

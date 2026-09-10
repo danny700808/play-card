@@ -203,3 +203,21 @@ test('image collection verifies manager auth before activating the browser colle
   assert.ok(body.indexOf('await requireEasyStoreManagerAuth()') < body.indexOf("requestProductImageCollection('start',session)"));
   assert.match(body, /淘寶／1688 若要求登入，是供應商網站自己的帳號/);
 });
+const vm = require('node:vm');
+test('calendar refresh exposes expired auth without calling cloud and preserves calendar return route', async () => {
+  let called = false;
+  const runtime = {
+    getUser: () => ({ email: 'manager@example.test', role: 'manager' }),
+    YouziOperationsManagerAuth: { ensureManagerAuth: async () => ({ ok: false, reauth: true, message: '需要重新登入' }) },
+    firebase: { initializeApp() { called = true; } }
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'course-scheduler-data.js'), 'utf8'), { window: runtime });
+  await assert.rejects(runtime.YouziCoursePreviewData.loadPublished({ anchorDate: '2026-09-12' }), error => error.reauth === true);
+  assert.equal(called, false);
+  const storage = memoryStorage({employeeUser:'stale'});
+  let target = '';
+  const shell = {localStorage: storage, sessionStorage: memoryStorage(), location: {pathname: '/play-card/portal.html', hash: '#course-calendar', replace: value => {target=value;}}};
+  await Auth.redirectToLoginOnce(shell, null);
+  assert.equal(target, 'login.html?next=portal.html%23course-calendar');
+  assert.equal(storage.has('employeeUser'), false);
+});
