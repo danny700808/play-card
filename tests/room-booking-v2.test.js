@@ -42,7 +42,7 @@ assert(client.includes('studentId: selectedStudentId'), '學生租用沒有送�
 assert(client.includes("selectedUse === 'recording' && !recordingUsage"), '未選錄音室使用方式仍可送出');
 assert(client.includes("classList.toggle('hidden', recording && !student)"), '錄音室非學生仍顯示重複價格組');
 assert(client.includes("recording ? '學生折扣（選填）' : '租用價格'"), '學生半價未與錄音室使用方式分開');
-assert(client.includes('renderWelcomeName(boardData.displayName)'), '租用標題未使用後端登入姓名');
+assert(client.includes('selectedStudent().name : boardData.displayName)'), '租用標題未使用後端登入姓名');
 assert(client.includes("normalize('NFKC')"), '歡迎姓名未先正規化全形電話或 Email');
 assert(css.includes('.rental-use-card small.rental-use-price'), '錄音室價格範圍會被用途卡樣式隱藏');
 assert(backend.includes('recordingRentalSelection(data, true)'), '後端建立預約前未強制驗證錄音室使用方式');

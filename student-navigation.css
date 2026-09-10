@@ -1,0 +1,18 @@
+/* Shared student navigation, including the student rental entry. */
+.student-parent-app .student-bottom-tabs,.student-rental-mode .student-bottom-tabs{position:fixed;z-index:20;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0;padding:8px max(8px,env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));background:rgba(255,255,255,.98);border-top:1px solid var(--line);box-sizing:border-box}
+.student-parent-app .student-bottom-tabs .btn,.student-rental-mode .student-bottom-tabs .btn{display:flex;align-items:center;justify-content:center;min-width:0;min-height:54px;height:auto;padding:8px 3px;font-size:14px;font-weight:700;line-height:1.4;text-align:center;white-space:normal;text-decoration:none;box-sizing:border-box}
+.student-parent-app .portal-shell,.student-rental-mode .portal-shell{padding-bottom:calc(100px + env(safe-area-inset-bottom))}
+.student-parent-app .student-bottom-tabs+.tab-panel{margin-bottom:0}
+.student-parent-app #reminderForm{gap:10px}
+.student-parent-app #reminderForm .switch-row{padding:12px;min-height:66px;gap:12px}
+.student-parent-app #reminderForm .switch-row strong{font-size:16px}
+.student-parent-app #reminderForm .switch-row small{font-size:13px;margin-top:3px;line-height:1.45}
+.student-parent-app #reminderForm .parent-submit-area{margin-top:0;padding-top:10px}
+.student-parent-app #reminderForm .parent-submit-area .btn{min-height:48px;padding:10px 14px}
+.student-parent-app .binding-management{padding-bottom:12px;margin-bottom:12px}
+.student-parent-app .binding-management>p{margin:8px 0 0;font-size:13px;line-height:1.5}
+.student-parent-app #manageBindings{min-height:46px;padding:10px 14px;font-size:15px}
+.student-parent-app .reminder-help{font-size:13px;line-height:1.5;margin:0}
+.student-parent-app .binding-account{padding:12px;gap:10px}
+.student-parent-app .binding-account .btn{min-height:46px;padding:10px 14px}
+@media(max-width:360px){.student-parent-app .student-bottom-tabs .btn,.student-rental-mode .student-bottom-tabs .btn{font-size:13px}}

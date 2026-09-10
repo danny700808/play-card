@@ -8,7 +8,8 @@
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 <link rel="stylesheet" href="course-history-view.css?v=20260909-parent-payment-v1">
-<link rel="stylesheet" href="student-parent-layout.css?v=20260910-parent-payment-v2">
+<link rel="stylesheet" href="student-parent-layout.css?v=20260910-compact-nav-v1">
+  <link rel="stylesheet" href="student-navigation.css?v=20260910-compact-nav-v1">
 </head>
 <body class="clean-portal-ui student-parent-app">
   <main class="portal-shell">
@@ -60,7 +61,7 @@
 
     <section class="card portal-session-card" id="sessionLoading" aria-live="polite">
       <span class="portal-session-spinner" aria-hidden="true"></span>
-      <div><strong>正在確認登入</strong><p>確認這台裝置的登入狀態。</p></div>
+      <div><strong>正在確認登入</strong></div>
     </section>
 
     <section class="card hidden" id="studentLoadError" role="alert"><h2>暫時無法讀取學生資料</h2><p id="studentLoadErrorMessage"></p><button class="btn primary" type="button" id="retryStudentLoad">重新讀取</button></section>
@@ -77,7 +78,6 @@
         <div class="list" id="inactiveHistoryList"></div>
         <a class="btn primary" href="room-booking.html?from=student">前往教室租用</a>
       </section>
-      <section class="card student-teacher-contact student-sensitive" id="studentTeacherContact"></section>
       <nav class="tabs student-sensitive student-bottom-tabs">
         <button class="btn active" type="button" data-tab="courses">課程與學費</button>
         <button class="btn" type="button" data-tab="contact">課堂聯絡簿</button>
@@ -156,7 +156,7 @@
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-history-view.js?v=20260910-on-demand-v1"></script>
+  <script src="course-history-view.js?v=20260910-period-teacher-v1"></script>
   <script src="course-portal-common.js?v=20260909-parent-loading-v1"></script>
   <script>
   (function () {
@@ -415,6 +415,7 @@
     function render() {
       const student = data.students.find((row) => row.id === studentId) || data.students[0] || {};
       studentId = student.id || '';
+      document.querySelectorAll('a[href^="room-booking.html?from=student"]').forEach(link => { link.href = `room-booking.html?from=student&studentId=${encodeURIComponent(studentId)}`; });
       const learningActive = student.accessStatus === 'active';
       const attendance = data.attendance.filter((row) => row.studentId === studentId);
       document.getElementById('inactiveStudentView').classList.toggle('hidden', learningActive);
@@ -430,7 +431,7 @@
       });
       if (!learningActive) {
         document.getElementById('studentName').textContent = student.name || '—';
-        CourseHistoryView.mount(document.getElementById('inactiveHistoryList'), { studentId, name: '過去課程紀錄', token, call: P.call });
+        CourseHistoryView.mount(document.getElementById('inactiveHistoryList'), { studentId, name: '過去課程紀錄', token, call: P.call, showTeacher: true });
         return;
       }
       const periods = data.periods.filter((row) => row.studentId === studentId)
@@ -439,16 +440,6 @@
       const upcoming = (data.upcoming || []).filter((row) =>
         (row.studentIds || []).includes(studentId)
       );
-      const teacherContacts = [...new Map(
-        periods.concat(upcoming, data.teachers || []).filter((row) => row.teacherName)
-          .map((row) => [row.teacherId || row.teacherName, row])
-      ).values()];
-      const teacherContactHtml = teacherContacts.map((row) =>
-        P.escapeHtml(row.teacherName)
-      ).join('<br>');
-      document.getElementById('studentTeacherContact').innerHTML = `<div class="student-contact-row">
-        ${teacherContactHtml ? `<span>授課老師</span><strong>${teacherContactHtml}</strong>` : ''}
-      </div>`;
       const requests = activeTuitionPayments();
       const scheduleRows = upcoming.slice().sort((a,b) => `${a.date}|${a.startTime}`.localeCompare(`${b.date}|${b.startTime}`)).slice(0, 2);
       document.getElementById('upcomingCourseList').innerHTML = scheduleRows.length
@@ -461,7 +452,7 @@
       const historyStudentId = studentId;
       displayedHistoryPeriodIds = new Set();
       CourseHistoryView.mount(document.getElementById('studentCourseHistory'), {
-        studentId, name:'課程紀錄', token, call:P.call, includeTuitionPayment: true,
+        studentId, name:'課程紀錄', token, call:P.call, includeTuitionPayment: true, showTeacher: true,
         onDataLoaded: result => {
           if (studentId !== historyStudentId) return;
           data.periods = result.periods;
@@ -691,12 +682,14 @@
 
     (async () => {
       try {
+        const requestedTab = new URLSearchParams(location.search).get('tab');
+        if (['courses','contact','reminders'].includes(requestedTab)) document.querySelector(`[data-tab="${requestedTab}"]`).click();
         token = await P.exchangeAccess('student');
         if (token) {
           const params = new URLSearchParams(location.search);
           await load(params.get('studentId') || '');
           if (params.get('return') === 'room-booking.html') {
-            location.href = 'room-booking.html?from=student';
+            location.href = `room-booking.html?from=student&studentId=${encodeURIComponent(studentId)}`;
           }
         }
         else P.invalidateSession('student', new Error('請先登入學生／家長入口。'));

@@ -7,7 +7,7 @@
   let role = '';
   let studentDiscountEligible = false;
   let studentOptions = [];
-  let selectedStudentId = '';
+  let selectedStudentId = new URLSearchParams(location.search).get('studentId') || '';
   let token = '';
   let selectedUse = '';
   let durationMinutes = 60;
@@ -241,6 +241,18 @@
     photoImage.alt = '';
   }
 
+  function updateStudentRentalNavigation() {
+    const nav = document.getElementById('studentRentalNav');
+    nav.classList.toggle('hidden', role !== 'student');
+    document.body.classList.toggle('student-rental-mode', role === 'student');
+    nav.querySelectorAll('[data-student-tab]').forEach(link => {
+      const tab = link.dataset.studentTab;
+      const params = new URLSearchParams(tab === 'rental' ? {from:'student'} : {tab});
+      if (selectedStudentId) params.set('studentId', selectedStudentId);
+      link.href = `${tab === 'rental' ? 'room-booking.html' : 'student-course-portal.html'}?${params}`;
+    });
+  }
+
   function showBooking(active) {
     bindView.classList.toggle('hidden', active);
     bookingView.classList.toggle('hidden', !active);
@@ -438,7 +450,8 @@
       if (!studentOptions.some((row) => clean(row.id) === selectedStudentId)) {
         selectedStudentId = studentOptions.length === 1 ? clean(studentOptions[0].id) : '';
       }
-      renderWelcomeName(boardData.displayName);
+      updateStudentRentalNavigation();
+      renderWelcomeName(role === 'student' && selectedStudent() ? selectedStudent().name : boardData.displayName);
       weekStart = boardData.startDate || weekStart;
       selectedUse = boardData.selectedUseType || selectedUse;
       renderUses(boardData.useOptions || []);
@@ -662,6 +675,7 @@
     token = nextToken;
     document.getElementById('teacherRentalNav').classList.toggle('hidden', role !== 'teacher');
     document.body.classList.toggle('teacher-rental-mode', role === 'teacher');
+    updateStudentRentalNavigation();
     renderUses(immediateRentalUseOptions);
     showBooking(true);
     renderDurations();
@@ -776,6 +790,8 @@
   });
   document.getElementById('bookingStudent').addEventListener('change', (event) => {
     selectedStudentId = clean(event.target.value);
+    updateStudentRentalNavigation();
+    if (role === 'student') renderWelcomeName(selectedStudent() ? selectedStudent().name : '');
     updateConfirm();
   });
   document.getElementById('closeRentalConfirm').addEventListener('click', closeConfirm);
