@@ -4,7 +4,6 @@
   const config = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
   if (!global.firebase || !config) throw new Error('Firebase 尚未載入。');
   if (!global.firebase.apps.length) global.firebase.initializeApp(config);
-  const functions = global.firebase.app().functions('us-central1');
   const PortalAuth = global.CoursePortal;
   const TeacherDailyReminder = global.YZTeacherDailyReminder;
 
@@ -230,7 +229,8 @@
 
   async function invoke(name, payload) {
     try {
-      const result = await functions.httpsCallable(name)(payload || {});
+      const callable = PortalAuth.callableFor(name, { timeout: 180000 });
+      const result = await callable(payload || {});
       return result && result.data || {};
     } catch (error) {
       const message = clean(error && (error.details || error.message) || '連線失敗，請稍後再試。').replace(/^FirebaseError:\s*/i, '');

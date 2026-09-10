@@ -5,6 +5,15 @@
   if (!global.firebase || !config) throw new Error('Firebase 尚未載入。');
   if (!global.firebase.apps.length) global.firebase.initializeApp(config);
   const functions = global.firebase.app().functions('us-central1');
+  const taiwanFunctions = global.firebase.app().functions('asia-east1');
+  // Only these read APIs have regional copies; writes and authentication retain their existing routes.
+  const TAIWAN_READ_CALLS = new Set(['coursePortalTeacherData', 'coursePortalTeacherAvailability', 'coursePortalTeacherSlotOptions', 'coursePortalStudentData', 'coursePortalLessonHistory', 'coursePortalRentalWeekBoard', 'coursePortalRentalAvailability']);
+
+  function callableFor(name, options) {
+    return TAIWAN_READ_CALLS.has(name)
+      ? taiwanFunctions.httpsCallable(name + 'Taiwan', options)
+      : functions.httpsCallable(name, options);
+  }
   const CACHE_PREFIX = 'youzi.coursePortal.dataCache.v2.';
   const CACHE_TTL = 90 * 1000;
   const CALL_TIMEOUT_MS = 90 * 1000;
@@ -114,7 +123,7 @@
 
   async function invoke(name, data) {
     try {
-      const result = await functions.httpsCallable(name, { timeout: CALL_TIMEOUT_MS })(data || {});
+      const result = await callableFor(name, { timeout: CALL_TIMEOUT_MS })(data || {});
       return result && result.data || {};
     } catch (error) {
       const code = clean(error && error.code).toLowerCase();
@@ -464,6 +473,7 @@
   global.CoursePortal = {
     addDays,
     call,
+    callableFor,
     clean,
     escapeHtml,
     exchangeAccess,
