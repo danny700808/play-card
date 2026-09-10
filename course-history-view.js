@@ -3,6 +3,8 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const money = value => '$' + Number(value || 0).toLocaleString('zh-TW');
   global.CourseHistoryView = { mount(host, options) {
+    const mountToken = {};
+    host.__courseHistoryMount = mountToken;
     let subject = '', payload = null, request = 0, activeFromDate = '';
     host.innerHTML = `<section class="course-history"><h2>${esc(options.name || '課程紀錄')}</h2><div class="history-controls"><label>學習科目<select data-history-subject aria-label="選擇學習科目"></select><span class="history-single-subject" data-history-single hidden></span></label><button type="button" data-history-toggle>查詢歷史課程</button></div><form data-history-form hidden><p class="history-query-help">歷史課程可查詢自 2026/7/21 起；更早資料請至實體上課證查詢。</p><label class="history-date-label">查詢日期<span class="history-date-box"><input type="date" min="2026-07-21" required aria-label="歷史查詢日期"></span></label><button type="submit">查詢</button></form><p data-history-notice role="status"></p><div data-history-cards></div></section>`;
     const cards = host.querySelector('[data-history-cards]'), notice = host.querySelector('[data-history-notice]');
@@ -35,9 +37,10 @@
       const id = ++request;
       notice.textContent = '正在讀取課程紀錄…';
       try {
-        const result = await options.call('coursePortalLessonHistory', { sessionToken:options.token, studentId:options.studentId, fromDate:fromDate || '' });
-        if (id !== request || !host.isConnected) return;
+        const result = await options.call('coursePortalLessonHistory', { sessionToken:options.token, studentId:options.studentId, fromDate:fromDate || '', includeTuitionPayment:options.includeTuitionPayment === true });
+        if (id !== request || !host.isConnected || host.__courseHistoryMount !== mountToken) return;
         payload = result;
+        if (typeof options.onDataLoaded === 'function') options.onDataLoaded(result);
         result.subjects = [...new Map([...(result.subjects || []), ...(options.additionalSubjects || [])].map(row => [row.id, row])).values()];
         if (!result.subjects.some(row => row.id === subject)) subject = (result.subjects[0] || {}).id || '';
         select.innerHTML = result.subjects.map(row => `<option value="${esc(row.id)}">${esc(row.name)}</option>`).join('');

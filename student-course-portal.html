@@ -92,7 +92,7 @@
       </section>
       <section class="card tab-panel hidden student-sensitive" data-panel="contact">
         <div class="section-title"><div><h2>課堂聯絡簿</h2><p class="muted">老師上課後留下的內容與照片，僅供已綁定家長查看。</p></div></div>
-        <div class="list" id="contactBookList"></div>
+        <div class="list" id="contactBookList"></div><button class="btn" type="button" id="olderContactBook" hidden>查看更早的聯絡簿</button>
       </section>
       <section class="card tab-panel hidden student-sensitive" data-panel="reminders">
         <div class="section-title"><div><h2>LINE 提醒</h2><p class="muted">每位家長可各自決定是否接收，不會影響其他家長。</p></div></div>
@@ -156,7 +156,7 @@
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-history-view.js?v=20260909-notification-wave1b"></script>
+  <script src="course-history-view.js?v=20260910-on-demand-v1"></script>
   <script src="course-portal-common.js?v=20260909-parent-loading-v1"></script>
   <script>
   (function () {
@@ -164,6 +164,11 @@
     let token = '';
     let data = null;
     let studentId = '';
+    let studentLoadVersion = 0;
+    let contactVersion = 0;
+    let contactFromDate = '';
+    let contactLoaded = false;
+    let contactPending = false;
     let activeTuitionPaymentId = '';
     let selectedPaymentSubjectId = '';
     let displayedHistoryPeriodIds = new Set();
@@ -425,6 +430,7 @@
       });
       if (!learningActive) {
         document.getElementById('studentName').textContent = student.name || '—';
+        CourseHistoryView.mount(document.getElementById('inactiveHistoryList'), { studentId, name: '過去課程紀錄', token, call: P.call });
         return;
       }
       const periods = data.periods.filter((row) => row.studentId === studentId)
@@ -434,7 +440,7 @@
         (row.studentIds || []).includes(studentId)
       );
       const teacherContacts = [...new Map(
-        periods.concat(upcoming).filter((row) => row.teacherName)
+        periods.concat(upcoming, data.teachers || []).filter((row) => row.teacherName)
           .map((row) => [row.teacherId || row.teacherName, row])
       ).values()];
       const teacherContactHtml = teacherContacts.map((row) =>
@@ -455,7 +461,13 @@
       const historyStudentId = studentId;
       displayedHistoryPeriodIds = new Set();
       CourseHistoryView.mount(document.getElementById('studentCourseHistory'), {
-        studentId, name:'課程紀錄', token, call:P.call,
+        studentId, name:'課程紀錄', token, call:P.call, includeTuitionPayment: true,
+        onDataLoaded: result => {
+          if (studentId !== historyStudentId) return;
+          data.periods = result.periods;
+          if (result.tuitionPayment) data.tuitionPayment = result.tuitionPayment;
+          result.subjects = [...new Map([...(result.subjects || []), ...activeTuitionPayments().map(row => ({id:row.subjectId, name:row.subjectName || '課程'}))].map(row => [row.id, row])).values()];
+        },
         additionalSubjects:requests.map(row => ({id:row.subjectId, name:row.subjectName || '課程'})),
         renderPaymentAction:period => {
           const request = activeTuitionPayments().find(row => row.targetPeriodId === period.id && row.subjectId === period.subjectId);
@@ -466,7 +478,8 @@
         onPeriodsRendered:rows => { if (studentId === historyStudentId) displayedHistoryPeriodIds = new Set(rows.map(row => row.id)); },
         onSubjectChange:subject => { if (studentId === historyStudentId) renderSubjectPayments(subject); }
       });
-      renderContactBook();
+      if (contactLoaded) renderContactBook();
+      else document.getElementById('contactBookList').textContent = '點選課堂聯絡簿後讀取近期內容。';
       const binding = data.bindings.find((row) => row.studentId === studentId) || {};
       document.querySelector('[name="reminderPayment"]').checked = binding.reminderPayment !== false;
       document.querySelector('[name="reminderContactBook"]').checked = binding.reminderContactBook === false;
@@ -494,6 +507,9 @@
     });
 
     async function load(requested) {
+      const version = ++studentLoadVersion;
+      contactVersion++; contactLoaded = false; contactPending = false; contactFromDate = '';
+      document.getElementById('olderContactBook').hidden = true;
       document.getElementById('bindingAccounts').classList.add('hidden');
       document.getElementById('studentLoadError').classList.add('hidden');
       if (appView.classList.contains('hidden')) {
@@ -501,16 +517,20 @@
         document.querySelector('#sessionLoading strong').textContent = '正在讀取學生資料';
       }
       try {
-        data = await P.call('coursePortalStudentData', { sessionToken: token, studentId: requested || '' });
+        const result = await P.call('coursePortalStudentData', { sessionToken: token, studentId: requested || '', section: 'overview' });
+        if (version !== studentLoadVersion) return;
+        data = result;
         if (!data.students.length) throw new Error('目前沒有可查看的學生資料。');
-        studentId = requested || studentId || data.students[0].id;
+        studentId = data.selectedStudentId || requested || studentId || data.students[0].id;
         document.getElementById('studentSelect').innerHTML = data.students.map((row) => `<option value="${P.escapeHtml(row.id)}">${P.escapeHtml(row.name)}</option>`).join('');
         document.getElementById('studentSelect').value = studentId;
         document.getElementById('studentSelectField').classList.toggle('hidden', data.students.length <= 1);
         document.getElementById('studentIdentityField').classList.toggle('hidden', data.students.length > 1);
         render();
         showBound(true);
+        if (document.querySelector('[data-tab="contact"]').classList.contains('active')) loadContactBook();
       } catch (error) {
+        if (version !== studentLoadVersion) return;
         if (P.isSessionAuthError(error)) {
           P.invalidateSession('student', error);
           return;
@@ -533,9 +553,39 @@
     document.getElementById('retryStudentLoad').addEventListener('click', () => load(studentId));
     P.installAuth({ role: 'student', authViewId: 'bindView' });
     document.getElementById('studentSelect').addEventListener('change', (event) => {
-      studentId = event.target.value;
-      render();
+      load(event.target.value);
     });
+    function previousDay(day, offset) {
+      const value = new Date(day + 'T12:00:00+08:00');
+      value.setUTCDate(value.getUTCDate() + offset);
+      return value.toISOString().slice(0, 10);
+    }
+    async function loadContactBook(older = false) {
+      if (!data || contactPending) return;
+      const owner = studentId, version = ++contactVersion;
+      const button = document.getElementById('olderContactBook');
+      contactPending = true; button.disabled = true;
+      if (!contactLoaded) document.getElementById('contactBookList').textContent = '正在讀取近期聯絡簿…';
+      try {
+        const untilDate = older && contactFromDate ? previousDay(contactFromDate, -1) : '';
+        const fromDate = untilDate ? ['2026-07-21', previousDay(untilDate, -59)].sort().pop() : '';
+        const result = await P.call('coursePortalStudentData', { sessionToken: token, studentId: owner, section: 'contact', fromDate, untilDate });
+        if (owner !== studentId || version !== contactVersion) return;
+        data.contactBook = older ? (data.contactBook || []).concat(result.contactBook) : result.contactBook;
+        contactFromDate = result.fromDate; contactLoaded = true;
+        renderContactBook();
+        button.textContent = '查看更早的聯絡簿';
+        button.hidden = contactFromDate <= '2026-07-21';
+      } catch (error) {
+        if (owner !== studentId || version !== contactVersion) return;
+        if (!contactLoaded) document.getElementById('contactBookList').textContent = error.message || '讀取失敗，請重試。';
+        else P.toast(error.message, 'error');
+        button.hidden = false; button.textContent = '重新讀取聯絡簿';
+      } finally {
+        if (version === contactVersion) { contactPending = false; button.disabled = false; }
+      }
+    }
+    document.getElementById('olderContactBook').addEventListener('click', () => loadContactBook(contactLoaded));
     document.getElementById('contactBookList').addEventListener('click', async (event) => {
       const button = event.target.closest('[data-contact-image-post]');
       if (!button) return;
@@ -615,6 +665,7 @@
     document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
       document.querySelectorAll('[data-tab]').forEach((node) => node.classList.toggle('active', node === button));
       document.querySelectorAll('[data-panel]').forEach((node) => node.classList.toggle('hidden', node.dataset.panel !== button.dataset.tab));
+      if (button.dataset.tab === 'contact' && !contactLoaded) loadContactBook();
     }));
     document.getElementById('reminderForm').addEventListener('submit', async (event) => {
       event.preventDefault();

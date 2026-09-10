@@ -10,6 +10,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const { withPortalReads, memoPortalRead } = require('./portalReadContext');
 const path = require('path');
 const sharp = require('sharp');
 const { cents, validateTransaction } = require('./courseTuitionLedger');
@@ -710,11 +711,19 @@ function firstArray(row, keys) {
 }
 
 async function readCourseGroups() {
+  return memoPortalRead('groups:' + JSON.stringify([]), () => readCourseGroupsUncached());
+}
+
+async function readCourseGroupsUncached() {
   const snapshot = await db.collection('coursePortalStudentGroups').get();
   return snapshot.docs.map(doc => Object.assign({ id: doc.id }, jsonValue(doc.data()) || {})).filter(row => row.active !== false);
 }
 
 async function mirrorRows(type) {
+  return memoPortalRead('mirror:' + JSON.stringify([type]), () => mirrorRowsUncached(type));
+}
+
+async function mirrorRowsUncached(type) {
   const snapshot = await db.collection(MIRROR[type]).where('sourceActive', '==', true).get();
   let rows = snapshot.docs
     .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}))
@@ -744,6 +753,10 @@ async function mirrorRows(type) {
 }
 
 async function mirrorRowsIncludingInactive(type) {
+  return memoPortalRead('mirror-inactive:' + JSON.stringify([type]), () => mirrorRowsIncludingInactiveUncached(type));
+}
+
+async function mirrorRowsIncludingInactiveUncached(type) {
   const snapshot = await db.collection(MIRROR[type]).get();
   let rows = snapshot.docs
     .map((doc) => Object.assign({
@@ -4574,8 +4587,9 @@ async function activeStudentSuspensions() {
 async function reconcileStudentSuspensionsForNewSchedules(studentIds) {
   const wanted = new Set((studentIds || []).map(clean).filter(Boolean));
   if (!wanted.size) return activeStudentSuspensions();
-  const [suspensions, fixedCourses, temporaryCourses, changeSnapshot] = await Promise.all([
-    activeStudentSuspensions(),
+  const suspensions = await activeStudentSuspensions();
+  if (!suspensions.some(row => wanted.has(clean(row.studentId)))) return suspensions;
+  const [fixedCourses, temporaryCourses, changeSnapshot] = await Promise.all([
     mirrorRows('fixedCourses'),
     mirrorRows('temporaryCourses'),
     db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
@@ -4737,10 +4751,19 @@ async function historyStudentEvents(studentId, startDate, endDate) {
   const groups = await readCourseGroups();
   const group = groups.find(row => row.active !== false && row.id === studentId);
   const ids = [...new Set([studentId, ...(group && group.memberIds || [])])];
-  const snapshots = await Promise.all(ids.flatMap(id => [
-    db.collection(MIRROR.events).where('source.studentIds', 'array-contains', id).get(),
-    db.collection(MIRROR.events).where('source.studentId', '==', id).get()
-  ]));
+  let snapshots;
+  try {
+    snapshots = await Promise.all(ids.flatMap(id => [
+      db.collection(MIRROR.events).where('source.studentIds', 'array-contains', id)
+        .where('source.date', '>=', startDate).where('source.date', '<=', endDate).get(),
+      db.collection(MIRROR.events).where('source.studentId', '==', id)
+        .where('source.date', '>=', startDate).where('source.date', '<=', endDate).get()
+    ]));
+  } catch (error) {
+    if (![9, 'failed-precondition'].includes(error.code)) throw error;
+    const rows = await mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true });
+    return rows.filter(row => eventStudentIds(row).includes(studentId));
+  }
   const rows = new Map();
   for (const snapshot of snapshots) for (const doc of snapshot.docs) {
     const envelope = doc.data(), source = jsonValue(envelope.source) || {};
@@ -5106,8 +5129,8 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
     maps,
     resourceEvents,
     irregularModes,
-    resourceConflicts: scheduleResourceConflicts(resourceEvents),
-    events: validBase.map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
+    resourceConflicts: historyStudentId ? [] : scheduleResourceConflicts(resourceEvents),
+    events: historyStudentId ? [] : validBase.map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
   };
 }
 
@@ -6640,7 +6663,9 @@ function tuitionCourseKey(row) {
 async function assignNewSystemPeriodNumbers(periods) {
   const rows = (periods || []).map((row) => Object.assign({}, row));
   if (!rows.length) return rows;
-  const snapshot = await db.collection(TUITION_SYSTEM_PERIODS).get();
+  const studentIds = [...new Set(rows.map(row => clean(row.studentId)).filter(Boolean))];
+  const snapshots = await Promise.all(studentIds.map(id => db.collection(TUITION_SYSTEM_PERIODS).where('studentId', '==', id).get()));
+  const snapshot = { docs: snapshots.flatMap(item => item.docs) };
   const existing = new Map(snapshot.docs.map((doc) => {
     const row = doc.data() || {};
     return [clean(row.periodId || doc.id), Object.assign({ id: doc.id }, row)];
@@ -6832,7 +6857,8 @@ async function ensureTuitionPaymentRequests(options) {
   for (let offset = 0; offset < candidates.length; offset += 25) {
     await Promise.all(candidates.slice(offset, offset + 25).map(async (candidate) => {
       const ref = db.collection(TUITION_PAYMENT_REQUESTS).doc(candidate.id);
-      const snapshot = await ref.get();
+      const known = existingRows.find(row => clean(row.id) === candidate.id);
+      const snapshot = known ? { exists: true, data: () => known } : await ref.get();
       if (snapshot.exists) {
         const previous = snapshot.data() || {};
         const preserve = {};
@@ -6845,12 +6871,13 @@ async function ensureTuitionPaymentRequests(options) {
         ].forEach((key) => {
           if (Object.prototype.hasOwnProperty.call(previous, key)) preserve[key] = previous[key];
         });
-        await ref.set(Object.assign({}, candidate, preserve, {
+        const updated = Object.assign({}, candidate, preserve, {
           active: previous.active !== false,
           status: clean(previous.status) || candidate.status,
-          createdAtText: clean(previous.createdAtText) || candidate.createdAtText,
-          updatedAt: FieldValue.serverTimestamp()
-        }), { merge: true });
+          createdAtText: clean(previous.createdAtText) || candidate.createdAtText
+        });
+        const changed = Object.keys(updated).some(key => JSON.stringify(updated[key]) !== JSON.stringify(previous[key]));
+        if (changed) await ref.set(Object.assign(updated, { updatedAt: FieldValue.serverTimestamp() }), { merge: true });
         return;
       }
       await ref.set(Object.assign({}, candidate, {
@@ -7554,7 +7581,7 @@ async function courseLessonHistory(data) {
     if (!ownedPeriods.some(row => eventTeacherId(row) === session.teacherId) && !(await teacherOwnsStudent(session.teacherId, studentId))) {
       throw new HttpsError('permission-denied', '只能查看自己授課的學生。');
     }
-  } else if (!(await activeStudentIdsForSession(session)).includes(studentId)) {
+  } else {
     const bindings = await activeStudentBindingsForSession(session);
     if (!bindings.some(row => clean(row.studentId) === studentId)) throw new HttpsError('permission-denied', '沒有這位學生的查看權限。');
   }
@@ -7564,12 +7591,15 @@ async function courseLessonHistory(data) {
   }
   const today = currentTaipeiDay();
   if (fromDate > today) throw new HttpsError('invalid-argument', '請選擇今天或之前的日期。');
+  const candidates = selectHistoryPeriods(ownedPeriods.map(row => ({ ...row, outstandingAmount: tuitionOutstandingAmount(row) })), fromDate);
+  const earliest = candidates.map(row => dateKey(row.startDate || row.beginDate)).filter(Boolean).sort()[0];
+  const eventFrom = !earliest || candidates.some(row => !dateKey(row.startDate || row.beginDate)) || earliest < COURSE_HISTORY_MIN_DATE ? COURSE_HISTORY_MIN_DATE : earliest;
   const [rawPeriods, mirrorAttendance, portalAttendance, subjects, teachers, bundle, historyFixedCourses, historyTemporaryCourses] = await Promise.all([
     Promise.resolve(ownedPeriods),
     historyAttendanceForPeriods(ownedPeriods, studentId, fromDate),
     portalAttendanceForStudents([studentId]), mirrorRows('subjects'), mirrorRows('teachers'),
-    historyEventsForStudent(studentId, COURSE_HISTORY_MIN_DATE, today),
-    mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')
+    historyEventsForStudent(studentId, eventFrom, today),
+    mirrorRows('fixedCourses'), mirrorRowsByDateRange('temporaryCourses', eventFrom, today)
   ]);
   const courses = [...historyFixedCourses, ...historyTemporaryCourses, ...bundle.fixedCourses, ...bundle.temporaryCourses];
   const allAttendance = mergePortalAttendanceRows(mirrorAttendance, portalAttendance);
@@ -7629,7 +7659,15 @@ async function courseLessonHistory(data) {
     const period = periods.find(row => row.id === slot.periodId);
     if (period && !selected.includes(period)) selected.push(period);
   }
-  return { ok: true, minDate: COURSE_HISTORY_MIN_DATE, fromDate, periods: selected,
+  let tuitionPayment;
+  if (session.role === 'student' && data.includeTuitionPayment === true) {
+    const students = await mirrorRowsIncludingInactive('students');
+    const learning = activeLearningStudentIds(students, courses, bundle.resourceEvents, await activeStudentSuspensions());
+    if (learning.has(studentId)) await ensureTuitionPaymentRequests({ periods: numberedHistoryPeriods, students, subjects, teachers, studentIds: [studentId] });
+    tuitionPayment = { bank: TUITION_PAYMENT_BANK, requests: (learning.has(studentId) ? await tuitionPaymentRequestsForStudents([studentId]) : [])
+      .filter(row => row.active !== false && clean(row.status) !== 'cancelled').map(publicTuitionPaymentRequest) };
+  }
+  return { ok: true, minDate: COURSE_HISTORY_MIN_DATE, fromDate, periods: selected, ...(tuitionPayment ? { tuitionPayment } : {}),
     subjects: [...new Map(periods.map(row => [row.subjectId, { id: row.subjectId, name: row.subjectName }])).values()],
     lessons: lessons.filter(row => selected.some(period => period.id === row.periodId))
       .sort((a, b) => `${a.date}|${a.startTime}`.localeCompare(`${b.date}|${b.startTime}`)) };
@@ -7650,7 +7688,69 @@ function nextStudentLessons(events, allowed, now = Date.now()) {
     });
 }
 
+async function studentPortalOverview(data) {
+  const session = await requireSession(data, ['student']);
+  const bindings = await activeStudentBindingsForSession(session);
+  const ids = [...new Set(bindings.map(row => clean(row.studentId)).filter(Boolean))];
+  const selected = canonicalStudentId(clean(data.studentId), await readCourseGroups()) || ids[0];
+  if (!selected || !ids.includes(selected)) throw new HttpsError('permission-denied', '沒有這位學生的查看權限。');
+  const today = currentTaipeiDay();
+  const [students, suspensions] = await Promise.all([
+    mirrorRowsIncludingInactive('students'), reconcileStudentSuspensionsForNewSchedules([selected])
+  ]);
+  let bundle = await scheduleBundle(today, addDays(today, 60), '', { historyStudentId: selected });
+  const allowed = new Set([selected]);
+  let next = nextStudentLessons(bundle.resourceEvents, allowed);
+  // Sparse or irregular schedules can still have a second lesson beyond two months.
+  if (next.length < 2) {
+    const later = await scheduleBundle(addDays(today, 61), addDays(today, 120), '', { historyStudentId: selected });
+    next = nextStudentLessons([...bundle.resourceEvents, ...later.resourceEvents], allowed);
+    bundle = { ...bundle, temporaryCourses: [...bundle.temporaryCourses, ...later.temporaryCourses] };
+  }
+  const learning = activeLearningStudentIds(students, [...bundle.fixedCourses, ...bundle.temporaryCourses], next, suspensions);
+  const maps = bundle.maps;
+  const courseTeachers = [...bundle.fixedCourses, ...bundle.temporaryCourses].filter(row => eventStudentIds(row).includes(selected))
+    .map(row => maps.teachers[eventTeacherId(row)]).filter(Boolean);
+  return {
+    ok: true, selectedStudentId: selected,
+    students: ids.map(id => {
+      const row = students.find(item => sourceId(item) === id) || {};
+      return { id, name: clean(row.name || (bindings.find(item => item.studentId === id) || {}).name) || '學生',
+        accessStatus: id !== selected || learning.has(id) ? 'active' : 'history_and_rental',
+        accessMessage: '目前沒有進行中的課程；仍可查看過去上課紀錄，也可以使用教室租用。' };
+    }),
+    bindings: bindings.map(row => ({ studentId: row.studentId, reminderPayment: row.reminderPayment !== false,
+      reminderContactBook: row.reminderContactBook !== false })),
+    teachers: [...new Map(courseTeachers.map(row => [sourceId(row), { teacherId: sourceId(row), teacherName: clean(row.name) }])).values()],
+    upcoming: next.map(row => ({ id: sourceId(row), date: eventDate(row), startTime: eventStart(row), endTime: eventEnd(row),
+      studentIds: eventStudentIds(row), teacherId: eventTeacherId(row),
+      teacherName: clean((maps.teachers[eventTeacherId(row)] || {}).name), subjectName: clean((maps.subjects[eventSubjectId(row)] || {}).name) })),
+    periods: [], attendance: [], contactBook: [], tuitionPayment: { requests: [] }
+  };
+}
+
+async function studentPortalContact(data) {
+  const session = await requireSession(data, ['student']);
+  const studentId = canonicalStudentId(clean(data.studentId), await readCourseGroups());
+  const bindings = await activeStudentBindingsForSession(session);
+  if (!bindings.some(row => row.studentId === studentId)) throw new HttpsError('permission-denied', '沒有這位學生的查看權限。');
+  const today = currentTaipeiDay();
+  const from = dateKey(data.fromDate) || [COURSE_HISTORY_MIN_DATE, addDays(today, -60)].sort().pop();
+  const until = dateKey(data.untilDate) || today;
+  if (from < COURSE_HISTORY_MIN_DATE || from > until || until > today) throw new HttpsError('invalid-argument', '請選擇有效的查詢日期。');
+  const snap = await db.collection(CONTACT_BOOK_POSTS).where('studentId', '==', studentId)
+    .where('date', '>=', from).where('date', '<=', until).get();
+  return { ok: true, fromDate: from, untilDate: until, contactBook: snap.docs
+    .map(doc => ({ ...doc.data(), id: doc.id })).filter(row => row.active === true)
+    .map(row => ({ id: row.id, studentId, date: dateKey(row.date), teacherName: clean(row.teacherName) || '老師',
+      subjectName: clean(row.subjectName) || '課程', text: clean(row.text), createdAtText: clean(row.createdAtText),
+      images: (row.images || []).map((image, index) => ({ id: String(index), name: clean(image.name) || `照片 ${index + 1}` })) }))
+    .sort((a,b) => `${b.date}|${b.createdAtText}`.localeCompare(`${a.date}|${a.createdAtText}`)) };
+}
+
 async function studentPortalData(data) {
+  if (data.section === 'overview') return studentPortalOverview(data);
+  if (data.section === 'contact') return studentPortalContact(data);
   const session = await requireSession(data, ['student']);
   const sessionBindings = await activeStudentBindingsForSession(session);
   const currentIds = [...new Set(sessionBindings.map((row) => clean(row.studentId)).filter(Boolean))];
@@ -12654,15 +12754,15 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   }, lineLoginCallback);
   exportsObject.coursePortalRenterContactLogin = callable(renterContactLogin);
   exportsObject.coursePortalExchangeAccess = callable(exchangeAccessToken);
-  exportsObject.coursePortalTeacherData = callable(teacherPortalData, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherData = callable(withPortalReads(teacherPortalData), { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherUtilitySession = callable(teacherUtilitySession, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherSaveProfileDraft = callable(teacherUtilitySaveProfileDraft, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherContractSession = callable(teacherContractSession, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherSubmitContract = callable(teacherSubmitContract, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalStudentData = callable(studentPortalData, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalLessonHistory = callable(courseLessonHistory, { timeoutSeconds: 180, memory: '1GiB', concurrency: 1 });
+  exportsObject.coursePortalStudentData = callable(withPortalReads(studentPortalData), { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalLessonHistory = callable(withPortalReads(courseLessonHistory), { timeoutSeconds: 180, memory: '1GiB', concurrency: 1 });
   exportsObject.coursePortalStudentContactBookImage = callable(studentContactBookImage, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentSubmitTuitionPayment = callable(studentSubmitTuitionPayment, {
     timeoutSeconds: 180,
