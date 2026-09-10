@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
   <link rel="stylesheet" href="room-booking-v2.css?v=20260809-room-photos-fast-uses-v1">
 <link rel="stylesheet" href="teacher-rental-nav.css?v=20260908-clean-headings-v1">
-  <link rel="stylesheet" href="student-navigation.css?v=20260910-compact-nav-v1">
+  <link rel="stylesheet" href="student-navigation.css?v=20260910-unbind-v1">
 </head>
 <body class="rental-booking-v2 clean-portal-ui">
   <main class="portal-shell">
@@ -158,12 +158,12 @@
     </section>
   </div>
 
-  <nav id="studentRentalNav" class="student-bottom-tabs hidden" aria-label="學生與家長功能"><a class="btn" data-student-tab="courses" href="student-course-portal.html">課程與學費</a><a class="btn" data-student-tab="contact" href="student-course-portal.html?tab=contact">課堂聯絡簿</a><a class="btn active" data-student-tab="rental" href="room-booking.html?from=student" aria-current="page">租用教室</a><a class="btn" data-student-tab="reminders" href="student-course-portal.html?tab=reminders">LINE 提醒</a></nav>
+  <nav id="studentRentalNav" class="student-bottom-tabs hidden" aria-label="學生與家長功能"><a class="btn" data-student-tab="courses" href="student-course-portal.html">課程與學費</a><a class="btn" data-student-tab="contact" href="student-course-portal.html?tab=contact">課堂聯絡簿</a><a class="btn active" data-student-tab="rental" href="room-booking.html?from=student" aria-current="page">租用教室</a><a class="btn" data-student-tab="reminders" href="student-course-portal.html?tab=reminders">LINE 提醒</a><a class="btn danger" data-student-tab="unbind" href="student-course-portal.html?action=unbind">解除綁定</a></nav>
   <nav id="teacherRentalNav" class="teacher-rental-nav hidden" aria-label="老師課務功能"><a href="teacher-course-portal.html">課表</a><a href="teacher-course-portal.html?tab=students">課程紀錄</a><a href="teacher-course-portal.html?tab=payroll">薪資</a><a href="room-booking.html?from=teacher" aria-current="page">租用</a><a href="teacher-course-portal.html?tab=other">其他</a></nav>
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260909-parent-loading-v1"></script>
-  <script src="room-booking-v2.js?v=20260910-student-nav-v1"></script>
+  <script src="room-booking-v2.js?v=20260910-unbind-v1"></script>
 </body>
 </html>

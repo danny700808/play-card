@@ -7999,23 +7999,24 @@ async function studentBindingAccounts(data) {
   const owners = owned.filter(row => row.studentId === studentId);
   if (!owners.length) throw new HttpsError('permission-denied', '沒有這位學生的綁定管理權限。');
   const snapshot = await db.collection('coursePortalStudentBindings').where('studentId', '==', studentId).where('status', '==', 'active').get();
-  if (data.action !== 'remove') return { accounts: snapshot.docs.map(doc => {
+  const selfRemoval = data.action === 'remove-self';
+  if (data.action !== 'remove' && !selfRemoval) return { accounts: snapshot.docs.map(doc => {
     const row = doc.data();
     return { id: doc.id, name: clean(row.lineDisplayName) || (row.email ? maskedEmail(row.email) : '已綁定使用者'),
       nameSource: clean(row.lineDisplayName) ? 'LINE 名稱' : row.email ? 'Email' : '帳號名稱',
       relationship: clean(row.relationship) || '本人', mine: owners.some(own => own.__id === doc.id) };
   }) };
-  const target = snapshot.docs.find(doc => doc.id === clean(data.bindingId));
-  if (!target || owners.some(row => row.__id === target.id)) throw new HttpsError('invalid-argument', '請選擇其他有效的綁定帳號。');
+  const target = snapshot.docs.find(doc => doc.id === (selfRemoval ? owners[0].__id : clean(data.bindingId)));
+  if (!target || (!selfRemoval && owners.some(row => row.__id === target.id))) throw new HttpsError('invalid-argument', '請選擇其他有效的綁定帳號。');
   if (data.confirmed !== true) throw new HttpsError('failed-precondition', '請再次確認解除綁定。');
   const row = target.data();
-  const peers = snapshot.docs.filter(doc => doc.id === target.id ||
+  const peers = snapshot.docs.filter(doc => (selfRemoval && owners.some(own => own.__id === doc.id)) || doc.id === target.id ||
     (row.lineUserId && doc.data().lineUserId === row.lineUserId) ||
     (row.authAccountId && doc.data().authAccountId === row.authAccountId));
   await db.runTransaction(async tx => {
     const checks = await Promise.all([...owners.map(own => tx.get(own.__ref)), ...peers.map(peer => tx.get(peer.ref))]);
     if (!checks.slice(0, owners.length).some(doc => doc.exists && doc.data().status === 'active')) throw new HttpsError('permission-denied', '您的權限已異動，請重新登入。');
-    peers.forEach(peer => tx.set(peer.ref, { status: 'revoked', approvalStatus: 'revoked', revokedReason: 'peer-unbound',
+    peers.forEach(peer => tx.set(peer.ref, { status: 'revoked', approvalStatus: 'revoked', revokedReason: selfRemoval ? 'self-unbound' : 'peer-unbound',
       revokedByBindingId: owners[0].__id, revokedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }));
   });
   // Existing sessions cannot regain this student merely because a fresh binding is later created.
@@ -8026,7 +8027,23 @@ async function studentBindingAccounts(data) {
   for (const old of new Map(sessions.flatMap(result => result.docs).map(doc => [doc.id, doc])).values()) {
     if (old.data().role === 'student') await old.ref.set({ revokedStudentIds: FieldValue.arrayUnion(studentId) }, { merge: true });
   }
-  await queueCoursePortalNotice(`binding-removed-${target.id}-${randomToken(8)}`, { ...recipientFields(row),
+  if (selfRemoval) {
+    const pending = await db.collection('notificationQueue').where('studentId', '==', studentId).get();
+    const recipients = peers.map(peer => recipientFields(peer.data()));
+    for (const notice of pending.docs) {
+      await db.runTransaction(async tx => {
+        const latest = await tx.get(notice.ref);
+        if (!latest.exists) return;
+        const value = latest.data();
+        if (!['待發送', 'pending', 'failed', '發送失敗'].includes(clean(value.status))) return;
+        if (!recipients.some(recipient =>
+          recipient.targetLineUserId && recipient.targetLineUserId === value.targetLineUserId ||
+          recipient.targetEmail && recipient.targetEmail.toLowerCase() === clean(value.targetEmail).toLowerCase())) return;
+        tx.set(notice.ref, {status:'已取消', cancelReason:'使用者已解除此學生的綁定', updatedAt:FieldValue.serverTimestamp()}, {merge:true});
+      });
+    }
+  }
+  if (!selfRemoval) await queueCoursePortalNotice(`binding-removed-${target.id}-${randomToken(8)}`, { ...recipientFields(row),
     title: '學生資料存取權限異動', eventCode: 'student_binding_removed', studentId,
     body: `您與${clean(row.name) || '學生'}的帳號綁定已由另一位已綁定使用者解除，目前無法查看該學生的資料。\n若有疑問，請聯絡柚子樂器官方 LINE，我們會協助確認。`
   });

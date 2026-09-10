@@ -247,7 +247,7 @@
     document.body.classList.toggle('student-rental-mode', role === 'student');
     nav.querySelectorAll('[data-student-tab]').forEach(link => {
       const tab = link.dataset.studentTab;
-      const params = new URLSearchParams(tab === 'rental' ? {from:'student'} : {tab});
+      const params = new URLSearchParams(tab === 'rental' ? {from:'student'} : tab === 'unbind' ? {action:'unbind'} : {tab});
       if (selectedStudentId) params.set('studentId', selectedStudentId);
       link.href = `${tab === 'rental' ? 'room-booking.html' : 'student-course-portal.html'}?${params}`;
     });
@@ -257,7 +257,7 @@
     bindView.classList.toggle('hidden', active);
     bookingView.classList.toggle('hidden', !active);
     document.getElementById('sessionLoading').classList.add('hidden');
-    document.getElementById('logoutBtn').classList.toggle('hidden', !active);
+    document.getElementById('logoutBtn').classList.toggle('hidden', !active || role === 'student');
   }
 
   function requestedRoomRole() {

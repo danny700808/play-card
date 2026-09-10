@@ -9,13 +9,13 @@
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 <link rel="stylesheet" href="course-history-view.css?v=20260909-parent-payment-v1">
 <link rel="stylesheet" href="student-parent-layout.css?v=20260910-compact-nav-v1">
-  <link rel="stylesheet" href="student-navigation.css?v=20260910-payment-nav-v1">
+  <link rel="stylesheet" href="student-navigation.css?v=20260910-unbind-v1">
 </head>
 <body class="clean-portal-ui student-parent-app">
   <main class="portal-shell">
     <header class="portal-head">
       <div class="head-title"><span class="brand-mark">生</span><div><h1>學生入口</h1></div></div>
-      <button class="btn danger hidden" id="logoutBtn" type="button">登出這台裝置</button>
+
     </header>
 
     <section class="card bind-box hidden" id="bindView" data-auth-view>
@@ -82,7 +82,7 @@
         <button class="btn active" type="button" data-tab="courses">課程與學費</button>
         <button class="btn" type="button" data-tab="contact">課堂聯絡簿</button>
         <a class="btn soft" href="room-booking.html?from=student">租用教室</a>
-        <button class="btn" type="button" data-tab="reminders">LINE 提醒</button>
+        <button class="btn" type="button" data-tab="reminders">LINE 提醒</button><button class="btn danger" type="button" id="unbindSelf">解除綁定</button>
       </nav>
 
       <section class="card tab-panel student-sensitive" data-panel="courses">
@@ -180,7 +180,6 @@
       bindView.classList.toggle('hidden', active);
       appView.classList.toggle('hidden', !active);
       document.getElementById('sessionLoading').classList.add('hidden');
-      document.getElementById('logoutBtn').classList.toggle('hidden', !active);
     }
 
     function paymentState(period) {
@@ -678,10 +677,22 @@
       } catch (error) { P.toast(error.message, 'error'); }
       finally { P.loading(button, false); }
     });
-    document.getElementById('logoutBtn').addEventListener('click', () => {
-      P.setSession('student', '');
-      location.replace('course-portal.html?method=line&role=student');
-    });
+    async function removeOwnBinding() {
+      const student = (data?.students || []).find(row => row.id === studentId);
+      if (!student) return;
+      if (!confirm(`確定解除與「${student.name}」的綁定嗎？\n解除後，您將無法查看這位學生的資料，也不再收到相關通知。\n原有課程、繳費紀錄及租用預約仍會保留，以同一帳號重新驗證綁定後即可查看。`)) return;
+      const button = document.getElementById('unbindSelf');
+      button.disabled = true;
+      try {
+        await P.call('coursePortalStudentBindingAccounts', {sessionToken:token, studentId, action:'remove-self', confirmed:true});
+        closeTuitionPayment();
+        const remaining = data.students.find(row => row.id !== studentId);
+        if (remaining) await load(remaining.id);
+        else { P.setSession('student', ''); location.replace('course-portal.html?role=student'); }
+      } catch(error) { P.toast(error.message, 'error'); }
+      finally { button.disabled = false; }
+    }
+    document.getElementById('unbindSelf').addEventListener('click', removeOwnBinding);
 
     (async () => {
       try {
@@ -691,6 +702,7 @@
         if (token) {
           const params = new URLSearchParams(location.search);
           await load(params.get('studentId') || '');
+          if (params.get('action') === 'unbind') { history.replaceState(null, '', location.pathname + '?studentId=' + encodeURIComponent(studentId)); await removeOwnBinding(); }
           if (params.get('return') === 'room-booking.html') {
             location.href = `room-booking.html?from=student&studentId=${encodeURIComponent(studentId)}`;
           }
