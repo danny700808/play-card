@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 <link rel="stylesheet" href="course-history-view.css?v=20260909-parent-payment-v1">
 <link rel="stylesheet" href="student-parent-layout.css?v=20260910-compact-nav-v1">
-  <link rel="stylesheet" href="student-navigation.css?v=20260910-compact-nav-v1">
+  <link rel="stylesheet" href="student-navigation.css?v=20260910-payment-nav-v1">
 </head>
 <body class="clean-portal-ui student-parent-app">
   <main class="portal-shell">
@@ -105,7 +105,7 @@
       </section>
     </section>
 
-    <section class="modal hidden" id="tuitionPaymentModal" role="dialog" aria-modal="true" aria-labelledby="tuitionPaymentModalTitle">
+    <section class="modal hidden" id="tuitionPaymentModal" role="dialog" aria-modal="false" aria-labelledby="tuitionPaymentModalTitle">
       <div class="card modal-panel tuition-payment-modal-panel">
         <div class="section-title">
           <div><h2 id="tuitionPaymentModalTitle">下一期學費繳費</h2><p class="muted" id="tuitionPaymentModalSubtitle"></p></div>
@@ -131,7 +131,7 @@
               <div class="bank-line"><span>分行</span><strong id="tuitionBankBranch">—</strong></div>
               <div class="bank-line"><span>戶名</span><strong id="tuitionBankAccountName">—</strong></div>
               <div class="bank-line account-line"><span>帳號</span><strong id="tuitionBankAccount">—</strong></div>
-              <button class="btn soft" id="copyTuitionAccount" type="button">複製帳號</button><figure class="tuition-payment-qr"><div class="payment-qr-frame"><img src="assets/tuition-payment-account-20260910.jpg" alt="柚子樂器收款 QR Code" loading="lazy"></div><figcaption>收款 QR Code</figcaption><a href="assets/tuition-payment-account-20260910.jpg" target="_blank" rel="noopener">開啟收款帳戶圖片</a></figure>
+              <button class="btn soft" id="copyTuitionAccount" type="button">複製帳號</button><figure class="tuition-payment-qr"><div class="payment-qr-frame"><img src="assets/tuition-payment-account-20260910.jpg" alt="柚子樂器收款 QR Code" loading="lazy"></div><figcaption>收款 QR Code</figcaption></figure>
             </div>
             <section class="transfer-details"><h3>轉帳完成後，請填寫</h3><p>以下請填寫您這次的匯款資料，供教室核對。</p><div class="grid two">
               <div class="field"><label for="transferDate">匯款日期</label><input type="date" id="transferDate" name="transferDate" required></div>
@@ -372,10 +372,12 @@
       document.getElementById('tuitionReceiptPreview').classList.add('hidden');
       toggleTuitionPaymentMethod();
       document.getElementById('tuitionPaymentModal').classList.remove('hidden');
+      document.body.classList.add('student-payment-open');
     }
 
     function closeTuitionPayment() {
       document.getElementById('tuitionPaymentModal').classList.add('hidden');
+      document.body.classList.remove('student-payment-open');
       activeTuitionPaymentId = '';
       tuitionReceiptDataUrl = '';
     }
@@ -655,6 +657,7 @@
       if (regularName) regularName.focus();
     });
     document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
+      closeTuitionPayment();
       document.querySelectorAll('[data-tab]').forEach((node) => node.classList.toggle('active', node === button));
       document.querySelectorAll('[data-panel]').forEach((node) => node.classList.toggle('hidden', node.dataset.panel !== button.dataset.tab));
       if (button.dataset.tab === 'contact' && !contactLoaded) loadContactBook();

@@ -16,3 +16,8 @@
 .student-parent-app .binding-account{padding:12px;gap:10px}
 .student-parent-app .binding-account .btn{min-height:46px;padding:10px 14px}
 @media(max-width:360px){.student-parent-app .student-bottom-tabs .btn,.student-rental-mode .student-bottom-tabs .btn{font-size:13px}}
+
+/* Keep student navigation available while entering a tuition transfer. */
+.student-parent-app #tuitionPaymentModal{bottom:calc(70px + env(safe-area-inset-bottom));padding:12px;box-sizing:border-box;grid-template-rows:minmax(0,1fr)}
+.student-parent-app #tuitionPaymentModal .modal-panel{max-height:100%;box-sizing:border-box;margin:0;overscroll-behavior:contain}
+.student-parent-app.student-payment-open .student-bottom-tabs{z-index:21}
