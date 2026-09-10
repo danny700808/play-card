@@ -8002,6 +8002,7 @@ async function studentBindingAccounts(data) {
   if (data.action !== 'remove') return { accounts: snapshot.docs.map(doc => {
     const row = doc.data();
     return { id: doc.id, name: clean(row.lineDisplayName) || (row.email ? maskedEmail(row.email) : '已綁定使用者'),
+      nameSource: clean(row.lineDisplayName) ? 'LINE 名稱' : row.email ? 'Email' : '帳號名稱',
       relationship: clean(row.relationship) || '本人', mine: owners.some(own => own.__id === doc.id) };
   }) };
   const target = snapshot.docs.find(doc => doc.id === clean(data.bindingId));

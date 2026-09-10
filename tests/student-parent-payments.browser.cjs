@@ -1,0 +1,80 @@
+const fs=require('fs'),path=require('path'),assert=require('node:assert/strict');
+const {webkit}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const root=process.cwd();
+(async()=>{
+ const browser=await webkit.launch({headless:true});
+ const page=await browser.newPage({viewport:{width:390,height:844}});const errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.route('**/*',route=>{
+  const u=new URL(route.request().url());const file=path.join(root,u.pathname.slice(1));
+  if(u.hostname!=='portal.test'||!fs.existsSync(file))return route.abort();
+  let body=fs.readFileSync(file);if(file.endsWith('.html'))body=Buffer.from(body.toString().replace(/<script\b[^>]*src=[^>]*>[\s\S]*?<\/script>/gi,''));
+  return route.fulfill({body,contentType:file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript'});
+ });
+ await page.addInitScript(()=>{
+  window.calls=[];window.historyResolvers=[];window.savedReminders={};window.peerRemoved=false;
+  window.CoursePortal={escapeHtml:s=>String(s||''),money:n=>'$'+n,installAuth(){},exchangeAccess:async()=> 'mock',isSessionAuthError:()=>false,toast(){},setSession(){},loading(){},
+   call:async(name,input)=>{
+    window.calls.push({name,...input});
+    if(name==='coursePortalUpdateStudentReminder'){window.savedReminders={studentId:input.studentId,reminderContactBook:input.reminderContactBook,reminderPayment:input.reminderPayment};return {ok:true};}
+    if(name==='coursePortalStudentBindingAccounts'){
+      if(input.action==='remove'){window.peerRemoved=true;return {ok:true};}
+      return {accounts:[{id:'own',name:'測試 LINE 名稱',nameSource:'LINE 名稱',relationship:'本人',mine:true},...(window.peerRemoved?[]:[{id:'peer',name:'p***@example.com',nameSource:'Email',relationship:'其他監護人',mine:false}])]};
+    }
+    if(name==='coursePortalLessonHistory')return new Promise(resolve=>window.historyResolvers.push(resolve));
+    if(input.section==='contact')return {fromDate:'2026-08-01',contactBook:[{studentId:input.studentId,id:'post',date:'2026-09-10',text:'練習內容',images:[]}]};
+    if(input.section==='overview')return {selectedStudentId:input.studentId||'a',students:[{id:'a',name:'測試甲',accessStatus:'active'},{id:'b',name:'測試乙',accessStatus:'active'}],bindings:[window.savedReminders],teachers:[{teacherId:'t',teacherName:'老師'}],upcoming:[{date:'2026-09-12',startTime:'12:00',endTime:'13:00',studentIds:[input.studentId||'a'],teacherName:'老師',subjectName:'鋼琴'}],periods:[],attendance:[],contactBook:[],tuitionPayment:{requests:[]}};
+    throw new Error(name);
+   }};
+ });
+ // Shared view must exist before the inline boot code.
+ await page.addInitScript({content:fs.readFileSync(path.join(root,'course-history-view.js'),'utf8')});
+ await page.goto('http://portal.test/student-course-portal.html');
+ await page.locator('#appView').waitFor({state:'visible'});
+ assert.match(await page.locator('#upcomingCourseList').textContent(),/2026-09-12/);
+ assert.equal(await page.evaluate(()=>calls.filter(x=>x.section==='contact').length),0);
+ assert.equal(await page.evaluate(()=>historyResolvers.length),1);
+ await page.evaluate(()=>historyResolvers.shift()({subjects:[{id:'p',name:'鋼琴'}],periods:[{id:'period',subjectId:'p',subjectName:'鋼琴',periodNo:3,lessonCount:4,usedCount:1,expectedAmount:3000,paidAmount:0,outstandingAmount:3000,transactions:[]}],lessons:[{periodId:'period',date:'2026-09-01',status:'attended'}],tuitionPayment:{requests:[{id:'due',studentId:'a',subjectId:'p',targetPeriodId:'period',status:'payment_due',active:true,expectedAmount:3000}]}}));
+ await page.locator('.period-card').waitFor();
+ assert.equal(await page.locator('.lesson-slot').count(),4);
+ assert.equal(await page.locator('[data-pay-tuition]').count(),1);
+ await page.locator('[data-pay-tuition]').click();
+ await page.locator('#tuitionPaymentModal').waitFor({state:'visible'});
+ assert((await page.locator('#transferDate').boundingBox()).height>=52);
+ assert((await page.locator('#submitTuitionPayment').boundingBox()).height>=52);
+ await page.locator('.tuition-payment-qr img').waitFor({state:'visible'});
+ await page.locator('.tuition-bank-card').screenshot({path:path.join(root,'../parent-payment-bank.png')});
+ await page.locator('#transferDate').scrollIntoViewIfNeeded();
+ await page.screenshot({path:path.join(root,'../parent-payment-fields.png')});
+ await page.locator('[name=paymentMethod][value=onsite]').check();
+ assert.equal(await page.locator('#tuitionSubmitArea').isVisible(),false);
+ assert.equal(await page.locator('#bankTransferPanel').isVisible(),false);
+ await page.evaluate(()=>document.getElementById('tuitionPaymentForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ assert.equal(await page.evaluate(()=>calls.filter(x=>x.name==='coursePortalStudentSubmitTuitionPayment').length),0);
+ await page.locator('#onsitePaymentPanel [data-close-tuition-payment]').click();
+ await page.locator('[data-tab=reminders]').click();
+ assert.equal(await page.locator('[name=reminderContactBook]').isChecked(),true);
+ assert.equal(await page.locator('[name=reminderPayment]').isChecked(),true);
+ assert.equal(await page.locator('#reminderForm .switch-row small').first().isVisible(),true);
+ await page.locator('[name=reminderContactBook]').uncheck();
+ await page.locator('#reminderForm button[type=submit]').click();
+ await page.waitForFunction(()=>calls.some(x=>x.name==='coursePortalUpdateStudentReminder'));
+ assert.deepEqual(await page.evaluate(()=>savedReminders),{studentId:'a',reminderContactBook:false,reminderPayment:true});
+ await page.waitForFunction(()=>historyResolvers.length===1);
+ assert.equal(await page.locator('[name=reminderContactBook]').isChecked(),false);
+ await page.locator('#manageBindings').click();
+ await page.getByText('測試 LINE 名稱',{exact:true}).waitFor();
+ assert.equal(await page.locator('#bindingAccounts').getByText('Email',{exact:true}).isVisible(),true);
+ assert((await page.locator('[data-remove-binding]').boundingBox()).height>=52);
+ await page.screenshot({path:path.join(root,'../parent-reminders-bindings.png'),fullPage:true});
+ page.on('dialog',dialog=>dialog.accept());
+ await page.locator('[data-remove-binding]').click();
+ await page.waitForFunction(()=>peerRemoved===true);
+ assert.equal(await page.evaluate(()=>calls.find(x=>x.action==='remove').confirmed),true);
+ assert.deepEqual(errors,[]);
+ const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1);
+ assert.equal(overflow,false);
+ await page.screenshot({path:path.join(root,'../portal-loading-mobile.png'),fullPage:true});
+ console.log(JSON.stringify({webkitMobile:true,largeControls:true,onsiteNeverSubmits:true,defaultReminders:true,savedOptOutPreserved:true,accountSources:true,peerRemovalConfirmed:true,overflow,errors}));
+ await browser.close();
+})().catch(error=>{console.error(error.message);process.exit(1);});

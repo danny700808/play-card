@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
 <link rel="stylesheet" href="course-history-view.css?v=20260909-parent-payment-v1">
-<link rel="stylesheet" href="student-parent-layout.css?v=20260909-parent-reminders-v1">
+<link rel="stylesheet" href="student-parent-layout.css?v=20260910-parent-payment-v2">
 </head>
 <body class="clean-portal-ui student-parent-app">
   <main class="portal-shell">
@@ -95,12 +95,12 @@
         <div class="list" id="contactBookList"></div><button class="btn" type="button" id="olderContactBook" hidden>查看更早的聯絡簿</button>
       </section>
       <section class="card tab-panel hidden student-sensitive" data-panel="reminders">
-        <div class="section-title"><div><h2>LINE 提醒</h2><p class="muted">每位家長可各自決定是否接收，不會影響其他家長。</p></div></div>
-        <button class="btn" type="button" id="manageBindings">綁定帳號管理</button><div id="bindingAccounts" class="stack hidden"></div>
+        <div class="section-title"><div><h2>LINE 提醒</h2><p class="muted">提醒設定只適用於您目前的帳號。</p></div></div>
+        <div class="binding-management"><button class="btn" type="button" id="manageBindings">查看已綁定帳號</button><p>查看哪些帳號可以存取這位學生的資料，也可解除其他帳號的綁定。</p><div id="bindingAccounts" class="stack hidden"></div></div>
         <form class="stack" id="reminderForm">
-          <label class="switch-row"><span><strong>不接收聯絡簿提醒</strong><small class="muted">勾選後不接收通知，請自行至課堂聯絡簿查看</small></span><input type="checkbox" name="reminderContactBook"></label>
-          <label class="switch-row"><span><strong>未繳費提醒</strong><small class="muted">當天有課且本期尚未繳清時，早上 9 點提醒</small></span><input type="checkbox" name="reminderPayment"></label>
-          <button class="btn primary" type="submit">儲存我的提醒設定</button>
+          <label class="switch-row"><span><strong>聯絡簿提醒</strong><small class="muted">老師新增聯絡簿內容時通知</small></span><input type="checkbox" name="reminderContactBook" checked></label>
+          <label class="switch-row"><span><strong>未繳費提醒</strong><small class="muted">當天有課且本期尚未繳清時，早上 9 點提醒</small></span><input type="checkbox" name="reminderPayment" checked></label>
+          <p class="reminder-help">預設開啟提醒；如不需要，請取消勾選，再按儲存。</p><div class="parent-submit-area"><button class="btn primary" type="submit">儲存提醒設定</button></div>
         </form>
       </section>
     </section>
@@ -116,11 +116,11 @@
           <div class="payment-method-grid">
             <label class="payment-method-choice">
               <input type="radio" name="paymentMethod" value="bank_transfer" checked>
-              <span><strong>轉帳繳費</strong><small>匯款後上傳付款截圖</small></span>
+              <span><strong>轉帳繳費</strong><small>依下方帳戶轉帳後，再填寫匯款資料</small></span>
             </label>
             <label class="payment-method-choice">
               <input type="radio" name="paymentMethod" value="onsite">
-              <span><strong>現場繳費</strong><small>到柚子樂器門市付款</small></span>
+              <span><strong>到教室付款</strong><small>到教室時繳費，由教室確認收款</small></span>
             </label>
           </div>
           <section class="stack" id="bankTransferPanel">
@@ -131,23 +131,23 @@
               <div class="bank-line"><span>分行</span><strong id="tuitionBankBranch">—</strong></div>
               <div class="bank-line"><span>戶名</span><strong id="tuitionBankAccountName">—</strong></div>
               <div class="bank-line account-line"><span>帳號</span><strong id="tuitionBankAccount">—</strong></div>
-              <button class="btn soft" id="copyTuitionAccount" type="button">複製帳號</button>
+              <button class="btn soft" id="copyTuitionAccount" type="button">複製帳號</button><figure class="tuition-payment-qr"><div class="payment-qr-frame"><img src="assets/tuition-payment-account-20260910.jpg" alt="柚子樂器收款 QR Code" loading="lazy"></div><figcaption>收款 QR Code</figcaption><a href="assets/tuition-payment-account-20260910.jpg" target="_blank" rel="noopener">開啟收款帳戶圖片</a></figure>
             </div>
-            <div class="grid two">
-              <div class="field"><label>匯款日期</label><input type="date" name="transferDate" required></div>
-              <div class="field"><label>匯款帳號末五碼</label><input type="text" name="transferLast5" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="請輸入 5 碼" required></div>
+            <section class="transfer-details"><h3>轉帳完成後，請填寫</h3><p>以下請填寫您這次的匯款資料，供教室核對。</p><div class="grid two">
+              <div class="field"><label for="transferDate">匯款日期</label><input type="date" id="transferDate" name="transferDate" required></div>
+              <div class="field"><label for="transferLast5">匯出帳號末五碼</label><input type="text" id="transferLast5" name="transferLast5" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="請輸入 5 碼" required></div>
             </div>
             <div class="field">
-              <label>上傳匯款截圖</label>
+              <label for="tuitionReceiptFile">上傳匯款截圖</label>
               <input type="file" id="tuitionReceiptFile" accept="image/*">
               <small class="muted">只供主管核對款項，不會公開顯示。</small>
             </div>
-            <img class="tuition-receipt-preview hidden" id="tuitionReceiptPreview" alt="匯款截圖預覽">
+            <img class="tuition-receipt-preview hidden" id="tuitionReceiptPreview" alt="匯款截圖預覽"></section>
           </section>
           <section class="notice hidden" id="onsitePaymentPanel">
-            已登記選擇現場繳費後，請至柚子樂器門市完成付款。實際收到款項並經主管確認後，才會顯示為繳費完成。
+            <h3>到教室付款</h3><p>請於到教室時繳費，由教室確認收款。您不需要先送出付款申請；教室確認收款後，系統才會顯示已繳費。</p><button class="btn soft" type="button" data-close-tuition-payment>我知道了</button>
           </section>
-          <button class="btn primary" type="submit" id="submitTuitionPayment">送出付款確認</button>
+          <div class="parent-submit-area" id="tuitionSubmitArea"><p>確認匯款資料與截圖後再送出，教室將協助核對款項。</p><button class="btn primary" type="submit" id="submitTuitionPayment">送出匯款資料</button></div>
         </form>
       </div>
     </section>
@@ -334,9 +334,9 @@
       const method = document.querySelector('[name="paymentMethod"]:checked').value;
       document.getElementById('bankTransferPanel').classList.toggle('hidden', method !== 'bank_transfer');
       document.getElementById('onsitePaymentPanel').classList.toggle('hidden', method !== 'onsite');
-      document.getElementById('submitTuitionPayment').textContent = method === 'bank_transfer'
-        ? '送出付款確認'
-        : '登記現場繳費';
+      document.getElementById('tuitionSubmitArea').hidden = method !== 'bank_transfer';
+      document.getElementById('submitTuitionPayment').disabled = method !== 'bank_transfer';
+      document.querySelectorAll('#bankTransferPanel input').forEach(input => { input.disabled = method !== 'bank_transfer'; });
     }
 
     function openTuitionPayment(id) {
@@ -482,7 +482,7 @@
       else document.getElementById('contactBookList').textContent = '點選課堂聯絡簿後讀取近期內容。';
       const binding = data.bindings.find((row) => row.studentId === studentId) || {};
       document.querySelector('[name="reminderPayment"]').checked = binding.reminderPayment !== false;
-      document.querySelector('[name="reminderContactBook"]').checked = binding.reminderContactBook === false;
+      document.querySelector('[name="reminderContactBook"]').checked = binding.reminderContactBook !== false;
     }
 
     async function showBindingAccounts() {
@@ -492,7 +492,7 @@
         const owner = studentId;
         const result = await P.call('coursePortalStudentBindingAccounts', { sessionToken: token, studentId: owner });
         if (owner !== studentId) return;
-        host.innerHTML = result.accounts.map(row => `<div class="card"><strong>${P.escapeHtml(row.name)}</strong> · ${P.escapeHtml(row.relationship)} ${row.mine ? '（您目前的帳號）' : `<button type="button" class="btn danger" data-remove-binding="${P.escapeHtml(row.id)}">解除綁定</button>`}</div>`).join('');
+        host.innerHTML = result.accounts.map(row => `<div class="card binding-account"><div><span class="binding-name-source">${P.escapeHtml(row.nameSource || '帳號名稱')}</span><strong>${P.escapeHtml(row.name)}</strong><span>與學生關係：${P.escapeHtml(row.relationship)}</span></div>${row.mine ? '<span class="binding-current">您目前的帳號</span>' : `<button type="button" class="btn danger" data-remove-binding="${P.escapeHtml(row.id)}">解除綁定</button>`}</div>`).join('');
       } catch (error) { host.textContent = error.message; }
     }
     document.getElementById('manageBindings').addEventListener('click', showBindingAccounts);
@@ -634,6 +634,7 @@
       event.preventDefault();
       const form = event.currentTarget;
       const method = form.elements.paymentMethod.value;
+      if (method !== 'bank_transfer') return;
       if (method === 'bank_transfer' && !tuitionReceiptDataUrl) {
         P.toast('請先上傳匯款截圖。', 'error');
         return;
@@ -676,7 +677,7 @@
           sessionToken: token,
           studentId,
           reminderPayment: event.currentTarget.elements.reminderPayment.checked,
-          reminderContactBook: !event.currentTarget.elements.reminderContactBook.checked
+          reminderContactBook: event.currentTarget.elements.reminderContactBook.checked
         });
         P.toast('提醒設定已儲存。');
         await load(studentId);

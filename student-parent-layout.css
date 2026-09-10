@@ -1,1 +1,38 @@
 .student-parent-app .student-identity-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;box-sizing:border-box}.student-identity-main{min-width:0}.student-identity-label{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}.student-parent-app #studentName{display:block;font-size:20px;font-weight:800;overflow-wrap:anywhere}.student-parent-app #studentSelectField{min-width:0;margin:0}.student-parent-app #studentSelect{width:100%;min-width:0;box-sizing:border-box;font-size:17px;font-weight:700;height:42px}.student-parent-app #addStudentBinding{margin:0;min-height:42px;padding:8px 10px;font-size:12px;white-space:nowrap}.student-parent-app .student-contact-row{gap:8px}.student-parent-app .student-contact-row span{font-size:12px}.student-parent-app .student-contact-row strong{font-size:15px}.student-parent-app .period-payment{grid-template-columns:minmax(0,1fr) 112px;gap:14px;padding:12px;align-items:center}.student-parent-app .period-payment-state{width:112px;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center}.student-parent-app .period-payment-state .badge{align-self:center;margin:0;font-size:12px}.student-parent-app .period-payment-state small{display:block;font-size:11px;line-height:1.5;text-align:center}.student-parent-app .period-payment-state .btn{box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;min-width:0;min-height:40px;height:auto;max-height:none;margin:2px 0 0;padding:8px;font-size:13px;line-height:1.3}.student-parent-app .period-payment-amount small{font-size:11px}
+.student-parent-app #tuitionPaymentModal .payment-method-choice{min-height:88px;padding:16px;gap:14px;box-sizing:border-box}
+.student-parent-app #tuitionPaymentModal .payment-method-choice strong{font-size:18px;line-height:1.5}
+.student-parent-app #tuitionPaymentModal .payment-method-choice small{font-size:14px;line-height:1.6}
+.student-parent-app #tuitionPaymentModal input[type=radio]{width:24px;height:24px;flex:0 0 24px}
+.student-parent-app .transfer-details{padding:18px;background:#fff;border:1px solid var(--line);border-radius:14px;margin-top:18px}
+.student-parent-app .transfer-details h3,.student-parent-app #onsitePaymentPanel h3{margin:0 0 8px;font-size:20px}
+.student-parent-app .transfer-details p,.student-parent-app .parent-submit-area p,.student-parent-app #onsitePaymentPanel p{font-size:15px;line-height:1.7;margin:0 0 16px;color:var(--muted)}
+.student-parent-app .transfer-details .grid{grid-template-columns:minmax(0,1fr);gap:18px}
+.student-parent-app .transfer-details .field{min-width:0;margin:0 0 18px}
+.student-parent-app .transfer-details label{display:block;font-size:16px;font-weight:700;margin-bottom:8px}
+.student-parent-app #tuitionPaymentModal .transfer-details input{width:100%;min-width:0;min-height:54px;box-sizing:border-box;font-size:17px;padding:12px}
+.student-parent-app #tuitionPaymentModal input[type=date]{display:block;max-width:100%;appearance:none}
+.student-parent-app #tuitionPaymentModal input[type=file]{font-size:15px;white-space:normal}
+.student-parent-app #tuitionPaymentModal input::file-selector-button{padding:10px 12px;margin-right:8px;border:0;border-radius:8px;background:var(--green-soft);font-size:15px}
+.student-parent-app .parent-submit-area{margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+.student-parent-app .parent-submit-area[hidden]{display:none}
+.student-parent-app #tuitionPaymentModal .btn,.student-parent-app #reminderForm .btn,.student-parent-app #manageBindings,.student-parent-app .binding-account .btn{min-height:52px;padding:13px 18px;font-size:16px;line-height:1.5;box-sizing:border-box}
+.student-parent-app .parent-submit-area .btn{width:100%}
+.student-parent-app .tuition-payment-qr{margin:22px 0 0;display:grid;justify-items:center;gap:10px;text-align:center;font-size:15px}
+.student-parent-app .payment-qr-frame{position:relative;width:min(85%,250px);aspect-ratio:1;overflow:hidden;background:#fff;border:14px solid #fff;border-radius:8px}
+.student-parent-app .payment-qr-frame img{position:absolute;width:226.666667%;max-width:none;height:auto;left:-62.222222%;top:-12.444444%}
+.student-parent-app .tuition-payment-qr a{display:block;padding:10px;line-height:1.5;color:var(--green);text-decoration:underline}
+.student-parent-app .binding-management{padding-bottom:22px;margin-bottom:22px;border-bottom:1px solid var(--line)}
+.student-parent-app .binding-management>p,.student-parent-app .reminder-help{font-size:15px;line-height:1.7;color:var(--muted)}
+.student-parent-app #manageBindings{width:100%}
+.student-parent-app #reminderForm .switch-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px;min-height:88px;box-sizing:border-box;cursor:pointer}
+.student-parent-app #reminderForm .switch-row strong{font-size:18px;line-height:1.5}
+.student-parent-app #reminderForm .switch-row small{display:block!important;font-size:14px;line-height:1.6;margin-top:6px}
+.student-parent-app #reminderForm input[type=checkbox]{width:26px;height:26px;flex:0 0 26px;accent-color:var(--green)}
+.student-parent-app .binding-account{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px}
+.student-parent-app .binding-account>div{display:grid;gap:6px;min-width:0;overflow-wrap:anywhere}
+.student-parent-app .binding-account strong{font-size:17px;line-height:1.5}
+.student-parent-app .binding-account span{font-size:14px;line-height:1.5}
+.student-parent-app .binding-name-source{color:var(--muted)}
+.student-parent-app .binding-current{color:var(--green);flex-shrink:0}
+.student-parent-app .binding-account .btn{flex-shrink:0}
+@media(max-width:420px){.student-parent-app .binding-account{align-items:stretch;flex-direction:column}.student-parent-app .binding-current{align-self:flex-start}}
