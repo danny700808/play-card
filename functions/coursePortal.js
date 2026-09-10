@@ -575,8 +575,11 @@ function sourceActive(row) {
   ].includes(clean(value).toLowerCase());
 }
 
-async function mergeStudentProfileOverrides(rows) {
-  const snapshot = await db.collection('coursePortalStudentProfiles').get();
+async function mergeStudentProfileOverrides(rows, selectedIds) {
+  const collection = db.collection('coursePortalStudentProfiles');
+  const snapshot = Array.isArray(selectedIds)
+    ? {docs: (await Promise.all(selectedIds.map(id => collection.doc(id).get()))).filter(doc => doc.exists)}
+    : await collection.get();
   const overrides = new Map(snapshot.docs.map((doc) => [doc.id, doc.data() || {}]));
   const allRows = rows.slice();
   const known = new Set(rows.map(sourceId));
@@ -750,6 +753,36 @@ async function mirrorRowsUncached(type) {
     rows = mergePortalTuitionRows(rows, portal.periods, portal.transactions, portal.receipts);
   }
   return projectCourseGroups(type, rows, await readCourseGroups());
+}
+
+// Fetch only the identities needed by a teacher view; never scan all profiles.
+async function mirrorProfilesByIds(type, values) {
+  if (!['students', 'teachers'].includes(type)) throw new Error('Unsupported profile type');
+  const ids = [...new Set(values.map(clean).filter(Boolean))];
+  if (!ids.length) return [];
+  return memoPortalRead('profiles:' + JSON.stringify([type, ids.slice().sort()]), async () => {
+    const collection = db.collection(MIRROR[type]);
+    const chunks = [];
+    for (let offset = 0; offset < ids.length; offset += 30) chunks.push(ids.slice(offset, offset + 30));
+    const snapshots = await Promise.all(chunks.map(chunk => collection.where('source.id', 'in', chunk).get()));
+    const rows = snapshots.flatMap(snapshot => snapshot.docs)
+      .filter(doc => (doc.data() || {}).sourceActive !== false)
+      .map(doc => Object.assign({__id:doc.id}, jsonValue((doc.data() || {}).source) || {}));
+    // Older rows may have only the document id, while native profiles may have no mirror row.
+    const found = new Set(rows.map(sourceId));
+    const missing = ids.filter(id => !found.has(id));
+    const legacy = await Promise.all(missing.map(id => collection.doc(id).get()));
+    legacy.filter(doc => doc.exists && (doc.data() || {}).sourceActive !== false).forEach(doc => {
+      rows.push(Object.assign({__id:doc.id}, jsonValue((doc.data() || {}).source) || {}));
+    });
+    let merged = rows;
+    if (type === 'students') merged = await mergeStudentProfileOverrides(rows, ids);
+    else {
+      const assignments = await Promise.all(ids.map(id => db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION).doc(id).get()));
+      merged = mergeTeacherRows(rows, assignments.filter(doc => doc.exists));
+    }
+    return projectCourseGroups(type, merged, await readCourseGroups()).filter(row => ids.includes(sourceId(row)));
+  });
 }
 
 async function mirrorRowsIncludingInactive(type) {
@@ -4777,6 +4810,7 @@ async function historyStudentEvents(studentId, startDate, endDate) {
 }
 
 async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
+  const teacherHome = options.teacherHome === true && Boolean(ownTeacherId);
   const irregularSnapshot = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
   const irregularModes = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const historyStudentId = clean(options.historyStudentId);
@@ -4784,8 +4818,8 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
   const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions, mirrorSettingsSnapshot] = await Promise.all([
     mirrorRows('rooms'),
     mirrorRows('subjects'),
-    mirrorRows('students'),
-    mirrorRows('teachers'),
+    teacherHome ? Promise.resolve([]) : mirrorRows('students'),
+    teacherHome ? mirrorProfilesByIds('teachers', [ownTeacherId]) : mirrorRows('teachers'),
     historyStudentId ? historyStudentEvents(historyStudentId, startDate, endDate) : mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true }),
     mirrorRows('fixedCourses').then(historyCourses),
     mirrorRowsByDateRange('temporaryCourses', startDate, endDate).then(historyCourses),
@@ -4800,6 +4834,12 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
     students: indexById(students),
     teachers: indexById(teachers)
   };
+  const ownProfileIds = teacherHome ? [...new Set([
+    ...fixed, ...temporary, ...events,
+    ...changes.map(doc => (doc.data() || {}).event).filter(Boolean),
+    ...irregularModes
+  ].filter(row => eventTeacherId(row) === ownTeacherId).flatMap(eventStudentIds))] : [];
+  const ownProfiles = teacherHome ? await mirrorProfilesByIds('students', ownProfileIds) : null;
   const livePortalSource = (row) => /^course-portal/i.test(clean(row && row.source));
   // 入口建立的資料以 live change 為唯一準據；同步進 mirror 的舊副本一律不再
   // 參與即時占用，這樣取消後不會等下一次音教雲同步才釋出。
@@ -5118,6 +5158,10 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
     validPortalTime(eventEnd(row)) &&
     timeMinutes(eventEnd(row)) > timeMinutes(eventStart(row))
   );
+  if (ownProfiles) {
+    students.push(...await ownProfiles);
+    maps.students = indexById(students);
+  }
   const resourceEvents = validBase.map((row) => resourceEvent(row, maps, recurringLineages));
   return {
     rooms,
@@ -5131,8 +5175,8 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
     maps,
     resourceEvents,
     irregularModes,
-    resourceConflicts: historyStudentId ? [] : scheduleResourceConflicts(resourceEvents),
-    events: historyStudentId ? [] : validBase.map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
+    resourceConflicts: historyStudentId || teacherHome ? [] : scheduleResourceConflicts(resourceEvents),
+    events: historyStudentId ? [] : validBase.filter(row => !teacherHome || eventTeacherId(row) === ownTeacherId).map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
   };
 }
 
@@ -5151,7 +5195,7 @@ async function teacherPortalData(data) {
       adjustments:monthly.teacherAdjustments.filter(row => eventTeacherId(row) === session.teacherId)};
   }
   const [bundle, roomSettingsSnapshot, attendanceCancellationSnapshot] = await Promise.all([
-    scheduleBundle(start, end, session.teacherId),
+    scheduleBundle(start, end, session.teacherId, {teacherHome:true}),
     db.collection('coursePortalRoomSettings').get(),
     db.collection(ATTENDANCE_CANCELLATIONS).where('teacherId', '==', session.teacherId).get()
   ]);
@@ -5229,11 +5273,7 @@ async function teacherPortalData(data) {
         .concat(firstArray(room, ['allowedSubjectIds', 'subjectIds']))
     })),
     subjects: bundle.subjects.map((subject) => ({ id: sourceId(subject), name: clean(subject.name) })),
-    events: bundle.events.map((row) =>
-      row.teacherId === session.teacherId
-        ? (ownEvents.find((item) => item.id === row.id) || row)
-        : row
-    ),
+    events: ownEvents,
     irregularCourses: bundle.irregularModes.filter(row => row.teacherId === session.teacherId && (!row.resumedFrom || row.resumedFrom > currentTaipeiDay())),
     roster
   };
@@ -5597,14 +5637,15 @@ async function teacherSlotOptions(data) {
     return {ok:true, targetDate, targetStartTime, endTime, dates, rooms};
   }
   const today = currentTaipeiDay();
-  const candidateEnd = portalMaximumAdvanceDate();
+  const candidateStart = [today, addDays(targetDate, -7)].sort()[1];
+  const candidateEnd = [addDays(candidateStart, 13), portalMaximumAdvanceDate()].sort()[0];
   const [candidateBundle, policy, roomSettingsSnapshot, activeChangeSnapshot] = await Promise.all([
-    scheduleBundle(today, candidateEnd, session.teacherId),
+    scheduleBundle(candidateStart, candidateEnd, session.teacherId),
     rentalPolicySettings(),
     db.collection('coursePortalRoomSettings').get(),
     db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
   ]);
-  const targetBundle = targetDate >= today && targetDate <= candidateEnd
+  const targetBundle = targetDate >= candidateStart && targetDate <= candidateEnd
     ? candidateBundle
     : await scheduleBundle(targetDate, targetDate, session.teacherId);
   const roomSettingsMap = {};

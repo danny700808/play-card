@@ -10,8 +10,8 @@
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v4';
-  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.overlap1.';
-  const CACHE_TTL = 90 * 1000;
+  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.ownWeek2.';
+  const CACHE_TTL = 15 * 60 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
   const TAIPEI_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
@@ -987,6 +987,11 @@
     showBound(true);
   }
 
+  function showDataFreshness(text) {
+    const node = document.getElementById('teacherDataFreshness');
+    if (node) { node.textContent = text || ''; node.hidden = !text; }
+  }
+
   let dataRequestVersion = 0;
   async function fetchData(force) {
     const requestVersion = ++dataRequestVersion;
@@ -1013,23 +1018,29 @@
     if (cached) {
       mergeData(cached);
       renderAll();
+      showDataFreshness('正在更新課表，目前顯示上次讀取的資料。');
       invoke('coursePortalTeacherData', request).then((fresh) => {
         if (requestVersion !== dataRequestVersion) return;
         mergeData(fresh);
         writeCache(weekStart, payrollMonth, data);
         renderAll();
+        showDataFreshness('');
       }).catch((error) => {
+        if (requestVersion !== dataRequestVersion) return;
+        showDataFreshness('課表更新未完成，目前顯示上次資料，請稍後重新整理。');
         if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
           PortalAuth.invalidateSession('teacher', error);
         }
       });
       return;
     }
+    showDataFreshness('正在讀取課表…');
     const result = await invoke('coursePortalTeacherData', request);
     if (requestVersion !== dataRequestVersion) return;
     mergeData(result);
     writeCache(weekStart, payrollMonth, data);
     renderAll();
+    showDataFreshness('');
   }
 
   async function load(force) {
