@@ -92,7 +92,7 @@ test('extension version, download links, cache keys and CI package contract stay
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'verify-operations-live-search.yml'), 'utf8');
   const handoffCache = '20260830-shopee-native-description-v2';
   const operationsCssCache = '20260906-product-video-brand-v1';
-  const operationsJsCache = '20260909-pos-speed-v1';
+  const operationsJsCache = '20260911-product-archive-v1';
 
   assert.equal(manifest.version, version);
   assert.equal(packageJson.version, version);
