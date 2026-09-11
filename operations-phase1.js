@@ -306,6 +306,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     productSearch:'',
     productFilter:'all',
     productRecentOnly:false,
+    productArchivedOnly:false,
     productSort:'sku',
     productDisplayMode:'image',
     productSeries:'all',
@@ -868,7 +869,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       return value!=null?value:sharedOnlinePrice;
     }
     return {
-      docId:docId,sourceKey:clean(obj.sourceKey),sourceCollection:clean(obj.sourceCollection),sourceProductId:clean(obj.sourceProductId),sourceVariantId:clean(obj.sourceVariantId),
+      productArchived:obj.productArchived===true,docId:docId,sourceKey:clean(obj.sourceKey),sourceCollection:clean(obj.sourceCollection),sourceProductId:clean(obj.sourceProductId),sourceVariantId:clean(obj.sourceVariantId),
       internalSku:normalizeCode(firstValue(obj,['internalSku','sku','code','productCode','商品編號'])),barcode:clean(firstValue(obj,['barcode','ean','條碼'])),model:clean(firstValue(obj,['model','modelNo','型號'])),
       internalName:clean(firstValue(obj,['internalName','originalName','name','商品名稱'])),originalName:clean(firstValue(obj,['originalName','internalName','name'])),onlineName:clean(obj.onlineName),
       imageUrl:safeUrl(obj.imageUrl),imageUrls:Array.isArray(obj.imageUrls)?obj.imageUrls.map(safeUrl).filter(Boolean):[],parentImageUrls:Array.isArray(obj.parentImageUrls)?obj.parentImageUrls.map(safeUrl).filter(Boolean):[],variantImageUrls:Array.isArray(obj.variantImageUrls)&&obj.variantImageUrls.length?obj.variantImageUrls.map(safeUrl).filter(Boolean):[safeUrl(obj.variantImageUrl)].filter(Boolean),completedListingImageUrls:Array.isArray(obj.completedListingImageUrls)?obj.completedListingImageUrls.map(safeUrl).filter(Boolean):[],imageSource:clean(obj.imageSource),onlineUrl:safeUrl(obj.onlineUrl),brand:clean(obj.brand),category:clean(obj.category),variantName:clean(obj.variantName),easyStoreVariantImageId:clean(obj.easyStoreVariantImageId),easyStoreProductVariantCount:Math.max(0,Number(obj.easyStoreProductVariantCount)||0),easyStoreHasMultipleVariants:obj.easyStoreHasMultipleVariants===true,easyStoreHasVariantImage:obj.easyStoreHasVariantImage===true||Array.isArray(obj.variantImageUrls)&&obj.variantImageUrls.length>0,easyStoreVariantImageStatus:clean(obj.easyStoreVariantImageStatus),
@@ -2393,6 +2394,7 @@ function renderOverviewV7(){
   function productFiltered(){
     const term=lower(state.productSearch); let rows=catalogRowsInSkuOrder().filter(function(p){
       if(!hasListingSku(p.sku))return false;
+      if(!!(p.internal&&p.internal.productArchived)!==!!state.productArchivedOnly)return false;
       if(state.productRecentOnly&&!productAppearsInRecentListing(p))return false;
       if(state.productSeries!=='all'&&!clean(p.sku).startsWith(state.productSeries))return false;
       if(term&&!catalogMatchesSearch(p,term))return false;
@@ -2988,9 +2990,9 @@ function renderOverviewV7(){
     const editingProduct=state.productEditId&&state.productEditId!=='__new__'?catalogById(state.productEditId):null;
     const editorHtml=state.productEditId?productFormHtml(editingProduct):'';
     const previewHtml=renderProductPreviewModal();
-    const recentCount=state.catalog.filter(productAppearsInRecentListing).length,queueCount=productListingQueueRows().length+productMediaQueueRows().length;
+    const recentCount=state.catalog.filter(function(p){return !(p.internal&&p.internal.productArchived)&&productAppearsInRecentListing(p);}).length,queueCount=productListingQueueRows().length+productMediaQueueRows().length;
     const productSortHtml='<select class="ops-select ops-product-sort-select" id="productSort"><option value="sku">排序：SKU 預設</option><option value="missing-variant-image"'+(state.productSort==='missing-variant-image'?' selected':'')+'>官網缺細項圖優先</option><option value="price"'+(state.productSort==='price'?' selected':'')+'>依價格</option><option value="stock"'+(state.productSort==='stock'?' selected':'')+'>依數量</option><option value="ready-to-list"'+(state.productSort==='ready-to-list'?' selected':'')+'>有庫存未上架</option></select>';
-    return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">成本總額：<b>'+money(inventoryValue)+'</b></div></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft" data-action="product-listing-queue-open">待網路上架商品'+(queueCount?'（'+formatNumber(queueCount)+'）':'')+'</button><button class="ops-button soft '+(state.productRecentOnly?'active':'')+'" data-action="product-recent">新增未上架'+(recentCount?'（'+formatNumber(recentCount)+'）':'')+'</button><button class="ops-button soft" data-action="product-platform-audit">檢測全部網路商品</button></div></div>'+productSeriesTabs()+'<div class="ops-product-toolbar"><input class="ops-input" id="productSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'">'+productSortHtml+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+'<div id="productSearchResults">'+productSearchResultsHtml()+'</div></section>'+previewHtml;
+    return '<section class="ops-card ops-product-section"><div class="ops-product-title-row"><div class="ops-product-title-group"><h2>商品庫存</h2><div class="ops-product-title-stat">成本總額：<b>'+money(inventoryValue)+'</b></div></div><div class="ops-card-actions"><button class="ops-button primary" data-action="product-new">新增商品</button><button class="ops-button soft" data-action="product-listing-queue-open">待網路上架商品'+(queueCount?'（'+formatNumber(queueCount)+'）':'')+'</button><button class="ops-button soft '+(state.productRecentOnly?'active':'')+'" data-action="product-recent">新增未上架'+(recentCount?'（'+formatNumber(recentCount)+'）':'')+'</button><button class="ops-button soft" data-action="product-archived-toggle">'+(state.productArchivedOnly?'返回商品清單':'查看已下架')+'</button><button class="ops-button soft" data-action="product-platform-audit">檢測全部網路商品</button></div></div>'+productSeriesTabs()+'<div class="ops-product-toolbar"><input class="ops-input" id="productSearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" enterkeyhint="search" spellcheck="false" placeholder="搜尋商品名稱或 SKU" value="'+attr(state.productSearch)+'">'+productSortHtml+displayModeToggleHtml('product-display-mode',state.productDisplayMode,'商品顯示方式')+'</div>'+mobileSearchPadHtml('productSearch')+editorHtml+'<div id="productSearchResults">'+productSearchResultsHtml()+'</div></section>'+previewHtml;
   }
 
   function estimateFifoCostForProduct(p,qty){if(!p||!p.internal)return 0;try{return consumeFifo(p.internal,qty).costTotal;}catch(err){return qty*Number(p.nextFifoCost||p.averageCost||0);}}
@@ -4086,6 +4088,19 @@ function ensureSalesClock(){
     const reminders=/(木製|櫸木|烏金木|實木)/.test(name)?'天然木材的木紋與色澤可能略有差異，屬正常現象。':'螢幕顯示可能造成些微色差，實際顏色以收到商品為準。';
     return [name,'',intro,'','商品規格','商品編號：'+(sku||'依商品標示'),'','注意事項','• '+reminders].join('\n');
   }
+  async function toggleProductArchived(id){
+    const p=catalogById(id);if(!p||!p.internal)throw new Error('找不到商品主檔');
+    const archived=!p.internal.productArchived;
+    const title=archived?'下架商品':'恢復商品';
+    const message=(p.originalName||p.name)+'（'+p.sku+'）'+(archived?'將從營運中心一般商品清單隱藏，可在「查看已下架」恢復。此操作不會下架網路平台商品。':'將恢復顯示在一般商品清單。')+(productEditorHasUnsavedChanges()?'目前尚未儲存的編輯將放棄。':'');
+    if(!await confirmAction(title,message,title))return;
+    await state.db.collection(COLLECTIONS.products).doc(id).update({productArchived:archived,productArchivedAt:serverTimestamp(),productArchivedBy:userLabel()});
+    p.internal.productArchived=archived;
+    const internal=state.internalProducts.find(function(row){return row.docId===id;});if(internal)internal.productArchived=archived;
+    clearProductEditorState();mergeCatalog();renderKeepingViewport();
+    toast(archived?'商品已下架':'商品已恢復',p.sku,'success');
+    await writeAudit(title,'product',id,p.sku+'｜僅調整營運中心商品清單');
+  }
   function productFormHtml(p){
     const internal=p&&p.internal,avg=p&&p.averageCost,isNew=!p;
     const displayName=(p&&((p.originalName)||(p.onlineName)||(p.name)))||'新增商品';
@@ -4099,7 +4114,7 @@ function ensureSalesClock(){
     const preserved=['brand','model','barcode','category','status','note'].map(function(key){const value=internal&&Object.prototype.hasOwnProperty.call(internal,key)?internal[key]:p&&p[key];return '<input type="hidden" name="'+key+'" value="'+attr(value==null?(key==='status'?'active':''):value)+'">';}).join('');
     return '<section class="ops-inline-product-editor ops-product-editor-a" id="opsProductEditor"><form id="productForm" data-id="'+attr(p?p.docId:'')+'">'+preserved+'<input type="hidden" name="sharedOnlinePrice" value="'+attr(sharedOnlinePrice)+'">'
       +'<div class="ops-inline-product-header"><div><h3>'+escapeHtml(title)+'</h3>'+(p?'<div class="ops-inline-product-meta">SKU '+escapeHtml(p.sku||'未設定')+' ・ 庫存 '+escapeHtml(formatNumber(p.currentStock))+'</div>':'')+'</div>'
-      +'<div class="ops-card-actions"><button class="ops-button ghost" type="button" data-action="product-edit-cancel">取消編輯</button><button class="ops-button primary" type="submit">儲存商品</button></div></div>'
+      +'<div class="ops-card-actions"><button class="ops-button ghost" type="button" data-action="product-edit-cancel">取消編輯</button><button class="ops-button primary" type="submit">儲存商品</button>'+(p&&p.internal?'<button class="ops-button ghost" type="button" data-action="product-archive" data-id="'+attr(p.docId)+'">'+(p.internal.productArchived?'恢復商品':'下架商品')+'</button>':'')+'</div></div>'
       +'<div class="ops-inline-product-layout"><div class="ops-inline-product-media">'+productImagePanelHtml(p)+'</div><div class="ops-inline-product-fields">'
       +'<div class="ops-form-grid ops-product-identity-fields"><div class="ops-field"><label class="ops-required">SKU／商品編號</label><input class="ops-input" name="internalSku" value="'+attr((p&&p.sku)||'')+'" required></div><div class="ops-field ops-product-name-field"><label class="ops-required">商品名稱</label><input class="ops-input" name="internalName" value="'+attr((internal&&internal.internalName)||(p&&p.originalName)||(p&&p.onlineName)||'')+'" required></div></div>'
       +'<div class="ops-form-grid cols-4 ops-product-value-fields"><div class="ops-field"><label>進貨成本</label><input class="ops-input" type="number" min="0" step="0.01" name="latestPurchaseCost" value="'+attr(p&&p.latestPurchaseCost!=null?p.latestPurchaseCost:'')+'"></div><div class="ops-field"><label>平均成本</label><input class="ops-input" type="number" min="0" step="0.01" name="averageCost" value="'+attr(avg!=null?avg:'')+'"></div><div class="ops-field"><label>現有庫存</label><input class="ops-input" type="number" step="1" name="currentStock" value="'+attr(p&&p.currentStock!=null?p.currentStock:0)+'"></div><div class="ops-field"><label>安全庫存</label><input class="ops-input" type="number" min="0" step="1" name="safetyStock" value="'+attr(p&&p.safetyStock!=null?p.safetyStock:0)+'"></div></div>'
@@ -7202,7 +7217,7 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     }
     if(action==='product-recent'){
       if(!closeProductEditorForListChange())return;
-      state.productRecentOnly=!state.productRecentOnly;if(!state.productRecentOnly)state.productMergeSelection=[];state.productSeries='all';state.productFilter='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();
+      state.productArchivedOnly=false;state.productRecentOnly=!state.productRecentOnly;if(!state.productRecentOnly)state.productMergeSelection=[];state.productSeries='all';state.productFilter='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();
     }
     if(action==='product-inline-media-start'){
       const p=catalogById(el.dataset.id);if(!p)return;
@@ -7214,6 +7229,8 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='product-series'){if(!closeProductEditorForListChange())return;state.productRecentOnly=false;state.productSeries=el.dataset.series||'all';state.productFilter='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
     if(action==='product-low-stock'){if(!closeProductEditorForListChange())return;state.productRecentOnly=false;state.productFilter=state.productFilter==='low'?'all':'low';state.productSeries='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
     if(action==='product-display-mode'){if(!closeProductEditorForListChange())return;state.productDisplayMode=el.dataset.mode==='text'?'text':'image';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
+    if(action==='product-archive'){el.disabled=true;return toggleProductArchived(el.dataset.id).catch(function(error){toast('商品狀態尚未更新',errorMessage(error),'error');}).finally(function(){el.disabled=false;});}
+    if(action==='product-archived-toggle'){if(!closeProductEditorForListChange())return;state.productArchivedOnly=!state.productArchivedOnly;state.productRecentOnly=false;state.productSeries='all';state.productFilter='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
     if(action==='product-edit-cancel'){clearProductEditorState();return renderKeepingViewport();}
     if(action==='product-listing-case-open')return openProductListingCase(el.dataset.id);
     if(action==='product-platform-missing')return openProductListingCase(el.dataset.id);
