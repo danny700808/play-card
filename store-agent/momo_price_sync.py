@@ -62,10 +62,12 @@ def sync_targets(config, targets, logger, inventory_source, clock=None):
             if str(current.get('entpGoodsNo') or '').strip() != str(target.get('sku') or '').strip():
                 raise RuntimeError('MOMO 原廠編號與中央 SKU 不符，未送出改價')
             # The required list/market price comes from MOMO, never from the store price.
-            market = positive_integer(current.get('custPrice'))
             if positive_integer(current.get('salePrice')) == price:
                 item.update(status='same', message='MOMO 目前售價已相同')
             else:
+                if current.get('custPrice') is None:
+                    raise RuntimeError('MOMO 市價空白；改價 API 必填市價，需先指定市價處理方式')
+                market = positive_integer(current.get('custPrice'))
                 response = post(MODIFY, token, {'listItem': [{
                     'goodsCode': goods, 'goodsdtCode': variant, 'salePrice': price,
                     'custPrice': market, 'applyDate': now.strftime('%Y-%m-%d')
