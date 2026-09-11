@@ -1227,13 +1227,29 @@ async function loadPlatformLocalAgent(){
   }
   function normalizeProductMediaQueueRow(raw,docId){
     const source=raw&&typeof raw==='object'?raw:{},status=clean(source.mediaQueueStatus),kinds=Array.isArray(source.mediaQueueKinds)?source.mediaQueueKinds.map(clean).filter(Boolean):[];
-    return {productId:clean(source.productId||docId),productSku:clean(source.productSku),productName:clean(source.productName),productImageUrl:safeUrl(source.productImageUrl),mediaQueueStatus:PRODUCT_MEDIA_QUEUE_STATUSES.includes(status)?status:'',mediaQueueKinds:Array.from(new Set(kinds)),mediaQueuedAt:source.mediaQueuedAt||'',mediaQueueUpdatedAt:source.mediaQueueUpdatedAt||'',mediaQueueError:clean(source.mediaQueueError),mediaQueueRunId:clean(source.mediaQueueRunId),mediaBatchPosition:Number(source.mediaBatchPosition||0)};
+    return {productId:clean(source.productId||docId),productSku:clean(source.productSku),productName:clean(source.productName),productImageUrl:safeUrl(source.productImageUrl),mediaQueueStatus:PRODUCT_MEDIA_QUEUE_STATUSES.includes(status)?status:'',mediaQueueKinds:Array.from(new Set(kinds)),mediaQueuedAt:source.mediaQueuedAt||'',mediaQueueUpdatedAt:source.mediaQueueUpdatedAt||'',mediaQueueError:clean(source.mediaQueueError),mediaQueueRunId:clean(source.mediaQueueRunId),mediaQueueHeartbeatAt:source.mediaQueueHeartbeatAt||'',mediaBatchPosition:Number(source.mediaBatchPosition||0)};
   }
   function sortProductMediaQueue(rows){
     return (rows||[]).slice().sort(function(a,b){const aTime=dateFrom(a.mediaQueuedAt),bTime=dateFrom(b.mediaQueuedAt);return Number(a.mediaBatchPosition||0)-Number(b.mediaBatchPosition||0)||(aTime?aTime.getTime():0)-(bTime?bTime.getTime():0)||clean(a.productSku).localeCompare(clean(b.productSku),'zh-Hant');});
   }
   function sortProductListingQueue(rows){
     return (rows||[]).slice().sort(function(a,b){const aTime=dateFrom(a.batchQueuedAt),bTime=dateFrom(b.batchQueuedAt);return Number(a.batchPosition||0)-Number(b.batchPosition||0)||(aTime?aTime.getTime():0)-(bTime?bTime.getTime():0)||clean(a.productSku).localeCompare(clean(b.productSku),'zh-Hant');});
+  }
+  // media-resume-r5-20260911: expired handoffs remain resumable; successful receipts are never cleared.
+  function productMediaProcessingExpired(row){
+    if(!row||row.mediaQueueStatus!=='processing')return false;
+    const stamp=dateFrom(row.mediaQueueHeartbeatAt||row.mediaQueueUpdatedAt||row.mediaQueuedAt);
+    return !!stamp&&Date.now()-stamp.getTime()>6*60*60*1000;
+  }
+  async function recoverProductMediaHandoff(productId){
+    const ref=state.db.collection(COLLECTIONS.listingCases).doc(productId);
+    return state.db.runTransaction(async function(tx){
+      const doc=await tx.get(ref),row=doc.data()||{};
+      if(!productMediaProcessingExpired(row))return row;
+      const patch={mediaQueueStatus:'failed',mediaQueueError:'上次交接已逾時；可繼續處理，已完成來源不會重傳。',mediaQueueUpdatedAt:serverTimestamp(),mediaQueueRecoveryReason:'expired-handoff',mediaQueueRetryable:true};
+      tx.set(ref,patch,{merge:true});
+      return Object.assign({},row,patch,{mediaQueueUpdatedAt:new Date()});
+    });
   }
   async function loadProductListingQueue(){
     const started=Date.now();
@@ -1244,6 +1260,12 @@ async function loadPlatformLocalAgent(){
       ]),snapshots=results[0],mediaSnapshots=results[1],seen=new Map(),mediaSeen=new Map();
       snapshots.forEach(function(snapshot){snapshot.docs.forEach(function(doc){seen.set(doc.id,normalizeProductListingQueueRow(doc.data()||{},doc.id));});});
       mediaSnapshots.forEach(function(snapshot){snapshot.docs.forEach(function(doc){mediaSeen.set(doc.id,normalizeProductMediaQueueRow(doc.data()||{},doc.id));});});
+      for(const row of mediaSeen.values()){
+        if(productMediaProcessingExpired(row)){
+          const recovered=await recoverProductMediaHandoff(row.productId);
+          mediaSeen.set(row.productId,normalizeProductMediaQueueRow(recovered,row.productId));
+        }
+      }
       state.productListingQueue=sortProductListingQueue(Array.from(seen.values()).filter(function(row){return row.productId&&row.batchQueueStatus;}));
       state.productMediaQueue=sortProductMediaQueue(Array.from(mediaSeen.values()).filter(function(row){return row.productId&&row.mediaQueueStatus;}));
       state.diagnostics.push({collection:COLLECTIONS.listingCases+'(batch-queue)',ok:true,count:state.productListingQueue.length+state.productMediaQueue.length,ms:Date.now()-started});
@@ -2817,7 +2839,7 @@ function renderOverviewV7(){
     return platforms.map(function(platform){
       const result=(source.physicalImagePlatformResults||{})[platform]||{},done=Array.isArray(result.sourceImageUrls)?result.sourceImageUrls:[];
       return {platform:platform,physicalImageUrls:urls.filter(function(url){return !done.includes(url);}),verifyExistingPhotosFirst:urls.some(function(url){return !done.includes(url);})||(result.status==='completed'&&!done.length),
-        videos:(source.productVideos||[]).filter(function(video){return !['completed','published','uploaded','verified'].includes(((video.platformVideoResults||{})[platform]||{}).status);}).map(function(video){return {originalUrl:video.originalUrl||video.url,videoBrandProfile:video.videoBrandProfile||{},videoBrandStatus:String(video.videoBrandStatus||'').trim(),processedVideoAssets:video.processedVideoAssets||{},youtubeVideoId:video.youtubeStatus==='published'?video.youtubeVideoId:'',reusePublishedYouTube:video.youtubeStatus==='published'&&!!video.youtubeVideoId};}),waitingListing:result.status==='waiting-listing'};
+        videos:(source.productVideos||[]).filter(function(video){const receipt=((video.platformVideoResults||{})[platform]||{});return !['completed','published','uploaded','verified'].includes(receipt.status)&&!(platform==='coupang'&&receipt.status==='pending-review'&&receipt.submittedAt&&receipt.submissionReceipt);}).map(function(video){return {originalUrl:video.originalUrl||video.url,videoBrandProfile:video.videoBrandProfile||{},videoBrandStatus:String(video.videoBrandStatus||'').trim(),processedVideoAssets:video.processedVideoAssets||{},youtubeVideoId:video.youtubeStatus==='published'?video.youtubeVideoId:'',reusePublishedYouTube:video.youtubeStatus==='published'&&!!video.youtubeVideoId};}),waitingListing:result.status==='waiting-listing'};
     });
   }
   function productMediaBatchPrompt(rows,runId){
@@ -2826,6 +2848,9 @@ function renderOverviewV7(){
       '既有照片去重：上傳任何實體圖前，先查同一平台商品目前的圖片與描述。依 physicalImages 的 url、sourceImageUrl、originalUrl 對應及實際圖片內容核對；相同照片即使平台換了網址、縮放或壓縮，也不可重複追加。確認已有就把來源 URL 寫入該平台 physicalImagePlatformResults.sourceImageUrls，保存 matched-existing、對應平台圖片識別與查驗時間；只有確認缺少才新增。無法確認時保留待核對，不可猜測已完成或盲目重傳。source=existing-product-image 的照片是使用者指定的既有實拍，保持原圖，不另加浮水印、不從原細項圖片移除。外層實體圖綠色僅表示中央有實體照，不代表平台上傳完成。',
       '批次編號：'+runId,
       '請在同一個 Codex 對話中依下列順序處理：',
+      '媒體續跑修訂 media-resume-r5-20260911：同步／開啟待處理清單時，超過6小時未更新的 processing 交接恢復為可續跑；已完成回條保留。執行中每完成一階段及至少每5分鐘更新 mediaQueueHeartbeatAt；退出或遇到失敗立即保存 failed／waiting-listing 與具體原因，不得留在 processing。續跑逐來源、逐平台核對，不重新上傳成功項目。',
+      'MOMO 描述圖必須在進入平台前先產生平台專用副本，實測每張小於500000 bytes（目標480000 bytes），保持比例與清晰度，保留原檔，不新增水印或改內容。預檢全部通過再上傳，其他平台不沿用這個容量上限。',
+      '酷澎成功送審後保存商品編號、送審回條、來源URL／成品SHA256及 submittedAt；狀態 pending-review，不當場反覆回查、不冒稱核准。下次開始新批次時，對之前批次 pending-review 的同一商品順便查一次；仍審核中就保留，不等待、不重送。只有查到核准才改 active，拒絕則保存原因回待處理。沒有成功送審回條不得當成已送出。',
       '固定媒體規則 v4（2026-09-06）：重試前必須重讀同一案件的 physicalImagePlatformResults 與每筆 productVideos.platformVideoResults，依平台及來源圖／原片逐項續跑。相同來源且已完成的項目不得重新上傳；有 published youtubeVideoId 時沿用，不得再次發布。新增來源只補新來源，結果以來源URL或原片SHA256辨識，不得只看商品級completed就跳過新照片。新影片一律先完成固定品牌製片，再操作 YouTube 或蝦皮。',
       '圖片位置：輪播最後一張固定店址圖、描述最後兩張固定介紹圖均不可替換。蝦皮描述12格先保留2格實體圖及2格固定尾圖，一般介紹最多8格，未有實體圖時不插空白圖。滿額補圖時每補1張只騰1格，僅可替換與輪播重複且確認不含介紹文字的純商品照；有文字、規格、使用說明及固定圖均保護，無安全候選則待處理，不得任意刪圖。實體圖放一般介紹後、兩段固定說明前。',
       '顧客版浮水印只保留單一斜向「柚子樂器｜實體圖」，小字、淡色，不得再加底部標籤。新照片保留原檔，顧客版先縮放與壓縮到1.8MB以下並確認清晰，不裁切、不去背、不重畫。舊水印改版必須由原檔重產生，不在舊水印上疊加。',
@@ -2846,10 +2871,11 @@ function renderOverviewV7(){
   }
   async function startProductMediaQueue(productId){
     // Re-read receipts before building the handoff; never reset successful media results.
+    await loadProductListingQueue();
     const selected=productMediaQueueRows().filter(function(row){return row.mediaQueueStatus!=='processing'&&(!productId||row.productId===clean(productId));});
     await requireEasyStoreManagerAuth();
-    for(const row of selected){const latest=await state.db.collection(COLLECTIONS.listingCases).doc(row.productId).get();row.mediaResumePlan=productMediaResumePlan(latest.data()||{});}
-    let rows=productMediaQueueRows().filter(function(row){return row.mediaQueueStatus!=='processing'&&(!productId||row.productId===clean(productId));});if(!rows.length)throw new Error('目前沒有可執行的實體圖或影片');if(rows.length>30)throw new Error('一次最多處理 30 件，請分批執行');await requireEasyStoreManagerAuth();const runId='media-batch-'+Date.now().toString(36),batch=state.db.batch(),serverTime=serverTimestamp();rows.forEach(function(row,index){batch.set(state.db.collection(COLLECTIONS.listingCases).doc(row.productId),{mediaQueueStatus:'processing',mediaQueueRunId:runId,mediaBatchPosition:index+1,mediaQueueError:'',mediaQueueUpdatedAt:serverTime,updatedAt:serverTime,updatedBy:userLabel(),version:VERSION},{merge:true});});await batch.commit();rows=rows.map(function(row,index){return Object.assign({},row,{mediaQueueStatus:'processing',mediaQueueRunId:runId,mediaBatchPosition:index+1,mediaQueueUpdatedAt:new Date()});});rows.forEach(upsertProductMediaQueueState);const prompt=productMediaBatchPrompt(rows,runId),threadUrl=productListingCodexThreadUrl(prompt),copied=await copyProductListingCodexPrompt(prompt),status=byId('productMediaQueueStatus');if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>已帶入 '+rows.length+' 件商品</b><small>Codex 會依順序處理'+(copied?'；批次內容也已複製':'')+'。</small></div></div>';await writeAudit('實體圖與影片批次交給 Codex','productMediaBatch',runId,rows.map(function(row){return row.productSku||row.productId;}).join('、'));global.setTimeout(function(){global.location.href=threadUrl;},100);
+    for(const row of selected){const latest=await state.db.collection(COLLECTIONS.listingCases).doc(row.productId).get();const data=latest.data()||{};row.mediaResumePlan=productMediaResumePlan(data);row.mediaQueueStatus=data.mediaQueueStatus;}
+    let rows=productMediaQueueRows().filter(function(row){return row.mediaQueueStatus!=='processing'&&(!productId||row.productId===clean(productId));});if(!rows.length)throw new Error('目前沒有可執行的實體圖或影片');if(rows.length>30)throw new Error('一次最多處理 30 件，請分批執行');await requireEasyStoreManagerAuth();const runId='media-batch-'+Date.now().toString(36),serverTime=serverTimestamp();await state.db.runTransaction(async function(tx){const refs=rows.map(function(row){return state.db.collection(COLLECTIONS.listingCases).doc(row.productId);}),docs=[];for(const ref of refs)docs.push(await tx.get(ref));docs.forEach(function(doc,index){const data=doc.data()||{};if(data.mediaQueueStatus==='processing'&&!productMediaProcessingExpired(data))throw new Error('此商品已有有效交接，請勿重複送出。');rows[index].mediaResumePlan=productMediaResumePlan(data);});refs.forEach(function(ref,index){tx.set(ref,{mediaQueueStatus:'processing',mediaQueueRunId:runId,mediaBatchPosition:index+1,mediaQueueError:'',mediaQueueUpdatedAt:serverTime,mediaQueueHeartbeatAt:serverTime,updatedAt:serverTime,updatedBy:userLabel(),version:VERSION},{merge:true});});});rows=rows.map(function(row,index){return Object.assign({},row,{mediaQueueStatus:'processing',mediaQueueRunId:runId,mediaBatchPosition:index+1,mediaQueueUpdatedAt:new Date()});});rows.forEach(upsertProductMediaQueueState);const prompt=productMediaBatchPrompt(rows,runId),threadUrl=productListingCodexThreadUrl(prompt),copied=await copyProductListingCodexPrompt(prompt),status=byId('productMediaQueueStatus');if(status)status.innerHTML='<div class="ops-product-ai-status completed"><span>✓</span><div><b>已帶入 '+rows.length+' 件商品</b><small>Codex 會依順序處理'+(copied?'；批次內容也已複製':'')+'。</small></div></div>';await writeAudit('實體圖與影片批次交給 Codex','productMediaBatch',runId,rows.map(function(row){return row.productSku||row.productId;}).join('、'));global.setTimeout(function(){global.location.href=threadUrl;},100);
   }
 
   function productListingQueueRows(){
@@ -2945,6 +2971,7 @@ function renderOverviewV7(){
       '每件完成上架後、開始下一件以前，必須以該件完整精確 SKU 在 EasyStore 官網、官方蝦皮通路、MOMO 與酷澎正式商品清單各查一次，直接回寫中央商品四個 platformListingStatus、listingId、lastCheckedAt 與原因。正式存在寫 active／有，確定找不到或拒絕寫 missing／沒有；酷澎仍在審核寫 pending-review，確認平台審核中即完成本次送審，不安排自動回查，不可誤寫 active。',
       '開始每件時保留同一 productId 與 listingTargetScope 並建立該件不可變預檢快照。若案件已有未完成的 v3 job、preparedSnapshot、平台草稿或 verified 通路，這次是續跑：只處理 batchRetryPlatforms 或 stages 中尚未 verified 的通路，沿用同一商品、同一草稿、同一不可變快照；已 verified 通路禁止重做、重送或另建商品。',
       '只有該件 listingTargetPlatforms 全部 verified 後，才把 batchQueueStatus 設為 completed、batchCompletedAt 寫入完成時間，並清空 batchPlatformFailures、batchRetryPlatforms 與 batchNextRetryAt。任何通路暫時或永久未完成時，案件必須留在待網路上架清單：batchQueueStatus 設為 failed、batchQueueError 寫總原因、batchRetryPlatforms 寫未完成通路；batchPlatformFailures 依通路保存 status、reason、retryable、lastAttemptAt，若平台有解除／可重試時間再寫 retryAt，並把最晚 retryAt 寫入 batchNextRetryAt。不得因其他通路成功就移除整件；記錄後繼續下一件。',
+      '酷澎成功送審後本次不等待審核；保留 pending-review 及送審回條。每次開始新批次時順便核對之前批次的審核中商品一次，仍審核中不重送、不等待，核准才改 active，拒絕回待處理。',
       '按下「開始處理全部」已授權依序執行這份批次。'
     ].join('\n');
   }
