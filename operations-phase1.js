@@ -6219,10 +6219,10 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
       priceChanged=true;
       let status='pending',message='等待平台價格同步';
       if(newPrice==null){status='cleared';message='已清除平台目標售價';}
-      else if(platform==='MOMO'){status='manual-required';message='已保存 MOMO 目標售價；尚未取得官方自動改價端點／權限。';}
+      else if(platform==='MOMO'&&(!Number.isSafeInteger(newPrice)||newPrice<=0)){throw new Error('MOMO 售價必須是正整數');}
       else if(platform==='Coupang'&&Math.round(newPrice)%10!==0){status='manual-required';message='酷澎台灣售價須為 10 元倍數，請調整後再同步。';}
       if(status==='pending')needsSyncRequest=true;
-      nextPriceSync[platform]=Object.assign({},currentPriceSync[platform]||{},{targetPrice:newPrice,status:status,message:message,requestedAt:serverTimestamp()});
+      nextPriceSync[platform]=Object.assign({},currentPriceSync[platform]||{},{targetPrice:newPrice,status:status,message:message,requestedAt:serverTimestamp(),...(platform==='MOMO'?{autoSyncEnabled:true}:{})});
     });
     if(priceChanged)nextPriceSync.lastUpdatedAt=serverTimestamp();
     const platformPriceOverrides={};queryAll('[data-platform-price]',form).forEach(function(input){platformPriceOverrides[clean(input.dataset.platformPrice)]=input.dataset.priceOverride==='1';});

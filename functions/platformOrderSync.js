@@ -1585,7 +1585,7 @@ async function syncCandidatePrices(db, products, settings, credentials, runId = 
       let result;
       try {
         if (platform === 'EasyStore') result = await easyStoreUpdateProductPrice(product, targetPrice, credentials.easyStoreToken);
-        else if (platform === 'MOMO') result = { status: 'manual-required', message: '已保存 MOMO 目標售價；尚未取得可驗證的官方改價端點／權限。' };
+        else if (platform === 'MOMO') result = { status: 'agent-required', message: '等待店內固定 IP 代理執行 MOMO 規格改價並查驗價格。' };
         else if (targetPrice % 10 !== 0) result = { status: 'manual-required', message: '酷澎台灣售價須為 10 元倍數，請調整目標售價後再同步。' };
         else if (options.deferCoupangToAgent === true) result = { status: 'agent-required', message: '酷澎改價必須由店內固定 IP 代理執行；目標已回傳給本機代理。' };
         else result = await coupangUpdateProductPrice(product, targetPrice, config);
@@ -2164,9 +2164,16 @@ function priceTargetsForAgent(products) {
   return targets;
 }
 
+function momoPriceTargetsForAgent(products) {
+  return products.filter(p => p.sku && priceSyncState(p).MOMO?.status === 'agent-required')
+    .map(p => ({productId:p.id,sku:p.sku,platform:'MOMO',targetPrice:p.raw.momoPrice,platformMappings:p.raw.platformMappings?.momo || {}}));
+}
+
 async function recordAgentCoupangPriceResults(db, results, originalRunId, reportRunId) {
   const summary = { reported: 0, success: 0, errors: 0, ignored: 0 };
   for (const raw of asArray(results)) {
+    const platform = clean(raw && raw.platform) || 'Coupang';
+    if (!['MOMO', 'Coupang'].includes(platform)) { summary.ignored += 1; continue; }
     const productId = clean(raw && raw.productId);
     const targetPrice = numberOrNull(raw && raw.targetPrice);
     if (!productId || targetPrice == null) {
@@ -2181,7 +2188,7 @@ async function recordAgentCoupangPriceResults(db, results, originalRunId, report
     }
     const product = { id: productId, ref, raw: snap.data() || {} };
     // 不可讓延遲到達的舊回報覆寫使用者剛改的新售價。
-    if (platformTargetPrice(product, 'Coupang') !== Math.round(targetPrice)) {
+    if (platformTargetPrice(product, platform) !== Math.round(targetPrice)) {
       summary.ignored += 1;
       continue;
     }
@@ -2192,8 +2199,8 @@ async function recordAgentCoupangPriceResults(db, results, originalRunId, report
       executionMode: 'store-windows-agent'
     };
     const vendorItemIds = asArray(raw && raw.vendorItemIds).map(clean).filter(Boolean);
-    await updateProductPriceState(product, 'Coupang', result, Math.round(targetPrice), originalRunId || reportRunId);
-    if (vendorItemIds.length) {
+    await updateProductPriceState(product, platform, result, Math.round(targetPrice), originalRunId || reportRunId);
+    if (platform === 'Coupang' && vendorItemIds.length) {
       const mappings = mergePlatformMappings(product.raw.platformMappings, { coupang: { vendorItemIds } });
       await ref.set({ platformMappings: mappings }, { merge: true });
     }
@@ -2319,13 +2326,16 @@ async function runPlatformOrderSyncFromAgent(payload) {
     };
     // 訂單同步只處理本次明確要求改價的商品；掃描整個商品目錄會讓回應超過 540 秒。
     const requestedPriceIds = new Set(asArray(payload && payload.priceProductIds).map(clean).filter(Boolean));
-    const priceProducts = requestedPriceIds.size
-      ? refreshedProducts.filter((product) => requestedPriceIds.has(product.id))
-      : [];
+    // Retry only MOMO prices explicitly opted in by the updated product editor.
+    const priceProducts = refreshedProducts.filter((product) => {
+      const momo = priceSyncState(product).MOMO || {};
+      return requestedPriceIds.has(product.id) || momo.autoSyncEnabled === true && ['pending','agent-required','error','unmapped'].includes(momo.status);
+    });
     const priceSync = await syncCandidatePrices(db, priceProducts, settings, credentials, lock.runId, { deferCoupangToAgent: true });
     priceSync.requestedProducts = priceProducts.length;
     priceSync.skippedForNormalOrderSync = requestedPriceIds.size === 0;
     const priceTargets = priceTargetsForAgent(priceProducts);
+    const momoPriceTargets = momoPriceTargetsForAgent(priceProducts);
     const priceErrors = priceSyncErrorCount(priceSync);
     const status = processing.errors || priceErrors ? 'completed-with-errors' : 'completed';
     const summary = {
@@ -2363,7 +2373,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
       version: VERSION,
     }, { merge: true });
     finalResult = { status, summary };
-    return { status, summary, applyInventory: settings.applyInventory, inventoryTargets, priceTargets, runId: lock.runId };
+    return { status, summary, applyInventory: settings.applyInventory, inventoryTargets, priceTargets, momoPriceTargets, runId: lock.runId };
   } catch (error) {
     const message = clean(error.message || error).slice(0, 1200);
     await runRef.set({ status: 'failed', error: message, finishedAt: admin.firestore.FieldValue.serverTimestamp(), version: VERSION }, { merge: true });
@@ -2433,6 +2443,8 @@ module.exports = {
     orderDateTrust,
     resolvedOrderDateFields,
     platformTargetPrice,
+    momoPriceTargetsForAgent,
+    recordAgentCoupangPriceResults,
     priceSyncErrorCount,
     consumeFifoAllowNegative,
     extractOrders,
