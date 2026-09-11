@@ -1,3 +1,4 @@
+const { trialNotificationText, trialNotificationHtml } = require('./trialNotificationNotice');
 const { queueBlockReason, deletedPersonMatches } = require('./notificationDeliveryGuard');
 const { registerGoodsInquiryNotifications } = require('./goodsInquiryNotifications');
 const { fallbackEmail } = require('./portalNotificationPolicy');
@@ -127,7 +128,7 @@ async function pushLineMessage(lineUserId, message) {
     },
     body: JSON.stringify({
       to,
-      messages: [{ type: 'text', text: String(message || '').slice(0, 4900) }]
+      messages: [{ type: 'text', text: trialNotificationText(message).slice(0, 4900) }]
     })
   });
   const responseText = await response.text();
@@ -1180,7 +1181,7 @@ async function sendLinePush(row) {
   const body = queueBody(row);
   const directLineText = clean(row.lineText || row.lineMessage || row.lineBody);
   const text = directLineText || (title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知'));
-  const messages = [{ type: 'text', text: text.slice(0, 4900) }];
+  const messages = [{ type: 'text', text: trialNotificationText(text).slice(0, 4900) }];
   const imageUrl = lineImageUrlFromQueue(row);
   if (imageUrl) {
     messages.push({
@@ -1210,7 +1211,7 @@ async function sendLinePush(row) {
   return { provider: 'line-messaging-api', responseStatus: response.status, responseText: responseText.slice(0, 500) };
 }
 
-async function sendEmailViaGmail(row) {
+async function sendEmailViaGmail(row, options = {}) {
   const to = queueTargetEmail(row);
   if (!to) throw new Error('缺少 Email，無法發送 Email。');
 
@@ -1231,10 +1232,12 @@ async function sendEmailViaGmail(row) {
   });
 
   const subject = queueTitle(row) || '柚子樂器通知';
-  const body = queueBody(row) || '';
+  const originalBody = queueBody(row) || '';
+  const body = options.trialNotice ? trialNotificationText(originalBody) : originalBody;
   const safeBody = body.replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
   const receipt = lineImageUrlFromQueue(row);
-  const html = clean(row.html || row.htmlBody || '') || safeBody.replace(/\n/g, '<br>') + (receipt ? `<p><img src="${receipt.replace(/"/g, '%22')}" alt="收據" style="max-width:100%"></p>` : '');
+  const customHtml = clean(row.html || row.htmlBody || '');
+  const html = (customHtml ? (options.trialNotice ? trialNotificationHtml(customHtml) : customHtml) : '') || safeBody.replace(/\n/g, '<br>') + (receipt ? `<p><img src="${receipt.replace(/"/g, '%22')}" alt="收據" style="max-width:100%"></p>` : '');
 
   const info = await transporter.sendMail({
     from,
@@ -1254,7 +1257,7 @@ async function sendEmailViaGmail(row) {
 async function sendEmailViaSendGrid(row) {
   // 保留舊函式名稱，讓 notificationQueue 的原本流程不用重寫。
   // 實際寄信已改為 Gmail SMTP。
-  return await sendEmailViaGmail(row);
+  return await sendEmailViaGmail(row, { trialNotice: true });
 }
 
 async function markQueue(docRef, data) {
