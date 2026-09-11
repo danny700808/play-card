@@ -2335,7 +2335,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
     priceSync.requestedProducts = priceProducts.length;
     priceSync.skippedForNormalOrderSync = requestedPriceIds.size === 0;
     const priceTargets = priceTargetsForAgent(priceProducts);
-    const momoPriceTargets = momoPriceTargetsForAgent(priceProducts);
+    const momoPriceTargets = settings.platforms.MOMO ? momoPriceTargetsForAgent(priceProducts) : [];
     const priceErrors = priceSyncErrorCount(priceSync);
     const status = processing.errors || priceErrors ? 'completed-with-errors' : 'completed';
     const summary = {
