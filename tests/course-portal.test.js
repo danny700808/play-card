@@ -309,7 +309,7 @@ assert(rentalSource.includes('roomRequestId += 1'), '切換租用條件時沒有
 assert(rentalSource.includes("role === 'student' && studentDiscountEligible"), '停課學生或非學生仍會看到學生半價選項');
 assert(rentalSource.includes('Promise.all([loadRentalData(), loadBookings()])'), '租用首屏仍以串行方式載入');
 assert(rentalHtml.includes('id="rentalHeaderTitle"'), '租用頁標題缺少登入姓名顯示位置');
-assert(rentalSource.includes('renderWelcomeName(boardData.displayName)'), '租用頁沒有顯示後端確認的登入姓名');
+assert(rentalSource.includes("renderWelcomeName(role === 'student' && selectedStudent() ? selectedStudent().name : boardData.displayName)"), '租用頁沒有顯示後端確認的登入姓名');
 assert(rentalSource.includes("normalize('NFKC')") && rentalSource.includes('/[@\\r\\n]/.test(name)'), '租用頁標題缺少全形 Email／電話防誤顯示保護');
 assert(rentalHtml.includes('一般教室使用 <b>NT$100/小時</b>'), '錄音室確認缺少一般教室使用價格選項');
 assert(rentalHtml.includes('錄音室錄音使用 <b>NT$300/小時</b>'), '錄音室確認缺少錄音使用價格選項');
@@ -2690,7 +2690,7 @@ assert(backend.includes("status: 'confirmed'"), '主管確認後沒有建立正�
 assert(backend.includes("admin.storage().bucket().file(storagePath).save"), '匯款截圖沒有由後端存進私人儲存空間');
 assert(backend.includes("cacheControl: 'private, no-store, max-age=0'"), '匯款截圖沒有設定私人禁止快取');
 assert(backend.includes('mergePortalTuitionRows'), '主管確認後的期別與付款沒有合併回學費資料');
-assert(backend.includes("schedule: '0 * * * *'"), '第 4 堂學費 LINE 提醒不是每小時檢查');
+assert(backend.includes("schedule: '0 9 * * *'"), '學費 LINE 提醒不是台北時間上午 9 點檢查');
 assert(backend.includes("schedule: '0 9 * * *'"), '老師每日課程 LINE 提醒不是台北時間上午 9 點');
 assert(backend.includes('此課程昨日未完成簽到，因此尚未記錄堂數'), '老師昨日未完成紀錄缺少確認後文字');
 const teacherDailyReminderSource = backend.slice(
@@ -2720,7 +2720,7 @@ assert(backend.includes("Promise.all(studentIds.map((id) => mirrorRowsByField('a
 assert(backend.includes('studentDiscountEligible: await studentDiscountEligiblePromise'), '停課學生仍可能取得在籍學生租用折扣');
 assert(commonSource.includes("linkAnother: role === 'student' && authView.dataset.addStudent === 'true'"), '家長無法從已登入狀態啟動另一位學生的 LINE 綁定');
 assert(backend.includes("decision.action === 'login' && stateRow.linkAnother !== true"), 'LINE 已有學生綁定時仍會略過新增另一位學生的流程');
-assert(backend.includes('if (!learningIds.has(studentId)) continue;'), '停課學生仍可能收到上課或學費 LINE 提醒');
+assert(backend.includes('lessons.some(lesson =>') && backend.includes("!['cancelled', 'leave', 'absent'].includes(normalizeScheduleStatus(row.status))"), '學費提醒必須限定仍有有效課程的學生');
 assert(backend.includes("type: 'late_attendance_fee'"), '補簽到沒有建立 NT$50 薪資扣款');
 assert(!backend.includes("throw new HttpsError('failed-precondition', '課程尚未開始，不能提前簽到。')"), '後端仍阻擋當天提早簽到');
 assert(!backend.includes("'老師提早簽到'"), '後端仍把當日簽到顯示為提早簽到');

@@ -131,6 +131,7 @@ jobs:
           node --check person-data-admin.js
           node --check teacher-daily-reminder.js
           node tests/course-portal.test.js
+          node --test tests/course-half-hour.test.js
           node --test tests/course-subject-catalog.test.js
           node --test tests/course-login-policy.test.js
           node tests/course-login-routing.test.js

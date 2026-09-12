@@ -120,6 +120,7 @@ jobs:
           node --check functions/injiaoyunEducationMirror.js
           node --check functions/injiaoyunEducationPreview.js
           NODE_PATH=functions/node_modules node tests/course-portal.test.js
+          NODE_PATH=functions/node_modules node --test tests/course-half-hour.test.js
           NODE_PATH=functions/node_modules node --test tests/course-subject-catalog.test.js
           NODE_PATH=functions/node_modules node tests/injiaoyun-unified-sync-model.test.js
 
