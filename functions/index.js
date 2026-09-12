@@ -1,4 +1,4 @@
-const { trialNotificationText, trialNotificationHtml } = require('./trialNotificationNotice');
+const { shouldAddTrialNotice, trialNotificationText, trialNotificationHtml } = require('./trialNotificationNotice');
 const { queueBlockReason, deletedPersonMatches } = require('./notificationDeliveryGuard');
 const { registerGoodsInquiryNotifications } = require('./goodsInquiryNotifications');
 const { fallbackEmail } = require('./portalNotificationPolicy');
@@ -128,7 +128,7 @@ async function pushLineMessage(lineUserId, message) {
     },
     body: JSON.stringify({
       to,
-      messages: [{ type: 'text', text: trialNotificationText(message).slice(0, 4900) }]
+      messages: [{ type: 'text', text: String(message || '').slice(0, 4900) }]
     })
   });
   const responseText = await response.text();
@@ -1181,7 +1181,7 @@ async function sendLinePush(row) {
   const body = queueBody(row);
   const directLineText = clean(row.lineText || row.lineMessage || row.lineBody);
   const text = directLineText || (title && body && title !== body ? `${title}\n${body}` : (body || title || '柚子樂器通知'));
-  const messages = [{ type: 'text', text: trialNotificationText(text).slice(0, 4900) }];
+  const messages = [{ type: 'text', text: (shouldAddTrialNotice(row) ? trialNotificationText(text) : text).slice(0, 4900) }];
   const imageUrl = lineImageUrlFromQueue(row);
   if (imageUrl) {
     messages.push({
@@ -1257,7 +1257,7 @@ async function sendEmailViaGmail(row, options = {}) {
 async function sendEmailViaSendGrid(row) {
   // 保留舊函式名稱，讓 notificationQueue 的原本流程不用重寫。
   // 實際寄信已改為 Gmail SMTP。
-  return await sendEmailViaGmail(row, { trialNotice: true });
+  return await sendEmailViaGmail(row, { trialNotice: shouldAddTrialNotice(row) });
 }
 
 async function markQueue(docRef, data) {
