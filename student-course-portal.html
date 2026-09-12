@@ -7,7 +7,7 @@
   <title>學生與家長入口｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-student-phone-v1">
-<link rel="stylesheet" href="course-history-view.css?v=20260909-parent-payment-v1">
+<link rel="stylesheet" href="course-history-view.css?v=20260912-half-hour-v1">
 <link rel="stylesheet" href="student-parent-layout.css?v=20260910-compact-nav-v1">
   <link rel="stylesheet" href="student-navigation.css?v=20260910-tab-colors-v1">
 </head>
@@ -156,7 +156,8 @@
   <script src="config.js?v=20260805-auth-route-cleanup-v1"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="course-history-view.js?v=20260910-period-teacher-v1"></script>
+<script src="course-lesson-units.js?v=20260912-half-hour-v1"></script>
+  <script src="course-history-view.js?v=20260912-half-hour-v1"></script>
   <script src="course-portal-common.js?v=20260910-taiwan-reads-v1"></script>
   <script>
   (function () {
@@ -216,6 +217,12 @@
     }
 
     function lessonSlots(period, attendance, showPaymentDue) {
+      const helper=window.YouziLessonUnits;
+      const splitRows=helper?helper.periodRows(attendance,period.id):[];
+      if(helper&&splitRows.some(row=>helper.units(row)!==1)) return helper.slots(period,splitRows).map((parts,index)=>{
+        const used=parts.reduce((sum,row)=>sum+row.slotUnits,0);
+        return `<div class="lesson-slot${used?' used':''}"><strong>第 ${index+1} 格・60分鐘</strong>${parts.map(row=>`<span class="half-hour-entry">${P.escapeHtml(row.date)} ${P.escapeHtml(row.startTime||'')}<br>${row.slotUnits*60}分鐘・${P.escapeHtml(attendanceStatusLabel(row.status))}</span>`).join('')}${used<1?`<small>剩餘${(1-used)*60}分鐘</small>`:''}</div>`;
+      }).join('');
       const rows = attendance.filter((row) => row.periodId && row.periodId === period.id)
         .sort((left, right) =>
           Number(left.late === true) - Number(right.late === true) ||

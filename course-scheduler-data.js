@@ -96,7 +96,7 @@
       return {
         id:safeId('payroll',row.id,index),teacherId:clean(row.teacherId),teacherName:clean(row.teacherName),
         studentId:clean(row.studentId),studentName:clean(row.studentName),subject:clean(row.subject||row.chargeName),
-        date:dateKey(row.date||row.occurredAt),occurredAt:clean(row.occurredAt),
+        date:dateKey(row.date||row.occurredAt),occurredAt:clean(row.occurredAt),startTime:clean(row.startTime),endTime:clean(row.endTime),durationMinutes:Number(row.durationMinutes)||0,lessonUnits:Number(row.lessonUnits)||1,
         lessonPrice:numberOf(row.lessonPrice),splitType:clean(row.splitType),splitValue:numberOf(row.splitValue),
         allotRate:numberOf(row.allotRate),hourlyFee:numberOf(row.hourlyFee),
         teacherAmount:numberOf(row.teacherAmount),schoolShare:numberOf(row.schoolShare)
@@ -292,7 +292,7 @@
     var eventBySourceDate=new Map();events.forEach(function(event){eventBySourceDate.set(clean(event.sourceCourseId)+'|'+event.date,event);});
     var rows=array(payload.attendance).map(function(row,index){
       var event=eventBySourceDate.get(clean(row.sourceCourseId)+'|'+dateKey(row.date)),periodId=clean(row.periodId||row.tuitionPeriodId),status=clean(row.status)||'attended';
-      return {id:safeId('attendance',row.id,index),eventId:clean(row.eventId)||(event&&event.id)||'',studentId:clean(row.studentId)||(event&&event.studentIds[0])||'',periodId:periodId,status:status,date:dateKey(row.date)||(event&&event.date)||'',lessonNo:numberOf(row.lessonNo),teacherId:clean(row.teacherId)||(event&&event.teacherId)||'',deducted:row.deducted===true&&Boolean(periodId),reasonId:clean(row.reasonId),reconciliationStatus:clean(row.reconciliationStatus)||(periodId?'linked-explicit-payment':'unmatched-no-explicit-payment')};
+      return {id:safeId('attendance',row.id,index),eventId:clean(row.eventId)||(event&&event.id)||'',studentId:clean(row.studentId)||(event&&event.studentIds[0])||'',periodId:periodId,status:status,date:dateKey(row.date)||(event&&event.date)||'',lessonNo:numberOf(row.lessonNo),lessonUnits:Number(row.lessonUnits)||1,periodAllocations:row.periodAllocations||[],startTime:clean(row.startTime),durationMinutes:Number(row.durationMinutes)||60,teacherId:clean(row.teacherId)||(event&&event.teacherId)||'',deducted:row.deducted===true&&Boolean(periodId),reasonId:clean(row.reasonId),reconciliationStatus:clean(row.reconciliationStatus)||(periodId?'linked-explicit-payment':'unmatched-no-explicit-payment')};
     });
     // 課表事件不是簽到證據；沒有原始簽到資料時保持空白，不自行產生扣堂紀錄。
     return rows;
@@ -320,7 +320,7 @@
   function buildState(payload,anchorDate){
     payload=payload&&typeof payload==='object'?payload:{};
     var anchor=dateKey(anchorDate)||todayKey(),rangeStart=shiftDate(anchor,-240),rangeEnd=shiftDate(anchor,420),subjects=makeSubjectRows(payload),feePlans=normalizeFeePlans(payload,subjects),students=normalizeStudents(payload),teachers=normalizeTeachers(payload,subjects),rooms=normalizeRooms(payload),periods=normalizePeriods(payload,feePlans),events=normalizeEvents(payload,periods,rangeStart,rangeEnd),attendance=normalizeAttendance(payload,events,periods);
-    var usedByPeriod=attendance.reduce(function(counts,row){if(row.periodId&&row.deducted===true)counts.set(row.periodId,(counts.get(row.periodId)||0)+1);return counts;},new Map());
+    var usedByPeriod=attendance.reduce(function(counts,row){if(row.periodId&&row.deducted===true){var allocations=row.periodAllocations&&row.periodAllocations.length?row.periodAllocations:[{periodId:row.periodId,lessonUnits:Number(row.lessonUnits)||1}];allocations.forEach(function(item){counts.set(item.periodId,(counts.get(item.periodId)||0)+Number(item.lessonUnits));});}return counts;},new Map());
     periods.forEach(function(period){
       var linkedUsage=usedByPeriod.get(period.id)||0;
       // Preserve published usage from before the imported attendance window.

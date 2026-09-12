@@ -11,3 +11,5 @@
 .course-history .history-date-box input::-webkit-date-and-time-value{min-height:26px;text-align:left}
 .course-history .history-date-box input::-webkit-datetime-edit{padding:0}
 .course-history form[data-history-form]>button{align-self:end;width:100%;min-width:0}
+
+.half-hour-entry{display:block;padding:5px 0;border-bottom:1px dashed #b7c9c1;overflow-wrap:anywhere}.half-hour-entry:last-child{border-bottom:0}

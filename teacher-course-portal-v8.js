@@ -736,7 +736,7 @@
   }
 
   function preferredAddDuration(context) {
-    return 60;
+    return context && context.durationChosen && Number(context.durationMinutes) === 30 ? 30 : 60;
   }
 
   function renderWeek() {
@@ -922,6 +922,7 @@
       kind: 'lesson',
       date: valueOf(row, ['date','courseDate','lessonDate'], payrollMonth),
       name: valueOf(row, ['studentName','subjectName'], '課堂'),
+      timeLabel: row.durationMinutes ? `${row.startTime || ''}–${row.endTime || ''}・${row.durationMinutes}分鐘` : '',
       subject: valueOf(row, ['subjectName','courseName']),
       collected: valueOf(row, ['lessonPrice','tuitionAmount','courseAmount','feeAmount'], null),
       rate: payrollShareLabel(row),
@@ -953,7 +954,7 @@
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(item);
     });
-    const lessons = [...groups.entries()].map(([date, dayRows]) => `<section class="payroll-day"><h3>${escapeHtml(date)}</h3><table class="payroll-lines"><thead><tr><th scope="col">姓名</th><th scope="col">收費</th><th scope="col">分成</th><th scope="col">所得</th></tr></thead><tbody>${dayRows.map((row) => `<tr><th scope="row">${escapeHtml(row.name)}</th><td>${row.collected !== null ? money(row.collected) : '—'}</td><td>${escapeHtml(row.rate)}</td><td class="payroll-income">${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>`).join('');
+    const lessons = [...groups.entries()].map(([date, dayRows]) => `<section class="payroll-day"><h3>${escapeHtml(date)}</h3><table class="payroll-lines"><thead><tr><th scope="col">姓名</th><th scope="col">收費</th><th scope="col">分成</th><th scope="col">所得</th></tr></thead><tbody>${dayRows.map((row) => `<tr><th scope="row">${escapeHtml(row.name)}${row.timeLabel ? `<small style="display:block">${escapeHtml(row.timeLabel)}</small>` : ''}</th><td>${row.collected !== null ? money(row.collected) : '—'}</td><td>${escapeHtml(row.rate)}</td><td class="payroll-income">${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>`).join('');
     const adjustmentSection = (title, rows, id) => rows.length ? `<section class="payroll-extra" id="${id}" tabindex="-1"><h3>${title}</h3><table><thead><tr><th>日期</th><th>項目／原因</th><th>金額</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.date)}</td><td>${escapeHtml(row.name)}</td><td>${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>` : '';
     document.getElementById('payrollList').innerHTML = summary + (items.length ? lessons + adjustmentSection('額外獎金', bonusItems, 'payrollBonusDetails') + adjustmentSection('扣款', deductionItems, 'payrollDeductionDetails') : '<p class="muted">這個月份目前沒有薪資資料。</p>');
   }
@@ -1622,6 +1623,11 @@
       );
       return;
     }
+    if (action === 'extra_lesson' && context.durationChosen !== true) {
+      showQuick('增加一堂課・上課時長', studentNamesByIds(context.studentIds).join('、'),
+        '<div class="teacher-room-durations"><button type="button" data-add-duration="60">60分鐘（預設）</button><button type="button" data-add-duration="30">30分鐘</button></div>', context);
+      return;
+    }
     searchAddAvailability(context);
   }
 
@@ -1629,9 +1635,11 @@
     const requestId = ++availabilityRequestId;
     const target = context.target;
     const durationMinutes = preferredAddDuration(context);
+    if (target) target.endTime = timeText(timeMinutes(target.startTime) + durationMinutes);
     context.durationMinutes = durationMinutes;
     planner = {
       mode: 'add',
+      halfHourAcknowledged: context.halfHourAcknowledged === true,
       action: context.action,
       studentIds: context.studentIds,
       subjectId: context.subjectId,
@@ -1774,6 +1782,7 @@
       endTime: slot.endTime,
       roomId,
       durationMinutes: planner.durationMinutes,
+      halfHourAcknowledged: planner.halfHourAcknowledged === true,
       operationId: planner.operationId
     };
     return planner.mode === 'move'
@@ -2035,6 +2044,20 @@
     const weeklyButton = event.target.closest('[data-room-weekly]');
     if (context && (durationButton || weeklyButton)) {
       await openQuickForEmpty(context.date, context.startTime, durationButton ? Number(durationButton.dataset.roomDuration) : context.durationMinutes, Boolean(weeklyButton) || context.weekly);
+      return;
+    }
+    const addDurationButton = event.target.closest('[data-add-duration]');
+    if (addDurationButton) {
+      const selected = Number(addDurationButton.dataset.addDuration);
+      const current = quickContext;
+      if (selected === 30) {
+        showQuick('30分鐘增課提醒', '', '<p>新增本次30分鐘課程後，請於接下來四堂課內，再安排一次30分鐘課程，讓兩次半小時合計為一堂，方便實體上課證完整登記。兩次課程需分別新增、分別簽到，系統不會自動安排。</p><label><input type="checkbox" data-half-hour-agree> 我已了解，會在四堂課內安排完成。</label><div class="teacher-room-durations"><button type="button" data-add-duration="60">返回60分鐘</button><button type="button" data-half-hour-confirm>確認新增30分鐘</button></div>', Object.assign({},current,{durationMinutes:30}));
+      } else beginAddFlow(current.action, Object.assign({},current,{durationMinutes:60,durationChosen:true,halfHourAcknowledged:false}));
+      return;
+    }
+    if (event.target.closest('[data-half-hour-confirm]')) {
+      if (!document.querySelector('[data-half-hour-agree]')?.checked) { toast('請先勾選已了解增課提醒。','error'); return; }
+      beginAddFlow(quickContext.action,Object.assign({},quickContext,{durationMinutes:30,durationChosen:true,halfHourAcknowledged:true}));
       return;
     }
     const actionButton = event.target.closest('[data-quick-action]');

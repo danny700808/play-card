@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260910-receipt-week-teachers-v1';
+const VERSION = '20260912-half-hour-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';

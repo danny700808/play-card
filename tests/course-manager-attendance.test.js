@@ -5,7 +5,7 @@ function fixture(original){
  const docs=new Map([['version',{version:1}]]),event={id:'event',sourceId:'event',fixedCourseId:'course',date:'2026-09-01',teacherId:'teacher',studentIds:['student'],subjectId:'guitar',tuitionPeriodId:'newer-period',startTime:'18:00',endTime:'19:00',roomId:'room'};
  const ref=path=>({path,id:path.split('/').at(-1)}),snapshot=r=>({exists:docs.has(r.path),data:()=>docs.get(r.path)});
  const c={db:{collection:name=>({doc:id=>ref(name+'/'+id)}),runTransaction:async work=>{let writing=false;await work({get:async r=>{assert(!writing);return snapshot(r);},set:(r,d,o)=>{writing=true;docs.set(r.path,o?.merge?{...docs.get(r.path),...d}:d);}});}},
- clean:v=>String(v??'').trim(),hash:v=>crypto.createHash('sha256').update(v).digest('hex'),
+ attendanceLessonUnits:r=>Number(r?.lessonUnits)||1,attendanceAllocations:r=>r?.periodAllocations||[{periodId:r?.periodId,lessonUnits:Number(r?.lessonUnits)||1}],clean:v=>String(v??'').trim(),hash:v=>crypto.createHash('sha256').update(v).digest('hex'),
  HttpsError:class extends Error{},FieldValue:{serverTimestamp:()=>1},
  ATTENDANCE_RECORDS:'attendance',ATTENDANCE_PAYROLL:'payroll',ATTENDANCE_CANCELLATIONS:'cancellations',
  readScheduleVersion:async()=>1,scheduleVersionRef:()=>ref('version'),assertScheduleWritable:s=>{if(s.data().writesBlocked)throw Error('blocked');},
