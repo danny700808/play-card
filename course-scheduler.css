@@ -396,10 +396,10 @@ body.embedded-in-operations .data-mode{margin-top:0}
 .half-hour-entry{display:block;padding:5px 0;border-bottom:1px dashed #b7c9c1;overflow-wrap:anywhere}.half-hour-entry:last-child{border-bottom:0}
 /* Attendance remains prominent; leave entries recede without hiding their text. */
 .event.attended{--attendance-width:14px;padding-left:calc(var(--attendance-width) + 9px)}
-.event.attended::before{width:var(--attendance-width);min-width:0;max-width:none;background:rgba(0,0,0,.34);pointer-events:none}
+.event.attended::before{width:var(--attendance-width);min-width:0;max-width:none;background:rgba(0,0,0,.62);pointer-events:none}
 .week-event.attended{padding-left:17px}
-.week-event.attended::before{width:10px;background:rgba(0,0,0,.34);pointer-events:none}
-.legend i.attended::before{width:4px;background:rgba(0,0,0,.34)}
+.week-event.attended::before{width:10px;background:rgba(0,0,0,.62);pointer-events:none}
+.legend i.attended::before{width:4px;background:rgba(0,0,0,.62)}
 .event.leave,.event.fixed.leave,.event.single.leave,.event.rental.leave,.event.trial.leave,.event.special.leave,.event.leave:hover,.week-event.leave,.week-event.leave:hover{background:#edf0ef;color:#a6afab;filter:none;opacity:1;box-shadow:inset 0 0 0 1px #e1e6e3}
 .event.leave .event-top,.event.leave .event-main,.event.leave .event-sub,.week-event.leave span,.week-event.leave small{color:inherit;opacity:1}
 .legend i.leave{background:#edf0ef;filter:none;box-shadow:inset 0 0 0 1px #dce2df}
