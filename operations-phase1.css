@@ -2684,3 +2684,5 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-media-search-results i{display:none}
   .ops-media-device-note{grid-template-columns:1fr}
 }
+
+.ops-blog-title-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.ops-blog-title-row h3{margin:0}.ops-blog-title-row .ops-button{white-space:nowrap}

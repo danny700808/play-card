@@ -4128,6 +4128,36 @@ function ensureSalesClock(){
     toast(archived?'商品已下架':'商品已恢復',p.sku,'success');
     await writeAudit(title,'product',id,p.sku+'｜僅調整營運中心商品清單');
   }
+  function openProductBlog(id){
+    const p=catalogById(id),api=global.YouziProductBlog;
+    if(!p||!api)return toast('無法開啟','請重新整理商品資料後再試。','warning');
+    const product=api.snapshot(p);
+    openDrawer('發布部落格',product.name+' · '+product.sku,
+      '<div id="opsProductBlog" data-id="'+attr(id)+'"><p>帶入目前已儲存的商品，套用柚子深度專題模板，由 Codex 查證、編排並發布到官網。</p><p>選擇風格 → 交給 Codex 製作 → 檢查文章 → 官網發布</p><div class="ops-field"><label for="opsBlogStyle">文章風格</label><select class="ops-input" id="opsBlogStyle">'+api.styles.map(function(x){return '<option>'+escapeHtml(x)+'</option>';}).join('')+'</select></div><div class="ops-field"><label for="opsBlogNotes">希望強調的特色（選填）</label><textarea class="ops-input" id="opsBlogNotes" maxlength="3000" placeholder="例如：適合初學者的原因、與其他型號的差異"></textarea></div><p>包含繁體中文深度介紹、圖解、手機版排版、SEO 與收合來源。未儲存的商品編輯不會帶入。</p><button type="button" class="ops-button primary" data-action="product-blog-start" data-id="'+attr(id)+'">交給 Codex 製作並發布</button><p id="opsBlogStatus" role="status"></p><div id="opsBlogFallback" hidden><label for="opsBlogPrompt">若沒有開啟 Codex，複製以下內容貼到目前任務即可繼續。</label><textarea id="opsBlogPrompt" class="ops-input" readonly rows="12"></textarea><button type="button" class="ops-button" data-action="product-blog-copy">複製完整製作需求</button></div></div>');
+  }
+  async function startProductBlog(el){
+    if(el.disabled)return;
+    const panel=byId('opsProductBlog'),p=catalogById(el.dataset.id);
+    if(!panel||panel.dataset.id!==el.dataset.id||!p)return;
+    el.disabled=true;
+    try{
+      await requireEasyStoreManagerAuth();
+      if(!panel.isConnected)return;
+      const api=global.YouziProductBlog,product=api.snapshot(p),style=query('#opsBlogStyle',panel).value,notes=query('#opsBlogNotes',panel).value;
+      const prompt=api.handoff(product,style,notes);
+      // Independent editorial record: never enters product listing auto-publish triggers.
+      const ref=state.db.collection(COLLECTIONS.settings).doc('productBlog_'+encodeURIComponent(product.id));
+      await ref.set({kind:'product-blog-editorial',templateVersion:1,product:product,style:style,notes:notes,prompt:prompt,status:'awaiting-codex',updatedAt:serverTimestamp()});
+      if(!panel.isConnected)return;
+      query('#opsBlogPrompt',panel).value=prompt;
+      query('#opsBlogFallback',panel).hidden=false;
+      query('#opsBlogStatus',panel).textContent='製作需求已儲存，等待 Codex 處理；文章尚未發布。完成後會在 Codex 回報官網文章網址。';
+      el.textContent='再次開啟 Codex';
+      // Full brief travels with the link; no dependency on an inaccessible local skill file.
+      global.location.href='codex://threads/01a090be-178b-7aa0-b1a9-30b57f487cb0?prompt='+encodeURIComponent(prompt);
+    }catch(error){if(panel.isConnected)query('#opsBlogStatus',panel).textContent='尚未送出：'+errorMessage(error);}
+    finally{el.disabled=false;}
+  }
   function productFormHtml(p){
     const internal=p&&p.internal,avg=p&&p.averageCost,isNew=!p;
     const displayName=(p&&((p.originalName)||(p.onlineName)||(p.name)))||'新增商品';
@@ -4140,7 +4170,7 @@ function ensureSalesClock(){
     [['easyStore',easyStorePrice],['momo',momoPrice],['coupang',coupangPrice]].forEach(function(row){priceOverrides[row[0]]=Object.prototype.hasOwnProperty.call(savedPriceOverrides,row[0])?savedPriceOverrides[row[0]]:sharedOnlinePrice!==''&&row[1]!==''&&Number(row[1])!==Number(sharedOnlinePrice);});
     const preserved=['brand','model','barcode','category','status','note'].map(function(key){const value=internal&&Object.prototype.hasOwnProperty.call(internal,key)?internal[key]:p&&p[key];return '<input type="hidden" name="'+key+'" value="'+attr(value==null?(key==='status'?'active':''):value)+'">';}).join('');
     return '<section class="ops-inline-product-editor ops-product-editor-a" id="opsProductEditor"><form id="productForm" data-id="'+attr(p?p.docId:'')+'">'+preserved+'<input type="hidden" name="sharedOnlinePrice" value="'+attr(sharedOnlinePrice)+'">'
-      +'<div class="ops-inline-product-header"><div><h3>'+escapeHtml(title)+'</h3>'+(p?'<div class="ops-inline-product-meta">SKU '+escapeHtml(p.sku||'未設定')+' ・ 庫存 '+escapeHtml(formatNumber(p.currentStock))+'</div>':'')+'</div>'
+      +'<div class="ops-inline-product-header"><div><div class="ops-blog-title-row"><h3>'+escapeHtml(title)+'</h3>'+(p?'<button class="ops-button" type="button" data-action="product-blog-open" data-id="'+attr(p.docId)+'">發布部落格</button>':'')+'</div>'+(p?'<div class="ops-inline-product-meta">SKU '+escapeHtml(p.sku||'未設定')+' ・ 庫存 '+escapeHtml(formatNumber(p.currentStock))+'</div>':'')+'</div>'
       +'<div class="ops-card-actions"><button class="ops-button ghost" type="button" data-action="product-edit-cancel">取消編輯</button><button class="ops-button primary" type="submit">儲存商品</button>'+(p&&p.internal?'<button class="ops-button ghost" type="button" data-action="product-archive" data-id="'+attr(p.docId)+'">'+(p.internal.productArchived?'恢復商品':'下架商品')+'</button>':'')+'</div></div>'
       +'<div class="ops-inline-product-layout"><div class="ops-inline-product-media">'+productImagePanelHtml(p)+'</div><div class="ops-inline-product-fields">'
       +'<div class="ops-form-grid ops-product-identity-fields"><div class="ops-field"><label class="ops-required">SKU／商品編號</label><input class="ops-input" name="internalSku" value="'+attr((p&&p.sku)||'')+'" required></div><div class="ops-field ops-product-name-field"><label class="ops-required">商品名稱</label><input class="ops-input" name="internalName" value="'+attr((internal&&internal.internalName)||(p&&p.originalName)||(p&&p.onlineName)||'')+'" required></div></div>'
@@ -7258,6 +7288,9 @@ async function syncPlatformOrdersNow(){const yes=await confirmAction('要求店�
     if(action==='product-display-mode'){if(!closeProductEditorForListChange())return;state.productDisplayMode=el.dataset.mode==='text'?'text':'image';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
     if(action==='product-archive'){el.disabled=true;return toggleProductArchived(el.dataset.id).catch(function(error){toast('商品狀態尚未更新',errorMessage(error),'error');}).finally(function(){el.disabled=false;});}
     if(action==='product-archived-toggle'){if(!closeProductEditorForListChange())return;state.productArchivedOnly=!state.productArchivedOnly;state.productRecentOnly=false;state.productSeries='all';state.productFilter='all';state.productSearch='';state.productVisible=PRODUCT_PAGE_SIZE;return renderKeepingViewport();}
+    if(action==='product-blog-open')return openProductBlog(el.dataset.id);
+    if(action==='product-blog-start')return startProductBlog(el);
+    if(action==='product-blog-copy')return copyProductListingCodexPrompt(byId('opsBlogPrompt').value).then(function(ok){toast(ok?'已複製':'請手動複製',ok?'貼到 Codex 即可繼續。':'請選取文字框中的完整內容。',ok?'success':'warning');});
     if(action==='product-edit-cancel'){clearProductEditorState();return renderKeepingViewport();}
     if(action==='product-listing-case-open')return openProductListingCase(el.dataset.id);
     if(action==='product-platform-missing')return openProductListingCase(el.dataset.id);
