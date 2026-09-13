@@ -3,7 +3,7 @@
 
   if (global.YouziOperationsCourseInline) return;
 
-  var VERSION = '20260913-calendar-startup-v2';
+  var VERSION = '20260913-calendar-startup-v3';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=' + VERSION;
   var RUNTIME_URL = 'operations-course-inline-runtime.js?v=' + VERSION;
   var STYLE_URL = 'course-scheduler.css?v=' + VERSION;
@@ -215,17 +215,8 @@
       var workspace = await resolveWorkspace();
       shadow.innerHTML = '<link rel="stylesheet" href="' + STYLE_URL + '"><style>' + inlineOverrides() + '</style><div class="course-inline-body">' + template + '</div>';
       inlineBody = shadow.querySelector('.course-inline-body');
-      var heading = document.getElementById('opsPageTitle');
-      var compactRefresh = document.getElementById('desktopCourseRefresh');
-      if (heading && !compactRefresh) {
-        compactRefresh = document.createElement('button');compactRefresh.id='desktopCourseRefresh';compactRefresh.textContent='重新整理';compactRefresh.type='button';compactRefresh.className='ops-button';
-        heading.parentNode.appendChild(compactRefresh);
-        compactRefresh.addEventListener('click',function(){var original=shadow.querySelector('#refreshCloudBtn');if(original)original.click();});
-        var style=document.createElement('style');style.textContent='#desktopCourseRefresh{display:none}@media(min-width:1100px){#desktopCourseRefresh:not([hidden]){display:inline-block;padding:4px 10px;font:13px PMingLiU,serif;margin-left:12px}.ops-title-wrap:has(#desktopCourseRefresh:not([hidden])){display:flex;align-items:center}.ops-title-wrap:has(#desktopCourseRefresh:not([hidden])) h1{font:700 22px PMingLiU,serif}}';document.head.appendChild(style);
-      }
       function fitDesktopCalendar(){
         var desktop=global.matchMedia('(min-width:1100px)').matches,calendar=global.location.hash==='#course-calendar';
-        if(compactRefresh)compactRefresh.hidden=!desktop||!calendar;
         if(!inlineBody)return;
         var grid=shadow.querySelector('#scheduleGrid'),scroll=shadow.querySelector('#scheduleScroll');
         var kpis=shadow.querySelector('#dailyKpis'),toolbar=shadow.querySelector('.calendar-toolbar'),legend=shadow.querySelector('#dailyLegend');
