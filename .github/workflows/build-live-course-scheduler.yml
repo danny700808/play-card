@@ -42,6 +42,9 @@ jobs:
       - name: Verify automatic calendar startup
         run: node tests/course-calendar-startup.test.js
 
+      - name: Verify calendar recurrence and teacher stop parity
+        run: node --test tests/course-calendar-recurrence-parity.test.js
+
       - name: Verify internal course workspace
         run: |
           node - <<'NODE'
@@ -77,7 +80,7 @@ jobs:
             for (const [href, view] of links) {
               if (!source.includes(`href="${href}" data-view="${view}"`)) throw new Error(`In-place course navigation is missing: ${view}`);
             }
-            if (!source.includes('operations-course-inline.js?v=20260913-calendar-startup-v3')) throw new Error('Unified course controller is missing');
+            if (!source.includes('operations-course-inline.js?v=20260913-oct15-recurrence-v1')) throw new Error('Unified course controller is missing');
             if (source.includes("location.replace('course-scheduler.html")) throw new Error('Course navigation still leaves the operations center');
             if (source.includes('course-scheduler.html?view=')) throw new Error('Standalone course links are still enabled');
             if (source.includes('operations-mobile-course-fix-v1.js')) throw new Error('Duplicate mobile course JavaScript is still enabled');

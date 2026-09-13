@@ -207,7 +207,7 @@
     var recurrenceEnd=dateKey(course.recurrenceEndDate),stop=recurrenceEnd||(
       course.active===false?(dateKey(course.stopDate)||allStatusDates[allStatusDates.length-1]||start):rangeEnd
     ),cursor=start,guard=0;
-    if(stop<start)stop=start;
+    if(stop<start)return events;
     while(cursor<rangeStart&&guard<1500){cursor=shiftDate(cursor,step);guard++;}
     while(cursor<=rangeEnd&&cursor<=stop&&guard<1700){
       var status=scheduleStatusValue(statuses[cursor]);
@@ -311,15 +311,28 @@
     var seen=new Set();return array(rows).filter(function(row){var key=clean(row.teacherId)+'|'+clean(row.subjectId)+'|'+array(row.studentIds).slice().sort().join('|');if(row.enabled===false||(row.effectiveDate&&row.effectiveDate>day)||(row.resumedFrom&&row.resumedFrom<=day)||(teacherId&&row.teacherId!==teacherId)||seen.has(key))return false;seen.add(key);return true;});
   }
   function isIrregularPlaceholder(event,modes){
-    if(['attended','absent','leave','cancelled'].indexOf(event.status)>=0||['single_move','extra_lesson','teacher_gift'].indexOf(event.portalAction)>=0||event.type!=='fixed')return false;
+    if(['attended','absent','cancelled'].indexOf(event.status)>=0||['single_move','extra_lesson','teacher_gift'].indexOf(event.portalAction)>=0||event.type!=='fixed')return false;
     return array(modes).some(function(mode){return mode.enabled!==false&&event.teacherId===mode.teacherId&&event.subjectId===mode.subjectId&&array(event.studentIds).slice().sort().join('|')===array(mode.studentIds).slice().sort().join('|')&&array(mode.intervals).concat([mode]).some(function(interval){return event.date>=interval.effectiveDate&&(!interval.resumedFrom||event.date<interval.resumedFrom);});});
   }
   async function loadCalendarFollowupState(){await ensureTeacherPayrollManagerAuth();return call(AUTO_LOAD_FUNCTION_NAME,{scope:'calendar-irregular'});}
   async function loadIrregularCourses(){await ensureTeacherPayrollManagerAuth();var payload=await call(AUTO_LOAD_FUNCTION_NAME,{scope:'calendar-irregular'});return array(payload.irregularCourses);}
 
+  function applyCalendarSuspensions(events,payload,students){
+    var stops=array(payload.studentSuspensions).concat(array(payload.stoppedCourseReceivables)).filter(function(stop){return stop.status==='active';});
+    var studentById=new Map(students.map(function(row){return [row.id,row];}));
+    return events.map(function(event){
+      if(!array(event.studentIds).length)return event;
+      var retained=event.studentIds.filter(function(id){return !stops.some(function(stop){var effective=dateKey(stop.effectiveDate||stop.stopDate||stop.requestedAtText);return stop.studentId===id&&stop.teacherId===event.teacherId&&(!stop.subjectId||stop.subjectId===event.subjectId)&&(!effective||event.date>=effective);});});
+      if(retained.length===event.studentIds.length)return event;
+      if(!retained.length)return null;
+      return Object.assign({},event,{studentId:retained.length===1?retained[0]:'',studentIds:retained,studentNames:retained.map(function(id){return clean((studentById.get(id)||{}).name)||id;})});
+    }).filter(Boolean);
+  }
+
   function buildState(payload,anchorDate){
     payload=payload&&typeof payload==='object'?payload:{};
     var anchor=dateKey(anchorDate)||todayKey(),rangeStart=shiftDate(anchor,-240),rangeEnd=shiftDate(anchor,420),subjects=makeSubjectRows(payload),feePlans=normalizeFeePlans(payload,subjects),students=normalizeStudents(payload),teachers=normalizeTeachers(payload,subjects),rooms=normalizeRooms(payload),periods=normalizePeriods(payload,feePlans),events=normalizeEvents(payload,periods,rangeStart,rangeEnd),attendance=normalizeAttendance(payload,events,periods);
+    events=applyCalendarSuspensions(events,payload,students).filter(function(event){return !isIrregularPlaceholder(event,payload.irregularCourses);});
     var usedByPeriod=attendance.reduce(function(counts,row){if(row.periodId&&row.deducted===true){var allocations=row.periodAllocations&&row.periodAllocations.length?row.periodAllocations:[{periodId:row.periodId,lessonUnits:Number(row.lessonUnits)||1}];allocations.forEach(function(item){counts.set(item.periodId,(counts.get(item.periodId)||0)+Number(item.lessonUnits));});}return counts;},new Map());
     periods.forEach(function(period){
       var linkedUsage=usedByPeriod.get(period.id)||0;
