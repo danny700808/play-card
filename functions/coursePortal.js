@@ -8476,7 +8476,8 @@ async function createRoomBooking(data) {
     clientName: identity.clientName,
     clientPhone: identity.clientPhone,
     studentDiscountRequested: room.priceType === '柚子學生半價',
-    rentalMode: session.role === 'teacher' ? (clean(data.rentalMode) === 'teacher' ? 'teacher' : 'general') : session.role,
+    rentalMode: session.role === 'teacher' ? (clean(data.rentalMode) === 'teacher' ? 'teacher' : 'general') :
+      (session.role === 'renter' && clean(data.rentalMode) === 'preferential' ? 'preferential' : session.role),
     ownerKey,
     lineUserId: clean(session.lineUserId),
     authAccountId: clean(session.authAccountId),

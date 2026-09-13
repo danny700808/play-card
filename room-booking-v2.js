@@ -549,8 +549,10 @@
 
   function renderRateChoice() {
     const recording = selectedUse === 'recording';
-    const student = role === 'teacher' || role === 'student' && studentDiscountEligible;
-    document.getElementById('discountRateText').textContent = role === 'teacher' ? '老師本人租用・半價' : '柚子學生半價';
+    const student = role === 'renter' || role === 'teacher' || role === 'student' && studentDiscountEligible;
+    document.getElementById('discountRateText').textContent = role === 'teacher' ? '老師本人租用・半價' : '優惠租用（半價）';
+    document.getElementById('generalRateHint').classList.toggle('hidden', role === 'teacher');
+    document.getElementById('discountRateHint').classList.toggle('hidden', role === 'teacher');
     if (!student) {
       const generalRate = document.querySelector('input[name="rentalRate"][value="general"]');
       if (generalRate) generalRate.checked = true;
@@ -558,9 +560,9 @@
     document.getElementById('rentalRateSection').classList.toggle('hidden', recording && !student);
     document.getElementById('studentRateLabel').classList.toggle('hidden', !student);
     document.getElementById('rentalRateHeading').textContent =
-      recording ? '學生折扣（選填）' : '租用價格';
+      recording && role !== 'renter' ? '學生折扣（選填）' : '租用價格';
     document.getElementById('generalRateText').textContent =
-      role === 'teacher' ? '代他人租用・原價' : (recording ? '不使用學生折扣' : '一般租用');
+      role === 'teacher' ? '代他人租用・原價' : '一般租用';
   }
 
   function selectedRecordingUsage() {
@@ -595,7 +597,7 @@
       ? Number(recordingUsageRates[recordingUsage] || 0)
       : Number(selectedRoom.unitFee || 0);
     const rate = rateIsStudent()
-      ? (role === 'teacher' ? 0.5 : Number(roomData && roomData.studentDiscountRate || 0.5))
+      ? (role === 'teacher' || role === 'renter' ? 0.5 : Number(roomData && roomData.studentDiscountRate || 0.5))
       : 1;
     return Math.round(unitFee * durationMinutes / 60 * rate);
   }
@@ -826,7 +828,7 @@
         recordingUsage,
         studentId: selectedStudentId,
         studentDiscountRequested: role === 'student' && rateIsStudent(),
-        rentalMode: role === 'teacher' ? (rateIsStudent() ? 'teacher' : 'general') : '',
+        rentalMode: role === 'teacher' ? (rateIsStudent() ? 'teacher' : 'general') : (role === 'renter' && rateIsStudent() ? 'preferential' : ''),
         clientName: role === 'teacher' && !rateIsStudent() ? clean(document.getElementById('teacherGuestName').value) : '',
         purpose: clean(document.getElementById('bookingNote').value)
       }, preferencePayload()));

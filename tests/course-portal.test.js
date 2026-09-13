@@ -318,7 +318,7 @@ assert(rentalSource.includes('NT$100–300／小時'), '錄音室用途卡或教
 assert(rentalSource.includes('recordingUsage,'), '錄音室使用方式未送往後端');
 assert(rentalSource.includes("selectedUse === 'recording' && !recordingUsage"), '前端未阻擋未選錄音室使用方式的預約');
 assert(rentalSource.includes("classList.toggle('hidden', recording && !student)"), '錄音室非學生確認仍顯示重複的一般租用價格組');
-assert(rentalSource.includes("recording ? '學生折扣（選填）' : '租用價格'"), '錄音室學生半價未標成獨立折扣');
+assert(rentalSource.includes("recording && role !== 'renter' ? '學生折扣（選填）' : '租用價格'"), '錄音室學生半價未標成獨立折扣');
 assert(rentalSettingsSource.includes('data-use-rate'), '租用用途設定缺少每小時固定費用');
 assert(rentalSettingsSource.includes('data-room-piano'), '教室租用設定缺少鋼琴設備種類');
 
