@@ -405,3 +405,7 @@ body.embedded-in-operations .data-mode{margin-top:0}
 .legend i.leave{background:#edf0ef;filter:none;box-shadow:inset 0 0 0 1px #dce2df}
 .legend i.status{background:linear-gradient(135deg,#edf0ef 0 50%,#a14b47 50%)}
 @media(max-width:760px){.event.attended{--attendance-width:12px;padding-left:20px}}
+/* The embedded calendar adds compact desktop padding after this stylesheet. */
+.course-inline-body #calendarPage .event.attended{padding-left:calc(var(--attendance-width) + 9px)}
+.course-inline-body #calendarPage .week-event.attended{padding-left:21px}
+.course-inline-body #calendarPage .week-event.leave{background:#edf0ef;color:#a6afab;filter:none}
