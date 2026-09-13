@@ -25,6 +25,7 @@ const {
   waitForInjiaoyunCloudSync
 } = require('./injiaoyunManualSync');
 const { appendCoursePortalData } = require('./coursePortal');
+const { LEGACY_SYNC_DISABLED, assertLegacySyncAllowed } = require('./legacyCourseCutover');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -457,6 +458,7 @@ async function waitForOperation(authClient, operation, timeoutMs) {
 }
 
 async function runAuditForRange(startDate, endDate) {
+  assertLegacySyncAllowed();
   const selectedStartDate = dateKey(startDate);
   const selectedEndDate = dateKey(endDate);
   if (!selectedStartDate || !selectedEndDate || selectedStartDate > selectedEndDate) {
@@ -727,6 +729,7 @@ function syncOwnershipError() {
 }
 
 async function commitOperations(operations, syncContext) {
+  assertLegacySyncAllowed();
   const owner = clean(syncContext && syncContext.syncOwner);
   const sourceVersion = clean(syncContext && syncContext.sourceVersion);
   const syncScope = normalizedSyncScope(syncContext && syncContext.syncScope);
@@ -1139,6 +1142,7 @@ function refreshTuitionUsage(periods, attendance, initialUsedByPeriod) {
 }
 
 async function syncRecentMirror(startDate, endDate, preferredAuditRunId, trigger = 'manual-recent-delta') {
+  assertLegacySyncAllowed();
   const selectedStartDate = dateKey(startDate);
   const selectedEndDate = dateKey(endDate);
   if (!selectedStartDate || !selectedEndDate || selectedStartDate > selectedEndDate) {
@@ -1531,6 +1535,7 @@ async function syncOperationsTeacherPayrollRange(
   trigger = 'operations-success-trigger-teacher-payroll',
   options = {}
 ) {
+  assertLegacySyncAllowed();
   const repair = options.repair || null;
   const requestedRange = options.range || operationsSyncRange(operationsSettings);
   // 同一次 operations 同步可順便完成 7 月回填，但驗證範圍必須真正涵蓋整個 repair，
@@ -1723,6 +1728,7 @@ async function syncTeacherPayrollRepair(operationsSettings, trigger = 'operation
 }
 
 async function reserveSync(sourceVersion, trigger, syncScope = 'full') {
+  assertLegacySyncAllowed();
   const now = Timestamp.now();
   const scope = normalizedSyncScope(syncScope);
   const syncOwner = `injiaoyun-mirror:${crypto.randomUUID()}`;
@@ -1976,6 +1982,7 @@ function mergePreservedAuditAttendance(previewAttendance, mirrorAttendance, late
 }
 
 async function syncLatestMirror(trigger = 'automatic') {
+  assertLegacySyncAllowed();
   const [migrationRunId, auditInfo, operationsSnapshot] = await Promise.all([
     latestMigrationRunId(),
     latestAuditRunInfo(),
@@ -2215,6 +2222,7 @@ function registerInjiaoyunEducationMirror(exportsObject) {
     cors: [...ALLOWED_ORIGINS, LOCAL_ORIGIN],
     secrets: [MANUAL_SYNC_PIN]
   }, async (request) => {
+    if (LEGACY_SYNC_DISABLED) throw new HttpsError('failed-precondition', '已正式切換新系統，舊音教雲同步已停用。');
     assertAllowedCaller(request);
     assertManualPin(request);
     const refreshDate = dateKey(request && request.data && request.data.refreshDate);
@@ -2306,6 +2314,7 @@ function registerInjiaoyunEducationMirror(exportsObject) {
     timeoutSeconds: 540,
     memory: '2GiB'
   }, async (event) => {
+    if (LEGACY_SYNC_DISABLED) return;
     const before = event.data && event.data.before && event.data.before.exists
       ? event.data.before.data() || {}
       : {};
@@ -2381,6 +2390,7 @@ function registerInjiaoyunEducationMirror(exportsObject) {
     timeoutSeconds: 540,
     memory: '2GiB'
   }, async (event) => {
+    if (LEGACY_SYNC_DISABLED) return;
     const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() || {} : {};
     const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() || {} : {};
     const beforeRun = clean(before.lastRunId || before.currentRunId);
@@ -2400,6 +2410,7 @@ function registerInjiaoyunEducationMirror(exportsObject) {
     timeoutSeconds: 540,
     memory: '2GiB'
   }, async (event) => {
+    if (LEGACY_SYNC_DISABLED) return;
     const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() || {} : {};
     const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() || {} : {};
     if (clean(after.status).toLowerCase() !== 'success' || clean(before.status).toLowerCase() === 'success') return;

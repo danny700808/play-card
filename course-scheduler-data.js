@@ -400,11 +400,7 @@
   }
 
   async function sync(options){
-    options=options||{};var pin=clean(options.manualSyncPin);if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
-    var refreshDate=dateKey(options.refreshDate||options.date);
-    var result=await call(SYNC_FUNCTION_NAME,{source:'course-scheduler',manualSyncPin:pin,refreshDate:refreshDate},{timeout:600000});
-    if(!result.ok)throw new Error('課務同步未完成。');
-    return result;
+    throw new Error('已正式切換新系統，舊音教雲同步已停用。');
   }
 
   async function courseAdminMutation(name,payload,pin){
