@@ -27,7 +27,7 @@ assert.strictEqual(
 );
 assert(html.includes('portal.html#course-calendar'), '舊課程日表網址未導向現行課務管理');
 assert(!html.includes('id="syncInjiaoyunBtn"'), '舊課程日表仍保留第二個同步入口');
-assert(inlineTemplate.includes('更新音教雲最新資料'), '同步按鈕未清楚標示更新最新資料');
+assert(inlineTemplate.includes('id="syncInjiaoyunBtn" hidden disabled'), '正式切換後舊同步按鈕仍可操作');
 ['sandboxLogBtn', 'undoSandboxBtn', 'resetSandboxBtn', 'loadMigratedDataBtn']
   .forEach((id) => assert(!inlineTemplate.includes(id), `不應保留舊按鈕 ${id}`));
 
@@ -38,16 +38,16 @@ assert(client.includes("switchView(requestedView())"), '營運中心無法直接
 assert(client.includes("type:'youzi-course-view-change'"), '課務子頁切換未回報營運中心');
 assert(client.includes('開啟課務管理會直接顯示上次資料'), '畫面未清楚說明不需每次重新同步');
 assert(client.includes('setTimeout(async function()'), '自動儲存未延遲執行，可能造成連續操作卡頓');
-assert(client.includes('同步失敗，原資料已保留'), '同步失敗時未明確保留現有資料');
+assert(client.includes('舊音教雲同步已停用'), '正式切換後缺少停用提示');
 assert(client.includes('preserveWorkspaceConfiguration'), '同步未保留系統與教室設定');
 assert(client.includes('storeSynchronizedDatabases'), '正式資料與工作資料未使用同一筆原子寫入');
 assert(
   client.indexOf('if(!stored)throw new Error') < client.indexOf('formalState=nextFormal'),
   '資料寫入失敗前不可先覆蓋畫面中的原資料'
 );
-assert(client.includes('var refreshDate=todayKey()'), '手動更新未固定同步到今天最新資料');
-assert(client.includes('會由舊音教雲最新資料覆蓋'), '同步前未提醒新版測試資料將被舊系統覆蓋');
-assert(client.includes("loadingMigration=true;operationRunning=true"), '同步缺少連點鎖定');
+assert(!client.includes('YouziCoursePreviewData.sync'), '正式切換後仍可啟動舊系統同步');
+assert(!client.includes('會由舊音教雲最新資料覆蓋'), '正式切換後仍宣稱會覆蓋新系統資料');
+assert(dataClient.includes('舊音教雲同步已停用'), '舊前端同步介面沒有停用');
 assert(dataClient.includes('var usedByPeriod=attendance.reduce'), '扣堂統計未使用一次掃描，資料量大時可能卡頓');
 assert(!dataClient.includes('period.usedCount=attendance.filter'), '不可逐期重掃全部簽到資料');
 assert(client.includes('function eventStudentNames(event)'), '獨立課表未提供舊姓名顯示備援');

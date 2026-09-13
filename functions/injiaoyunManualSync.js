@@ -1,4 +1,5 @@
 'use strict';
+const { assertLegacySyncAllowed } = require('./legacyCourseCutover');
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
@@ -224,6 +225,7 @@ function cloudErrorMessage(error) {
 }
 
 async function startInjiaoyunCloudSync(options = {}) {
+  assertLegacySyncAllowed();
   const reservation = await reserveManualRequest({
     requestedBy: options.requestedBy,
     requestedOrigin: options.requestedOrigin,

@@ -8,6 +8,8 @@ on:
       - "functions/courseIndex.js"
       - "functions/injiaoyunEducationAutoRead.js"
       - "functions/injiaoyunEducationMirror.js"
+      - "functions/injiaoyunManualSync.js"
+      - "functions/legacyCourseCutover.js"
       - "functions/injiaoyunEducationPreview.js"
       - "functions/coursePortal.js"
       - "functions/courseSubjectCatalog.js"
@@ -123,6 +125,7 @@ jobs:
           NODE_PATH=functions/node_modules node --test tests/course-half-hour.test.js
           NODE_PATH=functions/node_modules node --test tests/course-subject-catalog.test.js
           NODE_PATH=functions/node_modules node tests/injiaoyun-unified-sync-model.test.js
+          NODE_PATH=functions/node_modules node --test tests/course-system-cutover.test.js
 
       - name: Validate Firebase service account
         env:
@@ -145,7 +148,7 @@ jobs:
         run: |
           set -o pipefail
           firebase deploy \
-            --only "functions:loadInjiaoyunEducationMirrorAuto,functions:loadInjiaoyunEducationMirror,functions:loadInjiaoyunEducationPreview,functions:syncInjiaoyunEducationMirrorNow,functions:applyInjiaoyunEducationMirrorOnOperationsSuccess,functions:applyInjiaoyunEducationMirrorOnMigration,functions:applyInjiaoyunEducationMirrorOnAudit" \
+            --only "functions:loadInjiaoyunEducationMirrorAuto,functions:loadInjiaoyunEducationMirror,functions:loadInjiaoyunEducationPreview,functions:syncInjiaoyunEducationMirrorNow,functions:runInjiaoyunSyncNow,functions:applyInjiaoyunEducationMirrorOnOperationsSuccess,functions:applyInjiaoyunEducationMirrorOnMigration,functions:applyInjiaoyunEducationMirrorOnAudit" \
             --project youzi-c1b74 \
             --non-interactive \
             --force \
