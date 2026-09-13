@@ -12616,6 +12616,7 @@ async function appendCoursePortalData(payload) {
     db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION).get(),
     db.collection(FEE_PLAN_COLLECTION).get()
   ]);
+  payload.studentSuspensions = suspensions.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const roomSettingsMap = new Map(roomSettings.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
   const studentProfileMap = new Map(studentProfiles.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
   payload.subjects = mergeSubjectRows(
