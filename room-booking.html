@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#24735c">
   <title>教室租用｜柚子樂器</title>
   <link rel="stylesheet" href="course-portal.css?v=20260731-final-rules-v1">
-  <link rel="stylesheet" href="room-booking-v2.css?v=20260809-room-photos-fast-uses-v1">
+  <link rel="stylesheet" href="room-booking-v2.css?v=20260913-rental-concession-v1">
 <link rel="stylesheet" href="teacher-rental-nav.css?v=20260908-clean-headings-v1">
   <link rel="stylesheet" href="student-navigation.css?v=20260910-tab-colors-v1">
 </head>
@@ -148,8 +148,8 @@
       <div class="rental-rate-section" id="rentalRateSection">
         <strong id="rentalRateHeading">租用價格</strong>
         <div class="rental-rate-choice">
-          <label id="generalRateLabel"><input type="radio" name="rentalRate" value="general" checked><span id="generalRateText">一般租用</span></label>
-          <label id="studentRateLabel"><input type="radio" name="rentalRate" value="student"><span id="discountRateText">柚子學生半價</span></label>
+          <label id="generalRateLabel"><input type="radio" name="rentalRate" value="general" checked><span class="rental-rate-copy"><span id="generalRateText">一般租用</span><small id="generalRateHint">身分可於現場付費時確認。</small></span></label>
+          <label id="studentRateLabel"><input type="radio" name="rentalRate" value="student"><span class="rental-rate-copy"><span id="discountRateText">優惠租用（半價）</span><small id="discountRateHint">適用柚子學生及認證社團。</small></span></label>
         </div>
       </div>
       <div class="field" style="margin-top:10px"><label>備註（選填）</label><input id="bookingNote"></div>
@@ -164,6 +164,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260910-taiwan-reads-v1"></script>
-  <script src="room-booking-v2.js?v=20260910-unbind-v1"></script>
+  <script src="room-booking-v2.js?v=20260913-rental-concession-v1"></script>
 </body>
 </html>

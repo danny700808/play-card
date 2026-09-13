@@ -29,6 +29,8 @@ function selectHistoryPeriods(periods, fromDate) {
 }
 function rentalRateForRole(role, mode, studentRequested, studentEligible, studentRate) {
   if (role === 'teacher') return mode === 'teacher' ? { rate: .5, label: '老師本人半價' } : { rate: 1, label: '一般價格' };
+  // Public renters self-select the concession; staff confirm eligibility on site.
+  if (role === 'renter' && mode === 'preferential') return { rate: .5, label: '優惠租用（半價）' };
   return role === 'student' && studentRequested && studentEligible
     ? { rate: studentRate, label: '柚子學生半價' } : { rate: 1, label: '一般價格' };
 }

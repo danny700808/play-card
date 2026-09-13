@@ -41,7 +41,7 @@ assert(client.includes('recordingUsage,'), '確認的錄音室使用方式未送
 assert(client.includes('studentId: selectedStudentId'), '學生租用沒有送出實際使用學生');
 assert(client.includes("selectedUse === 'recording' && !recordingUsage"), '未選錄音室使用方式仍可送出');
 assert(client.includes("classList.toggle('hidden', recording && !student)"), '錄音室非學生仍顯示重複價格組');
-assert(client.includes("recording ? '學生折扣（選填）' : '租用價格'"), '學生半價未與錄音室使用方式分開');
+assert(client.includes("recording && role !== 'renter' ? '學生折扣（選填）' : '租用價格'"), '學生半價未與錄音室使用方式分開');
 assert(client.includes('selectedStudent().name : boardData.displayName)'), '租用標題未使用後端登入姓名');
 assert(client.includes("normalize('NFKC')"), '歡迎姓名未先正規化全形電話或 Email');
 assert(css.includes('.rental-use-card small.rental-use-price'), '錄音室價格範圍會被用途卡樣式隱藏');

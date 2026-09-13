@@ -11,10 +11,17 @@ test('history includes containing period through latest, retaining earlier debt'
  assert.deepEqual(selectHistoryPeriods(rows,'2026-08-13').map(r=>r.id),['g4','g3','g2','g0']);
  assert.deepEqual(selectHistoryPeriods(rows,'2026-08-16').map(r=>r.id),['g4','g3','g0']);
 });
-test('teacher personal is half, guest full; renter cannot claim teacher or student discount',()=>{
+test('teacher personal is half, guest full; renter cannot claim teacher or verified student discount',()=>{
  assert.equal(rentalRateForRole('teacher','teacher',false,false,.3).rate,.5);
  assert.equal(rentalRateForRole('teacher','general',true,true,.5).rate,1);
  assert.equal(rentalRateForRole('renter','teacher',true,true,.5).rate,1);
  assert.equal(rentalRateForRole('student','teacher',true,false,.5).rate,1);
  assert.equal(rentalRateForRole('student','',true,true,.5).rate,.5);
+});
+test('public renter concession is self-selected at half price, general stays full price',()=>{
+ assert.deepEqual(rentalRateForRole('renter','preferential',false,false,.3), {rate:.5,label:'優惠租用（半價）'});
+ assert.equal(rentalRateForRole('renter','',false,false,.5).rate,1);
+ assert.equal(rentalRateForRole('renter','general',false,false,.5).rate,1);
+ assert.equal(rentalRateForRole('student','preferential',false,false,.5).rate,1);
+ assert.equal(rentalRateForRole('teacher','preferential',false,false,.5).rate,1);
 });

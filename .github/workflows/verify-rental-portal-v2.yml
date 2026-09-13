@@ -62,7 +62,7 @@ jobs:
           grep -q "我可以自行搬古箏" room-booking-v2.js
           grep -q "是否指定鼓種" room-booking-v2.js
           grep -q "durationGrid" room-booking.html
-          grep -q "柚子學生半價" room-booking.html
+          grep -q "優惠租用（半價）" room-booking.html
           grep -q "room-booking-v2.js" room-booking.html
           ! grep -q "teacher-room-rules-v1.js" teacher-course-portal.html
           grep -q "portal-clean-ui-v1.css" student-course-portal.html
