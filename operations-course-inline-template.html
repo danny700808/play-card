@@ -3,10 +3,10 @@
         <div><h1 id="pageTitle">課程日表</h1><p class="hidden" id="pageSubtitle"></p></div>
         <div class="header-actions"><span class="save-state" id="saveState"></span><button class="btn primary hidden" type="button" id="topNewEvent">＋ 新增排課</button></div>
       </header>
-      <div class="cloud-refresh-bar" style="display:flex;justify-content:flex-end;margin:0 0 10px"><button class="btn soft" type="button" id="refreshCloudBtn">重新整理</button></div>
+      <div class="cloud-refresh-bar" hidden style="display:none"><button class="btn soft" type="button" id="refreshCloudBtn">重新整理</button></div>
 
-      <section class="data-mode card" id="dataModePanel">
-        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">同</span><div><strong id="dataModeTitle">正式資料已保存</strong><p id="dataModeDescription">課程異動直接保存於新系統，舊系統同步已停用</p><small id="dataModeMeta">正在自動開啟資料庫</small></div></div>
+      <section class="data-mode card" id="dataModePanel" hidden style="display:none">
+        <div class="data-mode-copy"><span class="data-mode-icon" id="dataModeIcon">同</span><div><strong id="dataModeTitle"></strong><p id="dataModeDescription"></p><small id="dataModeMeta"></small></div></div>
         <div class="data-mode-actions">
           <span class="tag" id="dataModeChip">自動儲存</span>
           <button class="btn primary hidden" type="button" id="syncInjiaoyunBtn" hidden disabled style="display:none">舊系統同步已停用</button>
