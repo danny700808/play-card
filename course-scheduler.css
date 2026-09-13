@@ -394,3 +394,14 @@ body.embedded-in-operations .data-mode{margin-top:0}
 @media(max-width:760px){.daily-hours-row{grid-template-columns:1fr 1fr}.daily-hours-row>b{grid-column:1/-1}.daily-hours-row label:not(.daily-hours-closed){display:grid;grid-template-columns:44px minmax(0,1fr)}.calendar-issue-row{grid-template-columns:1fr}.calendar-issue-row .tag{grid-row:auto;justify-self:start}}
 
 .half-hour-entry{display:block;padding:5px 0;border-bottom:1px dashed #b7c9c1;overflow-wrap:anywhere}.half-hour-entry:last-child{border-bottom:0}
+/* Attendance remains prominent; leave entries recede without hiding their text. */
+.event.attended{--attendance-width:20px;padding-left:calc(var(--attendance-width) + 9px)}
+.event.attended::before{width:var(--attendance-width);min-width:0;max-width:none;background:rgba(0,0,0,.62);pointer-events:none}
+.week-event.attended{padding-left:21px}
+.week-event.attended::before{width:13px;background:rgba(0,0,0,.62);pointer-events:none}
+.legend i.attended::before{width:6px;background:rgba(0,0,0,.62)}
+.event.leave,.event.fixed.leave,.event.single.leave,.event.rental.leave,.event.trial.leave,.event.special.leave,.event.leave:hover,.week-event.leave,.week-event.leave:hover{background:#edf0ef;color:#a6afab;filter:none;opacity:1;box-shadow:inset 0 0 0 1px #e1e6e3}
+.event.leave .event-top,.event.leave .event-main,.event.leave .event-sub,.week-event.leave span,.week-event.leave small{color:inherit;opacity:1}
+.legend i.leave{background:#edf0ef;filter:none;box-shadow:inset 0 0 0 1px #dce2df}
+.legend i.status{background:linear-gradient(135deg,#edf0ef 0 50%,#a14b47 50%)}
+@media(max-width:760px){.event.attended{--attendance-width:12px;padding-left:20px}}
