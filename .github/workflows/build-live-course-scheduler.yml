@@ -98,7 +98,7 @@ jobs:
           if (!runtime.includes('function refreshTeacherPayrollMonth(monthKey)')) throw new Error('Teacher payroll month does not refresh from the cloud');
           if (!runtime.includes("$('teacherPayrollRefreshBtn').addEventListener('click'")) throw new Error('Teacher payroll retry action is missing');
           if (runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)')) throw new Error('Duplicate startup restore is still enabled');
-          if (!runtime.includes("if($('sideModeBadge'))$('sideModeBadge').textContent")) throw new Error('Removed sidebar status is still a required element');
+          if (runtime.includes("$('sideModeBadge').textContent") && !runtime.includes("if($('sideModeBadge'))$('sideModeBadge').textContent")) throw new Error('Removed sidebar status is still a required element');
           if (!runtime.includes("var node=$(id);if(node)node.addEventListener")) throw new Error('Removed sidebar action is still a required element');
           if (!runtime.includes('function studentPageIndex()')) throw new Error('Indexed student renderer is missing');
           if (!runtime.includes('periodsByStudent=new Map()')) throw new Error('Student tuition-period index is missing');
