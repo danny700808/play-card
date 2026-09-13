@@ -306,20 +306,10 @@
   function closeModal(id){$(id).classList.remove('open');if(!document.querySelector('.modal-backdrop.open'))document.body.style.overflow='';}
 
   function updateModeUI(){
-    var empty=state.dataMode==='empty',meta=state.dataMeta||{},quality=meta.dataQuality||{},visible=quality.visibleEventWeekdays||{},unresolved=numberOf(quality.unresolvedTimeRecords);
-    var days='二 '+numberOf(visible.tue)+'・三 '+numberOf(visible.wed)+'・四 '+numberOf(visible.thu)+'・五 '+numberOf(visible.fri)+'・六 '+numberOf(visible.sat);
-    $('dataModePanel').style.display=urlOption('maintenance')==='1'?'':'none';
-    $('dataModePanel').classList.toggle('actual',false);
-    $('dataModePanel').classList.toggle('sandbox',false);
+    var empty=state.dataMode==='empty';
+    $('dataModePanel').hidden=true;
+    $('dataModePanel').style.display='none';
     document.body.classList.toggle('sandbox-mode',false);
-    $('dataModeIcon').textContent='同';
-    if($('sideModeBadge'))$('sideModeBadge').textContent=empty?'資料尚未載入':'本機工作區';
-    $('dataModeTitle').textContent=loadingMigration?'正在讀取新系統資料':(empty?'資料尚未載入':'正式資料已保存');
-    $('dataModeDescription').textContent=loadingMigration?'正在讀取新系統資料庫。':(empty?'請重新整理以載入新系統資料。':'開啟課務管理會直接顯示上次資料；課程異動直接保存於新系統。');
-    $('dataModeChip').textContent=loadingMigration?'同步中':(empty?'尚未載入':'已保存');
-    $('dataModeMeta').textContent=empty
-      ? '請按「重新整理」載入新系統資料'
-      : state.students.length+' 位學生・'+state.events.length+' 筆課表・'+days+(unresolved?'・'+unresolved+' 筆時間待確認':'')+(meta.runId?'・來源 '+meta.runId:'');
     if($('syncInjiaoyunBtn')){
       $('syncInjiaoyunBtn').hidden=true;
       $('syncInjiaoyunBtn').style.display='none';
@@ -1329,6 +1319,26 @@
   async function syncInjiaoyun(){
     toast('已正式使用新系統','舊音教雲同步已停用，請直接在新系統操作。');
   }
+
+  async function loadPublishedWorkspace(){
+    if(loadingMigration||operationRunning)return;
+    closeModal('loadPublishedModal');
+    loadingMigration=true;operationRunning=true;updateModeUI();
+    $('loadPublishedBtn').disabled=true;
+    try{
+      var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:state.currentDate||todayKey()});
+      await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});
+      $('calendarReauthPanel').classList.add('hidden');$('saveState').textContent='';
+    }catch(error){
+      state.readOnly=true;state.dataMode='migration';updateModeUI();
+      if(error&&error.reauth)$('calendarReauthPanel').classList.remove('hidden');
+      toast('雲端資料載入失敗，目前僅供查閱',clean(error&&error.message).slice(0,220),'error');
+    }finally{
+      loadingMigration=false;operationRunning=false;$('loadPublishedBtn').disabled=false;
+      $('operationProgress').classList.add('hidden');updateModeUI();
+    }
+  }
+
 
   function bindEvents(){
     bindRoomReorder();
