@@ -49,6 +49,12 @@ registerCoursePortal(exports, {
   teacherWorkPendingCounts: pendingCountsForIdentity
 });
 registerEmployeeAuth(exports, { sendEmail: sendEmailViaGmail });
+const { createUnifiedEmailLogin } = require('./unifiedEmailLogin');
+const unifiedEmailLogin = createUnifiedEmailLogin({db,auth:admin.auth(),FieldValue:admin.firestore.FieldValue,sendEmail:sendEmailViaGmail,
+  findPortalAccount:require('./coursePortal').findEmailLoginAccount,issuePortalSession:require('./coursePortal').issueSession});
+exports.unifiedEmailSend = onCall({region:'us-central1',cors:true,timeoutSeconds:60}, request => unifiedEmailLogin.send(request.data || {},request));
+exports.unifiedEmailVerify = onCall({region:'us-central1',cors:true,timeoutSeconds:60}, request => unifiedEmailLogin.verify(request.data || {}));
+
 registerExternalTeacherWork(exports, {
   requireTeacherSession: requireCoursePortalSession,
   resolveTeacherEmployee: resolveTeacherUtilityEmployee

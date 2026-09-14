@@ -13082,6 +13082,8 @@ function registerCoursePortal(exportsObject, helpers = {}) {
 }
 
 module.exports = {
+  findEmailLoginAccount,
+  issueSession,
   appendCoursePortalData,
   handleCoursePortalLineEvent,
   normalizePhone,

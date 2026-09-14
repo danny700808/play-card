@@ -48,6 +48,10 @@ function createUnifiedLogin(deps) {
       const decision = deps.decideLineLoginBinding(role,await deps.bindingsForLine(role,row.profile.lineUserId));
       if (decision.action === 'login') choices.push({id:role,label:{teacher:'老師課務',student:'學生／家長',renter:'教室租用'}[role]});
     }
+    if (!choices.length && deps.findPortalAccount) {
+      const saved = await db.collection('unifiedPortalEmailBindings').doc(hash('line-login|'+row.profile.lineUserId)).get();
+      if (saved.exists && await deps.findPortalAccount(saved.data().role,saved.data().email)) choices.push({id:'email-portal',label:'進入系統'});
+    }
     return {ok:true,choices,forceEmployeeLink:row.forceEmployeeLink===true};
   }
   async function link(data, request) {
@@ -86,6 +90,12 @@ function createUnifiedLogin(deps) {
       const claims={employee:true,manager:isManager(account.data,account.collection),role:user.role,employeeId:user.employeeId,identityType:user.identityType,sourceCollection:account.collection,sourceDocId:account.id};
       await auth.setCustomUserClaims(firebaseUser.uid,claims);
       result={ok:true,kind:'employee',token:await auth.createCustomToken(firebaseUser.uid),user};
+    }else if(choice==='email-portal' && deps.findPortalAccount){
+      const saved=await db.collection('unifiedPortalEmailBindings').doc(hash('line-login|'+row.profile.lineUserId)).get();
+      const account=saved.exists && await deps.findPortalAccount(saved.data().role,saved.data().email);
+      if(!account)throw new HttpsError('permission-denied','帳號目前無法登入。');
+      const session=await deps.issuePortalSession({...account,authMethod:'line'});
+      result={ok:true,kind:'portal-session',role:account.type,sessionToken:session.sessionToken};
     }else if(['teacher','student','renter'].includes(choice)){
       const decision=deps.decideLineLoginBinding(choice,await deps.bindingsForLine(choice,row.profile.lineUserId));
       if(['pending','blocked','conflict'].includes(decision.action))throw new HttpsError('permission-denied',decision.action==='pending'?'這個身分正在等待審核。':'此身分目前無法登入，請聯絡管理者核對。');
