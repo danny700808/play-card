@@ -1840,15 +1840,8 @@
     } catch (error) {
       setProgress(false);
       toast(error.message, 'error');
-      if (/剛剛有更新|重新確認|已被使用|已有課程|已被租用/.test(error.message || '')) {
-        cancelPlanner(false);
-        showQuick(
-          '空位剛剛有變動',
-          '沒有建立任何重複課程',
-          `${choiceSummary('已安全停止這次操作', error.message, '請回到課表重新選擇，系統會讀取最新狀態。')}<button type="button" data-cancel-flow>重新查看課表</button>`,
-          { type: 'stale-action' }
-        );
-      }
+      // Keep the planner and its filled values available for correction.
+      showDataFreshness(error.message || '儲存未完成，已保留填寫內容，請確認後再試。');
     } finally {
       loading(button, false);
     }

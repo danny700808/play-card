@@ -50,6 +50,10 @@ test('historical correction reserves the original grid position rather than a ne
     portalAttendanceForStudents:async()=>[],assignNewSystemPeriodNumbers:async rows=>rows,mergePortalAttendanceRows:rows=>rows,
     eventDate:r=>r.date,eventTeacherId:r=>r.teacherId,eventSubjectId:r=>r.subjectId,eventStart:()=>'',sourceId:r=>r.id,
     normalizeScheduleStatus:v=>v,HttpsError:Error,db:{collection:()=>({where(){return this},get:async()=>({docs:[]})})}};
+  const helperStart = source.indexOf('function attendanceLessonUnits(');
+  vm.runInNewContext(source.slice(helperStart, source.indexOf('\n}', helperStart) + 2), context);
+  const allocationsStart = source.indexOf('function attendanceAllocations(');
+  vm.runInNewContext(source.slice(allocationsStart, source.indexOf('\n}', allocationsStart) + 2), context);
   vm.runInNewContext(extract('attendanceCorrectionSlots'),context);
   const slots=await context.attendanceCorrectionSlots({id:'cancel',studentIds:['s'],studentNames:['測試'],teacherId:'t',subjectId:'p',date:'2026-08-01'});
   assert.equal(slots[0].periodId,'term');assert.equal(slots[0].slotNo,1);assert.equal(slots[0].originalDate,'2026-08-01');

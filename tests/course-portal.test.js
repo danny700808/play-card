@@ -39,14 +39,14 @@ const pages = [
   'course-portal-admin.html'
 ];
 
-const loginGateway = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const loginGateway = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
 assert(
   loginGateway.includes('href="course-portal.html?method=line" id="lineGateway"'),
   '首頁 LINE 登入必須只開啟中央入口，讓使用者明確選擇身分'
 );
 assert(!loginGateway.includes('auto=1'), '首頁仍會依照舊身分自動開始 LINE 登入');
 
-const portalLanding = fs.readFileSync(path.join(root, 'course-portal.html'), 'utf8');
+const portalLanding = fs.readFileSync(path.join(root, 'course-portal.html'), 'utf8').replace(/\r\n/g, '\n');
 const portalRoles = [
   ['teacher', 'teacher-course-portal.html'],
   ['student', 'student-course-portal.html'],
@@ -66,14 +66,14 @@ assert(!portalLanding.includes("params.get('auto')"), '中央入口仍會讀取�
 assert(portalLanding.includes('await startLineLogin(role, button)'), '明確選擇身分後無法開始 LINE 登入');
 assert(portalLanding.includes("pendingFlow = 'line-registration'"), 'LINE 第一次使用流程已遺失');
 
-const configSource = fs.readFileSync(path.join(root, 'config.js'), 'utf8');
+const configSource = fs.readFileSync(path.join(root, 'config.js'), 'utf8').replace(/\r\n/g, '\n');
 new vm.Script(configSource, { filename: 'config.js' });
 assert(configSource.includes('AUTH_STATE_MIGRATION_KEY'), '缺少版本化瀏覽器登入狀態遷移');
 assert(configSource.includes('youzi.coursePortal.authStateMigration.20260805.v1'), '登入狀態遷移沒有獨立版本');
 assert(configSource.includes("'youzi.coursePortal.dataCache.'"), '登入狀態遷移沒有清除舊課務快取');
 assert(!configSource.includes('installRolePageRecovery'), '角色頁仍有第二層畫面監看與自動跳轉');
 
-const commonSource = fs.readFileSync(path.join(root, 'course-portal-common.js'), 'utf8');
+const commonSource = fs.readFileSync(path.join(root, 'course-portal-common.js'), 'utf8').replace(/\r\n/g, '\n');
 assert(commonSource.trimStart().startsWith('(function'), 'course-portal-common.js 不是可執行的 JavaScript');
 new vm.Script(commonSource, { filename: 'course-portal-common.js' });
 assert(!commonSource.includes('coursePortalDirectRegularAccess'), '入口仍可繞過 Email 四碼直接登入');
@@ -87,7 +87,7 @@ assert(!commonSource.includes('複製綁定文字'), '入口程式仍保留複�
 assert(!commonSource.includes('renderLineAction'), '入口程式仍保留舊 LINE 文字綁定畫面');
 
 for (const file of pages) {
-  const html = fs.readFileSync(path.join(root, file), 'utf8');
+  const html = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
   assert(html.trimStart().toLowerCase().startsWith('<!doctype html>'), `${file} 不是 HTML 文件`);
   const hasPortalRuntime = html.includes('course-portal-common.js') ||
     (file === 'teacher-course-portal.html' && html.includes('teacher-course-session-v8.js'));
@@ -101,7 +101,7 @@ for (const file of pages) {
 }
 
 ['teacher-course-portal.html', 'student-course-portal.html', 'room-booking.html'].forEach((file) => {
-  const html = fs.readFileSync(path.join(root, file), 'utf8');
+  const html = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
   const regularForm = html.slice(
     html.indexOf('data-regular-auth-form'),
     html.indexOf('</form>', html.indexOf('data-regular-auth-form'))
@@ -128,11 +128,11 @@ for (const file of pages) {
   assert(lineSetupForm.includes('寄送四碼驗證碼'), `${file} LINE 首次註冊未清楚顯示四碼驗證`);
 });
 
-const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.html'), 'utf8');
-const teacherSource = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.js'), 'utf8');
-const teacherCss = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.css'), 'utf8');
-const studentPortal = fs.readFileSync(path.join(root, 'student-course-portal.html'), 'utf8');
-const adminPortal = fs.readFileSync(path.join(root, 'course-portal-admin.html'), 'utf8');
+const teacherPortal = fs.readFileSync(path.join(root, 'teacher-course-portal.html'), 'utf8').replace(/\r\n/g, '\n');
+const teacherSource = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.js'), 'utf8').replace(/\r\n/g, '\n');
+const teacherCss = fs.readFileSync(path.join(root, 'teacher-course-portal-v8.css'), 'utf8').replace(/\r\n/g, '\n');
+const studentPortal = fs.readFileSync(path.join(root, 'student-course-portal.html'), 'utf8').replace(/\r\n/g, '\n');
+const adminPortal = fs.readFileSync(path.join(root, 'course-portal-admin.html'), 'utf8').replace(/\r\n/g, '\n');
 assert(adminPortal.includes('id="attendance-cancellation-review"'), '主管頁缺少取消簽到待確認的直接定位');
 new vm.Script(teacherSource, { filename: 'teacher-course-portal-v8.js' });
 assert(teacherSource.includes('data-quick-action="single_move"'), '老師入口缺少單次調課');
@@ -216,13 +216,13 @@ assert(studentPortal.includes('coursePortalStudentSubmitTuitionPayment'), '學�
 assert(studentPortal.includes('data-tab="contact"'), '學生入口缺少課堂聯絡簿入口');
 assert(studentPortal.includes('課程與學費') && studentPortal.includes('租用教室') && studentPortal.includes('LINE 提醒'), '學生底部入口不完整');
 assert(studentPortal.includes('欠費全部顯示') && studentPortal.includes('歷史查詢自 2026/7/21 起'), '學生入口未清楚說明欠費與歷史查詢範圍');
-assert(fs.readFileSync(path.join(root, 'course-history-view.js'), 'utf8').includes('lesson-slot-grid') && studentPortal.includes('未使用'), '學生期別卡缺少堂次小格與未使用標示');
+assert(fs.readFileSync(path.join(root, 'course-history-view.js'), 'utf8').replace(/\r\n/g, '\n').includes('lesson-slot-grid') && studentPortal.includes('未使用'), '學生期別卡缺少堂次小格與未使用標示');
 assert(studentPortal.includes('studentSwitcher') && studentPortal.includes('data.students.length <= 1'), '只有一位學生時仍顯示不必要的學生切換');
 assert(studentPortal.includes('student-bottom-tabs') && studentPortal.includes('payment-due'), '學生入口缺少固定底部導航或末堂未繳提醒');
 assert(studentPortal.includes('coursePortalStudentContactBookImage'), '學生入口無法安全查看聯絡簿照片');
 assert(studentPortal.includes('newSystemPeriodNumber(row)'), '學生繳費視窗沒有換算新系統期數');
 assert(!studentPortal.includes('第 ${Number(row.nextPeriodNo || 0)} 期'), '學生繳費視窗仍直接顯示舊系統原始期數');
-assert(fs.readFileSync(path.join(root, 'course-history-view.js'), 'utf8').includes('period.systemPeriodNo'), '學生期別卡未使用持久的新系統期數');
+assert(fs.readFileSync(path.join(root, 'course-history-view.js'), 'utf8').replace(/\r\n/g, '\n').includes('period.systemPeriodNo'), '學生期別卡未使用持久的新系統期數');
 assert(studentPortal.includes('row.id === request.targetPeriodId'), '學費申請沒有唯一綁定目標期別');
 assert(studentPortal.includes('id="upcomingCourseList"'), '學生入口沒有顯示接下來的課程');
 assert(studentPortal.includes('period-payment-amount') && studentPortal.includes('period-payment-state'), '學生學費資訊沒有整理成卡片內的獨立圖框');
@@ -237,7 +237,7 @@ assert(adminPortal.includes('coursePortalAdminTuitionPaymentAction'), '管理者
 assert(adminPortal.includes('學費收據紀錄') && adminPortal.includes('data-issued-receipt'), '管理者頁缺少學費收據查看與補印');
 assert(adminPortal.includes('@page{size:15cm 10cm'), '學費收據列印尺寸不是 15 × 10 公分');
 
-const contactPortalFunctions = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
+const contactPortalFunctions = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8').replace(/\r\n/g, '\n');
 const tuitionReceiptTemplate = fs.readFileSync(path.join(root, 'functions/assets/tuition-receipt-blank.png'));
 assert.strictEqual(tuitionReceiptTemplate.readUInt32BE(16), 1500, '學費收據圖片寬度不是 1500 像素');
 assert.strictEqual(tuitionReceiptTemplate.readUInt32BE(20), 1000, '學費收據圖片高度不是 1000 像素');
@@ -250,8 +250,8 @@ assert(contactPortalFunctions.includes("@expo-google-fonts/noto-sans-tc/700Bold/
 assert(!studentPortal.includes('data-issued-receipt'), '學生個人頁不應顯示管理者補印收據功能');
 assert(!studentPortal.includes('查看／補印收據'), '學生個人頁不應顯示查看／補印收據按鈕');
 assert(!contactPortalFunctions.includes('老師資料尚未登記 Email'), '老師 LINE 註冊仍被既有 Email 欄位阻擋');
-const contactRules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8');
-const contactDeployment = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8');
+const contactRules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8').replace(/\r\n/g, '\n');
+const contactDeployment = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8').replace(/\r\n/g, '\n');
 assert(contactDeployment.includes('functions:coursePortalAdminEnsureTuitionReceipt'), '舊繳費收據補建 Function 未加入部署清單');
 assert(contactPortalFunctions.includes("const CONTACT_BOOK_POSTS = 'coursePortalLessonContactPosts'"), '課堂聯絡簿缺少私密資料集合');
 assert(contactPortalFunctions.includes('coursePortalTeacherSubmitContactBookPost') && contactPortalFunctions.includes('coursePortalStudentContactBookImage'), '課堂聯絡簿 Callable Functions 不完整');
@@ -259,10 +259,10 @@ assert(contactPortalFunctions.includes('linkedAttendance') && contactPortalFunct
 assert(contactRules.includes('coursePortalLessonContactPosts') && contactRules.includes('allow read, write: if false'), '課堂聯絡簿資料不可由前端直接讀寫');
 assert(contactDeployment.includes('functions:coursePortalTeacherSubmitContactBookPost') && contactDeployment.includes('functions:coursePortalStudentContactBookImage'), '部署流程缺少課堂聯絡簿 Functions');
 
-const rentalSource = fs.readFileSync(path.join(root, 'room-booking-v2.js'), 'utf8');
-const rentalHtml = fs.readFileSync(path.join(root, 'room-booking.html'), 'utf8');
-const rentalSettingsSource = fs.readFileSync(path.join(root, 'course-portal-settings-v2.js'), 'utf8');
-const teacherRoomRulesSource = fs.readFileSync(path.join(root, 'teacher-room-rules-v1.js'), 'utf8');
+const rentalSource = fs.readFileSync(path.join(root, 'room-booking-v2.js'), 'utf8').replace(/\r\n/g, '\n');
+const rentalHtml = fs.readFileSync(path.join(root, 'room-booking.html'), 'utf8').replace(/\r\n/g, '\n');
+const rentalSettingsSource = fs.readFileSync(path.join(root, 'course-portal-settings-v2.js'), 'utf8').replace(/\r\n/g, '\n');
+const teacherRoomRulesSource = fs.readFileSync(path.join(root, 'teacher-room-rules-v1.js'), 'utf8').replace(/\r\n/g, '\n');
 new vm.Script(rentalSource, { filename: 'room-booking-v2.js' });
 new vm.Script(rentalSettingsSource, { filename: 'course-portal-settings-v2.js' });
 new vm.Script(teacherRoomRulesSource, { filename: 'teacher-room-rules-v1.js' });
@@ -322,11 +322,11 @@ assert(rentalSource.includes("recording && role !== 'renter' ? '學生折扣（�
 assert(rentalSettingsSource.includes('data-use-rate'), '租用用途設定缺少每小時固定費用');
 assert(rentalSettingsSource.includes('data-room-piano'), '教室租用設定缺少鋼琴設備種類');
 
-const schedulerHtml = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8');
-const schedulerUiHtml = fs.readFileSync(path.join(root, 'operations-course-inline-template.html'), 'utf8');
-const schedulerSource = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8');
-const schedulerCss = fs.readFileSync(path.join(root, 'course-scheduler.css'), 'utf8');
-const schedulerDataSource = fs.readFileSync(path.join(root, 'course-scheduler-data.js'), 'utf8');
+const schedulerHtml = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8').replace(/\r\n/g, '\n');
+const schedulerUiHtml = fs.readFileSync(path.join(root, 'operations-course-inline-template.html'), 'utf8').replace(/\r\n/g, '\n');
+const schedulerSource = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8').replace(/\r\n/g, '\n');
+const schedulerCss = fs.readFileSync(path.join(root, 'course-scheduler.css'), 'utf8').replace(/\r\n/g, '\n');
+const schedulerDataSource = fs.readFileSync(path.join(root, 'course-scheduler-data.js'), 'utf8').replace(/\r\n/g, '\n');
 assert(schedulerHtml.includes('portal.html#course-calendar'), '舊排課網址未導向現行課務管理');
 assert(!schedulerHtml.includes('id="dataModePanel"'), '舊排課頁仍保留重複的課務介面');
 assert(schedulerUiHtml.includes('id="dataModePanel"'), '現行課務管理缺少資料同步面板');
@@ -447,9 +447,9 @@ assert.strictEqual(normalizedGuzhengRental.rentalPaymentStatus, 'onsite_unpaid',
 assert(normalizedGuzhengRental.resourceIds.includes('equipment:guzheng'), '古箏租用未標記共用古箏資源');
 assert(schedulerSource.includes('eventSharedResourceIds(other)'), '桌面課表未檢查不同教室的古箏共用資源衝突');
 
-const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8');
-const mirrorSource = fs.readFileSync(path.join(root, 'functions/injiaoyunEducationMirror.js'), 'utf8');
-const deployWorkflow = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8');
+const backend = fs.readFileSync(path.join(root, 'functions/coursePortal.js'), 'utf8').replace(/\r\n/g, '\n');
+const mirrorSource = fs.readFileSync(path.join(root, 'functions/injiaoyunEducationMirror.js'), 'utf8').replace(/\r\n/g, '\n');
+const deployWorkflow = fs.readFileSync(path.join(root, '.github/workflows/deploy-course-portal-auth.yml'), 'utf8').replace(/\r\n/g, '\n');
 
 function backendFixtureDocument(id, data) {
   return {
@@ -2652,7 +2652,7 @@ assert(deployWorkflow.includes('functions:coursePortalTeacherSlotOptions'), '部
   'functions:coursePortalAdminTuitionPaymentScreenshot',
   'functions:coursePortalStudentReminderDaily'
 ].forEach((name) => assert(deployWorkflow.includes(name), `Firebase 部署清單漏掉 ${name}`));
-assert(backend.includes("where('ownerKey', '==', sessionOwnerKey(session))"), '租用紀錄未限制為目前登入帳號');
+assert(backend.includes("['ownerKey', sessionOwnerKey(session)]"), '租用紀錄未限制為目前登入帳號');
 assert(backend.includes('只能取消自己預約的教室'), '取消租用缺少本人權限檢查');
 assert(backend.includes('const EMAIL_OTP_TTL_MS = 300 * 1000'), 'Email 四碼驗證碼不是 300 秒');
 assert(backend.includes('EMAIL_OTP_MAX_ATTEMPTS = 5'), 'Email 驗證碼缺少五次輸入限制');
@@ -2897,13 +2897,13 @@ assert(
   '同步解鎖沒有驗證 active owner/source/scope，或 accepted reservation 沒有回傳 owner'
 );
 
-const portalCss = fs.readFileSync(path.join(root, 'course-portal.css'), 'utf8');
+const portalCss = fs.readFileSync(path.join(root, 'course-portal.css'), 'utf8').replace(/\r\n/g, '\n');
 assert(portalCss.includes('@media (max-width: 760px)'), '外部入口缺少手機版樣式');
-const internalMobileCss = fs.readFileSync(path.join(root, 'internal-mobile.css'), 'utf8');
+const internalMobileCss = fs.readFileSync(path.join(root, 'internal-mobile.css'), 'utf8').replace(/\r\n/g, '\n');
 assert(internalMobileCss.includes('@media (max-width: 780px)'), '內部系統缺少手機版斷點');
 assert(internalMobileCss.includes('body.yz-internal-theme'), '內部手機樣式未限制在內部主題');
 
-const rules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8');
+const rules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8').replace(/\r\n/g, '\n');
 assert(rules.includes('match /coursePortalSessions/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalStudentBindings/{document=**} { allow read, write: if false; }'));
 assert(rules.includes('match /coursePortalEmailOtps/{document=**} { allow read, write: if false; }'));

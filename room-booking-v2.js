@@ -4,6 +4,7 @@
   const P = global.CoursePortal;
   if (!P) throw new Error('CoursePortal 尚未載入。');
 
+  let recovery = null;
   let role = '';
   let studentDiscountEligible = false;
   let studentOptions = [];
@@ -18,6 +19,7 @@
   let roomData = null;
   let selectedRoom = null;
   let myBookings = [];
+  let bookingsView = 'upcoming', bookingsCursor = '', bookingsRequestId = 0;
   let pianoType = 'any';
   let allowGuzhengMove = false;
   let drumType = '';
@@ -434,16 +436,21 @@
     pendingStart = '';
     selectedStart = '';
     selectedRoom = null;
+    roomData = null;
+    boardData = null;
+    renderDates();
+    closeConfirm();
     document.getElementById('roomStep').classList.add('hidden');
     document.getElementById('rentalBoard').innerHTML = '<div class="rental-empty">正在檢查可用時段…</div>';
     try {
-      boardData = await P.call('coursePortalRentalWeekBoard', Object.assign({
+      const result = await P.call('coursePortalRentalWeekBoard', Object.assign({
         sessionToken: token,
         startDate: weekStart,
         useType: selectedUse,
         durationMinutes
       }, preferencePayload()));
       if (requestId !== boardRequestId) return;
+      boardData = result;
       role = boardData.role || role;
       studentDiscountEligible = boardData.studentDiscountEligible === true;
       studentOptions = Array.isArray(boardData.studentOptions) ? boardData.studentOptions : [];
@@ -473,6 +480,7 @@
       renderRateChoice();
       if (selectedStart) await loadRooms();
     } catch (error) {
+      if (requestId !== boardRequestId) return;
       if (isAuthError(error)) throw error;
       document.getElementById('rentalBoard').innerHTML = `
         <div class="rental-empty">
@@ -522,10 +530,13 @@
   async function loadRooms() {
     if (!selectedStart) return;
     const requestId = ++roomRequestId;
+    roomData = null;
+    selectedRoom = null;
+    closeConfirm();
     document.getElementById('roomStep').classList.remove('hidden');
     document.getElementById('roomGrid').innerHTML = '<div class="rental-empty">正在確認教室…</div>';
     try {
-      roomData = await P.call('coursePortalRentalAvailability', Object.assign({
+      const result = await P.call('coursePortalRentalAvailability', Object.assign({
         sessionToken: token,
         date: selectedDate,
         startTime: selectedStart,
@@ -534,9 +545,11 @@
         studentDiscountRequested: false
       }, preferencePayload()));
       if (requestId !== roomRequestId) return;
+      roomData = result;
       renderRooms();
       document.getElementById('roomStep').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
+      if (requestId !== roomRequestId) return;
       document.getElementById('roomGrid').innerHTML = '<div class="rental-empty">讀取失敗。</div>';
       P.toast(error.message, 'error');
     }
@@ -661,20 +674,67 @@
     `).join('') : '<div class="rental-empty">目前沒有預約。</div>';
   }
 
-  async function loadBookings() {
+  async function loadBookings(append = false) {
+    append = append === true;
+    const requestId = ++bookingsRequestId;
+    const button = document.getElementById('moreBookings');
+    button.disabled = true;
+    if (!append) { myBookings = []; bookingsCursor = ''; renderBookings(); }
     try {
-      const result = await P.call('coursePortalRentalMyBookings', { sessionToken: token });
-      myBookings = result.bookings || [];
+      const result = await P.call('coursePortalRentalMyBookings', { sessionToken: token, view: bookingsView, cursor: append ? bookingsCursor : '' });
+      if (requestId !== bookingsRequestId) return;
+      myBookings = [...new Map([...myBookings, ...(result.bookings || [])].map(row => [row.id, row])).values()];
+      bookingsCursor = result.nextCursor || '';
+      button.classList.toggle('hidden', !result.hasMore);
+      button.disabled = false;
       renderBookings();
+      if (!myBookings.length && result.hasMore) document.getElementById('myBookingList').textContent = '這一頁沒有即將使用的預約，請載入更多紀錄。';
     } catch (error) {
+      if (requestId !== bookingsRequestId) return;
+      button.disabled = false;
       if (isAuthError(error)) throw error;
       document.getElementById('myBookingList').innerHTML = '<div class="rental-empty">讀取失敗。</div>';
     }
   }
 
+  async function prepareBookingRecovery() {
+    if (recovery) recovery.stop();
+    const digest = await global.crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+    const scope = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
+    recovery = global.YouziBookingRecovery.create({
+      key: 'youzi-pending-booking:' + role + ':' + scope,
+      storage: global.localStorage,
+      newId: () => global.crypto.randomUUID(),
+      isOnline: () => global.navigator.onLine !== false,
+      call: (name, payload) => P.call(name, { ...payload, sessionToken: token }),
+      onState(result) {
+        const panel = document.getElementById('rentalBookingStatus');
+        panel.classList.remove('hidden');
+        const button = document.getElementById('confirmBookingBtn');
+        button.disabled = result.state === 'pending';
+        button.textContent = result.state === 'pending' ? '正在確認預約結果…' : '確認預約・現場付款';
+        if (result.state === 'confirmed') {
+          const b = result.booking;
+          panel.textContent = `${b.active === false ? '此筆預約已取消' : '預約完成'}：${b.date} ${b.startTime}～${b.endTime}，${b.roomName}，${P.money(b.amount)}。預約編號：${b.id}`;
+          closeConfirm();
+          P.toast(b.active === false ? '已查回取消的預約紀錄。' : '預約已完成。');
+          Promise.allSettled([loadBoard(), loadBookings()]);
+        } else if (result.state === 'failed') {
+          panel.textContent = result.message || '此次預約未成立，請調整後再試。';
+          P.toast(panel.textContent, 'error');
+        } else {
+          panel.textContent = result.message || '正在確認預約結果，請稍候；重新開啟此頁也會繼續確認。';
+        }
+      }
+    });
+    recovery.check();
+  }
+  global.addEventListener('online', () => { if (recovery) recovery.check(); });
+
   async function openBooking(nextRole, nextToken) {
     role = nextRole;
     token = nextToken;
+    await prepareBookingRecovery();
     document.getElementById('teacherRentalNav').classList.toggle('hidden', role !== 'teacher');
     document.body.classList.toggle('teacher-rental-mode', role === 'teacher');
     updateStudentRentalNavigation();
@@ -724,6 +784,10 @@
   document.getElementById('dateStrip').addEventListener('click', (event) => {
     const button = event.target.closest('[data-date]');
     if (!button) return;
+    roomRequestId += 1;
+    roomData = null;
+    selectedRoom = null;
+    closeConfirm();
     selectedDate = button.dataset.date;
     selectedStart = '';
     renderDates();
@@ -818,8 +882,8 @@
     const button = event.currentTarget;
     P.loading(button, true, '預約中…');
     try {
-      const result = await P.call('coursePortalCreateRoomBooking', Object.assign({
-        sessionToken: token,
+      if (!recovery) throw new Error('預約確認尚未準備完成，請重新開啟此頁。');
+      await recovery.submit(Object.assign({
         roomId: selectedRoom.id,
         date: selectedDate,
         startTime: selectedStart,
@@ -832,13 +896,13 @@
         clientName: role === 'teacher' && !rateIsStudent() ? clean(document.getElementById('teacherGuestName').value) : '',
         purpose: clean(document.getElementById('bookingNote').value)
       }, preferencePayload()));
-      closeConfirm();
-      P.toast(`預約完成，現場付款 ${P.money(result.booking.amount)}。`);
-      await Promise.all([loadBoard(), loadBookings()]);
+
     } catch (error) {
       P.toast(error.message, 'error');
     } finally {
       P.loading(button, false);
+      button.disabled = Boolean(recovery && recovery.hasPending());
+      if (button.disabled) button.textContent = '正在確認預約結果…';
     }
   });
 
@@ -858,6 +922,8 @@
     selectedDate = weekStart;
     loadBoard();
   });
+  document.getElementById('moreBookings').addEventListener('click', () => loadBookings(true));
+  document.getElementById('bookingsView').addEventListener('change', event => { bookingsView = event.target.value; loadBookings(); });
   document.getElementById('reloadBookings').addEventListener('click', loadBookings);
   document.getElementById('myBookingList').addEventListener('click', async (event) => {
     const button = event.target.closest('[data-cancel]');
