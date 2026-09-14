@@ -31,5 +31,5 @@ test('changing an unsigned future lesson does not create fake cancellation credi
 test('manager attendance uses the shared server attendance handler with no late fee mode',async()=>{
  const f=fixture();const result=await f.c.adminSetAttendance({teacherId:'teacher',status:'attended'});
  assert.equal(result.teacherId,'teacher');assert.equal(result.late,false);
- assert.match(source,/coursePortalAdminSetAttendance = callable\(async \(data, request\) => \{ assertAdminPin\(request\); return adminSetAttendance\(data\)/);
+ assert.match(source,/coursePortalAdminSetAttendance = callable\(withPortalReads\(async \(data, request\) => \{ assertAdminPin\(request\); return data.action === 'refresh' \? adminAttendanceDetail\(data\) : adminSetAttendance\(data\)/);
 });
