@@ -322,7 +322,7 @@
     var studentById=new Map(students.map(function(row){return [row.id,row];}));
     return events.map(function(event){
       if(!array(event.studentIds).length)return event;
-      var retained=event.studentIds.filter(function(id){return !stops.some(function(stop){var effective=dateKey(stop.effectiveDate||stop.stopDate||stop.requestedAtText);return stop.studentId===id&&stop.teacherId===event.teacherId&&(!stop.subjectId||stop.subjectId===event.subjectId)&&(!effective||event.date>=effective);});});
+      var retained=event.studentIds.filter(function(id){var paused=array(payload.irregularCourses).some(function(mode){if(array(mode.studentIds).indexOf(id)<0)return false;var individual=Object.assign({},mode,{studentIds:[id]});if(mode.blockedSourceCourseId&&[event.sourceCourseId,event.seriesId,event.sourceId].indexOf(mode.blockedSourceCourseId)>=0)individual.resumedFrom='';return isIrregularPlaceholder(Object.assign({},event,{studentIds:[id]}),[individual]);});return !paused&&!stops.some(function(stop){var effective=dateKey(stop.effectiveDate||stop.stopDate||stop.requestedAtText);return stop.studentId===id&&stop.teacherId===event.teacherId&&(!stop.subjectId||stop.subjectId===event.subjectId)&&(!effective||event.date>=effective);});});
       if(retained.length===event.studentIds.length)return event;
       if(!retained.length)return null;
       return Object.assign({},event,{studentId:retained.length===1?retained[0]:'',studentIds:retained,studentNames:retained.map(function(id){return clean((studentById.get(id)||{}).name)||id;})});

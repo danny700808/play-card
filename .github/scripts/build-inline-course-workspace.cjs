@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260914-subject-conflict-v1';
+const VERSION = '20260914-student-modes-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
