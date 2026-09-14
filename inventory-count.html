@@ -90,16 +90,11 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
 <main class="wrap">
   <div id="message"></div>
   <section class="card" id="pinScreen">
-    <h1>登入庫存盤點</h1><p class="muted">管理者可使用 LINE 或 Email 登入，系統會自動確認權限。</p>
-    <a class="btn primary" style="display:block;text-align:center;text-decoration:none" href="login.html?next=inventory-count.html">LINE / Email 登入</a>
-    <details style="margin-top:16px"><summary>使用盤點密碼（備用）</summary>
-    <label>盤點密碼</label><input class="field" id="pinInput" type="password" inputmode="text" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" placeholder="輸入密碼">
-    <button class="btn primary" id="pinButton" style="margin-top:12px">確認密碼</button></details>
-  </section>
-  <section class="card hidden" id="nameScreen">
-    <h1>請輸入盤點人姓名</h1><p class="muted">姓名會記錄在每一筆盤點紀錄中。</p>
-    <label>盤點人</label><input class="field" id="nameInput" autocomplete="name" placeholder="例如：王小明">
-    <button class="btn primary" id="nameButton" style="margin-top:12px">開始盤點</button>
+    <h1>登入庫存盤點</h1>
+    <label for="nameInput">姓名</label><input class="field" id="nameInput" autocomplete="name" placeholder="請輸入姓名">
+    <label for="pinInput">密碼</label><input class="field" id="pinInput" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" placeholder="請輸入密碼">
+    <p class="muted">目前 IP：<span id="currentIp">讀取中…</span></p>
+    <button class="btn primary" id="pinButton" style="margin-top:12px">登入</button>
   </section>
   <section id="countScreen" class="hidden">
     <section class="card">
@@ -166,32 +161,19 @@ function normalizeLayers(value){return (Array.isArray(value)?value:[]).map((l,i)
 function materialize(raw){const target=Math.max(0,Number(raw.currentStock||0));let layers=normalizeLayers(raw.costLayers),total=layers.reduce((s,l)=>s+l.qtyRemaining,0);if(total<target){const fallback=num(raw.averageCost)!=null?num(raw.averageCost):num(raw.latestPurchaseCost);layers.push({layerId:'mobile-fallback',qtyRemaining:target-total,originalQty:target-total,unitCost:fallback,costKnown:fallback!=null,receivedAt:'1970-01-01T00:00:00.000Z',referenceType:'fallback',referenceId:'LEGACY'});}if(total>target){let extra=total-target;for(let i=layers.length-1;i>=0&&extra>0;i--){const take=Math.min(extra,layers[i].qtyRemaining);layers[i].qtyRemaining-=take;extra-=take;}layers=layers.filter(l=>l.qtyRemaining>0);}return layers;}
 function stats(layers){layers=normalizeLayers(layers);const qty=layers.reduce((s,l)=>s+l.qtyRemaining,0),known=layers.filter(l=>l.costKnown&&l.unitCost!=null),knownQty=known.reduce((s,l)=>s+l.qtyRemaining,0),value=known.reduce((s,l)=>s+l.qtyRemaining*l.unitCost,0);return {layers,averageCost:qty>0&&knownQty===qty?value/qty:null,inventoryValue:value,costIncomplete:qty>knownQty};}
 function adjustLayers(raw,target){const old=Math.max(0,Number(raw.currentStock||0)),latest=num(raw.latestPurchaseCost)!=null?num(raw.latestPurchaseCost):num(raw.averageCost);let layers=materialize(raw);if(target>old){const add=target-old;layers.push({layerId:'COUNT-'+Date.now(),qtyRemaining:add,originalQty:add,unitCost:latest,costKnown:latest!=null,receivedAt:new Date().toISOString(),referenceType:'stocktakeIncrease',referenceId:'MOBILE'});}else if(target<old){let take=old-target;for(const l of layers){if(take<=0)break;const n=Math.min(take,l.qtyRemaining);l.qtyRemaining-=n;take-=n;}layers=layers.filter(l=>l.qtyRemaining>0);}return stats(layers);}
-let managerUser=null;
 let countToken=sessionStorage.getItem('inventoryCountSession')||'';
-async function countCall(name,data){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);try{const project=APP_CONFIG.FIREBASE_CONFIG.projectId;const headers={'Content-Type':'application/json'};if(managerUser&&name!=='inventoryCountLoginHttp')headers.Authorization='Bearer '+await managerUser.getIdToken();const response=await fetch('https://us-central1-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers,body:JSON.stringify({...data,token:countToken}),signal:controller.signal});const result=await response.json();if(!response.ok||result.ok===false)throw new Error(result.message||'盤點服務暫時無法使用。');return result;}finally{clearTimeout(timer);}}
+async function countCall(name,data){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);try{const project=APP_CONFIG.FIREBASE_CONFIG.projectId;const headers={'Content-Type':'application/json'};const response=await fetch('https://us-central1-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers,body:JSON.stringify({...data,token:countToken}),signal:controller.signal});const result=await response.json();if(!response.ok||result.ok===false)throw new Error(result.message||'盤點服務暫時無法使用。');return result;}finally{clearTimeout(timer);}}
 async function loadCountProducts(){products=(await countCall('inventoryCountProductsHttp',{})).products||[];}
 async function init(){
-  try{
-    if(!firebase.apps.length)firebase.initializeApp(APP_CONFIG.FIREBASE_CONFIG);
-    const auth=firebase.auth();
-    if(auth.authStateReady)await auth.authStateReady();
-    else await new Promise(resolve=>{let off=()=>{};const timer=setTimeout(()=>{off();resolve();},6000);off=auth.onAuthStateChanged(()=>{clearTimeout(timer);off();resolve();},()=>{clearTimeout(timer);off();resolve();});});
-    if(auth.currentUser){const result=await auth.currentUser.getIdTokenResult();if(result.claims.employee===true&&result.claims.manager===true){managerUser=auth.currentUser;operator=result.claims.name||result.claims.email||result.claims.employeeId;}}
-  }catch(error){msg('登入狀態暫時無法確認，請使用登入按鈕。','notice');}
-  if(managerUser){
-    try{msg('正在讀取商品資料…');await loadCountProducts();$('pinScreen').classList.add('hidden');$('nameScreen').classList.add('hidden');$('countScreen').classList.remove('hidden');msg('');return;}
-    catch(error){msg(error.message,'error');return;}
-  }
-  if(!countToken)return;
-  try{await loadCountProducts();const remembered=sessionStorage.getItem('inventoryCountOperator');$('pinScreen').classList.add('hidden');if(remembered){operator=remembered;$('nameScreen').classList.add('hidden');$('countScreen').classList.remove('hidden');$('skuInput').focus();}else $('nameScreen').classList.remove('hidden');}
-  catch(error){countToken='';sessionStorage.removeItem('inventoryCountSession');msg('請重新輸入盤點密碼。','notice');}
+  try{const result=await countCall('inventoryCountLoginHttp',{action:'connectionInfo'});$('currentIp').textContent=result.currentIp||'無法取得';}
+  catch(error){$('currentIp').textContent='無法取得';}
 }
 async function verifyPin(){
-  managerUser=null;const pin=clean($('pinInput').value);if(!pin)return msg('請輸入盤點密碼。','error');$('pinButton').disabled=true;
-  try{const result=await countCall('inventoryCountLoginHttp',{pin});countToken=result.token;sessionStorage.setItem('inventoryCountSession',countToken);msg('正在讀取商品資料…');await loadCountProducts();msg('');$('pinScreen').classList.add('hidden');$('nameScreen').classList.remove('hidden');$('nameInput').focus();}
+  operator=clean($('nameInput').value);if(!operator)return msg('請輸入姓名。','error');const pin=clean($('pinInput').value);if(!pin)return msg('請輸入盤點密碼。','error');$('pinButton').disabled=true;
+  try{const result=await countCall('inventoryCountLoginHttp',{pin});countToken=result.token;sessionStorage.setItem('inventoryCountSession',countToken);msg('正在讀取商品資料…');await loadCountProducts();msg('');sessionStorage.setItem('inventoryCountOperator',operator);$('pinScreen').classList.add('hidden');$('countScreen').classList.remove('hidden');$('skuInput').focus();}
   catch(error){msg(error.message,'error');}finally{$('pinButton').disabled=false;}
 }
-function startCount(){operator=clean($('nameInput').value);if(!operator)return msg('請輸入盤點人姓名。','error');sessionStorage.setItem('inventoryCountOperator',operator);msg('');$('nameScreen').classList.add('hidden');$('countScreen').classList.remove('hidden');$('skuInput').focus();}
+
 function clearSearchResults(){
   $('searchResults').innerHTML='';
   $('searchResults').classList.add('hidden');
@@ -307,7 +289,7 @@ async function stopScanner(){
   $('scanner').classList.add('hidden');$('scannerReader').innerHTML='';document.body.style.overflow='';
 }
 $('pinButton').onclick=verifyPin;
-$('nameButton').onclick=startCount;
+$('pinInput').addEventListener('keydown',e=>{if(e.key==='Enter')verifyPin();});
 $('searchButton').onclick=findProduct;
 $('skuInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findProduct();}});
 $('skuInput').addEventListener('input',scheduleFindProduct);
