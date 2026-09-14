@@ -56,12 +56,10 @@ test('public role login links all enter through the central role selector', () =
   assert.doesNotMatch(gateway, /href="(?:student-course-portal|teacher-course-portal|room-booking)\.html"/);
 
   const legacyLogin = read('login.html');
-  assert.match(legacyLogin, /href="course-portal\.html\?method=line"[^>]*data-primary-login-method="line"|data-primary-login-method="line"[^>]*href="course-portal\.html\?method=line"/);
-  assert.match(legacyLogin, /href="course-portal\.html\?method=line&amp;role=student"[^>]*>學生／家長入口</);
-  assert.match(legacyLogin, /href="course-portal\.html\?method=line&amp;role=renter"[^>]*>教室租用入口</);
-  assert.match(legacyLogin, /href="course-portal\.html\?method=line&amp;role=teacher"[^>]*>老師入口</);
-  assert.match(legacyLogin, /href="teacher-apply\.html"[^>]*>應聘履歷投遞</);
-  assert.match(legacyLogin, /href="rental-order\.html"[^>]*>設備租賃申請</);
-  assert.match(legacyLogin, /class="external-entry-grid"/);
-  assert.doesNotMatch(legacyLogin, /href="(?:student-course-portal|teacher-course-portal|room-booking)\.html"/);
+  assert.match(legacyLogin, /id="loginChoices"/);
+  assert.match(legacyLogin, /id="emailChoice">Email 登入/);
+  assert.match(legacyLogin, /id="emailCodeForm" hidden/);
+  assert.doesNotMatch(legacyLogin, /首次綁定|解除此帳號|學生／家長入口|教室租用入口/);
+  assert.match(read('unified-login.js'), /unifiedEmailSend/);
+  assert.match(read('unified-login.js'), /unifiedEmailVerify/);
 });

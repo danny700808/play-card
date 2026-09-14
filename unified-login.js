@@ -3,7 +3,7 @@
   const key='youzi-unified-login-ticket-v1';
   let ticket='',busy=false;
   function node(id){return document.getElementById(id);}
-  function message(text,error){const el=node('unifiedLoginMessage');if(el){el.textContent=text;el.style.color=error?'#a12626':'#355f4a';}}
+  function message(text,error){const el=node('unifiedLoginMessage');if(el){el.hidden=!text;el.textContent=text;el.style.color=error?'#a12626':'#355f4a';}}
   async function call(name,data,authenticated){
     if(name!=='coursePortalStartLineLogin')data={...data,proof:sessionStorage.getItem(key+'-proof')||''};
     if(global.YZFirebase&&global.YZFirebase.init)global.YZFirebase.init();
@@ -30,44 +30,65 @@
     if(busy)return;busy=true;message('正在確認身分並進入系統…');
     try{
       const result=await call('unifiedLoginRedeem',{ticket,choice});
-      if(result.kind==='employee'){
-        await global.firebase.auth().signInWithCustomToken(result.token);
-        global.saveUser(result.user);localStorage.setItem('employeeSecureAuthVersion','1');clearTicket();
-        const target=typeof global.requestedLoginTarget==='function'?global.requestedLoginTarget():'';
-        if(target&&typeof global.redirectToLoginTarget==='function')global.redirectToLoginTarget(target);
-        else global.redirectAfterLogin(result.user);
-      }else{
-        const url=new URL(result.url,global.location.href);
-        if(url.origin!==global.location.origin||!url.pathname.endsWith('/course-portal.html'))throw new Error('登入入口不正確。');
-        clearTicket();global.location.assign(url.href);
-      }
+      await finish(result);
     }catch(error){busy=false;message(error.message+' 如連結已失效，請重新按 LINE 登入。',true);}
   }
-  async function afterPasswordLogin(){
-    if(!ticket)return;
-    message('正在將 LINE 綁定到這個既有帳號…');
-    await call('employeeLinkLineLogin',{ticket},true);
-    clearTicket();message('LINE 已綁定，之後可直接使用 LINE 登入。');
+
+  async function finish(result){
+    if(result.kind==='employee'){
+      await global.firebase.auth().signInWithCustomToken(result.token);
+      global.saveUser(result.user);localStorage.setItem('employeeSecureAuthVersion','1');clearTicket();
+      const target=global.requestedLoginTarget()||global.loginDestination(result.user);
+      global.redirectToLoginTarget(target);
+    }else if(result.kind==='portal-session'){
+      const pages={teacher:'teacher-course-portal.html',student:'student-course-portal.html',renter:'room-booking.html'};
+      if(!pages[result.role]||!result.sessionToken)throw new Error('登入資料不完整。');
+      localStorage.setItem('youzi.coursePortal.'+result.role+'.session.v1',result.sessionToken);
+      sessionStorage.removeItem('youzi.coursePortal.'+result.role+'.session.v1');
+      clearTicket();global.location.replace(pages[result.role]);
+    }else{
+      const url=new URL(result.url,global.location.href);
+      if(url.origin!==global.location.origin||!url.pathname.endsWith('/course-portal.html'))throw new Error('登入入口不正確。');
+      clearTicket();global.location.assign(url.href);
+    }
   }
-  function addButton(host,label,action){const button=document.createElement('button');button.type='button';button.className='btn secondary';button.textContent=label;button.addEventListener('click',action);host.appendChild(button);}
+  let challenge='';
+  function showEmail(){
+    node('loginChoices').hidden=true;node('emailCodeForm').hidden=false;
+    node('passwordAlternative').hidden=!!ticket;
+    node('loginEmail').focus();
+  }
+  async function ensureProof(){
+    if(!sessionStorage.getItem(key+'-proof')){
+      const bytes=global.crypto.getRandomValues(new Uint8Array(32));
+      sessionStorage.setItem(key+'-proof',Array.from(bytes,v=>v.toString(16).padStart(2,'0')).join(''));
+    }
+  }
+  async function submitEmail(event){
+    event.preventDefault();if(busy)return;busy=true;
+    const button=node('emailCodeSubmit');button.disabled=true;
+    try{
+      await ensureProof();
+      if(challenge){
+        message('正在確認身分並進入系統…');
+        await finish(await call('unifiedEmailVerify',{challengeToken:challenge,code:node('loginCode').value.trim()}));
+      }else{
+        message('正在寄送驗證碼…');
+        const result=await call('unifiedEmailSend',{email:node('loginEmail').value.trim(),ticket});
+        challenge=result.challengeToken;node('loginEmail').readOnly=true;node('codeField').hidden=false;
+        node('loginCode').required=true;node('resendCode').hidden=false;button.textContent='確認並登入';
+        message(result.message);node('loginCode').focus();
+      }
+    }catch(error){message(error.name==='AbortError'?'連線較久，請稍後重試。':error.message,true);}
+    finally{busy=false;button.disabled=false;}
+  }
   async function init(){
-    const host=document.querySelector('.login-method-list');if(!host)return;
-    const panel=document.createElement('section');panel.className='auth-note';panel.innerHTML='<p id="unifiedLoginMessage" role="status">管理者、員工、老師與客人都可由 LINE 入口登入。</p><div id="unifiedLoginChoices" style="display:flex;gap:8px;flex-wrap:wrap"></div>';
-    host.prepend(panel);
-    const link=document.querySelector('[data-primary-login-method="line"]');
-    if(link){link.href='login.html?lineStart=1';link.addEventListener('click',event=>{event.preventDefault();start(false);});}
-    const email=document.querySelector('[data-primary-login-method="email-password"]');
-    if(email)addButton(email,'首次綁定員工／管理者 LINE',()=>start(true));
-    if(email)addButton(email,'解除此帳號的 LINE 登入綁定',async()=>{
-      if(busy)return;busy=true;
-      try{
-        const account=node('email')&&node('email').value.trim(),password=node('password')&&node('password').value;
-        if(!account||!password)throw new Error('請先在下方填入原本的 Email 與密碼，再按解除綁定。');
-        const result=await global.api('login',{email:account,account,password});
-        if(!result||!result.ok)throw new Error(result&&result.message||'帳密驗證失敗。');
-        await call('employeeUnlinkLineLogin',{},true);clearTicket();message('已解除這個帳號的 LINE 登入綁定。可繼續使用帳密，或重新綁定 LINE。');
-      }catch(error){message(error.message,true);}finally{busy=false;}
-    });
+    const line=document.querySelector('[data-primary-login-method="line"]');if(!line)return;
+    line.addEventListener('click',event=>{event.preventDefault();start(false);});
+    node('emailChoice').onclick=()=>{clearTicket();showEmail();message('請使用原本登記的 Email，系統會寄送驗證碼。');};
+    node('emailCodeForm').addEventListener('submit',submitEmail);
+    node('loginBack').onclick=()=>{if(busy)return;clearTicket();challenge='';node('emailCodeForm').reset();node('loginEmail').readOnly=false;node('codeField').hidden=true;node('loginCode').required=false;node('resendCode').hidden=true;node('emailCodeSubmit').textContent='寄送驗證碼';node('emailCodeForm').hidden=true;node('loginChoices').hidden=false;message('');};
+    node('resendCode').onclick=()=>{if(busy)return;challenge='';node('loginCode').value='';node('loginCode').required=false;node('codeField').hidden=true;node('loginEmail').readOnly=false;node('emailCodeSubmit').textContent='寄送驗證碼';node('resendCode').hidden=true;message('確認 Email 後，請按寄送驗證碼。');};
     const params=new URLSearchParams(global.location.search),incoming=params.get('unifiedTicket');
     if(incoming){ticket=incoming;sessionStorage.setItem(key,ticket);params.delete('unifiedTicket');global.history.replaceState(null,'',global.location.pathname+(params.size?'?'+params.toString():'')+global.location.hash);}
     else ticket=sessionStorage.getItem(key)||'';
@@ -75,16 +96,12 @@
     if(params.get('lineError'))message(params.get('lineError'),true);
     if(!ticket)return;
     try{
-      const result=await call('unifiedLoginStatus',{ticket}),choices=node('unifiedLoginChoices');
-      if(result.choices.length===1&&!result.forceEmployeeLink){await choose(result.choices[0].id);return;}
-      message(result.forceEmployeeLink?'請在下方使用原本的 Email 與密碼登入，完成一次綁定。':result.choices.length?'請選擇這次要使用的身分。':'LINE 已驗證。員工請在下方登入既有帳號；其他服務請選擇入口。');
-      if(!result.forceEmployeeLink){
-        result.choices.forEach(choice=>addButton(choices,choice.label,()=>choose(choice.id)));
-        [['teacher','老師課務'],['student','學生／家長'],['renter','教室租用']].filter(([id])=>!result.choices.some(choice=>choice.id===id)).forEach(([id,label])=>addButton(choices,label,()=>choose(id)));
-      }
-    }catch(error){message(error.message,true);}
+      const result=await call('unifiedLoginStatus',{ticket});
+      if(result.choices.length&&!result.forceEmployeeLink){await choose((result.choices.find(c=>c.id==='employee')||result.choices[0]).id);return;}
+      showEmail();message('首次使用這個 LINE，請用原本登記的 Email 收驗證碼，確認是您本人。');
+    }catch(error){clearTicket();message(error.message,true);}
   }
-  global.YouziUnifiedLogin={afterPasswordLogin,start};
+  global.YouziUnifiedLogin={start};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>init().catch(error=>message(error.message,true)));
   else init().catch(error=>message(error.message,true));
 })(window);

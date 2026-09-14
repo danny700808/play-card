@@ -240,9 +240,9 @@ test('outer login presents LINE first and keeps manager password login available
   const methods = [...legacyLogin.matchAll(/data-primary-login-method="([^"]+)"/g)]
     .map((match) => match[1]);
   assert.deepStrictEqual(methods, ['line', 'email-password']);
-  assert.match(legacyLogin, /data-primary-login-method="line" href="course-portal\.html\?method=line"/);
+  assert.match(legacyLogin, /data-primary-login-method="line">LINE 登入/);
   assert.match(legacyLogin, /data-primary-login-method="email-password"/);
-  assert.match(legacyLogin, /管理者／員工登入/);
+  assert.match(legacyLogin, /id="emailChoice">Email 登入/);
   assert.match(legacyLogin, /api\('login'/);
   assert.match(legacyLogin, /const requestedTarget = requestedLoginTarget\(\)/);
   assert.match(legacyLogin, /const target = requestedTarget \|\| loginDestination\(r\.user\)/);
