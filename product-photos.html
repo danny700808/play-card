@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#173247">
-<title>柚子樂器｜商品實體圖登錄</title>
+<title>柚子樂器｜商品實體圖與影片登錄</title>
 <link rel="icon" href="yuzu-logo-green.png">
 <style>
 :root{--nav:#173247;--green:#16845f;--green2:#0f6c50;--bg:#eef4f7;--card:#fff;--text:#162530;--muted:#6d7e88;--line:#d7e2e7;--danger:#b5433d}
@@ -86,11 +86,11 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
 </style>
 </head>
 <body>
-<header class="top"><b>♫ 柚子樂器｜實體圖登錄</b><span>手機專用入口</span></header>
+<header class="top"><b>♫ 柚子樂器｜實體圖與影片</b><span>手機專用入口</span></header>
 <main class="wrap">
   <div id="message"></div>
   <section class="card" id="pinScreen">
-    <h1>登入實體圖登錄</h1>
+    <h1>登入實體圖與影片</h1>
     <label for="nameInput">姓名</label><input class="field" id="nameInput" autocomplete="name" placeholder="請輸入姓名">
     <label for="pinInput">密碼</label><input class="field" id="pinInput" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" placeholder="請輸入密碼">
     <p class="muted">目前 IP：<span id="currentIp">讀取中…</span></p>
@@ -106,10 +106,17 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
     </section>
     <section class="card hidden" id="productCard">
       <div class="product"><div class="picture" id="picture"></div><div><h2 id="productName"></h2><div class="sku" id="productSku"></div></div></div>
-      <div class="actions"><label class="btn soft">拍照<input id="cameraPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden></label><label class="btn soft">選擇照片<input id="libraryPhoto" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label></div>
+      <h2 style="margin-top:18px">實體圖片</h2><div class="actions"><label class="btn soft">拍照<input id="cameraPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden></label><label class="btn soft">選擇照片<input id="libraryPhoto" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label></div>
       <div id="photoPreview" class="search-results"></div>
       <button class="btn primary" id="uploadPhoto" style="margin-top:12px" disabled>儲存實體圖</button>
       <div id="savedPhotos" class="search-results"></div>
+      <h2 style="margin-top:24px">介紹影片</h2>
+      <div class="actions"><label class="btn soft">直接錄影<input id="cameraVideo" type="file" accept="video/mp4,video/quicktime,video/webm" capture="environment" hidden></label><label class="btn soft">選擇影片<input id="libraryVideo" type="file" accept="video/mp4,video/quicktime,video/webm" hidden></label></div>
+      <video id="videoPreview" class="hidden" controls playsinline style="width:100%;margin-top:12px"></video>
+      <p id="videoFileName" class="muted"></p>
+      <button class="btn primary" id="saveVideo" disabled>儲存影片</button>
+      <p id="videoStatus" class="muted" aria-live="polite"></p>
+      <div id="savedVideos"></div>
     </section>
   </section>
 </main>
@@ -123,6 +130,7 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
 
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="product-video-upload.js?v=20260914-video-v1"></script>
 <script>
 (function(){
 'use strict';
@@ -135,7 +143,13 @@ function normalizeCode(v){return clean(v).replace(/\s+/g,'').toUpperCase();}
 function lower(v){return clean(v).toLowerCase();}
 function productName(p){return clean(p&&((p.internalName)||(p.originalName)||(p.onlineName)||(p.name)))||'未命名商品';}
 function productSku(p){return clean(p&&((p.internalSku)||(p.sku)||(p.code)));}
-function productImage(p){return clean(p&&p.imageUrl)||(p&&Array.isArray(p.imageUrls)&&clean(p.imageUrls[0]))||'';}
+function productImage(p){
+  p=p||{};
+  if(Object.prototype.hasOwnProperty.call(p,'detailThumbnailUrl'))return clean(p.detailThumbnailUrl)||clean(p.groupThumbnailUrl);
+  const urls=value=>(Array.isArray(value)?value:[]).map(clean).filter(Boolean);
+  const variants=urls(p.variantImageUrls),parents=urls(p.parentImageUrls),images=urls(p.imageUrls);
+  return variants[0]||clean(p.variantImageUrl)||images.find(url=>!parents.includes(url))||parents[0]||clean(p.imageUrl)||images[0]||'';
+}
 function exactProduct(code){const value=normalizeCode(code);return products.find(p=>normalizeCode(productSku(p))===value||normalizeCode(p.barcode)===value)||null;}
 function searchableText(p){return lower([productName(p),p.internalName,p.originalName,p.onlineName,p.name,productSku(p),p.barcode,p.brand,p.model,p.category,p.spec,p.variantName].join(' '));}
 function searchProductRows(value){
@@ -208,6 +222,7 @@ function scheduleFindProduct(){
   searchTimer=timer;
 }
 function selectProductById(id){
+  if(uploadBusy||videoBusy)return msg('正在儲存，請稍候再切換商品。');
   clearTimeout(searchTimer);searchVersion++;
   current=products.find(p=>p.id===id)||null;
   if(!current)return msg('找不到這項商品，請重新搜尋。','error');
@@ -287,18 +302,31 @@ $('scanButton').onclick=startScanner;
 $('closeScanner').onclick=()=>{void stopScanner();};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&qrScanner)void stopScanner();});
 
-let selectedPhotos=[],uploadBusy=false;
-function showProduct(){selectedPhotos=[];$('uploadPhoto').disabled=true;$('photoPreview').innerHTML='';$('productName').textContent=productName(current);$('productSku').textContent='SKU '+productSku(current);const image=productImage(current);$('picture').innerHTML=image?'<img src="'+escapeHtml(image)+'" alt="">':'';$('savedPhotos').innerHTML=(current.physicalImageUrls||[]).map(url=>'<img src="'+escapeHtml(url)+'" style="width:100%" alt="已儲存實體圖">').join('');$('productCard').classList.remove('hidden');}
-function choosePhotos(input){if(uploadBusy)return;for(const p of selectedPhotos)URL.revokeObjectURL(p.preview);selectedPhotos=Array.from(input.files||[]).map(file=>({file,id:crypto.randomUUID(),preview:URL.createObjectURL(file)}));$('photoPreview').innerHTML=selectedPhotos.map(p=>'<img src="'+p.preview+'" style="width:100%" alt="待上傳照片">').join('');$('uploadPhoto').disabled=!selectedPhotos.length;input.value='';}
+let selectedPhotos=[],uploadBusy=false,selectedVideo=null,videoBusy=false;
+function showProduct(preserveVideo=false){if(!preserveVideo){if(selectedVideo)URL.revokeObjectURL(selectedVideo.preview);selectedVideo=null;$('videoPreview').classList.add('hidden');$('videoPreview').removeAttribute('src');$('videoFileName').textContent='';$('saveVideo').disabled=true;$('videoStatus').textContent='';}renderSavedVideos();selectedPhotos=[];$('uploadPhoto').disabled=true;$('photoPreview').innerHTML='';$('productName').textContent=productName(current);$('productSku').textContent='SKU '+productSku(current);const image=productImage(current);$('picture').innerHTML=image?'<img src="'+escapeHtml(image)+'" alt="">':'';$('savedPhotos').innerHTML=(current.physicalImageUrls||[]).map(url=>'<img src="'+escapeHtml(url)+'" style="width:100%" alt="已儲存實體圖">').join('');$('productCard').classList.remove('hidden');}
+function choosePhotos(input){if(uploadBusy||videoBusy)return;for(const p of selectedPhotos)URL.revokeObjectURL(p.preview);selectedPhotos=Array.from(input.files||[]).map(file=>({file,id:crypto.randomUUID(),preview:URL.createObjectURL(file)}));$('photoPreview').innerHTML=selectedPhotos.map(p=>'<img src="'+p.preview+'" style="width:100%" alt="待上傳照片">').join('');$('uploadPhoto').disabled=!selectedPhotos.length;input.value='';}
 function asBase64(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=reject;reader.readAsDataURL(blob);});}
 async function labelPhoto(file){
  const url=URL.createObjectURL(file),img=new Image();try{await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('無法讀取照片'));img.src=url;});const scale=Math.min(1,1600/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);const size=Math.max(18,Math.round(canvas.width*.045));ctx.font='bold '+size+'px sans-serif';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.72)';ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=2;ctx.strokeText('柚子樂器｜實體圖',canvas.width/2,canvas.height-size);ctx.fillText('柚子樂器｜實體圖',canvas.width/2,canvas.height-size);return await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('照片處理失敗')),'image/jpeg',.85));}finally{URL.revokeObjectURL(url);}
 }
 $('cameraPhoto').onchange=function(){choosePhotos(this);};$('libraryPhoto').onchange=function(){choosePhotos(this);};
 $('uploadPhoto').onclick=async()=>{
- if(uploadBusy||!current||!selectedPhotos.length)return;uploadBusy=true;$('uploadPhoto').disabled=true;const product=current;
- try{for(const photo of [...selectedPhotos]){if(photo.file.size>15*1024*1024)throw Error('每張照片請小於 15 MB。');if(!['image/jpeg','image/png','image/webp'].includes(photo.file.type))throw Error('請選擇 JPG、PNG 或 WebP 照片。');msg('正在儲存實體圖…');if(!photo.payload){const labeled=await labelPhoto(photo.file);photo.payload={action:'uploadPhoto',productId:product.id,operator,operationId:photo.id,original:await asBase64(photo.file),labeled:await asBase64(labeled)};}const result=await countCall('inventoryCountProductsHttp',photo.payload);product.physicalImageUrls=[...new Set([...(product.physicalImageUrls||[]),result.url])];selectedPhotos=selectedPhotos.filter(p=>p!==photo);URL.revokeObjectURL(photo.preview);}if(current===product)showProduct();msg('實體圖已儲存並加入待上架。','success');}catch(error){msg(error.message,'error');}finally{uploadBusy=false;$('uploadPhoto').disabled=!selectedPhotos.length;}
+ if(uploadBusy||videoBusy||!current||!selectedPhotos.length)return;uploadBusy=true;$('uploadPhoto').disabled=true;const product=current;
+ try{for(const photo of [...selectedPhotos]){if(photo.file.size>15*1024*1024)throw Error('每張照片請小於 15 MB。');if(!['image/jpeg','image/png','image/webp'].includes(photo.file.type))throw Error('請選擇 JPG、PNG 或 WebP 照片。');msg('正在儲存實體圖…');if(!photo.payload){const labeled=await labelPhoto(photo.file);photo.payload={action:'uploadPhoto',productId:product.id,operator,operationId:photo.id,original:await asBase64(photo.file),labeled:await asBase64(labeled)};}const result=await countCall('inventoryCountProductsHttp',photo.payload);product.physicalImageUrls=[...new Set([...(product.physicalImageUrls||[]),result.url])];selectedPhotos=selectedPhotos.filter(p=>p!==photo);URL.revokeObjectURL(photo.preview);}if(current===product)showProduct(true);msg('實體圖已儲存並加入待上架。','success');}catch(error){msg(error.message,'error');}finally{uploadBusy=false;$('uploadPhoto').disabled=!selectedPhotos.length;}
 };
+
+function renderSavedVideos(){const videos=current&&current.productVideos||[];$('savedVideos').innerHTML=videos.map(video=>'<div style="margin-top:12px"><video controls playsinline preload="metadata" src="'+escapeHtml(video.originalUrl||video.url)+'" style="width:100%"></video><p class="muted">'+escapeHtml(video.fileName||'原始影片')+'｜'+(video.videoBrandStatus==='completed'?'製作完成':'待製作')+'</p></div>').join('');}
+function chooseVideo(input){if(uploadBusy||videoBusy)return;const file=input.files&&input.files[0];if(!file)return;if(file.size>512*1024*1024){msg('每段影片請小於 512 MB。','error');input.value='';return;}if(selectedVideo)URL.revokeObjectURL(selectedVideo.preview);selectedVideo={file,preview:URL.createObjectURL(file),session:null,uploaded:false};const preview=$('videoPreview');preview.src=selectedVideo.preview;preview.classList.remove('hidden');$('videoFileName').textContent=file.name;$('videoStatus').textContent='';$('saveVideo').disabled=false;input.value='';}
+$('cameraVideo').onchange=function(){chooseVideo(this);};$('libraryVideo').onchange=function(){chooseVideo(this);};
+$('saveVideo').onclick=async()=>{
+ if(uploadBusy||videoBusy||!current||!selectedVideo)return;videoBusy=true;$('saveVideo').disabled=true;const item=selectedVideo,product=current;
+ try{
+  if(!item.session){$('videoStatus').textContent='正在準備影片上傳…';const extension=item.file.name.split('.').pop().toLowerCase(),type=item.file.type||({mov:'video/quicktime',mp4:'video/mp4',webm:'video/webm'}[extension]||'');item.session=await countCall('inventoryCountProductsHttp',{action:'startVideo',productId:product.id,operator,fileName:item.file.name,sizeBytes:item.file.size,contentType:type,durationSeconds:Number.isFinite($('videoPreview').duration)?$('videoPreview').duration:0});}
+  if(!item.uploaded){await window.YZVideoUpload.upload(item.file,item.session.uploadUrl,percent=>{$('videoStatus').textContent='影片上傳中 '+percent+'%';});item.uploaded=true;}
+  $('videoStatus').textContent='正在確認影片並存入商品…';const result=await countCall('inventoryCountProductsHttp',{action:'finishVideo',uploadId:item.session.uploadId});product.productVideos=(product.productVideos||[]).filter(v=>v.url!==result.video.url).concat(result.video);URL.revokeObjectURL(item.preview);selectedVideo=null;$('videoPreview').classList.add('hidden');$('videoPreview').removeAttribute('src');$('videoFileName').textContent='';renderSavedVideos();$('videoStatus').textContent='影片已存入商品並加入待製作清單。';
+ }catch(error){$('videoStatus').textContent=error.message||'影片尚未儲存，請重試。';}finally{videoBusy=false;$('saveVideo').disabled=!selectedVideo;}
+};
+window.addEventListener('beforeunload',event=>{if(uploadBusy||videoBusy){event.preventDefault();event.returnValue='';}});
 
 init();
 })();

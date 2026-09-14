@@ -35,9 +35,11 @@ function createInventoryCountAccess({db,FieldValue,requireManager,now=Date.now})
   }
   async function products(data,req){
     await authorize(data,req);
-    const rows=(await db.collection('opsInternalProducts').limit(10000).get()).docs;
-    const fields=['internalName','originalName','onlineName','name','internalSku','sku','code','barcode','model','brand','category','variantName','alternateNames','searchKeywords','imageUrl','imageUrls','variantImageUrl','variantImageUrls','parentImageUrls','enabled','currentStock','physicalImageUrls'];
-    return {ok:true,products:rows.filter(doc=>doc.data().enabled!==false).map(doc=>({id:doc.id,...Object.fromEntries(fields.filter(key=>doc.data()[key]!==undefined).map(key=>[key,doc.data()[key]]))}))};
+    const fields=['internalName','originalName','onlineName','name','internalSku','sku','code','barcode','model','brand','category','variantName','alternateNames','searchKeywords','imageUrl','imageUrls','variantImageUrl','variantImageUrls','parentImageUrls','enabled','currentStock','physicalImageUrls','productVideos'];
+    function projection(collection,selected){const query=db.collection(collection);return (typeof query.select==='function'?query.select(...selected):query).limit(10000).get();}
+    const [products,listingCases]=await Promise.all([projection('opsInternalProducts',fields),projection('opsProductListingCases',['productId','variantGroupEnabled','variantGroupPrimaryImageUrl','variantGroupItems','listingIntent','listingMode','variantChildImageUrl','updatedAt'])]);
+    const {detailImageMap,thumbnail}=require('./productThumbnail'),details=detailImageMap(listingCases.docs);
+    return {ok:true,products:products.docs.map(doc=>({id:doc.id,raw:doc.data()})).filter(row=>row.raw.enabled!==false).map(({id,raw})=>({id,...Object.fromEntries(fields.filter(key=>key!=='productVideos'&&raw[key]!==undefined).map(key=>[key,raw[key]])),...thumbnail(raw,id,details),productVideos:(Array.isArray(raw.productVideos)?raw.productVideos:[]).map(video=>Object.fromEntries(['url','originalUrl','fileName','videoBrandStatus','youtubeStatus','youtubeUrl'].filter(key=>video[key]!==undefined).map(key=>[key,video[key]])))}))};
   }
   async function save(data,req){
     const identity=await authorize(data,req);
