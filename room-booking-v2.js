@@ -688,6 +688,7 @@
       button.classList.toggle('hidden', !result.hasMore);
       button.disabled = false;
       renderBookings();
+      if (!myBookings.length && result.hasMore) document.getElementById('myBookingList').textContent = '這一頁沒有即將使用的預約，請載入更多紀錄。';
     } catch (error) {
       if (requestId !== bookingsRequestId) return;
       button.disabled = false;
@@ -704,12 +705,14 @@
       key: 'youzi-pending-booking:' + role + ':' + scope,
       storage: global.localStorage,
       newId: () => global.crypto.randomUUID(),
+      isOnline: () => global.navigator.onLine !== false,
       call: (name, payload) => P.call(name, { ...payload, sessionToken: token }),
       onState(result) {
         const panel = document.getElementById('rentalBookingStatus');
         panel.classList.remove('hidden');
         const button = document.getElementById('confirmBookingBtn');
         button.disabled = result.state === 'pending';
+        button.textContent = result.state === 'pending' ? '正在確認預約結果…' : '確認預約・現場付款';
         if (result.state === 'confirmed') {
           const b = result.booking;
           panel.textContent = `${b.active === false ? '此筆預約已取消' : '預約完成'}：${b.date} ${b.startTime}～${b.endTime}，${b.roomName}，${P.money(b.amount)}。預約編號：${b.id}`;
@@ -899,6 +902,7 @@
     } finally {
       P.loading(button, false);
       button.disabled = Boolean(recovery && recovery.hasPending());
+      if (button.disabled) button.textContent = '正在確認預約結果…';
     }
   });
 

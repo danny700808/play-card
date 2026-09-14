@@ -1,7 +1,7 @@
 (function (root) {
   'use strict';
   function create(options) {
-    let pending = null, busy = false, timer = null, stopped = false;
+    let pending = null, busy = false, timer = null, stopped = false, delay = 3000;
     const storage = options.storage;
     const schedule = options.schedule || ((fn, ms) => setTimeout(fn, ms));
     const cancel = options.cancel || clearTimeout;
@@ -9,7 +9,10 @@
     try { pending = JSON.parse(storage.getItem(options.key) || 'null'); }
     catch (_) { throw new Error('無法讀取待確認預約，請保留此頁並稍後重試。'); }
     function later() {
-      if (!stopped && pending) timer = schedule(() => check(), 5000);
+      if (!stopped && pending) {
+        timer = schedule(() => check(), delay);
+        delay = Math.min(30000, delay * 2);
+      }
     }
     async function run(send) {
       if (busy || !pending || stopped) return;
@@ -17,6 +20,7 @@
       if (timer) cancel(timer);
       try {
         report('pending');
+        if (options.isOnline && !options.isOnline()) return;
         let result = await options.call(send ? 'coursePortalCreateRoomBooking' : 'coursePortalRoomBookingOperation',
           send ? pending : { operationId: pending.operationId });
         if (!send && result.state === 'pending' && result.retryAllowed) {
