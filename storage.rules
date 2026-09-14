@@ -3,15 +3,7 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function isManagerAuth() {
-      return request.auth != null && (
-        ('admin' in request.auth.token && request.auth.token.admin == true) ||
-        ('manager' in request.auth.token && request.auth.token.manager == true) ||
-        ('owner' in request.auth.token && request.auth.token.owner == true) ||
-        ('role' in request.auth.token && request.auth.token.role in ['admin', 'manager', 'owner', '主管', '管理者']) ||
-        ('userRole' in request.auth.token && request.auth.token.userRole in ['admin', 'manager', 'owner', '主管', '管理者']) ||
-        ('permissionRole' in request.auth.token && request.auth.token.permissionRole in ['admin', 'manager', 'owner', '主管', '管理者']) ||
-        ('email' in request.auth.token && request.auth.token.email == 'danny700808@gmail.com')
-      );
+      return request.auth != null && request.auth.token.employee == true && request.auth.token.manager == true;
     }
 
     // 中央商品主檔圖片：在商品編輯頁直接加入，與上架案件來源圖分開保存。
@@ -76,18 +68,18 @@ service firebase.storage {
 
     // 租賃契約附件：保留原本租賃系統使用路徑。
     match /rental-contracts/{contractId}/{fileName=**} {
-      allow read: if true;
-      allow write: if request.resource != null
-        && request.resource.size < 5242880
-        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf' || request.resource.contentType == 'text/html');
+      allow read: if isManagerAuth();
+      allow create, update: if isManagerAuth() && request.resource.size < 5242880
+        && (request.resource.contentType.matches('image/(jpeg|png|webp)') || request.resource.contentType == 'application/pdf' || request.resource.contentType == 'text/html');
+      allow delete: if isManagerAuth();
     }
 
     // 外聘老師簽約附件：身分證浮水印圖、簽名圖、契約 HTML。
     match /external-teachers/{contractId}/{fileName=**} {
-      allow read: if true;
-      allow write: if request.resource != null
-        && request.resource.size < 5242880
-        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf' || request.resource.contentType == 'text/html');
+      allow read: if isManagerAuth();
+      allow create, update: if isManagerAuth() && request.resource.size < 5242880
+        && (request.resource.contentType.matches('image/(jpeg|png|webp)') || request.resource.contentType == 'application/pdf' || request.resource.contentType == 'text/html');
+      allow delete: if isManagerAuth();
     }
 
     // 新老師個資頁的身分證照片只由 Cloud Functions 存取；不建立公開下載網址。

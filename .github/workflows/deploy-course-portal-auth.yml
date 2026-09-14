@@ -82,6 +82,8 @@ on:
       - "functions/package-lock.json"
       - "firestore.rules"
       - "storage.rules"
+      - "firebase.security-test.json"
+      - "tests/private-data-rules.emulator.cjs"
       - "tests/course-portal.test.js"
       - "tests/course-subject-catalog.test.js"
       - "tests/course-login-policy.test.js"
@@ -181,6 +183,37 @@ jobs:
           }
           NODE
           )
+
+      - name: Detect access-rule changes before deployment
+        id: access_rules
+        run: |
+          set -euo pipefail
+          before="${{ github.event.before }}"
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$before^{commit}"; then
+            before="HEAD^"
+          fi
+          if git diff --name-only "$before" HEAD | grep -Eq '^(firestore.rules|storage.rules|firebase.security-test.json|tests/private-data-rules.emulator.cjs)$'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Java for isolated access-rule tests
+        if: steps.access_rules.outputs.changed == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Verify access rules before production credentials are loaded
+        if: steps.access_rules.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/rules-tests" --no-audit --no-fund @firebase/rules-unit-testing@5.0.2 firebase@12.19.0 firebase-tools@15.30.0
+          export NODE_PATH="$RUNNER_TEMP/rules-tests/node_modules:$GITHUB_WORKSPACE/functions/node_modules"
+          node "$RUNNER_TEMP/rules-tests/node_modules/firebase-tools/lib/bin/firebase.js" emulators:exec \
+            --project demo-youzi-security --only firestore,storage --config firebase.security-test.json \
+            "node --test tests/private-data-rules.emulator.cjs"
 
       - name: Prepare Firebase credentials and runtime settings
         env:
