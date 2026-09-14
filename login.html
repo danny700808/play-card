@@ -290,6 +290,7 @@
         });
         setMsg(msg, r.message, !r.ok);
         if (r.ok) {
+          if (window.YouziUnifiedLogin) await window.YouziUnifiedLogin.afterPasswordLogin(r.user);
           saveLoginPref(qs('#email').value.trim(), qs('#password').value.trim(), qs('#rememberLogin').checked);
           setMsg(msg, '登入成功，正在進入系統...');
           progress.done('登入成功', 0, true);
@@ -376,5 +377,6 @@
     };
   </script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
+  <script src="unified-login.js?v=20260914-unified-v1"></script>
 </body>
 </html>
