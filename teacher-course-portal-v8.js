@@ -9,7 +9,7 @@
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v4';
-  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.ownWeek2.';
+  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.studentModes1.';
   const CACHE_TTL = 15 * 60 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
@@ -959,12 +959,21 @@
     document.getElementById('payrollList').innerHTML = summary + (items.length ? lessons + adjustmentSection('額外獎金', bonusItems, 'payrollBonusDetails') + adjustmentSection('扣款', deductionItems, 'payrollDeductionDetails') : '<p class="muted">這個月份目前沒有薪資資料。</p>');
   }
 
+  let followupTab = 'irregular';
   function renderIrregularCourses() {
-    const rows = data.irregularCourses || [];
-    document.getElementById('irregularToggle').disabled = !rows.length;
-    if (!rows.length) {document.getElementById('irregularCourses').hidden=true;document.getElementById('irregularToggle').setAttribute('aria-expanded','false');}
-    document.getElementById('irregularCount').textContent = `（${rows.length}）`;
-    document.getElementById('irregularList').innerHTML = rows.map(row => `<div class="teacher-irregular-row"><span>${escapeHtml(studentNamesByIds(row.studentIds).join('－'))} · ${escapeHtml(subjectNameById(row.subjectId))}${row.resumedFrom ? ` · ${escapeHtml(row.resumedFrom)} 起恢復固定` : ''}</span><button class="btn" data-irregular-add="${escapeHtml(row.id)}">安排一堂</button>${row.resumedFrom ? '' : `<button class="btn" data-irregular-resume="${escapeHtml(row.id)}">恢復固定排課</button>`}</div>`).join('');
+    const irregular = data.irregularCourses || [], stopped = data.stoppedCourses || [];
+    document.getElementById('irregularToggle').disabled = false;
+    document.getElementById('irregularCount').textContent = `（${irregular.length}）`;
+    document.getElementById('irregularActiveTab').setAttribute('aria-pressed', String(followupTab === 'irregular'));
+    document.getElementById('stoppedStudentsTab').setAttribute('aria-pressed', String(followupTab === 'stopped'));
+    document.getElementById('irregularActiveTab').classList.toggle('active', followupTab === 'irregular');
+    document.getElementById('stoppedStudentsTab').classList.toggle('active', followupTab === 'stopped');
+    const rows = followupTab === 'stopped' ? stopped : irregular;
+    document.getElementById('irregularList').innerHTML = rows.map(row => `<button type="button" class="btn teacher-irregular-row" style="width:100%;text-align:left" data-followup-id="${escapeHtml(row.id)}"><span>${escapeHtml(row.studentName || studentNamesByIds(row.studentIds).join('－'))} · ${escapeHtml(subjectNameById(row.subjectId))}</span></button>`).join('') || `<p class="muted">目前沒有${followupTab === 'stopped' ? '停課' : '不定時'}學生。</p>`;
+  }
+  function chooseFixedFrequency(row) {
+    showQuick('固定調課', (row.studentNames || studentNamesByIds(row.studentIds)).join('、'),
+      '<button type="button" data-fixed-frequency="1">每週上課</button><button type="button" data-fixed-frequency="2">隔週上課</button>', {type:'fixed-frequency',row});
   }
 
   let shownLoginNotice = '';
@@ -1154,6 +1163,8 @@
     return {
       action,
       irregularId: row.irregularId || '',
+      suspensionId: row.suspensionId || '',
+      frequencyWeeks: row.frequencyWeeks,
       sourceEventId: row.sourceId || row.id,
       sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
       sourceDate: row.date,
@@ -1518,7 +1529,7 @@
   }
 
   function studentNamesByIds(ids) {
-    const names = new Map(data.roster.map((row) => [clean(row.id), clean(row.name)]));
+    const names = new Map([...data.roster, ...(data.stoppedCourses || []).map(row=>({id:row.studentIds[0],name:row.studentName}))].map((row) => [clean(row.id), clean(row.name)]));
     return (ids || []).map((id) => names.get(clean(id))).filter(Boolean);
   }
 
@@ -1533,7 +1544,7 @@
   }
 
   async function startSourceMove(row, action) {
-    if (!row || courseSlotIsPast(row.date, row.startTime)) {
+    if (!row || (!row.irregularId && !row.suspensionId && courseSlotIsPast(row.date, row.startTime))) {
       toast('不可選擇今天以前的日期。', 'error');
       return;
     }
@@ -1641,6 +1652,7 @@
       mode: 'add',
       halfHourAcknowledged: context.halfHourAcknowledged === true,
       action: context.action,
+      suspensionId: context.suspensionId || '',
       studentIds: context.studentIds,
       subjectId: context.subjectId,
       slots: [],
@@ -1665,7 +1677,8 @@
         startTime: target && target.startTime,
         durationMinutes,
         studentIds: context.studentIds,
-        subjectId: context.subjectId
+        subjectId: context.subjectId,
+        action:context.action,suspensionId:context.suspensionId||''
       };
       const result = await invoke('coursePortalTeacherAvailability', payload);
       if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
@@ -1789,11 +1802,14 @@
       ? Object.assign({}, lessonActionDefaults(planner.source, planner.action), base)
       : Object.assign(base, {
         studentIds: planner.studentIds,
+        suspensionId:planner.suspensionId||'',
         subjectId: planner.subjectId
       });
   }
 
   function showActionConfirmation(payload, summary) {
+    if(payload.action==='permanent_move' && ![1,2].includes(payload.frequencyWeeks)){showQuick('固定調課','選擇上課頻率','<button type="button" data-confirm-frequency="1">每週上課</button><button type="button" data-confirm-frequency="2">隔週上課</button>',{type:'confirm-frequency',payload,summary});return;}
+    if(payload.action==='permanent_move') summary={...summary,details:summary.details+'・'+(payload.frequencyWeeks===2?'隔週上課':'每週上課')};
     const moveConfirmation = summary.requiresGuzhengMove
       ? '<label class="teacher-move-confirm"><input type="checkbox" data-guzheng-move-confirm><span><b>我願意自行搬運古箏</b><small>古箏原則上放在展演空間；使用 KAWAI 教室時需自行搬入與歸位。</small></span></label>'
       : '';
@@ -1942,6 +1958,7 @@
   global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));
   document.getElementById('irregularToggle').addEventListener('click', () => {
     const panel=document.getElementById('irregularCourses');panel.hidden=!panel.hidden;
+    if (!panel.hidden) {followupTab='irregular';renderIrregularCourses();}
     document.getElementById('irregularToggle').setAttribute('aria-expanded',String(!panel.hidden));
     requestAnimationFrame(updateWeekViewport);
   });
@@ -2012,19 +2029,27 @@
     }
   });
 
-  document.getElementById('irregularList').addEventListener('click', async event => {
-    const add = event.target.closest('[data-irregular-add]'), resume = event.target.closest('[data-irregular-resume]');
-    const id = add ? add.dataset.irregularAdd : resume && resume.dataset.irregularResume;
-    const row = (data.irregularCourses || []).find(item => item.id === id);
-    if (!row) return;
-    document.getElementById('irregularCourses').hidden = true;
-    document.getElementById('irregularToggle').setAttribute('aria-expanded', 'false');
-    updateWeekViewport();
-    if (add) beginAddFlow('extra_lesson', {studentIds:row.studentIds,subjectId:row.subjectId});
-    else await startSourceMove({...row.source, studentNames:studentNamesByIds(row.studentIds),date:todayKey(),status:'scheduled',irregularId:row.id}, 'permanent_move');
+  ['irregularActiveTab','stoppedStudentsTab'].forEach(id=>document.getElementById(id).addEventListener('click',()=>{followupTab=id==='stoppedStudentsTab'?'stopped':'irregular';renderIrregularCourses();requestAnimationFrame(updateWeekViewport);}));
+  document.getElementById('irregularList').addEventListener('click', event => {
+    const button=event.target.closest('[data-followup-id]');if(!button)return;
+    const stopped=followupTab==='stopped', row=(stopped?data.stoppedCourses:data.irregularCourses||[]).find(item=>item.id===button.dataset.followupId);if(!row)return;
+    showQuick(row.studentName || studentNamesByIds(row.studentIds).join('、'),subjectNameById(row.subjectId),
+      '<button type="button" data-followup-action="single">安排一堂課</button><button type="button" data-followup-action="fixed">固定調課</button>'+ (stopped ? '<button type="button" data-followup-action="irregular">改為不定時上課</button><button type="button" data-cancel-flow>維持停課</button>' : '<button type="button" data-cancel-flow>維持不定時上課</button><button type="button" data-followup-action="stop">停課</button>'), {type:'followup-choice',row,stopped});
   });
   document.getElementById('teacherQuickActions').addEventListener('click', async (event) => {
     const context = quickContext;
+    const confirmFrequency=event.target.closest('[data-confirm-frequency]');
+    if(confirmFrequency&&context&&context.type==='confirm-frequency'){showActionConfirmation({...context.payload,frequencyWeeks:Number(confirmFrequency.dataset.confirmFrequency)},context.summary);return;}
+    const frequencyButton=event.target.closest('[data-fixed-frequency]');
+    if(frequencyButton && context && context.type==='fixed-frequency') {await startSourceMove({...context.row,frequencyWeeks:Number(frequencyButton.dataset.fixedFrequency)},'permanent_move');return;}
+    const followupAction=event.target.closest('[data-followup-action]');
+    if(followupAction && context && context.type==='followup-choice') {
+      const row=context.row, kind=followupAction.dataset.followupAction;
+      if(kind==='single'){beginAddFlow('extra_lesson',{studentIds:row.studentIds,subjectId:row.subjectId,suspensionId:context.stopped?row.id:''});return;}
+      if(kind==='fixed'){chooseFixedFrequency({...row.source,id:row.source?.id||row.id,studentIds:row.studentIds,studentNames:studentNamesByIds(row.studentIds),subjectId:row.subjectId,date:todayKey(),startTime:row.source?.startTime||'23:00',endTime:row.source?.endTime||'23:59',status:'scheduled',irregularId:context.stopped?'':row.id,suspensionId:context.stopped?row.id:''});return;}
+      if(kind==='stop'){closeQuick();openStudentStop(row.studentIds[0],todayKey(),row.subjectId);return;}
+      if(kind==='irregular') {loading(followupAction,true);try {await invoke('coursePortalTeacherSetIrregular',{sessionToken:token,suspensionId:row.id,sourceDate:todayKey()});closeQuick();clearCache();await load(true);}catch(error){toast(error.message||'變更失敗','error');}finally{loading(followupAction,false);}return;}
+    }
     if (event.target.closest('[data-quick-stop]') && context && context.row) {
       const ids=context.row.studentIds || [];
       if(ids.length===1){closeQuick();openStudentStop(ids[0],context.row.date,context.row.subjectId);}
@@ -2101,7 +2126,7 @@
       const action = actionButton.dataset.quickAction;
       if (context.type !== 'lesson') return;
       if (action === 'single_move' || action === 'permanent_move') {
-        await startSourceMove(context.row, action);
+        if(action==='permanent_move') chooseFixedFrequency(context.row);else await startSourceMove(context.row, action);
       } else {
         beginAddFlow(action, {
           studentIds: context.row.studentIds || [],

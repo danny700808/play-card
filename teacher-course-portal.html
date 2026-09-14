@@ -81,7 +81,7 @@
           <button class="btn" id="todayWeek" type="button">今天</button>
           <button class="btn" id="nextWeek" type="button">下一週</button>
         </div>
-        <div id="irregularCourses" class="teacher-irregular-list" hidden><div id="irregularList"></div></div>
+        <div id="irregularCourses" class="teacher-irregular-list" hidden><div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn active" id="irregularActiveTab" type="button" aria-pressed="true">不定時學生</button><button class="btn soft" id="stoppedStudentsTab" type="button" aria-pressed="false" style="font-size:13px;padding:6px 10px">停課學生</button></div><div id="irregularList"></div></div>
         <div class="teacher-flow-banner hidden" id="teacherFlowBanner" aria-live="polite">
           <div><strong id="teacherFlowTitle"></strong><span id="teacherFlowDetail"></span></div>
           <button type="button" id="cancelTeacherFlow">取消</button>
@@ -182,7 +182,7 @@
   <script src="course-portal-common.js?v=20260910-taiwan-reads-v1"></script>
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-daily-reminder.js?v=20260806-daily-reminder-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260914-reliability-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260914-student-modes-v1"></script>
 
 </body>
 </html>
