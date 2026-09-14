@@ -17,7 +17,7 @@ const studentSource = read('student-course-portal.html');
 new vm.Script(configSource, { filename: 'config.js' });
 new vm.Script(rentalSource, { filename: 'room-booking-v2.js' });
 
-assert(read('index.html').includes('href="course-portal.html?method=line" id="lineGateway"'));
+assert(read('index.html').includes('href="login.html?lineStart=1" id="lineGateway"'));
 assert(!read('index.html').includes('auto=1'));
 assert(!portalSource.includes('const shouldAuto'));
 assert(!portalSource.includes("params.get('auto')"));

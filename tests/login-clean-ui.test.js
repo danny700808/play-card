@@ -51,7 +51,7 @@ test('successful login redirects immediately and exposes a retry navigation', ()
 
 test('public role login links all enter through the central role selector', () => {
   const gateway = read('index.html');
-  assert.match(gateway, /href="course-portal\.html\?method=line"[^>]*id="lineGateway"/);
+  assert.match(gateway, /href="login\.html\?lineStart=1"[^>]*id="lineGateway"/);
   assert.match(gateway, /href="course-portal\.html\?method=email"/);
   assert.doesNotMatch(gateway, /href="(?:student-course-portal|teacher-course-portal|room-booking)\.html"/);
 

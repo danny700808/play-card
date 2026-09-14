@@ -228,7 +228,7 @@ test('outer login presents LINE first and keeps manager password login available
   assert.match(app, /function logout\(\).*location\.href='index\.html'/);
 
   const gateway = read('index.html');
-  assert.match(gateway, /class="login-primary-card" href="course-portal\.html\?method=line"/);
+  assert.match(gateway, /class="login-primary-card" href="login\.html\?lineStart=1"/);
   assert.match(gateway, /class="service-email-link" href="course-portal\.html\?method=email"/);
   assert.match(gateway, /管理者／員工帳號登入/);
   assert.match(gateway, /api\('login'/);

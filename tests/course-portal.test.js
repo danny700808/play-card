@@ -41,7 +41,7 @@ const pages = [
 
 const loginGateway = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
 assert(
-  loginGateway.includes('href="course-portal.html?method=line" id="lineGateway"'),
+  loginGateway.includes('href="login.html?lineStart=1" id="lineGateway"'),
   '首頁 LINE 登入必須只開啟中央入口，讓使用者明確選擇身分'
 );
 assert(!loginGateway.includes('auto=1'), '首頁仍會依照舊身分自動開始 LINE 登入');
