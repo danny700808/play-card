@@ -31,6 +31,7 @@
     employeeSalaryConfigHistory:'employeeSalaryConfigHistory',
     parttimeRecords:'parttimeRecords'
   };
+  const OPERATION_PRODUCT_READ_FIELDS = ["alternateNames", "autoCreated", "averageCost", "avgCost", "barcode", "brand", "category", "code", "color", "commonProductDescription", "completedListingImageUrls", "costLayers", "countryOfOrigin", "coupangCategoryCode", "coupangPrice", "createdAt", "currentStock", "ean", "easyStoreHasMultipleVariants", "easyStoreHasVariantImage", "easyStoreMatched", "easyStorePrice", "easyStoreProductVariantCount", "easyStoreSyncedAt", "easyStoreVariantImageId", "easyStoreVariantImageStatus", "enabled", "imageSource", "imageUrl", "imageUrls", "importInitialized", "includedItems", "internalName", "internalSku", "latestPurchaseCost", "material", "minStock", "model", "modelNo", "momoCategoryCode", "momoPrice", "movingAverageCost", "name", "note", "onHand", "onlineName", "onlinePrice", "onlineUrl", "openingStock", "openingUnitCost", "originalName", "originalSalePrice", "packageHeightCm", "packageLengthCm", "packageMeasurementMode", "packageResearchNote", "packageResearchSourceUrl", "packageResearchStatus", "packageWeightKg", "packageWidthCm", "parentImageUrls", "physicalImageUrls", "physicalImages", "physicalImagesUpdatedAt", "physicalOriginalImageUrls", "platformListingStatus", "platformMappings", "platformPriceOverrides", "platformPriceSync", "platformPricesInitialized", "productArchived", "productCode", "productResearchSourceUrls", "productResearchStatus", "productResearchUpdatedAt", "productVideoUrls", "productVideos", "productVideosUpdatedAt", "purchaseCost", "purchasePrice", "referencePurchaseCost", "remark", "reserved", "reservedStock", "retailPrice", "safetyStock", "salePrice", "saleRewardPercent", "searchKeywords", "sellingPoints", "sharedOnlinePrice", "shippingDecision", "shopeeCategoryPath", "sku", "source", "sourceCollection", "sourceFile", "sourceKey", "sourceProductId", "sourceVariantId", "specificationText", "status", "stock", "storePrice", "updatedAt", "variantImageUrl", "variantImageUrls", "variantName", "warrantyInfo", "zeroCostConfirmed", "zeroCostConfirmedAt", "zeroCostConfirmedBy", "備註", "商品名稱", "商品編號", "型號", "條碼"];
   const READ_LIMIT = 10000;
   const FIRESTORE_READ_TIMEOUT_MS = 45 * 1000;
   const BATCH_SIZE = 400;
@@ -1023,17 +1024,14 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   }
 
   async function getOperationDocument(ref){
-    try{return await ref.get();}catch(error){
-      if(!/permission-denied|unauthenticated|insufficient permissions/i.test(String(error.code||'')+' '+String(error.message||'')))throw error;
-      const verified=await requireOperationsReadAuth(),token=await verified.user.getIdToken(true),project=global.firebase.app().options.projectId;
+      const verified=await requireOperationsReadAuth(),token=await verified.user.getIdToken(),project=global.firebase.app().options.projectId;
       const controller=new AbortController(),timer=setTimeout(function(){controller.abort();},FIRESTORE_READ_TIMEOUT_MS);
       try{
-        const response=await fetch('https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(project)+'/databases/(default)/documents/'+ref.path.split('/').map(encodeURIComponent).join('/'),{headers:{Authorization:'Bearer '+token},signal:controller.signal});
+        const response=await fetch('https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(project)+'/databases/(default)/documents/'+ref.path.split('/').map(encodeURIComponent).join('/')+'?prettyPrint=false',{headers:{Authorization:'Bearer '+token},signal:controller.signal});
         if(response.status===404)return {exists:false,id:ref.id,ref:ref,data:function(){return undefined;}};
         const row=await response.json();if(!response.ok)throw new Error('設定資料存取被拒絕，請使用 Email 登入後再試。');
         const data=decodeFirestoreRestFields(row.fields||{});return {exists:true,id:ref.id,ref:ref,data:function(){return data;}};
       }finally{clearTimeout(timer);}
-    }
   }
   function decodeFirestoreRestValue(value){
     if('nullValue' in value)return null;
@@ -1050,32 +1048,34 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     return null;
   }
   function decodeFirestoreRestFields(fields){return Object.fromEntries(Object.entries(fields).map(function(entry){return [entry[0],decodeFirestoreRestValue(entry[1])];}));}
-  async function getCollectionWithExplicitToken(name,limit,orderField,orderDirection){
+  async function getCollectionWithExplicitToken(name,limit,orderField,orderDirection,filter){
     const verified=await requireOperationsReadAuth();
-    const token=await verified.user.getIdToken(true);
+    const token=await verified.user.getIdToken();
     const project=global.firebase.app().options.projectId;
-    const query={from:[{collectionId:name}],limit:limit||READ_LIMIT};
+    const segments=name.split('/'),collectionId=segments.pop(),parent=segments.length?'/'+segments.map(encodeURIComponent).join('/'):'';
+    const query={from:[{collectionId:collectionId}],limit:limit||READ_LIMIT};
+    if(name===COLLECTIONS.products)query.select={fields:OPERATION_PRODUCT_READ_FIELDS.map(function(field){return {fieldPath:'`'+field+'`'};})};
+    if(filter)query.where={fieldFilter:{field:{fieldPath:filter.field},op:'EQUAL',value:{stringValue:filter.value}}};
     if(orderField)query.orderBy=[{field:{fieldPath:orderField},direction:orderDirection==='asc'?'ASCENDING':'DESCENDING'}];
     const controller=new AbortController(),timer=setTimeout(function(){controller.abort();},FIRESTORE_READ_TIMEOUT_MS);
     try{
-      const response=await fetch('https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(project)+'/databases/(default)/documents:runQuery',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({structuredQuery:query}),signal:controller.signal});
+      const response=await fetch('https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(project)+'/databases/(default)/documents'+parent+':runQuery?prettyPrint=false',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({structuredQuery:query}),signal:controller.signal});
       const payload=await response.json();
       if(!response.ok||!Array.isArray(payload)||payload.some(function(row){return row.error;}))throw new Error('資料存取仍被拒絕，請使用 Email 登入後再試。');
       return payload.filter(function(row){return row.document;}).map(function(row){return Object.assign({__id:row.document.name.split('/').pop()},decodeFirestoreRestFields(row.document.fields||{}));});
     }finally{clearTimeout(timer);}
   }
+  async function getOperationQuerySnapshot(name,filter,limit){
+    const rows=await getCollectionWithExplicitToken(name,limit,undefined,undefined,filter);
+    return {size:rows.length,docs:rows.map(function(row){const id=row.__id;return {id:id,data:function(){const value=Object.assign({},row);delete value.__id;return value;}};})};
+  }
   async function getCollection(name,limit,orderField,orderDirection){
     const started=Date.now();
     try{
-      let request=state.db.collection(name);
-      if(orderField)request=request.orderBy(orderField,orderDirection||'desc');
-      const snap=await withReadTimeout(request.limit(limit||READ_LIMIT).get(),name);
-      state.diagnostics.push({collection:name,ok:true,count:snap.size,ms:Date.now()-started});
-      return snap.docs.map(function(doc){ return Object.assign({__id:doc.id},doc.data()||{}); });
+      const rows=await getCollectionWithExplicitToken(name,limit,orderField,orderDirection);
+      state.diagnostics.push({collection:name,ok:true,count:rows.length,ms:Date.now()-started,transport:'explicit-token'});
+      return rows;
     }catch(error){
-      if(error&&(/permission-denied|unauthenticated/.test(String(error.code||''))||/insufficient permissions/i.test(String(error.message||'')))){
-        try{const rows=await getCollectionWithExplicitToken(name,limit,orderField,orderDirection);state.diagnostics.push({collection:name,ok:true,count:rows.length,ms:Date.now()-started,transport:'explicit-token'});return rows;}catch(retryError){error=retryError;}
-      }
       state.diagnostics.push({collection:name,ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});
       throw new Error(name+' 讀取失敗：'+errorMessage(error));
     }
@@ -1216,7 +1216,7 @@ async function loadPlatformLocalAgent(){
   async function loadSupplierDirectory(){
     const started=Date.now();
     try{
-      const snap=await getOperationDocument(state.db.collection(COLLECTIONS.settings).doc('suppliers').collection('directory').limit(1000));
+      const snap=await getOperationQuerySnapshot(COLLECTIONS.settings+'/suppliers/directory',null,1000);
       state.suppliers=snap.docs.map(function(doc){const raw=doc.data()||{};return {id:doc.id,name:clean(raw.name),contactName:clean(raw.contactName),phone:clean(raw.phone),mobile:clean(raw.mobile),email:clean(raw.email),address:clean(raw.address),taxId:clean(raw.taxId),paymentInfo:clean(raw.paymentInfo),note:clean(raw.note),enabled:raw.enabled!==false,createdAt:raw.createdAt||'',updatedAt:raw.updatedAt||''};}).filter(function(row){return row.enabled!==false;}).sort(function(a,b){return a.name.localeCompare(b.name,'zh-Hant');});
       state.diagnostics.push({collection:'opsSettings/suppliers/directory',ok:true,count:state.suppliers.length,ms:Date.now()-started});
     }catch(error){state.suppliers=[];state.diagnostics.push({collection:'opsSettings/suppliers/directory',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
@@ -1233,7 +1233,7 @@ async function loadPlatformLocalAgent(){
   async function loadPlatformInventoryQueueErrors(){
     const started=Date.now();
     try{
-      const snap=await state.db.collection(COLLECTIONS.platformInventoryQueue).where('lastAttemptStatus','==','error').limit(1000).get();
+      const snap=await getOperationQuerySnapshot(COLLECTIONS.platformInventoryQueue,{field:'lastAttemptStatus',value:'error'},1000);
       state.platformInventoryQueue=snap.docs.map(function(doc){return normalizePlatformInventoryQueue(Object.assign({__id:doc.id},doc.data()||{}));});
       state.diagnostics.push({collection:COLLECTIONS.platformInventoryQueue+'(errors)',ok:true,count:state.platformInventoryQueue.length,ms:Date.now()-started});
     }catch(error){state.platformInventoryQueue=[];state.diagnostics.push({collection:COLLECTIONS.platformInventoryQueue+'(errors)',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
@@ -1303,8 +1303,8 @@ async function loadPlatformLocalAgent(){
     const started=Date.now();
     try{
       const results=await Promise.all([
-        Promise.all(PRODUCT_LISTING_QUEUE_STATUSES.map(function(status){return state.db.collection(COLLECTIONS.listingCases).where('batchQueueStatus','==',status).limit(1000).get();})),
-        Promise.all(PRODUCT_MEDIA_QUEUE_STATUSES.map(function(status){return state.db.collection(COLLECTIONS.listingCases).where('mediaQueueStatus','==',status).limit(1000).get();}))
+        Promise.all(PRODUCT_LISTING_QUEUE_STATUSES.map(function(status){return getOperationQuerySnapshot(COLLECTIONS.listingCases,{field:'batchQueueStatus',value:status},1000);})),
+        Promise.all(PRODUCT_MEDIA_QUEUE_STATUSES.map(function(status){return getOperationQuerySnapshot(COLLECTIONS.listingCases,{field:'mediaQueueStatus',value:status},1000);}))
       ]),snapshots=results[0],mediaSnapshots=results[1],seen=new Map(),mediaSeen=new Map();
       snapshots.forEach(function(snapshot){snapshot.docs.forEach(function(doc){seen.set(doc.id,normalizeProductListingQueueRow(doc.data()||{},doc.id));});});
       mediaSnapshots.forEach(function(snapshot){snapshot.docs.forEach(function(doc){mediaSeen.set(doc.id,normalizeProductMediaQueueRow(doc.data()||{},doc.id));});});
@@ -1347,7 +1347,7 @@ async function loadPlatformLocalAgent(){
 
   async function loadOperationDatasets(items,read,options){
     options=options||{};
-    const concurrency=Math.max(1,Math.min(3,Number(options.concurrency)||3));
+    const concurrency=Math.max(1,Math.min(6,Number(options.concurrency)||6));
     const pause=options.pause||(()=>new Promise(resolve=>setTimeout(resolve,0)));
     const results=new Array(items.length),active=new Map();
     let next=0,completed=0,failure=null;
