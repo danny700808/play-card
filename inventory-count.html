@@ -135,7 +135,12 @@ function normalizeCode(v){return clean(v).replace(/\s+/g,'').toUpperCase();}
 function lower(v){return clean(v).toLowerCase();}
 function productName(p){return clean(p&&((p.internalName)||(p.originalName)||(p.onlineName)||(p.name)))||'未命名商品';}
 function productSku(p){return clean(p&&((p.internalSku)||(p.sku)||(p.code)));}
-function productImage(p){return clean(p&&p.imageUrl)||(p&&Array.isArray(p.imageUrls)&&clean(p.imageUrls[0]))||'';}
+function productImage(p){
+  p=p||{};
+  const urls=value=>(Array.isArray(value)?value:[]).map(clean).filter(Boolean);
+  const variants=urls(p.variantImageUrls),parents=urls(p.parentImageUrls),images=urls(p.imageUrls);
+  return variants[0]||clean(p.variantImageUrl)||images.find(url=>!parents.includes(url))||parents[0]||clean(p.imageUrl)||images[0]||'';
+}
 function exactProduct(code){const value=normalizeCode(code);return products.find(p=>normalizeCode(productSku(p))===value||normalizeCode(p.barcode)===value)||null;}
 function searchableText(p){return lower([productName(p),p.internalName,p.originalName,p.onlineName,p.name,productSku(p),p.barcode,p.brand,p.model,p.category,p.spec,p.variantName].join(' '));}
 function searchProductRows(value){
