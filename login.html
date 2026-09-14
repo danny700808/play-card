@@ -168,10 +168,10 @@
       let value=String(new URLSearchParams(window.location.search).get('next')||'').trim();
       if(!value){try{const saved=JSON.parse(localStorage.getItem(key)||'null');if(saved&&saved.expires>Date.now())value=saved.value;}catch(e){}}
       if(!/^[a-z0-9._-]+\.html(?:\?[^#]*)?(?:#.*)?$/i.test(value))return '';
-      const page=value.split(/[?#]/)[0].toLowerCase();
+      const page = value.split(/[?#]/)[0].toLowerCase();
       if(!loginReturnPages.has(page))return '';
       try{localStorage.setItem(key,JSON.stringify({value,expires:Date.now()+10*60*1000}));}catch(e){}
-      return value;
+      return loginReturnPages.has(page) ? value : '';
     }
 
     function redirectToLoginTarget(target){
