@@ -1022,6 +1022,48 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     });
   }
 
+  async function getOperationDocument(ref){
+    try{return await ref.get();}catch(error){
+      if(!/permission-denied|unauthenticated|insufficient permissions/i.test(String(error.code||'')+' '+String(error.message||'')))throw error;
+      const verified=await requireOperationsReadAuth(),token=await verified.user.getIdToken(true),project=global.firebase.app().options.projectId;
+      const controller=new AbortController(),timer=setTimeout(function(){controller.abort();},FIRESTORE_READ_TIMEOUT_MS);
+      try{
+        const response=await fetch('https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(project)+'/databases/(default)/documents/'+ref.path.split('/').map(encodeURIComponent).join('/'),{headers:{Authorization:'Bearer '+token},signal:controller.signal});
+        if(response.status===404)return {exists:false,id:ref.id,ref:ref,data:function(){return undefined;}};
+        const row=await response.json();if(!response.ok)throw new Error('設定資料存取被拒絕，請使用 Email 登入後再試。');
+        const data=decodeFirestoreRestFields(row.fields||{});return {exists:true,id:ref.id,ref:ref,data:function(){return data;}};
+      }finally{clearTimeout(timer);}
+    }
+  }
+  function decodeFirestoreRestValue(value){
+    if('nullValue' in value)return null;
+    if('stringValue' in value)return value.stringValue;
+    if('booleanValue' in value)return value.booleanValue;
+    if('integerValue' in value)return Number(value.integerValue);
+    if('doubleValue' in value)return Number(value.doubleValue);
+    if('timestampValue' in value)return global.firebase.firestore.Timestamp.fromDate(new Date(value.timestampValue));
+    if('arrayValue' in value)return (value.arrayValue.values||[]).map(decodeFirestoreRestValue);
+    if('mapValue' in value)return decodeFirestoreRestFields(value.mapValue.fields||{});
+    if('geoPointValue' in value)return new global.firebase.firestore.GeoPoint(value.geoPointValue.latitude,value.geoPointValue.longitude);
+    if('bytesValue' in value)return global.firebase.firestore.Blob.fromBase64String(value.bytesValue);
+    if('referenceValue' in value)return state.db.doc(value.referenceValue.split('/documents/')[1]);
+    return null;
+  }
+  function decodeFirestoreRestFields(fields){return Object.fromEntries(Object.entries(fields).map(function(entry){return [entry[0],decodeFirestoreRestValue(entry[1])];}));}
+  async function getCollectionWithExplicitToken(name,limit,orderField,orderDirection){
+    const verified=await requireOperationsReadAuth();
+    const token=await verified.user.getIdToken(true);
+    const project=global.firebase.app().options.projectId;
+    const query={from:[{collectionId:name}],limit:limit||READ_LIMIT};
+    if(orderField)query.orderBy=[{field:{fieldPath:orderField},direction:orderDirection==='asc'?'ASCENDING':'DESCENDING'}];
+    const controller=new AbortController(),timer=setTimeout(function(){controller.abort();},FIRESTORE_READ_TIMEOUT_MS);
+    try{
+      const response=await fetch('https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(project)+'/databases/(default)/documents:runQuery',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({structuredQuery:query}),signal:controller.signal});
+      const payload=await response.json();
+      if(!response.ok||!Array.isArray(payload)||payload.some(function(row){return row.error;}))throw new Error('資料存取仍被拒絕，請使用 Email 登入後再試。');
+      return payload.filter(function(row){return row.document;}).map(function(row){return Object.assign({__id:row.document.name.split('/').pop()},decodeFirestoreRestFields(row.document.fields||{}));});
+    }finally{clearTimeout(timer);}
+  }
   async function getCollection(name,limit,orderField,orderDirection){
     const started=Date.now();
     try{
@@ -1031,6 +1073,9 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
       state.diagnostics.push({collection:name,ok:true,count:snap.size,ms:Date.now()-started});
       return snap.docs.map(function(doc){ return Object.assign({__id:doc.id},doc.data()||{}); });
     }catch(error){
+      if(error&&(/permission-denied|unauthenticated/.test(String(error.code||''))||/insufficient permissions/i.test(String(error.message||'')))){
+        try{const rows=await getCollectionWithExplicitToken(name,limit,orderField,orderDirection);state.diagnostics.push({collection:name,ok:true,count:rows.length,ms:Date.now()-started,transport:'explicit-token'});return rows;}catch(retryError){error=retryError;}
+      }
       state.diagnostics.push({collection:name,ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});
       throw new Error(name+' 讀取失敗：'+errorMessage(error));
     }
@@ -1039,7 +1084,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     state.onlineSource='EasyStore API';
     state.onlineProducts=[];
     try{
-      const doc=await state.db.collection('opsSettings').doc('easyStoreCatalogSync').get();
+      const doc=await getOperationDocument(state.db.collection('opsSettings').doc('easyStoreCatalogSync'));
       state.easyStoreSync=doc.exists?(doc.data()||{}):{};
       state.diagnostics.push({collection:'opsSettings/easyStoreCatalogSync',ok:true,count:doc.exists?1:0,ms:0});
     }catch(error){
@@ -1049,7 +1094,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   }
   async function loadMembershipSettings(){
     try{
-      const doc=await state.db.collection(COLLECTIONS.settings).doc('membershipPoints').get();
+      const doc=await getOperationDocument(state.db.collection(COLLECTIONS.settings).doc('membershipPoints'));
       state.membershipSettings=Object.assign({},DEFAULT_MEMBERSHIP_SETTINGS,doc.exists?(doc.data()||{}):{});
       state.diagnostics.push({collection:COLLECTIONS.settings+'/membershipPoints',ok:true,count:doc.exists?1:0,ms:0});
     }catch(error){
@@ -1060,7 +1105,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   async function loadOperatingExpenseSettings(){
     const started=Date.now();
     try{
-      const doc=await state.db.collection(COLLECTIONS.settings).doc('operatingExpenses').get();
+      const doc=await getOperationDocument(state.db.collection(COLLECTIONS.settings).doc('operatingExpenses'));
       state.operatingExpenseSettings=normalizeOperatingExpenseSettings(doc.exists?(doc.data()||{}):{});
       state.diagnostics.push({collection:COLLECTIONS.settings+'/operatingExpenses',ok:true,count:doc.exists?1:0,ms:Date.now()-started});
     }catch(error){
@@ -1070,7 +1115,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   }
   async function loadInjiaoyunCloudSync(){
     try{
-      const doc=await state.db.collection(COLLECTIONS.settings).doc('injiaoyunCloudSync').get();
+      const doc=await getOperationDocument(state.db.collection(COLLECTIONS.settings).doc('injiaoyunCloudSync'));
       state.injiaoyunCloudSync=doc.exists?(doc.data()||{}):{};
       state.injiaoyunCloudSyncSignature=syncTimestampSignature(state.injiaoyunCloudSync.lastSucceededAt);
       state.injiaoyunCloudStatusSignature=injiaoyunStatusSignature(state.injiaoyunCloudSync);
@@ -1144,7 +1189,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
 
 async function loadPlatformFeeSettings(){
   try{
-    const snap=await state.db.collection(COLLECTIONS.settings).doc('platformFeeSettings').get();
+    const snap=await getOperationDocument(state.db.collection(COLLECTIONS.settings).doc('platformFeeSettings'));
     const raw=snap.exists?(snap.data()||{}):{},platforms=raw.platforms&&typeof raw.platforms==='object'?raw.platforms:{};
     const merged={};
     ['EasyStore','MOMO','Coupang'].forEach(function(name){merged[name]=normalizePlatformFeeSetting(name,platforms[name]);});
@@ -1159,7 +1204,7 @@ async function loadPlatformFeeSettings(){
 
 async function loadPlatformLocalAgent(){
   try{
-    const snap=await state.db.collection(COLLECTIONS.settings).doc('platformLocalAgent').get();
+    const snap=await getOperationDocument(state.db.collection(COLLECTIONS.settings).doc('platformLocalAgent'));
     state.platformLocalAgent=snap.exists?(snap.data()||{}):{};
     state.diagnostics.push({collection:'opsSettings/platformLocalAgent',ok:true,count:snap.exists?1:0,ms:0});
   }catch(error){
@@ -1171,7 +1216,7 @@ async function loadPlatformLocalAgent(){
   async function loadSupplierDirectory(){
     const started=Date.now();
     try{
-      const snap=await state.db.collection(COLLECTIONS.settings).doc('suppliers').collection('directory').limit(1000).get();
+      const snap=await getOperationDocument(state.db.collection(COLLECTIONS.settings).doc('suppliers').collection('directory').limit(1000));
       state.suppliers=snap.docs.map(function(doc){const raw=doc.data()||{};return {id:doc.id,name:clean(raw.name),contactName:clean(raw.contactName),phone:clean(raw.phone),mobile:clean(raw.mobile),email:clean(raw.email),address:clean(raw.address),taxId:clean(raw.taxId),paymentInfo:clean(raw.paymentInfo),note:clean(raw.note),enabled:raw.enabled!==false,createdAt:raw.createdAt||'',updatedAt:raw.updatedAt||''};}).filter(function(row){return row.enabled!==false;}).sort(function(a,b){return a.name.localeCompare(b.name,'zh-Hant');});
       state.diagnostics.push({collection:'opsSettings/suppliers/directory',ok:true,count:state.suppliers.length,ms:Date.now()-started});
     }catch(error){state.suppliers=[];state.diagnostics.push({collection:'opsSettings/suppliers/directory',ok:false,count:0,ms:Date.now()-started,error:errorMessage(error)});}
@@ -1179,7 +1224,7 @@ async function loadPlatformLocalAgent(){
   async function loadInventoryCountSettings(){
     const started=Date.now();
     try{
-      const snap=await state.db.collection(COLLECTIONS.settings).doc('inventoryCount').get();
+      const snap=await getOperationDocument(state.db.collection(COLLECTIONS.settings).doc('inventoryCount'));
       const raw=snap.exists?(snap.data()||{}):{};
       state.inventoryCountSettings={enabled:raw.enabled!==false,pinHash:clean(raw.pinHash),updatedAt:raw.updatedAt||''};
       state.diagnostics.push({collection:'opsSettings/inventoryCount',ok:true,count:snap.exists?1:0,ms:Date.now()-started});
