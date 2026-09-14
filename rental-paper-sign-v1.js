@@ -17,7 +17,7 @@
 
   loadScript('rental-paper-activation-bridge-v1.js?v=20260804-paper-activation-v8')
     .then(function () {
-      return loadScript('rental-admin-enhancements-v1.js?v=20260804-paper-activation-v8');
+      return loadScript('rental-admin-enhancements-v1.js?v=20260914-rental-read-v2');
     })
     .catch(function (error) {
       console.error(error);

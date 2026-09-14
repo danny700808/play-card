@@ -71,7 +71,8 @@
     document.querySelectorAll('.tabs .tab[data-filter]').forEach(function (button) {
       const key = clean(button.dataset.filter);
       if (!Object.prototype.hasOwnProperty.call(TAB_LABELS, key)) return;
-      const count = countForFilter(key, rows);
+      const ready = typeof rentalDataState !== 'undefined' && rentalDataState === 'ready';
+      const count = ready ? countForFilter(key, rows) : '—';
       button.setAttribute('aria-label', TAB_LABELS[key] + '，' + count + ' 筆');
       button.replaceChildren(document.createTextNode(TAB_LABELS[key] + ' '));
       const badge = document.createElement('span');

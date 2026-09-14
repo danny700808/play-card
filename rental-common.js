@@ -50,8 +50,49 @@
     if(!res.ok || json.ok===false) throw new Error(json.message || json.error || ('API '+name+' '+res.status));
     return json;
   }
-  async function all(collection, limit){ const snap=await db().collection(collection).limit(limit||500).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
-  async function get(collection,id){ if(!id) return null; const params=new URLSearchParams(global.location.search),token=params.get('token')||params.get('signToken'); if(collection==='rentalContracts'&&token)return (await call('rentalGetContractHttp',{contractId:id,token})).contract; const doc=await db().collection(collection).doc(clean(id)).get(); return doc.exists?Object.assign({__id:doc.id},doc.data()||{}):null; }
+  const managerReadCollections = new Set(['rentalApplications','rentalContracts']);
+  function decodeRentalValue(value){
+    if('nullValue' in value)return null;
+    if('stringValue' in value)return value.stringValue;
+    if('booleanValue' in value)return value.booleanValue;
+    if('integerValue' in value)return Number(value.integerValue);
+    if('doubleValue' in value)return value.doubleValue;
+    if('timestampValue' in value)return global.firebase.firestore.Timestamp.fromDate(new Date(value.timestampValue));
+    if('arrayValue' in value)return (value.arrayValue.values||[]).map(decodeRentalValue);
+    if('mapValue' in value)return decodeRentalFields(value.mapValue.fields||{});
+    if('geoPointValue' in value)return new global.firebase.firestore.GeoPoint(value.geoPointValue.latitude,value.geoPointValue.longitude);
+    if('referenceValue' in value)return db().doc(value.referenceValue.split('/documents/')[1]);
+    if('bytesValue' in value)return global.firebase.firestore.Blob.fromBase64String(value.bytesValue);
+    return null;
+  }
+  function decodeRentalFields(fields){return Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,decodeRentalValue(value)]));}
+  async function managerRead(collection,id,limit){
+    firebaseApp();
+    const auth=global.firebase.auth();
+    if(typeof auth.authStateReady==='function')await auth.authStateReady();
+    else await new Promise((resolve,reject)=>{let unsubscribe=()=>{};const timer=setTimeout(()=>{unsubscribe();reject(new Error('登入驗證逾時，請重新登入。'));},10000);unsubscribe=auth.onAuthStateChanged(()=>{clearTimeout(timer);unsubscribe();resolve();},error=>{clearTimeout(timer);unsubscribe();reject(error);});});
+    const current=auth.currentUser;
+    if(!current)throw new Error('請先登入管理者帳號。');
+    const result=await current.getIdTokenResult();
+    const claims=result.claims||{};
+    if(claims.employee!==true||claims.manager!==true||!claims.employeeId)throw new Error('目前帳號沒有設備租賃管理權限。');
+    const base='https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(projectId())+'/databases/(default)/documents';
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
+    try{
+      const response=await fetch(id?base+'/'+encodeURIComponent(collection)+'/'+encodeURIComponent(id):base+':runQuery',{
+        method:id?'GET':'POST',signal:controller.signal,
+        headers:{Authorization:'Bearer '+result.token,'Content-Type':'application/json'},
+        ...(id?{}:{body:JSON.stringify({structuredQuery:{from:[{collectionId:collection}],limit:limit||500}})})
+      });
+      if(id&&response.status===404)return null;
+      if(!response.ok)throw new Error(response.status===403?'設備租賃資料讀取遭權限拒絕，案件數量尚未確認。':'設備租賃資料暫時無法讀取，請稍後重試。');
+      const data=await response.json();
+      const row=doc=>Object.assign({__id:doc.name.split('/').pop()},decodeRentalFields(doc.fields||{}));
+      return id?row(data):data.filter(item=>item.document).map(item=>row(item.document));
+    }finally{clearTimeout(timer);}
+  }
+  async function all(collection, limit){ if(managerReadCollections.has(collection))return managerRead(collection,null,limit); const snap=await db().collection(collection).limit(limit||500).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
+  async function get(collection,id){ if(!id) return null; const params=new URLSearchParams(global.location.search),token=params.get('token')||params.get('signToken'); if(collection==='rentalContracts'&&token)return (await call('rentalGetContractHttp',{contractId:id,token})).contract; if(managerReadCollections.has(collection))return managerRead(collection,clean(id)); const doc=await db().collection(collection).doc(clean(id)).get(); return doc.exists?Object.assign({__id:doc.id},doc.data()||{}):null; }
   async function set(collection,id,data,merge=true){ await db().collection(collection).doc(clean(id)).set(data||{}, {merge}); }
   function nowText(){ const d=new Date(); return ymd(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()); }
   function contractStatus(row){ return clean(row.status || row.contractStatus || '草稿'); }
