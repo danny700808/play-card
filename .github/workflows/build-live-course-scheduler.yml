@@ -80,7 +80,7 @@ jobs:
             for (const [href, view] of links) {
               if (!source.includes(`href="${href}" data-view="${view}"`)) throw new Error(`In-place course navigation is missing: ${view}`);
             }
-            if (!source.includes('operations-course-inline.js?v=20260913-oct15-recurrence-v1')) throw new Error('Unified course controller is missing');
+            if (!source.includes('operations-course-inline.js?v=20260914-subject-conflict-v1')) throw new Error('Unified course controller is missing');
             if (source.includes("location.replace('course-scheduler.html")) throw new Error('Course navigation still leaves the operations center');
             if (source.includes('course-scheduler.html?view=')) throw new Error('Standalone course links are still enabled');
             if (source.includes('operations-mobile-course-fix-v1.js')) throw new Error('Duplicate mobile course JavaScript is still enabled');
@@ -159,3 +159,4 @@ jobs:
           git add course-scheduler.html course-scheduler.css course-scheduler.js course-scheduler-data.js operations-course-inline.js operations-course-inline-template.html operations-course-inline-runtime.js operations-phase1.js portal.html operations-hub.html course-center.html
           git commit -m "Publish unified internal course workspace"
           git push origin HEAD:main
+

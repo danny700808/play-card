@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260913-oct15-recurrence-v1';
+const VERSION = '20260914-subject-conflict-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';
@@ -416,3 +416,4 @@ for (const obsolete of [
 }
 
 console.log('Built fast students, today-first calendar, and direct overview period controls.');
+
