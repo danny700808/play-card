@@ -63,3 +63,12 @@ test('operations read gate rejects email-only manager hints and accepts verified
     if(claims.manager===true)await context.requireOperationsReadAuth();else await assert.rejects(context.requireOperationsReadAuth());
   }
 });
+
+test('permission-denied SDK reads retry once with verified ID token and preserve data types',async()=>{
+ const start=source.indexOf('  async function getOperationDocument('),end=source.indexOf('  async function loadOnlineProducts(',start);const calls=[];
+ const context={AbortController,setTimeout,clearTimeout,encodeURIComponent,FIRESTORE_READ_TIMEOUT_MS:1000,READ_LIMIT:10000,state:{diagnostics:[],db:{collection:()=>({limit:()=>({get:async()=>{throw Object.assign(Error('Missing permissions'),{code:'permission-denied'});}})})}},global:{firebase:{app:()=>({options:{projectId:'demo-youzi-security'}}),firestore:{Timestamp:{fromDate:d=>d}}}},requireOperationsReadAuth:async()=>({user:{getIdToken:async()=> 'verified-token'}}),withReadTimeout:p=>p,errorMessage:e=>e.message,fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>[{document:{name:'projects/demo/databases/(default)/documents/opsInternalProducts/p1',fields:{price:{doubleValue:1200},createdAt:{timestampValue:'2026-09-14T00:00:00Z'},tags:{arrayValue:{values:[{stringValue:'piano'}]}}}}}]};}};
+ vm.runInNewContext(source.slice(start,end),context);const result=await context.getCollection('opsInternalProducts',10000);
+ assert.equal(result[0].price,1200);assert.equal(result[0].createdAt.toISOString(),'2026-09-14T00:00:00.000Z');assert.equal(result[0].tags[0],'piano');assert.equal(calls.length,1);assert.equal(calls[0].options.headers.Authorization,'Bearer verified-token');assert(!calls[0].url.includes('verified-token'));assert.equal(context.state.diagnostics[0].transport,'explicit-token');
+ context.fetch=async()=>({ok:false,status:403,json:async()=>({error:{message:'denied'}})});await assert.rejects(context.getCollection('opsInternalProducts',10000));
+});
+
