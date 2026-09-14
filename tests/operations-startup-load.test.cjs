@@ -47,3 +47,19 @@ test('mobile startup does not clone full operations data into IndexedDB or rende
     await context[name]();
   }
 });
+
+test('operations startup waits for verified auth before any history or settings reads',async()=>{
+  const start=source.lastIndexOf('  async function init(){'),end=source.indexOf('\n\n  global.OperationsCenterV1',start);
+  let release;const gate=new Promise(resolve=>release=resolve),events=[];
+  const context={global:{requireLogin:()=>({id:'admin'}),hasSettingsZoneAccess:()=>true},ensureOperatingExpenseEngineLoaded:async()=>true,state:{},setText:()=>{},userLabel:()=>'',initDb:()=>({}),requireOperationsReadAuth:()=>gate,repairYsv104PreorderHistoryOnce:async()=>events.push('read'),restoreFastStateCache:async()=>{throw Error('stop-after-first-read');}};
+  vm.runInNewContext(source.slice(start,end),context);
+  const running=context.init();await Promise.resolve();await Promise.resolve();assert.deepEqual(events,[]);
+  release();await assert.rejects(running,/stop-after-first-read/);assert.deepEqual(events,['read']);
+});
+test('operations read gate rejects email-only manager hints and accepts verified employee manager claims',async()=>{
+  const start=source.indexOf('  async function requireOperationsReadAuth(){'),end=source.indexOf('  async function requireEasyStoreManagerAuth(){',start);
+  for(const claims of [{email:'danny700808@gmail.com'},{employee:true,manager:false,employeeId:'e1'},{employee:true,manager:true,employeeId:'e1'}]){
+    const context={requireEasyStoreManagerAuth:async()=>({ok:true,claims})};vm.runInNewContext(source.slice(start,end),context);
+    if(claims.manager===true)await context.requireOperationsReadAuth();else await assert.rejects(context.requireOperationsReadAuth());
+  }
+});

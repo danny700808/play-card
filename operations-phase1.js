@@ -1329,6 +1329,7 @@ async function loadPlatformLocalAgent(){
     if(!silent) html('opsContent',loadingHtml('正在讀取營運資料…')+'<p id="opsLoadProgress" role="status" style="text-align:center;padding:0 20px">正在讀取營運設定，完成後會顯示各項資料進度。</p>');
     state.diagnostics=[];
     try{
+      await requireOperationsReadAuth();
       await withReadTimeout(Promise.all([loadOnlineProducts(),loadMembershipSettings(),loadOperatingExpenseSettings(),loadInjiaoyunCloudSync(),loadPlatformFeeSettings(),loadPlatformLocalAgent(),loadSupplierDirectory(),loadInventoryCountSettings(),loadPlatformInventoryQueueErrors(),loadProductListingQueue()]),'營運設定');
       const datasets=[
         {key:'internalProducts',label:'商品',collection:COLLECTIONS.products,limit:10000,normalize:row=>normalizeInternal(row,row.__id)},
@@ -6883,6 +6884,12 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
     }catch(error){showAlert('匯入中斷：'+errorMessage(error)+'。已完成的批次會保留，可重新選同一檔案繼續。','error');toast('匯入未完成',errorMessage(error),'error');}
   }
 
+  async function requireOperationsReadAuth(){
+    const result=await requireEasyStoreManagerAuth();
+    const claims=result&&result.claims||{};
+    if(claims.employee!==true||claims.manager!==true||!claims.employeeId)throw new Error('管理者登入資料尚未完整，請使用 Email 登入重新確認身分。');
+    return result;
+  }
   async function requireEasyStoreManagerAuth(){
     const bridge=global.YouziOperationsManagerAuth;
     if(!bridge||typeof bridge.ensureManagerAuth!=='function')throw new Error('營運中心安全驗證元件尚未載入，請重新整理後再試。');
@@ -7867,6 +7874,7 @@ function rerenderKeepingFocus(id,value){
     const expenseEngineReady=await ensureOperatingExpenseEngineLoaded();
     state.user=user; setText('opsUserChip',userLabel());
     try{state.db=initDb();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('Firebase初始化失敗',errorMessage(error)));return;}
+    try{await requireOperationsReadAuth();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('尚未完成登入確認',errorMessage(error)));return;}
     let ysv104RepairResult='';
     try{ysv104RepairResult=await repairYsv104PreorderHistoryOnce();}catch(error){console.error('YSV-104 historical repair stopped safely',error);showAlert(errorMessage(error),'error');}
     if(!expenseEngineReady)showAlert('營運支出程式暂時未載入，其他功能仍可正常使用；重新整理後系統會再自動嘗試。','warning');
