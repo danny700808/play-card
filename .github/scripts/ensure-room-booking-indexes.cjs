@@ -8,7 +8,7 @@ async function main() {
   async function list() {
     let pageToken, rows = [];
     do {
-      const { data } = await client.request({ url: endpoint, params: { pageSize: 100, ...(pageToken ? { pageToken } : {}) } });
+      const { data } = await client.request({ url: endpoint, params: pageToken ? { pageToken } : {} });
       rows.push(...(data.indexes || [])); pageToken = data.nextPageToken;
     } while (pageToken);
     return rows;
