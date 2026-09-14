@@ -49,7 +49,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
-  <script src="rental-common.js?v=20260802-rental-days-sync2"></script>
+  <script src="rental-common.js?v=20260914-private-data-v1"></script>
   <script>
     const R=window.YZRental;
 
@@ -255,9 +255,7 @@ let signed=false; let watermarkedIdImage='';
       const storage=firebase.storage();
       if(typeof storage.setMaxUploadRetryTime==='function') storage.setMaxUploadRetryTime(60000);
       async function putDataUrl(path, dataUrl, contentType){
-        const ref=storage.ref().child(path);
-        await ref.put(dataUrlToBlob(dataUrl), {contentType});
-        return await ref.getDownloadURL();
+        return (await R.call('rentalUploadPrivateAssetHttp',{id:contractId,token,path,dataUrl})).url;
       }
       if(isDataUrl(watermarkedIdImage)){
         const path='rental-contracts/'+safe+'/customer-id-watermarked.jpg';
@@ -294,7 +292,6 @@ let signed=false; let watermarkedIdImage='';
       updates.customerFormalAssetsUploadedAt=R.nowText();
       updates.updatedAtText=R.nowText();
       addInlineAssetDeletes(updates);
-      await R.db().collection('rentalContracts').doc(contractId).set(updates,{merge:true});
       return updates;
     }
     function fifteenSecondsLaterTimestamp(){
@@ -318,60 +315,6 @@ let signed=false; let watermarkedIdImage='';
         throw new Error('系統尚未完整收到身分證資料、圖片或簽名，請重新送出一次。');
       }
       return fresh;
-    }
-
-    async function queueFormalReceivedNotice(assetUpdates){
-      try{
-        const fresh = await R.get('rentalContracts', contractId) || contract || {};
-        const paymentMessage = currentPaymentInfoText(fresh);
-        const pref = R.notificationPreference(fresh.notificationPreference||fresh.preferredContactMethod, fresh.customerEmail);
-        const lineId = R.clean(fresh.customerLineUserId || fresh.lineUserId);
-        const email = R.clean(fresh.customerEmail);
-        const sendAfterAt = fifteenSecondsLaterTimestamp();
-        const baseId = 'rental-formal-received-' + contractId + '-' + Date.now();
-        let lineQueued=false, emailQueued=false;
-        const common={
-          targetName: R.clean(fresh.customerName || fresh.partyAName),
-          targetEmail: email,
-          title: '租賃付款資訊',
-          body: paymentMessage,
-          message: paymentMessage,
-          lineText: paymentMessage,
-          lineImageUrl: PAYMENT_IMAGE_URL,
-          paymentImageUrl: PAYMENT_IMAGE_URL,
-          status: '待發送',
-          sendAfterAt: sendAfterAt,
-          sendAfterMs: 15000,
-          delayReason: '客人送出身分證字號、證明文件與合約簽名後，延遲約 15 秒再傳送付款資訊。',
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          createdAtText: R.nowText(),
-          source: 'rental-formal-received',
-          contractId: contractId,
-          notificationPreference: pref,
-          emailVerified: R.emailVerified(fresh)
-        };
-        if(R.wantsLine(pref,email) && lineId){
-          const qid=baseId+'-line';
-          await R.db().collection('notificationQueue').doc(qid).set(Object.assign({},common,{queueId:qid,channel:'line',targetLineUserId:lineId}), {merge:true});
-          lineQueued=true;
-        }
-        if(R.wantsEmail(pref,email) && email){
-          const qid=baseId+'-email';
-          await R.db().collection('notificationQueue').doc(qid).set(Object.assign({},common,{queueId:qid,channel:'email',targetLineUserId:lineId}), {merge:true});
-          emailQueued=true;
-        }
-        await R.db().collection('rentalContracts').doc(contractId).set(Object.assign({
-          formalReceivedNoticeText: paymentMessage,
-          formalReceivedNoticeQueuedAt: R.nowText(),
-          formalReceivedNoticeDelayMs: 15000,
-          formalReceivedLineQueued: lineQueued,
-          formalReceivedEmailQueued: emailQueued,
-          paymentInfoQueuedAtText: R.nowText(),
-          updatedAtText: R.nowText()
-        }, assetUpdates||{}), {merge:true});
-      }catch(e){
-        console.warn('queueFormalReceivedNotice failed:', e);
-      }
     }
 
     document.getElementById('submitSigBtn').onclick=async()=>{
@@ -398,18 +341,6 @@ let signed=false; let watermarkedIdImage='';
         }
 
         setProgress(55,'正在儲存正式資料...');
-        await R.db().collection('rentalContracts').doc(contractId).set(Object.assign({
-          customerIdNumber:R.val('customerIdNumber'),
-          customerIdImageUpdatedAt:submittedAt,
-          customerSubmittedFormalAt:submittedAt,
-          customerSignedAt:submittedAt,
-          formalReceivedNoticeText:submittedPaymentMessage,
-          status:'待付款確認',
-          updatedAtText:submittedAt
-        }, assetUpdates||{}), {merge:true});
-
-        setProgress(70,'正在通知系統更新狀態...');
-        try{
           await R.call('rentalSignContractHttp',{
             contractId,
             token,
@@ -422,16 +353,12 @@ let signed=false; let watermarkedIdImage='';
             customerSubmittedFormalAt:submittedAt,
             customerSignedAt:submittedAt
           });
-        }catch(apiErr){
-          console.warn('rentalSignContractHttp failed; Firestore 已先保存客人正式資料：', apiErr);
-        }
-
         setProgress(82,'正在確認資料已保存...');
         const fresh=await verifyFormalSaved(submittedAt);
         contract=Object.assign({}, contract||{}, fresh||{});
 
         setProgress(92,'正在傳送付款資訊...');
-        await queueFormalReceivedNotice(assetUpdates);
+
 
         finishProgress('送出完成，請依收到的付款資訊完成付款');
         showDialog('', '已收到您的身分證字號、證明文件與合約簽名。請依收到的付款資訊完成付款，柚子樂器確認款項後才會成立正式契約。');

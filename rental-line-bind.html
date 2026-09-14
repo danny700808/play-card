@@ -39,7 +39,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="rental-common.js?v=20260802-rental-days-sync2"></script>
+  <script src="rental-common.js?v=20260914-private-data-v1"></script>
   <script>
     const R=window.YZRental;
     const params=new URLSearchParams(location.search);
@@ -78,18 +78,6 @@
       let needLine=stored.needLine;
       let needEmail=stored.needEmail;
       let lineText=clean(stored.lineConfirmText);
-      try{
-        if(appId && (!lineText || !appNo || needLine == null || needEmail == null)){
-          const app=await R.get('rentalApplications', appId);
-          if(app){
-            appNo=clean(app.applicationNo || app.applicationId || app.__id || appNo);
-            pref=R.notificationPreference(app.notificationPreference || app.preferredContactMethod || pref, app.customerEmail);
-            lineText=clean(app.lineConfirmText);
-            needLine=R.wantsLine(pref, app.customerEmail);
-            needEmail=R.wantsEmail(pref, app.customerEmail);
-          }
-        }
-      }catch(e){ console.warn('load rental application failed', e); }
       if(!appNo) appNo='已送出';
       if(needLine == null) needLine=R.wantsLine(pref, stored.customerEmail);
       if(needEmail == null) needEmail=R.wantsEmail(pref, stored.customerEmail);

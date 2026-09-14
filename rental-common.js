@@ -51,7 +51,7 @@
     return json;
   }
   async function all(collection, limit){ const snap=await db().collection(collection).limit(limit||500).get(); const rows=[]; snap.forEach(doc=>rows.push(Object.assign({__id:doc.id}, doc.data()||{}))); return rows; }
-  async function get(collection,id){ if(!id) return null; const doc=await db().collection(collection).doc(clean(id)).get(); return doc.exists?Object.assign({__id:doc.id},doc.data()||{}):null; }
+  async function get(collection,id){ if(!id) return null; const params=new URLSearchParams(global.location.search),token=params.get('token')||params.get('signToken'); if(collection==='rentalContracts'&&token)return (await call('rentalGetContractHttp',{contractId:id,token})).contract; const doc=await db().collection(collection).doc(clean(id)).get(); return doc.exists?Object.assign({__id:doc.id},doc.data()||{}):null; }
   async function set(collection,id,data,merge=true){ await db().collection(collection).doc(clean(id)).set(data||{}, {merge}); }
   function nowText(){ const d=new Date(); return ymd(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()); }
   function contractStatus(row){ return clean(row.status || row.contractStatus || '草稿'); }
