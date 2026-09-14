@@ -918,6 +918,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   }
 
   function saveDashboardCache(){
+    if(isCompactMobile())return;
     const previousRange=state.overviewRange;
     try{
       state.overviewRange='today';
@@ -957,6 +958,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     });
   }
   async function saveFastStateCache(){
+    if(isCompactMobile())return;
     try{
       const db=await openFastStateDb();
       const payload={savedAt:Date.now(),loadedAt:state.loadedAt?state.loadedAt.toISOString():'',fullLoadedAt:state.fullLoadedAt?state.fullLoadedAt.toISOString():'',data:{
@@ -971,6 +973,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     }catch(error){console.warn('operations fast-state cache save failed',error);}
   }
   async function restoreFastStateCache(){
+    if(isCompactMobile())return false;
     try{
       const db=await openFastStateDb();
       const payload=await new Promise(function(resolve,reject){const tx=db.transaction(FAST_STATE_STORE,'readonly');const request=tx.objectStore(FAST_STATE_STORE).get(FAST_STATE_KEY);request.onsuccess=function(){resolve(request.result||null);};request.onerror=function(){reject(request.error||new Error('IndexedDB read failed'));};});
@@ -1297,61 +1300,71 @@ async function loadPlatformLocalAgent(){
     }finally{ state.loading=false; }
   }
 
+  async function loadOperationDatasets(items,read,options){
+    options=options||{};
+    const concurrency=Math.max(1,Math.min(3,Number(options.concurrency)||3));
+    const pause=options.pause||(()=>new Promise(resolve=>setTimeout(resolve,0)));
+    const results=new Array(items.length),active=new Map();
+    let next=0,completed=0,failure=null;
+    const notify=()=>{if(options.onProgress)options.onProgress({completed,total:items.length,active:Array.from(active.values())});};
+    async function worker(){
+      while(!failure&&next<items.length){
+        const index=next++;active.set(index,items[index].label);notify();
+        try{
+          results[index]=await read(items[index],index);
+          completed++;
+        }catch(error){failure=failure||error;}
+        finally{active.delete(index);notify();}
+        if(!failure)await pause();
+      }
+    }
+    await Promise.all(Array.from({length:Math.min(concurrency,items.length)},()=>worker()));
+    if(failure)throw failure;
+    return results;
+  }
+
   async function loadAll(silent){
     if(state.loading) return;
     state.loading=true; clearAlert();
-    if(!silent) html('opsContent',loadingHtml('正在整理商品、庫存、銷售、租賃與案件資料…'));
+    if(!silent) html('opsContent',loadingHtml('正在讀取營運資料…')+'<p id="opsLoadProgress" role="status" style="text-align:center;padding:0 20px">正在讀取營運設定，完成後會顯示各項資料進度。</p>');
     state.diagnostics=[];
     try{
       await withReadTimeout(Promise.all([loadOnlineProducts(),loadMembershipSettings(),loadOperatingExpenseSettings(),loadInjiaoyunCloudSync(),loadPlatformFeeSettings(),loadPlatformLocalAgent(),loadSupplierDirectory(),loadInventoryCountSettings(),loadPlatformInventoryQueueErrors(),loadProductListingQueue()]),'營運設定');
-      const results=await Promise.all([
-        getCollection(COLLECTIONS.products,10000),
-        getCollection('rentalContracts',1000),
-        getCollection(COLLECTIONS.rentalLedgers,1000),
-        getCollection(COLLECTIONS.sales,10000),
-        getCollection(COLLECTIONS.incomes,1200),
-        getCollection(COLLECTIONS.purchases,1200),
-        getCollection(COLLECTIONS.inventory,10000),
-        getCollection(COLLECTIONS.cases,1000),
-        getCollection(COLLECTIONS.expenses,1200),
-        getCollection(COLLECTIONS.syncJobs,500),
-        getCollection(COLLECTIONS.audit,500),
-        getCollection(COLLECTIONS.customers,3000),
-        getCollection(COLLECTIONS.points,3000),
-        getCollection(COLLECTIONS.receivables,3000),
-        getCollection(COLLECTIONS.receivablePayments,3000),
-        getCollection(COLLECTIONS.salesReturns,3000),
-        getCollection(COLLECTIONS.educationDaily,3000,'businessDate','desc'),
-        getCollection(COLLECTIONS.platformOrders,10000,'orderedAt','desc'),
-        getCollection(COLLECTIONS.platformSyncRuns,500,'startedAt','desc'),
-        getCollection(COLLECTIONS.employees,3000),
-        getCollection(COLLECTIONS.employeeSalaryConfigs,3000),
-        getCollection(COLLECTIONS.employeeSalaryConfigHistory,10000),
-        getCollection(COLLECTIONS.parttimeRecords,10000)
-      ]);
-      state.internalProducts=results[0].map(function(row){ return normalizeInternal(row,row.__id); });
-      state.rentals=results[1].map(normalizeRental);
-      state.rentalLedgers=results[2].map(normalizeRentalLedger);
-      state.sales=results[3].map(normalizeSale).filter(function(row){return clean(row.status)!=='voided';});
-      state.incomes=results[4].map(normalizeIncome).filter(function(row){return clean(row.status)!=='voided';});
-      state.purchases=results[5].map(normalizePurchase);
-      state.inventory=results[6].map(normalizeInventory);
-      state.cases=results[7].map(normalizeCase);
-      state.expenses=results[8].map(normalizeExpense);
-      state.syncJobs=results[9].map(normalizeSyncJob);
-      state.audit=results[10].map(normalizeAudit);
-      state.customers=results[11].map(normalizeCustomer);
-      state.pointTransactions=results[12].map(normalizePointTransaction);
-      state.receivables=results[13].map(normalizeReceivable);
-      state.receivablePayments=results[14].map(normalizeReceivablePayment);
-      state.salesReturns=results[15].map(normalizeSaleReturn);
-      state.educationDaily=results[16].map(normalizeEducationDaily);
-      state.platformOrders=results[17].map(normalizePlatformOrder);
-      state.platformSyncRuns=results[18].map(normalizePlatformSyncRun);
-      state.employees=results[19];
-      state.employeeSalaryConfigs=results[20];
-      state.employeeSalaryConfigHistory=results[21];
-      state.parttimeRecords=results[22];
+      const datasets=[
+        {key:'internalProducts',label:'商品',collection:COLLECTIONS.products,limit:10000,normalize:row=>normalizeInternal(row,row.__id)},
+        {key:'rentals',label:'租賃合約',collection:'rentalContracts',limit:1000,normalize:normalizeRental},
+        {key:'rentalLedgers',label:'租賃帳務',collection:COLLECTIONS.rentalLedgers,limit:1000,normalize:normalizeRentalLedger},
+        {key:'sales',label:'銷售訂單',collection:COLLECTIONS.sales,limit:10000,normalize:normalizeSale},
+        {key:'incomes',label:'收入',collection:COLLECTIONS.incomes,limit:1200,normalize:normalizeIncome},
+        {key:'purchases',label:'進貨',collection:COLLECTIONS.purchases,limit:1200,normalize:normalizePurchase},
+        {key:'inventory',label:'庫存異動',collection:COLLECTIONS.inventory,limit:10000,normalize:normalizeInventory},
+        {key:'cases',label:'案件',collection:COLLECTIONS.cases,limit:1000,normalize:normalizeCase},
+        {key:'expenses',label:'營運支出',collection:COLLECTIONS.expenses,limit:1200,normalize:normalizeExpense},
+        {key:'syncJobs',label:'同步工作',collection:COLLECTIONS.syncJobs,limit:500,normalize:normalizeSyncJob},
+        {key:'audit',label:'操作紀錄',collection:COLLECTIONS.audit,limit:500,normalize:normalizeAudit},
+        {key:'customers',label:'客戶會員',collection:COLLECTIONS.customers,limit:3000,normalize:normalizeCustomer},
+        {key:'pointTransactions',label:'會員點數',collection:COLLECTIONS.points,limit:3000,normalize:normalizePointTransaction},
+        {key:'receivables',label:'應收帳款',collection:COLLECTIONS.receivables,limit:3000,normalize:normalizeReceivable},
+        {key:'receivablePayments',label:'收款紀錄',collection:COLLECTIONS.receivablePayments,limit:3000,normalize:normalizeReceivablePayment},
+        {key:'salesReturns',label:'退貨紀錄',collection:COLLECTIONS.salesReturns,limit:3000,normalize:normalizeSaleReturn},
+        {key:'educationDaily',label:'課務日結',collection:COLLECTIONS.educationDaily,limit:3000,normalize:normalizeEducationDaily,order:'businessDate'},
+        {key:'platformOrders',label:'平台訂單',collection:COLLECTIONS.platformOrders,limit:10000,normalize:normalizePlatformOrder,order:'orderedAt'},
+        {key:'platformSyncRuns',label:'平台同步紀錄',collection:COLLECTIONS.platformSyncRuns,limit:500,normalize:normalizePlatformSyncRun,order:'startedAt'},
+        {key:'employees',label:'員工資料',collection:COLLECTIONS.employees,limit:3000,normalize:null},
+        {key:'employeeSalaryConfigs',label:'薪資設定',collection:COLLECTIONS.employeeSalaryConfigs,limit:3000,normalize:null},
+        {key:'employeeSalaryConfigHistory',label:'薪資歷程',collection:COLLECTIONS.employeeSalaryConfigHistory,limit:10000,normalize:null},
+        {key:'parttimeRecords',label:'工讀出勤',collection:COLLECTIONS.parttimeRecords,limit:10000,normalize:null}
+      ];
+      const results=await loadOperationDatasets(datasets,async function(dataset){
+        let rows=await getCollection(dataset.collection,dataset.limit,dataset.order,dataset.order?'desc':undefined);
+        if(dataset.normalize)rows=rows.map(dataset.normalize);
+        if(dataset.key==='sales'||dataset.key==='incomes')rows=rows.filter(function(row){return clean(row.status)!=='voided';});
+        return rows;
+      },{onProgress:function(progress){
+        const label=byId('opsLoadProgress');
+        if(label)label.textContent='已完成 '+progress.completed+'／'+progress.total+' 類資料'+(progress.active.length?'；正在讀取：'+progress.active.join('、'):'；正在整理畫面…');
+      }});
+      datasets.forEach(function(dataset,index){state[dataset.key]=results[index];});
       mergeCatalog();
       state.loadedAt=new Date();
       state.fullLoadedAt=state.loadedAt;
@@ -6493,20 +6506,64 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
     const memberFields=customer&&customer.customerType==='member'?'<div class="ops-member-payment-summary"><div><span>會員</span><b>'+escapeHtml(customer.name)+' '+escapeHtml(customer.memberNo||'')+'</b></div><div><span>目前點數</span><b>'+formatNumber(customer.pointBalance)+' 點</b></div><div><span>退還已用點數</span><b id="returnPointsRestore">0 點</b></div><div><span>扣回本單累積</span><b id="returnPointsReverse">0 點</b></div><div><span>點數不足</span><b id="returnPointShortfall">無</b></div></div><div class="ops-field"><label>點數不足處理</label><select class="ops-select" name="pointRecoveryMode"><option value="cash">現金補收</option><option value="receivable">登記未收款</option></select></div>':'';
     openDrawer('退貨／報廢',sale.saleNo,'<form id="saleReturnForm" data-id="'+attr(sale.id)+'"><div class="ops-summary-list"><div class="ops-summary-line"><span>原單實收</span><b>'+money(sale.total)+'</b></div><div class="ops-summary-line"><span>本次退款</span><b id="returnRefundAmount">NT$ 0</b></div></div>'+memberFields+'<div class="ops-return-items">'+rows+'</div><div class="ops-form-grid"><div class="ops-field"><label>退款方式</label><select class="ops-select" name="refundMethod"><option>'+escapeHtml(sale.paymentMethod||'現金')+'</option><option>現金</option><option>信用卡</option><option>轉帳</option></select></div><div class="ops-field full"><label>退貨原因</label><input class="ops-input" name="note" required></div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">取消</button><button class="ops-button primary" type="submit">確認退貨</button></div></form>');
   }
+  function returnLedgerVersion(sale){
+    return JSON.stringify([sale.returnRevision||0,sale.returnedAmount||0,sale.returnedCost||0,sale.status||'',sale.items||[],sale.total||0,sale.subtotal||0,sale.customerId||'',sale.pointsEarned||0,sale.pointsRedeemed||0]);
+  }
+  async function runCurrentReturnTransaction(saleRef,returnRef,requestFingerprint,action){
+    for(let attempt=0;attempt<4;attempt++){
+      const before=await saleRef.get();
+      if(!before.exists)throw new Error('找不到原始單據');
+      const history=await state.db.collection(COLLECTIONS.salesReturns).where('saleId','==',saleRef.id).get();
+      const previousReturns=history.docs.map(function(doc){return Object.assign({id:doc.id},doc.data()||{});});
+      try{
+        return await state.db.runTransaction(async function(tx){
+          const existing=await tx.get(returnRef),saleSnap=await tx.get(saleRef);
+          if(existing.exists){
+            if((existing.data()||{}).requestFingerprint!==requestFingerprint)throw new Error('這次退貨已經處理過，請重新開啟訂單確認結果。');
+            return {duplicate:true};
+          }
+          if(!saleSnap.exists)throw new Error('找不到原始單據');
+          if(returnLedgerVersion(saleSnap.data()||{})!==returnLedgerVersion(before.data()||{})){
+            const error=new Error('訂單正在更新');error.retryReturnLedger=true;throw error;
+          }
+          await action(tx,saleSnap,previousReturns);
+          return {duplicate:false};
+        });
+      }catch(error){if(!error.retryReturnLedger||attempt===3)throw error;}
+    }
+  }
   async function saveSaleReturn(form){
-    const id=clean(form.dataset.id),sale=state.sales.find(function(x){return x.id===id;});if(!sale)throw new Error('找不到原始單據');const data=new FormData(form),rowEls=queryAll('[data-return-row]',form),requested=[];rowEls.forEach(function(row){const index=Number(row.dataset.index),item=sale.items[index],already=returnedQtyForItem(sale.id,item.productId),qty=Math.max(0,Math.min(Math.max(0,Number(item.qty||0)-already),Math.floor(Number(query('[name="qty"]',row).value||0))));if(qty)requested.push({item:item,qty:qty,disposition:clean(query('[name="disposition"]',row).value)||'restock'});});if(!requested.length)throw new Error('請至少填寫一項退貨數量');
-    const saleRef=state.db.collection(COLLECTIONS.sales).doc(id),returnRef=state.db.collection(COLLECTIONS.salesReturns).doc(),refundIncomeRef=state.db.collection(COLLECTIONS.incomes).doc(),returnNo=uid('RET'),customerRef=sale.customerId?state.db.collection(COLLECTIONS.customers).doc(sale.customerId):null;
-    await state.db.runTransaction(async function(tx){
-      const saleSnap=await tx.get(saleRef);if(!saleSnap.exists)throw new Error('找不到原始單據');const rawSale=saleSnap.data()||{},customerSnap=customerRef?await tx.get(customerRef):null,restockItems=requested.filter(function(row){return row.disposition==='restock';}),productRefs=restockItems.map(function(row){return state.db.collection(COLLECTIONS.products).doc(row.item.productId);}),productSnaps=[];for(const ref of productRefs)productSnaps.push(await tx.get(ref));
-      const previousReturns=state.salesReturns.filter(function(row){return row.saleId===id;}),previousRefund=sum(previousReturns,function(row){return Number(row.refundAmount||0);}),previousRestore=sum(previousReturns,function(row){return Number(row.pointsRestored||0);}),previousReverse=sum(previousReturns,function(row){return Number(row.pointsReversed||0);}),returnedGross=sum(requested,function(row){return Number(row.item.lineTotal||0)*(row.qty/Math.max(1,Number(row.item.qty||1)));}),restockedCost=sum(requested.filter(function(row){return row.disposition==='restock';}),function(row){return Number(row.item.lineCost||0)*(row.qty/Math.max(1,Number(row.item.qty||1)));}),ratio=Number(rawSale.subtotal||0)>0?Math.min(1,returnedGross/Number(rawSale.subtotal||0)):0,refundAmount=Math.min(Math.max(0,Number(rawSale.total||0)-previousRefund),Math.round(Number(rawSale.total||0)*ratio)),pointsRestored=Math.min(Math.max(0,Number(rawSale.pointsRedeemed||0)-previousRestore),Math.round(Number(rawSale.pointsRedeemed||0)*ratio)),pointsReversed=Math.min(Math.max(0,Number(rawSale.pointsEarned||0)-previousReverse),Math.round(Number(rawSale.pointsEarned||0)*ratio)),customerRaw=customerSnap&&customerSnap.exists?(customerSnap.data()||{}):null,isMember=customerRaw&&clean(customerRaw.customerType)==='member',startingBalance=Math.max(0,Number(customerRaw&&customerRaw.pointBalance||0)),requestedBalance=startingBalance+pointsRestored-pointsReversed,pointRecoveryAmount=isMember?Math.max(0,-requestedBalance):0,newBalance=isMember?Math.max(0,requestedBalance):0;
+    const id=clean(form.dataset.id),sale=state.sales.find(function(x){return x.id===id;});if(!sale)throw new Error('找不到原始單據');const data=new FormData(form),rowEls=queryAll('[data-return-row]',form),requested=[];rowEls.forEach(function(row){const index=Number(row.dataset.index),item=sale.items[index],already=returnedQtyForItem(sale.id,item.productId),qty=Math.max(0,Math.min(Math.max(0,Number(item.qty||0)-already),Math.floor(Number(query('[name="qty"]',row).value||0))));if(qty)requested.push({index:index,item:item,qty:qty,disposition:clean(query('[name="disposition"]',row).value)||'restock'});});if(!requested.length)throw new Error('請至少填寫一項退貨數量');
+    const requestFingerprint=JSON.stringify({saleId:id,items:requested.map(function(row){return {index:row.index,productId:row.item.productId,qty:row.qty,disposition:row.disposition};}),refundMethod:clean(data.get('refundMethod')),note:clean(data.get('note')),pointRecoveryMode:clean(data.get('pointRecoveryMode'))});
+    const operationKey='youzi-return-operation:'+clean(state.user&&(state.user.id||state.user.email))+':'+id;
+    let pending;
+    try{pending=JSON.parse(sessionStorage.getItem(operationKey)||'null');if(!pending||pending.requestFingerprint!==requestFingerprint){pending={operationId:global.crypto.randomUUID(),requestFingerprint:requestFingerprint};sessionStorage.setItem(operationKey,JSON.stringify(pending));}}
+    catch(error){throw new Error('瀏覽器無法保留退貨識別碼，尚未執行退貨；請確認瀏覽器儲存功能可用後再試。');}
+    const saleRef=state.db.collection(COLLECTIONS.sales).doc(id),returnRef=state.db.collection(COLLECTIONS.salesReturns).doc(pending.operationId),refundIncomeRef=state.db.collection(COLLECTIONS.incomes).doc(),returnNo=uid('RET'),customerRef=sale.customerId?state.db.collection(COLLECTIONS.customers).doc(sale.customerId):null;
+    await runCurrentReturnTransaction(saleRef,returnRef,requestFingerprint,async function(tx,saleSnap,previousReturns){
+      const rawSale=saleSnap.data()||{};
+      if(clean(rawSale.status)==='voided')throw new Error('這張訂單已作廢，不能再次退貨。');
+      if(clean(rawSale.customerId)!==clean(sale.customerId))throw new Error('訂單會員已變更，請重新開啟訂單。');
+      const originalItems=Array.isArray(rawSale.items)?rawSale.items:[];
+      requested.forEach(function(row){
+        const item=originalItems[row.index];
+        if(!item||item.productId!==row.item.productId)throw new Error('訂單品項已變更，請重新開啟訂單。');
+        if(originalItems.filter(function(value){return value.productId===item.productId;}).length!==1)throw new Error('此舊訂單有重複商品列，請先核對退貨明細。');
+        const returned=sum(previousReturns.flatMap(function(value){return value.items||[];}).filter(function(value){return value.productId===item.productId;}),function(value){return Number(value.qty||0);});
+        if(row.qty>Math.max(0,Number(item.qty||0)-returned))throw new Error('這筆商品已被其他櫃台退貨，可退數量不足；請重新開啟訂單查看最新結果。');
+        row.item=item;
+      });
+      const customerSnap=customerRef?await tx.get(customerRef):null,restockItems=requested.filter(function(row){return row.disposition==='restock';}),productRefs=restockItems.map(function(row){return state.db.collection(COLLECTIONS.products).doc(row.item.productId);}),productSnaps=[];for(const ref of productRefs)productSnaps.push(await tx.get(ref));
+      const previousRefund=sum(previousReturns,function(row){return Number(row.refundAmount||0);}),previousRestore=sum(previousReturns,function(row){return Number(row.pointsRestored||0);}),previousReverse=sum(previousReturns,function(row){return Number(row.pointsReversed||0);}),returnedGross=sum(requested,function(row){return Number(row.item.lineTotal||0)*(row.qty/Math.max(1,Number(row.item.qty||1)));}),restockedCost=sum(requested.filter(function(row){return row.disposition==='restock';}),function(row){return Number(row.item.lineCost||0)*(row.qty/Math.max(1,Number(row.item.qty||1)));}),ratio=Number(rawSale.subtotal||0)>0?Math.min(1,returnedGross/Number(rawSale.subtotal||0)):0,refundAmount=Math.min(Math.max(0,Number(rawSale.total||0)-previousRefund),Math.round(Number(rawSale.total||0)*ratio)),pointsRestored=Math.min(Math.max(0,Number(rawSale.pointsRedeemed||0)-previousRestore),Math.round(Number(rawSale.pointsRedeemed||0)*ratio)),pointsReversed=Math.min(Math.max(0,Number(rawSale.pointsEarned||0)-previousReverse),Math.round(Number(rawSale.pointsEarned||0)*ratio)),customerRaw=customerSnap&&customerSnap.exists?(customerSnap.data()||{}):null,isMember=customerRaw&&clean(customerRaw.customerType)==='member',startingBalance=Math.max(0,Number(customerRaw&&customerRaw.pointBalance||0)),requestedBalance=startingBalance+pointsRestored-pointsReversed,pointRecoveryAmount=isMember?Math.max(0,-requestedBalance):0,newBalance=isMember?Math.max(0,requestedBalance):0;
       const returnItems=requested.map(function(row){return {productId:row.item.productId,name:row.item.name,sku:row.item.sku,qty:row.qty,disposition:row.disposition,lineAmount:Number(row.item.lineTotal||0)*(row.qty/Math.max(1,Number(row.item.qty||1)))};});
-      tx.set(returnRef,{returnNo:returnNo,saleId:id,saleNo:clean(rawSale.saleNo),customerId:clean(rawSale.customerId),customerName:clean(rawSale.customerName),items:returnItems,refundAmount:refundAmount,restockedCost:restockedCost,refundMethod:clean(data.get('refundMethod'))||clean(rawSale.paymentMethod),pointsRestored:pointsRestored,pointsReversed:pointsReversed,pointRecoveryAmount:pointRecoveryAmount,pointRecoveryMode:clean(data.get('pointRecoveryMode'))||'cash',note:clean(data.get('note')),status:'completed',createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
+      tx.set(returnRef,{requestFingerprint:requestFingerprint,operationId:pending.operationId,returnNo:returnNo,saleId:id,saleNo:clean(rawSale.saleNo),customerId:clean(rawSale.customerId),customerName:clean(rawSale.customerName),items:returnItems,refundAmount:refundAmount,restockedCost:restockedCost,refundMethod:clean(data.get('refundMethod'))||clean(rawSale.paymentMethod),pointsRestored:pointsRestored,pointsReversed:pointsReversed,pointRecoveryAmount:pointRecoveryAmount,pointRecoveryMode:clean(data.get('pointRecoveryMode'))||'cash',note:clean(data.get('note')),status:'completed',createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
       tx.set(refundIncomeRef,{incomeNo:returnNo+'-REFUND',occurredAt:new Date(),category:'商品退貨退款',amount:-refundAmount,paymentMethod:clean(data.get('refundMethod'))||clean(rawSale.paymentMethod),paymentStatus:'paid',receivedAmount:-refundAmount,customerId:clean(rawSale.customerId),customerName:clean(rawSale.customerName),note:returnNo,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});
       if(isMember){const appliedDelta=newBalance-startingBalance;if(appliedDelta){const pointRef=state.db.collection(COLLECTIONS.points).doc();tx.update(customerRef,{pointBalance:newBalance,updatedAt:serverTimestamp()});tx.set(pointRef,{customerId:clean(rawSale.customerId),saleId:id,type:'return',points:appliedDelta,balanceAfter:newBalance,note:returnNo,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});}if(pointRecoveryAmount){if(clean(data.get('pointRecoveryMode'))==='receivable'){const arRef=state.db.collection(COLLECTIONS.receivables).doc();tx.set(arRef,{receivableNo:uid('AR'),sourceType:'returnPointRecovery',returnId:returnRef.id,saleId:id,saleNo:clean(rawSale.saleNo),customerId:clean(rawSale.customerId),customerName:clean(rawSale.customerName),totalAmount:pointRecoveryAmount,receivedAmount:0,outstandingAmount:pointRecoveryAmount,status:'unpaid',createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});}else{const recoveryRef=state.db.collection(COLLECTIONS.incomes).doc();tx.set(recoveryRef,{incomeNo:returnNo+'-POINT',occurredAt:new Date(),category:'退貨點數補收',amount:pointRecoveryAmount,paymentMethod:'現金',paymentStatus:'paid',receivedAmount:pointRecoveryAmount,customerId:clean(rawSale.customerId),customerName:clean(rawSale.customerName),note:returnNo,createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});}}}
       restockItems.forEach(function(row,index){if(!productSnaps[index].exists)throw new Error('找不到商品主檔，無法回庫：'+clean(row.item.name));const raw=productSnaps[index].data()||{},restored=restoreSaleItemToStock(raw,row.item,row.qty),stats=costLayerStats(restored.raw),inventoryRef=state.db.collection(COLLECTIONS.inventory).doc();tx.update(productRefs[index],{currentStock:restored.stock,costLayers:restored.raw.costLayers,averageCost:stats.averageCost,inventoryValue:stats.inventoryValue,costIncomplete:stats.costIncomplete,updatedAt:serverTimestamp(),updatedBy:userLabel()});queueInventorySyncInTransaction(tx,row.item.productId,row.item.sku,restored.stock,'storeReturn');tx.set(inventoryRef,{type:'saleReturn',productId:row.item.productId,productName:row.item.name,sku:row.item.sku,qtyChange:row.qty,beforeStock:Number(raw.currentStock||0),afterStock:restored.stock,referenceType:'storeSaleReturn',referenceId:returnNo,note:'退貨回庫｜'+clean(data.get('note')),occurredAt:serverTimestamp(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
       requested.filter(function(row){return row.disposition==='scrap';}).forEach(function(row){const inventoryRef=state.db.collection(COLLECTIONS.inventory).doc();tx.set(inventoryRef,{type:'saleReturnScrap',productId:row.item.productId,productName:row.item.name,sku:row.item.sku,qtyChange:0,referenceType:'storeSaleReturn',referenceId:returnNo,note:'退貨報廢｜'+clean(data.get('note')),occurredAt:serverTimestamp(),createdAt:serverTimestamp(),createdBy:userLabel(),version:VERSION});});
-      const oldReturned=Math.max(0,Number(rawSale.returnedAmount||0)),oldReturnedCost=Math.max(0,Number(rawSale.returnedCost||0)),newReturned=oldReturned+refundAmount;tx.set(saleRef,{returnedAmount:newReturned,returnedCost:oldReturnedCost+restockedCost,returnStatus:newReturned>=Number(rawSale.total||0)?'returned':'partialReturn',updatedAt:serverTimestamp(),updatedBy:userLabel()},{merge:true});
+      const oldReturned=Math.max(0,Number(rawSale.returnedAmount||0)),oldReturnedCost=Math.max(0,Number(rawSale.returnedCost||0)),newReturned=oldReturned+refundAmount;tx.set(saleRef,{returnRevision:Number(rawSale.returnRevision||0)+1,returnedAmount:newReturned,returnedCost:oldReturnedCost+restockedCost,returnStatus:newReturned>=Number(rawSale.total||0)?'returned':'partialReturn',updatedAt:serverTimestamp(),updatedBy:userLabel()},{merge:true});
     });
+    try{sessionStorage.removeItem(operationKey);}catch(error){console.warn('return journal cleanup deferred',error);}
     await writeAudit('完成退貨','storeSaleReturn',returnRef.id,returnNo);closeDrawer();toast('退貨已完成',returnNo,'success');await loadAll(true);
   }
   function openSalesHistory(){

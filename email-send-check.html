@@ -43,9 +43,7 @@
     R.qs('sendBtn').onclick=async()=>{
       try{
         msg('建立測試佇列中...',true); status('等待建立 queue...');
-        const res=await fetch(R.functionUrl('emailSendCheckHttp'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:R.val('toEmail'),title:R.val('title'),body:R.val('body')})});
-        const json=await res.json().catch(()=>({}));
-        if(!res.ok || json.ok===false) throw new Error(json.message||('HTTP '+res.status));
+        const json=await R.call('emailSendCheckHttp',{to:R.val('toEmail'),title:R.val('title'),body:R.val('body')});
         msg(json.message||'已建立 Email 測試佇列。',true);
         const id=json.queueId;
         status('queueId：'+id+'\n狀態：等待後端發送...');

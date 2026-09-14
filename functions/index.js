@@ -857,6 +857,11 @@ function requestData(req) {
   }
 }
 
+const requireHttpManager = require('./managerAccess').createManagerAccess(admin.auth(), db);
+function managerHttpEndpoint(handler, options = {}) {
+  return httpEndpoint(async (data, req) => { await requireHttpManager(req); return handler(data, req); }, options);
+}
+
 function httpEndpoint(handler, options = {}) {
   return onRequest(Object.assign({}, HTTP_OPTIONS, options), async (req, res) => {
     setCorsHeaders(res);
@@ -873,7 +878,7 @@ function httpEndpoint(handler, options = {}) {
       sendJson(res, 200, Object.assign({ ok: true }, result || {}));
     } catch (error) {
       console.error('[httpEndpoint error]', error);
-      sendJson(res, 400, { ok: false, message: error && error.message ? error.message : String(error) });
+      sendJson(res, error.httpStatus || 400, { ok: false, message: error && error.message ? error.message : String(error) });
     }
   });
 }
@@ -1634,7 +1639,7 @@ exports.rentalLineRuntimeStatusHttp = httpEndpoint(async () => {
   };
 });
 
-exports.processNotificationQueueNowHttp = httpEndpoint(async (data) => {
+exports.processNotificationQueueNowHttp = managerHttpEndpoint(async (data) => {
   const queueId = clean(data.queueId || '');
   const limit = Math.max(1, Math.min(Number(data.limit || 20) || 20, 50));
   if (queueId) {
@@ -1652,7 +1657,7 @@ exports.processNotificationQueueNowHttp = httpEndpoint(async (data) => {
   return { count: results.length, results };
 });
 
-exports.emailSendCheckHttp = httpEndpoint(async (data) => {
+exports.emailSendCheckHttp = managerHttpEndpoint(async (data) => {
   const to = clean(data.to || data.email || data.targetEmail);
   if (!to) throw new Error('請輸入測試收件 Email。');
   const title = clean(data.title || '柚子樂器 Email 發送測試');
@@ -1871,7 +1876,7 @@ function stripRentalInlineAssets(row, options = {}) {
   return out;
 }
 
-exports.rentalSaveContractHttp = httpEndpoint(async (data) => {
+exports.rentalSaveContractHttp = managerHttpEndpoint(async (data) => {
   const incomingId = clean(data.contractId || data.id || data.__id);
   const contractId = incomingId || randomId('RC');
   const ref = db.collection('rentalContracts').doc(contractId);
@@ -1927,7 +1932,7 @@ exports.rentalSaveContractHttp = httpEndpoint(async (data) => {
 });
 
 
-exports.rentalSendSignLinkHttp = httpEndpoint(async (data) => {
+exports.rentalSendSignLinkHttp = managerHttpEndpoint(async (data) => {
   const contractId = clean(data.contractId || data.id || data.__id);
   if (!contractId) throw new Error('缺少契約編號，無法傳送正式資料填寫連結。');
 
@@ -2144,7 +2149,7 @@ exports.rentalSubmitReturnRequestHttp = httpEndpoint(async (data) => {
   return { requestId };
 });
 
-exports.rentalCompleteReturnHttp = httpEndpoint(async (data) => {
+exports.rentalCompleteReturnHttp = managerHttpEndpoint(async (data) => {
   const contractId = clean(data.contractId || data.id);
   if (!contractId) throw new Error('缺少契約編號。');
   const ref = db.collection('rentalContracts').doc(contractId);

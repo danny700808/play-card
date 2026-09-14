@@ -34,7 +34,17 @@
   function projectId(){ const cfg=(global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG)||{}; return clean(cfg.projectId || 'youzi-c1b74'); }
   function functionUrl(name){ return 'https://us-central1-'+projectId()+'.cloudfunctions.net/'+name; }
   async function call(name, payload){
-    const res=await fetch(functionUrl(name), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload||{})});
+    const headers={'Content-Type':'application/json'};
+    if(['processNotificationQueueNowHttp','emailSendCheckHttp','rentalSaveContractHttp','rentalSendSignLinkHttp','rentalCompleteReturnHttp'].includes(name)){
+      firebaseApp();
+      const auth=global.firebase.auth();
+      if(typeof auth.authStateReady==='function')await auth.authStateReady();
+      else if(!auth.currentUser)await new Promise((resolve,reject)=>{let unsubscribe=()=>{};const timer=setTimeout(()=>{unsubscribe();reject(new Error('登入驗證逾時，請重新登入。'));},10000);unsubscribe=auth.onAuthStateChanged(()=>{clearTimeout(timer);unsubscribe();resolve();},reject);});
+      const user=auth.currentUser;
+      if(!user)throw new Error('請先登入管理者帳號。');
+      headers.Authorization='Bearer '+await user.getIdToken();
+    }
+    const res=await fetch(functionUrl(name), {method:'POST', headers, body:JSON.stringify(payload||{})});
     const text=await res.text(); let json={};
     try{ json=text?JSON.parse(text):{}; }catch(e){ json={ok:false,message:text||'回傳不是 JSON'}; }
     if(!res.ok || json.ok===false) throw new Error(json.message || json.error || ('API '+name+' '+res.status));
