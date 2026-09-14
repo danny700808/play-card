@@ -1096,7 +1096,7 @@ function isCustomerEmailVerified(row = {}) {
 function customerEmailOf(row = {}) {
   return queueTargetEmail(row);
 }
-async function createCustomerNotificationQueues({ row, title, body, source, contractId, applicationId, sendAfterAt, sendAfterMs, signUrl, officialContractUrl, initialStatus }) {
+async function createCustomerNotificationQueues({ row, title, body, source, contractId, applicationId, sendAfterAt, sendAfterMs, signUrl, officialContractUrl, initialStatus }, writer) {
   row = row || {};
   const email = customerEmailOf(row);
   const pref = normalizeNotificationPreference(row.notificationPreference || row.preferredContactMethod, email);
@@ -1141,7 +1141,7 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
       targetLineUserId: lineId,
       targetEmail: email,
       emailFallbackEnabled: !!email,
-    }));
+    }), writer);
     results.line = true;
     results.count += 1;
     results.queueIds.push(queueId);
@@ -1157,7 +1157,7 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
       channel: 'email',
       targetEmail: email,
       targetLineUserId: lineId,
-    }));
+    }), writer);
     results.email = true;
     results.count += 1;
     results.queueIds.push(queueId);
@@ -1445,18 +1445,20 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
   }
 }
 
-async function createNotificationQueue(row) {
+async function createNotificationQueue(row, writer) {
   const queueId = clean(row.queueId) || `queue-${Date.now()}-${randomToken(4)}`;
-  await db.collection(QUEUE_COLLECTION).doc(queueId).set(stripUndefined(Object.assign({
+  const queueRef=db.collection(QUEUE_COLLECTION).doc(queueId);
+  const queueData=stripUndefined(Object.assign({
     queueId,
     status: '待發送',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     createdAtText: nowText(),
-  }, row || {})), { merge: true });
+  }, row || {}));
+  if(writer)writer.set(queueRef,queueData,{merge:true});else await queueRef.set(queueData,{merge:true});
   return queueId;
 }
 
-async function queueManagerNotification({ title, body, source, contractId, applicationId }) {
+async function queueManagerNotification({ title, body, source, contractId, applicationId }, writer) {
   const managerLineUserId = await getPrimaryManagerLineUserId();
   if (managerLineUserId) {
     return await createNotificationQueue({
@@ -1472,7 +1474,7 @@ async function queueManagerNotification({ title, body, source, contractId, appli
       source,
       contractId,
       applicationId,
-    });
+    }, writer);
   }
   return await createNotificationQueue({
     channel: 'email',
@@ -1484,7 +1486,7 @@ async function queueManagerNotification({ title, body, source, contractId, appli
     source,
     contractId,
     applicationId,
-  });
+  }, writer);
 }
 
 function buildSignUrl(contract) {
@@ -1534,7 +1536,7 @@ async function getContractForToken(contractId, token, options = {}) {
   const snap = await db.collection('rentalContracts').doc(id).get();
   if (!snap.exists) throw new Error('找不到契約資料。');
   const contract = Object.assign({ __id: snap.id }, snap.data() || {});
-  const allowed = [contract.officialContractToken, contract.customerToken, contract.signToken, contract.token]
+  const allowed = [contract.renewalToken, contract.officialContractToken, contract.customerToken, contract.signToken, contract.token]
     .map(clean)
     .filter(Boolean);
   if (options.allowNoToken !== true && (!clean(token) || !allowed.includes(clean(token)))) {
@@ -1675,7 +1677,11 @@ exports.emailSendCheckHttp = managerHttpEndpoint(async (data) => {
   return { queueId, message: '已建立 Email 測試佇列。' };
 });
 
-exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
+exports.rentalSubmitApplicationHttp = httpEndpoint(async (data, req) => {
+  await rateLimitPublicForm(req, 'rental-application');
+  const allowedFields=['rentalType','periods','rentalPeriodText','otherEquipmentNeed','customerName','customerPhone','customerEmail','notificationPreference','customerAddress','buildingName','shippingMethod','preferredDate','preferredTime','floorNote','note'];
+  data=Object.fromEntries(allowedFields.filter(key=>data[key]!==undefined).map(key=>[key,data[key]]));
+  if(JSON.stringify(data).length>30000)throw new Error('申請資料過大。');
   const applicationId = clean(data.applicationId || data.applicationNo) || randomId('RA');
   const customerName = clean(data.customerName || data.partyAName || '未填姓名');
   const customerEmail = normalizeEmail(data.customerEmail || data.email || '');
@@ -1718,7 +1724,7 @@ exports.rentalSubmitApplicationHttp = httpEndpoint(async (data) => {
     row.createdAt = now;
     row.createdAtText = clean(data.createdAtText || nowText());
   }
-  await ref.set(row, { merge: true });
+  await ref.create(row);
 
   let emailVerificationQueued = false;
   try {
@@ -2028,10 +2034,14 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
   const contractId = clean(data.contractId || data.id);
   const token = clean(data.token || data.signToken);
   const { ref, contract } = await getContractForToken(contractId, token);
+  require('./rentalCustomerPolicy').assertOnlineSignable(contract);
   const incoming = Object.assign({}, contract || {}, data || {});
   const urls = rentalAssetUrls(incoming);
   if (!urls.signatureUrl) throw new Error('缺少簽名圖片網址。請先將簽名上傳到 Firebase Storage。');
   if (!urls.idImageUrl) throw new Error('缺少身分證圖片網址。請先將身分證圖片上傳到 Firebase Storage。');
+  const assetPolicy={kind:'rental',id:contractId,token,previous:[contract.signatureUrl,contract.customerSignatureUrl,contract.idImageUrl,contract.customerIdImageUrl].filter(Boolean)};
+  require('./privateContractAssets').validateAssetUrl(urls.signatureUrl,assetPolicy);
+  require('./privateContractAssets').validateAssetUrl(urls.idImageUrl,assetPolicy);
   const update = stripUndefined(stripRentalInlineAssets({
     customerIdNumber: clean(data.customerIdNumber || contract.customerIdNumber),
     customerIdImageUrl: urls.idImageUrl,
@@ -2049,8 +2059,12 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAtText: nowText(),
   }, { deleteInline: true }));
-  await ref.set(update, { merge: true });
-  try {
+  await db.runTransaction(async tx=>{
+    const fresh=await tx.get(ref),live=fresh.data()||{};require('./rentalCustomerPolicy').assertOnlineSignable(live);
+    const allowed=[live.renewalToken,live.officialContractToken,live.customerToken,live.signToken,live.token].map(clean).filter(Boolean);
+    if(!allowed.includes(token))throw new Error('契約連結已更新，請使用最新連結。');
+    if(live.status==='待付款確認'&&live.customerIdNumber===update.customerIdNumber&&live.customerIdImageUrl===update.customerIdImageUrl&&live.customerSignatureUrl===update.customerSignatureUrl)return;
+    tx.set(ref,update,{merge:true});
     const applicationData = await getRentalApplicationData(contract.applicationId);
     const signedContract = Object.assign({}, applicationData, contract, update);
     const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id || contractId)}&filter=payment`;
@@ -2070,10 +2084,9 @@ exports.rentalSignContractHttp = httpEndpoint(async (data) => {
       source: 'rental-formal-signed',
       contractId,
       applicationId: clean(contract.applicationId),
-    });
-  } catch (notifyErr) {
-    console.warn('queue manager notification for rentalSignContractHttp failed:', notifyErr);
-  }
+    },tx);
+  await createCustomerNotificationQueues({row:Object.assign({},contract,update),title:'租賃付款資訊',body:clean(update.formalReceivedNoticeText)||'已收到您的簽約資料，請依契約付款資訊完成付款，並由店家確認。',source:'rental-formal-received',contractId,sendAfterMs:15000,sendAfterAt:admin.firestore.Timestamp.fromMillis(Date.now()+15000)},tx);
+  });
   return { contractId, status: '待付款確認' };
 });
 
@@ -2084,7 +2097,9 @@ exports.rentalGetContractHttp = httpEndpoint(async (data) => {
 
 exports.rentalSubmitRenewalRequestHttp = httpEndpoint(async (data) => {
   const { ref, contract } = await getContractForToken(data.contractId || data.id, data.token || data.customerToken || data.signToken);
-  const requestId = clean(data.requestId) || randomId('RR');
+  const requestId = randomId('RR');
+  const templateSnap=await db.collection('rentalTemplateSettings').doc(clean(contract.rentalType)||'default').get();
+  const pendingRenewal=require('./rentalCustomerPolicy').renewalDraft(contract,data,nowText(),templateSnap.exists?templateSnap.data():{});
   const periods = Math.max(1, Math.min(10, Number(data.periods || 1) || 1));
   const note = clean(data.note || data.renewNote || '');
   const row = stripUndefined({
@@ -2102,23 +2117,28 @@ exports.rentalSubmitRenewalRequestHttp = httpEndpoint(async (data) => {
     createdAtText: nowText(),
     source: 'rental-renewal',
   });
-  await db.collection('rentalRenewalRequests').doc(requestId).set(row, { merge: true });
-  await ref.set({ status: '續約詢問中', latestRenewalRequestId: requestId, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAtText: nowText() }, { merge: true });
+  await db.runTransaction(async tx=>{
+    const fresh=await tx.get(ref);const live=fresh.data()||{};require('./rentalCustomerPolicy').assertCustomerRequestable(live);
+    if(!require('node:util').isDeepStrictEqual(live,Object.fromEntries(Object.entries(contract).filter(([key])=>key!=='__id'))))throw new Error('契約已更新，請重新開啟連結確認後再送出。');
+    tx.create(db.collection('rentalRenewalRequests').doc(requestId),row);
+    tx.set(ref,{ status: '續約待確認',pendingRenewal,customerRenewalSubmittedAt:nowText(), latestRenewalRequestId: requestId, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAtText: nowText() }, { merge: true });
   const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id)}`;
   await queueManagerNotification({
     title: '租賃續約申請',
     body: [`客人送出續約申請`, `姓名：${clean(contract.customerName)}`, `契約：${clean(contract.contractNo || contract.contractId || contract.__id)}`, `續約期數：${periods}`, `備註：${note || '無'}`, '', `查看契約：${adminUrl}`].join('\n'),
     source: 'rental-renewal-request',
     contractId: contract.contractId || contract.__id,
+  },tx);
+  await createCustomerNotificationQueues({row:contract,title:'已收到續約申請',body:'續約 '+pendingRenewal.periods+' 期，金額 '+pendingRenewal.rentFee+' 元。期間：'+pendingRenewal.startDate+' 至 '+pendingRenewal.endDate+'。請依頁面付款資訊完成匯款，並將截圖提供給店家確認。',source:'rental-renewal-customer-ack',contractId:contract.contractId||contract.__id},tx);
   });
-  return { requestId };
+  return { requestId,pendingRenewal };
 });
 
 exports.rentalSubmitReturnRequestHttp = httpEndpoint(async (data) => {
   const { ref, contract } = await getContractForToken(data.contractId || data.id, data.token || data.customerToken || data.signToken);
-  const requestId = clean(data.requestId) || randomId('RT');
+  const requestId = randomId('RT');
   const returnDate = clean(data.returnDate || data.date);
-  if (!returnDate) throw new Error('請選擇希望退租日期。');
+  if(returnDate&&!/^\d{4}-\d{2}-\d{2}$/.test(returnDate))throw new Error('退租日期格式不正確。');
   const returnTime = clean(data.returnTime || data.time);
   const note = clean(data.note || data.returnNote || '');
   const row = stripUndefined({
@@ -2137,14 +2157,19 @@ exports.rentalSubmitReturnRequestHttp = httpEndpoint(async (data) => {
     createdAtText: nowText(),
     source: 'rental-return',
   });
-  await db.collection('rentalReturnRequests').doc(requestId).set(row, { merge: true });
-  await ref.set({ status: '退租申請中', latestReturnRequestId: requestId, requestedReturnDate: returnDate, requestedReturnTime: returnTime, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAtText: nowText() }, { merge: true });
+  await db.runTransaction(async tx=>{
+    const fresh=await tx.get(ref);const live=fresh.data()||{};require('./rentalCustomerPolicy').assertCustomerRequestable(live);
+    if(!require('node:util').isDeepStrictEqual(live,Object.fromEntries(Object.entries(contract).filter(([key])=>key!=='__id'))))throw new Error('契約已更新，請重新開啟連結確認後再送出。');
+    tx.create(db.collection('rentalReturnRequests').doc(requestId),row);
+    tx.set(ref,{ status: '退租待安排',returnRequest:{decision:'return',source:'customer-renewal-page',returnDate,returnTime,note,returnAddress:clean(contract.shippingAddress||contract.customerAddress||contract.address),customerSubmittedAt:nowText(),status:'退租待安排'},customerReturnSubmittedAt:nowText(), latestReturnRequestId: requestId, requestedReturnDate: returnDate, requestedReturnTime: returnTime, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAtText: nowText() }, { merge: true });
   const adminUrl = `${webBaseUrl()}rental-admin.html?contractId=${encodeURIComponent(contract.contractId || contract.__id)}`;
   await queueManagerNotification({
     title: '租賃退租申請',
     body: [`客人送出退租申請`, `姓名：${clean(contract.customerName)}`, `契約：${clean(contract.contractNo || contract.contractId || contract.__id)}`, `希望日期：${returnDate} ${returnTime}`.trim(), `備註：${note || '無'}`, '', `查看契約：${adminUrl}`].join('\n'),
     source: 'rental-return-request',
     contractId: contract.contractId || contract.__id,
+  },tx);
+  await createCustomerNotificationQueues({row:contract,title:'已收到退租申請',body:'已收到您的退租申請。店家會與您約定設備回收／歸還時間，正式完成點收後再更新契約狀態。',source:'rental-return-customer-ack',contractId:contract.contractId||contract.__id},tx);
   });
   return { requestId };
 });
@@ -2330,3 +2355,44 @@ exports.sendGmailTestEmail = onCall({ region: 'us-central1' }, async (request) =
 });
 
 require('./portalContractNotices').registerPortalContractNotices(exports);
+
+// Legacy customer links keep their existing token, but all private reads/writes
+// are validated by the backend before the browser receives a record or file.
+const legacyTeacherForms = require('./legacyTeacherForms').createLegacyTeacherForms({db,FieldValue:admin.firestore.FieldValue,baseUrl:webBaseUrl(),queueEmail:createNotificationQueue,queueManager:queueManagerNotification});
+let privateContractAssetsInstance;
+function privateContractAssets(){return privateContractAssetsInstance||(privateContractAssetsInstance=require('./privateContractAssets').createPrivateContractAssets({
+  bucket:admin.storage().bucket(),
+  authorize:async(kind,id,token)=>kind==='rental'?getContractForToken(id,token):legacyTeacherForms.authorize(id,token),
+  baseUrl:'https://us-central1-'+(process.env.GCLOUD_PROJECT||'youzi-c1b74')+'.cloudfunctions.net/privateContractAssetHttp'
+}));}
+async function rateLimitPublicForm(req,purpose){
+  const key=crypto.createHash('sha256').update(purpose+'|'+clean(req.ip||'unknown')).digest('hex');
+  const ref=db.collection('publicFormRateLimits').doc(key),now=Date.now();
+  await db.runTransaction(async tx=>{const doc=await tx.get(ref),row=doc.exists?doc.data():{},recent=now-Number(row.startedAt||0)<3600000,count=recent?Number(row.count||0):0;if(count>=20)throw new Error('操作過於頻繁，請稍後再試。');tx.set(ref,{startedAt:recent?row.startedAt:now,count:count+1,expiresAt:admin.firestore.Timestamp.fromMillis(now+7200000)});});
+}
+exports.legacyTeacherTemplateHttp=httpEndpoint(()=>legacyTeacherForms.template());
+exports.legacyTeacherReadHttp=httpEndpoint(data=>legacyTeacherForms.read(data));
+exports.legacyTeacherCreateHttp=httpEndpoint(async(data,req)=>{await rateLimitPublicForm(req,'teacher-create');return legacyTeacherForms.create(data);});
+exports.legacyTeacherUpdateHttp=httpEndpoint(data=>legacyTeacherForms.update(data));
+exports.rentalUploadPrivateAssetHttp=httpEndpoint(data=>privateContractAssets().upload('rental',data));
+exports.externalTeacherUploadPrivateAssetHttp=httpEndpoint(data=>privateContractAssets().upload('teacher',data));
+exports.privateContractAssetHttp=onRequest({region:'us-central1',timeoutSeconds:60,memory:'256MiB'},async(req,res)=>{
+  setCorsHeaders(res);res.set('Access-Control-Allow-Methods','GET, OPTIONS');
+  if(req.method==='OPTIONS'){res.status(204).send('');return;}
+  if(req.method!=='GET'){res.status(405).send('Method Not Allowed');return;}
+  res.set('Cache-Control','private, no-store');res.set('X-Content-Type-Options','nosniff');res.set('Referrer-Policy','no-referrer');
+  try{const asset=await privateContractAssets().download(req.query);res.set('Content-Type',asset.contentType);if(asset.contentType==='text/html')res.set('Content-Disposition','attachment; filename="contract.html"');res.status(200).send(asset.buffer);}
+  catch(error){res.status(403).send('附件連結無效或已失效。');}
+});
+const employeeDataGateway=require('./employeeDataGateway').createEmployeeDataGateway({db,FieldValue:admin.firestore.FieldValue,Filter:admin.firestore.Filter,queueManager:queueManagerNotification,queueEmail:createNotificationQueue,getManager:getPrimaryManagerLineRecipient,resolveTeacher:async data=>{const portal=require('./coursePortal');return portal.resolveTeacherUtilityEmployee(await portal.requireSession(data,['teacher']));}});
+exports.employeeSelfService=onCall({region:'us-central1',timeoutSeconds:60},request=>employeeDataGateway.selfService(request.data||{},request));
+exports.employeePrivateDataRead=onCall({region:'us-central1',timeoutSeconds:60},request=>employeeDataGateway.read(request.data||{},request));
+exports.employeeFeatureNotification=onCall({region:'us-central1',timeoutSeconds:60},async request=>{await rateLimitPublicForm(request.rawRequest,'employee-notification-'+clean(request.auth&&request.auth.uid));return employeeDataGateway.notify(request.data||{},request);});
+
+const employeeRegistration=require('./employeeRegistration').createEmployeeRegistration({db,FieldValue:admin.firestore.FieldValue,notify:queueManagerNotification});
+exports.employeeRegister=onCall({region:'us-central1',timeoutSeconds:60},async request=>{await rateLimitPublicForm(request.rawRequest,'employee-registration');return employeeRegistration(request.data||{});});
+
+const inventoryCountAccess=require('./inventoryCountAccess').createInventoryCountAccess({db,FieldValue:admin.firestore.FieldValue});
+exports.inventoryCountLoginHttp=httpEndpoint(async(data,req)=>{await rateLimitPublicForm(req,'inventory-pin');return inventoryCountAccess.login(data);});
+exports.inventoryCountProductsHttp=httpEndpoint(data=>inventoryCountAccess.products(data));
+exports.inventoryCountSaveHttp=httpEndpoint(data=>inventoryCountAccess.save(data));
