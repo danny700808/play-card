@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css?v=20260730-login-compact-v2">
   <style>
     .auth-sub-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px;margin-top:6px}
-    .auth-panel{margin-top:6px}
+    [hidden]{display:none!important}.auth-panel{margin-top:6px}#passwordAlternative{margin-top:16px}#passwordAlternative summary{cursor:pointer;text-align:center;color:#62756d;font-size:14px}
     .auth-panel.hidden{display:none}
     .auth-note{margin-top:8px;padding:10px 12px;border-radius:14px;background:#f3f7f4;color:#355f4a;font-size:14px;line-height:1.7}
     .auth-back-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -38,23 +38,19 @@
         <div class="login-choice-intro">
           <strong>選擇登入方式</strong>
         </div>
-        <div class="login-method-list">
-          <a class="login-method-card login-method-line" data-primary-login-method="line" href="course-portal.html?method=line">
-            <div class="login-method-heading">
-              <span class="login-method-icon">LINE</span>
-              <span class="login-method-copy"><strong>LINE 登入</strong></span>
-              <span class="login-method-tag">推薦</span>
-            </div>
-            <span class="line-login-cta">使用 LINE 繼續</span>
-          </a>
-
-          <div class="auth-method-divider"><span>或</span></div>
-
+        <div class="login-method-list" id="loginChoices">
+          <button type="button" class="btn" data-primary-login-method="line">LINE 登入</button>
+          <button type="button" class="btn secondary" id="emailChoice">Email 登入</button>
+        </div>
+        <div id="unifiedLoginMessage" role="status" class="auth-note" hidden></div>
+        <form id="emailCodeForm" hidden>
+          <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="email" required placeholder="請輸入原本登記的 Email"></div>
+          <div id="codeField" class="field" hidden><label for="loginCode">六碼驗證碼</label><input id="loginCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="請輸入信中的六碼"></div>
+          <button class="btn" id="emailCodeSubmit" type="submit">寄送驗證碼</button>
+          <button class="btn secondary" id="resendCode" type="button" hidden>重新寄送</button>
+          <button class="btn secondary" id="loginBack" type="button">返回</button>
+          <details id="passwordAlternative"><summary>使用原密碼登入</summary>
           <section class="login-method-card login-method-email" data-primary-login-method="email-password">
-            <div class="login-method-heading">
-              <span class="login-method-icon email">@</span>
-              <span class="login-method-copy"><strong>管理者／員工登入</strong></span>
-            </div>
             <div class="field">
               <label>Email</label>
               <input id="email" type="email" autocomplete="username" placeholder="請輸入 Email">
@@ -73,26 +69,15 @@
             </div>
 
             <div class="login-actions-stack">
-              <button class="btn login-main-btn" id="loginBtn">登入</button>
+              <button type="button" class="btn login-main-btn" id="loginBtn">登入</button>
               <div class="auth-sub-actions">
                 <button class="btn secondary" id="forgotBtn" type="button">忘記密碼</button>
                 <button class="btn secondary" id="resetBtn" type="button">重設密碼</button>
                 <a href="register-type.html" class="btn btn-link">前往註冊</a>
               </div>
             </div>
-          </section>
-        </div>
-
-        <div class="external-entry-zone">
-          <div class="external-entry-title">其他服務入口</div>
-          <div class="external-entry-grid">
-            <a href="course-portal.html?method=line&amp;role=student" class="btn secondary external-entry-link">學生／家長入口</a>
-            <a href="course-portal.html?method=line&amp;role=renter" class="btn secondary external-entry-link">教室租用入口</a>
-            <a href="course-portal.html?method=line&amp;role=teacher" class="btn secondary external-entry-link">老師入口</a>
-            <a href="teacher-apply.html" class="btn secondary external-entry-link">應聘履歷投遞</a>
-            <a href="rental-order.html" class="btn secondary external-entry-link">設備租賃申請</a>
-          </div>
-        </div>
+          </section></details>
+        </form>
       </div>
 
       <div id="forgotPanel" class="auth-panel hidden">
@@ -290,7 +275,7 @@
         });
         setMsg(msg, r.message, !r.ok);
         if (r.ok) {
-          if (window.YouziUnifiedLogin) await window.YouziUnifiedLogin.afterPasswordLogin(r.user);
+
           saveLoginPref(qs('#email').value.trim(), qs('#password').value.trim(), qs('#rememberLogin').checked);
           setMsg(msg, '登入成功，正在進入系統...');
           progress.done('登入成功', 0, true);
@@ -305,7 +290,9 @@
           }
           setTimeout(() => {
             if (document.visibilityState === 'hidden') return;
-            progress.reset('進入系統');
+            if (progress.reset) progress.reset('進入系統');
+            btn.disabled = false;
+            btn.textContent = '進入系統';
             setMsg(msg, '登入已完成，請按「進入系統」。');
           }, 1400);
         } else {
@@ -377,6 +364,6 @@
     };
   </script>
   <script src="ui-action-feedback.js?v=20260701safe3"></script>
-  <script src="unified-login.js?v=20260914-unified-v1"></script>
+  <script src="unified-login.js?v=20260914-simple-login-v2"></script>
 </body>
 </html>
