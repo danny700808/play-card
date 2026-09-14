@@ -159,17 +159,23 @@
       'announcement-admin.html',
       'teacher-hub.html',
       'portal.html',
-      'operations-hub.html'
+      'operations-hub.html',
+      'inventory-count.html'
     ]);
 
     function requestedLoginTarget(){
-      const value = String(new URLSearchParams(window.location.search).get('next') || '').trim();
-      if(!/^[a-z0-9._-]+\.html(?:\?[^#]*)?(?:#.*)?$/i.test(value)) return '';
-      const page = value.split(/[?#]/)[0].toLowerCase();
-      return loginReturnPages.has(page) ? value : '';
+      const key='youzi-login-return-v1';
+      let value=String(new URLSearchParams(window.location.search).get('next')||'').trim();
+      if(!value){try{const saved=JSON.parse(localStorage.getItem(key)||'null');if(saved&&saved.expires>Date.now())value=saved.value;}catch(e){}}
+      if(!/^[a-z0-9._-]+\.html(?:\?[^#]*)?(?:#.*)?$/i.test(value))return '';
+      const page=value.split(/[?#]/)[0].toLowerCase();
+      if(!loginReturnPages.has(page))return '';
+      try{localStorage.setItem(key,JSON.stringify({value,expires:Date.now()+10*60*1000}));}catch(e){}
+      return value;
     }
 
     function redirectToLoginTarget(target){
+      try{localStorage.removeItem('youzi-login-return-v1');}catch(e){}
       try {
         if (window.top && window.top !== window) {
           window.top.location.replace(target);
@@ -179,6 +185,7 @@
       window.location.replace(target);
     }
 
+    requestedLoginTarget();
     applySavedLogin();
 
     if (typeof startActionButtonProgress !== 'function') {

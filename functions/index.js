@@ -2398,7 +2398,7 @@ exports.employeeFeatureNotification=onCall({region:'us-central1',timeoutSeconds:
 const employeeRegistration=require('./employeeRegistration').createEmployeeRegistration({db,FieldValue:admin.firestore.FieldValue,notify:queueManagerNotification});
 exports.employeeRegister=onCall({region:'us-central1',timeoutSeconds:60},async request=>{await rateLimitPublicForm(request.rawRequest,'employee-registration');return employeeRegistration(request.data||{});});
 
-const inventoryCountAccess=require('./inventoryCountAccess').createInventoryCountAccess({db,FieldValue:admin.firestore.FieldValue});
+const inventoryCountAccess=require('./inventoryCountAccess').createInventoryCountAccess({db,FieldValue:admin.firestore.FieldValue,requireManager:requireHttpManager});
 exports.inventoryCountLoginHttp=httpEndpoint(async(data,req)=>{await rateLimitPublicForm(req,'inventory-pin');return inventoryCountAccess.login(data);});
-exports.inventoryCountProductsHttp=httpEndpoint(data=>inventoryCountAccess.products(data));
-exports.inventoryCountSaveHttp=httpEndpoint(data=>inventoryCountAccess.save(data));
+exports.inventoryCountProductsHttp=httpEndpoint((data,req)=>inventoryCountAccess.products(data,req));
+exports.inventoryCountSaveHttp=httpEndpoint((data,req)=>inventoryCountAccess.save(data,req));
