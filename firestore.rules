@@ -3,21 +3,55 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isEmployeeAuth() {
+      return request.auth != null && request.auth.token.get('employee', false) == true
+        && request.auth.token.get('employeeId', '') != '';
+    }
     function isManagerAuth() {
-      return request.auth != null && (
-        request.auth.token.get('admin', false) == true ||
-        request.auth.token.get('manager', false) == true ||
-        request.auth.token.get('owner', false) == true ||
-        request.auth.token.get('role', '') in ['admin', 'manager', 'owner', '主管', '管理者'] ||
-        request.auth.token.get('userRole', '') in ['admin', 'manager', 'owner', '主管', '管理者'] ||
-        request.auth.token.get('permissionRole', '') in ['admin', 'manager', 'owner', '主管', '管理者'] ||
-        request.auth.token.get('email', '') == 'danny700808@gmail.com'
+      return isEmployeeAuth() && request.auth.token.get('manager', false) == true;
+    }
+    function employeeId() { return request.auth.token.get('employeeId', ''); }
+    function ownData(data) {
+      return isEmployeeAuth() && (
+        data.get('employeeId', '') == employeeId() || data.get('userId', '') == employeeId() ||
+        data.get('員工ID', '') == employeeId() || data.get('applicantId', '') == employeeId()
       );
     }
-
-    // 這裡列出目前網站前端會直接讀寫的頂層集合。
-    // 目的：保留租賃新系統，同時恢復員工、薪資、工讀、提醒數字、各種表格設定。
-    function isClientSideOpenCollection(collectionId) {
+    function consistentOwner(data) {
+      return ownData(data)
+        && data.get('employeeId', employeeId()) in ['', employeeId()]
+        && data.get('userId', employeeId()) in ['', employeeId()]
+        && data.get('員工ID', employeeId()) in ['', employeeId()]
+        && data.get('applicantId', employeeId()) in ['', employeeId()]
+        && data.get('targetEmployeeId', employeeId()) in ['', employeeId()]
+        && data.get('assigneeId', employeeId()) in ['', employeeId()];
+    }
+    function unchangedOwner() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['employeeId','userId','員工ID','applicantId','assigneeId','targetEmployeeId']);
+    }
+    function noReviewFields(data) {
+      return !data.keys().hasAny(['approved','isApproved','approvedBy','reviewedBy','approvedAt','reviewedAt','審核人','核准人','核准時間']);
+    }
+    function pendingData(data) {
+      return data.get('status', '待審核') in ['待審核','待主管審核','審核中','待處理','pending','已刪除','已取消','已駁回','駁回','rejected']
+        && data.get('狀態', '待審核') in ['待審核','待主管審核','審核中','待處理','pending','已刪除','已取消','已駁回','駁回','rejected']
+        && data.get('approvalStatus', 'pending') in ['', 'pending','待審核','rejected','已駁回']
+        && data.get('reviewStatus', 'pending') in ['', 'pending','待審核','rejected','已駁回']
+        && data.get('審核狀態', '待審核') in ['', 'pending','待審核','rejected','已駁回'];
+    }
+    function ordinaryParttime(data) {
+      return data.get('status','正常') in ['正常','少於有效班段','已登記','已記錄','待審核','pending','已送出']
+        && data.get('狀態','正常') in ['正常','少於有效班段','已登記','已記錄','待審核','pending','已送出']
+        && data.get('approvalStatus','pending') in ['','pending','待審核'];
+    }
+    function ownReadCollection(collectionId) {
+      return collectionId in ['employees','employeeSalaryConfigs','employeeSalaryConfigHistory','employeeSalarySettings','salaryProfiles','parttimeRecords','parttimeHourRequests','clockRecords','clockCorrections','leaveRecords','leaveRequests','temporaryAttendanceRequests','employeeSchedules','singleDaySchedules','profileChangeRequests','certificateApplications','formSubmissions'];
+    }
+    function requestCollection(collectionId) {
+      return collectionId in ['parttimeHourRequests','clockCorrections','leaveRequests','temporaryAttendanceRequests','profileChangeRequests','certificateApplications'];
+    }
+    // 已知的舊版後台集合；不因瀏覽器儲存的角色字串授權。
+    function isLegacyClientCollection(collectionId) {
       return collectionId in [
         // 租賃系統
         'rentalApplications',
@@ -134,19 +168,53 @@ service cloud.firestore {
 
     // 交接資料：保留你原本比較收斂的規則。
     match /fengtungHandoverEntries/{entryId} {
-      allow read: if true;
+      allow read: if isEmployeeAuth();
 
-      allow create: if request.auth != null
+      allow create: if isEmployeeAuth()
         && request.resource.data.ownerUid == request.auth.uid;
 
-      allow update, delete: if request.auth != null
+      allow update, delete: if isEmployeeAuth()
         && resource.data.ownerUid == request.auth.uid;
     }
 
-    // 合併開放：上面清單內的集合都允許前端讀寫。
-    // 這一段會讓員工管理、薪資投保、工讀薪資、提醒數字、租賃系統一起恢復。
+    // 管理資料只接受伺服器簽發的管理者 claims。客人連結由 Functions 驗證。
     match /{collectionId}/{document=**} {
-      allow read, write: if isClientSideOpenCollection(collectionId);
+      allow read, write: if isLegacyClientCollection(collectionId) && isManagerAuth();
+    }
+
+    match /{collectionId}/{documentId} {
+      allow get: if ownReadCollection(collectionId) && isEmployeeAuth() && (
+        !exists(/databases/$(database)/documents/$(collectionId)/$(documentId)) || ownData(resource.data)
+      );
+      allow list: if ownReadCollection(collectionId) && ownData(resource.data);
+      allow create: if requestCollection(collectionId) && consistentOwner(request.resource.data)
+        && pendingData(request.resource.data) && noReviewFields(request.resource.data);
+      allow update: if requestCollection(collectionId) && ownData(resource.data) && unchangedOwner()
+        && pendingData(resource.data) && pendingData(request.resource.data)
+        && (noReviewFields(request.resource.data)
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['approved','isApproved','approvedBy','reviewedBy','approvedAt','reviewedAt','審核人','核准人','核准時間']));
+      allow read: if collectionId in ['announcements','trainingItems','routines','routineTemplates','scheduleTemplates','leavePolicySettings','printTemplates','formSettings'] && isEmployeeAuth();
+      allow read: if collectionId == 'rentalTemplateSettings';
+    }
+    match /clockRecords/{documentId} {
+      allow create: if consistentOwner(request.resource.data) && noReviewFields(request.resource.data)
+        && request.resource.data.get('status', '') in ['正常','遲到','早退','補打卡']
+        && request.resource.data.get('clockType','標準打卡') in ['標準打卡','補打卡'];
+    }
+    match /parttimeRecords/{documentId} {
+      allow create: if consistentOwner(request.resource.data) && noReviewFields(request.resource.data) && ordinaryParttime(request.resource.data);
+      allow update: if ownData(resource.data) && unchangedOwner() && ordinaryParttime(resource.data)
+        && ordinaryParttime(request.resource.data) && noReviewFields(request.resource.data);
+      allow delete: if ownData(resource.data) && pendingData(resource.data);
+    }
+    match /formSubmissions/{documentId} {
+      allow create: if consistentOwner(request.resource.data) && noReviewFields(request.resource.data);
+      allow update: if ownData(resource.data) && unchangedOwner() && noReviewFields(request.resource.data);
+    }
+    match /tasks/{documentId} {
+      allow read: if isEmployeeAuth() && resource.data.get('assigneeId',resource.data.get('employeeId','')) == employeeId();
+      allow update: if isEmployeeAuth() && resource.data.get('assigneeId',resource.data.get('employeeId','')) == employeeId()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','狀態','completedAt','completedAtText','completedBy','updatedAt','note','employeeReply','reply','submittedAt','attachmentUrl','source']);
     }
 
     // 手機課務入口的綁定碼、LINE 身分、工作階段、調課與租用資料
