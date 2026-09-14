@@ -97,7 +97,10 @@
 
       <section class="card">
         <div class="section-title"><h2>我的預約</h2><button class="btn soft" id="reloadBookings" type="button">重新整理</button></div>
-        <div class="list" id="myBookingList"><div class="rental-empty">讀取中…</div></div>
+        <label>預約紀錄 <select id="bookingsView"><option value="upcoming">即將使用</option><option value="all">全部紀錄</option></select></label>
+        <button id="moreBookings" class="btn soft hidden" type="button">載入更多紀錄</button>
+        <div id="rentalBookingStatus" class="rental-empty hidden" role="status" aria-live="polite"></div>
+      <div class="list" id="myBookingList"><div class="rental-empty">讀取中…</div></div>
       </section>
     </section>
   </main>
@@ -164,6 +167,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="course-portal-common.js?v=20260910-taiwan-reads-v1"></script>
-  <script src="room-booking-v2.js?v=20260913-rental-concession-v1"></script>
+  <script src="room-booking-recovery.js?v=20260914-reliability-v1"></script>
+  <script src="room-booking-v2.js?v=20260914-reliability-v1"></script>
 </body>
 </html>

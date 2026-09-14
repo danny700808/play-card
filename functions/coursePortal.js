@@ -1,3 +1,4 @@
+const { bookingPage } = require('./roomBookingPages');
 const { recipientFields, notificationRecipientKey } = require('./portalNotificationPolicy');
 const { applyLessonSettings } = require('./courseLessonSettings');
 'use strict';
@@ -11,6 +12,8 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const { withPortalReads, memoPortalRead } = require('./portalReadContext');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { SCHEDULE_CHANGED, recheckSchedule, rememberSource, publicBooking, BookingOperations } = require('./coursePortalReliability');
 const path = require('path');
 const sharp = require('sharp');
 const { cents, validateTransaction } = require('./courseTuitionLedger');
@@ -839,6 +842,7 @@ async function mirrorRowsByDateRange(type, startDate, endDate, options = {}) {
     }));
     return projectCourseGroups(type, [...rows.values()], await readCourseGroups());
   } catch (error) {
+    if (![9, '9', 'failed-precondition'].includes(error && error.code)) throw error;
     console.warn('[course portal date range fallback]', type, clean(error && error.message));
     const snapshot = includeInactive
       ? await db.collection(MIRROR[type]).get()
@@ -4811,6 +4815,7 @@ async function historyStudentEvents(studentId, startDate, endDate) {
 
 async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
   const teacherHome = options.teacherHome === true && Boolean(ownTeacherId);
+  const occupancyOnly = options.occupancyOnly === true;
   const irregularSnapshot = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
   const irregularModes = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const historyStudentId = clean(options.historyStudentId);
@@ -4818,8 +4823,8 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
   const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions, mirrorSettingsSnapshot] = await Promise.all([
     mirrorRows('rooms'),
     mirrorRows('subjects'),
-    teacherHome ? Promise.resolve([]) : mirrorRows('students'),
-    teacherHome ? mirrorProfilesByIds('teachers', [ownTeacherId]) : mirrorRows('teachers'),
+    teacherHome || occupancyOnly ? Promise.resolve([]) : mirrorRows('students'),
+    occupancyOnly ? Promise.resolve([]) : teacherHome ? mirrorProfilesByIds('teachers', [ownTeacherId]) : mirrorRows('teachers'),
     historyStudentId ? historyStudentEvents(historyStudentId, startDate, endDate) : mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true }),
     mirrorRows('fixedCourses').then(historyCourses),
     mirrorRowsByDateRange('temporaryCourses', startDate, endDate).then(historyCourses),
@@ -5175,8 +5180,8 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
     maps,
     resourceEvents,
     irregularModes,
-    resourceConflicts: historyStudentId || teacherHome ? [] : scheduleResourceConflicts(resourceEvents),
-    events: historyStudentId ? [] : validBase.filter(row => !teacherHome || eventTeacherId(row) === ownTeacherId).map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
+    resourceConflicts: historyStudentId || teacherHome || occupancyOnly ? [] : scheduleResourceConflicts(resourceEvents),
+    events: historyStudentId || occupancyOnly ? [] : validBase.filter(row => !teacherHome || eventTeacherId(row) === ownTeacherId).map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
   };
 }
 
@@ -8182,7 +8187,7 @@ async function rentalAvailability(data) {
   if (startMinutes < window.startMinutes || endMinutes > window.endMinutes) {
     throw new HttpsError('failed-precondition', '所選時間不在營業時間內。');
   }
-  const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
+  const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '', { occupancyOnly: true });
   const roomSettings = await db.collection('coursePortalRoomSettings').get();
   const useOptions = await rentalUseOptions(bundle.rooms);
   const selectedUse = useOptions.find((row) => row.id === clean(data.useType));
@@ -8275,7 +8280,7 @@ async function rentalDayBoard(data) {
   }
   const duration = requestedDuration;
   const window = businessWindow(policy, date);
-  const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '');
+  const bundle = await scheduleBundle(date, date, session.role === 'teacher' ? session.teacherId : '', { occupancyOnly: true });
   const roomSettings = await db.collection('coursePortalRoomSettings').get();
   const useOptions = await rentalUseOptions(bundle.rooms);
   const selectedUseType = useOptions.some((row) => row.id === clean(data.useType))
@@ -8338,7 +8343,7 @@ async function rentalWeekBoard(data) {
     throw new HttpsError('invalid-argument', '單次租用最長為 5 小時，請重新選擇租用時間。');
   }
   const duration = requestedDuration;
-  const bundle = await scheduleBundle(startDate, endDate, session.role === 'teacher' ? session.teacherId : '');
+  const bundle = await scheduleBundle(startDate, endDate, session.role === 'teacher' ? session.teacherId : '', { occupancyOnly: true });
   const roomSettings = await db.collection('coursePortalRoomSettings').get();
   const useOptions = await rentalUseOptions(bundle.rooms);
   const selectedUseType = useOptions.some((row) => row.id === clean(data.useType))
@@ -8417,17 +8422,40 @@ async function rentalWeekBoard(data) {
 
 async function createRoomBooking(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const identityPromise = rentalSessionIdentity(session, data.studentId);
+  // Older pages remain compatible; current pages always supply a persisted operation id.
+  if (!data.operationId) return recheckSchedule(() => withPortalReads(() => createRoomBookingAttempt(data, session))());
+  const operations = bookingOperationStore();
+  const claimed = await operations.claim(session, data);
+  if (claimed.result) return claimed.result;
+  try {
+    await recheckSchedule(() => withPortalReads(() => createRoomBookingAttempt(data, session, claimed.operation))());
+  } catch (error) {
+    await operations.fail(claimed.operation, error).catch(failure => console.error('[booking operation recovery]', failure.code));
+    const result = await operations.read(session, data.operationId);
+    return result;
+  }
+  return operations.read(session, data.operationId);
+}
+
+function bookingOperationStore() {
+  return new BookingOperations({ db, HttpsError, hash, randomToken, FieldValue, sessionOwnerKey });
+}
+
+async function roomBookingOperation(data) {
+  const session = await requireSession(data, ['student', 'renter', 'teacher']);
+  return bookingOperationStore().read(session, clean(data.operationId));
+}
+
+async function createRoomBookingAttempt(data, session, operation = null) {
   const recordingSelection = recordingRentalSelection(data, true);
   const expectedVersion = await readScheduleVersion();
-  const availability = await rentalAvailability(data);
+  const [availability, identity] = await Promise.all([rentalAvailability(data), rentalSessionIdentity(session, data.studentId)]);
   if (publicRentalSlotIsPast(availability.date, availability.startTime)) {
     throw new HttpsError('failed-precondition', '只能預約尚未開始的時段。');
   }
   const room = availability.rooms.find((item) => item.id === clean(data.roomId));
   if (!room || !room.available) throw new HttpsError('failed-precondition', room && room.reason || '這間教室目前不能預約。');
-  const id = db.collection('coursePortalRoomBookings').doc().id;
-  const identity = await identityPromise;
+  const id = operation ? operation.bookingId : db.collection('coursePortalRoomBookings').doc().id;
   if (session.role === 'teacher' && clean(data.rentalMode) === 'general') {
     identity.clientName = clean(data.clientName).slice(0, 100);
     if (!identity.clientName) throw new HttpsError('invalid-argument', '請填寫實際租用人姓名。');
@@ -8501,14 +8529,16 @@ async function createRoomBooking(data) {
       throw new HttpsError('failed-precondition', '這個時段已經開始，請重新選擇。');
     }
     const lockRefs = locks.map((row) => db.collection('coursePortalRoomLocks').doc(row.id));
-    const [versionSnapshot, ...lockSnapshots] = await Promise.all([
+    const [versionSnapshot, operationSnapshot, ...lockSnapshots] = await Promise.all([
       tx.get(versionRef),
+      operation ? tx.get(operation.ref) : Promise.resolve(null),
       ...lockRefs.map((ref) => tx.get(ref))
     ]);
+    if (operation) bookingOperationStore().assertLease(operation, operationSnapshot);
     assertScheduleWritable(versionSnapshot);
     const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
     if (currentVersion !== expectedVersion) {
-      throw new HttpsError('aborted', '課表剛剛有更新，請重新確認可租教室。');
+      throw new HttpsError('aborted', '課表剛剛有更新，請重新確認可租教室。', { reason: SCHEDULE_CHANGED });
     }
     const activeLocks = lockSnapshots.filter((snapshot) => snapshot.exists && snapshot.data().active !== false);
     const lockBookings = [];
@@ -8537,6 +8567,12 @@ async function createRoomBooking(data) {
     });
     staleLocks.forEach((ref) => tx.delete(ref));
     tx.set(bookingRef, booking);
+    if (operation) tx.set(operation.ref, { status: 'confirmed', bookingId: id, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    tx.set(db.collection('coursePortalBookingNotices').doc(id), {
+      bookingId: id, status: 'pending', createdAt: FieldValue.serverTimestamp(),
+      session: { role: session.role, authAccountId: clean(session.authAccountId), lineUserId: clean(session.lineUserId),
+        teacherId: clean(session.teacherId), renterId: clean(session.renterId), studentIds: session.studentIds || [], revokedStudentIds: session.revokedStudentIds || [] }
+    });
     tx.set(changeRef, { action: 'room_booking', active: true, event: booking, createdAt: FieldValue.serverTimestamp() });
     lockRefs.forEach((ref, index) => tx.set(ref, {
       active: true,
@@ -8554,11 +8590,28 @@ async function createRoomBooking(data) {
       updatedBy: sessionOwnerKey(session)
     }, { merge: true });
   });
-  const rentalRecipient = await portalRecipientForSession(session);
-  await db.collection('coursePortalRoomBookings').doc(id).set({ notificationEmail: rentalRecipient.targetEmail }, { merge: true });
+  return { ok: true, state: 'confirmed', booking: publicBooking(booking) };
+}
+
+// Durable outbox: a failed notification never turns a committed booking into a failed booking.
+async function deliverRoomBookingNotice(id) {
+  const outboxRef = db.collection('coursePortalBookingNotices').doc(id);
+  const outbox = await outboxRef.get();
+  if (!outbox.exists || outbox.data().status === 'done') return;
+  const rentalRecipient = await portalRecipientForSession(outbox.data().session || {});
+  const bookingRef = db.collection('coursePortalRoomBookings').doc(id);
+  const queueRef = db.collection('notificationQueue').doc(`course-portal-booking-${id}-reminder`);
+  await db.runTransaction(async tx => {
+    const [current, queued] = await Promise.all([tx.get(bookingRef), tx.get(queueRef)]);
+    if (!current.exists) throw new Error('Booking outbox has no matching booking');
+    const booking = current.data();
+    if (taipeiDateTimeMillis(booking.date, booking.endTime) <= Date.now() || booking.active === false || booking.status === 'cancelled' || queued.exists || !notificationRecipientKey(rentalRecipient)) {
+      tx.set(outboxRef, { status: 'done', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return;
+    }
+    tx.set(bookingRef, { notificationEmail: rentalRecipient.targetEmail || '' }, { merge: true });
   const reminderAt = Math.max(Date.now(), taipeiDateTimeMillis(booking.date, booking.startTime) - 60 * 60 * 1000);
-  if (notificationRecipientKey(rentalRecipient)) {
-    await db.collection('notificationQueue').doc(`course-portal-booking-${id}-reminder`).set({
+    tx.set(queueRef, {
       queueId: `course-portal-booking-${id}-reminder`,
       ...rentalRecipient,
       title: '教室租用提醒',
@@ -8581,30 +8634,17 @@ async function createRoomBooking(data) {
       scheduledAt: Timestamp.fromMillis(reminderAt),
       createdAt: FieldValue.serverTimestamp(),
       createdAtText: nowText()
-    }, { merge: true }).catch((error) => {
-      console.error('[course portal rental reminder queue failed]', id, error);
     });
-  }
-  return { ok: true, booking: jsonValue(booking) };
+    tx.set(outboxRef, { status: 'done', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  });
 }
 
 async function rentalMyBookings(data) {
   const session = await requireSession(data, ['student', 'renter', 'teacher']);
-  const bookingQueries = [
-    db.collection('coursePortalRoomBookings').where('ownerKey', '==', sessionOwnerKey(session)).get()
-  ];
-  if (clean(session.lineUserId)) {
-    bookingQueries.push(
-      db.collection('coursePortalRoomBookings').where('lineUserId', '==', clean(session.lineUserId)).get()
-    );
-  }
-  if (clean(session.authAccountId)) {
-    bookingQueries.push(
-      db.collection('coursePortalRoomBookings').where('authAccountId', '==', clean(session.authAccountId)).get()
-    );
-  }
-  const bookingSnapshots = await Promise.all(bookingQueries);
-  const bookingDocs = [...new Map(bookingSnapshots.flatMap((snapshot) => snapshot.docs).map((doc) => [doc.id, doc])).values()];
+  const page = await bookingPage({ db, documentId: admin.firestore.FieldPath.documentId(),
+    identities: [['ownerKey', sessionOwnerKey(session)], ['lineUserId', clean(session.lineUserId)], ['authAccountId', clean(session.authAccountId)]],
+    view: data.view, cursor: data.cursor, today: currentTaipeiDay(), HttpsError });
+  const bookingDocs = page.docs;
   const bookings = bookingDocs.map((doc) => {
     const row = jsonValue(doc.data()) || {};
     return {
@@ -8631,8 +8671,7 @@ async function rentalMyBookings(data) {
       cancelledAtText: clean(row.cancelledAtText)
     };
   }).filter((row) => row.date && row.startTime)
-    .sort((a, b) => `${b.date} ${b.startTime}`.localeCompare(`${a.date} ${a.startTime}`))
-    .slice(0, 100);
+    .filter(row => data.view === 'all' || taipeiDateTimeMillis(row.date, row.endTime) > Date.now());
 
   if (bookings.some((row) => !row.roomName)) {
     const rooms = indexById(await mirrorRows('rooms'));
@@ -8640,7 +8679,7 @@ async function rentalMyBookings(data) {
       if (!row.roomName) row.roomName = clean(rooms[row.roomId] && rooms[row.roomId].name);
     });
   }
-  return { ok: true, bookings };
+  return { ok: true, bookings, hasMore: page.hasMore, nextCursor: page.nextCursor };
 }
 
 async function cancelRoomBooking(data) {
@@ -8968,6 +9007,11 @@ async function teacherLessonState(data) {
 }
 
 async function teacherAction(data) {
+  const request = { ...data, operationId: clean(data.operationId) || randomToken(18) };
+  return recheckSchedule(context => withPortalReads(() => teacherActionAttempt(request, context))());
+}
+
+async function teacherActionAttempt(data, recheckContext = {}) {
   const session = await requireSession(data, ['teacher']);
   const action = clean(data.action);
   if (!['single_move', 'permanent_move', 'extra_lesson', 'teacher_gift'].includes(action)) {
@@ -9053,6 +9097,8 @@ async function teacherAction(data) {
       clean(row.__id) === clean(source.portalChangeId) ||
       clean(row.sourceCourseId) === clean(source.fixedCourseId || source.seriesId)
     ) || {}).event || null;
+    rememberSource(recheckContext, { source, frequencyWeeks: sourceSeries && (sourceSeries.frequencyWeeks || sourceSeries.intervalWeeks),
+      endDate: sourceSeries && (sourceSeries.recurrenceEndDate || sourceSeries.endDate), restoreMode }, HttpsError);
     assertTeacherMoveDuration(targetDuration, source);
   } else if (data.durationMinutes != null) {
     const declaredDuration = Number(data.durationMinutes);
@@ -9325,7 +9371,7 @@ async function teacherAction(data) {
     }
     const currentVersion = Number(versionSnapshot.exists && versionSnapshot.data().version || 0);
     if (currentVersion !== expectedVersion) {
-      throw new HttpsError('aborted', '課表剛剛有更新，已停止這次操作；請重新確認空位。');
+      throw new HttpsError('aborted', '課表剛剛有更新，已停止這次操作；請重新確認空位。', { reason: SCHEDULE_CHANGED });
     }
     const activeLocks = lockSnapshots.filter((snapshot) => snapshot.exists && snapshot.data().active !== false);
     const bookingSnapshots = [];
@@ -12922,10 +12968,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherSaveProfileDraft = callable(teacherUtilitySaveProfileDraft, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherContractSession = callable(teacherContractSession, { timeoutSeconds: 120, memory: '512MiB' });
   exportsObject.coursePortalTeacherSubmitContract = callable(teacherSubmitContract, { timeoutSeconds: 120, memory: '512MiB' });
-  exportsObject.coursePortalTeacherAvailability = callable(teacherAvailability, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherAvailabilityTaiwan = callable(teacherAvailability, { region: 'asia-east1', timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherSlotOptions = callable(teacherSlotOptions, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherSlotOptionsTaiwan = callable(teacherSlotOptions, { region: 'asia-east1', timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherAvailability = callable(withPortalReads(teacherAvailability), { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherAvailabilityTaiwan = callable(withPortalReads(teacherAvailability), { region: 'asia-east1', timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherSlotOptions = callable(withPortalReads(teacherSlotOptions), { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherSlotOptionsTaiwan = callable(withPortalReads(teacherSlotOptions), { region: 'asia-east1', timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentData = callable(withPortalReads(studentPortalData), { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalStudentDataTaiwan = callable(withPortalReads(studentPortalData), { region: 'asia-east1', timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalLessonHistory = callable(withPortalReads(courseLessonHistory), { timeoutSeconds: 180, memory: '1GiB', concurrency: 1 });
@@ -12935,11 +12981,18 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     timeoutSeconds: 180,
     memory: '1GiB'
   });
-  exportsObject.coursePortalRentalDayBoard = callable(rentalDayBoard, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalRentalWeekBoard = callable(rentalWeekBoard, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalRentalWeekBoardTaiwan = callable(rentalWeekBoard, { region: 'asia-east1', timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalRentalAvailability = callable(rentalAvailability, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalRentalAvailabilityTaiwan = callable(rentalAvailability, { region: 'asia-east1', timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalRentalDayBoard = callable(withPortalReads(rentalDayBoard), { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalRentalWeekBoard = callable(withPortalReads(rentalWeekBoard), { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalRentalWeekBoardTaiwan = callable(withPortalReads(rentalWeekBoard), { region: 'asia-east1', timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalRentalAvailability = callable(withPortalReads(rentalAvailability), { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalRentalAvailabilityTaiwan = callable(withPortalReads(rentalAvailability), { region: 'asia-east1', timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalRoomBookingOperation = callable(roomBookingOperation);
+  exportsObject.coursePortalRoomBookingNoticeRecovery = onSchedule({ schedule: 'every 10 minutes', region: REGION, timeoutSeconds: 180, memory: '512MiB' }, async () => {
+    const pending = await db.collection('coursePortalBookingNotices').where('status', '==', 'pending').limit(50).get();
+    const results = await Promise.allSettled(pending.docs.map(doc => deliverRoomBookingNotice(doc.id)));
+    if (results.some(result => result.status === 'rejected')) throw new Error('Some room booking notices remain pending');
+  });
+  exportsObject.coursePortalRoomBookingNotice = onDocumentCreated({ document: 'coursePortalBookingNotices/{bookingId}', region: REGION, retry: true, timeoutSeconds: 120, memory: '512MiB' }, event => deliverRoomBookingNotice(event.params.bookingId));
   exportsObject.coursePortalCreateRoomBooking = callable(createRoomBooking, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalMyBookings = callable(rentalMyBookings);
   exportsObject.coursePortalCancelRoomBooking = callable(cancelRoomBooking);

@@ -6,13 +6,13 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
-const html = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8');
-const inlineTemplate = fs.readFileSync(path.join(root, 'operations-course-inline-template.html'), 'utf8');
-const client = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8');
-const dataClient = fs.readFileSync(path.join(root, 'course-scheduler-data.js'), 'utf8');
-const mirror = fs.readFileSync(path.join(root, 'functions/injiaoyunEducationMirror.js'), 'utf8');
-const preview = fs.readFileSync(path.join(root, 'functions/injiaoyunEducationPreview.js'), 'utf8');
-const manual = fs.readFileSync(path.join(root, 'functions/injiaoyunManualSync.js'), 'utf8');
+const html = fs.readFileSync(path.join(root, 'course-scheduler.html'), 'utf8').replace(/\r\n/g, '\n');
+const inlineTemplate = fs.readFileSync(path.join(root, 'operations-course-inline-template.html'), 'utf8').replace(/\r\n/g, '\n');
+const client = fs.readFileSync(path.join(root, 'course-scheduler.js'), 'utf8').replace(/\r\n/g, '\n');
+const dataClient = fs.readFileSync(path.join(root, 'course-scheduler-data.js'), 'utf8').replace(/\r\n/g, '\n');
+const mirror = fs.readFileSync(path.join(root, 'functions/injiaoyunEducationMirror.js'), 'utf8').replace(/\r\n/g, '\n');
+const preview = fs.readFileSync(path.join(root, 'functions/injiaoyunEducationPreview.js'), 'utf8').replace(/\r\n/g, '\n');
+const manual = fs.readFileSync(path.join(root, 'functions/injiaoyunManualSync.js'), 'utf8').replace(/\r\n/g, '\n');
 
 new vm.Script(client, { filename: 'course-scheduler.js' });
 new vm.Script(dataClient, { filename: 'course-scheduler-data.js' });

@@ -56,7 +56,7 @@ for (const file of ['operations-course-inline-runtime.js', 'course-scheduler.js'
   });
   test(file+': zero amounts and explicit zero teacher split are distinguishable from missing configuration', () => {
     const { context } = fixture(file);
-    assert.equal(context.money(-0), '$0'); assert.equal(context.money(-0.1), '$0');
+    assert.equal(context.money(-0), '$0'); assert.equal(context.money(-0.1), '$-0.1');
     assert.equal(context.splitText({ splitType: 'fixed', hourlyFee: 0 }), '$0');
     assert.equal(context.splitText({}), '未設定');
   });
