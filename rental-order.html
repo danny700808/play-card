@@ -146,7 +146,7 @@
       <div class="small">正式租用確認後，店家才會提供正式填寫 / 簽署連結；正式階段才需要身分證證明上傳。</div><div class="btn-row" style="margin-top:12px"><button class="btn success-section" id="copyLineTextBtn" type="button">複製官方 LINE 配對文字</button><a class="btn secondary success-section" id="lineAddBtn" href="https://lin.ee/Fx5Y2mL" target="_blank">加入柚子樂器 LINE</a><a class="btn secondary" href="index.html">返回首頁</a></div></section>
   </div>
   <script src="config.js?v=rental-order-line-step-20260615"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=20260802-rental-days-sync2"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="rental-common.js?v=20260914-private-data-v1"></script>
   <script>
     const R=window.YZRental;
     function setSubmitProgress(percent){
@@ -239,38 +239,6 @@
       alert('已選取配對文字，請貼到柚子樂器官方 LINE。');
     }
 
-    async function saveApplicationFallback(payload, apiError){
-      const applicationId = makeRentalApplicationId();
-      const customerName = (payload.customerName || '').trim();
-      const lineConfirmText = '設備租賃申請 '+applicationId;
-      const nowText = R.nowText ? R.nowText() : new Date().toISOString();
-      const data = Object.assign({}, payload, {
-        applicationId,
-        applicationNo: applicationId,
-        rentalApplicationNo: applicationId,
-        status: '待店家確認',
-        stage: 'inquiry',
-        source: payload.source || 'customer-inquiry-web',
-        lineConfirmText,
-        lineLinkStatus: R.wantsLine(payload.notificationPreference, payload.customerEmail) ? 'pending' : 'not_required',
-        emailLinkStatus: R.wantsEmail(payload.notificationPreference, payload.customerEmail) ? 'pending' : '',
-        emailVerified: false,
-        managerNoticeSent: false,
-        managerNoticePending: true,
-        submitFallbackUsed: true,
-        submitFunctionError: String(apiError && apiError.message || apiError || ''),
-        createdAtText: nowText,
-        updatedAtText: nowText
-      });
-      try{
-        if(window.firebase && firebase.firestore && firebase.firestore.FieldValue){
-          data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-          data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-        }
-      }catch(e){}
-      await R.set('rentalApplications', applicationId, data, true);
-      return { ok:true, applicationId, applicationNo:applicationId, lineConfirmText, fallbackSaved:true };
-    }
     function goToRentalNextStep(res, payload){
       const appNo=res.applicationNo || res.applicationId || '已送出';
       const pref=R.notificationPreference(payload.notificationPreference, payload.customerEmail);
@@ -346,17 +314,10 @@
           res=await R.call('rentalSubmitApplicationHttp', payload);
           setSubmitProgress(65);
         }catch(apiErr){
-          console.warn('rentalSubmitApplicationHttp failed; fallback to Firestore save:', apiErr);
-          res=await saveApplicationFallback(payload, apiErr);
-          setSubmitProgress(65);
+          throw apiErr;
         }
         setSubmitProgress(78);
         const lineText=normalizeLineConfirmText(res.lineConfirmText, res.applicationNo || res.applicationId);
-        try{
-          if(res.applicationId){
-            await R.set('rentalApplications', res.applicationId, {lineConfirmText:lineText,lineLinkStatus:R.wantsLine(payload.notificationPreference,payload.customerEmail)?'pending':'not_required',emailLinkStatus:R.wantsEmail(payload.notificationPreference,payload.customerEmail)?'pending':'',updatedAtText:R.nowText()}, true);
-          }
-        }catch(e){ console.warn('save lineConfirmText failed', e); }
         setSubmitProgress(100);
         btn.dataset.done='1';
         setSubmitButtonLabel('完成');

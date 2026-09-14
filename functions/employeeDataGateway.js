@@ -74,6 +74,14 @@ function createEmployeeDataGateway({db,FieldValue,Filter,queueManager,queueEmail
       return {ok:true,inquiryId:id};
     }
     const before=account.data,line=clean(before.lineUserId||before['LINE User ID']),pref=clean(input.notificationPreference)||(line?'both':'email');
+    if(action==='saveMyTeachingAbilities'){
+      if(user.isExternalTeacher!==true)throw Error('授課項目僅外聘老師可修改。');
+      const abilities=(Array.isArray(input.teachingAbilities)?input.teachingAbilities:[]).slice(0,30).map(row=>({item:clean(row.item||row.name||row.subject).slice(0,100),level:clean(row.level||row.degree||row.proficiency).slice(0,30)})).filter(row=>row.item);
+      if(!abilities.length)throw Error('請至少填寫一筆授課項目。');
+      const text=abilities.map(row=>row.item+(row.level?'（'+row.level+'）':'')).join('、');
+      await account.ref.set({teachingAbilities:abilities,teachingItems:text,teachingItemsText:text,updatedAt:FieldValue.serverTimestamp()},{merge:true});
+      return {ok:true,message:'授課項目已儲存。',teachingAbilities:abilities,teachingItemsText:text};
+    }
     if(!['line','email','both'].includes(pref))throw Error('請選擇通知方式。');
     if(action==='ensureEmployeeLineBindCode'){
       const code=(!input.forceNew&&clean(before.employeeBindCode||before.bindingCode||before.lineBindingCode))||'EMP-'+crypto.randomBytes(18).toString('hex').toUpperCase(),text='柚子人員綁定 '+code;

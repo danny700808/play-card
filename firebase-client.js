@@ -15,12 +15,12 @@
   }
   function init(){
     if(!enabled()) return null;
-    if(db) return db;
+    if(db) return global.YZProtectedData?global.YZProtectedData.wrap(db):db;
     try{
       const app = firebaseApp_();
       if(!app) return null;
       db = global.firebase.firestore(app);
-      return db;
+      return global.YZProtectedData?global.YZProtectedData.wrap(db):db;
     }catch(err){ console.warn('[Firebase] init failed:', err); return null; }
   }
   function clean(v){ return String(v == null ? '' : v).trim(); }
@@ -493,21 +493,7 @@
   }
   async function firebaseForgotPassword(payload){ return await secureCall('employeeForgotPassword',{email:lower(payload&&payload.email)}); }
   async function firebaseChangePassword(payload){ return await secureCall('employeeChangePassword',{email:lower(payload&&payload.email),oldPassword:String(payload&&payload.oldPassword||''),newPassword:String(payload&&payload.newPassword||''),confirmPassword:String(payload&&payload.confirmPassword||'')}); }
-  async function firebaseRegister(payload){
-    const email=lower(payload.email); const name=clean(payload.name);
-    if(!email || !name) return {ok:false,message:'註冊資料不完整。'};
-    const existed=await rowsWhere('employees','email',email);
-    if(existed.length && lower(existed[0].accountStatus||existed[0]['帳號狀態'])==='active') return {ok:false,message:'這個 Email 已經註冊過了，請直接登入。'};
-    const id=clean(payload.employeeId)||clean(existed[0]&&existed[0].employeeId)||('EMP_'+Math.random().toString(36).slice(2,10));
-    const identity=clean(payload.identityType || (truthy(payload.isPartTime)?'parttime':'staff')) || 'staff';
-    await docSet('employees', id, {
-      employeeId:id, name, email, password:'', role:'staff', identityType:identity, isPartTime:identity==='parttime', accountStatus:'pending',
-      idNumber:clean(payload.idNumber).toUpperCase(), birthDate:clean(payload.birthDate), mobilePhone:clean(payload.mobilePhone), address:clean(payload.contactAddress||payload.address),
-      emergencyContact:clean(payload.emergencyContact), emergencyPhone:clean(payload.emergencyPhone), hireDate:clean(payload.hireDate||payload.joinDate),
-      lineUserId:'', lineNotifyEnabled:false, createdAt:ts(), source:'firebase-primary'
-    });
-    return {ok:true,message:'註冊申請已送出，待主管審核。'};
-  }
+  async function firebaseRegister(payload){ return await secureCall('employeeRegister',payload||{}); }
   async function firebaseClock(payload){
     const user=currentUser()||{}; const now=nowDate();
     const employeeId=clean(payload.userId || user.id || user.employeeId);
@@ -668,7 +654,7 @@
     };
   }
   async function getMySalaryInfo(payload){
-    const db = global.firebase && global.firebase.apps && global.firebase.apps.length ? global.firebase.firestore() : null;
+    const db = global.firebase && global.firebase.apps && global.firebase.apps.length ? fb.init() : null;
     if(!db) return {ok:false, message:'Firebase 尚未啟用'};
     const p = payload || {};
     const userId = clean(p.userId || p.employeeId || p.id || (global.currentUser && global.currentUser.id));
@@ -779,7 +765,7 @@
   }
 
   async function getMySalaryInfo(payload){
-    const db = global.firebase && global.firebase.apps && global.firebase.apps.length ? global.firebase.firestore() : null;
+    const db = global.firebase && global.firebase.apps && global.firebase.apps.length ? fb.init() : null;
     if(!db) return {ok:false, message:'Firebase 尚未啟用'};
     const p = payload || {};
     const userId = clean(p.userId || p.employeeId || p.id || (JSON.parse(localStorage.getItem('employeeUser') || '{}').id));
@@ -4972,6 +4958,7 @@
   }
   async function enqueueFeatureNotification(featureCode, direction, payload, result){
     try{
+      if(global.YZProtectedData&&!await global.YZProtectedData.isManager())return await global.YZProtectedData.call('employeeFeatureNotification',{featureCode,direction,message:compactAutoMessage(featureCode,direction,payload||{},result||{})});
       const setting = (await getFeatureNotificationSetting({featureCode})).setting || {};
       if(setting.enabled === false) return null;
       const channels = [];
@@ -8181,4 +8168,58 @@
   };
   fb.externalTeacherWorkActions = actions;
   global.YZFirebase = fb;
+})(window);
+
+// Protected legacy employee reads: the server returns only the caller's records.
+(function(global){
+  'use strict';
+  const wrapped=new WeakMap(),pending=new Map();
+  const scoped=new Set(['teacherGoods','teacherGoodsInquiry','websiteProducts','officialWebsiteProducts','easystoreProducts','websiteGoods','products','employees','employeeSalaryConfigs','employeeSalaryConfigHistory','employeeSalarySettings','salaryProfiles','salarySetup','salarySettings','salaryConfigs','parttimeRecords','parttimeHourRequests','clockRecords','clockCorrections','leaveRecords','leaveRequests','temporaryAttendanceRequests','employeeSchedules','singleDaySchedules','profileChangeRequests','certificateApplications','formSubmissions','tasks','systemSettings']);
+  async function authUser(){
+    if(global.YZFirebase)global.YZFirebase.firebaseApp&&global.YZFirebase.firebaseApp();
+    const auth=global.firebase.auth();
+    if(typeof auth.authStateReady==='function')await auth.authStateReady();
+    else if(!auth.currentUser)await new Promise((resolve,reject)=>{let off=()=>{};const timer=setTimeout(()=>{off();reject(new Error('登入驗證逾時，請重新登入。'));},10000);off=auth.onAuthStateChanged(()=>{clearTimeout(timer);off();resolve();},error=>{clearTimeout(timer);off();reject(error);});});
+    if(!auth.currentUser)throw new Error('請先登入員工帳號。');return auth.currentUser;
+  }
+  function teacherSession(){try{const user=JSON.parse(global.localStorage.getItem('employeeUser')||'null');return user&&user.portalSessionBridge===true?global.localStorage.getItem('youzi.coursePortal.teacher.session.v1')||'':'';}catch(_){return '';}}
+  async function isManager(){if(teacherSession())return false;const user=await authUser();const result=await user.getIdTokenResult();return result.claims.employee===true&&result.claims.manager===true;}
+  async function call(name,data){
+    const sessionToken=teacherSession(),user=sessionToken?null:await authUser(),project=global.APP_CONFIG.FIREBASE_CONFIG.projectId;
+    if(sessionToken)data={...data,sessionToken};
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
+    try{const response=await fetch('https://us-central1-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers:{'Content-Type':'application/json',...(user?{Authorization:'Bearer '+await user.getIdToken()}:{})},body:JSON.stringify({data}),signal:controller.signal});const result=await response.json();if(!response.ok||result.error)throw new Error(result.error&&result.error.message||'資料暫時無法讀取。');return result.result||result.data||{};}finally{clearTimeout(timer);}
+  }
+  function revive(value){
+    if(!value||typeof value!=='object')return value;
+    if(typeof value._seconds==='number'||typeof value.seconds==='number')return new global.firebase.firestore.Timestamp(value._seconds??value.seconds,value._nanoseconds??value.nanoseconds??0);
+    if(Array.isArray(value))return value.map(revive);
+    return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,revive(item)]));
+  }
+  function snapshot(db,collection,row){return {id:row.id,exists:true,ref:db.collection(collection).doc(row.id),data:()=>revive(row.data),get:field=>revive(row.data[field]),metadata:{fromCache:false,hasPendingWrites:false}};}
+  function scalar(value){if(value&&typeof value.toMillis==='function')return value.toMillis();if(value&&typeof value==='object'&&(typeof value._seconds==='number'||typeof value.seconds==='number'))return (value._seconds??value.seconds)*1000+(value._nanoseconds??value.nanoseconds??0)/1000000;return value;}
+  function matches(row,filter){const [field,op,rawWanted]=filter,wanted=scalar(rawWanted);const value=scalar(field==='__name__'?row.id:field.split('.').reduce((data,key)=>data&&data[key],row.data));switch(op){case '==':return value===wanted;case '!=':return value!==wanted;case 'in':return wanted.includes(value);case 'not-in':return !wanted.includes(value);case 'array-contains':return Array.isArray(value)&&value.includes(wanted);case 'array-contains-any':return Array.isArray(value)&&wanted.some(item=>value.includes(item));case '>':return value>wanted;case '>=':return value>=wanted;case '<':return value<wanted;case '<=':return value<=wanted;default:throw new Error('不支援的查詢條件。');}}
+  async function rows(collection,id){const sessionToken=teacherSession(),user=sessionToken?null:await authUser(),key=(sessionToken||user.uid)+'|'+collection+'|'+(id||'');if(!pending.has(key)){const task=call('employeePrivateDataRead',{collection,id:id||''}).then(result=>result.rows||[]).finally(()=>pending.delete(key));pending.set(key,task);}return pending.get(key);}
+  function wrapQuery(db,query,collection,filters=[],limit=Infinity,orders=[],id){
+    return new Proxy(query,{get(target,key){
+      if(key==='get'&&scoped.has(collection))return async(...args)=>{
+        if(await isManager())return target.get(...args);
+        let result=await rows(collection,id);
+        if(id)return result.length?snapshot(db,collection,result[0]):{id,exists:false,ref:target,data:()=>undefined};
+        result=result.filter(row=>filters.every(filter=>matches(row,filter)));
+        for(const [field,direction] of [...orders].reverse())result.sort((a,b)=>{const left=scalar(a.data[field]),right=scalar(b.data[field]);return(left<right?-1:left>right?1:0)*(direction==='desc'?-1:1);});
+        const docs=result.slice(0,limit).map(row=>snapshot(db,collection,row));return {docs,size:docs.length,empty:!docs.length,forEach:fn=>docs.forEach(fn),metadata:{fromCache:false,hasPendingWrites:false}};
+      };
+      if(key==='set'&&collection==='teacherGoodsInquiry')return async data=>{if(await isManager())return target.set(data,{merge:true});return call('employeeSelfService',{action:'goods-inquiry',collection,id,payload:data});};
+      if(key==='doc')return value=>{const doc=value===undefined?target.doc():target.doc(value);return wrapQuery(db,doc,collection,[],Infinity,[],doc.id);};
+      if(key==='where')return(field,op,value)=>wrapQuery(db,target.where(field,op,value),collection,filters.concat([[field,op,value]]),limit,orders);
+      if(key==='limit')return value=>wrapQuery(db,target.limit(value),collection,filters,value,orders);
+      if(key==='orderBy')return(field,direction)=>wrapQuery(db,target.orderBy(field,direction),collection,filters,limit,orders.concat([[field,direction]]));
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+  }
+  function wrap(db){if(wrapped.has(db))return wrapped.get(db);const proxy=new Proxy(db,{get(target,key){if(key==='collection')return name=>wrapQuery(db,target.collection(name),name);const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});wrapped.set(db,proxy);return proxy;}
+  const previousHandle=global.YZFirebase.handleApi;
+  global.YZFirebase.handleApi=async(action,payload)=>{if(['saveMyNotificationSettings','ensureEmployeeLineBindCode','setLineNotifyPreference','saveMyTeachingAbilities'].includes(action)&&!teacherSession()&&!await isManager())return call('employeeSelfService',{action,payload:payload||{}});return previousHandle(action,payload||{});};
+  global.YZProtectedData={wrap,isManager,call};
 })(window);
