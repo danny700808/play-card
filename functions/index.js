@@ -2400,5 +2400,6 @@ exports.employeeRegister=onCall({region:'us-central1',timeoutSeconds:60},async r
 
 const inventoryCountAccess=require('./inventoryCountAccess').createInventoryCountAccess({db,FieldValue:admin.firestore.FieldValue,requireManager:requireHttpManager});
 exports.inventoryCountLoginHttp=httpEndpoint(async(data,req)=>{if(data.action==='connectionInfo')return {currentIp:clean(req.ip).replace(/^::ffff:/,'')};await rateLimitPublicForm(req,'inventory-pin');return inventoryCountAccess.login(data);});
-exports.inventoryCountProductsHttp=httpEndpoint((data,req)=>inventoryCountAccess.products(data,req));
+const productPhotoAccess=require('./productPhotoAccess').createProductPhotoAccess({db,FieldValue:admin.firestore.FieldValue,bucket:{get name(){return admin.storage().bucket().name;},file:path=>admin.storage().bucket().file(path)},authorize:token=>inventoryCountAccess.session(token)});
+exports.inventoryCountProductsHttp=httpEndpoint((data,req)=>data.action==='uploadPhoto'?productPhotoAccess.upload(data):inventoryCountAccess.products(data,req));
 exports.inventoryCountSaveHttp=httpEndpoint((data,req)=>inventoryCountAccess.save(data,req));

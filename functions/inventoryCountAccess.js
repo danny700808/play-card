@@ -36,7 +36,7 @@ function createInventoryCountAccess({db,FieldValue,requireManager,now=Date.now})
   async function products(data,req){
     await authorize(data,req);
     const rows=(await db.collection('opsInternalProducts').limit(10000).get()).docs;
-    const fields=['internalName','originalName','onlineName','name','internalSku','sku','code','barcode','model','brand','category','variantName','alternateNames','searchKeywords','imageUrl','imageUrls','enabled','currentStock'];
+    const fields=['internalName','originalName','onlineName','name','internalSku','sku','code','barcode','model','brand','category','variantName','alternateNames','searchKeywords','imageUrl','imageUrls','enabled','currentStock','physicalImageUrls'];
     return {ok:true,products:rows.filter(doc=>doc.data().enabled!==false).map(doc=>({id:doc.id,...Object.fromEntries(fields.filter(key=>doc.data()[key]!==undefined).map(key=>[key,doc.data()[key]]))}))};
   }
   async function save(data,req){
@@ -56,6 +56,6 @@ function createInventoryCountAccess({db,FieldValue,requireManager,now=Date.now})
       tx.create(operationRef,{fingerprint,result,createdAt:FieldValue.serverTimestamp()});return result;
     });
   }
-  return {login,products,save};
+  return {login,products,save,session};
 }
 module.exports={createInventoryCountAccess,adjustLayers};
