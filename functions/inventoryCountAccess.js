@@ -6,7 +6,7 @@ function materialize(raw){const target=Math.max(0,Number(raw.currentStock||0));l
 function stats(layers){layers=normalizeLayers(layers);const qty=layers.reduce((s,l)=>s+l.qtyRemaining,0),known=layers.filter(l=>l.costKnown&&l.unitCost!=null),knownQty=known.reduce((s,l)=>s+l.qtyRemaining,0),value=known.reduce((s,l)=>s+l.qtyRemaining*l.unitCost,0);return {layers,averageCost:qty>0&&knownQty===qty?value/qty:null,inventoryValue:value,costIncomplete:qty>knownQty};}
 function adjustLayers(raw,target){const old=Math.max(0,Number(raw.currentStock||0)),latest=num(raw.latestPurchaseCost)!=null?num(raw.latestPurchaseCost):num(raw.averageCost);let layers=materialize(raw);if(target>old){const add=target-old;layers.push({layerId:'COUNT-'+Date.now(),qtyRemaining:add,originalQty:add,unitCost:latest,costKnown:latest!=null,receivedAt:new Date().toISOString(),referenceType:'stocktakeIncrease',referenceId:'MOBILE'});}else if(target<old){let take=old-target;for(const l of layers){if(take<=0)break;const n=Math.min(take,l.qtyRemaining);l.qtyRemaining-=n;take-=n;}layers=layers.filter(l=>l.qtyRemaining>0);}return stats(layers);}
 
-function createInventoryCountAccess({db,FieldValue,now=Date.now}){
+function createInventoryCountAccess({db,FieldValue,requireManager,now=Date.now}){
   const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
   async function login(data){
     const doc=await db.collection('opsSettings').doc('inventoryCount').get(),setting=doc.exists?doc.data():{};
@@ -23,15 +23,25 @@ function createInventoryCountAccess({db,FieldValue,now=Date.now}){
     const [doc,settings]=await Promise.all([db.collection('inventoryCountSessions').doc(hash(token)).get(),db.collection('opsSettings').doc('inventoryCount').get()]);
     if(!doc.exists||doc.data().expiresAtMs<=now()||!settings.exists||settings.data().enabled===false||doc.data().pinVersion!==clean(settings.data().pinHash).toLowerCase())throw Error('盤點登入已失效，請重新輸入密碼。');
   }
-  async function products(data){
-    await session(data.token);
+  async function authorize(data,req){
+    if(req && req.headers && req.headers.authorization){
+      if(!requireManager)throw Error('管理者登入尚未啟用。');
+      const identity=await requireManager(req);
+      const settings=await db.collection('opsSettings').doc('inventoryCount').get();
+      if(settings.exists && settings.data().enabled===false)throw Error('盤點入口目前已停用。');
+      return identity;
+    }
+    await session(data.token);return null;
+  }
+  async function products(data,req){
+    await authorize(data,req);
     const rows=(await db.collection('opsInternalProducts').limit(10000).get()).docs;
     const fields=['internalName','originalName','onlineName','name','internalSku','sku','code','barcode','model','brand','category','variantName','alternateNames','searchKeywords','imageUrl','imageUrls','enabled','currentStock'];
     return {ok:true,products:rows.filter(doc=>doc.data().enabled!==false).map(doc=>({id:doc.id,...Object.fromEntries(fields.filter(key=>doc.data()[key]!==undefined).map(key=>[key,doc.data()[key]]))}))};
   }
-  async function save(data){
-    await session(data.token);
-    const id=clean(data.productId),operationId=clean(data.operationId),operator=clean(data.operator).slice(0,100),target=Number(data.target),expected=Number(data.expectedStock);
+  async function save(data,req){
+    const identity=await authorize(data,req);
+    const id=clean(data.productId),operationId=clean(data.operationId),operator=clean(identity?(identity.name||identity.email||identity.employeeId):data.operator).slice(0,100),target=Number(data.target),expected=Number(data.expectedStock);
     if(!id||id.includes('/')||!/^[A-Za-z0-9_-]{16,100}$/.test(operationId)||!operator||!Number.isSafeInteger(target)||target<0||target>1000000||!Number.isFinite(expected))throw Error('盤點資料不完整。');
     const productRef=db.collection('opsInternalProducts').doc(id),operationRef=db.collection('inventoryCountOperations').doc(operationId),inventoryRef=db.collection('opsInventoryTransactions').doc('COUNT-'+operationId),queueRef=db.collection('opsPlatformInventoryQueue').doc(id);
     const fingerprint=hash(JSON.stringify([id,target,expected,operator,clean(data.note)]));
