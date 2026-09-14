@@ -290,7 +290,7 @@
   }
   function runUiOperation(label,button,work){
     if(operationRunning)return false;operationRunning=true;operationButton(button,true,label);$('operationProgressText').textContent=label;$('operationProgress').classList.remove('hidden');
-    async function execute(){try{await work();}catch(error){toast('操作失敗',clean(error&&error.message||error),'error');}finally{operationRunning=false;$('operationProgress').classList.add('hidden');operationButton(button,false);}}
+    async function execute(){if(attendanceUpdater)attendanceUpdater.invalidate();try{await work();}catch(error){toast('操作失敗',clean(error&&error.message||error),'error');}finally{if(attendanceUpdater)attendanceUpdater.invalidate();operationRunning=false;$('operationProgress').classList.add('hidden');operationButton(button,false);}}
     if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)execute();else setTimeout(execute,60);
     return true;
   }
@@ -560,6 +560,7 @@
     if(!events.length)html+='<div class="empty-day"><b>這一天尚未排課</b><span>'+(isReadOnly()?'已移轉資料沒有這一天的課程':'點任一空白格即可新增')+'</span></div>';grid.innerHTML=html;
     $('clipboardBar').classList.toggle('hidden',!state.clipboard);if(state.clipboard){var source=findEvent(state.clipboard.eventId)||state.clipboard.event;$('clipboardText').textContent=(state.clipboard.mode==='cut'?'調課':'增加課程')+'：'+eventDisplayName(source||{})+'，請點新的空白格。';}
     if(weekMode)renderWeekSchedule();
+    if(attendanceUpdater)attendanceUpdater.pendingJobs().forEach(function(job){attendancePendingUI(job,true);});
   }
 
   function fillSelect(node,rows,label,value,placeholder){node.innerHTML=(placeholder?'<option value="">'+esc(placeholder)+'</option>':'')+rows.map(function(row){return '<option value="'+esc(value(row))+'">'+esc(label(row))+'</option>';}).join('');}
@@ -653,17 +654,49 @@
     return {period:current,created:created};
   }
 
+  var attendanceUpdater=null;
+  function attendanceKey(event){return [event.teacherId,event.date,event.sourceCourseId||event.sourceId||event.id].join('|');}
+  function attendanceNotice(text,retry){
+    var node=$('attendanceSyncNotice');if(!node){node=document.createElement('div');node.id='attendanceSyncNotice';node.className='notice';node.setAttribute('role','status');$('operationProgress').parentNode.insertBefore(node,$('operationProgress'));}
+    node.innerHTML=esc(text)+(retry?' <button type="button" class="btn small">重新更新資料</button>':'');node.hidden=!text;
+    if(retry)node.querySelector('button').onclick=function(){attendanceNotice('簽到已儲存，資料更新中…');attendanceUpdater.retry();};
+  }
+  function attendancePendingUI(job,busy){
+    if($('eventModal').dataset.eventId===job.event.id){$$('[data-attendance]',$('eventModalBody')).forEach(function(button){button.disabled=busy;button.setAttribute('aria-busy',String(busy));});}
+    $$('button[data-event-id]').filter(function(node){return node.dataset.eventId===job.event.id;}).forEach(function(node){var badge=node.querySelector('.event-top b');if(badge)badge.textContent=busy?'處理中…':statusName((findEvent(job.event.id)||job.event).status);node.setAttribute('aria-busy',String(busy));});
+  }
+  function getAttendanceUpdater(){
+    if(attendanceUpdater)return attendanceUpdater;
+    attendanceUpdater=window.YouziCoursePreviewData.createAttendanceUpdater({
+      write:async function(job){var started=Date.now();try{try{return await window.YouziCoursePreviewData.setAttendance(job.payload);}catch(error){if(clean(error&&error.code).indexOf('aborted')>=0)return await window.YouziCoursePreviewData.setAttendance(job.payload);throw error;}}finally{console.info('[attendance timing]',{stage:'save',ms:Date.now()-started});}},
+      onPending:attendancePendingUI,
+      onSaved:function(job){
+        var current=findEvent(job.event.id);if(current){current=materializeEvent(current);current.status=job.status;current.reasonId=job.reasonId;}
+        if($('eventModal').dataset.eventId===job.event.id)closeModal('eventModal');
+        renderCalendar();scheduleWorkspaceSave();attendanceNotice('簽到狀態已儲存，堂數與薪資更新中…');
+        toast(job.status==='scheduled'?'取消簽到已儲存':'已更新為「'+statusName(job.status)+'」','可以繼續操作其他課程。');
+      },
+      onWriteError:function(error,job){toast('未能確認儲存結果',clean(error&&error.message||error)+'；請重試，同一堂課不會重複扣堂。','error');},
+      read:async function(jobs){
+        var started=Date.now(),ids=unique(jobs.reduce(function(all,job){return all.concat(job.event.studentIds||[]);},[])),scopes=[];
+        jobs.forEach(function(job){if(!scopes.some(function(scope){return scope.teacherId===job.event.teacherId&&scope.date===job.event.date;}))scopes.push({teacherId:job.event.teacherId,date:job.event.date});});
+        try{return await window.YouziCoursePreviewData.refreshAttendance({manualSyncPin:storedMigrationPin(),studentIds:ids,payrollScopes:scopes});}finally{console.info('[attendance timing]',{stage:'refresh',ms:Date.now()-started});}
+      },
+      apply:function(snapshot){window.YouziCoursePreviewData.applyAttendanceSnapshot(state,snapshot);scheduleWorkspaceSave();},
+      onSynced:function(jobs,remaining){attendanceNotice(remaining?'簽到狀態已儲存，堂數與薪資更新中…':'');if($('eventModal').classList.contains('open')){var current=findEvent($('eventModal').dataset.eventId);if(current)eventDetails(current);}else if(currentView==='students')renderStudents();else if(currentView==='teachers')renderTeachers();},
+      onRefreshError:function(){attendanceNotice('簽到已儲存，堂數與薪資尚未更新。',true);}
+    });return attendanceUpdater;
+  }
   function setAttendance(eventId,status,reasonId){
     if(!writable('更新簽到'))return;
     var event=findEvent(eventId);if(!event)return;
     if(event.type==='rental'){persistLessonSettings(event,{kind:'rentalStatus',status:status});return;}
-    runUiOperation('正在保存雲端簽到…',null,async function(){
-      await window.YouziCoursePreviewData.setAttendance({manualSyncPin:storedMigrationPin(),teacherId:event.teacherId,status:status,reasonId:reasonId||'',sourceDate:event.date,sourceEventId:event.sourceId||event.id,sourceCourseId:'',portalChangeId:event.portalChangeId||''});
-      var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:state.currentDate||todayKey()});
-      await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});
-      closeModal('eventModal');renderCalendar();toast('簽到已保存至雲端','堂數與老師薪資已重新讀取；繳費紀錄維持獨立。');
-    });
+    var job={key:attendanceKey(event),event:clone(event),status:status,reasonId:reasonId||'',payload:{manualSyncPin:storedMigrationPin(),teacherId:event.teacherId,status:status,reasonId:reasonId||'',sourceDate:event.date,sourceEventId:event.sourceId||event.id,sourceCourseId:'',portalChangeId:event.portalChangeId||''}};
+    if(getAttendanceUpdater().isPending(job.key))return;
+    toast(status==='scheduled'?'正在取消簽到…':'正在更新簽到…','');
+    getAttendanceUpdater().submit(job);
   }
+
   function setAttendanceLocal(eventId,status,reasonId){
     if(!writable('更新簽到'))return;var event=materializeEvent(findEvent(eventId));if(!event)return;var studentId=(event.studentIds||[])[0],record=state.attendance.find(function(row){return row.eventId===event.id&&row.studentId===studentId;}),rollover={period:periodById(event.tuitionPeriodId),created:false};if(status==='attended'&&!event.specialLesson)rollover=ensureAttendancePeriod(event,studentId,record);event.status=status;var deducted=status==='attended'&&!event.specialLesson,period=rollover.period.id?rollover.period:periodById(event.tuitionPeriodId);if(status==='scheduled'){state.attendance=state.attendance.filter(function(row){return !(row.eventId===event.id&&row.studentId===studentId);});}else if(record){Object.assign(record,{status:status,date:event.date,periodId:event.specialLesson?'':period.id||event.tuitionPeriodId,teacherId:event.teacherId,deducted:deducted,lessonNo:event.specialLesson?0:record.lessonNo||numberOf(period.usedCount)+1,reasonId:reasonId||record.reasonId||'',specialLesson:event.specialLesson===true});}else if(studentId){state.attendance.push({id:uid('attendance'),eventId:event.id,studentId:studentId,periodId:event.specialLesson?'':period.id||event.tuitionPeriodId,status:status,date:event.date,lessonNo:deducted?numberOf(period.usedCount)+1:0,teacherId:event.teacherId,deducted:deducted,reasonId:reasonId||'',specialLesson:event.specialLesson===true});}
     recalcPeriods();syncSandboxPayroll(event,status);save(eventDisplayName(event)+'・'+statusName(status)+(rollover.created?'・自動延續第 '+rollover.period.periodNo+' 期':'')+(event.specialLesson?'・特殊加課不扣堂':''));closeModal('eventModal');renderCalendar();toast(rollover.created?'已自動延續第 '+rollover.period.periodNo+' 期':'已更新為「'+statusName(status)+'」',rollover.created?'上一期已滿；本堂已歸入新一期，新一期目前顯示未繳費。':event.specialLesson&&status==='attended'?'本堂不扣學生期數，已依設定計入老師薪資。':deducted?'本堂已計入堂數扣抵。':'本堂未扣抵堂數。');
@@ -692,7 +725,7 @@
     else if(event.type==='rental')html+='<div class="status-actions rental-actions">'+(!isReadOnly()?'<button data-event-action="edit">修改租用金額／資料</button>':'')+(event.source==='course-portal'&&event.portalBookingId&&event.canAdminCancel!==false&&event.active!==false?'<button class="danger" data-portal-rental-cancel="'+esc(event.portalBookingId)+'">強制取消租用</button>':'')+'<button data-attendance="attended" '+(isReadOnly()?'disabled':'')+'>✓ 簽退完成</button><button data-attendance="scheduled" '+(isReadOnly()?'disabled':'')+'>恢復未簽退</button></div>';
     if(student.id)html+='<section class="event-tuition-section"><div class="student-record-heading"><div><h3>學生學費紀錄</h3><p>不必再進第二層；每一期與四堂簽到直接顯示在這裡。</p></div></div>'+tuitionTableHtml(student.id,{eventId:event.id,currentPeriodId:event.tuitionPeriodId,fallbackTeacherId:event.teacherId})+'</section>';
     $('eventModalBody').innerHTML=html;
-    $('eventModalFoot').innerHTML='<div class="formal-view-note">'+(isReadOnly()?'資料尚未載入。':'點「第幾期／課程方案」會直接編輯本期期別。')+'</div>';$('eventModal').dataset.eventId=event.id;openModal('eventModal');
+    $('eventModalFoot').innerHTML='<div class="formal-view-note">'+(isReadOnly()?'資料尚未載入。':'點「第幾期／課程方案」會直接編輯本期期別。')+'</div>';$('eventModal').dataset.eventId=event.id;openModal('eventModal');if(attendanceUpdater&&attendanceUpdater.isPending(attendanceKey(event)))attendancePendingUI({event:event},true);
   }
   function detailLine(label,value){return '<div class="detail-line"><span>'+esc(label)+'</span><b>'+esc(value)+'</b></div>';}
   function teacherPayBase(event){
@@ -867,7 +900,7 @@
       save('收退款已保存到雲端');closeModal('transactionModal');studentTab='tuition';if(currentStudentId)renderStudentModal();if(currentView==='students')renderStudents();
       toast(type==='refund'?'退款已保存到雲端':'收費已保存到雲端','簽到、已上堂數與老師薪資不因收退款而變動。');
     }catch(error){toast('收退款尚未完成',clean(error&&error.message||error),'error');}
-    finally{operationRunning=false;}
+    finally{if(attendanceUpdater)attendanceUpdater.invalidate();operationRunning=false;}
   }
 
   function normalizedMonthKey(value){value=clean(value);return /^\d{4}-(0[1-9]|1[0-2])$/.test(value)?value:'';}
@@ -941,7 +974,7 @@
       if($('teacherPayrollModal').classList.contains('open')&&currentTeacherId===teacherId){$('teacherPayrollMonth').value=date.slice(0,7);renderTeacherPayroll();}renderTeachers();
       toast(result.duplicate?'沒有重複新增':'薪資異動已儲存',(type==='deduction'?'扣薪 ':'獎勵 ')+money(amount)+' 已列入 '+date.slice(0,7)+' 薪資。');
     }catch(error){var message=clean(error&&error.message||'老師薪資異動儲存失敗');if(message.indexOf('密碼')>=0||message.indexOf('permission-denied')>=0)clearMigrationPin();toast('儲存失敗',message.slice(0,220),'error');}
-    finally{operationRunning=false;$('operationProgress').classList.add('hidden');operationButton($('teacherAdjustmentSubmitBtn'),false);}
+    finally{if(attendanceUpdater)attendanceUpdater.invalidate();operationRunning=false;$('operationProgress').classList.add('hidden');operationButton($('teacherAdjustmentSubmitBtn'),false);}
   }
 
   function renderSettings(){

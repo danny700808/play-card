@@ -462,6 +462,48 @@
     return result;
   }
 
+  function createAttendanceUpdater(options){
+    var pending=new Map(),dirty=new Map(),epoch=0,reading=false,timer=null;
+    function schedule(){if(pending.size||reading||!dirty.size)return;clearTimeout(timer);timer=setTimeout(flush,120);}
+    async function flush(){
+      if(pending.size||reading||!dirty.size)return;
+      reading=true;var batch=Array.from(dirty.values()).slice(0,10),version=epoch,failed=false;
+      try{
+        var snapshot=await options.read(batch);
+        if(version!==epoch||pending.size)return;
+        options.apply(snapshot);
+        if(options.onSynced)options.onSynced(batch,Math.max(0,dirty.size-batch.length));
+        batch.forEach(function(job){if(dirty.get(job.key)===job)dirty.delete(job.key);});
+      }catch(error){failed=true;if(options.onRefreshError)options.onRefreshError(error,batch);}
+      finally{reading=false;if(!failed)schedule();}
+    }
+    async function submit(job){
+      if(pending.has(job.key))return false;
+      pending.set(job.key,job);epoch++;options.onPending(job,true);
+      var committed=false;
+      try{
+        var result=await options.write(job);committed=true;dirty.set(job.key,job);options.onSaved(job,result);
+      }catch(error){
+        if(committed){dirty.set(job.key,job);if(options.onRefreshError)options.onRefreshError(error,[job]);}
+        else options.onWriteError(error,job);
+      }finally{pending.delete(job.key);options.onPending(job,false);schedule();}
+      return committed;
+    }
+    return {submit:submit,retry:schedule,invalidate:function(){epoch++;schedule();},pendingJobs:function(){return Array.from(pending.values());},isPending:function(key){return pending.has(key);},flush:flush};
+  }
+  async function refreshAttendance(options){
+    var result=await courseAdminMutation('coursePortalAdminSetAttendance',Object.assign({action:'refresh'},options),options&&options.manualSyncPin);
+    if(!result||result.ok!==true)throw new Error('簽到資料尚未更新。');
+    return result;
+  }
+  function applyAttendanceSnapshot(state,payload){
+    var ids=new Set(array(payload.studentIds)),scopes=array(payload.payrollScopes);
+    var periods=state.tuitionPeriods.filter(function(row){return !ids.has(row.studentId);}).concat(normalizePeriods(payload,state.feePlans));
+    var attendance=state.attendance.filter(function(row){return !ids.has(row.studentId);}).concat(normalizeAttendance(payload,state.events,periods));
+    var payroll=array(state.teacherPayroll).filter(function(row){return !scopes.some(function(scope){return scope.teacherId===row.teacherId&&scope.date===row.date;});}).concat(normalizeTeacherPayroll(payload));
+    state.tuitionPeriods=periods;state.attendance=attendance;state.teacherPayroll=payroll;
+  }
+
   async function setAttendance(options){
     var result=await courseAdminMutation('coursePortalAdminSetAttendance',options||{},options&&options.manualSyncPin);
     if(!result||result.ok!==true)throw new Error('簽到尚未保存到雲端。');
@@ -609,5 +651,5 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={loadCalendarFollowupState:loadCalendarFollowupState,stoppedCourseReceivables:stoppedCourseReceivables,activeIrregularCourses:activeIrregularCourses,isIrregularPlaceholder:isIrregularPlaceholder,loadIrregularCourses:loadIrregularCourses,load:load,loadPublished:loadPublished,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,voidLessonSlot:voidLessonSlot,saveLessonSettings:saveLessonSettings,saveLeaveReason:saveLeaveReason,saveSchedule:saveSchedule,setAttendance:setAttendance,recordTuitionTransaction:recordTuitionTransaction,saveTuitionPeriods:saveTuitionPeriods,saveStudent:saveStudent,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
+  global.YouziCoursePreviewData={createAttendanceUpdater:createAttendanceUpdater,refreshAttendance:refreshAttendance,applyAttendanceSnapshot:applyAttendanceSnapshot,loadCalendarFollowupState:loadCalendarFollowupState,stoppedCourseReceivables:stoppedCourseReceivables,activeIrregularCourses:activeIrregularCourses,isIrregularPlaceholder:isIrregularPlaceholder,loadIrregularCourses:loadIrregularCourses,load:load,loadPublished:loadPublished,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,voidLessonSlot:voidLessonSlot,saveLessonSettings:saveLessonSettings,saveLeaveReason:saveLeaveReason,saveSchedule:saveSchedule,setAttendance:setAttendance,recordTuitionTransaction:recordTuitionTransaction,saveTuitionPeriods:saveTuitionPeriods,saveStudent:saveStudent,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);

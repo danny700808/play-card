@@ -10234,6 +10234,33 @@ async function adminSaveSchedule(data) {
   return { ok:true,id,event };
 }
 
+async function adminAttendanceDetail(data) {
+  const studentIds = [...new Set(firstArray(data,['studentIds']).map(clean).filter(Boolean))];
+  const scopes = Array.isArray(data.payrollScopes) ? data.payrollScopes : [];
+  if (!studentIds.length || studentIds.length > 50 || scopes.length > 50 || scopes.some(row => !clean(row.teacherId) || !dateKey(row.date))) throw new HttpsError('invalid-argument','簽到更新範圍無效。');
+  const started = Date.now();
+  const groups = await Promise.all(studentIds.map(async studentId => {
+    const [periods, mirrorAttendance, portalAttendance] = await Promise.all([
+      mirrorRowsByField('tuitionPeriods','studentId',studentId),
+      mirrorRowsByField('attendance','studentId',studentId),
+      portalAttendanceForStudents([studentId])
+    ]);
+    return {periods:applyPortalAttendanceToPeriods(periods,mirrorAttendance,portalAttendance),attendance:mergePortalAttendanceRows(mirrorAttendance,portalAttendance)};
+  }));
+  const teacherPayroll = await Promise.all(scopes.map(async scope => {
+    const teacherId=clean(scope.teacherId),date=dateKey(scope.date);
+    const [mirror, portal, cancelled, dayAttendance] = await Promise.all([
+      mirrorRowsByField('teacherPayroll','teacherId',teacherId),
+      db.collection(ATTENDANCE_PAYROLL).where('teacherId','==',teacherId).where('date','==',date).get(),
+      db.collection(ATTENDANCE_CANCELLATIONS).where('teacherId','==',teacherId).where('date','==',date).get(),
+      mirrorRowsByDateRange('attendance',date,date)
+    ]);
+    const rows=portal.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id}));
+    return mergeTeacherPayrollRows(enrichTeacherPayrollRows(mirror.filter(row=>eventDate(row)===date),dayAttendance),rows,cancelled.docs.map(doc=>doc.data()).filter(row=>row.status==='approved').concat(rows.filter(row=>row.active===false)));
+  }));
+  return {ok:true,studentIds,payrollScopes:scopes,tuitionPeriods:groups.flatMap(group=>group.periods).map(row=>({...row,id:sourceId(row)})),attendance:groups.flatMap(group=>group.attendance).map(row=>({...row,id:sourceId(row)})),teacherPayroll:teacherPayroll.flat().map(row=>({...row,id:sourceId(row)})),timings:{readMs:Date.now()-started}};
+}
+
 async function adminSetAttendance(data) {
   const teacherId = clean(data.teacherId), status = clean(data.status);
   if (!teacherId || !['attended', 'scheduled', 'leave', 'absent'].includes(status)) throw new HttpsError('invalid-argument', '請選擇有效的老師與課程狀態。');
@@ -13081,7 +13108,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalAdminSaveLessonSettings = callable(async (data, request) => { assertAdminPin(request); return adminSaveLessonSettings(data); }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveLeaveReason = callable(async (data, request) => { assertAdminPin(request); return adminSaveLeaveReason(data); }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveSchedule = callable(async (data, request) => { assertAdminPin(request); return adminSaveSchedule(data); }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminSetAttendance = callable(async (data, request) => { assertAdminPin(request); return adminSetAttendance(data); }, { secrets: [ADMIN_PIN] });
+  exportsObject.coursePortalAdminSetAttendance = callable(withPortalReads(async (data, request) => { assertAdminPin(request); return data.action === 'refresh' ? adminAttendanceDetail(data) : adminSetAttendance(data); }), { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveStudent = callable(async (data,request)=>{assertAdminPin(request);return adminSaveStudent(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveTuitionPeriods = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTuitionPeriods(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveTeacherSubjects = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTeacherSubjects(data);},{secrets:[ADMIN_PIN]});
