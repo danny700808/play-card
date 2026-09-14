@@ -4749,6 +4749,20 @@ function irregularPlaceholder(row, modes) {
     eventSubjectId(row) === mode.subjectId && ids === mode.studentIds.slice().sort().join('|') &&
     [...(mode.intervals || []), mode].some(interval => eventDate(row) >= interval.effectiveDate && (!interval.resumedFrom || eventDate(row) < interval.resumedFrom)));
 }
+function applyIrregularStudentModes(row, modes) {
+  const ids = eventStudentIds(row);
+  const retained = ids.filter(id => !(modes || []).some(mode => {
+    if (!(mode.studentIds || []).includes(id)) return false;
+    const own = {...row,studentId:id,studentIds:[id],students:[id],student_ids:[id]};
+    const individual = {...mode,studentIds:[id]};
+    if (mode.blockedSourceCourseId && courseSourceIds(row).includes(mode.blockedSourceCourseId)) individual.resumedFrom = '';
+    return irregularPlaceholder(own,[individual]);
+  }));
+  if (!ids.length || retained.length === ids.length) return row;
+  if (!retained.length) return null;
+  return {...row,studentId:retained.length===1?retained[0]:'',studentIds:retained,students:retained,student_ids:retained};
+}
+
 async function stoppedRestoreMode(data, session) {
   const id = clean(data.suspensionId);
   if (!id) return null;
@@ -4759,8 +4773,9 @@ async function stoppedRestoreMode(data, session) {
   const [fixed, temporary] = await Promise.all([mirrorRows('fixedCourses'), mirrorRows('temporaryCourses')]);
   const original = [...fixed, ...temporary].find(row => eventTeacherId(row) === session.teacherId && eventSubjectId(row) === clean(stop.subjectId) && eventStudentIds(row).includes(clean(stop.studentId)));
   if (!original) throw new HttpsError('failed-precondition','找不到原課程資料，請由管理者確認學生的課程。');
-  const source = {...resourceEvent(original), studentIds:[clean(stop.studentId)], studentPaymentIds:[], fixedCourseId:sourceId(original), recurring:true, type:'fixed', status:'scheduled'};
-  return {id, suspensionId:id, effectiveDate:dateKey(stop.effectiveDate), teacherId:session.teacherId, subjectId:clean(stop.subjectId), studentIds:source.studentIds, source};
+  const blockedSourceCourseId = eventStudentIds(original).length > 1 ? sourceId(original) : '';
+  const source = {...resourceEvent(original), studentIds:[clean(stop.studentId)], studentPaymentIds:[], fixedCourseId:blockedSourceCourseId ? 'stopped-' + id : sourceId(original), recurring:true, type:'fixed', status:'scheduled'};
+  return {id, blockedSourceCourseId, suspensionId:id, effectiveDate:dateKey(stop.effectiveDate), teacherId:session.teacherId, subjectId:clean(stop.subjectId), studentIds:source.studentIds, source};
 }
 
 async function irregularRestoreMode(data, session) {
@@ -4802,7 +4817,7 @@ async function teacherSetIrregular(data) {
     if (Number(state.data().version || 0) !== version) throw new HttpsError('aborted','課表剛更新，請重新操作。');
     if (stoppedMode) tx.update(db.collection('coursePortalStudentSuspensions').doc(stoppedMode.id), {status:'reactivated', reactivatedBy:'teacher-irregular', reactivatedAt:FieldValue.serverTimestamp()});
     tx.set(ref,{teacherId:session.teacherId,subjectId:source.subjectId,studentIds:source.studentIds,
-      source:jsonValue(source),effectiveDate:stoppedMode ? stoppedMode.effectiveDate : currentTaipeiDay(),resumedFrom:'',enabled:true,intervals,
+      source:jsonValue(source),blockedSourceCourseId:stoppedMode ? stoppedMode.blockedSourceCourseId : '',effectiveDate:stoppedMode ? stoppedMode.effectiveDate : currentTaipeiDay(),resumedFrom:'',enabled:true,intervals,
       updatedAt:FieldValue.serverTimestamp()},{merge:true});
     tx.set(scheduleVersionRef(),{version:version+1,updatedAt:FieldValue.serverTimestamp(),updatedBy:session.teacherId},{merge:true});
   });
@@ -5178,7 +5193,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
   });
   const lessonSettings = await db.collection('coursePortalLessonSettings').get();
   const configuredBase = applyLessonSettings(base.filter(row => !replacedTeachingOccurrence(row, permanent, overlay)), lessonSettings.docs.map(doc => doc.data()));
-  const validBase = configuredBase.filter(row => !irregularPlaceholder(row, irregularModes)).map((row) => applyStudentSuspensions(row, suspensions)).filter((row) =>
+  const validBase = configuredBase.map(row => applyIrregularStudentModes(row, irregularModes)).filter(Boolean).map((row) => applyStudentSuspensions(row, suspensions)).filter((row) =>
     row &&
     eventDate(row) >= startDate &&
     eventDate(row) <= endDate &&
@@ -9439,13 +9454,13 @@ async function teacherActionAttempt(data, recheckContext = {}) {
     });
     if (restoreMode && restoreMode.suspensionId) {
       const modeKey = hash([session.teacherId,subjectId,...studentIds.slice().sort()].join('|'));
-      tx.set(db.collection('coursePortalIrregularCourses').doc(modeKey), {teacherId:session.teacherId,subjectId,studentIds,source:jsonValue(restoreMode.source),effectiveDate:restoreMode.effectiveDate,resumedFrom:date,intervals:priorIntervals,enabled:true,updatedAt:FieldValue.serverTimestamp()}, {merge:true});
+      tx.set(db.collection('coursePortalIrregularCourses').doc(modeKey), {teacherId:session.teacherId,subjectId,studentIds,source:jsonValue(restoreMode.source),blockedSourceCourseId:restoreMode.blockedSourceCourseId || '',effectiveDate:restoreMode.effectiveDate,resumedFrom:date,intervals:priorIntervals,enabled:true,updatedAt:FieldValue.serverTimestamp()}, {merge:true});
       tx.update(db.collection('coursePortalStudentSuspensions').doc(restoreMode.id), {status:'reactivated',reactivatedBy:'teacher-fixed-schedule',reactivatedAt:FieldValue.serverTimestamp(),resumeChangeId:id});
     }
     else if (restoreMode) tx.update(db.collection('coursePortalIrregularCourses').doc(restoreMode.id), {resumedFrom:date,resumeChangeId:id,updatedAt:FieldValue.serverTimestamp()});
     if (stoppedAddMode) {
       const modeKey = hash([session.teacherId,subjectId,...studentIds.slice().sort()].join('|'));
-      tx.set(db.collection('coursePortalIrregularCourses').doc(modeKey), {teacherId:session.teacherId,subjectId,studentIds,source:jsonValue(stoppedAddMode.source),effectiveDate:stoppedAddMode.effectiveDate,resumedFrom:'',intervals:priorIntervals,enabled:true,updatedAt:FieldValue.serverTimestamp()}, {merge:true});
+      tx.set(db.collection('coursePortalIrregularCourses').doc(modeKey), {teacherId:session.teacherId,subjectId,studentIds,source:jsonValue(stoppedAddMode.source),blockedSourceCourseId:stoppedAddMode.blockedSourceCourseId || '',effectiveDate:stoppedAddMode.effectiveDate,resumedFrom:'',intervals:priorIntervals,enabled:true,updatedAt:FieldValue.serverTimestamp()}, {merge:true});
       tx.update(db.collection('coursePortalStudentSuspensions').doc(stoppedAddMode.id), {status:'reactivated',reactivatedBy:'teacher-single-schedule',reactivatedAt:FieldValue.serverTimestamp(),resumeChangeId:id});
     }
     tx.set(changeRef, changePayload);
