@@ -193,13 +193,14 @@ async function ensureFirebaseAuthUser(account, email, password, user, manager) {
     if (clean(user && user.name)) create.displayName = clean(user.name);
     authUser = await auth.createUser(create);
   }
-  const claims = Object.assign({}, authUser.customClaims || {}, {
+  const claims = Object.assign({}, {
     employee: true,
     manager,
     role: manager ? 'admin' : user.role,
     employeeId: user.employeeId,
     identityType: user.identityType,
-    sourceCollection: account.collection
+    sourceCollection: account.collection,
+    sourceDocId: account.id
   });
   await auth.setCustomUserClaims(authUser.uid, claims);
   return authUser.uid;
@@ -368,4 +369,4 @@ function registerEmployeeAuth(exportsObject, helpers = {}) {
   });
 }
 
-module.exports = { registerEmployeeAuth };
+module.exports = { registerEmployeeAuth, findAccount, normalizeUser, accountStatus, isManager };

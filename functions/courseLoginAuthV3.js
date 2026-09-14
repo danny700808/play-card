@@ -5,6 +5,7 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const { bindingIdentity, bindingIdentityPatch, decideLineLoginBinding } = require('./courseLoginPolicy');
+const { createUnifiedLogin } = require('./unifiedLogin');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -49,7 +50,7 @@ function asMillis(value) {
 
 function validType(value) {
   const type = clean(value).toLowerCase();
-  return ['teacher', 'student', 'renter'].includes(type) ? type : '';
+  return ['teacher', 'student', 'renter', 'unified'].includes(type) ? type : '';
 }
 
 function bindingCollection(type) {
@@ -63,7 +64,7 @@ function lineAccountId(type, lineUserId) {
 }
 
 function portalEntryUrl(params = {}) {
-  const url = new URL(`${PORTAL_BASE}/course-portal.html`);
+  const url = new URL(`${PORTAL_BASE}/${params.role === 'unified' ? 'login.html' : 'course-portal.html'}`);
   Object.entries(params).forEach(([key, value]) => {
     const text = clean(value);
     if (text) url.searchParams.set(key, text);
@@ -87,11 +88,14 @@ function lineAuthorizationUrl(state) {
 async function startLineLogin(data) {
   const type = validType(data && data.type);
   if (!type) throw new HttpsError('invalid-argument', '不支援的入口類型。');
+  if (type === 'unified' && !/^[a-f0-9]{64}$/.test(clean(data.challenge))) throw new HttpsError('invalid-argument','登入驗證資料不完整，請重新開啟入口。');
 
   const state = randomToken(32);
   const expiresAt = Timestamp.fromMillis(Date.now() + LINE_OAUTH_STATE_TTL_MS);
   await db.collection('coursePortalLineOAuthStates').doc(hash(state)).set({
     type,
+    forceEmployeeLink: type === 'unified' && data.forceEmployeeLink === true,
+    challenge: type === 'unified' ? clean(data.challenge) : '',
     linkAnother: type === 'student' && data && data.linkAnother === true,
     stateHint: state.slice(-6),
     status: 'pending',
@@ -339,6 +343,13 @@ async function lineLoginCallback(req, res) {
 
     const token = await exchangeLineAuthorizationCode(code);
     const profile = await lineLoginProfile(token.access_token);
+    if (type === 'unified') {
+      const ticket = await unifiedLogin().issue(profile, {forceEmployeeLink:stateRow.forceEmployeeLink === true,challenge:stateRow.challenge});
+      const redirectUrl = `${PORTAL_BASE}/login.html?unifiedTicket=${encodeURIComponent(ticket)}`;
+      await stateRef.set({status:'used',redirectUrl,completedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()},{merge:true});
+      res.redirect(302, redirectUrl);
+      return;
+    }
     const allBindings = await refreshBindingProfiles(
       await bindingsForLine(type, profile.lineUserId),
       profile,
@@ -424,7 +435,18 @@ async function lineLoginCallback(req, res) {
   }
 }
 
+let unifiedLoginInstance;
+function unifiedLogin() {
+  if (!unifiedLoginInstance) unifiedLoginInstance = createUnifiedLogin({db,auth:admin.auth(),hash,randomToken,Timestamp,FieldValue,bindingsForLine,decideLineLoginBinding,issueAccessToken,issueSetupToken,portalEntryUrl});
+  return unifiedLoginInstance;
+}
+
 function registerCourseLoginAuthV3(exportsObject) {
+  const unifiedOptions = {region:REGION,cors:ALLOWED_ORIGINS,timeoutSeconds:60,memory:'256MiB'};
+  exportsObject.unifiedLoginStatus = onCall(unifiedOptions,request=>unifiedLogin().status(request.data||{}));
+  exportsObject.unifiedLoginRedeem = onCall(unifiedOptions,request=>unifiedLogin().redeem(request.data||{}));
+  exportsObject.employeeLinkLineLogin = onCall(unifiedOptions,request=>unifiedLogin().link(request.data||{},request));
+  exportsObject.employeeUnlinkLineLogin = onCall(unifiedOptions,request=>unifiedLogin().unlink(request));
   exportsObject.coursePortalStartLineLogin = onCall({
     region: REGION,
     cors: ALLOWED_ORIGINS,

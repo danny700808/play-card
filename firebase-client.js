@@ -3774,19 +3774,14 @@
     const data = configFromPayload(payload, employee || {employeeId:employeeId});
     const effectiveDate = fmtDate(data.effectiveDate) || localDateKey(new Date());
     const historyId = [safeId(employeeId), effectiveDate.replace(/-/g,''), Date.now().toString(36)].join('_');
-    await Promise.all([
-      d.collection('employees').doc(docId).set(data, {merge:true}),
-      d.collection('employeeSalaryConfigs').doc(employeeId).set(data, {merge:true}),
-      d.collection('employeeSalaryConfigHistory').doc(historyId).set(Object.assign({}, data, {
-        historyId:historyId,
-        employeeId:employeeId,
-        effectiveDate:effectiveDate,
-        savedAt:serverTs(),
-        savedBy:clean(payload.userId),
-        source:'firebase-salary-history-v1'
-      })),
-      d.collection('salarySetup').doc('default').set({employeeConfigMap:{[employeeId]:data}, updatedAt:serverTs(), source:'firebase-mydata-map2'}, {merge:true})
-    ]);
+    const batch = d.batch();
+    batch.set(d.collection('employees').doc(docId), data, {merge:true});
+    batch.set(d.collection('employeeSalaryConfigs').doc(employeeId), data, {merge:true});
+    batch.set(d.collection('employeeSalaryConfigHistory').doc(historyId), Object.assign({}, data, {
+      historyId, employeeId, effectiveDate, savedAt:serverTs(), savedBy:clean(payload.userId), source:'firebase-salary-history-v1'
+    }));
+    batch.set(d.collection('salarySetup').doc('default'), {employeeConfigMap:{[employeeId]:data}, updatedAt:serverTs(), source:'firebase-mydata-map2'}, {merge:true});
+    await batch.commit();
     return {ok:true, message:'薪資設定已儲存。', employeeId:employeeId, employeeConfig:data};
   }
   async function getEmployeeSalaryConfigHistory(payload){
