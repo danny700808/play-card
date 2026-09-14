@@ -13108,7 +13108,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalAdminSaveLessonSettings = callable(async (data, request) => { assertAdminPin(request); return adminSaveLessonSettings(data); }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveLeaveReason = callable(async (data, request) => { assertAdminPin(request); return adminSaveLeaveReason(data); }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveSchedule = callable(async (data, request) => { assertAdminPin(request); return adminSaveSchedule(data); }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminSetAttendance = callable(withPortalReads(async (data, request) => { assertAdminPin(request); return data.action === 'refresh' ? adminAttendanceDetail(data) : adminSetAttendance(data); }), { secrets: [ADMIN_PIN], timeoutSeconds:180, memory:'1GiB' });
+  exportsObject.coursePortalAdminSetAttendance = callable(withPortalReads(async (data, request) => { assertAdminPin(request); return data.action === 'refresh' ? adminAttendanceDetail(data) : adminSetAttendance(data); }), { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveStudent = callable(async (data,request)=>{assertAdminPin(request);return adminSaveStudent(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveTuitionPeriods = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTuitionPeriods(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveTeacherSubjects = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTeacherSubjects(data);},{secrets:[ADMIN_PIN]});
