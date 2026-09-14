@@ -437,7 +437,7 @@ async function lineLoginCallback(req, res) {
 
 let unifiedLoginInstance;
 function unifiedLogin() {
-  if (!unifiedLoginInstance) unifiedLoginInstance = createUnifiedLogin({db,auth:admin.auth(),hash,randomToken,Timestamp,FieldValue,bindingsForLine,decideLineLoginBinding,issueAccessToken,issueSetupToken,portalEntryUrl});
+  if (!unifiedLoginInstance) unifiedLoginInstance = createUnifiedLogin({findPortalAccount:require('./coursePortal').findEmailLoginAccount,issuePortalSession:require('./coursePortal').issueSession,db,auth:admin.auth(),hash,randomToken,Timestamp,FieldValue,bindingsForLine,decideLineLoginBinding,issueAccessToken,issueSetupToken,portalEntryUrl});
   return unifiedLoginInstance;
 }
 
