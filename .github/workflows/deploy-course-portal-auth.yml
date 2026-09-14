@@ -84,6 +84,8 @@ on:
       - "storage.rules"
       - "firebase.security-test.json"
       - "tests/private-data-rules.emulator.cjs"
+      - "tests/private-inventory-pin.test.cjs"
+      - ".github/scripts/ensure-private-inventory-pin.cjs"
       - "tests/course-portal.test.js"
       - "tests/course-subject-catalog.test.js"
       - "tests/course-login-policy.test.js"
@@ -146,6 +148,7 @@ jobs:
           node --check functions/privateContractAssets.js
           node --check functions/rentalCustomerPolicy.js
           node --test tests/private-data-backend.test.cjs tests/rental-private-submit.test.cjs
+          node --test tests/private-inventory-pin.test.cjs
           node --check functions/easystoreCatalogSync.js
           node --check functions/externalTeacherOnboarding.js
           node --check functions/externalTeacherWork.js
@@ -280,6 +283,12 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: node .github/scripts/ensure-room-booking-indexes.cjs
+
+      - name: Preserve or provision a private inventory PIN
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+          INVENTORY_COUNT_PIN_HASH: ${{ secrets.INVENTORY_COUNT_PIN_HASH }}
+        run: node .github/scripts/ensure-private-inventory-pin.cjs
 
       - name: Deploy portal and protected internal Functions
         env:
