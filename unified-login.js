@@ -5,7 +5,7 @@
   function node(id){return document.getElementById(id);}
   function message(text,error){const el=node('unifiedLoginMessage');if(el){el.hidden=!text;el.textContent=text;el.style.color=error?'#a12626':'#355f4a';}}
   async function call(name,data,authenticated){
-    if(name!=='coursePortalStartLineLogin')data={...data,proof:sessionStorage.getItem(key+'-proof')||''};
+    if(name!=='coursePortalStartLineLogin')data={...data,proof:storedProof()};
     if(global.YZFirebase&&global.YZFirebase.init)global.YZFirebase.init();
     const project=global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG.projectId;
     if(!project)throw new Error('登入設定尚未載入，請重新整理。');
@@ -19,11 +19,32 @@
       return json.result||json.data||{};
     }finally{clearTimeout(timer);}
   }
-  function clearTicket(){ticket='';sessionStorage.removeItem(key);sessionStorage.removeItem(key+'-proof');}
+  function storedProof(){
+    const current=sessionStorage.getItem(key+'-proof');if(current)return current;
+    try{const saved=JSON.parse(localStorage.getItem(key+'-browser-proof')||'null');if(saved&&saved.expires>Date.now()&&/^[a-f0-9]{64}$/.test(saved.value)){sessionStorage.setItem(key+'-proof',saved.value);return saved.value;}}catch(e){}
+    return '';
+  }
+  function saveProof(value){sessionStorage.setItem(key+'-proof',value);try{localStorage.setItem(key+'-browser-proof',JSON.stringify({value,expires:Date.now()+10*60*1000}));}catch(e){}}
+  function clearTicket(){ticket='';sessionStorage.removeItem(key);sessionStorage.removeItem(key+'-proof');try{localStorage.removeItem(key+'-browser-proof');}catch(e){}}
+  async function resumeSession(){
+    if(!global.firebase||typeof global.firebase.auth!=='function'||typeof global.getUser!=='function')return false;
+    const saved=global.getUser();if(!saved||saved.portalSessionBridge===true)return false;
+    global.YZFirebase.init();const auth=global.firebase.auth();
+    const user=auth.currentUser||await new Promise(resolve=>{let off=()=>{};const timer=setTimeout(()=>{off();resolve(null);},6000);off=auth.onAuthStateChanged(user=>{clearTimeout(timer);off();resolve(user);},()=>{clearTimeout(timer);off();resolve(null);});});
+    if(!user)return false;
+    try{const result=await user.getIdTokenResult(true),claims=result.claims||{};
+      if(claims.employee!==true||String(claims.employeeId)!==String(saved.employeeId||saved.id))return false;
+      const manager=claims.manager===true;
+      const restored={...saved,role:manager?'admin':claims.role,identityType:claims.identityType,isManagerAccount:manager,showSettingsZone:manager};
+      global.saveUser(restored);localStorage.setItem('employeeSecureAuthVersion','1');
+      global.redirectToLoginTarget(global.requestedLoginTarget()||global.loginDestination(restored));return true;
+    }catch(e){return false;}
+  }
+
   async function start(forceEmployeeLink){
     if(busy)return;busy=true;
     message('正在開啟 LINE 登入…');
-    try{clearTicket();const bytes=global.crypto.getRandomValues(new Uint8Array(32));const proof=Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');sessionStorage.setItem(key+'-proof',proof);const digest=await global.crypto.subtle.digest('SHA-256',new TextEncoder().encode(proof));const challenge=Array.from(new Uint8Array(digest),value=>value.toString(16).padStart(2,'0')).join('');const result=await call('coursePortalStartLineLogin',{type:'unified',forceEmployeeLink:forceEmployeeLink===true,challenge});const url=new URL(result.authorizationUrl);if(url.origin!=='https://access.line.me')throw new Error('LINE 登入連結不正確。');global.location.assign(url.href);}
+    try{clearTicket();const bytes=global.crypto.getRandomValues(new Uint8Array(32));const proof=Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');saveProof(proof);const digest=await global.crypto.subtle.digest('SHA-256',new TextEncoder().encode(proof));const challenge=Array.from(new Uint8Array(digest),value=>value.toString(16).padStart(2,'0')).join('');const result=await call('coursePortalStartLineLogin',{type:'unified',forceEmployeeLink:forceEmployeeLink===true,challenge});const url=new URL(result.authorizationUrl);if(url.origin!=='https://access.line.me')throw new Error('LINE 登入連結不正確。');global.location.assign(url.href);}
     catch(error){busy=false;message(error.message,true);}
   }
   async function choose(choice){
@@ -36,7 +57,9 @@
 
   async function finish(result){
     if(result.kind==='employee'){
-      await global.firebase.auth().signInWithCustomToken(result.token);
+      const auth=global.firebase.auth();
+      if(auth.setPersistence)await auth.setPersistence(global.firebase.auth.Auth.Persistence.LOCAL);
+      await auth.signInWithCustomToken(result.token);
       global.saveUser(result.user);localStorage.setItem('employeeSecureAuthVersion','1');clearTicket();
       const target=global.requestedLoginTarget()||global.loginDestination(result.user);
       global.redirectToLoginTarget(target);
@@ -92,9 +115,11 @@
     const params=new URLSearchParams(global.location.search),incoming=params.get('unifiedTicket');
     if(incoming){ticket=incoming;sessionStorage.setItem(key,ticket);params.delete('unifiedTicket');global.history.replaceState(null,'',global.location.pathname+(params.size?'?'+params.toString():'')+global.location.hash);}
     else ticket=sessionStorage.getItem(key)||'';
+    if(!incoming&&await resumeSession())return;
     if(params.get('lineStart')==='1'){params.delete('lineStart');global.history.replaceState(null,'',global.location.pathname+(params.size?'?'+params.toString():''));await start(false);return;}
     if(params.get('lineError'))message(params.get('lineError'),true);
     if(!ticket)return;
+    if(!storedProof()){clearTicket();if(await resumeSession())return;showEmail();message('LINE 返回時切換了瀏覽器。請用 Email 完成這次登入；不需要重新綁定。');return;}
     try{
       const result=await call('unifiedLoginStatus',{ticket});
       if(result.choices.length&&!result.forceEmployeeLink){await choose((result.choices.find(c=>c.id==='employee')||result.choices[0]).id);return;}
