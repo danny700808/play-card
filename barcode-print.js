@@ -141,12 +141,25 @@
     $('bpPrintForm').addEventListener('submit',printSelected);document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
   }
   let appInitialized=false;
+  async function loadProducts(){
+    $('bpSearchHelp').textContent='正在確認登入並讀取商品資料…';
+    try{
+      state.db=initDb();
+      await global.YZManagerAuth.requireManager({next:'barcode-print.html',redirect:false});
+      const snap=await state.db.collection(COLLECTION).limit(10000).get();
+      state.products=snap.docs.map(normalize).filter(function(p){return p.enabled&&p.status!=='inactive'&&p.status!=='discontinued';}).sort(function(a,b){const imageDiff=Number(!!b.imageUrl)-Number(!!a.imageUrl);return imageDiff||a.name.localeCompare(b.name,'zh-Hant',{numeric:true});});
+      applySearch();$('bpSearch').focus();
+    }catch(err){
+      $('bpProducts').innerHTML='<div class="bp-empty">商品資料讀取失敗：'+esc(err.message||err)+'<p>請使用管理者帳號登入後，再讀取商品。</p><p><a href="login.html?next=barcode-print.html">登入並返回條碼列印</a></p><button type="button" id="bpRetry">重新讀取商品</button></div>';
+      $('bpSearchHelp').textContent='尚未取得商品資料';
+      $('bpRetry').addEventListener('click',function(){this.disabled=true;loadProducts();});
+    }
+  }
   async function initApp(){
     if(appInitialized)return;
     appInitialized=true;
     bind();
-    try{state.db=initDb();const snap=await state.db.collection(COLLECTION).limit(10000).get();state.products=snap.docs.map(normalize).filter(function(p){return p.enabled&&p.status!=='inactive'&&p.status!=='discontinued';}).sort(function(a,b){const imageDiff=Number(!!b.imageUrl)-Number(!!a.imageUrl);return imageDiff||a.name.localeCompare(b.name,'zh-Hant',{numeric:true});});state.filtered=state.products.slice();render();$('bpSearch').focus();}
-    catch(err){$('bpProducts').innerHTML='<div class="bp-empty">商品資料讀取失敗：'+esc(err.message||err)+'</div>';$('bpSearchHelp').textContent='請確認網路與 Firebase 權限';}
+    await loadProducts();
     checkService();setInterval(checkService,30000);
   }
   function init(){
