@@ -28,13 +28,13 @@ test('teacher homepage opts into scoped profiles and returns only own lessons',a
 test('candidate lookup uses nearby fourteen days and retains server conflict checks',()=>{
  const source=extract(backend,'teacherSlotOptions');
  assert(source.includes('addDays(targetDate, -7)'));assert(source.includes('addDays(candidateStart, 13)'));
- assert(source.includes('scheduleBundle(candidateStart, candidateEnd, session.teacherId)'));
+ assert(source.includes('scheduleBundle(candidateStart, candidateEnd, session.teacherId, {teacherHome:true})'));
  assert(source.includes('eventBlocksResource(event)'));assert(source.includes('sharedResourceConflict(blockers'));
  assert(source.includes('data.weekly === true ? 8 : 1'));
 });
 test('cached teacher data appears immediately then refreshes, with a visible stale-data notice',async()=>{
  const source=fs.readFileSync('teacher-course-portal-v8.js','utf8');let resolve;const messages=[],renders=[];
- const c={dataRequestVersion:0,activeTab:'schedule',token:'session',weekStart:'2026-09-07',payrollMonth:'2026-09',data:{},readCache:()=>({events:[{id:'cached'}]}),mergeData:r=>{c.data=r},renderAll:()=>renders.push(c.data.events[0].id),showDataFreshness:t=>messages.push(t),invoke:()=>new Promise(r=>resolve=r),writeCache:()=>{},PortalAuth:null};
+ const c={teacherOperations:{version:()=>0,hasPending:()=>false},dataRequestVersion:0,activeTab:'schedule',token:'session',weekStart:'2026-09-07',payrollMonth:'2026-09',data:{},readCache:()=>({events:[{id:'cached'}]}),mergeData:r=>{c.data=r},renderAll:()=>renders.push(c.data.events[0].id),showDataFreshness:t=>messages.push(t),invoke:()=>new Promise(r=>resolve=r),writeCache:()=>{},PortalAuth:null};
  vm.createContext(c);vm.runInContext(extract(source,'fetchData'),c);await c.fetchData(false);assert.deepEqual(renders,['cached']);assert(messages.at(-1).includes('上次'));
  resolve({events:[{id:'fresh'}]});await new Promise(r=>setImmediate(r));assert.deepEqual(renders,['cached','fresh']);assert.equal(messages.at(-1),'');
 });
