@@ -5274,6 +5274,17 @@ function teacherFollowupSnapshot(bundle, teacherId) {
 
 async function teacherPortalData(data) {
   const session = await requireSession(data, ['teacher']);
+  if (data.reminderSettings === true) {
+    const ref = db.collection('coursePortalTeacherReminderSettings').doc(session.teacherId);
+    if (data.save === true) {
+      if (typeof data.todayCourses !== 'boolean' || typeof data.eveningAttendance !== 'boolean') throw new HttpsError('invalid-argument', '提醒設定格式不正確。');
+      await ref.set({todayCourses:data.todayCourses, eveningAttendance:data.eveningAttendance, updatedAt:FieldValue.serverTimestamp()}, {merge:true});
+    }
+    const snapshot = await ref.get();
+    const value = snapshot.exists ? snapshot.data() : {};
+    return {ok:true, todayCourses:value.todayCourses !== false, eveningAttendance:value.eveningAttendance !== false};
+  }
+
   if (Array.isArray(data.refreshDates)) {
     const dates = [...new Set(data.refreshDates.map(dateKey).filter(Boolean))].sort();
     if (!dates.length || dates.length > 7) throw new HttpsError('invalid-argument','請選擇最多七天的課表。');
@@ -12656,66 +12667,42 @@ async function teacherDailyWorkIdentity(teacherId, binding = {}) {
   };
 }
 
-async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCounts) {
-  const today = currentTaipeiDay();
-  if (weekday(today) === 1) return;
-  const yesterday = addDays(today, -1);
-  const [bindings, bundle] = await Promise.all([
+async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCounts, runAt = new Date()) {
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:TAIPEI,year:'numeric',month:'2-digit',day:'2-digit'}).format(runAt);
+  const hour = Number(new Intl.DateTimeFormat('en-GB', {timeZone:TAIPEI,hour:'2-digit',hourCycle:'h23'}).format(runAt));
+  if (weekday(today) === 1 || ![9,22].includes(hour)) return;
+  const evening = hour === 22;
+  const previous = addDays(today, weekday(today) === 2 ? -2 : -1);
+  const [bindings, bundle, settings] = await Promise.all([
     db.collection('coursePortalTeacherBindings').where('status', '==', 'active').get(),
-    scheduleBundle(yesterday, today, '')
+    scheduleBundle(evening ? today : previous, today, ''),
+    db.collection('coursePortalTeacherReminderSettings').get()
   ]);
-  const targets = [...new Map(bindings.docs.map((doc) => {
-    const row = doc.data() || {};
-    const key = `${clean(row.teacherId)}|${notificationRecipientKey(row)}`;
-    return [key, Object.assign({ id: doc.id }, row)];
-  }).filter(([key, row]) =>
-    key !== '|' && clean(row.teacherId) && notificationRecipientKey(row)
-  )).values()];
+  const preferences = new Map(settings.docs.map(doc=>[doc.id,doc.data() || {}]));
+  const targets = [...new Map(bindings.docs.map(doc=>{
+    const row=doc.data() || {};
+    return [`${clean(row.teacherId)}|${notificationRecipientKey(row)}`, row];
+  }).filter(([,row])=>clean(row.teacherId) && notificationRecipientKey(row))).values()];
   for (const binding of targets) {
     const teacherId = clean(binding.teacherId);
-    const rows = bundle.resourceEvents.filter((row) =>
-      eventTeacherId(row) === teacherId &&
-      !['cancelled', 'pending_conflict'].includes(normalizeScheduleStatus(row.status))
-    );
-    const todayRows = rows.filter((row) => eventDate(row) === today)
-      .sort((left, right) => eventStart(left).localeCompare(eventStart(right)));
-    const unfinished = rows.filter((row) =>
-      eventDate(row) === yesterday &&
-      normalizeScheduleStatus(row.status) === 'scheduled'
-    ).sort((left, right) => eventStart(left).localeCompare(eventStart(right)));
-    const parts = todayRows.length ? [
-      '【今日課程】',
-      todayRows.map((row) => teacherReminderLessonLine(row, bundle.maps)).join('\n')
-    ] : [];
+    const preference = preferences.get(teacherId) || {};
+    if (evening && preference.eveningAttendance === false) continue;
+    const rows = bundle.resourceEvents.filter(row=>eventTeacherId(row) === teacherId && !['cancelled','pending_conflict'].includes(normalizeScheduleStatus(row.status)))
+      .sort((a,b)=>eventStart(a).localeCompare(eventStart(b)));
+    const todayRows = rows.filter(row=>eventDate(row) === today);
+    const unfinished = rows.filter(row=>eventDate(row) === (evening ? today : previous) && normalizeScheduleStatus(row.status) === 'scheduled');
+    const parts = [];
+    if (!evening && preference.todayCourses !== false && todayRows.length) parts.push('老師您好，今天的課程如下：','【今日課程】',todayRows.map(row=>teacherReminderLessonLine(row,bundle.maps)).join('\n'));
     if (unfinished.length) {
-      parts.push(
-        '',
-        '【昨日未完成紀錄】',
-        unfinished.map((row) => teacherReminderLessonLine(row, bundle.maps)).join('\n'),
-        unfinished.length === 1
-          ? '此課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請聯絡管理者協助核對及補登。'
-          : '以上課程昨日未完成簽到，因此尚未記錄堂數。若當天沒有上課，請下次記得主動登記請假；若有上課，請聯絡管理者協助核對及補登。'
-      );
-    }
-    if (typeof teacherWorkPendingCounts === 'function') {
-      try {
-        const identity = await teacherDailyWorkIdentity(teacherId, binding);
-        const pending = await teacherWorkPendingCounts(identity);
-        if (Number(pending && pending.announcementCount || 0) || Number(pending && pending.taskCount || 0)) {
-          parts.push('', '【系統待辦】');
-          if (Number(pending.announcementCount || 0)) parts.push(`有 ${Number(pending.announcementCount)} 則新公告或待回覆公告`);
-          if (Number(pending.taskCount || 0)) parts.push(`有 ${Number(pending.taskCount)} 項協助事項尚未完成`);
-          parts.push(`查看：${PORTAL_BASE}/teacher-course-portal.html`);
-        }
-      } catch (error) {
-        console.warn('[teacher daily work reminder unavailable]', teacherId, clean(error && error.message));
-      }
+      parts.push(evening ? '老師您好，今天有以下課程尚未完成簽到：' : (weekday(today) === 2 ? '星期日有以下課程未完成簽到：' : '昨天有以下課程未完成簽到：'),
+        evening ? '【當天未完成簽到】' : '【昨日未完成紀錄】', unfinished.map(row=>teacherReminderLessonLine(row,bundle.maps)).join('\n'),
+        evening ? '若已上課，請記得在今天完成簽到；若學生沒有上課，請在今天點選請假。' : '若已上課，請進入課表補簽到；若學生沒有上課，下次請記得當天要點選請假。');
     }
     if (!parts.length) continue;
-    const body = parts.join('\n').trim();
-    await queueCoursePortalNotice(`teacher-daily-${hash(`${today}|${teacherId}|${notificationRecipientKey(binding)}`)}`, {
-      ...recipientFields(binding), teacherId, eventCode: 'teacher_daily_courses', body
-    });
+    parts.push(`查看課表：${PORTAL_BASE}/teacher-course-portal.html`);
+    // Keep the existing morning key: retries and an old morning invocation cannot enqueue twice.
+    const id = evening ? `teacher-evening-${hash(`${today}|${teacherId}|${notificationRecipientKey(binding)}`)}` : `teacher-daily-${hash(`${today}|${teacherId}|${notificationRecipientKey(binding)}`)}`;
+    await queueCoursePortalNotice(id, {...recipientFields(binding),teacherId,eventCode:evening?'teacher_evening_attendance':'teacher_daily_courses',body:parts.join('\n\n')});
   }
 }
 
@@ -13224,12 +13211,12 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     memory: '512MiB'
   }, async () => dailyStudentReminders(helpers.pushLineMessage));
   exportsObject.coursePortalTeacherDailyReminder = onSchedule({
-    schedule: '0 9 * * 0,2-6',
+    schedule: '0 9,22 * * 0,2-6',
     timeZone: TAIPEI,
     region: REGION,
     timeoutSeconds: 180,
     memory: '512MiB'
-  }, async () => dailyTeacherCourseReminders(helpers.pushLineMessage, helpers.teacherWorkPendingCounts));
+  }, async (event) => dailyTeacherCourseReminders(helpers.pushLineMessage, helpers.teacherWorkPendingCounts, new Date(event.scheduleTime || Date.now())));
 }
 
 module.exports = {
