@@ -1371,6 +1371,7 @@
     const node=document.getElementById('teacherDataFreshness');
     if(node){const retry=document.createElement('button');retry.textContent='重新更新';retry.onclick=()=>teacherOperations.retry();node.appendChild(retry);}
   }
+  let refreshRosterAfterSync=false;
   const teacherOperations=global.YouziTeacherOperations.create({
     read:dates=>invoke('coursePortalTeacherData',{sessionToken:token,refreshDates:dates}),
     apply:snapshot=>{
@@ -1378,7 +1379,10 @@
       data.events=data.events.filter(row=>!dates.has(row.date)).concat((snapshot.events||[]).filter(row=>row.date>=weekStart&&row.date<=addDays(weekStart,6)));
       writeCache(weekStart,payrollMonth,data);renderWeek();syncOperationButtons();
     },
-    synced:remaining=>showDataFreshness(remaining?'已儲存，正在更新相關課程。':''),
+    synced:remaining=>{
+      showDataFreshness(remaining?'已儲存，正在更新相關課程。':'');
+      if(!remaining&&refreshRosterAfterSync){refreshRosterAfterSync=false;void load(true);}
+    },
     error:()=>syncFailure('操作已儲存，課表更新未完成。')
   });
   function beginLessonOperation(row,button,label){
@@ -1798,6 +1802,7 @@
       console.info('[teacher operation]',{stage:'save',action:payload.action,ms:Date.now()-job.started});
       showDataFreshness('已儲存，正在更新相關課程。');
       const dates=payload.action==='permanent_move'?Array.from({length:7},(_,i)=>addDays(weekStart,i)):[payload.sourceDate,payload.date];
+      if(payload.irregularId||payload.suspensionId)refreshRosterAfterSync=true;
       teacherOperations.saved(dates);
     } catch (error) {
       setProgress(false);
