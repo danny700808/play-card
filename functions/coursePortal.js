@@ -9616,7 +9616,7 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     const portalAttendance = portalAttendanceSnapshot.docs.map((doc) =>
       Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
     );
-    const correctionsSnapshot = await db.collection('coursePortalAttendanceCorrections').where('studentId', '==', studentId).get();
+    const correctionsSnapshot = await db.collection('coursePortalAttendanceCorrections').where('studentId', '==', studentId).where('status', '==', 'pending').get();
     const pendingSlots = correctionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(row => row.status === 'pending');
     const selectedId = clean((options.correctionIds || {})[studentId]);
     const correction = pendingSlots.find(row => row.id === selectedId && row.teacherId === eventTeacherId(event) && row.subjectId === eventSubjectId(event));
