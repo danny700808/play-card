@@ -4718,6 +4718,7 @@ function suspensionAppliesToEvent(suspension, row) {
 }
 
 function applyStudentSuspensions(row, suspensions) {
+  if (!row) return null;
   const originalStudentIds = eventStudentIds(row);
   if (!originalStudentIds.length) return row;
   const retainedStudentIds = originalStudentIds.filter((studentId) =>
@@ -4783,13 +4784,16 @@ async function stoppedRestoreMode(data, session) {
 async function irregularRestoreMode(data, session) {
   if (clean(data.suspensionId)) {
     if (clean(data.action) !== 'permanent_move') throw new HttpsError('invalid-argument','請選擇固定調課。');
-    return stoppedRestoreMode(data, session);
+    const mode = await stoppedRestoreMode(data, session);
+    if (mode.blockedSourceCourseId) throw new HttpsError('failed-precondition','團體課須整組一起調課，不能單獨移出一位學生。請從原團體課操作。');
+    return mode;
   }
   if (!clean(data.irregularId)) return null;
   if (clean(data.action) !== 'permanent_move') throw new HttpsError('invalid-argument','請使用恢復固定排課。');
   const doc = await db.collection('coursePortalIrregularCourses').doc(clean(data.irregularId)).get();
   const mode = doc.exists && doc.data();
   if (!mode || mode.teacherId !== session.teacherId || mode.enabled === false || mode.resumedFrom) throw new HttpsError('permission-denied','這筆不定時課程已變更或不屬於您。');
+  if (mode.blockedSourceCourseId) throw new HttpsError('failed-precondition','團體課須整組一起調課，不能單獨移出一位學生。請從原團體課操作。');
   const stops = await activeStudentSuspensions();
   const studentIds = (mode.studentIds || []).filter(id => !stops.some(stop => clean(stop.teacherId) === session.teacherId && clean(stop.studentId) === clean(id) && (!clean(stop.subjectId) || clean(stop.subjectId) === clean(mode.subjectId))));
   if (!studentIds.length) throw new HttpsError('failed-precondition','學生已停課，請從停課學生名單選擇。');
@@ -5141,14 +5145,15 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
         }
         if (!matchedLessonStatus && removedOccurrence(occurrence, key)) continue;
         const roomId = clean((row.roomOverrides || {})[key] || row.event.roomId);
-        const candidate = Object.assign(occurrence, {
+        const candidate = applyStudentSuspensions(applyIrregularStudentModes(Object.assign(occurrence, {
           roomId,
           portalAction: row.action,
           __id: occurrenceId
-        });
-        if (irregularPlaceholder(candidate, irregularModes)) continue;
+        }), irregularModes), suspensions);
+        if (!candidate || irregularPlaceholder(candidate, irregularModes)) continue;
         const candidateResources = eventSharedResourceIds(candidate, maps);
-        const dynamicConflict = !storedPending && eventBlocksResource(candidate) && base.find((other) =>
+        const dynamicConflict = !storedPending && eventBlocksResource(candidate) && base.map(other => applyIrregularStudentModes(other, irregularModes)).filter(Boolean)
+          .map(other => applyStudentSuspensions(other, suspensions)).filter(Boolean).find((other) =>
           eventDate(other) === key &&
           eventBlocksResource(other) &&
           overlaps(eventStart(candidate), eventEnd(candidate), eventStart(other), eventEnd(other)) &&
