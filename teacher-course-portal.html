@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
 <link rel="stylesheet" href="course-history-view.css?v=20260912-half-hour-v1">
 <style>.teacher-reminder-form{grid-column:1/-1;display:grid;gap:14px}.teacher-reminder-form label{display:flex;align-items:center;gap:10px;min-height:56px;padding:10px;border:1px solid #d6e4dd;border-radius:12px;font-size:16px;line-height:1.6}.teacher-reminder-form input[type=checkbox]{flex:0 0 22px;width:22px;height:22px;margin:0;accent-color:#24735c}.teacher-reminder-form p{margin:0;line-height:1.6}</style>
+<style>.teacher-followup-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,110px));gap:8px;margin-bottom:10px}.teacher-course-app .teacher-followup-tabs .btn{width:100%;min-height:44px;margin:0;padding:8px 10px;background:#fff;color:var(--ink);border:1px solid var(--line);font-size:14px;font-weight:800;line-height:1.4}</style>
 </head>
 <body class="teacher-course-app clean-portal-ui">
   <main class="portal-shell">
@@ -77,12 +78,12 @@
       <section class="card tab-panel" data-panel="schedule">
         <div class="section-title"><h2>課表</h2></div>
         <div class="toolbar teacher-week-toolbar" aria-label="課表操作">
-          <button class="btn teacher-irregular-toggle" id="irregularToggle" type="button" aria-expanded="false" aria-controls="irregularCourses">不定時學生<span id="irregularCount"></span></button>
+          <button class="btn teacher-irregular-toggle" id="irregularToggle" type="button" aria-expanded="false" aria-controls="irregularCourses">不定時／停課<span id="irregularCount"></span></button>
           <button class="btn" id="prevWeek" type="button">上一週</button>
           <button class="btn" id="todayWeek" type="button">今天</button>
           <button class="btn" id="nextWeek" type="button">下一週</button>
         </div>
-        <div id="irregularCourses" class="teacher-irregular-list" hidden><div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn active" id="irregularActiveTab" type="button" aria-pressed="true">不定時學生</button><button class="btn soft" id="stoppedStudentsTab" type="button" aria-pressed="false" style="font-size:13px;padding:6px 10px">停課學生</button></div><div id="irregularList"></div></div>
+        <div id="irregularCourses" class="teacher-irregular-list" hidden><div class="teacher-followup-tabs"><button class="btn active" id="irregularActiveTab" type="button" aria-pressed="true">不定時學生</button><button class="btn" id="stoppedStudentsTab" type="button" aria-pressed="false">停課學生</button></div><div id="irregularList"></div></div>
         <div class="teacher-flow-banner hidden" id="teacherFlowBanner" aria-live="polite">
           <div><strong id="teacherFlowTitle"></strong><span id="teacherFlowDetail"></span></div>
           <button type="button" id="cancelTeacherFlow">取消</button>
