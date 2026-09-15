@@ -4718,6 +4718,7 @@ function suspensionAppliesToEvent(suspension, row) {
 }
 
 function applyStudentSuspensions(row, suspensions) {
+  if (!row) return null;
   const originalStudentIds = eventStudentIds(row);
   if (!originalStudentIds.length) return row;
   const retainedStudentIds = originalStudentIds.filter((studentId) =>
@@ -5141,14 +5142,15 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
         }
         if (!matchedLessonStatus && removedOccurrence(occurrence, key)) continue;
         const roomId = clean((row.roomOverrides || {})[key] || row.event.roomId);
-        const candidate = Object.assign(occurrence, {
+        const candidate = applyStudentSuspensions(applyIrregularStudentModes(Object.assign(occurrence, {
           roomId,
           portalAction: row.action,
           __id: occurrenceId
-        });
-        if (irregularPlaceholder(candidate, irregularModes)) continue;
+        }), irregularModes), suspensions);
+        if (!candidate || irregularPlaceholder(candidate, irregularModes)) continue;
         const candidateResources = eventSharedResourceIds(candidate, maps);
-        const dynamicConflict = !storedPending && eventBlocksResource(candidate) && base.find((other) =>
+        const dynamicConflict = !storedPending && eventBlocksResource(candidate) && base.map(other => applyIrregularStudentModes(other, irregularModes)).filter(Boolean)
+          .map(other => applyStudentSuspensions(other, suspensions)).filter(Boolean).find((other) =>
           eventDate(other) === key &&
           eventBlocksResource(other) &&
           overlaps(eventStart(candidate), eventEnd(candidate), eventStart(other), eventEnd(other)) &&
