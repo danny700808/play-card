@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="portal-clean-ui-v1.css?v=20260730-auth-two-path-v1">
   <link rel="stylesheet" href="global-nav.css?v=20260808-teacher-nav-v1">
 <link rel="stylesheet" href="course-history-view.css?v=20260912-half-hour-v1">
+<style>.teacher-reminder-form{grid-column:1/-1;display:grid;gap:14px}.teacher-reminder-form label{display:flex;align-items:center;gap:10px;min-height:56px;padding:10px;border:1px solid #d6e4dd;border-radius:12px;font-size:16px;line-height:1.6}.teacher-reminder-form input[type=checkbox]{flex:0 0 22px;width:22px;height:22px;margin:0;accent-color:#24735c}.teacher-reminder-form p{margin:0;line-height:1.6}</style>
 </head>
 <body class="teacher-course-app clean-portal-ui">
   <main class="portal-shell">
@@ -132,6 +133,7 @@
         <a href="forms-hub.html"><span class="teacher-more-icon">表</span><b>表格</b><small>集點卡與證明申請</small></a>
         <a href="teacher-profile.html" id="teacherProfileLink"><span class="teacher-more-icon">人</span><b>我的資料</b><small id="teacherProfileLinkHint">基本資料</small><em class="teacher-item-badge hidden" id="teacherProfileBadge" aria-label="資料尚未完成">!</em></a>
         <a href="contract.html" id="teacherContractLink"><span class="teacher-more-icon">約</span><b>合約</b><small>查看與簽署合約</small><em class="teacher-item-badge hidden" id="teacherContractBadge" aria-label="有待簽合約">!</em></a>
+        <a href="#reminders" id="teacherReminderLink"><span class="teacher-more-icon">醒</span><b>提醒設定</b><small>課程與未簽到提醒</small></a>
       </div>
       <button class="btn teacher-more-logout" id="logoutBtn" type="button">登出</button>
     </section>
@@ -183,7 +185,7 @@
   <script src="teacher-course-session-v8.js?v=20260730-auth-two-path-v1"></script>
   <script src="teacher-daily-reminder.js?v=20260806-daily-reminder-v1"></script>
   <script src="teacher-operation-state.js?v=20260915-teacher-speed-v1"></script>
-  <script src="teacher-course-portal-v8.js?v=20260915-teacher-mode-feedback-v1"></script>
+  <script src="teacher-course-portal-v8.js?v=20260915-teacher-reminders-v1"></script>
 
 </body>
 </html>

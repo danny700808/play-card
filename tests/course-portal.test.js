@@ -2691,8 +2691,8 @@ assert(backend.includes("admin.storage().bucket().file(storagePath).save"), '匯
 assert(backend.includes("cacheControl: 'private, no-store, max-age=0'"), '匯款截圖沒有設定私人禁止快取');
 assert(backend.includes('mergePortalTuitionRows'), '主管確認後的期別與付款沒有合併回學費資料');
 assert(backend.includes("schedule: '0 9 * * *'"), '學費 LINE 提醒不是台北時間上午 9 點檢查');
-assert(backend.includes("schedule: '0 9 * * *'"), '老師每日課程 LINE 提醒不是台北時間上午 9 點');
-assert(backend.includes('此課程昨日未完成簽到，因此尚未記錄堂數'), '老師昨日未完成紀錄缺少確認後文字');
+assert(backend.includes("schedule: '0 9,22 * * 0,2-6'"), '老師提醒應沿用單一排程於 9 與 22 點執行');
+assert(backend.includes('若已上課，請進入課表補簽到；若學生沒有上課，下次請記得當天要點選請假。'), '老師昨日未完成紀錄缺少確認後文字');
 const teacherDailyReminderSource = backend.slice(
   backend.indexOf('async function dailyTeacherCourseReminders('),
   backend.indexOf('async function dailyStudentReminders(')

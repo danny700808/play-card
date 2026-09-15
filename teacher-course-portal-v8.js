@@ -327,11 +327,11 @@
     const profileCount = summary.profileCount == null
       ? (result && result.profileComplete === true ? 0 : (missing.length ? 1 : 0))
       : count(summary.profileCount);
-    const contractCount = count(summary.contractCount);
+    const contractCount = 0; // Temporarily closed.
     const taskCount = count(summary.taskCount);
     const announcementCount = count(summary.announcementCount);
-    const goodsCount = count(summary.goodsCount);
-    const goodsAttentionCount = count(summary.goodsAttentionCount);
+    const goodsCount = 0;
+    const goodsAttentionCount = 0;
     const announcementsUnseen = Boolean(TeacherDailyReminder && TeacherDailyReminder.isRevisionUnseen(
       global.localStorage,
       employeeId,
@@ -1091,6 +1091,32 @@
     node.setAttribute('aria-hidden', 'false');
     syncTeacherOverlayScrollLock();
   }
+
+  ['teacherGoodsLink','teacherContractLink'].forEach(id=>document.getElementById(id).addEventListener('click',event=>{
+    event.preventDefault(); event.stopImmediatePropagation(); closeMore();
+    showQuick('暫未開放','','<p style="grid-column:1/-1">此功能暫未開放，開放後將另行通知。</p>',{type:'unavailable'});
+  },true));
+  let reminderLoading = false;
+  document.getElementById('teacherReminderLink').addEventListener('click',async event=>{
+    event.preventDefault();
+    if(reminderLoading)return;
+    reminderLoading=true; closeMore();
+    const context={type:'reminder-settings'};
+    showQuick('提醒設定','','<p>讀取中…</p>',context);
+    try {
+      const value=await invoke('coursePortalTeacherData',{sessionToken:token,reminderSettings:true});
+      if(quickContext!==context)return;
+      document.getElementById('teacherQuickActions').innerHTML=`<div class="teacher-reminder-form"><label><input id="reminderToday" type="checkbox" ${value.todayCourses?'checked':''}> 接收今日課程提醒（每日 09:00）</label><label><input id="reminderEvening" type="checkbox" ${value.eveningAttendance?'checked':''}> 接收當天未簽到提醒（每日 22:00）</label><p class="muted">星期一不發送。早上仍會提醒前一天的漏簽；星期二提醒星期日。</p><button type="button" class="btn primary" id="saveTeacherReminders">儲存設定</button></div>`;
+      document.getElementById('saveTeacherReminders').onclick=async function(){
+        if(this.disabled)return;
+        this.disabled=true; this.textContent='儲存中…';
+        try {await invoke('coursePortalTeacherData',{sessionToken:token,reminderSettings:true,save:true,todayCourses:document.getElementById('reminderToday').checked,eveningAttendance:document.getElementById('reminderEvening').checked});toast('提醒設定已儲存');if(quickContext===context)closeQuick();}
+        catch(error){toast(error.message,'error');}
+        finally{this.disabled=false;this.textContent='儲存設定';}
+      };
+    }catch(error){if(quickContext===context)document.getElementById('teacherQuickActions').textContent='暫時無法讀取，請關閉後重試。';toast(error.message,'error');}
+    finally{reminderLoading=false;}
+  });
 
   function closeAnnouncements() {
     document.getElementById('teacherAnnouncementBackdrop').classList.add('hidden');
