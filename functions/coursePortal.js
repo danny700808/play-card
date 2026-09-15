@@ -4811,7 +4811,7 @@ async function teacherSetIrregular(data) {
   const day = dateKey(data.sourceDate);
   if (!day) throw new HttpsError('invalid-argument','請選擇課程。');
   const version = await readScheduleVersion();
-  const bundle = await scheduleBundle(day,day,session.teacherId);
+  const bundle = await scheduleBundle(day,day,session.teacherId,{teacherHome:true});
   const stoppedMode = await stoppedRestoreMode(data, session);
   const source = stoppedMode ? irregularSource(stoppedMode, day) : bundle.resourceEvents.find(row => row.teacherId === session.teacherId &&
     [row.id,row.sourceId].includes(clean(data.sourceEventId)));
@@ -5241,21 +5241,57 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
   };
 }
 
+function teacherFollowupSnapshot(bundle, teacherId) {
+  const teacher = bundle.maps.teachers[teacherId] || {};
+  const ownEvents = bundle.events.filter(row => row.teacherId === teacherId);
+  const stoppedStudentIds = new Set((bundle.suspensions || [])
+    .filter((row) => clean(row.teacherId) === teacherId)
+    .map((row) => clean(row.studentId))
+    .filter(Boolean));
+  const studentIds = [...new Set(
+    [...bundle.fixedCourses, ...bundle.temporaryCourses]
+      .filter((row) => eventTeacherId(row) === teacherId)
+      .flatMap(eventStudentIds)
+      .concat(ownEvents.flatMap((row) => row.studentIds))
+  )].filter((studentId) => !stoppedStudentIds.has(studentId) || [...bundle.fixedCourses,...bundle.temporaryCourses].some(course => eventTeacherId(course) === teacherId && eventStudentIds(course).includes(studentId) && !(bundle.suspensions||[]).some(stop => stop.studentId===studentId && stop.teacherId===teacherId && (!stop.subjectId || stop.subjectId===eventSubjectId(course)))));
+  const roster = studentIds.map((id) => {
+    const student = bundle.maps.students[id] || {};
+    const phone = normalizePhone(sourcePhone(student));
+    return {
+      id,
+      name: clean(student.name),
+      phone,
+      phoneLast4: phone.slice(-4),
+      teacherName: clean(teacher.name)
+    };
+  }).filter((row) => row.name);
+  return {
+    stoppedCourses: (bundle.suspensions || []).filter(row => clean(row.teacherId) === teacherId && clean(row.status) === 'active').map(row => ({id:clean(row.id || row.suspensionId),studentIds:[clean(row.studentId)],studentName:clean((bundle.maps.students[clean(row.studentId)] || {}).name || row.studentName),subjectId:clean(row.subjectId),effectiveDate:dateKey(row.effectiveDate)})),
+    irregularCourses: bundle.irregularModes.filter(row => row.teacherId === teacherId && row.enabled !== false && (!row.resumedFrom || row.resumedFrom > currentTaipeiDay())).map(row => {const ids=(row.studentIds || []).filter(id => !(bundle.suspensions || []).some(stop => clean(stop.status) === 'active' && clean(stop.teacherId) === teacherId && (!clean(stop.subjectId) || clean(stop.subjectId) === clean(row.subjectId)) && clean(stop.studentId) === clean(id)));return {...row,studentIds:ids,source:{...row.source,studentIds:ids},studentName:ids.map(id=>clean((bundle.maps.students[id]||{}).name)).filter(Boolean).join('－')};}).filter(row=>row.studentIds.length),
+    roster
+  };
+}
+
 async function teacherPortalData(data) {
   const session = await requireSession(data, ['teacher']);
   if (Array.isArray(data.refreshDates)) {
     const dates = [...new Set(data.refreshDates.map(dateKey).filter(Boolean))].sort();
     if (!dates.length || dates.length > 7) throw new HttpsError('invalid-argument','請選擇最多七天的課表。');
-    const [bundles,cancellations] = await Promise.all([
-      Promise.all(dates.map(day => scheduleBundle(day,day,session.teacherId,{teacherHome:true}))),
-      db.collection(ATTENDANCE_CANCELLATIONS).where('teacherId','==',session.teacherId).get()
+    const ranges=[];
+    for(const day of dates){const last=ranges[ranges.length-1];if(last&&addDays(last.end,1)===day)last.end=day;else ranges.push({start:day,end:day});}
+    const modeStart=dateKey(data.modeWeekStart || dates[0]);
+    if(data.includeModes===true&&!modeStart)throw new HttpsError('invalid-argument','名單更新日期無效。');
+    const [bundles,cancellations,modeBundle] = await Promise.all([
+      Promise.all(ranges.map(range => scheduleBundle(range.start,range.end,session.teacherId,{teacherHome:true}))),
+      db.collection(ATTENDANCE_CANCELLATIONS).where('teacherId','==',session.teacherId).get(),
+      data.includeModes===true?scheduleBundle(modeStart,addDays(modeStart,6),session.teacherId,{teacherHome:true}):null
     ]);
     const requests = cancellations.docs.map(doc=>({...doc.data(),id:doc.id}));
     const events = bundles.flatMap(bundle=>bundle.events).filter(event=>event.teacherId===session.teacherId).map(event=>{
       const request=requests.find(row=>dateKey(row.date)===event.date && (clean(row.eventId)===clean(event.sourceId||event.id)||clean(row.courseId)===clean(event.fixedCourseId||event.sourceId||event.id)));
       return {...event,attendanceCancellationStatus:clean(request&&request.status),attendanceCancellationId:clean(request&&request.id)};
     });
-    return {ok:true,refreshDates:dates,events};
+    return {ok:true,refreshDates:dates,events,...(modeBundle?{modeState:teacherFollowupSnapshot(modeBundle,session.teacherId)}:{})};
   }
   const start = dateKey(data.weekStart);
   if (!start) throw new HttpsError('invalid-argument', '週起始日期格式錯誤。');
@@ -5294,27 +5330,7 @@ async function teacherPortalData(data) {
       attendanceCancellationId: clean(request && request.id)
     });
   });
-  const stoppedStudentIds = new Set((bundle.suspensions || [])
-    .filter((row) => clean(row.teacherId) === session.teacherId)
-    .map((row) => clean(row.studentId))
-    .filter(Boolean));
-  const studentIds = [...new Set(
-    [...bundle.fixedCourses, ...bundle.temporaryCourses]
-      .filter((row) => eventTeacherId(row) === session.teacherId)
-      .flatMap(eventStudentIds)
-      .concat(ownEvents.flatMap((row) => row.studentIds))
-  )].filter((studentId) => !stoppedStudentIds.has(studentId) || [...bundle.fixedCourses,...bundle.temporaryCourses].some(course => eventTeacherId(course) === session.teacherId && eventStudentIds(course).includes(studentId) && !(bundle.suspensions||[]).some(stop => stop.studentId===studentId && stop.teacherId===session.teacherId && (!stop.subjectId || stop.subjectId===eventSubjectId(course)))));
-  const roster = studentIds.map((id) => {
-    const student = bundle.maps.students[id] || {};
-    const phone = normalizePhone(sourcePhone(student));
-    return {
-      id,
-      name: clean(student.name),
-      phone,
-      phoneLast4: phone.slice(-4),
-      teacherName: clean(teacher.name)
-    };
-  }).filter((row) => row.name);
+  const followupState = teacherFollowupSnapshot(bundle, session.teacherId);
   const includePayroll = data.includePayroll === true;
   const [payroll, adjustments, portalAdjustmentsSnap, portalPayrollSnap, payrollAttendance] = includePayroll
     ? await Promise.all([
@@ -5349,9 +5365,7 @@ async function teacherPortalData(data) {
     })),
     subjects: bundle.subjects.map((subject) => ({ id: sourceId(subject), name: clean(subject.name) })),
     events: ownEvents,
-    stoppedCourses: (bundle.suspensions || []).filter(row => clean(row.teacherId) === session.teacherId && clean(row.status) === 'active').map(row => ({id:clean(row.id || row.suspensionId),studentIds:[clean(row.studentId)],studentName:clean((bundle.maps.students[clean(row.studentId)] || {}).name || row.studentName),subjectId:clean(row.subjectId),effectiveDate:dateKey(row.effectiveDate)})),
-    irregularCourses: bundle.irregularModes.filter(row => row.teacherId === session.teacherId && row.enabled !== false && (!row.resumedFrom || row.resumedFrom > currentTaipeiDay())).map(row => {const ids=(row.studentIds || []).filter(id => !(bundle.suspensions || []).some(stop => clean(stop.status) === 'active' && clean(stop.teacherId) === session.teacherId && (!clean(stop.subjectId) || clean(stop.subjectId) === clean(row.subjectId)) && clean(stop.studentId) === clean(id)));return {...row,studentIds:ids,source:{...row.source,studentIds:ids},studentName:ids.map(id=>clean((bundle.maps.students[id]||{}).name)).filter(Boolean).join('－')};}).filter(row=>row.studentIds.length),
-    roster
+    ...followupState
   };
   if (includePayroll) {
     const approvedCancellations = cancellationRows.filter((row) => clean(row.status) === 'approved');
@@ -5446,8 +5460,8 @@ async function teacherStopStudent(data) {
     throw new HttpsError('permission-denied', '只能辦理由您授課的學生停課。');
   }
   const [students, teachers, periods, fixedCourses, temporaryCourses] = await Promise.all([
-    mirrorRows('students'),
-    mirrorRows('teachers'),
+    mirrorProfilesByIds('students', [studentId]),
+    mirrorProfilesByIds('teachers', [session.teacherId]),
     mirrorRowsByField('tuitionPeriods', 'studentId', studentId),
     mirrorRows('fixedCourses'),
     mirrorRows('temporaryCourses')
@@ -13120,7 +13134,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalCreateRoomBooking = callable(createRoomBooking, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalMyBookings = callable(rentalMyBookings);
   exportsObject.coursePortalCancelRoomBooking = callable(cancelRoomBooking);
-  exportsObject.coursePortalTeacherSetIrregular = callable(teacherSetIrregular, {timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherSetIrregular = callable(withPortalReads(teacherSetIrregular), {timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLessonStateTaiwan = callable(withPortalReads(teacherLessonState), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherAttendanceTaiwan = callable(withPortalReads(teacherAttendance), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
@@ -13137,7 +13151,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherAttendanceCancellationRequest = callable(withPortalReads(teacherAttendanceCancellationRequest), { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSubmitContactBookPost = callable(teacherSubmitContactBookPost, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherUpdateStudent = callable(teacherUpdateStudent, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherStopStudent = callable(teacherStopStudent, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherStopStudent = callable(withPortalReads(teacherStopStudent), { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherBonusRequest = callable(teacherBonusRequest, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalRentalUseSettings = callable(publicRentalSettings);
   exportsObject.coursePortalAdminRentalSettingsData = callable(async (data, request) => {

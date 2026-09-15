@@ -1300,6 +1300,7 @@
         <div class="field"><label>照片／圖片（可多選）</label><input id="contactBookImages" type="file" accept="image/jpeg,image/png,image/webp" multiple><small class="muted">最多 ${8} 張，每張 3 MB；只會讓對應家長在聯絡簿中查看。</small></div>
         <button class="primary" type="button" data-submit-contact-book>送出給家長</button>
       </div>`, { type: 'contact-book', row });
+    if(contactBookPending.has(operationKey(row)))loading(document.querySelector('[data-submit-contact-book]'),true,'送出中…');
   }
 
   function readFileAsDataUrl(file) {
@@ -1311,9 +1312,19 @@
     });
   }
 
+  const contactBookPending = new Set();
   async function submitContactBook(row, button) {
+    const key = operationKey(row);
+    if (contactBookPending.has(key)) return;
+    contactBookPending.add(key);
+    const context = quickContext;
+    loading(button, true, '送出中…');
+    try {
     const input = document.getElementById('contactBookImages');
     const files = [...((input && input.files) || [])];
+    const selected = document.getElementById('contactBookStudent');
+    const studentId = selected ? selected.value : clean((row.studentIds || [])[0]);
+    const text = clean(document.getElementById('contactBookText').value);
     if (files.length > 8) throw new Error('一次最多可附 8 張照片。');
     const images = await Promise.all(files.map(async (file) => {
       if (!/^image\/(jpeg|png|webp)$/i.test(clean(file.type)) || file.size > 3 * 1024 * 1024) {
@@ -1321,18 +1332,17 @@
       }
       return { name: clean(file.name), dataUrl: await readFileAsDataUrl(file) };
     }));
-    const selected = document.getElementById('contactBookStudent');
-    loading(button, true, '送出中…');
-    try {
       const result = await invoke('coursePortalTeacherSubmitContactBookPost', {
         sessionToken: token, sourceDate: row.date, sourceEventId: row.sourceId || row.id,
         sourceCourseId: row.fixedCourseId || row.courseId, portalChangeId: row.portalChangeId || '',
-        studentId: selected ? selected.value : clean((row.studentIds || [])[0]),
-        text: clean(document.getElementById('contactBookText').value), images
+        studentId, text, images
       });
       toast(result.message || '課堂聯絡簿已送出。');
-      closeQuick();
-    } finally { loading(button, false); }
+      if (quickContext === context) closeQuick();
+    } finally {
+      contactBookPending.delete(key);loading(button,false);
+      if(quickContext&&quickContext.type==='contact-book'&&operationKey(quickContext.row)===key)loading(document.querySelector('[data-submit-contact-book]'),false);
+    }
   }
 
   async function openQuickForEmpty(date, startTime, durationMinutes = 60, weekly = false) {
@@ -1373,15 +1383,19 @@
   }
   let refreshRosterAfterSync=false;
   const teacherOperations=global.YouziTeacherOperations.create({
-    read:dates=>invoke('coursePortalTeacherData',{sessionToken:token,refreshDates:dates}),
+    read:dates=>invoke('coursePortalTeacherData',{sessionToken:token,refreshDates:dates,...(refreshRosterAfterSync?{includeModes:true,modeWeekStart:weekStart}:{})}),
     apply:snapshot=>{
       const dates=new Set(snapshot.refreshDates||[]);
       data.events=data.events.filter(row=>!dates.has(row.date)).concat((snapshot.events||[]).filter(row=>row.date>=weekStart&&row.date<=addDays(weekStart,6)));
+      if(snapshot.modeState){
+        for(const key of ['roster','irregularCourses','stoppedCourses'])if(Array.isArray(snapshot.modeState[key]))data[key]=snapshot.modeState[key];
+        renderRoster();renderIrregularCourses();
+      }
       writeCache(weekStart,payrollMonth,data);renderWeek();syncOperationButtons();
+      if(snapshot.modeState)refreshRosterAfterSync=false;
     },
     synced:remaining=>{
       showDataFreshness(remaining?'已儲存，正在更新相關課程。':'');
-      if(!remaining&&refreshRosterAfterSync){refreshRosterAfterSync=false;void load(true);}
     },
     error:()=>syncFailure('操作已儲存，課表更新未完成。')
   });
@@ -1404,6 +1418,26 @@
     else toast(error.message||'無法確認操作結果，請重新讀取課表後確認。','error');
   }
   function finishLessonOperation(job){teacherOperations.finish(job.key);loading(job.button,false);syncOperationButtons();renderWeek();}
+
+  let studentModePending=false;
+  async function updateStudentMode(name,payload,button,onSaved){
+    if(studentModePending)return;
+    studentModePending=true;
+    const context=quickContext,dates=Array.from({length:7},(_,i)=>addDays(weekStart,i));
+    let saved=false;
+    teacherOperations.begin('student-mode');dataRequestVersion++;loading(button,true,'處理中…');
+    try{
+      const result=await invoke(name,{sessionToken:token,...payload});
+      saved=true;dataRequestVersion++;clearCache();refreshRosterAfterSync=true;
+      if(onSaved)onSaved();else if(quickContext===context)closeQuick();
+      toast(result.message||'學生課程狀態已更新。');
+      showDataFreshness('已儲存，正在更新課表與學生名單。');
+      teacherOperations.saved(dates);
+    }catch(error){
+      if(saved){teacherOperations.saved(dates);syncFailure('已儲存，課表與學生名單更新未完成。');}
+      else toast(error.message||'變更失敗','error');
+    }finally{studentModePending=false;teacherOperations.finish('student-mode');loading(button,false);}
+  }
 
   async function updateLessonState(row,state,button,note){
     const messages={leave:'確定標示學生請假？這個教室時段會釋出。',absent:'確定標示曠課？將依課程長度扣堂，不列入老師薪資。',cancel_change:'確定取消這次新增的課程？'};
@@ -2000,7 +2034,7 @@
       if(kind==='single'){beginAddFlow('extra_lesson',{studentIds:row.studentIds,subjectId:row.subjectId,suspensionId:context.stopped?row.id:''});return;}
       if(kind==='fixed'){chooseFixedFrequency({...row.source,id:row.source?.id||row.id,studentIds:row.studentIds,studentNames:studentNamesByIds(row.studentIds),subjectId:row.subjectId,date:todayKey(),startTime:row.source?.startTime||'23:00',endTime:row.source?.endTime||'23:59',status:'scheduled',irregularId:context.stopped?'':row.id,suspensionId:context.stopped?row.id:''});return;}
       if(kind==='stop'){closeQuick();openStudentStop(row.studentIds[0],todayKey(),row.subjectId);return;}
-      if(kind==='irregular') {loading(followupAction,true);try {await invoke('coursePortalTeacherSetIrregular',{sessionToken:token,suspensionId:row.id,sourceDate:todayKey()});closeQuick();clearCache();await load(true);}catch(error){toast(error.message||'變更失敗','error');}finally{loading(followupAction,false);}return;}
+      if(kind==='irregular') {await updateStudentMode('coursePortalTeacherSetIrregular',{suspensionId:row.id,sourceDate:todayKey()},followupAction);return;}
     }
     if (event.target.closest('[data-quick-stop]') && context && context.row) {
       const ids=context.row.studentIds || [];
@@ -2056,12 +2090,7 @@
     }
     const irregularButton = event.target.closest('[data-confirm-irregular]');
     if (irregularButton && context.type === 'irregular-confirm') {
-      loading(irregularButton,true);
-      try {
-        const result = await invoke('coursePortalTeacherSetIrregular',{sessionToken:token,sourceDate:context.row.date,sourceEventId:context.row.sourceId || context.row.id});
-        closeQuick(); clearCache(); await load(true); toast(result.message);
-      } catch(error) { toast(error.message,'error'); }
-      finally { loading(irregularButton,false); }
+      await updateStudentMode('coursePortalTeacherSetIrregular',{sourceDate:context.row.date,sourceEventId:context.row.sourceId || context.row.id},irregularButton);
       return;
     }
 
@@ -2267,24 +2296,12 @@
     const button = event.currentTarget;
     const studentId = clean(button.dataset.studentId);
     if (!studentId) return;
-    loading(button, true, '停課處理中…');
-    try {
-      const result = await invoke('coursePortalTeacherStopStudent', {
-        sessionToken: token,
+    const effectiveDate=button.dataset.effectiveDate,subjectId=button.dataset.subjectId;
+    await updateStudentMode('coursePortalTeacherStopStudent', {
         studentId,
         confirmed: true,
-        effectiveDate: button.dataset.effectiveDate,
-        subjectId: button.dataset.subjectId
-      });
-      clearCache();
-      closeStudentStop();
-      toast(result.message || '停課已完成。');
-      await load(true);
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      loading(button, false);
-    }
+        effectiveDate,subjectId
+      },button,()=>{if(button.dataset.studentId===studentId&&button.dataset.effectiveDate===effectiveDate&&button.dataset.subjectId===subjectId)closeStudentStop();});
   });
   document.getElementById('closeBonusRequest').addEventListener('click',()=>document.getElementById('bonusRequestModal').classList.add('hidden'));
   document.getElementById('bonusRequestForm').addEventListener('submit',async(event)=>{event.preventDefault();const button=event.submitter;loading(button,true,'送出中…');try{const form=event.currentTarget;let photoData='';const file=document.getElementById('bonusPhoto').files[0];if(file){photoData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=reject;reader.readAsDataURL(file);});}const result=await invoke('coursePortalTeacherBonusRequest',{sessionToken:token,studentId:form.elements.studentId.value,studentName:form.elements.studentName.value,description:form.elements.description.value,photoData});document.getElementById('bonusRequestModal').classList.add('hidden');form.reset();toast(result.message||'申請已送出。');}catch(error){toast(error.message,'error');}finally{loading(button,false);}});
