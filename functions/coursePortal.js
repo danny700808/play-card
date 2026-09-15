@@ -4784,13 +4784,16 @@ async function stoppedRestoreMode(data, session) {
 async function irregularRestoreMode(data, session) {
   if (clean(data.suspensionId)) {
     if (clean(data.action) !== 'permanent_move') throw new HttpsError('invalid-argument','請選擇固定調課。');
-    return stoppedRestoreMode(data, session);
+    const mode = await stoppedRestoreMode(data, session);
+    if (mode.blockedSourceCourseId) throw new HttpsError('failed-precondition','團體課須整組一起調課，不能單獨移出一位學生。請從原團體課操作。');
+    return mode;
   }
   if (!clean(data.irregularId)) return null;
   if (clean(data.action) !== 'permanent_move') throw new HttpsError('invalid-argument','請使用恢復固定排課。');
   const doc = await db.collection('coursePortalIrregularCourses').doc(clean(data.irregularId)).get();
   const mode = doc.exists && doc.data();
   if (!mode || mode.teacherId !== session.teacherId || mode.enabled === false || mode.resumedFrom) throw new HttpsError('permission-denied','這筆不定時課程已變更或不屬於您。');
+  if (mode.blockedSourceCourseId) throw new HttpsError('failed-precondition','團體課須整組一起調課，不能單獨移出一位學生。請從原團體課操作。');
   const stops = await activeStudentSuspensions();
   const studentIds = (mode.studentIds || []).filter(id => !stops.some(stop => clean(stop.teacherId) === session.teacherId && clean(stop.studentId) === clean(id) && (!clean(stop.subjectId) || clean(stop.subjectId) === clean(mode.subjectId))));
   if (!studentIds.length) throw new HttpsError('failed-precondition','學生已停課，請從停課學生名單選擇。');
