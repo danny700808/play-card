@@ -428,12 +428,13 @@ function dateKey(value) {
   if (!match) return '';
   const date = new Date(`${match[1]}-${match[2]}-${match[3]}T12:00:00+08:00`);
   if (!Number.isFinite(date.getTime())) return '';
-  return new Intl.DateTimeFormat('en-CA', {
+  dateKey.formatter ||= new Intl.DateTimeFormat('en-CA', {
     timeZone: TAIPEI,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
-  }).format(date) === match[0] ? match[0] : '';
+  });
+  return dateKey.formatter.format(date) === match[0] ? match[0] : '';
 }
 
 function nowText() {
@@ -480,12 +481,13 @@ function asMillis(value) {
 function addDays(key, amount) {
   const value = new Date(`${key}T12:00:00+08:00`);
   value.setUTCDate(value.getUTCDate() + Number(amount || 0));
-  return new Intl.DateTimeFormat('en-CA', {
+  addDays.formatter ||= new Intl.DateTimeFormat('en-CA', {
     timeZone: TAIPEI,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
-  }).format(value);
+  });
+  return addDays.formatter.format(value);
 }
 
 function addMonths(key, amount) {
@@ -5147,10 +5149,10 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
         if (irregularPlaceholder(candidate, irregularModes)) continue;
         const candidateResources = eventSharedResourceIds(candidate, maps);
         const dynamicConflict = !storedPending && eventBlocksResource(candidate) && base.find((other) =>
-          !replacedTeachingOccurrence(other, permanent, overlay) &&
           eventDate(other) === key &&
           eventBlocksResource(other) &&
           overlaps(eventStart(candidate), eventEnd(candidate), eventStart(other), eventEnd(other)) &&
+          !replacedTeachingOccurrence(other, permanent, overlay) &&
           (
             eventRoomId(other) === roomId ||
             eventTeacherId(other) === eventTeacherId(candidate) ||
@@ -9293,7 +9295,7 @@ async function teacherActionAttempt(data, recheckContext = {}) {
       ? recurrenceEndDate
       : addDays(date, 364);
     validatedThrough = horizonEnd;
-    const future = await scheduleBundle(date, horizonEnd, session.teacherId);
+    const future = await scheduleBundle(date, horizonEnd, session.teacherId, { occupancyOnly: true });
     for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, frequencyWeeks * 7)) {
       const blockers = future.resourceEvents.filter((row) => {
         const sourceMatch = sameTeachingCourse(row, source);
