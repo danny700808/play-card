@@ -4,7 +4,7 @@ const source=fs.readFileSync(require('path').join(__dirname,'../functions/course
 function fixture(original){
  const docs=new Map([['version',{version:1}]]),event={id:'event',sourceId:'event',fixedCourseId:'course',date:'2026-09-01',teacherId:'teacher',studentIds:['student'],subjectId:'guitar',tuitionPeriodId:'newer-period',startTime:'18:00',endTime:'19:00',roomId:'room'};
  const ref=path=>({path,id:path.split('/').at(-1)}),snapshot=r=>({exists:docs.has(r.path),data:()=>docs.get(r.path)});
- const c={db:{collection:name=>({doc:id=>ref(name+'/'+id)}),runTransaction:async work=>{let writing=false;await work({get:async r=>{assert(!writing);return snapshot(r);},set:(r,d,o)=>{writing=true;docs.set(r.path,o?.merge?{...docs.get(r.path),...d}:d);}});}},
+ const c={timeAttendanceStage:(_,work)=>work(),db:{collection:name=>({doc:id=>ref(name+'/'+id)}),runTransaction:async work=>{let writing=false;await work({get:async r=>{assert(!writing);return snapshot(r);},set:(r,d,o)=>{writing=true;docs.set(r.path,o?.merge?{...docs.get(r.path),...d}:d);}});}},
  attendanceLessonUnits:r=>Number(r?.lessonUnits)||1,attendanceAllocations:r=>r?.periodAllocations||[{periodId:r?.periodId,lessonUnits:Number(r?.lessonUnits)||1}],clean:v=>String(v??'').trim(),hash:v=>crypto.createHash('sha256').update(v).digest('hex'),
  HttpsError:class extends Error{},FieldValue:{serverTimestamp:()=>1},
  ATTENDANCE_RECORDS:'attendance',ATTENDANCE_PAYROLL:'payroll',ATTENDANCE_CANCELLATIONS:'cancellations',
@@ -31,5 +31,6 @@ test('changing an unsigned future lesson does not create fake cancellation credi
 test('manager attendance uses the shared server attendance handler with no late fee mode',async()=>{
  const f=fixture();const result=await f.c.adminSetAttendance({teacherId:'teacher',status:'attended'});
  assert.equal(result.teacherId,'teacher');assert.equal(result.late,false);
- assert.match(source,/coursePortalAdminSetAttendance = callable\(withPortalReads\(async \(data, request\) => \{ assertAdminPin\(request\); return data.action === 'refresh' \? adminAttendanceDetail\(data\) : adminSetAttendance\(data\)/);
+ assert.match(source,/await timeAttendanceStage\('authorize', \(\) => assertAdminPin\(request\)\)/);
+ assert.match(source,/coursePortalAdminSetAttendanceTaiwan = callable\(withPortalReads\(withAttendanceTiming\(adminAttendanceHandler, 'asia-east1'\)\)/);
 });

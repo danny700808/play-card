@@ -346,10 +346,10 @@
     return {version:3,stoppedCourseReceivables:clone(array(payload.stoppedCourseReceivables)),irregularCourses:clone(array(payload.irregularCourses)),currentDate:anchor,settings:{startHour:Math.max(6,Math.min(10,Math.floor(earliest/60))),endHour:Math.min(24,Math.max(22,Math.ceil(latest/60))),interval:30,defaultLessons:4},rooms:rooms,subjects:subjects.rows,teachers:teachers,feePlans:feePlans,students:students,tuitionPeriods:periods,events:events,attendance:attendance,leaveReasons:normalizeLeaveReasons(payload),teacherPayroll:normalizeTeacherPayroll(payload),teacherAdjustments:normalizeTeacherAdjustments(payload),clipboard:null,readOnly:true,dataMode:'migration',dataMeta:{runId:clean(payload.runId),loadedAt:clean(payload.loadedAt),version:clean(payload.version),counts:payload.counts||{},dataQuality:Object.assign({},payload.dataQuality||{},{visibleEventWeekdays:visibleWeekdays}),rangeStart:rangeStart,rangeEnd:rangeEnd}};
   }
 
-  function firebaseFunctions(){
+  function firebaseFunctions(region){
     if(!global.firebase||typeof global.firebase.initializeApp!=='function')throw new Error('Firebase 元件尚未載入，請重新整理後再試。');
     var config=global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG;if(!config||!config.projectId)throw new Error('找不到 Firebase 專案設定。');
-    if(!global.firebase.apps.length)global.firebase.initializeApp(config);return global.firebase.app().functions(FUNCTION_REGION);
+    if(!global.firebase.apps.length)global.firebase.initializeApp(config);return global.firebase.app().functions(region||FUNCTION_REGION);
   }
 
   async function ensureTeacherPayrollManagerAuth(){
@@ -361,8 +361,16 @@
     var error=new Error(result&&result.message||'管理者安全登入尚未恢復，請重新開啟頁面後再試。');error.reauth=Boolean(result&&result.reauth);throw error;
   }
 
+  async function timeAttendanceClient(data,stage,work){
+    var started=Date.now();
+    try{return await work();}finally{
+      try{if(global.console&&typeof global.console.info==='function')global.console.info('[admin attendance client timing]',{action:data&&data.action==='refresh'?'refresh':'save',stage:stage,ms:Date.now()-started});}catch(ignore){}
+    }
+  }
   async function call(name,data,options){
-    var callable=firebaseFunctions().httpsCallable(name,options||{}),result=await callable(data);
+    var attendance=name==='coursePortalAdminSetAttendance';
+    var callable=firebaseFunctions(attendance?'asia-east1':FUNCTION_REGION).httpsCallable(attendance?name+'Taiwan':name,options||{});
+    var result=attendance?await timeAttendanceClient(data,'request',()=>callable(data)):await callable(data);
     return result&&result.data||{};
   }
 
@@ -419,7 +427,8 @@
   async function courseAdminMutation(name,payload,pin){
     var usesManagerAuth=Boolean(global.YouziOperationsManagerAuth&&typeof global.YouziOperationsManagerAuth.ensureManagerAuth==='function');
     try{
-      await ensureTeacherPayrollManagerAuth();
+      if(name==='coursePortalAdminSetAttendance')await timeAttendanceClient(payload,'manager_auth',ensureTeacherPayrollManagerAuth);
+      else await ensureTeacherPayrollManagerAuth();
       return await call(name,payload||{});
     }catch(error){
       if(usesManagerAuth||!clean(pin))throw error;
