@@ -12,6 +12,7 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const { withPortalReads, memoPortalRead } = require('./portalReadContext');
+const { withAttendanceTiming, timeAttendanceStage } = require('./courseAttendanceTiming');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { SCHEDULE_CHANGED, recheckSchedule, rememberSource, publicBooking, BookingOperations } = require('./coursePortalReliability');
 const path = require('path');
@@ -9769,7 +9770,7 @@ function attendanceChangePayload(event, sourceDate, sourceEventId, sourceCourseI
 
 async function applyTeacherAttendance(data, late, managerSession = null) {
   const session = managerSession || await requireSession(data, ['teacher']);
-  const resolved = await teacherAttendanceEvent(session, data);
+  const resolved = await timeAttendanceStage('resolve_lesson', () => teacherAttendanceEvent(session, data));
   const { sourceDate, sourceEventId, sourceCourseId, event } = resolved;
   const today = currentTaipeiDay();
   if (!managerSession && !late && sourceDate < today) throw new HttpsError('failed-precondition', '已超過當天晚上 12 點，請聯絡管理者協助更正紀錄。');
@@ -9790,7 +9791,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
     throw new HttpsError('failed-precondition', '請假、已簽到或已取消的課程不能再次簽到。');
   }
   const operationId = attendanceOperationId(session.teacherId, sourceDate, event, data);
-  const expectedVersion = await readScheduleVersion();
+  const expectedVersion = await timeAttendanceStage('read_version', () => readScheduleVersion());
   const giftLesson = event.specialLesson === true ||
     clean(event.portalAction) === 'teacher_gift' ||
     clean(event.type) === 'teacher_gift';
@@ -9809,11 +9810,11 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
     const corrections = await pendingTeacherCorrections(session.teacherId, event);
     if (corrections.length) return {ok:true, requiresCorrectionChoice:true, corrections};
   }
-  const periodResolution = await attendancePeriodsForEvent(event, sourceDate, {
+  const periodResolution = await timeAttendanceStage('resolve_tuition', () => attendancePeriodsForEvent(event, sourceDate, {
     allowMissing: giftLesson,
     correctionIds: data.correctionIds || {},
     allowRollover: !giftLesson
-  });
+  }));
   const correctionRefs = Object.entries(data.correctionIds || {}).map(([studentId, id]) => ({ studentId, ref: db.collection('coursePortalAttendanceCorrections').doc(clean(id)) }));
   const payrollCalculation = attendancePayrollCalculation(event, periodResolution.rows, sourceDate);
   const periodIds = Object.keys(periodResolution.byStudent).reduce((map, studentId) => {
@@ -9844,7 +9845,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
   changePayload.event.tuitionPeriodId = giftLesson ? '' : clean(periodIds[attendanceRows[0] && attendanceRows[0].studentId]);
   changePayload.event.tuitionPeriodIds = giftLesson ? {} : Object.assign({}, periodIds);
   changePayload.event.teacherPayable = payrollCalculation.teacherPayable !== false;
-  await db.runTransaction(async (tx) => {
+  await timeAttendanceStage('commit', () => db.runTransaction(async (tx) => {
     const snapshots = await Promise.all([
       tx.get(versionRef),
       tx.get(statusRef),
@@ -10079,7 +10080,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: session.teacherId
     }, { merge: true });
-  });
+  }));
   return {
     ok: true,
     operationId,
@@ -10274,15 +10275,15 @@ async function adminAttendanceDetail(data) {
   const scopes = Array.isArray(data.payrollScopes) ? data.payrollScopes : [];
   if (!studentIds.length || studentIds.length > 50 || scopes.length > 50 || scopes.some(row => !clean(row.teacherId) || !dateKey(row.date))) throw new HttpsError('invalid-argument','簽到更新範圍無效。');
   const started = Date.now();
-  const groups = await Promise.all(studentIds.map(async studentId => {
+  const groups = await timeAttendanceStage('refresh_tuition', () => Promise.all(studentIds.map(async studentId => {
     const [periods, mirrorAttendance, portalAttendance] = await Promise.all([
       mirrorRowsByField('tuitionPeriods','studentId',studentId),
       mirrorRowsByField('attendance','studentId',studentId),
       portalAttendanceForStudents([studentId])
     ]);
     return {periods:applyPortalAttendanceToPeriods(periods,mirrorAttendance,portalAttendance),attendance:mergePortalAttendanceRows(mirrorAttendance,portalAttendance)};
-  }));
-  const teacherPayroll = await Promise.all(scopes.map(async scope => {
+  })));
+  const teacherPayroll = await timeAttendanceStage('refresh_payroll', () => Promise.all(scopes.map(async scope => {
     const teacherId=clean(scope.teacherId),date=dateKey(scope.date);
     const [mirror, portal, cancelled, dayAttendance] = await Promise.all([
       mirrorRowsByField('teacherPayroll','teacherId',teacherId),
@@ -10292,7 +10293,7 @@ async function adminAttendanceDetail(data) {
     ]);
     const rows=portal.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id}));
     return mergeTeacherPayrollRows(enrichTeacherPayrollRows(mirror.filter(row=>eventDate(row)===date),dayAttendance),rows,cancelled.docs.map(doc=>doc.data()).filter(row=>row.status==='approved').concat(rows.filter(row=>row.active===false)));
-  }));
+  })));
   return {ok:true,studentIds,payrollScopes:scopes,tuitionPeriods:groups.flatMap(group=>group.periods).map(row=>({...row,id:sourceId(row)})),attendance:groups.flatMap(group=>group.attendance).map(row=>({...row,id:sourceId(row)})),teacherPayroll:teacherPayroll.flat().map(row=>({...row,id:sourceId(row)})),timings:{readMs:Date.now()-started}};
 }
 
@@ -10302,8 +10303,8 @@ async function adminSetAttendance(data) {
   // This session is constructed only behind the manager-authenticated callable.
   const session = { role: 'teacher', teacherId };
   if (status === 'attended') return applyTeacherAttendance(data, false, session);
-  const expectedVersion = await readScheduleVersion();
-  const { event, sourceDate, sourceEventId, sourceCourseId } = await teacherAttendanceEvent(session, data);
+  const expectedVersion = await timeAttendanceStage('read_version', () => readScheduleVersion());
+  const { event, sourceDate, sourceEventId, sourceCourseId } = await timeAttendanceStage('resolve_lesson', () => teacherAttendanceEvent(session, data));
   const operationId = attendanceOperationId(teacherId, sourceDate, event, data);
   const change = attendanceChangePayload(event, sourceDate, sourceEventId, sourceCourseId, teacherId, status, clean(data.note) || '管理者更新課程狀態');
   change.approvedByManager = true;
@@ -10314,9 +10315,9 @@ async function adminSetAttendance(data) {
   const lessonLockRef = db.collection('coursePortalAttendanceLessonLocks').doc(attendanceLessonLockId(sourceDate, event, data));
   const students = eventStudentIds(event);
   const refs = students.map(studentId => db.collection(ATTENDANCE_RECORDS).doc(hash([operationId, studentId].join('|'))));
-  const mirrorAttendance = await mirrorRowsByDateRange('attendance', sourceDate, sourceDate);
+  const mirrorAttendance = await timeAttendanceStage('read_original_attendance', () => mirrorRowsByDateRange('attendance', sourceDate, sourceDate));
   const originalByStudent = students.map(studentId => mirrorAttendance.find(row => attendanceRowsMatch(row, { studentId, teacherId, date: sourceDate, eventId: clean(event.sourceId || sourceEventId || event.id), courseId: attendanceLineage(event, data) })));
-  await db.runTransaction(async tx => {
+  await timeAttendanceStage('commit', () => db.runTransaction(async tx => {
     const version = await tx.get(versionRef);
     assertScheduleWritable(version);
     if (Number(version.data()?.version || 0) !== expectedVersion) throw new HttpsError('aborted', '課程已由其他裝置更新，請重新載入。');
@@ -10343,7 +10344,7 @@ async function adminSetAttendance(data) {
     tx.set(lessonLockRef, { operationId, teacherId, date: sourceDate, active: true, status: 'cancelled', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
     tx.set(versionRef, { version: expectedVersion + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-attendance' }, { merge: true });
-  });
+  }));
   return { ok: true, operationId, status };
 }
 
@@ -13154,7 +13155,12 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalAdminSaveLessonSettings = callable(async (data, request) => { assertAdminPin(request); return adminSaveLessonSettings(data); }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveLeaveReason = callable(async (data, request) => { assertAdminPin(request); return adminSaveLeaveReason(data); }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveSchedule = callable(async (data, request) => { assertAdminPin(request); return adminSaveSchedule(data); }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminSetAttendance = callable(withPortalReads(async (data, request) => { assertAdminPin(request); return data.action === 'refresh' ? adminAttendanceDetail(data) : adminSetAttendance(data); }), { secrets: [ADMIN_PIN] });
+  const adminAttendanceHandler = async (data, request) => {
+    await timeAttendanceStage('authorize', () => assertAdminPin(request));
+    return data.action === 'refresh' ? adminAttendanceDetail(data) : adminSetAttendance(data);
+  };
+  exportsObject.coursePortalAdminSetAttendance = callable(withPortalReads(withAttendanceTiming(adminAttendanceHandler, REGION)), { secrets: [ADMIN_PIN] });
+  exportsObject.coursePortalAdminSetAttendanceTaiwan = callable(withPortalReads(withAttendanceTiming(adminAttendanceHandler, 'asia-east1')), { region: 'asia-east1', secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveStudent = callable(async (data,request)=>{assertAdminPin(request);return adminSaveStudent(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveTuitionPeriods = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTuitionPeriods(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminSaveTeacherSubjects = callable(async (data,request)=>{assertAdminPin(request);return adminSaveTeacherSubjects(data);},{secrets:[ADMIN_PIN]});

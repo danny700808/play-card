@@ -23,7 +23,7 @@ test('regional copies preserve the same handlers, auth wrappers and resource set
   assert.equal(regional.replace(name+'Taiwan =',name+' =').replace("region: 'asia-east1', ",''),old);
  }
  const regionalLines=backend.split('\n').filter(l=>/region:\s*'asia-east1'/.test(l));
- assert.equal(regionalLines.length,15);
+ assert.equal(regionalLines.length,16);
  assert(!regionalLines.some(l=>/onSchedule|onDocument/.test(l)));
 });
 test('teacher uses shared region routing and all portal pages load the updated common script',()=>{
