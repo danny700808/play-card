@@ -61,6 +61,7 @@
     @media print{
       html,body{margin:0!important;padding:0!important;background:#fff!important}
       body *{visibility:hidden!important}
+      #contractActionStatus{display:none!important}
       .yz-global-nav,.form-panel,.mobile-primary-actions{display:none!important}
       .container,.container>.card,.layout{display:block!important;margin:0!important;padding:0!important;border:0!important;box-shadow:none!important}
       #printArea,#printArea *{visibility:visible!important}
@@ -166,12 +167,13 @@
               <div class="field"><label>甲方代表人（選填）</label><input id="partyAOwner" value=""></div>
               <div class="field"><label>乙方負責人</label><input id="partyBOwner" value="黃銘廷"></div>
             </div>
+            <div class="muted-tip">儲存合約：保存到系統並保留版本。儲存新合約：另建一份合約。另存 PDF 到電腦：選擇桌面或其他資料夾，下載後即可傳給對方。</div>
             <div class="mini-actions primary-actions" style="margin-top:16px">
               <button id="saveContractBtn" class="btn" type="button" onclick="saveCurrentContract()">儲存合約</button>
               <button id="saveAsNewContractBtn" class="btn" type="button" onclick="saveAsNewContract()">儲存新合約</button>
               <button id="newBlankContractBtn" class="btn" type="button" onclick="newBlankContract()">新增空白合約</button>
-              <button id="saveContractPdfBtn" class="btn" type="button" onclick="savePdf()">另存 PDF</button>
-              <button id="printContractBtn" class="btn" type="button" onclick="printContract()">列印</button>
+              <button id="saveContractPdfBtn" class="btn" type="button" onclick="savePdf(this)">另存 PDF 到電腦</button>
+              <button id="printContractBtn" class="btn" type="button" onclick="printContract(this)">列印</button>
             </div>
           </div>
         </div>
@@ -249,8 +251,8 @@
           <button class="btn" type="button" onclick="saveCurrentContract()">儲存合約</button>
           <button class="btn" type="button" onclick="saveAsNewContract()">儲存新合約</button>
           <button class="btn" type="button" onclick="newBlankContract()">新增空白</button>
-          <button class="btn" type="button" onclick="savePdf()">另存 PDF</button>
-          <button class="btn" type="button" onclick="printContract()">列印</button>
+          <button class="btn" type="button" onclick="savePdf(this)">另存 PDF 到電腦</button>
+          <button class="btn" type="button" onclick="printContract(this)">列印</button>
         </div>
       </div>
     </div>
@@ -372,9 +374,24 @@
       delete qs('#emailSubject').dataset.touched;
       renderPreview();
     }
+    function setLocalMsg(message, isError = false){
+      let box = document.getElementById('contractActionStatus');
+      if(!box){
+        box = document.createElement('div');
+        box.id = 'contractActionStatus';
+        box.setAttribute('role', 'status');
+        box.setAttribute('aria-live', 'polite');
+        box.style.cssText = 'position:fixed;left:16px;right:16px;bottom:76px;z-index:10001;padding:14px 18px;border:1px solid;border-radius:12px;white-space:pre-wrap;box-shadow:0 4px 18px #0002';
+        document.body.appendChild(box);
+      }
+      box.textContent = message;
+      box.style.background = isError ? '#fff0f0' : '#eef9f2';
+      box.style.color = isError ? '#991b1b' : '#146534';
+    }
+    let pdfExportBusy = false;
     function startButtonProgress(target, baseText){
       const btn = typeof target === 'string' ? qs('#' + target) : target;
-      if(!btn) return { set(){}, done(){}, fail(){} };
+      if(!btn || !btn.classList) return { set(){}, done(){}, fail(){} };
       const old = btn.textContent;
       btn.disabled = true;
       btn.classList.add('is-busy');
@@ -442,7 +459,7 @@
         if(!res || !res.ok) throw new Error((res && res.message) || '合約儲存失敗');
         qs('#contractId').value = res.contractId || '';
         prog && prog.set(84, '刷新紀錄中');
-        await loadHistory();
+        void loadHistory();
         if(!silent && window.setLocalMsg) setLocalMsg(res.message || (saveAsNew ? '已建立新的合約。' : '合約已儲存。'));
         prog && prog.done('完成');
         return res;
@@ -459,8 +476,17 @@
       return saveContract(true, false, 'saveAsNewContractBtn', '儲存新合約中');
     }
     async function buildPdfBlob(){
+      renderPreview();
+      if(typeof html2canvas !== 'function' || !window.jspdf?.jsPDF) throw new Error('PDF 元件未載入，請重新整理後再試，或使用列印另存 PDF。');
+      await document.fonts.ready;
       const target = document.querySelector('#printArea .contract-sheet');
-      const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      await Promise.all(Array.from(target.querySelectorAll('img')).map(img => img.decode().catch(()=>{ throw new Error('合約印章載入失敗，請重新整理後再試。'); })));
+
+      const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff', onclone(doc){
+        const sheet = doc.querySelector('#printArea .contract-sheet');
+        sheet.style.transform = 'none';
+        sheet.style.margin = '0';
+      } });
       const imgData = canvas.toDataURL('image/png');
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -473,43 +499,61 @@
       const name = [v.partyAName || '合約', v.equipmentName || '設備'].join('_').replace(/[\/:*?"<>|]/g,'_');
       return `${name}.pdf`;
     }
-    async function printContract(){
-      const prog = startButtonProgress('printContractBtn', '準備列印中');
+    async function printContract(button){
+      const prog = startButtonProgress(button || 'printContractBtn', '準備列印中');
       try{
-        prog.set(18, '儲存資料中');
-        const saved = await saveContract(false, true, null);
-        if(!saved || !saved.ok) throw new Error((saved && saved.message) || '儲存失敗');
         renderPreview();
-        prog.set(90, '開啟列印中');
         window.print();
-        if(window.setLocalMsg) setLocalMsg('已開啟列印視窗。');
+        setLocalMsg('已開啟列印。可選擇「另存為 PDF」後儲存到桌面。');
         prog.done('完成');
       }catch(err){
         prog.fail('列印');
-        if(window.setLocalMsg) setLocalMsg(err.message || '列印失敗', true);
+        setLocalMsg(err.message || '列印失敗', true);
       }
     }
-    async function savePdf(){
-      const prog = startButtonProgress('saveContractPdfBtn', '儲存PDF中');
+    async function savePdf(button){
+      if(pdfExportBusy) return;
+      pdfExportBusy = true;
+      const prog = startButtonProgress(button || 'saveContractPdfBtn', '建立 PDF 中');
+      let writable;
       try{
-        prog.set(18, '儲存資料中');
-        const saved = await saveContract(false, true, null);
-        if(!saved || !saved.ok) throw new Error((saved && saved.message) || '儲存失敗');
-        prog.set(60, '建立PDF中');
-        const { pdf } = await buildPdfBlob();
-        pdf.save(buildFileName());
-        if(window.setLocalMsg) setLocalMsg('PDF 已開始下載。');
+        const fileName = buildFileName();
+        // Open the picker during the click gesture, before rendering or network waits.
+        let handle;
+        if(typeof window.showSaveFilePicker === 'function'){
+          try{
+            handle = await window.showSaveFilePicker({suggestedName:fileName, startIn:'desktop', types:[{description:'PDF 合約', accept:{'application/pdf':['.pdf']}}]});
+          }catch(err){
+            if(err.name === 'AbortError') { setLocalMsg('已取消另存 PDF。'); return; }
+            if(err.name !== 'SecurityError' && err.name !== 'NotAllowedError') throw err;
+          }
+        }
+        setLocalMsg('正在建立 PDF，請稍候…');
+        const {pdf, blob} = await buildPdfBlob();
+        if(handle){
+          writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          writable = null;
+          setLocalMsg('PDF 已儲存到你選擇的位置：' + handle.name);
+        }else{
+          await pdf.save(fileName, {returnPromise:true});
+          setLocalMsg('已送出 PDF 下載：' + fileName + '\n請查看瀏覽器下載清單；若存入「下載」資料夾，可將檔案移到桌面。');
+        }
         prog.done('完成');
       }catch(err){
-        prog.fail('儲存 PDF');
-        if(window.setLocalMsg) setLocalMsg(err.message || 'PDF 下載失敗', true);
+        if(writable) await writable.abort().catch(()=>{});
+        setLocalMsg('PDF 儲存失敗：' + (err.message || '請稍後再試'), true);
+      }finally{
+        pdfExportBusy = false;
+        prog.fail('另存 PDF 到電腦');
       }
     }
     async function sendContractEmail(){
       const prog = startButtonProgress('sendContractBtn', '寄送中');
       try{
         const to = qs('#emailTo').value.trim();
-        if(!to) throw new Error('請填寫收件人 Email。');
+        if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new Error('請填寫有效的收件人 Email。');
         prog.set(18, '儲存資料中');
         const saved = await saveContract(false, true, null);
         if(!saved || !saved.ok) throw new Error((saved && saved.message) || '儲存失敗');
@@ -534,8 +578,8 @@
           pdfName: buildFileName()
         });
         if(!res || !res.ok) throw new Error((res && res.message) || '寄送失敗');
-        await loadHistory();
-        if(window.setLocalMsg) setLocalMsg('合約已寄送到信箱。');
+        void loadHistory();
+        if(window.setLocalMsg) setLocalMsg('寄送服務已接受合約，請確認收件信箱。');
         prog.done('完成');
       }catch(err){
         prog.fail('寄送');
@@ -588,13 +632,15 @@
         prog = target ? startButtonProgress(target, '讀取中') : null;
         prog && prog.set(18, '讀取中');
         const res = await api('getRentalContracts', { userId: currentUser.id });
-        historyRows = (res && res.ok && Array.isArray(res.rows)) ? res.rows : [];
+        if(!res || !res.ok || !Array.isArray(res.rows)) throw new Error((res && res.message) || '合約紀錄讀取失敗');
+        historyRows = res.rows;
         prog && prog.set(78, '整理清單中');
         renderHistory();
         prog && prog.done('完成');
       }catch(err){
         if(prog) prog.fail('讀取失敗');
         console.warn(err);
+        qs('#historyWrap').textContent = '合約紀錄讀取失敗：' + (err.message || '請稍後再試');
       }
     }
     function renderHistory(){
@@ -703,7 +749,7 @@
       document.querySelectorAll('input, textarea').forEach(el=>{ if(el.id) defaultValues[el.id] = el.value; });
       bindInputs();
       renderPreview();
-      scheduleIdle_(loadHistory);
+      scheduleIdle_(()=>loadHistory());
     }
   </script>
 
