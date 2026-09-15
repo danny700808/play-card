@@ -36,6 +36,7 @@ function createInventoryCountAccess({db,FieldValue,requireManager,now=Date.now})
   async function products(data,req){
     await authorize(data,req);
     const fields=['internalName','originalName','onlineName','name','internalSku','sku','code','barcode','model','brand','category','variantName','alternateNames','searchKeywords','imageUrl','imageUrls','variantImageUrl','variantImageUrls','parentImageUrls','enabled','currentStock','physicalImageUrls','productVideos'];
+    if(data.action==='barcode')fields.push('storePrice','originalSalePrice','salePrice','retailPrice','status');
     function projection(collection,selected){const query=db.collection(collection);return (typeof query.select==='function'?query.select(...selected):query).limit(10000).get();}
     const [products,listingCases]=await Promise.all([projection('opsInternalProducts',fields),projection('opsProductListingCases',['productId','variantGroupEnabled','variantGroupPrimaryImageUrl','variantGroupItems','listingIntent','listingMode','variantChildImageUrl','updatedAt'])]);
     const {detailImageMap,thumbnail}=require('./productThumbnail'),details=detailImageMap(listingCases.docs);

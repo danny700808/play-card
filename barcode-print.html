@@ -14,9 +14,9 @@
     <form class="bp-login-card" id="bpLoginForm">
       <div class="bp-login-logo">柚子樂器</div>
       <h1 id="bpLoginTitle">條碼列印系統</h1>
-      <p>請輸入專用密碼後進入</p>
+      <p>請輸入與商品實體圖、庫存盤點相同的密碼</p>
       <label for="bpPassword">密碼</label>
-      <input id="bpPassword" type="password" autocomplete="current-password" inputmode="text" placeholder="請輸入密碼" required>
+      <input id="bpPassword" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" inputmode="text" placeholder="請輸入密碼" required>
       <div class="bp-login-error" id="bpLoginError" role="alert"></div>
       <button type="submit">進入條碼列印</button>
     </form>
@@ -67,11 +67,7 @@
   <div class="bp-toast" id="bpToast" role="status" aria-live="polite"></div>
 
   <script src="config.js?v=20260508frontendperf1"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="manager-auth.js?v=20260915-barcode-auth-v1"></script>
-  <script src="barcode-print.js?v=20260915-auth-v1"></script>
+  <script src="barcode-print.js?v=20260915-shared-pin-v1"></script>
   </div>
 </body>
 </html>

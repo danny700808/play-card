@@ -1,11 +1,9 @@
 (function(global){
   'use strict';
   const PRINT_BASE='http://127.0.0.1:18181';
-  const COLLECTION='opsInternalProducts';
   const PAGE_SIZE=80;
-  const PASSWORD_HASH='c52cbddc9be708cc43aea50035588b91743634605dd20b46cd8a4855b87270aa';
-  const SESSION_KEY='yuzuBarcodePrintUnlockedV3';
-  const state={db:null,products:[],filtered:[],visible:PAGE_SIZE,selected:null,serviceReady:false,searchComposing:false};
+  const SESSION_KEY='inventoryCountSession';
+  const state={token:sessionStorage.getItem(SESSION_KEY)||'',products:[],filtered:[],visible:PAGE_SIZE,selected:null,serviceReady:false,searchComposing:false};
   const $=function(id){return document.getElementById(id);};
   function clean(v){return String(v==null?'':v).trim();}
   function lower(v){return clean(v).toLowerCase();}
@@ -39,10 +37,21 @@
     return {id:doc.id,sku:sku,name:name,onlineName:online,variant:variant,price:price,imageUrl:images[0]||'',enabled:raw.enabled!==false,status:clean(raw.status)||'active'};
   }
   function formatMoney(v){return 'NT$ '+Math.round(Number(v||0)).toLocaleString('zh-TW');}
-  async function sha256(value){
-    const data=new TextEncoder().encode(String(value||''));
-    const digest=await crypto.subtle.digest('SHA-256',data);
-    return Array.from(new Uint8Array(digest)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+  async function productRequest(name,data){
+    const project=global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG.projectId;
+    if(!project)throw new Error('找不到商品服務設定，請重新整理。');
+    const controller=new AbortController();const timer=setTimeout(function(){controller.abort();},110000);
+    try{
+      const response=await fetch('https://us-central1-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({},data||{},{token:state.token})),signal:controller.signal});
+      const result=await response.json();
+      if(!response.ok||result.ok===false)throw new Error(result.message||'商品服務暫時無法使用，請稍後重試。');
+      return result;
+    }finally{clearTimeout(timer);}
+  }
+  function showLogin(){
+    state.token='';sessionStorage.removeItem(SESSION_KEY);
+    document.body.classList.add('bp-locked');$('bpLoginScreen').hidden=false;$('bpApp').hidden=true;
+    $('bpPassword').value='';$('bpPassword').focus();
   }
   function showApp(){
     document.body.classList.remove('bp-locked');
@@ -63,22 +72,19 @@
       submit.disabled=true;
       submit.textContent='確認中…';
       try{
-        const hash=await sha256(input.value);
-        if(hash!==PASSWORD_HASH){
-          error.textContent='密碼錯誤，請重新輸入。';
-          input.select();
-          return;
-        }
-        sessionStorage.setItem(SESSION_KEY,'1');
-        showApp();
+        const result=await productRequest('inventoryCountLoginHttp',{pin:input.value.trim()});
+        if(!result.token)throw new Error('登入資料不完整，請重新輸入密碼。');
+        state.token=result.token;sessionStorage.setItem(SESSION_KEY,state.token);
+        input.value='';showApp();
         await initApp();
+      }catch(err){
+        error.textContent=err.name==='AbortError'?'連線逾時，請再試一次。':clean(err.message||err);
       }finally{
         submit.disabled=false;
         submit.textContent='進入條碼列印';
       }
     });
   }
-  function initDb(){const cfg=global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG;if(!cfg||!cfg.projectId)throw new Error('找不到 Firebase 設定');if(!global.firebase.apps.length)global.firebase.initializeApp(cfg);return global.firebase.firestore();}
   function toast(text){const el=$('bpToast');el.textContent=text;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(function(){el.classList.remove('show');},2600);}
   function setService(ready,text){state.serviceReady=ready;const el=$('bpServiceStatus');el.className='bp-service '+(ready?'ready':'offline');el.textContent=text;}
   async function localFetch(path,options){
@@ -144,27 +150,23 @@
   async function loadProducts(){
     $('bpSearchHelp').textContent='正在確認登入並讀取商品資料…';
     try{
-      state.db=initDb();
-      await global.YZManagerAuth.requireManager({next:'barcode-print.html',redirect:false});
-      const snap=await state.db.collection(COLLECTION).limit(10000).get();
-      state.products=snap.docs.map(normalize).filter(function(p){return p.enabled&&p.status!=='inactive'&&p.status!=='discontinued';}).sort(function(a,b){const imageDiff=Number(!!b.imageUrl)-Number(!!a.imageUrl);return imageDiff||a.name.localeCompare(b.name,'zh-Hant',{numeric:true});});
+      const result=await productRequest('inventoryCountProductsHttp',{action:'barcode'});
+      state.products=(result.products||[]).map(function(raw){return normalize({id:raw.id,data:function(){return raw;}});}).filter(function(p){return p.enabled&&p.status!=='inactive'&&p.status!=='discontinued';}).sort(function(a,b){const imageDiff=Number(!!b.imageUrl)-Number(!!a.imageUrl);return imageDiff||a.name.localeCompare(b.name,'zh-Hant',{numeric:true});});
       applySearch();$('bpSearch').focus();
     }catch(err){
-      $('bpProducts').innerHTML='<div class="bp-empty">商品資料讀取失敗：'+esc(err.message||err)+'<p>請使用管理者帳號登入後，再讀取商品。</p><p><a href="login.html?next=barcode-print.html">登入並返回條碼列印</a></p><button type="button" id="bpRetry">重新讀取商品</button></div>';
+      $('bpProducts').innerHTML='<div class="bp-empty">商品資料讀取失敗：'+esc(err.message||err)+'<p><button type="button" id="bpRelogin">重新輸入密碼</button></p><button type="button" id="bpRetry">重新讀取商品</button></div>';
       $('bpSearchHelp').textContent='尚未取得商品資料';
+      $('bpRelogin').addEventListener('click',showLogin);
       $('bpRetry').addEventListener('click',function(){this.disabled=true;loadProducts();});
     }
   }
   async function initApp(){
-    if(appInitialized)return;
-    appInitialized=true;
-    bind();
+    if(!appInitialized){appInitialized=true;bind();checkService();setInterval(checkService,30000);}
     await loadProducts();
-    checkService();setInterval(checkService,30000);
   }
   function init(){
     bindLogin();
-    if(sessionStorage.getItem(SESSION_KEY)==='1'){showApp();initApp();}
+    if(state.token){showApp();initApp();}
     else{const input=$('bpPassword');if(input)setTimeout(function(){input.focus();},50);}
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
