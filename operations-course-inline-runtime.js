@@ -87,6 +87,7 @@
     if(['cancel','cancelled','canceled','註銷','取消','停課'].indexOf(value)>=0)return 'cancelled';
     return 'scheduled';
   }
+  function statusBadge(status){return {attended:'✓',leave:'假',absent:'曠',pending_conflict:'待'}[normalizedStatus(status)]||'';}
   function statusName(status){return {scheduled:'未簽到',attended:'已簽到',leave:'請假',absent:'曠課',cancelled:'註銷',pending_conflict:'待補排'}[normalizedStatus(status)];}
   function rentalRoleName(role){return {student:'學生／家長',teacher:'老師',renter:'一般租用者'}[clean(role)]||'租用者';}
   function rentalPaymentName(status){status=clean(status).toLowerCase();if(['paid','received','已收款','已付款'].indexOf(status)>=0)return '已收款';if(['refunded','退款'].indexOf(status)>=0)return '已退款';return status==='onsite_unpaid'?'現場未收款':'未收款';}
@@ -576,7 +577,7 @@
     events.forEach(function(event){
       var ri=rooms.findIndex(function(room){return room.id===event.roomId;}),si=Math.floor((timeToMin(event.start)-start)/30);
       if(ri<0||si<0||si>=slots.length)return;
-      var span=Math.max(1,Math.ceil(numberOf(event.duration)/30)),normalized=normalizedStatus(event.status),status=normalized==='scheduled'?'':normalized,badge=normalized==='attended'?'✓':normalized==='leave'?'假':normalized==='absent'?'曠':normalized==='pending_conflict'?'待':'',studentCount=(event.studentIds||[]).length,groupLabel=studentCount>2?'團體課':studentCount===2?'雙人課':'';
+      var span=Math.max(1,Math.ceil(numberOf(event.duration)/30)),normalized=normalizedStatus(event.status),status=normalized==='scheduled'?'':normalized,badge=statusBadge(normalized),studentCount=(event.studentIds||[]).length,groupLabel=studentCount>2?'團體課':studentCount===2?'雙人課':'';
       html+='<button type="button" class="event '+esc(event.type)+' '+esc(status)+(event.specialLesson?' special':'')+(groupLabel?' group-lesson':'')+(conflicts[event.id]?' conflict':'')+'" data-event-id="'+esc(event.id)+'" style="grid-column:'+(ri+2)+';grid-row:'+(si+2)+'/span '+span+'"><span class="event-top"><span>'+esc(event.start)+'–'+esc(minToTime(timeToMin(event.start)+numberOf(event.duration)))+'</span><b>'+badge+'</b></span><span class="event-main">'+esc(eventDisplayName(event))+'</span><span class="event-sub">'+(groupLabel?'<em>'+groupLabel+'</em>':'')+(event.specialLesson?'贈送加課・':'')+esc(subjectById(event.subjectId).name||typeName(event.type))+(teacherById(event.teacherId).name?'・'+esc(teacherById(event.teacherId).name):'')+'</span></button>';
     });
     if(hours.closed)html+='<div class="empty-day"><b>這一天設定為不開放排課</b><span>可到系統設定調整星期別的顯示時間。</span></div>';else if(!events.length)html+='<div class="empty-day"><b>這一天尚未排課</b><span>'+(isReadOnly()?'已移轉資料沒有這一天的課程':'點任一空白格即可新增')+'</span></div>';grid.innerHTML=html;window.dispatchEvent(new Event('youzi-calendar-layout'));
@@ -686,7 +687,7 @@
   }
   function attendancePendingUI(job,busy){
     if($('eventModal').dataset.eventId===job.event.id){$$('[data-attendance]',$('eventModalBody')).forEach(function(button){button.disabled=busy;button.setAttribute('aria-busy',String(busy));});}
-    $$('button[data-event-id]').filter(function(node){return node.dataset.eventId===job.event.id;}).forEach(function(node){var badge=node.querySelector('.event-top b');if(badge)badge.textContent=busy?'處理中…':statusName((findEvent(job.event.id)||job.event).status);node.setAttribute('aria-busy',String(busy));});
+    $$('button[data-event-id]').filter(function(node){return node.dataset.eventId===job.event.id;}).forEach(function(node){var badge=node.querySelector('.event-top b');if(badge)badge.textContent=busy?'處理中…':statusBadge((findEvent(job.event.id)||job.event).status);node.setAttribute('aria-busy',String(busy));});
   }
   function getAttendanceUpdater(){
     if(attendanceUpdater)return attendanceUpdater;
