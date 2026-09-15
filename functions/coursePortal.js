@@ -9290,10 +9290,10 @@ async function teacherActionAttempt(data, recheckContext = {}) {
     if (recurrenceEndDate && date > recurrenceEndDate) {
       throw new HttpsError('failed-precondition', '新的固定時段已超過這門固定課的結束日期。');
     }
-    const maximumFullValidationEnd = addDays(date, 3650);
-    const horizonEnd = recurrenceEndDate && recurrenceEndDate <= maximumFullValidationEnd
+    const validationWindowEnd = addDays(addMonths(date, 3), -1);
+    const horizonEnd = recurrenceEndDate && recurrenceEndDate < validationWindowEnd
       ? recurrenceEndDate
-      : addDays(date, 364);
+      : validationWindowEnd;
     validatedThrough = horizonEnd;
     const future = await scheduleBundle(date, horizonEnd, session.teacherId, { occupancyOnly: true });
     for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, frequencyWeeks * 7)) {

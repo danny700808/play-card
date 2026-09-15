@@ -19,3 +19,15 @@ test('schedule date helpers reuse formatters while preserving Taipei calendar va
   for(let i=0;i<10000;i++)assert.equal(c.dateKey(c.addDays('2026-09-15',7)),'2026-09-22');
   assert.equal(constructions,2,'large recurrence validation must not allocate formatters per date');
 });
+test('permanent move checks three calendar months without shortening the recurring contract',()=>{
+  const c={clean:v=>String(v??'').trim(),TAIPEI:'Asia/Taipei',Intl};vm.createContext(c);
+  for(const name of ['dateKey','addDays','addMonths']){const start=source.indexOf('function '+name+'(');vm.runInContext(source.slice(start,source.indexOf('\n}',start)+2),c);}
+  const start=source.indexOf('    const validationWindowEnd =');
+  const end=source.indexOf('    validatedThrough =',start);
+  vm.runInContext('function horizon(date,recurrenceEndDate){'+source.slice(start,end)+'return {horizonEnd,recurrenceEndDate};}',c);
+  assert.equal(c.horizon('2026-09-16','').horizonEnd,'2026-12-15');
+  assert.equal(c.horizon('2026-09-16','2026-10-01').horizonEnd,'2026-10-01');
+  assert.equal(c.horizon('2026-09-16','2028-10-01').horizonEnd,'2026-12-15');
+  assert.equal(c.horizon('2026-09-16','2028-10-01').recurrenceEndDate,'2028-10-01');
+  assert.equal(c.horizon('2026-11-30','').horizonEnd,'2027-02-27');
+});
