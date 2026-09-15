@@ -61,13 +61,20 @@
     @media print{
       html,body{margin:0!important;padding:0!important;background:#fff!important}
       body *{visibility:hidden!important}
+      .yz-global-nav,.form-panel,.mobile-primary-actions{display:none!important}
+      .container,.container>.card,.layout{display:block!important;margin:0!important;padding:0!important;border:0!important;box-shadow:none!important}
       #printArea,#printArea *{visibility:visible!important}
       #printArea{
-        position:absolute!important;
+        position:relative!important;
+        padding:0!important;
+        border:0!important;
+        margin:0!important;
+        overflow:visible!important;
         left:0!important;
         top:0!important;
         width:100%!important;
       }
+      .contract-preview-stage{height:auto!important;min-height:0!important}
       .contract-sheet{
         transform:none!important;
         box-shadow:none!important;
