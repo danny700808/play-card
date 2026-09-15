@@ -819,6 +819,9 @@ async function mirrorRowsIncludingInactiveUncached(type) {
 }
 
 async function mirrorRowsByDateRange(type, startDate, endDate, options = {}) {
+  return memoPortalRead('date-range:'+JSON.stringify([type,startDate,endDate,options]),()=>mirrorRowsByDateRangeUncached(type,startDate,endDate,options));
+}
+async function mirrorRowsByDateRangeUncached(type, startDate, endDate, options = {}) {
   const includeInactive = options.includeInactive === true;
   const dates = [];
   for (let key = dateKey(startDate), guard = 0; key && key <= endDate && guard < 3700; key = addDays(key, 1), guard += 1) {
@@ -4858,6 +4861,13 @@ async function historyStudentEvents(studentId, startDate, endDate) {
 }
 
 async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
+  return memoPortalRead('schedule-bundle:'+JSON.stringify([startDate,endDate,ownTeacherId,options]),async()=>{
+    const started=Date.now();const result=await scheduleBundleUncached(startDate,endDate,ownTeacherId,options);
+    console.info('[teacher schedule read]',{days:Math.round((Date.parse(endDate)-Date.parse(startDate))/86400000)+1,ms:Date.now()-started,events:result.resourceEvents.length,scopedProfiles:options.teacherHome===true});
+    return result;
+  });
+}
+async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options = {}) {
   const teacherHome = options.teacherHome === true && Boolean(ownTeacherId);
   const occupancyOnly = options.occupancyOnly === true;
   const irregularSnapshot = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
@@ -5232,6 +5242,20 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
 
 async function teacherPortalData(data) {
   const session = await requireSession(data, ['teacher']);
+  if (Array.isArray(data.refreshDates)) {
+    const dates = [...new Set(data.refreshDates.map(dateKey).filter(Boolean))].sort();
+    if (!dates.length || dates.length > 7) throw new HttpsError('invalid-argument','請選擇最多七天的課表。');
+    const [bundles,cancellations] = await Promise.all([
+      Promise.all(dates.map(day => scheduleBundle(day,day,session.teacherId,{teacherHome:true}))),
+      db.collection(ATTENDANCE_CANCELLATIONS).where('teacherId','==',session.teacherId).get()
+    ]);
+    const requests = cancellations.docs.map(doc=>({...doc.data(),id:doc.id}));
+    const events = bundles.flatMap(bundle=>bundle.events).filter(event=>event.teacherId===session.teacherId).map(event=>{
+      const request=requests.find(row=>dateKey(row.date)===event.date && (clean(row.eventId)===clean(event.sourceId||event.id)||clean(row.courseId)===clean(event.fixedCourseId||event.sourceId||event.id)));
+      return {...event,attendanceCancellationStatus:clean(request&&request.status),attendanceCancellationId:clean(request&&request.id)};
+    });
+    return {ok:true,refreshDates:dates,events};
+  }
   const start = dateKey(data.weekStart);
   if (!start) throw new HttpsError('invalid-argument', '週起始日期格式錯誤。');
   const end = addDays(start, 6);
@@ -5514,7 +5538,7 @@ async function teacherAvailability(data) {
   const sourceCourseId = clean(data.sourceCourseId);
   const sourceDate = dateKey(data.sourceDate);
   const [bundle, policy, roomSettingsSnapshot] = await Promise.all([
-    scheduleBundle(startDate, endDate, session.teacherId),
+    scheduleBundle(startDate, endDate, session.teacherId, {teacherHome:true}),
     rentalPolicySettings(),
     db.collection('coursePortalRoomSettings').get()
   ]);
@@ -5533,7 +5557,7 @@ async function teacherAvailability(data) {
     )
   );
   if (!source && sourceDate && (sourceDate < startDate || sourceDate > endDate)) {
-    const sourceBundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
+    const sourceBundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId, {teacherHome:true});
     source = sourceBundle.resourceEvents.find((event) =>
       event.teacherId === session.teacherId &&
       (
@@ -5674,7 +5698,7 @@ async function teacherSlotOptions(data) {
     const endMinute = timeMinutes(targetStartTime) + duration;
     const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
     const dates = Array.from({length:data.weekly === true ? 8 : 1}, (_, i) => addDays(targetDate, i * 7)).filter(day => day <= portalMaximumAdvanceDate());
-    const [bundle, policy, settings] = await Promise.all([scheduleBundle(targetDate, dates[dates.length - 1], session.teacherId), rentalPolicySettings(), db.collection('coursePortalRoomSettings').get()]);
+    const [bundle, policy, settings] = await Promise.all([scheduleBundle(targetDate, dates[dates.length - 1], session.teacherId, {teacherHome:true}), rentalPolicySettings(), db.collection('coursePortalRoomSettings').get()]);
     const settingMap = Object.fromEntries(settings.docs.map(doc => [doc.id, doc.data() || {}]));
     const rooms = bundle.rooms.filter(sourceActive).filter(room => roomKind(room, settingMap[sourceId(room)] || {}) === 'normal' && roomTeacherSchedulable(room, settingMap[sourceId(room)] || {})).map(room => {
       const id = sourceId(room), setting = settingMap[id] || {};
@@ -5692,14 +5716,14 @@ async function teacherSlotOptions(data) {
   const candidateStart = [today, addDays(targetDate, -7)].sort()[1];
   const candidateEnd = [addDays(candidateStart, 13), portalMaximumAdvanceDate()].sort()[0];
   const [candidateBundle, policy, roomSettingsSnapshot, activeChangeSnapshot] = await Promise.all([
-    scheduleBundle(candidateStart, candidateEnd, session.teacherId),
+    scheduleBundle(candidateStart, candidateEnd, session.teacherId, {teacherHome:true}),
     rentalPolicySettings(),
     db.collection('coursePortalRoomSettings').get(),
     db.collection('coursePortalScheduleChanges').where('active', '==', true).get()
   ]);
   const targetBundle = targetDate >= candidateStart && targetDate <= candidateEnd
     ? candidateBundle
-    : await scheduleBundle(targetDate, targetDate, session.teacherId);
+    : await scheduleBundle(targetDate, targetDate, session.teacherId, {teacherHome:true});
   const roomSettingsMap = {};
   roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
   const window = businessWindow(policy, targetDate);
@@ -8895,7 +8919,7 @@ async function teacherLessonState(data) {
     throw new HttpsError('invalid-argument', '缺少原課程資料。');
   }
   const expectedVersion = await readScheduleVersion();
-  const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
+  const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId, {teacherHome:true});
   let source = bundle.events.find((event) => teacherEventMatchesRequest(
     event,
     session.teacherId,
@@ -9097,7 +9121,7 @@ async function teacherActionAttempt(data, recheckContext = {}) {
   const restoreMode = stoppedAddMode ? null : await irregularRestoreMode(data, session);
   const [policy, bundle, roomSettingsSnapshot] = await Promise.all([
     rentalPolicySettings(),
-    scheduleBundle(date, date, session.teacherId),
+    scheduleBundle(date, date, session.teacherId, {teacherHome:true}),
     db.collection('coursePortalRoomSettings').get()
   ]);
   const window = businessWindow(policy, date);
@@ -9118,7 +9142,7 @@ async function teacherActionAttempt(data, recheckContext = {}) {
     if (!sourceDate || (!sourceEventId && !requestedSourceCourseId)) {
       throw new HttpsError('invalid-argument', '缺少要調動的原課程。');
     }
-    sourceBundle = sourceDate === date ? bundle : await scheduleBundle(sourceDate, sourceDate, session.teacherId);
+    sourceBundle = sourceDate === date ? bundle : await scheduleBundle(sourceDate, sourceDate, session.teacherId, {teacherHome:true});
     source = restoreMode ? irregularSource(restoreMode, sourceDate) : sourceBundle.resourceEvents.find((event) =>
       event.teacherId === session.teacherId &&
       event.date === sourceDate &&
@@ -9551,7 +9575,7 @@ async function teacherAttendanceEvent(session, data) {
   if (!sourceDate || (!sourceEventId && !sourceCourseId)) {
     throw new HttpsError('invalid-argument', '缺少要處理的課程。');
   }
-  const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId);
+  const bundle = await scheduleBundle(sourceDate, sourceDate, session.teacherId, {teacherHome:true});
   let event = bundle.events.find((row) => teacherEventMatchesRequest(
     row,
     session.teacherId,
@@ -9592,7 +9616,7 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     const portalAttendance = portalAttendanceSnapshot.docs.map((doc) =>
       Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
     );
-    const correctionsSnapshot = await db.collection('coursePortalAttendanceCorrections').where('studentId', '==', studentId).get();
+    const correctionsSnapshot = await db.collection('coursePortalAttendanceCorrections').where('studentId', '==', studentId).where('status', '==', 'pending').get();
     const pendingSlots = correctionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(row => row.status === 'pending');
     const selectedId = clean((options.correctionIds || {})[studentId]);
     const correction = pendingSlots.find(row => row.id === selectedId && row.teacherId === eventTeacherId(event) && row.subjectId === eventSubjectId(event));
@@ -9748,7 +9772,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
   const resolved = await teacherAttendanceEvent(session, data);
   const { sourceDate, sourceEventId, sourceCourseId, event } = resolved;
   const today = currentTaipeiDay();
-  if (!managerSession && sourceDate < today) throw new HttpsError('failed-precondition', '已超過當天晚上 12 點，請聯絡管理者協助更正紀錄。');
+  if (!managerSession && !late && sourceDate < today) throw new HttpsError('failed-precondition', '已超過當天晚上 12 點，請聯絡管理者協助更正紀錄。');
   if (!managerSession && late && sourceDate >= today) {
     throw new HttpsError('failed-precondition', '當日課程請在晚上 12 點前使用正常簽到；隔日後才會顯示補簽到。');
   }
@@ -9781,6 +9805,10 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
   const lessonLockRef = db.collection('coursePortalAttendanceLessonLocks')
     .doc(attendanceLessonLockId(sourceDate, event, { sourceEventId, sourceCourseId }));
   const versionRef = scheduleVersionRef();
+  if (!managerSession && !late && data.returnCorrectionChoice === true && data.correctionChoiceConfirmed !== true) {
+    const corrections = await pendingTeacherCorrections(session.teacherId, event);
+    if (corrections.length) return {ok:true, requiresCorrectionChoice:true, corrections};
+  }
   const periodResolution = await attendancePeriodsForEvent(event, sourceDate, {
     allowMissing: giftLesson,
     correctionIds: data.correctionIds || {},
@@ -12009,12 +12037,15 @@ async function attendanceCorrectionSlots(requestRow) {
   return slots;
 }
 
+async function pendingTeacherCorrections(teacherId, event) {
+  const snapshot = await db.collection('coursePortalAttendanceCorrections').where('teacherId', '==', teacherId).where('status', '==', 'pending').get();
+  return snapshot.docs.map(doc => ({...doc.data(),id:doc.id})).filter(row =>
+    row.subjectId === eventSubjectId(event) && eventStudentIds(event).includes(row.studentId));
+}
 async function teacherAttendanceCorrectionOptions(data) {
   const session = await requireSession(data, ['teacher']);
   const { event } = await teacherAttendanceEvent(session, data);
-  const snapshot = await db.collection('coursePortalAttendanceCorrections').where('teacherId', '==', session.teacherId).get();
-  return { corrections: snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(row =>
-    row.status === 'pending' && row.subjectId === eventSubjectId(event) && eventStudentIds(event).includes(row.studentId)) };
+  return {corrections:await pendingTeacherCorrections(session.teacherId,event)};
 }
 
 async function adminAttendanceCancellationAction(data) {
@@ -13090,11 +13121,19 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalCancelRoomBooking = callable(cancelRoomBooking);
   exportsObject.coursePortalTeacherSetIrregular = callable(teacherSetIrregular, {timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherLessonState = callable(teacherLessonState, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherAttendanceCorrectionOptions = callable(teacherAttendanceCorrectionOptions);
-  exportsObject.coursePortalTeacherAttendance = callable(teacherAttendance, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherLateAttendance = callable(teacherLateAttendance, { timeoutSeconds: 180, memory: '1GiB' });
-  exportsObject.coursePortalTeacherAttendanceCancellationRequest = callable(teacherAttendanceCancellationRequest, { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherLessonStateTaiwan = callable(withPortalReads(teacherLessonState), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherAttendanceTaiwan = callable(withPortalReads(teacherAttendance), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherLateAttendanceTaiwan = callable(withPortalReads(teacherLateAttendance), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherAttendanceCancellationRequestTaiwan = callable(withPortalReads(teacherAttendanceCancellationRequest), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherActionTaiwan = callable(withPortalReads(teacherAction), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherSetIrregularTaiwan = callable(withPortalReads(teacherSetIrregular), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherStopStudentTaiwan = callable(withPortalReads(teacherStopStudent), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherAttendanceCorrectionOptionsTaiwan = callable(withPortalReads(teacherAttendanceCorrectionOptions), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherLessonState = callable(withPortalReads(teacherLessonState), { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherAttendanceCorrectionOptions = callable(withPortalReads(teacherAttendanceCorrectionOptions));
+  exportsObject.coursePortalTeacherAttendance = callable(withPortalReads(teacherAttendance), { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherLateAttendance = callable(withPortalReads(teacherLateAttendance), { timeoutSeconds: 180, memory: '1GiB' });
+  exportsObject.coursePortalTeacherAttendanceCancellationRequest = callable(withPortalReads(teacherAttendanceCancellationRequest), { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherSubmitContactBookPost = callable(teacherSubmitContactBookPost, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherUpdateStudent = callable(teacherUpdateStudent, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherStopStudent = callable(teacherStopStudent, { timeoutSeconds: 180, memory: '1GiB' });

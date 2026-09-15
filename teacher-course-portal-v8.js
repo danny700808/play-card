@@ -9,7 +9,7 @@
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v4';
-  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.studentModes1.';
+  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.fastOperations1.';
   const CACHE_TTL = 15 * 60 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
@@ -619,7 +619,7 @@
     const names = studentNames.join('、') || '未指定學生';
     const groupLabel = studentNames.length > 2 ? '團體課' : (studentNames.length === 2 ? '雙人課' : '');
     const status = clean(event.status).toLowerCase();
-    const stateLabel = status === 'leave'
+    const stateLabel = teacherOperations.busy(operationKey(event)) ? '處理中…' : status === 'leave'
       ? '請假'
       : (status === 'absent'
         ? '曠課'
@@ -1005,6 +1005,7 @@
   let dataRequestVersion = 0;
   async function fetchData(force) {
     const requestVersion = ++dataRequestVersion;
+    const operationVersion = teacherOperations.version();
     if (activeTab === 'payroll') {
       const queryVersion = ++payrollQueryVersion;
       payrollStatus = 'loading';renderPayroll();
@@ -1030,13 +1031,13 @@
       renderAll();
       showDataFreshness('正在更新課表，目前顯示上次讀取的資料。');
       invoke('coursePortalTeacherData', request).then((fresh) => {
-        if (requestVersion !== dataRequestVersion) return;
+        if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending()) return;
         mergeData(fresh);
         writeCache(weekStart, payrollMonth, data);
         renderAll();
         showDataFreshness('');
       }).catch((error) => {
-        if (requestVersion !== dataRequestVersion) return;
+        if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending()) return;
         showDataFreshness('課表更新未完成，目前顯示上次資料，請稍後重新整理。');
         if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
           PortalAuth.invalidateSession('teacher', error);
@@ -1046,7 +1047,7 @@
     }
     showDataFreshness('正在讀取課表…');
     const result = await invoke('coursePortalTeacherData', request);
-    if (requestVersion !== dataRequestVersion) return;
+    if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending()) return;
     mergeData(result);
     writeCache(weekStart, payrollMonth, data);
     renderAll();
@@ -1136,6 +1137,7 @@
     node.classList.remove('hidden');
     node.setAttribute('aria-hidden', 'false');
     syncTeacherOverlayScrollLock();
+    syncOperationButtons();
   }
 
   function setFlowBanner(title, detail) {
@@ -1354,150 +1356,90 @@
     }
   }
 
-  async function updateLessonState(row, state, button, note) {
-    const messages = {
-      leave: '確定標示學生請假？這個教室時段會釋出。',
-      absent: '確定標示曠課？本堂未完成簽到，不會列入老師薪資。',
-      cancel_change: '確定取消這次由老師新增、贈送或調整的安排？'
-    };
-    if (!row || !confirm(messages[state])) return;
-    loading(button, true, '處理中…');
-    try {
-      const result = await invoke('coursePortalTeacherLessonState', {
-        sessionToken: token,
-        state,
-        sourceEventId: row.sourceId || row.id,
-        sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
-        sourceDate: row.date,
-        portalChangeId: row.portalChangeId,
-        note: clean(note)
-      });
-      closeQuick();
-      cancelPlanner(false);
-      clearCache();
-      toast(result.message || '課程狀態已更新。');
-      await load(true);
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      loading(button, false);
-    }
-  }
 
-  async function updateLateAttendance(row, button) {
-    if (!row) return;
-    const giftLesson = row.specialLesson === true ||
-      clean(row.portalAction) === 'teacher_gift' ||
-      clean(row.type) === 'teacher_gift';
-    const confirmation = giftLesson
-      ? '確定補簽這堂贈送課程？本次不收行政處理費。'
-      : '補簽到會收取行政處理費 NT$50，並直接列入本月薪資扣款。確定要補簽到嗎？';
-    if (!confirm(confirmation)) return;
-    loading(button, true, '補簽中…');
-    try {
-      const result = await invoke('coursePortalTeacherLateAttendance', {
-        sessionToken: token,
-        sourceEventId: row.sourceId || row.id,
-        sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
-        sourceDate: row.date
-      });
-      closeQuick();
-      clearCache();
-      toast(result.message || '補簽到已完成。');
-      await load(true);
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      loading(button, false);
-    }
+  function operationKey(row) {return [row.teacherId || data.teacher.id,row.date,row.fixedCourseId || row.sourceId || row.id].join('|');}
+  function syncOperationButtons() {
+    const row=quickContext&&quickContext.row;
+    const busy=row&&teacherOperations.busy(operationKey(row));
+    document.querySelectorAll('#teacherQuickActions button').forEach(button=>{
+      if(busy&&!button.disabled){button.disabled=true;button.dataset.operationLocked='1';}
+      else if(!busy&&button.dataset.operationLocked){button.disabled=false;delete button.dataset.operationLocked;}
+    });
   }
+  function syncFailure(message) {
+    showDataFreshness(message);
+    const node=document.getElementById('teacherDataFreshness');
+    if(node){const retry=document.createElement('button');retry.textContent='重新更新';retry.onclick=()=>teacherOperations.retry();node.appendChild(retry);}
+  }
+  const teacherOperations=global.YouziTeacherOperations.create({
+    read:dates=>invoke('coursePortalTeacherData',{sessionToken:token,refreshDates:dates}),
+    apply:snapshot=>{
+      const dates=new Set(snapshot.refreshDates||[]);
+      data.events=data.events.filter(row=>!dates.has(row.date)).concat((snapshot.events||[]).filter(row=>row.date>=weekStart&&row.date<=addDays(weekStart,6)));
+      writeCache(weekStart,payrollMonth,data);renderWeek();syncOperationButtons();
+    },
+    synced:remaining=>showDataFreshness(remaining?'已儲存，正在更新相關課程。':''),
+    error:()=>syncFailure('操作已儲存，課表更新未完成。')
+  });
+  function beginLessonOperation(row,button,label){
+    const key=operationKey(row);if(!teacherOperations.begin(key))return null;
+    dataRequestVersion++;loading(button,true,label);syncOperationButtons();renderWeek();
+    return {row,key,button,context:quickContext,planner,started:Date.now(),saved:false};
+  }
+  function completeLessonOperation(job,result,status){
+    job.saved=true;dataRequestVersion++;clearCache();
+    if(status) data.events=data.events.map(row=>operationKey(row)!==job.key?row:{...row,status,attendanceCancellationStatus:result.status==='pending'?'pending':''});
+    if(status==='cancelled')data.events=data.events.filter(row=>operationKey(row)!==job.key);
+    if(quickContext&&quickContext.row&&operationKey(quickContext.row)===job.key)closeQuick();
+    renderWeek();toast(result.message||'已儲存。');showDataFreshness('已儲存，正在更新相關課程。');
+    teacherOperations.saved([job.row.date]);
+    console.info('[teacher operation]',{stage:'save',ms:Date.now()-job.started});
+  }
+  function failLessonOperation(job,error){
+    if(job.saved){teacherOperations.saved([job.row.date]);syncFailure('操作已儲存，畫面更新未完成。');}
+    else toast(error.message||'無法確認操作結果，請重新讀取課表後確認。','error');
+  }
+  function finishLessonOperation(job){teacherOperations.finish(job.key);loading(job.button,false);syncOperationButtons();renderWeek();}
 
-  async function updateAttendance(row, button) {
-    if (!row) return;
-    if (!confirm('確定完成這堂課的當日簽到？今天晚上 12 點前可直接取消，也可以取消後重新簽到；隔天後則需主管處理。')) return;
-    loading(button, true, '簽到中…');
-    try {
-      const source = { sourceEventId: row.sourceId || row.id, sourceCourseId: row.fixedCourseId || row.sourceId || row.id, sourceDate: row.date, portalChangeId: row.portalChangeId };
-      const options = await invoke('coursePortalTeacherAttendanceCorrectionOptions', { sessionToken: token, ...source });
-      const correctionIds = {};
-      for (const slot of options.corrections || []) {
-        if (correctionIds[slot.studentId]) continue;
-        if (confirm(`${slot.studentName || '學生'}有一格待補回：第 ${slot.periodNo} 期第 ${slot.slotNo} 格（原 ${slot.originalDate}）。\n今天這堂是否補回這一格？\n確定：填回原格，並請老師同步更正實體上課證。\n取消：照常登記於目前期別。`)) correctionIds[slot.studentId] = slot.id;
+  async function updateLessonState(row,state,button,note){
+    const messages={leave:'確定標示學生請假？這個教室時段會釋出。',absent:'確定標示曠課？將依課程長度扣堂，不列入老師薪資。',cancel_change:'確定取消這次新增的課程？'};
+    if(!row||teacherOperations.busy(operationKey(row))||!confirm(messages[state]))return;
+    const job=beginLessonOperation(row,button,'處理中…');if(!job)return;
+    try{const result=await invoke('coursePortalTeacherLessonState',{sessionToken:token,state,sourceEventId:row.sourceId||row.id,sourceCourseId:row.fixedCourseId||row.sourceId||row.id,sourceDate:row.date,portalChangeId:row.portalChangeId,note:clean(note)});completeLessonOperation(job,result,state==='cancel_change'?'cancelled':state);}
+    catch(error){failLessonOperation(job,error);}finally{finishLessonOperation(job);}
+  }
+  async function updateLateAttendance(row,button){
+    if(!row||teacherOperations.busy(operationKey(row)))return;
+    const gift=row.specialLesson===true||clean(row.portalAction)==='teacher_gift'||clean(row.type)==='teacher_gift';
+    if(!confirm(gift?'確定補簽這堂贈送課程？本次不收行政處理費。':'補簽到會收取行政處理費 NT$50，不需主管核准。確定要補簽到嗎？'))return;
+    const job=beginLessonOperation(row,button,'補簽中…');if(!job)return;
+    try{const result=await invoke('coursePortalTeacherLateAttendance',{sessionToken:token,sourceEventId:row.sourceId||row.id,sourceCourseId:row.fixedCourseId||row.sourceId||row.id,sourceDate:row.date,portalChangeId:row.portalChangeId});completeLessonOperation(job,result,'attended');}
+    catch(error){failLessonOperation(job,error);}finally{finishLessonOperation(job);}
+  }
+  async function updateAttendance(row,button){
+    if(!row||teacherOperations.busy(operationKey(row))||!confirm('確定完成這堂課的簽到？當天晚上12點前可直接取消並重新簽到。'))return;
+    const job=beginLessonOperation(row,button,'簽到中…');if(!job)return;
+    const payload={sessionToken:token,returnCorrectionChoice:true,sourceEventId:row.sourceId||row.id,sourceCourseId:row.fixedCourseId||row.sourceId||row.id,sourceDate:row.date,portalChangeId:row.portalChangeId};
+    try{
+      let result=await invoke('coursePortalTeacherAttendance',payload);
+      if(result.requiresCorrectionChoice){
+        const correctionIds={};
+        for(const slot of result.corrections||[]){if(correctionIds[slot.studentId])continue;
+          if(confirm((slot.studentName||'學生')+'有一格待補回：第 '+slot.periodNo+' 期第 '+slot.slotNo+' 格（原 '+slot.originalDate+'）。\n今天要補回原格嗎？確認後請同步更正實體上課證；取消則照常登記目前期別。'))correctionIds[slot.studentId]=slot.id;
+        }
+        result=await invoke('coursePortalTeacherAttendance',{...payload,correctionIds,correctionChoiceConfirmed:true});
       }
-      const result = await invoke('coursePortalTeacherAttendance', {
-        correctionIds,
-        sessionToken: token,
-        sourceEventId: row.sourceId || row.id,
-        sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
-        sourceDate: row.date,
-        portalChangeId: row.portalChangeId
-      });
-      closeQuick();
-      clearCache();
-      toast(result.message || '簽到已完成。');
-      await load(true);
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      loading(button, false);
-    }
+      completeLessonOperation(job,result,'attended');
+    }catch(error){failLessonOperation(job,error);}finally{finishLessonOperation(job);}
   }
-
-  async function requestAttendanceCancellation(row, button) {
-    if (!row) return;
-    const sameDay = row.date === todayKey();
-    if (sameDay) {
-      if (!confirm('確定取消這堂課的當日簽到？取消後不計堂數，家長端會恢復為未使用；今天晚上 12 點前仍可重新簽到。')) return;
-      loading(button, true, '取消中…');
-      try {
-        const result = await invoke('coursePortalTeacherAttendanceCancellationRequest', {
-          sessionToken: token,
-          sourceEventId: row.sourceId || row.id,
-          sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
-          sourceDate: row.date,
-          portalChangeId: row.portalChangeId,
-          reason: '老師當日誤簽到'
-        });
-        closeQuick();
-        clearCache();
-        toast(result.message || '當日簽到已取消。');
-        await load(true);
-      } catch (error) {
-        toast(error.message, 'error');
-      } finally {
-        loading(button, false);
-      }
-      return;
-    }
-    const reason = prompt(
-      '請輸入取消簽到原因。送出後必須由主管核准，核准時會扣除行政處理費 NT$50：',
-      '老師誤簽到'
-    );
-    if (reason === null) return;
-    if (!clean(reason)) {
-      toast('請填寫取消簽到原因。', 'error');
-      return;
-    }
-    if (!confirm('確定送出取消簽到申請？主管核准前，這堂課仍維持已簽到。')) return;
-    loading(button, true, '送出中…');
-    try {
-      const result = await invoke('coursePortalTeacherAttendanceCancellationRequest', {
-        sessionToken: token,
-        sourceEventId: row.sourceId || row.id,
-        sourceCourseId: row.fixedCourseId || row.sourceId || row.id,
-        sourceDate: row.date,
-        portalChangeId: row.portalChangeId,
-        reason
-      });
-      closeQuick();
-      clearCache();
-      toast(result.message || '取消簽到申請已送出。');
-      await load(true);
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      loading(button, false);
-    }
+  async function requestAttendanceCancellation(row,button){
+    if(!row||teacherOperations.busy(operationKey(row)))return;
+    const sameDay = row.date === todayKey();let reason='老師當日誤簽到';
+    if(sameDay){if(!confirm('確定取消當日簽到？取消後不計堂數，當天仍可重新簽到。'))return;}
+    else{reason=prompt('請填寫取消簽到原因。主管核准後才生效，並扣除行政處理費 NT$50：','老師誤簽到');if(reason===null)return;if(!clean(reason)){toast('請填寫原因。','error');return;}if(!confirm('確定送出申請？主管核准前仍維持已簽到。'))return;}
+    const job=beginLessonOperation(row,button,sameDay?'取消中…':'送出中…');if(!job)return;
+    try{const result=await invoke('coursePortalTeacherAttendanceCancellationRequest',{sessionToken:token,sourceEventId:row.sourceId||row.id,sourceCourseId:row.fixedCourseId||row.sourceId||row.id,sourceDate:row.date,portalChangeId:row.portalChangeId,reason});completeLessonOperation(job,result,sameDay?'scheduled':'attended');}
+    catch(error){failLessonOperation(job,error);}finally{finishLessonOperation(job);}
   }
 
   function prefillEmployee() {
@@ -1822,6 +1764,8 @@
   }
 
   async function submitTeacherAction(payload, button) {
+    const operationRow={teacherId:data.teacher.id,date:payload.sourceDate||payload.date,fixedCourseId:payload.sourceCourseId||payload.sourceEventId||payload.operationId||'new-course'};
+    const job=beginLessonOperation(operationRow,button,'正在做最後檢查…');if(!job)return;
     loading(button, true, '正在做最後檢查…');
     setProgress(true, '正在儲存課程', '再次檢查老師、每位學生、教室、設備、政策與租用衝突…');
     try {
@@ -1849,17 +1793,20 @@
         );
         return;
       }
-      clearCache();
-      toast(result.message || '課程已儲存。');
-      cancelPlanner(true);
-      await load(true);
+      job.saved=true;clearCache();dataRequestVersion++;
+      toast(result.message||'課程已儲存。');if(planner===job.planner)cancelPlanner(quickContext===job.context);
+      console.info('[teacher operation]',{stage:'save',action:payload.action,ms:Date.now()-job.started});
+      showDataFreshness('已儲存，正在更新相關課程。');
+      const dates=payload.action==='permanent_move'?Array.from({length:7},(_,i)=>addDays(weekStart,i)):[payload.sourceDate,payload.date];
+      teacherOperations.saved(dates);
     } catch (error) {
       setProgress(false);
-      toast(error.message, 'error');
+      if(job.saved)syncFailure('課程已儲存，畫面更新未完成。');else toast(error.message, 'error');
       // Keep the planner and its filled values available for correction.
-      showDataFreshness(error.message || '儲存未完成，已保留填寫內容，請確認後再試。');
+      if(!job.saved)showDataFreshness(error.message || '儲存未完成，已保留填寫內容，請確認後再試。');
+      else teacherOperations.saved([payload.sourceDate,payload.date]);
     } finally {
-      loading(button, false);
+      finishLessonOperation(job);
     }
   }
 
