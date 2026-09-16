@@ -770,10 +770,12 @@
       html += `<div class="week-cell time" style="grid-column:1;grid-row:${gridRow}">${minute % 60 === 0 ? slotStart : ''}</div>`;
       days.forEach((day, dayIndex) => {
         const rows = uniqueEvents(events.filter((event) => event.date === day && event.startTime < slotEnd && slotStart < event.endTime));
+        const blockingRows = rows.filter(eventBlocksPlannerGap);
+        const released = rows.length > 0 && blockingRows.length === 0;
         const available = plannerSlots.get(`${day}|${slotStart}`);
         const past = courseSlotIsPast(day, slotStart);
-        html += `<div class="week-cell" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
-        if (!rows.length && new Date(`${day}T12:00:00`).getDay() !== 1 && !past) {
+        html += `<div class="week-cell${released ? ' released-slot-cell' : ''}" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
+        if (!blockingRows.length && new Date(`${day}T12:00:00`).getDay() !== 1 && !past) {
           if (available) {
             html += `<button class="empty-slot available-target" type="button" data-flow-target="${day}|${slotStart}" aria-label="${escapeHtml(`${day} ${slotStart} 可排入連續 ${requiredMinutes} 分鐘`)}"><span>可調入</span><small>${requiredMinutes} 分鐘</small></button>`;
           } else if (planner) {
@@ -786,9 +788,9 @@
               : `這個位置無法連續保留 ${requiredMinutes} 分鐘，請選擇綠色的「可調入」時段。`;
             html += `<button class="empty-slot unavailable-target" type="button" data-unavailable-target="${day}|${slotStart}" data-unavailable-message="${escapeHtml(message)}" aria-disabled="true"><span>${label}</span><small>${detail}</small></button>`;
           } else {
-            html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}" aria-label="${escapeHtml(`${day} ${slotStart} 查詢空教室`)}"></button>`;
+            html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}" aria-label="${escapeHtml(`${day} ${slotStart} 查詢空教室`)}">${released ? '<span>＋ 排課</span>' : ''}</button>`;
           }
-        } else if (!rows.length && new Date(`${day}T12:00:00`).getDay() === 1) {
+        } else if (!blockingRows.length && new Date(`${day}T12:00:00`).getDay() === 1) {
           html += '<span class="closed-slot">公休</span>';
         }
         html += '</div>';
@@ -801,7 +803,7 @@
         const endMinute = timeMinutes(group.endTime);
         const rowStart = 2 + Math.max(0, Math.floor((startMinute - scheduleStart) / 30));
         const rowSpan = Math.max(1, Math.ceil((endMinute - Math.max(startMinute, scheduleStart)) / 30));
-        const placement = `grid-column:${dayIndex + 2};grid-row:${rowStart}/span ${rowSpan}`;
+        const placement = `grid-column:${dayIndex + 2};grid-row:${rowStart}/span ${rowSpan}${group.events.every(event => !eventBlocksPlannerGap(event)) ? ';margin-right:46%' : ''}`;
         if (group.events.length === 1) html += `<div class="lesson-placement" style="${placement}">${lessonCard(group.events[0], false)}</div>`;
         else {
           const count = futureOverlapCount(group.events, Date.now());
