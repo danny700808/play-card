@@ -35,3 +35,18 @@ test('concurrent devices cannot commit schedules from the same stale version',as
 test('a signed lesson cannot be moved without first cancelling attendance',async()=>{
  const f=fixture([{id:'old',date:'2026-09-07',startTime:'18:00',endTime:'19:00',roomId:'room',studentIds:['student'],status:'attended'}]),data=request();data.sourceEventId='old';data.sourceDate='2026-09-07';await assert.rejects(f.c.adminSaveSchedule(data),/已簽到/);
 });
+
+test('manager fixed move delegates weekly/biweekly with server-only identity and no client conflict bypass',async()=>{
+ for(const frequency of ['weekly','biweekly']){
+  const f=fixture(),data=request();data.mode='permanent_move';data.event.frequency=frequency;data.sourceEventId='old';data.sourceCourseId='series';data.sourceDate='2026-09-07';data.confirmPermanentConflicts=true;data.teacherSession={teacherId:'intruder'};
+  f.c.recheckSchedule=async work=>work({guard:true});f.c.withPortalReads=work=>work;
+  f.c.teacherActionAttempt=async(req,context,session)=>{assert.equal(session.teacherId,'teacher');assert.equal(req.frequencyWeeks,frequency==='weekly'?1:2);assert.equal(req.sourceEventId,'old');assert.equal(req.sourceCourseId,'series');assert.equal(req.confirmPermanentConflicts,undefined);assert.equal(req.teacherSession,undefined);assert.equal(context.guard,true);assert(req.managerRequestHash);return {ok:true};};
+  assert.equal((await f.c.adminSaveSchedule(data)).ok,true);assert.equal(f.docs.size,1);
+ }
+});
+test('manager fixed move conflict does not write a replacement or accept pending dates',async()=>{
+ const f=fixture(),data=request();data.mode='permanent_move';f.c.recheckSchedule=async work=>work({});f.c.withPortalReads=work=>work;f.c.teacherActionAttempt=async()=>({ok:false,requiresConfirmation:true,conflicts:[{date:'2026-09-14'}]});await assert.rejects(f.c.adminSaveSchedule(data),/原課程尚未變更/);assert.equal(f.docs.size,1);
+});
+test('manager fixed move rejects one-off frequency before any write',async()=>{
+ const f=fixture(),data=request();data.mode='permanent_move';data.event.frequency='once';await assert.rejects(f.c.adminSaveSchedule(data),/每週上課或隔週上課/);assert.equal(f.docs.size,1);
+});
