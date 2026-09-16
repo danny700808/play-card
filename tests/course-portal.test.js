@@ -353,7 +353,7 @@ assert(schedulerUiHtml.includes('可選擇過去日期補登歷史資料'), '老
 assert(schedulerSource.includes('data-teacher-adjustment'), '老師清單缺少獎勵／扣薪入口');
 assert(schedulerSource.includes('function submitTeacherAdjustment'), '老師獎勵／扣薪表單沒有儲存流程');
 assert(schedulerSource.includes('選擇上方月份即可查看過去資料'), '老師薪資明細沒有歷史獎勵／扣薪說明');
-assert(schedulerDataSource.includes("call('coursePortalAdminSaveTeacherAdjustment'"), '老師薪資異動沒有連接後端');
+assert(schedulerDataSource.includes("courseAdminMutation('coursePortalAdminSaveTeacherAdjustment'"), '老師薪資異動沒有連接後端');
 assert(schedulerDataSource.includes("call('coursePortalAdminCancelRoomBooking'"), '管理者強制取消租用沒有連接後端');
 assert(schedulerCss.includes('.slot.event-from-prev{border-top-color:transparent}'), '跨半小時課程仍會顯示內部上格線');
 assert(schedulerCss.includes('.slot.event-to-next{border-bottom-color:transparent}'), '跨半小時課程仍會顯示內部下格線');

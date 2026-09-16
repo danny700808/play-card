@@ -596,11 +596,9 @@
 
   async function saveTeacherAdjustment(options){
     options=options||{};
-    var pin=clean(options.manualSyncPin),teacherId=clean(options.teacherId),date=dateKey(options.date),type=clean(options.type),note=clean(options.note),requestId=clean(options.requestId);
-    if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
+    var teacherId=clean(options.teacherId),date=dateKey(options.date),type=clean(options.type),note=clean(options.note),requestId=clean(options.requestId);
     if(!teacherId||!date||['reward','deduction'].indexOf(type)<0||Number(options.amount)<=0||!note||!requestId)throw new Error('老師薪資異動資料不完整。');
-    var result=await call('coursePortalAdminSaveTeacherAdjustment',{
-      adminPin:pin,
+    var result=await courseAdminMutation('coursePortalAdminSaveTeacherAdjustment',{
       requestId:requestId,
       teacherId:teacherId,
       date:date,
