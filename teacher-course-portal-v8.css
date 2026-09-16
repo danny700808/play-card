@@ -187,3 +187,10 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 
 .teacher-course-app .lesson strong{font-size:12px;line-height:1.15;font-weight:400}
 .teacher-course-app .lesson-time,.teacher-course-app .lesson small{font-size:10px;line-height:1.15;font-weight:400}
+
+/* Released records remain clickable on the left; free-slot controls sit above them on the right. */
+.teacher-course-app .week-cell.released-slot-cell{z-index:2;pointer-events:none;background:transparent}
+.teacher-course-app .released-slot-cell .empty-slot{position:absolute;right:0;top:0;width:45%;height:100%;pointer-events:auto;background:#edf8f2;color:#126249;border-left:1px solid #bedbce}
+.teacher-course-app .released-slot-cell .empty-slot span{font-size:10px;line-height:1.2}
+.teacher-course-app .released-slot-cell .empty-slot.available-target{background:#daf2e7}
+.teacher-course-app .released-slot-cell .empty-slot.unavailable-target{background:#fff1ef;color:#963f38}
