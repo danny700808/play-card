@@ -156,7 +156,7 @@
             <div class="field trial-only hidden"><label>體驗者姓名</label><input id="eventTrialName" placeholder="請輸入姓名"></div>
             <div class="field trial-only hidden"><label>聯絡電話</label><input id="eventTrialPhone" placeholder="手機或市話"></div>
             <div class="field trial-only hidden"><label>體驗費用</label><input id="eventTrialFee" type="number" min="0" step="1"></div>
-            <div class="field rental-only hidden"><label>租用客戶／團體</label><input id="eventClient" placeholder="姓名或團體名稱"></div>
+            <div class="field full rental-only hidden"><label>租用者類型</label><select id="eventRenterType"><option value="walkin">門市客人</option><option value="student">本店學生</option></select><div id="rentalStudentPicker" class="hidden"><label>搜尋學生姓名／手機</label><input id="rentalStudentSearch" autocomplete="off" placeholder="輸入姓名或手機"><input type="hidden" id="rentalStudentId"><div id="rentalStudentMatches" class="student-match-list hidden"></div><small id="rentalStudentSelected"></small></div></div><div class="field rental-only hidden"><label>租用客戶／團體</label><input id="eventClient" placeholder="姓名或團體名稱"></div>
             <div class="field rental-only hidden"><label>聯絡電話</label><input id="eventClientPhone" placeholder="手機或市話"></div>
             <div class="field rental-only hidden"><label>實際租用金額</label><input id="eventRentalFee" type="number" min="0" step="1"><small>會先帶入教室預設價格，現場仍可直接修改。</small></div>
             <div class="field rental-only hidden"><label>收款狀態</label><select id="eventRentalPaymentStatus"><option value="unpaid">未收款</option><option value="paid">已收款</option></select></div>

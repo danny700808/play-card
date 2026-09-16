@@ -4871,6 +4871,7 @@ async function scheduleBundle(startDate, endDate, ownTeacherId, options = {}) {
 async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options = {}) {
   const teacherHome = options.teacherHome === true && Boolean(ownTeacherId);
   const occupancyOnly = options.occupancyOnly === true;
+  const adminWrite = options.adminWrite === true;
   const irregularSnapshot = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
   const irregularModes = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const historyStudentId = clean(options.historyStudentId);
@@ -5236,8 +5237,8 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
     maps,
     resourceEvents,
     irregularModes,
-    resourceConflicts: historyStudentId || teacherHome || occupancyOnly ? [] : scheduleResourceConflicts(resourceEvents),
-    events: historyStudentId || occupancyOnly ? [] : validBase.filter(row => !teacherHome || eventTeacherId(row) === ownTeacherId).map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
+    resourceConflicts: historyStudentId || teacherHome || occupancyOnly || adminWrite ? [] : scheduleResourceConflicts(resourceEvents),
+    events: historyStudentId || occupancyOnly || adminWrite ? [] : validBase.filter(row => !teacherHome || eventTeacherId(row) === ownTeacherId).map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
   };
 }
 
@@ -10123,7 +10124,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
 async function adminSaveLessonSettings(data) {
   const date = dateKey(data.date), expectedVersion = await readScheduleVersion();
   if (!date || !clean(data.sourceEventId)) throw new HttpsError('invalid-argument', '缺少課程資料。');
-  const bundle = await scheduleBundle(date, date, clean(data.teacherId));
+  const bundle = await scheduleBundle(date, date, clean(data.teacherId), { occupancyOnly: data.kind === 'rentalStatus' || data.kind === 'rentalDetails' });
   const event = bundle.resourceEvents.find(row => [row.id, row.sourceId, row.portalChangeId, row.fixedCourseId, row.seriesId].includes(clean(data.sourceEventId)) || clean(data.sourceCourseId) && row.fixedCourseId === clean(data.sourceCourseId));
   if (!event) throw new HttpsError('not-found', '找不到課程，請重新載入。');
   const eventIds = [...new Set([event.id, event.sourceId, event.fixedCourseId, event.seriesId, event.portalChangeId, clean(data.sourceEventId)].filter(Boolean))];
@@ -10153,7 +10154,7 @@ async function adminSaveLessonSettings(data) {
     if (!rentalUpdate.bookingId) throw new HttpsError('invalid-argument','缺少線上租用識別碼。');
   } else if (data.kind === 'rentalStatus') {
     if (event.type !== 'rental' && event.portalAction !== 'room_booking') throw new HttpsError('invalid-argument', '這不是租用紀錄。');
-    if (!['attended','scheduled'].includes(clean(data.status))) throw new HttpsError('invalid-argument', '租用簽退狀態無效。');
+    if (!['attended','scheduled'].includes(clean(data.status))) throw new HttpsError('invalid-argument', '租用簽到狀態無效。');
     if (data.status === 'attended' && date > currentTaipeiDay()) throw new HttpsError('failed-precondition', '尚未到租用日期。');
     fields.status = data.status;
   } else throw new HttpsError('invalid-argument', '不支援的設定。');
@@ -10172,7 +10173,7 @@ async function adminSaveLessonSettings(data) {
     if (payroll) tx.set(db.collection(ATTENDANCE_PAYROLL).doc(payroll.id), payroll, { merge: true });
     tx.set(scheduleVersionRef(), { version: expectedVersion + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-lesson-settings' }, { merge: true });
   });
-  return { ok: true, id };
+  return { ok: true, id, fields };
 }
 
 async function adminVoidLessonSlot(data) {
@@ -10266,11 +10267,11 @@ async function adminSaveSchedule(data) {
   const recurrenceEndDate = dateKey(data.repeatUntil);
   if (recurrenceEndDate && recurrenceEndDate < date) throw new HttpsError('invalid-argument', '結束日期不可早於開始日期。');
   const through = recurring ? (recurrenceEndDate && recurrenceEndDate < addDays(date, 180) ? recurrenceEndDate : addDays(date, 180)) : date;
-  const [bundle, roomSettings, policy, changes] = await Promise.all([scheduleBundle(date, through, teacherId), db.collection('coursePortalRoomSettings').doc(roomId).get(), rentalPolicySettings(), db.collection('coursePortalScheduleChanges').where('active','==',true).get()]);
+  const [bundle, roomSettings, policy, changes] = await Promise.all([scheduleBundle(date, through, teacherId, { adminWrite: true }), db.collection('coursePortalRoomSettings').doc(roomId).get(), rentalPolicySettings(), clean(data.sourceEventId) || clean(data.sourceCourseId) ? db.collection('coursePortalScheduleChanges').where('active','==',true).get() : Promise.resolve({docs:[]})]);
   let original = null;
   if (clean(data.sourceEventId) || clean(data.sourceCourseId)) {
     const sourceDate = dateKey(data.sourceDate) || date;
-    const sourceBundle = sourceDate >= date && sourceDate <= through ? bundle : await scheduleBundle(sourceDate, sourceDate, teacherId);
+    const sourceBundle = sourceDate >= date && sourceDate <= through ? bundle : await scheduleBundle(sourceDate, sourceDate, teacherId, { adminWrite: true });
     original = sourceBundle.resourceEvents.find(row => row.date === sourceDate && [row.id,row.sourceId].map(clean).includes(clean(data.sourceEventId)));
     if (!original && clean(data.sourceCourseId)) {
       const matches = sourceBundle.resourceEvents.filter(row => row.date === sourceDate && clean(row.fixedCourseId || row.seriesId) === clean(data.sourceCourseId));
@@ -10285,6 +10286,8 @@ async function adminSaveSchedule(data) {
   if (type !== 'rental' && (!bundle.maps.teachers[teacherId] || !sourceActive(bundle.maps.teachers[teacherId]) || !bundle.maps.subjects[subjectId])) throw new HttpsError('failed-precondition', '老師或科目已停用。');
   if (newStudent) bundle.maps.students[newStudent.id] = newStudent;
   if (studentIds.some(id => !bundle.maps.students[id])) throw new HttpsError('failed-precondition', '學生資料不存在。');
+  const renterStudentId = type === 'rental' ? clean(raw.renterStudentId) : '';
+  if (renterStudentId && !bundle.maps.students[renterStudentId]) throw new HttpsError('failed-precondition', '找不到所選學生，請重新搜尋。');
   const teacherSubjects = firstArray(bundle.maps.teachers[teacherId] || {}, ['subjectIds']);
   if (type !== 'rental' && teacherSubjects.length && !teacherSubjects.includes(subjectId)) throw new HttpsError('failed-precondition', '老師沒有此科目的授課設定。');
   if (type !== 'rental' && !roomSupportsSubject(selectedRoom, subjectId, bundle, setting)) throw new HttpsError('failed-precondition', '教室不適合所選科目。');
@@ -10302,7 +10305,7 @@ async function adminSaveSchedule(data) {
     studentId: studentIds[0] || '', studentNames: studentIds.map(id => clean(bundle.maps.students[id]?.name)),
     type, status: mode === 'delete' ? 'cancelled' : 'scheduled', tuitionPeriodId: enrollmentPeriod ? enrollmentPeriod.id : clean(raw.tuitionPeriodId),
     specialLesson: raw.specialLesson === true, specialLessonPrice: Number(raw.specialLessonPrice || 0), specialTeacherPay: Number(raw.specialTeacherPay || 0),
-    clientName: clean(raw.clientName), clientPhone: clean(raw.clientPhone), rentalFee: Number(raw.rentalFee || 0), rentalPaymentStatus: clean(raw.rentalPaymentStatus),
+    renterStudentId, clientName: clean(raw.clientName), clientPhone: clean(raw.clientPhone), rentalFee: Number(raw.rentalFee || 0), rentalPaymentStatus: clean(raw.rentalPaymentStatus),
     trialName: clean(raw.trialName), trialPhone: clean(raw.trialPhone), trialFee: Number(raw.trialFee || 0),
     note: clean(raw.note).slice(0,2000), source: 'manager-cloud', active: mode !== 'delete' };
   for (const key of ['specialLessonPrice','specialTeacherPay','rentalFee','trialFee']) { try { cents(event[key]); } catch(error) { throw new HttpsError('invalid-argument',error.message); } }
@@ -10340,7 +10343,7 @@ async function adminSaveSchedule(data) {
     tx.create(target,{...payload,requestHash,createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     tx.set(scheduleVersionRef(),{version:expectedVersion+1,updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-schedule'},{merge:true});
   });
-  return { ok:true,id,event };
+  return { ok:true,id,event,course:recurring?payload:event,recurring,student:newStudent,tuitionPeriod:enrollmentPeriod };
 }
 
 async function adminAttendanceDetail(data) {
@@ -13201,9 +13204,9 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalAdminSaveRoomEquipment = callable(async (data,request)=>{assertAdminPin(request);return adminSaveRoomEquipment(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminRecordTuitionTransaction = callable(async (data,request)=>{assertAdminPin(request);return adminRecordTuitionTransaction(data);},{secrets:[ADMIN_PIN]});
   exportsObject.coursePortalAdminVoidLessonSlot = callable(async (data, request) => { assertAdminPin(request); return adminVoidLessonSlot(data); }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminSaveLessonSettings = callable(async (data, request) => { assertAdminPin(request); return adminSaveLessonSettings(data); }, { secrets: [ADMIN_PIN] });
+  exportsObject.coursePortalAdminSaveLessonSettings = callable(async (data, request) => { assertAdminPin(request); return withPortalReads(() => adminSaveLessonSettings(data))(); }, { secrets: [ADMIN_PIN] });
   exportsObject.coursePortalAdminSaveLeaveReason = callable(async (data, request) => { assertAdminPin(request); return adminSaveLeaveReason(data); }, { secrets: [ADMIN_PIN] });
-  exportsObject.coursePortalAdminSaveSchedule = callable(async (data, request) => { assertAdminPin(request); return adminSaveSchedule(data); }, { secrets: [ADMIN_PIN] });
+  exportsObject.coursePortalAdminSaveSchedule = callable(async (data, request) => { assertAdminPin(request); return withPortalReads(() => adminSaveSchedule(data))(); }, { secrets: [ADMIN_PIN] });
   const adminAttendanceHandler = async (data, request) => {
     await timeAttendanceStage('authorize', () => assertAdminPin(request));
     return data.action === 'refresh' ? adminAttendanceDetail(data) : adminSetAttendance(data);

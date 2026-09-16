@@ -70,3 +70,15 @@ test('existing student new scheme continues period sequence and trusts catalog p
 test('new student cannot enter via single extra lesson',async()=>{
  const f=fixture(),data=enroll();data.event.type='single';await assert.rejects(f.c.adminSaveSchedule(data),/固定排課/);assert.equal(f.docs.size,1);
 });
+
+test('save returns committed recurring rule and enrollment for immediate UI refresh',async()=>{
+ const f=fixture(),data=enroll();data.event.frequency='biweekly';const result=await f.c.adminSaveSchedule(data);
+ assert.equal(result.course.frequencyWeeks,2);assert.equal(result.course.id,result.id);assert.equal(result.student.name,'新學生');assert.equal(result.tuitionPeriod.periodNo,1);assert.equal(result.tuitionPeriod.studentId,result.student.id);
+});
+test('student renter is contact metadata, with no tuition or payroll write',async()=>{
+ const f=fixture(),data=request();Object.assign(data.event,{type:'rental',teacherId:'',subjectId:'',studentIds:[],renterStudentId:'student',clientName:'測試學生',rentalFee:150,duration:90});const result=await f.c.adminSaveSchedule(data);
+ assert.equal(result.course.renterStudentId,'student');assert.equal(result.course.durationMinutes,90);assert.equal(result.course.studentIds.length,0);assert.equal(result.recurring,false);assert.equal(result.tuitionPeriod,null);assert.equal(f.docs.size,2);
+});
+test('invalid renter student is rejected before saving',async()=>{
+ const f=fixture(),data=request();Object.assign(data.event,{type:'rental',studentIds:[],renterStudentId:'missing',clientName:'任意名稱'});await assert.rejects(f.c.adminSaveSchedule(data),/找不到所選學生/);assert.equal(f.docs.size,1);
+});
