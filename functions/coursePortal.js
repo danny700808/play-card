@@ -9108,8 +9108,8 @@ async function teacherAction(data) {
   return recheckSchedule(context => withPortalReads(() => teacherActionAttempt(request, context))());
 }
 
-async function teacherActionAttempt(data, recheckContext = {}) {
-  const session = await requireSession(data, ['teacher']);
+async function teacherActionAttempt(data, recheckContext = {}, managerSession = null) {
+  const session = managerSession || await requireSession(data, ['teacher']);
   const action = clean(data.action);
   if (!['single_move', 'permanent_move', 'extra_lesson', 'teacher_gift'].includes(action)) {
     throw new HttpsError('invalid-argument', '不支援的課務操作。');
@@ -9133,6 +9133,7 @@ async function teacherActionAttempt(data, recheckContext = {}) {
   const existing = await changeRef.get();
   if (existing.exists && clean(existing.data().createdByTeacherId) === clean(session.teacherId)) {
     const prior = existing.data() || {};
+    if (managerSession && prior.managerRequestHash !== data.managerRequestHash) throw new HttpsError('already-exists', '此操作已完成，請重新開啟課表確認結果。');
     return {
       ok: true,
       duplicate: true,
@@ -9180,6 +9181,7 @@ async function teacherActionAttempt(data, recheckContext = {}) {
       )
     );
     if (!source) throw new HttpsError('not-found', '找不到這堂原課程，請重新整理後再試。');
+    if (managerSession && action === 'permanent_move' && !(source.recurring || source.fixedCourseId || source.seriesId)) throw new HttpsError('failed-precondition', '這堂不是固定課程，請使用單次調課。');
     if (isRoomRentalEvent(source)) {
       throw new HttpsError('failed-precondition', '教室租用不能用課程調課功能移動，請到租用入口取消後重新預約。');
     }
@@ -9446,6 +9448,7 @@ async function teacherActionAttempt(data, recheckContext = {}) {
     pendingDates,
     permanentConflicts,
     createdByTeacherId: session.teacherId,
+    ...(managerSession ? {approvedByManager:true, managerRequestHash:data.managerRequestHash} : {}),
     createdAt: FieldValue.serverTimestamp(),
     createdAtText: nowText()
   };
@@ -10209,7 +10212,7 @@ async function adminSaveLeaveReason(data) {
 
 async function adminSaveSchedule(data) {
   const raw = data.event || {}, operationId = clean(data.operationId), mode = clean(data.mode || 'save');
-  if (!/^[A-Za-z0-9_-]{1,160}$/.test(operationId) || !['save', 'delete'].includes(mode)) throw new HttpsError('invalid-argument', '排課操作識別碼無效。');
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(operationId) || !['save', 'delete', 'permanent_move'].includes(mode)) throw new HttpsError('invalid-argument', '排課操作識別碼無效。');
   const date = dateKey(raw.date), startTime = clean(raw.start || raw.startTime), duration = Number(raw.duration || raw.durationMinutes);
   if (!date || !Number.isInteger(duration) || duration < 1 || duration > 1440) throw new HttpsError('invalid-argument', '排課日期或長度無效。');
   const endMinutes = timeMinutes(startTime) + duration;
@@ -10217,6 +10220,16 @@ async function adminSaveSchedule(data) {
   assertPortalInterval(startTime, endTime);
   const roomId = clean(raw.roomId), teacherId = clean(raw.teacherId), subjectId = clean(raw.subjectId), type = clean(raw.type);
   if (!['fixed', 'single', 'trial', 'rental'].includes(type)) throw new HttpsError('invalid-argument', '課程類型無效。');
+  if (mode === 'permanent_move') {
+    if (type !== 'fixed' || !teacherId || !['weekly','biweekly'].includes(raw.frequency)) throw new HttpsError('invalid-argument', '固定調課請選擇每週上課或隔週上課。');
+    const request = {action:'permanent_move', operationId:'manager-'+operationId, date, startTime, endTime, roomId,
+      sourceEventId:clean(data.sourceEventId), sourceCourseId:clean(data.sourceCourseId), sourceDate:clean(data.sourceDate),
+      frequencyWeeks:raw.frequency === 'biweekly' ? 2 : 1, note:clean(raw.note)};
+    request.managerRequestHash = hash(JSON.stringify(request));
+    const result = await recheckSchedule(context => withPortalReads(() => teacherActionAttempt(request, context, {role:'teacher', teacherId}))());
+    if (!result.ok) throw new HttpsError('failed-precondition', '新固定時段有衝突，原課程尚未變更。請改選時段。', {conflicts:result.conflicts || []});
+    return result;
+  }
   const groups = await readCourseGroups();
   const studentIds = [...new Set((Array.isArray(raw.studentIds) ? raw.studentIds : []).map(value => canonicalStudentId(clean(value), groups)).filter(Boolean))];
   if (['fixed', 'single'].includes(type) && (!studentIds.length || !teacherId || !subjectId)) throw new HttpsError('invalid-argument', '學生、老師和科目不可空白。');
