@@ -13,3 +13,5 @@ registerUnifiedLineBindingAdmin(exports);
 
 const { registerPersonDataAdmin } = require('./personDataAdmin');
 registerPersonDataAdmin(exports);
+
+require('./nativeEducationProjection').registerNativeEducationProjection(exports);
