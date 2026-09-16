@@ -999,12 +999,12 @@
 
   async function submitTeacherAdjustment(event){
     event.preventDefault();if(operationRunning)return;
-    var teacherId=$('teacherAdjustmentTeacherId').value,date=$('teacherAdjustmentDate').value,type=$('teacherAdjustmentType').value,amount=numberOf($('teacherAdjustmentAmount').value),note=$('teacherAdjustmentNote').value.trim(),teacher=teacherById(teacherId),pin=storedMigrationPin()||migrationPin();
-    if(!pin)return;if(!teacher.id||!date||['reward','deduction'].indexOf(type)<0||amount<=0||Math.floor(amount)!==amount||note.length<2){toast('資料未完成','請確認日期、類型、整數金額與至少 2 個字的原因。','error');return;}
+    var teacherId=$('teacherAdjustmentTeacherId').value,date=$('teacherAdjustmentDate').value,type=$('teacherAdjustmentType').value,amount=numberOf($('teacherAdjustmentAmount').value),note=$('teacherAdjustmentNote').value.trim(),teacher=teacherById(teacherId);
+    if(!teacher.id||!date||['reward','deduction'].indexOf(type)<0||amount<=0||Math.floor(amount)!==amount||note.length<2){toast('資料未完成','請確認日期、類型、整數金額與至少 2 個字的原因。','error');return;}
     if(!window.YouziCoursePreviewData||typeof window.YouziCoursePreviewData.saveTeacherAdjustment!=='function'){toast('薪資元件尚未載入','請重新整理頁面後再試。','error');return;}
     operationRunning=true;operationButton($('teacherAdjustmentSubmitBtn'),true,'正在儲存…');$('operationProgressText').textContent='正在儲存老師獎勵／扣薪…';$('operationProgress').classList.remove('hidden');
     try{
-      var result=await window.YouziCoursePreviewData.saveTeacherAdjustment({manualSyncPin:pin,requestId:$('teacherAdjustmentRequestId').value,teacherId:teacherId,date:date,type:type,amount:amount,note:note}),row=result.adjustment;
+      var result=await window.YouziCoursePreviewData.saveTeacherAdjustment({requestId:$('teacherAdjustmentRequestId').value,teacherId:teacherId,date:date,type:type,amount:amount,note:note}),row=result.adjustment;
       upsert(state.teacherAdjustments,row);save(teacher.name+'・'+(type==='deduction'?'扣薪 ':'獎勵 ')+money(amount));closeModal('teacherAdjustmentModal');
       if($('teacherPayrollModal').classList.contains('open')&&currentTeacherId===teacherId){$('teacherPayrollMonth').value=date.slice(0,7);renderTeacherPayroll();}renderTeachers();
       toast(result.duplicate?'沒有重複新增':'薪資異動已儲存',(type==='deduction'?'扣薪 ':'獎勵 ')+money(amount)+' 已列入 '+date.slice(0,7)+' 薪資。');
