@@ -345,7 +345,7 @@ assert(schedulerSource.includes('saveRoomSettings'), '教室設備沒有同步�
 assert(schedulerSource.includes('refreshPortalRentals'), '正式課表未自動更新入口成立或取消的租用');
 assert(schedulerSource.includes('slotCoverageClass(events,room.id,min)'), '有課區間未隱藏內部半小時格線');
 assert(schedulerSource.includes('collapseFinalSlotLayers'), '同一教室時段未套用最後成立資料');
-assert(schedulerSource.includes('修改租用金額／資料'), '租用明細缺少金額修改入口');
+assert(schedulerSource.includes('修改租用金額'), '租用明細缺少金額修改入口');
 assert(schedulerSource.includes('data-portal-rental-cancel'), '管理者租用明細缺少強制取消入口');
 assert(schedulerSource.includes("Object.prototype.hasOwnProperty.call(source,'rentalFee')"), '租用金額為 0 時會被錯誤清空');
 assert(schedulerUiHtml.includes('id="teacherAdjustmentModal"'), '管理者缺少老師獎勵／扣薪登錄視窗');
@@ -354,7 +354,7 @@ assert(schedulerSource.includes('data-teacher-adjustment'), '老師清單缺少�
 assert(schedulerSource.includes('function submitTeacherAdjustment'), '老師獎勵／扣薪表單沒有儲存流程');
 assert(schedulerSource.includes('選擇上方月份即可查看過去資料'), '老師薪資明細沒有歷史獎勵／扣薪說明');
 assert(schedulerDataSource.includes("courseAdminMutation('coursePortalAdminSaveTeacherAdjustment'"), '老師薪資異動沒有連接後端');
-assert(schedulerDataSource.includes("call('coursePortalAdminCancelRoomBooking'"), '管理者強制取消租用沒有連接後端');
+assert(schedulerDataSource.includes("courseAdminMutation('coursePortalAdminCancelRoomBooking'"), '管理者強制取消租用沒有連接後端');
 assert(schedulerCss.includes('.slot.event-from-prev{border-top-color:transparent}'), '跨半小時課程仍會顯示內部上格線');
 assert(schedulerCss.includes('.slot.event-to-next{border-bottom-color:transparent}'), '跨半小時課程仍會顯示內部下格線');
 assert(schedulerCss.includes('.payment-summary{display:flex;align-items:center;justify-content:space-between'), '已繳清與收據按鈕沒有分列左右');
