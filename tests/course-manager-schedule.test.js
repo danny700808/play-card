@@ -4,9 +4,10 @@ const source=fs.readFileSync(require('path').join(__dirname,'../functions/course
 function fixture(blockers=[]){
  const docs=new Map([['runtime/version',{version:1}]]);let serial=Promise.resolve();
  const ref=path=>({path,id:path.split('/').at(-1),get:async()=>snap(path)}),snap=path=>({exists:docs.has(path),data:()=>docs.get(path)});
- const db={collection:name=>({doc:id=>ref(name+'/'+id),where:()=>({get:async()=>({docs:[]})})}),runTransaction:work=>{const promise=serial.then(async()=>{let writing=false;const staged=new Map(docs);await work({get:async r=>{assert(!writing);return snap(r.path);},set:(r,d)=>{writing=true;staged.set(r.path,{...staged.get(r.path),...d});},create:(r,d)=>{writing=true;assert(!staged.has(r.path));staged.set(r.path,d);}});docs.clear();for(const row of staged)docs.set(...row);});serial=promise.catch(()=>{});return promise;}};
+ const query=(name,field,value)=>({query:true,name,field,value});const querySnap=q=>({docs:[...docs.entries()].filter(([path,row])=>path.startsWith(q.name+'/')&&q.field.split('.').reduce((o,k)=>o&&o[k],row)===q.value).map(([path,row])=>({id:path.split('/').at(-1),data:()=>row}))});
+ const db={collection:name=>({doc:id=>ref(name+'/'+id),where:(field,op,value)=>Object.assign(query(name,field,value),{get:async()=>querySnap(query(name,field,value))})}),runTransaction:work=>{const promise=serial.then(async()=>{let writing=false;const staged=new Map(docs);await work({get:async r=>{assert(!writing);return r.query?querySnap(r):snap(r.path);},set:(r,d)=>{writing=true;staged.set(r.path,{...staged.get(r.path),...d});},create:(r,d)=>{writing=true;assert(!staged.has(r.path));staged.set(r.path,d);}});docs.clear();for(const row of staged)docs.set(...row);});serial=promise.catch(()=>{});return promise;}};
  const minutes=t=>Number(t?.slice(0,2))*60+Number(t?.slice(3,5));
- const c={db,clean:v=>String(v??'').trim(),dateKey:v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v:'',timeMinutes:minutes,
+ const c={db,TUITION_PERIODS:'coursePortalTuitionPeriods',MIRROR:{tuitionPeriods:'mirrorPeriods'},normalizePhone:v=>String(v||''),mirrorRows:async()=>[{id:'plan',subjectId:'guitar',name:'四堂',amount:2800,lessonCount:4,splitType:'ratio',splitValue:0.6,active:true}],clean:v=>String(v??'').trim(),dateKey:v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v:'',timeMinutes:minutes,
  addDays:(day,n)=>new Date(Date.parse(day+'T12:00:00Z')+n*86400000).toISOString().slice(0,10),assertPortalInterval:(a,b)=>{assert(minutes(b)>minutes(a));},
  HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},readCourseGroups:async()=>[],canonicalStudentId:v=>v,readScheduleVersion:async()=>docs.get('runtime/version').version,
  scheduleBundle:async()=>({resourceEvents:blockers,rooms:[{id:'room',active:true}],maps:{teachers:{teacher:{active:true,subjectIds:['guitar']}},subjects:{guitar:{}},students:{student:{name:'測試學生'}}}}),
@@ -49,4 +50,23 @@ test('manager fixed move conflict does not write a replacement or accept pending
 });
 test('manager fixed move rejects one-off frequency before any write',async()=>{
  const f=fixture(),data=request();data.mode='permanent_move';data.event.frequency='once';await assert.rejects(f.c.adminSaveSchedule(data),/每週上課或隔週上課/);assert.equal(f.docs.size,1);
+});
+
+const enroll=()=>({...request(),enrollment:{newStudent:{name:'新學生',phone:'0912345678'},planId:'plan'}});
+test('new enrollment commits student, unpaid tuition and fixed schedule together; retry is idempotent',async()=>{
+ const f=fixture(),data=enroll();const result=await f.c.adminSaveSchedule(data);const period=[...f.docs.entries()].find(([k])=>k.startsWith('coursePortalTuitionPeriods/'))[1],student=[...f.docs.entries()].find(([k])=>k.startsWith('coursePortalStudentProfiles/'))[1];
+ assert.equal(f.docs.size,4);assert.equal(student.name,'新學生');assert.equal(period.studentId,student.id);assert.equal(period.periodNo,1);assert.equal(period.expectedAmount,2800);assert.equal(period.usedCount,0);assert.equal(period.paidAmount,0);assert.equal(period.transactions.length,0);assert.equal(result.event.tuitionPeriodId,period.id);assert.equal(result.event.studentIds[0],student.id);assert.equal((await f.c.adminSaveSchedule(data)).duplicate,true);assert.equal(f.docs.size,4);
+ const changed=enroll();changed.enrollment.newStudent.name='另一人';await assert.rejects(f.c.adminSaveSchedule(changed),/操作編號/);assert.equal(f.docs.size,4);
+});
+test('later recurring conflict leaves no student or tuition behind',async()=>{
+ const f=fixture([{id:'busy',date:'2026-09-14',startTime:'18:00',endTime:'19:00',roomId:'room',studentIds:[]}]);await assert.rejects(f.c.adminSaveSchedule(enroll()),/已被占用/);assert.equal(f.docs.size,1);
+});
+test('invalid plan leaves no partial enrollment',async()=>{
+ const f=fixture(),data=enroll();data.enrollment.planId='missing';await assert.rejects(f.c.adminSaveSchedule(data),/收費方案/);assert.equal(f.docs.size,1);
+});
+test('existing student new scheme continues period sequence and trusts catalog prices only',async()=>{
+ const f=fixture(),data=request();f.docs.set('mirrorPeriods/old',{source:{studentId:'student',periodNo:3}});data.enrollment={planId:'plan',amount:1};await f.c.adminSaveSchedule(data);const period=[...f.docs.entries()].find(([k])=>k.startsWith('coursePortalTuitionPeriods/'))[1];assert.equal(period.periodNo,4);assert.equal(period.expectedAmount,2800);assert(![...f.docs.keys()].some(k=>k.startsWith('coursePortalStudentProfiles/')));
+});
+test('new student cannot enter via single extra lesson',async()=>{
+ const f=fixture(),data=enroll();data.event.type='single';await assert.rejects(f.c.adminSaveSchedule(data),/固定排課/);assert.equal(f.docs.size,1);
 });
