@@ -10230,20 +10230,38 @@ async function adminSaveSchedule(data) {
     if (!result.ok) throw new HttpsError('failed-precondition', '新固定時段有衝突，原課程尚未變更。請改選時段。', {conflicts:result.conflicts || []});
     return result;
   }
+  const enrollment = data.enrollment || null;
+  if (enrollment && (mode !== 'save' || !['fixed','single'].includes(type) || raw.specialLesson === true || clean(data.sourceEventId) || clean(data.sourceCourseId))) throw new HttpsError('invalid-argument', '新課程方案只能在新增排課時建立。');
+  let newStudent = null;
+  if (enrollment && enrollment.newStudent) {
+    const name = clean(enrollment.newStudent.name);
+    if (type !== 'fixed' || !name || name.length > 100) throw new HttpsError('invalid-argument', '新學生請填姓名，並使用固定排課。');
+    newStudent = {id:'enroll-'+hash(operationId).slice(0,32), name, phone:normalizePhone(enrollment.newStudent.phone), studentActive:true, managerCreated:true, managerNote:'', active:true};
+  }
   const groups = await readCourseGroups();
-  const studentIds = [...new Set((Array.isArray(raw.studentIds) ? raw.studentIds : []).map(value => canonicalStudentId(clean(value), groups)).filter(Boolean))];
+  const studentIds = [...new Set((newStudent ? [newStudent.id] : Array.isArray(raw.studentIds) ? raw.studentIds : []).map(value => canonicalStudentId(clean(value), groups)).filter(Boolean))];
   if (['fixed', 'single'].includes(type) && (!studentIds.length || !teacherId || !subjectId)) throw new HttpsError('invalid-argument', '學生、老師和科目不可空白。');
   if (type === 'trial' && (!clean(raw.trialName) || !teacherId || !subjectId)) throw new HttpsError('invalid-argument', '體驗課資料不完整。');
   if (type === 'rental' && !clean(raw.clientName)) throw new HttpsError('invalid-argument', '請填寫租用者。');
   const expectedVersion = await readScheduleVersion();
   const recurring = !clean(data.sourceEventId) && !clean(data.sourceCourseId) && type === 'fixed' && ['weekly','biweekly'].includes(clean(raw.frequency));
-  const requestHash = hash(JSON.stringify({ event: raw, mode, sourceEventId: clean(data.sourceEventId), sourceCourseId: clean(data.sourceCourseId), sourceDate: clean(data.sourceDate), repeatUntil: clean(data.repeatUntil) }));
+  const requestHash = hash(JSON.stringify({ event: raw, mode, sourceEventId: clean(data.sourceEventId), sourceCourseId: clean(data.sourceCourseId), sourceDate: clean(data.sourceDate), repeatUntil: clean(data.repeatUntil), ...(enrollment ? {enrollment} : {}) }));
   const id = `manager-${operationId}`;
   const target = db.collection(recurring ? 'coursePortalFixedCourses' : 'coursePortalScheduleChanges').doc(id);
   const previous = await target.get();
   if (previous.exists) {
     if (previous.data().requestHash !== requestHash) throw new HttpsError('already-exists', '操作編號已使用，請重新開啟排課視窗。');
     return { ok: true, duplicate: true, id, event: previous.data().event || previous.data() };
+  }
+  let enrollmentPeriod = null;
+  if (enrollment) {
+    if (studentIds.length !== 1) throw new HttpsError('invalid-argument', '請選擇一位學生的課程方案。');
+    const plans = await mirrorRows('feePlans');
+    const plan = plans.find(p => sourceId(p) === clean(enrollment.planId) && clean(p.subjectId) === subjectId && sourceActive(p) && p.listed !== false);
+    if (!plan || !Number.isInteger(Number(plan.lessonCount)) || Number(plan.lessonCount)<1 || Number(plan.lessonCount)>1000 || !['ratio','fixed','none'].includes(clean(plan.splitType)) || !Number.isFinite(Number(plan.splitValue || 0)) || Number(plan.splitValue || 0)<0) throw new HttpsError('failed-precondition', '收費方案已變更或尚未設定完整，請重新選擇。');
+    try { cents(Number(plan.amount)); } catch(error) { throw new HttpsError('invalid-argument', '收費方案金額無效。'); }
+    const snapshot = {id:sourceId(plan),name:clean(plan.name),amount:Number(plan.amount),lessonCount:Number(plan.lessonCount),splitType:clean(plan.splitType),splitValue:Number(plan.splitValue||0),leaveNoDeduct:plan.leaveNoDeduct!==false,expiryDays:Number(plan.expiryDays||0),discountType:clean(plan.discountType),payByDiscount:typeof plan.payByDiscount==='boolean'?plan.payByDiscount:null,teacherPayBasis:clean(plan.teacherPayBasis),splitSource:clean(plan.splitSource)||'manager'};
+    enrollmentPeriod = {id:'enroll-'+hash(operationId).slice(0,32),studentId:studentIds[0],teacherId,subjectId,planId:sourceId(plan),startDate:date,expiryDate:snapshot.expiryDays>0?addDays(date,snapshot.expiryDays):'',lessonCount:snapshot.lessonCount,expectedAmount:snapshot.amount,discount:0,usedCount:0,status:'active',transactions:[],paidAmount:0,active:true,planSnapshot:snapshot,creationOperationId:operationId,note:'排課時建立課程方案'};
   }
   const recurrenceEndDate = dateKey(data.repeatUntil);
   if (recurrenceEndDate && recurrenceEndDate < date) throw new HttpsError('invalid-argument', '結束日期不可早於開始日期。');
@@ -10265,6 +10283,7 @@ async function adminSaveSchedule(data) {
   const selectedRoom = bundle.rooms.find(row => sourceId(row) === roomId), setting = roomSettings.exists ? roomSettings.data() : {};
   if (!selectedRoom || !sourceActive(selectedRoom)) throw new HttpsError('failed-precondition', '教室不存在或已停用。');
   if (type !== 'rental' && (!bundle.maps.teachers[teacherId] || !sourceActive(bundle.maps.teachers[teacherId]) || !bundle.maps.subjects[subjectId])) throw new HttpsError('failed-precondition', '老師或科目已停用。');
+  if (newStudent) bundle.maps.students[newStudent.id] = newStudent;
   if (studentIds.some(id => !bundle.maps.students[id])) throw new HttpsError('failed-precondition', '學生資料不存在。');
   const teacherSubjects = firstArray(bundle.maps.teachers[teacherId] || {}, ['subjectIds']);
   if (type !== 'rental' && teacherSubjects.length && !teacherSubjects.includes(subjectId)) throw new HttpsError('failed-precondition', '老師沒有此科目的授課設定。');
@@ -10281,7 +10300,7 @@ async function adminSaveSchedule(data) {
   const event = { id, date, startTime, endTime, durationMinutes: duration, roomId, teacherId, subjectId, studentIds,
     halfHourAcknowledged: duration === 30 && raw.halfHourAcknowledged === true,
     studentId: studentIds[0] || '', studentNames: studentIds.map(id => clean(bundle.maps.students[id]?.name)),
-    type, status: mode === 'delete' ? 'cancelled' : 'scheduled', tuitionPeriodId: clean(raw.tuitionPeriodId),
+    type, status: mode === 'delete' ? 'cancelled' : 'scheduled', tuitionPeriodId: enrollmentPeriod ? enrollmentPeriod.id : clean(raw.tuitionPeriodId),
     specialLesson: raw.specialLesson === true, specialLessonPrice: Number(raw.specialLessonPrice || 0), specialTeacherPay: Number(raw.specialTeacherPay || 0),
     clientName: clean(raw.clientName), clientPhone: clean(raw.clientPhone), rentalFee: Number(raw.rentalFee || 0), rentalPaymentStatus: clean(raw.rentalPaymentStatus),
     trialName: clean(raw.trialName), trialPhone: clean(raw.trialPhone), trialFee: Number(raw.trialFee || 0),
@@ -10301,6 +10320,22 @@ async function adminSaveSchedule(data) {
       return;
     }
     if (Number(version.data()?.version || 0) !== expectedVersion) throw new HttpsError('aborted', '課表剛剛已更新，請重新載入後再確認空位。');
+    if (enrollmentPeriod) {
+      const periodRef = db.collection(TUITION_PERIODS).doc(enrollmentPeriod.id);
+      const existingPeriod = await tx.get(periodRef);
+      const mirrorPeers = await tx.get(db.collection(MIRROR.tuitionPeriods).where('source.studentId','==',studentIds[0]));
+      const portalPeers = await tx.get(db.collection(TUITION_PERIODS).where('studentId','==',studentIds[0]));
+      let studentRef = null;
+      if (newStudent) {
+        studentRef = db.collection('coursePortalStudentProfiles').doc(newStudent.id);
+        if ((await tx.get(studentRef)).exists) throw new HttpsError('already-exists', '學生建立識別碼已使用，請重新開啟排課。');
+      }
+      if (existingPeriod.exists) throw new HttpsError('already-exists', '課程方案已建立，請重新載入。');
+      const peers = mirrorPeers.docs.map(doc => doc.data().source || {}).concat(portalPeers.docs.map(doc => doc.data()));
+      enrollmentPeriod.periodNo = peers.reduce((max,p)=>Math.max(max,Number(p.periodNo)||0),0)+1;
+      if (studentRef) tx.create(studentRef,{...newStudent,updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-enrollment'});
+      tx.create(periodRef,{...enrollmentPeriod,updatedAt:FieldValue.serverTimestamp()});
+    }
     for (const doc of superseded) tx.set(doc.ref,{active:false,supersededBy:id,updatedAt:FieldValue.serverTimestamp()},{merge:true});
     tx.create(target,{...payload,requestHash,createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     tx.set(scheduleVersionRef(),{version:expectedVersion+1,updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-schedule'},{merge:true});
