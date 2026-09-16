@@ -788,7 +788,7 @@
               : `這個位置無法連續保留 ${requiredMinutes} 分鐘，請選擇綠色的「可調入」時段。`;
             html += `<button class="empty-slot unavailable-target" type="button" data-unavailable-target="${day}|${slotStart}" data-unavailable-message="${escapeHtml(message)}" aria-disabled="true"><span>${label}</span><small>${detail}</small></button>`;
           } else {
-            html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}" aria-label="${escapeHtml(`${day} ${slotStart} 查詢空教室`)}">${released ? '<span>＋ 排課</span>' : ''}</button>`;
+            html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}" aria-label="${escapeHtml(`${day} ${slotStart} 查詢空教室`)}"></button>`;
           }
         } else if (!blockingRows.length && new Date(`${day}T12:00:00`).getDay() === 1) {
           html += '<span class="closed-slot">公休</span>';
