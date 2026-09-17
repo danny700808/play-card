@@ -11,7 +11,7 @@ function fixture(blockers=[]){
  addDays:(day,n)=>new Date(Date.parse(day+'T12:00:00Z')+n*86400000).toISOString().slice(0,10),assertPortalInterval:(a,b)=>{assert(minutes(b)>minutes(a));},
  HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},readCourseGroups:async()=>[],canonicalStudentId:v=>v,readScheduleVersion:async()=>docs.get('runtime/version').version,
  scheduleBundle:async()=>({resourceEvents:blockers,rooms:[{id:'room',active:true}],maps:{teachers:{teacher:{active:true,subjectIds:['guitar']}},subjects:{guitar:{}},students:{student:{name:'測試學生'}}}}),
- rentalPolicySettings:async()=>({}),businessWindow:()=>({closed:false,startMinutes:540,endMinutes:1260}),
+ rentalPolicySettings:async()=>({}),businessWindow:()=>({closed:false,startMinutes:540,endMinutes:1260}),roomPolicyForSlot:()=>({}),
  sourceId:r=>r.id,sourceActive:r=>r.active!==false,firstArray:(r,keys)=>r[keys[0]]||[],requestedSubjectResourceIds:()=>[],roomSupportsSubject:()=>true,roomAllowsInterval:()=>true,
  eventBlocksResource:r=>r.status!=='leave',overlaps:(a,b,c,d)=>minutes(a)<minutes(d)&&minutes(c)<minutes(b),sharedResourceConflict:()=>false,
  hash:v=>crypto.createHash('sha256').update(v).digest('hex'),cents:v=>{assert(Number.isFinite(v)&&v>=0);},nowText:()=>'',FieldValue:{serverTimestamp:()=>1},
@@ -53,6 +53,34 @@ test('manager fixed move rejects one-off frequency before any write',async()=>{
 });
 
 const enroll=()=>({...request(),enrollment:{newStudent:{name:'新學生',phone:'0912345678'},planId:'plan'}});
+
+function morningFixture(blockers=[]) {
+ const f=fixture(blockers);
+ f.c.businessWindow=()=>({closed:false,startMinutes:750,endMinutes:1260});
+ f.c.weekday=date=>new Date(date+'T12:00:00Z').getUTCDay();
+ const policyStart=source.indexOf('function roomPolicyForSlot(');
+ vm.runInContext(source.slice(policyStart,source.indexOf('\n}',policyStart)+2),f.c);
+ f.docs.set('coursePortalRoomSettings/room',{policies:{thu:{'10:30':{blockSchedule:false,blockRental:true},'11:00':{blockSchedule:false,blockRental:true}}}});
+ const data=enroll();data.event.date='2026-09-24';data.event.start='10:30';data.repeatUntil='2026-10-08';
+ return {...f,data};
+}
+test('explicit classroom openings allow a new weekly student before public rental hours',async()=>{
+ const f=morningFixture();const result=await f.c.adminSaveSchedule(f.data);
+ assert.equal(result.ok,true);assert.equal(result.event.startTime,'10:30');assert.equal(result.event.endTime,'11:30');
+ assert.equal(result.tuitionPeriod.expectedAmount,2800);
+});
+test('an incomplete classroom opening still rejects the whole morning course',async()=>{
+ const f=morningFixture();delete f.docs.get('coursePortalRoomSettings/room').policies.thu['11:00'];
+ await assert.rejects(f.c.adminSaveSchedule(f.data),/完整上課時段/);assert.equal(f.docs.size,2);
+});
+test('morning classroom override never opens public rental hours',async()=>{
+ const f=morningFixture();delete f.data.enrollment;Object.assign(f.data.event,{type:'rental',studentIds:[],clientName:'租用測試'});
+ await assert.rejects(f.c.adminSaveSchedule(f.data),/開放排課時段/);assert.equal(f.docs.size,2);
+});
+test('explicit morning opening retains future weekly collision checks',async()=>{
+ const f=morningFixture([{id:'busy',date:'2026-10-01',startTime:'10:30',endTime:'11:30',roomId:'room',studentIds:[]}]);
+ await assert.rejects(f.c.adminSaveSchedule(f.data),/2026-10-01.*已被占用/);assert.equal(f.docs.size,2);
+});
 test('new enrollment commits student, unpaid tuition and fixed schedule together; retry is idempotent',async()=>{
  const f=fixture(),data=enroll();const result=await f.c.adminSaveSchedule(data);const period=[...f.docs.entries()].find(([k])=>k.startsWith('coursePortalTuitionPeriods/'))[1],student=[...f.docs.entries()].find(([k])=>k.startsWith('coursePortalStudentProfiles/'))[1];
  assert.equal(f.docs.size,4);assert.equal(student.name,'新學生');assert.equal(period.studentId,student.id);assert.equal(period.periodNo,1);assert.equal(period.expectedAmount,2800);assert.equal(period.usedCount,0);assert.equal(period.paidAmount,0);assert.equal(period.transactions.length,0);assert.equal(result.event.tuitionPeriodId,period.id);assert.equal(result.event.studentIds[0],student.id);assert.equal((await f.c.adminSaveSchedule(data)).duplicate,true);assert.equal(f.docs.size,4);

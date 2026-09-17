@@ -10319,7 +10319,17 @@ async function adminSaveSchedule(data) {
   const resourceIds = requestedSubjectResourceIds(subjectId, bundle);
   if (mode !== 'delete') for (let day = date; day <= through; day = addDays(day, recurring ? (raw.frequency === 'biweekly' ? 14 : 7) : 10000)) {
     const window = businessWindow(policy, day);
-    if (window.closed || timeMinutes(startTime) < window.startMinutes || endMinutes > window.endMinutes) throw new HttpsError('failed-precondition', `${day} 不在開放排課時段內。`);
+    if (window.closed || timeMinutes(startTime) < window.startMinutes || endMinutes > window.endMinutes) {
+      // Classroom scheduling can explicitly open a slot outside public rental hours.
+      // Missing policies are not an override; every affected half-hour must be opened.
+      let explicitlyOpen = type !== 'rental';
+      for (let minute = timeMinutes(startTime); explicitlyOpen && minute < endMinutes; minute += 30) {
+        if (!window.closed && minute >= window.startMinutes && minute + 30 <= window.endMinutes) continue;
+        const slot = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+        explicitlyOpen = roomPolicyForSlot(selectedRoom, setting, day, slot).blockSchedule === false;
+      }
+      if (!explicitlyOpen) throw new HttpsError('failed-precondition', `${day} 不在開放排課時段內，請在教室設定開放完整上課時段。`);
+    }
     if (!roomAllowsInterval(selectedRoom, setting, day, startTime, endTime, subjectId, type === 'rental' ? 'rental' : 'schedule')) throw new HttpsError('failed-precondition', `${day} 教室時段規則不允許此安排。`);
     const conflict = bundle.resourceEvents.find(row => row.date === day && eventBlocksResource(row) && (!original || row.id !== original.id) && overlaps(startTime,endTime,row.startTime,row.endTime) && (row.roomId === roomId || teacherId && row.teacherId === teacherId || (row.studentIds || []).some(id => studentIds.includes(id)) || sharedResourceConflict([row],resourceIds)));
     if (conflict) throw new HttpsError('already-exists', `${day} 的教室、老師、學生或共用樂器已被占用。`);
