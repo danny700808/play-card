@@ -6778,6 +6778,17 @@ function paymentRequestHasValue(row, key) {
   return Boolean(row && Object.prototype.hasOwnProperty.call(row, key) && row[key] !== '' && row[key] != null);
 }
 
+function attendancePlanSnapshotFingerprint(snapshot) {
+  const normalized = Object.assign({}, jsonValue(snapshot || {}));
+  // Legacy payment previews stored an empty teacherAllotId; the mirror removes
+  // that optional field. Both mean no allotment ID, not a changed pay plan.
+  // Keep nonempty IDs and every financial field in the concurrency check.
+  if (normalized.teacherAllotId == null || normalized.teacherAllotId === '') {
+    delete normalized.teacherAllotId;
+  }
+  return financialFingerprint(normalized);
+}
+
 function paymentRequestFinancialFieldsCompatible(existing, expected) {
   const numberFields = [
     'lessonCount', 'expectedAmount', 'grossExpectedAmount', 'discount',
@@ -6798,7 +6809,7 @@ function paymentRequestFinancialFieldsCompatible(existing, expected) {
   const existingPlan = jsonValue(existing && existing.planSnapshot || {});
   if (
     existingPlan && Object.keys(existingPlan).length &&
-    financialFingerprint(existingPlan) !== financialFingerprint(expected && expected.planSnapshot || {})
+    attendancePlanSnapshotFingerprint(existingPlan) !== attendancePlanSnapshotFingerprint(expected && expected.planSnapshot || {})
   ) return false;
   return true;
 }

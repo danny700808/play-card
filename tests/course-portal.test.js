@@ -1402,6 +1402,32 @@ async function runBackendScheduleRegressionTests() {
       discountedRollover.paymentRequest,
       discountedRollover.period.id
     );
+    // Production regression: the payment preview included teacherAllotId: '',
+    // while the mirror removed it. Same plan, same price, same teacher split.
+    for (const emptyAllotId of ['', null, undefined]) {
+      const preview = Object.assign({}, rollover.paymentRequest, {
+        targetPeriodId: '',
+        planSnapshot: Object.assign({}, rollover.paymentRequest.planSnapshot, { teacherAllotId: emptyAllotId })
+      });
+      assert.doesNotThrow(() => duplicatePermanentBackend.__testAssertAttendanceRolloverPaymentRequest(
+        preview, rollover.paymentRequest, rollover.period.id
+      ), '未繳續期方案只有空白拆帳編號差異，不應阻止滿堂後自動續期');
+      assert.doesNotThrow(() => duplicatePermanentBackend.__testAssertAttendanceRolloverPaymentRequest(
+        rollover.paymentRequest, preview, rollover.period.id
+      ), '空白與未填拆帳編號的比較應雙向一致');
+      for (const changedPlan of [
+        { teacherAllotId: 'different-allotment' },
+        { splitValue: 0.5 },
+        { amount: 3200 },
+        { lessonCount: 8 },
+        { teacherPayBasis: 'gross' }
+      ]) {
+        assert.throws(() => duplicatePermanentBackend.__testAssertAttendanceRolloverPaymentRequest(
+          Object.assign({}, preview, { planSnapshot: Object.assign({}, preview.planSnapshot, changedPlan) }),
+          rollover.paymentRequest, rollover.period.id
+        ), /繳費資料/, '空白欄位相容處理仍必須阻擋真正的方案或薪資變更');
+      }
+    }
     [
       ['cancelled', { status: 'cancelled' }],
       ['inactive', { active: false }],
