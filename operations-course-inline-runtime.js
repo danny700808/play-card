@@ -993,7 +993,9 @@
     var form=$('transactionForm');
     if(!form.dataset.operationId)form.dataset.operationId=uid('tx');
     var request={id:form.dataset.operationId,periodId:period.id,type:type,date:$('transactionDate').value,amount:amount,method:$('transactionMethod').value,note:$('transactionNote').value.trim()};
+    var submitButton=form.querySelector('button[type="submit"]'),submitLabel=submitButton.textContent;
     operationRunning=true;
+    submitButton.disabled=true;submitButton.classList.add('transaction-saving');submitButton.setAttribute('aria-busy','true');submitButton.textContent='儲存中…';
     try{
       if(!window.YouziCoursePreviewData||!window.YouziCoursePreviewData.recordTuitionTransaction)throw new Error('收退款元件尚未載入，請重新整理。');
       var result=await window.YouziCoursePreviewData.recordTuitionTransaction(Object.assign({manualSyncPin:storedMigrationPin()},request));
@@ -1001,7 +1003,7 @@
       save('收退款已保存到雲端');renderFollowupCounts();closeModal('transactionModal');studentTab='tuition';if(currentStudentId)renderStudentModal();if(currentView==='students')renderStudents();
       toast(type==='refund'?'退款已保存到雲端':'收費已保存到雲端','簽到、已上堂數與老師薪資不因收退款而變動。');
     }catch(error){toast('收退款尚未完成',clean(error&&error.message||error),'error');}
-    finally{if(attendanceUpdater)attendanceUpdater.invalidate();operationRunning=false;}
+    finally{submitButton.disabled=false;submitButton.classList.remove('transaction-saving');submitButton.removeAttribute('aria-busy');submitButton.textContent=submitLabel;operationRunning=false;if(attendanceUpdater)attendanceUpdater.invalidate();}
   }
 
   function normalizedMonthKey(value){value=clean(value);return /^\d{4}-(0[1-9]|1[0-2])$/.test(value)?value:'';}

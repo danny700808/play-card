@@ -413,3 +413,10 @@ body.embedded-in-operations .data-mode{margin-top:0}
 /* Larger calendar text without extra weight. */
 .course-inline-body #calendarPage .event-main,.course-inline-body #calendarPage .week-event b{font-weight:400}
 @media(min-width:1100px){.course-inline-body #calendarPage .event-top{font-size:11px}.course-inline-body #calendarPage .event-main{font-size:15px;line-height:1.12}.course-inline-body #calendarPage .event-sub{font-size:12px;line-height:1.12}.course-inline-body #calendarPage .week-event time{font-size:11px}.course-inline-body #calendarPage .week-event b{font-size:15px}.course-inline-body #calendarPage .week-event span{font-size:12px}}
+
+/* Immediate feedback while a tuition payment/refund is being saved. */
+#transactionForm button[type="submit"] { min-width: 118px; }
+#transactionForm .transaction-saving:disabled { display: inline-flex; align-items: center; justify-content: center; gap: 8px; opacity: 1; cursor: wait; }
+#transactionForm .transaction-saving::before { content: ""; width: 15px; height: 15px; flex: 0 0 15px; border: 2px solid rgba(255,255,255,.4); border-top-color: currentColor; border-radius: 50%; animation: transaction-save-spin .75s linear infinite; }
+@keyframes transaction-save-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #transactionForm .transaction-saving::before { animation: none; } }
