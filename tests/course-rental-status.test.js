@@ -16,3 +16,13 @@ test('rental check-in and cancellation return committed status and scope reads t
 test('future rental check-in and stale-version write fail without committing status',async()=>{
  for(const options of [{future:true},{stale:true}]){const f=fixture(options);await assert.rejects(f.context.adminSaveLessonSettings({date:f.date,sourceEventId:'rental',kind:'rentalStatus',status:'attended'}));assert.equal(f.writes.length,0);}
 });
+
+test('online rental check-in reads just the booking, without rebuilding the schedule',async()=>{
+ const f=fixture(),c=f.context;let reads=0;
+ c.scheduleBundle=async()=>{throw Error('must not load full schedule');};
+ c.resourceEvent=row=>({...row,sourceId:row.id,studentIds:[]});
+ c.db.collection=name=>({doc:id=>({id,get:async()=>{reads++;assert.equal(name,'coursePortalRoomBookings');return {exists:true,data:()=>({date:f.date,active:true,status:'confirmed',roomId:'r',startTime:'13:00',endTime:'14:00'})};}})});
+ const result=await c.adminSaveLessonSettings({date:f.date,sourceEventId:'booking',bookingId:'booking',kind:'rentalStatus',status:'attended'});
+ assert.equal(result.fields.status,'attended');assert.equal(reads,1);assert.equal(f.writes.length,2);
+ await assert.rejects(c.adminSaveLessonSettings({date:f.date,sourceEventId:'other',bookingId:'booking',kind:'rentalStatus',status:'attended'}),/不一致/);
+});

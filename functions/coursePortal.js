@@ -4390,10 +4390,11 @@ function roomSupportsSubject(room, subjectId, bundle, setting = {}) {
   const roomName = clean(room.name).toLowerCase();
   const configured = firstArray(setting, ['allowedSubjectIds']);
   const sourceConfigured = firstArray(room, ['allowedSubjectIds', 'subjectIds']);
-  const allowed = configured.length ? configured : sourceConfigured;
+  const allowed = Array.isArray(setting.allowedSubjectIds) ? configured : sourceConfigured;
   if (allowed.length && !allowed.includes(subjectId)) return false;
   const profile = rentalRoomProfile(room, setting);
   if (/爵士鼓|電子鼓|傳統鼓|鼓組/.test(subject)) {
+    if (setting.roomRulesVersion === 1 && Array.isArray(setting.rentalEquipment)) return setting.rentalEquipment.some(item => ['acoustic_drums','electronic_drums'].includes(item));
     return profile.equipment.some((item) => ['acoustic_drums', 'electronic_drums'].includes(item)) ||
       /鼓|展演|團練/.test(roomName);
   }
@@ -5544,6 +5545,16 @@ async function teacherStopStudent(data) {
   };
 }
 
+function followupLessonSource(data, bundle, teacherId, stoppedMode) {
+  if (clean(data.action) !== 'extra_lesson') return null;
+  const mode = stoppedMode || (clean(data.irregularId) ? (bundle.irregularModes || []).find(row => clean(row.id) === clean(data.irregularId) && clean(row.teacherId) === teacherId && row.enabled !== false && (!row.resumedFrom || row.resumedFrom > currentTaipeiDay())) : null);
+  if (clean(data.irregularId) && !mode) throw new HttpsError('failed-precondition', '原不定時課程已變更，請重新選擇。');
+  if (!mode) return null;
+  const ids = firstArray(data, ['studentIds']).concat(clean(data.studentId) ? [clean(data.studentId)] : []);
+  if (clean(data.subjectId) !== clean(mode.subjectId) || !ids.length || ids.some(id => !(mode.studentIds || []).includes(id))) throw new HttpsError('failed-precondition', '必須沿用原課程的學生與科目。');
+  return mode;
+}
+
 async function teacherAvailability(data) {
   const session = await requireSession(data, ['teacher']);
   const requestedStartDate = dateKey(data.startDate || data.date);
@@ -5572,7 +5583,7 @@ async function teacherAvailability(data) {
   const roomSettingsMap = {};
   roomSettingsSnapshot.docs.forEach((doc) => { roomSettingsMap[doc.id] = doc.data() || {}; });
   const stoppedAddMode = clean(data.suspensionId) && clean(data.action) === 'extra_lesson' ? await stoppedRestoreMode(data, session) : null;
-  const restoreMode = stoppedAddMode ? null : await irregularRestoreMode(data, session);
+  const restoreMode = stoppedAddMode || clean(data.action) === 'extra_lesson' ? null : await irregularRestoreMode(data, session);
   let source = restoreMode ? irregularSource(restoreMode, sourceDate) : bundle.resourceEvents.find((event) =>
     event.teacherId === session.teacherId &&
     event.date === sourceDate &&
@@ -5619,7 +5630,8 @@ async function teacherAvailability(data) {
   if (duration < 30 || duration > 300) {
     throw new HttpsError('invalid-argument', '課程長度必須介於 30 分鐘至 5 小時。');
   }
-  const subjectId = source ? source.subjectId : clean(data.subjectId);
+  const followup = followupLessonSource(data, bundle, session.teacherId, stoppedAddMode);
+  const subjectId = source ? source.subjectId : followup ? followup.subjectId : clean(data.subjectId);
   const targetStudentIds = source
     ? source.studentIds
     : [...new Set(firstArray(data, ['studentIds']).concat(clean(data.studentId) ? [clean(data.studentId)] : []))];
@@ -9146,7 +9158,7 @@ async function teacherActionAttempt(data, recheckContext = {}, managerSession = 
   }
 
   const stoppedAddMode = clean(data.suspensionId) && clean(data.action) === 'extra_lesson' ? await stoppedRestoreMode(data, session) : null;
-  const restoreMode = stoppedAddMode ? null : await irregularRestoreMode(data, session);
+  const restoreMode = stoppedAddMode || clean(data.action) === 'extra_lesson' ? null : await irregularRestoreMode(data, session);
   const [policy, bundle, roomSettingsSnapshot] = await Promise.all([
     rentalPolicySettings(),
     scheduleBundle(date, date, session.teacherId, {teacherHome:true}),
@@ -9219,7 +9231,8 @@ async function teacherActionAttempt(data, recheckContext = {}, managerSession = 
   const studentIds = moving
     ? source.studentIds
     : [...new Set(firstArray(data, ['studentIds']).concat(clean(data.studentId) ? [clean(data.studentId)] : []))];
-  const subjectId = moving ? source.subjectId : clean(data.subjectId);
+  const followup = followupLessonSource(data, bundle, session.teacherId, stoppedAddMode);
+  const subjectId = moving ? source.subjectId : followup ? followup.subjectId : clean(data.subjectId);
   if (!studentIds.length || !subjectId) {
     throw new HttpsError('invalid-argument', '請完整選擇學生與課程科目。');
   }
@@ -10124,8 +10137,19 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
 async function adminSaveLessonSettings(data) {
   const date = dateKey(data.date), expectedVersion = await readScheduleVersion();
   if (!date || !clean(data.sourceEventId)) throw new HttpsError('invalid-argument', '缺少課程資料。');
-  const bundle = await scheduleBundle(date, date, clean(data.teacherId), { occupancyOnly: data.kind === 'rentalStatus' || data.kind === 'rentalDetails' });
-  const event = bundle.resourceEvents.find(row => [row.id, row.sourceId, row.portalChangeId, row.fixedCourseId, row.seriesId].includes(clean(data.sourceEventId)) || clean(data.sourceCourseId) && row.fixedCourseId === clean(data.sourceCourseId));
+  let event = null;
+  // A booking detail/status update never changes occupancy: read that booking directly.
+  const bookingId = clean(data.bookingId);
+  if (['rentalStatus','rentalDetails'].includes(data.kind) && bookingId) {
+    if (bookingId.includes('/') || ![bookingId,'rental-'+bookingId].includes(clean(data.sourceEventId))) throw new HttpsError('invalid-argument','租用識別碼不一致。');
+    const bookingSnapshot = await db.collection('coursePortalRoomBookings').doc(bookingId).get();
+    const booking = bookingSnapshot.exists && bookingSnapshot.data();
+    if (!booking || booking.active === false || clean(booking.status) === 'cancelled' || dateKey(booking.date) !== date) throw new HttpsError('failed-precondition','租用資料已變更，請重新載入。');
+    event = resourceEvent({...booking,id:bookingId,type:'rental',portalAction:'room_booking',portalChangeId:'rental-'+bookingId});
+  } else {
+    const bundle = await scheduleBundle(date, date, clean(data.teacherId), { occupancyOnly: data.kind === 'rentalStatus' || data.kind === 'rentalDetails' });
+    event = bundle.resourceEvents.find(row => [row.id, row.sourceId, row.portalChangeId, row.fixedCourseId, row.seriesId].includes(clean(data.sourceEventId)) || clean(data.sourceCourseId) && row.fixedCourseId === clean(data.sourceCourseId));
+  }
   if (!event) throw new HttpsError('not-found', '找不到課程，請重新載入。');
   const eventIds = [...new Set([event.id, event.sourceId, event.fixedCourseId, event.seriesId, event.portalChangeId, clean(data.sourceEventId)].filter(Boolean))];
   const id = hash([date, event.fixedCourseId || event.sourceId || event.id].join('|'));
@@ -10151,7 +10175,7 @@ async function adminSaveLessonSettings(data) {
     fields.clientName = clean(raw.clientName); fields.clientPhone = clean(raw.clientPhone); fields.rentalFee = Number(raw.rentalFee); fields.rentalPaymentStatus = clean(raw.rentalPaymentStatus); fields.note = clean(raw.note).slice(0,2000);
     if (!fields.clientName) throw new HttpsError('invalid-argument','請填寫租用者。');
     rentalUpdate = {bookingId:clean(data.bookingId),amount:fields.rentalFee,paymentStatus:fields.rentalPaymentStatus,clientName:fields.clientName,clientPhone:fields.clientPhone,note:fields.note};
-    if (!rentalUpdate.bookingId) throw new HttpsError('invalid-argument','缺少線上租用識別碼。');
+    if (!rentalUpdate.bookingId) rentalUpdate = null;
   } else if (data.kind === 'rentalStatus') {
     if (event.type !== 'rental' && event.portalAction !== 'room_booking') throw new HttpsError('invalid-argument', '這不是租用紀錄。');
     if (!['attended','scheduled'].includes(clean(data.status))) throw new HttpsError('invalid-argument', '租用簽到狀態無效。');
@@ -10278,6 +10302,7 @@ async function adminSaveSchedule(data) {
       if (matches.length === 1) original = matches[0];
     }
     if (!original) throw new HttpsError('not-found', '找不到原課程，請重新載入。');
+    if (mode !== 'delete' && original.subjectId && !isRoomRentalEvent(original) && (type === 'rental' || subjectId !== original.subjectId)) throw new HttpsError('failed-precondition', '調整課程必須沿用原科目，不能改成其他樂器或租用。');
     if (normalizeScheduleStatus(original.status) === 'attended') throw new HttpsError('failed-precondition', '已簽到課程請先取消簽到，再修改排課。');
     if (clean(original.portalAction) === 'room_booking') throw new HttpsError('failed-precondition', '線上租用請使用租用紀錄的管理功能。');
   } else if (mode === 'delete') throw new HttpsError('invalid-argument', '刪除課程必須指定原課程。');

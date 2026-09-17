@@ -1660,6 +1660,7 @@
       mode: 'add',
       halfHourAcknowledged: context.halfHourAcknowledged === true,
       action: context.action,
+      irregularId: context.irregularId || '',
       suspensionId: context.suspensionId || '',
       studentIds: context.studentIds,
       subjectId: context.subjectId,
@@ -1686,7 +1687,7 @@
         durationMinutes,
         studentIds: context.studentIds,
         subjectId: context.subjectId,
-        action:context.action,suspensionId:context.suspensionId||''
+        action:context.action,irregularId:context.irregularId||'',suspensionId:context.suspensionId||''
       };
       const result = await invoke('coursePortalTeacherAvailability', payload);
       if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
@@ -1810,6 +1811,7 @@
       ? Object.assign({}, lessonActionDefaults(planner.source, planner.action), base)
       : Object.assign(base, {
         studentIds: planner.studentIds,
+        irregularId:planner.irregularId||'',
         suspensionId:planner.suspensionId||'',
         subjectId: planner.subjectId
       });
@@ -2059,7 +2061,7 @@
     const followupAction=event.target.closest('[data-followup-action]');
     if(followupAction && context && context.type==='followup-choice') {
       const row=context.row, kind=followupAction.dataset.followupAction;
-      if(kind==='single'){beginAddFlow('extra_lesson',{studentIds:row.studentIds,subjectId:row.subjectId,suspensionId:context.stopped?row.id:''});return;}
+      if(kind==='single'){beginAddFlow('extra_lesson',{studentIds:row.studentIds,subjectId:row.subjectId,irregularId:context.stopped?'':row.id,suspensionId:context.stopped?row.id:''});return;}
       if(kind==='fixed'){chooseFixedFrequency({...row.source,id:row.source?.id||row.id,studentIds:row.studentIds,studentNames:studentNamesByIds(row.studentIds),subjectId:row.subjectId,date:todayKey(),startTime:row.source?.startTime||'23:00',endTime:row.source?.endTime||'23:59',status:'scheduled',irregularId:context.stopped?'':row.id,suspensionId:context.stopped?row.id:''});return;}
       if(kind==='stop'){closeQuick();openStudentStop(row.studentIds[0],todayKey(),row.subjectId);return;}
       if(kind==='irregular') {await updateStudentMode('coursePortalTeacherSetIrregular',{suspensionId:row.id,sourceDate:todayKey()},followupAction);return;}

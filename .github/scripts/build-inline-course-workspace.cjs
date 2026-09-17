@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const VERSION = '20260917-payment-saving-v1';
+const VERSION = '20260917-room-subject-v1';
 const schedulerHtmlPath = 'course-scheduler.html';
 const schedulerJsPath = 'course-scheduler.js';
 const operationsPath = 'operations-phase1.js';

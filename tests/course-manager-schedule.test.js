@@ -7,7 +7,7 @@ function fixture(blockers=[]){
  const query=(name,field,value)=>({query:true,name,field,value});const querySnap=q=>({docs:[...docs.entries()].filter(([path,row])=>path.startsWith(q.name+'/')&&q.field.split('.').reduce((o,k)=>o&&o[k],row)===q.value).map(([path,row])=>({id:path.split('/').at(-1),data:()=>row}))});
  const db={collection:name=>({doc:id=>ref(name+'/'+id),where:(field,op,value)=>Object.assign(query(name,field,value),{get:async()=>querySnap(query(name,field,value))})}),runTransaction:work=>{const promise=serial.then(async()=>{let writing=false;const staged=new Map(docs);await work({get:async r=>{assert(!writing);return r.query?querySnap(r):snap(r.path);},set:(r,d)=>{writing=true;staged.set(r.path,{...staged.get(r.path),...d});},create:(r,d)=>{writing=true;assert(!staged.has(r.path));staged.set(r.path,d);}});docs.clear();for(const row of staged)docs.set(...row);});serial=promise.catch(()=>{});return promise;}};
  const minutes=t=>Number(t?.slice(0,2))*60+Number(t?.slice(3,5));
- const c={db,TUITION_PERIODS:'coursePortalTuitionPeriods',MIRROR:{tuitionPeriods:'mirrorPeriods'},normalizePhone:v=>String(v||''),mirrorRows:async()=>[{id:'plan',subjectId:'guitar',name:'四堂',amount:2800,lessonCount:4,splitType:'ratio',splitValue:0.6,active:true}],clean:v=>String(v??'').trim(),dateKey:v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v:'',timeMinutes:minutes,
+ const c={isRoomRentalEvent:r=>r.type==='rental',db,TUITION_PERIODS:'coursePortalTuitionPeriods',MIRROR:{tuitionPeriods:'mirrorPeriods'},normalizePhone:v=>String(v||''),mirrorRows:async()=>[{id:'plan',subjectId:'guitar',name:'四堂',amount:2800,lessonCount:4,splitType:'ratio',splitValue:0.6,active:true}],clean:v=>String(v??'').trim(),dateKey:v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v:'',timeMinutes:minutes,
  addDays:(day,n)=>new Date(Date.parse(day+'T12:00:00Z')+n*86400000).toISOString().slice(0,10),assertPortalInterval:(a,b)=>{assert(minutes(b)>minutes(a));},
  HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},readCourseGroups:async()=>[],canonicalStudentId:v=>v,readScheduleVersion:async()=>docs.get('runtime/version').version,
  scheduleBundle:async()=>({resourceEvents:blockers,rooms:[{id:'room',active:true}],maps:{teachers:{teacher:{active:true,subjectIds:['guitar']}},subjects:{guitar:{}},students:{student:{name:'測試學生'}}}}),
@@ -81,4 +81,10 @@ test('student renter is contact metadata, with no tuition or payroll write',asyn
 });
 test('invalid renter student is rejected before saving',async()=>{
  const f=fixture(),data=request();Object.assign(data.event,{type:'rental',studentIds:[],renterStudentId:'missing',clientName:'任意名稱'});await assert.rejects(f.c.adminSaveSchedule(data),/找不到所選學生/);assert.equal(f.docs.size,1);
+});
+
+test('existing drum lesson cannot be changed into another subject before any write',async()=>{
+ const f=fixture([{id:'old',date:'2026-09-07',subjectId:'drums',type:'single',status:'scheduled'}]);
+ const data=request();data.sourceEventId='old';data.sourceDate='2026-09-07';
+ await assert.rejects(f.c.adminSaveSchedule(data),/沿用原科目/);assert.equal(f.docs.size,1);
 });
