@@ -2687,3 +2687,6 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 }
 
 .ops-blog-title-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.ops-blog-title-row h3{margin:0}.ops-blog-title-row .ops-button{white-space:nowrap}
+
+/* Grouped products use their own image trays and one shared publishing gallery. */
+#productListingCaseForm:has([name="variantGroupEnabled"][value="1"]) #productReferenceImagePreview{display:none}

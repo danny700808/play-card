@@ -48,13 +48,13 @@ test("上架圖片預覽可排除圖片且排除後不會進入平台共用圖�
   assert.match(operationsSource, /data-action="product-variant-gallery-toggle"/);
   assert.match(operationsSource, /不會上架|不上架/);
   assert.match(operationsSource, /allowed\.has\(row\.sourceImageUrl\)\|\|allowed\.has\(row\.url\)/);
-  assert.match(operationsSource, /至少保留一張上架圖/);
+  assert.match(operationsSource, /setProductVariantGalleryChoice/);
 });
 
 test("同款商品的彙整圖第一次全部預選且只記錄使用者主動排除", () => {
   assert.match(operationsSource, /variantGallerySelectionInitialized/);
-  assert.match(operationsSource, /if\(!selectionInitialized\)/);
-  assert.match(operationsSource, /defaultSelected\.size<PRODUCT_GROUP_LISTING_IMAGE_MAX/);
+  assert.match(operationsSource, /galleryExcludedKeys/);
+  assert.match(operationsSource, /count\+\+<PRODUCT_GROUP_LISTING_IMAGE_MAX/);
   assert.match(operationsSource, /name="variantGallerySelectionInitialized" value="1"/);
   assert.match(operationsSource, /variantGallerySelectionInitialized:variantGallerySelectionInitialized/);
 });
@@ -423,4 +423,26 @@ test("高解析截圖會自動壓縮，營運中心只接受 0.3.38 以上助手
   assert.match(operationsSource, /productImageCollectionVersionAtLeast/);
   assert.match(bridge, /extensionVersion: EXTENSION_VERSION/);
   assert.match(operationsSource, /目前收圖助手版本過舊/);
+});
+
+const rankStart = operationsSource.indexOf('  function productVariantGalleryRank(');
+const rankEnd = operationsSource.indexOf('  function setProductVariantGalleryChoice(', rankStart);
+const rankGallery = Function('PRODUCT_GROUP_LISTING_IMAGE_MAX', operationsSource.slice(rankStart, rankEnd) + ';return productVariantGalleryRank;')(15);
+const galleryRows = Array.from({length:18}, (_,i) => ({productId:i<10?'a':'b',url:'image-'+i}));
+test('上架預覽預選十五張，排除後依序補位且排除設定可還原', () => {
+  assert.equal(rankGallery(galleryRows,[],[]).filter(x=>x.checked).length,15);
+  const excluded=['a|image-2'];
+  const ranked=rankGallery(galleryRows,[],JSON.parse(JSON.stringify(excluded)));
+  assert.equal(ranked[2].checked,false);
+  assert.equal(ranked[15].checked,true);
+  assert.equal(ranked[16].checked,false);
+  assert.equal(rankGallery(galleryRows,[],[])[2].checked,true);
+});
+test('排序先決定名額，共用相同圖片不重複占位，少於十五張全部選取', () => {
+  const ranked=rankGallery(galleryRows,['b|image-17'],[]);
+  assert.equal(ranked[0].url,'image-17');
+  assert.equal(ranked[0].checked,true);
+  assert.equal(ranked.filter(x=>x.checked).length,15);
+  assert.equal(rankGallery(galleryRows.slice(0,3).concat(galleryRows[0]),[],[]).filter(x=>x.checked).length,3);
+  assert.equal(rankGallery(galleryRows,[],galleryRows.map(x=>x.productId+'|'+x.url)).filter(x=>x.checked).length,0);
 });

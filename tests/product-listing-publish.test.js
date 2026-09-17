@@ -1097,7 +1097,7 @@ test('listing snapshot caps product images at ten, appends the address gallery i
   }
   assert.equal(snapshot.imagePolicy.galleryMaximum, 7);
   assert.equal(snapshot.imagePolicy.sourceImageMaximum, 20);
-  assert.equal(snapshot.imagePolicy.sharedVariantGalleryMaximum, 12);
+  assert.equal(snapshot.imagePolicy.sharedVariantGalleryMaximum, 15);
   assert.equal(snapshot.imagePolicy.balanceAcrossVariants, true);
   assert.equal(snapshot.contentPolicy.featureTarget, 10);
   assert.equal(snapshot.contentPolicy.usageTarget, 8);
@@ -1243,7 +1243,7 @@ test('v3 image gates require the approved safe-logo layer proof, two distinct de
   assert.equal(rows.some((row) => row.roles.includes('brandedHero')), true);
 });
 
-test('12 張共用池只保留整組唯一品牌首圖並公平涵蓋細項乾淨圖', () => {
+test('15 張共用池只保留整組唯一品牌首圖並公平涵蓋細項乾淨圖', () => {
   const cleanFlags = { containsLogo: false, containsContactInfo: false, containsQrCode: false, containsText: false, greenBrandTemplate: false, momoPromotionEligible: true };
   const brandFlags = { ...cleanFlags, containsLogo: true, containsText: true, greenBrandTemplate: true, momoPromotionEligible: false };
   const cases = Array.from({ length: 13 }, (_, index) => ({
@@ -1256,7 +1256,7 @@ test('12 張共用池只保留整組唯一品牌首圖並公平涵蓋細項乾�
     ]
   }));
   const plan = helpers.buildFinalPlatformImagePlan(cases);
-  assert.equal(plan.sharedCompletedImageUrls.length, 12);
+  assert.equal(plan.sharedCompletedImageUrls.length, 15);
   assert.equal(plan.easyStore.ready, true);
   assert.equal(plan.shopee.ready, true);
   assert.match(plan.easyStore.imageUrls[0], /-storefront\.jpg$/);
@@ -1266,7 +1266,7 @@ test('12 張共用池只保留整組唯一品牌首圖並公平涵蓋細項乾�
   assert.equal(plan.easyStore.imageUrls.filter((url) => /-storefront\.jpg$/.test(url)).length, 1);
   assert.equal(plan.shopee.imageUrls.filter((url) => /-brand\.jpg$/.test(url)).length, 1);
   const represented = new Set(plan.sharedCompletedImageUrls.map((url) => /variant-(\d+)-/.exec(url)?.[1]).filter(Boolean));
-  assert.equal(represented.size, 10);
+  assert.equal(represented.size, 13);
 });
 
 test('四細項商品只建立一張官網首圖、一張蝦皮品牌首圖與四張細項乾淨圖', () => {
@@ -2777,4 +2777,9 @@ test('2100307-4 固定 v3 實際資料可在不送出的模擬通過四通路預
   assert.equal(snapshot.platformImagePlan.easyStore.imageUrls[0], 'https://cdn.example.com/2100307-4-storefront-portrait.png');
   assert.equal(snapshot.platformImagePlan.coupang.imageUrls[0], 'https://cdn.example.com/2100307-4-clean-main.png');
   assert.equal(snapshot.platformImagePlan.momo.imageUrls[0], 'https://cdn.example.com/2100307-4-clean-main.png');
+});
+
+test('已初始化且完全排除的細項圖片不得重新進入上架共用池', () => {
+  const plan=helpers.buildFinalPlatformImagePlan([{variantGallerySelectionInitialized:true,gallerySourceImageUrls:[],roleRows:[{url:'https://cdn.example.com/excluded.jpg',sourceImageUrl:'https://source.example.com/excluded.jpg',roles:['localizedDetail'],sourceOrder:1,assetFlags:{}}]}]);
+  assert.deepEqual(plan.sharedCompletedImageUrls,[]);
 });

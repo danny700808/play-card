@@ -65,8 +65,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260913-product-blog-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260916-native-school-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260917-gallery-fifteen-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260917-gallery-fifteen-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });
@@ -82,7 +82,7 @@ test('merged variants show every SKU image and persist optional priority selecti
   assert.match(handoffPrompt, /每個案件最多 20 張 selectedReferenceImageUrls/);
   assert.match(handoffPrompt, /一般來源截圖、localizedDetail、specification 與 variantRepresentative 只能做最小幅度繁體化/);
   assert.match(handoffPrompt, /全部編號的完成輸出公平合併/);
-  assert.match(handoffPrompt, /整組最多 12 個不同完成圖 URL/);
+  assert.match(handoffPrompt, /整組最多 15 個不同完成圖 URL/);
   assert.match(handoffPrompt, /未勾選圖片不得加入平台圖庫/);
   assert.match(handoffPrompt, /目標 10 點不重複、具體且可驗證特色/);
   assert.match(handoffPrompt, /目標 8 點有來源的使用方式／使用心得/);

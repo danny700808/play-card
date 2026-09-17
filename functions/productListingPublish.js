@@ -1851,9 +1851,9 @@ function finalizedRoleRowsForCase(productId, frozenCase, currentCase) {
 
 function buildFinalPlatformImagePlan(caseRows) {
   const groups = (Array.isArray(caseRows) ? caseRows : []).map((item) => {
-    const allowed = new Set(normalizeUrls(item && item.gallerySourceImageUrls, 12));
+    const allowed = new Set(normalizeUrls(item && item.gallerySourceImageUrls, 15));
     return (Array.isArray(item && item.roleRows) ? item.roleRows : [])
-      .filter((row) => !allowed.size || allowed.has(row.sourceImageUrl) || allowed.has(row.url))
+      .filter((row) => (!item.variantGallerySelectionInitialized && !allowed.size) || allowed.has(row.sourceImageUrl) || allowed.has(row.url))
       .slice().sort((a, b) => {
       const rank = (row) => row.roles.includes('cleanMain') ? 0
         : row.roles.includes('storefrontPortrait') ? 1 : row.roles.includes('brandedHero') ? 2 : 3;
@@ -1863,7 +1863,7 @@ function buildFinalPlatformImagePlan(caseRows) {
   const pool = [];
   const seen = new Set();
   const pushRow = (row, groupIndex) => {
-    if (!row || seen.has(row.url) || pool.length >= 12) return false;
+    if (!row || seen.has(row.url) || pool.length >= 15) return false;
     seen.add(row.url);
     pool.push(row);
     return true;
@@ -1880,7 +1880,7 @@ function buildFinalPlatformImagePlan(caseRows) {
   // The two group-level heroes consume two of the twelve shared slots, so at most ten
   // variant representatives can fit when a group has more than ten variants.
   groups.forEach((rows, groupIndex) => {
-    if (pool.length >= 12) return;
+    if (pool.length >= 15) return;
     const representative = rows.find((row) => row.roles.includes('cleanMain') && cleanRepresentativeRoleRow(row))
       || rows.find((row) => row.roles.includes('variantRepresentative'))
       || rows.find((row) => row.roles.some((role) => ['localizedDetail', 'specification'].includes(role)));
@@ -1903,10 +1903,10 @@ function buildFinalPlatformImagePlan(caseRows) {
   const additionalRows = groups.map((rows) => rows.filter((row) => (
     !row.roles.includes('storefrontPortrait') && !row.roles.includes('brandedHero')
   )));
-  for (let index = 0; pool.length < 12 && additionalRows.some((rows) => index < rows.length); index += 1) {
+  for (let index = 0; pool.length < 15 && additionalRows.some((rows) => index < rows.length); index += 1) {
     additionalRows.forEach((rows, groupIndex) => pushRow(rows[index], groupIndex));
   }
-  const urls = (values) => normalizeUrls(values.map((row) => row.url), 12);
+  const urls = (values) => normalizeUrls(values.map((row) => row.url), 15);
   const cleanRows = pool.filter((row) => row.roles.includes('cleanMain') && cleanRepresentativeRoleRow(row));
   const brandedRows = pool.filter((row) => row.roles.includes('brandedHero')
     && (row.assetFlags.containsText || (row.assetFlags.containsLogo && row.assetFlags.greenBrandTemplate))
@@ -1989,7 +1989,8 @@ function finalizePreparedMediaSnapshot(frozenInputSnapshot, currentCasesById) {
     return {
       productId, sku: clean(frozenCase && frozenCase.sku || currentCase.productSku),
       sourceImageUrls: normalizeUrls(frozenCase && frozenCase.sourceImageUrls, 20),
-      gallerySourceImageUrls: normalizeUrls(frozenCase && frozenCase.gallerySourceImageUrls, 12),
+      gallerySourceImageUrls: normalizeUrls(frozenCase && frozenCase.gallerySourceImageUrls, 15),
+      variantGallerySelectionInitialized: frozenPreparedCase.variantGallerySelectionInitialized === true,
       representativeSourceImageUrl,
       representativeCompletedImageUrl: representativeRow ? representativeRow.url : '',
       roleRows,
@@ -2161,7 +2162,7 @@ function preparedPlatformImagePlan(listingCase, finalizedMediaSnapshot = null) {
       sourceImageRetention: item && item.preparedCase && item.preparedCase.sourceImageRetention && typeof item.preparedCase.sourceImageRetention === 'object'
         ? item.preparedCase.sourceImageRetention : {}
     })).filter((item) => item.productId),
-    sharedCompletedImageUrls: normalizeUrls(source.sharedCompletedImageUrls, 12),
+    sharedCompletedImageUrls: normalizeUrls(source.sharedCompletedImageUrls, 15),
     easyStore: normalizePlatform('easyStore'),
     shopee: normalizePlatform('shopee'),
     coupang: normalizePlatform('coupang'),
@@ -3399,7 +3400,7 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
     },
     regulatoryPolicy: { ncc: 'fill-only-when-verified', neverFabricateCertification: true },
     imagePolicy: {
-      sourceImageMaximum: 20, sharedVariantGalleryMaximum: 12, balanceAcrossVariants: true,
+      sourceImageMaximum: 20, sharedVariantGalleryMaximum: 15, balanceAcrossVariants: true,
       sourceNormalization: {
         preferredLongEdgeRangePx: { minimum: 1600, maximum: 2000 },
         targetLongEdgePx: 1800,
