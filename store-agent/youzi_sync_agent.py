@@ -519,7 +519,9 @@ def get_pending_queue(fs: FirestoreRest) -> List[Dict[str, Any]]:
     output = []
     for doc_id, data in rows:
         product_id = clean(data.get("productId") or doc_id)
-        product = fs.get_document(f"opsInternalProducts/{product_id}") if product_id else {}
+        product = data.get("_currentProduct")
+        if not isinstance(product, dict):
+            product = fs.get_document(f"opsInternalProducts/{product_id}") if product_id else {}
         # 佇列可能早於新訂單建立，所以以 Firestore 商品目前庫存為最終準則。
         sku = clean(product.get("internalSku") or product.get("sku") or product.get("code") or data.get("sku"))
         target = product.get("currentStock") if clean(product.get("currentStock")) != "" else data.get("targetStock")

@@ -2405,7 +2405,17 @@ async function handleAgentStateOperation(payload) {
   const command=validateAgentStateOperation(payload),db=admin.firestore();
   if(command.op==='query'){
     const snap=await db.collection(command.collection).where('status','==','pending').limit(command.limit).get();
-    return {rows:snap.docs.map(doc=>[doc.id,doc.data()])};
+    const rows=snap.docs.map(doc=>[doc.id,doc.data()]);
+    if(command.collection==='opsPlatformInventoryQueue'){
+      const ids=[...new Set(rows.map(([id,data])=>clean(data.productId||id)).filter(id=>id&&!id.includes('/')))];
+      const products=new Map();
+      for(let offset=0;offset<ids.length;offset+=100){
+        const docs=await db.getAll(...ids.slice(offset,offset+100).map(id=>db.collection(PRODUCT_COLLECTION).doc(id)),{fieldMask:['internalSku','sku','code','currentStock','internalName','originalName','name']});
+        docs.forEach(doc=>products.set(doc.id,doc.exists?doc.data():{}));
+      }
+      rows.forEach(([id,data])=>{data._currentProduct=products.get(clean(data.productId||id))||{};});
+    }
+    return {rows};
   }
   const ref=db.doc(command.path);
   if(command.op==='get'){
