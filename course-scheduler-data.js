@@ -572,10 +572,8 @@
   async function saveRoomSettings(options){
     options=options||{};
     var pin=clean(options.manualSyncPin),roomId=clean(options.roomId);
-    if(!pin)throw new Error('請輸入音教雲手動同步密碼。');
     if(!roomId)throw new Error('缺少教室資料。');
-    var result=await call('coursePortalAdminSaveRoomEquipment',{
-      adminPin:pin,
+    var result=await courseAdminMutation('coursePortalAdminSaveRoomEquipment',{
       roomId:roomId,
       publicName:clean(options.publicName),
       note:clean(options.note),
@@ -589,7 +587,7 @@
       policies:options.policies&&typeof options.policies==='object'?options.policies:{},
       pianoType:clean(options.pianoType)||'none',
       equipment:unique(options.equipment)
-    });
+    },pin);
     if(!result.ok)throw new Error('教室設備同步未完成。');
     return result;
   }
