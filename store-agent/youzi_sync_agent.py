@@ -41,7 +41,7 @@ CACHE_DIR = ROOT / "cache"
 TEMP_DIR = ROOT / "temp"
 LOCK_PATH = CACHE_DIR / "agent_run.lock"
 TAIWAN_TZ = timezone(timedelta(hours=8))
-VERSION = "2026.09.11-store-agent-momo-price-v1"
+VERSION = "2026.09.17-signed-state-v1"
 
 for folder in (LOG_DIR, CACHE_DIR, TEMP_DIR):
     folder.mkdir(parents=True, exist_ok=True)
@@ -340,67 +340,32 @@ def fs_decode(value: Dict[str, Any]) -> Any:
 
 
 class FirestoreRest:
+    """Restricted state operations authenticated by the existing HMAC bridge."""
     def __init__(self, project_id: str, logger: Optional[RunLogger] = None) -> None:
         if not project_id:
             raise RuntimeError("config.json 缺少 agent.project_id")
-        self.project_id = project_id
-        self.base = f"https://firestore.googleapis.com/v1/projects/{quote(project_id)}/databases/(default)/documents"
+        self.config = load_json(CONFIG_PATH)
         self.logger = logger
 
-    def _check(self, response: requests.Response, label: str) -> Any:
-        if response.status_code < 200 or response.status_code >= 300:
-            raise RuntimeError(f"{label} HTTP {response.status_code}：{response.text[:800]}")
-        if not response.text.strip():
-            return {}
-        return response.json()
+    def _state(self, operation: str, **kwargs: Any) -> Dict[str, Any]:
+        class QuietLogger:
+            def write(self, message):
+                pass
+        result = call_bridge(self.config, {"action": "agent-state", "operation": operation, **kwargs}, QuietLogger())
+        return result.get("stateResult") or {}
 
     def run_query_equal(self, collection: str, field: str, value: Any, limit: int = 100) -> List[Tuple[str, Dict[str, Any]]]:
-        url = self.base + ":runQuery"
-        payload = {
-            "structuredQuery": {
-                "from": [{"collectionId": collection}],
-                "where": {
-                    "fieldFilter": {
-                        "field": {"fieldPath": field},
-                        "op": "EQUAL",
-                        "value": fs_encode(value),
-                    }
-                },
-                "limit": max(1, min(1000, int(limit))),
-            }
-        }
-        data = self._check(requests.post(url, json=payload, timeout=60), f"Firestore 查詢 {collection}")
-        rows: List[Tuple[str, Dict[str, Any]]] = []
-        for item in data:
-            document = item.get("document") or {}
-            name = clean(document.get("name"))
-            if not name:
-                continue
-            doc_id = name.rsplit("/", 1)[-1]
-            decoded = {key: fs_decode(raw) for key, raw in (document.get("fields") or {}).items()}
-            rows.append((doc_id, decoded))
-        return rows
+        return [(row[0], row[1]) for row in self._state("query", collection=collection, field=field, value=value, limit=limit).get("rows", [])]
 
     def get_document(self, path: str) -> Dict[str, Any]:
-        response = requests.get(f"{self.base}/{path}", timeout=60)
-        if response.status_code == 404:
-            return {}
-        document = self._check(response, f"Firestore 讀取 {path}")
-        return {key: fs_decode(raw) for key, raw in (document.get("fields") or {}).items()}
+        return self._state("get", path=path).get("document") or {}
 
     def patch_document(self, path: str, fields: Dict[str, Any]) -> None:
-        if not fields:
-            return
-        params = [("updateMask.fieldPaths", key) for key in fields.keys()]
-        payload = {"fields": {key: fs_encode(value) for key, value in fields.items()}}
-        response = requests.patch(f"{self.base}/{path}", params=params, json=payload, timeout=60)
-        self._check(response, f"Firestore 更新 {path}")
+        if fields:
+            self._state("patch", path=path, fields=fields)
 
     def set_document(self, path: str, fields: Dict[str, Any]) -> None:
-        # PATCH without update mask creates or replaces only the supplied document fields.
-        payload = {"fields": {key: fs_encode(value) for key, value in fields.items()}}
-        response = requests.patch(f"{self.base}/{path}", json=payload, timeout=60)
-        self._check(response, f"Firestore 寫入 {path}")
+        self.patch_document(path, fields)
 
 
 # -----------------------------
@@ -546,7 +511,7 @@ def run_inventory_sync(config: Dict[str, Any], targets: List[Dict[str, Any]], lo
 
 
 def get_pending_requests(fs: FirestoreRest) -> List[Tuple[str, Dict[str, Any]]]:
-    return fs.run_query_equal("opsPlatformSyncRequests", "status", "pending", limit=20)
+    return fs.run_query_equal("opsPlatformSyncRequests", "status", "pending", limit=100)
 
 
 def get_pending_queue(fs: FirestoreRest) -> List[Dict[str, Any]]:
@@ -720,7 +685,7 @@ def write_heartbeat(fs: FirestoreRest, status: str, extra: Optional[Dict[str, An
         "computerLabel": "柚子樂器店內電腦",
         "lastHeartbeatAt": utc_now_iso(),
         "agentVersion": VERSION,
-        "schedule": ["14:00", "20:30"],
+        "schedule": ["14:00", "21:00"],
     }
     payload.update(extra or {})
     fs.set_document("opsSettings/platformLocalAgent", payload)

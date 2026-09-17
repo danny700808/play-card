@@ -65,8 +65,8 @@ test('obsolete waiting and input-stability search layers are completely removed'
   for (const html of [portal, hub]) {
     assert.doesNotMatch(html, /operations-(?:search-product-ux|input-stability)-v1/);
     assert.doesNotMatch(html, /等待輸入/);
-    assert.match(html, /operations-phase1\.css\?v=20260917-gallery-fifteen-v1/);
-    assert.match(html, /operations-phase1\.js\?v=20260917-gallery-fifteen-v1/);
+    assert.match(html, /operations-phase1\.css\?v=20260917-platform-sync-v1/);
+    assert.match(html, /operations-phase1\.js\?v=20260917-platform-sync-v1/);
     assert.match(html, /operations-shopee-autofill-handoff-v1\.js\?v=20260830-shopee-native-description-v2/);
   }
 });

@@ -2384,6 +2384,38 @@ async function runPlatformOrderSyncFromAgent(payload) {
   }
 }
 
+// The store agent uses its existing signed bridge, never anonymous Firestore access.
+function validateAgentStateOperation(payload) {
+  const op=clean(payload.operation),path=clean(payload.path),collection=clean(payload.collection);
+  const fields=payload.fields&&typeof payload.fields==='object'&&!Array.isArray(payload.fields)?payload.fields:{};
+  const allowed={
+    opsPlatformSyncRequests:['status','claimedAt','claimedBy','agentVersion','error','runId','finishedAt'],
+    opsPlatformInventoryQueue:['status','lastAttemptStatus','processedAt','lastAttemptAt','runId','targetStock','results','agentVersion'],
+    opsPlatformSyncRuns:['summary','status','localInventoryFinishedAt','agentVersion','coupangPriceAgent','coupangPriceAgentUpdatedAt'],
+    opsSettings:['online','status','computerName','computerLabel','lastHeartbeatAt','agentVersion','schedule','currentTrigger','lastRunStartedAt','lastRunFinishedAt','lastRunId','lastRunStatus','lastError']
+  };
+  if(op==='query'&&['opsPlatformSyncRequests','opsPlatformInventoryQueue'].includes(collection)&&payload.field==='status'&&payload.value==='pending')return {op,collection,limit:Math.max(1,Math.min(500,Number(payload.limit)||20))};
+  const parts=path.split('/');
+  if(parts.length!==2||!parts[1]||parts[1]==='.'||parts[1]==='..')throw new Error('Unsupported agent state path');
+  if(op==='get'&&['opsInternalProducts','opsPlatformSyncRuns'].includes(parts[0]))return {op,path};
+  if(op==='patch'&&allowed[parts[0]]&&(parts[0]!=='opsSettings'||parts[1]==='platformLocalAgent')&&Object.keys(fields).every(k=>allowed[parts[0]].includes(k)))return {op,path,fields};
+  throw new Error('Unsupported agent state operation');
+}
+async function handleAgentStateOperation(payload) {
+  const command=validateAgentStateOperation(payload),db=admin.firestore();
+  if(command.op==='query'){
+    const snap=await db.collection(command.collection).where('status','==','pending').limit(command.limit).get();
+    return {rows:snap.docs.map(doc=>[doc.id,doc.data()])};
+  }
+  const ref=db.doc(command.path);
+  if(command.op==='get'){
+    const snap=await ref.get(),data=snap.exists?snap.data():{};
+    if(command.path.startsWith('opsInternalProducts/'))return {document:Object.fromEntries(['internalSku','sku','code','currentStock','internalName','originalName','name'].filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))};
+    return {document:{summary:data.summary||{},status:data.status||''}};
+  }
+  await ref.set(command.fields,{merge:true});return {updated:true};
+}
+
 function registerPlatformOrderSync(target) {
   const cloudSecrets = [EASYSTORE_ACCESS_TOKEN, MOMO_API_TOKEN, COUPANG_VENDOR_ID, COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY];
 
@@ -2422,7 +2454,7 @@ function registerPlatformOrderSync(target) {
     }
     try {
       verifyLocalAgentRequest(req);
-      const result = await runPlatformOrderSyncFromAgent(req.body || {});
+      const result = req.body&&req.body.action==='agent-state' ? {stateResult:await handleAgentStateOperation(req.body)} : await runPlatformOrderSyncFromAgent(req.body || {});
       res.status(200).json({ ok: true, ...result });
     } catch (error) {
       console.error('[platformOrderAgentBridge]', error);
@@ -2434,6 +2466,7 @@ function registerPlatformOrderSync(target) {
 module.exports = {
   registerPlatformOrderSync,
   _test: {
+    validateAgentStateOperation,
     normalizeLine,
     validLine,
     orderLifecycle,
