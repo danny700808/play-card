@@ -194,3 +194,12 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-course-app .released-slot-cell .empty-slot span{font-size:10px;line-height:1.2}
 .teacher-course-app .released-slot-cell .empty-slot.available-target{background:#daf2e7}
 .teacher-course-app .released-slot-cell .empty-slot.unavailable-target{background:#fff1ef;color:#963f38}
+
+/* Keep the student shortcut between the name and existing actions. */
+.teacher-course-app .teacher-roster-row{grid-template-columns:minmax(0,1fr) auto auto}
+.teacher-course-app .teacher-roster-row>.teacher-roster-add{grid-column:2;grid-row:1;min-height:40px;padding:6px;font-size:11px;white-space:nowrap;color:var(--green);border-color:#a9d0bf;background:#edf8f2}
+.teacher-course-app .teacher-roster-row>.teacher-roster-actions{grid-column:3;grid-row:1}
+@media(max-width:380px){
+.teacher-course-app .teacher-roster-row{grid-template-columns:minmax(0,1fr) auto}
+.teacher-course-app .teacher-roster-row>.teacher-roster-actions{grid-column:1 / -1;grid-row:2;justify-content:flex-end}
+}

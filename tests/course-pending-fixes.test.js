@@ -25,9 +25,9 @@ test('teacher actions allow earlier time today, reject yesterday; rentals retain
  assert.equal(x.courseDateIsPast('2026-09-08'),false);assert.equal(x.courseDateIsPast('2026-09-07'),true);
  assert(backend.includes('publicRentalSlotIsPast(availability.date, availability.startTime)'));
 });
-test('shared records exclude leave sections and roster has no duplicate add button',()=>{
+test('shared records exclude leave sections and roster has exactly one add shortcut',()=>{
  assert(!read('course-history-view.js').includes('請假紀錄（不扣堂）'));
- assert(!read('teacher-course-portal-v8.js').includes('data-student-action="${escapeHtml(student.id)}"'));
+ assert.equal(read('teacher-course-portal-v8.js').split('data-student-action="${escapeHtml(student.id)}"').length - 1, 1);
  const html=read('teacher-course-portal.html');
  assert(html.indexOf('id="teacherAnnouncementClose"') < html.indexOf('<script src="teacher-course-portal-v8.js'));
  assert(read('teacher-course-portal-v8.js').includes('event.source === frame.contentWindow'));

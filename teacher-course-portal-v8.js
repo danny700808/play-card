@@ -856,12 +856,20 @@
       return;
     }
     document.getElementById('rosterList').innerHTML = rows.map((student) => {
-      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><span class="teacher-roster-actions"><button class="btn primary" type="button" data-view-history="${escapeHtml(student.id)}">課程紀錄</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">編輯資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button></span></article>`;
+      return `<article class="list-row teacher-roster-row"><strong>${escapeHtml(student.name)}</strong><button class="btn teacher-roster-add" type="button" data-student-action="${escapeHtml(student.id)}" aria-label="替${escapeHtml(student.name)}加一堂課">＋加一堂課</button><span class="teacher-roster-actions"><button class="btn primary" type="button" data-view-history="${escapeHtml(student.id)}">課程紀錄</button><button class="btn" type="button" data-edit-student="${escapeHtml(student.id)}">編輯資料</button><button class="btn" type="button" data-bonus-student="${escapeHtml(student.id)}" data-bonus-name="${escapeHtml(student.name)}">教材／商品</button></span></article>`;
     }).join('');
   }
 
   function rosterStudent(studentId) {
     return data.roster.find((row) => clean(row.id) === clean(studentId)) || null;
+  }
+
+  function startRosterAdd(studentId) {
+    const student = rosterStudent(studentId);
+    if (!student) return;
+    activateTab('schedule');
+    cancelPlanner(true);
+    beginAddFlow('extra_lesson', { studentIds: [student.id] });
   }
 
   function openStudentEdit(studentId) {
@@ -2286,7 +2294,10 @@
       return;
     }
     const button = event.target.closest('[data-student-action]');
-    if (button) beginAddFlow('extra_lesson', { studentIds: [button.dataset.studentAction] });
+    if (button) {
+      startRosterAdd(button.dataset.studentAction);
+      return;
+    }
     const edit = event.target.closest('[data-edit-student]');
     if (edit) openStudentEdit(edit.dataset.editStudent);
     const bonus=event.target.closest('[data-bonus-student]');
