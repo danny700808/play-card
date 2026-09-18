@@ -4808,16 +4808,18 @@ async function irregularRestoreMode(data, session) {
 function irregularSource(mode, day) {
   return {...mode.source, date:day, status:'scheduled', irregularId:mode.suspensionId ? '' : mode.id, suspensionId:mode.suspensionId || ''};
 }
-async function teacherSetIrregular(data) {
-  const session = await requireSession(data,['teacher']);
+async function teacherSetIrregular(data, request, managerSession) {
+  const session = managerSession || await requireSession(data,['teacher']);
   const day = dateKey(data.sourceDate);
   if (!day) throw new HttpsError('invalid-argument','請選擇課程。');
   const version = await readScheduleVersion();
   const bundle = await scheduleBundle(day,day,session.teacherId,{teacherHome:true});
   const stoppedMode = await stoppedRestoreMode(data, session);
-  const source = stoppedMode ? irregularSource(stoppedMode, day) : bundle.resourceEvents.find(row => row.teacherId === session.teacherId &&
+  let source = stoppedMode ? irregularSource(stoppedMode, day) : bundle.resourceEvents.find(row => row.teacherId === session.teacherId &&
     [row.id,row.sourceId].includes(clean(data.sourceEventId)));
   if (!source || isRoomRentalEvent(source) || !source.studentIds.length) throw new HttpsError('permission-denied','找不到您授課的課程。');
+  const managerSplit=managerSession && managerSession.studentId && source.studentIds.length>1;
+  if(managerSession && managerSession.studentId){if(!source.studentIds.includes(managerSession.studentId))throw new HttpsError('permission-denied','學生不屬於這堂課。');source={...source,studentIds:[managerSession.studentId]};}
   const key = hash([session.teacherId,source.subjectId,...source.studentIds.slice().sort()].join('|'));
   const ref = db.collection('coursePortalIrregularCourses').doc(key);
   await db.runTransaction(async tx => {
@@ -4829,7 +4831,7 @@ async function teacherSetIrregular(data) {
     if (Number(state.data().version || 0) !== version) throw new HttpsError('aborted','課表剛更新，請重新操作。');
     if (stoppedMode) tx.update(db.collection('coursePortalStudentSuspensions').doc(stoppedMode.id), {status:'reactivated', reactivatedBy:'teacher-irregular', reactivatedAt:FieldValue.serverTimestamp()});
     tx.set(ref,{teacherId:session.teacherId,subjectId:source.subjectId,studentIds:source.studentIds,
-      source:jsonValue(source),blockedSourceCourseId:stoppedMode ? stoppedMode.blockedSourceCourseId : '',effectiveDate:stoppedMode ? stoppedMode.effectiveDate : currentTaipeiDay(),resumedFrom:'',enabled:true,intervals,
+      source:jsonValue(source),blockedSourceCourseId:stoppedMode ? stoppedMode.blockedSourceCourseId : managerSplit ? clean(source.fixedCourseId||source.sourceId||source.id) : '',effectiveDate:stoppedMode ? stoppedMode.effectiveDate : currentTaipeiDay(),resumedFrom:'',enabled:true,intervals,
       updatedAt:FieldValue.serverTimestamp()},{merge:true});
     tx.set(scheduleVersionRef(),{version:version+1,updatedAt:FieldValue.serverTimestamp(),updatedBy:session.teacherId},{merge:true});
   });
@@ -5469,8 +5471,8 @@ async function teacherUpdateStudent(data) {
   };
 }
 
-async function teacherStopStudent(data) {
-  const session = await requireSession(data, ['teacher']);
+async function teacherStopStudent(data, request, managerSession) {
+  const session = managerSession || await requireSession(data, ['teacher']);
   const effectiveDate = dateKey(data.effectiveDate);
   if (!effectiveDate || effectiveDate < currentTaipeiDay()) throw new HttpsError('invalid-argument', '請從今天或未來的課堂選擇停課起點。');
   assertPortalAdvanceDate(effectiveDate, '停課日期');
@@ -10155,7 +10157,20 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
   };
 }
 
+async function adminStudentCourseMode(data) {
+  if (!['irregular','stopped'].includes(data.mode) || !clean(data.teacherId) || !clean(data.studentId) || !clean(data.subjectId)) throw new HttpsError('invalid-argument','請選擇學生、老師與科目。');
+  const day=dateKey(data.date);
+  if(!day || !clean(data.sourceEventId)) throw new HttpsError('invalid-argument','請從課程選擇學生。');
+  const bundle=await scheduleBundle(day,day,clean(data.teacherId),{teacherHome:true});
+  const source=bundle.resourceEvents.find(row=>[row.id,row.sourceId,row.portalChangeId].includes(clean(data.sourceEventId)) && row.teacherId===clean(data.teacherId) && row.subjectId===clean(data.subjectId) && row.studentIds.includes(clean(data.studentId)));
+  if(!source || isRoomRentalEvent(source)) throw new HttpsError('not-found','課程已變更，請重新選擇。');
+  const session={role:'teacher',teacherId:source.teacherId,studentId:clean(data.studentId)};
+  if(data.mode==='irregular') return teacherSetIrregular({sourceDate:day,sourceEventId:source.id},null,session);
+  return teacherStopStudent({studentId:clean(data.studentId),subjectId:source.subjectId,effectiveDate:currentTaipeiDay(),confirmed:true},null,session);
+}
+
 async function adminSaveLessonSettings(data) {
+  if(data.kind==='studentMode') return adminStudentCourseMode(data);
   const date = dateKey(data.date), expectedVersion = await readScheduleVersion();
   if (!date || !clean(data.sourceEventId)) throw new HttpsError('invalid-argument', '缺少課程資料。');
   let event = null;
@@ -10194,14 +10209,17 @@ async function adminSaveLessonSettings(data) {
     if (dateKey(raw.date) !== date || clean(raw.start || raw.startTime) !== event.startTime || clean(raw.roomId) !== event.roomId || Number(raw.duration || raw.durationMinutes) !== timeMinutes(event.endTime)-timeMinutes(event.startTime)) throw new HttpsError('failed-precondition', '線上租用在此只能修改金額與聯絡資料；變更時段請至租用管理。');
     try { cents(raw.rentalFee); } catch(error) { throw new HttpsError('invalid-argument',error.message); }
     fields.clientName = clean(raw.clientName); fields.clientPhone = clean(raw.clientPhone); fields.rentalFee = Number(raw.rentalFee); fields.rentalPaymentStatus = clean(raw.rentalPaymentStatus); fields.note = clean(raw.note).slice(0,2000);
+    if(!['paid','unpaid'].includes(fields.rentalPaymentStatus)) throw new HttpsError('invalid-argument','收款狀態無效。');
+    fields.status=fields.rentalPaymentStatus==='paid'?'attended':'scheduled';
     if (!fields.clientName) throw new HttpsError('invalid-argument','請填寫租用者。');
-    rentalUpdate = {bookingId:clean(data.bookingId),amount:fields.rentalFee,paymentStatus:fields.rentalPaymentStatus,clientName:fields.clientName,clientPhone:fields.clientPhone,note:fields.note};
+    rentalUpdate = {bookingId:clean(data.bookingId),amount:fields.rentalFee,paymentStatus:fields.rentalPaymentStatus,status:fields.status,clientName:fields.clientName,clientPhone:fields.clientPhone,note:fields.note};
     if (!rentalUpdate.bookingId) rentalUpdate = null;
   } else if (data.kind === 'rentalStatus') {
     if (event.type !== 'rental' && event.portalAction !== 'room_booking') throw new HttpsError('invalid-argument', '這不是租用紀錄。');
     if (!['attended','scheduled'].includes(clean(data.status))) throw new HttpsError('invalid-argument', '租用簽到狀態無效。');
-    if (data.status === 'attended' && date > currentTaipeiDay()) throw new HttpsError('failed-precondition', '尚未到租用日期。');
     fields.status = data.status;
+    fields.rentalPaymentStatus=data.status==='attended'?'paid':'unpaid';
+    if(bookingId) rentalUpdate={bookingId,status:fields.status,paymentStatus:fields.rentalPaymentStatus};
   } else throw new HttpsError('invalid-argument', '不支援的設定。');
   await db.runTransaction(async tx => {
     const version = await tx.get(scheduleVersionRef()), prior = await tx.get(ref);
@@ -10213,7 +10231,9 @@ async function adminSaveLessonSettings(data) {
     tx.set(ref, { id, date, teacherId: event.teacherId, eventIds: [...new Set([...(prior.data()?.eventIds || []), ...eventIds])], fields: { ...(prior.data()?.fields || {}), ...fields }, updatedAt: FieldValue.serverTimestamp() });
     if (bookingRef) {
       const update = {...rentalUpdate,updatedAt:FieldValue.serverTimestamp()};delete update.bookingId;tx.set(bookingRef,update,{merge:true});
-      tx.set(db.collection('coursePortalScheduleChanges').doc('rental-'+rentalUpdate.bookingId),{event:{clientName:fields.clientName,clientPhone:fields.clientPhone,rentalFee:fields.rentalFee,paymentStatus:fields.rentalPaymentStatus,note:fields.note},updatedAt:FieldValue.serverTimestamp()},{merge:true});
+      const overlay={status:fields.status,paymentStatus:fields.rentalPaymentStatus,rentalPaymentStatus:fields.rentalPaymentStatus};
+      if(data.kind==='rentalDetails') Object.assign(overlay,{clientName:fields.clientName,clientPhone:fields.clientPhone,rentalFee:fields.rentalFee,note:fields.note});
+      tx.set(db.collection('coursePortalScheduleChanges').doc('rental-'+rentalUpdate.bookingId),{event:overlay,updatedAt:FieldValue.serverTimestamp()},{merge:true});
     }
     if (payroll) tx.set(db.collection(ATTENDANCE_PAYROLL).doc(payroll.id), payroll, { merge: true });
     tx.set(scheduleVersionRef(), { version: expectedVersion + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-lesson-settings' }, { merge: true });
@@ -10359,7 +10379,7 @@ async function adminSaveSchedule(data) {
   const event = { id, date, startTime, endTime, durationMinutes: duration, roomId, teacherId, subjectId, studentIds,
     halfHourAcknowledged: duration === 30 && raw.halfHourAcknowledged === true,
     studentId: studentIds[0] || '', studentNames: studentIds.map(id => clean(bundle.maps.students[id]?.name)),
-    type, status: mode === 'delete' ? 'cancelled' : 'scheduled', tuitionPeriodId: enrollmentPeriod ? enrollmentPeriod.id : clean(raw.tuitionPeriodId),
+    type, status: mode === 'delete' ? 'cancelled' : type==='rental'&&clean(raw.rentalPaymentStatus)==='paid'?'attended':'scheduled', tuitionPeriodId: enrollmentPeriod ? enrollmentPeriod.id : clean(raw.tuitionPeriodId),
     specialLesson: raw.specialLesson === true, specialLessonPrice: Number(raw.specialLessonPrice || 0), specialTeacherPay: Number(raw.specialTeacherPay || 0),
     renterStudentId, clientName: clean(raw.clientName), clientPhone: clean(raw.clientPhone), rentalFee: Number(raw.rentalFee || 0), rentalPaymentStatus: clean(raw.rentalPaymentStatus),
     trialName: clean(raw.trialName), trialPhone: clean(raw.trialPhone), trialFee: Number(raw.trialFee || 0),
@@ -10435,7 +10455,7 @@ async function adminWorkspaceSlice(data) {
   const calendarScopes=(data.calendarScopes||[]).map(row=>({startDate:dateKey(row.startDate),endDate:dateKey(row.endDate),studentIds:[...new Set((row.studentIds||[]).map(clean).filter(Boolean))]}));
   if(studentIds.length>20 || payrollScopes.length>50 || calendarScopes.length>50 || calendarScopes.some(scope=>!scope.startDate||!scope.endDate||scope.endDate<scope.startDate||scope.endDate>addDays(scope.startDate,scope.studentIds.length?660:14)||scope.studentIds.length>20)) throw new HttpsError('invalid-argument','資料更新範圍無效。');
   const version=await readScheduleVersion();
-  const [financial,calendars,adjustments]=await Promise.all([
+  const [financial,calendars,adjustments,followup]=await Promise.all([
     timeOperationStage('student_and_payroll_read',()=>adminAttendanceDetail({studentIds,payrollScopes,allowEmptyStudents:true})),
     timeOperationStage('calendar_read',()=>Promise.all(calendarScopes.map(async scope=>{
       const bundle=await scheduleBundle(scope.startDate,scope.endDate,'',{occupancyOnly:true,adminDelta:true});
@@ -10445,10 +10465,11 @@ async function adminWorkspaceSlice(data) {
       const bounds=teacherPayrollMonthBounds(scope.month);
       const [mirror,portal]=await Promise.all([mirrorRowsByDateRange('teacherAdjustments',bounds.startDate,bounds.endDate),portalRowsByDateRange('coursePortalTeacherAdjustments',bounds.startDate,bounds.endDate)]);
       return {scope,rows:mergeTeacherAdjustmentRows(mirror,portal).filter(row=>eventTeacherId(row)===scope.teacherId)};
-    })))
+    }))),
+    data.followup===true ? Promise.all([db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),db.collection('coursePortalStudentSuspensions').where('receivableTrackingVersion','==','teacher-stop-v1').get()]).then(([modes,stops])=>({irregularCourses:modes.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id})),stoppedCourseReceivables:stops.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id}))})) : null
   ]);
   if(await readScheduleVersion()!==version) throw new HttpsError('aborted','資料剛剛有更新，請重新更新畫面。');
-  return {...financial,version,calendars,adjustmentScopes:adjustments.map(row=>row.scope),teacherAdjustments:adjustments.flatMap(row=>row.rows).map(row=>({...row,id:sourceId(row)}))};
+  return {...financial,...followup,version,calendars,adjustmentScopes:adjustments.map(row=>row.scope),teacherAdjustments:adjustments.flatMap(row=>row.rows).map(row=>({...row,id:sourceId(row)}))};
 }
 
 async function adminSetAttendance(data) {

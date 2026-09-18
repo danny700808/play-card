@@ -13,8 +13,9 @@ function fixture({future=false,stale=false}={}){
 test('rental check-in and cancellation return committed status and scope reads to occupancy',async()=>{
  for(const status of ['attended','scheduled']){const f=fixture();const result=await f.context.adminSaveLessonSettings({date:f.date,sourceEventId:'rental',kind:'rentalStatus',status});assert.equal(result.fields.status,status);assert.equal(f.writes[0].data.fields.status,status);assert.equal(f.writes.length,2);}
 });
-test('future rental check-in and stale-version write fail without committing status',async()=>{
- for(const options of [{future:true},{stale:true}]){const f=fixture(options);await assert.rejects(f.context.adminSaveLessonSettings({date:f.date,sourceEventId:'rental',kind:'rentalStatus',status:'attended'}));assert.equal(f.writes.length,0);}
+test('payment completion can be recorded ahead of rental date; stale writes still fail',async()=>{
+ const ahead=fixture({future:true});const result=await ahead.context.adminSaveLessonSettings({date:ahead.date,sourceEventId:'rental',kind:'rentalStatus',status:'attended'});assert.equal(result.fields.rentalPaymentStatus,'paid');
+ const f=fixture({stale:true});await assert.rejects(f.context.adminSaveLessonSettings({date:f.date,sourceEventId:'rental',kind:'rentalStatus',status:'attended'}));assert.equal(f.writes.length,0);
 });
 
 test('online rental check-in reads just the booking, without rebuilding the schedule',async()=>{
@@ -22,7 +23,13 @@ test('online rental check-in reads just the booking, without rebuilding the sche
  c.scheduleBundle=async()=>{throw Error('must not load full schedule');};
  c.resourceEvent=row=>({...row,sourceId:row.id,studentIds:[]});
  c.db.collection=name=>({doc:id=>({id,get:async()=>{reads++;assert.equal(name,'coursePortalRoomBookings');return {exists:true,data:()=>({date:f.date,active:true,status:'confirmed',roomId:'r',startTime:'13:00',endTime:'14:00'})};}})});
+ c.db.runTransaction=async work=>work({get:async ref=>({exists:true,data:()=>ref.version?{version:1}:{active:true}}),set:(ref,data)=>f.writes.push({ref,data})});
  const result=await c.adminSaveLessonSettings({date:f.date,sourceEventId:'booking',bookingId:'booking',kind:'rentalStatus',status:'attended'});
- assert.equal(result.fields.status,'attended');assert.equal(reads,1);assert.equal(f.writes.length,2);
+ assert.equal(result.fields.status,'attended');assert.equal(result.fields.rentalPaymentStatus,'paid');assert.equal(reads,1);assert.equal(f.writes.length,4);assert.equal(f.writes[1].data.paymentStatus,'paid');assert.equal(f.writes[1].data.status,'attended');assert.equal(f.writes[2].data.event.status,'attended');assert(!Object.values(f.writes[2].data.event).includes(undefined));
  await assert.rejects(c.adminSaveLessonSettings({date:f.date,sourceEventId:'other',bookingId:'booking',kind:'rentalStatus',status:'attended'}),/不一致/);
+});
+
+test('changing rental payment status atomically sets completion and undoing payment cancels completion',async()=>{
+ for(const paid of [true,false]){const f=fixture(),c=f.context;c.timeMinutes=value=>Number(value.slice(0,2))*60+Number(value.slice(3));c.cents=n=>{if(n<0)throw Error('invalid fee');};c.scheduleBundle=async()=>({resourceEvents:[{id:'rental',sourceId:'rental',type:'rental',roomId:'r',startTime:'13:00',endTime:'14:00'}]});
+ const result=await c.adminSaveLessonSettings({date:f.date,sourceEventId:'rental',kind:'rentalDetails',event:{date:f.date,start:'13:00',duration:60,roomId:'r',clientName:'測試租用者',rentalFee:300,rentalPaymentStatus:paid?'paid':'unpaid'}});assert.equal(result.fields.status,paid?'attended':'scheduled');assert.equal(f.writes[0].data.fields.rentalFee,300);assert.equal(f.writes[0].data.fields.rentalPaymentStatus,paid?'paid':'unpaid');}
 });
