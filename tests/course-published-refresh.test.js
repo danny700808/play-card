@@ -10,7 +10,7 @@ function setup(status='success',authorized=true){
  return {calls,payload,load:()=>context.YouziCoursePreviewData.loadPublished({anchorDate:'2026-09-07'})};
 }
 test('refresh loads completed cloud data through manager auth without starting legacy capture',async()=>{
- const s=setup(),result=await s.load();assert.deepEqual(s.calls,['auth','loadInjiaoyunEducationMirrorAuto']);
+ const s=setup(),result=await s.load();assert.deepEqual(s.calls,['auth','loadInjiaoyunEducationMirrorAutoTaiwan']);
  assert.equal(result.students[0].id,'new-student');assert.equal(result.tuitionPeriods[0].expectedAmount,3600);assert.equal(result.tuitionPeriods[0].transactions.length,0);
 });
 test('incomplete sync and expired auth cannot supply replacement workspace data',async()=>{

@@ -20,11 +20,11 @@ test('concurrent requests do not mix stages, logging failure cannot turn a save 
  const broken=createAttendanceTiming({log:()=>{throw Error('log failed')}});assert.equal(await broken.withAttendanceTiming(()=>42,'asia-east1')({},{}),42);
  assert.equal(await t.timeAttendanceStage('outside_admin',()=>17),17);assert.equal(rows.length,2);
 });
-test('desktop save and refresh keep manager authorization and route only attendance to Taiwan',async()=>{
+test('desktop save and refresh keep manager authorization and route desktop mutations to Taiwan',async()=>{
  const calls=[],logs=[];let authorizations=0;const root={APP_CONFIG:{FIREBASE_CONFIG:{projectId:'test'}},console:{info:(...r)=>logs.push(r)},YouziOperationsManagerAuth:{ensureManagerAuth:async()=>{authorizations++;return {ok:true}}},firebase:{apps:[{}],initializeApp(){},app:()=>({functions:region=>({httpsCallable:name=>async payload=>{calls.push({region,name,payload});return {data:{ok:true}}}})})}};
  vm.runInNewContext(fs.readFileSync('course-scheduler-data.js','utf8'),{window:root});
  await root.YouziCoursePreviewData.setAttendance({teacherId:'t',status:'attended'});await root.YouziCoursePreviewData.refreshAttendance({studentIds:['s'],payrollScopes:[]});await root.YouziCoursePreviewData.saveLeaveReason({name:'test'});
- assert.equal(authorizations,3);assert.deepEqual(calls.slice(0,2).map(r=>[r.region,r.name]),[['asia-east1','coursePortalAdminSetAttendanceTaiwan'],['asia-east1','coursePortalAdminSetAttendanceTaiwan']]);assert.equal(calls[1].payload.action,'refresh');assert.equal(calls[2].region,'us-central1');assert(logs.some(r=>r[1].stage==='manager_auth'));assert(logs.some(r=>r[1].stage==='request'));assert(!JSON.stringify(logs).includes('teacherId'));
+ assert.equal(authorizations,3);assert.deepEqual(calls.slice(0,2).map(r=>[r.region,r.name]),[['asia-east1','coursePortalAdminSetAttendanceTaiwan'],['asia-east1','coursePortalAdminSetAttendanceTaiwan']]);assert.equal(calls[1].payload.action,'refresh');assert.equal(calls[2].region,'asia-east1');assert(logs.some(r=>r[1].stage==='manager_auth'));assert(logs.some(r=>r[1].stage==='request'));assert(!JSON.stringify(logs).includes('teacherId'));
 });
 test('both server regions use the same authorization gate before save or refresh',async()=>{
  const source=fs.readFileSync('functions/coursePortal.js','utf8');const start=source.indexOf('  const adminAttendanceHandler ='),end=source.indexOf('  exportsObject.coursePortalAdminSaveStudent',start),exportsObject={};let allowed=false;const calls=[];

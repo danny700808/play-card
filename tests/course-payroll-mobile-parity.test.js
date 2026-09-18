@@ -75,7 +75,7 @@ vm.runInNewContext(source, context, { filename: 'course-scheduler-data.js' });
     month: '2026-07',
     manualSyncPin: 'legacy-pin-must-not-run-first'
   });
-  assert.deepStrictEqual(sequence, ['auth', 'call:loadInjiaoyunEducationMirrorAuto']);
+  assert.deepStrictEqual(sequence, ['auth', 'call:loadInjiaoyunEducationMirrorAutoTaiwan']);
   assert.strictEqual(result.runId, 'payroll-cloud-current');
   assert.strictEqual(result.teacherPayroll.length, 1);
   assert.strictEqual(result.teacherPayroll[0].teacherAmount, 900);

@@ -21,7 +21,7 @@ test('room availability saves with current manager login and no migration PIN',a
   await h.api.saveRoomSettings({roomId:'guitar',publicName:'吉他教室',policies,rentalFee:100});
   assert.equal(h.authCalls.length,1);
   assert.equal(h.calls.length,1);
-  assert.equal(h.calls[0].name,'coursePortalAdminSaveRoomEquipment');
+  assert.equal(h.calls[0].name,'coursePortalAdminSaveRoomEquipmentTaiwan');
   assert.equal(h.calls[0].payload.roomId,'guitar');
   assert.deepEqual(h.calls[0].payload.policies,policies);
   assert.equal('adminPin' in h.calls[0].payload,false);

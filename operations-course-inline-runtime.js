@@ -299,7 +299,7 @@
   }
   function runUiOperation(label,button,work){
     if(operationRunning)return false;operationRunning=true;operationButton(button,true,label);$('operationProgressText').textContent=label;$('operationProgress').classList.remove('hidden');
-    async function execute(){if(attendanceUpdater)attendanceUpdater.invalidate();try{await work();}catch(error){toast('操作失敗',clean(error&&error.message||error),'error');}finally{if(attendanceUpdater)attendanceUpdater.invalidate();operationRunning=false;$('operationProgress').classList.add('hidden');operationButton(button,false);}}
+    async function execute(){if(attendanceUpdater)attendanceUpdater.invalidate();try{await window.YouziCoursePreviewData.timeOperationClient('desktop_action','save_and_render',work);}catch(error){toast(error&&error.saved?'已儲存，畫面待更新':'操作失敗',clean(error&&error.message||error),'error');}finally{if(attendanceUpdater)attendanceUpdater.invalidate();operationRunning=false;$('operationProgress').classList.add('hidden');operationButton(button,false);}}
     if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)execute();else setTimeout(execute,60);
     return true;
   }
@@ -692,6 +692,12 @@
       closeModal('scheduleModal');toast('排課已保存至雲端','老師手機與管理者會讀取同一份課表。');
     });
   }
+  async function refreshSavedWorkspace(options){
+    try{
+      var payload=await window.YouziCoursePreviewData.refreshWorkspaceSlice(Object.assign({manualSyncPin:storedMigrationPin()},options));
+      await window.YouziCoursePreviewData.timeOperationClient('workspace','apply_ui',function(){window.YouziCoursePreviewData.applyWorkspaceSlice(state,payload);scheduleWorkspaceSave();});
+    }catch(error){var savedError=new Error('雲端已儲存成功，但畫面更新尚未完成。請重新載入課表確認，勿重複收費或排課。'+clean(error&&error.message));savedError.saved=true;throw savedError;}
+  }
   async function persistScheduleChange(row,options){
     options=options||{};
     if(options.source&&options.source.type==='rental'&&options.mode!=='delete'&&row.date===options.source.date&&row.start===options.source.start&&row.roomId===options.source.roomId&&row.duration===options.source.duration){
@@ -705,8 +711,13 @@
       var delta=window.YouziCoursePreviewData.buildState({rooms:state.rooms,subjects:state.subjects,teachers:state.teachers,students:students,feePlans:state.feePlans,tuitionPeriods:result.tuitionPeriod?[result.tuitionPeriod]:[],fixedCourses:result.recurring?[result.course]:[],events:result.recurring?[]:[result.course]},state.currentDate||todayKey());
       delta.events.forEach(function(event){upsert(state.events,event);});delta.tuitionPeriods.forEach(function(period){upsert(state.tuitionPeriods,period);});renderCalendar();scheduleWorkspaceSave();return;
     }
-    var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:state.currentDate||todayKey()});
-    await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});$('calendarReauthPanel').classList.add('hidden');
+    var source=options.source||row,ids=Array.from(new Set([].concat(source.studentIds||[],row.studentIds||[])));
+    var dates=Array.from(new Set([source.date,row.date].filter(Boolean))),scopes=dates.map(function(date){return {startDate:date,endDate:date};});
+    if(options.mode==='permanent_move'&&ids.length){
+      var begin=state.dataMeta&&state.dataMeta.rangeStart||shiftDate(state.currentDate||todayKey(),-240),finish=state.dataMeta&&state.dataMeta.rangeEnd||shiftDate(state.currentDate||todayKey(),420);
+      scopes.push({startDate:begin,endDate:finish,studentIds:ids});
+    }
+    await refreshSavedWorkspace({calendarScopes:scopes});$('calendarReauthPanel').classList.add('hidden');
     renderCalendar();
   }
 
@@ -822,8 +833,7 @@
       var saved=await window.YouziCoursePreviewData.saveLessonSettings(Object.assign({manualSyncPin:storedMigrationPin(),date:row.date,teacherId:row.teacherId,sourceEventId:row.portalBookingId||row.sourceId||row.id,sourceCourseId:row.sourceCourseId||'',bookingId:row.portalBookingId||''},fields));
       if(!saved||saved.ok!==true)throw new Error('尚未確認儲存，請重試。');
       if(fields.kind==='rentalStatus'){var current=materializeEvent(findEvent(row.id)||row);current.status=saved.fields&&saved.fields.status||fields.status;closeModal('eventModal');renderCalendar();scheduleWorkspaceSave();toast(current.status==='attended'?'租用簽到完成':'已取消簽到','');return;}
-      var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:state.currentDate||todayKey()});
-      await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});
+      await refreshSavedWorkspace({studentIds:row.studentIds||[],payrollScopes:row.teacherId?[{teacherId:row.teacherId,date:row.date}]:[],calendarScopes:[{startDate:row.date,endDate:row.date}]});
       closeModal('eventModal');closeModal('teacherPayOverrideModal');renderCalendar();toast('課程設定已保存至雲端','已重新讀取共用資料。');
     });
   }
@@ -933,16 +943,17 @@
     }catch(error){if(viewer.isConnected)viewer.querySelector('[data-receipt-body]').textContent='收據尚未開啟：'+clean(error&&error.message||error);}
     finally{tuitionReceiptBusy=false;button.disabled=false;}
   }
-  async function refreshTuitionAfterCorrection(){
-    var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:state.currentDate||todayKey()});
-    await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});
+  async function refreshTuitionAfterCorrection(period,result){
+    var affected=state.attendance.filter(function(row){return row.periodId===period.id;}),scopes=(result&&result.payrollScopes)||affected.filter(function(row){return row.teacherId&&row.date;}).map(function(row){return {teacherId:row.teacherId,date:row.date};});
+    var dates=scopes.length?Array.from(new Set(affected.concat(scopes).map(function(row){return row.date;}).filter(Boolean))):[];
+    await refreshSavedWorkspace({studentIds:[period.studentId],payrollScopes:scopes,calendarScopes:dates.map(function(date){return {startDate:date,endDate:date};})});
     if(currentStudentId)renderStudentModal();renderStudents();renderCalendar();
     var selected=$('eventModal').dataset.eventId;if($('eventModal').classList.contains('open')&&findEvent(selected))eventDetails(findEvent(selected));
   }
   function deleteTuitionPeriod(id){
     if(!writable('刪除本期'))return;var period=periodById(id);if(!period.id)return;
     if(!window.confirm(studentById(period.studentId).name+'・第 '+period.periodNo+' 期\n確定整期刪除？本期繳費、收據、簽到與相關薪資計算將全部撤銷，回到未發生狀態；需要時請重新建立期別、收費與補簽。其他期別不受影響。'))return;
-    runUiOperation('正在撤銷本期繳費、簽到與薪資…',null,async function(){await window.YouziCoursePreviewData.saveTuitionPeriods({action:'delete-period',periodId:id,operationId:uid('void_period')});await refreshTuitionAfterCorrection();toast('本期已刪除','本期繳費、簽到與相關薪資已撤銷；需要時請重新收費與補簽。');});
+    runUiOperation('正在撤銷本期繳費、簽到與薪資…',null,async function(){var result=await window.YouziCoursePreviewData.saveTuitionPeriods({action:'delete-period',periodId:id,operationId:uid('void_period')});await refreshTuitionAfterCorrection(period,result);toast('本期已刪除','本期繳費、簽到與相關薪資已撤銷；需要時請重新收費與補簽。');});
   }
   function correctTuitionTransaction(id,index){
     if(!writable('修正繳費紀錄'))return;var period=periodById(id),row=(period.transactions||[])[index];if(!row)return;
@@ -950,7 +961,7 @@
     var amount=window.prompt('修正'+(row.type==='refund'?'退款':'收費')+'金額',String(row.amount));if(amount===null)return;
     var method=window.prompt('修正付款方式',row.method||'現金');if(method===null)return;
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Number(amount))||Number(amount)<=0){toast('資料不正確','請輸入日期與大於零的金額。','error');return;}
-    runUiOperation('正在修正本期繳費紀錄…',null,async function(){await window.YouziCoursePreviewData.saveTuitionPeriods({action:'correct-transaction',periodId:id,operationId:uid('correct_tx'),transactionIndex:index,expected:{id:row.id||'',date:row.date||'',amount:row.amount,method:row.method||''},date:date,amount:Number(amount),method:method});await refreshTuitionAfterCorrection();toast('繳費紀錄已修正','金額與欠費已重新計算；舊收據作廢，可重新開立。');});
+    runUiOperation('正在修正本期繳費紀錄…',null,async function(){var result=await window.YouziCoursePreviewData.saveTuitionPeriods({action:'correct-transaction',periodId:id,operationId:uid('correct_tx'),transactionIndex:index,expected:{id:row.id||'',date:row.date||'',amount:row.amount,method:row.method||''},date:date,amount:Number(amount),method:method});await refreshTuitionAfterCorrection(period,result);toast('繳費紀錄已修正','金額與欠費已重新計算；舊收據作廢，可重新開立。');});
   }
   function renderStudentModal(){
     var student=studentById(currentStudentId);$('studentTabs').innerHTML='';
@@ -1000,8 +1011,7 @@
   function voidLessonSlot(periodId,slotNo){
     runUiOperation('正在保存雲端堂數作廢…',null,async function(){
       await window.YouziCoursePreviewData.voidLessonSlot({manualSyncPin:storedMigrationPin(),periodId:periodId,slotNo:numberOf(slotNo)});
-      var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:state.currentDate||todayKey()});
-      await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});
+      await refreshSavedWorkspace({studentIds:[periodById(periodId).studentId]});
       closeModal('lessonActionModal');if(currentStudentId)renderStudentModal();renderStudents();renderCalendar();toast('堂數作廢已保存至雲端','學費收退款維持獨立。');
     });
   }
