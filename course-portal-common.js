@@ -6,8 +6,13 @@
   if (!global.firebase.apps.length) global.firebase.initializeApp(config);
   const functions = global.firebase.app().functions('us-central1');
   const taiwanFunctions = global.firebase.app().functions('asia-east1');
-  // Course reads and teacher writes run beside Firestore; authentication retains its existing route.
+  // Existing Taiwan routes stay stable. Activate added routes only after deployment
+  // and verification of the database location; never retry writes across regions.
   const TAIWAN_READ_CALLS = new Set(['coursePortalTeacherData', 'coursePortalTeacherAvailability', 'coursePortalTeacherSlotOptions', 'coursePortalStudentData', 'coursePortalLessonHistory', 'coursePortalRentalWeekBoard', 'coursePortalRentalAvailability','coursePortalTeacherLessonState','coursePortalTeacherAttendance','coursePortalTeacherLateAttendance','coursePortalTeacherAttendanceCancellationRequest','coursePortalTeacherAction','coursePortalTeacherSetIrregular','coursePortalTeacherStopStudent','coursePortalTeacherAttendanceCorrectionOptions']);
+
+  if (global.APP_CONFIG.COURSE_PORTAL_TAIWAN_EXTENDED === true) {
+    ['TeacherUtilitySession','TeacherUpdateStudent','TeacherSubmitContactBookPost','TeacherBonusRequest'].forEach(action => TAIWAN_READ_CALLS.add('coursePortal' + action));
+  }
 
   function callableFor(name, options) {
     return TAIWAN_READ_CALLS.has(name)

@@ -17,7 +17,8 @@ const { withOperationTiming, timeOperationStage } = require('./courseOperationTi
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { SCHEDULE_CHANGED, recheckSchedule, rememberSource, publicBooking, BookingOperations } = require('./coursePortalReliability');
 const path = require('path');
-const sharp = require('sharp');
+// Receipt processing is not needed while opening or signing a lesson.
+const sharp = (...args) => require('sharp')(...args);
 const { cents, validateTransaction } = require('./courseTuitionLedger');
 const {
   isStudentHistoryDateVisible,
@@ -80,9 +81,9 @@ const TUITION_SYSTEM_PERIODS = 'coursePortalTuitionSystemPeriods';
 const TUITION_RECEIPTS = 'coursePortalTuitionReceipts';
 const TUITION_RECEIPT_MAX_BYTES = 4 * 1024 * 1024;
 const TUITION_RECEIPT_TEMPLATE = path.join(__dirname, 'assets', 'tuition-receipt-blank.png');
-const TUITION_RECEIPT_FONT = require.resolve(
-  '@expo-google-fonts/noto-sans-tc/700Bold/NotoSansTC_700Bold.ttf'
-);
+function tuitionReceiptFont() {
+  return require.resolve('@expo-google-fonts/noto-sans-tc/700Bold/NotoSansTC_700Bold.ttf');
+}
 const ATTENDANCE_RECORDS = 'coursePortalAttendanceRecords';
 const ATTENDANCE_CANCELLATIONS = 'coursePortalAttendanceCancellationRequests';
 const ATTENDANCE_PAYROLL = 'coursePortalTeacherAttendancePayroll';
@@ -834,7 +835,7 @@ async function mirrorRowsByDateRangeUncached(type, startDate, endDate, options =
     const chunks = [];
     for (let offset = 0; offset < dates.length; offset += 30) chunks.push(dates.slice(offset, offset + 30));
     const snapshots = await Promise.all(chunks.map((chunk) =>
-      db.collection(MIRROR[type]).where('source.date', 'in', chunk).get()
+      (options.teacherId ? db.collection(MIRROR[type]).where('source.teacherId', '==', options.teacherId) : db.collection(MIRROR[type])).where('source.date', 'in', chunk).get()
     ));
     const rows = new Map();
     snapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
@@ -851,9 +852,8 @@ async function mirrorRowsByDateRangeUncached(type, startDate, endDate, options =
   } catch (error) {
     if (![9, '9', 'failed-precondition'].includes(error && error.code)) throw error;
     console.warn('[course portal date range fallback]', type, clean(error && error.message));
-    const snapshot = includeInactive
-      ? await db.collection(MIRROR[type]).get()
-      : await db.collection(MIRROR[type]).where('sourceActive', '==', true).get();
+    const scoped = options.teacherId ? db.collection(MIRROR[type]).where('source.teacherId', '==', options.teacherId) : db.collection(MIRROR[type]);
+    const snapshot = includeInactive ? await scoped.get() : await scoped.where('sourceActive', '==', true).get();
     const fallbackRows = snapshot.docs.map((doc) => {
       const envelope = doc.data() || {};
       if (!includeInactive && envelope.sourceActive === false) return null;
@@ -884,6 +884,7 @@ async function mirrorRowsByField(type, field, value) {
     rows = snapshot.docs
       .map((doc) => Object.assign({ __id: doc.id }, jsonValue((doc.data() || {}).source) || {}));
   } catch (error) {
+    if (![9, '9', 'failed-precondition'].includes(error && error.code)) throw error;
     console.warn('[course portal field query fallback]', type, field, clean(error && error.message));
     const snapshot = await collection.where('sourceActive', '==', true).get();
     rows = snapshot.docs
@@ -918,6 +919,7 @@ async function scheduleChangeDocsByDateRange(startDate, endDate) {
     }));
     return [...docs.values()];
   } catch (error) {
+    if (![9, '9', 'failed-precondition'].includes(error && error.code)) throw error;
     console.warn('[course portal schedule change range fallback]', clean(error && error.message));
     const snapshot = await collection.where('active', '==', true).get();
     return snapshot.docs;
@@ -2353,11 +2355,13 @@ async function requireSession(data, allowedRoles) {
     }, { merge: true });
     throw new HttpsError('permission-denied', '這個登入權限已停用或解除，請重新登入或聯絡柚子樂器。');
   }
-  const update = { lastUsedAt: FieldValue.serverTimestamp() };
-  if (session.sliding !== false) {
-    update.expiresAt = Timestamp.fromMillis(Date.now() + PORTAL_SESSION_TTL_MS);
+  // Always revalidate the session and binding; only the usage timestamp is throttled.
+  if (Date.now() - asMillis(session.lastUsedAt) >= 5 * 60 * 1000 ||
+      (session.sliding !== false && asMillis(session.expiresAt) - Date.now() < 24 * 60 * 60 * 1000)) {
+    const update = { lastUsedAt: FieldValue.serverTimestamp() };
+    if (session.sliding !== false) update.expiresAt = Timestamp.fromMillis(Date.now() + PORTAL_SESSION_TTL_MS);
+    await ref.set(update, { merge: true });
   }
-  await ref.set(update, { merge: true });
   return session;
 }
 
@@ -4876,11 +4880,10 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
   const teacherHome = options.teacherHome === true && Boolean(ownTeacherId);
   const occupancyOnly = options.occupancyOnly === true;
   const adminWrite = options.adminWrite === true;
-  const irregularSnapshot = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
-  const irregularModes = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const historyStudentId = clean(options.historyStudentId);
   const historyCourses = rows => historyStudentId ? rows.filter(row => eventStudentIds(row).includes(historyStudentId)) : rows;
-  const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions, mirrorSettingsSnapshot] = await Promise.all([
+  const settingsCollection = db.collection('coursePortalLessonSettings');
+  const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions, mirrorSettingsSnapshot, irregularSnapshot, lessonSettings] = await Promise.all([
     mirrorRows('rooms'),
     mirrorRows('subjects'),
     teacherHome || occupancyOnly ? Promise.resolve([]) : mirrorRows('students'),
@@ -4891,8 +4894,11 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
     historyStudentId ? Promise.resolve([]) : mirrorRowsByDateRange('roomRentals', startDate, endDate),
     scheduleChangeDocsByDateRange(startDate, endDate),
     activeStudentSuspensions(),
-    db.collection('opsSettings').doc('injiaoyunEducationMirror').get()
+    db.collection('opsSettings').doc('injiaoyunEducationMirror').get(),
+    db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),
+    ((options.adminDelta === true || teacherHome || occupancyOnly) ? settingsCollection.where('date','>=',startDate).where('date','<=',endDate) : settingsCollection).get()
   ]);
+  const irregularModes = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const maps = {
     rooms: indexById(rooms),
     subjects: indexById(subjects),
@@ -5214,8 +5220,6 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
       }
     }
   });
-  const settingsCollection=db.collection('coursePortalLessonSettings');
-  const lessonSettings = await (options.adminDelta===true ? settingsCollection.where('date','>=',startDate).where('date','<=',endDate) : settingsCollection).get();
   const configuredBase = applyLessonSettings(base.filter(row => !replacedTeachingOccurrence(row, permanent, overlay)), lessonSettings.docs.map(doc => doc.data()));
   const validBase = configuredBase.map(row => applyIrregularStudentModes(row, irregularModes)).filter(Boolean).map((row) => applyStudentSuspensions(row, suspensions)).filter((row) =>
     row &&
@@ -5326,7 +5330,7 @@ async function teacherPortalData(data) {
     throw new HttpsError('failed-precondition', '老師薪資查詢僅開放民國 115 年 7 月起的資料。');
   }
   if (data.payrollOnly === true) {
-    const monthly = await teacherPayrollMonthData(month);
+    const monthly = await teacherPayrollMonthData(month, session.teacherId);
     return {ok:true, payroll:monthly.teacherPayroll.filter(row => eventTeacherId(row) === session.teacherId),
       adjustments:monthly.teacherAdjustments.filter(row => eventTeacherId(row) === session.teacherId)};
   }
@@ -7636,8 +7640,8 @@ function teacherPayrollMonthBounds(value) {
   return { month, startDate, endDate: addDays(`${next}-01`, -1) };
 }
 
-async function portalRowsByDateRange(collectionName, startDate, endDate) {
-  const collection = db.collection(collectionName);
+async function portalRowsByDateRange(collectionName, startDate, endDate, teacherId = '') {
+  const collection = teacherId ? db.collection(collectionName).where('teacherId', '==', teacherId) : db.collection(collectionName);
   let documents = [];
   try {
     const snapshot = await collection
@@ -7646,6 +7650,7 @@ async function portalRowsByDateRange(collectionName, startDate, endDate) {
       .get();
     documents = snapshot.docs;
   } catch (error) {
+    if (![9, '9', 'failed-precondition'].includes(error && error.code)) throw error;
     console.warn('[course portal payroll month fallback]', collectionName, clean(error && error.message));
     documents = (await collection.get()).docs;
   }
@@ -7656,7 +7661,7 @@ async function portalRowsByDateRange(collectionName, startDate, endDate) {
     });
 }
 
-async function teacherPayrollMonthData(monthValue) {
+async function teacherPayrollMonthData(monthValue, teacherId = '') {
   const bounds = teacherPayrollMonthBounds(monthValue);
   const [
     mirrorPayroll,
@@ -7666,12 +7671,12 @@ async function teacherPayrollMonthData(monthValue) {
     portalAdjustments,
     cancellationRows
   ] = await Promise.all([
-    mirrorRowsByDateRange('teacherPayroll', bounds.startDate, bounds.endDate),
-    mirrorRowsByDateRange('teacherAdjustments', bounds.startDate, bounds.endDate),
-    mirrorRowsByDateRange('attendance', bounds.startDate, bounds.endDate),
-    portalRowsByDateRange(ATTENDANCE_PAYROLL, bounds.startDate, bounds.endDate),
-    portalRowsByDateRange('coursePortalTeacherAdjustments', bounds.startDate, bounds.endDate),
-    portalRowsByDateRange(ATTENDANCE_CANCELLATIONS, bounds.startDate, bounds.endDate)
+    mirrorRowsByDateRange('teacherPayroll', bounds.startDate, bounds.endDate, {teacherId}),
+    mirrorRowsByDateRange('teacherAdjustments', bounds.startDate, bounds.endDate, {teacherId}),
+    mirrorRowsByDateRange('attendance', bounds.startDate, bounds.endDate, {teacherId}),
+    portalRowsByDateRange(ATTENDANCE_PAYROLL, bounds.startDate, bounds.endDate, teacherId),
+    portalRowsByDateRange('coursePortalTeacherAdjustments', bounds.startDate, bounds.endDate, teacherId),
+    portalRowsByDateRange(ATTENDANCE_CANCELLATIONS, bounds.startDate, bounds.endDate, teacherId)
   ]);
   const approvedCancellations = cancellationRows.filter((row) => clean(row.status) === 'approved');
   const teacherPayroll = mergeTeacherPayrollRows(
@@ -11827,7 +11832,7 @@ async function receiptTextLayer(value, fontSize) {
     text: {
       text: `<span foreground="#343a30">${escapeReceiptText(value)}</span>`,
       font: `Noto Sans TC ${fontSize}`,
-      fontfile: TUITION_RECEIPT_FONT,
+      fontfile: tuitionReceiptFont(),
       dpi: 96,
       rgba: true
     }
@@ -13336,13 +13341,38 @@ async function appendCoursePortalData(payload) {
   return payload;
 }
 
+// Calendar bootstrap shares the canonical occupancy calculation, including
+// cancellations and moved recurring courses. It never supplies account balances.
+async function managerCalendarBootstrap(data) {
+  const anchor = dateKey(data && data.anchorDate);
+  if (!anchor) throw new HttpsError('invalid-argument', '課表日期格式不正確。');
+  const weekday = new Date(anchor + 'T12:00:00Z').getUTCDay();
+  const monday = addDays(anchor, -(weekday === 0 ? 6 : weekday - 1));
+  const startDate = addDays(monday, -7), endDate = addDays(monday, 13);
+  const version = await readScheduleVersion();
+  const [bundle, settingsSnapshot] = await Promise.all([
+    scheduleBundle(startDate, endDate, '', {adminDelta:true}),
+    db.collection('opsSettings').doc('injiaoyunEducationMirror').get()
+  ]);
+  if (version !== await readScheduleVersion()) throw new HttpsError('aborted', '課表正在更新，請重新讀取。');
+  const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
+  return {
+    ok:true, readOnly:true, scope:'calendar-bootstrap', dataMode:'mirror',
+    version, runId:clean(settings.sourceRunId), loadedAt:new Date().toISOString(),
+    mirrorMeta:{status:clean(settings.status) || 'legacy-data'},
+    calendarRange:{startDate,endDate},
+    rooms:bundle.rooms, subjects:bundle.subjects, students:bundle.students, teachers:bundle.teachers,
+    events:bundle.managerEvents, irregularCourses:bundle.irregularModes,
+    dataQuality:{auditCoveredDates:Array.from({length:21},(_,i)=>addDays(startDate,i))}
+  };
+}
+
 function registerCoursePortal(exportsObject, helpers = {}) {
-  const callable = (handler, options = {}) => onCall(Object.assign({
-    region: REGION,
-    cors: ALLOWED_ORIGINS,
-    timeoutSeconds: 120,
-    memory: '512MiB'
-  }, options), async (request) => handler(request && request.data || {}, request));
+  const callable = (handler, options = {}) => {
+    const timed = withOperationTiming(process.env.FUNCTION_TARGET || handler.name || 'course-portal', options.region || REGION, handler);
+    return onCall(Object.assign({region: REGION, cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB'}, options),
+      request => timed(request && request.data || {}, request));
+  };
 
   exportsObject.coursePortalStartBinding = callable(startBinding);
   exportsObject.coursePortalStudentPhoneAccess = callable(studentPhoneAccess);
@@ -13404,6 +13434,10 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherAttendanceCancellationRequestTaiwan = callable(withPortalReads(teacherAttendanceCancellationRequest), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherActionTaiwan = callable(withPortalReads(teacherAction), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherSetIrregularTaiwan = callable(withPortalReads(teacherSetIrregular), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherUtilitySessionTaiwan = callable(withPortalReads(teacherUtilitySession), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherUpdateStudentTaiwan = callable(withPortalReads(teacherUpdateStudent), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherSubmitContactBookPostTaiwan = callable(withPortalReads(teacherSubmitContactBookPost), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherBonusRequestTaiwan = callable(withPortalReads(teacherBonusRequest), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherStopStudentTaiwan = callable(withPortalReads(teacherStopStudent), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherAttendanceCorrectionOptionsTaiwan = callable(withPortalReads(teacherAttendanceCorrectionOptions), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherLessonState = callable(withPortalReads(teacherLessonState), { timeoutSeconds: 180, memory: '1GiB' });
@@ -13532,7 +13566,8 @@ module.exports = {
   registerCoursePortal,
   requireSession,
   resolveTeacherUtilityEmployee,
-  teacherPayrollMonthData
+  teacherPayrollMonthData,
+  managerCalendarBootstrap
 };
 function parseContactBookImages(values) {
   const images = Array.isArray(values) ? values : [];

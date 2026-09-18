@@ -6,15 +6,15 @@ const path=require('node:path');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const runtime=fs.readFileSync(path.join(root,'operations-course-inline-runtime.js'),'utf8');
-const start=runtime.indexOf('  async function loadPublishedWorkspace(){');
+const start=runtime.indexOf('  function loadPublishedWorkspace(options){');
 assert(start>=0,'The startup callback must exist before init binds and invokes it');
 const loader=runtime.slice(start,runtime.indexOf('  function bindEvents(){',start));
-assert(runtime.includes("if(window.__YOUZI_COURSE_SCHEDULER_TEST__!==true)loadPublishedWorkspace();"));
+assert(runtime.includes("if(window.__YOUZI_COURSE_SCHEDULER_TEST__!==true)loadPublishedWorkspace({calendarOnly:true});"));
 
 function harness(fail=false){
  const nodes=new Map(),calls=[];
  const element=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,textContent:'',classList:{add:v=>calls.push(['hide',id,v]),remove:v=>calls.push(['show',id,v])}});return nodes.get(id);};
- const ctx={loadingMigration:false,operationRunning:false,state:{currentDate:'2026-09-16'},$:element,closeModal:()=>{},updateModeUI:()=>{},todayKey:()=> '2026-09-13',clean:String,toast:(...args)=>calls.push(['toast',...args]),window:{YouziCoursePreviewData:{loadPublished:async options=>{calls.push(['load',options.anchorDate]);if(fail)throw Object.assign(new Error('Session expired'),{reauth:true});return {events:[{id:'lesson'}]};}}},applyFormalState:async data=>calls.push(['apply',data.events.length])};
+ const ctx={workspaceLoadPromise:null,calendarBootstrapLoading:false,currentView:'calendar',loadingMigration:false,operationRunning:false,state:{currentDate:'2026-09-16'},$:element,closeModal:()=>{},updateModeUI:()=>{},todayKey:()=> '2026-09-13',clean:String,toast:(...args)=>calls.push(['toast',...args]),window:{YouziCoursePreviewData:{loadPublished:async options=>{calls.push(['load',options.anchorDate]);if(fail)throw Object.assign(new Error('Session expired'),{reauth:true});return {events:[{id:'lesson'}]};}}},applyFormalState:async data=>calls.push(['apply',data.events.length])};
  vm.createContext(ctx);vm.runInContext(loader+'\nthis.runLoader=loadPublishedWorkspace;',ctx);
  return {ctx,calls,nodes};
 }

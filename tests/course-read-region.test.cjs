@@ -23,12 +23,22 @@ test('regional copies preserve the same handlers, auth wrappers and resource set
   assert.equal(regional.replace(name+'Taiwan =',name+' =').replace("region: 'asia-east1', ",''),old);
  }
  const regionalLines=backend.split('\n').filter(l=>/region:\s*'asia-east1'/.test(l));
- assert.equal(regionalLines.length,17);
+ assert.equal(regionalLines.length,21);
  assert(!regionalLines.some(l=>/onSchedule|onDocument/.test(l)));
 });
 test('teacher uses shared region routing and all portal pages load the updated common script',()=>{
  assert.match(fs.readFileSync('teacher-course-portal-v8.js','utf8'),/PortalAuth\.callableFor\(name, \{ timeout: 180000 \}\)/);
  for(const file of fs.readdirSync('.').filter(n=>n.endsWith('.html'))){
-  const page=fs.readFileSync(file,'utf8');if(page.includes('course-portal-common.js'))assert.match(page,/course-portal-common\.js\?v=20260915-teacher-speed-v1/);
+  const page=fs.readFileSync(file,'utf8');if(page.includes('course-portal-common.js'))assert.match(page,/course-portal-common\.js\?v=20260918-speed2/);
  }
+});
+test('new Taiwan teacher routes stay inactive until the deployment flag is explicitly enabled',async()=>{
+ const names=['TeacherUtilitySession','TeacherUpdateStudent','TeacherSubmitContactBookPost','TeacherBonusRequest'].map(name=>'coursePortal'+name);
+ for(const enabled of [false,true]){
+  const calls=[],global={APP_CONFIG:{FIREBASE_CONFIG:{},COURSE_PORTAL_TAIWAN_EXTENDED:enabled},firebase:{apps:[{}],app:()=>({functions:region=>({httpsCallable:name=>async()=>{calls.push({region,name});return {data:{}};}})})}};
+  const code=common.slice(common.indexOf('  const config'),common.indexOf('  const CACHE_PREFIX'));
+  vm.runInNewContext(code+'\nglobal.resolve=callableFor;',{global});
+  for(const name of names){await global.resolve(name)({});assert.equal(calls.at(-1).region,enabled?'asia-east1':'us-central1');assert.equal(calls.at(-1).name,name+(enabled?'Taiwan':''));}
+ }
+ const config=fs.readFileSync('config.js','utf8');assert.match(config,/COURSE_PORTAL_TAIWAN_EXTENDED:\s*false/);
 });

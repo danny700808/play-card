@@ -12,6 +12,9 @@ function createOperationTiming({now=()=>performance.now(),log=row=>logger.info('
   }
   function wrap(operation,region,handler) {
     return async(data,request)=>{
+      // A callable may already wrap a timed business handler. Keep one request
+      // record so inner stages remain attached to the same operation.
+      if(context.getStore())return handler(data,request);
       const record={operation,region,firstRequestInInstance:first,stages:[]},started=now();first=false;
       return context.run(record,async()=>{
         try{const result=await handler(data,request);record.outcome='ok';return result;}

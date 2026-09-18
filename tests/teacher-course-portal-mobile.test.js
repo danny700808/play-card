@@ -84,7 +84,7 @@ assert(source.includes("'goods-attention'") && source.includes('summary.goodsAtt
 assert(source.includes("['teacherDailyReminderBackdrop','teacherMoreBackdrop','teacherQuickBackdrop','teacherAnnouncementBackdrop']"), '關閉單一視窗時未保留其他視窗需要的捲動鎖定');
 assert(html.includes('teacher-daily-reminder.js?v=20260806-daily-reminder-v1'), '每日提醒工具 cache key 過期');
 assert(html.includes('teacher-course-portal-v8.css?v=20260917-roster-add-v1'), '老師首頁樣式 cache key 過期');
-assert(html.includes('teacher-course-portal-v8.js?v=20260917-roster-add-v1'), '老師首頁程式 cache key 過期');
+assert(html.includes('teacher-course-portal-v8.js?v=20260918-speed2'), '老師首頁程式 cache key 過期');
 
 const lineLoginIndex = html.indexOf('data-line-login');
 const emailLoginIndex = html.indexOf('data-regular-auth-form');
@@ -125,10 +125,10 @@ console.log('teacher course portal mobile tests passed');
  const end = source.indexOf('  let dataRequestVersion', start);
  for (const previousLoginAtText of ['', '2026/09/08 09:05']) {
   let notice, rendered = 0, bound = false, inserted=0; const timers=[];
-  const ctx = {global:{setTimeout:(fn,ms)=>timers.push({fn,ms})},data:{loginNotice:{loginAtText:'2026/09/08 10:00',previousLoginAtText}},document:{body:{appendChild:node=>{notice=node;inserted++;}},getElementById:()=>notice,createElement:()=>({setAttribute(){},classList:{add(){}},remove(){}})},renderWeek:()=>rendered++,renderRoster:()=>rendered++,renderIrregularCourses:()=>rendered++,renderPayroll:()=>rendered++,showBound:value=>bound=value};
+  const ctx = {activeTab:'schedule',global:{setTimeout:(fn,ms)=>timers.push({fn,ms})},data:{loginNotice:{loginAtText:'2026/09/08 10:00',previousLoginAtText}},document:{body:{appendChild:node=>{notice=node;inserted++;}},getElementById:()=>notice,createElement:()=>({setAttribute(){},classList:{add(){}},remove(){}})},renderWeek:()=>rendered++,renderRoster:()=>rendered++,renderIrregularCourses:()=>rendered++,renderPayroll:()=>rendered++,showBound:value=>bound=value};
   vm.createContext(ctx);vm.runInContext(source.slice(start,end)+';renderAll();renderAll();',ctx);
   assert(notice.textContent.includes(previousLoginAtText || '首次'));
-  assert.equal(rendered,8);assert.equal(bound,true);assert.equal(inserted,1);assert.deepEqual(timers.map(t=>t.ms),[3000,3400]);
+  assert.equal(rendered,2);assert.equal(bound,true);assert.equal(inserted,1);assert.deepEqual(timers.map(t=>t.ms),[3000,3400]);
  }
 }
 

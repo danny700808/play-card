@@ -140,6 +140,11 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
   const handler=async (request) => {
     assertAllowedRead(request);
     try {
+      if (clean(request && request.data && request.data.scope) === 'calendar-bootstrap') {
+        const { managerCalendarBootstrap } = require('./coursePortal');
+        const { withPortalReads } = require('./portalReadContext');
+        return await withPortalReads(managerCalendarBootstrap)(request.data);
+      }
       if (clean(request && request.data && request.data.scope) === 'calendar-irregular') {
         const rows = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
         const stops = await db.collection('coursePortalStudentSuspensions').where('receivableTrackingVersion','==','teacher-stop-v1').get();

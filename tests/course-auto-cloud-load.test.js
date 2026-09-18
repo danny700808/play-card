@@ -147,7 +147,7 @@ assert(autoRead.includes("=== 'teacher-payroll-month'"), '唯讀函式沒有薪�
 assert(autoRead.includes("const ADMIN_EMAILS = new Set(['danny700808@gmail.com'])"), '薪資月份後端沒有沿用正式管理者帳號');
 assert(autoRead.includes('token.admin === true'), '薪資月份後端沒有接受管理者權限');
 assert(autoRead.includes('token.owner === true'), '薪資月份後端沒有接受擁有者權限');
-assert(coursePortal.includes('async function teacherPayrollMonthData(monthValue)'), '後端缺少月份薪資合併');
+assert(coursePortal.includes('async function teacherPayrollMonthData(monthValue,'), '後端缺少月份薪資合併');
 assert(coursePortal.includes("mirrorRowsByDateRange('teacherPayroll'"), '月份薪資沒有依日期讀取舊系統鏡像');
 assert(coursePortal.includes('mergeTeacherPayrollRows('), '月份薪資沒有合併新版入口簽到資料');
 
