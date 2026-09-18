@@ -941,8 +941,8 @@
   }
   function deleteTuitionPeriod(id){
     if(!writable('刪除本期'))return;var period=periodById(id);if(!period.id)return;
-    if(!window.confirm(studentById(period.studentId).name+'・第 '+period.periodNo+' 期\n確定刪除這一期？本期學費、收退款及收據將作廢，並保留查帳紀錄。這不是實際退款；已上課與老師薪資保留。其他期別不受影響。'))return;
-    runUiOperation('正在刪除本期並作廢學費…',null,async function(){await window.YouziCoursePreviewData.saveTuitionPeriods({action:'delete-period',periodId:id,operationId:uid('void_period')});await refreshTuitionAfterCorrection();toast('本期已刪除','本期學費與收據已作廢，保留異動紀錄。');});
+    if(!window.confirm(studentById(period.studentId).name+'・第 '+period.periodNo+' 期\n確定整期刪除？本期繳費、收據、簽到與相關薪資計算將全部撤銷，回到未發生狀態；需要時請重新建立期別、收費與補簽。其他期別不受影響。'))return;
+    runUiOperation('正在撤銷本期繳費、簽到與薪資…',null,async function(){await window.YouziCoursePreviewData.saveTuitionPeriods({action:'delete-period',periodId:id,operationId:uid('void_period')});await refreshTuitionAfterCorrection();toast('本期已刪除','本期繳費、簽到與相關薪資已撤銷；需要時請重新收費與補簽。');});
   }
   function correctTuitionTransaction(id,index){
     if(!writable('修正繳費紀錄'))return;var period=periodById(id),row=(period.transactions||[])[index];if(!row)return;

@@ -48,17 +48,19 @@ function fixture() {
   };
   const context = {
     db, cents, validateTransaction, Map, Set, Date, Object, Array, Number, Math, readCourseGroups: async () => [],
+    hash:value=>require('node:crypto').createHash('sha256').update(value).digest('hex'), randomToken:()=> 'random', eventDate:row=>row.date, eventTeacherId:row=>row.teacherId, eventStudentIds:row=>row.studentIds||[row.studentId], normalizeScheduleStatus:value=>value,
+    teacherAttendanceEvent:async(session,data)=>({...data,event:{id:data.sourceEventId,sourceId:data.sourceEventId,fixedCourseId:data.sourceCourseId,studentIds:['student1'],teacherId:session.teacherId,date:data.sourceDate,startTime:'19:00',endTime:'20:00',roomId:'room',subjectId:'drums'}}),
     clean: value => String(value ?? '').trim(), dateKey: value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : '',
     sourceId: row => row && (row.id || row.__id) || '', jsonValue: value => value,
     HttpsError: class extends Error { constructor(code, message) { super(message); this.code = code; } },
-    MIRROR: { tuitionPeriods: 'mirror' }, TUITION_PERIODS: 'periods', TUITION_TRANSACTIONS: 'transactions', TUITION_RECEIPTS:'receipts', nowText:()=> '2026-09-18',
+    MIRROR: { tuitionPeriods: 'mirror', attendance:'mirrorAttendance' }, ATTENDANCE_RECORDS:'attendance', ATTENDANCE_PAYROLL:'payroll', ATTENDANCE_CANCELLATIONS:'cancellations', TUITION_PAYMENT_REQUESTS:'requests', TUITION_PERIODS: 'periods', TUITION_TRANSACTIONS: 'transactions', TUITION_RECEIPTS:'receipts', nowText:()=> '2026-09-18',
     FieldValue: { serverTimestamp: () => 'server-time' },
     scheduleVersionRef: () => collection('runtime').doc('version'),
     assertScheduleWritable: value => { if (value.exists && value.data().writesBlocked) throw Error('blocked'); },
     mirrorRows: async () => [{ id: 'student1' }]
   };
   vm.createContext(context);
-  for (const name of ['firstFiniteNumber','transactionAmount','tuitionBasePaidAmount','mergePortalTuitionRows','adminManageTuitionPeriod','adminSaveTuitionPeriods','adminRecordTuitionTransaction']) vm.runInContext(extract(name), context);
+  for (const name of ['attendanceLessonUnits','attendanceAllocations','attendanceRowsMatch','mergePortalAttendanceRows','attendanceLineage','attendanceOperationId','attendanceLessonLockId','attendanceChangePayload','tuitionPeriodReversalWrites','firstFiniteNumber','transactionAmount','tuitionBasePaidAmount','mergePortalTuitionRows','adminManageTuitionPeriod','adminSaveTuitionPeriods','adminRecordTuitionTransaction']) vm.runInContext(extract(name), context);
   return { context, put: (key, value) => records.set(key, value), get: key => records.get(key), rows: prefix => [...records].filter(([key]) => key.startsWith(prefix+'/')), fail: () => { failCreate = true; } };
 }
 
@@ -69,3 +71,29 @@ test('failure rolls back deletion and preserves original payment and receipt',as
 test('correction replaces imported money, invalidates receipt, and does not double count ledger',async()=>{const f=seeded();await f.context.adminSaveTuitionPeriods({action:'correct-transaction',periodId:'p1',operationId:'fix1',transactionIndex:0,expected:base.transactions[0],amount:2400,date:'2026-09-17',method:'轉帳'});const p=f.context.mergePortalTuitionRows([base],[f.get('periods/p1')],[{id:'pay1',...f.get('transactions/pay1')}])[0];assert.equal(p.paidAmount,2400);assert.equal(p.transactions.length,1);assert.equal(p.transactions[0].amount,2400);assert.equal(p.transactions[0].date,'2026-09-17');assert.equal(f.get('receipts/r1').status,'voided');});
 test('stale correction is rejected without overwriting another device',async()=>{const f=seeded();await assert.rejects(f.context.adminSaveTuitionPeriods({action:'correct-transaction',periodId:'p1',operationId:'fix1',transactionIndex:0,expected:{...base.transactions[0],amount:2000},amount:2400,date:'2026-09-17',method:'轉帳'}),/變更/);assert.equal(f.get('transactions/pay1').amount,2800);});
 test('deleted period refuses subsequent collection',async()=>{const f=seeded();await f.context.adminSaveTuitionPeriods({action:'delete-period',periodId:'p1',operationId:'del1'});await assert.rejects(f.context.adminRecordTuitionTransaction({id:'newpay',periodId:'p1',type:'payment',date:'2026-09-18',amount:10}),/有效/);});
+
+test('whole-period deletion reverses attendance, payroll, charges and requests while other periods survive',async()=>{
+ const f=seeded();const row={id:'a1',operationId:'op1',studentId:'student1',studentIds:['student1'],teacherId:'teacher',date:'2026-09-11',courseId:'course',eventId:'event',periodId:'p1',status:'attended',active:true,lessonUnits:1};
+ f.put('attendance/a1',row);f.put('mirrorAttendance/m1',{source:row});f.put('payroll/op1',{...row,teacherAmount:1680});
+ f.put('attendance/a2',{...row,id:'a2',operationId:'op2',date:'2026-09-18',periodId:'p2'});
+ f.put('requests/r1',{studentId:'student1',targetPeriodId:'p1',status:'payment_due',active:true});
+ f.put('requests/r2',{studentId:'student1',targetPeriodId:'p2',status:'payment_due',active:true});
+ await f.context.adminSaveTuitionPeriods({action:'delete-period',periodId:'p1',operationId:'del1'});
+ assert.equal(f.get('attendance/a1').status,'cancelled');assert.equal(f.get('attendance/a1').deducted,false);
+ assert.equal(f.get('payroll/op1').active,false);assert.equal(f.get('payroll/op1').teacherAmount,0);
+ assert.equal(f.get('attendance/a2').status,'attended');assert.equal(f.get('requests/r1').active,false);assert.equal(f.get('requests/r2').active,true);
+ assert.equal(f.rows('coursePortalScheduleChanges')[0][1].event.status,'scheduled');
+ assert.equal(f.rows('coursePortalAttendanceLessonLocks')[0][1].status,'cancelled');
+ assert.equal(f.get('periods/p1').paidAmount,0);assert.equal(f.get('periods/p1').transactions.length,0);
+ assert.equal(f.get('coursePortalTuitionCorrections/del1').attendanceBefore.length,1);
+ assert.equal(f.context.mergePortalAttendanceRows([row],f.rows('attendance').map(([,r])=>r)).some(r=>r.periodId==='p1'),false);
+});
+test('failed cascade rolls back attendance, payroll and payments together',async()=>{
+ const f=seeded();f.put('attendance/a1',{id:'a1',operationId:'op1',studentId:'student1',teacherId:'teacher',date:'2026-09-11',courseId:'course',eventId:'event',periodId:'p1',status:'attended',active:true});f.put('payroll/op1',{active:true,teacherAmount:1680});f.fail();
+ await assert.rejects(f.context.adminSaveTuitionPeriods({action:'delete-period',periodId:'p1',operationId:'del1'}));
+ assert.equal(f.get('attendance/a1').status,'attended');assert.equal(f.get('payroll/op1').teacherAmount,1680);assert.equal(f.get('transactions/pay1').status,'confirmed');
+});
+test('cross-period attendance fails closed without altering either period',async()=>{
+ const f=seeded();f.put('attendance/a1',{studentId:'student1',periodId:'p1',status:'attended',periodAllocations:[{periodId:'p1',lessonUnits:0.5},{periodId:'p2',lessonUnits:0.5}]});
+ await assert.rejects(f.context.adminSaveTuitionPeriods({action:'delete-period',periodId:'p1',operationId:'del1'}),/跨期/);assert.equal(f.get('periods/p1'),undefined);
+});

@@ -10806,6 +10806,61 @@ async function adminSaveStudent(data) {
   return { ok: true, student: { id, name, phone: row.phone, active: row.studentActive, note: row.managerNote } };
 }
 
+// Build all reversal writes before applying any of them. The surrounding version
+// transaction also protects the schedule reads performed while resolving lessons.
+async function tuitionPeriodReversalWrites(tx, period, operationId) {
+  const periodId = sourceId(period), studentId = clean(period.studentId);
+  const mirrored = await tx.get(db.collection(MIRROR.attendance).where('source.studentId', '==', studentId));
+  const portal = await tx.get(db.collection(ATTENDANCE_RECORDS).where('studentId', '==', studentId));
+  const requests = await tx.get(db.collection(TUITION_PAYMENT_REQUESTS).where('studentId', '==', studentId));
+  const corrections = await tx.get(db.collection('coursePortalAttendanceCorrections').where('periodId', '==', periodId));
+  const attendance = mergePortalAttendanceRows(
+    mirrored.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {}),
+    portal.docs.map(doc => Object.assign({__id:doc.id}, doc.data()))
+  ).filter(row => row.active !== false && attendanceAllocations(row).some(item => clean(item.periodId) === periodId));
+  const writes = [], stamp = FieldValue.serverTimestamp();
+  const put = (collection, id, value) => writes.push({collection, id, value});
+  const voided = {active:false,status:'cancelled',cancelledAt:stamp,updatedAt:stamp,periodDeletionOperationId:operationId};
+  for (const row of attendance) {
+    if (attendanceAllocations(row).some(item => clean(item.periodId) && clean(item.periodId) !== periodId)) {
+      throw new HttpsError('failed-precondition', '本期有跨期扣堂的簽到，請先取消該堂簽到後再刪除，避免影響其他期。');
+    }
+    const teacherId = eventTeacherId(row), sourceDate = eventDate(row);
+    const resolved = await teacherAttendanceEvent({role:'teacher',teacherId}, {
+      sourceDate, sourceEventId:clean(row.eventId || row.sourceEventId),
+      sourceCourseId:clean(row.courseId || row.fixedCourseId || row.sourceCourseId)
+    });
+    const event = resolved.event;
+    if (eventStudentIds(event).some(id => id !== studentId)) {
+      throw new HttpsError('failed-precondition', '本期有多人共用的課堂，請先個別處理簽到後再刪除，避免影響其他學生。');
+    }
+    const attendanceId = clean(row.operationId) || attendanceOperationId(teacherId, sourceDate, event, resolved);
+    const cancellationId = hash(['attendance-cancellation', attendanceId].join('|'));
+    const change = attendanceChangePayload(event, sourceDate, resolved.sourceEventId, resolved.sourceCourseId, teacherId, 'scheduled', '刪除誤登期別，清除簽到，待管理者重新補簽');
+    change.event.tuitionPeriodId = '';
+    change.event.tuitionPeriodIds = {};
+    change.approvedByManager = true;
+    const cancelled = Object.assign({}, row, voided, {operationId:attendanceId, studentId, teacherId, date:sourceDate,
+      eventId:clean(event.sourceId || resolved.sourceEventId || event.id), courseId:attendanceLineage(event,resolved),
+      startTime:event.startTime, endTime:event.endTime, source:'attendance-cancellation-approved', deducted:false,
+      periodId, periodAllocations:attendanceAllocations(row), cancellationRequestId:cancellationId});
+    const matchingPortal = portal.docs.filter(doc => attendanceRowsMatch(doc.data(), row));
+    const ids = new Set(matchingPortal.map(doc=>doc.id).concat(hash([attendanceId,studentId].join('|'))));
+    ids.forEach(id => put(ATTENDANCE_RECORDS,id,Object.assign({},cancelled,{id})));
+    put('coursePortalScheduleChanges',change.id,change);
+    put(ATTENDANCE_PAYROLL,attendanceId,Object.assign({},cancelled,{id:attendanceId,teacherAmount:0}));
+    put(ATTENDANCE_CANCELLATIONS,cancellationId,Object.assign({},cancelled,{id:cancellationId,active:true,status:'approved',approvalMode:'period-deletion',approvedByManager:true}));
+    put('coursePortalAttendanceLessonLocks',attendanceLessonLockId(sourceDate,event,resolved),Object.assign({},voided,{active:true,operationId:attendanceId,cancellationRequestId:cancellationId,teacherId,date:sourceDate}));
+    put('coursePortalLateAttendance',attendanceId,voided);
+    put('coursePortalTeacherAdjustments','attendance-fee-'+attendanceId,voided);
+  }
+  requests.docs.filter(doc => [doc.data().targetPeriodId,doc.data().formalPeriodId,doc.data().periodId].map(clean).includes(periodId))
+    .forEach(doc => put(TUITION_PAYMENT_REQUESTS,doc.id,voided));
+  corrections.docs.forEach(doc => put('coursePortalAttendanceCorrections',doc.id,voided));
+  if (writes.length > 400) throw new HttpsError('failed-precondition','本期關聯紀錄過多，已停止刪除，所有資料保持原狀。');
+  return {writes,attendance};
+}
+
 async function adminManageTuitionPeriod(data) {
   const periodId = clean(data.periodId), operationId = clean(data.operationId);
   if (!/^[A-Za-z0-9_-]{1,180}$/.test(periodId) || !/^[A-Za-z0-9_-]{1,160}$/.test(operationId)) throw new HttpsError('invalid-argument', '期別識別碼無效。');
@@ -10827,10 +10882,12 @@ async function adminManageTuitionPeriod(data) {
     const period = mergePortalTuitionRows(bases, portal.exists ? [portal] : [], payments.docs).find(row => sourceId(row) === periodId);
     if (!period) throw new HttpsError('not-found', '本期已刪除或不存在，請重新載入。');
     const before = jsonValue(period), stamp = FieldValue.serverTimestamp();
+    const reversal = data.action === 'delete-period' ? await tuitionPeriodReversalWrites(tx,period,operationId) : {writes:[],attendance:[]};
     let patch, targetIndex = -1;
     if (data.action === 'delete-period') {
-      patch = {id:periodId, studentId:period.studentId, subjectId:period.subjectId || '', periodNo:period.periodNo, active:false, status:'cancelled', cancelledAt:stamp, cancellationReason:'管理員刪除誤登期別', updatedAt:stamp};
+      patch = {id:periodId, studentId:period.studentId, subjectId:period.subjectId || '', periodNo:period.periodNo, active:false, status:'cancelled', cancelledAt:stamp, cancellationReason:'管理員刪除誤登期別', paidAmount:0, receivedAmount:0, transactions:[], usedCount:0, attendedCount:0, updatedAt:stamp};
       payments.docs.forEach(doc => tx.set(db.collection(TUITION_TRANSACTIONS).doc(doc.id), {active:false, status:'voided', voidedAt:stamp, voidReason:'period-deleted'}, {merge:true}));
+      reversal.writes.forEach(row => tx.set(db.collection(row.collection).doc(row.id),row.value,{merge:true}));
     } else {
       const rows = (period.transactions || []).map(row => Object.assign({}, row));
       targetIndex = Number(data.transactionIndex);
@@ -10854,7 +10911,7 @@ async function adminManageTuitionPeriod(data) {
       if(data.action==='delete-period' || (target && ((clean(target.id)&&clean(receipt.transactionId)===clean(target.id)) || Number(receipt.transactionIndex)===targetIndex))) tx.set(db.collection(TUITION_RECEIPTS).doc(doc.id), {active:false,status:'voided',voidedAt:stamp,voidReason:data.action}, {merge:true});
     });
     tx.set(ref,patch,{merge:true});
-    tx.create(auditRef,{periodId,action:data.action,before,transactionIndex:targetIndex,createdAt:stamp,source:'manager-period-correction'});
+    tx.create(auditRef,{periodId,action:data.action,before,attendanceBefore:jsonValue(reversal.attendance),transactionIndex:targetIndex,createdAt:stamp,source:'manager-period-correction'});
     tx.set(versionRef,{version:Number(version.exists&&version.data().version||0)+1,updatedAt:stamp,updatedBy:'manager-period-correction'},{merge:true});
     return {ok:true,periodId};
   });
