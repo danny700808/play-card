@@ -163,7 +163,7 @@ jobs:
           node --check manager-auth.js
           node --check operations-manager-auth.js
           node --check operations-phase1.js
-          node --test tests/teacher-view-cache.test.cjs tests/course-speed-bootstrap.test.cjs tests/course-speed-queries.test.cjs
+          node --test tests/teacher-view-cache.test.cjs tests/course-speed-bootstrap.test.cjs tests/course-speed-queries.test.cjs tests/course-query-index-readiness.test.cjs
           node --check course-portal-common.js
           node --check room-booking-v2.js
           node --check teacher-course-portal-v8.js
