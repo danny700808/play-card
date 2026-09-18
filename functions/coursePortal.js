@@ -10162,7 +10162,7 @@ async function adminStudentCourseMode(data) {
   const day=dateKey(data.date);
   if(!day || !clean(data.sourceEventId)) throw new HttpsError('invalid-argument','請從課程選擇學生。');
   const bundle=await scheduleBundle(day,day,clean(data.teacherId),{teacherHome:true});
-  const source=bundle.resourceEvents.find(row=>[row.id,row.sourceId,row.portalChangeId].includes(clean(data.sourceEventId)) && row.teacherId===clean(data.teacherId) && row.subjectId===clean(data.subjectId) && row.studentIds.includes(clean(data.studentId)));
+  const source=bundle.resourceEvents.find(row=>[row.id,row.sourceId,row.portalChangeId,row.fixedCourseId,row.seriesId].includes(clean(data.sourceEventId)) && row.teacherId===clean(data.teacherId) && row.subjectId===clean(data.subjectId) && row.studentIds.includes(clean(data.studentId)));
   if(!source || isRoomRentalEvent(source)) throw new HttpsError('not-found','課程已變更，請重新選擇。');
   const session={role:'teacher',teacherId:source.teacherId,studentId:clean(data.studentId)};
   if(data.mode==='irregular') return teacherSetIrregular({sourceDate:day,sourceEventId:source.id},null,session);
