@@ -1,13 +1,21 @@
 'use strict';
 // Add only the indexes required by teacher-scoped monthly reads. Never delete
 // an existing index or change database placement from the deployment workflow.
-const {GoogleAuth} = require('../../functions/node_modules/google-auth-library');
 const indexes = require('../../firestore.indexes.json').indexes.filter(index =>
   index.fields.some(field => /^(source\.)?teacherId$/.test(field.fieldPath)) &&
   index.fields.some(field => /^(source\.)?date$/.test(field.fieldPath))
 );
-const signature = index => JSON.stringify({queryScope:index.queryScope,fields:index.fields.map(({fieldPath,order})=>({fieldPath,order}))});
+const signature = index => {
+  const fields=index.fields.map(({fieldPath,order})=>({fieldPath,order}));
+  // Firestore appends the document-name ordering when the definition omits it.
+  // Compare both representations while preserving explicit non-default order.
+  if(!fields.some(field=>field.fieldPath==='__name__')) {
+    fields.push({fieldPath:'__name__',order:fields.at(-1)?.order||'ASCENDING'});
+  }
+  return JSON.stringify({queryScope:index.queryScope,fields});
+};
 async function main() {
+  const {GoogleAuth} = require('../../functions/node_modules/google-auth-library');
   const client = await new GoogleAuth({scopes:['https://www.googleapis.com/auth/datastore']}).getClient();
   const groups = [...new Set(indexes.map(index=>index.collectionGroup))];
   const url = group => 'https://firestore.googleapis.com/v1/projects/youzi-c1b74/databases/(default)/collectionGroups/' + group + '/indexes';
@@ -38,4 +46,5 @@ async function main() {
   }
   throw Error('Teacher monthly query indexes are not ready; deployment stopped.');
 }
-main().catch(error=>{console.error(error.message);process.exitCode=1;});
+if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=1;});
+module.exports={signature};
