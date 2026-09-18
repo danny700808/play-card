@@ -543,6 +543,8 @@
     next.teacherAdjustments=array(state.teacherAdjustments).filter(function(row){return !scopes.some(function(scope){return row.teacherId===scope.teacherId&&clean(row.date).slice(0,7)===scope.month;});}).concat(normalizeTeacherAdjustments(payload));
     next.events=events;next.dataMeta=Object.assign({},state.dataMeta,{version:payload.version||state.dataMeta&&state.dataMeta.version});
     state.tuitionPeriods=next.tuitionPeriods;state.attendance=next.attendance;state.teacherPayroll=next.teacherPayroll;state.teacherAdjustments=next.teacherAdjustments;state.events=next.events;state.dataMeta=next.dataMeta;
+    if(Array.isArray(payload.irregularCourses))state.irregularCourses=payload.irregularCourses;
+    if(Array.isArray(payload.stoppedCourseReceivables))state.stoppedCourseReceivables=payload.stoppedCourseReceivables;
   }
 
   async function setAttendance(options){
