@@ -20,6 +20,8 @@
 
 核對頁面：[Storage](https://console.firebase.google.com/project/youzi-c1b74/storage/youzi-c1b74.firebasestorage.app/files)、[Functions](https://console.firebase.google.com/project/youzi-c1b74/functions)。
 
+Storage 用量頁當時顯示約 **1.74 GB、4,187 個物件**；這是後台顯示的用量摘要，尚未逐一核對每個檔案的 checksum。此盤點沒有下載或搬移任何合約、個資或照片。
+
 先前的「兩個月」是 `PORTAL_MAX_ADVANCE_MONTHS = 2` 的操作期限，不是一次預載兩個月歷史。
 
 ## 這批實作
@@ -31,7 +33,7 @@
 - 管理課表開頁先讀前週、本週、次週共 21 天的正式課程；使用既有取消、調課、固定課及占用計算。首次開明細、帳務或範圍外日期再讀完整資料。
 - 部分課表保持唯讀、不覆蓋已保存的完整帳本；未讀取帳務時，未收款數量顯示省略符號。明細與寫入入口等待完整資料，範圍外日期顯示讀取狀態。
 - 收據圖像元件延後使用時載入；操作計時不記錄姓名、帳號權杖、課程內容或金額，巢狀計時共用一筆紀錄。
-- 新增四個老師台灣端點，`config.js` 的 `COURSE_PORTAL_TAIWAN_EXTENDED` **預設 false**。資料庫位置已核實；啟用前仍須確認新入口部署完成，不在錯誤後自動跨區重送寫入。
+- 新增四個老師台灣端點。第一批部署時 `COURSE_PORTAL_TAIWAN_EXTENDED` 保持 false；後續啟用分支將設為 true，並更新七個課務頁面的設定版本。合併啟用分支前，必須確認新入口部署完成並通過下述正式端點檢查；不在錯誤後自動跨區重送寫入。
 - 歷史七月薪資修補改成手動部署時明確勾選才執行，日常速度部署不連帶重跑舊帳務。健康檢查的公開紀錄與附件只保留筆數摘要，不輸出整份課務回應；結束後清除暫時權杖及原始回應檔。
 
 ## 部署順序
@@ -51,6 +53,12 @@
 5. 檔案儲存整合另做遷移：先盤點檔案數量、大小、權限、簽名網址與資料庫中的連結，再建立台灣儲存桶、複製及驗證。Google Cloud 的直接 bucket relocation 目前不支援 Firebase bucket，見[官方相容性限制](https://docs.cloud.google.com/storage/docs/bucket-relocation/plan-bucket-relocation)。新舊檔案讀取須相容，切換成功前保留原儲存桶；本批不搬移或刪除檔案。此項涉及複製及跨區傳輸費，與後端常駐執行個體是不同費用。
 
 LINE／Google 身分驗證、外部商店和圖片平台的基礎設施由供應商管理。「集中」應指我們可控制的主要處理程式與資料庫靠近，並非要求所有第三方服務都部署到同一台主機。
+
+## 台灣老師入口啟用檢查
+
+`Verify Taiwan Teacher Endpoints` 對四個新增入口送出沒有登入資料的空請求，確認回應為 callable 的 `401 / UNAUTHENTICATED`，而不是找不到入口或 Cloud Run 權限拒絕。四個處理程式都在業務讀寫前先驗證 session，因此此檢查不建立課程、學生、聯絡簿或獎金申請；也不需要正式使用者的權杖。
+
+這項檢查只證明入口已部署、可以到達且仍強制驗證身分；它不是正式帳號的完整操作驗證，也不代表老師實際使用的速度量測。啟用範圍僅限 `TeacherUtilitySession`、`TeacherUpdateStudent`、`TeacherSubmitContactBookPost`、`TeacherBonusRequest`；登入、合約與其餘租賃入口仍須另行整合。需要回復時關閉旗標並更新設定版本即可。
 
 ## 驗證
 
