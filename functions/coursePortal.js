@@ -627,9 +627,9 @@ function mergePortalTuitionRows(rows, portalDocs, transactionDocs, receiptDocs =
   const merged = new Map((rows || []).map((row) => [sourceId(row), Object.assign({}, row)]).filter(([id]) => id));
   (portalDocs || []).forEach((doc) => {
     const source = jsonValue(typeof doc.data === 'function' ? doc.data() : doc) || {};
-    if (source.active === false) return;
     const id = sourceId(source) || clean(doc.id);
     if (!id) return;
+    if (source.active === false || source.status === 'cancelled') { merged.delete(id); return; }
     merged.set(id, Object.assign({ __id: id }, merged.get(id) || {}, source, { id }));
   });
   const overlays = new Map();
@@ -645,7 +645,7 @@ function mergePortalTuitionRows(rows, portalDocs, transactionDocs, receiptDocs =
     const period = merged.get(periodId);
     if (!period) return;
     const existing = Array.isArray(period.transactions) ? period.transactions.slice() : [];
-    const existingIds = new Set(existing.map((row) => clean(row && row.id)).filter(Boolean));
+    const existingIds = new Set(existing.map((row) => clean(row && row.id)).filter(Boolean).concat(period.absorbedTransactionIds || []));
     const additions = transactions.filter((row) => !existingIds.has(clean(row.id)));
     const paidAmount = tuitionBasePaidAmount(period) + additions.reduce((sum, row) => sum + (row.type === 'refund' ? 0 : transactionAmount(row)), 0);
     merged.set(periodId, Object.assign({}, period, {
@@ -10806,7 +10806,62 @@ async function adminSaveStudent(data) {
   return { ok: true, student: { id, name, phone: row.phone, active: row.studentActive, note: row.managerNote } };
 }
 
+async function adminManageTuitionPeriod(data) {
+  const periodId = clean(data.periodId), operationId = clean(data.operationId);
+  if (!/^[A-Za-z0-9_-]{1,180}$/.test(periodId) || !/^[A-Za-z0-9_-]{1,160}$/.test(operationId)) throw new HttpsError('invalid-argument', '期別識別碼無效。');
+  const ref = db.collection(TUITION_PERIODS).doc(periodId), versionRef = scheduleVersionRef();
+  const auditRef = db.collection('coursePortalTuitionCorrections').doc(operationId);
+  return db.runTransaction(async tx => {
+    const version = await tx.get(versionRef);
+    const audit = await tx.get(auditRef);
+    const portal = await tx.get(ref);
+    const mirror = await tx.get(db.collection(MIRROR.tuitionPeriods).where('source.id', '==', periodId));
+    const payments = await tx.get(db.collection(TUITION_TRANSACTIONS).where('periodId', '==', periodId));
+    const receipts = await tx.get(db.collection(TUITION_RECEIPTS).where('periodId', '==', periodId));
+    assertScheduleWritable(version);
+    if (audit.exists) {
+      if (audit.data().periodId !== periodId || audit.data().action !== data.action) throw new HttpsError('already-exists', '操作識別碼已使用。');
+      return {ok:true, duplicate:true, periodId};
+    }
+    const bases = mirror.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {});
+    const period = mergePortalTuitionRows(bases, portal.exists ? [portal] : [], payments.docs).find(row => sourceId(row) === periodId);
+    if (!period) throw new HttpsError('not-found', '本期已刪除或不存在，請重新載入。');
+    const before = jsonValue(period), stamp = FieldValue.serverTimestamp();
+    let patch, targetIndex = -1;
+    if (data.action === 'delete-period') {
+      patch = {id:periodId, studentId:period.studentId, subjectId:period.subjectId || '', periodNo:period.periodNo, active:false, status:'cancelled', cancelledAt:stamp, cancellationReason:'管理員刪除誤登期別', updatedAt:stamp};
+      payments.docs.forEach(doc => tx.set(db.collection(TUITION_TRANSACTIONS).doc(doc.id), {active:false, status:'voided', voidedAt:stamp, voidReason:'period-deleted'}, {merge:true}));
+    } else {
+      const rows = (period.transactions || []).map(row => Object.assign({}, row));
+      targetIndex = Number(data.transactionIndex);
+      const old = rows[targetIndex], expected = data.expected || {};
+      if (!Number.isInteger(targetIndex) || !old || clean(old.id) !== clean(expected.id) || transactionAmount(old) !== Number(expected.amount) || clean(old.date) !== clean(expected.date) || clean(old.method) !== clean(expected.method)) throw new HttpsError('aborted', '繳費紀錄已變更，請重新載入後再修正。');
+      const amount = Number(data.amount), date = dateKey(data.date), method = clean(data.method).slice(0,80);
+      if (!date || cents(amount) <= 0) throw new HttpsError('invalid-argument', '請填寫有效日期與大於零的金額。');
+      rows[targetIndex] = Object.assign({}, old, {amount,date,method,receiptId:'',receiptNo:'',receiptImageUrl:'',correctedAt:nowText()});
+      const net = rows.reduce((sum,row)=>sum+(row.type==='refund'?-1:1)*transactionAmount(row),0);
+      if (net < 0) throw new HttpsError('failed-precondition', '修正後收費不可小於已退款金額。');
+      const basePaid = tuitionBasePaidAmount(period);
+      const paidAmount = Math.max(0, basePaid + (old.type==='refund'?0:amount-transactionAmount(old)));
+      patch = {id:periodId,studentId:period.studentId,active:true,transactions:rows,paidAmount,receivedAmount:paidAmount,absorbedTransactionIds:payments.docs.map(doc=>doc.id),updatedAt:stamp};
+      // Keep the standalone transaction consistent for accounting exports too.
+      const ledger = payments.docs.find(doc=>doc.id===clean(old.id));
+      if (ledger) tx.set(db.collection(TUITION_TRANSACTIONS).doc(ledger.id), {amount,date,method,receiptId:'',receiptNo:'',receiptImageUrl:'',updatedAt:stamp}, {merge:true});
+    }
+    receipts.docs.forEach(doc => {
+      const receipt=doc.data();
+      const target=(period.transactions||[])[targetIndex];
+      if(data.action==='delete-period' || (target && ((clean(target.id)&&clean(receipt.transactionId)===clean(target.id)) || Number(receipt.transactionIndex)===targetIndex))) tx.set(db.collection(TUITION_RECEIPTS).doc(doc.id), {active:false,status:'voided',voidedAt:stamp,voidReason:data.action}, {merge:true});
+    });
+    tx.set(ref,patch,{merge:true});
+    tx.create(auditRef,{periodId,action:data.action,before,transactionIndex:targetIndex,createdAt:stamp,source:'manager-period-correction'});
+    tx.set(versionRef,{version:Number(version.exists&&version.data().version||0)+1,updatedAt:stamp,updatedBy:'manager-period-correction'},{merge:true});
+    return {ok:true,periodId};
+  });
+}
+
 async function adminSaveTuitionPeriods(data) {
+  if (data.action === 'delete-period' || data.action === 'correct-transaction') return adminManageTuitionPeriod(data);
   const input = Array.isArray(data.periods) ? data.periods : [];
   const operationId = clean(data.operationId);
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(operationId) || !input.length || input.length > 24) throw new HttpsError('invalid-argument', '期別儲存資料不完整。');
@@ -10846,14 +10901,14 @@ async function adminSaveTuitionPeriods(data) {
     for (const ref of refs) existing.push(await tx.get(ref));
     assertScheduleWritable(version);
     const bases = new Map(mirror.docs.map(doc => [sourceId(doc.data().source), doc.data().source]));
-    const peers = [...bases.values(), ...portalPeers.docs.map(doc => doc.data())];
+    const peers = mergePortalTuitionRows([...bases.values()], portalPeers.docs, []);
     const result = rows.map((item, index) => {
       const prior = existing[index].exists ? existing[index].data() : bases.get(item.row.id);
       if (data.edit !== true && prior) {
         if (prior.creationOperationId !== operationId) throw new HttpsError('already-exists', '期別已存在，請重新載入。');
         return { id: item.row.id, duplicate: true };
       }
-      if (data.edit === true && (!prior || clean(prior.studentId) !== item.row.studentId)) throw new HttpsError('failed-precondition', '原期別不存在或學生已變更。');
+      if (data.edit === true && (!prior || prior.active === false || prior.status === 'cancelled' || clean(prior.studentId) !== item.row.studentId)) throw new HttpsError('failed-precondition', '原期別不存在或學生已變更。');
       if (data.edit === true) item.row.periodNo = Number(prior.periodNo);
       else if (peers.some(peer => clean(peer.studentId) === item.row.studentId && Number(peer.periodNo) === item.row.periodNo)) throw new HttpsError('aborted', '其他裝置已建立這一期，請重新載入後再操作。');
       peers.push(item.row);
@@ -11764,7 +11819,7 @@ async function adminEnsureTuitionReceipt(data) {
   const receiptRef = db.collection(TUITION_RECEIPTS).doc(receiptId);
   const existing = await receiptRef.get();
   const existingRow = existing.exists ? existing.data() || {} : {};
-  if (clean(existingRow.imageUrl)) {
+  if (existingRow.active !== false && existingRow.status !== 'voided' && clean(existingRow.imageUrl)) {
     return {
       ok: true,
       receiptId,
@@ -11803,15 +11858,14 @@ async function adminEnsureTuitionReceipt(data) {
       amount
     });
     const savedReceipt = await saveTuitionReceiptImage(receiptId, receiptBuffer);
-    await receiptRef.set({
-      renderStatus: 'ready',
-      imageUrl: savedReceipt.imageUrl,
-      imageStoragePath: savedReceipt.storagePath,
-      imageContentType: 'image/png',
-      imageBytes: receiptBuffer.length,
-      renderedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
+    await db.runTransaction(async tx => {
+      const currentPeriod = await tx.get(db.collection(TUITION_PERIODS).doc(periodId));
+      const currentReceipt = await tx.get(receiptRef);
+      const current = currentPeriod.exists ? currentPeriod.data() : {};
+      const currentPayment = (current.transactions || []).find(row => actualTransactionId && clean(row.id) === actualTransactionId) || (current.transactions || [])[transactionIndex];
+      if (current.active === false || current.status === 'cancelled' || (currentReceipt.exists && currentReceipt.data().status === 'voided') || (currentPayment && (transactionAmount(currentPayment) !== amount || dateKey(currentPayment.date) !== paymentDate || (clean(currentPayment.method) || '既有繳費') !== method))) throw new HttpsError('aborted', '本期或繳費紀錄已變更，請重新開啟收據。');
+      tx.set(receiptRef, {renderStatus:'ready',imageUrl:savedReceipt.imageUrl,imageStoragePath:savedReceipt.storagePath,imageContentType:'image/png',imageBytes:receiptBuffer.length,renderedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()}, {merge:true});
+    });
     return {
       ok: true,
       receiptId,
