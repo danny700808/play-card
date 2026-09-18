@@ -137,13 +137,7 @@ async function readMirrorPayload() {
 
 function registerInjiaoyunEducationAutoRead(exportsObject) {
   if (!exportsObject || exportsObject.loadInjiaoyunEducationMirrorAuto) return;
-  exportsObject.loadInjiaoyunEducationMirrorAuto = onCall({
-    region: REGION,
-    timeoutSeconds: 300,
-    memory: '2GiB',
-    invoker: 'public',
-    cors: [...ALLOWED_ORIGINS, LOCAL_ORIGIN]
-  }, async (request) => {
+  const handler=async (request) => {
     assertAllowedRead(request);
     try {
       if (clean(request && request.data && request.data.scope) === 'calendar-irregular') {
@@ -168,7 +162,12 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
       console.error('[loadInjiaoyunEducationMirrorAuto]', error);
       throw new HttpsError('internal', `自動讀取課務資料失敗：${clean(error && error.message).slice(0, 300)}`);
     }
-  });
+  };
+  const {withOperationTiming}=require('./courseOperationTiming');
+  for(const [name,region] of [['loadInjiaoyunEducationMirrorAuto',REGION],['loadInjiaoyunEducationMirrorAutoTaiwan','asia-east1']]) {
+    const timed=withOperationTiming(name,region,(_data,request)=>handler(request));
+    exportsObject[name]=onCall({region,timeoutSeconds:300,memory:'2GiB',invoker: 'public',cors:[...ALLOWED_ORIGINS,LOCAL_ORIGIN]},request=>timed(null,request));
+  }
 }
 
 module.exports = {

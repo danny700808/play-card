@@ -47,7 +47,7 @@ function fixture() {
     }
   };
   const context = {
-    db, cents, validateTransaction, Map, Set, Date, Object, Array, Number, Math, readCourseGroups: async () => [],
+    timeOperationStage:(_name,work)=>work(), db, cents, validateTransaction, Map, Set, Date, Object, Array, Number, Math, readCourseGroups: async () => [],
     hash:value=>require('node:crypto').createHash('sha256').update(value).digest('hex'), randomToken:()=> 'random', eventDate:row=>row.date, eventTeacherId:row=>row.teacherId, eventStudentIds:row=>row.studentIds||[row.studentId], normalizeScheduleStatus:value=>value,
     teacherAttendanceEvent:async(session,data)=>({...data,event:{id:data.sourceEventId,sourceId:data.sourceEventId,fixedCourseId:data.sourceCourseId,studentIds:['student1'],teacherId:session.teacherId,date:data.sourceDate,startTime:'19:00',endTime:'20:00',roomId:'room',subjectId:'drums'}}),
     clean: value => String(value ?? '').trim(), dateKey: value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : '',

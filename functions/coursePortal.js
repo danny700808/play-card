@@ -13,6 +13,7 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const { withPortalReads, memoPortalRead } = require('./portalReadContext');
 const { withAttendanceTiming, timeAttendanceStage } = require('./courseAttendanceTiming');
+const { withOperationTiming, timeOperationStage } = require('./courseOperationTiming');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { SCHEDULE_CHANGED, recheckSchedule, rememberSource, publicBooking, BookingOperations } = require('./coursePortalReliability');
 const path = require('path');
@@ -5211,7 +5212,8 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
       }
     }
   });
-  const lessonSettings = await db.collection('coursePortalLessonSettings').get();
+  const settingsCollection=db.collection('coursePortalLessonSettings');
+  const lessonSettings = await (options.adminDelta===true ? settingsCollection.where('date','>=',startDate).where('date','<=',endDate) : settingsCollection).get();
   const configuredBase = applyLessonSettings(base.filter(row => !replacedTeachingOccurrence(row, permanent, overlay)), lessonSettings.docs.map(doc => doc.data()));
   const validBase = configuredBase.map(row => applyIrregularStudentModes(row, irregularModes)).filter(Boolean).map((row) => applyStudentSuspensions(row, suspensions)).filter((row) =>
     row &&
@@ -5237,6 +5239,14 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
     suspensions,
     maps,
     resourceEvents,
+    ...(options.adminDelta === true ? {managerEvents: validBase.map(row => {
+      const resource=resourceEvent(row,maps,recurringLineages);
+      return Object.assign({},jsonValue(row),resource,{id:resource.id+'@'+resource.date,sourceId:resource.sourceId,
+        sourceCourseId:resource.fixedCourseId,start:resource.startTime,duration:timeMinutes(resource.endTime)-timeMinutes(resource.startTime),
+        portalBookingId:resource.portalAction==='room_booking'?clean(row.portalBookingId || row.id || sourceId(row)).replace(/^rental-/, ''):'',
+        clientName:clean(row.clientName||row.renterName||row.ownerName),rentalFee:Number(row.rentalFee??row.amount??0),
+        rentalPaymentStatus:clean(row.rentalPaymentStatus||row.paymentStatus),readOnly:false});
+    })} : {}),
     irregularModes,
     resourceConflicts: historyStudentId || teacherHome || occupancyOnly || adminWrite ? [] : scheduleResourceConflicts(resourceEvents),
     events: historyStudentId || occupancyOnly || adminWrite ? [] : validBase.filter(row => !teacherHome || eventTeacherId(row) === ownTeacherId).map((row) => publicEvent(row, maps, ownTeacherId, recurringLineages))
@@ -10395,7 +10405,7 @@ async function adminSaveSchedule(data) {
 async function adminAttendanceDetail(data) {
   const studentIds = [...new Set(firstArray(data,['studentIds']).map(clean).filter(Boolean))];
   const scopes = Array.isArray(data.payrollScopes) ? data.payrollScopes : [];
-  if (!studentIds.length || studentIds.length > 50 || scopes.length > 50 || scopes.some(row => !clean(row.teacherId) || !dateKey(row.date))) throw new HttpsError('invalid-argument','簽到更新範圍無效。');
+  if ((!studentIds.length && data.allowEmptyStudents!==true) || studentIds.length > 50 || scopes.length > 50 || scopes.some(row => !clean(row.teacherId) || !dateKey(row.date))) throw new HttpsError('invalid-argument','簽到更新範圍無效。');
   const started = Date.now();
   const groups = await timeAttendanceStage('refresh_tuition', () => Promise.all(studentIds.map(async studentId => {
     const [periods, mirrorAttendance, portalAttendance] = await Promise.all([
@@ -10417,6 +10427,28 @@ async function adminAttendanceDetail(data) {
     return mergeTeacherPayrollRows(enrichTeacherPayrollRows(mirror.filter(row=>eventDate(row)===date),dayAttendance),rows,cancelled.docs.map(doc=>doc.data()).filter(row=>row.status==='approved').concat(rows.filter(row=>row.active===false)));
   })));
   return {ok:true,studentIds,payrollScopes:scopes,tuitionPeriods:groups.flatMap(group=>group.periods).map(row=>({...row,id:sourceId(row)})),attendance:groups.flatMap(group=>group.attendance).map(row=>({...row,id:sourceId(row)})),teacherPayroll:teacherPayroll.flat().map(row=>({...row,id:sourceId(row)})),timings:{readMs:Date.now()-started}};
+}
+
+async function adminWorkspaceSlice(data) {
+  const studentIds=[...new Set((data.studentIds||[]).map(clean).filter(Boolean))];
+  const payrollScopes=[...new Map((data.payrollScopes||[]).map(row=>[clean(row.teacherId)+'|'+dateKey(row.date),{teacherId:clean(row.teacherId),date:dateKey(row.date)}])).values()];
+  const calendarScopes=(data.calendarScopes||[]).map(row=>({startDate:dateKey(row.startDate),endDate:dateKey(row.endDate),studentIds:[...new Set((row.studentIds||[]).map(clean).filter(Boolean))]}));
+  if(studentIds.length>20 || payrollScopes.length>50 || calendarScopes.length>50 || calendarScopes.some(scope=>!scope.startDate||!scope.endDate||scope.endDate<scope.startDate||scope.endDate>addDays(scope.startDate,scope.studentIds.length?660:14)||scope.studentIds.length>20)) throw new HttpsError('invalid-argument','資料更新範圍無效。');
+  const version=await readScheduleVersion();
+  const [financial,calendars,adjustments]=await Promise.all([
+    timeOperationStage('student_and_payroll_read',()=>adminAttendanceDetail({studentIds,payrollScopes,allowEmptyStudents:true})),
+    timeOperationStage('calendar_read',()=>Promise.all(calendarScopes.map(async scope=>{
+      const bundle=await scheduleBundle(scope.startDate,scope.endDate,'',{occupancyOnly:true,adminDelta:true});
+      return {scope,events:(bundle.managerEvents||[]).filter(row=>!scope.studentIds.length||eventStudentIds(row).some(id=>scope.studentIds.includes(id)))};
+    }))),
+    timeOperationStage('adjustments_read',()=>Promise.all([...new Map(payrollScopes.map(scope=>[scope.teacherId+'|'+scope.date.slice(0,7),{teacherId:scope.teacherId,month:scope.date.slice(0,7)}])).values()].map(async scope=>{
+      const bounds=teacherPayrollMonthBounds(scope.month);
+      const [mirror,portal]=await Promise.all([mirrorRowsByDateRange('teacherAdjustments',bounds.startDate,bounds.endDate),portalRowsByDateRange('coursePortalTeacherAdjustments',bounds.startDate,bounds.endDate)]);
+      return {scope,rows:mergeTeacherAdjustmentRows(mirror,portal).filter(row=>eventTeacherId(row)===scope.teacherId)};
+    })))
+  ]);
+  if(await readScheduleVersion()!==version) throw new HttpsError('aborted','資料剛剛有更新，請重新更新畫面。');
+  return {...financial,version,calendars,adjustmentScopes:adjustments.map(row=>row.scope),teacherAdjustments:adjustments.flatMap(row=>row.rows).map(row=>({...row,id:sourceId(row)}))};
 }
 
 async function adminSetAttendance(data) {
@@ -10866,7 +10898,7 @@ async function adminManageTuitionPeriod(data) {
   if (!/^[A-Za-z0-9_-]{1,180}$/.test(periodId) || !/^[A-Za-z0-9_-]{1,160}$/.test(operationId)) throw new HttpsError('invalid-argument', '期別識別碼無效。');
   const ref = db.collection(TUITION_PERIODS).doc(periodId), versionRef = scheduleVersionRef();
   const auditRef = db.collection('coursePortalTuitionCorrections').doc(operationId);
-  return db.runTransaction(async tx => {
+  return timeOperationStage('transaction',()=>db.runTransaction(async tx => {
     const version = await tx.get(versionRef);
     const audit = await tx.get(auditRef);
     const portal = await tx.get(ref);
@@ -10913,8 +10945,8 @@ async function adminManageTuitionPeriod(data) {
     tx.set(ref,patch,{merge:true});
     tx.create(auditRef,{periodId,action:data.action,before,attendanceBefore:jsonValue(reversal.attendance),transactionIndex:targetIndex,createdAt:stamp,source:'manager-period-correction'});
     tx.set(versionRef,{version:Number(version.exists&&version.data().version||0)+1,updatedAt:stamp,updatedBy:'manager-period-correction'},{merge:true});
-    return {ok:true,periodId};
-  });
+    return {ok:true,periodId,studentIds:[clean(period.studentId)],payrollScopes:reversal.attendance.map(row=>({teacherId:eventTeacherId(row),date:eventDate(row)}))};
+  }));
 }
 
 async function adminSaveTuitionPeriods(data) {
@@ -10946,7 +10978,7 @@ async function adminSaveTuitionPeriods(data) {
     return { row, payments };
   });
   const versionRef = scheduleVersionRef();
-  return db.runTransaction(async tx => {
+  return timeOperationStage('transaction',()=>db.runTransaction(async tx => {
     const refs = rows.map(item => db.collection(TUITION_PERIODS).doc(item.row.id));
     const studentIds = [...new Set(rows.map(item => item.row.studentId))];
     // Start and read the transaction sequentially. Parallel query streams can
@@ -10976,7 +11008,7 @@ async function adminSaveTuitionPeriods(data) {
     });
     tx.set(versionRef, { version: Number(version.exists && version.data().version || 0) + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-tuition' }, { merge: true });
     return { ok: true, periods: result };
-  });
+  }));
 }
 
 async function adminRecordTuitionTransaction(data) {
@@ -10993,13 +11025,16 @@ async function adminRecordTuitionTransaction(data) {
   const transactionRef = db.collection(TUITION_TRANSACTIONS).doc(incoming.id);
   const lockRef = db.collection('coursePortalTuitionLedgerLocks').doc(periodId);
   const versionRef = scheduleVersionRef();
-  return db.runTransaction(async tx => {
-    const version = await tx.get(versionRef);
-    const lock = await tx.get(lockRef);
-    const mirror = await tx.get(db.collection(MIRROR.tuitionPeriods).where('source.id', '==', periodId));
-    const portal = await tx.get(periodRef);
-    const transactions = await tx.get(db.collection(TUITION_TRANSACTIONS).where('periodId', '==', periodId));
-    const existing = await tx.get(transactionRef);
+  return timeOperationStage('transaction',()=>db.runTransaction(async tx => {
+    const [version,lock,mirror,portal,transactions,existing] = await timeOperationStage('ledger_reads',async()=>{
+      // Keep transaction reads sequential so a conflict cannot leave streams
+      // running outside the transaction retry handler.
+      const version=await tx.get(versionRef),lock=await tx.get(lockRef);
+      const mirror=await tx.get(db.collection(MIRROR.tuitionPeriods).where('source.id','==',periodId));
+      const portal=await tx.get(periodRef),transactions=await tx.get(db.collection(TUITION_TRANSACTIONS).where('periodId','==',periodId));
+      const existing=await tx.get(transactionRef);
+      return [version,lock,mirror,portal,transactions,existing];
+    });
     assertScheduleWritable(version);
     if (existing.exists && clean(existing.data().periodId) !== periodId) throw new HttpsError('already-exists', '交易識別碼已存在。');
     const bases = mirror.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {});
@@ -11013,7 +11048,7 @@ async function adminRecordTuitionTransaction(data) {
     tx.set(lockRef, { revision: Number(lock.exists && lock.data().revision || 0) + 1, updatedAt: FieldValue.serverTimestamp() });
     tx.set(versionRef, { version: Number(version.exists && version.data().version || 0) + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-ledger' }, { merge: true });
     return { ok: true, transaction: record };
-  });
+  }));
 }
 
 async function adminSaveTeacherSubjects(data) {
@@ -11836,11 +11871,22 @@ function adminTuitionReceiptRow(doc) {
   };
 }
 
+async function tuitionPeriodById(periodId) {
+  if (!periodId || periodId.includes('/') || periodId.length>180) throw new HttpsError('invalid-argument','學費期別識別碼無效。');
+  const [mirror,period,transactions,receipts,groups]=await Promise.all([
+    db.collection(MIRROR.tuitionPeriods).where('source.id','==',periodId).get(),
+    db.collection(TUITION_PERIODS).doc(periodId).get(),
+    db.collection(TUITION_TRANSACTIONS).where('periodId','==',periodId).get(),
+    db.collection(TUITION_RECEIPTS).where('periodId','==',periodId).get(),readCourseGroups()
+  ]);
+  const rows=mergePortalTuitionRows(mirror.docs.filter(doc=>doc.data().sourceActive!==false).map(doc=>doc.data().source||{}),period.exists?[period]:[],transactions.docs,receipts.docs);
+  return projectCourseGroups('tuitionPeriods',rows,groups).find(row=>sourceId(row)===periodId);
+}
+
 async function adminEnsureTuitionReceipt(data) {
   const periodId = clean(data.periodId);
   if (!periodId) throw new HttpsError('invalid-argument', '缺少學費期別資料。');
-  const periods = await mirrorRows('tuitionPeriods');
-  const period = periods.find((row) => sourceId(row) === periodId);
+  const period = await timeOperationStage('receipt_lookup',()=>tuitionPeriodById(periodId));
   if (!period) throw new HttpsError('not-found', '找不到這筆學費期別。');
   const transactions = Array.isArray(period.transactions) ? period.transactions : [];
   const requestedId = clean(data.transactionId);
@@ -11865,8 +11911,6 @@ async function adminEnsureTuitionReceipt(data) {
   const amount = transactionAmount(transaction);
   if (!amount) throw new HttpsError('failed-precondition', '這筆收費金額為 0，無法開立收據。');
   const studentId = clean(period.studentId);
-  const students = await mirrorRows('students');
-  const student = students.find((row) => sourceId(row) === studentId) || {};
   const paymentDate = dateKey(transaction.date || transaction.created || period.startDate) || currentTaipeiDay();
   const method = clean(transaction.method || transaction.payType || transaction.paymentMethod) || '既有繳費';
   const actualTransactionId = clean(transaction.id);
@@ -11885,6 +11929,8 @@ async function adminEnsureTuitionReceipt(data) {
       created: false
     };
   }
+  const students=await timeOperationStage('student_lookup',()=>mirrorProfilesByIds('students',[studentId]));
+  const student=students.find(row=>sourceId(row)===studentId)||{};
   await receiptRef.set({
     id: receiptId,
     receiptNo,
@@ -11909,12 +11955,12 @@ async function adminEnsureTuitionReceipt(data) {
     updatedAt: FieldValue.serverTimestamp()
   }, { merge: true });
   try {
-    const receiptBuffer = await renderTuitionReceiptPng({
+    const receiptBuffer = await timeOperationStage('receipt_render',()=>renderTuitionReceiptPng({
       paymentDate,
       studentName: clean(student.name) || clean(period.studentName) || '學生',
       amount
-    });
-    const savedReceipt = await saveTuitionReceiptImage(receiptId, receiptBuffer);
+    }));
+    const savedReceipt = await timeOperationStage('receipt_upload',()=>saveTuitionReceiptImage(receiptId, receiptBuffer));
     await db.runTransaction(async tx => {
       const currentPeriod = await tx.get(db.collection(TUITION_PERIODS).doc(periodId));
       const currentReceipt = await tx.get(receiptRef);
@@ -13407,6 +13453,34 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     assertAdminPin(request);
     return adminEnsureTuitionReceipt(data);
   }, { secrets: [ADMIN_PIN], timeoutSeconds: 180, memory: '1GiB' });
+  // Retain existing endpoints for old clients. New desktop routes use the same
+  // manager gate and business handlers beside the Firestore database in Taiwan.
+  const desktopTaiwanHandlers={
+    coursePortalAdminRecordTuitionTransaction:adminRecordTuitionTransaction,
+    coursePortalAdminSaveTuitionPeriods:adminSaveTuitionPeriods,
+    coursePortalAdminSaveSchedule:adminSaveSchedule,
+    coursePortalAdminSaveLessonSettings:adminSaveLessonSettings,
+    coursePortalAdminVoidLessonSlot:adminVoidLessonSlot,
+    coursePortalAdminSaveStudent:adminSaveStudent,
+    coursePortalAdminSaveTeacherSubjects:adminSaveTeacherSubjects,
+    coursePortalAdminSaveSubjectCatalog:adminSaveSubjectCatalog,
+    coursePortalAdminSaveFeePlan:adminSaveFeePlan,
+    coursePortalAdminMapSubjectSuggestion:adminMapSubjectSuggestion,
+    coursePortalAdminSaveTeacherAdjustment:adminSaveTeacherAdjustment,
+    coursePortalAdminSaveLeaveReason:adminSaveLeaveReason,
+    coursePortalAdminSaveRentalSettings:adminSaveRentalSettings,
+    coursePortalAdminSaveRoomEquipment:adminSaveRoomEquipment,
+    coursePortalAdminRoomBookings:adminRoomBookings,
+    coursePortalAdminCancelRoomBooking:adminCancelRoomBooking,
+    coursePortalAdminEnsureTuitionReceipt:adminEnsureTuitionReceipt,
+    coursePortalAdminWorkspaceSlice:adminWorkspaceSlice
+  };
+  Object.entries(desktopTaiwanHandlers).forEach(([name,handler])=>{
+    exportsObject[name+'Taiwan']=callable(withPortalReads(withOperationTiming(name,'asia-east1',async(data,request)=>{
+      await timeOperationStage('authorize',()=>assertAdminPin(request));
+      return timeOperationStage('operation',()=>handler(data));
+    })),{region:'asia-east1',secrets:[ADMIN_PIN],timeoutSeconds:180,memory:'1GiB'});
+  });
   exportsObject.coursePortalAdminTuitionPaymentScreenshot = callable(async (data, request) => {
     assertAdminPin(request);
     return adminTuitionPaymentScreenshot(data);

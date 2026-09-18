@@ -302,12 +302,12 @@ jobs:
       # The broad deployment can exit without finishing every queued function
       # when another workflow concurrently updates an unrelated endpoint.
       # Publish the tuition mutation and its readers in an isolated, verified batch.
-      - name: Verify tuition correction functions finish deployment
+      - name: Verify desktop performance and tuition functions finish deployment
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
           set -euo pipefail
-          targets=(coursePortalAdminSaveTuitionPeriods coursePortalAdminEnsureTuitionReceipt loadInjiaoyunEducationMirrorAuto coursePortalTeacherData coursePortalTeacherDataTaiwan coursePortalStudentData coursePortalStudentDataTaiwan)
+          targets=(coursePortalAdminRecordTuitionTransactionTaiwan coursePortalAdminSaveTuitionPeriodsTaiwan coursePortalAdminSaveScheduleTaiwan coursePortalAdminSaveLessonSettingsTaiwan coursePortalAdminVoidLessonSlotTaiwan coursePortalAdminSaveStudentTaiwan coursePortalAdminSaveTeacherSubjectsTaiwan coursePortalAdminSaveSubjectCatalogTaiwan coursePortalAdminSaveFeePlanTaiwan coursePortalAdminMapSubjectSuggestionTaiwan coursePortalAdminSaveTeacherAdjustmentTaiwan coursePortalAdminSaveLeaveReasonTaiwan coursePortalAdminSaveRentalSettingsTaiwan coursePortalAdminSaveRoomEquipmentTaiwan coursePortalAdminRoomBookingsTaiwan coursePortalAdminCancelRoomBookingTaiwan coursePortalAdminEnsureTuitionReceiptTaiwan coursePortalAdminWorkspaceSliceTaiwan loadInjiaoyunEducationMirrorAutoTaiwan coursePortalAdminSaveTuitionPeriods coursePortalAdminEnsureTuitionReceipt loadInjiaoyunEducationMirrorAuto coursePortalTeacherData coursePortalTeacherDataTaiwan coursePortalStudentData coursePortalStudentDataTaiwan)
           only=$(printf 'functions:%s,' "${targets[@]}")
           firebase deploy --project youzi-c1b74 --non-interactive --force --only "${only%,}" 2>&1 | tee /tmp/tuition-functions-deploy.log
           for target in "${targets[@]}"; do
