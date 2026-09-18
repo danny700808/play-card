@@ -299,7 +299,7 @@
   }
   function runUiOperation(label,button,work){
     if(operationRunning)return false;operationRunning=true;operationButton(button,true,label);$('operationProgressText').textContent=label;$('operationProgress').classList.remove('hidden');
-    async function execute(){if(attendanceUpdater)attendanceUpdater.invalidate();try{await window.YouziCoursePreviewData.timeOperationClient('desktop_action','save_and_render',work);}catch(error){toast(error&&error.saved?'已儲存，畫面待更新':'操作失敗',clean(error&&error.message||error),'error');}finally{if(attendanceUpdater)attendanceUpdater.invalidate();operationRunning=false;$('operationProgress').classList.add('hidden');operationButton(button,false);}}
+    async function execute(){if(attendanceUpdater)attendanceUpdater.invalidate();try{await window.YouziCoursePreviewData.timeOperationClient('desktop_action','save_and_render',work);}catch(error){toast(error&&error.saved?'已儲存，畫面待更新':'操作失敗',clean(error&&error.message||error),'error');if(error&&error.saved)showSavedRefreshRetry(error.refreshOptions);}finally{if(attendanceUpdater)attendanceUpdater.invalidate();operationRunning=false;$('operationProgress').classList.add('hidden');operationButton(button,false);}}
     if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)execute();else setTimeout(execute,60);
     return true;
   }
@@ -692,11 +692,16 @@
       closeModal('scheduleModal');toast('排課已保存至雲端','老師手機與管理者會讀取同一份課表。');
     });
   }
+  function showSavedRefreshRetry(options){
+    var node=$('workspaceRefreshNotice');if(!node){node=document.createElement('div');node.id='workspaceRefreshNotice';node.className='notice';node.setAttribute('role','status');$('operationProgress').parentNode.insertBefore(node,$('operationProgress'));}
+    node.hidden=false;node.textContent='資料已儲存，畫面尚未更新。';var button=document.createElement('button');button.type='button';button.className='btn small';button.textContent='重新更新畫面';node.appendChild(button);
+    button.onclick=function(){runUiOperation('正在重新更新畫面…',button,async function(){await refreshSavedWorkspace(options);switchView(currentView);if(currentStudentId&&$('studentModal').classList.contains('open'))renderStudentModal();var selected=findEvent($('eventModal').dataset.eventId);if(selected&&$('eventModal').classList.contains('open'))eventDetails(selected);toast('畫面已更新','');});};
+  }
   async function refreshSavedWorkspace(options){
     try{
       var payload=await window.YouziCoursePreviewData.refreshWorkspaceSlice(Object.assign({manualSyncPin:storedMigrationPin()},options));
-      await window.YouziCoursePreviewData.timeOperationClient('workspace','apply_ui',function(){window.YouziCoursePreviewData.applyWorkspaceSlice(state,payload);scheduleWorkspaceSave();});
-    }catch(error){var savedError=new Error('雲端已儲存成功，但畫面更新尚未完成。請重新載入課表確認，勿重複收費或排課。'+clean(error&&error.message));savedError.saved=true;throw savedError;}
+      await window.YouziCoursePreviewData.timeOperationClient('workspace','apply_ui',function(){window.YouziCoursePreviewData.applyWorkspaceSlice(state,payload);scheduleWorkspaceSave();});var notice=$('workspaceRefreshNotice');if(notice)notice.hidden=true;
+    }catch(error){var savedError=new Error('雲端已儲存成功，但畫面更新尚未完成。請按「重新更新畫面」，勿重複收費或排課。'+clean(error&&error.message));savedError.saved=true;savedError.refreshOptions=options;throw savedError;}
   }
   async function persistScheduleChange(row,options){
     options=options||{};
