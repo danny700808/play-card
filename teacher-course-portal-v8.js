@@ -9,7 +9,7 @@
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v4';
-  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.fastOperations1.';
+  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.scopedCache2.';
   const CACHE_TTL = 15 * 60 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
@@ -172,32 +172,46 @@
     return (hash >>> 0).toString(16).padStart(8, '0');
   }
 
-  function cacheKey(week, month) {
-    return `${CACHE_PREFIX}${tokenFingerprint(token)}.${week}.${month}`;
-  }
-
-  function clearCache() {
-    try {
-      Object.keys(localStorage).forEach((key) => {
-        if (key.indexOf(CACHE_PREFIX) === 0) localStorage.removeItem(key);
-      });
-    } catch (_) {}
-  }
-
-  function readCache(week, month) {
-    try {
-      const row = JSON.parse(localStorage.getItem(cacheKey(week, month)) || 'null');
-      if (!row || !row.savedAt || Date.now() - row.savedAt > CACHE_TTL) return null;
-      return row.value || null;
-    } catch (_) {
-      return null;
-    }
-  }
-
+  const viewCache = global.YouziTeacherViewCache.create({
+    storage: () => global.localStorage, prefix: CACHE_PREFIX, ttl: CACHE_TTL,
+    owner: () => tokenFingerprint(token), maxEntries: 16
+  });
+  let weekPrefetchTimer = 0;
+  function clearCache() { viewCache.invalidate(); clearTimeout(weekPrefetchTimer); }
+  function readCache(week) { return viewCache.get('week:' + week); }
   function writeCache(week, month, value) {
-    try {
-      localStorage.setItem(cacheKey(week, month), JSON.stringify({ savedAt: Date.now(), value }));
-    } catch (_) {}
+    const snapshot = Object.assign({}, value); delete snapshot.payroll; delete snapshot.adjustments;
+    viewCache.put('week:' + week, snapshot);
+  }
+  function invalidateCourseCache(dates, fromDate) {
+    const changed = dates.filter(Boolean);
+    viewCache.invalidate((scope, value) => {
+      if (scope.startsWith('payroll:')) return !changed.length || changed.some(day => scope.endsWith(day.slice(0, 7)));
+      const start = value && value.week && value.week.start;
+      if (!start) return true;
+      const end = addDays(start, 6);
+      return fromDate ? end >= fromDate : changed.some(day => start <= day && day <= end);
+    });
+    clearTimeout(weekPrefetchTimer);
+  }
+  function requestTeacherWeek(week) {
+    const sessionToken = token;
+    return viewCache.load('week:' + week, () => invoke('coursePortalTeacherData', {
+      sessionToken, weekStart: week, includePayroll: false
+    }));
+  }
+  function prefetchNeighborWeeks(week) {
+    clearTimeout(weekPrefetchTimer);
+    const account = token, revision = viewCache.revision();
+    weekPrefetchTimer = setTimeout(async () => {
+      for (const offset of [7, -7]) {
+        if (token !== account || weekStart !== week || activeTab !== 'schedule' ||
+            viewCache.revision() !== revision || teacherOperations.hasPending() || document.visibilityState === 'hidden') return;
+        const next = addDays(week, offset);
+        if (readCache(next)) continue;
+        try { await requestTeacherWeek(next); } catch (_) { return; }
+      }
+    }, 600);
   }
 
   function setSession(value) {
@@ -740,6 +754,7 @@
   }
 
   function renderWeek() {
+    if (activeTab !== 'schedule') return;
     const grid = document.getElementById('weekGrid');
     const scroll = grid.parentElement;
     const priorWeek = grid.dataset.week || '';
@@ -815,7 +830,7 @@
       });
     });
 
-    grid.innerHTML = html;
+    if (grid.innerHTML !== html) grid.innerHTML = html;
     grid.dataset.week = weekStart;
     requestAnimationFrame(() => {
       updateWeekViewport();
@@ -1001,9 +1016,8 @@
       global.setTimeout(()=>notice.remove(),3400);
     }
     renderWeek();
-    renderRoster();
-    renderIrregularCourses();
-    renderPayroll();
+    if (activeTab === 'students') { renderRoster(); renderIrregularCourses(); }
+    if (activeTab === 'payroll') renderPayroll();
     showBound(true);
   }
 
@@ -1016,38 +1030,40 @@
   async function fetchData(force) {
     const requestVersion = ++dataRequestVersion;
     const operationVersion = teacherOperations.version();
+    const cacheRevision = viewCache.revision(), account = token;
     if (activeTab === 'payroll') {
-      const queryVersion = ++payrollQueryVersion;
-      payrollStatus = 'loading';renderPayroll();
+      const queryVersion = ++payrollQueryVersion, month = payrollMonth;
+      const cachedPayroll = !force && viewCache.get('payroll:' + month);
+      if (cachedPayroll) { mergeData(cachedPayroll); payrollStatus = 'ready'; renderPayroll(); return; }
+      payrollStatus = 'loading'; renderPayroll();
       try {
-        const result = await invoke('coursePortalTeacherData', {sessionToken:token, weekStart, month:payrollMonth, includePayroll:true, payrollOnly:true});
-        if (queryVersion !== payrollQueryVersion) return;
-        mergeData(result);payrollStatus = 'ready';renderPayroll();
+        const sessionToken = token;
+        const result = await viewCache.load('payroll:' + month, () => invoke('coursePortalTeacherData', {
+          sessionToken, weekStart, month, includePayroll: true, payrollOnly: true
+        }), 60 * 1000);
+        if (queryVersion !== payrollQueryVersion || month !== payrollMonth || operationVersion !== teacherOperations.version() || cacheRevision !== viewCache.revision() || account !== token) return;
+        mergeData(result); payrollStatus = 'ready'; renderPayroll();
       } catch (error) {
         if (queryVersion !== payrollQueryVersion) return;
-        payrollStatus = 'error';renderPayroll();throw error;
+        payrollStatus = 'error'; renderPayroll(); throw error;
       }
       return;
     }
-    const request = {
-      sessionToken: token,
-      weekStart,
-      month: payrollMonth,
-      includePayroll: activeTab === 'payroll'
-    };
+    const requestedWeek = weekStart;
     const cached = !force ? readCache(weekStart, payrollMonth) : null;
     if (cached) {
       mergeData(cached);
       renderAll();
       showDataFreshness('正在更新課表，目前顯示上次讀取的資料。');
-      invoke('coursePortalTeacherData', request).then((fresh) => {
-        if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending()) return;
+      requestTeacherWeek(requestedWeek).then((fresh) => {
+        if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending() || cacheRevision !== viewCache.revision() || account !== token) return;
         mergeData(fresh);
         writeCache(weekStart, payrollMonth, data);
         renderAll();
         showDataFreshness('');
+        prefetchNeighborWeeks(requestedWeek);
       }).catch((error) => {
-        if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending()) return;
+        if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending() || cacheRevision !== viewCache.revision() || account !== token) return;
         showDataFreshness('課表更新未完成，目前顯示上次資料，請稍後重新整理。');
         if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
           PortalAuth.invalidateSession('teacher', error);
@@ -1056,12 +1072,13 @@
       return;
     }
     showDataFreshness('正在讀取課表…');
-    const result = await invoke('coursePortalTeacherData', request);
-    if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending()) return;
+    const result = await requestTeacherWeek(requestedWeek);
+    if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending() || cacheRevision !== viewCache.revision() || account !== token) return;
     mergeData(result);
     writeCache(weekStart, payrollMonth, data);
     renderAll();
     showDataFreshness('');
+    prefetchNeighborWeeks(requestedWeek);
   }
 
   async function load(force) {
@@ -1090,7 +1107,8 @@
     document.querySelectorAll('[data-panel]').forEach((node) => node.classList.toggle('hidden', node.dataset.panel !== activeTab));
     const panel = document.querySelector(`[data-panel="${activeTab}"]`);
     if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (activeTab === 'schedule') requestAnimationFrame(updateWeekViewport);
+    if (activeTab === 'schedule') { renderWeek(); requestAnimationFrame(updateWeekViewport); }
+    if (activeTab === 'students') { renderRoster(); renderIrregularCourses(); }
     if (activeTab === 'payroll') load(false);
   }
 
@@ -1425,7 +1443,7 @@
       data.events=data.events.filter(row=>!dates.has(row.date)).concat((snapshot.events||[]).filter(row=>row.date>=weekStart&&row.date<=addDays(weekStart,6)));
       if(snapshot.modeState){
         for(const key of ['roster','irregularCourses','stoppedCourses'])if(Array.isArray(snapshot.modeState[key]))data[key]=snapshot.modeState[key];
-        renderRoster();renderIrregularCourses();
+        if (activeTab === 'students') { renderRoster();renderIrregularCourses(); }
       }
       writeCache(weekStart,payrollMonth,data);renderWeek();syncOperationButtons();
       if(snapshot.modeState)refreshRosterAfterSync=false;
@@ -1441,7 +1459,7 @@
     return {row,key,button,context:quickContext,planner,started:Date.now(),saved:false};
   }
   function completeLessonOperation(job,result,status){
-    job.saved=true;dataRequestVersion++;clearCache();
+    job.saved=true;dataRequestVersion++;invalidateCourseCache([job.row.date]);
     if(status) data.events=data.events.map(row=>operationKey(row)!==job.key?row:{...row,status,attendanceCancellationStatus:result.status==='pending'?'pending':''});
     if(status==='cancelled')data.events=data.events.filter(row=>operationKey(row)!==job.key);
     if(quickContext&&quickContext.row&&operationKey(quickContext.row)===job.key)closeQuick();
@@ -1464,7 +1482,7 @@
     teacherOperations.begin('student-mode');dataRequestVersion++;loading(button,true,'處理中…');
     try{
       const result=await invoke(name,{sessionToken:token,...payload});
-      saved=true;dataRequestVersion++;clearCache();refreshRosterAfterSync=true;
+      saved=true;dataRequestVersion++;invalidateCourseCache(dates,payload.effectiveDate || todayKey());refreshRosterAfterSync=true;
       if(onSaved)onSaved();else if(quickContext===context)closeQuick();
       toast(result.message||'學生課程狀態已更新。');
       showDataFreshness('已儲存，正在更新課表與學生名單。');
@@ -1869,7 +1887,7 @@
         );
         return;
       }
-      job.saved=true;clearCache();dataRequestVersion++;
+      job.saved=true;invalidateCourseCache([payload.sourceDate,payload.date],payload.action==='permanent_move'?payload.sourceDate || payload.date:'');dataRequestVersion++;
       toast(result.message||'課程已儲存。');if(planner===job.planner)cancelPlanner(quickContext===job.context);
       console.info('[teacher operation]',{stage:'save',action:payload.action,ms:Date.now()-job.started});
       showDataFreshness('已儲存，正在更新相關課程。');
@@ -1930,7 +1948,7 @@
     try {
       weekStart = addDays(weekStart, direction * 7);
       const moving = planner && planner.mode === 'move' ? { source: planner.source, action: planner.action } : null;
-      await load(true);
+      await load(false);
       if (moving) await startSourceMove(moving.source, moving.action);
       weekViewport.scrollLeft = 0;
       weekViewport.scrollTop = top;

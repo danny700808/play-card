@@ -8,6 +8,8 @@
     CLOUDINARY_ROOT_FOLDER: 'employee-system',
     CLOUDINARY_CHUNK_SIZE_MB: 20,
     CLOUDINARY_SOFT_MAX_VIDEO_MB: 0,
+    // Enable only after Taiwan endpoint deployment and database-location verification.
+    COURSE_PORTAL_TAIWAN_EXTENDED: false,
     FIREBASE_CONFIG: {
       apiKey: 'AIzaSyBTrUyhQSEI2mun5O1mjnSN_mO10c_t-Xs',
       authDomain: 'youzi-c1b74.firebaseapp.com',

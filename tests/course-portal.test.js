@@ -146,7 +146,7 @@ assert(teacherSource.includes('durationMinutes: planner.durationMinutes'), '老�
 assert(teacherSource.includes('roomsOnly:true') && teacherSource.includes('data-room-duration'), '空白時段應只查詢教室並可調整長度');
 assert(teacherCss.includes('.empty-slot.unavailable-target'), '老師課表缺少時段不足的醒目樣式');
 assert(teacherSource.includes('data-confirm-permanent'), '永久調課缺少衝突日期確認');
-assert(teacherSource.includes('includePayroll: activeTab === \'payroll\''), '薪資資料沒有延後到薪資頁查詢');
+assert(teacherSource.includes("if (activeTab === 'payroll')") && teacherSource.includes('payrollOnly: true') && teacherSource.includes('includePayroll: false'), '薪資資料沒有延後到薪資頁查詢');
 assert(!teacherSource.includes("getElementById('actionModal')"), '老師入口仍會跳回舊電腦版大表單');
 assert(!teacherSource.includes("getElementById('actionForm')"), '老師入口仍依賴已刪除的舊調課表單');
 assert(teacherPortal.includes('id="teacherQuickBackdrop"'), '老師課表缺少點選後的快速操作選單');

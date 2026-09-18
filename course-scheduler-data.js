@@ -331,7 +331,9 @@
 
   function buildState(payload,anchorDate){
     payload=payload&&typeof payload==='object'?payload:{};
-    var anchor=dateKey(anchorDate)||todayKey(),rangeStart=shiftDate(anchor,-240),rangeEnd=shiftDate(anchor,420),subjects=makeSubjectRows(payload),feePlans=normalizeFeePlans(payload,subjects),students=normalizeStudents(payload),teachers=normalizeTeachers(payload,subjects),rooms=normalizeRooms(payload),periods=normalizePeriods(payload,feePlans),events=normalizeEvents(payload,periods,rangeStart,rangeEnd),attendance=normalizeAttendance(payload,events,periods);
+    var partial=payload.scope==='calendar-bootstrap',anchor=dateKey(anchorDate)||todayKey(),range=payload.calendarRange||{};
+    if(partial&&(!dateKey(range.startDate)||!dateKey(range.endDate)||range.startDate>anchor||range.endDate<anchor))throw new Error('課表日期範圍不完整，請重新讀取。');
+    var rangeStart=partial?range.startDate:shiftDate(anchor,-240),rangeEnd=partial?range.endDate:shiftDate(anchor,420),subjects=makeSubjectRows(payload),feePlans=normalizeFeePlans(payload,subjects),students=normalizeStudents(payload),teachers=normalizeTeachers(payload,subjects),rooms=normalizeRooms(payload),periods=normalizePeriods(payload,feePlans),events=normalizeEvents(payload,periods,rangeStart,rangeEnd),attendance=normalizeAttendance(payload,events,periods);
     events=applyCalendarSuspensions(events,payload,students).filter(function(event){return !isIrregularPlaceholder(event,payload.irregularCourses);});
     var usedByPeriod=attendance.reduce(function(counts,row){if(row.periodId&&row.deducted===true){var allocations=row.periodAllocations&&row.periodAllocations.length?row.periodAllocations:[{periodId:row.periodId,lessonUnits:Number(row.lessonUnits)||1}];allocations.forEach(function(item){counts.set(item.periodId,(counts.get(item.periodId)||0)+Number(item.lessonUnits));});}return counts;},new Map());
     periods.forEach(function(period){
@@ -343,7 +345,7 @@
     var earliest=events.reduce(function(value,row){return Math.min(value,timeToMin(row.start));},10*60),latest=events.reduce(function(value,row){return Math.max(value,timeToMin(row.start)+numberOf(row.duration));},22*60);
     var visibleWeekdays=events.reduce(function(counts,row){var date=new Date(row.date+'T12:00:00'),day=['sun','mon','tue','wed','thu','fri','sat'][date.getDay()];counts[day]=(counts[day]||0)+1;return counts;},{sun:0,mon:0,tue:0,wed:0,thu:0,fri:0,sat:0});
     events=events.map(function(event){var matches=array(payload.lessonSettings).filter(function(setting){return setting.date===event.date&&(!setting.teacherId||setting.teacherId===event.teacherId)&&[event.id,event.sourceId,event.sourceCourseId,event.seriesId,event.portalChangeId,event.portalBookingId].some(function(id){return array(setting.eventIds).indexOf(id)>=0;});});return Object.assign.apply(Object,[{},event].concat(matches.map(function(setting){return setting.fields||{};})));});
-    return {version:3,stoppedCourseReceivables:clone(array(payload.stoppedCourseReceivables)),irregularCourses:clone(array(payload.irregularCourses)),currentDate:anchor,settings:{startHour:Math.max(6,Math.min(10,Math.floor(earliest/60))),endHour:Math.min(24,Math.max(22,Math.ceil(latest/60))),interval:30,defaultLessons:4},rooms:rooms,subjects:subjects.rows,teachers:teachers,feePlans:feePlans,students:students,tuitionPeriods:periods,events:events,attendance:attendance,leaveReasons:normalizeLeaveReasons(payload),teacherPayroll:normalizeTeacherPayroll(payload),teacherAdjustments:normalizeTeacherAdjustments(payload),clipboard:null,readOnly:true,dataMode:'migration',dataMeta:{runId:clean(payload.runId),loadedAt:clean(payload.loadedAt),version:clean(payload.version),counts:payload.counts||{},dataQuality:Object.assign({},payload.dataQuality||{},{visibleEventWeekdays:visibleWeekdays}),rangeStart:rangeStart,rangeEnd:rangeEnd}};
+    return {version:3,stoppedCourseReceivables:clone(array(payload.stoppedCourseReceivables)),irregularCourses:clone(array(payload.irregularCourses)),currentDate:anchor,settings:{startHour:Math.max(6,Math.min(10,Math.floor(earliest/60))),endHour:Math.min(24,Math.max(22,Math.ceil(latest/60))),interval:30,defaultLessons:4},rooms:rooms,subjects:subjects.rows,teachers:teachers,feePlans:feePlans,students:students,tuitionPeriods:periods,events:events,attendance:attendance,leaveReasons:normalizeLeaveReasons(payload),teacherPayroll:normalizeTeacherPayroll(payload),teacherAdjustments:normalizeTeacherAdjustments(payload),clipboard:null,readOnly:true,dataMode:'migration',dataMeta:{partial:partial,runId:clean(payload.runId),loadedAt:clean(payload.loadedAt),version:clean(payload.version),counts:payload.counts||{},dataQuality:Object.assign({},payload.dataQuality||{},{visibleEventWeekdays:visibleWeekdays}),rangeStart:rangeStart,rangeEnd:rangeEnd}};
   }
 
   function firebaseFunctions(region){
@@ -387,7 +389,12 @@
   async function loadPublished(options){
     options=options||{};
     await ensureTeacherPayrollManagerAuth();
-    var payload=await call(AUTO_LOAD_FUNCTION_NAME,{source:'course-scheduler-published-refresh'},{timeout:180000});
+    var payload,request={source:'course-scheduler-published-refresh'};
+    if(options.calendarOnly===true){request.scope='calendar-bootstrap';request.anchorDate=dateKey(options.anchorDate)||todayKey();}
+    for(var attempt=0;attempt<2;attempt++){
+      try{payload=await call(AUTO_LOAD_FUNCTION_NAME,request,{timeout:180000});break;}
+      catch(error){if(attempt||!/(^|\/)aborted$/.test(error.code||''))throw error;}
+    }
     if(!payload||payload.ok!==true)throw new Error('已同步課務資料讀取未完成。');
     if(!payload.mirrorMeta||payload.mirrorMeta.status!=='success')throw new Error('雲端同步尚未完成，請完成後再載入。');
     return buildState(payload,options.anchorDate);

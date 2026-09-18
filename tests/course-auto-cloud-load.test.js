@@ -147,7 +147,7 @@ assert(autoRead.includes("=== 'teacher-payroll-month'"), '唯讀函式沒有薪�
 assert(autoRead.includes("const ADMIN_EMAILS = new Set(['danny700808@gmail.com'])"), '薪資月份後端沒有沿用正式管理者帳號');
 assert(autoRead.includes('token.admin === true'), '薪資月份後端沒有接受管理者權限');
 assert(autoRead.includes('token.owner === true'), '薪資月份後端沒有接受擁有者權限');
-assert(coursePortal.includes('async function teacherPayrollMonthData(monthValue)'), '後端缺少月份薪資合併');
+assert(coursePortal.includes('async function teacherPayrollMonthData(monthValue,'), '後端缺少月份薪資合併');
 assert(coursePortal.includes("mirrorRowsByDateRange('teacherPayroll'"), '月份薪資沒有依日期讀取舊系統鏡像');
 assert(coursePortal.includes('mergeTeacherPayrollRows('), '月份薪資沒有合併新版入口簽到資料');
 
@@ -179,7 +179,32 @@ assert(workflow.includes('firebase deploy'), '工作流程沒有真正部署 Fir
 assert(workflow.includes('node .github/scripts/course-mirror-public.cjs'), '工作流程未執行 Cloud Run 權限腳本');
 assert(workflow.includes('node .github/scripts/course-mirror-report.cjs'), '工作流程未產生最終狀態回報');
 assert(workflow.includes('course-mirror-diagnostics'), '驗證失敗時未保留診斷紀錄');
-assert(workflow.includes('Fail workflow when deployment, access, or health check failed'), '部署失敗時 workflow 仍可能成功');
+const payrollRepairCondition = workflow.match(/id: payroll_repair\s+if: ([^\n]+)/)[1];
+const deploymentFailureCondition = workflow.match(/name: Fail workflow[^\n]+\s+if: ([^\n]+)/)[1];
+function workflowCondition(expression, eventName, requested, payrollOutcome, healthOutcome = 'success') {
+  return vm.runInNewContext(expression, {
+    github: { event_name: eventName },
+    inputs: { repair_july_2026_payroll: requested },
+    steps: {
+      deploy_reader: { outcome: 'success' },
+      public_access: { outcome: 'success' },
+      health_check: { outcome: healthOutcome },
+      payroll_repair: { outcome: payrollOutcome }
+    }
+  });
+}
+assert(!workflowCondition(payrollRepairCondition, 'push', true, 'skipped'), '日常更新不能執行歷史薪資修補');
+assert(!workflowCondition(payrollRepairCondition, 'workflow_dispatch', false, 'skipped'), '手動部署未勾選時不能修補薪資');
+assert(workflowCondition(payrollRepairCondition, 'workflow_dispatch', true, 'success'), '明確要求的薪資修補應保留');
+assert(!workflowCondition(payrollRepairCondition, 'workflow_dispatch', true, 'skipped', 'failure'), '健康檢查失敗時不能修補薪資');
+for (const [outcome, mustFail] of [['skipped', false], ['success', false], ['failure', true], ['cancelled', true]]) {
+  assert.strictEqual(workflowCondition(deploymentFailureCondition, 'push', false, outcome), mustFail);
+}
+assert(workflowCondition(deploymentFailureCondition, 'push', false, 'skipped', 'failure'), '健康檢查失敗必須阻擋上線');
+assert(/repair_july_2026_payroll:[\s\S]*?default: false/.test(workflow), '歷史修補必須預設關閉');
+assert(!workflow.includes('cat "$response"'), '健康檢查不應輸出完整課務資料');
+const diagnosticsStep = workflow.split('name: Upload course mirror diagnostics')[1].split('      - name:')[0];
+assert(!diagnosticsStep.includes('/tmp/course-mirror-response.json'), '診斷附件不應包含完整課務資料');
 
 [hub, portal].forEach((html) => {
   const converterIndex = html.indexOf('course-scheduler-data.js');

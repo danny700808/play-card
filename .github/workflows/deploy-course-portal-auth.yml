@@ -24,6 +24,13 @@ on:
       - "teacher-daily-reminder.js"
       - "teacher-course-session-v8.js"
       - "teacher-course-portal-v8.js"
+      - "teacher-view-cache.js"
+      - "functions/injiaoyunEducationAutoRead.js"
+      - "functions/courseOperationTiming.js"
+      - "tests/teacher-view-cache.test.cjs"
+      - "tests/course-speed-bootstrap.test.cjs"
+      - "tests/course-speed-queries.test.cjs"
+      - ".github/scripts/ensure-course-query-indexes.cjs"
       - "teacher-profile.html"
       - "teacher-profile.js"
       - "contract.html"
@@ -156,6 +163,7 @@ jobs:
           node --check manager-auth.js
           node --check operations-manager-auth.js
           node --check operations-phase1.js
+          node --test tests/teacher-view-cache.test.cjs tests/course-speed-bootstrap.test.cjs tests/course-speed-queries.test.cjs
           node --check course-portal-common.js
           node --check room-booking-v2.js
           node --check teacher-course-portal-v8.js
@@ -283,7 +291,9 @@ jobs:
       - name: Ensure booking query indexes are ready
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
-        run: node .github/scripts/ensure-room-booking-indexes.cjs
+        run: |
+          node .github/scripts/ensure-room-booking-indexes.cjs
+          node .github/scripts/ensure-course-query-indexes.cjs
 
       - name: Preserve or provision a private inventory PIN
         env:
@@ -307,7 +317,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
           set -euo pipefail
-          targets=(coursePortalAdminRecordTuitionTransactionTaiwan coursePortalAdminSaveTuitionPeriodsTaiwan coursePortalAdminSaveScheduleTaiwan coursePortalAdminSaveLessonSettingsTaiwan coursePortalAdminVoidLessonSlotTaiwan coursePortalAdminSaveStudentTaiwan coursePortalAdminSaveTeacherSubjectsTaiwan coursePortalAdminSaveSubjectCatalogTaiwan coursePortalAdminSaveFeePlanTaiwan coursePortalAdminMapSubjectSuggestionTaiwan coursePortalAdminSaveTeacherAdjustmentTaiwan coursePortalAdminSaveLeaveReasonTaiwan coursePortalAdminSaveRentalSettingsTaiwan coursePortalAdminSaveRoomEquipmentTaiwan coursePortalAdminRoomBookingsTaiwan coursePortalAdminCancelRoomBookingTaiwan coursePortalAdminEnsureTuitionReceiptTaiwan coursePortalAdminWorkspaceSliceTaiwan loadInjiaoyunEducationMirrorAutoTaiwan coursePortalAdminSaveTuitionPeriods coursePortalAdminEnsureTuitionReceipt loadInjiaoyunEducationMirrorAuto coursePortalTeacherData coursePortalTeacherDataTaiwan coursePortalStudentData coursePortalStudentDataTaiwan)
+          targets=(coursePortalAdminRecordTuitionTransactionTaiwan coursePortalAdminSaveTuitionPeriodsTaiwan coursePortalAdminSaveScheduleTaiwan coursePortalAdminSaveLessonSettingsTaiwan coursePortalAdminVoidLessonSlotTaiwan coursePortalAdminSaveStudentTaiwan coursePortalAdminSaveTeacherSubjectsTaiwan coursePortalAdminSaveSubjectCatalogTaiwan coursePortalAdminSaveFeePlanTaiwan coursePortalAdminMapSubjectSuggestionTaiwan coursePortalAdminSaveTeacherAdjustmentTaiwan coursePortalAdminSaveLeaveReasonTaiwan coursePortalAdminSaveRentalSettingsTaiwan coursePortalAdminSaveRoomEquipmentTaiwan coursePortalAdminRoomBookingsTaiwan coursePortalAdminCancelRoomBookingTaiwan coursePortalAdminEnsureTuitionReceiptTaiwan coursePortalAdminWorkspaceSliceTaiwan loadInjiaoyunEducationMirrorAutoTaiwan coursePortalAdminSaveTuitionPeriods coursePortalAdminEnsureTuitionReceipt loadInjiaoyunEducationMirrorAuto coursePortalTeacherData coursePortalTeacherDataTaiwan coursePortalStudentData coursePortalStudentDataTaiwan coursePortalTeacherAvailabilityTaiwan coursePortalTeacherSlotOptionsTaiwan coursePortalTeacherLessonStateTaiwan coursePortalTeacherAttendanceTaiwan coursePortalTeacherLateAttendanceTaiwan coursePortalTeacherAttendanceCancellationRequestTaiwan coursePortalTeacherActionTaiwan coursePortalTeacherSetIrregularTaiwan coursePortalTeacherUtilitySessionTaiwan coursePortalTeacherUpdateStudentTaiwan coursePortalTeacherSubmitContactBookPostTaiwan coursePortalTeacherBonusRequestTaiwan coursePortalTeacherStopStudentTaiwan coursePortalTeacherAttendanceCorrectionOptionsTaiwan)
           only=$(printf 'functions:%s,' "${targets[@]}")
           firebase deploy --project youzi-c1b74 --non-interactive --force --only "${only%,}" 2>&1 | tee /tmp/tuition-functions-deploy.log
           for target in "${targets[@]}"; do

@@ -28,6 +28,12 @@ on:
       - "tests/injiaoyun-unified-sync-model.test.js"
       - ".github/workflows/firebase-functions-deploy.yml"
   workflow_dispatch:
+    inputs:
+      repair_july_2026_payroll:
+        description: Explicitly run the historical July 2026 payroll repair
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -210,7 +216,7 @@ jobs:
             --write-out '%{http_code}' \
             'https://us-central1-youzi-c1b74.cloudfunctions.net/loadInjiaoyunEducationMirrorAuto')"
           printf '\nHTTP_STATUS=%s\n' "$http_code" >> "$response"
-          cat "$response"
+          echo "Course mirror HTTP status: $http_code"
           if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
             exit 1
           fi
@@ -228,12 +234,14 @@ jobs:
             console.error('Course mirror health check failed', { ok: data.ok, scheduleCount, directoryCount, counts, error: body.error || null });
             process.exit(1);
           }
-          console.log('Course mirror health check passed', { scheduleCount, directoryCount, counts, runId: data.runId || '' });
+          const summary = { ok: true, scheduleCount, directoryCount, counts };
+          fs.writeFileSync('/tmp/course-mirror-health-summary.json', JSON.stringify(summary, null, 2));
+          console.log('Course mirror health check passed', summary);
           NODE
 
       - name: Repair and verify July 2026 teacher payroll
         id: payroll_repair
-        if: steps.deploy_reader.outcome == 'success' && steps.health_check.outcome == 'success'
+        if: github.event_name == 'workflow_dispatch' && inputs.repair_july_2026_payroll == true && steps.deploy_reader.outcome == 'success' && steps.health_check.outcome == 'success'
         continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
@@ -347,7 +355,7 @@ jobs:
           path: |
             /tmp/firebase-course-mirror-deploy.log
             /tmp/course-mirror-public-access.log
-            /tmp/course-mirror-response.json
+            /tmp/course-mirror-health-summary.json
             /tmp/course-mirror-payroll-repair.log
           if-no-files-found: warn
           retention-days: 7
@@ -361,12 +369,12 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DEPLOY_OUTCOME: ${{ steps.deploy_reader.outcome }}
           ACCESS_OUTCOME: ${{ steps.public_access.outcome }}
-          HEALTH_OUTCOME: ${{ steps.health_check.outcome == 'success' && steps.payroll_repair.outcome == 'success' && 'success' || 'failure' }}
+          HEALTH_OUTCOME: ${{ steps.health_check.outcome == 'success' && (steps.payroll_repair.outcome == 'success' || steps.payroll_repair.outcome == 'skipped') && 'success' || 'failure' }}
           PAYROLL_REPAIR_OUTCOME: ${{ steps.payroll_repair.outcome }}
         run: node .github/scripts/course-mirror-report.cjs
 
-      - name: Fail workflow when deployment, access, or health check failed (including payroll repair)
-        if: steps.deploy_reader.outcome != 'success' || steps.public_access.outcome != 'success' || steps.health_check.outcome != 'success' || steps.payroll_repair.outcome != 'success'
+      - name: Fail workflow when deployment, access, health check, or requested payroll repair failed
+        if: steps.deploy_reader.outcome != 'success' || steps.public_access.outcome != 'success' || steps.health_check.outcome != 'success' || (steps.payroll_repair.outcome != 'success' && steps.payroll_repair.outcome != 'skipped')
         run: |
           echo "Deployment outcome: ${{ steps.deploy_reader.outcome }}"
           echo "Public access outcome: ${{ steps.public_access.outcome }}"
@@ -374,10 +382,10 @@ jobs:
           echo "Payroll repair outcome: ${{ steps.payroll_repair.outcome }}"
           test -f /tmp/firebase-course-mirror-deploy.log && tail -n 100 /tmp/firebase-course-mirror-deploy.log || true
           test -f /tmp/course-mirror-public-access.log && tail -n 100 /tmp/course-mirror-public-access.log || true
-          test -f /tmp/course-mirror-response.json && cat /tmp/course-mirror-response.json || true
+          test -f /tmp/course-mirror-health-summary.json && cat /tmp/course-mirror-health-summary.json || true
           test -f /tmp/course-mirror-payroll-repair.log && tail -n 100 /tmp/course-mirror-payroll-repair.log || true
           exit 1
 
       - name: Remove service account file
         if: always()
-        run: rm -f service-account.json
+        run: rm -f service-account.json /tmp/course-mirror-id-token.txt /tmp/course-mirror-response.json
