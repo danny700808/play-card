@@ -111,6 +111,8 @@ on:
       - ".github/workflows/deploy-course-portal-auth.yml"
       - ".github/scripts/verify-taiwan-region.cjs"
       - "tests/taiwan-region.test.cjs"
+      - ".github/scripts/deploy-missing-taiwan-http.cjs"
+      - "tests/taiwan-deployment-completion.test.cjs"
   workflow_dispatch:
 
 permissions:
@@ -145,7 +147,7 @@ jobs:
       - name: Test portal code
         run: |
           set -euo pipefail
-          node --test tests/taiwan-region.test.cjs tests/course-calendar-startup.test.js
+          node --test tests/taiwan-deployment-completion.test.cjs tests/taiwan-region.test.cjs tests/course-calendar-startup.test.js
           node --check functions/coursePortal.js
           node --check functions/courseSubjectCatalog.js
           node --check functions/courseLoginAuthV3.js
@@ -329,6 +331,12 @@ jobs:
           for target in "${targets[@]}"; do
             grep -E "functions\[$target\(.*(Successful (update|create) operation|Skipped)" /tmp/tuition-functions-deploy.log >/dev/null || { echo "Deployment completion not confirmed for $target" >&2; exit 1; }
           done
+
+      - name: Complete any Taiwan entries skipped by concurrent deployments
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+          GCLOUD_PROJECT: youzi-c1b74
+        run: node .github/scripts/deploy-missing-taiwan-http.cjs
 
       - name: Verify Taiwan HTTP deployment and inspect regional latency
         env:
