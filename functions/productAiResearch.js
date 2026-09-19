@@ -1645,7 +1645,7 @@ async function researchWithOpenAI(apiKey, context, model) {
 
 function registerProductAiResearch(target) {
   target.researchProductListingCase = onCall({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 540,
     memory: '1GiB',
     secrets: [OPENAI_API_KEY],
@@ -1783,7 +1783,7 @@ function registerProductAiResearch(target) {
   });
 
   target.importProductListingImages = onCall({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 540,
     memory: '2GiB',
     secrets: [OPENAI_API_KEY],
@@ -2003,7 +2003,7 @@ function registerProductAiResearch(target) {
   });
 
   target.generateProductListingImage = onCall({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 1200,
     memory: '2GiB',
     secrets: [OPENAI_API_KEY],

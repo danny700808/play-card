@@ -2393,7 +2393,7 @@ function registerPlatformOrderSync(target) {
   });
 
   target.syncPlatformOrdersNow = onCall({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 60,
     memory: '256MiB',
   }, async () => ({
@@ -2403,7 +2403,7 @@ function registerPlatformOrderSync(target) {
   }));
 
   target.platformOrderAgentBridge = onRequest({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 540,
     memory: '1GiB',
     secrets: [EASYSTORE_ACCESS_TOKEN, MOMO_API_TOKEN, COUPANG_VENDOR_ID, COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY],

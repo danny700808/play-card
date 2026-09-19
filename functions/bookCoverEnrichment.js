@@ -895,7 +895,7 @@ async function processJob(request) {
 
 function registerBookCoverEnrichment(target) {
   target.runNineSeriesBookCoverBatch = onCall({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 540,
     memory: '1GiB',
     enforceAppCheck: false

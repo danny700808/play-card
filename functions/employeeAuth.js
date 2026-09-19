@@ -279,7 +279,7 @@ async function authenticate(db, email, password, request, purpose) {
 function registerEmployeeAuth(exportsObject, helpers = {}) {
   const db = admin.firestore();
 
-  exportsObject.employeeSecureLogin = onCall({ region: REGION, timeoutSeconds: 30, memory: '256MiB' }, async (request) => {
+  exportsObject.employeeSecureLogin = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 30, memory: '256MiB' }, async (request) => {
     const data = (request && request.data) || {};
     const email = lower(data.email || data.account);
     const password = String(data.password || '');
@@ -304,7 +304,7 @@ function registerEmployeeAuth(exportsObject, helpers = {}) {
     };
   });
 
-  exportsObject.employeeChangePassword = onCall({ region: REGION, timeoutSeconds: 30, memory: '256MiB' }, async (request) => {
+  exportsObject.employeeChangePassword = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 30, memory: '256MiB' }, async (request) => {
     const data = (request && request.data) || {};
     const email = lower(data.email);
     const oldPassword = String(data.oldPassword || '');
@@ -322,7 +322,7 @@ function registerEmployeeAuth(exportsObject, helpers = {}) {
     return { ok: true, message: '密碼已更新，請使用新密碼登入。' };
   });
 
-  exportsObject.employeeForgotPassword = onCall({ region: REGION, timeoutSeconds: 60, memory: '256MiB' }, async (request) => {
+  exportsObject.employeeForgotPassword = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 60, memory: '256MiB' }, async (request) => {
     const data = (request && request.data) || {};
     const email = lower(data.email);
     if (!email) return { ok: false, message: '請先輸入 Email。' };

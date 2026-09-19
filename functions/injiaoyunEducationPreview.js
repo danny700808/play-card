@@ -2218,7 +2218,7 @@ async function buildPreview(runId) {
 
 function registerInjiaoyunEducationPreview(exportsObject) {
   exportsObject.loadInjiaoyunEducationPreview = onCall({
-    region: FUNCTION_REGION,
+    region: [FUNCTION_REGION, 'asia-east1'],
     timeoutSeconds: 300,
     memory: '2GiB',
     cors: [...ALLOWED_ORIGINS, LOCAL_ORIGIN],

@@ -321,7 +321,7 @@ async function waitForInjiaoyunCloudSync(options = {}) {
 
 function registerInjiaoyunManualSync(exportsObject) {
   exportsObject.runInjiaoyunSyncNow = onCall({
-    region: FUNCTION_REGION,
+    region: [FUNCTION_REGION, 'asia-east1'],
     timeoutSeconds: 60,
     memory: '256MiB',
     cors: Array.from(ALLOWED_ORIGINS),

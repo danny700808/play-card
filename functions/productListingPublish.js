@@ -5583,7 +5583,7 @@ function activeV3JobReuseBlockers(candidate, productId, listingCase) {
 }
 
 const PRODUCT_LISTING_PUBLISH_OPTIONS = {
-  region: REGION,
+  region: [REGION, 'asia-east1'],
   timeoutSeconds: 540,
   memory: '512MiB',
   secrets: [EASYSTORE_ACCESS_TOKEN],
@@ -6315,7 +6315,7 @@ function registerProductListingPublish(target) {
   });
 
   target.verifyProductListingStage = onCall({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 180,
     memory: '512MiB',
     enforceAppCheck: false

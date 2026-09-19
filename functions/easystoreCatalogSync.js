@@ -656,7 +656,7 @@ async function matchCentralProducts(db, catalogRows, duplicateSkus) {
 
 function registerEasyStoreCatalogSync(exportsObject) {
   exportsObject.syncEasyStoreCatalog = onCall({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 1800,
     memory: '1GiB',
     maxInstances: 1,

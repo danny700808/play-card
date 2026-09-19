@@ -14,7 +14,7 @@ assert(runtime.includes("if(window.__YOUZI_COURSE_SCHEDULER_TEST__!==true)loadPu
 function harness(fail=false){
  const nodes=new Map(),calls=[];
  const element=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,textContent:'',classList:{add:v=>calls.push(['hide',id,v]),remove:v=>calls.push(['show',id,v])}});return nodes.get(id);};
- const ctx={workspaceLoadPromise:null,calendarBootstrapLoading:false,currentView:'calendar',loadingMigration:false,operationRunning:false,state:{currentDate:'2026-09-16'},$:element,closeModal:()=>{},updateModeUI:()=>{},todayKey:()=> '2026-09-13',clean:String,toast:(...args)=>calls.push(['toast',...args]),window:{YouziCoursePreviewData:{loadPublished:async options=>{calls.push(['load',options.anchorDate]);if(fail)throw Object.assign(new Error('Session expired'),{reauth:true});return {events:[{id:'lesson'}]};}}},applyFormalState:async data=>calls.push(['apply',data.events.length])};
+ const ctx={calendarPartial:()=>Boolean(ctx.state.dataMeta&&ctx.state.dataMeta.partial),workspaceLoadPromise:null,calendarBootstrapLoading:false,currentView:'calendar',loadingMigration:false,operationRunning:false,state:{currentDate:'2026-09-16'},$:element,closeModal:()=>{},updateModeUI:()=>{},todayKey:()=> '2026-09-13',clean:String,toast:(...args)=>calls.push(['toast',...args]),window:{YouziCoursePreviewData:{loadPublished:async options=>{calls.push(['load',options.anchorDate]);if(fail)throw Object.assign(new Error('Session expired'),{reauth:true});return {events:[{id:'lesson'}]};}}},applyFormalState:async data=>calls.push(['apply',data.events.length])};
  vm.createContext(ctx);vm.runInContext(loader+'\nthis.runLoader=loadPublishedWorkspace;',ctx);
  return {ctx,calls,nodes};
 }
@@ -36,4 +36,10 @@ test('migration controls stay hidden even before JavaScript starts',()=>{
  assert.match(html,/id="dataModePanel" hidden style="display:none"/);
  assert.match(html,/class="cloud-refresh-bar" hidden style="display:none"/);
  assert(!html.includes('正式資料已保存'));assert(!html.includes('正在自動開啟資料庫'));
+});
+
+test('opening details keeps a freshly verified partial calendar visible',async()=>{
+ const {ctx,calls}=harness();ctx.state.dataMeta={partial:true};await ctx.runLoader();
+ assert(!calls.some(x=>x[0]==='hide'&&x[1]==='scheduleGrid'));
+ assert(calls.some(x=>x[0]==='apply'));
 });

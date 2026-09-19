@@ -1112,12 +1112,12 @@ async function resetTestTeacher(lineUserId, request) {
 }
 
 function registerUnifiedLineBindingAdmin(exportsObject) {
-  exportsObject.coursePortalAdminUnifiedLineData = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+  exportsObject.coursePortalAdminUnifiedLineData = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
     assertManager(request);
     return overview(await inventory());
   });
 
-  exportsObject.coursePortalAdminUnifiedLineAction = onCall({ region: REGION, timeoutSeconds: 180, memory: '512MiB' }, async (request) => {
+  exportsObject.coursePortalAdminUnifiedLineAction = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 180, memory: '512MiB' }, async (request) => {
     assertManager(request);
     const data = request && request.data || {};
     const action = clean(data.action);

@@ -583,11 +583,11 @@ function sourceActive(row) {
   ].includes(clean(value).toLowerCase());
 }
 
-async function mergeStudentProfileOverrides(rows, selectedIds) {
+async function mergeStudentProfileOverrides(rows, selectedIds, existingSnapshot) {
   const collection = db.collection('coursePortalStudentProfiles');
-  const snapshot = Array.isArray(selectedIds)
+  const snapshot = existingSnapshot || (Array.isArray(selectedIds)
     ? {docs: (await Promise.all(selectedIds.map(id => collection.doc(id).get()))).filter(doc => doc.exists)}
-    : await collection.get();
+    : await collection.get());
   const overrides = new Map(snapshot.docs.map((doc) => [doc.id, doc.data() || {}]));
   const allRows = rows.slice();
   const known = new Set(rows.map(sourceId));
@@ -13018,21 +13018,8 @@ async function dailyStudentReminders() {
 
 async function appendCoursePortalData(payload) {
   if (!payload || typeof payload !== 'object') return payload;
-  const irregularSnapshot = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
-  const trackedStops = await db.collection('coursePortalStudentSuspensions').where('receivableTrackingVersion','==','teacher-stop-v1').get();
-  payload.stoppedCourseReceivables = trackedStops.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
-  payload.irregularCourses = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
-  const groups = await readCourseGroups();
-  const lessonSettings = await db.collection('coursePortalLessonSettings').get();
-  payload.lessonSettings = lessonSettings.docs.map(doc => jsonValue(doc.data()));
-  const managerConfiguration = await db.collection('coursePortalSettings').doc('managerConfiguration').get();
-  if (managerConfiguration.exists && Array.isArray(managerConfiguration.data().leaveReasons)) payload.leaveReasons = managerConfiguration.data().leaveReasons;
-  const managerFixed = await db.collection('coursePortalFixedCourses').get();
-  payload.fixedCourses = (payload.fixedCourses || []).concat(managerFixed.docs.map(doc => Object.assign({ id: doc.id }, jsonValue(doc.data()) || {})));
-  for (const type of ['students', 'tuitionPeriods', 'attendance', 'teacherPayroll', 'events', 'fixedCourses', 'temporaryCourses']) {
-    if (Array.isArray(payload[type])) payload[type] = projectCourseGroups(type, payload[type], groups);
-  }
   const [
+    irregularSnapshot, trackedStops, groups, lessonSettings, managerConfiguration, managerFixed,
     changes,
     bookings,
     roomSettings,
@@ -13049,6 +13036,12 @@ async function appendCoursePortalData(payload) {
     teacherSubjectAssignmentsSnapshot,
     portalFeePlansSnapshot
   ] = await Promise.all([
+    db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),
+    db.collection('coursePortalStudentSuspensions').where('receivableTrackingVersion','==','teacher-stop-v1').get(),
+    readCourseGroups(),
+    db.collection('coursePortalLessonSettings').get(),
+    db.collection('coursePortalSettings').doc('managerConfiguration').get(),
+    db.collection('coursePortalFixedCourses').get(),
     db.collection('coursePortalScheduleChanges').where('active', '==', true).get(),
     db.collection('coursePortalRoomBookings').where('active', '==', true).get(),
     db.collection('coursePortalRoomSettings').get(),
@@ -13065,6 +13058,14 @@ async function appendCoursePortalData(payload) {
     db.collection(TEACHER_SUBJECT_ASSIGNMENTS_COLLECTION).get(),
     db.collection(FEE_PLAN_COLLECTION).get()
   ]);
+  payload.stoppedCourseReceivables = trackedStops.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
+  payload.irregularCourses = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
+  payload.lessonSettings = lessonSettings.docs.map(doc => jsonValue(doc.data()));
+  if (managerConfiguration.exists && Array.isArray(managerConfiguration.data().leaveReasons)) payload.leaveReasons = managerConfiguration.data().leaveReasons;
+  payload.fixedCourses = (payload.fixedCourses || []).concat(managerFixed.docs.map(doc => Object.assign({ id: doc.id }, jsonValue(doc.data()) || {})));
+  for (const type of ['students', 'tuitionPeriods', 'attendance', 'teacherPayroll', 'events', 'fixedCourses', 'temporaryCourses']) {
+    if (Array.isArray(payload[type])) payload[type] = projectCourseGroups(type, payload[type], groups);
+  }
   payload.studentSuspensions = suspensions.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const roomSettingsMap = new Map(roomSettings.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
   const studentProfileMap = new Map(studentProfiles.docs.map((doc) => [doc.id, jsonValue(doc.data()) || {}]));
@@ -13101,7 +13102,7 @@ async function appendCoursePortalData(payload) {
       return merged;
     });
   }
-  if (Array.isArray(payload.students)) payload.students = await mergeStudentProfileOverrides(payload.students);
+  if (Array.isArray(payload.students)) payload.students = await mergeStudentProfileOverrides(payload.students, undefined, studentProfiles);
   const mirrorAttendance = Array.isArray(payload.attendance) ? payload.attendance : [];
   const portalAttendanceRows = portalAttendanceSnapshot.docs.map((doc) =>
     Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
@@ -13372,7 +13373,7 @@ async function managerCalendarBootstrap(data) {
 function registerCoursePortal(exportsObject, helpers = {}) {
   const callable = (handler, options = {}) => {
     const timed = withOperationTiming(process.env.FUNCTION_TARGET || handler.name || 'course-portal', options.region || REGION, handler);
-    return onCall(Object.assign({region: REGION, cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB'}, options),
+    return onCall(Object.assign({region: [REGION, 'asia-east1'], cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB'}, options),
       request => timed(request && request.data || {}, request));
   };
 
@@ -13387,7 +13388,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalStartLineLogin = callable(startLineLogin);
   exportsObject.coursePortalCompleteLineRegistration = callable(completeLineRegistration);
   exportsObject.coursePortalLineLoginCallback = onRequest({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 60,
     memory: '256MiB',
     secrets: [LINE_LOGIN_CHANNEL_SECRET]

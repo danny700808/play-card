@@ -1483,7 +1483,7 @@ async function markRenewalOverdueIfNeeded({ contractId, profileId, employeeId, t
 }
 
 function registerExternalTeacherOnboarding(exportsObj) {
-  exportsObj.externalTeacherCreateBindCode = onCall({ region: REGION }, async (request) => {
+  exportsObj.externalTeacherCreateBindCode = onCall({ region: [REGION, 'asia-east1'] }, async (request) => {
     const data = request.data || {};
     if (!(await isAdminRequest(request, data))) throw new HttpsError('permission-denied', '請先使用管理者帳號登入。');
     const name = clean(data.name || '');
@@ -1593,7 +1593,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
     };
   });
 
-  exportsObj.externalTeacherGetOnboarding = onCall({ region: REGION }, async (request) => {
+  exportsObj.externalTeacherGetOnboarding = onCall({ region: [REGION, 'asia-east1'] }, async (request) => {
     const data = request.data || {};
     const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
     const token = clean(data.token || '');
@@ -1608,7 +1608,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
     return { ok: true, teacher: publicProfile(profile), profile: publicProfile(profile), template, clauses, contractText, payrollUrl: payrollUrl(teacherId, token || profile.onboardingToken), availableContractYears: availableContractYears(), ...dates };
   });
 
-  exportsObj.externalTeacherSaveProfile = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+  exportsObj.externalTeacherSaveProfile = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
     const data = request.data || {};
     const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
     const token = clean(data.token || '');
@@ -1676,7 +1676,7 @@ function registerExternalTeacherOnboarding(exportsObj) {
     return { ok: true, payrollInfoStatus, paymentMethod, identityFiles, ...dates };
   });
 
-  exportsObj.externalTeacherCompleteContract = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+  exportsObj.externalTeacherCompleteContract = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
     const data = request.data || {};
     const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
     const token = clean(data.token || '');
@@ -1776,7 +1776,7 @@ ${externalTeacherApprovalUrl(contractId)}`, {
     return { ok: true, contractId, contractHtmlFile, contractHtmlUrl: contractHtmlFile.downloadUrl, ...dates };
   });
 
-  exportsObj.externalTeacherSavePayroll = onCall({ region: REGION }, async (request) => {
+  exportsObj.externalTeacherSavePayroll = onCall({ region: [REGION, 'asia-east1'] }, async (request) => {
     const data = request.data || {};
     const teacherId = clean(data.teacherId || data.userId || (request.auth && request.auth.uid) || '');
     const token = clean(data.token || '');
@@ -1799,13 +1799,13 @@ ${externalTeacherApprovalUrl(contractId)}`, {
     return { ok: true };
   });
 
-  exportsObj.externalTeacherListContractTemplate = onCall({ region: REGION }, async (request) => {
+  exportsObj.externalTeacherListContractTemplate = onCall({ region: [REGION, 'asia-east1'] }, async (request) => {
     if (!(await isAdminRequest(request, request.data || {}))) throw new HttpsError('permission-denied', '只有管理者可以修改契約條文');
     const { template, clauses } = await getActiveTemplateWithClauses();
     return { ok: true, template, clauses };
   });
 
-  exportsObj.externalTeacherSaveContractTemplate = onCall({ region: REGION }, async (request) => {
+  exportsObj.externalTeacherSaveContractTemplate = onCall({ region: [REGION, 'asia-east1'] }, async (request) => {
     const data = request.data || {};
     if (!(await isAdminRequest(request, data))) throw new HttpsError('permission-denied', '只有管理者可以修改契約條文');
 
@@ -1840,7 +1840,7 @@ ${externalTeacherApprovalUrl(contractId)}`, {
     return { ok: true };
   });
 
-  exportsObj.externalTeacherListContracts = onCall({ region: REGION, timeoutSeconds: 60 }, async (request) => {
+  exportsObj.externalTeacherListContracts = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 60 }, async (request) => {
     const data = request.data || {};
     if (!(await isAdminRequest(request, data))) throw new HttpsError('permission-denied', '只有管理者可以查看外聘老師簽約紀錄');
     const targetRocYear = clean(data.rocYear || data.contractRocYear || '');
