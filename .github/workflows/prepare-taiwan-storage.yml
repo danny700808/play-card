@@ -1,0 +1,42 @@
+name: Prepare Taiwan Storage
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/prepare-taiwan-storage.cjs'
+      - '.github/workflows/prepare-taiwan-storage.yml'
+      - 'tests/taiwan-storage.test.cjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: prepare-taiwan-storage
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: node --test tests/taiwan-storage.test.cjs
+      - run: npm ci --prefix functions
+      - name: Prepare existing deployment credentials
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$SERVICE_ACCOUNT"
+          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/taiwan-storage-service-account.json"
+      - name: Copy and verify Taiwan storage without switching clients
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/taiwan-storage-service-account.json
+        run: node .github/scripts/prepare-taiwan-storage.cjs
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/taiwan-storage-service-account.json"
