@@ -93,3 +93,12 @@ git diff --check
 327 項本機檢查通過；正式啟用需等 #235 的台灣入口部署檢查及 8 個無登入保護入口測試成功。這不是每位老師正式帳號的全面實測，也不代表量測到使用者端的加速幅度。
 
 尚須獨立切換：LINE 登記回呼與 webhook、店內 Windows agent 的本機 `agent.bridge_url`、檔案儲存、單一區域背景排程與觸發器。外部 Google／LINE／Cloudinary 基礎設施不受本專案區域設定控制。舊客戶端保留美國相容入口，更新頁面後才改採台灣設定。
+
+
+## 2026-09-19 LINE Login 回傳切換
+
+本機 Codex 已由 LINE Developers 儲存後畫面確認，LINE Login Channel `2010902226`（柚子樂器會員登入）保留美國 callback 並新增台灣 callback。Messaging API Channel `2006335686`（柚子樂器，Bot `@046xzcpz`）仍使用美國 webhook；Use webhook 開啟，redelivery 與 error statistics aggregation 關閉，本批不變更這些設定。
+
+登入程式為每次 OAuth state 保存實際 callbackUrl，交換授權碼沿用該網址。沒有此欄位的既有 state 使用原美國網址；不接受客戶端 query 指定網址、不因交換失敗跨區重試。新登入使用已登記的台灣網址。部署先完成並核對美國與台灣 callback，再部署 login starter。回復時改回美國起始網址但保留 per-state 相容處理，不能回退到忽略 callbackUrl 的舊 callback 實作。
+
+測試涵蓋四種入口、新／舊 state、切換中登入、取消、過期、未知 state、重复回傳及交換失敗；正式 smoke check 只建立合成登入 state 後取消，檢查兩區入口皆發出台灣 callback，無真實 LINE 帳號、授權碼或訊息。此檢查不能替代本機使用已授權帳號完成實際 LINE 登入、身分綁定與登入後畫面的驗證。
