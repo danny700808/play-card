@@ -15,7 +15,7 @@
       apiKey: 'AIzaSyBTrUyhQSEI2mun5O1mjnSN_mO10c_t-Xs',
       authDomain: 'youzi-c1b74.firebaseapp.com',
       projectId: 'youzi-c1b74',
-      storageBucket: 'youzi-c1b74.firebasestorage.app',
+      storageBucket: 'youzi-c1b74-taiwan',
       messagingSenderId: '187002582910',
       appId: '1:187002582910:web:f5c73a46e5a773a860a52f',
       measurementId: 'G-WLYK892EDW'

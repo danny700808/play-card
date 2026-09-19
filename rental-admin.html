@@ -113,7 +113,7 @@
     <section class="card2"><div class="section-hd"><div><h1 class="title">設備租賃管理</h1></div></div><div id="stats" class="stat-grid"></div><div id="msg"></div></section>
     <div class="layout"><section class="card2"><h2 style="margin-top:0">租賃申請管理 / 契約列表</h2><div class="rental-search-box"><div class="rental-search-row"><input id="rentalSearchInput" class="rental-search-input" type="search" autocomplete="off" inputmode="search" placeholder="搜尋案件" aria-label="搜尋租賃案件" oninput="rentalSearchChanged(this)"><button id="rentalSearchClear" class="rental-search-clear" type="button" onclick="clearRentalSearch()" disabled>清除</button></div></div><div class="tabs"><button class="tab" data-filter="all">全部案件</button><button class="tab" data-filter="new">待確認申請</button><button class="tab" data-filter="sign">待客人補資料</button><button class="tab" data-filter="payment">待付款確認</button><button class="tab" data-filter="active">租用中</button><button class="tab" data-filter="renewal">續約待處理</button><button class="tab" data-filter="return">退租待處理</button><button class="tab" data-filter="returned">已退租</button><button class="tab" data-filter="cancelled">已取消／封存</button></div><div id="list" class="list" style="margin-top:12px">請先選擇上方分類，或直接使用搜尋。</div></section><main><section class="card2" id="detailBox"><h2 style="margin-top:0">請先選擇案件</h2></section><section class="card2 print-area"><div id="contractPreview"></div></section></main></div>
   </div>
-  <script src="config.js?v=20260919-taiwan-v2"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="config.js?v=20260919-taiwan-storage-v3"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" referrerpolicy="no-referrer"></script><script src="firebase-client.js?v=20260919-taiwan-v2"></script><script src="app.js?v=20260802-security-phase1"></script><script src="rental-common.js?v=20260919-taiwan-v2"></script><script src="global-nav.js?v=20260603unified1"></script>
   <script>
     let rentalDataState='loading';
@@ -1039,14 +1039,15 @@ ${url}
       const v=R.clean(value);
       if(!v || v.startsWith('data:')) return false;
       try{
-        if(v.startsWith('gs://') || v.includes('/o/')){
-          await firebase.storage().refFromURL(v).delete();
-          return true;
-        }
-        if(!/^https?:\/\//i.test(v)){
-          await firebase.storage().ref(v).delete();
-          return true;
-        }
+        const ref=(v.startsWith('gs://') || v.includes('/o/'))
+          ? firebase.storage().refFromURL(v)
+          : !/^https?:\/\//i.test(v) ? firebase.storage().ref(v) : null;
+        if(!ref) return false;
+        const buckets=['youzi-c1b74-taiwan','youzi-c1b74.firebasestorage.app'];
+        const refs=buckets.includes(ref.bucket)
+          ? buckets.map(name=>firebase.app().storage('gs://'+name).ref(ref.fullPath)) : [ref];
+        const results=await Promise.allSettled(refs.map(item=>item.delete()));
+        return results.every(result=>result.status==='fulfilled' || result.reason && result.reason.code==='storage/object-not-found');
       }catch(_e){}
       return false;
     }
