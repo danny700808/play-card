@@ -113,3 +113,19 @@ git diff --check
 本機切換前的必要證據：兩区 ACTIVE；簽章 secret 參照一致；同一既有 secret 簽署的空 events 在兩區均 200，偽造簽章均 401；去重及失敗不重播測試通過。簽章檢查前另等候兩區最大 request timeout 加 15 秒，讓舊版本已開始的請求結束；去重不追溯部署前未留下紀錄的歷史事件。切換時僅改 Webhook URL 至 `https://asia-east1-youzi-c1b74.cloudfunctions.net/lineWebhook`，按 Verify 須 Success；Use webhook 保持開啟，redelivery 與 error statistics aggregation 維持原關閉設定。未得到正式驗證成功通知前不切換。
 
 網址回復：改回 `https://us-central1-youzi-c1b74.cloudfunctions.net/lineWebhook` 並 Verify。美國相容入口與同一事件 ledger 保留；切換網址不清除 ledger，亦不回退去重程式。正式空事件檢查不發送訊息；真實綁定與通知需本機另行驗證。
+
+## 2026-09-19 檔案正式切換（準備中，須以部署結果更新）
+
+本機已完成 LINE Webhook 台灣 URL、Verify Success、兩區正確／錯誤簽章 200／401 驗證；本批不修改或部署 lineWebhook。逐項補部署七項函式的 run 35443677125 已成功，全部台灣 ACTIVE 且無登入請求正常拒絕；接著補齊檔案副本及部署。
+
+副本核對使用 `.github/scripts/reconcile-taiwan-storage.cjs`；舊 `prepare-taiwan-storage` 僅屬初始快照流程，正式切換後不得以它補檔。新流程比對 checksum、大小、快取及其他 metadata，標記來源 generation/metageneration，以條件寫入避免覆蓋競態更新。未知目標差異或未分類孤立檔案會停止切換，不任意刪除或覆寫。副本移除原 Firebase download tokens，避免原連結撤銷後仍可跨桶使用舊 token。
+
+`storageRouting` 的新上傳使用台灣桶。既有純路徑讀取先檢查台灣物件：若是遷移副本，必須核對來源仍存在且版本及 metadata 未變，才讀副本；來源晚到更新改讀來源、來源已刪則拒絕，不從副本復活。新的台灣物件直接讀台灣。私人合約下載仍先核對原身分／契約 token 與路徑；新網址使用台灣函式，舊美國網址仍接受。影片上傳 session 保存實際 bucket；未具此欄位的舊 session 固定回原美國桶完成，不能拿台灣副本冒充尚未完成的上傳。
+
+後端刪除同一路徑會核對並刪除兩桶的實際 generation；商品 references 清理分別保存 bucket/path/generation 的 lineage，維持每桶 100 檔的上限及原完成工作授權。未變更課務、付款、簽到或庫存的合併規則。
+
+正式部署由 `.github/storage-rollout.json` 指定 24 項受影響函式，讀取／驗證入口先行，每批最多 2 個名稱。該檔變更時，四個既有部署流程仍跑原測試，但將雲端部署讓給 `Deploy Taiwan Storage`，避免同一版同時大批更新；未變更此 manifest 的一般提交維持原流程。後續改動共享 storageRouting 時應同時更新此 manifest 版本，透過同一受控流程部署。此流程不納入 LINE webhook、不執行歷史薪資修復、不修改私人 PIN 或擴張 Storage rules。
+
+正式 smoke check 只建立隔離的隨機 probe 檔案：台灣寫讀、匿名拒絕、短效簽名讀取、來源 metadata 更新與刪除相容，完成或失敗均清除 probe。它不能替代本機真實老師／客戶帳號的上傳、簽約和附件檢視測試。
+
+前端 storageBucket 及快取版本須在上述後端部署全部成功後才切換。已儲存的舊商品／合約／外部分享網址保留原桶，不批次改寫原始紀錄；這些舊網址及尚未重新整理的頁面仍可能使用美國，不能宣稱所有檔案流量都已集中台灣，也不能停用或刪除美國桶。回復前端時可改回舊 bucket，但後端必須保留新舊讀取及上傳 session 相容層，以讀取已新增的台灣檔案。

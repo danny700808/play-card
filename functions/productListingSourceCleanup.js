@@ -2,6 +2,7 @@
 
 const { onDocumentWrittenWithAuthContext } = require('firebase-functions/v2/firestore');
 const admin = require('firebase-admin');
+const storageRouting = require('./storageRouting');
 
 const REGION = 'us-central1';
 const LISTING_CASE_COLLECTION = 'opsProductListingCases';
@@ -91,10 +92,10 @@ function lineageRecord(file, metadata, productId, recordedAt) {
 function mergeLineageRecords(existing, incoming) {
   const result = new Map();
   (Array.isArray(existing) ? existing : []).forEach((row) => {
-    if (clean(row && row.storagePath)) result.set(clean(row.storagePath), { ...row });
+    if (clean(row && row.storagePath)) result.set(clean(row.bucket)+'|'+clean(row.storagePath), { ...row });
   });
   (Array.isArray(incoming) ? incoming : []).forEach((row) => {
-    if (clean(row && row.storagePath)) result.set(clean(row.storagePath), { ...row });
+    if (clean(row && row.storagePath)) result.set(clean(row.bucket)+'|'+clean(row.storagePath), { ...row });
   });
   return Array.from(result.values()).sort((a, b) => clean(a.storagePath).localeCompare(clean(b.storagePath)));
 }
@@ -110,6 +111,8 @@ async function runProductListingSourceCleanup(options = {}) {
   const jobId = clean(options.jobId);
   const jobRecord = options.jobRecord && typeof options.jobRecord === 'object' ? options.jobRecord : {};
   const bucket = options.bucket;
+  const buckets = options.buckets || [bucket];
+  const listFiles = async () => [(await Promise.all(buckets.map(item => item.getFiles({prefix,autoPaginate:true})))).flatMap(row => row[0])];
   const persist = typeof options.persist === 'function' ? options.persist : async () => {};
   const isAuthorized = typeof options.isAuthorized === 'function' ? options.isAuthorized : async () => true;
   const now = typeof options.now === 'function' ? options.now : () => new Date();
@@ -135,26 +138,26 @@ async function runProductListingSourceCleanup(options = {}) {
     }
     return { status: 'blocked', reason: blocker.code, deletedCount: 0 };
   }
-  if (!bucket || !clean(bucket.name) || typeof bucket.getFiles !== 'function') {
+  if (!buckets.length || buckets.some(item => !item || !clean(item.name) || typeof item.getFiles !== 'function')) {
     await persistPolicy({ cleanupStatus: 'blocked', eligibleForDeletion: false, cleanupBlockedCode: 'bucket-unavailable', cleanupBlockedReason: '無法確認 Firebase Storage 預設 bucket', cleanupBlockedAt: now().toISOString() });
     return { status: 'blocked', reason: 'bucket-unavailable', deletedCount: 0 };
   }
 
   let files;
   try {
-    [files] = await bucket.getFiles({ prefix, autoPaginate: true });
+    [files] = await listFiles();
   } catch (error) {
     const retryState = await persistPolicy({ cleanupStatus: 'required', cleanupRuntimeStatus: 'failed-retryable', eligibleForDeletion: true, cleanupFailureStage: 'storage-list', cleanupErrorCode: 'storage-list-failed', cleanupError: clean(error && error.message).slice(0, 500), cleanupFailedAt: now().toISOString() });
     if (!retryState) return { status: 'superseded', reason: 'cleanup-state-write-rejected', deletedCount: 0 };
     return { status: 'failed-retryable', reason: 'storage-list-failed', deletedCount: 0 };
   }
   files = Array.isArray(files) ? files : [];
-  if (files.length > MAX_SOURCE_OBJECTS) {
+  if (buckets.some(item => files.filter(file => file.bucket && file.bucket.name === item.name).length > MAX_SOURCE_OBJECTS)) {
     await persistPolicy({ cleanupStatus: 'blocked', eligibleForDeletion: false, cleanupBlockedCode: 'too-many-source-objects', cleanupBlockedReason: `來源目錄包含 ${files.length} 個物件，超過安全上限`, cleanupBlockedAt: now().toISOString() });
     return { status: 'blocked', reason: 'too-many-source-objects', deletedCount: 0 };
   }
 
-  const pathChecks = files.map((file) => safeSourceObject(file, clean(bucket.name), prefix, productId));
+  const pathChecks = files.map((file) => safeSourceObject(file, buckets.map(item => clean(item.name)).includes(clean(file.bucket && file.bucket.name)) ? clean(file.bucket.name) : '', prefix, productId));
   const unsafe = pathChecks.find((row) => !row.ok);
   if (unsafe) {
     await persistPolicy({ cleanupStatus: 'blocked', eligibleForDeletion: false, cleanupBlockedCode: unsafe.code, cleanupBlockedReason: `Storage 物件不在核准來源路徑：${unsafe.path || '未知路徑'}`, cleanupBlockedAt: now().toISOString() });
@@ -222,7 +225,7 @@ async function runProductListingSourceCleanup(options = {}) {
 
   let remaining;
   try {
-    [remaining] = await bucket.getFiles({ prefix, autoPaginate: true });
+    [remaining] = await listFiles();
   } catch (error) {
     const retryState = await persistPolicy({ cleanupStatus: 'required', cleanupRuntimeStatus: 'failed-retryable', cleanupFailureStage: 'post-delete-list', eligibleForDeletion: true, cleanupDeletedObjectCount: deletedCount, cleanupErrorCode: 'post-delete-list-failed', cleanupError: clean(error && error.message).slice(0, 500), cleanupFailedAt: now().toISOString() });
     if (!retryState) return { status: 'superseded', reason: 'cleanup-state-write-rejected', deletedCount };
@@ -256,7 +259,7 @@ async function cleanupProductListingCase(db, bucket, productId) {
   const jobSnap = jobId ? await db.collection(JOB_COLLECTION).doc(jobId).get() : null;
   const jobRecord = jobSnap && jobSnap.exists ? jobSnap.data() || {} : {};
   return runProductListingSourceCleanup({
-    productId, caseRecord, jobId, jobRecord, bucket,
+    productId, caseRecord, jobId, jobRecord, bucket, buckets: Array.isArray(bucket) ? bucket : [bucket],
     isAuthorized: async () => {
       const liveSnap = await caseRef.get();
       if (!liveSnap.exists) return false;
@@ -316,7 +319,7 @@ function registerProductListingSourceCleanup(target) {
     const after = afterSnap.data() || {};
     if (!cleanupTriggerShouldRun(before, after)) return null;
     const productId = clean(event.params && event.params.productId);
-    const result = await cleanupProductListingCase(admin.firestore(), admin.storage().bucket(), productId);
+    const result = await cleanupProductListingCase(admin.firestore(), storageRouting.buckets(), productId);
     console.log('[cleanupProductListingSourceImages]', { productId, ...result });
     return finalizeSourceCleanupEvent(result, productId);
   });

@@ -138,6 +138,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Determine storage deployment ownership
+        run: node .github/scripts/storage-rollout-owner.cjs >> "$GITHUB_ENV"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -283,6 +286,7 @@ jobs:
         run: npm install --global firebase-tools@15.24.0
 
       - name: Synchronize LINE webhook secret with Firebase Secret Manager
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
           LINE_CHANNEL_SECRET_PATH: ${{ runner.temp }}/line-channel-secret.txt
@@ -303,6 +307,7 @@ jobs:
           rm -f "$EXISTING_LINE_SECRET_PATH"
 
       - name: Ensure booking query indexes are ready
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
@@ -310,6 +315,7 @@ jobs:
           node .github/scripts/ensure-course-query-indexes.cjs
 
       - name: Preserve or provision a private inventory PIN
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
           INVENTORY_COUNT_PIN_HASH: ${{ secrets.INVENTORY_COUNT_PIN_HASH }}
@@ -318,6 +324,7 @@ jobs:
       # Both old/new redirect handlers must understand per-state callback URLs
       # before any newly deployed login starter can issue a Taiwan authorization.
       - name: Deploy compatible LINE callbacks before switching login starters
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
@@ -329,6 +336,7 @@ jobs:
           done
 
       - name: Deploy portal and protected internal Functions
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
@@ -340,6 +348,7 @@ jobs:
       # when another workflow concurrently updates an unrelated endpoint.
       # Publish the tuition mutation and its readers in an isolated, verified batch.
       - name: Verify desktop performance and tuition functions finish deployment
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
@@ -352,12 +361,14 @@ jobs:
           done
 
       - name: Complete any Taiwan entries skipped by concurrent deployments
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
           GCLOUD_PROJECT: youzi-c1b74
         run: node .github/scripts/deploy-missing-taiwan-http.cjs
 
       - name: Confirm both regional webhook implementations are deployed
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
@@ -369,15 +380,18 @@ jobs:
           done
 
       - name: Verify both webhook regions without changing LINE settings
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
           LINE_CHANNEL_SECRET_PATH: ${{ runner.temp }}/line-channel-secret.txt
         run: node .github/scripts/verify-line-webhook-region.cjs
 
       - name: Verify runtime LINE callback routing and cancellation
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         run: node .github/scripts/verify-line-login-taiwan.cjs
 
       - name: Verify Taiwan HTTP deployment and inspect regional latency
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
           GCLOUD_PROJECT: youzi-c1b74
@@ -400,7 +414,7 @@ jobs:
           fi
 
       - name: Deploy Firestore rules only when that file changed
-        if: steps.firestore_rules.outputs.changed == 'true'
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (steps.firestore_rules.outputs.changed == 'true')
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: firebase deploy --project youzi-c1b74 --non-interactive --force --only firestore:rules
@@ -422,7 +436,7 @@ jobs:
           fi
 
       - name: Deploy Storage rules only when that file changed
-        if: steps.storage_rules.outputs.changed == 'true'
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (steps.storage_rules.outputs.changed == 'true')
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: firebase deploy --project youzi-c1b74 --non-interactive --force --only storage

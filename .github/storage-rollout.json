@@ -1,0 +1,31 @@
+{
+  "owner": "deploy-taiwan-storage",
+  "version": "20260919-1",
+  "functions": [
+    "rentalSignContractHttp",
+    "legacyTeacherUpdateHttp",
+    "privateContractAssetHttp",
+    "coursePortalAdminTuitionPaymentScreenshot",
+    "coursePortalStudentContactBookImage",
+    "personDataAdminDetail",
+    "personDataAdminAction",
+    "coursePortalAdminUnifiedLineAction",
+    "cleanupProductListingSourceImages",
+    "rentalUploadPrivateAssetHttp",
+    "externalTeacherUploadPrivateAssetHttp",
+    "inventoryCountProductsHttp",
+    "coursePortalTeacherSaveProfileDraft",
+    "coursePortalStudentSubmitTuitionPayment",
+    "coursePortalTeacherSubmitContactBookPost",
+    "coursePortalTeacherSubmitContactBookPostTaiwan",
+    "coursePortalAdminEnsureTuitionReceipt",
+    "coursePortalAdminEnsureTuitionReceiptTaiwan",
+    "coursePortalAdminTuitionPaymentAction",
+    "externalTeacherSaveProfile",
+    "externalTeacherCompleteContract",
+    "importProductListingImages",
+    "generateProductListingImage",
+    "runNineSeriesBookCoverBatch"
+  ],
+  "phase": "backend"
+}

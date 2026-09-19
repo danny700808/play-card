@@ -1,3 +1,4 @@
+const storageRouting = require('./storageRouting');
 'use strict';
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -1088,7 +1089,7 @@ async function resetTestTeacher(lineUserId, request) {
   let removedFiles = 0;
   for (const storagePath of storagePaths) {
     try {
-      await admin.storage().bucket().file(storagePath).delete({ ignoreNotFound: true });
+      await storageRouting.deletePath(storagePath);
       removedFiles += 1;
     } catch (error) {
       console.error('[teacher reset file cleanup failed]', storagePath, error && error.message || error);
@@ -1096,8 +1097,8 @@ async function resetTestTeacher(lineUserId, request) {
   }
   for (const profileId of profileIds) {
     try {
-      const [files] = await admin.storage().bucket().getFiles({ prefix: `teacher-private-profiles/${profileId}/` });
-      await Promise.all(files.map((file) => file.delete().then(() => { removedFiles += 1; })));
+      const [files] = await storageRouting.listFiles({ prefix: `teacher-private-profiles/${profileId}/` });
+      await Promise.all(files.map((file) => file.delete({preconditionOpts:{ifGenerationMatch:file.metadata.generation}}).then(() => { removedFiles += 1; })));
     } catch (error) {
       console.error('[teacher reset private file cleanup failed]', profileId, error && error.message || error);
     }
