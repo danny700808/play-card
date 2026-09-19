@@ -4,6 +4,11 @@ async function main(){
   const admin=require('../../functions/node_modules/firebase-admin');
   if(!admin.apps.length)admin.initializeApp({projectId:'youzi-c1b74'});
   const routing=require('../../functions/storageRouting');
+  const legacyBucket=routing.bucket(routing.LEGACY_BUCKET),taiwanBucket=routing.writeBucket();
+  const policies=await Promise.all([legacyBucket,taiwanBucket].map(bucket=>bucket.iam.getPolicy({requestedPolicyVersion:3})));
+  const bindings=policy=>(policy.bindings||[]).map(row=>({role:row.role,members:[...(row.members||[])].sort(),condition:row.condition||null})).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  assert.deepEqual(bindings(policies[0][0]),bindings(policies[1][0]),'Target bucket IAM must match the working source bucket');
+  console.log('Source and target bucket IAM bindings match within the same project.');
   const path='teacher-private-profiles/__migration_probe_'+crypto.randomUUID()+'/probe.bin';
   const target=routing.writeBucket().file(path),source=routing.bucket(routing.LEGACY_BUCKET).file(path);
   assert.equal(target.bucket.name,routing.TAIWAN_BUCKET);
@@ -14,6 +19,7 @@ async function main(){
     const [actual]=await (await routing.readFile(path)).download();assert.deepEqual(actual,sample);
     const endpoint='https://firebasestorage.googleapis.com/v0/b/'+routing.TAIWAN_BUCKET+'/o/'+encodeURIComponent(path)+'?alt=media';
     const denied=await fetch(endpoint,{signal:AbortSignal.timeout(30000)});assert.equal(denied.status,403,'Private probe must not be public');await denied.arrayBuffer();
+    const direct=await fetch('https://storage.googleapis.com/'+routing.TAIWAN_BUCKET+'/'+encodeURIComponent(path),{signal:AbortSignal.timeout(30000)});assert([401,403].includes(direct.status),'Direct GCS access must also deny anonymous private reads');await direct.arrayBuffer();
     const [signed]=await target.getSignedUrl({action:'read',expires:Date.now()+60000});
     const allowed=await fetch(signed,{signal:AbortSignal.timeout(30000)});assert.equal(allowed.status,200);assert.deepEqual(Buffer.from(await allowed.arrayBuffer()),sample);
     await source.save(sample,{resumable:false,preconditionOpts:{ifGenerationMatch:0},metadata:{contentType:'application/octet-stream',cacheControl:'private,no-store'}});
