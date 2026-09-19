@@ -111,6 +111,8 @@ on:
       - ".github/workflows/deploy-course-portal-auth.yml"
       - ".github/scripts/verify-taiwan-region.cjs"
       - "tests/taiwan-region.test.cjs"
+      - "tests/course-login-region-migration.test.cjs"
+      - ".github/scripts/verify-line-login-taiwan.cjs"
       - ".github/scripts/deploy-missing-taiwan-http.cjs"
       - "tests/taiwan-deployment-completion.test.cjs"
   workflow_dispatch:
@@ -265,7 +267,8 @@ jobs:
             GMAIL_USER: process.env.GMAIL_USER || '',
             GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
             EMAIL_FROM: process.env.EMAIL_FROM || '',
-            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/'
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/',
+            LINE_LOGIN_CALLBACK_URL: 'https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback'
           };
           const content = Object.entries(rows)
             .map(([key, value]) => `${key}=${JSON.stringify(String(value))}`)
@@ -309,6 +312,19 @@ jobs:
           INVENTORY_COUNT_PIN_HASH: ${{ secrets.INVENTORY_COUNT_PIN_HASH }}
         run: node .github/scripts/ensure-private-inventory-pin.cjs
 
+      # Both old/new redirect handlers must understand per-state callback URLs
+      # before any newly deployed login starter can issue a Taiwan authorization.
+      - name: Deploy compatible LINE callbacks before switching login starters
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          firebase deploy --project youzi-c1b74 --non-interactive --force \
+            --only functions:coursePortalLineLoginCallback 2>&1 | tee "$RUNNER_TEMP/line-callback-deploy.log"
+          for region in us-central1 asia-east1; do
+            grep -E "functions\[coursePortalLineLoginCallback\($region\).*Successful (update|create) operation|functions\[coursePortalLineLoginCallback\($region\).*Skipped" "$RUNNER_TEMP/line-callback-deploy.log" >/dev/null || { echo "Callback deployment not confirmed for $region" >&2; exit 1; }
+          done
+
       - name: Deploy portal and protected internal Functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
@@ -337,6 +353,9 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
           GCLOUD_PROJECT: youzi-c1b74
         run: node .github/scripts/deploy-missing-taiwan-http.cjs
+
+      - name: Verify runtime LINE callback routing and cancellation
+        run: node .github/scripts/verify-line-login-taiwan.cjs
 
       - name: Verify Taiwan HTTP deployment and inspect regional latency
         env:

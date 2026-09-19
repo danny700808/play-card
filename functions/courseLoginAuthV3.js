@@ -15,7 +15,14 @@ const Timestamp = admin.firestore.Timestamp;
 const REGION = 'us-central1';
 const PORTAL_BASE = String(process.env.PUBLIC_WEB_BASE_URL || 'https://danny700808.github.io/play-card').replace(/\/$/, '');
 const LINE_LOGIN_CHANNEL_ID = String(process.env.LINE_LOGIN_CHANNEL_ID || '2010902226').trim();
-const LINE_LOGIN_CALLBACK_URL = String(process.env.LINE_LOGIN_CALLBACK_URL || 'https://us-central1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback').trim();
+const LEGACY_LINE_LOGIN_CALLBACK_URL = 'https://us-central1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback';
+const TAIWAN_LINE_LOGIN_CALLBACK_URL = 'https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback';
+const LINE_LOGIN_CALLBACK_URL = validatedLineCallback(process.env.LINE_LOGIN_CALLBACK_URL || TAIWAN_LINE_LOGIN_CALLBACK_URL);
+function validatedLineCallback(value) {
+  const url = String(value || '').trim();
+  if (![LEGACY_LINE_LOGIN_CALLBACK_URL, TAIWAN_LINE_LOGIN_CALLBACK_URL].includes(url)) throw new Error('Unsupported LINE callback URL');
+  return url;
+}
 const LINE_LOGIN_CHANNEL_SECRET = defineSecret('LINE_LOGIN_CHANNEL_SECRET');
 const LINE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const LINE_SETUP_TTL_MS = 20 * 60 * 1000;
@@ -100,6 +107,8 @@ async function startLineLogin(data) {
     stateHint: state.slice(-6),
     status: 'pending',
     flowVersion: 3,
+    // Keep the exact redirect URI used by this authorization, across deployments.
+    callbackUrl: LINE_LOGIN_CALLBACK_URL,
     createdAt: FieldValue.serverTimestamp(),
     expiresAt
   });
@@ -116,14 +125,14 @@ function lineQueryValue(req, key) {
   return clean(Array.isArray(value) ? value[0] : value);
 }
 
-async function exchangeLineAuthorizationCode(code) {
+async function exchangeLineAuthorizationCode(code, callbackUrl) {
   const secret = clean(LINE_LOGIN_CHANNEL_SECRET.value());
   if (!secret) throw new Error('LINE Login Channel secret 尚未設定。');
 
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
-    redirect_uri: LINE_LOGIN_CALLBACK_URL,
+    redirect_uri: validatedLineCallback(callbackUrl),
     client_id: LINE_LOGIN_CHANNEL_ID,
     client_secret: secret
   });
@@ -211,6 +220,8 @@ async function issueAccessToken({ type, profile, binding }) {
     lineFriendFlag: profile.lineFriendFlag,
     status: 'active',
     flowVersion: 3,
+    // Keep the exact redirect URI used by this authorization, across deployments.
+    callbackUrl: LINE_LOGIN_CALLBACK_URL,
     createdAt: FieldValue.serverTimestamp(),
     expiresAt
   });
@@ -228,6 +239,8 @@ async function issueSetupToken(type, profile) {
     lineFriendFlag: profile.lineFriendFlag,
     status: 'pending',
     flowVersion: 3,
+    // Keep the exact redirect URI used by this authorization, across deployments.
+    callbackUrl: LINE_LOGIN_CALLBACK_URL,
     createdAt: FieldValue.serverTimestamp(),
     expiresAt
   });
@@ -341,7 +354,9 @@ async function lineLoginCallback(req, res) {
       return;
     }
 
-    const token = await exchangeLineAuthorizationCode(code);
+    // States created before regional migration did not record their callback URL.
+    const callbackUrl = stateRow.callbackUrl === undefined ? LEGACY_LINE_LOGIN_CALLBACK_URL : validatedLineCallback(stateRow.callbackUrl);
+    const token = await exchangeLineAuthorizationCode(code, callbackUrl);
     const profile = await lineLoginProfile(token.access_token);
     if (type === 'unified') {
       const ticket = await unifiedLogin().issue(profile, {forceEmployeeLink:stateRow.forceEmployeeLink === true,challenge:stateRow.challenge});
