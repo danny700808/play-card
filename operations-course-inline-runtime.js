@@ -1511,6 +1511,7 @@
     calendarBootstrapLoading=calendarOnly;
     closeModal('loadPublishedModal');
     loadingMigration=true;operationRunning=true;updateModeUI();
+    $('scheduleGrid').classList.add('hidden');
     $('loadPublishedBtn').disabled=true;
     $('operationProgressText').textContent=calendarOnly?'正在讀取課表…':'正在讀取課程與帳務明細…';
     $('operationProgress').classList.remove('hidden');
@@ -1528,6 +1529,7 @@
         return false;
       }finally{
         loadingMigration=false;operationRunning=false;calendarBootstrapLoading=false;workspaceLoadPromise=null;
+        $('scheduleGrid').classList.remove('hidden');
         $('loadPublishedBtn').disabled=false;$('operationProgress').classList.add('hidden');updateModeUI();
       }
     })();
@@ -1566,7 +1568,7 @@
     try{localStorage.removeItem('youzi.courseScheduler.sandbox.v1');localStorage.removeItem('youzi.courseScheduler.sandboxUndo.v1');localStorage.removeItem('youzi.courseScheduler.lastMode.v1');}catch(_){}
     embeddedMode=window.__YOUZI_COURSE_INLINE_MODE__===true||urlOption('embed')==='1';document.body.classList.toggle('embedded-in-operations',embeddedMode);requestPersistentStorage();
     state=loadInitialState();if(!formalState&&state.readOnly&&state.dataMode!=='empty')formalState=clone(state);bindEvents();refreshFormOptions();updateModeUI();switchView(requestedView());
-    refreshPortalRentals();
+    // Cloud loading includes bookings; do not race it with a partial rental snapshot.
     if(window.__YOUZI_COURSE_SCHEDULER_TEST__!==true)loadPublishedWorkspace({calendarOnly:true});
     if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)window.YouziCourseSchedulerTest={snapshot:function(){return clone(state);},eventsForDate:function(date){return clone(eventsForDate(date));},effectiveEventsForDate:function(date){return clone(effectiveEventsForDate(date));},storeFormalCache:function(source){return storeFormalCache(source);},readFormalDatabase:readFormalDatabase,storeFormalDatabase:storeFormalDatabase,readWorkspaceDatabase:readWorkspaceDatabase,storeWorkspaceDatabase:storeWorkspaceDatabase,restoreFormalDatabase:restoreFormalDatabase};
   }

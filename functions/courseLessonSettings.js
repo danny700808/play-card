@@ -1,4 +1,5 @@
 'use strict';
+const { normalizeScheduleStatus } = require('./coursePortalUtils');
 function lessonMatches(row, setting) {
   const date = String(row.date || row.startDate || '').slice(0, 10);
   if (date !== setting.date) return false;
@@ -7,6 +8,8 @@ function lessonMatches(row, setting) {
 }
 function applyLessonSettings(rows, settings) {
   return rows.map(row => {
+    // Payment/attendance overrides cannot revive a deleted schedule occurrence.
+    if (row.active === false || normalizeScheduleStatus(row.status) === 'cancelled') return row;
     const matching = settings.filter(setting => lessonMatches(row, setting));
     return Object.assign({}, row, ...matching.map(setting => setting.fields || {}));
   });

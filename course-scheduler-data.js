@@ -179,7 +179,8 @@
 
   function portalVisualType(course){
     var action=clean(course&&course.portalAction),type=clean(course&&course.type);
-    if(type==='rental'||type==='trial')return type;
+    if(['rental','room_rental'].indexOf(type)>=0||['rental','room_booking'].indexOf(action)>=0)return 'rental';
+    if(type==='trial')return type;
     if(action==='permanent_move'||action==='permanent_room_exception')return 'fixed';
     if(['single_move','extra_lesson','teacher_gift'].indexOf(action)>=0)return 'single';
     if(type==='teacher_gift'||type==='temporary')return 'single';

@@ -77,7 +77,7 @@ assert(!controller.includes('YouziCoursePreviewData.load'), '正常開頁仍會�
 assert(!controller.includes('YouziCoursePreviewData.sync'), '正常開頁仍會自動同步音教雲');
 
 assert(runtime.includes('window.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__'), 'inline runtime 沒有使用控制器準備的工作區');
-assert(runtime.includes('refreshPortalRentals();'), 'inline runtime 沒有更新入口租用異動');
+assert(runtime.includes('loadPublishedWorkspace();'), 'inline runtime 沒有從完整雲端快照更新租用異動');
 assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), '開頁仍重複還原正式資料');
 assert(runtime.includes('function syncInjiaoyun()'), '完整課表缺少使用者主動同步功能');
 assert(runtime.includes('function eventStudentNames(event)'), 'inline 課表未提供舊姓名顯示備援');

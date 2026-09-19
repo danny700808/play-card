@@ -78,7 +78,7 @@ assert(!operations.includes('<iframe id="opsCourseFrame"'), '營運中心仍使�
 assert(!operations.includes('frame.contentWindow.postMessage'), '營運中心仍保留舊 iframe 訊息傳遞');
 assert(runtime.includes('window.__YOUZI_COURSE_INLINE_DOCUMENT__'), '完整課表沒有使用隔離文件介面');
 assert(runtime.includes('window.__YOUZI_COURSE_INLINE_BOOTSTRAP_STATE__'), '完整課表沒有從控制器接收工作區');
-assert(runtime.includes('refreshPortalRentals();'), '開啟課表後沒有更新入口成立或取消的租用');
+assert(runtime.includes('loadPublishedWorkspace();'), '開啟課表後沒有從完整雲端快照更新租用');
 assert(!runtime.includes('restoreFormalDatabase().then(refreshPortalRentals)'), '開頁仍會重複還原資料後再讀租用');
 assert(schedulerData.includes('async function saveTeacherSubjects(options)'), '課務資料層缺少共用老師科目儲存');
 assert(schedulerData.includes('async function saveSubjectCatalog(options)'), '課務資料層缺少共用科目主檔儲存');

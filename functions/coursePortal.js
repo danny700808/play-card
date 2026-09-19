@@ -4954,7 +4954,7 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
       if (!canonicalStatusByKey.has(key)) canonicalStatusByKey.set(key, 'cancelled');
     });
   });
-  const lowerExactRows = [...temporary, ...rentals].filter(inRangeExact).filter((row) =>
+  const lowerExactRows = [...temporary, ...rentals.map(row => Object.assign({},row,{type:'rental'}))].filter(inRangeExact).filter((row) =>
     !courseSourceIds(row).some((id) => canonicalKeys.has(`${id}|${eventDate(row)}`))
   );
   const exactSourceRows = [...canonicalEvents, ...lowerExactRows];
@@ -5013,10 +5013,8 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
   });
   const overlay = changes.map((doc) => Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {}));
   const removed = new Set(overlay.filter((row) => ['single_move', 'cancel', 'lesson_status'].includes(row.action))
-    .flatMap((row) => [
-      `${clean(row.sourceEventId)}|${dateKey(row.sourceDate)}`,
-      `${clean(row.sourceCourseId)}|${dateKey(row.sourceDate)}`
-    ]));
+    .flatMap((row) => [clean(row.sourceEventId), clean(row.sourceCourseId)]
+      .filter(Boolean).map(id => `${id}|${dateKey(row.sourceDate)}`)));
   const activeFixedRows = fixed.filter((row) => !livePortalSource(row) && sourceActive(row));
   const activeFixedByLineage = new Map(activeFixedRows.map((row) => [sourceId(row), row]));
   const permanent = effectivePermanentChanges(overlay).filter((row) => {
@@ -5248,7 +5246,7 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
     ...(options.adminDelta === true ? {managerEvents: validBase.map(row => {
       const resource=resourceEvent(row,maps,recurringLineages);
       return Object.assign({},jsonValue(row),resource,{id:resource.id+'@'+resource.date,sourceId:resource.sourceId,
-        sourceCourseId:resource.fixedCourseId,start:resource.startTime,duration:timeMinutes(resource.endTime)-timeMinutes(resource.startTime),
+        sourceCourseId:resource.fixedCourseId,type:isRoomRentalEvent(resource)?'rental':resource.type,start:resource.startTime,duration:timeMinutes(resource.endTime)-timeMinutes(resource.startTime),
         portalBookingId:resource.portalAction==='room_booking'?clean(row.portalBookingId || row.id || sourceId(row)).replace(/^rental-/, ''):'',
         clientName:clean(row.clientName||row.renterName||row.ownerName),rentalFee:Number(row.rentalFee??row.amount??0),
         rentalPaymentStatus:clean(row.rentalPaymentStatus||row.paymentStatus),readOnly:false});
@@ -13168,16 +13166,20 @@ async function appendCoursePortalData(payload) {
   const removed = new Set(changeRows.filter((row) =>
     ['single_move', 'cancel', 'lesson_status'].includes(clean(row.action))
   )
-    .flatMap((row) => [
-      `${clean(row.sourceEventId)}|${dateKey(row.sourceDate)}`,
-      `${clean(row.sourceCourseId)}|${dateKey(row.sourceDate)}`
-    ]));
+    .flatMap((row) => [clean(row.sourceEventId), clean(row.sourceCourseId)]
+      .filter(Boolean).map(id => `${id}|${dateKey(row.sourceDate)}`)));
   if (Array.isArray(payload.events)) {
     payload.events = payload.events.filter((row) =>
       !removed.has(`${sourceId(row)}|${eventDate(row)}`) &&
       !removed.has(`${clean(row.fixedCourseId || row.sourceCourseId || row.courseId || row.scheduleId)}|${eventDate(row)}`)
     );
   }
+  // Cancellation must suppress old rental/temporary copies as well as audited events.
+  ['roomRentals', 'temporaryCourses'].forEach(key => {
+    payload[key] = (payload[key] || []).filter(row =>
+      !courseSourceIds(row).some(id => removed.has(`${id}|${eventDate(row)}`))
+    );
+  });
   payload.fixedCourses = Array.isArray(payload.fixedCourses) ? payload.fixedCourses : [];
   changeRows.filter((row) =>
     ['single_move', 'cancel', 'lesson_status'].includes(clean(row.action))
