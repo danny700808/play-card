@@ -132,7 +132,7 @@
     if (!global.firebase || !config) throw new Error('Firebase 尚未載入，請重新整理後再試。');
     if (!global.firebase.apps.length) global.firebase.initializeApp(config);
     try {
-      const response = await global.firebase.app().functions('us-central1')
+      const response = await global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1'))
         .httpsCallable('coursePortalTeacherUtilitySession')({ sessionToken: token });
       return response && response.data || {};
     } catch (error) {

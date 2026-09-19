@@ -437,7 +437,7 @@
   function functions(){
     if(!global.firebase || typeof global.firebase.functions!=='function') throw new Error('安全登入元件尚未載入，請重新整理後再試。');
     const app=global.firebase.apps&&global.firebase.apps.length?global.firebase.app():global.firebase.initializeApp(global.APP_CONFIG.FIREBASE_CONFIG);
-    return app.functions('us-central1');
+    return app.functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1'));
   }
   async function secureCall(name,payload){
     try{
@@ -6116,10 +6116,10 @@
     return projectId || 'youzi-c1b74';
   }
   function websiteSearchHttpUrl_(){
-    return 'https://us-central1-' + firebaseProjectId_() + '.cloudfunctions.net/searchTeacherWebsiteGoodsHttp';
+    return 'https://'+((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')+'-' + firebaseProjectId_() + '.cloudfunctions.net/searchTeacherWebsiteGoodsHttp';
   }
   function callableRestUrlForWebsiteSearch(){
-    return 'https://us-central1-' + firebaseProjectId_() + '.cloudfunctions.net/searchTeacherWebsiteGoods';
+    return 'https://'+((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')+'-' + firebaseProjectId_() + '.cloudfunctions.net/searchTeacherWebsiteGoods';
   }
   function normalizeWebsiteSearchResponse_(data, source){
     if(data && (Array.isArray(data.rows) || Array.isArray(data.items) || Array.isArray(data.list) || data.ok===true)){
@@ -6184,7 +6184,7 @@
       if(app && global.firebase && global.firebase.functions){
         let functionsInstance = null;
         try{
-          functionsInstance = (global.firebase.app && global.firebase.app().functions) ? global.firebase.app().functions('us-central1') : null;
+          functionsInstance = (global.firebase.app && global.firebase.app().functions) ? global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')) : null;
         }catch(regionErr){ functionsInstance = null; }
         if(!functionsInstance) functionsInstance = global.firebase.functions();
         const fn=functionsInstance.httpsCallable('searchTeacherWebsiteGoods');
@@ -8148,7 +8148,7 @@
     const sessionToken = portalSessionToken();
     if (sessionToken) data.sessionToken = sessionToken;
     try {
-      const response = await global.firebase.app().functions('us-central1')
+      const response = await global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1'))
         .httpsCallable('externalTeacherWork', { timeout: 120000 })(data);
       return response && response.data || { ok: false, message: '安全資料服務沒有回傳結果。' };
     } catch (error) {
@@ -8188,7 +8188,7 @@
     const sessionToken=teacherSession(),user=sessionToken?null:await authUser(),project=global.APP_CONFIG.FIREBASE_CONFIG.projectId;
     if(sessionToken)data={...data,sessionToken};
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
-    try{const response=await fetch('https://us-central1-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers:{'Content-Type':'application/json',...(user?{Authorization:'Bearer '+await user.getIdToken()}:{})},body:JSON.stringify({data}),signal:controller.signal});const result=await response.json();if(!response.ok||result.error)throw new Error(result.error&&result.error.message||'資料暫時無法讀取。');return result.result||result.data||{};}finally{clearTimeout(timer);}
+    try{const response=await fetch('https://'+((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')+'-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers:{'Content-Type':'application/json',...(user?{Authorization:'Bearer '+await user.getIdToken()}:{})},body:JSON.stringify({data}),signal:controller.signal});const result=await response.json();if(!response.ok||result.error)throw new Error(result.error&&result.error.message||'資料暫時無法讀取。');return result.result||result.data||{};}finally{clearTimeout(timer);}
   }
   function revive(value){
     if(!value||typeof value!=='object')return value;

@@ -4,7 +4,7 @@
   const config = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
   if (!global.firebase || !config) throw new Error('Firebase 尚未載入。');
   if (!global.firebase.apps.length) global.firebase.initializeApp(config);
-  const functions = global.firebase.app().functions('us-central1');
+  const functions = global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1'));
   const taiwanFunctions = global.firebase.app().functions('asia-east1');
   // Existing Taiwan routes stay stable. Activate added routes only after deployment
   // and verification of the database location; never retry writes across regions.

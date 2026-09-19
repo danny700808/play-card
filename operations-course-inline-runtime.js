@@ -1508,7 +1508,7 @@
     if(workspaceLoadPromise)return workspaceLoadPromise;
     if(loadingMigration||operationRunning)return Promise.resolve(false);
     var calendarOnly=options&&options.calendarOnly===true&&currentView==='calendar';
-    var keepCalendarVisible=calendarPartial()&&!calendarOnly;
+    var keepCalendarVisible=calendarPartial()&&!calendarOnly,loadedCalendar=false;
     calendarBootstrapLoading=calendarOnly;
     closeModal('loadPublishedModal');
     loadingMigration=true;operationRunning=true;updateModeUI();
@@ -1520,7 +1520,7 @@
     workspaceLoadPromise=(async function(){
       try{
         var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:options&&options.anchorDate||state.currentDate||todayKey(),calendarOnly:calendarOnly});
-        if(loaded.dataMeta&&loaded.dataMeta.partial)applyCalendarState(loaded);
+        if(loaded.dataMeta&&loaded.dataMeta.partial){applyCalendarState(loaded);loadedCalendar=true;}
         else await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});
         $('calendarReauthPanel').classList.add('hidden');
         return true;
@@ -1533,6 +1533,11 @@
         loadingMigration=false;operationRunning=false;calendarBootstrapLoading=false;workspaceLoadPromise=null;
         $('scheduleGrid').classList.remove('hidden');
         $('loadPublishedBtn').disabled=false;$('operationProgress').classList.add('hidden');updateModeUI();
+        // Prepare ledger details after the authoritative calendar has painted.
+        // A click shares this request; no speculative retries after an error.
+        if(loadedCalendar&&typeof window.setTimeout==='function')window.setTimeout(function(){
+          if(calendarPartial()&&currentView==='calendar'&&!window.document.hidden&&!workspaceLoadPromise&&!operationRunning)loadPublishedWorkspace({background:true});
+        },1200);
       }
     })();
     return workspaceLoadPromise;

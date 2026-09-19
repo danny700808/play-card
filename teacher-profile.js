@@ -122,7 +122,7 @@
     const config = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
     if (!global.firebase || !config) throw new Error('系統尚未準備完成，請重新整理。');
     if (!global.firebase.apps.length) global.firebase.initializeApp(config);
-    return global.firebase.app().functions('us-central1');
+    return global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1'));
   }
   async function call(name, data) {
     const sessionToken = token();

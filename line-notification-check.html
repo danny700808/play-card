@@ -42,18 +42,18 @@
     <div class="ln-card"><h2>可設為主管收件人的 LINE 帳號</h2><div class="ln-sub">如果清單裡有你本人或主要管理者，也可以直接按「設為主管收件人」。如果沒有，就用上方手動輸入。</div><div id="candidates" class="ln-list">讀取中…</div></div>
     <div class="ln-card"><h2>最近通知佇列</h2><div id="queue" class="ln-list">讀取中…</div></div>
   </div>
-  <script src="config.js?v=20260606primaryline"></script>
+  <script src="config.js?v=20260919-taiwan-v2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="firebase-client.js?v=20260914-private-data-v1"></script>
+  <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
   <script>
     function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
     function setMsg(t,err){var el=document.getElementById('msg');el.textContent=t||'';el.className='ln-msg'+(err?' err':'');}
     function stat(label,n){return '<div class="ln-stat"><span>'+esc(label)+'</span><b>'+esc(n)+'</b></div>';}
-    function functionUrl(name){var cfg=(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG)||{};var projectId=String(cfg.projectId||'youzi-c1b74').trim();return 'https://us-central1-'+projectId+'.cloudfunctions.net/'+name;}
+    function functionUrl(name){var cfg=(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG)||{};var projectId=String(cfg.projectId||'youzi-c1b74').trim();return 'https://'+((window.APP_CONFIG&&window.APP_CONFIG.FUNCTION_REGION)||'us-central1')+'-'+projectId+'.cloudfunctions.net/'+name;}
     async function callFunction(name,payload){var res=await fetch(functionUrl(name),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})});var text=await res.text(),json={};try{json=text?JSON.parse(text):{};}catch(e){throw new Error(text||('API '+name+' 回傳不是 JSON'));}if(!res.ok||json.ok===false)throw new Error(json.message||json.error||('API '+name+' '+res.status));return json;}
     function runtimeRows(rt){rt=rt||{};var token=rt.lineTokenConfigured===true;var manager=rt.managerLineConfigured===true;var latest=rt.latestLineFailure||{};var rows=[
       '<div class="ln-row"><div><b>LINE Channel Access Token</b><small>'+esc(token?('已由 '+(rt.lineTokenSource||'執行環境')+' 載入'):'Functions 沒有讀到 Token；所有 LINE 回覆與推播都會失敗')+'</small></div><span class="ln-pill '+(token?'':'bad')+'">'+(token?'正常':'未載入')+'</span></div>',

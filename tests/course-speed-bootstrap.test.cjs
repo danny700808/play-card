@@ -70,3 +70,12 @@ test('navigation beyond a partial calendar shows loading and does not display a 
   assert.equal(f.calls.find(row=>row[0]==='load')[1].anchorDate,'2026-10-01');
   f.resolve({currentDate:'2026-10-01',dataMeta:{partial:false},events:[]});await new Promise(resolve=>setImmediate(resolve));assert.equal(renders,1);
 });
+
+test('ledger prefetch starts after calendar paint and a click shares the same pending request',async()=>{
+ const f=runtimeFixture(),c=f.context,timers=[];c.window.setTimeout=fn=>timers.push(fn);c.window.document={hidden:false};
+ const load=c.loadPublishedWorkspace({calendarOnly:true});f.resolve({dataMeta:{partial:true},events:[]});await load;
+ assert.equal(timers.length,1);assert.equal(f.calls.filter(row=>row[0]==='load').length,1);
+ timers[0]();let opened=0;c.afterWorkspaceReady(()=>opened++);
+ assert.equal(f.calls.filter(row=>row[0]==='load').length,2);
+ f.resolve({dataMeta:{partial:false},events:[]});await new Promise(resolve=>setImmediate(resolve));assert.equal(opened,1);
+});

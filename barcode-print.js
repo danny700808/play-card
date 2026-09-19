@@ -42,7 +42,7 @@
     if(!project)throw new Error('找不到商品服務設定，請重新整理。');
     const controller=new AbortController();const timer=setTimeout(function(){controller.abort();},110000);
     try{
-      const response=await fetch('https://us-central1-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({},data||{},{token:state.token})),signal:controller.signal});
+      const response=await fetch('https://'+((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')+'-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({},data||{},{token:state.token})),signal:controller.signal});
       const result=await response.json();
       if(!response.ok||result.ok===false)throw new Error(result.message||'商品服務暫時無法使用，請稍後重試。');
       return result;

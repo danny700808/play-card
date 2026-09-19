@@ -5,7 +5,7 @@
 
   var VERSION = '20260917-room-subject-v1';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=20260919-workspace-speed-v2';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260919-workspace-speed-v2';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260919-taiwan-v2';
   var STYLE_URL = 'course-scheduler.css?v=' + VERSION;
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';
