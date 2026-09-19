@@ -78,6 +78,9 @@ on:
       - "functions/platformOrderSync.js"
       - "functions/legacyTeacherForms.js"
       - "functions/privateContractAssets.js"
+      - "functions/lineWebhookEvents.js"
+      - "tests/line-webhook-region.test.cjs"
+      - ".github/scripts/verify-line-webhook-region.cjs"
       - "functions/rentalCustomerPolicy.js"
       - "functions/legacyTeacherContractTemplate.json"
       - "tests/private-data-backend.test.cjs"
@@ -166,7 +169,7 @@ jobs:
           node --check functions/privateContractAssets.js
           node --check functions/rentalCustomerPolicy.js
           node --test tests/private-data-backend.test.cjs tests/rental-private-submit.test.cjs
-          node --test tests/private-inventory-pin.test.cjs
+          node --test tests/private-inventory-pin.test.cjs tests/line-webhook-region.test.cjs
           node --check functions/easystoreCatalogSync.js
           node --check functions/externalTeacherOnboarding.js
           node --check functions/externalTeacherWork.js
@@ -353,6 +356,23 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
           GCLOUD_PROJECT: youzi-c1b74
         run: node .github/scripts/deploy-missing-taiwan-http.cjs
+
+      - name: Confirm both regional webhook implementations are deployed
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: |
+          set -euo pipefail
+          firebase deploy --project youzi-c1b74 --non-interactive --force \
+            --only functions:lineWebhook 2>&1 | tee "$RUNNER_TEMP/line-webhook-deploy.log"
+          for region in us-central1 asia-east1; do
+            grep -E "functions\[lineWebhook\($region\).*Successful (update|create) operation|functions\[lineWebhook\($region\).*Skipped" "$RUNNER_TEMP/line-webhook-deploy.log" >/dev/null || { echo "Webhook deployment not confirmed for $region" >&2; exit 1; }
+          done
+
+      - name: Verify both webhook regions without changing LINE settings
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+          LINE_CHANNEL_SECRET_PATH: ${{ runner.temp }}/line-channel-secret.txt
+        run: node .github/scripts/verify-line-webhook-region.cjs
 
       - name: Verify runtime LINE callback routing and cancellation
         run: node .github/scripts/verify-line-login-taiwan.cjs
