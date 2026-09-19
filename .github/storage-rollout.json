@@ -1,6 +1,6 @@
 {
   "owner": "deploy-taiwan-storage",
-  "version": "20260919-1",
+  "version": "20260919-2",
   "functions": [
     "rentalSignContractHttp",
     "legacyTeacherUpdateHttp",
@@ -27,5 +27,7 @@
     "generateProductListingImage",
     "runNineSeriesBookCoverBatch"
   ],
-  "phase": "backend"
+  "phase": "frontend",
+  "backendRun": 35444663273,
+  "backendSha": "a124a57be81bee4b4302f889dd00d3b4813fd8dd"
 }

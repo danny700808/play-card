@@ -177,7 +177,7 @@ textarea{min-height:96px;resize:vertical}
 </div></div>
 
 <div class="card"><div class="section-title"><span class="num">6</span>教育訓練檔案</div><div id="adminTrainingHistory" class="history-list"><div class="note">讀取中...</div></div></div><div class="actions"><button class="btn primary" onclick="submitTraining()">儲存教材</button></div></main>
-<script src="config.js?v=20260919-taiwan-v2"></script><script>
+<script src="config.js?v=20260919-taiwan-storage-v3"></script><script>
 const API_URL = String((window.APP_CONFIG && window.APP_CONFIG.API_URL) || window.API_URL || localStorage.getItem('EMPLOYEE_SYSTEM_API_BASE') || '').trim();
 function getUser(){try{return JSON.parse(localStorage.getItem('employeeUser')||'{}')}catch(e){return {}}}
 function userId(){return (getUser()&&getUser().id)||localStorage.getItem('employeeUserId')||''}
