@@ -141,9 +141,10 @@ test('issueInfo marks an old anomaly ready when the latest master now has one ma
   assert.match(info.reason, /已找到唯一對應/);
 });
 
-test('consumeFifoAllowNegative preserves FIFO cost and allows negative stock', () => {
+test('platform stock consumption uses manual average and allows negative stock', () => {
   const result = anomaly.consumeFifoAllowNegative({
     currentStock: 2,
+    averageCost: 110,
     costLayers: [
       { layerId: 'L1', qtyRemaining: 1, unitCost: 100, receivedAt: '2026-01-01' },
       { layerId: 'L2', qtyRemaining: 1, unitCost: 120, receivedAt: '2026-02-01' }
@@ -152,8 +153,9 @@ test('consumeFifoAllowNegative preserves FIFO cost and allows negative stock', (
 
   assert.equal(result.before, 2);
   assert.equal(result.after, -1);
-  assert.equal(result.costTotal, 220);
-  assert.equal(result.unknownCostQty, 1);
+  assert.equal(result.costTotal, 330);
+  assert.equal(result.unknownCostQty, 0);
+  assert.equal(result.averageCost, 110);
   assert.deepEqual(result.layers, []);
 });
 
@@ -190,6 +192,7 @@ test('safe recheck deducts exactly once and uses the deterministic inventory doc
       internalSku: 'SKU-1',
       internalName: '商品一',
       currentStock: 5,
+      averageCost: 80,
       costLayers: [{ layerId: 'L1', qtyRemaining: 5, unitCost: 80, receivedAt: '2026-01-01' }],
       enabled: true
     }

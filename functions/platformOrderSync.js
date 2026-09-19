@@ -1,4 +1,5 @@
 'use strict';
+const averageCostModel = require('./inventoryAverageCost');
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
@@ -761,43 +762,7 @@ function materializeCostLayers(raw) {
   return layers.filter((layer) => layer.qtyRemaining > 0);
 }
 
-function consumeFifoAllowNegative(raw, quantity) {
-  const before = Number(raw.currentStock || 0);
-  const positiveAvailable = Math.max(0, before);
-  const requested = Math.max(0, Math.round(Number(quantity || 0)));
-  const costableQuantity = Math.min(requested, positiveAvailable);
-  const layers = materializeCostLayers(raw);
-  let remaining = costableQuantity;
-  let costTotal = 0;
-  let unknownCostQty = Math.max(0, requested - costableQuantity);
-  const breakdown = [];
-  for (const layer of layers) {
-    if (remaining <= 0) break;
-    const take = Math.min(remaining, layer.qtyRemaining);
-    if (take <= 0) continue;
-    if (layer.unitCost == null) unknownCostQty += take;
-    else costTotal += take * layer.unitCost;
-    breakdown.push({ layerId: layer.layerId, qty: take, unitCost: layer.unitCost, referenceId: layer.referenceId });
-    layer.qtyRemaining -= take;
-    remaining -= take;
-  }
-  if (remaining > 0) unknownCostQty += remaining;
-  const left = before - requested <= 0 ? [] : layers.filter((layer) => layer.qtyRemaining > 0);
-  const knownValue = left.reduce((total, layer) => total + (layer.unitCost == null ? 0 : layer.qtyRemaining * layer.unitCost), 0);
-  const knownQty = left.reduce((total, layer) => total + (layer.unitCost == null ? 0 : layer.qtyRemaining), 0);
-  const totalQty = left.reduce((total, layer) => total + layer.qtyRemaining, 0);
-  return {
-    before,
-    after: before - requested,
-    costTotal,
-    unknownCostQty,
-    breakdown,
-    layers: left,
-    averageCost: totalQty > 0 && knownQty === totalQty ? knownValue / totalQty : null,
-    inventoryValue: knownValue,
-    costIncomplete: unknownCostQty > 0 || totalQty > knownQty
-  };
-}
+function consumeFifoAllowNegative(raw, quantity) { return averageCostModel.consume(raw,quantity,true); }
 
 async function readSettings(db) {
   const snap = await db.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC).get();
@@ -946,7 +911,7 @@ function hasOwn(object, key) {
 }
 
 function productFallbackUnitCost(raw) {
-  return numberOrNull(firstValue(raw || {}, ['averageCost', 'latestPurchaseCost', 'purchasePrice', 'cost']));
+  return averageCostModel.unit(raw);
 }
 
 function orderCostSnapshot(existing, inventoryRow, productRaw, quantity) {
@@ -1066,21 +1031,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
     const originalInventory = originalInventorySnap.exists ? originalInventorySnap.data() || {} : {};
     const cost = orderCostSnapshot(existing, originalInventory, raw, quantity);
     const unitCost = quantity > 0 && Number.isFinite(cost.costTotal) ? cost.costTotal / quantity : null;
-    const layers = materializeCostLayers(raw);
-    const positiveRestored = Math.max(0, after) - Math.max(0, before);
-    if (positiveRestored > 0) {
-      layers.push({
-        layerId: `REV-${line.id}`,
-        qtyRemaining: positiveRestored,
-        originalQty: positiveRestored,
-        unitCost,
-        costKnown: unitCost != null,
-        receivedAt: existing.orderedAt || line.orderedAt || new Date(),
-        referenceType: 'onlineCancellationReversal',
-        referenceId: clean(line.externalOrderNo || existing.externalOrderNo)
-      });
-    }
-    const layerSummary = summarizeCostLayers(layers);
+    const layerSummary = averageCostModel.snapshot(raw,after);
     transaction.set(productRef, {
       currentStock: after,
       costLayers: layerSummary.layers,
@@ -1311,7 +1262,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       inventoryAfter: applyInventoryNow ? fifo.after : fifo.before,
       costTotal: effectiveCostTotal,
       costEstimated,
-      costSource: costEstimated ? 'fifo+current-product-estimate' : 'fifo',
+      costSource: costEstimated ? 'manual-average-estimate' : 'product.averageCost',
       unknownCostQty: remainingUnknownCostQty,
       estimatedNetRate: settings.estimatedNetRate,
       estimatedNetAmount,
@@ -1337,7 +1288,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
         unitCost: line.quantity > 0 ? effectiveCostTotal / line.quantity : null,
         costTotal: effectiveCostTotal,
         unknownCostQty: remainingUnknownCostQty,
-        costMethod: costEstimated ? 'FIFO_OR_CURRENT_COST_ESTIMATE' : 'FIFO',
+        costMethod: 'MANUAL_AVERAGE',
         fifoBreakdown: fifo.breakdown,
         referenceType: 'platformOrder',
         referenceId: line.externalOrderNo,

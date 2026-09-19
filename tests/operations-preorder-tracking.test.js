@@ -11,7 +11,7 @@ test('preorders recognize the full transaction and estimated profit on the origi
   assert.match(source, /function estimatePreorderCost\(raw,qty\)/);
   assert.match(source, /grossProfit=orderTotal-costTotal/);
   assert.match(source, /orderTotal:orderTotal,total:orderTotal,costTotal:costTotal,costEstimated:preorder/);
-  assert.match(source, /costSource:preorder\?'preorderEstimate':'fifo'/);
+  assert.match(source, /costSource:preorder\?'preorderEstimate':'product\.averageCost'/);
   assert.match(source, /尚未設定成本，請先在商品主檔填入成本再建立預購/);
   assert.doesNotMatch(source, /total:preorder\?0:orderTotal/);
   assert.match(source, /預購成交已成立；收款與交貨分開追蹤/);
@@ -24,7 +24,7 @@ test('preorder delivery only records delivery and never moves the original sale 
   assert.ok(start > 0 && end > start);
   const fulfillment = source.slice(start, end);
   assert.match(fulfillment, /deliveredAt:deliveredAt,fulfillmentStatus:'delivered'/);
-  assert.match(fulfillment, /costEstimated:false,costSource:'fifo'/);
+  assert.match(fulfillment, /costEstimated:false,costSource:'product\.averageCost'/);
   assert.match(fulfillment, /預購交貨（不含收款）/);
   assert.doesNotMatch(fulfillment, /soldAt:deliveredAt/);
   assert.doesNotMatch(fulfillment, /name="receivedAmount"/);

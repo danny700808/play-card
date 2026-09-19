@@ -1,8 +1,8 @@
 (function(root,factory){
   'use strict';
-  if(typeof module==='object'&&module.exports)module.exports=factory(require('./operations-platform-order-anomalies-utils-v1.js'));
-  else root.OperationsPlatformOrderAnomaliesInventoryV1=factory(root.OperationsPlatformOrderAnomaliesUtilsV1);
-})(typeof window!=='undefined'?window:globalThis,function(utils){
+  if(typeof module==='object'&&module.exports)module.exports=factory(require('./operations-platform-order-anomalies-utils-v1.js'),require('./functions/inventoryAverageCost.js'));
+  else root.OperationsPlatformOrderAnomaliesInventoryV1=factory(root.OperationsPlatformOrderAnomaliesUtilsV1,root.YouziInventoryAverageCost);
+})(typeof window!=='undefined'?window:globalThis,function(utils,averageCostModel){
   'use strict';
   if(!utils)throw new Error('平台訂單異常工具程式尚未載入');
   const {clean,lower,numberOrNull,firstValue,hashText,dateFrom}=utils;
@@ -32,7 +32,7 @@
   }
 
   function productFallbackUnitCost(raw) {
-    return numberOrNull(firstValue(raw || {}, ['averageCost', 'latestPurchaseCost', 'purchasePrice', 'cost']));
+    return averageCostModel.unit(raw);
   }
 
   function materializeCostLayers(raw) {
@@ -66,46 +66,7 @@
     return layers;
   }
 
-  function consumeFifoAllowNegative(raw, quantity) {
-    const before = Number(raw && raw.currentStock || 0);
-    const positiveAvailable = Math.max(0, before);
-    const requested = Math.max(0, Math.round(Number(quantity || 0)));
-    const costableQuantity = Math.min(requested, positiveAvailable);
-    const layers = materializeCostLayers(raw || {});
-    let remaining = costableQuantity;
-    let costTotal = 0;
-    let unknownCostQty = Math.max(0, requested - costableQuantity);
-    const breakdown = [];
-    for (const layer of layers) {
-      if (remaining <= 0) break;
-      const take = Math.min(remaining, Number(layer.qtyRemaining || 0));
-      if (take <= 0) continue;
-      if (layer.unitCost == null) unknownCostQty += take;
-      else costTotal += take * Number(layer.unitCost || 0);
-      breakdown.push({ layerId: layer.layerId, qty: take, unitCost: layer.unitCost, referenceId: layer.referenceId });
-      layer.qtyRemaining -= take;
-      remaining -= take;
-    }
-    if (remaining > 0) unknownCostQty += remaining;
-    const after = before - requested;
-    const left = after <= 0 ? [] : layers.filter(function (layer) { return Number(layer.qtyRemaining || 0) > 0; });
-    const totalQty = left.reduce(function (sum, layer) { return sum + Number(layer.qtyRemaining || 0); }, 0);
-    const knownQty = left.reduce(function (sum, layer) { return sum + (layer.unitCost == null ? 0 : Number(layer.qtyRemaining || 0)); }, 0);
-    const knownValue = left.reduce(function (sum, layer) {
-      return sum + (layer.unitCost == null ? 0 : Number(layer.qtyRemaining || 0) * Number(layer.unitCost || 0));
-    }, 0);
-    return {
-      before: before,
-      after: after,
-      costTotal: costTotal,
-      unknownCostQty: unknownCostQty,
-      breakdown: breakdown,
-      layers: left,
-      averageCost: totalQty > 0 && knownQty === totalQty ? knownValue / totalQty : null,
-      inventoryValue: knownValue,
-      costIncomplete: unknownCostQty > 0 || totalQty > knownQty
-    };
-  }
+  function consumeFifoAllowNegative(raw, quantity) { return averageCostModel.consume(raw,quantity,true); }
 
   function platformMappingPatch(order) {
     const ids = order && order.platformIds && typeof order.platformIds === 'object' ? order.platformIds : {};
