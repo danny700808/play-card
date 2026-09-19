@@ -102,3 +102,14 @@ git diff --check
 登入程式為每次 OAuth state 保存實際 callbackUrl，交換授權碼沿用該網址。沒有此欄位的既有 state 使用原美國網址；不接受客戶端 query 指定網址、不因交換失敗跨區重試。新登入使用已登記的台灣網址。部署先完成並核對美國與台灣 callback，再部署 login starter。回復時改回美國起始網址但保留 per-state 相容處理，不能回退到忽略 callbackUrl 的舊 callback 實作。
 
 測試涵蓋四種入口、新／舊 state、切換中登入、取消、過期、未知 state、重复回傳及交換失敗；正式 smoke check 只建立合成登入 state 後取消，檢查兩區入口皆發出台灣 callback，無真實 LINE 帳號、授權碼或訊息。此檢查不能替代本機使用已授權帳號完成實際 LINE 登入、身分綁定與登入後畫面的驗證。
+
+
+## Messaging API 切換前保護（待部署及正式驗證）
+
+本機已核對 Channel `2006335686`，Webhook 尚為美國。切換前須先將美國、台灣兩個 `lineWebhook` 部署相同的簽章與持久事件去重處理，再完成正式空事件簽章檢查。原始 request bytes 的 HMAC 驗證在任何業務處理與去重紀錄前執行。兩區以同一台灣 Firestore 的 `lineWebhookEventProcessing`、Channel ID 與 `webhookEventId` 原子取得事件處理權。
+
+事件紀錄只含雜湊鍵、狀態、時間與區域，不保存文字、使用者 ID、replyToken 或原始錯誤。相同事件只允許一次 handler 嘗試；完成、失敗待查及處理中均不自動重跑。這是避免重複副作用的保護，不是承諾每筆事件一定成功。`needs-review` 或超過 120 秒的 processing 須核對原業務結果與通知紀錄，再決定人工修復；不可直接刪除 claim 或重送舊 reply token。新訊息仍使用新的事件 ID，正常分開處理。單一失敗不跳過同批其他事件，整批有失敗回 500。
+
+本機切換前的必要證據：兩区 ACTIVE；簽章 secret 參照一致；同一既有 secret 簽署的空 events 在兩區均 200，偽造簽章均 401；去重及失敗不重播測試通過。切換時僅改 Webhook URL 至 `https://asia-east1-youzi-c1b74.cloudfunctions.net/lineWebhook`，按 Verify 須 Success；Use webhook 保持開啟，redelivery 與 error statistics aggregation 維持原關閉設定。未得到正式驗證成功通知前不切換。
+
+網址回復：改回 `https://us-central1-youzi-c1b74.cloudfunctions.net/lineWebhook` 並 Verify。美國相容入口與同一事件 ledger 保留；切換網址不清除 ledger，亦不回退去重程式。正式空事件檢查不發送訊息；真實綁定與通知需本機另行驗證。

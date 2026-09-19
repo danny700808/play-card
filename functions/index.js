@@ -2217,6 +2217,85 @@ function validLineWebhookSignature(req) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
+const lineWebhookEvents = require('./lineWebhookEvents').createLineWebhookEvents({db,FieldValue:admin.firestore.FieldValue,channelId:'2006335686',region:process.env.FUNCTION_REGION});
+async function handleLineWebhookMessage(event) {
+  if (event.type !== 'message') return;
+  if (!event.message || event.message.type !== 'text') return;
+
+  const text = normalizeText(event.message.text);
+  const lineUserId = event.source && event.source.userId;
+  const replyToken = event.replyToken;
+
+  if (await handleExternalTeacherLineEvent(event)) {
+    return;
+  }
+
+  if (await handleCoursePortalLineEvent(event, {
+    replyLineMessage,
+    getLineProfile,
+    pushLineMessage
+  })) {
+    return;
+  }
+
+  const rentalCommand = parseRentalApplicationCommand(text);
+  const employeeCodeMatch = text.match(/^柚子人員綁定\s+([A-Z0-9-]+)$/i);
+  const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
+  const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
+  const oldMatch = text.match(/^柚子綁定\s+([^\s]+@[^\s]+)$/i);
+
+  if (!lineUserId) {
+    await replyLineMessage(replyToken, '無法取得 LINE 使用者 ID，請確認是從一般 LINE 帳號與官方帳號對話。');
+    return;
+  }
+
+  if (rentalCommand) {
+    await handleRentalApplicationLink({
+      applicationKey: rentalCommand.applicationKey,
+      declaredName: rentalCommand.declaredName,
+      lineUserId,
+      replyToken
+    });
+    return;
+  }
+
+  if (employeeCodeMatch) {
+    await handleEmployeeCodeBinding({
+      bindCode: employeeCodeMatch[1],
+      lineUserId,
+      replyToken
+    });
+    return;
+  }
+
+  if (oldMatch) {
+    await replyLineMessage(replyToken, '舊版綁定指令已停用。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
+    return;
+  }
+
+  if (employeeMatch) {
+    await handleEmployeeBinding({
+      email: normalizeEmail(employeeMatch[1]),
+      lineUserId,
+      replyToken
+    });
+    return;
+  }
+
+  if (managerMatch) {
+    await handleManagerBinding({
+      email: normalizeEmail(managerMatch[1]),
+      lineUserId,
+      replyToken
+    });
+    return;
+  }
+
+  if (text.includes('綁定')) {
+    await replyLineMessage(replyToken, '綁定格式錯誤。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
+  }
+}
+
 exports.lineWebhook = onRequest(
   {
     region: ['us-central1', 'asia-east1'],
@@ -2242,88 +2321,17 @@ exports.lineWebhook = onRequest(
 
       const events = Array.isArray(req.body && req.body.events) ? req.body.events : [];
 
+      let failed = false;
       for (const event of events) {
-        if (event.type !== 'message') continue;
-        if (!event.message || event.message.type !== 'text') continue;
-
-        const text = normalizeText(event.message.text);
-        const lineUserId = event.source && event.source.userId;
-        const replyToken = event.replyToken;
-
-        if (await handleExternalTeacherLineEvent(event)) {
-          continue;
-        }
-
-        if (await handleCoursePortalLineEvent(event, {
-          replyLineMessage,
-          getLineProfile,
-          pushLineMessage
-        })) {
-          continue;
-        }
-
-        const rentalCommand = parseRentalApplicationCommand(text);
-        const employeeCodeMatch = text.match(/^柚子人員綁定\s+([A-Z0-9-]+)$/i);
-        const employeeMatch = text.match(/^柚子員工綁定\s+([^\s]+@[^\s]+)$/i);
-        const managerMatch = text.match(/^柚子主管綁定\s+([^\s]+@[^\s]+)$/i);
-        const oldMatch = text.match(/^柚子綁定\s+([^\s]+@[^\s]+)$/i);
-
-        if (!lineUserId) {
-          await replyLineMessage(replyToken, '無法取得 LINE 使用者 ID，請確認是從一般 LINE 帳號與官方帳號對話。');
-          continue;
-        }
-
-        if (rentalCommand) {
-          await handleRentalApplicationLink({
-            applicationKey: rentalCommand.applicationKey,
-            declaredName: rentalCommand.declaredName,
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (employeeCodeMatch) {
-          await handleEmployeeCodeBinding({
-            bindCode: employeeCodeMatch[1],
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (oldMatch) {
-          await replyLineMessage(replyToken, '舊版綁定指令已停用。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
-          continue;
-        }
-
-        if (employeeMatch) {
-          await handleEmployeeBinding({
-            email: normalizeEmail(employeeMatch[1]),
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (managerMatch) {
-          await handleManagerBinding({
-            email: normalizeEmail(managerMatch[1]),
-            lineUserId,
-            replyToken
-          });
-          continue;
-        }
-
-        if (text.includes('綁定')) {
-          await replyLineMessage(replyToken, '綁定格式錯誤。人員請輸入：柚子人員綁定 EMP-編號；主管請輸入：柚子主管綁定 your@email.com');
-        }
+        if (event.type !== 'message' || !event.message || event.message.type !== 'text') continue;
+        try { await lineWebhookEvents.run(event, () => handleLineWebhookMessage(event)); }
+        catch (_) { failed = true; console.error('LINE webhook event requires review'); }
       }
 
-      res.status(200).send('OK');
+      res.status(failed ? 500 : 200).send(failed ? 'Event processing incomplete' : 'OK');
     } catch (error) {
-      console.error('lineWebhook error:', error);
-      res.status(200).send('OK');
+      console.error('LINE webhook processing failed');
+      res.status(500).send('Event processing incomplete');
     }
   }
 );
