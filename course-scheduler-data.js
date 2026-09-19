@@ -95,7 +95,7 @@
     return array(payload.teacherPayroll).map(function(row,index){
       return {
         id:safeId('payroll',row.id,index),teacherId:clean(row.teacherId),teacherName:clean(row.teacherName),
-        studentId:clean(row.studentId),studentName:clean(row.studentName),subject:clean(row.subject||row.chargeName),
+        studentId:clean(row.studentId),studentName:clean(row.studentName),subject:clean(row.subjectName||row.subject||row.chargeName),
         date:dateKey(row.date||row.occurredAt),occurredAt:clean(row.occurredAt),startTime:clean(row.startTime),endTime:clean(row.endTime),durationMinutes:Number(row.durationMinutes)||0,lessonUnits:Number(row.lessonUnits)||1,
         lessonPrice:numberOf(row.lessonPrice),splitType:clean(row.splitType),splitValue:numberOf(row.splitValue),
         allotRate:numberOf(row.allotRate),hourlyFee:numberOf(row.hourlyFee),
