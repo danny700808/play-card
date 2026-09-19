@@ -110,6 +110,6 @@ git diff --check
 
 事件紀錄只含雜湊鍵、狀態、時間與區域，不保存文字、使用者 ID、replyToken 或原始錯誤。相同事件只允許一次 handler 嘗試；完成、失敗待查及處理中均不自動重跑。這是避免重複副作用的保護，不是承諾每筆事件一定成功。`needs-review` 或超過 120 秒的 processing 須核對原業務結果與通知紀錄，再決定人工修復；不可直接刪除 claim 或重送舊 reply token。新訊息仍使用新的事件 ID，正常分開處理。單一失敗不跳過同批其他事件，整批有失敗回 500。
 
-本機切換前的必要證據：兩区 ACTIVE；簽章 secret 參照一致；同一既有 secret 簽署的空 events 在兩區均 200，偽造簽章均 401；去重及失敗不重播測試通過。切換時僅改 Webhook URL 至 `https://asia-east1-youzi-c1b74.cloudfunctions.net/lineWebhook`，按 Verify 須 Success；Use webhook 保持開啟，redelivery 與 error statistics aggregation 維持原關閉設定。未得到正式驗證成功通知前不切換。
+本機切換前的必要證據：兩区 ACTIVE；簽章 secret 參照一致；同一既有 secret 簽署的空 events 在兩區均 200，偽造簽章均 401；去重及失敗不重播測試通過。簽章檢查前另等候兩區最大 request timeout 加 15 秒，讓舊版本已開始的請求結束；去重不追溯部署前未留下紀錄的歷史事件。切換時僅改 Webhook URL 至 `https://asia-east1-youzi-c1b74.cloudfunctions.net/lineWebhook`，按 Verify 須 Success；Use webhook 保持開啟，redelivery 與 error statistics aggregation 維持原關閉設定。未得到正式驗證成功通知前不切換。
 
 網址回復：改回 `https://us-central1-youzi-c1b74.cloudfunctions.net/lineWebhook` 並 Verify。美國相容入口與同一事件 ledger 保留；切換網址不清除 ledger，亦不回退去重程式。正式空事件檢查不發送訊息；真實綁定與通知需本機另行驗證。
