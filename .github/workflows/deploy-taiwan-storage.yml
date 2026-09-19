@@ -1,0 +1,156 @@
+name: Deploy Taiwan Storage
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/storage-rollout.json'
+      - '.github/workflows/deploy-taiwan-storage.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: deploy-taiwan-storage
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Require completed seven-function recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node - <<'JS'
+          (async()=>{const response=await fetch('https://api.github.com/repos/danny700808/play-card/actions/runs/35443677125',{headers:{Authorization:'Bearer '+process.env.GH_TOKEN,Accept:'application/vnd.github+json'}});if(!response.ok)throw Error('Unable to verify recovery run');const run=await response.json();if(run.conclusion!=='success')throw Error('Seven-function recovery has not succeeded');console.log('Seven-function recovery succeeded');})().catch(error=>{console.error(error.message);process.exitCode=1;});
+          JS
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci --prefix functions
+      - name: Test portal code
+        run: |
+          set -euo pipefail
+          node --test tests/taiwan-deployment-completion.test.cjs tests/taiwan-region.test.cjs tests/course-calendar-startup.test.js
+          node --check functions/coursePortal.js
+          node --check functions/courseSubjectCatalog.js
+          node --check functions/courseLoginAuthV3.js
+          node --check functions/courseLoginIndexV3.js
+          node --check functions/personDataAdmin.js
+          node --check functions/courseLoginPolicy.js
+          node --check functions/index.js
+          node --check functions/employeeAuth.js
+          node --check functions/employeeDataGateway.js
+          node --check functions/employeeRegistration.js
+          node --check functions/inventoryCountAccess.js
+          node --test tests/inventory-average-cost.test.cjs tests/platform-order-anomaly-recheck.test.js
+          node --check functions/legacyTeacherForms.js
+          node --check functions/privateContractAssets.js
+          node --check functions/rentalCustomerPolicy.js
+          node --test tests/private-data-backend.test.cjs tests/rental-private-submit.test.cjs
+          node --test tests/private-inventory-pin.test.cjs tests/line-webhook-region.test.cjs
+          node --check functions/easystoreCatalogSync.js
+          node --check functions/externalTeacherOnboarding.js
+          node --check functions/externalTeacherWork.js
+          node --check manager-auth.js
+          node --check operations-manager-auth.js
+          node --check operations-phase1.js
+          node --test tests/teacher-view-cache.test.cjs tests/course-speed-bootstrap.test.cjs tests/course-speed-queries.test.cjs tests/course-query-index-readiness.test.cjs
+          node --check course-portal-common.js
+          node --check room-booking-v2.js
+          node --check teacher-course-portal-v8.js
+          node --check teacher-profile.js
+          node --check teacher-contract.js
+          node --check person-data-admin.js
+          node --check teacher-daily-reminder.js
+          node scripts/test-course-reliability.cjs
+          node tests/course-portal.test.js
+          node --test tests/course-half-hour.test.js
+          node --test tests/course-subject-catalog.test.js
+          node --test tests/course-login-policy.test.js
+          node tests/course-login-routing.test.js
+          node --test tests/unified-email-login.test.cjs tests/unified-login.test.cjs tests/operations-return-concurrency.test.cjs tests/operations-startup-load.test.cjs
+          node tests/room-booking-v2.test.js
+          node tests/teacher-course-portal-mobile.test.js
+          node --test tests/teacher-daily-reminder.test.js
+          node --test tests/teacher-utility-pending.test.js
+          node --test tests/teacher-profile-flow.test.js
+          node --test tests/teacher-profile-change-review.test.js
+          node --test tests/person-data-admin.test.js
+          node --test tests/operations-manager-auth.test.js
+          node --test tests/external-teacher-work-v2.test.js
+          node tests/external-teacher-center.test.js
+          (cd functions && node - <<'NODE'
+          const deployed = require('.');
+          for (const name of ['coursePortalRoomBookingOperation','coursePortalRoomBookingNotice','coursePortalRoomBookingNoticeRecovery','coursePortalTeacherSaveProfileDraft','coursePortalTeacherContractSession','coursePortalTeacherSubmitContract','coursePortalAdminSaveTeacherSubjects','coursePortalAdminSaveSubjectCatalog','coursePortalAdminSaveFeePlan','coursePortalAdminMapSubjectSuggestion','personDataAdminInventory','personDataAdminDetail','personDataAdminAction','personDataAdminContractInventory','personDataAdminContractDetail','personDataAdminContractAction','personDataAdminProfileChangeInventory','personDataAdminProfileChangeAction','employeeSecureLogin','employeeChangePassword','employeeForgotPassword','sendGmailTestEmail','syncEasyStoreCatalog','researchProductListingCase','importProductListingImages','generateProductListingImage','publishProductListingCase','externalTeacherCreateBindCode','externalTeacherListContractTemplate','externalTeacherSaveContractTemplate','externalTeacherListContracts','externalTeacherWork','sendNotificationQueueOnCreate','flushNotificationQueue']) {
+            if (!deployed[name]) throw new Error(`Missing Firebase Function export: ${name}`);
+          }
+          NODE
+          )
+
+      - name: Verify migrated files, privacy, uploads and cleanup
+        env:
+          NODE_PATH: functions/node_modules
+        run: |
+          set -euo pipefail
+          node --test tests/storage-deployment-scope.test.cjs tests/storage-routing.test.cjs tests/storage-reconcile.test.cjs tests/mobile-video-access.test.cjs tests/product-listing-source-cleanup.test.js tests/unified-line-binding-admin.test.js tests/product-ai-research.test.js tests/book-cover-enrichment.test.js
+      - name: Prepare Firebase credentials and runtime settings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-firebase-service-account.json
+          LINE_CHANNEL_SECRET_PATH: ${{ runner.temp }}/line-channel-secret.txt
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}" || { echo "FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is empty" >&2; exit 1; }
+          test -n "${GMAIL_USER:-}" || { echo "GMAIL_USER is empty" >&2; exit 1; }
+          test -n "${GMAIL_APP_PASSWORD:-}" || { echo "GMAIL_APP_PASSWORD is empty" >&2; exit 1; }
+          RUNTIME_LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-}"
+          test -n "$RUNTIME_LINE_TOKEN" || { echo "LINE access token is empty" >&2; exit 1; }
+          test -n "${LINE_CHANNEL_SECRET:-}" || { echo "LINE_CHANNEL_SECRET is empty" >&2; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
+          printf '%s' "$LINE_CHANNEL_SECRET" > "$LINE_CHANNEL_SECRET_PATH"
+          chmod 600 "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$LINE_CHANNEL_SECRET_PATH"
+          export RUNTIME_LINE_TOKEN
+          node <<'NODE'
+          const fs = require('fs');
+          const rows = {
+            LINE_CHANNEL_ACCESS_TOKEN: process.env.RUNTIME_LINE_TOKEN || '',
+            GMAIL_USER: process.env.GMAIL_USER || '',
+            GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
+            EMAIL_FROM: process.env.EMAIL_FROM || '',
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/',
+            LINE_LOGIN_CALLBACK_URL: 'https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback'
+          };
+          const content = Object.entries(rows)
+            .map(([key, value]) => `${key}=${JSON.stringify(String(value))}`)
+            .join('\n') + '\n';
+          fs.writeFileSync('functions/.env', content, { mode: 0o600 });
+          NODE
+
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+
+      - name: Reconcile and verify copies without switching clients
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: node .github/scripts/reconcile-taiwan-storage.cjs
+      - name: Verify storage permissions and migration behavior
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: node .github/scripts/verify-taiwan-storage.cjs
+      - name: Deploy only reviewed storage functions in small batches
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: node .github/scripts/deploy-taiwan-storage.cjs
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/youzi-firebase-service-account.json" "$RUNNER_TEMP/line-channel-secret.txt" functions/.env

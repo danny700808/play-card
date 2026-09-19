@@ -1,3 +1,4 @@
+const storageRouting = require('./storageRouting');
 'use strict';
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -386,7 +387,7 @@ async function signedIdentityFiles(group) {
       const path = clean(file && file.storagePath);
       if (!path) continue;
       try {
-        const [url] = await admin.storage().bucket().file(path).getSignedUrl({
+        const [url] = await (await storageRouting.readFile(path)).getSignedUrl({
           action: 'read', expires: Date.now() + 15 * 60 * 1000
         });
         results.push({ name: clean(file.fileName) || '身分證明文件', url, expiresInMinutes: 15 });
@@ -710,7 +711,7 @@ async function deleteTestGroup(group, request, confirmation) {
   });
   batchAudit(batch, 'delete-test', group, request, { deletedCount: deletions.length });
   await batch.commit();
-  await Promise.allSettled(storagePaths.map((path) => admin.storage().bucket().file(path).delete({ ignoreNotFound: true })));
+  await Promise.allSettled(storagePaths.map((path) => storageRouting.deletePath(path)));
   return { ok: true, message: `已永久刪除 ${deletions.length} 筆測試資料；正式歷史檢查為 0 筆。` };
 }
 

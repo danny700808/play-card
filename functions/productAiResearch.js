@@ -1,3 +1,4 @@
+const storageRouting = require('./storageRouting');
 'use strict';
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -1913,7 +1914,7 @@ function registerProductAiResearch(target) {
           : '目前網址與同型號公開頁都沒有找到尺寸足夠的商品圖片；可以改貼原廠商品頁，或直接上傳截圖。');
       }
 
-      const bucket = admin.storage().bucket();
+      const bucket = storageRouting.writeBucket();
       const imported = [];
       for (let index = 0; index < downloaded.length; index += 1) {
         const row = downloaded[index], downloadToken = crypto.randomUUID();
@@ -2043,7 +2044,7 @@ function registerProductAiResearch(target) {
     }
     const model = clean(process.env.OPENAI_PRODUCT_IMAGE_EDIT_MODEL) || DEFAULT_IMAGE_EDIT_MODEL;
     try {
-      const bucket = admin.storage().bucket();
+      const bucket = storageRouting.writeBucket();
       const brandCreativeStyleAssignment = listingBrandCreative.assignment(
         listingCase.brandCreativeStyleAssignment,
         `${clean(context && (context.productId || context.sku || context.name))}|${clean(listingCase.researchedProductName)}`

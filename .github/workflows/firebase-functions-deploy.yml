@@ -51,8 +51,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine storage deployment ownership
+        run: node .github/scripts/storage-rollout-owner.cjs >> "$GITHUB_ENV"
 
       - name: Report deployment started
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -147,6 +153,7 @@ jobs:
         run: npm install --global firebase-tools@15.24.0
 
       - name: Deploy course mirror reader, synchronizers, and triggers
+        if: env.STORAGE_ROLLOUT_OWNED == 'false'
         id: deploy_reader
         continue-on-error: true
         env:
@@ -162,7 +169,7 @@ jobs:
 
       - name: Make deployed course mirror reader publicly callable
         id: public_access
-        if: steps.deploy_reader.outcome == 'success'
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (steps.deploy_reader.outcome == 'success')
         continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
@@ -172,7 +179,7 @@ jobs:
 
       - name: Verify deployed course mirror returns actual schedule data
         id: health_check
-        if: steps.deploy_reader.outcome == 'success' && steps.public_access.outcome == 'success'
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (steps.deploy_reader.outcome == 'success' && steps.public_access.outcome == 'success')
         continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
@@ -241,7 +248,7 @@ jobs:
 
       - name: Repair and verify July 2026 teacher payroll
         id: payroll_repair
-        if: github.event_name == 'workflow_dispatch' && inputs.repair_july_2026_payroll == true && steps.deploy_reader.outcome == 'success' && steps.health_check.outcome == 'success'
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (github.event_name == 'workflow_dispatch' && inputs.repair_july_2026_payroll == true && steps.deploy_reader.outcome == 'success' && steps.health_check.outcome == 'success')
         continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
@@ -348,7 +355,7 @@ jobs:
           NODE
 
       - name: Upload course mirror diagnostics
-        if: always()
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (always())
         uses: actions/upload-artifact@v4
         with:
           name: course-mirror-diagnostics-${{ github.run_id }}
@@ -361,7 +368,7 @@ jobs:
           retention-days: 7
 
       - name: Report final deployment status
-        if: always()
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (always())
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -374,7 +381,7 @@ jobs:
         run: node .github/scripts/course-mirror-report.cjs
 
       - name: Fail workflow when deployment, access, health check, or requested payroll repair failed
-        if: steps.deploy_reader.outcome != 'success' || steps.public_access.outcome != 'success' || steps.health_check.outcome != 'success' || (steps.payroll_repair.outcome != 'success' && steps.payroll_repair.outcome != 'skipped')
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (steps.deploy_reader.outcome != 'success' || steps.public_access.outcome != 'success' || steps.health_check.outcome != 'success' || (steps.payroll_repair.outcome != 'success' && steps.payroll_repair.outcome != 'skipped'))
         run: |
           echo "Deployment outcome: ${{ steps.deploy_reader.outcome }}"
           echo "Public access outcome: ${{ steps.public_access.outcome }}"

@@ -10,7 +10,7 @@ function parseAsset(data){
   if(!buffer.length||buffer.length>MAX_BYTES)throw new Error('附件大小不正確。');
   return {path,buffer,contentType:match[1]};
 }
-function createPrivateContractAssets({bucket,authorize,baseUrl}){
+function createPrivateContractAssets({bucket,authorize,baseUrl,readFile=async path=>bucket.file(path)}){
   async function upload(kind,data){
     await authorize(kind,data.id,data.token);
     const asset=parseAsset(data),id=String(data.id||'').replace(/[^a-zA-Z0-9_-]/g,'_');
@@ -30,7 +30,7 @@ function createPrivateContractAssets({bucket,authorize,baseUrl}){
     const prefix=(kind==='rental'?'rental-contracts/':'external-teachers/')+id.replace(/[^a-zA-Z0-9_-]/g,'_')+'/private/';
     const path=String(data.path||'');
     if(!path.startsWith(prefix)||!/^[-A-Za-z0-9_./]+$/.test(path)||path.includes('..'))throw new Error('附件不屬於這份契約。');
-    const file=bucket.file(path),[metadata]=await file.getMetadata();
+    const file=await readFile(path),[metadata]=await file.getMetadata();
     if(Number(metadata.size)>MAX_BYTES)throw new Error('附件大小不正確。');
     const [buffer]=await file.download();return {buffer,contentType:metadata.contentType||'application/octet-stream'};
   }
@@ -41,13 +41,13 @@ function validateAssetUrl(value,{kind,id,token,previous=[],projectId=process.env
   if(url.protocol!=='https:'||url.username||url.password)throw Error('附件網址不正確。');
   if(previous.includes(text))return text;
   const prefix=(kind==='rental'?'rental-contracts/':'external-teachers/')+String(id).replace(/[^a-zA-Z0-9_-]/g,'_')+'/';
-  if(url.origin==='https://us-central1-'+projectId+'.cloudfunctions.net'&&url.pathname==='/privateContractAssetHttp'&&url.searchParams.get('kind')===kind&&url.searchParams.get('id')===String(id)&&url.searchParams.get('token')===String(token)){
+  if(['us-central1','asia-east1'].some(region=>url.origin==='https://'+region+'-'+projectId+'.cloudfunctions.net')&&url.pathname==='/privateContractAssetHttp'&&url.searchParams.get('kind')===kind&&url.searchParams.get('id')===String(id)&&url.searchParams.get('token')===String(token)){
     const path=url.searchParams.get('path')||'';
     if(path.startsWith(prefix+'private/')&&!path.includes('..'))return text;
   }
   // Old pages can finish an upload during the staged deployment.
   const match=/^\/v0\/b\/([^/]+)\/o\/(.+)$/.exec(url.pathname);
-  if(url.hostname==='firebasestorage.googleapis.com'&&match&&[projectId+'.appspot.com',projectId+'.firebasestorage.app'].includes(match[1])){
+  if(url.hostname==='firebasestorage.googleapis.com'&&match&&[projectId+'.appspot.com',projectId+'.firebasestorage.app',projectId+'-taiwan'].includes(match[1])){
     const path=decodeURIComponent(match[2]);if(path.startsWith(prefix)&&!path.includes('..'))return text;
   }
   throw Error('附件不屬於這份契約，請重新上傳。');

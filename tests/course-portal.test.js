@@ -2713,7 +2713,7 @@ assert(backend.includes('...rolloverPeriodRefs.map((ref) => tx.get(ref))'), '簽
 assert(backend.includes('...rolloverPaymentRefs.map((ref) => tx.get(ref))'), '簽到續期沒有在同一 Firestore transaction 先讀待繳資料');
 assert(backend.includes("? 'pending_review' : 'onsite_pending'"), '匯款與現場繳費沒有進入各自的待確認狀態');
 assert(backend.includes("status: 'confirmed'"), '主管確認後沒有建立正式付款狀態');
-assert(backend.includes("admin.storage().bucket().file(storagePath).save"), '匯款截圖沒有由後端存進私人儲存空間');
+assert(backend.includes("storageRouting.writeBucket().file(storagePath).save"), '匯款截圖沒有由後端存進私人儲存空間');
 assert(backend.includes("cacheControl: 'private, no-store, max-age=0'"), '匯款截圖沒有設定私人禁止快取');
 assert(backend.includes('mergePortalTuitionRows'), '主管確認後的期別與付款沒有合併回學費資料');
 assert(backend.includes("schedule: '0 9 * * *'"), '學費 LINE 提醒不是台北時間上午 9 點檢查');

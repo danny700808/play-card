@@ -1,3 +1,4 @@
+const storageRouting = require('./storageRouting');
 /**
  * 外聘老師獨立簽約模組
  *
@@ -24,7 +25,7 @@ function db() {
 }
 
 function bucket() {
-  return admin.storage().bucket();
+  return storageRouting.writeBucket();
 }
 
 function clean(value) {

@@ -181,8 +181,9 @@ assert(workflow.includes('node .github/scripts/course-mirror-report.cjs'), '工�
 assert(workflow.includes('course-mirror-diagnostics'), '驗證失敗時未保留診斷紀錄');
 const payrollRepairCondition = workflow.match(/id: payroll_repair\s+if: ([^\n]+)/)[1];
 const deploymentFailureCondition = workflow.match(/name: Fail workflow[^\n]+\s+if: ([^\n]+)/)[1];
-function workflowCondition(expression, eventName, requested, payrollOutcome, healthOutcome = 'success') {
+function workflowCondition(expression, eventName, requested, payrollOutcome, healthOutcome = 'success', storageOwned = false) {
   return vm.runInNewContext(expression, {
+    env: { STORAGE_ROLLOUT_OWNED: String(storageOwned) },
     github: { event_name: eventName },
     inputs: { repair_july_2026_payroll: requested },
     steps: {
@@ -193,6 +194,7 @@ function workflowCondition(expression, eventName, requested, payrollOutcome, hea
     }
   });
 }
+assert(!workflowCondition(payrollRepairCondition, 'workflow_dispatch', true, 'success', 'success', true), '檔案部署分流不能順帶執行歷史薪資修補');
 assert(!workflowCondition(payrollRepairCondition, 'push', true, 'skipped'), '日常更新不能執行歷史薪資修補');
 assert(!workflowCondition(payrollRepairCondition, 'workflow_dispatch', false, 'skipped'), '手動部署未勾選時不能修補薪資');
 assert(workflowCondition(payrollRepairCondition, 'workflow_dispatch', true, 'success'), '明確要求的薪資修補應保留');

@@ -44,6 +44,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Determine storage deployment ownership
+        run: node .github/scripts/storage-rollout-owner.cjs >> "$GITHUB_ENV"
+
       - name: Select deployment scope
         id: scope
         env:
@@ -80,7 +83,7 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@15.24.0
       - name: Deploy product listing functions and hosting
-        if: steps.scope.outputs.scope == 'full'
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (steps.scope.outputs.scope == 'full')
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: >-
@@ -90,7 +93,7 @@ jobs:
           --non-interactive
           --force
       - name: Deploy frontend only
-        if: steps.scope.outputs.scope == 'hosting'
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (steps.scope.outputs.scope == 'hosting')
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
         run: firebase deploy --only hosting --project youzi-c1b74 --non-interactive

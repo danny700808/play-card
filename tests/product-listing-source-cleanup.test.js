@@ -484,3 +484,13 @@ test('暫時失敗結果會拋錯交給 retry:true 重送，blocked 與 complete
   assert.equal(finalizeSourceCleanupEvent({ status: 'blocked', reason: 'unsafe-storage-path' }, 'sku-1').status, 'blocked');
   assert.equal(finalizeSourceCleanupEvent({ status: 'completed' }, 'sku-1').status, 'completed');
 });
+
+test('跨桶同一路徑分別保留 lineage 與 generation，核准後清理兩份副本', async () => {
+  const productId='product-dual',path=sourcePrefixForProduct(productId)+'source.jpg';
+  const oldFile=new FakeFile(path,{generation:'101'}),newFile=new FakeFile(path,{generation:'202'});
+  const buckets=[new FakeBucket('youzi-c1b74.firebasestorage.app',[oldFile]),new FakeBucket('youzi-c1b74-taiwan',[newFile])];
+  let lineage;
+  const result=await runProductListingSourceCleanup({productId,caseRecord:verifiedCase(),jobId:'job-v2-1',jobRecord:completedJob(productId),buckets,persist:async patch=>{lineage=patch.sourceImageRetentionPolicy.sourceBinaryLineageMetadata||lineage;}});
+  assert.equal(result.status,'completed');assert.equal(result.deletedCount,2);assert.equal(lineage.length,2);
+  assert.equal(oldFile.deleteCalls[0].preconditionOpts.ifGenerationMatch,'101');assert.equal(newFile.deleteCalls[0].preconditionOpts.ifGenerationMatch,'202');
+});

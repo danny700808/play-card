@@ -50,6 +50,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Determine storage deployment ownership
+        run: node .github/scripts/storage-rollout-owner.cjs >> "$GITHUB_ENV"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -103,7 +106,7 @@ jobs:
         run: npm install --global firebase-tools@15.24.0
 
       - name: Deploy unified LINE binding endpoints
-        if: github.event_name != 'pull_request'
+        if: env.STORAGE_ROLLOUT_OWNED == 'false' && (github.event_name != 'pull_request')
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |

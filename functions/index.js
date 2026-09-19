@@ -1,3 +1,4 @@
+const storageRouting = require('./storageRouting');
 const { shouldAddTrialNotice, trialNotificationText, trialNotificationHtml } = require('./trialNotificationNotice');
 const { queueBlockReason, deletedPersonMatches } = require('./notificationDeliveryGuard');
 const { registerGoodsInquiryNotifications } = require('./goodsInquiryNotifications');
@@ -2375,9 +2376,10 @@ require('./portalContractNotices').registerPortalContractNotices(exports);
 const legacyTeacherForms = require('./legacyTeacherForms').createLegacyTeacherForms({db,FieldValue:admin.firestore.FieldValue,baseUrl:webBaseUrl(),queueEmail:createNotificationQueue,queueManager:queueManagerNotification});
 let privateContractAssetsInstance;
 function privateContractAssets(){return privateContractAssetsInstance||(privateContractAssetsInstance=require('./privateContractAssets').createPrivateContractAssets({
-  bucket:admin.storage().bucket(),
+  bucket:storageRouting.writeBucket(),
+  readFile:storageRouting.readFile,
   authorize:async(kind,id,token)=>kind==='rental'?getContractForToken(id,token):legacyTeacherForms.authorize(id,token),
-  baseUrl:'https://us-central1-'+(process.env.GCLOUD_PROJECT||'youzi-c1b74')+'.cloudfunctions.net/privateContractAssetHttp'
+  baseUrl:'https://asia-east1-'+(process.env.GCLOUD_PROJECT||'youzi-c1b74')+'.cloudfunctions.net/privateContractAssetHttp'
 }));}
 async function rateLimitPublicForm(req,purpose){
   const key=crypto.createHash('sha256').update(purpose+'|'+clean(req.ip||'unknown')).digest('hex');
@@ -2408,7 +2410,7 @@ exports.employeeRegister=onCall({region:['us-central1', 'asia-east1'],timeoutSec
 
 const inventoryCountAccess=require('./inventoryCountAccess').createInventoryCountAccess({db,FieldValue:admin.firestore.FieldValue,requireManager:requireHttpManager});
 exports.inventoryCountLoginHttp=httpEndpoint(async(data,req)=>{if(data.action==='connectionInfo')return {currentIp:clean(req.ip).replace(/^::ffff:/,'')};await rateLimitPublicForm(req,'inventory-pin');return inventoryCountAccess.login(data);});
-const productPhotoAccess=require('./productPhotoAccess').createProductPhotoAccess({db,FieldValue:admin.firestore.FieldValue,bucket:{get name(){return admin.storage().bucket().name;},file:path=>admin.storage().bucket().file(path)},authorize:token=>inventoryCountAccess.session(token)});
-const productVideoAccess=require('./productVideoAccess').createProductVideoAccess({db,FieldValue:admin.firestore.FieldValue,bucket:{get name(){return admin.storage().bucket().name;},file:path=>admin.storage().bucket().file(path)},authorize:token=>inventoryCountAccess.session(token)});
+const productPhotoAccess=require('./productPhotoAccess').createProductPhotoAccess({db,FieldValue:admin.firestore.FieldValue,bucket:{get name(){return storageRouting.writeBucket().name;},file:path=>storageRouting.writeBucket().file(path)},authorize:token=>inventoryCountAccess.session(token)});
+const productVideoAccess=require('./productVideoAccess').createProductVideoAccess({db,FieldValue:admin.firestore.FieldValue,resolveBucket:storageRouting.bucket,legacyBucketName:storageRouting.LEGACY_BUCKET,bucket:{get name(){return storageRouting.writeBucket().name;},file:path=>storageRouting.writeBucket().file(path)},authorize:token=>inventoryCountAccess.session(token)});
 exports.inventoryCountProductsHttp=httpEndpoint((data,req)=>{if(data.action==='uploadPhoto')return productPhotoAccess.upload(data);if(data.action==='startVideo')return productVideoAccess.start(data);if(data.action==='finishVideo')return productVideoAccess.finish(data);return inventoryCountAccess.products(data,req);});
 exports.inventoryCountSaveHttp=httpEndpoint((data,req)=>inventoryCountAccess.save(data,req));

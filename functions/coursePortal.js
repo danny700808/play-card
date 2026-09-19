@@ -1,3 +1,4 @@
+const storageRouting = require('./storageRouting');
 const { bookingPage } = require('./roomBookingPages');
 const { recipientFields, notificationRecipientKey } = require('./portalNotificationPolicy');
 const { applyLessonSettings } = require('./courseLessonSettings');
@@ -3408,7 +3409,7 @@ async function teacherUtilitySaveProfileDraft(data) {
   for (let index = 0; index < incomingImages.length; index += 1) {
     const image = teacherUtilityIdentityImage(incomingImages[index]);
     const storagePath = `teacher-private-profiles/${profileId}/identity/${Date.now()}-${index}-${randomToken(8)}.jpg`;
-    await admin.storage().bucket().file(storagePath).save(image.buffer, {
+    await storageRouting.writeBucket().file(storagePath).save(image.buffer, {
       resumable: false,
       metadata: {
         contentType: 'image/jpeg',
@@ -7314,7 +7315,7 @@ async function studentSubmitTuitionPayment(data) {
       `receipt-${revision}-${randomToken(6)}`
     ].join('/');
     uploadedReceiptStoragePath = storagePath;
-    await admin.storage().bucket().file(storagePath).save(receipt.buffer, {
+    await storageRouting.writeBucket().file(storagePath).save(receipt.buffer, {
       resumable: false,
       metadata: {
         contentType: receipt.contentType,
@@ -7352,12 +7353,12 @@ async function studentSubmitTuitionPayment(data) {
     });
   } catch (error) {
     if (uploadedReceiptStoragePath) {
-      await admin.storage().bucket().file(uploadedReceiptStoragePath).delete({ ignoreNotFound: true }).catch(() => null);
+      await storageRouting.deletePath(uploadedReceiptStoragePath).catch(() => null);
     }
     throw error;
   }
   if (oldReceiptStoragePath && oldReceiptStoragePath !== uploadedReceiptStoragePath) {
-    await admin.storage().bucket().file(oldReceiptStoragePath).delete({ ignoreNotFound: true }).catch(() => null);
+    await storageRouting.deletePath(oldReceiptStoragePath).catch(() => null);
   }
   const methodText = paymentMethod === 'bank_transfer' ? '轉帳繳費' : '現場繳費';
   const adminBody = [
@@ -11805,7 +11806,7 @@ async function adminTuitionPaymentScreenshot(data) {
   const row = snapshot.data() || {};
   const storagePath = clean(row.receiptStoragePath);
   if (!storagePath) throw new HttpsError('not-found', '這筆資料沒有匯款截圖。');
-  const [buffer] = await admin.storage().bucket().file(storagePath).download();
+  const [buffer] = await (await storageRouting.readFile(storagePath)).download();
   if (!buffer.length || buffer.length > TUITION_RECEIPT_MAX_BYTES) {
     throw new HttpsError('failed-precondition', '匯款截圖大小異常，請請學生重新上傳。');
   }
@@ -11861,7 +11862,7 @@ async function renderTuitionReceiptPng(receipt) {
 async function saveTuitionReceiptImage(receiptId, buffer) {
   const storagePath = `course-portal/tuition-receipts/${clean(receiptId)}.png`;
   const downloadToken = crypto.randomUUID();
-  const bucket = admin.storage().bucket();
+  const bucket = storageRouting.writeBucket();
   await bucket.file(storagePath).save(buffer, {
     resumable: false,
     metadata: {
@@ -13617,7 +13618,7 @@ async function teacherSubmitContactBookPost(data) {
   const postId = randomToken(12);
   const imageRows = await Promise.all(images.map(async (image, index) => {
     const path = `course-portal/contact-book/${postId}/${index}-${randomToken(5)}`;
-    await admin.storage().bucket().file(path).save(image.buffer, {
+    await storageRouting.writeBucket().file(path).save(image.buffer, {
       resumable: false,
       metadata: { contentType: image.contentType, cacheControl: 'private, no-store, max-age=0' }
     });
@@ -13647,7 +13648,7 @@ async function studentContactBookImage(data) {
   if (!snapshot.exists || !allowed.has(clean(snapshot.data().studentId))) throw new HttpsError('permission-denied', '沒有這張照片的查看權限。');
   const image = (snapshot.data().images || [])[imageIndex];
   if (!image || !clean(image.storagePath)) throw new HttpsError('not-found', '找不到這張照片。');
-  const [buffer] = await admin.storage().bucket().file(clean(image.storagePath)).download();
+  const [buffer] = await (await storageRouting.readFile(clean(image.storagePath))).download();
   if (!buffer.length || buffer.length > CONTACT_BOOK_IMAGE_MAX_BYTES) throw new HttpsError('failed-precondition', '照片資料異常。');
   return { ok: true, contentType: clean(image.contentType) || 'image/jpeg', dataUrl: `data:${clean(image.contentType) || 'image/jpeg'};base64,${buffer.toString('base64')}` };
 }

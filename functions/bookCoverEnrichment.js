@@ -1,3 +1,4 @@
+const storageRouting = require('./storageRouting');
 'use strict';
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -646,7 +647,7 @@ function firebaseDownloadUrl(bucketName, objectPath, token) {
 }
 
 async function saveCoverToStorage(productId, sku, candidate, image) {
-  const bucket = admin.storage().bucket();
+  const bucket = storageRouting.writeBucket();
   const digest = crypto.createHash('sha256').update(image.buffer).digest('hex');
   const safeId = clean(productId).replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 120) || 'product';
   const objectPath = `product-book-covers/${safeId}/${digest.slice(0, 24)}.jpg`;
