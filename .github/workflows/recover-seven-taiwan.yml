@@ -1,0 +1,78 @@
+name: Recover seven Taiwan functions
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/recover-seven-taiwan.yml'
+      - '.github/scripts/recover-seven-taiwan.cjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: recover-seven-taiwan
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Ensure recovery uses the already tested application revision
+        run: git diff --exit-code 76077d3dba398afd57aab152e16fcc14711f27e2 -- functions/ firebase.json
+      - run: npm ci --prefix functions
+      - name: Prepare Firebase credentials and runtime settings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-firebase-service-account.json
+          LINE_CHANNEL_SECRET_PATH: ${{ runner.temp }}/line-channel-secret.txt
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}" || { echo "FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 is empty" >&2; exit 1; }
+          test -n "${GMAIL_USER:-}" || { echo "GMAIL_USER is empty" >&2; exit 1; }
+          test -n "${GMAIL_APP_PASSWORD:-}" || { echo "GMAIL_APP_PASSWORD is empty" >&2; exit 1; }
+          RUNTIME_LINE_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-}"
+          test -n "$RUNTIME_LINE_TOKEN" || { echo "LINE access token is empty" >&2; exit 1; }
+          test -n "${LINE_CHANNEL_SECRET:-}" || { echo "LINE_CHANNEL_SECRET is empty" >&2; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SERVICE_ACCOUNT_PATH"
+          printf '%s' "$LINE_CHANNEL_SECRET" > "$LINE_CHANNEL_SECRET_PATH"
+          chmod 600 "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$LINE_CHANNEL_SECRET_PATH"
+          export RUNTIME_LINE_TOKEN
+          node <<'NODE'
+          const fs = require('fs');
+          const rows = {
+            LINE_CHANNEL_ACCESS_TOKEN: process.env.RUNTIME_LINE_TOKEN || '',
+            GMAIL_USER: process.env.GMAIL_USER || '',
+            GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
+            EMAIL_FROM: process.env.EMAIL_FROM || '',
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/',
+            LINE_LOGIN_CALLBACK_URL: 'https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback'
+          };
+          const content = Object.entries(rows)
+            .map(([key, value]) => `${key}=${JSON.stringify(String(value))}`)
+            .join('\n') + '\n';
+          fs.writeFileSync('functions/.env', content, { mode: 0o600 });
+          NODE
+
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+
+      - name: Deploy only seven named functions sequentially and verify Taiwan
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+        run: node .github/scripts/recover-seven-taiwan.cjs
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/youzi-firebase-service-account.json" "$RUNNER_TEMP/line-channel-secret.txt" functions/.env
