@@ -31,12 +31,12 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260529notifybadge1"></script>
+  <script src="config.js?v=20260919-taiwan-v2"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-  <script src="firebase-client.js?v=20260914-private-data-v1"></script>
+  <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
   <script src="app.js?v=20260802-security-phase1"></script>
   <script>
     let rows=[];let activeTab='pending';let currentUser=null;let managerAuthReady=null;
@@ -47,7 +47,7 @@
     function setMsg(t,type){$('msg').innerHTML=t?`<div class="${type||'success'}">${esc(t)}</div>`:''}
     function ensureFirebaseApp(){if(firebase.apps&&firebase.apps.length)return firebase.apps[0];return firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG)}
     async function waitForManagerAuth(){ensureFirebaseApp();if(managerAuthReady)return managerAuthReady;managerAuthReady=new Promise((resolve,reject)=>{const auth=firebase.auth();let settled=false,unsubscribe=null,timer=null;const finish=(user,error)=>{if(settled)return;settled=true;if(timer)clearTimeout(timer);try{if(unsubscribe)unsubscribe()}catch(e){}if(error||!user){reject(error||new Error('管理者安全登入已失效，需要重新登入。'));return}resolve(user)};unsubscribe=auth.onAuthStateChanged(user=>finish(user,null),error=>finish(null,error));timer=setTimeout(()=>finish(auth.currentUser,null),8000)}).then(async user=>{const token=await user.getIdTokenResult(true);const claims=token&&token.claims||{};const role=lower(claims.role||claims.userRole||claims.permissionRole);const email=lower(claims.email||user.email);const allowed=claims.admin===true||claims.manager===true||claims.owner===true||['admin','manager','owner','主管','管理者'].includes(role)||email==='danny700808@gmail.com';const localEmail=lower(currentUser&&currentUser.email);if(!allowed||(localEmail&&email&&localEmail!==email))throw new Error('目前的安全登入與管理者身分不一致，請重新登入。');return user});return managerAuthReady}
-    async function managerCall(name,data){const user=await waitForManagerAuth();await user.getIdToken(true);const result=await firebase.app().functions('us-central1').httpsCallable(name)(data||{});return result&&result.data||{}}
+    async function managerCall(name,data){const user=await waitForManagerAuth();await user.getIdToken(true);const result=await firebase.app().functions(((window.APP_CONFIG&&window.APP_CONFIG.FUNCTION_REGION)||'us-central1')).httpsCallable(name)(data||{});return result&&result.data||{}}
     function errorText(error){return clean(error&&(error.details||error.message)||error||'目前無法處理。').replace(/^FirebaseError:\s*/i,'')}
     function isPending(row){if(row&&row.pending===true)return true;return ['待審核','pending','pending_review','未處理'].includes(lower(row&&row.status||'待審核'))}
     function pill(status){const s=clean(status||'待審核');const cls=s==='已核准'?'approved':(s==='已駁回'?'rejected':(s==='待審核'?'pending':'history'));return `<span class="approval-pill ${cls}">${esc(s)}</span>`}

@@ -32,7 +32,7 @@
   }
   function db(){ firebaseApp(); return global.firebase.firestore(); }
   function projectId(){ const cfg=(global.APP_CONFIG&&global.APP_CONFIG.FIREBASE_CONFIG)||{}; return clean(cfg.projectId || 'youzi-c1b74'); }
-  function functionUrl(name){ return 'https://us-central1-'+projectId()+'.cloudfunctions.net/'+name; }
+  function functionUrl(name){ return 'https://'+((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')+'-'+projectId()+'.cloudfunctions.net/'+name; }
   async function call(name, payload){
     const headers={'Content-Type':'application/json'};
     if(['processNotificationQueueNowHttp','emailSendCheckHttp','rentalSaveContractHttp','rentalSendSignLinkHttp','rentalCompleteReturnHttp'].includes(name)){

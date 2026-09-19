@@ -177,8 +177,8 @@ assert.strictEqual(commonWindow.CoursePortal.isSessionAuthError({ code: 'functio
 
 ['teacher-course-portal.html', 'student-course-portal.html', 'room-booking.html'].forEach((file) => {
   const html = read(file);
-  assert(html.includes('config.js?v=20260918-teacher-taiwan-v1'), `${file} config cache key is stale`);
-  assert(html.includes('course-portal-common.js?v=20260918-speed2'), `${file} common cache key is stale`);
+  assert(html.includes('config.js?v=20260919-taiwan-v2'), `${file} config cache key is stale`);
+  assert(html.includes('course-portal-common.js?v=20260919-taiwan-v2'), `${file} common cache key is stale`);
 });
 assert(
   read('teacher-course-portal.html').includes('teacher-course-portal-v8.js?v=20260918-speed2'),

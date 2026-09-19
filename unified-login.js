@@ -13,7 +13,7 @@
     if(authenticated){const user=global.firebase.auth().currentUser;if(!user)throw new Error('請先使用原帳密登入。');headers.Authorization='Bearer '+await user.getIdToken(true);}
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
     try{
-      const response=await fetch('https://us-central1-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers,body:JSON.stringify({data}),signal:controller.signal});
+      const response=await fetch('https://'+((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')+'-'+project+'.cloudfunctions.net/'+name,{method:'POST',headers,body:JSON.stringify({data}),signal:controller.signal});
       const json=await response.json();
       if(!response.ok||json.error)throw new Error(json.error&&json.error.message||'登入暫時無法完成，請稍後重試。');
       return json.result||json.data||{};

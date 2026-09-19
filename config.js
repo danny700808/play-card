@@ -10,6 +10,7 @@
     CLOUDINARY_SOFT_MAX_VIDEO_MB: 0,
     // Firestore is in asia-east1; enable alongside the verified Taiwan teacher endpoints.
     COURSE_PORTAL_TAIWAN_EXTENDED: true,
+    FUNCTION_REGION: 'asia-east1',
     FIREBASE_CONFIG: {
       apiKey: 'AIzaSyBTrUyhQSEI2mun5O1mjnSN_mO10c_t-Xs',
       authDomain: 'youzi-c1b74.firebaseapp.com',

@@ -1,7 +1,7 @@
 (function(global){
   'use strict';
 
-  var FUNCTION_REGION='us-central1';
+  var FUNCTION_REGION=((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1');
   var LOAD_FUNCTION_NAME='loadInjiaoyunEducationMirror';
   var AUTO_LOAD_FUNCTION_NAME='loadInjiaoyunEducationMirrorAuto';
   var SYNC_FUNCTION_NAME='syncInjiaoyunEducationMirrorNow';

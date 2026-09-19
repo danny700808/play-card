@@ -29,7 +29,7 @@ test('regional copies preserve the same handlers, auth wrappers and resource set
 test('teacher uses shared region routing and all portal pages load the updated common script',()=>{
  assert.match(fs.readFileSync('teacher-course-portal-v8.js','utf8'),/PortalAuth\.callableFor\(name, \{ timeout: 180000 \}\)/);
  for(const file of fs.readdirSync('.').filter(n=>n.endsWith('.html'))){
-  const page=fs.readFileSync(file,'utf8');if(page.includes('course-portal-common.js'))assert.match(page,/course-portal-common\.js\?v=20260918-speed2/);
+  const page=fs.readFileSync(file,'utf8');if(page.includes('course-portal-common.js'))assert.match(page,/course-portal-common\.js\?v=20260919-taiwan-v2/);
  }
 });
 test('verified Taiwan teacher routes are enabled and retain a reversible deployment flag',async()=>{
@@ -41,4 +41,16 @@ test('verified Taiwan teacher routes are enabled and retain a reversible deploym
   for(const name of names){await global.resolve(name)({});assert.equal(calls.at(-1).region,enabled?'asia-east1':'us-central1');assert.equal(calls.at(-1).name,name+(enabled?'Taiwan':''));}
  }
  const config=fs.readFileSync('config.js','utf8');assert.match(config,/COURSE_PORTAL_TAIWAN_EXTENDED:\s*true/);
+});
+
+test('unified Taiwan setting routes login and remaining mutations without retrying another region',async()=>{
+ for(const region of ['asia-east1','us-central1']){
+  const calls=[],global={APP_CONFIG:{FIREBASE_CONFIG:{},FUNCTION_REGION:region},firebase:{apps:[{}],app:()=>({functions:location=>({httpsCallable:name=>async()=>{calls.push({location,name});throw Error('network error');}})})}};
+  const code=common.slice(common.indexOf('  const config'),common.indexOf('  const CACHE_PREFIX'));
+  vm.runInNewContext(code+'\nglobal.resolve=callableFor;',{global});
+  for(const name of ['coursePortalStartLineLogin','coursePortalExchangeAccess','coursePortalCreateRoomBooking','coursePortalStudentSubmitTuitionPayment']){
+   const before=calls.length;await assert.rejects(global.resolve(name)({}),/network error/);
+   assert.equal(calls.length,before+1);assert.equal(calls.at(-1).location,region);assert.equal(calls.at(-1).name,name);
+  }
+ }
 });

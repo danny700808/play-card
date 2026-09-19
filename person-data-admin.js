@@ -55,7 +55,7 @@
   function functionsClient() {
     const config = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
     if (!global.firebase.apps.length) global.firebase.initializeApp(config);
-    return global.firebase.app().functions('us-central1');
+    return global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1'));
   }
   async function call(name, data) {
     const response = await functionsClient().httpsCallable(name)(data || {});

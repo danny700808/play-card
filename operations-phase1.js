@@ -2551,7 +2551,7 @@ function renderOverviewV7(){
     const stages=job.stages&&typeof job.stages==='object'?job.stages:{},easyStoreStage=stages.easyStore&&typeof stages.easyStore==='object'?stages.easyStore:{},shopeeStage=stages.shopee&&typeof stages.shopee==='object'?stages.shopee:{};
     if(clean(easyStoreStage.status)!=='verified'||clean(shopeeStage.status)==='verified')return {skipped:true,currentStage:clean(job.currentStage)};
     await requireEasyStoreManagerAuth();
-    const callable=global.firebase.app().functions('us-central1').httpsCallable('verifyProductListingStage',{timeout:3*60*1000}),response=await callable({
+    const callable=global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')).httpsCallable('verifyProductListingStage',{timeout:3*60*1000}),response=await callable({
       jobId:jobId,
       stage:'shopee',
       verification:{
@@ -5014,7 +5014,7 @@ function ensureSalesClock(){
       if(!global.firebase||!global.firebase.functions)throw new Error('AI 上架服務尚未載入，請重新整理頁面。');
       await requireEasyStoreManagerAuth();
       setProductAiResearchUi(form,'running','先整理完整商品介紹；有勾選圖片時，接著會逐張轉成繁體上架圖。');
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('researchProductListingCase',{timeout:9*60*1000});
+      const callable=global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')).httpsCallable('researchProductListingCase',{timeout:9*60*1000});
       const response=await callable({productId:id,force:force===true}),result=response&&response.data||{};
       let imageResult=null,imageError=null;
       if(reference.length){
@@ -5052,7 +5052,7 @@ function ensureSalesClock(){
     if(status)status.innerHTML='<div class="ops-product-ai-status running"><span class="ops-product-ai-spinner"></span><div><b>正在挑選最多 20 張適合的商品圖片</b><small>先讀你貼的商品網址、去除重複圖片；若頁面被登入或驗證擋住，再依品牌、型號與顏色找公開頁面。</small></div></div>';
     try{
       await saveProductListingCase(form,false,true,true);await requireEasyStoreManagerAuth();
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('importProductListingImages',{timeout:9*60*1000}),response=await callable({productId:id,pageUrls:pageUrls}),result=response&&response.data||{};
+      const callable=global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')).httpsCallable('importProductListingImages',{timeout:9*60*1000}),response=await callable({productId:id,pageUrls:pageUrls}),result=response&&response.data||{};
       const current=byId('productListingCaseForm');if(current&&clean(current.dataset.id)===id)await openProductListingCase(id,{skipAutoResearch:true});
       const extra=result.searchedPublicSources?'；供應商頁讀不到的部分已改找同型號公開來源':'';
       toast('商品候選圖已加入',Number(result.importedCount||0)+' 張已放進這一件商品並自動勾選；目前共 '+Number(result.referenceImageUrls&&result.referenceImageUrls.length||0)+' 張'+extra+'。','success');return result;
@@ -5425,7 +5425,7 @@ function ensureSalesClock(){
   }
   async function requestProductListingImageGeneration(id,reference){
     if(!global.firebase||!global.firebase.functions)throw new Error('AI 製圖服務尚未載入，請重新整理頁面。');
-    const callable=global.firebase.app().functions('us-central1').httpsCallable('generateProductListingImage',{timeout:20*60*1000}),response=await callable({productId:id,imageUrls:reference});
+    const callable=global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')).httpsCallable('generateProductListingImage',{timeout:20*60*1000}),response=await callable({productId:id,imageUrls:reference});
     return response&&response.data||{};
   }
   async function waitForProductListingPhase(id,field,label,timeoutMs){
@@ -6112,7 +6112,7 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
     openDrawer('補齊 9 系列課本封面','只使用商品中文名稱搜尋；僅採用清晰、完整的正面封面。半張、拼圖或太小的圖片會直接跳過。','<div id="nineSeriesBookCoverProgress"><div class="ops-callout">正在整理 9 系列書籍清單…</div></div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="drawer-close">關閉視窗（後台繼續）</button></div>');
     try{
       await requireEasyStoreManagerAuth();
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('runNineSeriesBookCoverBatch',{timeout:10*60*1000});
+      const callable=global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')).httpsCallable('runNineSeriesBookCoverBatch',{timeout:10*60*1000});
       let result=(await callable({action:'resume-or-start'})).data||{};updateNineSeriesBookCoverProgress(result,[]);
       while(!result.done){result=(await callable({action:'process',jobId:result.jobId,limit:3})).data||{};updateNineSeriesBookCoverProgress(result,result.results||[]);}
       toast('9 系列封面處理完成','已補齊 '+formatNumber(result.matchedCount||0)+' 本；待人工確認 '+formatNumber(result.unresolvedCount||0)+' 本。','success');
@@ -6202,7 +6202,7 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
   }
   async function callProductListingPublish(productId){
     if(!global.firebase||!global.firebase.functions)throw new Error('商品上架服務尚未載入，請重新整理頁面。');
-    const callable=global.firebase.app().functions('us-central1').httpsCallable('publishProductListingCase',{timeout:9*60*1000}),response=await callable({productId:productId});
+    const callable=global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')).httpsCallable('publishProductListingCase',{timeout:9*60*1000}),response=await callable({productId:productId});
     return response&&response.data||{};
   }
   async function resumeExplicitShopeeListingFromQuery(){
@@ -6956,7 +6956,7 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
     if(state.view==='products')render();
     showAlert('正在從 EasyStore API 讀取全部商品、規格與圖片。約需數分鐘，完成前請勿關閉頁面或重複按同步。','info');
     try{
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('syncEasyStoreCatalog',{timeout:EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS});
+      const callable=global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')).httpsCallable('syncEasyStoreCatalog',{timeout:EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS});
       const response=await callable({force:false});
       const result=(response&&response.data)||{};
       if(!result.ok) throw new Error(result.message||'同步失敗');
@@ -7162,7 +7162,7 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
     if(state.view==='overview')renderKeepingViewport();
     toast('正在啟動音教雲同步','雲端會讀取本月 1 日到今天，請稍候。','info');
     try{
-      const callable=global.firebase.app().functions('us-central1').httpsCallable('runInjiaoyunSyncNow');
+      const callable=global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1')).httpsCallable('runInjiaoyunSyncNow');
       const response=await callable({source:'operations-hub',requestedBy:userLabel(),manualSyncPin:manualSyncPin,appVersion:VERSION});
       const result=response&&response.data||{};
       if(result.status==='cooldown'){

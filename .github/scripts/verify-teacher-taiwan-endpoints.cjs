@@ -9,9 +9,10 @@ async function main() {
     return;
   }
   const actions = ['TeacherUtilitySession', 'TeacherUpdateStudent', 'TeacherSubmitContactBookPost', 'TeacherBonusRequest'];
-  for (const action of actions) {
-    const name = `coursePortal${action}Taiwan`;
-    // All four handlers require a session before any business-data reads or writes.
+  const names=actions.map(action=>`coursePortal${action}Taiwan`);
+  if (/FUNCTION_REGION:\s*'asia-east1'/.test(fs.readFileSync('config.js','utf8'))) names.push('coursePortalTeacherSaveProfileDraft','coursePortalTeacherContractSession','coursePortalStudentSubmitTuitionPayment','coursePortalCreateRoomBooking');
+  for (const name of names) {
+    // These handlers require a session before any business-data reads or writes.
     // A normal callable UNAUTHENTICATED response proves routing and IAM reachability.
     const response = await fetch(`https://asia-east1-youzi-c1b74.cloudfunctions.net/${name}`, {
       method: 'POST',

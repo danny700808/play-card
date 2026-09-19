@@ -38,14 +38,14 @@ test('teacher other pages share the compact utility theme and explicit auth boun
     assert.match(source, /teacher-more-pages\.css\?v=20260808-announcement-layout-v1/);
     if (file === 'contract.html') {
       assert.match(source, /firebase-functions-compat\.js/);
-      assert.match(source, /teacher-contract\.js\?v=20260808-contract-profile-gate-v1/);
+      assert.match(source, /teacher-contract\.js\?v=20260919-taiwan-v2/);
       assert.doesNotMatch(source, /teacher-more-auth-bridge\.js|blockIfPortalOnly/);
     } else if (file === 'profile.html') {
-      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260806-external-teacher-reminder-v3/);
+      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260919-taiwan-v2/);
     } else if (file === 'task.html') {
-      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260808-external-work-v2/);
+      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260919-taiwan-v2/);
     } else {
-      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260806-external-teacher-canonical-v2/);
+      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260919-taiwan-v2/);
     }
     assert.match(source, /data-teacher-utility-root/);
     if (file !== 'contract.html') assert.match(source, /blockIfPortalOnly/);
