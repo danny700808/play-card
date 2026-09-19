@@ -178,7 +178,12 @@ function renderProof(existing, seed, verification) {
 function renderProofMatches(value, expected, seed) {
   const proof = value && typeof value === 'object' ? value : {};
   const style = assignment(expected, seed);
-  return proof.version === RENDER_PROOF_VERSION
+  const supportedVersion = proof.version === RENDER_PROOF_VERSION
+    || (proof.version === 'youzi-brand-creative-render-v4'
+      && proof.exactOriginalRedSloganVisibleAndReadable === true
+      && proof.originalCircularLogoVisibleAndUnmodified === true
+      && proof.headerAssetPairVerifiedFromFinalPixels === true);
+  return supportedVersion
     && proof.styleCatalogVersion === STYLE_CATALOG_VERSION
     && proof.styleId === style.styleId
     && proof.styleName === style.styleName
@@ -208,7 +213,7 @@ function renderProofMatches(value, expected, seed) {
     && proof.sameStyleAcrossAspectRatios === true
     && proof.sameStyleAcrossVariants === true
     && proof.logoLayer === 'topmost'
-    && proof.borderLayer === 'below-logo'
+    && ['below-logo', 'below-brand-header'].includes(proof.borderLayer)
     && proof.borderIntersectsLogo === false;
 }
 
