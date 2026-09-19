@@ -13288,7 +13288,11 @@ async function appendCoursePortalData(payload) {
       portalChangeId: row.id,
       start: eventStart(row.event),
       duration: Math.max(30, timeMinutes(eventEnd(row.event)) - timeMinutes(eventStart(row.event))),
-      type: ['rental','trial'].includes(clean(row.event.type)) ? clean(row.event.type) : 'single',
+      // Signing in changes attendance, not the original lesson category.
+      // Match scheduleBundle, which preserves the stored event type.
+      type: clean(row.action) === 'lesson_status'
+        ? clean(row.event.type) || 'fixed'
+        : ['rental','trial'].includes(clean(row.event.type)) ? clean(row.event.type) : 'single',
       specialLesson: row.event.specialLesson === true || clean(row.action) === 'teacher_gift',
       portalAction: row.action,
       source: 'course-portal'

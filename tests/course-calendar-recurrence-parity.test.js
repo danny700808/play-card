@@ -7,6 +7,15 @@ const api=ctx.window.YouziCoursePreviewData;
 const course={id:'series',date:'2026-10-15',start:'16:30',duration:60,frequencyWeeks:1,roomId:'r',teacherId:'t',subjectId:'q',studentIds:['s'],studentNames:['Student'],active:true};
 const payload={rooms:[{id:'r',name:'Room'}],teachers:[{id:'t',name:'Teacher'}],subjects:[{id:'q',name:'Subject'}],students:[{id:'s',name:'Student'},{id:'other',name:'Other'}],fixedCourses:[course]};
 const stop={studentId:'s',teacherId:'t',subjectId:'q',effectiveDate:'2026-10-22',status:'active'};
+
+test('payroll uses the recorded subject name without changing the amount or zero split',()=>{
+ const rows=[{id:'paid',teacherId:'t',date:'2026-09-16',subjectName:'木吉他',teacherAmount:420,allotRate:0.6},
+ {id:'zero',teacherId:'t',date:'2026-09-15',subjectName:'木吉他',splitType:'none',splitValue:0,teacherAmount:0},
+ {id:'legacy',teacherId:'t',date:'2026-09-01',chargeName:'外聘2800',teacherAmount:420}];
+ const state=api.buildState({...payload,teacherPayroll:rows},'2026-09-16');
+ assert.deepEqual(Array.from(state.teacherPayroll,r=>[r.subject,r.teacherAmount]),[['木吉他',420],['木吉他',0],['外聘2800',420]]);
+ assert.equal(state.teacherPayroll[0].allotRate,0.6);
+});
 test('ended legacy series cannot reappear on an anchor after its end',()=>{
  const state=api.buildState({...payload,fixedCourses:[{...course,recurrenceEndDate:'2026-10-14'}]},'2026-10-15');
  assert.equal(state.events.length,0);

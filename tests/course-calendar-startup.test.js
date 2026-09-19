@@ -43,3 +43,24 @@ test('opening details keeps a freshly verified partial calendar visible',async()
  assert(!calls.some(x=>x[0]==='hide'&&x[1]==='scheduleGrid'));
  assert(calls.some(x=>x[0]==='apply'));
 });
+
+test('calendar boot does not fetch the ledger until details are requested',async()=>{
+ const {ctx}=harness(),requests=[],timers=[];
+ ctx.window.setTimeout=fn=>timers.push(fn);
+ ctx.window.document={hidden:false};
+ ctx.window.YouziCoursePreviewData.loadPublished=async options=>{
+   requests.push(options.calendarOnly===true);
+   return options.calendarOnly?{dataMeta:{partial:true},events:[]}:{events:[]};
+ };
+ ctx.applyCalendarState=data=>{ctx.state=data;};
+ ctx.applyFormalState=async data=>{ctx.state=data;};
+ await ctx.runLoader({calendarOnly:true});
+ for(const timer of timers)await timer();
+ assert.deepEqual(requests,[true]);
+ assert.equal(ctx.operationRunning,false);
+ const gate=runtime.slice(runtime.indexOf('  async function ensureWorkspaceDetails(){'),runtime.indexOf('  function afterWorkspaceReady('));
+ ctx.isReadOnly=()=>false;vm.runInContext(gate,ctx);
+ await ctx.ensureWorkspaceDetails();
+ assert.deepEqual(requests,[true,false]);
+ assert.equal(Boolean(ctx.state.dataMeta&&ctx.state.dataMeta.partial),false);
+});

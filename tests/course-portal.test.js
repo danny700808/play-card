@@ -2517,6 +2517,17 @@ async function runBackendScheduleRegressionTests() {
     }))
   };
   const absenceBackend = loadBackendForScheduleTests(absenceState);
+  const statusOnlyState = {collections:scheduleFixtureCollections(Object.assign({},sharedMirrors,{
+    coursePortalScheduleChanges: ['fixed','single','rental','trial'].map((type,index)=>({
+      id:'status-type-'+index,data:Object.assign({},lessonStatus,{id:'status-type-'+index,event:Object.assign({},lessonStatus.event,{type})})
+    }))
+  }))};
+  const statusOnlyBackend=loadBackendForScheduleTests(statusOnlyState);
+  const statusPayload=await statusOnlyBackend.appendCoursePortalData({rooms:[],fixedCourses:[],temporaryCourses:[],events:[],roomRentals:[],teacherPayroll:[],teacherAdjustments:[]});
+  check(()=>{
+    assert.deepStrictEqual(statusPayload.temporaryCourses.map(row=>row.type).sort(),['fixed','rental','single','trial']);
+    assert(statusPayload.temporaryCourses.every(row=>row.status==='absent'&&row.date==='2026-07-22'));
+  });
   const absenceBundle = await absenceBackend.__testScheduleBundle(
     '2026-07-22',
     '2026-07-24',
