@@ -50,7 +50,7 @@ function buildRuntime() {
       'function eventStudentNames(event)',
       'function periodNetExpectedAmount(period)',
       'money(periodNetExpectedAmount(period))',
-      'refreshPortalRentals();'
+      'loadPublishedWorkspace({calendarOnly:true});'
     ];
     for (const marker of requiredMarkers) {
       if (!existing.includes(marker)) throw new Error(`Existing inline course runtime is incomplete: ${marker}`);
