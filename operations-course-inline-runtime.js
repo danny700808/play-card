@@ -1492,7 +1492,7 @@
     var meta=state.dataMeta||{};
     if(!meta.partial||(start>=meta.rangeStart&&end<=meta.rangeEnd))return true;
     $(nodeId).textContent='正在讀取這個日期的課表…';
-    ensureWorkspaceDetails().then(function(ready){
+    loadPublishedWorkspace({calendarOnly:true,anchorDate:start}).then(function(ready){
       if(ready)render();else $(nodeId).textContent='課表讀取未完成，請重新整理後再試。';
     });
     return false;
@@ -1508,16 +1508,18 @@
     if(workspaceLoadPromise)return workspaceLoadPromise;
     if(loadingMigration||operationRunning)return Promise.resolve(false);
     var calendarOnly=options&&options.calendarOnly===true&&currentView==='calendar';
+    var keepCalendarVisible=calendarPartial()&&!calendarOnly;
     calendarBootstrapLoading=calendarOnly;
     closeModal('loadPublishedModal');
     loadingMigration=true;operationRunning=true;updateModeUI();
-    $('scheduleGrid').classList.add('hidden');
+    // Keep the freshly verified calendar visible while its ledger is loading.
+    if(!keepCalendarVisible)$('scheduleGrid').classList.add('hidden');
     $('loadPublishedBtn').disabled=true;
     $('operationProgressText').textContent=calendarOnly?'正在讀取課表…':'正在讀取課程與帳務明細…';
     $('operationProgress').classList.remove('hidden');
     workspaceLoadPromise=(async function(){
       try{
-        var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:state.currentDate||todayKey(),calendarOnly:calendarOnly});
+        var loaded=await window.YouziCoursePreviewData.loadPublished({anchorDate:options&&options.anchorDate||state.currentDate||todayKey(),calendarOnly:calendarOnly});
         if(loaded.dataMeta&&loaded.dataMeta.partial)applyCalendarState(loaded);
         else await applyFormalState(loaded,{previousWorkspace:state,preserveConfiguration:true,keepView:true});
         $('calendarReauthPanel').classList.add('hidden');

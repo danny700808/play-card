@@ -2216,7 +2216,7 @@ async function readMirrorPayload() {
 
 function registerInjiaoyunEducationMirror(exportsObject) {
   exportsObject.syncInjiaoyunEducationMirrorNow = onCall({
-    region: FUNCTION_REGION,
+    region: [FUNCTION_REGION, 'asia-east1'],
     timeoutSeconds: 540,
     memory: '2GiB',
     cors: [...ALLOWED_ORIGINS, LOCAL_ORIGIN],
@@ -2290,7 +2290,7 @@ function registerInjiaoyunEducationMirror(exportsObject) {
   });
 
   exportsObject.loadInjiaoyunEducationMirror = onCall({
-    region: FUNCTION_REGION,
+    region: [FUNCTION_REGION, 'asia-east1'],
     timeoutSeconds: 300,
     memory: '2GiB',
     cors: [...ALLOWED_ORIGINS, LOCAL_ORIGIN],

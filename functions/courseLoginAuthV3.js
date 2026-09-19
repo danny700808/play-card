@@ -442,20 +442,20 @@ function unifiedLogin() {
 }
 
 function registerCourseLoginAuthV3(exportsObject) {
-  const unifiedOptions = {region:REGION,cors:ALLOWED_ORIGINS,timeoutSeconds:60,memory:'256MiB'};
+  const unifiedOptions = {region:[REGION, 'asia-east1'],cors:ALLOWED_ORIGINS,timeoutSeconds:60,memory:'256MiB'};
   exportsObject.unifiedLoginStatus = onCall(unifiedOptions,request=>unifiedLogin().status(request.data||{}));
   exportsObject.unifiedLoginRedeem = onCall(unifiedOptions,request=>unifiedLogin().redeem(request.data||{}));
   exportsObject.employeeLinkLineLogin = onCall(unifiedOptions,request=>unifiedLogin().link(request.data||{},request));
   exportsObject.employeeUnlinkLineLogin = onCall(unifiedOptions,request=>unifiedLogin().unlink(request));
   exportsObject.coursePortalStartLineLogin = onCall({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     cors: ALLOWED_ORIGINS,
     timeoutSeconds: 60,
     memory: '256MiB'
   }, async (request) => startLineLogin(request && request.data || {}));
 
   exportsObject.coursePortalLineLoginCallback = onRequest({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 60,
     memory: '256MiB',
     secrets: [LINE_LOGIN_CHANNEL_SECRET]

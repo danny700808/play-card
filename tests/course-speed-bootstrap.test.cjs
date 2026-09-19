@@ -66,5 +66,7 @@ test('navigation beyond a partial calendar shows loading and does not display a 
   const f=runtimeFixture(),c=f.context;c.state.dataMeta={partial:true,rangeStart:'2026-09-07',rangeEnd:'2026-09-27'};
   let renders=0;assert.equal(c.calendarRangeReady('2026-10-01','2026-10-01','grid',()=>renders++),false);
   assert.match(f.nodes.get('grid').textContent,/正在讀取/);assert.equal(renders,0);
+  assert.equal(f.calls.find(row=>row[0]==='load')[1].calendarOnly,true);
+  assert.equal(f.calls.find(row=>row[0]==='load')[1].anchorDate,'2026-10-01');
   f.resolve({currentDate:'2026-10-01',dataMeta:{partial:false},events:[]});await new Promise(resolve=>setImmediate(resolve));assert.equal(renders,1);
 });

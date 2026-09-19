@@ -82,7 +82,9 @@ async function readActiveSources(collectionName) {
     const activeSnapshot = await collection.where('sourceActive', '==', true).get();
     documents = activeSnapshot.docs;
   } catch (error) {
-    console.warn('[course auto read active query fallback]', collectionName, clean(error && error.message));
+    // Permission/network failures must not silently become full collection scans.
+    if (![9, 'failed-precondition'].includes(error && error.code)) throw error;
+    console.warn('[course auto read active query fallback]', collectionName);
   }
   if (!documents.length) {
     const allSnapshot = await collection.get();
@@ -161,7 +163,8 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
           version: VERSION
         });
       }
-      return await readMirrorPayload();
+      const { withPortalReads } = require('./portalReadContext');
+      return await withPortalReads(readMirrorPayload)();
     } catch (error) {
       if (error instanceof HttpsError) throw error;
       console.error('[loadInjiaoyunEducationMirrorAuto]', error);
@@ -171,7 +174,7 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
   const {withOperationTiming}=require('./courseOperationTiming');
   for(const [name,region] of [['loadInjiaoyunEducationMirrorAuto',REGION],['loadInjiaoyunEducationMirrorAutoTaiwan','asia-east1']]) {
     const timed=withOperationTiming(name,region,(_data,request)=>handler(request));
-    exportsObject[name]=onCall({region,timeoutSeconds:300,memory:'2GiB',invoker: 'public',cors:[...ALLOWED_ORIGINS,LOCAL_ORIGIN]},request=>timed(null,request));
+    exportsObject[name]=onCall({region:region===REGION?[REGION,'asia-east1']:region,timeoutSeconds:300,memory:'2GiB',invoker: 'public',cors:[...ALLOWED_ORIGINS,LOCAL_ORIGIN]},request=>timed(null,request));
   }
 }
 

@@ -856,7 +856,7 @@ async function dispatch(data, request, helpers) {
 
 function registerExternalTeacherWork(exportsObject, helpers = {}) {
   exportsObject.externalTeacherWork = onCall({
-    region: REGION,
+    region: [REGION, 'asia-east1'],
     timeoutSeconds: 120,
     memory: '512MiB'
   }, async (request) => dispatch(request && request.data || {}, request, helpers));

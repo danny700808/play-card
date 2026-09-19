@@ -1250,21 +1250,21 @@ async function personDataProfileChangeAction(data, request) {
 }
 
 function registerPersonDataAdmin(exportsObject) {
-  exportsObject.personDataAdminInventory = onCall({ region: REGION, timeoutSeconds: 300, memory: '1GiB' }, (request) =>
+  exportsObject.personDataAdminInventory = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 300, memory: '1GiB' }, (request) =>
     personDataInventory(request && request.data || {}, request));
-  exportsObject.personDataAdminDetail = onCall({ region: REGION, timeoutSeconds: 300, memory: '1GiB' }, (request) =>
+  exportsObject.personDataAdminDetail = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 300, memory: '1GiB' }, (request) =>
     personDataDetail(request && request.data || {}, request));
-  exportsObject.personDataAdminAction = onCall({ region: REGION, timeoutSeconds: 300, memory: '1GiB' }, (request) =>
+  exportsObject.personDataAdminAction = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 300, memory: '1GiB' }, (request) =>
     personDataAction(request && request.data || {}, request));
-  exportsObject.personDataAdminContractInventory = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+  exportsObject.personDataAdminContractInventory = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 120, memory: '512MiB' }, (request) =>
     personDataContractInventory(request && request.data || {}, request));
-  exportsObject.personDataAdminContractDetail = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+  exportsObject.personDataAdminContractDetail = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 120, memory: '512MiB' }, (request) =>
     personDataContractDetail(request && request.data || {}, request));
-  exportsObject.personDataAdminContractAction = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+  exportsObject.personDataAdminContractAction = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 120, memory: '512MiB' }, (request) =>
     personDataContractAction(request && request.data || {}, request));
-  exportsObject.personDataAdminProfileChangeInventory = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+  exportsObject.personDataAdminProfileChangeInventory = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 120, memory: '512MiB' }, (request) =>
     personDataProfileChangeInventory(request && request.data || {}, request));
-  exportsObject.personDataAdminProfileChangeAction = onCall({ region: REGION, timeoutSeconds: 120, memory: '512MiB' }, (request) =>
+  exportsObject.personDataAdminProfileChangeAction = onCall({ region: [REGION, 'asia-east1'], timeoutSeconds: 120, memory: '512MiB' }, (request) =>
     personDataProfileChangeAction(request && request.data || {}, request));
 }
 

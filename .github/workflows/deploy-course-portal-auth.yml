@@ -109,6 +109,8 @@ on:
       - "tests/teacher-profile-flow.test.js"
       - "tests/person-data-admin.test.js"
       - ".github/workflows/deploy-course-portal-auth.yml"
+      - ".github/scripts/verify-taiwan-region.cjs"
+      - "tests/taiwan-region.test.cjs"
   workflow_dispatch:
 
 permissions:
@@ -121,7 +123,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -143,6 +145,7 @@ jobs:
       - name: Test portal code
         run: |
           set -euo pipefail
+          node --test tests/taiwan-region.test.cjs tests/course-calendar-startup.test.js
           node --check functions/coursePortal.js
           node --check functions/courseSubjectCatalog.js
           node --check functions/courseLoginAuthV3.js
@@ -320,12 +323,18 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
           set -euo pipefail
-          targets=(platformOrderAgentBridge inventoryCountSaveHttp coursePortalAdminRecordTuitionTransactionTaiwan coursePortalAdminSaveTuitionPeriodsTaiwan coursePortalAdminSaveScheduleTaiwan coursePortalAdminSaveLessonSettingsTaiwan coursePortalAdminVoidLessonSlotTaiwan coursePortalAdminSaveStudentTaiwan coursePortalAdminSaveTeacherSubjectsTaiwan coursePortalAdminSaveSubjectCatalogTaiwan coursePortalAdminSaveFeePlanTaiwan coursePortalAdminMapSubjectSuggestionTaiwan coursePortalAdminSaveTeacherAdjustmentTaiwan coursePortalAdminSaveLeaveReasonTaiwan coursePortalAdminSaveRentalSettingsTaiwan coursePortalAdminSaveRoomEquipmentTaiwan coursePortalAdminRoomBookingsTaiwan coursePortalAdminCancelRoomBookingTaiwan coursePortalAdminEnsureTuitionReceiptTaiwan coursePortalAdminWorkspaceSliceTaiwan loadInjiaoyunEducationMirrorAutoTaiwan coursePortalAdminSaveTuitionPeriods coursePortalAdminEnsureTuitionReceipt loadInjiaoyunEducationMirrorAuto coursePortalTeacherData coursePortalTeacherDataTaiwan coursePortalStudentData coursePortalStudentDataTaiwan coursePortalTeacherAvailabilityTaiwan coursePortalTeacherSlotOptionsTaiwan coursePortalTeacherLessonStateTaiwan coursePortalTeacherAttendanceTaiwan coursePortalTeacherLateAttendanceTaiwan coursePortalTeacherAttendanceCancellationRequestTaiwan coursePortalTeacherActionTaiwan coursePortalTeacherSetIrregularTaiwan coursePortalTeacherUtilitySessionTaiwan coursePortalTeacherUpdateStudentTaiwan coursePortalTeacherSubmitContactBookPostTaiwan coursePortalTeacherBonusRequestTaiwan coursePortalTeacherStopStudentTaiwan coursePortalTeacherAttendanceCorrectionOptionsTaiwan)
+          targets=(externalTeacherGetOnboarding externalTeacherSaveProfile externalTeacherCompleteContract externalTeacherSavePayroll syncPlatformOrdersNow researchProductListingCase importProductListingImages generateProductListingImage verifyProductListingStage runNineSeriesBookCoverBatch runInjiaoyunSyncNow loadInjiaoyunEducationPreview syncInjiaoyunEducationMirrorNow loadInjiaoyunEducationMirror coursePortalLessonHistory coursePortalTeacherSetIrregular coursePortalTeacherAttendanceCorrectionOptions coursePortalAdminScheduleConflictAudit coursePortalAdminBonusRequests coursePortalAdminApproveBonus coursePortalStudentBindingAccounts rentalLineRuntimeStatusHttp rentalVerifyEmailHttp coursePortalAdminUnifiedLineData coursePortalAdminUnifiedLineAction platformOrderAgentBridge inventoryCountSaveHttp coursePortalAdminRecordTuitionTransactionTaiwan coursePortalAdminSaveTuitionPeriodsTaiwan coursePortalAdminSaveScheduleTaiwan coursePortalAdminSaveLessonSettingsTaiwan coursePortalAdminVoidLessonSlotTaiwan coursePortalAdminSaveStudentTaiwan coursePortalAdminSaveTeacherSubjectsTaiwan coursePortalAdminSaveSubjectCatalogTaiwan coursePortalAdminSaveFeePlanTaiwan coursePortalAdminMapSubjectSuggestionTaiwan coursePortalAdminSaveTeacherAdjustmentTaiwan coursePortalAdminSaveLeaveReasonTaiwan coursePortalAdminSaveRentalSettingsTaiwan coursePortalAdminSaveRoomEquipmentTaiwan coursePortalAdminRoomBookingsTaiwan coursePortalAdminCancelRoomBookingTaiwan coursePortalAdminEnsureTuitionReceiptTaiwan coursePortalAdminWorkspaceSliceTaiwan loadInjiaoyunEducationMirrorAutoTaiwan coursePortalAdminSaveTuitionPeriods coursePortalAdminEnsureTuitionReceipt loadInjiaoyunEducationMirrorAuto coursePortalTeacherData coursePortalTeacherDataTaiwan coursePortalStudentData coursePortalStudentDataTaiwan coursePortalTeacherAvailabilityTaiwan coursePortalTeacherSlotOptionsTaiwan coursePortalTeacherLessonStateTaiwan coursePortalTeacherAttendanceTaiwan coursePortalTeacherLateAttendanceTaiwan coursePortalTeacherAttendanceCancellationRequestTaiwan coursePortalTeacherActionTaiwan coursePortalTeacherSetIrregularTaiwan coursePortalTeacherUtilitySessionTaiwan coursePortalTeacherUpdateStudentTaiwan coursePortalTeacherSubmitContactBookPostTaiwan coursePortalTeacherBonusRequestTaiwan coursePortalTeacherStopStudentTaiwan coursePortalTeacherAttendanceCorrectionOptionsTaiwan)
           only=$(printf 'functions:%s,' "${targets[@]}")
           firebase deploy --project youzi-c1b74 --non-interactive --force --only "${only%,}" 2>&1 | tee /tmp/tuition-functions-deploy.log
           for target in "${targets[@]}"; do
             grep -E "functions\[$target\(.*(Successful (update|create) operation|Skipped)" /tmp/tuition-functions-deploy.log >/dev/null || { echo "Deployment completion not confirmed for $target" >&2; exit 1; }
           done
+
+      - name: Verify Taiwan HTTP deployment and inspect regional latency
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
+          GCLOUD_PROJECT: youzi-c1b74
+        run: node .github/scripts/verify-taiwan-region.cjs
 
       - name: Detect an explicit Firestore rules change
         id: firestore_rules

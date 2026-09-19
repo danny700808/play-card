@@ -52,8 +52,8 @@ registerEmployeeAuth(exports, { sendEmail: sendEmailViaGmail });
 const { createUnifiedEmailLogin } = require('./unifiedEmailLogin');
 const unifiedEmailLogin = createUnifiedEmailLogin({db,auth:admin.auth(),FieldValue:admin.firestore.FieldValue,sendEmail:sendEmailViaGmail,
   findPortalAccount:require('./coursePortal').findEmailLoginAccount,issuePortalSession:require('./coursePortal').issueSession});
-exports.unifiedEmailSend = onCall({region:'us-central1',cors:true,timeoutSeconds:60}, request => unifiedEmailLogin.send(request.data || {},request));
-exports.unifiedEmailVerify = onCall({region:'us-central1',cors:true,timeoutSeconds:60}, request => unifiedEmailLogin.verify(request.data || {}));
+exports.unifiedEmailSend = onCall({region:['us-central1', 'asia-east1'],cors:true,timeoutSeconds:60}, request => unifiedEmailLogin.send(request.data || {},request));
+exports.unifiedEmailVerify = onCall({region:['us-central1', 'asia-east1'],cors:true,timeoutSeconds:60}, request => unifiedEmailLogin.verify(request.data || {}));
 
 registerExternalTeacherWork(exports, {
   requireTeacherSession: requireCoursePortalSession,
@@ -794,7 +794,7 @@ const QUEUE_COLLECTION = 'notificationQueue';
 const SENT_STATUSES = new Set(['sent', '已發送', '已送出', 'done', 'completed', 'success']);
 const SENDING_STATUSES = new Set(['sending', '發送中']);
 const PENDING_STATUSES = new Set(['pending', '待發送', 'queued', 'queue', '待處理', 'retry', '發送失敗']);
-const HTTP_OPTIONS = { region: 'us-central1', cors: true, timeoutSeconds: 120, memory: '512MiB' };
+const HTTP_OPTIONS = { region: ['us-central1', 'asia-east1'], cors: true, timeoutSeconds: 120, memory: '512MiB' };
 
 function clean(value) {
   return normalizeText(value);
@@ -2219,7 +2219,7 @@ function validLineWebhookSignature(req) {
 
 exports.lineWebhook = onRequest(
   {
-    region: 'us-central1',
+    region: ['us-central1', 'asia-east1'],
     cors: false,
     secrets: [LINE_CHANNEL_SECRET]
   },
@@ -2329,7 +2329,7 @@ exports.lineWebhook = onRequest(
 );
 
 
-exports.sendGmailTestEmail = onCall({ region: 'us-central1' }, async (request) => {
+exports.sendGmailTestEmail = onCall({ region: ['us-central1', 'asia-east1'] }, async (request) => {
   const authToken = request && request.auth && request.auth.token;
   const authRole = normalizeText(authToken && authToken.role).toLowerCase();
   if (!(authToken && authToken.employee === true && (authToken.manager === true || ['admin', 'manager'].includes(authRole)))) {
@@ -2382,7 +2382,7 @@ exports.legacyTeacherCreateHttp=httpEndpoint(async(data,req)=>{await rateLimitPu
 exports.legacyTeacherUpdateHttp=httpEndpoint(data=>legacyTeacherForms.update(data));
 exports.rentalUploadPrivateAssetHttp=httpEndpoint(data=>privateContractAssets().upload('rental',data));
 exports.externalTeacherUploadPrivateAssetHttp=httpEndpoint(data=>privateContractAssets().upload('teacher',data));
-exports.privateContractAssetHttp=onRequest({region:'us-central1',timeoutSeconds:60,memory:'256MiB'},async(req,res)=>{
+exports.privateContractAssetHttp=onRequest({region:['us-central1', 'asia-east1'],timeoutSeconds:60,memory:'256MiB'},async(req,res)=>{
   setCorsHeaders(res);res.set('Access-Control-Allow-Methods','GET, OPTIONS');
   if(req.method==='OPTIONS'){res.status(204).send('');return;}
   if(req.method!=='GET'){res.status(405).send('Method Not Allowed');return;}
@@ -2391,12 +2391,12 @@ exports.privateContractAssetHttp=onRequest({region:'us-central1',timeoutSeconds:
   catch(error){res.status(403).send('附件連結無效或已失效。');}
 });
 const employeeDataGateway=require('./employeeDataGateway').createEmployeeDataGateway({db,FieldValue:admin.firestore.FieldValue,Filter:admin.firestore.Filter,queueManager:queueManagerNotification,queueEmail:createNotificationQueue,getManager:getPrimaryManagerLineRecipient,resolveTeacher:async data=>{const portal=require('./coursePortal');return portal.resolveTeacherUtilityEmployee(await portal.requireSession(data,['teacher']));}});
-exports.employeeSelfService=onCall({region:'us-central1',timeoutSeconds:60},request=>employeeDataGateway.selfService(request.data||{},request));
-exports.employeePrivateDataRead=onCall({region:'us-central1',timeoutSeconds:60},request=>employeeDataGateway.read(request.data||{},request));
-exports.employeeFeatureNotification=onCall({region:'us-central1',timeoutSeconds:60},async request=>{await rateLimitPublicForm(request.rawRequest,'employee-notification-'+clean(request.auth&&request.auth.uid));return employeeDataGateway.notify(request.data||{},request);});
+exports.employeeSelfService=onCall({region:['us-central1', 'asia-east1'],timeoutSeconds:60},request=>employeeDataGateway.selfService(request.data||{},request));
+exports.employeePrivateDataRead=onCall({region:['us-central1', 'asia-east1'],timeoutSeconds:60},request=>employeeDataGateway.read(request.data||{},request));
+exports.employeeFeatureNotification=onCall({region:['us-central1', 'asia-east1'],timeoutSeconds:60},async request=>{await rateLimitPublicForm(request.rawRequest,'employee-notification-'+clean(request.auth&&request.auth.uid));return employeeDataGateway.notify(request.data||{},request);});
 
 const employeeRegistration=require('./employeeRegistration').createEmployeeRegistration({db,FieldValue:admin.firestore.FieldValue,notify:queueManagerNotification});
-exports.employeeRegister=onCall({region:'us-central1',timeoutSeconds:60},async request=>{await rateLimitPublicForm(request.rawRequest,'employee-registration');return employeeRegistration(request.data||{});});
+exports.employeeRegister=onCall({region:['us-central1', 'asia-east1'],timeoutSeconds:60},async request=>{await rateLimitPublicForm(request.rawRequest,'employee-registration');return employeeRegistration(request.data||{});});
 
 const inventoryCountAccess=require('./inventoryCountAccess').createInventoryCountAccess({db,FieldValue:admin.firestore.FieldValue,requireManager:requireHttpManager});
 exports.inventoryCountLoginHttp=httpEndpoint(async(data,req)=>{if(data.action==='connectionInfo')return {currentIp:clean(req.ip).replace(/^::ffff:/,'')};await rateLimitPublicForm(req,'inventory-pin');return inventoryCountAccess.login(data);});
