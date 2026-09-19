@@ -26,5 +26,6 @@
     "importProductListingImages",
     "generateProductListingImage",
     "runNineSeriesBookCoverBatch"
-  ]
+  ],
+  "phase": "backend"
 }
