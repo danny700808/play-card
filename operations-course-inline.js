@@ -261,7 +261,7 @@
         var hash = '#' + HASH_BY_VIEW[button.dataset.view];
         if (global.location.hash !== hash) global.location.hash = hash;
       });
-      if(!global.YouziPayrollTransfer)await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src='payroll-transfer.js?v=20260920-v1';script.onload=resolve;script.onerror=function(){reject(new Error('轉帳表元件載入失敗'));};global.document.body.appendChild(script);});
+      if(!global.YouziPayrollTransfer)await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src='payroll-transfer.js?v=20260920-v2';script.onload=resolve;script.onerror=function(){reject(new Error('轉帳表元件載入失敗'));};global.document.body.appendChild(script);});
       await loadRuntime();
       sendView(desiredView);
     })().catch(function (error) {
