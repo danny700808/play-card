@@ -18,3 +18,12 @@ test('concurrent refresh shares request and updates only followup state',async()
 test('failed refresh can retry without replacing existing data',async()=>{
  const h=harness();h.ctx.window.YouziCoursePreviewData.loadCalendarFollowupState=async()=>{throw Error('offline');};await h.ctx.refreshIrregularList();assert.equal(h.ctx.irregularLoadPromise,null);assert.equal(h.ctx.irregularLoadedAt,0);
 });
+test('stopped months do not filter the ongoing irregular list',()=>{
+ const {ctx}=harness();Object.assign(ctx,{studentById:()=>({}),subjectById:()=>({}),teacherById:()=>({}),money:String});
+ ctx.followupRows=()=>[{kind:'irregular',studentId:'ongoing',studentName:'不定時甲',effectiveDate:'2026-07-01'},{kind:'stopped',studentId:'old',studentName:'八月乙',effectiveDate:'2026-08-02',balanceVerified:true,unpaidBalance:0},{kind:'stopped',studentId:'new',studentName:'九月丙',effectiveDate:'2026-09-02',balanceVerified:true,unpaidBalance:2800}];
+ ctx.openFollowupList('day-stopped','2026-09');let html=ctx.$('calendarIssuesBody').innerHTML;
+ assert.match(html,/九月丙/);assert.doesNotMatch(html,/八月乙|不定時甲/);assert.match(html,/data-followup-month/);
+ ctx.openFollowupList('day');html=ctx.$('calendarIssuesBody').innerHTML;
+ assert.match(html,/不定時甲/);assert.doesNotMatch(html,/九月丙|八月乙|data-followup-month|<h3>/);
+ ctx.openFollowupList('day-stopped','all');html=ctx.$('calendarIssuesBody').innerHTML;assert.match(html,/八月乙/);assert.match(html,/九月丙/);
+});
