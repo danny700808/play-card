@@ -391,6 +391,8 @@
     if(!payload.ok)throw new Error('課務資料讀取未完成。');return buildState(payload,options.anchorDate);
   }
 
+  async function loadRecentStudents(){await ensureTeacherPayrollManagerAuth();var payload=await call(AUTO_LOAD_FUNCTION_NAME,{scope:'students-recent'},{timeout:180000});if(!payload||!payload.ok)throw new Error('近期學生資料讀取未完成');var result=buildState(payload,todayKey());result.recentRange={start:payload.rangeStart,end:payload.rangeEnd};return result;}
+
   async function loadPublished(options){
     options=options||{};
     await ensureTeacherPayrollManagerAuth();
@@ -700,5 +702,5 @@
     return result;
   }
 
-  global.YouziCoursePreviewData={timeOperationClient:timeOperationClient,refreshWorkspaceSlice:refreshWorkspaceSlice,applyWorkspaceSlice:applyWorkspaceSlice,createAttendanceUpdater:createAttendanceUpdater,refreshAttendance:refreshAttendance,applyAttendanceSnapshot:applyAttendanceSnapshot,loadCalendarFollowupState:loadCalendarFollowupState,stoppedCourseReceivables:stoppedCourseReceivables,activeIrregularCourses:activeIrregularCourses,isIrregularPlaceholder:isIrregularPlaceholder,loadIrregularCourses:loadIrregularCourses,load:load,loadPublished:loadPublished,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,voidLessonSlot:voidLessonSlot,saveLessonSettings:saveLessonSettings,saveLeaveReason:saveLeaveReason,saveSchedule:saveSchedule,setAttendance:setAttendance,recordTuitionTransaction:recordTuitionTransaction,saveTuitionPeriods:saveTuitionPeriods,saveStudent:saveStudent,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
+  global.YouziCoursePreviewData={loadRecentStudents:loadRecentStudents,timeOperationClient:timeOperationClient,refreshWorkspaceSlice:refreshWorkspaceSlice,applyWorkspaceSlice:applyWorkspaceSlice,createAttendanceUpdater:createAttendanceUpdater,refreshAttendance:refreshAttendance,applyAttendanceSnapshot:applyAttendanceSnapshot,loadCalendarFollowupState:loadCalendarFollowupState,stoppedCourseReceivables:stoppedCourseReceivables,activeIrregularCourses:activeIrregularCourses,isIrregularPlaceholder:isIrregularPlaceholder,loadIrregularCourses:loadIrregularCourses,load:load,loadPublished:loadPublished,loadTeacherPayrollMonth:loadTeacherPayrollMonth,sync:sync,voidLessonSlot:voidLessonSlot,saveLessonSettings:saveLessonSettings,saveLeaveReason:saveLeaveReason,saveSchedule:saveSchedule,setAttendance:setAttendance,recordTuitionTransaction:recordTuitionTransaction,saveTuitionPeriods:saveTuitionPeriods,saveStudent:saveStudent,saveRoomSettings:saveRoomSettings,saveTeacherSubjects:saveTeacherSubjects,saveSubjectCatalog:saveSubjectCatalog,saveFeePlan:saveFeePlan,mapSubjectSuggestion:mapSubjectSuggestion,saveTeacherAdjustment:saveTeacherAdjustment,loadPortalRentals:loadPortalRentals,cancelPortalRental:cancelPortalRental,ensureTuitionReceipt:ensureTuitionReceipt,buildState:buildState};
 })(window);

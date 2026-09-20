@@ -362,7 +362,7 @@ assert(schedulerCss.includes('.tuition-receipt-button{flex:0 0 auto;min-width:54
 assert(!schedulerCss.includes('.event.leave,.event.absent,.event.cancelled{opacity:.38'), '請假／曠課卡片不可再以透明浮水印顯示');
 assert(!schedulerUiHtml.includes('半透明＝請假／停課'), '課表圖例仍誤導為半透明狀態');
 assert(schedulerUiHtml.includes('老師贈課'), '桌面課表圖例缺少老師贈課');
-assert(schedulerUiHtml.includes('雙人／團體'), '桌面課表圖例缺少雙人／團體課');
+assert(!schedulerUiHtml.includes('<i class="group"></i>雙人／團體'), '課表圖例不再重複標示雙人／團體課');
 assert(schedulerUiHtml.includes('取消／調走'), '桌面課表圖例缺少取消／調走');
 assert(schedulerUiHtml.includes('只有實際完成簽到才扣學生堂數並列入老師薪資'), '桌面說明與實際完成才計薪規則不一致');
 assert(schedulerSource.includes("return status==='leave'||status==='cancelled'"), '桌面課表仍錯把曠課視為釋出教室');

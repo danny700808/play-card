@@ -13413,6 +13413,38 @@ async function appendCoursePortalData(payload) {
 
 // Calendar bootstrap shares the canonical occupancy calculation, including
 // cancellations and moved recurring courses. It never supplies account balances.
+async function managerRecentStudents() {
+  const endDate = currentTaipeiDay();
+  const start = new Date(endDate + 'T12:00:00Z');
+  start.setUTCMonth(start.getUTCMonth() - 3);
+  const startDate = start.toISOString().slice(0,10);
+  const queryRange = (collection, field) => db.collection(collection).where(field, '>=', startDate).where(field, '<=', endDate).get();
+  const [mirrorAttendanceSnap, portalAttendanceSnap, mirrorPeriodsRecent, portalPeriodsRecent] = await Promise.all([
+    queryRange(MIRROR.attendance, 'source.date'), queryRange(ATTENDANCE_RECORDS, 'date'),
+    queryRange(MIRROR.tuitionPeriods, 'source.startDate'), queryRange(TUITION_PERIODS, 'startDate')
+  ]);
+  const mirrorSources = snapshot => snapshot.docs.filter(doc => doc.data().sourceActive !== false).map(doc => Object.assign({__id:doc.id}, jsonValue(doc.data().source) || {}));
+  const portalSources = snapshot => snapshot.docs.map(doc => Object.assign({}, jsonValue(doc.data()), {id:doc.id}));
+  const attendance = mirrorSources(mirrorAttendanceSnap);
+  const portalAttendance = portalSources(portalAttendanceSnap);
+  const recent = attendance.concat(portalAttendance, mirrorSources(mirrorPeriodsRecent), portalSources(portalPeriodsRecent));
+  const ids = [...new Set(recent.filter(row => row.active !== false && row.status !== 'cancelled').flatMap(row => eventStudentIds(row)).filter(Boolean))];
+  const chunks = [];for(let offset=0;offset<ids.length;offset+=30)chunks.push(ids.slice(offset,offset+30));
+  const scoped = async (collection, field) => (await Promise.all(chunks.map(chunk => db.collection(collection).where(field,'in',chunk).get()))).flatMap(snapshot => snapshot.docs);
+  // Only the recently active students' ledgers are read; no global attendance,
+  // payroll, rental or schedule-history scan is needed for this list.
+  const [students, subjects, teachers, feePlans, mirrorDocs, periodDocs, transactions, receipts] = await Promise.all([
+    mirrorProfilesByIds('students',ids),mirrorRows('subjects'),mirrorRows('teachers'),mirrorRows('feePlans'),
+    scoped(MIRROR.tuitionPeriods,'source.studentId'),scoped(TUITION_PERIODS,'studentId'),
+    scoped(TUITION_TRANSACTIONS,'studentId'),scoped(TUITION_RECEIPTS,'studentId')
+  ]);
+  const periods = mergePortalTuitionRows(mirrorSources({docs:mirrorDocs}),periodDocs,transactions,receipts);
+  return {ok:true,scope:'students-recent',rangeStart:startDate,rangeEnd:endDate,students,subjects,teachers,feePlans,
+    tuitionPeriods:applyPortalAttendanceToPeriods(periods,attendance,portalAttendance),
+    attendance:mergePortalAttendanceRows(attendance,portalAttendance),events:[],
+    loadedAt:new Date().toISOString(),mirrorMeta:{status:'success'}};
+}
+
 async function managerCalendarBootstrap(data) {
   const anchor = dateKey(data && data.anchorDate);
   if (!anchor) throw new HttpsError('invalid-argument', '課表日期格式不正確。');
@@ -13637,7 +13669,8 @@ module.exports = {
   requireSession,
   resolveTeacherUtilityEmployee,
   teacherPayrollMonthData,
-  managerCalendarBootstrap
+  managerCalendarBootstrap,
+  managerRecentStudents
 };
 function parseContactBookImages(values) {
   const images = Array.isArray(values) ? values : [];

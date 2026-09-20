@@ -2690,3 +2690,5 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 
 /* Grouped products use their own image trays and one shared publishing gallery. */
 #productListingCaseForm:has([name="variantGroupEnabled"][value="1"]) #productReferenceImagePreview{display:none}
+
+@media(min-width:1100px){body:has(a[data-view="course-calendar"].active) #opsPageTitle{font-size:20px;line-height:1.25}}
