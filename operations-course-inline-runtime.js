@@ -683,7 +683,7 @@
   function renderScheduleStudentMatches(){
     var query=clean($('eventStudentSearch').value).toLowerCase(),box=$('eventStudentMatches');if(!query){box.classList.add('hidden');box.innerHTML='';return;}
     var rows=state.students.filter(function(student){return (student.name+' '+(student.phone||'')).toLowerCase().indexOf(query)>=0;}).sort(bySort).slice(0,12);
-    box.innerHTML=rows.map(function(student){var period=latestPeriod(student.id);return '<button type="button" data-schedule-student-id="'+esc(student.id)+'"><b>'+esc(student.name)+'</b><span>'+esc(student.phone||'未填電話')+(period.id?'・'+esc(subjectById(period.subjectId).name||'未設定課程')+'・剩 '+periodRemaining(period)+' 堂':'・尚無期別')+'</span></button>';}).join('')||'<p>找不到學生，可按下方「新增學生」。</p>';box.classList.remove('hidden');
+    box.innerHTML=rows.map(function(student){var period=latestPeriod(student.id);return '<button type="button" data-schedule-student-id="'+esc(student.id)+'"><b>'+esc(student.name)+'</b><span>'+esc(student.phone||'未填電話')+(period.id?'・'+esc(subjectById(period.subjectId).name||'未設定課程')+'・剩 '+periodRemaining(period)+' 堂':calendarPartial()?'・選擇後讀取課程':'・尚無期別')+'</span></button>';}).join('')||'<p>找不到學生，可按下方「新增學生」。</p>';box.classList.remove('hidden');
   }
   function setScheduleKind(type,roomChanged){
     type=['fixed','single','rental','trial'].indexOf(type)>=0?type:'fixed';if(type==='rental'||type==='trial'){scheduleSelectionVersion++;scheduleDataLoading=false;$('scheduleSubmitBtn').disabled=false;}$('eventType').value=type;var rental=type==='rental',trial=type==='trial',studentCourse=type==='fixed'||type==='single';
