@@ -233,9 +233,16 @@
         grid.style.setProperty('--slot',Math.max(22,Math.floor((available-36)/count))+'px');
         grid.style.setProperty('--room-head-height','36px');grid.style.setProperty('--time-col','48px');grid.style.setProperty('--room-col','minmax(0,1fr)');
       }
-      global.addEventListener('resize',fitDesktopCalendar);global.addEventListener('hashchange',fitDesktopCalendar);
-      global.addEventListener('youzi-calendar-layout',function(){global.requestAnimationFrame(fitDesktopCalendar);});
-      fitDesktopCalendar();
+      var layoutFrame=0;
+      function scheduleCalendarFit(){
+        if(layoutFrame)global.cancelAnimationFrame(layoutFrame);
+        layoutFrame=global.requestAnimationFrame(function(){layoutFrame=global.requestAnimationFrame(function(){layoutFrame=0;fitDesktopCalendar();});});
+      }
+      global.addEventListener('resize',scheduleCalendarFit);global.addEventListener('hashchange',scheduleCalendarFit);
+      global.addEventListener('youzi-calendar-layout',scheduleCalendarFit);
+      if(global.ResizeObserver){var calendarLayoutObserver=new global.ResizeObserver(scheduleCalendarFit);calendarLayoutObserver.observe(host);calendarLayoutObserver.observe(shadow.querySelector('.calendar-toolbar'));}
+      var layoutStyle=shadow.querySelector('link[rel="stylesheet"]');if(layoutStyle)layoutStyle.addEventListener('load',scheduleCalendarFit);
+      scheduleCalendarFit();
 
       global.__YOUZI_COURSE_INLINE_MODE__ = true;
       global.__YOUZI_COURSE_INLINE_VIEW__ = desiredView;
