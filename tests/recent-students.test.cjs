@@ -20,4 +20,3 @@ test('combined followup reads only stopped students ledgers and uses current pay
  assert.equal(result.followupStops.find(r=>r.studentId==='owing').currentUnpaidAmount,1800);assert.equal(result.followupStops.find(r=>r.studentId==='paid').currentUnpaidAmount,0);assert.equal(result.followupStops.length,2);
  for(const q of data.queries.filter(q=>/Tuition/.test(q.name)))assert.ok(q.filters.length>0,'must not scan all '+q.name);
 });
-
