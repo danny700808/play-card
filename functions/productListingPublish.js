@@ -7,6 +7,7 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const shopeeTaxonomy = require('./shopeeMusicTaxonomy');
 const listingBrandCreative = require('./listingBrandCreative');
+const listingExecutionPolicy = require('./listingExecutionPolicy');
 const { verifyShopeeDescriptionImages } = require('./listingImagePreflight');
 
 const EASYSTORE_ACCESS_TOKEN = defineSecret('EASYSTORE_ACCESS_TOKEN');
@@ -107,7 +108,9 @@ const SHOPEE_IMPORTED_DESCRIPTION_IMAGE_STANDARD = Object.freeze({
   hiddenInputClickAloneIsNotUploadEvidence: true,
   verifyDescriptionCountAndFinalTwoImagesAfterReload: true,
   verifySquareGalleryHeroAfterEasyStoreImport: true,
-  minimumSourceShortEdgePx: 700,
+  minimumSourceWidthPx: 700,
+  minimumSourceHeightPx: 32,
+  maximumFileBytes: 2000000,
   preferredSquareSizePx: 1000,
   storefrontPortraitWidthPx: 700,
   storefrontPortraitHeightPx: 1000,
@@ -386,14 +389,16 @@ function momoShortFeaturePlan(description, explicitSlogan) {
       const length = Array.from(clause).length;
       return length >= 4 && length <= 15;
     });
-    return Array.from(conciseClause || line).slice(0, 15).join('');
+    return conciseClause || '';
   });
-  const unique = Array.from(new Set(snippets)).slice(0, 3);
-  const explicit = Array.from(clean(explicitSlogan).replace(/\s+/g, ' ')).slice(0, 15).join('');
+  const unique = Array.from(new Set(snippets.filter(Boolean))).slice(0, 3);
+  const rawExplicit = clean(explicitSlogan).replace(/\s+/g, ' ');
+  const explicit = Array.from(rawExplicit).length <= 15 ? rawExplicit : '';
   return {
     slogan: explicit || unique[0] || '',
     featureTexts: unique,
     maximumCharactersPerField: 15,
+    requiresRewrite: unique.length < Math.min(3, verifiedLines.length) || Array.from(rawExplicit).length > 15,
     source: explicit ? 'explicit-slogan-and-verified-description-features' : 'verified-description-features',
     neverInventToFillEmptySlot: true
   };
@@ -606,6 +611,8 @@ function hsinchuSizeBand(totalCm) {
 
 function listingAutomationPolicy() {
   return {
+    executionRevision: listingExecutionPolicy.version,
+    latestExecutionInstructions: listingExecutionPolicy.instructions,
     version: LISTING_AUTOMATION_POLICY_VERSION,
     workflowId: LISTING_WORKFLOW_ID,
     immutableWorkflowUntilExplicitRuleChange: true,
@@ -1326,13 +1333,13 @@ function platformListingStatusFromPublish(previous, platforms, stages) {
       ...old,
       status: resolvedStatus,
       listingId: clean(receipt.listingId || raw.productId || raw.listingId || old.listingId),
-      note: clean(pendingReview ? '酷澎已送審，等待正式核准；請於 24 小時及 48 小時後重查。' : raw.message).slice(0, 800),
+      note: clean(pendingReview ? '正式清單確認審核中，本次送審完成；不安排回查，後續由獨立狀態檢測更新。' : raw.message).slice(0, 800),
       lastCheckedAt: checkedAt,
       lastCheckedBy: stageVerified ? '商品上架正式清單核對' : (old.lastCheckedBy || ''),
       lastAttemptedAt: admin.firestore.FieldValue.serverTimestamp(),
       reviewSubmittedAt: pendingReview ? (old.reviewSubmittedAt || admin.firestore.FieldValue.serverTimestamp()) : (old.reviewSubmittedAt || null),
-      nextReviewCheckAt: pendingReview ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null,
-      finalReviewCheckAt: pendingReview ? new Date(Date.now() + 48 * 60 * 60 * 1000) : null
+      nextReviewCheckAt: null,
+      finalReviewCheckAt: null
     };
   });
   return next;
@@ -1399,6 +1406,7 @@ function listingName(product, listingCase) {
 function stripFixedDescriptionNoticesText(value) {
   return [LEGACY_PHYSICAL_PRODUCT_DISCLAIMER, ...FIXED_DESCRIPTION_NOTICES]
     .reduce((result, notice) => result.split(notice).join(''), clean(value))
+    .replace(/^[\t ]*(?:實體商品說明|出貨與保固說明)[：:]?[\t ]*\r?$/gm, '')
     .trim();
 }
 
@@ -1520,7 +1528,7 @@ function richContentLifecycle(listingIntent, descriptionStatus) {
 function appendPhysicalProductDisclaimerHtml(html) {
   let result = clean(html);
   ['實體商品說明', '出貨與保固說明', '保固協助說明'].forEach((heading) => {
-    result = result.replace(new RegExp(`<h[23]>\\s*${heading}\\s*<\\/h[23]>`, 'gi'), '');
+    result = result.replace(new RegExp(`<(h[23]|p)\\b[^>]*>\\s*(?:<strong>)?\\s*${heading}\\s*(?:<\\/strong>)?\\s*<\\/\\1>`, 'gi'), '');
   });
   const blocks = [LEGACY_PHYSICAL_PRODUCT_DISCLAIMER, ...FIXED_DESCRIPTION_NOTICES]
     .flatMap((notice) => [`<p><strong>${notice}</strong></p>`, `<p>${notice}</p>`]);
@@ -1533,11 +1541,11 @@ function appendPhysicalProductDisclaimerHtml(html) {
 function appendShopDescriptionPromos(html) {
   let result = clean(html);
   DESCRIPTION_PROMO_IMAGE_URLS.forEach((url) => {
-    const block = `<p><img src="${url}" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>`;
+    const block = `<p><img src="${url}" alt="柚子樂器門市與服務資訊" style="width:700px;max-width:100%;height:auto"></p>`;
     result = result.split(block).join('');
   });
   DESCRIPTION_PROMO_IMAGE_URLS.forEach((url) => {
-    result += `<p><img src="${url}" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>`;
+    result += `<p><img src="${url}" alt="柚子樂器門市與服務資訊" style="width:700px;max-width:100%;height:auto"></p>`;
   });
   return result;
 }
@@ -1596,7 +1604,7 @@ function easyStoreGalleryImages(snapshot) {
 function fixedDescriptionSections(html) {
   let source = clean(html);
   ['實體商品說明', '出貨與保固說明', '保固協助說明'].forEach((heading) => {
-    source = source.replace(new RegExp(`<h[23]>\\s*${heading}\\s*<\\/h[23]>`, 'gi'), '');
+    source = source.replace(new RegExp(`<(h[23]|p)\\b[^>]*>\\s*(?:<strong>)?\\s*${heading}\\s*(?:<\\/strong>)?\\s*<\\/\\1>`, 'gi'), '');
   });
   [LEGACY_PHYSICAL_PRODUCT_DISCLAIMER, ...FIXED_DESCRIPTION_NOTICES].forEach((notice) => {
     source = source
@@ -1622,7 +1630,7 @@ function fixedDescriptionSections(html) {
 }
 
 function descriptionImageBlock(url, alt = '商品介紹圖片') {
-  return `<p><img src="${url}" alt="${alt}" style="max-width:100%;height:auto"></p>`;
+  return `<p><img src="${url}" alt="${alt}" style="width:700px;max-width:100%;height:auto"></p>`;
 }
 
 function appendShopDescriptionImages(html, imageUrls) {
@@ -2640,19 +2648,20 @@ function buildPlatformPageContracts() {
         stableLandmarks: ['進階商品描述', '使用 EasyStore 的產品描述', '價格調整', '蝦皮分類', '浮水印標題', '狀態']
       },
       fieldOrder: [
-        'channel-product', 'advanced-description-capability-probe', 'enable-advanced-description',
-        'use-easystore-rich-description', 'shopee-category', 'category-attributes', 'price-adjustment',
-        'variant-images', 'prepared-package-weight', 'prepared-logistics', 'prepare-publish', 'publish'
+        'channel-product', 'description-text', 'shopee-category', 'category-attributes', 'price-adjustment',
+        'variant-images', 'prepared-package-weight', 'prepared-logistics', 'prepare-publish', 'publish',
+        'seller-center-local-description-images', 'save-and-reload-verify'
       ],
       batchSections: [
-        { key: 'prepared-rich-description', fields: ['advanced-description-capability-probe', 'enable-advanced-description', 'use-easystore-rich-description'], dynamic: true },
+        { key: 'prepared-description-text', fields: ['description-text'] },
         { key: 'taxonomy-and-attributes', fields: ['channel-product', 'shopee-category', 'category-attributes'], dynamic: true },
         { key: 'commerce-and-variants', fields: ['price-adjustment', 'variant-images'] },
         { key: 'shipping', fields: ['prepared-package-weight', 'prepared-logistics'], dynamic: true },
-        { key: 'publish', fields: ['prepare-publish', 'publish'] }
+        { key: 'publish', fields: ['prepare-publish', 'publish'] },
+        { key: 'native-description-images', fields: ['seller-center-local-description-images', 'save-and-reload-verify'] }
       ],
-      fixedFields: ['warranty-days-180', 'publish-immediately', 'close-embedded-chat', 'use-prepared-easystore-rich-description-when-supported'],
-      dynamicFields: ['advanced-description-account-capability', 'mapped-leaf-category', 'category-dependent-attributes', 'prepared-size-tier', 'platform-validation-errors']
+      fixedFields: ['warranty-days-180', 'publish-immediately', 'close-embedded-chat', 'native-local-file-description-upload'],
+      dynamicFields: ['mapped-leaf-category', 'category-dependent-attributes', 'prepared-size-tier', 'platform-validation-errors']
     }
   };
 }
@@ -2664,10 +2673,13 @@ function buildPreparedPlatformFieldPlan(snapshot) {
   const momoFeatures = snapshot.momoShortFeatures && typeof snapshot.momoShortFeatures === 'object'
     ? {
       ...snapshot.momoShortFeatures,
-      slogan: Array.from(clean(snapshot.momoShortFeatures.slogan)).slice(0, 15).join(''),
+      slogan: Array.from(clean(snapshot.momoShortFeatures.slogan)).length <= 15 ? clean(snapshot.momoShortFeatures.slogan) : '',
+      requiresRewrite: snapshot.momoShortFeatures.requiresRewrite === true
+        || [snapshot.momoShortFeatures.slogan, ...(snapshot.momoShortFeatures.featureTexts || [])]
+          .some(value => Array.from(clean(value)).length > 15),
       featureTexts: (Array.isArray(snapshot.momoShortFeatures.featureTexts)
         ? snapshot.momoShortFeatures.featureTexts : [])
-        .map((value) => Array.from(clean(value)).slice(0, 15).join('')).filter(Boolean).slice(0, 3)
+        .map(clean).filter(value => value && Array.from(value).length <= 15).slice(0, 3)
     }
     : momoShortFeaturePlan(snapshot.description, snapshot.momoSlogan);
   const preparedMomoMarketPrice = momoMarketPrice(snapshot);
@@ -3095,7 +3107,7 @@ function buildPreparedPlatformFieldPlan(snapshot) {
           items: variantGroup.items.map((row) => ({ ...row, price: row.easyStorePrice }))
         } : null
       },
-      dynamicOnly: ['advanced-description-account-capability', 'category-dependent-attributes', 'platform-validation-errors']
+      dynamicOnly: ['category-dependent-attributes', 'platform-validation-errors']
     }
   };
 }
@@ -4484,7 +4496,7 @@ function fixedDescriptionMediaMissingFields(snapshot, platform, html, galleryIma
     && firstPromoIndex > warrantyNoticeIndex && secondPromoIndex > firstPromoIndex)) {
     missing.push(`${platform} 實體商品與保固說明須位於最後兩張固定介紹圖之前`);
   }
-  const finalPromoBlock = `<p><img src="${DESCRIPTION_PROMO_IMAGE_URLS[1]}" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>`;
+  const finalPromoBlock = `<p><img src="${DESCRIPTION_PROMO_IMAGE_URLS[1]}" alt="柚子樂器門市與服務資訊" style="width:700px;max-width:100%;height:auto"></p>`;
   if (!source.endsWith(finalPromoBlock)) missing.push(`${platform} 詳細介紹須以第二張固定介紹圖結尾`);
   return Array.from(new Set(missing));
 }
