@@ -339,11 +339,11 @@ function patchPortal(path) {
   if (!operationsTag.test(source)) throw new Error(`Unable to locate operations-phase1.js in ${path}`);
   const inlineTag = /<script src="operations-course-inline\.js\?v=[^"]+"><\/script>/;
   if (inlineTag.test(source)) {
-    source = source.replace(inlineTag, `<script src="operations-course-inline.js?v=${VERSION}&period=20260920-transfer2"></script>`);
+    source = source.replace(inlineTag, `<script src="operations-course-inline.js?v=${VERSION}&period=20260920-transfer3-roc"></script>`);
   } else {
     source = source.replace(
       operationsTag,
-      `<script src="operations-course-inline.js?v=${VERSION}&period=20260920-transfer2"></script>\n  $&`
+      `<script src="operations-course-inline.js?v=${VERSION}&period=20260920-transfer3-roc"></script>\n  $&`
     );
   }
   if (source.includes('course-scheduler.html?view=')) throw new Error(`Standalone course links remain in ${path}`);
