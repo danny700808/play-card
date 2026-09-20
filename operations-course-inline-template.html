@@ -62,7 +62,7 @@
       <section class="view" id="studentsPage">
         <div class="section-heading"><div><h2>學生與學費</h2><p>每個科目、每一期學費、每堂簽到與請假都獨立保留。</p></div><button class="btn primary" type="button" id="addStudentBtn">＋ 新增學生</button></div>
         <div class="metric-grid" id="studentMetrics"></div>
-        <div class="filters"><select class="control" id="studentHistoryScope" aria-label="學生查詢範圍"><option value="recent">近三個月</option><option value="all">全部歷史</option></select><button class="btn outline" id="studentRecentRefresh" type="button">更新近期資料</button><input class="search-control" id="studentSearch" placeholder="搜尋學生姓名、手機或科目"><select class="control" id="studentPaymentFilter"><option value="all">全部學費狀態</option><option value="due">尚有未繳</option><option value="low">剩餘 1 堂以下</option><option value="active">上課中</option></select></div>
+        <div class="filters"><input class="search-control" id="studentSearch" placeholder="搜尋學生姓名、手機或科目"><select class="control" id="studentPaymentFilter"><option value="all">全部學費狀態</option><option value="due">尚有未繳</option><option value="low">剩餘 1 堂以下</option><option value="active">上課中</option></select></div>
         <div class="table-card card"><table class="data-table"><thead><tr><th>學生</th><th>聯絡方式</th><th>目前科目／老師</th><th>本期堂數</th><th>本期學費</th><th>下次上課</th><th>操作</th></tr></thead><tbody id="studentRows"></tbody></table></div>
       </section>
 
