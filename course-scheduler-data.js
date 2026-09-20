@@ -97,11 +97,12 @@
         id:safeId('payroll',row.id,index),teacherId:clean(row.teacherId),teacherName:clean(row.teacherName),
         studentId:clean(row.studentId),studentName:clean(row.studentName),subject:clean(row.subjectName||row.subject||row.chargeName),
         periodId:clean(row.periodId||row.tuitionPeriodId||row.studentPayment),
-        planName:clean(row.planName||row.feePlanName||row.chargeName),planSnapshot:clone(row.planSnapshot||{}),
+        payrollPeriodError:clean(row.payrollPeriodError),planName:clean(row.planName||row.feePlanName||row.chargeName),planSnapshot:clone(row.planSnapshot||{}),
         payrollCalculation:clone(row.payrollCalculation||{}),specialLesson:row.specialLesson===true,
         date:dateKey(row.date||row.occurredAt),occurredAt:clean(row.occurredAt),startTime:clean(row.startTime),endTime:clean(row.endTime),durationMinutes:Number(row.durationMinutes)||0,lessonUnits:Number(row.lessonUnits)||1,
         lessonPrice:numberOf(row.lessonPrice),splitType:clean(row.splitType),splitValue:numberOf(row.splitValue),
         allotRate:numberOf(row.allotRate),hourlyFee:numberOf(row.hourlyFee),
+        baseTeacherAmount:numberOf(row.baseTeacherAmount),teacherPayAdjustment:numberOf(row.teacherPayAdjustment),teacherPayAdjustmentReason:clean(row.teacherPayAdjustmentReason),
         teacherAmount:numberOf(row.teacherAmount),schoolShare:numberOf(row.schoolShare)
       };
     }).filter(function(row){return row.teacherId&&row.date;});

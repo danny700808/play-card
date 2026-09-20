@@ -5403,6 +5403,7 @@ async function teacherPortalData(data) {
       approvedCancellations.concat(portalPayroll.filter((row) => row.active === false))
     )
       .filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
+    result.payroll = await refreshPayrollPeriodLinks(result.payroll);
     result.adjustments = mergeTeacherAdjustmentRows(adjustments, portalAdjustments)
       .filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
   }
@@ -6232,7 +6233,7 @@ function periodWithHistoricalTeacherSplit(period, payrollRows, event, studentId,
   });
 }
 
-function attendancePeriodPayroll(studentId, period, lessonUnits = 1) {
+function attendancePeriodPayroll(studentId, period, lessonUnits = 1, options = {}) {
   const periodId = sourceId(period);
   const planSnapshot = jsonValue(period && period.planSnapshot || {});
   if (!periodId || !planSnapshot || typeof planSnapshot !== 'object' || !Object.keys(planSnapshot).length) {
@@ -6248,7 +6249,7 @@ function attendancePeriodPayroll(studentId, period, lessonUnits = 1) {
   const planAmount = firstFiniteNumber(planSnapshot, ['amount', 'expectedAmount', 'tuitionAmount']);
   const totalAmount = expectedAmount != null && expectedAmount > 0 ? expectedAmount : planAmount;
   const discount = Math.max(0, firstFiniteNumber(period, ['discount', 'discountAmount']) || 0);
-  if (!Number.isFinite(lessonCount) || lessonCount <= 0 || !Number.isFinite(totalAmount) || totalAmount <= 0) {
+  if (!Number.isFinite(lessonCount) || lessonCount <= 0 || !Number.isFinite(totalAmount) || totalAmount < 0 || (totalAmount === 0 && options.allowZeroTuition !== true)) {
     throw new HttpsError(
       'failed-precondition',
       '這位學生的學費總額或課堂數未設定，已停止簽到以避免產生 NT$0 老師薪資。'
@@ -6288,7 +6289,7 @@ function attendancePeriodPayroll(studentId, period, lessonUnits = 1) {
   const grossLessonPrice = lessonMoney(roundPayrollMoney(totalAmount / lessonCount) * lessonUnits);
   const netLessonPrice = lessonMoney(roundPayrollMoney(netTuition / lessonCount) * lessonUnits);
   const teacherPayLessonPrice = lessonMoney(roundPayrollMoney(teacherPayTuition / lessonCount) * lessonUnits);
-  if (teacherPayLessonPrice <= 0) {
+  if (teacherPayLessonPrice <= 0 && options.allowZeroTuition !== true) {
     throw new HttpsError('failed-precondition', '本堂學費計算為 NT$0，已停止簽到；請先修正學費期別。');
   }
 
@@ -6372,7 +6373,7 @@ function attendancePeriodPayroll(studentId, period, lessonUnits = 1) {
   };
 }
 
-function attendancePayrollCalculation(event, periodRows, sourceDate) {
+function attendancePayrollCalculation(event, periodRows, sourceDate, options = {}) {
   const specialLesson = event && (
     event.specialLesson === true ||
     clean(event.portalAction) === 'teacher_gift' ||
@@ -6449,7 +6450,7 @@ function attendancePayrollCalculation(event, periodRows, sourceDate) {
     };
   }
   const students = (periodRows || []).map((row) =>
-    attendancePeriodPayroll(row.studentId, row.period, row.lessonUnits == null ? eventLessonUnits(event) : row.lessonUnits)
+    attendancePeriodPayroll(row.studentId, row.period, row.lessonUnits == null ? eventLessonUnits(event) : row.lessonUnits, options)
   );
   const expectedStudentIds = [...new Set(eventStudentIds(event || {}).map(clean).filter(Boolean))];
   if (!students.length || new Set(students.map(row => row.studentId)).size !== expectedStudentIds.length) {
@@ -7660,6 +7661,66 @@ async function portalRowsByDateRange(collectionName, startDate, endDate, teacher
     });
 }
 
+// Recalculate display/read models from the explicitly linked, manager-corrected
+// tuition period. Keep the original attendance snapshot as the audit record.
+function payrollPeriodLinks(row) {
+  const students = row.payrollCalculation && row.payrollCalculation.students;
+  if (Array.isArray(students) && students.length) return students.map(item => ({
+    studentId: clean(item.studentId), periodId: clean(item.periodId),
+    lessonUnits: item.inputs && item.inputs.lessonUnits != null ? Number(item.inputs.lessonUnits) : attendanceLessonUnits(row),
+    historical: item.inputs || {}
+  }));
+  return [{studentId: clean(row.studentId), periodId: clean(row.periodId || row.tuitionPeriodId || row.studentPayment || row.sourcePaymentId), lessonUnits: attendanceLessonUnits(row), historical: {}}];
+}
+
+function payrollWithCurrentPeriods(rows, periods) {
+  const byId = new Map();
+  (periods || []).filter(period => period.active !== false && period.status !== 'cancelled').forEach(period => {
+    normalizedTuitionLinkIds([sourceId(period), period.sourcePaymentId]).forEach(id => {
+      if (byId.has(id) && sourceId(byId.get(id) || {}) !== sourceId(period)) byId.set(id, null);
+      else byId.set(id, period);
+    });
+  });
+  return (rows || []).map(row => {
+    if (row.active === false || row.status === 'cancelled' || row.specialLesson || row.payrollCalculation && row.payrollCalculation.inputs && row.payrollCalculation.inputs.specialLesson) return row;
+    const links = payrollPeriodLinks(row);
+    const matched = links.map(link => {
+      const period = byId.get(link.periodId);
+      return period && clean(period.studentId) === link.studentId &&
+        (!clean(row.subjectId) || !clean(period.subjectId) || clean(row.subjectId) === clean(period.subjectId)) &&
+        (period.payrollFollowsPeriod === true || clean(period.planSnapshot && period.planSnapshot.splitSource) === 'manager') ? period : null;
+    });
+    if (!matched.some(Boolean)) return row;
+    const allocations = links.map((link, index) => ({studentId:link.studentId, lessonUnits:link.lessonUnits,
+      period:matched[index] || Object.assign({id:link.periodId}, link.historical)}));
+    // A group or cross-period class must retain the exact allocation of every student.
+    if (allocations.some(item => !item.studentId || !item.period.id || !item.period.planSnapshot)) return row;
+    const event = Object.assign({}, row, {studentIds:[...new Set(links.map(link => link.studentId))]});
+    let calculated;
+    try { calculated = attendancePayrollCalculation(event, allocations, eventDate(row), {allowZeroTuition:true}); }
+    catch (error) {
+      return Object.assign({}, row, {payrollPeriodError: clean(error.message)});
+    }
+    const result = Object.assign({}, row, calculated, {
+      collectedAmount: row.collectedAmount == null ? calculated.collectedAmount : row.collectedAmount,
+      payrollPeriodLinked: true,
+      payrollOriginalTeacherAmount: row.payrollOriginalTeacherAmount == null ? row.teacherAmount : row.payrollOriginalTeacherAmount
+    });
+    if (links.length === 1) result.planName = result.chargeName = clean(allocations[0].period.planSnapshot.name);
+    return result;
+  });
+}
+
+async function refreshPayrollPeriodLinks(rows) {
+  const studentIds = [...new Set((rows || []).flatMap(payrollPeriodLinks).map(link => link.studentId).filter(Boolean))];
+  const periods = [];
+  for (let index = 0; index < studentIds.length; index += 30) {
+    const snapshot = await db.collection(TUITION_PERIODS).where('studentId', 'in', studentIds.slice(index, index + 30)).get();
+    snapshot.docs.forEach(doc => periods.push(Object.assign({}, jsonValue(doc.data()), {id:doc.id})));
+  }
+  return payrollWithCurrentPeriods(rows, periods);
+}
+
 async function teacherPayrollMonthData(monthValue, teacherId = '') {
   const bounds = teacherPayrollMonthBounds(monthValue);
   const [
@@ -7678,11 +7739,11 @@ async function teacherPayrollMonthData(monthValue, teacherId = '') {
     portalRowsByDateRange(ATTENDANCE_CANCELLATIONS, bounds.startDate, bounds.endDate, teacherId)
   ]);
   const approvedCancellations = cancellationRows.filter((row) => clean(row.status) === 'approved');
-  const teacherPayroll = mergeTeacherPayrollRows(
+  const teacherPayroll = await refreshPayrollPeriodLinks(mergeTeacherPayrollRows(
     enrichTeacherPayrollRows(mirrorPayroll, mirrorAttendance),
     portalPayroll,
     approvedCancellations.concat(portalPayroll.filter((row) => row.active === false))
-  ).filter((row) => eventDate(row || {}).slice(0, 7) === bounds.month);
+  ).filter((row) => eventDate(row || {}).slice(0, 7) === bounds.month));
   const teacherAdjustments = mergeTeacherAdjustmentRows(
     mirrorAdjustments,
     portalAdjustments
@@ -10450,7 +10511,7 @@ async function adminAttendanceDetail(data) {
     const rows=portal.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id}));
     return mergeTeacherPayrollRows(enrichTeacherPayrollRows(mirror.filter(row=>eventDate(row)===date),dayAttendance),rows,cancelled.docs.map(doc=>doc.data()).filter(row=>row.status==='approved').concat(rows.filter(row=>row.active===false)));
   })));
-  return {ok:true,studentIds,payrollScopes:scopes,tuitionPeriods:groups.flatMap(group=>group.periods).map(row=>({...row,id:sourceId(row)})),attendance:groups.flatMap(group=>group.attendance).map(row=>({...row,id:sourceId(row)})),teacherPayroll:teacherPayroll.flat().map(row=>({...row,id:sourceId(row)})),timings:{readMs:Date.now()-started}};
+  return {ok:true,studentIds,payrollScopes:scopes,tuitionPeriods:groups.flatMap(group=>group.periods).map(row=>({...row,id:sourceId(row)})),attendance:groups.flatMap(group=>group.attendance).map(row=>({...row,id:sourceId(row)})),teacherPayroll:(await refreshPayrollPeriodLinks(teacherPayroll.flat())).map(row=>({...row,id:sourceId(row)})),timings:{readMs:Date.now()-started}};
 }
 
 async function adminWorkspaceSlice(data) {
@@ -11026,7 +11087,7 @@ async function adminSaveTuitionPeriods(data) {
       if (data.edit === true) item.row.periodNo = Number(prior.periodNo);
       else if (peers.some(peer => clean(peer.studentId) === item.row.studentId && Number(peer.periodNo) === item.row.periodNo)) throw new HttpsError('aborted', '其他裝置已建立這一期，請重新載入後再操作。');
       peers.push(item.row);
-      const record = Object.assign({}, item.row, prior ? {} : { usedCount: 0, status: 'active', transactions: [], paidAmount: 0, creationOperationId: operationId });
+      const record = Object.assign({}, item.row, data.edit === true ? {payrollFollowsPeriod:true} : {}, prior ? {} : { usedCount: 0, status: 'active', transactions: [], paidAmount: 0, creationOperationId: operationId });
       tx.set(refs[index], Object.assign(record, { updatedAt: FieldValue.serverTimestamp() }), { merge: true });
       item.payments.forEach(payment => tx.create(db.collection(TUITION_TRANSACTIONS).doc(payment.id), Object.assign({}, payment, { periodId: item.row.id, studentId: item.row.studentId, active: true, status: 'confirmed', source: 'manager-ledger', createdAt: FieldValue.serverTimestamp() })));
       return { id: item.row.id, duplicate: false };
@@ -13128,6 +13189,7 @@ async function appendCoursePortalData(payload) {
     portalPayrollRows,
     approvedCancellations.concat(portalPayrollRows.filter((row) => row.active === false))
   );
+  payload.teacherPayroll = await refreshPayrollPeriodLinks(payload.teacherPayroll);
   payload.teacherAdjustments = mergeTeacherAdjustmentRows(
     Array.isArray(payload.teacherAdjustments) ? payload.teacherAdjustments : [],
     portalAdjustmentsSnapshot.docs.map((doc) =>
