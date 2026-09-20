@@ -218,15 +218,16 @@
       inlineBody = shadow.querySelector('.course-inline-body');
       function fitDesktopCalendar(){
         var desktop=global.matchMedia('(min-width:1100px)').matches,calendar=global.location.hash==='#course-calendar';
-        if(!inlineBody)return;
+        if(!inlineBody||!host.isConnected)return;
         var grid=shadow.querySelector('#scheduleGrid'),scroll=shadow.querySelector('#scheduleScroll');
         var kpis=shadow.querySelector('#dailyKpis'),toolbar=shadow.querySelector('.calendar-toolbar'),legend=shadow.querySelector('#dailyLegend');
         if(kpis&&toolbar&&legend){if(desktop){if(kpis.parentNode!==toolbar)toolbar.appendChild(kpis);}else if(kpis.parentNode===toolbar){legend.parentNode.insertBefore(kpis,legend);}}
         var weekButton=shadow.querySelector('#weekScheduleBtn');if(weekButton)weekButton.textContent=desktop&&weekButton.classList.contains('active')?'返回日表':'週課表';
         var weekGrid=shadow.querySelector('.teacher-week-grid'),weekScroll=shadow.querySelector('#weekScheduleDays');
-        if(weekGrid&&weekScroll){if(desktop&&calendar){weekGrid.style.setProperty('--week-slot',Math.max(22,Math.floor((global.innerHeight-weekScroll.getBoundingClientRect().top-55)/(Number(weekGrid.dataset.slotCount)||17)))+'px');}else{weekGrid.style.removeProperty('--week-slot');}}
+        if(weekGrid&&weekScroll){if(desktop&&calendar&&weekScroll.getClientRects().length){weekGrid.style.setProperty('--week-slot',Math.max(22,Math.floor((global.innerHeight-weekScroll.getBoundingClientRect().top-55)/(Number(weekGrid.dataset.slotCount)||17)))+'px');}else{weekGrid.style.removeProperty('--week-slot');}}
         if(!grid||!scroll)return;
         if(!desktop||!calendar){['--slot','--room-head-height','--room-col','--time-col'].forEach(function(key){grid.style.removeProperty(key);});return;}
+        if(!scroll.getClientRects().length)return;
         var count=Number(grid.dataset.slotCount)||17;
         var available=global.innerHeight-scroll.getBoundingClientRect().top-16;
         grid.style.setProperty('--slot',Math.max(22,Math.floor((available-36)/count))+'px');
@@ -279,7 +280,7 @@
       content.innerHTML = '';
       content.appendChild(node);
     }
-    initialize().then(function () { sendView(desiredView); }).catch(function () {});
+    initialize().then(function () { sendView(desiredView); global.dispatchEvent(new Event('youzi-calendar-layout')); }).catch(function () {});
   }
 
   function detach() {
