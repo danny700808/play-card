@@ -13659,6 +13659,7 @@ function registerCoursePortal(exportsObject, helpers = {}) {
 }
 
 module.exports = {
+  teacherPortalProfileId,
   findEmailLoginAccount,
   issueSession,
   appendCoursePortalData,

@@ -176,6 +176,11 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
       throw new HttpsError('internal', `自動讀取課務資料失敗：${clean(error && error.message).slice(0, 300)}`);
     }
   };
+  exportsObject.coursePayrollTransferTaiwan=onCall({region:'asia-east1',timeoutSeconds:180,memory:'512MiB',invoker:'public',cors:[...ALLOWED_ORIGINS,LOCAL_ORIGIN]},async request=>{
+    assertAllowedRead(request);
+    const {teacherPortalProfileId}=require('./coursePortal');
+    return require('./payrollTransfer').createPayrollTransfer({db,profileId:teacherPortalProfileId})(request.data||{},clean(request.auth&&request.auth.uid));
+  });
   const {withOperationTiming}=require('./courseOperationTiming');
   for(const [name,region] of [['loadInjiaoyunEducationMirrorAuto',REGION],['loadInjiaoyunEducationMirrorAutoTaiwan','asia-east1']]) {
     const timed=withOperationTiming(name,region,(_data,request)=>handler(request));
