@@ -4887,8 +4887,8 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
   const [rooms, subjects, students, teachers, events, fixed, temporary, rentals, changes, suspensions, mirrorSettingsSnapshot, irregularSnapshot, lessonSettings] = await Promise.all([
     mirrorRows('rooms'),
     mirrorRows('subjects'),
-    teacherHome || occupancyOnly ? Promise.resolve([]) : mirrorRows('students'),
-    occupancyOnly ? Promise.resolve([]) : teacherHome ? mirrorProfilesByIds('teachers', [ownTeacherId]) : mirrorRows('teachers'),
+    teacherHome || occupancyOnly ? Promise.resolve([]) : adminWrite ? mirrorProfilesByIds('students', options.studentIds || []) : mirrorRows('students'),
+    occupancyOnly ? Promise.resolve([]) : teacherHome || adminWrite ? mirrorProfilesByIds('teachers', [ownTeacherId]) : mirrorRows('teachers'),
     historyStudentId ? historyStudentEvents(historyStudentId, startDate, endDate) : mirrorRowsByDateRange('events', startDate, endDate, { includeInactive: true }),
     mirrorRows('fixedCourses').then(historyCourses),
     mirrorRowsByDateRange('temporaryCourses', startDate, endDate).then(historyCourses),
@@ -4897,7 +4897,7 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
     activeStudentSuspensions(),
     db.collection('opsSettings').doc('injiaoyunEducationMirror').get(),
     db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),
-    ((options.adminDelta === true || teacherHome || occupancyOnly) ? settingsCollection.where('date','>=',startDate).where('date','<=',endDate) : settingsCollection).get()
+    ((options.adminDelta === true || teacherHome || occupancyOnly || adminWrite) ? settingsCollection.where('date','>=',startDate).where('date','<=',endDate) : settingsCollection).get()
   ]);
   const irregularModes = irregularSnapshot.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}));
   const maps = {
@@ -10397,11 +10397,11 @@ async function adminSaveSchedule(data) {
   const recurrenceEndDate = dateKey(data.repeatUntil);
   if (recurrenceEndDate && recurrenceEndDate < date) throw new HttpsError('invalid-argument', '結束日期不可早於開始日期。');
   const through = recurring ? (recurrenceEndDate && recurrenceEndDate < addDays(date, 180) ? recurrenceEndDate : addDays(date, 180)) : date;
-  const [bundle, roomSettings, policy, changes] = await Promise.all([scheduleBundle(date, through, teacherId, { adminWrite: true }), db.collection('coursePortalRoomSettings').doc(roomId).get(), rentalPolicySettings(), clean(data.sourceEventId) || clean(data.sourceCourseId) ? db.collection('coursePortalScheduleChanges').where('active','==',true).get() : Promise.resolve({docs:[]})]);
+  const [bundle, roomSettings, policy, changes] = await Promise.all([scheduleBundle(date, through, teacherId, { adminWrite: true, studentIds: [...studentIds, clean(raw.renterStudentId)].filter(Boolean) }), db.collection('coursePortalRoomSettings').doc(roomId).get(), rentalPolicySettings(), clean(data.sourceEventId) || clean(data.sourceCourseId) ? db.collection('coursePortalScheduleChanges').where('active','==',true).get() : Promise.resolve({docs:[]})]);
   let original = null;
   if (clean(data.sourceEventId) || clean(data.sourceCourseId)) {
     const sourceDate = dateKey(data.sourceDate) || date;
-    const sourceBundle = sourceDate >= date && sourceDate <= through ? bundle : await scheduleBundle(sourceDate, sourceDate, teacherId, { adminWrite: true });
+    const sourceBundle = sourceDate >= date && sourceDate <= through ? bundle : await scheduleBundle(sourceDate, sourceDate, teacherId, { adminWrite: true, studentIds: [...studentIds, clean(raw.renterStudentId)].filter(Boolean) });
     original = sourceBundle.resourceEvents.find(row => row.date === sourceDate && [row.id,row.sourceId].map(clean).includes(clean(data.sourceEventId)));
     if (!original && clean(data.sourceCourseId)) {
       const matches = sourceBundle.resourceEvents.filter(row => row.date === sourceDate && clean(row.fixedCourseId || row.seriesId) === clean(data.sourceCourseId));
@@ -10523,8 +10523,9 @@ async function adminWorkspaceSlice(data) {
   const [financial,calendars,adjustments,followup]=await Promise.all([
     timeOperationStage('student_and_payroll_read',()=>adminAttendanceDetail({studentIds,payrollScopes,allowEmptyStudents:true})),
     timeOperationStage('calendar_read',()=>Promise.all(calendarScopes.map(async scope=>{
-      const bundle=await scheduleBundle(scope.startDate,scope.endDate,'',{occupancyOnly:true,adminDelta:true});
-      return {scope,events:(bundle.managerEvents||[]).filter(row=>!scope.studentIds.length||eventStudentIds(row).some(id=>scope.studentIds.includes(id)))};
+      const bundles=await Promise.all((scope.studentIds.length?scope.studentIds:['']).map(historyStudentId=>scheduleBundle(scope.startDate,scope.endDate,'',{occupancyOnly:true,adminDelta:true,...(historyStudentId?{historyStudentId}:{})})));
+      const events=[...new Map(bundles.flatMap(bundle=>bundle.managerEvents||[]).filter(row=>!scope.studentIds.length||eventStudentIds(row).some(id=>scope.studentIds.includes(id))).map(row=>[row.id,row])).values()];
+      return {scope,events};
     }))),
     timeOperationStage('adjustments_read',()=>Promise.all([...new Map(payrollScopes.map(scope=>[scope.teacherId+'|'+scope.date.slice(0,7),{teacherId:scope.teacherId,month:scope.date.slice(0,7)}])).values()].map(async scope=>{
       const bounds=teacherPayrollMonthBounds(scope.month);
