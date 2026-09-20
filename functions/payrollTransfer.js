@@ -15,7 +15,7 @@ function createPayrollTransfer({db,profileId}){
    const accounts=data.accounts.map(accountRow),manager=accountRow(data.manager||{}),extras=data.extras.map(row=>({...accountRow(row),amount:Number(row.amount)})),managerAmount=Number(data.managerAmount||0);
    if(!Number.isFinite(managerAmount)||managerAmount<0||extras.some(r=>!Number.isFinite(r.amount)||r.amount<0))throw new HttpsError('invalid-argument','轉帳金額必須是零或正數。');
    const now=new Date().toISOString();
-   await db.runTransaction(async tx=>{const old=await tx.get(ref);if(clean(old.exists&&old.data().revision)!==clean(data.revision))throw new HttpsError('aborted','帳戶資料已在其他視窗更新，請關閉後重新開啟轉帳表。');tx.set(ref,{accounts,manager,revision:now,updatedBy:actor});tx.set(draftRef,{extras,managerAmount,updatedAt:now,updatedBy:actor});});
+   await db.runTransaction(async tx=>{const old=await tx.get(ref);if(clean(old.exists?old.data().revision:"")!==clean(data.revision))throw new HttpsError('aborted','帳戶資料已在其他視窗更新，請關閉後重新開啟轉帳表。');tx.set(ref,{accounts,manager,revision:now,updatedBy:actor});tx.set(draftRef,{extras,managerAmount,updatedAt:now,updatedBy:actor});});
    return {ok:true,revision:now};
   }
   if(data.action&&data.action!=='load')throw new HttpsError('invalid-argument','不支援的操作。');
