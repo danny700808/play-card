@@ -142,6 +142,11 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
   const handler=async (request) => {
     assertAllowedRead(request);
     try {
+      if (clean(request && request.data && request.data.scope) === 'schedule-catalog') {
+        const { managerScheduleCatalog } = require('./coursePortal');
+        const { withPortalReads } = require('./portalReadContext');
+        return await withPortalReads(managerScheduleCatalog)();
+      }
       if (clean(request && request.data && request.data.scope) === 'students-recent') {
         const { managerRecentStudents } = require('./coursePortal');
         const { withPortalReads } = require('./portalReadContext');

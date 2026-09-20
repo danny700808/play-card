@@ -13414,6 +13414,10 @@ async function appendCoursePortalData(payload) {
 
 // Calendar bootstrap shares the canonical occupancy calculation, including
 // cancellations and moved recurring courses. It never supplies account balances.
+async function managerScheduleCatalog() {
+  return {ok:true,feePlans:await mirrorRows('feePlans')};
+}
+
 async function managerRecentStudents() {
   const endDate = currentTaipeiDay();
   const start = new Date(endDate + 'T12:00:00Z');
@@ -13686,6 +13690,7 @@ module.exports = {
   teacherPayrollMonthData,
   managerCalendarBootstrap,
   managerRecentStudents,
+  managerScheduleCatalog,
   managerCalendarFollowup
 };
 function parseContactBookImages(values) {
