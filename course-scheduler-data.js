@@ -313,7 +313,7 @@
     array(stops).filter(function(stop){return stop.receivableTrackingVersion==='teacher-stop-v1'&&stop.requestedBy==='teacher';}).forEach(function(stop){array(stop.receivablePeriodsAtStop).forEach(function(saved){var key=stop.studentId+'|'+saved.id;if(seen.has(key))return;var period=byId.get(saved.id),amount=period?balanceOf(period):numberOf(saved.outstandingAmount);if(amount<=0)return;if(period&&(period.studentId!==stop.studentId||period.subjectId!==stop.subjectId))return;seen.add(key);result.push(Object.assign({},period||saved,{studentId:stop.studentId,subjectId:stop.subjectId,teacherId:saved.teacherId||stop.teacherId,stopId:stop.id,stopDate:stop.effectiveDate,unpaidBalance:amount,missingPeriod:!period}));});});return result;
   }
   function activeIrregularCourses(rows,day,teacherId){
-    var seen=new Set();return array(rows).filter(function(row){var key=clean(row.teacherId)+'|'+clean(row.subjectId)+'|'+array(row.studentIds).slice().sort().join('|');if(row.enabled===false||(row.effectiveDate&&row.effectiveDate>day)||(row.resumedFrom&&row.resumedFrom<=day)||(teacherId&&row.teacherId!==teacherId)||seen.has(key))return false;seen.add(key);return true;});
+    var seen=new Set();return array(rows).filter(function(row){var key=clean(row.teacherId)+'|'+clean(row.subjectId)+'|'+array(row.studentIds).slice().sort().join('|');if(row.enabled===false||(row.effectiveDate&&row.effectiveDate>day)||row.resumedFrom||(teacherId&&row.teacherId!==teacherId)||seen.has(key))return false;seen.add(key);return true;});
   }
   function studentCourseFollowups(modes,stops,day,teacherId){
     var byKey=new Map();
