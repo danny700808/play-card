@@ -13,3 +13,11 @@ test('recent students include recent lessons and new periods but omit inactive h
  assert.ok(!data.queries.some(q=>/Payroll|Rental|Schedule/.test(q.name)));
  for(const q of data.queries.filter(q=>/Tuition|Attendance/.test(q.name)))assert.ok(q.filters.length>0,'must not scan all '+q.name);
 });
+test('combined followup reads only stopped students ledgers and uses current payments',async()=>{
+ const stop=(id,studentId)=>doc(id,{status:'active',studentId,teacherId:'teacher',subjectId:'guitar',effectiveDate:'2026-09-01',receivablePeriodsAtStop:[{id:'p-'+studentId,outstandingAmount:2800}]});
+ const data={collections:{coursePortalStudentSuspensions:[stop('s1','owing'),stop('s2','paid')],opsEducationMirrorTuitionPeriods:[mirror('p-owing',period('p-owing','owing','2026-08-01')),mirror('p-paid',period('p-paid','paid','2026-08-01')),mirror('p-unrelated',period('p-unrelated','old','2020-01-01'))],coursePortalTuitionPaymentTransactions:[doc('tx1',{studentId:'owing',periodId:'p-owing',status:'confirmed',type:'payment',amount:1000}),doc('tx2',{studentId:'paid',periodId:'p-paid',status:'confirmed',type:'payment',amount:2800})]}};
+ const result=await context.loadBackendForScheduleTests(data).managerCalendarFollowup();
+ assert.equal(result.followupStops.find(r=>r.studentId==='owing').currentUnpaidAmount,1800);assert.equal(result.followupStops.find(r=>r.studentId==='paid').currentUnpaidAmount,0);assert.equal(result.followupStops.length,2);
+ for(const q of data.queries.filter(q=>/Tuition/.test(q.name)))assert.ok(q.filters.length>0,'must not scan all '+q.name);
+});
+

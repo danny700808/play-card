@@ -13445,6 +13445,19 @@ async function managerRecentStudents() {
     loadedAt:new Date().toISOString(),mirrorMeta:{status:'success'}};
 }
 
+async function managerCalendarFollowup() {
+  const [modes,stops]=await Promise.all([db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),db.collection('coursePortalStudentSuspensions').where('status','==','active').get()]);
+  const stopped=stops.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id}));
+  const ids=[...new Set(stopped.map(row=>clean(row.studentId)).filter(Boolean))],chunks=[];
+  for(let offset=0;offset<ids.length;offset+=30)chunks.push(ids.slice(offset,offset+30));
+  const scoped=async(collection,field)=>(await Promise.all(chunks.map(chunk=>db.collection(collection).where(field,'in',chunk).get()))).flatMap(snapshot=>snapshot.docs);
+  const [mirrorDocs,periodDocs,transactions,receipts]=await Promise.all([scoped(MIRROR.tuitionPeriods,'source.studentId'),scoped(TUITION_PERIODS,'studentId'),scoped(TUITION_TRANSACTIONS,'studentId'),scoped(TUITION_RECEIPTS,'studentId')]);
+  const mirrorSources=mirrorDocs.filter(doc=>doc.data().sourceActive!==false).map(doc=>Object.assign({__id:doc.id},jsonValue(doc.data().source)||{}));
+  const periods=mergePortalTuitionRows(mirrorSources,periodDocs,transactions,receipts);
+  const followupStops=stopped.map(stop=>{const related=periods.filter(row=>eventStudentIds(row).includes(stop.studentId)&&(!stop.subjectId||eventSubjectId(row)===stop.subjectId)&&(!stop.teacherId||!eventTeacherId(row)||eventTeacherId(row)===stop.teacherId));return {...stop,currentUnpaidAmount:related.reduce((sum,row)=>sum+tuitionOutstandingAmount(row),0),balanceVerified:related.length>0||!(stop.receivablePeriodsAtStop||[]).length};});
+  return {ok:true,irregularCourses:modes.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id})),stoppedCourseReceivables:stopped,followupStops};
+}
+
 async function managerCalendarBootstrap(data) {
   const anchor = dateKey(data && data.anchorDate);
   if (!anchor) throw new HttpsError('invalid-argument', '課表日期格式不正確。');
@@ -13671,7 +13684,8 @@ module.exports = {
   resolveTeacherUtilityEmployee,
   teacherPayrollMonthData,
   managerCalendarBootstrap,
-  managerRecentStudents
+  managerRecentStudents,
+  managerCalendarFollowup
 };
 function parseContactBookImages(values) {
   const images = Array.isArray(values) ? values : [];

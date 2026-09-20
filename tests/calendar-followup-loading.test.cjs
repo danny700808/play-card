@@ -3,8 +3,8 @@ const {test}=require('node:test');const assert=require('node:assert/strict');con
 const source=fs.readFileSync('operations-course-inline-runtime.js','utf8');
 function harness(){
  let finish,calls=0;const nodes={};
- const ctx={state:{irregularCourses:[],stoppedCourseReceivables:[]},calendarBootstrapLoading:false,calendarPartial:()=>true,desktopCalendar:()=>true,Date,Promise,renderCalendar:()=>{},renderFollowupCounts:()=>{},$:id=>nodes[id]||(nodes[id]={value:'',classList:{remove(){}}}),afterWorkspaceReady:()=>{throw Error('unexpected full history load');},irregularRows:()=>[],openModal:()=>{},window:{location:{hash:'#course-calendar'},document:{hidden:false},YouziCoursePreviewData:{loadCalendarFollowupState:()=>{calls++;return new Promise(resolve=>finish=resolve);}}}};
- vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('  function openFollowupList(kind)'),source.indexOf('  function weekStartKey')),ctx);
+ const ctx={followupStopsCache:[],clean:String,esc:String,followupRows:()=>[],state:{irregularCourses:[],stoppedCourseReceivables:[]},calendarBootstrapLoading:false,calendarPartial:()=>true,desktopCalendar:()=>true,Date,Promise,renderCalendar:()=>{},renderFollowupCounts:()=>{},$:id=>nodes[id]||(nodes[id]={value:'',classList:{remove(){}}}),afterWorkspaceReady:()=>{throw Error('unexpected full history load');},irregularRows:()=>[],openModal:()=>{},window:{location:{hash:'#course-calendar'},document:{hidden:false},YouziCoursePreviewData:{loadCalendarFollowupState:()=>{calls++;return new Promise(resolve=>finish=resolve);}}}};
+ vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('  var followupMonthFilter='),source.indexOf('  function weekStartKey')),ctx);
  return {ctx,resolve:x=>finish(x),calls:()=>calls};
 }
 test('partial calendar opens irregular list without requesting full workspace',()=>{const {ctx}=harness();ctx.openFollowupList('day');ctx.openFollowupList('week');});

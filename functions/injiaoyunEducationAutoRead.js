@@ -153,9 +153,9 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
         return await withPortalReads(managerCalendarBootstrap)(request.data);
       }
       if (clean(request && request.data && request.data.scope) === 'calendar-irregular') {
-        const rows = await db.collection('coursePortalIrregularCourses').where('enabled','==',true).get();
-        const stops = await db.collection('coursePortalStudentSuspensions').where('receivableTrackingVersion','==','teacher-stop-v1').get();
-        return {ok:true,irregularCourses:rows.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id})),stoppedCourseReceivables:stops.docs.map(doc => ({...jsonValue(doc.data()),id:doc.id}))};
+        const {managerCalendarFollowup}=require('./coursePortal');
+        const {withPortalReads}=require('./portalReadContext');
+        return await withPortalReads(managerCalendarFollowup)();
       }
       if (clean(request && request.data && request.data.scope) === 'teacher-payroll-month') {
         const { teacherPayrollMonthData } = require('./coursePortal');

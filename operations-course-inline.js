@@ -4,8 +4,8 @@
   if (global.YouziOperationsCourseInline) return;
 
   var VERSION = '20260917-room-subject-v1';
-  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20260920-transfer-v1';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260920-transfer-v1';
+  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20260920-followups-v1';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260920-followups-v1';
   var STYLE_URL = 'course-scheduler.css?v=20260920-calendar-controls-v3';
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';
