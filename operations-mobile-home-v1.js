@@ -390,9 +390,9 @@
 
     var quick = content.querySelector('.ops-mobile-direct-card');
     if (quick) {
-      quick.insertAdjacentHTML('afterend', scheduleHtml() + productsHtml());
+      quick.insertAdjacentHTML('afterend', productsHtml());
     } else {
-      content.insertAdjacentHTML('beforeend', scheduleHtml() + productsHtml());
+      content.insertAdjacentHTML('beforeend', productsHtml());
     }
     bindInjectedEvents();
     global.requestAnimationFrame(function () { updateApprovedWeekViewport(true); });
@@ -451,7 +451,7 @@
     global.addEventListener('hashchange', scheduleEnhance);
     global.addEventListener('resize', scheduleEnhance);
     scheduleEnhance();
-    readCourseSnapshot().then(function (value) {
+    if(!global.matchMedia('(max-width:820px)').matches)readCourseSnapshot().then(function (value) {
       snapshot = value;
       var content = document.getElementById('opsContent');
       if (content) content.removeAttribute('data-approved-mobile-home');

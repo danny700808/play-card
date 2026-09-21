@@ -271,7 +271,7 @@
     if(inlineState&&inlineState.version===3){var prepared=normalizeState(clone(inlineState));prepared.readOnly=false;prepared.dataMode='sandbox';return prepared;}
     var cached=loadFormalCache();
     if(cached)return cached;
-    var starter=defaultState();starter.rooms=[];starter.subjects=[];starter.teachers=[];starter.feePlans=[];starter.students=[];starter.tuitionPeriods=[];starter.events=[];starter.attendance=[];starter.teacherPayroll=[];starter.teacherAdjustments=[];starter.readOnly=true;starter.dataMode='empty';return starter;
+    var starter=defaultState();starter.rooms=[];starter.subjects=[];starter.teachers=[];starter.feePlans=[];starter.students=[];starter.tuitionPeriods=[];starter.events=[];starter.attendance=[];starter.teacherPayroll=[];starter.teacherAdjustments=[];starter.readOnly=true;starter.dataMode='empty';return normalizeState(starter);
   }
   function isReadOnly(){return state&&state.readOnly===true;}
   function isSandbox(){return state&&state.dataMode==='sandbox'&&!isReadOnly();}
@@ -617,7 +617,11 @@
     var scroll=$('scheduleScroll'),grid=$('scheduleGrid'),nav=$('mobileCalendarNav');
     if(!scroll||!grid)return;
     if(nav)nav.hidden=true;
-    if(!mobileAdmin()){grid.style.paddingBottom='';return;}
+    if(!mobileAdmin()){grid.style.paddingBottom='';scroll.style.height='';scroll.style.maxHeight='';return;}
+    var viewport=window.visualViewport,visibleBottom=viewport?viewport.height+viewport.offsetTop:window.innerHeight;
+    var top=scroll.getBoundingClientRect().top;
+    scroll.style.height=Math.max(180,Math.floor(visibleBottom-top-28))+'px';
+    scroll.style.maxHeight=scroll.style.height;
     var rooms=calendarRooms(),hours=scheduleHoursForDate(state.currentDate);
     var events=effectiveEventsForDate(state.currentDate),width=Math.max(1,scroll.clientWidth-40);
     var groups=rooms.length>4?[rooms.slice(0,Math.ceil(rooms.length/2)),rooms.slice(Math.ceil(rooms.length/2))]:[rooms];
@@ -631,10 +635,12 @@
     var heights=[],offsets=[0];
     for(var minute=hours.start;!hours.closed&&minute<hours.end;minute+=30){
       var busy=events.some(function(e){var start=timeToMin(e.start);return start<minute+30&&start+numberOf(e.duration)>minute;});
-      heights.push(busy?38:22);offsets.push(offsets[offsets.length-1]+heights[heights.length-1]);
+      heights.push(busy?44:28);offsets.push(offsets[offsets.length-1]+heights[heights.length-1]);
     }
+    var available=Math.max(44,scroll.clientHeight-40),total=offsets[offsets.length-1],scale=total>0?Math.max(1,available/total):1;
+    heights=heights.map(function(h){return h*scale;});offsets=[0];heights.forEach(function(h){offsets.push(offsets[offsets.length-1]+h);});
     grid.style.gridTemplateRows='40px '+heights.map(function(h){return h+'px';}).join(' ');
-    var available=Math.max(38,scroll.clientHeight-40),pages=[0],cursor=0;
+    var pages=[0],cursor=0;
     while(offsets[offsets.length-1]-cursor>available){
       var next=offsets.filter(function(n){return n>cursor&&n<=cursor+available;}).pop();
       if(!next)break;pages.push(next);cursor=next;
@@ -685,7 +691,9 @@
     scroll.addEventListener('touchcancel',function(){settle(true);},{passive:true});
     scroll.addEventListener('click',function(e){if(Date.now()<suppressClickUntil){e.preventDefault();e.stopImmediatePropagation();}},true);
     var wasMobile=mobileAdmin(),timer;
-    window.addEventListener('resize',function(){clearTimeout(timer);timer=setTimeout(function(){mobileCalendarGesture=null;var now=mobileAdmin();if(now!==wasMobile){wasMobile=now;renderCalendar();}else if(now)fitMobileCalendar();},100);});
+    function resizeCalendar(){clearTimeout(timer);timer=setTimeout(function(){mobileCalendarGesture=null;var now=mobileAdmin();if(now!==wasMobile){wasMobile=now;renderCalendar();}else if(now)fitMobileCalendar();},100);}
+    window.addEventListener('resize',resizeCalendar);
+    if(window.visualViewport)window.visualViewport.addEventListener('resize',resizeCalendar);
   }
 
   function fillSelect(node,rows,label,value,placeholder){node.innerHTML=(placeholder?'<option value="">'+esc(placeholder)+'</option>':'')+rows.map(function(row){return '<option value="'+esc(value(row))+'">'+esc(label(row))+'</option>';}).join('');}
@@ -1251,6 +1259,7 @@
   }
   function renderTeachers(){
     var search=clean($('teacherSearch').value).toLowerCase(),monthKey=teacherListMonthKey(),monthLabel=teacherMonthLabel(monthKey),month=(state.teacherPayroll||[]).filter(function(row){return clean(row.date).slice(0,7)===monthKey;}),adjustments=(state.teacherAdjustments||[]).filter(function(row){return clean(row.date).slice(0,7)===monthKey;}),teachers=state.teachers.filter(function(row){var subjects=(row.subjectIds||[]).map(function(id){return subjectById(id).name;}).join(' ');return !search||(row.name+' '+row.phone+' '+subjects).toLowerCase().indexOf(search)>=0;}).sort(teacherSort),nextButton=$('teacherListMonthNext'),currentButton=$('teacherListMonthCurrent'),basePay=sum(month.map(function(row){return row.teacherAmount;})),adjustmentPay=sum(adjustments.map(signedTeacherAdjustment)),finalPay=basePay+adjustmentPay;if(nextButton)nextButton.disabled=monthKey>=todayKey().slice(0,7);if(currentButton)currentButton.disabled=monthKey===todayKey().slice(0,7);$('teacherMetrics').innerHTML=metric('老師總數',state.teachers.length,'啟用 '+state.teachers.filter(function(row){return row.active!==false;}).length+' 位')+metric(monthLabel+'完成課堂',month.length,'只計實際簽到')+metric(monthLabel+'課堂拆帳',money(basePay),'不含獎勵與扣薪')+metric(monthLabel+'獎勵／扣薪',(adjustmentPay>0?'＋':adjustmentPay<0?'－':'')+money(Math.abs(adjustmentPay)),'另外列示，不混入課堂拆帳')+metric(monthLabel+'實際薪資合計',money(finalPay),'課堂拆帳＋獎勵－扣薪');
+    if(!teachers.length){$('teacherCards').innerHTML='<div class="notice-card">'+(search?'找不到符合的老師。':loadingMigration||state.dataMode==='empty'?'正在讀取老師名單…':'目前沒有老師資料，請重新整理載入。')+'</div>';return;}
     $('teacherCards').innerHTML='<div class="teacher-list-head"><span>老師／電話</span><span>操作</span><span>主要教授科目</span><span>狀態</span><span>完成堂數</span><span>課堂拆帳</span><span>獎勵／扣薪</span><span>實際合計</span></div>'+teachers.map(function(row){var completed=month.filter(function(item){return item.teacherId===row.id;}),teacherAdjustments=adjustments.filter(function(item){return item.teacherId===row.id;}),basePay=sum(completed.map(function(item){return item.teacherAmount;})),adjustmentPay=sum(teacherAdjustments.map(signedTeacherAdjustment)),finalPay=basePay+adjustmentPay,subjects=(row.subjectIds||[]).map(function(id){return subjectById(id);}).filter(function(subject){return subject.id&&subject.active!==false;}).sort(bySort),shown=subjects.slice(0,2).map(function(subject){return subject.name;}),more=subjects.length>2?' ＋'+(subjects.length-2):'';return '<article class="teacher-list-row'+(row.active===false?' inactive':'')+'"><div class="teacher-list-cell teacher-list-identity" data-label="老師／電話"><b>'+esc(row.name)+'</b><small>'+esc(row.phone||'未填電話')+'</small></div><div class="teacher-list-actions"><button class="btn small primary" data-teacher-payroll="'+row.id+'">查看上課拆帳與薪資</button><button class="btn small secondary" data-teacher-adjustment="'+row.id+'">＋獎勵／扣薪</button>'+(state.readOnly&&!(mobileAdmin()&&calendarPartial())?'':'<button class="btn small outline" data-teacher-id="'+row.id+'">編輯老師與科目</button>')+'</div>'+'<div class="teacher-list-cell teacher-list-subjects teacher-subject-summary" data-label="主要教授科目">'+esc(shown.join('、')||'尚未設定')+esc(more)+'</div><div class="teacher-list-cell teacher-list-status" data-label="狀態"><span class="tag '+(row.active===false?'gray':'green')+'">'+(row.active===false?'停用':'啟用')+'</span></div><div class="teacher-list-cell teacher-list-completed" data-label="完成堂數"><b>'+completed.length+' 堂</b></div><div class="teacher-list-cell teacher-list-base-pay" data-label="課堂拆帳"><b>'+money(basePay)+'</b></div><div class="teacher-list-cell teacher-list-adjustment-pay" data-label="獎勵／扣薪"><b>'+(adjustmentPay>0?'＋':adjustmentPay<0?'－':'')+money(Math.abs(adjustmentPay))+'</b></div><div class="teacher-list-cell teacher-list-final-pay" data-label="實際合計"><b>'+money(finalPay)+'</b></div></article>';}).join('');
   }
 
