@@ -969,6 +969,10 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   function ensureDataForCurrentView(){
     const view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
     if(isCourseWorkspaceView(view))return false;
+    if(isCompactMobile()&&view==='customers'){
+      if(!state.customersLoadedAt&&!state.fullLoadedAt&&!state.loading){loadCustomersOnly(false);return true;}
+      return false;
+    }
     if(view==='products'||view==='media'){
       if(!state.loadedAt&&!state.loading){ loadProductsOnly(false); return true; }
       return false;
@@ -1344,7 +1348,43 @@ async function loadPlatformLocalAgent(){
     return results;
   }
 
+  async function loadCustomersOnly(silent){
+    if(state.loading)return;
+    state.loading=true;clearAlert();
+    if(!silent)html('opsContent',loadingHtml('正在讀取客戶與消費紀錄…'));
+    try{
+      await requireOperationsReadAuth();
+      const datasets=[
+        {key:'customers',collection:COLLECTIONS.customers,limit:3000,normalize:normalizeCustomer},
+        {key:'sales',collection:COLLECTIONS.sales,limit:10000,normalize:normalizeSale},
+        {key:'incomes',collection:COLLECTIONS.incomes,limit:1200,normalize:normalizeIncome},
+        {key:'receivables',collection:COLLECTIONS.receivables,limit:3000,normalize:normalizeReceivable},
+        {key:'pointTransactions',collection:COLLECTIONS.points,limit:3000,normalize:normalizePointTransaction}
+      ];
+      const results=await Promise.all([
+        loadMembershipSettings(),
+        loadOperationDatasets(datasets,async function(dataset){
+          let rows=(await getCollection(dataset.collection,dataset.limit)).map(dataset.normalize);
+          if(dataset.key==='sales'||dataset.key==='incomes')rows=rows.filter(function(row){return clean(row.status)!=='voided';});
+          return rows;
+        })
+      ]);
+      datasets.forEach(function(dataset,index){state[dataset.key]=results[1][index];});
+      // This is only a customer snapshot; other views must still load their own data.
+      state.customersLoadedAt=new Date();
+    }catch(error){
+      showAlert('客戶資料讀取失敗：'+errorMessage(error),'error');
+      if(!state.customersLoadedAt&&!state.fullLoadedAt)html('opsContent',emptyHtml('無法載入客戶資料','請重新讀取。','<button class="ops-button primary" data-action="refresh">重新讀取</button>'));
+    }finally{
+      state.loading=false;
+      const view=(location.hash||'#overview').replace('#','').split('?')[0];
+      if(view!=='customers'){if(!ensureDataForCurrentView())render();}
+      else if(state.customersLoadedAt||state.fullLoadedAt)render();
+    }
+  }
+
   async function loadAll(silent){
+    if(isCompactMobile()&&(location.hash||'').split('?')[0]==='#customers')return loadCustomersOnly(silent);
     if(state.loading) return;
     state.loading=true; clearAlert();
     if(!silent) html('opsContent',loadingHtml('正在讀取營運資料…')+'<p id="opsLoadProgress" role="status" style="text-align:center;padding:0 20px">正在讀取營運設定，完成後會顯示各項資料進度。</p>');

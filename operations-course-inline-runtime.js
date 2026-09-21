@@ -323,7 +323,7 @@
   }
 
   function switchView(view){
-    if(view!=='calendar'&&(view!=='students'||studentHistoryMode)&&afterWorkspaceReady(function(){switchView(view);}))return;
+    if(view!=='calendar'&&!(view==='teachers'&&mobileAdmin())&&(view!=='students'||studentHistoryMode)&&afterWorkspaceReady(function(){switchView(view);}))return;
     currentView=['calendar','students','teachers','settings'].indexOf(view)>=0?view:'calendar';
     $$('.view').forEach(function(node){node.classList.toggle('active',node.id===currentView+'Page');});$$('[data-view]').forEach(function(node){node.classList.toggle('active',node.dataset.view===currentView);});
     var meta={calendar:['課程日表','教室為欄、30 分鐘為一格；點空白格即可排課。'],students:['學生與學費','逐科目、逐期別查看堂數、付款、簽到、調課與請假。'],teachers:['老師與薪資','老師可授課科目會直接限制排課選項。'],settings:['系統設定','設定排課格線、教室時段規則、科目、收費方案與請假原因。']}[currentView];
@@ -497,6 +497,8 @@
     body.addEventListener('dragend',function(){feeDragId='';$$('[data-fee-drag]',body).forEach(function(node){node.classList.remove('drag-source','drop-before','drop-after');});});
   }
 
+  function mobileAdmin(){return window.matchMedia('(max-width:780px)').matches;}
+  function calendarRooms(){return activeRooms().filter(function(room){return !mobileAdmin()||(roomKindOf(room)==='normal'&&!/不定時|視訊/.test(clean(room.name)));});}
   function desktopCalendar(){return window.matchMedia('(min-width:1100px)').matches;}
   function irregularRows(teacherId){return window.YouziCoursePreviewData.activeIrregularCourses(state.irregularCourses,todayKey(),teacherId);}
   var followupStopsCache=null;
@@ -540,7 +542,7 @@
     date.setDate(date.getDate()+offset);return dateKey(date);
   }
   function setWeekMode(enabled){
-    weekMode=!!enabled;$('weekSchedulePanel').classList.toggle('hidden',!weekMode);$('dailyKpis').classList.toggle('hidden',weekMode);$('dailyLegend').classList.remove('hidden');$('dailySchedule').classList.toggle('hidden',weekMode);$('weekScheduleBtn').classList.toggle('active',weekMode);
+    weekMode=!!enabled;if(mobileAdmin())fitMobileCalendar();$('weekSchedulePanel').classList.toggle('hidden',!weekMode);$('dailyKpis').classList.toggle('hidden',weekMode);$('dailyLegend').classList.remove('hidden');$('dailySchedule').classList.toggle('hidden',weekMode);$('weekScheduleBtn').classList.toggle('active',weekMode);
     window.dispatchEvent(new Event('youzi-calendar-layout'));if(weekMode){weekAnchor=weekAnchor||state.currentDate||todayKey();renderWeekSchedule();}
   }
   function uniqueWeekEvents(rows){
@@ -590,7 +592,7 @@
 
   function renderCalendar(){
     if(!calendarRangeReady(state.currentDate,state.currentDate,'scheduleGrid',renderCalendar))return;
-    renderFollowupCounts();var date=state.currentDate,rooms=activeRooms(),events=effectiveEventsForDate(date).filter(function(event){return !desktopCalendar()||!window.YouziCoursePreviewData.isIrregularPlaceholder(event,state.irregularCourses);}),conflicts=dayConflictIds(events),hours=scheduleHoursForDate(date);
+    renderFollowupCounts();var date=state.currentDate,rooms=calendarRooms(),events=effectiveEventsForDate(date).filter(function(event){return !desktopCalendar()||!window.YouziCoursePreviewData.isIrregularPlaceholder(event,state.irregularCourses);}),conflicts=dayConflictIds(events),hours=scheduleHoursForDate(date);
     $('calendarDate').value=date;$('dateTitle').textContent=zhDate(date);$('dateSubtitle').textContent=weekdayName(date)+(date===todayKey()?'・今天':'');$('kpiLessons').textContent=events.filter(function(row){return row.type!=='rental';}).length;$('kpiAttended').textContent=events.filter(function(row){return normalizedStatus(row.status)==='attended';}).length;$('calendarHint').textContent='30 分鐘／格・'+rooms.length+' 間啟用教室'+(calendarPartial()?'・點課程查看明細':isReadOnly()?'・資料尚未載入':isSandbox()?'・操作自動儲存':'');
     if (isReadOnly() && state.dataMode === 'review') { var sourceStats = ((state.dataMeta || {}).sourceStatsByDate || {})[date] || {}; $('dataModeMeta').textContent = '原始學生紀錄 '+numberOf(sourceStats.studentRecords)+'・請假已定位 '+numberOf(sourceStats.leaveRecords)+'・固定課 '+numberOf(sourceStats.fixedRecords)+'・最後顯示 '+numberOf(sourceStats.visibleRecords)+(numberOf(sourceStats.unresolvedRecords) ? '・待人工核對 '+numberOf(sourceStats.unresolvedRecords) : ''); }
     var slots=[];if(!hours.closed){for(var min=hours.start;min<hours.end;min+=30)slots.push(min);}var start=hours.start,grid=$('scheduleGrid');grid.dataset.slotCount=slots.length;grid.style.gridTemplateColumns='var(--time-col, 90px) repeat('+rooms.length+',var(--room-col, minmax(200px,1fr)))';grid.style.gridTemplateRows='var(--room-head-height, 64px) repeat('+slots.length+',var(--slot))';
@@ -603,10 +605,52 @@
       var span=Math.max(1,Math.ceil(numberOf(event.duration)/30)),normalized=normalizedStatus(event.status),status=normalized==='scheduled'?'':normalized,badge=statusBadge(normalized),studentCount=(event.studentIds||[]).length,groupLabel=studentCount>2?'團體課':studentCount===2?'雙人課':'';
       html+='<button type="button" class="event '+esc(event.type)+' '+esc(status)+(event.specialLesson?' special':'')+(groupLabel?' group-lesson':'')+(conflicts[event.id]?' conflict':'')+'" data-event-id="'+esc(event.id)+'" style="grid-column:'+(ri+2)+';grid-row:'+(si+2)+'/span '+span+'"><span class="event-top"><span>'+esc(event.start)+'–'+esc(minToTime(timeToMin(event.start)+numberOf(event.duration)))+'</span><b>'+badge+'</b></span><span class="event-main">'+esc(eventDisplayName(event))+'</span><span class="event-sub">'+(groupLabel?'<em>'+groupLabel+'</em>':'')+(event.specialLesson?'贈送加課・':'')+esc(event.type==='rental'?'教室租用・'+money(event.rentalFee):subjectById(event.subjectId).name||typeName(event.type))+(teacherById(event.teacherId).name?'・'+esc(teacherById(event.teacherId).name):'')+'</span></button>';
     });
-    if(hours.closed)html+='<div class="empty-day"><b>這一天設定為不開放排課</b><span>可到系統設定調整星期別的顯示時間。</span></div>';else if(!events.length)html+='<div class="empty-day"><b>這一天尚未排課</b><span>'+(isReadOnly()&&!calendarPartial()?'已移轉資料沒有這一天的課程':'點任一空白格即可新增')+'</span></div>';grid.innerHTML=html;window.dispatchEvent(new Event('youzi-calendar-layout'));
+    if(hours.closed)html+='<div class="empty-day"><b>這一天設定為不開放排課</b><span>可到系統設定調整星期別的顯示時間。</span></div>';else if(!events.length)html+='<div class="empty-day"><b>這一天尚未排課</b><span>'+(isReadOnly()&&!calendarPartial()?'已移轉資料沒有這一天的課程':'點任一空白格即可新增')+'</span></div>';grid.innerHTML=html;fitMobileCalendar();window.dispatchEvent(new Event('youzi-calendar-layout'));
     $('clipboardBar').classList.toggle('hidden',!state.clipboard);if(state.clipboard){var source=findEvent(state.clipboard.eventId)||state.clipboard.event;$('clipboardText').textContent=(state.clipboard.mode==='cut'?'調課':'增加課程')+'：'+eventDisplayName(source||{})+'，請點新的空白格。';}
     if(weekMode)renderWeekSchedule();
     if(attendanceUpdater)attendanceUpdater.pendingJobs().forEach(function(job){attendancePendingUI(job,true);});
+  }
+
+  function fitMobileCalendar(){
+    var scroll=$('scheduleScroll'),grid=$('scheduleGrid'),nav=$('mobileCalendarNav');
+    if(!scroll||!grid||!nav)return;
+    nav.hidden=!mobileAdmin()||weekMode;
+    if(!mobileAdmin())return;
+    var rooms=calendarRooms(),width=scroll.clientWidth||window.innerWidth-24;
+    var count=Math.max(2,Math.min(4,Math.floor((width-44)/96))),roomWidth=(width-44)/count;
+    grid.style.setProperty('--room-col',roomWidth+'px');grid.dataset.mobilePageSize=count;
+    grid.dataset.mobileRoomWidth=roomWidth;
+    var hours=scheduleHoursForDate(state.currentDate),buttons='';
+    for(var minute=hours.start;!hours.closed&&minute<hours.end;minute+=120){
+      buttons+='<button type="button" data-mobile-time="'+((minute-hours.start)/30)+'">'+minToTime(minute)+'–'+minToTime(Math.min(minute+120,hours.end))+'</button>';
+    }
+    $('mobileTimeBlocks').innerHTML=buttons;
+    $$('[data-slot-room]',grid).forEach(function(slot){
+      var col=rooms.findIndex(function(room){return room.id===slot.dataset.slotRoom;}),row=(timeToMin(slot.dataset.slotTime)-hours.start)/30;
+      slot.classList.toggle('mobile-block-start',row%4===0);
+      slot.classList.toggle('mobile-block-shade',Math.floor(row/4)%2===1);
+      slot.classList.toggle('mobile-snap',row%4===0&&col%count===0);
+    });
+    updateMobileRoomLabel();
+  }
+  function updateMobileRoomLabel(){
+    if(!mobileAdmin()||!$('mobileRoomLabel'))return;
+    var scroll=$('scheduleScroll'),grid=$('scheduleGrid'),count=Number(grid.dataset.mobilePageSize)||3,rooms=calendarRooms();
+    var first=Math.min(Math.max(0,rooms.length-count),Math.round(scroll.scrollLeft/(Number(grid.dataset.mobileRoomWidth)||100)));
+    $('mobileRoomLabel').textContent=rooms.length?'教室 '+(first+1)+'–'+Math.min(rooms.length,first+count)+'／'+rooms.length:'沒有啟用教室';
+    $('mobileRoomPrev').disabled=scroll.scrollLeft<2;
+    $('mobileRoomNext').disabled=scroll.scrollLeft>=scroll.scrollWidth-scroll.clientWidth-2;
+  }
+  function bindMobileCalendar(){
+    $('scheduleScroll').addEventListener('scroll',updateMobileRoomLabel,{passive:true});
+    $('mobileCalendarNav').addEventListener('click',function(event){
+      var button=event.target.closest('button');if(!button)return;
+      var scroll=$('scheduleScroll'),grid=$('scheduleGrid');
+      if(button.hasAttribute('data-mobile-time'))scroll.scrollTo({top:Number(button.dataset.mobileTime)*44,behavior:'smooth'});
+      if(button.hasAttribute('data-mobile-rooms'))scroll.scrollBy({left:Number(button.dataset.mobileRooms)*(Number(grid.dataset.mobilePageSize)||3)*(Number(grid.dataset.mobileRoomWidth)||100),behavior:'smooth'});
+    });
+    var wasMobile=mobileAdmin(),timer;
+    window.addEventListener('resize',function(){clearTimeout(timer);timer=setTimeout(function(){var now=mobileAdmin();if(now!==wasMobile){wasMobile=now;renderCalendar();}else if(now)fitMobileCalendar();},100);});
   }
 
   function fillSelect(node,rows,label,value,placeholder){node.innerHTML=(placeholder?'<option value="">'+esc(placeholder)+'</option>':'')+rows.map(function(row){return '<option value="'+esc(value(row))+'">'+esc(label(row))+'</option>';}).join('');}
@@ -1157,13 +1201,13 @@
         if(!state.dataMeta.teacherPayrollMonths||typeof state.dataMeta.teacherPayrollMonths!=='object')state.dataMeta.teacherPayrollMonths={};
         state.dataMeta.teacherPayrollMonths[monthKey]={loadedAt:result.loadedAt,runId:result.runId,count:(result.teacherPayroll||[]).length};
         save(teacherMonthLabel(monthKey)+'薪資已更新');
-        setTeacherPayrollSyncState('success',teacherMonthLabel(monthKey)+'已與雲端同步：'+(result.teacherPayroll||[]).length+' 堂');
+        if(teacherListMonthKey()===monthKey)setTeacherPayrollSyncState('success',teacherMonthLabel(monthKey)+'已與雲端同步：'+(result.teacherPayroll||[]).length+' 堂');
         if(currentView==='teachers'&&teacherListMonthKey()===monthKey)renderTeachers();
         if($('teacherPayrollModal').classList.contains('open')&&normalizedMonthKey($('teacherPayrollMonth').value)===monthKey)renderTeacherPayroll();
         return true;
       }catch(error){
         delete teacherPayrollMonthRefreshes[monthKey];
-        setTeacherPayrollSyncState('error',teacherMonthLabel(monthKey)+'尚未更新，請按右側「更新薪資」重試');
+        if(teacherListMonthKey()===monthKey)setTeacherPayrollSyncState('error',teacherMonthLabel(monthKey)+'尚未更新，請按右側「更新薪資」重試');
         toast('薪資更新未完成','目前先顯示已保存資料；'+clean(error&&error.message||error).slice(0,160),'error');
         return false;
       }
@@ -1172,7 +1216,7 @@
   }
   function renderTeachers(){
     var search=clean($('teacherSearch').value).toLowerCase(),monthKey=teacherListMonthKey(),monthLabel=teacherMonthLabel(monthKey),month=(state.teacherPayroll||[]).filter(function(row){return clean(row.date).slice(0,7)===monthKey;}),adjustments=(state.teacherAdjustments||[]).filter(function(row){return clean(row.date).slice(0,7)===monthKey;}),teachers=state.teachers.filter(function(row){var subjects=(row.subjectIds||[]).map(function(id){return subjectById(id).name;}).join(' ');return !search||(row.name+' '+row.phone+' '+subjects).toLowerCase().indexOf(search)>=0;}).sort(teacherSort),nextButton=$('teacherListMonthNext'),currentButton=$('teacherListMonthCurrent'),basePay=sum(month.map(function(row){return row.teacherAmount;})),adjustmentPay=sum(adjustments.map(signedTeacherAdjustment)),finalPay=basePay+adjustmentPay;if(nextButton)nextButton.disabled=monthKey>=todayKey().slice(0,7);if(currentButton)currentButton.disabled=monthKey===todayKey().slice(0,7);$('teacherMetrics').innerHTML=metric('老師總數',state.teachers.length,'啟用 '+state.teachers.filter(function(row){return row.active!==false;}).length+' 位')+metric(monthLabel+'完成課堂',month.length,'只計實際簽到')+metric(monthLabel+'課堂拆帳',money(basePay),'不含獎勵與扣薪')+metric(monthLabel+'獎勵／扣薪',(adjustmentPay>0?'＋':adjustmentPay<0?'－':'')+money(Math.abs(adjustmentPay)),'另外列示，不混入課堂拆帳')+metric(monthLabel+'實際薪資合計',money(finalPay),'課堂拆帳＋獎勵－扣薪');
-    $('teacherCards').innerHTML='<div class="teacher-list-head"><span>老師／電話</span><span>操作</span><span>主要教授科目</span><span>狀態</span><span>完成堂數</span><span>課堂拆帳</span><span>獎勵／扣薪</span><span>實際合計</span></div>'+teachers.map(function(row){var completed=month.filter(function(item){return item.teacherId===row.id;}),teacherAdjustments=adjustments.filter(function(item){return item.teacherId===row.id;}),basePay=sum(completed.map(function(item){return item.teacherAmount;})),adjustmentPay=sum(teacherAdjustments.map(signedTeacherAdjustment)),finalPay=basePay+adjustmentPay,subjects=(row.subjectIds||[]).map(function(id){return subjectById(id);}).filter(function(subject){return subject.id&&subject.active!==false;}).sort(bySort),shown=subjects.slice(0,2).map(function(subject){return subject.name;}),more=subjects.length>2?' ＋'+(subjects.length-2):'';return '<article class="teacher-list-row'+(row.active===false?' inactive':'')+'"><div class="teacher-list-cell teacher-list-identity" data-label="老師／電話"><b>'+esc(row.name)+'</b><small>'+esc(row.phone||'未填電話')+'</small></div><div class="teacher-list-actions"><button class="btn small primary" data-teacher-payroll="'+row.id+'">查看上課拆帳與薪資</button><button class="btn small secondary" data-teacher-adjustment="'+row.id+'">＋獎勵／扣薪</button>'+(state.readOnly?'':'<button class="btn small outline" data-teacher-id="'+row.id+'">編輯老師與科目</button>')+'</div>'+'<div class="teacher-list-cell teacher-list-subjects teacher-subject-summary" data-label="主要教授科目">'+esc(shown.join('、')||'尚未設定')+esc(more)+'</div><div class="teacher-list-cell teacher-list-status" data-label="狀態"><span class="tag '+(row.active===false?'gray':'green')+'">'+(row.active===false?'停用':'啟用')+'</span></div><div class="teacher-list-cell teacher-list-completed" data-label="完成堂數"><b>'+completed.length+' 堂</b></div><div class="teacher-list-cell teacher-list-base-pay" data-label="課堂拆帳"><b>'+money(basePay)+'</b></div><div class="teacher-list-cell teacher-list-adjustment-pay" data-label="獎勵／扣薪"><b>'+(adjustmentPay>0?'＋':adjustmentPay<0?'－':'')+money(Math.abs(adjustmentPay))+'</b></div><div class="teacher-list-cell teacher-list-final-pay" data-label="實際合計"><b>'+money(finalPay)+'</b></div></article>';}).join('');
+    $('teacherCards').innerHTML='<div class="teacher-list-head"><span>老師／電話</span><span>操作</span><span>主要教授科目</span><span>狀態</span><span>完成堂數</span><span>課堂拆帳</span><span>獎勵／扣薪</span><span>實際合計</span></div>'+teachers.map(function(row){var completed=month.filter(function(item){return item.teacherId===row.id;}),teacherAdjustments=adjustments.filter(function(item){return item.teacherId===row.id;}),basePay=sum(completed.map(function(item){return item.teacherAmount;})),adjustmentPay=sum(teacherAdjustments.map(signedTeacherAdjustment)),finalPay=basePay+adjustmentPay,subjects=(row.subjectIds||[]).map(function(id){return subjectById(id);}).filter(function(subject){return subject.id&&subject.active!==false;}).sort(bySort),shown=subjects.slice(0,2).map(function(subject){return subject.name;}),more=subjects.length>2?' ＋'+(subjects.length-2):'';return '<article class="teacher-list-row'+(row.active===false?' inactive':'')+'"><div class="teacher-list-cell teacher-list-identity" data-label="老師／電話"><b>'+esc(row.name)+'</b><small>'+esc(row.phone||'未填電話')+'</small></div><div class="teacher-list-actions"><button class="btn small primary" data-teacher-payroll="'+row.id+'">查看上課拆帳與薪資</button><button class="btn small secondary" data-teacher-adjustment="'+row.id+'">＋獎勵／扣薪</button>'+(state.readOnly&&!(mobileAdmin()&&calendarPartial())?'':'<button class="btn small outline" data-teacher-id="'+row.id+'">編輯老師與科目</button>')+'</div>'+'<div class="teacher-list-cell teacher-list-subjects teacher-subject-summary" data-label="主要教授科目">'+esc(shown.join('、')||'尚未設定')+esc(more)+'</div><div class="teacher-list-cell teacher-list-status" data-label="狀態"><span class="tag '+(row.active===false?'gray':'green')+'">'+(row.active===false?'停用':'啟用')+'</span></div><div class="teacher-list-cell teacher-list-completed" data-label="完成堂數"><b>'+completed.length+' 堂</b></div><div class="teacher-list-cell teacher-list-base-pay" data-label="課堂拆帳"><b>'+money(basePay)+'</b></div><div class="teacher-list-cell teacher-list-adjustment-pay" data-label="獎勵／扣薪"><b>'+(adjustmentPay>0?'＋':adjustmentPay<0?'－':'')+money(Math.abs(adjustmentPay))+'</b></div><div class="teacher-list-cell teacher-list-final-pay" data-label="實際合計"><b>'+money(finalPay)+'</b></div></article>';}).join('');
   }
 
   function payrollPlanText(row){
@@ -1566,9 +1610,11 @@
   function applyCalendarState(loaded){
     clearTimeout(workspaceSaveTimer);
     // A bounded calendar is never persisted over a complete ledger snapshot.
+    var mobilePayroll=mobileAdmin()?{rows:state.teacherPayroll||[],adjustments:state.teacherAdjustments||[],months:state.dataMeta&&state.dataMeta.teacherPayrollMonths}:null;
     state=normalizeState(preserveWorkspaceConfiguration(clone(loaded),state));
+    if(mobilePayroll){state.teacherPayroll=mobilePayroll.rows;state.teacherAdjustments=mobilePayroll.adjustments;if(mobilePayroll.months)state.dataMeta.teacherPayrollMonths=mobilePayroll.months;}
     state.readOnly=true;state.dataMode='migration';state.clipboard=null;
-    updateModeUI();refreshFormOptions();switchView(currentView==='students'?'students':'calendar');
+    updateModeUI();refreshFormOptions();switchView(currentView==='students'?'students':mobileAdmin()&&currentView==='teachers'?'teachers':'calendar');
   }
   function loadPublishedWorkspace(options){
     if(workspaceLoadPromise)return workspaceLoadPromise;
@@ -1637,7 +1683,7 @@
     $('calendarReauthBtn').addEventListener('click',async function(){var bridge=window.YouziOperationsManagerAuth;if(bridge){bridge.clearRedirectMarker(window);await bridge.redirectToLoginOnce(window,window.firebase.auth());}});
     try{localStorage.removeItem('youzi.courseScheduler.sandbox.v1');localStorage.removeItem('youzi.courseScheduler.sandboxUndo.v1');localStorage.removeItem('youzi.courseScheduler.lastMode.v1');}catch(_){}
     embeddedMode=window.__YOUZI_COURSE_INLINE_MODE__===true||urlOption('embed')==='1';document.body.classList.toggle('embedded-in-operations',embeddedMode);requestPersistentStorage();
-    state=loadInitialState();if(!formalState&&state.readOnly&&state.dataMode!=='empty')formalState=clone(state);bindEvents();refreshFormOptions();updateModeUI();switchView(requestedView());
+    state=loadInitialState();if(!formalState&&state.readOnly&&state.dataMode!=='empty')formalState=clone(state);bindEvents();bindMobileCalendar();refreshFormOptions();updateModeUI();switchView(requestedView());
     // Cloud loading includes bookings; do not race it with a partial rental snapshot.
     if(window.__YOUZI_COURSE_SCHEDULER_TEST__!==true)loadPublishedWorkspace({calendarOnly:true});
     if(window.__YOUZI_COURSE_SCHEDULER_TEST__===true)window.YouziCourseSchedulerTest={snapshot:function(){return clone(state);},eventsForDate:function(date){return clone(eventsForDate(date));},effectiveEventsForDate:function(date){return clone(effectiveEventsForDate(date));},storeFormalCache:function(source){return storeFormalCache(source);},readFormalDatabase:readFormalDatabase,storeFormalDatabase:storeFormalDatabase,readWorkspaceDatabase:readWorkspaceDatabase,storeWorkspaceDatabase:storeWorkspaceDatabase,restoreFormalDatabase:restoreFormalDatabase};

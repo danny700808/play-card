@@ -1,0 +1,96 @@
+/* Phone-only density for the three manager screens. Desktop rules stay intact. */
+@media (max-width:780px) {
+  .ops-body:has(#opsContent .ops-platform-control-card) .ops-topbar {padding-top:8px;padding-bottom:8px}
+  .ops-platform-control-card,.ops-platform-order-list {padding:10px!important;border-radius:12px!important}
+  .ops-platform-control-title {display:none}
+  .ops-platform-control-row {display:block!important}
+  .ops-platform-control-card .ops-platform-date-tools {display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px!important}
+  .ops-platform-control-card .ops-platform-quick-button,
+  .ops-platform-control-card .ops-platform-date-input,
+  .ops-platform-control-card .ops-platform-month-select {width:auto!important;min-width:0!important;min-height:36px!important;height:auto!important;padding:5px 8px!important;font-size:12px!important;border-radius:8px!important;margin:0!important}
+  .ops-platform-control-card .ops-platform-date-input {grid-column:1/-1;display:flex!important;justify-content:space-between}
+  .ops-platform-control-card .ops-platform-month-select {grid-column:span 1;display:flex!important}
+  .ops-platform-control-card input,.ops-platform-control-card select {min-width:0!important;width:auto!important;max-width:100%;font-size:16px!important;min-height:26px!important;padding:0!important}
+  .ops-platform-control-card .ops-platform-month-select>span {display:none}
+  .ops-platform-control-divider {display:none!important}
+  .ops-platform-control-card .ops-platform-sync-tools {display:flex!important;flex-wrap:wrap;gap:6px!important;margin-top:8px;padding-top:8px;border-top:1px solid #dbe5e1}
+  .ops-platform-sync-tools .ops-platform-last-sync {flex:1 0 100%;min-height:0!important;padding:0!important;font-size:11px!important;background:none!important}
+  .ops-platform-sync-tools .ops-button {min-height:34px!important;padding:5px 9px!important;font-size:12px!important;flex:1}
+  .ops-platform-sync-tools [data-platform-sync-progress] {font-size:10px;flex-basis:100%}
+  .ops-platform-tabs-compact {display:flex!important;flex-wrap:nowrap!important;gap:5px!important;overflow-x:auto;margin-bottom:8px!important}
+  .ops-platform-tabs-compact button {flex:0 0 auto!important;min-height:36px!important;padding:5px 9px!important;font-size:11px!important;border-radius:8px!important;width:auto!important}
+  .ops-platform-kpis {grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important;margin-bottom:8px!important}
+  .ops-platform-kpis .ops-kpi {padding:7px!important;min-height:0!important}
+  .ops-platform-kpis .ops-kpi strong {font-size:18px!important}
+  .ops-platform-kpis .ops-kpi small {font-size:9px!important;line-height:1.3}
+  .ops-platform-kpis .ops-kpi-icon {display:none!important}
+  .ops-platform-search {margin:6px 0!important}
+  .ops-platform-search input {min-height:38px!important;padding:6px 9px!important;font-size:16px!important}
+
+  .course-inline-body #calendarPage .calendar-toolbar {padding:6px;margin-bottom:5px}
+  .course-inline-body #calendarPage .date-actions {display:grid;grid-template-columns:40px 32px minmax(125px,1fr) 32px 60px;gap:4px}
+  .course-inline-body #calendarPage .date-actions .btn,
+  .course-inline-body #calendarPage .date-actions .icon-btn {min-height:36px;height:36px;min-width:0;width:auto;padding:4px;font-size:12px}
+  .course-inline-body #calendarDate {font-size:16px;min-height:36px;height:36px;min-width:0;width:100%;padding:3px}
+  .course-inline-body #calendarPage .date-heading {display:none}
+  .course-inline-body #dailyKpis {display:flex;gap:6px;margin:0 0 5px}
+  .course-inline-body #dailyKpis .kpi {display:flex;align-items:center;gap:7px;padding:4px 9px;min-height:32px;flex:1;border-radius:8px}
+  .course-inline-body #dailyKpis .kpi span {font-size:11px}
+  .course-inline-body #dailyKpis .kpi strong {font-size:17px;margin:0}
+  .course-inline-body #dailyKpis .kpi small {display:none}
+  .course-inline-body #dailyLegend {display:flex;flex-wrap:nowrap;overflow-x:auto;gap:8px;padding:5px 8px;margin-bottom:5px;border-radius:8px;white-space:nowrap;font-size:10px}
+  .course-inline-body #dailyLegend span {flex-shrink:0;padding:1px 3px;font-size:10px}
+  .course-inline-body #dailyLegend b {display:none}
+  .course-inline-body #dailySchedule {border-radius:10px}
+  .course-inline-body #scheduleScroll {height:64dvh;max-height:64dvh;min-height:250px;scroll-snap-type:both proximity;scroll-padding:48px 0 0 44px;overscroll-behavior:contain}
+  .course-inline-body #scheduleGrid {--time-col:44px;--room-head-height:48px;--slot:44px;min-width:max-content}
+  .course-inline-body #scheduleGrid .grid-corner,.course-inline-body #scheduleGrid .room-head {min-height:0;padding:3px;font-size:11px;overflow-wrap:anywhere;line-height:1.3}
+  .course-inline-body #scheduleGrid .room-head small {display:none}
+  .course-inline-body #scheduleGrid .time-label {font-size:10px;padding:4px 3px}
+  .course-inline-body #scheduleGrid .event {min-width:0;min-height:0;padding:3px;margin:1px;overflow:hidden}
+  .course-inline-body #scheduleGrid .event-main {font-size:12px;line-height:1.25}
+  .course-inline-body #scheduleGrid .event-top,.course-inline-body #scheduleGrid .event-sub {font-size:10px;line-height:1.25}
+  .course-inline-body #scheduleGrid .mobile-block-start {border-top:2px solid #90b4a5}
+  .course-inline-body #scheduleGrid .mobile-block-shade:not(.blocked) {background:#f6faf8}
+  .course-inline-body #scheduleGrid .mobile-snap {scroll-snap-align:start}
+  #mobileCalendarNav[hidden] {display:none}
+  .mobile-room-nav {display:flex;align-items:center;gap:6px;padding:5px 7px;background:#eef5f1}
+  .mobile-room-nav button,#mobileTimeBlocks button {border:1px solid #c8d9d1;background:#fff;border-radius:7px;color:#254e40;min-height:34px;padding:4px 8px}
+  .mobile-room-nav button {width:34px;font-size:22px;line-height:1}
+  .mobile-room-nav button:disabled {opacity:.35}
+  #mobileRoomLabel {font-size:12px;font-weight:700;white-space:nowrap}
+  .mobile-room-nav small {flex:1;text-align:right;font-size:10px;color:#637b70}
+  #mobileTimeBlocks {display:flex;gap:5px;overflow-x:auto;padding:5px 7px;border-bottom:1px solid #d3dfda}
+  #mobileTimeBlocks button {flex:0 0 auto;font-size:10px;min-height:30px}
+
+  .course-inline-body #teachersPage .section-heading {flex-direction:row;align-items:center;gap:8px;margin:0 0 6px}
+  .course-inline-body #teachersPage .section-heading h2 {font-size:16px;margin:0}
+  .course-inline-body #teachersPage .section-heading p {display:none}
+  .course-inline-body #addTeacherBtn {width:auto;min-height:34px;padding:5px 9px;font-size:12px}
+  .course-inline-body #teacherMetrics {grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-bottom:6px}
+  .course-inline-body #teacherMetrics .metric {padding:7px;min-height:0;border-radius:9px}
+  .course-inline-body #teacherMetrics span {font-size:10px;line-height:1.3}
+  .course-inline-body #teacherMetrics strong {font-size:18px;line-height:1.3;margin:3px 0}
+  .course-inline-body #teacherMetrics small {display:none}
+  .course-inline-body #teacherPayrollSyncPanel {padding:6px 8px;gap:6px;font-size:11px;line-height:1.3;margin-bottom:6px}
+  .course-inline-body #teacherPayrollRefreshBtn {min-height:32px;padding:4px 6px;font-size:11px;white-space:nowrap}
+  .course-inline-body .teacher-payroll-filters {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px;margin-bottom:7px}
+  .course-inline-body .teacher-month-filter {grid-column:1/-1;display:grid;grid-template-columns:56px minmax(100px,1fr) 56px 40px;gap:4px}
+  .course-inline-body .teacher-month-filter .btn {font-size:10px;padding:4px 2px;min-height:36px}
+  .course-inline-body .teacher-month-control {grid-column:auto;grid-row:auto;padding:0 3px;min-width:0;min-height:36px}
+  .course-inline-body .teacher-month-control>span {display:none}
+  .course-inline-body #teacherListMonth {font-size:16px;padding:3px;min-height:34px;width:100%;min-width:0}
+  .course-inline-body #teacherSearch {font-size:16px;min-height:36px;padding:4px 8px;min-width:0;width:100%}
+  .course-inline-body #teacherTransferBtn {font-size:10px;min-height:36px;padding:4px 7px;white-space:nowrap}
+  .course-inline-body #teacherCards .teacher-list-row {grid-template-columns:repeat(3,minmax(0,1fr));border-radius:9px;margin-bottom:5px}
+  .course-inline-body #teacherCards .teacher-list-identity {grid-column:1/3;padding:6px 8px}
+  .course-inline-body #teacherCards .teacher-list-identity::before {display:none}
+  .course-inline-body #teacherCards .teacher-list-identity b {font-size:14px}
+  .course-inline-body #teacherCards .teacher-list-identity small {font-size:10px}
+  .course-inline-body #teacherCards .teacher-list-final-pay {grid-column:3;grid-row:1;padding:6px}
+  .course-inline-body #teacherCards .teacher-list-final-pay b {font-size:15px}
+  .course-inline-body #teacherCards .teacher-list-actions {grid-column:1/-1;grid-template-columns:1.4fr 1fr 1fr;gap:4px;padding:5px}
+  .course-inline-body #teacherCards .teacher-list-actions .btn {grid-column:auto;min-height:34px;font-size:10px;padding:3px}
+  .course-inline-body #teacherCards .teacher-list-cell {font-size:11px;padding:5px 6px}
+  .course-inline-body #teacherCards .teacher-list-subjects {grid-column:span 2}
+}
