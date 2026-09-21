@@ -1875,7 +1875,9 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
       }
     };
     if(immediate)return queueAfterInputPaint();
-    job.id=global.setTimeout(queueAfterInputPaint,LIVE_SEARCH_INPUT_IDLE_MS);
+    // Inventory cards do more work than POS rows. Let a complete SKU arrive first.
+    const inputIdleMs=inputId==='productSearch'?500:LIVE_SEARCH_INPUT_IDLE_MS;
+    job.id=global.setTimeout(queueAfterInputPaint,inputIdleMs);
   }
   function searchInputSelection(input){
     const length=String(input&&input.value||'').length;
@@ -2499,9 +2501,9 @@ function renderOverviewV7(){
     const term=lower(state.productSearch); let rows=catalogRowsInSkuOrder().filter(function(p){
       if(!hasListingSku(p.sku))return false;
       if(!!(p.internal&&p.internal.productArchived)!==!!state.productArchivedOnly)return false;
-      if(state.productRecentOnly&&!productAppearsInRecentListing(p))return false;
       if(state.productSeries!=='all'&&!clean(p.sku).startsWith(state.productSeries))return false;
       if(term&&!catalogMatchesSearch(p,term))return false;
+      if(state.productRecentOnly&&!productAppearsInRecentListing(p))return false;
       if(state.productFilter==='missing-cost'&&!(p.averageCost==null&&p.nextFifoCost==null))return false;
       if(state.productFilter==='low'&&!(p.currentStock<=p.safetyStock))return false;
       if(state.productFilter==='in-stock'&&p.currentStock<=0)return false;
@@ -2537,8 +2539,6 @@ function renderOverviewV7(){
         if(aPriority!==bPriority) return aPriority-bPriority;
         return compareCatalogSku(a,b);
       });
-    }else{
-      rows=rows.slice().sort(compareCatalogSku);
     }
     return rows;
   }
