@@ -125,7 +125,7 @@ test('search paints the typed value before it starts replacing a large result li
 
   assert.match(scheduler, /renderLiveSearchResults\(inputId\)/);
   assert.match(scheduler, /if\(!renderLiveSearchResults\(inputId\)\)rerenderKeepingFocus/);
-  assert.match(scheduler, /setTimeout\(queueAfterInputPaint,LIVE_SEARCH_INPUT_IDLE_MS\)/);
+  assert.match(scheduler, /setTimeout\(queueAfterInputPaint,inputIdleMs\)/);
   assert.match(scheduler, /requestAnimationFrame\(waitOnePaint\)/);
   assert.match(scheduler, /requestAnimationFrame\(run\)/);
   assert.match(scheduler, /liveSearchJobs\[inputId\]!==job/);
@@ -180,7 +180,7 @@ test('rapid input is coalesced and the final value gets two paint frames before 
   assert.equal(renderCount, 0);
   schedule('12');
   assert.equal(timers.size, 1, 'the stale one-digit search must be cancelled');
-  assert.deepEqual(delays, [240, 240]);
+  assert.deepEqual(delays, [500, 500]);
   staleOneDigitJob();
   assert.equal(frames.size, 0, 'a cancelled callback must not revive the stale one-digit search');
 
