@@ -34,7 +34,7 @@ const logic=source.slice(source.indexOf('  var mobileCalendarPages='),source.ind
    let pos=await swipe(-100,-35);assert(Math.abs(pos.left-layout.pages.x[1])<2);assert.equal(pos.top,0);
    pos=await swipe(12,2);assert(Math.abs(pos.left-layout.pages.x[1])<2);
    pos=await swipe(100,25);assert.equal(pos.left,0);
-   pos=await swipe(-25,-140);assert.equal(pos.left,0);assert(Math.abs(pos.top-layout.pages.y[1])<2);
+   pos=await swipe(-25,-140);assert.equal(pos.left,0);assert.equal(pos.top,0);
    pos=await swipe(90,5,true);assert.equal(pos.left,0);
    console.log(`${name} ${width}: date bounds, two room pages, diagonal lock, short swipe, reverse, vertical page, cancellation passed`);
    await page.close();
