@@ -47,3 +47,10 @@ test('calendar bootstrap preserves salary month results and selected mobile sala
   ctx.applyCalendarState({dataMeta:{partial:true},teachers:[{id:'teacher'}]});
   assert.equal(ctx.state.teacherPayroll[0].teacherAmount,700);assert.equal(ctx.state.readOnly,true);assert.equal(ctx.state.dataMeta.teacherPayrollMonths['2026-09'].count,1);assert.deepEqual(calls,['teachers']);
 });
+
+test('fresh mobile state is normalized before calendar rendering can access recurrence rows',()=>{
+  let normalized=false;
+  const ctx={window:{},loadFormalCache:()=>null,defaultState:()=>({currentDate:'2026-09-21'}),normalizeState:value=>{normalized=true;value.recurringRules=[];return value;}};
+  vm.runInNewContext(section(runtime,'  function loadInitialState(){','  function isReadOnly()'),ctx);
+  const state=ctx.loadInitialState();assert(normalized);assert.deepEqual(state.recurringRules,[]);assert.equal(state.dataMode,'empty');assert.equal(state.teachers.length,0);
+});

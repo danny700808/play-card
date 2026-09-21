@@ -390,7 +390,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     inventorySearch:'',
     customerSearch:'',
     receivableSearch:'',
-    overviewRange:'today',
+    overviewRange:window.matchMedia('(max-width:780px)').matches?'month':'today',
     overviewDate:dateText(new Date()),
     overviewSearch:'',
     overviewFrom:'',
