@@ -542,8 +542,8 @@
     date.setDate(date.getDate()+offset);return dateKey(date);
   }
   function setWeekMode(enabled){
-    weekMode=!!enabled;if(mobileAdmin())fitMobileCalendar();$('weekSchedulePanel').classList.toggle('hidden',!weekMode);$('dailyKpis').classList.toggle('hidden',weekMode);$('dailyLegend').classList.remove('hidden');$('dailySchedule').classList.toggle('hidden',weekMode);$('weekScheduleBtn').classList.toggle('active',weekMode);
-    window.dispatchEvent(new Event('youzi-calendar-layout'));if(weekMode){weekAnchor=weekAnchor||state.currentDate||todayKey();renderWeekSchedule();}
+    weekMode=!!enabled;$('weekSchedulePanel').classList.toggle('hidden',!weekMode);$('dailyKpis').classList.toggle('hidden',weekMode);$('dailyLegend').classList.remove('hidden');$('dailySchedule').classList.toggle('hidden',weekMode);$('weekScheduleBtn').classList.toggle('active',weekMode);
+    window.dispatchEvent(new Event('youzi-calendar-layout'));if(weekMode){weekAnchor=weekAnchor||state.currentDate||todayKey();renderWeekSchedule();}else if(mobileAdmin())renderCalendar();syncMobileCalendarToolbar();
   }
   function uniqueWeekEvents(rows){
     var seen={};return rows.filter(function(event){var key=[event.id,event.start,event.teacherId,event.roomId].join('|');if(seen[key])return false;seen[key]=true;return true;});
@@ -574,7 +574,7 @@
       dates.forEach(function(date,dateIndex){
         var rows=eventsByDate[date].filter(function(event){var eventStart=timeToMin(event.start),eventEnd=eventStart+numberOf(event.duration);return eventStart<slotMin+30&&eventEnd>slotMin;});
         html+='<div class="teacher-week-slot'+(slotMin%60===0?' hour':'')+'" style="grid-column:'+(dateIndex+2)+';grid-row:'+gridRow+'">';
-        if(!rows.length)html+='<span class="teacher-week-empty">空堂</span>';
+        if(!rows.length&&!mobileAdmin())html+='<span class="teacher-week-empty">空堂</span>';
         html+='</div>';
       });
     });
@@ -587,7 +587,7 @@
       });
     });
     html+='</div>';
-    $('weekScheduleDays').innerHTML=html;renderFollowupCounts();window.dispatchEvent(new Event('youzi-calendar-layout'));
+    $('weekScheduleDays').innerHTML=html;mobileWeekLayout={dates:dates,events:eventsByDate,slots:slots};fitMobileWeekCalendar();syncMobileCalendarToolbar();renderFollowupCounts();window.dispatchEvent(new Event('youzi-calendar-layout'));
   }
 
   function renderCalendar(){
@@ -605,14 +605,40 @@
       var span=Math.max(1,Math.ceil(numberOf(event.duration)/30)),normalized=normalizedStatus(event.status),status=normalized==='scheduled'?'':normalized,badge=statusBadge(normalized),studentCount=(event.studentIds||[]).length,groupLabel=studentCount>2?'團體課':studentCount===2?'雙人課':'';
       html+='<button type="button" class="event '+esc(event.type)+' '+esc(status)+(event.specialLesson?' special':'')+(groupLabel?' group-lesson':'')+(conflicts[event.id]?' conflict':'')+'" data-event-id="'+esc(event.id)+'" style="grid-column:'+(ri+2)+';grid-row:'+(si+2)+'/span '+span+'"><span class="event-top"><span>'+esc(event.start)+'–'+esc(minToTime(timeToMin(event.start)+numberOf(event.duration)))+'</span><b>'+badge+'</b></span><span class="event-main">'+esc(eventDisplayName(event))+'</span><span class="event-sub">'+(groupLabel?'<em>'+groupLabel+'</em>':'')+(event.specialLesson?'贈送加課・':'')+esc(event.type==='rental'?'教室租用・'+money(event.rentalFee):subjectById(event.subjectId).name||typeName(event.type))+(teacherById(event.teacherId).name?'・'+esc(teacherById(event.teacherId).name):'')+'</span></button>';
     });
-    if(hours.closed)html+='<div class="empty-day"><b>這一天設定為不開放排課</b><span>可到系統設定調整星期別的顯示時間。</span></div>';else if(!events.length)html+='<div class="empty-day"><b>這一天尚未排課</b><span>'+(isReadOnly()&&!calendarPartial()?'已移轉資料沒有這一天的課程':'點任一空白格即可新增')+'</span></div>';grid.innerHTML=html;fitMobileCalendar();window.dispatchEvent(new Event('youzi-calendar-layout'));
+    if(hours.closed)html+='<div class="empty-day"><b>這一天設定為不開放排課</b><span>可到系統設定調整星期別的顯示時間。</span></div>';else if(!events.length)html+='<div class="empty-day"><b>這一天尚未排課</b><span>'+(isReadOnly()&&!calendarPartial()?'已移轉資料沒有這一天的課程':'點任一空白格即可新增')+'</span></div>';grid.innerHTML=html;fitMobileCalendar();syncMobileCalendarToolbar();window.dispatchEvent(new Event('youzi-calendar-layout'));
     $('clipboardBar').classList.toggle('hidden',!state.clipboard);if(state.clipboard){var source=findEvent(state.clipboard.eventId)||state.clipboard.event;$('clipboardText').textContent=(state.clipboard.mode==='cut'?'調課':'增加課程')+'：'+eventDisplayName(source||{})+'，請點新的空白格。';}
     if(weekMode)renderWeekSchedule();
     if(attendanceUpdater)attendanceUpdater.pendingJobs().forEach(function(job){attendancePendingUI(job,true);});
   }
 
   // Phone calendar: stable room pages and aligned time pages, with axis-locked swipes.
-  var mobileCalendarPages={x:[0],y:[0]},mobileCalendarGesture=null;
+  var mobileCalendarPages={x:[0],y:[0]},mobileCalendarGesture=null,mobileWeekPages={x:[0],y:[0]},mobileWeekLayout=null;
+  function syncMobileCalendarToolbar(){
+    if(!mobileAdmin())return;
+    $('weekScheduleBtn').textContent=weekMode?'返回日表':'週課表';
+    $('todayBtn').textContent=weekMode?'本週':'今天';
+    $$('[data-day-step]').forEach(function(button){button.setAttribute('aria-label',numberOf(button.dataset.dayStep)<0?(weekMode?'上一週':'前一天'):(weekMode?'下一週':'後一天'));});
+    if($('calendarDateDisplay'))$('calendarDateDisplay').textContent=weekMode?weekStartKey(weekAnchor||state.currentDate).slice(5).replace('-','/')+'–'+shiftDate(weekStartKey(weekAnchor||state.currentDate),6).slice(5).replace('-','/'):state.currentDate.replace(/-/g,' / ');
+  }
+  function fitMobileWeekCalendar(){
+    if(!mobileAdmin()||!weekMode||!mobileWeekLayout)return;
+    var scroll=$('weekScheduleDays'),grid=scroll.querySelector('.teacher-week-grid');if(!grid)return;
+    var viewport=window.visualViewport,bottom=viewport?viewport.height+viewport.offsetTop:window.innerHeight;
+    scroll.style.height=Math.max(120,Math.floor(bottom-scroll.getBoundingClientRect().top-32))+'px';scroll.style.maxHeight=scroll.style.height;
+    var width=Math.max(1,scroll.clientWidth-40),data=mobileWeekLayout,columns=[];
+    [data.dates.slice(0,4),data.dates.slice(4)].forEach(function(group){
+      var weights=group.map(function(date){return data.events[date].length?1.8:1;}),total=weights.reduce(function(a,b){return a+b;},0);
+      weights.forEach(function(weight){columns.push(width*weight/total+'px');});
+    });
+    grid.style.gridTemplateColumns='40px '+columns.join(' ');
+    var heights=data.slots.map(function(min){return data.dates.some(function(date){return data.events[date].some(function(e){var start=timeToMin(e.start);return start<min+30&&start+numberOf(e.duration)>min;});})?44:12;});
+    var total=heights.reduce(function(a,b){return a+b;},0)||1,available=Math.max(1,scroll.clientHeight-36);
+    heights=heights.map(function(h){return h*available/total;});
+    grid.style.gridTemplateRows='34px '+heights.map(function(h){return h+'px';}).join(' ');
+    grid.querySelectorAll('.teacher-week-time').forEach(function(node,index){node.style.fontSize=Math.min(10,Math.max(7,(heights[index]||12)-2))+'px';});
+    grid.querySelectorAll('.teacher-week-day-head time').forEach(function(node,index){node.textContent=data.dates[index].slice(5).replace('-','/');});
+    mobileWeekPages={x:[0,width],y:[0]};scroll.scrollLeft=nearestMobilePage(mobileWeekPages.x,scroll.scrollLeft);scroll.scrollTop=0;
+  }
   function fitMobileCalendar(){
     var scroll=$('scheduleScroll'),grid=$('scheduleGrid'),nav=$('mobileCalendarNav');
     if(!scroll||!grid)return;
@@ -654,24 +680,25 @@
     scroll.scrollTop=0;
   }
   function nearestMobilePage(pages,value){return pages.reduce(function(best,n){return Math.abs(n-value)<Math.abs(best-value)?n:best;},pages[0]);}
-  function bindMobileCalendar(){
-    var scroll=$('scheduleScroll'),suppressClickUntil=0;
+  function bindMobileCalendar(weekly){
+    var scroll=$(weekly?'weekScheduleDays':'scheduleScroll'),suppressClickUntil=0;
+    function currentPages(){return weekly?mobileWeekPages:mobileCalendarPages;}
     function settle(cancelled){
       var g=mobileCalendarGesture;if(!g)return;mobileCalendarGesture=null;
       if(!g.axis||g.axis==='y')return;
       suppressClickUntil=Date.now()+400;
-      var pages=mobileCalendarPages[g.axis],origin=g.axis==='x'?g.left:g.top;
+      var pages=currentPages()[g.axis],origin=g.axis==='x'?g.left:g.top;
       var index=pages.indexOf(nearestMobilePage(pages,origin));
       var distance=g.axis==='x'?g.dx:g.dy;
       var size=g.axis==='x'?scroll.clientWidth-40:scroll.clientHeight-40;
       var quick=Date.now()-g.time<300&&Math.abs(distance)>24;
       if(!cancelled&&(Math.abs(distance)>size*.18||quick))index+=distance<0?1:-1;
       index=Math.max(0,Math.min(pages.length-1,index));
-      var target={left:nearestMobilePage(mobileCalendarPages.x,g.left),top:nearestMobilePage(mobileCalendarPages.y,g.top),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'};
+      var target={left:nearestMobilePage(currentPages().x,g.left),top:nearestMobilePage(currentPages().y,g.top),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'};
       target[g.axis==='x'?'left':'top']=pages[index];scroll.scrollTo(target);
     }
     scroll.addEventListener('touchstart',function(e){
-      if(!mobileAdmin()||weekMode||e.touches.length!==1)return;
+      if(!mobileAdmin()||!!weekMode!==!!weekly||e.touches.length!==1)return;
       var t=e.touches[0];
       // Stop an in-flight page animation before a new gesture.
       scroll.scrollTo({left:scroll.scrollLeft,top:scroll.scrollTop,behavior:'instant'});
@@ -683,7 +710,7 @@
       g.dx=e.touches[0].clientX-g.x;g.dy=e.touches[0].clientY-g.y;
       if(!g.axis&&Math.max(Math.abs(g.dx),Math.abs(g.dy))>8)g.axis=Math.abs(g.dx)>Math.abs(g.dy)?'x':'y';
       if(!g.axis||g.axis==='y')return;e.preventDefault();
-      var pages=mobileCalendarPages[g.axis],origin=g.axis==='x'?g.left:g.top;
+      var pages=currentPages()[g.axis],origin=g.axis==='x'?g.left:g.top;
       var index=pages.indexOf(nearestMobilePage(pages,origin));
       var value=origin-(g.axis==='x'?g.dx:g.dy);
       value=Math.max(pages[Math.max(0,index-1)],Math.min(pages[Math.min(pages.length-1,index+1)],value));
@@ -692,8 +719,10 @@
     scroll.addEventListener('touchend',function(){settle(false);},{passive:true});
     scroll.addEventListener('touchcancel',function(){settle(true);},{passive:true});
     scroll.addEventListener('click',function(e){if(Date.now()<suppressClickUntil){e.preventDefault();e.stopImmediatePropagation();}},true);
+    if(weekly)return;
+    bindMobileCalendar(true);
     var wasMobile=mobileAdmin(),timer;
-    function resizeCalendar(){clearTimeout(timer);timer=setTimeout(function(){mobileCalendarGesture=null;var now=mobileAdmin();if(now!==wasMobile){wasMobile=now;renderCalendar();}else if(now)fitMobileCalendar();},100);}
+    function resizeCalendar(){clearTimeout(timer);timer=setTimeout(function(){mobileCalendarGesture=null;var now=mobileAdmin();if(now!==wasMobile){wasMobile=now;renderCalendar();}else if(now){if(weekMode)fitMobileWeekCalendar();else fitMobileCalendar();}},100);}
     window.addEventListener('resize',resizeCalendar);
     if(window.visualViewport)window.visualViewport.addEventListener('resize',resizeCalendar);
   }
@@ -1703,7 +1732,7 @@
     bindRoomReorder();
     bindFeeReorder();
     $$('[data-view]').forEach(function(node){node.addEventListener('click',function(){switchView(node.dataset.view);});});$$('[data-view-jump]').forEach(function(node){node.addEventListener('click',function(){switchView(node.dataset.viewJump);});});$$('[data-close-modal]').forEach(function(node){node.addEventListener('click',function(){closeModal(node.dataset.closeModal);});});$$('.modal-backdrop').forEach(function(node){node.addEventListener('click',function(event){if(event.target===node)closeModal(node.id);});});
-    ['topNewEvent','sideNewEvent','calendarNewEvent'].forEach(function(id){var node=$(id);if(node)node.addEventListener('click',function(){openSchedule({date:state.currentDate});});});$$('[data-day-step]').forEach(function(node){node.addEventListener('click',function(){state.currentDate=shiftDate(state.currentDate,numberOf(node.dataset.dayStep));if(weekMode)weekAnchor=state.currentDate;renderCalendar();});});$('todayBtn').addEventListener('click',function(){state.currentDate=todayKey();weekAnchor=state.currentDate;renderCalendar();});$('calendarDate').addEventListener('change',function(){state.currentDate=this.value;weekAnchor=this.value;renderCalendar();});$('weekScheduleBtn').addEventListener('click',function(){weekAnchor=state.currentDate;setWeekMode(window.matchMedia('(min-width:1100px)').matches?!weekMode:true);});$('closeWeekBtn').addEventListener('click',function(){setWeekMode(false);});$('thisWeekBtn').addEventListener('click',function(){weekAnchor=todayKey();renderWeekSchedule();});$$('[data-week-step]').forEach(function(button){button.addEventListener('click',function(){weekAnchor=shiftDate(weekStartKey(weekAnchor||state.currentDate),numberOf(button.dataset.weekStep)*7);renderWeekSchedule();});});$('weekTeacher').addEventListener('change',renderWeekSchedule);$('weekScheduleDays').addEventListener('click',function(event){var button=event.target.closest('[data-week-event-id]');if(!button)return;var date=button.dataset.weekEventDate,row=eventsForDate(date).find(function(item){return item.id===button.dataset.weekEventId;});if(row){state.currentDate=date;$('calendarDate').value=date;eventDetails(row);}});$('scheduleForm').addEventListener('submit',submitSchedule);$('eventRentalPaymentStatus').addEventListener('change',autoSaveRentalPayment);$('eventRenterType').addEventListener('change',updateRentalStudentPicker);$('rentalStudentSearch').addEventListener('input',debounce(searchRentalStudents,120));$('rentalStudentMatches').addEventListener('click',function(event){var button=event.target.closest('[data-rental-student]');if(button)selectRentalStudent(button.dataset.rentalStudent);});
+    ['topNewEvent','sideNewEvent','calendarNewEvent'].forEach(function(id){var node=$(id);if(node)node.addEventListener('click',function(){openSchedule({date:state.currentDate});});});$$('[data-day-step]').forEach(function(node){node.addEventListener('click',function(){state.currentDate=shiftDate(mobileAdmin()&&weekMode?weekStartKey(weekAnchor||state.currentDate):state.currentDate,numberOf(node.dataset.dayStep)*(mobileAdmin()&&weekMode?7:1));if(weekMode)weekAnchor=state.currentDate;renderCalendar();});});$('todayBtn').addEventListener('click',function(){state.currentDate=todayKey();weekAnchor=state.currentDate;renderCalendar();});$('calendarDate').addEventListener('change',function(){state.currentDate=this.value;weekAnchor=this.value;renderCalendar();});$('weekScheduleBtn').addEventListener('click',function(){weekAnchor=state.currentDate;setWeekMode(mobileAdmin()||desktopCalendar()?!weekMode:true);});$('closeWeekBtn').addEventListener('click',function(){setWeekMode(false);});$('thisWeekBtn').addEventListener('click',function(){weekAnchor=todayKey();renderWeekSchedule();});$$('[data-week-step]').forEach(function(button){button.addEventListener('click',function(){weekAnchor=shiftDate(weekStartKey(weekAnchor||state.currentDate),numberOf(button.dataset.weekStep)*7);renderWeekSchedule();});});$('weekTeacher').addEventListener('change',renderWeekSchedule);$('weekScheduleDays').addEventListener('click',function(event){var button=event.target.closest('[data-week-event-id]');if(!button)return;var date=button.dataset.weekEventDate,row=eventsForDate(date).find(function(item){return item.id===button.dataset.weekEventId;});if(row){state.currentDate=date;$('calendarDate').value=date;eventDetails(row);}});$('scheduleForm').addEventListener('submit',submitSchedule);$('eventRentalPaymentStatus').addEventListener('change',autoSaveRentalPayment);$('eventRenterType').addEventListener('change',updateRentalStudentPicker);$('rentalStudentSearch').addEventListener('input',debounce(searchRentalStudents,120));$('rentalStudentMatches').addEventListener('click',function(event){var button=event.target.closest('[data-rental-student]');if(button)selectRentalStudent(button.dataset.rentalStudent);});
     $$('[data-schedule-kind]',$('scheduleTypeTabs')).forEach(function(button){button.addEventListener('click',function(){setScheduleKind(button.dataset.scheduleKind);updateScheduleConflict();});});$('eventStudentSearch').addEventListener('input',debounce(renderScheduleStudentMatches,120));$('eventStudentMatches').addEventListener('click',function(event){var button=event.target.closest('[data-schedule-student-id]');if(button)selectScheduleStudent(button.dataset.scheduleStudentId,true);});$('eventStudentSelected').addEventListener('click',function(event){if(event.target.closest('[data-clear-schedule-student]')){selectScheduleStudent('',false);$('eventStudentSearch').value='';$('eventStudentSearch').focus();}});['eventDate','eventStart','eventDuration','eventRoom','eventType','eventTeacher','eventTuitionPeriod'].forEach(function(id){$(id).addEventListener('change',function(){if(id==='eventDate')updateEventStartOptionsForDate(this.value,$('eventStart').value);if(id==='eventDuration'){delete $('scheduleForm').dataset.sourceSubjectId;delete $('scheduleForm').dataset.halfHourAcknowledged;if(numberOf($('eventDuration').value)===30&&['fixed','single'].indexOf($('eventType').value)>=0){if(window.confirm('30分鐘增課提醒\n\n新增本次30分鐘課程後，請於接下來四堂課內，再安排一次30分鐘課程，讓兩次半小時合計為一堂，方便實體上課證完整登記。兩次課程需分別新增、分別簽到，系統不會自動安排。\n\n確認表示已了解並會在四堂課內安排完成。'))$('scheduleForm').dataset.halfHourAcknowledged='true';else $('eventDuration').value='60';}}if(id==='eventRoom')updateRentalFields(true);else if(id==='eventType')updateRentalFields(false);if(id==='eventTuitionPeriod')updateSpecialLessonFields(true);if(id==='eventDate')updateTuitionOptions();updateScheduleConflict();});});$('eventSubject').addEventListener('change',function(){$('scheduleSetup').value='existing';updateTeacherOptions();updateTuitionOptions();updateRoomOptions();updateSpecialLessonFields(true);updateScheduleConflict();});$('eventStudent').addEventListener('change',function(){selectScheduleStudent(this.value,false);});$('eventSingleKind').addEventListener('change',function(){updateSpecialLessonFields(true);updateScheduleConflict();});$('eventFrequency').addEventListener('change',function(){$('repeatUntilField').classList.toggle('hidden',this.value==='once'||$('eventType').value!=='fixed'||!!permanentScheduleSource);});$('scheduleNewTuition').addEventListener('click',createScheduleTuition);$('quickAddStudent').addEventListener('click',function(){setScheduleStudentMode('new');});$('scheduleChooseExisting').addEventListener('click',function(){setScheduleStudentMode('existing');});$('scheduleSetup').addEventListener('change',updateScheduleEnrollment);$('schedulePlan').addEventListener('change',updateScheduleEnrollment);
     $('scheduleGrid').addEventListener('click',function(event){var eventButton=event.target.closest('[data-event-id]');if(eventButton){var row=findEvent(eventButton.dataset.eventId);if(row)eventDetails(row);return;}var slot=event.target.closest('[data-slot-room]');if(slot){if(isReadOnly()&&!calendarPartial()){toast('資料尚未載入','請先載入新系統資料。','error');return;}if(pasteToSlot(slot.dataset.slotRoom,slot.dataset.slotTime))return;openSchedule({date:state.currentDate,roomId:slot.dataset.slotRoom,start:slot.dataset.slotTime});}});$('cancelClipboard').addEventListener('click',function(){state.clipboard=null;renderCalendar();});
     $('eventModalBody').addEventListener('click',function(event){var rentalCancel=event.target.closest('[data-portal-rental-cancel]');if(rentalCancel){forceCancelPortalRental(rentalCancel);return;}var deletion=event.target.closest('[data-period-delete]');if(deletion){deleteTuitionPeriod(deletion.dataset.periodDelete);return;}var correction=event.target.closest('[data-transaction-correct]');if(correction){correctTuitionTransaction(correction.dataset.transactionCorrect,Number(correction.dataset.transactionIndex));return;}var receipt=event.target.closest('[data-tuition-receipt-period]');if(receipt){ensureAndOpenTuitionReceipt(receipt);return;}var override=event.target.closest('[data-teacher-pay-override]');if(override){openTeacherPayOverride(override.dataset.teacherPayOverride);return;}var newPeriod=event.target.closest('[data-event-new-period]');if(newPeriod){closeModal('eventModal');openTuition(newPeriod.dataset.eventNewPeriod,'',newPeriod.dataset.eventSubject);return;}var action=event.target.closest('[data-event-action]');if(action){eventAction(action.dataset.eventAction);return;}var editPeriod=event.target.closest('[data-period-edit]');if(editPeriod){closeModal('eventModal');openTuition('',editPeriod.dataset.periodEdit);return;}var lesson=event.target.closest('[data-lesson-period]');if(lesson){openLessonAction(lesson.dataset.lessonPeriod,lesson.dataset.lessonSlot);return;}var pay=event.target.closest('[data-period-pay]');if(pay){closeModal('eventModal');openTransaction(pay.dataset.periodPay);return;}var button=event.target.closest('[data-attendance]');if(!button)return;var status=button.dataset.attendance,reason='';if(status==='leave'){var active=state.leaveReasons.filter(function(row){return row.active!==false;});reason=active.length?(window.prompt('請假原因（可填：'+active.map(function(row){return row.name;}).join('、')+'）')||''):'';var match=active.find(function(row){return row.name===reason;});reason=match?match.id:'';}setAttendance($('eventModal').dataset.eventId,status,reason);});$('eventModalFoot').addEventListener('click',function(event){var button=event.target.closest('[data-event-action]');if(button)eventAction(button.dataset.eventAction);});

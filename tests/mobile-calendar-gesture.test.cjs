@@ -3,7 +3,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const src=fs.readFileSync('operations-course-inline-runtime.js','utf8');
 function setup(){
  const listeners={},grid={style:{setProperty(){}},querySelectorAll:()=>[]},scroll={style:{},getBoundingClientRect:()=>({top:100}),clientWidth:390,clientHeight:420,scrollLeft:0,scrollTop:0,addEventListener(k,fn){listeners[k]=fn;},scrollTo(o){this.scrollLeft=o.left;this.scrollTop=o.top;}};
- const ctx={Date,Number,Math,window:{innerHeight:548,matchMedia:()=>({matches:true}),addEventListener(){}},mobileAdmin:()=>true,weekMode:false,$:id=>id==='scheduleScroll'?scroll:grid,setTimeout,clearTimeout};
+ const ctx={Date,Number,Math,window:{innerHeight:548,matchMedia:()=>({matches:true}),addEventListener(){}},mobileAdmin:()=>true,weekMode:false,$:id=>id==='scheduleScroll'?scroll:id==='weekScheduleDays'?Object.assign({},scroll,{addEventListener(){}}):grid,setTimeout,clearTimeout};
  vm.runInNewContext(src.slice(src.indexOf('  var mobileCalendarPages='),src.indexOf('\n  function fillSelect(',src.indexOf('  var mobileCalendarPages='))),ctx);
  ctx.mobileCalendarPages={x:[0,350],y:[0]};ctx.bindMobileCalendar();
  function swipe(dx,dy,cancel){listeners.touchstart({touches:[{clientX:200,clientY:200}]});listeners.touchmove({touches:[{clientX:200+dx,clientY:200+dy}],preventDefault(){}});listeners[cancel?'touchcancel':'touchend']();}
@@ -13,3 +13,14 @@ test('diagonal gesture locks to one axis, one page at a time',()=>{const h=setup
 test('short swipe and cancellation return to the origin',()=>{const h=setup();h.swipe(-12,-2);assert.equal(h.scroll.scrollLeft,0);h.swipe(-200,0,true);assert.equal(h.scroll.scrollLeft,0);});
 test('swipe suppresses accidental course clicks, tap remains available',()=>{const h=setup();let prevented=false;h.listeners.click({preventDefault(){prevented=true;},stopImmediatePropagation(){}});assert.equal(prevented,false);h.swipe(-150,0);h.listeners.click({preventDefault(){prevented=true;},stopImmediatePropagation(){}});assert.equal(prevented,true);});
 test('room widths fit exactly two pages and empty rooms are narrower',()=>{const h=setup(),style={setProperty(){}};h.ctx.$=id=>id==='scheduleScroll'?h.scroll:{style,querySelectorAll:()=>[]};h.ctx.calendarRooms=()=>Array.from({length:9},(_,i)=>({id:String(i)}));h.ctx.state={currentDate:'2026-09-22'};h.ctx.scheduleHoursForDate=()=>({start:600,end:1200});h.ctx.effectiveEventsForDate=()=>[{roomId:'0',start:'10:00',duration:60}];h.ctx.timeToMin=t=>Number(t.split(':')[0])*60+Number(t.split(':')[1]);h.ctx.numberOf=Number;h.ctx.fitMobileCalendar();const widths=style.gridTemplateColumns.split(' ').map(parseFloat);assert.equal(widths.length,10);assert(widths[1]>widths[2]);assert(Math.abs(widths.slice(1,6).reduce((a,b)=>a+b)-350)<.01);assert(Math.abs(widths.slice(6).reduce((a,b)=>a+b)-350)<.01);assert.equal(h.ctx.mobileCalendarPages.x.length,2);assert.deepEqual(Array.from(h.ctx.mobileCalendarPages.y),[0]);const heights=style.gridTemplateRows.split(' ').map(parseFloat);assert(Math.abs(heights.reduce((a,b)=>a+b)-h.scroll.clientHeight+2)<.01);assert(heights[1]>heights[4]);assert.equal(style.paddingBottom,'0px');});
+
+test('phone week fits all times and seven dates into two horizontal pages',()=>{
+ const h=setup(),style={},grid={style,querySelectorAll:()=>[]};
+ h.scroll.querySelector=()=>grid;h.ctx.$=()=>h.scroll;h.ctx.weekMode=true;
+ const dates=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+ h.ctx.mobileWeekLayout={dates,events:Object.fromEntries(dates.map(d=>[d,d==='Tue'?[{start:'20:00',duration:60}]:[]])),slots:Array.from({length:22},(_,i)=>600+i*30)};
+ h.ctx.timeToMin=t=>Number(t.split(':')[0])*60+Number(t.split(':')[1]);h.ctx.numberOf=Number;
+ h.ctx.fitMobileWeekCalendar();const widths=style.gridTemplateColumns.split(' ').map(parseFloat),heights=style.gridTemplateRows.split(' ').map(parseFloat);
+ assert.equal(widths.length,8);assert(widths[2]>widths[1]);assert(Math.abs(widths.slice(1,5).reduce((a,b)=>a+b)-350)<.01);assert(Math.abs(widths.slice(5).reduce((a,b)=>a+b)-350)<.01);
+ assert(Math.abs(heights.reduce((a,b)=>a+b)-h.scroll.clientHeight+2)<.01);assert.equal(heights.length,23);assert(heights[21]>heights[1]);assert.deepEqual(Array.from(h.ctx.mobileWeekPages.y),[0]);
+});

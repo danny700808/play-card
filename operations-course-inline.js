@@ -4,8 +4,8 @@
   if (global.YouziOperationsCourseInline) return;
 
   var VERSION = '20260917-room-subject-v1';
-  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20260921-mobile-admin-v4';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260921-mobile-admin-v4';
+  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20260921-mobile-admin-v5';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260921-mobile-admin-v5';
   var STYLE_URL = 'course-scheduler.css?v=20260920-calendar-controls-v3';
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';
@@ -215,7 +215,7 @@
       showLoading('正在開啟完整課務功能…');
       var template = await loadTemplate();
       var workspace = global.matchMedia('(max-width:780px)').matches && ['calendar','teachers'].indexOf(desiredView)>=0 ? null : await resolveWorkspace();
-      shadow.innerHTML = '<link rel="stylesheet" href="' + STYLE_URL + '"><style>' + inlineOverrides() + '</style><link rel="stylesheet" href="operations-mobile-admin.css?v=20260921-v4"><div class="course-inline-body">' + template + '</div>';
+      shadow.innerHTML = '<link rel="stylesheet" href="' + STYLE_URL + '"><style>' + inlineOverrides() + '</style><link rel="stylesheet" href="operations-mobile-admin.css?v=20260921-v5"><div class="course-inline-body">' + template + '</div>';
       inlineBody = shadow.querySelector('.course-inline-body');
       function fitDesktopCalendar(){
         var desktop=global.matchMedia('(min-width:1100px)').matches,calendar=global.location.hash==='#course-calendar';
@@ -223,7 +223,7 @@
         var grid=shadow.querySelector('#scheduleGrid'),scroll=shadow.querySelector('#scheduleScroll');
         var kpis=shadow.querySelector('#dailyKpis'),toolbar=shadow.querySelector('.calendar-toolbar'),legend=shadow.querySelector('#dailyLegend');
         if(kpis&&toolbar&&legend){if(desktop){if(kpis.parentNode!==toolbar)toolbar.appendChild(kpis);}else if(kpis.parentNode===toolbar){legend.parentNode.insertBefore(kpis,legend);}}
-        var weekButton=shadow.querySelector('#weekScheduleBtn');if(weekButton)weekButton.textContent=desktop&&weekButton.classList.contains('active')?'返回日表':'週課表';
+        var weekButton=shadow.querySelector('#weekScheduleBtn');if(weekButton)weekButton.textContent=weekButton.classList.contains('active')?'返回日表':'週課表';
         var weekGrid=shadow.querySelector('.teacher-week-grid'),weekScroll=shadow.querySelector('#weekScheduleDays');
         if(weekGrid&&weekScroll){if(desktop&&calendar&&weekScroll.getClientRects().length){weekGrid.style.setProperty('--week-slot',Math.max(22,Math.floor((global.innerHeight-weekScroll.getBoundingClientRect().top-55)/(Number(weekGrid.dataset.slotCount)||17)))+'px');}else{weekGrid.style.removeProperty('--week-slot');}}
         if(!grid||!scroll)return;
