@@ -94,3 +94,32 @@
   .course-inline-body #teacherCards .teacher-list-cell {font-size:11px;padding:5px 6px}
   .course-inline-body #teacherCards .teacher-list-subjects {grid-column:span 2}
 }
+
+/* Shared phone date controls, including the isolated course workspace. */
+@media (max-width:780px) {
+  :is(.ops-body,.course-inline-body) :is(input[type="date"],input[type="month"],input[type="time"],input[type="datetime-local"]) {
+    box-sizing:border-box!important; min-width:0!important; max-width:100%!important;
+    width:100%; min-inline-size:0!important; max-inline-size:100%!important;
+    font-size:16px!important;
+  }
+  :is(.ops-body,.course-inline-body) :is(input[type="date"],input[type="month"],input[type="time"],input[type="datetime-local"])::-webkit-date-and-time-value {
+    min-width:0; text-align:left;
+  }
+  :is(.ops-body,.course-inline-body) :is(.field,.ops-field,label):has(input:is([type="date"],[type="month"],[type="time"],[type="datetime-local"])) {min-width:0;max-width:100%}
+  .course-inline-body #calendarPage .date-actions {grid-template-columns:36px 28px minmax(0,1fr) 28px 52px}
+  .course-inline-body #dailyLegend,.course-inline-body #mobileCalendarNav {display:none!important}
+  .course-inline-body #scheduleScroll {height:calc(100dvh - 190px);max-height:calc(100dvh - 190px);min-height:220px;touch-action:pinch-zoom;scroll-snap-type:none;scroll-behavior:auto;scrollbar-width:none}
+  .course-inline-body #scheduleGrid {--time-col:40px;--room-head-height:40px;--slot:22px}
+  .course-inline-body #scheduleGrid .slot {min-height:0}
+  .course-inline-body #scheduleGrid .event {padding:2px;margin:1px;border-radius:4px}
+  .course-inline-body #scheduleGrid .event-top {display:block;font-size:9px;white-space:normal}
+  .course-inline-body #scheduleGrid .event-top b {display:none}
+  .course-inline-body #scheduleGrid .event-main {font-size:12px;white-space:normal;overflow-wrap:anywhere}
+  .course-inline-body #scheduleGrid .event-sub {font-size:10px;white-space:normal;overflow-wrap:anywhere}
+  .course-inline-body #scheduleGrid .room-head {font-size:10px}
+  .course-inline-body .form-grid {gap:8px}
+}
+
+@media (max-width:360px) {
+  :is(.course-inline-body .form-grid,.ops-body .ops-form-grid) > :is(.field,.ops-field):has(input:is([type="date"],[type="datetime-local"])) {grid-column:1/-1}
+}

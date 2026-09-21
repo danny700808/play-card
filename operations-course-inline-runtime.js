@@ -611,46 +611,81 @@
     if(attendanceUpdater)attendanceUpdater.pendingJobs().forEach(function(job){attendancePendingUI(job,true);});
   }
 
+  // Phone calendar: stable room pages and aligned time pages, with axis-locked swipes.
+  var mobileCalendarPages={x:[0],y:[0]},mobileCalendarGesture=null;
   function fitMobileCalendar(){
     var scroll=$('scheduleScroll'),grid=$('scheduleGrid'),nav=$('mobileCalendarNav');
-    if(!scroll||!grid||!nav)return;
-    nav.hidden=!mobileAdmin()||weekMode;
-    if(!mobileAdmin())return;
-    var rooms=calendarRooms(),width=scroll.clientWidth||window.innerWidth-24;
-    var count=Math.max(2,Math.min(4,Math.floor((width-44)/96))),roomWidth=(width-44)/count;
-    grid.style.setProperty('--room-col',roomWidth+'px');grid.dataset.mobilePageSize=count;
-    grid.dataset.mobileRoomWidth=roomWidth;
-    var hours=scheduleHoursForDate(state.currentDate),buttons='';
-    for(var minute=hours.start;!hours.closed&&minute<hours.end;minute+=120){
-      buttons+='<button type="button" data-mobile-time="'+((minute-hours.start)/30)+'">'+minToTime(minute)+'–'+minToTime(Math.min(minute+120,hours.end))+'</button>';
+    if(!scroll||!grid)return;
+    if(nav)nav.hidden=true;
+    if(!mobileAdmin()){grid.style.paddingBottom='';return;}
+    var rooms=calendarRooms(),hours=scheduleHoursForDate(state.currentDate);
+    var events=effectiveEventsForDate(state.currentDate),width=Math.max(1,scroll.clientWidth-40);
+    var groups=rooms.length>4?[rooms.slice(0,Math.ceil(rooms.length/2)),rooms.slice(Math.ceil(rooms.length/2))]:[rooms];
+    var columns=[];
+    groups.forEach(function(group){
+      var weights=group.map(function(room){return events.some(function(e){return e.roomId===room.id;})?1.8:1;});
+      var total=weights.reduce(function(a,b){return a+b;},0)||1;
+      weights.forEach(function(weight){columns.push(width*weight/total+'px');});
+    });
+    grid.style.gridTemplateColumns='40px '+columns.join(' ');
+    var heights=[],offsets=[0];
+    for(var minute=hours.start;!hours.closed&&minute<hours.end;minute+=30){
+      var busy=events.some(function(e){var start=timeToMin(e.start);return start<minute+30&&start+numberOf(e.duration)>minute;});
+      heights.push(busy?38:22);offsets.push(offsets[offsets.length-1]+heights[heights.length-1]);
     }
-    $('mobileTimeBlocks').innerHTML=buttons;
-    $$('[data-slot-room]',grid).forEach(function(slot){
-      var col=rooms.findIndex(function(room){return room.id===slot.dataset.slotRoom;}),row=(timeToMin(slot.dataset.slotTime)-hours.start)/30;
-      slot.classList.toggle('mobile-block-start',row%4===0);
-      slot.classList.toggle('mobile-block-shade',Math.floor(row/4)%2===1);
-      slot.classList.toggle('mobile-snap',row%4===0&&col%count===0);
-    });
-    updateMobileRoomLabel();
+    grid.style.gridTemplateRows='40px '+heights.map(function(h){return h+'px';}).join(' ');
+    var available=Math.max(38,scroll.clientHeight-40),pages=[0],cursor=0;
+    while(offsets[offsets.length-1]-cursor>available){
+      var next=offsets.filter(function(n){return n>cursor&&n<=cursor+available;}).pop();
+      if(!next)break;pages.push(next);cursor=next;
+    }
+    // Pad the last time page so its first row can align under the sticky header.
+    grid.style.paddingBottom=Math.max(0,cursor+available-offsets[offsets.length-1])+'px';
+    mobileCalendarPages={x:groups.map(function(_,i){return i*width;}),y:pages};
+    scroll.scrollLeft=nearestMobilePage(mobileCalendarPages.x,scroll.scrollLeft);
+    scroll.scrollTop=nearestMobilePage(pages,scroll.scrollTop);
   }
-  function updateMobileRoomLabel(){
-    if(!mobileAdmin()||!$('mobileRoomLabel'))return;
-    var scroll=$('scheduleScroll'),grid=$('scheduleGrid'),count=Number(grid.dataset.mobilePageSize)||3,rooms=calendarRooms();
-    var first=Math.min(Math.max(0,rooms.length-count),Math.round(scroll.scrollLeft/(Number(grid.dataset.mobileRoomWidth)||100)));
-    $('mobileRoomLabel').textContent=rooms.length?'教室 '+(first+1)+'–'+Math.min(rooms.length,first+count)+'／'+rooms.length:'沒有啟用教室';
-    $('mobileRoomPrev').disabled=scroll.scrollLeft<2;
-    $('mobileRoomNext').disabled=scroll.scrollLeft>=scroll.scrollWidth-scroll.clientWidth-2;
-  }
+  function nearestMobilePage(pages,value){return pages.reduce(function(best,n){return Math.abs(n-value)<Math.abs(best-value)?n:best;},pages[0]);}
   function bindMobileCalendar(){
-    $('scheduleScroll').addEventListener('scroll',updateMobileRoomLabel,{passive:true});
-    $('mobileCalendarNav').addEventListener('click',function(event){
-      var button=event.target.closest('button');if(!button)return;
-      var scroll=$('scheduleScroll'),grid=$('scheduleGrid');
-      if(button.hasAttribute('data-mobile-time'))scroll.scrollTo({top:Number(button.dataset.mobileTime)*44,behavior:'smooth'});
-      if(button.hasAttribute('data-mobile-rooms'))scroll.scrollBy({left:Number(button.dataset.mobileRooms)*(Number(grid.dataset.mobilePageSize)||3)*(Number(grid.dataset.mobileRoomWidth)||100),behavior:'smooth'});
-    });
+    var scroll=$('scheduleScroll'),suppressClickUntil=0;
+    function settle(cancelled){
+      var g=mobileCalendarGesture;if(!g)return;mobileCalendarGesture=null;
+      if(!g.axis)return;
+      suppressClickUntil=Date.now()+400;
+      var pages=mobileCalendarPages[g.axis],origin=g.axis==='x'?g.left:g.top;
+      var index=pages.indexOf(nearestMobilePage(pages,origin));
+      var distance=g.axis==='x'?g.dx:g.dy;
+      var size=g.axis==='x'?scroll.clientWidth-40:scroll.clientHeight-40;
+      var quick=Date.now()-g.time<300&&Math.abs(distance)>24;
+      if(!cancelled&&(Math.abs(distance)>size*.18||quick))index+=distance<0?1:-1;
+      index=Math.max(0,Math.min(pages.length-1,index));
+      var target={left:nearestMobilePage(mobileCalendarPages.x,g.left),top:nearestMobilePage(mobileCalendarPages.y,g.top),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'};
+      target[g.axis==='x'?'left':'top']=pages[index];scroll.scrollTo(target);
+    }
+    scroll.addEventListener('touchstart',function(e){
+      if(!mobileAdmin()||weekMode||e.touches.length!==1)return;
+      var t=e.touches[0];
+      // Stop an in-flight page animation before a new gesture.
+      scroll.scrollTo({left:scroll.scrollLeft,top:scroll.scrollTop,behavior:'instant'});
+      mobileCalendarGesture={x:t.clientX,y:t.clientY,left:scroll.scrollLeft,top:scroll.scrollTop,dx:0,dy:0,time:Date.now(),axis:null};
+    },{passive:true});
+    scroll.addEventListener('touchmove',function(e){
+      var g=mobileCalendarGesture;if(!g)return;
+      if(e.touches.length!==1){settle(true);return;}
+      g.dx=e.touches[0].clientX-g.x;g.dy=e.touches[0].clientY-g.y;
+      if(!g.axis&&Math.max(Math.abs(g.dx),Math.abs(g.dy))>8)g.axis=Math.abs(g.dx)>Math.abs(g.dy)?'x':'y';
+      if(!g.axis)return;e.preventDefault();
+      var pages=mobileCalendarPages[g.axis],origin=g.axis==='x'?g.left:g.top;
+      var index=pages.indexOf(nearestMobilePage(pages,origin));
+      var value=origin-(g.axis==='x'?g.dx:g.dy);
+      value=Math.max(pages[Math.max(0,index-1)],Math.min(pages[Math.min(pages.length-1,index+1)],value));
+      if(g.axis==='x')scroll.scrollLeft=value;else scroll.scrollTop=value;
+    },{passive:false});
+    scroll.addEventListener('touchend',function(){settle(false);},{passive:true});
+    scroll.addEventListener('touchcancel',function(){settle(true);},{passive:true});
+    scroll.addEventListener('click',function(e){if(Date.now()<suppressClickUntil){e.preventDefault();e.stopImmediatePropagation();}},true);
     var wasMobile=mobileAdmin(),timer;
-    window.addEventListener('resize',function(){clearTimeout(timer);timer=setTimeout(function(){var now=mobileAdmin();if(now!==wasMobile){wasMobile=now;renderCalendar();}else if(now)fitMobileCalendar();},100);});
+    window.addEventListener('resize',function(){clearTimeout(timer);timer=setTimeout(function(){mobileCalendarGesture=null;var now=mobileAdmin();if(now!==wasMobile){wasMobile=now;renderCalendar();}else if(now)fitMobileCalendar();},100);});
   }
 
   function fillSelect(node,rows,label,value,placeholder){node.innerHTML=(placeholder?'<option value="">'+esc(placeholder)+'</option>':'')+rows.map(function(row){return '<option value="'+esc(value(row))+'">'+esc(label(row))+'</option>';}).join('');}

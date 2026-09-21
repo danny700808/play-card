@@ -1,0 +1,15 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync('operations-course-inline-runtime.js','utf8');
+function setup(){
+ const listeners={},grid={style:{}},scroll={clientWidth:390,clientHeight:420,scrollLeft:0,scrollTop:0,addEventListener(k,fn){listeners[k]=fn;},scrollTo(o){this.scrollLeft=o.left;this.scrollTop=o.top;}};
+ const ctx={Date,Number,Math,window:{matchMedia:()=>({matches:true}),addEventListener(){}},mobileAdmin:()=>true,weekMode:false,$:id=>id==='scheduleScroll'?scroll:grid,setTimeout,clearTimeout};
+ vm.runInNewContext(src.slice(src.indexOf('  var mobileCalendarPages='),src.indexOf('\n  function fillSelect(',src.indexOf('  var mobileCalendarPages='))),ctx);
+ ctx.mobileCalendarPages={x:[0,350],y:[0,350,700]};ctx.bindMobileCalendar();
+ function swipe(dx,dy,cancel){listeners.touchstart({touches:[{clientX:200,clientY:200}]});listeners.touchmove({touches:[{clientX:200+dx,clientY:200+dy}],preventDefault(){}});listeners[cancel?'touchcancel':'touchend']();}
+ return {scroll,swipe,listeners,ctx};
+}
+test('diagonal gesture locks to one axis, one page at a time',()=>{const h=setup();h.swipe(-250,-120);assert.equal(h.scroll.scrollLeft,350);assert.equal(h.scroll.scrollTop,0);h.swipe(-250,-120);assert.equal(h.scroll.scrollLeft,350);h.swipe(500,80);assert.equal(h.scroll.scrollLeft,0);h.swipe(-20,-900);assert.equal(h.scroll.scrollLeft,0);assert.equal(h.scroll.scrollTop,350);});
+test('short swipe and cancellation return to the origin',()=>{const h=setup();h.swipe(-12,-2);assert.equal(h.scroll.scrollLeft,0);h.swipe(-200,0,true);assert.equal(h.scroll.scrollLeft,0);});
+test('swipe suppresses accidental course clicks, tap remains available',()=>{const h=setup();let prevented=false;h.listeners.click({preventDefault(){prevented=true;},stopImmediatePropagation(){}});assert.equal(prevented,false);h.swipe(-150,0);h.listeners.click({preventDefault(){prevented=true;},stopImmediatePropagation(){}});assert.equal(prevented,true);});
+test('room widths fit exactly two pages and empty rooms are narrower',()=>{const h=setup(),style={};h.ctx.$=id=>id==='scheduleScroll'?h.scroll:{style};h.ctx.calendarRooms=()=>Array.from({length:9},(_,i)=>({id:String(i)}));h.ctx.state={currentDate:'2026-09-22'};h.ctx.scheduleHoursForDate=()=>({start:600,end:1200});h.ctx.effectiveEventsForDate=()=>[{roomId:'0',start:'10:00',duration:60}];h.ctx.timeToMin=t=>Number(t.split(':')[0])*60+Number(t.split(':')[1]);h.ctx.numberOf=Number;h.ctx.fitMobileCalendar();const widths=style.gridTemplateColumns.split(' ').map(parseFloat);assert.equal(widths.length,10);assert(widths[1]>widths[2]);assert(Math.abs(widths.slice(1,6).reduce((a,b)=>a+b)-350)<.01);assert(Math.abs(widths.slice(6).reduce((a,b)=>a+b)-350)<.01);assert.equal(h.ctx.mobileCalendarPages.x.length,2);});
