@@ -593,11 +593,11 @@
   function renderCalendar(){
     if(!calendarRangeReady(state.currentDate,state.currentDate,'scheduleGrid',renderCalendar))return;
     renderFollowupCounts();var date=state.currentDate,rooms=calendarRooms(),events=effectiveEventsForDate(date).filter(function(event){return !desktopCalendar()||!window.YouziCoursePreviewData.isIrregularPlaceholder(event,state.irregularCourses);}),conflicts=dayConflictIds(events),hours=scheduleHoursForDate(date);
-    $('calendarDate').value=date;$('dateTitle').textContent=zhDate(date);$('dateSubtitle').textContent=weekdayName(date)+(date===todayKey()?'・今天':'');$('kpiLessons').textContent=events.filter(function(row){return row.type!=='rental';}).length;$('kpiAttended').textContent=events.filter(function(row){return normalizedStatus(row.status)==='attended';}).length;$('calendarHint').textContent='30 分鐘／格・'+rooms.length+' 間啟用教室'+(calendarPartial()?'・點課程查看明細':isReadOnly()?'・資料尚未載入':isSandbox()?'・操作自動儲存':'');
+    $('calendarDate').value=date;if($('calendarDateDisplay'))$('calendarDateDisplay').textContent=date.replace(/-/g,' / ');$('dateTitle').textContent=zhDate(date);$('dateSubtitle').textContent=weekdayName(date)+(date===todayKey()?'・今天':'');$('kpiLessons').textContent=events.filter(function(row){return row.type!=='rental';}).length;$('kpiAttended').textContent=events.filter(function(row){return normalizedStatus(row.status)==='attended';}).length;$('calendarHint').textContent='30 分鐘／格・'+rooms.length+' 間啟用教室'+(calendarPartial()?'・點課程查看明細':isReadOnly()?'・資料尚未載入':isSandbox()?'・操作自動儲存':'');
     if (isReadOnly() && state.dataMode === 'review') { var sourceStats = ((state.dataMeta || {}).sourceStatsByDate || {})[date] || {}; $('dataModeMeta').textContent = '原始學生紀錄 '+numberOf(sourceStats.studentRecords)+'・請假已定位 '+numberOf(sourceStats.leaveRecords)+'・固定課 '+numberOf(sourceStats.fixedRecords)+'・最後顯示 '+numberOf(sourceStats.visibleRecords)+(numberOf(sourceStats.unresolvedRecords) ? '・待人工核對 '+numberOf(sourceStats.unresolvedRecords) : ''); }
     var slots=[];if(!hours.closed){for(var min=hours.start;min<hours.end;min+=30)slots.push(min);}var start=hours.start,grid=$('scheduleGrid');grid.dataset.slotCount=slots.length;grid.style.gridTemplateColumns='var(--time-col, 90px) repeat('+rooms.length+',var(--room-col, minmax(200px,1fr)))';grid.style.gridTemplateRows='var(--room-head-height, 64px) repeat('+slots.length+',var(--slot))';
     var html='<div class="grid-corner" style="grid-column:1;grid-row:1">時間</div>';
-    rooms.forEach(function(room,index){var drag=isSandbox()?' draggable="true" data-room-drag="'+esc(room.id)+'" title="按住教室名稱後左右拖曳可調整順序"':'';html+='<div class="room-head"'+drag+' style="grid-column:'+(index+2)+';grid-row:1"><div>'+esc(room.name)+'<small>'+esc(room.note||'')+'</small></div></div>';});
+    rooms.forEach(function(room,index){var drag=isSandbox()?' draggable="true" data-room-drag="'+esc(room.id)+'" title="按住教室名稱後左右拖曳可調整順序"':'';html+='<div class="room-head" title="'+esc(room.name)+'"'+drag+' style="grid-column:'+(index+2)+';grid-row:1"><div>'+esc(mobileAdmin()&&Array.from(room.name).length>4?Array.from(room.name).slice(0,4).join('')+'…':room.name)+'<small>'+esc(room.note||'')+'</small></div></div>';});
     slots.forEach(function(min,index){var time=minToTime(min),hour=min%60===0?' hour':'';html+='<div class="time-label'+hour+'" style="grid-column:1;grid-row:'+(index+2)+'">'+time+'</div>';rooms.forEach(function(room,ri){var coverage=slotCoverageClass(events,room.id,min);html+='<button type="button" class="slot'+hour+coverage+'" data-slot-room="'+esc(room.id)+'" data-slot-time="'+time+'" style="grid-column:'+(ri+2)+';grid-row:'+(index+2)+'" aria-label="'+esc(room.name+' '+time+' 新增排課')+'"></button>';});});
     events.forEach(function(event){
       var ri=rooms.findIndex(function(room){return room.id===event.roomId;}),si=Math.floor((timeToMin(event.start)-start)/30);
@@ -620,7 +620,7 @@
     if(!mobileAdmin()){grid.style.paddingBottom='';scroll.style.height='';scroll.style.maxHeight='';return;}
     var viewport=window.visualViewport,visibleBottom=viewport?viewport.height+viewport.offsetTop:window.innerHeight;
     var top=scroll.getBoundingClientRect().top;
-    scroll.style.height=Math.max(180,Math.floor(visibleBottom-top-28))+'px';
+    scroll.style.height=Math.max(120,Math.floor(visibleBottom-top-32))+'px';
     scroll.style.maxHeight=scroll.style.height;
     var rooms=calendarRooms(),hours=scheduleHoursForDate(state.currentDate);
     var events=effectiveEventsForDate(state.currentDate),width=Math.max(1,scroll.clientWidth-40);
@@ -635,28 +635,30 @@
     var heights=[],offsets=[0];
     for(var minute=hours.start;!hours.closed&&minute<hours.end;minute+=30){
       var busy=events.some(function(e){var start=timeToMin(e.start);return start<minute+30&&start+numberOf(e.duration)>minute;});
-      heights.push(busy?44:28);offsets.push(offsets[offsets.length-1]+heights[heights.length-1]);
+      heights.push(busy?44:12);offsets.push(offsets[offsets.length-1]+heights[heights.length-1]);
     }
-    var available=Math.max(44,scroll.clientHeight-40),total=offsets[offsets.length-1],scale=total>0?Math.max(1,available/total):1;
-    heights=heights.map(function(h){return h*scale;});offsets=[0];heights.forEach(function(h){offsets.push(offsets[offsets.length-1]+h);});
-    grid.style.gridTemplateRows='40px '+heights.map(function(h){return h+'px';}).join(' ');
-    var pages=[0],cursor=0;
-    while(offsets[offsets.length-1]-cursor>available){
-      var next=offsets.filter(function(n){return n>cursor&&n<=cursor+available;}).pop();
-      if(!next)break;pages.push(next);cursor=next;
-    }
-    // Pad the last time page so its first row can align under the sticky header.
-    grid.style.paddingBottom=Math.max(0,cursor+available-offsets[offsets.length-1])+'px';
-    mobileCalendarPages={x:groups.map(function(_,i){return i*width;}),y:pages};
+    // Every time slot shares one visible screen; empty slots get less space.
+    var available=Math.max(1,scroll.clientHeight-34),total=offsets[offsets.length-1];
+    var scale=total>0?available/total:1;
+    heights=heights.map(function(h){return h*scale;});
+    grid.style.gridTemplateRows='32px '+heights.map(function(h){return h+'px';}).join(' ');
+    grid.style.paddingBottom='0px';
+    grid.style.setProperty('--room-head-height','32px');
+    grid.querySelectorAll('.time-label').forEach(function(label,index){
+      var height=heights[index]||12;
+      label.style.fontSize=Math.min(10,Math.max(7,height-2))+'px';
+      label.style.lineHeight='1';
+    });
+    mobileCalendarPages={x:groups.map(function(_,i){return i*width;}),y:[0]};
     scroll.scrollLeft=nearestMobilePage(mobileCalendarPages.x,scroll.scrollLeft);
-    scroll.scrollTop=nearestMobilePage(pages,scroll.scrollTop);
+    scroll.scrollTop=0;
   }
   function nearestMobilePage(pages,value){return pages.reduce(function(best,n){return Math.abs(n-value)<Math.abs(best-value)?n:best;},pages[0]);}
   function bindMobileCalendar(){
     var scroll=$('scheduleScroll'),suppressClickUntil=0;
     function settle(cancelled){
       var g=mobileCalendarGesture;if(!g)return;mobileCalendarGesture=null;
-      if(!g.axis)return;
+      if(!g.axis||g.axis==='y')return;
       suppressClickUntil=Date.now()+400;
       var pages=mobileCalendarPages[g.axis],origin=g.axis==='x'?g.left:g.top;
       var index=pages.indexOf(nearestMobilePage(pages,origin));
@@ -680,7 +682,7 @@
       if(e.touches.length!==1){settle(true);return;}
       g.dx=e.touches[0].clientX-g.x;g.dy=e.touches[0].clientY-g.y;
       if(!g.axis&&Math.max(Math.abs(g.dx),Math.abs(g.dy))>8)g.axis=Math.abs(g.dx)>Math.abs(g.dy)?'x':'y';
-      if(!g.axis)return;e.preventDefault();
+      if(!g.axis||g.axis==='y')return;e.preventDefault();
       var pages=mobileCalendarPages[g.axis],origin=g.axis==='x'?g.left:g.top;
       var index=pages.indexOf(nearestMobilePage(pages,origin));
       var value=origin-(g.axis==='x'?g.dx:g.dy);
