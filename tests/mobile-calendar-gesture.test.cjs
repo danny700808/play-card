@@ -4,6 +4,8 @@ const src=fs.readFileSync('operations-course-inline-runtime.js','utf8');
 function setup(){
  const listeners={},grid={style:{setProperty(){}},querySelectorAll:()=>[]},scroll={style:{},getBoundingClientRect:()=>({top:100}),clientWidth:390,clientHeight:420,scrollLeft:0,scrollTop:0,addEventListener(k,fn){listeners[k]=fn;},scrollTo(o){this.scrollLeft=o.left;this.scrollTop=o.top;}};
  const ctx={Date,Number,Math,window:{innerHeight:548,matchMedia:()=>({matches:true}),addEventListener(){}},mobileAdmin:()=>true,weekMode:false,$:id=>id==='scheduleScroll'?scroll:id==='weekScheduleDays'?Object.assign({},scroll,{addEventListener(){}}):grid,setTimeout,clearTimeout};
+ ctx.isHiddenEvent=e=>e.hidden===true;
+ vm.runInNewContext(src.slice(src.indexOf('  function calendarDisplayHours('),src.indexOf('  function renderCalendar(')),ctx);
  vm.runInNewContext(src.slice(src.indexOf('  var mobileCalendarPages='),src.indexOf('\n  function fillSelect(',src.indexOf('  var mobileCalendarPages='))),ctx);
  ctx.mobileCalendarPages={x:[0,350],y:[0]};ctx.bindMobileCalendar();
  function swipe(dx,dy,cancel){listeners.touchstart({touches:[{clientX:200,clientY:200}]});listeners.touchmove({touches:[{clientX:200+dx,clientY:200+dy}],preventDefault(){}});listeners[cancel?'touchcancel':'touchend']();}
