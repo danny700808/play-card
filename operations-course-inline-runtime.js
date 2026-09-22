@@ -433,8 +433,19 @@
     var ignored=new Set(ignoreIds||[]),reasons=[],start=timeToMin(candidate.start),end=start+numberOf(candidate.duration),room=roomById(candidate.roomId);
     if(candidate.type!=='rental'&&candidate.subjectId&&!roomAllowsSubject(room,candidate.subjectId))reasons.push('這間教室不開放「'+(subjectById(candidate.subjectId).name||'此科目')+'」');
     crossedTimes(candidate.start,candidate.duration).forEach(function(time){var policy=slotPolicy(room,candidate.date,time);if(candidate.type==='rental'&&policy.blockRental)reasons.push(time+' 此教室禁止租用');if(candidate.type!=='rental'&&policy.blockSchedule)reasons.push(time+' 此教室禁止排課');if(candidate.type!=='rental'&&candidate.subjectId&&Array.isArray(policy.subjectIds)&&policy.subjectIds.length&&policy.subjectIds.indexOf(candidate.subjectId)<0)reasons.push(time+' 不允許此科目');});
+    // Calendar and full-workspace snapshots may use different IDs for one occurrence.
+    // Only explicit ignored records can supply aliases; new lessons must still conflict.
+    var ignoredOccurrences=(state.events||[]).filter(function(row){return ignored.has(row.id);});
+    if(ignored.has(candidate.id))ignoredOccurrences.push(candidate);
+    function ignoredOccurrence(other){return ignoredOccurrences.some(function(row){
+      if(row.date!==other.date||row.start!==other.start||numberOf(row.duration)!==numberOf(other.duration)||row.roomId!==other.roomId||row.teacherId!==other.teacherId||row.subjectId!==other.subjectId)return false;
+      if((row.studentIds||[]).slice().sort().join('|')!==(other.studentIds||[]).slice().sort().join('|'))return false;
+      var keys=['id','sourceId','sourceCourseId','seriesId','recurrenceKey','ruleId','portalChangeId','portalBookingId'];
+      var identities=keys.map(function(key){return row[key];}).filter(Boolean);
+      return keys.some(function(key){return other[key]&&identities.indexOf(other[key])>=0;});
+    });}
     var requestedResources=eventSharedResourceIds(candidate);
-    effectiveEventsForDate(candidate.date).forEach(function(other){if(ignored.has(other.id)||isHiddenEvent(other)||isNonOccupyingEvent(other))return;var a=timeToMin(other.start),b=a+numberOf(other.duration);if(start>=b||end<=a)return;if(other.roomId===candidate.roomId)reasons.push('教室與「'+eventDisplayName(other)+'」重疊');if(candidate.teacherId&&other.teacherId===candidate.teacherId)reasons.push('老師與「'+eventDisplayName(other)+'」重疊');if((candidate.studentIds||[]).some(function(id){return (other.studentIds||[]).indexOf(id)>=0;}))reasons.push('學生與「'+eventDisplayName(other)+'」重疊');requestedResources.filter(function(resourceId){return eventSharedResourceIds(other).indexOf(resourceId)>=0;}).forEach(function(resourceId){reasons.push(sharedResourceLabel(resourceId)+'與「'+eventDisplayName(other)+'」重疊');});});
+    effectiveEventsForDate(candidate.date).forEach(function(other){if(ignored.has(other.id)||ignoredOccurrence(other)||isHiddenEvent(other)||isNonOccupyingEvent(other))return;var a=timeToMin(other.start),b=a+numberOf(other.duration);if(start>=b||end<=a)return;if(other.roomId===candidate.roomId)reasons.push('教室與「'+eventDisplayName(other)+'」重疊');if(candidate.teacherId&&other.teacherId===candidate.teacherId)reasons.push('老師與「'+eventDisplayName(other)+'」重疊');if((candidate.studentIds||[]).some(function(id){return (other.studentIds||[]).indexOf(id)>=0;}))reasons.push('學生與「'+eventDisplayName(other)+'」重疊');requestedResources.filter(function(resourceId){return eventSharedResourceIds(other).indexOf(resourceId)>=0;}).forEach(function(resourceId){reasons.push(sharedResourceLabel(resourceId)+'與「'+eventDisplayName(other)+'」重疊');});});
     return unique(reasons);
   }
   function eventDisplayName(event){if(event.type==='rental')return event.clientName||'教室租用';if(event.type==='trial'&&event.trialName)return event.trialName;return eventStudentNames(event).join('－')||subjectById(event.subjectId).name||typeName(event.type);}
