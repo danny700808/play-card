@@ -5,7 +5,7 @@
 
   var VERSION = '20260917-room-subject-v1';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=20260921-mobile-admin-v5';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260921-mobile-admin-v5';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260922-date-nav-v1';
   var STYLE_URL = 'course-scheduler.css?v=20260920-calendar-controls-v3';
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';
@@ -215,7 +215,7 @@
       showLoading('正在開啟完整課務功能…');
       var template = await loadTemplate();
       var workspace = global.matchMedia('(max-width:780px)').matches && ['calendar','teachers'].indexOf(desiredView)>=0 ? null : await resolveWorkspace();
-      shadow.innerHTML = '<link rel="stylesheet" href="' + STYLE_URL + '"><style>' + inlineOverrides() + '</style><link rel="stylesheet" href="operations-mobile-admin.css?v=20260921-v5"><div class="course-inline-body">' + template + '</div>';
+      shadow.innerHTML = '<link rel="stylesheet" href="' + STYLE_URL + '"><style>' + inlineOverrides() + '</style><link rel="stylesheet" href="operations-mobile-admin.css?v=20260922-date-nav-v1"><div class="course-inline-body">' + template + '</div>';
       inlineBody = shadow.querySelector('.course-inline-body');
       function fitDesktopCalendar(){
         var desktop=global.matchMedia('(min-width:1100px)').matches,calendar=global.location.hash==='#course-calendar';
