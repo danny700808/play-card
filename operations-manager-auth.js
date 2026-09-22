@@ -83,7 +83,10 @@
       if (settled) {
         try { if (typeof unsubscribe === 'function') unsubscribe(); } catch (_) {}
       } else {
-        timer = clock.setTimeout(() => finish(auth.currentUser || null), waitMs);
+        timer = clock.setTimeout(() => {
+          if (auth.currentUser) finish(auth.currentUser);
+          else finish(null, new Error('登入狀態恢復較慢，請重新整理後再試。'));
+        }, waitMs);
       }
     });
   }
