@@ -593,7 +593,7 @@
   function renderCalendar(){
     if(!calendarRangeReady(state.currentDate,state.currentDate,'scheduleGrid',renderCalendar))return;
     renderFollowupCounts();var date=state.currentDate,rooms=calendarRooms(),events=effectiveEventsForDate(date).filter(function(event){return !desktopCalendar()||!window.YouziCoursePreviewData.isIrregularPlaceholder(event,state.irregularCourses);}),conflicts=dayConflictIds(events),hours=scheduleHoursForDate(date);
-    $('calendarDate').value=date;if($('calendarDateDisplay'))$('calendarDateDisplay').textContent=date.replace(/-/g,' / ');$('dateTitle').textContent=zhDate(date);$('dateSubtitle').textContent=weekdayName(date)+(date===todayKey()?'・今天':'');$('kpiLessons').textContent=events.filter(function(row){return row.type!=='rental';}).length;$('kpiAttended').textContent=events.filter(function(row){return normalizedStatus(row.status)==='attended';}).length;$('calendarHint').textContent='30 分鐘／格・'+rooms.length+' 間啟用教室'+(calendarPartial()?'・點課程查看明細':isReadOnly()?'・資料尚未載入':isSandbox()?'・操作自動儲存':'');
+    $('calendarDate').value=date;if($('calendarDateDisplay'))$('calendarDateDisplay').textContent=date.replace(/-/g,'/')+'\n'+weekdayName(date);$('dateTitle').textContent=zhDate(date);$('dateSubtitle').textContent=weekdayName(date)+(date===todayKey()?'・今天':'');$('kpiLessons').textContent=events.filter(function(row){return row.type!=='rental';}).length;$('kpiAttended').textContent=events.filter(function(row){return normalizedStatus(row.status)==='attended';}).length;$('calendarHint').textContent='30 分鐘／格・'+rooms.length+' 間啟用教室'+(calendarPartial()?'・點課程查看明細':isReadOnly()?'・資料尚未載入':isSandbox()?'・操作自動儲存':'');
     if (isReadOnly() && state.dataMode === 'review') { var sourceStats = ((state.dataMeta || {}).sourceStatsByDate || {})[date] || {}; $('dataModeMeta').textContent = '原始學生紀錄 '+numberOf(sourceStats.studentRecords)+'・請假已定位 '+numberOf(sourceStats.leaveRecords)+'・固定課 '+numberOf(sourceStats.fixedRecords)+'・最後顯示 '+numberOf(sourceStats.visibleRecords)+(numberOf(sourceStats.unresolvedRecords) ? '・待人工核對 '+numberOf(sourceStats.unresolvedRecords) : ''); }
     var slots=[];if(!hours.closed){for(var min=hours.start;min<hours.end;min+=30)slots.push(min);}var start=hours.start,grid=$('scheduleGrid');grid.dataset.slotCount=slots.length;grid.style.gridTemplateColumns='var(--time-col, 90px) repeat('+rooms.length+',var(--room-col, minmax(200px,1fr)))';grid.style.gridTemplateRows='var(--room-head-height, 64px) repeat('+slots.length+',var(--slot))';
     var html='<div class="grid-corner" style="grid-column:1;grid-row:1">時間</div>';
@@ -618,7 +618,7 @@
     $('weekScheduleBtn').textContent=weekMode?'返回日表':'週課表';
     $('todayBtn').textContent=weekMode?'本週':'今天';
     $$('[data-day-step]').forEach(function(button){button.setAttribute('aria-label',numberOf(button.dataset.dayStep)<0?(weekMode?'上一週':'前一天'):(weekMode?'下一週':'後一天'));});
-    if($('calendarDateDisplay'))$('calendarDateDisplay').textContent=weekMode?weekStartKey(weekAnchor||state.currentDate).slice(5).replace('-','/')+'–'+shiftDate(weekStartKey(weekAnchor||state.currentDate),6).slice(5).replace('-','/'):state.currentDate.replace(/-/g,' / ');
+    if($('calendarDateDisplay'))$('calendarDateDisplay').textContent=weekMode?weekStartKey(weekAnchor||state.currentDate).slice(5).replace('-','/')+'–'+shiftDate(weekStartKey(weekAnchor||state.currentDate),6).slice(5).replace('-','/'):state.currentDate.replace(/-/g,'/')+'\n'+weekdayName(state.currentDate);
   }
   function fitMobileWeekCalendar(){
     if(!mobileAdmin()||!weekMode||!mobileWeekLayout)return;
