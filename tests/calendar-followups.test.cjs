@@ -5,8 +5,12 @@ const fs=require('node:fs'),vm=require('node:vm');
 const runtime={};vm.runInNewContext(fs.readFileSync('course-scheduler-data.js','utf8'),{window:runtime});
 const api=runtime.YouziCoursePreviewData;
 const mode={enabled:true,teacherId:'t1',subjectId:'piano',studentIds:['s1'],effectiveDate:'2026-09-10',resumedFrom:'2026-09-13'};
-test('irregular students follow the teacher and fixed-course effective date without duplicates',()=>{
- assert.equal(api.activeIrregularCourses([mode,mode], '2026-09-12','t1').length,1);
+test('current irregular list deduplicates active students and immediately hides restored fixed courses',()=>{
+ const ongoing={...mode,resumedFrom:''};
+ assert.equal(api.activeIrregularCourses([ongoing,ongoing], '2026-09-12','t1').length,1);
+ assert.equal(api.activeIrregularCourses([ongoing], '2026-09-09','t1').length,0);
+ assert.equal(api.activeIrregularCourses([ongoing], '2026-09-12','t2').length,0);
+ assert.equal(api.activeIrregularCourses([mode], '2026-09-12','t1').length,0);
  assert.equal(api.activeIrregularCourses([mode], '2026-09-12','t2').length,0);
  assert.equal(api.activeIrregularCourses([mode], '2026-09-13','t1').length,0);
  assert.equal(api.activeIrregularCourses([{...mode,enabled:false}], '2026-09-12').length,0);

@@ -28,10 +28,10 @@ test('idle or nearly expired sliding sessions refresh; fixed expiry remains fixe
   const f=sessionFixture({sliding:false,lastUsed:0});await f.context.requireSession({sessionToken:'s'},['teacher']);assert.equal(f.writes[0].expiresAt,undefined);
 });
 test('all monthly payroll sources receive the authorized teacher filter; manager queries remain complete',async()=>{
-  const calls=[],read=async(...args)=>{calls.push(args);return [];};
-  const context={clean,teacherPayrollMonthBounds:()=>({month:'2026-09',startDate:'2026-09-01',endDate:'2026-09-30'}),mirrorRowsByDateRange:read,portalRowsByDateRange:read,ATTENDANCE_PAYROLL:'payroll',ATTENDANCE_CANCELLATIONS:'cancellations',enrichTeacherPayrollRows:r=>r,mergeTeacherPayrollRows:(a,b)=>a.concat(b),mergeTeacherAdjustmentRows:(a,b)=>a.concat(b),eventDate:r=>r.date};
+  const calls=[],refreshed=[],read=async(...args)=>{calls.push(args);return [];};
+  const context={clean,refreshPayrollPeriodLinks:async rows=>{refreshed.push(rows);return rows;},teacherPayrollMonthBounds:()=>({month:'2026-09',startDate:'2026-09-01',endDate:'2026-09-30'}),mirrorRowsByDateRange:read,portalRowsByDateRange:read,ATTENDANCE_PAYROLL:'payroll',ATTENDANCE_CANCELLATIONS:'cancellations',enrichTeacherPayrollRows:r=>r,mergeTeacherPayrollRows:(a,b)=>a.concat(b),mergeTeacherAdjustmentRows:(a,b)=>a.concat(b),eventDate:r=>r.date};
   vm.runInNewContext(extract('teacherPayrollMonthData'),context);
-  await context.teacherPayrollMonthData('2026-09','teacher-a');assert.equal(calls.length,6);
+  await context.teacherPayrollMonthData('2026-09','teacher-a');assert.equal(calls.length,6);assert.equal(refreshed.length,1);
   assert(calls.every((args,i)=>(i<3?args[3].teacherId:args[3])==='teacher-a'));
   calls.length=0;await context.teacherPayrollMonthData('2026-09');assert(calls.every((args,i)=>(i<3?args[3].teacherId:args[3])===''));
 });

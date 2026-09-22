@@ -47,7 +47,7 @@ function runtimeFixture(){
   const calls=[],nodes=new Map();let next;
   const $=id=>{if(!nodes.has(id))nodes.set(id,{classList:{add(){},remove(){}},textContent:'',disabled:false});return nodes.get(id);};
   const context={workspaceLoadPromise:null,calendarBootstrapLoading:false,loadingMigration:false,operationRunning:false,workspaceSaveTimer:0,currentView:'calendar',state:{currentDate:'2026-09-18',dataMeta:{}},$,clean,clearTimeout,
-    closeModal(){},updateModeUI(){},todayKey:()=> '2026-09-18',isReadOnly:()=>context.state.readOnly===true,toast:(...args)=>calls.push(['toast',...args]),
+    mobileAdmin:()=>false,closeModal(){},updateModeUI(){},refreshIrregularList(){calls.push(['refresh-irregular']);},todayKey:()=> '2026-09-18',isReadOnly:()=>context.state.readOnly===true,toast:(...args)=>calls.push(['toast',...args]),
     clone:value=>JSON.parse(JSON.stringify(value)),normalizeState:value=>value,preserveWorkspaceConfiguration:value=>value,refreshFormOptions(){},switchView(){},
     applyFormalState:async loaded=>{calls.push(['persist']);context.state=loaded;context.state.readOnly=false;},window:{YouziCoursePreviewData:{loadPublished:options=>{calls.push(['load',options]);return new Promise(resolve=>{next=resolve;});}}}};
   const start=runtime.indexOf('  function calendarPartial()'),end=runtime.indexOf('  function bindEvents(){',start);vm.runInNewContext(runtime.slice(start,end),context);
@@ -57,6 +57,7 @@ test('partial startup never replaces the persisted ledger and detail requests sh
   const f=runtimeFixture(),c=f.context;
   const initial=c.loadPublishedWorkspace({calendarOnly:true});f.resolve({currentDate:'2026-09-18',dataMeta:{partial:true,rangeStart:'2026-09-07',rangeEnd:'2026-09-27'},events:[]});await initial;
   assert.equal(c.state.readOnly,true);assert(!f.calls.some(row=>row[0]==='persist'));
+  assert.equal(f.calls.filter(row=>row[0]==='refresh-irregular').length,1);
   let opened=0;c.afterWorkspaceReady(()=>opened++);c.afterWorkspaceReady(()=>opened++);
   assert.equal(f.calls.filter(row=>row[0]==='load').length,2);assert.equal(opened,0);
   f.resolve({currentDate:'2026-09-18',dataMeta:{partial:false},tuitionPeriods:[{id:'paid-period',transactions:[{amount:2800}]}]});
@@ -71,11 +72,11 @@ test('navigation beyond a partial calendar shows loading and does not display a 
   f.resolve({currentDate:'2026-10-01',dataMeta:{partial:false},events:[]});await new Promise(resolve=>setImmediate(resolve));assert.equal(renders,1);
 });
 
-test('ledger prefetch starts after calendar paint and a click shares the same pending request',async()=>{
+test('calendar paint avoids ledger prefetch and detail clicks share one on-demand request',async()=>{
  const f=runtimeFixture(),c=f.context,timers=[];c.window.setTimeout=fn=>timers.push(fn);c.window.document={hidden:false};
  const load=c.loadPublishedWorkspace({calendarOnly:true});f.resolve({dataMeta:{partial:true},events:[]});await load;
- assert.equal(timers.length,1);assert.equal(f.calls.filter(row=>row[0]==='load').length,1);
- timers[0]();let opened=0;c.afterWorkspaceReady(()=>opened++);
+ assert.equal(timers.length,0);assert.equal(f.calls.filter(row=>row[0]==='load').length,1);
+ let opened=0;c.afterWorkspaceReady(()=>opened++);c.afterWorkspaceReady(()=>opened++);
  assert.equal(f.calls.filter(row=>row[0]==='load').length,2);
- f.resolve({dataMeta:{partial:false},events:[]});await new Promise(resolve=>setImmediate(resolve));assert.equal(opened,1);
+ f.resolve({dataMeta:{partial:false},events:[]});await new Promise(resolve=>setImmediate(resolve));assert.equal(opened,2);
 });
