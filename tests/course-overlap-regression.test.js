@@ -33,5 +33,5 @@ test('verified coverage includes blank dates and future audit dates, not unverif
   const dates=c.verifiedScheduleDates({auditCoveredDates:['2026-07-21'],dataQuality:{futureScheduleCoveredDates:['2026-09-30']}});
   assert(dates.has('2026-07-21')); assert(dates.has('2026-09-30')); assert(!dates.has('2026-10-01'));
   assert.equal(c.verifiedScheduleDates({}).size,0);
-  assert(source.includes('if (coveredDates.has(key)) continue;'));
+  assert(source.includes("if (coveredDates.has(key) && clean(row.source) !== 'manager-cloud') continue;"));
 });

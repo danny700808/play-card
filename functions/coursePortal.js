@@ -4999,7 +4999,9 @@ async function scheduleBundleUncached(startDate, endDate, ownTeacherId, options 
     ));
     let key = elapsedDays ? addDays(start, Math.ceil(elapsedDays / stepDays) * stepDays) : start;
     for (; key <= endDate && key <= finalDate; key = addDays(key, stepDays)) {
-      if (coveredDates.has(key)) continue;
+      // Imported daily coverage suppresses only legacy recurrence. Courses
+      // created in this system remain authoritative even on imported dates.
+      if (coveredDates.has(key) && clean(row.source) !== 'manager-cloud') continue;
       const statusByDate = row.statusByDate || row.exceptions || {};
       const status = normalizeScheduleStatus(statusByDate[key]);
       if (status === 'cancelled') continue;

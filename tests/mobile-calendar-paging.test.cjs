@@ -2,7 +2,7 @@
 const { chromium, webkit }=require('playwright');
 const fs=require('fs'),assert=require('node:assert/strict');
 const source=fs.readFileSync('operations-course-inline-runtime.js','utf8');
-const logic=source.slice(source.indexOf('  var mobileCalendarPages='),source.indexOf('\n  function fillSelect(',source.indexOf('  var mobileCalendarPages=')));
+const logic=source.slice(source.indexOf('  function calendarDisplayHours('),source.indexOf('  function renderCalendar('))+source.slice(source.indexOf('  var mobileCalendarPages='),source.indexOf('\n  function fillSelect(',source.indexOf('  var mobileCalendarPages=')));
 (async()=>{
  for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
   let browser;try{browser=await engine.launch({headless:true});}catch(e){if(name==='webkit'){console.log('WebKit unavailable: '+e.message.split('\n')[0]);continue;}throw e;}
@@ -13,7 +13,7 @@ const logic=source.slice(source.indexOf('  var mobileCalendarPages='),source.ind
     window.$=id=>document.getElementById(id);window.mobileAdmin=()=>true;window.weekMode=false;window.state={currentDate:'2026-09-22'};
     window.calendarRooms=()=>Array.from({length:9},(_,i)=>({id:String(i)}));
     window.scheduleHoursForDate=()=>({start:600,end:1260});window.effectiveEventsForDate=()=>[{roomId:'0',start:'15:00',duration:60},{roomId:'7',start:'18:00',duration:60}];
-    window.timeToMin=t=>Number(t.split(':')[0])*60+Number(t.split(':')[1]);window.numberOf=Number;
+    window.timeToMin=t=>Number(t.split(':')[0])*60+Number(t.split(':')[1]);window.numberOf=Number;window.isHiddenEvent=e=>e.hidden===true;
     let html='<div class="grid-corner" style="grid-row:1;grid-column:1">時間</div>';
     for(let i=0;i<9;i++)html+='<div class="room-head" style="grid-row:1;grid-column:'+(i+2)+'">教室'+i+'</div>';
     for(let row=0;row<22;row++)for(let col=0;col<10;col++)html+='<div class="'+(col?'slot':'time-label')+'" style="grid-row:'+(row+2)+';grid-column:'+(col+1)+'">'+(col?'':row)+'</div>';

@@ -566,7 +566,7 @@
     if(selected&&teachers.some(function(row){return row.id===selected;}))$('weekTeacher').value=selected;else if(teachers.length)$('weekTeacher').value=teachers[0].id;
     var teacherId=$('weekTeacher').value;$('weekRange').textContent=start.replace(/-/g,'/')+' ～ '+end.replace(/-/g,'/');
     var dates=[],eventsByDate={};for(var offset=0;offset<7;offset++){var date=shiftDate(start,offset);dates.push(date);eventsByDate[date]=uniqueWeekEvents(effectiveEventsForDate(date).filter(function(event){return event.teacherId===teacherId&&event.type!=='rental'&&!isHiddenEvent(event)&&(!desktopCalendar()||!window.YouziCoursePreviewData.isIrregularPlaceholder(event,state.irregularCourses));}));}
-    var overallRange=overallScheduleRange(state.settings.dailyHours),scheduleStart=overallRange.start,slots=[];for(var min=scheduleStart;min<overallRange.end;min+=30)slots.push(min);
+    var overallRange=calendarDisplayHours(overallScheduleRange(state.settings.dailyHours),dates.reduce(function(rows,date){return rows.concat(eventsByDate[date]);},[])),scheduleStart=overallRange.start,slots=[];for(var min=scheduleStart;min<overallRange.end;min+=30)slots.push(min);
     var html='<div class="teacher-week-grid" data-slot-count="'+slots.length+'"><div class="teacher-week-corner" style="grid-column:1;grid-row:1">時間</div>';
     dates.forEach(function(date,dateIndex){html+='<header class="teacher-week-day-head'+(date===todayKey()?' today':'')+'" style="grid-column:'+(dateIndex+2)+';grid-row:1"><b>'+weekdayName(date)+'</b><time>'+date.replace(/-/g,'/')+'</time></header>';});
     slots.forEach(function(slotMin,slotIndex){
@@ -590,9 +590,21 @@
     $('weekScheduleDays').innerHTML=html;mobileWeekLayout={dates:dates,events:eventsByDate,slots:slots};fitMobileWeekCalendar();syncMobileCalendarToolbar();renderFollowupCounts();window.dispatchEvent(new Event('youzi-calendar-layout'));
   }
 
+  function calendarDisplayHours(hours,events){
+    var range=Object.assign({},hours);
+    (events||[]).forEach(function(event){
+      if(!/^\d{2}:\d{2}$/.test(event.start||'')||isHiddenEvent(event))return;
+      var start=timeToMin(event.start),duration=numberOf(event.duration),end=start+duration;
+      if(start<0||start>=1440||duration<=0||end>1440)return;
+      range.start=Math.min(range.start,Math.floor(start/30)*30);
+      range.end=Math.max(range.end,Math.ceil(end/30)*30);
+      range.closed=false;
+    });
+    return range;
+  }
   function renderCalendar(){
     if(!calendarRangeReady(state.currentDate,state.currentDate,'scheduleGrid',renderCalendar))return;
-    renderFollowupCounts();var date=state.currentDate,rooms=calendarRooms(),events=effectiveEventsForDate(date).filter(function(event){return !desktopCalendar()||!window.YouziCoursePreviewData.isIrregularPlaceholder(event,state.irregularCourses);}),conflicts=dayConflictIds(events),hours=scheduleHoursForDate(date);
+    renderFollowupCounts();var date=state.currentDate,rooms=calendarRooms(),events=effectiveEventsForDate(date).filter(function(event){return !desktopCalendar()||!window.YouziCoursePreviewData.isIrregularPlaceholder(event,state.irregularCourses);}),conflicts=dayConflictIds(events),hours=calendarDisplayHours(scheduleHoursForDate(date),events);
     $('calendarDate').value=date;if($('calendarDateDisplay'))$('calendarDateDisplay').textContent=date.replace(/-/g,'/')+'\n'+weekdayName(date);$('dateTitle').textContent=zhDate(date);$('dateSubtitle').textContent=weekdayName(date)+(date===todayKey()?'・今天':'');$('kpiLessons').textContent=events.filter(function(row){return row.type!=='rental';}).length;$('kpiAttended').textContent=events.filter(function(row){return normalizedStatus(row.status)==='attended';}).length;$('calendarHint').textContent='30 分鐘／格・'+rooms.length+' 間啟用教室'+(calendarPartial()?'・點課程查看明細':isReadOnly()?'・資料尚未載入':isSandbox()?'・操作自動儲存':'');
     if (isReadOnly() && state.dataMode === 'review') { var sourceStats = ((state.dataMeta || {}).sourceStatsByDate || {})[date] || {}; $('dataModeMeta').textContent = '原始學生紀錄 '+numberOf(sourceStats.studentRecords)+'・請假已定位 '+numberOf(sourceStats.leaveRecords)+'・固定課 '+numberOf(sourceStats.fixedRecords)+'・最後顯示 '+numberOf(sourceStats.visibleRecords)+(numberOf(sourceStats.unresolvedRecords) ? '・待人工核對 '+numberOf(sourceStats.unresolvedRecords) : ''); }
     var slots=[];if(!hours.closed){for(var min=hours.start;min<hours.end;min+=30)slots.push(min);}var start=hours.start,grid=$('scheduleGrid');grid.dataset.slotCount=slots.length;grid.style.gridTemplateColumns='var(--time-col, 90px) repeat('+rooms.length+',var(--room-col, minmax(200px,1fr)))';grid.style.gridTemplateRows='var(--room-head-height, 64px) repeat('+slots.length+',var(--slot))';
@@ -648,8 +660,8 @@
     var top=scroll.getBoundingClientRect().top;
     scroll.style.height=Math.max(120,Math.floor(visibleBottom-top-32))+'px';
     scroll.style.maxHeight=scroll.style.height;
-    var rooms=calendarRooms(),hours=scheduleHoursForDate(state.currentDate);
-    var events=effectiveEventsForDate(state.currentDate),width=Math.max(1,scroll.clientWidth-40);
+    var rooms=calendarRooms(),events=effectiveEventsForDate(state.currentDate),hours=calendarDisplayHours(scheduleHoursForDate(state.currentDate),events);
+    var width=Math.max(1,scroll.clientWidth-40);
     var groups=rooms.length>4?[rooms.slice(0,Math.ceil(rooms.length/2)),rooms.slice(Math.ceil(rooms.length/2))]:[rooms];
     var columns=[];
     groups.forEach(function(group){
