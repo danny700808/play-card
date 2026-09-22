@@ -428,7 +428,9 @@
   function eventConflictReasons(candidate,ignoreIds){
     if(state&&state.dataMode==='review')return [];
     if(isNonOccupyingEvent(candidate))return [];
-    var ignored=new Set(ignoreIds||[]),reasons=[],start=timeToMin(candidate.start),end=start+numberOf(candidate.duration),room=roomById(candidate.roomId),businessHours=scheduleHoursForDate(candidate.date);if(businessHours.closed)reasons.push('這一天設定為不開放排課');else if(start<businessHours.start||end>businessHours.end)reasons.push('超出當天排課時間 '+businessHours.startText+'～'+businessHours.endText);
+    // Device-local display hours are not shared scheduling restrictions.
+    // Room policies and actual resource overlaps below remain authoritative.
+    var ignored=new Set(ignoreIds||[]),reasons=[],start=timeToMin(candidate.start),end=start+numberOf(candidate.duration),room=roomById(candidate.roomId);
     if(candidate.type!=='rental'&&candidate.subjectId&&!roomAllowsSubject(room,candidate.subjectId))reasons.push('這間教室不開放「'+(subjectById(candidate.subjectId).name||'此科目')+'」');
     crossedTimes(candidate.start,candidate.duration).forEach(function(time){var policy=slotPolicy(room,candidate.date,time);if(candidate.type==='rental'&&policy.blockRental)reasons.push(time+' 此教室禁止租用');if(candidate.type!=='rental'&&policy.blockSchedule)reasons.push(time+' 此教室禁止排課');if(candidate.type!=='rental'&&candidate.subjectId&&Array.isArray(policy.subjectIds)&&policy.subjectIds.length&&policy.subjectIds.indexOf(candidate.subjectId)<0)reasons.push(time+' 不允許此科目');});
     var requestedResources=eventSharedResourceIds(candidate);
