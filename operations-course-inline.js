@@ -5,7 +5,7 @@
 
   var VERSION = '20260917-room-subject-v1';
   var TEMPLATE_URL = 'operations-course-inline-template.html?v=20260921-mobile-admin-v5';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260922-display-hours-conflict-v2';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20260922-occurrence-conflict-v3';
   var STYLE_URL = 'course-scheduler.css?v=20260920-calendar-controls-v3';
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';

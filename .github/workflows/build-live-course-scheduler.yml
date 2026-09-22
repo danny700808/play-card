@@ -43,7 +43,7 @@ jobs:
         run: node tests/course-calendar-startup.test.js
 
       - name: Verify calendar recurrence and teacher stop parity
-        run: node --test tests/course-calendar-recurrence-parity.test.js
+        run: node --test tests/course-calendar-recurrence-parity.test.js tests/course-occurrence-conflict.test.cjs
 
       - name: Verify internal course workspace
         run: |
