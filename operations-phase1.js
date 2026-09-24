@@ -1585,7 +1585,7 @@ async function loadPlatformLocalAgent(){
       }
     }
     return {
-      id:clean(obj.__id),platform:platform,externalOrderId:externalOrderId,externalOrderNo:externalOrderNo,externalLineId:clean(obj.externalLineId),orderedAt:orderedAt,reportedOrderedAt:orderDateRepaired?(obj.reportedOrderedAt||storedOrderedAt):(obj.reportedOrderedAt||''),hasOriginalOrderDate:hasOriginalOrderDate,orderDateSource:orderDateSource,orderTimeEstimated:orderTimeEstimated,orderDateRepaired:orderDateRepaired,paidAt:obj.paidAt||'',shippedAt:obj.shippedAt||'',completedAt:obj.completedAt||'',settledAt:obj.settledAt||'',refundedAt:obj.refundedAt||'',cancelledAt:obj.cancelledAt||'',statusUpdatedAt:obj.statusUpdatedAt||'',sku:clean(obj.sku),productName:clean(obj.productName)||'未命名商品',variantName:clean(obj.variantName),quantity:quantity,unitPrice:unitPrice,grossAmount:grossAmount,estimatedNetAmount:firstNumber(obj,['estimatedNetAmount']).value,actualSettledAmount:numberOrNull(obj.actualSettledAmount),refundAmount:numberOrNull(obj.refundAmount),costTotal:costTotal,costEstimated:obj.costEstimated===true,costSource:clean(obj.costSource),estimatedProfit:firstNumber(obj,['estimatedProfit']).value,orderStatus:clean(obj.orderStatus),paymentStatus:clean(obj.paymentStatus),customerName:clean(obj.customerName),processingStatus:clean(obj.processingStatus),historicalImport:obj.historicalImport===true,historicalImportBatch:clean(obj.historicalImportBatch),inventorySkipped:obj.inventorySkipped===true,inventoryEffect:clean(obj.inventoryEffect),inventoryApplied:obj.inventoryApplied===true,inventoryReversed:obj.inventoryReversed===true,reversalApplied:obj.reversalApplied===true,reversalReason:clean(obj.reversalReason||obj.cancellationReason),reversalQuantity:firstNumber(obj,['reversalQuantity']).value,reversalCostTotal:firstNumber(obj,['reversalCostTotal']).value,inventoryBefore:firstNumber(obj,['inventoryBefore']).value,inventoryAfter:firstNumber(obj,['inventoryAfter']).value,inventoryBeforeReversal:firstNumber(obj,['inventoryBeforeReversal']).value,inventoryAfterReversal:firstNumber(obj,['inventoryAfterReversal']).value,missingFromPlatformCount:firstNumber(obj,['missingFromPlatformCount']).value,productId:clean(obj.productId),processingError:clean(obj.processingError),firstSeenAt:obj.firstSeenAt||'',lastSeenAt:obj.lastSeenAt||'',reversedAt:obj.reversedAt||'',syncRunId:clean(obj.syncRunId),returnHandlingStatus:clean(obj.returnHandlingStatus),returnDisposition:clean(obj.returnDisposition),returnQuantity:firstNumber(obj,['returnQuantity']).value,returnNote:clean(obj.returnNote),returnedReceivedAt:obj.returnedReceivedAt||'',returnProcessedAt:obj.returnProcessedAt||'',returnInventoryApplied:obj.returnInventoryApplied===true
+      id:clean(obj.__id),platform:platform,externalOrderId:externalOrderId,externalOrderNo:externalOrderNo,externalLineId:clean(obj.externalLineId),orderedAt:orderedAt,reportedOrderedAt:orderDateRepaired?(obj.reportedOrderedAt||storedOrderedAt):(obj.reportedOrderedAt||''),hasOriginalOrderDate:hasOriginalOrderDate,orderDateSource:orderDateSource,orderTimeEstimated:orderTimeEstimated,orderDateRepaired:orderDateRepaired,paidAt:obj.paidAt||'',shippedAt:obj.shippedAt||'',completedAt:obj.completedAt||'',settledAt:obj.settledAt||'',refundedAt:obj.refundedAt||'',cancelledAt:obj.cancelledAt||'',statusUpdatedAt:obj.statusUpdatedAt||'',sku:clean(obj.sku),productName:clean(obj.productName)||'未命名商品',variantName:clean(obj.variantName),quantity:quantity,unitPrice:unitPrice,grossAmount:grossAmount,estimatedNetAmount:firstNumber(obj,['estimatedNetAmount']).value,actualSettledAmount:numberOrNull(obj.actualSettledAmount),refundAmount:numberOrNull(obj.refundAmount),costTotal:costTotal,costEstimated:obj.costEstimated===true,costSource:clean(obj.costSource),estimatedProfit:firstNumber(obj,['estimatedProfit']).value,orderStatus:clean(obj.orderStatus),paymentStatus:clean(obj.paymentStatus),customerName:clean(obj.customerName),processingStatus:clean(obj.processingStatus),historicalImport:obj.historicalImport===true,historicalImportBatch:clean(obj.historicalImportBatch),inventorySkipped:obj.inventorySkipped===true,inventoryEffect:clean(obj.inventoryEffect),inventoryApplied:obj.inventoryApplied===true,inventoryReversed:obj.inventoryReversed===true,reversalApplied:obj.reversalApplied===true,reversalReason:clean(obj.reversalReason||obj.cancellationReason),reversalQuantity:firstNumber(obj,['reversalQuantity']).value,reversalCostTotal:firstNumber(obj,['reversalCostTotal']).value,inventoryBefore:firstNumber(obj,['inventoryBefore']).value,inventoryAfter:firstNumber(obj,['inventoryAfter']).value,inventoryBeforeReversal:firstNumber(obj,['inventoryBeforeReversal']).value,inventoryAfterReversal:firstNumber(obj,['inventoryAfterReversal']).value,missingFromPlatformCount:firstNumber(obj,['missingFromPlatformCount']).value,productId:clean(obj.productId),processingError:clean(obj.processingError),firstSeenAt:obj.firstSeenAt||'',lastSeenAt:obj.lastSeenAt||'',reversedAt:obj.reversedAt||'',syncRunId:clean(obj.syncRunId),returnHandlingStatus:clean(obj.returnHandlingStatus),returnDisposition:clean(obj.returnDisposition),returnQuantity:firstNumber(obj,['returnQuantity']).value,returnNote:clean(obj.returnNote),returnedReceivedAt:obj.returnedReceivedAt||'',returnProcessedAt:obj.returnProcessedAt||'',returnInventoryApplied:obj.returnInventoryApplied===true,shipmentConfirmed:obj.shipmentConfirmed===true,fulfillmentStatus:clean(obj.fulfillmentStatus),shippingStatus:clean(obj.shippingStatus),releaseStatus:clean(obj.releaseStatus),cancellationRestockedQuantity:Number(obj.cancellationRestockedQuantity||0)
     };
   }
   function normalizePlatformSyncRun(obj){
@@ -3766,18 +3766,19 @@ const PLATFORM_FULFILLMENT_KEYWORDS=['出貨確認','已出貨','出貨完成','
 function platformOrderStatusText(row){return lower([row&&row.orderStatus,row&&row.paymentStatus,row&&row.note,row&&row.reversalReason,row&&row.cancellationReason].filter(Boolean).join(' '));}
 function platformOrderHasFulfillment(row){
   if(!row)return false;
-  if(dateFrom(row.shippedAt)||dateFrom(row.completedAt))return true;
-  const text=platformOrderStatusText(row);
-  return PLATFORM_FULFILLMENT_KEYWORDS.some(function(keyword){return text.includes(keyword);});
+  if(row.shipmentConfirmed===true||dateFrom(row.shippedAt)||['Y','A'].includes(clean(row.releaseStatus).toUpperCase()))return true;
+  const states=[row.orderStatus,row.fulfillmentStatus,row.shippingStatus].map(lower);
+  return states.some(function(value){return ['fulfilled','partially_fulfilled','partial','shipped','departure','delivering','delivered','final_delivery','none_tracking','in_transit','customer_picked_up','出貨確認','已出貨','出貨完成','配送中','配送結束','已送達','門市已進驗','進驗成功'].includes(value);});
 }
 function platformOrderHasReturnRequest(row){return !!row&&PLATFORM_RETURN_KEYWORDS.some(function(keyword){return platformOrderStatusText(row).includes(keyword);});}
 function platformOrderIsCancelledState(row){
   if(!row)return false;
   if(row.reversalApplied===true||row.inventoryReversed===true)return true;
   if(['ignored-cancelled','inventory-reversed'].includes(clean(row.processingStatus)))return true;
-  // 未出貨的「退貨／退款」就是取消訂單，不能留在今天或退貨清單。
-  if(platformOrderHasReturnRequest(row)&&!platformOrderHasFulfillment(row)&&clean(row.returnHandlingStatus)!=='completed')return true;
-  return PLATFORM_CANCEL_KEYWORDS.some(function(keyword){return platformOrderStatusText(row).includes(keyword);});
+  // Never hide unconfirmed cancellation or shipped return just because its name contains cancel.
+  if(['cancellation-review','cancellation-partial','manual-return-review','return-processed'].includes(clean(row.processingStatus)))return false;
+  if(platformOrderHasFulfillment(row))return false;
+  return false;
 }
 function platformOrderHasReliableOrderDate(row){
   if(!row)return false;
@@ -3832,19 +3833,19 @@ function platformOrderIsEffective(row){
   return !!row&&!platformOrderIsHidden(row)&&!platformOrderHasReturn(row)&&row.reversalApplied!==true&&row.inventoryReversed!==true&&!['inventory-reversed','ignored-return'].includes(clean(row.processingStatus));
 }
 function platformOrderNeedsAttention(row){
-  return !platformOrderIsHidden(row)&&['missing-sku','unmatched-sku','duplicate-sku','error','missing-from-platform-review','reversal-error','manual-return-review'].includes(clean(row&&row.processingStatus));
+  return !platformOrderIsHidden(row)&&['missing-sku','unmatched-sku','duplicate-sku','error','missing-from-platform-review','reversal-error','manual-return-review','cancellation-review'].includes(clean(row&&row.processingStatus));
 }
 function platformOrderSkipsInventory(row){
   return !!row&&(row.historicalImport===true||row.inventorySkipped===true||clean(row.inventoryEffect)==='none');
 }
 function platformOrderProcessingLabel(row){
   if(platformOrderSkipsInventory(row))return row.historicalImport===true?'歷史補登／未扣庫存':'未扣庫存';
-  const map={'inventory-applied':'已扣中央庫存','already-applied':'已處理','dry-run':'有效訂單／尚未扣庫存','unmatched-sku':'SKU 未配對','duplicate-sku':'SKU 重複','missing-sku':'缺少 SKU','ignored':'已排除','ignored-freight':'運費已排除','ignored-cancelled':'未成交／取消，未扣庫存','ignored-return':'退貨狀態，未扣庫存','manual-return-review':'退貨／退款請手動處理','return-processed':'退貨已完成處理','missing-from-platform-review':'平台本次未再出現，等待複核','inventory-reversed':'取消／未付款，庫存已回補','reversal-error':'取消回補失敗','error':'處理失敗'};
+  const map={'cancellation-review':'取消／出貨狀態待確認，未回補','cancellation-partial':'部分取消已回補','inventory-applied':'已扣中央庫存','already-applied':'已處理','dry-run':'有效訂單／尚未扣庫存','unmatched-sku':'SKU 未配對','duplicate-sku':'SKU 重複','missing-sku':'缺少 SKU','ignored':'已排除','ignored-freight':'運費已排除','ignored-cancelled':'未成交／取消，未扣庫存','ignored-return':'退貨狀態，未扣庫存','manual-return-review':'退貨／退款請手動處理','return-processed':'退貨已完成處理','missing-from-platform-review':'平台本次未再出現，等待複核','inventory-reversed':'未出貨取消，庫存已回補','reversal-error':'取消回補失敗','error':'處理失敗'};
   return map[row.processingStatus]||row.processingStatus||'待處理';
 }
 function platformOrderHasReturn(row){
   if(!row)return false;
-  if(clean(row.processingStatus)==='return-processed'||clean(row.returnHandlingStatus)==='completed')return true;
+  if(['manual-return-review','return-processed','cancellation-review'].includes(clean(row.processingStatus))||clean(row.returnHandlingStatus)==='completed')return true;
   return platformOrderHasFulfillment(row)&&platformOrderHasReturnRequest(row);
 }
 function platformReturnRows(rows){
@@ -3920,7 +3921,7 @@ function openPlatformOrderDetail(groupKey){
   const finance='<div class="ops-order-detail-section"><h3>金額</h3><div class="ops-order-money-grid"><div><span>商品成交金額</span><b>'+money(gross)+'</b></div><div><span>預估平台費</span><b>'+money(metrics.platformFees)+'</b></div><div><span>預估發票稅</span><b>'+money(metrics.invoiceFees)+'</b></div><div><span>預估可收金額</span><b>'+money(estimatedNet)+'</b></div><div><span>商品成本</span><b>'+money(metrics.cost)+'</b></div><div><span>預估毛利</span><b>'+money(metrics.profit)+'</b></div></div></div>';
   const itemHtml=rows.map(function(row){
     const returnState=clean(row.returnHandlingStatus),returnText=returnState?(returnState==='waiting-return'?'等待商品退回':platformReturnDispositionLabel(row.returnDisposition)):(platformOrderHasReturn(row)?'退貨待處理':'無退貨');
-    const canHandle=platformOrderHasReturn(row)&&returnState!=='completed';
+    const canHandle=platformOrderHasReturn(row)&&row.processingStatus!=='cancellation-review'&&row.inventoryApplied===true&&row.reversalApplied!==true&&returnState!=='completed';
     return '<article class="ops-order-item-detail"><div class="ops-order-item-main"><div><b>'+escapeHtml(row.productName)+'</b><small>'+escapeHtml((row.sku?'SKU '+row.sku:'缺少 SKU')+(row.variantName?'・'+row.variantName:''))+'</small></div><div class="ops-order-item-numbers"><span>'+formatNumber(row.quantity)+' 件</span><b>'+money(platformOrderGross(row))+'</b></div></div><div class="ops-order-item-status">'+statusTag(platformOrderProcessingLabel(row),platformOrderProcessingColor(row))+(platformOrderHasReturn(row)?statusTag(returnText,returnState==='completed'?'green':'yellow'):'')+'</div>'+(row.returnNote?'<p>'+escapeHtml(row.returnNote)+'</p>':'')+(canHandle?'<button class="ops-button small primary" type="button" data-action="platform-return-open" data-id="'+attr(row.id)+'">處理退貨</button>':'')+'</article>';
   }).join('');
   const basic='<div class="ops-order-detail-section"><h3>訂單基本資料</h3><div class="ops-order-basic-grid"><div><span>平台</span><b>'+escapeHtml(first.platform||'—')+'</b></div><div><span>訂單編號</span><b>'+escapeHtml(first.externalOrderNo||'—')+'</b></div><div><span>客戶</span><b>'+escapeHtml(first.customerName||'尚無資料')+'</b></div><div><span>目前狀態</span><b>'+escapeHtml(statusText)+'</b></div><div><span>商品項目</span><b>'+formatNumber(rows.length)+' 項</b></div><div><span>總件數</span><b>'+formatNumber(qty)+' 件</b></div></div></div>';
@@ -3928,7 +3929,7 @@ function openPlatformOrderDetail(groupKey){
 }
 function openPlatformReturn(rowId){
   const row=state.platformOrders.find(function(item){return item.id===rowId;});if(!row)return toast('找不到退貨商品','請重新整理後再試。','warning');
-  const maxQty=Math.max(1,Math.round(Number(row.quantity||1))),current=clean(row.returnDisposition)||'waiting';
+  const maxQty=Math.max(1,Math.round(Number(row.quantity||1)-Number(row.cancellationRestockedQuantity||0))),current=clean(row.returnDisposition)||'waiting';
   const options=[['waiting','尚未收到商品'],['restock','恢復正常庫存'],['defective','瑕疵品／展示品'],['inspect','待檢查／送修'],['scrap','報廢'],['supplier','退回供應商']].map(function(item){return '<option value="'+item[0]+'"'+(current===item[0]?' selected':'')+'>'+item[1]+'</option>';}).join('');
   openDrawer('處理網路退貨',row.platform+'｜'+(row.externalOrderNo||'未提供訂單編號'),'<form id="platformReturnForm" data-id="'+attr(row.id)+'"><div class="ops-callout"><b>'+escapeHtml(row.productName)+'</b><br><span>'+escapeHtml((row.sku?'SKU '+row.sku:'缺少 SKU')+'・原訂單 '+formatNumber(row.quantity)+' 件')+'</span></div><div class="ops-form-grid"><div class="ops-field"><label>退貨數量</label><input class="ops-input" type="number" min="1" max="'+maxQty+'" step="1" name="quantity" value="'+attr(row.returnQuantity||maxQty)+'" required></div><div class="ops-field"><label>處理方式</label><select class="ops-select" name="disposition">'+options+'</select></div><div class="ops-field full"><label>備註</label><textarea class="ops-textarea" name="note" placeholder="可留空；例如外盒損傷、等待物流退回">'+escapeHtml(row.returnNote||'')+'</textarea></div></div><div class="ops-callout yellow">選「尚未收到商品」不會調整任何庫存；只有「恢復正常庫存」會增加可銷售庫存。</div><div class="ops-drawer-footer"><button class="ops-button ghost" type="button" data-action="platform-order-detail" data-key="'+attr(platformOrderGroupKey(row))+'">返回訂單</button><button class="ops-button primary" type="submit">確認處理</button></div></form>');
 }
@@ -3936,13 +3937,15 @@ async function savePlatformReturn(form){
   const id=clean(form.dataset.id),row=state.platformOrders.find(function(item){return item.id===id;});if(!row)throw new Error('找不到原始平台訂單');
   const data=new FormData(form),disposition=clean(data.get('disposition'))||'waiting',quantity=Math.max(1,Math.min(Math.max(1,Math.round(Number(row.quantity||1))),Math.round(Number(data.get('quantity')||1)))),note=clean(data.get('note')),orderRef=state.db.collection(COLLECTIONS.platformOrders).doc(id),now=new Date();
   if(disposition==='waiting'){
-    await orderRef.set({returnHandlingStatus:'waiting-return',returnDisposition:'waiting',returnQuantity:quantity,returnNote:note,returnProcessedAt:serverTimestamp(),processingStatus:'manual-return-review',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});
+    await state.db.runTransaction(async function(tx){const snap=await tx.get(orderRef),existing=snap.exists?snap.data()||{}:{};if(existing.returnHandlingStatus==='completed'||existing.inventoryApplied!==true||existing.reversalApplied===true||existing.inventoryReversed===true||existing.processingStatus==='cancellation-review')throw new Error('此訂單已處理或未扣庫存，不能重新開啟退貨');tx.set(orderRef,{returnHandlingStatus:'waiting-return',returnDisposition:'waiting',returnQuantity:quantity,returnNote:note,returnProcessedAt:serverTimestamp(),processingStatus:'manual-return-review',updatedAt:serverTimestamp(),updatedBy:userLabel(),version:VERSION},{merge:true});});
   }else{
     if(!row.productId)throw new Error('這筆訂單尚未配對中央商品，請先完成 SKU 配對');
     const productRef=state.db.collection(COLLECTIONS.products).doc(row.productId),inventoryRef=state.db.collection(COLLECTIONS.inventory).doc();
     await state.db.runTransaction(async function(tx){
       const [orderSnap,productSnap]=await Promise.all([tx.get(orderRef),tx.get(productRef)]),existing=orderSnap.exists?orderSnap.data()||{}:{};
       if(existing.returnHandlingStatus==='completed')throw new Error('這筆退貨已經完成處理，為避免重複入庫不能再次執行');
+      if(existing.inventoryApplied!==true||existing.reversalApplied===true||existing.inventoryReversed===true||existing.processingStatus==='cancellation-review')throw new Error('未確認原扣庫或取消狀態，不能手動重複補庫存');
+      if(quantity>Math.max(0,Number(existing.quantity||0)-Number(existing.cancellationRestockedQuantity||0)))throw new Error('退貨數量超過尚未回補數量');
       if(!productSnap.exists)throw new Error('找不到中央商品主檔');
       const raw=productSnap.data()||{},before=Number(raw.currentStock||0),after=disposition==='restock'?before+quantity:before,unitCost=Number(row.quantity||0)>0&&Number(row.costTotal||0)>0?Number(row.costTotal||0)/Number(row.quantity||1):numberOrNull(firstValue(raw,['averageCost','latestPurchaseCost','purchasePrice']));
       if(disposition==='restock'){
