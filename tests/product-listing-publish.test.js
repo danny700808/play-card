@@ -245,9 +245,9 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.match(snapshot.bodyHtml, /保固會依商品類型而有所不同/);
   assert.ok(snapshot.bodyHtml.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>'));
   assert.deepEqual(snapshot.momoDelivery, { method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流' });
-  assert.equal(snapshot.momoCatalogPolicy.targetListings, 1000);
+  assert.equal(snapshot.momoCatalogPolicy.targetListings, null);
   assert.equal(snapshot.momoCatalogPolicy.reservedSlots, 0);
-  assert.equal(snapshot.momoCatalogPolicy.zeroStockAction, 'temporarily-downlist-one-safe-zero-stock-item-before-publish-when-at-capacity');
+  assert.equal(snapshot.momoCatalogPolicy.zeroStockAction, 'preserve-existing-listing');
   assert.equal(snapshot.momoCatalogPolicy.targetMustHavePositiveStock, true);
   assert.equal(snapshot.momoCatalogPolicy.capacityCheckBeforeFirstPublish, true);
   assert.equal(snapshot.momoCatalogPolicy.preserveSoldOutWithSales, true);
@@ -303,7 +303,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.platformOrder, ['momo', 'coupang', 'easyStore', 'shopee']);
   assert.equal(snapshot.preparedPlatformFieldPlan.version, 22);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.targetStock, 1);
-  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.maximumListings, 1000);
+  assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.maximumListings, null);
   assert.equal(snapshot.preparedPlatformFieldPlan.momo.preparedFields.capacityGate.neverDelete, true);
   assert.equal(snapshot.automationPolicy.version, 41);
   assert.equal(snapshot.automationPolicy.platformExecutionPlan.requireStructuredVerifiedDescriptionBeforePreparedSnapshot, true);
@@ -538,7 +538,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.firstSubmissionMediaGate.prepareAllBeforePlatformSubmit, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.firstSubmissionMediaGate.deduplicatePromotionAssetBeforeInsert, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.draftReopenPersistenceGate.reapplyOnlyMissingFieldsOnSameDraft, true);
-  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.listingQuotaRecovery.action, 'temporarily-downlist-never-delete');
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.listingQuotaRecovery.action, 'keep-same-draft-pending-record-platform-error');
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.listingQuotaRecovery.preserveZeroStockHighSales, true);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.exactListSearch.trigger, 'search-append-control');
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.loginRecoveryPolicy.sourcePriority.at(-1), 'previous-successful-route-from-project-context');
@@ -611,7 +611,7 @@ test('MOMO 名額回收只選安全零庫存舊品並沿用同一新品草稿', 
     { listingId: 'SOLD', sku: 'OLD-4', status: '上架', stock: 0, salesCount: 3 },
     { listingId: 'SAFE-OLD', sku: 'OLD-5', status: '上架', stock: 0, salesCount: 0, updatedAt: '2024-01-01' },
     { listingId: 'SAFE-LOW', sku: 'OLD-6', status: '上架', stock: 0, salesCount: 0, priority: 'low', updatedAt: '2026-01-01' }
-  ], { sku: 'NEW-1', stock: 1 }, { currentActiveCount: 1000, maximumListings: 1000 });
+  ], { sku: 'NEW-1', stock: 1 }, { currentActiveCount: 1000, maximumListings: 1000, platformQuotaError: true, allowOtherProductDownlist: true });
   assert.equal(result.required, true);
   assert.equal(result.action, 'temporarily-downlist-one-safe-zero-stock-item');
   assert.equal(result.candidate.listingId, 'SAFE-LOW');
@@ -638,7 +638,9 @@ test('MOMO 名額回收要求已核實零銷售，中央 productId 不會誤判�
     { listingId: 'VERIFIED-ZERO', sku: 'OLD-2', status: '上架', stock: 0, salesCount: 0 }
   ], { productId: 'CENTRAL-PRODUCT-ID', sku: 'NEW', stock: 1 }, {
     currentActiveCount: 1000,
-    maximumListings: 1000
+    maximumListings: 1000,
+    platformQuotaError: true,
+    allowOtherProductDownlist: true
   });
   assert.equal(result.required, true);
   assert.equal(result.candidate.listingId, 'VERIFIED-ZERO');
