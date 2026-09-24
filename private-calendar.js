@@ -11,7 +11,7 @@
  function range(){return {start:new Date(S.month.getFullYear(),S.month.getMonth(),-6).toISOString(),end:new Date(S.month.getFullYear(),S.month.getMonth()+1,8).toISOString()};}
  async function refresh(){
   message('正在讀取行程…');S.status=await api('status');
-  S.calendars=S.status.googleConnected?(await api('calendars')).calendars:[];
+  S.calendars=S.status.googleConnected?(await api('calendars').catch(()=>({calendars:[]}))).calendars:[];
   const result=await api('list',range());S.events=result.events;render();
   $('connection').textContent=(S.status.googleConnected?'Google 已連接 · '+S.status.googleEmail:'Google 尚未連接 · 現在可先建立私人行程')+'　｜　'+(S.status.lineEnabled?'LINE 提醒已啟用':'LINE 提醒尚未啟用');
   message(result.warnings?.length?result.warnings.join('；'):'已更新。時間以台灣時間顯示；LINE 提醒需在個別行程勾選。',!!result.warnings?.length);settingsRender();
@@ -31,7 +31,7 @@
  }
  function cleanup(){S.urls.forEach(URL.revokeObjectURL);S.urls=[];if(S.recorder?.state==='recording')S.recorder.stop();S.stream?.getTracks().forEach(t=>t.stop());clearTimeout(S.recordTimer);S.recorder=null;S.stream=null;}
  function showEditor(row,date){
-  cleanup();S.current=row?{...row}:null;S.pending=[];$('eventForm').reset();$('formStatus').textContent='';$('recordStatus').textContent='';$('record').textContent='● 開始錄音';
+  cleanup();S.current=row?{...row}:null;S.googleDraftId=crypto.randomUUID();S.pending=[];$('eventForm').reset();$('formStatus').textContent='';$('recordStatus').textContent='';$('record').textContent='● 開始錄音';
   const start=row?.start||date+'T09:00:00';$('title').value=row?.title||'';$('start').value=local(start);$('end').value=local(row?.end||new Date(new Date(start).getTime()+3600000));$('note').value=row?.note||'';$('remind').checked=!!row?.remind;$('minutes').value=row?.reminderMinutes??10;$('completed').checked=!!row?.completed;
   const readonly=row?.source==='google'&&(!row.editable||row.allDay);
   ['title','start','end'].forEach(id=>$(id).disabled=readonly);
@@ -62,7 +62,7 @@
   try{
    const event={title:$('title').value,start:new Date($('start').value).toISOString(),end:new Date($('end').value).toISOString(),note:$('note').value,remind:$('remind').checked,reminderMinutes:Number($('minutes').value),completed:$('completed').checked,source:S.current?.source||'local',calendarId:S.current?.calendarId||'',googleId:S.current?.googleId||''};
    const c=S.current,googleCreate=!c&&$('destination').value!=='local',googleEdit=c?.source==='google'&&c.editable&&!c.allDay&&(event.title!==c.title||Date.parse(event.start)!==Date.parse(c.start)||Date.parse(event.end)!==Date.parse(c.end));
-   if(googleCreate||googleEdit){const result=await api('googleWrite',{calendarId:c?.calendarId||$('destination').value,googleId:c?.googleId,etag:c?.etag,event});S.current={...result.event,revision:c?.revision||0,assets:c?.assets||[]};Object.assign(event,{source:'google',googleId:S.current.googleId,calendarId:S.current.calendarId});}
+   if(googleCreate||googleEdit){const result=await api('googleWrite',{calendarId:c?.calendarId||$('destination').value,googleId:c?.googleId,etag:c?.etag,requestId:S.googleDraftId,event});S.current={...result.event,revision:c?.revision||0,assets:c?.assets||[]};Object.assign(event,{source:'google',googleId:S.current.googleId,calendarId:S.current.calendarId});}
    const result=await api('save',{id:S.current?.id,revision:S.current?.revision||0,event});S.current={...S.current,...event,id:result.id,revision:(S.current?.revision||0)+1,assets:S.current?.assets||[]};
    while(S.pending.length){const f=S.pending[0];const upload=await api('upload',{id:result.id,mime:f.type,name:f.name,base64:await base64(f)});S.current.assets.push(upload.asset);S.current.revision++;S.pending.shift();}
    $('editor').close();cleanup();await refresh();message('已儲存。'+(event.remind&&!S.status.lineEnabled?'LINE 尚未啟用，請到連線設定完成綁定。':''));
