@@ -44,6 +44,7 @@ async function access(uid){
 }
 async function google(uid,path,options={}){
  const response=await fetch('https://www.googleapis.com/calendar/v3/'+path,{...options,headers:{Authorization:'Bearer '+await access(uid),'Content-Type':'application/json',...(options.headers||{})},signal:AbortSignal.timeout(20000)});
+ if(response.status===409&&options.method==='POST'&&options.body){const id=JSON.parse(options.body).id;if(id)return google(uid,path+'/'+encodeURIComponent(id));}
  if(!response.ok)fail(response.status===412?'Google 行程已被修改，請重新整理再編輯。':'Google 讀取／更新失敗（'+response.status+'），請確認授權與行事曆權限。','failed-precondition');
  return response.status===204?{}:response.json();
 }
@@ -52,7 +53,7 @@ async function events(uid,start,end){
  const p=profile(uid),prefs=(await p.get()).data()||{},local=(await p.collection('entries').get()).docs.map(d=>({id:d.id,...d.data()}));
  const result=local.filter(e=>e.source==='local'&&!e.deleted&&Date.parse(e.start)<Date.parse(end)&&Date.parse(e.end)>Date.parse(start));
  const warnings=[];
- if(prefs.googleConnected){
+ if(prefs.googleConnected){try{
   const list=await calendars(uid);
   for(const c of list.filter(c=>(prefs.calendarIds||[]).includes(c.id))){
    let pageToken='';
@@ -63,7 +64,7 @@ async function events(uid,start,end){
     pageToken=data.nextPageToken||'';
    }while(pageToken);
   }
- }
+ }catch(e){warnings.push(e.message);}}
  return {events:result.sort((a,b)=>Date.parse(a.start)-Date.parse(b.start)),warnings};
 }
 async function targets(uid){
@@ -136,6 +137,7 @@ async function api(request){
   const event=validateEvent(data.event||{}),c=(await calendars(uid)).find(c=>c.id===data.calendarId);
   if(!c||!['owner','writer'].includes(c.accessRole))fail('此行事曆只有查看權限。','permission-denied');
   const body={summary:event.title,start:{dateTime:event.start,timeZone:'Asia/Taipei'},end:{dateTime:event.end,timeZone:'Asia/Taipei'}};
+  if(!data.googleId){if(!validId(data.requestId))fail('缺少新增操作編號。');body.id=hash(uid+'|'+data.requestId);}
   if(data.googleId&&!text(data.etag))fail('缺少版本資訊，請重新整理。');
   const raw=await google(uid,'calendars/'+encodeURIComponent(c.id)+'/events'+(data.googleId?'/'+encodeURIComponent(data.googleId):''),{method:data.googleId?'PATCH':'POST',headers:data.googleId?{'If-Match':data.etag}:{},body:JSON.stringify(body)});
   return {event:googleEvent(raw,c)};
@@ -207,7 +209,7 @@ async function reminders(){
      await ref.set({status:'sent',sentAt:Date.now(),leaseUntil:0},{merge:true});await doc.ref.set({lastSentAt:Date.now()},{merge:true});
     }catch(e){await ref.set({status:'failed',error:e.message,leaseUntil:0},{merge:true});throw e;}
    }
-   await doc.ref.set({lastReminderRun:Date.now(),lastReminderError:''},{merge:true});
+   await doc.ref.set({lastReminderRun:Date.now(),lastReminderError:list.warnings.join('；')},{merge:true});
   }catch(e){await doc.ref.set({lastReminderRun:Date.now(),lastReminderError:e.message},{merge:true});}
  }
 }
