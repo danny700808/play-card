@@ -893,8 +893,8 @@ function listingAutomationPolicy() {
     },
     momoCapacityRecovery: {
       enabled: true,
-      trigger: 'positive-stock-new-listing-and-active-count-at-capacity',
-      maximumListings: 1000,
+      trigger: 'explicit-platform-quota-error',
+      maximumListings: null,
       slotsPerParentListing: 1,
       checkBeforeFirstPublish: true,
       candidateMustBeActive: true,
@@ -905,7 +905,8 @@ function listingAutomationPolicy() {
       excludePendingOrders: true,
       preserveSoldOutListingsWithSales: true,
       preferExplicitLowPriorityThenZeroSalesThenOldestUpdate: true,
-      action: 'temporarily-downlist-one-safe-zero-stock-item',
+      action: 'keep-same-draft-pending-record-platform-error',
+      automaticUnrelatedDownlistingAllowed: false,
       neverDelete: true,
       verifyCandidateDownlistedAndSlotAvailableBeforePublish: true,
       resumeSamePreparedDraftAfterSlotRecovery: true,
@@ -1006,7 +1007,7 @@ function evaluateMomoPublishVerification(expected, observed) {
 function selectMomoCapacityRecoveryCandidate(listings, target, options = {}) {
   const rows = Array.isArray(listings) ? listings : [];
   const expected = target && typeof target === 'object' ? target : {};
-  const maximumListings = Math.max(1, Math.round(numberOrNull(options.maximumListings) || 1000));
+  const maximumListings = numberOrNull(options.maximumListings);
   const activeStatuses = new Set(['active', 'published', 'on-sale', 'onsale', '上架', '銷售中']);
   const targetStock = Math.max(0, Math.round(numberOrNull(expected.stock) || 0));
   const targetSku = normalizeSku(expected.sku);
@@ -1017,7 +1018,7 @@ function selectMomoCapacityRecoveryCandidate(listings, target, options = {}) {
   const explicitCount = numberOrNull(options.currentActiveCount);
   const currentActiveCount = explicitCount === null ? activeRows.length : Math.max(0, Math.round(explicitCount));
   const isNewListing = expected.isNewListing !== false && !targetListingIds.size;
-  const required = targetStock > 0 && isNewListing && currentActiveCount >= maximumListings;
+  const required = options.platformQuotaError === true && targetStock > 0 && isNewListing;
   if (!required) {
     return {
       required: false,
@@ -1028,6 +1029,13 @@ function selectMomoCapacityRecoveryCandidate(listings, target, options = {}) {
       reason: targetStock <= 0 ? 'target-has-no-stock'
         : !isNewListing ? 'existing-listing-does-not-require-new-slot' : 'capacity-available'
     };
+  }
+
+  if (options.allowOtherProductDownlist !== true) {
+    return { required: true, currentActiveCount, maximumListings, candidate: null,
+      action: 'keep-same-draft-pending-record-platform-error',
+      reason: 'explicit-platform-quota-error-no-unrelated-downlisting-authority',
+      neverDelete: true, resumeSamePreparedDraft: true };
   }
 
   const candidates = activeRows.map((row, index) => {
@@ -2519,13 +2527,14 @@ function buildPlatformPageContracts() {
         neverCreateReplacementDraft: true
       },
       listingQuotaRecovery: {
-        maximumListings: 1000,
+        maximumListings: null,
         triggerOnlyOnExplicitQuotaError: true,
         releaseExactlyOneSlotAtATime: true,
         candidateOrder: ['zero-stock-no-sales', 'zero-stock-low-sales'],
         preserveZeroStockHighSales: true,
         unknownSalesMeansPreserve: true,
-        action: 'temporarily-downlist-never-delete',
+        action: 'keep-same-draft-pending-record-platform-error',
+        automaticUnrelatedDownlistingAllowed: false,
         verifyCountDecrementBeforeRetry: true,
         retrySameDraftAfterSlotReleased: true
       },
@@ -2878,11 +2887,12 @@ function buildPreparedPlatformFieldPlan(snapshot) {
         warranty: { enabled: true, days: 180 },
         capacityGate: {
           enabled: true,
-          maximumListings: Number(snapshot.momoCatalogPolicy && snapshot.momoCatalogPolicy.maximumListings) || 1000,
+          maximumListings: null,
           targetStock: Math.max(0, Math.round(numberOrNull(snapshot.stock) || 0)),
           checkBeforeFirstPublish: true,
-          trigger: 'positive-stock-new-listing-and-active-count-at-capacity',
-          action: 'temporarily-downlist-one-safe-zero-stock-item',
+          trigger: 'explicit-platform-quota-error',
+          action: 'keep-same-draft-pending-record-platform-error',
+      automaticUnrelatedDownlistingAllowed: false,
           candidatePolicy: {
             activeAndZeroStockOnly: true,
             excludeCurrentSkuListingAndBatch: true,
@@ -3391,12 +3401,14 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       verification: 'save-reopen-confirm-image-before-publish'
     },
     momoCatalogPolicy: {
-      maximumListings: 1000,
-      targetListings: 1000,
+      maximumListings: null,
+      targetListings: null,
       reservedSlots: 0,
       targetMustHavePositiveStock: true,
       capacityCheckBeforeFirstPublish: true,
-      zeroStockAction: 'temporarily-downlist-one-safe-zero-stock-item-before-publish-when-at-capacity',
+      zeroStockAction: 'preserve-existing-listing',
+      requiresActualPlatformRestriction: true,
+      automaticUnrelatedDownlistingAllowed: false,
       candidateMustBeActiveAndZeroStock: true,
       excludeCurrentSkuListingAndBatch: true,
       excludeProtectedPinnedAndPendingOrderListings: true,
