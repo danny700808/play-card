@@ -8,7 +8,7 @@
  async function api(action,data={}){if(!call)throw Error('請先登入自己的管理者帳號。');return (await call({action,...data})).data;}
  function message(msg,error=false){$('status').textContent=msg;$('status').classList.toggle('error',error);}
  async function safely(fn,target='status'){try{await fn();}catch(e){if(target==='status')message(e.message,true);else $(target).textContent=e.message;}}
- function range(){return {start:new Date(S.month.getFullYear(),S.month.getMonth(),-6).toISOString(),end:new Date(S.month.getFullYear(),S.month.getMonth()+1,8).toISOString()};}
+ function range(){const first=new Date(S.month.getFullYear(),S.month.getMonth(),1),offset=(first.getDay()+6)%7;return {start:new Date(first.getFullYear(),first.getMonth(),1-offset).toISOString(),end:new Date(first.getFullYear(),first.getMonth(),43-offset).toISOString()};}
  async function refresh(){
   message('正在讀取行程…');S.status=await api('status');
   S.calendars=S.status.googleConnected?(await api('calendars').catch(()=>({calendars:[]}))).calendars:[];
@@ -23,7 +23,7 @@
   const first=new Date(y,m,1),offset=(first.getDay()+6)%7;
   for(let i=0;i<42;i++){const d=new Date(y,m,1-offset+i),next=new Date(y,m,2-offset+i),today=d.toDateString()===new Date().toDateString();
    const dayEvents=S.events.filter(e=>new Date(e.start)<next&&new Date(e.end)>d);
-   html+='<div class="day '+(d.getMonth()!==m?'outside':'')+'"><div class="dayHead"><span class="'+(today?'todayNumber':'')+'">'+d.getDate()+'</span><button data-date="'+local(new Date(d.setHours(9))).slice(0,10)+'" aria-label="新增 '+(m+1)+' 月 '+d.getDate()+' 日行程">＋</button></div>'+dayEvents.map(e=>'<button class="event '+(e.source==='google'?'shared ':'')+(e.completed?'done':'')+'" data-event="'+esc(e.id)+'">'+(e.allDay?'全天':new Date(e.start).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',hour12:false}))+' '+esc(e.title)+(e.remind?' 🔔':'')+'</button>').join('')+'</div>';
+   html+='<div class="day '+(d.getMonth()!==m?'outside':'')+'"><div class="dayHead"><span class="'+(today?'todayNumber':'')+'">'+d.getDate()+'</span><button data-date="'+local(new Date(d.setHours(9))).slice(0,10)+'" aria-label="新增 '+(d.getMonth()+1)+' 月 '+d.getDate()+' 日行程">＋</button></div>'+dayEvents.map(e=>'<button class="event '+(e.source==='google'?'shared ':'')+(e.completed?'done':'')+'" data-event="'+esc(e.id)+'">'+(e.allDay?'全天':new Date(e.start).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',hour12:false}))+' '+esc(e.title)+(e.remind?' 🔔':'')+'</button>').join('')+'</div>';
   }
   $('calendar').innerHTML=html;
   const rows=S.events.filter(e=>new Date(e.start).getMonth()===m&&new Date(e.start).getFullYear()===y);
