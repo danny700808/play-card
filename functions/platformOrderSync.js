@@ -1,5 +1,6 @@
 'use strict';
 const averageCostModel = require('./inventoryAverageCost');
+const shipmentPolicy = require('./orderShipmentPolicy');
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
@@ -21,7 +22,7 @@ const MOMO_ORDER_URL = 'https://api3p.momo.com.tw/VendorApi/OrderQuery';
 const MOMO_PRODUCT_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsQueryByMethod';
 const MOMO_STOCK_URL = 'https://api3p.momo.com.tw/VendorApi/GoodsStockModify';
 const COUPANG_HOST = 'https://api-gateway.coupang.com';
-const VERSION = '2026.07.18-easystore-cod-and-stable-order-date-v11';
+const VERSION = '2026.09.24-confirmed-shipment-cancellation-v12';
 const LOCK_MS = 20 * 60 * 1000;
 const DEFAULT_LOOKBACK_DAYS = 4;
 const DEFAULT_NET_RATE = 0.87;
@@ -248,17 +249,13 @@ const FULFILLMENT_EVIDENCE_KEYWORDS = [
 ];
 
 function hasFulfillmentEvidence(line) {
-  if (!line) return false;
-  if (parseDate(line.shippedAt) || parseDate(line.completedAt)) return true;
-  const text = [line.orderStatus, line.paymentStatus, line.note]
-    .map((value) => clean(value).toLowerCase()).join(' ');
-  return FULFILLMENT_EVIDENCE_KEYWORDS.some((keyword) => text.includes(keyword));
+  return shipmentPolicy.shipmentState(line) === 'shipped';
 }
 
 function orderLifecycle(line) {
-  const text = [line.orderStatus, line.paymentStatus, line.note]
+  const text = [line.orderStatus, line.paymentStatus, line.receiptStatus]
     .map((value) => clean(value).toLowerCase()).join(' ');
-  if (RETURN_REVIEW_KEYWORDS.some((keyword) => text.includes(keyword))) return 'return-candidate';
+  if (shipmentPolicy.isClaim(line)) return 'return-candidate';
   if (CANCELLED_ORDER_KEYWORDS.some((keyword) => text.includes(keyword))) return 'cancelled';
   const quantity = Math.round(Number(line.quantity || 0));
   const gross = Number(line.grossAmount || 0);
@@ -335,6 +332,15 @@ function normalizeLine(base) {
     currency: clean(base.currency) || 'TWD',
     orderStatus: clean(base.orderStatus),
     paymentStatus: clean(base.paymentStatus),
+    fulfillmentStatus: clean(base.fulfillmentStatus),
+    shippingStatus: clean(base.shippingStatus),
+    releaseStatus: clean(base.releaseStatus),
+    receiptStatus: clean(base.receiptStatus),
+    cancellationEventId: clean(base.cancellationEventId),
+    cancellationQuantity: numberOrNull(base.cancellationQuantity),
+    cancellationConfirmed: base.cancellationConfirmed === true,
+    confirmedUnshipped: base.confirmedUnshipped === true,
+    shipmentConfirmed: base.shipmentConfirmed === true,
     customerName: clean(base.customerName),
     note: clean(base.note),
     platformIds: base.platformIds && typeof base.platformIds === 'object' ? base.platformIds : {}
@@ -399,6 +405,19 @@ function lineWithExistingOrderDate(line, existing) {
   hydrated.lifecycle = isFreightLine(hydrated) ? 'freight' : orderLifecycle(hydrated);
   hydrated.validSale = validLine(hydrated);
   return hydrated;
+}
+
+function easyStoreShipmentFields(order) {
+  const fulfillments = Array.isArray(order.fulfillments) ? order.fulfillments : [];
+  const shipmentConfirmed = ['fulfilled','partial','partially_fulfilled'].includes(clean(order.fulfillment_status).toLowerCase()) || fulfillments.some(f => ['success','fulfilled','shipped','in_transit','delivered','customer_picked_up'].includes(clean(f.status).toLowerCase()));
+  const cancelled = !!parseDate(order.cancelled_at || order.canceled_at) || order.is_cancelled === true;
+  return {
+    fulfillmentStatus: clean(order.fulfillment_status),
+    shipmentConfirmed,
+    cancellationConfirmed: cancelled,
+    // Explicit full cancellation + complete empty fulfillment history, not merely an absent timestamp.
+    confirmedUnshipped: !shipmentConfirmed && (order.fulfillment_status === 'unfulfilled' || (cancelled && Array.isArray(order.fulfillments) && fulfillments.length === 0)),
+  };
 }
 
 async function fetchEasyStoreOrders(start, end, token) {
@@ -471,6 +490,7 @@ async function fetchEasyStoreOrders(start, end, token) {
           orderedAt,
           orderDateSource: 'easystore-created-at',
           paidAt: firstValue(order, ['paid_at', 'paidAt', 'payment_paid_at', 'processed_at']),
+          ...easyStoreShipmentFields(order),
           shippedAt: firstValue(order, ['shipped_at', 'fulfilled_at', 'fulfillment_at', 'shipment_at']),
           completedAt: firstValue(order, ['completed_at', 'closed_at', 'delivered_at']),
           settledAt: firstValue(order, ['settled_at', 'payout_at', 'paid_out_at', 'remitted_at']),
@@ -947,10 +967,27 @@ function summarizeCostLayers(layers) {
   };
 }
 
+async function recordClaimReview(ref, existing, line, runId, status) {
+  const merged=shipmentPolicy.mergeEvidence(existing,line);
+  await ref.set({
+    ...line,...resolvedOrderDateFields(existing,line),
+    ...(existing.inventoryApplied === true ? {quantity:existing.quantity,grossAmount:existing.grossAmount||0,costTotal:existing.costTotal||0} : {}),
+    shipmentConfirmed:merged.shipmentConfirmed,
+    processingStatus: existing.returnHandlingStatus==='completed' ? 'return-processed' : status,
+    processingError: status==='cancellation-review' ? '取消尚未確認或出貨資料不明，未自動回補庫存。' : '',
+    inventoryApplied:existing.inventoryApplied===true,
+    lastSeenAt:admin.firestore.FieldValue.serverTimestamp(),
+    firstSeenAt:existing.firstSeenAt||admin.firestore.FieldValue.serverTimestamp(),syncRunId:runId,version:VERSION
+  },{merge:true});
+  return {status:'return-review',lineId:line.id,productId:clean(existing.productId)};
+}
+
 async function reverseCancelledOrder(db, line, productMap, settings, runId, reason) {
   const orderRef = db.collection(ORDER_COLLECTION).doc(line.id);
   const preSnap = await orderRef.get();
   const pre = preSnap.exists ? preSnap.data() || {} : {};
+  const review = shipmentPolicy.decision(pre, line);
+  if (review !== 'reverse') return recordClaimReview(orderRef, pre, line, runId, review === 'manual-return-review' ? review : 'cancellation-review');
   if (pre.reversalApplied === true || pre.inventoryReversed === true) {
     await orderRef.set({
       ...line,
@@ -1006,6 +1043,11 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
       transaction.get(orderRef), transaction.get(productRef), transaction.get(originalInventoryRef)
     ]);
     const existing = orderSnap.exists ? orderSnap.data() || {} : {};
+    const decision = shipmentPolicy.decision(existing, line);
+    if (decision !== 'reverse' || existing.returnHandlingStatus === 'completed' || existing.returnInventoryApplied === true) {
+      transaction.set(orderRef, {shipmentConfirmed: shipmentPolicy.mergeEvidence(existing,line).shipmentConfirmed, processingStatus: existing.returnHandlingStatus === 'completed' ? 'return-processed' : 'cancellation-review', processingError:'出貨／退貨紀錄已變更，保留庫存等待確認。', syncRunId:runId}, {merge:true});
+      return {status:'return-review',lineId:line.id,productId};
+    }
     if (existing.reversalApplied === true || existing.inventoryReversed === true) {
       return { status: 'already-reversed', lineId: line.id, productId };
     }
@@ -1025,11 +1067,26 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
     }
     if (!productSnap.exists) throw new Error(`取消訂單回補失敗，中央商品不存在：${productId}`);
     const raw = productSnap.data() || {};
-    const quantity = Math.max(0, Math.round(Number(existing.quantity || line.quantity || 0)));
+    const originalQuantity = Math.max(0, Math.round(Number(existing.inventoryDeductedQuantity || existing.quantity || line.quantity || 0)));
+    const alreadyReturned = Math.max(0, Number(existing.cancellationRestockedQuantity || 0));
+    const eventId = clean(line.cancellationEventId) || 'full-order-cancellation';
+    const eventKey = stableId(eventId);
+    const events = {...(existing.cancellationRestockEvents || {})};
+    const requested = line.cancellationQuantity == null ? (line.cancellationEventId ? 0 : originalQuantity) : Math.round(Number(line.cancellationQuantity));
+    if (!(requested > 0) || requested > originalQuantity) {
+      transaction.set(orderRef,{processingStatus:'cancellation-review',processingError:'取消數量缺漏或大於原扣庫數量，未自動回補。',syncRunId:runId},{merge:true});
+      return {status:'return-review',lineId:line.id,productId};
+    }
+    const quantity = Math.min(originalQuantity-alreadyReturned,Math.max(0,requested-Number(events[eventKey]||0)));
+    if(quantity <= 0) return {status:'already-reversed',lineId:line.id,productId};
+    events[eventKey]=requested;
+    const totalReturned=alreadyReturned+quantity;
+    const fullyReversed=totalReturned>=originalQuantity;
     const before = Number(raw.currentStock || 0);
     const after = before + quantity;
     const originalInventory = originalInventorySnap.exists ? originalInventorySnap.data() || {} : {};
-    const cost = orderCostSnapshot(existing, originalInventory, raw, quantity);
+    const originalCost = orderCostSnapshot(existing, originalInventory, raw, originalQuantity);
+    const cost = {...originalCost,costTotal:originalQuantity>0 ? originalCost.costTotal*quantity/originalQuantity : 0};
     const unitCost = quantity > 0 && Number.isFinite(cost.costTotal) ? cost.costTotal / quantity : null;
     const layerSummary = averageCostModel.snapshot(raw,after);
     transaction.set(productRef, {
@@ -1045,18 +1102,26 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
     transaction.set(orderRef, {
       ...line,
       ...resolvedOrderDateFields(existing, line),
+      quantity: originalQuantity,
+      sku: clean(existing.sku || line.sku),
+      productName: clean(existing.productName || line.productName),
+      grossAmount: Number(existing.grossAmount || 0),
+      costTotal: Number(existing.costTotal || 0),
+      inventoryDeductedQuantity: originalQuantity,
+      cancellationRestockedQuantity: totalReturned,
+      cancellationRestockEvents: events,
       statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
       productId,
-      inventoryApplied: false,
-      inventoryReversed: true,
-      reversalApplied: true,
+      inventoryApplied: !fullyReversed,
+      inventoryReversed: fullyReversed,
+      reversalApplied: fullyReversed,
       reversalReason: clean(reason),
       reversalQuantity: quantity,
       reversalCostTotal: cost.costTotal,
       reversalCostEstimated: cost.estimated,
       inventoryBeforeReversal: before,
       inventoryAfterReversal: after,
-      processingStatus: 'inventory-reversed',
+      processingStatus: fullyReversed ? 'inventory-reversed' : 'cancellation-partial',
       processingError: '',
       missingFromPlatformCount: 0,
       reversedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1064,7 +1129,7 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
       syncRunId: runId,
       version: VERSION
     }, { merge: true });
-    transaction.set(reversalInventoryRef, {
+    transaction.set(db.collection(INVENTORY_COLLECTION).doc(`online_reversal_${line.id}_${totalReturned}`), {
       type: 'onlineCancellationReversal',
       platform: clean(line.platform || existing.platform),
       productId,
@@ -1092,6 +1157,12 @@ async function reverseCancelledOrder(db, line, productMap, settings, runId, reas
 
 async function applyOrderLine(db, line, productMap, settings, runId) {
   const orderRef = db.collection(ORDER_COLLECTION).doc(line.id);
+  const evidenceSnap = await orderRef.get();
+  const evidence = evidenceSnap.exists ? evidenceSnap.data() || {} : {};
+  const currentClaim = shipmentPolicy.isClaim(line);
+  const claimDecision = shipmentPolicy.decision(evidence,line);
+  line = {...line, shipmentConfirmed:shipmentPolicy.mergeEvidence(evidence,line).shipmentConfirmed};
+  if(currentClaim) line={...line,sku:line.sku||clean(evidence.sku),productName:line.productName||clean(evidence.productName)};
   if (line.hasOriginalOrderDate !== true) {
     const existingSnap = await orderRef.get();
     const existing = existingSnap.exists ? existingSnap.data() || {} : {};
@@ -1127,26 +1198,15 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
     }, { merge: true });
     return { status: 'ignored', lineId: line.id };
   }
-  if (lifecycle === 'return-candidate') {
+  if (currentClaim || lifecycle === 'return-candidate') {
     const existingSnap = await orderRef.get();
     const existing = existingSnap.exists ? existingSnap.data() || {} : {};
-    // 只要沒有出貨／配送／送達的證據，即使平台寫「退貨、退款」，也只是尚未成交的取消。
-    // 已經離開庫存的訂單才留給人工確認商品是否退回、要回補到哪一種庫存。
-    if (!hasFulfillmentEvidence(Object.assign({}, existing, line))) {
+    // Confirmed cancellation AND current unshipped evidence are both required.
+    // Historical shipment evidence is sticky and always requires manual receipt.
+    if (claimDecision === 'reverse') {
       return reverseCancelledOrder(db, line, productMap, settings, runId, '未出貨前取消／退款，不列為退貨');
     }
-    await orderRef.set({
-      ...line,
-      ...resolvedOrderDateFields(existing, line),
-      statusUpdatedAt: line.statusUpdatedAt ? admin.firestore.Timestamp.fromDate(line.statusUpdatedAt) : null,
-      processingStatus: existing.returnHandlingStatus === 'completed' ? 'return-processed' : (existing.inventoryApplied === true ? 'manual-return-review' : 'ignored-return'),
-      inventoryApplied: existing.inventoryApplied === true,
-      lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
-      firstSeenAt: existing.firstSeenAt || admin.firestore.FieldValue.serverTimestamp(),
-      syncRunId: runId,
-      version: VERSION
-    }, { merge: true });
-    return { status: existing.inventoryApplied === true ? 'return-review' : 'ignored', lineId: line.id, productId: clean(existing.productId) };
+    return recordClaimReview(orderRef,existing,line,runId,claimDecision);
   }
   if (lifecycle === 'cancelled' || !line.validSale) {
     return reverseCancelledOrder(db, line, productMap, settings, runId, clean(line.orderStatus || line.paymentStatus || line.note) || '平台顯示取消／未付款');
@@ -1192,6 +1252,11 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       transaction.get(orderRef), transaction.get(product.ref), transaction.get(inventoryRef)
     ]);
     const existing = orderSnap.exists ? orderSnap.data() || {} : {};
+    line={...line,shipmentConfirmed:shipmentPolicy.mergeEvidence(existing,line).shipmentConfirmed};
+    if(existing.reversalApplied===true || existing.inventoryReversed===true || Number(existing.cancellationRestockedQuantity)>0) {
+      transaction.set(orderRef,{shipmentConfirmed:line.shipmentConfirmed,lastSeenAt:admin.firestore.FieldValue.serverTimestamp(),syncRunId:runId},{merge:true});
+      return {status:'already-applied',lineId:line.id,productId:product.id};
+    }
     const raw = productSnap.exists ? productSnap.data() || {} : {};
     const previousInventory = inventorySnap.exists ? inventorySnap.data() || {} : {};
     // 所有目前仍有效、且尚未扣過中央庫存的訂單，都按正式訂單扣庫存。
@@ -1255,6 +1320,7 @@ async function applyOrderLine(db, line, productMap, settings, runId) {
       matchStatus: 'matched',
       processingStatus: applyInventoryNow ? 'inventory-applied' : 'dry-run',
       inventoryApplied: applyInventoryNow,
+      inventoryDeductedQuantity: applyInventoryNow ? line.quantity : 0,
       inventoryReversed: false,
       reversalApplied: false,
       reversalReason: '',
@@ -1336,42 +1402,14 @@ async function reconcileMissingPlatformOrders(db, lines, platformFetch, queryFro
       if (row.inventoryApplied !== true || row.reversalApplied === true || row.inventoryReversed === true) continue;
       if (clean(row.processingStatus) === 'manual-return-review') continue;
       const count = Math.max(0, Number(row.missingFromPlatformCount || 0)) + 1;
-      if (count < settings.missingBeforeReverse) {
-        await doc.ref.set({
-          processingStatus: 'missing-from-platform-review',
-          missingFromPlatformCount: count,
-          missingFromPlatformAt: admin.firestore.FieldValue.serverTimestamp(),
-          processingError: `平台成功同步但本次未再讀到此訂單；連續 ${settings.missingBeforeReverse} 次未出現才自動回補庫存。`,
-          syncRunId: runId,
-          version: VERSION
-        }, { merge: true });
-        output.reviewed += 1;
-        continue;
-      }
-      try {
-        const synthetic = normalizeLine({
-          ...row,
-          orderedAt,
-          orderStatus: clean(row.orderStatus) || 'missing-from-platform',
-          note: `連續 ${count} 次平台成功同步未再出現`,
-        });
-        synthetic.id = doc.id;
-        synthetic.lifecycle = 'cancelled';
-        synthetic.validSale = false;
-        const result = await reverseCancelledOrder(db, synthetic, productMap, settings, runId, `連續 ${count} 次平台成功同步未再出現，視為未成交／取消`);
-        if (result.status === 'reversed') {
-          output.reversed += 1;
-          if (result.productId) output.changedProductIds.add(result.productId);
-        } else if (result.status === 'reversal-error') output.errors += 1;
-      } catch (error) {
-        output.errors += 1;
-        await doc.ref.set({
-          processingStatus: 'reversal-error',
-          processingError: clean(error.message || error).slice(0, 800),
-          syncRunId: runId,
-          version: VERSION
-        }, { merge: true });
-      }
+      await doc.ref.set({
+        processingStatus: 'missing-from-platform-review',
+        missingFromPlatformCount: count,
+        missingFromPlatformAt: admin.firestore.FieldValue.serverTimestamp(),
+        processingError: '平台本次未回傳訂單；缺席不代表取消，未自動回補庫存。',
+        syncRunId: runId, version: VERSION
+      }, {merge:true});
+      output.reviewed += 1;
     }
   }
   return output;
@@ -2223,7 +2261,7 @@ async function runPlatformOrderSyncFromAgent(payload) {
     const unique = new Map();
     rawLines.forEach((row) => {
       const line = normalizeLine({ ...(row || {}), syncReferenceAt: queryToDate });
-      unique.set(line.id, line);
+      unique.set(line.id + (line.cancellationEventId ? ":claim:" + line.cancellationEventId : ""), line);
     });
     const lines = [...unique.values()];
     const products = await loadProducts(db);
@@ -2427,6 +2465,10 @@ function registerPlatformOrderSync(target) {
 module.exports = {
   registerPlatformOrderSync,
   _test: {
+    applyOrderLine,
+    reverseCancelledOrder,
+    reconcileMissingPlatformOrders,
+    easyStoreShipmentFields,
     validateAgentStateOperation,
     normalizeLine,
     validLine,

@@ -41,7 +41,7 @@ CACHE_DIR = ROOT / "cache"
 TEMP_DIR = ROOT / "temp"
 LOCK_PATH = CACHE_DIR / "agent_run.lock"
 TAIWAN_TZ = timezone(timedelta(hours=8))
-VERSION = "2026.09.17-signed-state-v1"
+VERSION = "2026.09.24-shipment-boundary-v2"
 
 for folder in (LOG_DIR, CACHE_DIR, TEMP_DIR):
     folder.mkdir(parents=True, exist_ok=True)
@@ -209,6 +209,15 @@ def convert_order_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "currency": clean(row.get("幣別")) or "TWD",
         "orderStatus": clean(row.get("訂單狀態")),
         "paymentStatus": clean(row.get("付款狀態")),
+        "fulfillmentStatus": clean(row.get("履行狀態")),
+        "shippingStatus": clean(row.get("配送狀態")),
+        "releaseStatus": clean(row.get("出貨標記")),
+        "receiptStatus": clean(row.get("退貨狀態")),
+        "cancellationEventId": clean(row.get("取消事件ID")),
+        "cancellationQuantity": integer(row.get("取消數量")) if clean(row.get("取消數量")) else None,
+        "cancellationConfirmed": row.get("取消已確認") is True,
+        "confirmedUnshipped": row.get("確定未出貨") is True,
+        "shipmentConfirmed": row.get("曾確認出貨") is True,
         "customerName": clean(row.get("買家/顧客")),
         "note": clean(row.get("備註")),
         "platformIds": {},
@@ -253,7 +262,7 @@ def fetch_orders(config: Dict[str, Any], logger: RunLogger) -> Tuple[List[Dict[s
     unique: Dict[str, Dict[str, Any]] = {}
     for line in lines:
         key = "|".join([
-            clean(line.get("platform")), clean(line.get("externalOrderId")), clean(line.get("externalLineId"))
+            clean(line.get("platform")), clean(line.get("externalOrderId")), clean(line.get("externalLineId")), clean(line.get("cancellationEventId"))
         ])
         unique[key] = line
     return list(unique.values()), platform_fetch, start_dt.isoformat(), end_dt.isoformat()

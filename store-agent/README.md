@@ -1,6 +1,8 @@
 # Store Windows agent: MOMO SKU price sync
 
-Install `youzi_sync_agent.py` and `momo_price_sync.py` beside the existing desktop agent's `config.json` and `lib` directory. Keep credentials and library files unchanged. Never put `config.json` in this repository.
+Install `youzi_sync_agent.py` and `momo_price_sync.py` beside the existing desktop agent's `config.json` and `lib` directory. Install the versioned `lib/order_source.py` as well. Keep credentials and `lib/inventory_source.py` unchanged. Never put `config.json` in this repository.
+
+Shipment boundary (2026-09-24): the bridge preserves confirmed shipment permanently. Only a completed cancellation with current unshipped evidence can restore inventory automatically. Shipped returns await manual receipt. Unknown state, a pending cancellation, or a missing platform order cannot restore stock. Coupang claim parsing reads item-level releaseStatus/cancelCount and preserves receiptId for idempotent partial cancellation. Claim createdAt must not replace the order date. Deploy the matching bridge before installing this agent. This change does not repair past stock movements.
 
 The product editor queues only changed platform prices. The bridge returns MOMO targets separately from Coupang targets for backward compatibility. The store agent uses the existing MOMO token and registered IP, queries the exact SKU, preserves its market price, submits `GoodsdtPriceModify` with Taiwan's current date, and queries the price again before reporting success. Missing market prices fail closed. The bridge rejects stale reports for prices changed while synchronization was running. Explicitly queued MOMO prices that failed are retried on the next sync.
 
