@@ -1,10 +1,10 @@
 name: Verify and Deploy Shared Work Calendar
 on:
   pull_request:
-    paths: ['functions/sharedCalendar*.js', 'tests/shared-calendar*.cjs', 'shared-calendar.*', 'private-calendar.*', 'shared-calendar-jobs.js', '.github/workflows/deploy-shared-calendar.yml']
+    paths: ['functions/courseLoginAuthV3.js', 'functions/sharedCalendar*.js', 'tests/shared-calendar*.cjs', 'shared-calendar.*', 'private-calendar.*', 'shared-calendar-jobs.js', '.github/workflows/deploy-shared-calendar.yml']
   push:
     branches: [main]
-    paths: ['functions/sharedCalendar*.js', '.github/workflows/deploy-shared-calendar.yml']
+    paths: ['functions/courseLoginAuthV3.js', 'functions/sharedCalendar*.js', '.github/workflows/deploy-shared-calendar.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -30,7 +30,7 @@ jobs:
           node --check shared-calendar.js
           node --check private-calendar.js
           node --check functions/index.js
-          node --test tests/private-calendar*.cjs tests/shared-calendar*.cjs tests/line-webhook-region.test.cjs
+          node --test tests/private-calendar*.cjs tests/shared-calendar*.cjs tests/line-webhook-region.test.cjs tests/course-login*.cjs
           git diff --check
       - name: Prepare configured deployment credentials
         if: github.event_name != 'pull_request'
@@ -57,7 +57,7 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/shared-calendar-service-account.json
-        run: firebase deploy --project youzi-c1b74 --non-interactive --only functions:sharedCalendarAccess,functions:sharedCalendarApi,functions:sharedCalendarReminders,functions:lineWebhook
+        run: firebase deploy --project youzi-c1b74 --non-interactive --only functions:sharedCalendarAccess,functions:sharedCalendarApi,functions:sharedCalendarReminders,functions:lineWebhook,functions:coursePortalLineLoginCallback
       - name: Verify unauthenticated requests cannot read shared data
         if: github.event_name != 'pull_request'
         run: |

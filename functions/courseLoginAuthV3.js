@@ -282,6 +282,7 @@ async function lineLoginCallback(req, res) {
   }
 
   const state = lineQueryValue(req, 'state');
+  if (state.startsWith('sc_')) return require('./sharedCalendar').lineCallback(req, res, {exchange:exchangeLineAuthorizationCode,profile:lineLoginProfile});
   const code = lineQueryValue(req, 'code');
   const providerError = lineQueryValue(req, 'error');
   const stateRef = state
@@ -478,5 +479,6 @@ function registerCourseLoginAuthV3(exportsObject) {
 }
 
 module.exports = {
-  registerCourseLoginAuthV3
+  registerCourseLoginAuthV3,
+  lineAuthorizationUrl
 };

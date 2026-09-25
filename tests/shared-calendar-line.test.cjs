@@ -14,6 +14,7 @@ test('Email is verified, throttled and selected only when LINE is not bound',asy
  await call('emailVerify',{code});assert.equal((await call('status')).myEmail,'test@example.test');await assert.rejects(call('emailVerify',{code}),/失效/);
  await core.api({data:{action:'save',calendarSession:'owner-secret',id:'email-task',assignedTo:m.memberId,event:event()}});
  const result=await core.api({data:{action:'publish',calendarSession:'owner-secret',id:'email-task'}});assert.equal(result.notification.sent,1);assert.equal(mail.at(-1).to,'test@example.test');assert.match(mail.at(-1).subject,/交辦/);
+ await assert.rejects(call('emailUnlink'),/先綁定 LINE/);f.rows.get('sharedCalendarMembers/'+m.memberId).lineUserId='U'+'c'.repeat(32);
  await call('emailUnlink');assert.equal((await call('status')).myEmail,'');
 });
 test('Email verification attempts are bounded and cannot survive membership reset',async()=>{

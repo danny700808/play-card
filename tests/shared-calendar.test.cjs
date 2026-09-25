@@ -1,6 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),crypto=require('crypto');
 const {createSharedAccess,hash}=require('../functions/sharedCalendarAccess');
+const {createSharedLogin}=require('../functions/sharedCalendarLogin');
 const {createSharedLine}=require('../functions/sharedCalendarLine');
 const {createSharedCore}=require('../functions/sharedCalendarCore');
 function database(initial){
@@ -12,23 +13,26 @@ function database(initial){
 }
 function setup(options={}){
  const f=database({'privateCalendarServer/access':{uid:'owner'},'employees/helper':{name:'Assistant',email:'fixture@example.test',accountStatus:'active',lineUserId:'U'+'b'.repeat(32)}}),sent=[],files=new Map();
- const auth=createSharedAccess({db:f.db,ownerSession:async token=>{if(token!=='owner-secret')throw Error('private denial');return {uid:'owner',createdAt:Date.now()};},verifier:options.verifier});
+ let passwordless;const mail=[];
+ const auth=createSharedAccess({passwordless:()=>passwordless,db:f.db,ownerSession:async token=>{if(token!=='owner-secret')throw Error('private denial');return {uid:'owner',createdAt:Date.now()};},verifier:options.verifier});
+ passwordless=createSharedLogin({db:f.db,auth,sendEmail:async(to,subject,text)=>mail.push({to,subject,text}),authorizationUrl:state=>'https://example.test/?state='+state});
  const lineBindings=createSharedLine({db:f.db,botId:async()=>'@fixture'});
  const core=createSharedCore({lineBindings,db:f.db,auth,bucket:()=>({file:p=>({save:async b=>files.set(p,b),download:async()=>[files.get(p)]})}),ownerLine:async()=>options.noOwnerLine?null:'U'+'a'.repeat(32),sendLine:async(to,message,key)=>{if(options.failSend)throw Error('temporary LINE failure');sent.push({to,message,key});}});
  const owner=(action,data={})=>core.api({data:{action,calendarSession:'owner-secret',...data}});
  const ar=(action,data={})=>auth.api({data:{action,...data},rawRequest:{ip:'test-'+(data.memberId||data.invite||action)}});
- async function join(name='Assistant'){const inv=await owner('invite',{name,contactKey:'employees/helper'}),invite=inv.url.split('#invite=')[1],login=await ar('activate',{invite,password:'long-fixture-password'});return {...login,invite,call:(action,data={})=>core.api({data:{action,teamSession:login.token,...data}})};}
- return {...f,auth,core,lineBindings,sent,files,owner,ar,join,options};
+ async function activate(invite,email=crypto.randomUUID()+'@example.test'){const verifier=crypto.randomBytes(32).toString('base64url'),r=await ar('emailLoginStart',{invite,email,challenge:hash(verifier)});return ar('loginRedeem',{ticket:r.ticket,verifier,code:mail.at(-1).text.match(/\d{6}/)[0]});}
+ async function join(name='Assistant'){const inv=await owner('invite',{name,contactKey:'employees/helper'}),invite=inv.url.split('#invite=')[1],login=await activate(invite);const row=f.rows.get('sharedCalendarMembers/'+login.memberId);row.email='';row.emailVerifiedAt=0;return {...login,invite,call:(action,data={})=>core.api({data:{action,teamSession:login.token,...data}})};}
+ return {...f,auth,core,lineBindings,passwordless,mail,sent,files,owner,ar,join,activate,options};
 }
 const event=()=>({title:'客人換吉他弦',note:'先確認客人需求',start:new Date(Date.now()+3600000).toISOString(),end:new Date(Date.now()+7200000).toISOString(),remind:true,reminderMinutes:10});
 test('single-use invitation creates separate member credentials; plaintext tokens are not stored',async()=>{
- const f=setup(),m=await f.join();assert.match(m.token,/^[\w-]{43}$/);assert.equal((await m.call('status')).me.role,'member');assert(!JSON.stringify([...f.rows.values()]).includes(m.token));await assert.rejects(f.ar('activate',{invite:m.invite,password:'long-fixture-password'}),/已使用/);await assert.rejects(m.call('invite',{name:'Other'}),/管理者/);
- const login=await f.ar('password',{memberId:m.memberId,password:'long-fixture-password'});assert.ok(login.token);await assert.rejects(f.ar('password',{memberId:m.memberId,password:'wrong'}),/密碼/);
+ const f=setup(),m=await f.join();assert.match(m.token,/^[\w-]{43}$/);assert.equal((await m.call('status')).me.role,'member');assert(!JSON.stringify([...f.rows.values()]).includes(m.token));await assert.rejects(f.activate(m.invite),/已使用/);await assert.rejects(m.call('invite',{name:'Other'}),/管理者/);
+ await assert.rejects(f.ar('password',{memberId:m.memberId,password:'long-fixture-password'}),/LINE 或 Email/);
 });
 test('expired, revoked, and reissued invites cannot activate; revocation invalidates existing sessions',async()=>{
- const f=setup(),inv=await f.owner('invite',{name:'Expired'}),token=inv.url.split('#invite=')[1];f.rows.get('sharedCalendarInvites/'+hash(token)).expiresAt=0;await assert.rejects(f.ar('activate',{invite:token,password:'long-fixture-password'}),/過期/);
+ const f=setup(),inv=await f.owner('invite',{name:'Expired'}),token=inv.url.split('#invite=')[1];f.rows.get('sharedCalendarInvites/'+hash(token)).expiresAt=0;await assert.rejects(f.activate(token),/過期/);
  const m=await f.join();await f.owner('revoke',{memberId:m.memberId});await assert.rejects(m.call('status'),/取消/);await assert.rejects(f.ar('password',{memberId:m.memberId,password:'long-fixture-password'}));
- const inv2=await f.owner('reinvite',{memberId:m.memberId});await assert.rejects(m.call('status'));const login=await f.ar('activate',{invite:inv2.url.split('#invite=')[1],password:'new-long-password'});assert.ok(login.token);
+ const inv2=await f.owner('reinvite',{memberId:m.memberId});await assert.rejects(m.call('status'));const login=await f.activate(inv2.url.split('#invite=')[1]);assert.ok(login.token);
 });
 test('member sees only created or assigned tasks; private API identity cannot be forged',async()=>{
  const f=setup(),a=await f.join('A'),b=await f.join('B');await a.call('save',{id:'a-task',event:event(),assignedTo:'owner',ownerUid:'forged',createdBy:'owner'});await a.call('publish',{id:'a-task'});
@@ -76,19 +80,17 @@ test('shared multiple reminder times are independent and never resent on repeate
 });
 test('member without LINE can activate, log in and notify a bound owner',async()=>{
  const f=setup(),inv=await f.owner('invite',{name:'Unbound member',contactKey:''});
- const joined=await f.ar('activate',{invite:inv.url.split('#invite=')[1],password:'long-fixture-password'});
- const login=await f.ar('password',{memberId:joined.memberId,password:'long-fixture-password'});
+ const login=await f.activate(inv.url.split('#invite=')[1]);
  const call=(action,data={})=>f.core.api({data:{action,teamSession:login.token,...data}});
  const status=await call('status');assert.equal(status.myLineReady,false);assert.equal(status.ownerLineReady,true);
  await call('save',{id:'unbound-member-task',assignedTo:'owner',event:event()});
  const r=await call('publish',{id:'unbound-member-task'});assert.equal(r.notification.sent,1);assert.equal(f.sent[0].to,'U'+'a'.repeat(32));
 });
 
-test('six-character passwords need no character mix; shorter passwords cannot consume invitation',async()=>{
- const f=setup(),inv=await f.owner('invite',{name:'Six character member'}),invite=inv.url.split('#invite=')[1];
- await assert.rejects(f.ar('activate',{invite,password:'12345'}),/6 個字元/);
- const joined=await f.ar('activate',{invite,password:'123456'});
- assert.ok((await f.ar('password',{memberId:joined.memberId,password:'123456'})).token);
+test('password activation is retired without consuming invitations',async()=>{
+ const f=setup(),inv=await f.owner('invite',{name:'Member'}),invite=inv.url.split('#invite=')[1];
+ await assert.rejects(f.ar('activate',{invite,password:'123456'}),/LINE 或 Email/);
+ assert.ok((await f.activate(invite)).token);
 });
 test('owner deletion clears member credentials and invitations while preserving recorded work',async()=>{
  const f=setup(),m=await f.join(),other=await f.join('Other');
@@ -134,6 +136,7 @@ test('LINE binding is single-use, member-version scoped and receives task remind
  await f.lineBindings.handle(evt(second),reply);assert.match(replies.at(-1),/失效/);
  const bStart=await b.call('lineStart');await f.lineBindings.handle(evt(bStart),reply);assert.match(replies.at(-1),/另一位/);
  await b.call('save',{id:'line-team',assignedTo:a.memberId,event:event()});await b.call('publish',{id:'line-team'});assert.equal(f.sent.at(-1).to,id);
+ await assert.rejects(a.call('lineUnlink'),/先綁定 Email/);f.rows.get('sharedCalendarMembers/'+a.memberId).emailVerifiedAt=Date.now();
  await a.call('lineUnlink');assert.equal((await a.call('status')).myLineReady,false);
  await f.lineBindings.handle(evt(bStart),reply);assert.match(replies.at(-1),/已綁定/);
  const stale=await b.call('lineStart');await f.owner('revoke',{memberId:b.memberId});await f.lineBindings.handle(evt(stale),reply);assert.match(replies.at(-1),/失效/);
