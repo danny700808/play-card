@@ -38,7 +38,7 @@ function createSharedCore({db,auth,bucket,ownerLine,sendLine}){
  async function api(request){
   const who=await auth.identity(request),d=request.data||{},action=d.action;
   if(action==='status'){
-   const list=(await members.where('ownerUid','==',who.ownerUid).get()).docs.map(cleanMember),ownerReady=!!await ownerLine(who.ownerUid);
+   const list=(await members.where('ownerUid','==',who.ownerUid).get()).docs.filter(d=>d.data().status!=='deleted').map(cleanMember),ownerReady=!!await ownerLine(who.ownerUid);
    return {me:{id:who.id,name:who.name,role:who.role},ownerLineReady:ownerReady,myLineReady:!!await lineFor(who.ownerUid,who.id),members:who.role==='owner'?list:list.filter(x=>x.id===who.id),assignees:[{id:'owner',name:'管理者'},...(who.role==='owner'?list.filter(x=>x.status==='active'):list.filter(x=>x.id===who.id&&x.status==='active'))]};
   }
   if(action==='contacts'){requireOwner(who);return {contacts:await contactChoices()};}
@@ -48,13 +48,24 @@ function createSharedCore({db,auth,bucket,ownerLine,sendLine}){
    await db.runTransaction(async tx=>{tx.create(members.doc(id),{ownerUid:who.ownerUid,name,contactKey,status:'invited',version,createdAt:Date.now()});tx.create(db.doc('sharedCalendarInvites/'+hash(token)),{ownerUid:who.ownerUid,memberId:id,version,expiresAt,used:false});});
    return {url:PAGE+'#invite='+token,expiresAt,memberId:id};
   }
+  if(action==='deleteMember'){
+   requireOwner(who);if(!validId(d.memberId))fail('成員編號無效。');
+   // A tombstone blocks old access immediately and allows cleanup retries.
+   await db.runTransaction(async tx=>{const ref=members.doc(d.memberId),m=(await tx.get(ref)).data();if(!m||m.ownerUid!==who.ownerUid)fail('成員不存在。');tx.set(ref,{ownerUid:who.ownerUid,name:m.name||'',status:'deleting',version:crypto.randomUUID()});});
+   for(const collection of ['sharedCalendarInvites','sharedCalendarSessions','sharedCalendarPasskeys','sharedCalendarChallenges']){
+    const docs=(await db.collection(collection).where('memberId','==',d.memberId).get()).docs;
+    for(let i=0;i<docs.length;i+=50)await Promise.all(docs.slice(i,i+50).map(doc=>doc.ref.delete()));
+   }
+   await members.doc(d.memberId).set({ownerUid:who.ownerUid,status:'deleted',deletedAt:Date.now()});
+   return {ok:true};
+  }
   if(action==='reinvite'){
    requireOwner(who);if(!validId(d.memberId))fail('成員編號無效。');const token=random(),version=crypto.randomUUID(),expiresAt=Date.now()+86400000;
-   await db.runTransaction(async tx=>{const ref=members.doc(d.memberId),m=(await tx.get(ref)).data();if(!m||m.ownerUid!==who.ownerUid)fail('成員不存在。');tx.update(ref,{version,status:'invited',passwordHash:'',passwordSalt:''});tx.create(db.doc('sharedCalendarInvites/'+hash(token)),{ownerUid:who.ownerUid,memberId:d.memberId,version,expiresAt,used:false});});return {url:PAGE+'#invite='+token,expiresAt};
+   await db.runTransaction(async tx=>{const ref=members.doc(d.memberId),m=(await tx.get(ref)).data();if(!m||m.ownerUid!==who.ownerUid||['deleted','deleting'].includes(m.status))fail('成員不存在。');tx.update(ref,{version,status:'invited',passwordHash:'',passwordSalt:''});tx.create(db.doc('sharedCalendarInvites/'+hash(token)),{ownerUid:who.ownerUid,memberId:d.memberId,version,expiresAt,used:false});});return {url:PAGE+'#invite='+token,expiresAt};
   }
   if(action==='revoke'||action==='memberLine'){
    requireOwner(who);if(!validId(d.memberId))fail('成員編號無效。');const key=text(d.contactKey);if(action==='memberLine'&&key&&!(await contactChoices()).some(c=>c.key===key))fail('LINE 綁定無效。');
-   await db.runTransaction(async tx=>{const ref=members.doc(d.memberId),m=(await tx.get(ref)).data();if(!m||m.ownerUid!==who.ownerUid)fail('成員不存在。');tx.update(ref,action==='revoke'?{status:'revoked',version:crypto.randomUUID()}: {contactKey:key});});return {ok:true};
+   await db.runTransaction(async tx=>{const ref=members.doc(d.memberId),m=(await tx.get(ref)).data();if(!m||m.ownerUid!==who.ownerUid||['deleted','deleting'].includes(m.status))fail('成員不存在。');tx.update(ref,action==='revoke'?{status:'revoked',version:crypto.randomUUID()}: {contactKey:key});});return {ok:true};
   }
   if(action==='list'){
    const start=Date.parse(d.start),end=Date.parse(d.end);if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start||end-start>100*86400000)fail('查詢範圍需在 100 天內。');

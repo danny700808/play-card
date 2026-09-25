@@ -88,3 +88,30 @@ test('six-character passwords need no character mix; shorter passwords cannot co
  const joined=await f.ar('activate',{invite,password:'123456'});
  assert.ok((await f.ar('password',{memberId:joined.memberId,password:'123456'})).token);
 });
+test('owner deletion clears member credentials and invitations while preserving recorded work',async()=>{
+ const f=setup(),m=await f.join(),other=await f.join('Other');
+ await m.call('save',{id:'kept-record',event:event()});await m.call('publish',{id:'kept-record'});
+ f.rows.set('sharedCalendarPasskeys/delete-test',{memberId:m.memberId,version:'old',publicKey:'fixture'});
+ f.rows.set('sharedCalendarChallenges/delete-test',{memberId:m.memberId,challenge:'fixture'});
+ await assert.rejects(other.call('deleteMember',{memberId:m.memberId}),/管理者/);
+ f.rows.set('sharedCalendarMembers/another-workspace',{ownerUid:'different',status:'active'});
+ await assert.rejects(f.owner('deleteMember',{memberId:'another-workspace'}),/不存在/);
+ await f.owner('deleteMember',{memberId:m.memberId});
+ const tombstone=f.rows.get('sharedCalendarMembers/'+m.memberId);assert.equal(tombstone.status,'deleted');assert.equal(tombstone.passwordHash,undefined);assert.equal(tombstone.name,undefined);assert.equal(tombstone.contactKey,undefined);
+ for(const [path,row] of f.rows)if(/^sharedCalendar(Invites|Sessions|Passkeys|Challenges)\//.test(path))assert.notEqual(row.memberId,m.memberId);
+ await assert.rejects(m.call('status'));await assert.rejects(f.ar('password',{memberId:m.memberId,password:'long-fixture-password'}));
+ await assert.rejects(f.owner('reinvite',{memberId:m.memberId}),/不存在/);
+ assert(!(await f.owner('status')).members.some(x=>x.id===m.memberId));
+ assert.equal((await f.owner('detail',{id:'kept-record'})).task.title,event().title);
+ assert.equal((await other.call('status')).me.id,other.memberId);
+ await f.owner('deleteMember',{memberId:m.memberId});
+ const inv=await f.owner('invite',{name:'Assistant'});assert.notEqual(inv.memberId,m.memberId);
+});
+test('failed deletion cleanup can be retried without restoring member access',async()=>{
+ const f=setup(),m=await f.join(),collection=f.db.collection;let failOnce=true;
+ f.db.collection=name=>{const q=collection(name);if(name==='sharedCalendarSessions'&&failOnce){q.where=()=>({get:async()=>{failOnce=false;throw Error('temporary cleanup failure');}});}return q;};
+ await assert.rejects(f.owner('deleteMember',{memberId:m.memberId}),/cleanup failure/);
+ await assert.rejects(m.call('status'));
+ await f.owner('deleteMember',{memberId:m.memberId});
+ assert(![...f.rows].some(([p,r])=>p.startsWith('sharedCalendarSessions/')&&r.memberId===m.memberId));
+});
