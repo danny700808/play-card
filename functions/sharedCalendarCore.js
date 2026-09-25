@@ -8,13 +8,13 @@ const canRead=(who,row)=>row&&row.ownerUid===who.ownerUid&&(who.role==='owner'||
 const canEdit=(who,row)=>canRead(who,row)&&(who.role==='owner'||row.createdBy===who.id);
 function reminderOffsets(e){const raw=e.reminderOffsets===undefined?[Number(e.reminderMinutes??10)]:e.reminderOffsets;if(!Array.isArray(raw)||raw.length>10||raw.some(n=>!Number.isInteger(n)||![0,5,10,30,60,120,180,1440,2880,4320].includes(n)))fail('提醒時間無效。');return [...new Set(raw)].sort((a,b)=>a-b);}
 function validateTask(input){const start=Date.parse(input.start),end=Date.parse(input.end);if(!text(input.title)||text(input.title).length>200||!Number.isFinite(start)||!Number.isFinite(end)||end<=start||end-start>31*86400000)fail('請填名稱及有效時間（每件最長 31 天）。','invalid-argument');const offsets=reminderOffsets(input),minutes=offsets[0]??60;if(input.remind===true&&!offsets.length)fail('請至少選擇一個提醒時間。');return {title:text(input.title),note:text(input.note).slice(0,12000),start:new Date(start).toISOString(),end:new Date(end).toISOString(),remind:input.remind===true,reminderMinutes:minutes,reminderOffsets:offsets};}
-function createSharedCore({db,auth,bucket,ownerLine,sendLine}){
+function createSharedCore({db,auth,bucket,ownerLine,sendLine,lineBindings,emailBindings,sendEmail}){
  const tasks=db.collection('sharedCalendarTasks'),members=db.collection('sharedCalendarMembers'),outbox=db.collection('sharedCalendarOutbox');
  const requireOwner=who=>{if(who.role!=='owner')fail('只有管理者能設定成員與通知。');};
- const cleanMember=d=>{const m=d.data();return {id:d.id,name:m.name,status:m.status,lineLinked:!!m.contactKey};};
+ const cleanMember=d=>{const m=d.data();return {id:d.id,name:m.name,status:m.status,lineLinked:!!(m.lineUserId||m.contactKey),emailLinked:!!m.emailVerifiedAt};};
  async function contactChoices(){const rows=[];for(const collection of ['employees','admins'])for(const d of (await db.collection(collection).get()).docs){const r=d.data(),line=text(r.lineUserId||r['LINE User ID']);if(activeContact(r)&&r.lineNotifyEnabled!==false&&/^U[0-9a-f]{32}$/i.test(line))rows.push({key:collection+'/'+d.id,name:text(r.name||r.displayName||r['姓名'])||d.id,masked:line.slice(0,5)+'…'+line.slice(-4)});}return rows;}
- async function lineFor(ownerUid,id){if(id==='owner')return ownerLine(ownerUid);const snap=await members.doc(id).get(),m=snap.data();if(!m||m.status!=='active'||m.ownerUid!==ownerUid||!/^((employees)|(admins))\/[^/]+$/.test(m.contactKey||''))return null;const r=(await db.doc(m.contactKey).get()).data();if(!r||!activeContact(r)||r.lineNotifyEnabled===false)return null;const line=text(r.lineUserId||r['LINE User ID']);return /^U[0-9a-f]{32}$/i.test(line)?line:null;}
- async function assigned(who,id){if(id==='owner')return {id,name:'管理者'};if(who.role!=='owner'&&id!==who.id)fail('成員只能交辦管理者或安排自己的工作。');const m=await auth.member(id);if(m.ownerUid!==who.ownerUid)fail('成員不屬於此工作區。');return {id,name:m.name};}
+ async function lineFor(ownerUid,id){if(id==='owner')return ownerLine(ownerUid);const snap=await members.doc(id).get(),m=snap.data();if(!m||m.status!=='active'||m.ownerUid!==ownerUid)return null;if(/^U[0-9a-f]{32}$/i.test(m.lineUserId||''))return m.lineUserId;if(!/^((employees)|(admins))\/[^/]+$/.test(m.contactKey||''))return null;const r=(await db.doc(m.contactKey).get()).data();if(!r||!activeContact(r)||r.lineNotifyEnabled===false)return null;const line=text(r.lineUserId||r['LINE User ID']);return /^U[0-9a-f]{32}$/i.test(line)?line:null;}
+ async function assigned(who,id){if(id==='owner')return {id,name:'管理者'};const m=await auth.member(id);if(m.ownerUid!==who.ownerUid)fail('成員不屬於此工作區。');return {id,name:m.name};}
  const audit=(tx,who,id,operation)=>tx.set(db.doc('sharedCalendarAudit/'+crypto.randomUUID()),{ownerUid:who.ownerUid,taskId:id,actorId:who.id,actorName:who.name,operation,at:Date.now()});
  function queue(tx,who,row,id,kind,to,key){if(!to||to===who.id)return null;const ref=outbox.doc(hash(key));tx.set(ref,{ownerUid:who.ownerUid,taskId:id,to,actorId:who.id,actorName:who.name,kind,title:row.title,start:row.start,taskVersion:row.scheduleVersion||0,key:crypto.randomUUID(),state:'pending',createdAt:Date.now(),attempts:0});return ref.id;}
  async function deliver(id){
@@ -26,12 +26,13 @@ function createSharedCore({db,auth,bucket,ownerLine,sendLine}){
    if(readable&&job.to!=='owner'){const m=(await members.doc(job.to).get()).data();readable=m?.status==='active'&&m.ownerUid===job.ownerUid&&(row.createdBy===job.to||row.assignedTo===job.to);}
    if(job.kind==='reminder')readable=readable&&row.remind&&!['done','cancelled'].includes(row.status)&&row.scheduleVersion===job.taskVersion&&row.assignedTo===job.to&&reminderOffsets(row).includes(job.reminderMinutes??row.reminderMinutes);
    if(!readable){await ref.set({state:'cancelled',leaseUntil:0},{merge:true});return;}
-   const target=await lineFor(job.ownerUid,job.to);if(!target)throw Error('尚未設定此收件人的有效 LINE 綁定。');
+   const target=await lineFor(job.ownerUid,job.to);let email='';if(!target&&job.to!=='owner'){const m=(await members.doc(job.to).get()).data();if(m?.status==='active'&&m.ownerUid===job.ownerUid&&m.emailVerifiedAt)email=m.email||'';}if(!target&&!email)throw Error('收件人尚未綁定 LINE 或驗證 Email。');
    const labels={assigned:'新交辦／內容更新',progress:'交辦進度更新',reminder:'工作時間提醒'};
    const targetPage=job.to==='owner'?PAGE.replace('shared-calendar.html','private-calendar.html'):PAGE;
    const suffix=job.to==='owner'?'?task=':'?member='+encodeURIComponent(job.to)+'&task=';
-   await sendLine(target,'🔔 '+labels[job.kind]+'\n'+job.title+'\n'+new Date(job.start).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+'\n'+job.actorName+' · '+({pending:'待處理',in_progress:'處理中',done:'已完成',cancelled:'已取消'}[row.status]||'待處理')+'\n查看截圖／錄音：\n'+targetPage+suffix+encodeURIComponent(job.taskId)+'&openExternalBrowser=1',job.key);
-   await ref.set({state:'sent',sentAt:Date.now(),leaseUntil:0,error:''},{merge:true});
+   const body='🔔 '+labels[job.kind]+'\n'+job.title+'\n'+new Date(job.start).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+'\n'+job.actorName+' · '+({pending:'待處理',in_progress:'處理中',done:'已完成',cancelled:'已取消'}[row.status]||'待處理')+'\n查看截圖／錄音：\n'+targetPage+suffix+encodeURIComponent(job.taskId)+'&openExternalBrowser=1';
+   if(target)await sendLine(target,body,job.key);else{if(!sendEmail)throw Error('Email 服務尚未啟用。');await sendEmail(email,labels[job.kind]+'：'+row.title,body);}
+   await ref.set({state:'sent',channel:target?'line':'email',sentAt:Date.now(),leaseUntil:0,error:''},{merge:true});
   }catch(e){await ref.set({state:'failed',leaseUntil:0,error:text(e.message).slice(0,400)},{merge:true});}
  }
  async function notifyResult(ids){for(const id of ids.filter(Boolean))await deliver(id);const states=await Promise.all(ids.filter(Boolean).map(async id=>(await outbox.doc(id).get()).data()));return {sent:states.filter(x=>x.state==='sent').length,pending:states.filter(x=>x.state!=='sent'&&x.state!=='cancelled').length};}
@@ -40,8 +41,11 @@ function createSharedCore({db,auth,bucket,ownerLine,sendLine}){
   const who=await auth.identity(request),d=request.data||{},action=d.action;
   if(action==='status'){
    const list=(await members.where('ownerUid','==',who.ownerUid).get()).docs.filter(d=>d.data().status!=='deleted').map(cleanMember),ownerReady=!!await ownerLine(who.ownerUid);
-   return {me:{id:who.id,name:who.name,role:who.role},ownerLineReady:ownerReady,myLineReady:!!await lineFor(who.ownerUid,who.id),members:who.role==='owner'?list:list.filter(x=>x.id===who.id),assignees:[{id:'owner',name:'管理者'},...(who.role==='owner'?list.filter(x=>x.status==='active'):list.filter(x=>x.id===who.id&&x.status==='active'))]};
+   const me=who.role==='member'?(await members.doc(who.id).get()).data():null;
+   return {me:{id:who.id,name:who.name,role:who.role},myEmail:me?.emailVerifiedAt?me.email:'',ownerLineReady:ownerReady,myLineReady:!!await lineFor(who.ownerUid,who.id),members:who.role==='owner'?list:list.filter(x=>x.id===who.id),assignees:[{id:'owner',name:'管理者'},...list.filter(x=>x.status==='active').map(x=>({id:x.id,name:x.name,lineLinked:x.lineLinked,emailLinked:x.emailLinked}))]};
   }
+  if(['emailStart','emailVerify','emailUnlink'].includes(action)){if(!emailBindings)fail('Email 尚未啟用。');return action==='emailStart'?emailBindings.start(who,d.email):action==='emailVerify'?emailBindings.verify(who,d.code):emailBindings.unlink(who);}
+  if(action==='lineStart'||action==='lineUnlink'){if(!lineBindings)fail('LINE 綁定尚未啟用。');return action==='lineStart'?lineBindings.start(who):lineBindings.unlink(who);}
   if(action==='contacts'){requireOwner(who);return {contacts:await contactChoices()};}
   if(action==='invite'){
    requireOwner(who);const name=text(d.name);if(!name||name.length>50)fail('請填成員姓名（50 字以內）。');const contactKey=text(d.contactKey);if(contactKey&&!(await contactChoices()).some(c=>c.key===contactKey))fail('請選擇有效的既有 LINE 綁定。');
@@ -53,7 +57,7 @@ function createSharedCore({db,auth,bucket,ownerLine,sendLine}){
    requireOwner(who);if(!validId(d.memberId))fail('成員編號無效。');
    // A tombstone blocks old access immediately and allows cleanup retries.
    await db.runTransaction(async tx=>{const ref=members.doc(d.memberId),m=(await tx.get(ref)).data();if(!m||m.ownerUid!==who.ownerUid)fail('成員不存在。');tx.set(ref,{ownerUid:who.ownerUid,name:m.name||'',status:'deleting',version:crypto.randomUUID()});});
-   for(const collection of ['sharedCalendarInvites','sharedCalendarSessions','sharedCalendarPasskeys','sharedCalendarChallenges']){
+   for(const collection of ['sharedCalendarInvites','sharedCalendarSessions','sharedCalendarPasskeys','sharedCalendarChallenges','sharedCalendarLineTickets','sharedCalendarLineOwners','sharedCalendarEmailTickets']){
     const docs=(await db.collection(collection).where('memberId','==',d.memberId).get()).docs;
     for(let i=0;i<docs.length;i+=50)await Promise.all(docs.slice(i,i+50).map(doc=>doc.ref.delete()));
    }
@@ -73,7 +77,7 @@ function createSharedCore({db,auth,bucket,ownerLine,sendLine}){
    const docs=(await tasks.where('ownerUid','==',who.ownerUid).get()).docs;
    return {tasks:docs.map(doc=>({id:doc.id,...doc.data()})).filter(row=>canRead(who,row)&&Date.parse(row.start)<end&&Date.parse(row.end)>start).sort((a,b)=>a.start.localeCompare(b.start))};
   }
-  if(action==='detail'){const row=await taskFor(who,d.id);const notices=(await outbox.where('taskId','==',d.id).get()).docs.map(x=>x.data()).filter(x=>x.ownerUid===who.ownerUid).map(x=>({kind:x.kind,state:x.state,at:x.sentAt||x.createdAt,error:x.error||''}));return {task:{id:d.id,...row},notifications:notices.slice(-12)};}
+  if(action==='detail'){const row=await taskFor(who,d.id);const notices=(await outbox.where('taskId','==',d.id).get()).docs.map(x=>x.data()).filter(x=>x.ownerUid===who.ownerUid).map(x=>({kind:x.kind,state:x.state,at:x.sentAt||x.createdAt,error:x.error||'',channel:x.channel||'line'}));return {task:{id:d.id,...row},notifications:notices.slice(-12)};}
   if(action==='save'){
    const event=validateTask(d.event||{}),person=await assigned(who,d.assignedTo||'owner');if(!validId(d.id))fail('缺少工作編號。');const ref=tasks.doc(d.id);
    await db.runTransaction(async tx=>{const old=(await tx.get(ref)).data();if(old&&!canEdit(who,old))fail('只有建立者或管理者能修改內容。');if(Number(d.revision||0)!==Number(old?.revision||0))fail('內容已被更新，請關閉後重新開啟。','aborted');const changed=!old||old.start!==event.start||JSON.stringify(reminderOffsets(old))!==JSON.stringify(event.reminderOffsets)||old.assignedTo!==person.id;tx.set(ref,{...event,ownerUid:who.ownerUid,assignedTo:person.id,assignedName:person.name,createdBy:old?.createdBy||who.id,createdName:old?.createdName||who.name,createdAt:old?.createdAt||Date.now(),updatedAt:Date.now(),updatedBy:who.id,status:old?.status||'pending',draft:old?old.draft:true,assets:old?.assets||[],revision:Number(old?.revision||0)+1,scheduleVersion:Number(old?.scheduleVersion||0)+(changed?1:0),publishedRevision:old?.publishedRevision||0});audit(tx,who,d.id,'save');});return {task:{id:d.id,...(await ref.get()).data()}};

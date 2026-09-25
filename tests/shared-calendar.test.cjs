@@ -1,22 +1,24 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),crypto=require('crypto');
 const {createSharedAccess,hash}=require('../functions/sharedCalendarAccess');
+const {createSharedLine}=require('../functions/sharedCalendarLine');
 const {createSharedCore}=require('../functions/sharedCalendarCore');
 function database(initial){
  const rows=new Map(Object.entries(structuredClone(initial)));let serial=Promise.resolve();
  const snap=p=>({id:p.split('/').at(-1),ref:ref(p),exists:rows.has(p),data:()=>structuredClone(rows.get(p))});
  const ref=p=>({path:p,id:p.split('/').at(-1),get:async()=>snap(p),set:async(v,o)=>rows.set(p,{...(o?.merge?rows.get(p):{}),...structuredClone(v)}),create:async v=>{if(rows.has(p))throw Error('exists');rows.set(p,structuredClone(v));},delete:async()=>rows.delete(p)});
  const query=(name,filters=[])=>({doc:id=>ref(name+'/'+id),where:(k,op,v)=>query(name,[...filters,[k,v]]),get:async()=>({docs:[...rows].filter(([p,r])=>p.startsWith(name+'/')&&p.split('/').length===name.split('/').length+1&&filters.every(([k,v])=>r[k]===v)).map(([p])=>snap(p))})});
- const db={doc:ref,collection:query,runTransaction(fn){const job=serial.then(async()=>{const writes=[];let writing=false;const tx={get:async r=>{assert(!writing,'Firestore reads must precede writes');return snap(r.path);},set:(r,v,o)=>{writing=true;writes.push(()=>rows.set(r.path,{...(o?.merge?rows.get(r.path):{}),...structuredClone(v)}));},update:(r,v)=>{writing=true;writes.push(()=>rows.set(r.path,{...rows.get(r.path),...structuredClone(v)}));},create:(r,v)=>{writing=true;assert(!rows.has(r.path));writes.push(()=>rows.set(r.path,structuredClone(v)));}};const result=await fn(tx);writes.forEach(f=>f());return result;});serial=job.catch(()=>{});return job;}};return {db,rows};
+ const db={doc:ref,collection:query,runTransaction(fn){const job=serial.then(async()=>{const writes=[];let writing=false;const tx={delete:r=>{writing=true;writes.push(()=>rows.delete(r.path));},get:async r=>{assert(!writing,'Firestore reads must precede writes');return snap(r.path);},set:(r,v,o)=>{writing=true;writes.push(()=>rows.set(r.path,{...(o?.merge?rows.get(r.path):{}),...structuredClone(v)}));},update:(r,v)=>{writing=true;writes.push(()=>rows.set(r.path,{...rows.get(r.path),...structuredClone(v)}));},create:(r,v)=>{writing=true;assert(!rows.has(r.path));writes.push(()=>rows.set(r.path,structuredClone(v)));}};const result=await fn(tx);writes.forEach(f=>f());return result;});serial=job.catch(()=>{});return job;}};return {db,rows};
 }
 function setup(options={}){
  const f=database({'privateCalendarServer/access':{uid:'owner'},'employees/helper':{name:'Assistant',email:'fixture@example.test',accountStatus:'active',lineUserId:'U'+'b'.repeat(32)}}),sent=[],files=new Map();
  const auth=createSharedAccess({db:f.db,ownerSession:async token=>{if(token!=='owner-secret')throw Error('private denial');return {uid:'owner',createdAt:Date.now()};},verifier:options.verifier});
- const core=createSharedCore({db:f.db,auth,bucket:()=>({file:p=>({save:async b=>files.set(p,b),download:async()=>[files.get(p)]})}),ownerLine:async()=>options.noOwnerLine?null:'U'+'a'.repeat(32),sendLine:async(to,message,key)=>{if(options.failSend)throw Error('temporary LINE failure');sent.push({to,message,key});}});
+ const lineBindings=createSharedLine({db:f.db,botId:async()=>'@fixture'});
+ const core=createSharedCore({lineBindings,db:f.db,auth,bucket:()=>({file:p=>({save:async b=>files.set(p,b),download:async()=>[files.get(p)]})}),ownerLine:async()=>options.noOwnerLine?null:'U'+'a'.repeat(32),sendLine:async(to,message,key)=>{if(options.failSend)throw Error('temporary LINE failure');sent.push({to,message,key});}});
  const owner=(action,data={})=>core.api({data:{action,calendarSession:'owner-secret',...data}});
  const ar=(action,data={})=>auth.api({data:{action,...data},rawRequest:{ip:'test-'+(data.memberId||data.invite||action)}});
  async function join(name='Assistant'){const inv=await owner('invite',{name,contactKey:'employees/helper'}),invite=inv.url.split('#invite=')[1],login=await ar('activate',{invite,password:'long-fixture-password'});return {...login,invite,call:(action,data={})=>core.api({data:{action,teamSession:login.token,...data}})};}
- return {...f,auth,core,sent,files,owner,ar,join,options};
+ return {...f,auth,core,lineBindings,sent,files,owner,ar,join,options};
 }
 const event=()=>({title:'客人換吉他弦',note:'先確認客人需求',start:new Date(Date.now()+3600000).toISOString(),end:new Date(Date.now()+7200000).toISOString(),remind:true,reminderMinutes:10});
 test('single-use invitation creates separate member credentials; plaintext tokens are not stored',async()=>{
@@ -30,7 +32,7 @@ test('expired, revoked, and reissued invites cannot activate; revocation invalid
 });
 test('member sees only created or assigned tasks; private API identity cannot be forged',async()=>{
  const f=setup(),a=await f.join('A'),b=await f.join('B');await a.call('save',{id:'a-task',event:event(),assignedTo:'owner',ownerUid:'forged',createdBy:'owner'});await a.call('publish',{id:'a-task'});
- assert.equal(f.rows.get('sharedCalendarTasks/a-task').createdBy,a.memberId);await assert.rejects(b.call('detail',{id:'a-task'}));await assert.rejects(b.call('save',{id:'a-task',revision:1,event:event()}));await assert.rejects(a.call('save',{id:'other',event:event(),assignedTo:b.memberId}));
+ assert.equal(f.rows.get('sharedCalendarTasks/a-task').createdBy,a.memberId);await assert.rejects(b.call('detail',{id:'a-task'}));await assert.rejects(b.call('save',{id:'a-task',revision:1,event:event()}));
  const span={start:new Date(Date.now()-86400000).toISOString(),end:new Date(Date.now()+86400000).toISOString()};assert.equal((await b.call('list',span)).tasks.length,0);assert.equal((await f.owner('list',span)).tasks.length,1);
  await assert.rejects(f.core.api({data:{action:'status',calendarSession:a.token}}));await assert.rejects(f.core.api({data:{action:'status',teamSession:'fake',role:'owner'}}));
 });
@@ -115,3 +117,26 @@ test('failed deletion cleanup can be retried without restoring member access',as
  await f.owner('deleteMember',{memberId:m.memberId});
  assert(![...f.rows].some(([p,r])=>p.startsWith('sharedCalendarSessions/')&&r.memberId===m.memberId));
 });
+test('members can assign active teammates while unrelated work remains private',async()=>{
+ const f=setup(),a=await f.join('A'),b=await f.join('B'),c=await f.join('C');
+ assert((await a.call('status')).assignees.some(x=>x.id===b.memberId));
+ await a.call('save',{id:'team-task',assignedTo:b.memberId,event:event()});await a.call('publish',{id:'team-task'});
+ assert.equal((await b.call('detail',{id:'team-task'})).task.createdBy,a.memberId);await assert.rejects(c.call('detail',{id:'team-task'}));
+ await f.owner('revoke',{memberId:b.memberId});await assert.rejects(a.call('save',{id:'inactive-target',assignedTo:b.memberId,event:event()}));
+});
+test('LINE binding is single-use, member-version scoped and receives task reminders',async()=>{
+ const f=setup(),a=await f.join('A'),b=await f.join('B'),replies=[],reply=async(_,t)=>replies.push(t),id='U'+'c'.repeat(32);
+ const first=await a.call('lineStart'),second=await a.call('lineStart');
+ const evt=r=>({source:{type:'user',userId:id},message:{text:decodeURIComponent(r.url.split('/?')[1])},replyToken:'fixture'});
+ await f.lineBindings.handle(evt(first),reply);assert.match(replies.at(-1),/失效/);
+ await f.lineBindings.handle({...evt(second),source:{type:'group',userId:id}},reply);assert.match(replies.at(-1),/私訊/);
+ await f.lineBindings.handle(evt(second),reply);assert.match(replies.at(-1),/已綁定/);assert.equal(f.rows.get('sharedCalendarMembers/'+a.memberId).lineUserId,id);
+ await f.lineBindings.handle(evt(second),reply);assert.match(replies.at(-1),/失效/);
+ const bStart=await b.call('lineStart');await f.lineBindings.handle(evt(bStart),reply);assert.match(replies.at(-1),/另一位/);
+ await b.call('save',{id:'line-team',assignedTo:a.memberId,event:event()});await b.call('publish',{id:'line-team'});assert.equal(f.sent.at(-1).to,id);
+ await a.call('lineUnlink');assert.equal((await a.call('status')).myLineReady,false);
+ await f.lineBindings.handle(evt(bStart),reply);assert.match(replies.at(-1),/已綁定/);
+ const stale=await b.call('lineStart');await f.owner('revoke',{memberId:b.memberId});await f.lineBindings.handle(evt(stale),reply);assert.match(replies.at(-1),/失效/);
+ await f.owner('deleteMember',{memberId:b.memberId});assert(![...f.rows].some(([p,r])=>/sharedCalendarLine(Tickets|Owners)\//.test(p)&&r.memberId===b.memberId));
+});
+module.exports={setup,event};

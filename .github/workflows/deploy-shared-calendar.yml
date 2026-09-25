@@ -1,7 +1,7 @@
 name: Verify and Deploy Shared Work Calendar
 on:
   pull_request:
-    paths: ['functions/sharedCalendar*.js', 'tests/shared-calendar*.cjs', 'shared-calendar.*', '.github/workflows/deploy-shared-calendar.yml']
+    paths: ['functions/sharedCalendar*.js', 'tests/shared-calendar*.cjs', 'shared-calendar.*', 'private-calendar.*', 'shared-calendar-jobs.js', '.github/workflows/deploy-shared-calendar.yml']
   push:
     branches: [main]
     paths: ['functions/sharedCalendar*.js', '.github/workflows/deploy-shared-calendar.yml']
@@ -28,13 +28,18 @@ jobs:
           NODE_PATH: functions/node_modules
         run: |
           node --check shared-calendar.js
-          node --test tests/shared-calendar.test.cjs tests/private-calendar-access.test.cjs tests/private-calendar.test.cjs tests/private-calendar-entry.test.cjs
+          node --check private-calendar.js
+          node --check functions/index.js
+          node --test tests/private-calendar*.cjs tests/shared-calendar*.cjs tests/line-webhook-region.test.cjs
           git diff --check
       - name: Prepare configured deployment credentials
         if: github.event_name != 'pull_request'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/shared-calendar-service-account.json
         run: |
           node - <<'NODE'
@@ -42,15 +47,17 @@ jobs:
           if(!process.env.FIREBASE_SERVICE_ACCOUNT)throw Error('Firebase deployment credential is not configured');
           if(!process.env.LINE_CHANNEL_ACCESS_TOKEN)throw Error('LINE_CHANNEL_ACCESS_TOKEN is not configured; stopping instead of deploying broken notifications');
           fs.writeFileSync(process.env.SERVICE_ACCOUNT_PATH,process.env.FIREBASE_SERVICE_ACCOUNT,{mode:0o600});
-          fs.writeFileSync('functions/.env','LINE_CHANNEL_ACCESS_TOKEN='+JSON.stringify(process.env.LINE_CHANNEL_ACCESS_TOKEN)+'\n',{mode:0o600});
+          if(!process.env.GMAIL_USER||!process.env.GMAIL_APP_PASSWORD)throw Error('Gmail reminder configuration missing');
+          const settings={LINE_CHANNEL_ACCESS_TOKEN:process.env.LINE_CHANNEL_ACCESS_TOKEN,GMAIL_USER:process.env.GMAIL_USER,GMAIL_APP_PASSWORD:process.env.GMAIL_APP_PASSWORD,EMAIL_FROM:process.env.EMAIL_FROM||'',PUBLIC_WEB_BASE_URL:'https://danny700808.github.io/play-card/',LINE_LOGIN_CALLBACK_URL:'https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback'};
+          fs.writeFileSync('functions/.env',Object.entries(settings).map(([k,v])=>k+'='+JSON.stringify(v)).join('\n')+'\n',{mode:0o600});
           NODE
       - if: github.event_name != 'pull_request'
         run: npm install --global firebase-tools@15.24.0
-      - name: Deploy only the three new shared calendar endpoints
+      - name: Deploy shared calendar and the LINE binding handler
         if: github.event_name != 'pull_request'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/shared-calendar-service-account.json
-        run: firebase deploy --project youzi-c1b74 --non-interactive --only functions:sharedCalendarAccess,functions:sharedCalendarApi,functions:sharedCalendarReminders
+        run: firebase deploy --project youzi-c1b74 --non-interactive --only functions:sharedCalendarAccess,functions:sharedCalendarApi,functions:sharedCalendarReminders,functions:lineWebhook
       - name: Verify unauthenticated requests cannot read shared data
         if: github.event_name != 'pull_request'
         run: |
