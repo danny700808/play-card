@@ -2,7 +2,7 @@
 process.env.TZ='Asia/Taipei';
 const test=require('node:test'),assert=require('node:assert/strict'),{hourRanges,agendaEvents,saveJobs}=require('../private-calendar-hours');
 test('month list hides ended events including earlier today and keeps ongoing and future events',()=>{
- const events=[{id:'past',start:'2026-09-24T09:00:00+08:00',end:'2026-09-25T00:00:00+08:00'},{id:'today',start:'2026-09-25T08:00:00+08:00',end:'2026-09-25T09:00:00+08:00'},{id:'ongoing',start:'2026-08-31T00:00:00+08:00',end:'2026-09-26T00:00:00+08:00'},{id:'future',start:'2026-09-29T09:00:00+08:00',end:'2026-09-29T10:00:00+08:00'},{id:'next',start:'2026-10-01T09:00:00+08:00',end:'2026-10-01T10:00:00+08:00'}];
+ const events=[{id:'done',completed:true,start:'2026-09-28T09:00:00+08:00',end:'2026-09-28T10:00:00+08:00'},{id:'past',start:'2026-09-24T09:00:00+08:00',end:'2026-09-25T00:00:00+08:00'},{id:'today',start:'2026-09-25T08:00:00+08:00',end:'2026-09-25T09:00:00+08:00'},{id:'ongoing',start:'2026-08-31T00:00:00+08:00',end:'2026-09-26T00:00:00+08:00'},{id:'future',start:'2026-09-29T09:00:00+08:00',end:'2026-09-29T10:00:00+08:00'},{id:'next',start:'2026-10-01T09:00:00+08:00',end:'2026-10-01T10:00:00+08:00'}];
  assert.deepEqual(agendaEvents(events,new Date('2026-09-01'),new Date('2026-09-25T15:00:00+08:00')).map(x=>x.id),['ongoing','future']);
  assert.deepEqual(agendaEvents(events,new Date('2026-08-01'),new Date('2026-09-25')).map(x=>x.id),[]);
  assert.deepEqual(agendaEvents(events,new Date('2026-10-01'),new Date('2026-09-25')).map(x=>x.id),['next']);

@@ -11,7 +11,7 @@
  function agendaEvents(events,month,now=new Date()){
   const first=new Date(month.getFullYear(),month.getMonth(),1),end=new Date(month.getFullYear(),month.getMonth()+1,1);
   const cutoff=new Date(Math.max(first.getTime(),new Date(now).getTime()));if(cutoff>=end)return [];
-  return events.filter(e=>new Date(e.start)<end&&new Date(e.end)>cutoff).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));
+  return events.filter(e=>!e.completed&&new Date(e.start)<end&&new Date(e.end)>cutoff).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));
  }
  async function saveJobs(jobs,api,progress=()=>{}){
   for(let index=0;index<jobs.length;index++){
