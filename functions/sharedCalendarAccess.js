@@ -31,7 +31,7 @@ function createSharedAccess({db,ownerSession,verifier=webauthn}){
   if(action==='logout'){if(validToken(d.teamSession))await db.doc('sharedCalendarSessions/'+hash(d.teamSession)).delete();return {ok:true};}
   await throttle(request,'access',80);
   if(action==='activate'){
-   await throttle(request,'password',8);if(!validToken(d.invite)||typeof d.password!=='string'||d.password.length<10||d.password.length>128)fail('邀請無效，或密碼未滿 10 個字元。','invalid-argument');
+   await throttle(request,'password',8);if(!validToken(d.invite)||typeof d.password!=='string'||d.password.length<6||d.password.length>128)fail('邀請無效，或密碼未滿 6 個字元。','invalid-argument');
    const salt=random(),passwordHash=(await scrypt(d.password,salt,64)).toString('hex'),ref=db.doc('sharedCalendarInvites/'+hash(d.invite)),uid=await ownerUid();let activated;
    await db.runTransaction(async tx=>{const invite=(await tx.get(ref)).data();if(!invite||invite.used||invite.expiresAt<Date.now()||invite.ownerUid!==uid)fail('邀請已使用或過期，請管理者重新邀請。');const mr=memberRef(invite.memberId),m=(await tx.get(mr)).data();if(!m||m.status!=='invited'||m.version!==invite.version||m.ownerUid!==uid)fail('邀請已撤銷。');activated={...m,id:invite.memberId,status:'active'};tx.update(ref,{used:true});tx.update(mr,{status:'active',passwordSalt:salt,passwordHash,activatedAt:Date.now()});});
    return issue(activated);
