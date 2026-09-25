@@ -4,8 +4,9 @@
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const local=d=>{const date=new Date(d);return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);};
  const stamp=d=>new Date(d).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
- let call;
- async function api(action,data={}){if(!call)throw Error('請先登入自己的管理者帳號。');return (await call({action,...data})).data;}
+ let call,accessCall;
+ let calendarSession=sessionStorage.getItem("youziCalendarSession")||"";
+ async function api(action,data={}){if(!call)throw Error('請稍候再試。');try{return (await call({action,...data,...(calendarSession?{calendarSession}:{})})).data;}catch(e){if(e.code==='functions/unauthenticated')showGate(e.message);throw e;}}
  function message(msg,error=false){$('status').textContent=msg;$('status').hidden=!msg;$('status').classList.toggle('error',error);}
  async function safely(fn,target='status'){try{await fn();}catch(e){if(target==='status')message(e.message,true);else $(target).textContent=e.message;}}
  function range(){const first=new Date(S.month.getFullYear(),S.month.getMonth(),1),offset=(first.getDay()+6)%7;return {start:new Date(first.getFullYear(),first.getMonth(),1-offset).toISOString(),end:new Date(first.getFullYear(),first.getMonth(),43-offset).toISOString()};}
@@ -130,11 +131,28 @@
  for(const [id,n] of [['previous',-1],['next',1]])$(id).onclick=()=>safely(async()=>{S.month=new Date(S.month.getFullYear(),S.month.getMonth()+n,1);S.selected=dayKey(S.month);await refresh();});
  $('today').onclick=()=>safely(async()=>{S.month=new Date();S.selected=dayKey(S.month);await refresh();});$('refresh').onclick=()=>safely(refresh);
  $('monthView').onclick=()=>{$('monthPanel').hidden=false;$('agenda').hidden=true;$('monthView').setAttribute('aria-pressed','true');$('listView').setAttribute('aria-pressed','false');};$('listView').onclick=()=>{$('monthPanel').hidden=true;$('agenda').hidden=false;$('monthView').setAttribute('aria-pressed','false');$('listView').setAttribute('aria-pressed','true');};
+ function showGate(msg='請用 Face ID 或專用密碼進入。'){
+  calendarSession='';sessionStorage.removeItem('youziCalendarSession');$('calendarWorkspace').hidden=true;$('calendarGate').hidden=false;$('settingsButton').hidden=true;$('editor').close();$('settings').close();cleanup();S.events=[];$('calendar').innerHTML='';$('agenda').innerHTML='';$('dayEvents').innerHTML='';$('loginMessage').textContent=msg;
+ }
+ async function access(action,data={}){if(!accessCall)throw Error('登入服務尚在載入，請稍後再試。');return (await accessCall({action,...data,...(calendarSession?{calendarSession}:{})})).data;}
+ async function openCalendar(result){
+  if(result?.token){calendarSession=result.token;sessionStorage.setItem('youziCalendarSession',calendarSession);}
+  await refresh();$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;$('newButton').disabled=false;$('newDay').disabled=false;
+  const id=new URLSearchParams(location.search).get('event');if(id){let row=S.events.find(e=>e.id===id);if(!row)row=(await api('detail',{id})).event;if(row)showEditor(row);}
+ }
+ async function loginTask(fn){$('faceLogin').disabled=true;$('passwordLogin').disabled=true;$('loginMessage').textContent='正在驗證…';try{await fn();}catch(e){$('loginMessage').textContent=e.name==='NotAllowedError'?'尚未完成 Face ID，可重試或改用專用密碼。':e.message;$('passwordFallback').open=true;}finally{$('faceLogin').disabled=false;$('passwordLogin').disabled=false;}}
+ $('faceLogin').onclick=()=>loginTask(async()=>{
+  if(!window.PublicKeyCredential)throw Error('此瀏覽器不支援通行密鑰，請改用 Safari 或專用密碼。');
+  const c=await access('authenticationOptions'),response=await SimpleWebAuthnBrowser.startAuthentication({optionsJSON:c.options});await openCalendar(await access('authenticationVerify',{ticket:c.ticket,response}));
+ });
+ $('passwordForm').onsubmit=e=>{e.preventDefault();loginTask(async()=>{const password=$('calendarPassword').value;$('calendarPassword').value='';await openCalendar(await access('password',{password}));});};
+ $('enrollFace').onclick=async()=>{const b=$('enrollFace');b.disabled=true;try{
+  if(!window.PublicKeyCredential)throw Error('請在支援 Face ID 的 iPhone Safari 開啟此頁。');
+  const c=await access('registrationOptions'),response=await SimpleWebAuthnBrowser.startRegistration({optionsJSON:c.options});await access('registrationVerify',{ticket:c.ticket,response});message('通行密鑰已啟用，下次可用 Face ID／裝置驗證進入。');
+ }catch(e){message(e.name==='NotAllowedError'?'尚未完成手機驗證，仍可使用專用密碼。':e.message,true);}finally{b.disabled=false;}};
+ $('lockCalendar').onclick=async()=>{try{await access('logout');showGate();}catch(e){message('鎖定未完成，請重試。'+e.message,true);}};
  firebase.initializeApp(APP_CONFIG.FIREBASE_CONFIG);
- firebase.auth().onAuthStateChanged(user=>safely(async()=>{
-  if(!user){message('請先登入主系統，再回來開啟私人行事曆。');$('connection').hidden=false;$('connection').innerHTML='<a href="login.html?next=private-calendar.html">前往登入</a>';return;}
-  if(user.email?.toLowerCase()!=='danny700808@gmail.com')throw Error('這個試用版只開放你的管理者帳號。');
-  call=firebase.app().functions('asia-east1').httpsCallable('privateCalendarApi',{timeout:120000});await refresh();$('newButton').disabled=false;$('newDay').disabled=false;
-  const id=new URLSearchParams(location.search).get('event');if(id){let row=S.events.find(e=>e.id===id);if(!row){const detail=await api('detail',{id});row=detail.event;}if(row)showEditor(row);}
- }));
+ call=firebase.app().functions('asia-east1').httpsCallable('privateCalendarApi',{timeout:120000});
+ accessCall=firebase.app().functions('asia-east1').httpsCallable('privateCalendarAccess',{timeout:60000});
+ firebase.auth().onAuthStateChanged(()=>{if(calendarSession)openCalendar().catch(e=>showGate(e.message));});
 })();

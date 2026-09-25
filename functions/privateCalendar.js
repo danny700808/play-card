@@ -6,6 +6,7 @@ const {onSchedule}=require('firebase-functions/v2/scheduler');
 const storage=require('./storageRouting');
 if(!admin.apps.length)admin.initializeApp();
 const db=admin.firestore();
+const privateAccess=require('./privateCalendarAccess').createAccess(db);
 const OWNER='danny700808@gmail.com', REGION='asia-east1';
 const PAGE='https://danny700808.github.io/play-card/private-calendar.html';
 const CALLBACK='https://asia-east1-youzi-c1b74.cloudfunctions.net/privateCalendarGoogleCallback';
@@ -82,7 +83,7 @@ async function sendLine(to,message,retryKey){
  if(!res.ok&&!(res.status===409&&res.headers.get('x-line-accepted-request-id')))throw new Error('LINE 發送失敗（'+res.status+'）');
 }
 async function api(request){
- const uid=owner(request),data=request.data||{},p=profile(uid),action=data.action;
+ const uid=request.data?.calendarSession?await privateAccess.authorize(request):owner(request),data=request.data||{},p=profile(uid),action=data.action;
  if(action==='status'){
   const prefs=(await p.get()).data()||{},cfg=await configuration(),dest=await targets(uid);
   return {googleConfigured:!!(cfg.clientId&&cfg.clientSecret),googleConnected:!!prefs.googleConnected,googleEmail:prefs.googleEmail||'',googleError:prefs.googleError||'',calendarIds:prefs.calendarIds||[],lineEnabled:!!prefs.lineEnabled,lineConfigured:!!process.env.LINE_CHANNEL_ACCESS_TOKEN,targets:dest.map(t=>({key:hash(t.id),name:t.name,masked:t.id.slice(0,5)+'…'+t.id.slice(-4)})),targetKey:prefs.targetKey||'',callback:CALLBACK,lastReminderRun:prefs.lastReminderRun||null,lastReminderError:prefs.lastReminderError||'',lastSentAt:prefs.lastSentAt||null};
@@ -213,5 +214,5 @@ async function reminders(){
   }catch(e){await doc.ref.set({lastReminderRun:Date.now(),lastReminderError:e.message},{merge:true});}
  }
 }
-function register(exports){exports.privateCalendarApi=onCall({region:REGION,timeoutSeconds:120,memory:'512MiB',maxInstances:5},api);exports.privateCalendarGoogleCallback=onRequest({region:REGION,timeoutSeconds:60,maxInstances:3},callback);exports.privateCalendarReminders=onSchedule({schedule:'every 1 minutes',timeZone:'Asia/Taipei',region:REGION,timeoutSeconds:120,maxInstances:1},reminders);}
+function register(exports){exports.privateCalendarAccess=onCall({region:REGION,timeoutSeconds:60,memory:'256MiB',maxInstances:3},privateAccess.api);exports.privateCalendarApi=onCall({region:REGION,timeoutSeconds:120,memory:'512MiB',maxInstances:5},api);exports.privateCalendarGoogleCallback=onRequest({region:REGION,timeoutSeconds:60,maxInstances:3},callback);exports.privateCalendarReminders=onSchedule({schedule:'every 1 minutes',timeZone:'Asia/Taipei',region:REGION,timeoutSeconds:120,maxInstances:1},reminders);}
 module.exports={register,_test:{owner,validateEvent,googleEvent,due,deliveryId,validId,currentReminder,api,callback}};
