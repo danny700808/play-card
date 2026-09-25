@@ -72,3 +72,12 @@ test('shared multiple reminder times are independent and never resent on repeate
  assert.equal(new Set(f.sent.map(x=>x.key)).size,f.sent.length);assert.deepEqual(f.rows.get('sharedCalendarTasks/multi').reminderOffsets,[60,120,180]);
  await assert.rejects(f.owner('save',{id:'invalid',event:{...e,reminderOffsets:[999]},assignedTo:m.memberId}));
 });
+test('member without LINE can activate, log in and notify a bound owner',async()=>{
+ const f=setup(),inv=await f.owner('invite',{name:'Unbound member',contactKey:''});
+ const joined=await f.ar('activate',{invite:inv.url.split('#invite=')[1],password:'long-fixture-password'});
+ const login=await f.ar('password',{memberId:joined.memberId,password:'long-fixture-password'});
+ const call=(action,data={})=>f.core.api({data:{action,teamSession:login.token,...data}});
+ const status=await call('status');assert.equal(status.myLineReady,false);assert.equal(status.ownerLineReady,true);
+ await call('save',{id:'unbound-member-task',assignedTo:'owner',event:event()});
+ const r=await call('publish',{id:'unbound-member-task'});assert.equal(r.notification.sent,1);assert.equal(f.sent[0].to,'U'+'a'.repeat(32));
+});
