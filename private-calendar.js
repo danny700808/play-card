@@ -31,42 +31,42 @@
    html+='<button class="miniDay '+(d.getMonth()!==m?'outside ':'')+(today?'isToday ':'')+(key===S.selected?'selected':'')+'" data-day="'+key+'" aria-pressed="'+(key===S.selected)+'" '+(today?'aria-current="date" ':'')+'aria-label="'+(d.getMonth()+1)+' 月 '+d.getDate()+' 日，'+rows.length+' 件事情"><span class="dateNumber">'+d.getDate()+'</span><span class="dayDots" aria-hidden="true">'+colors.map(c=>'<i style="background:'+c+'"></i>').join('')+'</span></button>';
   }
   $('calendar').innerHTML=html;renderDay();
-  const rows=S.events.filter(e=>new Date(e.start).getMonth()===m&&new Date(e.start).getFullYear()===y).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));
-  $('agenda').innerHTML=rows.length?eventRows(rows):'<p>這個月還沒有行程。</p>';
+  const todayStart=new Date();todayStart.setHours(0,0,0,0);const currentMonth=y===todayStart.getFullYear()&&m===todayStart.getMonth();
+  const rows=S.events.filter(e=>new Date(e.start).getMonth()===m&&new Date(e.start).getFullYear()===y&&(!currentMonth||new Date(e.end)>todayStart)).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));
+  $('agenda').innerHTML=rows.length?eventRows(rows):'<p>'+ (currentMonth?'本月今天之後沒有行程。':'這個月還沒有行程。')+'</p>';
  }
  function cleanup(){S.urls.forEach(URL.revokeObjectURL);S.urls=[];if(S.recorder?.state==='recording')S.recorder.stop();S.stream?.getTracks().forEach(t=>t.stop());clearTimeout(S.recordTimer);S.recorder=null;S.stream=null;}
- const durationLabel=minutes=>{const h=Math.floor(minutes/60),m=Math.round(minutes%60);return (h?h+' 小時':'')+(h&&m?' ':'')+(m?m+' 分鐘':'');};
- function syncTimeSliders(){
-  const a=new Date($('start').value),b=new Date($('end').value),minutes=(b-a)/60000;
-  if(!Number.isFinite(a.getTime())||!Number.isFinite(b.getTime())||minutes<=0){$('timeSummary').textContent='請選擇有效的開始與結束時間';return;}
-  const clock=d=>d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',hour12:false});
-  $('startSlider').value=a.getHours()*60+a.getMinutes();$('durationSlider').max=Math.max(720,Math.ceil(minutes/15)*15);$('durationSlider').value=minutes;
-  $('durationMax').textContent=durationLabel(Number($('durationSlider').max));
-  $('startReadout').textContent=clock(a);$('durationReadout').textContent=durationLabel(minutes);
-  $('startSlider').setAttribute('aria-valuetext',clock(a));$('durationSlider').setAttribute('aria-valuetext',durationLabel(minutes));
-  $('timeSummary').textContent=(a.getMonth()+1)+'/'+a.getDate()+' '+clock(a)+' → '+(a.toDateString()!==b.toDateString()?(b.getMonth()+1)+'/'+b.getDate()+' ':'')+clock(b)+'，共 '+durationLabel(minutes);
+ function selectedRanges(){
+  if(S.current?.source==='google'&&(!S.current.editable||S.current.allDay))return [{start:S.current.start,end:S.current.end}];
+  if($('preciseUse').checked){const a=new Date($('start').value),b=new Date($('end').value);if(!Number.isFinite(a.getTime())||!Number.isFinite(b.getTime())||b<=a)throw Error('請選擇正確的開始與結束時間。');return [{start:a.toISOString(),end:b.toISOString()}];}
+  return CalendarHours.hourRanges($('hourDate').value,[...S.hours]);
  }
- function dragTime(which){
-  const a=new Date($('start').value),b=new Date($('end').value);if(!Number.isFinite(a.getTime()))return;
-  const duration=which==='start'?Math.max(15,(b-a)/60000||60):Number($('durationSlider').value);
-  if(which==='start'){const minutes=Number($('startSlider').value);a.setHours(Math.floor(minutes/60),minutes%60,0,0);}
-  $('start').value=local(a);$('end').value=local(new Date(a.getTime()+duration*60000));syncTimeSliders();
+ function renderHours(){
+  const disabled=S.timeReadonly||!!S.batch;
+  $('hourDate').disabled=disabled||$('preciseUse').checked;
+  $('hourGrid').innerHTML=Array.from({length:24},(_,h)=>'<button type="button" data-hour="'+h+'" aria-pressed="'+(S.hours.has(h)&&!$('preciseUse').checked)+'" '+(disabled?'disabled':'')+'>'+String(h).padStart(2,'0')+'–'+String(h+1).padStart(2,'0')+'</button>').join('');
+  try{const ranges=selectedRanges();$('hourSummary').textContent=ranges.map(r=>stamp(r.start)+' → '+stamp(r.end)).join(' ／ ')+' · '+ranges.length+' 段行程';}catch(e){$('hourSummary').textContent=e.message;}
  }
- $('startSlider').oninput=()=>dragTime('start');$('durationSlider').oninput=()=>dragTime('duration');
- $('start').oninput=syncTimeSliders;$('end').oninput=syncTimeSliders;
- function destinationInfo(){if(S.current)return;const c=S.calendars.find(c=>c.id===$('destination').value);$('sourceInfo').textContent=c?'標題與時間會同步到 Google · '+c.summary+'；圖片、錄音與私人備註保留在本系統。':'只存私人記事，不會同步到 Google。';}
- $('destination').onchange=destinationInfo;
+ $('hourGrid').onclick=e=>{const b=e.target.closest('[data-hour]');if(!b||S.timeReadonly||S.batch)return;const h=Number(b.dataset.hour);if(S.hours.has(h))S.hours.delete(h);else S.hours.add(h);$('preciseUse').checked=false;renderHours();};
+ $('hourDate').onchange=()=>{if(!$('preciseUse').checked)renderHours();};
+ $('preciseUse').onchange=renderHours;
+ for(const id of ['start','end'])$(id).oninput=()=>{$('preciseUse').checked=true;renderHours();};
+ function editorLock(locked){for(const el of $('eventForm').querySelectorAll('input,select,textarea,button')){if(el.id==='save'||el.hasAttribute('data-close'))continue;if(locked){el.dataset.wasDisabled=String(el.disabled);el.disabled=true;}else if(el.dataset.wasDisabled!==undefined){el.disabled=el.dataset.wasDisabled==='true';delete el.dataset.wasDisabled;}}}
  function showEditor(row,date){
-  cleanup();S.current=row?{...row}:null;S.googleDraftId=crypto.randomUUID();S.pending=[];$('eventForm').reset();$('formStatus').textContent='';$('recordStatus').textContent='';$('record').textContent='● 開始錄音';
-  const start=row?.start||date+'T09:00:00';$('title').value=row?.title||'';$('start').value=local(start);$('end').value=local(row?.end||new Date(new Date(start).getTime()+3600000));$('note').value=row?.note||'';$('remind').checked=!!row?.remind;$('minutes').value=row?.reminderMinutes??10;$('completed').checked=!!row?.completed;
+  cleanup();editorLock(false);S.batch=null;S.current=row?{...row}:null;S.googleDraftId=crypto.randomUUID();S.pending=[];$('eventForm').reset();$('formStatus').textContent='';$('recordStatus').textContent='';$('record').textContent='● 開始錄音';
+  const start=row?.start||date+'T09:00:00';$('title').value=row?.title||'';$('start').value=local(start);$('end').value=local(row?.end||new Date(new Date(start).getTime()+3600000));$('remind').checked=row?!!row.remind:!!S.status.lineEnabled;$('minutes').value=row?.reminderMinutes??10;$('completed').checked=!!row?.completed;
   const readonly=row?.source==='google'&&(!row.editable||row.allDay);
   ['title','start','end'].forEach(id=>$(id).disabled=readonly);
-  $('editorTitle').textContent=row?'行程與私人記事':'新增行程';$('sourceInfo').textContent=row?.source==='google'?row.calendarName+' · '+(readonly?'原行程唯讀；仍可加入自己的記事與提醒。':'時間與標題會同步回 Google；私人內容只存本系統。'):'私人行程只有你看得到。';
+  $('editorTitle').textContent=row?'行程與私人記事':'新增行程';
   const writable=S.calendars.filter(c=>['owner','writer'].includes(c.accessRole)),personal=writable.find(c=>c.primary)||writable.find(c=>c.summary.includes('DO RE MI'));
   const ordered=personal?[personal,...writable.filter(c=>c.id!==personal.id)]:writable;
   $('destination').innerHTML=ordered.map(c=>'<option value="'+esc(c.id)+'">Google · '+esc(c.summary)+'（同步）</option>').join('')+'<option value="local">只存私人記事（不同步 Google）</option>';
-  $('destination').value=personal?.id||'local';$('destinationLabel').hidden=!!row;destinationInfo();
-  ['startSlider','durationSlider'].forEach(id=>$(id).disabled=readonly);$('timeReadonly').hidden=!readonly;$('timeDrag').hidden=!!row?.allDay;syncTimeSliders();
+  $('destination').value=personal?.id||'local';$('destinationLabel').hidden=!!row;
+  S.timeReadonly=!!readonly;S.hours=new Set();$('hourDate').value=local(start).slice(0,10);$('hourDate').disabled=readonly;$('preciseUse').disabled=readonly;$('preciseTime').open=false;
+  const a=new Date($('start').value),b=new Date($('end').value),midnight=new Date(a);midnight.setHours(24,0,0,0);
+  const aligned=a.getMinutes()===0&&b.getMinutes()===0&&b>a&&b<=midnight;
+  if(row&&aligned)for(let h=a.getHours();h<(b.getTime()===midnight.getTime()?24:b.getHours());h++)S.hours.add(h);
+  $('preciseUse').checked=!!row&&!aligned;renderHours();$('save').textContent='儲存行程';
   $('googleLink').hidden=!row?.htmlLink;if(row?.htmlLink&&/^https:\/\/(www\.)?google\.com\/calendar|^https:\/\/calendar\.google\.com\//.test(row.htmlLink))$('googleLink').href=row.htmlLink;
   $('archive').hidden=!row||row.source!=='local';$('assets').replaceChildren();assetsRender();$('editor').showModal();
  }
@@ -86,16 +86,29 @@
   const chunks=[],rec=new MediaRecorder(S.stream,{mimeType:type,audioBitsPerSecond:64000});S.recorder=rec;rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};rec.onstop=()=>{S.stream?.getTracks().forEach(t=>t.stop());clearTimeout(S.recordTimer);if($('editor').open)addFiles([new File(chunks,'錄音-'+new Date().toISOString().slice(0,19).replace(/:/g,'-')+'.'+(type==='audio/mp4'?'m4a':type.split('/')[1]),{type})]);$('record').textContent='● 開始錄音';$('recordStatus').textContent='錄音已停止，按儲存後才會上傳。';};rec.start();$('record').textContent='■ 停止錄音';$('recordStatus').textContent='錄音中…最長 60 秒。';S.recordTimer=setTimeout(()=>{if(rec.state==='recording')rec.stop();},60000);
  },'formStatus');
  const base64=file=>new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=reject;r.readAsDataURL(file);});
+ async function prepareJobs(){
+  const ranges=selectedRanges(),c=S.current;
+  if(!$('title').value.trim())throw Error('請填事情名稱。');
+  const uploads=await Promise.all(S.pending.map(async f=>({name:f.name,mime:f.type,size:f.size,base64:await base64(f)})));
+  const originals=[];
+  if(c&&ranges.length>1)for(const a of c.assets||[]){const data=await api('asset',{id:c.id,assetId:a.id});originals.push({name:a.name,mime:a.mime,size:a.size,base64:data.base64});}
+  const destination=c?.source==='google'?c.calendarId:c?'local':$('destination').value;
+  return ranges.map((r,i)=>{
+   const original=i===0?c:null,google=destination!=='local';
+   const event={title:$('title').value,start:r.start,end:r.end,note:c?.note||'',remind:$('remind').checked,reminderMinutes:Number($('minutes').value),completed:$('completed').checked,source:google?'google':'local',calendarId:google?destination:'',googleId:original?.googleId||''};
+   const changed=original&&google&&original.editable&&!original.allDay&&(event.title!==original.title||Date.parse(event.start)!==Date.parse(original.start)||Date.parse(event.end)!==Date.parse(original.end));
+   return {id:original?.id||crypto.randomUUID(),original,event,requestId:crypto.randomUUID(),revision:original?.revision||0,googleWrite:google&&(!original||!!changed),files:i===0?uploads:[...originals,...uploads],uploaded:0,knownAssets:(original?.assets||[]).map(a=>a.id)};
+  });
+ }
  $('eventForm').onsubmit=e=>{e.preventDefault();if(S.saving)return;safely(async()=>{
   if(S.recorder?.state==='recording')throw Error('請先停止錄音，再儲存。');
   S.saving=true;$('save').disabled=true;$('formStatus').textContent='正在儲存…';
+  if(!S.batch)editorLock(true);
   try{
-   const event={title:$('title').value,start:new Date($('start').value).toISOString(),end:new Date($('end').value).toISOString(),note:$('note').value,remind:$('remind').checked,reminderMinutes:Number($('minutes').value),completed:$('completed').checked,source:S.current?.source||'local',calendarId:S.current?.calendarId||'',googleId:S.current?.googleId||''};
-   const c=S.current,googleCreate=!c&&$('destination').value!=='local',googleEdit=c?.source==='google'&&c.editable&&!c.allDay&&(event.title!==c.title||Date.parse(event.start)!==Date.parse(c.start)||Date.parse(event.end)!==Date.parse(c.end));
-   if(googleCreate||googleEdit){const result=await api('googleWrite',{calendarId:c?.calendarId||$('destination').value,googleId:c?.googleId,etag:c?.etag,requestId:S.googleDraftId,event});S.current={...result.event,revision:c?.revision||0,assets:c?.assets||[]};Object.assign(event,{source:'google',googleId:S.current.googleId,calendarId:S.current.calendarId});}
-   const result=await api('save',{id:S.current?.id,revision:S.current?.revision||0,event});S.current={...S.current,...event,id:result.id,revision:(S.current?.revision||0)+1,assets:S.current?.assets||[]};
-   while(S.pending.length){const f=S.pending[0];const upload=await api('upload',{id:result.id,mime:f.type,name:f.name,base64:await base64(f)});S.current.assets.push(upload.asset);S.current.revision++;S.pending.shift();}
-   $('editor').close();cleanup();await refresh();message('已儲存。'+(event.remind&&!S.status.lineEnabled?'LINE 尚未啟用，請到連線設定完成綁定。':''));
+   if(!S.batch)S.batch=await prepareJobs();
+   const total=await CalendarHours.saveJobs(S.batch,api,(i,n)=>{$('formStatus').textContent='正在儲存第 '+(i+1)+' / '+n+' 段行程…';});
+   const remind=S.batch[0].event.remind;S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();await refresh();message('已儲存 '+total+' 段行程。'+(remind&&!S.status.lineEnabled?'LINE 尚未啟用，請到連線設定啟用。':''));
+  }catch(e){if(S.batch){const done=S.batch.filter(j=>j.done).length;$('save').textContent='重試未完成的部分';throw Error('已完成 '+done+' / '+S.batch.length+' 段。'+e.message+' 按重試繼續。');}editorLock(false);throw e;
   }finally{S.saving=false;$('save').disabled=false;}
  },'formStatus');};
  $('archive').onclick=()=>safely(async()=>{await api('archive',{id:S.current.id});$('editor').close();cleanup();await refresh();},'formStatus');
