@@ -137,14 +137,17 @@
  async function access(action,data={}){if(!accessCall)throw Error('登入服務尚在載入，請稍後再試。');return (await accessCall({action,...data,...(calendarSession?{calendarSession}:{})})).data;}
  async function openCalendar(result){
   if(result?.token){calendarSession=result.token;sessionStorage.setItem('youziCalendarSession',calendarSession);}
+  const entry=await access('entryOptions');$('autoFace').checked=entry.autoFace;
   await refresh();$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;$('newButton').disabled=false;$('newDay').disabled=false;
   const id=new URLSearchParams(location.search).get('event');if(id){let row=S.events.find(e=>e.id===id);if(!row)row=(await api('detail',{id})).event;if(row)showEditor(row);}
  }
  async function loginTask(fn){$('faceLogin').disabled=true;$('passwordLogin').disabled=true;$('loginMessage').textContent='正在驗證…';try{await fn();}catch(e){$('loginMessage').textContent=e.name==='NotAllowedError'?'尚未完成 Face ID，可重試或改用專用密碼。':e.message;$('passwordFallback').open=true;}finally{$('faceLogin').disabled=false;$('passwordLogin').disabled=false;}}
- $('faceLogin').onclick=()=>loginTask(async()=>{
+ async function faceAuthenticate(){
   if(!window.PublicKeyCredential)throw Error('此瀏覽器不支援通行密鑰，請改用 Safari 或專用密碼。');
   const c=await access('authenticationOptions'),response=await SimpleWebAuthnBrowser.startAuthentication({optionsJSON:c.options});await openCalendar(await access('authenticationVerify',{ticket:c.ticket,response}));
- });
+ }
+ $('faceLogin').onclick=()=>loginTask(faceAuthenticate);
+ $('saveAutoFace').onclick=()=>safely(async()=>{await access('setAutoFace',{enabled:$('autoFace').checked});$('settingsStatus').textContent='已儲存登入設定。';},'settingsStatus');
  $('passwordForm').onsubmit=e=>{e.preventDefault();loginTask(async()=>{const password=$('calendarPassword').value;$('calendarPassword').value='';await openCalendar(await access('password',{password}));});};
  $('enrollFace').onclick=async()=>{const b=$('enrollFace');b.disabled=true;try{
   if(!window.PublicKeyCredential)throw Error('請在支援 Face ID 的 iPhone Safari 開啟此頁。');
@@ -158,5 +161,14 @@
   if(!r.ok||body.error){const e=Error(body.error?.message||'服務暫時無法連線。');e.code='functions/'+String(body.error?.status||'internal').toLowerCase().replaceAll('_','-');throw e;}return {data:body.result};
  }
  call=data=>calendarRequest('privateCalendarApi',data);accessCall=data=>calendarRequest('privateCalendarAccess',data);
- if(calendarSession)openCalendar().catch(e=>showGate(e.message));
+ // Every page opening starts locked, including reloads with an old session.
+ const previousSession=calendarSession;showGate('正在準備登入…');
+ loginTask(async()=>{
+  if(previousSession)await accessCall({action:'logout',calendarSession:previousSession});
+  const entry=await access('entryOptions');
+  if(entry.autoFace&&entry.hasPasskey)await faceAuthenticate();
+  else {$('loginMessage').textContent=entry.hasPasskey?'請用 Face ID 或專用密碼進入。':'第一次使用，請先用專用密碼進入，再啟用 Face ID。';if(!entry.hasPasskey)$('passwordFallback').open=true;}
+ });
+ // A restored browser page must not reveal a previous authenticated view.
+ window.addEventListener('pageshow',e=>{if(e.persisted)location.reload();});
 })();

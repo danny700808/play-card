@@ -20,6 +20,8 @@ function createAccess(db,verifier=webauthn){
   await throttle(request,'requests',40,5*60000);const cfg=await config();
   if(action==='password'){await throttle(request,'password',5,15*60000);if(!await passwordMatches(data.password,cfg))deny('專用密碼不正確。');return issue(cfg);}
   const credentials=db.collection('privateCalendarPasskeys');
+  if(action==='entryOptions'){const keys=await credentials.where('uid','==',cfg.uid).get();return {autoFace:cfg.autoFace!==false,hasPasskey:keys.docs.length>0};}
+  if(action==='setAutoFace'){await authorize(request);if(typeof data.enabled!=='boolean')deny('設定值不正確。','invalid-argument');await db.doc('privateCalendarServer/access').set({autoFace:data.enabled},{merge:true});return {autoFace:data.enabled};}
   if(action==='registrationOptions'){
    await registrationOwner(request,cfg);const keys=(await credentials.where('uid','==',cfg.uid).get()).docs.map(d=>d.data());if(keys.length>=10)deny('已達裝置數量上限。','failed-precondition');
    const options=await verifier.generateRegistrationOptions({rpName:'柚子私人行事曆',rpID:RP,userID:Buffer.from(hash(cfg.uid),'hex'),userName:OWNER,attestationType:'none',excludeCredentials:keys.map(k=>({id:k.id,transports:k.transports})),authenticatorSelection:{residentKey:'required',userVerification:'required',authenticatorAttachment:'platform'}});

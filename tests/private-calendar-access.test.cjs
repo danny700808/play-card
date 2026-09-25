@@ -20,3 +20,13 @@ test('passkey enrollment needs a fresh session and enforces origin, RP and user 
  await assert.rejects(a.api(req('authenticationVerify',{ticket:login.ticket,response:{id:'key1'}})),/失效/);
  const record=[...a.rows.entries()].find(([k])=>k.startsWith('privateCalendarSessions/')&&k.endsWith(crypto.createHash('sha256').update(session.token).digest('hex')));record[1].createdAt=Date.now()-360000;await assert.rejects(a.api(req('registrationOptions',{calendarSession:session.token})),/再輸入/);
 });
+test('automatic Face ID defaults on; changing it requires a live authenticated session',async()=>{
+ const a=setup();assert.deepEqual(await a.api(req('entryOptions')),{autoFace:true,hasPasskey:false});
+ await assert.rejects(a.api(req('setAutoFace',{enabled:false})));
+ const s=await a.api(req('password',{password:'test-password'}));
+ assert.deepEqual(await a.api(req('setAutoFace',{calendarSession:s.token,enabled:false})),{autoFace:false});
+ assert.deepEqual(await a.api(req('entryOptions')),{autoFace:false,hasPasskey:false});
+ await assert.rejects(a.api(req('setAutoFace',{calendarSession:s.token,enabled:'false'})));
+ await a.api(req('logout',{calendarSession:s.token}));
+ await assert.rejects(a.api(req('setAutoFace',{calendarSession:s.token,enabled:true})));
+});
