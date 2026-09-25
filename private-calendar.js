@@ -16,14 +16,14 @@
  async function refresh(){
   message('正在讀取行程…');S.status=await api('status');S.workStatus=await workApi('status').catch(()=>null);
   S.calendars=S.status.googleConnected?(await api('calendars').catch(()=>({calendars:[]}))).calendars:[];
-  const result=await api('list',range());let workWarning='';const work=await workApi('list',range()).catch(e=>{if(e.code==='functions/unauthenticated')throw e;workWarning='交辦工作未能載入：'+e.message;return {tasks:[]};});if(!calendarSession)return;S.events=[...result.events,...work.tasks.filter(t=>!t.draft&&(t.assignedTo==='owner'||t.createdBy==='owner')).map(workEvent)];render();if(workWarning)result.warnings=[...(result.warnings||[]),workWarning];
+  const result=await api('list',range());let workWarning='';const work=await workApi('list',range()).catch(e=>{if(e.code==='functions/unauthenticated')throw e;workWarning='交辦工作未能載入：'+e.message;return {tasks:[]};});if(!calendarSession)return;S.events=[...result.events,...work.tasks.filter(t=>!t.draft).map(workEvent)];render();if(workWarning)result.warnings=[...(result.warnings||[]),workWarning];
   $('connection').hidden=true;
   message(result.warnings?.length?result.warnings.join('；'):'',!!result.warnings?.length);settingsRender();
  }
  const dayKey=d=>local(d).slice(0,10);
  S.selected=dayKey(new Date());
  const sourceColor=e=>e.source==='shared'?'#a32270':e.source!=='google'?'#202020':S.calendars.find(c=>c.id===e.calendarId)?.primary?'#6524d6':'#d71920';
- const sourceName=e=>e.source==='shared'?(e.createdBy==='owner'?'我建立的工作':(e.createdName||'成員')+' 交辦給我')+' · '+(workLabels[e.status]||'待處理'):e.source!=='google'?'私人記事 · 未同步 Google':S.calendars.find(c=>c.id===e.calendarId)?.primary?'我的行程 · 黃DO RE MI':e.calendarId==='d3460fysw@gmail.com'?'豐原西南社':e.calendarName||'其他日曆';
+ const sourceName=e=>e.source==='shared'?(e.createdBy==='owner'?'我交辦給 '+(e.assignedTo==='owner'?'自己':e.assignedName):e.assignedTo==='owner'?(e.createdName||'成員')+' 交辦給我':(e.createdName||'成員')+' → '+(e.assignedName||'成員'))+' · '+(workLabels[e.status]||'待處理'):e.source!=='google'?'私人記事 · 未同步 Google':S.calendars.find(c=>c.id===e.calendarId)?.primary?'我的行程 · 黃DO RE MI':e.calendarId==='d3460fysw@gmail.com'?'豐原西南社':e.calendarName||'其他日曆';
  function onDay(e,date){const d=new Date(date+'T00:00:00'),next=new Date(d);next.setDate(next.getDate()+1);const begin=e.allDay?new Date(e.start.slice(0,10)+'T00:00:00'):new Date(e.start);return begin<next&&new Date(e.end)>d;}
  function eventTime(e){return e.allDay?new Date(e.start).toLocaleDateString('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric'})+' 全天':stamp(e.start)+' → '+stamp(e.end);}
  let googlePreviewVersion=0;
@@ -55,7 +55,7 @@
    if(task.draft)throw Error('這筆工作尚未發佈。');currentWork=task;const row=workEvent(task);
    if(focusDate){S.month=new Date(task.start);S.selected=dayKey(S.month);await refresh();if(version!==workPreviewVersion||!calendarSession)return;}
    S.events=S.events.filter(e=>e.id!==row.id);S.events.push(row);render();
-   $('workBody').innerHTML='<h3>'+esc(task.title)+'</h3><p class="previewTime">'+esc(eventTime(row))+'</p><p><strong>'+esc(task.createdBy==='owner'?'我建立的工作':(task.createdName||'成員')+' 交辦給我')+'</strong></p><p>負責人：'+esc(task.assignedTo==='owner'?'我':task.assignedName)+'</p><p>'+esc(workLabels[task.status]||'待處理')+'</p>'+(task.note?'<p class="googleDescription">'+esc(task.note)+'</p>':'')+'<div class="quickAttachments">'+(task.assets||[]).map(a=>'<button type="button" data-work-asset="'+esc(a.id)+'">'+(a.mime.startsWith('image/')?'▧ 圖片':'▶ 錄音')+' · '+esc(a.name)+'</button>').join('')+'</div>';
+   $('workBody').innerHTML='<h3>'+esc(task.title)+'</h3><p class="previewTime">'+esc(eventTime(row))+'</p><p><strong>'+esc(task.createdBy==='owner'?'我建立的工作':task.assignedTo==='owner'?(task.createdName||'成員')+' 交辦給我':(task.createdName||'成員')+' 建立的交辦')+'</strong></p><p>負責人：'+esc(task.assignedTo==='owner'?'我':task.assignedName)+'</p><p>'+esc(workLabels[task.status]||'待處理')+'</p>'+(task.note?'<p class="googleDescription">'+esc(task.note)+'</p>':'')+'<div class="quickAttachments">'+(task.assets||[]).map(a=>'<button type="button" data-work-asset="'+esc(a.id)+'">'+(a.mime.startsWith('image/')?'▧ 圖片':'▶ 錄音')+' · '+esc(a.name)+'</button>').join('')+'</div>';
    $('workProgress').value=task.status;$('workProgressControls').hidden=false;
   }catch(e){if(version===workPreviewVersion)$('workBody').textContent=e.message;}
  }
@@ -152,7 +152,7 @@
   if(!S.batch)editorLock(true);
   try{
    if(!S.batch){S.workMode=!!$('workAssignee').value;S.batch=S.workMode?await prepareWorkJobs():await prepareJobs();}
-   if(S.workMode){const result=await SharedCalendarJobs.saveJobs(S.batch,workApi,(i,n)=>{$('formStatus').textContent='正在交辦第 '+(i+1)+' / '+n+' 段…';});S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();await refresh();message(result.pending?'已交辦，通知尚未送達。':result.sent?'已交辦並送出通知。':'已交辦。');return;}
+   if(S.workMode){const result=await SharedCalendarJobs.saveJobs(S.batch,workApi,(i,n)=>{$('formStatus').textContent='正在交辦第 '+(i+1)+' / '+n+' 段…';});const savedDay=SharedCalendarJobs.rememberChange(localStorage,S.batch[0].event.start);if(savedDay){S.selected=savedDay;S.month=new Date(savedDay+'T12:00:00');syncSharedDate();}S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();let refreshError='';await refresh().catch(e=>{refreshError=' 畫面更新失敗，請按同步更新：'+e.message;});message((result.pending?'已交辦，通知尚未送達。':result.sent?'已交辦並送出通知。':'已交辦。')+refreshError,!!refreshError);return;}
    const total=await CalendarHours.saveJobs(S.batch,api,(i,n)=>{$('formStatus').textContent='正在儲存第 '+(i+1)+' / '+n+' 段行程…';});
    const remind=S.batch[0].event.remind,google=S.batch[0].event.source==='google';if(S.current?.source==='local'&&google)await api('archive',{id:S.current.id});S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();await refresh();message('已儲存 '+total+' 段行程'+(google?'，已同步至 Google。':'，只存私人記事。')+(remind&&!S.status.lineEnabled?'LINE 尚未啟用，請到連線設定啟用。':''));
   }catch(e){if(S.batch){const done=S.batch.filter(j=>j.done).length;$('save').textContent='重試未完成的部分';throw Error('已完成 '+done+' / '+S.batch.length+' 段。'+e.message+' 按重試繼續。');}editorLock(false);throw e;
@@ -184,7 +184,7 @@
  async function openCalendar(result){
   if(result?.token){calendarSession=result.token;sessionStorage.setItem('youziCalendarSession',calendarSession);}
   const entry=await access('entryOptions');$('autoFace').checked=entry.autoFace;
-  await refresh();$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;$('newButton').disabled=false;$('newDay').disabled=false;
+  syncSharedDate();await refresh();$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;$('newButton').disabled=false;$('newDay').disabled=false;
   const sharedParams=new URLSearchParams(location.search);if(sharedParams.get('task')){await showWork(sharedParams.get('task'),true);return;}if(sharedParams.get('shared')==='1'){location.replace('shared-calendar.html?owner=1'+(sharedParams.get('task')?'&task='+encodeURIComponent(sharedParams.get('task')):''));return;}
   const id=new URLSearchParams(location.search).get('event');if(id){let row=S.events.find(e=>e.id===id);if(!row)row=(await api('detail',{id})).event;if(row)showEditor(row);}
  }
@@ -201,6 +201,10 @@
   const c=await access('registrationOptions'),response=await SimpleWebAuthnBrowser.startRegistration({optionsJSON:c.options});await access('registrationVerify',{ticket:c.ticket,response});$('settingsStatus').textContent='通行密鑰已啟用，下次可用 Face ID／裝置驗證進入。';
  }catch(e){$('settingsStatus').textContent=e.name==='NotAllowedError'?'尚未完成手機驗證，仍可使用專用密碼。':e.message;}finally{b.disabled=false;}};
  $('lockCalendar').onclick=async()=>{try{await access('logout');showGate();}catch(e){$('settingsStatus').textContent='鎖定未完成，請重試。'+e.message;}};
+ let lastChange=0,returnRefresh=false;
+ function syncSharedDate(){const change=SharedCalendarJobs.recentChange(localStorage,lastChange);if(change){lastChange=change.at;S.selected=change.day;S.month=new Date(change.day+'T12:00:00');$('monthPanel').hidden=false;$('agenda').hidden=true;$('monthView').setAttribute('aria-pressed','true');$('listView').setAttribute('aria-pressed','false');}}
+ async function refreshOnReturn(){if(!calendarSession||$('calendarWorkspace').hidden||document.hidden||S.saving||$('editor').open||returnRefresh)return;returnRefresh=true;try{syncSharedDate();await refresh();}catch(e){message(e.message,true);}finally{returnRefresh=false;}}
+ window.addEventListener('focus',refreshOnReturn);document.addEventListener('visibilitychange',refreshOnReturn);window.addEventListener('storage',e=>{if(e.key===SharedCalendarJobs.changeKey)refreshOnReturn();});
  // Dedicated sessions must not carry the main system's Firebase Authorization header.
  async function calendarRequest(endpoint,data){
   const r=await fetch('https://asia-east1-youzi-c1b74.cloudfunctions.net/'+endpoint,{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({data}),signal:AbortSignal.timeout(120000)});

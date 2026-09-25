@@ -26,7 +26,7 @@ function setup(options={}){
 }
 const event=()=>({title:'客人換吉他弦',note:'先確認客人需求',start:new Date(Date.now()+3600000).toISOString(),end:new Date(Date.now()+7200000).toISOString(),remind:true,reminderMinutes:10});
 test('single-use invitation creates separate member credentials; plaintext tokens are not stored',async()=>{
- const f=setup(),m=await f.join();assert.match(m.token,/^[\w-]{43}$/);assert.equal((await m.call('status')).me.role,'member');assert(!JSON.stringify([...f.rows.values()]).includes(m.token));await assert.rejects(f.activate(m.invite),/已使用/);await assert.rejects(m.call('invite',{name:'Other'}),/管理者/);
+ const f=setup(),m=await f.join();assert.match(m.token,/^[\w-]{43}$/);assert.equal((await m.call('status')).me.role,'member');assert(!JSON.stringify([...f.rows.values()]).includes(m.token));await assert.rejects(f.activate(m.invite),/失效/);await assert.rejects(m.call('invite',{name:'Other'}),/管理者/);
  await assert.rejects(f.ar('password',{memberId:m.memberId,password:'long-fixture-password'}),/LINE 或 Email/);
 });
 test('expired, revoked, and reissued invites cannot activate; revocation invalidates existing sessions',async()=>{

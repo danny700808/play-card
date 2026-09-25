@@ -14,9 +14,14 @@ function createSharedLogin({ db, auth, sendEmail, authorizationUrl }) {
     if (d.invite) {
       if (!validToken(d.invite)) fail('邀請連結無效。');
       const inviteHash = hash(d.invite), i = (await db.doc('sharedCalendarInvites/' + inviteHash).get()).data();
-      if (!i || i.used || i.expiresAt <= Date.now() || i.ownerUid !== ownerUid) fail('邀請已使用或過期，請管理者重新邀請。');
+      if (!i || i.ownerUid !== ownerUid) fail('邀請無效；已加入的成員請直接登入。', 'failed-precondition');
       const m = (await members.doc(i.memberId).get()).data();
-      if (!m || m.status !== 'invited' || m.version !== i.version || m.ownerUid !== ownerUid) fail('邀請已撤銷。');
+      if (!m || m.version !== i.version || m.ownerUid !== ownerUid) fail('邀請已撤銷。', 'failed-precondition');
+      // A consumed invitation can locate an existing member, never activate them again.
+      // Redemption still requires their already-bound LINE or verified Email identity.
+      if (i.used && m.status === 'active') return { ownerUid, memberId: i.memberId, version: m.version, mode: 'login' };
+      if (i.used || i.expiresAt <= Date.now()) fail('邀請已使用或過期；已加入請直接登入，尚未加入請管理者重新邀請。', 'failed-precondition');
+      if (m.status !== 'invited') fail('邀請已撤銷。', 'failed-precondition');
       return { ownerUid, memberId: i.memberId, version: m.version, inviteHash, mode: 'invite' };
     }
     if (d.link === true) {
@@ -119,7 +124,13 @@ function createSharedLogin({ db, auth, sendEmail, authorizationUrl }) {
         if (m.status !== 'invited' || !i || i.used || i.expiresAt <= Date.now() || i.version !== m.version || i.memberId !== memberId || i.ownerUid !== m.ownerUid) fail('邀請已使用或過期，請管理者重新邀請。');
       } else if (m.status !== 'active') fail('成員已停用。');
       const value = t.method === 'line' ? t.lineUserId : t.email;
-      if (t.mode === 'login' && (t.method === 'line' ? m.lineUserId !== value : m.email !== value || !m.emailVerifiedAt)) fail('請使用這位成員已綁定的帳號登入。');
+      // Migrate only the exact owner-selected legacy LINE recipient, after LINE OAuth proof.
+      let legacyLine = '';
+      if (t.mode === 'login' && t.method === 'line' && !m.lineUserId && /^((employees)|(admins))\/[^/]+$/.test(m.contactKey || '')) {
+        const contact = (await tx.get(db.doc(m.contactKey))).data();
+        if (contact && contact.lineNotifyEnabled !== false && !['disabled','inactive','revoked','rejected','離職','停用'].includes(String(contact.accountStatus || contact.status || '').trim().toLowerCase())) legacyLine = String(contact.lineUserId || contact['LINE User ID'] || '').trim();
+      }
+      if (t.mode === 'login' && (t.method === 'line' ? (m.lineUserId || legacyLine) !== value : m.email !== value || !m.emailVerifiedAt)) fail('請使用這位成員已綁定的帳號登入。');
       const claims = db.collection(t.method === 'line' ? 'sharedCalendarLineOwners' : 'sharedCalendarEmailOwners');
       const cr = claims.doc(hash(value)), claim = (await tx.get(cr)).data();
       const other = claim && claim.memberId !== memberId ? (await tx.get(members.doc(claim.memberId))).data() : null;

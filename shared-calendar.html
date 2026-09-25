@@ -3,7 +3,7 @@
 <section id="gate" class="gate"><h1>共用工作行事曆</h1><p id="gateMessage" role="status"></p>
 <div id="loginMethods"><button id="lineLoginButton" class="primary">用 LINE 登入</button>
 <details id="emailLoginChoice"><summary>改用 Email</summary><form id="emailLoginForm"><label>Email<input id="loginEmail" type="email" autocomplete="email" required maxlength="254"></label><button id="sendLoginCode" type="submit">寄送驗證碼</button></form><form id="emailVerifyForm" hidden><label>驗證碼<input id="loginCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button id="verifyLoginCode" class="primary">驗證並進入</button></form></details></div>
-<button id="faceButton">使用 Face ID／通行密鑰</button><a id="ownerLogin" href="private-calendar.html?shared=1">管理者入口</a><p id="gateHelp" class="small"></p></section>
+<button id="existingLogin" hidden>已加入，直接登入</button><button id="faceButton">使用 Face ID／通行密鑰</button><a id="ownerLogin" href="private-calendar.html?shared=1">管理者入口</a><p id="gateHelp" class="small"></p></section>
 <main id="workspace" hidden><header class="calendarIntro"><div><h1>共用工作行事曆</h1><h2 id="monthTitle"></h2></div><button id="newTask" class="primary">＋ 新增交辦</button></header>
 <div id="status" class="notice" role="status" hidden></div><div id="lineWarning" class="notice warning" hidden></div>
 <nav class="viewbar"><button id="monthView" aria-pressed="true">小月曆</button><button id="listView" aria-pressed="false">本月接下來</button><button id="refresh">同步更新</button><button id="settingsButton">設定</button></nav>
@@ -18,4 +18,4 @@
 <label class="check"><input id="remind" type="checkbox" checked>提醒負責人</label><div id="reminderChoices" class="reminderChoices" role="group" aria-label="提醒時間，可複選"></div>
 </fieldset>
 <div id="assets"></div><div id="progressBar" hidden><label>處理進度<select id="progress"><option value="pending">待處理</option><option value="in_progress">處理中</option><option value="done">已完成</option><option value="cancelled">已取消</option></select></label><button id="updateProgress" type="button">更新進度並通知建立者</button></div><p id="deliveryStatus" class="small"></p><p id="formMessage" role="status"></p><div class="dialogFoot"><button id="save" class="primary" type="submit">儲存並交辦</button></div></form></dialog>
-<script src="vendor/simplewebauthn-browser-13.3.0.umd.min.js"></script><script src="private-calendar-hours.js?v=20260925-14"></script><script src="shared-calendar-jobs.js?v=20260925-line-bind"></script><script src="shared-calendar.js?v=20260925-passwordless"></script></body></html>
+<script src="vendor/simplewebauthn-browser-13.3.0.umd.min.js"></script><script src="private-calendar-hours.js?v=20260925-14"></script><script src="shared-calendar-jobs.js?v=20260925-entry-record"></script><script src="shared-calendar.js?v=20260925-entry-record"></script></body></html>
