@@ -208,7 +208,7 @@ async function reminders(){
       if(current.status==='cancelled'||Date.parse(current.start)!==Date.parse(event.start)||!(freshPrefs.calendarIds||[]).includes(event.calendarId)){await ref.set({status:'cancelled',leaseUntil:0},{merge:true});continue;}
      }
      const when=new Date(event.start).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false});
-     await sendLine(recipient.id,'🔔 '+event.title+'\n'+when+(event.note?'\n'+event.note.slice(0,500):'')+'\n查看圖片／錄音：\n'+PAGE+'?event='+encodeURIComponent(event.id),key);
+     await sendLine(recipient.id,'🔔 '+event.title+'\n'+when+(event.note?'\n'+event.note.slice(0,500):'')+'\n查看圖片／錄音：\n'+PAGE+'?event='+encodeURIComponent(event.id)+'&openExternalBrowser=1',key);
      await ref.set({status:'sent',sentAt:Date.now(),leaseUntil:0},{merge:true});await doc.ref.set({lastSentAt:Date.now()},{merge:true});
     }catch(e){await ref.set({status:'failed',error:e.message,leaseUntil:0},{merge:true});throw e;}
    }
