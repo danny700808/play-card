@@ -16,7 +16,7 @@ test('LINE invitation authorizes, binds, creates a session and routes assignment
  const joined=await f.ar('loginRedeem',r),m=f.rows.get('sharedCalendarMembers/'+joined.memberId);
  assert.equal(m.lineUserId,'U'+'d'.repeat(32));assert.equal(m.status,'active');assert.equal(m.passwordHash,'');
  await f.owner('save',{id:'line-work',assignedTo:joined.memberId,event:event()});await f.owner('publish',{id:'line-work'});assert.equal(f.sent[0].to,m.lineUserId);
- await assert.rejects(f.ar('loginRedeem',r),/失效/);await assert.rejects(line(f,{invite:i}),/已使用/);
+ await assert.rejects(f.ar('loginRedeem',r),/失效/);const reused=await f.ar('loginRedeem',await line(f,{invite:i}));assert.equal(reused.memberId,joined.memberId);await assert.rejects(f.ar('loginRedeem',await line(f,{invite:i,line:'U'+'e'.repeat(32)})),/已綁定/);
  const next=await f.ar('loginRedeem',await line(f));assert.equal(next.memberId,joined.memberId);
 });
 test('OAuth return ticket cannot be used from another browser or with a forged profile',async()=>{
@@ -63,4 +63,17 @@ test('OAuth cancellation/invalid state stays on shared login and cannot issue se
  const res={set(){},redirect(_,u){url=u;}};
  await f.passwordless.callback({method:'GET',query:{state,error:'access_denied'}},res,{exchange:()=>assert.fail('must not exchange cancelled code')});assert.match(url,/shared-calendar.html#loginError=/);
  await assert.rejects(f.ar('loginRedeem',{ticket:state,verifier:v}));
+});
+
+test('used invitation is only a locator: expired consumed links require bound identity and cannot restore revoked members',async()=>{
+ const f=setup(),i=await invite(f),joined=await f.ar('loginRedeem',await line(f,{invite:i}));f.rows.get('sharedCalendarInvites/'+hash(i)).expiresAt=0;
+ assert.equal((await f.ar('loginRedeem',await line(f,{invite:i}))).memberId,joined.memberId);
+ await assert.rejects(f.ar('loginRedeem',await line(f,{invite:i,line:'U'+'f'.repeat(32)})),/已綁定/);
+ await f.owner('revoke',{memberId:joined.memberId});await assert.rejects(line(f,{invite:i}));
+});
+test('legacy owner-selected LINE recipient can authenticate only with that exact active contact identity',async()=>{
+ const f=setup(),m=await f.join('Legacy');
+ await assert.rejects(f.ar('loginRedeem',await line(f,{memberId:m.memberId,line:'U'+'c'.repeat(32)})),/已綁定/);
+ const ticket=await line(f,{memberId:m.memberId,line:'U'+'b'.repeat(32)});f.rows.get('employees/helper').accountStatus='disabled';await assert.rejects(f.ar('loginRedeem',ticket),/已綁定/);
+ f.rows.get('employees/helper').accountStatus='active';const joined=await f.ar('loginRedeem',await line(f,{memberId:m.memberId,line:'U'+'b'.repeat(32)}));assert.equal(joined.memberId,m.memberId);assert.equal(f.rows.get('sharedCalendarMembers/'+m.memberId).lineUserId,'U'+'b'.repeat(32));assert.equal(f.rows.get('sharedCalendarMembers/'+m.memberId).contactKey,'');
 });
