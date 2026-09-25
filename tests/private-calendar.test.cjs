@@ -72,3 +72,13 @@ test('server refuses writing to shared readonly Google calendar before any event
 test('asset fetch cannot read an unassociated attachment even with valid IDs',async()=>{
  const x=fixture();x.rows.set(x.base+'/entries/a',{assets:[{id:'mine'}]});await assert.rejects(x.run('asset',{id:'a',assetId:'someone-else'}),/不存在/);
 });
+test('multiple reminders validate, persist and use independent delivery identities',async()=>{
+ const start='2026-09-30T10:00:00+08:00',event={id:'multi',title:'多次提醒',start,end:'2026-09-30T11:00:00+08:00',remind:true,reminderOffsets:[4320,60,120,60]};
+ const validated=p.validateEvent(event);assert.deepEqual(validated.reminderOffsets,[60,120,4320]);
+ assert.throws(()=>p.validateEvent({...event,reminderOffsets:[]}));assert.throws(()=>p.validateEvent({...event,reminderOffsets:[999]}));
+ const beforeThreeDays=Date.parse(start)-4320*60000;assert.deepEqual(p.dueReminders([event],beforeThreeDays).map(e=>e.reminderMinutes),[4320]);
+ const beforeHour=Date.parse(start)-60*60000,queue=p.dueReminders([event],beforeHour);assert.deepEqual(queue.map(e=>e.reminderMinutes),[60,120]);assert.equal(new Set(queue.map(p.deliveryId)).size,2);
+ assert.equal(p.dueReminders([{...event,completed:true}],beforeHour).length,0);
+ const old={...event,reminderOffsets:undefined,reminderMinutes:60};assert.equal(p.deliveryId(p.dueReminders([old],beforeHour)[0]),p.deliveryId(old));
+ const x=fixture();await x.run('save',{id:'multi',revision:0,event:{...event,source:'local'}});assert.deepEqual(Array.from(x.rows.get(x.base+'/entries/multi').reminderOffsets),[60,120,4320]);
+});

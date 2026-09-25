@@ -20,14 +20,16 @@ const validId=v=>/^[a-zA-Z0-9_-]{1,128}$/.test(text(v));
 function validateEvent(input){
  const title=text(input.title).slice(0,200),start=new Date(input.start).getTime(),end=new Date(input.end).getTime();
  if(!title||!Number.isFinite(start)||!Number.isFinite(end)||end<=start)fail('請填標題與正確的開始／結束時間。');
- const minutes=Number(input.reminderMinutes??10);
- if(![0,5,10,30,60,1440].includes(minutes))fail('提醒時間無效。');
- return {title,start:new Date(start).toISOString(),end:new Date(end).toISOString(),note:text(input.note).slice(0,12000),remind:input.remind===true,reminderMinutes:minutes,completed:input.completed===true};
+ const offsets=reminderOffsets(input),minutes=offsets[0]??60;
+ if(input.remind===true&&!offsets.length)fail('請至少選擇一個提醒時間。');
+ return {title,start:new Date(start).toISOString(),end:new Date(end).toISOString(),note:text(input.note).slice(0,12000),remind:input.remind===true,reminderMinutes:minutes,reminderOffsets:offsets,completed:input.completed===true};
 }
 function googleEvent(row,calendar){
  const start=row.start?.dateTime||(row.start?.date?row.start.date+'T09:00:00+08:00':null);
  return {id:hash(calendar.id+'|'+row.id),source:'google',googleId:row.id,calendarId:calendar.id,calendarName:calendar.summary,editable:['owner','writer'].includes(calendar.accessRole),title:row.summary||'未命名活動',start,end:row.end?.dateTime||(row.end?.date?row.end.date+'T00:00:00+08:00':null),allDay:!!row.start?.date,description:row.description||'',htmlLink:row.htmlLink||'',etag:row.etag,status:row.status};
 }
+function reminderOffsets(event){const raw=event.reminderOffsets===undefined?[Number(event.reminderMinutes??10)]:event.reminderOffsets;if(!Array.isArray(raw)||raw.length>10||raw.some(v=>!Number.isInteger(v)||![0,5,10,30,60,120,180,1440,2880,4320].includes(v)))fail('提醒時間無效。');return [...new Set(raw)].sort((a,b)=>a-b);}
+function dueReminders(list,now){return list.flatMap(e=>reminderOffsets(e).map(minutes=>({...e,reminderMinutes:minutes}))).filter(e=>due(e,now));}
 function due(event,now){const time=Date.parse(event.start)-Number(event.reminderMinutes??10)*60000;return event.remind===true&&!event.completed&&event.status!=='cancelled'&&Number.isFinite(time)&&time<=now&&time>now-24*3600000;}
 function deliveryId(event){return hash([event.id,event.start,event.reminderMinutes,event.reminderRevision||0].join('|'));}
 function currentReminder(event,note){return {...event,...note,...(event.source==='google'?{start:event.start,end:event.end,status:event.status}:{} )};}
@@ -61,7 +63,7 @@ async function events(uid,start,end){
    do{
     const q=new URLSearchParams({timeMin:start,timeMax:end,singleEvents:'true',maxResults:'2500',timeZone:'Asia/Taipei',...(pageToken?{pageToken}:{})});
     const data=await google(uid,'calendars/'+encodeURIComponent(c.id)+'/events?'+q);
-    for(const raw of data.items||[]){if(raw.status==='cancelled')continue;const row=googleEvent(raw,c),note=local.find(x=>x.id===row.id)||{};result.push({...row,note:note.note||'',assets:note.assets||[],completed:note.completed===true,remind:note.remind===true,reminderMinutes:note.reminderMinutes??10,reminderRevision:note.reminderRevision||0,revision:note.revision||0});}
+    for(const raw of data.items||[]){if(raw.status==='cancelled')continue;const row=googleEvent(raw,c),note=local.find(x=>x.id===row.id)||{};result.push({...row,note:note.note||'',assets:note.assets||[],completed:note.completed===true,remind:note.remind===true,reminderMinutes:note.reminderMinutes??10,reminderOffsets:reminderOffsets(note),reminderRevision:note.reminderRevision||0,revision:note.revision||0});}
     pageToken=data.nextPageToken||'';
    }while(pageToken);
   }
@@ -129,7 +131,7 @@ async function api(request){
   }
   await db.runTransaction(async tx=>{
    const old=(await tx.get(ref)).data()||{};if(Number(data.revision||0)!==Number(old.revision||0))fail('這則記事已被更新，請重新整理後再儲存。','aborted');
-   const reminderChanged=old.start!==validated.start||old.reminderMinutes!==validated.reminderMinutes;
+   const reminderChanged=old.start!==validated.start||JSON.stringify(reminderOffsets(old))!==JSON.stringify(validated.reminderOffsets);
    tx.set(ref,{...validated,source:before.source||data.event.source||'local',calendarId:text(data.event.calendarId),googleId:text(data.event.googleId),assets:old.assets||[],deleted:false,revision:Number(old.revision||0)+1,reminderRevision:Number(old.reminderRevision||0)+(reminderChanged?1:0),updatedAt:Date.now()},{merge:true});
   });
   await p.set({uid},{merge:true});return {ok:true,id};
@@ -192,14 +194,14 @@ async function reminders(){
  for(const doc of users.docs){const prefs=doc.data(),uid=prefs.uid;if(!uid)continue;
   try{
    const recipient=(await targets(uid)).find(t=>hash(t.id)===prefs.targetKey);if(!recipient)throw new Error('LINE 綁定已失效，請重新選擇自己的 LINE。');
-   const now=Date.now(),list=await events(uid,new Date(now-2*86400000).toISOString(),new Date(now+2*86400000).toISOString());
-   for(const event of list.events.filter(e=>due(e,now))){
+   const now=Date.now(),list=await events(uid,new Date(now-2*86400000).toISOString(),new Date(now+4*86400000).toISOString());
+   for(const event of dueReminders(list.events,now)){
     const ref=doc.ref.collection('deliveries').doc(deliveryId(event));let key,claimed=false;
     await db.runTransaction(async tx=>{const r=(await tx.get(ref)).data()||{};if(r.status==='sent'||r.leaseUntil>now)return;key=r.key||crypto.randomUUID();tx.set(ref,{key,status:'sending',leaseUntil:now+120000,eventId:event.id,at:now},{merge:true});claimed=true;});
     if(!claimed)continue;
     try{
      const latest=(await doc.ref.collection('entries').doc(event.id).get()).data(),freshPrefs=(await doc.ref.get()).data()||{};
-     if(!freshPrefs.lineEnabled||freshPrefs.targetKey!==prefs.targetKey||!latest||latest.deleted||!latest.remind||latest.completed||deliveryId(currentReminder(event,latest))!==deliveryId(event)){await ref.set({status:'cancelled',leaseUntil:0},{merge:true});continue;}
+     if(!freshPrefs.lineEnabled||freshPrefs.targetKey!==prefs.targetKey||!latest||latest.deleted||!latest.remind||latest.completed||!reminderOffsets(latest).includes(event.reminderMinutes)||deliveryId({...currentReminder(event,latest),reminderMinutes:event.reminderMinutes})!==deliveryId(event)){await ref.set({status:'cancelled',leaseUntil:0},{merge:true});continue;}
      if(event.source==='google'){
       const raw=await google(uid,'calendars/'+encodeURIComponent(event.calendarId)+'/events/'+encodeURIComponent(event.googleId));
       const current=googleEvent(raw,{id:event.calendarId,summary:event.calendarName});
@@ -215,4 +217,4 @@ async function reminders(){
  }
 }
 function register(exports){exports.privateCalendarAccess=onCall({region:REGION,timeoutSeconds:60,memory:'256MiB',maxInstances:3},privateAccess.api);exports.privateCalendarApi=onCall({region:REGION,timeoutSeconds:120,memory:'512MiB',maxInstances:5},api);exports.privateCalendarGoogleCallback=onRequest({region:REGION,timeoutSeconds:60,maxInstances:3},callback);exports.privateCalendarReminders=onSchedule({schedule:'every 1 minutes',timeZone:'Asia/Taipei',region:REGION,timeoutSeconds:120,maxInstances:1},reminders);}
-module.exports={register,_test:{owner,validateEvent,googleEvent,due,deliveryId,validId,currentReminder,api,callback}};
+module.exports={register,_test:{owner,validateEvent,googleEvent,due,reminderOffsets,dueReminders,deliveryId,validId,currentReminder,api,callback}};

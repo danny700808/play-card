@@ -23,7 +23,7 @@
    if(!job.saved){
     // A response can be lost after the server has committed. Recover only an exact matching save.
     if(job.saveAttempted){const r=await api('detail',{id:job.id}).catch(e=>{if(String(e.code).includes('not-found'))return null;throw e;});const row=r?.event;
-     if(row&&row.revision===job.revision+1&&['title','start','end','note','remind','reminderMinutes','completed','source','calendarId','googleId'].every(k=>k==='start'||k==='end'?Date.parse(row[k])===Date.parse(job.event[k]):(row[k]??'')===(job.event[k]??''))){job.saved=true;job.revision=row.revision;}
+     if(row&&row.revision===job.revision+1&&JSON.stringify(row.reminderOffsets||[row.reminderMinutes??10])===JSON.stringify(job.event.reminderOffsets||[job.event.reminderMinutes??10])&&['title','start','end','note','remind','reminderMinutes','completed','source','calendarId','googleId'].every(k=>k==='start'||k==='end'?Date.parse(row[k])===Date.parse(job.event[k]):(row[k]??'')===(job.event[k]??''))){job.saved=true;job.revision=row.revision;}
     }
     if(!job.saved){job.saveAttempted=true;const r=await api('save',{id:job.id,revision:job.revision,event:job.event});job.id=r.id;job.revision++;job.saved=true;}
    }
