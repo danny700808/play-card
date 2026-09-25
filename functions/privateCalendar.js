@@ -48,7 +48,7 @@ async function google(uid,path,options={}){
  if(!response.ok)fail(response.status===412?'Google 行程已被修改，請重新整理再編輯。':'Google 讀取／更新失敗（'+response.status+'），請確認授權與行事曆權限。','failed-precondition');
  return response.status===204?{}:response.json();
 }
-async function calendars(uid){let items=[],pageToken='';do{const data=await google(uid,'users/me/calendarList?maxResults=250'+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''));items.push(...(data.items||[]));pageToken=data.nextPageToken||'';}while(pageToken);return items.map(c=>({id:c.id,summary:c.summary,accessRole:c.accessRole,primary:!!c.primary,color:c.backgroundColor||'#5767ae'}));}
+async function calendars(uid){let items=[],pageToken='';do{const data=await google(uid,'users/me/calendarList?maxResults=250'+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''));items.push(...(data.items||[]));pageToken=data.nextPageToken||'';}while(pageToken);return items.map(c=>({id:c.id,summary:c.summaryOverride||c.summary,accessRole:c.accessRole,primary:!!c.primary,color:c.backgroundColor||'#5767ae'}));}
 async function events(uid,start,end){
  const p=profile(uid),prefs=(await p.get()).data()||{},local=(await p.collection('entries').get()).docs.map(d=>({id:d.id,...d.data()}));
  const result=local.filter(e=>e.source==='local'&&!e.deleted&&Date.parse(e.start)<Date.parse(end)&&Date.parse(e.end)>Date.parse(start));
