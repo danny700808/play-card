@@ -8,3 +8,5 @@
 .hourGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.hourGrid button{padding:12px 3px;min-height:44px;font-size:14px;font-variant-numeric:tabular-nums;border:1px solid #c9d4cc}.hourGrid button[aria-pressed=true]{background:#285c4e;color:white;border-color:#285c4e;box-shadow:inset 0 0 0 2px white}.hourPicker label{margin-top:12px}#hourSummary{font-size:13px;color:#285c4e;font-weight:600}#preciseTime{background:#f4f6f2;border-radius:10px;padding:12px;margin:12px 0}#preciseTime summary{font-size:14px}.hourGrid button:disabled{cursor:not-allowed}input[type=date]{min-width:0;max-width:100%}
 
 .calendarGate{max-width:400px;margin:48px auto;padding:28px;background:white;border:1px solid var(--line);border-radius:18px}.calendarGate h1{font-size:28px;margin-bottom:24px}.calendarGate>.primary{width:100%;padding:16px}.calendarGate details{margin-top:20px}.calendarGate p{font-size:13px}.calendarAccessBar{display:flex;gap:8px;justify-content:flex-end;margin-bottom:18px}.calendarAccessBar button{font-size:12px}@media(max-width:500px){.calendarGate{margin:24px 16px;padding:22px}}
+
+#calendarHeader{justify-content:flex-end}
