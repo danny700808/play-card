@@ -8,6 +8,11 @@
   for(const h of selected){const last=groups[groups.length-1];if(last&&last.to===h)last.to=h+1;else groups.push({from:h,to:h+1});}
   return groups.map(g=>{const a=new Date(date+'T00:00:00'),b=new Date(a);if(!Number.isFinite(a.getTime()))throw Error('日期無效。');a.setHours(g.from);b.setHours(g.to);return {start:a.toISOString(),end:b.toISOString(),from:g.from,to:g.to};});
  }
+ function agendaEvents(events,month,now=new Date()){
+  const first=new Date(month.getFullYear(),month.getMonth(),1),end=new Date(month.getFullYear(),month.getMonth()+1,1),today=new Date(now);today.setHours(0,0,0,0);
+  const cutoff=month.getFullYear()===today.getFullYear()&&month.getMonth()===today.getMonth()?today:first;
+  return events.filter(e=>new Date(e.start)<end&&new Date(e.end)>cutoff).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));
+ }
  async function saveJobs(jobs,api,progress=()=>{}){
   for(let index=0;index<jobs.length;index++){
    const job=jobs[index];if(job.done)continue;progress(index,jobs.length);
@@ -30,5 +35,5 @@
   }
   return jobs.length;
  }
- const value={hourRanges,saveJobs};if(typeof module==='object'&&module.exports)module.exports=value;else root.CalendarHours=value;
+ const value={hourRanges,agendaEvents,saveJobs};if(typeof module==='object'&&module.exports)module.exports=value;else root.CalendarHours=value;
 })(typeof globalThis!=='undefined'?globalThis:this);

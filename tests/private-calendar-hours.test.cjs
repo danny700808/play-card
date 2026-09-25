@@ -1,6 +1,11 @@
 'use strict';
 process.env.TZ='Asia/Taipei';
-const test=require('node:test'),assert=require('node:assert/strict'),{hourRanges,saveJobs}=require('../private-calendar-hours');
+const test=require('node:test'),assert=require('node:assert/strict'),{hourRanges,agendaEvents,saveJobs}=require('../private-calendar-hours');
+test('current month list hides yesterday but keeps all of today, future and ongoing events',()=>{
+ const events=[{id:'past',start:'2026-09-24T09:00:00+08:00',end:'2026-09-25T00:00:00+08:00'},{id:'today',start:'2026-09-25T08:00:00+08:00',end:'2026-09-25T09:00:00+08:00'},{id:'ongoing',start:'2026-08-31T00:00:00+08:00',end:'2026-09-26T00:00:00+08:00'},{id:'future',start:'2026-09-29T09:00:00+08:00',end:'2026-09-29T10:00:00+08:00'},{id:'next',start:'2026-10-01T09:00:00+08:00',end:'2026-10-01T10:00:00+08:00'}];
+ assert.deepEqual(agendaEvents(events,new Date('2026-09-01'),new Date('2026-09-25T15:00:00+08:00')).map(x=>x.id),['ongoing','today','future']);
+ assert.deepEqual(agendaEvents(events,new Date('2026-10-01'),new Date('2026-09-25')).map(x=>x.id),['next']);
+});
 test('adjacent hours merge, separated hours stay separate and 24 means next midnight',()=>{
  const r=hourRanges('2026-09-30',[23,9,10,14,10]);assert.deepEqual(r.map(x=>[x.from,x.to]),[[9,11],[14,15],[23,24]]);
  assert.equal(r[2].end,'2026-09-30T16:00:00.000Z');assert.equal(hourRanges('2026-09-30',Array.from({length:24},(_,i)=>i)).length,1);

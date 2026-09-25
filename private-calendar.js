@@ -32,7 +32,7 @@
   }
   $('calendar').innerHTML=html;renderDay();
   const todayStart=new Date();todayStart.setHours(0,0,0,0);const currentMonth=y===todayStart.getFullYear()&&m===todayStart.getMonth();
-  const rows=S.events.filter(e=>new Date(e.start).getMonth()===m&&new Date(e.start).getFullYear()===y&&(!currentMonth||new Date(e.end)>todayStart)).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));
+  const rows=CalendarHours.agendaEvents(S.events,S.month);
   $('agenda').innerHTML=rows.length?eventRows(rows):'<p>'+ (currentMonth?'本月今天之後沒有行程。':'這個月還沒有行程。')+'</p>';
  }
  function cleanup(){S.urls.forEach(URL.revokeObjectURL);S.urls=[];if(S.recorder?.state==='recording')S.recorder.stop();S.stream?.getTracks().forEach(t=>t.stop());clearTimeout(S.recordTimer);S.recorder=null;S.stream=null;}
