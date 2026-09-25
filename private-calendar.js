@@ -7,20 +7,23 @@
  let call,accessCall;
  let calendarSession=sessionStorage.getItem("youziCalendarSession")||"";
  async function api(action,data={}){if(!call)throw Error('請稍候再試。');try{return (await call({action,...data,...(calendarSession?{calendarSession}:{})})).data;}catch(e){if(e.code==='functions/unauthenticated')showGate(e.message);throw e;}}
+ async function workApi(action,data={}){try{return (await calendarRequest('sharedCalendarApi',{action,...data,calendarSession})).data;}catch(e){if(e.code==='functions/unauthenticated')showGate(e.message);throw e;}}
+ function workEvent(t){return {...t,id:'shared:'+t.id,taskId:t.id,source:'shared',completed:t.status==='done'};}
+ const workLabels={pending:'待處理',in_progress:'處理中',done:'已完成',cancelled:'已取消'};
  function message(msg,error=false){$('status').textContent=msg;$('status').hidden=!msg;$('status').classList.toggle('error',error);}
  async function safely(fn,target='status'){try{await fn();}catch(e){if(target==='status')message(e.message,true);else $(target).textContent=e.message;}}
  function range(){const first=new Date(S.month.getFullYear(),S.month.getMonth(),1),offset=(first.getDay()+6)%7;return {start:new Date(first.getFullYear(),first.getMonth(),1-offset).toISOString(),end:new Date(first.getFullYear(),first.getMonth(),43-offset).toISOString()};}
  async function refresh(){
   message('正在讀取行程…');S.status=await api('status');
   S.calendars=S.status.googleConnected?(await api('calendars').catch(()=>({calendars:[]}))).calendars:[];
-  const result=await api('list',range());S.events=result.events;render();
+  const result=await api('list',range());let workWarning='';const work=await workApi('list',range()).catch(e=>{if(e.code==='functions/unauthenticated')throw e;workWarning='交辦工作未能載入：'+e.message;return {tasks:[]};});if(!calendarSession)return;S.events=[...result.events,...work.tasks.filter(t=>!t.draft&&t.assignedTo==='owner').map(workEvent)];render();if(workWarning)result.warnings=[...(result.warnings||[]),workWarning];
   $('connection').hidden=true;
   message(result.warnings?.length?result.warnings.join('；'):'',!!result.warnings?.length);settingsRender();
  }
  const dayKey=d=>local(d).slice(0,10);
  S.selected=dayKey(new Date());
- const sourceColor=e=>e.source!=='google'?'#202020':S.calendars.find(c=>c.id===e.calendarId)?.primary?'#6524d6':'#d71920';
- const sourceName=e=>e.source!=='google'?'私人記事 · 未同步 Google':S.calendars.find(c=>c.id===e.calendarId)?.primary?'我的行程 · 黃DO RE MI':e.calendarId==='d3460fysw@gmail.com'?'豐原西南社':e.calendarName||'其他日曆';
+ const sourceColor=e=>e.source==='shared'?'#a32270':e.source!=='google'?'#202020':S.calendars.find(c=>c.id===e.calendarId)?.primary?'#6524d6':'#d71920';
+ const sourceName=e=>e.source==='shared'?(e.createdBy==='owner'?'我建立的工作':(e.createdName||'成員')+' 交辦給我')+' · '+(workLabels[e.status]||'待處理'):e.source!=='google'?'私人記事 · 未同步 Google':S.calendars.find(c=>c.id===e.calendarId)?.primary?'我的行程 · 黃DO RE MI':e.calendarId==='d3460fysw@gmail.com'?'豐原西南社':e.calendarName||'其他日曆';
  function onDay(e,date){const d=new Date(date+'T00:00:00'),next=new Date(d);next.setDate(next.getDate()+1);const begin=e.allDay?new Date(e.start.slice(0,10)+'T00:00:00'):new Date(e.start);return begin<next&&new Date(e.end)>d;}
  function eventTime(e){return e.allDay?new Date(e.start).toLocaleDateString('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric'})+' 全天':stamp(e.start)+' → '+stamp(e.end);}
  let googlePreviewVersion=0;
@@ -34,7 +37,7 @@
  async function showAttachment(eventId,assetId){
   closeAttachment();const version=attachmentVersion,entry=S.events.find(e=>e.id===eventId),file=entry?.assets?.find(a=>a.id===assetId);if(!file)return;
   $('attachmentTitle').textContent=file.name||'附件';$('attachmentStatus').textContent='正在載入…';$('attachmentViewer').showModal();
-  try{const data=await api('asset',{id:eventId,assetId});if(version!==attachmentVersion||!$('attachmentViewer').open)return;
+  try{const data=entry.source==='shared'?await workApi('asset',{id:entry.taskId,assetId}):await api('asset',{id:eventId,assetId});if(version!==attachmentVersion||!$('attachmentViewer').open)return;
    if(!/^(image|audio)\//.test(data.mime))throw Error('不支援這個附件格式。');
    const bytes=Uint8Array.from(atob(data.base64),c=>c.charCodeAt(0));attachmentUrl=URL.createObjectURL(new Blob([bytes],{type:data.mime}));
    const media=document.createElement(data.mime.startsWith('image/')?'img':'audio');media.src=attachmentUrl;
@@ -44,6 +47,22 @@
   }catch(e){if(version===attachmentVersion)$('attachmentStatus').textContent=e.message;}
  }
  $('attachmentViewer').addEventListener('close',closeAttachment);
+
+ let workPreviewVersion=0,currentWork=null;
+ async function showWork(id,focusDate=false){
+  const version=++workPreviewVersion;currentWork=null;$('workBody').textContent='正在讀取工作…';$('workMessage').textContent='';$('workProgressControls').hidden=true;if(!$('workViewer').open)$('workViewer').showModal();
+  try{const {task}=await workApi('detail',{id});if(version!==workPreviewVersion||!calendarSession||!$('workViewer').open)return;
+   if(task.draft)throw Error('這筆工作尚未發佈。');currentWork=task;const row=workEvent(task);
+   if(focusDate){S.month=new Date(task.start);S.selected=dayKey(S.month);await refresh();if(version!==workPreviewVersion||!calendarSession)return;}
+   S.events=S.events.filter(e=>e.id!==row.id);S.events.push(row);render();
+   $('workBody').innerHTML='<h3>'+esc(task.title)+'</h3><p class="previewTime">'+esc(eventTime(row))+'</p><p><strong>'+esc(task.createdBy==='owner'?'我建立的工作':(task.createdName||'成員')+' 交辦給我')+'</strong></p><p>負責人：'+esc(task.assignedTo==='owner'?'我':task.assignedName)+'</p><p>'+esc(workLabels[task.status]||'待處理')+'</p>'+(task.note?'<p class="googleDescription">'+esc(task.note)+'</p>':'')+'<div class="quickAttachments">'+(task.assets||[]).map(a=>'<button type="button" data-work-asset="'+esc(a.id)+'">'+(a.mime.startsWith('image/')?'▧ 圖片':'▶ 錄音')+' · '+esc(a.name)+'</button>').join('')+'</div>';
+   $('workProgress').value=task.status;$('workProgressControls').hidden=false;
+  }catch(e){if(version===workPreviewVersion)$('workBody').textContent=e.message;}
+ }
+ $('workBody').onclick=e=>{const b=e.target.closest('[data-work-asset]');if(b&&currentWork)showAttachment('shared:'+currentWork.id,b.dataset.workAsset);};
+ $('workViewer').addEventListener('close',()=>{workPreviewVersion++;currentWork=null;$('workBody').replaceChildren();});
+ $('saveWorkProgress').onclick=()=>safely(async()=>{if(!currentWork)return;const task=currentWork,b=$('saveWorkProgress');b.disabled=true;try{const result=await workApi('progress',{id:task.id,revision:task.revision,status:$('workProgress').value});await refresh();if($('workViewer').open)await showWork(task.id);$('workMessage').textContent=result.notification?.pending?'進度已更新，LINE 通知尚待送出。':'進度已更新。';}finally{b.disabled=false;}},'workMessage');
+
  function renderDay(){const rows=S.events.filter(e=>onDay(e,S.selected)).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));$('dayTitle').textContent=new Date(S.selected+'T12:00:00').toLocaleDateString('zh-TW',{month:'long',day:'numeric',weekday:'long'});$('dayCount').textContent=rows.length+' 件事情';$('dayEvents').innerHTML=rows.length?eventRows(rows):'<p class="emptyDay">這天沒有安排，按「新增這天的事情」記下待辦。</p>';}
  function render(){
   const y=S.month.getFullYear(),m=S.month.getMonth();$('monthTitle').textContent=y+' 年 '+(m+1)+' 月';$('miniMonthTitle').textContent=(m+1)+' 月';
@@ -149,20 +168,20 @@
  $('saveLine').onclick=()=>safely(async()=>{await api('settings',{lineEnabled:$('lineEnabled').checked,targetKey:$('lineTarget').value});await refresh();$('settingsStatus').textContent='已儲存 LINE 提醒設定。';},'settingsStatus');
  $('testLine').onclick=()=>safely(async()=>{await api('testLine',{targetKey:$('lineTarget').value});$('settingsStatus').textContent='測試訊息已送交 LINE，請查看個人 LINE。';},'settingsStatus');
  document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{if(S.saving)return;$(b.dataset.close).close();if(b.dataset.close==='editor')cleanup();});$('editor').addEventListener('cancel',e=>{if(S.saving)e.preventDefault();else cleanup();});
- for(const id of ['calendar','agenda','dayEvents'])$(id).onclick=e=>{const b=e.target.closest('button');if(b?.dataset.google){showGooglePreview(b.dataset.google);return;}if(b?.dataset.attachment){showAttachment(b.dataset.owner,b.dataset.attachment);return;}if(b?.dataset.event)showEditor(S.events.find(x=>x.id===b.dataset.event));if(b?.dataset.day){S.selected=b.dataset.day;render();}};
+ for(const id of ['calendar','agenda','dayEvents'])$(id).onclick=e=>{const b=e.target.closest('button');if(b?.dataset.google){showGooglePreview(b.dataset.google);return;}if(b?.dataset.attachment){showAttachment(b.dataset.owner,b.dataset.attachment);return;}if(b?.dataset.event){const row=S.events.find(x=>x.id===b.dataset.event);if(row?.source==='shared')safely(()=>showWork(row.taskId));else showEditor(row);}if(b?.dataset.day){S.selected=b.dataset.day;render();}};
  $('newButton').onclick=()=>showEditor(null,S.selected);$('newDay').onclick=()=>showEditor(null,S.selected);
  for(const [id,n] of [['previous',-1],['next',1]])$(id).onclick=()=>safely(async()=>{S.month=new Date(S.month.getFullYear(),S.month.getMonth()+n,1);S.selected=dayKey(S.month);await refresh();});
  $('today').onclick=()=>safely(async()=>{S.month=new Date();S.selected=dayKey(S.month);await refresh();});$('refresh').onclick=()=>safely(refresh);
  $('monthView').onclick=()=>{$('monthPanel').hidden=false;$('agenda').hidden=true;$('monthView').setAttribute('aria-pressed','true');$('listView').setAttribute('aria-pressed','false');};$('listView').onclick=()=>{render();$('monthPanel').hidden=true;$('agenda').hidden=false;$('monthView').setAttribute('aria-pressed','false');$('listView').setAttribute('aria-pressed','true');};
  function showGate(msg='請用 Face ID 或專用密碼進入。'){
-  calendarSession='';sessionStorage.removeItem('youziCalendarSession');$('calendarWorkspace').hidden=true;$('calendarGate').hidden=false;$('settingsButton').hidden=true;$('editor').close();$('settings').close();$('googleViewer').close();googlePreviewVersion++;$('googlePreview').replaceChildren();$('attachmentViewer').close();closeAttachment();cleanup();S.events=[];$('calendar').innerHTML='';$('agenda').innerHTML='';$('dayEvents').innerHTML='';$('loginMessage').textContent=msg;
+  calendarSession='';sessionStorage.removeItem('youziCalendarSession');$('calendarWorkspace').hidden=true;$('calendarGate').hidden=false;$('settingsButton').hidden=true;$('editor').close();$('settings').close();$('googleViewer').close();$('workViewer').close();workPreviewVersion++;$('workBody').replaceChildren();googlePreviewVersion++;$('googlePreview').replaceChildren();$('attachmentViewer').close();closeAttachment();cleanup();S.events=[];$('calendar').innerHTML='';$('agenda').innerHTML='';$('dayEvents').innerHTML='';$('loginMessage').textContent=msg;
  }
  async function access(action,data={}){if(!accessCall)throw Error('登入服務尚在載入，請稍後再試。');return (await accessCall({action,...data,...(calendarSession?{calendarSession}:{})})).data;}
  async function openCalendar(result){
   if(result?.token){calendarSession=result.token;sessionStorage.setItem('youziCalendarSession',calendarSession);}
   const entry=await access('entryOptions');$('autoFace').checked=entry.autoFace;
   await refresh();$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;$('newButton').disabled=false;$('newDay').disabled=false;
-  const sharedParams=new URLSearchParams(location.search);if(sharedParams.get('shared')==='1'){location.replace('shared-calendar.html?owner=1'+(sharedParams.get('task')?'&task='+encodeURIComponent(sharedParams.get('task')):''));return;}
+  const sharedParams=new URLSearchParams(location.search);if(sharedParams.get('task')){await showWork(sharedParams.get('task'),true);return;}if(sharedParams.get('shared')==='1'){location.replace('shared-calendar.html?owner=1'+(sharedParams.get('task')?'&task='+encodeURIComponent(sharedParams.get('task')):''));return;}
   const id=new URLSearchParams(location.search).get('event');if(id){let row=S.events.find(e=>e.id===id);if(!row)row=(await api('detail',{id})).event;if(row)showEditor(row);}
  }
  async function loginTask(fn){$('faceLogin').disabled=true;$('passwordLogin').disabled=true;$('loginMessage').textContent='正在驗證…';try{await fn();}catch(e){$('loginMessage').textContent=e.name==='NotAllowedError'?'尚未完成 Face ID，可重試或改用專用密碼。':e.message;$('passwordFallback').open=true;}finally{$('faceLogin').disabled=false;$('passwordLogin').disabled=false;}}

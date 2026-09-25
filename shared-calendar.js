@@ -34,7 +34,7 @@
  if(invite)history.replaceState(null,'',location.pathname);
  configureGate();
  $('ownerLogin').href='private-calendar.html?shared=1'+(params.get('task')?'&task='+encodeURIComponent(params.get('task')):'');
- if(owner&&!invite&&!privateToken){location.replace($('ownerLogin').href);return;}
+ if(owner&&!invite&&(params.get('task')||!privateToken)){location.replace($('ownerLogin').href);return;}
  async function login(fn){$('loginButton').disabled=true;$('faceButton').disabled=true;$('gateMessage').textContent='正在確認身分…';try{await fn();$('gateMessage').textContent='';}catch(e){$('gateMessage').textContent=e.name==='NotAllowedError'?'尚未完成 Face ID，請重試或用自己的密碼。':e.message;}finally{$('loginButton').disabled=false;$('faceButton').disabled=false;}}
  $('loginForm').onsubmit=e=>{e.preventDefault();login(async()=>{memberId=$('memberId').value.trim();await entered(await access(invite?'activate':'password',{invite,memberId,password:$('password').value}));});};
  $('faceButton').onclick=()=>login(async()=>{memberId=$('memberId').value.trim();if(!window.PublicKeyCredential)throw Error('請使用支援 Face ID 的 Safari 或改用密碼。');const c=await access('authenticationOptions',{memberId}),response=await SimpleWebAuthnBrowser.startAuthentication({optionsJSON:c.options});await entered(await access('authenticationVerify',{memberId,ticket:c.ticket,response}));});

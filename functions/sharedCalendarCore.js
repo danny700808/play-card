@@ -28,8 +28,9 @@ function createSharedCore({db,auth,bucket,ownerLine,sendLine}){
    if(!readable){await ref.set({state:'cancelled',leaseUntil:0},{merge:true});return;}
    const target=await lineFor(job.ownerUid,job.to);if(!target)throw Error('尚未設定此收件人的有效 LINE 綁定。');
    const labels={assigned:'新交辦／內容更新',progress:'交辦進度更新',reminder:'工作時間提醒'};
-   const suffix=job.to==='owner'?'?owner=1&task=':'?member='+encodeURIComponent(job.to)+'&task=';
-   await sendLine(target,'🔔 '+labels[job.kind]+'\n'+job.title+'\n'+new Date(job.start).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+'\n'+job.actorName+' · '+({pending:'待處理',in_progress:'處理中',done:'已完成',cancelled:'已取消'}[row.status]||'待處理')+'\n查看截圖／錄音：\n'+PAGE+suffix+encodeURIComponent(job.taskId)+'&openExternalBrowser=1',job.key);
+   const targetPage=job.to==='owner'?PAGE.replace('shared-calendar.html','private-calendar.html'):PAGE;
+   const suffix=job.to==='owner'?'?task=':'?member='+encodeURIComponent(job.to)+'&task=';
+   await sendLine(target,'🔔 '+labels[job.kind]+'\n'+job.title+'\n'+new Date(job.start).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})+'\n'+job.actorName+' · '+({pending:'待處理',in_progress:'處理中',done:'已完成',cancelled:'已取消'}[row.status]||'待處理')+'\n查看截圖／錄音：\n'+targetPage+suffix+encodeURIComponent(job.taskId)+'&openExternalBrowser=1',job.key);
    await ref.set({state:'sent',sentAt:Date.now(),leaseUntil:0,error:''},{merge:true});
   }catch(e){await ref.set({state:'failed',leaseUntil:0,error:text(e.message).slice(0,400)},{merge:true});}
  }
