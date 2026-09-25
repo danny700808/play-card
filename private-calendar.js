@@ -25,7 +25,7 @@
  function eventRows(rows){return rows.map(e=>'<button class="dayEvent '+(e.completed?'done':'')+'" data-event="'+esc(e.id)+'" style="--event-color:'+sourceColor(e)+'"><time>'+esc(e.allDay?'全天':stamp(e.start))+'</time><strong>'+esc(e.title)+'</strong><small>'+esc(sourceName(e))+(e.remind?' · LINE 提醒':'')+(e.completed?' · 已完成':'')+'</small></button>').join('');}
  function renderDay(){const rows=S.events.filter(e=>onDay(e,S.selected)).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));$('dayTitle').textContent=new Date(S.selected+'T12:00:00').toLocaleDateString('zh-TW',{month:'long',day:'numeric',weekday:'long'});$('dayCount').textContent=rows.length+' 件事情';$('dayEvents').innerHTML=rows.length?eventRows(rows):'<p class="emptyDay">這天沒有安排，按「新增這天的事情」記下待辦。</p>';}
  function render(){
-  const y=S.month.getFullYear(),m=S.month.getMonth();$('monthTitle').textContent=y+' 年 '+(m+1)+' 月';
+  const y=S.month.getFullYear(),m=S.month.getMonth();$('monthTitle').textContent=y+' 年 '+(m+1)+' 月';$('miniMonthTitle').textContent=(m+1)+' 月';
   let html=['一','二','三','四','五','六','日'].map(d=>'<div class="weekday">'+d+'</div>').join('');
   const first=new Date(y,m,1),offset=(first.getDay()+6)%7;
   for(let i=0;i<42;i++){const d=new Date(y,m,1-offset+i),key=dayKey(d),today=key===dayKey(new Date()),rows=S.events.filter(e=>onDay(e,key)),colors=[...new Set(rows.map(sourceColor))];
@@ -60,9 +60,10 @@
   ['title','start','end'].forEach(id=>$(id).disabled=readonly);
   $('editorTitle').textContent=row?'行程與私人記事':'新增行程';
   const writable=S.calendars.filter(c=>['owner','writer'].includes(c.accessRole)),personal=writable.find(c=>c.primary)||writable.find(c=>c.summary.includes('DO RE MI'));
+  if(!row&&S.status.googleConnected&&!personal){message('無法取得個人 Google 行事曆，請先按同步更新或在設定重新連接，再新增行程。',true);return;}
   const ordered=personal?[personal,...writable.filter(c=>c.id!==personal.id)]:writable;
   $('destination').innerHTML=ordered.map(c=>'<option value="'+esc(c.id)+'">Google · '+esc(c.summary)+'（同步）</option>').join('')+'<option value="local">只存私人記事（不同步 Google）</option>';
-  $('destination').value=row?.source==='google'?row.calendarId:row?'local':personal?.id||'local';$('destinationLabel').hidden=!!row;destinationHint();
+  $('destination').value=row?(row.source==='google'?row.calendarId:'local'):(personal?.id||'local');$('destinationLabel').hidden=row?.source==='google';destinationHint();
   S.timeReadonly=!!readonly;S.hours=new Set();$('hourDate').value=local(start).slice(0,10);$('hourDate').disabled=readonly;$('preciseUse').disabled=readonly;$('preciseTime').open=false;
   const a=new Date($('start').value),b=new Date($('end').value),midnight=new Date(a);midnight.setHours(24,0,0,0);
   const aligned=a.getMinutes()===0&&b.getMinutes()===0&&b>a&&b<=midnight;
@@ -73,7 +74,7 @@
  }
  function destinationHint(){
   const row=S.current,destination=$('destination').value;
-  $('destinationHint').textContent=row?.source==='local'?'這筆只存在私人行事曆，尚未同步 Google。設定中勾選 Google 行事曆不會轉移這筆記事。':destination==='local'?'儲存後只會出現在這裡，不會同步至 Google。':'儲存成功後會同步至 Google · '+(S.calendars.find(c=>c.id===destination)?.summary||row?.calendarName||'所選行事曆')+'。';
+  $('destinationHint').textContent=row?.source==='local'&&destination==='local'?'這筆尚未同步 Google；可改選 Google 儲存位置後儲存。':destination==='local'?'儲存後只會出現在這裡，不會同步至 Google。':'儲存成功後會同步至 Google · '+(S.calendars.find(c=>c.id===destination)?.summary||row?.calendarName||'所選行事曆')+'。';
  }
  $('destination').onchange=destinationHint;
  function assetNode(file,pending=false){const div=document.createElement('div');div.className='asset';const small=document.createElement('small');small.textContent=file.name+(pending?' · 等待儲存':'');div.append(small);return div;}
@@ -97,13 +98,14 @@
   if(!$('title').value.trim())throw Error('請填事情名稱。');
   const uploads=await Promise.all(S.pending.map(async f=>({name:f.name,mime:f.type,size:f.size,base64:await base64(f)})));
   const originals=[];
-  if(c&&ranges.length>1)for(const a of c.assets||[]){const data=await api('asset',{id:c.id,assetId:a.id});originals.push({name:a.name,mime:a.mime,size:a.size,base64:data.base64});}
-  const destination=c?.source==='google'?c.calendarId:c?'local':$('destination').value;
+  const converting=c?.source==='local'&&$('destination').value!=='local';
+  if(c&&(ranges.length>1||converting))for(const a of c.assets||[]){const data=await api('asset',{id:c.id,assetId:a.id});originals.push({name:a.name,mime:a.mime,size:a.size,base64:data.base64});}
+  const destination=c?.source==='google'?c.calendarId:$('destination').value;
   return ranges.map((r,i)=>{
-   const original=i===0?c:null,google=destination!=='local';
+   const original=i===0&&!converting?c:null,google=destination!=='local';
    const event={title:$('title').value,start:r.start,end:r.end,note:c?.note||'',remind:$('remind').checked,reminderMinutes:Number($('minutes').value),completed:$('completed').checked,source:google?'google':'local',calendarId:google?destination:'',googleId:original?.googleId||''};
    const changed=original&&google&&original.editable&&!original.allDay&&(event.title!==original.title||Date.parse(event.start)!==Date.parse(original.start)||Date.parse(event.end)!==Date.parse(original.end));
-   return {id:original?.id||crypto.randomUUID(),original,event,requestId:crypto.randomUUID(),revision:original?.revision||0,googleWrite:google&&(!original||!!changed),files:i===0?uploads:[...originals,...uploads],uploaded:0,knownAssets:(original?.assets||[]).map(a=>a.id)};
+   return {id:original?.id||crypto.randomUUID(),original,event,requestId:crypto.randomUUID(),revision:original?.revision||0,googleWrite:google&&(!original||!!changed),files:i===0&&!converting?uploads:[...originals,...uploads],uploaded:0,knownAssets:(original?.assets||[]).map(a=>a.id)};
   });
  }
  $('eventForm').onsubmit=e=>{e.preventDefault();if(S.saving)return;safely(async()=>{
@@ -113,7 +115,7 @@
   try{
    if(!S.batch)S.batch=await prepareJobs();
    const total=await CalendarHours.saveJobs(S.batch,api,(i,n)=>{$('formStatus').textContent='正在儲存第 '+(i+1)+' / '+n+' 段行程…';});
-   const remind=S.batch[0].event.remind,googleSaved=S.batch.every(j=>j.event.source==='google');S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();await refresh();message('已儲存 '+total+' 段行程。'+(googleSaved?'已同步至 Google 行事曆。':'只存私人記事，未同步 Google。')+(remind&&!S.status.lineEnabled?'LINE 尚未啟用，請到設定啟用。':''));
+   const remind=S.batch[0].event.remind,google=S.batch[0].event.source==='google';if(S.current?.source==='local'&&google)await api('archive',{id:S.current.id});S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();await refresh();message('已儲存 '+total+' 段行程'+(google?'，已同步至 Google。':'，只存私人記事。')+(remind&&!S.status.lineEnabled?'LINE 尚未啟用，請到連線設定啟用。':''));
   }catch(e){if(S.batch){const done=S.batch.filter(j=>j.done).length;$('save').textContent='重試未完成的部分';throw Error('已完成 '+done+' / '+S.batch.length+' 段。'+e.message+' 按重試繼續。');}editorLock(false);throw e;
   }finally{S.saving=false;$('save').disabled=false;}
  },'formStatus');};

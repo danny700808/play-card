@@ -13,3 +13,5 @@
 
 /* Date, settings and navigation share one compact calendar toolbar. */
 .toolbar{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin:18px 0 14px}.toolbar .monthHeading{justify-content:space-between;flex-wrap:nowrap}.toolbar .monthHeading h2{order:0;flex-basis:auto;margin:0}.toolbar .viewControls,.toolbar .monthNavigation{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-width:440px}.toolbar button{white-space:nowrap}.dateMonth{font-size:10px;line-height:1.15;color:#687b72}.outside .dateMonth{color:#8d9891}.miniDay{min-height:57px;gap:1px}.calendarAccessBar{justify-content:flex-start;flex-wrap:wrap;margin:0 0 12px}#destinationHint{font-size:13px;line-height:1.6;color:#285c4e}@media(max-width:750px){.toolbar .viewControls,.toolbar .monthNavigation{max-width:none}.miniDay{min-height:53px}.toolbar .monthHeading h2{font-size:21px}.miniMonth{width:min(100%,360px)}}
+
+#miniMonthTitle{font-size:19px;margin:0 0 10px}
