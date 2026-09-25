@@ -151,8 +151,12 @@
   const c=await access('registrationOptions'),response=await SimpleWebAuthnBrowser.startRegistration({optionsJSON:c.options});await access('registrationVerify',{ticket:c.ticket,response});message('通行密鑰已啟用，下次可用 Face ID／裝置驗證進入。');
  }catch(e){message(e.name==='NotAllowedError'?'尚未完成手機驗證，仍可使用專用密碼。':e.message,true);}finally{b.disabled=false;}};
  $('lockCalendar').onclick=async()=>{try{await access('logout');showGate();}catch(e){message('鎖定未完成，請重試。'+e.message,true);}};
- firebase.initializeApp(APP_CONFIG.FIREBASE_CONFIG);
- call=firebase.app().functions('asia-east1').httpsCallable('privateCalendarApi',{timeout:120000});
- accessCall=firebase.app().functions('asia-east1').httpsCallable('privateCalendarAccess',{timeout:60000});
- firebase.auth().onAuthStateChanged(()=>{if(calendarSession)openCalendar().catch(e=>showGate(e.message));});
+ // Dedicated sessions must not carry the main system's Firebase Authorization header.
+ async function calendarRequest(endpoint,data){
+  const r=await fetch('https://asia-east1-youzi-c1b74.cloudfunctions.net/'+endpoint,{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({data}),signal:AbortSignal.timeout(120000)});
+  let body;try{body=await r.json();}catch{throw Error('登入服務暫時無法連線，請稍後再試。');}
+  if(!r.ok||body.error){const e=Error(body.error?.message||'服務暫時無法連線。');e.code='functions/'+String(body.error?.status||'internal').toLowerCase().replaceAll('_','-');throw e;}return {data:body.result};
+ }
+ call=data=>calendarRequest('privateCalendarApi',data);accessCall=data=>calendarRequest('privateCalendarAccess',data);
+ if(calendarSession)openCalendar().catch(e=>showGate(e.message));
 })();
