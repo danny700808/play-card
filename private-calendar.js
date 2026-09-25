@@ -36,13 +36,38 @@
   $('agenda').innerHTML=rows.length?eventRows(rows):'<p>這個月還沒有行程。</p>';
  }
  function cleanup(){S.urls.forEach(URL.revokeObjectURL);S.urls=[];if(S.recorder?.state==='recording')S.recorder.stop();S.stream?.getTracks().forEach(t=>t.stop());clearTimeout(S.recordTimer);S.recorder=null;S.stream=null;}
+ const durationLabel=minutes=>{const h=Math.floor(minutes/60),m=Math.round(minutes%60);return (h?h+' 小時':'')+(h&&m?' ':'')+(m?m+' 分鐘':'');};
+ function syncTimeSliders(){
+  const a=new Date($('start').value),b=new Date($('end').value),minutes=(b-a)/60000;
+  if(!Number.isFinite(a.getTime())||!Number.isFinite(b.getTime())||minutes<=0){$('timeSummary').textContent='請選擇有效的開始與結束時間';return;}
+  const clock=d=>d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',hour12:false});
+  $('startSlider').value=a.getHours()*60+a.getMinutes();$('durationSlider').max=Math.max(720,Math.ceil(minutes/15)*15);$('durationSlider').value=minutes;
+  $('durationMax').textContent=durationLabel(Number($('durationSlider').max));
+  $('startReadout').textContent=clock(a);$('durationReadout').textContent=durationLabel(minutes);
+  $('startSlider').setAttribute('aria-valuetext',clock(a));$('durationSlider').setAttribute('aria-valuetext',durationLabel(minutes));
+  $('timeSummary').textContent=(a.getMonth()+1)+'/'+a.getDate()+' '+clock(a)+' → '+(a.toDateString()!==b.toDateString()?(b.getMonth()+1)+'/'+b.getDate()+' ':'')+clock(b)+'，共 '+durationLabel(minutes);
+ }
+ function dragTime(which){
+  const a=new Date($('start').value),b=new Date($('end').value);if(!Number.isFinite(a.getTime()))return;
+  const duration=which==='start'?Math.max(15,(b-a)/60000||60):Number($('durationSlider').value);
+  if(which==='start'){const minutes=Number($('startSlider').value);a.setHours(Math.floor(minutes/60),minutes%60,0,0);}
+  $('start').value=local(a);$('end').value=local(new Date(a.getTime()+duration*60000));syncTimeSliders();
+ }
+ $('startSlider').oninput=()=>dragTime('start');$('durationSlider').oninput=()=>dragTime('duration');
+ $('start').oninput=syncTimeSliders;$('end').oninput=syncTimeSliders;
+ function destinationInfo(){if(S.current)return;const c=S.calendars.find(c=>c.id===$('destination').value);$('sourceInfo').textContent=c?'標題與時間會同步到 Google · '+c.summary+'；圖片、錄音與私人備註保留在本系統。':'只存私人記事，不會同步到 Google。';}
+ $('destination').onchange=destinationInfo;
  function showEditor(row,date){
   cleanup();S.current=row?{...row}:null;S.googleDraftId=crypto.randomUUID();S.pending=[];$('eventForm').reset();$('formStatus').textContent='';$('recordStatus').textContent='';$('record').textContent='● 開始錄音';
   const start=row?.start||date+'T09:00:00';$('title').value=row?.title||'';$('start').value=local(start);$('end').value=local(row?.end||new Date(new Date(start).getTime()+3600000));$('note').value=row?.note||'';$('remind').checked=!!row?.remind;$('minutes').value=row?.reminderMinutes??10;$('completed').checked=!!row?.completed;
   const readonly=row?.source==='google'&&(!row.editable||row.allDay);
   ['title','start','end'].forEach(id=>$(id).disabled=readonly);
   $('editorTitle').textContent=row?'行程與私人記事':'新增行程';$('sourceInfo').textContent=row?.source==='google'?row.calendarName+' · '+(readonly?'原行程唯讀；仍可加入自己的記事與提醒。':'時間與標題會同步回 Google；私人內容只存本系統。'):'私人行程只有你看得到。';
-  $('destination').innerHTML='<option value="local">私人行事曆</option>'+S.calendars.filter(c=>['owner','writer'].includes(c.accessRole)).map(c=>'<option value="'+esc(c.id)+'">Google · '+esc(c.summary)+'</option>').join('');$('destinationLabel').hidden=!!row;
+  const writable=S.calendars.filter(c=>['owner','writer'].includes(c.accessRole)),personal=writable.find(c=>c.primary)||writable.find(c=>c.summary.includes('DO RE MI'));
+  const ordered=personal?[personal,...writable.filter(c=>c.id!==personal.id)]:writable;
+  $('destination').innerHTML=ordered.map(c=>'<option value="'+esc(c.id)+'">Google · '+esc(c.summary)+'（同步）</option>').join('')+'<option value="local">只存私人記事（不同步 Google）</option>';
+  $('destination').value=personal?.id||'local';$('destinationLabel').hidden=!!row;destinationInfo();
+  ['startSlider','durationSlider'].forEach(id=>$(id).disabled=readonly);$('timeReadonly').hidden=!readonly;$('timeDrag').hidden=!!row?.allDay;syncTimeSliders();
   $('googleLink').hidden=!row?.htmlLink;if(row?.htmlLink&&/^https:\/\/(www\.)?google\.com\/calendar|^https:\/\/calendar\.google\.com\//.test(row.htmlLink))$('googleLink').href=row.htmlLink;
   $('archive').hidden=!row||row.source!=='local';$('assets').replaceChildren();assetsRender();$('editor').showModal();
  }
