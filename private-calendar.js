@@ -14,9 +14,9 @@
  async function safely(fn,target='status'){try{await fn();}catch(e){if(target==='status')message(e.message,true);else $(target).textContent=e.message;}}
  function range(){const first=new Date(S.month.getFullYear(),S.month.getMonth(),1),offset=(first.getDay()+6)%7;return {start:new Date(first.getFullYear(),first.getMonth(),1-offset).toISOString(),end:new Date(first.getFullYear(),first.getMonth(),43-offset).toISOString()};}
  async function refresh(){
-  message('正在讀取行程…');S.status=await api('status');
+  message('正在讀取行程…');S.status=await api('status');S.workStatus=await workApi('status').catch(()=>null);
   S.calendars=S.status.googleConnected?(await api('calendars').catch(()=>({calendars:[]}))).calendars:[];
-  const result=await api('list',range());let workWarning='';const work=await workApi('list',range()).catch(e=>{if(e.code==='functions/unauthenticated')throw e;workWarning='交辦工作未能載入：'+e.message;return {tasks:[]};});if(!calendarSession)return;S.events=[...result.events,...work.tasks.filter(t=>!t.draft&&t.assignedTo==='owner').map(workEvent)];render();if(workWarning)result.warnings=[...(result.warnings||[]),workWarning];
+  const result=await api('list',range());let workWarning='';const work=await workApi('list',range()).catch(e=>{if(e.code==='functions/unauthenticated')throw e;workWarning='交辦工作未能載入：'+e.message;return {tasks:[]};});if(!calendarSession)return;S.events=[...result.events,...work.tasks.filter(t=>!t.draft&&(t.assignedTo==='owner'||t.createdBy==='owner')).map(workEvent)];render();if(workWarning)result.warnings=[...(result.warnings||[]),workWarning];
   $('connection').hidden=true;
   message(result.warnings?.length?result.warnings.join('；'):'',!!result.warnings?.length);settingsRender();
  }
@@ -94,7 +94,7 @@
  for(const id of ['start','end'])$(id).oninput=()=>{$('preciseUse').checked=true;renderHours();};
  function editorLock(locked){for(const el of $('eventForm').querySelectorAll('input,select,textarea,button')){if(el.id==='save'||el.hasAttribute('data-close'))continue;if(locked){el.dataset.wasDisabled=String(el.disabled);el.disabled=true;}else if(el.dataset.wasDisabled!==undefined){el.disabled=el.dataset.wasDisabled==='true';delete el.dataset.wasDisabled;}}}
  function showEditor(row,date){
-  cleanup();editorLock(false);S.batch=null;S.current=row?{...row}:null;S.googleDraftId=crypto.randomUUID();S.pending=[];$('eventForm').reset();$('formStatus').textContent='';$('recordStatus').textContent='';$('record').textContent='● 開始錄音';
+  cleanup();editorLock(false);S.batch=null;S.workMode=false;S.current=row?{...row}:null;S.googleDraftId=crypto.randomUUID();S.pending=[];$('eventForm').reset();$('workAssigneeLabel').hidden=!!row;$('workAssignee').innerHTML='<option value="">自己（私人行程）</option>'+(S.workStatus?.assignees||[]).filter(m=>m.id!=='owner').map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+(m.lineLinked||m.emailLinked?'':'（未設定提醒）')+'</option>').join('');$('workAssignee').disabled=!!row||!S.workStatus;workModeChanged();$('formStatus').textContent='';$('recordStatus').textContent='';$('record').textContent='● 開始錄音';
   const start=row?.start||date+'T09:00:00';$('title').value=row?.title||'';$('start').value=local(start);$('end').value=local(row?.end||new Date(new Date(start).getTime()+3600000));$('remind').checked=row?!!row.remind:!!S.status.lineEnabled;renderReminderChoices(row);$('completed').checked=!!row?.completed;
   const readonly=row?.source==='google'&&(!row.editable||row.allDay);
   ['title','start','end'].forEach(id=>$(id).disabled=readonly);
@@ -112,6 +112,9 @@
   $('googleLink').hidden=row?.source!=='google';$('googleLink').onclick=()=>showGooglePreview(row.id);
   $('archive').hidden=!row||row.source!=='local';$('assets').replaceChildren();assetsRender();$('editor').showModal();
  }
+ function workModeChanged(){const shared=!!$('workAssignee').value;$('destinationLabel').hidden=shared||S.current?.source==='google';$('completedLabel').hidden=shared;$('handoffNoteLabel').hidden=!shared;$('remindLabel').textContent=shared?'提醒負責人':'用 LINE 提醒我';$('save').textContent=shared?'儲存並交辦':'儲存行程';}
+ $('workAssignee').onchange=workModeChanged;
+ async function prepareWorkJobs(){if(S.current)throw Error('請新增一筆共用交辦。');const ranges=selectedRanges(),offsets=selectedReminders();if(!$('title').value.trim())throw Error('請填事情名稱。');const files=await Promise.all(S.pending.map(async f=>({assetId:crypto.randomUUID(),name:f.name,mime:f.type,base64:await base64(f)})));return ranges.map(r=>({id:crypto.randomUUID(),revision:0,assignedTo:$('workAssignee').value,event:{title:$('title').value.trim(),note:$('handoffNote').value,start:r.start,end:r.end,remind:$('remind').checked,reminderMinutes:offsets[0]??60,reminderOffsets:offsets},files,uploaded:0}));}
  function assetNode(file,pending=false){const div=document.createElement('div');div.className='asset';const small=document.createElement('small');small.textContent=file.name+(pending?' · 等待儲存':'');div.append(small);return div;}
  async function assetsRender(){
   $('assets').replaceChildren();
@@ -148,7 +151,8 @@
   S.saving=true;$('save').disabled=true;$('formStatus').textContent='正在儲存…';
   if(!S.batch)editorLock(true);
   try{
-   if(!S.batch)S.batch=await prepareJobs();
+   if(!S.batch){S.workMode=!!$('workAssignee').value;S.batch=S.workMode?await prepareWorkJobs():await prepareJobs();}
+   if(S.workMode){const result=await SharedCalendarJobs.saveJobs(S.batch,workApi,(i,n)=>{$('formStatus').textContent='正在交辦第 '+(i+1)+' / '+n+' 段…';});S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();await refresh();message(result.pending?'已交辦，通知尚未送達。':result.sent?'已交辦並送出通知。':'已交辦。');return;}
    const total=await CalendarHours.saveJobs(S.batch,api,(i,n)=>{$('formStatus').textContent='正在儲存第 '+(i+1)+' / '+n+' 段行程…';});
    const remind=S.batch[0].event.remind,google=S.batch[0].event.source==='google';if(S.current?.source==='local'&&google)await api('archive',{id:S.current.id});S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();await refresh();message('已儲存 '+total+' 段行程'+(google?'，已同步至 Google。':'，只存私人記事。')+(remind&&!S.status.lineEnabled?'LINE 尚未啟用，請到連線設定啟用。':''));
   }catch(e){if(S.batch){const done=S.batch.filter(j=>j.done).length;$('save').textContent='重試未完成的部分';throw Error('已完成 '+done+' / '+S.batch.length+' 段。'+e.message+' 按重試繼續。');}editorLock(false);throw e;

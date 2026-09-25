@@ -2227,6 +2227,8 @@ async function handleLineWebhookMessage(event) {
   const lineUserId = event.source && event.source.userId;
   const replyToken = event.replyToken;
 
+  if (await require('./sharedCalendarLine').createSharedLine({db}).handle(event, replyLineMessage)) return;
+
   if (await handleExternalTeacherLineEvent(event)) {
     return;
   }
