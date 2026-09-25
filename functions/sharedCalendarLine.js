@@ -13,7 +13,7 @@ function createSharedLine({db,botId=async()=>''}){
  }
  async function unlink(who){
   if(who.role!=='member')fail('請從成員帳號操作。');
-  await db.runTransaction(async tx=>{const mr=memberRef(who.id),m=(await tx.get(mr)).data();if(!m||m.ownerUid!==who.ownerUid||m.status!=='active')fail('成員已停用。');const claim=validLine(m.lineUserId)?claimRef(m.lineUserId):null,c=claim?(await tx.get(claim)).data():null;if(c?.memberId===who.id)tx.delete(claim);tx.update(mr,{lineUserId:'',contactKey:'',lineBindHash:'',lineLinkedAt:0});});return {ok:true};
+  await db.runTransaction(async tx=>{const mr=memberRef(who.id),m=(await tx.get(mr)).data();if(!m||m.ownerUid!==who.ownerUid||m.status!=='active')fail('成員已停用。');if(m.lineUserId&&!m.emailVerifiedAt)fail('請先綁定 Email，再解除 LINE 登入。');const claim=validLine(m.lineUserId)?claimRef(m.lineUserId):null,c=claim?(await tx.get(claim)).data():null;if(c?.memberId===who.id)tx.delete(claim);tx.update(mr,{lineUserId:'',contactKey:'',lineBindHash:'',lineLinkedAt:0});});return {ok:true};
  }
  // Called only from the existing signature-verified LINE webhook handler.
  async function handle(event,reply){

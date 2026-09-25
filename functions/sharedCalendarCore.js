@@ -57,7 +57,7 @@ function createSharedCore({db,auth,bucket,ownerLine,sendLine,lineBindings,emailB
    requireOwner(who);if(!validId(d.memberId))fail('成員編號無效。');
    // A tombstone blocks old access immediately and allows cleanup retries.
    await db.runTransaction(async tx=>{const ref=members.doc(d.memberId),m=(await tx.get(ref)).data();if(!m||m.ownerUid!==who.ownerUid)fail('成員不存在。');tx.set(ref,{ownerUid:who.ownerUid,name:m.name||'',status:'deleting',version:crypto.randomUUID()});});
-   for(const collection of ['sharedCalendarInvites','sharedCalendarSessions','sharedCalendarPasskeys','sharedCalendarChallenges','sharedCalendarLineTickets','sharedCalendarLineOwners','sharedCalendarEmailTickets']){
+   for(const collection of ['sharedCalendarInvites','sharedCalendarSessions','sharedCalendarPasskeys','sharedCalendarChallenges','sharedCalendarLineTickets','sharedCalendarLineOwners','sharedCalendarEmailTickets','sharedCalendarLoginTickets','sharedCalendarEmailOwners']){
     const docs=(await db.collection(collection).where('memberId','==',d.memberId).get()).docs;
     for(let i=0;i<docs.length;i+=50)await Promise.all(docs.slice(i,i+50).map(doc=>doc.ref.delete()));
    }
@@ -66,7 +66,7 @@ function createSharedCore({db,auth,bucket,ownerLine,sendLine,lineBindings,emailB
   }
   if(action==='reinvite'){
    requireOwner(who);if(!validId(d.memberId))fail('成員編號無效。');const token=random(),version=crypto.randomUUID(),expiresAt=Date.now()+86400000;
-   await db.runTransaction(async tx=>{const ref=members.doc(d.memberId),m=(await tx.get(ref)).data();if(!m||m.ownerUid!==who.ownerUid||['deleted','deleting'].includes(m.status))fail('成員不存在。');tx.update(ref,{version,status:'invited',passwordHash:'',passwordSalt:''});tx.create(db.doc('sharedCalendarInvites/'+hash(token)),{ownerUid:who.ownerUid,memberId:d.memberId,version,expiresAt,used:false});});return {url:PAGE+'#invite='+token,expiresAt};
+   await db.runTransaction(async tx=>{const ref=members.doc(d.memberId),m=(await tx.get(ref)).data();if(!m||m.ownerUid!==who.ownerUid||['deleted','deleting'].includes(m.status))fail('成員不存在。');const lr=m.lineUserId?db.doc('sharedCalendarLineOwners/'+hash(m.lineUserId)):null,er=m.email?db.doc('sharedCalendarEmailOwners/'+hash(m.email)):null;const lc=lr?(await tx.get(lr)).data():null,ec=er?(await tx.get(er)).data():null;if(lc?.memberId===d.memberId)tx.delete(lr);if(ec?.memberId===d.memberId)tx.delete(er);tx.update(ref,{version,status:'invited',passwordHash:'',passwordSalt:'',lineUserId:'',lineLinkedAt:0,lineBindHash:'',contactKey:'',email:'',emailVerifiedAt:0});tx.create(db.doc('sharedCalendarInvites/'+hash(token)),{ownerUid:who.ownerUid,memberId:d.memberId,version,expiresAt,used:false});});return {url:PAGE+'#invite='+token,expiresAt};
   }
   if(action==='revoke'||action==='memberLine'){
    requireOwner(who);if(!validId(d.memberId))fail('成員編號無效。');const key=text(d.contactKey);if(action==='memberLine'&&key&&!(await contactChoices()).some(c=>c.key===key))fail('LINE 綁定無效。');

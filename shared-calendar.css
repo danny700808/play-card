@@ -9,3 +9,6 @@ main{max-width:1360px;padding:28px 5vw}.calendarIntro{display:grid;grid-template
 #editor input::-webkit-date-and-time-value{min-width:0;text-align:left}
 #editor input::-webkit-datetime-edit{min-width:0;padding:0}
 @media(max-width:750px){.two{grid-template-columns:minmax(0,1fr)}}
+
+/* One primary sign-in choice; Email stays available without a password form. */
+#lineLoginButton{width:100%;min-height:52px;font-size:18px;font-weight:600}#emailLoginChoice{margin:4px 0 20px;padding:14px;border:1px solid var(--line);border-radius:10px}#emailLoginChoice input{font-size:16px}#gateHelp:empty{display:none}
