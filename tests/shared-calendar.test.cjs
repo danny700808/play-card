@@ -66,3 +66,9 @@ test('passkeys enforce RP, origin, member version and one-time challenges',async
  const c=await f.ar('registrationOptions',{teamSession:m.token});assert.equal(seen[0].authenticatorSelection.userVerification,'required');await f.ar('registrationVerify',{teamSession:m.token,ticket:c.ticket,response:{id:'key-1'}});assert.equal(seen[1].expectedOrigin,'https://danny700808.github.io');await assert.rejects(f.ar('registrationVerify',{teamSession:m.token,ticket:c.ticket,response:{id:'key-1'}}));
  const a=await f.ar('authenticationOptions',{memberId:m.memberId});const s=await f.ar('authenticationVerify',{memberId:m.memberId,ticket:a.ticket,response:{id:'key-1'}});assert.ok(s.token);assert.equal(seen.at(-1).expectedRPID,'danny700808.github.io');await f.owner('reinvite',{memberId:m.memberId});await assert.rejects(f.ar('authenticationOptions',{memberId:m.memberId}));
 });
+test('shared multiple reminder times are independent and never resent on repeated ticks',async()=>{
+ const f=setup(),m=await f.join(),e={...event(),start:new Date(Date.now()+59*60000).toISOString(),end:new Date(Date.now()+120*60000).toISOString(),reminderOffsets:[60,120,180]};
+ await f.owner('save',{id:'multi',event:e,assignedTo:m.memberId});await f.owner('publish',{id:'multi'});const initial=f.sent.length;await f.core.tick();assert.equal(f.sent.length-initial,3);await f.core.tick();assert.equal(f.sent.length-initial,3);
+ assert.equal(new Set(f.sent.map(x=>x.key)).size,f.sent.length);assert.deepEqual(f.rows.get('sharedCalendarTasks/multi').reminderOffsets,[60,120,180]);
+ await assert.rejects(f.owner('save',{id:'invalid',event:{...e,reminderOffsets:[999]},assignedTo:m.memberId}));
+});

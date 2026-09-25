@@ -1,0 +1,8 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),{saveJobs}=require('../shared-calendar-jobs');
+test('separate time blocks publish separately and retry keeps prior publications and uploaded files',async()=>{
+ const rows=new Map(),published=new Set(),calls=[],jobs=[0,1].map(i=>({id:'task'+i,revision:0,assignedTo:'member',event:{title:'同一件事',reminderOffsets:[60,1440]},files:[{assetId:'file'+i,base64:'AA=='}],uploaded:0}));let fail=true;
+ const api=async(action,d)=>{calls.push(action+':'+d.id);if(action==='save'){rows.set(d.id,{...d.event,assignedTo:d.assignedTo,revision:1});return{};}if(action==='detail')return {task:rows.get(d.id)};if(action==='upload'&&d.id==='task1'&&fail){fail=false;throw Error('connection');}if(action==='publish'){published.add(d.id);return {notification:{sent:1,pending:0}};}return {};};
+ await assert.rejects(saveJobs(jobs,api),/connection/);assert.deepEqual([...published],['task0']);await saveJobs(jobs,api);assert.equal(published.size,2);assert.equal(calls.filter(c=>c==='publish:task0').length,1);assert.equal(calls.filter(c=>c==='save:task1').length,1);
+});
+test('a lost save response with reminder arrays recovers without writing twice',async()=>{const job={id:'task',revision:0,assignedTo:'owner',event:{title:'Work',reminderOffsets:[60,4320]},files:[],uploaded:0};let saved=0;const api=async(action,d)=>{if(action==='save'){saved++;throw Error('lost');}if(action==='detail')return {task:{...job.event,revision:1,assignedTo:'owner'}};if(action==='publish')return {notification:{sent:0,pending:0}};};await assert.rejects(saveJobs([job],api));await saveJobs([job],api);assert.equal(saved,1);assert.equal(job.done,true);});
