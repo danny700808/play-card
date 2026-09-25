@@ -20,7 +20,7 @@
  const dayKey=d=>local(d).slice(0,10);
  S.selected=dayKey(new Date());
  const sourceColor=e=>e.source!=='google'?'#202020':S.calendars.find(c=>c.id===e.calendarId)?.primary?'#6524d6':'#d71920';
- const sourceName=e=>e.source!=='google'?'私人記事':S.calendars.find(c=>c.id===e.calendarId)?.primary?'我的行程 · 黃DO RE MI':e.calendarId==='d3460fysw@gmail.com'?'豐原西南社':e.calendarName||'其他日曆';
+ const sourceName=e=>e.source!=='google'?'私人記事 · 未同步 Google':S.calendars.find(c=>c.id===e.calendarId)?.primary?'我的行程 · 黃DO RE MI':e.calendarId==='d3460fysw@gmail.com'?'豐原西南社':e.calendarName||'其他日曆';
  function onDay(e,date){const d=new Date(date+'T00:00:00'),next=new Date(d);next.setDate(next.getDate()+1);const begin=e.allDay?new Date(e.start.slice(0,10)+'T00:00:00'):new Date(e.start);return begin<next&&new Date(e.end)>d;}
  function eventRows(rows){return rows.map(e=>'<button class="dayEvent '+(e.completed?'done':'')+'" data-event="'+esc(e.id)+'" style="--event-color:'+sourceColor(e)+'"><time>'+esc(e.allDay?'全天':stamp(e.start))+'</time><strong>'+esc(e.title)+'</strong><small>'+esc(sourceName(e))+(e.remind?' · LINE 提醒':'')+(e.completed?' · 已完成':'')+'</small></button>').join('');}
  function renderDay(){const rows=S.events.filter(e=>onDay(e,S.selected)).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));$('dayTitle').textContent=new Date(S.selected+'T12:00:00').toLocaleDateString('zh-TW',{month:'long',day:'numeric',weekday:'long'});$('dayCount').textContent=rows.length+' 件事情';$('dayEvents').innerHTML=rows.length?eventRows(rows):'<p class="emptyDay">這天沒有安排，按「新增這天的事情」記下待辦。</p>';}
@@ -29,7 +29,7 @@
   let html=['一','二','三','四','五','六','日'].map(d=>'<div class="weekday">'+d+'</div>').join('');
   const first=new Date(y,m,1),offset=(first.getDay()+6)%7;
   for(let i=0;i<42;i++){const d=new Date(y,m,1-offset+i),key=dayKey(d),today=key===dayKey(new Date()),rows=S.events.filter(e=>onDay(e,key)),colors=[...new Set(rows.map(sourceColor))];
-   html+='<button class="miniDay '+(d.getMonth()!==m?'outside ':'')+(today?'isToday ':'')+(key===S.selected?'selected':'')+'" data-day="'+key+'" aria-pressed="'+(key===S.selected)+'" '+(today?'aria-current="date" ':'')+'aria-label="'+(d.getMonth()+1)+' 月 '+d.getDate()+' 日，'+rows.length+' 件事情"><span class="dateNumber">'+d.getDate()+'</span><span class="dayDots" aria-hidden="true">'+colors.map(c=>'<i style="background:'+c+'"></i>').join('')+'</span></button>';
+   html+='<button class="miniDay '+(d.getMonth()!==m?'outside ':'')+(today?'isToday ':'')+(key===S.selected?'selected':'')+'" data-day="'+key+'" aria-pressed="'+(key===S.selected)+'" '+(today?'aria-current="date" ':'')+'aria-label="'+(d.getMonth()+1)+' 月 '+d.getDate()+' 日，'+rows.length+' 件事情"><span class="dateMonth" aria-hidden="true">'+(d.getMonth()+1)+'月</span><span class="dateNumber">'+d.getDate()+'</span><span class="dayDots" aria-hidden="true">'+colors.map(c=>'<i style="background:'+c+'"></i>').join('')+'</span></button>';
   }
   $('calendar').innerHTML=html;renderDay();
   const todayStart=new Date();todayStart.setHours(0,0,0,0);const currentMonth=y===todayStart.getFullYear()&&m===todayStart.getMonth();
@@ -62,7 +62,7 @@
   const writable=S.calendars.filter(c=>['owner','writer'].includes(c.accessRole)),personal=writable.find(c=>c.primary)||writable.find(c=>c.summary.includes('DO RE MI'));
   const ordered=personal?[personal,...writable.filter(c=>c.id!==personal.id)]:writable;
   $('destination').innerHTML=ordered.map(c=>'<option value="'+esc(c.id)+'">Google · '+esc(c.summary)+'（同步）</option>').join('')+'<option value="local">只存私人記事（不同步 Google）</option>';
-  $('destination').value=personal?.id||'local';$('destinationLabel').hidden=!!row;
+  $('destination').value=row?.source==='google'?row.calendarId:row?'local':personal?.id||'local';$('destinationLabel').hidden=!!row;destinationHint();
   S.timeReadonly=!!readonly;S.hours=new Set();$('hourDate').value=local(start).slice(0,10);$('hourDate').disabled=readonly;$('preciseUse').disabled=readonly;$('preciseTime').open=false;
   const a=new Date($('start').value),b=new Date($('end').value),midnight=new Date(a);midnight.setHours(24,0,0,0);
   const aligned=a.getMinutes()===0&&b.getMinutes()===0&&b>a&&b<=midnight;
@@ -71,6 +71,11 @@
   $('googleLink').hidden=!row?.htmlLink;if(row?.htmlLink&&/^https:\/\/(www\.)?google\.com\/calendar|^https:\/\/calendar\.google\.com\//.test(row.htmlLink))$('googleLink').href=row.htmlLink;
   $('archive').hidden=!row||row.source!=='local';$('assets').replaceChildren();assetsRender();$('editor').showModal();
  }
+ function destinationHint(){
+  const row=S.current,destination=$('destination').value;
+  $('destinationHint').textContent=row?.source==='local'?'這筆只存在私人行事曆，尚未同步 Google。設定中勾選 Google 行事曆不會轉移這筆記事。':destination==='local'?'儲存後只會出現在這裡，不會同步至 Google。':'儲存成功後會同步至 Google · '+(S.calendars.find(c=>c.id===destination)?.summary||row?.calendarName||'所選行事曆')+'。';
+ }
+ $('destination').onchange=destinationHint;
  function assetNode(file,pending=false){const div=document.createElement('div');div.className='asset';const small=document.createElement('small');small.textContent=file.name+(pending?' · 等待儲存':'');div.append(small);return div;}
  async function assetsRender(){
   $('assets').replaceChildren();
@@ -108,7 +113,7 @@
   try{
    if(!S.batch)S.batch=await prepareJobs();
    const total=await CalendarHours.saveJobs(S.batch,api,(i,n)=>{$('formStatus').textContent='正在儲存第 '+(i+1)+' / '+n+' 段行程…';});
-   const remind=S.batch[0].event.remind;S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();await refresh();message('已儲存 '+total+' 段行程。'+(remind&&!S.status.lineEnabled?'LINE 尚未啟用，請到連線設定啟用。':''));
+   const remind=S.batch[0].event.remind,googleSaved=S.batch.every(j=>j.event.source==='google');S.batch=null;S.pending=[];editorLock(false);$('editor').close();cleanup();await refresh();message('已儲存 '+total+' 段行程。'+(googleSaved?'已同步至 Google 行事曆。':'只存私人記事，未同步 Google。')+(remind&&!S.status.lineEnabled?'LINE 尚未啟用，請到設定啟用。':''));
   }catch(e){if(S.batch){const done=S.batch.filter(j=>j.done).length;$('save').textContent='重試未完成的部分';throw Error('已完成 '+done+' / '+S.batch.length+' 段。'+e.message+' 按重試繼續。');}editorLock(false);throw e;
   }finally{S.saving=false;$('save').disabled=false;}
  },'formStatus');};
@@ -151,9 +156,9 @@
  $('passwordForm').onsubmit=e=>{e.preventDefault();loginTask(async()=>{const password=$('calendarPassword').value;$('calendarPassword').value='';await openCalendar(await access('password',{password}));});};
  $('enrollFace').onclick=async()=>{const b=$('enrollFace');b.disabled=true;try{
   if(!window.PublicKeyCredential)throw Error('請在支援 Face ID 的 iPhone Safari 開啟此頁。');
-  const c=await access('registrationOptions'),response=await SimpleWebAuthnBrowser.startRegistration({optionsJSON:c.options});await access('registrationVerify',{ticket:c.ticket,response});message('通行密鑰已啟用，下次可用 Face ID／裝置驗證進入。');
- }catch(e){message(e.name==='NotAllowedError'?'尚未完成手機驗證，仍可使用專用密碼。':e.message,true);}finally{b.disabled=false;}};
- $('lockCalendar').onclick=async()=>{try{await access('logout');showGate();}catch(e){message('鎖定未完成，請重試。'+e.message,true);}};
+  const c=await access('registrationOptions'),response=await SimpleWebAuthnBrowser.startRegistration({optionsJSON:c.options});await access('registrationVerify',{ticket:c.ticket,response});$('settingsStatus').textContent='通行密鑰已啟用，下次可用 Face ID／裝置驗證進入。';
+ }catch(e){$('settingsStatus').textContent=e.name==='NotAllowedError'?'尚未完成手機驗證，仍可使用專用密碼。':e.message;}finally{b.disabled=false;}};
+ $('lockCalendar').onclick=async()=>{try{await access('logout');showGate();}catch(e){$('settingsStatus').textContent='鎖定未完成，請重試。'+e.message;}};
  // Dedicated sessions must not carry the main system's Firebase Authorization header.
  async function calendarRequest(endpoint,data){
   const r=await fetch('https://asia-east1-youzi-c1b74.cloudfunctions.net/'+endpoint,{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({data}),signal:AbortSignal.timeout(120000)});
