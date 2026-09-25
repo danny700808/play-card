@@ -81,3 +81,10 @@ test('member without LINE can activate, log in and notify a bound owner',async()
  await call('save',{id:'unbound-member-task',assignedTo:'owner',event:event()});
  const r=await call('publish',{id:'unbound-member-task'});assert.equal(r.notification.sent,1);assert.equal(f.sent[0].to,'U'+'a'.repeat(32));
 });
+
+test('six-character passwords need no character mix; shorter passwords cannot consume invitation',async()=>{
+ const f=setup(),inv=await f.owner('invite',{name:'Six character member'}),invite=inv.url.split('#invite=')[1];
+ await assert.rejects(f.ar('activate',{invite,password:'12345'}),/6 個字元/);
+ const joined=await f.ar('activate',{invite,password:'123456'});
+ assert.ok((await f.ar('password',{memberId:joined.memberId,password:'123456'})).token);
+});
