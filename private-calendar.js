@@ -6,26 +6,25 @@
  const stamp=d=>new Date(d).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
  let call;
  async function api(action,data={}){if(!call)throw Error('請先登入自己的管理者帳號。');return (await call({action,...data})).data;}
- function message(msg,error=false){$('status').textContent=msg;$('status').classList.toggle('error',error);}
+ function message(msg,error=false){$('status').textContent=msg;$('status').hidden=!msg;$('status').classList.toggle('error',error);}
  async function safely(fn,target='status'){try{await fn();}catch(e){if(target==='status')message(e.message,true);else $(target).textContent=e.message;}}
  function range(){const first=new Date(S.month.getFullYear(),S.month.getMonth(),1),offset=(first.getDay()+6)%7;return {start:new Date(first.getFullYear(),first.getMonth(),1-offset).toISOString(),end:new Date(first.getFullYear(),first.getMonth(),43-offset).toISOString()};}
  async function refresh(){
   message('正在讀取行程…');S.status=await api('status');
   S.calendars=S.status.googleConnected?(await api('calendars').catch(()=>({calendars:[]}))).calendars:[];
   const result=await api('list',range());S.events=result.events;render();
-  $('connection').textContent=(S.status.googleConnected?'Google 已連接 · '+S.status.googleEmail:'Google 尚未連接 · 現在可先建立私人行程')+'　｜　'+(S.status.lineEnabled?'LINE 提醒已啟用':'LINE 提醒尚未啟用');
-  message(result.warnings?.length?result.warnings.join('；'):'已更新。時間以台灣時間顯示；LINE 提醒需在個別行程勾選。',!!result.warnings?.length);settingsRender();
+  $('connection').hidden=true;
+  message(result.warnings?.length?result.warnings.join('；'):'',!!result.warnings?.length);settingsRender();
  }
  const dayKey=d=>local(d).slice(0,10);
  S.selected=dayKey(new Date());
- const sourceColor=e=>e.source!=='google'?'#c27824':S.calendars.find(c=>c.id===e.calendarId)?.primary?'#3478cc':'#27856c';
- const sourceName=e=>e.source!=='google'?'私人記事':e.calendarName||'Google 行事曆';
+ const sourceColor=e=>e.source!=='google'?'#202020':S.calendars.find(c=>c.id===e.calendarId)?.primary?'#6524d6':'#d71920';
+ const sourceName=e=>e.source!=='google'?'私人記事':S.calendars.find(c=>c.id===e.calendarId)?.primary?'我的行程 · 黃DO RE MI':e.calendarId==='d3460fysw@gmail.com'?'豐原西南社':e.calendarName||'其他日曆';
  function onDay(e,date){const d=new Date(date+'T00:00:00'),next=new Date(d);next.setDate(next.getDate()+1);const begin=e.allDay?new Date(e.start.slice(0,10)+'T00:00:00'):new Date(e.start);return begin<next&&new Date(e.end)>d;}
  function eventRows(rows){return rows.map(e=>'<button class="dayEvent '+(e.completed?'done':'')+'" data-event="'+esc(e.id)+'" style="--event-color:'+sourceColor(e)+'"><time>'+esc(e.allDay?'全天':stamp(e.start))+'</time><strong>'+esc(e.title)+'</strong><small>'+esc(sourceName(e))+(e.remind?' · LINE 提醒':'')+(e.completed?' · 已完成':'')+'</small></button>').join('');}
  function renderDay(){const rows=S.events.filter(e=>onDay(e,S.selected)).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));$('dayTitle').textContent=new Date(S.selected+'T12:00:00').toLocaleDateString('zh-TW',{month:'long',day:'numeric',weekday:'long'});$('dayCount').textContent=rows.length+' 件事情';$('dayEvents').innerHTML=rows.length?eventRows(rows):'<p class="emptyDay">這天沒有安排，按「新增這天的事情」記下待辦。</p>';}
  function render(){
   const y=S.month.getFullYear(),m=S.month.getMonth();$('monthTitle').textContent=y+' 年 '+(m+1)+' 月';
-  $('legend').innerHTML='<span><i class="dot" style="background:#3478cc"></i>我的 Google 行程</span><span><i class="dot" style="background:#27856c"></i>社團／其他日曆</span><span><i class="dot" style="background:#c27824"></i>私人記事</span>';
   let html=['一','二','三','四','五','六','日'].map(d=>'<div class="weekday">'+d+'</div>').join('');
   const first=new Date(y,m,1),offset=(first.getDay()+6)%7;
   for(let i=0;i<42;i++){const d=new Date(y,m,1-offset+i),key=dayKey(d),today=key===dayKey(new Date()),rows=S.events.filter(e=>onDay(e,key)),colors=[...new Set(rows.map(sourceColor))];
@@ -120,7 +119,7 @@
  $('monthView').onclick=()=>{$('monthPanel').hidden=false;$('agenda').hidden=true;$('monthView').setAttribute('aria-pressed','true');$('listView').setAttribute('aria-pressed','false');};$('listView').onclick=()=>{$('monthPanel').hidden=true;$('agenda').hidden=false;$('monthView').setAttribute('aria-pressed','false');$('listView').setAttribute('aria-pressed','true');};
  firebase.initializeApp(APP_CONFIG.FIREBASE_CONFIG);
  firebase.auth().onAuthStateChanged(user=>safely(async()=>{
-  if(!user){message('請先登入主系統，再回來開啟私人行事曆。');$('connection').innerHTML='<a href="login.html?next=private-calendar.html">前往登入</a>';return;}
+  if(!user){message('請先登入主系統，再回來開啟私人行事曆。');$('connection').hidden=false;$('connection').innerHTML='<a href="login.html?next=private-calendar.html">前往登入</a>';return;}
   if(user.email?.toLowerCase()!=='danny700808@gmail.com')throw Error('這個試用版只開放你的管理者帳號。');
   call=firebase.app().functions('asia-east1').httpsCallable('privateCalendarApi',{timeout:120000});await refresh();$('newButton').disabled=false;$('newDay').disabled=false;
   const id=new URLSearchParams(location.search).get('event');if(id){let row=S.events.find(e=>e.id===id);if(!row){const detail=await api('detail',{id});row=detail.event;}if(row)showEditor(row);}
