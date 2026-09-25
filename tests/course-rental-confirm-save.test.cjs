@@ -39,6 +39,10 @@ for(const file of ['operations-course-inline-runtime.js','course-scheduler.js'])
   f.ctx.openSchedule({event:f.original});assert.equal(f.ctx.$('eventRentalPaymentStatus').value,'unpaid');assert.equal(Number(f.ctx.$('eventRentalFee').value),100);assert.equal(f.writes.length,0);
   f.ctx.$('eventRentalFee').value='200';f.ctx.window.YouziCoursePreviewData.saveLessonSettings=async()=>{throw Error('offline');};f.ctx.submitSchedule({preventDefault(){}});await assert.rejects(f.jobs[0](),/offline/);assert.equal(f.original.rentalFee,100);assert.equal(f.original.status,'scheduled');
  });
+ test(file+': saving an attended rental as unpaid removes completion only after confirmation',async()=>{
+  const f=fixture();f.original.status='attended';f.original.rentalPaymentStatus='paid';f.ctx.openSchedule({event:f.original});f.ctx.$('eventRentalPaymentStatus').value='unpaid';f.ctx.$('eventRentalFee').value='50';
+  assert.equal(f.original.status,'attended');f.ctx.submitSchedule({preventDefault(){}});await f.jobs[0]();assert.equal(f.original.status,'scheduled');assert.equal(f.original.rentalPaymentStatus,'unpaid');assert.equal(f.original.rentalFee,50);
+ });
  test(file+': payment selection no longer invokes a write handler',()=>{
   assert.doesNotMatch(src,/autoSaveRentalPayment/);
   assert.doesNotMatch(src,/\$\('eventRentalPaymentStatus'\)\.addEventListener/);

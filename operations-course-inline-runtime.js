@@ -833,7 +833,7 @@
     var rental=type==='rental';
     $('scheduleSubmitBtn').innerHTML='<span>'+(rental?'確定儲存':'儲存排課')+'</span>';
     if(rental){$('scheduleModalTitle').textContent=$('eventId').value?'編輯租用資料':'新增教室租用';$('schedulePurposeHint').textContent='修改金額與收款狀態後，按「確定儲存」才會生效。未收款不會簽到；已收款儲存後會標示簽到完成。';}
-    else if(!permanentScheduleSource){$('scheduleModalTitle').textContent=$('eventId').value?'編輯這一次課程（日期、時間與教室請使用調課）':'快速排課';$('schedulePurposeHint').textContent='先選用途。新學生填姓名、手機後選科目、老師與方案；舊學生可搜尋後沿用原課程或選新方案。';}
+    else if(!permanentScheduleSource){if(['編輯租用資料','新增教室租用'].indexOf($('scheduleModalTitle').textContent)>=0)$('scheduleModalTitle').textContent=$('eventId').value?'編輯這一次課程（日期、時間與教室請使用調課）':'快速排課';$('schedulePurposeHint').textContent='先選用途。新學生填姓名、手機後選科目、老師與方案；舊學生可搜尋後沿用原課程或選新方案。';}
   }
   function setScheduleKind(type,roomChanged){
     type=['fixed','single','rental','trial'].indexOf(type)>=0?type:'fixed';if(type==='rental'||type==='trial'){scheduleSelectionVersion++;scheduleDataLoading=false;$('scheduleSubmitBtn').disabled=false;}$('eventType').value=type;var rental=type==='rental',trial=type==='trial',studentCourse=type==='fixed'||type==='single';
