@@ -216,5 +216,5 @@ async function reminders(){
   }catch(e){await doc.ref.set({lastReminderRun:Date.now(),lastReminderError:e.message},{merge:true});}
  }
 }
-function register(exports){exports.privateCalendarAccess=onCall({region:REGION,timeoutSeconds:60,memory:'256MiB',maxInstances:3},privateAccess.api);exports.privateCalendarApi=onCall({region:REGION,timeoutSeconds:120,memory:'512MiB',maxInstances:5},api);exports.privateCalendarGoogleCallback=onRequest({region:REGION,timeoutSeconds:60,maxInstances:3},callback);exports.privateCalendarReminders=onSchedule({schedule:'every 1 minutes',timeZone:'Asia/Taipei',region:REGION,timeoutSeconds:120,maxInstances:1},reminders);}
+function register(exports){require('./sharedCalendar').register(exports);exports.privateCalendarAccess=onCall({region:REGION,timeoutSeconds:60,memory:'256MiB',maxInstances:3},privateAccess.api);exports.privateCalendarApi=onCall({region:REGION,timeoutSeconds:120,memory:'512MiB',maxInstances:5},api);exports.privateCalendarGoogleCallback=onRequest({region:REGION,timeoutSeconds:60,maxInstances:3},callback);exports.privateCalendarReminders=onSchedule({schedule:'every 1 minutes',timeZone:'Asia/Taipei',region:REGION,timeoutSeconds:120,maxInstances:1},reminders);}
 module.exports={register,_test:{owner,validateEvent,googleEvent,due,reminderOffsets,dueReminders,deliveryId,validId,currentReminder,api,callback}};
