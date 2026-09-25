@@ -40,6 +40,7 @@ body{background:var(--bg);color:var(--ink)}
 若是「原本有班但忘記打卡」，請回打卡頁下方「有班但未完成打卡」提出補打卡；若是已打卡但時間錯誤，請在該筆紀錄點「修正這筆」。
 主管核准後，系統會正式補進打卡紀錄、工讀時數與薪資；員工不需要再回工讀時數頁重複登記。</div>
   <div id="msg" class="message"></div>
+  <button class="btn gray hidden" id="retryInitBtn" type="button" onclick="init()">重新讀取</button>
 </div>
 
 <div class="card">
@@ -83,7 +84,17 @@ function clean(v){return String(v==null?'':v).trim()}
 function msg(t,type='success'){qs('#msg').innerHTML=t?`<div class="${type}">${t}</div>`:''}
 function money(v){return (Math.round(Number(v||0)||0)).toLocaleString('zh-TW')+' 元'}
 function safeNum(v){const n=Number(clean(v).replace(/[^\d.\-]/g,''));return Number.isFinite(n)?n:0}
-function fb(){if(!(window.APP_CONFIG&&window.APP_CONFIG.FIREBASE_CONFIG))throw new Error('找不到 Firebase 設定');if(!firebase.apps.length)firebase.initializeApp(window.APP_CONFIG.FIREBASE_CONFIG);return firebase.firestore()}
+function fb(){
+  if(!window.YZFirebase||!window.YZProtectedData)throw new Error('安全資料服務尚未載入，請重新整理。');
+  const db=window.YZFirebase.init();
+  if(!db)throw new Error('找不到 Firebase 設定');
+  return db;
+}
+async function withLoadTimeout(task){
+  let timer;
+  try{return await Promise.race([task,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('資料讀取逾時，請確認網路後重新讀取。')),20000);})]);}
+  finally{clearTimeout(timer);}
+}
 function raw(o,keys){const src=o&&o.source||{};for(const k of keys){if(o&&o[k]!=null&&clean(o[k])!=='')return o[k]}for(const k of keys){if(src&&src[k]!=null&&clean(src[k])!=='')return src[k]}return''}
 function isPart(o){return raw(o,['isPartTime','是否工讀生'])===true||clean(raw(o,['是否工讀生'])).includes('是')||clean(raw(o,['identityType','身分類型','員工身分','employeeType'])).toLowerCase().includes('part')||clean(raw(o,['職位','職務','role'])).includes('工讀')}
 
@@ -187,13 +198,22 @@ function refreshEndOptions(){
 }
 
 async function init(){
+  currentEmployee=null;
+  currentAnalysis=null;
+  setTimeSection(false);
+  showBox('#analysisBox','');
+  qs('#retryInitBtn').classList.add('hidden');
+  qs('#employeeNameBox').textContent='讀取中...';
+  qs('#employeeTypeBox').textContent='自動判斷';
+  msg('');
   try{
     const nowDate=new Date(); qs('#workDate').value=`${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,'0')}-${String(nowDate.getDate()).padStart(2,'0')}`;
 
     let loginUser=null;
     try{loginUser=(typeof requireLogin==='function')?requireLogin():null}catch(e){loginUser=null}
+    if(!loginUser)throw new Error('請重新登入員工帳號。');
 
-    const snap=await fb().collection('employees').get();
+    const snap=await withLoadTimeout(fb().collection('employees').get());
     employees=[];
     snap.forEach(doc=>{
       const d=Object.assign({__id:doc.id},doc.data()||{});
@@ -232,7 +252,13 @@ async function init(){
     qs('#employeeTypeBox').textContent=empType;
 
     await analyzeSelectedDate();
-  }catch(e){msg('初始化失敗：'+(e.message||e),'error')}
+  }catch(e){
+    qs('#employeeNameBox').textContent='員工資料未載入';
+    qs('#employeeTypeBox').textContent='無法判斷';
+    qs('#retryInitBtn').classList.remove('hidden');
+    setTimeSection(false);
+    msg('初始化失敗：'+(e.message||e),'error');
+  }
 }
 
 function parseScheduleFromContext(ctx){
@@ -271,7 +297,7 @@ async function analyzeSelectedDate(){
 
   let res=null;
   try{
-    res=await api('getTodaySchedule',{userId:emp.id,employeeId:emp.id,workDate:date,date:date});
+    res=await withLoadTimeout(api('getTodaySchedule',{userId:emp.id,employeeId:emp.id,workDate:date,date:date}));
   }catch(e){
     res={ok:false,message:e.message||'班表查詢失敗',schedules:[]};
   }
