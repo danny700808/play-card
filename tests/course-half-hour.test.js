@@ -60,3 +60,15 @@ test('actual period resolution fills the old half-slot and creates a full-price 
  assert.equal(result.rows.length,2);assert.deepEqual(Array.from(result.rows,r=>r.lessonUnits),[.5,.5]);
  assert.equal(result.rollovers.length,1);assert.equal(result.rollovers[0].period.expectedAmount,3200);assert.equal(result.rollovers[0].period.lessonCount,4);
 });
+
+test('pre-created paid periods cannot skip unused earlier periods, even with a newer explicit payment ID',()=>{
+ const free={...period('free',1),lessonCount:2,voidedLessonCount:1,planSnapshot:{name:'免費課程',amount:0,splitType:'none'},periodNo:1};
+ const second={...period('second',2),periodNo:2},third={...period('third'),periodNo:3};
+ for(const e of [event,{...event,tuitionPeriodIds:{s:'third'}},{...event,studentPaymentIds:['third','second']}])assert.equal(api.attendancePeriodCandidate([third,free,second],e,'s',e.date).id,'second');
+ assert.equal(api.attendancePeriodCandidate([third,free,{...second,usedCount:4}],event,'s',event.date).id,'third');
+ assert.equal(api.attendancePeriodCandidate([{...free,voidedLessonCount:0},second,third],event,'s',event.date).id,'free');
+});
+test('sequential allocation still excludes other subjects, teachers, expired, future and inactive periods',()=>{
+ const invalid=[{subjectId:'drum'},{teacherId:'other'},{expiryDate:'2026-09-01'},{startDate:'2026-10-01'},{active:false},{status:'cancelled'}].map((patch,i)=>({...period('invalid'+i),...patch}));
+ const valid={...period('valid'),periodNo:2};assert.equal(api.attendancePeriodCandidate([...invalid,valid],event,'s',event.date).id,'valid');
+});

@@ -1260,8 +1260,8 @@ async function runBackendScheduleRegressionTests() {
     }), 'student-1', event.date);
     assert.strictEqual(
       multiPaymentCandidate.id,
-      'period-multi-new',
-      '固定課帶多個歷史付款編號時，不能依陣列順序誤選舊期別'
+      'period-multi-old',
+      '預建多期付款時，必須先用完較早的有效期別'
     );
     const perStudentPeriodCandidate = duplicatePermanentBackend.__testAttendancePeriodCandidate([
       Object.assign({}, ratioPeriod, {
