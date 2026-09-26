@@ -922,7 +922,7 @@ function fillHeader(){const user=requireLogin(); if(!user) return; const manager
 function loginDestination(user){
   if(user&&user.passwordResetRequired===true) return 'change-password.html';
   if(isExternalTeacher(user)) return 'teacher-home.html';
-  if(hasSettingsZoneAccess(user)){setPortalMode('settings');return 'portal.html';}
+  if(hasSettingsZoneAccess(user)){setPortalMode('settings');return 'portal.html#course-calendar';}
   setPortalMode('staff');
   return 'dashboard.html';
 }

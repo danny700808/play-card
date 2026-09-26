@@ -967,7 +967,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   }
 
   function ensureDataForCurrentView(){
-    const view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
+    const view=(location.hash||'#course-calendar').replace('#','').split('?')[0]||'course-calendar';
     if(isCourseWorkspaceView(view))return false;
     if(isCompactMobile()&&view==='customers'){
       if(!state.customersLoadedAt&&!state.fullLoadedAt&&!state.loading){loadCustomersOnly(false);return true;}
@@ -1377,7 +1377,7 @@ async function loadPlatformLocalAgent(){
       if(!state.customersLoadedAt&&!state.fullLoadedAt)html('opsContent',emptyHtml('無法載入客戶資料','請重新讀取。','<button class="ops-button primary" data-action="refresh">重新讀取</button>'));
     }finally{
       state.loading=false;
-      const view=(location.hash||'#overview').replace('#','').split('?')[0];
+      const view=(location.hash||'#course-calendar').replace('#','').split('?')[0];
       if(view!=='customers'){if(!ensureDataForCurrentView())render();}
       else if(state.customersLoadedAt||state.fullLoadedAt)render();
     }
@@ -1755,7 +1755,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
   function handleCourseWorkspaceMessage(){}
 
   function render(){
-    state.view=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
+    state.view=(location.hash||'#course-calendar').replace('#','').split('?')[0]||'course-calendar';
     if(!PAGE_META[state.view]) state.view='overview';
     const meta=PAGE_META[state.view]; setText('opsPageTitle',meta[0]); setText('opsPageSubtitle',meta[1]);
     const pageClock=byId('opsPageClock'); if(pageClock) pageClock.classList.toggle('hidden',state.view!=='sales');
@@ -7990,7 +7990,7 @@ function rerenderKeepingFocus(id,value){
       showAlert('無法接續指定的蝦皮工作：'+errorMessage(error),'error');
     }
     if(ysv104RepairResult==='repaired')toast('YSV-104 歷史紀錄已更正','7/16 認列成交；8/5 尾款收清並交貨；沒有新增收款。','success');
-    const initialView=(location.hash||'#overview').replace('#','').split('?')[0]||'overview';
+    const initialView=(location.hash||'#course-calendar').replace('#','').split('?')[0]||'course-calendar';
     const cache=initialView==='overview'?getDashboardCache():null;
     if(isCourseWorkspaceView(initialView)){
       render();

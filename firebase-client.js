@@ -479,6 +479,8 @@
     const result=await secureCall('employeeSecureLogin',{email:account,password});
     if(result&&result.ok){
       if(!global.firebase || typeof global.firebase.auth!=='function') throw new Error('安全登入元件尚未載入，請重新整理後再試。');
+      const loginAuth=global.firebase.auth();
+      if(loginAuth.setPersistence)await loginAuth.setPersistence(global.firebase.auth.Auth.Persistence.LOCAL);
       if(result.token){
         await global.firebase.auth().signInWithCustomToken(result.token);
       }else if(result.authMode==='email-password'){

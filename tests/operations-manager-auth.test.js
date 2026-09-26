@@ -100,7 +100,7 @@ test('a verified manager session is reused while collecting multiple images', as
   assert.equal(tokenChecks, 1);
 });
 
-test('missing Firebase session requests one safe login redirect back to products', async () => {
+test('missing Firebase session requests one safe login redirect back to course calendar', async () => {
   const localStorage = memoryStorage({
     employeeUser: '{"role":"admin"}',
     employeeUserId: 'ADMIN-1',
@@ -125,7 +125,7 @@ test('missing Firebase session requests one safe login redirect back to products
   };
 
   assert.equal(await Auth.redirectToLoginOnce(runtime, auth, 1000), true);
-  assert.deepEqual(redirects, ['login.html?next=portal.html%23products']);
+  assert.deepEqual(redirects, ['login.html?next=portal.html%23course-calendar']);
   assert.equal(signOutCount, 1);
   assert.equal(localStorage.has('employeeUser'), false);
   assert.equal(localStorage.has('employeeSecureAuthVersion'), false);
