@@ -5997,45 +5997,15 @@ function newestAttendancePeriod(rows) {
 }
 
 function attendancePeriodCandidate(periods, event, studentId, sourceDate) {
-  const wantedStudentId = clean(studentId);
-  const matching = (periods || []).filter((row) => {
-    return attendancePeriodMatches(row, event, wantedStudentId, sourceDate) && tuitionPeriodAvailable(row);
-  });
-  if (!matching.length) return null;
-
-  const normalizedPeriodIds = (ids) => {
-    const output = new Set();
-    (ids || []).map(clean).filter(Boolean).forEach((id) => {
-      output.add(id);
-      output.add(id.replace(/^period_/, ''));
-      output.add(`period_${id.replace(/^period_/, '')}`);
-    });
-    return output;
-  };
-  const rowsMatchingIds = (ids) => {
-    const normalizedIds = normalizedPeriodIds(ids);
-    if (!normalizedIds.size) return [];
-    return matching.filter((row) =>
-      normalizedIds.has(sourceId(row)) ||
-      normalizedIds.has(clean(row.sourcePaymentId))
-    );
-  };
-
-  const explicitByStudent = event && event.tuitionPeriodIds && typeof event.tuitionPeriodIds === 'object'
-    ? clean(event.tuitionPeriodIds[wantedStudentId])
-    : '';
-  // tuitionPeriodIds[studentId] 是逐生保存的單一期別，可直接優先；固定課舊欄位則可能同時
-  // 帶著多個歷史付款編號，仍須從其中挑選日期／期數最新且可用的期別。
-  const explicitByStudentRow = newestAttendancePeriod(rowsMatchingIds([explicitByStudent]));
-  if (explicitByStudentRow) return explicitByStudentRow;
-  const explicitIds = [
-    clean(event && (event.tuitionPeriodId || event.periodId || event.studentPayment)),
-    ...firstArray(event || {}, ['studentPaymentIds', 'paymentIds'])
-  ].filter(Boolean);
-  const explicit = newestAttendancePeriod(rowsMatchingIds(explicitIds));
-  if (explicit) return explicit;
-
-  return newestAttendancePeriod(matching);
+  // Pre-created periods and stale course payment IDs must not skip unused earlier lessons.
+  // Correction slots and prior absences are resolved separately before this selector.
+  return (periods || []).filter(row =>
+    attendancePeriodMatches(row, event, clean(studentId), sourceDate) && tuitionPeriodAvailable(row)
+  ).sort((left, right) =>
+    tuitionPeriodNumber(left) - tuitionPeriodNumber(right) ||
+    dateKey(left.startDate || left.paymentDate).localeCompare(dateKey(right.startDate || right.paymentDate)) ||
+    sourceId(left).localeCompare(sourceId(right))
+  )[0] || null;
 }
 
 function explicitTeacherSplitFromPayroll(row) {
