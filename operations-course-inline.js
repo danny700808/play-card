@@ -218,7 +218,8 @@
       shadow.innerHTML = '<link rel="stylesheet" href="' + STYLE_URL + '"><style>' + inlineOverrides() + '</style><link rel="stylesheet" href="operations-mobile-admin.css?v=20260922-date-nav-v1"><div class="course-inline-body">' + template + '</div>';
       inlineBody = shadow.querySelector('.course-inline-body');
       function fitDesktopCalendar(){
-        var desktop=global.matchMedia('(min-width:1100px)').matches,calendar=global.location.hash==='#course-calendar';
+        // The portal can open the calendar without a URL hash (default/saved view).
+        var desktop=global.matchMedia('(min-width:1100px)').matches,calendar=!!shadow.querySelector('#calendarPage.active');
         if(!inlineBody||!host.isConnected)return;
         var grid=shadow.querySelector('#scheduleGrid'),scroll=shadow.querySelector('#scheduleScroll');
         var kpis=shadow.querySelector('#dailyKpis'),toolbar=shadow.querySelector('.calendar-toolbar'),legend=shadow.querySelector('#dailyLegend');
@@ -231,7 +232,7 @@
         if(!desktop||!calendar){['--slot','--room-head-height','--room-col','--time-col'].forEach(function(key){grid.style.removeProperty(key);});return;}
         if(!scroll.getClientRects().length)return;
         var count=Number(grid.dataset.slotCount)||17;
-        var available=global.innerHeight-scroll.getBoundingClientRect().top-16;
+        var available=global.innerHeight-(scroll.getBoundingClientRect().top+(global.scrollY||0))-16;
         grid.style.setProperty('--slot',Math.max(22,Math.floor((available-36)/count))+'px');
         grid.style.setProperty('--room-head-height','36px');grid.style.setProperty('--time-col','48px');grid.style.setProperty('--room-col','minmax(0,1fr)');
       }
