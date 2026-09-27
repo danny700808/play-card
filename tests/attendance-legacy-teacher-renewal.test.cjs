@@ -43,6 +43,10 @@ test('cross-period lesson evidence applies only to the actual allocated periods'
   const rows=context.attendancePeriodsWithRecordedTeachers(periods,[],[{...record,periodId:'p4',periodAllocations:[{periodId:'p4',lessonUnits:.5},{periodId:'p5',lessonUnits:.5}]}],event.date);
   assert.equal(choose(rows).id,'p5');
 });
+test('legacy attendance without a subject can identify its explicitly linked period teacher',()=>{
+  const rows=context.attendancePeriodsWithRecordedTeachers(periods,[{...record,subjectId:''}],[],event.date);
+  assert.equal(choose(rows).id,'p5');
+});
 test('both teacher and manager attendance resolve recorded teachers before rollover',()=>{
   assert.match(source,/const identifiedPeriods = attendancePeriodsWithRecordedTeachers\(periods, mirrorAttendance, portalAttendance, sourceDate\)/);
   assert.match(source,/applyPortalAttendanceToPeriods\(identifiedPeriods, mirrorAttendance, portalAttendance\)/);

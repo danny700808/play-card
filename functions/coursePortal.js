@@ -6531,7 +6531,7 @@ function attendancePeriodsWithRecordedTeachers(periods, mirrorAttendance, portal
       row.active !== false && normalizeScheduleStatus(row.status) === 'attended' &&
       row.deducted !== false && eventDate(row) && eventDate(row) <= dateKey(sourceDate) &&
       eventStudentIds(row).includes(clean(period.studentId)) &&
-      eventSubjectId(row) === clean(period.subjectId) &&
+      (!eventSubjectId(row) || eventSubjectId(row) === clean(period.subjectId)) &&
       attendanceAllocations(row).some(item => item.periodId === sourceId(period))
     ).map(eventTeacherId).filter(Boolean));
     return teachers.size === 1 ? { ...period, teacherId: [...teachers][0] } : period;
