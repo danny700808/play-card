@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const root=path.resolve(__dirname,'..');
 const fixture=fs.readFileSync(path.join(__dirname,'course-portal.test.js'),'utf8');
 const source=fs.readFileSync(path.join(root,'functions/coursePortal.js'),'utf8');
-const names=['attendanceLessonUnits','eventLessonUnits','attendanceAllocations','attendancePeriodPayroll','attendancePayrollCalculation','applyPortalAttendanceToPeriods','attendancePeriodsForEvent','attendancePeriodCandidate','buildAttendanceTuitionRollover','tuitionLessonCount','tuitionUsedCount'];
+const names=['attendancePeriodsWithRecordedTeachers','attendanceLessonUnits','eventLessonUnits','attendanceAllocations','attendancePeriodPayroll','attendancePayrollCalculation','applyPortalAttendanceToPeriods','attendancePeriodsForEvent','attendancePeriodCandidate','buildAttendanceTuitionRollover','tuitionLessonCount','tuitionUsedCount'];
 const backend=source+'\nmodule.exports.half={'+names.join(',')+'};';
 const context={root,backend,Module,require,module,path};vm.createContext(context);
 vm.runInContext(fixture.slice(fixture.indexOf('function backendFixtureDocument('),fixture.indexOf('function mirrorFixture(')),context);

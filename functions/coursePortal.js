@@ -6518,6 +6518,26 @@ function tuitionPaymentRequestId(sourcePeriod, studentId, nextPeriodNo) {
   ].join('|'));
 }
 
+function attendancePeriodsWithRecordedTeachers(periods, mirrorAttendance, portalAttendance, sourceDate) {
+  // Recover only missing legacy identities from this exact period's actual lessons.
+  // A moved room/course ID is not evidence of a different tuition teacher.
+  const portal = portalAttendance || [];
+  const records = (mirrorAttendance || []).filter(row =>
+    !portal.some(overlay => attendanceRowsMatch(row, overlay))
+  ).concat(portal);
+  return (periods || []).map(period => {
+    if (eventTeacherId(period) || !clean(period.subjectId)) return period;
+    const teachers = new Set(records.filter(row =>
+      row.active !== false && normalizeScheduleStatus(row.status) === 'attended' &&
+      row.deducted !== false && eventDate(row) && eventDate(row) <= dateKey(sourceDate) &&
+      eventStudentIds(row).includes(clean(period.studentId)) &&
+      eventSubjectId(row) === clean(period.subjectId) &&
+      attendanceAllocations(row).some(item => item.periodId === sourceId(period))
+    ).map(eventTeacherId).filter(Boolean));
+    return teachers.size === 1 ? { ...period, teacherId: [...teachers][0] } : period;
+  });
+}
+
 function attendanceRolloverSourcePeriod({ periods, event, studentId, sourceDate }) {
   const normalizedStudentId = clean(studentId);
   const lessonDate = dateKey(sourceDate || eventDate(event || {}));
@@ -6529,6 +6549,13 @@ function attendanceRolloverSourcePeriod({ periods, event, studentId, sourceDate 
   );
   const wantedSubjectId = eventSubjectId(event || {});
   const wantedTeacherId = eventTeacherId(event || {});
+  const newestMatching = newestAttendancePeriod(looselyMatching);
+  if (newestMatching && (!clean(newestMatching.subjectId) || !eventTeacherId(newestMatching))) {
+    throw new HttpsError(
+      'failed-precondition',
+      '最新一期缺少科目或老師編號，且無法由該期上課紀錄唯一確認；請管理者確認本期資料後再簽到，系統不會退回舊期續課。'
+    );
+  }
   const sameCourse = looselyMatching.filter((row) =>
     wantedSubjectId && clean(row.subjectId) === wantedSubjectId &&
     wantedTeacherId && eventTeacherId(row) === wantedTeacherId
@@ -9725,7 +9752,8 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     const correction = pendingSlots.find(row => row.id === selectedId && row.teacherId === eventTeacherId(event) && row.subjectId === eventSubjectId(event));
     if (correction && attendanceLessonUnits(correction) !== eventLessonUnits(event)) throw new HttpsError('failed-precondition','補回課程的時間必須與原更正紀錄相同。');
     if (selectedId && !correction) throw new HttpsError('failed-precondition', '補回格位已使用或不屬於這堂課，請重新整理。');
-    const adjustedPeriods = applyPortalAttendanceToPeriods(periods, mirrorAttendance, portalAttendance).map(period => ({ ...period,
+    const identifiedPeriods = attendancePeriodsWithRecordedTeachers(periods, mirrorAttendance, portalAttendance, sourceDate);
+    const adjustedPeriods = applyPortalAttendanceToPeriods(identifiedPeriods, mirrorAttendance, portalAttendance).map(period => ({ ...period,
       usedCount: Number(period.usedCount || 0) + pendingSlots.filter(slot => slot.id !== selectedId).reduce((sum,slot)=>sum+attendanceAllocations(slot).filter(item=>item.periodId===sourceId(period)).reduce((n,item)=>n+Number(item.lessonUnits),0),0) }));
     // mirror 舊期別不會內嵌新系統期數；先讀取／建立持久 mapping，不可每次都假設上期是第 1 期。
     const effectivePeriods = options.allowRollover === true
