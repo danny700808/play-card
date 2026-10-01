@@ -10475,7 +10475,7 @@ async function adminSaveSchedule(data) {
         if ((await tx.get(studentRef)).exists) throw new HttpsError('already-exists', '學生建立識別碼已使用，請重新開啟排課。');
       }
       if (existingPeriod.exists) throw new HttpsError('already-exists', '課程方案已建立，請重新載入。');
-      const peers = mirrorPeers.docs.map(doc => doc.data().source || {}).concat(portalPeers.docs.map(doc => doc.data()));
+      const peers = mergePortalTuitionRows(mirrorPeers.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {}), portalPeers.docs, []);
       enrollmentPeriod.periodNo = peers.reduce((max,p)=>Math.max(max,Number(p.periodNo)||0),0)+1;
       if (studentRef) tx.create(studentRef,{...newStudent,updatedAt:FieldValue.serverTimestamp(),updatedBy:'manager-enrollment'});
       tx.create(periodRef,{...enrollmentPeriod,updatedAt:FieldValue.serverTimestamp()});
@@ -11076,7 +11076,8 @@ async function adminSaveTuitionPeriods(data) {
     const existing = [];
     for (const ref of refs) existing.push(await tx.get(ref));
     assertScheduleWritable(version);
-    const bases = new Map(mirror.docs.map(doc => [sourceId(doc.data().source), doc.data().source]));
+    // Inactive mirror history is retained for audit, but cannot reserve a new period number.
+    const bases = new Map(mirror.docs.filter(doc => doc.data().sourceActive !== false).map(doc => [sourceId(doc.data().source), doc.data().source]));
     const peers = mergePortalTuitionRows([...bases.values()], portalPeers.docs, []);
     const result = rows.map((item, index) => {
       const prior = existing[index].exists ? existing[index].data() : bases.get(item.row.id);
