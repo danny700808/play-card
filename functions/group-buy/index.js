@@ -17,7 +17,13 @@ exports.groupBuyApi=onRequest({region:'asia-east1',cors:['https://danny700808.gi
   const adminAction=['adminLoad','getConsent','saveSettings','updateOrder','cancelOrder'].includes(action);
   if(adminAction&&!isAdmin)fail('需要管理者登入',403);
   if(action==='catalog')return res.json({data:publicConfig(config),isAdmin});
-  if(action==='adminLoad'){const s=await orders.orderBy('createdAt','desc').limit(2000).get();return res.json({data:{...config,codeHash:undefined,orders:s.docs.map(d=>{const {consent,...o}=d.data();return{id:d.id,...o,consentSummary:consent?{parentName:consent.parentName,signedAt:consent.signedAt}:null};})}});}
+  if(action==='teacherLoad'){
+   if(!config.teacherPasswordHash||hash(String(payload.password||''))!==config.teacherPasswordHash)fail('密碼不正確',403);
+   const rows=await orders.orderBy('createdAt','desc').limit(2000).get();
+   return res.json({data:{...publicConfig(config),orders:rows.docs.map(d=>{const o=d.data();return{id:d.id,className:o.className,name:o.name,items:o.items,total:o.total,noPurchase:o.noPurchase,status:o.status,createdAt:o.createdAt};})}});
+  }
+  if(action==='adminLoad'){
+const s=await orders.orderBy('createdAt','desc').limit(2000).get();return res.json({data:{...config,codeHash:undefined,orders:s.docs.map(d=>{const {consent,...o}=d.data();return{id:d.id,...o,consentSummary:consent?{parentName:consent.parentName,signedAt:consent.signedAt}:null};})}});}
   if(action==='getConsent'){const id=text(payload.id,80);if(!/^[a-zA-Z0-9_-]{16,80}$/.test(id))fail('登記編號無效');const o=await orders.doc(id).get();if(!o.exists)fail('找不到登記',404);return res.json({data:o.data().consent||null});}
   if(action==='saveSettings'){
    await db.runTransaction(async tx=>{const s=await tx.get(root),old=s.data();if(payload.revision!==old.revision)fail('資料剛有更新，請重新整理後再儲存',409);const next=sanitizeSettings(payload,old);delete next.clubCode;delete next.codeHash;next.updatedAt=new Date().toISOString();next.updatedBy=uid;tx.set(root,next);});return res.json({ok:true});
