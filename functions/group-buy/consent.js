@@ -1,10 +1,11 @@
 'use strict';
-const VERSION='2026-10-01-v1';
-const TEXT='本人為下列學生之家長或監護人，已確認本次選購的吉他款式、數量、附贈配件與總金額，同意學生參加本次吉他團購。';
+const VERSION='2026-10-02-v2';
+const OLD_TEXT='本人為下列學生之家長或監護人，已確認本次選購的吉他款式、數量、附贈配件與總金額，同意學生參加本次吉他團購。';
+const TEXT='本人為下列學生之家長或監護人，已確認本次選購的商品、數量、附贈配件與總金額，同意學生參加本次團購。';
 function validateConsent(c,noPurchase){
  if(noPurchase===true)return null;
  const bad=m=>{const e=new Error(m);e.status=400;throw e;};
- if(!c||c.agreed!==true||c.version!==VERSION)bad('請由家長閱讀並勾選同意');
+ if(!c||c.agreed!==true||![VERSION,'2026-10-01-v1'].includes(c.version))bad('請由家長閱讀並勾選同意');
  if(typeof c.parentName!=='string'||!c.parentName.trim()||c.parentName.trim().length>60)bad('請填寫家長或監護人姓名');
  if(!Array.isArray(c.strokes)||!c.strokes.length||c.strokes.length>100)bad('請由家長在簽名框內簽名');
  let count=0,distance=0;
@@ -15,6 +16,6 @@ function validateConsent(c,noPurchase){
   return{points};
  });
  if(count<6||distance<0.08)bad('請完成家長手寫簽名，不可只點一下');
- return{...([540,1000].includes(c.canvasHeight)?{canvasHeight:c.canvasHeight}:{}),version:VERSION,text:TEXT,parentName:c.parentName.trim(),agreed:true,strokes};
+ return{...([540,1000].includes(c.canvasHeight)?{canvasHeight:c.canvasHeight}:{}),version:c.version,text:c.version===VERSION?TEXT:OLD_TEXT,parentName:c.parentName.trim(),agreed:true,strokes};
 }
 module.exports={VERSION,TEXT,validateConsent};

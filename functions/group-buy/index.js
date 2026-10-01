@@ -5,7 +5,7 @@ const {hash,fail,text,manager,sanitizeSettings,orderPlan,changeReservation}=requ
 const {validateConsent}=require('./consent');
 admin.initializeApp({projectId:'youzi-c1b74'});
 const db=admin.firestore(),root=db.collection('clubGroupBuyPrivate').doc('guitar-2026'),orders=root.collection('orders');
-function publicConfig(c){return{title:c.title,intro:c.intro,open:c.open,revision:c.revision,roster:[],products:c.products.map(p=>({...p,remaining:p.total===null?null:p.total-p.reserved}))};}
+function publicConfig(c){return{title:c.title,intro:c.intro,open:c.open,revision:c.revision,roster:[],products:c.products.map(p=>({...p,remaining:p.unlimited||p.total===null?null:p.total-p.reserved}))};}
 exports.groupBuyApi=onRequest({region:'asia-east1',cors:['https://danny700808.github.io'],invoker:'public',maxInstances:5,timeoutSeconds:60,memory:'256MiB'},async(req,res)=>{
  res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');
  if(req.method!=='POST')return res.status(405).json({error:'請由團購頁面操作'});
@@ -25,13 +25,14 @@ exports.groupBuyApi=onRequest({region:'asia-east1',cors:['https://danny700808.gi
   if(action==='submit'){
    const requestId=text(payload.requestId,80);if(!/^[a-zA-Z0-9_-]{16,80}$/.test(requestId))fail('送單識別碼無效');
    const freeClass=text(payload.className,60),freeName=text(payload.name,60);const ref=orders.doc(requestId),memberId=hash(freeClass+'\n'+freeName).slice(0,32);if(!freeClass||!freeName)fail('請填寫班級姓名');if(!/^[a-f0-9]{32}$/.test(memberId))fail('請選擇姓名');
-   if(payload.noPurchase!==true&&(!Array.isArray(payload.items)||payload.items.length!==1||payload.items[0].quantity!==1))fail('每位同學只能選擇一把吉他');
+   if(payload.noPurchase!==true&&(!Array.isArray(payload.items)||!payload.items.length||payload.items.length>2||payload.items.some(p=>p.quantity!==1)))fail('每位同學最多選一把吉他及一本書');
    const consent=validateConsent(payload.consent,payload.noPurchase);
    const fingerprint=hash(JSON.stringify({memberId,items:payload.items,noPurchase:payload.noPurchase,consent}));
    const result=await db.runTransaction(async tx=>{
     const [cs,os,ms]=await Promise.all([tx.get(root),tx.get(ref),tx.get(root.collection('members').doc(memberId))]);const c=cs.data();
     if(os.exists){if(os.data().fingerprint!==fingerprint)fail('送單資料不同，請重新送出',409);return{id:ref.id,total:os.data().total};}
     if(!c.open)fail('目前尚未開放填單');if(ms.exists&&ms.data().activeOrder)fail('這位社員已填過表單，若需修改請聯絡老師',409);
+    if(payload.noPurchase!==true){const selected=payload.items.map(i=>c.products.find(p=>p.id===i.id));if(selected.some(p=>!p)||selected.filter(p=>p.kind==='book').length>1||selected.filter(p=>p.kind!=='book').length>1)fail('每位同學最多選一把吉他及一本書');if(selected.some(p=>p.kind==='book')&&consent.version!=='2026-10-02-v2')fail('請重新整理頁面並確認書本選購內容');}
     const validationConfig={...c,roster:[{id:memberId,className:freeClass,name:freeName}]};const plan=orderPlan(validationConfig,memberId,payload.items,payload.noPurchase);changeReservation(c,plan.items,1);
     if(consent&&payload.expectedTotal!==plan.total)fail('商品價格已更新，請重新確認金額並簽名',409);
     const order={...plan,consent:consent?{...consent,signedAt:new Date().toISOString(),className:plan.className,studentName:plan.name,total:plan.total,items:plan.items.map(p=>({...p,description:c.products.find(x=>x.id===p.id).description}))}:null,status:'active',fingerprint,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};

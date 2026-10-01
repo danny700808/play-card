@@ -1,5 +1,5 @@
 (()=>{'use strict';
-const VERSION='2026-10-01-v1',TEXT='本人為下列學生之家長或監護人，已確認本次選購的吉他款式、數量、附贈配件與總金額，同意學生參加本次吉他團購。';
+const VERSION='2026-10-02-v2',TEXT='本人為下列學生之家長或監護人，已確認本次選購的商品、數量、附贈配件與總金額，同意學生參加本次團購。';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),money=n=>'NT$ '+Number(n).toLocaleString('zh-TW');
 let parentName='',agreed=false,strokes=[],drawing=false,host=null,options=null,canvas=null,modal=null,busy=false,locked=false,scrollY=0,bodyStyle='',rootOverflow='';
 function preventScroll(e){if(locked)e.preventDefault();}
@@ -13,7 +13,7 @@ function clear(){parentName='';resetSignature();}
 function reportError(m){const e=modal?.querySelector('#signatureError');if(e){e.textContent=m;return true;}return false;}
 function setBusy(v){busy=v;if(modal)modal.querySelectorAll('button').forEach(b=>b.disabled=v);const b=modal?.querySelector('#signatureSend');if(b)b.textContent=v?'送出中…':'送出';}
 function openSignature(){
- const s=options.getSummary();let error='';if(!s.className.trim()||!(s.name||'').trim())error='請先填寫班級與學生姓名';else if(s.items.length!==1)error='請先選擇一把吉他';else if(!parentName.trim())error='請先填寫家長或監護人姓名';
+ const s=options.getSummary();let error='';if(!s.className.trim()||!(s.name||'').trim())error='請先填寫班級與學生姓名';else if(!s.items.length)error='請先選擇吉他或書本';else if(!parentName.trim())error='請先填寫家長或監護人姓名';
  host.querySelector('#consentError').textContent=error;if(error){agreed=false;host.querySelector('#parentAgree').checked=false;return;}
  document.activeElement?.blur();lock();modal=document.createElement('dialog');modal.id='signatureDialog';modal.setAttribute('aria-labelledby','signatureTitle');modal.style.cssText='position:fixed;inset:0;margin:auto;width:calc(100% - 12px);max-width:720px;max-height:calc(100svh - 12px);padding:16px;border:0;border-radius:12px;background:#fffef9;overflow:hidden;overscroll-behavior:none;touch-action:none;box-sizing:border-box';
  modal.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><h2 id="signatureTitle" style="margin:0;font-size:22px">家長簽名</h2><button id="signatureClose" type="button" class="secondary" aria-label="返回修改資料" style="padding:4px 12px">×</button></div><p style="margin:0 0 12px;font-size:14px">請家長在下方簽名，完成後按送出。</p><canvas id="parentSignature" width="1000" height="1000" aria-label="家長或監護人手寫簽名區" style="display:block;width:min(100%,calc(100svh - 210px));height:auto;aspect-ratio:1;margin:auto;background:white;border:2px solid #aebcad;border-radius:8px;touch-action:none;user-select:none;-webkit-user-select:none"></canvas><p id="signatureError" role="alert" style="color:#93462f;font-size:13px;min-height:22px;margin:8px 0"></p><div style="display:flex;gap:12px;padding-bottom:env(safe-area-inset-bottom)"><button id="clearParentSignature" type="button" class="secondary" style="flex:1">清除簽名</button><button id="signatureSend" type="button" style="flex:1">送出</button></div>';
