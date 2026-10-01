@@ -25,6 +25,7 @@ exports.groupBuyApi=onRequest({region:'asia-east1',cors:['https://danny700808.gi
   if(action==='submit'){
    const requestId=text(payload.requestId,80);if(!/^[a-zA-Z0-9_-]{16,80}$/.test(requestId))fail('送單識別碼無效');
    const freeClass=text(payload.className,60),freeName=text(payload.name,60);const ref=orders.doc(requestId),memberId=hash(freeClass+'\n'+freeName).slice(0,32);if(!freeClass||!freeName)fail('請填寫班級姓名');if(!/^[a-f0-9]{32}$/.test(memberId))fail('請選擇姓名');
+   if(payload.noPurchase!==true&&(!Array.isArray(payload.items)||payload.items.length!==1||payload.items[0].quantity!==1))fail('每位同學只能選擇一把吉他');
    const consent=validateConsent(payload.consent,payload.noPurchase);
    const fingerprint=hash(JSON.stringify({memberId,items:payload.items,noPurchase:payload.noPurchase,consent}));
    const result=await db.runTransaction(async tx=>{
