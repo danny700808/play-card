@@ -270,20 +270,32 @@
           <option value="">請選擇時數</option>
           <option value="0.5">0.5 小時</option>
           <option value="1">1 小時</option>
+          <option value="1.5">1.5 小時</option>
           <option value="2">2 小時</option>
+          <option value="2.5">2.5 小時</option>
           <option value="3">3 小時</option>
+          <option value="3.5">3.5 小時</option>
           <option value="4">4 小時</option>
+          <option value="4.5">4.5 小時</option>
           <option value="5">5 小時</option>
+          <option value="5.5">5.5 小時</option>
           <option value="6">6 小時</option>
+          <option value="6.5">6.5 小時</option>
           <option value="7">7 小時</option>
+          <option value="7.5">7.5 小時</option>
           <option value="8">8 小時</option>
+          <option value="8.5">8.5 小時</option>
           <option value="9">9 小時</option>
+          <option value="9.5">9.5 小時</option>
           <option value="10">10 小時</option>
+          <option value="10.5">10.5 小時</option>
           <option value="11">11 小時</option>
+          <option value="11.5">11.5 小時</option>
           <option value="12">12 小時</option>
         </select>
         <div id="hoursGrid" class="hour-grid" role="group" aria-label="選擇時數"></div>
-        <div id="parttimeSelectedTotal" class="parttime-selected-total"></div>
+        <div class="muted">先選整數小時，再點「＋0.5 小時」加半小時；再點一次可取消，也可以先選半小時。最多 12 小時。</div>
+        <div id="parttimeSelectedTotal" class="parttime-selected-total" aria-live="polite"></div>
         <div class="field-error" id="errorHours"></div>
       </div>
 
@@ -383,35 +395,37 @@
       return n.toFixed(1).replace(/\.0$/, '') + ' 小時';
     }
 
+    // parttime-half-hour-v1-20261001: store the complete decimal total once.
+    function nextHoursSelection(current,choice){
+      const total=Number(current)||0,whole=Math.floor(total),half=total-whole===0.5;
+      if(choice==='0.5')return whole>=12?12:whole+(half?0:0.5);
+      const base=Number(choice);
+      return base>=12?12:base+(half?0.5:0);
+    }
     function renderHoursGrid(){
-      const grid = qs('#hoursGrid');
-      const select = qs('#hoursSelect');
-      if(!grid || !select) return;
-      const values = ['0.5'].concat(Array.from({length:12}, (_,i)=>String(i+1)));
-      grid.innerHTML = values.map(v => `<button type="button" class="hour-choice" data-hour="${v}">${formatHoursLabel(v)}</button>`).join('');
+      const grid=qs('#hoursGrid'),select=qs('#hoursSelect');
+      if(!grid||!select)return;
+      const values=Array.from({length:12},(_,i)=>String(i+1)).concat('0.5');
+      grid.innerHTML=values.map(v=>`<button type="button" class="hour-choice" data-hour="${v}" aria-pressed="false">${v==='0.5'?'＋0.5 小時':formatHoursLabel(v)}</button>`).join('');
       grid.querySelectorAll('.hour-choice').forEach(btn=>{
-        btn.onclick = () => {
-          select.value = btn.dataset.hour;
-          qs('#halfHour').checked = false;
-          updateHoursGrid();
-          clearValidation();
+        btn.onclick=()=>{
+          const total=nextHoursSelection(select.value,btn.dataset.hour);
+          select.value=total?String(total):'';
+          qs('#halfHour').checked=false;
+          updateHoursGrid();clearValidation();
         };
       });
       updateHoursGrid();
     }
     function updateHoursGrid(){
-      const grid = qs('#hoursGrid');
-      const select = qs('#hoursSelect');
-      const totalText = qs('#parttimeSelectedTotal');
-      if(grid && select){
-        grid.querySelectorAll('.hour-choice').forEach(btn=>{
-          btn.classList.toggle('active', btn.dataset.hour === select.value);
-        });
-      }
-      const total = Number(select && select.value ? select.value : 0);
-      if(totalText){
-        totalText.textContent = total ? `目前選擇：${formatHoursLabel(total)}` : '';
-      }
+      const grid=qs('#hoursGrid'),select=qs('#hoursSelect'),totalText=qs('#parttimeSelectedTotal');
+      const total=Number(select&&select.value?select.value:0),whole=Math.floor(total),half=total-whole===0.5;
+      if(grid&&select)grid.querySelectorAll('.hour-choice').forEach(btn=>{
+        const isHalf=btn.dataset.hour==='0.5',active=isHalf?half:whole>0&&Number(btn.dataset.hour)===whole;
+        btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active));
+        btn.disabled=isHalf&&whole>=12;
+      });
+      if(totalText)totalText.textContent=total?'目前選擇：'+formatHoursLabel(total):'';
     }
     function daysBetweenInclusive(startDate, endDate){
       const s = new Date(startDate + 'T00:00:00');
