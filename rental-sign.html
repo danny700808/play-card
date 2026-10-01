@@ -125,7 +125,7 @@ let signed=false; let watermarkedIdImage='';
     }
     function currentPaymentInfoText(row){ return buildPaymentInfoText(row||contract||{}); }
     function paymentInfoHtml(){ return `<div class="paymentNotice">${R.esc(currentPaymentInfoText(contract||{})).replace(/\n/g,'<br>')}<br><br><img src="${PAYMENT_IMAGE_URL}" alt="柚子樂器收款帳號" style="max-width:100%;border-radius:14px;border:1px solid #cbd5e1"></div>`; }
-    function successHtml(){ return '<div class="msg ok">已收到您的身分證字號、證明文件與合約簽名。請依收到的付款資訊完成付款，柚子樂器確認款項後才會成立正式契約。</div>'; }
+    function successHtml(){ return '<div class="msg ok">已收到您的身分證字號、證明文件與合約簽名。下方同時保留付款資訊；系統也會依您選擇的通知方式再傳送一份。</div>'+paymentInfoHtml(); }
     function closeDialog(){ R.qs('dialogMask').style.display='none'; }
     window.closeDialog=closeDialog;
     function showDialog(title, html){
@@ -249,11 +249,9 @@ let signed=false; let watermarkedIdImage='';
       return target;
     }
     async function uploadFormalAssets(){
-      if(!window.firebase || !firebase.storage) throw new Error('Firebase Storage 尚未啟用或尚未載入，無法用標準方式保存圖片。請先確認 Firebase Storage 規則。');
+      // 客人公開簽署頁的附件全部走 token 驗證的後端上傳，不依賴瀏覽器 Firebase [DEFAULT] App。
       const updates={};
       const safe=String(contractId||'rental-contract').replace(/[^a-zA-Z0-9_-]/g,'_');
-      const storage=firebase.storage();
-      if(typeof storage.setMaxUploadRetryTime==='function') storage.setMaxUploadRetryTime(60000);
       async function putDataUrl(path, dataUrl, contentType){
         return (await R.call('rentalUploadPrivateAssetHttp',{id:contractId,token,path,dataUrl})).url;
       }
@@ -291,7 +289,6 @@ let signed=false; let watermarkedIdImage='';
       if(!updates.customerSignatureUrl) throw new Error('簽名圖片沒有成功上傳到 Firebase Storage，請重新簽名後再送出。');
       updates.customerFormalAssetsUploadedAt=R.nowText();
       updates.updatedAtText=R.nowText();
-      addInlineAssetDeletes(updates);
       return updates;
     }
     function fifteenSecondsLaterTimestamp(){
@@ -361,7 +358,7 @@ let signed=false; let watermarkedIdImage='';
 
 
         finishProgress('送出完成，請依收到的付款資訊完成付款');
-        showDialog('', '已收到您的身分證字號、證明文件與合約簽名。請依收到的付款資訊完成付款，柚子樂器確認款項後才會成立正式契約。');
+        showDialog('送出完成', '<div class="msg ok">已收到您的身分證字號、證明文件與合約簽名。請依下方付款資訊完成付款；系統也會依您選擇的通知方式再傳送一份。</div>'+paymentInfoHtml());
         await load(); window.scrollTo({top:0,behavior:'smooth'});
       }catch(err){
         resetProgressButton();
