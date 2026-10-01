@@ -15,6 +15,6 @@ function validateConsent(c,noPurchase){
   return{points};
  });
  if(count<6||distance<0.08)bad('請完成家長手寫簽名，不可只點一下');
- return{...(c.canvasHeight===540?{canvasHeight:540}:{}),version:VERSION,text:TEXT,parentName:c.parentName.trim(),agreed:true,strokes};
+ return{...([540,1000].includes(c.canvasHeight)?{canvasHeight:c.canvasHeight}:{}),version:VERSION,text:TEXT,parentName:c.parentName.trim(),agreed:true,strokes};
 }
 module.exports={VERSION,TEXT,validateConsent};
