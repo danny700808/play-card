@@ -310,7 +310,7 @@ function clearCompositePreview(){photoCompositeVersion++;photoCompositeBusy=fals
 function showProduct(preserveVideo=false){if(!preserveVideo){if(selectedVideo)URL.revokeObjectURL(selectedVideo.preview);selectedVideo=null;$('videoPreview').classList.add('hidden');$('videoPreview').removeAttribute('src');$('videoFileName').textContent='';$('videoStatus').textContent='';}clearCompositePreview();selectedPhotos=[];photoBatchId='';photoPayloadCache=null;renderSavedVideos();$('photoPreview').innerHTML='';$('productName').textContent=productName(current);$('productSku').textContent='SKU '+productSku(current);const image=productImage(current);$('picture').innerHTML=image?'<img src="'+escapeHtml(image)+'" alt="">':'';$('savedPhotos').innerHTML=(current.physicalImageUrls||[]).map(url=>'<img src="'+escapeHtml(url)+'" style="width:100%" alt="已儲存實體圖">').join('');$('productCard').classList.remove('hidden');updateSaveButtons();}
 
 function loadPhotoImage(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>resolve({img,url});img.onerror=()=>{URL.revokeObjectURL(url);reject(Error('無法讀取照片'));};img.src=url;});}
-function canvasBlob(canvas,quality){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('照片合成失敗')),'image/jpeg',quality||.88));}
+async function canvasBlob(canvas,quality){let q=quality||.88,blob=null;while(q>=.56){blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('照片合成失敗')),'image/jpeg',q));if(blob.size<=1800*1024)return blob;q-=.08;}return blob;}
 function drawContained(ctx,img,x,y,w,h){ctx.fillStyle='#fff';ctx.fillRect(x,y,w,h);const scale=Math.min(w/img.naturalWidth,h/img.naturalHeight),dw=img.naturalWidth*scale,dh=img.naturalHeight*scale;ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);}
 function collageCells(count,x,y,w,h,gap){
  const rows=count===1?[[0]]:count===2?[[0,1]]:count===3?[[0,1],[2]]:count===4?[[0,1],[2,3]]:[[0,1,2],[3,4]];
@@ -320,15 +320,12 @@ function collageCells(count,x,y,w,h,gap){
 }
 async function buildPhysicalCollage(files,withTitle){
  if(!files.length||files.length>5)throw Error('實體圖一次請選 1～5 張照片。');
- const loaded=await Promise.all(files.map(loadPhotoImage));
- try{
-  const width=1200,titleH=withTitle?120:0,height=1200+titleH,gap=12,margin=12,canvas=document.createElement('canvas');
-  canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);
-  if(withTitle){ctx.fillStyle='#173247';ctx.font='900 56px "Noto Sans TC","Microsoft JhengHei",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('實體圖',width/2,titleH/2);}
-  const cells=collageCells(files.length,margin,titleH+margin,width-margin*2,1200-margin*2,gap);
-  loaded.forEach((item,i)=>drawContained(ctx,item.img,cells[i].x,cells[i].y,cells[i].w,cells[i].h));
-  return await canvasBlob(canvas,.88);
- }finally{loaded.forEach(item=>URL.revokeObjectURL(item.url));}
+ const width=1200,titleH=withTitle?120:0,height=1200+titleH,gap=12,margin=12,canvas=document.createElement('canvas');
+ canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);
+ if(withTitle){ctx.fillStyle='#173247';ctx.font='900 56px "Noto Sans TC","Microsoft JhengHei",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('實體圖',width/2,titleH/2);}
+ const cells=collageCells(files.length,margin,titleH+margin,width-margin*2,1200-margin*2,gap);
+ for(let i=0;i<files.length;i++){const item=await loadPhotoImage(files[i]);try{drawContained(ctx,item.img,cells[i].x,cells[i].y,cells[i].w,cells[i].h);}finally{URL.revokeObjectURL(item.url);item.img.src='';}}
+ return await canvasBlob(canvas,.88);
 }
 async function renderCompositePreview(){
  const version=++photoCompositeVersion;
@@ -363,7 +360,7 @@ async function saveSelectedPhotos(product){
  const files=selectedPhotos.map(p=>p.file);
  if(!photoPayloadCache){
   msg('正在把 '+files.length+' 張照片合成 1 張實體圖…');
-  const [original,labeled]=await Promise.all([buildPhysicalCollage(files,false),buildPhysicalCollage(files,true)]);
+  const original=await buildPhysicalCollage(files,false),labeled=await buildPhysicalCollage(files,true);
   photoPayloadCache={action:'uploadPhoto',productId:product.id,operator,operationId:photoBatchId||crypto.randomUUID(),original:await asBase64(original),labeled:await asBase64(labeled)};
  }
  msg(selectedVideo?'正在儲存照片與影片：先儲存實體圖…':'正在儲存實體圖…');
