@@ -11109,6 +11109,7 @@ async function adminRecordTuitionTransaction(data) {
   };
   if (!periodId || periodId.includes('/') || periodId.length > 180 || !incoming.date) throw new HttpsError('invalid-argument', '缺少有效的期別或日期。');
   try { validateTransaction({ transactions: [{ ...incoming }] }, incoming); } catch (error) { throw new HttpsError('invalid-argument', error.message); }
+  if (incoming.type === 'refund' && Array.isArray(data.lessonSlotNos)) incoming.lessonSlotNos = data.lessonSlotNos.map(Number).sort((a,b)=>a-b);
   const periodRef = db.collection(TUITION_PERIODS).doc(periodId);
   const transactionRef = db.collection(TUITION_TRANSACTIONS).doc(incoming.id);
   const lockRef = db.collection('coursePortalTuitionLedgerLocks').doc(periodId);
@@ -11130,12 +11131,28 @@ async function adminRecordTuitionTransaction(data) {
     if (!period || period.active === false) throw new HttpsError('not-found', '找不到有效的學費期別。');
     let checked;
     try { checked = validateTransaction(period, incoming); } catch (error) { throw new HttpsError('failed-precondition', error.message); }
-    if (checked.duplicate) return { ok: true, duplicate: true, transaction: existing.exists ? jsonValue(existing.data()) : incoming };
+    if (checked.duplicate) return { ok: true, duplicate: true, transaction: existing.exists ? jsonValue(existing.data()) : incoming, lessonAdjustments:period.lessonAdjustments||[],voidedLessonCount:Number(period.voidedLessonCount||0) };
+    let lessonPatch = null;
+    if (incoming.type === 'refund') {
+      const slots = incoming.lessonSlotNos;
+      if (!Array.isArray(slots) || !slots.length || new Set(slots).size !== slots.length || slots.some(slot => !Number.isInteger(slot) || slot < 1 || slot > tuitionLessonCount(period))) throw new HttpsError('invalid-argument', '請重新整理後選擇有效的退款堂次。');
+      const mirroredAttendance = await tx.get(db.collection(MIRROR.attendance).where('source.studentId','==',clean(period.studentId)));
+      const portalAttendance = await tx.get(db.collection(ATTENDANCE_RECORDS).where('studentId','==',clean(period.studentId)));
+      const mirrorRows = mirroredAttendance.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {});
+      const portalRows = portalAttendance.docs.map(doc => doc.data());
+      const effective = applyPortalAttendanceToPeriods([period], mirrorRows, portalRows)[0];
+      const adjustments = Array.isArray(period.lessonAdjustments) ? period.lessonAdjustments : [];
+      const attended = mergePortalAttendanceRows(mirrorRows, portalRows).filter(row => row.active !== false && row.deducted !== false && ['attended','absent'].includes(normalizeScheduleStatus(row.status)) && attendanceAllocations(row).some(item => item.periodId === periodId));
+      if (slots.some(slot => slot <= Math.ceil(Number(effective.usedCount || effective.attendedCount || 0)) || attended.some(row => Number(row.slotNo || row.lessonNo) === slot) || adjustments.some(row => Number(row.slotNo) === slot))) throw new HttpsError('failed-precondition', '選取的堂次已有上課、作廢或退款紀錄，請重新載入後再選擇。');
+      const additions = slots.map((slotNo,index) => ({id:incoming.id+'-slot-'+slotNo,transactionId:incoming.id,slotNo,type:'refund',date:incoming.date,amount:(Math.floor(cents(incoming.amount)/slots.length)+(index<cents(incoming.amount)%slots.length?1:0))/100}));
+      lessonPatch = {lessonAdjustments:adjustments.concat(additions),voidedLessonCount:Number(period.voidedLessonCount||0)+slots.length};
+    }
     const record = Object.assign({}, incoming, { periodId, studentId: clean(period.studentId), status: 'confirmed', active: true, source: 'manager-ledger' });
+    if (lessonPatch) tx.set(periodRef, Object.assign({id:periodId,studentId:clean(period.studentId),active:true,updatedAt:FieldValue.serverTimestamp()},lessonPatch), {merge:true});
     tx.create(transactionRef, Object.assign({}, record, { createdAt: FieldValue.serverTimestamp() }));
     tx.set(lockRef, { revision: Number(lock.exists && lock.data().revision || 0) + 1, updatedAt: FieldValue.serverTimestamp() });
     tx.set(versionRef, { version: Number(version.exists && version.data().version || 0) + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-ledger' }, { merge: true });
-    return { ok: true, transaction: record };
+    return Object.assign({ ok: true, transaction: record }, lessonPatch || {});
   }));
 }
 

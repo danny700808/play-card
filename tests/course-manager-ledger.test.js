@@ -51,14 +51,17 @@ function fixture() {
     clean: value => String(value ?? '').trim(), dateKey: value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : '',
     sourceId: row => row && (row.id || row.__id) || '', jsonValue: value => value,
     HttpsError: class extends Error { constructor(code, message) { super(message); this.code = code; } },
-    MIRROR: { tuitionPeriods: 'mirror' }, TUITION_PERIODS: 'periods', TUITION_TRANSACTIONS: 'transactions',
+    MIRROR: { tuitionPeriods: 'mirror', attendance:'mirrorAttendance' }, ATTENDANCE_RECORDS:'attendance', TUITION_PERIODS: 'periods', TUITION_TRANSACTIONS: 'transactions',
+    normalizeScheduleStatus: value=>value,
+    attendanceLessonUnits: row=>Number(row.lessonUnits)||1,
+    attendanceRowsMatch: (a,b)=>a.id===b.id,
     FieldValue: { serverTimestamp: () => 'server-time' },
     scheduleVersionRef: () => collection('runtime').doc('version'),
     assertScheduleWritable: value => { if (value.exists && value.data().writesBlocked) throw Error('blocked'); },
     mirrorRows: async () => [{ id: 'student1' }]
   };
   vm.createContext(context);
-  for (const name of ['firstFiniteNumber','transactionAmount','tuitionBasePaidAmount','mergePortalTuitionRows','adminSaveTuitionPeriods','adminRecordTuitionTransaction']) vm.runInContext(extract(name), context);
+  for (const name of ['tuitionLessonCount','attendanceAllocations','applyPortalAttendanceToPeriods','mergePortalAttendanceRows','firstFiniteNumber','transactionAmount','tuitionBasePaidAmount','mergePortalTuitionRows','adminSaveTuitionPeriods','adminRecordTuitionTransaction']) vm.runInContext(extract(name), context);
   return { context, put: (key, value) => records.set(key, value), get: key => records.get(key), rows: prefix => [...records].filter(([key]) => key.startsWith(prefix+'/')), fail: () => { failCreate = true; } };
 }
 function request() {
@@ -98,7 +101,7 @@ test('editing tuition preserves existing lesson usage and independent receipts',
 test('concurrent refunds serialize against the latest confirmed receipts', async () => {
   const f = fixture(); await f.context.adminSaveTuitionPeriods(request());
   await f.context.adminRecordTuitionTransaction({ id: 'pay1', periodId: 'p1', type: 'payment', amount: 1800, date: '2026-09-07' });
-  const results = await Promise.allSettled(['refund1', 'refund2'].map(id => f.context.adminRecordTuitionTransaction({ id, periodId: 'p1', type: 'refund', amount: 1800, date: '2026-09-07' })));
+  const results = await Promise.allSettled(['refund1', 'refund2'].map(id => f.context.adminRecordTuitionTransaction({ id, periodId: 'p1', type: 'refund', amount: 1800, date: '2026-09-07',lessonSlotNos:[3,4] })));
   assert.equal(results.filter(row => row.status === 'fulfilled').length, 1);
   assert.equal(f.rows('transactions').length, 2);
 });
@@ -113,4 +116,46 @@ test('the live write lock prevents financial writes during incomplete migration'
   const f = fixture(); f.put('runtime/version', { writesBlocked: true });
   await assert.rejects(f.context.adminSaveTuitionPeriods(request()), /blocked/);
   assert.equal(f.rows('periods').length, 0);
+});
+
+async function paidFixture() {
+  const f=fixture(); await f.context.adminSaveTuitionPeriods(request());
+  await f.context.adminRecordTuitionTransaction({id:'pay',periodId:'p1',type:'payment',amount:3600,date:'2026-10-02'});
+  f.put('periods/p1',{...f.get('periods/p1'),usedCount:2});
+  return f;
+}
+const refundRequest=(extra={})=>({id:'refund',periodId:'p1',type:'refund',amount:1800,date:'2026-10-02',lessonSlotNos:[3,4],...extra});
+test('refund writes selected third/fourth lesson status atomically and retry returns it',async()=>{
+  const f=await paidFixture(),result=await f.context.adminRecordTuitionTransaction(refundRequest());
+  assert.deepEqual(Array.from(result.lessonAdjustments,row=>row.slotNo),[3,4]);
+  assert.equal(f.get('periods/p1').usedCount,2);
+  assert.equal(f.get('periods/p1').voidedLessonCount,2);
+  assert.equal(f.get('periods/p1').lessonAdjustments[0].type,'refund');
+  const retried=await f.context.adminRecordTuitionTransaction(refundRequest());
+  assert.equal(retried.duplicate,true);assert.equal(retried.lessonAdjustments.length,2);
+  assert.equal(f.rows('transactions').length,2);
+  await assert.rejects(f.context.adminRecordTuitionTransaction(refundRequest({lessonSlotNos:[1,2]})),/不同退款堂次/);
+});
+test('attended, duplicate, missing and out-of-range refund selections are rejected',async()=>{
+  for(const slots of [[1,2],[3,3],[],[5],undefined]){
+    const f=await paidFixture();await assert.rejects(f.context.adminRecordTuitionTransaction(refundRequest({lessonSlotNos:slots})));
+    assert.equal(f.rows('transactions').length,1);assert.equal((f.get('periods/p1').lessonAdjustments||[]).length,0);
+  }
+});
+test('a new half lesson or absence after opening the dialog prevents refunding its slot',async()=>{
+  for(const status of ['attended','absent']){
+    const f=await paidFixture();f.put('attendance/a',{id:'a',studentId:'student1',periodId:'p1',status,lessonUnits:0.5,lessonNo:3});
+    await assert.rejects(f.context.adminRecordTuitionTransaction(refundRequest()),/已有上課/);
+    assert.equal(f.rows('transactions').length,1);
+  }
+});
+test('failed ledger creation also rolls back the lesson adjustment',async()=>{
+  const f=await paidFixture();f.fail();await assert.rejects(f.context.adminRecordTuitionTransaction(refundRequest()));
+  assert.equal(f.get('periods/p1').voidedLessonCount||0,0);assert.equal(f.rows('transactions').length,1);
+});
+test('two different requests cannot refund the same lesson even with enough balance',async()=>{
+  const f=await paidFixture();
+  const results=await Promise.allSettled(['r1','r2'].map(id=>f.context.adminRecordTuitionTransaction(refundRequest({id,amount:900,lessonSlotNos:[3]}))));
+  assert.equal(results.filter(row=>row.status==='fulfilled').length,1);
+  assert.equal(f.get('periods/p1').voidedLessonCount,1);
 });

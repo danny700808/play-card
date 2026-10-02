@@ -25,6 +25,7 @@ function validateTransaction(period, incoming) {
   const existing = (period.transactions || []).find(row => row.id === incoming.id);
   if (existing) {
     if (existing.type !== incoming.type || cents(existing.amount) !== cents(incoming.amount)) throw new Error('交易識別碼已用於另一筆異動。');
+    if (incoming.type === 'refund' && JSON.stringify((existing.lessonSlotNos || []).slice().sort((a,b)=>a-b)) !== JSON.stringify((incoming.lessonSlotNos || []).slice().sort((a,b)=>a-b))) throw new Error('交易識別碼已用於不同退款堂次，請重新開啟退款視窗。');
     return { duplicate: true };
   }
   if (incoming.type === 'refund' && cents(incoming.amount) > cents(refundableAmount(period))) {
