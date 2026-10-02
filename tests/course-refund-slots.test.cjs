@@ -33,4 +33,9 @@ for(const file of ['course-scheduler.js','operations-course-inline-runtime.js'])
     const f=fixture();f.period.lessonAdjustments=[3,4].map(slotNo=>({slotNo,type:'refund',date:'2026-10-02'}));
     const html=f.context.periodLessonSlots(f.period);assert.equal((html.match(/已退費/g)||[]).length,2);assert.equal((html.match(/已上課/g)||[]).length,2);
   });
+  test(file+': imported duplicate lesson numbers retain both attendance dates',()=>{
+    const f=fixture();f.context.state.attendance[1].lessonNo=1;
+    const html=f.context.periodLessonSlots(f.period);
+    assert.equal((html.match(/已上課/g)||[]).length,2);assert.match(html,/2026\/09\/08/);
+  });
 }
