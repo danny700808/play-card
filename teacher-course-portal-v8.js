@@ -803,7 +803,7 @@
               : `這個位置無法連續保留 ${requiredMinutes} 分鐘，請選擇綠色的「可調入」時段。`;
             html += `<button class="empty-slot unavailable-target" type="button" data-unavailable-target="${day}|${slotStart}" data-unavailable-message="${escapeHtml(message)}" aria-disabled="true"><span>${label}</span><small>${detail}</small></button>`;
           } else {
-            html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}" aria-label="${escapeHtml(`${day} ${slotStart} 查詢空教室`)}"></button>`;
+            html += `<button class="empty-slot" type="button" data-empty="${day}|${slotStart}|${slotEnd}" aria-label="${escapeHtml(`${day} ${slotStart} 選擇學生調入`)}"></button>`;
           }
         } else if (!blockingRows.length && new Date(`${day}T12:00:00`).getDay() === 1) {
           html += '<span class="closed-slot">公休</span>';
@@ -1399,7 +1399,32 @@
     }
   }
 
-  async function openQuickForEmpty(date, startTime, durationMinutes = 60, weekly = false) {
+  async function openQuickForEmpty(date, startTime) {
+    if (courseSlotIsPast(date, startTime)) { toast('不可選擇今天以前的日期。', 'error'); return; }
+    const requestId = ++availabilityRequestId;
+    showQuick('選擇要調入的學生課程', dayLabel(date)+' '+startTime, '<p>正在確認可調入的課程…</p>', {type:'target-search',date,startTime});
+    try {
+      const result = await invoke('coursePortalTeacherSlotOptions', {sessionToken:token,date,startTime});
+      if (requestId !== availabilityRequestId) return;
+      const candidates = result.candidateLessons || [];
+      const rows = candidates.map((lesson,index)=>'<button type="button" data-target-candidate="'+index+'"><b>'+escapeHtml((lesson.studentNames||[]).join('、')||'未指定學生')+'・'+escapeHtml(lesson.subjectName||'未指定科目')+'</b><span>原課程：'+escapeHtml(dayLabel(lesson.date))+' '+escapeHtml(lesson.startTime)+'～'+escapeHtml(lesson.endTime)+'</span></button>').join('');
+      showQuick('選擇要調入的學生課程', dayLabel(date)+' '+startTime,
+        '<div class="teacher-choice-list">'+(rows||'<p>目前沒有符合此時段的可調入課程。</p>')+'</div><button type="button" data-target-add="extra_lesson">在這裡增加一堂課</button><button type="button" data-target-room-lookup>查詢空教室</button>',
+        {type:'target-candidates',date,startTime,result,candidates});
+    } catch(error) {
+      if (requestId !== availabilityRequestId) return;
+      showQuick('查詢未完成',dayLabel(date)+' '+startTime,choiceSummary('暫時無法查詢',error.message||'請稍後再試。')+'<button type="button" data-retry-target>重新查詢</button>',{type:'target-error',date,startTime});
+    }
+  }
+
+  function renderTargetCandidateRooms(context, candidate) {
+    const rows=(candidate.rooms||[]).map(room=>'<button type="button" data-target-selected-room="'+escapeHtml(room.id)+'"><b>'+escapeHtml(roomOptionLabel(room))+'</b><span>'+escapeHtml(roomChoiceNote(room))+'</span></button>').join('');
+    showQuick('選擇教室',dayLabel(context.date)+' '+context.startTime+'～'+candidate.targetEndTime,
+      choiceSummary((candidate.studentNames||[]).join('、'),lessonSummary(candidate))+'<div class="teacher-choice-list">'+rows+'</div>',
+      Object.assign({},context,{type:'target-candidate-rooms',candidate}));
+  }
+
+  async function openRoomLookup(date, startTime, durationMinutes = 60, weekly = false) {
     if (courseSlotIsPast(date, startTime)) { toast('不可選擇今天以前的日期。', 'error'); return; }
     const requestId = ++availabilityRequestId;
     const context = {type:'target-search',date,startTime,durationMinutes,weekly};
@@ -1917,8 +1942,10 @@
     loading(button, true);
     try {
       const today = todayKey(), weekday = (new Date(today + 'T12:00:00').getDay() + 6) % 7;
+      const moving = planner && planner.mode === 'move' ? { source: planner.source, action: planner.action } : null;
       weekStart = addDays(today, -weekday);
       await load(true);
+      if (moving) await startSourceMove(moving.source, moving.action);
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       updateWeekViewport();
       const width = Number.parseFloat(document.getElementById('weekGrid').style.getPropertyValue('--teacher-day-width')) || 0;
@@ -2100,10 +2127,17 @@
     }
     const stopSelected=event.target.closest('[data-stop-selected]');
     if(stopSelected && context && context.type==='stop-student-selection'){closeQuick();openStudentStop(stopSelected.dataset.stopSelected,context.effectiveDate,context.subjectId);return;}
+    if (context && event.target.closest('[data-target-room-lookup]')) { await openRoomLookup(context.date,context.startTime); return; }
+    const selectedTargetRoom=event.target.closest('[data-target-selected-room]');
+    if (selectedTargetRoom && context && context.candidate) {
+      const roomId=selectedTargetRoom.dataset.targetSelectedRoom;
+      if ((context.candidate.rooms||[]).some(room=>clean(room.id)===clean(roomId))) renderTargetMoveActions(Object.assign({},context,{roomId}),context.candidate);
+      return;
+    }
     const durationButton = event.target.closest('[data-room-duration]');
     const weeklyButton = event.target.closest('[data-room-weekly]');
     if (context && (durationButton || weeklyButton)) {
-      await openQuickForEmpty(context.date, context.startTime, durationButton ? Number(durationButton.dataset.roomDuration) : context.durationMinutes, Boolean(weeklyButton) || context.weekly);
+      await openRoomLookup(context.date, context.startTime, durationButton ? Number(durationButton.dataset.roomDuration) : context.durationMinutes, Boolean(weeklyButton) || context.weekly);
       return;
     }
     const addDurationButton = event.target.closest('[data-add-duration]');
@@ -2198,7 +2232,7 @@
     }
     if (targetCandidate && Array.isArray(context.candidates)) {
       const candidate = context.candidates[Number(targetCandidate.dataset.targetCandidate)];
-      if (candidate) renderTargetMoveActions(context, candidate);
+      if (candidate) renderTargetCandidateRooms(context, candidate);
       return;
     }
     if (targetMoveAction && context.candidate) {
