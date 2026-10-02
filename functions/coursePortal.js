@@ -5586,7 +5586,7 @@ async function teacherAvailability(data) {
     throw new HttpsError('invalid-argument', '請選擇今天或之後的 30 分鐘時段。');
   }
   if (exactTarget) assertPortalAdvanceDate(exactDate, '課程日期');
-  const days = exactTarget ? 1 : Math.min(28, Math.max(7, Number(data.days || 14)));
+  const days = exactTarget ? 1 : data.visibleWindow === true ? Math.min(7, Math.max(1, Math.floor(Number(data.days) || 1))) : Math.min(28, Math.max(7, Number(data.days || 14)));
   const endDate = exactTarget
     ? exactDate
     : [addDays(startDate, days - 1), portalMaximumAdvanceDate()].sort()[0];

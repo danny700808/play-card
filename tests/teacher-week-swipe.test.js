@@ -4,7 +4,7 @@ test('week buttons retain time position and swipe edges support continuation',as
  const source=fs.readFileSync(path.join(__dirname,'../teacher-course-portal-v8.js'),'utf8');const listeners={};
  const viewport={scrollLeft:900,scrollWidth:1200,clientWidth:300,scrollTop:220,addEventListener:(name,fn)=>{listeners[name]=fn;}};
  const buttons=new Map();const button=id=>{if(!buttons.has(id))buttons.set(id,{disabled:false,classList:{add(){},remove(){}},setAttribute(){},removeAttribute(){}});return buttons.get(id);};
- let loads=0;const context={document:{querySelector:()=>viewport,getElementById:button},weekStart:'2026-09-21',planner:null,load:async()=>{loads++;},startSourceMove:async()=>{},addDays:(date,days)=>new Date(Date.parse(date+'T12:00:00Z')+days*86400000).toISOString().slice(0,10)};
+ let loads=0;const context={schedulePlannerViewportSearch(){},document:{querySelector:()=>viewport,getElementById:button},weekStart:'2026-09-21',planner:null,load:async()=>{loads++;},startSourceMove:async()=>{},addDays:(date,days)=>new Date(Date.parse(date+'T12:00:00Z')+days*86400000).toISOString().slice(0,10)};
  vm.createContext(context);vm.runInContext(source.slice(source.indexOf("  const weekViewport = document.querySelector('[data-two-day-viewport]');"),source.indexOf("  weekViewport.addEventListener('scroll',")),context);
  assert.equal(typeof listeners.touchstart,'function');assert.equal(typeof listeners.touchend,'function');assert.equal(loads,0);
  const gestures=source.slice(source.indexOf("  weekViewport.addEventListener('touchstart'"),source.indexOf("  weekViewport.addEventListener('scroll',"));assert(gestures.includes('continueWeekSwipe(direction)'), '邊界滑動應延續下一週');

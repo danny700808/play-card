@@ -793,6 +793,8 @@
         if (!blockingRows.length && new Date(`${day}T12:00:00`).getDay() !== 1 && !past) {
           if (available) {
             html += `<button class="empty-slot available-target" type="button" data-flow-target="${day}|${slotStart}" aria-label="${escapeHtml(`${day} ${slotStart} 可排入連續 ${requiredMinutes} 分鐘`)}"><span>可調入</span><small>${requiredMinutes} 分鐘</small></button>`;
+          } else if (planner && !planner.exactTarget && !(planner.queriedDates||[]).includes(day)) {
+            html += '<button class="empty-slot" type="button" data-retry-planner><span>'+ (planner.inFlight?'查詢中…':'查詢可用時段') +'</span></button>';
           } else if (planner) {
             const gapMinutes = continuousTeacherGapMinutes(events, day, slotStart, scheduleEnd);
             const shortGap = gapMinutes >= 30 && gapMinutes < requiredMinutes;
@@ -1207,6 +1209,7 @@
   }
 
   function cancelPlanner(closeSheet) {
+    global.clearTimeout(plannerViewportTimer);
     availabilityRequestId += 1;
     planner = null;
     setProgress(false);
@@ -1602,6 +1605,52 @@
     return row ? roomOptionLabel(row) : '未指定教室';
   }
 
+  let plannerViewportTimer = 0;
+  function visiblePlannerRange() {
+    const grid=document.getElementById('weekGrid'), scroll=grid&&grid.parentElement;
+    if(!scroll)return null;
+    const bounds=scroll.getBoundingClientRect();
+    const sticky=parseFloat(grid.style.getPropertyValue('--teacher-time-column'))||0;
+    const dates=[...grid.querySelectorAll('[data-day-head]')].filter(el=>{const r=el.getBoundingClientRect();return r.right>bounds.left+sticky+2&&r.left<bounds.right-2;}).map(el=>el.dataset.dayHead).filter(day=>day>=todayKey()).sort();
+    if(!dates.length)return null;
+    return {start:dates[0],days:Math.min(7,Math.round((Date.parse(dates[dates.length-1])-Date.parse(dates[0]))/86400000)+1),key:dates.join('|')};
+  }
+  function schedulePlannerViewportSearch() {
+    global.clearTimeout(plannerViewportTimer);
+    if(!planner||planner.exactTarget)return;
+    plannerViewportTimer=global.setTimeout(()=>{if(weekGesture||weekAnimating||changingWeek){schedulePlannerViewportSearch();return;}refreshVisiblePlanner();},320);
+  }
+  async function refreshVisiblePlanner() {
+    const job=planner, range=visiblePlannerRange();
+    if(!job||job.exactTarget||!range)return;
+    job.wantedRange=range.key;
+    job.rangeCache=job.rangeCache||new Map();
+    const cached=job.rangeCache.get(range.key);
+    if(cached&&Date.now()-cached.at<30000){
+      if(job.appliedRange!==range.key){job.slots=cached.slots;job.queriedDates=cached.dates;job.appliedRange=range.key;renderWeek();}
+      return;
+    }
+    if(job.inFlight)return;
+    job.inFlight=true;job.appliedRange='';job.slots=[];job.queriedDates=[];
+    setFlowBanner(job.mode==='move'?'選擇調課時間':'選擇增加課程時間','正在確認畫面上這幾天的可用時段…');renderWeek();
+    const requestId=++availabilityRequestId;
+    const payload=Object.assign({},job.mode==='move'?lessonActionDefaults(job.source,job.action):{action:job.action,studentIds:job.studentIds,subjectId:job.subjectId,irregularId:job.irregularId,suspensionId:job.suspensionId}, {sessionToken:token,startDate:range.start,days:range.days,visibleWindow:true,durationMinutes:job.durationMinutes});
+    try {
+      const result=await invoke('coursePortalTeacherAvailability',payload);
+      if(planner!==job||requestId!==availabilityRequestId)return;
+      const dates=Array.from({length:range.days},(_,i)=>addDays(range.start,i));
+      const slots=(result.slots||[]).filter(slot=>dates.includes(slot.date)&&!courseSlotIsPast(slot.date,slot.startTime)&&Array.isArray(slot.rooms)&&slot.rooms.length);
+      job.rangeCache.set(range.key,{at:Date.now(),slots,dates});
+      if(job.rangeCache.size>8)job.rangeCache.delete(job.rangeCache.keys().next().value);
+      if(visiblePlannerRange()?.key===range.key){job.durationMinutes=Number(result.durationMinutes)||job.durationMinutes;job.slots=slots;job.queriedDates=dates;job.appliedRange=range.key;setFlowBanner(job.mode==='move'?'選擇調課時間':'選擇增加課程時間',slots.length?'請選綠色可用時段，再選教室。':'這幾天沒有合適空位，可以繼續滑到其他日期。');renderWeek();}
+    } catch(error) {
+      if(planner===job&&requestId===availabilityRequestId){job.failedRange=range.key;setFlowBanner('空位查詢未完成','請點下方重新查詢，或滑到其他日期。');toast(error.message,'error');renderWeek();}
+    } finally {
+      job.inFlight=false;
+      if(planner===job&&visiblePlannerRange()?.key!==range.key)schedulePlannerViewportSearch();
+    }
+  }
+
   async function startSourceMove(row, action) {
     if (!row || (!row.irregularId && !row.suspensionId && courseSlotIsPast(row.date, row.startTime))) {
       toast('不可選擇今天以前的日期。', 'error');
@@ -1623,45 +1672,11 @@
       action === 'permanent_move' ? '選擇新的固定時段' : '選擇這一次的新時段',
       `${lessonSummary(row)}；本堂需要連續 ${planner.durationMinutes} 分鐘，正在找完整空位。`
     );
-    setProgress(true, '正在搜尋可用位置', '排除老師、每位學生、教室、設備、政策與既有租用…');
+    setProgress(false);
     renderWeek();
-    try {
-      const result = await invoke('coursePortalTeacherAvailability', Object.assign({
-        sessionToken: token,
-        startDate: weekStart < todayKey() ? todayKey() : weekStart,
-        days: 14
-      }, lessonActionDefaults(row, action), {
-        sourceStartTime: row.startTime,
-        sourceEndTime: row.endTime
-      }));
-      if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
-      planner.durationMinutes = Number(result.durationMinutes) || planner.durationMinutes;
-      planner.slots = (result.slots || []).filter((slot) =>
-        !courseSlotIsPast(slot.date, slot.startTime) && Array.isArray(slot.rooms) && slot.rooms.length
-      );
-      setProgress(false);
-      setFlowBanner(
-        action === 'permanent_move' ? '選擇新的固定時段' : '選擇這一次的新時段',
-        planner.slots.length
-          ? `本堂需要連續 ${planner.durationMinutes} 分鐘；只有綠色「可調入・${planner.durationMinutes} 分鐘」能選，時段不足會標紅。`
-          : '未來兩週沒有完整可用的位置。'
-      );
-      renderWeek();
-      if (!planner.slots.length) {
-        showQuick(
-          '目前沒有可用位置',
-          lessonSummary(row),
-          `${choiceSummary('未來兩週沒有完整空位', '已檢查老師、學生、設備、教室與租用。', '可以取消後改從其他星期重新查看。')}<button type="button" data-cancel-flow>返回課表</button>`,
-          { type: 'no-slots' }
-        );
-      }
-    } catch (error) {
-      if (!planner || planner.requestId !== requestId || requestId !== availabilityRequestId) return;
-      setProgress(false);
-      toast(error.message, 'error');
-      cancelPlanner(false);
-    }
+    schedulePlannerViewportSearch();
   }
+
 
   function beginAddFlow(action, options) {
     const context = Object.assign({
@@ -1709,6 +1724,7 @@
     context.durationMinutes = durationMinutes;
     planner = {
       mode: 'add',
+      exactTarget: Boolean(target),
       halfHourAcknowledged: context.halfHourAcknowledged === true,
       action: context.action,
       irregularId: context.irregularId || '',
@@ -1722,6 +1738,7 @@
     };
     closeQuick();
     activateTab('schedule');
+    if(!target){setProgress(false);renderWeek();schedulePlannerViewportSearch();return;}
     setProgress(
       true,
       context.action === 'teacher_gift' ? '正在搜尋贈課位置' : '正在搜尋加課位置',
@@ -1942,10 +1959,8 @@
     loading(button, true);
     try {
       const today = todayKey(), weekday = (new Date(today + 'T12:00:00').getDay() + 6) % 7;
-      const moving = planner && planner.mode === 'move' ? { source: planner.source, action: planner.action } : null;
       weekStart = addDays(today, -weekday);
-      await load(true);
-      if (moving) await startSourceMove(moving.source, moving.action);
+      await load(false);
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       updateWeekViewport();
       const width = Number.parseFloat(document.getElementById('weekGrid').style.getPropertyValue('--teacher-day-width')) || 0;
@@ -1955,7 +1970,7 @@
       const rowHeight = parseFloat(getComputedStyle(document.getElementById('weekGrid')).gridAutoRows) || 30;
       weekViewport.scrollTop = Math.max(0,(minute-Number(data.hours.start || 9)*60)/30*rowHeight-rowHeight);
 
-    } finally { changingWeek = false; loading(button, false); }
+    } finally { changingWeek = false; loading(button, false); schedulePlannerViewportSearch(); }
   });
   document.getElementById('rosterSearch').addEventListener('input', (event) => {
     rosterQuery = clean(event.target.value);
@@ -1974,9 +1989,7 @@
     const top = weekViewport.scrollTop;
     try {
       weekStart = addDays(weekStart, direction * 7);
-      const moving = planner && planner.mode === 'move' ? { source: planner.source, action: planner.action } : null;
       await load(false);
-      if (moving) await startSourceMove(moving.source, moving.action);
       weekViewport.scrollLeft = 0;
       weekViewport.scrollTop = top;
     } finally {
@@ -1984,6 +1997,7 @@
       buttons.forEach(button => { button.disabled = false; });
       indicator.classList.remove('week-loading');
       indicator.removeAttribute('aria-busy');
+      schedulePlannerViewportSearch();
     }
   }
   weekViewport.addEventListener('touchstart', event => {
@@ -2022,6 +2036,7 @@
   },{passive:false});
   weekViewport.addEventListener('touchcancel',()=>finishWeekGesture(true));
   weekViewport.addEventListener('click',event=>{if(Date.now()<suppressWeekClickUntil){event.preventDefault();event.stopImmediatePropagation();}},{capture:true});
+  weekViewport.addEventListener('scroll', schedulePlannerViewportSearch, {passive:true});
   weekViewport.addEventListener('scroll', scheduleWeekGroupSnap, { passive: true });
   weekViewport.addEventListener('scrollend', snapWeekScrollToGroup);
   global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));
@@ -2073,6 +2088,7 @@
 
   document.getElementById('weekGrid').addEventListener('click', (event) => {
     if ((weekGesture && weekGesture.axis) || Date.now()<suppressWeekClickUntil) {event.preventDefault();return;}
+    if(event.target.closest('[data-retry-planner]')&&planner){refreshVisiblePlanner();return;}
     const target = event.target.closest('[data-flow-target]');
     const unavailableTarget = event.target.closest('[data-unavailable-target]');
     const empty = event.target.closest('[data-empty]');
