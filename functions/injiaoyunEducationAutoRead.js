@@ -152,6 +152,11 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
         const { withPortalReads } = require('./portalReadContext');
         return await withPortalReads(managerRecentStudents)();
       }
+      if (clean(request && request.data && request.data.scope) === 'student-directory') {
+        const { managerStudentDirectory } = require('./coursePortal');
+        const { withPortalReads } = require('./portalReadContext');
+        return await withPortalReads(managerStudentDirectory)(request.data);
+      }
       if (clean(request && request.data && request.data.scope) === 'calendar-bootstrap') {
         const { managerCalendarBootstrap } = require('./coursePortal');
         const { withPortalReads } = require('./portalReadContext');
@@ -160,7 +165,7 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
       if (clean(request && request.data && request.data.scope) === 'calendar-irregular') {
         const {managerCalendarFollowup}=require('./coursePortal');
         const {withPortalReads}=require('./portalReadContext');
-        return await withPortalReads(managerCalendarFollowup)();
+        return await withPortalReads(managerCalendarFollowup)(request.data);
       }
       if (clean(request && request.data && request.data.scope) === 'teacher-payroll-month') {
         const { teacherPayrollMonthData } = require('./coursePortal');

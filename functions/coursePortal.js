@@ -13451,9 +13451,28 @@ async function managerRecentStudents() {
     loadedAt:new Date().toISOString(),mirrorMeta:{status:'success'}};
 }
 
-async function managerCalendarFollowup() {
+async function managerStudentDirectory(data = {}) {
+  // Search needs identities only, never tuition, attendance or payroll ledgers.
+  const subjectIds=[...new Set((data.subjectIds||[]).map(clean).filter(Boolean))];
+  if(subjectIds.length>30)throw new HttpsError('invalid-argument','科目查詢範圍過大。');
+  if(subjectIds.length){
+    // A deliberate subject search reads only periods belonging to those subjects.
+    const [mirror,portal]=await Promise.all([
+      db.collection(MIRROR.tuitionPeriods).where('source.subjectId','in',subjectIds).get(),
+      db.collection(TUITION_PERIODS).where('subjectId','in',subjectIds).get()
+    ]);
+    const ids=[...new Set([...mirror.docs.filter(doc=>doc.data().sourceActive!==false).map(doc=>doc.data().source),...portal.docs.map(doc=>doc.data())].flatMap(eventStudentIds))];
+    return {ok:true,scope:'student-directory',students:await mirrorProfilesByIds('students',ids)};
+  }
+  return {ok:true,scope:'student-directory',students:await mirrorRowsIncludingInactive('students')};
+}
+
+async function managerCalendarFollowup(data = {}) {
   const [modes,stops]=await Promise.all([db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),db.collection('coursePortalStudentSuspensions').where('status','==','active').get()]);
   const stopped=stops.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id}));
+  const irregularCourses=modes.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id}));
+  if(data.includeBalances !== true) return {ok:true,irregularCourses,stoppedCourseReceivables:stopped,
+    followupStops:stopped.map(stop=>({...stop,balanceVerified:false,currentUnpaidAmount:null}))};
   const ids=[...new Set(stopped.map(row=>clean(row.studentId)).filter(Boolean))],chunks=[];
   for(let offset=0;offset<ids.length;offset+=30)chunks.push(ids.slice(offset,offset+30));
   const scoped=async(collection,field)=>(await Promise.all(chunks.map(chunk=>db.collection(collection).where(field,'in',chunk).get()))).flatMap(snapshot=>snapshot.docs);
@@ -13691,6 +13710,7 @@ module.exports = {
   teacherPayrollMonthData,
   managerCalendarBootstrap,
   managerRecentStudents,
+  managerStudentDirectory,
   managerScheduleCatalog,
   managerCalendarFollowup
 };
