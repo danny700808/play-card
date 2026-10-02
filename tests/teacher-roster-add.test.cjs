@@ -9,6 +9,7 @@ function fixture() {
     data: { roster: [{ id: 's1', name: '學生甲' }, { id: 's2', name: '學生乙' }] },
     clean: v => String(v || ''), escapeHtml: v => v,
     weekStart: '2026-10-05', token: 'test', availabilityRequestId: 0,
+    schedulePlannerViewportSearch: () => calls.push(['schedule-visible-search']),
     planner: null, operationId: () => 'operation-1',
     activateTab: tab => calls.push(['tab', tab]),
     cancelPlanner: () => { c.planner = null; calls.push(['cancel']); },
@@ -42,17 +43,16 @@ test('unknown student cannot start an add operation', () => {
   const { c, calls, sheets } = fixture(); c.startRosterAdd('missing');
   assert.equal(calls.length, 0); assert.equal(sheets.length, 0);
 });
-test('subject and duration choices lead to existing availability search without creating a lesson', async () => {
+test('subject and duration choices schedule a visible-date search without creating a lesson', async () => {
   const { c, calls, sheets } = fixture(); c.startRosterAdd('s1');
   c.beginAddFlow('extra_lesson', { ...sheets[0].context, subjectId: 'piano' });
   assert.equal(sheets[1].title, '增加一堂課・上課時長');
   await c.searchAddAvailability({ ...sheets[1].context, durationMinutes: 60, durationChosen: true });
   const requests = calls.filter(([name]) => name.startsWith('coursePortal'));
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0][0], 'coursePortalTeacherAvailability');
-  assert.equal(requests[0][1].startDate, '2026-10-05');
-  assert.equal(requests[0][1].exactTarget, false);
-  assert.deepEqual(Array.from(requests[0][1].studentIds), ['s1']);
-  assert.equal(c.planner.slots[0].date, '2026-10-05');
+  assert.equal(requests.length, 0, 'wait for viewport to settle before querying');
+  assert.equal(calls.filter(([name]) => name === 'schedule-visible-search').length, 1);
+  assert.deepEqual(Array.from(c.planner.studentIds), ['s1']);
+  assert.equal(c.planner.subjectId, 'piano');
+  assert.equal(c.planner.durationMinutes, 60);
   assert.equal(c.planner.operationId, 'operation-1');
 });
