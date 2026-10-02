@@ -204,7 +204,7 @@
     clearTimeout(weekPrefetchTimer);
     const account = token, revision = viewCache.revision();
     weekPrefetchTimer = setTimeout(async () => {
-      for (const offset of [7, -7]) {
+      for (const offset of [7]) {
         if (token !== account || weekStart !== week || activeTab !== 'schedule' ||
             viewCache.revision() !== revision || teacherOperations.hasPending() || document.visibilityState === 'hidden') return;
         const next = addDays(week, offset);
