@@ -5,7 +5,7 @@ for(const file of ['course-scheduler.js','operations-course-inline-runtime.js'])
     const source=fs.readFileSync(require('node:path').join(__dirname,'..',file),'utf8');
     const period={id:'p',lessonCount:4,usedCount:2,lessonAdjustments:[]};
     const fields={},boxes=[];
-    const get=id=>fields[id]||(fields[id]={value:'',innerHTML:'',classList:{toggle(){}}});
+    const get=id=>fields[id]||(fields[id]={value:'',innerHTML:'',dataset:{},classList:{toggle(){}}});
     Object.defineProperty(get('refundSlotChoices'),'innerHTML',{set(html){this.html=html;boxes.splice(0);for(const m of html.matchAll(/data-refund-slot="(\d+)" ([^>]*)/g))boxes.push({checked:m[2].includes('checked'),dataset:{refundSlot:m[1]}});},get(){return this.html;}});
     const context={state:{attendance:[{periodId:'p',lessonNo:1,status:'attended',date:'2026-09-01'},{periodId:'p',lessonNo:2,status:'attended',date:'2026-09-08'}]},window:{YouziLessonUnits:ledger},numberOf:v=>Number(v)||0,clean:v=>String(v||''),normalizedStatus:v=>v,periodById:()=>period,periodNetExpectedAmount:()=>2800,money:v=>String(v),esc:v=>String(v),$:get,$$:()=>boxes,isSandbox:()=>true};
     vm.createContext(context);

@@ -159,3 +159,20 @@ test('two different requests cannot refund the same lesson even with enough bala
   assert.equal(results.filter(row=>row.status==='fulfilled').length,1);
   assert.equal(f.get('periods/p1').voidedLessonCount,1);
 });
+test('linking a legacy refund only adds lesson metadata without paying again',async()=>{
+  const f=await paidFixture();
+  f.put('transactions/old',{id:'old',periodId:'p1',studentId:'student1',type:'refund',amount:1800,date:'2026-09-30',method:'cash',status:'confirmed',active:true});
+  const before=f.rows('transactions').length;
+  const result=await f.context.adminRecordTuitionTransaction(refundRequest({id:'old',linkExistingRefund:true}));
+  assert.equal(f.rows('transactions').length,before);assert.equal(result.transaction.amount,1800);assert.equal(result.transaction.date,'2026-09-30');
+  assert.equal(f.get('periods/p1').voidedLessonCount,2);
+  assert.deepEqual(Array.from(f.get('transactions/old').lessonSlotNos),[3,4]);
+  const again=await f.context.adminRecordTuitionTransaction(refundRequest({id:'old',linkExistingRefund:true}));
+  assert.equal(again.duplicate,true);assert.equal(f.get('periods/p1').voidedLessonCount,2);
+});
+test('backfill rejects changing the original refund amount or inventing a refund',async()=>{
+  const f=await paidFixture();
+  await assert.rejects(f.context.adminRecordTuitionTransaction(refundRequest({linkExistingRefund:true})),/找不到/);
+  f.put('transactions/old',{id:'old',periodId:'p1',type:'refund',amount:1400,date:'2026-09-30',status:'confirmed',active:true});
+  await assert.rejects(f.context.adminRecordTuitionTransaction(refundRequest({id:'old',linkExistingRefund:true})),/另一筆/);
+});

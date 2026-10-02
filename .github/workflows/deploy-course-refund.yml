@@ -1,0 +1,47 @@
+name: Deploy course refund lesson repair
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: course-refund-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify refund, attendance and ledger behavior
+        run: |
+          node --check functions/coursePortal.js
+          node --check course-scheduler.js
+          node --check operations-course-inline-runtime.js
+          node --test tests/course-manager-ledger.test.js tests/course-refund-slots.test.cjs tests/course-tuition-ledger.test.js tests/course-manager-attendance.test.js tests/course-pending-fixes.test.js
+      - run: npm ci --prefix functions
+      - run: npm install --global firebase-tools@15.24.0
+      - name: Prepare existing deployment credentials and runtime environment
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          if(!process.env.SERVICE_ACCOUNT) throw Error('Missing deployment credentials');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/refund-service-account.json',process.env.SERVICE_ACCOUNT,{mode:0o600});
+          const rows={LINE_CHANNEL_ACCESS_TOKEN:process.env.LINE_CHANNEL_ACCESS_TOKEN,GMAIL_USER:process.env.GMAIL_USER,GMAIL_APP_PASSWORD:process.env.GMAIL_APP_PASSWORD,EMAIL_FROM:process.env.EMAIL_FROM,PUBLIC_WEB_BASE_URL:'https://danny700808.github.io/play-card/',LINE_LOGIN_CALLBACK_URL:'https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback'};
+          fs.writeFileSync('functions/.env',Object.entries(rows).map(([k,v])=>k+'='+JSON.stringify(String(v||''))).join('\n')+'\n',{mode:0o600});
+          NODE
+      - name: Deploy only the two refund transaction endpoints
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/refund-service-account.json
+        run: firebase deploy --project youzi-c1b74 --non-interactive --only functions:coursePortalAdminRecordTuitionTransaction,functions:coursePortalAdminRecordTuitionTransactionTaiwan
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/refund-service-account.json" functions/.env

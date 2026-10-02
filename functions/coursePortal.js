@@ -11129,9 +11129,13 @@ async function adminRecordTuitionTransaction(data) {
     const bases = mirror.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {});
     const period = mergePortalTuitionRows(bases, portal.exists ? [portal] : [], transactions.docs).find(row => sourceId(row) === periodId);
     if (!period || period.active === false) throw new HttpsError('not-found', '找不到有效的學費期別。');
+    const prior = existing.exists ? existing.data() : null;
+    const linking = data.linkExistingRefund === true && incoming.type === 'refund';
+    const backfill = linking && prior && prior.active !== false && prior.status === 'confirmed' && prior.type === 'refund' && !(prior.lessonSlotNos || []).length;
+    if (linking && (!prior || prior.active === false || prior.status !== 'confirmed' || prior.type !== 'refund')) throw new HttpsError('failed-precondition','找不到可補登的已確認退款。');
     let checked;
-    try { checked = validateTransaction(period, incoming); } catch (error) { throw new HttpsError('failed-precondition', error.message); }
-    if (checked.duplicate) return { ok: true, duplicate: true, transaction: existing.exists ? jsonValue(existing.data()) : incoming, lessonAdjustments:period.lessonAdjustments||[],voidedLessonCount:Number(period.voidedLessonCount||0) };
+    try { checked = validateTransaction(period, backfill ? Object.assign({},incoming,{lessonSlotNos:[]}) : incoming); } catch (error) { throw new HttpsError('failed-precondition', error.message); }
+    if (checked.duplicate && !backfill) return { ok: true, duplicate: true, transaction: existing.exists ? jsonValue(existing.data()) : incoming, lessonAdjustments:period.lessonAdjustments||[],voidedLessonCount:Number(period.voidedLessonCount||0) };
     let lessonPatch = null;
     if (incoming.type === 'refund') {
       const slots = incoming.lessonSlotNos;
@@ -11144,12 +11148,13 @@ async function adminRecordTuitionTransaction(data) {
       const adjustments = Array.isArray(period.lessonAdjustments) ? period.lessonAdjustments : [];
       const attended = mergePortalAttendanceRows(mirrorRows, portalRows).filter(row => row.active !== false && row.deducted !== false && ['attended','absent'].includes(normalizeScheduleStatus(row.status)) && attendanceAllocations(row).some(item => item.periodId === periodId));
       if (slots.some(slot => slot <= Math.ceil(Number(effective.usedCount || effective.attendedCount || 0)) || attended.some(row => Number(row.slotNo || row.lessonNo) === slot) || adjustments.some(row => Number(row.slotNo) === slot))) throw new HttpsError('failed-precondition', '選取的堂次已有上課、作廢或退款紀錄，請重新載入後再選擇。');
-      const additions = slots.map((slotNo,index) => ({id:incoming.id+'-slot-'+slotNo,transactionId:incoming.id,slotNo,type:'refund',date:incoming.date,amount:(Math.floor(cents(incoming.amount)/slots.length)+(index<cents(incoming.amount)%slots.length?1:0))/100}));
+      const additions = slots.map((slotNo,index) => ({id:incoming.id+'-slot-'+slotNo,transactionId:incoming.id,slotNo,type:'refund',date:backfill?prior.date:incoming.date,amount:(Math.floor(cents(incoming.amount)/slots.length)+(index<cents(incoming.amount)%slots.length?1:0))/100}));
       lessonPatch = {lessonAdjustments:adjustments.concat(additions),voidedLessonCount:Number(period.voidedLessonCount||0)+slots.length};
     }
-    const record = Object.assign({}, incoming, { periodId, studentId: clean(period.studentId), status: 'confirmed', active: true, source: 'manager-ledger' });
+    const record = Object.assign({}, incoming, backfill ? Object.assign({},prior,{lessonSlotNos:incoming.lessonSlotNos}) : {}, { periodId, studentId: clean(period.studentId), status: 'confirmed', active: true, source: 'manager-ledger' });
     if (lessonPatch) tx.set(periodRef, Object.assign({id:periodId,studentId:clean(period.studentId),active:true,updatedAt:FieldValue.serverTimestamp()},lessonPatch), {merge:true});
-    tx.create(transactionRef, Object.assign({}, record, { createdAt: FieldValue.serverTimestamp() }));
+    if (backfill) tx.set(transactionRef, {lessonSlotNos:incoming.lessonSlotNos,lessonSlotsLinkedAt:FieldValue.serverTimestamp()}, {merge:true});
+    else tx.create(transactionRef, Object.assign({}, record, { createdAt: FieldValue.serverTimestamp() }));
     tx.set(lockRef, { revision: Number(lock.exists && lock.data().revision || 0) + 1, updatedAt: FieldValue.serverTimestamp() });
     tx.set(versionRef, { version: Number(version.exists && version.data().version || 0) + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-ledger' }, { merge: true });
     return Object.assign({ ok: true, transaction: record }, lessonPatch || {});
