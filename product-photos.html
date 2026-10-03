@@ -373,19 +373,6 @@ function renderSavedVideos(){const videos=current&&current.productVideos||[];$('
 function chooseVideo(input){if(uploadBusy||videoBusy)return;const file=input.files&&input.files[0];if(!file)return;if(file.size>512*1024*1024){msg('每段影片請小於 512 MB。','error');input.value='';return;}if(selectedVideo)URL.revokeObjectURL(selectedVideo.preview);selectedVideo={file,preview:URL.createObjectURL(file),session:null,uploaded:false};const preview=$('videoPreview');preview.src=selectedVideo.preview;preview.classList.remove('hidden');$('videoFileName').textContent=file.name;$('videoStatus').textContent='';updateSaveButtons();input.value='';}
 $('cameraVideo').onchange=function(){chooseVideo(this);};$('libraryVideo').onchange=function(){chooseVideo(this);};
 
-async function saveSelectedPhotos(product){
- for(const photo of [...selectedPhotos]){
-  if(photo.file.size>15*1024*1024)throw Error('每張照片請小於 15 MB。');
-  if(!['image/jpeg','image/png','image/webp'].includes(photo.file.type))throw Error('請選擇 JPG、PNG 或 WebP 照片。');
-  msg(selectedVideo?'正在儲存照片與影片：先儲存實體圖…':'正在儲存實體圖…');
-  if(!photo.payload){const labeled=await labelPhoto(photo.file);photo.payload={action:'uploadPhoto',productId:product.id,operator,operationId:photo.id,original:await asBase64(photo.file),labeled:await asBase64(labeled)};}
-  const result=await countCall('inventoryCountProductsHttp',photo.payload);
-  product.physicalImageUrls=[...new Set([...(product.physicalImageUrls||[]),result.url])];
-  selectedPhotos=selectedPhotos.filter(p=>p!==photo);
-  URL.revokeObjectURL(photo.preview);
- }
-}
-
 async function saveSelectedVideo(product){
  const item=selectedVideo;
  if(!item)return;
@@ -412,7 +399,7 @@ async function saveSelectedMedia(){
   else if(hadPhotos)msg('實體圖已儲存並加入待上架。','success');
   else msg('影片已儲存並加入待製作清單。','success');
  }catch(error){
-  if(current===product)showProduct(true);
+  // Preserve selected photos and the operation ID so a failed upload can be retried.
   msg(error.message||'尚未全部儲存完成，請按「儲存照片與影片」重試。','error');
   if(selectedVideo)$('videoStatus').textContent=error.message||'影片尚未儲存，請重試。';
  }finally{uploadBusy=false;videoBusy=false;updateSaveButtons();}
