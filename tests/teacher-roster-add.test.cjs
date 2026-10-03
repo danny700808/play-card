@@ -34,7 +34,8 @@ test('roster shortcut opens the same add flow with only the chosen student and k
   c.startRosterAdd('s1');
   assert.deepEqual(calls, [['tab', 'schedule'], ['cancel']]);
   assert.equal(c.weekStart, '2026-10-05');
-  assert.equal(sheets[0].title, '選擇上課樂器');
+  assert.equal(sheets[0].title, '增加一堂課・上課時長');
+  assert.equal(sheets[0].context.subjectId, 'piano');
   assert.deepEqual(Array.from(sheets[0].context.studentIds), ['s1']);
   assert.equal(sheets[0].context.target, null);
   assert.equal(sheets[0].context.action, 'extra_lesson');
