@@ -181,7 +181,7 @@ assert.strictEqual(commonWindow.CoursePortal.isSessionAuthError({ code: 'functio
   assert(html.includes('course-portal-common.js?v=20260919-taiwan-v2'), `${file} common cache key is stale`);
 });
 assert(
-  read('teacher-course-portal.html').includes('teacher-course-portal-v8.js?v=20261003-student-first'),
+  read('teacher-course-portal.html').includes('teacher-course-portal-v8.js?v=20261003-profile-state'),
   'teacher app cache key is stale'
 );
 
