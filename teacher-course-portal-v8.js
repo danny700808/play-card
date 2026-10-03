@@ -9,7 +9,7 @@
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v4';
-  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.scopedCache2.';
+  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.scopedCache3.';
   const CACHE_TTL = 15 * 60 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
@@ -1404,19 +1404,31 @@
 
   async function openQuickForEmpty(date, startTime) {
     if (courseSlotIsPast(date, startTime)) { toast('不可選擇今天以前的日期。', 'error'); return; }
+    ++availabilityRequestId;
+    renderTargetStudents({date,startTime});
+  }
+
+  function renderTargetStudents(context) {
+    const rows = data.roster.map(student => '<button type="button" data-target-student="'+escapeHtml(student.id)+'"><b>'+escapeHtml(student.name)+'</b></button>').join('');
+    showQuick('選擇學生',dayLabel(context.date)+' '+context.startTime,
+      '<div class="teacher-choice-list">'+(rows||'<p>目前沒有學生。</p>')+'</div><button type="button" data-target-room-lookup>查詢空教室</button>',
+      Object.assign({},context,{type:'target-students'}));
+  }
+
+  async function openTargetStudent(context, studentId) {
     const requestId = ++availabilityRequestId;
-    showQuick('選擇要調入的學生課程', dayLabel(date)+' '+startTime, '<p>正在確認可調入的課程…</p>', {type:'target-search',date,startTime});
+    showQuick('選擇課程',studentNamesByIds([studentId]).join('、'),'<p>正在確認可調入的課程…</p>',Object.assign({},context,{type:'target-search',studentId}));
     try {
-      const result = await invoke('coursePortalTeacherSlotOptions', {sessionToken:token,date,startTime});
-      if (requestId !== availabilityRequestId) return;
-      const candidates = result.candidateLessons || [];
-      const rows = candidates.map((lesson,index)=>'<button type="button" data-target-candidate="'+index+'"><b>'+escapeHtml((lesson.studentNames||[]).join('、')||'未指定學生')+'・'+escapeHtml(lesson.subjectName||'未指定科目')+'</b><span>原課程：'+escapeHtml(dayLabel(lesson.date))+' '+escapeHtml(lesson.startTime)+'～'+escapeHtml(lesson.endTime)+'</span></button>').join('');
-      showQuick('選擇要調入的學生課程', dayLabel(date)+' '+startTime,
-        '<div class="teacher-choice-list">'+(rows||'<p>目前沒有符合此時段的可調入課程。</p>')+'</div><button type="button" data-target-add="extra_lesson">在這裡增加一堂課</button><button type="button" data-target-room-lookup>查詢空教室</button>',
-        {type:'target-candidates',date,startTime,result,candidates});
+      const result = context.result || await invoke('coursePortalTeacherSlotOptions',{sessionToken:token,date:context.date,startTime:context.startTime});
+      if(requestId !== availabilityRequestId) return;
+      const candidates = (result.candidateLessons||[]).filter(lesson=>(lesson.studentIds||[]).includes(studentId));
+      const rows = candidates.map((lesson,index)=>'<button type="button" data-target-candidate="'+index+'"><b>'+escapeHtml(lesson.subjectName||'課程')+'</b><span>原課程：'+escapeHtml(dayLabel(lesson.date))+' '+escapeHtml(lesson.startTime)+'～'+escapeHtml(lesson.endTime)+'</span></button>').join('');
+      showQuick('選擇課程',studentNamesByIds([studentId]).join('、')+'・調入 '+dayLabel(context.date)+' '+context.startTime,
+        '<div class="teacher-choice-list">'+(rows||'<p>目前沒有可調入的課程。</p>')+'</div><button type="button" data-target-add="extra_lesson">在這裡增加一堂課</button><button type="button" data-target-back>返回選擇學生</button>',
+        Object.assign({},context,{type:'target-candidates',studentId,result,candidates}));
     } catch(error) {
-      if (requestId !== availabilityRequestId) return;
-      showQuick('查詢未完成',dayLabel(date)+' '+startTime,choiceSummary('暫時無法查詢',error.message||'請稍後再試。')+'<button type="button" data-retry-target>重新查詢</button>',{type:'target-error',date,startTime});
+      if(requestId !== availabilityRequestId) return;
+      showQuick('查詢未完成',dayLabel(context.date)+' '+context.startTime,choiceSummary('暫時無法查詢',error.message||'請稍後再試。')+'<button type="button" data-retry-target-student>重新查詢</button><button type="button" data-target-back>返回選擇學生</button>',Object.assign({},context,{type:'target-error',studentId}));
     }
   }
 
@@ -1436,12 +1448,12 @@
       const result = await invoke('coursePortalTeacherSlotOptions', {sessionToken:token,date,startTime,durationMinutes,weekly,roomsOnly:true});
       if (requestId !== availabilityRequestId) return;
       const controls = `<div class="teacher-room-durations">${[30,60,90].map(n=>`<button type="button" data-room-duration="${n}" aria-pressed="${n===durationMinutes}">${n} 分鐘</button>`).join('')}</div>`;
-      const rows = result.rooms.map(room => {
+      const rows = result.rooms.filter(room => room.checks.length && room.checks.every(check=>check.available)).map(room => {
         const unavailable = room.checks.filter(check=>!check.available);
         const detail = weekly ? (unavailable.length ? `不可用：${unavailable.map(check=>dayLabel(check.date)).join('、')}` : `連續 ${result.dates.length} 週可使用`) : (room.checks[0].available ? '可使用' : '不可使用');
         return `<div class="teacher-room-result"><strong>${escapeHtml(room.name)}</strong><span>${escapeHtml(detail)}</span></div>`;
       }).join('');
-      showQuick('查詢空教室', `${dayLabel(date)} ${startTime}～${result.endTime}`, `${controls}<div class="teacher-choice-list">${rows || '<p>沒有可查詢的教室</p>'}</div>${weekly ? `<p class="teacher-quick-description">查詢至 ${escapeHtml(result.dates[result.dates.length-1])}</p>` : '<button class="teacher-room-weekly" type="button" data-room-weekly>查每週同時段</button>'}<p class="teacher-quick-description">僅查詢教室空位；實際排課時會再確認科目與人員衝突。</p>`, context);
+      showQuick('查詢空教室', `${dayLabel(date)} ${startTime}～${result.endTime}`, `${controls}<div class="teacher-choice-list">${rows || '<p>這個時段沒有可使用的教室。</p>'}</div>${weekly ? `<p class="teacher-quick-description">查詢至 ${escapeHtml(result.dates[result.dates.length-1])}</p>` : '<button class="teacher-room-weekly" type="button" data-room-weekly>查每週同時段</button>'}<p class="teacher-quick-description">僅查詢教室空位；實際排課時會再確認科目與人員衝突。</p>`, context);
     } catch(error) {
       if (requestId !== availabilityRequestId) return;
       showQuick('查詢空教室', `${dayLabel(date)} ${startTime}`, `${choiceSummary('查詢未完成',error.message || '請稍後再試。')}<button type="button" data-retry-target>重新查詢</button>`,context);
@@ -1698,8 +1710,13 @@
       );
       return;
     }
+    const studentSubjects = allowedSubjects().filter(subject => context.studentIds.every(id => {
+      const student = data.roster.find(row=>clean(row.id)===id);
+      return !student || !Array.isArray(student.subjectIds) || !student.subjectIds.length || student.subjectIds.includes(subject.id);
+    }));
+    if (!context.subjectId && studentSubjects.length === 1) context.subjectId = studentSubjects[0].id;
     if (!context.subjectId) {
-      const rows = allowedSubjects().map((subject) => `<button type="button" data-add-subject="${escapeHtml(subject.id)}"><b>${escapeHtml(subject.name)}</b><span>搜尋適合這項樂器的教室</span></button>`).join('');
+      const rows = studentSubjects.map((subject) => `<button type="button" data-add-subject="${escapeHtml(subject.id)}"><b>${escapeHtml(subject.name)}</b><span>搜尋適合這項樂器的教室</span></button>`).join('');
       showQuick(
         '選擇上課樂器',
         studentNamesByIds(context.studentIds).join('、'),
@@ -2190,6 +2207,10 @@
     const confirmPermanent = event.target.closest('[data-confirm-permanent]');
     const cancelFlow = event.target.closest('[data-cancel-flow]');
     if (!context) return;
+    const targetStudent = event.target.closest('[data-target-student]');
+    if(targetStudent){await openTargetStudent(context,targetStudent.dataset.targetStudent);return;}
+    if(event.target.closest('[data-target-back]')){++availabilityRequestId;renderTargetStudents(context);return;}
+    if(event.target.closest('[data-retry-target-student]')){await openTargetStudent(context,context.studentId);return;}
     if (event.target.closest('[data-set-irregular]') && context.type === 'lesson') {
       showQuick('設為不定時', (context.row.studentNames || []).join('－'), '<p class="teacher-quick-description">停止之後自動排固定課。已簽到紀錄、學費與另外約好的單堂課保留。</p><button type="button" data-cancel-flow>取消</button><button type="button" data-confirm-irregular>確定設為不定時</button>', {type:'irregular-confirm',row:context.row});
       return;
@@ -2273,6 +2294,7 @@
     }
     if (targetAdd) {
       beginAddFlow(targetAdd.dataset.targetAdd, {
+        studentIds: context.studentId ? [context.studentId] : [],
         target: {
           date: context.date,
           startTime: context.startTime,

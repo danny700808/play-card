@@ -5281,6 +5281,9 @@ function teacherFollowupSnapshot(bundle, teacherId) {
       name: clean(student.name),
       phone,
       phoneLast4: phone.slice(-4),
+      subjectIds: [...new Set([...bundle.fixedCourses,...bundle.temporaryCourses,...(bundle.irregularModes||[])]
+        .filter(course=>eventTeacherId(course)===teacherId && eventStudentIds(course).includes(id) && sourceActive(course))
+        .map(eventSubjectId).filter(Boolean))],
       teacherName: clean(teacher.name)
     };
   }).filter((row) => row.name);

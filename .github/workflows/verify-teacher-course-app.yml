@@ -57,6 +57,8 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check teacher-course-portal-v8.js
+          node tests/teacher-student-first.test.cjs
+          node tests/teacher-student-first-flow.test.cjs
           node --check course-history-view.js
           node --test tests/teacher-visible-availability.test.cjs tests/teacher-roster-add.test.cjs tests/teacher-today.test.js tests/teacher-week-swipe.test.js tests/teacher-payroll-lines.test.js tests/course-pending-fixes.test.js tests/course-history-rental.test.js tests/course-subject-payment.test.js tests/course-overlap-regression.test.js
           node --check teacher-profile.js
