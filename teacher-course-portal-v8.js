@@ -441,8 +441,7 @@
       .forEach((id) => setPendingBadge(id, 0, true));
     if (error) {
       teacherUtilityResult = null;
-      setPendingBadge('teacherProfileBadge', 1, true);
-      setPendingBadge('teacherMoreBadge', 1, true);
+      // A read failure is not an outstanding teacher task. Show the explanation below.
       if (hint) hint.textContent = '資料狀態暫時無法確認';
       return;
     }
@@ -454,7 +453,9 @@
     setPendingBadge('teacherTaskBadge', state.taskCount, false);
     setPendingBadge('teacherGoodsBadge', state.goodsBadgeCount, state.goodsBadgeCount === 1);
     setPendingBadge('teacherMoreBadge', state.items.length, true);
-    if (hint) hint.textContent = state.profileCount ? '資料尚未完成，請前往填寫' : '基本資料與登入方式';
+    if (hint) hint.textContent = state.profileCount
+      ? '尚缺：' + ((result.missingProfileFields || []).map((row) => row.label).join('、') || '請開啟我的資料查看')
+      : result.profileChangePending ? '已送出，等待管理者確認' : '資料已完成；有修改時再送出';
     if (!(options && options.suppressDaily)) showDailyReminder(state);
   }
 

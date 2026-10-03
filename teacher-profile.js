@@ -6,6 +6,7 @@
   const TEACHING_LEVELS = Object.freeze(['初學', '入門', '普通', '良好', '專業', '專精']);
   const BIRTH_MIN_YEAR = 1900;
   let currentResult = null;
+  let renderedValues = "";
   let saving = false;
   let storedIdentityFileCount = 0;
   let pendingIdentityFiles = [];
@@ -99,11 +100,13 @@
   }
   function show(node, visible) { if (node) node.classList.toggle('hidden', !visible); }
   function message(text, error) {
-    const node = $('profileMessage');
-    if (!node) return;
-    node.textContent = clean(text);
-    node.classList.toggle('error', Boolean(error));
-    node.style.display = text ? 'block' : 'none';
+    ['profileMessage', 'profileActionMessage'].forEach(function (id) {
+      const node = $(id);
+      if (!node) return;
+      node.textContent = clean(text);
+      node.classList.toggle('error', Boolean(error));
+      node.style.display = text ? 'block' : 'none';
+    });
   }
   function errorText(error) {
     const details = error && error.details;
@@ -262,12 +265,16 @@
     Array.from(document.querySelectorAll('#teacherProfileForm input, #teacherProfileForm select, #teacherProfileForm textarea, #teacherProfileForm button')).forEach(function (control) {
       control.disabled = pendingReview;
     });
+    renderedValues = JSON.stringify(formValues());
     setSaving(saving);
     show($('profileLoadingCard'), false);
     show($('profileErrorCard'), false);
     show($('teacherProfileForm'), true);
     if (pendingReview) {
-      message('這次修改已送出主管確認；授課科目與程度已先同步套用，其他基本資料會在主管核准後更新。', false);
+      $('profileSubmitBtn').textContent = '已送出，等待管理者確認';
+      message('已送出，等待管理者確認，不需重複提交。授課科目與程度已先同步套用。', false);
+    } else if (confirmedProfile(profile, result) && result.profileComplete === true && !profile.profileChangeStatus) {
+      message('資料已確認；沒有修改時不需再次送出。', false);
     } else if (clean(result && result.profileRevisionReason || profile.profileRevisionReason)) {
       message(`主管退回：${clean(result && result.profileRevisionReason || profile.profileRevisionReason)}`, true);
     }
@@ -358,7 +365,7 @@
     updateFileState();
     message('', false);
   }
-  async function payload() {
+  function formValues() {
     const value = {
       bankAccountName: clean($('profileBankAccountName').value),
       bankAccountNumber: $('profileBankAccountNumber').value,
@@ -374,6 +381,10 @@
     };
     const idNumber = clean($('profileIdNumber').value);
     if (idNumber || !clean(profileOf(currentResult).idNumberMasked)) value.idNumber = idNumber;
+    return value;
+  }
+  async function payload() {
+    const value = formValues();
     const files = pendingIdentityFiles.slice();
     if (files.length > 2) throw new Error('一次最多選擇 2 張照片。');
     value.identityImages = [];
@@ -394,11 +405,16 @@
     setSaving(true);
     message('正在安全儲存…', false);
     try {
+      const old = profileOf(currentResult);
+      const unchanged = renderedValues === JSON.stringify(formValues()) && !pendingIdentityFiles.length;
+      if (submitForReview && unchanged && confirmedProfile(old, currentResult) && currentResult.profileComplete === true && !old.profileChangeStatus) {
+        message('資料已確認，沒有修改，不需再次送出。', false);
+        return;
+      }
       const data = await payload();
       if (data.bankAccountNumber && !/^[0-9]+$/.test(data.bankAccountNumber)) throw new Error('銀行帳號只能包含數字，請勿使用空格或符號。');
       if (submitForReview && (!data.bankAccountName || !data.bankAccountNumber)) throw new Error('請填寫台新國際商業銀行戶名及帳號。');
-      const old = profileOf(currentResult);
-      if ((data.bankAccountName || data.bankAccountNumber) && (submitForReview || old.bankAccountName !== data.bankAccountName || old.bankAccountNumber !== data.bankAccountNumber)) {
+      if ((data.bankAccountName || data.bankAccountNumber) && (!confirmedProfile(old, currentResult) && submitForReview || old.bankAccountName !== data.bankAccountName || old.bankAccountNumber !== data.bankAccountNumber)) {
         if (!global.confirm(`請再次核對匯款資料\n銀行：台新國際商業銀行\n戶名：${data.bankAccountName}\n帳號：${data.bankAccountNumber}\n\n請對照存摺，確認戶名及帳號完全一致。按確定表示核對無誤並送出；按取消返回修改。`)) { message('已取消，尚未儲存；可以繼續修改。', false); return; }
         data.bankConfirmed = true;
       }
@@ -407,7 +423,7 @@
       pendingIdentityFiles = [];
       $('profileIdentityFiles').value = '';
       render(result);
-      message(submitForReview ? '已送出管理者確認。' : '已儲存目前內容。', false);
+      message(submitForReview ? '已送出，等待管理者確認，不需重複提交。' : '已儲存目前內容。', false);
     } catch (error) {
       if (error && error.portalAuthExpired) {
         showFailure(error);
