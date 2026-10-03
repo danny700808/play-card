@@ -106,7 +106,9 @@
     node.style.display = text ? 'block' : 'none';
   }
   function errorText(error) {
-    return clean(error && (error.details || error.message) || error || '目前無法處理，請稍後再試。')
+    const details = error && error.details;
+    const detailMessage = typeof details === 'string' ? details : details && typeof details.message === 'string' ? details.message : '';
+    return clean(detailMessage || error && error.message || (typeof error === 'string' ? error : '') || '目前無法處理，請稍後再試。')
       .replace(/^FirebaseError:\s*/i, '');
   }
   function goBack() { global.location.href = 'teacher-course-portal.html'; }
@@ -388,7 +390,7 @@
     $('profileSaveBtn').textContent = active ? '儲存中…' : '儲存，下次繼續';
   }
   async function save(submitForReview) {
-    if (saving) return;
+    if (saving || currentResult && currentResult.profileChangePending) return;
     setSaving(true);
     message('正在安全儲存…', false);
     try {
@@ -397,7 +399,7 @@
       if (submitForReview && (!data.bankAccountName || !data.bankAccountNumber)) throw new Error('請填寫台新國際商業銀行戶名及帳號。');
       const old = profileOf(currentResult);
       if ((data.bankAccountName || data.bankAccountNumber) && (submitForReview || old.bankAccountName !== data.bankAccountName || old.bankAccountNumber !== data.bankAccountNumber)) {
-        if (!global.confirm(`請再次核對匯款資料\n銀行：台新國際商業銀行\n戶名：${data.bankAccountName}\n帳號：${data.bankAccountNumber}\n\n請對照存摺，確認戶名及帳號完全一致。按確定表示核對無誤並送出；按取消返回修改。`)) return;
+        if (!global.confirm(`請再次核對匯款資料\n銀行：台新國際商業銀行\n戶名：${data.bankAccountName}\n帳號：${data.bankAccountNumber}\n\n請對照存摺，確認戶名及帳號完全一致。按確定表示核對無誤並送出；按取消返回修改。`)) { message('已取消，尚未儲存；可以繼續修改。', false); return; }
         data.bankConfirmed = true;
       }
       data.submitForReview = submitForReview === true;

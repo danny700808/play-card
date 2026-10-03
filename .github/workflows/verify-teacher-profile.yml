@@ -1,0 +1,27 @@
+name: Verify Teacher Profile
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'teacher-profile.*'
+      - 'functions/coursePortal.js'
+      - 'tests/teacher-profile*'
+      - '.github/workflows/verify-teacher-profile.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated DOM test dependency
+        run: npm install --prefix "$RUNNER_TEMP/profile-tests" --ignore-scripts --no-audit --no-fund jsdom@30.1.1
+      - name: Test profile buttons and bank draft lifecycle without live services
+        run: |
+          NODE_PATH="$RUNNER_TEMP/profile-tests/node_modules" node tests/teacher-profile-buttons.cjs
+          node tests/teacher-profile-bank-regression.cjs
+          node --test tests/teacher-profile-flow.test.js tests/teacher-profile-change-review.test.js

@@ -2541,8 +2541,8 @@ function teacherUtilityProfileBundle(options) {
       'mobilePhone', 'mobile', 'phone', 'tel', 'telephone', 'contactPhone'
     ])),
     bankName: '台新國際商業銀行',
-    bankAccountName: teacherUtilityFirstText(personalSources, ['bankAccountName']),
-    bankAccountNumber: teacherUtilityFirstText(personalSources, ['bankAccountNumber']),
+    bankAccountName: clean(Object.hasOwn(privateProfile, 'bankAccountName') ? privateProfile.bankAccountName : externalProfile.bankAccountName),
+    bankAccountNumber: clean(Object.hasOwn(privateProfile, 'bankAccountNumber') ? privateProfile.bankAccountNumber : externalProfile.bankAccountNumber),
     birthDate: teacherUtilityFirstText(personalSources, ['birthDate']),
     idNumberMasked: teacherUtilityMaskedId(rawIdNumber || storedMaskedId),
     householdAddress: teacherUtilityFirstText(personalSources, ['householdAddress']),
@@ -3279,8 +3279,8 @@ function teacherUtilityDraftProfileForDisplay(resolved, draftRow) {
   const proposed = draft.publicProfile || {};
   const privateDraft = draft.privateProfile || {};
   result.profile = Object.assign({}, official, proposed, {
-    bankAccountName: clean(privateDraft.bankAccountName || official.bankAccountName),
-    bankAccountNumber: clean(privateDraft.bankAccountNumber || official.bankAccountNumber),
+    bankAccountName: clean(Object.hasOwn(privateDraft, 'bankAccountName') ? privateDraft.bankAccountName : official.bankAccountName),
+    bankAccountNumber: clean(Object.hasOwn(privateDraft, 'bankAccountNumber') ? privateDraft.bankAccountNumber : official.bankAccountNumber),
     idNumberMasked: clean(proposed.idNumberMasked || official.idNumberMasked),
     identityFileCount: Math.max(
       Number(official.identityFileCount || 0),
@@ -3348,7 +3348,7 @@ async function teacherUtilitySaveProfileDraft(data) {
   );
   const privateDraft = Object.assign(
     {},
-    teacherUtilityPrivateProfile(existingPrivate),
+    teacherUtilityPrivateProfile(Object.assign({}, existing, existingPrivate)),
     existingDraft.privateProfile && typeof existingDraft.privateProfile === 'object'
       ? existingDraft.privateProfile
       : {}
