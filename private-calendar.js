@@ -10,14 +10,28 @@
  async function workApi(action,data={}){try{return (await calendarRequest('sharedCalendarApi',{action,...data,calendarSession})).data;}catch(e){if(e.code==='functions/unauthenticated')showGate(e.message);throw e;}}
  function workEvent(t){return {...t,id:'shared:'+t.id,taskId:t.id,source:'shared',completed:t.status==='done'};}
  const workLabels={pending:'待處理',in_progress:'處理中',done:'已完成',cancelled:'已取消'};
- function message(msg,error=false){$('status').textContent=msg;$('status').hidden=!msg;$('status').classList.toggle('error',error);}
+ function message(msg,error=false){if(error&&/Google.*(?:授權|重新連接|先連接)/.test(msg)){S.googleConnectionError=msg;connectionRender();}$('status').textContent=msg;$('status').hidden=!msg;$('status').classList.toggle('error',error);}
  async function safely(fn,target='status'){try{await fn();}catch(e){if(target==='status')message(e.message,true);else $(target).textContent=e.message;}}
  function range(){const first=new Date(S.month.getFullYear(),S.month.getMonth(),1),offset=(first.getDay()+6)%7;return {start:new Date(first.getFullYear(),first.getMonth(),1-offset).toISOString(),end:new Date(first.getFullYear(),first.getMonth(),43-offset).toISOString()};}
+ function connectionRender(){
+  const problem=S.googleConnectionError||'';
+  $('connection').hidden=!problem&&!!S.status.googleConnected;
+  $('connectionMessage').textContent=problem?'Google 同步尚未恢復，顯示的行程可能不完整。請按下方按鈕重新連接。':'尚未連接 Google 行事曆。';
+  $('reconnectGoogle').textContent=S.status.googleConfigured?'重新連接 Google':'設定 Google 連線';
+ }
+ async function connectGoogle(){
+  const buttons=[$('connectGoogle'),$('reconnectGoogle')];if(buttons.some(b=>b.disabled))return;
+  if(!S.status.googleConfigured){openSettings();return;}
+  buttons.forEach(b=>b.disabled=true);$('connectionStatus').textContent='正在開啟 Google 授權…';$('settingsStatus').textContent='正在開啟 Google 授權…';
+  try{const r=await api('connect');location.assign(r.url);}catch(e){$('connectionStatus').textContent=e.message;$('settingsStatus').textContent=e.message;}finally{buttons.forEach(b=>b.disabled=false);}
+ }
+ function openSettings(){$('settingsStatus').textContent='';settingsRender();if(!$('settings').open)$('settings').showModal();$('settings').scrollTop=0;}
  async function refresh(){
   message('正在讀取行程…');S.status=await api('status');S.workStatus=await workApi('status').catch(()=>null);
-  S.calendars=S.status.googleConnected?(await api('calendars').catch(()=>({calendars:[]}))).calendars:[];
+  S.googleConnectionError='';S.googleLoadError='';
+  S.calendars=S.status.googleConnected?(await api('calendars').catch(e=>{if(e.code==='functions/unauthenticated')throw e;S.googleLoadError=e.message;return {calendars:[]};})).calendars:[];
   const result=await api('list',range());let workWarning='';const work=await workApi('list',range()).catch(e=>{if(e.code==='functions/unauthenticated')throw e;workWarning='交辦工作未能載入：'+e.message;return {tasks:[]};});if(!calendarSession)return;S.events=[...result.events,...work.tasks.filter(t=>!t.draft).map(workEvent)];render();if(workWarning)result.warnings=[...(result.warnings||[]),workWarning];
-  $('connection').hidden=true;
+  const googleWarnings=[S.googleLoadError,...(result.warnings||[])].filter(Boolean);S.googleConnectionError=googleWarnings.find(w=>/Google.*(?:授權|重新連接|先連接)/.test(w))||'';S.googleIncomplete=!!googleWarnings.length;connectionRender();renderDay();
   message(result.warnings?.length?result.warnings.join('；'):'',!!result.warnings?.length);settingsRender();
  }
  const dayKey=d=>local(d).slice(0,10);
@@ -63,7 +77,7 @@
  $('workViewer').addEventListener('close',()=>{workPreviewVersion++;currentWork=null;$('workBody').replaceChildren();});
  $('saveWorkProgress').onclick=()=>safely(async()=>{if(!currentWork)return;const task=currentWork,b=$('saveWorkProgress');b.disabled=true;try{const result=await workApi('progress',{id:task.id,revision:task.revision,status:$('workProgress').value});await refresh();if($('workViewer').open)await showWork(task.id);$('workMessage').textContent=result.notification?.pending?'進度已更新，LINE 通知尚待送出。':'進度已更新。';}finally{b.disabled=false;}},'workMessage');
 
- function renderDay(){const rows=S.events.filter(e=>onDay(e,S.selected)).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));$('dayTitle').textContent=new Date(S.selected+'T12:00:00').toLocaleDateString('zh-TW',{month:'long',day:'numeric',weekday:'long'});$('dayCount').textContent=rows.length+' 件事情';$('dayEvents').innerHTML=rows.length?eventRows(rows):'<p class="emptyDay">這天沒有安排，按「新增這天的事情」記下待辦。</p>';}
+ function renderDay(){const rows=S.events.filter(e=>onDay(e,S.selected)).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));$('dayTitle').textContent=new Date(S.selected+'T12:00:00').toLocaleDateString('zh-TW',{month:'long',day:'numeric',weekday:'long'});$('dayCount').textContent=rows.length+' 件事情'+(S.googleIncomplete?'（同步未完成，資料可能不完整）':'');$('dayEvents').innerHTML=rows.length?eventRows(rows):S.googleIncomplete?'<p class="emptyDay">同步尚未完成，目前無法確認這天的完整行程。</p>':'<p class="emptyDay">這天沒有安排，按「新增這天的事情」記下待辦。</p>';}
  function render(){
   const y=S.month.getFullYear(),m=S.month.getMonth();$('monthTitle').textContent=y+' 年 '+(m+1)+' 月';$('miniMonthTitle').textContent=(m+1)+' 月';
   let html=['一','二','三','四','五','六','日'].map(d=>'<div class="weekday">'+d+'</div>').join('');
@@ -159,13 +173,13 @@
   }finally{S.saving=false;$('save').disabled=false;}
  },'formStatus');};
  $('archive').onclick=()=>safely(async()=>{await api('archive',{id:S.current.id});$('editor').close();cleanup();await refresh();},'formStatus');
- function settingsRender(){const s=S.status;$('googleStatus').textContent=s.googleConnected?'已連接 '+s.googleEmail:s.googleConfigured?'已設定 Google 串接，請按連接完成帳號授權。':'Google 串接程式已就緒，尚需完成下方的首次 OAuth 設定。';$('connectGoogle').textContent=s.googleConnected?'重新授權 Google':'連接 Google 行事曆';$('disconnectGoogle').hidden=!s.googleConnected;$('callback').value=s.callback||'';$('oauthSetup').open=!s.googleConfigured;
+ function settingsRender(){const s=S.status;$('googleStatus').textContent=S.googleConnectionError?'Google 連線需要重新授權，請按下方按鈕。':s.googleConnected?'已連接 '+s.googleEmail:s.googleConfigured?'已設定 Google 串接，請按連接完成帳號授權。':'Google 串接程式已就緒，尚需完成下方的首次 OAuth 設定。';$('connectGoogle').textContent=s.googleConnected?'重新授權 Google':'連接 Google 行事曆';$('disconnectGoogle').hidden=!s.googleConnected;$('callback').value=s.callback||'';$('oauthSetup').open=!s.googleConfigured;
   $('calendarChoices').innerHTML=S.calendars.map(c=>'<label class="check"><input type="checkbox" value="'+esc(c.id)+'" '+(s.calendarIds.includes(c.id)?'checked':'')+'>'+esc(c.summary)+' · '+(['owner','writer'].includes(c.accessRole)?'可編輯':'唯讀')+'</label>').join('');$('saveCalendars').hidden=!s.googleConnected;
   $('lineTarget').innerHTML=s.targets?.length?s.targets.map(t=>'<option value="'+esc(t.key)+'">'+esc(t.name)+' ('+esc(t.masked)+')</option>').join(''):'<option value="">尚未找到自己的 LINE 綁定</option>';if(s.targetKey)$('lineTarget').value=s.targetKey;$('lineEnabled').checked=!!s.lineEnabled;
   $('lineStatus').textContent=s.lastReminderError||(!s.lineConfigured?'官方 LINE 發送設定尚未完成。':s.lastSentAt?'上次通知已送交 LINE：'+stamp(s.lastSentAt):'尚未發送提醒。測試按鈕會實際傳送一則訊息。');
  }
- $('settingsButton').onclick=()=>{$('settingsStatus').textContent='';settingsRender();$('settings').showModal();};
- $('connectGoogle').onclick=()=>safely(async()=>{const r=await api('connect');location.assign(r.url);},'settingsStatus');
+ $('settingsButton').onclick=openSettings;
+ $('connectGoogle').onclick=connectGoogle;$('reconnectGoogle').onclick=connectGoogle;
  $('disconnectGoogle').onclick=()=>safely(async()=>{await api('disconnect');await refresh();$('settingsStatus').textContent='已中斷持續同步；Google 原始行程沒有刪除。';},'settingsStatus');
  $('saveOAuth').onclick=()=>safely(async()=>{await api('configureGoogle',{clientId:$('clientId').value,clientSecret:$('clientSecret').value});$('clientSecret').value='';await refresh();$('settingsStatus').textContent='已儲存。請按「連接 Google 行事曆」完成授權。';},'settingsStatus');
  $('saveCalendars').onclick=()=>safely(async()=>{await api('settings',{calendarIds:[...$('calendarChoices').querySelectorAll('input:checked')].map(x=>x.value)});await refresh();$('settingsStatus').textContent='已更新要顯示的行事曆。';},'settingsStatus');
@@ -184,7 +198,8 @@
  async function openCalendar(result){
   if(result?.token){calendarSession=result.token;sessionStorage.setItem('youziCalendarSession',calendarSession);}
   const entry=await access('entryOptions');$('autoFace').checked=entry.autoFace;
-  syncSharedDate();await refresh();$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;$('newButton').disabled=false;$('newDay').disabled=false;
+  syncSharedDate();$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;await safely(refresh);if(!calendarSession)return;$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;$('newButton').disabled=false;$('newDay').disabled=false;
+  if(location.hash==='#google')openSettings();
   const sharedParams=new URLSearchParams(location.search);if(sharedParams.get('task')){await showWork(sharedParams.get('task'),true);return;}if(sharedParams.get('shared')==='1'){location.replace('shared-calendar.html?owner=1'+(sharedParams.get('task')?'&task='+encodeURIComponent(sharedParams.get('task')):''));return;}
   const id=new URLSearchParams(location.search).get('event');if(id){let row=S.events.find(e=>e.id===id);if(!row)row=(await api('detail',{id})).event;if(row)showEditor(row);}
  }
