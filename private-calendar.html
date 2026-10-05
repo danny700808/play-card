@@ -2,6 +2,7 @@
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="same-origin"><title>私人行事曆｜柚子樂器</title><link rel="stylesheet" href="private-calendar.css?v=20260925-14"></head>
 <body>
 <section id="calendarGate" class="calendarGate"><h1>私人行事曆</h1><button id="faceLogin" class="primary">Face ID／通行密鑰進入</button><details id="passwordFallback"><summary>改用專用密碼</summary><form id="passwordForm"><input name="username" value="私人行事曆" autocomplete="username" hidden><label>專用密碼<input id="calendarPassword" type="password" autocomplete="current-password" required maxlength="256"></label><button id="passwordLogin" type="submit">密碼進入</button></form></details><p id="loginMessage" role="status">第一次使用，請先用專用密碼進入，再啟用 Face ID。</p></section><main id="calendarWorkspace" hidden><section class="intro"><div class="calendarIdentity"><h1>我的行事曆</h1><h2 id="monthTitle"></h2></div><button class="primary" id="newButton" disabled>＋ 新增行程</button></section>
+<p><button id="reloadPage" type="button" onclick="location.reload()">↻ 重新載入網頁</button></p>
 <div id="status" role="status" aria-live="polite">正在確認私人登入…</div><div id="connection" class="connection" hidden><p id="connectionMessage"></p><button id="reconnectGoogle" type="button" class="primary">重新連接 Google</button><p id="connectionStatus" role="status"></p></div>
 <section class="toolbar">
 
