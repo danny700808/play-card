@@ -11132,13 +11132,16 @@ async function adminRecordTuitionTransaction(data) {
     const bases = mirror.docs.filter(doc => doc.data().sourceActive !== false).map(doc => doc.data().source || {});
     const period = mergePortalTuitionRows(bases, portal.exists ? [portal] : [], transactions.docs).find(row => sourceId(row) === periodId);
     if (!period || period.active === false) throw new HttpsError('not-found', '找不到有效的學費期別。');
-    const prior = existing.exists ? existing.data() : null;
     const linking = data.linkExistingRefund === true && incoming.type === 'refund';
+    // Imported refunds live inside the tuition period rather than the manager ledger.
+    const importedPrior = linking && !existing.exists ? (period.transactions || []).find((row,index) => (clean(row.id) || 'transaction_'+(index+1)) === incoming.id && row.active !== false && (!row.status || row.status === 'confirmed')) : null;
+    const prior = existing.exists ? existing.data() : importedPrior ? Object.assign({},importedPrior,{id:incoming.id,status:'confirmed'}) : null;
     const backfill = linking && prior && prior.active !== false && prior.status === 'confirmed' && prior.type === 'refund' && !(prior.lessonSlotNos || []).length;
     if (linking && (!prior || prior.active === false || prior.status !== 'confirmed' || prior.type !== 'refund')) throw new HttpsError('failed-precondition','找不到可補登的已確認退款。');
     let checked;
-    try { checked = validateTransaction(period, backfill ? Object.assign({},incoming,{lessonSlotNos:[]}) : incoming); } catch (error) { throw new HttpsError('failed-precondition', error.message); }
-    if (checked.duplicate && !backfill) return { ok: true, duplicate: true, transaction: existing.exists ? jsonValue(existing.data()) : incoming, lessonAdjustments:period.lessonAdjustments||[],voidedLessonCount:Number(period.voidedLessonCount||0) };
+    const validationPeriod = importedPrior ? Object.assign({},period,{transactions:period.transactions.map(row=>row===importedPrior?prior:row)}) : period;
+    try { checked = validateTransaction(validationPeriod, backfill ? Object.assign({},incoming,{lessonSlotNos:[]}) : incoming); } catch (error) { throw new HttpsError('failed-precondition', error.message); }
+    if (checked.duplicate && !backfill) return { ok: true, duplicate: true, transaction: prior ? jsonValue(prior) : incoming, lessonAdjustments:period.lessonAdjustments||[],voidedLessonCount:Number(period.voidedLessonCount||0) };
     let lessonPatch = null;
     if (incoming.type === 'refund') {
       const slots = incoming.lessonSlotNos;
@@ -11156,7 +11159,15 @@ async function adminRecordTuitionTransaction(data) {
     }
     const record = Object.assign({}, incoming, backfill ? Object.assign({},prior,{lessonSlotNos:incoming.lessonSlotNos}) : {}, { periodId, studentId: clean(period.studentId), status: 'confirmed', active: true, source: 'manager-ledger' });
     if (lessonPatch) tx.set(periodRef, Object.assign({id:periodId,studentId:clean(period.studentId),active:true,updatedAt:FieldValue.serverTimestamp()},lessonPatch), {merge:true});
-    if (backfill) tx.set(transactionRef, {lessonSlotNos:incoming.lessonSlotNos,lessonSlotsLinkedAt:FieldValue.serverTimestamp()}, {merge:true});
+    if (backfill && importedPrior) {
+      // Preserve the original money entry and absorb existing overlays exactly once.
+      tx.set(periodRef, {
+        transactions:(period.transactions || []).map(row => row === importedPrior ? Object.assign({},row,{id:incoming.id,lessonSlotNos:incoming.lessonSlotNos,lessonSlotsLinked:true}) : row),
+        paidAmount:tuitionBasePaidAmount(period),receivedAmount:tuitionBasePaidAmount(period),
+        absorbedTransactionIds:[...new Set([...(period.absorbedTransactionIds || []),...transactions.docs.map(doc=>doc.id)])]
+      }, {merge:true});
+    }
+    else if (backfill) tx.set(transactionRef, {lessonSlotNos:incoming.lessonSlotNos,lessonSlotsLinkedAt:FieldValue.serverTimestamp()}, {merge:true});
     else tx.create(transactionRef, Object.assign({}, record, { createdAt: FieldValue.serverTimestamp() }));
     tx.set(lockRef, { revision: Number(lock.exists && lock.data().revision || 0) + 1, updatedAt: FieldValue.serverTimestamp() });
     tx.set(versionRef, { version: Number(version.exists && version.data().version || 0) + 1, updatedAt: FieldValue.serverTimestamp(), updatedBy: 'manager-ledger' }, { merge: true });

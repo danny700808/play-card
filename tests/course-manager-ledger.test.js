@@ -176,3 +176,53 @@ test('backfill rejects changing the original refund amount or inventing a refund
   f.put('transactions/old',{id:'old',periodId:'p1',type:'refund',amount:1400,date:'2026-09-30',status:'confirmed',active:true});
   await assert.rejects(f.context.adminRecordTuitionTransaction(refundRequest({id:'old',linkExistingRefund:true})),/另一筆/);
 });
+
+test('imported embedded refund links three lessons without adding money entries and survives reload/retry',async()=>{
+  const f=fixture();
+  const period={id:'p1',studentId:'student1',lessonCount:4,usedCount:1,paidAmount:2800,transactions:[
+    {id:'pay',type:'payment',amount:2800,date:'2026-07-05'},
+    {id:'old',type:'refund',amount:2100,date:'2026-08-07',method:'現金',note:'原始退款'}
+  ]};
+  f.put('mirror/p1',{source:period});
+  const request=refundRequest({id:'old',amount:2100,lessonSlotNos:[2,3,4],linkExistingRefund:true});
+  const result=await f.context.adminRecordTuitionTransaction(request);
+  assert.equal(result.transaction.date,'2026-08-07');
+  assert.equal(result.transaction.note,'原始退款');
+  assert.equal(f.rows('transactions').length,0);
+  assert.equal(f.get('periods/p1').transactions.length,2);
+  assert.equal(f.get('periods/p1').paidAmount,2800);
+  assert.equal(f.get('periods/p1').voidedLessonCount,3);
+  const again=await f.context.adminRecordTuitionTransaction(request);
+  assert.equal(again.duplicate,true);
+  assert.equal(f.get('periods/p1').voidedLessonCount,3);
+  assert.deepEqual(Array.from(again.transaction.lessonSlotNos),[2,3,4]);
+  await assert.rejects(f.context.adminRecordTuitionTransaction({...request,lessonSlotNos:[2,3]}),/不同退款堂次/);
+});
+
+test('refund of 2000 closes three 700-dollar lessons and preserves the attended lesson',async()=>{
+  const f=await paidFixture();
+  f.put('periods/p1',{...f.get('periods/p1'),usedCount:1,expectedAmount:2800});
+  const result=await f.context.adminRecordTuitionTransaction(refundRequest({amount:2000,lessonSlotNos:[2,3,4]}));
+  assert.equal(result.transaction.amount,2000);
+  assert.equal(f.get('periods/p1').voidedLessonCount,3);
+  assert.equal(f.get('periods/p1').usedCount,1);
+  assert.equal(result.lessonAdjustments.reduce((n,row)=>n+Math.round(row.amount*100),0),200000);
+  assert.deepEqual(Array.from(result.lessonAdjustments,row=>row.slotNo),[2,3,4]);
+});
+
+test('imported refunds without an ID use the displayed stable index and preserve mixed ledger totals',async()=>{
+  const f=fixture();
+  f.put('mirror/p1',{source:{id:'p1',studentId:'student1',lessonCount:4,usedCount:1,paidAmount:2800,transactions:[
+    {type:'payment',amount:2800,date:'2026-07-05'},
+    {type:'refund',amount:2100,date:'2026-08-07',status:''}
+  ]}});
+  f.put('transactions/extra',{id:'extra',periodId:'p1',type:'payment',amount:100,status:'confirmed'});
+  const request=refundRequest({id:'transaction_2',amount:2100,lessonSlotNos:[2,3,4],linkExistingRefund:true});
+  await f.context.adminRecordTuitionTransaction(request);
+  assert.equal(f.get('periods/p1').paidAmount,2900);
+  assert.equal(f.get('periods/p1').transactions.length,3);
+  const again=await f.context.adminRecordTuitionTransaction(request);
+  assert.equal(again.duplicate,true);
+  assert.equal(f.get('periods/p1').paidAmount,2900);
+  assert.equal(f.rows('transactions').length,1);
+});
