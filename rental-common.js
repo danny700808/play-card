@@ -228,9 +228,16 @@
     const serial=clean(contract.serialNo||contract.machineCode||items[0]?.note);
     const periods=Math.max(1, Math.min(10, Number(contract.periods||contract.rentalPeriods||1)));
     const periodDays=Math.max(1, Number(contract.periodDays||90));
-    const start=clean(contract.startDate);
+    const start=clean(contract.initialStartDate||contract.startDate);
     const explicitRentDays=Number(contract.rentDays||contract.totalDays||0);
-    const end=clean(contract.endDate)||(isOtherRental?'':calcEndDate(start, periods, type, Number(contract.rentDays||periods*periodDays)));
+    // endDate advances on renewal; the first contract row must retain its own term.
+    // Older contracts may lack an initial snapshot, so use the first confirmed
+    // subsequent term as the boundary. Pending renewals never shorten the term.
+    const confirmedStarts=[...(Array.isArray(contract.renewalEntries)?contract.renewalEntries:[]),...(Array.isArray(contract.periodEntries)?contract.periodEntries:[])]
+      .map(p=>clean(p.startDate)).filter(date=>date>start && inclusiveDays(date,date)===1).sort();
+    const currentEnd=clean(contract.endDate);
+    const legacyInitialEnd=confirmedStarts.length && currentEnd>=confirmedStarts[0] ? addDays(confirmedStarts[0],-1) : currentEnd;
+    const end=clean(contract.initialEndDate)||legacyInitialEnd||(isOtherRental?'':calcEndDate(start, periods, type, Number(contract.rentDays||periods*periodDays)));
     const rent=fmtMoney(contract.rentFee||contract.rentalFee);
     const ship=fmtMoney(contract.shippingFee);
     const deposit=fmtMoney(contract.depositFee);

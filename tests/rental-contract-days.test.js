@@ -106,3 +106,35 @@ assert(adminSource.includes('rawPayload.rentDays=actualRentDays'),
   '草稿及客戶連結資料也應儲存實際租賃天數');
 
 console.log('rental contract date synchronization tests passed');
+
+const renewed={rentalType:'electronicDrum',periods:1,startDate:'2026-07-08',endDate:'2027-01-03',rentFee:3200,
+  initialStartDate:'2026-07-08',initialEndDate:'2026-10-05',
+  renewalEntries:[{startDate:'2026-10-06',endDate:'2027-01-03',rentFee:3000,periods:1}]};
+const before=JSON.stringify(renewed);
+const renewedHtml=rental.renderContractHtml(renewed);
+assert(renewedHtml.includes('<td>2026-07-08</td><td>2026-10-05</td><td>90 天</td>'));
+assert(renewedHtml.includes('<td>2026-10-06</td><td>2027-01-03</td><td>90 天</td>'));
+assert(!renewedHtml.includes('180 天'));
+assert(renewedHtml.includes('3,200 元') && renewedHtml.includes('3,000 元'));
+assert.strictEqual(JSON.stringify(renewed),before,'Rendering must not change money, dates or renewal records');
+
+const legacy={...renewed};delete legacy.initialStartDate;delete legacy.initialEndDate;
+assert(rental.renderContractHtml(legacy).includes('<td>2026-07-08</td><td>2026-10-05</td><td>90 天</td>'));
+const secondCustomer={...legacy,startDate:'2026-06-16',endDate:'2026-12-12',rentFee:2900,
+  renewalEntries:[{startDate:'2026-09-14',endDate:'2026-12-12',rentFee:2800}]};
+assert(rental.renderContractHtml(secondCustomer).includes('<td>2026-06-16</td><td>2026-09-13</td><td>90 天</td>'));
+
+const repeated={...legacy,endDate:'2027-04-03',renewalEntries:[
+  {startDate:'2027-01-04',endDate:'2027-04-03'},...legacy.renewalEntries]};
+assert(rental.renderContractHtml(repeated).includes('<td>2026-07-08</td><td>2026-10-05</td><td>90 天</td>'));
+
+const customInitial={...renewed,initialEndDate:'2026-09-30'};
+assert(rental.renderContractHtml(customInitial).includes('<td>2026-07-08</td><td>2026-09-30</td><td>85 天</td>'),
+  'An explicitly agreed initial end takes precedence over inference from a later renewal');
+const pendingOnly={...legacy,renewalEntries:[],pendingRenewal:{startDate:'2026-10-06',endDate:'2027-01-03'}};
+assert(rental.renderContractHtml(pendingOnly).includes('<td>2026-07-08</td><td>2027-01-03</td><td>180 天</td>'),
+  'Unconfirmed applications must not alter an existing rental term');
+const twoPeriods={rentalType:'digitalPiano',periods:2,startDate:'2026-06-28',endDate:'2026-12-24'};
+assert(rental.renderContractHtml(twoPeriods).includes('初次租用 2 期（180 天）'));
+assert(rental.renderContractHtml({rentalType:'other',startDate:'2026-06-27',endDate:'2026-08-08'}).includes('<td>43 天</td>'));
+console.log('initial rental terms stay separate from confirmed and pending renewals');
