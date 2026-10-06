@@ -189,11 +189,11 @@
   </div>
 
   <div class="modal-backdrop" id="transactionModal" role="dialog" aria-modal="true" aria-labelledby="transactionModalTitle">
-    <div class="modal"><div class="modal-head"><div><h2 id="transactionModalTitle">新增收費／退款</h2><p>先選退款堂數，系統帶入建議金額；實際退費金額可自行修改，儲存時會同步更新課堂狀態。</p></div><button class="modal-close" type="button" data-close-modal="transactionModal">×</button></div>
+    <div class="modal"><div class="modal-head"><div><h2 id="transactionModalTitle">新增收費／退款</h2><p id="transactionHelp">先選退款堂數，系統帶入建議金額；實際退費金額可自行修改，儲存時會同步更新課堂狀態。</p></div><button class="modal-close" type="button" data-close-modal="transactionModal">×</button></div>
     <form id="transactionForm"><div class="modal-body"><input id="transactionPeriodId" type="hidden"><input id="transactionPreferredSlot" type="hidden"><div class="form-grid two">
       <div class="field full"><label for="transactionType">類型</label><select id="transactionType"><option value="payment">收費</option><option value="refund">退款</option></select></div>
       <div class="field full hidden" id="refundLessonField"><p id="transactionPeriodInfo"></p><div class="form-grid two"><div class="field"><label for="transactionLessonPrice">本期單堂金額</label><input id="transactionLessonPrice" readonly></div><div class="field"><label for="transactionRefundCount">退款堂數</label><select id="transactionRefundCount"></select><small>依序退還尚未上課的堂次，不需逐堂勾選。</small></div></div><p id="refundSlotChoices"></p><input id="transactionRefundAttendance" type="hidden"></div>
-      <div class="field full"><label for="transactionAmount" id="transactionAmountLabel">本次收費金額</label><input id="transactionAmount" type="number" min="0.01" step="0.01" required><small>退款金額可調整；例如退 3 堂、實退 $2,000，仍會退還 3 堂。</small></div>
+      <div class="field full"><label for="transactionAmount" id="transactionAmountLabel">本次收費金額</label><input id="transactionAmount" type="number" min="0.01" step="0.01" required><small id="transactionAmountHelp"></small></div>
       <div class="field"><label for="transactionDate">日期</label><div class="mobile-date-bound"><input id="transactionDate" type="date" required></div></div><div class="field"><label for="transactionMethod">收費／退款方式</label><select id="transactionMethod"><option>現金</option><option>轉帳</option><option>線上轉帳</option></select></div>
       <div class="field full"><label for="transactionNote">備註／原因</label><textarea id="transactionNote"></textarea></div>
     </div></div><div class="modal-foot"><button class="btn outline" type="button" data-close-modal="transactionModal">取消</button><button class="btn primary" type="submit">儲存紀錄</button></div></form></div>
