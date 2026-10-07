@@ -18,7 +18,7 @@ test('physical derivative has one faint diagonal watermark, no footer, bounded s
   assert.equal(canvas.height, 1500);
   assert.equal(calls.filter(x => x[0] === 'fillText').length, 1);
   assert.equal(calls.filter(x => x[0] === 'fillRect').length, 1); // base white canvas only
-  assert.equal(ctx.fillStyle, 'rgba(255,255,255,.22)');
+  assert.equal(ctx.fillStyle, 'rgba(255,255,255,.40)');
   assert.ok(calls.some(x => x[0] === 'rotate' && x[1] < 0));
 });
 test('retry excludes successful sources and preserves published YouTube', () => {

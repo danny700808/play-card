@@ -2697,7 +2697,7 @@ function renderOverviewV7(){
     const context=canvas.getContext('2d');if(!context){if(image.close)image.close();throw new Error('瀏覽器無法建立實體圖標示');}
     context.fillStyle='#fff';context.fillRect(0,0,width,height);context.drawImage(image,0,0,width,height);if(image.close)image.close();
     const watermark='柚子樂器｜實體圖',centerSize=Math.max(16,Math.round(Math.min(width,height)*0.05));
-    context.save();context.translate(width/2,height/2);context.rotate(-Math.PI/12);context.textAlign='center';context.textBaseline='middle';context.font='600 '+centerSize+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif';context.lineWidth=Math.max(1,centerSize*0.035);context.strokeStyle='rgba(15,23,42,.12)';context.fillStyle='rgba(255,255,255,.22)';context.strokeText(watermark,0,0);context.fillText(watermark,0,0);context.restore();
+    context.save();context.translate(width/2,height/2);context.rotate(-Math.PI/12);context.textAlign='center';context.textBaseline='middle';context.font='600 '+centerSize+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif';context.lineWidth=Math.max(1,centerSize*0.035);context.strokeStyle='rgba(15,23,42,.12)';context.fillStyle='rgba(255,255,255,.40)';context.strokeText(watermark,0,0);context.fillText(watermark,0,0);context.restore();
     // Preserve the original upload; only encode this single-watermark customer derivative.
     for(const quality of [0.9,0.84,0.78,0.72]){
       const blob=await new Promise(function(resolve,reject){canvas.toBlob(function(value){if(value)resolve(value);else reject(new Error('無法產生已標示的實體圖'));},'image/jpeg',quality);});
