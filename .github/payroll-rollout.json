@@ -1,20 +1,10 @@
 {
   "owner": "deploy-payroll",
-  "phase": "frontend",
-  "version": "20261008-attendance-origin-v2",
+  "phase": "backend",
+  "version": "20261008-payroll-demand-v1",
   "functions": [
     "loadInjiaoyunEducationMirrorAuto",
-    "loadInjiaoyunEducationMirrorAutoTaiwan",
-    "coursePortalTeacherData",
-    "coursePortalTeacherDataTaiwan",
-    "coursePortalLessonHistory",
-    "coursePortalLessonHistoryTaiwan",
-    "coursePortalAdminSetAttendance",
-    "coursePortalAdminSetAttendanceTaiwan",
-    "coursePortalStudentData",
-    "coursePortalStudentDataTaiwan",
-    "coursePortalAdminData",
-    "coursePayrollTransferTaiwan"
+    "loadInjiaoyunEducationMirrorAutoTaiwan"
   ],
   "backendRun": 37783399298,
   "backendSha": "504bb4c0d523cebf1f777816b66fe4155eef4eec"

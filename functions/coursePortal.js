@@ -13484,6 +13484,11 @@ async function appendCoursePortalData(payload) {
 
 // Calendar bootstrap shares the canonical occupancy calculation, including
 // cancellations and moved recurring courses. It never supplies account balances.
+async function managerTeacherPayrollCatalog() {
+  const [teachers,subjects]=await Promise.all([mirrorRows('teachers'),mirrorRows('subjects')]);
+  return {teachers,subjects};
+}
+
 async function managerScheduleCatalog() {
   return {ok:true,feePlans:await mirrorRows('feePlans')};
 }
@@ -13758,6 +13763,7 @@ module.exports = {
   requireSession,
   resolveTeacherUtilityEmployee,
   teacherPayrollMonthData,
+  managerTeacherPayrollCatalog,
   managerCalendarBootstrap,
   managerRecentStudents,
   managerScheduleCatalog,

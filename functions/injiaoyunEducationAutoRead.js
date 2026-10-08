@@ -163,8 +163,12 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
         return await withPortalReads(managerCalendarFollowup)();
       }
       if (clean(request && request.data && request.data.scope) === 'teacher-payroll-month') {
-        const { teacherPayrollMonthData } = require('./coursePortal');
-        const result = await teacherPayrollMonthData(request && request.data && request.data.month);
+        const { teacherPayrollMonthData, managerTeacherPayrollCatalog } = require('./coursePortal');
+        const { withPortalReads } = require('./portalReadContext');
+        const result = await withPortalReads(async () => {
+          const [payroll,catalog]=await Promise.all([teacherPayrollMonthData(request && request.data && request.data.month),managerTeacherPayrollCatalog()]);
+          return Object.assign({},payroll,catalog);
+        })();
         const settingsSnapshot = await SETTINGS_REF.get();
         const settings = settingsSnapshot.exists ? settingsSnapshot.data() || {} : {};
         return Object.assign({}, result, {
