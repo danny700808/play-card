@@ -12,7 +12,7 @@ backend.filename = filename;
 backend.paths = Module._nodeModulePaths(path.dirname(filename));
 backend._compile(fs.readFileSync(filename, 'utf8') + `
 module.exports.audit = {db,mirrorRows,teacherPortalProfileId,teacherUtilityProfileBundle,scheduleBundle,withPortalReads,mirrorRowsByDateRange,portalRowsByDateRange,
-ATTENDANCE_PAYROLL,ATTENDANCE_CANCELLATIONS,mergeTeacherPayrollRows,enrichTeacherPayrollRows,
+ATTENDANCE_RECORDS,eventStudentIds,eventTeacherId,ATTENDANCE_PAYROLL,ATTENDANCE_CANCELLATIONS,mergeTeacherPayrollRows,enrichTeacherPayrollRows,
 teacherPayrollStudentIds,teacherPayrollCourseId,teacherPayrollMinute,eventDate,sourceId};
 `, filename);
 const a = backend.exports.audit;
@@ -37,6 +37,13 @@ async function main() {
   const events = board.resourceEvents.filter(e=>(e.studentIds||[]).length);
   const candidates = p => events.filter(e=>e.date===a.eventDate(p)&&e.teacherId===p.teacherId&&sameStudents(p,e));
   const missing = payroll.filter(p=>!candidates(p).some(e=>e.status==='attended'));
+  const nativeAttendance=await a.portalRowsByDateRange(a.ATTENDANCE_RECORDS,start,end);
+  const attendanceCandidates=(p,rows)=>rows.filter(r=>a.eventDate(r)===a.eventDate(p)&&(!a.eventTeacherId(r)||a.eventTeacherId(r)===p.teacherId)&&a.eventStudentIds(r).some(id=>a.teacherPayrollStudentIds(p).includes(id)));
+  const safeStatus=r=>['attended','scheduled','cancelled','absent','leave'].includes(r.status)?r.status:'other';
+  for(const [index,p] of missing.entries()) {
+    const ma=attendanceCandidates(p,attendance),na=attendanceCandidates(p,nativeAttendance);
+    report(JSON.stringify({kind:'missingAttendanceTrace',case:index+1,date:a.eventDate(p),mirrorMatches:ma.length,nativeMatches:na.length,mirrorStatus:ma.map(safeStatus),nativeStatus:na.map(safeStatus),nativeActive:na.map(r=>r.active!==false),nativeHasPayroll:na.map(r=>native.some(n=>[n.id,n.operationId].filter(Boolean).includes(r.operationId))),mirrorCourseMatch:ma.map(r=>candidates(p).some(e=>a.teacherPayrollCourseId(r)&&[e.id,e.sourceId,e.fixedCourseId].includes(a.teacherPayrollCourseId(r)))),nativeCourseMatch:na.map(r=>candidates(p).some(e=>a.teacherPayrollCourseId(r)&&[e.id,e.sourceId,e.fixedCourseId].includes(a.teacherPayrollCourseId(r))))}));
+  }
   report(JSON.stringify({kind:'totals',payrollRows:payroll.length,mirrorRows:mirror.length,nativeRows:native.length,attendedCalendar:events.filter(e=>e.status==='attended').length,missingSignedCalendar:missing.length}));
   for(const date of [...new Set(missing.map(a.eventDate))].sort()) {
     const rows=missing.filter(p=>a.eventDate(p)===date);
@@ -54,6 +61,10 @@ async function main() {
   });
   for(const rows of groups.values()) if(rows.length>1) {
     const [x,y]=rows;
+    if(rows.some(p=>origin(p)==='mirror')&&rows.some(p=>origin(p)==='native')) {
+      const ma=attendanceCandidates(x,attendance),na=attendanceCandidates(x,nativeAttendance);
+      report(JSON.stringify({kind:'mixedAttendanceTrace',date:a.eventDate(x),mirrorMatches:ma.length,nativeMatches:na.length,mirrorStatuses:ma.map(safeStatus),nativeStatuses:na.map(safeStatus),nativeActive:na.map(r=>r.active!==false),sameOperation:rows.every(p=>!!p.operationId)&&x.operationId===y.operationId,mirrorPeriodMatchesNativeAttendance:na.map(r=>!!x.periodId&&[r.periodId,...Object.keys(r.periodIds||{})].includes(x.periodId)),calendarStatus:candidates(x).map(safeStatus)}));
+    }
     report(JSON.stringify({kind:'multipleSameDay',date:a.eventDate(x),rows:rows.length,origins:rows.map(origin),calendarEvents:candidates(x).length,signedCalendarEvents:candidates(x).filter(e=>e.status==='attended').length,sameMinute:a.teacherPayrollMinute(x)===a.teacherPayrollMinute(y),missingMinute:rows.some(p=>a.teacherPayrollMinute(p)==null),sameCourse:a.teacherPayrollCourseId(x)===a.teacherPayrollCourseId(y),missingCourse:rows.some(p=>!a.teacherPayrollCourseId(p)),sameAmount:x.teacherAmount===y.teacherAmount,
       linkedAttendance:rows.map(p=>attendance.some(r=>a.sourceId(r)===a.sourceId(p))),
       samePeriod:!!x.periodId&&x.periodId===y.periodId,
