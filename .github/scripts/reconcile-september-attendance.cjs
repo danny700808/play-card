@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),Module=require('node:modul
 const report=console.log.bind(console);console.log=console.info=console.warn=console.error=()=>{};
 const filename=path.resolve('functions/coursePortal.js'),backend=new Module(filename,module);
 backend.filename=filename;backend.paths=Module._nodeModulePaths(path.dirname(filename));
-backend._compile(fs.readFileSync(filename,'utf8')+'\nmodule.exports.repair={db,MIRROR,FieldValue,withPortalReads,mirrorRowsByDateRange,portalRowsByDateRange,ATTENDANCE_RECORDS,ATTENDANCE_PAYROLL,ATTENDANCE_CANCELLATIONS,mergeTeacherPayrollRows,mergePortalAttendanceRows,enrichTeacherPayrollRows,teacherPayrollStudentIds,eventDate,sourceId,scheduleVersionRef,scheduleBundle,attendanceOperationId,attendanceLessonLockId,attendanceLineage,hash};',filename);
+backend._compile(fs.readFileSync(filename,'utf8')+'\nmodule.exports.repair={db,MIRROR,FieldValue,withPortalReads,mirrorRowsByDateRange,portalRowsByDateRange,ATTENDANCE_RECORDS,ATTENDANCE_PAYROLL,ATTENDANCE_CANCELLATIONS,mergeTeacherPayrollRows,mergePortalAttendanceRows,enrichTeacherPayrollRows,teacherPayrollStudentIds,eventTeacherId,eventDate,sourceId,scheduleVersionRef,scheduleBundle,attendanceOperationId,attendanceLessonLockId,attendanceLineage,hash};',filename);
 const a=backend.exports.repair,runId='september10-trial-duplicate-20261008-v3';
 const digest=v=>crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const people=r=>JSON.stringify(a.teacherPayrollStudentIds(r).slice().sort());
@@ -22,7 +22,7 @@ async function main(){
  if(candidates.length!==1)throw Error('unique duplicate guard failed');
  const {trial,official:[official]}=candidates[0];
  if(people(trial)==='[]'||!(Number(trial.teacherAmount)>0)||!(Number(official.teacherAmount)>0)||trial.active===false||trial.status!=='attended')throw Error('payroll guard failed');
- const linked=attendance.filter(r=>key(r)===key(official));
+ const linked=attendance.filter(r=>a.eventDate(r)===date&&people(r)===people(official)&&(!a.eventTeacherId(r)||a.eventTeacherId(r)===official.teacherId));
  const duplicateRecords=records.filter(r=>r.operationId===trial.operationId&&r.status==='attended'&&r.active!==false);
  report(JSON.stringify({kind:'attendance-diagnostics',linked:linked.length,records:duplicateRecords.length,trialHasOperation:!!trial.operationId,recordDateMatches:duplicateRecords.map(r=>a.eventDate(r)===date),teacherMatches:duplicateRecords.map(r=>r.teacherId===trial.teacherId),studentMatches:duplicateRecords.map(r=>people(r)===people(trial))})); if(linked.length!==1||duplicateRecords.length!==1||key(duplicateRecords[0])!==key(trial))throw Error('attendance guard failed');
  const events=board.resourceEvents.filter(e=>a.eventDate(e)===date&&e.teacherId===trial.teacherId&&people(e)===people(trial)&&a.attendanceOperationId(e.teacherId,date,e)===trial.operationId);
@@ -68,5 +68,6 @@ async function main(){
  report(JSON.stringify({status:'applied-and-verified',...summary}));
 }
 a.withPortalReads(main)().catch(error=>{report(JSON.stringify({status:'failed',reason:/guard failed$/.test(error.message)?error.message:'internal error'}));process.exitCode=1;});
+
 
 
