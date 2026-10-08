@@ -35,3 +35,18 @@ test('version changes during payroll read invalidate preview',async()=>{
  const f=fixture();const api=createPayrollNotices({db:f.db,loadPayroll:async()=>{f.db.records.set('coursePortalRuntime/scheduleVersion',{version:2});return f.pay;}});
  await assert.rejects(api({action:'notice-preview',month:'2026-09',transferDate:'2026-01-01'},'admin'),/重新預覽/);
 });
+
+const {profileId,noticeBody,lateReminders}=require('../functions/payrollNotices');
+test('both channels receive one notification; email alone is eligible',async()=>{
+ for(const both of [true,false]){const f=fixture();f.db.records.set('teacherPrivateProfiles/'+profileId('t'),{email:'teacher@example.com'});if(!both)f.db.records.delete('coursePortalTeacherBindings/b');const p=await f.preview();assert(p.rows[0].eligible);await send(f,p);const q=[...f.db.records.entries()].filter(([k])=>k.startsWith('notificationQueue/')).map(([,v])=>v);assert.equal(q.length,both?2:1);assert(q.some(r=>r.channel==='email'&&r.targetEmail==='teacher@example.com'));assert.equal((await f.preview()).rows[0].eligible,false);}
+});
+test('adding email after a LINE notice sends only email and keeps the original payment',async()=>{
+ const f=fixture();await send(f,await f.preview());f.db.records.set('teacherPrivateProfiles/'+profileId('t'),{email:'teacher@example.com'});const p=await f.api({action:'notice-preview',month:'2026-09',transferDate:'2026-02-02'},'admin');assert(p.rows[0].eligible);assert.match(p.rows[0].body,/2026\/01\/01/);assert.equal((await send(f,p)).queued,1);assert.equal([...f.db.records.keys()].filter(k=>k.startsWith('coursePayrollPaidBatches/')).length,1);
+});
+test('changed email invalidates preview; malformed email is not used',async()=>{
+ const f=fixture(),key='teacherPrivateProfiles/'+profileId('t');f.db.records.set(key,{email:'teacher@example.com'});const p=await f.preview();f.db.records.set(key,{email:'other@example.com'});await assert.rejects(send(f,p));f.db.records.delete('coursePortalTeacherBindings/b');f.db.records.set(key,{email:'invalid'});assert(!(await f.preview()).rows[0].eligible);
+});
+test('simple notification includes bank timing and exact late attendance dates without a link',()=>{
+ const pay={teacherPayroll:[{teacherId:'t',date:'2026-09-28',attendanceSignedAt:'2026-10-10 00:00:00',expectedPayDate:'2026-11-10'},{teacherId:'other',date:'2026-09-28',attendanceSignedAt:'2026-10-03',expectedPayDate:'2026-10-10'}]};
+ const body=noticeBody({name:'甲',amount:420,lateReminders:lateReminders(pay,'t')},'2026-09','2026-10-10');assert.match(body,/2026 年 9 月薪資/);assert.match(body,/依銀行作業為準/);assert.match(body,/2026\/10\/10 補登，預計 2026\/11\/10 發放/);assert.doesNotMatch(body,/https?:|結算批次|2026\/10\/03/);
+});

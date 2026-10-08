@@ -15,14 +15,14 @@ function createPayrollTransfer({db,profileId}){
    const accounts=data.accounts.map(accountRow),manager=accountRow(data.manager||{}),extras=data.extras.map(row=>({...accountRow(row),amount:Number(row.amount)})),managerAmount=Number(data.managerAmount||0);
    if(!Number.isFinite(managerAmount)||managerAmount<0||extras.some(r=>!Number.isFinite(r.amount)||r.amount<0))throw new HttpsError('invalid-argument','轉帳金額必須是零或正數。');
    const now=new Date().toISOString();
-   await db.runTransaction(async tx=>{const old=await tx.get(ref);if(clean(old.exists?old.data().revision:"")!==clean(data.revision))throw new HttpsError('aborted','帳戶資料已在其他視窗更新，請關閉後重新開啟轉帳表。');tx.set(ref,{accounts,manager,revision:now,updatedBy:actor});tx.set(draftRef,{extras,managerAmount,updatedAt:now,updatedBy:actor});});
+   await db.runTransaction(async tx=>{const old=await tx.get(ref);if(clean(old.exists?old.data().revision:"")!==clean(data.revision))throw new HttpsError('aborted','帳戶資料已在其他視窗更新，請關閉後重新開啟轉帳表。');tx.set(ref,{accounts,manager,managerDefaultAmount:120000,revision:now,updatedBy:actor});tx.set(draftRef,{extras,managerAmount,updatedAt:now,updatedBy:actor});});
    return {ok:true,revision:now};
   }
   if(data.action&&data.action!=='load')throw new HttpsError('invalid-argument','不支援的操作。');
   const [settings,draft,teacherDocs]=await Promise.all([ref.get(),draftRef.get(),db.collection('opsEducationMirrorTeachers').get()]);
   const teachers=teacherDocs.docs.map(d=>{const r=d.data().source||d.data();return {id:clean(r.id||d.id),name:clean(r.name)};}).filter(r=>r.id&&r.name);
   const profiles=await Promise.all(teachers.map(async t=>{const id=profileId(t.id);const [official,pending,publicDoc]=await Promise.all([db.collection('teacherPrivateProfiles').doc(id).get(),db.collection('teacherProfileDrafts').doc(id).get(),db.collection('externalTeacherProfiles').doc(id).get()]);const o=official.exists?official.data():{},p=pending.exists?pending.data():{},pub=publicDoc.exists?publicDoc.data():{},current=accountRow({name:o.bankAccountName||pub.bankAccountName,account:o.bankAccountNumber||pub.bankAccountNumber}),proposed=accountRow({name:p.privateProfile&&p.privateProfile.bankAccountName,account:p.privateProfile&&p.privateProfile.bankAccountNumber});return {teacherId:t.id,name:t.name,official:current,pending:proposed,pendingStatus:clean(p.status)};}));
-  return {ok:true,revision:settings.exists?clean(settings.data().revision):'',accounts:settings.exists?settings.data().accounts||[]:[],manager:settings.exists?settings.data().manager||{}:{},draft:draft.exists?draft.data():{},profiles};
+  return {ok:true,revision:settings.exists?clean(settings.data().revision):'',accounts:settings.exists?settings.data().accounts||[]:[],manager:settings.exists?settings.data().manager||{}:{},managerDefaultAmount:120000,draft:{...(draft.exists?draft.data():{}),managerAmount:(!draft.exists||[0,12000].includes(Number(draft.data().managerAmount)))?120000:draft.data().managerAmount},profiles};
  };
 }
 module.exports={createPayrollTransfer,accountRow};
