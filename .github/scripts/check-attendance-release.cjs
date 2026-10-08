@@ -1,0 +1,3 @@
+'use strict';
+const {GoogleAuth}=require('../../functions/node_modules/google-auth-library');
+(async()=>{const client=await new GoogleAuth({scopes:['https://www.googleapis.com/auth/cloud-platform']}).getClient();const exported=require('../../functions');for(const name of require('../payroll-rollout.json').functions){for(const region of exported[name].__endpoint.region){const {data}=await client.request({url:`https://cloudfunctions.googleapis.com/v2/projects/youzi-c1b74/locations/${region}/functions/${name}`});console.log(JSON.stringify({name,region,state:data.state,updated:data.updateTime}));}}})().catch(()=>{console.error('Release status check failed');process.exitCode=1;});
