@@ -1,7 +1,7 @@
 {
   "owner": "deploy-payroll",
   "phase": "frontend",
-  "version": "20261008-payroll-cutoff-v1",
+  "version": "20261008-payroll-cutoff-v1-frontend-check",
   "functions": [
     "coursePayrollTransferTaiwan",
     "loadInjiaoyunEducationMirrorAutoTaiwan",
