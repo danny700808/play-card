@@ -59,7 +59,7 @@ async function main(){
   const p=imported[0],live=signed[0],date=a.eventDate(p);
   if(!['2026-09-10','2026-09-13'].includes(date))continue;
   const ma=candidates(p,attendance),na=candidates(p,records),active=na.filter(r=>r.active!==false&&r.status==='attended');
-  if(active.length!==1||active[0].operationId!==live.operationId)throw Error('native operation evidence changed');
+  if(active.length!==1||active[0].operationId!==live.operationId){report(JSON.stringify({kind:'evidence-check',date,mirrorAttendance:ma.length,nativeAttendance:na.length,active:active.length,sameOperation:active.map(r=>r.operationId===live.operationId),nativePayrollStudentCount:a.teacherPayrollStudentIds(live).length,mirrorStudentCount:a.teacherPayrollStudentIds(p).length,matchingDateRecords:records.filter(r=>a.eventDate(r)===date&&a.eventTeacherId(r)===p.teacherId&&a.eventStudentIds(r).some(id=>a.teacherPayrollStudentIds(p).includes(id))).map(r=>({studentCount:a.eventStudentIds(r).length,active:r.active!==false,signed:r.status==='attended',sameOperation:r.operationId===live.operationId}))}));throw Error('native operation evidence changed');}
   let reason='';
   if(date==='2026-09-13'){
    const retired=na.filter(r=>r.active===false&&r.status==='cancelled'&&a.teacherPayrollCourseId(r)===a.teacherPayrollCourseId(p)&&r.periodId===p.periodId);
