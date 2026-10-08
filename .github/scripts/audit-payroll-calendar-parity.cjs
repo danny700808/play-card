@@ -12,7 +12,7 @@ backend.filename = filename;
 backend.paths = Module._nodeModulePaths(path.dirname(filename));
 backend._compile(fs.readFileSync(filename, 'utf8') + `
 module.exports.audit = {db,mirrorRows,teacherPortalProfileId,teacherUtilityProfileBundle,scheduleBundle,withPortalReads,mirrorRowsByDateRange,portalRowsByDateRange,
-ATTENDANCE_RECORDS,eventStudentIds,eventTeacherId,ATTENDANCE_PAYROLL,ATTENDANCE_CANCELLATIONS,mergeTeacherPayrollRows,enrichTeacherPayrollRows,
+mirrorRowsByField,courseSourceIds,eventSubjectId,eventStart,ATTENDANCE_RECORDS,eventStudentIds,eventTeacherId,ATTENDANCE_PAYROLL,ATTENDANCE_CANCELLATIONS,mergeTeacherPayrollRows,enrichTeacherPayrollRows,
 teacherPayrollStudentIds,teacherPayrollCourseId,teacherPayrollMinute,eventDate,sourceId};
 `, filename);
 const a = backend.exports.audit;
@@ -38,12 +38,15 @@ async function main() {
   const candidates = p => events.filter(e=>e.date===a.eventDate(p)&&e.teacherId===p.teacherId&&sameStudents(p,e));
   const missing = payroll.filter(p=>!candidates(p).some(e=>e.status==='attended'));
   const nativeAttendance=await a.portalRowsByDateRange(a.ATTENDANCE_RECORDS,start,end);
+  const fixed=await a.mirrorRows('fixedCourses');
   const attendanceCandidates=(p,rows)=>rows.filter(r=>a.eventDate(r)===a.eventDate(p)&&(!a.eventTeacherId(r)||a.eventTeacherId(r)===p.teacherId)&&a.eventStudentIds(r).some(id=>a.teacherPayrollStudentIds(p).includes(id)));
   const safeStatus=r=>['attended','scheduled','cancelled','absent','leave'].includes(r.status)?r.status:'other';
   const aliases=new Map();const ref=v=>{if(!v)return '';v=String(v);if(!aliases.has(v))aliases.set(v,'r'+(aliases.size+1));return aliases.get(v);};
   const shape=r=>Object.fromEntries(['id','__id','sourceId','eventId','sourceEventId','courseId','fixedCourseId','sourceCourseId','operationId','periodId','sourcePaymentId'].map(k=>[k,ref(r[k])]).concat([['status',safeStatus(r)],['active',r.active!==false],['start',r.startTime||r.start||''],['end',r.endTime||''],['periodRefs',Object.values(r.periodIds||{}).map(ref)],['sourceAttendanceRef',ref(r.attendanceId)]]));
   for(const [index,p] of missing.entries()) {
     const ma=attendanceCandidates(p,attendance),na=attendanceCandidates(p,nativeAttendance);
+    const periods=(await Promise.all(a.teacherPayrollStudentIds(p).map(id=>a.mirrorRowsByField('tuitionPeriods','studentId',id)))).flat();
+    report(JSON.stringify({kind:'subjectEvidence',case:index+1,attendance:ma.map(r=>({course:fixed.filter(c=>a.courseSourceIds(c).includes(a.teacherPayrollCourseId(r))).map(c=>({ref:ref(a.sourceId(c)),subject:ref(a.eventSubjectId(c)),start:a.eventStart(c)})),period:periods.filter(t=>[a.sourceId(t),t.id].includes(r.periodId)).map(t=>({subject:ref(a.eventSubjectId(t)),ref:ref(a.sourceId(t))}))})),calendar:candidates(p).map(e=>({subject:ref(e.subjectId),start:e.startTime,ref:ref(e.id)}))}));
     report(JSON.stringify({kind:'anonymousMissingTopology',case:index+1,payroll:shape(p),attendance:ma.map(shape),calendar:candidates(p).map(shape)}));
     report(JSON.stringify({kind:'missingAttendanceTrace',case:index+1,date:a.eventDate(p),mirrorMatches:ma.length,nativeMatches:na.length,mirrorStatus:ma.map(safeStatus),nativeStatus:na.map(safeStatus),nativeActive:na.map(r=>r.active!==false),nativeHasPayroll:na.map(r=>native.some(n=>[n.id,n.operationId].filter(Boolean).includes(r.operationId))),mirrorCourseMatch:ma.map(r=>candidates(p).some(e=>a.teacherPayrollCourseId(r)&&[e.id,e.sourceId,e.fixedCourseId].includes(a.teacherPayrollCourseId(r)))),nativeCourseMatch:na.map(r=>candidates(p).some(e=>a.teacherPayrollCourseId(r)&&[e.id,e.sourceId,e.fixedCourseId].includes(a.teacherPayrollCourseId(r))))}));
   }
