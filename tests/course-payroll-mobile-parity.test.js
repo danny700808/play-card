@@ -33,7 +33,8 @@ const firebase = {
                     date: '2026-07-31',
                     teacherAmount: 900
                   }],
-                  teacherAdjustments: []
+                  teacherAdjustments: [],
+                  payout:{expectedPayDate:'2026-08-10'},teacherPayoutPayroll:[{id:'older',teacherId:'teacher-1',date:'2026-06-30',payoutBatchMonth:'2026-07',teacherAmount:420}],teacherPayoutAdjustments:[],paidBatches:[]
                 }
               };
             };
@@ -78,6 +79,8 @@ vm.runInNewContext(source, context, { filename: 'course-scheduler-data.js' });
   assert.deepStrictEqual(sequence, ['auth', 'call:loadInjiaoyunEducationMirrorAutoTaiwan']);
   assert.strictEqual(result.runId, 'payroll-cloud-current');
   assert.strictEqual(result.teacherPayroll.length, 1);
+  assert.strictEqual(result.payout.expectedPayDate,'2026-08-10');
+  assert.strictEqual(result.teacherPayoutPayroll[0].date,'2026-06-30');
   assert.strictEqual(result.teacherPayroll[0].teacherAmount, 900);
 
   sequence.length = 0;

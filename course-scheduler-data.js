@@ -97,6 +97,7 @@
         id:safeId('payroll',row.id,index),teacherId:clean(row.teacherId),teacherName:clean(row.teacherName),
         studentId:clean(row.studentId),studentName:clean(row.studentName),subject:clean(row.subjectName||row.subject||row.chargeName),
         periodId:clean(row.periodId||row.tuitionPeriodId||row.studentPayment),
+        payoutLabel:clean(row.payoutLabel),expectedPayDate:clean(row.expectedPayDate),payoutBatchMonth:clean(row.payoutBatchMonth),attendanceSignedAt:clean(row.attendanceSignedAt),
         payrollPeriodError:clean(row.payrollPeriodError),planName:clean(row.planName||row.feePlanName||row.chargeName),planSnapshot:clone(row.planSnapshot||{}),
         payrollCalculation:clone(row.payrollCalculation||{}),specialLesson:row.specialLesson===true,
         date:dateKey(row.date||row.occurredAt),occurredAt:clean(row.occurredAt),startTime:clean(row.startTime),endTime:clean(row.endTime),durationMinutes:Number(row.durationMinutes)||0,lessonUnits:Number(row.lessonUnits)||1,
@@ -443,6 +444,7 @@
       teacherAdjustments:normalizeTeacherAdjustments(payload).filter(function(row){return row.date.slice(0,7)===month;}),
       loadedAt:clean(payload.loadedAt)||new Date().toISOString(),
       runId:clean(payload.runId),
+      payout:payload.payout||null,teacherPayoutPayroll:payload.teacherPayoutPayroll,teacherPayoutAdjustments:payload.teacherPayoutAdjustments,paidBatches:payload.paidBatches||[],
       counts:payload.counts||{}
     };
   }

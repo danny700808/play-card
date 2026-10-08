@@ -1,6 +1,6 @@
 {
   "owner": "deploy-payroll",
-  "phase": "backend",
+  "phase": "frontend",
   "version": "20261008-payroll-cutoff-v1",
   "functions": [
     "coursePayrollTransferTaiwan",
@@ -10,5 +10,7 @@
     "coursePortalTeacherData",
     "coursePortalTeacherLateAttendanceTaiwan",
     "coursePortalTeacherLateAttendance"
-  ]
+  ],
+  "backendRun": 37739571594,
+  "backendSha": "757838817fb550cae0860b6e7975c735e7a6a139"
 }

@@ -947,6 +947,7 @@
       return fallback;
     };
     const items = rows.map((row) => ({
+      payoutLabel: row.payoutLabel || '',
       kind: 'lesson',
       date: valueOf(row, ['date','courseDate','lessonDate'], payrollMonth),
       name: valueOf(row, ['studentName','subjectName'], '課堂'),
@@ -982,9 +983,9 @@
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(item);
     });
-    const lessons = [...groups.entries()].map(([date, dayRows]) => `<section class="payroll-day"><h3>${escapeHtml(date)}</h3><table class="payroll-lines"><thead><tr><th scope="col">姓名</th><th scope="col">收費</th><th scope="col">分成</th><th scope="col">所得</th></tr></thead><tbody>${dayRows.map((row) => `<tr><th scope="row">${escapeHtml(row.name)}${row.timeLabel ? `<small style="display:block">${escapeHtml(row.timeLabel)}</small>` : ''}</th><td>${row.collected !== null ? money(row.collected) : '—'}</td><td>${escapeHtml(row.rate)}</td><td class="payroll-income">${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>`).join('');
+    const lessons = [...groups.entries()].map(([date, dayRows]) => `<section class="payroll-day"><h3>${escapeHtml(date)}</h3><table class="payroll-lines"><thead><tr><th scope="col">姓名</th><th scope="col">收費</th><th scope="col">分成</th><th scope="col">所得</th></tr></thead><tbody>${dayRows.map((row) => `<tr><th scope="row">${escapeHtml(row.name)}${row.payoutLabel ? `<small style="display:block">${escapeHtml(row.payoutLabel)}</small>` : ''}${row.timeLabel ? `<small style="display:block">${escapeHtml(row.timeLabel)}</small>` : ''}</th><td>${row.collected !== null ? money(row.collected) : '—'}</td><td>${escapeHtml(row.rate)}</td><td class="payroll-income">${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>`).join('');
     const adjustmentSection = (title, rows, id) => rows.length ? `<section class="payroll-extra" id="${id}" tabindex="-1"><h3>${title}</h3><table><thead><tr><th>日期</th><th>項目／原因</th><th>金額</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.date)}</td><td>${escapeHtml(row.name)}</td><td>${money(row.amount)}</td></tr>`).join('')}</tbody></table></section>` : '';
-    document.getElementById('payrollList').innerHTML = summary + (items.length ? lessons + adjustmentSection('額外獎金', bonusItems, 'payrollBonusDetails') + adjustmentSection('扣款', deductionItems, 'payrollDeductionDetails') : '<p class="muted">這個月份目前沒有薪資資料。</p>');
+    document.getElementById('payrollList').innerHTML = summary + window.YouziPayrollPayout.render(data, data.teacher && data.teacher.id) + (items.length ? lessons + adjustmentSection('額外獎金', bonusItems, 'payrollBonusDetails') + adjustmentSection('扣款', deductionItems, 'payrollDeductionDetails') : '<p class="muted">這個月份目前沒有薪資資料。</p>');
   }
 
   let followupTab = 'irregular';

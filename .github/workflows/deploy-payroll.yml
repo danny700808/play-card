@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -58,6 +60,7 @@ jobs:
             if(!response.ok)throw Error('Cannot verify backend release');
             const run=await response.json();
             if(run.conclusion!=='success'||run.head_sha!==plan.backendSha||run.name!=='Deploy payroll cutoff and notices')throw Error('Payroll backend release not verified');
+            if(execFileSync('git',['diff','--name-only',plan.backendSha,'HEAD','--','functions/'],{encoding:'utf8'}).trim())throw Error('Function code changed after verified backend release');
             execFileSync('firebase',['deploy','--project','youzi-c1b74','--non-interactive','--only','hosting'],{stdio:'inherit'});
           })().catch(e=>{console.error(e.message);process.exitCode=1;});
           NODE
