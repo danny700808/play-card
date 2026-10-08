@@ -5,6 +5,7 @@
  const local=d=>{const date=new Date(d);return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);};
  const stamp=d=>new Date(d).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
  let call,accessCall;
+ S.view="list";S.listStart=new Date();S.listStart.setHours(0,0,0,0);S.days=7;S.refreshVersion=0;S.lastRefresh=0;
  let calendarSession=sessionStorage.getItem("youziCalendarSession")||"";
  async function api(action,data={}){if(!call)throw Error('請稍候再試。');try{return (await call({action,...data,...(calendarSession?{calendarSession}:{})})).data;}catch(e){if(e.code==='functions/unauthenticated')showGate(e.message);throw e;}}
  async function workApi(action,data={}){try{return (await calendarRequest('sharedCalendarApi',{action,...data,calendarSession})).data;}catch(e){if(e.code==='functions/unauthenticated')showGate(e.message);throw e;}}
@@ -12,7 +13,7 @@
  const workLabels={pending:'待處理',in_progress:'處理中',done:'已完成',cancelled:'已取消'};
  function message(msg,error=false){if(error&&/Google.*(?:授權|重新連接|先連接)/.test(msg)){S.googleConnectionError=msg;connectionRender();}$('status').textContent=msg;$('status').hidden=!msg;$('status').classList.toggle('error',error);}
  async function safely(fn,target='status'){try{await fn();}catch(e){if(target==='status')message(e.message,true);else $(target).textContent=e.message;}}
- function range(){const first=new Date(S.month.getFullYear(),S.month.getMonth(),1),offset=(first.getDay()+6)%7;return {start:new Date(first.getFullYear(),first.getMonth(),1-offset).toISOString(),end:new Date(first.getFullYear(),first.getMonth(),43-offset).toISOString()};}
+ function range(){if(S.view==='list'){const end=new Date(S.listStart);end.setDate(end.getDate()+S.days);return {start:S.listStart.toISOString(),end:end.toISOString()};}const first=new Date(S.month.getFullYear(),S.month.getMonth(),1),offset=(first.getDay()+6)%7;return {start:new Date(first.getFullYear(),first.getMonth(),1-offset).toISOString(),end:new Date(first.getFullYear(),first.getMonth(),43-offset).toISOString()};}
  function connectionRender(){
   const problem=S.googleConnectionError||'';
   $('connection').hidden=!problem&&!!S.status.googleConnected;
@@ -27,12 +28,34 @@
  }
  function openSettings(){$('settingsStatus').textContent='';settingsRender();if(!$('settings').open)$('settings').showModal();$('settings').scrollTop=0;}
  async function refresh(){
-  message('正在讀取行程…');S.status=await api('status');S.workStatus=await workApi('status').catch(()=>null);
-  S.googleConnectionError='';S.googleLoadError='';
-  S.calendars=S.status.googleConnected?(await api('calendars').catch(e=>{if(e.code==='functions/unauthenticated')throw e;S.googleLoadError=e.message;return {calendars:[]};})).calendars:[];
-  const result=await api('list',range());let workWarning='';const work=await workApi('list',range()).catch(e=>{if(e.code==='functions/unauthenticated')throw e;workWarning='交辦工作未能載入：'+e.message;return {tasks:[]};});if(!calendarSession)return;S.events=[...result.events,...work.tasks.filter(t=>!t.draft).map(workEvent)];render();if(workWarning)result.warnings=[...(result.warnings||[]),workWarning];
-  const googleWarnings=[S.googleLoadError,...(result.warnings||[])].filter(Boolean);S.googleConnectionError=googleWarnings.find(w=>/Google.*(?:授權|重新連接|先連接)/.test(w))||'';S.googleIncomplete=!!googleWarnings.length;connectionRender();renderDay();
-  message(result.warnings?.length?result.warnings.join('；'):'',!!result.warnings?.length);settingsRender();
+  const version=++S.refreshVersion,session=calendarSession,fullRange=range(),key=JSON.stringify(fullRange);
+  const append=S.appendRange&&S.lastRefresh&&JSON.stringify(S.appendRange)===S.rangeKey&&S.appendRange.start===fullRange.start;
+  const query=append?{start:S.appendRange.end,end:fullRange.end}:fullRange;S.appendRange=null;
+  const current=()=>version===S.refreshVersion&&session===calendarSession&&!!calendarSession;
+  if(S.rangeKey!==key&&!append)S.events=[];S.rangeKey=key;
+  const merge=rows=>[...new Map([...S.events,...rows].map(e=>[e.id,e])).values()];
+  S.loading=true;S.googleIncomplete=true;S.googleConnectionError='';S.googleLoadError='';
+  const warnings=[];let pending=2;
+  message('正在讀取行程…');render();
+  const paint=()=>{if(current()){S.googleIncomplete=pending>0||warnings.length>0;render();}};
+  // Start both event sources immediately; settings must not delay the first events.
+  const privateEvents=api('list',query).then(result=>{if(!current())return;
+   S.events=append?merge(result.events):[...result.events,...S.events.filter(e=>e.source==='shared')];warnings.push(...(result.warnings||[]));pending--;paint();
+  }).catch(e=>{if(current()){warnings.push('私人／Google 行程未能載入：'+e.message);pending--;paint();}throw e;});
+  const sharedEvents=workApi('list',query).then(result=>{if(!current())return;
+   const rows=result.tasks.filter(t=>!t.draft).map(workEvent);S.events=append?merge(rows):[...S.events.filter(e=>e.source!=='shared'),...rows];pending--;paint();
+  }).catch(e=>{if(current()){warnings.push('交辦工作未能載入：'+e.message);pending--;paint();}if(e.code==='functions/unauthenticated')throw e;});
+  const status=api('status').then(async result=>{if(!current())return;S.status=result;
+   if(!result.googleConnected){S.calendars=[];return;}
+   const calendars=await api('calendars');if(current())S.calendars=calendars.calendars;
+  }).catch(e=>{if(current())warnings.push(e.message);if(e.code==='functions/unauthenticated')throw e;});
+  const workStatus=workApi('status').then(result=>{if(current())S.workStatus=result;}).catch(e=>{if(current())S.workStatus=null;if(e.code==='functions/unauthenticated')throw e;});
+  const results=await Promise.allSettled([privateEvents,sharedEvents,status,workStatus]);
+  if(!current())return;
+  S.loading=false;S.lastRefresh=warnings.length?0:Date.now();S.googleIncomplete=warnings.length>0;
+  S.googleConnectionError=warnings.find(w=>/Google.*(?:授權|重新連接|先連接)/.test(w))||'';
+  connectionRender();render();settingsRender();message(warnings.join('；'),!!warnings.length);
+  const failure=results.find(r=>r.status==='rejected');if(failure)throw failure.reason;
  }
  const dayKey=d=>local(d).slice(0,10);
  S.selected=dayKey(new Date());
@@ -41,7 +64,7 @@
  function onDay(e,date){const d=new Date(date+'T00:00:00'),next=new Date(d);next.setDate(next.getDate()+1);const begin=e.allDay?new Date(e.start.slice(0,10)+'T00:00:00'):new Date(e.start);return begin<next&&new Date(e.end)>d;}
  function eventTime(e){return e.allDay?new Date(e.start).toLocaleDateString('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric'})+' 全天':stamp(e.start)+' → '+stamp(e.end);}
  let googlePreviewVersion=0;
- async function showGooglePreview(id){const version=++googlePreviewVersion;$('googlePreview').textContent='正在從 Google 讀取…';$('googleViewer').showModal();try{const result=await api('list',range()),event=result.events.find(e=>e.id===id&&e.source==='google');if(!event)throw Error(result.warnings?.join('；')||'找不到這筆 Google 行程，請同步更新後重試。');if(version!==googlePreviewVersion||!$('googleViewer').open)return;$('googlePreview').innerHTML='<h3>'+esc(event.title)+'</h3><p class="previewTime">'+esc(eventTime(event))+'</p><p>'+esc(event.calendarName||'Google 行事曆')+'</p>'+(event.description?'<p class="googleDescription">'+esc(event.description)+'</p>':'');}catch(e){if(version===googlePreviewVersion)$('googlePreview').textContent=e.message;}}
+ async function showGooglePreview(id){const version=++googlePreviewVersion;$('googlePreview').textContent='正在從 Google 讀取…';$('googleViewer').showModal();try{const cached=S.events.find(e=>e.id===id&&e.source==='google'),result=cached?{events:[cached]}:await api('list',range()),event=result.events.find(e=>e.id===id&&e.source==='google');if(!event)throw Error(result.warnings?.join('；')||'找不到這筆 Google 行程，請同步更新後重試。');if(version!==googlePreviewVersion||!$('googleViewer').open)return;$('googlePreview').innerHTML='<h3>'+esc(event.title)+'</h3><p class="previewTime">'+esc(eventTime(event))+'</p><p>'+esc(event.calendarName||'Google 行事曆')+'</p>'+(event.description?'<p class="googleDescription">'+esc(event.description)+'</p>':'');}catch(e){if(version===googlePreviewVersion)$('googlePreview').textContent=e.message;}}
  $('googleViewer').addEventListener('close',()=>{googlePreviewVersion++;$('googlePreview').replaceChildren();});
  function renderReminderChoices(row){const selected=row?(row.reminderOffsets||[row.reminderMinutes??10]):[60],values=[30,60,120,180,1440,2880,4320],labels={30:'提前30分鐘',60:'提前1小時',120:'提前2小時',180:'提前3小時',1440:'提前1天',2880:'提前2天',4320:'提前3天'};for(const n of selected)if(!values.includes(n)){values.push(n);labels[n]=n===0?'開始時（原設定）':'提前'+n+'分鐘（原設定）';}$('reminderChoices').innerHTML=values.map(n=>'<label class="reminderChoice"><input type="checkbox" value="'+n+'" '+(selected.includes(n)?'checked':'')+'><span>'+labels[n]+'</span></label>').join('');}
  function selectedReminders(){const values=[...$('reminderChoices').querySelectorAll('input:checked')].map(e=>Number(e.value)).sort((a,b)=>a-b);if($('remind').checked&&!values.length)throw Error('請至少選擇一個 LINE 提醒時間。');return values;}
@@ -67,7 +90,7 @@
   const version=++workPreviewVersion;currentWork=null;$('workBody').textContent='正在讀取工作…';$('workMessage').textContent='';$('workProgressControls').hidden=true;if(!$('workViewer').open)$('workViewer').showModal();
   try{const {task}=await workApi('detail',{id});if(version!==workPreviewVersion||!calendarSession||!$('workViewer').open)return;
    if(task.draft)throw Error('這筆工作尚未發佈。');currentWork=task;const row=workEvent(task);
-   if(focusDate){S.month=new Date(task.start);S.selected=dayKey(S.month);await refresh();if(version!==workPreviewVersion||!calendarSession)return;}
+   if(focusDate){S.view='month';S.month=new Date(task.start);S.selected=dayKey(S.month);await refresh();if(version!==workPreviewVersion||!calendarSession)return;}
    S.events=S.events.filter(e=>e.id!==row.id);S.events.push(row);render();
    $('workBody').innerHTML='<h3>'+esc(task.title)+'</h3><p class="previewTime">'+esc(eventTime(row))+'</p><p><strong>'+esc(task.createdBy==='owner'?'我建立的工作':task.assignedTo==='owner'?(task.createdName||'成員')+' 交辦給我':(task.createdName||'成員')+' 建立的交辦')+'</strong></p><p>負責人：'+esc(task.assignedTo==='owner'?'我':task.assignedName)+'</p><p>'+esc(workLabels[task.status]||'待處理')+'</p>'+(task.note?'<p class="googleDescription">'+esc(task.note)+'</p>':'')+'<div class="quickAttachments">'+(task.assets||[]).map(a=>'<button type="button" data-work-asset="'+esc(a.id)+'">'+(a.mime.startsWith('image/')?'▧ 圖片':'▶ 錄音')+' · '+esc(a.name)+'</button>').join('')+'</div>';
    $('workProgress').value=task.status;$('workProgressControls').hidden=false;
@@ -87,8 +110,13 @@
   }
   $('calendar').innerHTML=html;renderDay();
   const todayStart=new Date();todayStart.setHours(0,0,0,0);const currentMonth=y===todayStart.getFullYear()&&m===todayStart.getMonth();
-  const rows=CalendarHours.agendaEvents(S.events,S.month);
-  $('agenda').innerHTML=rows.length?eventRows(rows):'<p>'+ '這個月沒有尚未結束的行程。'+'</p>';
+  const rows=S.view==='list'?S.events.filter(e=>new Date(e.end)>S.listStart&&new Date(e.start)<new Date(range().end)).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start)):CalendarHours.agendaEvents(S.events,S.month);
+  $('monthPanel').hidden=S.view!=='month';$('agenda').hidden=S.view!=='list';$('monthView').setAttribute('aria-pressed',String(S.view==='month'));$('listView').setAttribute('aria-pressed',String(S.view==='list'));
+  $('moreDays').hidden=S.view!=='list'||S.days>=98;$('moreDays').disabled=!!S.loading;
+  $('previous').textContent=S.view==='list'?'‹ 上一週':'‹ 上個月';$('next').textContent=S.view==='list'?'下一週 ›':'下個月 ›';
+  $('previous').setAttribute('aria-label',S.view==='list'?'上一週':'上個月');$('next').setAttribute('aria-label',S.view==='list'?'下一週':'下個月');
+  if(S.view==='list'){const last=new Date(range().end);last.setDate(last.getDate()-1);$('monthTitle').textContent=S.listStart.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})+' — '+last.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'});}
+  $('agenda').innerHTML=rows.length?eventRows(rows):'<p>'+(S.googleIncomplete?'行程仍在讀取或同步未完成，暫時無法確認完整安排。':S.view==='list'?'這段期間沒有安排。':'這個月沒有尚未結束的行程。')+'</p>';
  }
  function cleanup(){S.urls.forEach(URL.revokeObjectURL);S.urls=[];if(S.recorder?.state==='recording')S.recorder.stop();S.stream?.getTracks().forEach(t=>t.stop());clearTimeout(S.recordTimer);S.recorder=null;S.stream=null;}
  function selectedRanges(){
@@ -174,7 +202,7 @@
  },'formStatus');};
  $('archive').onclick=()=>safely(async()=>{await api('archive',{id:S.current.id});$('editor').close();cleanup();await refresh();},'formStatus');
  function settingsRender(){const s=S.status;$('googleStatus').textContent=S.googleConnectionError?'Google 連線需要重新授權，請按下方按鈕。':s.googleConnected?'已連接 '+s.googleEmail:s.googleConfigured?'已設定 Google 串接，請按連接完成帳號授權。':'Google 串接程式已就緒，尚需完成下方的首次 OAuth 設定。';$('connectGoogle').textContent=s.googleConnected?'重新授權 Google':'連接 Google 行事曆';$('disconnectGoogle').hidden=!s.googleConnected;$('callback').value=s.callback||'';$('oauthSetup').open=!s.googleConfigured;
-  $('calendarChoices').innerHTML=S.calendars.map(c=>'<label class="check"><input type="checkbox" value="'+esc(c.id)+'" '+(s.calendarIds.includes(c.id)?'checked':'')+'>'+esc(c.summary)+' · '+(['owner','writer'].includes(c.accessRole)?'可編輯':'唯讀')+'</label>').join('');$('saveCalendars').hidden=!s.googleConnected;
+  $('calendarChoices').innerHTML=S.calendars.map(c=>'<label class="check"><input type="checkbox" value="'+esc(c.id)+'" '+((s.calendarIds||[]).includes(c.id)?'checked':'')+'>'+esc(c.summary)+' · '+(['owner','writer'].includes(c.accessRole)?'可編輯':'唯讀')+'</label>').join('');$('saveCalendars').hidden=!s.googleConnected;
   $('lineTarget').innerHTML=s.targets?.length?s.targets.map(t=>'<option value="'+esc(t.key)+'">'+esc(t.name)+' ('+esc(t.masked)+')</option>').join(''):'<option value="">尚未找到自己的 LINE 綁定</option>';if(s.targetKey)$('lineTarget').value=s.targetKey;$('lineEnabled').checked=!!s.lineEnabled;
   $('lineStatus').textContent=s.lastReminderError||(!s.lineConfigured?'官方 LINE 發送設定尚未完成。':s.lastSentAt?'上次通知已送交 LINE：'+stamp(s.lastSentAt):'尚未發送提醒。測試按鈕會實際傳送一則訊息。');
  }
@@ -188,19 +216,21 @@
  document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{if(S.saving)return;$(b.dataset.close).close();if(b.dataset.close==='editor')cleanup();});$('editor').addEventListener('cancel',e=>{if(S.saving)e.preventDefault();else cleanup();});
  for(const id of ['calendar','agenda','dayEvents'])$(id).onclick=e=>{const b=e.target.closest('button');if(b?.dataset.google){showGooglePreview(b.dataset.google);return;}if(b?.dataset.attachment){showAttachment(b.dataset.owner,b.dataset.attachment);return;}if(b?.dataset.event){const row=S.events.find(x=>x.id===b.dataset.event);if(row?.source==='shared')safely(()=>showWork(row.taskId));else showEditor(row);}if(b?.dataset.day){S.selected=b.dataset.day;render();}};
  $('newButton').onclick=()=>showEditor(null,S.selected);$('newDay').onclick=()=>showEditor(null,S.selected);
- for(const [id,n] of [['previous',-1],['next',1]])$(id).onclick=()=>safely(async()=>{S.month=new Date(S.month.getFullYear(),S.month.getMonth()+n,1);S.selected=dayKey(S.month);await refresh();});
- $('today').onclick=()=>safely(async()=>{S.month=new Date();S.selected=dayKey(S.month);await refresh();});$('refresh').onclick=()=>safely(refresh);
- $('monthView').onclick=()=>{$('monthPanel').hidden=false;$('agenda').hidden=true;$('monthView').setAttribute('aria-pressed','true');$('listView').setAttribute('aria-pressed','false');};$('listView').onclick=()=>{render();$('monthPanel').hidden=true;$('agenda').hidden=false;$('monthView').setAttribute('aria-pressed','false');$('listView').setAttribute('aria-pressed','true');};
+ for(const [id,n] of [['previous',-1],['next',1]])$(id).onclick=()=>safely(async()=>{if(S.view==='list'){S.listStart.setDate(S.listStart.getDate()+n*7);S.days=7;S.selected=dayKey(S.listStart);}else{S.month=new Date(S.month.getFullYear(),S.month.getMonth()+n,1);S.selected=dayKey(S.month);}await refresh();});
+ $('today').onclick=()=>safely(async()=>{S.month=new Date();S.selected=dayKey(S.month);S.listStart=new Date();S.listStart.setHours(0,0,0,0);S.days=7;await refresh();});$('refresh').onclick=()=>safely(refresh);
+ $('monthView').onclick=()=>safely(async()=>{if(S.view==='month')return;S.view='month';S.month=new Date(S.selected+'T12:00:00');await refresh();});
+ $('listView').onclick=()=>safely(async()=>{if(S.view==='list')return;S.view='list';S.listStart=new Date(S.selected+'T00:00:00');S.days=7;await refresh();});
+ $('moreDays').onclick=()=>safely(async()=>{if(S.loading)return;S.appendRange=range();S.days=Math.min(98,S.days+7);await refresh();});
  function showGate(msg='請用 Face ID 或專用密碼進入。'){
-  calendarSession='';sessionStorage.removeItem('youziCalendarSession');$('calendarWorkspace').hidden=true;$('calendarGate').hidden=false;$('settingsButton').hidden=true;$('editor').close();$('settings').close();$('googleViewer').close();$('workViewer').close();workPreviewVersion++;$('workBody').replaceChildren();googlePreviewVersion++;$('googlePreview').replaceChildren();$('attachmentViewer').close();closeAttachment();cleanup();S.events=[];$('calendar').innerHTML='';$('agenda').innerHTML='';$('dayEvents').innerHTML='';$('loginMessage').textContent=msg;
+  S.refreshVersion++;S.loading=false;S.lastRefresh=0;S.rangeKey='';S.status={};S.calendars=[];S.workStatus=null;calendarSession='';sessionStorage.removeItem('youziCalendarSession');$('calendarWorkspace').hidden=true;$('calendarGate').hidden=false;$('settingsButton').hidden=true;$('editor').close();$('settings').close();$('googleViewer').close();$('workViewer').close();workPreviewVersion++;$('workBody').replaceChildren();googlePreviewVersion++;$('googlePreview').replaceChildren();$('attachmentViewer').close();closeAttachment();cleanup();S.events=[];$('calendar').innerHTML='';$('agenda').innerHTML='';$('dayEvents').innerHTML='';$('loginMessage').textContent=msg;
  }
  async function access(action,data={}){if(!accessCall)throw Error('登入服務尚在載入，請稍後再試。');return (await accessCall({action,...data,...(calendarSession?{calendarSession}:{})})).data;}
  async function openCalendar(result){
   if(result?.token){calendarSession=result.token;sessionStorage.setItem('youziCalendarSession',calendarSession);}
-  const entry=await access('entryOptions');$('autoFace').checked=entry.autoFace;
+  const sharedParams=new URLSearchParams(location.search);if(sharedParams.get('shared')==='1'&&!sharedParams.get('task')){location.replace('shared-calendar.html?owner=1');return;}
   syncSharedDate();$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;await safely(refresh);if(!calendarSession)return;$('calendarGate').hidden=true;$('calendarWorkspace').hidden=false;$('settingsButton').hidden=false;$('newButton').disabled=false;$('newDay').disabled=false;
   if(location.hash==='#google')openSettings();
-  const sharedParams=new URLSearchParams(location.search);if(sharedParams.get('task')){await showWork(sharedParams.get('task'),true);return;}if(sharedParams.get('shared')==='1'){location.replace('shared-calendar.html?owner=1'+(sharedParams.get('task')?'&task='+encodeURIComponent(sharedParams.get('task')):''));return;}
+  if(sharedParams.get('task')){await showWork(sharedParams.get('task'),true);return;}if(sharedParams.get('shared')==='1'){location.replace('shared-calendar.html?owner=1'+(sharedParams.get('task')?'&task='+encodeURIComponent(sharedParams.get('task')):''));return;}
   const id=new URLSearchParams(location.search).get('event');if(id){let row=S.events.find(e=>e.id===id);if(!row)row=(await api('detail',{id})).event;if(row)showEditor(row);}
  }
  async function loginTask(fn){$('faceLogin').disabled=true;$('passwordLogin').disabled=true;$('loginMessage').textContent='正在驗證…';try{await fn();}catch(e){$('loginMessage').textContent=e.name==='NotAllowedError'?'尚未完成 Face ID，可重試或改用專用密碼。':e.message;$('passwordFallback').open=true;}finally{$('faceLogin').disabled=false;$('passwordLogin').disabled=false;}}
@@ -217,8 +247,8 @@
  }catch(e){$('settingsStatus').textContent=e.name==='NotAllowedError'?'尚未完成手機驗證，仍可使用專用密碼。':e.message;}finally{b.disabled=false;}};
  $('lockCalendar').onclick=async()=>{try{await access('logout');showGate();}catch(e){$('settingsStatus').textContent='鎖定未完成，請重試。'+e.message;}};
  let lastChange=0,returnRefresh=false;
- function syncSharedDate(){const change=SharedCalendarJobs.recentChange(localStorage,lastChange);if(change){lastChange=change.at;S.selected=change.day;S.month=new Date(change.day+'T12:00:00');$('monthPanel').hidden=false;$('agenda').hidden=true;$('monthView').setAttribute('aria-pressed','true');$('listView').setAttribute('aria-pressed','false');}}
- async function refreshOnReturn(){if(!calendarSession||$('calendarWorkspace').hidden||document.hidden||S.saving||$('editor').open||returnRefresh)return;returnRefresh=true;try{syncSharedDate();await refresh();}catch(e){message(e.message,true);}finally{returnRefresh=false;}}
+ function syncSharedDate(){const change=SharedCalendarJobs.recentChange(localStorage,lastChange);if(change){lastChange=change.at;S.selected=change.day;S.month=new Date(change.day+'T12:00:00');S.view='month';S.lastRefresh=0;$('monthPanel').hidden=false;$('agenda').hidden=true;$('monthView').setAttribute('aria-pressed','true');$('listView').setAttribute('aria-pressed','false');}}
+ async function refreshOnReturn(){if(!calendarSession||$('calendarWorkspace').hidden||document.hidden||S.saving||$('editor').open||returnRefresh||S.loading)return;returnRefresh=true;try{syncSharedDate();if(Date.now()-S.lastRefresh<60000)return;await refresh();}catch(e){message(e.message,true);}finally{returnRefresh=false;}}
  window.addEventListener('focus',refreshOnReturn);document.addEventListener('visibilitychange',refreshOnReturn);window.addEventListener('storage',e=>{if(e.key===SharedCalendarJobs.changeKey)refreshOnReturn();});
  // Dedicated sessions must not carry the main system's Firebase Authorization header.
  async function calendarRequest(endpoint,data){
@@ -230,8 +260,7 @@
  // Every page opening starts locked, including reloads with an old session.
  const previousSession=calendarSession;showGate('正在準備登入…');
  loginTask(async()=>{
-  if(previousSession)await accessCall({action:'logout',calendarSession:previousSession});
-  const entry=await access('entryOptions');
+  const [,entry]=await Promise.all([previousSession?accessCall({action:'logout',calendarSession:previousSession}):Promise.resolve(),access('entryOptions')]);$('autoFace').checked=entry.autoFace;
   if(entry.autoFace&&entry.hasPasskey)await faceAuthenticate();
   else {$('loginMessage').textContent=entry.hasPasskey?'請用 Face ID 或專用密碼進入。':'第一次使用，請先用專用密碼進入，再啟用 Face ID。';if(!entry.hasPasskey)$('passwordFallback').open=true;}
  });
