@@ -40,7 +40,11 @@ async function main() {
   report(JSON.stringify({kind:'totals',payrollRows:payroll.length,mirrorRows:mirror.length,nativeRows:native.length,attendedCalendar:events.filter(e=>e.status==='attended').length,missingSignedCalendar:missing.length}));
   for(const date of [...new Set(missing.map(a.eventDate))].sort()) {
     const rows=missing.filter(p=>a.eventDate(p)===date);
-    report(JSON.stringify({kind:'missing',date,count:rows.length,native:rows.filter(p=>origin(p)==='native').length,mirror:rows.filter(p=>origin(p)==='mirror').length,scheduledMatches:rows.filter(p=>candidates(p).some(e=>e.status==='scheduled')).length,noEvent:rows.filter(p=>!candidates(p).length).length}));
+    report(JSON.stringify({kind:'missing',date,count:rows.length,native:rows.filter(p=>origin(p)==='native').length,mirror:rows.filter(p=>origin(p)==='mirror').length,scheduledMatches:rows.filter(p=>candidates(p).some(e=>e.status==='scheduled')).length,noEvent:rows.filter(p=>!candidates(p).length).length,
+      linkedAttendance:rows.filter(p=>attendance.some(r=>a.sourceId(r)===a.sourceId(p))).length,
+      missingCourse:rows.filter(p=>!a.teacherPayrollCourseId(p)).length,
+      matchingCourse:rows.filter(p=>a.teacherPayrollCourseId(p)&&candidates(p).some(e=>[e.fixedCourseId,e.sourceId,e.id].includes(a.teacherPayrollCourseId(p)))).length,
+      matchingMinute:rows.filter(p=>candidates(p).some(e=>a.teacherPayrollMinute(e)===a.teacherPayrollMinute(p))).length}));
   }
   const groups = new Map();
   payroll.forEach(p=>{
@@ -50,7 +54,10 @@ async function main() {
   });
   for(const rows of groups.values()) if(rows.length>1) {
     const [x,y]=rows;
-    report(JSON.stringify({kind:'multipleSameDay',date:a.eventDate(x),rows:rows.length,origins:rows.map(origin),calendarEvents:candidates(x).length,signedCalendarEvents:candidates(x).filter(e=>e.status==='attended').length,sameMinute:a.teacherPayrollMinute(x)===a.teacherPayrollMinute(y),missingMinute:rows.some(p=>a.teacherPayrollMinute(p)==null),sameCourse:a.teacherPayrollCourseId(x)===a.teacherPayrollCourseId(y),missingCourse:rows.some(p=>!a.teacherPayrollCourseId(p)),sameAmount:x.teacherAmount===y.teacherAmount}));
+    report(JSON.stringify({kind:'multipleSameDay',date:a.eventDate(x),rows:rows.length,origins:rows.map(origin),calendarEvents:candidates(x).length,signedCalendarEvents:candidates(x).filter(e=>e.status==='attended').length,sameMinute:a.teacherPayrollMinute(x)===a.teacherPayrollMinute(y),missingMinute:rows.some(p=>a.teacherPayrollMinute(p)==null),sameCourse:a.teacherPayrollCourseId(x)===a.teacherPayrollCourseId(y),missingCourse:rows.some(p=>!a.teacherPayrollCourseId(p)),sameAmount:x.teacherAmount===y.teacherAmount,
+      linkedAttendance:rows.map(p=>attendance.some(r=>a.sourceId(r)===a.sourceId(p))),
+      samePeriod:!!x.periodId&&x.periodId===y.periodId,
+      mirrorNoon:rows.filter(p=>origin(p)==='mirror').every(p=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit'}).format(new Date(a.teacherPayrollMinute(p)*60000))==='12:00')}));
   }
 }
 a.withPortalReads(main)().catch(()=>{report('Parity audit failed; no record values logged.');process.exitCode=1;});
