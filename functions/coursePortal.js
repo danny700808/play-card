@@ -7957,7 +7957,7 @@ async function courseLessonHistory(data) {
   }).filter(row => session.role !== 'teacher' || row.teacherId === session.teacherId);
   const lessons = allAttendance.flatMap(row => attendanceAllocations(row).map(allocation => ({...row, ...allocation}))).filter(row => eventDate(row) && eventDate(row) <= today).map(row => ({
     id: sourceId(row), periodId: (periods.find(period => period.id === clean(row.periodId || row.studentPayment) || period.id.replace(/^period_/, '') === clean(row.periodId || row.studentPayment)) || {}).id || clean(row.periodId || row.studentPayment), date: eventDate(row), startTime: eventStart(row),
-    subjectId: eventSubjectId(row), teacherId: eventTeacherId(row), status: normalizeScheduleStatus(row.status || row.type), late: row.late === true, attendanceRecordedAt: taipeiTimestamp(row.attendanceRecordedAtText || (row.late === true ? row.createdAt || row.createdAtText : '')),
+    subjectId: eventSubjectId(row), teacherId: eventTeacherId(row), status: normalizeScheduleStatus(row.status || row.type), late: row.late === true, attendanceRecordedAt: row.late === true ? taipeiTimestamp(row.attendanceRecordedAtText || row.createdAt || row.createdAtText) : '',
     lessonUnits: attendanceLessonUnits(row), durationMinutes: row.durationMinutes || 60,
     deducted: row.deducted !== false && !['leave','cancelled'].includes(normalizeScheduleStatus(row.status || row.type))
   }));
@@ -8264,7 +8264,7 @@ async function studentPortalData(data) {
           endTime: eventEnd(row) || eventEnd(course),
           status: clean(row.status || row.type),
           source: clean(row.source),
-          late: row.late === true, attendanceRecordedAt: taipeiTimestamp(row.attendanceRecordedAtText || (row.late === true ? row.createdAt || row.createdAtText : '')),
+          late: row.late === true, attendanceRecordedAt: row.late === true ? taipeiTimestamp(row.attendanceRecordedAtText || row.createdAt || row.createdAtText) : '',
           lateFeeCharged: row.lateFeeCharged === true,
           originalLessonDate: dateKey(row.originalLessonDate),
           attendanceRecordedAtText: clean(row.attendanceRecordedAtText || row.createdAtText),
@@ -10113,6 +10113,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
       active: true,
       status: 'attended',
       source: late ? 'teacher-late-attendance' : 'teacher-attendance',
+      attendanceOrigin: managerSession ? 'manager' : 'teacher',
       teacherId: session.teacherId,
       studentId: row.studentId,
       studentIds: event.studentIds || [],
@@ -10162,6 +10163,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
       active: true,
       status: 'attended',
       source: late ? 'teacher-late-attendance' : 'teacher-attendance',
+      attendanceOrigin: managerSession ? 'manager' : 'teacher',
       teacherId: session.teacherId,
       studentIds: event.studentIds || [],
       studentId: clean((event.studentIds || [])[0]),

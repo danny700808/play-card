@@ -27,7 +27,7 @@ function schedule(row) {
   const nominalMonth = shiftMonth(lessonMonth, 1);
   const native = ['teacher-late-attendance','teacher-attendance'].includes(row.source);
   const timestamp = native || row.type === 'late_attendance_fee' ? taipeiTimestamp(row.attendanceSignedAt || row.createdAt || row.createdAtText) : '';
-  const late = row.source === 'teacher-late-attendance' || row.type === 'late_attendance_fee' || (native && timestamp.slice(0,10) > lessonDate);
+  const late = row.attendanceOrigin !== 'manager' && (row.source === 'teacher-late-attendance' || row.type === 'late_attendance_fee');
   const signedAt = late ? timestamp : '';
   if (late && !signedAt) return {payoutNeedsReview: true, payoutLabel: '補簽時間待核對，尚未列入發放'};
   let paymentMonth = nominalMonth;

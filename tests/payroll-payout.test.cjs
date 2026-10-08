@@ -49,3 +49,11 @@ test('teacher payout display escapes personal text and distinguishes expected fr
  batch.paidBatches=[{teacherId:'t',transferDate:'2026-10-10',amount:370}];assert.match(view.render(batch,'t'),/已確認匯款：2026-10-10/);
 });
 module.exports={fakeDb};
+test('manager correction and normal attendance never become late solely because of creation date',()=>{
+ for(const source of ['teacher-attendance','manager-attendance']){
+  const row=schedule({date:'2026-09-13',source,createdAtText:'2026/10/20 12:00:00'});
+  assert.equal(row.attendanceSignedAt,'');assert.equal(row.expectedPayDate,'2026-10-10');assert.equal(row.payoutDeferred,false);
+ }
+ const teacher=schedule({date:'2026-09-13',source:'teacher-late-attendance',createdAtText:'2026/10/20 12:00:00'});
+ assert.equal(teacher.expectedPayDate,'2026-11-10');assert(teacher.attendanceSignedAt);
+});

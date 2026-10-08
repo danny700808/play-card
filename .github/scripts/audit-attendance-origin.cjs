@@ -14,7 +14,9 @@ async function main(){
  const ids=[...new Set(targets.flatMap(a.teacherPayrollStudentIds))];
  if(ids.length!==1)throw Error('target identity guard');
  const [students,records,mirror,changes]=await Promise.all([a.mirrorProfilesByIds('students',ids),a.portalAttendanceForStudents(ids),a.mirrorRowsByDateRange('attendance','2026-09-01','2026-09-30'),a.db.collection('coursePortalScheduleChanges').where('sourceDate','>=','2026-09-01').where('sourceDate','<=','2026-09-30').get()]);
- privateReport({students:students.map(r=>({id:a.sourceId(r),name:r.name})),payroll:targets,records,mirror:mirror.filter(r=>ids.includes(r.studentId)),changes:changes.docs.map(d=>({id:d.id,...d.data()})).filter(r=>ids.some(id=>(r.event?.studentIds||[]).includes(id)))});
+ const legacyPayroll=(await a.mirrorRowsByDateRange('teacherPayroll','2026-09-01','2026-09-30')).filter(r=>a.teacherPayrollStudentIds(r).some(id=>ids.includes(id)));
+ const feeSnaps=await Promise.all(targets.map(r=>a.db.collection('coursePortalTeacherAdjustments').doc('attendance-fee-'+r.operationId).get()));
+ privateReport({legacyPayroll,fees:feeSnaps.filter(d=>d.exists).map(d=>d.data()),students:students.map(r=>({id:a.sourceId(r),name:r.name})),payroll:targets,records,mirror:mirror.filter(r=>ids.includes(r.studentId)),changes:changes.docs.map(d=>({id:d.id,...d.data()})).filter(r=>ids.some(id=>(r.event?.studentIds||[]).includes(id)))});
  report('Private attendance audit complete; no writes.');
 }
 a.withPortalReads(main)().catch(()=>{report('Private attendance audit failed.');process.exitCode=1;});
