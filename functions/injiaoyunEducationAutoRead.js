@@ -183,7 +183,8 @@ function registerInjiaoyunEducationAutoRead(exportsObject) {
   };
   exportsObject.coursePayrollTransferTaiwan=onCall({region:'asia-east1',timeoutSeconds:180,memory:'512MiB',invoker:'public',cors:[...ALLOWED_ORIGINS,LOCAL_ORIGIN]},async request=>{
     assertAllowedRead(request);
-    const {teacherPortalProfileId}=require('./coursePortal');
+    const {teacherPortalProfileId,teacherPayrollMonthData}=require('./coursePortal');
+    if (['notice-preview','notice-send'].includes(clean(request.data&&request.data.action))) return require('./payrollNotices').createPayrollNotices({db,loadPayroll:teacherPayrollMonthData})(request.data,clean(request.auth&&request.auth.uid));
     return require('./payrollTransfer').createPayrollTransfer({db,profileId:teacherPortalProfileId})(request.data||{},clean(request.auth&&request.auth.uid));
   });
   const {withOperationTiming}=require('./courseOperationTiming');

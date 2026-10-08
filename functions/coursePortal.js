@@ -1,3 +1,5 @@
+const {withSchedule, batchRows, shiftMonth} = require('./payrollSchedule');
+const { feeDescription, enrichLateAttendanceFees } = require('./payrollAdjustmentDetails');
 const storageRouting = require('./storageRouting');
 const { bookingPage } = require('./roomBookingPages');
 const { recipientFields, notificationRecipientKey } = require('./portalNotificationPolicy');
@@ -5336,7 +5338,8 @@ async function teacherPortalData(data) {
   if (data.payrollOnly === true) {
     const monthly = await teacherPayrollMonthData(month, session.teacherId);
     return {ok:true, payroll:monthly.teacherPayroll.filter(row => eventTeacherId(row) === session.teacherId),
-      adjustments:monthly.teacherAdjustments.filter(row => eventTeacherId(row) === session.teacherId)};
+      adjustments:monthly.teacherAdjustments.filter(row => eventTeacherId(row) === session.teacherId),
+      payout:monthly.payout, payoutPayroll:monthly.teacherPayoutPayroll, payoutAdjustments:monthly.teacherPayoutAdjustments, paidBatches:monthly.paidBatches};
   }
   const [bundle, roomSettingsSnapshot, attendanceCancellationSnapshot] = await Promise.all([
     scheduleBundle(start, end, session.teacherId, {teacherHome:true}),
@@ -5408,10 +5411,11 @@ async function teacherPortalData(data) {
       approvedCancellations.concat(portalPayroll.filter((row) => row.active === false))
     )
       .filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
-    result.payroll = await refreshPayrollPeriodLinks(result.payroll);
+    result.payroll = (await refreshPayrollPeriodLinks(result.payroll)).map(withSchedule);
     result.adjustments = mergeTeacherAdjustmentRows(adjustments, portalAdjustments)
       .filter((row) => clean(row.month || row.payrollMonth || eventDate(row).slice(0, 7)) === month);
   }
+  if (includePayroll) result.adjustments = (await enrichLateAttendanceFees(db, result.adjustments)).map(withSchedule);
   return result;
 }
 
@@ -7741,17 +7745,39 @@ async function teacherPayrollMonthData(monthValue, teacherId = '') {
     portalRowsByDateRange(ATTENDANCE_CANCELLATIONS, bounds.startDate, bounds.endDate, teacherId)
   ]);
   const approvedCancellations = cancellationRows.filter((row) => clean(row.status) === 'approved');
-  const teacherPayroll = await refreshPayrollPeriodLinks(mergeTeacherPayrollRows(
+  let teacherPayroll = await refreshPayrollPeriodLinks(mergeTeacherPayrollRows(
     enrichTeacherPayrollRows(mirrorPayroll, mirrorAttendance),
     portalPayroll,
     approvedCancellations.concat(portalPayroll.filter((row) => row.active === false))
   ).filter((row) => eventDate(row || {}).slice(0, 7) === bounds.month));
-  const teacherAdjustments = mergeTeacherAdjustmentRows(
+  let teacherAdjustments = mergeTeacherAdjustmentRows(
     mirrorAdjustments,
     portalAdjustments
   ).filter((row) => eventDate(row || {}).slice(0, 7) === bounds.month);
+  teacherPayroll = teacherPayroll.map(withSchedule);
+  teacherAdjustments = (await enrichLateAttendanceFees(db, teacherAdjustments)).map(withSchedule);
+  // Include older lessons supplemented into this batch, without changing their teaching date.
+  const lateQuery = db.collection(ATTENDANCE_PAYROLL).where('source', '==', 'teacher-late-attendance');
+  const feeQuery = db.collection('coursePortalTeacherAdjustments').where('type', '==', 'late_attendance_fee');
+  const nativeQuery = db.collection(ATTENDANCE_PAYROLL).where('source', '==', 'teacher-attendance');
+  const [lateSnap, feeSnap, paidSnap, nativeSnap] = await Promise.all([
+    (teacherId ? lateQuery.where('teacherId', '==', teacherId) : lateQuery).get(),
+    (teacherId ? feeQuery.where('teacherId', '==', teacherId) : feeQuery).get(),
+    db.collection('coursePayrollPaidBatches').where('batchMonth', '==', bounds.month).get(),
+    (teacherId ? nativeQuery.where('teacherId', '==', teacherId) : nativeQuery).get()
+  ]);
+  const lateRows = lateSnap.docs.concat(nativeSnap.docs).map(doc => withSchedule(Object.assign({id:doc.id}, jsonValue(doc.data()) || {})))
+    .filter(row => eventDate(row).slice(0,7) < bounds.month && row.payoutBatchMonth === bounds.month && row.active !== false && !['cancelled','superseded'].includes(row.status));
+  const fees = (await enrichLateAttendanceFees(db, feeSnap.docs.map(doc => Object.assign({id:doc.id},jsonValue(doc.data()) || {})))).map(withSchedule);
+  const unique = rows => [...new Map(rows.map(row => [sourceId(row),row])).values()];
+  const teacherPayoutPayroll = batchRows(unique(teacherPayroll.concat((await refreshPayrollPeriodLinks(lateRows)).map(withSchedule))),bounds.month);
+  const teacherPayoutAdjustments = batchRows(unique(teacherAdjustments.filter(row=>row.type!=='late_attendance_fee').concat(fees)),bounds.month);
+  const paidBatches = paidSnap.docs.map(doc=>jsonValue(doc.data())).filter(row=>!teacherId||row.teacherId===teacherId)
+    .map(row=>({teacherId:row.teacherId,amount:row.amount,transferDate:row.transferDate,batchMonth:row.batchMonth}));
   return {
     ok: true,
+    payout: {batchMonth:bounds.month, expectedPayDate:shiftMonth(bounds.month,1)+'-10', cutoffAt:shiftMonth(bounds.month,1)+'-10 00:00', timeZone:'Asia/Taipei'},
+    teacherPayoutPayroll, teacherPayoutAdjustments, paidBatches,
     scope: 'teacher-payroll-month',
     month: bounds.month,
     teacherPayroll,
@@ -10201,7 +10227,11 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
           date: currentTaipeiDay(),
           type: 'late_attendance_fee',
           amount: -ATTENDANCE_ADMIN_FEE,
-          note: `補簽到行政處理費 NT$${ATTENDANCE_ADMIN_FEE}`,
+          note: feeDescription((event.studentNames || []).join('、'), sourceDate, ATTENDANCE_ADMIN_FEE),
+          studentName: clean((event.studentNames || []).join('、')),
+          studentIds: event.studentIds || [],
+          lessonDate: sourceDate,
+          attendanceOperationId: operationId,
           source: 'teacher-portal',
           createdAt: FieldValue.serverTimestamp(),
           createdAtText: nowText()
@@ -10533,7 +10563,7 @@ async function adminWorkspaceSlice(data) {
     timeOperationStage('adjustments_read',()=>Promise.all([...new Map(payrollScopes.map(scope=>[scope.teacherId+'|'+scope.date.slice(0,7),{teacherId:scope.teacherId,month:scope.date.slice(0,7)}])).values()].map(async scope=>{
       const bounds=teacherPayrollMonthBounds(scope.month);
       const [mirror,portal]=await Promise.all([mirrorRowsByDateRange('teacherAdjustments',bounds.startDate,bounds.endDate),portalRowsByDateRange('coursePortalTeacherAdjustments',bounds.startDate,bounds.endDate)]);
-      return {scope,rows:mergeTeacherAdjustmentRows(mirror,portal).filter(row=>eventTeacherId(row)===scope.teacherId)};
+      return {scope,rows:await enrichLateAttendanceFees(db,mergeTeacherAdjustmentRows(mirror,portal).filter(row=>eventTeacherId(row)===scope.teacherId))};
     }))),
     data.followup===true ? Promise.all([db.collection('coursePortalIrregularCourses').where('enabled','==',true).get(),db.collection('coursePortalStudentSuspensions').where('receivableTrackingVersion','==','teacher-stop-v1').get()]).then(([modes,stops])=>({irregularCourses:modes.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id})),stoppedCourseReceivables:stops.docs.map(doc=>({...jsonValue(doc.data()),id:doc.id}))})) : null
   ]);
@@ -13227,13 +13257,14 @@ async function appendCoursePortalData(payload) {
     portalPayrollRows,
     approvedCancellations.concat(portalPayrollRows.filter((row) => row.active === false))
   );
-  payload.teacherPayroll = await refreshPayrollPeriodLinks(payload.teacherPayroll);
+  payload.teacherPayroll = (await refreshPayrollPeriodLinks(payload.teacherPayroll)).map(withSchedule);
   payload.teacherAdjustments = mergeTeacherAdjustmentRows(
     Array.isArray(payload.teacherAdjustments) ? payload.teacherAdjustments : [],
     portalAdjustmentsSnapshot.docs.map((doc) =>
       Object.assign({ __id: doc.id }, jsonValue(doc.data()) || {})
     )
   );
+  payload.teacherAdjustments = (await enrichLateAttendanceFees(db, payload.teacherAdjustments)).map(withSchedule);
   if (Array.isArray(payload.rooms)) {
     payload.rooms = payload.rooms.map((room) => {
       const setting = roomSettingsMap.get(sourceId(room));

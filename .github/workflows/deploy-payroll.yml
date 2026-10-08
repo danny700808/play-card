@@ -1,0 +1,66 @@
+name: Deploy payroll cutoff and notices
+on:
+  push:
+    branches: [main]
+    paths: ['.github/payroll-rollout.json']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: course-payroll-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci --prefix functions
+      - name: Verify payroll cutoff, notices and existing payroll behavior
+        run: |
+          node --check functions/coursePortal.js
+          node --check course-scheduler.js
+          node --check operations-course-inline-runtime.js
+          node --test tests/payroll-payout.test.cjs tests/payroll-notices.test.cjs tests/payroll-transfer-server.test.cjs tests/course-payroll-adjustment-auth.test.cjs tests/payroll-period-link.test.cjs
+          node tests/course-portal.test.js
+      - run: npm install --global firebase-tools@15.24.0
+      - name: Prepare existing deployment credentials and runtime environment
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          if(!process.env.SERVICE_ACCOUNT) throw Error('Missing deployment credentials');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/payroll-service-account.json',process.env.SERVICE_ACCOUNT,{mode:0o600});
+          const rows={LINE_CHANNEL_ACCESS_TOKEN:process.env.LINE_CHANNEL_ACCESS_TOKEN,GMAIL_USER:process.env.GMAIL_USER,GMAIL_APP_PASSWORD:process.env.GMAIL_APP_PASSWORD,EMAIL_FROM:process.env.EMAIL_FROM,PUBLIC_WEB_BASE_URL:'https://danny700808.github.io/play-card/',LINE_LOGIN_CALLBACK_URL:'https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback'};
+          fs.writeFileSync('functions/.env',Object.entries(rows).map(([k,v])=>k+'='+JSON.stringify(String(v||''))).join('\n')+'\n',{mode:0o600});
+          NODE
+      - name: Deploy and verify the bounded payroll release
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/payroll-service-account.json
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),{execFileSync}=require('child_process');
+          (async()=>{
+            const plan=require('./.github/payroll-rollout.json');
+            if(plan.phase==='backend'){execFileSync('node',['.github/scripts/deploy-payroll.cjs'],{stdio:'inherit'});return;}
+            if(plan.phase!=='frontend')throw Error('Invalid release phase');
+            const response=await fetch('https://api.github.com/repos/danny700808/play-card/actions/runs/'+plan.backendRun,{headers:{Authorization:'Bearer '+process.env.GH_TOKEN}});
+            if(!response.ok)throw Error('Cannot verify backend release');
+            const run=await response.json();
+            if(run.conclusion!=='success'||run.head_sha!==plan.backendSha||run.name!=='Deploy payroll cutoff and notices')throw Error('Payroll backend release not verified');
+            execFileSync('firebase',['deploy','--project','youzi-c1b74','--non-interactive','--only','hosting'],{stdio:'inherit'});
+          })().catch(e=>{console.error(e.message);process.exitCode=1;});
+          NODE
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/payroll-service-account.json" functions/.env

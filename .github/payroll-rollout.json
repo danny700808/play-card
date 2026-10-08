@@ -1,0 +1,14 @@
+{
+  "owner": "deploy-payroll",
+  "phase": "backend",
+  "version": "20261008-payroll-cutoff-v1",
+  "functions": [
+    "coursePayrollTransferTaiwan",
+    "loadInjiaoyunEducationMirrorAutoTaiwan",
+    "loadInjiaoyunEducationMirrorAuto",
+    "coursePortalTeacherDataTaiwan",
+    "coursePortalTeacherData",
+    "coursePortalTeacherLateAttendanceTaiwan",
+    "coursePortalTeacherLateAttendance"
+  ]
+}
