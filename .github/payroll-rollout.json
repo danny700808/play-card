@@ -1,10 +1,10 @@
 {
   "owner": "deploy-payroll",
-  "phase": "backend",
-  "version": "20261008-payroll-dual-notices-v3",
+  "phase": "frontend",
+  "version": "20261008-payroll-dual-v3-frontend",
   "functions": [
     "coursePayrollTransferTaiwan"
   ],
-  "backendRun": 37739571594,
-  "backendSha": "757838817fb550cae0860b6e7975c735e7a6a139"
+  "backendRun": 37742628528,
+  "backendSha": "bb8f52942f5643e6f30ff8af30eb5ffaea0a6fef"
 }

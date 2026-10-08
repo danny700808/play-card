@@ -4,8 +4,8 @@
   if (global.YouziOperationsCourseInline) return;
 
   var VERSION = '20260917-room-subject-v1';
-  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20261008-payroll-cutoff-v1';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261008-payroll-cutoff-v1';
+  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20261008-payroll-dual-v3';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261008-payroll-dual-v3';
   var STYLE_URL = 'course-scheduler.css?v=20260920-calendar-controls-v3';
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';
@@ -263,8 +263,8 @@
         var hash = '#' + HASH_BY_VIEW[button.dataset.view];
         if (global.location.hash !== hash) global.location.hash = hash;
       });
-      for(var file of ['payroll-payout-view.js','payroll-notices.js'])await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src=file+'?v=20261008-payroll-cutoff-v1';script.onload=resolve;script.onerror=function(){reject(new Error('薪資元件載入失敗'));};global.document.body.appendChild(script);});
-      if(!global.YouziPayrollTransfer)await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src='payroll-transfer.js?v=20261008-payroll-cutoff-v1';script.onload=resolve;script.onerror=function(){reject(new Error('轉帳表元件載入失敗'));};global.document.body.appendChild(script);});
+      for(var file of ['payroll-payout-view.js','payroll-notices.js'])await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src=file+'?v=20261008-payroll-dual-v3';script.onload=resolve;script.onerror=function(){reject(new Error('薪資元件載入失敗'));};global.document.body.appendChild(script);});
+      if(!global.YouziPayrollTransfer)await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src='payroll-transfer.js?v=20261008-payroll-dual-v3';script.onload=resolve;script.onerror=function(){reject(new Error('轉帳表元件載入失敗'));};global.document.body.appendChild(script);});
       await loadRuntime();
       sendView(desiredView);
     })().catch(function (error) {
