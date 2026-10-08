@@ -437,8 +437,10 @@
       },{timeout:300000});
     }
     if(!payload||payload.ok!==true)throw new Error('老師薪資資料讀取未完成。');
+    var subjects=makeSubjectRows(payload),teachers=normalizeTeachers(payload,subjects);
     return {
       ok:true,
+      teachers:teachers,subjects:subjects.rows,
       month:month,
       teacherPayroll:normalizeTeacherPayroll(payload).filter(function(row){return row.date.slice(0,7)===month;}),
       teacherAdjustments:normalizeTeacherAdjustments(payload).filter(function(row){return row.date.slice(0,7)===month;}),

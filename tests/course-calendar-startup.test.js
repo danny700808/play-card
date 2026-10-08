@@ -9,7 +9,7 @@ const runtime=fs.readFileSync(path.join(root,'operations-course-inline-runtime.j
 const start=runtime.indexOf('  function loadPublishedWorkspace(options){');
 assert(start>=0,'The startup callback must exist before init binds and invokes it');
 const loader=runtime.slice(start,runtime.indexOf('  function bindEvents(){',start));
-assert(runtime.includes("if(window.__YOUZI_COURSE_SCHEDULER_TEST__!==true)loadPublishedWorkspace({calendarOnly:true});"));
+assert(runtime.includes("if(window.__YOUZI_COURSE_SCHEDULER_TEST__!==true&&!payrollEntryOnly)loadPublishedWorkspace({calendarOnly:true});"));
 
 function harness(fail=false){
  const nodes=new Map(),calls=[];

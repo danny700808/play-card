@@ -1,11 +1,11 @@
 {
   "owner": "deploy-payroll",
-  "phase": "backend",
-  "version": "20261008-payroll-demand-v1",
+  "phase": "frontend",
+  "version": "20261008-payroll-demand-v2",
   "functions": [
     "loadInjiaoyunEducationMirrorAuto",
     "loadInjiaoyunEducationMirrorAutoTaiwan"
   ],
-  "backendRun": 37783399298,
-  "backendSha": "504bb4c0d523cebf1f777816b66fe4155eef4eec"
+  "backendRun": 37786384586,
+  "backendSha": "6930d8ff1caa81dbe1113185e388efc52fb8695e"
 }

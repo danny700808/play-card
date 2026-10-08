@@ -339,11 +339,11 @@ function patchPortal(path) {
   if (!operationsTag.test(source)) throw new Error(`Unable to locate operations-phase1.js in ${path}`);
   const inlineTag = /<script src="operations-course-inline\.js\?v=[^"]+"><\/script>/;
   if (inlineTag.test(source)) {
-    source = source.replace(inlineTag, `<script src="operations-course-inline.js?v=${VERSION}&period=20260920-payment1&mobile=20260925-rental-save-v1&layout=20260926-compact-v1&move=20260927-leave-slot-v1&student=20261001-irregular-v1&refund=20261006-v5&transfer=20261008-late-inline-v3"></script>`);
+    source = source.replace(inlineTag, `<script src="operations-course-inline.js?v=${VERSION}&period=20260920-payment1&mobile=20260925-rental-save-v1&layout=20260926-compact-v1&move=20260927-leave-slot-v1&student=20261001-irregular-v1&refund=20261006-v5&transfer=20261008-payroll-demand-v1"></script>`);
   } else {
     source = source.replace(
       operationsTag,
-      `<script src="operations-course-inline.js?v=${VERSION}&period=20260920-payment1&mobile=20260925-rental-save-v1&layout=20260926-compact-v1&move=20260927-leave-slot-v1&student=20261001-irregular-v1&refund=20261006-v5&transfer=20261008-late-inline-v3"></script>\n  $&`
+      `<script src="operations-course-inline.js?v=${VERSION}&period=20260920-payment1&mobile=20260925-rental-save-v1&layout=20260926-compact-v1&move=20260927-leave-slot-v1&student=20261001-irregular-v1&refund=20261006-v5&transfer=20261008-payroll-demand-v1"></script>\n  $&`
     );
   }
   if (source.includes('course-scheduler.html?view=')) throw new Error(`Standalone course links remain in ${path}`);

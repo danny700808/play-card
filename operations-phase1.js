@@ -969,6 +969,10 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
   function ensureDataForCurrentView(){
     const view=(location.hash||'#course-calendar').replace('#','').split('?')[0]||'course-calendar';
     if(isCourseWorkspaceView(view))return false;
+    if(state.payrollOnlyBoot){
+      if(!state.operationsPreparation){state.operationsPreparation=(async function(){await ensureOperatingExpenseEngineLoaded();await repairYsv104PreorderHistoryOnce();watchNativeEducationDaily();state.payrollOnlyBoot=false;if(!ensureDataForCurrentView())render();})().catch(function(error){state.operationsPreparation=null;showAlert(errorMessage(error),'error');});}
+      return true;
+    }
     if(isCompactMobile()&&view==='customers'){
       if(!state.customersLoadedAt&&!state.fullLoadedAt&&!state.loading){loadCustomersOnly(false);return true;}
       return false;
@@ -7986,10 +7990,12 @@ function rerenderKeepingFocus(id,value){
     const user=typeof global.requireLogin==='function'?global.requireLogin():null; if(!user)return;
     if(typeof global.hasSettingsZoneAccess==='function'&&!global.hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
     if(typeof global.setPortalMode==='function')global.setPortalMode('settings');
-    const expenseEngineReady=await ensureOperatingExpenseEngineLoaded();
+    const payrollOnlyBoot=(location.hash||'').split('?')[0]==='#course-teachers';
+    const expenseEngineReady=payrollOnlyBoot?true:await ensureOperatingExpenseEngineLoaded();
     state.user=user; setText('opsUserChip',userLabel());
     try{state.db=initDb();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('Firebase初始化失敗',errorMessage(error)));return;}
     try{await requireOperationsReadAuth();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('尚未完成登入確認',errorMessage(error)));return;}
+    if(payrollOnlyBoot){state.payrollOnlyBoot=true;bindEvents();render();return;}
     let ysv104RepairResult='';
     try{ysv104RepairResult=await repairYsv104PreorderHistoryOnce();}catch(error){console.error('YSV-104 historical repair stopped safely',error);showAlert(errorMessage(error),'error');}
     if(!expenseEngineReady)showAlert('營運支出程式暂時未載入，其他功能仍可正常使用；重新整理後系統會再自動嘗試。','warning');
