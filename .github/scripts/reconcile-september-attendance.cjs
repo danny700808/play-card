@@ -24,7 +24,7 @@ async function main(){
  if(people(trial)==='[]'||!(Number(trial.teacherAmount)>0)||!(Number(official.teacherAmount)>0)||trial.active===false||trial.status!=='attended')throw Error('payroll guard failed');
  const linked=attendance.filter(r=>a.eventDate(r)===date&&people(r)===people(official)&&(!a.eventTeacherId(r)||a.eventTeacherId(r)===official.teacherId));
  const duplicateRecords=records.filter(r=>r.operationId===trial.operationId&&r.status==='attended'&&r.active!==false);
- report(JSON.stringify({kind:'attendance-diagnostics',linked:linked.length,records:duplicateRecords.length,trialHasOperation:!!trial.operationId,recordDateMatches:duplicateRecords.map(r=>a.eventDate(r)===date),teacherMatches:duplicateRecords.map(r=>r.teacherId===trial.teacherId),studentMatches:duplicateRecords.map(r=>people(r)===people(trial))})); if(linked.length!==1||duplicateRecords.length!==1||key(duplicateRecords[0])!==key(trial))throw Error('attendance guard failed');
+ report(JSON.stringify({kind:'attendance-diagnostics',allAttendance:attendance.length,dateAttendance:attendance.filter(r=>a.eventDate(r)===date).length,studentAttendance:attendance.filter(r=>people(r)===people(official)).map(r=>({date:a.eventDate(r),teacherMatches:a.eventTeacherId(r)===official.teacherId,status:r.status,hasPeriod:!!r.periodId})),boardMatches:board.resourceEvents.filter(r=>people(r)===people(official)).map(r=>({date:a.eventDate(r),teacherMatches:r.teacherId===official.teacherId,status:r.status,start:r.startTime,end:r.endTime})),linked:linked.length,records:duplicateRecords.length,trialHasOperation:!!trial.operationId,recordDateMatches:duplicateRecords.map(r=>a.eventDate(r)===date),teacherMatches:duplicateRecords.map(r=>r.teacherId===trial.teacherId),studentMatches:duplicateRecords.map(r=>people(r)===people(trial))})); if(linked.length!==1||duplicateRecords.length!==1||key(duplicateRecords[0])!==key(trial))throw Error('attendance guard failed');
  const events=board.resourceEvents.filter(e=>a.eventDate(e)===date&&e.teacherId===trial.teacherId&&people(e)===people(trial)&&a.attendanceOperationId(e.teacherId,date,e)===trial.operationId);
  if(events.length!==1)throw Error('calendar identity guard failed');
  const event=events[0],lineage=a.attendanceLineage(event);
@@ -68,6 +68,7 @@ async function main(){
  report(JSON.stringify({status:'applied-and-verified',...summary}));
 }
 a.withPortalReads(main)().catch(error=>{report(JSON.stringify({status:'failed',reason:/guard failed$/.test(error.message)?error.message:'internal error'}));process.exitCode=1;});
+
 
 
 
