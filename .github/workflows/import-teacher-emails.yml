@@ -1,0 +1,33 @@
+name: Import Teacher Emails
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        type: boolean
+        default: false
+        required: true
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci --prefix functions --ignore-scripts
+      - name: Validate or import teacher contact emails
+        env:
+          APPLY: ${{ inputs.apply }}
+          TEACHER_EMAIL_IMPORT_JSON: ${{ secrets.TEACHER_EMAIL_IMPORT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/parity-audit.json
+          GOOGLE_CLOUD_PROJECT: youzi-c1b74
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$GOOGLE_APPLICATION_CREDENTIALS"' EXIT
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          chmod 600 "$GOOGLE_APPLICATION_CREDENTIALS"
+          node .github/scripts/import-teacher-emails.cjs
