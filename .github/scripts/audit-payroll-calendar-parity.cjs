@@ -11,7 +11,7 @@ const backend = new Module(filename, module);
 backend.filename = filename;
 backend.paths = Module._nodeModulePaths(path.dirname(filename));
 backend._compile(fs.readFileSync(filename, 'utf8') + `
-module.exports.audit = {scheduleBundle,withPortalReads,mirrorRowsByDateRange,portalRowsByDateRange,
+module.exports.audit = {db,mirrorRows,teacherPortalProfileId,teacherUtilityProfileBundle,scheduleBundle,withPortalReads,mirrorRowsByDateRange,portalRowsByDateRange,
 ATTENDANCE_PAYROLL,ATTENDANCE_CANCELLATIONS,mergeTeacherPayrollRows,enrichTeacherPayrollRows,
 teacherPayrollStudentIds,teacherPayrollCourseId,teacherPayrollMinute,eventDate,sourceId};
 `, filename);
@@ -59,5 +59,21 @@ async function main() {
       samePeriod:!!x.periodId&&x.periodId===y.periodId,
       mirrorNoon:rows.filter(p=>origin(p)==='mirror').every(p=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit'}).format(new Date(a.teacherPayrollMinute(p)*60000))==='12:00')}));
   }
+  const teachers=await a.mirrorRows('teachers');
+  let withEmail=0,paidWithEmail=0,paidTeachers=0;
+  for(const teacher of teachers) {
+    const id=a.sourceId(teacher),profileId=a.teacherPortalProfileId(id);
+    const [external,privateDoc]=await a.db.getAll(
+      a.db.collection('externalTeacherProfiles').doc(profileId),
+      a.db.collection('teacherPrivateProfiles').doc(profileId),
+      {fieldMask:['email','Email','loginEmail','contactEmail']}
+    );
+    const hasEmail=!!a.teacherUtilityProfileBundle({externalProfile:external.data(),privateProfile:privateDoc.data()}).profile.email;
+    const paid=payroll.some(p=>p.teacherId===id);
+    if(hasEmail)withEmail++;
+    if(paid)paidTeachers++;
+    if(paid&&hasEmail)paidWithEmail++;
+  }
+  report(JSON.stringify({kind:'currentProfileEmailCoverage',teachers:teachers.length,withEmail,paidTeachers,paidWithEmail}));
 }
 a.withPortalReads(main)().catch(()=>{report('Parity audit failed; no record values logged.');process.exitCode=1;});
