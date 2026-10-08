@@ -1822,11 +1822,11 @@
   function applyCalendarState(loaded){
     clearTimeout(workspaceSaveTimer);
     // A bounded calendar is never persisted over a complete ledger snapshot.
-    var mobilePayroll=mobileAdmin()?{rows:state.teacherPayroll||[],adjustments:state.teacherAdjustments||[],months:state.dataMeta&&state.dataMeta.teacherPayrollMonths}:null;
+    var mobilePayroll=(mobileAdmin()||currentView==='teachers')?{rows:state.teacherPayroll||[],adjustments:state.teacherAdjustments||[],months:state.dataMeta&&state.dataMeta.teacherPayrollMonths}:null;
     state=normalizeState(preserveWorkspaceConfiguration(clone(loaded),state));
     if(mobilePayroll){state.teacherPayroll=mobilePayroll.rows;state.teacherAdjustments=mobilePayroll.adjustments;if(mobilePayroll.months)state.dataMeta.teacherPayrollMonths=mobilePayroll.months;}
     state.readOnly=true;state.dataMode='migration';state.clipboard=null;
-    updateModeUI();refreshFormOptions();switchView(currentView==='students'?'students':mobileAdmin()&&currentView==='teachers'?'teachers':'calendar');
+    updateModeUI();refreshFormOptions();switchView(currentView==='students'?'students':currentView==='teachers'?'teachers':'calendar');
   }
   function loadPublishedWorkspace(options){
     if(workspaceLoadPromise)return workspaceLoadPromise;

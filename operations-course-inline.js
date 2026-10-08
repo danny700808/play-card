@@ -4,8 +4,8 @@
   if (global.YouziOperationsCourseInline) return;
 
   var VERSION = '20260917-room-subject-v1';
-  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20261008-late-inline-v1';
-  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261008-late-inline-v1';
+  var TEMPLATE_URL = 'operations-course-inline-template.html?v=20261008-late-inline-v3';
+  var RUNTIME_URL = 'operations-course-inline-runtime.js?v=20261008-late-inline-v3';
   var STYLE_URL = 'course-scheduler.css?v=20260920-calendar-controls-v3';
   var DB_NAME = 'youzi-course-scheduler';
   var STORE_NAME = 'formalSnapshots';
@@ -214,7 +214,7 @@
     loadingPromise = (async function () {
       showLoading('正在開啟完整課務功能…');
       var template = await loadTemplate();
-      var workspace = global.matchMedia('(max-width:780px)').matches && ['calendar','teachers'].indexOf(desiredView)>=0 ? null : await resolveWorkspace();
+      var workspace = (desiredView==='teachers'||global.matchMedia('(max-width:780px)').matches && desiredView==='calendar') ? null : await resolveWorkspace();
       shadow.innerHTML = '<link rel="stylesheet" href="' + STYLE_URL + '"><style>' + inlineOverrides() + '</style><link rel="stylesheet" href="operations-mobile-admin.css?v=20260922-date-nav-v1"><div class="course-inline-body">' + template + '</div>';
       inlineBody = shadow.querySelector('.course-inline-body');
       function fitDesktopCalendar(){
@@ -263,8 +263,8 @@
         var hash = '#' + HASH_BY_VIEW[button.dataset.view];
         if (global.location.hash !== hash) global.location.hash = hash;
       });
-      for(var file of ['payroll-payout-view.js','payroll-notices.js'])await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src=file+'?v=20261008-late-inline-v1';script.onload=resolve;script.onerror=function(){reject(new Error('薪資元件載入失敗'));};global.document.body.appendChild(script);});
-      if(!global.YouziPayrollTransfer)await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src='payroll-transfer.js?v=20261008-late-inline-v1';script.onload=resolve;script.onerror=function(){reject(new Error('轉帳表元件載入失敗'));};global.document.body.appendChild(script);});
+      for(var file of ['payroll-payout-view.js','payroll-notices.js'])await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src=file+'?v=20261008-late-inline-v3';script.onload=resolve;script.onerror=function(){reject(new Error('薪資元件載入失敗'));};global.document.body.appendChild(script);});
+      if(!global.YouziPayrollTransfer)await new Promise(function(resolve,reject){var script=global.document.createElement('script');script.src='payroll-transfer.js?v=20261008-late-inline-v3';script.onload=resolve;script.onerror=function(){reject(new Error('轉帳表元件載入失敗'));};global.document.body.appendChild(script);});
       await loadRuntime();
       sendView(desiredView);
     })().catch(function (error) {

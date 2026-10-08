@@ -24,3 +24,10 @@ test('desktop salary navigation renders before monthly fetch and skips full work
  vm.createContext(ctx);vm.runInContext(source.slice(start,end)+'\nswitchView("teachers");',ctx);
  assert.deepEqual(calls,['render','month']);
 });
+test('calendar bootstrap preserves desktop payroll selection and loaded month',()=>{
+ const source=fs.readFileSync(require.resolve('../operations-course-inline-runtime.js'),'utf8');
+ const start=source.indexOf('  function applyCalendarState(loaded){'),end=source.indexOf('\n  function ',start+5);
+ const payroll=[{id:'paid'}],ctx={workspaceSaveTimer:null,clearTimeout:()=>{},mobileAdmin:()=>false,currentView:'teachers',state:{teacherPayroll:payroll,teacherAdjustments:[],dataMeta:{teacherPayrollMonths:['2026-09']}},clone:x=>x,normalizeState:x=>x,preserveWorkspaceConfiguration:x=>x,updateModeUI:()=>{},refreshFormOptions:()=>{},switchView:v=>{ctx.selected=v;}};
+ vm.createContext(ctx);vm.runInContext(source.slice(start,end)+'\napplyCalendarState({dataMeta:{partial:true}});',ctx);
+ assert.equal(ctx.selected,'teachers');assert.equal(ctx.state.teacherPayroll,payroll);assert.equal(ctx.state.dataMeta.teacherPayrollMonths[0],'2026-09');
+});
