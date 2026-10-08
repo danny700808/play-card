@@ -1,7 +1,7 @@
 {
   "owner": "deploy-payroll",
   "phase": "frontend",
-  "version": "20261008-late-inline-v1",
+  "version": "20261008-late-inline-v2",
   "functions": [
     "coursePortalLessonHistory",
     "coursePortalLessonHistoryTaiwan"
