@@ -1,7 +1,7 @@
 {
   "owner": "deploy-payroll",
-  "phase": "frontend",
-  "version": "20261008-payroll-dual-v3-frontend",
+  "phase": "backend",
+  "version": "20261008-remove-supplement-notice-v4",
   "functions": [
     "coursePayrollTransferTaiwan"
   ],

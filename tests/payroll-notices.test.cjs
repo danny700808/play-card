@@ -46,7 +46,11 @@ test('adding email after a LINE notice sends only email and keeps the original p
 test('changed email invalidates preview; malformed email is not used',async()=>{
  const f=fixture(),key='teacherPrivateProfiles/'+profileId('t');f.db.records.set(key,{email:'teacher@example.com'});const p=await f.preview();f.db.records.set(key,{email:'other@example.com'});await assert.rejects(send(f,p));f.db.records.delete('coursePortalTeacherBindings/b');f.db.records.set(key,{email:'invalid'});assert(!(await f.preview()).rows[0].eligible);
 });
-test('simple notification includes bank timing and exact late attendance dates without a link',()=>{
+test('simple notification includes bank timing without links or supplement reminders',()=>{
  const pay={teacherPayroll:[{teacherId:'t',date:'2026-09-28',attendanceSignedAt:'2026-10-10 00:00:00',expectedPayDate:'2026-11-10'},{teacherId:'other',date:'2026-09-28',attendanceSignedAt:'2026-10-03',expectedPayDate:'2026-10-10'}]};
- const body=noticeBody({name:'甲',amount:420,lateReminders:lateReminders(pay,'t')},'2026-09','2026-10-10');assert.match(body,/2026 年 9 月薪資/);assert.match(body,/依銀行作業為準/);assert.match(body,/2026\/10\/10 補登，預計 2026\/11\/10 發放/);assert.doesNotMatch(body,/https?:|結算批次|2026\/10\/03/);
+ const body=noticeBody({name:'甲',amount:420,lateReminders:lateReminders(pay,'t')},'2026-09','2026-10-10');assert.match(body,/2026 年 9 月薪資/);assert.match(body,/依銀行作業為準/);assert.doesNotMatch(body,/https?:|結算批次|補簽|補登|預計|2026\/11\/10/);
+});
+
+test('previously opened previews cannot send the removed reminder to either channel',async()=>{
+ const f=fixture();f.db.records.set('teacherPrivateProfiles/'+profileId('t'),{email:'teacher@example.com'});const p=await f.preview();const key='coursePayrollNoticePreviews/'+p.previewId;const saved=f.db.records.get(key);saved.rows[0].body+='\n補簽發放提醒：old reminder';await send(f,p);const queues=[...f.db.records.entries()].filter(([k])=>k.startsWith('notificationQueue/'));assert.equal(queues.length,2);queues.forEach(([,r])=>assert.doesNotMatch(r.body,/補簽|old reminder/));
 });

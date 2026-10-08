@@ -8,8 +8,7 @@ const dateNow=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'
 function validDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;}
 function noticeBody(row,month,date){
  const [year,m]=month.split('-');
- const reminders=(row.lateReminders||[]).map(r=>`・${r.lessonDate.replaceAll('-','/')} 課程：${r.signedDate.replaceAll('-','/')} 補登，預計 ${r.expectedPayDate.replaceAll('-','/')} 發放。`);
- return `${row.name}老師您好：\n\n${year} 年 ${Number(m)} 月薪資已於 ${date.replaceAll('-','/')} 完成匯款。\n匯款金額：NT$${money(row.amount)}\n實際入帳時間依銀行作業為準，請留意帳戶入帳情形。\n\n課堂拆帳、獎勵及扣款明細，請至老師系統「薪資」查看。${reminders.length?'\n\n補簽發放提醒：\n'+reminders.join('\n'):''}\n\n如有疑問，請聯絡柚子樂器。`;
+ return `${row.name}老師您好：\n\n${year} 年 ${Number(m)} 月薪資已於 ${date.replaceAll('-','/')} 完成匯款。\n匯款金額：NT$${money(row.amount)}\n實際入帳時間依銀行作業為準，請留意帳戶入帳情形。\n\n課堂拆帳、獎勵及扣款明細，請至老師系統「薪資」查看。\n\n如有疑問，請聯絡柚子樂器。`;
 }
 function lateReminders(pay,teacherId){
  const rows=[...(pay.teacherPayroll||[]),...(pay.teacherPayoutPayroll||[])];
@@ -77,7 +76,7 @@ function createPayrollNotices({db,loadPayroll,now=()=>Date.now()}){
    if(selected.some(r=>bindingTarget(bs,r.teacherId).line!==r.targetLineUserId||emailTarget(ps.get(profileId(r.teacherId)))!==r.targetEmail||hash(JSON.stringify(accounts.find(x=>x.teacherId===r.teacherId)||{}))!==r.bankFingerprint))throw new HttpsError('aborted','LINE、Email 或銀行資料已更新，請重新預覽。');
    const paid=existing.slice(deliveries.length);
    if(selected.some((r,i)=>paid[i].exists&&(paid[i].data().amount!==r.amount||paid[i].data().transferDate!==r.transferDate)))throw new HttpsError('aborted','匯款紀錄已更新，請重新預覽。');
-   deliveries.forEach(({row:r,channel,ref:q})=>tx.create(q,{queueId:q.id,channel,status:'待發送',...(channel==='line'?{targetLineUserId:r.targetLineUserId}:{targetEmail:r.targetEmail}),targetName:r.name,teacherId:r.teacherId,eventCode:'teacher_payroll_transfer_completed',source:'course-payroll-transfer',title:'【柚子樂器｜薪資匯款通知】',body:r.body,emailFallbackEnabled:false,payrollMonth:month,transferDate:r.transferDate,transferAmount:r.amount,createdAt:new Date(now()),createdAtText:new Date(now()).toISOString(),createdBy:actor,previewId}));
+   deliveries.forEach(({row:r,channel,ref:q})=>tx.create(q,{queueId:q.id,channel,status:'待發送',...(channel==='line'?{targetLineUserId:r.targetLineUserId}:{targetEmail:r.targetEmail}),targetName:r.name,teacherId:r.teacherId,eventCode:'teacher_payroll_transfer_completed',source:'course-payroll-transfer',title:'【柚子樂器｜薪資匯款通知】',body:noticeBody(r,month,r.transferDate),emailFallbackEnabled:false,payrollMonth:month,transferDate:r.transferDate,transferAmount:r.amount,createdAt:new Date(now()),createdAtText:new Date(now()).toISOString(),createdBy:actor,previewId}));
    selected.forEach((r,i)=>{if(!paid[i].exists)tx.create(db.collection('coursePayrollPaidBatches').doc(queueId(month,r.teacherId)),{teacherId:r.teacherId,batchMonth:month,amount:r.amount,transferDate:r.transferDate,confirmedAt:new Date(now()),confirmedBy:actor,previewId});});
    tx.update(ref,{submitted:true,submittedAtMs:now(),selectedTeacherIds:ids});
    return {ok:true,queued:deliveries.length,teachers:selected.length,message:`已建立 ${selected.length} 位老師、共 ${deliveries.length} 則通知（依可用 LINE／Email 發送），實際送達狀態請重新查詢。`};
