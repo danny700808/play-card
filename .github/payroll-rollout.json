@@ -1,9 +1,11 @@
 {
   "owner": "deploy-payroll",
-  "phase": "backend",
+  "phase": "frontend",
   "version": "20261008-late-inline-v1",
   "functions": [
     "coursePortalLessonHistory",
     "coursePortalLessonHistoryTaiwan"
-  ]
+  ],
+  "backendRun": 37780956447,
+  "backendSha": "87b6f4bb998391a57931ad4e711184da48d39833"
 }

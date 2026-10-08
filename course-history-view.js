@@ -18,12 +18,12 @@
       const labels = {attended:'已上課', checked_in:'已上課', present:'已上課', normal:'已上課', absent:'曠課', leave:'請假'};
       let slots = Array.from({length:Math.max(Number(period.lessonCount || 0),lessons.length)},(_,index)=>{
         const row = lessons[index];
-        return row ? `<div class="lesson-slot used"><strong>第 ${index+1} 堂</strong><span>${esc(row.date)} ${esc(row.startTime || '')}</span><small>${esc(row.correction ? (row.status === 'correction_pending' ? `原 ${row.originalDate} 簽到作廢・待補登` : `原 ${row.originalDate} 簽到作廢・已補回`) : row.late ? '老師補簽到' : labels[row.status] || row.status || '上課紀錄')}${row.status === 'absent' ? '・扣一堂' : ''}</small></div>` : `<div class="lesson-slot${index < period.usedCount ? ' used' : ''}"><strong>第 ${index+1} 堂</strong><span>${index < period.usedCount ? '無簽到紀錄' : '未使用'}</span></div>`;
+        return row ? `<div class="lesson-slot used"><strong>第 ${index+1} 堂</strong><span>${esc(row.date)} ${esc(row.startTime || '')}</span><small>${esc(row.correction ? (row.status === 'correction_pending' ? `原 ${row.originalDate} 簽到作廢・待補登` : `原 ${row.originalDate} 簽到作廢・已補回`) : row.late ? `補簽到｜補 ${row.date} 的課${row.attendanceRecordedAt ? '｜補登 '+row.attendanceRecordedAt.slice(0,10) : ''}` : labels[row.status] || row.status || '上課紀錄')}${row.status === 'absent' ? '・扣一堂' : ''}</small></div>` : `<div class="lesson-slot${index < period.usedCount ? ' used' : ''}"><strong>第 ${index+1} 堂</strong><span>${index < period.usedCount ? '無簽到紀錄' : '未使用'}</span></div>`;
       }).join('');
       if(global.YouziLessonUnits && rows.some(row=>global.YouziLessonUnits.units(row)!==1)){
         slots=global.YouziLessonUnits.slots(period,ordinary.concat(rows.filter(row=>row.correction))).map((parts,index)=>{
           const used=parts.reduce((sum,row)=>sum+row.slotUnits,0);
-          return `<div class="lesson-slot${used?' used':''}"><strong>第 ${index+1} 格・60分鐘</strong>${parts.map(row=>`<span class="half-hour-entry">${esc(row.date)} ${esc(row.startTime||'')}<br>${row.slotUnits*60}分鐘・${row.status==='absent'?'曠課扣課':row.correction?(row.status==='correction_pending'?'原簽到作廢・待補登':'已補回'):'已上課'}</span>`).join('')}${used<1?`<small>剩餘${(1-used)*60}分鐘</small>`:''}</div>`;
+          return `<div class="lesson-slot${used?' used':''}"><strong>第 ${index+1} 格・60分鐘</strong>${parts.map(row=>`<span class="half-hour-entry">${esc(row.date)} ${esc(row.startTime||'')}<br>${row.slotUnits*60}分鐘・${row.status==='absent'?'曠課扣課':row.late?'補簽到｜補 '+esc(row.date)+' 的課'+(row.attendanceRecordedAt?'｜補登 '+esc(row.attendanceRecordedAt.slice(0,10)):''):row.correction?(row.status==='correction_pending'?'原簽到作廢・待補登':'已補回'):'已上課'}</span>`).join('')}${used<1?`<small>剩餘${(1-used)*60}分鐘</small>`:''}</div>`;
         }).join('');
       }
 
