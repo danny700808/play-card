@@ -22,7 +22,7 @@ async function main(){
  if(candidates.length!==1)throw Error('unique duplicate guard failed');
  const {trial,official:[official]}=candidates[0];
  if(people(trial)==='[]'||!(Number(trial.teacherAmount)>0)||!(Number(official.teacherAmount)>0)||trial.active===false||trial.status!=='attended')throw Error('payroll guard failed');
- const linked=attendance.filter(r=>a.sourceId(r)===a.sourceId(official));
+ const linked=attendance.filter(r=>key(r)===key(official));
  const duplicateRecords=records.filter(r=>r.operationId===trial.operationId&&r.status==='attended'&&r.active!==false);
  report(JSON.stringify({kind:'attendance-diagnostics',linked:linked.length,records:duplicateRecords.length,trialHasOperation:!!trial.operationId,recordDateMatches:duplicateRecords.map(r=>a.eventDate(r)===date),teacherMatches:duplicateRecords.map(r=>r.teacherId===trial.teacherId),studentMatches:duplicateRecords.map(r=>people(r)===people(trial))})); if(linked.length!==1||duplicateRecords.length!==1||key(duplicateRecords[0])!==key(trial))throw Error('attendance guard failed');
  const events=board.resourceEvents.filter(e=>a.eventDate(e)===date&&e.teacherId===trial.teacherId&&people(e)===people(trial)&&a.attendanceOperationId(e.teacherId,date,e)===trial.operationId);
@@ -68,4 +68,5 @@ async function main(){
  report(JSON.stringify({status:'applied-and-verified',...summary}));
 }
 a.withPortalReads(main)().catch(error=>{report(JSON.stringify({status:'failed',reason:/guard failed$/.test(error.message)?error.message:'internal error'}));process.exitCode=1;});
+
 
