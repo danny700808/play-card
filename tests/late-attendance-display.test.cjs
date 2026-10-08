@@ -31,3 +31,7 @@ test('calendar bootstrap preserves desktop payroll selection and loaded month',(
  vm.createContext(ctx);vm.runInContext(source.slice(start,end)+'\napplyCalendarState({dataMeta:{partial:true}});',ctx);
  assert.equal(ctx.selected,'teachers');assert.equal(ctx.state.teacherPayroll,payroll);assert.equal(ctx.state.dataMeta.teacherPayrollMonths[0],'2026-09');
 });
+test('manager corrections retain original lesson position despite later creation timestamp',()=>{
+ const rows=[{id:'first',date:'2026-09-06'},{id:'corrected',date:'2026-09-13',late:false,attendanceRecordedAt:'2026-10-08 12:00:00'},{id:'third',date:'2026-09-20'},{id:'fourth',date:'2026-09-27'}];
+ assert.deepEqual(slots({lessonCount:4,usedCount:4},rows).flat().map(r=>r.id),['first','corrected','third','fourth']);
+});
