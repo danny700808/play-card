@@ -24,12 +24,12 @@ function createPayrollNotices({db,loadPayroll,now=()=>Date.now()}){
  const versionRef=db.collection('coursePortalRuntime').doc('scheduleVersion');
  async function readState(month){
   const v1=await versionRef.get();
-  const [pay,teachers,bindings,bank,profiles]=await Promise.all([loadPayroll(month),db.collection('opsEducationMirrorTeachers').get(),db.collection('coursePortalTeacherBindings').get(),db.collection('coursePayrollTransferSettings').doc('bankAccounts').get(),db.collection('teacherPrivateProfiles').get()]);
+  const [pay,teachers,bindings,bank,profiles,publicProfiles]=await Promise.all([loadPayroll(month),db.collection('opsEducationMirrorTeachers').get(),db.collection('coursePortalTeacherBindings').get(),db.collection('coursePayrollTransferSettings').doc('bankAccounts').get(),db.collection('teacherPrivateProfiles').get(),db.collection('externalTeacherProfiles').get()]);
   const v2=await versionRef.get();
   const version=Number(v1.data()?.version||0);if(version!==Number(v2.data()?.version||0))throw new HttpsError('aborted','薪資剛剛更新，請重新預覽。');
   const directory=teachers.docs.filter(d=>d.data().sourceActive!==false).map(d=>{const t=d.data().source||d.data();return {id:clean(t.id||d.id),name:t.name};});
   const bindingRows=bindings.docs.map(d=>d.data()),accounts=bank.data()?.accounts||[];
-  const profileRows=new Map(profiles.docs.map(d=>[d.id,d.data()]));
+  const profileRows=new Map(publicProfiles.docs.map(d=>[d.id,d.data()]));profiles.docs.forEach(d=>profileRows.set(d.id,{...profileRows.get(d.id),...d.data()}));
   const rows=payrollTotals(directory,pay.teacherPayoutPayroll||[],pay.teacherPayoutAdjustments||[]).map(r=>{
    const target=bindingTarget(bindingRows,r.teacherId),account=accounts.find(x=>x.teacherId===r.teacherId),targetEmail=emailTarget(profileRows.get(profileId(r.teacherId)));
    return {...r,lateReminders:lateReminders(pay,r.teacherId),targetLineUserId:target.line,targetEmail,
@@ -69,11 +69,11 @@ function createPayrollNotices({db,loadPayroll,now=()=>Date.now()}){
   // Keep the original LINE queue ID, so notices created before dual delivery stay deduplicated.
   const deliveries=selected.flatMap(r=>r.pendingChannels.map(channel=>({row:r,channel,ref:db.collection('notificationQueue').doc(queueId(month,r.teacherId)+(channel==='email'?'-email':''))})));
   return db.runTransaction(async tx=>{
-   const [currentPreview,version,bindings,bank,profiles,...existing]=await Promise.all([tx.get(ref),tx.get(versionRef),tx.get(db.collection('coursePortalTeacherBindings')),tx.get(db.collection('coursePayrollTransferSettings').doc('bankAccounts')),tx.get(db.collection('teacherPrivateProfiles')),...deliveries.map(d=>tx.get(d.ref)),...selected.map(r=>tx.get(db.collection('coursePayrollPaidBatches').doc(queueId(month,r.teacherId))))]);
+   const [currentPreview,version,bindings,bank,profiles,publicProfiles,...existing]=await Promise.all([tx.get(ref),tx.get(versionRef),tx.get(db.collection('coursePortalTeacherBindings')),tx.get(db.collection('coursePayrollTransferSettings').doc('bankAccounts')),tx.get(db.collection('teacherPrivateProfiles')),tx.get(db.collection('externalTeacherProfiles')),...deliveries.map(d=>tx.get(d.ref)),...selected.map(r=>tx.get(db.collection('coursePayrollPaidBatches').doc(queueId(month,r.teacherId))))]);
    if(currentPreview.data()?.submitted===true)return {ok:true,duplicate:true,queued:0,message:'這份通知已送出，不會重複建立。'};
    if(Number(version.data()?.version||0)!==fresh.version)throw new HttpsError('aborted','薪資剛剛更新，請重新預覽。');
    if(existing.slice(0,deliveries.length).some(q=>q.exists))throw new HttpsError('already-exists','部分通知已建立，請重新預覽，避免重複發送。');
-   const bs=bindings.docs.map(d=>d.data()),accounts=bank.data()?.accounts||[],ps=new Map(profiles.docs.map(d=>[d.id,d.data()]));
+   const bs=bindings.docs.map(d=>d.data()),accounts=bank.data()?.accounts||[],ps=new Map(publicProfiles.docs.map(d=>[d.id,d.data()]));profiles.docs.forEach(d=>ps.set(d.id,{...ps.get(d.id),...d.data()}));
    if(selected.some(r=>bindingTarget(bs,r.teacherId).line!==r.targetLineUserId||emailTarget(ps.get(profileId(r.teacherId)))!==r.targetEmail||hash(JSON.stringify(accounts.find(x=>x.teacherId===r.teacherId)||{}))!==r.bankFingerprint))throw new HttpsError('aborted','LINE、Email 或銀行資料已更新，請重新預覽。');
    const paid=existing.slice(deliveries.length);
    if(selected.some((r,i)=>paid[i].exists&&(paid[i].data().amount!==r.amount||paid[i].data().transferDate!==r.transferDate)))throw new HttpsError('aborted','匯款紀錄已更新，請重新預覽。');

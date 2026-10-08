@@ -1,7 +1,7 @@
 {
   "owner": "deploy-payroll",
   "phase": "backend",
-  "version": "20261008-payroll-dual-notices-v2",
+  "version": "20261008-payroll-dual-notices-v3",
   "functions": [
     "coursePayrollTransferTaiwan"
   ],
