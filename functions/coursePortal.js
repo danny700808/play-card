@@ -1,4 +1,4 @@
-const {withSchedule, batchRows, shiftMonth} = require('./payrollSchedule');
+const {withSchedule, batchRows, shiftMonth, taipeiTimestamp} = require('./payrollSchedule');
 const { feeDescription, enrichLateAttendanceFees } = require('./payrollAdjustmentDetails');
 const storageRouting = require('./storageRouting');
 const { bookingPage } = require('./roomBookingPages');
@@ -7957,7 +7957,7 @@ async function courseLessonHistory(data) {
   }).filter(row => session.role !== 'teacher' || row.teacherId === session.teacherId);
   const lessons = allAttendance.flatMap(row => attendanceAllocations(row).map(allocation => ({...row, ...allocation}))).filter(row => eventDate(row) && eventDate(row) <= today).map(row => ({
     id: sourceId(row), periodId: (periods.find(period => period.id === clean(row.periodId || row.studentPayment) || period.id.replace(/^period_/, '') === clean(row.periodId || row.studentPayment)) || {}).id || clean(row.periodId || row.studentPayment), date: eventDate(row), startTime: eventStart(row),
-    subjectId: eventSubjectId(row), teacherId: eventTeacherId(row), status: normalizeScheduleStatus(row.status || row.type), late: row.late === true,
+    subjectId: eventSubjectId(row), teacherId: eventTeacherId(row), status: normalizeScheduleStatus(row.status || row.type), late: row.late === true, attendanceRecordedAt: taipeiTimestamp(row.attendanceRecordedAtText || (row.late === true ? row.createdAt || row.createdAtText : '')),
     lessonUnits: attendanceLessonUnits(row), durationMinutes: row.durationMinutes || 60,
     deducted: row.deducted !== false && !['leave','cancelled'].includes(normalizeScheduleStatus(row.status || row.type))
   }));
@@ -7996,7 +7996,7 @@ async function courseLessonHistory(data) {
   return { ok: true, minDate: COURSE_HISTORY_MIN_DATE, fromDate, periods: selected, ...(tuitionPayment ? { tuitionPayment } : {}),
     subjects: [...new Map(periods.map(row => [row.subjectId, { id: row.subjectId, name: row.subjectName }])).values()],
     lessons: lessons.filter(row => selected.some(period => period.id === row.periodId))
-      .sort((a, b) => `${a.date}|${a.startTime}`.localeCompare(`${b.date}|${b.startTime}`)) };
+      .sort((a, b) => (a.attendanceRecordedAt || `${a.date} ${a.startTime || '00:00'}`).localeCompare(b.attendanceRecordedAt || `${b.date} ${b.startTime || '00:00'}`) || String(a.id).localeCompare(String(b.id))) };
 }
 
 function nextStudentLessons(events, allowed, now = Date.now()) {
@@ -8264,7 +8264,7 @@ async function studentPortalData(data) {
           endTime: eventEnd(row) || eventEnd(course),
           status: clean(row.status || row.type),
           source: clean(row.source),
-          late: row.late === true,
+          late: row.late === true, attendanceRecordedAt: taipeiTimestamp(row.attendanceRecordedAtText || (row.late === true ? row.createdAt || row.createdAtText : '')),
           lateFeeCharged: row.lateFeeCharged === true,
           originalLessonDate: dateKey(row.originalLessonDate),
           attendanceRecordedAtText: clean(row.attendanceRecordedAtText || row.createdAtText),

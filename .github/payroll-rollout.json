@@ -1,10 +1,9 @@
 {
   "owner": "deploy-payroll",
-  "phase": "frontend",
-  "version": "20261008-payroll-month-v5",
+  "phase": "backend",
+  "version": "20261008-late-inline-v1",
   "functions": [
-    "coursePayrollTransferTaiwan"
-  ],
-  "backendRun": 37745663439,
-  "backendSha": "0da992d5ebf02afcbbfc21953b4b2e1a73a86d76"
+    "coursePortalLessonHistory",
+    "coursePortalLessonHistoryTaiwan"
+  ]
 }
