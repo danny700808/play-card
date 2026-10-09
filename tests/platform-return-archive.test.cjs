@@ -53,3 +53,13 @@ test('changed archive candidate set requires a fresh confirmation',async()=>{
  await assert.rejects(ctx.archivePlatformReturns(false,true),/案件清單已更新/);
  assert.equal(rows.get('old').returnQueueArchived,undefined);
 });
+
+test('loading stored orders preserves archive marker and platform receipt status',()=>{
+ const {ctx}=setup();
+ Object.assign(ctx,{firstNumber:(obj,keys)=>({value:Number(obj[keys[0]]||0)}),numberOrNull:v=>v==null?null:Number(v),dateFrom:v=>v?new Date(v):null});
+ vm.runInNewContext(source.slice(source.indexOf('  function normalizePlatformOrder('),source.indexOf('  function normalizePlatformSyncRun(')),ctx);
+ const loaded=ctx.normalizePlatformOrder({__id:'old',platform:'Coupang',returnQueueArchived:true,returnQueueArchivedAt:123,shipmentConfirmed:true,receiptStatus:'returns_completed',processingStatus:'manual-return-review'});
+ assert.equal(loaded.returnQueueArchived,true);assert.equal(loaded.receiptStatus,'returns_completed');
+ assert.equal(ctx.platformReturnRows([loaded]).length,0);
+ assert.equal(ctx.platformReturnRows([loaded],true).length,1);
+});
