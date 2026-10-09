@@ -3891,7 +3891,7 @@ function platformReturnRows(rows,archived){
   // 待退回清單只收已出貨且平台通知退貨的案件；取消待確認不等於已出貨退貨。
   return dedupePlatformOrders(rows).filter(function(row){
     if(archived===true)return row.returnQueueArchived===true;
-    if(row.returnQueueArchived===true||platformOrderIsCancelledState(row)||clean(row.returnHandlingStatus)==='completed'||row.returnedReceivedAt)return false;
+    if(row.returnQueueArchived===true||platformOrderIsCancelledState(row)||clean(row.processingStatus)==='ignored-freight'||clean(row.returnHandlingStatus)==='completed'||row.returnedReceivedAt)return false;
     if(!platformOrderHasFulfillment(row)||clean(row.processingStatus)==='cancellation-review')return false;
     const claimText=[row.orderStatus,row.paymentStatus,row.receiptStatus].map(lower).join(' ');
     return clean(row.processingStatus)==='manual-return-review'||PLATFORM_RETURN_KEYWORDS.some(function(keyword){return claimText.includes(keyword);});

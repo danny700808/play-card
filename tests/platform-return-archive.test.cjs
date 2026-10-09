@@ -41,6 +41,7 @@ test('queue requires confirmed shipment plus platform claim and excludes receive
   {...original,id:'active',processingStatus:'inventory-applied'},
   {...original,id:'platform-refund',processingStatus:'inventory-applied',paymentStatus:'refunded'},
   {...original,id:'note-only',processingStatus:'inventory-applied',note:'退貨'},
+  {...original,id:'freight',processingStatus:'ignored-freight',orderStatus:'returned'},
   {...original,id:'archived',returnQueueArchived:true}
  ];
  assert.deepEqual(Array.from(ctx.platformReturnRows(candidates),r=>r.id),['shipped-claim','platform-refund']);
