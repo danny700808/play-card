@@ -900,10 +900,11 @@
 
   function openStudent(id,tab){currentStudentId=id;studentTab=tab||'profile';var student=studentById(id);if(!student.id)return;$('studentModalTitle').textContent=student.name;$('studentModalSubtitle').textContent=(student.phone||'未填手機')+'・'+(studentCourseStatusLabel(student));renderStudentModal();openModal('studentModal');}
   function periodLessonSlots(period){
+    var unitMinutes=window.YouziLessonUnits?window.YouziLessonUnits.unitMinutes(period):60;
     if(window.YouziLessonUnits){
       var ledger=window.YouziLessonUnits,records=ledger.periodRows(state.attendance.filter(function(row){return ['attended','absent'].indexOf(normalizedStatus(row.status))>=0;}),period.id);
-      if(records.some(function(row){return ledger.units(row)!==1;})){
-        var grid=ledger.slots(period,records);return '<div class="lesson-slots">'+grid.map(function(parts,index){var used=parts.reduce(function(sum,row){return sum+row.slotUnits;},0),adjustment=(period.lessonAdjustments||[]).find(function(row){return numberOf(row.slotNo)===index+1;});if(adjustment)return '<div class="lesson-slot '+(adjustment.type==='refund'?'refunded':'voided')+'"><small>第 '+(index+1)+' 堂</small><b>'+esc(adjustment.date||'—')+'</b><em>'+(adjustment.type==='refund'?'已退費':'已作廢')+'</em></div>';return '<div class="lesson-slot'+(used?' completed':' pending')+'"><small>第 '+(index+1)+' 格・60分鐘</small>'+parts.map(function(row){return '<span class="half-hour-entry">'+esc(row.date)+' '+esc(row.startTime||'')+'<br>'+row.slotUnits*60+'分鐘・'+(normalizedStatus(row.status)==='absent'?'曠課扣課':'已簽到')+'</span>';}).join('')+(used<1?'<em>剩餘'+(1-used)*60+'分鐘</em>':'')+'</div>';}).join('')+'</div>';
+      if((unitMinutes===30||records.some(function(row){return ledger.units(row)!==1;}))){
+        var grid=ledger.slots(period,records);return '<div class="lesson-slots">'+grid.map(function(parts,index){var used=parts.reduce(function(sum,row){return sum+row.slotUnits;},0),adjustment=(period.lessonAdjustments||[]).find(function(row){return numberOf(row.slotNo)===index+1;});if(adjustment)return '<div class="lesson-slot '+(adjustment.type==='refund'?'refunded':'voided')+'"><small>第 '+(index+1)+' 堂</small><b>'+esc(adjustment.date||'—')+'</b><em>'+(adjustment.type==='refund'?'已退費':'已作廢')+'</em></div>';return '<div class="lesson-slot'+(used?' completed':' pending')+'"><small>第 '+(index+1)+' 格・'+unitMinutes+'分鐘</small>'+parts.map(function(row){return '<span class="half-hour-entry">'+esc(row.date)+' '+esc(row.startTime||'')+'<br>'+row.slotUnits*unitMinutes+'分鐘・'+(normalizedStatus(row.status)==='absent'?'曠課扣課':'已簽到')+'</span>';}).join('')+(used<1?'<em>剩餘'+(1-used)*unitMinutes+'分鐘</em>':'')+'</div>';}).join('')+'</div>';
       }
     }
 

@@ -328,7 +328,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-firebase-service-account.json
         run: |
           set -euo pipefail
-          targets=(coursePortalAdminSetAttendanceTaiwan coursePortalTeacherAttendanceTaiwan coursePortalTeacherLateAttendanceTaiwan coursePortalTeacherDataTaiwan loadInjiaoyunEducationMirrorAutoTaiwan)
+          targets=(coursePortalTeacherAttendanceV2 coursePortalTeacherAttendanceV2Taiwan coursePortalAdminSetAttendanceTaiwan coursePortalTeacherAttendanceTaiwan coursePortalTeacherLateAttendanceTaiwan coursePortalTeacherDataTaiwan loadInjiaoyunEducationMirrorAutoTaiwan)
           only=$(printf 'functions:%s,' "${targets[@]}")
           firebase deploy --project youzi-c1b74 --non-interactive --force --only "${only%,}" 2>&1 | tee "$RUNNER_TEMP/attendance-deploy.log"
           for target in "${targets[@]}"; do

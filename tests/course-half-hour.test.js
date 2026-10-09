@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const root=path.resolve(__dirname,'..');
 const fixture=fs.readFileSync(path.join(__dirname,'course-portal.test.js'),'utf8');
 const source=fs.readFileSync(path.join(root,'functions/coursePortal.js'),'utf8');
-const names=['attendancePeriodsWithRecordedTeachers','attendanceLessonUnits','eventLessonUnits','attendanceAllocations','attendancePeriodPayroll','attendancePayrollCalculation','applyPortalAttendanceToPeriods','attendancePeriodsForEvent','attendancePeriodCandidate','buildAttendanceTuitionRollover','tuitionLessonCount','tuitionUsedCount'];
+const names=['tuitionLessonUnitMinutes','attendanceDurationMinutes','attendancePeriodsWithRecordedTeachers','attendanceLessonUnits','eventLessonUnits','attendanceAllocations','attendancePeriodPayroll','attendancePayrollCalculation','applyPortalAttendanceToPeriods','attendancePeriodsForEvent','attendancePeriodCandidate','buildAttendanceTuitionRollover','tuitionLessonCount','tuitionUsedCount'];
 const backend=source+'\nmodule.exports.half={'+names.join(',')+'};';
 const context={root,backend,Module,require,module,path};vm.createContext(context);
 vm.runInContext(fixture.slice(fixture.indexOf('function backendFixtureDocument('),fixture.indexOf('function mirrorFixture(')),context);
@@ -71,4 +71,44 @@ test('pre-created paid periods cannot skip unused earlier periods, even with a n
 test('sequential allocation still excludes other subjects, teachers, expired, future and inactive periods',()=>{
  const invalid=[{subjectId:'drum'},{teacherId:'other'},{expiryDate:'2026-09-01'},{startDate:'2026-10-01'},{active:false},{status:'cancelled'}].map((patch,i)=>({...period('invalid'+i),...patch}));
  const valid={...period('valid'),periodNo:2};assert.equal(api.attendancePeriodCandidate([...invalid,valid],event,'s',event.date).id,'valid');
+});
+
+function halfHourFixture(used=0, extra={}) {
+ const p={...period('half',used),lessonCount:8,lessonUnitMinutes:30,planSnapshot:{id:'plan',name:'半小時',amount:3200,lessonCount:8,splitType:'ratio',splitValue:.7}};
+ const c={...api,ATTENDANCE_RECORDS:'attendance',ATTENDANCE_PAYROLL:'payroll',clean:v=>String(v??'').trim(),sourceId:r=>r?.id||'',eventStudentIds:e=>e.studentIds,eventTeacherId:e=>e.teacherId,eventSubjectId:e=>e.subjectId,
+  mirrorRowsByField:async type=>type==='tuitionPeriods'?[p]:[], db:{collection:()=>({where(){return this;},async get(){return{docs:[]};}})},
+  assignNewSystemPeriodNumbers:async rows=>rows,attendanceHistoricalSplitSource:()=>null,teacherPayrollSplitRows:()=>[],enrichTeacherPayrollRows:()=>[],jsonValue:x=>x,eventDate:r=>r.date,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},...extra};
+ vm.createContext(c);const at=source.indexOf('async function attendancePeriodsForEvent(');vm.runInContext(source.slice(at,source.indexOf('\nfunction attendanceChangePayload',at)),c);
+ return {c,p,event:{...event,endTime:'16:00'}};
+}
+
+test('half-hour plan selection deducts 1/2/3 slots and pays 280/560/840 for 30/60/90 minutes',async()=>{
+ for(const minutes of [30,60,90]){
+  const {c,p,event:e}=halfHourFixture();const result=await c.attendancePeriodsForEvent(e,e.date,{allowRollover:true,attendanceDurationMinutes:minutes});
+  assert.equal(result.rows.length,1);assert.equal(result.rows[0].lessonUnits,minutes/30);
+  const pay=api.attendancePayrollCalculation(e,result.rows,e.date);assert.equal(pay.teacherAmount,minutes/30*280);assert.equal(pay.lessonPrice,minutes/30*400);
+  const attendance={...row,periodId:p.id,lessonUnits:minutes/30,periodAllocations:result.allocationsByStudent.s};
+  assert.equal(api.applyPortalAttendanceToPeriods([p],[],[attendance])[0].usedCount,minutes/30);
+  const cells=ui.slots(p,[attendance]);assert.equal(cells.filter(x=>x.length).length,minutes/30);
+ }
+});
+
+test('three half-hour slots cross into next period, preserve unit size and cancel back to original periods',async()=>{
+ const {c,p,event:e}=halfHourFixture(7);const result=await c.attendancePeriodsForEvent(e,e.date,{allowRollover:true,attendanceDurationMinutes:90});
+ assert.deepEqual(Array.from(result.rows,x=>x.lessonUnits),[1,2]);const next=result.rollovers[0].period;
+ assert.equal(next.lessonUnitMinutes,30);assert.equal(next.lessonCount,8);assert.equal(next.expectedAmount,3200);
+ const attended={...row,periodId:p.id,lessonUnits:3,periodAllocations:result.allocationsByStudent.s};
+ const after=api.applyPortalAttendanceToPeriods([p,next],[],[attended]);assert.deepEqual(after.map(x=>x.usedCount),[8,2]);
+ const cancelled={...attended,status:'cancelled',active:false,source:'teacher-same-day-attendance-cancellation'};
+ assert.deepEqual(api.applyPortalAttendanceToPeriods(after,[attended],[cancelled]).map(x=>x.usedCount),[7,0]);
+ assert.equal(api.attendancePayrollCalculation(e,result.rows,e.date).teacherAmount,840);
+});
+
+test('legacy half-hour plan names work without changing ordinary one-hour plans; invalid input is rejected',async()=>{
+ assert.equal(api.tuitionLessonUnitMinutes({planSnapshot:{name:'外聘3200(半小時)'}}),30);
+ assert.equal(api.tuitionLessonUnitMinutes(period()),60);
+ for(const selected of [0,15,120,'60',NaN]) assert.throws(()=>api.attendanceDurationMinutes(event,selected));
+ const f=halfHourFixture(0,{mirrorRowsByField:async type=>type==='tuitionPeriods'?[period()]:[]});
+ await assert.rejects(f.c.attendancePeriodsForEvent(f.event,event.date,{attendanceDurationMinutes:60}),/只有每格30分鐘/);
+ const {c,event:e}=halfHourFixture();assert.equal((await c.attendancePeriodsForEvent(e,e.date,{})).rows[0].lessonUnits,2);
 });

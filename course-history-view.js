@@ -10,6 +10,7 @@
     const cards = host.querySelector('[data-history-cards]'), notice = host.querySelector('[data-history-notice]');
     const select = host.querySelector('select'), form = host.querySelector('form');
     function card(period) {
+      const unitMinutes = global.YouziLessonUnits ? global.YouziLessonUnits.unitMinutes(period) : Number(period.lessonUnitMinutes || 60);
       const rows = payload.lessons.filter(row => row.periodId === period.id);
       const ordinary = rows.filter(row => !row.correction && ['attended', 'checked_in', 'present', 'normal', 'absent'].includes(row.status));
       const lessons = [];
@@ -20,10 +21,10 @@
         const row = lessons[index];
         return row ? `<div class="lesson-slot used"><strong>第 ${index+1} 堂</strong><span>${esc(row.date)} ${esc(row.startTime || '')}</span><small>${esc(row.correction ? (row.status === 'correction_pending' ? `原 ${row.originalDate} 簽到作廢・待補登` : `原 ${row.originalDate} 簽到作廢・已補回`) : row.late ? `補簽到｜補 ${row.date} 的課${row.attendanceRecordedAt ? '｜補登 '+row.attendanceRecordedAt.slice(0,10) : ''}` : labels[row.status] || row.status || '上課紀錄')}${row.status === 'absent' ? '・扣一堂' : ''}</small></div>` : `<div class="lesson-slot${index < period.usedCount ? ' used' : ''}"><strong>第 ${index+1} 堂</strong><span>${index < period.usedCount ? '無簽到紀錄' : '未使用'}</span></div>`;
       }).join('');
-      if(global.YouziLessonUnits && rows.some(row=>global.YouziLessonUnits.units(row)!==1)){
+      if(global.YouziLessonUnits && (unitMinutes===30 || rows.some(row=>global.YouziLessonUnits.units(row)!==1))){
         slots=global.YouziLessonUnits.slots(period,ordinary.concat(rows.filter(row=>row.correction))).map((parts,index)=>{
           const used=parts.reduce((sum,row)=>sum+row.slotUnits,0);
-          return `<div class="lesson-slot${used?' used':''}"><strong>第 ${index+1} 格・60分鐘</strong>${parts.map(row=>`<span class="half-hour-entry">${esc(row.date)} ${esc(row.startTime||'')}<br>${row.slotUnits*60}分鐘・${row.status==='absent'?'曠課扣課':row.late?'補簽到｜補 '+esc(row.date)+' 的課'+(row.attendanceRecordedAt?'｜補登 '+esc(row.attendanceRecordedAt.slice(0,10)):''):row.correction?(row.status==='correction_pending'?'原簽到作廢・待補登':'已補回'):'已上課'}</span>`).join('')}${used<1?`<small>剩餘${(1-used)*60}分鐘</small>`:''}</div>`;
+          return `<div class="lesson-slot${used?' used':''}"><strong>第 ${index+1} 格・${unitMinutes}分鐘</strong>${parts.map(row=>`<span class="half-hour-entry">${esc(row.date)} ${esc(row.startTime||'')}<br>${row.slotUnits*unitMinutes}分鐘・${row.status==='absent'?'曠課扣課':row.late?'補簽到｜補 '+esc(row.date)+' 的課'+(row.attendanceRecordedAt?'｜補登 '+esc(row.attendanceRecordedAt.slice(0,10)):''):row.correction?(row.status==='correction_pending'?'原簽到作廢・待補登':'已補回'):'已上課'}</span>`).join('')}${used<1?`<small>剩餘${(1-used)*unitMinutes}分鐘</small>`:''}</div>`;
         }).join('');
       }
 
@@ -31,7 +32,7 @@
       const payments = period.transactions.filter(row => row.type !== 'refund');
       const lastPayment = payments.slice().reverse().find(row => row.date);
       const paymentAction = typeof options.renderPaymentAction === 'function' ? options.renderPaymentAction(period) : '';
-      return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>第 ${period.systemPeriodNo || period.periodNo} 期 · ${esc(period.subjectName || '課程')}${options.showTeacher && period.teacherName ? `｜${esc(period.teacherName)}老師` : ''}</strong><small>已用 ${period.usedCount} / ${period.lessonCount} 格（每格60分鐘）</small></div><div class="period-payment ${paid ? 'paid' : 'unpaid'}"><div class="period-payment-amount"><span>本期學費</span><strong>${Number(period.expectedAmount).toLocaleString('zh-TW')}</strong><small>實收 ${money(period.paidAmount)}</small></div><div class="period-payment-state"><span class="badge ${paid ? '' : 'danger'}">${paid ? '已繳費' : period.paidAmount > 0 ? '部分繳費' : '尚未繳費'}</span>${!paid ? `<small>尚欠 ${money(period.outstandingAmount)}</small>` : ''}${lastPayment ? `<small>繳費日期：${esc(lastPayment.date)}</small>` : ''}${paymentAction}</div></div></div>${period.partialHistory ? '<p class="history-warning">本期 7/21 之前紀錄未完整承接，請至實體上課證查詢。</p>' : ''}<div class="lesson-slot-grid">${slots}</div></article>`;
+      return `<article class="period-card"><div class="period-card-head"><div class="period-card-title"><strong>第 ${period.systemPeriodNo || period.periodNo} 期 · ${esc(period.subjectName || '課程')}${options.showTeacher && period.teacherName ? `｜${esc(period.teacherName)}老師` : ''}</strong><small>已用 ${period.usedCount} / ${period.lessonCount} 格（每格${unitMinutes}分鐘）</small></div><div class="period-payment ${paid ? 'paid' : 'unpaid'}"><div class="period-payment-amount"><span>本期學費</span><strong>${Number(period.expectedAmount).toLocaleString('zh-TW')}</strong><small>實收 ${money(period.paidAmount)}</small></div><div class="period-payment-state"><span class="badge ${paid ? '' : 'danger'}">${paid ? '已繳費' : period.paidAmount > 0 ? '部分繳費' : '尚未繳費'}</span>${!paid ? `<small>尚欠 ${money(period.outstandingAmount)}</small>` : ''}${lastPayment ? `<small>繳費日期：${esc(lastPayment.date)}</small>` : ''}${paymentAction}</div></div></div>${period.partialHistory ? '<p class="history-warning">本期 7/21 之前紀錄未完整承接，請至實體上課證查詢。</p>' : ''}<div class="lesson-slot-grid">${slots}</div></article>`;
     }
     function render() {
       const rows = payload.periods.filter(row => row.subjectId === subject);

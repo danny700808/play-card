@@ -8,7 +8,7 @@
   const taiwanFunctions = global.firebase.app().functions('asia-east1');
   // Existing Taiwan routes stay stable. Activate added routes only after deployment
   // and verification of the database location; never retry writes across regions.
-  const TAIWAN_READ_CALLS = new Set(['coursePortalTeacherData', 'coursePortalTeacherAvailability', 'coursePortalTeacherSlotOptions', 'coursePortalStudentData', 'coursePortalLessonHistory', 'coursePortalRentalWeekBoard', 'coursePortalRentalAvailability','coursePortalTeacherLessonState','coursePortalTeacherAttendance','coursePortalTeacherLateAttendance','coursePortalTeacherAttendanceCancellationRequest','coursePortalTeacherAction','coursePortalTeacherSetIrregular','coursePortalTeacherStopStudent','coursePortalTeacherAttendanceCorrectionOptions']);
+  const TAIWAN_READ_CALLS = new Set(['coursePortalTeacherData', 'coursePortalTeacherAvailability', 'coursePortalTeacherSlotOptions', 'coursePortalStudentData', 'coursePortalLessonHistory', 'coursePortalRentalWeekBoard', 'coursePortalRentalAvailability','coursePortalTeacherLessonState','coursePortalTeacherAttendanceV2', 'coursePortalTeacherAttendance','coursePortalTeacherLateAttendance','coursePortalTeacherAttendanceCancellationRequest','coursePortalTeacherAction','coursePortalTeacherSetIrregular','coursePortalTeacherStopStudent','coursePortalTeacherAttendanceCorrectionOptions']);
 
   if (global.APP_CONFIG.COURSE_PORTAL_TAIWAN_EXTENDED === true) {
     ['TeacherUtilitySession','TeacherUpdateStudent','TeacherSubmitContactBookPost','TeacherBonusRequest'].forEach(action => TAIWAN_READ_CALLS.add('coursePortal' + action));

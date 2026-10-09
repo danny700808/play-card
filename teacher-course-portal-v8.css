@@ -203,3 +203,5 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-course-app .teacher-roster-row{grid-template-columns:minmax(0,1fr) auto}
 .teacher-course-app .teacher-roster-row>.teacher-roster-actions{grid-column:1 / -1;grid-row:2;justify-content:flex-end}
 }
+
+.attendance-duration-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;border:0;padding:0;margin:10px 0 16px;grid-column:1/-1}.attendance-duration-options legend{margin-bottom:8px;font-weight:700}.attendance-duration-options label{position:relative;cursor:pointer;min-width:0}.attendance-duration-options input{position:absolute;opacity:0}.attendance-duration-options span{display:flex;flex-direction:column;gap:6px;min-height:88px;justify-content:center;padding:10px 4px;border:2px solid #cbdad3;border-radius:12px;background:#fff;text-align:center}.attendance-duration-options strong{font-size:17px}.attendance-duration-options small{font-size:11px}.attendance-duration-options input:checked+span{border-color:#17664e;background:#e6f4ee;color:#124936}.attendance-duration-options input:focus-visible+span{outline:3px solid #dca941;outline-offset:2px}

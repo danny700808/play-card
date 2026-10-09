@@ -184,13 +184,13 @@ assert(teacherSource.includes('coursePortalTeacherUpdateStudent'), '老師修改
 assert(teacherSource.includes('coursePortalTeacherStopStudent'), '老師停課未連接後端');
 assert(teacherSource.includes('confirmed: true'), '老師停課未傳送二次確認結果');
 assert(teacherSource.includes('coursePortalTeacherAttendance'), '老師端缺少當日簽到');
-assert(teacherSource.includes('coursePortalTeacherLateAttendance'), '老師端缺少逾期補簽到');
+assert(teacherSource.includes('coursePortalTeacherAttendanceV2') && teacherSource.includes('late:late === true'), '老師端缺少逾期補簽到');
 assert(teacherSource.includes('coursePortalTeacherAttendanceCancellationRequest'), '老師端缺少取消簽到送主管審核');
 assert(teacherSource.includes('row.date === todayKey()'), '老師正常簽到未限制當天');
 assert(teacherSource.includes("const canNormalAttendance = sameDay && status === 'scheduled'"), '老師當日簽到仍被限制必須等到上課時間');
 assert(!teacherSource.includes('提早簽到'), '老師端仍顯示額外的提早簽到名稱');
 assert(teacherSource.includes("giftLesson ? '補簽到（贈送課程不收行政費）' : '補簽到'"), '補簽按鈕不應在老師點擊前顯示行政費');
-assert(teacherSource.includes('補簽到會收取行政處理費 NT$50'), '老師點擊補簽後未清楚顯示行政費');
+assert(teacherSource.includes('補簽到會收取行政處理費 NT$') && teacherSource.includes('result.lateFee'), '老師點擊補簽後未清楚顯示行政費');
 assert(adminPortal.includes('停課學費未繳清'), '管理者頁缺少停課學費未繳清專區');
 assert(adminPortal.includes('coursePortalAdminSuspensionAction'), '管理者欠費簽核未連接後端');
 assert(adminPortal.includes('取消簽到待確認'), '管理者頁缺少取消簽到審核窗口');

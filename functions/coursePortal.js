@@ -4605,6 +4605,9 @@ function publicEvent(row, maps, ownTeacherId, recurringLineages = new Set()) {
     requestedRoomId: resource.requestedRoomId,
     pendingReason: resource.pendingReason,
     tuitionPeriodId: isOwn ? clean(row.tuitionPeriodId || row.periodId || row.studentPayment) : '',
+    attendanceDurationMinutes: isOwn ? Number(row.attendanceDurationMinutes || 0) : 0,
+    attendanceLessonUnits: isOwn ? Number(row.attendanceLessonUnits || 0) : 0,
+    attendanceUnitMinutes: isOwn ? Number(row.attendanceUnitMinutes || 60) : 60,
     tuitionAmount: isOwn ? Number(row.tuitionAmount || row.courseAmount || row.feeAmount || row.expectedAmount || 0) : 0,
     teacherAmount: isOwn ? Number(row.teacherAmount || row.teacherPay || row.payAmount || row.specialTeacherPay || 0) : 0,
     teacherRate: isOwn ? clean(row.teacherRate || row.shareRate || row.allotRate || row.percentage) : '',
@@ -5913,6 +5916,18 @@ function eventLessonUnits(event) {
   return minutes === 30 ? 0.5 : 1;
 }
 
+function tuitionLessonUnitMinutes(period = {}) {
+  const snapshot = period.planSnapshot || {};
+  const explicit = Number(period.lessonUnitMinutes || snapshot.lessonUnitMinutes);
+  if (explicit === 30 || explicit === 60) return explicit;
+  return /半小時|半小时/.test(clean(snapshot.name || period.planName)) ? 30 : 60;
+}
+
+function attendanceDurationMinutes(event, selected) {
+  if (selected != null && ![30, 60, 90].includes(selected)) throw new HttpsError('invalid-argument', '請選擇上課 30、60 或 90 分鐘。');
+  return selected == null ? timeMinutes(eventEnd(event)) - timeMinutes(eventStart(event)) : selected;
+}
+
 function attendanceAllocations(row) {
   if (Array.isArray(row && row.periodAllocations) && row.periodAllocations.length) {
     return row.periodAllocations.filter(item => clean(item.periodId) && Number(item.lessonUnits) > 0);
@@ -6677,6 +6692,7 @@ function buildAttendanceTuitionRollover({ periods, event, studentId, sourceDate 
     periodNo: nextPeriodNo,
     systemPeriodNo: nextSystemPeriodNo,
     startDate: lessonDate,
+    lessonUnitMinutes: tuitionLessonUnitMinutes(completed),
     lessonCount,
     usedCount: 0,
     expectedAmount,
@@ -7946,6 +7962,7 @@ async function courseLessonHistory(data) {
       periodNo: Number(row.periodNo || row.period || 0), systemPeriodNo: Number(row.systemPeriodNo || 0),
       subjectName: clean((subjects.find(item => sourceId(item) === subjectId) || {}).name) || '課程',
       teacherName: clean((teachers.find(item => sourceId(item) === teacherId) || {}).name),
+      lessonUnitMinutes: tuitionLessonUnitMinutes(row),
       lessonCount: Number(row.lessonCount || row.totalLessons || 4), usedCount: Number(row.usedCount || row.attendedCount || 0),
       expectedAmount: tuitionNetExpectedAmount(row), paidAmount: tuitionBasePaidAmount(row),
       outstandingAmount: tuitionOutstandingAmount(row),
@@ -9779,7 +9796,7 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
     const pendingSlots = correctionsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(row => row.status === 'pending');
     const selectedId = clean((options.correctionIds || {})[studentId]);
     const correction = pendingSlots.find(row => row.id === selectedId && row.teacherId === eventTeacherId(event) && row.subjectId === eventSubjectId(event));
-    if (correction && attendanceLessonUnits(correction) !== eventLessonUnits(event)) throw new HttpsError('failed-precondition','補回課程的時間必須與原更正紀錄相同。');
+
     if (selectedId && !correction) throw new HttpsError('failed-precondition', '補回格位已使用或不屬於這堂課，請重新整理。');
     const identifiedPeriods = attendancePeriodsWithRecordedTeachers(periods, mirrorAttendance, portalAttendance, sourceDate);
     const adjustedPeriods = applyPortalAttendanceToPeriods(identifiedPeriods, mirrorAttendance, portalAttendance).map(period => ({ ...period,
@@ -9842,21 +9859,31 @@ async function attendancePeriodsForEvent(event, sourceDate, options = {}) {
         sourceDate
       })
       : null;
+    const unitMinutes = tuitionLessonUnitMinutes(existingPeriod || rollover && rollover.period || {});
+    if (options.attendanceDurationMinutes != null && unitMinutes !== 30) throw new HttpsError('failed-precondition', '只有每格30分鐘的學費方案可選擇本次上課時間。');
+    const duration = attendanceDurationMinutes(event, options.attendanceDurationMinutes);
+    if (unitMinutes === 30 && (!Number.isFinite(duration) || duration <= 0 || duration % 30 !== 0)) throw new HttpsError('failed-precondition', '半小時方案的上課時間必須為30分鐘的倍數。');
+    const requestedMinutes = unitMinutes === 30 ? duration : eventLessonUnits(event) * 60;
+    if (correction && !options.attendancePreview) {
+      const originalMinutes = attendanceAllocations(correction).reduce((sum, item) => sum + Number(item.lessonUnits) * tuitionLessonUnitMinutes(payrollReadyPeriods.find(row => sourceId(row) === item.periodId) || {}), 0);
+      if (originalMinutes !== requestedMinutes) throw new HttpsError('failed-precondition', '補回課程的時間必須與原更正紀錄相同。');
+    }
     if (correction && Array.isArray(correction.periodAllocations) && correction.periodAllocations.length) {
       const allocations = correction.periodAllocations.map(item => ({studentId, period: payrollReadyPeriods.find(row=>sourceId(row)===item.periodId), lessonUnits:Number(item.lessonUnits)}));
       if (allocations.some(item=>!item.period || tuitionLessonCount(item.period)-tuitionUsedCount(item.period)<item.lessonUnits)) throw new HttpsError('failed-precondition','原更正期別額度不足，請由管理者確認。');
       return {studentId,period:allocations[0].period,allocations,rollovers:[]};
     }
-    let remaining = eventLessonUnits(event);
+    let remaining = requestedMinutes;
     let period = existingPeriod || rollover && rollover.period;
     const firstPeriod = period;
     const allocations = [], rollovers = rollover ? [rollover] : [];
     let available = payrollReadyPeriods.slice();
     while (period && remaining > 0) {
-      const units = Math.min(remaining, tuitionLessonCount(period) - tuitionUsedCount(period));
+      const periodUnitMinutes = tuitionLessonUnitMinutes(period);
+      const units = Math.min(remaining / periodUnitMinutes, tuitionLessonCount(period) - tuitionUsedCount(period));
       if (units <= 0) break;
       allocations.push({studentId, period, lessonUnits: units});
-      remaining -= units;
+      remaining -= units * periodUnitMinutes;
       if (!remaining) break;
       available = available.filter(row => sourceId(row) !== sourceId(period)).concat({...period, usedCount: tuitionLessonCount(period), voidedLessonCount: 0});
       period = attendancePeriodCandidate(available, event, studentId, sourceDate);
@@ -9972,8 +9999,22 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
   const periodResolution = await timeAttendanceStage('resolve_tuition', () => attendancePeriodsForEvent(event, sourceDate, {
     allowMissing: giftLesson,
     correctionIds: data.correctionIds || {},
-    allowRollover: !giftLesson
+    allowRollover: !giftLesson,
+    attendanceDurationMinutes: data.attendanceDurationMinutes,
+    attendancePreview: data.attendancePreview === true
   }));
+  const attendanceMinutes = attendanceDurationMinutes(event, data.attendanceDurationMinutes);
+  const halfHourPlan = !giftLesson && Object.values(periodResolution.byStudent).length > 0 && Object.values(periodResolution.byStudent).every(period => tuitionLessonUnitMinutes(period) === 30);
+  if (giftLesson && data.attendanceDurationMinutes != null) throw new HttpsError('invalid-argument', '贈送課程請依原預約時間簽到。');
+  if (data.attendancePreview === true) return {
+    ok: true, attendancePreview: true, halfHourPlan,
+    defaultDurationMinutes: [30,60,90].includes(attendanceMinutes) ? attendanceMinutes : 60,
+    durationOptions: halfHourPlan ? [30,60,90] : [],
+    scheduledDurationMinutes: timeMinutes(event.endTime) - timeMinutes(event.startTime),
+    lateFee: chargeLateFee ? ATTENDANCE_ADMIN_FEE : 0
+  };
+  const unitsForStudent = studentId => (periodResolution.allocationsByStudent[studentId] || []).reduce((sum, item) => sum + Number(item.lessonUnits), 0) || eventLessonUnits(event);
+  const attendanceSummary = {attendanceDurationMinutes: attendanceMinutes, attendanceLessonUnits: giftLesson ? 0 : unitsForStudent(eventStudentIds(event)[0]), attendanceUnitMinutes: halfHourPlan ? 30 : 60};
   const correctionRefs = Object.entries(data.correctionIds || {}).map(([studentId, id]) => ({ studentId, ref: db.collection('coursePortalAttendanceCorrections').doc(clean(id)) }));
   const payrollCalculation = attendancePayrollCalculation(event, periodResolution.rows, sourceDate);
   const periodIds = Object.keys(periodResolution.byStudent).reduce((map, studentId) => {
@@ -10004,6 +10045,7 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
   changePayload.event.tuitionPeriodId = giftLesson ? '' : clean(periodIds[attendanceRows[0] && attendanceRows[0].studentId]);
   changePayload.event.tuitionPeriodIds = giftLesson ? {} : Object.assign({}, periodIds);
   changePayload.event.teacherPayable = payrollCalculation.teacherPayable !== false;
+  Object.assign(changePayload.event, attendanceSummary);
   await timeAttendanceStage('commit', () => db.runTransaction(async (tx) => {
     const snapshots = await Promise.all([
       tx.get(versionRef),
@@ -10124,8 +10166,9 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
       date: sourceDate,
       correctionId: clean((data.correctionIds || {})[row.studentId]),
       deducted: !giftLesson,
-      lessonUnits: eventLessonUnits(event),
-      durationMinutes: timeMinutes(event.endTime) - timeMinutes(event.startTime),
+      lessonUnits: giftLesson ? eventLessonUnits(event) : unitsForStudent(row.studentId),
+      lessonUnitMinutes: tuitionLessonUnitMinutes(periodResolution.byStudent[row.studentId] || {}),
+      durationMinutes: attendanceMinutes,
       startTime: event.startTime, endTime: event.endTime,
       periodAllocations: giftLesson ? [] : (periodResolution.allocationsByStudent[row.studentId] || []),
       late: late === true,
@@ -10176,8 +10219,8 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
       courseId: clean(event.fixedCourseId || sourceCourseId),
       occurredAt: `${sourceDate}T${clean(event.startTime || '00:00')}:00+08:00`,
       startTime: event.startTime, endTime: event.endTime,
-      durationMinutes: timeMinutes(event.endTime) - timeMinutes(event.startTime),
-      lessonUnits: eventLessonUnits(event),
+      durationMinutes: attendanceMinutes,
+      lessonUnits: giftLesson ? eventLessonUnits(event) : unitsForStudent(eventStudentIds(event)[0]),
       earlyAttendance,
       tuitionPeriodIds: Object.assign({}, periodIds),
       createdAt: FieldValue.serverTimestamp(),
@@ -10249,7 +10292,8 @@ async function applyTeacherAttendance(data, late, managerSession = null) {
   return {
     ok: true,
     operationId,
-    message: late
+    ...attendanceSummary,
+    message: halfHourPlan ? `已上課 ${attendanceMinutes} 分鐘，已扣 ${attendanceSummary.attendanceLessonUnits} 格。${chargeLateFee ? '補簽行政處理費 NT$' + ATTENDANCE_ADMIN_FEE + '。' : ''}` : late
       ? (chargeLateFee
         ? `補簽到已完成，並已在本月薪資扣除行政處理費 NT$${ATTENDANCE_ADMIN_FEE}。`
         : '贈送課程補簽到已完成，本次不收行政處理費。')
@@ -13624,6 +13668,9 @@ function registerCoursePortal(exportsObject, helpers = {}) {
   exportsObject.coursePortalTeacherSetIrregular = callable(withPortalReads(teacherSetIrregular), {timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherAction = callable(teacherAction, { timeoutSeconds: 180, memory: '1GiB' });
   exportsObject.coursePortalTeacherLessonStateTaiwan = callable(withPortalReads(teacherLessonState), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
+  const attendanceV2 = data => applyTeacherAttendance({...data, attendancePreview:data.attendancePreview !== false}, data.late === true);
+  exportsObject.coursePortalTeacherAttendanceV2 = callable(withPortalReads(attendanceV2), {timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalTeacherAttendanceV2Taiwan = callable(withPortalReads(attendanceV2), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherAttendanceTaiwan = callable(withPortalReads(teacherAttendance), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherLateAttendanceTaiwan = callable(withPortalReads(teacherLateAttendance), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});
   exportsObject.coursePortalTeacherAttendanceCancellationRequestTaiwan = callable(withPortalReads(teacherAttendanceCancellationRequest), {region:'asia-east1',timeoutSeconds:180,memory:'1GiB'});

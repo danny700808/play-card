@@ -639,7 +639,7 @@
       : (status === 'absent'
         ? '曠課'
         : (['attended', 'checked_in', 'present'].includes(status)
-          ? '已簽到'
+          ? (event.attendanceDurationMinutes ? '已上課' + event.attendanceDurationMinutes + '分鐘' + (event.attendanceUnitMinutes === 30 ? '／扣' + event.attendanceLessonUnits + '格' : '') : '已簽到')
           : (status === 'cancelled'
             ? '已取消'
             : (status === 'pending_conflict' ? '待補排' : ''))));
@@ -1502,7 +1502,7 @@
   }
   function completeLessonOperation(job,result,status){
     job.saved=true;dataRequestVersion++;invalidateCourseCache([job.row.date]);
-    if(status) data.events=data.events.map(row=>operationKey(row)!==job.key?row:{...row,status,attendanceCancellationStatus:result.status==='pending'?'pending':''});
+    if(status) data.events=data.events.map(row=>operationKey(row)!==job.key?row:{...row,status,attendanceDurationMinutes:status==='attended'?Number(result.attendanceDurationMinutes||row.attendanceDurationMinutes||0):0,attendanceLessonUnits:status==='attended'?Number(result.attendanceLessonUnits||row.attendanceLessonUnits||0):0,attendanceUnitMinutes:Number(result.attendanceUnitMinutes||row.attendanceUnitMinutes||60),attendanceCancellationStatus:result.status==='pending'?'pending':''});
     if(status==='cancelled')data.events=data.events.filter(row=>operationKey(row)!==job.key);
     if(quickContext&&quickContext.row&&operationKey(quickContext.row)===job.key)closeQuick();
     renderWeek();toast(result.message||'已儲存。');showDataFreshness('已儲存，正在更新相關課程。');
@@ -1542,30 +1542,44 @@
     try{const result=await invoke('coursePortalTeacherLessonState',{sessionToken:token,state,sourceEventId:row.sourceId||row.id,sourceCourseId:row.fixedCourseId||row.sourceId||row.id,sourceDate:row.date,portalChangeId:row.portalChangeId,note:clean(note)});completeLessonOperation(job,result,state==='cancel_change'?'cancelled':state);}
     catch(error){failLessonOperation(job,error);}finally{finishLessonOperation(job);}
   }
-  async function updateLateAttendance(row,button){
-    if(!row||teacherOperations.busy(operationKey(row)))return;
-    const gift=row.specialLesson===true||clean(row.portalAction)==='teacher_gift'||clean(row.type)==='teacher_gift';
-    if(!confirm(gift?'確定補簽這堂贈送課程？本次不收行政處理費。':'補簽到會收取行政處理費 NT$50，不需主管核准。確定要補簽到嗎？'))return;
-    const job=beginLessonOperation(row,button,'補簽中…');if(!job)return;
-    try{const result=await invoke('coursePortalTeacherLateAttendance',{sessionToken:token,sourceEventId:row.sourceId||row.id,sourceCourseId:row.fixedCourseId||row.sourceId||row.id,sourceDate:row.date,portalChangeId:row.portalChangeId});completeLessonOperation(job,result,'attended');}
-    catch(error){failLessonOperation(job,error);}finally{finishLessonOperation(job);}
+  function showAttendanceDuration(row, preview, payload, late) {
+    const selected = preview.defaultDurationMinutes;
+    showQuick('今天實際上了多久？', (row.studentNames || []).join('、') + '｜' + dayLabel(row.date),
+      '<p class="teacher-quick-description">每格30分鐘。請選擇實際上課時間，課表保留原預約時段。</p>' +
+      '<fieldset class="attendance-duration-options"><legend>實際上課時間</legend>' + [30,60,90].map(minutes =>
+        '<label><input type="radio" name="attendance-duration" value="' + minutes + '"' + (minutes === selected ? ' checked' : '') + '><span><strong>' + minutes + ' 分鐘</strong><small>' + (minutes === 30 ? '半小時' : minutes === 60 ? '1小時' : '1小時30分鐘') + '<br>扣 ' + (minutes / 30) + ' 格</small></span></label>'
+      ).join('') + '</fieldset>' +
+      (preview.lateFee ? '<p class="notice">本次補簽將收取行政處理費 NT$' + preview.lateFee + '。</p>' : '') +
+      '<button type="button" data-cancel-flow>取消</button><button type="button" class="primary" data-confirm-attendance-duration>確認簽到</button>',
+      {type:'attendance-duration', row, payload, late});
   }
-  async function updateAttendance(row,button){
-    if(!row||teacherOperations.busy(operationKey(row))||!confirm('確定完成這堂課的簽到？當天晚上12點前可直接取消並重新簽到。'))return;
-    const job=beginLessonOperation(row,button,'簽到中…');if(!job)return;
-    const payload={sessionToken:token,returnCorrectionChoice:true,sourceEventId:row.sourceId||row.id,sourceCourseId:row.fixedCourseId||row.sourceId||row.id,sourceDate:row.date,portalChangeId:row.portalChangeId};
-    try{
-      let result=await invoke('coursePortalTeacherAttendance',payload);
-      if(result.requiresCorrectionChoice){
-        const correctionIds={};
-        for(const slot of result.corrections||[]){if(correctionIds[slot.studentId])continue;
-          if(confirm((slot.studentName||'學生')+'有一格待補回：第 '+slot.periodNo+' 期第 '+slot.slotNo+' 格（原 '+slot.originalDate+'）。\n今天要補回原格嗎？確認後請同步更正實體上課證；取消則照常登記目前期別。'))correctionIds[slot.studentId]=slot.id;
+  async function submitAttendance(row, button, late, submission) {
+    if (!row || teacherOperations.busy(operationKey(row))) return;
+    const job = beginLessonOperation(row, button, submission ? '簽到中…' : '讀取中…'); if (!job) return;
+    const method = 'coursePortalTeacherAttendanceV2';
+    let payload = submission || {sessionToken:token, late:late === true, attendancePreview:true, returnCorrectionChoice:true, sourceEventId:row.sourceId||row.id, sourceCourseId:row.fixedCourseId||row.sourceId||row.id, sourceDate:row.date, portalChangeId:row.portalChangeId};
+    try {
+      let result = await invoke(method, payload);
+      if (result.requiresCorrectionChoice) {
+        const correctionIds = {};
+        for (const slot of result.corrections || []) {
+          if (correctionIds[slot.studentId]) continue;
+          if (confirm((slot.studentName || '學生') + '有待補回格位：第 ' + slot.periodNo + ' 期（原 ' + slot.originalDate + '）。今天要補回原格嗎？確認後請同步更正實體上課證；取消則登記目前期別。')) correctionIds[slot.studentId] = slot.id;
         }
-        result=await invoke('coursePortalTeacherAttendance',{...payload,correctionIds,correctionChoiceConfirmed:true});
+        payload = {...payload, correctionIds, correctionChoiceConfirmed:true};
+        result = await invoke(method, payload);
       }
-      completeLessonOperation(job,result,'attended');
-    }catch(error){failLessonOperation(job,error);}finally{finishLessonOperation(job);}
+      if (result.attendancePreview) {
+        if (quickContext !== job.context) return;
+        if (result.halfHourPlan) { showAttendanceDuration(row, result, payload, late); return; }
+        if (!confirm(late ? (result.lateFee ? '補簽到會收取行政處理費 NT$' + result.lateFee + '。確定要補簽到嗎？' : '確定補簽這堂贈送課程？本次不收行政處理費。') : '確定完成這堂課的簽到？當天晚上12點前可直接取消並重新簽到。')) return;
+        result = await invoke(method, {...payload, attendancePreview:false});
+      }
+      completeLessonOperation(job, result, 'attended');
+    } catch(error) { failLessonOperation(job, error); } finally { finishLessonOperation(job); }
   }
+  async function updateLateAttendance(row,button){return submitAttendance(row,button,true);}
+  async function updateAttendance(row,button){return submitAttendance(row,button,false);}
   async function requestAttendanceCancellation(row,button){
     if(!row||teacherOperations.busy(operationKey(row)))return;
     const sameDay = row.date === todayKey();let reason='老師當日誤簽到';
@@ -2142,6 +2156,12 @@
   });
   document.getElementById('teacherQuickActions').addEventListener('click', async (event) => {
     const context = quickContext;
+    const durationConfirm = event.target.closest('[data-confirm-attendance-duration]');
+    if (durationConfirm && context && context.type === 'attendance-duration') {
+      const minutes = Number(document.querySelector('input[name="attendance-duration"]:checked')?.value);
+      if (![30,60,90].includes(minutes)) { toast('請選擇實際上課時間。','error'); return; }
+      await submitAttendance(context.row, durationConfirm, context.late, {...context.payload, attendancePreview:false, attendanceDurationMinutes:minutes}); return;
+    }
     const confirmFrequency=event.target.closest('[data-confirm-frequency]');
     if(confirmFrequency&&context&&context.type==='confirm-frequency'){showActionConfirmation({...context.payload,frequencyWeeks:Number(confirmFrequency.dataset.confirmFrequency)},context.summary);return;}
     const frequencyButton=event.target.closest('[data-fixed-frequency]');
