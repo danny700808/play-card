@@ -46,6 +46,7 @@
     .pill.red{background:#fee2e2;color:#991b1b}.pill.green{background:#dcfce7;color:#166534}.pill.orange{background:#ffedd5;color:#9a3412}.pill.blue{background:#dbeafe;color:#1d4ed8}
     .hidden{display:none!important}
     .message{margin-top:12px}
+    #pageMsg:not(:empty){display:block}
     .success{padding:12px 14px;border-radius:14px;background:#ecfdf3;border:1px solid #bbf7d0;color:#166534}
     .error{padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
     .notice{padding:12px 14px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
@@ -214,6 +215,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="operations-manager-auth.js?v=20260926-login-home"></script>
   <script src="parttime-payroll-common.js?v=20260710late-recalc1"></script>
   <script>
     let state = { employees: [], allEmployees: [], parttime: [], clocks: [], corrections: [], leaves: [], salaryConfigs: {}, selectedId: '', lateCache: null, dailyFilter: 'all' };
@@ -767,7 +769,20 @@
     }
     async function reloadAll(){
       try{
-        msg('讀取資料中...','notice');
+        msg('正在確認登入並讀取資料…','notice');
+        if(!state.employees.length){
+          qs('#employeeCount').textContent='讀取中';
+          qs('#employeeList').textContent='正在載入工讀生名單…';
+        }
+        fb();
+        let manager=null;
+        try{manager=JSON.parse(localStorage.getItem('employeeUser')||'null')}catch(_){}
+        const auth=await window.YouziOperationsManagerAuth.ensureManagerAuth(window,manager);
+        if(!auth.ok){
+          const error=new Error(auth.message||'無法確認管理者登入，請稍後重試。');
+          error.reauth=auth.reauth;
+          throw error;
+        }
         const employeeRows = await all('employees');
         const salaryConfigRows = (await all('employeeSalaryConfigs').catch(()=>[]))
           .concat(await all('salaryConfigs').catch(()=>[]))
@@ -787,7 +802,14 @@
         if(!state.selectedId&&state.employees[0])state.selectedId=state.employees[0].id;
         renderAll();
         msg('');
-      }catch(e){msg('讀取失敗：'+(e.message||e),'error')}
+      }catch(e){
+        if(!state.employees.length){
+          qs('#employeeCount').textContent='未載入';
+          qs('#employeeList').textContent='名單尚未載入，請依上方提示重試。';
+        }
+        const login=e.reauth?' <a href="login.html?next=data-center.html%3Fmodule%3Dparttime">重新登入後返回工讀薪資結算</a>':'';
+        msg('讀取失敗：'+esc(e.message||e)+login+' <button type="button" class="btn small gray" onclick="reloadAll()">重新讀取</button>','error');
+      }
     }
     function renderEmployees(){
       const kw=lower(qs('#keyword').value);
