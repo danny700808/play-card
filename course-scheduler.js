@@ -971,7 +971,7 @@
     var student=studentById(currentStudentId);$('studentTabs').innerHTML='';
     var periods=state.tuitionPeriods.filter(function(row){return row.studentId===student.id;}).sort(function(a,b){return numberOf(a.periodNo)-numberOf(b.periodNo);}),latest=periods.length?periods[periods.length-1]:{},html='<section class="student-overview compact"><div><span>狀態</span><b>'+(studentCourseStatusLabel(student))+'</b></div><div><span>電話</span><b>'+esc(student.phone||'未填')+'</b></div><div><span>目前課程</span><b>'+esc(subjectById(latest.subjectId).name||'尚未建立期別')+'</b></div><div><span>目前堂數</span><b>'+(latest.id?'剩 '+periodRemaining(latest)+'／'+latest.lessonCount+' 堂':'—')+'</b></div></section>';
     if(student.note)html+='<section class="student-note"><b>備註</b><p>'+esc(student.note)+'</p></section>';
-    html+='<section class="student-section"><div class="student-record-heading"><div><h3>學費紀錄</h3><p>每一期維持同一排；四堂實際簽到日期直接顯示，未繳金額以紅色標示。</p></div></div>'+tuitionTableHtml(student.id)+'</section>';
+    html+='<section class="student-section"><div class="student-record-heading"><div><h3>學費紀錄</h3><p>每一期獨立顯示；每排四格，八格方案分成上下兩排，未繳金額以紅色標示。</p></div></div>'+tuitionTableHtml(student.id)+'</section>';
     $('studentModalBody').innerHTML=html;$('studentModalFoot').innerHTML=isSandbox()?'<div><button class="btn outline" type="button" data-student-action="edit">編輯基本資料</button></div><div><button class="btn primary" type="button" data-student-action="tuition">＋ 延續／新增學費期別</button></div>':'<div class="formal-view-note">請先載入新系統資料，再進行收費、退費或新增期別。</div>';
   }
   function displayTransactionMethod(value){var method=clean(value);return /^(未註明|未設定|N\/A|null|undefined|-+)$/i.test(method)?'':method;}

@@ -158,14 +158,14 @@ a{color:inherit;text-decoration:none}
 .student-schedule .data-table{min-width:760px}
 .student-record-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.student-record-heading h3{margin:0;font-size:20px}.student-record-heading p{margin:2px 0 12px;color:var(--muted);font-size:13px}
 .tuition-table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
-.tuition-record-table{width:100%;min-width:1180px;border-collapse:collapse;background:#fff;table-layout:fixed}
+.tuition-record-table{width:100%;min-width:1080px;border-collapse:collapse;background:#fff;table-layout:fixed}
 .tuition-record-table th{padding:10px 11px;background:#e9f2ed;color:#395d52;font-size:13px;text-align:left;white-space:nowrap}
 .tuition-record-table td{padding:11px;border-top:1px solid var(--line);vertical-align:middle;font-size:14px}
 .tuition-record-table td small{display:block;margin-top:2px;color:var(--muted);font-size:12px}
-.tuition-record-table th:nth-child(1),.tuition-record-table td:nth-child(1){width:260px}
-.tuition-record-table th:nth-child(2),.tuition-record-table td:nth-child(2){width:250px}
-.tuition-record-table th:nth-child(3),.tuition-record-table td:nth-child(3){width:120px}
-.tuition-record-table th:nth-child(4),.tuition-record-table td:nth-child(4){width:550px}
+.tuition-record-table th:nth-child(1),.tuition-record-table td:nth-child(1){width:240px}
+.tuition-record-table th:nth-child(2),.tuition-record-table td:nth-child(2){width:230px}
+.tuition-record-table th:nth-child(3),.tuition-record-table td:nth-child(3){width:100px}
+.tuition-record-table th:nth-child(4),.tuition-record-table td:nth-child(4){width:510px}
 .tuition-period-row.latest td{background:#f4faf7}
 .tuition-period-row td:first-child b{color:var(--green-dark);white-space:nowrap}
 .period-course-button{width:100%;padding:0;border:0;background:transparent;text-align:left;cursor:pointer}.period-course-button:hover b{color:var(--green)}.period-course-button:disabled{cursor:default;color:inherit}.period-course-button:disabled:hover b{color:inherit}.period-course-button small{white-space:normal}
@@ -174,8 +174,8 @@ a{color:inherit;text-decoration:none}
 .tuition-due{display:inline-block;padding:4px 7px;border-radius:7px;background:#fff0ef;color:#aa352f;font-size:15px;white-space:nowrap}
 .tuition-paid{color:var(--green-dark);font-weight:900;white-space:nowrap}
 .tuition-readonly{color:var(--muted);font-size:12px;white-space:nowrap}
-.lesson-slots{display:flex;flex-wrap:nowrap;gap:6px;min-width:max-content}
-.lesson-slot{display:grid;align-content:center;min-width:118px;min-height:58px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;text-align:left;cursor:pointer}
+.lesson-slots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;min-width:0}
+.lesson-slot{display:grid;align-content:center;min-width:0;min-height:58px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;text-align:left;cursor:pointer}
 .lesson-slot small{margin:0!important;font-size:10px!important}
 .lesson-slot b{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lesson-slot em{color:var(--muted);font-size:10px;font-style:normal}
