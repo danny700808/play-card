@@ -35,10 +35,27 @@ test('ordinary deducted order can be returned and queues restored stock',async()
 test('return list renders with rows and normal orders expose manual return',()=>{
  const row={id:'o',platform:'MOMO',productId:'p',quantity:2,inventoryApplied:true,orderedAt:'2026-10-09',externalOrderNo:'O1',productName:'Sample'};
  const ctx={state:{platformOrders:[row],platformOrderIssueFilter:'returns',platformOrderPlatform:'all',platformOrderSearch:'',platformSyncRuns:[],platformOrderMonth:'2026-10',platformOrderRange:'all'},clean:v=>String(v??'').trim(),lower:v=>String(v??'').toLowerCase(),platformOrderSkipsInventory:()=>false,platformOrderBounds:()=>({}),platformReturnRows:r=>r,visiblePlatformOrders:r=>r,platformOrderIsEffective:()=>false,dateFrom:v=>v?new Date(v):null,platformFeeMetrics:()=>({perRow:new Map()}),sum:(r,f)=>r.reduce((a,x)=>a+Number(f(x)||0),0),platformOrderGroupKey:r=>r.externalOrderNo,platformOrderFirstDate:r=>r[0].orderedAt,dateText:()=> '2026-10-09',attr:String,escapeHtml:String,platformOrderDateKey:()=> '2026-10-09',todayDateKey:()=> '2026-10-09',formatNumber:String,money:String,statusTag:String,platformOrderGross:()=>100,platformOrderCost:()=>30,platformOrderPlacedAtText:()=> '2026-10-09',kpi:()=>'',emptyHtml:()=>''};
+ ctx.platformOrderIsCancelledState=()=>false;
+ ctx.platformOrderIsCustomerCancelled=()=>false;
+ ctx.platformOrderListRows=rows=>rows;
  vm.runInNewContext(source.slice(source.indexOf('function platformOrderCanReturn('),source.indexOf('function openPlatformOrderReturn(')),ctx);
  vm.runInNewContext(source.slice(source.indexOf('function renderSync(){'),source.indexOf('  function renderConnection(){')),ctx);
  const html=ctx.renderSync();assert.match(html,/退貨待處理/);assert.match(html,/platform-order-return/);
  assert.equal(ctx.platformOrderCanReturn({...row,returnHandlingStatus:'completed'}),false);
  assert.equal(ctx.platformOrderCanReturn({...row,inventoryApplied:false}),false);
  assert.equal(ctx.platformOrderCanReturn({...row,processingStatus:'cancellation-review'}),false);
+ ctx.state.platformOrderIssueFilter='all';ctx.platformOrderIsCustomerCancelled=()=>true;ctx.platformOrderIsCancelledState=()=>true;
+ const cancelled=ctx.renderSync();assert.match(cancelled,/客戶取消/);assert.doesNotMatch(cancelled,/data-action="platform-order-return"/);assert.match(cancelled,/<td class="num">0<\/td>/);
+});
+
+test('confirmed unshipped cancellations remain visible but never count as effective sales',()=>{
+ const ctx={clean:v=>String(v||''),platformOrderHasFulfillment:r=>r.shipmentConfirmed===true,platformOrderIsCancelledState:r=>['ignored-cancelled','inventory-reversed'].includes(r.processingStatus),platformOrderHasReliableOrderDate:r=>!!r.orderedAt,dedupePlatformOrders:r=>r,platformOrderIsHidden:r=>r.processingStatus!=='inventory-applied',platformOrderHasReturn:r=>r.processingStatus==='manual-return-review'};
+ vm.runInNewContext(source.slice(source.indexOf('function platformOrderIsCustomerCancelled('),source.indexOf('function platformOrderNeedsAttention(')),ctx);
+ const active={id:'active',processingStatus:'inventory-applied',orderedAt:'2026-10-09'};
+ const cancelled={id:'cancelled',processingStatus:'inventory-reversed',orderedAt:'2026-10-09',reversalApplied:true};
+ const beforeSync={...cancelled,id:'never-deducted',processingStatus:'ignored-cancelled'};
+ const shipped={...cancelled,id:'shipped',shipmentConfirmed:true};
+ const pending={...cancelled,id:'pending',processingStatus:'cancellation-review'};
+ assert.deepEqual(Array.from(ctx.platformOrderListRows([active,cancelled,beforeSync,shipped,pending]),r=>r.id),['active','cancelled','never-deducted']);
+ assert.equal(ctx.platformOrderIsEffective(cancelled),false);assert.equal(ctx.platformOrderIsEffective(beforeSync),false);
 });
