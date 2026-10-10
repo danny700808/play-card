@@ -1,6 +1,6 @@
 (()=>{'use strict';
 const VERSION='2026-10-02-v2',TEXT='本人為下列學生之家長或監護人，已確認本次選購的商品、數量、附贈配件與總金額，同意學生參加本次團購。';
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),money=n=>'NT$ '+Number(n).toLocaleString('zh-TW');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),money=n=>'$ '+Number(n).toLocaleString('zh-TW');
 let parentName='',agreed=false,strokes=[],drawing=false,host=null,options=null,canvas=null,modal=null,busy=false,locked=false,scrollY=0,bodyStyle='',rootOverflow='';
 function preventScroll(e){if(locked)e.preventDefault();}
 function lock(){if(locked)return;const width=document.body.getBoundingClientRect().width;scrollY=window.scrollY;bodyStyle=document.body.style.cssText;rootOverflow=document.documentElement.style.overflow;locked=true;document.documentElement.style.overflow='hidden';Object.assign(document.body.style,{position:'fixed',top:-scrollY+'px',left:'0',width:width+'px',overflow:'hidden',touchAction:'none'});document.addEventListener('touchmove',preventScroll,{passive:false});document.addEventListener('wheel',preventScroll,{passive:false});}

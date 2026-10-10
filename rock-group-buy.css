@@ -1,18 +1,16 @@
-.bundle-main{display:grid;grid-template-columns:1fr 1fr}
-body:not([data-admin]) .guitar-bundle .photo{height:480px;gap:12px;padding:22px}
-.guitar-bundle .photo img{min-width:0;width:48%;height:auto;max-height:100%;object-fit:contain;mix-blend-mode:normal}
-.guitar-bundle h2{margin-bottom:14px}.included{margin:10px 0;color:var(--muted)}
-.accessory-list{background:#eef2e8;border-radius:8px;padding:14px;line-height:1.9}
-.color-options{border:0;padding:0;margin:12px 0 0;display:flex;gap:14px}
-.color-options legend{font-weight:700;margin-bottom:12px}
-.color-option{border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;cursor:pointer}
-.color-option img{height:125px;width:100%;object-fit:contain}.color-option input{margin:0}
-.color-option.active,.amp-option.active{border-color:var(--green);background:#edf3e9;box-shadow:inset 0 0 0 1px var(--green)}
-.bundle-addons{padding:25px;border-top:1px solid var(--line)}.bundle-addons h3{margin:0 0 5px}
-.amp-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
-.amp-option{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:9px;padding:12px;margin:0;cursor:pointer;background:var(--white)}
-.amp-option img{width:100%;height:130px;object-fit:contain;border-radius:5px}.amp-name{flex:1}.amp-option strong{color:var(--green)}
-.amp-option input{margin:0 5px 0 0}.amp-option:has(input:disabled){cursor:default}.amp-option:has(input:disabled)>span:last-child{color:var(--muted)}
-.bundle-total{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px;padding:18px;background:#eef2e8;border-radius:8px}.bundle-total strong{font-size:25px;white-space:nowrap}
-.standalone summary{font-size:18px;font-weight:600;cursor:pointer}.standalone[open] summary{margin-bottom:18px}.standalone-options{grid-template-columns:repeat(3,minmax(0,1fr))}
-@media(max-width:700px){.bundle-main{grid-template-columns:1fr}body:not([data-admin]) .guitar-bundle .photo{height:330px;padding:16px}body:not([data-admin]) .guitar-bundle .card-body{padding:20px}.bundle-addons{padding:20px}.amp-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.amp-option{padding:10px;font-size:13px}.amp-option img{height:110px}.bundle-total{align-items:flex-start;flex-direction:column}.guitar-bundle h2{font-size:22px}.standalone-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
+body:not([data-admin]) .guitar-bundle .card-body{padding:18px 18px 0;display:block}
+.guitar-bundle h2{font-size:21px;margin:0 0 5px}.guitar-bundle .price{font-size:25px}.guitar-bundle .price small{font-size:14px;letter-spacing:0;margin-right:8px}
+.accessory-list{font-size:13px;color:var(--muted);line-height:1.65;margin:8px 0 12px}
+.color-options{border:0;padding:0;margin:0;display:flex;gap:10px}.color-options legend{font-size:14px;margin-bottom:7px}
+.color-option{border:1px solid var(--line);border-radius:6px;padding:8px;margin:0;display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;cursor:pointer;font-size:14px}
+.color-option img{height:115px;width:100%;object-fit:contain}.color-option input{margin:0}.color-option .stock{font-size:11px;padding:1px 7px}
+.color-option.active,.amp-option.active{border-color:var(--green);background:#edf3e9}
+.bundle-addons{padding:12px 18px 16px}.bundle-addons h3{font-size:15px;margin:0 0 8px;min-height:0}.bundle-addons h3 small{font-weight:400;font-size:12px;color:var(--muted)}
+.amp-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.amp-option{display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line);border-radius:6px;padding:6px 3px;margin:0;cursor:pointer;font-size:12px;text-align:center}
+.amp-option img{width:100%;height:64px;object-fit:contain}.amp-name{min-height:32px;display:flex;align-items:center;justify-content:center;line-height:1.3}.amp-option strong{color:var(--green);white-space:nowrap;font-size:12px}
+.amp-option input{margin:0 2px 0 0;vertical-align:middle}.amp-option:has(input:disabled){cursor:default}.amp-option:has(input:disabled)>span:last-child{color:var(--muted)}
+.bundle-total{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;font-size:12px}.bundle-total strong{font-size:20px;white-space:nowrap}
+.standalone summary{font-size:15px;font-weight:500;cursor:pointer}.standalone[open] summary{margin-bottom:10px}.standalone p{font-size:12px}.standalone-options{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(min-width:701px){.guitar-bundle{max-width:760px;margin:auto}.color-option img{height:160px}.amp-option img{height:90px}.amp-name{min-height:20px}.amp-option{font-size:14px;padding:10px}.amp-option strong{font-size:14px}.bundle-addons{padding-top:16px}.guitar-bundle h2{font-size:24px}}
+@media(max-width:370px){body:not([data-admin]) .guitar-bundle .card-body{padding:14px 12px 0}.bundle-addons{padding:10px 12px 14px}.amp-options{gap:4px}.amp-option{font-size:11px}.amp-option strong{font-size:11px}}
