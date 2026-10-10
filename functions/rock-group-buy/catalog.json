@@ -442,7 +442,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-irin-front.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。"
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。"
   },
   {
     "id": "bass-irin-red",
@@ -458,7 +458,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-irin-red.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。",
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。",
     "photoClass": "bass-catalog"
   },
   {
@@ -475,7 +475,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-irin-dark-blue.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。",
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。",
     "photoClass": "bass-catalog"
   },
   {
@@ -492,7 +492,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-irin-black.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。",
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。",
     "photoClass": "bass-catalog"
   },
   {
@@ -509,7 +509,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-bensons-front.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。"
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。"
   },
   {
     "id": "bass-gsr320-blue",
@@ -526,7 +526,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-gsr320-blue-front.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。"
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。"
   },
   {
     "id": "bass-gsr320-black",
@@ -543,7 +543,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-gsr320-black-front.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。"
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。"
   },
   {
     "id": "bass-trbx174-red",
@@ -560,7 +560,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-trbx174-red-front.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。"
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。"
   },
   {
     "id": "bass-squier-sonic-black",
@@ -577,7 +577,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-squier-sonic-black-front.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。"
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。"
   },
   {
     "id": "bass-squier-sonic-blue",
@@ -594,7 +594,7 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-squier-sonic-blue-front.jpg",
-    "description": "附贈：15mm 厚度琴袋、導線、調音器。"
+    "description": "附贈：15mm 厚度琴袋、3m 導線、調音器。"
   },
   {
     "id": "joyo-ba30",
@@ -696,5 +696,22 @@
     "enabled": true,
     "image": "rock-group-buy-assets/drumsticks-4.jpg",
     "description": "方便初學學習，附可旋轉的輔助配件。"
+  },
+  {
+    "id": "aroma-ag04",
+    "kind": "amp",
+    "name": "AROMA AG04 音箱",
+    "price": 950,
+    "bundlePrice": 950,
+    "bundleOnly": true,
+    "compatibleKinds": [
+      "guitar"
+    ],
+    "total": null,
+    "reserved": 0,
+    "unlimited": true,
+    "enabled": true,
+    "image": "rock-group-buy-assets/aroma-ag04.jpg",
+    "description": ""
   }
 ]
