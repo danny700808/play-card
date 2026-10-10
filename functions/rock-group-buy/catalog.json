@@ -397,5 +397,19 @@
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/azes40-front.jpg",
     "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。"
+  },
+  {
+    "id": "marshall-mg10",
+    "kind": "amp",
+    "name": "Marshall MG10 音箱",
+    "price": 3500,
+    "bundlePrice": 3500,
+    "bundleOnly": true,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/marshall-mg10.jpg",
+    "description": "搭配電吉他加購 +NT$ 250",
+    "reserved": 0,
+    "enabled": true,
+    "unlimited": true,
+    "total": null
   }
 ]
