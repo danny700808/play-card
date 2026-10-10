@@ -14,3 +14,13 @@ body:not([data-admin]) .guitar-bundle .card-body{padding:18px 18px 0;display:blo
 .standalone summary{font-size:15px;font-weight:500;cursor:pointer}.standalone[open] summary{margin-bottom:10px}.standalone p{font-size:12px}.standalone-options{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(min-width:701px){.guitar-bundle{max-width:760px;margin:auto}.color-option img{height:160px}.amp-option img{height:90px}.amp-name{min-height:20px}.amp-option{font-size:14px;padding:10px}.amp-option strong{font-size:14px}.bundle-addons{padding-top:16px}.guitar-bundle h2{font-size:24px}}
 @media(max-width:370px){body:not([data-admin]) .guitar-bundle .card-body{padding:14px 12px 0}.bundle-addons{padding:10px 12px 14px}.amp-options{gap:4px}.amp-option{font-size:11px}.amp-option strong{font-size:11px}}
+.guitar-bundle + .guitar-bundle{margin-top:18px}
+.color-photo{display:block;height:115px;width:100%;overflow:hidden}.color-photo img{height:100%;width:100%;object-fit:contain}
+.color-photo.farida-tea,.color-photo.farida-gray{width:44px}.color-photo.farida-tea img,.color-photo.farida-gray img{object-fit:cover}.color-photo.farida-tea img{object-position:left}.color-photo.farida-gray img{object-position:right}
+.color-photo.farida-green{width:40px}.color-photo.farida-green img{object-fit:cover;object-position:left}
+@media(min-width:701px){.color-photo{height:160px}.color-photo.farida-tea,.color-photo.farida-gray{width:60px}.color-photo.farida-green{width:55px}}
+.color-option{min-width:0}.color-option>span:not(.color-photo){white-space:nowrap}
+.color-photo.ibanez-pink,.color-photo.ibanez-blue{width:44px}.color-photo.ibanez-pink img,.color-photo.ibanez-blue img{object-fit:cover}.color-photo.ibanez-pink img{object-position:left}.color-photo.ibanez-blue img{object-position:right}
+.color-photo.ibanez-black{width:42px}.color-photo.ibanez-black img{object-fit:cover;object-position:right}
+@media(min-width:701px){.color-photo.ibanez-pink,.color-photo.ibanez-blue{width:60px}.color-photo.ibanez-black{width:58px}}
+@media(max-width:420px){[data-family="ibanez"] .color-options{gap:5px}[data-family="ibanez"] .color-option{padding:6px 2px;font-size:12px}[data-family="ibanez"] .stock{font-size:10px;padding:1px 4px}}
