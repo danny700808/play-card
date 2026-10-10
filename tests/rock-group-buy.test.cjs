@@ -41,3 +41,8 @@ test('Ibanez color quotas and bundle prices',()=>{
  }
  assert.throws(()=>plan(config(),['farida-pink','ibanez-white']),/最多/);
 });
+test('Tagima shares 6500 group with distinct name and one guitar quota',()=>{
+ const c=config(),p=c.products.find(p=>p.id==='tagima-white');assert.equal(p.total,1);assert.equal(p.family,'farida');assert.match(p.name,/Tagima TG520/);
+ for(const [amp,extra] of [['joyo-ja01',250],['s4',1500],['aroma',2000],['m-vave',2500]])assert.equal(plan(c,[p.id,amp]).total,6500+extra);
+ changeReservation(c,plan(c,[p.id]).items,1);assert.throws(()=>plan(c,[p.id]),/剩餘數量不足/);assert.equal(plan(c,['farida-pink']).total,6500);
+});

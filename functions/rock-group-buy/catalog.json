@@ -94,7 +94,7 @@
     "id": "farida-pink",
     "kind": "guitar",
     "family": "farida",
-    "familyName": "Farida 電吉他",
+    "familyName": "Farida / Tagima TG520 電吉他",
     "color": "粉紅色",
     "name": "Farida 電吉他｜粉紅色",
     "price": 6500,
@@ -104,13 +104,14 @@
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/farida-front.jpg",
     "photoClass": "farida-tea",
-    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。"
+    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。",
+    "optionLabel": "Farida 粉紅色"
   },
   {
     "id": "farida-gray",
     "kind": "guitar",
     "family": "farida",
-    "familyName": "Farida 電吉他",
+    "familyName": "Farida / Tagima TG520 電吉他",
     "color": "灰咖色",
     "name": "Farida 電吉他｜灰咖色",
     "price": 6500,
@@ -120,13 +121,14 @@
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/farida-front.jpg",
     "photoClass": "farida-gray",
-    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。"
+    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。",
+    "optionLabel": "Farida 灰咖色"
   },
   {
     "id": "farida-green",
     "kind": "guitar",
     "family": "farida",
-    "familyName": "Farida 電吉他",
+    "familyName": "Farida / Tagima TG520 電吉他",
     "color": "粉綠色",
     "sku": "1040158-1",
     "name": "Farida 電吉他｜粉綠色",
@@ -137,7 +139,8 @@
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/farida-green.jpg",
     "photoClass": "farida-green",
-    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。"
+    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。",
+    "optionLabel": "Farida 粉綠色"
   },
   {
     "id": "ibanez-black",
@@ -205,6 +208,22 @@
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/ibanez-front.jpg",
     "photoClass": "ibanez-pink",
+    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。"
+  },
+  {
+    "id": "tagima-white",
+    "kind": "guitar",
+    "family": "farida",
+    "familyName": "Farida / Tagima TG520 電吉他",
+    "color": "白色",
+    "optionLabel": "Tagima TG520 白色",
+    "name": "Tagima TG520 電吉他｜白色",
+    "price": 6500,
+    "total": 1,
+    "reserved": 0,
+    "unlimited": false,
+    "enabled": true,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/tagima-front.jpg",
     "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。"
   }
 ]

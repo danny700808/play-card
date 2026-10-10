@@ -24,3 +24,4 @@ body:not([data-admin]) .guitar-bundle .card-body{padding:18px 18px 0;display:blo
 .color-photo.ibanez-black{width:42px}.color-photo.ibanez-black img{object-fit:cover;object-position:right}
 @media(min-width:701px){.color-photo.ibanez-pink,.color-photo.ibanez-blue{width:60px}.color-photo.ibanez-black{width:58px}}
 @media(max-width:420px){[data-family="ibanez"] .color-options{gap:5px}[data-family="ibanez"] .color-option{padding:6px 2px;font-size:12px}[data-family="ibanez"] .stock{font-size:10px;padding:1px 4px}}
+[data-family="farida"] .color-options{gap:6px}[data-family="farida"] .color-option{padding:6px 3px;font-size:12px}[data-family="farida"] .color-option>span:not(.color-photo):not(.stock){white-space:normal;text-align:center;min-height:42px;line-height:1.4}[data-family="farida"] .stock{font-size:10px;padding:1px 4px}
