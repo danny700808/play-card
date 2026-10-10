@@ -182,7 +182,7 @@
     "family": "ibanez",
     "familyName": "IBANEZ GRX40 電吉他",
     "color": "藍色",
-    "sku": "1040136-5",
+    "sku": "1040136-3",
     "name": "IBANEZ GRX40 電吉他｜藍色",
     "price": 7500,
     "total": 1,
@@ -224,6 +224,23 @@
     "unlimited": false,
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/tagima-front.jpg",
+    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。"
+  },
+  {
+    "id": "ibanez-green",
+    "kind": "guitar",
+    "family": "ibanez",
+    "familyName": "IBANEZ GRX40 電吉他",
+    "color": "馬卡綠",
+    "sku": "1040136-5",
+    "name": "IBANEZ GRX40 電吉他｜馬卡綠",
+    "price": 7500,
+    "total": 1,
+    "reserved": 0,
+    "unlimited": false,
+    "enabled": true,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/ibanez-green.jpg",
+    "photoClass": "",
     "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。"
   }
 ]

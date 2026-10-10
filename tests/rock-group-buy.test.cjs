@@ -46,3 +46,6 @@ test('Tagima shares 6500 group with distinct name and one guitar quota',()=>{
  for(const [amp,extra] of [['joyo-ja01',250],['s4',1500],['aroma',2000],['m-vave',2500]])assert.equal(plan(c,[p.id,amp]).total,6500+extra);
  changeReservation(c,plan(c,[p.id]).items,1);assert.throws(()=>plan(c,[p.id]),/剩餘數量不足/);assert.equal(plan(c,['farida-pink']).total,6500);
 });
+test('Ibanez macaron green is an additional one-unit variant',()=>{
+ const c=config(),p=c.products.find(p=>p.id==='ibanez-green');assert.equal(p.total,1);assert.equal(p.sku,'1040136-5');assert.equal(c.products.find(p=>p.id==='ibanez-blue').sku,'1040136-3');assert.equal(plan(c,[p.id,'s4']).total,9000);changeReservation(c,plan(c,[p.id]).items,1);assert.throws(()=>plan(c,[p.id]),/剩餘數量不足/);
+});

@@ -1,6 +1,11 @@
 name: Deploy rock group buy
 on:
   workflow_dispatch:
+    inputs:
+      catalog_only:
+        description: Update catalog without redeploying the unchanged API
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -18,17 +23,21 @@ jobs:
       - run: node --test tests/rock-group-buy.test.cjs
       - run: npm ci --prefix functions/rock-group-buy
       - run: npm install --global firebase-tools@15.24.0
+        if: ${{ !inputs.catalog_only }}
       - name: Prepare deployment credential
         env:
           SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
         run: |
           node -e "require('fs').writeFileSync(process.env.RUNNER_TEMP+'/rock-service-account.json',process.env.SERVICE_ACCOUNT,{mode:0o600})"
-      - name: Initialize isolated catalog and deploy only rock endpoint
+      - name: Update isolated catalog
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/rock-service-account.json
-        run: |
-          node functions/rock-group-buy/seed.cjs
-          firebase deploy --config firebase.rock-group-buy.json --project youzi-c1b74 --non-interactive --only functions:rock-group-buy:rockGroupBuyApi
+        run: node functions/rock-group-buy/seed.cjs
+      - name: Deploy rock endpoint
+        if: ${{ !inputs.catalog_only }}
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/rock-service-account.json
+        run: firebase deploy --config firebase.rock-group-buy.json --project youzi-c1b74 --non-interactive --only functions:rock-group-buy:rockGroupBuyApi
       - name: Remove temporary credential
         if: always()
         run: rm -f "$RUNNER_TEMP/rock-service-account.json"

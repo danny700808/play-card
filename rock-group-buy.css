@@ -25,3 +25,11 @@ body:not([data-admin]) .guitar-bundle .card-body{padding:18px 18px 0;display:blo
 @media(min-width:701px){.color-photo.ibanez-pink,.color-photo.ibanez-blue{width:60px}.color-photo.ibanez-black{width:58px}}
 @media(max-width:420px){[data-family="ibanez"] .color-options{gap:5px}[data-family="ibanez"] .color-option{padding:6px 2px;font-size:12px}[data-family="ibanez"] .stock{font-size:10px;padding:1px 4px}}
 [data-family="farida"] .color-options{gap:6px}[data-family="farida"] .color-option{padding:6px 3px;font-size:12px}[data-family="farida"] .color-option>span:not(.color-photo):not(.stock){white-space:normal;text-align:center;min-height:42px;line-height:1.4}[data-family="farida"] .stock{font-size:10px;padding:1px 4px}
+[data-family="squier"] .color-options{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+[data-family="squier"] .color-option>span:not(.color-photo):not(.stock){white-space:normal;min-height:38px;text-align:center;line-height:1.4;font-size:12px}
+.color-photo.squier-bw,.color-photo.squier-bb,.color-photo.squier-purple,.color-photo.squier-blue{width:36px}
+.color-photo[class*="squier-"] img{object-fit:cover}.color-photo.squier-bw img{object-position:8% center}.color-photo.squier-bb img{object-position:31% center}.color-photo.squier-purple img{object-position:53% center}.color-photo.squier-blue img{object-position:84% center}
+@media(min-width:701px){.color-photo.squier-bw,.color-photo.squier-bb,.color-photo.squier-purple,.color-photo.squier-blue{width:50px}}
+@media(max-width:600px){[data-family="squier"] .color-options{grid-template-columns:repeat(3,minmax(0,1fr))}}
+[data-family="ibanez"] .color-options{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:600px){[data-family="ibanez"] .color-options{grid-template-columns:repeat(3,minmax(0,1fr))}}
