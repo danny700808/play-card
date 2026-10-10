@@ -1,12 +1,12 @@
 (()=>{'use strict';
 const VERSION='2026-10-02-v2',TEXT='本人為下列學生之家長或監護人，已確認本次選購的商品、數量、附贈配件與總金額，同意學生參加本次團購。';
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),money=n=>'$ '+Number(n).toLocaleString('zh-TW');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),money=n=>'團購價 '+Number(n).toLocaleString('zh-TW');
 let parentName='',agreed=false,strokes=[],drawing=false,host=null,options=null,canvas=null,modal=null,busy=false,locked=false,scrollY=0,bodyStyle='',rootOverflow='';
 function preventScroll(e){if(locked)e.preventDefault();}
 function lock(){if(locked)return;const width=document.body.getBoundingClientRect().width;scrollY=window.scrollY;bodyStyle=document.body.style.cssText;rootOverflow=document.documentElement.style.overflow;locked=true;document.documentElement.style.overflow='hidden';Object.assign(document.body.style,{position:'fixed',top:-scrollY+'px',left:'0',width:width+'px',overflow:'hidden',touchAction:'none'});document.addEventListener('touchmove',preventScroll,{passive:false});document.addEventListener('wheel',preventScroll,{passive:false});}
 function release(){if(modal){modal.close();modal.remove();modal=null;canvas=null;}if(!locked)return;locked=false;drawing=false;document.body.style.cssText=bodyStyle;document.documentElement.style.overflow=rootOverflow;document.removeEventListener('touchmove',preventScroll);document.removeEventListener('wheel',preventScroll);window.scrollTo(0,scrollY);}
 function draw(c,ss){const ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);ctx.strokeStyle='#213d36';ctx.lineWidth=9;ctx.lineCap='round';ctx.lineJoin='round';for(const s of ss){ctx.beginPath();s.points.forEach((p,i)=>i?ctx.lineTo(p.x*c.width,p.y*c.height):ctx.moveTo(p.x*c.width,p.y*c.height));ctx.stroke();}}
-function summary(s){return `<p>學生：${esc(s.className)} ${esc(s.name||s.studentName)}</p><p>${s.items.map(p=>`${esc(p.name)} × ${p.quantity}`).join('、')}</p><p><strong>總金額：${money(s.total)}</strong></p>`;}
+function summary(s){return `<p>學生：${esc(s.className)} ${esc(s.name||s.studentName)}</p><p>${s.items.map(p=>`${esc(p.name)} × ${p.quantity}`).join('、')}</p>${s.items.length?`<p><strong>${money(s.total)}</strong></p>`:''}`;}
 function refreshSummary(){const el=host?.querySelector('#consentSelection');if(el)el.innerHTML=summary(options.getSummary());}
 function resetSignature(){release();strokes=[];agreed=false;drawing=false;const c=host?.querySelector('#parentAgree');if(c)c.checked=false;options?.onChange();}
 function clear(){parentName='';resetSignature();}
