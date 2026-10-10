@@ -1,0 +1,18 @@
+.bundle-main{display:grid;grid-template-columns:1fr 1fr}
+body:not([data-admin]) .guitar-bundle .photo{height:480px;gap:12px;padding:22px}
+.guitar-bundle .photo img{min-width:0;width:48%;height:auto;max-height:100%;object-fit:contain;mix-blend-mode:normal}
+.guitar-bundle h2{margin-bottom:14px}.included{margin:10px 0;color:var(--muted)}
+.accessory-list{background:#eef2e8;border-radius:8px;padding:14px;line-height:1.9}
+.color-options{border:0;padding:0;margin:12px 0 0;display:flex;gap:14px}
+.color-options legend{font-weight:700;margin-bottom:12px}
+.color-option{border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;cursor:pointer}
+.color-option img{height:125px;width:100%;object-fit:contain}.color-option input{margin:0}
+.color-option.active,.amp-option.active{border-color:var(--green);background:#edf3e9;box-shadow:inset 0 0 0 1px var(--green)}
+.bundle-addons{padding:25px;border-top:1px solid var(--line)}.bundle-addons h3{margin:0 0 5px}
+.amp-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.amp-option{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:9px;padding:12px;margin:0;cursor:pointer;background:var(--white)}
+.amp-option img{width:100%;height:130px;object-fit:contain;border-radius:5px}.amp-name{flex:1}.amp-option strong{color:var(--green)}
+.amp-option input{margin:0 5px 0 0}.amp-option:has(input:disabled){cursor:default}.amp-option:has(input:disabled)>span:last-child{color:var(--muted)}
+.bundle-total{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px;padding:18px;background:#eef2e8;border-radius:8px}.bundle-total strong{font-size:25px;white-space:nowrap}
+.standalone summary{font-size:18px;font-weight:600;cursor:pointer}.standalone[open] summary{margin-bottom:18px}.standalone-options{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:700px){.bundle-main{grid-template-columns:1fr}body:not([data-admin]) .guitar-bundle .photo{height:330px;padding:16px}body:not([data-admin]) .guitar-bundle .card-body{padding:20px}.bundle-addons{padding:20px}.amp-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.amp-option{padding:10px;font-size:13px}.amp-option img{height:110px}.bundle-total{align-items:flex-start;flex-direction:column}.guitar-bundle h2{font-size:22px}.standalone-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
