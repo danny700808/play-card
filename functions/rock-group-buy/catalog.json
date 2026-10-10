@@ -1,0 +1,87 @@
+[
+  {
+    "id": "irin-white",
+    "kind": "guitar",
+    "name": "IRIN 特製款加強線圈電吉他｜白色",
+    "price": 5250,
+    "total": 3,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/1.jpg",
+    "images": [
+      "https://danny700808.github.io/play-card/rock-group-buy-assets/1.jpg",
+      "https://danny700808.github.io/play-card/rock-group-buy-assets/2.jpg"
+    ],
+    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。",
+    "reserved": 0,
+    "enabled": true,
+    "unlimited": false
+  },
+  {
+    "id": "irin-black",
+    "kind": "guitar",
+    "name": "IRIN 特製款加強線圈電吉他｜黑色",
+    "price": 5250,
+    "total": 3,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/3.jpg",
+    "images": [
+      "https://danny700808.github.io/play-card/rock-group-buy-assets/3.jpg",
+      "https://danny700808.github.io/play-card/rock-group-buy-assets/4.jpg"
+    ],
+    "description": "附贈：15mm 厚度琴袋、Pick 4 片、3m 導線、背帶、調音器。",
+    "reserved": 0,
+    "enabled": true,
+    "unlimited": false
+  },
+  {
+    "id": "joyo-ja01",
+    "kind": "amp",
+    "name": "JOYO JA-01 迷你音箱",
+    "price": 250,
+    "bundlePrice": 250,
+    "bundleOnly": true,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/5.jpg",
+    "description": "搭配電吉他加購 +NT$ 250",
+    "reserved": 0,
+    "enabled": true,
+    "unlimited": true,
+    "total": null
+  },
+  {
+    "id": "s4",
+    "kind": "amp",
+    "name": "S4 音箱",
+    "price": 1650,
+    "bundlePrice": 1500,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/6.jpg",
+    "description": "單買 NT$ 1,650｜搭配電吉他 +NT$ 1,500",
+    "reserved": 0,
+    "enabled": true,
+    "unlimited": true,
+    "total": null
+  },
+  {
+    "id": "aroma",
+    "kind": "amp",
+    "name": "AROMA 音箱",
+    "price": 2350,
+    "bundlePrice": 2000,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/7.jpg",
+    "description": "單買 NT$ 2,350｜搭配電吉他 +NT$ 2,000",
+    "reserved": 0,
+    "enabled": true,
+    "unlimited": true,
+    "total": null
+  },
+  {
+    "id": "m-vave",
+    "kind": "amp",
+    "name": "M-VAVE 音箱",
+    "price": 2750,
+    "bundlePrice": 2500,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/8.jpg",
+    "description": "單買 NT$ 2,750｜搭配電吉他 +NT$ 2,500",
+    "reserved": 0,
+    "enabled": true,
+    "unlimited": true,
+    "total": null
+  }
+]

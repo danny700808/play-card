@@ -1,0 +1,13 @@
+{
+  "functions": [
+    {
+      "source": "functions/rock-group-buy",
+      "codebase": "rock-group-buy",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*debug.log"
+      ]
+    }
+  ]
+}
