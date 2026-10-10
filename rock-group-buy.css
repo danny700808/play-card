@@ -33,3 +33,7 @@ body:not([data-admin]) .guitar-bundle .card-body{padding:18px 18px 0;display:blo
 @media(max-width:600px){[data-family="squier"] .color-options{grid-template-columns:repeat(3,minmax(0,1fr))}}
 [data-family="ibanez"] .color-options{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
 @media(max-width:600px){[data-family="ibanez"] .color-options{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+[data-family="premium"] .color-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+[data-family="premium"] .color-option>span:not(.color-photo):not(.stock){white-space:normal;text-align:center;font-size:12px;line-height:1.4;min-height:36px}.option-price{font-size:12px;color:var(--green);white-space:nowrap}
+@media(max-width:370px){[data-family="premium"] .color-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
