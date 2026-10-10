@@ -8,10 +8,11 @@ const db=admin.firestore();
   const existing=await tx.get(root);
   if(existing.exists){
    const current=existing.data();
-   if(current.catalogVersion==='guitars-20261010-v8'){console.log('Guitar catalog already applied');return;}
+   if(current.catalogVersion==='guitars-20261010-v9'){console.log('Guitar catalog already applied');return;}
    const incoming=require('./catalog.json');
    const products=current.products.map(p=>{
     const source=incoming.find(x=>x.id===p.id);if(!source)return p;
+    if(p.id==='bass-bensons')return {...p,name:source.name,optionLabel:source.optionLabel,total:Math.max(source.total,p.reserved||0)};
     if(p.family==='premium')return {...p,familyName:source.familyName,...(p.id==='azes40'?{price:source.price}:{})};
     if(p.kind==='amp')return {...p,name:source.name};
     if(p.id==='ibanez-blue')return {...p,sku:source.sku};
@@ -20,7 +21,7 @@ const db=admin.firestore();
     return p;
    });
    for(const p of incoming.filter(p=>p.id==='marshall-mg10'||['farida','ibanez','squier','premium','bass'].includes(p.family)))if(!products.some(x=>x.id===p.id))products.push(p);
-   tx.update(root,{products,catalogVersion:'guitars-20261010-v8',revision:current.revision+1});
+   tx.update(root,{products,catalogVersion:'guitars-20261010-v9',revision:current.revision+1});
    console.log('Updated premium heading and AZES40 price; existing orders and reservations preserved');return;
   }
   const original=await tx.get(db.collection('clubGroupBuyPrivate').doc('guitar-2026'));
