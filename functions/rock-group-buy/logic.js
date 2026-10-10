@@ -27,12 +27,13 @@ function orderPlan(config,memberId,items,noPurchase){
  if(!Array.isArray(items)||items.length>60)fail('訂購項目格式不正確');
  if(noPurchase===true&&items.length)fail('不購買不能同時選商品');
  if(!noPurchase&&!items.length)fail('請選擇商品，或勾選本次不購買');
- const hasGuitar=items.some(i=>config.products.find(p=>p.id===i.id)?.kind==='guitar');
+ const hasInstrument=items.some(i=>['guitar','bass'].includes(config.products.find(p=>p.id===i.id)?.kind));
  const chosen=items.map(i=>config.products.find(p=>p.id===i.id));
- if(chosen.some(p=>p?.kind==='bass')&&chosen.some(p=>p?.kind==='amp'))fail('Bass 請另選適用的音箱');
+ const instrument=chosen.find(p=>['guitar','bass'].includes(p?.kind));if(instrument&&chosen.some(p=>p?.kind==='amp'&&!p.compatibleKinds?.includes(instrument.kind)))fail(instrument.kind==='bass'?'Bass 請另選適用的音箱':'請選擇電吉他適用的音箱');
+ if(chosen.filter(p=>p?.kind==='drumsticks').length>1)fail('最多選一款鼓棒');
  if(chosen.filter(p=>['guitar','bass'].includes(p?.kind)).length>1||chosen.filter(p=>p?.kind==='amp').length>1)fail('最多選一把樂器及一台適用音箱');
- if(chosen.some(p=>p?.bundleOnly)&&!hasGuitar)fail('JOYO JA-01 僅限搭配電吉他加購');
- const seen=new Set(), lines=items.map(line=>{const p=config.products.find(p=>p.id===line.id);const quantity=Number(line.quantity);if(!p||!p.enabled||(!p.unlimited&&p.total===null))fail('商品尚未開放訂購');if(seen.has(p.id))fail('商品重複');seen.add(p.id);if(!Number.isSafeInteger(quantity)||quantity<1||quantity>8)fail('數量需為 1 至 8');if(!p.unlimited&&p.total-p.reserved<quantity)fail(`${p.name} 剩餘數量不足，請重新選擇`,409);return{id:p.id,name:p.name,price:hasGuitar&&p.kind==='amp'?p.bundlePrice:p.price,quantity};});
+ if(chosen.some(p=>p?.bundleOnly)&&!hasInstrument)fail('此音箱僅限搭配適用樂器加購');
+ const seen=new Set(), lines=items.map(line=>{const p=config.products.find(p=>p.id===line.id);const quantity=Number(line.quantity);if(!p||!p.enabled||(!p.unlimited&&p.total===null))fail('商品尚未開放訂購');if(seen.has(p.id))fail('商品重複');seen.add(p.id);if(!Number.isSafeInteger(quantity)||quantity<1||quantity>8)fail('數量需為 1 至 8');if(!p.unlimited&&p.total-p.reserved<quantity)fail(`${p.name} 剩餘數量不足，請重新選擇`,409);return{id:p.id,name:p.name,price:hasInstrument&&p.kind==='amp'?p.bundlePrice:p.price,quantity};});
  return {memberId:member.id,className:member.className,name:member.name,items:lines,noPurchase:noPurchase===true,total:lines.reduce((n,p)=>n+p.price*p.quantity,0)};
 }
 function changeReservation(config,lines,direction){for(const line of lines){const p=config.products.find(p=>p.id===line.id);if(!p)fail('商品資料缺失',409);p.reserved+=direction*line.quantity;if(p.reserved<0||(!p.unlimited&&p.reserved>p.total))fail('庫存不一致，請重新整理',409);}config.revision++;}

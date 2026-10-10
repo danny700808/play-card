@@ -54,3 +54,11 @@ test('bass prices, limited stock and instrument selection',()=>{
  assert.throws(()=>plan(config(),['bass-irin','irin-white']),/最多/);
  assert.throws(()=>plan(config(),['bass-irin','marshall-mg10']),/Bass/);
 });
+test('bass compatible amplifier totals and drumsticks',()=>{
+ for(const bass of catalog.filter(p=>p.kind==='bass'))for(const [amp,extra] of [['m-vave',2500],['joyo-ba30',3500]])assert.equal(plan(config(),[bass.id,amp]).total,bass.price+extra);
+ assert.throws(()=>plan(config(),['irin-white','joyo-ba30']),/適用/);
+ assert.throws(()=>plan(config(),['joyo-ba30']),/僅限/);
+ for(const p of catalog.filter(p=>p.kind==='drumsticks'))assert.equal(plan(config(),[p.id]).total,p.price);
+ assert.equal(plan(config(),['bass-irin','joyo-ba30','sticks-vic']).total,9850);
+ assert.throws(()=>plan(config(),['sticks-blue','sticks-red']),/最多/);
+});

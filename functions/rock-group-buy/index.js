@@ -32,14 +32,14 @@ const s=await orders.orderBy('createdAt','desc').limit(2000).get();return res.js
   if(action==='submit'){
    const requestId=text(payload.requestId,80);if(!/^[a-zA-Z0-9_-]{16,80}$/.test(requestId))fail('送單識別碼無效');
    const freeClass=text(payload.className,140),freeName=text(payload.name,60);const ref=orders.doc(requestId),memberId=hash(freeClass+'\n'+freeName).slice(0,32);if(!freeClass||!freeName)fail('請填寫班級姓名');if(!/^[a-f0-9]{32}$/.test(memberId))fail('請選擇姓名');
-   if(payload.noPurchase!==true&&(!Array.isArray(payload.items)||!payload.items.length||payload.items.length>2||payload.items.some(p=>p.quantity!==1)))fail('每位同學最多選一把電吉他及一台音箱');
+   if(payload.noPurchase!==true&&(!Array.isArray(payload.items)||!payload.items.length||payload.items.length>3||payload.items.some(p=>p.quantity!==1)))fail('每位同學最多選一把樂器、一台音箱及一款鼓棒');
    const consent=validateConsent(payload.consent,payload.noPurchase);
    const fingerprint=hash(JSON.stringify({memberId,items:payload.items,noPurchase:payload.noPurchase,consent}));
    const result=await db.runTransaction(async tx=>{
     const [cs,os,ms]=await Promise.all([tx.get(root),tx.get(ref),tx.get(root.collection('members').doc(memberId))]);const c=cs.data();
     if(os.exists){if(os.data().fingerprint!==fingerprint)fail('送單資料不同，請重新送出',409);return{id:ref.id,total:os.data().total};}
     if(!c.open)fail('目前尚未開放填單');if(ms.exists&&ms.data().activeOrder)fail('這位社員已填過表單，若需修改請聯絡老師',409);
-    if(payload.noPurchase!==true){const selected=payload.items.map(i=>c.products.find(p=>p.id===i.id));if(selected.some(p=>!p)||selected.filter(p=>p.kind==='amp').length>1||selected.filter(p=>p.kind!=='amp').length>1)fail('每位同學最多選一把電吉他及一台音箱');if(selected.some(p=>p.kind==='amp')&&consent.version!=='2026-10-02-v2')fail('請重新整理頁面並確認音箱選購內容');}
+    if(payload.noPurchase!==true){const selected=payload.items.map(i=>c.products.find(p=>p.id===i.id));if(selected.some(p=>!p)||selected.filter(p=>p.kind==='amp').length>1||selected.filter(p=>['guitar','bass'].includes(p.kind)).length>1||selected.filter(p=>p.kind==='drumsticks').length>1)fail('每位同學最多選一把樂器、一台音箱及一款鼓棒');if(selected.some(p=>p.kind==='amp')&&consent.version!=='2026-10-02-v2')fail('請重新整理頁面並確認音箱選購內容');}
     const validationConfig={...c,roster:[{id:memberId,className:freeClass,name:freeName}]};const plan=orderPlan(validationConfig,memberId,payload.items,payload.noPurchase);changeReservation(c,plan.items,1);
     if(consent&&payload.expectedTotal!==plan.total)fail('商品價格已更新，請重新確認金額並簽名',409);
     const order={...plan,consent:consent?{...consent,signedAt:new Date().toISOString(),className:plan.className,studentName:plan.name,total:plan.total,items:plan.items.map(p=>({...p,description:c.products.find(x=>x.id===p.id).description}))}:null,status:'active',fingerprint,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
