@@ -494,5 +494,39 @@
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-bensons-front.jpg",
     "description": ""
+  },
+  {
+    "id": "bass-gsr320-blue",
+    "kind": "bass",
+    "family": "bass",
+    "familyName": "Bass 電貝斯",
+    "sku": "106015",
+    "name": "IBANEZ GSR320 Bass｜藍色",
+    "optionLabel": "IBANEZ GSR320 藍色",
+    "color": "藍色",
+    "price": 8200,
+    "total": 1,
+    "reserved": 0,
+    "unlimited": false,
+    "enabled": true,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-gsr320-blue-front.jpg",
+    "description": ""
+  },
+  {
+    "id": "bass-gsr320-black",
+    "kind": "bass",
+    "family": "bass",
+    "familyName": "Bass 電貝斯",
+    "sku": "106015",
+    "name": "IBANEZ GSR320 Bass｜黑色",
+    "optionLabel": "IBANEZ GSR320 黑色",
+    "color": "黑色",
+    "price": 8200,
+    "total": 1,
+    "reserved": 0,
+    "unlimited": false,
+    "enabled": true,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-gsr320-black-front.jpg",
+    "description": ""
   }
 ]
