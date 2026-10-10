@@ -1,0 +1,13 @@
+{
+  "functions": [
+    {
+      "source": "functions/dongshi-group-buy",
+      "codebase": "dongshi-group-buy",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*debug.log"
+      ]
+    }
+  ]
+}

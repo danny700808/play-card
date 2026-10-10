@@ -1,0 +1,43 @@
+name: Deploy dongshi group buy
+on:
+  workflow_dispatch:
+    inputs:
+      catalog_only:
+        description: Update catalog without redeploying the unchanged API
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: dongshi-group-buy-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --check dongshi-group-buy.js
+      - run: npm ci --prefix functions/dongshi-group-buy
+      - run: npm install --global firebase-tools@15.24.0
+        if: ${{ !inputs.catalog_only }}
+      - name: Prepare deployment credential
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+        run: |
+          node -e "require('fs').writeFileSync(process.env.RUNNER_TEMP+'/dongshi-service-account.json',process.env.SERVICE_ACCOUNT,{mode:0o600})"
+      - name: Update isolated catalog
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/dongshi-service-account.json
+        run: node functions/dongshi-group-buy/seed.cjs
+      - name: Deploy dongshi endpoint
+        if: ${{ !inputs.catalog_only }}
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/dongshi-service-account.json
+        run: firebase deploy --config firebase.dongshi-group-buy.json --project youzi-c1b74 --non-interactive --only functions:dongshi-group-buy:dongshiGroupBuyApi
+      - name: Remove temporary credential
+        if: always()
+        run: rm -f "$RUNNER_TEMP/dongshi-service-account.json"
