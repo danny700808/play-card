@@ -528,5 +528,22 @@
     "enabled": true,
     "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-gsr320-black-front.jpg",
     "description": ""
+  },
+  {
+    "id": "bass-trbx174-red",
+    "kind": "bass",
+    "family": "bass",
+    "familyName": "Bass 電貝斯",
+    "sku": "1060122",
+    "name": "Yamaha TRBX174 Bass｜紅色",
+    "optionLabel": "Yamaha TRBX174 紅色",
+    "color": "紅色",
+    "price": 8200,
+    "total": 1,
+    "reserved": 0,
+    "unlimited": false,
+    "enabled": true,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-trbx174-red-front.jpg",
+    "description": ""
   }
 ]
