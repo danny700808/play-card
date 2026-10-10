@@ -39,3 +39,5 @@ body:not([data-admin]) .guitar-bundle .card-body{padding:18px 18px 0;display:blo
 @media(max-width:370px){[data-family="premium"] .color-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .family-guidance{font-size:14px;line-height:1.7;margin:8px 0 12px;color:var(--green)}
+
+[data-family="bass"]{border-top:4px solid var(--green);margin-top:30px!important}[data-family="bass"] h2{margin-bottom:14px}[data-family="bass"] .color-option>span:not(.color-photo):not(.stock){white-space:normal;text-align:center}

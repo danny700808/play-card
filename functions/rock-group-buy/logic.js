@@ -29,7 +29,8 @@ function orderPlan(config,memberId,items,noPurchase){
  if(!noPurchase&&!items.length)fail('請選擇商品，或勾選本次不購買');
  const hasGuitar=items.some(i=>config.products.find(p=>p.id===i.id)?.kind==='guitar');
  const chosen=items.map(i=>config.products.find(p=>p.id===i.id));
- if(chosen.filter(p=>p?.kind==='guitar').length>1||chosen.filter(p=>p?.kind==='amp').length>1)fail('最多選一把電吉他及一台音箱');
+ if(chosen.some(p=>p?.kind==='bass')&&chosen.some(p=>p?.kind==='amp'))fail('Bass 請另選適用的音箱');
+ if(chosen.filter(p=>['guitar','bass'].includes(p?.kind)).length>1||chosen.filter(p=>p?.kind==='amp').length>1)fail('最多選一把樂器及一台適用音箱');
  if(chosen.some(p=>p?.bundleOnly)&&!hasGuitar)fail('JOYO JA-01 僅限搭配電吉他加購');
  const seen=new Set(), lines=items.map(line=>{const p=config.products.find(p=>p.id===line.id);const quantity=Number(line.quantity);if(!p||!p.enabled||(!p.unlimited&&p.total===null))fail('商品尚未開放訂購');if(seen.has(p.id))fail('商品重複');seen.add(p.id);if(!Number.isSafeInteger(quantity)||quantity<1||quantity>8)fail('數量需為 1 至 8');if(!p.unlimited&&p.total-p.reserved<quantity)fail(`${p.name} 剩餘數量不足，請重新選擇`,409);return{id:p.id,name:p.name,price:hasGuitar&&p.kind==='amp'?p.bundlePrice:p.price,quantity};});
  return {memberId:member.id,className:member.className,name:member.name,items:lines,noPurchase:noPurchase===true,total:lines.reduce((n,p)=>n+p.price*p.quantity,0)};

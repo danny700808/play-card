@@ -411,5 +411,37 @@
     "enabled": true,
     "unlimited": true,
     "total": null
+  },
+  {
+    "id": "bass-irin",
+    "kind": "bass",
+    "family": "bass",
+    "familyName": "Bass 電貝斯",
+    "name": "IRIN 線圈加強版 Bass｜藍色",
+    "optionLabel": "IRIN 線圈加強版 藍色",
+    "color": "藍色",
+    "price": 5800,
+    "total": 1,
+    "reserved": 0,
+    "unlimited": false,
+    "enabled": true,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-irin-front.jpg",
+    "description": ""
+  },
+  {
+    "id": "bass-bensons",
+    "kind": "bass",
+    "family": "bass",
+    "familyName": "Bass 電貝斯",
+    "name": "BENSONS Bass｜漸層色",
+    "optionLabel": "BENSONS 漸層色",
+    "color": "漸層色",
+    "price": 5500,
+    "total": 1,
+    "reserved": 0,
+    "unlimited": false,
+    "enabled": true,
+    "image": "https://danny700808.github.io/play-card/rock-group-buy-assets/bass-bensons-front.jpg",
+    "description": ""
   }
 ]
