@@ -26,6 +26,23 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const publish = require('../functions/productListingPublish');
 Module._load = originalLoad;
 const helpers = publish._test;
+test('verification retry reuses created EasyStore product instead of issuing another mutation', async () => {
+  let mutations = 0;
+  let verifications = 0;
+  const created = { action: 'created', productId: '17530144', variantIds: ['80777917'] };
+  await assert.rejects(helpers.publishEasyStoreStageWithRetry({}, 'retry-test', {}, {}, {
+    easyStoreToken: 'test-token', retryDelays: [0, 0],
+    upsertEasyStoreProduct: async () => { mutations += 1; return created; },
+    verifyEasyStorePublishedListing: async (_snapshot, _token, result) => {
+      assert.equal(result, created);
+      verifications += 1;
+      if (verifications === 1) throw new Error('EasyStore HTTP 503: temporarily unavailable');
+      throw new Error('verification deliberately stopped');
+    }
+  }), /verification deliberately stopped/);
+  assert.equal(mutations, 1);
+  assert.equal(verifications, 2);
+});
 test('reviewed unsuitable sources remain in frozen lineage without requiring misleading output', () => {
   const valid='https://supplier.example.com/ex61.jpg', wrong='https://supplier.example.com/88.jpg';
   const frozen={sourceImageUrls:[valid,wrong],sku:'1220201'};

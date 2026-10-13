@@ -4419,6 +4419,12 @@ async function upsertEasyStoreProduct(snapshot, product, token) {
   }
   let action = 'updated';
   if (!productId) {
+    // A prior attempt may have created the remote item before verification or
+    // persistence failed. Never issue another POST from a stale local mapping.
+    const duplicate = await findEasyStoreMappingBySku(snapshot, token);
+    if (duplicate) {
+      throw new Error(`EasyStore SKU ${snapshot.sku} 已存在商品 ${duplicate.productId}；已停止新增，請核對並續接既有商品。`);
+    }
     action = 'created';
     let createdPayload;
     try {
@@ -5404,11 +5410,21 @@ async function publishEasyStoreStage(db, jobId, snapshot, product, dependencies 
 
 async function publishEasyStoreStageWithRetry(db, jobId, snapshot, product, dependencies = {}) {
   const delays = dependencies.retryDelays || [0, 3000, 10000, 30000];
+  const upsert = dependencies.upsertEasyStoreProduct || upsertEasyStoreProduct;
+  let mutationResult;
+  const retryDependencies = {
+    ...dependencies,
+    upsertEasyStoreProduct: async (...args) => {
+      if (mutationResult) return mutationResult;
+      mutationResult = await upsert(...args);
+      return mutationResult;
+    }
+  };
   let lastError = null;
   for (let attempt = 0; attempt < delays.length; attempt += 1) {
     if (delays[attempt]) await wait(delays[attempt]);
     try {
-      return await publishEasyStoreStage(db, jobId, snapshot, product, dependencies);
+      return await publishEasyStoreStage(db, jobId, snapshot, product, retryDependencies);
     } catch (error) {
       lastError = error;
       if (!isTransientListingPublishFailure(error) || attempt === delays.length - 1) break;
