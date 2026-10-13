@@ -26,6 +26,18 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const publish = require('../functions/productListingPublish');
 Module._load = originalLoad;
 const helpers = publish._test;
+test('video completion requires numbered metadata, direct product link, thumbnail and platform readback', () => {
+  const snapshot = {sku:'1220201',listingTargetScope:'all',productVideos:[{url:'https://example.com/original.mov'}]};
+  const video = {url:'https://example.com/original.mov',youtubeStatus:'published',youtubeVideoId:'cZl6eXW0exY',youtubeTitle:'KORG｜編號 1220201',youtubeDescription:'編號：1220201 https://shop.example/products/krome',youtubeProductUrl:'https://shop.example/products/krome',youtubeMetadataVerified:true,youtubeThumbnailUrl:'https://example.com/cover.png',youtubeThumbnailStatus:'verified',platformVideoResults:Object.fromEntries(['easyStore','shopee','momo','coupang'].map(key=>[key,{status:'verified',url:'https://example.com/item',verifiedAt:'2026-10-13'}]))};
+  const records=[{caseRecord:{productVideos:[video]}}];
+  assert.equal(helpers.validateListingVideoCompletion(snapshot,records).verified,true);
+  for(const state of ['pending','waiting-quota','skipped-unavailable']) {video.youtubeThumbnailStatus=state;assert.equal(helpers.validateListingVideoCompletion(snapshot,records).verified,false);}
+  video.youtubeThumbnailStatus='verified';video.youtubeDescription='編號：1220201';
+  assert.equal(helpers.validateListingVideoCompletion(snapshot,records).verified,false);
+  video.youtubeDescription='編號：1220201 https://shop.example/products/krome';video.platformVideoResults.shopee.status='uploaded';
+  assert.equal(helpers.validateListingVideoCompletion(snapshot,records).verified,false);
+  assert.equal(helpers.validateListingVideoCompletion({productVideos:[]},[]).verified,true);
+});
 test('verification retry reuses created EasyStore product instead of issuing another mutation', async () => {
   let mutations = 0;
   let verifications = 0;

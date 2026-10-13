@@ -3336,6 +3336,9 @@ function buildListingSnapshot(productId, product, listingCase, variantParentProd
       storedCount: physicalImageUrls.length
     },
     existingPlatformListingIds,
+    productVideos: [...(product.productVideos || []), ...(listingCase.productVideos || [])]
+      .filter((row, index, rows) => row && (row.originalUrl || row.url)
+        && rows.findIndex((other) => other && (other.originalUrl || other.url) === (row.originalUrl || row.url)) === index),
     platformImagePlan,
     category: clean(listingCase.category || product.category),
     easyStoreCollectionNames: (Array.isArray(listingCase.easyStoreCollectionNames)
@@ -5274,10 +5277,37 @@ function validateAllPlatformImageReceipts(snapshot, stages) {
   return { verified: reasons.length === 0, reasons: Array.from(new Set(reasons)), receipts };
 }
 
+function validateListingVideoCompletion(snapshot, records) {
+  const pending = [];
+  for (const source of (snapshot.productVideos || [])) {
+    const sourceUrl = source.originalUrl || source.url;
+    const candidates = (records || []).flatMap((record) => [
+      ...((record.productRecord || {}).productVideos || []),
+      ...((record.caseRecord || {}).productVideos || [])
+    ]).filter((video) => (video.originalUrl || video.url) === sourceUrl);
+    const complete = candidates.some((video) => {
+      const sku = clean(snapshot.sku);
+      const numbered = (value) => clean(value).includes(`編號 ${sku}`) || clean(value).includes(`編號：${sku}`) || clean(value).includes(`編號${sku}`);
+      return video.youtubeStatus === 'published' && clean(video.youtubeVideoId)
+        && numbered(video.youtubeTitle) && numbered(video.youtubeDescription)
+        && safeHttpUrl(video.youtubeProductUrl) && clean(video.youtubeDescription).includes(video.youtubeProductUrl)
+        && video.youtubeMetadataVerified === true
+        && video.youtubeThumbnailStatus === 'verified' && safeHttpUrl(video.youtubeThumbnailUrl)
+        && listingTargetPlatforms(snapshot).every((platform) => {
+          const receipt = (video.platformVideoResults || {})[platform] || {};
+          return receipt.status === 'verified' && receipt.verifiedAt && (receipt.url || receipt.youtubeVideoId || receipt.sha256);
+        });
+    });
+    if (!complete) pending.push(`video-pending:${source.fileName || sourceUrl}`);
+  }
+  return { verified: pending.length === 0, reasons: pending };
+}
+
 function validateCompletionImageReferences(snapshot, records, stages = null) {
   const plan = snapshot && snapshot.platformImagePlan && typeof snapshot.platformImagePlan === 'object'
     ? snapshot.platformImagePlan : {};
   const reasons = platformImagePlanMissingFields(plan, { requireFinalized: true, targetPlatforms: listingTargetPlatforms(snapshot) }).map((field) => `platform-image-plan:${field}`);
+  reasons.push(...validateListingVideoCompletion(snapshot, records).reasons);
   const roleRows = Array.isArray(plan.roleAssignments) ? plan.roleAssignments : [];
   const roleRowsFor = (productId, url, sourceUrl) => roleRows.filter((row) => {
     if (productId && clean(row && row.productId) !== clean(productId)) return false;
@@ -6511,6 +6541,7 @@ module.exports = {
     buildPlatformPageContracts,
     buildPreparedPlatformFieldPlan,
     publishEasyStoreStage,
+    validateListingVideoCompletion,
     publishEasyStoreStageWithRetry,
     applyVerifiedQueueReceipt,
     finalizeListingJobIfReady,

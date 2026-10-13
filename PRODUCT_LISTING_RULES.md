@@ -280,6 +280,9 @@ EasyStore 同步必須以完全相同 SKU 找到官網細項，並用該細項�
 
 ### YouTube 實體拍攝商品介紹（2026-10-01）
 
+- 2026-10-13 補強：有原片的商品，影片、說明與封面都是完成條件。標題與說明保留編號；說明必須連到已核對的該商品詳情／售價頁，儲存 youtubeProductUrl 並正式回讀 youtubeMetadataVerified=true。官網要有可見播放器及外連，MOMO／酷澎填影片位置，蝦皮使用品牌MP4；逐平台保存 status=verified、verifiedAt 與影片網址／ID／SHA256，不能用中央有檔案代替平台已完成。
+- 先完成16:9封面，商品與型號最大、商品簡介標記、底部純文字柚子樂器；保存 youtubeThumbnailFile、youtubeThumbnailUrl、youtubeThumbnailSha256。YouTube 每日額度限制時記 waiting-quota、原因及 youtubeThumbnailNextRetryAt，依使用者指定台灣午夜續補，失敗至少隔24小時，不刪待辦、不跳過、不重發影片。真正套用且回讀後才設 youtubeThumbnailStatus=verified；等待期間繼續其他通路。既有影片ID永遠沿用。
+
 - YouTube 介紹文字規則 youtube-introduction-v1-20261001：定位為可獨立搜尋觀看的實體拍攝商品介紹。標題依「品牌／型號／商品名稱｜主要特色｜實體拍攝商品介紹｜編號 N｜柚子樂器」組成，店名只出現一次，只寫「編號」，不寫「商品編號」；上限100字，保留名稱與固定尾段，優先縮短特色。說明首段自然放入1至2個主要搜尋詞（品牌型號及商品類別），依本案已確認的名稱、用途、特色及實際影片內容寫2至3段簡短介紹，約150至300字即可，不湊字數；關鍵字融入句子、不堆砌、不加入無關熱門詞。保留編號、官網與門市資訊及3至5個相關hashtag。不得寫「實際內容以收到的商品為準」等交易免責、出貨保固、嵌入或貼連結用途；不得照抄商城長標題、重複店名或使用「不改變音色」等未查證的絕對宣稱。未確認影片有安裝教學、音色試聽、比較或示範就不得宣稱有。上傳前讀取本商品案件與影片，完成具體介紹並保存youtubeTitle、youtubeDescription、youtubeTags、youtubeHashtags及youtubeMetadataVersion=youtube-introduction-v1-20261001；預設草稿須依已確認資料補充，資訊不足就保留簡短客觀介紹，不杜撰規格、相容尺寸或效果。尚未發布的舊紀錄須依此規則更新後才發布，不可盲目沿用舊文案；已發布影片維持原youtubeVideoId及成功回條，不自動重發或追溯批次改寫。
 - 本規則只適用 YouTube 標題與說明，不更動各商品頁既有的交易、出貨與保固說明。實體圖仍遵守 physical-collage-v1-20261001，多張原照合成一張。
 
