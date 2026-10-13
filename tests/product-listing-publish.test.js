@@ -1470,6 +1470,16 @@ test('pending handoff sources can receive later Codex outputs and become one imm
     easyStorePrice: 500, momoPrice: 500, coupangPrice: 500
   }, rootCase, null, null, finalized);
   assert.deepEqual(helpers.platformImagePlanMissingFields(snapshot.platformImagePlan, { requireFinalized: true }), []);
+  const original='https://cdn.example.com/physical-original.jpg', oldPhoto='https://cdn.example.com/physical-old.jpg', completed='https://cdn.example.com/physical-completed.jpg';
+  frozen.cases[0].preparedCase={physicalOriginalImageUrls:[original],physicalImageUrls:[oldPhoto]};
+  currentCase.physicalImageUrls=[completed];
+  currentCase.physicalImageSourceMapping={originalImageUrls:[original],completedUrl:completed};
+  const refreshed=helpers.finalizePreparedMediaSnapshot(frozen,new Map([['late-product',currentCase]]));
+  assert.deepEqual(refreshed.cases[0].preparedCase.physicalImageUrls,[completed]);
+  assert.deepEqual(frozen.cases[0].preparedCase.physicalImageUrls,[oldPhoto]);
+  currentCase.physicalImageSourceMapping.originalImageUrls=['https://cdn.example.com/unrelated.jpg'];
+  const rejected=helpers.finalizePreparedMediaSnapshot(frozen,new Map([['late-product',currentCase]]));
+  assert.deepEqual(rejected.cases[0].preparedCase.physicalImageUrls,[oldPhoto]);
 });
 
 test('an old snapshot named v3 cannot bypass the current image-standard gate', () => {

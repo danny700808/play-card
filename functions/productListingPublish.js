@@ -2002,12 +2002,19 @@ function finalizePreparedMediaSnapshot(frozenInputSnapshot, currentCasesById) {
       ? roleRows.find((row) => row.sourceImageUrl === representativeSourceImageUrl && cleanRepresentativeRoleRow(row)) : null;
     const frozenPreparedCase = frozenCase && frozenCase.preparedCase && typeof frozenCase.preparedCase === 'object'
       ? frozenCase.preparedCase : {};
-    const physicalImageUrls = normalizeUrls(
-      Array.isArray(frozenPreparedCase.physicalImageUrls) ? frozenPreparedCase.physicalImageUrls : currentCase.physicalImageUrls,
-      20
-    );
     const physicalOriginalImageUrls = normalizeUrls(
       Array.isArray(frozenPreparedCase.physicalOriginalImageUrls) ? frozenPreparedCase.physicalOriginalImageUrls : currentCase.physicalOriginalImageUrls,
+      20
+    );
+    const physicalMapping = currentCase.physicalImageSourceMapping || {};
+    const mappedOriginals = normalizeUrls(physicalMapping.originalImageUrls, 20);
+    const mappedOutput = safeHttpUrl(physicalMapping.completedUrl);
+    const verifiedPhysicalDerivative = mappedOutput && mappedOriginals.length > 0
+      && !physicalOriginalImageUrls.includes(mappedOutput)
+      && mappedOriginals.every((url) => physicalOriginalImageUrls.includes(url))
+      && normalizeUrls(currentCase.physicalImageUrls, 20).includes(mappedOutput);
+    const physicalImageUrls = verifiedPhysicalDerivative ? [mappedOutput] : normalizeUrls(
+      Array.isArray(frozenPreparedCase.physicalImageUrls) ? frozenPreparedCase.physicalImageUrls : currentCase.physicalImageUrls,
       20
     );
     return {
