@@ -1858,6 +1858,14 @@ function finalizedRoleRowsForCase(productId, frozenCase, currentCase) {
   });
   frozenSources.forEach((sourceImageUrl) => {
     const rows = readyRows.filter((row) => row.sourceImageUrl === sourceImageUrl);
+    const reviewedExclusion = (Array.isArray(currentCase.sourceImageReview) ? currentCase.sourceImageReview : [])
+      .find((review) => review && review.sourceImageUrl === sourceImageUrl
+        && review.status === 'excluded' && review.reviewed === true
+        && ['wrong-variant', 'obsolete-specifications', 'unrelated-content', 'duplicate-content', 'unreadable'].includes(review.reasonCode)
+        && clean(review.reason).length >= 12);
+    // Preserve frozen input lineage while honoring the documented visual QA exclusions.
+    // An exclusion never creates a completed image or satisfies a required image role.
+    if (!rows.length && reviewedExclusion) return;
     if (!rows.some((row) => row.roles.some((role) => ['cleanMain', 'localizedDetail', 'specification', 'variantRepresentative'].includes(role)))) {
       throw new Error(`${clean(productId)}的凍結來源圖尚無可上架的繁體完成圖。`);
     }

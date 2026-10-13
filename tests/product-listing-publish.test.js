@@ -26,6 +26,21 @@ Module._load = function mockFirebase(request, parent, isMain) {
 const publish = require('../functions/productListingPublish');
 Module._load = originalLoad;
 const helpers = publish._test;
+test('reviewed unsuitable sources remain in frozen lineage without requiring misleading output', () => {
+  const valid='https://supplier.example.com/ex61.jpg', wrong='https://supplier.example.com/88.jpg';
+  const frozen={sourceImageUrls:[valid,wrong],sku:'1220201'};
+  const current={generatedListingImages:[{sourceImageUrl:valid,url:'https://cdn.example.com/clean61.jpg',status:'ready',localizationStatus:'completed',roles:['cleanMain'],assetFlags:{containsLogo:false,containsContactInfo:false,containsQrCode:false,containsText:false,greenBrandTemplate:false,momoPromotionEligible:true}}]};
+  assert.throws(()=>helpers.finalizedRoleRowsForCase('source-review',frozen,current),/凍結來源图|凍結來源圖/);
+  current.sourceImageReview=[{sourceImageUrl:wrong,status:'excluded',reviewed:true,reasonCode:'wrong-variant',reason:'來源明確為88鍵版本，與本案61鍵商品不符。'}];
+  const rows=helpers.finalizedRoleRowsForCase('source-review',frozen,current);
+  assert.equal(rows.length,1);
+  assert.deepEqual(frozen.sourceImageUrls,[valid,wrong]);
+  current.sourceImageReview[0].reviewed=false;
+  assert.throws(()=>helpers.finalizedRoleRowsForCase('source-review',frozen,current),/凍結來源圖/);
+  current.sourceImageReview[0].reviewed=true;
+  current.sourceImageReview[0].reasonCode='unfinished';
+  assert.throws(()=>helpers.finalizedRoleRowsForCase('source-review',frozen,current),/凍結來源圖/);
+});
 test('instrument bags stay accessories rather than inheriting guitar attributes',()=>{
  const taxonomy=require('../functions/shopeeMusicTaxonomy');
  for(const title of ['TUKAY 28mm PU皮革木吉他袋 40／41吋 黑色','電吉他袋-RUIZ 28MM','吉他防護袋','guitar gig bag']) {
@@ -226,7 +241,7 @@ test('all platform descriptions replace the legacy disclaimer and keep fixed not
     assert.equal(html.split(warrantyNotice).length - 1, 1);
     assert.ok(html.indexOf(actualProductNotice) < html.indexOf(warrantyNotice));
     assert.ok(html.indexOf(warrantyNotice) < html.indexOf('product-listing-description-promo-1.jpg'));
-    assert.ok(html.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>'));
+    assert.ok(html.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="width:700px;max-width:100%;height:auto"></p>'));
   }
 });
 
@@ -243,7 +258,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.match(snapshot.bodyHtml, /product-listing-description-promo-2\.jpg/);
   assert.match(snapshot.bodyHtml, /商品圖片與文字說明僅供參考/);
   assert.match(snapshot.bodyHtml, /保固會依商品類型而有所不同/);
-  assert.ok(snapshot.bodyHtml.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>'));
+  assert.ok(snapshot.bodyHtml.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="width:700px;max-width:100%;height:auto"></p>'));
   assert.deepEqual(snapshot.momoDelivery, { method: 'third-party', locationCode: '000001', locationLabel: '台中市圓環東路347號', carrier: '新竹物流' });
   assert.equal(snapshot.momoCatalogPolicy.targetListings, null);
   assert.equal(snapshot.momoCatalogPolicy.reservedSlots, 0);
@@ -323,7 +338,7 @@ test('listing snapshot applies fixed rich content disclaimer, MOMO delivery and 
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.momo.batchSections.length, 5);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.coupang.batchSections.length, 5);
   assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.easyStore.batchSections.length, 4);
-  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.batchSections.length, 5);
+  assert.equal(snapshot.preparedPlatformFieldPlan.platformPageContracts.shopee.batchSections.length, 6);
   assert.equal(snapshot.preparedPlatformFieldPlan.executionGraph.mode, 'staggered-parallel');
   assert.deepEqual(snapshot.preparedPlatformFieldPlan.executionGraph.parallelRoots, ['momo', 'coupang', 'easyStore']);
   assert.equal(snapshot.preparedPlatformFieldPlan.immutableForJob, true);
@@ -1095,7 +1110,7 @@ test('listing snapshot caps product images at ten, appends the address gallery i
     assert.ok(html.indexOf('商品圖片與文字說明僅供參考') < html.indexOf('保固會依商品類型而有所不同'));
     assert.ok(html.indexOf('保固會依商品類型而有所不同') < html.indexOf('product-listing-description-promo-1.jpg'));
     assert.ok(html.indexOf('product-listing-description-promo-1.jpg') < html.indexOf('product-listing-description-promo-2.jpg'));
-    assert.ok(html.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>'));
+    assert.ok(html.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="width:700px;max-width:100%;height:auto"></p>'));
   }
   assert.equal(snapshot.imagePolicy.galleryMaximum, 7);
   assert.equal(snapshot.imagePolicy.sourceImageMaximum, 20);
@@ -1701,7 +1716,7 @@ test('a submitted platform becomes active only after its exact official-list sta
   assert.ok(status.easyStore.lastCheckedAt);
 });
 
-test('Coupang verified submission remains pending review and receives 24/48 hour recheck times', () => {
+test('Coupang verified submission remains pending review without scheduled rechecks', () => {
   const before = Date.now();
   const status = helpers.platformListingStatusFromPublish({}, {
     coupang: { status: 'completed', message: '酷澎已由正式清單核對完成。' }
@@ -1710,9 +1725,9 @@ test('Coupang verified submission remains pending review and receives 24/48 hour
   });
   assert.equal(status.coupang.status, 'pending-review');
   assert.equal(status.coupang.listingId, 'CP-REVIEW-1');
-  assert.match(status.coupang.note, /24 小時及 48 小時後重查/);
-  assert.ok(status.coupang.nextReviewCheckAt.getTime() >= before + 24 * 60 * 60 * 1000);
-  assert.ok(status.coupang.finalReviewCheckAt.getTime() >= before + 48 * 60 * 60 * 1000);
+  assert.match(status.coupang.note, /不安排回查/);
+  assert.equal(status.coupang.nextReviewCheckAt, null);
+  assert.equal(status.coupang.finalReviewCheckAt, null);
 });
 
 test('EasyStore payload publishes one exact SKU with stock, price, package and at most seven gallery images', () => {
@@ -1850,7 +1865,7 @@ test('Shopee helper payload maps researched guitar fields and large-item logisti
     hiddenInputClickAloneIsNotUploadEvidence: true,
     verifyDescriptionCountAndFinalTwoImagesAfterReload: true,
     verifySquareGalleryHeroAfterEasyStoreImport: true,
-    minimumSourceShortEdgePx: 700,
+    minimumSourceWidthPx: 700, minimumSourceHeightPx: 32, maximumFileBytes: 2000000,
     preferredSquareSizePx: 1000,
     storefrontPortraitWidthPx: 700,
     storefrontPortraitHeightPx: 1000,
@@ -2174,7 +2189,7 @@ test('physical photos stay out of every gallery and are appended before fixed no
     assert.ok(html.indexOf(physicalImages[1]) < html.lastIndexOf('商品圖片與文字說明僅供參考'));
     assert.ok(html.indexOf('商品圖片與文字說明僅供參考') < html.indexOf('保固會依商品類型而有所不同'));
     assert.ok(html.indexOf('保固會依商品類型而有所不同') < html.indexOf('product-listing-description-promo-1.jpg'));
-    assert.ok(html.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="max-width:100%;height:auto"></p>'));
+    assert.ok(html.endsWith('<p><img src="https://youzi-c1b74.web.app/product-listing-description-promo-2.jpg" alt="柚子樂器門市與服務資訊" style="width:700px;max-width:100%;height:auto"></p>'));
   }
   assert.deepEqual(snapshot.shopeeAdvancedDescription.imageUrls, [
     ...normalImages, ...physicalImages,
@@ -2785,3 +2800,5 @@ test('已初始化且完全排除的細項圖片不得重新進入上架共用�
   const plan=helpers.buildFinalPlatformImagePlan([{variantGallerySelectionInitialized:true,gallerySourceImageUrls:[],roleRows:[{url:'https://cdn.example.com/excluded.jpg',sourceImageUrl:'https://source.example.com/excluded.jpg',roles:['localizedDetail'],sourceOrder:1,assetFlags:{}}]}]);
   assert.deepEqual(plan.sharedCompletedImageUrls,[]);
 });
+
+
