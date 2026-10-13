@@ -2943,6 +2943,7 @@ function renderOverviewV7(){
   function productMediaBatchPrompt(rows,runId){
     return [
       productVideoYoutubeEditorialPolicy(),
+      '[2026-10-13 缺資料先自行查找] 商品規格、外箱長寬高、含包裝重量及附件等公開資料缺漏時，先依精確品牌、型號與版本查原廠、說明書及可信經銷商並交叉核對，不得因欄位空白直接詢問使用者。區分機身尺寸／淨重與包裝尺寸／毛重，排除其他鍵數、版本、組合包與配件。找到後自行換算及補入案件與中央資料，保存網址、查證日期、原值及取整依據，標記 found／provided 而非實測，沿用原案件繼續。只有實際查找仍無可靠資料、來源矛盾或本店特殊包裝時才詢問；等待時繼續其他可做工作，不猜填。',
       '[商品實體圖與影片待上架]',
       '既有照片去重：上傳任何實體圖前，先查同一平台商品目前的圖片與描述。依 physicalImages 的 url、sourceImageUrl、originalUrl 對應及實際圖片內容核對；相同照片即使平台換了網址、縮放或壓縮，也不可重複追加。確認已有就把來源 URL 寫入該平台 physicalImagePlatformResults.sourceImageUrls，保存 matched-existing、對應平台圖片識別與查驗時間；只有確認缺少才新增。無法確認時保留待核對，不可猜測已完成或盲目重傳。source=existing-product-image 的照片是使用者指定的既有實拍，保持原圖，不另加浮水印、不從原細項圖片移除。外層實體圖綠色僅表示中央有實體照，不代表平台上傳完成。',
       '批次編號：'+runId,
@@ -6107,6 +6108,7 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
     const cases=Array.isArray(snapshot&&snapshot.cases)?snapshot.cases:[],caseIds=cases.map(function(item){return clean(item&&item.productId);}).filter(Boolean),policy=snapshot&&snapshot.listingIntentPolicy||productListingIntentPolicy(snapshot&&snapshot.listingIntent),mode=clean(policy.label),listingTargetScope=normalizeProductListingTargetScope(snapshot&&snapshot.listingTargetScope),listingTargetPlatforms=productListingTargetPlatforms(listingTargetScope);
     return [
       '[固定流程 v3 短交接]',
+      '缺少商品規格或包裝尺寸重量時，先依精確型號自行查原廠、說明書及可信經銷商，區分機身與包裝數據，記錄來源並補入案件；不得因空白先問使用者，僅查找後仍無可靠資料或矛盾無法釐清才詢問。',
       '執行修訂：youzi-v3-execution-2026-09-24-r7；一般詳細圖寬700高等比例；蝦皮描述圖本機檔案上傳；酷澎確認審核中即完成送審，不安排回查。',
       '請接手全通路營運中心待上架商品 '+clean(product.sku)+'｜'+clean(product.originalName||product.name)+'。',
       'workflowVersion：'+PRODUCT_LISTING_WORKFLOW_VERSION,
