@@ -108,16 +108,15 @@ label{display:block;font-size:12px;font-weight:850;color:#4d6370;margin:12px 0 5
       <div class="product"><div class="picture" id="picture"></div><div><h2 id="productName"></h2><div class="sku" id="productSku"></div></div></div>
       <h2 style="margin-top:18px">實體圖</h2><div class="actions"><label class="btn soft">拍照<input id="cameraPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden></label><label class="btn soft">選擇照片<input id="libraryPhoto" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label></div><p class="muted">一次可拍／選 1～5 張；可連續拍照，系統會依選取順序自動合成 1 張，上方只標示「實體圖」。</p>
       <div id="photoPreview" class="search-results"></div>
-      <button class="btn primary" id="uploadPhoto" style="margin-top:12px" disabled>儲存照片與影片</button>
-      <p class="muted">照片、影片可以一起選完再儲存；只選其中一種也可以。按任一個「儲存照片與影片」都會儲存目前已選的內容。</p>
       <div id="savedPhotos" class="search-results"></div>
       <h2 style="margin-top:24px">介紹影片</h2>
       <div class="actions"><label class="btn soft">直接錄影<input id="cameraVideo" type="file" accept="video/mp4,video/quicktime,video/webm" capture="environment" hidden></label><label class="btn soft">選擇影片<input id="libraryVideo" type="file" accept="video/mp4,video/quicktime,video/webm" hidden></label></div>
       <video id="videoPreview" class="hidden" controls playsinline style="width:100%;margin-top:12px"></video>
       <p id="videoFileName" class="muted"></p>
-      <button class="btn primary" id="saveVideo" disabled>儲存照片與影片</button>
       <p id="videoStatus" class="muted" aria-live="polite"></p>
       <div id="savedVideos"></div>
+      <p class="muted">照片、影片可以一起選完，再按下方按鈕一次儲存；只選其中一種也可以。</p>
+      <button class="btn primary" id="saveVideo" style="margin-top:12px;width:100%" disabled>儲存照片與影片</button>
     </section>
   </section>
 </main>
@@ -305,7 +304,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&qrScanner)
 
 let selectedPhotos=[],uploadBusy=false,selectedVideo=null,videoBusy=false,photoBatchId='',photoPayloadCache=null,photoCompositePreviewUrl='',photoCompositeVersion=0,photoCompositeBusy=false;
 function hasPendingMedia(){return selectedPhotos.length>0||!!selectedVideo;}
-function updateSaveButtons(){const disabled=uploadBusy||videoBusy||photoCompositeBusy||!current||!hasPendingMedia();$('uploadPhoto').disabled=disabled;$('saveVideo').disabled=disabled;}
+function updateSaveButtons(){const disabled=uploadBusy||videoBusy||photoCompositeBusy||!current||!hasPendingMedia();$('saveVideo').disabled=disabled;}
 function clearCompositePreview(){photoCompositeVersion++;photoCompositeBusy=false;if(photoCompositePreviewUrl){URL.revokeObjectURL(photoCompositePreviewUrl);photoCompositePreviewUrl='';}}
 function showProduct(preserveVideo=false){if(!preserveVideo){if(selectedVideo)URL.revokeObjectURL(selectedVideo.preview);selectedVideo=null;$('videoPreview').classList.add('hidden');$('videoPreview').removeAttribute('src');$('videoFileName').textContent='';$('videoStatus').textContent='';}clearCompositePreview();selectedPhotos=[];photoBatchId='';photoPayloadCache=null;renderSavedVideos();$('photoPreview').innerHTML='';$('productName').textContent=productName(current);$('productSku').textContent='SKU '+productSku(current);const image=productImage(current);$('picture').innerHTML=image?'<img src="'+escapeHtml(image)+'" alt="">':'';$('savedPhotos').innerHTML=(current.physicalImageUrls||[]).map(url=>'<img src="'+escapeHtml(url)+'" style="width:100%" alt="已儲存實體圖">').join('');$('productCard').classList.remove('hidden');updateSaveButtons();}
 
@@ -404,7 +403,6 @@ async function saveSelectedMedia(){
   if(selectedVideo)$('videoStatus').textContent=error.message||'影片尚未儲存，請重試。';
  }finally{uploadBusy=false;videoBusy=false;updateSaveButtons();}
 }
-$('uploadPhoto').onclick=saveSelectedMedia;
 $('saveVideo').onclick=saveSelectedMedia;
 
 window.addEventListener('beforeunload',event=>{if(uploadBusy||videoBusy){event.preventDefault();event.returnValue='';}});

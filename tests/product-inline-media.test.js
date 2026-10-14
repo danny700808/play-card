@@ -16,6 +16,13 @@ test('YouTube player uses validated ID, supports fullscreen and keeps originals 
  assert.ok(html.indexOf('photo-tray')<html.indexOf('youtube.com/embed'));
 });
 test('unpublished clip remains local preview; invalid video ID cannot inject frame',()=>{const html=context.productInlineMediaHtml({docId:'two',productVideos:[{url:'test.mp4',youtubeVideoId:'" onload="bad'}]});assert.ok(html.includes('<video'));assert.ok(!html.includes('<iframe'));});
+test('inline clips expose deletion of the source even when displaying YouTube',()=>{
+ for(const video of [{url:'original.mp4'},{url:'original.mp4',youtubeVideoId:'tO2AXQxknes'}]){
+  const html=context.productInlineMediaHtml({docId:'one',productVideos:[video]});
+  assert.ok(html.includes('data-action="product-video-remove" data-id="one" data-url="original.mp4"'));
+  assert.ok(html.includes('刪除影片'));
+ }
+});
 test('physical badge reports local presence, not platform completion',()=>{vm.runInContext(source.slice(source.indexOf('  function productMediaPresenceBadges('),source.indexOf('  function productCreatedTime(')),context);const html=context.productMediaPresenceBadges({docId:'three',physicalImageUrls:['old','new'],mediaReceipt:{physicalImagePlatformResults:{momo:{status:'completed',sourceImageUrls:['old']}}}});assert.ok(html.includes('is-present'));assert.ok(html.includes('各平台是否已上傳另行核對'));assert.ok(!html.includes('四平台已完成'));});
 test('current frontend brand contract rejects old geometry',()=>{assert.ok(source.includes('heightRatio:0.20'));assert.ok(source.includes('overlapHeaderAndContent:false'));assert.ok(source.includes("widthPx:700,heightPx:1000,aspectRatio:'7:10'"));assert.ok(!source.includes('heightRatio:1/9'));});
 test('media upload handlers prefer the visible product over stale media-page selection',()=>{assert.equal((source.match(/event\.target\.closest\('\[data-product-id\]'\)/g)||[]).length,2);});
