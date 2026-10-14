@@ -278,7 +278,7 @@
     function channelSendResult(res,channel){ return Array.isArray(res&&res.sendResults)?res.sendResults.find(x=>x&&x.channel===channel):null; }
     function notificationHasSendReport(res){ return !!(res&&(Array.isArray(res.sendResults)||res.sentCount!=null||res.failedCount!=null||res.lineSent!=null||res.emailSent!=null)); }
     function notificationResultText(res){ res=res||{}; const report=notificationHasSendReport(res); const parts=[]; const lineResult=channelSendResult(res,'line'); const emailResult=channelSendResult(res,'email'); if(res.lineRequested||res.line){ if(report){ if(res.lineSent===true||(lineResult&&lineResult.sent)) parts.push('LINE 已送達'); else if(res.lineSkippedReason) parts.push('LINE 未傳送：'+friendlyNotificationError(res.lineSkippedReason,'line')); else parts.push('LINE 失敗：'+friendlyNotificationError(res.lineError||(lineResult&&lineResult.error)||'未送達','line')); }else if(res.line) parts.push('LINE 通知已排入佇列'); else parts.push('LINE 未傳送：'+friendlyNotificationError(res.lineSkippedReason||'缺少 LINE User ID','line')); } if(res.emailRequested||res.email){ if(report){ if(res.emailSent===true||(emailResult&&emailResult.sent)) parts.push('Email 已送達'); else if(res.emailSkippedReason) parts.push('Email 未傳送：'+friendlyNotificationError(res.emailSkippedReason,'email')); else parts.push('Email 失敗：'+friendlyNotificationError(res.emailError||(emailResult&&emailResult.error)||'未送達','email')); }else if(res.email) parts.push('Email 通知已排入佇列'); else parts.push('Email 未傳送：'+friendlyNotificationError(res.emailSkippedReason||'缺少 Email','email')); } if(!parts.length) return '未建立通知，請確認客人的通知方式、Email 或 LINE 是否完整。'; return parts.join('；')+'。'; }
-    function notificationDeliveryAssessment(res,c){ res=res||{}; c=c||{}; const report=notificationHasSendReport(res); const pref=notifyPref(c); const lineWanted=wantsNotifyLine(c); const emailWanted=wantsNotifyEmail(c); const lineResult=channelSendResult(res,'line'); const emailResult=channelSendResult(res,'email'); const lineSent=report?(res.lineSent===true||!!(lineResult&&lineResult.sent)):!!res.line; const emailSent=report?(res.emailSent===true||!!(emailResult&&emailResult.sent)):!!res.email; const lineOk=!lineWanted||lineSent; const emailOk=!emailWanted||emailSent; const ok=pref==='both'?(lineSent||emailSent):(lineWanted?lineSent:(emailWanted?emailSent:false)); return {ok,lineOk,emailOk,text:notificationResultText(res)}; }
+    function notificationDeliveryAssessment(res,c){ res=res||{}; c=c||{}; const report=notificationHasSendReport(res); const pref=notifyPref(c); const lineWanted=wantsNotifyLine(c); const emailWanted=wantsNotifyEmail(c); const lineResult=channelSendResult(res,'line'); const emailResult=channelSendResult(res,'email'); const lineSent=report?(res.lineSent===true||!!(lineResult&&lineResult.sent)):!!res.line; const emailSent=report?(res.emailSent===true||!!(emailResult&&emailResult.sent)):!!res.email; const lineOk=!lineWanted||lineSent; const emailOk=!emailWanted||emailSent; const ok=lineWanted?lineSent:(emailWanted?emailSent:false); return {ok,lineOk,emailOk,text:notificationResultText(res)}; }
 
 
     function lineRuntimeHtml(c){ c=c||{}; const usesLine=wantsNotifyLine(c); const usesEmail=wantsNotifyEmail(c); const email=R.clean(c.customerEmail); const lineLinked=hasCustomerLine(c); const lineState=usesLine?(lineLinked?'已連結':'未連結'):'不使用 LINE'; const emailState=usesEmail?(email?'使用 Email':'未填 Email'):'不使用 Email'; const bad=notificationStatusBad(c); return `<div id="rentalLineRuntimeBox" class="notification-compact ${bad?'is-bad':'is-ok'}"><span class="notification-title">通知</span><span class="notify-chip">LINE：${R.esc(lineState)}</span><span class="notify-chip">Email：${R.esc(emailState)}</span></div>`; }
@@ -614,6 +614,9 @@
     function sanitizeRentalContractForFirestore(payload, opts){
       opts=opts||{};
       const out=Object.assign({}, payload||{});
+      // Final confirmation also merges editor data: an empty cached field must
+      // never erase a binding supplied by the server after this page opened.
+      ['customerLineUserId','lineUserId'].forEach(k=>{ if(!isValidCustomerLineId(out[k])) delete out[k]; });
       const urls=extractRentalAssetUrls(out);
       if(urls.signatureUrl){ out.customerSignatureUrl=urls.signatureUrl; out.signatureUrl=urls.signatureUrl; }
       if(urls.idImageUrl){ out.customerIdImageUrl=urls.idImageUrl; out.idImageUrl=urls.idImageUrl; }
@@ -717,10 +720,13 @@
         try{
           res=await R.call('rentalSaveContractHttp', payload);
         }catch(apiErr){
-          console.warn('rentalSaveContractHttp failed; 使用 Firestore 備援儲存：', apiErr);
-          res=await saveContractToFirestoreFallback(payload);
+          throw apiErr; // Do not bypass the server's transactional LINE binding checks.
         }
-        if(res && res.contractId) R.setVal('contractId',res.contractId);
+        if(res && res.contractId){
+          R.setVal('contractId',res.contractId);
+          const fresh=await R.get('rentalContracts',res.contractId);
+          if(fresh){ selected=Object.assign({__id:res.contractId},fresh); R.setVal('customerLineUserId',fresh.customerLineUserId||fresh.lineUserId||''); refreshInlineNotificationStatus(); }
+        }
         if(payload.applicationId && res && res.contractId){
           try{ await R.db().collection('rentalApplications').doc(payload.applicationId).set({status:'已轉正式契約', linkedContractId:res.contractId, contractId:res.contractId, updatedAtText:R.nowText()}, {merge:true}); }catch(_){}
         }
@@ -746,7 +752,7 @@ ${url}
       return {result,url};
     }
     function noticeResultFromApi(api){ if(!api) return {line:false,email:false,count:0,queueIds:[]}; if(api.notificationResult) return api.notificationResult; if(api.result) return api.result; return {line:!!api.line,email:!!api.email,count:Number(api.count||0)||0,queueIds:api.queueIds||[]}; }
-    window.sendContractLink=async function(opts){ opts=opts||{}; const id=R.val('contractId'); if(!id){ const msg='請先儲存合約。'; if(!opts.silent) R.toast(msg,false); throw new Error(msg); } const deliveryContext=collect(); try{ let info=null; try{ const api=await R.call('rentalSendSignLinkHttp',{contractId:id}); info={result:noticeResultFromApi(api),url:api.signUrl||''}; }catch(apiErr){ console.warn('rentalSendSignLinkHttp failed; 使用前端通知佇列備援：', apiErr); const c=await R.get('rentalContracts', id); if(!c) throw new Error('找不到合約資料。'); info=await queueRentalSignLinkNotice(Object.assign({}, c, {contractId:id})); } const result=info.result||{count:0}; const assessment=notificationDeliveryAssessment(result,deliveryContext); info.assessment=assessment; if(!opts.silent) R.toast(assessment.text,assessment.ok); await loadLineRuntimeStatus(true); await loadAll(); if(!assessment.ok) throw new Error(assessment.text+' 請改用「客人連結備援」複製後手動傳給客人。'); return info; }catch(e){ if(!opts.silent) R.toast(e.message||String(e), false); throw e; } };
+    window.sendContractLink=async function(opts){ opts=opts||{}; const id=R.val('contractId'); if(!id){ const msg='請先儲存合約。'; if(!opts.silent) R.toast(msg,false); throw new Error(msg); } const deliveryContext=collect(); try{ let info=null; try{ const api=await R.call('rentalSendSignLinkHttp',{contractId:id}); info={result:noticeResultFromApi(api),url:api.signUrl||''}; }catch(apiErr){ throw apiErr; /* A timed-out request may already have sent; never enqueue a duplicate fallback. */ } const result=info.result||{count:0}; const assessment=notificationDeliveryAssessment(result,deliveryContext); info.assessment=assessment; if(!opts.silent) R.toast(assessment.text,assessment.ok); await loadLineRuntimeStatus(true); await loadAll(); if(!assessment.ok) throw new Error(assessment.text+' 請改用「客人連結備援」複製後手動傳給客人。'); return info; }catch(e){ if(!opts.silent) R.toast(e.message||String(e), false); throw e; } };
     function runButtonProgress(btn, doneText){
       if(!btn) return Promise.resolve();
       btn.disabled=true;
@@ -769,7 +775,7 @@ ${url}
       });
     }
 
-    window.sendToCustomerForFill=async function(){ const btn=document.querySelector('[data-send-fill-btn]'); if(!validateInternalRentalCountFor('回傳給客人填寫身分證字號')) return; const c=collect(); if(!wantsNotifyLine(c) && !wantsNotifyEmail(c)){ return R.toast('請先選擇通知方式。', false); } if(wantsNotifyLine(c) && !hasCustomerLine(c) && !wantsNotifyEmail(c)){ return R.toast('客人選擇只用 LINE，但尚未完成 LINE 配對。請先請客人到官方 LINE 貼上配對文字，或改選 Email 通知。', false); } if(wantsNotifyEmail(c) && !R.clean(c.customerEmail)){ return R.toast('客人通知方式包含 Email，請先填寫 Email。', false); } if(btn){ btn.textContent='10%｜正在儲存正式資料連結...'; btn.style.setProperty('--progress','10%'); btn.classList.add('is-progressing'); btn.disabled=true; } const res=await saveContract(true,{silent:true}); if(!res){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } return; } try{ const info=await sendContractLink({silent:true}); await runButtonProgress(btn,'完成'); R.toast((info.assessment&&info.assessment.text)||'客人通知已送出。',true); }catch(e){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } R.toast(friendlyNotificationError(e.message||String(e),'line')+'。若系統通知沒有成功，可用「客人連結備援」複製連結手動傳送。', false); } };
+    window.sendToCustomerForFill=async function(){ const btn=document.querySelector('[data-send-fill-btn]'); if(!validateInternalRentalCountFor('回傳給客人填寫身分證字號')) return; const c=collect(); if(!wantsNotifyLine(c) && !wantsNotifyEmail(c)){ return R.toast('請先選擇通知方式。', false); }  if(wantsNotifyEmail(c) && !R.clean(c.customerEmail)){ return R.toast('客人通知方式包含 Email，請先填寫 Email。', false); } if(btn){ btn.textContent='10%｜正在儲存正式資料連結...'; btn.style.setProperty('--progress','10%'); btn.classList.add('is-progressing'); btn.disabled=true; } const res=await saveContract(true,{silent:true}); if(!res){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } return; } try{ const info=await sendContractLink({silent:true}); await runButtonProgress(btn,'完成'); R.toast((info.assessment&&info.assessment.text)||'客人通知已送出。',true); }catch(e){ if(btn){ btn.disabled=false; btn.classList.remove('is-progressing'); btn.textContent='回傳給客人填寫身分證字號'; } R.toast(friendlyNotificationError(e.message||String(e),'line')+'。若系統通知沒有成功，可用「客人連結備援」複製連結手動傳送。', false); } };
     function showRentalProgress(title){
       let mask=document.getElementById('rentalProgressMask');
       if(!mask){

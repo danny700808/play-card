@@ -1,4 +1,5 @@
 const storageRouting = require('./storageRouting');
+const {bindingPatch:rentalBindingPatch,withoutBinding:withoutRentalBinding,createRentalLineBinding} = require('./rentalLineBinding');
 const { shouldAddTrialNotice, trialNotificationText, trialNotificationHtml } = require('./trialNotificationNotice');
 const { queueBlockReason, deletedPersonMatches } = require('./notificationDeliveryGuard');
 const { registerGoodsInquiryNotifications } = require('./goodsInquiryNotifications');
@@ -339,6 +340,8 @@ async function handleRentalApplicationLink({ applicationKey, declaredName, lineU
     status: data.status || '待店家確認',
     updatedAt: now
   }, { merge: true });
+
+  await createRentalLineBinding(db).syncApplication(app.id);
 
   const customerReplyText = `已收到您的租賃申請：${applicationNo}
 
@@ -1890,19 +1893,23 @@ function stripRentalInlineAssets(row, options = {}) {
 }
 
 exports.rentalSaveContractHttp = managerHttpEndpoint(async (data) => {
+  return db.runTransaction(async tx => {
   const incomingId = clean(data.contractId || data.id || data.__id);
   const contractId = incomingId || randomId('RC');
   const ref = db.collection('rentalContracts').doc(contractId);
-  const currentSnap = await ref.get();
+  const currentSnap = await tx.get(ref);
   const current = currentSnap.exists ? stripRentalInlineAssets(currentSnap.data() || {}) : {};
+  const app = await createRentalLineBinding(db).applicationFor(tx,current,data);
+  const linePatch = rentalBindingPatch(current,app.row,data);
   const signToken = clean(data.signToken || current.signToken || current.token) || randomToken(18);
   const customerToken = clean(data.customerToken || current.customerToken) || randomToken(18);
   const officialContractToken = clean(data.officialContractToken || current.officialContractToken) || randomToken(18);
   const contractNo = clean(data.contractNo || current.contractNo || contractId);
   const status = data.makeSignLink ? '待客人補資料' : clean(data.status || current.status || '草稿');
   const now = admin.firestore.FieldValue.serverTimestamp();
-  const safeData = stripRentalInlineAssets(data || {});
-  const row = stripUndefined(Object.assign({}, current, safeData, {
+  const safeData = withoutRentalBinding(stripRentalInlineAssets(data || {}));
+  const row = stripUndefined(Object.assign({}, current, safeData, linePatch, {
+    applicationId:app.id,
     contractId,
     contractNo,
     signToken,
@@ -1919,11 +1926,11 @@ exports.rentalSaveContractHttp = managerHttpEndpoint(async (data) => {
     row.createdAt = now;
     row.createdAtText = clean(data.createdAtText || nowText());
   }
-  await ref.set(row, { merge: true });
+  tx.set(ref, row, { merge: true });
 
   const applicationId = clean(data.applicationId || current.applicationId);
   if (applicationId) {
-    await db.collection('rentalApplications').doc(applicationId).set({
+    tx.set(db.collection('rentalApplications').doc(applicationId), {
       status: '已轉正式契約',
       linkedContractId: contractId,
       contractId,
@@ -1942,6 +1949,7 @@ exports.rentalSaveContractHttp = managerHttpEndpoint(async (data) => {
     signUrl: row.signUrl,
     officialContractUrl: row.officialContractUrl,
   };
+  });
 });
 
 
@@ -1953,7 +1961,7 @@ exports.rentalSendSignLinkHttp = managerHttpEndpoint(async (data) => {
   const snap = await ref.get();
   if (!snap.exists) throw new Error('找不到契約資料，無法傳送正式資料填寫連結。');
 
-  const current = Object.assign({ __id: snap.id, contractId: snap.id }, snap.data() || {});
+  const current = await createRentalLineBinding(db).repair(contractId);
   const signToken = clean(current.signToken || current.token) || randomToken(18);
   const customerToken = clean(current.customerToken) || randomToken(18);
   const officialContractToken = clean(current.officialContractToken) || randomToken(18);
