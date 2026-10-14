@@ -1171,8 +1171,10 @@ async function createCustomerNotificationQueues({ row, title, body, source, cont
     results.email = true;
     results.count += 1;
     results.queueIds.push(queueId);
-  } else if (wantsEmailByPreference(pref)) {
+  } else if (wantsEmailByPreference(pref) && !email) {
     results.emailSkippedReason = '客人沒有 Email。';
+  } else if (results.line && email) {
+    results.emailSkippedReason = '已優先使用 LINE；Email 保留為傳送失敗時的備援。';
   }
   return results;
 }
