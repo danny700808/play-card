@@ -1,6 +1,7 @@
 'use strict';
 const admin=require('firebase-admin');
 const crypto=require('crypto');
+const googleAuth=require('./privateCalendarGoogle');
 const {onCall,onRequest,HttpsError}=require('firebase-functions/v2/https');
 const {onSchedule}=require('firebase-functions/v2/scheduler');
 const storage=require('./storageRouting');
@@ -34,21 +35,22 @@ function due(event,now){const time=Date.parse(event.start)-Number(event.reminder
 function deliveryId(event){return hash([event.id,event.start,event.reminderMinutes,event.reminderRevision||0].join('|'));}
 function currentReminder(event,note){return {...event,...note,...(event.source==='google'?{start:event.start,end:event.end,status:event.status}:{} )};}
 async function configuration(){return (await db.collection('privateCalendarServer').doc('google').get()).data()||{};}
-async function access(uid){
+async function access(uid,force=false){
  const p=profile(uid),snap=await p.collection('secrets').doc('google').get(),s=snap.data()||{};
  if(!s.refreshToken)fail('請先連接 Google 行事曆。','failed-precondition');
- if(s.accessToken&&s.expiresAt>Date.now()+60000)return s.accessToken;
+ if(!force&&s.accessToken&&s.expiresAt>Date.now()+60000)return s.accessToken;
  const cfg=await configuration();
  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:cfg.clientId,client_secret:cfg.clientSecret,refresh_token:s.refreshToken,grant_type:'refresh_token'}),signal:AbortSignal.timeout(15000)});
  const data=await response.json();
- if(!response.ok){await p.set({googleError:'Google 授權已失效，請重新連接。'},{merge:true});fail('Google 授權已失效，請重新連接。','failed-precondition');}
+ if(!response.ok){if(data.error!=='invalid_grant')fail('Google 連線暫時無法更新，請稍後再同步。','unavailable');await p.set({googleError:'Google 授權已失效，請重新連接。'},{merge:true});fail('Google 授權已失效，請重新連接。','failed-precondition');}
  await snap.ref.set({accessToken:data.access_token,expiresAt:Date.now()+Number(data.expires_in)*1000},{merge:true});
  return data.access_token;
 }
-async function google(uid,path,options={}){
- const response=await fetch('https://www.googleapis.com/calendar/v3/'+path,{...options,headers:{Authorization:'Bearer '+await access(uid),'Content-Type':'application/json',...(options.headers||{})},signal:AbortSignal.timeout(20000)});
+async function google(uid,path,options={},retried=false){
+ const response=await fetch('https://www.googleapis.com/calendar/v3/'+path,{...options,headers:{Authorization:'Bearer '+await access(uid,retried),'Content-Type':'application/json',...(options.headers||{})},signal:AbortSignal.timeout(20000)});
+ if(response.status===401&&!retried)return google(uid,path,options,true);
  if(response.status===409&&options.method==='POST'&&options.body){const id=JSON.parse(options.body).id;if(id)return google(uid,path+'/'+encodeURIComponent(id));}
- if(!response.ok)fail(response.status===412?'Google 行程已被修改，請重新整理再編輯。':'Google 讀取／更新失敗（'+response.status+'），請確認授權與行事曆權限。','failed-precondition');
+ if(!response.ok){const error=googleAuth.apiError(response.status,await response.json().catch(()=>({})));fail(error.message,error.code);}
  return response.status===204?{}:response.json();
 }
 async function calendars(uid){let items=[],pageToken='';do{const data=await google(uid,'users/me/calendarList?maxResults=250'+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''));items.push(...(data.items||[]));pageToken=data.nextPageToken||'';}while(pageToken);return items.map(c=>({id:c.id,summary:c.summaryOverride||c.summary,accessRole:c.accessRole,primary:!!c.primary,color:c.backgroundColor||'#5767ae'}));}
@@ -93,7 +95,7 @@ async function api(request){
  if(action==='connect'){
   const cfg=await configuration();if(!cfg.clientId||!cfg.clientSecret)fail('Google 串接程式已就緒；尚需設定 OAuth 用戶端。請開啟「連線設定」完成一次設定。','failed-precondition');
   const state=crypto.randomBytes(32).toString('hex');await db.collection('privateCalendarOAuthStates').doc(hash(state)).set({uid,expires:Date.now()+600000,used:false});
-  return {url:'https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams({client_id:cfg.clientId,redirect_uri:CALLBACK,response_type:'code',scope:SCOPES,state,access_type:'offline',prompt:'consent',login_hint:OWNER})};
+  return {url:'https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams({client_id:cfg.clientId,redirect_uri:CALLBACK,response_type:'code',scope:SCOPES,state,access_type:'offline',include_granted_scopes:'true',prompt:'consent',login_hint:OWNER})};
  }
  if(action==='configureGoogle'){
   if(!/^[0-9]+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(text(data.clientId))||text(data.clientSecret).length<12)fail('請填入有效的 Google OAuth 用戶端 ID 與密鑰。');
@@ -181,10 +183,13 @@ async function callback(req,res){
   const user=await admin.auth().getUser(uid);if(text(user.email).toLowerCase()!==OWNER)throw new Error('帳號不符。');
   const cfg=await configuration(),response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:cfg.clientId,client_secret:cfg.clientSecret,code:req.query.code,redirect_uri:CALLBACK,grant_type:'authorization_code'}),signal:AbortSignal.timeout(15000)}),token=await response.json();
   if(!response.ok||!token.refresh_token)throw new Error('未取得持續同步授權，請重新連接並同意要求的權限。');
+  googleAuth.requireScopes(token.scope);
   const info=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(15000)});const person=await info.json();
   if(!info.ok||text(person.email).toLowerCase()!==OWNER||person.email_verified!==true)throw new Error('請使用 '+OWNER+' 的 Google 帳號授權。');
-  const p=profile(uid);await p.collection('secrets').doc('google').set({refreshToken:token.refresh_token,accessToken:token.access_token,expiresAt:Date.now()+Number(token.expires_in)*1000});
-  const list=await calendars(uid);const existing=(await p.get()).data()||{};
+  // Verify the new grant before replacing the previously working connection.
+  const list=[];let pageToken='';do{const r=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250'+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''),{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(20000)});const body=await r.json();if(!r.ok)throw Error(googleAuth.apiError(r.status,body).message);list.push(...(body.items||[]));pageToken=body.nextPageToken||'';}while(pageToken);
+  const p=profile(uid);await p.collection('secrets').doc('google').set({refreshToken:token.refresh_token,accessToken:token.access_token,expiresAt:Date.now()+Number(token.expires_in)*1000,scope:token.scope});
+  const existing=(await p.get()).data()||{};
   await p.set({uid,googleConnected:true,googleEmail:person.email,googleError:'',calendarIds:existing.calendarIds?.length?existing.calendarIds.filter(id=>list.some(c=>c.id===id)):list.filter(c=>c.primary||c.summary==='豐原西南社').map(c=>c.id)},{merge:true});
   res.redirect(302,PAGE+'?connected=1');
  }catch(e){res.status(400).type('text/plain').send('Google 連接未完成：'+e.message+'\n請返回 '+PAGE);}

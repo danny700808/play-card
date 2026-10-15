@@ -54,7 +54,7 @@
   if(!current())return;
   S.loading=false;S.lastRefresh=warnings.length?0:Date.now();S.googleIncomplete=warnings.length>0;
   S.googleConnectionError=warnings.find(w=>/Google.*(?:授權|重新連接|先連接)/.test(w))||'';
-  connectionRender();render();settingsRender();message(warnings.join('；'),!!warnings.length);
+  connectionRender();render();settingsRender();message([...new Set(warnings)].join('；'),!!warnings.length);
   const failure=results.find(r=>r.status==='rejected');if(failure)throw failure.reason;
  }
  const dayKey=d=>local(d).slice(0,10);
