@@ -1060,7 +1060,10 @@ ${url}
         completeRentalProgress('完成：'+notificationResultText(sent)+pdfNote);
         R.toast('已確認租用成立，'+notificationResultText(sent)+pdfNote, true);
         await loadAll();
-        R.qs('contractPreview').innerHTML=R.renderContractHtml(displayPayload);
+        // Refresh the editor's hidden status too, so a later ordinary save
+        // cannot restore the pre-confirmation pending-payment status.
+        selected=Object.assign({__id:id},displayPayload,await R.get('rentalContracts',id)||{});
+        renderContract(selected);
       }catch(e){
         const msg=e && e.message ? e.message : String(e);
         failRentalProgress('失敗：'+msg);
