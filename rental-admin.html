@@ -377,6 +377,7 @@
         b('secondary','previewOfficialContract()','預覽正式契約');
         b('secondary','printRentalContract()','預覽 / 列印 / PDF');
         b('','markDelivered()','確認租用成立');
+        b('secondary','correctActiveStatusWithoutNotice()','已通知客人，僅更正為租用中','id="correctActiveStatusBtn"');
         if(isApp) b('secondary','cancelApplication()','取消申請');
         deleteWholeCase();
         return `<div class="btn-row">${parts.join('')}</div>`;
@@ -931,6 +932,29 @@ ${url}
 感謝您的租用，有任何問題也可以直接在官方 LINE 詢問。`;
       return await queueCustomerNotice(contract,{title:'租賃契約已確認成立',body,source:'rental-official-contract',officialContractUrl:url,contractId:contract.contractId||contract.__id,applicationId:contract.applicationId});
     }
+    window.correctActiveStatusWithoutNotice=async function(){
+      const id=R.val('contractId');
+      const btn=R.qs('correctActiveStatusBtn');
+      if(!id || !btn || btn.disabled) return;
+      btn.disabled=true;
+      btn.textContent='正在更正狀態…';
+      try{
+        const saved=await R.get('rentalContracts',id);
+        if(!saved) throw new Error('找不到合約，請重新開啟案件。');
+        const waiting=['客人已送出','待付款確認','待店家確認成立','customer_submitted','pending_shop_confirm','已簽署','待店家確認'];
+        if(!waiting.includes(R.clean(saved.status))) throw new Error('案件狀態已變更，請重新開啟後確認。');
+        if(!saved.startDate || !saved.endDate || !R.inclusiveDays(saved.startDate,saved.endDate)) throw new Error('請先儲存有效的起租日與到期日，再更正狀態。');
+        // Reconcile an already-confirmed rental only. Never collect unsaved
+        // form fields, regenerate documents, or enqueue a customer notice.
+        await R.call('rentalSaveContractHttp',{contractId:id,status:'租賃中'});
+        const fresh=await R.get('rentalContracts',id);
+        selected=Object.assign({__id:id},fresh||saved,{status:'租賃中'});
+        await loadAll();
+        renderContract(selected);
+        R.toast('已更正為租用中，未重送通知；到期續約提醒依原設定執行。',true);
+      }catch(e){ R.toast(e.message||String(e),false); }
+      finally{ btn.disabled=false; btn.textContent='已通知客人，僅更正為租用中'; }
+    };
     window.markDelivered=async function(){
       const id=R.val('contractId');
       if(!id) return R.toast('請先儲存合約。', false);
