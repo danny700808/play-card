@@ -11,3 +11,8 @@ body:not([data-admin]) main{padding:0 18px 28px}body:not([data-admin]) .hero{pad
 /* Align prices and selection controls within each product row. */
 body:not([data-admin]) .card{display:flex;flex-direction:column}body:not([data-admin]) .photo{flex-shrink:0}body:not([data-admin]) .card-body{display:flex;flex-direction:column;flex:1}body:not([data-admin]) .card .desc{flex:1}body:not([data-admin]) .card-body>.line{min-height:40px;align-items:flex-start;align-content:flex-start}body:not([data-admin]) .card.selected{border-width:1px}
 @media(max-width:600px){body:not([data-admin]) .card-body>.line{height:58px;min-height:58px;flex-shrink:0}}
+
+/* Show the original image and real-life photo together within the same card. */
+.photo-pair{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:100%}
+.photo .photo-pair img{width:calc((100% - 8px)/2);min-width:0;height:100%;object-fit:contain}
+.photo .real-photo{mix-blend-mode:normal;border-radius:4px}
