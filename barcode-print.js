@@ -3,7 +3,10 @@
   const PRINT_BASE='http://127.0.0.1:18181';
   const PAGE_SIZE=80;
   const SESSION_KEY='inventoryCountSession';
-  const state={token:sessionStorage.getItem(SESSION_KEY)||'',products:[],filtered:[],visible:PAGE_SIZE,selected:null,serviceReady:false,searchComposing:false};
+  const REMEMBER_KEY='barcodePrintRememberedSession';
+  function storedToken(){try{return localStorage.getItem(REMEMBER_KEY)||sessionStorage.getItem(SESSION_KEY)||'';}catch(err){return '';}}
+  let authGeneration=0;
+  const state={token:storedToken(),products:[],filtered:[],visible:PAGE_SIZE,selected:null,serviceReady:false,searchComposing:false};
   const $=function(id){return document.getElementById(id);};
   function clean(v){return String(v==null?'':v).trim();}
   function lower(v){return clean(v).toLowerCase();}
@@ -34,7 +37,7 @@
     const variant=clean(raw.variantName);
     const price=number(first(raw,['storePrice','originalSalePrice','salePrice','retailPrice']))||0;
     const images=imageList(raw);
-    return {id:doc.id,sku:sku,name:name,onlineName:online,variant:variant,price:price,imageUrl:images[0]||'',enabled:raw.enabled!==false,status:clean(raw.status)||'active'};
+    return {id:doc.id,sku:sku,name:name,onlineName:online,variant:variant,price:price,stock:(typeof raw.currentStock==='number'||typeof raw.currentStock==='string')&&clean(raw.currentStock)!==''&&Number.isFinite(Number(raw.currentStock))?Number(raw.currentStock):null,imageUrl:images[0]||'',enabled:raw.enabled!==false,status:clean(raw.status)||'active'};
   }
   function formatMoney(v){return 'NT$ '+Math.round(Number(v||0)).toLocaleString('zh-TW');}
   async function productRequest(name,data){
@@ -49,7 +52,8 @@
     }finally{clearTimeout(timer);}
   }
   function showLogin(){
-    state.token='';sessionStorage.removeItem(SESSION_KEY);
+    authGeneration++;state.token='';state.products=[];state.filtered=[];closeModal();$('bpProducts').innerHTML='';
+    try{sessionStorage.removeItem(SESSION_KEY);localStorage.removeItem(REMEMBER_KEY);}catch(err){}
     document.body.classList.add('bp-locked');$('bpLoginScreen').hidden=false;$('bpApp').hidden=true;
     $('bpPassword').value='';$('bpPassword').focus();
   }
@@ -72,9 +76,10 @@
       submit.disabled=true;
       submit.textContent='確認中…';
       try{
-        const result=await productRequest('inventoryCountLoginHttp',{pin:input.value.trim()});
+        const result=await productRequest('inventoryCountLoginHttp',{pin:input.value.trim(),remember:$('bpRemember').checked});
         if(!result.token)throw new Error('登入資料不完整，請重新輸入密碼。');
-        state.token=result.token;sessionStorage.setItem(SESSION_KEY,state.token);
+        authGeneration++;state.token=result.token;
+        try{sessionStorage.setItem(SESSION_KEY,state.token);if($('bpRemember').checked)localStorage.setItem(REMEMBER_KEY,state.token);else localStorage.removeItem(REMEMBER_KEY);}catch(err){toast('瀏覽器無法儲存登入，關閉後需重新登入。');}
         input.value='';showApp();
         await initApp();
       }catch(err){
@@ -84,6 +89,11 @@
         submit.textContent='進入條碼列印';
       }
     });
+  }
+  async function logout(){
+    const request=productRequest('inventoryCountLoginHttp',{action:'logout'});
+    showLogin();
+    try{await request;}catch(err){$('bpLoginError').textContent='這台電腦已登出；伺服器登出未完成，請確認網路連線。';}
   }
   function toast(text){const el=$('bpToast');el.textContent=text;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(function(){el.classList.remove('show');},2600);}
   function setService(ready,text){state.serviceReady=ready;const el=$('bpServiceStatus');el.className='bp-service '+(ready?'ready':'offline');el.textContent=text;}
@@ -108,7 +118,7 @@
   }
   function productCard(p){
     const image=p.imageUrl?'<img loading="lazy" src="'+attr(p.imageUrl)+'" alt="" onerror="this.parentNode.innerHTML=\'<div class=&quot;bp-no-image&quot;>沒有圖片</div>\'">':'<div class="bp-no-image">沒有圖片</div>';
-    return '<article class="bp-card"><div class="bp-image">'+image+'</div><div class="bp-card-body"><h2 class="bp-name">'+esc(p.name)+'</h2>'+(p.variant?'<div class="bp-variant">'+esc(p.variant)+'</div>':'')+'<div class="bp-sku">'+esc(formatLabelSku(p.sku)||'未設定編號')+'</div><div class="bp-price">'+formatMoney(p.price)+'</div><button class="bp-print-btn" type="button" data-print="'+attr(p.id)+'" '+(!p.sku?'disabled':'')+'>列印條碼</button></div></article>';
+    return '<article class="bp-card"><div class="bp-image">'+image+'</div><div class="bp-card-body"><h2 class="bp-name">'+esc(p.name)+'</h2>'+(p.variant?'<div class="bp-variant">'+esc(p.variant)+'</div>':'')+'<div class="bp-sku">'+esc(formatLabelSku(p.sku)||'未設定編號')+'</div><div class="bp-stock">'+(p.stock===null?'庫存：未提供':'庫存：'+p.stock.toLocaleString('zh-TW')+' 個')+'</div><div class="bp-price">'+formatMoney(p.price)+'</div><button class="bp-print-btn" type="button" data-print="'+attr(p.id)+'" '+(!p.sku?'disabled':'')+'>列印條碼</button></div></article>';
   }
   function render(){
     const rows=state.filtered.slice(0,state.visible);const wrap=$('bpProducts');
@@ -148,12 +158,16 @@
   }
   let appInitialized=false;
   async function loadProducts(){
+    const generation=authGeneration;
     $('bpSearchHelp').textContent='正在確認登入並讀取商品資料…';
     try{
       const result=await productRequest('inventoryCountProductsHttp',{action:'barcode'});
+      if(generation!==authGeneration)return;
       state.products=(result.products||[]).map(function(raw){return normalize({id:raw.id,data:function(){return raw;}});}).filter(function(p){return p.enabled&&p.status!=='inactive'&&p.status!=='discontinued';}).sort(function(a,b){const imageDiff=Number(!!b.imageUrl)-Number(!!a.imageUrl);return imageDiff||a.name.localeCompare(b.name,'zh-Hant',{numeric:true});});
       applySearch();$('bpSearch').focus();
     }catch(err){
+      if(generation!==authGeneration)return;
+      if(/登入已失效|重新輸入.*密碼/.test(clean(err.message))){showLogin();$('bpLoginError').textContent='登入已失效，請重新輸入密碼。';return;}
       $('bpProducts').innerHTML='<div class="bp-empty">商品資料讀取失敗：'+esc(err.message||err)+'<p><button type="button" id="bpRelogin">重新輸入密碼</button></p><button type="button" id="bpRetry">重新讀取商品</button></div>';
       $('bpSearchHelp').textContent='尚未取得商品資料';
       $('bpRelogin').addEventListener('click',showLogin);
@@ -166,6 +180,8 @@
   }
   function init(){
     bindLogin();
+    $('bpLogout').addEventListener('click',logout);
+    global.addEventListener('storage',function(event){if((event.key===REMEMBER_KEY||event.key===null)&&!event.newValue)showLogin();});
     if(state.token){showApp();initApp();}
     else{const input=$('bpPassword');if(input)setTimeout(function(){input.focus();},50);}
   }

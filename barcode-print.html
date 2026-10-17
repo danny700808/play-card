@@ -7,7 +7,7 @@
   <title>商品條碼列印｜柚子樂器</title>
   <link rel="icon" href="yuzu-logo-green.png">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="barcode-print.css?v=20260715-password-v2">
+  <link rel="stylesheet" href="barcode-print.css?v=20261017-stock-session">
 </head>
 <body class="bp-body bp-locked">
   <section class="bp-login-screen" id="bpLoginScreen" aria-labelledby="bpLoginTitle">
@@ -17,6 +17,7 @@
       <p>請輸入與商品實體圖、庫存盤點相同的密碼</p>
       <label for="bpPassword">密碼</label>
       <input id="bpPassword" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" inputmode="text" placeholder="請輸入密碼" required>
+      <label class="bp-remember"><input id="bpRemember" type="checkbox" checked> 記住這台電腦</label>
       <div class="bp-login-error" id="bpLoginError" role="alert"></div>
       <button type="submit">進入條碼列印</button>
     </form>
@@ -28,7 +29,7 @@
       <h1>商品條碼列印</h1>
       <p>只提供商品搜尋與條碼列印</p>
     </div>
-    <div class="bp-service checking" id="bpServiceStatus">檢查條碼機</div>
+    <div class="bp-header-actions"><div class="bp-service checking" id="bpServiceStatus">檢查條碼機</div><button id="bpLogout" type="button">登出</button></div>
   </header>
 
   <main class="bp-main">
@@ -67,7 +68,7 @@
   <div class="bp-toast" id="bpToast" role="status" aria-live="polite"></div>
 
   <script src="config.js?v=20260919-taiwan-storage-v3"></script>
-  <script src="barcode-print.js?v=20260919-taiwan-v2"></script>
+  <script src="barcode-print.js?v=20261017-stock-session"></script>
   </div>
 </body>
 </html>

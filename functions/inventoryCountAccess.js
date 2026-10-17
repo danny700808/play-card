@@ -9,20 +9,33 @@ function adjustLayers(raw,target){return averageCostModel.snapshot(raw,target);}
 
 function createInventoryCountAccess({db,FieldValue,requireManager,now=Date.now}){
   const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
+  const rememberedLifetime=90*24*3600000;
   async function login(data){
+    if(data.action==='logout'){
+      if(/^[A-Za-z0-9_-]{40,100}$/.test(clean(data.token)))await db.collection('inventoryCountSessions').doc(hash(data.token)).set({revoked:true,expiresAtMs:0,expiresAt:new Date(now())},{merge:true});
+      return {ok:true};
+    }
     const doc=await db.collection('opsSettings').doc('inventoryCount').get(),setting=doc.exists?doc.data():{};
     if(setting.enabled===false)throw Error('盤點入口目前已停用。');
     if(!/^[a-f0-9]{64}$/i.test(clean(setting.pinHash)))throw Error('請管理者先在庫存作業設定盤點密碼。');
     const actual=hash(clean(data.pin)),expected=clean(setting.pinHash).toLowerCase();
     if(!crypto.timingSafeEqual(Buffer.from(actual),Buffer.from(expected)))throw Error('盤點密碼不正確。');
     const token=crypto.randomBytes(32).toString('base64url');
-    await db.collection('inventoryCountSessions').doc(hash(token)).set({expiresAtMs:now()+8*3600000,expiresAt:new Date(now()+8*3600000),pinVersion:expected});
+    const remember=data.remember===true,expiresAtMs=now()+(remember?rememberedLifetime:8*3600000);
+    await db.collection('inventoryCountSessions').doc(hash(token)).set({expiresAtMs,expiresAt:new Date(expiresAtMs),pinVersion:expected,remember});
     return {ok:true,token};
   }
   async function session(token){
     if(!/^[A-Za-z0-9_-]{40,100}$/.test(clean(token)))throw Error('請重新輸入盤點密碼。');
-    const [doc,settings]=await Promise.all([db.collection('inventoryCountSessions').doc(hash(token)).get(),db.collection('opsSettings').doc('inventoryCount').get()]);
-    if(!doc.exists||doc.data().expiresAtMs<=now()||!settings.exists||settings.data().enabled===false||doc.data().pinVersion!==clean(settings.data().pinHash).toLowerCase())throw Error('盤點登入已失效，請重新輸入密碼。');
+    const ref=db.collection('inventoryCountSessions').doc(hash(token));
+    await db.runTransaction(async tx=>{
+      const [doc,settings]=await Promise.all([tx.get(ref),tx.get(db.collection('opsSettings').doc('inventoryCount'))]);
+      if(!doc.exists||doc.data().revoked||doc.data().expiresAtMs<=now()||!settings.exists||settings.data().enabled===false||doc.data().pinVersion!==clean(settings.data().pinHash).toLowerCase())throw Error('盤點登入已失效，請重新輸入密碼。');
+      if(doc.data().remember===true&&doc.data().expiresAtMs<now()+rememberedLifetime-24*3600000){
+        const expiresAtMs=now()+rememberedLifetime;
+        tx.update(ref,{expiresAtMs,expiresAt:new Date(expiresAtMs)});
+      }
+    });
   }
   async function authorize(data,req){
     if(req && req.headers && req.headers.authorization){

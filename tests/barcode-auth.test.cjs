@@ -7,7 +7,7 @@ test('wrong PIN, fake sessions and expired sessions cannot load barcode products
 test('frontend uses shared password service and renders returned retail price without manager auth',async()=>{
  const source=fs.readFileSync('barcode-print.js','utf8'),nodes=new Map(),events=[];
  const $=id=>{if(!nodes.has(id))nodes.set(id,{focus(){},addEventListener(name,fn){this[name]=fn;}});return nodes.get(id);};
- const ctx={state:{},$,productRequest:async(name,data)=>{events.push([name,data.action]);return {products:[{id:'p1',internalName:'Guitar',storePrice:3200}]};},normalize:doc=>({...doc.data(),enabled:true}),applySearch:()=>events.push('render'),esc:x=>x,showLogin(){}};
+ const ctx={authGeneration:0,state:{},$,productRequest:async(name,data)=>{events.push([name,data.action]);return {products:[{id:'p1',internalName:'Guitar',storePrice:3200}]};},normalize:doc=>({...doc.data(),enabled:true}),applySearch:()=>events.push('render'),esc:x=>x,showLogin(){}};
  vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('  async function loadProducts(){'),source.indexOf('  async function initApp(){')),ctx);await ctx.loadProducts();assert.equal(ctx.state.products[0].storePrice,3200);assert.deepEqual(events,[['inventoryCountProductsHttp','barcode'],'render']);
- assert(!source.includes('requireManager'));assert(!source.includes('login.html'));assert(source.includes("productRequest('inventoryCountLoginHttp',{pin:input.value.trim()})"));
+ assert(!source.includes('requireManager'));assert(!source.includes('login.html'));assert(source.includes("productRequest('inventoryCountLoginHttp',{pin:input.value.trim(),remember:$('bpRemember').checked})"));
 });

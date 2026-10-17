@@ -31,3 +31,12 @@ body.bp-body{margin:0;background:var(--bp-bg);color:var(--bp-text);font-family:-
 .bp-login-card button:disabled{opacity:.6;cursor:wait}
 .bp-login-error{min-height:22px;margin-top:8px;color:#c0392b;font-weight:800}
 .bp-locked{overflow:hidden}
+
+/* Stock remains screen-only; printing payload is unchanged. */
+.bp-stock{margin-top:8px;color:#1565c0;font-size:22px;font-weight:900;line-height:1.3}
+.bp-header{grid-template-columns:minmax(0,1fr) auto}
+.bp-header-actions{display:flex;align-items:center;gap:10px}
+#bpLogout{border:1px solid #cddbd5;border-radius:10px;padding:8px 14px;background:#fff;color:#29473d;font-weight:800;cursor:pointer}
+.bp-login-card .bp-remember{display:flex;align-items:center;gap:8px;margin-top:16px;font-size:15px}
+.bp-login-card .bp-remember input{width:18px;height:18px;padding:0;box-shadow:none}
+@media(max-width:620px){.bp-header-actions{flex-wrap:wrap;justify-content:flex-end;gap:6px}.bp-stock{font-size:20px}}
