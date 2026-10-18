@@ -377,7 +377,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
+  <script src="firebase-client.js?v=20261018-double-pay"></script>
 
   <script src="app.js?v=20260802-security-phase1"></script>
   <script>
@@ -406,8 +406,15 @@
       const grid=qs('#hoursGrid'),select=qs('#hoursSelect');
       if(!grid||!select)return;
       const values=Array.from({length:12},(_,i)=>String(i+1)).concat('0.5');
-      grid.innerHTML=values.map(v=>`<button type="button" class="hour-choice" data-hour="${v}" aria-pressed="false">${v==='0.5'?'＋0.5 小時':formatHoursLabel(v)}</button>`).join('');
-      grid.querySelectorAll('.hour-choice').forEach(btn=>{
+      grid.innerHTML=values.map(v=>`<button type="button" class="hour-choice" data-hour="${v}" aria-pressed="false">${v==='0.5'?'＋0.5 小時':formatHoursLabel(v)}</button>`).join('') + '<button type="button" class="hour-choice" id="doublePayBtn" aria-pressed="false">☐ 雙倍計薪</button>';
+      const doubleBtn=qs('#doublePayBtn');
+      if(doubleBtn) doubleBtn.onclick=()=>{
+        const active=doubleBtn.getAttribute('aria-pressed')!=='true';
+        doubleBtn.setAttribute('aria-pressed',String(active));
+        doubleBtn.classList.toggle('active',active);
+        doubleBtn.textContent=(active?'☑':'☐')+' 雙倍計薪';
+      };
+      grid.querySelectorAll('[data-hour]').forEach(btn=>{
         btn.onclick=()=>{
           const total=nextHoursSelection(select.value,btn.dataset.hour);
           select.value=total?String(total):'';
@@ -420,7 +427,7 @@
     function updateHoursGrid(){
       const grid=qs('#hoursGrid'),select=qs('#hoursSelect'),totalText=qs('#parttimeSelectedTotal');
       const total=Number(select&&select.value?select.value:0),whole=Math.floor(total),half=total-whole===0.5;
-      if(grid&&select)grid.querySelectorAll('.hour-choice').forEach(btn=>{
+      if(grid&&select)grid.querySelectorAll('[data-hour]').forEach(btn=>{
         const isHalf=btn.dataset.hour==='0.5',active=isHalf?half:whole>0&&Number(btn.dataset.hour)===whole;
         btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active));
         btn.disabled=isHalf&&whole>=12;
@@ -464,7 +471,7 @@
         const total = Number(r.totalHours || 0);
         if(msg){ msg.style.display=''; setMsg(msg, `查詢完成，共 ${rows.length} 筆，合計 ${formatHoursLabel(total)}。`, false); }
         if(result){
-          result.innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">這段期間沒有紀錄</div>';
+          result.innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}${x.doublePayHours>0?`｜雙倍計薪 ${formatHoursLabel(x.doublePayHours)}`:x.payMultiplier===2?'｜雙倍計薪':''}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">這段期間沒有紀錄</div>';
         }
       }catch(e){
         if(msg){ msg.style.display=''; setMsg(msg, '搜尋失敗，請稍後再試。', true); }
@@ -573,7 +580,7 @@
       const rows = r.rows || [];
       qs('#monthBadge').textContent = monthLabel(r.monthText || '');
       qs('#monthTotal').textContent = formatHoursLabel(r.monthTotalHours || 0);
-      qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">本月目前沒有紀錄</div>';
+      qs('#list').innerHTML = rows.map(x=>`<div class="item"><div class="top"><strong>${x.date}</strong><span class="tag">${formatHoursLabel(x.totalHours)}${x.doublePayHours>0?`｜雙倍計薪 ${formatHoursLabel(x.doublePayHours)}`:x.payMultiplier===2?'｜雙倍計薪':''}</span></div>${x.note?`<div class="muted">${x.note}</div>`:''}</div>`).join('') || '<div class="muted">本月目前沒有紀錄</div>';
     }
 
     function pendingStatusHtml(text){
@@ -668,6 +675,7 @@
         workDate: qs('#workDate').value,
         hours: qs('#hoursSelect').value,
         halfHour: false,
+        doublePay: qs('#doublePayBtn').getAttribute('aria-pressed') === 'true',
         note: '',
         excessMode: excess.excessMode || '',
         excessReason: excess.excessReason || '',
@@ -691,7 +699,7 @@
         if(r.ok){
           qs('#halfHour').checked = false;
           qs('#hoursSelect').value = '';
-          updateHoursGrid();
+          renderHoursGrid();
           qs('#workDate').value = localDateInputValue();
           await loadHistory(r.monthText || '');
           await loadDateContext();

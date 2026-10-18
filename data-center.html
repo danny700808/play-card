@@ -416,6 +416,7 @@
       const probe={employeeId:empId,email,name};
       const emp=state.employees.find(e=>payrollRules().sameEmployee(probe,e,knownEmployees()));
       const rate=safeNum(raw(o,['hourlyRate','時薪']))||(emp?emp.hourlyRate:196);
+      const payMultiplier=safeNum(raw(o,['payMultiplier']))===2||isTrue(raw(o,['doublePay']))?2:1;
       const status=clean(raw(o,['status','狀態']));
       const note=clean(raw(o,['note','備註','補時數原因']));
       return {
@@ -429,11 +430,12 @@
         hours:Math.round(total*100)/100,
         totalHours:Math.round(total*100)/100,
         hourlyRate:rate,
+        payMultiplier,
         status,
         payable:clean(raw(o,['payable','是否計薪'])),
         note,
-        gross:safeNum(raw(o,['grossPay','當筆毛額','當日工資']))||Math.round(total*rate),
-        grossPay:safeNum(raw(o,['grossPay','當筆毛額','當日工資']))||Math.round(total*rate),
+        gross:safeNum(raw(o,['grossPay','當筆毛額','當日工資']))||Math.round(total*rate*payMultiplier),
+        grossPay:safeNum(raw(o,['grossPay','當筆毛額','當日工資']))||Math.round(total*rate*payMultiplier),
         laborSelfPaySnapshot:safeNum(raw(o,['laborSelfPaySnapshot','勞保自付額快照','laborSelfPay','勞保自付額'])),
         sourceType:clean(raw(o,['sourceType','資料來源類型'])),
         dataCenterCreated:isTrue(raw(o,['dataCenterCreated'])),
@@ -1138,7 +1140,7 @@
         const note=parttimeReasonText(r);
         return `<div class="work-entry">
           <div class="entry-head">
-            <div><div class="entry-main"><span class="pill blue">${esc(workSource(r))}</span>　${esc(hours(r.totalHours||r.hours))}</div><div class="entry-meta">時薪 ${money(r.hourlyRate)}／本筆工資 ${money(r.grossPay||r.gross)}${note?`<br>原因：${esc(note)}`:''}</div></div>
+            <div><div class="entry-main"><span class="pill blue">${esc(workSource(r))}</span>　${esc(hours(r.totalHours||r.hours))}${r.payMultiplier===2?'　<span class="pill blue">雙倍計薪</span>':''}</div><div class="entry-meta">時薪 ${money(r.hourlyRate)}／本筆工資 ${money(r.grossPay||r.gross)}${note?`<br>原因：${esc(note)}`:''}</div></div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
               <button class="btn small" type="button" onclick="modifyParttimeRecord('${escjs(r.__id)}')">調整這筆工時</button>
               ${canDeleteParttime(r)?`<button class="btn small danger" type="button" onclick="deleteParttime('${escjs(r.__id)}')">刪除這筆</button>`:''}
@@ -1309,7 +1311,7 @@
     async function modifyParttimeRecord(id){
       const r = state.parttime.find(x=>x.__id===id);
       if(!r){ msg('找不到這筆工讀時數資料。','error'); return; }
-      const choice = prompt('請選擇主管要調整的項目：\n\n1：登記時數\n2：時薪\n\n請輸入 1 或 2');
+      const choice = prompt('請選擇主管要調整的項目：\n\n1：登記時數\n2：時薪\n3：雙倍計薪\n\n請輸入 1、2 或 3');
       if(choice === null) return;
       const manager=currentManager(),at=nowIso();
       if(clean(choice) === '1'){
@@ -1320,7 +1322,7 @@
         if(newHours < 0){ msg('登記時數不能小於 0。','error'); return; }
         const reason=clean(prompt('請輸入調整原因（必填）：','')||'');
         if(!reason){msg('未填寫調整原因，因此沒有儲存。','error');return}
-        const gross = Math.round(newHours * safeNum(r.hourlyRate));
+        const gross = Math.round(newHours * safeNum(r.hourlyRate) * (r.payMultiplier||1));
         const summary=`工時由 ${hours(oldHours)}調整為 ${hours(newHours)}`;
         const event={type:'hours',summary,reason,previousValue:oldHours,newValue:newHours,managerId:manager.id,managerName:manager.name,at};
         await mergeWithAudit('parttimeRecords',id,{hours:newHours,totalHours:newHours,時數:newHours,總時數:newHours,grossPay:gross,當日工資:gross,updatedAt:at,dataCenterEdited:true,主管已修改:true,lastAdjustmentType:'hours',lastAdjustmentSummary:summary,lastAdjustmentReason:reason,lastAdjustedById:manager.id,lastAdjustedByName:manager.name,lastAdjustedAt:at},'adjustmentHistory',event);
@@ -1334,13 +1336,28 @@
         if(newRate <= 0){ msg('時薪必須大於 0。','error'); return; }
         const reason=clean(prompt('請輸入調整原因（必填）：','')||'');
         if(!reason){msg('未填寫調整原因，因此沒有儲存。','error');return}
-        const gross = Math.round(safeNum(r.hours) * newRate);
+        const gross = Math.round(safeNum(r.hours) * newRate * (r.payMultiplier||1));
         const summary=`時薪由 ${money(oldRate)}調整為 ${money(newRate)}`;
         const event={type:'hourlyRate',summary,reason,previousValue:oldRate,newValue:newRate,managerId:manager.id,managerName:manager.name,at};
         await mergeWithAudit('parttimeRecords',id,{hourlyRate:newRate,時薪:newRate,grossPay:gross,當日工資:gross,updatedAt:at,dataCenterEdited:true,主管已修改:true,lastAdjustmentType:'hourlyRate',lastAdjustmentSummary:summary,lastAdjustmentReason:reason,lastAdjustedById:manager.id,lastAdjustedByName:manager.name,lastAdjustedAt:at},'adjustmentHistory',event);
         msg(`已儲存：${summary}。`); await reloadAll(); return;
       }
-      msg('沒有修改，請輸入 1 或 2。','notice');
+      if(clean(choice) === '3'){
+        const oldMultiplier=r.payMultiplier||1;
+        const value=prompt('請輸入計薪方式：1＝一般計薪，2＝雙倍計薪',String(oldMultiplier));
+        if(value===null)return;
+        if(!['1','2'].includes(clean(value))){msg('請輸入 1 或 2。','error');return;}
+        const payMultiplier=Number(value);
+        if(payMultiplier===oldMultiplier)return;
+        const reason=clean(prompt('請輸入調整原因（必填）：','')||'');
+        if(!reason){msg('未填寫調整原因，因此沒有儲存。','error');return;}
+        const gross=Math.round(safeNum(r.totalHours)*safeNum(r.hourlyRate)*payMultiplier);
+        const summary=payMultiplier===2?'改為雙倍計薪':'改為一般計薪';
+        const event={type:'payMultiplier',summary,reason,previousValue:oldMultiplier,newValue:payMultiplier,managerId:manager.id,managerName:manager.name,at};
+        await mergeWithAudit('parttimeRecords',id,{payMultiplier,doublePay:payMultiplier===2,grossPay:gross,當日工資:gross,updatedAt:at,dataCenterEdited:true,主管已修改:true,lastAdjustmentType:'payMultiplier',lastAdjustmentSummary:summary,lastAdjustmentReason:reason,lastAdjustedById:manager.id,lastAdjustedByName:manager.name,lastAdjustedAt:at},'adjustmentHistory',event);
+        msg(`已儲存：${summary}。`); await reloadAll(); return;
+      }
+      msg('沒有修改，請輸入 1、2 或 3。','notice');
     }
 
     async function addParttimeRecord(){
@@ -1362,7 +1379,7 @@
     async function saveParttime(id){
       const tr=qs(`tr[data-pt="${CSS.escape(id)}"]`), r=state.parttime.find(x=>x.__id===id); if(!tr||!r)return;
       const h=safeNum(tr.querySelector('[data-field="hours"]').value), rate=safeNum(tr.querySelector('[data-field="hourlyRate"]').value)||r.hourlyRate, status=tr.querySelector('[data-field="status"]').value, note=tr.querySelector('[data-field="note"]').value;
-      const gross=Math.round(h*rate);
+      const gross=Math.round(h*rate*(r.payMultiplier||1));
       await fb().collection('parttimeRecords').doc(id).set({hours:h,totalHours:h,時數:h,總時數:h,hourlyRate:rate,時薪:rate,grossPay:gross,當日工資:gross,laborSelfPaySnapshot:(selected()&&selected().laborSelfPay)||0,勞保自付額快照:(selected()&&selected().laborSelfPay)||0,status:status,狀態:status,note:note,備註:note,updatedAt:new Date().toISOString(),dataCenterEdited:true},{merge:true});
       msg('已儲存工讀時數。'); await reloadAll();
     }

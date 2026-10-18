@@ -116,7 +116,7 @@
   async function getPendingLeaveApprovals(){ const rows=(await queryEq('leaveRequests','status','待審核')).map(normalizeLeave); return {ok:true,rows}; }
   async function getAdminLeaveEmployeeSummary(){ const [emps, leaves]=await Promise.all([getAll('employees'), getAll('leaveRequests')]); const by={}; leaves.map(normalizeLeave).forEach(r=>{ by[r.employeeId]=by[r.employeeId]||[]; by[r.employeeId].push(r); }); const rows=emps.map(normalizeEmployee).filter(e=>e.employeeId).map(e=>{ const list=by[e.employeeId]||[]; const approved=list.filter(x=>x.status==='已核准').reduce((s,x)=>s+(Number(x.hours)||0),0); const pending=list.filter(x=>x.status==='待審核').length; return {name:e.name, identityLabel:e.identityLabel, lines:[`已核准請假：${approved} 小時`, `待審核：${pending} 筆`]}; }); return {ok:true,rows}; }
 
-  function normalizeParttime(o){ o=o||{}; const total=Number(o.totalHours||o['總時數']||o.hours||o['時數']||0)||0; return {id:clean(o.recordId||o['紀錄ID']||o.__id),employeeId:clean(o.employeeId||o['員工ID']),date:fmtDate(o.date||o.workDate||o['日期']),hours:Number(o.hours||o['時數']||0)||0,totalHours:total,halfHour:truthy(o.halfHour||o['是否加半小時']),status:clean(o.status||o['狀態']||'正常')||'正常',note:clean(o.note||o['備註']),scheduleLabel:clean(o.scheduleLabel||o['班表狀態']),hourlyRate:Number(o.hourlyRate||o['時薪']||0)||0,grossPay:Number(o.grossPay||o['當筆毛額']||0)||0}; }
+  function normalizeParttime(o){ o=o||{}; const total=Number(o.totalHours||o['總時數']||o.hours||o['時數']||0)||0; return {id:clean(o.recordId||o['紀錄ID']||o.__id),employeeId:clean(o.employeeId||o['員工ID']),date:fmtDate(o.date||o.workDate||o['日期']),hours:Number(o.hours||o['時數']||0)||0,totalHours:total,payMultiplier:Number(o.payMultiplier)===2||o.doublePay===true?2:1,halfHour:truthy(o.halfHour||o['是否加半小時']),status:clean(o.status||o['狀態']||'正常')||'正常',note:clean(o.note||o['備註']),scheduleLabel:clean(o.scheduleLabel||o['班表狀態']),hourlyRate:Number(o.hourlyRate||o['時薪']||0)||0,grossPay:Number(o.grossPay||o['當筆毛額']||0)||0}; }
   async function getParttimeHistory(userId, monthText){ const month=clean(monthText)||ymd(new Date()).slice(0,7); const rows=(await queryEq('parttimeRecords','employeeId',clean(userId))).map(normalizeParttime).filter(r=>clean(r.date).slice(0,7)===month).sort((a,b)=>clean(b.date).localeCompare(clean(a.date))); const total=Math.round(rows.reduce((s,r)=>s+(Number(r.totalHours)||0),0)*100)/100; const pay=Math.round(rows.reduce((s,r)=>s+(Number(r.grossPay)||0),0)); return {ok:true,monthText:month,monthTotalHours:total,monthGrossPay:pay,rows,list:rows}; }
 
   function normalizeNotify(o){ o=o||{}; return Object.assign({},o,{eventCode:clean(o.eventCode||o['事件代碼']||o.__id),eventName:clean(o.eventName||o['事件名稱'])}); }
@@ -315,7 +315,7 @@
     return {
       id:clean(o.recordId||o['紀錄ID']||o.__id),recordId:clean(o.recordId||o['紀錄ID']||o.__id),
       employeeId:clean(o.employeeId||o['員工ID']),name:clean(o.name||o['姓名']),email:lower(o.email||o['Email']),
-      date:date(o.workDate||o.date||o['日期']),totalHours:total,hours:baseHours,halfHour:halfHour>0,
+      date:date(o.workDate||o.date||o['日期']),totalHours:total,payMultiplier:Number(o.payMultiplier)===2||o.doublePay===true?2:1,hours:baseHours,halfHour:halfHour>0,
       status:clean(o.status||o['狀態']||'正常')||'正常',hourlyRate:hourly,grossPay:grossRaw,
       laborSelfPaySnapshot:num(o.laborSelfPaySnapshot||o['勞保自付額快照']),note:clean(o.note||o['備註']),scheduleLabel:clean(o.scheduleLabel||o['班表狀態'])
     };
@@ -361,7 +361,7 @@
     const fallbackRate=employeeHourlyRate_(emp) || latestHourlyRateForEmployee(allRows, empId) || defaultHourly;
     rows=rows.map(r=>{
       const rate=num(r.hourlyRate)||fallbackRate;
-      const gross=num(r.grossPay) || money(num(r.totalHours)*rate);
+      const gross=num(r.grossPay) || money(num(r.totalHours)*rate*(r.payMultiplier||1));
       return Object.assign({}, r, {hourlyRate:rate, grossPay:gross});
     });
     const totalHours=Math.round(rows.reduce((s,r)=>s+num(r.totalHours),0)*100)/100;
@@ -3943,6 +3943,7 @@
       date: dateText(o.date || o.workDate || o['日期']),
       hours: num(o.hours || o['時數'] || total),
       totalHours: total,
+      payMultiplier:Number(o.payMultiplier)===2||o.doublePay===true?2:1,
       hourlyRate: num(o.hourlyRate || o['時薪']),
       grossPay: num(o.grossPay || o['當日工資'] || o['當筆毛額']),
       status: clean(o.status || o['狀態'] || '正常') || '正常',
@@ -4341,7 +4342,7 @@
   function normParttime(o){
     o = o || {};
     const total = num(o.totalHours || o['總時數'] || o.hours || o['時數']);
-    return { id:clean(o.recordId || o['紀錄ID'] || o.__id), employeeId:clean(o.employeeId || o['員工ID']), date:dateText(o.date || o.workDate || o['日期']), totalHours:total, hours:num(o.hours || o['時數']) || total, status:clean(o.status || o['狀態'] || '正常') || '正常', note:clean(o.note || o['備註']), hourlyRate:num(o.hourlyRate || o['時薪']), grossPay:num(o.grossPay || o['當日工資'] || o['當筆毛額']) };
+    return { id:clean(o.recordId || o['紀錄ID'] || o.__id), employeeId:clean(o.employeeId || o['員工ID']), date:dateText(o.date || o.workDate || o['日期']), totalHours:total,payMultiplier:Number(o.payMultiplier)===2||o.doublePay===true?2:1, hours:num(o.hours || o['時數']) || total, status:clean(o.status || o['狀態'] || '正常') || '正常', note:clean(o.note || o['備註']), hourlyRate:num(o.hourlyRate || o['時薪']), grossPay:num(o.grossPay || o['當日工資'] || o['當筆毛額']) };
   }
   async function parttimeRows(employeeId){ return (await employeeRows('parttimeRecords', employeeId).catch(()=>[])).map(normParttime).filter(r => r.employeeId === clean(employeeId) && r.date && clean(r.status) !== '已駁回' && clean(r.status) !== '已刪除'); }
   function groupParttime(rows){
@@ -4349,8 +4350,9 @@
     (rows || []).forEach(r => {
       const k = r.date;
       if(!k) return;
-      if(!map[k]) map[k] = {date:k, totalHours:0, grossPay:0, notes:[], rows:[]};
+      if(!map[k]) map[k] = {date:k, totalHours:0, doublePayHours:0, grossPay:0, notes:[], rows:[]};
       map[k].totalHours += Number(r.totalHours)||0;
+      if(r.payMultiplier===2) map[k].doublePayHours += Number(r.totalHours)||0;
       map[k].grossPay += Number(r.grossPay)||0;
       if(r.note) map[k].notes.push(r.note);
       map[k].rows.push(r);
@@ -7765,10 +7767,11 @@
     const canonical=`PT_${safeId(c.employeeId)}_${c.correctDate.replace(/-/g,'')}`;
     const target=dayRows.find(r=>clean(r.recordId||r.__id)===canonical)||dayRows.find(r=>clean(r.sourceType)==='parttimeScheduleHours')||dayRows[0];
     const recordId=target?clean(target.__id||target.recordId):canonical;
+    const payMultiplier=target&&(Number(target.payMultiplier)===2||target.doublePay===true)?2:1;
     await setDoc('parttimeRecords',recordId,{
       recordId,'紀錄ID':recordId,employeeId:c.employeeId,'員工ID':c.employeeId,name:c.name,'姓名':c.name,email:c.email,
       date:c.correctDate,workDate:c.correctDate,'日期':c.correctDate,hours,totalHours:hours,'時數':hours,'總時數':hours,
-      hourlyRate:rate,'時薪':rate,grossPay:Math.round(hours*rate),'當日工資':Math.round(hours*rate),
+      payMultiplier,doublePay:payMultiplier===2,hourlyRate:rate,'時薪':rate,grossPay:Math.round(hours*rate*payMultiplier),'當日工資':Math.round(hours*rate*payMultiplier),
       status:'提早下班已核准','狀態':'提早下班已核准',sourceType:clean(target&&target.sourceType)||'approvedEarlyLeave',
       earlyLeaveApproved:true,earlyLeaveRequestId:c.requestId,earlyLeaveTime:end,actualClockInTime:start,
       updatedAt:serverTs(),createdAt:(target&&target.createdAt)||serverTs(),source:VERSION
@@ -7817,7 +7820,7 @@
     const employeeId=employeeIdFrom(payload),date=dateText(payload&&(payload.workDate||payload.date))||localDateKey(new Date()); if(!employeeId)return{ok:false,message:'缺少員工資料',context:{workDate:date,canRegister:false}}; const info=await effectiveScheduleInfo(employeeId,date,{includeClockState:false}); const hours=Math.round((info.schedules||[]).reduce((sum,s)=>sum+hoursBetween(s.startTime,s.endTime),0)*100)/100; const paid=(await rowsByEmployee('parttimeRecords',employeeId).catch(()=>[])).filter(r=>dateText(r.date||r.workDate||r['日期'])===date&&truthy(r.isPaidLeave)).reduce((sum,r)=>sum+(Number(r.paidLeaveHours||r.totalHours||r['總時數'])||0),0); const label=(info.schedules||[]).map(s=>`${s.startTime}-${s.endTime}`).join('、'); return{ok:true,context:{workDate:date,date,employeeId,canRegister:hours>0,hasSchedule:hours>0,statusLabel:hours>0?'今日有有效出勤班段':'今日無需出勤',scheduleLabel:label,scheduledHours:hours,maxDirectHours:hours,paidLeaveHours:Math.round(paid*100)/100,schedules:info.schedules||[],helperText:hours>0?`核准請假扣除後，可登記實際工讀 ${hours} 小時。${paid?`另有支薪假 ${paid} 小時，薪資會分開計入。`:''}`:'今天沒有剩餘出勤班段，不能登記實際工讀時數。'}};
   }
   async function submitParttimeFlow(payload){
-    const p=payload||{},user=currentUser(),employeeId=employeeIdFrom(p),date=dateText(p.workDate||p.date)||localDateKey(new Date()),selected=Math.round(((Number(p.hours||p.workHours)||0)+(truthy(p.halfHour||p.addHalfHour)?.5:0))*100)/100; if(!employeeId||!selected)return{ok:false,message:'請選擇工讀時數。'}; const ctx=(await parttimeContext({userId:employeeId,workDate:date})).context; if(!ctx.canRegister)return{ok:false,message:'今天沒有剩餘有效出勤班段；如為臨時出勤，請使用臨時出勤申請。'}; if(selected>ctx.scheduledHours+.0001)return{ok:false,blockedBySchedule:true,message:`核准請假扣除後，今天最多可登記 ${ctx.scheduledHours} 小時；你選擇 ${selected} 小時。超出部分請改用臨時出勤申請。`,scheduledHours:ctx.scheduledHours,selectedHours:selected,excessHours:Math.round((selected-ctx.scheduledHours)*100)/100}; const emp=await employeeRow(employeeId),rate=hourlyRateOf(emp),id=`PT_${safeId(employeeId)}_${date.replace(/-/g,'')}`; await setDoc('parttimeRecords',id,{recordId:id,'紀錄ID':id,employeeId,'員工ID':employeeId,name:clean(user.name),'姓名':clean(user.name),email:lower(user.email),date,workDate:date,'日期':date,hours:selected,totalHours:selected,'時數':selected,'總時數':selected,scheduledHours:ctx.scheduledHours,'排班時數':ctx.scheduledHours,hourlyRate:rate,'時薪':rate,grossPay:Math.round(selected*rate),'當日工資':Math.round(selected*rate),status:selected<ctx.scheduledHours?'少於有效班段':'正常','狀態':selected<ctx.scheduledHours?'少於有效班段':'正常',note:selected<ctx.scheduledHours?'登記時數少於核准請假扣除後的有效班段。':'有效班段內時數',source:VERSION,updatedAt:serverTs(),createdAt:serverTs()},true); return{ok:true,message:'工讀時數已送出。',recordId:id,totalHours:selected,monthText:date.slice(0,7)};
+    const p=payload||{},user=currentUser(),employeeId=employeeIdFrom(p),date=dateText(p.workDate||p.date)||localDateKey(new Date()),selected=Math.round(((Number(p.hours||p.workHours)||0)+(truthy(p.halfHour||p.addHalfHour)?.5:0))*100)/100; if(!employeeId||!selected)return{ok:false,message:'請選擇工讀時數。'}; const ctx=(await parttimeContext({userId:employeeId,workDate:date})).context; if(!ctx.canRegister)return{ok:false,message:'今天沒有剩餘有效出勤班段；如為臨時出勤，請使用臨時出勤申請。'}; if(selected>ctx.scheduledHours+.0001)return{ok:false,blockedBySchedule:true,message:`核准請假扣除後，今天最多可登記 ${ctx.scheduledHours} 小時；你選擇 ${selected} 小時。超出部分請改用臨時出勤申請。`,scheduledHours:ctx.scheduledHours,selectedHours:selected,excessHours:Math.round((selected-ctx.scheduledHours)*100)/100}; const emp=await employeeRow(employeeId),rate=hourlyRateOf(emp),payMultiplier=p.doublePay===true?2:1,id=`PT_${safeId(employeeId)}_${date.replace(/-/g,'')}`; await setDoc('parttimeRecords',id,{recordId:id,'紀錄ID':id,employeeId,'員工ID':employeeId,name:clean(user.name),'姓名':clean(user.name),email:lower(user.email),date,workDate:date,'日期':date,hours:selected,totalHours:selected,payMultiplier,doublePay:payMultiplier===2,'時數':selected,'總時數':selected,scheduledHours:ctx.scheduledHours,'排班時數':ctx.scheduledHours,hourlyRate:rate,'時薪':rate,grossPay:Math.round(selected*rate*payMultiplier),'當日工資':Math.round(selected*rate*payMultiplier),status:selected<ctx.scheduledHours?'少於有效班段':'正常','狀態':selected<ctx.scheduledHours?'少於有效班段':'正常',note:selected<ctx.scheduledHours?'登記時數少於核准請假扣除後的有效班段。':'有效班段內時數',source:VERSION,updatedAt:serverTs(),createdAt:serverTs()},true); return{ok:true,message:'工讀時數已送出。',recordId:id,totalHours:selected,monthText:date.slice(0,7)};
   }
 
   function timeOverlap(aStart,aEnd,bStart,bEnd){ return rangesOverlap(minutes(aStart),minutes(aEnd),minutes(bStart),minutes(bEnd)); }
