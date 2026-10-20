@@ -61,12 +61,25 @@ function renderDetail() {
   const row=data.orders.find(r=>r.key===selected);
   if(!row) {$('detail').innerHTML='<div class="empty">選擇一張訂單<br><small>在這裡核對商品及取得正式貨運單。</small></div>';return;}
   const enabled=(row.canCreate||row.canDownload)&&!row.stale;
+  const easyStoreOrder = row.platform==='EasyStore' && /^\d+$/.test(String(row.externalId||''))
+    ? `https://admin.easystore.co/orders/${row.externalId}` : '';
+  const shopeeViaEasyStore = !!easyStoreOrder && row.channel==='蝦皮';
+  const externalAction = easyStoreOrder
+    ? `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">${shopeeViaEasyStore?'到 EasyStore 出貨／印蝦皮單':'開啟 EasyStore 對應訂單'} ↗</a>` : '';
+  const shippingAction = row.platform==='EasyStore' ? externalAction
+    : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?'取得／重印正式貨運單':'申請出貨與貨運單'}</button>`;
+  const workflow = shopeeViaEasyStore
+    ? '<div class="block-note"><strong>蝦皮訂單 · 經 EasyStore 同步</strong><br>已確認 EasyStore 可安排蝦皮出貨及列印正式服務單。目前仍需在 EasyStore 確認，尚未在本工作台一鍵接通。<br>未出貨：出貨 → 透過蝦皮台灣出貨 → 核對後開始出貨處理。<br>出貨成功後：更多功能 → 列印蝦皮交貨便服務單。<br>完成後回到本頁按「讀取最新訂單」，核對同步狀態。</div>'
+    : row.platform==='EasyStore'
+      ? '<div class="block-note">此單原始來源為'+escapeHtml(row.channel)+'，請依訂單選用的物流處理。工作台已接通訂單與包貨明細，正式出貨及貨運單尚未接通。</div>'
+      : row.canCreate ? '<div class="block-note">新出貨完整流程尚待實單驗收。確認送出會正式向平台申請出貨，請只操作確定要出貨的訂單。</div>' : '';
   $('detail').innerHTML=`<div class="detail-header">${badge(row)}<span class="status">${escapeHtml(stageNames[row.stage])}</span><h2>${escapeHtml(row.orderNo)}</h2><p>${escapeHtml(row.carrier||'物流方式待確認')}${row.packageId?` · 包裹／明細 ${escapeHtml(row.packageId)}`:''}</p>${row.tracking?`<p>正式物流單號：<b>${escapeHtml(row.tracking)}</b></p>`:''}</div>
+    ${workflow}
     <div class="detail-section"><div class="section-label">收件資訊</div><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　<span class="subline">${escapeHtml(row.phone)}</span></div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'尚無地址資料')}</div>${row.note?`<div class="note">訂單備註<br>${escapeHtml(row.note)}</div>`:''}</div>
     <div class="detail-section"><div class="section-label">包貨內容 · ${packingItems(row).length} 種商品規格</div>${packingItems(row).map(itemHtml).join('')}<p class="muted">相同 SKU 與規格合計數量。組合贈品若未列在平台明細，需先核對內容再包貨。</p></div>
-    <div class="actions"><button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?'取得／重印正式貨運單':'申請出貨與貨運單'}</button><button id="packing">列印包貨明細</button>${row.documentReady?'<button id="showDocument">預覽正式貨運單</button>':''}</div>
-    ${row.blockReason||row.jobError||row.stale?`<div class="block-note">${escapeHtml(row.stale?'此平台資料尚未更新，請重新讀取後再操作。':row.jobError||row.blockReason)}</div>`:''}`;
-  $('prepare').addEventListener('click',()=>prepare(row));
+    <div class="actions">${shippingAction}<button id="packing">列印包貨明細</button>${row.documentReady?'<button id="showDocument">預覽正式貨運單</button>':''}</div>
+    ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'此平台資料尚未更新，請重新讀取後再操作。':row.jobError||row.blockReason)}</div>`:''}`;
+  $('prepare')?.addEventListener('click',()=>prepare(row));
   $('packing').addEventListener('click',()=>printPacking(row));
   $('showDocument')?.addEventListener('click',()=>showDocument(row.key));
 }

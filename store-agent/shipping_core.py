@@ -382,9 +382,10 @@ class Workbench:
                 rows.append(row)
             return {"orders": rows, "errors": self.errors, "updated": self.updated, "days": self.days,
                     "connectors": [
-                        {"name": "酷澎", "status": "已接官方接口", "detail": "正式文件下載；新單申請需核對物流與出貨地址。"},
-                        {"name": "MOMO", "status": "已接官方接口", "detail": "第三方物流、7-11、全家；取得原始 PDF，部分文件需輸入統編解鎖。"},
-                        {"name": "蝦皮／官網／LINE", "status": "待接貨運單", "detail": "EasyStore 訂單已接通，來源依原始資料顯示。"}]}
+                        {"name": "酷澎", "status": "既有貨運單已驗證", "detail": "新出貨待實單驗收；現階段僅支援商品準備中，需核對物流與出貨地址。"},
+                        {"name": "MOMO", "status": "既有貨運單已驗證", "detail": "新出貨待實單驗收；部分 PDF 需輸入供應商統編。"},
+                        {"name": "蝦皮（經 EasyStore）", "status": "仍需至 EasyStore 確認", "detail": "已確認 EasyStore 可出貨及印蝦皮服務單；本工作台提供對應訂單入口，尚未一鍵接通。"},
+                        {"name": "官網直購／LINE", "status": "已接訂單與包貨明細", "detail": "正式出貨及貨運單尚未接通；依原始來源分類，不與蝦皮匯入訂單混淆。"}]}
 
     def fresh_cp(self, key):
         if not key.startswith("Coupang:") or not key.split(":", 1)[1].isdigit():
