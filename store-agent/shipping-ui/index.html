@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>柚子樂器｜出貨工作台</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">柚</span><div>柚子樂器<small>YOU ZI MUSIC</small></div></div>
+    <div class="nav-title">營運中心</div>
+    <a href="https://danny700808.github.io/play-card/portal.html#sync">↗ 平台訂單</a>
+    <div class="nav-active">▤ 出貨工作台</div>
+    <div class="sidebar-bottom">店內電腦已連接<br><small>貨運單與包貨明細，集中處理。</small></div>
+  </aside>
+  <main>
+    <header><div><div class="eyebrow">FULFILLMENT DESK</div><h1>把每一件貨，準確送出去。</h1>
+      <p>選訂單 → 核對包貨內容 → 取得平台正式貨運單 → 列印</p></div>
+      <button id="refresh" class="primary">↻ 讀取最新訂單</button></header>
+    <div id="notice" role="status" aria-live="polite" class="notice">準備讀取平台訂單。</div>
+    <section class="metrics" aria-label="出貨概況">
+      <div><span>待處理</span><strong id="pendingCount">—</strong><small>待出貨與部分出貨</small></div>
+      <div><span>已有貨運單號</span><strong id="labelCount">—</strong><small>可核對後取回正式文件</small></div>
+      <div><span>文件已取回</span><strong id="documentCount">—</strong><small>可預覽、下載與重印</small></div>
+      <div><span>需要核對</span><strong id="reviewCount">—</strong><small>狀態不明或取消申請</small></div>
+    </section>
+    <section class="workspace">
+      <div class="list-panel">
+        <div id="channels" class="tabs" aria-label="訂單來源"></div>
+        <div class="filters"><input id="search" type="search" placeholder="搜尋訂單、商品、SKU、收件人" aria-label="搜尋訂單">
+          <select id="stage" aria-label="出貨狀態"><option value="active">待處理與已取號</option><option value="all">全部狀態</option><option value="pending">待處理</option><option value="label">已有貨運單號</option><option value="review">需要核對</option><option value="shipped">已出貨</option></select></div>
+        <div class="list-caption"><span id="resultCount"></span><span id="syncTime"></span></div>
+        <div id="orders" class="order-list"></div>
+      </div>
+      <section id="detail" class="detail-panel"><div class="empty">選擇一張訂單<br><small>在這裡核對商品及取得正式貨運單。</small></div></section>
+    </section>
+    <details class="connection-panel"><summary>平台連線與可用功能</summary><div id="connectors"></div>
+      <p>目前讀取近 30 天訂單；更早的待出貨訂單不在本次查詢範圍。LINE 只在原始來源明確標示時分類，無法辨識的來源會顯示「來源待確認」。</p></details>
+  </main>
+  <dialog id="reviewDialog">
+    <form method="dialog"><button class="close" aria-label="關閉">×</button></form>
+    <div class="eyebrow">REVIEW SHIPMENT</div><h2 id="reviewTitle">核對貨運單</h2>
+    <div id="reviewBody"></div>
+    <div class="dialog-actions"><button id="cancelReview">返回核對</button><button id="submitShipment" class="primary">確認送出</button></div>
+  </dialog>
+  <dialog id="documentDialog">
+    <form method="dialog"><button class="close" aria-label="關閉">×</button></form>
+    <h2>平台正式貨運單</h2>
+    <p>保持平台原始版面；使用文件檢視器的列印按鈕或開啟文件後按 Ctrl+P。</p>
+    <div class="document-actions"><a id="openDocument" target="_blank" rel="noopener">開啟正式文件／列印</a><a id="downloadDocument" download>下載原始貨運單</a></div>
+    <div class="document-actions"><a id="combinedDocument" target="_blank" rel="noopener" hidden>開啟 MOMO 貨運單＋官方明細</a></div>
+    <p class="muted">MOMO 若要求 PDF 密碼，請輸入供應商公司統編。</p>
+    <iframe id="documentFrame" title="平台正式貨運單"></iframe>
+  </dialog>
+  <section id="packingPrint" aria-label="包貨明細列印"></section>
+</body>
+</html>
