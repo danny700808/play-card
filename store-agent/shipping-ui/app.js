@@ -169,6 +169,7 @@ function documentSummary(row){
   $('momoPasswordHint').hidden=row.channel!=='MOMO';
 }
 function beginDocument(row){
+  window.YouziLocalPrint?.reset();
   documentSummary(row);
   $('documentControls').hidden=true;$('documentFrame').hidden=true;$('documentFrame').src='about:blank';
   $('documentPreviewImage').hidden=true;$('documentPreviewImage').removeAttribute('src');$('previewCaption').hidden=true;$('zoomDocumentPreview').hidden=true;
@@ -213,6 +214,7 @@ async function loadDocument(key){
   $('combinedDocument').hidden=!combined;$('combinedDocument').href=links.combined;
   const recordPrint=()=>api('/api/print-event',{key}).then(()=>api('/api/orders')).then(payload=>{data=payload;render();}).catch(e=>notice(e.message,true));
   $('openDocument').onclick=recordPrint;$('combinedDocument').onclick=recordPrint;
+  window.YouziLocalPrint?.attach(row,links,recordPrint);
   $('confirmPrinted').onclick=()=>markHandled(key,'printed');
   $('shipmentOptions').hidden=true;$('documentStatus').textContent='貨運單已備妥。';
   $('documentControls').hidden=false;
