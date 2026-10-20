@@ -10393,7 +10393,12 @@ async function adminVoidLessonSlot(data) {
   const effective = applyPortalAttendanceToPeriods([period],mirrorAttendance,portalAttendance.docs.map(doc => doc.data()))[0];
   const adjustments = Array.isArray(period.lessonAdjustments) ? period.lessonAdjustments : [];
   if (adjustments.some(row => Number(row.slotNo) === slotNo)) return {ok:true,duplicate:true};
-  if (slotNo <= Math.ceil(Number(effective.usedCount || 0))) throw new HttpsError('failed-precondition', '這格已有完整或半小時簽到，請先處理原簽到，再作廢堂數。');
+  const portalRows = portalAttendance.docs.map(doc => doc.data());
+  const slotRows = mirrorAttendance.filter(row => !portalRows.some(portal => attendanceRowsMatch(row, portal))).concat(portalRows);
+  if (require('./attendanceSlotSafety').slotHasAttendance({
+    periodId, slotNo, usedCount: effective.usedCount, rows: slotRows,
+    allocations: attendanceAllocations, units: attendanceLessonUnits, status: normalizeScheduleStatus
+  })) throw new HttpsError('failed-precondition', '這格已有完整或半小時簽到，請先處理原簽到，再作廢堂數。');
   if (tuitionUsedCount(effective) >= tuitionLessonCount(period)) throw new HttpsError('failed-precondition', '本期已無剩餘堂數。');
   await db.runTransaction(async tx => {
     const version = await tx.get(scheduleVersionRef());
