@@ -67,6 +67,11 @@ def execute(workbench, command, body):
             if len(content) > 10_000_000:
                 raise ShippingError("貨運單超過可傳送大小，請由主機列印。")
             files[kind] = {"mime": mime, "base64": base64.b64encode(content).decode("ascii")}
+        try:
+            content, mime = workbench.document(key, "preview")
+            files["preview"] = {"mime": mime, "base64": base64.b64encode(content).decode("ascii")}
+        except ShippingError:
+            pass
         return {}, files
     raise ShippingError("此入口只能處理包貨與列印。")
 

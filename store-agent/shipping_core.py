@@ -633,6 +633,14 @@ class Workbench:
         job = self.job(key)
         if not self.document_matches(self.rows.get(key), job):
             raise ShippingError("請先重新核對並取得正式貨運單；舊文件與目前訂單尚未確認一致。")
+        if kind == "preview":
+            from shipping_preview import preview_pdf
+            if job["mime"] != "application/pdf":
+                raise ShippingError("此文件請開啟原單查看。")
+            content = preview_pdf((self.data_dir / job["document"]).read_bytes(), self.data_dir, self.rows[key])
+            if not content:
+                raise ShippingError("此 PDF 需輸入密碼或由原單檢視器開啟。")
+            return content, "image/png"
         if kind != "label":
             if kind not in ("detail", "combined"):
                 raise ShippingError("文件類型不正確。")

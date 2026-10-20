@@ -22,11 +22,11 @@ async function handler(req,res){
   try{
     if(req.method==='GET'){
       const r=await access.document(req.query.job,req.query.ticket),kind=req.query.kind||'label';
-      if(!['label','combined'].includes(kind)||!r.files?.[kind])throw Object.assign(Error('找不到文件。'),{status:404});
+      if(!['label','combined','preview'].includes(kind)||!r.files?.[kind])throw Object.assign(Error('找不到文件。'),{status:404});
       const file=r.files[kind],[bytes]=await storage.writeBucket().file(file.path).download();
       res.set('Content-Type',file.mime);
       res.set('Content-Disposition','inline');
-      res.set('Content-Security-Policy',"sandbox allow-scripts allow-modals; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: data:; frame-ancestors "+ORIGIN);
+      res.set('Content-Security-Policy',(file.mime==='text/html'?"sandbox allow-scripts allow-modals; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: data:; ":"")+"frame-ancestors "+ORIGIN);
       return res.status(200).send(bytes);
     }
     if(req.method!=='POST')return res.status(405).end();
@@ -60,10 +60,11 @@ async function handler(req,res){
         const ticket=crypto.randomBytes(32).toString('base64url'),files={};
         reply={};
         for(const [kind,input] of Object.entries(d.files)){
-          if(!['label','combined'].includes(kind)||!['application/pdf','text/html'].includes(input.mime))throw Error('Invalid document type');
+          if(!['label','combined','preview'].includes(kind)||(kind==='preview'?input.mime!=='image/png':!['application/pdf','text/html'].includes(input.mime)))throw Error('Invalid document type');
           const bytes=Buffer.from(input.base64||'','base64');
           if(!bytes.length||bytes.length>10000000)throw Error('Document too large');
           if(input.mime==='application/pdf'&&bytes.subarray(0,5).toString()!=='%PDF-')throw Error('Invalid PDF');
+          if(input.mime==='image/png'&&!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))throw Error('Invalid preview');
           const path=`shipping-desk/${d.jobId}/${kind}`;
           await storage.writeBucket().file(path).save(bytes,{resumable:false,metadata:{contentType:input.mime,cacheControl:'private,no-store'}});
           files[kind]={path,mime:input.mime};

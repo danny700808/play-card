@@ -26,21 +26,30 @@
       <section id="detail" class="detail-panel"><div class="empty">選擇訂單查看包貨內容</div></section>
     </section>
   </main>
-  <dialog id="reviewDialog">
-    <form method="dialog"><button class="close" aria-label="關閉">×</button></form>
-    <h2 id="reviewTitle">核對貨運單</h2>
-    <div id="reviewBody"></div>
-    <div class="dialog-actions"><button id="cancelReview">返回核對</button><button id="submitShipment" class="primary">確認送出</button></div>
-  </dialog>
-  <dialog id="documentDialog">
-    <form method="dialog"><button class="close" aria-label="關閉">×</button></form>
-    <h2>平台正式貨運單</h2>
-    <p>保持平台原始版面；使用文件檢視器的列印按鈕或開啟文件後按 Ctrl+P。</p>
-    <div class="document-actions"><a id="openDocument" target="_blank" rel="noopener">開啟正式文件／列印</a><a id="downloadDocument" download>下載原始貨運單</a></div>
-    <div class="document-actions"><a id="combinedDocument" target="_blank" rel="noopener" hidden>開啟 MOMO 貨運單＋官方明細</a></div>
-    <button id="confirmPrinted" class="primary">已印好，標記已印單</button>
-    <p class="muted">MOMO 若要求 PDF 密碼，請輸入供應商公司統編。</p>
-    <iframe id="documentFrame" title="平台正式貨運單"></iframe>
+  <dialog id="documentDialog" aria-labelledby="documentTitle">
+    <form method="dialog"><button class="close" aria-label="關閉貨運單">×</button></form>
+    <h2 id="documentTitle">貨運單與包貨核對</h2>
+    <div class="document-layout">
+      <section class="document-info">
+        <div id="documentSummary"></div>
+        <form id="shipmentOptions" hidden></form>
+        <p id="documentStatus" role="status" aria-live="polite"></p>
+        <div id="documentControls" hidden>
+          <p id="printerHint" class="printer-hint"></p>
+          <div class="document-actions"><a id="openDocument" class="action-link primary" target="_blank" rel="noopener">開啟原單列印</a><a id="downloadDocument" download>下載 PDF</a></div>
+          <a id="combinedDocument" target="_blank" rel="noopener" hidden>開啟 MOMO 貨運單＋官方明細</a>
+          <p class="muted">開啟原單後按 Ctrl+P，選擇副機的印表機。</p>
+          <button id="confirmPrinted" class="primary">已印好，標記已印單</button>
+          <p id="momoPasswordHint" class="muted" hidden>MOMO 若要求 PDF 密碼，請輸入供應商公司統編。</p>
+        </div>
+      </section>
+      <div class="document-preview">
+        <p id="documentPlaceholder">正在取回貨運單…</p>
+        <button id="zoomDocumentPreview" type="button" aria-label="放大貨運單預覽" hidden><img id="documentPreviewImage" alt="貨運單第一頁預覽" hidden></button>
+        <p id="previewCaption" class="muted" hidden>第一頁預覽 · 列印使用完整原單</p>
+        <iframe id="documentFrame" title="平台正式貨運單" hidden></iframe>
+      </div>
+    </div>
   </dialog>
   <dialog id="imageDialog">
     <form method="dialog"><button class="close" aria-label="關閉圖片">×</button></form>

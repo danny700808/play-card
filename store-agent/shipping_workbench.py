@@ -138,7 +138,13 @@ def make_handler(workbench, port):
                     return self.send(workbench.provide_document(body["key"], content, body["binding"]))
                 if self.path == "/api/document-link":
                     workbench.document(body["key"])
-                    return self.send({kind: document_link(body["key"], kind) for kind in ("label", "combined")})
+                    links = {kind: document_link(body["key"], kind) for kind in ("label", "combined")}
+                    try:
+                        workbench.document(body["key"], "preview")
+                        links["preview"] = document_link(body["key"], "preview")
+                    except ShippingError:
+                        pass
+                    return self.send(links)
                 if self.path == "/api/print-event":
                     workbench.document(body["key"])
                     workbench.mark_handled(body["key"], "print_requested")

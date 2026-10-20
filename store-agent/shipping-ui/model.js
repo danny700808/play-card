@@ -8,6 +8,19 @@
       return raw.replace(/^(\d{3})(\d{4})(.*)$/,'$1-$2$3');
     },
     searchCode(value){return String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');},
+    shopeePrintUrl(row){
+      if(row.platform!=='EasyStore'||row.channel!=='蝦皮'||!/^\d+$/.test(String(row.externalId||'')))return '';
+      if(row.stage!=='shipped'&&!row.tracking)return '';
+      return `https://admin.easystore.co/channels/shopee/taiwan/orders/awb?store_order_ids=${row.externalId}`;
+    },
+    async obtainDocument(api,row,options,onReview=()=>{}){
+      const fresh=await api('/api/preview',{key:row.key,options});
+      // A reprint must never silently turn into a new shipment.
+      if(row.canDownload&&fresh.action!=='download')throw Error('平台貨運單狀態已變更，請重新讀取訂單；這次未申請新出貨。');
+      if(fresh.key!==row.key||!fresh.fingerprint)throw Error('未能核對這筆訂單，請重新讀取。');
+      onReview(fresh);
+      return api('/api/process',{key:row.key,options,fingerprint:fresh.fingerprint});
+    },
     status(row){
       if(row.handlingChanged)return '資料有變，需核對';
       if(row.handled)return labels[row.handlingAction]||'已處理';

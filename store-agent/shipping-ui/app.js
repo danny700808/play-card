@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const stageNames = {pending:'待出貨',partial:'部分待出貨',label:'可印貨運單',shipped:'已出貨',cancelled:'已取消',review:'需核對'};
 const ORDER_DAYS = 3;
-let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', activeWork = 'pending', busy = false, reviewed = null, reviewOptions = {};
+let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', activeWork = 'pending', busy = false;
 const sessionToken=document.querySelector('meta[name="youzi-session"]')?.content||'';
 const remote=!!window.ShippingTransport;
 const embedded=window.self!==window.top;
@@ -82,8 +82,9 @@ function renderDetail() {
   const easyStoreOrder = row.platform==='EasyStore' && /^\d+$/.test(String(row.externalId||''))
     ? `https://admin.easystore.co/orders/${row.externalId}` : '';
   const shopeeViaEasyStore = !!easyStoreOrder && row.channel==='蝦皮';
+  const shopeePrintUrl=ShippingModel.shopeePrintUrl(row);
   const externalAction = easyStoreOrder && !remote
-    ? `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">${shopeeViaEasyStore?(row.handled?'到 EasyStore 重印蝦皮單':'到 EasyStore 出貨／印蝦皮單'):'開啟 EasyStore 對應訂單'} ↗</a>` : '';
+    ? `<a class="action-link primary" href="${shopeePrintUrl||easyStoreOrder}" target="_blank" rel="noopener noreferrer">${shopeeViaEasyStore?(shopeePrintUrl?'直接開啟蝦皮列印頁':'到 EasyStore 出貨／印蝦皮單'):'開啟 EasyStore 對應訂單'} ↗</a>` : '';
   const shippingAction = row.platform==='EasyStore' ? (remote?(row.documentReady?'<button id="showProvidedDocument" class="primary">重印貨運單</button>':'<span class="muted">貨運單尚待主機提供</span>'):externalAction)
     : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?(row.handled?'重印貨運單':'取得貨運單'):'申請出貨與貨運單'}</button>`;
   const items=packingItems(row),quantity=items.reduce((n,i)=>n+i.quantity,0);
@@ -141,44 +142,96 @@ async function refresh() {
   finally{busy=false;$('refresh').disabled=false;render();}
 }
 async function prepare(row) {
-  reviewed=null;reviewOptions={carrier:row.carrierCode||''};
-  $('reviewTitle').textContent=row.canDownload?(row.handled?'重印原貨運單':'取得平台正式貨運單'):'申請出貨前核對';
-  const options = !row.canDownload && row.platform==='Coupang' ? `<label class="option-row">物流公司<select id="carrier"><option value="">請選擇</option>${Object.entries(carriers).map(([k,v])=>`<option value="${k}" ${k===reviewOptions.carrier?'selected':''}>${v}</option>`).join('')}</select></label><label class="option-row">宅配出貨地址代碼<input id="outbound" inputmode="numeric" placeholder="酷澎已登記的出貨地址代碼"></label><label class="option-row">超商退貨地址代碼<input id="returnCenter" placeholder="酷澎已登記的退貨地址代碼"></label>`:'';
-  $('reviewBody').innerHTML=`<div class="review-grid"><strong>${escapeHtml(row.channel)} · ${escapeHtml(row.orderNo)}</strong>${escapeHtml(row.recipient)}<br>${escapeHtml(row.address)}<br>${row.items.map(i=>`${escapeHtml(i.name)} ${escapeHtml(i.variant)} × ${i.quantity}`).join('<br>')}</div>${options}<p id="reviewMessage" class="muted">${row.canDownload?'取回原貨運單，不會重新出貨。':'新出貨尚待實單驗收。確認後會正式向平台申請出貨。'}</p>`;
-  $('submitShipment').textContent='讀取最新資料並核對';$('submitShipment').disabled=false;
-  $('reviewDialog').showModal();
-  $('submitShipment').onclick=async()=>{
-    $('submitShipment').disabled=true;
-    try{
-      if(!reviewed){
-        reviewOptions={carrier:$('carrier')?.value||row.carrierCode||'',
-          outboundShippingPlaceCode:$('outbound')?.value||'',returnCenterCode:$('returnCenter')?.value||''};
-        reviewed=await api('/api/preview',{key:row.key,options:reviewOptions});
-        // Replace initial review with fresh server-returned data; options cannot change unnoticed.
-        $('reviewBody').innerHTML=`<div class="review-grid"><strong>${escapeHtml(reviewed.orderNo)} · ${escapeHtml(carriers[reviewed.carrierCode]||reviewed.carrier)}</strong>${escapeHtml(reviewed.recipient)}<br>${escapeHtml(reviewed.address)}<br>${reviewed.items.map(i=>`${escapeHtml(i.name)} ${escapeHtml(i.variant)} × ${i.quantity}`).join('<br>')}${reviewed.tracking?`<br>原運單號：${escapeHtml(reviewed.tracking)}`:''}</div><p id="reviewMessage" class="muted">${reviewed.action==='download'?'已重新確認平台資料，取回原單號文件，不會重新申請出貨。':'已重新確認平台資料。確認後會正式申請出貨。'}</p>`;
-        $('submitShipment').textContent=reviewed.action==='download'?(row.handled?'開啟原貨運單重印':'取得正式貨運單'):'確認申請出貨';
-      }else{
-        $('reviewMessage').textContent='正在處理，請勿重複送出…';
-        const result=await api('/api/process',{key:row.key,options:reviewOptions,fingerprint:reviewed.fingerprint});
-        $('reviewDialog').close();
-        data=await api('/api/orders');activeWork='done';selected=row.key;render();
-        notice(result.reused?'已開啟保留的正式貨運單，可重印。':'已取得平台正式貨運單。');
-        await showDocument(row.key);
-      }
-    }catch(e){$('reviewMessage').textContent=e.message;notice(e.message,true);reviewed=null;$('submitShipment').textContent='重新核對';}
-    finally{$('submitShipment').disabled=false;}
-  };
+  if(busy)return;
+  beginDocument(row);
+  if(!row.canDownload&&row.platform==='Coupang'){
+    $('documentStatus').textContent='請填寫這筆出貨使用的物流資料。';
+    $('documentPlaceholder').textContent='出貨成功後，貨運單會顯示在這裡。';
+    $('shipmentOptions').hidden=false;
+    $('shipmentOptions').innerHTML=`<label class="option-row">物流公司<select id="carrier" required><option value="">請選擇</option>${Object.entries(carriers).map(([k,v])=>`<option value="${k}" ${k===row.carrierCode?'selected':''}>${v}</option>`).join('')}</select></label><label id="outboundOption" class="option-row">宅配出貨地址代碼<input id="outbound" inputmode="numeric" pattern="[0-9]+" placeholder="酷澎已登記的出貨地址代碼"></label><label id="returnOption" class="option-row">超商退貨地址代碼<input id="returnCenter" placeholder="酷澎已登記的退貨地址代碼"></label><button type="submit" class="primary">確認出貨並取單</button>`;
+    const chooseCarrier=()=>{
+      const home=['TWL_HCT','TWL_KERRY'].includes($('carrier').value);
+      const store=['TWL_FM','TWL_711'].includes($('carrier').value);
+      $('outboundOption').hidden=!home;$('outbound').required=home;
+      $('returnOption').hidden=!store;$('returnCenter').required=store;
+    };
+    $('carrier').addEventListener('change',chooseCarrier);chooseCarrier();
+    $('shipmentOptions').onsubmit=e=>{
+      e.preventDefault();
+      if(busy)return;
+      obtainDocument(row,{carrier:$('carrier').value,outboundShippingPlaceCode:$('outbound').value,returnCenterCode:$('returnCenter').value});
+    };
+  }else await obtainDocument(row,{carrier:row.carrierCode||''});
 }
-async function showDocument(key) {
+function documentSummary(row){
+  $('documentSummary').innerHTML=`<div class="document-order">${badge(row)}<h3>${escapeHtml(row.orderNo)}</h3></div><div class="document-items">${packingItems(row).map(itemHtml).join('')}</div><div class="subline">${escapeHtml(row.recipient)}${row.pickupStore?' · '+escapeHtml(row.pickupStore):''}</div><div class="subline">${escapeHtml(row.address)}</div>${row.tracking?`<p class="tracking-number">物流單號：${escapeHtml(row.tracking)}</p>`:''}`;
+  $('printerHint').textContent=row.channel==='MOMO'?'MOMO：選一般印表機，放入 MOMO 指定紙張。':['酷澎','蝦皮'].includes(row.channel)?`${row.channel}：選標籤機；紙張尺寸依副機實際標籤紙設定。`:'請選擇這張貨運單使用的印表機與紙張。';
+  $('momoPasswordHint').hidden=row.channel!=='MOMO';
+}
+function beginDocument(row){
+  documentSummary(row);
+  $('documentControls').hidden=true;$('documentFrame').hidden=true;$('documentFrame').src='about:blank';
+  $('documentPreviewImage').hidden=true;$('documentPreviewImage').removeAttribute('src');$('previewCaption').hidden=true;$('zoomDocumentPreview').hidden=true;
+  $('documentPlaceholder').hidden=false;$('documentPlaceholder').textContent='正在取回貨運單…';
+  $('documentStatus').textContent='正在讀取最新訂單並取單…';
+  $('shipmentOptions').hidden=true;$('shipmentOptions').innerHTML='';
+  if(!$('documentDialog').open)$('documentDialog').showModal();
+}
+function documentBusy(value){
+  busy=value;$('refresh').disabled=value;
+  $('shipmentOptions').querySelectorAll('input,select,button').forEach(el=>el.disabled=value);
+  renderDetail();
+}
+function documentError(error){
+  $('documentStatus').textContent=error.message;
+  $('documentPlaceholder').textContent='未能開啟貨運單，請依左側訊息處理。';
+  notice(error.message,true);
+}
+async function obtainDocument(row,options){
+  documentBusy(true);
+  try{
+    await ShippingModel.obtainDocument(api,row,options,fresh=>{
+      documentSummary({...row,...fresh});
+      $('documentStatus').textContent=fresh.action==='download'?'正在取回原貨運單…':'正在申請出貨，請勿重複操作…';
+    });
+    data=await api('/api/orders');activeWork='done';selected=row.key;render();
+    await loadDocument(row.key);
+    notice('已取得正式貨運單，可直接列印。');
+  }catch(e){documentError(e);}
+  finally{documentBusy(false);}
+}
+async function loadDocument(key){
   const links=await api('/api/document-link',{key});
+  // A logout can close the dialog while the remote document is being prepared.
+  if(remote&&!window.ShippingTransport.loggedIn())return;
+  const row=data.orders.find(r=>r.key===key);
+  if(row)documentSummary(row);
   const url=links.label;
-  $('documentFrame').src=url;$('openDocument').href=url;$('downloadDocument').href=url;
-  const combined=data.orders.find(r=>r.key===key)?.documentKinds?.includes('combined');
+  $('openDocument').href=url;$('downloadDocument').href=url;
+  const combined=row?.documentKinds?.includes('combined');
   $('combinedDocument').hidden=!combined;$('combinedDocument').href=links.combined;
   const recordPrint=()=>api('/api/print-event',{key}).then(()=>api('/api/orders')).then(payload=>{data=payload;render();}).catch(e=>notice(e.message,true));
   $('openDocument').onclick=recordPrint;$('combinedDocument').onclick=recordPrint;
   $('confirmPrinted').onclick=()=>markHandled(key,'printed');
-  $('documentDialog').showModal();
+  $('shipmentOptions').hidden=true;$('documentStatus').textContent='貨運單已備妥。';
+  $('documentControls').hidden=false;
+  if(links.preview){
+    $('documentPreviewImage').src=links.preview;$('documentPreviewImage').hidden=false;
+    $('zoomDocumentPreview').hidden=false;
+    $('zoomDocumentPreview').onclick=()=>{$('largeImage').src=links.preview;$('largeImage').alt='貨運單預覽';$('imageTitle').textContent='貨運單第一頁預覽';$('imageDialog').showModal();};
+    $('previewCaption').hidden=false;$('documentPlaceholder').hidden=true;
+  }else{
+    $('documentPlaceholder').hidden=false;
+    $('documentPlaceholder').textContent=row?.channel==='MOMO'?'這張 PDF 有加密，請開啟原單並輸入公司統編。':'請按「開啟原單列印」查看完整貨運單。';
+  }
+}
+async function showDocument(key) {
+  if(busy)return;
+  const row=data.orders.find(r=>r.key===key);
+  if(!row)return;
+  beginDocument(row);documentBusy(true);
+  try{await loadDocument(key);}catch(e){documentError(e);}
+  finally{documentBusy(false);}
 }
 async function printPacking(row) {
   if(['cancelled','review'].includes(row.stage)){notice('此訂單需要先核對狀態，暫不列印包貨明細。',true);return;}
@@ -193,7 +246,6 @@ $('channels').addEventListener('click',e=>{const b=e.target.closest('[data-chann
 $('orders').addEventListener('click',e=>{const b=e.target.closest('[data-key]');if(b){selected=b.dataset.key;render();}});
 $('search').addEventListener('input',render);
 $('workTabs').addEventListener('click',e=>{const b=e.target.closest('[data-work]');if(b){activeWork=b.dataset.work;render();}});
-$('cancelReview').addEventListener('click',()=>$('reviewDialog').close());
 $('detail').addEventListener('click',e=>{
   const button=e.target.closest('[data-image]');
   if(!button)return;
