@@ -69,7 +69,7 @@
       var lessons=numberOf(row.lessonCount||row.lessons||row.courseNumber)||4;
       var amount=numberOf(row.amount||row.tuition||row.money),splitValue=numberOf(row.splitValue!=null?row.splitValue:row.allot);
       return {
-        id:safeId('fee',row.id,index),subjectId:subject?subject.id:'',sort:numberOf(row.sort)||index+1,
+        id:safeId('fee',row.id,index),subjectId:subject?subject.id:clean(row.subjectId),sort:numberOf(row.sort)||index+1,
         name:clean(row.name)||'未命名方案',amount:amount,lessonCount:lessons,
         splitType:clean(row.splitType)||(splitValue>0&&splitValue<=1?'ratio':'fixed'),splitValue:splitValue,
         leaveNoDeduct:row.leaveNoDeduct!=null?row.leaveNoDeduct===true:row.leaveDelay!==false,

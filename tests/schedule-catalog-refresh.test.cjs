@@ -80,3 +80,24 @@ test('opening a schedule loads the catalog even before choosing a student',()=>{
   const enrollment=section('  function updateScheduleEnrollment(','  function setScheduleStudentMode(');
   assert.match(enrollment,/正在讀取收費方案/);assert.match(enrollment,/收費方案讀取失敗/);
 });
+test('a catalog-only response preserves a subject ID even when it omits the subject name',()=>{
+  const ctx={window:{},Date,Map,Set};vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync('course-scheduler-data.js','utf8'),ctx);
+  const state=ctx.window.YouziCoursePreviewData.buildState({feePlans:[
+    {id:'theory-1',subjectId:'portal-theory',name:'樂理(7/3)3000',amount:3000,lessonCount:4},
+    {id:'theory-2',subjectId:'portal-theory',name:'樂理(6/4)3000',amount:3000,lessonCount:4},
+    {id:'jazz-1',subjectId:'jazz',subjectName:'爵士鼓',name:'爵士鼓四堂',amount:2800,lessonCount:4}
+  ]},'2026-10-20');
+  assert.equal(state.feePlans.filter(p=>p.subjectId==='portal-theory').length,2);
+  assert.equal(state.feePlans.filter(p=>p.subjectId==='').length,0);
+  assert.equal(state.feePlans.find(p=>p.id==='jazz-1').subjectId,'jazz');
+});
+test('full catalog normalization still resolves subject names to their canonical ID',()=>{
+  const ctx={window:{},Date,Map,Set};vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync('course-scheduler-data.js','utf8'),ctx);
+  const state=ctx.window.YouziCoursePreviewData.buildState({
+    subjects:[{id:'canonical-theory',name:'樂理'}],
+    feePlans:[{id:'plan',subjectId:'legacy-theory',subjectName:'樂理',name:'四堂',amount:3000}]
+  },'2026-10-20');
+  assert.equal(state.feePlans[0].subjectId,'canonical-theory');
+});
