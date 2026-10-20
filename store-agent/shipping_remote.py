@@ -19,12 +19,13 @@ KEY = re.compile(r"^(?:(?:EasyStore|Coupang):\d{1,30}|MOMO:\d{1,30}:\d{1,6}(?:,\
 
 def packing_snapshot(workbench):
     payload = workbench.snapshot()
-    # Only operational packing fields; no raw API responses, credentials or prices.
+    # Operational packing fields and explicitly normalized buyer payment only.
+    # Never forward raw API responses, credentials, costs or settlement totals.
     fields = (
         "key platform channel orderNo externalId date stage status recipient phone address "
         "pickupStore note carrier carrierCode tracking items canCreate canDownload blockReason "
         "documentReady documentKinds stale jobError handled handlingAction handlingSource "
-        "handledAt printCount handlingChanged"
+        "handledAt printCount handlingChanged paidAmount paidCurrency paidAmountStatus paidAmountNote"
     ).split()
     start = (datetime.now(TZ) - timedelta(days=2)).strftime("%Y-%m-%d")
     rows = []

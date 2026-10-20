@@ -26,6 +26,10 @@ async function api(path, body) {
 }
 function notice(message, error=false) { $('notice').textContent=message;$('notice').hidden=!message;$('notice').classList.toggle('error',error); }
 function badge(row) { return `<span class="badge ${row.channel==='MOMO'?'momo':row.channel==='蝦皮'?'shopee':row.channel==='酷澎'?'coupang':''}">${escapeHtml(row.channel)}</span>`; }
+function paidAmountHtml(row) {
+  const paid=ShippingModel.paidAmount(row);
+  return `<span class="paid-amount ${paid.confirmed?'confirmed':'unconfirmed'}" title="${escapeHtml(paid.note)}">${escapeHtml(paid.text)}</span>`;
+}
 function packingItems(row) {
   const grouped=new Map();
   for(const original of row.items) {
@@ -70,7 +74,7 @@ function render() {
     if(!group.length)return '';
     return `<section class="platform-group" aria-label="${escapeHtml(c)}訂單"><div class="group-heading">${badge(group[0])}<span>${group.length} 筆</span></div>${group.map(r=>{
       const items=packingItems(r),quantity=items.reduce((n,i)=>n+i.quantity,0);
-      return `<button class="order-card ${r.key===selected?'selected':''}" data-key="${escapeHtml(r.key)}" aria-pressed="${r.key===selected}"><div class="line"><span class="order-no">${escapeHtml(r.orderNo)}</span><span class="status ${r.handled?'done':'pending'}">${escapeHtml(ShippingModel.status(r))}</span></div><div class="order-name">${escapeHtml(items[0]?.name || r.items[0]?.name || '未取得商品明細')}${items.length>1?` 等 ${items.length} 項`:''}</div><div class="line order-meta"><strong>${quantity} 件</strong><span>${escapeHtml(localDay(r.date))}</span></div></button>`;
+      return `<button class="order-card ${r.key===selected?'selected':''}" data-key="${escapeHtml(r.key)}" aria-pressed="${r.key===selected}"><div class="line"><span class="order-identity"><span class="order-no">${escapeHtml(r.orderNo)}</span>${paidAmountHtml(r)}</span><span class="status ${r.handled?'done':'pending'}">${escapeHtml(ShippingModel.status(r))}</span></div><div class="order-name">${escapeHtml(items[0]?.name || r.items[0]?.name || '未取得商品明細')}${items.length>1?` 等 ${items.length} 項`:''}</div><div class="line order-meta"><strong>${quantity} 件</strong><span>${escapeHtml(localDay(r.date))}</span></div></button>`;
     }).join('')}</section>`;
   }).join(''):'<div class="empty">沒有符合條件的訂單</div>';
   renderDetail();
@@ -97,7 +101,7 @@ function renderDetail() {
     : '';
   const items=packingItems(row),quantity=items.reduce((n,i)=>n+i.quantity,0);
   const packingNote=(row.note||'').split('\n').filter(line=>!/^買家帳號[：:]/.test(line.trim())).join('\n').trim();
-  $('detail').innerHTML=`<div class="detail-header"><div>${badge(row)}<span class="status ${row.handled?'done':'pending'}">${escapeHtml(ShippingModel.status(row))}</span><h2>${escapeHtml(row.orderNo)}</h2></div><div class="packing-total">共 <strong>${quantity}</strong> 件</div></div>
+  $('detail').innerHTML=`<div class="detail-header"><div>${badge(row)}<span class="status ${row.handled?'done':'pending'}">${escapeHtml(ShippingModel.status(row))}</span><div class="order-identity detail-identity"><h2>${escapeHtml(row.orderNo)}</h2>${paidAmountHtml(row)}</div></div><div class="packing-total">共 <strong>${quantity}</strong> 件</div></div>
     ${row.handled?`<div class="handling-summary">✓ 已處理 · ${escapeHtml(ShippingModel.status(row))}${row.handledAt?' · '+escapeHtml(new Date(row.handledAt).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})):''}<span>${escapeHtml(row.handlingSource)}</span></div>`:''}
     <div class="detail-section packing-section">${items.map(itemHtml).join('')||'<div class="empty">沒有可包貨的商品</div>'}</div>
     ${packingNote?`<div class="note order-note">${escapeHtml(packingNote)}</div>`:''}
@@ -180,7 +184,7 @@ async function prepare(row) {
 }
 function documentSummary(row){
   const maskedMomo=row.channel==='MOMO'&&/[○◯●＊*]/.test(`${row.recipient||''}${row.address||''}`);
-  $('documentSummary').innerHTML=`<div class="document-order">${badge(row)}<h3>${escapeHtml(row.orderNo)}</h3></div><div class="document-items">${packingItems(row).map(itemHtml).join('')}</div><div class="subline">${escapeHtml(row.recipient)}${row.pickupStore?' · '+escapeHtml(row.pickupStore):''}</div><div class="subline">${escapeHtml(row.address)}</div>${maskedMomo?'<p class="muted">MOMO 訂單資料已遮蔽部分姓名或地址；完整配送資訊請核對正式貨運單。</p>':''}${row.tracking?`<p class="tracking-number">物流單號：${escapeHtml(row.tracking)}</p>`:''}`;
+  $('documentSummary').innerHTML=`<div class="document-order">${badge(row)}<h3>${escapeHtml(row.orderNo)}</h3>${paidAmountHtml(row)}</div><div class="document-items">${packingItems(row).map(itemHtml).join('')}</div><div class="subline">${escapeHtml(row.recipient)}${row.pickupStore?' · '+escapeHtml(row.pickupStore):''}</div><div class="subline">${escapeHtml(row.address)}</div>${maskedMomo?'<p class="muted">MOMO 訂單資料已遮蔽部分姓名或地址；完整配送資訊請核對正式貨運單。</p>':''}${row.tracking?`<p class="tracking-number">物流單號：${escapeHtml(row.tracking)}</p>`:''}`;
   $('printerHint').textContent=row.channel==='MOMO'?'MOMO：選一般印表機，放入 MOMO 指定紙張。':['酷澎','蝦皮'].includes(row.channel)?`${row.channel}：選標籤機；紙張尺寸依副機實際標籤紙設定。`:'請選擇這張貨運單使用的印表機與紙張。';
   $('momoPasswordHint').hidden=row.channel!=='MOMO';
 }

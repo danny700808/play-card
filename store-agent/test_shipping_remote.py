@@ -28,6 +28,18 @@ class RemoteBoundaryTests(unittest.TestCase):
         self.assertNotIn("config",result["orders"][0])
         self.assertNotIn("payment",result["orders"][0])
 
+    def test_snapshot_carries_only_normalized_payment_fields(self):
+        self.row.update(paidAmount="1234.50", paidCurrency="TWD",
+                        paidAmountStatus="confirmed", paidAmountNote="付款明細",
+                        total_price=9999, settlementAmount=8000, raw={"token":"private"})
+        row=packing_snapshot(self.w)["orders"][0]
+        self.assertEqual(row["paidAmount"], "1234.50")
+        self.assertEqual(row["paidCurrency"], "TWD")
+        self.assertEqual(row["paidAmountStatus"], "confirmed")
+        self.assertNotIn("total_price", row)
+        self.assertNotIn("settlementAmount", row)
+        self.assertNotIn("raw", row)
+
     def test_reprint_reuses_document_without_creating_shipment(self):
         self.w.document.return_value=(b"%PDF-test","application/pdf")
         result,files=execute(self.w,"document-link",{"key":"Coupang:123"})
@@ -72,3 +84,4 @@ class ProvidedPdfTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+

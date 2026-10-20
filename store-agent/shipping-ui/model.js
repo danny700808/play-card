@@ -2,6 +2,19 @@
   'use strict';
   const labels={acquired:'已取單',print_requested:'已開啟列印',printed:'已印單',shipped:'已出貨',processed:'已處理',cancelled:'已取消'};
   const model={
+    paidAmount(row){
+      if(row.stale)return {text:'實付金額：待更新',confirmed:false,note:'訂單資料尚未更新，請重新讀取後核對。'};
+      const raw=row.paidAmount;
+      const valid=(typeof raw==='string'||typeof raw==='number')&&
+        /^\d{1,12}(?:\.\d{1,2})?$/.test(String(raw))&&Number.isFinite(Number(raw));
+      const currency=String(row.paidCurrency||'');
+      if(row.paidAmountStatus!=='confirmed'||!valid||!/^[A-Z]{3}$/.test(currency)){
+        return {text:'實付金額：待確認',confirmed:false,note:'尚未取得可確認的實付金額，請核對平台付款明細。'};
+      }
+      const amount=Number(raw).toLocaleString('zh-TW',{maximumFractionDigits:2});
+      return {text:`實付金額：${currency==='TWD'?'NT$':currency+' '}${amount}`,
+        confirmed:true,note:row.paidAmountNote||'平台回傳的實付金額'};
+    },
     formatSku(value){
       const raw=String(value||'').trim().replace(/\s+/g,'');
       if(/^\d{3}-/.test(raw))return raw;
@@ -31,3 +44,4 @@
   if(typeof module!=='undefined')module.exports=model;
   else root.ShippingModel=model;
 })(typeof window!=='undefined'?window:this);
+

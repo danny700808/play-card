@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 import requests
 from shipping_images import match_product_image
+from shipping_payments import easystore_payment, unknown_payment
 
 TZ = timezone(timedelta(hours=8))
 CARRIERS = {"TWL_HCT": "新竹物流", "TWL_KERRY": "嘉里大榮",
@@ -79,7 +80,7 @@ def normalize_es(o):
              "pending" if status == "unfulfilled" else
              "partial" if status in ("partial", "partially_fulfilled") else
              "shipped" if status == "fulfilled" else "review")
-    return {"key": "EasyStore:" + text(o["id"]), "platform": "EasyStore",
+    return {**easystore_payment(o), "key": "EasyStore:" + text(o["id"]), "platform": "EasyStore",
             "channel": channel(o.get("source_name")), "sourceName": text(o.get("source_name")),
             "orderNo": text(o.get("name") or o.get("order_number") or o.get("number")),
             "internalOrderNo": text(o.get("order_number")),
@@ -144,7 +145,7 @@ def normalize_cp(o):
         reason = "物流公司代碼尚未辨識，無法安全下載正式貨運單。"
     elif not can_create and not can_download:
         reason = "此狀態尚不能申請或下載貨運單。"
-    return {"key": "Coupang:" + text(o["shipmentBoxId"]), "platform": "Coupang",
+    return {**unknown_payment(), "key": "Coupang:" + text(o["shipmentBoxId"]), "platform": "Coupang",
             "channel": "酷澎", "sourceName": "Coupang", "externalId": text(o["orderId"]),
             "orderNo": text(o["orderId"]), "packageId": text(o["shipmentBoxId"]),
             "date": text(o.get("orderedAt")), "status": status, "stage": stage, "payment": "已付款",
@@ -190,7 +191,7 @@ def normalize_momo(o):
             continue
         if any(int(line.get("quantity") or 0) <= 0 for line in physical):
             can_create = False
-        result.append({"key": "MOMO:" + text(o["orderNo"]) + ":" + ",".join(seqs),
+        result.append({**unknown_payment(), "key": "MOMO:" + text(o["orderNo"]) + ":" + ",".join(seqs),
             "platform": "MOMO", "channel": "MOMO", "sourceName": "MOMO",
             "orderNo": text(o["orderNo"]), "externalId": text(o["orderNo"]),
             "packageId": ",".join(seqs), "date": "", "status": status, "stage": stage,
@@ -761,3 +762,4 @@ class Workbench:
         except Exception:
             self.save_job(key, state="download-failed", error="單據尚未保存；請重新核對後取回原貨運單。")
             raise ShippingError("MOMO 文件未能保存；下次會先確認平台狀態，再取回原貨運單。")
+
