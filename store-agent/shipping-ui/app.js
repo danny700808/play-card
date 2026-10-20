@@ -88,14 +88,17 @@ function renderDetail() {
   const shopeeViaEasyStore = !!easyStoreOrder && row.channel==='蝦皮';
   const shopeePrintUrl=ShippingModel.shopeePrintUrl(row);
   const externalAllowed = easyStoreOrder && !row.stale && !['cancelled','review'].includes(row.stage);
+  // Keep the installed helper's order locator, without an extra manual-print link.
+  const shopeeHelperTarget = externalAllowed && shopeePrintUrl
+    ? `<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target href="${shopeePrintUrl}"></a>` : '';
   const externalAction = externalAllowed
-    ? `<a class="action-link primary" href="${shopeePrintUrl||easyStoreOrder}" target="_blank" rel="noopener noreferrer">${shopeeViaEasyStore?(shopeePrintUrl?'直接開啟蝦皮列印頁':'到 EasyStore 出貨／印蝦皮單'):'開啟 EasyStore 對應訂單'} ↗</a>` : '';
+    ? shopeeHelperTarget || `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">${shopeeViaEasyStore?'到 EasyStore 出貨／印蝦皮單':'開啟 EasyStore 對應訂單'} ↗</a>` : '';
   const shippingAction = row.platform==='EasyStore' ? (row.documentReady?'<button id="showProvidedDocument" class="primary">列印貨運單</button>':externalAction)
     : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?(row.handled?'重印貨運單':'取得貨運單'):'申請出貨與貨運單'}</button>`;
   const shippingNote = row.platform==='EasyStore' && !row.documentReady
     ? row.stale?'訂單資料尚未更新，請先讀取最新訂單。'
       : ['cancelled','review'].includes(row.stage)?'此訂單已取消或需要核對，暫不開啟出貨。'
-      : shopeePrintUrl?'直接開啟這筆蝦皮訂單的貨運單列印頁；若要求登入，請登入 EasyStore。'
+      : shopeePrintUrl?'使用「取得蝦皮貨運單 → XP-420B」，核對單據後列印。'
       : externalAction?(shopeeViaEasyStore?'這筆尚未取得可直接列印的貨運單。請先在對應訂單完成「透過蝦皮台灣出貨」，再列印蝦皮交貨便服務單。':'這筆正式貨運單尚未接通，請在對應訂單使用原物流出貨與列印功能。')
       :'缺少對應訂單連結，請重新讀取訂單。'
     : '';
