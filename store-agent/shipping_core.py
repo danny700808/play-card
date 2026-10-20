@@ -261,6 +261,8 @@ class Workbench:
             row = self.rows.get(key)
             if not row:
                 raise ShippingError("找不到這筆訂單，請重新讀取。")
+            if action == "reopen" and row["stage"] in ("shipped", "cancelled"):
+                raise ShippingError("平台已確認出貨或取消，不能移回未處理；需要補印可直接重印。")
             if action == "acquired":
                 self.document(key)
             with self.connect() as db:
@@ -475,6 +477,14 @@ class Workbench:
                 row["handlingSource"] = handled["source"] if valid_handled else "平台"
                 row["handledAt"] = handled["updated"] if valid_handled else ""
                 row["printCount"] = handled["print_count"] if valid_handled else 0
+                # Platform shipment/cancellation is authoritative. A prior local
+                # reopen or print confirmation must not downgrade that status.
+                # Keep the local history/count intact for audit and reprints.
+                if row["stage"] in ("shipped", "cancelled"):
+                    row["handled"] = True
+                    row["handlingAction"] = row["stage"]
+                    row["handlingSource"] = "平台"
+                    row["handledAt"] = ""
                 row["items"] = [dict(i, **self.images.get(i["sku"], {})) if not i.get("image")
                                 else dict(i) for i in row["items"]]
                 rows.append(row)

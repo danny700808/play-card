@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from shipping_core import Workbench, normalize_cp
+from shipping_core import Workbench, normalize_cp, ShippingError
 from shipping_images import match_product_image
 
 
@@ -64,6 +64,30 @@ class HandlingTests(unittest.TestCase):
         self.assertTrue(self.row_state()["handled"])
         self.w.mark_handled(self.row["key"], "reopen")
         self.assertFalse(self.row_state()["handled"])
+
+    def test_platform_final_status_overrides_existing_local_actions(self):
+        for stage in ("shipped", "cancelled"):
+            for action in ("reopen", "printed", "print_requested"):
+                with self.subTest(stage=stage, action=action):
+                    self.row["stage"] = "label"
+                    self.w.mark_handled(self.row["key"], "reopen")
+                    self.w.mark_handled(self.row["key"], action)
+                    self.row["stage"] = stage
+                    actual = self.row_state()
+                    self.assertTrue(actual["handled"])
+                    self.assertEqual(actual["handlingAction"], stage)
+                    self.assertEqual(actual["handlingSource"], "平台")
+                    self.assertEqual(actual["handledAt"], "")
+                    with self.w.connect() as db:
+                        saved = db.execute("SELECT action FROM handling WHERE order_key=?",
+                                           (self.row["key"],)).fetchone()
+                    self.assertEqual(saved["action"], action)
+
+    def test_platform_final_status_cannot_be_reopened(self):
+        for stage in ("shipped", "cancelled"):
+            self.row["stage"] = stage
+            with self.assertRaises(ShippingError):
+                self.w.mark_handled(self.row["key"], "reopen")
 
     def test_failed_acquisition_never_marks_processed(self):
         with patch.object(self.w, "_process", side_effect=RuntimeError("network")):
