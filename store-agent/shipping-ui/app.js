@@ -124,7 +124,7 @@ async function refresh() {
 }
 async function prepare(row) {
   reviewed=null;reviewOptions={carrier:row.carrierCode||''};
-  $('reviewTitle').textContent=row.canDownload?'取得平台正式貨運單':'申請出貨前核對';
+  $('reviewTitle').textContent=row.canDownload?(row.handled?'重印原貨運單':'取得平台正式貨運單'):'申請出貨前核對';
   const options = !row.canDownload && row.platform==='Coupang' ? `<label class="option-row">物流公司<select id="carrier"><option value="">請選擇</option>${Object.entries(carriers).map(([k,v])=>`<option value="${k}" ${k===reviewOptions.carrier?'selected':''}>${v}</option>`).join('')}</select></label><label class="option-row">宅配出貨地址代碼<input id="outbound" inputmode="numeric" placeholder="酷澎已登記的出貨地址代碼"></label><label class="option-row">超商退貨地址代碼<input id="returnCenter" placeholder="酷澎已登記的退貨地址代碼"></label>`:'';
   $('reviewBody').innerHTML=`<div class="review-grid"><strong>${escapeHtml(row.channel)} · ${escapeHtml(row.orderNo)}</strong>${escapeHtml(row.recipient)}<br>${escapeHtml(row.address)}<br>${row.items.map(i=>`${escapeHtml(i.name)} ${escapeHtml(i.variant)} × ${i.quantity}`).join('<br>')}</div>${options}<p id="reviewMessage" class="muted">${row.canDownload?'取回原貨運單，不會重新出貨。':'新出貨尚待實單驗收。確認後會正式向平台申請出貨。'}</p>`;
   $('submitShipment').textContent='讀取最新資料並核對';$('submitShipment').disabled=false;
@@ -138,7 +138,7 @@ async function prepare(row) {
         reviewed=await api('/api/preview',{key:row.key,options:reviewOptions});
         // Replace initial review with fresh server-returned data; options cannot change unnoticed.
         $('reviewBody').innerHTML=`<div class="review-grid"><strong>${escapeHtml(reviewed.orderNo)} · ${escapeHtml(carriers[reviewed.carrierCode]||reviewed.carrier)}</strong>${escapeHtml(reviewed.recipient)}<br>${escapeHtml(reviewed.address)}<br>${reviewed.items.map(i=>`${escapeHtml(i.name)} ${escapeHtml(i.variant)} × ${i.quantity}`).join('<br>')}${reviewed.tracking?`<br>原運單號：${escapeHtml(reviewed.tracking)}`:''}</div><p id="reviewMessage" class="muted">${reviewed.action==='download'?'已重新確認平台資料，取回原單號文件，不會重新申請出貨。':'已重新確認平台資料。確認後會正式申請出貨。'}</p>`;
-        $('submitShipment').textContent=reviewed.action==='download'?'取回正式貨運單':'確認申請出貨';
+        $('submitShipment').textContent=reviewed.action==='download'?(row.handled?'開啟原貨運單重印':'取得正式貨運單'):'確認申請出貨';
       }else{
         $('reviewMessage').textContent='正在處理，請勿重複送出…';
         const result=await api('/api/process',{key:row.key,options:reviewOptions,fingerprint:reviewed.fingerprint});

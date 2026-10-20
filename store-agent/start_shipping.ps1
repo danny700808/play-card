@@ -30,4 +30,4 @@ if (!$isRunning) {
     }
 }
 if (!$isRunning) { throw 'Shipping workbench could not start. Check the local server-error.log.' }
-Start-Process $address
+Start-Process 'https://danny700808.github.io/play-card/portal.html#shipping'
