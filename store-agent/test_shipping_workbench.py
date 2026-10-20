@@ -148,6 +148,22 @@ class ShippingTests(unittest.TestCase):
                 self.w.process(self.key,{},fp)
         self.assertEqual(self.w.job(self.key)["state"],"download-failed")
 
+    def test_old_label_blocked_when_address_changes_or_platform_read_fails(self):
+        row=normalize_cp(cp("DEPARTURE","TRACK-1"))
+        self.w.rows[self.key]=row
+        (self.w.data_dir/"label.pdf").write_bytes(b"%PDF-1.7\nlabel")
+        self.w.save_job(self.key,state="ready",document="label.pdf",mime="application/pdf",
+                        binding=self.w.document_binding(row))
+        self.assertTrue(self.w.document(self.key)[0].startswith(b"%PDF"))
+        row["address"]="異動地址"
+        self.assertFalse(self.w.snapshot()["orders"][0]["documentReady"])
+        with self.assertRaises(ShippingError):
+            self.w.document(self.key)
+        row["address"]="測試地址"
+        self.w.errors["Coupang"]="連線失敗"
+        with self.assertRaises(ShippingError):
+            self.w.document(self.key)
+
     def test_momo_reprint_preserves_original_and_combined_documents(self):
         row=normalize_momo({"orderNo":"123","listItem":[{"orderSeq":"001","quantity":1,
             "deliveryType":"第三方物流","itemStatus":"出貨通知","shipStatus":"供應商已列印宅配單"}]})[0]

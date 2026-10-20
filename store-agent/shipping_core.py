@@ -230,6 +230,8 @@ class Workbench:
             db.execute("""CREATE TABLE IF NOT EXISTS documents (
                 order_key TEXT, kind TEXT, document TEXT, mime TEXT,
                 PRIMARY KEY(order_key,kind))""")
+            if "binding" not in {r["name"] for r in db.execute("PRAGMA table_info(jobs)")}:
+                db.execute("ALTER TABLE jobs ADD COLUMN binding TEXT")
 
     @contextmanager
     def connect(self):
@@ -251,10 +253,11 @@ class Workbench:
         old.update(values)
         with self.connect() as db:
             db.execute("""INSERT OR REPLACE INTO jobs
-              (order_key,state,carrier,tracking,document,mime,error,updated)
-              VALUES (?,?,?,?,?,?,?,?)""",
+              (order_key,state,carrier,tracking,document,mime,error,updated,binding)
+              VALUES (?,?,?,?,?,?,?,?,?)""",
               (key, old.get("state", "new"), old.get("carrier", ""), old.get("tracking", ""),
-               old.get("document", ""), old.get("mime", ""), old.get("error", ""), now()))
+               old.get("document", ""), old.get("mime", ""), old.get("error", ""), now(),
+               old.get("binding", "")))
 
     def event(self, key, action):
         with self.connect() as db:
@@ -368,7 +371,7 @@ class Workbench:
                 row = dict(original)
                 job = self.job(row["key"])
                 row["jobState"] = job.get("state", "")
-                row["documentReady"] = bool(job.get("document") and job.get("state") == "ready")
+                row["documentReady"] = self.document_matches(row, job)
                 with self.connect() as db:
                     row["documentKinds"] = [r["kind"] for r in db.execute(
                         "SELECT kind FROM documents WHERE order_key=?", (row["key"],))]
@@ -421,6 +424,19 @@ class Workbench:
             # A second fresh read at submission must match reviewed contents and destination.
             row["fingerprint"] = self.fingerprint(row, options)
             return row
+
+    @staticmethod
+    def document_binding(row):
+        return hashlib.sha256(json.dumps({k: row.get(k) for k in
+            ("key", "recipient", "phone", "address", "items", "tracking", "carrier",
+             "shippingMethod", "delyGb", "orderSeqs")},
+            ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+    def document_matches(self, row, job):
+        return bool(row and row.get("stage") not in ("cancelled", "review")
+                    and row.get("platform") not in self.errors
+                    and job.get("state") == "ready" and job.get("document")
+                    and job.get("binding") == self.document_binding(row))
 
     @staticmethod
     def fingerprint(row, options):
@@ -476,7 +492,7 @@ class Workbench:
                 except Exception:
                     self.save_job(key, state="uncertain", error="申請結果未確認，請先查平台；不會自動重送。")
                     raise ShippingError("申請結果未確認，已保留紀錄並停止自動重試。")
-            if (job.get("state") == "ready" and job.get("tracking") == tracking and
+            if (self.document_matches(row, job) and job.get("tracking") == tracking and
                     job.get("carrier") == carrier and (self.data_dir / job.get("document", "_")).is_file()):
                 return {"ready": True, "key": key, "reused": True}
             self.save_job(key, state="downloading", tracking=tracking, carrier=carrier, error="")
@@ -497,7 +513,10 @@ class Workbench:
                 temp = self.data_dir / (filename + ".tmp")
                 temp.write_bytes(data)
                 temp.replace(self.data_dir / filename)
-                self.save_job(key, state="ready", document=filename, mime=mime, error="")
+                row.update(tracking=tracking, stage="label", canCreate=False, canDownload=True)
+                self.rows[key] = row
+                self.save_job(key, state="ready", document=filename, mime=mime, error="",
+                              binding=self.document_binding(row))
                 self.event(key, "document-downloaded")
                 return {"ready": True, "key": key, "reused": False}
             except Exception:
@@ -506,8 +525,8 @@ class Workbench:
 
     def document(self, key, kind="label"):
         job = self.job(key)
-        if job.get("state") != "ready" or not job.get("document"):
-            raise ShippingError("這張訂單尚未取得正式貨運單。")
+        if not self.document_matches(self.rows.get(key), job):
+            raise ShippingError("請先重新核對並取得正式貨運單；舊文件與目前訂單尚未確認一致。")
         if kind != "label":
             if kind not in ("detail", "combined"):
                 raise ShippingError("文件類型不正確。")
@@ -616,7 +635,12 @@ class Workbench:
             with self.connect() as db:
                 db.execute("DELETE FROM documents WHERE order_key=?", (key,))
                 db.executemany("INSERT INTO documents VALUES (?,?,?,?)", auxiliary)
-            self.save_job(key, state="ready", document=filename, mime="application/pdf", error="")
+            row.update(stage="label", canCreate=False, canDownload=True)
+            if row["action"] == "create":
+                row["tracking"] = text(receipt["slipNo"])
+            self.rows[key] = row
+            self.save_job(key, state="ready", document=filename, mime="application/pdf", error="",
+                          tracking=row["tracking"], binding=self.document_binding(row))
             self.event(key, "document-downloaded")
             return {"ready": True, "key": key, "reused": False}
         except Exception:
