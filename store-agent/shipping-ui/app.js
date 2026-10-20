@@ -1,9 +1,10 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const stageNames = {pending:'待處理',partial:'部分出貨',label:'已有貨運單號',shipped:'已出貨',cancelled:'已取消',review:'需要核對'};
+const stageNames = {pending:'待出貨',partial:'部分待出貨',label:'可印貨運單',shipped:'已出貨',cancelled:'已取消',review:'需核對'};
+const ORDER_DAYS = 3;
 let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', busy = false, reviewed = null, reviewOptions = {};
-const channels = ['全部','官網','蝦皮','酷澎','MOMO','LINE','來源待確認'];
+const channels = ['全部','蝦皮','酷澎','MOMO','官網','LINE','來源待確認'];
 const carriers = {TWL_HCT:'新竹物流',TWL_KERRY:'嘉里大榮',TWL_FM:'全家',TWL_711:'7-11'};
 function localDay(value) {
   if(!value)return '';
@@ -16,7 +17,7 @@ async function api(path, body) {
   if (!response.ok) throw new Error(payload.error || '連線失敗');
   return payload;
 }
-function notice(message, error=false) { $('notice').textContent=message;$('notice').classList.toggle('error',error); }
+function notice(message, error=false) { $('notice').textContent=message;$('notice').hidden=!message;$('notice').classList.toggle('error',error); }
 function badge(row) { return `<span class="badge ${row.channel==='MOMO'?'momo':row.channel==='蝦皮'?'shopee':row.channel==='酷澎'?'coupang':''}">${escapeHtml(row.channel)}</span>`; }
 function packingItems(row) {
   const grouped=new Map();
@@ -34,32 +35,38 @@ function packingItems(row) {
   return [...grouped.values()];
 }
 function itemHtml(item) {
-  const image = item.image && item.image.startsWith('https:') ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.variant || item.name)}" referrerpolicy="no-referrer">` : '<div class="image-placeholder">圖片待配對</div>';
-  return `<div class="item">${image}<div><div class="item-name">${escapeHtml(item.name)}</div><div class="item-variant">${escapeHtml(item.variant || '未提供規格')}</div><div class="sku">SKU ${escapeHtml(item.sku || '缺少商品編號')}</div>${item.remaining != null && item.remaining !== item.quantity ? `<div class="sku">尚未出貨 ${Number(item.remaining)} 件</div>`:''}${item.heldQuantity ? '<div class="item-variant">有取消申請，請先核對</div>':''}</div><div class="qty">${Number(item.quantity)} <small>件</small></div></div>`;
+  const image = item.image && item.image.startsWith('https:')
+    ? `<button class="item-photo" type="button" data-image="${escapeHtml(item.image)}" data-title="${escapeHtml(item.variant || item.name)}" aria-label="放大圖片：${escapeHtml(item.variant || item.name)}"><img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.variant || item.name)}" referrerpolicy="no-referrer"></button>`
+    : '<div class="image-placeholder">尚無圖片</div>';
+  return `<div class="item">${image}<div class="item-info"><div class="item-name">${escapeHtml(item.name)}</div><div class="item-variant">${escapeHtml(item.variant || '未提供規格')}</div><div class="sku">SKU ${escapeHtml(item.sku || '未提供')}</div>${item.heldQuantity ? '<div class="item-variant">有取消申請，請先核對</div>':''}</div><div class="qty">${Number(item.quantity)}<small>件</small></div></div>`;
 }
 function filtered() {
   const term=$('search').value.toLowerCase().trim(), stage=$('stage').value;
   return data.orders.filter(r => (activeChannel==='全部'||r.channel===activeChannel) &&
     (stage==='all'||stage==='active'&&['pending','partial','label','review'].includes(r.stage)||r.stage===stage) &&
     (!term||[r.orderNo,r.recipient,r.tracking,...r.items.map(i=>`${i.name} ${i.sku} ${i.variant}`)].join(' ').toLowerCase().includes(term)))
-    .sort((a,b)=>b.date.localeCompare(a.date)||a.orderNo.localeCompare(b.orderNo));
+    .sort((a,b)=>channels.indexOf(a.channel)-channels.indexOf(b.channel)||
+      b.date.localeCompare(a.date)||b.orderNo.localeCompare(a.orderNo));
 }
 function render() {
-  $('pendingCount').textContent=data.orders.filter(r=>['pending','partial'].includes(r.stage)).length;
-  $('labelCount').textContent=data.orders.filter(r=>r.stage==='label').length;
-  $('documentCount').textContent=data.orders.filter(r=>r.documentReady).length;
-  $('reviewCount').textContent=data.orders.filter(r=>r.stage==='review'||['uncertain','sending'].includes(r.jobState)).length;
-  $('channels').innerHTML=channels.map(c=>`<button data-channel="${escapeHtml(c)}" class="${c===activeChannel?'active':''}">${escapeHtml(c)}</button>`).join('');
+  $('channels').innerHTML=channels.map(c=>`<button data-channel="${escapeHtml(c)}" aria-pressed="${c===activeChannel}" class="${c===activeChannel?'active':''}">${escapeHtml(c)}</button>`).join('');
   const rows=filtered();
-  $('resultCount').textContent=`${rows.length} 個訂單／包裹`;
-  $('syncTime').textContent=data.updated?`更新 ${new Date(data.updated).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})} · 近 ${data.days} 天`:'';
-  $('orders').innerHTML=rows.length?rows.map(r=>`<button class="order-card ${r.key===selected?'selected':''}" data-key="${escapeHtml(r.key)}"><div class="line"><div>${badge(r)}<span class="order-no">${escapeHtml(r.orderNo)}</span></div><span class="status">${escapeHtml(r.documentReady?'文件已取回':stageNames[r.stage])}</span></div><div class="order-name">${escapeHtml(r.items[0]?.name || '未取得商品明細')}${r.items.length>1?` 等 ${r.items.length} 項`:''}</div><div class="line order-meta"><span>${escapeHtml(r.recipient || '未提供收件人')} · ${r.items.reduce((n,i)=>n+i.quantity,0)} 件</span><span>${escapeHtml(localDay(r.date)||r.carrier)}</span></div></button>`).join(''):'<div class="empty">沒有符合條件的訂單<br><small>可切換來源、狀態或搜尋條件。</small></div>';
-  $('connectors').innerHTML=data.connectors.map(c=>`<div class="connector"><b>${escapeHtml(c.name)}</b><span>${escapeHtml(c.status)}</span><small>${escapeHtml(c.detail)}</small></div>`).join('');
+  if(!rows.some(r=>r.key===selected))selected=rows[0]?.key||'';
+  $('resultCount').textContent=`${rows.length} 筆`;
+  $('syncTime').textContent=data.updated?`更新 ${new Date(data.updated).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`:'';
+  $('orders').innerHTML=rows.length?channels.slice(1).map(c=>{
+    const group=rows.filter(r=>r.channel===c);
+    if(!group.length)return '';
+    return `<section class="platform-group" aria-label="${escapeHtml(c)}訂單"><div class="group-heading">${badge(group[0])}<span>${group.length} 筆</span></div>${group.map(r=>{
+      const items=packingItems(r),quantity=items.reduce((n,i)=>n+i.quantity,0);
+      return `<button class="order-card ${r.key===selected?'selected':''}" data-key="${escapeHtml(r.key)}" aria-pressed="${r.key===selected}"><div class="line"><span class="order-no">${escapeHtml(r.orderNo)}</span><span class="status">${escapeHtml(stageNames[r.stage])}</span></div><div class="order-name">${escapeHtml(items[0]?.name || r.items[0]?.name || '未取得商品明細')}${items.length>1?` 等 ${items.length} 項`:''}</div><div class="line order-meta"><strong>${quantity} 件</strong><span>${escapeHtml(localDay(r.date))}</span></div></button>`;
+    }).join('')}</section>`;
+  }).join(''):'<div class="empty">沒有符合條件的訂單</div>';
   renderDetail();
 }
 function renderDetail() {
   const row=data.orders.find(r=>r.key===selected);
-  if(!row) {$('detail').innerHTML='<div class="empty">選擇一張訂單<br><small>在這裡核對商品及取得正式貨運單。</small></div>';return;}
+  if(!row) {$('detail').innerHTML='<div class="empty">選擇訂單查看包貨內容</div>';return;}
   const enabled=(row.canCreate||row.canDownload)&&!row.stale;
   const easyStoreOrder = row.platform==='EasyStore' && /^\d+$/.test(String(row.externalId||''))
     ? `https://admin.easystore.co/orders/${row.externalId}` : '';
@@ -68,28 +75,29 @@ function renderDetail() {
     ? `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">${shopeeViaEasyStore?'到 EasyStore 出貨／印蝦皮單':'開啟 EasyStore 對應訂單'} ↗</a>` : '';
   const shippingAction = row.platform==='EasyStore' ? externalAction
     : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?'取得／重印正式貨運單':'申請出貨與貨運單'}</button>`;
-  const workflow = shopeeViaEasyStore
-    ? '<div class="block-note"><strong>蝦皮訂單 · 經 EasyStore 同步</strong><br>已確認 EasyStore 可安排蝦皮出貨及列印正式服務單。目前仍需在 EasyStore 確認，尚未在本工作台一鍵接通。<br>未出貨：出貨 → 透過蝦皮台灣出貨 → 核對後開始出貨處理。<br>出貨成功後：更多功能 → 列印蝦皮交貨便服務單。<br>完成後回到本頁按「讀取最新訂單」，核對同步狀態。</div>'
-    : row.platform==='EasyStore'
-      ? '<div class="block-note">此單原始來源為'+escapeHtml(row.channel)+'，請依訂單選用的物流處理。工作台已接通訂單與包貨明細，正式出貨及貨運單尚未接通。</div>'
-      : row.canCreate ? '<div class="block-note">新出貨完整流程尚待實單驗收。確認送出會正式向平台申請出貨，請只操作確定要出貨的訂單。</div>' : '';
-  $('detail').innerHTML=`<div class="detail-header">${badge(row)}<span class="status">${escapeHtml(stageNames[row.stage])}</span><h2>${escapeHtml(row.orderNo)}</h2><p>${escapeHtml(row.carrier||'物流方式待確認')}${row.packageId?` · 包裹／明細 ${escapeHtml(row.packageId)}`:''}</p>${row.tracking?`<p>正式物流單號：<b>${escapeHtml(row.tracking)}</b></p>`:''}</div>
-    ${workflow}
-    <div class="detail-section"><div class="section-label">收件資訊</div><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　<span class="subline">${escapeHtml(row.phone)}</span></div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'尚無地址資料')}</div>${row.note?`<div class="note">訂單備註<br>${escapeHtml(row.note)}</div>`:''}</div>
-    <div class="detail-section"><div class="section-label">包貨內容 · ${packingItems(row).length} 種商品規格</div>${packingItems(row).map(itemHtml).join('')}<p class="muted">相同 SKU 與規格合計數量。組合贈品若未列在平台明細，需先核對內容再包貨。</p></div>
+  const items=packingItems(row),quantity=items.reduce((n,i)=>n+i.quantity,0);
+  const packingNote=(row.note||'').split('\n').filter(line=>!/^買家帳號[：:]/.test(line.trim())).join('\n').trim();
+  $('detail').innerHTML=`<div class="detail-header"><div>${badge(row)}<h2>${escapeHtml(row.orderNo)}</h2></div><div class="packing-total">共 <strong>${quantity}</strong> 件</div></div>
+    <div class="detail-section packing-section">${items.map(itemHtml).join('')||'<div class="empty">沒有可包貨的商品</div>'}</div>
+    ${packingNote?`<div class="note order-note">${escapeHtml(packingNote)}</div>`:''}
     <div class="actions">${shippingAction}<button id="packing">列印包貨明細</button>${row.documentReady?'<button id="showDocument">預覽正式貨運單</button>':''}</div>
-    ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'此平台資料尚未更新，請重新讀取後再操作。':row.jobError||row.blockReason)}</div>`:''}`;
+    ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'資料尚未更新，請重新讀取。':row.jobError||row.blockReason)}</div>`:''}
+    <details class="recipient-details"><summary>收件與物流資訊</summary><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　${escapeHtml(row.phone)}</div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'')}</div><div class="subline">${escapeHtml(row.carrier||'物流未提供')}${row.tracking?` · ${escapeHtml(row.tracking)}`:''}</div></details>`;
   $('prepare')?.addEventListener('click',()=>prepare(row));
   $('packing').addEventListener('click',()=>printPacking(row));
   $('showDocument')?.addEventListener('click',()=>showDocument(row.key));
+  $('detail').querySelectorAll('.item-photo img').forEach(img=>img.addEventListener('error',()=>{
+    const button=img.parentElement;
+    button.replaceWith(Object.assign(document.createElement('div'),{className:'image-placeholder',textContent:'圖片無法載入'}));
+  }));
 }
 async function refresh() {
   if(busy)return;
-  busy=true;$('refresh').disabled=true;renderDetail();notice('正在向 EasyStore、MOMO、酷澎讀取近 30 天訂單…');
+  busy=true;$('refresh').disabled=true;renderDetail();notice('正在更新訂單…');
   try {
-    data=await api('/api/refresh',{days:30});
+    data=await api('/api/refresh',{days:ORDER_DAYS});
     const errors=Object.values(data.errors);
-    notice(errors.length?errors.join(' '):`已讀取 ${data.orders.length} 個訂單／包裹。選取訂單即可核對包貨內容。`,!!errors.length);
+    notice(errors.length?errors.join(' '):'',!!errors.length);
   }catch(e){notice(e.message,true);}
   finally{busy=false;$('refresh').disabled=false;render();}
 }
@@ -97,7 +105,7 @@ async function prepare(row) {
   reviewed=null;reviewOptions={carrier:row.carrierCode||''};
   $('reviewTitle').textContent=row.canDownload?'取得平台正式貨運單':'申請出貨前核對';
   const options = !row.canDownload && row.platform==='Coupang' ? `<label class="option-row">物流公司<select id="carrier"><option value="">請選擇</option>${Object.entries(carriers).map(([k,v])=>`<option value="${k}" ${k===reviewOptions.carrier?'selected':''}>${v}</option>`).join('')}</select></label><label class="option-row">宅配出貨地址代碼<input id="outbound" inputmode="numeric" placeholder="酷澎已登記的出貨地址代碼"></label><label class="option-row">超商退貨地址代碼<input id="returnCenter" placeholder="酷澎已登記的退貨地址代碼"></label>`:'';
-  $('reviewBody').innerHTML=`<div class="review-grid"><strong>${escapeHtml(row.channel)} · ${escapeHtml(row.orderNo)}</strong>${escapeHtml(row.recipient)}<br>${escapeHtml(row.address)}<br>${row.items.map(i=>`${escapeHtml(i.name)} ${escapeHtml(i.variant)} × ${i.quantity}`).join('<br>')}</div>${options}<p id="reviewMessage" class="muted">${row.canDownload?'將重新確認平台目前資料，並取回原單號的正式文件。':'送出會向對應平台申請出貨及運單；請先核對收件人、商品及物流。'}</p>`;
+  $('reviewBody').innerHTML=`<div class="review-grid"><strong>${escapeHtml(row.channel)} · ${escapeHtml(row.orderNo)}</strong>${escapeHtml(row.recipient)}<br>${escapeHtml(row.address)}<br>${row.items.map(i=>`${escapeHtml(i.name)} ${escapeHtml(i.variant)} × ${i.quantity}`).join('<br>')}</div>${options}<p id="reviewMessage" class="muted">${row.canDownload?'取回原貨運單，不會重新出貨。':'新出貨尚待實單驗收。確認後會正式向平台申請出貨。'}</p>`;
   $('submitShipment').textContent='讀取最新資料並核對';$('submitShipment').disabled=false;
   $('reviewDialog').showModal();
   $('submitShipment').onclick=async()=>{
@@ -143,6 +151,18 @@ $('channels').addEventListener('click',e=>{const b=e.target.closest('[data-chann
 $('orders').addEventListener('click',e=>{const b=e.target.closest('[data-key]');if(b){selected=b.dataset.key;render();}});
 $('search').addEventListener('input',render);$('stage').addEventListener('change',render);
 $('cancelReview').addEventListener('click',()=>$('reviewDialog').close());
-api('/api/orders').then(payload=>{data=payload;render();if(!data.updated)refresh();}).catch(e=>notice(e.message,true));
+$('detail').addEventListener('click',e=>{
+  const button=e.target.closest('[data-image]');
+  if(!button)return;
+  $('largeImage').src=button.dataset.image;
+  $('largeImage').alt=button.dataset.title;
+  $('imageTitle').textContent=button.dataset.title;
+  $('imageDialog').showModal();
+});
+api('/api/orders').then(payload=>{
+  data=payload;
+  if(!data.updated||data.days!==ORDER_DAYS){data.orders=[];render();refresh();}
+  else{render();notice(Object.values(data.errors).join(' '),!!Object.keys(data.errors).length);}
+}).catch(e=>notice(e.message,true));
 // Poll while this workbench is visible. Reading orders never creates shipments.
 setInterval(()=>{if(!document.hidden&&!busy&&!document.querySelector('dialog[open]'))refresh();},300000);

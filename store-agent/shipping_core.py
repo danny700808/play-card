@@ -219,7 +219,7 @@ class Workbench:
         self.rows = {}
         self.errors = {}
         self.updated = ""
-        self.days = 30
+        self.days = 3
         self.db_path = self.data_dir / "shipping.sqlite3"
         with self.connect() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS jobs (
@@ -331,7 +331,7 @@ class Workbench:
                 raise ShippingError("酷澎超過 30 頁，未完整讀取。")
         return list(rows.values())
 
-    def refresh(self, days=30):
+    def refresh(self, days=3):
         if not self.refresh_lock.acquire(blocking=False):
             # Multiple tabs share the same read, rather than receiving a partial snapshot.
             if not self.refresh_lock.acquire(timeout=150):
@@ -339,7 +339,7 @@ class Workbench:
             self.refresh_lock.release()
             return self.snapshot()
         try:
-            days = max(1, min(30, int(days)))
+            days = max(1, min(3, int(days)))
             end = datetime.now(TZ)
             start = (end-timedelta(days=days-1)).replace(hour=0, minute=0, second=0, microsecond=0)
             with ThreadPoolExecutor(max_workers=3) as pool:
@@ -557,7 +557,7 @@ class Workbench:
         end = datetime.now(TZ)
         payload = self.momo_request("OrderQuery", {
             "orderNo": parts[1], "queryDateType": "OrderDate",
-            "fromDate": (end-timedelta(days=29)).strftime("%Y-%m-%d"),
+            "fromDate": (end-timedelta(days=self.days-1)).strftime("%Y-%m-%d"),
             "toDate": end.strftime("%Y-%m-%d"), "deliveryType": "All",
             "storeDeliveryType": "All", "orderStatus": "All", "pageIndex": 1, "maxPerPage": 100})
         for raw in source.extract_orders(payload):

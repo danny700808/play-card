@@ -4,9 +4,10 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
-from shipping_core import Workbench, ShippingError, normalize_es, normalize_cp, normalize_momo, channel
+from shipping_core import Workbench, ShippingError, normalize_es, normalize_cp, normalize_momo, channel, TZ
 
 
 def cp(status="INSTRUCT", invoice=""):
@@ -97,6 +98,24 @@ class ShippingTests(unittest.TestCase):
         with patch.object(self.w, "_cp_request") as call:
             self.w.snapshot()
             call.assert_not_called()
+
+    def test_recent_orders_include_three_taiwan_calendar_days(self):
+        class Clock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 10, 20, 0, 15, tzinfo=TZ)
+        for options in ({}, {"days": 30}):
+            with self.subTest(options=options), \
+                 patch("shipping_core.datetime", Clock), \
+                 patch.object(self.w, "read_es", return_value=[]) as es, \
+                 patch.object(self.w, "read_momo", return_value=[]) as momo, \
+                 patch.object(self.w, "read_cp", return_value=[]) as cp_read:
+                snapshot = self.w.refresh(**options)
+                self.assertEqual(snapshot["days"], 3)
+                for reader in (es, momo, cp_read):
+                    start, end = reader.call_args.args
+                    self.assertEqual(start.isoformat(), "2026-10-18T00:00:00+08:00")
+                    self.assertEqual(end.isoformat(), "2026-10-20T00:15:00+08:00")
 
     def test_changed_address_invalidates_review(self):
         with patch.object(self.w, "fresh_cp", return_value=self.row):

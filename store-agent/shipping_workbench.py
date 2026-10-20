@@ -93,7 +93,7 @@ def make_handler(workbench, port):
                 if not isinstance(body, dict):
                     raise ValueError()
                 if self.path == "/api/refresh":
-                    return self.send(workbench.refresh(body.get("days", 30)))
+                    return self.send(workbench.refresh(body.get("days", 3)))
                 if self.path == "/api/preview":
                     return self.send(workbench.preview(body["key"], body.get("options") or {}))
                 if self.path == "/api/process":
