@@ -5,6 +5,11 @@ const stageNames = {pending:'待處理',partial:'部分出貨',label:'已有貨�
 let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', busy = false, reviewed = null, reviewOptions = {};
 const channels = ['全部','官網','蝦皮','酷澎','MOMO','LINE','來源待確認'];
 const carriers = {TWL_HCT:'新竹物流',TWL_KERRY:'嘉里大榮',TWL_FM:'全家',TWL_711:'7-11'};
+function localDay(value) {
+  if(!value)return '';
+  const date=new Date(value);
+  return Number.isNaN(date.getTime())?'':date.toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
+}
 async function api(path, body) {
   const response = await fetch(path, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const payload = await response.json();
@@ -48,7 +53,7 @@ function render() {
   const rows=filtered();
   $('resultCount').textContent=`${rows.length} 個訂單／包裹`;
   $('syncTime').textContent=data.updated?`更新 ${new Date(data.updated).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})} · 近 ${data.days} 天`:'';
-  $('orders').innerHTML=rows.length?rows.map(r=>`<button class="order-card ${r.key===selected?'selected':''}" data-key="${escapeHtml(r.key)}"><div class="line"><div>${badge(r)}<span class="order-no">${escapeHtml(r.orderNo)}</span></div><span class="status">${escapeHtml(r.documentReady?'文件已取回':stageNames[r.stage])}</span></div><div class="order-name">${escapeHtml(r.items[0]?.name || '未取得商品明細')}${r.items.length>1?` 等 ${r.items.length} 項`:''}</div><div class="line order-meta"><span>${escapeHtml(r.recipient || '未提供收件人')} · ${r.items.reduce((n,i)=>n+i.quantity,0)} 件</span><span>${escapeHtml(r.date.slice(0,10)||r.carrier)}</span></div></button>`).join(''):'<div class="empty">沒有符合條件的訂單<br><small>可切換來源、狀態或搜尋條件。</small></div>';
+  $('orders').innerHTML=rows.length?rows.map(r=>`<button class="order-card ${r.key===selected?'selected':''}" data-key="${escapeHtml(r.key)}"><div class="line"><div>${badge(r)}<span class="order-no">${escapeHtml(r.orderNo)}</span></div><span class="status">${escapeHtml(r.documentReady?'文件已取回':stageNames[r.stage])}</span></div><div class="order-name">${escapeHtml(r.items[0]?.name || '未取得商品明細')}${r.items.length>1?` 等 ${r.items.length} 項`:''}</div><div class="line order-meta"><span>${escapeHtml(r.recipient || '未提供收件人')} · ${r.items.reduce((n,i)=>n+i.quantity,0)} 件</span><span>${escapeHtml(localDay(r.date)||r.carrier)}</span></div></button>`).join(''):'<div class="empty">沒有符合條件的訂單<br><small>可切換來源、狀態或搜尋條件。</small></div>';
   $('connectors').innerHTML=data.connectors.map(c=>`<div class="connector"><b>${escapeHtml(c.name)}</b><span>${escapeHtml(c.status)}</span><small>${escapeHtml(c.detail)}</small></div>`).join('');
   renderDetail();
 }
