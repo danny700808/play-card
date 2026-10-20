@@ -4,6 +4,13 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const model=require('./shipping-ui/model.js');
 const paid={paidAmount:'1234.50',paidCurrency:'TWD',paidAmountStatus:'confirmed'};
+test('COD, refund review and parcel allocation have distinct labels',()=>{
+  const cod={paidAmountStatus:'pending_collection',payableAmount:'3036',paidCurrency:'TWD'};
+  assert.equal(model.paidAmount(cod).text,'待收款：NT$3,036');
+  assert.equal(model.paidAmount(cod).confirmed,false);
+  assert.equal(model.paidAmount({...paid,paidAmountStatus:'review'}).text,'實付金額：需核對');
+  assert.equal(model.paidAmount({...paid,paidAmountScope:'parcel'}).text,'本包裹實付：NT$1,234.5');
+});
 test('only explicit confirmed payment is shown, preserving zero and cents',()=>{
   assert.equal(model.paidAmount(paid).text,'實付金額：NT$1,234.5');
   assert.equal(model.paidAmount({...paid,paidAmount:0}).text,'實付金額：NT$0');

@@ -25,7 +25,8 @@ def packing_snapshot(workbench):
         "key platform channel orderNo externalId date stage status recipient phone address "
         "pickupStore note carrier carrierCode tracking items canCreate canDownload blockReason "
         "documentReady documentKinds stale jobError handled handlingAction handlingSource "
-        "handledAt printCount handlingChanged paidAmount paidCurrency paidAmountStatus paidAmountNote"
+        "handledAt printCount handlingChanged paidAmount paidCurrency paidAmountStatus paidAmountNote "
+        "payableAmount paidAmountSource paidAmountScope paidScopeKey invoiceBuyerAmount"
     ).split()
     start = (datetime.now(TZ) - timedelta(days=2)).strftime("%Y-%m-%d")
     rows = []

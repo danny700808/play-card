@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 
 import requests
 from shipping_images import match_product_image
-from shipping_payments import easystore_payment, unknown_payment
+from shipping_payments import easystore_payment, coupang_payment, momo_payment
 
 TZ = timezone(timedelta(hours=8))
 CARRIERS = {"TWL_HCT": "新竹物流", "TWL_KERRY": "嘉里大榮",
@@ -109,7 +109,7 @@ def cp_carrier(o):
     return value if value in CARRIERS else mapping.get(value, "")
 
 
-def normalize_cp(o):
+def normalize_cp(o, *, claims_checked=False, has_payment_claim=False, duplicate_order=False):
     items = []
     has_claim = False
     for i in o.get("orderItems") or []:
@@ -145,7 +145,8 @@ def normalize_cp(o):
         reason = "物流公司代碼尚未辨識，無法安全下載正式貨運單。"
     elif not can_create and not can_download:
         reason = "此狀態尚不能申請或下載貨運單。"
-    return {**unknown_payment(), "key": "Coupang:" + text(o["shipmentBoxId"]), "platform": "Coupang",
+    return {**coupang_payment(o, claims_checked, has_payment_claim, duplicate_order),
+            "key": "Coupang:" + text(o["shipmentBoxId"]), "platform": "Coupang",
             "channel": "酷澎", "sourceName": "Coupang", "externalId": text(o["orderId"]),
             "orderNo": text(o["orderId"]), "packageId": text(o["shipmentBoxId"]),
             "date": text(o.get("orderedAt")), "status": status, "stage": stage, "payment": "已付款",
@@ -167,6 +168,9 @@ def normalize_momo(o):
                  text(i.get("deliveryCompany")), text(i.get("outplaceSeq")),
                  text(i.get("receiverAddress")), text(i.get("itemStatus")), text(i.get("shipStatus")))
         groups.setdefault(group, []).append(i)
+    physical_groups = [g for g in groups.values() if any(i.get("goodsType") != "運費" for i in g)]
+    unallocated_freight = [i for g in groups.values()
+                          if not any(i.get("goodsType") != "運費" for i in g) for i in g]
     for group_items in groups.values():
         i = group_items[0]
         status = text(i.get("itemStatus"))
@@ -191,7 +195,9 @@ def normalize_momo(o):
             continue
         if any(int(line.get("quantity") or 0) <= 0 for line in physical):
             can_create = False
-        result.append({**unknown_payment(), "key": "MOMO:" + text(o["orderNo"]) + ":" + ",".join(seqs),
+        result.append({**momo_payment(o, group_items, split=len(physical_groups) > 1,
+                                     unallocated_freight=unallocated_freight),
+            "key": "MOMO:" + text(o["orderNo"]) + ":" + ",".join(seqs),
             "platform": "MOMO", "channel": "MOMO", "sourceName": "MOMO",
             "orderNo": text(o["orderNo"]), "externalId": text(o["orderNo"]),
             "packageId": ",".join(seqs), "date": "", "status": status, "stage": stage,
@@ -388,13 +394,24 @@ class Workbench:
                 payload = source.coupang_request(cfg, "GET", path, params)
                 orders, token = source.coupang_orders_from_payload(payload)
                 for o in orders:
-                    row = normalize_cp(o)
-                    rows[row["key"]] = row
+                    rows[text(o["shipmentBoxId"])] = o
                 if not token:
                     break
             else:
                 raise ShippingError("酷澎超過 30 頁，未完整讀取。")
-        return list(rows.values())
+        # Returns are a separate official API; order sheets alone can retain the
+        # original payment while a refund is pending. Failure must not confirm it.
+        try:
+            claims, complete, _errors = source.fetch_coupang_return_rows(
+                cfg, start.isoformat(), end.isoformat(), 30, 50)
+        except Exception:
+            claims, complete = [], False
+        claimed_orders = {text(c.get("訂單ID")) for c in claims}
+        order_ids = [text(o["orderId"]) for o in rows.values()]
+        return [normalize_cp(o, claims_checked=complete,
+                    has_payment_claim=text(o["orderId"]) in claimed_orders,
+                    duplicate_order=order_ids.count(text(o["orderId"])) > 1)
+                for o in rows.values()]
 
     def refresh(self, days=3):
         if not self.refresh_lock.acquire(blocking=False):

@@ -30,6 +30,13 @@ function paidAmountHtml(row) {
   const paid=ShippingModel.paidAmount(row);
   return `<span class="paid-amount ${paid.confirmed?'confirmed':'unconfirmed'}" title="${escapeHtml(paid.note)}">${escapeHtml(paid.text)}</span>`;
 }
+function paymentDetailsHtml(row) {
+  const paid=ShippingModel.paidAmount(row);
+  const invoice=!row.stale&&row.paidAmountStatus==='confirmed'&&
+    typeof row.invoiceBuyerAmount==='string'&&/^\d{1,12}(?:\.\d{1,2})?$/.test(row.invoiceBuyerAmount)
+    ? `<div>平台提供的買家發票金額：${escapeHtml(row.paidCurrency)} ${Number(row.invoiceBuyerAmount).toLocaleString('zh-TW',{maximumFractionDigits:2})}</div>`:'';
+  return `<details class="recipient-details"><summary>付款與發票核對</summary><div>${escapeHtml(paid.note)}</div>${invoice}<div>實付與發票金額分開核對；同一訂單或包裹請勿重複開立。</div></details>`;
+}
 function packingItems(row) {
   const grouped=new Map();
   for(const original of row.items) {
@@ -112,6 +119,7 @@ function renderDetail() {
     ${shippingNote?`<p class="muted shipping-note">${escapeHtml(shippingNote)}</p>`:''}
     <div class="handling-actions">${row.handlingAction!=='printed'&&row.handlingAction!=='shipped'?'<button id="markPrinted">我已印單</button>':''}${row.handlingAction!=='shipped'?'<button id="markShipped">我已出貨</button>':''}${row.handled?'<button id="reopen" class="quiet">移回未處理</button>':''}</div>
     ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'資料尚未更新，請重新讀取。':row.jobError||row.blockReason)}</div>`:''}
+    ${paymentDetailsHtml(row)}
     <details class="recipient-details"><summary>收件與物流資訊</summary><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　${escapeHtml(row.phone)}</div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'')}</div><div class="subline">${escapeHtml(row.carrier||'物流未提供')}${row.tracking?` · ${escapeHtml(row.tracking)}`:''}</div><div class="subline">平台回傳：${escapeHtml(stageNames[row.stage]||row.status)}${row.printCount?` · 開啟列印 ${row.printCount} 次`:''}</div></details>`;
   $('prepare')?.addEventListener('click',()=>prepare(row));
   $('showProvidedDocument')?.addEventListener('click',()=>showDocument(row.key).catch(e=>notice(e.message,true)));

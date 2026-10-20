@@ -4,15 +4,20 @@
   const model={
     paidAmount(row){
       if(row.stale)return {text:'實付金額：待更新',confirmed:false,note:'訂單資料尚未更新，請重新讀取後核對。'};
+      if(row.paidAmountStatus==='review')return {text:'實付金額：需核對',confirmed:false,note:row.paidAmountNote||'請核對退款或拆單明細。'};
+      if(row.paidAmountStatus==='pending_collection'&&row.paidCurrency==='TWD'&&
+        typeof row.payableAmount==='string'&&/^\d{1,12}(?:\.\d{1,2})?$/.test(row.payableAmount)){
+        return {text:`待收款：NT$${Number(row.payableAmount).toLocaleString('zh-TW',{maximumFractionDigits:2})}`,confirmed:false,note:row.paidAmountNote};
+      }
       const raw=row.paidAmount;
       const valid=(typeof raw==='string'||typeof raw==='number')&&
         /^\d{1,12}(?:\.\d{1,2})?$/.test(String(raw))&&Number.isFinite(Number(raw));
       const currency=String(row.paidCurrency||'');
       if(row.paidAmountStatus!=='confirmed'||!valid||!/^[A-Z]{3}$/.test(currency)){
-        return {text:'實付金額：待確認',confirmed:false,note:'尚未取得可確認的實付金額，請核對平台付款明細。'};
+        return {text:'實付金額：待確認',confirmed:false,note:row.paidAmountNote||'尚未取得可確認的實付金額，請核對平台付款明細。'};
       }
       const amount=Number(raw).toLocaleString('zh-TW',{maximumFractionDigits:2});
-      return {text:`實付金額：${currency==='TWD'?'NT$':currency+' '}${amount}`,
+      return {text:`${row.paidAmountScope==='parcel'?'本包裹實付':'實付金額'}：${currency==='TWD'?'NT$':currency+' '}${amount}`,
         confirmed:true,note:row.paidAmountNote||'平台回傳的實付金額'};
     },
     formatSku(value){

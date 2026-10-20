@@ -31,11 +31,16 @@ class RemoteBoundaryTests(unittest.TestCase):
     def test_snapshot_carries_only_normalized_payment_fields(self):
         self.row.update(paidAmount="1234.50", paidCurrency="TWD",
                         paidAmountStatus="confirmed", paidAmountNote="付款明細",
+                        paidAmountSource="Coupang.ordersheets.payment_breakdown",
+                        paidAmountScope="parcel", paidScopeKey="Coupang:123",
+                        invoiceBuyerAmount="1250",
                         total_price=9999, settlementAmount=8000, raw={"token":"private"})
         row=packing_snapshot(self.w)["orders"][0]
         self.assertEqual(row["paidAmount"], "1234.50")
         self.assertEqual(row["paidCurrency"], "TWD")
         self.assertEqual(row["paidAmountStatus"], "confirmed")
+        self.assertEqual(row["invoiceBuyerAmount"], "1250")
+        self.assertEqual(row["paidScopeKey"], "Coupang:123")
         self.assertNotIn("total_price", row)
         self.assertNotIn("settlementAmount", row)
         self.assertNotIn("raw", row)
