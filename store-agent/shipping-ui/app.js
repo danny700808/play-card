@@ -83,10 +83,18 @@ function renderDetail() {
     ? `https://admin.easystore.co/orders/${row.externalId}` : '';
   const shopeeViaEasyStore = !!easyStoreOrder && row.channel==='蝦皮';
   const shopeePrintUrl=ShippingModel.shopeePrintUrl(row);
-  const externalAction = easyStoreOrder && !remote
+  const externalAllowed = easyStoreOrder && !row.stale && !['cancelled','review'].includes(row.stage);
+  const externalAction = externalAllowed
     ? `<a class="action-link primary" href="${shopeePrintUrl||easyStoreOrder}" target="_blank" rel="noopener noreferrer">${shopeeViaEasyStore?(shopeePrintUrl?'直接開啟蝦皮列印頁':'到 EasyStore 出貨／印蝦皮單'):'開啟 EasyStore 對應訂單'} ↗</a>` : '';
-  const shippingAction = row.platform==='EasyStore' ? (remote?(row.documentReady?'<button id="showProvidedDocument" class="primary">重印貨運單</button>':'<span class="muted">貨運單尚待主機提供</span>'):externalAction)
+  const shippingAction = row.platform==='EasyStore' ? (row.documentReady?'<button id="showProvidedDocument" class="primary">列印貨運單</button>':externalAction)
     : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?(row.handled?'重印貨運單':'取得貨運單'):'申請出貨與貨運單'}</button>`;
+  const shippingNote = row.platform==='EasyStore' && !row.documentReady
+    ? row.stale?'訂單資料尚未更新，請先讀取最新訂單。'
+      : ['cancelled','review'].includes(row.stage)?'此訂單已取消或需要核對，暫不開啟出貨。'
+      : shopeePrintUrl?'直接開啟這筆蝦皮訂單的貨運單列印頁；若要求登入，請登入 EasyStore。'
+      : externalAction?(shopeeViaEasyStore?'這筆尚未取得可直接列印的貨運單。請先在對應訂單完成「透過蝦皮台灣出貨」，再列印蝦皮交貨便服務單。':'這筆正式貨運單尚未接通，請在對應訂單使用原物流出貨與列印功能。')
+      :'缺少對應訂單連結，請重新讀取訂單。'
+    : '';
   const items=packingItems(row),quantity=items.reduce((n,i)=>n+i.quantity,0);
   const packingNote=(row.note||'').split('\n').filter(line=>!/^買家帳號[：:]/.test(line.trim())).join('\n').trim();
   $('detail').innerHTML=`<div class="detail-header"><div>${badge(row)}<span class="status ${row.handled?'done':'pending'}">${escapeHtml(ShippingModel.status(row))}</span><h2>${escapeHtml(row.orderNo)}</h2></div><div class="packing-total">共 <strong>${quantity}</strong> 件</div></div>
@@ -94,6 +102,7 @@ function renderDetail() {
     <div class="detail-section packing-section">${items.map(itemHtml).join('')||'<div class="empty">沒有可包貨的商品</div>'}</div>
     ${packingNote?`<div class="note order-note">${escapeHtml(packingNote)}</div>`:''}
     <div class="actions">${shippingAction}<button id="packing">列印包貨明細</button>${row.documentReady?'<button id="showDocument">預覽正式貨運單</button>':''}${!remote&&row.platform==='EasyStore'?'<button id="provideDocument">提供貨運單給副機</button>':''}</div>
+    ${shippingNote?`<p class="muted shipping-note">${escapeHtml(shippingNote)}</p>`:''}
     <div class="handling-actions">${row.handlingAction!=='printed'&&row.handlingAction!=='shipped'?'<button id="markPrinted">我已印單</button>':''}${row.handlingAction!=='shipped'?'<button id="markShipped">我已出貨</button>':''}${row.handled?'<button id="reopen" class="quiet">移回未處理</button>':''}</div>
     ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'資料尚未更新，請重新讀取。':row.jobError||row.blockReason)}</div>`:''}
     <details class="recipient-details"><summary>收件與物流資訊</summary><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　${escapeHtml(row.phone)}</div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'')}</div><div class="subline">${escapeHtml(row.carrier||'物流未提供')}${row.tracking?` · ${escapeHtml(row.tracking)}`:''}</div><div class="subline">平台回傳：${escapeHtml(stageNames[row.stage]||row.status)}${row.printCount?` · 開啟列印 ${row.printCount} 次`:''}</div></details>`;

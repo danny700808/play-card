@@ -1,0 +1,51 @@
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const model=require('./shipping-ui/model.js');
+
+function render(overrides={},remote=true){
+  const elements=new Map();
+  const element=id=>{
+    if(!elements.has(id))elements.set(id,{innerHTML:'',addEventListener(){},querySelectorAll(){return [];}});
+    return elements.get(id);
+  };
+  const window={ShippingTransport:remote?{ready(){}}:undefined,addEventListener(){}};
+  window.self=window;window.top=window;
+  const context={window,ShippingModel:model,document:{getElementById:element,querySelector(){return null;},documentElement:{classList:{toggle(){}}}},setInterval(){}};
+  const source=fs.readFileSync(__dirname+'/shipping-ui/app.js','utf8');
+  // Render the real order-detail function without making any network request.
+  vm.runInNewContext(source.split("$('refresh').addEventListener")[0]+`
+    data.orders=[${JSON.stringify({key:'EasyStore:123',platform:'EasyStore',channel:'蝦皮',externalId:'123',orderNo:'TEST',stage:'pending',items:[],...overrides})}];
+    selected=data.orders[0].key;renderDetail();`,context);
+  return element('detail').innerHTML;
+}
+test('remote ready Shopee order opens its exact label page, not order details',()=>{
+  const html=render({tracking:'tracking'});
+  assert.match(html,/href="https:\/\/admin.easystore.co\/channels\/shopee\/taiwan\/orders\/awb\?store_order_ids=123"/);
+  assert.match(html,/直接開啟蝦皮列印頁/);
+  assert.doesNotMatch(html,/貨運單尚待主機提供/);
+});
+test('pending remote order keeps a usable fulfillment entry and explains remaining step',()=>{
+  const html=render();
+  assert.match(html,/href="https:\/\/admin.easystore.co\/orders\/123"/);
+  assert.match(html,/尚未取得可直接列印的貨運單/);
+  assert.doesNotMatch(html,/id="prepare"|id="showProvidedDocument"/);
+});
+test('existing official PDF keeps the local printing route for both desks',()=>{
+  for(const remote of [true,false]){
+    const html=render({documentReady:true},remote);
+    assert.match(html,/id="showProvidedDocument"/);
+    assert.doesNotMatch(html,/href="https:\/\/admin.easystore.co/);
+  }
+});
+test('cancelled, review, stale and invalid ids cannot open an external shipping action',()=>{
+  for(const row of [{stage:'cancelled',tracking:'x'},{stage:'review',tracking:'x'},{stale:true,tracking:'x'},{externalId:'123&other=456'}]){
+    assert.doesNotMatch(render(row),/href="https:\/\/admin.easystore.co/);
+  }
+});
+test('MOMO and Coupang retain their document acquisition buttons',()=>{
+  for(const platform of ['MOMO','Coupang']){
+    assert.match(render({platform,canDownload:true}),/id="prepare"/);
+  }
+});
