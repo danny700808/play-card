@@ -152,6 +152,12 @@ async function refresh() {
 }
 async function prepare(row) {
   if(busy)return;
+  // Reuse the same saved-document route as "預覽正式貨運單". The host still
+  // validates the saved document's binding against its current order snapshot.
+  if(row.documentReady&&row.canDownload&&!row.stale&&!row.handlingChanged&&
+      !['cancelled','review'].includes(row.stage)){
+    return showDocument(row.key);
+  }
   beginDocument(row);
   if(!row.canDownload&&row.platform==='Coupang'){
     $('documentStatus').textContent='請填寫這筆出貨使用的物流資料。';
@@ -173,7 +179,8 @@ async function prepare(row) {
   }else await obtainDocument(row,{carrier:row.carrierCode||''});
 }
 function documentSummary(row){
-  $('documentSummary').innerHTML=`<div class="document-order">${badge(row)}<h3>${escapeHtml(row.orderNo)}</h3></div><div class="document-items">${packingItems(row).map(itemHtml).join('')}</div><div class="subline">${escapeHtml(row.recipient)}${row.pickupStore?' · '+escapeHtml(row.pickupStore):''}</div><div class="subline">${escapeHtml(row.address)}</div>${row.tracking?`<p class="tracking-number">物流單號：${escapeHtml(row.tracking)}</p>`:''}`;
+  const maskedMomo=row.channel==='MOMO'&&/[○◯●＊*]/.test(`${row.recipient||''}${row.address||''}`);
+  $('documentSummary').innerHTML=`<div class="document-order">${badge(row)}<h3>${escapeHtml(row.orderNo)}</h3></div><div class="document-items">${packingItems(row).map(itemHtml).join('')}</div><div class="subline">${escapeHtml(row.recipient)}${row.pickupStore?' · '+escapeHtml(row.pickupStore):''}</div><div class="subline">${escapeHtml(row.address)}</div>${maskedMomo?'<p class="muted">MOMO 訂單資料已遮蔽部分姓名或地址；完整配送資訊請核對正式貨運單。</p>':''}${row.tracking?`<p class="tracking-number">物流單號：${escapeHtml(row.tracking)}</p>`:''}`;
   $('printerHint').textContent=row.channel==='MOMO'?'MOMO：選一般印表機，放入 MOMO 指定紙張。':['酷澎','蝦皮'].includes(row.channel)?`${row.channel}：選標籤機；紙張尺寸依副機實際標籤紙設定。`:'請選擇這張貨運單使用的印表機與紙張。';
   $('momoPasswordHint').hidden=row.channel!=='MOMO';
 }
@@ -183,7 +190,7 @@ function beginDocument(row){
   $('documentControls').hidden=true;$('documentFrame').hidden=true;$('documentFrame').src='about:blank';
   $('documentPreviewImage').hidden=true;$('documentPreviewImage').removeAttribute('src');$('previewCaption').hidden=true;$('zoomDocumentPreview').hidden=true;
   $('documentPlaceholder').hidden=false;$('documentPlaceholder').textContent='正在取回貨運單…';
-  $('documentStatus').textContent='正在讀取最新訂單並取單…';
+  $('documentStatus').textContent='正在核對訂單資料…';
   $('shipmentOptions').hidden=true;$('shipmentOptions').innerHTML='';
   if(!$('documentDialog').open)$('documentDialog').showModal();
 }
@@ -205,6 +212,7 @@ async function obtainDocument(row,options){
       $('documentStatus').textContent=fresh.action==='download'?'正在取回原貨運單…':'正在申請出貨，請勿重複操作…';
     });
     data=await api('/api/orders');activeWork='done';selected=row.key;render();
+    $('documentStatus').textContent='貨運單已取得，正在傳回預覽與列印檔…';
     await loadDocument(row.key);
     notice('已取得正式貨運單，可直接列印。');
   }catch(e){documentError(e);}
@@ -242,6 +250,7 @@ async function showDocument(key) {
   const row=data.orders.find(r=>r.key===key);
   if(!row)return;
   beginDocument(row);documentBusy(true);
+  $('documentStatus').textContent='正在開啟已備妥的貨運單，無須重新向平台取單…';
   try{await loadDocument(key);}catch(e){documentError(e);}
   finally{documentBusy(false);}
 }
