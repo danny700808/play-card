@@ -14,7 +14,7 @@ import requests
 from shipping_core import ShippingError, datetime, TZ, timedelta
 
 ENDPOINT = "https://asia-east1-youzi-c1b74.cloudfunctions.net/shippingDeskApi"
-KEY = re.compile(r"^(EasyStore|Coupang|MOMO):[A-Za-z0-9:_-]{1,120}$")
+KEY = re.compile(r"^(?:(?:EasyStore|Coupang):\d{1,30}|MOMO:\d{1,30}:\d{1,6}(?:,\d{1,6}){0,99})$")
 
 
 def packing_snapshot(workbench):
@@ -29,7 +29,11 @@ def packing_snapshot(workbench):
     start = (datetime.now(TZ) - timedelta(days=2)).strftime("%Y-%m-%d")
     rows = []
     for row in payload["orders"]:
-        if row.get("date", "")[:10] < start:
+        # MOMO's response omits the order date. Its OrderQuery already restricts
+        # OrderDate to the requested three days; do not discard all MOMO rows.
+        if row.get("date") and row["date"][:10] < start:
+            continue
+        if not row.get("date") and row.get("platform") != "MOMO":
             continue
         rows.append({k: row[k] for k in fields if k in row})
     return {"orders": rows, "updated": payload.get("updated"), "days": 3,
@@ -67,11 +71,13 @@ def execute(workbench, command, body):
             if len(content) > 10_000_000:
                 raise ShippingError("貨運單超過可傳送大小，請由主機列印。")
             files[kind] = {"mime": mime, "base64": base64.b64encode(content).decode("ascii")}
-        try:
-            content, mime = workbench.document(key, "preview")
-            files["preview"] = {"mime": mime, "base64": base64.b64encode(content).decode("ascii")}
-        except ShippingError:
-            pass
+        for kind in ("preview", "print"):
+            try:
+                content, mime = workbench.document(key, kind)
+                if len(content) <= 10_000_000 and sum(len(f["base64"]) for f in files.values()) + len(content) * 4 / 3 < 25_000_000:
+                    files[kind] = {"mime": mime, "base64": base64.b64encode(content).decode("ascii")}
+            except ShippingError:
+                pass
         return {}, files
     raise ShippingError("此入口只能處理包貨與列印。")
 

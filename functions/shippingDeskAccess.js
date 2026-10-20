@@ -7,7 +7,7 @@ const equal = (a,b) => /^[a-f0-9]{64}$/.test(a||'') && /^[a-f0-9]{64}$/.test(b||
   crypto.timingSafeEqual(Buffer.from(a,'hex'),Buffer.from(b,'hex'));
 const fail = (message,status=400) => {const e=new Error(message);e.status=status;throw e;};
 const commands = new Set(['refresh','preview','process','handling','document-link','print-event']);
-const validKey = key => /^(EasyStore|Coupang|MOMO):[A-Za-z0-9:_-]{1,120}$/.test(key||'');
+const validKey = key => /^(?:(?:EasyStore|Coupang):\d{1,30}|MOMO:\d{1,30}:\d{1,6}(?:,\d{1,6}){0,99})$/.test(key||'');
 
 function validateCommand(action,body={}) {
   if(!commands.has(action))fail('此入口只能處理包貨與列印。',403);

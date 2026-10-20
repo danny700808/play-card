@@ -27,6 +27,9 @@ test('packing scope cannot run administration, inject URLs, or change timeframe'
   assert.deepEqual(validateCommand('refresh',{days:30}),{days:3});
   assert.throws(()=>validateCommand('process',{key:'../../config.json',fingerprint:'a'.repeat(64)}));
   assert.throws(()=>validateCommand('preview',{key:'Coupang:123',options:{carrier:'https://other'}}));
+  assert.equal(validateCommand('document-link',{key:'MOMO:66101900908127:001,002,003'}).key,'MOMO:66101900908127:001,002,003');
+  assert.throws(()=>validateCommand('document-link',{key:'MOMO:123:001,,003'}));
+  assert.throws(()=>validateCommand('document-link',{key:'MOMO:123:001/secret'}));
 });
 test('queue is idempotent and each result is bound to the creating session',async()=>{
   const f=fixture(),a=await f.api.login('test-only-password',false,'a'),b=await f.api.login('test-only-password',false,'b');

@@ -22,7 +22,7 @@ async function handler(req,res){
   try{
     if(req.method==='GET'){
       const r=await access.document(req.query.job,req.query.ticket),kind=req.query.kind||'label';
-      if(!['label','combined','preview'].includes(kind)||!r.files?.[kind])throw Object.assign(Error('找不到文件。'),{status:404});
+      if(!['label','combined','preview','print'].includes(kind)||!r.files?.[kind])throw Object.assign(Error('找不到文件。'),{status:404});
       const file=r.files[kind],[bytes]=await storage.writeBucket().file(file.path).download();
       res.set('Content-Type',file.mime);
       res.set('Content-Disposition','inline');
@@ -60,7 +60,7 @@ async function handler(req,res){
         const ticket=crypto.randomBytes(32).toString('base64url'),files={};
         reply={};
         for(const [kind,input] of Object.entries(d.files)){
-          if(!['label','combined','preview'].includes(kind)||(kind==='preview'?input.mime!=='image/png':!['application/pdf','text/html'].includes(input.mime)))throw Error('Invalid document type');
+          if(!['label','combined','preview','print'].includes(kind)||(kind==='preview'?input.mime!=='image/png':kind==='print'?input.mime!=='application/pdf':!['application/pdf','text/html'].includes(input.mime)))throw Error('Invalid document type');
           const bytes=Buffer.from(input.base64||'','base64');
           if(!bytes.length||bytes.length>10000000)throw Error('Document too large');
           if(input.mime==='application/pdf'&&bytes.subarray(0,5).toString()!=='%PDF-')throw Error('Invalid PDF');

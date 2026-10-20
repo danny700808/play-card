@@ -207,7 +207,8 @@ async function loadDocument(key){
   const row=data.orders.find(r=>r.key===key);
   if(row)documentSummary(row);
   const url=links.label;
-  $('openDocument').href=url;$('downloadDocument').href=url;
+  $('openDocument').href=links.print||url;$('downloadDocument').href=url;
+  $('momoPasswordHint').textContent=links.print?'列印副本已解密；下載的原檔保留平台密碼。':'MOMO 若要求 PDF 密碼，請輸入供應商公司統編。';
   const combined=row?.documentKinds?.includes('combined');
   $('combinedDocument').hidden=!combined;$('combinedDocument').href=links.combined;
   const recordPrint=()=>api('/api/print-event',{key}).then(()=>api('/api/orders')).then(payload=>{data=payload;render();}).catch(e=>notice(e.message,true));

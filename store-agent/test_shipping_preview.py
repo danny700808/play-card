@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from PIL import Image
 import pypdfium2 as pdfium
-from shipping_preview import preview_pdf
+from shipping_preview import preview_pdf, print_pdf
 
 
 class PreviewTests(unittest.TestCase):
@@ -44,6 +44,21 @@ class PreviewTests(unittest.TestCase):
     def test_unreadable_pdf_does_not_prevent_original_document_download(self):
         with tempfile.TemporaryDirectory() as folder:
             self.assertIsNone(preview_pdf(b"%PDF-unreadable", Path(folder), {"platform": "MOMO"}))
+
+    def test_print_copy_requires_owner_password_setting_and_preserves_pages(self):
+        content = self.sample()
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            self.assertIsNone(print_pdf(content, root, {"platform": "MOMO"}))
+            (root / "document-settings.json").write_text('{"momoPdfPassword":"test-password"}')
+            result = print_pdf(content, root, {"platform": "MOMO"})
+            with pdfium.PdfDocument(result) as pdf:
+                self.assertEqual(len(pdf), 1)
+                page = pdf[0]
+                self.assertEqual(page.get_size(), (200, 300))
+                page.close()
+            self.assertEqual(print_pdf(content, root, {"platform": "MOMO"}), result)
+            self.assertIsNone(print_pdf(content, root, {"platform": "Coupang"}))
 
 
 if __name__ == "__main__":

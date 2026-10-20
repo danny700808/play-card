@@ -41,6 +41,14 @@ class RemoteBoundaryTests(unittest.TestCase):
         execute(self.w,"refresh",{"days":30})
         self.w.refresh.assert_called_once_with(3)
 
+    def test_momo_without_date_and_grouped_sequences_remains_available(self):
+        key = "MOMO:66101900908127:001,002,003,004,005,006,007,008,009,010"
+        self.w.snapshot.return_value["orders"].append(
+            {"key": key, "platform": "MOMO", "date": "", "items": []})
+        self.assertIn(key, [r["key"] for r in packing_snapshot(self.w)["orders"]])
+        execute(self.w, "preview", {"key": key})
+        self.w.preview.assert_called_once_with(key, {})
+
 
 class ProvidedPdfTests(unittest.TestCase):
     def test_pdf_is_bound_to_exact_order_contents(self):

@@ -67,6 +67,8 @@ shipping-workbench 資料夾置於原有店內同步程式資料夾內，與 con
 主機的「提供貨運單給副機」可上傳對應 EasyStore 訂單的官方 PDF，供副機預覽及列印。
 PDF 預覽依賴 requirements-shipping-preview.txt；MOMO PDF 密碼可在主機的
 %LOCALAPPDATA%\YouziShipping\document-settings.json 設定 momoPdfPassword，公司統編不會傳到公開前端。
+設定後，主機以已提供的密碼產生可直接列印的 PDF 副本；不重新排版、不轉成圖片，
+原始加密 PDF 仍供下載。副機的「開啟原單列印」使用免再次輸入密碼的副本。
 預覽顯示第一頁，正式列印仍使用完整平台原單。瀏覽器不會自動指定 Windows 印表機，
 第一次需在副機選好標籤機／一般印表機和紙張；印表機型號與紙張仍待現場確認。
 
