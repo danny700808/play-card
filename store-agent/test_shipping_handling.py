@@ -44,11 +44,14 @@ class HandlingTests(unittest.TestCase):
         self.assertTrue(self.row_state()["handlingChanged"])
 
     def test_reprint_preserves_shipped_confirmation(self):
-        self.w.mark_handled(self.row["key"], "shipped")
+        self.w.mark_handled(self.row["key"], "shipped", "店內確認")
+        original_time = self.row_state()["handledAt"]
         self.w.mark_handled(self.row["key"], "print_requested")
         actual = self.row_state()
         self.assertEqual(actual["handlingAction"], "shipped")
         self.assertEqual(actual["printCount"], 1)
+        self.assertEqual(actual["handlingSource"], "店內確認")
+        self.assertEqual(actual["handledAt"], original_time)
 
     def test_print_request_is_not_physical_print_confirmation(self):
         self.w.mark_handled(self.row["key"], "print_requested")

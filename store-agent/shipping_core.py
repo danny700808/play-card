@@ -263,8 +263,10 @@ class Workbench:
                 saved_action = old["action"] if (old and action in ("acquired", "print_requested")
                     and old["binding"] == self.handling_binding(row)
                     and old["action"] in ("printed", "shipped")) else action
+                saved_source = old["source"] if saved_action != action else source_name
+                saved_time = old["updated"] if saved_action != action else now()
                 db.execute("INSERT OR REPLACE INTO handling VALUES (?,?,?,?,?,?)",
-                           (key, saved_action, self.handling_binding(row), source_name, now(), count))
+                           (key, saved_action, self.handling_binding(row), saved_source, saved_time, count))
             self.event(key, "handling-" + action)
         return {"ok": True}
 
