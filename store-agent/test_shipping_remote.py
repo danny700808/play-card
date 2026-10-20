@@ -2,7 +2,8 @@ import unittest
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock
-from shipping_core import ShippingError, now, Workbench
+from datetime import datetime, timedelta, timezone
+from shipping_core import ShippingError, now, Workbench, TZ
 from shipping_remote import execute, packing_snapshot
 
 
@@ -44,6 +45,13 @@ class RemoteBoundaryTests(unittest.TestCase):
         self.assertNotIn("total_price", row)
         self.assertNotIn("settlementAmount", row)
         self.assertNotIn("raw", row)
+
+    def test_three_day_window_uses_taiwan_day_for_utc_orders(self):
+        first_day = (datetime.now(TZ)-timedelta(days=2)).replace(hour=0, minute=30, second=0)
+        self.row["date"] = first_day.astimezone(timezone.utc).isoformat()
+        self.assertEqual(len(packing_snapshot(self.w)["orders"]), 1)
+        self.row["date"] = (first_day-timedelta(hours=1)).astimezone(timezone.utc).isoformat()
+        self.assertEqual(packing_snapshot(self.w)["orders"], [])
 
     def test_reprint_reuses_document_without_creating_shipment(self):
         self.w.document.return_value=(b"%PDF-test","application/pdf")

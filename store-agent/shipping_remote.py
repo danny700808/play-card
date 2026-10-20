@@ -33,8 +33,15 @@ def packing_snapshot(workbench):
     for row in payload["orders"]:
         # MOMO's response omits the order date. Its OrderQuery already restricts
         # OrderDate to the requested three days; do not discard all MOMO rows.
-        if row.get("date") and row["date"][:10] < start:
-            continue
+        if row.get("date"):
+            try:
+                ordered = datetime.fromisoformat(row["date"].replace("Z", "+00:00"))
+                if ordered.tzinfo is None:
+                    ordered = ordered.replace(tzinfo=TZ)
+                if ordered.astimezone(TZ).strftime("%Y-%m-%d") < start:
+                    continue
+            except (ValueError, TypeError):
+                continue
         if not row.get("date") and row.get("platform") != "MOMO":
             continue
         rows.append({k: row[k] for k in fields if k in row})
