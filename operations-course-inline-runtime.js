@@ -783,7 +783,8 @@
     var newPlan=scheduleNeedsPlan(),selected=$('schedulePlan').value,plans=state.feePlans.filter(function(p){return p.subjectId===subjectId&&p.active!==false&&p.listed!==false;});
     fillSelect($('schedulePlan'),plans,function(p){return p.name+'・'+money(p.amount)+'／'+p.lessonCount+' 堂';},function(p){return p.id;},subjectId?'請選擇收費方案':'請先選擇課程科目');if(plans.some(function(p){return p.id===selected;}))$('schedulePlan').value=selected;
     $('schedulePlanField').classList.toggle('hidden',!newPlan);$('tuitionPeriodField').classList.toggle('hidden',!course||special||newPlan||!!permanentScheduleSource);$('scheduleNewTuition').classList.add('hidden');
-    var plan=feeById($('schedulePlan').value);$('schedulePlanHint').textContent=plan.id?'共 '+plan.lessonCount+' 堂，學費 '+money(plan.amount)+'。確認排課時一併建立課程；收款另外登記。':subjectId&&!plans.length?'此科目尚未設定收費方案，請先到設定新增方案。':'選擇方案後，系統會建立學費資料，不會自動登記收款。';
+    var catalogMissing=calendarPartial()&&(scheduleCatalogState!==state||!scheduleCatalogReady);
+    var plan=feeById($('schedulePlan').value);$('schedulePlanHint').textContent=plan.id?'共 '+plan.lessonCount+' 堂，學費 '+money(plan.amount)+'。確認排課時一併建立課程；收款另外登記。':subjectId&&!plans.length?(catalogMissing?(scheduleCatalogState===state&&scheduleCatalogError?'收費方案讀取失敗，請重新開啟排課重試。':'正在讀取收費方案，請稍候…'):'此科目尚未設定收費方案，請先到設定新增方案。'):'選擇方案後，系統會建立學費資料，不會自動登記收款。';
     $('scheduleStudentLabel').textContent=type==='single'?'選擇要加課的既有學生':'選擇學生';
   }
   function setScheduleStudentMode(mode){
@@ -797,22 +798,34 @@
   }
   function scheduleDraft(){var draft=formEvent();draft.endDate=$('eventRepeatUntil').value;return draft;}
   function createScheduleTuition(){$('scheduleSetup').value='new';updateScheduleEnrollment();}
-  var scheduleCatalogPromise=null,scheduleCatalogReady=false,scheduleStudentLoads=new Map(),scheduleSelectionVersion=0,scheduleDataLoading=false;
+  var scheduleCatalogPromise=null,scheduleCatalogReady=false,scheduleCatalogState=null,scheduleCatalogError='',scheduleStudentLoads=new Map(),scheduleSelectionVersion=0,scheduleDataLoading=false;
   function scheduleWritable(){return calendarPartial()&&state.dataMode==='migration'||writable('排課');}
   function ensureScheduleCatalog(){
+    // Calendar snapshots are replaced when navigating dates. Readiness belongs
+    // to that snapshot, not to the lifetime of the page.
+    var target=state;
+    if(scheduleCatalogState!==target){scheduleCatalogState=target;scheduleCatalogReady=false;scheduleCatalogPromise=null;scheduleCatalogError='';scheduleStudentLoads.clear();}
     if(!calendarPartial()||scheduleCatalogReady)return Promise.resolve();
-    if(!scheduleCatalogPromise)scheduleCatalogPromise=window.YouziCoursePreviewData.loadScheduleCatalog().then(function(rows){state.feePlans=rows;scheduleCatalogReady=true;}).finally(function(){scheduleCatalogPromise=null;});
+    if(!scheduleCatalogPromise){
+      scheduleCatalogError='';
+      var pending=window.YouziCoursePreviewData.loadScheduleCatalog().then(function(rows){
+        if(state!==target)return;
+        target.feePlans=rows;scheduleCatalogReady=true;
+      }).catch(function(error){if(state===target)scheduleCatalogError=clean(error.message);throw error;}).finally(function(){if(scheduleCatalogState===target&&scheduleCatalogPromise===pending)scheduleCatalogPromise=null;});
+      scheduleCatalogPromise=pending;
+    }
     return scheduleCatalogPromise;
   }
   async function loadSelectedScheduleStudent(studentId,autofill){
-    var version=++scheduleSelectionVersion;scheduleDataLoading=true;$('scheduleTuitionHint').textContent='正在讀取這位學生的課程…';$('scheduleSubmitBtn').disabled=true;
+    var target=state,version=++scheduleSelectionVersion;scheduleDataLoading=true;$('scheduleTuitionHint').textContent='正在讀取這位學生的課程…';$('scheduleSubmitBtn').disabled=true;
     try{
-      if(!scheduleStudentLoads.has(studentId))scheduleStudentLoads.set(studentId,Promise.all([ensureScheduleCatalog(),window.YouziCoursePreviewData.refreshWorkspaceSlice({studentIds:[studentId]})]).then(function(results){window.YouziCoursePreviewData.applyWorkspaceSlice(state,results[1]);}).catch(function(error){scheduleStudentLoads.delete(studentId);throw error;}));
+      var catalog=ensureScheduleCatalog();
+      if(!scheduleStudentLoads.has(studentId))scheduleStudentLoads.set(studentId,Promise.all([catalog,window.YouziCoursePreviewData.refreshWorkspaceSlice({studentIds:[studentId]})]).then(function(results){if(state===target)window.YouziCoursePreviewData.applyWorkspaceSlice(target,results[1]);}).catch(function(error){if(state===target)scheduleStudentLoads.delete(studentId);throw error;}));
       await scheduleStudentLoads.get(studentId);
-      if(version!==scheduleSelectionVersion)return;
+      if(state!==target||version!==scheduleSelectionVersion)return;
       selectScheduleStudent(studentId,autofill,true);
-    }catch(error){if(version===scheduleSelectionVersion){$('eventStudent').value='';$('scheduleTuitionHint').textContent='這位學生的課程讀取失敗，請重新選擇。';toast('課程資料讀取失敗',clean(error.message),'error');}}
-    finally{if(version===scheduleSelectionVersion){scheduleDataLoading=false;$('scheduleSubmitBtn').disabled=false;updateScheduleConflict();}}
+    }catch(error){if(state===target&&version===scheduleSelectionVersion){$('eventStudent').value='';$('scheduleTuitionHint').textContent='這位學生的課程讀取失敗，請重新選擇。';toast('課程資料讀取失敗',clean(error.message),'error');}}
+    finally{if(state===target&&version===scheduleSelectionVersion){scheduleDataLoading=false;$('scheduleSubmitBtn').disabled=false;updateScheduleConflict();}}
   }
   function selectScheduleStudent(studentId,autofill,ready){
     if(calendarPartial()&&studentId&&!ready){loadSelectedScheduleStudent(studentId,autofill);return;}
@@ -863,6 +876,8 @@
     if(!scheduleWritable())return;options=options||{};refreshFormOptions();clearScheduleForm();var source=options.event||options.copy||options.draft||null;$('scheduleModalTitle').textContent=options.event?'編輯這一次課程（日期、時間與教室請使用調課）':options.copy?'增加課程':'快速排課';if(source){$('eventId').value=options.event?source.id:'';$('eventSeriesId').value=source.seriesId||'';$('eventDate').value=source.date;$('eventStart').value=source.start;$('eventDuration').value=String(source.duration||60);$('eventRoom').value=source.roomId;$('eventType').value=source.type;$('eventFrequency').value=options.event?'once':source.frequency||'once';$('eventRepeatUntil').value=source.endDate||'';$('eventSingleKind').value=source.specialLesson?'special':'normal';$('eventSpecialLessonPrice').value=Object.prototype.hasOwnProperty.call(source,'specialLessonPrice')?source.specialLessonPrice:'';$('eventSpecialTeacherPay').value=Object.prototype.hasOwnProperty.call(source,'specialTeacherPay')?source.specialTeacherPay:'';$('eventStudent').value=options.newStudentId||(source.studentIds||[])[0]||'';$('eventSubject').value=source.subjectId||'';$('eventRenterType').value=source.renterStudentId?'student':'walkin';$('rentalStudentId').value=source.renterStudentId||'';$('rentalStudentSearch').value=source.clientName||'';$('rentalStudentSelected').textContent=source.renterStudentId?'已選擇：'+source.clientName:'';$('rentalStudentPicker').classList.toggle('hidden',!source.renterStudentId);$('eventClient').value=source.clientName||'';$('eventClientPhone').value=source.clientPhone||'';$('eventRentalFee').value=Object.prototype.hasOwnProperty.call(source,'rentalFee')?source.rentalFee:'';$('eventRentalPaymentStatus').value=rentalPaymentValue(source.rentalPaymentStatus);$('eventTrialName').value=source.trialName||'';$('eventTrialPhone').value=source.trialPhone||'';$('eventTrialFee').value=source.trialFee||'';$('eventNote').value=source.note||'';if(options.event){$('eventDate').disabled=true;$('eventStart').disabled=true;$('eventRoom').disabled=true;}}
     else{$('eventDate').value=options.date||state.currentDate;$('eventStart').value=options.start||minToTime(state.settings.startHour*60);$('eventRoom').value=options.roomId||activeRooms()[0].id;}
     updateEventStartOptionsForDate($('eventDate').value,$('eventStart').value);var selectedTeacher=source&&source.teacherId,selectedPeriod=source&&source.tuitionPeriodId;updateTeacherOptions(selectedTeacher);updateTuitionOptions(selectedPeriod);updateRoomOptions(source&&source.roomId);$('eventFrequency').disabled=!!options.event;setScheduleKind($('eventType').value);if($('eventStudent').value)selectScheduleStudent($('eventStudent').value,false);if(source&&source.halfHourAcknowledged)$('scheduleForm').dataset.halfHourAcknowledged='true';if(source&&source.type!=='rental'&&source.subjectId){$('scheduleForm').dataset.sourceSubjectId=source.subjectId;$('eventSubject').value=source.subjectId;$('eventSubject').disabled=true;updateRoomOptions(source.roomId);}updateSpecialLessonFields(!source);updateScheduleConflict();openModal('scheduleModal');
+    var catalogTarget=state;
+    ensureScheduleCatalog().then(function(){if(state===catalogTarget)updateScheduleEnrollment();}).catch(function(error){if(state===catalogTarget){updateScheduleEnrollment();toast('收費方案讀取失敗',clean(error.message),'error');}});
   }
   function openPermanentSchedule(source){
     openSchedule({draft:source});permanentScheduleSource=clone(source);
@@ -1678,6 +1693,9 @@
       });
       return room;
     });
+    // A bounded calendar response omits the pricing catalog. Only a full
+    // workspace/catalog response is authoritative about an empty plan list.
+    if(target.dataMeta&&target.dataMeta.partial&&!(target.feePlans||[]).length)target.feePlans=clone(previous.feePlans||[]);
     var previousFees={};(previous.feePlans||[]).forEach(function(row){previousFees[row.id]=row;});
     target.feePlans=(target.feePlans||[]).map(function(row){
       var prior=previousFees[row.id];if(prior){row.sort=prior.sort;}return row;
