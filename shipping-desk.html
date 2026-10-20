@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>柚子樂器｜包貨窗口</title>
+  <link rel="stylesheet" href="store-agent/shipping-ui/style.css?v=20261020-packing-v1">
+  <link rel="stylesheet" href="shipping-desk.css?v=20261020-v1">
+  <meta name="referrer" content="no-referrer">
+  <script defer src="shipping-desk.js?v=20261020-v1"></script>
+  <script defer src="store-agent/shipping-ui/model.js?v=20261020-v1"></script>
+  <script defer src="store-agent/shipping-ui/app.js?v=20261020-packing-v1"></script>
+</head>
+<body>
+  <section id="packingLogin" class="packing-login"><form id="packingLoginForm"><span class="brand">柚子樂器</span><h1>包貨窗口</h1><label>密碼<input id="packingPassword" type="password" autocomplete="current-password" required></label><label class="remember"><input id="packingRemember" type="checkbox" checked>記住這台電腦</label><p id="loginError" class="login-error" role="alert"></p><button id="packingLoginButton" class="primary" type="submit">進入包貨窗口</button></form></section>
+  <main id="packingApp" hidden>
+    <header><div class="page-title"><h1>包貨窗口</h1><div class="date-actions"><span class="date-range">近 3 天</span>
+      <button id="refresh" class="primary compact-refresh">↻ 讀取最新訂單</button></div></div><div class="packing-session"><span id="hostStatus" class="host-status">連接主機中</span><button id="packingLogout" type="button">登出</button></div></header>
+    <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
+    <section class="workspace">
+      <div class="list-panel">
+        <div id="channels" class="tabs" aria-label="訂單來源"></div>
+        <div id="workTabs" class="work-tabs" aria-label="處理進度"></div>
+        <div class="filters"><input id="search" type="search" placeholder="搜尋訂單、商品、SKU、收件人" aria-label="搜尋訂單">
+        </div>
+        <div class="list-caption"><span id="resultCount"></span><span id="syncTime"></span></div>
+        <div id="orders" class="order-list"></div>
+      </div>
+      <section id="detail" class="detail-panel"><div class="empty">選擇訂單查看包貨內容</div></section>
+    </section>
+  </main>
+  <dialog id="reviewDialog">
+    <form method="dialog"><button class="close" aria-label="關閉">×</button></form>
+    <h2 id="reviewTitle">核對貨運單</h2>
+    <div id="reviewBody"></div>
+    <div class="dialog-actions"><button id="cancelReview">返回核對</button><button id="submitShipment" class="primary">確認送出</button></div>
+  </dialog>
+  <dialog id="documentDialog">
+    <form method="dialog"><button class="close" aria-label="關閉">×</button></form>
+    <h2>平台正式貨運單</h2>
+    <p>保持平台原始版面；使用文件檢視器的列印按鈕或開啟文件後按 Ctrl+P。</p>
+    <div class="document-actions"><a id="openDocument" target="_blank" rel="noopener">開啟正式文件／列印</a><a id="downloadDocument" download>下載原始貨運單</a></div>
+    <div class="document-actions"><a id="combinedDocument" target="_blank" rel="noopener" hidden>開啟 MOMO 貨運單＋官方明細</a></div>
+    <button id="confirmPrinted" class="primary">已印好，標記已印單</button>
+    <p class="muted">MOMO 若要求 PDF 密碼，請輸入供應商公司統編。</p>
+    <iframe id="documentFrame" title="平台正式貨運單"></iframe>
+  </dialog>
+  <dialog id="imageDialog">
+    <form method="dialog"><button class="close" aria-label="關閉圖片">×</button></form>
+    <h2 id="imageTitle"></h2>
+    <img id="largeImage" alt="" referrerpolicy="no-referrer">
+  </dialog>
+  <section id="packingPrint" aria-label="包貨明細列印"></section>
+</body>
+</html>

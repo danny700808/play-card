@@ -10,6 +10,8 @@ import hmac
 from pathlib import Path
 import secrets
 import time
+import os
+import base64
 from urllib.parse import parse_qs, urlparse, urlencode
 
 from shipping_core import Workbench, ShippingError
@@ -114,7 +116,8 @@ def make_handler(workbench, port):
                 return self.send({"error": "JSON required"}, status=415)
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                if length < 0 or length > 32768:
+                maximum = 11_000_000 if self.path == "/api/provide-document" else 32768
+                if length < 0 or length > maximum:
                     return self.send({"error": "Request too large"}, status=413)
                 body = json.loads(self.rfile.read(length))
                 if not isinstance(body, dict):
@@ -130,6 +133,9 @@ def make_handler(workbench, port):
                     if body.get("action") not in ("printed", "shipped", "processed", "reopen"):
                         raise ValueError()
                     return self.send(workbench.mark_handled(body["key"], body["action"], "店內確認"))
+                if self.path == "/api/provide-document":
+                    content = base64.b64decode(body["base64"], validate=True)
+                    return self.send(workbench.provide_document(body["key"], content, body["binding"]))
                 if self.path == "/api/document-link":
                     workbench.document(body["key"])
                     return self.send({kind: document_link(body["key"], kind) for kind in ("label", "combined")})
@@ -153,8 +159,12 @@ def main():
     parser.add_argument("--config", default=str(Path(__file__).parent / "config.json"))
     parser.add_argument("--data-dir", default=str(Path(__file__).parent / "shipping-data"))
     parser.add_argument("--port", type=int, default=18765)
+    parser.add_argument("--remote-config", default=str(Path(os.environ.get("LOCALAPPDATA", ".")) / "YouziShipping/remote-config.json"))
     args = parser.parse_args()
     workbench = Workbench(args.config, args.data_dir)
+    if Path(args.remote_config).is_file():
+        from shipping_remote import RemoteRelay
+        RemoteRelay(workbench, args.remote_config).start()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(workbench, args.port))
     print(f"Shipping workbench: http://127.0.0.1:{args.port}", flush=True)
     server.serve_forever()

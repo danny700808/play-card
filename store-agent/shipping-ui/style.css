@@ -23,3 +23,5 @@ main{margin:0;max-width:none}.embedded main{padding:0 2px 16px}.embedded header 
 .photo-wrap{position:relative;width:fit-content}.image-kind{position:absolute;left:6px;bottom:6px;font-size:13px;padding:3px 7px;border-radius:4px;background:#fff6dc;color:#9b6a00;pointer-events:none}
 @media(max-width:780px){.embedded .order-list{max-height:380px}.work-tabs button{font-size:16px}.sku{font-size:22px}.detail-header .status{margin-left:6px}}
 @media print{#packingPrint .sku{font-size:19px;color:#111;background:#fff;border:0;padding:0;margin-bottom:6px}.image-kind{font-size:10px;background:#fff;color:#222}}
+.page-title{flex-wrap:wrap}.date-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.date-range,.compact-refresh{font-size:16px;line-height:1.4;padding:7px 12px;border-radius:6px}.compact-refresh{white-space:nowrap;border:1px solid transparent}.date-range{border:1px solid transparent}
+@media(max-width:780px){.date-range,.compact-refresh{font-size:14px;padding:7px 10px}}

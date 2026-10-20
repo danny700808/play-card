@@ -4,7 +4,8 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'
 const stageNames = {pending:'待出貨',partial:'部分待出貨',label:'可印貨運單',shipped:'已出貨',cancelled:'已取消',review:'需核對'};
 const ORDER_DAYS = 3;
 let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', activeWork = 'pending', busy = false, reviewed = null, reviewOptions = {};
-const sessionToken=document.querySelector('meta[name="youzi-session"]').content;
+const sessionToken=document.querySelector('meta[name="youzi-session"]')?.content||'';
+const remote=!!window.ShippingTransport;
 const embedded=window.self!==window.top;
 document.documentElement.classList.toggle('embedded',embedded);
 if(embedded)window.parent.postMessage({type:'youzi-shipping-ready'},'https://danny700808.github.io');
@@ -16,6 +17,7 @@ function localDay(value) {
   return Number.isNaN(date.getTime())?'':date.toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
 }
 async function api(path, body) {
+  if(remote)return window.ShippingTransport.api(path,body);
   const response = await fetch(path, {headers:{'X-Youzi-Session':sessionToken,...(body===undefined?{}:{'Content-Type':'application/json'})},
     ...(body===undefined?{}:{method:'POST',body:JSON.stringify(body)})});
   const payload = await response.json();
@@ -80,9 +82,9 @@ function renderDetail() {
   const easyStoreOrder = row.platform==='EasyStore' && /^\d+$/.test(String(row.externalId||''))
     ? `https://admin.easystore.co/orders/${row.externalId}` : '';
   const shopeeViaEasyStore = !!easyStoreOrder && row.channel==='蝦皮';
-  const externalAction = easyStoreOrder
+  const externalAction = easyStoreOrder && !remote
     ? `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">${shopeeViaEasyStore?(row.handled?'到 EasyStore 重印蝦皮單':'到 EasyStore 出貨／印蝦皮單'):'開啟 EasyStore 對應訂單'} ↗</a>` : '';
-  const shippingAction = row.platform==='EasyStore' ? externalAction
+  const shippingAction = row.platform==='EasyStore' ? (remote?(row.documentReady?'<button id="showProvidedDocument" class="primary">重印貨運單</button>':'<span class="muted">貨運單尚待主機提供</span>'):externalAction)
     : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?(row.handled?'重印貨運單':'取得貨運單'):'申請出貨與貨運單'}</button>`;
   const items=packingItems(row),quantity=items.reduce((n,i)=>n+i.quantity,0);
   const packingNote=(row.note||'').split('\n').filter(line=>!/^買家帳號[：:]/.test(line.trim())).join('\n').trim();
@@ -90,11 +92,13 @@ function renderDetail() {
     ${row.handled?`<div class="handling-summary">✓ 已處理 · ${escapeHtml(ShippingModel.status(row))}${row.handledAt?' · '+escapeHtml(new Date(row.handledAt).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})):''}<span>${escapeHtml(row.handlingSource)}</span></div>`:''}
     <div class="detail-section packing-section">${items.map(itemHtml).join('')||'<div class="empty">沒有可包貨的商品</div>'}</div>
     ${packingNote?`<div class="note order-note">${escapeHtml(packingNote)}</div>`:''}
-    <div class="actions">${shippingAction}<button id="packing">列印包貨明細</button>${row.documentReady?'<button id="showDocument">預覽正式貨運單</button>':''}</div>
+    <div class="actions">${shippingAction}<button id="packing">列印包貨明細</button>${row.documentReady?'<button id="showDocument">預覽正式貨運單</button>':''}${!remote&&row.platform==='EasyStore'?'<button id="provideDocument">提供貨運單給副機</button>':''}</div>
     <div class="handling-actions">${row.handlingAction!=='printed'&&row.handlingAction!=='shipped'?'<button id="markPrinted">我已印單</button>':''}${row.handlingAction!=='shipped'?'<button id="markShipped">我已出貨</button>':''}${row.handled?'<button id="reopen" class="quiet">移回未處理</button>':''}</div>
     ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'資料尚未更新，請重新讀取。':row.jobError||row.blockReason)}</div>`:''}
     <details class="recipient-details"><summary>收件與物流資訊</summary><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　${escapeHtml(row.phone)}</div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'')}</div><div class="subline">${escapeHtml(row.carrier||'物流未提供')}${row.tracking?` · ${escapeHtml(row.tracking)}`:''}</div><div class="subline">平台回傳：${escapeHtml(stageNames[row.stage]||row.status)}${row.printCount?` · 開啟列印 ${row.printCount} 次`:''}</div></details>`;
   $('prepare')?.addEventListener('click',()=>prepare(row));
+  $('showProvidedDocument')?.addEventListener('click',()=>showDocument(row.key).catch(e=>notice(e.message,true)));
+  $('provideDocument')?.addEventListener('click',()=>provideDocument(row));
   $('packing').addEventListener('click',()=>printPacking(row));
   $('showDocument')?.addEventListener('click',()=>showDocument(row.key).catch(e=>notice(e.message,true)));
   $('markPrinted')?.addEventListener('click',()=>markHandled(row.key,'printed'));
@@ -111,6 +115,20 @@ async function markHandled(key,action){
     data=await api('/api/orders');activeWork=action==='reopen'?'pending':'done';selected=key;render();
     notice(action==='reopen'?'已移回未處理。':'已保存處理紀錄。');
   }catch(e){notice(e.message,true);}
+}
+function provideDocument(row){
+  const input=document.createElement('input');input.type='file';input.accept='application/pdf,.pdf';
+  input.onchange=async()=>{
+    const file=input.files?.[0];if(!file)return;
+    if(file.size>8000000){notice('請選擇 8 MB 以內的平台正式 PDF。',true);return;}
+    if(!window.confirm(`請確認 PDF 上的訂單編號是 ${row.orderNo}。\n\n檔案：${file.name}\n\n核對正確後，才提供給副機列印。`))return;
+    try{
+      const base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file);});
+      await api('/api/provide-document',{key:row.key,base64,binding:row.documentBinding});
+      data=await api('/api/orders');activeWork='done';selected=row.key;render();notice('已提供貨運單，副機重新讀取即可列印。');
+    }catch(e){notice(e.message||'提供文件失敗。',true);}
+  };
+  input.click();
 }
 async function refresh() {
   if(busy)return;
@@ -184,10 +202,12 @@ $('detail').addEventListener('click',e=>{
   $('imageTitle').textContent=button.dataset.title;
   $('imageDialog').showModal();
 });
-api('/api/orders').then(payload=>{
+async function initializeWorkbench(){return api('/api/orders').then(payload=>{
   data=payload;
   if(!data.updated||data.days!==ORDER_DAYS){data.orders=[];render();refresh();}
   else{render();notice(Object.values(data.errors).join(' '),!!Object.keys(data.errors).length);}
-}).catch(e=>notice(e.message,true));
+}).catch(e=>notice(e.message,true));}
+if(remote)window.ShippingTransport.ready(initializeWorkbench);
+else initializeWorkbench();
 // Poll while this workbench is visible. Reading orders never creates shipments.
-setInterval(()=>{if(!document.hidden&&!busy&&!document.querySelector('dialog[open]'))refresh();},300000);
+setInterval(()=>{if(!document.hidden&&!busy&&!document.querySelector('dialog[open]')&&(!remote||window.ShippingTransport.loggedIn()))refresh();},300000);

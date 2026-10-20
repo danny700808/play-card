@@ -17,3 +17,4 @@ registerPersonDataAdmin(exports);
 require('./nativeEducationProjection').registerNativeEducationProjection(exports);
 
 require('./privateCalendar').register(exports);
+require('./shippingDesk').register(exports);

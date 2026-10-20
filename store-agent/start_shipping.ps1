@@ -1,3 +1,4 @@
+param([switch]$NoBrowser)
 $ErrorActionPreference = 'Stop'
 $packageDirectory = $PSScriptRoot
 $agentDirectory = Split-Path -Parent $packageDirectory
@@ -30,4 +31,4 @@ if (!$isRunning) {
     }
 }
 if (!$isRunning) { throw 'Shipping workbench could not start. Check the local server-error.log.' }
-Start-Process 'https://danny700808.github.io/play-card/portal.html#shipping'
+if (!$NoBrowser) { Start-Process 'https://danny700808.github.io/play-card/portal.html#shipping' }

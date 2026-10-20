@@ -437,6 +437,7 @@ class Workbench:
                 job = self.job(row["key"])
                 row["jobState"] = job.get("state", "")
                 row["documentReady"] = self.document_matches(row, job)
+                row["documentBinding"] = self.document_binding(original)
                 with self.connect() as db:
                     row["documentKinds"] = [r["kind"] for r in db.execute(
                         "SELECT kind FROM documents WHERE order_key=?", (row["key"],))]
@@ -607,6 +608,26 @@ class Workbench:
             except Exception:
                 self.save_job(key, state="download-failed", error="單號已保留，文件下載失敗；重試只會取回文件。")
                 raise ShippingError("貨運單下載失敗，原單號已保留，重試不會重新申請出貨。")
+
+    def provide_document(self, key, content, binding):
+        """Owner supplies an official PDF for a channel without a label API."""
+        with self.lock:
+            row = self.rows.get(key)
+            if not row or row["platform"] != "EasyStore" or row["stage"] in ("cancelled", "review"):
+                raise ShippingError("此訂單不能提供貨運單。")
+            if row["platform"] in self.errors or binding != self.document_binding(row):
+                raise ShippingError("訂單資料已異動，請重新讀取後核對。")
+            if not content.startswith(b"%PDF-") or len(content) > 8_000_000:
+                raise ShippingError("請選擇 8 MB 以內的平台正式 PDF 貨運單。")
+            filename = "provided-" + hashlib.sha256((key + binding).encode()).hexdigest() + ".pdf"
+            temporary = self.data_dir / (filename + ".tmp")
+            temporary.write_bytes(content)
+            temporary.replace(self.data_dir / filename)
+            self.save_job(key, state="ready", document=filename, mime="application/pdf",
+                          binding=binding, tracking=row.get("tracking", ""), error="")
+            self.event(key, "owner-provided-official-pdf")
+            self.mark_handled(key, "acquired")
+            return {"ok": True}
 
     def document(self, key, kind="label"):
         job = self.job(key)
