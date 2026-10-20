@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+from shipping_images import match_product_image
 
 TZ = timezone(timedelta(hours=8))
 CARRIERS = {"TWL_HCT": "新竹物流", "TWL_KERRY": "嘉里大榮",
@@ -83,7 +84,7 @@ def normalize_es(o):
             "orderNo": text(o.get("name") or o.get("order_number") or o.get("number")),
             "internalOrderNo": text(o.get("order_number")),
             "externalId": text(o["id"]), "packageId": "", "date": text(o.get("created_at")),
-            "stage": stage, "status": status, "payment": text(o.get("financial_status")),
+            "stage": stage, "status": status, "platformPrinted": False, "payment": text(o.get("financial_status")),
             "recipient": " ".join(filter(None, [text(address.get("first_name") or address.get("receiver_first_name")),
                                                text(address.get("last_name") or address.get("receiver_last_name"))])),
             "phone": text(address.get("receiver_phone") or address.get("phone")),
@@ -193,7 +194,7 @@ def normalize_momo(o):
             "platform": "MOMO", "channel": "MOMO", "sourceName": "MOMO",
             "orderNo": text(o["orderNo"]), "externalId": text(o["orderNo"]),
             "packageId": ",".join(seqs), "date": "", "status": status, "stage": stage,
-            "shippingMethod": method, "delyGb": dely, "orderSeqs": seqs,
+            "shippingMethod": method, "delyGb": dely, "orderSeqs": seqs, "platformPrinted": printed,
             "payment": "", "recipient": text(i.get("receiverName")),
             "phone": "", "address": text(i.get("receiverAddress")),
             "note": text(i.get("customerDeliveryMessage")),
@@ -220,6 +221,7 @@ class Workbench:
         self.errors = {}
         self.updated = ""
         self.days = 3
+        self.images = {}
         self.db_path = self.data_dir / "shipping.sqlite3"
         with self.connect() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS jobs (
@@ -232,6 +234,66 @@ class Workbench:
                 PRIMARY KEY(order_key,kind))""")
             if "binding" not in {r["name"] for r in db.execute("PRAGMA table_info(jobs)")}:
                 db.execute("ALTER TABLE jobs ADD COLUMN binding TEXT")
+            db.execute("""CREATE TABLE IF NOT EXISTS handling (
+                order_key TEXT PRIMARY KEY, action TEXT NOT NULL, binding TEXT NOT NULL,
+                source TEXT NOT NULL, updated TEXT NOT NULL, print_count INTEGER NOT NULL DEFAULT 0)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS product_images (
+                sku TEXT PRIMARY KEY, payload TEXT NOT NULL, updated TEXT NOT NULL)""")
+
+    @staticmethod
+    def handling_binding(row):
+        payload = {k: row.get(k) for k in ("key", "address", "tracking", "carrier")}
+        payload["items"] = [{k: i.get(k) for k in ("id", "sku", "variant", "quantity")}
+                            for i in row["items"]]
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+    def mark_handled(self, key, action, source_name="工作台"):
+        if action not in ("acquired", "print_requested", "printed", "shipped", "processed", "reopen"):
+            raise ShippingError("不支援的處理狀態。")
+        with self.lock:
+            row = self.rows.get(key)
+            if not row:
+                raise ShippingError("找不到這筆訂單，請重新讀取。")
+            if action == "acquired":
+                self.document(key)
+            with self.connect() as db:
+                old = db.execute("SELECT * FROM handling WHERE order_key=?", (key,)).fetchone()
+                count = (old["print_count"] if old else 0) + (action == "print_requested")
+                # A reprint must not downgrade a confirmed shipment/printed record.
+                saved_action = old["action"] if (old and action in ("acquired", "print_requested")
+                    and old["binding"] == self.handling_binding(row)
+                    and old["action"] in ("printed", "shipped")) else action
+                db.execute("INSERT OR REPLACE INTO handling VALUES (?,?,?,?,?,?)",
+                           (key, saved_action, self.handling_binding(row), source_name, now(), count))
+            self.event(key, "handling-" + action)
+        return {"ok": True}
+
+    def refresh_images(self):
+        with self.lock:
+            skus = {i["sku"] for row in self.rows.values() for i in row["items"]
+                    if i["sku"] and not i.get("image")}
+        cfg = self.config.get("easystore") or {}
+        if not cfg.get("access_token"):
+            return
+        def lookup(sku):
+            with self.connect() as db:
+                cached = db.execute("SELECT * FROM product_images WHERE sku=?", (sku,)).fetchone()
+            if cached and cached["updated"][:10] == now()[:10]:
+                return sku, json.loads(cached["payload"])
+            try:
+                payload = source.es_request("GET", cfg["store_url"].rstrip("/")+"/api/3.0/products.json",
+                    cfg["access_token"], timeout=20, params={"skus": sku, "limit": 100})
+                result = match_product_image(payload, sku)
+                with self.connect() as db:
+                    db.execute("INSERT OR REPLACE INTO product_images VALUES (?,?,?)",
+                               (sku, json.dumps(result), now()))
+                return sku, result
+            except Exception:
+                return sku, json.loads(cached["payload"]) if cached else {}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            images = dict(pool.map(lookup, sorted(skus)))
+        with self.lock:
+            self.images = images
 
     @contextmanager
     def connect(self):
@@ -357,6 +419,7 @@ class Workbench:
                         # Never emit upstream exception text: it can contain customer data/credentials.
                         with self.lock:
                             self.errors[name] = f"{name} 讀取失敗（{type(e).__name__}）；此平台資料不可用於申請出貨。"
+            self.refresh_images()
             with self.lock:
                 self.updated = now()
                 self.days = days
@@ -379,6 +442,20 @@ class Workbench:
                 row["stale"] = row["platform"] in self.errors
                 if row["stale"]:
                     row["canCreate"] = row["canDownload"] = False
+                with self.connect() as db:
+                    handled = db.execute("SELECT * FROM handling WHERE order_key=?", (row["key"],)).fetchone()
+                valid_handled = handled and handled["binding"] == self.handling_binding(row)
+                action = handled["action"] if valid_handled else ""
+                platform_done = row["stage"] in ("shipped", "cancelled") or row.get("platformPrinted", False)
+                row["handled"] = action != "reopen" if action else platform_done
+                row["handlingChanged"] = bool(handled and not valid_handled and not platform_done)
+                row["handlingAction"] = action or ("shipped" if row["stage"] == "shipped" else
+                    "cancelled" if row["stage"] == "cancelled" else "printed" if row.get("platformPrinted") else "")
+                row["handlingSource"] = handled["source"] if valid_handled else "平台"
+                row["handledAt"] = handled["updated"] if valid_handled else ""
+                row["printCount"] = handled["print_count"] if valid_handled else 0
+                row["items"] = [dict(i, **self.images.get(i["sku"], {})) if not i.get("image")
+                                else dict(i) for i in row["items"]]
                 rows.append(row)
             return {"orders": rows, "errors": self.errors, "updated": self.updated, "days": self.days,
                     "connectors": [
@@ -461,6 +538,11 @@ class Workbench:
         return res if binary else res.json()
 
     def process(self, key, options, fingerprint):
+        result = self._process(key, options, fingerprint)
+        self.mark_handled(key, "acquired")
+        return result
+
+    def _process(self, key, options, fingerprint):
         with self.lock:
             row = self.preview(key, options)
             if not fingerprint or row["fingerprint"] != fingerprint:

@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict');
+const model=require('./shipping-ui/model.js');
+assert.equal(model.formatSku('2620132-2'),'262-0132-2');
+assert.equal(model.formatSku('262-0132-2'),'262-0132-2');
+assert.equal(model.formatSku('ABC-01'),'ABC-01');
+assert.equal(model.searchCode('262-0132-2'),model.searchCode('2620132-2'));
+assert.equal(model.status({handled:true,handlingAction:'printed'}),'已印單');
+assert.equal(model.status({handled:true,handlingAction:'acquired'}),'已取單');
+assert.equal(model.status({handled:false,stage:'label'}),'未處理');
+console.log('Shipping UI status and SKU checks passed');

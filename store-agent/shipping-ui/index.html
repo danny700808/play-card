@@ -5,15 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>柚子樂器｜出貨工作台</title>
   <link rel="stylesheet" href="/style.css">
+  <meta name="youzi-session" content="__SESSION__">
+  <script defer src="/model.js"></script>
   <script defer src="/app.js"></script>
 </head>
 <body>
-  <aside class="sidebar">
-    <div class="brand"><span class="brand-mark">柚</span><div>柚子樂器<small>YOU ZI MUSIC</small></div></div>
-    <div class="nav-title">營運中心</div>
-    <a href="https://danny700808.github.io/play-card/portal.html#sync">↗ 平台訂單</a>
-    <div class="nav-active">▤ 出貨工作台</div>
-  </aside>
   <main>
     <header><div class="page-title"><h1>出貨工作台</h1><span class="date-range">近 3 天</span></div>
       <button id="refresh" class="primary">↻ 讀取最新訂單</button></header>
@@ -21,8 +17,9 @@
     <section class="workspace">
       <div class="list-panel">
         <div id="channels" class="tabs" aria-label="訂單來源"></div>
+        <div id="workTabs" class="work-tabs" aria-label="處理進度"></div>
         <div class="filters"><input id="search" type="search" placeholder="搜尋訂單、商品、SKU、收件人" aria-label="搜尋訂單">
-          <select id="stage" aria-label="出貨狀態"><option value="active">待出貨／待印單</option><option value="all">全部狀態</option><option value="pending">待出貨</option><option value="label">可印貨運單</option><option value="review">需核對</option><option value="shipped">已出貨</option></select></div>
+        </div>
         <div class="list-caption"><span id="resultCount"></span><span id="syncTime"></span></div>
         <div id="orders" class="order-list"></div>
       </div>
@@ -31,7 +28,7 @@
   </main>
   <dialog id="reviewDialog">
     <form method="dialog"><button class="close" aria-label="關閉">×</button></form>
-    <div class="eyebrow">REVIEW SHIPMENT</div><h2 id="reviewTitle">核對貨運單</h2>
+    <h2 id="reviewTitle">核對貨運單</h2>
     <div id="reviewBody"></div>
     <div class="dialog-actions"><button id="cancelReview">返回核對</button><button id="submitShipment" class="primary">確認送出</button></div>
   </dialog>
@@ -41,6 +38,7 @@
     <p>保持平台原始版面；使用文件檢視器的列印按鈕或開啟文件後按 Ctrl+P。</p>
     <div class="document-actions"><a id="openDocument" target="_blank" rel="noopener">開啟正式文件／列印</a><a id="downloadDocument" download>下載原始貨運單</a></div>
     <div class="document-actions"><a id="combinedDocument" target="_blank" rel="noopener" hidden>開啟 MOMO 貨運單＋官方明細</a></div>
+    <button id="confirmPrinted" class="primary">已印好，標記已印單</button>
     <p class="muted">MOMO 若要求 PDF 密碼，請輸入供應商公司統編。</p>
     <iframe id="documentFrame" title="平台正式貨運單"></iframe>
   </dialog>

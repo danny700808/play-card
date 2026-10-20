@@ -426,6 +426,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     stocktake:['庫存盤點工作台',''],
     rentals:['租賃營運','正式合約送出即列入租賃收入，押金不列入營業收入。'],
     sync:['平台訂單',''],
+    shipping:['出貨工作台',''],
     connection:['資料備份','']
   };
   const COURSE_WORKSPACE_VIEWS = {
@@ -969,7 +970,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
 
   function ensureDataForCurrentView(){
     const view=(location.hash||'#course-calendar').replace('#','').split('?')[0]||'course-calendar';
-    if(isCourseWorkspaceView(view))return false;
+    if(isCourseWorkspaceView(view)||view==='shipping')return false;
     if(state.payrollOnlyBoot){
       if(!state.operationsPreparation){state.operationsPreparation=(async function(){await ensureOperatingExpenseEngineLoaded();await repairYsv104PreorderHistoryOnce();watchNativeEducationDaily();state.payrollOnlyBoot=false;if(!ensureDataForCurrentView())render();})().catch(function(error){state.operationsPreparation=null;showAlert(errorMessage(error),'error');});}
       return true;
@@ -1772,6 +1773,9 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
       if(courseViewActive)courseGroup.classList.add('open');
     }
     if(courseToggle)courseToggle.setAttribute('aria-expanded',courseGroup&&courseGroup.classList.contains('open')?'true':'false');
+    const orderGroup=byId('opsOrderGroup'),orderToggle=byId('opsOrderMenuToggle'),orderViewActive=['sync','shipping'].includes(state.view);
+    if(orderGroup){orderGroup.classList.toggle('active',orderViewActive);if(orderViewActive)orderGroup.classList.add('open');}
+    if(orderToggle)orderToggle.setAttribute('aria-expanded',orderGroup&&orderGroup.classList.contains('open')?'true':'false');
     const content=byId('opsContent'); if(!content) return;
     content.classList.toggle('ops-course-content',courseViewActive);
     if(courseViewActive){
@@ -1784,6 +1788,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
       return;
     }
     if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.detach==='function')global.YouziOperationsCourseInline.detach();
+    if(state.view==='shipping'&&global.YouziShipping){global.YouziShipping.mount(content);return;}
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
     const renderers={overview:renderOverviewV7,products:renderProducts,media:renderProductMediaWorkspace,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,expenses:renderOperatingExpensesPage,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
     const oldEditor=byId('opsProductEditor'),oldMaster=byId('productForm'),oldListing=byId('productListingCaseForm');
@@ -8072,6 +8077,11 @@ function rerenderKeepingFocus(id,value){
     byId('opsConfirmClose').addEventListener('click',function(){closeConfirm(false);}); byId('opsConfirmCancel').addEventListener('click',function(){closeConfirm(false);}); byId('opsConfirmOk').addEventListener('click',function(){closeConfirm(true);});
     const menuBtn=byId('opsMenuBtn'); if(menuBtn)menuBtn.addEventListener('click',openMobileMenu);
     const courseMenuToggle=byId('opsCourseMenuToggle');
+    const orderMenuToggle=byId('opsOrderMenuToggle');
+    if(orderMenuToggle)orderMenuToggle.addEventListener('click',function(){
+      const group=byId('opsOrderGroup');if(!group)return;
+      group.classList.toggle('open');orderMenuToggle.setAttribute('aria-expanded',group.classList.contains('open')?'true':'false');
+    });
     if(courseMenuToggle)courseMenuToggle.addEventListener('click',function(){
       const group=byId('opsCourseGroup');
       if(!group)return;

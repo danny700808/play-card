@@ -32,8 +32,15 @@
           </div>
         </div>
         <a href="#sales" data-view="sales"><span>＄</span><div><b>現場銷售</b></div></a>
-        <a href="#sync" data-view="sync"><span>↻</span><div><b>平台訂單</b></div></a>
-        <a href="http://127.0.0.1:18765/" target="_blank" rel="noopener" title="店內電腦使用；請先開啟桌面的「柚子樂器－出貨工作台」"><span>▤</span><div><b>出貨工作台</b></div></a>
+        <div class="ops-nav-group" id="opsOrderGroup">
+          <button class="ops-nav-group-toggle" id="opsOrderMenuToggle" type="button" aria-expanded="false" aria-controls="opsOrderSubmenu">
+            <span>↻</span><div><b>平台訂單</b></div><i aria-hidden="true">⌄</i>
+          </button>
+          <div class="ops-nav-submenu" id="opsOrderSubmenu">
+            <a href="#sync" data-view="sync"><span>單</span><div><b>訂單總覽</b></div></a>
+            <a href="#shipping" data-view="shipping"><span>▤</span><div><b>出貨工作台</b></div></a>
+          </div>
+        </div>
         <a href="#products" data-view="products"><span>▦</span><div><b>商品資訊</b></div></a>
         <a href="#purchases" data-view="purchases"><span>⇧</span><div><b>庫存作業</b></div></a>
         <a href="#receivables" data-view="receivables"><span>帳</span><div><b>應收帳款</b></div></a>
@@ -93,7 +100,8 @@
 <link rel="stylesheet" href="operations-catalog-layout-a.css?v=20260921-mobile-product-compact-v1">
 <script src="product-blog-editorial.js?v=20260913-v1"></script>
 <script src="functions/inventoryAverageCost.js?v=20260919-manual-average-v1"></script>
-<script src="operations-phase1.js?v=20261013-rental-count-v1"></script>
+<script src="operations-shipping.js?v=20261020-handling-v1"></script>
+<script src="operations-phase1.js?v=20261020-shipping-v1"></script>
   <script src="unified-line-binding-link-v1.js?v=20260805-unified-line-v1"></script>
   <script src="operations-sync-anomaly-recheck-v1.js?v=20260805-sync-anomaly-recheck-v1"></script>
   <script src="operations-mobile-home-v1.js?v=20260921-mobile-overview-month-v1"></script>

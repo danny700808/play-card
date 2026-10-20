@@ -1,6 +1,7 @@
 """Verify local HTTP access boundaries without any real platform calls."""
 import http.client
 import json
+import re
 import tempfile
 import threading
 import unittest
@@ -8,6 +9,7 @@ from pathlib import Path
 from http.server import ThreadingHTTPServer
 from shipping_core import Workbench
 from shipping_workbench import make_handler
+from unittest.mock import patch
 
 
 class HttpBoundaryTests(unittest.TestCase):
@@ -46,6 +48,26 @@ class HttpBoundaryTests(unittest.TestCase):
         headers={"Cookie":h["Set-Cookie"].split(";")[0],"Origin":"https://example.com",
                  "Content-Type":"application/json"}
         self.assertEqual(self.request("/api/process","POST",headers,"{}")[0],403)
+
+    def test_embedded_session_works_without_third_party_cookie(self):
+        _,headers,html=self.request()
+        token=re.search(rb'name="youzi-session" content="([^"]+)"',html).group(1).decode()
+        self.assertEqual(self.request("/api/orders",headers={"X-Youzi-Session":token})[0],200)
+        self.assertIn("frame-ancestors 'self' https://danny700808.github.io",headers["Content-Security-Policy"])
+        foreign={"X-Youzi-Session":token,"Origin":"https://danny700808.github.io","Content-Type":"application/json"}
+        self.assertEqual(self.request("/api/handling","POST",foreign,"{}")[0],403)
+
+    def test_document_ticket_is_limited_to_specific_document(self):
+        _,_,html=self.request()
+        token=re.search(rb'name="youzi-session" content="([^"]+)"',html).group(1).decode()
+        headers={"X-Youzi-Session":token,"Origin":f"http://127.0.0.1:{self.port}","Content-Type":"application/json"}
+        with patch.object(self.workbench,"document",return_value=(b"%PDF-test","application/pdf")):
+            status,_,body=self.request("/api/document-link","POST",headers,json.dumps({"key":"test-order"}))
+            self.assertEqual(status,200)
+            url=json.loads(body)["label"]
+            self.assertEqual(self.request(url)[0],200)
+            self.assertEqual(self.request(url.replace("test-order","other-order"))[0],401)
+            self.assertEqual(self.request(url.replace("kind=label","kind=combined"))[0],401)
 
     def test_dns_rebinding_host_rejected(self):
         self.assertEqual(self.request(headers={"Host":"evil.example"})[0],403)

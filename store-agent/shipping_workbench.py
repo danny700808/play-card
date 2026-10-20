@@ -5,9 +5,12 @@ import argparse
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import hashlib
+import hmac
 from pathlib import Path
 import secrets
-from urllib.parse import parse_qs, urlparse
+import time
+from urllib.parse import parse_qs, urlparse, urlencode
 
 from shipping_core import Workbench, ShippingError
 
@@ -17,6 +20,16 @@ STATIC = Path(__file__).parent / "shipping-ui"
 def make_handler(workbench, port):
     session = secrets.token_urlsafe(32)
     origin = f"http://127.0.0.1:{port}"
+    portal = "https://danny700808.github.io"
+
+    def document_ticket(key, kind, expires):
+        return hmac.new(session.encode(), json.dumps([key, kind, expires]).encode(),
+                        hashlib.sha256).hexdigest()
+
+    def document_link(key, kind):
+        expires = int(time.time()) + 3600
+        return "/api/document?" + urlencode({"key": key, "kind": kind, "expires": expires,
+                                              "ticket": document_ticket(key, kind, expires)})
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
@@ -42,10 +55,24 @@ def make_handler(workbench, port):
             return self.headers.get("Host") == f"127.0.0.1:{port}"
 
         def authenticated(self):
+            if secrets.compare_digest(self.headers.get("X-Youzi-Session", ""), session):
+                return True
             try:
                 cookies = SimpleCookie(self.headers.get("Cookie", ""))
                 return secrets.compare_digest(cookies.get("youzi_shipping").value, session)
             except (AttributeError, KeyError):
+                return False
+
+        def document_authenticated(self, parsed):
+            if parsed.path != "/api/document":
+                return False
+            args = parse_qs(parsed.query)
+            try:
+                key, kind = args["key"][0], args.get("kind", ["label"])[0]
+                expires = int(args["expires"][0])
+                return expires >= int(time.time()) and secrets.compare_digest(
+                    args["ticket"][0], document_ticket(key, kind, expires))
+            except (KeyError, ValueError, IndexError):
                 return False
 
         def do_GET(self):
@@ -53,13 +80,13 @@ def make_handler(workbench, port):
                 return self.send({"error": "Invalid host"}, status=403)
             parsed = urlparse(self.path)
             if parsed.path == "/":
-                return self.send((STATIC / "index.html").read_bytes(), "text/html",
+                return self.send((STATIC / "index.html").read_text(encoding="utf-8").replace("__SESSION__", session), "text/html",
                     extra={"Set-Cookie": f"youzi_shipping={session}; HttpOnly; SameSite=Strict; Path=/",
-                           "Content-Security-Policy": "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; frame-src 'self'; frame-ancestors 'none'"})
-            if parsed.path in ("/app.js", "/style.css"):
+                           "Content-Security-Policy": f"default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; frame-src 'self'; frame-ancestors 'self' {portal}"})
+            if parsed.path in ("/app.js", "/model.js", "/style.css"):
                 return self.send((STATIC / parsed.path[1:]).read_bytes(),
                                  "text/javascript" if parsed.path.endswith(".js") else "text/css")
-            if not self.authenticated():
+            if not self.authenticated() and not self.document_authenticated(parsed):
                 return self.send({"error": "請從店內出貨工作台首頁開啟。"}, status=401)
             if parsed.path == "/api/orders":
                 return self.send(workbench.snapshot())
@@ -72,8 +99,8 @@ def make_handler(workbench, port):
                         "Content-Security-Policy": (
                             "sandbox allow-scripts allow-modals; default-src 'none'; "
                             "script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-                            "img-src https: data:; frame-ancestors 'self'"
-                            if mime == "text/html" else "frame-ancestors 'self'"),
+                            f"img-src https: data:; frame-ancestors 'self' {portal}"
+                            if mime == "text/html" else f"frame-ancestors 'self' {portal}"),
                         "Content-Disposition": "inline"})
                 except ShippingError as e:
                     return self.send({"error": str(e)}, status=409)
@@ -99,9 +126,16 @@ def make_handler(workbench, port):
                 if self.path == "/api/process":
                     return self.send(workbench.process(body["key"], body.get("options") or {},
                                                        body.get("fingerprint", "")))
+                if self.path == "/api/handling":
+                    if body.get("action") not in ("printed", "shipped", "processed", "reopen"):
+                        raise ValueError()
+                    return self.send(workbench.mark_handled(body["key"], body["action"], "店內確認"))
+                if self.path == "/api/document-link":
+                    workbench.document(body["key"])
+                    return self.send({kind: document_link(body["key"], kind) for kind in ("label", "combined")})
                 if self.path == "/api/print-event":
                     workbench.document(body["key"])
-                    workbench.event(body["key"], "print-dialog-requested")
+                    workbench.mark_handled(body["key"], "print_requested")
                     return self.send({"ok": True})
                 return self.send({"error": "Not found"}, status=404)
             except ShippingError as e:
