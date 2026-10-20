@@ -7,6 +7,7 @@ let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '
 const sessionToken=document.querySelector('meta[name="youzi-session"]').content;
 const embedded=window.self!==window.top;
 document.documentElement.classList.toggle('embedded',embedded);
+if(embedded)window.parent.postMessage({type:'youzi-shipping-ready'},'https://danny700808.github.io');
 const channels = ['全部','蝦皮','酷澎','MOMO','官網','LINE','來源待確認'];
 const carriers = {TWL_HCT:'新竹物流',TWL_KERRY:'嘉里大榮',TWL_FM:'全家',TWL_711:'7-11'};
 function localDay(value) {

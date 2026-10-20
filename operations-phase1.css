@@ -21,6 +21,8 @@
 #opsShippingFrame{display:block;width:100%;height:calc(100vh - 105px);min-height:650px;border:0;background:var(--ops-bg);border-radius:12px}
 .ops-shipping-help{margin-top:8px;color:var(--ops-muted);font-size:12px}
 .ops-shipping-help summary{cursor:pointer}
+.ops-shipping-status{position:absolute;z-index:2;margin:20px;padding:20px;background:#fff;border:1px solid var(--ops-line);border-radius:12px;display:flex;align-items:center;gap:12px}
+.ops-shipping-status[hidden]{display:none}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body.ops-body{margin:0;background:var(--ops-bg);color:var(--ops-text);font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.55}
