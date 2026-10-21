@@ -6242,8 +6242,11 @@ function attendancePeriodPayroll(studentId, period, lessonUnits = 1, options = {
   ]);
   const planAmount = firstFiniteNumber(planSnapshot, ['amount', 'expectedAmount', 'tuitionAmount']);
   const totalAmount = expectedAmount != null && expectedAmount > 0 ? expectedAmount : planAmount;
+  // Explicit none + 0 is a configured no-per-lesson-pay plan, including free lessons.
+  // Missing amounts/counts and zero-fee plans with unresolved teacher pay still fail below.
+  const allowZeroTuition = options.allowZeroTuition === true || explicitNoPerLessonTeacherPayPlan(planSnapshot);
   const discount = Math.max(0, firstFiniteNumber(period, ['discount', 'discountAmount']) || 0);
-  if (!Number.isFinite(lessonCount) || lessonCount <= 0 || !Number.isFinite(totalAmount) || totalAmount < 0 || (totalAmount === 0 && options.allowZeroTuition !== true)) {
+  if (!Number.isFinite(lessonCount) || lessonCount <= 0 || !Number.isFinite(totalAmount) || totalAmount < 0 || (totalAmount === 0 && !allowZeroTuition)) {
     throw new HttpsError(
       'failed-precondition',
       '這位學生的學費總額或課堂數未設定，已停止簽到以避免產生 NT$0 老師薪資。'
@@ -6283,7 +6286,7 @@ function attendancePeriodPayroll(studentId, period, lessonUnits = 1, options = {
   const grossLessonPrice = lessonMoney(roundPayrollMoney(totalAmount / lessonCount) * lessonUnits);
   const netLessonPrice = lessonMoney(roundPayrollMoney(netTuition / lessonCount) * lessonUnits);
   const teacherPayLessonPrice = lessonMoney(roundPayrollMoney(teacherPayTuition / lessonCount) * lessonUnits);
-  if (teacherPayLessonPrice <= 0 && options.allowZeroTuition !== true) {
+  if (teacherPayLessonPrice <= 0 && !allowZeroTuition) {
     throw new HttpsError('failed-precondition', '本堂學費計算為 NT$0，已停止簽到；請先修正學費期別。');
   }
 
