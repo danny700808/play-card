@@ -81,6 +81,8 @@ def make_handler(workbench, port):
             if not self.host_ok():
                 return self.send({"error": "Invalid host"}, status=403)
             parsed = urlparse(self.path)
+            if parsed.path == "/api/delivery-bridge/poll":
+                return self.delivery_request()
             if parsed.path == "/":
                 return self.send((STATIC / "index.html").read_text(encoding="utf-8").replace("__SESSION__", session), "text/html",
                     extra={"Set-Cookie": f"youzi_shipping={session}; HttpOnly; SameSite=Strict; Path=/",
@@ -109,6 +111,8 @@ def make_handler(workbench, port):
             self.send({"error": "Not found"}, status=404)
 
         def do_POST(self):
+            if self.path == "/api/delivery-bridge/result":
+                return self.delivery_request(post=True)
             # No CORS and exact Origin/Host prevent other sites from issuing shipping actions.
             if not self.host_ok() or self.headers.get("Origin") != origin or not self.authenticated():
                 return self.send({"error": "請從店內出貨工作台操作。"}, status=403)
@@ -157,6 +161,35 @@ def make_handler(workbench, port):
                 self.send({"error": "請求資料不完整。"}, status=400)
             except Exception:
                 self.send({"error": "平台連線失敗，請稍後重新讀取訂單。"}, status=502)
+
+        def do_OPTIONS(self):
+            bridge = workbench.delivery_bridge
+            if (self.host_ok() and self.path in ("/api/delivery-bridge/poll", "/api/delivery-bridge/result")
+                    and bridge.origin() and self.headers.get("Origin") == bridge.origin()):
+                return self.send({}, extra={"Access-Control-Allow-Origin": bridge.origin(),
+                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, X-Youzi-Delivery",
+                    "Access-Control-Allow-Private-Network": "true"})
+            return self.send({"error": "Forbidden"}, status=403)
+
+        def delivery_request(self, post=False):
+            bridge = workbench.delivery_bridge
+            if not self.host_ok() or not bridge.authorized(
+                    self.headers.get("X-Youzi-Delivery"), self.headers.get("Origin")):
+                return self.send({"error": "Forbidden"}, status=403)
+            headers = {"Access-Control-Allow-Origin": bridge.origin()}
+            if not post:
+                return self.send(bridge.poll(), extra=headers)
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 100000 or self.headers.get("Content-Type", "").split(';')[0] != 'application/json':
+                    raise ValueError()
+                body = json.loads(self.rfile.read(length))
+                if not isinstance(body, dict):
+                    raise ValueError()
+                return self.send(bridge.submit(body), extra=headers)
+            except (ValueError, TypeError, KeyError):
+                return self.send({"error": "Invalid or expired delivery result"}, status=400, extra=headers)
 
     return Handler
 

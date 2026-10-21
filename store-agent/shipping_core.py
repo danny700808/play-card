@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 import requests
 from shipping_images import match_product_image
+from shipping_delivery import DeliveryBridge
 from shipping_payments import easystore_payment, coupang_payment, momo_payment
 
 TZ = timezone(timedelta(hours=8))
@@ -236,6 +237,7 @@ class Workbench:
         self.updated = ""
         self.days = 3
         self.images = {}
+        self.delivery_bridge = DeliveryBridge(self.data_dir)
         self.db_path = self.data_dir / "shipping.sqlite3"
         with self.connect() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS jobs (
@@ -356,6 +358,7 @@ class Workbench:
     def read_es(self, start, end):
         cfg = self.config["easystore"]
         rows = []
+        raw_orders = {}
         # Read-only seller-screen observations fill API gaps. These never
         # override a formal API carrier or change shipment/document bindings.
         try:
@@ -372,11 +375,40 @@ class Workbench:
             orders = source.extract_orders(payload)
             for order in orders:
                 row = normalize_es(order)
-                self.apply_delivery_observation(row, order, observations.get(row["key"]))
+                raw_orders[row["key"]] = order
                 rows.append(row)
             if len(orders) < 100 or (payload.get("page_count") and page >= int(payload["page_count"])):
-                return rows
+                return self.enrich_es_delivery(rows, raw_orders, observations)
         raise ShippingError("EasyStore 超過 50 頁，未完整讀取。")
+
+    def enrich_es_delivery(self, rows, raw_orders, observations):
+        missing = [r for r in rows if r["channel"] == "蝦皮" and not r.get("deliveryMethod")
+                   and r["stage"] not in ("cancelled", "shipped")]
+        # Every refresh requests live screen evidence, even if an older
+        # observation exists. Identifiers only cross the loopback bridge.
+        results, error = self.delivery_bridge.read([
+            {k: r[k] for k in ("key", "externalId", "orderNo")} for r in missing])
+        for row in missing:
+            found = results.get(row["key"])
+            if found:
+                observations[row["key"]] = {**found, "orderNo": row["orderNo"],
+                    "sourceUpdatedAt": raw_orders[row["key"]].get("updated_at"),
+                    "binding": self.handling_binding(row), "source": "EasyStore 蝦皮通路後台",
+                    "verifiedAt": now()}
+            elif error != 'not-configured':
+                row["deliveryMethodNote"] = {
+                    'offline': '主機配送讀取助手未連線，請開啟主機 Chrome。',
+                    'login': '請在主機 Chrome 重新登入 EasyStore。',
+                    'timeout': '配送資料讀取逾時，請再按讀取最新訂單。',
+                }.get(error, 'EasyStore 蝦皮通路尚未讀到此單物流，請核對後台。')
+        if results:
+            path = self.data_dir / 'delivery-observations.json'
+            temp = path.with_suffix('.tmp')
+            temp.write_text(json.dumps(observations, ensure_ascii=False), encoding='utf-8')
+            temp.replace(path)
+        for row in rows:
+            self.apply_delivery_observation(row, raw_orders[row["key"]], observations.get(row["key"]))
+        return rows
 
     def apply_delivery_observation(self, row, raw, observation):
         if row.get("deliveryMethod") or row.get("channel") != "蝦皮" or not isinstance(observation, dict):

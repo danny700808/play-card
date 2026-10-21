@@ -43,6 +43,17 @@ class HttpBoundaryTests(unittest.TestCase):
         cookie=h["Set-Cookie"].split(";")[0]
         self.assertEqual(self.request("/api/orders",headers={"Cookie":cookie})[0],200)
 
+    def test_delivery_token_is_narrow_and_origin_checked(self):
+        bridge=self.workbench.delivery_bridge
+        bridge.path.write_text(json.dumps({'token':'t'*43,'extensionId':'a'*32}))
+        self.addCleanup(bridge.path.unlink)
+        headers={'X-Youzi-Delivery':'t'*43,'Origin':bridge.origin(),'Content-Type':'application/json'}
+        self.assertEqual(self.request('/api/delivery-bridge/poll',headers=headers)[0],200)
+        self.assertEqual(self.request('/api/orders',headers=headers)[0],401)
+        self.assertEqual(self.request('/api/process','POST',headers,'{}')[0],403)
+        self.assertEqual(self.request('/api/delivery-bridge/result','POST',headers,'{}')[0],400)
+        self.assertEqual(self.request('/api/delivery-bridge/poll',headers={**headers,'Origin':'https://evil.test'})[0],403)
+
     def test_other_website_cannot_submit_even_with_cookie(self):
         _,h,_=self.request()
         headers={"Cookie":h["Set-Cookie"].split(";")[0],"Origin":"https://example.com",

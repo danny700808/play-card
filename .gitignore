@@ -3,3 +3,4 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 storage-debug.log
+delivery-reader/pairing.js

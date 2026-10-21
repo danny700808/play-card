@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "柚子樂器 配送資料讀取助手",
+  "version": "1.0.0",
+  "description": "主機更新訂單時，只讀取 EasyStore 蝦皮通路的訂單編號與物流名稱。",
+  "permissions": ["alarms", "scripting"],
+  "host_permissions": ["https://admin.easystore.co/*", "http://127.0.0.1:18765/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "配送資料讀取助手：請保持 EasyStore 登入"}
+}

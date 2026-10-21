@@ -28,7 +28,7 @@ function notice(message, error=false) { $('notice').textContent=message;$('notic
 function badge(row) { return `<span class="badge ${row.channel==='MOMO'?'momo':row.channel==='蝦皮'?'shopee':row.channel==='酷澎'?'coupang':''}">${escapeHtml(row.channel)}</span>`; }
 function paidAmountHtml(row) {
   const paid=ShippingModel.paidAmount(row);
-  const deliverySource=row.deliveryMethodSource?`${row.deliveryMethodSource} · 核對 ${row.deliveryMethodVerifiedAt}`:'平台物流資料';
+  const deliverySource=(row.deliveryMethodSource?`${row.deliveryMethodSource} · 核對 ${row.deliveryMethodVerifiedAt}`:'平台物流資料')+(row.deliveryMethodNote?` · ${row.deliveryMethodNote}`:'');
   return `<span class="paid-amount ${paid.confirmed?'confirmed':'unconfirmed'}" title="${escapeHtml(paid.note)}">${escapeHtml(paid.text)}</span><span class="delivery-method" title="${escapeHtml(deliverySource)}">${escapeHtml(ShippingModel.deliveryMethod(row))}</span>`;
 }
 function paymentDetailsHtml(row) {
