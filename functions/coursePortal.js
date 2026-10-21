@@ -5299,6 +5299,79 @@ function teacherFollowupSnapshot(bundle, teacherId) {
   };
 }
 
+function teacherLessonPlanLabels(events, studentData) {
+  const remaining = new Map();
+  for (const [id, data] of Object.entries(studentData)) remaining.set(id, data.periods.map(p => ({...p})));
+  const labels = new Map();
+  for (const event of events.slice().sort((a,b) => (a.date+' '+a.startTime).localeCompare(b.date+' '+b.startTime))) {
+    if (event.specialLesson || event.portalAction === 'teacher_gift') continue;
+    const selected=[];let complete=true;
+    for (const studentId of event.studentIds || []) {
+      const data=studentData[studentId];if(!data){complete=false;continue;}
+      const recorded=data.attendance.find(row => row.active!==false && eventDate(row)===event.date &&
+        eventTeacherId(row)===event.teacherId && eventSubjectId(row)===event.subjectId &&
+        (!clean(row.courseId) || clean(row.courseId)===clean(event.fixedCourseId||event.sourceId)));
+      if(recorded){
+        for(const allocation of attendanceAllocations(recorded))selected.push(data.periods.find(p=>sourceId(p)===allocation.periodId));
+        continue;
+      }
+      if(!['scheduled',''].includes(clean(event.status)))continue;
+      const periods=remaining.get(studentId);
+      let minutes=eventLessonUnits(event)*60;
+      for(let guard=0;minutes>0&&guard<periods.length;guard++){
+        const period=attendancePeriodCandidate(periods,event,studentId,event.date);if(!period)break;
+        const unit=tuitionLessonUnitMinutes(period);
+        const units=Math.min(minutes/unit,tuitionLessonCount(period)-tuitionUsedCount(period));
+        if(units<=0)break;
+        selected.push(period);period.usedCount=tuitionUsedCount(period)+units;
+        // tuitionUsedCount includes voided lessons; retain them only once in projections.
+        period.voidedLessonCount=0;
+        minutes-=units*unit;
+      }
+      if(minutes>0)complete=false;
+    }
+    const free=selected.filter(period=>{
+      if(!period)return false;
+      const amount=firstFiniteNumber(period,['expectedAmount','tuitionAmount','amount']);
+      const planAmount=firstFiniteNumber(period.planSnapshot||{},['amount','expectedAmount','tuitionAmount']);
+      return (amount!=null&&amount>0?amount:planAmount)===0;
+    }).length;
+    labels.set(event,free?(complete&&free===selected.length?'免費課程':'含免費課程'):'');
+  }
+  return events.map(event=>({...event,lessonPlanLabel:labels.get(event)||''}));
+}
+
+async function withTeacherLessonPlanLabels(events, teacherId) {
+  const studentIds=[...new Set(events.flatMap(event=>event.studentIds||[]))];
+  const data=Object.fromEntries(await Promise.all(studentIds.map(async studentId=>{
+    const value=await memoPortalRead('teacher-plan-label:'+studentId,async()=>{
+      const [periods,mirrorAttendance,snapshot]=await Promise.all([
+        mirrorRowsByField('tuitionPeriods','studentId',studentId),
+        mirrorRowsByField('attendance','studentId',studentId),
+        db.collection(ATTENDANCE_RECORDS).where('studentId','==',studentId).get()
+      ]);
+      const attendance=snapshot.docs.map(doc=>({...doc.data(),id:doc.id}));
+      return {periods:applyPortalAttendanceToPeriods(periods,mirrorAttendance,attendance),attendance:attendance.concat(mirrorAttendance)};
+    });
+    return [studentId,value];
+  })));
+  // A later week must include earlier pending lessons in its display projection,
+  // otherwise the first free lesson would appear free again in every week.
+  const dates=events.map(event=>event.date).filter(Boolean).sort();
+  let projectedEvents=events;
+  const freeStarts=Object.values(data).flatMap(value=>value.periods).filter(period=>
+    tuitionPeriodAvailable(period) && firstFiniteNumber(period.planSnapshot||{},['amount'])===0 &&
+    !(firstFiniteNumber(period,['expectedAmount','tuitionAmount','amount'])>0)
+  ).map(period=>dateKey(period.startDate)).filter(Boolean).sort();
+  if(dates.length&&freeStarts.length&&freeStarts[0]<dates[0]){
+    const context=await scheduleBundle(freeStarts[0],dates[dates.length-1],teacherId,{teacherHome:true});
+    const visible=new Set(events.map(event=>event.id+'|'+event.date));
+    projectedEvents=context.events.filter(event=>event.teacherId===teacherId&&!visible.has(event.id+'|'+event.date)).concat(events);
+  }
+  const labelled=teacherLessonPlanLabels(projectedEvents,data);
+  return labelled.slice(labelled.length-events.length);
+}
+
 async function teacherPortalData(data) {
   const session = await requireSession(data, ['teacher']);
   if (data.reminderSettings === true) {
@@ -5329,7 +5402,7 @@ async function teacherPortalData(data) {
       const request=requests.find(row=>dateKey(row.date)===event.date && (clean(row.eventId)===clean(event.sourceId||event.id)||clean(row.courseId)===clean(event.fixedCourseId||event.sourceId||event.id)));
       return {...event,attendanceCancellationStatus:clean(request&&request.status),attendanceCancellationId:clean(request&&request.id)};
     });
-    return {ok:true,refreshDates:dates,events,...(modeBundle?{modeState:teacherFollowupSnapshot(modeBundle,session.teacherId)}:{})};
+    return {ok:true,refreshDates:dates,events:await withTeacherLessonPlanLabels(events,session.teacherId),...(modeBundle?{modeState:teacherFollowupSnapshot(modeBundle,session.teacherId)}:{})};
   }
   const start = dateKey(data.weekStart);
   if (!start) throw new HttpsError('invalid-argument', '週起始日期格式錯誤。');
@@ -5403,7 +5476,7 @@ async function teacherPortalData(data) {
         .concat(firstArray(room, ['allowedSubjectIds', 'subjectIds']))
     })),
     subjects: bundle.subjects.map((subject) => ({ id: sourceId(subject), name: clean(subject.name) })),
-    events: ownEvents,
+    events: await withTeacherLessonPlanLabels(ownEvents,session.teacherId),
     ...followupState
   };
   if (includePayroll) {

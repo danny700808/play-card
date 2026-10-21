@@ -9,7 +9,7 @@
 
   const SESSION_KEY = 'youzi.coursePortal.teacher.session.v1';
   const TEACHER_MORE_AUTH_CACHE_KEY = 'youzi.teacherMore.authorization.v4';
-  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.scopedCache3.';
+  const CACHE_PREFIX = 'youzi.teacherCourseApp.v8.scopedCache4.';
   const CACHE_TTL = 15 * 60 * 1000;
   const TEACHER_UTILITY_STATUS_TTL = 2 * 60 * 1000;
   const PAYROLL_MIN_MONTH = '2026-07';
@@ -646,6 +646,7 @@
     const details = [
       event.subjectName,
       event.roomName,
+      event.lessonPlanLabel,
       stateLabel,
       status === 'pending_conflict' ? event.pendingReason : ''
     ].filter(Boolean).join('・');
@@ -1335,6 +1336,7 @@
       (row.studentNames || []).join('、') || '這堂課',
       `${dayLabel(row.date)} ${row.startTime}～${row.endTime}`,
       `
+      ${row.lessonPlanLabel ? `<div class="teacher-quick-status">${escapeHtml(row.lessonPlanLabel)}</div>` : ''}
       ${quickActionRow(attendanceAction, attended ? cancelAttendanceAction : leaveAction)}
       ${cancellationPending ? '<div class="notice">取消簽到已送出，正在等待主管確認；目前紀錄仍維持已簽到。</div>' : ''}
       ${quickActionRow(singleMoveAction, permanentMoveAction)}
