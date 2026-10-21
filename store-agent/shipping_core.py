@@ -358,16 +358,47 @@ class Workbench:
     def read_es(self, start, end):
         cfg = self.config["easystore"]
         rows = []
+        # Read-only seller-screen observations fill API gaps. These never
+        # override a formal API carrier or change shipment/document bindings.
+        try:
+            observations = json.loads((self.data_dir / "delivery-observations.json").read_text(encoding="utf-8"))
+            if not isinstance(observations, dict):
+                observations = {}
+        except (OSError, ValueError):
+            observations = {}
         for page in range(1, 51):
             payload = source.es_request("GET", cfg["store_url"].rstrip("/") + "/api/3.0/orders.json",
                 cfg["access_token"], timeout=30,
                 params={"page": page, "limit": 100, "sort": "id.asc", "created_at_min": start.isoformat(),
                         "created_at_max": end.isoformat()})
             orders = source.extract_orders(payload)
-            rows.extend(normalize_es(o) for o in orders)
+            for order in orders:
+                row = normalize_es(order)
+                self.apply_delivery_observation(row, order, observations.get(row["key"]))
+                rows.append(row)
             if len(orders) < 100 or (payload.get("page_count") and page >= int(payload["page_count"])):
                 return rows
         raise ShippingError("EasyStore 超過 50 頁，未完整讀取。")
+
+    def apply_delivery_observation(self, row, raw, observation):
+        if row.get("deliveryMethod") or row.get("channel") != "蝦皮" or not isinstance(observation, dict):
+            return
+        try:
+            verified = datetime.fromisoformat(observation["verifiedAt"])
+            age = datetime.now(TZ) - verified
+            name = observation["deliveryMethod"]
+            if (not timedelta(0) <= age <= timedelta(hours=24)
+                    or observation.get("orderNo") != row["orderNo"]
+                    or observation.get("sourceUpdatedAt") != raw.get("updated_at")
+                    or observation.get("binding") != self.handling_binding(row)
+                    or observation.get("source") != "EasyStore 蝦皮通路後台"
+                    or not isinstance(name, str) or not 1 <= len(name.strip()) <= 100):
+                return
+            row["deliveryMethod"] = name.strip()
+            row["deliveryMethodSource"] = observation["source"]
+            row["deliveryMethodVerifiedAt"] = observation["verifiedAt"]
+        except (KeyError, TypeError, ValueError):
+            return
 
     def read_momo(self, start, end):
         cfg = self.config["momo"]

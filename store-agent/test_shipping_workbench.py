@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from shipping_core import Workbench, ShippingError, normalize_es, normalize_cp, normalize_momo, channel, TZ
@@ -55,6 +55,25 @@ class ShippingTests(unittest.TestCase):
 
     def test_large_package_id_stays_string(self):
         self.assertEqual(self.row["packageId"], "9007199254740993")
+
+    def test_screen_delivery_requires_fresh_matching_evidence_and_never_overrides_api(self):
+        raw = {"id": 123, "name": "ORDER", "source_name": "shopee-taiwan", "updated_at": "v1"}
+        row = normalize_es(raw)
+        evidence = {"orderNo": "ORDER", "sourceUpdatedAt": "v1",
+                    "binding": self.w.handling_binding(row), "deliveryMethod": "蝦皮店到店",
+                    "source": "EasyStore 蝦皮通路後台", "verifiedAt": datetime.now(TZ).isoformat()}
+        self.w.apply_delivery_observation(row, raw, evidence)
+        self.assertEqual(row["deliveryMethod"], "蝦皮店到店")
+        for change in ({"orderNo": "OTHER"}, {"binding": "changed"}, {"sourceUpdatedAt": "v0"},
+                       {"verifiedAt": (datetime.now(TZ)-timedelta(hours=25)).isoformat()},
+                       {"verifiedAt": (datetime.now(TZ)+timedelta(hours=1)).isoformat()},
+                       {"verifiedAt": "invalid"}, {"source": "guess"}):
+            actual = normalize_es(raw)
+            self.w.apply_delivery_observation(actual, raw, {**evidence, **change})
+            self.assertEqual(actual["deliveryMethod"], "")
+        row["deliveryMethod"] = "店到家宅配"
+        self.w.apply_delivery_observation(row, raw, evidence)
+        self.assertEqual(row["deliveryMethod"], "店到家宅配")
 
     def test_cancellation_hold_blocks_shipment(self):
         raw = cp()

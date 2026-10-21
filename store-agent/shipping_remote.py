@@ -23,7 +23,7 @@ def packing_snapshot(workbench):
     # Never forward raw API responses, credentials, costs or settlement totals.
     fields = (
         "key platform channel orderNo externalId date stage status recipient phone address "
-        "pickupStore note carrier carrierCode deliveryMethod tracking items canCreate canDownload blockReason "
+        "pickupStore note carrier carrierCode deliveryMethod deliveryMethodSource deliveryMethodVerifiedAt tracking items canCreate canDownload blockReason "
         "documentReady documentKinds stale jobError handled handlingAction handlingSource "
         "handledAt printCount handlingChanged paidAmount paidCurrency paidAmountStatus paidAmountNote "
         "payableAmount paidAmountSource paidAmountScope paidScopeKey invoiceBuyerAmount"

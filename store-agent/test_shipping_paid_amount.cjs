@@ -38,7 +38,7 @@ test('list, selected detail and document summary show the same actual paid amoun
   vm.runInContext(code+'\ndata.orders=[row];selected=row.key;render();documentSummary(row);',ctx);
   for(const id of ['orders','detail','documentSummary']){
     assert.match(element(id).innerHTML,/實付金額：NT\$1,234\.5/);
-    assert.match(element(id).innerHTML,/實付金額：NT\$1,234\.5<\/span><span class="delivery-method">蝦皮店到店 - 隔日到貨/);
+    assert.match(element(id).innerHTML,/實付金額：NT\$1,234\.5<\/span><span class="delivery-method"[^>]*>蝦皮店到店 - 隔日到貨/);
   }
   // The extension reads h2 text as the order number; amount must be a sibling.
   assert.match(element('detail').innerHTML,/<h2>TEST-ORDER<\/h2>/);
