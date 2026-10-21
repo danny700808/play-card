@@ -36,7 +36,7 @@
     mount(content){
       // Preserve an open document/review when the portal refreshes its own data.
       if(frame&&content.contains(frame))return;
-      content.innerHTML='<div class="ops-shipping-workspace"><div id="opsShippingStatus" class="ops-shipping-status"></div><iframe title="出貨工作台" id="opsShippingFrame" allow="local-network-access; loopback-network"></iframe><details class="ops-shipping-help"><summary>工作台沒有顯示？</summary><p>手機會直接載入遠端工作台，首次使用請輸入包貨密碼。電腦使用本機工作台時，請先開啟桌面的出貨程式。</p><button type="button" class="ops-button ghost" id="opsShippingReconnect">重新連線</button><button type="button" class="ops-button ghost" id="opsShippingRemote">使用遠端工作台</button></details></div>';
+      content.innerHTML='<div class="ops-shipping-workspace"><div id="opsShippingStatus" class="ops-shipping-status"></div><iframe title="出貨工作台" id="opsShippingFrame" allow="local-network-access; loopback-network"></iframe><details class="ops-shipping-help"><summary>工作台沒有顯示？</summary><p>手機會沿用系統登入，直接載入遠端工作台。電腦使用本機工作台時，請先開啟桌面的出貨程式。</p><button type="button" class="ops-button ghost" id="opsShippingReconnect">重新連線</button><button type="button" class="ops-button ghost" id="opsShippingRemote">使用遠端工作台</button></details></div>';
       frame=document.getElementById('opsShippingFrame');
       document.getElementById('opsShippingReconnect').onclick=connect;
       document.getElementById('opsShippingRemote').onclick=connectRemote;

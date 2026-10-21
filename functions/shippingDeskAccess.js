@@ -34,7 +34,7 @@ function validateCommand(action,body={}) {
   return result;
 }
 
-function createAccess({db,now=Date.now}){
+function createAccess({db,now=Date.now,requireManager}){
   const cfgRef=db.collection('shippingDeskPrivate').doc('config');
   const stateRef=db.collection('shippingDeskPrivate').doc('state');
   const sessionRef=token=>db.collection('shippingDeskSessions').doc(hash(token));
@@ -59,6 +59,17 @@ function createAccess({db,now=Date.now}){
     return {token,expiresAtMs};
   }
   async function session(token){
+    // Portal requests use their existing Firebase identity, checked on every request.
+    if(typeof token==='string'&&token.split('.').length===3&&requireManager){
+      const claims=await requireManager({headers:{authorization:'Bearer '+token}});
+      const cfg=await settings();
+      if(!claims.uid||!Number.isFinite(claims.exp)||claims.exp*1000<=now())fail('系統登入已失效，請重新登入系統。',401);
+      const id=hash('system:'+claims.uid+':'+claims.auth_time);
+      const record={scope:'packing',source:'system',uid:claims.uid,version:cfg.version,
+        expiresAtMs:claims.exp*1000,expiresAt:new Date(claims.exp*1000)};
+      await db.collection('shippingDeskSessions').doc(id).set(record);
+      return {id,...record};
+    }
     if(!/^[A-Za-z0-9_-]{43}$/.test(token||''))fail('請輸入包貨密碼。',401);
     return sessionByHash(hash(token));
   }

@@ -6,7 +6,9 @@ const {createAccess,hash}=require('./shippingDeskAccess');
 const storage=require('./storageRouting');
 const ORIGIN='https://danny700808.github.io';
 const ENDPOINT='https://asia-east1-youzi-c1b74.cloudfunctions.net/shippingDeskApi';
-const db=admin.firestore(),access=createAccess({db});
+const db=admin.firestore();
+const requireManager=require('./managerAccess').createManagerAccess(admin.auth(),db);
+const access=createAccess({db,requireManager});
 const bearer=req=>String(req.headers.authorization||'').replace(/^Bearer /,'');
 async function handler(req,res){
   res.set('Cache-Control','private, no-store');
@@ -77,7 +79,8 @@ async function handler(req,res){
     }else return res.status(403).json({error:'此入口只能處理包貨與列印。'});
     return res.status(200).json(result);
   }catch(e){
-    return res.status(e.status||400).json({error:e.status?e.message:'連線或操作未完成，請重新讀取訂單確認。'});
+    const status=e.status||e.httpStatus||400;
+    return res.status(status).json({error:e.status||e.httpStatus?e.message:'連線或操作未完成，請重新讀取訂單確認。'});
   }
 }
 function register(exports){exports.shippingDeskApi=onRequest({region:'asia-east1',timeoutSeconds:120,memory:'256MiB',maxInstances:3},handler);}

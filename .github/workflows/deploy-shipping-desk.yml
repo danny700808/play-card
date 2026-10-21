@@ -1,0 +1,41 @@
+name: Deploy shipping desk system login
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/shippingDesk.js'
+      - 'functions/shippingDeskAccess.js'
+      - '.github/workflows/deploy-shipping-desk.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-shipping-desk
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: node --test tests/shipping-desk-access.test.cjs tests/shipping-system-login.test.cjs tests/shipping-system-ui.test.cjs
+      - run: npm ci
+        working-directory: functions
+      - run: npm install --global firebase-tools@15.24.0
+      - name: Deploy shipping API
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/shipping-firebase.json
+        run: |
+          set -euo pipefail
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          chmod 600 "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase deploy --project youzi-c1b74 --non-interactive --only functions:shippingDeskApi
+      - name: Clean up credentials
+        if: always()
+        run: rm -f "${{ runner.temp }}/shipping-firebase.json"
