@@ -964,6 +964,26 @@ async function runBackendScheduleRegressionTests() {
     );
     assert.strictEqual(genericZeroPay.outputs.teacherAmount, 0, '零元拆帳不可限定為專職老師才能使用');
 
+    // Every course deployment runs this suite: free tuition must not regress into
+    // the missing-financial-input guard for a deliberately configured none + 0 plan.
+    const freePeriod = Object.assign({}, fullTimePeriod, {
+      id: 'period-free-attendance', expectedAmount: 0, lessonCount: 2, usedCount: 0,
+      voidedLessonCount: 1,
+      planSnapshot: { name: '免費課程', amount: 0, lessonCount: 2, splitType: 'none', splitValue: 0 }
+    });
+    const freePayroll = duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', freePeriod);
+    assert.strictEqual(freePayroll.outputs.lessonPrice, 0, '明確免費方案必須允許簽到');
+    assert.strictEqual(freePayroll.outputs.teacherAmount, 0, '免費方案必須保留原設定薪資');
+    assert.strictEqual(freePeriod.voidedLessonCount, 1, '簽到試算不可改動已作廢堂數');
+    for (const invalid of [
+      { lessonCount: 0 },
+      { expectedAmount: undefined, planSnapshot: { splitType: 'none', splitValue: 0 } },
+      { planSnapshot: { amount: 0, splitType: 'none' } },
+      { planSnapshot: { amount: 0, splitType: 'ratio', splitValue: 0.7 } }
+    ]) {
+      assert.throws(() => duplicatePermanentBackend.__testAttendancePeriodPayroll('student-1', Object.assign({}, freePeriod, invalid)), '未設定完整的方案仍必須阻擋');
+    }
+
     const unresolvedLegacyPeriod = Object.assign({}, ratioPeriod, {
       id: 'period-legacy-unresolved',
       sourcePaymentId: 'payment-legacy-unresolved',
