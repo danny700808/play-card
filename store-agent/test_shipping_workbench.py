@@ -38,6 +38,21 @@ class ShippingTests(unittest.TestCase):
         self.assertEqual(channel(""), "來源待確認")
         self.assertEqual(channel("some-new-platform"), "來源待確認")
 
+    def test_es_real_delivery_name_preserves_saved_document_bindings(self):
+        raw = {"id": 1, "shipping_fees": [{"name": "Shipping Fee"}],
+               "fulfillments": [{"tracking_company": "蝦皮店到店", "tracking_number": "T1"},
+                                {"tracking_company": "已取消物流", "cancelled_at": "2026-10-20"}]}
+        row = normalize_es(raw)
+        self.assertEqual(row["deliveryMethod"], "蝦皮店到店")
+        self.assertEqual(row["carrier"], "Shipping Fee")
+        before = self.w.document_binding(row)
+        row["deliveryMethod"] = "蝦皮店到店 - 隔日到貨"
+        self.assertEqual(self.w.document_binding(row), before)
+        raw["fulfillments"] = []
+        self.assertEqual(normalize_es(raw)["deliveryMethod"], "")
+        raw["shipping_fees"] = [{"name": "賣家自行配送"}]
+        self.assertEqual(normalize_es(raw)["deliveryMethod"], "賣家自行配送")
+
     def test_large_package_id_stays_string(self):
         self.assertEqual(self.row["packageId"], "9007199254740993")
 

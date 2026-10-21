@@ -28,7 +28,7 @@ function notice(message, error=false) { $('notice').textContent=message;$('notic
 function badge(row) { return `<span class="badge ${row.channel==='MOMO'?'momo':row.channel==='蝦皮'?'shopee':row.channel==='酷澎'?'coupang':''}">${escapeHtml(row.channel)}</span>`; }
 function paidAmountHtml(row) {
   const paid=ShippingModel.paidAmount(row);
-  return `<span class="paid-amount ${paid.confirmed?'confirmed':'unconfirmed'}" title="${escapeHtml(paid.note)}">${escapeHtml(paid.text)}</span>`;
+  return `<span class="paid-amount ${paid.confirmed?'confirmed':'unconfirmed'}" title="${escapeHtml(paid.note)}">${escapeHtml(paid.text)}</span><span class="delivery-method">${escapeHtml(ShippingModel.deliveryMethod(row))}</span>`;
 }
 function paymentDetailsHtml(row) {
   const paid=ShippingModel.paidAmount(row);
@@ -95,18 +95,22 @@ function renderDetail() {
   const shopeeViaEasyStore = !!easyStoreOrder && row.channel==='蝦皮';
   const shopeePrintUrl=ShippingModel.shopeePrintUrl(row);
   const externalAllowed = easyStoreOrder && !row.stale && !['cancelled','review'].includes(row.stage);
-  // Keep the installed helper's order locator, without an extra manual-print link.
-  const shopeeHelperTarget = externalAllowed && shopeePrintUrl
-    ? `<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target href="${shopeePrintUrl}"></a>` : '';
+  // Preserve the installed helper's locator for ready AND new orders. Never
+  // send the user back to the store order page as a visible fallback.
+  const shopeeHelperTarget = externalAllowed && shopeeViaEasyStore
+    ? `<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target href="${shopeePrintUrl||easyStoreOrder}"></a>` : '';
   const externalAction = externalAllowed
-    ? shopeeHelperTarget || `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">${shopeeViaEasyStore?'到 EasyStore 出貨／印蝦皮單':'開啟 EasyStore 對應訂單'} ↗</a>` : '';
+    ? shopeeViaEasyStore ? shopeeHelperTarget + (shopeePrintUrl
+      ? `<a id="shopeeDirectPrint" class="action-link primary" href="${shopeePrintUrl}" target="_blank" rel="noopener noreferrer">開啟蝦皮貨運單</a>`
+      : '<button id="shopeeDirectPrint" class="primary" disabled>蝦皮貨運單尚未產生</button>')
+    : `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">開啟 EasyStore 對應訂單 ↗</a>` : '';
   const shippingAction = row.platform==='EasyStore' ? (row.documentReady?'<button id="showProvidedDocument" class="primary">列印貨運單</button>':externalAction)
     : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?(row.handled?'重印貨運單':'取得貨運單'):'申請出貨與貨運單'}</button>`;
   const shippingNote = row.platform==='EasyStore' && !row.documentReady
     ? row.stale?'訂單資料尚未更新，請先讀取最新訂單。'
       : ['cancelled','review'].includes(row.stage)?'此訂單已取消或需要核對，暫不開啟出貨。'
-      : shopeePrintUrl?'使用「取得蝦皮貨運單 → XP-420B」，核對單據後列印。'
-      : externalAction?(shopeeViaEasyStore?'這筆尚未取得可直接列印的貨運單。請先在對應訂單完成「透過蝦皮台灣出貨」，再列印蝦皮交貨便服務單。':'這筆正式貨運單尚未接通，請在對應訂單使用原物流出貨與列印功能。')
+      : shopeePrintUrl?'直接開啟此筆蝦皮貨運單；副機取單助手啟用時，使用助手列印。'
+      : externalAction?(shopeeViaEasyStore?'新訂單尚未產生貨運單；請在已啟用蝦皮取單助手的副機取單。':'這筆正式貨運單尚未接通，請在對應訂單使用原物流出貨與列印功能。')
       :'缺少對應訂單連結，請重新讀取訂單。'
     : '';
   const items=packingItems(row),quantity=items.reduce((n,i)=>n+i.quantity,0);
@@ -120,7 +124,7 @@ function renderDetail() {
     <div class="handling-actions">${row.handlingAction!=='printed'&&row.handlingAction!=='shipped'?'<button id="markPrinted">我已印單</button>':''}${row.handlingAction!=='shipped'?'<button id="markShipped">我已出貨</button>':''}${row.handled&&!['shipped','cancelled'].includes(row.stage)?'<button id="reopen" class="quiet">移回未處理</button>':''}</div>
     ${row.jobError||row.stale||row.blockReason&&row.platform!=='EasyStore'?`<div class="block-note">${escapeHtml(row.stale?'資料尚未更新，請重新讀取。':row.jobError||row.blockReason)}</div>`:''}
     ${paymentDetailsHtml(row)}
-    <details class="recipient-details"><summary>收件與物流資訊</summary><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　${escapeHtml(row.phone)}</div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'')}</div><div class="subline">${escapeHtml(row.carrier||'物流未提供')}${row.tracking?` · ${escapeHtml(row.tracking)}`:''}</div><div class="subline">平台回傳：${escapeHtml(stageNames[row.stage]||row.status)}${row.printCount?` · 開啟列印 ${row.printCount} 次`:''}</div></details>`;
+    <details class="recipient-details"><summary>收件與物流資訊</summary><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　${escapeHtml(row.phone)}</div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'')}</div><div class="subline">${escapeHtml(ShippingModel.deliveryMethod(row))}${row.tracking?` · ${escapeHtml(row.tracking)}`:''}</div><div class="subline">平台回傳：${escapeHtml(stageNames[row.stage]||row.status)}${row.printCount?` · 開啟列印 ${row.printCount} 次`:''}</div></details>`;
   $('prepare')?.addEventListener('click',()=>prepare(row));
   $('showProvidedDocument')?.addEventListener('click',()=>showDocument(row.key).catch(e=>notice(e.message,true)));
   $('provideDocument')?.addEventListener('click',()=>provideDocument(row));
@@ -278,6 +282,18 @@ async function printPacking(row) {
   window.print();
 }
 $('refresh').addEventListener('click',refresh);
+// The packing-PC extension injects its own direct-to-XP-420B button. Keep
+// exactly one visible entry when it is present; the ordinary AWB link is only
+// the fallback for browsers without the extension. Never invoke either here.
+if(typeof MutationObserver!=='undefined')new MutationObserver(()=>{
+  const fallback=$('shopeeDirectPrint');
+  if(!fallback)return;
+  const helper=[...$('detail').querySelectorAll('button,a')].some(el=>
+    el!==fallback&&!el.hidden&&/取得蝦皮貨運單/.test(el.textContent)&&/XP-420B/.test(el.textContent));
+  fallback.hidden=helper;
+  const note=$('detail').querySelector('.shipping-note');
+  if(note)note.hidden=helper;
+}).observe($('detail'),{childList:true,subtree:true,characterData:true});
 $('channels').addEventListener('click',e=>{const b=e.target.closest('[data-channel]');if(b){activeChannel=b.dataset.channel;render();}});
 $('orders').addEventListener('click',e=>{const b=e.target.closest('[data-key]');if(b){selected=b.dataset.key;render();}});
 $('search').addEventListener('input',render);

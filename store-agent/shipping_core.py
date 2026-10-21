@@ -75,6 +75,14 @@ def normalize_es(o):
                       "image": safe_image(i.get("image_url")), "imageSource": "訂單規格圖片",
                       "properties": i.get("properties") or []})
     fs = [f for f in o.get("fulfillments") or [] if not f.get("cancelled_at")]
+    # Keep carrier unchanged: it participates in saved-label/handling bindings.
+    # Shipping Fee is a charge caption, not the delivery service name.
+    delivery_names = [text(f.get("tracking_company")) for f in fs]
+    if not any(delivery_names):
+        delivery_names = [text(f.get("name")) for f in o.get("shipping_fees") or []
+                          if not f.get("is_deleted")]
+    delivery_names = [n for n in delivery_names if n and n.lower() not in
+                      ("shipping fee", "shipping", "運費", "預設物流", "預設物流 (一般包裹)")]
     status = text(o.get("fulfillment_status"))
     stage = ("cancelled" if cancelled else
              "pending" if status == "unfulfilled" else
@@ -94,6 +102,7 @@ def normalize_es(o):
                 for k in ("zip", "province", "city", "address1", "address2")),
             "note": "\n".join(filter(None, [text(o.get("note")), text(o.get("remark"))])),
             "carrier": "、".join(text(f.get("name")) for f in o.get("shipping_fees") or []),
+            "deliveryMethod": "、".join(dict.fromkeys(delivery_names)),
             "tracking": "、".join(text(f.get("tracking_number")) for f in fs
                                if f.get("tracking_number")),
             "items": items, "canCreate": False, "canDownload": False,

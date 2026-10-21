@@ -20,18 +20,20 @@ function render(overrides={},remote=true){
     selected=data.orders[0].key;renderDetail();`,context);
   return element('detail').innerHTML;
 }
-test('ready Shopee order keeps a hidden helper target without the manual print-page action',()=>{
+test('ready Shopee order goes straight to AWB and retains the installed helper locator',()=>{
   const html=render({tracking:'tracking'});
   assert.match(html,/href="https:\/\/admin.easystore.co\/channels\/shopee\/taiwan\/orders\/awb\?store_order_ids=123"/);
   assert.match(html,/<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target href=/);
-  assert.doesNotMatch(html,/直接開啟蝦皮列印頁|class="action-link primary"/);
-  assert.match(html,/取得蝦皮貨運單 → XP-420B/);
+  assert.match(html,/id="shopeeDirectPrint"[^>]+href="https:\/\/admin.easystore.co\/channels\/shopee\/taiwan\/orders\/awb\?store_order_ids=123"/);
+  assert.doesNotMatch(html,/到 EasyStore 出貨|href="https:\/\/admin.easystore.co\/orders\//);
   assert.doesNotMatch(html,/貨運單尚待主機提供/);
 });
-test('pending remote order keeps a usable fulfillment entry and explains remaining step',()=>{
+test('new Shopee order keeps only a hidden helper locator and never redirects the user to store orders',()=>{
   const html=render();
   assert.match(html,/href="https:\/\/admin.easystore.co\/orders\/123"/);
-  assert.match(html,/尚未取得可直接列印的貨運單/);
+  assert.match(html,/<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target/);
+  assert.match(html,/蝦皮貨運單尚未產生/);
+  assert.doesNotMatch(html,/到 EasyStore 出貨|class="action-link primary"/);
   assert.doesNotMatch(html,/id="prepare"|id="showProvidedDocument"/);
 });
 test('existing official PDF keeps the local printing route for both desks',()=>{

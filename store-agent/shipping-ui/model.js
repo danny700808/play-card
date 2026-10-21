@@ -25,6 +25,12 @@
       if(/^\d{3}-/.test(raw))return raw;
       return raw.replace(/^(\d{3})(\d{4})(.*)$/,'$1-$2$3');
     },
+    deliveryMethod(row){
+      const names={TWL_HCT:'新竹物流',TWL_KERRY:'嘉里大榮',TWL_FM:'全家',TWL_711:'7-11'};
+      const value=String(row.deliveryMethod||names[row.carrierCode]||row.carrier||'').trim();
+      if(!value||['shipping fee','shipping','運費','預設物流','預設物流 (一般包裹)'].includes(value.toLowerCase()))return '配送方式待平台提供';
+      return value.replace(/^第三方物流-/,'');
+    },
     searchCode(value){return String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');},
     shopeePrintUrl(row){
       if(row.platform!=='EasyStore'||row.channel!=='蝦皮'||!/^\d+$/.test(String(row.externalId||'')))return '';

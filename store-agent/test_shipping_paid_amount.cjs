@@ -30,7 +30,7 @@ test('list, selected detail and document summary show the same actual paid amoun
     return elements.get(id);
   };
   const row={key:'EasyStore:1',platform:'EasyStore',externalId:'1',channel:'蝦皮',
-    orderNo:'TEST-ORDER',stage:'shipped',date:'2026-10-20',items:[],...paid};
+    orderNo:'TEST-ORDER',stage:'shipped',date:'2026-10-20',deliveryMethod:'蝦皮店到店 - 隔日到貨',items:[],...paid};
   const window={};window.self=window;window.top=window;
   const ctx=vm.createContext({window,ShippingModel:model,row,
     document:{getElementById:element,querySelector:()=>null,documentElement:{classList:{toggle(){}}}}});
@@ -38,6 +38,7 @@ test('list, selected detail and document summary show the same actual paid amoun
   vm.runInContext(code+'\ndata.orders=[row];selected=row.key;render();documentSummary(row);',ctx);
   for(const id of ['orders','detail','documentSummary']){
     assert.match(element(id).innerHTML,/實付金額：NT\$1,234\.5/);
+    assert.match(element(id).innerHTML,/實付金額：NT\$1,234\.5<\/span><span class="delivery-method">蝦皮店到店 - 隔日到貨/);
   }
   // The extension reads h2 text as the order number; amount must be a sibling.
   assert.match(element('detail').innerHTML,/<h2>TEST-ORDER<\/h2>/);
@@ -47,4 +48,11 @@ test('list, selected detail and document summary show the same actual paid amoun
     assert.match(element(id).innerHTML,/實付金額：待更新/);
     assert.doesNotMatch(element(id).innerHTML,/NT\$1,234/);
   }
+});
+
+test('delivery labels distinguish real carrier names from generic fee captions',()=>{
+  assert.equal(model.deliveryMethod({carrier:'Shipping Fee'}),'配送方式待平台提供');
+  assert.equal(model.deliveryMethod({carrier:'第三方物流-新竹貨運'}),'新竹貨運');
+  assert.equal(model.deliveryMethod({carrierCode:'TWL_HCT'}),'新竹物流');
+  assert.equal(model.deliveryMethod({deliveryMethod:'賣家自行配送',carrier:'Shipping Fee'}),'賣家自行配送');
 });
