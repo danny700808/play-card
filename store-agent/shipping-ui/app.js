@@ -106,7 +106,7 @@ function renderDetail() {
       : '<button id="shopeeDirectPrint" class="primary" disabled>蝦皮貨運單尚未產生</button>')
     : `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">開啟 EasyStore 對應訂單 ↗</a>` : '';
   const shippingAction = row.platform==='EasyStore' ? (row.documentReady?'<button id="showProvidedDocument" class="primary">列印貨運單</button>':externalAction)
-    : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?(row.handled?'重印貨運單':'取得貨運單'):'申請出貨與貨運單'}</button>`;
+    : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?(row.handled?'重印貨運單':'取得貨運單'):row.platform==='Coupang'&&row.status==='ACCEPT'?'確認備貨並取單':'申請出貨與貨運單'}</button>`;
   const shippingNote = row.platform==='EasyStore' && !row.documentReady
     ? row.stale?'訂單資料尚未更新，請先讀取最新訂單。'
       : ['cancelled','review'].includes(row.stage)?'此訂單已取消或需要核對，暫不開啟出貨。'
@@ -196,6 +196,12 @@ async function prepare(row) {
       if(busy)return;
       obtainDocument(row,{carrier:$('carrier').value,outboundShippingPlaceCode:$('outbound').value,returnCenterCode:$('returnCenter').value});
     };
+    // The host resolves a unique official shipping location. Keep the form
+    // available only when a choice is required or that lookup fails.
+    if(['TWL_HCT','TWL_KERRY'].includes(row.carrierCode)){
+      $('shipmentOptions').hidden=true;
+      if(await obtainDocument(row,{carrier:row.carrierCode})===false)$('shipmentOptions').hidden=false;
+    }
   }else await obtainDocument(row,{carrier:row.carrierCode||''});
 }
 function documentSummary(row){
@@ -235,7 +241,7 @@ async function obtainDocument(row,options){
     $('documentStatus').textContent='貨運單已取得，正在傳回預覽與列印檔…';
     await loadDocument(row.key);
     notice('已取得正式貨運單，可直接列印。');
-  }catch(e){documentError(e);}
+  }catch(e){documentError(e);return false;}
   finally{documentBusy(false);}
 }
 async function loadDocument(key){

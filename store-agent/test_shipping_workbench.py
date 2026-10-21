@@ -85,7 +85,7 @@ class ShippingTests(unittest.TestCase):
 
     def test_unknown_status_not_ready(self):
         self.assertFalse(normalize_cp(cp("NEW_STATUS"))["canCreate"])
-        self.assertFalse(normalize_cp(cp("ACCEPT"))["canCreate"])
+        self.assertTrue(normalize_cp(cp("ACCEPT"))["canCreate"])
 
     def test_es_partial_remaining(self):
         row = normalize_es({"id": 1, "source_name": "shopee-taiwan",

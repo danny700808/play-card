@@ -142,13 +142,11 @@ def normalize_cp(o, *, claims_checked=False, has_payment_claim=False, duplicate_
     if has_claim:
         stage = "review"
     r = o.get("receiver") or {}
-    can_create = (status == "INSTRUCT" and not tracking and not has_claim and
+    can_create = (status in ("ACCEPT", "INSTRUCT") and not tracking and not has_claim and
                   bool(items) and all(i["quantity"] > 0 for i in items))
     can_download = bool(tracking and carrier and status != "ACCEPT" and not has_claim)
     reason = ""
-    if status == "ACCEPT":
-        reason = "尚未確認備貨；第一版僅接受酷澎「商品準備中」訂單。"
-    elif has_claim:
+    if has_claim:
         reason = "含取消／退款申請數量，請先核對，暫停產生貨運單。"
     elif not carrier and tracking:
         reason = "物流公司代碼尚未辨識，無法安全下載正式貨運單。"
@@ -350,7 +348,7 @@ class Workbench:
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             old = db.execute("SELECT state FROM jobs WHERE order_key=?", (key,)).fetchone()
-            if old and old["state"] in ("sending", "uncertain", "arranged", "downloading", "ready", "download-failed"):
+            if old and old["state"] in ("sending", "uncertain", "arranged", "downloading", "ready", "download-failed", "ack-sending", "ack-uncertain"):
                 raise ShippingError("已有出貨申請紀錄，請先核對平台結果；不會重複申請。")
             db.execute("""INSERT OR REPLACE INTO jobs(order_key,state,carrier,error,updated)
                           VALUES (?,'sending',?,'',?)""", (key, carrier, now()))
@@ -530,7 +528,7 @@ class Workbench:
                 rows.append(row)
             return {"orders": rows, "errors": self.errors, "updated": self.updated, "days": self.days,
                     "connectors": [
-                        {"name": "酷澎", "status": "既有貨運單已驗證", "detail": "新出貨待實單驗收；現階段僅支援商品準備中，需核對物流與出貨地址。"},
+                        {"name": "酷澎", "status": "已接備貨與取單", "detail": "付款完成可確認備貨後取單；新出貨待實單驗收。"},
                         {"name": "MOMO", "status": "既有貨運單已驗證", "detail": "新出貨待實單驗收；部分 PDF 需輸入供應商統編。"},
                         {"name": "蝦皮（經 EasyStore）", "status": "仍需至 EasyStore 確認", "detail": "已確認 EasyStore 可出貨及印蝦皮服務單；本工作台提供對應訂單入口，尚未一鍵接通。"},
                         {"name": "官網直購／LINE", "status": "已接訂單與包貨明細", "detail": "正式出貨及貨運單尚未接通；依原始來源分類，不與蝦皮匯入訂單混淆。"}]}
@@ -548,7 +546,7 @@ class Workbench:
         return normalize_cp(raw)
 
     def preview(self, key, options=None):
-        options = options or {}
+        options = dict(options or {})
         with self.lock:
             if key.startswith("MOMO:"):
                 row = self.fresh_momo(key)
@@ -568,11 +566,61 @@ class Workbench:
             if row["action"] == "create":
                 if carrier in ("TWL_FM", "TWL_711") and not text(options.get("returnCenterCode")):
                     raise ShippingError("超商出貨需要酷澎退貨地址代碼。")
-                if carrier in ("TWL_HCT", "TWL_KERRY") and not text(options.get("outboundShippingPlaceCode")).isdigit():
-                    raise ShippingError("宅配出貨需要酷澎出貨地址代碼。")
+                if carrier in ("TWL_HCT", "TWL_KERRY"):
+                    if not text(options.get("outboundShippingPlaceCode")):
+                        options["outboundShippingPlaceCode"] = self.cp_single_outbound()
+                    if not text(options.get("outboundShippingPlaceCode")).isdigit():
+                        raise ShippingError("宅配出貨需要酷澎出貨地址代碼。")
+            row["shipmentOptions"] = options
             # A second fresh read at submission must match reviewed contents and destination.
             row["fingerprint"] = self.fingerprint(row, options)
             return row
+
+    def cp_single_outbound(self):
+        """Only auto-select when the complete official list has one usable place."""
+        payload = source.coupang_request(self.config["coupang"], "GET",
+            "/v2/providers/marketplace_openapi/apis/api/v2/vendor/shipping-place/outbound",
+            query_params={"pageNum": 1, "pageSize": 50})
+        places = [p for p in payload.get("content", []) if p.get("usable") is True
+                  and text(p.get("outboundShippingPlaceCode")).isdigit()]
+        if payload.get("pagination", {}).get("totalPages") != 1 or len(places) != 1:
+            raise ShippingError("酷澎有多個或沒有可用出貨地址，請選定出貨地址代碼。")
+        return text(places[0]["outboundShippingPlaceCode"])
+
+    def acknowledge_cp(self, row, options):
+        # Reserve durably BEFORE the platform mutation. A crash/timeout never
+        # silently repeats the acknowledgement or continues into shipment.
+        key = row["key"]
+        self.reserve_creation(key, row["carrierCode"])
+        self.save_job(key, state="ack-sending")
+        self.event(key, "acknowledgement-requested")
+        cfg = self.config["coupang"]
+        try:
+            path = f"/v2/providers/openapi/apis/api/v4/vendors/{cfg['vendor_id']}/ordersheets/acknowledgement"
+            headers = {"Authorization": source.coupang_auth("PATCH", path, "", cfg["access_key"], cfg["secret_key"]),
+                       "Content-Type": "application/json;charset=UTF-8", "X-MARKET": "TW",
+                       "X-Requested-By": cfg["vendor_id"]}
+            res = requests.patch("https://api-gateway.coupang.com" + path, headers=headers,
+                json={"vendorId": cfg["vendor_id"], "shipmentBoxIds": [int(row["packageId"])]},
+                timeout=(10, 90), allow_redirects=False)
+            receipt = res.json().get("data", {}).get("responseList", []) if res.status_code == 200 else []
+            if not any(text(r.get("shipmentBoxId")) == row["packageId"] and r.get("succeed") is True for r in receipt):
+                raise ShippingError("酷澎未確認備貨成功。")
+            # The buyer can edit their address until acknowledgement. The
+            # official contract requires a new single-order read afterwards.
+            fresh = self.fresh_cp(key)
+        except Exception:
+            self.save_job(key, state="ack-uncertain", error="備貨結果尚未確認；重新讀取平台狀態後再處理。")
+            raise ShippingError("備貨結果尚未確認，已停止取單；請讀取最新訂單後再試，不會自動重送。")
+        self.save_job(key, state="acknowledged", error="")
+        self.event(key, "acknowledged")
+        if fresh["status"] != "INSTRUCT" or not fresh["canCreate"] or fresh["tracking"]:
+            raise ShippingError("備貨後訂單狀態已變更，請讀取最新訂單後再核對。")
+        fresh["carrierCode"] = fresh.get("carrierCode") or row["carrierCode"]
+        comparison = {**fresh, "status": row["status"]}
+        if self.fingerprint(comparison, options) != row["fingerprint"]:
+            raise ShippingError("備貨後收件資料或商品已變更，已停止申請貨運單；請讀取最新訂單後核對。")
+        return fresh
 
     @staticmethod
     def document_binding(row):
@@ -624,6 +672,13 @@ class Workbench:
                     raise ShippingError("前次申請結果未確認，已阻止重複申請；請先查平台結果。")
             if row["platform"] == "MOMO":
                 return self.process_momo(row, job)
+            options = row["shipmentOptions"]
+            if job.get("state") in ("ack-sending", "ack-uncertain"):
+                if row["status"] == "ACCEPT":
+                    raise ShippingError("前次備貨結果尚未確認，已阻止重送；請先核對酷澎平台。")
+                self.save_job(key, state="acknowledged", error="")
+            if row["status"] == "ACCEPT":
+                row = self.acknowledge_cp(row, options)
             carrier = row["carrierCode"]
             tracking = row["tracking"]
             if not tracking:

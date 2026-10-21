@@ -46,6 +46,14 @@ test('first retrieval still validates and processes the platform document',async
   const h=harness({documentReady:false});await h.run();
   assert.deepEqual(h.calls,['/api/preview','/api/process','/api/orders','/api/document-link']);
 });
+
+test('Coupang home delivery obtains a document without a separate address-code form',async()=>{
+  const h=harness({key:'Coupang:123',platform:'Coupang',channel:'酷澎',status:'ACCEPT',
+    stage:'pending',carrierCode:'TWL_HCT',canCreate:true,canDownload:false,documentReady:false});
+  await h.run();
+  assert.deepEqual(h.calls,['/api/preview','/api/process','/api/orders','/api/document-link']);
+  assert.equal(h.element('shipmentOptions').hidden,true);
+});
 test('a rejected saved document never silently creates or resubmits a shipment',async()=>{
   const h=harness({},true);await h.run();
   assert.deepEqual(h.calls,['/api/document-link']);
