@@ -98,6 +98,26 @@ test('editing tuition preserves existing lesson usage and independent receipts',
   await f.context.adminSaveTuitionPeriods(data);
   assert.equal(f.get('periods/p1').usedCount, 2); assert.equal(f.get('periods/p1').expectedAmount, 4000);
 });
+test('editing a legacy period with a partial or invalid overlay preserves its original number', async () => {
+  for (const periodNo of [undefined, NaN]) {
+    const f = fixture(), data = request(); data.edit = true;
+    f.put('mirror/m1', { sourceActive: true, source: { ...data.periods[0], periodNo: 4 } });
+    f.put('periods/p1', { id: 'p1', studentId: 'student1', periodNo, voidedLessonCount: 3 });
+    data.periods[0].discount = 2100; data.periods[0].discountType = 'amount';
+    await f.context.adminSaveTuitionPeriods(data);
+    assert.equal(f.get('periods/p1').periodNo, 4);
+    assert.equal(f.get('periods/p1').voidedLessonCount, 3);
+    assert.equal(f.get('periods/p1').discount, 2100);
+  }
+});
+
+test('editing an unnumbered period fails without persisting NaN', async () => {
+  const f = fixture(), data = request(); data.edit = true;
+  f.put('periods/p1', { id: 'p1', studentId: 'student1' });
+  await assert.rejects(f.context.adminSaveTuitionPeriods(data), e => e.code === 'failed-precondition');
+  assert.equal(f.get('periods/p1').periodNo, undefined);
+});
+
 test('concurrent refunds serialize against the latest confirmed receipts', async () => {
   const f = fixture(); await f.context.adminSaveTuitionPeriods(request());
   await f.context.adminRecordTuitionTransaction({ id: 'pay1', periodId: 'p1', type: 'payment', amount: 1800, date: '2026-09-07' });

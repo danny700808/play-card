@@ -1849,7 +1849,10 @@
   }
   function afterWorkspaceReady(action){
     if(!calendarPartial()&&!calendarBootstrapLoading)return false;
-    ensureWorkspaceDetails().then(function(ready){if(ready)action();});
+    ensureWorkspaceDetails().then(function(ready){
+      if(ready)action();
+      else if(currentView==='students')$('studentRows').innerHTML='<tr><td colspan="7">學生資料讀取失敗，請重新整理頁面後再試。</td></tr>';
+    });
     return true;
   }
   function calendarRangeReady(start,end,nodeId,render){

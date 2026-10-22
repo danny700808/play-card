@@ -11246,7 +11246,14 @@ async function adminSaveTuitionPeriods(data) {
         return { id: item.row.id, duplicate: true };
       }
       if (data.edit === true && (!prior || prior.active === false || prior.status === 'cancelled' || clean(prior.studentId) !== item.row.studentId)) throw new HttpsError('failed-precondition', '原期別不存在或學生已變更。');
-      if (data.edit === true) item.row.periodNo = Number(prior.periodNo);
+      if (data.edit === true) {
+        // Lesson adjustments may create an overlay without the mirror's period number.
+        const base = bases.get(item.row.id);
+        const periodNo = [prior.periodNo, prior.period, base && base.periodNo, base && base.period]
+          .map(Number).find(value => Number.isInteger(value) && value > 0);
+        if (!periodNo) throw new HttpsError('failed-precondition', '原期別的期數無效，請先修正原始期別。');
+        item.row.periodNo = periodNo;
+      }
       else if (peers.some(peer => clean(peer.studentId) === item.row.studentId && Number(peer.periodNo) === item.row.periodNo)) throw new HttpsError('aborted', '其他裝置已建立這一期，請重新載入後再操作。');
       peers.push(item.row);
       const record = Object.assign({}, item.row, data.edit === true ? {payrollFollowsPeriod:true} : {}, prior ? {} : { usedCount: 0, status: 'active', transactions: [], paidAmount: 0, creationOperationId: operationId });
