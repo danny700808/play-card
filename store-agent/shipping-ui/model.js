@@ -40,10 +40,13 @@
     async obtainDocument(api,row,options,onReview=()=>{}){
       const fresh=await api('/api/preview',{key:row.key,options});
       // A reprint must never silently turn into a new shipment.
-      if(row.canDownload&&fresh.action!=='download')throw Error('平台貨運單狀態已變更，請重新讀取訂單；這次未申請新出貨。');
+      if((row.canDownload||row.documentReady)&&fresh.action!=='download')throw Error('平台貨運單狀態已變更，請重新讀取訂單；這次未申請新出貨。');
       if(fresh.key!==row.key||!fresh.fingerprint)throw Error('未能核對這筆訂單，請重新讀取。');
       onReview(fresh);
       return api('/api/process',{key:row.key,options,fingerprint:fresh.fingerprint});
+    },
+    savedDocumentAvailable(row){
+      return !!(row.documentReady&&!row.stale&&!row.handlingChanged&&!['cancelled','review'].includes(row.stage));
     },
     status(row){
       if(row.handlingChanged)return '資料有變，需核對';

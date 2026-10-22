@@ -51,7 +51,9 @@
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'primary';
-    button.textContent = row.channel === 'MOMO' ? '用 XP-420B 印兩張貼紙' : '用 XP-420B 列印';
+    const momoStore = row.channel === 'MOMO' && /7-11|全家/.test(row.carrier || '');
+    const printLabel = row.channel === 'MOMO' && !momoStore ? '用 XP-420B 印兩張貼紙' : '用 XP-420B 列印';
+    button.textContent = printLabel;
     button.disabled = inFlight;
     currentButton = button;
     const status = document.createElement('p');
@@ -65,7 +67,8 @@
       if (result.service !== 'youzi-shipping-print') throw Error('本機連線服務不符。');
       status.textContent = 'XP-420B · 100 × 150 mm · 已連線';
       $('printerHint').textContent = row.channel === 'MOMO'
-        ? 'MOMO：自動將已支援的左右雙聯原單拆成兩張 100 × 150 mm 貼紙。'
+        ? momoStore ? 'MOMO 超商單：使用單張原單版型，由副機助手核對後列印。'
+          : 'MOMO：自動將已支援的左右雙聯原單拆成兩張 100 × 150 mm 貼紙。'
         : '使用 XP-420B 的 100 × 150 mm 標籤紙。';
     }).catch(error => { if (generation === own) status.textContent = error.message; });
     let reprint = false;
@@ -74,10 +77,12 @@
       if (reprint && !window.confirm('這份貨運單已送印。確定要再印一份嗎？')) return;
       inFlight = true;
       button.disabled = true;
+      let phase = '讀取原貨運單';
       try {
         status.textContent = '讀取既有貨運單並檢查條碼…';
         const pdfBase64 = await documentBase64(links.print || links.label);
         if (generation !== own || !$('documentDialog').open) return;
+        phase = '副機準備標籤';
         const job = await local('/prepare', {channel: row.channel, pdfBase64, reprint});
         if (generation !== own || !$('documentDialog').open) return;
         if (job.status === 'submitted') {
@@ -88,6 +93,7 @@
         }
         if (job.status !== 'prepared') throw Error('這份單據正在處理或送印結果不明，請先查看印表機。');
         status.textContent = `條碼檢查通過，正在送印 ${job.pages} 張…`;
+        phase = '副機送交印表機';
         const result = await local('/print', {jobId: job.jobId});
         if (result.status !== 'submitted') throw Error('送印結果不明，請先查看印表機。');
         // Submitted to Windows is not proof that labels physically printed.
@@ -98,7 +104,7 @@
         }
         await recordPrint();
       } catch (error) {
-        if (generation === own) status.textContent = error.message;
+        if (generation === own) status.textContent = `訂單 ${row.orderNo} · ${phase}：${error.message}`;
       } finally {
         inFlight = false;
         if (currentButton) currentButton.disabled = false;

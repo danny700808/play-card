@@ -47,6 +47,22 @@ test('first retrieval still validates and processes the platform document',async
   assert.deepEqual(h.calls,['/api/preview','/api/process','/api/orders','/api/document-link']);
 });
 
+test('a saved CVS label remains printable when an older snapshot says canCreate',async()=>{
+  const h=harness({stage:'pending',canCreate:true,canDownload:false,handlingAction:'acquired'});
+  await h.run();
+  assert.deepEqual(h.calls,['/api/document-link']);
+  assert.match(h.element('detail').innerHTML,/列印貨運單/);
+  assert.doesNotMatch(h.element('detail').innerHTML,/申請出貨與貨運單/);
+});
+
+test('an invalidated saved document cannot fall back to creating another shipment',async()=>{
+  const calls=[];
+  await assert.rejects(model.obtainDocument(async(path)=>{
+    calls.push(path);return {key:'MOMO:123:1',action:'create',fingerprint:'fresh'};
+  },{key:'MOMO:123:1',documentReady:true,canDownload:false},{}),/未申請新出貨/);
+  assert.deepEqual(calls,['/api/preview']);
+});
+
 test('Coupang home delivery obtains a document without a separate address-code form',async()=>{
   const h=harness({key:'Coupang:123',platform:'Coupang',channel:'酷澎',status:'ACCEPT',
     stage:'pending',carrierCode:'TWL_HCT',canCreate:true,canDownload:false,documentReady:false});

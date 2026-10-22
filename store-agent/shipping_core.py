@@ -185,8 +185,12 @@ def normalize_momo(o):
         cancelled = status in ("系統確認訂單已取消", "客戶取消", "已取消", "取消完成")
         shipped = status in ("出貨確認", "配送結束")
         printed = text(i.get("shipStatus")) == "供應商已列印宅配單"
-        stage = "cancelled" if cancelled else "shipped" if shipped else "label" if printed else "review"
-        if not cancelled and not shipped and not printed and status.startswith("出貨通知"):
+        # CVS generation is distinct from physical printing. OrderQuery can
+        # still say 出貨通知 after assigning a valid convenience-store label.
+        acquired = text(i.get("shipStatus")) == "已產生超取出貨單"
+        label_ready = printed or acquired
+        stage = "cancelled" if cancelled else "shipped" if shipped else "label" if label_ready else "review"
+        if not cancelled and not shipped and not label_ready and status.startswith("出貨通知"):
             stage = "pending"
         seqs = sorted(text(line["orderSeq"]) for line in group_items)
         courier = text(i.get("deliveryCompany"))
@@ -195,9 +199,11 @@ def normalize_momo(o):
         dely = {"7-11店到店":"22", "7-11倉到店":"21", "全家店到店":"29",
                 "全家倉到店":"27", "全家冷凍店到店":"24", "全家冷凍倉到店":"23"}.get(courier, "")
         changed = any(text(line.get("changedAddress")) for line in group_items)
+        if changed and not cancelled:
+            stage = "review"
         supported = bool(method and (method == "third" or dely))
-        can_create = supported and stage == "pending" and not changed
-        can_download = supported and (printed or shipped) and not cancelled and not changed
+        can_create = supported and stage == "pending" and not changed and not text(i.get("deliveryNo"))
+        can_download = supported and (label_ready or shipped) and not cancelled and not changed
         physical = [line for line in group_items if line.get("goodsType") != "運費"]
         if not physical:
             continue
@@ -210,6 +216,7 @@ def normalize_momo(o):
             "orderNo": text(o["orderNo"]), "externalId": text(o["orderNo"]),
             "packageId": ",".join(seqs), "date": "", "status": status, "stage": stage,
             "shippingMethod": method, "delyGb": dely, "orderSeqs": seqs, "platformPrinted": printed,
+            "platformAcquired": acquired,
             "payment": "", "recipient": text(i.get("receiverName")),
             "phone": "", "address": text(i.get("receiverAddress")),
             "note": text(i.get("customerDeliveryMessage")),
@@ -539,11 +546,12 @@ class Workbench:
                     handled = db.execute("SELECT * FROM handling WHERE order_key=?", (row["key"],)).fetchone()
                 valid_handled = handled and handled["binding"] == self.handling_binding(row)
                 action = handled["action"] if valid_handled else ""
-                platform_done = row["stage"] in ("shipped", "cancelled") or row.get("platformPrinted", False)
+                platform_done = row["stage"] in ("shipped", "cancelled") or row.get("platformPrinted", False) or row.get("platformAcquired", False)
                 row["handled"] = action != "reopen" if action else platform_done
                 row["handlingChanged"] = bool(handled and not valid_handled and not platform_done)
                 row["handlingAction"] = action or ("shipped" if row["stage"] == "shipped" else
-                    "cancelled" if row["stage"] == "cancelled" else "printed" if row.get("platformPrinted") else "")
+                    "cancelled" if row["stage"] == "cancelled" else "printed" if row.get("platformPrinted") else
+                    "acquired" if row.get("platformAcquired") else "")
                 row["handlingSource"] = handled["source"] if valid_handled else "平台"
                 row["handledAt"] = handled["updated"] if valid_handled else ""
                 row["printCount"] = handled["print_count"] if valid_handled else 0
@@ -840,8 +848,13 @@ class Workbench:
     def process_momo(self, row, job):
         key = row["key"]
         # Cache is used only AFTER a fresh platform read verifies the package still exists.
-        # MOMO may omit deliveryNo after printing; always ask its reprint endpoint to
-        # return the current document instead of guessing whether a cached label is current.
+        # With a current, non-empty tracking number and identical binding, the
+        # saved official document is reusable. If MOMO omits deliveryNo, ask
+        # its reprint endpoint instead of guessing that an old label is current.
+        if (row.get("tracking") and self.document_matches(row, job) and
+                (self.data_dir / job["document"]).is_file()):
+            self.rows[key] = row
+            return {"ready": True, "key": key, "reused": True}
         method = row["shippingMethod"]
         create_endpoints = {"third": "OrderShippingStatusConfirmThirdPartyDelivery",
             "seven": "OrderShippingStatusConfirmSevenStoreDelivery",

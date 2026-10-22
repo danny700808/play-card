@@ -105,8 +105,9 @@ function renderDetail() {
       ? `<a id="shopeeDirectPrint" class="action-link primary" href="${shopeePrintUrl}" target="_blank" rel="noopener noreferrer">開啟蝦皮貨運單</a>`
       : '<button id="shopeeDirectPrint" class="primary" disabled>蝦皮貨運單尚未產生</button>')
     : `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">開啟 EasyStore 對應訂單 ↗</a>` : '';
-  const shippingAction = row.platform==='EasyStore' ? (row.documentReady?'<button id="showProvidedDocument" class="primary">列印貨運單</button>':externalAction)
-    : `<button id="prepare" class="primary" ${!enabled||busy?'disabled':''}>${row.canDownload?(row.handled?'重印貨運單':'取得貨運單'):row.platform==='Coupang'&&row.status==='ACCEPT'?'確認備貨並取單':'申請出貨與貨運單'}</button>`;
+  const savedDocument=ShippingModel.savedDocumentAvailable(row);
+  const shippingAction = row.platform==='EasyStore' ? (savedDocument?'<button id="showProvidedDocument" class="primary">列印貨運單</button>':externalAction)
+    : `<button id="prepare" class="primary" ${(!enabled&&!savedDocument)||busy?'disabled':''}>${savedDocument||row.canDownload?(row.handlingAction==='acquired'?'列印貨運單':row.handled?'重印貨運單':'取得貨運單'):row.platform==='Coupang'&&row.status==='ACCEPT'?'確認備貨並取單':'申請出貨與貨運單'}</button>`;
   const shippingNote = row.platform==='EasyStore' && !row.documentReady
     ? row.stale?'訂單資料尚未更新，請先讀取最新訂單。'
       : ['cancelled','review'].includes(row.stage)?'此訂單已取消或需要核對，暫不開啟出貨。'
@@ -174,8 +175,7 @@ async function prepare(row) {
   if(busy)return;
   // Reuse the same saved-document route as "預覽正式貨運單". The host still
   // validates the saved document's binding against its current order snapshot.
-  if(row.documentReady&&row.canDownload&&!row.stale&&!row.handlingChanged&&
-      !['cancelled','review'].includes(row.stage)){
+  if(ShippingModel.savedDocumentAvailable(row)){
     return showDocument(row.key);
   }
   beginDocument(row);
@@ -207,7 +207,7 @@ async function prepare(row) {
 function documentSummary(row){
   const maskedMomo=row.channel==='MOMO'&&/[○◯●＊*]/.test(`${row.recipient||''}${row.address||''}`);
   $('documentSummary').innerHTML=`<div class="document-order">${badge(row)}<h3>${escapeHtml(row.orderNo)}</h3>${paidAmountHtml(row)}</div><div class="document-items">${packingItems(row).map(itemHtml).join('')}</div><div class="subline">${escapeHtml(row.recipient)}${row.pickupStore?' · '+escapeHtml(row.pickupStore):''}</div><div class="subline">${escapeHtml(row.address)}</div>${maskedMomo?'<p class="muted">MOMO 訂單資料已遮蔽部分姓名或地址；完整配送資訊請核對正式貨運單。</p>':''}${row.tracking?`<p class="tracking-number">物流單號：${escapeHtml(row.tracking)}</p>`:''}`;
-  $('printerHint').textContent=row.channel==='MOMO'?'MOMO：選一般印表機，放入 MOMO 指定紙張。':['酷澎','蝦皮'].includes(row.channel)?`${row.channel}：選標籤機；紙張尺寸依副機實際標籤紙設定。`:'請選擇這張貨運單使用的印表機與紙張。';
+  $('printerHint').textContent=['MOMO','酷澎','蝦皮','官網'].includes(row.channel)?'使用副機 XP-420B；正在確認本機列印助手。':'請選擇這張貨運單使用的印表機與紙張。';
   $('momoPasswordHint').hidden=row.channel!=='MOMO';
 }
 function beginDocument(row){

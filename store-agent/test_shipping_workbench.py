@@ -127,6 +127,58 @@ class ShippingTests(unittest.TestCase):
              "itemStatus":"出貨通知(已付款)", "changedAddress":"新地址"}]})[0]
         self.assertFalse(row["canCreate"])
 
+    def test_momo_cvs_generated_is_acquired_and_never_new_shipment(self):
+        for carrier in ("7-11店到店", "全家店到店"):
+            with self.subTest(carrier=carrier):
+                row=normalize_momo({"orderNo":"123","listItem":[{
+                    "orderSeq":"001","quantity":1,"deliveryType":"超商取貨",
+                    "deliveryCompany":carrier,"itemStatus":"出貨通知(已付款)",
+                    "shipStatus":"已產生超取出貨單","deliveryNo":"TRACK-1"}]})[0]
+                self.assertEqual(row["stage"],"label")
+                self.assertFalse(row["canCreate"])
+                self.assertTrue(row["canDownload"])
+                self.w.rows[row["key"]]=row
+                snapshot=self.w.snapshot()["orders"][0]
+                self.assertEqual(snapshot["handlingAction"],"acquired")
+                self.assertTrue(snapshot["handled"])
+                self.assertEqual(snapshot["printCount"],0)
+                (self.w.data_dir/"existing.pdf").write_bytes(b"%PDF-1.7\noriginal")
+                self.w.save_job(row["key"],state="ready",document="existing.pdf",
+                    mime="application/pdf",tracking="TRACK-1",binding=self.w.document_binding(row))
+                with patch.object(self.w,"fresh_momo",return_value=row),patch.object(self.w,"momo_request") as call:
+                    fp=self.w.preview(row["key"],{})["fingerprint"]
+                    self.assertTrue(self.w.process(row["key"],{},fp)["reused"])
+                    call.assert_not_called()
+
+    def test_momo_unknown_status_with_tracking_cannot_create_again(self):
+        row=normalize_momo({"orderNo":"123","listItem":[{
+            "orderSeq":"001","quantity":1,"deliveryType":"超商取貨",
+            "deliveryCompany":"7-11店到店","itemStatus":"出貨通知(已付款)",
+            "shipStatus":"未知狀態","deliveryNo":"TRACK-1"}]})[0]
+        self.assertFalse(row["canCreate"])
+        with patch.object(self.w,"fresh_momo",return_value=row),patch.object(self.w,"momo_request") as call:
+            with self.assertRaises(ShippingError):
+                self.w.preview(row["key"],{})
+            call.assert_not_called()
+
+    def test_momo_cvs_changed_address_and_cancelled_block_cached_document(self):
+        raw={"orderNo":"123","listItem":[{
+            "orderSeq":"001","quantity":1,"deliveryType":"超商取貨",
+            "deliveryCompany":"7-11店到店","itemStatus":"出貨通知(已付款)",
+            "shipStatus":"已產生超取出貨單","deliveryNo":"TRACK-1"}]}
+        row=normalize_momo(raw)[0]
+        self.w.rows[row["key"]]=row
+        (self.w.data_dir/"existing.pdf").write_bytes(b"%PDF-1.7\noriginal")
+        self.w.save_job(row["key"],state="ready",document="existing.pdf",
+            mime="application/pdf",binding=self.w.document_binding(row))
+        for changes in ({"changedAddress":"待確認的新地址"},{"itemStatus":"客戶取消"},{"deliveryNo":"TRACK-2"}):
+            changed=copy.deepcopy(raw);changed["listItem"][0].update(changes)
+            actual=normalize_momo(changed)[0]
+            self.w.rows[row["key"]]=actual
+            self.assertFalse(self.w.snapshot()["orders"][0]["documentReady"])
+            with self.assertRaises(ShippingError):
+                self.w.document(row["key"])
+
     def test_read_snapshot_never_calls_platform_mutation(self):
         self.w.rows[self.key]=self.row
         with patch.object(self.w, "_cp_request") as call:
