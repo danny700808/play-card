@@ -48,6 +48,11 @@
     savedDocumentAvailable(row){
       return !!(row.documentReady&&!row.stale&&!row.handlingChanged&&!['cancelled','review'].includes(row.stage));
     },
+    documentActionLabel(row){
+      if(['printed','print_requested','shipped'].includes(row.handlingAction)||row.stage==='shipped')return '重印貨運單';
+      if(row.documentReady||row.handlingAction==='acquired')return '列印貨運單';
+      return '取得貨運單';
+    },
     status(row){
       if(row.handlingChanged)return '資料有變，需核對';
       if(row.handled)return labels[row.handlingAction]||'已處理';

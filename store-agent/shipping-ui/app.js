@@ -4,6 +4,7 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'
 const stageNames = {pending:'待出貨',partial:'部分待出貨',label:'可印貨運單',shipped:'已出貨',cancelled:'已取消',review:'需核對'};
 const ORDER_DAYS = 3;
 let data = {orders:[],errors:{},connectors:[]}, selected = '', activeChannel = '全部', activeWork = 'pending', busy = false;
+let documentGeneration=0,externalDocumentUrls=[];
 const sessionToken=document.querySelector('meta[name="youzi-session"]')?.content||'';
 const remote=!!window.ShippingTransport;
 const embedded=window.self!==window.top;
@@ -101,18 +102,16 @@ function renderDetail() {
   const shopeeHelperTarget = externalAllowed && shopeeViaEasyStore
     ? `<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target href="${shopeePrintUrl||easyStoreOrder}"></a>` : '';
   const externalAction = externalAllowed
-    ? shopeeViaEasyStore ? shopeeHelperTarget + (shopeePrintUrl
-      ? `<a id="shopeeDirectPrint" class="action-link primary" href="${shopeePrintUrl}" target="_blank" rel="noopener noreferrer">開啟蝦皮貨運單</a>`
-      : '<button id="shopeeDirectPrint" class="primary" disabled>蝦皮貨運單尚未產生</button>')
+    ? shopeeViaEasyStore ? shopeeHelperTarget + `<button id="shopeeDirectPrint" class="primary" ${busy?'disabled':''}>${ShippingModel.documentActionLabel(row)}</button>`
     : `<a class="action-link primary" href="${easyStoreOrder}" target="_blank" rel="noopener noreferrer">開啟 EasyStore 對應訂單 ↗</a>` : '';
   const savedDocument=ShippingModel.savedDocumentAvailable(row);
-  const shippingAction = row.platform==='EasyStore' ? (savedDocument?'<button id="showProvidedDocument" class="primary">列印貨運單</button>':externalAction)
-    : `<button id="prepare" class="primary" ${(!enabled&&!savedDocument)||busy?'disabled':''}>${savedDocument||row.canDownload?(row.handlingAction==='acquired'?'列印貨運單':row.handled?'重印貨運單':'取得貨運單'):row.platform==='Coupang'&&row.status==='ACCEPT'?'確認備貨並取單':'申請出貨與貨運單'}</button>`;
+  const shippingAction = row.platform==='EasyStore' ? (savedDocument?`<button id="showProvidedDocument" class="primary">${ShippingModel.documentActionLabel(row)}</button>`:externalAction)
+    : `<button id="prepare" class="primary" ${(!enabled&&!savedDocument)||busy?'disabled':''}>${ShippingModel.documentActionLabel(row)}</button>`;
   const shippingNote = row.platform==='EasyStore' && !row.documentReady
     ? row.stale?'訂單資料尚未更新，請先讀取最新訂單。'
       : ['cancelled','review'].includes(row.stage)?'此訂單已取消或需要核對，暫不開啟出貨。'
-      : shopeePrintUrl?'直接開啟此筆蝦皮貨運單；副機取單助手啟用時，使用助手列印。'
-      : externalAction?(shopeeViaEasyStore?'新訂單尚未產生貨運單；請在已啟用蝦皮取單助手的副機取單。':'這筆正式貨運單尚未接通，請在對應訂單使用原物流出貨與列印功能。')
+      : shopeeViaEasyStore?''
+      : externalAction?'這筆正式貨運單尚未接通，請在對應訂單使用原物流出貨與列印功能。'
       :'缺少對應訂單連結，請重新讀取訂單。'
     : '';
   const items=packingItems(row),quantity=items.reduce((n,i)=>n+i.quantity,0);
@@ -128,6 +127,7 @@ function renderDetail() {
     ${paymentDetailsHtml(row)}
     <details class="recipient-details"><summary>收件與物流資訊</summary><div class="recipient">${escapeHtml(row.recipient||'尚無資料')}　${escapeHtml(row.phone)}</div><div class="subline">${escapeHtml(row.pickupStore||'')} ${escapeHtml(row.address||'')}</div><div class="subline">${escapeHtml(ShippingModel.deliveryMethod(row))}${row.tracking?` · ${escapeHtml(row.tracking)}`:''}</div><div class="subline">平台回傳：${escapeHtml(stageNames[row.stage]||row.status)}${row.printCount?` · 開啟列印 ${row.printCount} 次`:''}</div></details>`;
   $('prepare')?.addEventListener('click',()=>prepare(row));
+  $('shopeeDirectPrint')?.addEventListener('click',()=>prepareShopee(row));
   $('showProvidedDocument')?.addEventListener('click',()=>showDocument(row.key).catch(e=>notice(e.message,true)));
   $('provideDocument')?.addEventListener('click',()=>provideDocument(row));
   $('packing').addEventListener('click',()=>printPacking(row));
@@ -211,7 +211,9 @@ function documentSummary(row){
   $('momoPasswordHint').hidden=row.channel!=='MOMO';
 }
 function beginDocument(row){
+  releaseExternalDocument();
   window.YouziLocalPrint?.reset();
+  if($('documentMore'))$('documentMore').open=false;
   documentSummary(row);
   $('documentControls').hidden=true;$('documentFrame').hidden=true;$('documentFrame').src='about:blank';
   $('documentPreviewImage').hidden=true;$('documentPreviewImage').removeAttribute('src');$('previewCaption').hidden=true;$('zoomDocumentPreview').hidden=true;
@@ -249,13 +251,16 @@ async function loadDocument(key){
   // A logout can close the dialog while the remote document is being prepared.
   if(remote&&!window.ShippingTransport.loggedIn())return;
   const row=data.orders.find(r=>r.key===key);
+  presentDocument(row,links,()=>api('/api/print-event',{key}).then(()=>api('/api/orders')).then(payload=>{data=payload;render();}).catch(e=>notice(e.message,true)));
+}
+function presentDocument(row,links,recordPrint){
+  const key=row.key;
   if(row)documentSummary(row);
   const url=links.label;
   $('openDocument').href=links.print||url;$('downloadDocument').href=url;
   $('momoPasswordHint').textContent=links.print?'列印副本已解密；下載的原檔保留平台密碼。':'MOMO 若要求 PDF 密碼，請輸入供應商公司統編。';
   const combined=row?.documentKinds?.includes('combined');
   $('combinedDocument').hidden=!combined;$('combinedDocument').href=links.combined;
-  const recordPrint=()=>api('/api/print-event',{key}).then(()=>api('/api/orders')).then(payload=>{data=payload;render();}).catch(e=>notice(e.message,true));
   $('openDocument').onclick=recordPrint;$('combinedDocument').onclick=recordPrint;
   window.YouziLocalPrint?.attach(row,links,recordPrint);
   $('confirmPrinted').onclick=()=>markHandled(key,'printed');
@@ -270,6 +275,29 @@ async function loadDocument(key){
     $('documentPlaceholder').hidden=false;
     $('documentPlaceholder').textContent=row?.channel==='MOMO'?'這張 PDF 有加密，請開啟原單並輸入公司統編。':'請按「開啟原單列印」查看完整貨運單。';
   }
+}
+function releaseExternalDocument(){
+  documentGeneration++;window.YouziShopeeBridge?.cancel();
+  for(const url of externalDocumentUrls)URL.revokeObjectURL(url);
+  externalDocumentUrls=[];
+}
+async function prepareShopee(row){
+  if(busy)return;
+  beginDocument(row);documentBusy(true);
+  const own=documentGeneration;
+  try{
+    if(!window.YouziShopeeBridge)throw Error('請在副機更新蝦皮取單助手。');
+    const result=await window.YouziShopeeBridge.getDocument(row,message=>{
+      if(own===documentGeneration)$('documentStatus').textContent=message;
+    });
+    if(own!==documentGeneration||!$('documentDialog').open||(remote&&!window.ShippingTransport.loggedIn()))return;
+    const url=URL.createObjectURL(new Blob([result.pdf],{type:'application/pdf'}));
+    externalDocumentUrls.push(url);
+    // Acquiring/queueing a label is not proof of paper output. Only the user's
+    // shared "已印好" control confirms printed handling for extension labels.
+    presentDocument({...row,tracking:result.tracking},{label:url,print:url,preview:result.preview},async()=>{});
+  }catch(e){if(own===documentGeneration)documentError(e);}
+  finally{documentBusy(false);}
 }
 async function showDocument(key) {
   if(busy)return;
@@ -289,18 +317,26 @@ async function printPacking(row) {
   window.print();
 }
 $('refresh').addEventListener('click',refresh);
-// The packing-PC extension injects its own direct-to-XP-420B button. Keep
-// exactly one visible entry when it is present; the ordinary AWB link is only
-// the fallback for browsers without the extension. Never invoke either here.
+// Keep the older installed helper usable until the packing PC is updated.
+// Normalize its label, but never invoke its click handler automatically.
 if(typeof MutationObserver!=='undefined')new MutationObserver(()=>{
   const fallback=$('shopeeDirectPrint');
   if(!fallback)return;
-  const helper=[...$('detail').querySelectorAll('button,a')].some(el=>
-    el!==fallback&&!el.hidden&&/取得蝦皮貨運單/.test(el.textContent)&&/XP-420B/.test(el.textContent));
-  fallback.hidden=helper;
-  const note=$('detail').querySelector('.shipping-note');
-  if(note)note.hidden=helper;
+  const row=data.orders.find(r=>r.key===selected);
+  const helpers=[...$('detail').querySelectorAll('button,a')].filter(el=>el!==fallback&&
+    (el.dataset.youziLegacyShopee==='1'||/取得蝦皮貨運單/.test(el.textContent)&&/XP-420B/.test(el.textContent)));
+  const modern=window.YouziShopeeBridge?.available();
+  for(const el of helpers){
+    el.dataset.youziLegacyShopee='1';
+    const label=ShippingModel.documentActionLabel(row||{});
+    if(el.textContent!==label)el.textContent=label;
+    if(el.hidden!==!!modern)el.hidden=!!modern;
+  }
+  const hide=helpers.length>0&&!modern;
+  if(fallback.hidden!==hide)fallback.hidden=hide;
 }).observe($('detail'),{childList:true,subtree:true,characterData:true});
+window.addEventListener('youzi-shopee-helper-ready',()=>renderDetail());
+$('documentDialog').addEventListener('close',()=>{releaseExternalDocument();window.YouziLocalPrint?.reset();});
 $('channels').addEventListener('click',e=>{const b=e.target.closest('[data-channel]');if(b){activeChannel=b.dataset.channel;render();}});
 $('orders').addEventListener('click',e=>{const b=e.target.closest('[data-key]');if(b){selected=b.dataset.key;render();}});
 $('search').addEventListener('input',render);

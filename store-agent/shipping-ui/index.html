@@ -34,14 +34,6 @@
         <div id="documentSummary"></div>
         <form id="shipmentOptions" hidden></form>
         <p id="documentStatus" role="status" aria-live="polite"></p>
-        <div id="documentControls" hidden>
-          <p id="printerHint" class="printer-hint"></p>
-          <div class="document-actions"><a id="openDocument" class="action-link primary" target="_blank" rel="noopener">開啟原單列印</a><a id="downloadDocument" download>下載 PDF</a></div>
-          <a id="combinedDocument" target="_blank" rel="noopener" hidden>開啟 MOMO 貨運單＋官方明細</a>
-          <p class="muted">開啟原單後按 Ctrl+P，選擇副機的印表機。</p>
-          <button id="confirmPrinted" class="primary">已印好，標記已印單</button>
-          <p id="momoPasswordHint" class="muted" hidden>MOMO 若要求 PDF 密碼，請輸入供應商公司統編。</p>
-        </div>
       </section>
       <div class="document-preview">
         <p id="documentPlaceholder">正在取回貨運單…</p>
@@ -50,6 +42,15 @@
         <iframe id="documentFrame" title="平台正式貨運單" hidden></iframe>
       </div>
     </div>
+    <footer id="documentControls" hidden>
+      <div class="document-footer-actions"><div id="localPrintSlot"></div><button id="confirmPrinted">已印好</button></div>
+      <details id="documentMore"><summary>更多</summary>
+        <div class="document-actions"><a id="openDocument" class="action-link" target="_blank" rel="noopener">開啟原單列印</a><a id="downloadDocument" download>下載 PDF</a></div>
+        <a id="combinedDocument" target="_blank" rel="noopener" hidden>開啟貨運單與明細</a>
+        <p id="printerHint" class="muted"></p>
+        <p id="momoPasswordHint" class="muted" hidden></p>
+      </details>
+    </footer>
   </dialog>
   <dialog id="imageDialog">
     <form method="dialog"><button class="close" aria-label="關閉圖片">×</button></form>

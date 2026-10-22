@@ -20,11 +20,12 @@ function render(overrides={},remote=true){
     selected=data.orders[0].key;renderDetail();`,context);
   return element('detail').innerHTML;
 }
-test('ready Shopee order goes straight to AWB and retains the installed helper locator',()=>{
+test('ready Shopee order opens the shared dialog, retaining only a hidden legacy locator',()=>{
   const html=render({tracking:'tracking'});
   assert.match(html,/href="https:\/\/admin.easystore.co\/channels\/shopee\/taiwan\/orders\/awb\?store_order_ids=123"/);
   assert.match(html,/<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target href=/);
-  assert.match(html,/id="shopeeDirectPrint"[^>]+href="https:\/\/admin.easystore.co\/channels\/shopee\/taiwan\/orders\/awb\?store_order_ids=123"/);
+  assert.match(html,/<button id="shopeeDirectPrint"/);
+  assert.doesNotMatch(html,/id="shopeeDirectPrint"[^>]+href=/);
   assert.doesNotMatch(html,/到 EasyStore 出貨|href="https:\/\/admin.easystore.co\/orders\//);
   assert.doesNotMatch(html,/貨運單尚待主機提供/);
 });
@@ -32,7 +33,7 @@ test('new Shopee order keeps only a hidden helper locator and never redirects th
   const html=render();
   assert.match(html,/href="https:\/\/admin.easystore.co\/orders\/123"/);
   assert.match(html,/<a hidden aria-hidden="true" tabindex="-1" data-shopee-helper-target/);
-  assert.match(html,/蝦皮貨運單尚未產生/);
+  assert.match(html,/取得貨運單/);
   assert.doesNotMatch(html,/到 EasyStore 出貨|class="action-link primary"/);
   assert.doesNotMatch(html,/id="prepare"|id="showProvidedDocument"/);
 });
@@ -51,5 +52,15 @@ test('cancelled, review, stale and invalid ids cannot open an external shipping 
 test('MOMO and Coupang retain their document acquisition buttons',()=>{
   for(const platform of ['MOMO','Coupang']){
     assert.match(render({platform,canDownload:true}),/id="prepare"/);
+  }
+});
+
+test('all platforms use identical action names for the same handling state',()=>{
+  for(const [state,label] of [[{},'取得貨運單'],[{documentReady:true,handlingAction:'acquired'},'列印貨運單'],[{handlingAction:'printed'},'重印貨運單'],[{stage:'shipped'},'重印貨運單']]){
+    for(const platform of ['EasyStore','MOMO','Coupang']){
+      const html=render({platform,canCreate:true,...state});
+      assert.match(html,new RegExp('class="primary"[^>]*>'+label+'<'));
+      assert.doesNotMatch(html,/取得蝦皮|XP-420B|確認備貨並取單|申請出貨與貨運單/);
+    }
   }
 });

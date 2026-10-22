@@ -32,7 +32,7 @@ function harness({carrier='7-11店到店',prepareStatus='prepared',prepareError=
 test('MOMO CVS uses a single-label caption and reports prepare errors without printing',async()=>{
   const h=harness({prepareError:'尚不支援此 PDF 版型'});
   await new Promise(setImmediate);
-  assert.equal(h.button.textContent,'用 XP-420B 列印');
+  assert.equal(h.button.textContent,'列印貨運單');
   assert.match(h.elements.get('printerHint').textContent,/單張原單/);
   await h.button.onclick();
   assert.match(h.status.textContent,/TEST-ORDER · 副機準備標籤：尚不支援此 PDF 版型/);
@@ -44,7 +44,7 @@ test('MOMO CVS uses a single-label caption and reports prepare errors without pr
 test('MOMO home-delivery keeps the existing two-label setting',async()=>{
   const h=harness({carrier:'第三方物流-新竹貨運'});
   await new Promise(setImmediate);
-  assert.equal(h.button.textContent,'用 XP-420B 印兩張貼紙');
+  assert.equal(h.button.textContent,'列印貨運單');
   assert.match(h.elements.get('printerHint').textContent,/左右雙聯/);
   await h.button.onclick();
   assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,1);
@@ -54,7 +54,7 @@ test('MOMO home-delivery keeps the existing two-label setting',async()=>{
 test('a submitted document is not silently printed again; explicit reprint uses the reprint flag',async()=>{
   const h=harness({prepareStatus:'submitted'});
   await h.button.onclick();
-  assert.equal(h.button.textContent,'重新列印');
+  assert.equal(h.button.textContent,'重印貨運單');
   assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
   assert.equal(h.printed(),0);
   await h.button.onclick();

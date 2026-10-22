@@ -7,6 +7,25 @@ import threading
 _render_lock = threading.Lock()  # PDFium is not thread safe.
 
 
+def _trim_preview_margin(image):
+    """Zoom the screen preview only, retaining all nonwhite marks and padding."""
+    from PIL import Image, ImageChops
+    rgb = image.convert("RGB")
+    background = Image.new("RGB", rgb.size, "white")
+    difference = ImageChops.difference(rgb, background)
+    bounds = difference.getbbox()
+    difference.close()
+    background.close()
+    if not bounds:
+        return rgb
+    padding = max(20, round(max(bounds[2] - bounds[0], bounds[3] - bounds[1]) * .04))
+    left, top, right, bottom = bounds
+    result = rgb.crop((max(0, left - padding), max(0, top - padding),
+                       min(rgb.width, right + padding), min(rgb.height, bottom + padding)))
+    rgb.close()
+    return result
+
+
 def print_pdf(content, data_dir, row):
     """Unlock a print copy using the owner's password; never rasterize/reflow it."""
     if row["platform"] != "MOMO":
@@ -55,7 +74,8 @@ def preview_pdf(content, data_dir, row):
     # Verified Coupang HCT PDFs contain sideways text on a portrait page.
     # Only the on-screen preview is turned upright; printing uses the original PDF.
     rotation = 270 if row["platform"] == "Coupang" and row.get("carrierCode") == "TWL_HCT" else 0
-    digest = hashlib.sha256(content + f"preview-v1:{rotation}:{password}".encode()).hexdigest()
+    trim = row["platform"] == "MOMO" and row.get("shippingMethod") in ("seven", "family")
+    digest = hashlib.sha256(content + f"preview-v2:{rotation}:{trim}:{password}".encode()).hexdigest()
     target = data_dir / f"preview-{digest}.png"
     with _render_lock:
         if target.is_file():
@@ -69,6 +89,10 @@ def preview_pdf(content, data_dir, row):
                 scale = min(2, 1400 / max(width, height))
                 bitmap = page.render(scale=scale, rotation=rotation)
                 image = bitmap.to_pil()
+                if trim:
+                    cropped = _trim_preview_margin(image)
+                    image.close()
+                    image = cropped
                 output = io.BytesIO()
                 image.save(output, format="PNG")
                 image.close()

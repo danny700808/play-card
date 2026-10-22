@@ -16,7 +16,7 @@
     } catch {
       throw Error(path === '/print'
         ? '送印結果尚未確認。請先查看印表機，勿連續重按。'
-        : '無法連接這台電腦的列印服務；可先使用「開啟原單列印」。');
+        : '列印助手未連線；請在副機開啟助手，或從「更多」開啟原單。');
     }
     const result = await response.json();
     if (!response.ok) throw Error(result.error || '本機列印未完成。');
@@ -47,13 +47,12 @@
     const own = generation;
     const box = document.createElement('div');
     box.id = 'localPrintControls';
-    box.style.cssText = 'margin:12px 0;padding:12px;border:1px solid #d4dfd6;border-radius:10px';
+    box.className = 'local-print-controls';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'primary';
     const momoStore = row.channel === 'MOMO' && /7-11|全家/.test(row.carrier || '');
-    const printLabel = row.channel === 'MOMO' && !momoStore ? '用 XP-420B 印兩張貼紙' : '用 XP-420B 列印';
-    button.textContent = printLabel;
+    button.textContent = '列印貨運單';
     button.disabled = inFlight;
     currentButton = button;
     const status = document.createElement('p');
@@ -61,11 +60,11 @@
     status.setAttribute('role', 'status');
     status.textContent = '檢查本機列印服務…';
     box.append(button, status);
-    $('documentControls').prepend(box);
+    ($('localPrintSlot') || $('documentControls')).prepend(box);
     local('/health').then(result => {
       if (generation !== own) return;
       if (result.service !== 'youzi-shipping-print') throw Error('本機連線服務不符。');
-      status.textContent = 'XP-420B · 100 × 150 mm · 已連線';
+      status.textContent = '列印助手已連線';
       $('printerHint').textContent = row.channel === 'MOMO'
         ? momoStore ? 'MOMO 超商單：使用單張原單版型，由副機助手核對後列印。'
           : 'MOMO：自動將已支援的左右雙聯原單拆成兩張 100 × 150 mm 貼紙。'
@@ -86,9 +85,9 @@
         const job = await local('/prepare', {channel: row.channel, pdfBase64, reprint});
         if (generation !== own || !$('documentDialog').open) return;
         if (job.status === 'submitted') {
-          status.textContent = '這份原單已送印。如需補印，請按「重新列印」。';
+          status.textContent = '這份原單已送印。如需補印，請按「重印貨運單」。';
           reprint = true;
-          button.textContent = '重新列印';
+          button.textContent = '重印貨運單';
           return;
         }
         if (job.status !== 'prepared') throw Error('這份單據正在處理或送印結果不明，請先查看印表機。');
@@ -98,9 +97,9 @@
         if (result.status !== 'submitted') throw Error('送印結果不明，請先查看印表機。');
         // Submitted to Windows is not proof that labels physically printed.
         if (generation === own) {
-          status.textContent = `已送出 ${job.pages} 張。確認出紙後，再按「已印好，標記已印單」。`;
+          status.textContent = `已送出 ${job.pages} 張，確認出紙後按「已印好」。`;
           reprint = true;
-          button.textContent = '重新列印';
+          button.textContent = '重印貨運單';
         }
         await recordPrint();
       } catch (error) {

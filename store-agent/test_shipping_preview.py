@@ -2,12 +2,30 @@ import io
 import tempfile
 import unittest
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageDraw
 import pypdfium2 as pdfium
-from shipping_preview import preview_pdf, print_pdf
+from shipping_preview import preview_pdf, print_pdf, _trim_preview_margin
 
 
 class PreviewTests(unittest.TestCase):
+    def test_preview_zoom_preserves_content_and_quiet_margin(self):
+        with Image.new("RGB", (1000, 1400), "white") as image:
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((80, 90, 379, 489), outline="black", width=2)
+            # Faint text or marks must not be thresholded away.
+            draw.point((430, 550), fill=(254, 254, 254))
+            with _trim_preview_margin(image) as result:
+                self.assertEqual(result.size, (391, 501))
+                self.assertEqual(result.getpixel((20, 20)), (0, 0, 0))
+                self.assertEqual(result.getpixel((370, 480)), (254, 254, 254))
+                self.assertEqual(result.getpixel((0, 0)), (255, 255, 255))
+            self.assertEqual(image.size, (1000, 1400))
+
+    def test_empty_preview_keeps_original_size(self):
+        with Image.new("RGB", (200, 300), "white") as image:
+            with _trim_preview_margin(image) as result:
+                self.assertEqual(result.size, image.size)
+
     def sample(self):
         output = io.BytesIO()
         with pdfium.PdfDocument.new() as pdf:
