@@ -18,7 +18,7 @@ function harness({carrier='7-11店到店',prepareStatus='prepared',prepareError=
       calls.push({url,body});
       if(url==='https://example.test/label.pdf')return {ok:documentOk,blob:async()=>new Blob(['%PDF-1.7\nlabel'])};
       if(url.endsWith('/health'))return {ok:true,json:async()=>({service:'youzi-shipping-print'})};
-      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:prepareStatus,pages:1}};
+      if(url.endsWith('/prepare'))return {ok:!prepareError,json:async()=>prepareError?{error:prepareError}:{jobId:'job-1',status:body.reprint?'prepared':prepareStatus,pages:1}};
       if(url.endsWith('/print'))return {ok:!printError,json:async()=>printError?{error:printError}:{status:'submitted'}};
       throw Error('Unexpected endpoint');
     }});
@@ -51,14 +51,15 @@ test('MOMO home-delivery keeps the existing two-label setting',async()=>{
   assert.equal(h.printed(),1);
 });
 
-test('a submitted document is not silently printed again; explicit reprint uses the reprint flag',async()=>{
+test('a submitted document is identified before clicking; one explicit reprint submits once',async()=>{
   const h=harness({prepareStatus:'submitted'});
-  await h.button.onclick();
+  await new Promise(setImmediate);
   assert.equal(h.button.textContent,'重印貨運單');
   assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,0);
-  assert.equal(h.printed(),0);
   await h.button.onclick();
-  assert.equal(h.calls.filter(c=>c.url.endsWith('/prepare'))[1].body.reprint,true);
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/print')).length,1);
+  assert.equal(h.printed(),1);
+  assert.equal(h.calls.filter(c=>c.url.endsWith('/prepare')).at(-1).body.reprint,true);
 });
 
 test('print failure remains distinct from document preparation and never records success',async()=>{
@@ -71,7 +72,7 @@ test('print failure remains distinct from document preparation and never records
 test('an expired document URL never reaches the packing-PC print service',async()=>{
   const h=harness({documentOk:false});
   await h.button.onclick();
-  assert.match(h.status.textContent,/讀取原貨運單：原單連結已失效/);
+  assert.match(h.status.textContent,/副機準備標籤：原單連結已失效/);
   assert.equal(h.calls.filter(c=>c.body).length,0);
   assert.equal(h.printed(),0);
 });

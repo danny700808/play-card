@@ -52,8 +52,12 @@
     button.type = 'button';
     button.className = 'primary';
     const momoStore = row.channel === 'MOMO' && /7-11|全家/.test(row.carrier || '');
-    button.textContent = '列印貨運單';
-    button.disabled = inFlight;
+    let reprint = window.ShippingModel?.documentActionLabel(row) === '重印貨運單';
+    let pdfBase64, preparedJob, ready = false;
+    const label = () => reprint ? '重印貨運單' : '列印貨運單';
+    const active = () => generation === own && $('documentDialog').open;
+    button.textContent = label();
+    button.disabled = true;
     currentButton = button;
     const status = document.createElement('p');
     status.className = 'muted';
@@ -61,34 +65,51 @@
     status.textContent = '檢查本機列印服務…';
     box.append(button, status);
     ($('localPrintSlot') || $('documentControls')).prepend(box);
-    local('/health').then(result => {
-      if (generation !== own) return;
+    // Prepare without submitting paper. Resolve the persisted local print state
+    // before enabling the action, so a reprint never needs a discovery click.
+    async function preparePreview() {
+      const result = await local('/health');
+      if (!active()) return;
       if (result.service !== 'youzi-shipping-print') throw Error('本機連線服務不符。');
-      status.textContent = '列印助手已連線';
       $('printerHint').textContent = row.channel === 'MOMO'
         ? momoStore ? 'MOMO 超商單：使用單張原單版型，由副機助手核對後列印。'
           : 'MOMO：自動將已支援的左右雙聯原單拆成兩張 100 × 150 mm 貼紙。'
         : '使用 XP-420B 的 100 × 150 mm 標籤紙。';
-    }).catch(error => { if (generation === own) status.textContent = error.message; });
-    let reprint = false;
+      status.textContent = '正在準備標籤與確認列印紀錄…';
+      pdfBase64 = await documentBase64(links.print || links.label);
+      if (!active()) return;
+      preparedJob = await local('/prepare', {channel: row.channel, pdfBase64});
+      if (!active()) return;
+      if (!['prepared', 'submitted'].includes(preparedJob.status))
+        throw Error('這份單據正在處理或送印結果不明，請先查看印表機。');
+      if (preparedJob.status === 'submitted') reprint = true;
+      ready = true;
+      button.textContent = label();
+      status.textContent = '列印助手已連線';
+    }
+    const preparation = preparePreview().catch(error => {
+      if (active()) status.textContent = error.message;
+    }).finally(() => {
+      if (active()) button.disabled = inFlight;
+    });
     button.onclick = async () => {
       if (inFlight) return;
-      if (reprint && !window.confirm('這份貨運單已送印。確定要再印一份嗎？')) return;
       inFlight = true;
       button.disabled = true;
-      let phase = '讀取原貨運單';
+      let phase = '副機準備標籤';
       try {
-        status.textContent = '讀取既有貨運單並檢查條碼…';
-        const pdfBase64 = await documentBase64(links.print || links.label);
-        if (generation !== own || !$('documentDialog').open) return;
-        phase = '副機準備標籤';
-        const job = await local('/prepare', {channel: row.channel, pdfBase64, reprint});
-        if (generation !== own || !$('documentDialog').open) return;
-        if (job.status === 'submitted') {
-          status.textContent = '這份原單已送印。如需補印，請按「重印貨運單」。';
-          reprint = true;
-          button.textContent = '重印貨運單';
-          return;
+        await preparation;
+        if (!active()) return;
+        if (!ready) await preparePreview();
+        if (!active() || !ready) return;
+        // This explicit button click authorizes one copy, including a reprint.
+        // Preparation and network retries never call /print automatically.
+        status.textContent = reprint ? '正在準備重印…' : '正在準備列印…';
+        let job = await local('/prepare', {channel: row.channel, pdfBase64, reprint});
+        if (!active()) return;
+        if (job.status === 'submitted' && !reprint) {
+          job = await local('/prepare', {channel: row.channel, pdfBase64, reprint: true});
+          if (!active()) return;
         }
         if (job.status !== 'prepared') throw Error('這份單據正在處理或送印結果不明，請先查看印表機。');
         status.textContent = `條碼檢查通過，正在送印 ${job.pages} 張…`;
@@ -112,3 +133,5 @@
   }
   window.YouziLocalPrint = {attach, reset};
 })();
+
+
