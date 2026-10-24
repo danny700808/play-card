@@ -41,7 +41,7 @@ test('EasyStore sync accepts the same manager claims as the operations auth brid
   assert.equal(EasyStoreAuth.isAllowedCaller({}), false);
 });
 
-test('operations auth waits for Firebase restore and force-refreshes claims', async () => {
+test('operations auth waits for Firebase restore and lets the SDK refresh expired tokens', async () => {
   let forced = null;
   const firebaseUser = {
     email: 'admin@example.com',
@@ -69,7 +69,7 @@ test('operations auth waits for Firebase restore and force-refreshes claims', as
   }, { timeoutMs: 1000 });
 
   assert.equal(result.ok, true);
-  assert.equal(forced, true);
+  assert.notEqual(forced, true);
 });
 
 test('a verified manager session is reused while collecting multiple images', async () => {
@@ -112,7 +112,7 @@ test('missing Firebase session requests one safe login redirect back to course c
   const redirects = [];
   let signOutCount = 0;
   const auth = {
-    currentUser: { uid: 'firebase-user' },
+    currentUser: null,
     async signOut() { signOutCount += 1; }
   };
   const runtime = {
@@ -126,7 +126,7 @@ test('missing Firebase session requests one safe login redirect back to course c
 
   assert.equal(await Auth.redirectToLoginOnce(runtime, auth, 1000), true);
   assert.deepEqual(redirects, ['login.html?next=portal.html%23course-calendar']);
-  assert.equal(signOutCount, 1);
+  assert.equal(signOutCount, 0);
   assert.equal(localStorage.has('employeeUser'), false);
   assert.equal(localStorage.has('employeeSecureAuthVersion'), false);
   assert.equal(localStorage.has('employeeSavedLogin'), true);
@@ -173,7 +173,7 @@ test('EasyStore sync refreshes manager auth before opening the callable', () => 
   const body = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.ok(body.indexOf('await requireEasyStoreManagerAuth()') < body.indexOf("httpsCallable('syncEasyStoreCatalog'"));
-  assert.match(authSource, /getIdTokenResult\(true\)/);
+  assert.match(authSource, /getIdTokenResult\(\)/);
 });
 
 test('9-series cover batch refreshes manager auth before opening the callable', () => {
@@ -217,7 +217,7 @@ test('calendar refresh exposes expired auth without calling cloud and preserves 
   const storage = memoryStorage({employeeUser:'stale'});
   let target = '';
   const shell = {localStorage: storage, sessionStorage: memoryStorage(), location: {pathname: '/play-card/portal.html', hash: '#course-calendar', replace: value => {target=value;}}};
-  await Auth.redirectToLoginOnce(shell, null);
+  await Auth.redirectToLoginOnce(shell, {currentUser:null});
   assert.equal(target, 'login.html?next=portal.html%23course-calendar');
   assert.equal(storage.has('employeeUser'), false);
 });

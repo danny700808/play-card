@@ -47,6 +47,12 @@
     return Boolean(user && (user.id || user.employeeId || user.email));
   }
 
+  function hasActiveEmployeeLogin() {
+    const user = readEmployeeUser();
+    return Boolean(user && user.portalSessionBridge !== true && (user.id || user.employeeId) &&
+      readStorage('employeeSecureAuthVersion') === '1');
+  }
+
   function hasTeacherPortalSession() {
     return Boolean(readStorage(TEACHER_PORTAL_SESSION_KEY));
   }
@@ -158,6 +164,7 @@
   }
 
   function saveAuthorizedUser(result) {
+    if (hasActiveEmployeeLogin()) throw new Error('目前已登入員工或管理者帳號，請重新整理頁面繼續使用。');
     const token = readStorage(TEACHER_PORTAL_SESSION_KEY);
     const user = Object.assign({}, result && result.user || {}, {
       portalSessionBridge: true,
@@ -215,6 +222,8 @@
     options = options || {};
     const params = new URLSearchParams(global.location && global.location.search || '');
     if (params.get('mode') === 'admin' || params.get('source') === 'teacher-hub') return false;
+    // A remembered teacher session must not overwrite the active employee login shared by other tabs.
+    if (hasActiveEmployeeLogin()) return false;
     const token = readStorage(TEACHER_PORTAL_SESSION_KEY);
     if (!token) {
       const user = readEmployeeUser();

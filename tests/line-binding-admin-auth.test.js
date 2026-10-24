@@ -30,7 +30,7 @@ test('manager claims match the protected backend policy', () => {
   assert.equal(Auth.localManagerAllowed({ role: 'staff' }), false);
 });
 
-test('auth bridge waits for restore and force-refreshes manager claims', async () => {
+test('auth bridge waits for restore and lets Firebase refresh expired tokens', async () => {
   let forced = null;
   let unsubscribed = false;
   const firebaseUser = {
@@ -62,7 +62,7 @@ test('auth bridge waits for restore and force-refreshes manager claims', async (
   }, { timeoutMs: 1000 });
 
   assert.equal(result.ok, true);
-  assert.equal(forced, true);
+  assert.notEqual(forced, true);
   assert.equal(unsubscribed, true);
 });
 
@@ -115,7 +115,7 @@ test('local and Firebase manager identities must not disagree', async () => {
   }, { timeoutMs: 1000 });
 
   assert.equal(result.ok, false);
-  assert.equal(result.reauth, true);
+  assert.equal(result.reauth, false);
   assert.equal(result.reason, 'manager-claim-mismatch');
 });
 
@@ -131,7 +131,7 @@ test('expired split auth clears shell state and redirects automatically only onc
   const redirects = [];
   let signOutCount = 0;
   const auth = {
-    currentUser: { uid: 'firebase-user' },
+    currentUser: null,
     async signOut() { signOutCount += 1; }
   };
   const runtime = {
@@ -142,7 +142,7 @@ test('expired split auth clears shell state and redirects automatically only onc
 
   assert.equal(await Auth.redirectToLoginOnce(runtime, auth, 1000), true);
   assert.deepEqual(redirects, ['login.html?next=line-binding-admin.html']);
-  assert.equal(signOutCount, 1);
+  assert.equal(signOutCount, 0);
   assert.equal(localStorage.has('employeeUser'), false);
   assert.equal(localStorage.has('employeeUserId'), false);
   assert.equal(localStorage.has('employeeSecureAuthVersion'), false);
@@ -151,7 +151,7 @@ test('expired split auth clears shell state and redirects automatically only onc
 
   assert.equal(await Auth.redirectToLoginOnce(runtime, auth, 2000), false);
   assert.equal(redirects.length, 1);
-  assert.equal(signOutCount, 1);
+  assert.equal(signOutCount, 0);
 });
 
 test('normal manager login accepts only the allowlisted local return page', () => {

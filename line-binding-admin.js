@@ -20,6 +20,10 @@
     return clean(value).toLowerCase();
   }
 
+  function shellSnapshot(runtime) {
+    try { return runtime.localStorage && runtime.localStorage.getItem('employeeUser'); } catch (_) { return undefined; }
+  }
+
   function truthy(value) {
     return value === true || ['1', 'true', 'yes', '是', 'enabled', 'active'].includes(lower(value));
   }
@@ -54,10 +58,10 @@
 
   function waitForAuth(auth, timeoutMs, timers) {
     const clock = timers || globalThis;
-    const waitMs = Math.max(1000, Number(timeoutMs || 8000));
+    const waitMs = Math.max(1000, Number(timeoutMs || 15000));
     return new Promise((resolve, reject) => {
       if (!auth || typeof auth.onAuthStateChanged !== 'function') {
-        resolve(null);
+        reject(new Error('安全登入元件尚未就緒，請重新整理後再試。'));
         return;
       }
       let settled = false;
@@ -83,7 +87,10 @@
       if (settled) {
         try { if (typeof unsubscribe === 'function') unsubscribe(); } catch (_) {}
       } else {
-        timer = clock.setTimeout(() => finish(auth.currentUser || null), waitMs);
+        timer = clock.setTimeout(() => {
+          if (auth.currentUser) finish(auth.currentUser);
+          else finish(null, new Error('登入狀態仍在恢復，請稍後重新整理或重試。'));
+        }, waitMs);
       }
     });
   }
@@ -102,8 +109,9 @@
 
   async function ensureManagerAuth(runtime, manager, options) {
     const global = runtime || {};
+    const session = { shell: shellSnapshot(global), user: null };
     if (!localManagerAllowed(manager)) {
-      return { ok: false, reauth: true, reason: 'local-manager-missing', message: '請先使用管理者帳號登入。' };
+      return { ok: false, reauth: false, reason: 'local-manager-missing', message: '登入身分資料已變更，請重新整理；若仍無法使用，請重新登入管理者帳號。' };
     }
     if (!global.firebase || typeof global.firebase.auth !== 'function') {
       return { ok: false, reauth: false, reason: 'firebase-unavailable', message: '安全登入元件尚未載入，請重新整理後再試。' };
@@ -122,8 +130,9 @@
     } catch (error) {
       return { ok: false, reauth: false, reason: 'auth-restore-failed', message: error.message || '無法恢復登入狀態。' };
     }
+    session.user = user;
     if (!user) {
-      return { ok: false, reauth: true, auth, reason: 'firebase-session-missing', message: '管理者登入已失效，需要重新登入。' };
+      return { ok: false, reauth: true, auth, session, reason: 'firebase-session-missing', message: '管理者登入已失效，需要重新登入。' };
     }
     if (typeof user.getIdTokenResult !== 'function') {
       return { ok: false, reauth: false, auth, reason: 'token-api-missing', message: '無法確認管理者權限，請重新整理後再試。' };
@@ -131,23 +140,28 @@
 
     let tokenResult;
     try {
-      // true 會向 Firebase 強制更新 ID token，並取得最新的管理者 claims。
-      tokenResult = await user.getIdTokenResult(true);
+      // Let Firebase reuse a valid token and refresh it automatically when needed.
+      tokenResult = await user.getIdTokenResult();
     } catch (error) {
+      const reauth = tokenFailureNeedsLogin(error) && (!auth.currentUser || auth.currentUser === user);
       return {
         ok: false,
-        reauth: tokenFailureNeedsLogin(error),
+        reauth,
         auth,
-        reason: tokenFailureNeedsLogin(error) ? 'firebase-session-expired' : 'token-refresh-failed',
-        message: tokenFailureNeedsLogin(error)
+        session,
+        reason: reauth ? 'firebase-session-expired' : 'token-refresh-failed',
+        message: reauth
           ? '管理者登入已過期，需要重新登入。'
           : (error.message || '目前無法確認管理者權限，請檢查網路後再試。')
       };
     }
 
     const claims = tokenResult && tokenResult.claims || {};
+    if (auth.currentUser !== user) {
+      return { ok: false, reauth: false, auth, reason: 'session-changed', message: '登入身分已在其他分頁變更，請重新整理後再試。' };
+    }
     if (!claimsAllowManager(claims, user) || !sameManagerIdentity(manager, user, claims)) {
-      return { ok: false, reauth: true, auth, reason: 'manager-claim-mismatch', message: '目前的安全登入與管理者身分不一致，請重新登入。' };
+      return { ok: false, reauth: false, auth, reason: 'manager-claim-mismatch', message: '目前登入身分與此頁的管理者資料不一致，請重新整理；若仍無法使用，請確認帳號權限。' };
     }
     return { ok: true, auth, user, claims };
   }
@@ -185,8 +199,9 @@
     }
   }
 
-  async function redirectToLoginOnce(runtime, auth, now) {
+  async function redirectToLoginOnce(runtime, auth, now, session) {
     const global = runtime || {};
+    if (session && (session.shell !== shellSnapshot(global) || (auth && auth.currentUser && auth.currentUser !== session.user))) return false;
     if (hasRecentRedirect(global, now)) return false;
     const value = String(Number(now || Date.now()));
     let markerSaved = false;
@@ -199,10 +214,8 @@
     if (!markerSaved) {
       try { if (global.localStorage) global.localStorage.setItem(REDIRECT_KEY, value); } catch (_) {}
     }
-    clearLocalShellAuth(global);
-    try {
-      if (auth && auth.currentUser && typeof auth.signOut === 'function') await auth.signOut();
-    } catch (_) {}
+    // Automatic recovery must not sign out other tabs sharing the same Firebase session.
+    if (auth && !auth.currentUser) clearLocalShellAuth(global);
     if (global.location && typeof global.location.replace === 'function') global.location.replace(LOGIN_URL);
     return true;
   }
@@ -288,10 +301,10 @@
   }
 
   async function requireManagerFirebaseSession() {
-    const result = await AdminAuth.ensureManagerAuth(global, manager, { timeoutMs: 8000 });
+    const result = await AdminAuth.ensureManagerAuth(global, manager, { timeoutMs: 15000 });
     if (result.ok) return result;
     if (result.reauth) {
-      const redirected = await AdminAuth.redirectToLoginOnce(global, result.auth);
+      const redirected = await AdminAuth.redirectToLoginOnce(global, result.auth, undefined, result.session);
       throw authError(
         redirected ? '登入狀態已失效，正在返回管理者登入頁。' : result.message,
         redirected ? 'line-admin/auth-redirecting' : 'line-admin/auth-required'
@@ -315,12 +328,22 @@
     setStatus(text, false);
   }
 
+  function showAuthRetry(message) {
+    const text = clean(message) || '登入驗證暫時無法完成，請確認網路後重試。';
+    listNode.innerHTML = `<div class="line-empty"><p>${escapeHtml(text)}</p><button type="button" class="btn soft" data-auth-retry>重新確認登入</button></div>`;
+    listNode.querySelector('[data-auth-retry]').addEventListener('click', () => global.location.reload());
+    setStatus(text, false);
+  }
+
   async function handleAuthError(error) {
     if (backendAuthError(error)) {
-      let auth = null;
-      try { auth = global.firebase && typeof global.firebase.auth === 'function' ? global.firebase.auth() : null; } catch (_) {}
-      const redirected = await AdminAuth.redirectToLoginOnce(global, auth);
-      if (!redirected) showLoginRequired('登入已重新驗證，但尚未取得管理者權限。請確認使用的是管理者帳號。');
+      const result = await AdminAuth.ensureManagerAuth(global, manager);
+      if (result.reauth) {
+        const redirected = await AdminAuth.redirectToLoginOnce(global, result.auth, undefined, result.session);
+        if (!redirected) showLoginRequired(result.message);
+      } else {
+        showAuthRetry(result.ok ? '目前的請求未通過權限確認，請確認帳號權限後重試。' : result.message);
+      }
       return true;
     }
     const code = clean(error && error.code);
@@ -328,7 +351,11 @@
       setStatus(error.message, false);
       return true;
     }
-    if (code === 'line-admin/auth-required' || code === 'line-admin/auth-unavailable') {
+    if (code === 'line-admin/auth-unavailable') {
+      showAuthRetry(error.message);
+      return true;
+    }
+    if (code === 'line-admin/auth-required') {
       showLoginRequired(error.message);
       return true;
     }

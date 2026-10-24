@@ -41,11 +41,11 @@ test('teacher other pages share the compact utility theme and explicit auth boun
       assert.match(source, /teacher-contract\.js\?v=20260919-taiwan-v2/);
       assert.doesNotMatch(source, /teacher-more-auth-bridge\.js|blockIfPortalOnly/);
     } else if (file === 'profile.html') {
-      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260919-taiwan-v2/);
+      assert.match(source, /teacher-more-auth-bridge\.js\?v=[^"\s]+/);
     } else if (file === 'task.html') {
-      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260919-taiwan-v2/);
+      assert.match(source, /teacher-more-auth-bridge\.js\?v=[^"\s]+/);
     } else {
-      assert.match(source, /teacher-more-auth-bridge\.js\?v=20260919-taiwan-v2/);
+      assert.match(source, /teacher-more-auth-bridge\.js\?v=[^"\s]+/);
     }
     assert.match(source, /data-teacher-utility-root/);
     if (file !== 'contract.html') assert.match(source, /blockIfPortalOnly/);

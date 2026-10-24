@@ -46,7 +46,7 @@
   <script src="firebase-client.js?v=20260919-taiwan-v2"></script>
 
   <script src="app.js?v=20260808-external-work-v2"></script>
-  <script src="manager-auth.js?v=20260808-external-work-v2"></script>
+  <script src="manager-auth.js?v=20261024-session-stability-v1"></script>
   <script>
     let currentUser=null, editingId='', editingRow=null, mediaRecorder=null, recordingStream=null, recordingChunks=[], recordedAudioFile=null, recordingStartAt=0, recordingTimer=null;
     function setSaveProgress(percent,text){const wrap=qs('#saveProgress'),fill=qs('#saveProgressFill'),label=qs('#saveProgressText'); if(!wrap||!fill||!label)return; wrap.classList.add('open'); const safe=Math.max(0,Math.min(100,Number(percent||0))); fill.style.width=safe+'%'; label.textContent=`${text||'處理中'} ${safe}%`;}

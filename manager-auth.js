@@ -14,6 +14,25 @@
     return clean(value).toLowerCase();
   }
 
+  function authError(code, message) {
+    return Object.assign(new Error(message), { code });
+  }
+
+  function needsLogin(error) {
+    return new Set(['auth/session-missing', 'auth/id-token-expired', 'auth/invalid-user-token',
+      'auth/user-disabled', 'auth/user-not-found', 'auth/user-token-expired', 'auth/requires-recent-login'])
+      .has(lower(error && error.code));
+  }
+
+  function shellSnapshot() {
+    try { return global.localStorage.getItem('employeeUser'); } catch (_) { return null; }
+  }
+
+  function shellIdentity() {
+    const user = readLocalUser();
+    return JSON.stringify([clean(user && (user.employeeId || user.id)), lower(user && user.email), Boolean(user && user.portalSessionBridge)]);
+  }
+
   function readLocalUser() {
     try { return JSON.parse(global.localStorage.getItem('employeeUser') || 'null'); } catch (_) { return null; }
   }
@@ -26,7 +45,7 @@
   }
 
   function safeNext(value) {
-    const fallback = `${clean(global.location && global.location.pathname).split('/').pop() || 'portal.html'}${clean(global.location && global.location.search)}`;
+    const fallback = `${clean(global.location && global.location.pathname).split('/').pop() || 'portal.html'}${clean(global.location && global.location.search)}${clean(global.location && global.location.hash)}`;
     const raw = clean(value || fallback).replace(/^\/+/, '');
     return /^[a-z0-9._-]+\.html(?:\?[^#]*)?(?:#.*)?$/i.test(raw) ? raw : 'portal.html';
   }
@@ -75,7 +94,10 @@
           try { if (typeof unsubscribe === 'function') unsubscribe(); } catch (_) {}
           unsubscribe = null;
         } else {
-          timer = global.setTimeout(() => finish(auth.currentUser, null), Math.max(1000, Number(timeoutMs || 8000)));
+          timer = global.setTimeout(() => {
+            if (auth.currentUser) finish(auth.currentUser, null);
+            else finish(null, authError('auth/restore-timeout', '登入狀態仍在恢復，請稍後重新整理或重試。'));
+          }, Math.max(1000, Number(timeoutMs || 15000)));
         }
       } catch (error) {
         finish(null, error);
@@ -101,16 +123,29 @@
     });
   }
 
-  async function requireManager(options) {
+  async function requireManagerSession(options) {
     const settings = options || {};
+    const initialShell = shellSnapshot();
+    const initialIdentity = shellIdentity();
     let auth;
+    let firebaseUser;
     try {
       auth = initializeFirebase();
-      const firebaseUser = await waitForAuth(auth, settings.timeoutMs);
-      if (!firebaseUser) throw new Error('管理者安全登入已失效。');
-      const result = await firebaseUser.getIdTokenResult(true);
+      firebaseUser = await waitForAuth(auth, settings.timeoutMs);
+      if (!firebaseUser) throw authError('auth/session-missing', '管理者安全登入已失效。');
+      // Firebase refreshes an expired token automatically; an active token does not need a network round trip.
+      const result = await firebaseUser.getIdTokenResult();
+      if (auth.currentUser !== firebaseUser || shellIdentity() !== initialIdentity) {
+        throw authError('auth/session-changed', '登入身分已在其他分頁變更，請重新整理後再試。');
+      }
       const claims = result && result.claims || {};
-      if (!managerClaims(claims)) throw new Error('目前登入的帳號沒有管理者權限。');
+      if (!managerClaims(claims)) throw authError('auth/insufficient-permission', '目前登入的帳號沒有管理者權限。');
+
+      const expected = settings.expectedManager;
+      if (expected && ((expected.email && (claims.email || firebaseUser.email) && lower(expected.email) !== lower(claims.email || firebaseUser.email)) ||
+        ((expected.employeeId || expected.id) && claims.employeeId && clean(expected.employeeId || expected.id) !== clean(claims.employeeId)))) {
+        throw authError('auth/session-changed', '登入身分已在其他分頁變更，請重新整理後再試。');
+      }
 
       const local = readLocalUser();
       const localEmail = lower(local && local.email);
@@ -125,15 +160,23 @@
       global.localStorage.setItem('employeeUser', JSON.stringify(manager));
       global.localStorage.setItem('employeeUserId', manager.employeeId);
       global.localStorage.setItem('employeeSecureAuthVersion', '1');
-      return manager;
+      return { manager, user: firebaseUser, auth, claims };
     } catch (error) {
-      clearManagerShell();
-      if (settings.redirect !== false && global.location && typeof global.location.replace === 'function') {
-        global.location.replace(loginUrl(settings.next));
+      // A slow restore, offline request or permission denial is not a logout. An old tab
+      // must never clear a newer login while its token request was still in flight.
+      if (needsLogin(error) && auth && (auth.currentUser === firebaseUser || auth.currentUser === null) && shellSnapshot() === initialShell) {
+        clearManagerShell();
+        if (settings.redirect !== false && global.location && typeof global.location.replace === 'function') {
+          global.location.replace(loginUrl(settings.next));
+        }
       }
       throw error;
     }
   }
 
-  global.YZManagerAuth = Object.freeze({ requireManager, managerClaims, safeNext, loginUrl });
+  async function requireManager(options) {
+    return (await requireManagerSession(options)).manager;
+  }
+
+  global.YZManagerAuth = Object.freeze({ requireManager, requireManagerSession, managerClaims, safeNext, loginUrl });
 })(window);

@@ -165,6 +165,7 @@ jobs:
           node --check functions/courseLoginPolicy.js
           node --check functions/index.js
           node --check functions/employeeAuth.js
+          node --test tests/employee-login-sessions.test.cjs tests/login-session-stability.test.cjs
           node --check functions/employeeDataGateway.js
           node --check functions/employeeRegistration.js
           node --check functions/inventoryCountAccess.js

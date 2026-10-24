@@ -174,14 +174,23 @@ function authUid(account) {
   return `employee-${sha256(`${account.collection}|${account.id}`).slice(0, 40)}`;
 }
 
-async function ensureFirebaseAuthUser(account, email, password, user, manager) {
+async function ensureFirebaseAuthUser(account, email, password, user, manager, migratePassword) {
   const auth = admin.auth();
   let authUser;
+  let passwordSynced = false;
   try {
     authUser = await auth.getUserByEmail(email);
-    const update = { password: String(password) };
-    if (clean(user && user.name)) update.displayName = clean(user.name);
-    authUser = await auth.updateUser(authUser.uid, update);
+    if (authUser.disabled) throw new HttpsError('permission-denied', '此帳號目前無法登入。');
+    const update = {};
+    const hasPassword = (authUser.providerData || []).some((provider) => provider.providerId === 'password');
+    // Updating a Firebase password invalidates sessions on other devices. Ordinary
+    // sign-in must only verify it; synchronize credentials only during setup/reset.
+    const needsPasswordSync = !hasPassword || migratePassword || account.data.firebasePasswordSyncRequired === true ||
+      (user.passwordResetRequired === true && account.data.firebasePasswordSyncRequired !== false);
+    if (needsPasswordSync) update.password = String(password);
+    if (clean(user && user.name) && clean(user.name) !== clean(authUser.displayName)) update.displayName = clean(user.name);
+    if (Object.keys(update).length) authUser = await auth.updateUser(authUser.uid, update);
+    passwordSynced = needsPasswordSync;
   } catch (error) {
     if (!error || error.code !== 'auth/user-not-found') throw error;
     const create = {
@@ -192,7 +201,9 @@ async function ensureFirebaseAuthUser(account, email, password, user, manager) {
     };
     if (clean(user && user.name)) create.displayName = clean(user.name);
     authUser = await auth.createUser(create);
+    passwordSynced = true;
   }
+  if (passwordSynced) await account.ref.set({ firebasePasswordSyncRequired: false }, { merge: true });
   const claims = Object.assign({}, {
     employee: true,
     manager,
@@ -226,6 +237,7 @@ function passwordDeletePatch(passwordHash) {
   const patch = {
     passwordHash,
     passwordHashVersion: 1,
+    firebasePasswordSyncRequired: true,
     passwordUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
   };
   PASSWORD_FIELDS.forEach((field) => { patch[field] = admin.firestore.FieldValue.delete(); });
@@ -236,6 +248,7 @@ function previousPasswordPatch(row) {
   const fields = PASSWORD_FIELDS.concat([
     'passwordHash',
     'passwordHashVersion',
+    'firebasePasswordSyncRequired',
     'passwordUpdatedAt',
     'passwordResetRequired',
     'passwordResetRequestedAt',
@@ -293,7 +306,7 @@ function registerEmployeeAuth(exportsObject, helpers = {}) {
     const user = normalizeUser(account);
     const manager = isManager(account.data, account.collection);
     await account.ref.set({ lastLoginAt: admin.firestore.FieldValue.serverTimestamp(), lastLoginSource: 'employeeSecureLogin' }, { merge: true });
-    await ensureFirebaseAuthUser(account, email, password, user, manager);
+    await ensureFirebaseAuthUser(account, email, password, user, manager, result.migrate);
     return {
       ok: true,
       message: manager ? '管理者登入成功' : '登入成功',
@@ -319,6 +332,7 @@ function registerEmployeeAuth(exportsObject, helpers = {}) {
       passwordResetCompletedAt: admin.firestore.FieldValue.serverTimestamp()
     }), { merge: true });
     await updateFirebaseAuthPassword(email, newPassword);
+    await result.account.ref.set({ firebasePasswordSyncRequired: false }, { merge: true });
     return { ok: true, message: '密碼已更新，請使用新密碼登入。' };
   });
 

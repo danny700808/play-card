@@ -221,7 +221,8 @@ test('all manager contract links use the current annual contract manager', () =>
   assert.doesNotMatch(review, /href="external-teacher-contract-admin\.html/);
   assert.match(legacy, /location\.replace\(['"]contract-admin\.html['"]\)/);
   assert.match(publisher, /await waitForManagerAuth\(\)/);
-  assert.match(publisher, /getIdTokenResult\(true\)/);
+  assert.match(publisher, /YZManagerAuth\.requireManagerSession\(/);
+  assert.match(read('manager-auth.js'), /getIdTokenResult\(\)/);
   assert.match(login, /'contract-admin\.html'/);
   const rules = read('firestore.rules');
   assert.match(rules, /match \/teacherContractAssignments\/\{document=\*\*\} \{ allow read, write: if isManagerAuth\(\); \}/);

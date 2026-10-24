@@ -7112,10 +7112,10 @@ executionPolicy:{workflowVersion:PRODUCT_LISTING_WORKFLOW_VERSION,imageStandardV
     const bridge=global.YouziOperationsManagerAuth;
     if(!bridge||typeof bridge.ensureManagerAuth!=='function')throw new Error('營運中心安全驗證元件尚未載入，請重新整理後再試。');
     const manager=state.user||(typeof global.getUser==='function'?global.getUser():null);
-    const result=await bridge.ensureManagerAuth(global,manager,{timeoutMs:8000});
+    const result=await bridge.ensureManagerAuth(global,manager,{timeoutMs:15000});
     if(result&&result.ok){bridge.clearRedirectMarker(global);return result;}
     if(result&&result.reauth){
-      const redirected=await bridge.redirectToLoginOnce(global,result.auth);
+      const redirected=await bridge.redirectToLoginOnce(global,result.auth,undefined,result.session);
       throw new Error(redirected?'管理者安全登入需要重新驗證，正在返回登入頁。':(result.message||'尚未取得管理者權限，請確認使用的是管理者帳號。'));
     }
     throw new Error(result&&result.message||'目前無法確認管理者權限，請重新整理後再試。');
@@ -8127,7 +8127,7 @@ function rerenderKeepingFocus(id,value){
     const expenseEngineReady=payrollOnlyBoot?true:await ensureOperatingExpenseEngineLoaded();
     state.user=user; setText('opsUserChip',userLabel());
     try{state.db=initDb();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('Firebase初始化失敗',errorMessage(error)));return;}
-    try{await requireOperationsReadAuth();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('尚未完成登入確認',errorMessage(error)));return;}
+    try{await requireOperationsReadAuth();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('尚未完成登入確認',errorMessage(error))+'<button type="button" class="ops-btn" id="opsAuthRetryBtn">重新確認登入</button>');byId('opsAuthRetryBtn').addEventListener('click',function(){global.location.reload();});return;}
     if(payrollOnlyBoot){state.payrollOnlyBoot=true;bindEvents();render();return;}
     let ysv104RepairResult='';
     try{ysv104RepairResult=await repairYsv104PreorderHistoryOnce();}catch(error){console.error('YSV-104 historical repair stopped safely',error);showAlert(errorMessage(error),'error');}

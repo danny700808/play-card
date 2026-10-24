@@ -20,6 +20,10 @@
     return clean(value).toLowerCase();
   }
 
+  function shellSnapshot(runtime) {
+    try { return runtime.localStorage && runtime.localStorage.getItem('employeeUser'); } catch (_) { return undefined; }
+  }
+
   function truthy(value) {
     return value === true || ['1', 'true', 'yes', '是', 'enabled', 'active'].includes(lower(value));
   }
@@ -54,10 +58,10 @@
 
   function waitForAuth(auth, timeoutMs, timers) {
     const clock = timers || globalThis;
-    const waitMs = Math.max(1000, Number(timeoutMs || 8000));
+    const waitMs = Math.max(1000, Number(timeoutMs || 15000));
     return new Promise((resolve, reject) => {
       if (!auth || typeof auth.onAuthStateChanged !== 'function') {
-        resolve(null);
+        reject(new Error('安全登入元件尚未就緒，請重新整理後再試。'));
         return;
       }
       let settled = false;
@@ -105,9 +109,10 @@
 
   async function ensureManagerAuth(runtime, manager, options) {
     const global = runtime || {};
+    const session = { shell: shellSnapshot(global), user: null };
     if (!localManagerAllowed(manager)) {
       managerAuthCache = null;
-      return { ok: false, reauth: true, reason: 'local-manager-missing', message: '請先使用管理者帳號登入。' };
+      return { ok: false, reauth: false, reason: 'local-manager-missing', message: '登入身分資料已變更，請重新整理；若仍無法使用，請重新登入管理者帳號。' };
     }
     if (!global.firebase || typeof global.firebase.auth !== 'function') {
       return { ok: false, reauth: false, reason: 'firebase-unavailable', message: '安全登入元件尚未載入，請重新整理後再試。' };
@@ -126,9 +131,10 @@
     } catch (error) {
       return { ok: false, reauth: false, reason: 'auth-restore-failed', message: error.message || '無法恢復登入狀態。' };
     }
+    session.user = user;
     if (!user) {
       managerAuthCache = null;
-      return { ok: false, reauth: true, auth, reason: 'firebase-session-missing', message: '管理者安全登入已失效，需要重新登入。' };
+      return { ok: false, reauth: true, auth, session, reason: 'firebase-session-missing', message: '管理者安全登入已失效，需要重新登入。' };
     }
     if (typeof user.getIdTokenResult !== 'function') {
       return { ok: false, reauth: false, auth, reason: 'token-api-missing', message: '無法確認管理者權限，請重新整理後再試。' };
@@ -141,14 +147,15 @@
 
     let tokenResult;
     try {
-      tokenResult = await user.getIdTokenResult(true);
+      tokenResult = await user.getIdTokenResult();
     } catch (error) {
       managerAuthCache = null;
-      const reauth = tokenFailureNeedsLogin(error);
+      const reauth = tokenFailureNeedsLogin(error) && (!auth.currentUser || auth.currentUser === user);
       return {
         ok: false,
         reauth,
         auth,
+        session,
         reason: reauth ? 'firebase-session-expired' : 'token-refresh-failed',
         message: reauth
           ? '管理者安全登入已過期，需要重新登入。'
@@ -157,9 +164,13 @@
     }
 
     const claims = tokenResult && tokenResult.claims || {};
+    if (auth.currentUser !== user) {
+      managerAuthCache = null;
+      return { ok: false, reauth: false, auth, reason: 'session-changed', message: '登入身分已在其他分頁變更，請重新整理後再試。' };
+    }
     if (!claimsAllowManager(claims, user) || !sameManagerIdentity(manager, user, claims)) {
       managerAuthCache = null;
-      return { ok: false, reauth: true, auth, reason: 'manager-claim-mismatch', message: '目前的安全登入與管理者身分不一致，請重新登入。' };
+      return { ok: false, reauth: false, auth, reason: 'manager-claim-mismatch', message: '目前登入身分與此頁的管理者資料不一致，請重新整理；若仍無法使用，請確認帳號權限。' };
     }
     managerAuthCache = { auth, user, claims, verifiedAt: now };
     return { ok: true, auth, user, claims };
@@ -211,8 +222,9 @@
     return recent;
   }
 
-  async function redirectToLoginOnce(runtime, auth, now) {
+  async function redirectToLoginOnce(runtime, auth, now, session) {
     const global = runtime || {};
+    if (session && (session.shell !== shellSnapshot(global) || (auth && auth.currentUser && auth.currentUser !== session.user))) return false;
     managerAuthCache = null;
     if (hasRecentRedirect(global, now)) return false;
     const value = String(Number(now || Date.now()));
@@ -226,10 +238,9 @@
     if (!markerSaved) {
       try { if (global.localStorage) global.localStorage.setItem(REDIRECT_KEY, value); } catch (_) {}
     }
-    clearLocalShellAuth(global);
-    try {
-      if (auth && auth.currentUser && typeof auth.signOut === 'function') await auth.signOut();
-    } catch (_) {}
+    // Automatic recovery must not sign out every tab sharing Firebase LOCAL persistence.
+    // Only a confirmed missing session can invalidate the local shell.
+    if (auth && !auth.currentUser) clearLocalShellAuth(global);
     if (global.location && typeof global.location.replace === 'function') global.location.replace(loginUrl(global));
     return true;
   }

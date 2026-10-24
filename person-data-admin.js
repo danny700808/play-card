@@ -1,56 +1,17 @@
 (function (global) {
   'use strict';
   const RETURN_TARGET = 'person-data-admin.html';
-  const LOGIN_URL = `login.html?next=${encodeURIComponent(RETURN_TARGET)}`;
-  const ADMIN_EMAILS = new Set(['danny700808@gmail.com']);
   let groups = [];
   let selected = null;
   let busy = false;
   const $ = (id) => document.getElementById(id);
   const clean = (value) => String(value == null ? '' : value).trim();
   const lower = (value) => clean(value).toLowerCase();
-  const truthy = (value) => value === true || ['1', 'true', 'yes', '是', 'enabled', 'active'].includes(lower(value));
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
-  function localUser() {
-    try { return JSON.parse(global.localStorage.getItem('employeeUser') || 'null') || {}; } catch (_) { return {}; }
-  }
-  function localManagerAllowed(user) {
-    const role = lower(user && user.role);
-    return Boolean(user && (truthy(user.showSettingsZone) || truthy(user.isManagerAccount) || ['admin', 'manager', 'owner', '主管', '管理者'].includes(role)));
-  }
-  function claimsAllowed(claims, user) {
-    const token = claims || {};
-    const role = lower(token.role || token.userRole || token.permissionRole);
-    return token.admin === true || token.manager === true || token.owner === true ||
-      ['admin', 'manager', 'owner', '主管', '管理者'].includes(role) ||
-      ADMIN_EMAILS.has(lower(token.email || user && user.email));
-  }
-  function clearShell() {
-    ['employeeUser', 'employeeUserId', 'employeeSecureAuthVersion', 'employeePortalMode'].forEach((key) => {
-      try { global.localStorage.removeItem(key); } catch (_) {}
-    });
-  }
   async function ensureManager() {
-    const manager = localUser();
-    if (!localManagerAllowed(manager) || !global.firebase || typeof global.firebase.auth !== 'function') {
-      clearShell(); global.location.replace(LOGIN_URL); return false;
-    }
-    const config = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
-    if (!global.firebase.apps.length && config) global.firebase.initializeApp(config);
-    const auth = global.firebase.auth();
-    const user = await new Promise((resolve) => {
-      let done = false; let unsubscribe = null;
-      const finish = (value) => { if (done) return; done = true; try { if (unsubscribe) unsubscribe(); } catch (_) {} resolve(value || null); };
-      unsubscribe = auth.onAuthStateChanged(finish, () => finish(null));
-      global.setTimeout(() => finish(auth.currentUser), 8000);
-    });
-    if (!user) { clearShell(); global.location.replace(LOGIN_URL); return false; }
-    const result = await user.getIdTokenResult(true);
-    if (!claimsAllowed(result && result.claims, user)) {
-      clearShell(); try { await auth.signOut(); } catch (_) {} global.location.replace(LOGIN_URL); return false;
-    }
-    return true;
+    if (!global.YZManagerAuth) throw new Error('安全登入元件尚未載入，請重新整理後再試。');
+    return global.YZManagerAuth.requireManager({ next: RETURN_TARGET });
   }
   function functionsClient() {
     const config = global.APP_CONFIG && global.APP_CONFIG.FIREBASE_CONFIG;
@@ -58,6 +19,7 @@
     return global.firebase.app().functions(((global.APP_CONFIG&&global.APP_CONFIG.FUNCTION_REGION)||'us-central1'));
   }
   async function call(name, data) {
+    await ensureManager();
     const response = await functionsClient().httpsCallable(name)(data || {});
     return response && response.data || {};
   }
@@ -157,5 +119,5 @@
   $('personReload').addEventListener('click', load);
   $('personClose').addEventListener('click', () => $('personMask').classList.add('hidden'));
   $('personMask').addEventListener('click', (event) => { if (event.target === $('personMask')) $('personMask').classList.add('hidden'); });
-  ensureManager().then((ok) => { if (ok) load(); }).catch(() => { clearShell(); global.location.replace(LOGIN_URL); });
+  load();
 })(window);

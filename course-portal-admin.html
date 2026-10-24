@@ -100,6 +100,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
   <script src="app.js?v=20260803-login-gateway-v1"></script>
+  <script src="manager-auth.js?v=20261024-session-stability-v1"></script>
   <script src="course-portal-common.js?v=20260919-taiwan-v2"></script>
   <script>
   (function () {
@@ -256,6 +257,7 @@
       const button = document.getElementById('loadBtn');
       P.loading(button, true, '讀取中…');
       try {
+        await window.YZManagerAuth.requireManager({next:'course-portal-admin.html'});
         const result = await P.call('coursePortalAdminData', { adminPin: document.getElementById('adminPin').value });
         rows = result.bindings || [];
         unpaidSuspensions = result.unpaidSuspensions || [];
@@ -435,17 +437,6 @@
       }
       if (!window.firebase || typeof window.firebase.auth !== 'function') {
         P.toast('管理者登入元件尚未載入，請重新整理。', 'error');
-        return;
-      }
-      await new Promise((resolve) => {
-        let finished = false;
-        const done = () => { if (finished) return; finished = true; clearTimeout(timer); if (unsubscribe) unsubscribe(); resolve(); };
-        const unsubscribe = firebase.auth().onAuthStateChanged(done);
-        const timer = setTimeout(done, 5000);
-      });
-      if (!firebase.auth().currentUser) {
-        P.toast('管理者登入狀態已失效，請重新登入。', 'error');
-        location.href = 'index.html';
         return;
       }
       await load();
