@@ -1,0 +1,97 @@
+name: Deploy Employee Login Sessions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Share the lock with the broad portal rollout: both can update these functions.
+concurrency:
+  group: deploy-course-portal-auth-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+      - name: Verify login, account recovery and authorization
+        run: |
+          node --check functions/employeeAuth.js
+          node --test tests/employee-login-sessions.test.cjs tests/login-session-stability.test.cjs tests/manager-auth-restore-timeout.test.cjs tests/operations-manager-auth.test.js tests/line-binding-admin-auth.test.js tests/external-teacher-work-v2.test.js tests/person-data-admin.test.js tests/unified-login.test.cjs tests/unified-email-login.test.cjs tests/operations-startup-load.test.cjs tests/teacher-more-pages.test.js tests/teacher-profile-flow.test.js tests/external-teacher-center.test.js tests/private-data-backend.test.cjs tests/operations-login-home.test.cjs tests/overview-purchase-cost.test.cjs
+          node - <<'NODE'
+          const functions = require('./functions');
+          for (const name of ['employeeSecureLogin','employeeChangePassword','employeeForgotPassword']) {
+            const endpoint = functions[name].__endpoint;
+            if (!endpoint.callableTrigger || !['asia-east1','us-central1'].every(region => endpoint.region.includes(region))) throw new Error('Missing protected login endpoint: '+name);
+          }
+          NODE
+      - name: Prepare existing Firebase runtime settings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YOUZI_C1B74 }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-employee-auth.json
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          for (const key of ['FIREBASE_SERVICE_ACCOUNT','GMAIL_USER','GMAIL_APP_PASSWORD']) if (!process.env[key]) throw new Error('Missing deployment setting: '+key);
+          const credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+          if (credentials.project_id !== 'youzi-c1b74') throw new Error('Unexpected Firebase project');
+          fs.writeFileSync(process.env.SERVICE_ACCOUNT_PATH, JSON.stringify(credentials), {mode:0o600});
+          const settings = {
+            LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
+            GMAIL_USER: process.env.GMAIL_USER,
+            GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
+            EMAIL_FROM: process.env.EMAIL_FROM || '',
+            PUBLIC_WEB_BASE_URL: 'https://danny700808.github.io/play-card/',
+            LINE_LOGIN_CALLBACK_URL: 'https://asia-east1-youzi-c1b74.cloudfunctions.net/coursePortalLineLoginCallback'
+          };
+          fs.writeFileSync('functions/.env', Object.entries(settings).map(([key,value])=>key+'='+JSON.stringify(value)).join('\n')+'\n', {mode:0o600});
+          NODE
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+      - name: Deploy login and password recovery in both regions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-employee-auth.json
+        run: firebase deploy --project youzi-c1b74 --non-interactive --force --only functions:employeeSecureLogin,functions:employeeChangePassword,functions:employeeForgotPassword
+      - name: Verify deployed services without logging in or changing accounts
+        working-directory: functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/youzi-employee-auth.json
+        run: |
+          node <<'NODE'
+          const {GoogleAuth} = require('google-auth-library');
+          (async()=>{
+            const client = await new GoogleAuth({scopes:['https://www.googleapis.com/auth/cloud-platform']}).getClient();
+            for (const region of ['asia-east1','us-central1']) {
+              for (const name of ['employeeSecureLogin','employeeChangePassword','employeeForgotPassword']) {
+                const {data} = await client.request({url:`https://cloudfunctions.googleapis.com/v2/projects/youzi-c1b74/locations/${region}/functions/${name}`});
+                if (data.state !== 'ACTIVE') throw new Error(name+' is not active in '+region);
+                console.log(JSON.stringify({name,region,state:data.state,updatedAt:data.updateTime,revision:data.serviceConfig.revision}));
+              }
+              const response = await fetch(`https://${region}-youzi-c1b74.cloudfunctions.net/employeeSecureLogin`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:{}})});
+              const data = await response.json();
+              if (!response.ok || data.result?.ok !== false || data.result?.message !== '請輸入帳號與密碼。') throw new Error('Login validation failed in '+region);
+            }
+          })().catch(error=>{console.error(error.message);process.exitCode=1;});
+          NODE
+      - name: Remove temporary credentials
+        if: always()
+        env:
+          SERVICE_ACCOUNT_PATH: ${{ runner.temp }}/youzi-employee-auth.json
+        run: |
+          node -e "const fs=require('fs');for(const file of [process.env.SERVICE_ACCOUNT_PATH,'functions/.env'])if(file&&fs.existsSync(file))fs.unlinkSync(file);"
