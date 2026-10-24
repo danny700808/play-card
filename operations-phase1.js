@@ -171,7 +171,7 @@
   };
   // 後端最長執行 30 分鐘；瀏覽器多留 1 分鐘接收後端的最終成功／失敗回應。
   const EASYSTORE_CATALOG_CLIENT_TIMEOUT_MS = 31 * 60 * 1000;
-  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v12_purchase_cost';
+  const DASHBOARD_CACHE_KEY = 'youzi_ops_dashboard_overview_v13_combined_cost';
   const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   const FAST_STATE_DB_NAME = 'youzi-operations-fast-start';
   const FAST_STATE_STORE = 'snapshots';
@@ -2190,11 +2190,12 @@ function renderOverviewV7(){
   const costDataIncomplete=(state.diagnostics||[]).some(function(row){return costReadLimits[row.collection]&&(!row.ok||row.count>=costReadLimits[row.collection]);});
   const costPeriod=state.overviewRange==='month'?'本月':state.overviewRange==='year'?'今年':state.overviewRange==='today'?'當日':'區間';
   const balanceClass=costMissing||costDataIncomplete?'is-unconfirmed':replenishmentBalance>0?'is-positive':replenishmentBalance<0?'is-negative':'is-zero';
-  const balanceText=costMissing||costDataIncomplete?'待確認':(replenishmentBalance>0?'＋':replenishmentBalance<0?'−':'')+money(Math.abs(replenishmentBalance));
-  const costSummaryHtml='<div class="ops-overview-cost-summary"><h3>商品成本與進貨</h3><div class="ops-overview-cost-grid">'
-    +'<div class="ops-overview-cost-box is-sold"><span>'+costPeriod+'售出商品成本</span><strong data-overview-cost="sold">'+(costDataIncomplete?'待確認':money(soldProductCost))+'</strong><div class="ops-overview-cost-foot"><span>門市＋網路</span><small>'+(costMissing?'部分商品成本待補齊':costEstimated?'含預購／暫估成本':'售出成本扣除退貨調整')+'</small></div></div>'
-    +'<div class="ops-overview-cost-box is-purchased"><span>'+costPeriod+'進貨金額</span><strong data-overview-cost="purchased">'+(costDataIncomplete?'待確認':money(purchaseCost))+'</strong><div class="ops-overview-cost-foot"><span>補貨差額'+(costEstimated?'（暫估）':'')+'</span><strong data-overview-cost="balance" class="'+balanceClass+'">'+balanceText+'</strong></div></div>'
-    +'</div><p class="ops-overview-cost-note">'+(costDataIncomplete?'資料未完整讀取，請確認資料範圍後再比較。':costMissing?'部分商品缺少成本，差額待補齊後顯示。':'進貨依到貨日期統計，含單上額外費用。')+' 差額為成本比較，非銀行可用餘額。</p></div>';
+  const balanceText=costMissing||costDataIncomplete?'待確認':(costEstimated?'約 ':'')+(replenishmentBalance>0?'＋':replenishmentBalance<0?'−':'')+money(Math.abs(replenishmentBalance));
+  const costSummaryHtml='<div class="ops-overview-cost-summary"><div class="ops-overview-cost-grid" role="group" aria-label="商品成本與進貨">'
+    +'<div class="ops-overview-cost-box is-sold"><span>'+costPeriod+'售出商品成本</span><strong data-overview-cost="sold">'+(costDataIncomplete?'待確認':money(soldProductCost))+'</strong></div>'
+    +'<div class="ops-overview-cost-box is-purchased"><span>'+costPeriod+'進貨金額</span><strong data-overview-cost="purchased">'+(costDataIncomplete?'待確認':money(purchaseCost))+'</strong></div>'
+    +'<div class="ops-overview-cost-foot"><span>補貨差額</span><strong data-overview-cost="balance" class="'+balanceClass+'">'+balanceText+'</strong></div>'
+    +'</div></div>';
 
   const rangeControls=overviewRangeControlsHtml();
   const allGrossProfit=storeBalance+networkProfit+rentalRevenue+educationRetainedWithRental;

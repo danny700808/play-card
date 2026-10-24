@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const {fixture,example,date,sale,purchase,online,source} = require('./helpers/overview-cost-fixture.cjs');
 const value = (html,key) => html.match(new RegExp('data-overview-cost="'+key+'"[^>]*>([^<]+)'))?.[1];
 
-test('store and online costs net of returns occupy two cards; no profit, advertising or internal use', () => {
+test('store and online costs net of returns share one panel with receipts and a common balance', () => {
   const f=example();
   f.state.sales.push(sale('internal',999999,'2026-10-24',{saleType:'internalUse'}));
   f.state.platformOrders.push(online('cancelled',9000,'2026-10-24',{cancelled:true}),online('returned',9000,'2026-10-24',{returned:true}));
@@ -15,6 +15,8 @@ test('store and online costs net of returns occupy two cards; no profit, adverti
   assert.equal(value(html,'balance'),'＋NT$ 70,000');
   assert.equal((html.match(/class="ops-overview-cost-box /g)||[]).length,2);
   assert.match(html,/data-overview-cost="balance" class="is-positive"/);
+  const panel=html.slice(html.indexOf('<div class="ops-overview-cost-summary">'),html.indexOf('差額')+250);
+  assert.doesNotMatch(panel,/<small|ops-overview-cost-note|門市＋網路|非銀行可用餘額/);
 });
 
 test('both paid and unpaid receipts count on receivedAt, even when entered or paid next month', () => {
@@ -60,7 +62,6 @@ test('day, month, year and custom filters share the same cost and receipt bounds
 test('missing costs and incomplete reads do not produce a misleading spendable balance', () => {
   const f=example();f.state.sales[0].costMissing=true;
   assert.equal(value(f.render(),'balance'),'待確認');
-  assert.match(f.render(),/部分商品缺少成本/);
   f.state.sales[0].costMissing=false;
   f.state.diagnostics=[{collection:'opsPurchases',ok:true,count:1200}];
   assert.equal(value(f.render(),'sold'),'待確認');
@@ -71,8 +72,7 @@ test('missing costs and incomplete reads do not produce a misleading spendable b
 test('estimated preorder costs are identified and unrelated income does not become replenishment principal', () => {
   const f=fixture({state:{sales:[sale('preorder',8000,'2026-10-24',{saleType:'preorder',costEstimated:true})],incomes:[{occurredAt:date('2026-10-24'),category:'維修收入',receivedAmount:90000}]}});
   assert.equal(value(f.render(),'sold'),'NT$ 8,000');
-  assert.match(f.render(),/含預購／暫估成本/);
-  assert.match(f.render(),/補貨差額（暫估）/);
+  assert.equal(value(f.render(),'balance'),'約 ＋NT$ 8,000');
 });
 
 test('normalizers distinguish absent costs from an explicitly valid zero cost', () => {

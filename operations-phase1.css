@@ -2702,23 +2702,20 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
 /* Keep the full approved wordmark legible in the sidebar. */
 .ops-brand{flex-direction:column;align-items:stretch;gap:10px}.ops-brand-logo{background:#fff;border-radius:10px;padding:10px}.ops-brand-logo img{display:block;width:100%;height:auto}.ops-brand strong{font-size:19px}
 
-/* Sales cost and received-purchase cost share one period and two equal tiles. */
+/* One cost panel: two equal columns above a shared replenishment balance. */
 .ops-overview-cost-summary{color:#23483e;min-width:0}
 .ops-overview-cost-desktop{margin-bottom:14px}
-.ops-overview-cost-summary h3{font-size:14px;line-height:1.5;margin:0 0 10px;font-weight:800}
-.ops-overview-cost-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch}
-.ops-overview-cost-box{min-width:0;padding:15px 13px;border:1px solid #cfe0da;border-radius:11px;display:flex;flex-direction:column;align-items:stretch;text-align:left}
-.ops-overview-cost-box.is-sold{background:#e6f4ee;border-color:#9fc8b6}
-.ops-overview-cost-box.is-purchased{background:#fcf5e4;border-color:#e3d2a1}
+.ops-overview-cost-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;border:1px solid #9fc8b6;border-radius:11px;background:#e6f4ee;overflow:hidden}
+.ops-overview-cost-box{min-width:0;padding:15px 13px;display:flex;flex-direction:column;align-items:stretch;text-align:left}
+.ops-overview-cost-box.is-purchased{border-left:1px solid #c5dbcf}
 .ops-overview-cost-box>span{font-size:13px;line-height:1.5;color:#426257;font-weight:700}
-.ops-overview-cost-box>strong{display:block;margin:9px 0 17px;font-size:clamp(17px,2.8vw,25px);line-height:1.25;font-weight:850;letter-spacing:-.03em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.ops-overview-cost-foot{margin-top:auto;min-height:49px;padding-top:9px;border-top:1px solid #cbd9ce;display:flex;flex-direction:column;gap:4px}
-.ops-overview-cost-foot>span,.ops-overview-cost-foot>small{font-size:11px;line-height:1.5;color:#5e7369}
-.ops-overview-cost-foot>strong{font-size:15px;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.ops-overview-cost-box>strong{display:block;margin:12px 0 0;font-size:clamp(17px,2.8vw,25px);line-height:1.25;font-weight:850;letter-spacing:-.03em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.ops-overview-cost-foot{grid-column:1 / -1;min-width:0;padding:12px 13px;border-top:1px solid #c5dbcf;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.35)}
+.ops-overview-cost-foot>span{font-size:13px;line-height:1.5;color:#426257;font-weight:700}
+.ops-overview-cost-foot>strong{font-size:18px;line-height:1.4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;min-width:0}
 .ops-overview-cost-foot .is-positive{color:#08784f}
 .ops-overview-cost-foot .is-negative{color:#b23b32}
 .ops-overview-cost-foot .is-zero,.ops-overview-cost-foot .is-unconfirmed{color:#5e7369}
-.ops-overview-cost-note{margin:10px 0 0;font-size:11px;line-height:1.65;color:#64796e}
 .ops-mobile-profit-grid>.ops-overview-cost-summary{margin-top:15px;padding-top:13px;border-top:1px solid #d9e3dd}
 @media(max-width:620px){
   .ops-overview-cost-box{padding:12px 10px}
@@ -2726,7 +2723,6 @@ html,body.ops-body{max-width:100%;overflow-x:hidden}
   .ops-overview-cost-box>strong{font-size:clamp(16px,4.2vw,23px);margin-top:4px}
 }
 @media(max-width:360px){
-  .ops-overview-cost-grid{gap:7px}
   .ops-overview-cost-box{padding:11px 8px}
-  .ops-overview-cost-foot>strong{font-size:13px}
+  .ops-overview-cost-foot>strong{font-size:16px}
 }
