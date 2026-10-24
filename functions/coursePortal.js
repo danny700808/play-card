@@ -3,6 +3,8 @@ const { feeDescription, enrichLateAttendanceFees } = require('./payrollAdjustmen
 const storageRouting = require('./storageRouting');
 const { bookingPage } = require('./roomBookingPages');
 const { recipientFields, notificationRecipientKey } = require('./portalNotificationPolicy');
+const courseClosures = require('./courseClosurePolicy');
+const {createTeacherAnnouncements} = require('./teacherAnnouncements');
 const { applyLessonSettings } = require('./courseLessonSettings');
 'use strict';
 
@@ -13215,6 +13217,8 @@ async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCo
   if (weekday(today) === 1 || ![9,22].includes(hour)) return;
   const evening = hour === 22;
   const previous = addDays(today, weekday(today) === 2 ? -2 : -1);
+  const closureDates = await courseClosures.closedDates(db, [today, previous]);
+  if (closureDates.has(today)) return;
   const [bindings, bundle, settings] = await Promise.all([
     db.collection('coursePortalTeacherBindings').where('status', '==', 'active').get(),
     scheduleBundle(evening ? today : previous, today, ''),
@@ -13229,22 +13233,28 @@ async function dailyTeacherCourseReminders(pushLineMessage, teacherWorkPendingCo
     const teacherId = clean(binding.teacherId);
     const preference = preferences.get(teacherId) || {};
     if (evening && preference.eveningAttendance === false) continue;
-    const rows = bundle.resourceEvents.filter(row=>eventTeacherId(row) === teacherId && !['cancelled','pending_conflict'].includes(normalizeScheduleStatus(row.status)))
+    const rows = bundle.resourceEvents.filter(row=>eventTeacherId(row) === teacherId && !closureDates.has(eventDate(row)) && !['cancelled','pending_conflict'].includes(normalizeScheduleStatus(row.status)))
       .sort((a,b)=>eventStart(a).localeCompare(eventStart(b)));
     const todayRows = rows.filter(row=>eventDate(row) === today);
     const unfinished = rows.filter(row=>eventDate(row) === (evening ? today : previous) && normalizeScheduleStatus(row.status) === 'scheduled');
     const parts = [];
-    if (!evening && preference.todayCourses !== false && todayRows.length) parts.push('老師您好，今天的課程如下：','【今日課程】',todayRows.map(row=>teacherReminderLessonLine(row,bundle.maps)).join('\n'));
+    const reminderSections = [];
+    if (!evening && preference.todayCourses !== false && todayRows.length) {
+      const section = ['老師您好，今天的課程如下：','【今日課程】',todayRows.map(row=>teacherReminderLessonLine(row,bundle.maps)).join('\n')].join('\n\n');
+      parts.push(section); reminderSections.push({date:today,body:section});
+    }
     if (unfinished.length) {
-      parts.push(evening ? '老師您好，今天有以下課程尚未完成簽到：' : (weekday(today) === 2 ? '星期日有以下課程未完成簽到：' : '昨天有以下課程未完成簽到：'),
+      const section = [evening ? '老師您好，今天有以下課程尚未完成簽到：' : (weekday(today) === 2 ? '星期日有以下課程未完成簽到：' : '昨天有以下課程未完成簽到：'),
         evening ? '【當天未完成簽到】' : '【昨日未完成紀錄】', unfinished.map(row=>teacherReminderLessonLine(row,bundle.maps)).join('\n'),
-        evening ? '若已上課，請記得在今天完成簽到；若學生沒有上課，請在今天點選請假。' : '若已上課，請進入課表補簽到；若學生沒有上課，下次請記得當天要點選請假。');
+        evening ? '若已上課，請記得在今天完成簽到；若學生沒有上課，請在今天點選請假。' : '若已上課，請進入課表補簽到；若學生沒有上課，下次請記得當天要點選請假。'].join('\n\n');
+      parts.push(section); reminderSections.push({date:evening ? today : previous,body:section});
     }
     if (!parts.length) continue;
-    parts.push(`查看課表：${PORTAL_BASE}/teacher-course-portal.html`);
+    const reminderFooter = `查看課表：${PORTAL_BASE}/teacher-course-portal.html`;
+    parts.push(reminderFooter);
     // Keep the existing morning key: retries and an old morning invocation cannot enqueue twice.
     const id = evening ? `teacher-evening-${hash(`${today}|${teacherId}|${notificationRecipientKey(binding)}`)}` : `teacher-daily-${hash(`${today}|${teacherId}|${notificationRecipientKey(binding)}`)}`;
-    await queueCoursePortalNotice(id, {...recipientFields(binding),teacherId,eventCode:evening?'teacher_evening_attendance':'teacher_daily_courses',body:parts.join('\n\n')});
+    await queueCoursePortalNotice(id, {...recipientFields(binding),teacherId,eventCode:evening?'teacher_evening_attendance':'teacher_daily_courses',body:parts.join('\n\n'),noticeDate:today,reminderSections,reminderFooter});
   }
 }
 
@@ -13700,6 +13710,36 @@ function registerCoursePortal(exportsObject, helpers = {}) {
     return onCall(Object.assign({region: [REGION, 'asia-east1'], cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB'}, options),
       request => timed(request && request.data || {}, request));
   };
+
+  const announcementService = createTeacherAnnouncements({db,
+    loadTeachers:async()=>(await mirrorRows('teachers')).filter(sourceActive).map(row=>({...row,id:sourceId(row)})),
+    loadSchedule:async(start,end)=>{
+      const bundle=await scheduleBundle(start,end,'');
+      return bundle.resourceEvents.map(row=>({teacherId:eventTeacherId(row),date:eventDate(row),status:normalizeScheduleStatus(row.status),active:row.active}));
+    },
+    uploadImage:async(bytes,id)=>{
+      try {
+        const metadata=await sharp(bytes,{limitInputPixels:16000000}).metadata();
+        if(!['jpeg','png','webp'].includes(metadata.format))throw new Error('Unsupported image');
+        const output=await sharp(bytes,{limitInputPixels:16000000}).rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).jpeg({quality:85}).toBuffer();
+        const bucket=storageRouting.writeBucket(),path=`teacher-announcement-images/${id}.jpg`,token=crypto.randomUUID();
+        await bucket.file(path).save(output,{resumable:false,metadata:{contentType:'image/jpeg',metadata:{firebaseStorageDownloadTokens:token}}});
+        return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+      }catch(error){throw new HttpsError('invalid-argument','圖片處理或儲存失敗，請選擇 4 MB 以下的 JPG、PNG 或 WebP 圖片重試。');}
+    }
+  });
+  exportsObject.coursePortalTeacherAnnouncements = callable(withPortalReads(async(data,request)=>{
+    assertAdminPin(request);
+    return announcementService(data,clean(request.auth?.uid)||'manager-pin');
+  }),{region:'asia-east1',secrets:[ADMIN_PIN],timeoutSeconds:180,memory:'1GiB'});
+  exportsObject.coursePortalClassClosures = callable(async(data,request)=>{
+    if(!managerAuthenticated(request))await requireSession(data,['teacher']);
+    let dates;
+    try{dates=courseClosures.datesBetween(clean(data.startDate),clean(data.endDate||data.startDate));}
+    catch(error){throw new HttpsError('invalid-argument',error.message);}
+    const snapshots=await Promise.all(dates.map(date=>db.collection(courseClosures.COLLECTION).doc(date).get()));
+    return {ok:true,closures:snapshots.filter(s=>s.data()?.active===true).map(s=>({date:s.id,reason:clean(s.data().reason)}))};
+  },{region:'asia-east1'});
 
   exportsObject.coursePortalStartBinding = callable(startBinding);
   exportsObject.coursePortalStudentPhoneAccess = callable(studentPhoneAccess);

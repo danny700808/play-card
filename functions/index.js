@@ -1402,6 +1402,14 @@ async function processNotificationQueueDoc(docRef, row, options = {}) {
   if (!claimed) return { ok: true, skipped: true, queueId };
 
   try {
+    // Final closure check also applies to queued retries and Email fallback.
+    // Unrelated notifications never read closure state or change their behavior.
+    const closureCheck = await require('./courseClosurePolicy').prepareReminder(db, row);
+    if (closureCheck.cancelled) {
+      await markQueue(docRef, {status:'已取消',cancelReason:'課程日期已設定全教室停課，停止老師課程提醒。'});
+      return {ok:true,skipped:true,queueId,reason:'class-closure'};
+    }
+    row = closureCheck.row;
     const result = channel === 'line' ? await sendLinePush(row) : await sendEmailViaSendGrid(row);
     await markQueue(docRef, {
       status: '已發送',

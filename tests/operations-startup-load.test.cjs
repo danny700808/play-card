@@ -52,7 +52,7 @@ test('mobile startup does not clone full operations data into IndexedDB or rende
 test('operations startup waits for verified auth before any history or settings reads',async()=>{
   const start=source.lastIndexOf('  async function init(){'),end=source.indexOf('\n\n  global.OperationsCenterV1',start);
   let release;const gate=new Promise(resolve=>release=resolve),events=[];
-  const context={global:{requireLogin:()=>({id:'admin'}),hasSettingsZoneAccess:()=>true},ensureOperatingExpenseEngineLoaded:async()=>true,state:{},setText:()=>{},userLabel:()=>'',initDb:()=>({}),requireOperationsReadAuth:()=>gate,repairYsv104PreorderHistoryOnce:async()=>events.push('read'),restoreFastStateCache:async()=>{throw Error('stop-after-first-read');}};
+  const context={location:{hash:'#overview'},global:{requireLogin:()=>({id:'admin'}),hasSettingsZoneAccess:()=>true},ensureOperatingExpenseEngineLoaded:async()=>true,state:{},setText:()=>{},userLabel:()=>'',initDb:()=>({}),requireOperationsReadAuth:()=>gate,repairYsv104PreorderHistoryOnce:async()=>events.push('read'),restoreFastStateCache:async()=>{throw Error('stop-after-first-read');}};
   vm.runInNewContext(source.slice(start,end),context);
   const running=context.init();await Promise.resolve();await Promise.resolve();assert.deepEqual(events,[]);
   release();await assert.rejects(running,/stop-after-first-read/);assert.deepEqual(events,['read']);

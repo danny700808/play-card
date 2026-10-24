@@ -415,6 +415,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     'course-students':['學生與學費',''],
     'course-teachers':['老師薪資',''],
     'course-settings':['系統設定',''],
+    'course-announcements':['老師公告與停課',''],
     products:['商品資訊',''],
     media:['實體圖與影片','搜尋商品後直接拍照、錄影或選檔；保存完成會自動排入待上架。'],
     sales:['現場銷售',''],
@@ -970,7 +971,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
 
   function ensureDataForCurrentView(){
     const view=(location.hash||'#course-calendar').replace('#','').split('?')[0]||'course-calendar';
-    if(isCourseWorkspaceView(view)||view==='shipping')return false;
+    if(isCourseWorkspaceView(view)||view==='shipping'||view==='course-announcements')return false;
     if(state.payrollOnlyBoot){
       if(!state.operationsPreparation){state.operationsPreparation=(async function(){await ensureOperatingExpenseEngineLoaded();await repairYsv104PreorderHistoryOnce();watchNativeEducationDaily();state.payrollOnlyBoot=false;if(!ensureDataForCurrentView())render();})().catch(function(error){state.operationsPreparation=null;showAlert(errorMessage(error),'error');});}
       return true;
@@ -1769,8 +1770,8 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
     queryAll('#opsNav a[data-view]').forEach(function(a){ a.classList.toggle('active',a.dataset.view===navView); });
     const courseGroup=byId('opsCourseGroup'),courseToggle=byId('opsCourseMenuToggle'),courseViewActive=isCourseWorkspaceView(state.view);
     if(courseGroup){
-      courseGroup.classList.toggle('active',courseViewActive);
-      if(courseViewActive)courseGroup.classList.add('open');
+      courseGroup.classList.toggle('active',courseViewActive||state.view==='course-announcements');
+      if(courseViewActive||state.view==='course-announcements')courseGroup.classList.add('open');
     }
     if(courseToggle)courseToggle.setAttribute('aria-expanded',courseGroup&&courseGroup.classList.contains('open')?'true':'false');
     const orderGroup=byId('opsOrderGroup'),orderToggle=byId('opsOrderMenuToggle'),orderViewActive=['sync','shipping'].includes(state.view);
@@ -1788,6 +1789,7 @@ function queueInventorySyncInTransaction(tx,productId,sku,stock,reason){const re
       return;
     }
     if(global.YouziOperationsCourseInline&&typeof global.YouziOperationsCourseInline.detach==='function')global.YouziOperationsCourseInline.detach();
+    if(state.view==='course-announcements'&&global.YouziTeacherAnnouncements){global.YouziTeacherAnnouncements.mount(content);return;}
     if(state.view==='shipping'&&global.YouziShipping){global.YouziShipping.mount(content);return;}
     if(state.loading && !state.loadedAt){ content.innerHTML=loadingHtml(); return; }
     const renderers={overview:renderOverviewV7,products:renderProducts,media:renderProductMediaWorkspace,sales:renderSalesV7,customers:renderCustomersV6,receivables:renderReceivablesV5,expenses:renderOperatingExpensesPage,purchases:renderPurchases,'purchase-entry':renderPurchaseEntry,stocktake:renderStocktakeWorkspace,rentals:renderRentals,sync:renderSync,connection:renderConnection};
@@ -8101,7 +8103,7 @@ function rerenderKeepingFocus(id,value){
     const user=typeof global.requireLogin==='function'?global.requireLogin():null; if(!user)return;
     if(typeof global.hasSettingsZoneAccess==='function'&&!global.hasSettingsZoneAccess(user)){location.href='dashboard.html';return;}
     if(typeof global.setPortalMode==='function')global.setPortalMode('settings');
-    const payrollOnlyBoot=(location.hash||'').split('?')[0]==='#course-teachers';
+    const payrollOnlyBoot=['#course-teachers','#course-announcements'].includes((location.hash||'').split('?')[0]);
     const expenseEngineReady=payrollOnlyBoot?true:await ensureOperatingExpenseEngineLoaded();
     state.user=user; setText('opsUserChip',userLabel());
     try{state.db=initDb();}catch(error){showAlert(errorMessage(error),'error');html('opsContent',emptyHtml('Firebase初始化失敗',errorMessage(error)));return;}

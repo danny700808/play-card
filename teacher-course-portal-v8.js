@@ -762,6 +762,7 @@
     const priorWeek = grid.dataset.week || '';
     const priorScrollLeft = scroll.scrollLeft;
     const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+    if(global.YouziClassClosureBanner)global.YouziClassClosureBanner.show(scroll.parentElement,days[0],days[6],token);
     const events = uniqueEvents((data.events || []).filter((event) => event.own));
     grid.dataset.dayWeights = JSON.stringify(days.map(day=>Math.max(1,...overlapGroups(events.filter(event=>event.date===day)).map(group=>group.events.length))));
     const startHour = Number(data.hours.start || 10);
