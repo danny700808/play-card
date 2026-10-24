@@ -62,3 +62,18 @@ test('binding resolution uses LINE first, Email fallback, rejects ambiguous iden
 test('last-moment rental reminder guard respects cancellation and closure, leaves cancellation notice untouched',async()=>{
   const f=fixture(),row={source:'course-portal-room-booking',bookingId:'b1'};assert.equal((await prepareReminder(f.db,row)).cancelled,false);f.store.set('courseClassClosures/'+day,{active:true});assert.equal((await prepareReminder(f.db,row)).cancelled,true);f.store.delete('courseClassClosures/'+day);f.store.get('coursePortalRoomBookings/b1').active=false;assert.equal((await prepareReminder(f.db,row)).cancelled,true);assert.equal((await prepareReminder(f.db,{...row,source:'teacher-announcement'})).cancelled,false);
 });
+test('legacy closure upgrades atomically without releasing the date or resending unselected teachers',async()=>{
+ const f=fixture(),legacy='legacy_closure_123456';
+ f.store.set('teacherAnnouncements/'+legacy,{kind:'closure',dates:[day],released:false,title:'舊通知',body:'已停課',createdAtText:now().toISOString(),deliveries:[]});
+ f.store.set('courseClassClosures/'+day,{active:true,reason:'颱風停課',announcementId:legacy});
+ const p=await f.payload({upgradeIds:[legacy],teacherIds:[]});await f.handle(p,'admin');await f.handle(p,'admin');
+ assert.equal(f.store.get('courseClassClosures/'+day).active,true);assert.equal(f.store.get('courseClassClosures/'+day).operationsVersion,2);
+ assert.equal(f.store.get('teacherAnnouncements/'+legacy).supersededBy,p.requestId);
+ assert.equal(f.store.get('coursePortalScheduleChanges/status-group').event.status,'leave');
+ const notices=[...f.store.values()].filter(r=>r.source==='teacher-announcement');assert.equal(notices.length,1);assert.equal(notices[0].eventCode,'renter_closure_announcement');
+});
+test('old client and partial legacy date range cannot silently cancel reservations',async()=>{
+ const f=fixture(),p=await f.payload({schemaVersion:1}),before=JSON.stringify([...f.store]);await assert.rejects(f.handle(p,'admin'),/重新整理頁面/);assert.equal(JSON.stringify([...f.store]),before);
+ const legacy='legacy_closure_123456';f.store.set('teacherAnnouncements/'+legacy,{kind:'closure',dates:[day,'2099-01-01'],released:false,createdAtText:now().toISOString(),deliveries:[]});f.store.set('courseClassClosures/'+day,{active:true,announcementId:legacy});
+ const p2=await f.payload({upgradeIds:[legacy]});const snapshot=JSON.stringify([...f.store]);await assert.rejects(f.handle(p2,'admin'),/完整日期/);assert.equal(JSON.stringify([...f.store]),snapshot);
+});

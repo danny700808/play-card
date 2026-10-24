@@ -34,7 +34,7 @@
   function summary(){
     const teachers=rows.filter(r=>selected.has(r.teacherId)),customers=draft.kind==='closure'?renters.filter(r=>selectedRenters.has(r.renterId)):[],all=[...teachers,...customers];
     el('taSummary').textContent='老師 '+teachers.length+' 位 · 客人 '+customers.length+' 位｜LINE '+all.filter(r=>r.channel==='line').length+' · Email '+all.filter(r=>r.channel==='email').length;
-    el('taImpact').hidden=draft.kind!=='closure';el('taImpact').textContent='請假 '+(impact.lessonCount||0)+' 堂（'+(impact.studentCount||0)+' 人次） · 取消預約 '+(impact.bookingCount||0)+' 筆';
+    el('taImpact').hidden=draft.kind!=='closure';el('taImpact').textContent='待請假 '+(impact.lessonCount||0)+' 堂（'+(impact.studentCount||0)+' 人次） · 待取消預約 '+(impact.bookingCount||0)+' 筆';
   }
   function person(row,audience){
     const isTeacher=audience==='teacher',id=isTeacher?row.teacherId:row.renterId,chosen=isTeacher?selected:selectedRenters;
@@ -48,7 +48,7 @@
   }
   const imageHTML=(url,alt)=>url?'<img class="ta-preview-image" src="'+esc(url)+'" alt="'+esc(alt)+'">':'';
   function renderHistory(){
-    el('taHistory').innerHTML=recent.map(r=>'<details><summary>'+esc(r.title)+' <span class="ta-help">'+esc(time(r.createdAtText))+' · '+r.deliveries.length+' 位'+(r.kind==='closure'?(r.released?' · 已解除':' · 停課中'):'')+'</span></summary><p>'+esc(r.dates.join('、'))+'</p>'+(r.impact?'<p>請假 '+r.impact.lessonCount+' 堂 · 取消預約 '+r.impact.bookingCount+' 筆</p>':'')+'<h4>老師通知</h4><pre>'+esc(r.body)+'</pre>'+imageHTML(r.imageUrl,'老師通知圖片')+(r.renterBody?'<h4>'+esc(r.renterTitle)+'</h4><pre>'+esc(r.renterBody)+'</pre>'+imageHTML(r.renterImageUrl,'客人通知圖片'):'')+r.deliveries.map(d=>'<div class="ta-result"><span>'+esc(d.name)+(d.audience==='renter'?'（客人）':'')+'</span><span>'+channel(d)+'</span><span>'+esc(d.status)+(d.error?'<small> · '+esc(d.error)+'</small>':'')+'</span></div>').join('')+(r.kind==='closure'&&!r.released?'<button class="ta-button" data-release="'+esc(r.id)+'">解除停課</button>':'')+'</details>').join('')||'<p class="ta-help">尚無公告紀錄</p>';
+    el('taHistory').innerHTML=recent.map(r=>'<details><summary>'+esc(r.title)+' <span class="ta-help">'+esc(time(r.createdAtText))+' · '+r.deliveries.length+' 位'+(r.kind==='closure'?(r.supersededBy?' · 已更新':r.released?' · 已解除':' · 停課中'):'')+'</span></summary><p>'+esc(r.dates.join('、'))+'</p>'+(r.impact?'<p>請假 '+r.impact.lessonCount+' 堂 · 取消預約 '+r.impact.bookingCount+' 筆</p>':'')+'<h4>老師通知</h4><pre>'+esc(r.body)+'</pre>'+imageHTML(r.imageUrl,'老師通知圖片')+(r.renterBody?'<h4>'+esc(r.renterTitle)+'</h4><pre>'+esc(r.renterBody)+'</pre>'+imageHTML(r.renterImageUrl,'客人通知圖片'):'')+r.deliveries.map(d=>'<div class="ta-result"><span>'+esc(d.name)+(d.audience==='renter'?'（客人）':'')+'</span><span>'+channel(d)+'</span><span>'+esc(d.status)+(d.error?'<small> · '+esc(d.error)+'</small>':'')+'</span></div>').join('')+(r.kind==='closure'&&!r.released?'<button class="ta-button" data-release="'+esc(r.id)+'">解除停課</button>':'')+'</details>').join('')||'<p class="ta-help">尚無公告紀錄</p>';
     el('taHistory').querySelectorAll('[data-release]').forEach(button=>button.onclick=()=>releasePreview(button.dataset.release));
   }
   async function load(){
@@ -56,9 +56,11 @@
     invalidate();const version=revision,dates={startDate:draft.startDate,endDate:draft.endDate};loading=true;el('taPreview').disabled=true;status('正在載入…');
     try{const data=await api('inspect',dates);if(version!==revision)return;
       rows=data.rows;renters=data.renters||[];impact=data.impact||{};recent=data.history;closures=data.closures;directoryVersion=data.directoryVersion;loadedRange=dates.startDate+'|'+dates.endDate;
-      selected=new Set(rows.filter(r=>r.eligible&&r.lessonCount>0).map(r=>r.teacherId));selectedRenters=new Set(renters.filter(r=>r.eligible).map(r=>r.renterId));renderPeople();renderHistory();
-      const closed=closures.filter(c=>c.active);el('taClosures').hidden=!closed.length;el('taClosures').innerHTML=closed.map(c=>'<div>'+esc(c.date)+' · '+esc(c.reason)+' · 已停課 <button class="ta-button" data-release-active="'+esc(c.announcementId)+'">查看解除</button></div>').join('');
-      el('taClosures').querySelectorAll('[data-release-active]').forEach(button=>button.onclick=()=>releasePreview(button.dataset.releaseActive));status('');
+      const legacyIds=new Set(closures.filter(c=>c.active&&c.operationsVersion!==2).map(c=>c.announcementId));
+      const notified=new Set(recent.filter(r=>legacyIds.has(r.id)).flatMap(r=>r.deliveries.map(d=>d.teacherId).filter(Boolean)));
+      selected=new Set(rows.filter(r=>r.eligible&&r.lessonCount>0&&!notified.has(r.teacherId)).map(r=>r.teacherId));selectedRenters=new Set(renters.filter(r=>r.eligible).map(r=>r.renterId));renderPeople();renderHistory();
+      const closed=closures.filter(c=>c.active);el('taClosures').hidden=!closed.length;el('taClosures').innerHTML=closed.map(c=>'<div>'+esc(c.date)+' · '+esc(c.reason)+' · 已停課 '+(c.operationsVersion!==2?'<button class="ta-button" data-upgrade="'+esc(c.announcementId)+'">補齊停課處理</button> ':'')+'<button class="ta-button" data-release-active="'+esc(c.announcementId)+'">查看解除</button></div>').join('');
+      el('taClosures').querySelectorAll('[data-release-active]').forEach(button=>button.onclick=()=>releasePreview(button.dataset.releaseActive));el('taClosures').querySelectorAll('[data-upgrade]').forEach(button=>button.onclick=()=>upgradePreview(button.dataset.upgrade));status('');
     }catch(error){loadedRange='';status(error.message||'載入失敗，請重試。',true);}finally{loading=false;el('taPreview').disabled=uploading>0;}
   }
   function choose(mode,audience='teacher'){invalidate();if(audience==='teacher')selected=new Set(rows.filter(r=>r.eligible&&(mode==='all'||mode==='scheduled'&&r.lessonCount>0)).map(r=>r.teacherId));else selectedRenters=new Set(renters.filter(r=>r.eligible&&mode==='all').map(r=>r.renterId));renderPeople();}
@@ -69,17 +71,22 @@
     if(!draft.title.trim()||!draft.body.trim()||draft.body.length>3500||draft.title.length>100){status('請填寫老師通知標題與內容。',true);return;}
     const closure=draft.kind==='closure',customers=closure?renters.filter(r=>selectedRenters.has(r.renterId)):[];
     if(closure&&(draft.startDate<today()||!draft.reason.trim())){status('停課請選今天或未來日期，並填寫原因。',true);return;}
-    if(closure&&closures.some(c=>c.active)){status('所選日期已有停課設定。',true);return;}
+    if(closure&&closures.some(c=>c.active&&c.operationsVersion===2)){status('所選日期已有停課設定。',true);return;}
     if(customers.length&&(!draft.renterTitle.trim()||!draft.renterBody.trim())){status('請填寫客人通知標題與內容。',true);return;}
     if(!selected.size&&!closure){status('請至少勾選一位老師。',true);return;}
     requestId=requestId||crypto.randomUUID().replaceAll('-','');const teachers=rows.filter(r=>selected.has(r.teacherId));
     el('taConfirmBody').innerHTML='<h2>'+(closure?'確認停課與通知':'確認老師公告')+'</h2><p>'+esc(draft.startDate)+' ～ '+esc(draft.endDate)+'</p>'+(closure?'<div class="ta-closure">'+esc(el('taImpact').textContent)+'<br>內部原因：'+esc(draft.reason)+'</div>':'')+'<p>老師 '+teachers.length+' 位 · 客人 '+customers.length+' 位</p>'+messagePreview(teachers,'teacher')+messagePreview(customers,'renter')+(closure?'<p class="ta-help">勾選只決定通知對象，所有受影響課程與預約都會處理。</p>':'');
-    el('taDialogError').textContent='';el('taSend').textContent=teachers.length+customers.length?(closure?'確認停課並發送':'確認發送'):'確認停課';el('taSend').onclick=submit;el('taConfirm').showModal();
+    el('taDialogError').textContent='';el('taSend').textContent=teachers.length+customers.length?(closure?(closures.some(c=>c.active)?'補齊停課並發送':'確認停課並發送'):'確認發送'):(closures.some(c=>c.active)?'補齊停課處理':'確認停課');el('taSend').onclick=submit;el('taConfirm').showModal();
   }
   async function submit(){
     if(submitting)return;submitting=true;el('taSend').disabled=el('taCancel').disabled=true;
-    try{const result=await api('submit',{...draft,schemaVersion:2,requestId,teacherIds:[...selected],renterIds:draft.kind==='closure'?[...selectedRenters]:[],assetId:images.teacher.id,renterAssetId:draft.kind==='closure'?images.renter.id:'',directoryVersion});el('taConfirm').close();await load();status(result.message||'通知已建立。');requestId='';}
+    try{const result=await api('submit',{...draft,schemaVersion:2,requestId,upgradeIds:draft.kind==='closure'?[...new Set(closures.filter(c=>c.active&&c.operationsVersion!==2).map(c=>c.announcementId))]:[],teacherIds:[...selected],renterIds:draft.kind==='closure'?[...selectedRenters]:[],assetId:images.teacher.id,renterAssetId:draft.kind==='closure'?images.renter.id:'',directoryVersion});el('taConfirm').close();await load();status(result.message||'通知已建立。');requestId='';}
     catch(error){status(error.message||'送出失敗，可重試。',true);}finally{submitting=false;el('taSend').disabled=el('taCancel').disabled=false;}
+  }
+  async function upgradePreview(id){
+    let row=recent.find(r=>r.id===id);if(!row){try{row=(await api('detail',{id})).row;}catch(error){status(error.message,true);return;}}
+    draft.kind='closure';draft.startDate=row.dates[0];draft.endDate=row.dates.at(-1);
+    ['kind','startDate','endDate'].forEach(key=>el('ta-'+key).value=draft[key]);syncKind();await load();preview();
   }
   async function releasePreview(id){
     if(submitting)return;let row=recent.find(r=>r.id===id);if(!row){try{row=(await api('detail',{id})).row;}catch(error){status(error.message,true);return;}}
