@@ -415,7 +415,7 @@ const DEFAULT_PLATFORM_FEE_SETTINGS = {
     'course-students':['學生與學費',''],
     'course-teachers':['老師薪資',''],
     'course-settings':['系統設定',''],
-    'course-announcements':['老師公告與停課',''],
+    'course-announcements':['公告與停課',''],
     products:['商品資訊',''],
     media:['實體圖與影片','搜尋商品後直接拍照、錄影或選檔；保存完成會自動排入待上架。'],
     sales:['現場銷售',''],

@@ -37,6 +37,11 @@ function filterReminder(row, closed) {
   return {cancelled:false,row:{...row,reminderSections:sections,body:[...sections.map(s => s.body),row.reminderFooter].filter(Boolean).join('\n\n')}};
 }
 async function prepareReminder(db, row) {
+  if(row.source==='course-portal-room-booking' && row.bookingId){
+    const booking=(await db.collection('coursePortalRoomBookings').doc(row.bookingId).get()).data();
+    if(!booking || booking.active===false || booking.status==='cancelled')return {row,cancelled:true};
+    return {row,cancelled:(await closedDates(db,[booking.date])).has(booking.date)};
+  }
   const dates = reminderDates(row);
   return dates.length ? filterReminder(row, await closedDates(db, dates)) : {row,cancelled:false};
 }

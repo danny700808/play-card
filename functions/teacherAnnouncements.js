@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const {HttpsError} = require('firebase-functions/v2/https');
 const {COLLECTION, validDate, datesBetween} = require('./courseClosurePolicy');
 const {recipientFields} = require('./portalNotificationPolicy');
+const {personalize} = require('./classClosureOperations');
 const clean = value => String(value == null ? '' : value).trim();
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const email = value => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(clean(value)) ? clean(value).toLowerCase() : '';
@@ -29,7 +30,7 @@ function recipients(teachers, bindings, events) {
 }
 const publicRecipient = ({targetLineUserId,targetEmail,emailFallbackEnabled,...row}) => row;
 
-function createTeacherAnnouncements({db,loadSchedule,loadTeachers,uploadImage,now = () => new Date()}) {
+function createTeacherAnnouncements({db,loadSchedule,loadTeachers,uploadImage,closureOperations,now = () => new Date()}) {
   const announcements = db.collection('teacherAnnouncements');
   async function directory(dates) {
     const [teachers,bindings,events] = await Promise.all([loadTeachers(),db.collection('coursePortalTeacherBindings').get(),loadSchedule(dates[0],dates.at(-1))]);
@@ -47,9 +48,9 @@ function createTeacherAnnouncements({db,loadSchedule,loadTeachers,uploadImage,no
         const q=await db.collection('notificationQueue').doc(d.queueId).get();
         const value=q.data()||{};
         const fallback=value.fallbackQueueId ? await db.collection('notificationQueue').doc(value.fallbackQueueId).get() : null;
-        return {teacherId:d.teacherId,name:d.name,channel:fallback?'email':d.channel,status:clean(fallback?.data()?.status || value.status)||'待發送',error:clean(fallback?.data()?.lastError || value.lastError)};
+        return {teacherId:d.teacherId||'',renterId:d.renterId||'',audience:d.audience||'teacher',name:d.name,channel:fallback?'email':d.channel,status:clean(fallback?.data()?.status || value.status)||'待發送',error:clean(fallback?.data()?.lastError || value.lastError)};
       }));
-      return {id:doc.id,title:r.title,body:r.body,kind:r.kind,dates:r.dates,reason:r.reason,imageUrl:r.imageUrl||'',createdAtText:r.createdAtText,released:r.released===true,deliveries};
+      return {id:doc.id,title:r.title,body:r.body,renterTitle:r.renterTitle||'',renterBody:r.renterBody||'',renterImageUrl:r.renterImageUrl||'',impact:r.impact||null,kind:r.kind,dates:r.dates,reason:r.reason,imageUrl:r.imageUrl||'',createdAtText:r.createdAtText,released:r.released===true,deliveries};
     }));
   }
   return async function handle(data,actor) {
@@ -62,8 +63,8 @@ function createTeacherAnnouncements({db,loadSchedule,loadTeachers,uploadImage,no
     }
     if (data.action === 'inspect') {
       const dates=range(data);
-      const [rows,closed,recent]=await Promise.all([directory(dates),closures(dates),history()]);
-      return {ok:true,rows:rows.map(publicRecipient),directoryVersion:hash(JSON.stringify(rows)),closures:closed,history:recent};
+      const [rows,closed,recent,context]=await Promise.all([directory(dates),closures(dates),history(),closureOperations?.inspect(dates)]);
+      return {ok:true,rows:rows.map(publicRecipient),renters:(context?.renters||[]).map(publicRecipient),impact:context?.impact||null,directoryVersion:hash(JSON.stringify({rows,closure:context?.signature||''})),closures:closed,history:recent};
     }
     if (data.action === 'upload') {
       const encoded=clean(data.base64);
@@ -86,30 +87,36 @@ function createTeacherAnnouncements({db,loadSchedule,loadTeachers,uploadImage,no
         if(row.released) return {ok:true,duplicate:true};
         current.forEach((s,i)=>{if(s.data()?.announcementId===data.id)tx.set(refs[i],{active:false,releasedBy:actor,releasedAt:now()},{merge:true});});
         tx.update(ref,{released:true,releasedAt:now(),releasedBy:actor});
-        return {ok:true,message:'已解除停課；尚未建立的未來提醒恢復原規則。恢復上課公告請另行發送。'};
+        return {ok:true,message:'已解除停課。已登記的請假及已取消預約保留，請另行安排。'};
       });
     }
     if(data.action !== 'submit') throw new HttpsError('invalid-argument','不支援的公告操作。');
     const dates=range(data),kind=data.kind;
+    if(kind==='closure' && closureOperations && data.schemaVersion!==2)throw new HttpsError('failed-precondition','停課功能已更新，請重新整理頁面後確認課程與預約。');
     const title=clean(data.title),body=clean(data.body),reason=clean(data.reason);
     const requestId=clean(data.requestId),assetId=clean(data.assetId);
+    const renterTitle=clean(data.renterTitle),renterBody=clean(data.renterBody),renterAssetId=clean(data.renterAssetId);
+    const renterIds=Array.isArray(data.renterIds)?[...new Set(data.renterIds.map(clean))].sort():[];
     const teacherIds=Array.isArray(data.teacherIds)?[...new Set(data.teacherIds.map(clean))].sort():[];
-    if(!['closure','notice'].includes(kind)||!idOk(requestId)||!title||title.length>100||!body||body.length>3500||teacherIds.length>100||(!teacherIds.length&&kind!=='closure')||(kind==='closure'&&(!reason||reason.length>100))) throw new HttpsError('invalid-argument','請填寫標題與內容，並確認日期及收件老師（最多 100 位）。');
+    if(!['closure','notice'].includes(kind)||!idOk(requestId)||!title||title.length>100||!body||body.length>3500||teacherIds.length+renterIds.length>100||(!teacherIds.length&&kind!=='closure')||(kind==='closure'&&(!reason||reason.length>100))||(renterIds.length&&(!renterTitle||renterTitle.length>100||!renterBody||renterBody.length>3500||kind!=='closure'))) throw new HttpsError('invalid-argument','請填寫通知內容，並確認收件名單（最多 100 位）。');
     if(kind==='closure' && dates[0]<dateNow()) throw new HttpsError('invalid-argument','新增停課只能選擇今天或未來日期，避免影響歷史課務。');
-    const fingerprint=hash(JSON.stringify({dates,kind,title,body,reason,teacherIds,assetId}));
+    const fingerprint=hash(JSON.stringify({dates,kind,title,body,reason,teacherIds,assetId,renterIds,renterTitle,renterBody,renterAssetId}));
     const ref=announcements.doc(requestId);
     const prior=await ref.get();
     if(prior.exists){if(prior.data().fingerprint!==fingerprint||prior.data().actor!==actor)throw new HttpsError('already-exists','公告內容已變更，請重新預覽。');return {ok:true,duplicate:true,id:requestId};}
-    const rows=await directory(dates),selected=teacherIds.map(id=>rows.find(r=>r.teacherId===id));
-    if(data.directoryVersion!==hash(JSON.stringify(rows)))throw new HttpsError('aborted','課表或老師聯絡資料已變更，請重新載入名單後確認。');
+    const [rows,context]=await Promise.all([directory(dates),closureOperations?.inspect(dates)]);
+    const selected=teacherIds.map(id=>rows.find(r=>r.teacherId===id)),selectedRenters=renterIds.map(id=>context?.renters.find(r=>r.renterId===id));
+    if(data.directoryVersion!==hash(JSON.stringify({rows,closure:context?.signature||''})))throw new HttpsError('aborted','課表、預約或聯絡資料已變更，請重新載入名單後確認。');
     if(selected.some(r=>!r||!r.eligible)) throw new HttpsError('failed-precondition','收件老師或綁定資料有變更，請重新載入名單。');
-    let imageUrl='';
-    if(assetId){
-      if(!idOk(assetId))throw new HttpsError('invalid-argument','圖片資料不正確。');
-      const image=await db.collection('teacherAnnouncementImages').doc(assetId).get();
+    if(selectedRenters.some(r=>!r||!r.eligible))throw new HttpsError('failed-precondition','收件客人或聯絡資料有變更，請重新載入名單。');
+    async function imageFor(id){
+      if(!id)return '';
+      if(!idOk(id))throw new HttpsError('invalid-argument','圖片資料不正確。');
+      const image=await db.collection('teacherAnnouncementImages').doc(id).get();
       if(!image.exists||image.data().actor!==actor)throw new HttpsError('permission-denied','請重新上傳公告圖片。');
-      imageUrl=image.data().url;
+      return image.data().url;
     }
+    const [imageUrl,renterImageUrl]=await Promise.all([imageFor(assetId),imageFor(renterAssetId)]);
     const closureRefs=kind==='closure'?dates.map(date=>db.collection(COLLECTION).doc(date)):[];
     return db.runTransaction(async tx=>{
       const [existing,bindings,...closed]=await Promise.all([tx.get(ref),tx.get(db.collection('coursePortalTeacherBindings')),...closureRefs.map(r=>tx.get(r))]);
@@ -117,14 +124,19 @@ function createTeacherAnnouncements({db,loadSchedule,loadTeachers,uploadImage,no
       if(closed.some(d=>d.data()?.active))throw new HttpsError('failed-precondition','所選日期已有停課設定，請先查看或解除原設定。');
       const fresh=recipients(rows.map(r=>({id:r.teacherId,name:r.name})),bindings.docs.map(d=>d.data()),[]);
       if(selected.some(r=>{const x=fresh.find(x=>x.teacherId===r.teacherId);return !x?.eligible||x.targetLineUserId!==r.targetLineUserId||x.targetEmail!==r.targetEmail;}))throw new HttpsError('aborted','老師的通知綁定剛剛更新，請重新預覽。');
-      const deliveries=selected.map(r=>({teacherId:r.teacherId,name:r.name,channel:r.channel,queueId:'teacher-announcement-'+requestId+'-'+hash(r.teacherId).slice(0,24)}));
+      const applyClosure=kind==='closure'&&closureOperations ? await closureOperations.prepare(tx,context,{requestId,reason,actor,extraWrites:closureRefs.length+selected.length+selectedRenters.length+1}) : ()=>{};
+      const targets=[...selected.map(r=>({...r,audience:'teacher'})),...selectedRenters.map(r=>({...r,audience:'renter'}))];
+      const deliveries=targets.map(r=>({teacherId:r.teacherId||'',renterId:r.renterId||'',audience:r.audience,name:r.name,channel:r.channel,queueId:'teacher-announcement-'+requestId+'-'+hash(r.audience+':'+(r.teacherId||r.renterId)).slice(0,24)}));
+      applyClosure();
       closureRefs.forEach((r,i)=>tx.set(r,{date:dates[i],active:true,reason,announcementId:requestId,createdAt:now(),createdBy:actor}));
-      selected.forEach((r,i)=>{
+      targets.forEach((r,i)=>{
         const q=deliveries[i];
-        tx.create(db.collection('notificationQueue').doc(q.queueId),{...recipientFields(r),queueId:q.queueId,targetName:r.name,teacherId:r.teacherId,status:'待發送',source:'teacher-announcement',eventCode:kind==='closure'?'teacher_closure_announcement':'teacher_general_announcement',title,body,lineImageUrl:imageUrl,announcementId:requestId,createdAt:now(),createdAtText:now().toISOString(),createdBy:actor});
+        const isRenter=r.audience==='renter',text=personalize(isRenter?renterBody:body,r,dates,r.audience);
+        if(text.length>4500)throw new HttpsError('invalid-argument','通知內容加上預約明細後過長，請縮短內容或日期範圍。');
+        tx.create(db.collection('notificationQueue').doc(q.queueId),{...recipientFields(r),queueId:q.queueId,targetName:r.name,teacherId:r.teacherId||'',renterId:r.renterId||'',status:'待發送',source:'teacher-announcement',eventCode:isRenter?'renter_closure_announcement':kind==='closure'?'teacher_closure_announcement':'teacher_general_announcement',title:isRenter?renterTitle:title,body:text,lineImageUrl:isRenter?renterImageUrl:imageUrl,announcementId:requestId,createdAt:now(),createdAtText:now().toISOString(),createdBy:actor});
       });
-      tx.create(ref,{actor,fingerprint,kind,title,body,reason,dates,imageUrl,deliveries,createdAt:now(),createdAtText:now().toISOString(),released:false});
-      return {ok:true,id:requestId,queued:deliveries.length,message:kind==='closure'?`停課設定已生效；已建立 ${deliveries.length} 位老師的公告。`:`已建立 ${deliveries.length} 位老師的公告。`};
+      tx.create(ref,{actor,fingerprint,kind,title,body,reason,dates,imageUrl,renterTitle,renterBody,renterImageUrl,impact:kind==='closure'?context?.impact||null:null,deliveries,createdAt:now(),createdAtText:now().toISOString(),released:false});
+      return {ok:true,id:requestId,queued:deliveries.length,message:kind==='closure'?`已停課：${context?.impact.lessonCount||0} 堂請假、${context?.impact.bookingCount||0} 筆預約取消，已建立 ${deliveries.length} 位通知。`:`已建立 ${deliveries.length} 位老師的公告。`};
     });
   };
 }

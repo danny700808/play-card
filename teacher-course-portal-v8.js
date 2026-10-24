@@ -793,7 +793,10 @@
         const available = plannerSlots.get(`${day}|${slotStart}`);
         const past = courseSlotIsPast(day, slotStart);
         html += `<div class="week-cell${released ? ' released-slot-cell' : ''}" style="grid-column:${dayIndex + 2};grid-row:${gridRow}">`;
-        if (!blockingRows.length && new Date(`${day}T12:00:00`).getDay() !== 1 && !past) {
+        const closure=global.YouziClassClosureBanner?.get?.(day,token);
+        if(closure){
+          html += `<span class="closed-slot" title="${escapeHtml(closure.reason)}">停課</span>`;
+        } else if (!blockingRows.length && new Date(`${day}T12:00:00`).getDay() !== 1 && !past) {
           if (available) {
             html += `<button class="empty-slot available-target" type="button" data-flow-target="${day}|${slotStart}" aria-label="${escapeHtml(`${day} ${slotStart} 可排入連續 ${requiredMinutes} 分鐘`)}"><span>可調入</span><small>${requiredMinutes} 分鐘</small></button>`;
           } else if (planner && !planner.exactTarget && !(planner.queriedDates||[]).includes(day)) {
@@ -2076,6 +2079,7 @@
   weekViewport.addEventListener('scroll', scheduleWeekGroupSnap, { passive: true });
   weekViewport.addEventListener('scrollend', snapWeekScrollToGroup);
   global.addEventListener('resize', () => requestAnimationFrame(updateWeekViewport));
+  global.addEventListener('youzi-class-closures-updated', () => renderWeek());
   document.getElementById('irregularToggle').addEventListener('click', () => {
     const panel=document.getElementById('irregularCourses');panel.hidden=!panel.hidden;
     if (!panel.hidden) {followupTab='irregular';renderIrregularCourses();}

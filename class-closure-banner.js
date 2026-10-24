@@ -1,6 +1,7 @@
 (function(global){
   'use strict';
   const states=new WeakMap();
+  const datesBySession=new Map();
   async function show(container,startDate,endDate,sessionToken=''){
     if(!container||!/^\d{4}-\d{2}-\d{2}$/.test(startDate||'')||!global.firebase?.apps?.length)return;
     const key=startDate+'|'+endDate+'|'+sessionToken,previous=states.get(container);
@@ -10,10 +11,15 @@
     if(banner)banner.remove();
     try{
       const result=await global.firebase.app().functions('asia-east1').httpsCallable('coursePortalClassClosures')({startDate,endDate,sessionToken});
-      if(states.get(container)!==state||!container.isConnected||!result.data.closures.length)return;
+      if(states.get(container)!==state||!container.isConnected)return;
+      const dates=datesBySession.get(sessionToken)||new Map();
+      for(const date of dates.keys()){if(date>=startDate&&date<=endDate)dates.delete(date);}
+      result.data.closures.forEach(row=>dates.set(row.date,row));datesBySession.set(sessionToken,dates);
+      global.dispatchEvent(new CustomEvent('youzi-class-closures-updated'));
+      if(!result.data.closures.length)return;
       banner=document.createElement('div');banner.className='ta-closed-banner';banner.setAttribute('role','status');
       banner.style.cssText='padding:12px 16px;margin:10px 0;background:#fff4d5;color:#65501a;border-radius:10px;line-height:1.6';
-      banner.textContent=result.data.closures.map(c=>`${c.date} ${c.reason}｜全教室停課，相關早晚提醒已暫停。`).join(' ');
+      banner.textContent=result.data.closures.map(c=>`${c.date} ${c.reason}｜停課，無法安排課程或預約。`).join(' ');
       container.prepend(banner);
     }catch(error){
       // A failed secondary read must not clear or change the existing timetable.
@@ -27,7 +33,7 @@
     const page=shadow?.getElementById('calendarPage'),date=shadow?.getElementById('calendarDate')?.value;
     if(page&&date)show(page,date,date);
   }
-  global.YouziClassClosureBanner={show};
+  global.YouziClassClosureBanner={show,get:(date,sessionToken='')=>datesBySession.get(sessionToken)?.get(date)};
   global.addEventListener('youzi-calendar-layout',()=>setTimeout(adminCalendar,100));
   global.addEventListener('hashchange',()=>setTimeout(adminCalendar,100));
   global.addEventListener('focus',()=>{states.delete(document.getElementById('opsCourseInlineShadowHost')?.shadowRoot?.getElementById('calendarPage'));adminCalendar();});

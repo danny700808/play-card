@@ -3,11 +3,11 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const source=fs.readFileSync(require('path').join(__dirname,'../functions/coursePortal.js'),'utf8');
 function fixture(blockers=[]){
  const docs=new Map([['runtime/version',{version:1}]]);let serial=Promise.resolve();
- const ref=path=>({path,id:path.split('/').at(-1),get:async()=>snap(path)}),snap=path=>({exists:docs.has(path),data:()=>docs.get(path)});
+ const ref=path=>({path,id:path.split('/').at(-1),get:async()=>snap(path)}),snap=path=>({id:path.split('/').at(-1),exists:docs.has(path),data:()=>docs.get(path)});
  const query=(name,field,value)=>({query:true,name,field,value});const querySnap=q=>({docs:[...docs.entries()].filter(([path,row])=>path.startsWith(q.name+'/')&&q.field.split('.').reduce((o,k)=>o&&o[k],row)===q.value).map(([path,row])=>({id:path.split('/').at(-1),data:()=>row}))});
  const db={collection:name=>({doc:id=>ref(name+'/'+id),where:(field,op,value)=>Object.assign(query(name,field,value),{get:async()=>querySnap(query(name,field,value))})}),runTransaction:work=>{const promise=serial.then(async()=>{let writing=false;const staged=new Map(docs);await work({get:async r=>{assert(!writing);return r.query?querySnap(r):snap(r.path);},set:(r,d)=>{writing=true;staged.set(r.path,{...staged.get(r.path),...d});},create:(r,d)=>{writing=true;assert(!staged.has(r.path));staged.set(r.path,d);}});docs.clear();for(const row of staged)docs.set(...row);});serial=promise.catch(()=>{});return promise;}};
  const minutes=t=>Number(t?.slice(0,2))*60+Number(t?.slice(3,5));
- const c={isRoomRentalEvent:r=>r.type==='rental',db,TUITION_PERIODS:'coursePortalTuitionPeriods',MIRROR:{tuitionPeriods:'mirrorPeriods'},normalizePhone:v=>String(v||''),mirrorRows:async()=>[{id:'plan',subjectId:'guitar',name:'四堂',amount:2800,lessonCount:4,splitType:'ratio',splitValue:0.6,active:true}],clean:v=>String(v??'').trim(),dateKey:v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v:'',timeMinutes:minutes,
+ const c={jsonValue:v=>v,require:name=>{assert.equal(name,'./classDateAccess');return require('../functions/classDateAccess');},isRoomRentalEvent:r=>r.type==='rental',db,TUITION_PERIODS:'coursePortalTuitionPeriods',MIRROR:{tuitionPeriods:'mirrorPeriods'},normalizePhone:v=>String(v||''),mirrorRows:async()=>[{id:'plan',subjectId:'guitar',name:'四堂',amount:2800,lessonCount:4,splitType:'ratio',splitValue:0.6,active:true}],clean:v=>String(v??'').trim(),dateKey:v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v:'',timeMinutes:minutes,
  addDays:(day,n)=>new Date(Date.parse(day+'T12:00:00Z')+n*86400000).toISOString().slice(0,10),assertPortalInterval:(a,b)=>{assert(minutes(b)>minutes(a));},
  HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},readCourseGroups:async()=>[],canonicalStudentId:v=>v,readScheduleVersion:async()=>docs.get('runtime/version').version,
  scheduleBundle:async()=>({resourceEvents:blockers,rooms:[{id:'room',active:true}],maps:{teachers:{teacher:{active:true,subjectIds:['guitar']}},subjects:{guitar:{}},students:{student:{name:'測試學生'}}}}),
@@ -16,7 +16,7 @@ function fixture(blockers=[]){
  eventBlocksResource:r=>r.status!=='leave',overlaps:(a,b,c,d)=>minutes(a)<minutes(d)&&minutes(c)<minutes(b),sharedResourceConflict:()=>false,
  hash:v=>crypto.createHash('sha256').update(v).digest('hex'),cents:v=>{assert(Number.isFinite(v)&&v>=0);},nowText:()=>'',FieldValue:{serverTimestamp:()=>1},
  scheduleVersionRef:()=>ref('runtime/version'),assertScheduleWritable:s=>{if(s.data().writesBlocked)throw Error('blocked');},normalizeScheduleStatus:v=>v,attendanceLineage:e=>e.fixedCourseId||e.id};
- vm.createContext(c);let start=source.indexOf('async function adminSaveSchedule(');vm.runInContext(source.slice(start,source.indexOf('\n}',start)+2),c);return{c,docs};
+ vm.createContext(c);const mergeStart=source.indexOf('function mergePortalTuitionRows(');vm.runInContext(source.slice(mergeStart,source.indexOf('\n}',mergeStart)+2),c);let start=source.indexOf('async function adminSaveSchedule(');vm.runInContext(source.slice(start,source.indexOf('\n}',start)+2),c);return{c,docs};
 }
 const request=()=>({operationId:'op1',event:{date:'2026-09-07',start:'18:00',duration:60,roomId:'room',teacherId:'teacher',subjectId:'guitar',studentIds:['student'],type:'fixed',frequency:'weekly'},repeatUntil:'2026-09-30'});
 test('recurring schedule is stored in shared cloud data without recording tuition or wages',async()=>{
@@ -93,7 +93,7 @@ test('invalid plan leaves no partial enrollment',async()=>{
  const f=fixture(),data=enroll();data.enrollment.planId='missing';await assert.rejects(f.c.adminSaveSchedule(data),/收費方案/);assert.equal(f.docs.size,1);
 });
 test('existing student new scheme continues period sequence and trusts catalog prices only',async()=>{
- const f=fixture(),data=request();f.docs.set('mirrorPeriods/old',{source:{studentId:'student',periodNo:3}});data.enrollment={planId:'plan',amount:1};await f.c.adminSaveSchedule(data);const period=[...f.docs.entries()].find(([k])=>k.startsWith('coursePortalTuitionPeriods/'))[1];assert.equal(period.periodNo,4);assert.equal(period.expectedAmount,2800);assert(![...f.docs.keys()].some(k=>k.startsWith('coursePortalStudentProfiles/')));
+ const f=fixture(),data=request();f.docs.set('mirrorPeriods/old',{source:{id:'old',studentId:'student',periodNo:3}});data.enrollment={planId:'plan',amount:1};await f.c.adminSaveSchedule(data);const period=[...f.docs.entries()].find(([k])=>k.startsWith('coursePortalTuitionPeriods/'))[1];assert.equal(period.periodNo,4);assert.equal(period.expectedAmount,2800);assert(![...f.docs.keys()].some(k=>k.startsWith('coursePortalStudentProfiles/')));
 });
 test('new student cannot enter via single extra lesson',async()=>{
  const f=fixture(),data=enroll();data.event.type='single';await assert.rejects(f.c.adminSaveSchedule(data),/固定排課/);assert.equal(f.docs.size,1);
@@ -115,4 +115,13 @@ test('existing drum lesson cannot be changed into another subject before any wri
  const f=fixture([{id:'old',date:'2026-09-07',subjectId:'drums',type:'single',status:'scheduled'}]);
  const data=request();data.sourceEventId='old';data.sourceDate='2026-09-07';
  await assert.rejects(f.c.adminSaveSchedule(data),/沿用原科目/);assert.equal(f.docs.size,1);
+});
+
+
+test('closure on a later weekly date rejects all writes; released dates remain bookable',async()=>{
+ const f=fixture();f.docs.set('courseClassClosures/2026-09-14',{active:true,reason:'颱風天'});
+ await assert.rejects(f.c.adminSaveSchedule(request()),/2026-09-14.*颱風天/);
+ assert(!f.docs.has('coursePortalFixedCourses/manager-op1'));
+ f.docs.set('courseClassClosures/2026-09-14',{active:false,reason:'颱風天'});
+ await f.c.adminSaveSchedule(request());assert(f.docs.has('coursePortalFixedCourses/manager-op1'));
 });

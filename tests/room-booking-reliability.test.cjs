@@ -137,7 +137,7 @@ test('booking, operation, locks and notification outbox commit atomically; notic
   const extract = name => { const a = source.indexOf('async function ' + name + '('); return source.slice(a, source.indexOf('\n}', a) + 2); };
   const db = database(), store = operations(db), op = (await store.claim(session, request)).operation;
   const versionRef = db.collection('version').doc('current');
-  const ctx = { db, HttpsError, SCHEDULE_CHANGED, publicBooking,
+  const ctx = { require:name=>{assert.equal(name,'./classDateAccess');return require('../functions/classDateAccess');}, db, HttpsError, SCHEDULE_CHANGED, publicBooking,
     clean: v => String(v || ''), flagTrue: v => v === true, recordingRentalSelection: () => null,
     readScheduleVersion: async () => 0, assertScheduleWritable() {}, scheduleVersionRef: () => versionRef,
     rentalAvailability: async () => ({ date: request.date, startTime: '13:00', endTime: '14:00', rooms: [{ id: 'room', name: 'Test Room', available: true, price: 100, unitFee: 100, priceType: 'general' }], useOptions: [] }),

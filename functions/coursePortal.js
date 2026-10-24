@@ -5,6 +5,7 @@ const { bookingPage } = require('./roomBookingPages');
 const { recipientFields, notificationRecipientKey } = require('./portalNotificationPolicy');
 const courseClosures = require('./courseClosurePolicy');
 const {createTeacherAnnouncements} = require('./teacherAnnouncements');
+const {createClassClosureOperations,hasProtectedAttendance} = require('./classClosureOperations');
 const { applyLessonSettings } = require('./courseLessonSettings');
 'use strict';
 
@@ -5761,7 +5762,10 @@ async function teacherAvailability(data) {
     (!permanentMinimumDate || date >= permanentMinimumDate) &&
     (!permanentMaximumDate || date <= permanentMaximumDate)
   );
+  const closedDates=await require('./classDateAccess').read(db,dates);
+  if(exactTarget)await require('./classDateAccess').assertOpen(db,exactDate);
   for (const date of dates) {
+    if(closedDates.some(row=>row.date===date))continue;
     const window = businessWindow(policy, date);
     if (window.closed) continue;
     const candidateMinutes = exactTarget
@@ -5819,7 +5823,8 @@ async function teacherAvailability(data) {
     endDate,
     durationMinutes: duration,
     source: source ? publicEvent(source, bundle.maps, session.teacherId) : null,
-    slots
+    slots,
+    closedDates
   };
 }
 
@@ -5834,6 +5839,7 @@ async function teacherSlotOptions(data) {
     throw new HttpsError('failed-precondition', '不可選擇今天以前的日期。');
   }
   assertPortalAdvanceDate(targetDate, '調課日期');
+  await require('./classDateAccess').assertOpen(db,targetDate);
   if (data.roomsOnly === true) {
     const duration = Number(data.durationMinutes || 60);
     if (![30, 60, 90].includes(duration) || timeMinutes(targetStartTime) + duration > 1440) throw new HttpsError('invalid-argument', '請選擇有效的上課長度。');
@@ -5841,13 +5847,14 @@ async function teacherSlotOptions(data) {
     const endTime = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
     const dates = Array.from({length:data.weekly === true ? 8 : 1}, (_, i) => addDays(targetDate, i * 7)).filter(day => day <= portalMaximumAdvanceDate());
     const [bundle, policy, settings] = await Promise.all([scheduleBundle(targetDate, dates[dates.length - 1], session.teacherId, {teacherHome:true}), rentalPolicySettings(), db.collection('coursePortalRoomSettings').get()]);
+    const closedDates=await require('./classDateAccess').read(db,dates);
     const settingMap = Object.fromEntries(settings.docs.map(doc => [doc.id, doc.data() || {}]));
     const rooms = bundle.rooms.filter(sourceActive).filter(room => roomKind(room, settingMap[sourceId(room)] || {}) === 'normal' && roomTeacherSchedulable(room, settingMap[sourceId(room)] || {})).map(room => {
       const id = sourceId(room), setting = settingMap[id] || {};
       const checks = dates.map(date => {
         const window = businessWindow(policy, date);
         const allowed = bundle.subjects.filter(sourceActive).some(subject => roomSupportsSubject(room, sourceId(subject), bundle, setting) && roomAllowsInterval(room, setting, date, targetStartTime, endTime, sourceId(subject), 'schedule'));
-        const available = !window.closed && timeMinutes(targetStartTime) >= window.startMinutes && endMinute <= window.endMinutes && allowed && !bundle.resourceEvents.some(event => event.date === date && event.roomId === id && eventBlocksResource(event) && overlaps(targetStartTime, endTime, event.startTime, event.endTime));
+        const available = !closedDates.some(row=>row.date===date) && !window.closed && timeMinutes(targetStartTime) >= window.startMinutes && endMinute <= window.endMinutes && allowed && !bundle.resourceEvents.some(event => event.date === date && event.roomId === id && eventBlocksResource(event) && overlaps(targetStartTime, endTime, event.startTime, event.endTime));
         return {date, available};
       });
       return {id, name:rentalRoomProfile(room, setting).publicName, checks};
@@ -8499,6 +8506,7 @@ async function rentalAvailability(data) {
   const endMinutes = startMinutes + duration;
   const endTime = String(Math.floor(endMinutes / 60)).padStart(2, '0') + ':' + String(endMinutes % 60).padStart(2, '0');
   if (!date || !validPortalTime(startTime, true)) throw new HttpsError('invalid-argument', '請選擇 30 分鐘整點的日期與時間。');
+  await require('./classDateAccess').assertOpen(db,date);
   assertPortalAdvanceDate(date, '租用日期');
   if (publicRentalSlotIsPast(date, startTime)) {
     throw new HttpsError('failed-precondition', '一般租用只能預約尚未開始的時段。');
@@ -8846,6 +8854,7 @@ async function createRoomBookingAttempt(data, session, operation = null) {
   const changeRef = db.collection('coursePortalScheduleChanges').doc('rental-' + id);
   const versionRef = scheduleVersionRef();
   await db.runTransaction(async (tx) => {
+    await require('./classDateAccess').assertOpen(db,availability.date,tx);
     if (publicRentalSlotIsPast(availability.date, availability.startTime)) {
       throw new HttpsError('failed-precondition', '這個時段已經開始，請重新選擇。');
     }
@@ -9368,6 +9377,8 @@ async function teacherActionAttempt(data, recheckContext = {}, managerSession = 
     };
   }
 
+  const closureCheckDates=[date];
+  await require('./classDateAccess').assertOpen(db,date);
   const stoppedAddMode = clean(data.suspensionId) && clean(data.action) === 'extra_lesson' ? await stoppedRestoreMode(data, session) : null;
   const restoreMode = stoppedAddMode || clean(data.action) === 'extra_lesson' ? null : await irregularRestoreMode(data, session);
   const [policy, bundle, roomSettingsSnapshot] = await Promise.all([
@@ -9579,6 +9590,7 @@ async function teacherActionAttempt(data, recheckContext = {}, managerSession = 
     validatedThrough = horizonEnd;
     const future = await scheduleBundle(date, horizonEnd, session.teacherId, { occupancyOnly: true });
     for (let occurrence = date; occurrence <= horizonEnd; occurrence = addDays(occurrence, frequencyWeeks * 7)) {
+      if(!closureCheckDates.includes(occurrence))closureCheckDates.push(occurrence);
       const blockers = future.resourceEvents.filter((row) => {
         const sourceMatch = sameTeachingCourse(row, source);
         return eventBlocksResource(row) &&
@@ -9653,6 +9665,7 @@ async function teacherActionAttempt(data, recheckContext = {}, managerSession = 
     event.frequencyWeeks = frequencyWeeks;
     event.recurrenceEndDate = recurrenceEndDate;
   }
+  await require('./classDateAccess').assertOpen(db,closureCheckDates);
   const changePayload = {
     id,
     operationId,
@@ -9682,6 +9695,7 @@ async function teacherActionAttempt(data, recheckContext = {}, managerSession = 
     .concat(sharedEquipmentLockRows(date, requestedResourceIds, startTime, endTime));
   const versionRef = scheduleVersionRef();
   const transactionResult = await db.runTransaction(async (tx) => {
+    await require('./classDateAccess').assertOpen(db,closureCheckDates,tx);
     if (courseDateIsPast(date)) {
       throw new HttpsError('failed-precondition', '不可選擇今天以前的日期。');
     }
@@ -10585,7 +10599,9 @@ async function adminSaveSchedule(data) {
   if (type !== 'rental' && teacherSubjects.length && !teacherSubjects.includes(subjectId)) throw new HttpsError('failed-precondition', '老師沒有此科目的授課設定。');
   if (type !== 'rental' && !roomSupportsSubject(selectedRoom, subjectId, bundle, setting)) throw new HttpsError('failed-precondition', '教室不適合所選科目。');
   const resourceIds = requestedSubjectResourceIds(subjectId, bundle);
+  const closureCheckDates=[];
   if (mode !== 'delete') for (let day = date; day <= through; day = addDays(day, recurring ? (raw.frequency === 'biweekly' ? 14 : 7) : 10000)) {
+    closureCheckDates.push(day);
     const window = businessWindow(policy, day);
     if (window.closed || timeMinutes(startTime) < window.startMinutes || endMinutes > window.endMinutes) {
       // Classroom scheduling can explicitly open a slot outside public rental hours.
@@ -10618,7 +10634,9 @@ async function adminSaveSchedule(data) {
     : { id, operationId, action: mode === 'delete' ? 'cancel' : original ? 'single_move' : 'extra_lesson', active: true,
       sourceEventId: original ? clean(original.sourceId || original.id) : '', sourceCourseId: lineage, sourceDate: original?.date || '',
       event: { ...event, fixedCourseId: lineage }, createdByTeacherId: teacherId, approvedByManager: true, createdAtText: nowText() };
+  await require('./classDateAccess').assertOpen(db,closureCheckDates);
   await db.runTransaction(async tx => {
+    await require('./classDateAccess').assertOpen(db,closureCheckDates,tx);
     const version = await tx.get(scheduleVersionRef()), existing = await tx.get(target);
     assertScheduleWritable(version);
     if (existing.exists) {
@@ -13711,7 +13729,21 @@ function registerCoursePortal(exportsObject, helpers = {}) {
       request => timed(request && request.data || {}, request));
   };
 
-  const announcementService = createTeacherAnnouncements({db,
+  const closureOperations = createClassClosureOperations({db,assertScheduleWritable,
+    loadSchedule:async(start,end)=>{
+      const [bundle,mirrorAttendance,portalAttendance]=await Promise.all([
+        scheduleBundle(start,end,'',{adminDelta:true}),mirrorRowsByDateRange('attendance',start,end),
+        db.collection(ATTENDANCE_RECORDS).where('date','>=',start).where('date','<=',end).get()
+      ]);
+      const liveAttendance=portalAttendance.docs.map(d=>d.data());
+      return {events:bundle.managerEvents.map(event=>({...event,
+        attendanceIds:event.studentIds.map(studentId=>hash([attendanceOperationId(event.teacherId,event.date,event),studentId].join('|'))),
+        protectedAttendance:hasProtectedAttendance(event,mirrorAttendance,liveAttendance,(row,studentId)=>attendanceRowsMatch(row,{studentId,teacherId:event.teacherId,date:event.date,eventId:event.sourceId,courseId:attendanceLineage(event)}),normalizeScheduleStatus)
+      })),priorChanges:bundle.scheduleChanges.map(row=>({...row,id:row.id||row.__id}))};
+    },
+    makeLeaveChange:(event,reason)=>attendanceChangePayload(event,event.date,event.sourceId,event.fixedCourseId,event.teacherId,'leave',reason)
+  });
+  const announcementService = createTeacherAnnouncements({db,closureOperations,
     loadTeachers:async()=>(await mirrorRows('teachers')).filter(sourceActive).map(row=>({...row,id:sourceId(row)})),
     loadSchedule:async(start,end)=>{
       const bundle=await scheduleBundle(start,end,'');
