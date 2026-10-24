@@ -1,0 +1,36 @@
+name: Teacher Entry Checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - teacher-course-portal.html
+      - teacher-course-portal-v8.js
+      - teacher-course-portal-v8.css
+      - teacher-course-session-v8.js
+      - teacher-view-cache.js
+      - teacher-operation-state.js
+      - course-portal-common.js
+      - tests/teacher-*.test.*
+      - tests/course-session-loading.test.js
+      - tests/login-session-stability.test.cjs
+      - .github/workflows/teacher-entry-checks.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check teacher entry, session recovery and duplicate-operation protection
+        run: |
+          node --check teacher-course-session-v8.js
+          node --check teacher-course-portal-v8.js
+          node --test tests/teacher-entry-recovery.test.cjs tests/teacher-read-scope.test.cjs tests/teacher-view-cache.test.cjs tests/teacher-course-portal-mobile.test.js tests/course-session-loading.test.js tests/teacher-operation-speed.test.cjs tests/teacher-week-swipe.test.js tests/login-session-stability.test.cjs tests/teacher-more-pages.test.js tests/teacher-reminder-settings.test.cjs

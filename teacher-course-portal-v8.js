@@ -194,14 +194,28 @@
     });
     clearTimeout(weekPrefetchTimer);
   }
+  const verifiedWeeks = new Map();
+  function isRecentlyVerifiedWeek(week) {
+    const row = verifiedWeeks.get(week);
+    return Boolean(row && row.account === token && row.revision === viewCache.revision() && Date.now() - row.at < 30000);
+  }
   function requestTeacherWeek(week) {
     const sessionToken = token;
+    const revision = viewCache.revision();
     return viewCache.load('week:' + week, () => invoke('coursePortalTeacherData', {
       sessionToken, weekStart: week, includePayroll: false
-    }));
+    })).then(result => {
+      if (sessionToken === token && revision === viewCache.revision()) {
+        verifiedWeeks.set(week, {account: sessionToken, revision, at: Date.now()});
+        if (verifiedWeeks.size > 16) verifiedWeeks.delete(verifiedWeeks.keys().next().value);
+      }
+      return result;
+    });
   }
   function prefetchNeighborWeeks(week) {
     clearTimeout(weekPrefetchTimer);
+    const connection = global.navigator && global.navigator.connection;
+    if (connection && (connection.saveData || /(^|-)2g$/.test(connection.effectiveType || ''))) return;
     const account = token, revision = viewCache.revision();
     weekPrefetchTimer = setTimeout(async () => {
       for (const offset of [7, -7]) {
@@ -238,17 +252,33 @@
   }
 
   function getSession() {
-    return clean(localStorage.getItem(SESSION_KEY));
+    return PortalAuth && typeof PortalAuth.getSession === 'function'
+      ? PortalAuth.getSession('teacher') : clean(localStorage.getItem(SESSION_KEY));
   }
 
   async function invoke(name, payload) {
-    try {
-      const callable = PortalAuth.callableFor(name, { timeout: 180000 });
-      const result = await callable(payload || {});
-      return result && result.data || {};
-    } catch (error) {
-      const message = clean(error && (error.details || error.message) || '連線失敗，請稍後再試。').replace(/^FirebaseError:\s*/i, '');
-      throw new Error(message);
+    const safeRead = ['coursePortalTeacherData', 'coursePortalTeacherAvailability', 'coursePortalTeacherSlotOptions', 'coursePortalTeacherAttendanceCorrectionOptions'].includes(name)
+      && !(payload && (payload.save === true || payload.action));
+    const account = token;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const callable = PortalAuth.callableFor(name, { timeout: safeRead ? 20000 : 180000 });
+        const result = await callable(payload || {});
+        return result && result.data || {};
+      } catch (error) {
+        const code = clean(error && error.code).toLowerCase();
+        const temporary = /(?:^|\/)(internal|unavailable|deadline-exceeded|network-request-failed)$/.test(code);
+        if (safeRead && temporary && attempt < 2 && account === token && !(global.navigator && global.navigator.onLine === false)) {
+          await new Promise(resolve => global.setTimeout(resolve, [700, 1500][attempt] + Math.floor(Math.random() * 250)));
+          if (account === token) continue;
+        }
+        const detail = error && typeof error.details === 'string' ? error.details : '';
+        const message = clean(detail || error && error.message || '連線失敗，請稍後再試。').replace(/^FirebaseError:\s*/i, '');
+        const wrapped = new Error(message);
+        wrapped.code = code;
+        wrapped.details = error && error.details;
+        throw wrapped;
+      }
     }
   }
 
@@ -1030,9 +1060,11 @@
     showBound(true);
   }
 
-  function showDataFreshness(text) {
+  function showDataFreshness(text, canRetry) {
     const node = document.getElementById('teacherDataFreshness');
     if (node) { node.textContent = text || ''; node.hidden = !text; }
+    const retry = document.getElementById('retryTeacherData');
+    if (retry) retry.hidden = !canRetry;
   }
 
   let dataRequestVersion = 0;
@@ -1063,6 +1095,11 @@
     if (cached) {
       mergeData(cached);
       renderAll();
+      if (isRecentlyVerifiedWeek(requestedWeek)) {
+        showDataFreshness('');
+        prefetchNeighborWeeks(requestedWeek);
+        return;
+      }
       showDataFreshness('正在更新課表，目前顯示上次讀取的資料。');
       requestTeacherWeek(requestedWeek).then((fresh) => {
         if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending() || cacheRevision !== viewCache.revision() || account !== token) return;
@@ -1073,7 +1110,7 @@
         prefetchNeighborWeeks(requestedWeek);
       }).catch((error) => {
         if (requestVersion !== dataRequestVersion || operationVersion !== teacherOperations.version() || teacherOperations.hasPending() || cacheRevision !== viewCache.revision() || account !== token) return;
-        showDataFreshness('課表更新未完成，目前顯示上次資料，請稍後重新整理。');
+        showDataFreshness('課表更新未完成，目前顯示上次資料。', true);
         if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
           PortalAuth.invalidateSession('teacher', error);
         }
@@ -1091,18 +1128,28 @@
   }
 
   async function load(force) {
+    const account = token;
     try {
       await fetchData(Boolean(force));
+      if (account !== token) return false;
       refreshTeacherUtilityStatus(false);
+      return true;
     } catch (error) {
+      if (account !== token) return false;
       if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
         if (PortalAuth && typeof PortalAuth.invalidateSession === 'function') {
           PortalAuth.invalidateSession('teacher', error);
-          return;
+          return false;
         }
-        setSession(''); token = ''; showBound(false);
+        setSession(''); token = ''; showBound(false); return false;
       }
-      toast(error.message || '讀取失敗', 'error');
+      if (appView.classList.contains('hidden') && global.YouziTeacherSession) {
+        global.YouziTeacherSession.fail(error, startTeacherPortal);
+      } else {
+        showDataFreshness('資料更新未完成，請重新載入。', true);
+        toast(error.message || '讀取失敗', 'error');
+      }
+      return false;
     }
   }
 
@@ -1988,6 +2035,13 @@
 
   if (global.CoursePortal) global.CoursePortal.installAuth({ role: 'teacher', authViewId: 'bindView' });
 
+  document.getElementById('retryTeacherData').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    if (button.disabled) return;
+    loading(button, true, '讀取中…');
+    try { await load(true); } finally { loading(button, false); }
+  });
+
   document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => activateTab(button.dataset.tab)));
   document.getElementById('prevWeek').addEventListener('click', () => navigateTeacherWeek(-1));
   document.getElementById('nextWeek').addEventListener('click', () => navigateTeacherWeek(1));
@@ -2473,12 +2527,15 @@
   document.getElementById('payrollMonth').min = PAYROLL_MIN_MONTH;
   document.getElementById('payrollMonth').value = payrollMonth;
 
-  (async function init() {
-    prefillEmployee();
+  let initialLoad = null;
+  function startTeacherPortal() {
+    if (initialLoad) return initialLoad;
+    if (global.YouziTeacherSession) global.YouziTeacherSession.begin();
+    initialLoad = (async function () {
     try {
       token = await exchangeAccess();
       if (token) {
-        await load(false);
+        if (!await load(false)) return;
         const targetTab = new URLSearchParams(location.search).get('tab');
         if (targetTab === 'students' || targetTab === 'payroll') activateTab(targetTab);
         if (targetTab === 'other') document.getElementById('teacherMoreBtn').click();
@@ -2487,12 +2544,17 @@
         PortalAuth.invalidateSession('teacher', new Error('請先登入老師入口。'));
       } else showBound(false);
     } catch (error) {
-      if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && PortalAuth.isSessionAuthError(error)) {
+      const invalidAccess = /permission-denied/.test(error.code || '') && /登入連結.*(逾時|失效)/.test(error.message || '');
+      if (PortalAuth && typeof PortalAuth.isSessionAuthError === 'function' && (PortalAuth.isSessionAuthError(error) || invalidAccess)) {
         PortalAuth.invalidateSession('teacher', error);
       } else {
-        toast(error.message, 'error');
-        showBound(false);
+        if (global.YouziTeacherSession) global.YouziTeacherSession.fail(error, startTeacherPortal);
+        else toast(error.message, 'error');
       }
     }
-  })();
+    })().finally(() => { initialLoad = null; });
+    return initialLoad;
+  }
+  prefillEmployee();
+  startTeacherPortal();
 })(window);

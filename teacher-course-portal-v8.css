@@ -11,6 +11,8 @@ body.teacher-course-app.teacher-more-open{overflow:hidden}
 .teacher-session-loading{max-width:540px;margin:7vh auto 0;display:flex;align-items:center;gap:14px}
 .teacher-session-loading strong{display:block;font-size:17px}.teacher-session-loading p{margin:3px 0 0;color:var(--muted);font-size:13px;line-height:1.55}
 .teacher-session-spinner{width:28px;height:28px;flex:0 0 auto;border:3px solid #cce6db;border-right-color:var(--green);border-radius:50%;animation:teacherSpin .7s linear infinite}
+#teacherSessionMessage{display:block!important;font-size:14px;line-height:1.65;margin:8px 0 0}
+#retryTeacherSession,#retryTeacherData{min-height:44px;min-width:112px;font-size:15px;padding:10px 16px;margin-top:12px}
 .teacher-course-app .teacher-bottom-tabs{position:fixed;left:50%;bottom:0;z-index:50;width:min(440px,100%);transform:translateX(-50%);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;margin:0;padding:7px 6px calc(7px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:rgba(244,247,243,.97);backdrop-filter:blur(12px);overflow:visible}
 .teacher-course-app .teacher-bottom-tabs .btn{min-height:40px;padding:5px 2px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:850;white-space:nowrap;text-align:center}
 .teacher-more-button{position:relative}

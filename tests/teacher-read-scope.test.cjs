@@ -22,6 +22,8 @@ test('teacher homepage opts into scoped profiles and returns only own lessons',a
  const bundle={maps:{teachers:{t:{name:'Teacher'}},students:{s:{name:'Student'}}},events:[{id:'own',teacherId:'t',studentIds:['s']},{id:'other',teacherId:'other',studentIds:['private']}],fixedCourses:[],temporaryCourses:[],suspensions:[],rooms:[],subjects:[],irregularModes:[]};
  const c={...helpers,requireSession:async()=>({teacherId:'t'}),dateKey:v=>v,addDays:()=> '2026-09-13',currentTaipeiDay:()=> '2026-09-10',db:{collection:()=>chain},ATTENDANCE_CANCELLATIONS:'cancel',TEACHER_PAYROLL_MIN_MONTH:'2026-07',scheduleBundle:async(a,b,id,opt)=>{options=opt;return bundle},eventTeacherId:r=>r.teacherId,eventStudentIds:r=>r.studentIds||[],eventSubjectId:r=>r.subjectId,sourcePhone:r=>r.phone,normalizePhone:v=>v||'',sourceActive:()=>true,firstArray:(r,keys)=>r[keys[0]]||[]};
  vm.createContext(c);vm.runInContext(backend.slice(backend.indexOf('function teacherFollowupSnapshot('),backend.indexOf('async function teacherPortalData('))+extract(backend,'teacherPortalData'),c);
+ // Plan labels have their own tests; this fixture checks authorized schedule scope.
+ c.withTeacherLessonPlanLabels=async rows=>rows;
  const result=await c.teacherPortalData({weekStart:'2026-09-07'});
  assert.equal(options.teacherHome,true);assert.deepEqual(Array.from(result.events,r=>r.id),['own']);assert.deepEqual(Array.from(result.roster,r=>r.id),['s']);
 });
@@ -35,6 +37,6 @@ test('candidate lookup uses nearby fourteen days and retains server conflict che
 test('cached teacher data appears immediately then refreshes, with a visible stale-data notice',async()=>{
  const source=fs.readFileSync('teacher-course-portal-v8.js','utf8');let resolve;const messages=[],renders=[];
  const c={viewCache:{revision:()=>0},prefetchNeighborWeeks:()=>{},teacherOperations:{version:()=>0,hasPending:()=>false},dataRequestVersion:0,activeTab:'schedule',token:'session',weekStart:'2026-09-07',payrollMonth:'2026-09',data:{},readCache:()=>({events:[{id:'cached'}]}),mergeData:r=>{c.data=r},renderAll:()=>renders.push(c.data.events[0].id),showDataFreshness:t=>messages.push(t),invoke:()=>new Promise(r=>resolve=r),writeCache:()=>{},PortalAuth:null};
- c.requestTeacherWeek=()=>c.invoke();vm.createContext(c);vm.runInContext(extract(source,'fetchData'),c);await c.fetchData(false);assert.deepEqual(renders,['cached']);assert(messages.at(-1).includes('上次'));
+ c.isRecentlyVerifiedWeek=()=>false;c.requestTeacherWeek=()=>c.invoke();vm.createContext(c);vm.runInContext(extract(source,'fetchData'),c);await c.fetchData(false);assert.deepEqual(renders,['cached']);assert(messages.at(-1).includes('上次'));
  resolve({events:[{id:'fresh'}]});await new Promise(r=>setImmediate(r));assert.deepEqual(renders,['cached','fresh']);assert.equal(messages.at(-1),'');
 });
