@@ -336,6 +336,14 @@ def coupang_auth(method, path, query, access_key, secret_key):
     return f"CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={signed_date}, signature={signature}"
 
 
+class CoupangAPIError(RuntimeError):
+    """Safe structured failure: never retain a response body or credentials."""
+    def __init__(self, status_code, reason="request_failed"):
+        self.status_code = int(status_code)
+        self.reason = reason if reason in ("key_expired", "invalid_response") else "request_failed"
+        super().__init__(f"Coupang HTTP {self.status_code}: {self.reason}")
+
+
 def coupang_request(cfg, method, path, query_params=None, body=None):
     access_key = cfg["access_key"]
     secret_key = cfg["secret_key"]
@@ -354,9 +362,11 @@ def coupang_request(cfg, method, path, query_params=None, body=None):
     try:
         data = res.json() if res.text.strip() else {}
     except Exception:
-        raise RuntimeError(f"Coupang HTTP {res.status_code}，回應不是 JSON：{res.text[:1200]}")
+        raise CoupangAPIError(res.status_code, "invalid_response") from None
     if res.status_code >= 400:
-        raise RuntimeError(f"Coupang HTTP {res.status_code}: {data}")
+        message = data.get("message", "") if isinstance(data, dict) else ""
+        expired = res.status_code == 401 and str(message).strip().casefold() == "hmac key is expired."
+        raise CoupangAPIError(res.status_code, "key_expired" if expired else "request_failed")
     return data
 
 

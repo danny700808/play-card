@@ -37,6 +37,19 @@ class ShippingError(Exception):
     pass
 
 
+def sync_error_message(platform, error):
+    """Only fixed messages cross to the packing desk, never upstream details."""
+    if platform == "Coupang" and isinstance(error, source.CoupangAPIError):
+        if error.reason == "key_expired":
+            return "酷澎 API 金鑰已過期，請在主機更新授權後再讀取訂單；酷澎訂單尚未更新，暫停申請出貨。"
+        if error.status_code in (401, 403):
+            return "酷澎連線授權遭拒，請在主機核對 API 金鑰與連線設定；酷澎訂單尚未更新，暫停申請出貨。"
+        if error.status_code == 429:
+            return "酷澎暫時限制查詢次數，請稍後再讀取；酷澎訂單尚未更新，暫停申請出貨。"
+    name = {"Coupang": "酷澎"}.get(platform, platform)
+    return f"{name} 讀取失敗（{type(error).__name__}）；此平台資料不可用於申請出貨。"
+
+
 def text(v):
     return "" if v is None else str(v).strip()
 
@@ -517,7 +530,7 @@ class Workbench:
                     except Exception as e:
                         # Never emit upstream exception text: it can contain customer data/credentials.
                         with self.lock:
-                            self.errors[name] = f"{name} 讀取失敗（{type(e).__name__}）；此平台資料不可用於申請出貨。"
+                            self.errors[name] = sync_error_message(name, e)
             self.refresh_images()
             with self.lock:
                 self.updated = now()
